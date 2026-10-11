@@ -111,63 +111,67 @@ export default function RouteForm({
   return (
     <div>
       <KeptTabContent value="generate">
-        {/* 全長の目標と候補数を1行に並べ、パネルの縦幅を詰める。全長の目標を外している間もスライダーと値は出したまま
-            薄くする（入れ直すと前の値に戻ることが見える）。 */}
-        <div className="mb-2 flex items-center gap-2">
-          <Toggle
-            variant="plain"
-            className={cn(panelIconToggleClass, "flex-none")}
-            pressed={distanceTargeted}
-            aria-label={distanceToggleName}
-            title={distanceToggleName}
-            onClick={() => setDistanceTargeted(!distanceTargeted)}
-            usage="押している間は、ルート全体の長さを目標に合わせます。"
-          >
-            <DistanceTargetIcon />
-          </Toggle>
-          <input
-            aria-label="全長の目標"
-            type="range"
-            min={MIN_DISTANCE_KM}
-            max={MAX_DISTANCE_KM}
-            step={1}
-            value={distanceInput}
-            disabled={!distanceTargeted}
-            onChange={(e) => setDistanceInput(e.target.value)}
-            className="h-6 min-w-0 flex-1 disabled:opacity-40"
-            data-usage="ルート全体の長さの目標を決めます。"
-          />
-          <span
-            className={cn("min-w-[3.5em] flex-shrink-0 text-right tabular-nums", !distanceTargeted && "opacity-40")}
-          >
-            {distanceInput}km
-          </span>
-          <InfoPopover triggerAriaLabel="全長の目標の説明" triggerClassName="flex-none">
-            {`ルート全体の長さの目標です。作る候補は、この長さの±${DISTANCE_TOLERANCE_KM}kmに入るものだけです。外すと長さを決めず、目的地（無ければ出発地）へ良い道で向かいます。`}
-          </InfoPopover>
-          <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>候補数</span>
-          <div className="inline-flex items-center gap-2">
-            <Button
-              variant="stepper"
-              size="sm"
-              onClick={() => stepMaxRoutes(-1)}
-              disabled={Number(maxRoutesInput) <= MIN_ROUTES}
-              aria-label="候補数を減らす"
-              usage="一度に作る候補の数を減らします。"
+        {/* 全長の目標と候補数を1行に並べ、パネルの縦幅を詰める。スライダーが最小の幅を割る狭い幅では、候補数を下の行へ
+            回す。全長の目標を外している間もスライダーと値は出したまま薄くする（入れ直すと前の値に戻ることが見える）。 */}
+        <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
+          <div className="flex flex-1 items-center gap-2">
+            <Toggle
+              variant="plain"
+              className={cn(panelIconToggleClass, "flex-none")}
+              pressed={distanceTargeted}
+              aria-label={distanceToggleName}
+              title={distanceToggleName}
+              onClick={() => setDistanceTargeted(!distanceTargeted)}
+              usage="押している間は、ルート全体の長さを目標に合わせます。"
             >
-              ‹
-            </Button>
-            <span className="min-w-[2.5em] text-center tabular-nums">{`${maxRoutesInput}件`}</span>
-            <Button
-              variant="stepper"
-              size="sm"
-              onClick={() => stepMaxRoutes(1)}
-              disabled={Number(maxRoutesInput) >= MAX_ROUTES}
-              aria-label="候補数を増やす"
-              usage="一度に作る候補の数を増やします。"
+              <DistanceTargetIcon />
+            </Toggle>
+            <input
+              aria-label="全長の目標"
+              type="range"
+              min={MIN_DISTANCE_KM}
+              max={MAX_DISTANCE_KM}
+              step={1}
+              value={distanceInput}
+              disabled={!distanceTargeted}
+              onChange={(e) => setDistanceInput(e.target.value)}
+              className="h-6 w-12 min-w-12 flex-1 disabled:opacity-40"
+              data-usage="ルート全体の長さの目標を決めます。"
+            />
+            <span
+              className={cn("min-w-[3.5em] flex-shrink-0 text-right tabular-nums", !distanceTargeted && "opacity-40")}
             >
-              ›
-            </Button>
+              {distanceInput}km
+            </span>
+            <InfoPopover triggerAriaLabel="全長の目標の説明" triggerClassName="flex-none">
+              {`ルート全体の長さの目標です。作る候補は、この長さの±${DISTANCE_TOLERANCE_KM}kmに入るものだけです。外すと長さを決めず、目的地（無ければ出発地）へ良い道で向かいます。`}
+            </InfoPopover>
+          </div>
+          <div className="flex flex-none items-center gap-2">
+            <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>候補数</span>
+            <div className="inline-flex items-center gap-2">
+              <Button
+                variant="stepper"
+                size="sm"
+                onClick={() => stepMaxRoutes(-1)}
+                disabled={Number(maxRoutesInput) <= MIN_ROUTES}
+                aria-label="候補数を減らす"
+                usage="一度に作る候補の数を減らします。"
+              >
+                ‹
+              </Button>
+              <span className="min-w-[2.5em] text-center tabular-nums">{`${maxRoutesInput}件`}</span>
+              <Button
+                variant="stepper"
+                size="sm"
+                onClick={() => stepMaxRoutes(1)}
+                disabled={Number(maxRoutesInput) >= MAX_ROUTES}
+                aria-label="候補数を増やす"
+                usage="一度に作る候補の数を増やします。"
+              >
+                ›
+              </Button>
+            </div>
           </div>
         </div>
 

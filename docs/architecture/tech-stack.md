@@ -130,7 +130,7 @@ Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で�
 `git rev-parse HEAD`と突き合わせる。frontendの版は、画面のメニューの「バージョン表示」でも見られる（`commit`の頭8文字）。
 
 **backendのデプロイは、masterのCIが通ったコミットを、本番プロセスに届く変更があるときだけ
-出す。** `ci.yml`の`deploy-backend`が、masterへのpushでbackend・api-contract・frontend・e2e・e2e-scanの
+出す。** `ci.yml`の`deploy-backend`が、masterへのpushでbackend・api-contract・frontend・e2e・e2e-scan・e2e-webkitの
 ジョブが通ったときだけ`deploy-backend.yml`を呼ぶ——どれかが赤ならデプロイは起動しない（flow-gate・文書の検査は待たない）。呼ばれた側は、本番で
 動いているコミット（コンテナの`GIT_COMMIT`）からCIを通ったコミットまでの差分を
 `backend/scripts/deploy_backend_gate.py`で見て、出すかを決める。
