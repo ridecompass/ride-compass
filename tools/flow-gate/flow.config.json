@@ -8,7 +8,7 @@
   "user": "hidakagit",
   "claude": "hidakagit-bot",
   "urls": { "gate": "https://ridecompass-gate.h7g4bin.workers.dev", "form": "https://ride-compass-answer.h7g4bin.workers.dev" },
-  "boards": { "actions": 2, "dialog": 3 },
+  "project": 2,
   "dialogType": "対話作業",
   "fields": { "status": "Status", "priority": "優先度", "size": "規模", "start": "着手可能日時" },
   "priorities": ["高", "中", "低"],

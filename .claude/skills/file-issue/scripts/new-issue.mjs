@@ -96,7 +96,7 @@ async function main() {
     ...(opts.blocking ? ["--blocking", opts.blocking] : [])], body).trim();
   console.log(url);
   const fields = [[config.fields.size, opts.size], [config.fields.priority, opts.priority], [config.fields.start, opts.start]].filter(([, v]) => v);
-  const left = await fillFields(gh, url, type, fields);
+  const left = await fillFields(gh, url, fields);
   if (left) {
     console.error(left);
     process.exit(1);
@@ -104,11 +104,11 @@ async function main() {
   for (const [field, value] of fields) console.log(`${field}: ${value}`);
 }
 
-// 作った issue の欄を入れる。欄はボードの項目にあり、ゲートが種類でボードへ入れるまでは入らない（入るのを待つ。ふつうは数秒）。
+// 作った issue の欄を入れる。欄は Project の項目にあり、ゲートが Project へ入れるまでは入らない（入るのを待つ。ふつうは数秒）。
 // 落ちても issue はできているので、作り直させずに、作った番号と残りの欄だけを入れ直すコマンドを返す（全部入れば null）。
-export async function fillFields(gh, url, type, fields, { pause = 3000, tries = 20 } = {}) {
+export async function fillFields(gh, url, fields, { pause = 3000, tries = 20 } = {}) {
   const [owner, name] = config.tasks.split("/");
-  const board = config.boards[type === config.dialogType ? "dialog" : "actions"];
+  const board = config.project;
   const number = url.split("/").pop();
   const edit = (field, value) => ["project", "item-edit", String(board), "--owner", config.owner, "--url", url, "--field", field, "--value", value];
   const why = (e) => String(e.stderr || e.message).trim();

@@ -1,13 +1,13 @@
 // 見回り（tasks#788）: 担当が付いているかの記録と振り出し。記録の置き場は src/dispatcher.js: Dispatcher（1つだけ）。
 import { fieldsOf, jstText, relationsOf, taskOf } from "./facts.js";
 
-// Actions のボードの開いたタスク（1件を決め直すときと同じ読み方で組む）。
+// Project の開いたタスク（1件を決め直すときと同じ読み方で組む）。
 async function items(gh, config) {
   const all = [];
   for (let after = null; ;) {
     const r = await gh.gql(`query($o:String!,$n:Int!,$a:String){organization(login:$o){projectV2(number:$n){items(first:100,after:$a){pageInfo{hasNextPage endCursor}
       nodes{project{number} ${fieldsOf(config)} content{...on Issue{number state issueType{name} labels(first:20){nodes{name}} ${relationsOf(config)}}}}}}}}`,
-    { o: config.owner, n: config.boards.actions, a: after });
+    { o: config.owner, n: config.project, a: after });
     const page = r.organization.projectV2.items;
     for (const n of page.nodes) if (n.content?.state === "OPEN") all.push({ ...taskOf(config, n.content, [n]), number: n.content.number });
     if (!page.pageInfo.hasNextPage) return all;

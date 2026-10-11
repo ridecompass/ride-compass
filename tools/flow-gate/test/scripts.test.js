@@ -99,7 +99,7 @@ test("起票する（file-issue の new-issue.mjs）: 本文の形・子の決�
 test("起票する（file-issue の new-issue.mjs）: 欄で落ちても作り直させず、作った番号と残りの欄を入れ直すコマンドを返す", async () => {
   const url = "https://github.com/ridecompass/ride-compass-tasks/issues/77";
   const fields = [[base.fields.size, "S"], [base.fields.priority, "高"]];
-  const board = { data: { repository: { issue: { projectItems: { nodes: [{ project: { number: base.boards.actions } }] } } } } };
+  const board = { data: { repository: { issue: { projectItems: { nodes: [{ project: { number: base.project } }] } } } } };
   const away = { data: { repository: { issue: { projectItems: { nodes: [] } } } } };
   // answers: ボードへの問い合わせの応答を順に（Error なら落ちる）。edit: 欄を入れる gh が落ちる欄の名前。
   const run = async (answers, fail) => {
@@ -115,7 +115,7 @@ test("起票する（file-issue の new-issue.mjs）: 欄で落ちても作り�
       edits.push(field);
       return "";
     };
-    return { left: await fillFields(gh, url, "要望", fields, { pause: 0, tries: 3 }), edits };
+    return { left: await fillFields(gh, url, fields, { pause: 0, tries: 3 }), edits };
   };
   assert.deepEqual(await run([away, board]), { left: null, edits: fields.map(([f]) => f) }, "入るのを待ってから欄を入れる");
   const rows = [

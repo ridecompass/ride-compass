@@ -28,12 +28,12 @@
 
 | 置き場・役 | 持つもの・すること |
 |---|---|
-| 置き場のリポジトリ（`flow.config.json: tasks`）と2つのボード（`flow.config.json: boards`） | タスクの issue・問いと答え・記録（記録は issue にだけ持ち、git に写さない）。Actions のボードは担当が進めるタスク、対話作業のボードは種類「対話作業」（`flow.config.json: dialogType`）の、開発機の対話のセッションだけが進めるタスク |
-| ゲート（Cloudflare の Worker。Webhook を受ける `ridecompass-gate` と、Access の内側の回答フォーム `ride-compass-answer`） | 出来事と定時に事実を読み、ステータス・担当者・本文の先頭のボタン・ボード・種類を書き、子の印と孫の外しをする。見回りが担当を振り出す。回答フォーム |
+| 置き場のリポジトリ（`flow.config.json: tasks`）と Project（`flow.config.json: project`） | タスクの issue・問いと答え・記録（記録は issue にだけ持ち、git に写さない）。Project はステータス・優先度・規模・着手可能日時の欄を置く所で、どう見せるか（ボード・ビュー）は GitHub の画面で決め、ゲートは関わらない。種類「対話作業」（`flow.config.json: dialogType`）は、開発機の対話のセッションだけが進めるタスク |
+| ゲート（Cloudflare の Worker。Webhook を受ける `ridecompass-gate` と、Access の内側の回答フォーム `ride-compass-answer`） | 出来事と定時に事実を読み、ステータス・担当者・本文の先頭のボタン・種類を書き、issue を Project へ入れ、子の印と孫の外しをする。見回りが担当を振り出す。回答フォーム |
 | Claude（hidakagit-bot の名義） | 作業・問いとコメント・分けることと前提・確かめとマージ・欄の規模と優先度と着手可能日時 |
 | ユーザー（hidakagit） | 判断（回答フォームか、開発機の対話のセッションのチャット）・本番での最後の確かめ・保留と完了・ラベル（`急ぎ` 等） |
 
-ゲートは自分の書き込み（送り主 `flow.config.json: gateBot`）を無視する。issue を種類でボードへ入れるのもゲートで、種類は作るときに決まり、
+ゲートは自分の書き込み（送り主 `flow.config.json: gateBot`）を無視する。種類は作るとき（最初に付いた種類）に決まり、
 対話作業の境目をまたいで変えるとゲートが戻す。
 
 ## ステータスと割り当て
