@@ -5,26 +5,29 @@
 import { bot, config, isMain } from "../../../../tools/flow-gate/src/bot.js";
 import { checkByText } from "../../../../tools/flow-gate/src/questions.js";
 
+// 印を付けて、書いたことか書かなかった理由を返す。
+export function check(gh, number, heads) {
+  const read = () => gh(["issue", "view", number, "-R", config.tasks, "--json", "body", "-q", ".body"]);
+  const before = read();
+  const result = checkByText(before, heads);
+  if (result.problems) return { error: `印を付けない: ${result.problems.join("・")}` };
+  if (read() !== before) return { error: `#${number} の本文が読んだあとに変わったので、上書きしない（打ち直す）` };
+  gh(["issue", "edit", number, "-R", config.tasks, "--body-file", "-"], result.body);
+  return { done: `#${number}: ${heads.length}行に印を付けた` };
+}
+
 function main() {
   const [number, ...heads] = process.argv.slice(2);
   if (!/^\d+$/.test(number ?? "") || !heads.length) {
     console.error("使い方: node .claude/skills/task-work/scripts/check.mjs <issue の番号> <条件の文の頭> [<条件の文の頭> ...]");
     process.exit(2);
   }
-  const gh = bot();
-  const read = () => gh(["issue", "view", number, "-R", config.tasks, "--json", "body", "-q", ".body"]);
-  const before = read();
-  const result = checkByText(before, heads);
-  if (result.problems) {
-    console.error(`印を付けない: ${result.problems.join("・")}`);
+  const { error, done } = check(bot(), number, heads);
+  if (error) {
+    console.error(error);
     process.exit(1);
   }
-  if (read() !== before) {
-    console.error(`#${number} の本文が読んだあとに変わったので、上書きしない（打ち直す）`);
-    process.exit(1);
-  }
-  gh(["issue", "edit", number, "-R", config.tasks, "--body-file", "-"], result.body);
-  console.log(`#${number}: ${heads.length}行に印を付けた`);
+  console.log(done);
 }
 
 if (isMain(import.meta.url)) main();

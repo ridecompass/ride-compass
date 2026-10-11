@@ -95,32 +95,45 @@ async function main() {
     ...(opts.parent ? ["--parent", opts.parent] : []), ...(opts["blocked-by"] ? ["--blocked-by", opts["blocked-by"]] : []),
     ...(opts.blocking ? ["--blocking", opts.blocking] : [])], body).trim();
   console.log(url);
-  // 欄はボードの項目にあり、ゲートが種類でボードへ入れるまでは入らない（入るのを待つ。ふつうは数秒）。ここから先で落ちても issue は
-  // できているので、作り直させずに、欄だけを入れ直すコマンドを出す。
-  const board = config.boards[type === config.dialogType ? "dialog" : "actions"];
   const fields = [[config.fields.size, opts.size], [config.fields.priority, opts.priority], [config.fields.start, opts.start]].filter(([, v]) => v);
+  const left = await fillFields(gh, url, type, fields);
+  if (left) {
+    console.error(left);
+    process.exit(1);
+  }
+  for (const [field, value] of fields) console.log(`${field}: ${value}`);
+}
+
+// 作った issue の欄を入れる。欄はボードの項目にあり、ゲートが種類でボードへ入れるまでは入らない（入るのを待つ。ふつうは数秒）。
+// 落ちても issue はできているので、作り直させずに、作った番号と残りの欄だけを入れ直すコマンドを返す（全部入れば null）。
+export async function fillFields(gh, url, type, fields, { pause = 3000, tries = 20 } = {}) {
+  const [owner, name] = config.tasks.split("/");
+  const board = config.boards[type === config.dialogType ? "dialog" : "actions"];
   const number = url.split("/").pop();
   const edit = (field, value) => ["project", "item-edit", String(board), "--owner", config.owner, "--url", url, "--field", field, "--value", value];
-  const left = (why) => {
-    const lines = fields.map(([f, v]) => `  GH_TOKEN=$FLOW_BOT_TOKEN gh ${edit(f, v).join(" ")}`);
-    console.error([`#${number} は作った（作り直さない）。${why}。欄は次で入れる:`, ...lines].join("\n"));
-    process.exit(1);
-  };
-  if (!fields.length) return;
+  const why = (e) => String(e.stderr || e.message).trim();
+  const left = (reason, rest) => [`#${number} は作った（作り直さない）。${reason}。欄は次で入れる:`,
+    ...rest.map(([f, v]) => `  GH_TOKEN=$FLOW_BOT_TOKEN gh ${edit(f, v).join(" ")}`)].join("\n");
+  if (!fields.length) return null;
   const q = `query($n:Int!){repository(owner:"${owner}",name:"${name}"){issue(number:$n){projectItems(first:5){nodes{project{number}}}}}}`;
   const onBoard = () => JSON.parse(gh(["api", "graphql", "-F", `n=${number}`, "-f", `query=${q}`])).data.repository.issue.projectItems.nodes.some((n) => n.project.number === board);
-  for (let tries = 0; !onBoard(); tries++) {
-    if (tries >= 20) left("60秒待ってもボードに入らないので、欄を入れていない");
-    await new Promise((r) => setTimeout(r, 3000));
+  for (let n = 1; ; n++) {
+    try {
+      if (onBoard()) break;
+    } catch (e) {
+      return left(`ボードに入ったかを問い合わせられなかった（${why(e)}）`, fields);
+    }
+    if (n >= tries) return left(`${(tries * pause) / 1000}秒待ってもボードに入らないので、欄を入れていない`, fields);
+    await new Promise((r) => setTimeout(r, pause));
   }
-  for (const [field, value] of fields) {
+  for (const [k, [field, value]] of fields.entries()) {
     try {
       gh(edit(field, value));
     } catch (e) {
-      left(`欄「${field}」を入れられなかった（${String(e.stderr ?? e.message).trim()}）`);
+      return left(`欄「${field}」を入れられなかった（${why(e)}）`, fields.slice(k));
     }
-    console.log(`${field}: ${value}`);
   }
+  return null;
 }
 
 if (isMain(import.meta.url)) await main();

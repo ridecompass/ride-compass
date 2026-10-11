@@ -149,4 +149,4 @@ issue に書き、git には写さない。master のコミットは Pull Reques
 設定は `flow.config.json`、決め方は `src/decide.js`、問いの形は `question_template.md` を直す。master に入ると `claude-gate.yml` の `deploy-gate` が、
 master の先頭の版を `wrangler deploy`（Webhook）と `wrangler deploy --env form`（回答フォーム）で公開する（秘密の値の名前は `tools/flow-gate/wrangler.toml` の先頭）。
 決め方を変えた直後は、出来事の無い issue が次の出来事まで前の姿で残る。テストは `node --test tools/flow-gate/test/*.test.js`、構文と import の
-解決は `npm run lint`（`tools/flow-gate/eslint.config.js`）で、CI（`claude-gate.yml` の `flow-gate`）も同じ2つを流す。
+解決は `npm run lint`（`tools/flow-gate/eslint.config.js`。流れのスキルに同梱したスクリプトも照らす）で、CI（`claude-gate.yml` の `flow-gate`）も同じ2つを流す。

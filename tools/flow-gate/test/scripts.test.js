@@ -1,13 +1,13 @@
 // 流れのスキルに同梱したスクリプト（印を付ける・答えを記録する・起票する）の照らし。決まりに合わない入力を断り、合う入力から決まった結果を作る。
-// GitHub へ書く所は gh を打つだけなので、ここでは照らしと組み立て（スクリプトが使う関数）を見る。
+// GitHub へ書く所は、gh を打つ関数を差し替えて、書く・書かないと、落ちたときに返す文を見る。
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import base from "../flow.config.json" with { type: "json" };
 import { NONE, answerBody, answerProblem, answerText, checkByText, conditions, latestQuestion, withButton } from "../src/questions.js";
-import { issueProblems, parseArgs, withOrigin } from "../../../.claude/skills/file-issue/scripts/new-issue.mjs";
+import { fillFields, issueProblems, parseArgs, withOrigin } from "../../../.claude/skills/file-issue/scripts/new-issue.mjs";
+import { check } from "../../../.claude/skills/task-work/scripts/check.mjs";
 // 読み込むだけで手順は動かない（打たれたときだけ動く）。読み込めることで、import の誤りを CI で落とす。
-import "../../../.claude/skills/task-work/scripts/check.mjs";
 import "../../../.claude/skills/ask/scripts/answer.mjs";
 import "../../../.claude/skills/ask/scripts/ask.mjs";
 
@@ -23,6 +23,18 @@ test("印を付ける（task-work の check.mjs）: 1つに決まる残りの条
   ];
   for (const [head, why] of rows) assert.match(checkByText(body, [head]).problems?.join("") ?? "", new RegExp(why), head);
   assert.equal(checkByText(body, ["道を押すと値", "見た目"]).body, undefined, "1つでも合わなければ、どの行にも付けない");
+  // 読んでから書くまでに本文が変わっていたら（ゲートや担当が書いた）、上書きしない。
+  const run = (reads) => {
+    const edits = [];
+    const gh = (args, input) => (args[1] === "view" ? reads.shift() : edits.push(input));
+    return { ...check(gh, "5", ["道を押すと値"]), edits };
+  };
+  const same = run([body, body]);
+  assert.equal(same.edits.length, 1);
+  assert.deepEqual(conditions(same.edits[0]).filter((c) => c.done).map((c) => c.text), ["道を押すと値が出る", "済んだ"]);
+  const moved = run([body, body.replace("- [ ] 見た目", "- [x] 見た目")]);
+  assert.deepEqual(moved.edits, [], "変わっていたら書かない");
+  assert.match(moved.error, /読んだあとに変わった/);
 });
 
 test("答えを記録する（ask の answer.mjs）: 回答フォームと同じ照らしで断り、書いた文はゲートが同じ文として読む", () => {
@@ -47,6 +59,13 @@ test("答えを記録する（ask の answer.mjs）: 回答フォームと同じ
   assert.deepEqual(read("次のステータス: 保留\nにしたいくらい崩れる"), { decision: "完了", confirmed: ["見た目"], text: "次のステータス: 保留\nにしたいくらい崩れる" },
     "決まった形に似た行で決定を変えない");
   assert.equal(latestQuestion([confirm, "## 回答\n**完成にしてよいですか？**\n\n補足: 見た"])?.answer.text, "補足: 見た", "前の形の補足も書いた文");
+  // 選ばずに書いた文だけで答えても（確かめで完了にしない・案の無い判断）、書いた文の頭が決まった形に似ていれば、決まった形の行として読まない。
+  const judge0 = "## 問い（判断）\nどうしますか？";
+  const only = (question, kind, text) => latestQuestion([question, answerBody({ kind, text: question.split("\n")[1], plans: [] }, { text })])?.answer;
+  for (const text of ["次のステータス: 保留", "回答: 完了にする", "- 確かめた: 見た目\nここは崩れる", "ラベル: 急ぎ\n直して"]) {
+    assert.deepEqual(only(confirm, "確かめ", text), { decision: "続ける", confirmed: [], text }, text);
+    assert.deepEqual(only(judge0, "判断", text), { decision: "続ける", confirmed: [], text }, text);
+  }
 });
 
 test("起票する（file-issue の new-issue.mjs）: 本文の形・子の決まり・欄の値を照らす", () => {
@@ -75,4 +94,39 @@ test("起票する（file-issue の new-issue.mjs）: 本文の形・子の決�
   assert.equal(withOrigin(withOrigin(ok, 724), 724).match(/分割元/g).length, 1, "二度は置かない");
   assert.deepEqual(parseArgs(["--title", "題", "--body-file", "b.md", "--blocked-by", "5"]), { title: "題", "body-file": "b.md", "blocked-by": "5" });
   for (const argv of [["--blokced-by", "5"], ["--title"], ["--title", "--size", "S"], ["題"]]) assert.equal(parseArgs(argv), null, argv.join(" "));
+});
+
+test("起票する（file-issue の new-issue.mjs）: 欄で落ちても作り直させず、作った番号と残りの欄を入れ直すコマンドを返す", async () => {
+  const url = "https://github.com/ridecompass/ride-compass-tasks/issues/77";
+  const fields = [[base.fields.size, "S"], [base.fields.priority, "高"]];
+  const board = { data: { repository: { issue: { projectItems: { nodes: [{ project: { number: base.boards.actions } }] } } } } };
+  const away = { data: { repository: { issue: { projectItems: { nodes: [] } } } } };
+  // answers: ボードへの問い合わせの応答を順に（Error なら落ちる）。edit: 欄を入れる gh が落ちる欄の名前。
+  const run = async (answers, fail) => {
+    const edits = [];
+    const gh = (args) => {
+      if (args[0] === "api") {
+        const a = answers.shift();
+        if (a instanceof Error) throw a;
+        return JSON.stringify(a);
+      }
+      const field = args[args.indexOf("--field") + 1];
+      if (field === fail) throw Object.assign(new Error("落ちた"), { stderr: "項目が無い" });
+      edits.push(field);
+      return "";
+    };
+    return { left: await fillFields(gh, url, "要望", fields, { pause: 0, tries: 3 }), edits };
+  };
+  assert.deepEqual(await run([away, board]), { left: null, edits: fields.map(([f]) => f) }, "入るのを待ってから欄を入れる");
+  const rows = [
+    [[away, away, away], undefined, /待ってもボードに入らない/, fields],
+    [[new Error("網")], undefined, /問い合わせられなかった（網）/, fields],
+    [[board], base.fields.priority, /欄「.+」を入れられなかった（項目が無い）/, fields.slice(1)],
+  ];
+  for (const [answers, fail, why, rest] of rows) {
+    const { left } = await run(answers, fail);
+    assert.match(left, /^#77 は作った（作り直さない）/, String(why));
+    assert.match(left, why);
+    assert.deepEqual([...left.matchAll(/--field (\S+)/g)].map((m) => m[1]), rest.map(([f]) => f), "入っていない欄だけを入れ直す");
+  }
 });
