@@ -8,7 +8,7 @@ description: "ユーザーに問う形と書き方、答えの扱いと記録、
 導く原則: 1・2。
 
 ユーザーに求めること（採否・判断・操作のお願い・確認）は、形（`tools/flow-gate/question_template.md`。写して埋める）のとおりにファイルへ書き、
-`GH_TOKEN=$FLOW_BOT_TOKEN gh issue comment <番号> -R ridecompass/ride-compass-tasks --body-file <問いのファイル>` で問う。ゲートは、最新の
+`node .claude/skills/ask/scripts/ask.mjs <番号> <問いのファイル>` で問う（形に合わなければ出さずに合わない所を返すので、直して打ち直す）。ゲートは、最新の
 「## 問い」が形に合い答えが無ければ回答待ちにし、形に合わなければ問いとして読まずに合わない所を返す。開発機の対話のセッションで
 ユーザーがチャットにいるときは、チャットで聞いて「答え」のとおり記録する。問いを残して終えるときは、回答フォームの直リンク
 （`flow.config.json: urls.form` の `/answer?issue=<番号>`）を1件1行で添える。
