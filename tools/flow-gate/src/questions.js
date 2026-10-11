@@ -62,7 +62,8 @@ export function checkByText(body, heads) {
   const indexes = [];
   for (const h of heads) {
     const hit = left.filter((c) => c.text.startsWith(h.trim()));
-    if (hit.length !== 1) problems.push(`「${h}」に当たる残りの条件が ${hit.length} 個（1個に決まる頭で指す）`);
+    if (!h.trim()) problems.push("空の頭では指せない");
+    else if (hit.length !== 1) problems.push(`「${h}」に当たる残りの条件が ${hit.length} 個（1個に決まる頭で指す）`);
     else if (hit[0].verify === "ユーザー") problems.push(`「${h}」はユーザーが確かめる条件（答えでゲートが付ける）`);
     else if (hit[0].child) problems.push(`「${h}」は子 #${hit[0].child} が受け持つ条件（子が完成で閉じたときにゲートが付ける）`);
     else indexes.push(hit[0].index);
@@ -109,6 +110,7 @@ export function answerProblem(q, { choice, done, text }) {
   }
   if (done) return `「${DONE}」は確かめの問いにだけ使えます。`;
   if (q.kind === "判断") {
+    if (choice && !q.plans.length) return "この問いに案はありません（書く欄に書いてください）。";
     if (choice && !choice.trim()) return "選んだ案が空です。";
     if (choice && q.plans.length && ![...q.plans, NONE].includes(choice)) return `案にない答えです（案: ${[...q.plans, NONE].join(" / ")}）。`;
     return (!choice || choice === NONE) && !text ? "どれでもないときは、書く欄に書いてください。" : null;
@@ -126,15 +128,26 @@ export function answerBody(q, { choice, done, items = [], labels = "", text = ""
 }
 export const APPLIED = "答えに書いた文を Claude が読んだので、答えを当てました"; // 書いた文のある答えを当てた印（二度は当てない）
 export const isAnswer = (t) => /^## 回答\n/.test(norm(t));
-const FIXED = /^(## 回答|\*\*.+\*\*|(?:回答|次のステータス): .*|- (?:確かめた|問題なし): .*|ラベル: .*)$/;
-export const answerText = (text) => norm(text).split("\n").filter((l) => l.trim() && !FIXED.test(l.trim())).join("\n").trim();
+// 答えのコメントを、決まった形の行と書いた文に分ける。決まった形の行は、頭（「## 回答」と問いの文の太字の行）のあとの最初の塊にだけ置かれ
+// （answerBody の形）、そのあとは全部書いた文。書いた文の中に決まった形に似た行があっても、決まった形の行としては読まない。
+const FIELD = /^(?:(?:回答|次のステータス): .+|- (?:確かめた|問題なし): .+|ラベル: .*)$/;
+function splitAnswer(text) {
+  const lines = norm(text).split("\n");
+  let k = /^\*\*.+\*\*$/.test(lines[1] ?? "") ? 2 : 1;
+  while (k < lines.length && !lines[k].trim()) k++;
+  const fixed = [];
+  for (; k < lines.length && FIELD.test(lines[k].trim()); k++) fixed.push(lines[k].trim());
+  return { fixed, text: lines.slice(k).join("\n").trim() };
+}
+export const answerText = (text) => splitAnswer(text).text;
 function parseAnswer(text) {
   const all = norm(text);
   if (!isAnswer(all)) return null;
-  const picked = (/^(?:回答|次のステータス): (.+)$/m.exec(all)?.[1] ?? "").trim();
+  const { fixed, text: said } = splitAnswer(all);
+  const picked = (fixed.map((l) => /^(?:回答|次のステータス): (.+)$/.exec(l)?.[1]).find(Boolean) ?? "").trim();
   const decision = /見送/.test(picked) ? "見送り" : /保留/.test(picked) ? "保留" : picked === DONE ? "完了" : "続ける";
-  const confirmed = [...all.matchAll(/^- (?:確かめた|問題なし): (.+)$/gm)].map((m) => m[1].trim());
-  return { decision, confirmed, text: answerText(all) };
+  const confirmed = fixed.map((l) => /^- (?:確かめた|問題なし): (.+)$/.exec(l)?.[1]?.trim()).filter(Boolean);
+  return { decision, confirmed, text: said };
 }
 
 // コメントの並びから今の問いと、その答え（無ければ null）。形（template）に合わない問いは問いとして読まない（残す守り: 問いの形の検査）。
