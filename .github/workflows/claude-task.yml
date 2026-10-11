@@ -71,6 +71,8 @@ jobs:
       - run: npm ci && npx playwright install --with-deps chromium
         working-directory: frontend
       - run: git config --global user.name hidakagit && git config --global user.email 6731891+hidakagit@users.noreply.github.com
+      # 担当が issue を読み始める時刻。終わりのコメントに書き、ゲートはこれより後のユーザーの文をまだ読まれていない文として扱う（.github/claude-task/after.js）。
+      - run: echo "READ_FROM=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
       - uses: anthropics/claude-code-action@v1
         id: claude
         with:
