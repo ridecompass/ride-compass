@@ -26,7 +26,8 @@ $ARGUMENTS があればそれを対象範囲とする。
 - 直すもの → 既存のタスクに属するなら、そのタスクの issue へ書く。属さなければ起票案として置き場に
   issue を起こす（入口は種類で決まる。`docs/conventions/flow.md`「ステータスと割り当て」の「入口」）
 - **やらないと決めたもの → 見送りの理由と再評価の条件を issue に書く。** 既存のタスクに属するならその issue へ、属さなければ
-  起こして見送り（`Close as not planned`）で閉じる。利用者に見える壊れを直さずに見送るのは、CLAUDE.md「原則」の1のとおり問う。
+  種類を要望にして起こし、本文に見送りを勧めることを書く。閉じるかはユーザーが決める（入口でゲートが採否を問う。
+  `docs/conventions/flow.md`「ステータスと割り当て」の「入口」。ほかの種類は未着手で入り、担当へ振り出される）。利用者に見える壊れを直さずに見送るのは、CLAUDE.md「原則」の1のとおり問う。
   過去の見送りは、見送りで閉じた issue（`gh issue list -R ridecompass/ride-compass-tasks --state closed --search 'reason:"not planned"'`）と、
   前の回のタグの注釈（`git tag -n99 -l 'periodic-review/*'`）と、それ以前の記録（`grep -l "^## 判断: 見送り" docs/records/tasks/*.md`）で引く
 - レビューを終えたら、**見た対象コミットへ注釈付きタグを打つ**:
@@ -83,15 +84,7 @@ python scripts/review_checks.py docs
 （`.claude/skills/file-issue/SKILL.md`「流れの摩擦を記録する」）。前のタグより後に書かれたその行を全部集め、全体最適の観点の
 材料にする。CLAUDE.md「原則」から直し方を決めて起票案か見送りにする。
 
-```bash
-since=$(git for-each-ref --sort=-taggerdate --count=1 --format='%(taggerdate:unix)' 'refs/tags/periodic-review/*')
-for n in $(gh issue list -R ridecompass/ride-compass-tasks --state all --limit 1000 --search "updated:>=$(date -d @$since +%F)" --json number --jq '.[].number'); do
-  gh issue view "$n" -R ridecompass/ride-compass-tasks --json comments --jq ".comments[] | select((.createdAt | fromdateiso8601) >= $since) | .body | split(\"\n\")[] | select(test(\"^(> )?(- )?流れの摩擦:\")) | \"#$n \(.)\""
-done
-```
-
-（一覧の `--json comments` は100件を超えると読めずに落ちるので、番号だけを取って1件ずつ読む。担当の終え方の要約は、後始末が
-終わりのコメントへ `> ` で引用して写すので、引用と箇条書きの頭も拾う。）
+`python scripts/review_checks.py friction` で集める（gh のトークンが置き場を読めること。担当は `GH_TOKEN=$FLOW_BOT_TOKEN` を付ける）。
 
 ### 3. 4つの観点で見る
 
