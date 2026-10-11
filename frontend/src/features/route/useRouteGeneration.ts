@@ -153,11 +153,12 @@ export function useRouteGeneration({
     else onOutcome("failed");
   }
 
-  /** 直近の案内を消す（実行中なら何もしない）。 */
-  const clearNotice = useCallback(
-    () => setGeneration((current) => (current.status === "idle" ? GENERATION_IDLE : current)),
-    [],
-  );
+  /** 直近の案内（入力の誤りを含む）を消す（実行中なら何もしない）。 */
+  const { clear: clearFormError } = routeFormSubmit;
+  const clearNotice = useCallback(() => {
+    clearFormError();
+    setGeneration((current) => (current.status === "idle" ? GENERATION_IDLE : current));
+  }, [clearFormError]);
 
   /** 生成の結果（作った条件・案内）を消す。 */
   const clear = useCallback(() => {
@@ -187,8 +188,6 @@ export function useRouteGeneration({
           : undefined,
     /** 押した「生成」の直近の案内（候補0件の理由・入力の誤りか失敗）。候補が出たとき・実行中・まだ押していないときはnull。 */
     outcome,
-    /** 押した「生成」が通らなかった理由（入力の誤り・生成の失敗）。候補がある間も、前の候補の上に出す。 */
-    failure: outcome?.kind === "failed" ? outcome.message : null,
     conditionsDirty,
     destinationCorrected: generatedConditions?.destinationCorrected ?? false,
     weightsNotApplied: generatedConditions?.weightsNotApplied ?? false,

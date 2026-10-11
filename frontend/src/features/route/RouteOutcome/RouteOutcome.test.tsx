@@ -2,9 +2,8 @@
  * `features/route/RouteOutcome/RouteOutcome.tsx`——「ルート結果」の中身。
  *
  * 見るもの:
- * - 候補が無い間の案内（生成中の進み方・直近の案内・生成前）と、候補がある間の作り直しの失敗・条件のずれ・
- *   既定の配分で作ったこと・目的地の補正の知らせ（作り直しの失敗を出している間は条件のずれを重ねない）、乗り換えで
- *   作った経路と同じ道だったので選んだ候補の知らせと、その行を見える位置へ出すこと
+ * - 候補が無い間の案内（生成中の進み方・生成前）と、候補がある間の条件のずれ・既定の配分で作ったこと・目的地の補正の
+ *   知らせ、乗り換えで作った経路と同じ道だったので選んだ候補の知らせと、その行を見える位置へ出すこと
  * - 候補の一覧: 一番上の列の見出し、群（最速・生成した候補・合成）の間の区切りの線と名前の列の印（意味を読み上げの
  *   名前に持つ）、行に出す名前・距離・基準線の所要時間・ほかの候補の基準線との差・総合難易度（無ければ「—」）、
  *   選ばれているタブ（選んだ候補・無ければ先頭）と、タブを押したときに上がる操作
@@ -105,8 +104,6 @@ function generationOf(overrides: Partial<Generation> = {}): Generation {
   return {
     running: false,
     progressLabel: undefined,
-    outcome: null,
-    failure: null,
     conditionsDirty: false,
     weightsNotApplied: false,
     destinationCorrected: false,
@@ -159,19 +156,9 @@ describe("候補が無い間", () => {
     expect(screen.getByText("順番待ち...")).toBeInTheDocument();
   });
 
-  it("進み方の届く前の生成中は「生成中...」で、直近の案内より先に出す", () => {
-    renderOutcome({ generation: generationOf({ running: true, outcome: { kind: "failed", message: "前回の失敗" } }) });
+  it("進み方の届く前の生成中は「生成中...」を出す", () => {
+    renderOutcome({ generation: generationOf({ running: true }) });
     expect(screen.getByText("生成中...")).toBeInTheDocument();
-    expect(screen.queryByText("前回の失敗")).not.toBeInTheDocument();
-  });
-
-  it.each([
-    { kind: "failed" as const, role: "alert", other: "status" },
-    { kind: "empty" as const, role: "status", other: "alert" },
-  ])("生成していない間は、直近の案内を出し、失敗だけをエラーとして出す（$kind）", ({ kind, role, other }) => {
-    renderOutcome({ generation: generationOf({ outcome: { kind, message: "候補が見つかりませんでした" } }) });
-    expect(screen.getByRole(role)).toHaveTextContent("候補が見つかりませんでした");
-    expect(screen.queryByRole(other)).not.toBeInTheDocument();
   });
 
   it("案内が無ければ、生成を押すと候補が並ぶことを案内する", () => {
@@ -184,16 +171,6 @@ describe("候補が無い間", () => {
 });
 
 describe("候補の上の知らせ", () => {
-  it("作り直しの失敗は前の候補の上にエラーとして出し、その間は条件が変わった旨を重ねない", () => {
-    renderOutcome({
-      results: resultsOf({ generated: [FAST] }),
-      generation: generationOf({ failure: "時間切れ", conditionsDirty: true }),
-    });
-    expect(screen.getByRole("alert")).toHaveTextContent("作り直せませんでした。時間切れ");
-    expect(screen.queryByText("生成条件が変更されています")).not.toBeInTheDocument();
-    expect(screen.getByRole("tablist", { name: "ルート結果" })).toBeInTheDocument();
-  });
-
   it.each([true, false])(
     "条件のずれ・既定の配分で作ったこと・目的地の補正を、それぞれの間だけ知らせる（当たる: %s）",
     (on) => {

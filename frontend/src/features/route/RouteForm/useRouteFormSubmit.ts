@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 interface UseRouteFormSubmitOptions {
   /** 全長の目標を決めているか。 */
@@ -12,11 +12,12 @@ interface UseRouteFormSubmitOptions {
 }
 
 interface UseRouteFormSubmitResult {
-  /** 生成できない理由（出発地が分からない・全長の目標も経由地・目的地も無く作るものが無い）。生成結果の失敗と同じ場所
-   * （「ルート結果」欄）へ出す——押した場所とは別のどこかに出ると見落とすため。 */
+  /** 生成できない理由（出発地が分からない・全長の目標も経由地・目的地も無く作るものが無い）。生成結果の失敗と同じ窓で
+   * 出す——押した場所とは別のどこかに出ると見落とすため。 */
   error: string | null;
   /** 検証し、通ったかを返す。通らなければ理由を`error`に置く。 */
   check: () => boolean;
+  clear: () => void;
 }
 
 /** 「ルート生成」ボタン（page.tsxの「ルート設定」見出し行）から呼ぶ検証。距離・候補数は確かめない——
@@ -43,5 +44,7 @@ export function useRouteFormSubmit({
     return true;
   }
 
-  return { error, check };
+  const clear = useCallback(() => setError(null), []);
+
+  return { error, check, clear };
 }

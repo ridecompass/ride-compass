@@ -35,13 +35,12 @@ export function useRoutePlanner({ conditions, onOutcome, ...generationInputs }: 
     onGenerated: replaceWithGenerated,
     onOutcome,
   });
-  const { clear: clearGeneration, clearNotice } = generation;
+  const { clear: clearGeneration } = generation;
 
   const splice = useSpliceSession({
     routes: results.routes,
     generatedInput: generation.generatedInput,
     hasSelectedRoute: results.selectedCandidate !== null,
-    onApplyStart: clearNotice,
     onApplied: (applied) => {
       if ("created" in applied) addEdit(applied.created, applied.originId);
       else selectReused(applied.existingRouteId);
