@@ -158,7 +158,6 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
 
     return (
       <>
-        {/* 作り直しの失敗を出している間は、それが前の条件の候補であることも伝えているので重ねない。 */}
         {generation.conditionsDirty && <WarningText>生成条件が変更されています</WarningText>}
         {generation.weightsNotApplied && <WarningText>重み配分を反映できず、既定の配分で作りました。</WarningText>}
         {generation.destinationCorrected && (
