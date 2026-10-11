@@ -17,9 +17,42 @@ export function splitBody(body) {
 export const bodyRest = (body) => splitBody(body).rest;
 export const withButton = (body, config, number) =>
   `<!-- flow-gate -->\n[![回答する](${config.urls.gate}/button.svg)](${answerUrl(config, number)})\n<!-- /flow-gate -->\n\n${bodyRest(body)}`;
-export const CONFIRM = /^ユーザーが確かめる/;
-export const confirmItems = (body) => remaining(body).filter((l) => CONFIRM.test(l));
-export const remaining = (body) => [...bodyRest(body).matchAll(/^\s*- \[ \] (.+)$/gm)].map((m) => m[1].trim());
+// 完了の条件（.claude/skills/file-issue/SKILL.md「issue の形」）。1つの条件はチェックの行から、それより深く字下げした続きの行まで
+// （Markdown と同じく、続きの間の空行も同じ条件に数える）。続きの行のうち「- 確かめる: 」「- 子: 」で始まる行だけが属性で、ほかは条件の文の続き。
+// 属性を行の外に置くのは、文の中の記号と混ざらないため。index はチェックの行が本文（bodyRest）の何行目か（印はこの行に付ける）。
+const CHECK = /^(\s*)- \[([ x])\] (.+)$/;
+const ATTR = /^- (確かめる|子): (.+)$/;
+const indent = (l) => /^\s*/.exec(l)[0].length;
+export function conditions(body) {
+  const lines = bodyRest(body).split("\n");
+  const all = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = CHECK.exec(lines[i]);
+    if (!m) continue;
+    const c = { index: i, text: [m[3].trim()], done: m[2] === "x", verify: "Claude", child: null };
+    for (;;) {
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim()) j++;
+      if (j >= lines.length || CHECK.test(lines[j]) || indent(lines[j]) <= m[1].length) break;
+      i = j;
+      const t = lines[i].trim();
+      const a = ATTR.exec(t);
+      if (a?.[1] === "確かめる") c.verify = a[2].trim() === "ユーザー" ? "ユーザー" : "Claude";
+      else if (a) c.child = Number(/^#(\d+)$/.exec(a[2].trim())?.[1]) || null;
+      else c.text.push(t);
+    }
+    all.push({ ...c, text: c.text.join(" ") });
+  }
+  return all;
+}
+// 本文の、index の行のチェックに印を付ける（同じ文の条件が2つあっても、指した行にだけ付ける）。
+export function checkLines(body, indexes) {
+  const lines = bodyRest(body).split("\n");
+  for (const k of indexes) lines[k] = lines[k].replace("- [ ] ", "- [x] ");
+  return lines.join("\n");
+}
+export const remaining = (body) => conditions(body).filter((c) => !c.done);
+export const confirmItems = (body) => remaining(body).filter((c) => c.verify === "ユーザー").map((c) => c.text);
 
 // 問い: 頭の行・問いの文1行・（あれば）「### 案」と1行1案・（あれば）<details> の判断材料。ほかの行があれば null。
 function parseQuestion(text) {
@@ -67,15 +100,23 @@ export function latestQuestion(comments, template) {
 const ASKS = {
   採否: ["このタスクに着手しますか？", "Claude が起こした要望です。着手するかはユーザーが決めます。", "決めたことだけを Claude が進める。",
     "決めないまま進めると、要らないものを作る。", "ユーザーの起票・改善・段階（決めずに進める）。", "着手する: 未着手になり担当が振り出される。保留する: 保留へ。見送る: 閉じる。", "着手するかの判断は本文で決まる。"],
-  確かめ: ["完成にしてよいですか？", "完了の条件のうち、ユーザーが確かめる行だけが残っています。項目ごとに見て、問題の有無を答えてください。",
+  確かめ: ["完成にしてよいですか？", "完了の条件のうち、ユーザーが確かめる条件だけが残っています。項目ごとに見て、問題の有無を答えてください。",
     "完成は、完了の条件が全部満たされたときだけ。", "見ないまま完成にすると、思ったものと違うまま閉じる。", "条件がユーザーの確かめを持たないとき。",
-    "全部問題なし: 印を付けて完成。問題ありの項目がある: 直す行を条件に足して未着手。", "本文の完了の条件の「ユーザーが確かめる」の行。"],
+    "全部問題なし: 印を付けて完成。問題ありの項目がある: 直す行を条件に足して未着手。", "本文の完了の条件のうち、「- 確かめる: ユーザー」の付いた条件。"],
   イレギュラー: ["担当が、問いも Pull Request も出さず、条件も満たさずに終わりました。どうしますか？", "直前の「担当の終わり」のコメントに、実行へのリンクと担当の最後の発言があります。",
     "落ちた担当を黙って振り出し直さず、ユーザーが次を決める。", "同じ形で何度も落ちる。", "担当が問いか Pull Request を出したとき。",
     "やり直す: 未着手へ戻し振り出す。保留する: 保留へ。見送る: 閉じる。", "直前の「担当の終わり」のコメント。"],
 };
+const material = (template, facts) => sections(template).map((n, i) => `**${n}**: ${facts[i] ?? "なし"}`).join("\n\n");
 export function askText(kind, template) {
   const [question, ...facts] = ASKS[kind];
-  const material = sections(template).map((n, i) => `**${n}**: ${facts[i] ?? "なし"}`).join("\n\n");
-  return `## 問い（${kind}）\n${question}\n\n<details><summary>判断材料</summary>\n\n${material}\n</details>`;
+  return `## 問い（${kind}）\n${question}\n\n<details><summary>判断材料</summary>\n\n${material(template, facts)}\n</details>`;
 }
+
+// 待つ相手（前提・子）が見送りで閉じたときの判断の問い。問いの文に相手の番号を入れ、同じ文の問いが既にあれば二度は問わない
+// （答えで「続ける」を選んだあとも、相手は見送りのまま残るため）。
+export const droppedQuestion = (numbers) => `待っていた ${numbers.map((n) => `#${n}`).join("・")} が見送りで閉じました。この issue を続けますか？`;
+export const askDropped = (numbers, template) => `## 問い（判断）\n${droppedQuestion(numbers)}\n\n### 案\n- 続ける\n- 保留する\n- 見送る\n\n<details><summary>判断材料</summary>\n\n${material(template, [
+  "この issue が待っていた相手（前提か子）が見送りで閉じ、その結果を当てにしていた作業を続けるかを決める必要があります。", "当てにしていた結果が無いまま、黙って作り進めない。",
+  "前の結果を使う作業を、前が無いまま作る。", "待っていた相手が完成で閉じたとき。",
+  "続ける: 待つ相手を除いて決め直す。保留する: 保留へ。見送る: この issue も閉じる。", "見送りで閉じた相手の issue。"])}\n</details>`;
