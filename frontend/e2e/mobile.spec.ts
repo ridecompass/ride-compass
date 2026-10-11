@@ -4,8 +4,8 @@ import {
   MOBILE_VIEWPORT,
   axisCatalogFixture,
   doneJobFixture,
-  generateRoutes,
   openMobileApp,
+  openMobileSheet,
   routeGenerateResponseFixture,
 } from "./fixtures";
 
@@ -98,14 +98,12 @@ test("モバイル: レンズの凡例が、段階の細かい軸でも幅に収
 const LONG_NO_CANDIDATES_REASON =
   "出発地の近くに、条件に合う道路がありませんでした。距離を変えるか、除外した道路の種類を減らしてから試してください。";
 
-// 押した「生成」の結果の1行は、「ルート設定」の本文をどこまで送っていても、▷を押したその場で読める所に出る。
-// 本文の中に置くと、送った分だけ画面の外へ出てもアクセシビリティツリーには残るので、座標で見る。
-test("モバイル: 候補0件の理由が、「ルート設定」の本文を下へ送っても見出しの下で幅に収まって見える", async ({
+// 観点1（収まる・押せる）: 押した「生成」が候補を出せなかった理由の窓は、開いているシートより前に、長い文でも画面に収まって
+// 出て、閉じられる。窓の中の文はアクセシビリティツリーでは見えていても、重なり順で隠れうるので座標で見る。
+test("モバイル: 候補0件の理由の窓が、開いている「ルート設定」より前に画面に収まって出て、閉じられる", async ({
   page,
 }) => {
   await openMobileApp(page, {
-    // 本文が箱に収まらず送れる高さ（いちばん低いシート）にする（高さを決めていないと中身に合わせて伸びる）。
-    storedState: { "ridecompass:mobile-sheet-height-vh": "20" },
     routes: (page) =>
       page.route("**/api/routes/generate/*", (route) =>
         route.fulfill({
@@ -117,30 +115,24 @@ test("モバイル: 候補0件の理由が、「ルート設定」の本文を�
         }),
       ),
   });
-  const sheet = await generateRoutes(page);
-  const note = sheet.getByText(LONG_NO_CANDIDATES_REASON);
-  await expect(note).toBeVisible();
+  const sheet = await openMobileSheet(page, "ルート設定");
+  await sheet.getByLabel("全長の目標", { exact: true }).fill("20");
+  await sheet.getByRole("button", { name: "ルート生成" }).click();
+  const notice = page.getByRole("dialog", { name: "候補が見つかりませんでした" });
+  const reason = notice.getByText(LONG_NO_CANDIDATES_REASON);
+  await expect(reason).toBeVisible();
 
-  // 本文（スクロールする箱）を一番下まで送る。
-  const scrolled = await sheet.evaluate((dialog) => {
-    const body = [...dialog.querySelectorAll<HTMLElement>("*")].find(
-      (el) => getComputedStyle(el).overflowY === "auto" && el.scrollHeight > el.clientHeight,
-    );
-    if (!body) return false;
-    body.scrollTop = body.scrollHeight;
-    return true;
-  });
-  expect(scrolled).toBe(true);
-
-  const placement = await note.evaluate((el) => {
+  const placement = await reason.evaluate((el) => {
     const box = el.getBoundingClientRect();
-    const dialogBox = el.closest('[role="dialog"]')?.getBoundingClientRect();
     const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
     return {
-      insideSheet: dialogBox !== undefined && box.top >= dialogBox.top && box.bottom <= dialogBox.bottom,
       withinWidth: box.left >= 0 && box.right <= window.innerWidth && el.scrollWidth <= el.clientWidth,
+      withinHeight: box.top >= 0 && box.bottom <= window.innerHeight,
       onTop: hit !== null && el.contains(hit),
     };
   });
-  expect(placement).toEqual({ insideSheet: true, withinWidth: true, onTop: true });
+  expect(placement).toEqual({ withinWidth: true, withinHeight: true, onTop: true });
+
+  await notice.getByRole("button", { name: "閉じる" }).click();
+  await expect(notice).toBeHidden();
 });
