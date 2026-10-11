@@ -111,7 +111,40 @@ export default function RouteForm({
   return (
     <div>
       <KeptTabContent value="generate">
-        <div className="mb-2 flex items-center justify-end gap-2">
+        {/* 全長の目標と候補数を1行に並べ、パネルの縦幅を詰める。全長の目標を外している間もスライダーと値は出したまま
+            薄くする（入れ直すと前の値に戻ることが見える）。 */}
+        <div className="mb-2 flex items-center gap-2">
+          <Toggle
+            variant="plain"
+            className={cn(panelIconToggleClass, "flex-none")}
+            pressed={distanceTargeted}
+            aria-label={distanceToggleName}
+            title={distanceToggleName}
+            onClick={() => setDistanceTargeted(!distanceTargeted)}
+            usage="押している間は、ルート全体の長さを目標に合わせます。"
+          >
+            <DistanceTargetIcon />
+          </Toggle>
+          <input
+            aria-label="全長の目標"
+            type="range"
+            min={MIN_DISTANCE_KM}
+            max={MAX_DISTANCE_KM}
+            step={1}
+            value={distanceInput}
+            disabled={!distanceTargeted}
+            onChange={(e) => setDistanceInput(e.target.value)}
+            className="h-6 min-w-0 flex-1 disabled:opacity-40"
+            data-usage="ルート全体の長さの目標を決めます。"
+          />
+          <span
+            className={cn("min-w-[3.5em] flex-shrink-0 text-right tabular-nums", !distanceTargeted && "opacity-40")}
+          >
+            {distanceInput}km
+          </span>
+          <InfoPopover triggerAriaLabel="全長の目標の説明" triggerClassName="flex-none">
+            {`ルート全体の長さの目標です。作る候補は、この長さの±${DISTANCE_TOLERANCE_KM}kmに入るものだけです。外すと長さを決めず、目的地（無ければ出発地）へ良い道で向かいます。`}
+          </InfoPopover>
           <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>候補数</span>
           <div className="inline-flex items-center gap-2">
             <Button
@@ -138,53 +171,17 @@ export default function RouteForm({
           </div>
         </div>
 
-        <div className="flex flex-col gap-2">
-          <RoutePoints
-            conditions={conditions}
-            origin={origin}
-            originManual={originManual}
-            originLocated={originLocated}
-            onOriginReset={onOriginReset}
-            originFound={originFound}
-            mapCenter={mapCenter}
-            onPlaceFound={onPlaceFound}
-            savedPlaces={savedPlaces}
-          />
-          {/* 外している間もスライダーと値は出したまま薄くする（入れ直すと前の値に戻ることが見え、行の高さも変わらない）。 */}
-          <div className="flex items-center gap-2">
-            <Toggle
-              variant="plain"
-              className={cn(panelIconToggleClass, "flex-none")}
-              pressed={distanceTargeted}
-              aria-label={distanceToggleName}
-              title={distanceToggleName}
-              onClick={() => setDistanceTargeted(!distanceTargeted)}
-              usage="押している間は、ルート全体の長さを目標に合わせます。"
-            >
-              <DistanceTargetIcon />
-            </Toggle>
-            <input
-              aria-label="全長の目標"
-              type="range"
-              min={MIN_DISTANCE_KM}
-              max={MAX_DISTANCE_KM}
-              step={1}
-              value={distanceInput}
-              disabled={!distanceTargeted}
-              onChange={(e) => setDistanceInput(e.target.value)}
-              className="h-6 min-w-0 flex-1 disabled:opacity-40"
-              data-usage="ルート全体の長さの目標を決めます。"
-            />
-            <span
-              className={cn("min-w-[3.5em] flex-shrink-0 text-right tabular-nums", !distanceTargeted && "opacity-40")}
-            >
-              {distanceInput}km
-            </span>
-            <InfoPopover triggerAriaLabel="全長の目標の説明" triggerClassName="flex-none">
-              {`ルート全体の長さの目標です。作る候補は、この長さの±${DISTANCE_TOLERANCE_KM}kmに入るものだけです。外すと長さを決めず、目的地（無ければ出発地）へ良い道で向かいます。`}
-            </InfoPopover>
-          </div>
-        </div>
+        <RoutePoints
+          conditions={conditions}
+          origin={origin}
+          originManual={originManual}
+          originLocated={originLocated}
+          onOriginReset={onOriginReset}
+          originFound={originFound}
+          mapCenter={mapCenter}
+          onPlaceFound={onPlaceFound}
+          savedPlaces={savedPlaces}
+        />
       </KeptTabContent>
 
       <KeptTabContent value="weights">{weightsPanel}</KeptTabContent>
