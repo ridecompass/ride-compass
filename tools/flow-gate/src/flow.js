@@ -1,7 +1,7 @@
 // 出来事1件の処理。担当の実行の知らせは見回りへ、ほかはゲートへ渡し、見回りが起こしたタスクはその場で決め直す（持った。順番待ちを含む）。
 // 定時は、時刻が事実になるもの（着手可能日時・利用の上限の止めが解ける）の振り出しと、状況の更新。
 import { runOf } from "./facts.js";
-import { ignored, reportHealth, route, settle } from "./gate.js";
+import { ignored, near, reportHealth, route, settle } from "./gate.js";
 
 export async function handle(gh, { patrol, inbox }, config, name, payload) {
   if (name === "schedule") {
@@ -16,6 +16,9 @@ export async function handle(gh, { patrol, inbox }, config, name, payload) {
   const { numbers, moved } = run ? { numbers: [run.number] } : await route(gh, config, name, payload);
   const record = await patrol.all();
   const settled = await Promise.all(numbers.map((n) => settle(gh, config, n, record, moved)));
+  // ゲートがいま閉じた issue の矢印1本の先も、振り出す前に決め直す（決め直す前の古いステータスで、親を振り出さない）。
+  const next = [...new Set((await Promise.all(settled.filter((s) => s.closedNow).map((s) => near(gh, config, s.number)))).flat())].filter((n) => !numbers.includes(n));
+  settled.push(...(await Promise.all(next.map((n) => settle(gh, config, n, record)))));
   await dispatch(gh, patrol, config, settled, run && payload.action === "completed" ? [run.kind] : []);
 }
 

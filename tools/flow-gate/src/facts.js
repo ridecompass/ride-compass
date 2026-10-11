@@ -1,6 +1,6 @@
 // タスクの事実を読む（src/decide.js: decide が受ける形）。置き場の issue とコードのリポジトリの作業ブランチの PR を GraphQL の1回で読み、
 // 担当が付いているかは見回りの記録（src/patrol.js: Patrol）から受ける。見回りのボードの一覧も同じ読み方を使う。
-import { checkQuestion, isQuestion, latestQuestion, norm, remaining } from "./questions.js";
+import { checkQuestion, conditions, isQuestion, latestQuestion, norm, remaining } from "./questions.js";
 
 // ボードの欄（ステータス・優先度・着手可能日時）の読み方。欄の名前は設定が持つ。
 export const fieldsOf = ({ fields: f }) => `status:fieldValueByName(name:"${f.status}"){...on ProjectV2ItemFieldSingleSelectValue{name}}
@@ -11,13 +11,24 @@ const START_FORM = /^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})?$/;
 const jst = (text) => (START_FORM.test(text) ? new Date(`${text.replace(" ", "T")}${text.includes(":") ? "" : "T00:00"}:00+09:00`) : null);
 // issue が入っているゲートのボードの世界と項目（設定の順に探す）。
 const itemOf = (config, items) => Object.entries(config.boards).map(([world, n]) => ({ world, item: items.find((i) => i.project.number === n) })).find((x) => x.item) ?? {};
-// ボードの項目から、ボードの世界・欄・前提と日時の待ちを組む（1件を決め直すときも、振り出しの一覧も同じ）。
+// 矢印1本でつながる issue（前提・子・親）の読み方。1件を決め直すときも、振り出しの一覧も同じ。
+export const relationsOf = (config) => `blockedBy(first:20){nodes{number state stateReason}} subIssues(first:50){nodes{number state stateReason}}
+ parent{number state stateReason body labels(first:20){nodes{name}} projectItems(first:5){nodes{project{number} ${fieldsOf(config)}}}}`;
+const dropped = (x) => x.state === "CLOSED" && x.stateReason === "NOT_PLANNED";
+// ボードの項目から、ボードの世界・欄・待ちを組む（1件を決め直すときも、振り出しの一覧も同じ）。子（親を持つ issue）は、優先度・着手可能日時・
+// 急ぎ・保留を自分では持たず、親の値を見る。待つ相手は前提と子で、どちらも同じに扱う。
 export function taskOf(config, issue, items, now = new Date()) {
   const { world, item } = itemOf(config, items);
-  const text = item?.start?.text?.trim();
+  const parent = issue.parent;
+  const from = parent ? itemOf(config, parent.projectItems.nodes).item : item;
+  const text = from?.start?.text?.trim();
   const start = jst(text);
-  return { board: world, item: item?.id, status: item?.status?.name, priority: item?.priority?.name, type: issue.issueType?.name ?? null,
-    open: issue.state === "OPEN", blocked: issue.blockedBy.nodes.some((b) => b.state === "OPEN"), future: Boolean(text) && (!start || start > now), badStart: text && !start ? text : null };
+  const own = item?.start?.text?.trim();
+  const waits = [...issue.blockedBy.nodes, ...(issue.subIssues?.nodes ?? [])];
+  return { board: world, item: item?.id, status: item?.status?.name, priority: from?.priority?.name, type: issue.issueType?.name ?? null,
+    open: issue.state === "OPEN", blocked: waits.some((w) => w.state === "OPEN"), dropped: waits.filter(dropped).map((w) => w.number),
+    future: Boolean(text) && (!start || start > now), badStart: own && !jst(own) ? own : null,
+    urgent: Boolean((parent ?? issue).labels?.nodes.some((l) => l.name === config.urgentLabel)), held: Boolean(parent) && from?.status?.name === "保留" };
 }
 export const jstText = (ms) => new Date(ms + 9 * 3600e3).toISOString().slice(0, 16).replace("T", " "); // 日本時間の「YYYY-MM-DD HH:MM」
 // 担当の実行の名前「#<番号> <種類> <振り出しの識別子>」（claude-task.yml の run-name。手で起こした実行は識別子が無い）。
@@ -28,8 +39,7 @@ export function runOf(title) {
 
 const query = (config) => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:String!,$head:String!){
  t:repository(owner:$to,name:$tn){issue(number:$n){id state stateReason body author{login} issueType{name} assignees(first:10){nodes{login}}
-  blockedBy(first:20){nodes{state}} comments(last:40){nodes{body}} projectItems(first:5){nodes{id project{number} ${fieldsOf(config)}}}
-  parent{projectItems(first:5){nodes{project{number} ${fieldsOf(config)}}}}
+  comments(last:40){nodes{body}} projectItems(first:5){nodes{id project{number} ${fieldsOf(config)}}} ${relationsOf(config)}
   timelineItems(first:50,itemTypes:[ISSUE_TYPE_CHANGED_EVENT]){nodes{...on IssueTypeChangedEvent{prevIssueType{name} issueType{name}}}}}}
  c:repository(owner:$co,name:$cn){pullRequests(headRefName:$head,first:5,orderBy:{field:CREATED_AT,direction:DESC}){nodes{
   id state isDraft merged mergeCommit{statusCheckRollup{state}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{state}}}}
@@ -60,9 +70,12 @@ export async function readFacts(gh, config, number, record) {
   const merged = c.pullRequests.nodes.find((p) => p.merged); // 新しいものから並ぶ
   const comments = i.comments.nodes.map((n) => norm(n.body)); // 最近のコメント（同じ知らせを重ねないためにも読む）
   const last = comments.at(-1);
+  // 子は、親が閉じて開き直されないなら（要望が満たされた・やめた）生きていない。条件が残ったまま完成で閉じた親は、ゲートが開き直す。
+  const p = i.parent;
+  const dead = Boolean(p) && p.state === "CLOSED" && !(p.stateReason === "COMPLETED" && remaining(p.body).length);
   return { ...taskOf(config, i, i.projectItems.nodes), number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
-    remaining: remaining(i.body), assignees: i.assignees.nodes.map((a) => a.login), question: latestQuestion(comments, config.questionTemplate),
-    runs, parent: Boolean(i.parent), parentPriority: i.parent && itemOf(config, i.parent.projectItems.nodes).item?.priority?.name,
+    conditions: conditions(i.body), remaining: remaining(i.body), assignees: i.assignees.nodes.map((a) => a.login), question: latestQuestion(comments, config.questionTemplate),
+    runs, parent: p && { number: p.number }, dead, children: i.subIssues.nodes, origin: Number(/^分割元: #(\d+)\s*$/m.exec(norm(i.body))?.[1]) || null,
     types: i.timelineItems.nodes.map((e) => e.prevIssueType?.name ?? null), // 今より前の種類（古い順）
     merged: Boolean(merged), mergeChecks: ROLLUP[merged?.mergeCommit?.statusCheckRollup?.state],
     badQuestion: last && isQuestion(last) ? checkQuestion(config.questionTemplate, last) : [], comments,
