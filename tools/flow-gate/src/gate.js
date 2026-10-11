@@ -1,8 +1,8 @@
 // ゲート: GitHub の出来事から決め直すタスクを決め、事実を全部読み（src/facts.js）、あるべき姿を決め（src/decide.js）、今と違う所だけを書く。
 // ステータスと、変わってはいけない値（種類・担当者・本文のボタンと条件・ボード）を書くのはゲートだけ。
 import { decide } from "./decide.js";
-import { readFacts } from "./facts.js";
-import { askDropped, askText, bodyRest, norm } from "./questions.js";
+import { jstText, readFacts } from "./facts.js";
+import { askDropped, askStalled, askText, bodyRest, norm } from "./questions.js";
 
 // ボードの id と単一選択の欄。
 const board = (gh, config, world) => gh.gql(`query($o:String!,$n:Int!){organization(login:$o){projectV2(number:$n){id
@@ -18,15 +18,17 @@ async function setField(gh, config, world, item, name, option) {
 }
 
 // 1つのタスクを決め直して、今と違う所だけを書く。本文（ボタン）は問いのコメントより先に書く（問いの通知から開いたときにボタンがあるように）。閉じるのは最後。
-// moved は、ユーザーがボードでステータスを動かした出来事で決め直すとき（戻したら知らせる）。
-export async function settle(gh, config, number, record, moved = false) {
-  const f = { ...(await readFacts(gh, config, number, record)), moved };
+// held は見回りの状態（src/patrol.js: Patrol.state）。moved は、ユーザーがボードでステータスを動かした出来事で決め直すとき（戻したら知らせる）。
+export async function settle(gh, config, number, held, moved = false) {
+  const f = { ...(await readFacts(gh, config, number, held)), moved };
   const d = decide(f, config);
   const issue = `/repos/${config.tasks}/issues/${number}`;
   const patch = { ...(d.open && !f.open ? { state: "open" } : {}), ...(d.type !== f.type ? { type: d.type } : {}), ...(d.body !== norm(f.body) ? { body: d.body } : {}),
     ...(String(d.assignees) !== String(f.assignees) ? { assignees: d.assignees } : {}) };
   if (Object.keys(patch).length) await gh.rest("PATCH", issue, patch);
-  if (d.ask) await gh.rest("POST", `${issue}/comments`, { body: d.ask.dropped ? askDropped(d.ask.dropped, config.questionTemplate) : askText(d.ask, config.questionTemplate) });
+  const ask = d.ask?.dropped ? askDropped(d.ask.dropped, config.questionTemplate) : d.ask?.stalled ? askStalled(jstText(d.ask.stalled), config.stallHours, config.questionTemplate)
+    : d.ask && askText(d.ask, config.questionTemplate);
+  if (ask) await gh.rest("POST", `${issue}/comments`, { body: ask });
   if (d.notice) await gh.rest("POST", `${issue}/comments`, { body: d.notice });
   if (d.closePr) await gh.gql(`mutation($id:ID!){closePullRequest(input:{pullRequestId:$id}){clientMutationId}}`, { id: d.closePr });
   if (d.ready) await gh.gql(`mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){clientMutationId}}`, { id: f.pr.id });

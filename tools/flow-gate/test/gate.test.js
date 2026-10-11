@@ -9,9 +9,11 @@ import { handle } from "../src/flow.js";
 import { answerForm } from "../src/form.js";
 import { Inbox } from "../src/inbox.js";
 import { Patrol } from "../src/patrol.js";
-import { APPLIED, askDropped, askText, conditions, droppedQuestion, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
+import { APPLIED, answerBody, askDropped, askText, conditions, droppedQuestion, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
 
-const config = { ...base, questionTemplate: readFileSync(new URL("../question_template.md", import.meta.url), "utf8"), slots: { 作る: 2, 確かめる: 1 } };
+// 時計は差し替える（動きの確かめが読む今の時刻）。既定はコメントの時刻（下の T）の1時間後で、止まりを見る場面だけ進める。
+const clock = { now: Date.UTC(2026, 9, 11, 1) };
+const config = { ...base, questionTemplate: readFileSync(new URL("../question_template.md", import.meta.url), "utf8"), slots: { 作る: 2, 確かめる: 1 }, now: () => clock.now };
 const OPTIONS = ["未着手", "進行中", "CI待ち", "検証待ち", "検証中", "回答待ち", "保留", "完了", "高", "中", "低"].map((name) => ({ id: name, name }));
 const tasks = { full_name: config.tasks };
 const code = { full_name: config.code };
@@ -62,7 +64,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
       // 閉じた時刻を置いていない閉じた issue は、今あるコメントのあとに閉じた。
       const closedAt = i.state === "CLOSED" ? (i.closedAt ?? T(i.comments.length - 0.5)) : null;
       const comments = i.comments.map((body, k) => ({ body, createdAt: T(k), author: { login: author(i, k) } })).slice(-40);
-      return { t: { issue: { id: `I${i.n}`, state: i.state, stateReason: i.reason, closedAt, body: i.body, author: { login: i.author }, issueType: i.type && { name: i.type },
+      return { t: { issue: { id: `I${i.n}`, state: i.state, stateReason: i.reason, createdAt: T(0), closedAt, body: i.body, author: { login: i.author }, issueType: i.type && { name: i.type },
         assignees: { nodes: i.assignees.map((login) => ({ login })) }, ...relations(i), comments: { nodes: comments }, projectItems: { nodes: item(i) },
         timelineItems: { nodes: (i.typeChanges ?? []).map(([a, b]) => ({ prevIssueType: { name: a }, issueType: { name: b } })) } } },
       c: { pullRequests: { nodes: i.pr ? [pull(i, i.pr)] : [] } } };
@@ -83,6 +85,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     if (path.endsWith(`/workflows/${config.workflow}`)) return { state: workflow };
     if (path.includes("/runs?status=completed&per_page=1")) return { workflow_runs: last };
     if (path.endsWith("/jobs")) return { jobs: [{ steps }] };
+    if (path.startsWith("/search/issues")) return { items: [...w.issues.values()].filter((i) => i.state === "OPEN" && !i.assignees.includes(config.user)).map((i) => ({ number: i.n })) };
     if (path.endsWith("/dispatches")) return void w.runs.push({ id: 100 + w.runs.length, display_title: `#${body.inputs.issue} ${body.inputs.kind} ${body.inputs.key}` });
     if ((m = /\/actions\/runs\/(\d+)\/cancel$/.exec(path))) return void w.writes.push(["取り消し", Number(m[1])]);
     if ((m = /\/commits\/(\w+)\/pulls$/.exec(path))) return [...w.issues.values()].filter((i) => i.pr?.sha === m[1]).map((i) => ({ head: { ref: `${config.branchPrefix}${i.n}` } }));
@@ -193,8 +196,8 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め3・�
       ev.comment(1), { status: "未着手" }],
     ["R8 マージのコミットの master の CI が終わった → 確かめの問い", { status: "CI待ち", body: CONFIRM, pr: merged }, null, ev.ci(config.base, "m1"), { status: "回答待ち", comment: "## 問い（確かめ）" }],
     ["R8・決め7 CI が通ったあとに PR が下書きへ戻された（差し戻し）→ 未着手 → 作る担当", { status: "検証待ち", pr: { draft: true, checks: "SUCCESS", drafted: true } }, null, ev.pr(1, "converted_to_draft"), { status: "進行中", runs: ["#1 作る"] }],
-    ["R5・決め1・決め6 判断の答えで続ける → 表で決め直して未着手 → 作る担当（ユーザーの番を出たら割り当てを外す）", { status: "回答待ち", assignees: [config.user], comments: [QUESTION, ANSWER("補足: A で")] }, null, ev.comment(1),
-      { status: "進行中", runs: ["#1 作る"], assignees: [] }],
+    ["R5・決め1・決め6 判断の答えで続ける → 表で決め直して未着手 → 作る担当（ユーザーの番を出たら Claude の番）", { status: "回答待ち", assignees: [config.user], comments: [QUESTION, ANSWER("補足: A で")] }, null, ev.comment(1),
+      { status: "進行中", runs: ["#1 作る"], assignees: [config.claude] }],
     ["R5・決め6 答えが保留 → 保留（ユーザーの番）", { status: "回答待ち", comments: [QUESTION, ANSWER("回答: 保留する")] }, null, ev.comment(1), { status: "保留", assignees: [config.user] }],
     ["R6・決め5 ユーザーが保留から出す → 表で決め直す", { status: "未着手" }, null, ev.move(1), { status: "進行中", runs: ["#1 作る"] }],
     ["R6 条件が全部済んでユーザーが完了へ動かす → 受ける（完成）", { status: "完了", body: "- [x] 作る\n" }, null, ev.move(1), { status: "完了", state: "CLOSED", reason: "COMPLETED" }],
@@ -224,6 +227,40 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め3・�
       cancels: w.writes.filter(([k]) => k === "取り消し").map(([, id]) => id), writes: w.writes.filter(([, n]) => n === 1).map(([k]) => k) };
     assert.deepEqual(Object.fromEntries(Object.keys(want).map((k) => [k, got[k]])), want, name);
   }
+});
+
+test("tasks#842 担当者はユーザーに問わないと進めないかの2択で、Claude の番で待っていないのに3時間動かなければ、定時の決め直しでイレギュラーを問う", async () => {
+  const HOUR = 3600e3;
+  const start = Date.UTC(2026, 9, 11); // issue を作った時刻・コミットの時刻（足場の既定）
+  const ci = { status: "CI待ち", pr: { draft: false, checks: "PENDING" } };
+  const rows = [
+    // [場面, タスク, 定時の時刻, ステータス, 担当者, 最後のコメントの頭, 足場の止め]
+    ["CI が終わらないまま2時間 → まだ動いていると見る", ci, start + 2 * HOUR, "CI待ち", [config.claude], null],
+    ["CI が終わらないまま3時間 → 止まった", ci, start + 3 * HOUR, "回答待ち", [config.user], "## 問い（イレギュラー）"],
+    ["マージのあとの CI が落ちたまま（#797 の形）→ 止まった", { status: "CI待ち", body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "FAILURE" } },
+      start + 3 * HOUR, "回答待ち", [config.user], "## 問い（イレギュラー）"],
+    ["前提が開いている（関係性で待つ）→ 何時間でも問わない", { status: "未着手", blockedBy: [9] }, start + 30 * HOUR, "未着手", [config.claude], null],
+    ["振り出しを止めている（外の事情で待つ）→ 問わない", { status: "未着手" }, start + 30 * HOUR, "未着手", [config.claude], null, "disabled"],
+    ["対話作業で3時間だれも書かない → 止まった", { status: "未着手", type: config.dialogType, board: "dialog" }, start + 3 * HOUR, "回答待ち", [config.user], "## 問い（イレギュラー）"],
+    ["保留はユーザーの番で、確かめない", { status: "保留" }, start + 30 * HOUR, "保留", [config.user], null],
+  ];
+  for (const [name, task, now, status, assignees, comment, workflow = "active"] of rows) {
+    const w = world([{ n: 1, ...task }, { n: 9, status: "保留" }], { workflow });
+    clock.now = now;
+    await w.send(ev.schedule());
+    clock.now = Date.UTC(2026, 9, 11, 1);
+    assert.deepEqual([w.at(1).status, w.at(1).assignees, head(w.at(1))], [status, assignees, comment], name);
+  }
+  // 止まりの問いに「やり直す」と答えたら、CI待ちのものは作る担当へ渡す。
+  const w = world([{ n: 1, ...ci }]);
+  clock.now = start + 3 * HOUR;
+  await w.send(ev.schedule());
+  clock.now = Date.UTC(2026, 9, 11, 1);
+  const asked = w.at(1).comments.at(-1).split("\n");
+  assert.deepEqual(asked.slice(0, 2), ["## 問い（イレギュラー）", "3時間、何も動いていません（最後の動き: 2026-10-11 09:00）。どうしますか？"]);
+  w.at(1).comments.push(answerBody({ kind: "イレギュラー", text: asked[1] }, { choice: "やり直す" }));
+  await w.send(ev.comment(1));
+  assert.deepEqual([w.at(1).status, w.titles(), w.at(1).assignees], ["進行中", ["#1 作る"], [config.claude]]);
 });
 
 test("前提が閉じたら、後ろで待っていたタスクも決め直して振り出す", async () => {

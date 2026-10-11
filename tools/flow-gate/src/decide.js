@@ -1,4 +1,6 @@
 // タスクのあるべき姿を、事実だけから1つの決め方で決める。GitHub に触れない。facts は src/facts.js: readFacts が組む。
+// 決め方は2階: 1階（status・table）が成果物の事実と関係性からステータスと「待っているか」を決め、2階（owner）がその結果だけを読んで
+// 担当者（ボールの持ち主）を決め、Claude の番なら動きを確かめる。2階は前提や日時を読み直さない。
 // 返すのは、ゲートが保つ値の全部（ステータス・開き閉じ・種類・担当者・本文・ボード・PR をレビュー可能にするか・出す問い・
 // 取り消す実行）。ゲートは今の値と違う所だけを書くので、同じ事実からは何度決めても同じになる。
 import { APPLIED, checkLines, splitBody, withButton } from "./questions.js";
@@ -7,6 +9,7 @@ const HELD = { 作る: "進行中", 確かめる: "検証中" }; // 担当が持
 const WAIT = ["回答待ち", "保留"]; // ユーザーの番（担当者の欄にユーザーを入れる）
 const DIALOG = ["未着手", ...WAIT, "完了"]; // 対話作業のボードのステータス（開発機のセッションが触っていることは持たない）
 const ACCEPTED = (k) => k.state === "CLOSED" && k.stateReason === "COMPLETED";
+const DISPATCH = { 未着手: "作る", 検証待ち: "確かめる" }; // 見回りが振り出す担当の種類（src/patrol.js と同じ）
 
 export function decide(f, config) {
   const board = f.board ?? (f.type === config.dialogType ? "dialog" : "actions");
@@ -17,13 +20,25 @@ export function decide(f, config) {
   const byChildren = f.remaining.filter((c) => c.child && f.children.some((k) => k.number === c.child && ACCEPTED(k)));
   const s = status({ ...f, remaining: f.remaining.filter((c) => !byChildren.includes(c)) }, config);
   if (board === "dialog" && !DIALOG.includes(s.status)) s.status = "未着手";
+  // 1階の待ち: 関係性（前提・子が開いている・着手可能日時が先・親が保留か閉じた）と、外の事情で振り出せない（担当の枠が埋まっている・止めている）。
+  const kind = board === "actions" && DISPATCH[s.status];
+  Object.assign(s, owner(f, { ...s, waiting: f.blocked || f.future || f.held || Boolean(kind && (f.full[kind] || f.stopped)) }, config));
   const body = checkLines(f.body, [...byChildren.map((c) => c.index), ...(s.check ?? [])]);
   // 見送りで閉じる・閉じた issue の開いた PR は、もう確かめもマージもしないので閉じる。
   const dropping = (s.closeAs ?? (f.open ? null : f.closedAs)) === "NOT_PLANNED";
   return { board, type, status: s.status, open: s.status !== "完了", closeAs: s.closeAs, ask: s.ask ?? null, cancel: s.cancel ?? [], closePr: dropping && f.pr ? f.pr.id : null,
     notice: [notice(f, s.status), s.told].filter(Boolean).join("\n\n") || null,
-    ready: s.status === "検証待ち" && Boolean(f.pr?.draft), assignees: WAIT.includes(s.status) ? [config.user] : [],
+    ready: s.status === "検証待ち" && Boolean(f.pr?.draft), assignees: s.assignees,
     body: s.status === "回答待ち" || (f.question && !f.question.answer) ? withButton(body, config, f.number) : body };
+}
+
+// 2階: 担当者は2択。ユーザーに問わないと進めない（回答待ち・保留）ならユーザー、ほかは Claude（完了は持ち主なし）。Claude の番で
+// 待っていないのに、最後の動きから設定の時間（stallHours）動かなければ、異常としてイレギュラーを問い、持っている実行を取り消す。
+function owner(f, s, config) {
+  if (s.status === "完了") return { assignees: [] };
+  if (WAIT.includes(s.status)) return { assignees: [config.user] };
+  if (s.waiting || f.now - f.lastMove < config.stallHours * 3600e3) return { assignees: [config.claude] };
+  return { status: "回答待ち", ask: { stalled: f.lastMove }, cancel: f.runs.map((r) => r.id).filter(Boolean), assignees: [config.user] };
 }
 
 // 受け入れなかった書き込みは、黙らずに1つのコメントで知らせる（形に合わない問い・印の間の見知らぬ行・形の合わない着手可能日時・
@@ -63,6 +78,8 @@ function status(f, config) {
   const told = a.text ? `${APPLIED}（${a.decision}）。` : null;
   if (a.decision === "見送り") return { status: "完了", closeAs: "NOT_PLANNED", told };
   if (a.decision === "保留") return { status: "保留", told };
+  // イレギュラーの「やり直す」は振り出し直す。CI待ち（止まったものを含む）は見回りが振り出さないので、作る担当へ渡す。
+  if (q.kind === "イレギュラー") return { ...(table(f).status === "CI待ち" ? { status: "未着手" } : table(f)), told };
   if (q.kind !== "確かめ" || a.decision !== "完了") return { ...table(f), told };
   const ok = f.remaining.filter((c) => c.verify === "ユーザー" && a.confirmed.includes(c.text));
   return { ...table({ ...f, remaining: f.remaining.filter((c) => !ok.includes(c)) }), check: ok.map((c) => c.index), told };

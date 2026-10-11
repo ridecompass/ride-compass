@@ -4,9 +4,10 @@ export class Inbox {
   constructor(storage, process) { Object.assign(this, { storage, process }); }
   push(name, payload) { return this.storage.put(`q:${Date.now()}:${crypto.randomUUID()}`, { name, payload, tries: 0 }); }
 
-  // やり直しを待つ出来事が残れば、次に起こす時刻を返す。
-  async drain(retries, now = Date.now()) {
-    for (;;) {
+  // やり直しを待つ出来事が残れば、次に起こす時刻を返す。limit 件を処理したら、まだあっても今の時刻を返して次の起こしに回す
+  // （Worker の1回の起こしで外へ出せる要求の数には上限がある）。
+  async drain(retries, now = Date.now(), limit = Infinity) {
+    for (let done = 0; ; ) {
       const queue = [...(await this.storage.list({ prefix: "q:" }))];
       const ready = queue.filter(([, e]) => !(e.after > now));
       if (!ready.length) {
@@ -14,6 +15,7 @@ export class Inbox {
         return waits.length ? Math.min(...waits) : null;
       }
       for (const [key, e] of ready) {
+        if (done++ >= limit) return now;
         try {
           await this.process(e.name, e.payload);
         } catch (error) {
