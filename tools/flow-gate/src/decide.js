@@ -1,7 +1,7 @@
 // タスクのあるべき姿を、事実だけから1つの決め方で決める。GitHub に触れない。facts は src/facts.js: readFacts が組む。
 // 返すのは、ゲートが保つ値の全部（ステータス・開き閉じ・種類・担当者・本文・ボード・PR をレビュー可能にするか・出す問い・
 // 取り消す実行）。ゲートは今の値と違う所だけを書くので、同じ事実からは何度決めても同じになる。
-import { checkLines, splitBody, withButton } from "./questions.js";
+import { APPLIED, checkLines, splitBody, withButton } from "./questions.js";
 
 const HELD = { 作る: "進行中", 確かめる: "検証中" }; // 担当が持っている間のステータス
 const WAIT = ["回答待ち", "保留"]; // ユーザーの番（担当者の欄にユーザーを入れる）
@@ -17,13 +17,11 @@ export function decide(f, config) {
   const byChildren = f.remaining.filter((c) => c.child && f.children.some((k) => k.number === c.child && ACCEPTED(k)));
   const s = status({ ...f, remaining: f.remaining.filter((c) => !byChildren.includes(c)) }, config);
   if (board === "dialog" && !DIALOG.includes(s.status)) s.status = "未着手";
-  let body = checkLines(f.body, [...byChildren.map((c) => c.index), ...(s.check ?? [])]);
-  const missing = (s.fix ?? []).filter((l) => !body.includes(`] ${l}`));
-  if (missing.length) body = `${body.trimEnd()}\n${missing.map((l) => `- [ ] ${l}`).join("\n")}\n`;
+  const body = checkLines(f.body, [...byChildren.map((c) => c.index), ...(s.check ?? [])]);
   // 見送りで閉じる・閉じた issue の開いた PR は、もう確かめもマージもしないので閉じる。
   const dropping = (s.closeAs ?? (f.open ? null : f.closedAs)) === "NOT_PLANNED";
   return { board, type, status: s.status, open: s.status !== "完了", closeAs: s.closeAs, ask: s.ask ?? null, cancel: s.cancel ?? [], closePr: dropping && f.pr ? f.pr.id : null,
-    notice: notice(f, s.status),
+    notice: [notice(f, s.status), s.told].filter(Boolean).join("\n\n") || null,
     ready: s.status === "検証待ち" && Boolean(f.pr?.draft), assignees: WAIT.includes(s.status) ? [config.user] : [],
     body: s.status === "回答待ち" || (f.question && !f.question.answer) ? withButton(body, config, f.number) : body };
 }
@@ -47,7 +45,7 @@ function notice(f, status) {
 function status(f, config) {
   // 完了は、完成（完了の条件が全部済んだ）か見送りでだけ受ける。条件が残ったまま完成で閉じたら、誰が閉じても開き直して決め直す。
   // ボードで完了へ動かしても、開いているなら下で事実から決め直す。
-  if (!f.open && !(f.closedAs === "COMPLETED" && f.remaining.length)) return { status: "完了" };
+  if (!f.open && !f.unread && !(f.closedAs === "COMPLETED" && f.remaining.length)) return { status: "完了" };
   // 子は、親の要望が満たされた・やめたら、要らない。持っている実行も取り消す。
   if (f.dead) return { status: "完了", closeAs: "NOT_PLANNED", cancel: f.runs.map((r) => r.id).filter(Boolean) };
   // 持たれている間は決め直さない。ユーザーが保留へ置いたら、持っている実行を取り消す。
@@ -55,16 +53,19 @@ function status(f, config) {
   if (f.status === "保留") return { status: "保留" }; // ユーザーが置いた保留は、ユーザーが出すまで保つ
   // 入口: Claude が起こした要望だけ採否を問い、ほかは未着手。子と分割したものは、採否を親か分割元から受け継ぐ。
   if (!f.status) return f.author === config.claude && f.type === "要望" && !f.parent && !f.origin ? { status: "回答待ち", ask: "採否" } : { status: "未着手" };
+  // ユーザーが書いた文（答えの文・コメント）を Claude がまだ読んでいなければ、Claude の番にする（閉じていれば開き直す）。ゲートは文の中身を読まない。
+  if (f.unread) return { status: "未着手" };
   const q = f.question;
   if (q && !q.answer) return { status: "回答待ち" };
-  if (!q || f.status !== "回答待ち") return table(f); // 答えは、ユーザーの番（回答待ち）のときだけ受ける
-  if (q.answer.decision === "見送り") return { status: "完了", closeAs: "NOT_PLANNED" };
-  if (q.answer.decision === "保留") return { status: "保留" };
-  if (q.kind !== "確かめ") return table(f);
-  const bad = q.answer.items.filter((i) => !i.ok);
-  if (bad.length) return { status: "未着手", fix: bad.map((i) => `直す: ${i.note || i.text}`) };
-  const ok = f.remaining.filter((c) => c.verify === "ユーザー" && q.answer.items.some((i) => i.ok && i.text === c.text));
-  return { ...table({ ...f, remaining: f.remaining.filter((c) => !ok.includes(c)) }), check: ok.map((c) => c.index) };
+  // 答えは、ユーザーの番（回答待ち）に来たときに当てる。書いた文のある答えは、Claude が読んだあとに一度だけ当て、当てたことを知らせる。
+  const a = q?.answer;
+  if (!a || (f.status !== "回答待ち" && !(a.text && f.answerRead && !f.answerApplied))) return table(f);
+  const told = a.text ? `${APPLIED}（${a.decision}）。` : null;
+  if (a.decision === "見送り") return { status: "完了", closeAs: "NOT_PLANNED", told };
+  if (a.decision === "保留") return { status: "保留", told };
+  if (q.kind !== "確かめ" || a.decision !== "完了") return { ...table(f), told };
+  const ok = f.remaining.filter((c) => c.verify === "ユーザー" && a.confirmed.includes(c.text));
+  return { ...table({ ...f, remaining: f.remaining.filter((c) => !ok.includes(c)) }), check: ok.map((c) => c.index), told };
 }
 
 // 手放したあとの表。作業のステータスなのに持たれていないのが、担当が手放した事実。

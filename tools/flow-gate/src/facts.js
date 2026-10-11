@@ -1,6 +1,6 @@
 // タスクの事実を読む（src/decide.js: decide が受ける形）。置き場の issue とコードのリポジトリの作業ブランチの PR を GraphQL の1回で読み、
 // 担当が付いているかは見回りの記録（src/patrol.js: Patrol）から受ける。見回りのボードの一覧も同じ読み方を使う。
-import { checkQuestion, conditions, droppedQuestion, isQuestion, latestQuestion, norm, remaining } from "./questions.js";
+import { APPLIED, answerText, checkQuestion, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, remaining } from "./questions.js";
 
 // ボードの欄（ステータス・優先度・着手可能日時）の読み方。欄の名前は設定が持つ。
 export const fieldsOf = ({ fields: f }) => `status:fieldValueByName(name:"${f.status}"){...on ProjectV2ItemFieldSingleSelectValue{name}}
@@ -39,8 +39,8 @@ export function runOf(title) {
 }
 
 const query = (config) => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:String!,$head:String!){
- t:repository(owner:$to,name:$tn){issue(number:$n){id state stateReason body author{login} issueType{name} assignees(first:10){nodes{login}}
-  comments(last:40){nodes{body}} projectItems(first:5){nodes{id project{number} ${fieldsOf(config)}}} ${relationsOf(config, true)}
+ t:repository(owner:$to,name:$tn){issue(number:$n){id state stateReason closedAt body author{login} issueType{name} assignees(first:10){nodes{login}}
+  comments(last:40){nodes{body createdAt author{login}}}projectItems(first:5){nodes{id project{number} ${fieldsOf(config)}}} ${relationsOf(config, true)}
   timelineItems(first:50,itemTypes:[ISSUE_TYPE_CHANGED_EVENT]){nodes{...on IssueTypeChangedEvent{prevIssueType{name} issueType{name}}}}}}
  c:repository(owner:$co,name:$cn){pullRequests(headRefName:$head,first:5,orderBy:{field:CREATED_AT,direction:DESC}){nodes{
   id state isDraft merged mergeCommit{statusCheckRollup{state}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{state}}}}
@@ -79,8 +79,26 @@ export async function readFacts(gh, config, number, record) {
   const mutants = !runs.length && open && checks === "SUCCESS" ? await survivors(gh, config, head.commit.oid) : { count: 0 };
   const drafted = open?.timelineItems.nodes[0]?.createdAt;
   const merged = c.pullRequests.nodes.find((p) => p.merged); // 新しいものから並ぶ
-  const comments = i.comments.nodes.map((n) => norm(n.body)); // 最近のコメント（同じ知らせを重ねないためにも読む）
+  const nodes = i.comments.nodes;
+  const comments = nodes.map((n) => norm(n.body)); // 最近のコメント（同じ知らせを重ねないためにも読む）
   const last = comments.at(-1);
+  // ユーザーが書いた文（答えなら決まった形の行のほかの文）を、Claude が読んだか。担当は、終わりのコメントの「読み始め:」の時刻より前のコメントを
+  // 読んでいる（前の形の終わりのコメントは書いた時刻）。対話作業の issue は開発機の対話のセッションが読んでから書くので、Claude のコメントがあれば
+  // それより前を読んでいる。閉じたあとの文だけを数える（閉じるときに一緒に書いた文は、閉じる決定の一部）。
+  const at = (n) => Date.parse(n.createdAt);
+  const by = (n, login) => n.author?.login === login;
+  const dialog = (itemOf(config, i.projectItems.nodes).world ?? (i.issueType?.name === config.dialogType ? "dialog" : "actions")) === "dialog";
+  const reads = nodes.filter((n) => by(n, config.claude) && (dialog || /^### \S+担当の終わり/.test(norm(n.body))))
+    .map((n) => Date.parse(/^読み始め: (\S+)$/m.exec(norm(n.body))?.[1] ?? n.createdAt));
+  const lastRead = Math.max(0, ...reads);
+  const closedAt = Date.parse(i.closedAt) || 0;
+  const said = (n) => (isAnswer(n.body) ? answerText(n.body) : norm(n.body).trim());
+  const unread = nodes.some((n) => by(n, config.user) && said(n) && at(n) > lastRead && (i.state === "OPEN" || at(n) > closedAt));
+  // 今の問いへの答えを、Claude が読んだか・ゲートが当てたか（書いた文のある答えは、読んだあとに一度だけ当てる）。
+  const asked = nodes.findLastIndex((n) => isQuestion(n.body));
+  const answer = asked < 0 ? null : nodes.slice(asked + 1).find((n) => isAnswer(n.body));
+  const answerRead = Boolean(answer) && reads.some((t) => t > at(answer));
+  const answerApplied = Boolean(answer) && nodes.some((n) => at(n) > at(answer) && norm(n.body).startsWith(APPLIED));
   // 子は、親が閉じて開き直されないなら（要望が満たされた・やめた）生きていない。条件が残ったまま完成で閉じた親は、ゲートが開き直す。
   const p = i.parent;
   const dead = Boolean(p) && p.state === "CLOSED" && !(p.stateReason === "COMPLETED" && remaining(p.body).length);
@@ -88,7 +106,7 @@ export async function readFacts(gh, config, number, record) {
   const task = taskOf(config, i, i.projectItems.nodes);
   const asking = task.dropped.length ? droppedQuestion(task.dropped) : null;
   const droppedAsked = Boolean(asking) && (comments.some((x) => x.includes(asking)) || (await allComments(gh, config, number)).some((x) => x.includes(asking)));
-  return { ...task, droppedAsked, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
+  return { ...task, droppedAsked, unread, answerRead, answerApplied, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
     conditions: conditions(i.body), remaining: remaining(i.body), assignees: i.assignees.nodes.map((a) => a.login), question: latestQuestion(comments, config.questionTemplate),
     runs, parent: p && { number: p.number }, dead, children: i.subIssues.nodes, origin: Number(/^分割元: #(\d+)\s*$/m.exec(norm(i.body))?.[1]) || null,
     types: i.timelineItems.nodes.map((e) => e.prevIssueType?.name ?? null), // 今より前の種類（古い順）

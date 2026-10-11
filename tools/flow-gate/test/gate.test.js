@@ -9,18 +9,23 @@ import { handle } from "../src/flow.js";
 import { answerForm } from "../src/form.js";
 import { Inbox } from "../src/inbox.js";
 import { Patrol } from "../src/patrol.js";
-import { askDropped, askText, conditions, droppedQuestion, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
+import { APPLIED, askDropped, askText, conditions, droppedQuestion, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
 
 const config = { ...base, questionTemplate: readFileSync(new URL("../question_template.md", import.meta.url), "utf8"), slots: { 作る: 2, 確かめる: 1 } };
 const OPTIONS = ["未着手", "進行中", "CI待ち", "検証待ち", "検証中", "回答待ち", "保留", "完了", "高", "中", "低"].map((name) => ({ id: name, name }));
 const tasks = { full_name: config.tasks };
 const code = { full_name: config.code };
 const names = (list) => ({ nodes: list.map((name) => ({ name })) });
+// コメントの時刻は並びの順（k 番目は k 秒）。書いた人は、置いたときに決めたもの（i.by）か、答え（## 回答）ならユーザー、ほかは Claude。
+const T = (k) => new Date(Date.UTC(2026, 9, 11) + k * 1000).toISOString();
+const author = (i, k) => i.by[k] ?? (i.comments[k].startsWith("## 回答") ? config.user : config.claude);
+// 担当の終わりのコメント（.github/claude-task/after.js）。start は担当が読み始めたときのコメントの数（それより前を読んでいる）。
+const END = (start) => `### 作る担当の終わり\n\n要約（担当の最後の発言）:\n\n> 読んだ\n\n読み始め: ${T(start - 0.5)}`;
 
 function world(list, { workflow = "active", last = [], steps = [] } = {}) {
   const w = { issues: new Map(), runs: [], writes: [], updates: [] };
   for (const i of list) w.issues.set(i.n, { state: "OPEN", reason: null, body: "- [ ] 作る\n", author: config.user, type: null, assignees: [], blockedBy: [],
-    comments: [], status: null, priority: null, start: null, board: "actions", parent: null, labels: [], pr: null, ...i });
+    comments: [], by: [], closedAt: null, status: null, priority: null, start: null, board: "actions", parent: null, labels: [], pr: null, ...i });
   w.at = (n) => w.issues.get(n);
   const item = (i) => (i.board ? [{ id: `IT${i.n}`, project: { number: config.boards[i.board] }, status: i.status && { name: i.status },
     priority: i.priority && { name: i.priority }, start: i.start && { text: i.start } }] : []);
@@ -54,8 +59,11 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     }
     if (q.includes("t:repository")) {
       const i = w.at(v.n);
-      return { t: { issue: { id: `I${i.n}`, state: i.state, stateReason: i.reason, body: i.body, author: { login: i.author }, issueType: i.type && { name: i.type },
-        assignees: { nodes: i.assignees.map((login) => ({ login })) }, ...relations(i), comments: { nodes: i.comments.slice(-40).map((body) => ({ body })) }, projectItems: { nodes: item(i) },
+      // 閉じた時刻を置いていない閉じた issue は、今あるコメントのあとに閉じた。
+      const closedAt = i.state === "CLOSED" ? (i.closedAt ?? T(i.comments.length - 0.5)) : null;
+      const comments = i.comments.map((body, k) => ({ body, createdAt: T(k), author: { login: author(i, k) } })).slice(-40);
+      return { t: { issue: { id: `I${i.n}`, state: i.state, stateReason: i.reason, closedAt, body: i.body, author: { login: i.author }, issueType: i.type && { name: i.type },
+        assignees: { nodes: i.assignees.map((login) => ({ login })) }, ...relations(i), comments: { nodes: comments }, projectItems: { nodes: item(i) },
         timelineItems: { nodes: (i.typeChanges ?? []).map(([a, b]) => ({ prevIssueType: { name: a }, issueType: { name: b } })) } } },
       c: { pullRequests: { nodes: i.pr ? [pull(i, i.pr)] : [] } } };
     }
@@ -70,7 +78,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     if (q.includes("createProjectV2StatusUpdate")) return void w.updates.push({ status: v.s, body: v.b });
     throw new Error(`知らない問い合わせ: ${q.slice(0, 80)}`);
   };
-  const rest = async (method, path, body) => {
+  const rest = async (method, path, body, who = config.gateBot) => {
     let m;
     if (path.endsWith(`/workflows/${config.workflow}`)) return { state: workflow };
     if (path.includes("/runs?status=completed&per_page=1")) return { workflow_runs: last };
@@ -86,9 +94,10 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
       return void (i.labels = m[2] ? i.labels.filter((l) => l !== decodeURIComponent(m[2])) : [...i.labels, ...body.labels]);
     }
     const i = w.at(Number(/\/issues\/(\d+)/.exec(path)[1]));
-    if (path.endsWith("/comments")) return void (i.comments.push(body.body), w.writes.push(["コメント", i.n, body.body.split("\n")[0]]));
+    if (path.endsWith("/comments")) return void (i.by[i.comments.length] = who, i.comments.push(body.body), w.writes.push(["コメント", i.n, body.body.split("\n")[0]]));
     if (body.body !== undefined) w.writes.push(["本文", i.n]);
-    return void Object.assign(i, body.state ? { state: body.state.toUpperCase(), reason: body.state_reason?.toUpperCase() ?? null } : {}, body.body !== undefined ? { body: body.body } : {},
+    const closing = body.state ? { state: body.state.toUpperCase(), reason: body.state_reason?.toUpperCase() ?? null, closedAt: body.state === "closed" ? T(i.comments.length - 0.5) : null } : {};
+    return void Object.assign(i, closing, body.body !== undefined ? { body: body.body } : {},
       body.type ? { type: body.type } : {}, body.assignees ? { assignees: body.assignees } : {});
   };
   w.gh = { gql, rest };
@@ -176,8 +185,8 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め3・�
     ["決め3 新しい変異テストの生き残り → 落ちたものと同じ", { status: "CI待ち", pr: { draft: true, checks: "SUCCESS" }, survivors: ["書き換え"] }, null, ev.ci(`${config.branchPrefix}1`), { status: "進行中", runs: ["#1 作る"] }],
     ["R4 PR の CI が通った → PR をレビュー可能にして検証待ち → 確かめる担当", { status: "CI待ち", pr: { draft: true, checks: "SUCCESS" } }, null, ev.ci(`${config.branchPrefix}1`), { status: "検証中", draft: false }],
     ["原則の点検の1 master の CI が落ちた → 本番に出ていないので確かめを問わず CI待ち", { status: "CI待ち", body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, null, ev.ci(config.base, "m1"), { status: "CI待ち", comment: null }],
-    ["K2・R12 確かめの答えに項目が無い → 済ませず、また確かめを問う", { status: "回答待ち", body: CONFIRM, comments: [ASKED("確かめ"), "## 回答\n**完成にしてよいですか？**\n\n補足: 見た"] }, null, ev.comment(1),
-      { state: "OPEN", status: "回答待ち", comment: "## 問い（確かめ）" }],
+    ["K2・R12 確かめの答えが完了にせず文だけ → 閉じず、Claude の番（作る担当が読む）", { status: "回答待ち", body: CONFIRM, comments: [ASKED("確かめ"), "## 回答\n**完成にしてよいですか？**\n\n見た目が崩れる"] }, null, ev.comment(1),
+      { state: "OPEN", status: "進行中", runs: ["#1 作る"] }],
     ["決め6 前からある Claude の割り当ては外し、保留ではユーザーだけ", { status: "保留", assignees: [config.claude] }, null, ev.comment(1), { assignees: [config.user] }],
     ["R6 見送り（Close as not planned）で閉じたものは閉じたまま", { status: "完了", state: "CLOSED", reason: "NOT_PLANNED" }, null, ev.issue(1, "closed"), { state: "CLOSED" }],
     ["A 対話作業のボードは、開発機のセッションが触っていることを持たない（作業のステータスを書かない）", { status: "未着手", board: "dialog", type: config.dialogType, pr: { draft: true, checks: "PENDING" } }, null,
@@ -238,7 +247,7 @@ test("tasks#824 待つ相手: 開いた子がある親は、残りが確かめ�
   assert.deepEqual([w.at(1).status, head(w.at(1)), asked(w.at(1))], ["回答待ち", "## 問い（確かめ）", 1]);
   await w.send(ev.comment(1));
   assert.equal(asked(w.at(1)), 1, "確かめは一度だけ");
-  w.at(1).comments.push("## 回答\n**完成にしてよいですか？**\n\n- 問題なし: 見た目");
+  w.at(1).comments.push("## 回答\n**完成にしてよいですか？**\n\n回答: 完了にする\n- 確かめた: 見た目");
   await w.send(ev.comment(1));
   assert.deepEqual([w.at(1).state, w.at(1).reason], ["CLOSED", "COMPLETED"]);
 });
@@ -410,7 +419,8 @@ function connect(w) {
     if (path.startsWith("/app/installations/")) return reply({ token: "app", expires_at: "2099-01-01T00:00:00Z" });
     if (path === "/graphql") return reply({ data: await w.gh.gql(body.query, body.variables) });
     if (path === "/markdown") return reply(`<p>${body.text}</p>`, "text/html");
-    return reply(await w.gh.rest(init.method, path, body));
+    // 回答フォームは答えをユーザーの名義（FORM_TOKEN）で書く。
+    return reply(await w.gh.rest(init.method, path, body, init.headers?.authorization === `Bearer ${env.FORM_TOKEN}` ? config.user : config.gateBot));
   };
 }
 const url = (n) => `${config.urls.form}/answer?issue=${n}`;
@@ -424,6 +434,56 @@ async function answer(n, picks) {
   return (await answerForm(new Request(url(n), { method: "POST", body: form }), env, config)).json();
 }
 
+// ユーザーが書いた文（答えの文・コメント）は、必ず Claude が読んでから進む（#724 の確かめの答えの文が、読まれずに閉じて消えた）。
+test("書いた文は Claude が読むまで決定を当てず、読んだあとに一度だけ当てて知らせる", async () => {
+  const done = "## 回答\n**完成にしてよいですか？**\n\n回答: 完了にする\n- 確かめた: 見た目\n\n距離のバーは候補数の横に置いて";
+  const w = world([{ n: 1, status: "回答待ち", body: CONFIRM, comments: [ASKED("確かめ"), done] }]);
+  await w.send(ev.comment(1));
+  assert.deepEqual([w.at(1).state, w.at(1).status, w.titles()], ["OPEN", "進行中", ["#1 作る"]], "#724: 完了にしても文があれば閉じず、作る担当が読む");
+  Object.assign(w.at(1), { body: `${CONFIRM}- [ ] 距離のバーを候補数の横へ置く\n`, pr: { draft: true, checks: "PENDING" } }); // 担当が読んで条件に足し、作った
+  w.at(1).comments.push(END(2));
+  await w.send(ev.run(w.run(1), "completed"));
+  assert.deepEqual([w.at(1).body.includes("- [x] 見た目"), w.at(1).state, w.at(1).status, head(w.at(1))], [true, "OPEN", "CI待ち", `${APPLIED}（完了）。`],
+    "読んだあとに答え（完了にする）を当てて確かめた行に印を付け、当てたことを知らせる。足した条件が残るので閉じない");
+  await w.send(ev.comment(1, config.claude));
+  assert.equal(w.at(1).comments.filter((c) => c.startsWith(APPLIED)).length, 1, "答えは一度だけ当てる");
+
+  const drop = world([{ n: 2, status: "回答待ち", author: config.claude, type: "要望",
+    comments: [ASKED("採否"), "## 回答\n**このタスクに着手しますか？**\n\n回答: 見送る\n\n代わりにパネル全体を2列にしたい"] }]);
+  await drop.send(ev.comment(2));
+  assert.deepEqual([drop.at(2).state, drop.at(2).status], ["OPEN", "進行中"], "見送るでも文があれば、閉じる前に作る担当が読む");
+  drop.at(2).comments.push(END(2));
+  await drop.send(ev.run(drop.run(2), "completed"));
+  assert.deepEqual([drop.at(2).state, drop.at(2).reason, head(drop.at(2))], ["CLOSED", "NOT_PLANNED", `${APPLIED}（見送り）。`], "読んだあとに見送りで閉じる");
+
+  const late = world([{ n: 3, status: "完了", state: "CLOSED", reason: "COMPLETED", body: "- [x] 作る\n", closedAt: T(0.5), comments: [END(0), "ここも直して"], by: [undefined, config.user] }]);
+  await late.send(ev.comment(3));
+  assert.deepEqual([late.at(3).state, late.at(3).status], ["OPEN", "進行中"], "閉じたあとのコメントは、開き直して作る担当が読む");
+  late.at(3).comments.push(END(2));
+  await late.send(ev.run(late.run(3), "completed"));
+  assert.deepEqual([late.at(3).state, late.at(3).reason], ["CLOSED", "COMPLETED"], "読んで条件が全部済んでいれば、完成で閉じ直す");
+
+  const closing = world([{ n: 4, status: "未着手", state: "CLOSED", reason: "NOT_PLANNED", comments: ["やめる"], by: [config.user] }]);
+  await closing.send(ev.issue(4, "closed"));
+  assert.equal(closing.at(4).state, "CLOSED", "閉じるときに一緒に書いた文は、閉じる決定の一部（開き直さない）");
+
+  const mid = world([{ n: 5, status: "未着手" }]);
+  await mid.send(ev.schedule());
+  const run = mid.run(5);
+  mid.at(5).comments.push("途中で書いた");
+  mid.at(5).by[0] = config.user;
+  mid.at(5).comments.push(END(0)); // 担当は書かれる前に読み始めた
+  await mid.send(ev.run(run, "completed"));
+  assert.deepEqual([mid.at(5).status, mid.titles()], ["進行中", ["#5 作る", "#5 作る"]], "担当が読み始めたあとに書いた文は、次の担当が読む");
+
+  const dialog = world([{ n: 6, status: "回答待ち", board: "dialog", type: config.dialogType, comments: [QUESTION, ANSWER("回答: 保留する\n\n来週にする")] }]);
+  await dialog.send(ev.comment(6));
+  assert.deepEqual([dialog.at(6).status, dialog.titles()], ["未着手", []], "対話作業: 文があれば開発機のセッションの番（振り出さない）");
+  dialog.at(6).comments.push("来週に回すと読んだ");
+  await dialog.send(ev.comment(6, config.claude));
+  assert.deepEqual([dialog.at(6).status, head(dialog.at(6))], ["保留", `${APPLIED}（保留）。`], "対話作業: Claude が書いたら読んだとして、答えを当てる");
+});
+
 test("回答フォーム（R10〜R12・決め2・合意したモック）: 種類ごとに要るものだけを出し、次のステータスは出さない。送った答えでゲートが決め直す", async () => {
   const w = world([{ n: 1, status: "CI待ち", body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1" } },
     { n: 2, author: config.claude, type: "要望", board: null }, { n: 3, status: "未着手" }, { n: 4, status: "回答待ち", comments: [QUESTION] },
@@ -432,20 +492,23 @@ test("回答フォーム（R10〜R12・決め2・合意したモック）: 種�
   await w.send(ev.ci(config.base, "m1")); // 確かめの問い
   await w.send(ev.issue(2, "opened", config.claude)); // 採否の問い
   const check = await (await open(1)).text();
-  for (const text of ["見た目", "問題なし", "問題あり", "問題の内容", "確認", "戻る", "送信"]) assert.ok(check.includes(text), `確かめ: ${text}`);
-  assert.ok(!check.includes("次のステータス"));
+  for (const text of ["見た目", "完了にする（上の全部）", "書くこと", "確認", "戻る", "送信"]) assert.ok(check.includes(text), `確かめ: ${text}`);
+  for (const text of ["次のステータス", "問題なし", "問題あり"]) assert.ok(!check.includes(text), `確かめ: ${text} は出さない`);
+  assert.match(check, /<textarea name="note" rows="4"/, "書く欄は1つで4行");
   const adopt = await (await open(2)).text();
   for (const text of ["着手する", "保留する", "見送る"]) assert.ok(adopt.includes(text), `採否: ${text}`);
-  assert.ok((await (await open(4)).text()).includes("該当なし（補足に記入）"), "判断: 案と、該当なし（補足に記入）");
+  assert.ok((await (await open(4)).text()).includes("どれでもない（書く欄に書く）"), "判断: 案と、どれでもない（書く欄に書く）");
   const irregular = await (await open(5)).text();
   assert.ok(irregular.indexOf("担当の最後の発言") < irregular.indexOf("判断材料"), "イレギュラー: 何が起きたか（担当の終わり）を判断材料より上に出す");
   for (const text of ["やり直す", "保留する", "見送る"]) assert.ok(irregular.includes(text), `イレギュラー: ${text}`);
   assert.equal((await open(3)).status, 404, "答えていない問いが無い");
   assert.match((await answer(1, { question: "前の問い" })).error, /問いが新しくなっています/);
-  await answer(1, { ok0: "問題あり", note0: "崩れる" });
+  assert.match((await answer(1, {})).error, /完了にするか、直してほしいことを書いてください/, "確かめは、完了にするか書くかのどちらかが要る");
+  assert.match((await answer(4, { choice: "どれでもない（書く欄に書く）" })).error, /書く欄に書いてください/);
+  await answer(1, { note: "崩れる" });
+  assert.match(w.at(1).comments.at(-1), /\n\n崩れる$/, "書いた文は形を付けずにそのまま置く");
   await w.send(ev.comment(1));
-  assert.match(w.at(1).body, /- \[ \] 直す: 崩れる/, "決め2 問題ありの項目は直す行として条件に足す");
-  assert.deepEqual([w.at(1).state, w.at(1).status], ["OPEN", "進行中"], "決め2 未着手にして作る担当へ（完成にしない）");
+  assert.deepEqual([w.at(1).state, w.at(1).status, w.titles().filter((t) => t.startsWith("#1"))], ["OPEN", "進行中", ["#1 作る"]], "決め2 書いた文は作る担当が読む（完成にしない）");
   await answer(2, { choice: "見送る", label: ["急ぎ"] });
   await w.send(ev.comment(2));
   assert.deepEqual([w.at(2).state, w.at(2).reason, w.at(2).labels], ["CLOSED", "NOT_PLANNED", ["急ぎ"]], "採否の見送るで閉じる。ラベルの付け外しも送る");
