@@ -9,16 +9,13 @@
   `::warning file=…,line=…::…`）として出す。同じ行には1つだけ、全体で MUT_PR_MAX_NOTES 件まで（既定の10は、Actions が1つの段で
   出せる warning の注記の上限。それを超えた分は黙って捨てられる。REST の Checks の文書「Update a check run」）。
 - 全部の生き残りと、変わったのにどのテストも通らない関数は、実行の要約（GITHUB_STEP_SUMMARY があればそこ、無ければ標準出力）へ書く。
-変異を入れた版の関数は、mutmut を読み込まずに差し込んだ版のファイル（mutants/）を構文木で読む。
 """
-import ast
 import collections
-import difflib
 import json
 import os
 import sys
 
-from _shared import fn_of, read_kills
+from _shared import fn_of, mutation_line, read_kills
 from diff_scope import changed_lines
 
 OUT = os.environ["MUT_OUT"]
@@ -53,56 +50,6 @@ def file_of(mutant):
     return f"{path}.py" if os.path.exists(f"{path}.py") else f"{path}/__init__.py"
 
 
-def find(body, name):
-    for node in body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
-            return node
-        if isinstance(node, ast.ClassDef):
-            for child in node.body:
-                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name == name:
-                    return child
-    return None
-
-
-trees: dict[str, tuple[str, ast.Module]] = {}
-
-
-def parsed(path):
-    if path not in trees:
-        src = open(path, encoding="utf-8").read()
-        trees[path] = (src, ast.parse(src))
-    return trees[path]
-
-
-def mutation_line(mutant):
-    """書き換えた行の（今の版のファイルの行番号, 元の行, 書き換えた行）。見つからなければ None。"""
-    path = file_of(mutant)
-    short = mutant.rsplit(".", 1)[1]
-    fn = fn_of(short)
-    orig_name = fn + "__mutmut_orig"
-    msrc, mtree = parsed(os.path.join("mutants", path))
-    orig, mut = find(mtree.body, orig_name), find(mtree.body, short)
-    if orig is None or mut is None:
-        return None
-    o = (ast.get_source_segment(msrc, orig) or "").split("\n")
-    n = (ast.get_source_segment(msrc, mut) or "").replace(short, orig_name, 1).split("\n")
-    first = next((op for op in difflib.SequenceMatcher(None, o, n).get_opcodes() if op[0] != "equal"), None)
-    if first is None:
-        return None
-    _tag, i1, _i2, j1, _j2 = first
-    _src, tree = parsed(path)
-    if "ǁ" in fn:  # xǁクラスǁメソッド: そのクラスの中だけを探す（同じ名前のメソッドを別のクラスが持ちうる）
-        _x, cls, method = fn.split("ǁ")
-        owner = next((c for c in tree.body if isinstance(c, ast.ClassDef) and c.name == cls), None)
-        real = find(owner.body, method) if owner else None
-    else:
-        real = next((f for f in tree.body if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))
-                     and f.name == fn[2:]), None)
-    if real is None:
-        return None
-    return real.lineno + i1, o[i1].strip() if i1 < len(o) else "", n[j1].strip() if j1 < len(n) else ""
-
-
 def escape(s):
     return s.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
 
@@ -111,7 +58,7 @@ diff = changed_lines(base)
 rows, notes, noted_lines = [], 0, set()
 for m in sorted(survivors):
     path = file_of(m)
-    where = mutation_line(m)
+    where = mutation_line(m, path, "mutants", ".")
     if where is None:
         rows.append((path, "", fn_of(m), "（書き換えた行を読めなかった）", False))
         continue
