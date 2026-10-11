@@ -6,16 +6,21 @@
 #   backendジョブと並べて走らせる。
 # - frontend: prettier → eslint → knip → tsc --noEmit → vitest の順。書式・lint・型エラーは実行の速い順に
 #   先へ置き、失敗を早く返す。knipは本番・テスト・e2eの入口から辿れないファイル・export・依存を見る。
-# - e2e: 本番ビルドを実ブラウザで開き、実機でしか出ないもの（収まる・押せる、ブラウザと地図の
+# - 段: 軽い検査（backend・api-contract・frontend・scripts・frontend-image・backend-image）を段1として並べて走らせ、
+#   重い検査（e2e・e2e-scan）は段1のどれも落ちず・取り消されずに終わったときだけ始める。落ちた版の残りにランナーを使わない。
+# - e2e: frontend-image が作った本番の像の中のアプリを実ブラウザで開き、実機でしか出ないもの（収まる・押せる、ブラウザと地図の
 #   実挙動、カスケード）を見る（対象の定義は .claude/rules/testing-e2e.md パターン4）。
 #   バックエンド・外部APIには依存せず、frontend/e2e/fixtures.tsのネットワークモックで置き換える
-#   （API契約の正しさはapi-contractジョブが別途担保）。DB・APIキーが不要なため独立ジョブにできる。
+#   （API契約の正しさはapi-contractジョブが別途担保）。像は本番のbackendの宛先を焼き込むので、モックはその宛先へ当て、
+#   モックの無い要求はブラウザの外へ出さない。
 #   e2eとe2e-scanは、Playwrightの公式のcontainerのimage（ブラウザとその依存を入れたもの）の中で走らせ、
 #   ブラウザを取り込む段を持たない。imageの版は、changesがfrontend/package-lock.jsonの@playwright/testの版から
 #   決める（版が違うとブラウザの実行ファイルが見つからない。公式の文書 https://playwright.dev/docs/docker ）。
 #   @playwright/testを上げる変更（Dependabot等）が、そのままimageも上げる。
 # - e2e-scan: e2eのうち全状態の走査（幅 × 段階ごとに1本）を、幅ごとに段階の数だけの別ジョブ（--shard）で走らせる。
 # - frontend-image・backend-image: 本番の像を同じDockerfileで作り、起こせるかを見る（何を見るかは各ジョブの上）。
+#   frontend-image が作った像は、中のアプリを e2e・e2e-scan が試し、masterではその像をそのまま deploy-frontend が出す
+#   （確かめた中身と出す中身を同じにする）。
 # - scripts: 根の scripts/ の道具のテスト（scripts/tests/）。PostGIS も backend の依存も要らない。
 # - changes: 変わった置き場（backend/・frontend/・scripts/）から、どのジョブとデプロイを走らせるかを決める
 #   （決め方は docs/architecture/tech-stack.md「CIの実行枠」）。
@@ -31,6 +36,10 @@
 #   Pull Requestの直近60件）の、ジョブごとの最長の所要の2倍を5分単位へ切り上げた値（e2e-scan は幅のうち長いほう）。
 #   frontend-image・backend-image は、2026-10-11 の試しの Pull Request の成功した実行（frontend-image 2件・backend-image 1件。
 #   最長はそれぞれ61秒・42秒）から同じ決め方で決めた。
+#   段1のジョブの持ち時間だけは、重い検査を始めるまでの待ちの予算として、2026-10-11 に測った成功した実行（Pull Requestの
+#   直近60件とmasterへのpushの直近60件）の最長の1.3〜3.4倍を分単位へ切り上げた値に詰めてある（短いジョブほど、分単位の切り上げで倍率が大きくなる）。段1の検査が延びると、その分
+#   だけ通る版の待ちが延びる。持ち時間で切られたら、上げる前に検査を速くするか段2へ移せないかを見て、上げるならその理由を
+#   Pull Request の本文に書く。
 #   段が止まったジョブ（playwright install が進まなくなった等）を既定の360分まで待たせず、取り消しで終わらせて、
 #   作る担当・確かめる担当が流し直す（.claude/skills/task-work/SKILL.md「作る担当」の5）。成功する実行が切られるようになったら、同じ決め方で
 #   測り直す。deploy-backend・deploy-frontend の持ち時間は、呼ばれる側の deploy-*.yml が持つ。
@@ -118,7 +127,7 @@ jobs:
     # 本番（Oracle Cloud VMのAmpere A1）と同じaarch64・同じUbuntu 24.04で判定する。版の正本は
     # docs/architecture/tech-stack.md「DBの版」。
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
+    timeout-minutes: 5
     defaults:
       run:
         working-directory: backend
@@ -163,7 +172,7 @@ jobs:
     needs: changes
     if: fromJSON(needs.changes.outputs.run)['api-contract']
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 2
     defaults:
       run:
         working-directory: backend
@@ -199,7 +208,7 @@ jobs:
     needs: changes
     if: fromJSON(needs.changes.outputs.run)['frontend']
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
     defaults:
       run:
         working-directory: frontend
@@ -225,8 +234,9 @@ jobs:
       - run: npm test
 
   e2e:
-    needs: changes
-    if: fromJSON(needs.changes.outputs.run)['e2e']
+    # 段1を全部待つ。置き場が変わらずに飛ばされた段1のジョブは、始めるのを止めない。
+    needs: [changes, backend, api-contract, frontend, scripts, frontend-image, backend-image]
+    if: "!cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && fromJSON(needs.changes.outputs.run)['e2e']"
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v${{ needs.changes.outputs.playwright }}-noble
@@ -234,6 +244,10 @@ jobs:
       # --ipc=host（Chromiumがメモリ不足で落ちない）と --init（PID 1 のプロセスの扱い）は https://playwright.dev/docs/docker が勧める。
       options: --user 1001 --ipc=host --init
     timeout-minutes: 50
+    env:
+      # 起こすアプリ（下で広げる像の中身）と、それが焼き込んでいるbackendの宛先（モックを当てる先）。
+      E2E_APP_DIR: ${{ github.workspace }}/app
+      E2E_API_BASE: ${{ needs.frontend-image.outputs.api }}
     defaults:
       run:
         working-directory: frontend
@@ -244,9 +258,15 @@ jobs:
           node-version-file: frontend/package.json
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      # Playwright を動かすのに node_modules が要る。試すアプリはここではビルドしない。
       - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-app
+      - run: tar -xzf frontend-app.tar.gz
+        working-directory: .
       # 全状態の走査は、下のe2e-scanが幅ごとの別ジョブで走らせる。
-      - run: npm run test:e2e -- --grep-invert "全状態の走査"
+      - run: npx playwright test --grep-invert "全状態の走査"
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -256,8 +276,9 @@ jobs:
   # 全状態の走査（frontend/e2e/all-states.spec.ts）を幅ごとに、段階（生成前・生成後・乗り換え後）の数の別のジョブで走らせる。
   # 段階の所要は揃っている（2026-10-08 の成功した実行で desktop 35〜41秒ずつ）ので、1つのジョブに1段階ずつ割る。
   e2e-scan:
-    needs: changes
-    if: fromJSON(needs.changes.outputs.run)['e2e-scan']
+    # 待つ段1と始める条件は、上の e2e と同じ。
+    needs: [changes, backend, api-contract, frontend, scripts, frontend-image, backend-image]
+    if: "!cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && fromJSON(needs.changes.outputs.run)['e2e-scan']"
     strategy:
       fail-fast: false
       matrix:
@@ -270,6 +291,10 @@ jobs:
       # 付ける options は上の e2e と同じ。
       options: --user 1001 --ipc=host --init
     timeout-minutes: 40
+    # 渡すもの・アプリの受け取り方は、上の e2e と同じ。
+    env:
+      E2E_APP_DIR: ${{ github.workspace }}/app
+      E2E_API_BASE: ${{ needs.frontend-image.outputs.api }}
     defaults:
       run:
         working-directory: frontend
@@ -281,8 +306,13 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-app
+      - run: tar -xzf frontend-app.tar.gz
+        working-directory: .
       - run: |
-          npm run test:e2e -- -g "全状態の走査: ${{ matrix.width }}" --shard=${{ matrix.shard }}/3
+          npx playwright test -g "全状態の走査: ${{ matrix.width }}" --shard=${{ matrix.shard }}/3
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -292,15 +322,60 @@ jobs:
   # frontendの像を本番と同じDockerfileで作って起こし、サーバーがコンテナの外（公開した口）からも、コンテナの中の
   # 127.0.0.1からも応答するかを見る。本番の前段（Renderの転送）がコンテナのどの宛先へつなぐかはこちらで選べないので、
   # どちらかで届かなければ落とす（公開した口だけを見ると、コンテナの名前の宛先だけで待ち受けるサーバーも通る）。
+  # 像は本番と同じ引数（backendの宛先を焼き込む）で作り、中のアプリを e2e・e2e-scan へ渡し、masterでは GitHub のコンテナの
+  # 置き場へ置いて deploy-frontend.yml に出させる。
   frontend-image:
     needs: changes
     if: fromJSON(needs.changes.outputs.run)['frontend-image']
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      packages: write
+    env:
+      # deploy-frontend.yml が出す像の名前と同じ。
+      IMAGE: ghcr.io/${{ github.repository_owner }}/ride-compass-frontend
+    outputs:
+      api: ${{ steps.build.outputs.api }}
     steps:
       - uses: actions/checkout@v5
-      - run: docker build frontend --build-arg GIT_COMMIT="$GITHUB_SHA" --tag frontend-check
-      - run: docker run --detach --name frontend-check --publish 3000:3000 frontend-check
+      - name: 本番と同じ引数で像を作る
+        id: build
+        env:
+          BACKEND_ORIGIN: ${{ vars.BACKEND_ORIGIN }}
+        run: |
+          api=$BACKEND_ORIGIN
+          if [ -z "$api" ]; then
+            # masterの像は出すので、宛先が無ければ止める。Pull Request の実行（Dependabot が起こしたもの等）には
+            # リポジトリの変数が渡らないことがあるので、届かない代わりの宛先を焼き込んで確かめは続ける。
+            if [ "$GITHUB_EVENT_NAME" = push ]; then
+              echo "::error::リポジトリの変数 BACKEND_ORIGIN が無い（画面がbackendを呼ぶ宛先をビルドへ埋め込めない）"
+              exit 1
+            fi
+            api=https://backend.invalid
+            echo "::notice::リポジトリの変数 BACKEND_ORIGIN が無いので、宛先を $api にして作る"
+          fi
+          echo "api=$api" >> "$GITHUB_OUTPUT"
+          # 画面のAPI・タイル・rewritesの宛先は、どれもbackendへ直接向ける（docs/architecture/tech-stack.md「本番の宛先」）。
+          docker build frontend \
+            --build-arg NEXT_PUBLIC_API_URL="$api" \
+            --build-arg NEXT_PUBLIC_TILE_BASE_URL="$api" \
+            --build-arg BACKEND_INTERNAL_URL="$api" \
+            --build-arg GIT_COMMIT="$GITHUB_SHA" \
+            --tag "$IMAGE:$GITHUB_SHA"
+      # 起こす前のコンテナから取る（起こしたサーバーが書いたものを混ぜない）。
+      - name: 像の中のアプリを取り出す
+        run: |
+          docker create --name frontend-app "$IMAGE:$GITHUB_SHA"
+          docker cp frontend-app:/app - | gzip -1 > frontend-app.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-app
+          path: frontend-app.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - run: docker run --detach --name frontend-check --publish 3000:3000 "$IMAGE:$GITHUB_SHA"
       - name: コンテナの外と中から応答を見る
         run: |
           # 起動は本番で秒の単位で済む（Renderのログの Ready）。上限は起動が止まったときに待ち続けないためのもの。
@@ -321,6 +396,13 @@ jobs:
           curl -fsS --max-time 30 -o /dev/null http://localhost:3000/ || { echo "::error::コンテナの外からトップの画面が開けない"; exit 1; }
           docker exec frontend-check node -e "fetch('http://127.0.0.1:3000/api/version').then((r) => process.exit(r.ok ? 0 : 1), (e) => { console.error(e.cause ?? e); process.exit(1); })" \
             || { echo "::error::コンテナの中の127.0.0.1から/api/versionへ届かない（サーバーが全部の宛先で待ち受けていない）"; exit 1; }
+      - name: masterでは像を置き場へ置く
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker push "$IMAGE:$GITHUB_SHA"
       - if: failure()
         run: docker logs frontend-check
   # backendの像を本番と同じDockerfile・同じaarch64で作り、アプリを読み込めるかを見る（deploy-backend.ymlがコンテナを
@@ -329,7 +411,7 @@ jobs:
     needs: changes
     if: fromJSON(needs.changes.outputs.run)['backend-image']
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 5
+    timeout-minutes: 2
     steps:
       - uses: actions/checkout@v5
       - run: docker build backend --tag backend-check
@@ -338,7 +420,7 @@ jobs:
     needs: changes
     if: fromJSON(needs.changes.outputs.run)['scripts']
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 2
     defaults:
       run:
         working-directory: scripts
@@ -374,7 +456,8 @@ jobs:
   deploy-frontend:
     needs: [changes, ci-ok]
     if: "!cancelled() && github.event_name == 'push' && needs.ci-ok.result == 'success' && fromJSON(needs.changes.outputs.run)['deploy-frontend']"
-    # 呼ばれた側が像をGitHubのコンテナの置き場へ置く。呼ばれた側のGITHUB_TOKENは、ここで渡した権限より広げられない。
+    # 呼ばれた側は手動の起動のときに像を置くので、書く権限を宣言している。呼ばれた側が宣言する権限は、ここで渡した
+    # 権限を超えると実行が断られる。
     permissions:
       contents: read
       packages: write
