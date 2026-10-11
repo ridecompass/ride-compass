@@ -33,7 +33,7 @@ jobs:
   task:
     # backend のテストを CI と同じ aarch64・同じ PostgreSQL + PostGIS で流す。
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 240
+    timeout-minutes: 180
     env:
       TEST_DATABASE_URL: postgresql+asyncpg://ridecompass:ridecompass@localhost:5432/ridecompass_test
       DATABASE_URL: postgresql+asyncpg://ridecompass:ridecompass@localhost:5432/ridecompass_test

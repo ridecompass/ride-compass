@@ -38,6 +38,8 @@ const RANK = { dispatched: 0, requested: 1, in_progress: 2, completed: 3 };
 export class Patrol {
   constructor(storage) { this.storage = storage; }
   async all() { return (await this.storage.get("held")) ?? []; }
+  // ゲートが事実として読む見回りの状態: 担当の記録と、振り出しを止めている理由（定時に調べ直す。無ければ null）。
+  async state() { return { record: await this.all(), stopped: (await this.storage.get("stopped")) ?? null }; }
 
   // 実行の状態は前にだけ進める。知らせの届く順は決まっていないので、終わった実行の印を1日残し、遅れて届いた始まりの知らせで持ち直さない。
   async observe(run, now = Date.now()) {
@@ -56,6 +58,7 @@ export class Patrol {
     const free = Object.fromEntries(wanted.map((kind) => [kind, config.slots[kind] - held.filter((h) => h.kind === kind).length]));
     const room = Object.values(free).some((n) => n > 0);
     const stopped = room || always ? await stopReason(gh, config) : null;
+    if (room || always) await this.storage.put("stopped", stopped);
     if (stopped || !room) return { picked: [], stopped };
     const tasks = (await items(gh, config)).map((t) => ({ ...t, runs: held.filter((h) => h.number === t.number) }));
     const rank = (t) => config.priorities.indexOf(t.priority ?? config.unsetPriority);

@@ -39,11 +39,12 @@ export function runOf(title) {
 }
 
 const query = (config) => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:String!,$head:String!){
- t:repository(owner:$to,name:$tn){issue(number:$n){id state stateReason closedAt body author{login} issueType{name} assignees(first:10){nodes{login}}
+ t:repository(owner:$to,name:$tn){issue(number:$n){id state stateReason createdAt closedAt lastEditedAt editor{login} body author{login} issueType{name} assignees(first:10){nodes{login}}
   comments(last:40){nodes{body createdAt author{login}}}projectItems(first:5){nodes{id project{number} ${fieldsOf(config)}}} ${relationsOf(config, true)}
   timelineItems(first:50,itemTypes:[ISSUE_TYPE_CHANGED_EVENT]){nodes{...on IssueTypeChangedEvent{prevIssueType{name} issueType{name}}}}}}
  c:repository(owner:$co,name:$cn){pullRequests(headRefName:$head,first:5,orderBy:{field:CREATED_AT,direction:DESC}){nodes{
-  id state isDraft merged mergeCommit{statusCheckRollup{state}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{state}}}}
+  id state isDraft merged mergedAt mergeCommit{statusCheckRollup{state} checkSuites(last:20){nodes{updatedAt}}}
+  commits(last:1){nodes{commit{oid committedDate statusCheckRollup{state} checkSuites(last:20){nodes{updatedAt}}}}}
   timelineItems(last:1,itemTypes:[CONVERT_TO_DRAFT_EVENT]){nodes{...on ConvertToDraftEvent{createdAt}}}}}}}`;
 const ROLLUP = { SUCCESS: "SUCCESS", FAILURE: "FAILURE", ERROR: "FAILURE", PENDING: "PENDING", EXPECTED: "PENDING" };
 
@@ -64,8 +65,8 @@ async function allComments(gh, config, number) {
   }
 }
 
-// record は見回りの担当の記録（終わった実行の印を含む。src/patrol.js: Patrol）。
-export async function readFacts(gh, config, number, record) {
+// 見回りの状態（src/patrol.js: Patrol.state）: record は担当の記録（終わった実行の印を含む）、stopped は振り出しを止めている理由。
+export async function readFacts(gh, config, number, { record, stopped }) {
   const [to, tn] = config.tasks.split("/");
   const [co, cn] = config.code.split("/");
   const { t: { issue: i }, c } = await gh.gql(query(config), { to, tn, n: number, co, cn, head: `${config.branchPrefix}${number}` });
@@ -106,7 +107,16 @@ export async function readFacts(gh, config, number, record) {
   const task = taskOf(config, i, i.projectItems.nodes);
   const asking = task.dropped.length ? droppedQuestion(task.dropped) : null;
   const droppedAsked = Boolean(asking) && (comments.some((x) => x.includes(asking)) || (await allComments(gh, config, number)).some((x) => x.includes(asking)));
-  return { ...task, droppedAsked, unread, answerRead, answerApplied, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
+  // 最後の動き: ゲートのほかが書いたコメント・本文の編集・作業ブランチの PR のコミットとマージ・検査の終わり・担当の実行の始まりと終わり・
+  // issue を作ったときのうち、一番新しい時刻。GitHub と見回りの記録から出し、起点をだれも持たない。
+  const gate = config.gateBot.replace(/\[bot\]$/, "");
+  const suites = (commit) => commit?.checkSuites?.nodes.map((x) => x.updatedAt) ?? [];
+  const lastMove = Math.max(0, ...[i.createdAt, i.editor?.login !== gate && i.lastEditedAt, ...nodes.filter((n) => n.author?.login !== gate).map((n) => n.createdAt),
+    ...c.pullRequests.nodes.flatMap((p) => [p.mergedAt, p.commits.nodes.at(-1)?.commit.committedDate, ...suites(p.commits.nodes.at(-1)?.commit), ...suites(p.mergeCommit)])]
+    .map((t) => Date.parse(t)).filter(Number.isFinite), ...mine.map((r) => r.at));
+  // 外の事情で振り出せない: 担当の枠が埋まっている（種類ごと）か、見回りが振り出しを止めている。
+  const full = Object.fromEntries(Object.entries(config.slots).map(([kind, n]) => [kind, record.filter((h) => h.state !== "completed" && h.kind === kind).length >= n]));
+  return { ...task, droppedAsked, lastMove, full, stopped: Boolean(stopped), now: config.now?.() ?? Date.now(), unread, answerRead, answerApplied, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
     conditions: conditions(i.body), remaining: remaining(i.body), assignees: i.assignees.nodes.map((a) => a.login), question: latestQuestion(comments, config.questionTemplate),
     runs, parent: p && { number: p.number }, dead, children: i.subIssues.nodes, origin: Number(/^分割元: #(\d+)\s*$/m.exec(norm(i.body))?.[1]) || null,
     types: i.timelineItems.nodes.map((e) => e.prevIssueType?.name ?? null), // 今より前の種類（古い順）

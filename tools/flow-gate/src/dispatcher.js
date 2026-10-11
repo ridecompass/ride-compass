@@ -15,9 +15,10 @@ export class Dispatcher extends DurableObject {
     if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now());
   }
 
-  // 処理の間に入った出来事が早いアラームを置いていれば、それより遅いやり直しの時刻で上書きしない。
+  // 処理の間に入った出来事が早いアラームを置いていれば、それより遅いやり直しの時刻で上書きしない。出来事は1回の起こしで1件ずつ
+  // 処理する（無料のプランの、1回の起こしで外へ出せる要求の上限 50 に、1件の決め直しと振り出しを収める）。
   async alarm() {
-    const next = await this.inbox.drain(config.retries);
+    const next = await this.inbox.drain(config.retries, Date.now(), 1);
     const set = await this.ctx.storage.getAlarm();
     if (next && !(set <= next)) await this.ctx.storage.setAlarm(next);
   }
