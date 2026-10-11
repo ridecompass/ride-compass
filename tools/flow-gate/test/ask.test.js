@@ -30,5 +30,5 @@ test("形に合わない問いは出さない（#823: 回答のボタンを先�
 test("形に合う問いは照らしを通り、出す段へ進む", () => {
   const r = ask(askText("採否", template));
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /FLOW_BOT_TOKEN が無いので出さない/);
+  assert.match(r.stderr, /FLOW_BOT_TOKEN が無いので書かない/);
 });

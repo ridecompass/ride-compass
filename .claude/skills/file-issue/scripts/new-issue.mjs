@@ -3,12 +3,10 @@
 // 使い方: node .claude/skills/file-issue/scripts/new-issue.mjs --title <題名> --body-file <本文のファイル> [--type <種類>]
 //   [--parent <親>] [--origin <分割元>] [--blocked-by <前,...>] [--blocking <後,...>] [--size <S|M|L>] [--priority <高|中|低>] [--start <着手可能日時>]
 //   --parent は子（種類は親と同じ。条件と優先度・着手可能日時を持たない。孫は作らない）。--origin は要望ごとの切り出し（本文に「分割元: #N」を置く）。
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { bot, config, isMain } from "../../../../tools/flow-gate/src/bot.js";
 import { conditions, norm } from "../../../../tools/flow-gate/src/questions.js";
 
-const config = JSON.parse(readFileSync(new URL("../../../../tools/flow-gate/flow.config.json", import.meta.url), "utf8"));
 // 畳んだ節の名前と順（2 は種類ごとに1つ）。
 const SECTIONS = [["不具合: 起きていること", "要望: 困りごと", "保守: 背景", "調査: 明らかにしたいこと"], ["やること", "調べ方"], ["決めること"],
   ["完了の条件"], ["経緯"], ["規模と優先度の根拠"]];
@@ -19,7 +17,9 @@ export function issueProblems(body, { type, child = false, size, priority, start
   const text = norm(body).trim();
   const problems = [];
   if (!text || text.startsWith("<details>")) problems.push("本文の頭に、畳まない要約が無い");
-  const names = [...text.matchAll(/^<details><summary>(.+?)<\/summary>/gm)].map((m) => m[1]);
+  if (/^#{1,6} /m.test(text)) problems.push("見出し（#）は使わない（節は <details><summary> で畳む）");
+  // 節の頭は <details> と <summary> が同じ行でも別の行でもよい。
+  const names = [...text.matchAll(/^<details>\s*<summary>(.+?)<\/summary>/gm)].map((m) => m[1]);
   let at = -1;
   for (const name of names) {
     const k = SECTIONS.findIndex((s) => s.includes(name));
@@ -69,11 +69,7 @@ async function main() {
     console.error("使い方: node .claude/skills/file-issue/scripts/new-issue.mjs --title <題名> --body-file <本文のファイル> [--type <種類>] [--parent <親>] [--origin <分割元>] [--blocked-by <前,...>] [--blocking <後,...>] [--size <S|M|L>] [--priority <高|中|低>] [--start <着手可能日時>]");
     process.exit(2);
   }
-  if (!process.env.FLOW_BOT_TOKEN) {
-    console.error("FLOW_BOT_TOKEN が無いので作らない（置き場へは hidakagit-bot の名義で書く）");
-    process.exit(1);
-  }
-  const gh = (args, input) => execFileSync("gh", args, { input, encoding: "utf8", env: { ...process.env, GH_TOKEN: process.env.FLOW_BOT_TOKEN }, stdio: ["pipe", "pipe", "pipe"] });
+  const gh = bot();
   const [owner, name] = config.tasks.split("/");
   let type = opts.type;
   if (opts.parent) {
@@ -99,21 +95,45 @@ async function main() {
     ...(opts.parent ? ["--parent", opts.parent] : []), ...(opts["blocked-by"] ? ["--blocked-by", opts["blocked-by"]] : []),
     ...(opts.blocking ? ["--blocking", opts.blocking] : [])], body).trim();
   console.log(url);
-  // 欄はボードの項目にあり、ゲートが種類でボードへ入れるまでは入らない（入るまで待って打ち直す。ふつうは数秒）。
-  const board = config.boards[type === config.dialogType ? "dialog" : "actions"];
   const fields = [[config.fields.size, opts.size], [config.fields.priority, opts.priority], [config.fields.start, opts.start]].filter(([, v]) => v);
-  for (const [field, value] of fields) {
-    for (let tries = 1; ; tries++) {
-      try {
-        gh(["project", "item-edit", String(board), "--owner", config.owner, "--url", url, "--field", field, "--value", value]);
-        console.log(`${field}: ${value}`);
-        break;
-      } catch (e) {
-        if (tries >= 20) throw e;
-        await new Promise((r) => setTimeout(r, 3000));
-      }
-    }
+  const left = await fillFields(gh, url, type, fields);
+  if (left) {
+    console.error(left);
+    process.exit(1);
   }
+  for (const [field, value] of fields) console.log(`${field}: ${value}`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) await main();
+// 作った issue の欄を入れる。欄はボードの項目にあり、ゲートが種類でボードへ入れるまでは入らない（入るのを待つ。ふつうは数秒）。
+// 落ちても issue はできているので、作り直させずに、作った番号と残りの欄だけを入れ直すコマンドを返す（全部入れば null）。
+export async function fillFields(gh, url, type, fields, { pause = 3000, tries = 20 } = {}) {
+  const [owner, name] = config.tasks.split("/");
+  const board = config.boards[type === config.dialogType ? "dialog" : "actions"];
+  const number = url.split("/").pop();
+  const edit = (field, value) => ["project", "item-edit", String(board), "--owner", config.owner, "--url", url, "--field", field, "--value", value];
+  const why = (e) => String(e.stderr || e.message).trim();
+  const left = (reason, rest) => [`#${number} は作った（作り直さない）。${reason}。欄は次で入れる:`,
+    ...rest.map(([f, v]) => `  GH_TOKEN=$FLOW_BOT_TOKEN gh ${edit(f, v).join(" ")}`)].join("\n");
+  if (!fields.length) return null;
+  const q = `query($n:Int!){repository(owner:"${owner}",name:"${name}"){issue(number:$n){projectItems(first:5){nodes{project{number}}}}}}`;
+  const onBoard = () => JSON.parse(gh(["api", "graphql", "-F", `n=${number}`, "-f", `query=${q}`])).data.repository.issue.projectItems.nodes.some((n) => n.project.number === board);
+  for (let n = 1; ; n++) {
+    try {
+      if (onBoard()) break;
+    } catch (e) {
+      return left(`ボードに入ったかを問い合わせられなかった（${why(e)}）`, fields);
+    }
+    if (n >= tries) return left(`${(tries * pause) / 1000}秒待ってもボードに入らないので、欄を入れていない`, fields);
+    await new Promise((r) => setTimeout(r, pause));
+  }
+  for (const [k, [field, value]] of fields.entries()) {
+    try {
+      gh(edit(field, value));
+    } catch (e) {
+      return left(`欄「${field}」を入れられなかった（${why(e)}）`, fields.slice(k));
+    }
+  }
+  return null;
+}
+
+if (isMain(import.meta.url)) await main();

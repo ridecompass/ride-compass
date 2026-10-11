@@ -62,7 +62,8 @@ export function checkByText(body, heads) {
   const indexes = [];
   for (const h of heads) {
     const hit = left.filter((c) => c.text.startsWith(h.trim()));
-    if (hit.length !== 1) problems.push(`「${h}」に当たる残りの条件が ${hit.length} 個（1個に決まる頭で指す）`);
+    if (!h.trim()) problems.push("空の頭では指せない");
+    else if (hit.length !== 1) problems.push(`「${h}」に当たる残りの条件が ${hit.length} 個（1個に決まる頭で指す）`);
     else if (hit[0].verify === "ユーザー") problems.push(`「${h}」はユーザーが確かめる条件（答えでゲートが付ける）`);
     else if (hit[0].child) problems.push(`「${h}」は子 #${hit[0].child} が受け持つ条件（子が完成で閉じたときにゲートが付ける）`);
     else indexes.push(hit[0].index);
@@ -98,6 +99,7 @@ export function checkQuestion(template, text) {
 // 答え: 決定（続ける・保留・見送り・完了）・確かめた項目・書いた文。前の形の「次のステータス:」「- 問題なし:」の行も読む。
 // 書いた文は、決まった形の行のほかの全部（前の形の「補足:」「- 問題あり:」も入る）。ゲートは文の中身を読まず、Claude が読むまで決定を当てない。
 export const DONE = "完了にする";
+export const NOT_DONE = "完了にしない"; // 確かめで、完了にせずに書いた文だけで答えたとき
 export const NONE = "どれでもない（書く欄に書く）"; // 判断で、どの案でもないとき
 export const CHOICES = { 採否: ["着手する", "保留する", "見送る"], イレギュラー: ["やり直す", "保留する", "見送る"] };
 // 答えの入力が問いに足りているか（回答フォームと、チャットの答えの記録 .claude/skills/ask/scripts/answer.mjs が同じに照らす）。足りなければ理由。
@@ -109,32 +111,48 @@ export function answerProblem(q, { choice, done, text }) {
   }
   if (done) return `「${DONE}」は確かめの問いにだけ使えます。`;
   if (q.kind === "判断") {
+    if (choice && !q.plans.length) return "この問いに案はありません（書く欄に書いてください）。";
     if (choice && !choice.trim()) return "選んだ案が空です。";
     if (choice && q.plans.length && ![...q.plans, NONE].includes(choice)) return `案にない答えです（案: ${[...q.plans, NONE].join(" / ")}）。`;
     return (!choice || choice === NONE) && !text ? "どれでもないときは、書く欄に書いてください。" : null;
   }
   return CHOICES[q.kind].includes(choice) ? null : `選べるのは ${CHOICES[q.kind].join("・")} です。`;
 }
-// 答えのコメント（.claude/skills/ask/SKILL.md「答え」の形）。書いた文は形を付けずにそのまま置く（ゲートは決まった形の行のほかを、Claude が読む文として扱う）。
+// 答えのコメント（.claude/skills/ask/SKILL.md「答え」の形）。書いた文は形を付けずに、決まった形の行の塊のあとの空行の後ろにそのまま置く。
+// 「回答:」の行はいつも置き（選ばずに書いた文だけで答えたときも）、塊が空にならないようにする（書いた文の頭が塊として読まれない）。
 export function answerBody(q, { choice, done, items = [], labels = "", text = "" }) {
   const lines = ["## 回答", `**${q.text}**`, ""];
-  if (choice) lines.push(`回答: ${choice}`);
   if (done) lines.push(`回答: ${DONE}`, ...items.map((item) => `- 確かめた: ${item}`));
+  else lines.push(`回答: ${choice || (q.kind === "確かめ" ? NOT_DONE : NONE)}`);
   if (labels) lines.push(`ラベル: ${labels}`);
   if (text) lines.push("", text);
   return lines.join("\n");
 }
 export const APPLIED = "答えに書いた文を Claude が読んだので、答えを当てました"; // 書いた文のある答えを当てた印（二度は当てない）
 export const isAnswer = (t) => /^## 回答\n/.test(norm(t));
-const FIXED = /^(## 回答|\*\*.+\*\*|(?:回答|次のステータス): .*|- (?:確かめた|問題なし): .*|ラベル: .*)$/;
-export const answerText = (text) => norm(text).split("\n").filter((l) => l.trim() && !FIXED.test(l.trim())).join("\n").trim();
+// 答えのコメントを、決まった形の行と書いた文に分ける。決まった形の行は、頭（「## 回答」と問いの文の太字の行）のあとの最初の塊（次の空行まで）に
+// だけ置かれ（answerBody の形）、そのあとは全部書いた文。塊に決まった形でない行が1つでもあれば、塊は無く全部が書いた文（前の形の答え）。
+// 書いた文の中に決まった形に似た行があっても、決まった形の行としては読まない。
+const FIELD = /^(?:(?:回答|次のステータス): .+|- (?:確かめた|問題なし): .+|ラベル: .*)$/;
+function splitAnswer(text) {
+  const lines = norm(text).split("\n");
+  let k = /^\*\*.+\*\*$/.test(lines[1] ?? "") ? 2 : 1;
+  while (k < lines.length && !lines[k].trim()) k++;
+  let end = k;
+  while (end < lines.length && lines[end].trim()) end++;
+  const block = lines.slice(k, end).map((l) => l.trim());
+  const fixed = block.every((l) => FIELD.test(l)) ? block : [];
+  return { fixed, text: lines.slice(k + fixed.length).join("\n").trim() };
+}
+export const answerText = (text) => splitAnswer(text).text;
 function parseAnswer(text) {
   const all = norm(text);
   if (!isAnswer(all)) return null;
-  const picked = (/^(?:回答|次のステータス): (.+)$/m.exec(all)?.[1] ?? "").trim();
+  const { fixed, text: said } = splitAnswer(all);
+  const picked = (fixed.map((l) => /^(?:回答|次のステータス): (.+)$/.exec(l)?.[1]).find(Boolean) ?? "").trim();
   const decision = /見送/.test(picked) ? "見送り" : /保留/.test(picked) ? "保留" : picked === DONE ? "完了" : "続ける";
-  const confirmed = [...all.matchAll(/^- (?:確かめた|問題なし): (.+)$/gm)].map((m) => m[1].trim());
-  return { decision, confirmed, text: answerText(all) };
+  const confirmed = fixed.map((l) => /^- (?:確かめた|問題なし): (.+)$/.exec(l)?.[1]?.trim()).filter(Boolean);
+  return { decision, confirmed, text: said };
 }
 
 // コメントの並びから今の問いと、その答え（無ければ null）。形（template）に合わない問いは問いとして読まない（残す守り: 問いの形の検査）。
