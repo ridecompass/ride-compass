@@ -1,4 +1,4 @@
-// 変異テストで書き換えるファイルを、行数がそろうように分け、指した本のファイルをカンマでつないで出す。frontend の下で打つ。
+// 変異テストで書き換えるファイルを、行数がそろうように分け、指した本のファイルを Stryker の --mutate の形（カンマでつなぐ）で出す。frontend の下で打つ。
 // 引数: 本の番号（0 から） 本の数
 // 書き換えるのは src/ の実装（テスト・テストの足場・構造の検査・型の宣言だけのファイルを除く）。
 import { execFileSync } from "node:child_process";
@@ -19,4 +19,7 @@ for (const { f, lines } of sized) {
   bin.lines += lines;
   bin.files.push(f);
 }
-process.stdout.write(bins[shard].files.sort().join(","));
+// Stryker は --mutate を glob として読むので、パスの中の glob の記号（Next の [...path] 等）を1文字の組（[[]）にする
+// （逆斜線の逃がしは、Stryker がパスの区切りとして斜線へ変える）。
+const literal = (f) => f.replace(/[[\]{}()*?!+@]/g, "[$&]");
+process.stdout.write(bins[shard].files.sort().map(literal).join(","));

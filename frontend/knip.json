@@ -4,7 +4,7 @@
     "scripts/audit-test-rewrite.mjs",
     "scripts/capture.mjs",
     "scripts/structure-population.mjs",
-    "scripts/mutation/*.mjs",
+    "scripts/mutation/*.{mjs,mts}",
     "capture/examples/*.ts"
   ],
   "ignoreBinaries": ["fc-list"],

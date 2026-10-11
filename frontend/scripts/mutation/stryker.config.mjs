@@ -3,6 +3,7 @@
 // 結果は Stryker の結果の JSON（reports/mutation/mutation.json）で、書き換えごとに落としたテスト（killedBy）と通ったテスト（coveredBy）を持つ。
 export default {
   testRunner: "vitest",
+  vitest: { configFile: "scripts/mutation/vitest.config.mts" },
   // 書き換えごとに、その書き換えを通るテストだけを回す（どのテストが通るかは、最初の1回で記録する）。
   coverageAnalysis: "perTest",
   // 最初に落ちたテストで止めず、落ちたテストを全部 killedBy に載せる。
