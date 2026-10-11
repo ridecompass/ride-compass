@@ -24,7 +24,9 @@ import nextConfig from "../next.config";
 // レイヤー切替）だけを決定的に検証する。バックエンドプロセスの起動・DB・APIキーが
 // 不要になるぶん、CIが速く安定する。
 
-export const API_BASE = "http://localhost:8000";
+/** モックを当てるbackendの宛先。試すアプリがビルドに焼き込んだ宛先（`NEXT_PUBLIC_API_URL`）と同じでないと、モックが当たらない。
+ * CIは本番の宛先を焼き込んだ像の中身を試すので、その宛先を`E2E_API_BASE`で渡す。 */
+export const API_BASE = process.env.E2E_API_BASE ?? "http://localhost:8000";
 
 // backend/app/domain/route.py RouteCandidate相当の最小フィクスチャ（1候補）。
 function makeSegment(index: number, coordinates: [number, number][]) {
@@ -180,6 +182,10 @@ export async function installApiMocks(page: Page): Promise<void> {
   // 現在地を渡す。位置が取れない間は出発地が仮の地点のままで、生成が断られる。地点は候補の線の始点。
   await page.context().grantPermissions(["geolocation"]);
   await page.context().setGeolocation({ latitude: 35.7597, longitude: 139.7387 });
+
+  // どのモックにも当たらないbackendへの要求は、ブラウザの外へ出さずに接続の拒否で返す（後から登録したルートが先に
+  // 当たるので、最初に置いたこれは残りだけに当たる）。宛先が本番のbackendでも、要求は本番へ届かない。
+  await page.route(`${API_BASE}/**`, (route) => route.abort("connectionrefused"));
 
   await page.route(`${API_BASE}/health`, (route) => route.fulfill({ json: { status: "ok" } }));
 

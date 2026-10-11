@@ -220,8 +220,15 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
 
 何をE2Eで見るか・書き方は[testing-e2e.md](../../rules/testing-e2e.md)パターン4が持つ。
 
-- **`npm run test:e2e`**（`npm run build:e2e`→`playwright test`）。CIのe2eジョブも同じコマンドを使う。`build:e2e`は型の検査を
+- **手元は`npm run test:e2e`**（`npm run build:e2e`→`playwright test`）。`build:e2e`は型の検査を
   外した本番ビルドで（`next.config.ts`の`typescript.ignoreBuildErrors`）、型はCIの`frontend`ジョブの`tsc --noEmit`が見る。
+- **CIの`e2e`と`e2e-scan`はビルドしない。** `frontend-image`が本番と同じ引数で作った像の中のアプリを受け取り、`E2E_APP_DIR`に
+  広げて`playwright test`で起こす（`playwright.config.ts: webServer`）。像は本番のbackendの宛先を焼き込むので、モックの宛先は
+  `E2E_API_BASE`で渡り（`e2e/fixtures.ts: API_BASE`）、モックの無い要求は`e2e/fixtures.ts: installApiMocks`が接続の拒否で返す。
+  手元で同じ形を試すときは、`NEXT_PUBLIC_API_URL`・`NEXT_PUBLIC_TILE_BASE_URL`・`BACKEND_INTERNAL_URL`に同じ宛先を入れて
+  ビルドし、`E2E_API_BASE`にその宛先を入れて`playwright test`を回す。
+- **CIの`e2e`と`e2e-scan`は、段1（静的検査・単体のテスト・像の確かめ）が全部通ってから始まる。** 段1で落ちた版では始まらず、
+  ジョブはスキップになる（[tech-stack.md](../../../docs/architecture/tech-stack.md)「CIの実行枠（リポジトリがpublicである間の前提）」）。
 - **全状態の走査（`e2e/all-states.spec.ts`）は、CIでは別ジョブ（`e2e-scan`）で走らせ、
   それ以外のspecは`e2e`ジョブで走らせる。** 走査は幅 × 段階ごとに1本で、`e2e-scan`は幅ごとに段階の数のジョブへ
   分ける（`--shard`）。masterへのpushとPull Requestのどちらでも走る。CIで落ちた走査を手元で再現するときは
