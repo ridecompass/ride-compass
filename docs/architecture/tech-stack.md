@@ -176,9 +176,9 @@ importすると、その変更だけが本番へ届かなくなる**（エラー
 導いてこれを検査する。
 
 **frontend（Render）のデプロイも、masterのCIが通ったコミットを出す。** `ci.yml`の`deploy-frontend`が、
-`deploy-backend`と同じ条件で`deploy-frontend.yml`を呼ぶ。呼ばれた側は、そのコミットから`frontend/Dockerfile`で像を
-ビルドしてGitHubのコンテナの置き場（`ghcr.io/<リポジトリの持ち主>/ride-compass-frontend:<コミット>`、公開）へ置き、
-Renderのデプロイフックへその像を`imgURL`で渡す（Render公式の[Deploy Hooks](https://render.com/docs/deploy-hooks)。
+`deploy-backend`と同じ条件で`deploy-frontend.yml`を呼ぶ。像は同じCIの実行の`frontend-image`が`frontend/Dockerfile`で本番と同じ引数で
+作り、e2eと全状態の走査がその中のアプリを試し、GitHubのコンテナの置き場（`ghcr.io/<リポジトリの持ち主>/ride-compass-frontend:<コミット>`）へ
+置いたもの——**本番に出る中身は、CIが試した中身と同じ**。呼ばれた側は作り直さず、Renderのデプロイフックへその像を`imgURL`で渡す（Render公式の[Deploy Hooks](https://render.com/docs/deploy-hooks)。
 フックのURLはリポジトリの秘密`RENDER_FRONTEND_DEPLOY_HOOK_URL`）。
 
 - **Renderではビルドしない。** Renderのサービスは、GitHubのリポジトリではなく上の像から出す形にしてある（ダッシュボードの
@@ -193,7 +193,7 @@ Renderのデプロイフックへその像を`imgURL`で渡す（Render公式の
   （同じ文書の「Handling overlapping deploys」）ので、待たずに次へ進むと古いコミットが新しいコミットを上書きしうる。
   判定・ビルド・フック・待ちは1つのジョブで1本ずつ走る。上限（30分）までに変わらなければジョブを落とす——Renderの
   像の取得か起動が失敗している（ダッシュボードの Events に出る）。変わるまでの秒数は毎回ジョブのログに出る。
-- 待たずに出す手段は`deploy-frontend.yml`の手動起動（`workflow_dispatch`）で、選んだrefの先端を判定なしで出す。
+- 待たずに出す手段は`deploy-frontend.yml`の手動起動（`workflow_dispatch`）で、選んだrefの先端から像を作り、判定なしで出す。
 
 **タイルプロパティを削除する変更はデプロイ順序に制約がある。** backendとfrontendは別
 サービスとして独立にデプロイされ、反映タイミングは同期しない。プロパティの**追加**は
@@ -246,6 +246,12 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
   （.claude/skills/run-checks/SKILL.md「CIの結論を読む」）。数十秒で終わる`docs-consistency.yml`・`claude-gate.yml`には置かない
   （待ちが積もらない）。
 - ジョブの分け方・キャッシュは、所要時間と同時実行の枠で決める（理由は各ワークフローのコメント）。
+- **`ci.yml`は検査を2段に並べ、落ちた版の残りを走らせない。** 軽い検査（静的検査・単体のテスト・像の確かめ）を段1で
+  並べて走らせ、重い検査（e2e・全状態の走査）は段1のどれも落ちず・取り消されずに終わったときだけ始める。段に分けたぶん通る版の
+  待ちは延び、延びる幅は段1の一番長いジョブで決まるので、段1のジョブの持ち時間（`timeout-minutes`）を待ちの予算として詰めてある
+  （決め方は`ci.yml`の先頭）。段1の検査が予算を超えて延びたら持ち時間で切られ、上げるか・速くするか・段2へ移すかをその変更で決める。
+  重い検査のジョブを細かく割って待ちを縮めることはしない——待ちを決めているのは、検査の所要より同時に動くジョブの数の上限で、
+  ジョブごとに用意（containerの用意・`npm ci`）を払う本数を増やすと、取り合いのときの待ちが延びる。
 - **どのジョブを走らせるかは、変わった置き場で決める。** 置き場（`backend/`・`frontend/`・`scripts/`）はどれも自分のテストを自分の中に
   持ち、`ci.yml: changes`は変わったファイルの頭からどの置き場が変わったかだけを見て、その置き場の検査（backendならテスト・api-contract・
   像の確かめ、frontendならテスト・e2e・全状態の走査・api-contract・像の確かめ、`scripts/`なら道具のテスト）とデプロイを走らせる。

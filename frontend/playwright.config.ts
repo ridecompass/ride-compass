@@ -15,8 +15,12 @@ export const CHROMIUM_PROJECTS = [{ name: "chromium", use: { ...devices["Desktop
  * 起動だけを行い、ビルドは呼び手が先に済ませる。`cwd`はビルドのあるfrontend（既定はこの設定のある所）。
  */
 export function standaloneServer(port: number | string, cwd?: string): PlaywrightTestConfig["webServer"] {
+  return serverAt(port, "npm run start:standalone", cwd);
+}
+
+function serverAt(port: number | string, command: string, cwd?: string): PlaywrightTestConfig["webServer"] {
   return {
-    command: "npm run start:standalone",
+    command,
     cwd,
     url: `http://localhost:${port}`,
     // standaloneのserver.jsは待ち受けるアドレスを環境変数HOSTNAMEから取る。Git Bashはこれへ機械名を
@@ -45,5 +49,8 @@ export default defineConfig({
   },
   projects: CHROMIUM_PROJECTS,
   // ビルドは`npm run test:e2e`が先に済ませる——ビルドをここへ入れると、開発機ではビルドだけで起動待ちの枠を使い切る。
-  webServer: standaloneServer(E2E_PORT),
+  // `E2E_APP_DIR`があれば、そこに広げた本番の像の中のアプリ（`server.js`のある所）をビルドせずに起こす（CIが像の中身を試す）。
+  webServer: process.env.E2E_APP_DIR
+    ? serverAt(E2E_PORT, "node server.js", process.env.E2E_APP_DIR)
+    : standaloneServer(E2E_PORT),
 });
