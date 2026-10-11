@@ -5,7 +5,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import base from "../flow.config.json" with { type: "json" };
 import { NONE, answerBody, answerProblem, answerText, checkByText, conditions, withButton } from "../src/questions.js";
-import { issueProblems, withOrigin } from "../../../.claude/skills/file-issue/scripts/new-issue.mjs";
+import { issueProblems, parseArgs, withOrigin } from "../../../.claude/skills/file-issue/scripts/new-issue.mjs";
 
 const config = { ...base, questionTemplate: readFileSync(new URL("../question_template.md", import.meta.url), "utf8") };
 
@@ -26,6 +26,10 @@ test("答えを記録する（ask の answer.mjs）: 回答フォームと同じ
   const rows = [
     [judge, { choice: "案C" }, /案にない答え/], [judge, { choice: NONE }, /書く欄に書いて/], [judge, { choice: "案A" }, null],
     [{ kind: "確かめ", text: "完成にしてよいですか？", plans: [] }, {}, /完了にするか/], [{ kind: "採否", text: "着手しますか？", plans: [] }, { choice: "やる" }, /着手する・保留する・見送る/],
+    [{ kind: "確かめ", text: "完成にしてよいですか？", plans: [] }, { choice: "見送る", done: true }, /確かめの問いに選択肢はありません/],
+    [{ kind: "確かめ", text: "完成にしてよいですか？", plans: [] }, { choice: "保留する", text: "あとで" }, /確かめの問いに選択肢はありません/],
+    [judge, { choice: "案A", done: true }, /確かめの問いにだけ/], [{ kind: "採否", text: "着手しますか？", plans: [] }, { choice: "着手する", done: true }, /確かめの問いにだけ/],
+    [{ kind: "確かめ", text: "完成にしてよいですか？", plans: [] }, { done: true }, null],
   ];
   for (const [q, a, want] of rows) want ? assert.match(answerProblem(q, a), want) : assert.equal(answerProblem(q, a), null);
   const said = "> 距離のバーは候補数の横に\n\nとユーザーがチャットで言った（2026-10-12）";
@@ -56,4 +60,6 @@ test("起票する（file-issue の new-issue.mjs）: 本文の形・子の決�
   assert.deepEqual(issueProblems(ok.replace("- [ ] 作った", "済んだら閉じる"), { type: config.dialogType }), ["完了の条件が無い"], "対話作業は欄を求めないが、条件は要る");
   assert.match(withOrigin(ok, 724), /^要約の1行\n\n分割元: #724\n\n<details>/, "分割元の行は要約のあとに置く");
   assert.equal(withOrigin(withOrigin(ok, 724), 724).match(/分割元/g).length, 1, "二度は置かない");
+  assert.deepEqual(parseArgs(["--title", "題", "--body-file", "b.md", "--blocked-by", "5"]), { title: "題", "body-file": "b.md", "blocked-by": "5" });
+  for (const argv of [["--blokced-by", "5"], ["--title"], ["--title", "--size", "S"], ["題"]]) assert.equal(parseArgs(argv), null, argv.join(" "));
 });

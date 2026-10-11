@@ -51,11 +51,21 @@ export function withOrigin(body, origin) {
   return cut < 0 ? `${text}\n\n分割元: #${origin}` : `${text.slice(0, cut)}\n\n分割元: #${origin}${text.slice(cut)}`;
 }
 
-async function main() {
+// 引数を読む。知らない口・値の無い口があれば null（打ち間違いで前提や親の無い issue を作らない）。
+const KEYS = ["title", "body-file", "type", "parent", "origin", "blocked-by", "blocking", "size", "priority", "start"];
+export function parseArgs(argv) {
   const opts = {};
-  const argv = process.argv.slice(2);
-  for (let i = 0; i < argv.length; i += 2) opts[argv[i].replace(/^--/, "")] = argv[i + 1];
-  if (!opts.title || !opts["body-file"]) {
+  for (let i = 0; i < argv.length; i += 2) {
+    const key = argv[i].replace(/^--/, "");
+    if (!argv[i].startsWith("--") || !KEYS.includes(key) || argv[i + 1] === undefined || argv[i + 1].startsWith("--")) return null;
+    opts[key] = argv[i + 1];
+  }
+  return opts;
+}
+
+async function main() {
+  const opts = parseArgs(process.argv.slice(2));
+  if (!opts?.title || !opts["body-file"]) {
     console.error("使い方: node .claude/skills/file-issue/scripts/new-issue.mjs --title <題名> --body-file <本文のファイル> [--type <種類>] [--parent <親>] [--origin <分割元>] [--blocked-by <前,...>] [--blocking <後,...>] [--size <S|M|L>] [--priority <高|中|低>] [--start <着手可能日時>]");
     process.exit(2);
   }

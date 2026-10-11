@@ -101,8 +101,13 @@ export const DONE = "完了にする";
 export const NONE = "どれでもない（書く欄に書く）"; // 判断で、どの案でもないとき
 export const CHOICES = { 採否: ["着手する", "保留する", "見送る"], イレギュラー: ["やり直す", "保留する", "見送る"] };
 // 答えの入力が問いに足りているか（回答フォームと、チャットの答えの記録 .claude/skills/ask/scripts/answer.mjs が同じに照らす）。足りなければ理由。
+// 確かめには選択肢が無く、完了にするのは確かめだけ（ゲートは最初の「回答:」行を読むので、2行あると取り違える）。
 export function answerProblem(q, { choice, done, text }) {
-  if (q.kind === "確かめ") return done || text ? null : "完了にするか、直してほしいことを書いてください。";
+  if (q.kind === "確かめ") {
+    if (choice) return "確かめの問いに選択肢はありません（完了にするか、直してほしいことを書いてください）。";
+    return done || text ? null : "完了にするか、直してほしいことを書いてください。";
+  }
+  if (done) return `「${DONE}」は確かめの問いにだけ使えます。`;
   if (q.kind === "判断") {
     if (choice && !choice.trim()) return "選んだ案が空です。";
     if (choice && q.plans.length && ![...q.plans, NONE].includes(choice)) return `案にない答えです（案: ${[...q.plans, NONE].join(" / ")}）。`;
