@@ -97,6 +97,7 @@ for k, m in mutants.items():
         for t in covered:
             heights_of[t].add(h)
 heights = {t: max(heights_of[t]) if heights_of[t] else None for t in found}
+height_of = {t: h for t, h in heights.items() if h is not None}  # 高さの決まるテストだけ
 
 judge = set(found)
 why_kept = {}
@@ -120,7 +121,7 @@ def close_siblings(kept):
 
 
 forced = close_siblings(set(why_kept))
-routes = {}
+routes: dict[tuple[str, ...], set[str]] = {}
 for m in sorted(mutants.values(), key=lambda m: (m["file"], m["location"]["start"]["line"])):
     if m["file"].startswith(ROUTES) and m.get("coveredBy"):
         routes.setdefault(tuple(m["coveredBy"]), tests(m, "coveredBy"))
@@ -160,14 +161,14 @@ cand_keys = sorted(k for k, ts in by_key.items() if ts <= redundant and not ts &
 # 確かめ: 候補の見つける変異は、全部、同じ高さ以下の残すテストが見つける。
 kept_found_by_height: dict[int, set[str]] = collections.defaultdict(set)
 for t in kept:
-    if heights.get(t) is not None:
-        kept_found_by_height[heights[t]] |= found[t]
+    if t in height_of:
+        kept_found_by_height[height_of[t]] |= found[t]
 kept_found_at_or_below: dict[int, set[str]] = {}
 below: set[str] = set()
 for h in sorted(set(kept_found_by_height) | {v for v in heights.values() if v is not None}):
     below = below | kept_found_by_height.get(h, set())
     kept_found_at_or_below[h] = below
-violations = [t for k in cand_keys for t in by_key[k] if not found[t] <= kept_found_at_or_below[heights[t]]]
+violations = [t for k in cand_keys for t in by_key[k] if not found[t] <= kept_found_at_or_below[height_of[t]]]
 if violations:
     raise SystemExit(f"低い方に残すの確かめに反する候補 {len(violations)} 件: {violations[:5]}")
 
@@ -191,7 +192,7 @@ def source_of(key):
     return hashlib.sha1("\n".join(lines).encode()).hexdigest()[:12], len(lines)
 
 
-span_by_key = {}
+span_by_key: dict[str, tuple[str, int, int]] = {}
 for t in sorted(span_of):
     span_by_key.setdefault(key_of(t), span_of[t])
 prev_path = os.path.join(PREV, "review.json")
@@ -203,8 +204,8 @@ for k in cand_keys:
     digest, n = source_of(k)
     t = min(by_key[k])
     m = min(found[t], key=lambda x: (len(finders_kept[x]), x))
-    witness = next(u for u in finders_kept[m] if heights.get(u) is not None and heights[u] <= heights[t])
-    overlap.append({"test": k, "hash": digest, "lines": n, "height": heights[t], "mutant": m, "kept_test": witness,
+    witness = next(u for u in finders_kept[m] if u in height_of and height_of[u] <= height_of[t])
+    overlap.append({"test": k, "hash": digest, "lines": n, "height": height_of[t], "mutant": m, "kept_test": witness,
                     "previous": bool(complete and digest and prev_overlap.get(k) == digest), "breaks": ""})
 
 instances = collections.defaultdict(set)
@@ -260,7 +261,7 @@ def kind(m):
     return m["status"]
 
 
-by = collections.defaultdict(collections.Counter)
+by: dict[str, collections.Counter[str]] = collections.defaultdict(collections.Counter)
 for m in mutants.values():
     for name in (layer(m["file"]), "全体"):
         by[name][kind(m)] += 1
@@ -287,13 +288,13 @@ remaining = set(finders)
 chosen = set()
 # 全部の発見を保つ最小の組の目安（貪欲法）。足す変異の多い順（同じなら名前の大きい順）に選ぶ。
 order = {t: i for i, t in enumerate(sorted(found))}
-heap = [(-len(found[t]), -order[t], t) for t in found]
-heapq.heapify(heap)
+greedy = [(-len(found[t]), -order[t], t) for t in found]
+heapq.heapify(greedy)
 while remaining:
-    neg, r, t = heapq.heappop(heap)
+    neg, rank_t, t = heapq.heappop(greedy)
     gain = len(found[t] & remaining)
     if gain < -neg:
-        heapq.heappush(heap, (-gain, r, t))
+        heapq.heappush(greedy, (-gain, rank_t, t))
         continue
     chosen.add(t)
     remaining -= found[t]
@@ -336,7 +337,7 @@ md += ["### テストのファイルごと（行数の多い順）", "",
        "| ファイル | テスト | 行数 | 変異が通らない | 通るのに見つけない | ほかに無い発見 | 最小の組 | 広くだけ |",
        "|---|" + "---:|" * 7]
 md += [f"| {f} | {r['テスト']} | {flines[f]} | {r['通らない']} | {r['見つけない']} | {r['ほかに無い']} | {r['最小の組']} | "
-       f"{r['広くだけ']} |" for f, r in sorted(per_file.items(), key=lambda x: -flines[x[0]])[:40]]
+       f"{r['広くだけ']} |" for f, r in sorted(per_file.items(), key=lambda x: (-flines[x[0]], x[0]))[:40]]
 open(os.path.join(OUT, "summary.md"), "w", encoding="utf-8").write("\n".join(md) + "\n")
 
 BREAKS = "落ちると利用者に何が壊れるか"

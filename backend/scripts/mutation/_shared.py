@@ -50,7 +50,7 @@ def def_span(path, name):
 def _defs(path):
     """ファイルの行と、直下の関数とクラスのメソッドの名前ごとの構文木（同じ名前は先に出たもの）。"""
     lines, tree = _parsed(path)
-    out = {}
+    out: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             out.setdefault(node.name, node)

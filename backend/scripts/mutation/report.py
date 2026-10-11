@@ -136,16 +136,16 @@ failed_any = set().union(*baseline_failed.values())
 test_files: dict[str, dict] = collections.defaultdict(lambda: {"tests": []})
 for t in sorted(all_tests):
     path, _, name = t.partition("::")
-    d = {"id": test_ids[t], "name": name}
+    entry: dict = {"id": test_ids[t], "name": name}
     try:
         span = def_span(path, name.split("[")[0])
     except (OSError, SyntaxError):
         span = None
     if span:
-        d["location"] = {"start": {"line": span[0], "column": 1}, "end": {"line": span[1] + 1, "column": 1}}
+        entry["location"] = {"start": {"line": span[0], "column": 1}, "end": {"line": span[1] + 1, "column": 1}}
     if t in failed_any:
-        d["baselineFailed"] = True
-    test_files[path]["tests"].append(d)
+        entry["baselineFailed"] = True
+    test_files[path]["tests"].append(entry)
 
 revision = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
 report = {"schemaVersion": "2", "thresholds": {"high": 80, "low": 60}, "projectRoot": "backend",
