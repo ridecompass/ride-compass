@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import Disclosure from "@/components/Disclosure/Disclosure";
 import GenerationNotice from "@/features/route/GenerationNotice/GenerationNotice";
@@ -167,11 +167,23 @@ export default function Home() {
   // 説明を見る状態（ヘッダーのメニューの「使い方を見る」で入る）。
   const [usageGuideActive, setUsageGuideActive] = useState(false);
 
+  // 結果は生成を待つ間にシートを閉じ・切り替えたあとで届くので、どのシートから移るかは届いた時点の値で決める。
+  const mobileSheetRef = useRef(mobileSheet);
+  useEffect(() => {
+    mobileSheetRef.current = mobileSheet;
+  }, [mobileSheet]);
+
   // 生成と乗り換えの結果（候補も失敗も）は「ルート結果」でしか中身が見えないので知らせる。デスクトップは区分を開き、
-  // モバイルはタブのドットで知らせる（シートは勝手に開かない）。
+  // モバイルはタブのドットで知らせる。ただしモバイルで「ルート設定」のシートを開いたまま候補が出たら、候補と全消去を
+  // 並べた「ルート結果」のシートへ移る（開いて見せたので点は点けない）。候補0件と失敗は窓で知らせるので、シートは移らない。
   const notifyRouteOutcome = useCallback(
     (outcome: RouteOutcomeKind) => {
       setOutcomeOpen(true);
+      if (outcome === "fresh" && mobileSheetRef.current === "routeSettings") {
+        setMobileSheet("routeOutcome");
+        setUnseenOutcome(null);
+        return;
+      }
       setUnseenOutcome(outcome);
     },
     [setOutcomeOpen],

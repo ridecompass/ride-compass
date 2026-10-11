@@ -8,6 +8,7 @@ import {
   clickMap,
   defaultAxisCatalogFixture,
   doneJobFixture,
+  generateInMobileSheet,
   openMobileSheet,
   routeGenerateResponseFixture,
   runGeneration,
@@ -271,10 +272,9 @@ export async function openApp(page: Page): Promise<void> {
 /** ルートを1回生成し、基本の状態へ戻して落ち着くまで待つ。 */
 export async function generate(page: Page, width: WidthName): Promise<void> {
   if (width === "mobile") {
-    const sheet = await openMobileSheet(page, "ルート設定");
-    await runGeneration(sheet);
-    await page.getByRole("button", { name: "ルート設定", exact: true }).click();
-    await expect(sheet).toBeHidden();
+    const outcome = await generateInMobileSheet(page, await openMobileSheet(page, "ルート設定"));
+    await page.getByRole("button", { name: "ルート結果", exact: true }).click();
+    await expect(outcome).toBeHidden();
   } else {
     await runGeneration(page);
   }
@@ -352,20 +352,20 @@ export async function splice(page: Page, width: WidthName): Promise<void> {
     }),
   ];
   await page.route(`${API_BASE}/api/routes/generate/*`, (route) => route.fulfill({ json: doneJobFixture(result) }));
-  const scope = width === "mobile" ? await openMobileSheet(page, "ルート設定") : page;
+  const settings = width === "mobile" ? await openMobileSheet(page, "ルート設定") : null;
+  const scope = settings ?? page;
   await scope.getByRole("button", { name: "目的地: 未設定", exact: true }).click();
   await scope.getByRole("button", { name: "目的地を地図で選ぶ" }).click();
   // スマホ幅は、シートを閉じると目的地の指定が外れるので、開いたまま見えている地図を押す。
   await clickVisible(page, SPLICE_PLACES.D);
   await expect(scope.getByRole("button", { name: "目的地を地図で置き直す" })).toBeVisible();
-  await runGeneration(scope);
-  if (width === "mobile") {
-    await page.getByRole("button", { name: "ルート設定", exact: true }).click();
-    const sheet = await openMobileSheet(page, "ルート結果");
+  if (settings) {
+    const sheet = await generateInMobileSheet(page, settings);
     await sheet.getByRole("button", { name: "ルートを合成" }).first().click();
     await page.getByRole("button", { name: "ルート結果", exact: true }).click();
     await expect(sheet).toBeHidden();
   } else {
+    await runGeneration(page);
     await page.getByRole("button", { name: "ルートを合成" }).first().click();
   }
   await settle(page);
