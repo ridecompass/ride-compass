@@ -3,7 +3,7 @@
 サイクリング向け周回ルート生成アプリ。backend（FastAPI）+ frontend（Next.js）。
 アーキテクチャ全体は docs/architecture/ 参照。
 
-タスクは GitHub の非公開リポジトリ ridecompass/ride-compass-tasks の issue で持つ（issue＝タスク、sub-issue＝段階。
+タスクは GitHub の非公開リポジトリ ridecompass/ride-compass-tasks の issue で持つ（issue＝タスク、sub-issue＝1つの要望を機能ごとに分けた子。
 背景・方針・問いと答え・検証の結果も issue に書く）。ステータスと割り当ては、ゲートが事実から決める。
 進め方は docs/conventions/flow.md と流れのスキル（`.claude/skills/`）。リファクタリング・機能追加の着手前に、該当する issue の有無を確認すること。
 2026-09-28 までの記録は docs/records/tasks/T<番号>.md（タスク番号1件=1ファイル）に残っている（維持しない）。
