@@ -7,8 +7,14 @@ import { defineConfig, devices, type PlaywrightTestConfig } from "@playwright/te
 const E2E_PORT = 3100;
 const E2E_ORIGIN = `http://localhost:${E2E_PORT}`;
 
-/** ブラウザはChromiumだけにする（.claude/rules/testing-e2e.md パターン4）。 */
+/** 撮影・実データで見る系統はChromiumだけで回す。E2EのWebKitは下の`WEBKIT_PROJECT`（.claude/rules/testing-e2e.md パターン4）。 */
 export const CHROMIUM_PROJECTS = [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }];
+
+/**
+ * iPhoneのSafariと同じ描画の仕組み（WebKit）でも回す。全状態の走査は部品の役割の判定にCDP（Chromiumだけの口）を使うので外す。
+ * スマホの幅は各specが自分で開くので、端末の見立てはデスクトップにする。
+ */
+const WEBKIT_PROJECT = { name: "webkit", use: { ...devices["Desktop Safari"] }, testIgnore: ["all-states.spec.ts"] };
 
 /**
  * 本番Dockerfileと同じ`node .next/standalone/server.js`を、同じ静的ファイルの配置（prepare-standalone.mjs）で起動する。
@@ -43,7 +49,7 @@ export default defineConfig({
     baseURL: E2E_ORIGIN,
     trace: "retain-on-failure",
   },
-  projects: CHROMIUM_PROJECTS,
+  projects: [...CHROMIUM_PROJECTS, WEBKIT_PROJECT],
   // ビルドは`npm run test:e2e`が先に済ませる——ビルドをここへ入れると、開発機ではビルドだけで起動待ちの枠を使い切る。
   webServer: standaloneServer(E2E_PORT),
 });

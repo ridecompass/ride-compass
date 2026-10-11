@@ -225,7 +225,10 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
   それ以外のspecは`e2e`ジョブで走らせる。** 走査は幅 × 段階ごとに1本で、`e2e-scan`は幅ごとに段階の数のジョブへ
   分ける（`--shard`）。masterへのpushとPull Requestのどちらでも走る。CIで落ちた走査を手元で再現するときは
   `./node_modules/.bin/playwright test e2e/all-states.spec.ts -g "全状態の走査: <幅> / <段階>"`を回す。
-- CIの`e2e`と`e2e-scan`は、Playwrightの公式のcontainerのimageの中で走り、ブラウザを取り込まない。imageの版は
+- `playwright.config.ts`はChromiumとWebKitの2つのprojectを持ち、`npm run test:e2e`は両方で回す。片方だけなら`--project=chromium`か
+  `--project=webkit`を付ける。CIは、`e2e`と`e2e-scan`がChromium、`e2e-webkit`がWebKit（全状態の走査を除く）を走らせる。
+  開発機でWebKitを初めて回すときは`npx playwright install --with-deps webkit`で入れる。
+- CIの`e2e`・`e2e-scan`・`e2e-webkit`は、Playwrightの公式のcontainerのimageの中で走り、ブラウザを取り込まない。imageの版は
   `frontend/package-lock.json`の`@playwright/test`の版に揃う（決め方は`ci.yml`の先頭）。
 - 起動するのは、本番Dockerfileと同じ`node .next/standalone/server.js`
   （`npm run start:standalone`。`scripts/prepare-standalone.mjs`がDockerfileのCOPYと同じ静的ファイルの配置を作る）。
