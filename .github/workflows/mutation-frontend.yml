@@ -1,0 +1,171 @@
+# frontend の単体テストの変異テスト（tasks#839）。src/ の実装を Stryker で1か所ずつ書き換え、書き換えごとに、それを通るテストを
+# 最後まで回して、どのテストが落ちたかを記録し、backend と同じ表の形（Stryker の結果の JSON）と同じ台本で見直しの候補を出す
+# （.claude/rules/testing-review.md「テストを変異テストで見直す」）。Stryker と口の直しは frontend/scripts/mutation/install.sh。
+#
+# - 手で起こす（gh workflow run mutation-frontend.yml、または Actions → Mutation frontend → Run workflow）。測る版と台本は、
+#   起こすときに選んだ ref から読む（台本は frontend/scripts/mutation/ と backend/scripts/mutation/review.py）。
+# - 2段で回る:
+#   1. shard（8本）: 書き換えるファイルを行数がそろうように分け（plan.mjs）、1本ずつ別のランナーで Stryker を回す。
+#   2. review（1本）: 1 を1つの表にし（report.mjs）、表から見直しの候補を出す（backend/scripts/mutation/review.py）。前の実行の
+#      見直し（成果物 mutation-frontend-review）を取ってきて比べ、前回も重なりの候補だったテストに印を付ける。
+# - compare にファイル（frontend からのパス）を渡すと、1・2 の代わりに、そのファイルを vitest の口と command の口（書き換えごとに
+#   テスト全体を回す。並び1本）で回して判定を突き合わせる（compare.mjs）。口の直しを外す・版を上げるときに使う。
+# - 成果物: 1 は mutation-frontend-<番号>（14日）、2 は mutation-frontend-review（次の見直しが比べるので90日）。
+name: Mutation frontend
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 測る版（台本も同じ版から読む）
+        required: true
+        default: master
+      compare:
+        description: 2つの口の判定を突き合わせるファイル（frontend からのパス。空なら全部を測る）
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-frontend
+  cancel-in-progress: false
+
+env:
+  SHARDS: 8
+
+jobs:
+  shard:
+    if: inputs.compare == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: frontend/package.json
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: bash scripts/mutation/install.sh
+      - name: 回す
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          files=$(node scripts/mutation/plan.mjs "$SHARD" "$SHARDS")
+          echo "この本で書き換えるファイル: $(echo "$files" | tr ',' '\n' | wc -l) 本"
+          npx stryker run scripts/mutation/stryker.config.mjs --mutate "$files"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-frontend-${{ matrix.shard }}
+          path: frontend/reports/mutation/mutation.json
+          retention-days: 14
+          if-no-files-found: warn
+
+  review:
+    needs: shard
+    if: ${{ !cancelled() && inputs.compare == '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: frontend/package.json
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mutation-frontend-?
+          path: /tmp/art
+      - name: 前の実行の見直しを取る
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/prev
+          prev=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=mutation-frontend-review&per_page=30" \
+            -q '[.artifacts[] | select(.expired | not) | select(.workflow_run.id != ${{ github.run_id }})][0].workflow_run.id // empty')
+          if [ -n "$prev" ]; then
+            gh run download "$prev" -R "${{ github.repository }}" -n mutation-frontend-review -D /tmp/prev
+            echo "前の見直し: 実行 $prev"
+          else
+            echo "前の見直しは無い（前回も候補だった印は付かない）"
+          fi
+      - id: review
+        name: 集計して見直す
+        run: |
+          mkdir -p /tmp/review
+          node scripts/mutation/report.mjs /tmp/art /tmp/review/report.json
+          python3 ../backend/scripts/mutation/review.py /tmp/review/report.json /tmp/prev /tmp/review
+          cat /tmp/review/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - if: needs.shard.result != 'success'
+        run: echo "落ちた本があり、書き換えが欠けているので、この見直しは次の見直しの前回にしない。" >> "$GITHUB_STEP_SUMMARY"
+      # 書き換えを全部回し終えた測りの見直しだけを残す（本が落ちて欠けた測りを、次の見直しが前回として読まないように）。
+      - if: steps.review.outputs.complete == 'true' && needs.shard.result == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-frontend-review
+          path: /tmp/review/
+          retention-days: 90
+          if-no-files-found: warn
+
+  compare:
+    if: inputs.compare != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: frontend/package.json
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: bash scripts/mutation/install.sh
+      - name: vitest の口で回す
+        env:
+          FILE: ${{ inputs.compare }}
+        run: |
+          npx stryker run scripts/mutation/stryker.config.mjs --mutate "$FILE"
+          mkdir -p /tmp/compare && cp reports/mutation/mutation.json /tmp/compare/vitest.json
+      # テスト全体は自分でスレッドを並べるので、書き換えを並べて回すと持ち時間を超える。
+      - name: command の口で回す
+        env:
+          FILE: ${{ inputs.compare }}
+        run: |
+          npx stryker run scripts/mutation/stryker.config.mjs --mutate "$FILE" --testRunner command --coverageAnalysis off --concurrency 1
+          cp reports/mutation/mutation.json /tmp/compare/command.json
+      - name: 突き合わせる
+        run: node scripts/mutation/compare.mjs /tmp/compare/vitest.json /tmp/compare/command.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-frontend-compare
+          path: /tmp/compare/
+          retention-days: 14
+          if-no-files-found: warn

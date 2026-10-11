@@ -5,7 +5,8 @@
 ディレクトリが並ぶ所。名前は問わない。当て直しが無ければ空のディレクトリ） 書き出すファイル
 表の形は Stryker の結果の JSON（mutation-testing-elements の report schema の版2）で、Stryker が出す表と同じ読み方で読める。
 変異ごとに場所・書き換え・結果・落としたテスト（killedBy）・通ったテスト（coveredBy）を、テストごとに場所を持つ。テストの id は
-testFiles の定義を指す短い番号。標準に無い欄は、テストの定義の baselineFailed（その関数の基準で落ちた）だけ。
+testFiles の定義を指す短い番号。標準に無い欄は、テストの定義の baselineFailed（その関数の基準で落ちた）だけ。config は、測った版
+（revision）と層の並び（layers。.importlinter の layers を上から）を持つ。
 結果の読み方:
 - Killed: 変異で落ちたテストがある。集める時点で落ちたもの（変異が import やパラメータの組を壊した。素の版では集まる）と、
   テスト全体の当て直しで落ちたもの（importtime.py）も含み、statusReason で分ける。killedBy は、その関数の基準（変異を入れない版で
@@ -18,6 +19,7 @@ testFiles の定義を指す短い番号。標準に無い欄は、テストの�
 - static: 読み込みのときに呼ばれうる関数の変異（importtime.py。記録はその呼び出しを、そのとき走っていたテスト1本にしか結ばない）
 """
 import collections
+import configparser
 import glob
 import json
 import os
@@ -148,8 +150,11 @@ for t in sorted(all_tests):
     test_files[path]["tests"].append(entry)
 
 revision = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+cfg = configparser.ConfigParser()
+cfg.read(".importlinter", encoding="ascii")
+layers = [line.strip() for line in cfg["importlinter:contract:layers"]["layers"].splitlines() if line.strip()]
 report = {"schemaVersion": "2", "thresholds": {"high": 80, "low": 60}, "projectRoot": "backend",
-          "framework": {"name": "mutmut"}, "config": {"revision": revision}, "files": files, "testFiles": test_files}
+          "framework": {"name": "mutmut"}, "config": {"revision": revision, "layers": layers}, "files": files, "testFiles": test_files}
 json.dump(report, open(OUT, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 counts = collections.Counter(m["status"] for f in files.values() for m in f["mutants"])
 print("表", OUT, "変異", sum(counts.values()), dict(counts), "テスト", len(all_tests),
