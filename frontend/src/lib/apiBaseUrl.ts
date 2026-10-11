@@ -5,3 +5,4 @@
 // ブラウザから直接叩くための公開URL（NEXT_PUBLIC_接頭辞）で、Docker Compose環境等で
 // サーバー側到達用のURLと値が異なりうる。
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+export const   trialBadFormat=1;
