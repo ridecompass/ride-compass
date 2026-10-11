@@ -28,6 +28,7 @@ export async function settle(gh, config, number, record, moved = false) {
   if (Object.keys(patch).length) await gh.rest("PATCH", issue, patch);
   if (d.ask) await gh.rest("POST", `${issue}/comments`, { body: d.ask.dropped ? askDropped(d.ask.dropped, config.questionTemplate) : askText(d.ask, config.questionTemplate) });
   if (d.notice) await gh.rest("POST", `${issue}/comments`, { body: d.notice });
+  if (d.closePr) await gh.gql(`mutation($id:ID!){closePullRequest(input:{pullRequestId:$id}){clientMutationId}}`, { id: d.closePr });
   if (d.ready) await gh.gql(`mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){clientMutationId}}`, { id: f.pr.id });
   await Promise.all(d.cancel.map((id) => gh.rest("POST", `/repos/${config.code}/actions/runs/${id}/cancel`)));
   // ボードへ入っていなければ、決めた世界のボードへ入れる（入口）。
@@ -46,12 +47,12 @@ export async function near(gh, config, number) {
   return [...x.blocking.nodes, ...(x.parent ? [x.parent] : []), ...x.subIssues.nodes].filter((i) => i.state === "OPEN").map((i) => i.number);
 }
 
-// 事実を変える出来事だけを、決まった置き場から受ける。ゲート自身の書き込みのこだまは受けない（前提が閉じたときの後ろのタスクは除く）。
+// 事実を変える出来事だけを、決まった置き場から受ける。ゲート自身の書き込みのこだまは受けない（ゲートが閉じた issue の先は、閉じたその場で決め直す。src/flow.js: handle）。
 const ACTIONS = { issues: ["opened", "closed", "reopened", "typed", "untyped", "labeled", "unlabeled", "edited"], issue_comment: ["created"],
   pull_request: ["opened", "closed", "reopened", "synchronize", "converted_to_draft", "ready_for_review"], workflow_run: ["requested", "in_progress", "completed"], projects_v2_item: ["edited"],
   sub_issues: ["sub_issue_added", "sub_issue_removed"] }; // 親子1本につき親の側と子の側の2つが届くので、親の側だけを受ける
 const REPO = { issues: "tasks", issue_comment: "tasks", pull_request: "code", workflow_run: "code", sub_issues: "tasks" };
-const OWN = ["workflow_run", "issues closed"]; // ゲート自身の出来事でも受けるもの（起こした担当の実行・閉じたタスクの後ろ）
+const OWN = ["workflow_run"]; // ゲート自身の出来事でも受けるもの（起こした担当の実行）
 export const ignored = (config, name, p) => !ACTIONS[name]?.includes(p.action) || (REPO[name] && p.repository?.full_name !== config[REPO[name]])
   || (p.sender?.login === config.gateBot && !OWN.includes(name) && !OWN.includes(`${name} ${p.action}`));
 const branch = (config, ref) => (ref?.startsWith(config.branchPrefix) ? [Number(ref.slice(config.branchPrefix.length))] : []);
@@ -61,9 +62,8 @@ const ROUTES = {
     // 回答のボタンだけを書き足した本文の書き換えは受けない（問う者はボタンを書いてから問いを書くので、ここで決め直すとボタンを消す）。
     const buttonOnly = p.action === "edited" && p.changes?.body && bodyRest(p.changes.body.from) === bodyRest(p.issue.body);
     if (p.action !== "closed" && p.action !== "reopened") return buttonOnly ? [] : [p.issue.number];
-    // 閉じた・開き直したら、矢印1本でつながる開いた issue（後・親・子）も決め直す（閉じたのがゲート自身でも）。
-    const after = await near(gh, config, p.issue.number);
-    return p.sender?.login === config.gateBot ? after : [p.issue.number, ...after];
+    // 閉じた・開き直したら、矢印1本でつながる開いた issue（後・親・子）も決め直す。
+    return [p.issue.number, ...(await near(gh, config, p.issue.number))];
   },
   // 親子が張られた・外された。孫になる張り方（親に親がある・子が子を持つ）は、張られた直後に外して子に知らせる（作る前に止める口は GitHub に無い）。
   async sub_issues(gh, config, p) {

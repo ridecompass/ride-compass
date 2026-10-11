@@ -9,7 +9,7 @@ import { handle } from "../src/flow.js";
 import { answerForm } from "../src/form.js";
 import { Inbox } from "../src/inbox.js";
 import { Patrol } from "../src/patrol.js";
-import { askText, conditions, droppedQuestion, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
+import { askDropped, askText, conditions, droppedQuestion, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
 
 const config = { ...base, questionTemplate: readFileSync(new URL("../question_template.md", import.meta.url), "utf8"), slots: { 作る: 2, 確かめる: 1 } };
 const OPTIONS = ["未着手", "進行中", "CI待ち", "検証待ち", "検証中", "回答待ち", "保留", "完了", "高", "中", "低"].map((name) => ({ id: name, name }));
@@ -37,6 +37,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     timelineItems: { nodes: p.drafted ? [{ createdAt: "2026-10-11T01:00:00Z" }] : [] } });
   const gql = async (q, v) => {
     if (q.includes("fields(first:30")) return { organization: { projectV2: { id: `P${v.n}`, fields: { nodes: [config.fields.status, config.fields.priority].map((name) => ({ id: name, name, options: OPTIONS })) } } } };
+    if (q.includes("closePullRequest")) return void (w.at(Number(v.id.slice(2))).pr.state = "CLOSED", w.writes.push(["PR を閉じる", Number(v.id.slice(2))]));
     if (q.includes("removeSubIssue")) return void (w.at(Number(v.c.slice(1))).parent = null, w.writes.push(["親子を外す", Number(v.c.slice(1))]));
     if (q.includes("c:issue(number:$c)")) return { repository: { p: { parent: w.at(v.p).parent && { number: w.at(v.p).parent } }, c: { subIssues: children(w.at(v.c)) } } };
     if (q.includes("items(first:100")) return { organization: { projectV2: { items: { pageInfo: { hasNextPage: false }, nodes: [...w.issues.values()].filter((i) => i.board === "actions")
@@ -54,7 +55,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     if (q.includes("t:repository")) {
       const i = w.at(v.n);
       return { t: { issue: { id: `I${i.n}`, state: i.state, stateReason: i.reason, body: i.body, author: { login: i.author }, issueType: i.type && { name: i.type },
-        assignees: { nodes: i.assignees.map((login) => ({ login })) }, ...relations(i), comments: { nodes: i.comments.map((body) => ({ body })) }, projectItems: { nodes: item(i) },
+        assignees: { nodes: i.assignees.map((login) => ({ login })) }, ...relations(i), comments: { nodes: i.comments.slice(-40).map((body) => ({ body })) }, projectItems: { nodes: item(i) },
         timelineItems: { nodes: (i.typeChanges ?? []).map(([a, b]) => ({ prevIssueType: { name: a }, issueType: { name: b } })) } } },
       c: { pullRequests: { nodes: i.pr ? [pull(i, i.pr)] : [] } } };
     }
@@ -79,6 +80,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     if ((m = /\/commits\/(\w+)\/pulls$/.exec(path))) return [...w.issues.values()].filter((i) => i.pr?.sha === m[1]).map((i) => ({ head: { ref: `${config.branchPrefix}${i.n}` } }));
     if ((m = /\/commits\/c(\d+)\/check-runs/.exec(path))) return { check_runs: w.at(Number(m[1])).survivors ? [{ id: Number(m[1]), completed_at: "2026-10-11T00:00:00Z" }] : [] };
     if ((m = /\/check-runs\/(\d+)\/annotations/.exec(path))) return w.at(Number(m[1])).survivors.map((message) => ({ title: "テストが気づかない書き換え", path: "src/a.js", message }));
+    if ((m = /\/issues\/(\d+)\/comments\?per_page=100&page=(\d+)$/.exec(path))) return w.at(Number(m[1])).comments.slice((m[2] - 1) * 100, m[2] * 100).map((b) => ({ body: b }));
     if ((m = /\/issues\/(\d+)\/labels(?:\/(.+))?$/.exec(path))) {
       const i = w.at(Number(m[1]));
       return void (i.labels = m[2] ? i.labels.filter((l) => l !== decodeURIComponent(m[2])) : [...i.labels, ...body.labels]);
@@ -198,6 +200,7 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め3・�
     ["R16 対話作業の境目をまたがない種類の変更は通す", { status: "保留", type: "要望", typeChanges: [["不具合", "要望"]] }, null, ev.issue(1, "typed"), { type: "要望" }],
     ["R16 対話作業の境目をまたぐ種類の変更は戻す", { status: "未着手", board: "dialog", type: "不具合", typeChanges: [[config.dialogType, "不具合"]] }, null, ev.issue(1, "typed"), { type: config.dialogType }],
     ["Claude が本文の完了の条件に印を付けた → 決め直す", { status: "未着手", body: "- [x] 作る\n" }, null, ev.issue(1, "edited", config.claude, { body: "- [x] 作る\n", changes: { body: { from: "- [ ] 作る\n" } } }), { status: "完了" }],
+    ["条件の無い（子でない）issue は、今までどおり決め直しで完成で閉じる", { status: "未着手", body: "説明だけ\n" }, null, ev.comment(1), { state: "CLOSED", reason: "COMPLETED" }],
     ["回答のボタンだけを書き足した本文の書き換え → 受けない（問いの前にボタンを消さない）", { status: "未着手", body: withButton("- [ ] 作る\n", config, 1) }, null,
       ev.issue(1, "edited", config.claude, { body: withButton("- [ ] 作る\n", config, 1), changes: { body: { from: "- [ ] 作る\n" } } }), { status: "未着手", runs: [] }],
   ];
@@ -243,13 +246,15 @@ test("tasks#824 待つ相手: 開いた子がある親は、残りが確かめ�
 test("tasks#824 継承: 子は優先度・着手可能日時・急ぎ・保留を親の値で見る。条件の無い子は作っても閉じず、PR のマージのあと master の CI が通ったら閉じ、親へ伝わる", async () => {
   // 子の欄が空のままなら既定の「中」で並び、番号の小さい #3・#5 が先になる。親の値を見ると、高い親の子 #8 が先になる。
   const w = world([{ n: 1, status: "未着手", priority: "高", body: "- [ ] 動く\n  - 子: #8\n" }, { n: 8, parent: 1, body: CHILD, board: null },
-    { n: 3, status: "未着手", priority: "中" }, { n: 4, status: "未着手", priority: "低", body: "- [ ] 動く\n  - 子: #5\n" }, { n: 5, parent: 4, status: "未着手", body: CHILD }]);
+    { n: 3, status: "未着手", priority: "中" }, { n: 4, status: "未着手", priority: "低", body: "- [ ] 動く\n  - 子: #5\n" }, { n: 5, parent: 4, status: "未着手", body: CHILD },
+    { n: 9, status: "未着手", blockedBy: [1], body: CONFIRM }]);
   await w.send(ev.issue(8, "opened"));
   assert.deepEqual([w.at(8).state, w.at(8).priority], ["OPEN", null], "作ったとたんに閉じず、優先度の欄は空のまま");
   assert.deepEqual(w.titles().sort(), ["#3 作る", "#8 作る"], "高い親の子を、低い親の子より先に振り出す（親は子を待つ）");
   Object.assign(w.at(8), { pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m8" } });
   await w.send(ev.run(w.run(8), "completed"));
   assert.deepEqual([w.at(8).state, w.at(8).reason], ["CLOSED", "COMPLETED"]);
+  assert.deepEqual([w.at(9).status, head(w.at(9))], ["回答待ち", "## 問い（確かめ）"], "子が閉じ → 親が閉じ → 親を待っていた issue まで、同じ出来事の中で決め直す");
   await w.send(ev.issue(8, "closed", config.gateBot)); // ゲートが閉じた出来事
   assert.deepEqual([w.at(1).state, w.at(1).reason, w.at(1).body.includes("- [x] 動く")], ["CLOSED", "COMPLETED", true], "子が受け持つ条件だけの親は、子が閉じたら閉じる");
 
@@ -264,13 +269,14 @@ test("tasks#824 継承: 子は優先度・着手可能日時・急ぎ・保留�
 });
 
 test("tasks#824 親が閉じたら: 開き直されない閉じ方なら、開いている子を見送りで閉じて知らせる（動いている実行も取り消す）", async () => {
-  const w = world([{ n: 1, status: "未着手", body: "- [ ] a\n  - 子: #2\n" }, { n: 2, parent: 1, status: "未着手", body: CHILD }]);
+  const w = world([{ n: 1, status: "未着手", body: "- [ ] a\n  - 子: #2\n" }, { n: 2, parent: 1, status: "未着手", body: CHILD }, { n: 3, status: "未着手", blockedBy: [2] }]);
   await w.send(ev.schedule());
   await w.send(ev.run(w.run(2), "requested"));
   Object.assign(w.at(1), { state: "CLOSED", reason: "COMPLETED", body: "- [x] a\n  - 子: #2\n" }); // ユーザーが「満たされた」と閉じた
   await w.send(ev.issue(1, "closed"));
   assert.deepEqual([w.at(2).state, w.at(2).reason, head(w.at(2)), w.writes.filter(([k]) => k === "取り消し").map(([, id]) => id)],
     ["CLOSED", "NOT_PLANNED", "親 #1 が閉じたので、見送りで閉じます。", [w.run(2).id]]);
+  assert.deepEqual([w.at(3).status, head(w.at(3))], ["回答待ち", "## 問い（判断）"], "ゲートが閉じた子の先（その子を待つ issue）まで、同じ出来事の中で決め直す");
   for (const [name, parent, want] of [["条件の残る親を完成で閉じた → 親は開き直し、子はそのまま", { reason: "COMPLETED" }, ["OPEN", "OPEN"]],
     ["親を見送りで閉じた → 子も見送り", { reason: "NOT_PLANNED" }, ["CLOSED", "CLOSED"]]]) {
     const x = world([{ n: 1, status: "未着手", state: "CLOSED", body: "- [ ] a\n  - 子: #2\n", ...parent }, { n: 2, parent: 1, status: "保留", body: CHILD }]);
@@ -314,11 +320,44 @@ test("tasks#824 採否は親か分割元から受け継ぐ。子に書かれた�
   }
 });
 
+test("tasks#824 レビューの直し: 印は指した行に・重複も見送り側・古い問いもさかのぼる・閉じた親の子は振り出さない・見送りで閉じたら PR も閉じる", async () => {
+  const same = world([{ n: 1, status: "未着手", body: "- [ ] 動く\n  - 子: #2\n- [ ] 動く\n  - 子: #3\n" }, { n: 2, parent: 1, status: "保留", body: CHILD },
+    { n: 3, parent: 1, status: "完了", state: "CLOSED", reason: "COMPLETED", body: CHILD }]);
+  await same.send(ev.issue(3, "closed"));
+  assert.equal(same.at(1).body, "- [ ] 動く\n  - 子: #2\n- [x] 動く\n  - 子: #3\n", "1行目の文が同じでも、閉じた子の行にだけ印");
+
+  const dup = world([{ n: 1, status: "未着手", body: "- [ ] a\n  - 子: #2\n" }, { n: 2, parent: 1, status: "完了", state: "CLOSED", reason: "DUPLICATE", body: CHILD }]);
+  await dup.send(ev.issue(2, "closed"));
+  assert.deepEqual([dup.at(1).status, head(dup.at(1))], ["回答待ち", "## 問い（判断）"], "重複で閉じた子も、続けるかを問う");
+
+  const old = world([{ n: 6, status: "未着手", blockedBy: [7], comments: [askDropped([7], config.questionTemplate), `## 回答\n**${droppedQuestion([7])}**\n\n回答: 続ける`,
+    ...Array.from({ length: 45 }, (_, k) => `メモ ${k}`)] }, { n: 7, status: "完了", state: "CLOSED", reason: "NOT_PLANNED" }]);
+  await old.send(ev.comment(6));
+  assert.deepEqual([asked(old.at(6)), old.titles()], [1, ["#6 作る"]], "最近の40件より前に答えた問いも見つけ、問い直さない");
+
+  const gone = world([{ n: 1, status: "完了", state: "CLOSED", reason: "COMPLETED", body: "- [x] a\n" }, { n: 2, parent: 1, status: "未着手", body: CHILD }]);
+  await gone.send(ev.schedule());
+  assert.deepEqual(gone.titles(), [], "親が閉じた子は、決め直す前でも振り出さない");
+
+  const pr = world([{ n: 1, status: "完了", state: "CLOSED", reason: "NOT_PLANNED" }, { n: 2, parent: 1, status: "検証待ち", body: CHILD, pr: { draft: false, checks: "SUCCESS" } }]);
+  await pr.send(ev.issue(1, "closed"));
+  assert.deepEqual([pr.at(2).state, pr.at(2).reason, pr.at(2).pr.state], ["CLOSED", "NOT_PLANNED", "CLOSED"], "見送りで閉じた子の開いた PR も閉じる");
+});
+
+test("tasks#824 親子を外したら親は待ちをやめ、子を開き直したら親はまた待つ", async () => {
+  const w = world([{ n: 1, status: "未着手", body: "- [ ] a\n" }, { n: 2, status: "保留", body: CHILD }]);
+  await w.send(ev.sub(1, 2, "sub_issue_removed"));
+  assert.deepEqual(w.titles(), ["#1 作る"], "外された子を待たない");
+  const x = world([{ n: 1, status: "未着手", body: "- [x] a\n  - 子: #2\n- [ ] 見た目\n  - 確かめる: ユーザー\n" }, { n: 2, parent: 1, status: "完了", body: CHILD }]);
+  await x.send(ev.issue(2, "reopened"));
+  assert.deepEqual([x.at(1).status, asked(x.at(1)), x.titles()], ["未着手", 0, ["#2 作る"]], "開き直した子を待ち、親の確かめを問わない");
+});
+
 test("tasks#824 記法: 条件はチェックの行から字下げした続きまで。「- 確かめる:」「- 子:」だけが属性で、文の中の括弧や小項目は文の続き", () => {
-  assert.deepEqual(conditions("- [ ] 道を押すと値が出る（区間の境目を含む）\n  境目では両側の値\n  - 夜間も含む\n  - 子: #12\n- [x] 済んだ\n- [ ] 見た目（色）\n  - 確かめる: ユーザー\n説明の段落\n"), [
-    { line: "道を押すと値が出る（区間の境目を含む）", text: "道を押すと値が出る（区間の境目を含む） 境目では両側の値 - 夜間も含む", done: false, verify: "Claude", child: 12 },
-    { line: "済んだ", text: "済んだ", done: true, verify: "Claude", child: null },
-    { line: "見た目（色）", text: "見た目（色）", done: false, verify: "ユーザー", child: null }]);
+  assert.deepEqual(conditions("- [ ] 道を押すと値が出る（区間の境目を含む）\n  境目では両側の値\n  - 夜間も含む\n  - 子: #12\n- [x] 済んだ\n- [ ] 見た目（色）\n\n  - 確かめる: ユーザー\n説明の段落\n"), [
+    { index: 0, text: "道を押すと値が出る（区間の境目を含む） 境目では両側の値 - 夜間も含む", done: false, verify: "Claude", child: 12 },
+    { index: 4, text: "済んだ", done: true, verify: "Claude", child: null },
+    { index: 5, text: "見た目（色）", done: false, verify: "ユーザー", child: null }], "続きの間の空行のあとの属性も、同じ条件の属性");
 });
 
 test("K6・受け箱・状況の更新: 止めたら振り出さず理由を出す。処理が落ちても出来事を失わず、一時の失敗はやり直し、直らない失敗はすぐ諦めて出す", async () => {

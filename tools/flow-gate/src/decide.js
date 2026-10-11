@@ -1,7 +1,7 @@
 // タスクのあるべき姿を、事実だけから1つの決め方で決める。GitHub に触れない。facts は src/facts.js: readFacts が組む。
 // 返すのは、ゲートが保つ値の全部（ステータス・開き閉じ・種類・担当者・本文・ボード・PR をレビュー可能にするか・出す問い・
 // 取り消す実行）。ゲートは今の値と違う所だけを書くので、同じ事実からは何度決めても同じになる。
-import { bodyRest, droppedQuestion, splitBody, withButton } from "./questions.js";
+import { checkLines, splitBody, withButton } from "./questions.js";
 
 const HELD = { 作る: "進行中", 確かめる: "検証中" }; // 担当が持っている間のステータス
 const WAIT = ["回答待ち", "保留"]; // ユーザーの番（担当者の欄にユーザーを入れる）
@@ -17,11 +17,12 @@ export function decide(f, config) {
   const byChildren = f.remaining.filter((c) => c.child && f.children.some((k) => k.number === c.child && ACCEPTED(k)));
   const s = status({ ...f, remaining: f.remaining.filter((c) => !byChildren.includes(c)) }, config);
   if (board === "dialog" && !DIALOG.includes(s.status)) s.status = "未着手";
-  let body = bodyRest(f.body);
-  for (const line of [...byChildren.map((c) => c.line), ...(s.check ?? [])]) body = body.replace(`- [ ] ${line}`, `- [x] ${line}`);
+  let body = checkLines(f.body, [...byChildren.map((c) => c.index), ...(s.check ?? [])]);
   const missing = (s.fix ?? []).filter((l) => !body.includes(`] ${l}`));
   if (missing.length) body = `${body.trimEnd()}\n${missing.map((l) => `- [ ] ${l}`).join("\n")}\n`;
-  return { board, type, status: s.status, open: s.status !== "完了", closeAs: s.closeAs, ask: s.ask ?? null, cancel: s.cancel ?? [],
+  // 見送りで閉じる・閉じた issue の開いた PR は、もう確かめもマージもしないので閉じる。
+  const dropping = (s.closeAs ?? (f.open ? null : f.closedAs)) === "NOT_PLANNED";
+  return { board, type, status: s.status, open: s.status !== "完了", closeAs: s.closeAs, ask: s.ask ?? null, cancel: s.cancel ?? [], closePr: dropping && f.pr ? f.pr.id : null,
     notice: notice(f, s.status),
     ready: s.status === "検証待ち" && Boolean(f.pr?.draft), assignees: WAIT.includes(s.status) ? [config.user] : [],
     body: s.status === "回答待ち" || (f.question && !f.question.answer) ? withButton(body, config, f.number) : body };
@@ -63,7 +64,7 @@ function status(f, config) {
   const bad = q.answer.items.filter((i) => !i.ok);
   if (bad.length) return { status: "未着手", fix: bad.map((i) => `直す: ${i.note || i.text}`) };
   const ok = f.remaining.filter((c) => c.verify === "ユーザー" && q.answer.items.some((i) => i.ok && i.text === c.text));
-  return { ...table({ ...f, remaining: f.remaining.filter((c) => !ok.includes(c)) }), check: ok.map((c) => c.line) };
+  return { ...table({ ...f, remaining: f.remaining.filter((c) => !ok.includes(c)) }), check: ok.map((c) => c.index) };
 }
 
 // 手放したあとの表。作業のステータスなのに持たれていないのが、担当が手放した事実。
@@ -79,10 +80,10 @@ function table(f) {
   }
   // 待つ相手（前提・子）が開いている間は、確かめも完了もしない。見送りで閉じた相手がいれば、続けるかを一度だけ問う。
   if (f.blocked) return { status: "未着手" };
-  if (f.dropped.length && !f.comments.some((c) => c.includes(droppedQuestion(f.dropped)))) return { status: "回答待ち", ask: { dropped: f.dropped } };
+  if (f.dropped.length && !f.droppedAsked) return { status: "回答待ち", ask: { dropped: f.dropped } };
   const released = Object.values(HELD).includes(f.status);
-  // 完了の条件を持たない issue（子）は、PR がマージされ、マージのコミットの master の CI が通ったら完了。
-  if (!f.conditions.length) return f.merged ? { status: f.mergeChecks === "SUCCESS" ? "完了" : "CI待ち", closeAs: "COMPLETED" } : released ? IRREGULAR : { status: "未着手" };
+  // 子は完了の条件を持たず、PR がマージされ、マージのコミットの master の CI が通ったら完了。
+  if (f.parent && !f.conditions.length) return f.merged ? { status: f.mergeChecks === "SUCCESS" ? "完了" : "CI待ち", closeAs: "COMPLETED" } : released ? IRREGULAR : { status: "未着手" };
   // マージのあとの残りは、マージのコミットの master の CI（デプロイを含む）が終わってから扱う（本番に出る前に確かめを問わない。原則2）。
   if (!f.remaining.length) return { status: "完了", closeAs: "COMPLETED" };
   if (f.merged && f.mergeChecks !== "SUCCESS") return { status: "CI待ち" };

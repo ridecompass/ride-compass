@@ -16,9 +16,14 @@ export async function handle(gh, { patrol, inbox }, config, name, payload) {
   const { numbers, moved } = run ? { numbers: [run.number] } : await route(gh, config, name, payload);
   const record = await patrol.all();
   const settled = await Promise.all(numbers.map((n) => settle(gh, config, n, record, moved)));
-  // ゲートがいま閉じた issue の矢印1本の先も、振り出す前に決め直す（決め直す前の古いステータスで、親を振り出さない）。
-  const next = [...new Set((await Promise.all(settled.filter((s) => s.closedNow).map((s) => near(gh, config, s.number)))).flat())].filter((n) => !numbers.includes(n));
-  settled.push(...(await Promise.all(next.map((n) => settle(gh, config, n, record)))));
+  // ゲートがいま閉じた issue の矢印1本の先も、閉じるものが無くなるまで、振り出す前に決め直す（古いステータスで親を振り出さない）。
+  const seen = new Set(numbers);
+  for (let wave = settled; wave.length;) {
+    const next = [...new Set((await Promise.all(wave.filter((s) => s.closedNow).map((s) => near(gh, config, s.number)))).flat())].filter((n) => !seen.has(n));
+    next.forEach((n) => seen.add(n));
+    wave = await Promise.all(next.map((n) => settle(gh, config, n, record)));
+    settled.push(...wave);
+  }
   await dispatch(gh, patrol, config, settled, run && payload.action === "completed" ? [run.kind] : []);
 }
 

@@ -17,19 +17,25 @@ export function splitBody(body) {
 export const bodyRest = (body) => splitBody(body).rest;
 export const withButton = (body, config, number) =>
   `<!-- flow-gate -->\n[![回答する](${config.urls.gate}/button.svg)](${answerUrl(config, number)})\n<!-- /flow-gate -->\n\n${bodyRest(body)}`;
-// 完了の条件（.claude/skills/file-issue/SKILL.md「issue の形」）。1つの条件はチェックの行から、それより深く字下げした続きの行まで。
-// 続きの行のうち「- 確かめる: 」「- 子: 」で始まる行だけが属性で、ほかは条件の文の続き。属性を行の外に置くのは、文の中の記号と混ざらないため。
+// 完了の条件（.claude/skills/file-issue/SKILL.md「issue の形」）。1つの条件はチェックの行から、それより深く字下げした続きの行まで
+// （Markdown と同じく、続きの間の空行も同じ条件に数える）。続きの行のうち「- 確かめる: 」「- 子: 」で始まる行だけが属性で、ほかは条件の文の続き。
+// 属性を行の外に置くのは、文の中の記号と混ざらないため。index はチェックの行が本文（bodyRest）の何行目か（印はこの行に付ける）。
 const CHECK = /^(\s*)- \[([ x])\] (.+)$/;
 const ATTR = /^- (確かめる|子): (.+)$/;
+const indent = (l) => /^\s*/.exec(l)[0].length;
 export function conditions(body) {
   const lines = bodyRest(body).split("\n");
   const all = [];
   for (let i = 0; i < lines.length; i++) {
     const m = CHECK.exec(lines[i]);
     if (!m) continue;
-    const c = { line: m[3], text: [m[3].trim()], done: m[2] === "x", verify: "Claude", child: null };
-    for (; i + 1 < lines.length && lines[i + 1].trim() && !CHECK.test(lines[i + 1]) && /^\s*/.exec(lines[i + 1])[0].length > m[1].length; i++) {
-      const t = lines[i + 1].trim();
+    const c = { index: i, text: [m[3].trim()], done: m[2] === "x", verify: "Claude", child: null };
+    for (;;) {
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim()) j++;
+      if (j >= lines.length || CHECK.test(lines[j]) || indent(lines[j]) <= m[1].length) break;
+      i = j;
+      const t = lines[i].trim();
       const a = ATTR.exec(t);
       if (a?.[1] === "確かめる") c.verify = a[2].trim() === "ユーザー" ? "ユーザー" : "Claude";
       else if (a) c.child = Number(/^#(\d+)$/.exec(a[2].trim())?.[1]) || null;
@@ -38,6 +44,12 @@ export function conditions(body) {
     all.push({ ...c, text: c.text.join(" ") });
   }
   return all;
+}
+// 本文の、index の行のチェックに印を付ける（同じ文の条件が2つあっても、指した行にだけ付ける）。
+export function checkLines(body, indexes) {
+  const lines = bodyRest(body).split("\n");
+  for (const k of indexes) lines[k] = lines[k].replace("- [ ] ", "- [x] ");
+  return lines.join("\n");
 }
 export const remaining = (body) => conditions(body).filter((c) => !c.done);
 export const confirmItems = (body) => remaining(body).filter((c) => c.verify === "ユーザー").map((c) => c.text);
