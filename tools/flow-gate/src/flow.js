@@ -1,6 +1,6 @@
 // 出来事1件の処理。担当の実行の知らせは見回りへ、ほかはゲートへ渡し、見回りが起こしたタスクはその場で決め直す（持った。順番待ちを含む）。
 // 定時は、時刻が事実になるもの（着手可能日時・利用の上限の止めが解ける）の振り出しと、状況の更新と、時間の経過で変わる決め方（動きの確かめ）の
-// きっかけ。見回りは状態を決めず、ユーザーの番でない開いた issue を1件ずつの出来事（recheck）として受け箱に入れ、ゲートに決め直させる。
+// きっかけ。見回りは状態を決めず、開いた issue の全部を1件ずつの出来事（recheck）として受け箱に入れ、ゲートに決め直させる。
 import { runOf } from "./facts.js";
 import { ignored, near, reportHealth, route, settle } from "./gate.js";
 
@@ -11,7 +11,7 @@ export async function handle(gh, { patrol, inbox }, config, name, payload) {
     await inbox.clear();
     // 前の回の決め直しがまだ受け箱に残っていれば、重ねて入れない。
     const queued = new Set((await inbox.pending("recheck")).map((p) => p.number));
-    for (const number of await mine(gh, config)) if (!queued.has(number)) await inbox.push("recheck", { number });
+    for (const number of await open(gh, config)) if (!queued.has(number)) await inbox.push("recheck", { number });
     return;
   }
   if (name === "recheck") return dispatch(gh, patrol, config, [await settle(gh, config, payload.number, await patrol.state())], []);
@@ -40,9 +40,10 @@ async function dispatch(gh, patrol, config, settled, kinds, always) {
   return sent;
 }
 
-// 動きを確かめ直す issue: ユーザーの番でない開いた issue の全部（issue の更新の時刻はゲート自身の書き込みでも進むので、それで絞らない）。
-async function mine(gh, config) {
-  const q = encodeURIComponent(`repo:${config.tasks} is:issue is:open -assignee:${config.user}`);
+// 決め直す issue: 開いた issue の全部。ユーザーの番のものも、手で付けた担当者のずれをゲートの決めた値へ戻すために含める。issue の更新の時刻は
+// ゲート自身の書き込みでも進むので、それで絞らない。
+async function open(gh, config) {
+  const q = encodeURIComponent(`repo:${config.tasks} is:issue is:open`);
   const numbers = [];
   for (let page = 1; ; page++) {
     const { items } = await gh.rest("GET", `/search/issues?q=${q}&per_page=100&page=${page}`);
