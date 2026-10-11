@@ -22,8 +22,9 @@ description: "流れの摩擦の記録の仕方、起票の仕方、issue の本
 - **重ねない**: 直す場所（変える所。症状でなく、どこを変えれば消えるか）を1行で書き、`git fetch origin` のあと今の master で読み直して、
   直っていれば起こさない。直す場所が同じ開いた issue（「前後関係と組」の「探す」）があれば、症状が違っても起こさず、起きたこと
   （日時・作業中の issue・打ったコマンドと出た値）をそこへコメントで足す。寄せた症状まで直すかは、寄せた先が [fixing.md](../../rules/fixing.md)「直し方」で決める。
-- **書き方**: 「issue の形」の本文をファイルに書き、`GH_TOKEN=$FLOW_BOT_TOKEN gh issue create -R ridecompass/ride-compass-tasks --type <種類> --title <題名> --body-file <ファイル>`
-  で起こす。規模と優先度を欄に入れ（「ラベルと種類と欄」）、前後関係と組を張り（「前後関係と組」）、起こした番号を自分のタスクの報告に書く。
+- **書き方**: 「issue の形」の本文をファイルに書き、
+  `node .claude/skills/file-issue/scripts/new-issue.mjs --type <種類> --title <題名> --body-file <ファイル> --size <規模> --priority <優先度> [--blocked-by <前,...>] [--start <着手可能日時>]`
+  で起こす（形と欄を照らし、合わなければ作らずに合わない所を返すので、直して打ち直す）。前後関係と組を張り（「前後関係と組」）、起こした番号を自分のタスクの報告に書く。
 - 入口はゲートが決める（`docs/conventions/flow.md`「ステータスと割り当て」の「入口」）。Claude が起こした要望は、ゲートが採否を問う。
 
 ## issue の形
@@ -109,7 +110,8 @@ description: "流れの摩擦の記録の仕方、起票の仕方、issue の本
 issue へ切り出す。ユーザーの答えで外した要望は作らず、元の経緯に残す。例: 「xxx・yyy・zzz をやる」にユーザーが「xxx と yyy だけ」と
 答えたら、元を xxx に絞り、yyy だけを切り出す。
 
-- 切り出した issue の本文に「分割元: #<元>」の1行を書く。ゲートはこの行で採否を元から受け継ぎ、入口で問わない。待つ意味は持たない。
+- 切り出した issue は、起票（「起票する」）に `--origin <元>` を付けて起こす（本文に「分割元: #<元>」の1行が入る）。ゲートはこの行で
+  採否を元から受け継ぎ、入口で問わない。待つ意味は持たない。
 - 完了の条件は、切り出す要望の分を元から移す（写さない。1つの条件は1つの issue にだけ置く）。どちらも、自分の条件が済めばゲートが閉じる。
 - 種類・優先度・着手可能日時は、切り出した issue が自分で持つ（起票と同じ。「ラベルと種類と欄」）。
 
@@ -118,7 +120,9 @@ issue へ切り出す。ユーザーの答えで外した要望は作らず、�
 1つの要望の実現に要る機能の変更が大きく、Pull Request 1本に収まらなければ、機能ごとに子（sub-issue）へ分ける。親は要望のまま残り、
 作業を持たない。
 
-    GH_TOKEN=$FLOW_BOT_TOKEN gh issue create -R ridecompass/ride-compass-tasks --parent <親> --type <親の種類> --title <題名> --body-file <本文> [--blocked-by <前の子>,...]
+    node .claude/skills/file-issue/scripts/new-issue.mjs --parent <親> --title <題名> --body-file <本文> --size <規模> [--blocked-by <前の子>,...]
+
+  （種類は親と同じになり、下の決まりに合わなければ作らない。）
 
 - 子は完了の条件を持たず、本文はやることだけにする。子は自分の Pull Request がマージされ、マージのコミットの master の CI が通れば
   ゲートが閉じる。Pull Request を出さない作業（調べるだけ・本番で操作するだけ）は子にしない。
@@ -138,5 +142,4 @@ issue へ切り出す。ユーザーの答えで外した要望は作らず、�
 開発機でしかできない作業（`docs/conventions/flow.md`「担当」）は、種類を対話作業（`flow.config.json: dialogType`）にした issue を
 起こし、元の issue の前提に張る（Pull Request を出さないので子にしない。担当へは振り出されない）。
 
-    GH_TOKEN=$FLOW_BOT_TOKEN gh issue create -R ridecompass/ride-compass-tasks --type <対話作業> --title <題名> --body-file <本文>
-    GH_TOKEN=$FLOW_BOT_TOKEN gh issue edit <元> -R ridecompass/ride-compass-tasks --add-blocked-by <対話作業の issue>
+    node .claude/skills/file-issue/scripts/new-issue.mjs --type 対話作業 --title <題名> --body-file <本文> --blocking <元>

@@ -5,11 +5,9 @@
 // 行き先はゲートが答えから決め、書いた文があれば Claude が読んでから当てる。
 import { GitHub } from "./github.js";
 import { jstText } from "./facts.js";
-import { DONE, bodyRest, confirmItems, isQuestion, latestQuestion, norm } from "./questions.js";
+import { CHOICES, DONE, NONE, answerBody, answerProblem, bodyRest, confirmItems, isQuestion, latestQuestion, norm } from "./questions.js";
 
 const RECENT = 5; // 材料に載せる最近のコメント（上に出した問いのコメントは数えない）
-const NONE = "どれでもない（書く欄に書く）";
-const CHOICES = { 採否: ["着手する", "保留する", "見送る"], イレギュラー: ["やり直す", "保留する", "見送る"] };
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 const SCRIPT = `<script>
@@ -76,25 +74,19 @@ async function submit(gh, env, config, number, form) {
   // 確かめの項目は開いたときの文で送られる。今の本文の残りに無い項目があれば、開いたあとに本文が変わったので開き直してもらう。
   const items = [...form.keys()].filter((k) => /^item\d+$/.test(k)).map((k) => form.get(k));
   if (items.some((t) => !confirmItems(issue.body).includes(t))) return { error: "本文の完了の条件が変わっています。開き直してください。" };
-  const choice = form.get("choice");
-  const done = q.kind === "確かめ" && form.get("done") === "on";
-  const text = String(form.get("note") ?? "").trim();
-  if (!text && q.kind === "確かめ" && !done) return { error: "完了にするか、直してほしいことを書いてください。" };
-  if (!text && q.kind === "判断" && (!choice || choice === NONE)) return { error: "どれでもないときは、書く欄に書いてください。" };
+  const answer = { choice: form.get("choice"), done: q.kind === "確かめ" && form.get("done") === "on", items, text: String(form.get("note") ?? "").trim() };
+  const problem = answerProblem(q, answer);
+  if (problem) return { error: problem };
   const chosen = form.getAll("label").filter((n) => all.includes(n));
   const added = chosen.filter((n) => !have.includes(n));
   const removed = have.filter((n) => all.includes(n) && !chosen.includes(n));
-  const lines = ["## 回答", `**${q.text}**`, ""];
-  if (choice) lines.push(`回答: ${choice}`);
-  if (done) lines.push(`回答: ${DONE}`, ...items.map((item) => `- 確かめた: ${item}`));
-  if (added.length || removed.length) lines.push(`ラベル: ${[...added.map((n) => `+${n}`), ...removed.map((n) => `−${n}`)].join(" ")}`);
-  if (text) lines.push("", text); // 書いた文は形を付けずにそのまま置く（ゲートは決まった形の行のほかを全部、Claude が読む文として扱う）
+  const labels = [...added.map((n) => `+${n}`), ...removed.map((n) => `−${n}`)].join(" ");
   const user = new GitHub(env.FORM_TOKEN);
   const path = `/repos/${config.tasks}/issues/${number}`;
-  await user.rest("POST", `${path}/comments`, { body: lines.join("\n") });
+  await user.rest("POST", `${path}/comments`, { body: answerBody(q, { ...answer, labels }) });
   await Promise.all([added.length && user.rest("POST", `${path}/labels`, { labels: added }),
     ...removed.map((n) => user.rest("DELETE", `${path}/labels/${encodeURIComponent(n)}`))].filter(Boolean));
-  return { url: issue.url, label: choice || (done ? DONE : "書いたこと") };
+  return { url: issue.url, label: answer.choice || (answer.done ? DONE : "書いたこと") };
 }
 
 export async function answerForm(request, env, config) {

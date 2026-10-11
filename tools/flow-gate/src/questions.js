@@ -53,6 +53,24 @@ export function checkLines(body, indexes) {
 }
 export const remaining = (body) => conditions(body).filter((c) => !c.done);
 export const confirmItems = (body) => remaining(body).filter((c) => c.verify === "ユーザー").map((c) => c.text);
+// Claude が条件の文の頭で指した行に印を付けた本文（.claude/skills/task-work/scripts/check.mjs）。指せるのは残りの条件のうちちょうど1つに
+// 当たるものだけで、ユーザーが確かめる行（答えでゲートが付ける）と子が受け持つ行（子が閉じたときにゲートが付ける）は指せない。
+// 本文の頭の回答のボタンは残す。合わなければ problems を返し、本文は返さない。
+export function checkByText(body, heads) {
+  const left = remaining(body);
+  const problems = [];
+  const indexes = [];
+  for (const h of heads) {
+    const hit = left.filter((c) => c.text.startsWith(h.trim()));
+    if (hit.length !== 1) problems.push(`「${h}」に当たる残りの条件が ${hit.length} 個（1個に決まる頭で指す）`);
+    else if (hit[0].verify === "ユーザー") problems.push(`「${h}」はユーザーが確かめる条件（答えでゲートが付ける）`);
+    else if (hit[0].child) problems.push(`「${h}」は子 #${hit[0].child} が受け持つ条件（子が完成で閉じたときにゲートが付ける）`);
+    else indexes.push(hit[0].index);
+  }
+  if (problems.length) return { problems };
+  const head = splitBody(body).foreign.length ? "" : (BLOCK.exec(norm(body))?.[0] ?? "");
+  return { body: head + checkLines(body, indexes) };
+}
 
 // 問い: 頭の行・問いの文1行・（あれば）「### 案」と1行1案・（あれば）<details> の判断材料。ほかの行があれば null。
 function parseQuestion(text) {
@@ -80,6 +98,32 @@ export function checkQuestion(template, text) {
 // 答え: 決定（続ける・保留・見送り・完了）・確かめた項目・書いた文。前の形の「次のステータス:」「- 問題なし:」の行も読む。
 // 書いた文は、決まった形の行のほかの全部（前の形の「補足:」「- 問題あり:」も入る）。ゲートは文の中身を読まず、Claude が読むまで決定を当てない。
 export const DONE = "完了にする";
+export const NONE = "どれでもない（書く欄に書く）"; // 判断で、どの案でもないとき
+export const CHOICES = { 採否: ["着手する", "保留する", "見送る"], イレギュラー: ["やり直す", "保留する", "見送る"] };
+// 答えの入力が問いに足りているか（回答フォームと、チャットの答えの記録 .claude/skills/ask/scripts/answer.mjs が同じに照らす）。足りなければ理由。
+// 確かめには選択肢が無く、完了にするのは確かめだけ（ゲートは最初の「回答:」行を読むので、2行あると取り違える）。
+export function answerProblem(q, { choice, done, text }) {
+  if (q.kind === "確かめ") {
+    if (choice) return "確かめの問いに選択肢はありません（完了にするか、直してほしいことを書いてください）。";
+    return done || text ? null : "完了にするか、直してほしいことを書いてください。";
+  }
+  if (done) return `「${DONE}」は確かめの問いにだけ使えます。`;
+  if (q.kind === "判断") {
+    if (choice && !choice.trim()) return "選んだ案が空です。";
+    if (choice && q.plans.length && ![...q.plans, NONE].includes(choice)) return `案にない答えです（案: ${[...q.plans, NONE].join(" / ")}）。`;
+    return (!choice || choice === NONE) && !text ? "どれでもないときは、書く欄に書いてください。" : null;
+  }
+  return CHOICES[q.kind].includes(choice) ? null : `選べるのは ${CHOICES[q.kind].join("・")} です。`;
+}
+// 答えのコメント（.claude/skills/ask/SKILL.md「答え」の形）。書いた文は形を付けずにそのまま置く（ゲートは決まった形の行のほかを、Claude が読む文として扱う）。
+export function answerBody(q, { choice, done, items = [], labels = "", text = "" }) {
+  const lines = ["## 回答", `**${q.text}**`, ""];
+  if (choice) lines.push(`回答: ${choice}`);
+  if (done) lines.push(`回答: ${DONE}`, ...items.map((item) => `- 確かめた: ${item}`));
+  if (labels) lines.push(`ラベル: ${labels}`);
+  if (text) lines.push("", text);
+  return lines.join("\n");
+}
 export const APPLIED = "答えに書いた文を Claude が読んだので、答えを当てました"; // 書いた文のある答えを当てた印（二度は当てない）
 export const isAnswer = (t) => /^## 回答\n/.test(norm(t));
 const FIXED = /^(## 回答|\*\*.+\*\*|(?:回答|次のステータス): .*|- (?:確かめた|問題なし): .*|ラベル: .*)$/;
