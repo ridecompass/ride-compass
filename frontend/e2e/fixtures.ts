@@ -312,19 +312,33 @@ export async function openMobileSheet(page: Page, name: MobileSheetName) {
 }
 
 /**
- * 「ルート設定」シートから全長の目標を指定してルートを生成し、完了まで待つ。生成中は
- * ボタンの名前が「生成中...」へ変わるため、「ルート生成」が再び押せることが完了の合図。
+ * 「ルート設定」シートから全長の目標を指定してルートを生成し、候補が出て移った「ルート結果」シートを返す。
  * @public 撮影の脚本が口（`capture/context.ts`の`fixtures`）越しに呼ぶ。knipは口越しの呼び出しを辿れない。
  */
 export async function generateRoutes(page: Page, { distanceKm = 20 }: { distanceKm?: number } = {}) {
   const sheet = await openMobileSheet(page, "ルート設定");
   await sheet.getByLabel("全長の目標", { exact: true }).fill(String(distanceKm));
-  await runGeneration(sheet);
-  return sheet;
+  return generateInMobileSheet(page, sheet);
+}
+
+/** 開いている「ルート設定」シートで「ルート生成」を押し、候補が出て「ルート結果」シートへ移るまで待って、そのシートを返す。
+ * 候補が出ない応答では移らないので、候補0件・失敗を見るテストは使わない。 */
+export async function generateInMobileSheet(
+  page: Page,
+  settings: Locator,
+  { timeout = 60_000 }: { timeout?: number } = {},
+): Promise<Locator> {
+  await settings.getByRole("button", { name: "ルート生成" }).click();
+  const outcome = page.getByRole("dialog", { name: "ルート結果" });
+  await expect(outcome, "候補が出ず「ルート結果」へ移らなかった（候補0件・失敗は窓で知らせる）").toBeVisible({
+    timeout,
+  });
+  return outcome;
 }
 
 /** 「ルート生成」を押し、生成が終わってボタンが再び押せるまで待つ。`scope`はボタンを含む範囲
- * （スマホ幅はシート、それ以外は画面）。 */
+ * （スマホ幅はシート、それ以外は画面）。スマホ幅で候補が出ると「ルート設定」シートを離れるので、そのときは
+ * `generateInMobileSheet`を使う。 */
 export async function runGeneration(
   scope: Page | Locator,
   { timeout = 60_000 }: { timeout?: number } = {},

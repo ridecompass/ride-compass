@@ -16,7 +16,7 @@ import type { Coordinates, RouteCandidate, RoutePreferenceWeights } from "@/type
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 /** 押した「生成」の直近の結果。失敗は前の候補を残したまま出すため、候補0件の理由と分けて持つ。 */
-type GenerationNotice = { kind: "failed" | "empty"; message: string };
+export type GenerationNotice = { kind: "failed" | "empty"; message: string };
 
 /** ルート生成の進み方。同時に成り立つのは1つだけ。 */
 type Generation =
@@ -74,36 +74,19 @@ export function useRouteGeneration({
   const { routePreferenceToSend } = conditions;
   const { distanceTargeted, distance, waypoints, destination, maxRoutes, hardFilters } = conditions.snapshot;
   // いまの条件から生成の入力を組み立てる。`destinationOverride`はbackendが補正した目的地。
-  const buildCurrentGenerationInput = useCallback(
-    (destinationOverride?: Coordinates): GenerationInput => {
-      return {
-        origin,
-        distanceKm: distanceTargeted ? Number(distance) : null,
-        distanceToleranceKm: routeGenerateConfig.default_distance_tolerance_km,
-        maxRoutes: Number(maxRoutes),
-        assumedSpeedKmh,
-        startTime: departure.at,
-        startTimePinned: departure.pinned,
-        hardFilters,
-        routePreference: routePreferenceToSend,
-        waypoints,
-        destination: destinationOverride ?? destination,
-      };
-    },
-    [
-      distanceTargeted,
-      distance,
-      waypoints,
-      destination,
-      origin,
-      maxRoutes,
-      assumedSpeedKmh,
-      departure.at,
-      departure.pinned,
-      hardFilters,
-      routePreferenceToSend,
-    ],
-  );
+  const buildCurrentGenerationInput = (destinationOverride?: Coordinates): GenerationInput => ({
+    origin,
+    distanceKm: distanceTargeted ? Number(distance) : null,
+    distanceToleranceKm: routeGenerateConfig.default_distance_tolerance_km,
+    maxRoutes: Number(maxRoutes),
+    assumedSpeedKmh,
+    startTime: departure.at,
+    startTimePinned: departure.pinned,
+    hardFilters,
+    routePreference: routePreferenceToSend,
+    waypoints,
+    destination: destinationOverride ?? destination,
+  });
 
   // 表示中の候補を作った条件と、いまのフォームがずれているか（変えただけでは何も起きないことを知らせる）。
   const conditionsDirty =
@@ -170,11 +153,12 @@ export function useRouteGeneration({
     else onOutcome("failed");
   }
 
-  /** 直近の案内を消す（実行中なら何もしない）。 */
-  const clearNotice = useCallback(
-    () => setGeneration((current) => (current.status === "idle" ? GENERATION_IDLE : current)),
-    [],
-  );
+  /** 直近の案内（入力の誤りを含む）を消す（実行中なら何もしない）。 */
+  const { clear: clearFormError } = routeFormSubmit;
+  const clearNotice = useCallback(() => {
+    clearFormError();
+    setGeneration((current) => (current.status === "idle" ? GENERATION_IDLE : current));
+  }, [clearFormError]);
 
   /** 生成の結果（作った条件・案内）を消す。 */
   const clear = useCallback(() => {
@@ -204,8 +188,6 @@ export function useRouteGeneration({
           : undefined,
     /** 押した「生成」の直近の案内（候補0件の理由・入力の誤りか失敗）。候補が出たとき・実行中・まだ押していないときはnull。 */
     outcome,
-    /** 押した「生成」が通らなかった理由（入力の誤り・生成の失敗）。候補がある間も、前の候補の上に出す。 */
-    failure: outcome?.kind === "failed" ? outcome.message : null,
     conditionsDirty,
     destinationCorrected: generatedConditions?.destinationCorrected ?? false,
     weightsNotApplied: generatedConditions?.weightsNotApplied ?? false,

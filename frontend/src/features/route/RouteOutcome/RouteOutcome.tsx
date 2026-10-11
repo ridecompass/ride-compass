@@ -3,7 +3,6 @@
 import { Fragment, useEffect, useMemo, useRef } from "react";
 
 import AxisContributionBar, { hasContribution } from "@/components/AxisContributionBar/AxisContributionBar";
-import ErrorText from "@/features/route/ErrorText/ErrorText";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { DownloadIcon, FastestRouteIcon, RouteSpliceIcon } from "@/components/ui/icons/icons";
@@ -21,6 +20,7 @@ import SegmentWind from "@/features/route/SegmentWind/SegmentWind";
 import { formatDurationShort } from "@/features/route/formatDuration";
 import { downloadGpx, MAX_GPX_TRACK_POINTS } from "@/features/route/gpxExport";
 import EditDifference from "@/features/route/EditDifference/EditDifference";
+import WarningText from "@/features/route/WarningText/WarningText";
 import {
   durationBaseline,
   durationDifferenceLabel,
@@ -52,16 +52,10 @@ type RouteGeneration = ReturnType<typeof useRouteGeneration>;
 
 interface RouteOutcomeProps {
   results: RouteResults;
-  /** 生成の進み方・案内・条件のずれ。 */
+  /** 生成の進み方・条件のずれ。 */
   generation: Pick<
     RouteGeneration,
-    | "running"
-    | "progressLabel"
-    | "outcome"
-    | "failure"
-    | "conditionsDirty"
-    | "weightsNotApplied"
-    | "destinationCorrected"
+    "running" | "progressLabel" | "conditionsDirty" | "weightsNotApplied" | "destinationCorrected"
   >;
   splice: Pick<SpliceSessionView, "canStart" | "start" | "panel">;
   /** 軸を「未使用」と分ける重み（`useRoutePlanner.ts: routeWeights`）。 */
@@ -69,7 +63,7 @@ interface RouteOutcomeProps {
 }
 
 /**
- * 「ルート結果」の中身（デスクトップの区分・モバイルのシートの両方）: 生成前・生成中・失敗の案内、候補の一覧（縦のタブ）と
+ * 「ルート結果」の中身（デスクトップの区分・モバイルのシートの両方）: 生成前・生成中の案内、候補の一覧（縦のタブ）と
  * 選んだ候補の中身・地図で押した区間の詳細、編集中は区間の乗り換えの編集面。
  */
 export default function RouteOutcome({ results, generation, splice, routeWeights }: RouteOutcomeProps) {
@@ -83,26 +77,10 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
     if (reusedRouteId !== null) reusedRowRef.current?.scrollIntoView({ block: "nearest" });
   }, [reusedRouteId]);
 
-  // 「ルート結果」に候補が無いときの中身（生成前・生成中・候補0件・失敗）。候補0件で生成前の案内へ戻ると、押したのに何も
-  // 起きていないように見える。
+  // 「ルート結果」に候補が無いときの中身（生成前・生成中）。候補0件の理由と失敗は、ここでなく窓で知らせる。
   function renderRouteOutcomeEmptyState() {
-    const { outcome } = generation;
     if (generation.running) {
       return <p className={textVariants({ variant: "hint" })}>{generation.progressLabel ?? "生成中..."}</p>;
-    }
-    if (outcome?.kind === "failed") {
-      return (
-        <ErrorText>
-          <GuideText text={outcome.message} />
-        </ErrorText>
-      );
-    }
-    if (outcome?.kind === "empty") {
-      return (
-        <p role="status" className={textVariants({ variant: "hint" })}>
-          {outcome.message}
-        </p>
-      );
     }
     return (
       <p className={textVariants({ variant: "hint" })}>
@@ -157,16 +135,10 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
     );
   }
 
-  // 「ルート結果」の中身（デスクトップの区分・モバイルのシートの両方）。候補がある間に「生成」が通らなかったら、
-  // 前の候補を残したまま先頭で知らせる（候補だけが並ぶと、作り直せたように見える）。
+  // 「ルート結果」の中身（デスクトップの区分・モバイルのシートの両方）。
   function renderRouteOutcome() {
     if (routes.length === 0) return renderRouteOutcomeEmptyState();
-    return (
-      <>
-        {generation.failure && <ErrorText>作り直せませんでした。{generation.failure}</ErrorText>}
-        {renderRouteOutcomeSectionBody()}
-      </>
-    );
+    return renderRouteOutcomeSectionBody();
   }
 
   // 候補ごとのタブの1列で、タブの切り替えが候補の切り替えを兼ねる。
@@ -186,21 +158,12 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
 
     return (
       <>
-        {/* 作り直しの失敗を出している間は、それが前の条件の候補であることも伝えているので重ねない。 */}
-        {generation.conditionsDirty && !generation.failure && (
-          <p className="m-0 text-[length:var(--font-size-sm)] text-[var(--color-warning-strong)]">
-            生成条件が変更されています
-          </p>
-        )}
-        {generation.weightsNotApplied && (
-          <p className="m-0 text-[length:var(--font-size-sm)] text-[var(--color-warning-strong)]">
-            重み配分を反映できず、既定の配分で作りました。
-          </p>
-        )}
+        {generation.conditionsDirty && <WarningText>生成条件が変更されています</WarningText>}
+        {generation.weightsNotApplied && <WarningText>重み配分を反映できず、既定の配分で作りました。</WarningText>}
         {generation.destinationCorrected && (
-          <p className="m-0 text-[length:var(--font-size-sm)] text-[var(--color-warning-strong)]">
+          <WarningText>
             指定した地点は自転車で行けない場所だったため、近くのアクセス可能な地点へ補正しました。
-          </p>
+          </WarningText>
         )}
         {reusedRouteId !== null && (
           <p className={cn(textVariants({ variant: "hint" }), "m-0")}>

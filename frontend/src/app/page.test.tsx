@@ -13,9 +13,10 @@
  *   区間を押して詳細を出せるのは「ルート結果」を見ている間だけのこと、編集の間は地図で地点も区間も扱わず全部の候補を重ね、
  *   作り直すと編集が終わること、作ると直前の作り直しの失敗の文言を消し、合成ルートを選んでいる間は元のルートだけを重ねること、
  *   地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）
- * - 画面の枠: スマホの下部タブとシート（1枚ずつ開く・地点を扱える間・結果の合図・候補を出せなかった理由の1行・ルートを収めるときに避ける
- *   シートの高さ・高さの保存と保存値の検査）、区分の開閉の保存、ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、
- *   メニューから入る使い方の説明とデバッグログ
+ * - 画面の枠: スマホの下部タブとシート（1枚ずつ開く・地点を扱える間・結果の合図・候補が届いた時点で「ルート設定」を開いて
+ *   いれば「ルート結果」へ移ってそこから全消去でき、ほかのときは移らず合図を出すこと・候補を出せなかった理由の1行・
+ *   ルートを収めるときに避けるシートの高さ・高さの保存と保存値の検査）、区分の開閉の保存、
+ *   ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、メニューから入る使い方の説明とデバッグログ
  *
  * ここで見ないもの: 子の部品は本物を描き、子が値をどう描くか（一覧の書式・印の色・天候の値）は各部品のテストが見る。
  * 地図の見え方の中身（どのレイヤーをどの色・重なりで描くか・レンズの選択肢・凡例）は地図の側（`features/map/scene/`）の
@@ -600,12 +601,15 @@ describe("地図で扱えること", () => {
       await waitFor(() => expect(mapOnScreen().sourceFeatures("route-splice-bands")).toEqual([]));
     });
 
-    it("作ると直前の作り直しの失敗の文言を消し、作った合成ルートを選んでいる間は、地図に元のルートだけを重ねる", async () => {
+    it("作り直しの失敗は前の候補を残して窓で知らせ、作った合成ルートを選んでいる間は、地図に元のルートだけを重ねる", async () => {
       const { user } = renderHome();
       await generateTwo(user);
       jobs.fail("混雑しています");
       await generate(user);
-      expect(await screen.findByText(/作り直せませんでした/)).toBeInTheDocument();
+      const notice = await screen.findByRole("dialog", { name: "作り直せませんでした" });
+      expect(notice).toHaveAccessibleDescription("混雑しています");
+      await user.click(within(notice).getByRole("button", { name: "閉じる" }));
+      expect(routeLinesOnMap()).toHaveLength(2);
       await startEditing(user);
       const [band] = mapOnScreen().sourceFeatures("route-splice-bands");
       clickMap(HERE, [
@@ -619,7 +623,6 @@ describe("地図で扱えること", () => {
       expect(routeLinesOnMap()).toEqual(expect.arrayContaining([BASE.geometry.coordinates, created]));
       expect(created).not.toEqual(BASE.geometry.coordinates);
       expect(created).not.toEqual(OTHER.geometry.coordinates);
-      expect(screen.queryByText(/作り直せませんでした/)).toBeNull();
     });
   });
 
@@ -666,7 +669,7 @@ describe("地図で扱えること", () => {
 });
 
 describe("画面の枠", () => {
-  it("スマホでは下部タブでシートを1枚ずつ開き、地図で地点を扱えるのは「ルート設定」の条件タブを開いている間だけ。結果の合図は「ルート結果」を開くまで残り、押した結果が候補を出せなかった理由（候補0件の理由・入力の誤り）は「ルート設定」にも1行で出す。候補0件の合図は成功と見分ける", async () => {
+  it("スマホでは下部タブでシートを1枚ずつ開き、地図で地点を扱えるのは「ルート設定」の条件タブを開いている間だけ。結果の合図は「ルート結果」を開くまで残り、押した結果が候補を出せなかった理由（候補0件の理由・入力の誤り）はシートでなく窓で出し、閉じると消える。候補0件の合図は成功と見分ける", async () => {
     installGeolocation(null);
     useMobileLayout();
     const { user } = renderHome();
@@ -680,8 +683,12 @@ describe("画面の枠", () => {
     await user.click(settingsTab());
     const settingsSheet = screen.getByRole("dialog", { name: "ルート設定" });
     await user.click(within(settingsSheet).getByRole("button", { name: "ルート生成" }));
-    expect(within(settingsSheet).getByText(/^現在地が分かりません/)).toBeInTheDocument();
+    const notice = screen.getByRole("dialog", { name: "ルートを作れませんでした" });
+    expect(notice).toHaveAccessibleDescription(/^現在地が分かりません/);
+    expect(within(settingsSheet).queryByText(/^現在地が分かりません/)).toBeNull();
     expect(outcomeTab).toHaveAccessibleDescription("生成に失敗しました");
+    await user.click(within(notice).getByRole("button", { name: "閉じる" }));
+    expect(screen.queryByRole("dialog", { name: "ルートを作れませんでした" })).toBeNull();
 
     await user.click(within(settingsSheet).getByRole("button", { name: "出発地を地図で選ぶ" }));
     expect(originMark().draggable).toBe(true);
@@ -691,17 +698,10 @@ describe("画面の枠", () => {
     clickMap(HERE);
     jobs.respond([FIRST], LOOP_CONDITIONS);
     expect(await generate(user)).toMatchObject({ latitude: HERE.latitude, longitude: HERE.longitude });
-    await waitFor(() => expect(outcomeTab).toHaveAccessibleDescription("新しい結果があります"));
-    expect(within(settingsSheet).queryByText(/^現在地が分かりません/)).toBeNull();
+    const outcomeSheet = await screen.findByRole("dialog", { name: "ルート結果" });
     // ルートは、開いているシートが覆う高さ（画面の半分）を避けて収める。
     const { padding } = mapOnScreen().fits.at(-1) as { padding: { top: number; bottom: number } };
     expect(padding.bottom - padding.top).toBe(window.innerHeight * 0.5);
-
-    await user.click(outcomeTab);
-    expect(screen.queryByRole("dialog", { name: "ルート設定" })).toBeNull();
-    const outcomeSheet = screen.getByRole("dialog", { name: "ルート結果" });
-    expect(within(outcomeSheet).getByRole("button", { name: "候補を全消去" })).toBeInTheDocument();
-    expect(outcomeTab).not.toHaveAccessibleDescription();
     await user.click(within(outcomeSheet).getByRole("button", { name: "閉じる" }));
     expect(screen.queryByRole("dialog")).toBeNull();
 
@@ -711,12 +711,52 @@ describe("画面の枠", () => {
     jobs.respond([], LOOP_CONDITIONS, "起点の近くに道路データがありません");
     await generate(user);
     await waitFor(() => expect(outcomeTab).toHaveAccessibleDescription("候補が見つかりませんでした"));
-    expect(
-      within(screen.getByRole("dialog", { name: "ルート設定" })).getByText("起点の近くに道路データがありません"),
-    ).toBeInTheDocument();
+    const empty = screen.getByRole("dialog", { name: "候補が見つかりませんでした" });
+    expect(empty).toHaveAccessibleDescription("起点の近くに道路データがありません");
+    await user.click(within(empty).getByRole("button", { name: "閉じる" }));
     await user.click(screen.getByRole("button", { name: "ルート設定", expanded: true }));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  it("スマホで「ルート設定」から作って候補が出たら「ルート結果」のシートへ移り（開いたので結果の合図は点かない）、そこから候補を全消去できる", async () => {
+    useMobileLayout();
+    const { user } = renderHome();
+    const outcomeTab = screen.getByRole("button", { name: "ルート結果" });
+    await user.click(screen.getByRole("button", { name: "ルート設定" }));
+    jobs.respond([FIRST], LOOP_CONDITIONS);
+    await generate(user);
+
+    const outcomeSheet = await screen.findByRole("dialog", { name: "ルート結果" });
+    expect(screen.queryByRole("dialog", { name: "ルート設定" })).toBeNull();
+    expect(outcomeTab).not.toHaveAccessibleDescription();
+    await user.click(within(outcomeSheet).getByRole("button", { name: "候補を全消去" }));
+    await confirmClear(user);
+    expect(within(outcomeSheet).queryByRole("tablist", { name: "ルート結果" })).toBeNull();
+    expect(routeLinesOnMap()).toEqual([]);
+  });
+
+  it.each([
+    { leave: "シートを閉じる", outcomeSheetOpen: false },
+    { leave: "「ルート結果」へ切り替える", outcomeSheetOpen: true },
+  ])(
+    "スマホで「ルート設定」から作ったあと、待つ間に（$leave）候補が出てもシートは移らず「ルート結果」のタブに合図が出る",
+    async ({ outcomeSheetOpen }) => {
+      useMobileLayout();
+      const { user } = renderHome();
+      const outcomeTab = screen.getByRole("button", { name: "ルート結果" });
+      await user.click(screen.getByRole("button", { name: "ルート設定" }));
+      const job = heldReplies();
+      jobs.answerWith(job.reply);
+      await generate(user);
+      const settingsSheet = screen.getByRole("dialog", { name: "ルート設定" });
+      await user.click(outcomeSheetOpen ? outcomeTab : within(settingsSheet).getByRole("button", { name: "閉じる" }));
+
+      await job.answer(0, Response.json({ status: "done", result: { routes: [FIRST], conditions: LOOP_CONDITIONS } }));
+      await waitFor(() => expect(outcomeTab).toHaveAccessibleDescription("新しい結果があります"));
+      expect(screen.queryByRole("dialog", { name: "ルート設定" })).toBeNull();
+      expect(screen.queryByRole("dialog", { name: "ルート結果" }) !== null).toBe(outcomeSheetOpen);
+    },
+  );
 
   it("スマホのシートの高さは、確定した値を2枚のシートで共有し、次に開いたときも使う", async () => {
     useMobileLayout();

@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import Disclosure from "@/components/Disclosure/Disclosure";
-import ErrorText from "@/features/route/ErrorText/ErrorText";
+import GenerationNotice from "@/features/route/GenerationNotice/GenerationNotice";
 import { Button } from "@/components/ui/Button/Button";
 import { ConfirmDialog } from "@/components/ui/Dialog/Dialog";
-import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { cn } from "@/lib/cn";
 import MapView from "@/features/map/MapView/MapView";
 import { mapOverlayEdge, type RouteFitObscuredPx } from "@/lib/mapOverlayEdges";
@@ -168,11 +167,23 @@ export default function Home() {
   // 説明を見る状態（ヘッダーのメニューの「使い方を見る」で入る）。
   const [usageGuideActive, setUsageGuideActive] = useState(false);
 
+  // 結果は生成を待つ間にシートを閉じ・切り替えたあとで届くので、どのシートから移るかは届いた時点の値で決める。
+  const mobileSheetRef = useRef(mobileSheet);
+  useEffect(() => {
+    mobileSheetRef.current = mobileSheet;
+  }, [mobileSheet]);
+
   // 生成と乗り換えの結果（候補も失敗も）は「ルート結果」でしか中身が見えないので知らせる。デスクトップは区分を開き、
-  // モバイルはタブのドットで知らせる（シートは勝手に開かない）。
+  // モバイルはタブのドットで知らせる。ただしモバイルで「ルート設定」のシートを開いたまま候補が出たら、候補と全消去を
+  // 並べた「ルート結果」のシートへ移る（開いて見せたので点は点けない）。候補0件と失敗は窓で知らせるので、シートは移らない。
   const notifyRouteOutcome = useCallback(
     (outcome: RouteOutcomeKind) => {
       setOutcomeOpen(true);
+      if (outcome === "fresh" && mobileSheetRef.current === "routeSettings") {
+        setMobileSheet("routeOutcome");
+        setUnseenOutcome(null);
+        return;
+      }
       setUnseenOutcome(outcome);
     },
     [setOutcomeOpen],
@@ -322,28 +333,8 @@ export default function Home() {
     );
   }
 
-  // 押した「生成」が候補を出せなかった理由の1行（候補0件の理由・入力の誤りか失敗）。モバイルの「ルート設定」シートの見出しの
-  // 下に出す——シートは1枚ずつしか開かず、押した直後に見えるのは「ルート結果」タブの点だけで、点では理由が読めないため。
-  // 候補が出たときは点と地図のルートで分かるので出さない（狭い画面で地図を空ける）。
-  function renderGenerationOutcomeNote() {
-    const { outcome } = generation;
-    if (!outcome) return null;
-    if (outcome.kind === "failed") {
-      return (
-        <ErrorText>
-          <GuideText text={outcome.message} />
-        </ErrorText>
-      );
-    }
-    return (
-      <p role="status" className={textVariants({ variant: "hint" })}>
-        {outcome.message}
-      </p>
-    );
-  }
-
   // 「ルート設定」の中身（デスクトップの区分・モバイルのシートの両方）。生成の結果・誤りはここに出さない（ボタンは
-  // 本文を畳んだままでも押せるため）。出し先は「ルート結果」で、モバイルのシートだけは見出しの下に候補を出せなかった理由の1行も添える。
+  // 本文を畳んだままでも押せるため）。候補は「ルート結果」に並び、候補を出せなかった理由は窓で知らせる。
   function renderRouteSectionBody() {
     return (
       <RouteForm
@@ -625,7 +616,6 @@ export default function Home() {
               headerLead={renderSettingsTabs()}
               headerAction={renderRouteSectionHeaderActions()}
               fitKey={settingsTab}
-              headerNote={renderGenerationOutcomeNote()}
             >
               {renderRouteSectionBody()}
             </BottomSheet>
@@ -642,6 +632,11 @@ export default function Home() {
           </BottomSheet>
         </>
       )}
+      <GenerationNotice
+        notice={generation.outcome}
+        hasRoutes={results.routes.length > 0}
+        onClose={generation.clearNotice}
+      />
     </div>
   );
 }

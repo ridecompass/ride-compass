@@ -86,18 +86,17 @@ class HardFilterOverride(RootModel[dict[str, bool]]):
 
     @model_validator(mode="after")
     def _check_filter_keys(self) -> "HardFilterOverride":
-        expected = HARD_FILTER_NAMES
-        actual = set(self.root.keys())
-        if actual != expected:
-            missing = sorted(expected - actual)
-            extra = sorted(actual - expected)
+        actual = self.root.keys()
+        if actual != HARD_FILTER_NAMES:
+            missing = sorted(HARD_FILTER_NAMES - actual)
+            extra = sorted(actual - HARD_FILTER_NAMES)
             detail_parts = []
             if missing:
                 detail_parts.append(f"missing={missing}")
             if extra:
                 detail_parts.append(f"unknown={extra}")
             raise ValueError(
-                f"hard_filters must specify exactly the {len(expected)} known filter names ({', '.join(detail_parts)})"
+                f"hard_filters must specify exactly the {len(HARD_FILTER_NAMES)} known filter names ({', '.join(detail_parts)})"
             )
         return self
 
@@ -177,7 +176,8 @@ class RouteGenerateRequest(StrictModel):
     @model_validator(mode="after")
     def _resolve_target(self) -> "RouteGenerateRequest":
         # 仕上げの戦略（距離あり・距離なし）を選ぶのはここだけで、距離の有無だけで選ぶ。
-        points = [*(self.waypoints or []), *([self.destination] if self.destination else [])]
+        fixed = FixedPoints(waypoints=self.waypoints or [], destination=self.destination)
+        points = fixed.placed
         if points:
             origin = Coordinates(latitude=self.latitude, longitude=self.longitude)
             check_points_within_reach(max(haversine_distance_km(origin, point) for point in points))
@@ -189,7 +189,6 @@ class RouteGenerateRequest(StrictModel):
             first, *rest = self.spliced_edge_ids
             self._target = SplicedTarget(destination=self.destination, edge_ids=(first, *rest))
             return self
-        fixed = FixedPoints(waypoints=self.waypoints or [], destination=self.destination)
         if self.distance_km is not None:
             self._target = DistanceTarget(distance_km=self.distance_km, points=fixed)
         elif points:
@@ -391,7 +390,7 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
             ),
         )
         job_registry.set_done(job_id, response)
-    except Exception:  # noqa: BLE001 バックグラウンドジョブの例外はここで必ず捕捉し記録する
+    except Exception:  # バックグラウンドジョブの例外はここで必ず捕捉し記録する
         # ここは例外の種類を選ばず捕まえるため、DB接続やPostGISの例外もそのまま入る。
         # それらの`str(exc)`には接続先やSQLが混じるので、詳細はログ（logger.exception、
         # トレースバック込み）にだけ残し、クライアントへは汎用メッセージを返す。

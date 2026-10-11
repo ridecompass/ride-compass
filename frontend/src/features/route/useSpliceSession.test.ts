@@ -107,12 +107,11 @@ type Props = Pick<Parameters<typeof useSpliceSession>[0], "routes" | "generatedI
 const PROPS: Props = { routes: [BASE, VIA_Q], generatedInput: BASIS, hasSelectedRoute: true };
 
 function renderSplice(props: Partial<Props> = {}) {
-  const onApplyStart = vi.fn();
   const onApplied = vi.fn();
-  const rendered = renderHook((p: Props) => useSpliceSession({ ...p, onApplyStart, onApplied }), {
+  const rendered = renderHook((p: Props) => useSpliceSession({ ...p, onApplied }), {
     initialProps: { ...PROPS, ...props },
   });
-  return { ...rendered, onApplyStart, onApplied };
+  return { ...rendered, onApplied };
 }
 
 type Rendered = ReturnType<typeof renderSplice>;
@@ -452,7 +451,7 @@ describe("差分を見る", () => {
 });
 
 describe("作成", () => {
-  it("作る直前に知らせ、評価した経路を元の候補と一緒に渡して編集を終える", async () => {
+  it("評価の間は作成中で、評価した経路を元の候補と一緒に渡して編集を終える", async () => {
     const rendered = renderSplice();
     await startEditing(rendered);
     tapStretch(rendered);
@@ -462,7 +461,6 @@ describe("作成", () => {
     act(() => {
       applying = rendered.result.current.panel?.onApply();
     });
-    expect(rendered.onApplyStart).toHaveBeenCalledTimes(1);
     expect(rendered.onApplied).not.toHaveBeenCalled();
     expect(rendered.result.current.panel?.applying).toBe(true);
 
@@ -512,7 +510,6 @@ describe("作成", () => {
     });
 
     expect(jobs.submitted).toHaveLength(1);
-    expect(rendered.onApplyStart).toHaveBeenCalledTimes(1);
     expect(rendered.onApplied).toHaveBeenCalledTimes(1);
   });
 
@@ -565,13 +562,12 @@ describe("作成", () => {
     expect(rendered.result.current.panel?.applying).toBe(false);
   });
 
-  it("乗り換えていない間は作らず、知らせもしない", async () => {
+  it("乗り換えていない間は作らない", async () => {
     const rendered = renderSplice();
     await startEditing(rendered);
 
     await press(rendered.result.current.panel?.onApply);
 
-    expect(rendered.onApplyStart).not.toHaveBeenCalled();
     expect(jobs.submitted).toEqual([]);
   });
 

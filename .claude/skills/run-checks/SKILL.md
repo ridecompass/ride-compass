@@ -10,39 +10,47 @@ description: "検査とテストを手元・作業ブランチのCI・masterのC
 
 ## 手元の検査の回し方
 
-- **手元とCIで同じ答えを2回買わない**: CIはPull Requestで毎回、静的検査とフルスイートを回す（[task-work/SKILL.md](../task-work/SKILL.md)「作る担当」の4・5。
-  どの変更で何が走るかは下の「検査の置き場」、段の中身は各ワークフロー）。手元では、CIの結論より先に知らないと作業が無駄になる答えだけを、
+- **手元とCIで同じ答えを2回買わない**: CIはPull Requestで毎回、静的検査（`.github/workflows/ci.yml`のジョブ
+  （backend・frontend）がテスト（`pytest`・`npm test`）より前に回す段・`api-contract`のOpenAPI生成物のドリフト・
+  `.github/workflows/docs-consistency.yml`の段）とフルスイートを回す（[task-work/SKILL.md](../task-work/SKILL.md)「作る担当」の4・5。
+  どの変更で何が走るかは下の「検査の置き場」）。手元では、CIの結論より先に知らないと作業が無駄になる答えだけを、
   その答えに要る最小の範囲で取る。
-- **CIが回す検査とテストを手元で回してよい場面は3つ**。どれでもなければ回さずにPull Requestへpushし（CIはPull Requestで走る）、
-  CIの結論を待つ。CIに載らない`e2e-live`は下の「E2E・画面の撮影の走らせ方」。
+- **回してよい場面は3つ**。どれでもなければ回さずにpushし、CIの結論を待つ。
   1. **CIが落ちた失敗を再現して直すとき**（[testing.md](../../rules/testing.md)「テストが落ちたときの直し方」）。回すのは落ちた失敗に届く範囲だけ。
   2. **テストそのものを書く・書き換えるとき**（新しいテスト・起こし直し・足場の作り直し）。書いた形をほかのファイルへ
      写す前に、書いたファイルが動くかを見る。回すのは書いた・直したテストファイルだけで、1ファイルを書くたびにそのファイルを回してよい。
   3. **怪しいところがあって、CIの前に念を入れて確かめたいとき**（並べ替えで落ちそうな共有の状態・時計に依存する境界等）。
      回すのはその怪しいところに届くテストだけで、何を怪しんで回したかをPull Requestの本文の検証に書く。
+- **回さないもの**: フルスイート（backendの`tests`全体・frontendの`vitest run`全体）と、pushの前の念のための全体。
+  1行・1ファイル変えただけで全体を流し直さない。静的検査も、1の再現と下の`tsc`の例外のほかは回さない。
 - **コミットの前に、frontendで変えたファイルへ整形をかける**: CIの`format:check`（`frontend/package.json`）が見る
   `src/**/*.{ts,tsx,css}`に当たる変えたファイルへ、`./node_modules/.bin/prettier --write <変えたファイル>`をかけてからコミットする。
+  `format:check`（`--check`）は回さない。
 - 回すときは、どの場面でも次のとおりにする。
-  - **範囲の例**: backend `pytest backend/tests/<テストのファイル> -q`、frontend `./node_modules/.bin/vitest run <該当ファイル>`。
+  - **範囲の例**: backend `pytest backend/tests/<テストのファイル> -q`、frontend `./node_modules/.bin/vitest run <該当ファイル>`、
+    根の `scripts/` の道具は `scripts` で `pytest tests/<テストのファイル> -q`。
     **frontendのコマンドに`npx`を付けない**。**例外は`tsc --noEmit`**で、プロジェクト全体で1回通す（Next.jsの生成型が無い
     作業ツリーでは、`tsc`の前に`next typegen`を回す）。所要時間と生成型の前提は[setup.md](../../../docs/architecture/setup.md)「テスト」。
-  - **静的検査とテストの両方が落ちていれば、静的検査を先に全部直してからテストを回す**。
+  - **静的検査とテストの両方が落ちていれば、静的検査を先に全部直してからテストを回す**。**1件直すたびに回し直さない**——
+    出た指摘は全部直してから、次の1回を回す。
   - backendに`ruff format`をかけない（CIは`ruff check`だけを回す）。
   - **影響範囲が自分でも分からないときは、範囲を導出してから絞る**: `pytest backend/tests -q --co`
     （収集のみ）でimportが壊れたファイルを出し、変更したシンボルをgrepして参照元を出し、そこで挙がった
-    ファイルだけを実行する。
+    ファイルだけを実行する。フルスイートを影響範囲の調査に使わない。
   - **1の再現で直すためにソースかテストを変えたら、ソースを読む検査（[testing-structure.md](../../rules/testing-structure.md)「ソースを読む検査は、専用ディレクトリへ置く」）も範囲に含める**
     （backend: `python -m pytest backend/tests/structure -q`、frontend: `./node_modules/.bin/vitest run src/structure`）。
 - **同じ作業ツリーで並行して複数のテストプロセスを走らせない**（下の「テストDBは作業ツリーごとに分かれる」）。
 
 ## 検査の置き場（手元・作業ブランチのCI・masterのCI）
 
+同じ検査を2つの層に置かない。
+
 | 層 | 回すもの | 担うこと |
 |---|---|---|
 | 手元 | 上の「手元の検査の回し方」 | CIの失敗の再現・書いているテストの動作・怪しいところの念押し（どれも届く範囲だけ） |
-| 作業ブランチ（`orch/**`）のCI | 必須チェックのワークフロー（名前と、文書や運用の道具・タスク管理だけの変更で重い検査を飛ばす範囲は[tech-stack.md](../../../docs/architecture/tech-stack.md)「CIの実行枠（リポジトリがpublicである間の前提）」。Pull Requestで走り、作業ブランチへのpushでは走らない） | 静的検査とフルスイート（Linuxでの結果）。masterと合わせた版で、masterへ入れてよいかの判定 |
-| masterのCI | 同じワークフロー | 作業ブランチで個別に通ったコミットを組み合わせた木の検査。`ci.yml`のbackend〜e2e-scanが通るまでbackend・frontendのデプロイは起動しない（flow-gate・文書の検査は待たない） |
-| 本番 | `scripts/prod_route_check.py`（backendを出したあとと毎日1回。[tech-stack.md](../../../docs/architecture/tech-stack.md)「本番でルートを作る確かめ」） | 本物の応答で、ルートを作ってレンズを替える操作が壊れていないか。デプロイを伴わない本番の値の変化も拾う |
+| 作業ブランチ（`orch/**`）のCI | 必須チェックのワークフロー（名前と、変更ごとにどのジョブを走らせるかの決め方は[tech-stack.md](../../../docs/architecture/tech-stack.md)「CIの実行枠（リポジトリがpublicである間の前提）」。Pull Requestで走り、作業ブランチへのpushでは走らない） | 静的検査とフルスイート（Linuxでの結果）。masterと合わせた版で、masterへ入れてよいかの判定 |
+| masterのCI | 同じワークフロー | 作業ブランチで個別に通ったコミットを組み合わせた木の検査。`ci.yml`の`ci-ok`が通るまでbackend・frontendのデプロイは起動しない（flow-gate・文書の検査は待たない） |
+| 本番 | `backend/scripts/prod_route_check.py`（backendを出したあとと毎日1回。[tech-stack.md](../../../docs/architecture/tech-stack.md)「本番でルートを作る確かめ」） | 本物の応答で、ルートを作ってレンズを替える操作が壊れていないか。デプロイを伴わない本番の値の変化も拾う |
 
 - **コミット・pushの直前（gitのフック）には検査を置かない。** 何を見ているかの正本は`scripts/review_checks.py`と各CIの段で、ここへ写さない。
 
@@ -67,6 +75,7 @@ description: "検査とテストを手元・作業ブランチのCI・masterのC
 
 - **対象はapp・scripts・benchmarksで、testsは入れない**（テストの偽物を本物の型の引数へ渡す書き方が誤検知になる）。
 - **型注釈の無い関数の中身も見る**（`check_untyped_defs`。見ないと、注釈の無い呼び出し側の食い違いが止まらない）。
+- **ファイルやモジュールを検査から外さない。**
 - 型情報（`py.typed`）を配っていないライブラリは、まず型のスタブ（typeshedの`types-*`等）を探し、
   あれば本体の版に合わせて`requirements-dev.txt`へ固定する。無いものだけを設定の`ignore_missing_imports`の節へ足す。
 - **Linuxとして検査する**（`platform = linux`。本番とCIがLinuxで動くため）。
@@ -81,7 +90,7 @@ backendの層（[directory-layout.md](../../../docs/architecture/directory-layou
 （引数なし）。同じ設定に、`domain/`が外部の書式を読む道具を読んだら止める`forbidden`契約も置く
 （`include_external_packages = True`なので、禁じる先に標準ライブラリの`io`も書ける。禁じられるのは最上位の名前だけ）。
 
-- 越境は、読む側を正しい層へ移すか、共有したいものを下の層へ下ろして解く。
+- **契約を緩める指定（`ignore_imports`）を足さない**。越境は、読む側を正しい層へ移すか、共有したいものを下の層へ下ろして解く。
 - **`.importlinter`はASCIIだけで書く。**
 
 ### 使われないコード（knip）
@@ -90,7 +99,9 @@ frontendで、入口（Next.jsのファイル規約・vitestとPlaywrightの設�
 ファイル・export・依存と、宣言せずに読んでいる依存を止める。設定は`frontend/knip.json`、実行は`frontend/`で`npm run knip`。
 
 - **入口を足すのは、knipが既定で見つけない設定と手動の道具だけ**（例: `-c`で指定して使う
-  `playwright.live.config.ts`）。指摘は、消すか、入口として宣言するかのどちらかで解く。
+  `playwright.live.config.ts`）。**無視の指定（`ignore`系）を足さない**——指摘は、消すか、入口として宣言するかの
+  どちらかで解く。
+- 同じファイルの中だけで使う名前も`export`を外す対象にする（既定のまま）。
 
 ## 開発機でのbackendテストの回し方
 
@@ -123,7 +134,7 @@ PYTHONUTF8=1 backend/.venv/Scripts/python.exe -m pytest backend/tests/<テスト
 ### 実行順をばらす（pytest-randomly）
 
 入っているだけで働き、モジュールの並びと、モジュールの中の並びを混ぜる（違うモジュールのテストを交ぜ合わせはしない）。
-**並びが変わった回にだけ落ちる失敗は、隠れた順序依存として、汚した側を探して直す**（直す向きは
+**並びが変わった回にだけ落ちる失敗は、実装の欠陥ではなく、テストの隠れた順序依存として直す**（直す向きは
 [testing-review.md](../../rules/testing-review.md)「テストを変異テストで見直す」の隔離）。
 
 - CIで落ちた並びは、手元で`--randomly-seed=<runのID>`を付けると同じ並びになる（CIはrunのIDを種に渡す。
@@ -141,9 +152,8 @@ PYTHONUTF8=1 backend/.venv/Scripts/python.exe -m pytest backend/tests/<テスト
 3. 前の id の半分と汚される側を、`-p no:randomly @<ファイル>`（1行に1つの id。書いた順のまま回る）で回す。落ちた半分に汚す側が
    いるので、それを次の候補にして、1本になるまで繰り返す。どちらの半分でも落ちないなら、汚すのは2本以上の組なので、
    前から1本ずつ外して、落ちなくなる所を探す。
-4. 汚す側が残す状態（モジュールの変数・プロセスに残る記録・DB の行・環境変数）を見つけ、汚す側が自分で片付ける形に直す
-   （片付け方は[testing-scaffold.md](../../rules/testing-scaffold.md)「テストの足場で、本来のNGを覆わない」の片付けの段落で、
-   本番の操作で片付けられない大域状態は実装の側で直す）。
+4. 汚す側が残す状態（モジュールの変数・プロセスに残る記録・DB の行・環境変数）を見つけ、汚す側が自分で片付ける形
+   （フィクスチャの後始末・`monkeypatch`）に直す。汚される側に片付けを足して隠さない。
 
 ### 止まったテストを落とす（pytest-timeout）
 
@@ -165,6 +175,7 @@ PYTHONUTF8=1 backend/.venv/Scripts/python.exe -m pytest backend/tests/<テスト
 環境ごとに必要な作業（開発機で一度だけ付ける権限・拡張）と、作業ツリーを消したあとの残骸の片付けは付録にある。
 
 **postgisを並列化しても速くならない**: DBを使うテストは`xdist_group(name="postgis")`により1ワーカーへ固定される。
+縮めるには**ワーカーごとに**DBを分ける必要があり、それ自体が別タスク。
 
 **`-m postgis`はCIが通し**、完了条件には含めない（手元で回すかは上の「手元の検査の回し方」）。作業ツリー専用のDBを
 作れない環境では共有の`ridecompass_test`へ退避するため、並行セッションと衝突しうる。
@@ -174,11 +185,10 @@ PYTHONUTF8=1 backend/.venv/Scripts/python.exe -m pytest backend/tests/<テスト
 今のテストが、実装の1か所の書き換え（`<` を `<=` に・`+` を `-` に等）を見つけられるかを測り、テストを消す・足す判断の
 材料にする（結果から何を足す・消す・直すかは [testing-review.md](../../rules/testing-review.md)「テストを変異テストで見直す」）。台本は `backend/scripts/mutation/`（各ファイルの先頭に使い方）、回すのは
 `.github/workflows/mutation.yml`（手で起こす。全部の測り・当て直し・見直しを1回の起こしでつなぐ。段の中身は先頭のコメント）。
-全部の測りでテストを見直す1回の進め方（起こす・待つ・読む・行き先を決める・止まったとき）は [test-review/SKILL.md](../test-review/SKILL.md)。
-ここに書くのは、試しと一覧の口で回すときの起こし方。
+全部の測りでテストを見直す1回の進め方（起こす・待つ・読む・行き先を決める）は [test-review/SKILL.md](../test-review/SKILL.md)。
 
 ```bash
-gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<測る版> -f count=5
+gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<測る版> -f count=0 -f stop_after=150
 ```
 
 - **測る版と台本は `ref` から読む**。台本を直した作業ブランチを `ref` に渡せば、ワークフローを変えずに直した台本で回る。
@@ -191,14 +201,15 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
   - `baseline.txt`: 変異を入れずに、関数ごとに同じテストの組み合わせを同じ並びで2回回す（基準。行は関数の名前か、全部なら `*`）。
     基準で落ちるテストは、テストどうしの依存や揺れで落ちていて、変異の回で落ちても見つけたとは言えない。全部の測りでは
     基準を変異と一緒に回す（`plan.py` の `MUT_WITH_BASELINE`）ので、手で置くのは基準だけを回したいときだけ。
-  - どれも master へ入れない。
+  - どれも master へ入れない（入った Pull Request は `backend/tests/structure/test_mutation_lists_absent.py` が CI で落とす）。
 - **Pull Request ごと**: `backend/app` を変えた Pull Request では `.github/workflows/mutation-pr.yml` が自動で走り、変えた関数の変異と
   その基準だけを回して、生き残りを変えた行への注記と実行の要約に出す（`diff_scope.py`・`pr_plan.py`・`report_pr.py`）。必須の
   チェックではない。読み方は .claude/skills/task-work/SKILL.md「作る担当」の5。
 - **結果は成果物**: 見直しの `mutation-review`（90日。`summary.md`・`review.json`・`analyze.txt`。読み方は test-review スキルの4）と、
   元の記録の `mutation-<番号>`・`recheck-<番号>`（14日）。元の記録から集計し直すときは、`gh run download <実行の id> -R ridecompass/ride-compass -D <場所>` で取り、
-  測った版のチェックアウトの `backend/` で `python scripts/mutation/analyze.py <場所> [当て直しの成果物の場所]` を打つ。
-- **ランナーが止まった・段が落ちたとき**は、test-review スキルの3の「落ちたとき」のとおりにやり直す。
+  測った版のチェックアウトの `backend/` で `python scripts/mutation/analyze.py <場所> [当て直しの成果物の場所]` を打つ。残したい数字は issue に書く。
+- **1本のランナーが「The runner has received a shutdown signal」で止まったら**、`gh run rerun <実行の id> -R ridecompass/ride-compass --failed`
+  で、その本と続く段だけを同じ入力でやり直す。同じ所で止まり続けるなら、ジョブの記録の「始め」の行で走っていた変異を見る。
 - **開発機では回さない**。
 - **測れない形**: 関数の外（モジュールの直下の表・定数・既定値）、`app/domain/routing.py`とログ・警告の行（`setup.cfg`で外している）、
   部分どうしのつなぎの食い違い（1つの関数の中の書き換えではないもの）。そこを確かめるテストは、変異を見つけないように
@@ -257,10 +268,10 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
     `cd frontend && E2E_LIVE_API=<本番の backend> ./node_modules/.bin/playwright test -c playwright.live.config.ts <シナリオ>`（起点は既定のまま）。
     backendの向け先を変えたらビルドし直す（`NEXT_PUBLIC_API_URL`等はビルドに埋め込まれる）。
   - **誰がいつ回すか**: 地図の描き方（`features/map/scene/`等）・タイルへ焼く値・軸カタログ・動的値の
-    配信・気象の描き方・ルート生成の応答に触る変更の担当が、変更が流しに入るとき（frontendの変更か、手元のbackendへ向けたときの
-    backendの変更）に、**Pull Requestを出す前に1回**回し、実行したコマンドと結果（落ちた枝・「該当なし」・「外部要因」）を
-    Pull Requestの本文の検証へ書く。変更が流しに入らないとき（本番のbackendへ向けるしかない所でのbackendの変更）と、当たるファイルを
-    変えたが描き方にも応答にも触らないときは回さず、回さない理由を`e2e-live`の語を添えて同じ所へ書く。門にはしない（CIに載せない）。
+    配信・気象の描き方・ルート生成の応答に触る変更の担当が、**Pull Requestを出す前に1回**回し、
+    実行したコマンドと結果（落ちた枝・「該当なし」・「外部要因」）をPull Requestの本文の検証へ書く。担当のランナーは本番のbackendへ向けて回す。
+    backendの応答を変える変更を本番へ向けて回したときは、変更が流しに入っていないことを同じ所へ書く。当たるファイルを変えたが描き方にも
+    応答にも触らない変更では、回さない理由を`e2e-live`の語を添えて同じ所へ書く。触らない変更では回さない。門にはしない（CIに載せない）。
 
 - **画面を撮る道具は`frontend/capture/`に置き、`playwright.capture.config.ts`で走らせる。テストではなく、CIに載せない**
   （判定を持たず、画像を出すだけ。Pull Requestの修正前後のキャプチャに使う）。入口は`node scripts/capture.mjs`の1つで、引数と使い方は

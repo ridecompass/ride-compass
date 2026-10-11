@@ -8,16 +8,18 @@
     python scripts/review_checks.py size      # 規模と前回比
     python scripts/review_checks.py metrics   # 定量メトリクスと総量の前回比
     python scripts/review_checks.py trigger   # 周期レビューの発火判定
+    python scripts/review_checks.py friction  # 前のレビューより後の流れの摩擦の行（gh で置き場を読む）
     python scripts/review_checks.py change    # 変更の増減と規模の札（master との差分から）
 
-終了コード: `docs`は違反があれば1。それ以外は表示のみで常に0。
+終了コード: `docs`は違反があれば1、`friction`は前回レビューのタグが無ければ1。どれも、測れずに止まれば（下の HEAD の遅れ等）0でない。
+それ以外は表示のみで0。
 
 `change`は検知器ではなく、作業者が自分の差分に対してその場で打つ報告である
 （差分の起点を選ぶので、検知器を足す条件の外にある）。
 
 `size`・`metrics`・`trigger`はプロジェクトの今の姿を HEAD から測るので、HEAD が origin/master より
 遅れていれば止まる（`scripts/checkout_freshness.py`）。`docs`は手元の作業ツリーそのものを検査し、
-`change`は origin/master との差分を報告するので、遅れに左右されない。
+`change`は origin/master との差分を報告するので、遅れに左右されない。`friction`はタグの時刻と置き場の issue だけを読む。
 """
 
 from __future__ import annotations
@@ -44,6 +46,10 @@ FROZEN_PREFIXES = ("docs/records/",)
 #: 日付を名前に使わないのは、同じ日に複数回レビューした実績があり一意にならないため。
 REVIEW_TAG_PREFIX = "periodic-review/"
 TRIGGER_DAYS = 14
+#: タスクの issue の置き場。`friction`が gh で読む（gh のトークンが置き場を読めること）。
+TASKS_REPO = "ridecompass/ride-compass-tasks"
+#: 流れの摩擦の行。担当の終え方の要約は、後始末が終わりのコメントへ `> ` で引用して写すので、引用と箇条書きの頭も拾う。
+FRICTION_RE = re.compile(r"^(> )?(- )?流れの摩擦:")
 TRIGGER_IMPL_LINES = 20_000
 
 MARKDOWN_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s#]+)(?:#[^)]*)?\)")
@@ -60,7 +66,7 @@ TEST_PREFIXES = ("frontend/src/testing/", "frontend/src/structure/")
 #: 開発機での起動の道具）。道具の置き場を列挙しないのは、道具が改名・新設されても製品へ
 #: 落ちないため。製品の増減が生成物・道具の増減に埋もれないよう、総量の前回比で分けて出す。
 #: タスク管理は製品と無関係に作り直されるので、道具の増減に混ぜずに分ける。
-#: ここで宣言する置き場は、どれも追跡下のファイルに当たる（`backend/tests/test_review_checks.py`）。
+#: ここで宣言する置き場は、どれも追跡下のファイルに当たる（`scripts/tests/test_review_checks.py`）。
 PRODUCT_PREFIXES = ("backend/app/", "frontend/src/")
 GENERATED_PREFIXES = ("frontend/src/types/generated/",)
 #: タスク管理の置き場の正本は CI 側（`.github/taskflow-paths`。製品の CI はここだけの変更で重い検査を飛ばす）。
@@ -393,23 +399,67 @@ def cmd_metrics(args: argparse.Namespace) -> int:
 
 def cmd_trigger(args: argparse.Namespace) -> int:
     tags = review_tags()
-    print("## 周期レビュー トリガー判定")
+    report = ["## 周期レビュー トリガー判定"]
     if not tags:
-        print(f"- 前回レビューのタグ（{REVIEW_TAG_PREFIX}*）が無い")
-        print("\n判定: **該当**（前回の記録が無い。実施してタグを打つ）")
+        report.append(f"- 前回レビューのタグ（{REVIEW_TAG_PREFIX}*）が無い")
+        report.append("\n判定: **該当**（前回の記録が無い。実施してタグを打つ）")
+        print("\n".join(report))
         return 0
     name, sha, day = tags[0]
     fired = []
     days = (dt.datetime.now(tz=dt.timezone.utc).date() - day).days if day else None
-    print(f"- 前回レビュー: {name} / {day}（{days}日経過、閾値 {TRIGGER_DAYS}日）")
+    report.append(f"- 前回レビュー: {name} / {day}（{days}日経過、閾値 {TRIGGER_DAYS}日）")
     if days is not None and days >= TRIGGER_DAYS:
         fired.append("日数")
     lines = code_churn(sha)
-    print(f"- コードの変更行数（{sha[:7]}..HEAD）: {lines:,}行（閾値 {TRIGGER_IMPL_LINES:,}）")
+    report.append(f"- コードの変更行数（{sha[:7]}..HEAD）: {lines:,}行（閾値 {TRIGGER_IMPL_LINES:,}）")
     if lines >= TRIGGER_IMPL_LINES:
         fired.append("変更行数")
-    print()
-    print("判定: " + (f"**該当（{'・'.join(fired)}）** → /review を実施する" if fired else "未該当"))
+    report.append("")
+    report.append("判定: " + (f"**該当（{'・'.join(fired)}）** → /review を実施する" if fired else "未該当"))
+    if fired or not args.only_fired:
+        print("\n".join(report))
+    return 0
+
+
+def friction_lines(number: int, comments: list[dict], since: dt.datetime) -> list[str]:
+    """1件の issue のコメントのうち、`since`以後に書かれたものの流れの摩擦の行（頭に `#番号`）。"""
+    return [
+        f"#{number} {line}"
+        for comment in comments
+        if dt.datetime.fromisoformat(comment["createdAt"].replace("Z", "+00:00")) >= since
+        for line in comment["body"].split("\n")
+        if FRICTION_RE.match(line)
+    ]
+
+
+def gh_json(*args: str):
+    result = subprocess.run(["gh", *args], capture_output=True, text=True, encoding="utf-8",
+                            errors="replace", check=False)
+    if result.returncode != 0:
+        raise RuntimeError(f"gh {' '.join(args)}: {result.stderr.strip()}")
+    return json.loads(result.stdout)
+
+
+def cmd_friction(args: argparse.Namespace) -> int:
+    tags = review_tags()
+    if not tags:
+        print(f"前回レビューのタグ（{REVIEW_TAG_PREFIX}*）が無い", file=sys.stderr)
+        return 1
+    stamp = git("for-each-ref", "--format=%(creatordate:unix)", f"refs/tags/{tags[0][0]}").strip()
+    since = dt.datetime.fromtimestamp(int(stamp), tz=dt.timezone.utc)
+    # 検索の日付は日の粒度なので、その日の更新から引き、コメントの時刻で絞る。
+    # 一覧の `--json comments` は100件を超えるコメントを読めずに落ちるので、番号だけを取って1件ずつ読む。
+    limit = 1000
+    numbers = [row["number"] for row in gh_json(
+        "issue", "list", "-R", TASKS_REPO, "--state", "all", "--limit", str(limit),
+        "--search", f"updated:>={since.date().isoformat()}", "--json", "number")]
+    if len(numbers) >= limit:
+        print(f"更新された issue が上限の {limit} 件に達した（取りこぼしうる）", file=sys.stderr)
+    for number in numbers:
+        comments = gh_json("issue", "view", str(number), "-R", TASKS_REPO, "--json", "comments")["comments"]
+        for line in friction_lines(number, comments, since):
+            print(line)
     return 0
 
 
@@ -473,10 +523,13 @@ def main() -> int:
     for name, help_text, func, measures_head in (
         ("docs", "文書の整合（常に全件）", cmd_docs, False),
         ("metrics", "定量メトリクスと総量の前回比", cmd_metrics, True),
-        ("trigger", "周期レビューの発火判定", cmd_trigger, True),
+        ("friction", "前のレビューより後の流れの摩擦の行", cmd_friction, False),
     ):
         p = sub.add_parser(name, help=help_text)
         p.set_defaults(func=func, measures_head=measures_head)
+    p = sub.add_parser("trigger", help="周期レビューの発火判定")
+    p.add_argument("--only-fired", action="store_true", help="発火したときだけ出す（セッションの始まりのフック）")
+    p.set_defaults(func=cmd_trigger, measures_head=True)
     p = sub.add_parser("change", help="変更の増減と規模の札")
     p.add_argument("--base", default="origin/master", help="比べる相手（合流点から見る）")
     p.add_argument("--head", help="見る版（省くと作業ツリー）")

@@ -178,7 +178,7 @@ describe("入力の誤り", () => {
     rendered.rerender({ ...PROPS, originKnown: false });
     await submit(rendered);
 
-    expect(rendered.result.current.generation.failure).toMatch(/現在地が分かりません/);
+    expect(rendered.result.current.generation.outcome?.message).toMatch(/^現在地が分かりません/);
   });
 });
 
@@ -233,7 +233,6 @@ describe("生成の結果", () => {
     expect(rendered.onGenerated).toHaveBeenCalledWith([route("fast", 1800), route("slow", 3600)], { axis_a: 1 });
     expect(rendered.onOutcome).toHaveBeenCalledWith("fresh");
     expect(rendered.result.current.generation.outcome).toBeNull();
-    expect(rendered.result.current.generation.failure).toBeNull();
     expect(rendered.result.current.generation.destinationCorrected).toBe(false);
   });
 
@@ -253,7 +252,6 @@ describe("生成の結果", () => {
     expect(rendered.onGenerated).toHaveBeenCalledWith([], used().route_preference);
     expect(rendered.onOutcome).toHaveBeenCalledWith("empty");
     expect(rendered.result.current.generation.outcome).toEqual({ kind: "empty", message });
-    expect(rendered.result.current.generation.failure).toBeNull();
   });
 
   it("生成が失敗したら文言を失敗として返して知らせ、結果は渡さない。次の生成で消す", async () => {
@@ -263,7 +261,6 @@ describe("生成の結果", () => {
 
     await submit(rendered);
 
-    expect(rendered.result.current.generation.failure).toBe(message);
     expect(rendered.result.current.generation.outcome).toEqual({ kind: "failed", message });
     expect(rendered.onOutcome).toHaveBeenCalledWith("failed");
     expect(rendered.onGenerated).not.toHaveBeenCalled();
@@ -272,7 +269,6 @@ describe("生成の結果", () => {
     act(() => {
       void rendered.result.current.generation.submit();
     });
-    expect(rendered.result.current.generation.failure).toBeNull();
     expect(rendered.result.current.generation.outcome).toBeNull();
   });
 
@@ -370,7 +366,6 @@ describe("消す", () => {
     await submit(rendered);
 
     act(() => rendered.result.current.generation.clearNotice());
-    expect(rendered.result.current.generation.failure).toBeNull();
     expect(rendered.result.current.generation.outcome).toBeNull();
 
     jobs.keepRunning();
@@ -379,6 +374,14 @@ describe("消す", () => {
     });
     act(() => rendered.result.current.generation.clearNotice());
     expect(rendered.result.current.generation.running).toBe(true);
+  });
+
+  it("入力の誤りの案内も消す", async () => {
+    const rendered = renderGeneration({ originKnown: false });
+    await submit(rendered);
+
+    act(() => rendered.result.current.generation.clearNotice());
+    expect(rendered.result.current.generation.outcome).toBeNull();
   });
 
   it("生成の結果（作った条件・補正・既定の配分・案内）を消す", async () => {
@@ -396,6 +399,6 @@ describe("消す", () => {
     expect(generation.generatedInput).toBeNull();
     expect(generation.destinationCorrected).toBe(false);
     expect(generation.weightsNotApplied).toBe(false);
-    expect(generation.failure).toBeNull();
+    expect(generation.outcome).toBeNull();
   });
 });
