@@ -52,7 +52,7 @@ export async function near(gh, config, number) {
 }
 
 // 事実を変える出来事だけを、決まった置き場から受ける。ゲート自身の書き込みのこだまは受けない（ゲートが閉じた issue の先は、閉じたその場で決め直す。src/flow.js: handle）。
-const ACTIONS = { issues: ["opened", "closed", "reopened", "typed", "untyped", "labeled", "unlabeled", "edited"], issue_comment: ["created"],
+const ACTIONS = { issues: ["opened", "closed", "reopened", "typed", "untyped", "labeled", "unlabeled", "edited", "assigned", "unassigned"], issue_comment: ["created"],
   pull_request: ["opened", "closed", "reopened", "synchronize", "converted_to_draft", "ready_for_review"], workflow_run: ["requested", "in_progress", "completed"], projects_v2_item: ["edited"],
   sub_issues: ["sub_issue_added", "sub_issue_removed"] }; // 親子1本につき親の側と子の側の2つが届くので、親の側だけを受ける
 const REPO = { issues: "tasks", issue_comment: "tasks", pull_request: "code", workflow_run: "code", sub_issues: "tasks" };
