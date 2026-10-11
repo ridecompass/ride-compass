@@ -161,7 +161,7 @@ describe("候補が無い間", () => {
     expect(screen.getByText("生成中...")).toBeInTheDocument();
   });
 
-  it("生成していない間は、生成を押すと候補が並ぶことを案内する", () => {
+  it("案内が無ければ、生成を押すと候補が並ぶことを案内する", () => {
     renderOutcome();
     expect(screen.getByText(/候補がここに並びます/)).toHaveTextContent(
       "「ルート設定」のルート生成を押すと候補がここに並びます",
