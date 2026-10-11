@@ -293,14 +293,20 @@ const SPLICE_PLACES: Places = {
   D: [139.7466, 35.7622],
 };
 
+/** 走査の軸カタログが持つ重みのある軸の数。公開の軸が増えると見込む最大の数で、軸が並ぶ部品の溢れをこの数で見る。 */
+const SCAN_WEIGHTED_AXES = 25;
+
 /**
- * 走査の軸カタログ。アプリを開く前に入れる。本番と同じく重みのある軸を3つ持つ（重みのある軸が2つ以上のときだけ
+ * 走査の軸カタログ。アプリを開く前に入れる。重みのある軸を`SCAN_WEIGHTED_AXES`本持つ（重みのある軸が2つ以上のときだけ
  * 出る部品があり、既定の1軸では走査に入らない）。乗り換えの入口が出るように、区間を割る下限の較正値を持つ。
  */
 export async function installScanMocks(page: Page): Promise<void> {
   const catalog = axisCatalogFixture([
     ...defaultAxisCatalogFixture().axes,
-    ...["first", "second", "third"].map((axisId) => ({ ...catalogEntry({ axis_id: axisId }), default_weight: 1 / 3 })),
+    ...Array.from({ length: SCAN_WEIGHTED_AXES }, (_, i) => ({
+      ...catalogEntry({ axis_id: `axis-${i + 1}` }),
+      default_weight: 1 / SCAN_WEIGHTED_AXES,
+    })),
   ]);
   catalog.client_tuning = { "splice.min_stretch_km": 0 };
   await page.route(`${API_BASE}/api/axis-catalog*`, (route) => route.fulfill({ json: catalog }));
