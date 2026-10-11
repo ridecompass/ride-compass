@@ -9,24 +9,26 @@ export const fieldsOf = ({ fields: f }) => `status:fieldValueByName(name:"${f.st
 // 待つと決めた意図を守ってまだ先と読む。
 const START_FORM = /^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})?$/;
 const jst = (text) => (START_FORM.test(text) ? new Date(`${text.replace(" ", "T")}${text.includes(":") ? "" : "T00:00"}:00+09:00`) : null);
-// issue が入っているゲートのボードの世界と項目（設定の順に探す）。
-const itemOf = (config, items) => Object.entries(config.boards).map(([world, n]) => ({ world, item: items.find((i) => i.project.number === n) })).find((x) => x.item) ?? {};
+// ステータスの欄を置く Project の項目（無ければ undefined）。
+const itemOf = (config, items) => items.find((i) => i.project.number === config.project);
+// 対話作業か。種類は作るとき（最初に付いた種類）で決まり、あとから境目をまたいで変えても変わらない（types は今より前の種類の古い順）。
+const dialogOf = (config, types, type) => [...types, type].find(Boolean) === config.dialogType;
 // 矢印1本でつながる issue（前提・子・親）の読み方。1件を決め直すときも、振り出しの一覧も同じ（親の本文は、1件を決め直すときだけ要る）。
 export const relationsOf = (config, body = false) => `blockedBy(first:20){nodes{number state stateReason}} subIssues(first:50){nodes{number state stateReason}}
  parent{number state stateReason ${body ? "body" : ""} labels(first:20){nodes{name}} projectItems(first:5){nodes{project{number} ${fieldsOf(config)}}}}`;
 // 完成でなく閉じた（見送り・重複）相手は、その結果を当てにできないので、続けるかを問う側に数える。
 const dropped = (x) => x.state === "CLOSED" && ["NOT_PLANNED", "DUPLICATE"].includes(x.stateReason);
-// ボードの項目から、ボードの世界・欄・待ちを組む（1件を決め直すときも、振り出しの一覧も同じ）。子（親を持つ issue）は、優先度・着手可能日時・
+// Project の項目から、欄と待ちを組む（1件を決め直すときも、振り出しの一覧も同じ）。子（親を持つ issue）は、優先度・着手可能日時・
 // 急ぎ・保留を自分では持たず、親の値を見る（親が閉じていれば、閉じるのを待つ子なので振り出さない）。待つ相手は前提と子で、どちらも同じに扱う。
 export function taskOf(config, issue, items, now = new Date()) {
-  const { world, item } = itemOf(config, items);
+  const item = itemOf(config, items);
   const parent = issue.parent;
-  const from = parent ? itemOf(config, parent.projectItems.nodes).item : item;
+  const from = parent ? itemOf(config, parent.projectItems.nodes) : item;
   const text = from?.start?.text?.trim();
   const start = jst(text);
   const own = item?.start?.text?.trim();
   const waits = [...issue.blockedBy.nodes, ...(issue.subIssues?.nodes ?? [])];
-  return { board: world, item: item?.id, status: item?.status?.name, priority: from?.priority?.name, type: issue.issueType?.name ?? null,
+  return { item: item?.id, status: item?.status?.name, priority: from?.priority?.name, type: issue.issueType?.name ?? null,
     open: issue.state === "OPEN", blocked: waits.some((w) => w.state === "OPEN"), dropped: waits.filter(dropped).map((w) => w.number),
     future: Boolean(text) && (!start || start > now), badStart: own && !jst(own) ? own : null,
     urgent: Boolean((parent ?? issue).labels?.nodes.some((l) => l.name === config.urgentLabel)), held: Boolean(parent) && (parent.state === "CLOSED" || from?.status?.name === "保留") };
@@ -102,7 +104,8 @@ export async function readFacts(gh, config, number, { record, stopped }) {
   // それより前を読んでいる。閉じたあとの文だけを数える（閉じるときに一緒に書いた文は、閉じる決定の一部）。
   const at = (n) => Date.parse(n.createdAt);
   const by = (n, login) => n.author?.login === login;
-  const dialog = (itemOf(config, i.projectItems.nodes).world ?? (i.issueType?.name === config.dialogType ? "dialog" : "actions")) === "dialog";
+  const types = i.timelineItems.nodes.map((e) => e.prevIssueType?.name ?? null); // 今より前の種類（古い順）
+  const dialog = dialogOf(config, types, i.issueType?.name ?? null);
   const reads = nodes.filter((n) => by(n, config.claude) && (dialog || /^### \S+担当の終わり/.test(norm(n.body))))
     .map((n) => Date.parse(/^読み始め: (\S+)$/m.exec(norm(n.body))?.[1] ?? n.createdAt));
   const lastRead = Math.max(0, ...reads);
@@ -125,7 +128,7 @@ export async function readFacts(gh, config, number, { record, stopped }) {
   return { ...task, droppedAsked, lastMove: lastMove(config, i, c.pullRequests.nodes, mine), full: full(config, record), stopped: Boolean(stopped), now: config.now?.() ?? Date.now(), redo: redo(question, answer && at(answer), mine), unread, answerRead, answerApplied, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
     conditions: conditions(i.body), remaining: remaining(i.body), assignees: i.assignees.nodes.map((a) => a.login), question,
     runs, parent: p && { number: p.number }, dead, children: i.subIssues.nodes, origin: Number(/^分割元: #(\d+)\s*$/m.exec(norm(i.body))?.[1]) || null,
-    types: i.timelineItems.nodes.map((e) => e.prevIssueType?.name ?? null), // 今より前の種類（古い順）
+    types, dialog,
     merged: Boolean(merged), mergeChecks: ROLLUP[merged?.mergeCommit?.statusCheckRollup?.state],
     badQuestion: last && isQuestion(last) ? checkQuestion(config.questionTemplate, last) : [], comments,
     pr: open && { id: open.id, draft: open.isDraft, checks, newSurvivors: mutants.count > 0 && !(made > mutants.at), backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };

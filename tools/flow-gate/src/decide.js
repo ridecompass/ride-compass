@@ -8,31 +8,30 @@ import { APPLIED, checkLines, splitBody, withButton } from "./questions.js";
 
 const HELD = { 作る: "進行中", 確かめる: "検証中" }; // 担当が持っている間のステータス
 const WAIT = ["回答待ち", "保留"]; // ユーザーの番（担当者の欄にユーザーを入れる）
-const DIALOG = ["未着手", ...WAIT, "完了"]; // 対話作業のボードのステータス（開発機のセッションが触っていることは持たない）
+const DIALOG = ["未着手", ...WAIT, "完了"]; // 対話作業のステータス（開発機のセッションが触っていることは持たない）
 const ACCEPTED = (k) => k.state === "CLOSED" && k.stateReason === "COMPLETED";
 
 export function decide(f, config) {
-  const board = f.board ?? (f.type === config.dialogType ? "dialog" : "actions");
   // 種類は作るときに決まり、対話作業の境目をまたいで変わらない。境目の向こうへ変わったら、こちら側の最後の種類へ戻す。
-  const mine = (t) => (t === config.dialogType) === (board === "dialog");
-  const type = mine(f.type) ? f.type : (f.types.findLast(mine) ?? (board === "dialog" ? config.dialogType : null));
+  const mine = (t) => (t === config.dialogType) === f.dialog;
+  const type = mine(f.type) ? f.type : (f.types.findLast(mine) ?? (f.dialog ? config.dialogType : null));
   // 子が完成で閉じたら、その子が受け持つ条件（「- 子: #N」）は満たされた。
   const byChildren = f.remaining.filter((c) => c.child && f.children.some((k) => k.number === c.child && ACCEPTED(k)));
   const s = status({ ...f, remaining: f.remaining.filter((c) => !byChildren.includes(c)) }, config);
-  if (board === "dialog" && !DIALOG.includes(s.status)) s.status = "未着手";
-  Object.assign(s, owner(f, { ...s, waiting: waiting(f, board, s.status) }, config));
+  if (f.dialog && !DIALOG.includes(s.status)) s.status = "未着手";
+  Object.assign(s, owner(f, { ...s, waiting: waiting(f, s.status) }, config));
   const body = checkLines(f.body, [...byChildren.map((c) => c.index), ...(s.check ?? [])]);
   // 見送りで閉じる・閉じた issue の開いた PR は、もう確かめもマージもしないので閉じる。
   const dropping = (s.closeAs ?? (f.open ? null : f.closedAs)) === "NOT_PLANNED";
-  return { board, type, status: s.status, open: s.status !== "完了", closeAs: s.closeAs, ask: s.ask ?? null, cancel: s.cancel ?? [], closePr: dropping && f.pr ? f.pr.id : null,
+  return { type, status: s.status, open: s.status !== "完了", closeAs: s.closeAs, ask: s.ask ?? null, cancel: s.cancel ?? [], closePr: dropping && f.pr ? f.pr.id : null,
     notice: [notice(f, s.status), s.told].filter(Boolean).join("\n\n") || null,
     ready: s.status === "検証待ち" && Boolean(f.pr?.draft), assignees: s.assignees,
     body: s.status === "回答待ち" || (f.question && !f.question.answer) ? withButton(body, config, f.number) : body };
 }
 
 // 1階の待ち: 関係性（前提・子が開いている・着手可能日時が先・親が保留か閉じた）と、外の事情で振り出せない（担当の枠が埋まっている・止めている）。
-function waiting(f, board, status) {
-  const kind = board === "actions" && DISPATCH[status];
+function waiting(f, status) {
+  const kind = !f.dialog && DISPATCH[status];
   return f.blocked || f.future || f.held || Boolean(kind && (f.full[kind] || f.stopped));
 }
 
