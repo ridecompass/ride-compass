@@ -30,7 +30,7 @@ async function stopReason(gh, config) {
 }
 
 // 振り出す担当の種類（無ければ null）。待つ相手（前提・子）・未来の着手可能日時・保留の親・対話作業・担当の付いたものは振り出さない。
-const DISPATCH = { 未着手: "作る", 検証待ち: "確かめる" };
+export const DISPATCH = { 未着手: "作る", 検証待ち: "確かめる" };
 const dispatchable = (t, config) => (t.open && !t.runs.length && !t.blocked && !t.future && !t.held && t.type !== config.dialogType ? (DISPATCH[t.status] ?? null) : null);
 const RANK = { dispatched: 0, requested: 1, in_progress: 2, completed: 3 };
 

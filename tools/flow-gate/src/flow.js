@@ -9,7 +9,9 @@ export async function handle(gh, { patrol, inbox }, config, name, payload) {
     const sent = await dispatch(gh, patrol, config, [], Object.keys(config.slots), true);
     await reportHealth(gh, config, { stopped: sent.stopped, failed: await inbox.failed() });
     await inbox.clear();
-    for (const number of await quiet(gh, config)) await inbox.push("recheck", { number });
+    // 前の回の決め直しがまだ受け箱に残っていれば、重ねて入れない。
+    const queued = new Set((await inbox.pending("recheck")).map((p) => p.number));
+    for (const number of await mine(gh, config)) if (!queued.has(number)) await inbox.push("recheck", { number });
     return;
   }
   if (name === "recheck") return dispatch(gh, patrol, config, [await settle(gh, config, payload.number, await patrol.state())], []);
@@ -38,11 +40,9 @@ async function dispatch(gh, patrol, config, settled, kinds, always) {
   return sent;
 }
 
-// 動きを確かめ直す issue: ユーザーの番でない開いた issue のうち、issue が設定の時間（stallHours）更新されていないもの（それより新しければ、
-// 止まったとは決まらない。PR の動きは issue の更新に出ないので、ここで除いたものはゲートが PR まで読んで決める）。
-async function quiet(gh, config) {
-  const before = new Date(Date.now() - config.stallHours * 3600e3).toISOString().slice(0, 19);
-  const q = encodeURIComponent(`repo:${config.tasks} is:issue is:open -assignee:${config.user} updated:<${before}`);
+// 動きを確かめ直す issue: ユーザーの番でない開いた issue の全部（issue の更新の時刻はゲート自身の書き込みでも進むので、それで絞らない）。
+async function mine(gh, config) {
+  const q = encodeURIComponent(`repo:${config.tasks} is:issue is:open -assignee:${config.user}`);
   const numbers = [];
   for (let page = 1; ; page++) {
     const { items } = await gh.rest("GET", `/search/issues?q=${q}&per_page=100&page=${page}`);
