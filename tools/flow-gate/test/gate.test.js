@@ -86,7 +86,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     if (path.endsWith(`/workflows/${config.workflow}`)) return { state: workflow };
     if (path.includes("/runs?status=completed&per_page=1")) return { workflow_runs: last };
     if (path.endsWith("/jobs")) return { jobs: [{ steps }] };
-    if (path.startsWith("/search/issues")) return { items: [...w.issues.values()].filter((i) => i.state === "OPEN").map((i) => ({ number: i.n })) };
+    if (path.startsWith("/search/issues")) return { items: [...w.issues.values()].filter((i) => i.state === "OPEN" && !i.assignees.includes(config.user)).map((i) => ({ number: i.n })) };
     if (path.endsWith("/dispatches")) return void w.runs.push({ id: 100 + w.runs.length, display_title: `#${body.inputs.issue} ${body.inputs.kind} ${body.inputs.key}` });
     if ((m = /\/actions\/runs\/(\d+)\/cancel$/.exec(path))) return void w.writes.push(["取り消し", Number(m[1])]);
     if ((m = /\/commits\/(\w+)\/pulls$/.exec(path))) return [...w.issues.values()].filter((i) => i.pr?.sha === m[1]).map((i) => ({ head: { ref: `${config.branchPrefix}${i.n}` } }));
@@ -244,8 +244,6 @@ test("tasks#842 担当者はユーザーに問わないと進めないかの2択
     ["振り出しを止めている（外の事情で待つ）→ 問わない", { status: "未着手" }, start + 30 * HOUR, "未着手", [config.claude], null, "disabled"],
     ["対話作業で3時間だれも書かない → 止まった", { status: "未着手", type: config.dialogType, board: "dialog" }, start + 3 * HOUR, "回答待ち", [config.user], "## 問い（イレギュラー）"],
     ["保留はユーザーの番で、確かめない", { status: "保留" }, start + 30 * HOUR, "保留", [config.user], null],
-    ["手で付けた担当者のずれは、ユーザーの番でも定時に戻す", { status: "回答待ち", comments: [QUESTION], assignees: [config.user, config.claude] }, start + HOUR,
-      "回答待ち", [config.user], "## 問い（判断）"],
     ["ゲートの書き込みは動きに数えない", { ...ci, comments: ["知らせ"], by: [config.gateBot], times: [new Date(start + 2 * HOUR).toISOString()] }, start + 3 * HOUR,
       "回答待ち", [config.user], "## 問い（イレギュラー）"],
     ["Claude の書き込みは動きに数える", { ...ci, comments: ["進めた"], by: [config.claude], times: [new Date(start + 2 * HOUR).toISOString()] }, start + 3 * HOUR,
@@ -258,6 +256,10 @@ test("tasks#842 担当者はユーザーに問わないと進めないかの2択
     clock.now = Date.UTC(2026, 9, 11, 1);
     assert.deepEqual([w.at(1).status, w.at(1).assignees, head(w.at(1))], [status, assignees, comment], name);
   }
+  // 担当者を手で変えたら、その出来事で決め直し、ゲートの決めた値へ戻す。
+  const hand = world([{ n: 1, status: "回答待ち", comments: [QUESTION], assignees: [config.user, config.claude] }]);
+  await hand.send(ev.issue(1, "assigned"));
+  assert.deepEqual(hand.at(1).assignees, [config.user], "回答待ちの担当者はユーザーだけ");
   // 止まりの問いに「やり直す」と答えたら、CI待ちのものは作る担当へ渡す。
   const w = world([{ n: 1, ...ci }]);
   clock.now = start + 3 * HOUR;
