@@ -74,8 +74,6 @@ interface SpliceSessionInputs {
   generatedInput: GenerationInput | null;
   /** 候補を選んでいるか。 */
   hasSelectedRoute: boolean;
-  /** 「作成」を押して評価を始める直前に呼ぶ。 */
-  onApplyStart: () => void;
   /** 作った経路と元にした候補。作った経路が既にある候補と同じ道なら、作らずにその候補のidだけを渡す。 */
   onApplied: (result: { created: RouteCandidate; originId: string } | { existingRouteId: string }) => void;
 }
@@ -109,7 +107,6 @@ export function useSpliceSession({
   routes,
   generatedInput,
   hasSelectedRoute,
-  onApplyStart,
   onApplied,
 }: SpliceSessionInputs): SpliceSessionView {
   const axisCatalog = useAxisCatalog();
@@ -244,7 +241,6 @@ export function useSpliceSession({
     const { token } = splice;
     applyingRef.current = true;
     setSpliceTask({ status: "applying" });
-    onApplyStart();
     try {
       const spliced = await evaluateSplicedRoute();
       if (spliced === "stale") return;

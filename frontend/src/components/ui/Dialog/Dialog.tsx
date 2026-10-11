@@ -9,6 +9,8 @@ import { cn } from "@/lib/cn";
 // ドラッグしない単純なモーダル。titleを必須にして、アクセシブルな名前を型で強いる。
 
 export const DialogRoot = RadixDialog.Root;
+/** 窓を開いたときに見出しと一緒に読み上げる本文。 */
+export const DialogDescription = RadixDialog.Description;
 
 interface DialogContentProps {
   title: string;
