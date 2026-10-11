@@ -75,11 +75,15 @@ Monitor で次を回す（ジョブが終わるたびに1行出し、実行が�
 
     gh run download <id> -R ridecompass/ride-compass -n mutation-review -D <作業ツリーの外の使い捨ての場所>
 
-- `summary.md`: 実行の要約と同じ表（観点ごとのテスト関数の数と行数・効きの変異スコア・判断できずに残したテストの理由）。
-- `review.json` には次の欄がある。`measured`（測った版）・`previous`（比べた前回の版。無ければ null）・`complete`・`candidates`（今回の重なりの候補。
-  テスト関数ごとに `hash`・`lines`・`height`・消したあとの確かめに使う `mutant` と、それを見つける残すテスト `kept_test`）・
-  `delete`（消す一覧）・`writing.zero`・`writing.broad_only`（書き方の候補）・`isolation`（隔離の候補）。
-- `analyze.txt`: 層ごとの変異スコアと、テストの区分ごとの数。前の回の `analyze.txt` と比べると、効きの動きが分かる。
+- `summary.md`: 実行の要約と同じ表（層ごとの変異スコア・テストの区分ごとの数・観点ごとの候補の数と行数・判断できずに残したテストの
+  理由・テストのファイルごとの数）。前の回の `summary.md` と比べると、効きの動きが分かる。
+- `candidates.md`: 候補を観点ごとに1件1行で並べた表。「落ちると利用者に何が壊れるか」の欄は空で出る（5 で書く）。
+- `review.json` には次の欄がある。`measured`（測った版）・`previous`（比べた前回の版。無ければ null）・`complete`・`mutants`（結果ごとの
+  変異の数）・`candidates`・`kept_reasons`。`candidates` は観点ごとの一覧で、`effect`（効き。生き残りと、どのテストも通らない変異）・
+  `overlap`（重なり。テスト関数ごとに `hash`・`lines`・`height`・消したあとの確かめに使う `mutant` と、それを見つける残すテスト
+  `kept_test`・前回も候補で中身が同じなら真の `previous`）・`isolation`（隔離）・`writing`（書き方。`form` が形）。`isolation` の
+  ほかは、1件ごとに空の `breaks`（落ちると利用者に何が壊れるか）を持つ。
+- `report.json`: 測りの結果の表（層や道具に依らない Stryker の結果の JSON の形。読み方は `backend/scripts/mutation/report.py` の先頭）。
 
 ### 5. 観点ごとに行き先を決める
 
@@ -88,10 +92,10 @@ issue へ前後関係を張らず、本文に「<記録する issue> の見直�
 
 | 観点 | 一覧 | 行き先 |
 |---|---|---|
-| 効き | `analyze.txt` の変異スコア・生き残り | タスクにしない（変えた所は Pull Request ごとの Mutation PR が見る）。6 に数を書く |
-| 重なり | `delete` | 空なら何もしない（前回が無い・2回続けて候補になったものが無い）。あれば、記録する issue を親にして、消す子を作る（下の「消す子」） |
-| 隔離 | `isolation` | あれば、1つのタスクに並べて起こす。やることは run-checks/SKILL.md「実行順をばらす」の汚した側の探し方 |
-| 書き方 | `writing.zero`・`writing.broad_only` | あれば、1つのタスクに並べて起こす。やることは testing-review.md の書き方（1本ずつ3問へ通し、型として決まったものを「消すべきテストの型」と構造の検査に足す） |
+| 効き | `summary.md` の変異スコア・`candidates.effect` | タスクにしない（変えた所は Pull Request ごとの Mutation PR が見る）。6 に数を書く |
+| 重なり | `candidates.overlap` のうち `previous` が真のもの | 空なら何もしない（前回が無い・2回続けて候補になったものが無い）。あれば、1件ずつ `breaks`（落ちると利用者に何が壊れるか）と、それを `kept_test` が守るかを書いた表を記録する issue に載せ、消すかをユーザーに問う（.claude/skills/ask/SKILL.md「問い」）。消すと決まったもので、記録する issue を親にして、消す子を作る（下の「消す子」） |
+| 隔離 | `candidates.isolation` | あれば、1つのタスクに並べて起こす。やることは run-checks/SKILL.md「実行順をばらす」の汚した側の探し方 |
+| 書き方 | `candidates.writing` | あれば、1つのタスクに並べて起こす。やることは testing-review.md の書き方（1本ずつ3問へ通し、型として決まったものを「消すべきテストの型」と構造の検査に足す） |
 
 起こす前に、同じ直す場所の開いたタスクがあれば、新しく起こさずそこへコメントで足す（.claude/skills/file-issue/SKILL.md「改善を起票する」の重ねない）。
 
@@ -99,7 +103,7 @@ issue へ前後関係を張らず、本文に「<記録する issue> の見直�
 
 - テストのファイルの並びで、子1つあたりテスト関数の行（`lines` の和）が約600行までに分ける。
 - 記録する issue の完了の条件に、子ごとに「<テストのファイルの範囲> の重なったテストを消した」の行を足し、行の下に `- 子: #<子>` を付ける。
-- 子の本文のやることに、消すテスト関数の表（テスト関数・行数・高さ・`mutant`・`kept_test`）と、次の確かめを書く。
+- 子の本文のやることに、消すテスト関数の表（テスト関数・行数・高さ・`mutant`・`kept_test`・問いに書いた `breaks`）と、次の確かめを書く。
   1. 表のテスト関数を消す。
   2. 表の `mutant` を1行ずつ `only.txt`（置き場は `backend/scripts/mutation/`）に書いて作業ブランチへ push し、
      `gh workflow run mutation.yml -R ridecompass/ride-compass --ref <作業ブランチ> -f ref=<作業ブランチ>` で回す（一覧だけを回し、

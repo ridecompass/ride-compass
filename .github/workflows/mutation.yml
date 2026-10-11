@@ -10,8 +10,9 @@
 #      arm64・4コアのランナー）。回し終えたら、その本の生き残りのうち読み込みのときに呼ばれうる関数の変異（importtime.py）に、
 #      同じランナーでテスト全体を当て直す（読み込みのときに呼ばれうるかは関数ごとに決まるので、ほかの本の結果は要らない。
 #      別の段にすると、変異の生成とランナーの空き待ちがもう1回ずつ要る）。
-#   2. review（1本）: 1 を集計し（analyze.py）、見直しの候補を出す（review.py）。前の実行の見直し（成果物 mutation-review）を
-#      取ってきて比べ、2回続けて重なりの候補になったテストを消す一覧にする。表は実行の要約に出す。
+#   2. review（1本）: 1 を層に依らない表（Stryker の結果の JSON の形）にし（report.py）、その表から見直しの候補を出す
+#      （review.py）。前の実行の見直し（成果物 mutation-review）を取ってきて比べ、前回も重なりの候補だったテストに印を付ける。
+#      候補は消す一覧ではなく、1件ずつ壊れるものを書いてから決める（test-review/SKILL.md）。数の表は実行の要約に出す。
 # - 測る版の backend/scripts/mutation/ に一覧（only.txt・recheck.txt・baseline.txt）があれば、1 はその一覧だけを回し（当て直しも
 #   しない）、2 は走らない（消したあとの確かめ等。run-checks/SKILL.md「変異テストでテストの効きを測る」）。
 # - 持ち時間: 2026-10-09 の同じ形の測りで、変異は1本あたり55〜59分（基準は別に回して9分）、当て直しは1本あたり約26分だった。
@@ -187,16 +188,16 @@ jobs:
             gh run download "$prev" -R "${{ github.repository }}" -n mutation-review -D /tmp/prev
             echo "前の見直し: 実行 $prev"
           else
-            echo "前の見直しは無い（消す一覧は空になる）"
+            echo "前の見直しは無い（前回も候補だった印は付かない）"
           fi
       - id: review
         name: 集計して見直す
         run: |
           mkdir -p /tmp/review
-          python scripts/mutation/analyze.py /tmp/art /tmp/rart | tee /tmp/review/analyze.txt
-          python scripts/mutation/review.py /tmp/art /tmp/prev /tmp/review
+          mkdir -p /tmp/rart
+          python scripts/mutation/report.py /tmp/art /tmp/rart /tmp/review/report.json
+          python scripts/mutation/review.py /tmp/review/report.json /tmp/prev /tmp/review
           cat /tmp/review/summary.md >> "$GITHUB_STEP_SUMMARY"
-          cp /tmp/art/summary.json /tmp/art/pertest.json /tmp/art/survivors.json /tmp/review/
       # 変異を全部回し終えた測りの見直しだけを残す（途中で止まった測り・count で減らした試しを、次の見直しが前回として
       # 読まないように）。見直しが落ちたときも残さない。
       - if: steps.review.outputs.complete == 'true'
