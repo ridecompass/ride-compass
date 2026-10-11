@@ -65,6 +65,20 @@ async function allComments(gh, config, number) {
   }
 }
 
+// 最後の動き: ゲートのほかが書いたコメント・本文の編集・作業ブランチの PR のコミットとマージ・検査の終わり・担当の実行の始まりと終わり・
+// issue を作ったときのうち、一番新しい時刻。GitHub と見回りの記録（runs）から出し、起点をだれも持たない。GraphQL は App の書き手を [bot] の付かない名前で返す。
+function lastMove(config, i, pulls, runs) {
+  const gate = config.gateBot.replace(/\[bot\]$/, "");
+  const suites = (commit) => commit?.checkSuites?.nodes.map((x) => x.updatedAt) ?? [];
+  const pr = (p) => [p.mergedAt, p.commits.nodes.at(-1)?.commit.committedDate, ...suites(p.commits.nodes.at(-1)?.commit), ...suites(p.mergeCommit)];
+  const times = [i.createdAt, i.editor?.login !== gate && i.lastEditedAt, ...i.comments.nodes.filter((n) => n.author?.login !== gate).map((n) => n.createdAt), ...pulls.flatMap(pr)];
+  return Math.max(0, ...times.map((t) => Date.parse(t)).filter(Number.isFinite), ...runs.map((r) => r.at));
+}
+// イレギュラーに「やり直す」と答えたあと（answered はその時刻）、まだ担当の実行が起きていないか（src/decide.js: redo）。
+const redo = (question, answered, runs) => question?.kind === "イレギュラー" && question.answer?.decision === "続ける" && !runs.some((r) => r.at > answered);
+// 外の事情で振り出せない: 担当の枠が埋まっているか（種類ごと）。
+const full = (config, record) => Object.fromEntries(Object.entries(config.slots).map(([kind, n]) => [kind, record.filter((h) => h.state !== "completed" && h.kind === kind).length >= n]));
+
 // 見回りの状態（src/patrol.js: Patrol.state）: record は担当の記録（終わった実行の印を含む）、stopped は振り出しを止めている理由。
 export async function readFacts(gh, config, number, { record, stopped }) {
   const [to, tn] = config.tasks.split("/");
@@ -100,6 +114,7 @@ export async function readFacts(gh, config, number, { record, stopped }) {
   const answer = asked < 0 ? null : nodes.slice(asked + 1).find((n) => isAnswer(n.body));
   const answerRead = Boolean(answer) && reads.some((t) => t > at(answer));
   const answerApplied = Boolean(answer) && nodes.some((n) => at(n) > at(answer) && norm(n.body).startsWith(APPLIED));
+  const question = latestQuestion(comments, config.questionTemplate);
   // 子は、親が閉じて開き直されないなら（要望が満たされた・やめた）生きていない。条件が残ったまま完成で閉じた親は、ゲートが開き直す。
   const p = i.parent;
   const dead = Boolean(p) && p.state === "CLOSED" && !(p.stateReason === "COMPLETED" && remaining(p.body).length);
@@ -107,17 +122,8 @@ export async function readFacts(gh, config, number, { record, stopped }) {
   const task = taskOf(config, i, i.projectItems.nodes);
   const asking = task.dropped.length ? droppedQuestion(task.dropped) : null;
   const droppedAsked = Boolean(asking) && (comments.some((x) => x.includes(asking)) || (await allComments(gh, config, number)).some((x) => x.includes(asking)));
-  // 最後の動き: ゲートのほかが書いたコメント・本文の編集・作業ブランチの PR のコミットとマージ・検査の終わり・担当の実行の始まりと終わり・
-  // issue を作ったときのうち、一番新しい時刻。GitHub と見回りの記録から出し、起点をだれも持たない。
-  const gate = config.gateBot.replace(/\[bot\]$/, "");
-  const suites = (commit) => commit?.checkSuites?.nodes.map((x) => x.updatedAt) ?? [];
-  const lastMove = Math.max(0, ...[i.createdAt, i.editor?.login !== gate && i.lastEditedAt, ...nodes.filter((n) => n.author?.login !== gate).map((n) => n.createdAt),
-    ...c.pullRequests.nodes.flatMap((p) => [p.mergedAt, p.commits.nodes.at(-1)?.commit.committedDate, ...suites(p.commits.nodes.at(-1)?.commit), ...suites(p.mergeCommit)])]
-    .map((t) => Date.parse(t)).filter(Number.isFinite), ...mine.map((r) => r.at));
-  // 外の事情で振り出せない: 担当の枠が埋まっている（種類ごと）か、見回りが振り出しを止めている。
-  const full = Object.fromEntries(Object.entries(config.slots).map(([kind, n]) => [kind, record.filter((h) => h.state !== "completed" && h.kind === kind).length >= n]));
-  return { ...task, droppedAsked, lastMove, full, stopped: Boolean(stopped), now: config.now?.() ?? Date.now(), unread, answerRead, answerApplied, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
-    conditions: conditions(i.body), remaining: remaining(i.body), assignees: i.assignees.nodes.map((a) => a.login), question: latestQuestion(comments, config.questionTemplate),
+  return { ...task, droppedAsked, lastMove: lastMove(config, i, c.pullRequests.nodes, mine), full: full(config, record), stopped: Boolean(stopped), now: config.now?.() ?? Date.now(), redo: redo(question, answer && at(answer), mine), unread, answerRead, answerApplied, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
+    conditions: conditions(i.body), remaining: remaining(i.body), assignees: i.assignees.nodes.map((a) => a.login), question,
     runs, parent: p && { number: p.number }, dead, children: i.subIssues.nodes, origin: Number(/^分割元: #(\d+)\s*$/m.exec(norm(i.body))?.[1]) || null,
     types: i.timelineItems.nodes.map((e) => e.prevIssueType?.name ?? null), // 今より前の種類（古い順）
     merged: Boolean(merged), mergeChecks: ROLLUP[merged?.mergeCommit?.statusCheckRollup?.state],

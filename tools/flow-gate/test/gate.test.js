@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import base from "../flow.config.json" with { type: "json" };
 import { handle } from "../src/flow.js";
 import { answerForm } from "../src/form.js";
-import { Inbox } from "../src/inbox.js";
+import { Inbox, nextAlarm } from "../src/inbox.js";
 import { Patrol } from "../src/patrol.js";
 import { APPLIED, answerBody, askDropped, askText, conditions, droppedQuestion, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
 
@@ -63,7 +63,8 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
       const i = w.at(v.n);
       // 閉じた時刻を置いていない閉じた issue は、今あるコメントのあとに閉じた。
       const closedAt = i.state === "CLOSED" ? (i.closedAt ?? T(i.comments.length - 0.5)) : null;
-      const comments = i.comments.map((body, k) => ({ body, createdAt: T(k), author: { login: author(i, k) } })).slice(-40);
+      // GraphQL は App の書き手の名前を [bot] の付かない形で返す。コメントの時刻は、置いたもの（i.times）か並びの順。
+      const comments = i.comments.map((body, k) => ({ body, createdAt: i.times?.[k] ?? T(k), author: { login: author(i, k).replace(/\[bot\]$/, "") } })).slice(-40);
       return { t: { issue: { id: `I${i.n}`, state: i.state, stateReason: i.reason, createdAt: T(0), closedAt, body: i.body, author: { login: i.author }, issueType: i.type && { name: i.type },
         assignees: { nodes: i.assignees.map((login) => ({ login })) }, ...relations(i), comments: { nodes: comments }, projectItems: { nodes: item(i) },
         timelineItems: { nodes: (i.typeChanges ?? []).map(([a, b]) => ({ prevIssueType: { name: a }, issueType: { name: b } })) } } },
@@ -243,6 +244,10 @@ test("tasks#842 担当者はユーザーに問わないと進めないかの2択
     ["振り出しを止めている（外の事情で待つ）→ 問わない", { status: "未着手" }, start + 30 * HOUR, "未着手", [config.claude], null, "disabled"],
     ["対話作業で3時間だれも書かない → 止まった", { status: "未着手", type: config.dialogType, board: "dialog" }, start + 3 * HOUR, "回答待ち", [config.user], "## 問い（イレギュラー）"],
     ["保留はユーザーの番で、確かめない", { status: "保留" }, start + 30 * HOUR, "保留", [config.user], null],
+    ["ゲートの書き込みは動きに数えない", { ...ci, comments: ["知らせ"], by: [config.gateBot], times: [new Date(start + 2 * HOUR).toISOString()] }, start + 3 * HOUR,
+      "回答待ち", [config.user], "## 問い（イレギュラー）"],
+    ["Claude の書き込みは動きに数える", { ...ci, comments: ["進めた"], by: [config.claude], times: [new Date(start + 2 * HOUR).toISOString()] }, start + 3 * HOUR,
+      "CI待ち", [config.claude], "進めた"],
   ];
   for (const [name, task, now, status, assignees, comment, workflow = "active"] of rows) {
     const w = world([{ n: 1, ...task }, { n: 9, status: "保留" }], { workflow });
@@ -261,6 +266,18 @@ test("tasks#842 担当者はユーザーに問わないと進めないかの2択
   w.at(1).comments.push(answerBody({ kind: "イレギュラー", text: asked[1] }, { choice: "やり直す" }));
   await w.send(ev.comment(1));
   assert.deepEqual([w.at(1).status, w.titles(), w.at(1).assignees], ["進行中", ["#1 作る"], [config.claude]]);
+  // 枠が埋まっていてすぐ振り出せなくても、答えのあとに担当の実行が起きるまで「やり直す」を保つ。
+  const full = world([{ n: 1, ...ci }, { n: 2, status: "未着手" }, { n: 3, status: "未着手" }]);
+  clock.now = start + 3 * HOUR;
+  await full.send(ev.schedule());
+  clock.now = Date.UTC(2026, 9, 11, 1);
+  assert.deepEqual(full.titles().sort(), ["#2 作る", "#3 作る"], "作るの枠（2）が埋まる");
+  full.at(1).comments.push(answerBody({ kind: "イレギュラー", text: full.at(1).comments.at(-1).split("\n")[1] }, { choice: "やり直す" }));
+  await full.send(ev.comment(1));
+  await full.send(ev.comment(1));
+  assert.equal(full.at(1).status, "未着手", "次の決め直しでも CI待ちへ戻さない");
+  await full.send(ev.run(full.run(2), "completed"));
+  assert.deepEqual([full.at(1).status, full.titles().filter((t) => t === "#1 作る").length], ["進行中", 1], "枠が空いたら作る担当へ渡す");
 });
 
 test("前提が閉じたら、後ろで待っていたタスクも決め直して振り出す", async () => {
@@ -428,6 +445,14 @@ test("K6・受け箱・状況の更新: 止めたら振り出さず理由を出�
   assert.deepEqual([w.updates.at(-1).status, w.updates.at(-1).body.includes("404")], ["OFF_TRACK", true]);
   await w.send(ev.schedule());
   assert.equal(w.updates.at(-1).status, "ON_TRACK", "G8 出したら消し、戻ったら On track を書く");
+  // 1回の起こしで処理する数を限ったら、残りがあれば今の時刻を返し、アラームを置き直す（置かれたアラームが無いときも置く）。
+  const many = world([{ n: 1, status: "未着手" }, { n: 2, status: "未着手" }]);
+  await many.push(ev.comment(1));
+  await many.push(ev.comment(2));
+  const now = Date.now();
+  assert.equal(await many.inbox.drain(config.retries, now, 1), now);
+  assert.equal((await many.inbox.pending("issue_comment")).length, 1, "限った数のあとの出来事は残る");
+  for (const [next, set, want] of [[now, null, now], [now, now + 1, now], [now + 1, now, null], [null, null, null]]) assert.equal(nextAlarm(next, set), want, `${next} ${set}`);
 });
 
 test("tasks#307・K3・G4・G7: 本文の印の間・形に合わない問い・ボードの移動・着手可能日時の形", async () => {

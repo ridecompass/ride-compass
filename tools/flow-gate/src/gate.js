@@ -17,6 +17,10 @@ async function setField(gh, config, world, item, name, option) {
     { p: p.id, i: item, f: field.id, v: value.id });
 }
 
+// 決めた問い（種類の名前か、見送りの相手・止まった時刻を持つもの）の文。
+const askBody = (ask, config) => (ask.dropped ? askDropped(ask.dropped, config.questionTemplate)
+  : ask.stalled ? askStalled(jstText(ask.stalled), config.stallHours, config.questionTemplate) : askText(ask, config.questionTemplate));
+
 // 1つのタスクを決め直して、今と違う所だけを書く。本文（ボタン）は問いのコメントより先に書く（問いの通知から開いたときにボタンがあるように）。閉じるのは最後。
 // held は見回りの状態（src/patrol.js: Patrol.state）。moved は、ユーザーがボードでステータスを動かした出来事で決め直すとき（戻したら知らせる）。
 export async function settle(gh, config, number, held, moved = false) {
@@ -26,9 +30,7 @@ export async function settle(gh, config, number, held, moved = false) {
   const patch = { ...(d.open && !f.open ? { state: "open" } : {}), ...(d.type !== f.type ? { type: d.type } : {}), ...(d.body !== norm(f.body) ? { body: d.body } : {}),
     ...(String(d.assignees) !== String(f.assignees) ? { assignees: d.assignees } : {}) };
   if (Object.keys(patch).length) await gh.rest("PATCH", issue, patch);
-  const ask = d.ask?.dropped ? askDropped(d.ask.dropped, config.questionTemplate) : d.ask?.stalled ? askStalled(jstText(d.ask.stalled), config.stallHours, config.questionTemplate)
-    : d.ask && askText(d.ask, config.questionTemplate);
-  if (ask) await gh.rest("POST", `${issue}/comments`, { body: ask });
+  if (d.ask) await gh.rest("POST", `${issue}/comments`, { body: askBody(d.ask, config) });
   if (d.notice) await gh.rest("POST", `${issue}/comments`, { body: d.notice });
   if (d.closePr) await gh.gql(`mutation($id:ID!){closePullRequest(input:{pullRequestId:$id}){clientMutationId}}`, { id: d.closePr });
   if (d.ready) await gh.gql(`mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){clientMutationId}}`, { id: f.pr.id });
