@@ -85,6 +85,8 @@ function table(f) {
   const pr = f.pr;
   if (pr) {
     if (pr.backToDraft) return { status: "未着手" }; // 確かめる担当の差し戻し
+    // master とぶつかっている PR では GitHub が pull_request のワークフローを起こさず、CI を待っても来ない。作る担当がぶつかりを解く。
+    if (pr.conflict) return { status: "未着手" };
     if (!pr.checks || pr.checks === "PENDING") return { status: "CI待ち" }; // 下書きかどうかによらず、CI の結果を待つ間は手放す
     if (pr.checks === "FAILURE") return { status: "未着手" };
     // 確かめる担当が、マージも差し戻しも問いもせずに手放した（同じ PR を確かめ直し続けない）。
