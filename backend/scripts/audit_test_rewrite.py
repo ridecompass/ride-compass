@@ -53,31 +53,23 @@ from coverage import CoverageData
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from tests.structure.source_symbols import SourceTree, bound_names
 from app.batch.common import asyncpg_dsn  # sys.pathを通した後に読む
 
 
-def _defined_names(node: ast.stmt) -> list[str]:
-    """最上位の文が定義する名前（関数・クラス・名前への代入）。"""
-    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-        return [node.name]
-    if isinstance(node, ast.Assign):
-        return [t.id for t in node.targets if isinstance(t, ast.Name)]
-    if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-        return [node.target.id]
-    return []
-
-
-def module_symbols(path: Path) -> tuple[set[str], dict[str, str]]:
-    """実装ファイルの最上位で「定義されたもの」と「importされたもの」を分ける。"""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+def module_symbols(source: SourceTree, path: Path) -> tuple[set[str], dict[str, str]]:
+    """実装ファイルの最上位で「定義されたもの」と「importされたもの」（名前 → 取り込み元のモジュール）を分ける。"""
+    module = source.module_of(path)
     defined: set[str] = set()
     imported: dict[str, str] = {}
-    for node in tree.body:
-        defined.update(_defined_names(node))
-        if isinstance(node, ast.ImportFrom):
-            imported.update({a.asname or a.name: node.module or "" for a in node.names})
-        elif isinstance(node, ast.Import):
-            imported.update({a.asname or a.name.split(".")[0]: a.name for a in node.names})
+    for name, statement in bound_names(ast.parse(path.read_text(encoding="utf-8")).body).items():
+        if isinstance(statement, ast.ImportFrom):
+            imported[name] = source.absolute(module, statement)
+        elif isinstance(statement, ast.Import):
+            alias = next(a for a in statement.names if (a.asname or a.name.split(".")[0]) == name)
+            imported[name] = alias.name
+        else:
+            defined.add(name)
     return defined, imported
 
 
@@ -104,12 +96,11 @@ def public_names(tree: ast.Module) -> list[tuple[str, str]]:
     最上位の関数・クラス・代入と、公開のクラスの`_`で始まらないメソッド（表示は`クラス.メソッド`）。
     """
     out: list[tuple[str, str]] = []
-    for node in tree.body:
-        names = _defined_names(node)
-        if not names:
+    for name, node in bound_names(tree.body).items():
+        if isinstance(node, (ast.Import, ast.ImportFrom)) or name.startswith("_"):
             continue
-        out.extend((name, name) for name in names if not name.startswith("_"))
-        if isinstance(node, ast.ClassDef) and not node.name.startswith("_"):
+        out.append((name, name))
+        if isinstance(node, ast.ClassDef):
             out.extend(
                 (f"{node.name}.{item.name}", item.name)
                 for item in node.body
@@ -411,7 +402,8 @@ def main() -> int:
         print(f"見つからない: {' '.join(missing)}", file=sys.stderr)
         return 1
     implementation = args.implementation.replace("\\", "/")
-    module = implementation.removesuffix(".py").replace("/", ".")
+    source = SourceTree(backend)
+    module = source.module_of(impl_path)
     cov_dir = implementation.rsplit("/", 1)[0]
 
     print(f"対象:     {args.implementation}")
@@ -438,7 +430,7 @@ def main() -> int:
         status = git("diff", "--stat", base.stdout.strip(), "--", args.implementation).stdout.strip()
         print(f"\n① 実装の変更（origin/master との合流点から）: {'**あり** → ' + status if status else 'なし'}")
 
-    defined, imported = module_symbols(impl_path)
+    defined, imported = module_symbols(source, impl_path)
     for test in tests:
         tree = ast.parse((backend / test).read_text(encoding="utf-8"))
         print(f"\n--- {test}")
@@ -471,8 +463,8 @@ def main() -> int:
         unknown = sorted(a for a in touched if a not in defined and a not in imported)
         print(f"③ テストが触る {alias}.X: 自ファイル定義 {len(own)}種"
               f" / 他モジュール由来 {len(foreign)}種 / 判定不能 {len(unknown)}種")
-        for name, source in foreign:
-            print(f"     {alias}.{name:<32} <- {source}  ({touched[name]}回)"
+        for name, origin in foreign:
+            print(f"     {alias}.{name:<32} <- {origin}  ({touched[name]}回)"
                   "  ← seamか責務外かを言うこと")
         for name in unknown:
             print(f"     {alias}.{name}  （判定不能）")
