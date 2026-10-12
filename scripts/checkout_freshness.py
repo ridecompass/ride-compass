@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 import argparse
-import io
 import os
 import subprocess
 import sys
@@ -108,7 +107,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    for stream in (sys.stdout, sys.stderr):
-        if isinstance(stream, io.TextIOWrapper):
-            stream.reconfigure(encoding="utf-8")
+    sys.path.append(str(REPO_ROOT / "backend" / "scripts"))
+    from _stdio import use_utf8_stdio
+
+    use_utf8_stdio()
     sys.exit(main())

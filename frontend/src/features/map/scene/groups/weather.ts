@@ -107,6 +107,11 @@ const RAINBAND_OUTLINE_DRAWING: Drawing = {
   },
 };
 
+/** 生成物の`*_below_*`の境（これ未満は無い側）で絞る。境ちょうどの値は有る側に入れる。 */
+function notBelowFilter(property: string, below: number): FilterSpecification {
+  return [">=", ["to-number", ["get", property]], below] as unknown as FilterSpecification;
+}
+
 function markDrawing(options: {
   readonly iconId: string;
   readonly createIcon: () => ImageData;
@@ -150,7 +155,7 @@ function markDrawing(options: {
     },
     ...(options.minValueToShow === undefined
       ? {}
-      : { filter: aboveFilter(options.valueProperty, options.minValueToShow) }),
+      : { filter: notBelowFilter(options.valueProperty, options.minValueToShow) }),
   };
 }
 
