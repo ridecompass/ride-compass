@@ -4,7 +4,24 @@
 //   --done は確かめの「完了にする」（残りのユーザーが確かめる条件を全部確かめた）。書いた文のファイルには、ユーザーの言葉の引用を含めて書く。
 import { readFileSync } from "node:fs";
 import { bot, config, isMain } from "../../../../tools/flow-gate/src/bot.js";
-import { answerBody, answerProblem, confirmItems, latestQuestion, norm } from "../../../../tools/flow-gate/src/questions.js";
+import { answerBody, answerProblem, confirmItems, isQuestion, latestQuestion, norm } from "../../../../tools/flow-gate/src/questions.js";
+
+// 本文とコメントを新しい方から1ページ読む。今の問いは末尾にあるので、読んだ中に問いが無いときだけ前のページを足す。
+const READ = "query($owner:String!,$name:String!,$number:Int!,$before:String){repository(owner:$owner,name:$name){issue(number:$number){body " +
+  "comments(last:100,before:$before){pageInfo{hasPreviousPage startCursor} nodes{body}}}}}";
+function read(gh, number) {
+  const [owner, name] = config.tasks.split("/");
+  const page = (before) => JSON.parse(gh(["api", "graphql", "--input", "-"],
+    JSON.stringify({ query: READ, variables: { owner, name, number: Number(number), before } }))).data.repository.issue;
+  const issue = page(null);
+  let { nodes, pageInfo } = issue.comments;
+  while (!nodes.some((c) => isQuestion(c.body)) && pageInfo.hasPreviousPage) {
+    const earlier = page(pageInfo.startCursor).comments;
+    nodes = [...earlier.nodes, ...nodes];
+    pageInfo = earlier.pageInfo;
+  }
+  return { body: issue.body, comments: nodes.map((c) => c.body) };
+}
 
 const USAGE = "使い方: node .claude/skills/ask/scripts/answer.mjs <issue の番号> [--choice <選んだ案か選択肢>] [--done] [--text <書いた文のファイル>]";
 
@@ -23,8 +40,8 @@ function main() {
   }
   const gh = bot();
   const template = norm(readFileSync(new URL("../../../../tools/flow-gate/question_template.md", import.meta.url), "utf8"));
-  const issue = JSON.parse(gh(["issue", "view", number, "-R", config.tasks, "--json", "body,comments"]));
-  const q = latestQuestion(issue.comments.map((c) => c.body), template);
+  const issue = read(gh, number);
+  const q = latestQuestion(issue.comments, template);
   if (!q || q.answer) {
     console.error(`#${number} に、答えていない問いがありません`);
     process.exit(1);
@@ -35,7 +52,8 @@ function main() {
     console.error(`答えを書かない: ${problem}`);
     process.exit(1);
   }
-  gh(["issue", "comment", number, "-R", config.tasks, "--body-file", "-"], answerBody(q, answer));
+  // REST で書けば1回で済む（gh issue comment は issue の ID を引く1回と書く1回を打つ）。
+  gh(["api", `repos/${config.tasks}/issues/${number}/comments`, "-F", "body=@-", "--silent"], answerBody(q, answer));
   console.log(`#${number}: 「${q.text}」への答えを書いた`);
 }
 

@@ -95,6 +95,8 @@ jobs:
           if [ -z "$(git branch -r --contains HEAD)" ]; then git push -q origin "HEAD:refs/heads/wip/tasks-${ISSUE}-$(date -u +%Y%m%dT%H%M%SZ)"; fi
       # 手番の記録（実行のファイル）を非公開の置き場の日（UTC）ごとのリリースへ置き、issue に終わりを書く（.github/claude-task/after.js）。
       # 1つのリリースに付けられるのは1000件まで（公式の文書「About releases」）。並んで作ると後のほうは作れないので、作られたものへ付ける。
+      # リリースは日の初めの1回だけ作るので、先に付けてみて、リリースが無かったときだけ作ってから付け直す（ほかの理由で落ちたら
+      # 打ち直さない）。終わりは REST で書けば1回で済む（gh issue comment は issue の ID を引く1回と書く1回を打つ）。
       - if: always()
         env:
           GH_TOKEN: ${{ secrets.FLOW_BOT_TOKEN }}
@@ -103,11 +105,17 @@ jobs:
         run: |
           TAG="turns-$(date -u +%F)"; NAME="tasks-$ISSUE-$GITHUB_RUN_ID.json.gz"; LOG=""
           if [ -f "$EXECUTION_FILE" ] && gzip -c "$EXECUTION_FILE" > "$RUNNER_TEMP/$NAME"; then
-            gh release view "$TAG" -R "$TASKS" > /dev/null 2>&1 || gh release create "$TAG" -R "$TASKS" --title "担当の手番の記録 ${TAG#turns-}" --notes "" || true
-            gh release upload "$TAG" "$RUNNER_TEMP/$NAME" -R "$TASKS" && LOG="https://github.com/$TASKS/releases/download/$TAG/$NAME"
+            if ! err=$(gh release upload "$TAG" "$RUNNER_TEMP/$NAME" -R "$TASKS" 2>&1); then
+              case "$err" in
+                *"release not found"*)
+                  gh release create "$TAG" -R "$TASKS" --title "担当の手番の記録 ${TAG#turns-}" --notes "" || true
+                  gh release upload "$TAG" "$RUNNER_TEMP/$NAME" -R "$TASKS" ;;
+                *) echo "$err" >&2; false ;;
+              esac
+            fi && LOG="https://github.com/$TASKS/releases/download/$TAG/$NAME"
           fi
           node .github/claude-task/after.js "$KIND" "$EXECUTION_FILE" "$LOG" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > "$RUNNER_TEMP/end.md"
-          gh issue comment "$ISSUE" -R "$TASKS" --body-file "$RUNNER_TEMP/end.md"
+          gh api "repos/$TASKS/issues/$ISSUE/comments" -F "body=@$RUNNER_TEMP/end.md" --silent
       # 担当が Claude の利用の上限・認証で止まったら、この段が落ちる。ゲートはこの段の名前（flow.config.json: quotaStep）で読み、振り出しを止める。
       - name: 利用の上限で止まった
         if: always()

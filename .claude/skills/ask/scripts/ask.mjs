@@ -18,7 +18,8 @@ function main() {
     console.error(`問いが形に合わないので出さない: ${problems.join("・")}`);
     process.exit(1);
   }
-  bot()(["issue", "comment", number, "-R", config.tasks, "--body-file", "-"], question);
+  // REST で書けば1回で済む（gh issue comment は issue の ID を引く1回と書く1回を打つ）。
+  bot()(["api", `repos/${config.tasks}/issues/${number}/comments`, "-F", "body=@-", "--silent"], question);
   console.log(`#${number}: 問いを出した`);
 }
 
