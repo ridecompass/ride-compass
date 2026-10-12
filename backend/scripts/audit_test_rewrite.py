@@ -43,7 +43,7 @@ import os
 import subprocess
 import sys
 import tempfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,6 +56,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 from tests.structure.source_symbols import SourceTree, bound_names
 from app.batch.common import asyncpg_dsn  # sys.pathを通した後に読む
+from pytest_report import Case, junit_args, read_cases
 from repo_git import merge_base, run
 
 
@@ -222,22 +223,6 @@ def names_in_string_constants(tree: ast.AST, names: set[str]) -> set[str]:
     }
 
 
-def passed_test_ids(pytest_output: str) -> set[str]:
-    """`-rA`の要約から、実行されたテストのnode idを取る。
-
-    `PASSED`の行はnode idだけを持つ。`XFAIL`・`XPASS`の行は` - 理由`が続くが、パラメータの
-    idも` - `を含みうるため、理由の区切りはこの2つにだけ当てる。
-    """
-    ids: set[str] = set()
-    for line in pytest_output.splitlines():
-        outcome, _, rest = line.partition(" ")
-        if outcome == "PASSED" and "::" in rest:
-            ids.add(rest.strip())
-        elif outcome in {"XFAIL", "XPASS"} and "::" in rest:
-            ids.add(rest.rsplit(" - ", 1)[0].strip())
-    return ids
-
-
 def lines_by_test(coverage_db: Path, implementation: Path) -> dict[str, set[int]]:
     """`--cov-context=test`の記録から、テストごとに対象ファイルで実行した行を引く。
 
@@ -341,11 +326,11 @@ def line_ranges(lines: set[int] | frozenset[int]) -> str:
 
 
 def run_pytest(
-    backend: Path, tests: list[str], cov_dir: str, env: dict[str, str], with_postgis: bool, report: Path
+    backend: Path, tests: list[str], cov_dir: str, env: dict[str, str], with_postgis: bool, report: Path, results: Path
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "pytest", *tests, "-q", "-rA", *([] if with_postgis else ["-m", "not postgis"]),
-         "-p", "no:randomly",
+        [sys.executable, "-m", "pytest", *tests, "-q", *([] if with_postgis else ["-m", "not postgis"]),
+         "-p", "no:randomly", *junit_args(results),
          f"--cov={cov_dir}", "--cov-branch", "--cov-context=test",
          f"--cov-report=json:{report}"],
         cwd=backend, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -353,7 +338,7 @@ def run_pytest(
 
 
 def measurement(
-    backend: Path, report: Path, implementation: str, tests: list[str], pytest_output: str
+    backend: Path, report: Path, implementation: str, tests: list[str], cases: list[Case]
 ) -> Measurement:
     """pytestの実行が残したカバレッジから、対象ファイルの④⑤とテストファイルごとの数を読む。
 
@@ -364,7 +349,7 @@ def measurement(
     files = json.loads(report.read_text(encoding="utf-8"))["files"]
     data = next(f for path, f in files.items() if (backend / path).resolve() == target)
     summary = data["summary"]
-    executed = passed_test_ids(pytest_output)
+    executed = {case.nodeid for case in cases if case.outcome in {"passed", "xfailed"}}
     dead, without_own_lines = tests_without_own_lines(executed, lines_by_test(backend / ".coverage", target))
     return Measurement(
         covered_lines=summary["covered_lines"],
@@ -483,18 +468,20 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="ridecompass-audit-") as work_dir:
         work = Path(work_dir)
         report = work / "measured.json"
-        result = run_pytest(backend, tests, cov_dir, env, not unreachable, report)
+        results = work / "results.xml"
+        result = run_pytest(backend, tests, cov_dir, env, not unreachable, report, results)
         lines = result.stdout.splitlines()
-        for line in lines:
-            if line.startswith("=") and (" passed" in line or " failed" in line or " error" in line):
-                print("     " + line.strip())
+        cases = read_cases(results) if results.exists() else []
+        outcomes = Counter(c.outcome for c in cases)
+        print("     テストの結果: " + "・".join(f"{label} {outcomes[outcome]}" for outcome, label in (
+            ("passed", "通った"), ("xfailed", "xfail"), ("skipped", "飛ばした"), ("failed", "落ちた")) if outcomes[outcome]))
         if result.returncode != 0:
             print("\n     テストが緑でない。監査の残りは当てにならない。pytestの出力の末尾:", file=sys.stderr)
             for line in (lines + result.stderr.splitlines())[-15:]:
                 print("     " + line, file=sys.stderr)
             return 1
 
-        measured = measurement(backend, report, implementation, tests, result.stdout)
+        measured = measurement(backend, report, implementation, tests, cases)
         print(f"\n④ 実装へ1行も入らないテスト: {len(measured.dead)} / {measured.executed}")
         for name in measured.dead:
             print("     " + (name if len(tests) > 1 else name.split("::", 1)[1]))
