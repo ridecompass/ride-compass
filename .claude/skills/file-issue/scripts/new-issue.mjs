@@ -1,11 +1,13 @@
 // issue を起こす。本文の形（.claude/skills/file-issue/SKILL.md「issue の形」）と子の決まり（同「分ける」）を照らし、合えば gh で作り、
 // issue の欄（規模・優先度・着手可能日時）を入れる。合わなければ作らずに理由を出して 1 で終わる。
 // 使い方: node .claude/skills/file-issue/scripts/new-issue.mjs --title <題名> --body-file <本文のファイル> [--type <種類>]
-//   [--parent <親>] [--origin <分割元>] [--blocked-by <前,...>] [--blocking <後,...>] [--size <S|M|L>] [--priority <高|中|低>] [--start <着手可能日時>]
+//   [--parent <親>] [--origin <分割元>] [--blocked-by <前,...>] [--blocking <後,...>] [--size <規模>] [--priority <優先度>] [--start <着手可能日時>]
 //   欄だけ入れ直す: node .claude/skills/file-issue/scripts/new-issue.mjs --fill <番号> [--size ...] [--priority ...] [--start ...]
-//   --parent は子（種類は親と同じ。条件と優先度・着手可能日時を持たない。孫は作らない）。--origin は要望ごとの切り出し（本文に「分割元: #N」を置く）。
+//   規模と優先度の選択肢は設定（flow.config.json: fields）が持つ。
+//   --parent は子（種類は親と同じ。子と孫の決まりは tools/flow-gate/src/family.js）。--origin は要望ごとの切り出し（本文に分割元の行を置く）。
 import { readFileSync } from "node:fs";
-import { bot, config, isMain } from "../../../../tools/flow-gate/src/bot.js";
+import { bot, config, isMain, usage } from "../../../../tools/flow-gate/src/bot.js";
+import { CHILD_FIELDS, NO_GRANDCHILD, childRule, makesGrandchild, originLine, originOf } from "../../../../tools/flow-gate/src/family.js";
 import { SET_FIELDS, fieldProblems, fieldValues } from "../../../../tools/flow-gate/src/fields.js";
 import { conditions, norm } from "../../../../tools/flow-gate/src/questions.js";
 
@@ -32,8 +34,8 @@ export function issueProblems(body, { type, child = false, size, priority, start
   if (head && type && SECTIONS[0].some((n) => n.startsWith(`${type}:`)) && !head.startsWith(`${type}:`)) problems.push(`種類「${type}」に合わない節「${head}」`);
   const has = conditions(text).length > 0;
   if (child) {
-    if (has) problems.push("子は完了の条件を持たない（親の行の下に「- 子: #番号」を付ける）");
-    if (priority || start) problems.push("子に優先度・着手可能日時を入れない（ゲートが親の値を読む）");
+    if (has) problems.push(childRule("<親>", "<この子>"));
+    if (priority || start) problems.push(CHILD_FIELDS);
   } else {
     if (!has) problems.push("完了の条件が無い");
     if (type !== config.dialogType && (!size || !priority)) problems.push("規模と優先度を入れる（--size・--priority）");
@@ -41,12 +43,12 @@ export function issueProblems(body, { type, child = false, size, priority, start
   return [...problems, ...fieldProblems(config, [["size", size], ["priority", priority], ["start", start]].filter(([, v]) => v))];
 }
 
-// 要望ごとの切り出しの本文に「分割元: #N」の行を、要約の段落のあとへ置く（もうあれば置かない）。
+// 要望ごとの切り出しの本文に分割元の行を、要約の段落のあとへ置く（もうあれば置かない）。
 export function withOrigin(body, origin) {
   const text = norm(body).trim();
-  if (new RegExp(`^分割元: #${origin}\\s*$`, "m").test(text)) return text;
+  if (originOf(text) === Number(origin)) return text;
   const cut = text.indexOf("\n\n");
-  return cut < 0 ? `${text}\n\n分割元: #${origin}` : `${text.slice(0, cut)}\n\n分割元: #${origin}${text.slice(cut)}`;
+  return cut < 0 ? `${text}\n\n${originLine(origin)}` : `${text.slice(0, cut)}\n\n${originLine(origin)}${text.slice(cut)}`;
 }
 
 // 引数を読む。知らない口・値の無い口があれば null（打ち間違いで前提や親の無い issue を作らない）。
@@ -64,17 +66,16 @@ export function parseArgs(argv) {
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts?.fill) return fill(bot(), opts.fill, opts);
-  if (!opts?.title || !opts["body-file"]) {
-    console.error("使い方: node .claude/skills/file-issue/scripts/new-issue.mjs --title <題名> --body-file <本文のファイル> [--type <種類>] [--parent <親>] [--origin <分割元>] [--blocked-by <前,...>] [--blocking <後,...>] [--size <S|M|L>] [--priority <高|中|低>] [--start <着手可能日時>]");
-    process.exit(2);
-  }
+  const choices = (key) => Object.keys(config.fields[key].options).join("|");
+  if (!opts?.title || !opts["body-file"]) usage("node .claude/skills/file-issue/scripts/new-issue.mjs --title <題名> --body-file <本文のファイル> [--type <種類>] [--parent <親>] " +
+    `[--origin <分割元>] [--blocked-by <前,...>] [--blocking <後,...>] [--size <${choices("size")}>] [--priority <${choices("priority")}>] [--start <着手可能日時>]`);
   const gh = bot();
-  const [owner, name] = config.tasks.split("/");
+  const { owner, name } = config.repos.tasks;
   let type = opts.type;
   if (opts.parent) {
     const q = `query($n:Int!){repository(owner:"${owner}",name:"${name}"){issue(number:$n){state issueType{name} parent{number}}}}`;
     const p = JSON.parse(gh(["api", "graphql", "-F", `n=${opts.parent}`, "-f", `query=${q}`])).data.repository.issue;
-    const stop = [p.parent && `親 #${opts.parent} は子なので、孫は作らない（同じ親 #${p.parent.number} の兄弟にする）`, p.state !== "OPEN" && `親 #${opts.parent} は閉じている`,
+    const stop = [makesGrandchild(p.parent, false) && `親 #${opts.parent} は #${p.parent.number} の子です。${NO_GRANDCHILD}`, p.state !== "OPEN" && `親 #${opts.parent} は閉じている`,
       type && type !== p.issueType?.name && `子の種類は親と同じ（${p.issueType?.name ?? "無し"}）`].filter(Boolean);
     if (stop.length) {
       console.error(`作らない: ${stop.join("・")}`);
