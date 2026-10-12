@@ -6,7 +6,7 @@
 // 分からない。ここで「延長の何%がどの得点帯に入るか」を編集中に見せる。
 // 分布の計算は`scoreDistribution.ts`（DOM非依存の純関数）が行い、このファイルは表示のみ。
 
-import { distributionWarnings, scoreBands, type ValueDistribution } from "./scoreDistribution";
+import { QUANTILE_NAMES, distributionWarnings, scoreBands, type ValueDistribution } from "./scoreDistribution";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { calloutVariants } from "@/components/ui/Callout/Callout";
@@ -22,10 +22,9 @@ interface Props {
   error: string | null;
 }
 
-/** 届いた分位を、分位の数の順に並べる（quantilesは`p<百分位>`を鍵とするdictで順序を持たない）。
- * どの分位を配るかはbackendが決めるため、鍵の一覧を画面で持たない。 */
+/** 届いた分位を、分位点の名前の並び（小さい比率から）に並べる（quantilesはdictで順序を持たない）。 */
 function quantilesInOrder(quantiles: Readonly<Record<string, number>>): [string, number][] {
-  return Object.entries(quantiles).sort(([a], [b]) => Number(a.slice(1)) - Number(b.slice(1)));
+  return QUANTILE_NAMES.flatMap((name) => (quantiles[name] === undefined ? [] : [[name, quantiles[name]]]));
 }
 
 export function DistributionPreview({ distribution, binScores, scoresFailed, loading, error }: Props) {

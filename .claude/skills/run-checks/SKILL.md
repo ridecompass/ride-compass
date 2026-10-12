@@ -80,7 +80,7 @@ description: "検査とテストを手元・作業ブランチのCI・masterのC
   あれば本体の版に合わせて`requirements-dev.txt`へ固定する。無いものだけを設定の`ignore_missing_imports`の節へ足す。
 - **Linuxとして検査する**（`platform = linux`。本番とCIがLinuxで動くため）。
 - `scripts/`は`mypy_path`に入れる（スクリプトは`from _stdio import …`のように同じ場所のモジュールを読む）。
-  backendの道具が読むリポジトリ直下の`scripts/`のモジュール（`checkout_freshness.py`）も入れる。
+  backendの道具が読むリポジトリ直下の`scripts/`のモジュール（`checkout_freshness.py`・`repo_git.py`等）も入れる。
 - **`mypy.ini`はASCIIだけで書く**（日本語のWindows（cp932）では非ASCIIの1文字で起動に失敗する）。
 
 ### 層の向き（import-linter）
@@ -178,7 +178,7 @@ PYTHONUTF8=1 backend/.venv/Scripts/python.exe -m pytest backend/tests/<テスト
 縮めるには**ワーカーごとに**DBを分ける必要があり、それ自体が別タスク。
 
 **`-m postgis`はCIが通し**、完了条件には含めない（手元で回すかは上の「手元の検査の回し方」）。作業ツリー専用のDBを
-作れない環境では共有の`ridecompass_test`へ退避するため、並行セッションと衝突しうる。
+作れない環境では共有のDB（`backend/tests/database_names.py: SHARED_TEST_DATABASE`）へ退避するため、並行セッションと衝突しうる。
 
 ## 変異テストでテストの効きを測る
 
@@ -204,7 +204,7 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
   - どれも master へ入れない（入った Pull Request は `backend/tests/structure/test_mutation_lists_absent.py` が CI で落とす）。
 - **Pull Request ごと**: `backend/app` を変えた Pull Request では `.github/workflows/mutation-pr.yml` が自動で走り、変えた関数の変異と
   その基準だけを回して、生き残りを変えた行への注記と実行の要約に出す（`diff_scope.py`・`pr_plan.py`・`report_pr.py`）。必須の
-  チェックではない。読み方は .claude/skills/task-work/SKILL.md「作る担当」の5。
+  チェックではない。読み方は .claude/skills/task-work/SKILL.md「作る担当」の5と「確かめる担当」の1。
 - **結果は成果物**: 見直しの `mutation-review`（90日。`summary.md`・`candidates.md`・`review.json`・`report.json`。読み方は test-review スキルの4）と、
   元の記録の `mutation-<番号>`・`recheck-<番号>`（14日）。元の記録から表と候補を出し直すときは、`gh run download <実行の id> -R ridecompass/ride-compass -D <場所>` で取り、
   測った版のチェックアウトの `backend/` で `python scripts/mutation/report.py <場所> <当て直しの成果物の場所> <表のファイル>` と
@@ -304,10 +304,10 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
 | 環境 | 必要な作業 |
 |---|---|
 | 開発機（ローカルPostgreSQL） | **一度だけ**ロールへ`CREATEDB`を付け、複製元のDBへ拡張を入れる（どちらも下記） |
-| CI（GitHub Actions） | 何もしない（`TEST_DATABASE_URL`が優先され、DBと拡張は`ci.yml`の段が実行ごとに作る） |
+| CI（GitHub Actions） | 何もしない（DBと拡張は`.github/actions/postgis/action.yml`が実行ごとに作り、その接続先を`TEST_DATABASE_URL`で渡す。`TEST_DATABASE_URL`が優先される） |
 | 本番（Oracle VM） | 何もしない |
 
-権限を付けない場合は共有DB（`ridecompass_test`）へ退避し、その旨を1行出す。
+権限を付けない場合は共有DB（`backend/tests/database_names.py: SHARED_TEST_DATABASE`）へ退避し、その旨を1行出す。
 
 開発機での手順（PostgreSQLをインストールした機械で1回だけ。`postgres`ロールのパスワードをプロンプトで聞かれる）:
 

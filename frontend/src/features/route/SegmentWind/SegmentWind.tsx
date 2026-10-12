@@ -3,6 +3,7 @@ import { textVariants } from "@/components/ui/Text/Text";
 import { cardinalLabel } from "@/lib/cardinalLabel";
 import { cn } from "@/lib/cn";
 import { formatJstHourMinute, parseJstLocalValue } from "@/lib/time";
+import { mapDisplay } from "@/types/generated/mapDisplay";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { RouteSegmentDetail } from "@/types/route";
 
@@ -28,7 +29,7 @@ export default function SegmentWind({ wind }: { wind: RouteSegmentDetail["wind"]
       <InfoPopover triggerAriaLabel="区間の風の説明">
         <p>
           この区間を通る見込みの時刻の、その場所に最も近い格子点の風[気象庁の数値予報モデルMSMの計算値、{HOURS_PER_BIN}
-          時間刻み]で評価しています。 予報ではなく、誤差を含みえます。往路・復路それぞれ、走り始めてから
+          時間刻み]で評価しています。 {mapDisplay.modelValueDisclaimer}往路・復路それぞれ、走り始めてから
           {HOURS_PER_LEG}
           時間先までを追い、その先の区間は最後に追った時刻の値をそのまま使います[「延長」と出ます]。
         </p>

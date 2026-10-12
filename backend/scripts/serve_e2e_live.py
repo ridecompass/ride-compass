@@ -28,18 +28,16 @@ from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[1]
 WORKTREE = BACKEND.parent
+sys.path.insert(0, str(WORKTREE / "scripts"))
+
+from repo_git import main_checkout  # noqa: E402
+
 #: E2Eのオリジン。基礎地図をここのrewrites越しに取らせる（`frontend/playwright.live.config.ts: LIVE_ORIGIN`）。
 LIVE_ORIGIN = "http://localhost:3200"
 DEFAULT_PORT = 8000
 HEALTH_TIMEOUT_SECONDS = 300
 #: 起点の候補にする区間の数。取込範囲の真ん中あたりの区間から順に、路面タイルに道が出るものを探す。
 POINT_CANDIDATES = 40
-
-
-def main_checkout() -> Path:
-    common = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=BACKEND,
-                            capture_output=True, check=True).stdout.decode("utf-8").strip()
-    return Path(common).parent
 
 
 def venv_python(main: Path) -> Path:
@@ -152,7 +150,7 @@ def main() -> int:
     parser.add_argument("--port", type=int, help=f"待ち受けるポート（既定: {DEFAULT_PORT}、使われていれば空いているもの）")
     parser.add_argument("--point", help="起点（緯度,経度）。既定は開発DBの区間から選ぶ")
     args = parser.parse_args()
-    main = main_checkout()
+    main = main_checkout(BACKEND)
     python = venv_python(main)
     if python.exists() and Path(sys.executable).resolve() != python.resolve():
         return subprocess.call([str(python), __file__, *sys.argv[1:]])

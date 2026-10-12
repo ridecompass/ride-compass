@@ -1,6 +1,7 @@
+import geoConfig from "@/types/generated/geo-config.json";
 import type { Coordinates } from "@/types/route";
 
-const EARTH_RADIUS_KM = 6371;
+const EARTH_RADIUS_KM = geoConfig.earth_radius_km;
 
 /** 2点間の大円距離（km）。 */
 export function haversineKm(a: Coordinates, b: Coordinates): number {

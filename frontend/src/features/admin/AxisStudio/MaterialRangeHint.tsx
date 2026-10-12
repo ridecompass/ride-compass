@@ -7,8 +7,10 @@ import { useMaterialDistribution } from "@/features/admin/useMaterialDistributio
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 
+import type { QuantileName } from "./scoreDistribution";
+
 /** 表示する分位。中央値と上側だけを出す（下側は0に張り付く材料が多く情報量が無い）。 */
-const SHOWN = ["p50", "p75", "p90"] as const;
+const SHOWN: readonly QuantileName[] = ["p50", "p75", "p90"];
 
 export function MaterialRangeHint({
   materialId,

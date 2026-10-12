@@ -41,6 +41,7 @@ from app.domain.evaluation import (
     density_costs,
 )
 from app.domain.route import Coordinates, SegmentWind
+from app.domain.time_zone import jst_local_text
 from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_seconds
 from app.domain.twilight import night_mask
 from app.domain.wind import DepartureWind, WindForecastSeries, kmh_to_ms
@@ -584,7 +585,7 @@ class LegCostComposer:
                 winds[i] = SegmentWind(
                     speed_ms=round(float(speed[j]), 1),
                     direction_deg=round(float(direction[j]), 1),
-                    forecast_at=times[j].isoformat(timespec="minutes"),
+                    forecast_at=jst_local_text(times[j]),
                     extended=bool(clamped[j]) or beyond_bins[i],
                 )
         if self._departure_wind is not None:

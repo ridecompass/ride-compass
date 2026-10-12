@@ -16,18 +16,11 @@ function roadTileZoom(zoom: number, minZoom: number, maxZoom: number): number {
   return Math.min(maxZoom, Math.max(minZoom, Math.floor(zoom)));
 }
 
-/** 1点を含むタイルの番号を、ズームzのタイルの範囲へ収めたもの。 */
-function clampedTileIndex(lon: number, lat: number, z: number): [number, number] {
-  const last = 2 ** z - 1;
-  const [x, y] = lonLatToTileIndex(lon, lat, z);
-  return [Math.max(0, Math.min(x, last)), Math.max(0, Math.min(y, last))];
-}
-
 /** 指定した1点を含む道路タイル。**レンズが引いたのと同じタイルを指す**ため、ズームの
  * 丸め方はtilesCoveringViewportと共有する（ずれると同じ値がキャッシュにあっても引き直しになる）。 */
 export function tileContainingLonLat(lon: number, lat: number, zoom: number, minZoom: number, maxZoom: number): TileXY {
   const z = roadTileZoom(zoom, minZoom, maxZoom);
-  const [x, y] = clampedTileIndex(lon, lat, z);
+  const [x, y] = lonLatToTileIndex(lon, lat, z);
   return { z, x, y };
 }
 
@@ -40,8 +33,8 @@ export function tilesCoveringViewport(
 ): TileXY[] {
   if (viewport.zoom < minZoom) return [];
   const z = roadTileZoom(viewport.zoom, minZoom, maxZoom);
-  const [xStart, yStart] = clampedTileIndex(viewport.west, viewport.north, z);
-  const [xEnd, yEnd] = clampedTileIndex(viewport.east, viewport.south, z);
+  const [xStart, yStart] = lonLatToTileIndex(viewport.west, viewport.north, z);
+  const [xEnd, yEnd] = lonLatToTileIndex(viewport.east, viewport.south, z);
   const xs = [xStart, xEnd].sort((a, b) => a - b);
   const ys = [yStart, yEnd].sort((a, b) => a - b);
   const tiles: TileXY[] = [];

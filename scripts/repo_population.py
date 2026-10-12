@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
 from pathlib import Path
+
+from repo_git import run
 
 _DECLARED = json.loads(Path(__file__).with_suffix(".json").read_text(encoding="utf-8"))
 
@@ -39,12 +40,7 @@ def repository_files(root: Path) -> list[str]:
 
     文書が名指す・リンクする先の実在はこれで見る。手元で足したばかりのファイルも、コミットすれば実在するので数える。
     """
-    out = subprocess.run(
-        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-        cwd=root,
-        check=True,
-        capture_output=True,
-    ).stdout.decode("utf-8")
+    out = run("ls-files", "-z", "--cached", "--others", "--exclude-standard", cwd=root, check=True).stdout
     return [f for f in out.split("\0") if f]
 
 

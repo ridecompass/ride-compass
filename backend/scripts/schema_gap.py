@@ -33,7 +33,6 @@ GAPが1件でもあれば終了コード1。
 
 import argparse
 import asyncio
-import os
 import re
 import sys
 from collections.abc import Iterable
@@ -204,12 +203,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="実DBとORM宣言のGAPを出す")
     parser.add_argument("--database-url", default=None)
     args = parser.parse_args()
-    url = args.database_url or os.environ.get("PROBE_DATABASE_URL")
-    if url is None:
-        from app.config import settings
+    from _probe_env import probe_database_url
 
-        url = settings.database_url
-    gaps = asyncio.run(_collect(url))
+    gaps = asyncio.run(_collect(probe_database_url(args.database_url)))
     if not gaps:
         print("GAP なし（実DBとORMの宣言が一致している）")
         return 0
