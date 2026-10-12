@@ -50,15 +50,16 @@ export function conditions(body) {
   return all;
 }
 // 本文の、index の行のチェックに印を付ける（同じ文の条件が2つあっても、指した行にだけ付ける）。
-export function checkLines(body, indexes) {
+// 本文の完了の条件の行に値（チェック）を書いた本文。marks は [条件の行, 済んだか] の並び。本文の頭の回答のボタンは残す。
+export function markLines(body, marks) {
   const lines = bodyRest(body).split("\n");
-  for (const k of indexes) lines[k] = lines[k].replace("- [ ] ", "- [x] ");
-  return lines.join("\n");
+  for (const [k, done] of marks) lines[k] = lines[k].replace(/- \[[ x]\] /, done ? "- [x] " : "- [ ] ");
+  return (splitBody(body).foreign.length ? "" : (BLOCK.exec(norm(body))?.[0] ?? "")) + lines.join("\n");
 }
 export const remaining = (body) => conditions(body).filter((c) => !c.done);
 export const confirmConditions = (body) => remaining(body).filter((c) => c.verify === "ユーザー");
 // Claude が条件の文の頭で指した行に印を付けた本文（.claude/skills/task-work/scripts/check.mjs）。指せるのは残りの条件のうちちょうど1つに
-// 当たるものだけで、ユーザーが確かめる行（答えでゲートが付ける）は指せない。
+// 当たるものだけで、ユーザーが確かめる行（ユーザーが値を入れる）は指せない。
 // 本文の頭の回答のボタンは残す。合わなければ problems を返し、本文は返さない。
 export function checkByText(body, heads) {
   const left = remaining(body);
@@ -68,12 +69,10 @@ export function checkByText(body, heads) {
     const hit = left.filter((c) => c.text.startsWith(h.trim()));
     if (!h.trim()) problems.push("空の頭では指せない");
     else if (hit.length !== 1) problems.push(`「${h}」に当たる残りの条件が ${hit.length} 個（1個に決まる頭で指す）`);
-    else if (hit[0].verify === "ユーザー") problems.push(`「${h}」はユーザーが確かめる条件（答えでゲートが付ける）`);
+    else if (hit[0].verify === "ユーザー") problems.push(`「${h}」はユーザーが確かめる条件（ユーザーが値を入れる）`);
     else indexes.push(hit[0].index);
   }
-  if (problems.length) return { problems };
-  const head = splitBody(body).foreign.length ? "" : (BLOCK.exec(norm(body))?.[0] ?? "");
-  return { body: head + checkLines(body, indexes) };
+  return problems.length ? { problems } : { body: markLines(body, indexes.map((k) => [k, true])) };
 }
 
 // 問い: 頭の行「## 問い（<ラベル>）」・問いの文1行・（あれば）回答内容の節（SECTIONS のどれか1つを1行1つ。行の下に字下げした属性の行
@@ -164,25 +163,28 @@ const LABEL = "問い: ";
 export const questionLabel = (kind) => `${LABEL}${kind}`;
 export const isQuestionLabel = (name) => name.startsWith(LABEL);
 
-// 次遷移（回答フォームの「この issue を」のボタンの言葉）。キーは答えの「次遷移:」の行とゲートの決め方の名前。完了は、確かめることを並べた問いだけ。
-export const NEXT = { 続ける: "続ける", 保留: "保留する", 見送り: "見送る", 完了: "完了にする" };
-export const nextsOf = (q) => Object.keys(NEXT).filter((n) => n !== "完了" || q.header === "### 確かめること");
+// 次遷移（回答フォームの「この issue を」のボタンの言葉）。キーは答えの「次遷移:」の行とゲートの決め方の名前。完了は次遷移に無く、約束が全部
+// 果たされたらゲートが事実から決める。
+export const NEXT = { 続ける: "続ける", 保留: "保留する", 見送り: "見送る" };
 const plansOf = (q) => (q.header === "### 案" ? q.rows.map((r) => r.text) : []);
-// チェックボックスで答える回答内容の節と、答えに書く行の名前（チェックした行ごとに「- <名前>: <行>」）。
-export const TICKS = { "### 確かめること": "確かめた", "### 済ませること": "済ませた" };
+// YES／NO で答える回答内容の節（既定は NO）。確かめることの値は本文のユーザーが確かめる約束の値で、答えと一緒に本文へ書く（withValues）。
+// 済ませることは約束ではないので、値を答えに書く。
+const valued = (q) => q.header === "### 確かめること" || q.header === "### 済ませること";
+export const withValues = (body, q, yes) => (q.header !== "### 確かめること" ? body
+  : markLines(body, conditions(body).filter((c) => c.verify === "ユーザー" && q.rows.some((r) => r.text === c.text)).map((c) => [c.index, yes.includes(c.text)])));
 // 答えの入力が問いに足りているか（回答フォームと、答えの記録 .claude/skills/ask/scripts/answer.mjs が同じに照らす）。足りなければ理由。
-// 次遷移はいつも要り、案は問いの案のどれかか、選ばない（選ばずに次遷移だけでも受ける）。チェックした行は問いの行のどれか。
-export function answerProblem(q, { next, plan, checked = [] }) {
-  if (!nextsOf(q).includes(next)) return `この issue をどうするか（${nextsOf(q).map((n) => NEXT[n]).join("・")}）を選んでください。`;
+// 次遷移はいつも要り、案は問いの案のどれかか、選ばない（選ばずに次遷移だけでも受ける）。YES の行は問いの YES／NO で答える行のどれか。
+export function answerProblem(q, { next, plan, yes = [] }) {
+  if (!Object.hasOwn(NEXT, next ?? "")) return `この issue をどうするか（${Object.values(NEXT).join("・")}）を選んでください。`;
   if (plan && !plansOf(q).includes(plan)) return `案にない答えです（案: ${plansOf(q).join(" / ")}）。`;
-  const rows = TICKS[q.header] ? q.rows.map((r) => r.text) : [];
-  return checked.some((c) => !rows.includes(c)) ? `問いにない行です（${rows.join(" / ") || "チェックする行はありません"}）。` : null;
+  const rows = valued(q) ? q.rows.map((r) => r.text) : [];
+  return yes.some((c) => !rows.includes(c)) ? `問いにない行です（${rows.join(" / ") || "YES／NO で答える行はありません"}）。` : null;
 }
-// 答えのコメント（.claude/skills/ask/SKILL.md「答え」の形）。次遷移・選んだ案・コメントの3つの欄を、空でも省かずに置く。チェックした行は、行ごとに
-// 「- 確かめた:」か「- 済ませた:」で並べる。コメントは「コメント:」の行のあとに形を付けずにそのまま置き、ゲートは読まない。
-export function answerBody(q, { next, plan, checked = [], labels = "", text = "" }) {
+// 答えのコメント（.claude/skills/ask/SKILL.md「答え」の形）。次遷移・選んだ案・コメントの3つの欄を、空でも省かずに置く。済ませることは、行ごとに値を
+// 「- YES: <行>」「- NO: <行>」で並べる。コメントは「コメント:」の行のあとに形を付けずにそのまま置き、ゲートは読まない。
+export function answerBody(q, { next, plan, yes = [], labels = "", text = "" }) {
   return ["## 回答", `**${q.text}**`, "", `次遷移: ${next}`, `選んだ案: ${plan || (plansOf(q).length ? "選ばなかった" : "なし（問いに案が無い）")}`,
-    ...checked.map((c) => `- ${TICKS[q.header]}: ${c}`), ...(labels ? [`ラベル: ${labels}`] : []), text ? `コメント:\n${text}` : "コメント: なし"].join("\n");
+    ...(q.header === "### 済ませること" ? ["済ませること:", ...q.rows.map((r) => `- ${yes.includes(r.text) ? "YES" : "NO"}: ${r.text}`)] : []), ...(labels ? [`ラベル: ${labels}`] : []), text ? `コメント:\n${text}` : "コメント: なし"].join("\n");
 }
 export const APPLIED = "答えに書いた文を Claude が読んだので、答えを当てました"; // 書いた文のある答えを当てた印（二度は当てない）
 export const isAnswer = (t) => /^## 回答\n/.test(norm(t));

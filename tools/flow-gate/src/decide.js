@@ -5,7 +5,7 @@
 // 担当の実行は、状態か約束のどちらかを動かして終わる。どちらも動かさずに終わったらイレギュラーとしてユーザーに渡す。
 // 返すのは、ゲートが保つ値の全部（ステータス・欄「実行の status」・開き閉じ・種類・担当者・本文・問いのラベル・PR をレビュー可能にするか・出す問い・
 // 取り消す実行）。ゲートは今の値と違う所だけを書くので、同じ事実からは何度決めても同じになる。
-import { APPLIED, checkLines, droppedOf, questionLabel, splitBody, withButton } from "./questions.js";
+import { APPLIED, droppedOf, questionLabel, splitBody, withButton } from "./questions.js";
 
 // 読むのに要求の要る事実（src/facts.js: readFacts の later）は、決め方が使うときだけ読む。まだ読んでいなければ Need を投げ、src/gate.js: settle が
 // 読んでから決め直す（決め方の順番を、事実を読む側に写さない）。
@@ -48,7 +48,7 @@ export function decide(f, config) {
   const type = mine(f.type) ? f.type : (f.types.findLast(mine) ?? (f.dialog ? config.dialogType : null));
   const question = f.question && !f.question.answer && !alive(f, f.question, config) ? null : f.question;
   const s = status({ ...f, question }, config);
-  const body = checkLines(f.body, s.check ?? []);
+  const body = splitBody(f.body).rest;
   // 見送りで閉じる・閉じた issue の開いた PR は、もう確かめもマージもしないので閉じる。
   const dropping = (s.closeAs ?? (f.open ? null : f.closedAs)) === "NOT_PLANNED";
   // 答えの無い問いがある間（回答のボタンを置く間）は、その問いのラベル（いま出す問いがあればそのラベル）をラベルで見せる。
@@ -72,6 +72,7 @@ function runStatus(f, status) {
 // ゲートが中身を読まないので答えるまで生きる。
 function alive(f, q, config) {
   if (q.form?.by !== "ゲート") return true;
+  if (q.form.text && q.text !== q.form.text) return false; // 決まった文が変わった問いは、今の文で問い直す
   const dropped = droppedOf(q.text);
   const once = { ...(q.kind === "採否" && { adoptAsked: false }), ...(dropped && { droppedAsked: false }) };
   const s = status({ ...f, ...once, question: null, unread: false, runs: [], status: null }, config);
@@ -124,10 +125,9 @@ function status(f, config) {
   const told = a.text && !f.answerApplied ? `${APPLIED}（${a.decision}）。` : null;
   if (a.decision === "見送り") return { status: "完了", closeAs: "NOT_PLANNED", told };
   if (a.decision === "保留") return { status: "保留", told };
-  if (a.decision !== "完了") return { ...table(f), told };
-  // 完了は、ユーザーが確かめる約束が全部果たされたという決定なので、その条件を全部チェックする（回答内容のチェックした行は読まない）。
-  const ok = f.remaining.filter((c) => c.verify === "ユーザー");
-  return { ...table({ ...f, remaining: f.remaining.filter((c) => !ok.includes(c)) }), check: ok.map((c) => c.index), told };
+  // 続けるの遷移先は Claude: 答え（回答内容）を Claude が読むまでは実装。約束が全部果たされていれば、事実から完成で閉じる。
+  const t = table(f);
+  return f.answerRead || t.status === "完了" ? { ...t, told } : { status: "実装", told };
 }
 
 // 次に結果を出すのが担当でも、待つ相手（着手可能日時・親の保留か閉じ）がある間は、担当は作らないので待機。

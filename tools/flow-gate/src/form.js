@@ -5,7 +5,7 @@
 // 書いた文があれば Claude が読んでから当てる。
 import { GitHub } from "./github.js";
 import { byName, jstText } from "./facts.js";
-import { NEXT, answerBody, answerProblem, answerUrl, askerOf, isQuestion, isQuestionLabel, latestQuestion, nextsOf } from "./questions.js";
+import { NEXT, answerBody, answerProblem, answerUrl, askerOf, conditions, isQuestion, isQuestionLabel, latestQuestion, withValues } from "./questions.js";
 
 const RECENT = 5; // 材料に載せる最近のコメント（上に出した問いのコメントは数えない）
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -47,7 +47,7 @@ details{border-bottom:1px solid #8884;padding:6px 0;overflow-wrap:anywhere}detai
 async function read(gh, config, number) {
   const { owner: o, name: n } = config.repos.tasks;
   const r = await gh.gql(`query($o:String!,$n:String!,$i:Int!){repository(owner:$o,name:$n){labels(first:100){nodes{id name}}
-    issue(number:$i){id title url bodyHTML labels(first:50){nodes{name}} comments(last:40){nodes{body bodyHTML url createdAt author{login}}}}}}`, { o, n, i: number });
+    issue(number:$i){id title url body bodyHTML labels(first:50){nodes{name}} comments(last:40){nodes{body bodyHTML url createdAt author{login}}}}}}`, { o, n, i: number });
   const { issue, labels } = r.repository;
   const comments = issue.comments.nodes;
   const asked = comments.findLast((c) => isQuestion(c.body));
@@ -62,18 +62,21 @@ const seg = (name, values) => `<div class="seg">${values.map(([v, text]) => `<la
 const box = (type, name, value, text, extra = "", cls = "opt") => `<label class="${cls}"><input type="${type}" name="${name}" value="${esc(value)}"${extra}><span>${esc(text)}</span></label>`;
 const fold = (title, inner, open = false) => (inner ? `<details${open ? " open" : ""}><summary>${title}</summary><div>${inner}</div></details>` : "");
 
-// 回答内容（案は1行ずつの丸に推奨の印と理由を添え、確かめること・済ませることは1行ずつのチェックボックス）と書く欄、「この issue を」の次遷移のボタン。
+// 回答内容（案は1行ずつの丸に推奨の印と理由を添え、確かめること・済ませることは1行ずつの YES／NO）と書く欄、「この issue を」の次遷移のボタン。
 // 行は隠しの欄でも送り、開いたあとに問いが変わっていないかを照らす。読めない問いは、読めない所を先に出し、回答内容を出さない。
+// YES／NO の初めの値は、確かめることなら本文の約束の今の値、済ませることなら NO。
 const why = (r) => r.attrs.map(([, v]) => `<span class="why">${esc(v)}</span>`).join("");
-function answerFields(q) {
+const yesNo = (name, yes) => `<div class="seg">${[["YES", yes], ["NO", !yes]].map(([v, on]) => `<label><input type="radio" name="${name}" value="${v}"${on ? " checked" : ""}>${v}</label>`).join("")}</div>`;
+function answerFields(q, body) {
   const plan = q.header === "### 案";
+  const done = q.header === "### 確かめること" ? conditions(body).filter((c) => c.done).map((c) => c.text) : [];
   const rows = q.rows.map((r, i) => `<input type="hidden" name="item${i}" value="${esc(r.text)}">` + (plan
     ? `<label class="opt"><input type="radio" name="plan" value="${esc(r.text)}"><span>${esc(r.text)}${r.attrs.some(([n]) => n === "推奨") ? '<b class="rec">推奨</b>' : ""}${why(r)}</span></label>`
-    : `<label class="opt"><input type="checkbox" name="checked" value="${esc(r.text)}"><span>${esc(r.text)}${why(r)}</span></label>`)).join("");
+    : `<div class="item"><span>${esc(r.text)}${why(r)}</span>${yesNo(`v${i}`, done.includes(r.text))}</div>`)).join("");
   const loose = q.problems.length ? `<p class="note">この問いは形が外れているので、回答内容を出せません（${esc(q.problems.join("・"))}）。書く欄と「この issue を」で答えてください。</p>` : "";
   return `<p class="sec">回答内容</p>${loose}${rows}
 <textarea name="note" rows="4" placeholder="Claude に伝えること（任意）" aria-label="Claude に伝えること"></textarea>
-<p class="sec">この issue を</p>${seg("next", nextsOf(q).map((n) => [n, NEXT[n]]))}`;
+<p class="sec">この issue を</p>${seg("next", Object.entries(NEXT))}`;
 }
 
 async function submit(gh, env, config, number, form) {
@@ -83,15 +86,19 @@ async function submit(gh, env, config, number, form) {
   // 行は開いたときの文で送られる。今の問いの行と違えば、開いたあとに問いが変わったので開き直してもらう。
   const items = [...form.keys()].filter((k) => /^item\d+$/.test(k)).map((k) => form.get(k));
   if (JSON.stringify(items) !== JSON.stringify(q.rows.map((r) => r.text))) return { error: "問いが新しくなっています。開き直してください。" };
-  const answer = { next: form.get("next"), plan: form.get("plan"), checked: form.getAll("checked"), text: String(form.get("note") ?? "").trim() };
+  const answer = { next: form.get("next"), plan: form.get("plan"), yes: q.rows.filter((r, i) => form.get(`v${i}`) === "YES").map((r) => r.text),
+    text: String(form.get("note") ?? "").trim() };
   const problem = answerProblem(q, answer);
   if (problem) return { error: problem };
   const chosen = form.getAll("label").filter((n) => all.includes(n));
   const added = chosen.filter((n) => !have.includes(n));
   const removed = have.filter((n) => all.includes(n) && !chosen.includes(n));
   const labels = [...added.map((n) => `+${n}`), ...removed.map((n) => `−${n}`)].join(" ");
-  const v = { i: issue.id, b: answerBody(q, { ...answer, labels }), a: added.map((n) => ids[n]), r: removed.map((n) => ids[n]) };
-  await new GitHub(env.FORM_TOKEN).gql(`mutation($i:ID!,$b:String!,$a:[ID!]!,$r:[ID!]!){c:addComment(input:{subjectId:$i,body:$b}){clientMutationId}
+  // 確かめることの値は本文の約束へ、答えと同じ1回の要求でユーザーの名義で書く。
+  const after = withValues(issue.body, q, answer.yes);
+  const v = { i: issue.id, b: answerBody(q, { ...answer, labels }), e: after, a: added.map((n) => ids[n]), r: removed.map((n) => ids[n]) };
+  await new GitHub(env.FORM_TOKEN).gql(`mutation($i:ID!,$b:String!,$e:String!,$a:[ID!]!,$r:[ID!]!){c:addComment(input:{subjectId:$i,body:$b}){clientMutationId}
+    ${after !== issue.body ? "e:updateIssue(input:{id:$i,body:$e}){clientMutationId}" : ""}
     ${added.length ? "a:addLabelsToLabelable(input:{labelableId:$i,labelIds:$a}){clientMutationId}" : ""}
     ${removed.length ? "r:removeLabelsFromLabelable(input:{labelableId:$i,labelIds:$r}){clientMutationId}" : ""}}`, v);
   return { url: issue.url, label: NEXT[answer.next] };
@@ -111,7 +118,7 @@ export async function answerForm(request, env, config) {
   const body = button < 0 ? issue.bodyHTML : issue.bodyHTML.slice(issue.bodyHTML.indexOf("</p>", button) + "</p>".length);
   return page(`<p class="num">#${number}</p><p class="title">${esc(issue.title)}</p><p>${esc(q.text)}</p>
 ${material}${fold("本文", body)}${fold("最近のコメント", recent)}
-<form><input type="hidden" name="question" value="${esc(q.text)}"><div class="inp">${answerFields(q)}
+<form><input type="hidden" name="question" value="${esc(q.text)}"><div class="inp">${answerFields(q, issue.body)}
 <p class="hint">書けば Claude が読んでから進みます。</p>
 <details class="labels"><summary class="s">ラベル（任意）</summary><div>${all.map((n) => box("checkbox", "label", n, n, have.includes(n) ? " checked" : "", "")).join("")}</div></details>
 </div><p id="err"></p><button type="button" id="go" class="sub">確認</button><div class="row"><button type="button" id="back" class="sub">戻る</button><button class="main">送信</button></div></form>`);

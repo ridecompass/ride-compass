@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../src/bot.js";
-import { answerBody, answerProblem, answerText, askText, checkByText, conditions, latestQuestion, withButton } from "../src/questions.js";
+import { answerBody, answerProblem, answerText, askText, checkByText, conditions, latestQuestion, withButton, withValues } from "../src/questions.js";
 import { formed as make } from "./forms.js";
 import { fillFields, issueProblems, parseArgs, withOrigin } from "../../../.claude/skills/file-issue/scripts/new-issue.mjs";
 import { check } from "../../../.claude/skills/task-work/scripts/check.mjs";
@@ -52,8 +52,8 @@ test("答えを記録する（ask の answer.mjs）: 回答フォームと同じ
   const [judge, confirm, adopt] = [judgeText, confirmText, askText("採否", config.questionForms)].map(asked);
   const rows = [
     [judge, {}, /この issue をどうするか/], [judge, { next: "続ける", plan: "案C" }, /案にない答え/], [judge, { next: "保留", plan: "案A" }, null], [judge, { next: "続ける" }, null],
-    [adopt, { next: "完了" }, /この issue をどうするか/], [adopt, { next: "見送り" }, null], [adopt, { next: "続ける", plan: "着手する" }, /案にない答え/], [confirm, { next: "完了" }, null],
-    [confirm, { next: "続ける", checked: ["無い行"] }, /問いにない行/], [judge, { next: "続ける", checked: ["案A"] }, /チェックする行はありません/],
+    [adopt, { next: "完了" }, /この issue をどうするか/], [adopt, { next: "見送り" }, null], [adopt, { next: "続ける", plan: "着手する" }, /案にない答え/], [confirm, { next: "完了" }, /この issue をどうするか/],
+    [confirm, { next: "続ける", yes: ["無い行"] }, /問いにない行/], [judge, { next: "続ける", yes: ["案A"] }, /YES／NO で答える行はありません/],
   ];
   for (const [q, a, want] of rows) want ? assert.match(answerProblem(q, a), want) : assert.equal(answerProblem(q, a), null);
   assert.equal(answerBody(judge, { next: "保留", plan: "案B", text: "あとで" }), "## 回答\n**どちらにしますか？**\n\n次遷移: 保留\n選んだ案: 案B\nコメント:\nあとで");
@@ -61,11 +61,14 @@ test("答えを記録する（ask の answer.mjs）: 回答フォームと同じ
   assert.equal(tail(answerBody(judge, { next: "続ける" })), "次遷移: 続ける\n選んだ案: 選ばなかった\nコメント: なし", "空の欄も省かない");
   assert.equal(tail(answerBody(adopt, { next: "見送り" })), "次遷移: 見送り\n選んだ案: なし（問いに案が無い）\nコメント: なし");
   const said = "> 距離のバーは候補数の横に\n\nとユーザーがチャットで言った（2026-10-12）";
-  const body = answerBody(confirm, { next: "完了", checked: ["見た目"], text: said });
-  assert.equal(tail(body), `次遷移: 完了\n選んだ案: なし（問いに案が無い）\n- 確かめた: 見た目\nコメント:\n${said}`, "チェックした確かめることを行ごとに並べる");
+  const body = answerBody(confirm, { next: "続ける", yes: ["見た目"], text: said });
+  assert.equal(tail(body), `次遷移: 続ける\n選んだ案: なし（問いに案が無い）\nコメント:\n${said}`, "確かめることの値は本文の約束に書くので、答えには書かない");
+  const page = "- [x] 作る\n- [ ] 見た目\n  - 確かめる: ユーザー\n- [x] 動き\n  - 確かめる: ユーザー\n";
+  const two = asked(askText("確かめ", config.questionForms, [{ text: "見た目" }, { text: "動き" }]));
+  assert.deepEqual(conditions(withValues(page, two, ["見た目"])).map((c) => c.done), [true, true, false], "YES の行にチェックを付け、NO の行は外す");
   const operate = asked(make("操作", "設定を変えてください", ["手順1", "手順2"]));
-  assert.equal(tail(answerBody(operate, { next: "続ける", checked: ["手順1"] })), "次遷移: 続ける\n選んだ案: なし（問いに案が無い）\n- 済ませた: 手順1\nコメント: なし",
-    "済ませることは、済ませた行を並べる");
+  assert.equal(tail(answerBody(operate, { next: "続ける", yes: ["手順1"] })), "次遷移: 続ける\n選んだ案: なし（問いに案が無い）\n済ませること:\n- YES: 手順1\n- NO: 手順2\nコメント: なし",
+    "済ませることは、行ごとの値を答えに書く");
   assert.equal(answerText(body), said, "コメントは形を付けずにそのまま読む");
   const read = (text) => latestQuestion([confirmText, answerBody(confirm, { next: "続ける", text })], config.questionForms)?.answer;
   for (const text of ["次遷移: 完了", "- 確かめた: 見た目\nここは崩れる", "コメント: なし", "なし"]) assert.deepEqual(read(text), { decision: "続ける", text }, `欄に似た行は欄として読まない: ${text}`);

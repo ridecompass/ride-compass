@@ -10,7 +10,7 @@ import { MATERIAL, formed as FORMED } from "./forms.js";
 import { handle } from "../src/flow.js";
 import { answerForm } from "../src/form.js";
 import { Inbox, nextAlarm } from "../src/inbox.js";
-import { APPLIED, NEXT, answerBody, askText, checkQuestion, conditions, droppedQuestion, latestQuestion, loadForms, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
+import { APPLIED, NEXT, answerBody, askText, checkQuestion, conditions, droppedQuestion, latestQuestion, loadForms, withButton, withValues } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
 
 const config = { ...loaded, slots: { 実装: 2, 検証: 1 } };
 const tasks = { full_name: config.tasks };
@@ -89,6 +89,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
       w.writes.push(["コメント", i.n, v.b.split("\n")[0]]);
       if (q.includes("a:addLabelsToLabelable")) i.labels = [...i.labels, ...v.a.map((id) => id.slice(1))];
       if (q.includes("r:removeLabelsFromLabelable")) i.labels = i.labels.filter((n) => !v.r.includes(`L${n}`));
+      if (q.includes("e:updateIssue")) (i.body = v.e, w.writes.push(["本文", i.n]));
       return {};
     }
     if (q.startsWith("mutation(")) w.mutations = (w.mutations ?? 0) + 1;
@@ -121,7 +122,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
       const i = w.at(v.i);
       return { repository: { labels: { nodes: repoLabels().map((name) => ({ id: `L${name}`, name })) }, issue: { id: `I${i.n}`, title: "タスク", url: `https://github.test/${i.n}`,
         // 本文の頭の回答のボタンは、GitHub が描く形（段落の中のリンクの付いた画像）にする。
-        bodyHTML: i.body.replace(/^<!-- flow-gate -->\n\[!\[回答する\]\(([^)]*)\)\]\(([^)]*)\)\n<!-- \/flow-gate -->\n/, '<p><a href="$2" rel="nofollow"><img src="$1"></a></p>'), labels: names(i.labels),
+        body: i.body, bodyHTML: i.body.replace(/^<!-- flow-gate -->\n\[!\[回答する\]\(([^)]*)\)\]\(([^)]*)\)\n<!-- \/flow-gate -->\n/, '<p><a href="$2" rel="nofollow"><img src="$1"></a></p>'), labels: names(i.labels),
         comments: { nodes: i.comments.map((body, k) => ({ body, bodyHTML: body, url: "https://github.test/c", createdAt: T(k), author: { login: author(i, k).replace(/\[bot\]$/, "") } })) } } } };
     }
     if (q.includes("t:repository")) {
@@ -197,6 +198,12 @@ const QUESTION = FORMED("判断", "どちらにしますか？", [["案A", "推�
 // 問いへの答え（答えの組み立ての持ち主で作る）。
 const REPLY = (question, next, text = "", plan = "") => answerBody(latestQuestion([question], config.questionForms), { next, text, plan });
 const ANSWER = (next, text = "") => REPLY(QUESTION, next, text);
+// ユーザーが回答フォームで、確かめることを全部 YES にして続けた（値は本文の約束へ、答えはコメントへ）。
+const CONFIRMED = (i) => {
+  const q = latestQuestion(i.comments, config.questionForms);
+  const yes = q.rows.map((r) => r.text);
+  Object.assign(i, { body: withValues(i.body, q, yes) }).comments.push(answerBody(q, { next: "続ける", yes }));
+};
 const CONFIRM = "- [x] 作る\n- [ ] 見た目\n  - 確かめる: ユーザー\n";
 const ASKED = (kind) => askText(kind, config.questionForms, [{ text: "見た目" }]); // ゲートが出す問い（確かめは CONFIRM のユーザーが確かめる条件を並べる）
 
@@ -463,9 +470,9 @@ test("C4 待つ相手: 開いた子がある親は待機し、確かめを問わ
   assert.deepEqual([w.at(1).body.includes("- [ ] 動く"), w.at(1).status, head(w.at(1)), asked(w.at(1))], [true, "回答", "## 問い（確かめ）", 1]);
   await w.send(ev.comment(1));
   assert.equal(asked(w.at(1)), 1, "確かめは一度だけ");
-  w.at(1).comments.push(answerBody(latestQuestion(w.at(1).comments, config.questionForms), { next: "完了" }));
+  CONFIRMED(w.at(1));
   await w.send(ev.comment(1));
-  assert.deepEqual([w.at(1).state, w.at(1).reason], ["CLOSED", "COMPLETED"]);
+  assert.deepEqual([w.at(1).state, w.at(1).reason], ["CLOSED", "COMPLETED"], "確かめることを全部 YES にしたら、約束が全部果たされて閉じる");
 });
 
 test("tasks#824 継承: 子は優先度・着手可能日時・急ぎ・保留を親の値で見る。子は自分の約束が全部果たされ、マージのコミットの検査が通ったら閉じ、親へ伝わる", async () => {
@@ -584,7 +591,7 @@ test("tasks#878 確かめの問いの確かめることに、ユーザーが確�
   assert.deepEqual([w.at(1).status, head(w.at(1))], ["回答", "## 問い（確かめ）"], "条件を並べた確かめの問いは、形に合う");
   assert.ok(asked.includes(`- 道を押すと値が出る\n  - 見る所と要点: ${look}`), asked);
   assert.ok(asked.includes("- 見た目\n  - 見る所と要点: 書かれていません"), asked);
-  w.at(1).comments.push(answerBody(latestQuestion(w.at(1).comments, config.questionForms), { next: "完了" }));
+  CONFIRMED(w.at(1));
   await w.send(ev.comment(1));
   assert.deepEqual([w.at(1).state, w.at(1).reason], ["CLOSED", "COMPLETED"]);
 });
@@ -649,26 +656,29 @@ function connect(w) {
 }
 const url = (n) => `${config.urls.form}/answer?issue=${n}`;
 const open = (n) => answerForm(new Request(url(n)), env, config);
-// ブラウザと同じく、開いたページの隠しの欄（問いの文・確かめの項目）と、選んだ値を送る。
+// ブラウザと同じく、開いたページの隠しの欄（問いの文・回答内容の行）と、最初から選ばれた丸（YES／NO）と、選んだ値を送る。
 async function answer(n, picks) {
   const html = await (await open(n)).text();
   const form = new FormData();
-  for (const [, name, value] of html.matchAll(/<input type="hidden" name="(\w+)" value="([^"]*)">/g)) form.set(name, value.replace(/&#(\d+);/g, (_, c) => String.fromCharCode(c)));
+  for (const [, type, name, value, checked] of html.matchAll(/<input type="(hidden|radio)" name="(\w+)" value="([^"]*)"( checked)?>/g)) {
+    if (type === "hidden" || checked) form.set(name, value.replace(/&#(\d+);/g, (_, c) => String.fromCharCode(c)));
+  }
   for (const [k, v] of Object.entries(picks)) (form.delete(k), [v].flat().forEach((x) => form.append(k, x)));
   return (await answerForm(new Request(url(n), { method: "POST", body: form }), env, config)).json();
 }
 
 // ユーザーが書いた文（答えの文・コメント）は、必ず Claude が読んでから進む（#724 の確かめの答えの文が、読まれずに閉じて消えた）。
 test("書いた文は Claude が読むまで決定を当てず、読んだあとに一度だけ当てて知らせる", async () => {
-  const done = REPLY(ASKED("確かめ"), "完了", "距離のバーは候補数の横に置いて");
-  const w = world([{ n: 1, status: "回答", body: CONFIRM, comments: [ASKED("確かめ"), done] }]);
+  const done = REPLY(ASKED("確かめ"), "続ける", "距離のバーは候補数の横に置いて");
+  const yes = CONFIRM.replace("- [ ] 見た目", "- [x] 見た目"); // 回答フォームで見た目を YES にした
+  const w = world([{ n: 1, status: "回答", body: yes, comments: [ASKED("確かめ"), done] }]);
   await w.send(ev.comment(1));
-  assert.deepEqual([w.at(1).state, w.at(1).status, w.titles()], ["OPEN", "実装", ["#1 実装"]], "#724: 完了にしても文があれば閉じず、実装担当が読む");
-  Object.assign(w.at(1), { body: `${CONFIRM}- [ ] 距離のバーを候補数の横へ置く\n`, pr: { draft: true, checks: "PENDING" } }); // 担当が読んで条件に足し、作った
+  assert.deepEqual([w.at(1).state, w.at(1).status, w.titles()], ["OPEN", "実装", ["#1 実装"]], "#724: 約束が全部果たされても、文があれば閉じず、実装担当が読む");
+  Object.assign(w.at(1), { body: `${yes}- [ ] 距離のバーを候補数の横へ置く\n`, pr: { draft: true, checks: "PENDING" } }); // 担当が読んで条件に足し、作った
   w.at(1).comments.push(END(2));
   await w.send(ev.run(w.run(1), "completed"));
-  assert.deepEqual([w.at(1).body.includes("- [x] 見た目"), w.at(1).state, w.at(1).status, head(w.at(1))], [true, "OPEN", "検査", `${APPLIED}（完了）。`],
-    "読んだあとに答え（完了にする）を当てて確かめた行にチェックを付け、当てたことを知らせる。足した条件が残るので閉じない");
+  assert.deepEqual([w.at(1).state, w.at(1).status, head(w.at(1))], ["OPEN", "検査", `${APPLIED}（続ける）。`],
+    "読んだあとに答えを当て、当てたことを知らせる。足した条件が残るので閉じない");
   await w.send(ev.comment(1, config.claude));
   assert.equal(w.at(1).comments.filter((c) => c.startsWith(APPLIED)).length, 1, "答えは一度だけ当てる");
 
@@ -716,10 +726,10 @@ test("回答フォーム（合意したモック）: 回答内容（案と書く
   await w.send(ev.merge(1)); // 確かめの問い
   await w.send(ev.issue(2, "opened", config.claude)); // 採否の問い
   const check = await (await open(1)).text();
-  for (const text of ["見た目", "回答内容", "Claude に伝えること", "この issue を", "完了にする", "保留する", "見送る", "確認", "戻る", "送信", "判断材料"]) assert.ok(check.includes(text), `確かめ: ${text}`);
+  for (const text of ["見た目", "回答内容", "Claude に伝えること", "この issue を", "続ける", "保留する", "見送る", "確認", "戻る", "送信", "判断材料"]) assert.ok(check.includes(text), `確かめ: ${text}`);
   assert.ok(w.at(1).body.includes("button.svg") && !check.includes("button.svg"), "本文の頭の回答のボタンは、フォームの本文に出さない");
   assert.match(check, /<textarea name="note" rows="4"/, "書く欄は1つで4行");
-  assert.ok(/type="checkbox" name="checked" value="見た目"/.test(check) && !/name="checked"[^>]*checked/.test(check), "確かめることはチェックボックスで、最初は外す");
+  assert.ok(/name="v0" value="NO" checked/.test(check) && !check.includes("完了にする"), "確かめることは YES／NO で、初めの値は本文の約束の値（まだ NO）。完了は次遷移に無い");
   const adopt = await (await open(2)).text();
   assert.ok(!adopt.includes('name="plan"') && !adopt.includes("完了にする"), "案の無い問いは案を出さず、確かめることが無ければ完了にするも出さない");
   const judge = await (await open(4)).text();
@@ -734,8 +744,9 @@ test("回答フォーム（合意したモック）: 回答内容（案と書く
   assert.match((await answer(4, { plan: "案A" })).error, /この issue をどうするか/, "次遷移はいつも要る");
   await answer(4, { next: "保留", plan: "案B", note: "あとで" });
   assert.equal(w.at(4).comments.at(-1).split("\n").slice(3).join("\n"), "次遷移: 保留\n選んだ案: 案B\nコメント:\nあとで", "次遷移と選んだ案とコメントを、互いに変えずにそのまま書く");
-  await answer(1, { next: "続ける", checked: ["見た目"], note: "崩れる" });
-  assert.match(w.at(1).comments.at(-1), /次遷移: 続ける\n選んだ案: なし（問いに案が無い）\n- 確かめた: 見た目\nコメント:\n崩れる/, "チェックした行を、遷移先へそのまま書く");
+  await answer(1, { next: "続ける", v0: "YES", note: "崩れる" });
+  assert.deepEqual([w.at(1).comments.at(-1).split("\n").slice(3).join("\n"), w.at(1).body.includes("- [x] 見た目")], ["次遷移: 続ける\n選んだ案: なし（問いに案が無い）\nコメント:\n崩れる", true],
+    "確かめることの値は、答えと一緒に本文の約束へユーザーの名義で書く（答えには書かない）");
   await w.send(ev.comment(1));
   assert.deepEqual([w.at(1).state, w.at(1).status, w.titles().filter((t) => t.startsWith("#1"))], ["OPEN", "実装", ["#1 実装"]], "決め2 書いた文は実装担当が読む（完成にしない）");
   await answer(2, { next: "見送り", label: ["急ぎ"] });
@@ -758,13 +769,37 @@ test("ラベルごとの形: 書く節・書かない節・案の決まり・決
     ["推奨が2つ", FORMED("判断", "どちらにしますか？", [["案A", "推奨", "早い"], ["案B", "推奨", "安い"]]), /推奨はちょうど1つ/],
     ["案を書いた操作", FORMED("操作", "設定を変えてください", ["画面で設定を変える"]).replace("### 済ませること", "### 案"), /操作は「### 済ませること」/],
     ["回答内容の節を書いた採否", askText("採否", forms).replace("\n\n<details>", "\n\n### 済ませること\n- 読む\n\n<details>"), /採否は回答内容の節を書かない/],
-    ["確かめの決まった問いの文を変えた", askText("確かめ", forms, [{ text: "見た目" }]).replace("完成にしてよいですか？", "閉じますか？"), /確かめの問いの文は「完成にしてよいですか？」/],
+    ["確かめの決まった問いの文を変えた", askText("確かめ", forms, [{ text: "見た目" }]).replace("確かめた結果を入れてください", "閉じますか？"), /確かめの問いの文は「確かめた結果を入れてください」/],
     ["前の形の判断材料の節（推奨を判断材料に書く）", QUESTION.replace("\n</details>", "\n\n**推奨**: 案A\n</details>"), /判断材料の節は/],
     ["知らないラベル", QUESTION.replace("## 問い（判断）", "## 問い（相談）"), /ラベルは .*のどれか（「相談」）/],
     ["「- 」で始まらない回答内容の行", QUESTION.replace("- 案B", "案B"), /回答内容の節の行は「- 」で始める（「案B」）/],
     ["ゲートのラベルを Claude が書いた", askText("確かめ", forms, [{ text: "見た目" }]), /確かめの問いはゲートだけが出す/, "Claude"],
   ];
   for (const [name, text, want, by] of rows) assert.match(checkQuestion(forms, text, by).join("・"), want, name);
+});
+
+test("続けるの遷移先は Claude: 書いた文が無くても、Claude が答えを読むまでは実装。確かめることの YES は本文の約束に残る", async () => {
+  const two = "- [x] 作る\n- [ ] 見た目\n  - 確かめる: ユーザー\n- [ ] 動き\n  - 確かめる: ユーザー\n";
+  const asking = askText("確かめ", config.questionForms, [{ text: "見た目" }, { text: "動き" }]);
+  const w = world([{ n: 1, status: "回答", body: withButton(two, config, 1), comments: [asking] },
+    { n: 2, status: "回答", body: withButton(CONFIRM, config, 2), comments: [ASKED("確かめ").replace("確かめた結果を入れてください", "完成にしてよいですか？")] },
+    { n: 3, status: "回答", labels: [config.devLabel], body: CONFIRM, comments: [QUESTION, ANSWER("続ける")] }]);
+  connect(w);
+  w.at(1).body = withValues(w.at(1).body, latestQuestion(w.at(1).comments, config.questionForms), ["見た目"]); // ユーザーが GitHub で見た目にチェックを付けた
+  const page = await (await open(1)).text();
+  assert.ok(/name="v0" value="YES" checked/.test(page) && /name="v1" value="NO" checked/.test(page), "YES／NO の初めの値は、本文の約束の今の値");
+  await answer(1, { next: "続ける" });
+  await w.send(ev.comment(1));
+  assert.deepEqual([w.at(1).status, w.titles(), conditions(w.at(1).body).map((c) => c.done)], ["実装", ["#1 実装"], [true, true, false]],
+    "書く欄を空のまま続けても実装担当が答えを読み、本文の約束の値はそのまま残る");
+  await w.send(ev.comment(2, config.claude));
+  assert.deepEqual([w.at(2).status, w.at(2).comments.at(-1).split("\n").slice(0, 2)], ["回答", ["## 問い（確かめ）", "確かめた結果を入れてください"]],
+    "前の決まった文で問うた確かめは、今の文で問い直す");
+  await w.send(ev.comment(3));
+  assert.equal(w.at(3).status, "実装", "開発機で作業中の issue でも、続けるは開発機のセッションが答えを読むまで実装");
+  w.at(3).comments.push("答えを読んだ");
+  await w.send(ev.comment(3, config.claude));
+  assert.deepEqual([w.at(3).status, head(w.at(3))], ["回答", "## 問い（確かめ）"], "開発機のセッションが書いたら読んだとして、表で決める（残りはユーザーの確かめ）");
 });
 
 test("ラベル「操作」の問いは、済ませることを並べ、次遷移のボタンで答える。続けたら Claude の番へ戻る", async () => {
@@ -790,7 +825,7 @@ test("回答フォームはラベルで分けず、問いの回答内容の節�
   const plain = await page(1);
   assert.ok(["続ける", "保留する", "見送る"].every((t) => plain.includes(`value="${Object.keys(NEXT).find((k) => NEXT[k] === t)}"`)) && !plain.includes("完了にする"), "案も確かめることも無い問いは、次遷移の3つだけ");
   const items = await page(3);
-  assert.ok(items.includes("地図の色") && items.includes("完了にする"), "確かめることを並べた問いは、その一覧と完了にする");
+  assert.ok(items.includes("地図の色") && /name="v0" value="YES"/.test(items), "確かめることを並べた問いは、行ごとの YES／NO");
   for (const html of [plain, items]) assert.match(html, /<textarea name="note" rows="4"/, "書く欄はいつも出す");
 });
 
@@ -846,7 +881,7 @@ test("tasks#788 定時は、ユーザーの番でない開いた issue を決め
 
 test("採否を問う issue（Claude が起こした要望）でも、ゲートが出した確かめの問いは、事実が続く間は1つだけ（問い直さない）", async () => {
   const w = world([{ n: 1, author: config.claude, type: "要望", status: "検査", body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1" },
-    comments: [ASKED("採否"), REPLY(ASKED("採否"), "続ける")] }]);
+    comments: [ASKED("採否"), REPLY(ASKED("採否"), "続ける"), END(2)] }]);
   await w.send(ev.merge(1));
   await w.send(ev.comment(1, config.claude));
   assert.deepEqual([w.at(1).status, w.at(1).comments.filter((c) => c.startsWith("## 問い（確かめ）")).length], ["回答", 1]);
