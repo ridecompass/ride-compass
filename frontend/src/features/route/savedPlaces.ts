@@ -1,3 +1,4 @@
+import { isCoordinates, readStoredList, withEntryFirst } from "@/lib/storedList";
 import { vocabulary } from "@/types/generated/vocabulary";
 import type { Coordinates, PlaceCandidate } from "@/types/route";
 
@@ -15,21 +16,13 @@ function readSavedPlace(value: unknown): SavedPlace | null {
   if (!KINDS.has(kind) || !LEVELS.has(level)) return null;
   if (typeof name !== "string" || name.trim() === "") return null;
   if (area !== null && typeof area !== "string") return null;
-  if (typeof latitude !== "number" || !Number.isFinite(latitude)) return null;
-  if (typeof longitude !== "number" || !Number.isFinite(longitude)) return null;
+  if (!isCoordinates(value)) return null;
   return { kind, level, name, area, latitude, longitude } as SavedPlace;
 }
 
-/** 保存した地点の一覧を読む。壊れた保存値は空の一覧、読めない件はその件だけを捨てる。 */
-export function readSavedPlaces(raw: string): SavedPlace[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(parsed)) return [];
-  return parsed.map(readSavedPlace).filter((place): place is SavedPlace => place !== null);
+/** 保存した地点の一覧を読む。 */
+export function readSavedPlaces(raw: string): SavedPlace[] | null {
+  return readStoredList(raw, readSavedPlace);
 }
 
 const samePosition = (a: Coordinates, b: Coordinates) => a.latitude === b.latitude && a.longitude === b.longitude;
@@ -39,9 +32,9 @@ export function savedPlaceAt(list: SavedPlace[], at: Coordinates): SavedPlace | 
   return list.find((place) => samePosition(place, at)) ?? null;
 }
 
-/** 一覧へ1件を入れる。同じ名前・同じ位置の件は置き換え、入れた件を先頭に置く（最近保存したものほど上）。 */
+/** 一覧へ1件を入れる。同じ名前・同じ位置の件は置き換える。 */
 export function withSavedPlace(list: SavedPlace[], place: SavedPlace): SavedPlace[] {
-  return [place, ...list.filter((saved) => saved.name !== place.name && !samePosition(saved, place))];
+  return withEntryFirst(list, place, (saved) => saved.name === place.name || samePosition(saved, place));
 }
 
 /** 打った文字を名前に含む地点（空なら全部）。 */

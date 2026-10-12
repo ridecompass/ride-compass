@@ -12,6 +12,7 @@ import {
   type DynamicWeatherLayerId,
 } from "@/features/map/layers/dynamicWeather";
 import { parseValidtime, type JmaDelivery, type JmaFrame } from "@/features/map/layers/jmaDelivery";
+import { MINUTE_MS } from "@/lib/duration";
 import { parseJstLocalValue } from "@/lib/time";
 import type { WindGridPoint } from "@/types/weather";
 
@@ -118,8 +119,6 @@ export function sourceTimeline(
   }
   return timeline;
 }
-
-const MINUTE_MS = 60 * 1000;
 
 /** 選んだ時刻`at`に描くコマ。描かないならundefined。 */
 export function selectFrame<T>(

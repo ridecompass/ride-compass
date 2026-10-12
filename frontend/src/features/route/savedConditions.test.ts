@@ -8,6 +8,7 @@
  * ここで見ないもの:
  * - 距離・候補数の範囲（`acceptedDistanceInput`・`acceptedMaxRoutesInput`） → `useGenerationConditions.test.ts`の保存値の読み直し
  * - 説明を保存の前と一覧の行のどこに出すか → `SavedConditionsPanel/SavedConditionsPanel.test.tsx`
+ * - 一覧として読めない保存値 → `lib/storedList.test.ts`
  */
 import { describe, expect, it } from "vitest";
 
@@ -77,16 +78,11 @@ describe("readSavedConditions", () => {
     },
   );
 
-  it("一覧として読めない保存値は空の一覧にする", () => {
-    expect(readSavedConditions("{")).toEqual([]);
-    expect(readSavedConditions(JSON.stringify(ENTRY))).toEqual([]);
-  });
-
   it("除外は今の項目へ揃える（無い項目は既定値、今は無い項目は落とす）", () => {
     const [key, ...rest] = Object.keys(DEFAULT_HARD_FILTERS);
     const stored = { [key]: !DEFAULT_HARD_FILTERS[key], retired_filter: true };
 
-    const [read] = readSavedConditions(JSON.stringify([{ ...ENTRY, hardFilters: stored }]));
+    const [read] = readSavedConditions(JSON.stringify([{ ...ENTRY, hardFilters: stored }]))!;
 
     expect(read.hardFilters).toEqual({
       ...Object.fromEntries(rest.map((k) => [k, DEFAULT_HARD_FILTERS[k]])),
