@@ -1,0 +1,33 @@
+# Pull Request の実行で「Pull Request が変えたもの」を見るときの比べる版を出す。ci.yml の changes と mutation-pr.yml が使う。
+# 検査する版（GITHUB_SHA）は、基の先端と Pull Request を合わせたマージのコミット。pull_request の出来事の base.sha は、
+# Pull Request へ push したあとに基の先端が進んでも新しくならず、そのまま比べると、その間に基へ入った変更が差に混ざる。
+# そこで、マージのコミットの親のうち Pull Request の先端（head.sha）でない方を比べる版にする。親の並びは公式の文書に
+# 無いので並びに頼らない。1つに決まらなければ base.sha を出す（差は広く出るが、狭くはならない）。
+# 呼ぶ前に、マージのコミットの親まで取っておく（actions/checkout の fetch-depth: 0）。
+name: Pull Request の比べる版
+description: Pull Request の実行で、検査するマージのコミットの基の側の親（決まらなければ base.sha）を出す
+
+outputs:
+  sha:
+    description: 比べる版
+    value: ${{ steps.base.outputs.sha }}
+
+runs:
+  using: composite
+  steps:
+    - id: base
+      shell: bash
+      env:
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        read -r _ p1 p2 more <<< "$(git rev-list --parents -n 1 "$GITHUB_SHA")"
+        if [ -z "$more" ] && [ -n "$p1" ] && [ "$p2" = "$HEAD_SHA" ]; then
+          sha=$p1
+        elif [ -z "$more" ] && [ -n "$p2" ] && [ "$p1" = "$HEAD_SHA" ]; then
+          sha=$p2
+        else
+          sha=$BASE_SHA
+        fi
+        echo "比べる版: $sha（base.sha: $BASE_SHA）"
+        echo "sha=$sha" >> "$GITHUB_OUTPUT"
