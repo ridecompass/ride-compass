@@ -96,37 +96,25 @@ test("起票する（file-issue の new-issue.mjs）: 本文の形・子の決�
   for (const argv of [["--blokced-by", "5"], ["--title"], ["--title", "--size", "S"], ["題"]]) assert.equal(parseArgs(argv), null, argv.join(" "));
 });
 
-test("起票する（file-issue の new-issue.mjs）: 欄で落ちても作り直させず、作った番号と残りの欄を入れ直すコマンドを返す", async () => {
-  const url = "https://github.com/ridecompass/ride-compass-tasks/issues/77";
-  const fields = [[base.fields.size, "S"], [base.fields.priority, "高"]];
-  const board = { data: { repository: { issue: { projectItems: { nodes: [{ project: { number: base.project } }] } } } } };
-  const away = { data: { repository: { issue: { projectItems: { nodes: [] } } } } };
-  // answers: ボードへの問い合わせの応答を順に（Error なら落ちる）。edit: 欄を入れる gh が落ちる欄の名前。
-  const run = async (answers, fail) => {
-    const edits = [];
-    const gh = (args) => {
-      if (args[0] === "api") {
-        const a = answers.shift();
-        if (a instanceof Error) throw a;
-        return JSON.stringify(a);
-      }
-      const field = args[args.indexOf("--field") + 1];
-      if (field === fail) throw Object.assign(new Error("落ちた"), { stderr: "項目が無い" });
-      edits.push(field);
-      return "";
+test("起票する（file-issue の new-issue.mjs）: 欄を issue へ1回で入れ、落ちても作り直させず、作った番号と入れ直すコマンドを返す", () => {
+  const values = [["size", "S"], ["priority", "高"]];
+  // fail: 落とす gh の操作（"view" か "api"）。
+  const run = (fail) => {
+    const sent = [];
+    const gh = (args, input) => {
+      if (args.includes(fail)) throw Object.assign(new Error("落ちた"), { stderr: "許しが無い" });
+      if (args[0] === "issue") return JSON.stringify({ id: "I77" });
+      sent.push(JSON.parse(input).variables);
+      return "{}";
     };
-    return { left: await fillFields(gh, url, fields, { pause: 0, tries: 3 }), edits };
+    return { left: fillFields(gh, 77, values), sent };
   };
-  assert.deepEqual(await run([away, board]), { left: null, edits: fields.map(([f]) => f) }, "入るのを待ってから欄を入れる");
-  const rows = [
-    [[away, away, away], undefined, /待ってもボードに入らない/, fields],
-    [[new Error("網")], undefined, /問い合わせられなかった（網）/, fields],
-    [[board], base.fields.priority, /欄「.+」を入れられなかった（項目が無い）/, fields.slice(1)],
-  ];
-  for (const [answers, fail, why, rest] of rows) {
-    const { left } = await run(answers, fail);
-    assert.match(left, /^#77 は作った（作り直さない）/, String(why));
-    assert.match(left, why);
-    assert.deepEqual([...left.matchAll(/--field (\S+)/g)].map((m) => m[1]), rest.map(([f]) => f), "入っていない欄だけを入れ直す");
+  const f = base.fields;
+  assert.deepEqual(run(), { left: null, sent: [{ i: "I77", v: [{ fieldId: f.size.id, singleSelectOptionId: f.size.options.S }, { fieldId: f.priority.id, singleSelectOptionId: f.priority.options.高 }] }] });
+  for (const fail of ["view", "api"]) {
+    const { left } = run(fail);
+    assert.match(left, /^#77 は作った（作り直さない）。欄を入れられなかった（許しが無い）/, fail);
+    assert.match(left, /--fill 77 --size S --priority 高$/, "入れ直すコマンド");
   }
+  assert.match(fillFields(() => "{}", 77, [["size", "XL"]]), /欄「規模」に「XL」が無い/, "選択肢に無い値は書かない");
 });

@@ -175,11 +175,6 @@ const ASKS = {
     "落ちた担当を黙って振り出し直さず、ユーザーが次を決める。", "同じ形で何度も落ちる。", "担当が問いか Pull Request を出したとき。",
     "やり直す: 未着手へ戻し振り出す。保留する: 保留へ。見送る: 閉じる。", "直前の「担当の終わり」のコメント。"],
 };
-// Claude の番で待っていないのに、設定の時間（stallHours）動かなかったときのイレギュラー（at は最後の動きの日本時間）。選び方は担当が手放したときと同じ。
-export const askStalled = (at, hours, template) => `## 問い（イレギュラー）\n${hours}時間、何も動いていません（最後の動き: ${at}）。どうしますか？\n\n<details><summary>判断材料</summary>\n\n${material(template, [
-  `Claude の番で、前提・子・着手可能日時・担当の枠・利用の上限のどれも待っていないのに、コメント・本文の編集・Pull Request のコミット・検査・担当の実行が${hours}時間ありません。`,
-  "動くべきなのに動かないものは異常として、黙って待たずにユーザーの番にする。", "止まったまま、だれの番とも分からずに残る。", "何かで待っているか、だれかが動いているとき。",
-  "やり直す: 振り出し直す（CI待ちなら作る担当へ渡す）。保留する: 保留へ。見送る: 閉じる。", "この issue の最近のコメントと、作業ブランチの Pull Request。"])}\n</details>`;
 const material = (template, facts) => sections(template).map((n, i) => `**${n}**: ${facts[i] ?? "なし"}`).join("\n\n");
 export function askText(kind, template) {
   const [question, ...facts] = ASKS[kind];

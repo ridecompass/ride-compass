@@ -8,13 +8,9 @@ import base from "../flow.config.json" with { type: "json" };
 import { handle } from "../src/flow.js";
 import { answerForm } from "../src/form.js";
 import { Inbox, nextAlarm } from "../src/inbox.js";
-import { Patrol } from "../src/patrol.js";
 import { APPLIED, answerBody, askDropped, askText, conditions, droppedQuestion, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
 
-// 時計は差し替える（動きの確かめが読む今の時刻）。既定はコメントの時刻（下の T）の1時間後で、止まりを見る場面だけ進める。
-const clock = { now: Date.UTC(2026, 9, 11, 1) };
-const config = { ...base, questionTemplate: readFileSync(new URL("../question_template.md", import.meta.url), "utf8"), slots: { 作る: 2, 確かめる: 1 }, now: () => clock.now };
-const OPTIONS = ["未着手", "進行中", "CI待ち", "検証待ち", "検証中", "回答待ち", "保留", "完了", "高", "中", "低"].map((name) => ({ id: name, name }));
+const config = { ...base, questionTemplate: readFileSync(new URL("../question_template.md", import.meta.url), "utf8"), slots: { 作る: 2, 確かめる: 1 } };
 const tasks = { full_name: config.tasks };
 const code = { full_name: config.code };
 const names = (list) => ({ nodes: list.map((name) => ({ name })) });
@@ -25,30 +21,31 @@ const author = (i, k) => i.by[k] ?? (i.comments[k].startsWith("## 回答") ? con
 const END = (start) => `### 作る担当の終わり\n\n要約（担当の最後の発言）:\n\n> 読んだ\n\n読み始め: ${T(start - 0.5)}`;
 
 function world(list, { workflow = "active", last = [], steps = [] } = {}) {
-  const w = { issues: new Map(), runs: [], writes: [], updates: [] };
+  const w = { issues: new Map(), runs: [], writes: [] };
   for (const i of list) w.issues.set(i.n, { state: "OPEN", reason: null, body: "- [ ] 作る\n", author: config.user, type: null, assignees: [], blockedBy: [],
-    comments: [], by: [], closedAt: null, status: null, priority: null, start: null, board: true, parent: null, labels: [], pr: null, ...i });
+    comments: [], by: [], closedAt: null, status: null, priority: null, start: null, parent: null, labels: [], pr: null, ...i });
   w.at = (n) => w.issues.get(n);
-  const item = (i) => (i.board ? [{ id: `IT${i.n}`, project: { number: config.project }, status: i.status && { name: i.status },
-    priority: i.priority && { name: i.priority }, start: i.start && { text: i.start } }] : []);
+  // issue の欄（src/facts.js: FIELDS の形）。単一選択は name、文字は value。
+  const f = config.fields;
+  const fields = (i) => ({ nodes: [[f.status, i.status], [f.priority, i.priority], [f.start, i.start]].filter(([, v]) => v)
+    .map(([field, v]) => ({ ...(field.options ? { name: v } : { value: v }), field: { name: field.name } })) });
   const near = (n) => ({ number: n, state: w.at(n).state, stateReason: w.at(n).reason });
   const blocked = (i) => ({ nodes: i.blockedBy.map(near) });
   const children = (i) => ({ nodes: [...w.issues.values()].filter((k) => k.parent === i.n).map((k) => near(k.n)) });
   // 矢印1本でつながる issue（src/facts.js: relationsOf の形）。
   const relations = (i) => {
     const p = i.parent && w.at(i.parent);
-    return { blockedBy: blocked(i), subIssues: children(i), parent: p && { ...near(p.n), body: p.body, labels: names(p.labels), projectItems: { nodes: item(p) } } };
+    return { blockedBy: blocked(i), subIssues: children(i), parent: p && { ...near(p.n), body: p.body, labels: names(p.labels), issueFieldValues: fields(p) } };
   };
   const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, merged: Boolean(p.merged), mergeCommit: { statusCheckRollup: p.mergeChecks && { state: p.mergeChecks } },
     commits: { nodes: [{ commit: { oid: `c${i.n}`, committedDate: "2026-10-11T00:00:00Z", statusCheckRollup: p.checks && { state: p.checks } } }] },
     timelineItems: { nodes: p.drafted ? [{ createdAt: "2026-10-11T01:00:00Z" }] : [] } });
   const gql = async (q, v) => {
-    if (q.includes("fields(first:30")) return { organization: { projectV2: { id: `P${v.n}`, fields: { nodes: [config.fields.status, config.fields.priority].map((name) => ({ id: name, name, options: OPTIONS })) } } } };
     if (q.includes("closePullRequest")) return void (w.at(Number(v.id.slice(2))).pr.state = "CLOSED", w.writes.push(["PR を閉じる", Number(v.id.slice(2))]));
     if (q.includes("removeSubIssue")) return void (w.at(Number(v.c.slice(1))).parent = null, w.writes.push(["親子を外す", Number(v.c.slice(1))]));
     if (q.includes("c:issue(number:$c)")) return { repository: { p: { parent: w.at(v.p).parent && { number: w.at(v.p).parent } }, c: { subIssues: children(w.at(v.c)) } } };
-    if (q.includes("items(first:100")) return { organization: { projectV2: { items: { pageInfo: { hasNextPage: false }, nodes: [...w.issues.values()].filter((i) => i.board)
-      .map((i) => ({ ...item(i)[0], content: { number: i.n, state: i.state, issueType: i.type && { name: i.type }, labels: names(i.labels), ...relations(i) } })) } } } };
+    if (q.includes("issues(states:OPEN")) return { repository: { issues: { pageInfo: { hasNextPage: false }, nodes: [...w.issues.values()].filter((i) => i.state === "OPEN")
+      .map((i) => ({ number: i.n, state: i.state, issueType: i.type && { name: i.type }, labels: names(i.labels), issueFieldValues: fields(i), ...relations(i) })) } } };
     if (q.includes("blocking(")) {
       const i = w.at(v.n);
       return { repository: { issue: { blocking: { nodes: [...w.issues.values()].filter((k) => k.blockedBy.includes(v.n)).map((k) => ({ number: k.n, state: k.state })) },
@@ -63,32 +60,41 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
       const i = w.at(v.n);
       // 閉じた時刻を置いていない閉じた issue は、今あるコメントのあとに閉じた。
       const closedAt = i.state === "CLOSED" ? (i.closedAt ?? T(i.comments.length - 0.5)) : null;
-      // GraphQL は App の書き手の名前を [bot] の付かない形で返す。コメントの時刻は、置いたもの（i.times）か並びの順。
-      const comments = i.comments.map((body, k) => ({ body, createdAt: i.times?.[k] ?? T(k), author: { login: author(i, k).replace(/\[bot\]$/, "") } })).slice(-40);
+      // GraphQL は App の書き手の名前を [bot] の付かない形で返す。コメントの時刻は並びの順。
+      const comments = i.comments.map((body, k) => ({ body, createdAt: T(k), author: { login: author(i, k).replace(/\[bot\]$/, "") } })).slice(-40);
       return { t: { issue: { id: `I${i.n}`, state: i.state, stateReason: i.reason, createdAt: T(0), closedAt, body: i.body, author: { login: i.author }, issueType: i.type && { name: i.type },
-        assignees: { nodes: i.assignees.map((login) => ({ login })) }, ...relations(i), comments: { nodes: comments }, projectItems: { nodes: item(i) },
+        assignees: { nodes: i.assignees.map((login) => ({ login })) }, ...relations(i), comments: { nodes: comments }, issueFieldValues: fields(i),
         timelineItems: { nodes: (i.typeChanges ?? []).map(([a, b]) => ({ prevIssueType: { name: a }, issueType: { name: b } })) } } },
       c: { pullRequests: { nodes: i.pr ? [pull(i, i.pr)] : [] } } };
     }
-    if (q.includes("statusUpdates")) return { node: { statusUpdates: { nodes: w.updates.slice(-1) } } };
     if (q.includes("node(id:")) return { node: { number: Number(v.id.slice(1)) } };
-    if (q.includes("updateProjectV2ItemFieldValue")) return void (w.at(Number(v.i.slice(2)))[v.f === config.fields.status ? "status" : "priority"] = v.v);
-    if (q.includes("addProjectV2ItemById")) {
-      w.at(Number(v.c.slice(1))).board = v.p === `P${config.project}`;
-      return { addProjectV2ItemById: { item: { id: `IT${v.c.slice(1)}` } } };
+    if (q.includes("setIssueFieldValue")) {
+      const i = w.at(Number(v.i.slice(1)));
+      for (const x of v.v) {
+        const [key, field] = Object.entries(f).find(([, y]) => y.id === x.fieldId);
+        i[key] = field.options ? Object.keys(field.options).find((name) => field.options[name] === x.singleSelectOptionId) : x.textValue;
+      }
+      return { setIssueFieldValue: { clientMutationId: null } };
     }
     if (q.includes("markPullRequestReadyForReview")) return void (w.at(Number(v.id.slice(2))).pr.draft = false);
-    if (q.includes("createProjectV2StatusUpdate")) return void w.updates.push({ status: v.s, body: v.b });
     throw new Error(`知らない問い合わせ: ${q.slice(0, 80)}`);
   };
   const rest = async (method, path, body, who = config.gateBot) => {
     let m;
     if (path.endsWith(`/workflows/${config.workflow}`)) return { state: workflow };
-    if (path.includes("/runs?status=completed&per_page=1")) return { workflow_runs: last };
+    if (path.includes("/runs?per_page=100")) return { workflow_runs: [...w.runs, ...last].reverse().map((r) => ({ id: r.id, display_title: r.display_title ?? "#99 作る",
+      status: r.status ?? "completed", conclusion: r.conclusion ?? null, created_at: r.created_at ?? new Date().toISOString(), updated_at: r.updated_at ?? new Date().toISOString() })) };
     if (path.endsWith("/jobs")) return { jobs: [{ steps }] };
     if (path.startsWith("/search/issues")) return { items: [...w.issues.values()].filter((i) => i.state === "OPEN" && !i.assignees.includes(config.user)).map((i) => ({ number: i.n })) };
-    if (path.endsWith("/dispatches")) return void w.runs.push({ id: 100 + w.runs.length, display_title: `#${body.inputs.issue} ${body.inputs.kind} ${body.inputs.key}` });
-    if ((m = /\/actions\/runs\/(\d+)\/cancel$/.exec(path))) return void w.writes.push(["取り消し", Number(m[1])]);
+    if (path.endsWith("/dispatches")) { // 本物と同じく、振り出すと実行の始まりの知らせが届く
+      const r = { id: 100 + w.runs.length, display_title: `#${body.inputs.issue} ${body.inputs.kind} ${body.inputs.key}`, status: "queued" };
+      w.runs.push(r);
+      return void (await w.inbox.push(...ev.run(r, "requested")));
+    }
+    if ((m = /\/actions\/runs\/(\d+)\/cancel$/.exec(path))) {
+      if (w.ended?.includes(Number(m[1]))) throw new Error(`GitHub POST ${path}: 409 {"message":"Cannot cancel a workflow run that is completed."}`);
+      return void w.writes.push(["取り消し", Number(m[1])]);
+    }
     if ((m = /\/commits\/(\w+)\/pulls$/.exec(path))) return [...w.issues.values()].filter((i) => i.pr?.sha === m[1]).map((i) => ({ head: { ref: `${config.branchPrefix}${i.n}` } }));
     if ((m = /\/commits\/c(\d+)\/check-runs/.exec(path))) return { check_runs: w.at(Number(m[1])).survivors ? [{ id: Number(m[1]), completed_at: "2026-10-11T00:00:00Z" }] : [] };
     if ((m = /\/check-runs\/(\d+)\/annotations/.exec(path))) return w.at(Number(m[1])).survivors.map((message) => ({ title: "テストが気づかない書き換え", path: "src/a.js", message }));
@@ -109,8 +115,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
   const memory = new Map();
   const storage = { get: async (k) => memory.get(k), put: async (k, v) => void memory.set(k, v), delete: async (k) => [k].flat().forEach((x) => memory.delete(x)),
     list: async ({ prefix }) => new Map([...memory].filter(([k]) => k.startsWith(prefix)).sort(([a], [b]) => (a < b ? -1 : 1))) };
-  const patrol = new Patrol(storage);
-  w.inbox = new Inbox(storage, (name, payload) => (w.fail ? Promise.reject(w.fail) : handle(w.gh, { patrol, inbox: w.inbox }, config, name, payload)));
+  w.inbox = new Inbox(storage, (name, payload) => (w.fail ? Promise.reject(w.fail) : handle(w.gh, { inbox: w.inbox }, config, name, payload)));
   w.push = ([name, payload]) => w.inbox.push(name, payload);
   w.send = async (event) => (await w.push(event), w.inbox.drain(config.retries));
   w.titles = () => w.runs.map((r) => r.display_title.split(" ").slice(0, 2).join(" "));
@@ -118,13 +123,12 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
   return w;
 }
 const ev = {
-  run: (r, action) => ["workflow_run", { action, sender: { login: config.gateBot }, repository: code, workflow_run: { id: r.id, path: `.github/workflows/${config.workflow}`, display_title: r.display_title } }],
+  run: (r, action) => (r.status = r.status === "completed" || action === "completed" ? "completed" : "in_progress", ["workflow_run", { action, sender: { login: config.gateBot }, repository: code, workflow_run: { id: r.id, path: `.github/workflows/${config.workflow}`, display_title: r.display_title } }]),
   ci: (branch, sha = "x") => ["workflow_run", { action: "completed", sender: { login: config.user }, repository: code, workflow_run: { id: 1, path: ".github/workflows/ci.yml", head_branch: branch, head_sha: sha } }],
   comment: (n, login = config.user) => ["issue_comment", { action: "created", sender: { login }, issue: { number: n }, repository: tasks }],
   issue: (n, action, login = config.user, more = {}) => ["issues", { action, sender: { login }, issue: { number: n, body: more.body }, changes: more.changes, repository: tasks }],
   pr: (n, action) => ["pull_request", { action, sender: { login: config.user }, repository: code, pull_request: { head: { ref: `${config.branchPrefix}${n}` } } }],
-  move: (n) => ["projects_v2_item", { action: "edited", sender: { login: config.user }, changes: { field_value: { field_name: config.fields.status } },
-    projects_v2_item: { project_node_id: `P${config.project}`, content_node_id: `I${n}` } }],
+  move: (n) => ["issues", { action: "field_added", sender: { login: config.user }, issue: { number: n }, repository: tasks }],
   schedule: () => ["schedule", {}],
   sub: (p, c, action = "sub_issue_added") => ["sub_issues", { action, sender: { login: config.claude }, repository: tasks,
     parent_issue: { number: p, node_id: `I${p}` }, sub_issue: { number: c, node_id: `I${c}` } }],
@@ -163,7 +167,7 @@ test("R3・決め1・決め7: 担当の実行が終わったら、表の上か�
     ["R3f 残りがユーザーの確かめだけ", {}, { body: CONFIRM }, "回答待ち", 1, "## 問い（確かめ）"],
     ["R3g 開いた前提", {}, { blockedBy: [9] }, "未着手", 1, null],
     ["R3g 未来の着手可能日時", {}, { start: "2099-01-01" }, "未着手", 1, null],
-    ["決め3 作る担当が CI の結果のあとに持って見た生き残りは通す → 検証待ち → 確かめる担当", {}, { pr: { draft: true, checks: "SUCCESS" }, survivors: ["書き換え"] }, "検証中", 2, null],
+    ["決め3 作る担当が CI の結果のあとに持って見た生き残りは通す → 検証待ち → 確かめる担当", {}, { pr: { draft: true, checks: "SUCCESS" }, survivors: ["書き換え"], comments: ["作り始めた", END(2)] }, "検証中", 2, "### 作る担当の終わり"],
     ["R3h どれでもない（落ちた）→ 黙って振り出し直さない", {}, {}, "回答待ち", 1, "## 問い（イレギュラー）"],
     ["決め1 マージのあとの残り", {}, { pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS" } }, "進行中", 2, null],
     ["マージのコミットの CI がまだ（本番に出る前に確かめを問わない）", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "PENDING" } }, "CI待ち", 1, null],
@@ -206,9 +210,9 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め3・�
     ["R7 担当が持っているタスクをユーザーが保留へ → その実行を取り消す", { status: "未着手" }, { status: "保留" }, ev.move(1), { status: "保留", cancels: [100], assignees: [config.user] }],
     ["R2・R13・K4 担当が付いている間は決め直さず、その間に出した問いのボタンも消さない", { status: "未着手" }, { comments: [QUESTION], body: withButton("- [ ] 作る\n", config, 1) }, ev.comment(1),
       { status: "進行中", runs: ["#1 作る"], button: true }],
-    ["R9・R13 Claude が起こした要望は採否を問い、本文の頭のボタンは問いより先に書く", { author: config.claude, type: "要望", board: null }, null, ev.issue(1, "opened", config.claude),
+    ["R9・R13 Claude が起こした要望は採否を問い、本文の頭のボタンは問いより先に書く", { author: config.claude, type: "要望" }, null, ev.issue(1, "opened", config.claude),
       { status: "回答待ち", comment: "## 問い（採否）", writes: ["本文", "コメント"] }],
-    ["R16 対話作業も同じ Project へ入れ、振り出さない", { type: config.dialogType, board: null }, null, ev.issue(1, "opened"), { board: true, status: "未着手", runs: [] }],
+    ["R16 対話作業も同じ Project へ入れ、振り出さない", { type: config.dialogType }, null, ev.issue(1, "opened"), { status: "未着手", runs: [] }],
     ["子は優先度を自分の欄に持たない（親の値を見るので、書き写さない）", { board: null, parent: 4 }, null, ev.issue(1, "opened"), { priority: null, status: "未着手" }],
     ["R16 対話作業の境目をまたがない種類の変更は通す", { status: "保留", type: "要望", typeChanges: [["不具合", "要望"]] }, null, ev.issue(1, "typed"), { type: "要望" }],
     ["R16 対話作業の境目をまたぐ種類の変更は戻す", { status: "未着手", type: "不具合", typeChanges: [[config.dialogType, "不具合"]] }, null, ev.issue(1, "typed"), { type: config.dialogType }],
@@ -223,69 +227,30 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め3・�
     Object.assign(w.at(1), change);
     await w.send(event);
     const i = w.at(1);
-    const got = { status: i.status, state: i.state, reason: i.reason, type: i.type, board: i.board, priority: i.priority, assignees: i.assignees, comment: head(i), runs: w.titles(),
+    const got = { status: i.status, state: i.state, reason: i.reason, type: i.type, priority: i.priority, assignees: i.assignees, comment: head(i), runs: w.titles(),
       draft: i.pr?.draft, button: i.body.startsWith("<!-- flow-gate -->"),
       cancels: w.writes.filter(([k]) => k === "取り消し").map(([, id]) => id), writes: w.writes.filter(([, n]) => n === 1).map(([k]) => k) };
     assert.deepEqual(Object.fromEntries(Object.keys(want).map((k) => [k, got[k]])), want, name);
   }
 });
 
-test("tasks#842 担当者はユーザーに問わないと進めないかの2択で、Claude の番で待っていないのに3時間動かなければ、定時の決め直しでイレギュラーを問う", async () => {
-  const HOUR = 3600e3;
-  const start = Date.UTC(2026, 9, 11); // issue を作った時刻・コミットの時刻（足場の既定）
-  const ci = { status: "CI待ち", pr: { draft: false, checks: "PENDING" } };
-  const rows = [
-    // [場面, タスク, 定時の時刻, ステータス, 担当者, 最後のコメントの頭, 足場の止め]
-    ["CI が終わらないまま2時間 → まだ動いていると見る", ci, start + 2 * HOUR, "CI待ち", [config.claude], null],
-    ["CI が終わらないまま3時間 → 止まった", ci, start + 3 * HOUR, "回答待ち", [config.user], "## 問い（イレギュラー）"],
-    ["マージのあとの CI が落ちたまま（#797 の形）→ 止まった", { status: "CI待ち", body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "FAILURE" } },
-      start + 3 * HOUR, "回答待ち", [config.user], "## 問い（イレギュラー）"],
-    ["前提が開いている（関係性で待つ）→ 何時間でも問わない", { status: "未着手", blockedBy: [9] }, start + 30 * HOUR, "未着手", [config.claude], null],
-    ["振り出しを止めている（外の事情で待つ）→ 問わない", { status: "未着手" }, start + 30 * HOUR, "未着手", [config.claude], null, "disabled"],
-    ["対話作業で3時間だれも書かない → 止まった", { status: "未着手", type: config.dialogType }, start + 3 * HOUR, "回答待ち", [config.user], "## 問い（イレギュラー）"],
-    ["保留はユーザーの番で、確かめない", { status: "保留" }, start + 30 * HOUR, "保留", [config.user], null],
-    ["ゲートの書き込みは動きに数えない", { ...ci, comments: ["知らせ"], by: [config.gateBot], times: [new Date(start + 2 * HOUR).toISOString()] }, start + 3 * HOUR,
-      "回答待ち", [config.user], "## 問い（イレギュラー）"],
-    ["Claude の書き込みは動きに数える", { ...ci, comments: ["進めた"], by: [config.claude], times: [new Date(start + 2 * HOUR).toISOString()] }, start + 3 * HOUR,
-      "CI待ち", [config.claude], "進めた"],
-  ];
-  for (const [name, task, now, status, assignees, comment, workflow = "active"] of rows) {
-    const w = world([{ n: 1, ...task }, { n: 9, status: "保留" }], { workflow });
-    clock.now = now;
-    await w.send(ev.schedule());
-    clock.now = Date.UTC(2026, 9, 11, 1);
-    assert.deepEqual([w.at(1).status, w.at(1).assignees, head(w.at(1))], [status, assignees, comment], name);
-  }
+test("tasks#842・#843 担当者を手で変えたら決め直して戻す。1つのタスクを触るのは1者だけ", async () => {
   // 担当者を手で変えたら、その出来事で決め直し、ゲートの決めた値へ戻す。
   const hand = world([{ n: 1, status: "回答待ち", comments: [QUESTION], assignees: [config.user, config.claude] }]);
   await hand.send(ev.issue(1, "assigned"));
   assert.deepEqual(hand.at(1).assignees, [config.user], "回答待ちの担当者はユーザーだけ");
-  // 止まりの問いに「やり直す」と答えたら、CI待ちのものは作る担当へ渡す。
-  const w = world([{ n: 1, ...ci }]);
-  clock.now = start + 3 * HOUR;
-  await w.send(ev.schedule());
-  clock.now = Date.UTC(2026, 9, 11, 1);
-  const asked = w.at(1).comments.at(-1).split("\n");
-  assert.deepEqual(asked.slice(0, 2), ["## 問い（イレギュラー）", "3時間、何も動いていません（最後の動き: 2026-10-11 09:00）。どうしますか？"]);
-  w.at(1).comments.push(answerBody({ kind: "イレギュラー", text: asked[1] }, { choice: "やり直す" }));
-  await w.send(ev.comment(1));
-  assert.deepEqual([w.at(1).status, w.titles(), w.at(1).assignees], ["進行中", ["#1 作る"], [config.claude]]);
-  // 枠が埋まっていてすぐ振り出せなくても、答えのあとに担当の実行が起きるまで「やり直す」を保つ。
-  const full = world([{ n: 1, ...ci }, { n: 2, status: "未着手" }, { n: 3, status: "未着手" }]);
-  clock.now = start + 3 * HOUR;
-  await full.send(ev.schedule());
-  clock.now = Date.UTC(2026, 9, 11, 1);
-  assert.deepEqual(full.titles().sort(), ["#2 作る", "#3 作る"], "作るの枠（2）が埋まる");
-  full.at(1).comments.push(answerBody({ kind: "イレギュラー", text: full.at(1).comments.at(-1).split("\n")[1] }, { choice: "やり直す" }));
-  await full.send(ev.comment(1));
-  await full.send(ev.comment(1));
-  assert.equal(full.at(1).status, "未着手", "次の決め直しでも CI待ちへ戻さない");
-  await full.send(ev.run(full.run(2), "completed"));
-  assert.deepEqual([full.at(1).status, full.titles().filter((t) => t === "#1 作る").length], ["進行中", 1], "枠が空いたら作る担当へ渡す");
-  // 答えのあとに担当が終わっていれば（終わりのコメントが issue に残る）、見回りの記録が無くても「やり直す」は効き終わっている。
-  const ended = world([{ n: 1, ...ci, comments: [...full.at(1).comments, END(full.at(1).comments.length + 1)] }]);
-  await ended.send(ev.comment(1, config.claude));
-  assert.equal(ended.at(1).status, "CI待ち", "担当が終わったあとの CI は CI待ち");
+  // 1つのタスクを触るのは1者だけ: 同じ issue の実行が2本あれば、いちばん古いものを残してほかを取り消す。
+  const two = world([{ n: 1, status: "未着手" }]);
+  two.runs.push({ id: 7, display_title: "#1 作る a", status: "in_progress", created_at: "2026-10-11T00:00:00Z" },
+    { id: 8, display_title: "#1 作る b", status: "queued", created_at: "2026-10-11T00:00:05Z" });
+  await two.send(ev.run(two.runs[1], "requested"));
+  assert.deepEqual([two.at(1).status, two.writes.filter(([k]) => k === "取り消し").map(([, id]) => id)], ["進行中", [8]]);
+  // もう終わった実行の取り消しは GitHub が断る（409）が、取り消しは済んでいるので、出来事の処理を落とさない。
+  const gone = world([{ n: 1, status: "未着手" }]);
+  gone.ended = [8];
+  gone.runs.push(...two.runs.map((r) => ({ ...r })));
+  await assert.doesNotReject(handle(gone.gh, { inbox: gone.inbox }, config, ...ev.run(gone.runs[1], "requested")), "409 で出来事の処理を落とさない");
+  assert.equal(gone.at(1).status, "進行中");
 });
 
 test("前提が閉じたら、後ろで待っていたタスクも決め直して振り出す", async () => {
@@ -316,7 +281,7 @@ test("tasks#824 待つ相手: 開いた子がある親は、残りが確かめ�
 
 test("tasks#824 継承: 子は優先度・着手可能日時・急ぎ・保留を親の値で見る。条件の無い子は作っても閉じず、PR のマージのあと master の CI が通ったら閉じ、親へ伝わる", async () => {
   // 子の欄が空のままなら既定の「中」で並び、番号の小さい #3・#5 が先になる。親の値を見ると、高い親の子 #8 が先になる。
-  const w = world([{ n: 1, status: "未着手", priority: "高", body: "- [ ] 動く\n  - 子: #8\n" }, { n: 8, parent: 1, body: CHILD, board: null },
+  const w = world([{ n: 1, status: "未着手", priority: "高", body: "- [ ] 動く\n  - 子: #8\n" }, { n: 8, parent: 1, body: CHILD },
     { n: 3, status: "未着手", priority: "中" }, { n: 4, status: "未着手", priority: "低", body: "- [ ] 動く\n  - 子: #5\n" }, { n: 5, parent: 4, status: "未着手", body: CHILD },
     { n: 9, status: "未着手", blockedBy: [1], body: CONFIRM }]);
   await w.send(ev.issue(8, "opened"));
@@ -369,8 +334,8 @@ test("tasks#824 待つ相手が見送りで閉じたら、続けるかを一度�
 });
 
 test("tasks#824 採否は親か分割元から受け継ぐ。子に書かれた完了の条件は知らせる。孫は張られた直後に外す", async () => {
-  const w = world([{ n: 1, status: "未着手" }, { n: 2, author: config.claude, type: "要望", board: null, parent: 1, body: CHILD },
-    { n: 3, author: config.claude, type: "要望", board: null, body: "分割元: #1\n- [ ] 作る\n" }, { n: 4, author: config.claude, type: "要望", board: null }]);
+  const w = world([{ n: 1, status: "未着手" }, { n: 2, author: config.claude, type: "要望", parent: 1, body: CHILD },
+    { n: 3, author: config.claude, type: "要望", body: "分割元: #1\n- [ ] 作る\n" }, { n: 4, author: config.claude, type: "要望" }]);
   for (const n of [2, 3, 4]) await w.send(ev.issue(n, "opened", config.claude));
   assert.deepEqual([2, 3, 4].map((n) => asked(w.at(n))), [0, 0, 1], "採否を問うのは、親も分割元も持たない新しい要望だけ");
 
@@ -431,12 +396,12 @@ test("tasks#824 記法: 条件はチェックの行から字下げした続き�
     { index: 5, text: "見た目（色）", done: false, verify: "ユーザー", child: null }], "続きの間の空行のあとの属性も、同じ条件の属性");
 });
 
-test("K6・受け箱・状況の更新: 止めたら振り出さず理由を出す。処理が落ちても出来事を失わず、一時の失敗はやり直し、直らない失敗はすぐ諦めて出す", async () => {
+test("K6・受け箱: 止めたら振り出さない。処理が落ちても出来事を失わず、一時の失敗はやり直し、直らない失敗はすぐ諦める", async () => {
   for (const [name, stop] of [["担当のワークフローが無効", { workflow: "disabled_manually" }], ["利用の上限で止まった直後",
-    { last: [{ id: 5, conclusion: "failure", updated_at: new Date().toISOString() }], steps: [{ name: config.quotaStep, conclusion: "failure" }] }]]) {
+    { last: [{ id: 5, status: "completed", conclusion: "failure", updated_at: new Date().toISOString() }], steps: [{ name: config.quotaStep, conclusion: "failure" }] }]]) {
     const off = world([{ n: 1, status: "未着手" }], stop);
     await off.send(ev.schedule());
-    assert.deepEqual([off.titles(), off.updates.map((u) => u.status)], [[], ["AT_RISK"]], name);
+    assert.deepEqual(off.titles(), [], name);
   }
   const w = world([{ n: 1, status: "未着手", body: "- [x] 作る\n" }, { n: 2, status: "未着手", body: "- [x] 作る\n" }]);
   w.fail = Object.assign(new Error("GitHub が 502"), { transient: true });
@@ -449,10 +414,6 @@ test("K6・受け箱・状況の更新: 止めたら振り出さず理由を出�
   w.fail = new Error("GitHub が 404");
   assert.equal(await w.send(ev.comment(1)), null, "やり直しても直らない失敗は、すぐ諦める");
   w.fail = null;
-  await w.send(ev.schedule());
-  assert.deepEqual([w.updates.at(-1).status, w.updates.at(-1).body.includes("404")], ["OFF_TRACK", true]);
-  await w.send(ev.schedule());
-  assert.equal(w.updates.at(-1).status, "ON_TRACK", "G8 出したら消し、戻ったら On track を書く");
   // 1回の起こしで処理する数を限ったら、残りがあれば今の時刻を返し、アラームを置き直す（置かれたアラームが無いときも置く）。
   const many = world([{ n: 1, status: "未着手" }, { n: 2, status: "未着手" }]);
   await many.push(ev.comment(1));
@@ -556,7 +517,7 @@ test("書いた文は Claude が読むまで決定を当てず、読んだあと
 
 test("回答フォーム（R10〜R12・決め2・合意したモック）: 種類ごとに要るものだけを出し、次のステータスは出さない。送った答えでゲートが決め直す", async () => {
   const w = world([{ n: 1, status: "CI待ち", body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1" } },
-    { n: 2, author: config.claude, type: "要望", board: null }, { n: 3, status: "未着手" }, { n: 4, status: "回答待ち", comments: [QUESTION] },
+    { n: 2, author: config.claude, type: "要望" }, { n: 3, status: "未着手" }, { n: 4, status: "回答待ち", comments: [QUESTION] },
     { n: 5, status: "回答待ち", comments: ["### 作る担当の終わり\n担当の最後の発言",ASKED("イレギュラー")] }]);
   connect(w);
   await w.send(ev.ci(config.base, "m1")); // 確かめの問い
