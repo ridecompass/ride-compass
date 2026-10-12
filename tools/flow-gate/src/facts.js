@@ -41,18 +41,26 @@ export async function recentRuns(gh, config) {
     created: Date.parse(r.created_at), updated: Date.parse(r.updated_at) })).filter((r) => r.number);
 }
 
-const query = (config) => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:String!,$head:String!){
+const query = (config) => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:String!,$head:String!,$base:String!){
  t:repository(owner:$to,name:$tn){issue(number:$n){id state stateReason closedAt body author{login} issueType{name} assignees(first:10){nodes{login}}
   comments(last:40){nodes{body createdAt author{login}}} ${FIELDS} ${relationsOf(true)}
   timelineItems(first:50,itemTypes:[ISSUE_TYPE_CHANGED_EVENT]){nodes{...on IssueTypeChangedEvent{prevIssueType{name} issueType{name}}}}}}
  c:repository(owner:$co,name:$cn){pullRequests(headRefName:$head,first:5,orderBy:{field:CREATED_AT,direction:DESC}){nodes{
-  id state isDraft mergeable merged createdAt mergedAt mergeCommit{statusCheckRollup{state contexts(first:100){nodes{...on CheckRun{status} ...on StatusContext{state}}}}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{state}}}}
-  timelineItems(last:1,itemTypes:[CONVERT_TO_DRAFT_EVENT]){nodes{...on ConvertToDraftEvent{createdAt}}}}}}}`;
+  id state isDraft mergeable merged createdAt mergedAt mergeCommit{oid statusCheckRollup{state contexts(first:100){nodes{...on CheckRun{status} ...on StatusContext{state}}}}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{state}}}}
+  timelineItems(last:1,itemTypes:[CONVERT_TO_DRAFT_EVENT]){nodes{...on ConvertToDraftEvent{createdAt}}}}}
+  ref(qualifiedName:$base){target{...on Commit{history(first:20){nodes{oid statusCheckRollup{state contexts(first:100){nodes{...on CheckRun{status} ...on StatusContext{state}}}}}}}}}}}`;
 const ROLLUP = { SUCCESS: "SUCCESS", FAILURE: "FAILURE", ERROR: "FAILURE", PENDING: "PENDING", EXPECTED: "PENDING" };
 // マージのコミットの CI が終わったか。GitHub の集計は、1つが落ちるとほかの検査が走っている間も FAILURE を返すので、走っている検査が
 // 残る間は終わっていない（作る担当が打ち直した直後に落ちたのを、打ち直さずに手放したと読まない）。
 const running = (n) => (n.status ? n.status !== "COMPLETED" : ["PENDING", "EXPECTED"].includes(n.state));
 const finished = (rollup) => (rollup?.contexts?.nodes.some(running) ? "PENDING" : ROLLUP[rollup?.state]);
+// マージが本番に出たか。master の CI は、前のコミットで落ちた・取り消された変更も次の push の検査とデプロイに含むので、マージのコミットか、
+// それより後の master のコミット（history は新しい順。マージのコミットが見えなければ全部が後）のどれかで通れば出ている。
+const deployed = (merged, history) => {
+  const since = history.findIndex((n) => n.oid === merged.mergeCommit?.oid);
+  const after = since < 0 ? history : history.slice(0, since);
+  return after.some((n) => finished(n.statusCheckRollup) === "SUCCESS") ? "SUCCESS" : finished(merged.mergeCommit?.statusCheckRollup);
+};
 
 // issue の全部のコメントの本文（古い順）。
 async function allComments(gh, config, number) {
@@ -71,7 +79,7 @@ export const END = /^### (\S+)担当の終わり/;
 export async function readFacts(gh, config, number, runs) {
   const [to, tn] = config.tasks.split("/");
   const [co, cn] = config.code.split("/");
-  const { t: { issue: i }, c } = await gh.gql(query(config), { to, tn, n: number, co, cn, head: `${config.branchPrefix}${number}` });
+  const { t: { issue: i }, c } = await gh.gql(query(config), { to, tn, n: number, co, cn, head: `${config.branchPrefix}${number}`, base: config.base });
   const held = runs.filter((r) => r.number === number && r.active).sort((a, b) => a.created - b.created); // 古い順（2本目からは二重の実行）
   const open = c.pullRequests.nodes.find((p) => p.state === "OPEN");
   const head = open?.commits.nodes.at(-1);
@@ -114,7 +122,7 @@ export async function readFacts(gh, config, number, runs) {
     types, dialog,
     // 作業ブランチの PR が最後に開かれたかマージされた時刻（担当が手放したあとに、別の所で作られたかを問いの時刻と比べる）。
     prMoved: Math.max(0, ...c.pullRequests.nodes.flatMap((x) => [Date.parse(x.createdAt), Date.parse(x.mergedAt) || 0])),
-    merged: Boolean(merged), mergeChecks: finished(merged?.mergeCommit?.statusCheckRollup),
+    merged: Boolean(merged), mergeChecks: merged && deployed(merged, c.ref.target.history.nodes),
     badQuestion: last && isQuestion(last) ? checkQuestion(config.questionTemplate, last) : [], comments,
     pr: open && { id: open.id, draft: open.isDraft, checks, conflict: open.mergeable === "CONFLICTING", backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };
 }
