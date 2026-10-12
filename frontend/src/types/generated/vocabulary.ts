@@ -160,31 +160,46 @@ export const vocabulary = {
   "placeMatchLevels": [
     {
       "key": "prefecture",
-      "label": "都道府県"
+      "label": "都道府県",
+      "area": true
     },
     {
       "key": "city",
-      "label": "市区町村"
+      "label": "市区町村",
+      "area": true
     },
     {
       "key": "ward",
-      "label": "区"
+      "label": "区",
+      "area": true
     },
     {
       "key": "oaza",
-      "label": "大字・町"
+      "label": "大字・町",
+      "area": true
     },
     {
       "key": "aza",
-      "label": "字・丁目"
+      "label": "字・丁目",
+      "area": true
     },
     {
       "key": "block",
-      "label": "街区・地番"
+      "label": "街区・地番",
+      "area": false
     },
     {
       "key": "point",
-      "label": "地点"
+      "label": "地点",
+      "area": false
     }
+  ],
+  "quantiles": [
+    "p10",
+    "p25",
+    "p50",
+    "p75",
+    "p90",
+    "p99"
   ]
 } as const;

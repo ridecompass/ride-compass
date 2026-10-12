@@ -9,8 +9,13 @@
  * backendの`ValueDistribution`をそのまま使う（手書きで写すと、フィールドを足した
  * ときに片側だけ古くなる。`bins`は[階級の下限, 上限, その階級が占める延長の割合]）。 */
 import type { components } from "@/types/generated/api";
+import { vocabulary } from "@/types/generated/vocabulary";
 
 export type ValueDistribution = components["schemas"]["ValueDistribution"];
+
+/** 分位点の名前（小さい比率から）。応答の`quantiles`の鍵はこの名前で、並びはbackendの語彙（生成物）が持つ。 */
+export const QUANTILE_NAMES = vocabulary.quantiles;
+export type QuantileName = (typeof QUANTILE_NAMES)[number];
 
 interface ScoreBand {
   label: string;

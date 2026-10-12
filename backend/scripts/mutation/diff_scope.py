@@ -7,16 +7,19 @@ mutmut が変異を作るのはモジュールの直下の関数と、モジュ�
 """
 import ast
 import re
-import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+
+from repo_git import run
 
 HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 
 def changed_lines(base):
     """ファイル（backend からのパス）ごとの、今の版で変わった行（消しただけの所は、その位置の行）。"""
-    out = subprocess.run(["git", "diff", "-U0", "--no-color", base, "--", "app"], capture_output=True, text=True,
-                         encoding="utf-8", check=True).stdout
+    out = run("diff", "-U0", "--no-color", base, "--", "app", check=True).stdout
     lines: dict[str, set[int]] = {}
     path = None
     for line in out.splitlines():
@@ -62,7 +65,8 @@ def main():
             found.update(functions(path, lines))
         except FileNotFoundError:
             continue  # ファイルごと消した
-    print("\n".join(sorted(found)))
+    for name in sorted(found):
+        print(name)
 
 
 if __name__ == "__main__":

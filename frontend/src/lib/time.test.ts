@@ -11,6 +11,8 @@
  */
 import { describe, expect, it } from "vitest";
 
+import timeExpectations from "@/types/generated/time-expectations.json";
+
 import {
   formatJstDateTime,
   formatJstHourMinute,
@@ -64,13 +66,14 @@ describe("isSameJstDay", () => {
   });
 });
 
-describe("日時の入力欄の値（時刻帯を持たない`YYYY-MM-DDTHH:mm`）", () => {
-  it("日本時間の暦と時刻を、各項目を2桁にして書く", () => {
-    expect(toJstLocalValue(at("2026-01-02T00:05:00Z"))).toBe("2026-01-02T09:05");
-  });
-
-  it("日本時間として読む", () => {
-    expect(parseJstLocalValue("2026-01-02T09:05").toISOString()).toBe("2026-01-02T00:05:00.000Z");
+describe("時刻帯を持たない`YYYY-MM-DDTHH:mm`（日時の入力欄の値・backendが応答へ書く時刻）", () => {
+  it("backendの表と同じく、日本時間として書き、日本時間として読む", () => {
+    const rows = timeExpectations.jst_local_text;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const { scene, instant, text } of rows) {
+      expect(toJstLocalValue(at(instant)), scene).toBe(text);
+      expect(parseJstLocalValue(text).getTime(), scene).toBe(at(instant).getTime());
+    }
   });
 });
 

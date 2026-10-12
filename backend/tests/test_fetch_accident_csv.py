@@ -2,7 +2,7 @@
 
 入口は`fetch`。実ダウンロード（60MB規模）はテストで行わず、配布元の応答と置き場だけを差し替えて、
 「既にあるものは触らない」「読めないものを取得済みとして残さない」を確かめる。取得の道具が共有する手順
-（`app/batch/common.py: fetch_verified`）の判断は、ここで見る（ほかの取得の道具のテストは寄せていることだけを見る）。
+（`app/batch/common.py: place_verified`）の判断は、ここで見る（ほかの取得の道具のテストは寄せていることだけを見る）。
 配布元へ応答を与えていない要求は`respx_mock`が落とすので、取りに行かないことは応答を与えないことで見る。
 
 ここで見ないもの:
@@ -34,16 +34,26 @@ def distributor(monkeypatch, tmp_path, respx_mock):
 def test_downloads_missing_year(tmp_path, distributor):
     distributor.get(URL_2024).respond(content=_honhyo_bytes())
 
-    assert fetch_accident_csv.fetch([2024]) == 0
+    assert fetch_accident_csv.fetch([2024])
 
     assert (tmp_path / "honhyo_2024.csv").read_bytes() == _honhyo_bytes()
+
+
+def test_joins_a_response_that_arrives_in_pieces(tmp_path, distributor):
+    """大きなファイルは配布元から何度にも分けて届く。最初の塊で書くのを止めると、毎回欠けたものを取ることになる。"""
+    whole = _honhyo_bytes()
+    distributor.get(URL_2024).respond(content=iter([whole[:10], whole[10:]]))
+
+    assert fetch_accident_csv.fetch([2024])
+
+    assert (tmp_path / "honhyo_2024.csv").read_bytes() == whole
 
 
 def test_keeps_existing_csv_untouched(tmp_path, distributor):
     destination = tmp_path / "honhyo_2024.csv"
     destination.write_bytes(_honhyo_bytes())
 
-    assert fetch_accident_csv.fetch([2024]) == 0
+    assert fetch_accident_csv.fetch([2024])
 
     assert destination.read_bytes() == _honhyo_bytes()
 
@@ -54,7 +64,7 @@ def test_refetches_a_file_that_is_not_readable(tmp_path, distributor):
     destination.write_bytes("資料区分,都道府県コード\n".encode(ENCODING))
     distributor.get(URL_2024).respond(content=_honhyo_bytes())
 
-    assert fetch_accident_csv.fetch([2024]) == 0
+    assert fetch_accident_csv.fetch([2024])
 
     assert destination.read_bytes() == _honhyo_bytes()
 
@@ -66,7 +76,7 @@ def test_does_not_leave_an_unreadable_file_behind(tmp_path, distributor):
     """
     distributor.get(URL_2024).respond(content=b"<html><body>404 Not Found</body></html>")
 
-    assert fetch_accident_csv.fetch([2024]) == 1
+    assert not fetch_accident_csv.fetch([2024])
 
     assert not (tmp_path / "honhyo_2024.csv").exists()
     assert (tmp_path / "honhyo_2024.csv.broken").exists()
