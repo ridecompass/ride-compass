@@ -19,6 +19,8 @@ from app.domain.axis_definitions import (
     raw_values,
     replace_axis_definitions,
 )
+from datetime import UTC, datetime
+
 from app.domain.axis_display import axis_display_for
 from app.domain.geo import COMPASS_LABELS, LatLonPoint, compass_label, haversine_distance_km
 from app.domain.jma_tile_specs import (
@@ -31,8 +33,11 @@ from app.domain.jma_tile_specs import (
 )
 from app.domain.material_catalog import MATERIAL_CATALOG, tile_property_value, tile_runtime_scales
 from app.domain.registry import AxisDisplaySpec
+from app.domain.route import RouteSegmentDetail, merge_overall_difficulty
+from app.domain.time_zone import jst_local_text
 from app.domain.weather_elements import stage_first_frames
 from app.infrastructure.jma_tile_client import parse_target_times
+from app.infrastructure.jma_tile_paths import read_jma_tile_path
 
 # 距離は生成物がどの機械で書いてもバイト単位で同じになる桁へ丸める（numpyの三角関数は
 # CPUの命令セットで最下位の桁が変わりうる）。1mmの桁で、式の違いは十分に見分けられる。
@@ -198,6 +203,24 @@ _TILES = [
 ]
 
 
+def _tile_row(tile: JmaTile) -> dict:
+    return {"element_id": tile.element_id, "frame": tile.frame._asdict(), "z": tile.z, "x": tile.x, "y": tile.y}
+
+
+def _not_number(path: str) -> str:
+    """タイルのパスの最後のタイル座標（y）を数字でない区切りにしたもの。"""
+    head, _, tail = path.rpartition("/")
+    return f"{head}/y{tail}"
+
+
+# 読み戻すパス: タイルで配る要素すべてのタイルのパスと、タイル座標が数字でないパス・要素の無いパス。
+_READ_PATHS = [
+    *(jma_tile_path(tile) for tile in _TILES),
+    _not_number(jma_tile_path(_TILES[0])),
+    "bosai/jmatile/data/unknown/20260924000000/none/20260924010000/surf/unknown/9/454/201.png",
+]
+
+
 def jma_expectations() -> dict[str, list[dict]]:
     return {
         "read_target_times": [
@@ -231,7 +254,76 @@ def jma_expectations() -> dict[str, list[dict]]:
             }
             for tile in _TILES
         ],
+        "read_tile_path": [
+            {"path": path, "tile": None if (tile := read_jma_tile_path(path)) is None else _tile_row(tile)}
+            for path in _READ_PATHS
+        ],
     }
+
+
+# 時刻の場面: （場面, 時点）。日本時間で日付・月・年・うるう日が変わる所を選ぶ。
+_INSTANTS: list[tuple[str, datetime]] = [
+    ("協定世界時の0時（日本時間の9時）", datetime(2026, 8, 30, 0, 0, tzinfo=UTC)),
+    ("日本時間の日付が変わる直前", datetime(2026, 8, 30, 14, 59, tzinfo=UTC)),
+    ("日本時間の日付が変わる", datetime(2026, 8, 30, 15, 0, tzinfo=UTC)),
+    ("日本時間の年が変わる", datetime(2026, 12, 31, 15, 0, tzinfo=UTC)),
+    ("日本時間のうるう日", datetime(2028, 2, 28, 15, 30, tzinfo=UTC)),
+]
+
+
+def time_expectations() -> dict[str, list[dict]]:
+    """応答へ書くタイムゾーンの無い時刻（JSTのローカル時刻）。"""
+    return {
+        "jst_local_text": [
+            {"scene": scene, "instant": instant.isoformat().replace("+00:00", "Z"), "text": jst_local_text(instant)}
+            for scene, instant in _INSTANTS
+        ],
+    }
+
+
+def _segment(distance_km: float, contributions: dict[str, float] | None) -> RouteSegmentDetail:
+    """区間1本。寄与度の和が区間の難易度で、`None`は値の無い区間。"""
+    return RouteSegmentDetail(
+        start_latitude=35.0,
+        start_longitude=139.0,
+        end_latitude=35.0,
+        end_longitude=139.0,
+        cumulative_distance_km=0.0,
+        distance_km=distance_km,
+        axis_contributions=contributions or {},
+        difficulty=None if contributions is None else sum(contributions.values()),
+    )
+
+
+# ルート全体の難易度の場面: （場面, 区間（距離km, 軸ごとの寄与度。値の無い区間はNone））。平均が丸めで動かない値を選ぶ。
+_ROUTES: list[tuple[str, list[tuple[float, dict[str, float] | None]]]] = [
+    ("どの区間にも値がある", [(1.0, {"a": 10.0, "b": 10.0}), (1.0, {"a": 40.0})]),
+    ("値の無い区間がある", [(1.0, {"a": 10.0, "b": 10.0}), (2.0, None), (1.0, {"a": 40.0})]),
+    ("どの区間にも値が無い", [(1.0, None), (2.0, None)]),
+]
+
+
+def difficulty_expectations() -> dict[str, list[dict]]:
+    """ルート全体の難易度（平均と総量）。値の無い区間の数え方が分かれる場面を並べる。"""
+    rows = []
+    for scene, parts in _ROUTES:
+        segments = [_segment(distance_km, contributions) for distance_km, contributions in parts]
+        overall = merge_overall_difficulty(segments)
+        rows.append(
+            {
+                "scene": scene,
+                "segments": [
+                    {
+                        "distance_km": segment.distance_km,
+                        "difficulty": segment.difficulty,
+                        "axis_contributions": segment.axis_contributions,
+                    }
+                    for segment in segments
+                ],
+                "overall_difficulty": None if overall is None else overall.model_dump(),
+            }
+        )
+    return {"overall_difficulty": rows}
 
 
 # 係数（収録年数の逆数）で割り戻したタイルの値も2進で割り切れる年数。
@@ -410,6 +502,8 @@ def axis_ramp_expectations() -> dict[str, list[dict]]:
 #: 組の名前 → 表を作る関数。組を足すときはここに1行足す（書き出しと置き場の名前はこれから決まる）。
 EXPECTATIONS: dict[str, Callable[[], dict[str, list[dict]]]] = {
     "geo": geo_expectations,
+    "time": time_expectations,
+    "difficulty": difficulty_expectations,
     "jma": jma_expectations,
     "axis-ramp": axis_ramp_expectations,
 }

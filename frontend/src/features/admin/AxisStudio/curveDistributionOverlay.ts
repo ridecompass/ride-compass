@@ -6,7 +6,7 @@
 // 曲線エディタの横軸は**折れ点を通す前の生値**（Σ 材料値×重み）で、backendが返す
 // `ValueDistribution`の階級・分位と同じ量。したがって階級をそのまま横軸へ重ねられる。
 
-import type { ValueDistribution } from "./scoreDistribution";
+import type { QuantileName, ValueDistribution } from "./scoreDistribution";
 
 interface DistributionBar {
   /** 横軸上の区間（生値）。表示範囲でクリップ済み。 */
@@ -29,7 +29,7 @@ interface OffRangeShare {
 
 /** 背景へ描く分位線。backendが返す分位を全て出すと線だらけになるため、
  *  外れ・中央・外れに絞る。 */
-const VISIBLE_QUANTILES = ["p10", "p50", "p90"] as const;
+const VISIBLE_QUANTILES: readonly QuantileName[] = ["p10", "p50", "p90"];
 
 /** 「範囲外がある」と注意を促す下限。丸め誤差や極端な外れ値1本で毎回出しても意味が無い。 */
 export const OFF_RANGE_NOTICE_THRESHOLD = 0.02;

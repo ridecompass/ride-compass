@@ -13,6 +13,7 @@
 import { describe, expect, it } from "vitest";
 
 import { makeRouteSegment } from "@/testing/routeFixtures";
+import difficultyExpectations from "@/types/generated/difficulty-expectations.json";
 import type { RouteSegmentDetail } from "@/types/route";
 
 import { columnAtKm, pointAlongSegment, profileBoxes, profileColumns } from "./profileGeometry";
@@ -85,6 +86,29 @@ describe("profileBoxes", () => {
   ])("%sなら、値の無い区間は描かない", (_label, average) => {
     const columns = profileColumns([segment({ difficulty: null })]);
     expect(profileBoxes(columns, ["wind"], average).missing).toEqual([]);
+  });
+
+  it("塗った面積は、backendの表のルートの難易度の総量と同じ（値の無い区間を平均として数える）", () => {
+    const rows = difficultyExpectations.overall_difficulty;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const { scene, segments, overall_difficulty } of rows) {
+      const columns = profileColumns(
+        segments.map((s) =>
+          segment({
+            distance_km: s.distance_km,
+            difficulty: s.difficulty,
+            axis_contributions: s.axis_contributions as Record<string, number>,
+          }),
+        ),
+      );
+      const axes = [...new Set(segments.flatMap((s) => Object.keys(s.axis_contributions)))];
+      const { byAxis, missing } = profileBoxes(columns, axes, overall_difficulty?.average ?? null);
+      const area = [...[...byAxis.values()].flat(), ...missing].reduce(
+        (sum, box) => sum + (box.endKm - box.startKm) * (box.top - box.bottom),
+        0,
+      );
+      expect(area, scene).toBeCloseTo(overall_difficulty?.load ?? 0, 6);
+    }
   });
 
   it("長さの無い区間は描かない", () => {

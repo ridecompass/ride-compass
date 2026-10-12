@@ -29,6 +29,12 @@ def test_quantiles_weight_by_length_not_by_way_count():
     assert weighted_quantiles(pairs, [("p50", 0.5)], digits=1) == {"p50": 100.0}
 
 
+@pytest.mark.parametrize("build", [weighted_distribution, weighted_spread])
+def test_distribution_and_spread_report_quantiles_rounded_to_three_digits(build):
+    pairs = [(100.0, 1 / 3)]
+    assert build(pairs).quantiles["p50"] == 0.333
+
+
 class TestDistribution:
     def test_empty_pairs_return_zeroed_distribution(self):
         result = weighted_distribution([])
