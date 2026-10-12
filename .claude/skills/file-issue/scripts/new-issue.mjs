@@ -6,7 +6,7 @@
 //   規模と優先度の選択肢は設定（flow.config.json: fields）が持つ。
 //   --parent は子（種類は親と同じ。子と孫の決まりは tools/flow-gate/src/family.js）。--origin は要望ごとの切り出し（本文に分割元の行を置く）。
 import { readFileSync } from "node:fs";
-import { bot, config, isMain, usage } from "../../../../tools/flow-gate/src/bot.js";
+import { bot, config, graphql, graphqlData, isMain, isNumber, messages, usage } from "../../../../tools/flow-gate/src/bot.js";
 import { CHILD_FIELDS, NO_GRANDCHILD, childRule, makesGrandchild, originLine, originOf } from "../../../../tools/flow-gate/src/family.js";
 import { SET_FIELDS, fieldProblems, fieldValues } from "../../../../tools/flow-gate/src/fields.js";
 import { conditions, norm } from "../../../../tools/flow-gate/src/questions.js";
@@ -14,6 +14,14 @@ import { conditions, norm } from "../../../../tools/flow-gate/src/questions.js";
 // 畳んだ節の名前と順（2 は種類ごとに1つ）。
 const SECTIONS = [["不具合: 起きていること", "要望: 困りごと", "保守: 背景", "調査: 明らかにしたいこと"], ["やること", "調べ方"], ["決めること"],
   ["完了の条件"], ["経緯"], ["規模と優先度の根拠"]];
+// 節の頭は <details> と <summary> が同じ行でも別の行でもよい。
+const sectionNames = (text) => [...text.matchAll(/^<details>\s*<summary>(.+?)<\/summary>/gm)].map((m) => m[1]);
+
+// 2 の節が種類に合わない所（空なら合う）。子は親を読むまで種類が決まらないので、作る前にもう一度これだけを当てる。
+function typeProblems(body, type) {
+  const head = sectionNames(norm(body)).find((n) => SECTIONS[0].includes(n));
+  return head && type && SECTIONS[0].some((n) => n.startsWith(`${type}:`)) && !head.startsWith(`${type}:`) ? [`種類「${type}」に合わない節「${head}」`] : [];
+}
 
 // 本文と欄が決まりに合わない所（空なら合う）。child は子として作るとき。
 export function issueProblems(body, { type, child = false, size, priority, start }) {
@@ -21,17 +29,14 @@ export function issueProblems(body, { type, child = false, size, priority, start
   const problems = [];
   if (!text || text.startsWith("<details>")) problems.push("本文の頭に、畳まない要約が無い");
   if (/^#{1,6} /m.test(text)) problems.push("見出し（#）は使わない（節は <details><summary> で畳む）");
-  // 節の頭は <details> と <summary> が同じ行でも別の行でもよい。
-  const names = [...text.matchAll(/^<details>\s*<summary>(.+?)<\/summary>/gm)].map((m) => m[1]);
   let at = -1;
-  for (const name of names) {
+  for (const name of sectionNames(text)) {
     const k = SECTIONS.findIndex((s) => s.includes(name));
     if (k < 0) problems.push(`知らない節「${name}」（節は ${SECTIONS.map((s) => s.join("／")).join("・")} の順）`);
     else if (k <= at) problems.push(`節「${name}」の順か重なりが違う`);
     else at = k;
   }
-  const head = names.find((n) => SECTIONS[0].includes(n));
-  if (head && type && SECTIONS[0].some((n) => n.startsWith(`${type}:`)) && !head.startsWith(`${type}:`)) problems.push(`種類「${type}」に合わない節「${head}」`);
+  problems.push(...typeProblems(text, type));
   const has = conditions(text).length > 0;
   if (child) {
     if (has) problems.push(childRule("<親>", "<この子>"));
@@ -66,24 +71,7 @@ export function parseArgs(argv) {
 const fieldsOf = ({ size, priority, start }) => [["size", size], ["priority", priority], ["start", start]].filter(([, v]) => v);
 const fieldLines = (values) => values.map(([key, value]) => `${config.fields[key].name}: ${value}`);
 const numbers = (list) => (list ? list.split(",").map((n) => n.trim().replace(/^#/, "")) : []);
-const messages = (errors) => errors.map((e) => e.message).join("・");
 const reason = (e) => String(e.stderr || e.message).trim();
-
-// 置き場へ GraphQL を1回打つ。無い issue を読んだときは gh が 1 で終わるが、応答の data と errors は読む。
-function graphql(gh, query, variables = {}) {
-  try {
-    return JSON.parse(gh(["api", "graphql", "--input", "-"], JSON.stringify({ query, variables })));
-  } catch (e) {
-    let reply = null;
-    try {
-      reply = JSON.parse(e.stdout);
-    } catch {
-      // 応答が JSON でない（5xx・通信の途切れ）。
-    }
-    if (reply?.data) return reply;
-    throw e;
-  }
-}
 
 // 作る前に読む1回: 置き場の ID・種類・親・前後の issue。番号は数字だけを通してから埋める。
 function readQuery(parent, refs) {
@@ -93,7 +81,7 @@ function readQuery(parent, refs) {
 }
 
 // 読んだ置き場から、作る入力と前後の関係の ID を決める。作れない理由があれば { stop } だけを返す（そのときは作らない）。
-function plan(repo, opts, body, { blockedBy, blocking }) {
+function plan(repo, opts, body, { blockedBy, blocking, values }) {
   const stop = [];
   const p = repo.parent;
   if (opts.parent && !p) stop.push(`親 #${opts.parent} が無い`);
@@ -101,9 +89,8 @@ function plan(repo, opts, body, { blockedBy, blocking }) {
     stop.push(...[makesGrandchild(p.parent, false) && `親 #${opts.parent} は #${p.parent.number} の子です。${NO_GRANDCHILD}`,
       p.state !== "OPEN" && `親 #${opts.parent} は閉じている`,
       !p.issueType && `親 #${opts.parent} に種類が無い（子の種類は親と同じにする）`,
-      opts.type && p.issueType && opts.type !== p.issueType.name && `子の種類は親と同じ（${p.issueType.name}）`].filter(Boolean));
-    // 種類に依らない照らしは読む前に済んでいるので、ここで増えるのは親の種類に合わない節だけ。
-    stop.push(...issueProblems(body, { type: p.issueType?.name, child: true }));
+      opts.type && p.issueType && opts.type !== p.issueType.name && `子の種類は親と同じ（${p.issueType.name}）`].filter(Boolean),
+    ...typeProblems(body, p.issueType?.name));
   }
   const type = p ? p.issueType?.name : opts.type;
   const typeId = repo.issueTypes.nodes.find((t) => t.name === type)?.id;
@@ -112,7 +99,6 @@ function plan(repo, opts, body, { blockedBy, blocking }) {
   const missing = [...blockedBy, ...blocking].filter((n) => !idOf(n));
   if (missing.length) stop.push(`${missing.map((n) => `#${n}`).join("・")} が無い`);
   if (stop.length) return { stop };
-  const values = fieldsOf(opts);
   const input = {
     repositoryId: repo.id, title: opts.title, body, issueTypeId: typeId,
     ...(p && { parentIssueId: p.id }), ...(values.length && { issueFields: fieldValues(config, values) }),
@@ -128,33 +114,32 @@ const MADE = "query($owner:String!,$name:String!,$since:DateTime!){repository(ow
 // 前後の関係（blocked by）を1回で張る。issue の組は [後, 先]。
 function relate(gh, pairs) {
   const vars = Object.fromEntries(pairs.flatMap(([i, b], k) => [[`i${k}`, i], [`b${k}`, b]]));
-  const query = `mutation(${pairs.map((_, k) => `$i${k}:ID!,$b${k}:ID!`).join(",")}){` +
-    pairs.map((_, k) => `r${k}:addBlockedBy(input:{issueId:$i${k},blockingIssueId:$b${k}}){clientMutationId}`).join(" ") + "}";
-  const reply = graphql(gh, query, vars);
-  if (reply.errors?.length) throw new Error(messages(reply.errors));
+  graphqlData(gh, `mutation(${pairs.map((_, k) => `$i${k}:ID!,$b${k}:ID!`).join(",")}){` +
+    pairs.map((_, k) => `r${k}:addBlockedBy(input:{issueId:$i${k},blockingIssueId:$b${k}}){clientMutationId}`).join(" ") + "}", vars);
 }
 
 // 照らして作る。出す行（out）と、1 で終える理由（err）を返す。now は作る直前の時刻（作られたかを確かめるときの起点）。
 export function file(gh, opts, body, now = new Date()) {
   const { owner, name } = config.repos.tasks;
-  const refs = { blockedBy: numbers(opts["blocked-by"]), blocking: numbers(opts.blocking) };
+  const refs = { blockedBy: numbers(opts["blocked-by"]), blocking: numbers(opts.blocking), values: fieldsOf(opts) };
   const all = [...refs.blockedBy, ...refs.blocking];
-  const early = [all.some((n) => !/^\d+$/.test(n)) && "前後の issue は番号で書く（--blocked-by 5,6）",
-    opts.parent && !/^\d+$/.test(opts.parent) && "親は番号で書く（--parent 5）",
-    !opts.parent && !opts.type && "種類が無い（--type）"].filter(Boolean);
   // 子の種類は親から決まるので、親を読むまでは種類に依らない照らしだけを当てる。
-  early.push(...issueProblems(body, { type: opts.parent ? undefined : opts.type, child: Boolean(opts.parent), size: opts.size, priority: opts.priority, start: opts.start }));
+  const early = [all.some((n) => !isNumber(n)) && "前後の issue は番号で書く（--blocked-by 5,6）",
+    opts.parent && !isNumber(opts.parent) && "親は番号で書く（--parent 5）",
+    !opts.parent && !opts.type && "種類が無い（--type）",
+    ...issueProblems(body, { type: opts.parent ? undefined : opts.type, child: Boolean(opts.parent), size: opts.size, priority: opts.priority, start: opts.start })].filter(Boolean);
   if (early.length) return { out: [], err: `作らない: ${early.join("・")}` };
-  let read;
+  let repo;
   try {
-    read = graphql(gh, readQuery(opts.parent, all), { owner, name });
+    const read = graphql(gh, readQuery(opts.parent, all), { owner, name });
+    // 無い issue（NOT_FOUND）は plan が名指して断る。それ以外の誤りは読めなかったものとして扱う。
+    const failed = (read.errors ?? []).filter((e) => e.type !== "NOT_FOUND");
+    repo = read.data?.repository;
+    if (failed.length || !repo) throw new Error(messages(failed) || "置き場が無い");
   } catch (e) {
     return { out: [], err: `作らない: 置き場を読めなかった（${reason(e)}）` };
   }
-  // 無い issue（NOT_FOUND）は plan が名指して断る。それ以外の誤りは読めなかったものとして扱う。
-  const failed = (read.errors ?? []).filter((e) => e.type !== "NOT_FOUND");
-  if (failed.length || !read.data?.repository) return { out: [], err: `作らない: 置き場を読めなかった（${messages(failed) || "置き場が無い"}）` };
-  const planned = plan(read.data.repository, opts, body, refs);
+  const planned = plan(repo, opts, body, refs);
   if (planned.stop) return { out: [], err: `作らない: ${planned.stop.join("・")}` };
   let made;
   try {
@@ -166,7 +151,7 @@ export function file(gh, opts, body, now = new Date()) {
   } catch (e) {
     return { out: [], err: unsure(gh, opts, { owner, name, now, why: reason(e) }) };
   }
-  const out = [made.url, ...fieldLines(fieldsOf(opts))];
+  const out = [made.url, ...fieldLines(refs.values)];
   const pairs = [...planned.blockedBy.map((b) => [made.id, b]), ...planned.blocking.map((k) => [k, made.id])];
   if (!pairs.length) return { out, err: null };
   try {
@@ -186,8 +171,7 @@ function unsure(gh, opts, { owner, name, now, why }) {
   const since = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
   let found;
   try {
-    found = graphql(gh, MADE, { owner, name, since }).data.repository.issues.nodes
-      .find((i) => i.title.trim() === opts.title.trim());
+    found = graphqlData(gh, MADE, { owner, name, since }).repository.issues.nodes.find((i) => i.title.trim() === opts.title.trim());
   } catch (e) {
     return `作る要求が落ち（${why}）、作られたかも確かめられなかった（${reason(e)}）。打ち直す前に、` +
       `https://github.com/${config.tasks}/issues で題名「${opts.title}」の issue が無いことを確かめる`;
@@ -199,8 +183,11 @@ function unsure(gh, opts, { owner, name, now, why }) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
-  if (opts?.fill) return fill(bot(), opts.fill, opts);
   const choices = (key) => Object.keys(config.fields[key].options).join("|");
+  if (opts?.fill) {
+    if (!isNumber(opts.fill)) usage(`node .claude/skills/file-issue/scripts/new-issue.mjs --fill <番号> [--size <${choices("size")}>] [--priority <${choices("priority")}>] [--start <着手可能日時>]`);
+    return fill(bot(), opts.fill, opts);
+  }
   if (!opts?.title || !opts["body-file"]) usage("node .claude/skills/file-issue/scripts/new-issue.mjs --title <題名> --body-file <本文のファイル> [--type <種類>] [--parent <親>] " +
     `[--origin <分割元>] [--blocked-by <前,...>] [--blocking <後,...>] [--size <${choices("size")}>] [--priority <${choices("priority")}>] [--start <着手可能日時>]`);
   let body = readFileSync(opts["body-file"], "utf8");
@@ -229,8 +216,7 @@ export function fillFields(gh, number, values) {
   if (!values.length) return null;
   try {
     const id = JSON.parse(gh(["issue", "view", String(number), "-R", config.tasks, "--json", "id"])).id;
-    const reply = graphql(gh, SET_FIELDS, { i: id, v: fieldValues(config, values) });
-    if (reply.errors?.length) throw new Error(messages(reply.errors));
+    graphqlData(gh, SET_FIELDS, { i: id, v: fieldValues(config, values) });
     return null;
   } catch (e) {
     return `#${number} は作った（作り直さない）。欄を入れられなかった（${reason(e)}）。欄は次で入れる:\n` +

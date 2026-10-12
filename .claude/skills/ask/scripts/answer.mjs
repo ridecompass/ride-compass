@@ -3,16 +3,15 @@
 // 使い方: node .claude/skills/ask/scripts/answer.mjs <issue の番号> [--choice <選んだ案か選択肢>] [--done] [--text <書いた文のファイル>]
 //   --done は確かめの「完了にする」（残りのユーザーが確かめる条件を全部確かめた）。書いた文のファイルには、ユーザーの言葉の引用を含めて書く。
 import { readFileSync } from "node:fs";
-import { bot, comment, config, isMain, isNumber, usage } from "../../../../tools/flow-gate/src/bot.js";
+import { bot, comment, config, graphqlData, isMain, isNumber, usage } from "../../../../tools/flow-gate/src/bot.js";
 import { answerBody, answerProblem, confirmItems, isQuestion, latestQuestion, norm } from "../../../../tools/flow-gate/src/questions.js";
 
-// 本文とコメントを新しい方から1ページ読む。今の問いは末尾にあるので、読んだ中に問いが無いときだけ前のページを足す。
-const READ = "query($owner:String!,$name:String!,$number:Int!,$before:String){repository(owner:$owner,name:$name){issue(number:$number){body " +
-  "comments(last:100,before:$before){pageInfo{hasPreviousPage startCursor} nodes{body}}}}}";
+// 本文とコメントを新しい方から1ページ読む。今の問いは末尾にあるので、読んだ中に問いが無いときだけ前のページを足す（本文は最初だけ読む）。
+const READ = "query($owner:String!,$name:String!,$number:Int!,$before:String,$first:Boolean!){repository(owner:$owner,name:$name){issue(number:$number){" +
+  "body @include(if:$first) comments(last:100,before:$before){pageInfo{hasPreviousPage startCursor} nodes{body}}}}}";
 function read(gh, number) {
   const { owner, name } = config.repos.tasks;
-  const page = (before) => JSON.parse(gh(["api", "graphql", "--input", "-"],
-    JSON.stringify({ query: READ, variables: { owner, name, number: Number(number), before } }))).data.repository.issue;
+  const page = (before) => graphqlData(gh, READ, { owner, name, number: Number(number), before, first: !before }).repository.issue;
   const issue = page(null);
   let { nodes, pageInfo } = issue.comments;
   while (!nodes.some((c) => isQuestion(c.body)) && pageInfo.hasPreviousPage) {
