@@ -5,7 +5,8 @@ import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
 // 層の読む向き（docs/architecture/directory-layout.md「frontend」）。上から順に並べ、各層はそれより上の層を読まない。
-const LAYERS = ["app", "features", "components", "hooks", "services", "lib"];
+// 変異テストの表も、テストの高さをこの並びで決める（scripts/mutation/report.mjs）。
+export const LAYERS = ["app", "features", "components", "hooks", "services", "lib"];
 const LAYOUT_DOC = "docs/architecture/directory-layout.md「frontend」";
 
 const layerZones = LAYERS.slice(1).map((layer, index) => ({

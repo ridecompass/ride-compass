@@ -1,6 +1,6 @@
-"""変異テストの表（Stryker の結果の JSON の形。backend は report.py が書く）から、テストの見直しの候補を出す
-（.claude/rules/testing-review.md「テストを変異テストで見直す」）。backend の下で、測った版と同じ版のチェックアウトで打つ
-（層の並びと、テスト関数の中身を読む）。
+"""変異テストの表（Stryker の結果の JSON の形。backend は report.py、frontend は frontend/scripts/mutation/report.mjs が書く）から、
+テストの見直しの候補を出す（.claude/rules/testing-review.md「テストを変異テストで見直す」）。表を書いた層の下（backend か frontend）で、
+測った版と同じ版のチェックアウトで打つ（テスト関数の中身を、表のテストの場所から読む）。
 
 引数: 表のファイル 前回の見直しの場所（review.json がある所。無ければ空のディレクトリ） 書き出す場所
 書くもの（書き出す場所）:
@@ -17,17 +17,17 @@
 - writing（書き方）: 通るのに変異を1つも見つけないテスト・100本以上のテストが一緒に落ちる書き換えでしか落ちないテスト
 
 重なりの選び方（testing-review.md の重なりの 1〜3）:
-- テストの高さは、通る変異のファイルの層（.importlinter の layers）の一番上。200本以上のテストが通る変異（足場）と、読み込みの
+- テストの高さは、通る変異のファイルの層（表の config.layers。上から並び、| でつないだものは同じ高さ）の一番上。200本以上のテストが通る変異（足場）と、読み込みの
   ときに呼ばれうる変異（static）は数えない。数える変異が無いテストは判断できないので残す。
 - 判断できないものは残す: static の変異を見つけるテスト・基準で落ちたテスト（隔離の候補）。変異を1つも見つけないテストは
   比べようがないので候補にしない（書き方の候補に出す）。
 - API の経路（app/api/routers の関数）ごとに、それを通るテストを1本は残す。表は関数の名前を持たないので、経路のファイルの変異を
   通るテストの組ごとに数える（同じ関数の変異は、同じテストの組に通られる）。
 - 低い高さから順に、同じ高さ以下の残すテストで見つからない変異を多く見つける順に残し、何も足さないものを候補にする。
-- 候補はテスト関数ごと: パラメータの組の1つでも残すなら、その関数は候補にしない。
+- 候補はテスト関数ごと: パラメータの組の1つでも残すなら、その関数は候補にしない。パラメータの組は pytest の名前の形
+  （`関数[組]`）で見る。vitest の it.each の行は、それぞれを1本のテスト関数に数える。
 """
 import collections
-import configparser
 import functools
 import hashlib
 import heapq
@@ -67,10 +67,8 @@ def tests(m, key):
     return {name_of[i] for i in m.get(key, ())}
 
 
-# 層の高さ。.importlinter の layers は上から並ぶので、下ほど低い。
-cfg = configparser.ConfigParser()
-cfg.read(".importlinter", encoding="ascii")
-layers = [line.strip() for line in cfg["importlinter:contract:layers"]["layers"].splitlines() if line.strip()]
+# 層の高さ。表の層の並びは上から並ぶので、下ほど低い。
+layers = report["config"]["layers"]
 rank = {name.strip(): len(layers) - 1 - i for i, line in enumerate(layers) for name in line.split("|")}
 
 
@@ -255,14 +253,14 @@ for m in mutants.values():
 md = [f"## テストの見直し（測った版 `{measured[:9]}`、前回 `{(prev['measured'] if prev else '無し')[:9]}`）", "",
       "### 効き: 層ごとの変異スコア", "",
       "| 層 | 回した変異 | 落ちた | 集める時点で落ちた | 時間切れ | テスト全体で落ちた | 生き残り | ほか | スコア | 95%の幅 |"
-      " テストの当たらない変異 | 回し終えていない |", "|---|" + "---:|" * 11]
+      " テストの当たらない変異 | 回し終えていない | 外した（Ignored） |", "|---|" + "---:|" * 12]
 for name in sorted(by, key=lambda x: (x == "全体", x)):
     c = by[name]
     det = c["killed"] + c["collect"] + c["Timeout"] + c["full"]
     n = det + c["Survived"] + c["RuntimeError"]
     lo, hi = wilson(det, n)
     md.append(f"| {name} | {n} | {c['killed']} | {c['collect']} | {c['Timeout']} | {c['full']} | {c['Survived']} | "
-              f"{c['RuntimeError']} | {det / n if n else 0:.1%} | {lo:.1%}〜{hi:.1%} | {c['NoCoverage']} | {c['Pending']} |")
+              f"{c['RuntimeError']} | {det / n if n else 0:.1%} | {lo:.1%}〜{hi:.1%} | {c['NoCoverage']} | {c['Pending']} | {c['Ignored']} |")
 
 
 def total_lines(group):
