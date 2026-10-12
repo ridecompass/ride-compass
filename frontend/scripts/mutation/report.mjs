@@ -5,6 +5,7 @@
 // 表の形は Stryker の結果の JSON（mutation-testing-elements の report schema の版2）のままで、backend の表と同じ台本
 // （backend/scripts/mutation/review.py）が読む。Stryker の出したものから変えるのは次だけ。
 // - テストの id: 本ごとに振られた番号を、ファイルとテストの名前ごとに1つの番号へ振り直す。
+// - 書き換えの id: Stryker は本ごとに0から振るので、表の全体で1つずつの番号へ振り直す。
 // - テストの場所: vitest の口は出さないので、vitest のテストの一覧（場所つき）と構文木から、テストを定義した呼び出しの始めと
 //   終わりの行を入れる（終わりは、その次の行）。見つからないテストは場所を持たない（前回との比べから外れる）。
 // - テストが1本も走らずに Survived とされた書き換え（testsCompleted が 0。stryker-mutator/stryker-js#6213）は、生き残りでは
@@ -30,6 +31,7 @@ const testIds = new Map(); // `${ファイル}::${名前}` → 振り直した i
 const tests = new Map(); // ファイル → [{ id, name }]
 const files = {};
 let zeroTests = 0;
+let mutantCount = 0;
 for (const report of shards) {
   const local = new Map();
   for (const [file, { tests: defs }] of Object.entries(report.testFiles ?? {})) {
@@ -48,7 +50,7 @@ for (const report of shards) {
     files[file] = {
       ...entry,
       mutants: entry.mutants.map((m) => {
-        const out = { ...m, killedBy: remap(m.killedBy), coveredBy: remap(m.coveredBy) };
+        const out = { ...m, id: String(mutantCount++), killedBy: remap(m.killedBy), coveredBy: remap(m.coveredBy) };
         if (m.status === "Survived" && m.testsCompleted === 0 && m.coveredBy?.length) {
           out.status = "RuntimeError";
           out.statusReason = ZERO_TESTS;
