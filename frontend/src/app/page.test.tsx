@@ -323,7 +323,7 @@ describe("ルートを作る", () => {
     await showRoadSurface(user);
     clickMap(HERE, [{ layer: "road-tiles-surface", properties: { osm_way_id: 1, feature_key: "1" } }]);
     await user.click(screen.getByRole("button", { name: "この道の評価を見る" }));
-    expect(await screen.findByText(/この道だけで見た難易度/)).toBeInTheDocument();
+    expect(await screen.findByText(/この道全体で見た難易度/)).toBeInTheDocument();
     jobs.respond([FIRST], LOOP_CONDITIONS);
     expect(await generate(user)).toMatchObject({ assumed_speed_kmh: 25, start_time: departure.toISOString() });
   });

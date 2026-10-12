@@ -36,6 +36,7 @@ from app.domain.axis_definitions import (
     AxisCategory,
     AxisDefinition,
     BreakpointLinearShape,
+    TimeScope,
     averages_density,
     primary_attribute_ids_for,
     published_axis_definitions,
@@ -165,6 +166,10 @@ class AxisCatalogEntry(StrictModel):
     # （`services/dedicated_way_values.py: DedicatedWayValueLayer`）。trueの軸だけ、
     # 地図の凡例が「向きで決まらない」の行を持つ（返さない軸に出すと、どの道も入らない行になる）。
     dynamic_way_value_undetermined_by_bearing: bool
+    # 重みが効く時間帯（`domain/axis_definitions.py: AxisDefinition`の`time_scope`）。"always"以外の軸は、
+    # その時間帯に通る区間でだけ効く。周りの道は通過する時刻を持たないので、受け取る側が地図の色の前提を
+    # axis_idで分岐せずここから決めるために配る。
+    time_scope: TimeScope
 
 
 class AxisCatalogResponse(StrictModel):
@@ -219,6 +224,7 @@ async def get_axis_catalog(region_service: RegionService = Depends(get_region_se
                 density_terms=_density_terms(definition),
                 dynamic_way_value_conditions=way_value_layers[definition.axis_id].conditions,
                 dynamic_way_value_undetermined_by_bearing=way_value_layers[definition.axis_id].undetermined_by_bearing,
+                time_scope=definition.time_scope,
             )
             for definition in published_axis_definitions()
         ],
