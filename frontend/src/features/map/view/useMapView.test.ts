@@ -186,7 +186,7 @@ describe("useMapView", () => {
     { layer: "surface", row: "データなし（値の無い道が分からない属性）", key: LEGEND_NO_DATA_KEY },
     { layer: "cycleway", row: "該当なし（タグの不在が当てはまらない属性）", key: ROAD_OTHER_KEY },
   ])(
-    "値の無い道の行を最初は隠す層（$layer）は、$rowを地図でも凡例でも隠して始め、凡例で出すと次に開いたときも出たまま",
+    "値の無い道の行を最初は隠す層（$layer）は、「$row」を地図でも凡例でも隠して始め、凡例で出すと次に開いたときも出たまま",
     async ({ layer, key }) => {
       serve();
       const first = render();

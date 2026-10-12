@@ -7,6 +7,7 @@ import functools
 import glob
 import json
 import os
+import re
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 #: 台本の隣に置くと、測りがその中身だけを回す一覧の口（測りに渡す作業ブランチでだけ置く）。baseline.txt は基準だけ、
@@ -121,13 +122,16 @@ def judge(record, failed, baseline_failed, rechecked="survived"):
     return "RuntimeError", record.get("stderr") or status, set()
 
 
+_PYTEST_PARAMS = re.compile(r"(::[A-Za-z_]\w*)\[.*\]$")
+
+
 def function_of_test(nodeid):
-    """テスト関数（パラメータの組を外した名前）。"""
-    return nodeid.split("[")[0]
+    """テスト関数（pytest のパラメータの組を外した名前。vitest の it.each の行の名前にある [] は外さない）。"""
+    return _PYTEST_PARAMS.sub(r"\1", nodeid)
 
 
 def layer(path):
-    """ファイル（backend からのパス）の層（app の直下のパッケージかモジュールの名前）。"""
+    """ファイル（表を書いた層の下からのパス）の層（app・src の直下のパッケージかモジュールの名前）。"""
     parts = path.split("/")
     return parts[1].removesuffix(".py") if len(parts) > 1 else path
 

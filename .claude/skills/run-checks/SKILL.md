@@ -211,6 +211,15 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
   `python scripts/mutation/review.py <表のファイル> <前回の見直しの場所> <書き出す場所>` を打つ。残したい数字は issue に書く。
 - **1本のランナーが「The runner has received a shutdown signal」で止まったら**、`gh run rerun <実行の id> -R ridecompass/ride-compass --failed`
   で、その本と続く段だけを同じ入力でやり直す。同じ所で止まり続けるなら、ジョブの記録の「始め」の行で走っていた変異を見る。
+- **frontend の単体テスト**: `.github/workflows/mutation-frontend.yml`（手で起こす。段の中身は先頭のコメント）が Stryker で測り、
+  backend と同じ表の形にして同じ `review.py` で候補を出す（成果物 `mutation-frontend-review`）。台本は `frontend/scripts/mutation/`
+  （Stryker の版と vitest の口の直しは `install.sh` の1か所。クラス名の値にしか届かない書き換えは `ignore-class-names.mjs` が外す）。
+  範囲を絞って測るときは `-f mutate=<frontend からのパス,...>`（1本で回し、見直しは次の前回に残さない）。
+  口の直しを外す・版を上げるときは、`-f compare=<frontend からのファイルのパス>` で、書き換えごとにテスト全体を回す口と判定が合うかを見る。
+
+  ```bash
+  gh workflow run mutation-frontend.yml -R ridecompass/ride-compass --ref master -f ref=<測る版> -f issue=<記録する issue の番号>
+  ```
 - **開発機では回さない**。
 - **測れない形**: 関数の外（モジュールの直下の表・定数・既定値）、`app/domain/routing.py`とログ・警告の行（`setup.cfg`で外している）、
   部分どうしのつなぎの食い違い（1つの関数の中の書き換えではないもの）。そこを確かめるテストは、変異を見つけないように

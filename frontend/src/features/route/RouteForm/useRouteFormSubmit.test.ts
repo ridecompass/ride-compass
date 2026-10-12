@@ -59,7 +59,7 @@ describe("useRouteFormSubmit", () => {
   it.each([
     { label: "経由地だけ", options: { ...NO_DISTANCE, waypointCount: 2 } },
     { label: "目的地だけ", options: { ...NO_DISTANCE, destinationSet: true } },
-  ])("全長の目標を決めなくても、$labelがあれば生成する", ({ options }) => {
+  ])("全長の目標を決めなくても、「$label」があれば生成する", ({ options }) => {
     const { result } = renderSubmit(options);
 
     expect(check(result)).toBe(true);
