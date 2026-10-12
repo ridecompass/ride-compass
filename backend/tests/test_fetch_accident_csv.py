@@ -39,6 +39,16 @@ def test_downloads_missing_year(tmp_path, distributor):
     assert (tmp_path / "honhyo_2024.csv").read_bytes() == _honhyo_bytes()
 
 
+def test_joins_a_response_that_arrives_in_pieces(tmp_path, distributor):
+    """大きなファイルは配布元から何度にも分けて届く。最初の塊で書くのを止めると、毎回欠けたものを取ることになる。"""
+    whole = _honhyo_bytes()
+    distributor.get(URL_2024).respond(content=iter([whole[:10], whole[10:]]))
+
+    assert fetch_accident_csv.fetch([2024])
+
+    assert (tmp_path / "honhyo_2024.csv").read_bytes() == whole
+
+
 def test_keeps_existing_csv_untouched(tmp_path, distributor):
     destination = tmp_path / "honhyo_2024.csv"
     destination.write_bytes(_honhyo_bytes())
