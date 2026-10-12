@@ -4,6 +4,7 @@
 環境変数:
 - MUT_OUT: 落ちたテストの記録（kills/）と、テストの名前を渡すファイル（args/）を置く場所
 - MUT_DB_PREFIX: 担い手ごとのテストDBの名前の頭（<頭><番号>。前もって作っておく）
+- TEST_DATABASE_SERVER: その DB が載っているサーバー
 - MUT_STOP_AFTER: 始めてからこの秒数を過ぎたら、新しい変異を取らずに抜ける（ジョブの持ち時間の前に結果を残す。任意）
 済んだ変異（結果の JSONL にあるもの）は飛ばすので、止まっても打ち直せる。MUT_OUT に STOP というファイルを置いても止まる。
 この台本の隣に recheck.txt があれば、そこに並んだ変異には記録のテストでなくテスト全体を当てる（担い手を1つにし、
@@ -22,6 +23,7 @@ from _shared import fn_of
 
 OUT = os.environ["MUT_OUT"]
 DB_PREFIX = os.environ["MUT_DB_PREFIX"]
+DB_SERVER = os.environ["TEST_DATABASE_SERVER"]
 STOP_AFTER = float(os.environ.get("MUT_STOP_AFTER") or "inf")
 names = [line.strip() for line in open(sys.argv[1], encoding="utf-8") if line.strip()]
 out_path = sys.argv[2]
@@ -108,7 +110,7 @@ def run_child(cmd, env, limit, err_path, cwd=None):
 
 
 def work(slot):
-    url = f"postgresql+asyncpg://ridecompass:ridecompass@localhost:5432/{DB_PREFIX}{slot}"
+    url = f"{DB_SERVER}/{DB_PREFIX}{slot}"
     env = dict(os.environ, TEST_DATABASE_URL=url, DATABASE_URL=url, PYTHONPATH=os.path.dirname(os.path.abspath(__file__)),
                MUTKILL_DIR=kill_dir, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     # 差し込んだ版のファイルは大きい（元の100倍を超えるものがある）。.pyc を書かせないと、プロセスごとに翻訳し直して

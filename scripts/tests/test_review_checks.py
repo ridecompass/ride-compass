@@ -1,8 +1,9 @@
-"""`scripts/review_checks.py`の差分の報告（`change`）と総量（`metrics`）と流れの摩擦の拾い方（`friction`）のテスト。
+"""`scripts/review_checks.py`の差分の報告（`change`）と総量（`metrics`）と流れの摩擦の拾い方（`friction`）と、文書の整合（`docs`）の実在の母集団のテスト。
 
 履歴は一時的なgitリポジトリで作る。
 
-ここで見ないもの: `docs`はCI（Docs Consistency）が本物のリポジトリへ毎回流す。`trigger`の中身と、`size`の表・発火は
+ここで見ないもの: `docs`の検知そのものはCI（Docs Consistency）が本物のリポジトリへ毎回流す。ここでは、まだ`git add`していない
+ファイルを実在に数えることだけを通す（名指しの検査と食い違うと、同じファイルを片方だけが無いと言う）。`trigger`の中身と、`size`の表・発火は
 周期レビューで人が読む出力で、ここでは通さない。`trigger`が発火したときだけ出す形は、誰も読まないセッションの始まりの
 フックが使うので通す。`size`の「閾値の見直し」と、種類ごとの上限に当たるファイルへ置いた
 ファイルごとの閾値を無視することは、緩んだ閾値に誰も気づかなくなるので通す。`friction`の gh で置き場を読む部分は
@@ -108,6 +109,19 @@ def test_metrics_counts_everything_outside_the_product_places_as_tooling(repo, c
     assert "| うちタスク管理 | 8 | 0 | +8 |" in out
     assert "| うち道具 | 16 | 0 | +16 |" in out
     assert "| テスト | 13 | 0 | +13 |" in out
+
+
+def test_docs_reads_and_counts_as_existing_the_files_not_yet_added(repo, monkeypatch, capsys):
+    _commit(repo, {"README.md": "[新しい文書](docs/new.md)\n"})
+    (repo / "docs").mkdir()
+    (repo / "docs" / "new.md").write_text("[消えた文書](gone.md)\n", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["review_checks.py", "docs"])
+
+    assert rc.main() == 1
+    out = capsys.readouterr().out
+
+    assert "docs/new.md:1: gone.md が存在しない" in out
+    assert "README.md" not in out
 
 
 _DECLARED_PREFIXES = sorted(

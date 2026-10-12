@@ -27,16 +27,21 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from tests.structure.source_symbols import SourceTree, bound_names
+
 APP_ROOT = Path(__file__).resolve().parent.parent.parent / "app"
 DEPENDENCIES = Path("api") / "dependencies.py"
 
 
+def _functions(tree: ast.Module) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    return {
+        name: node for name, node in bound_names(tree.body).items()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+
 def _public_functions(tree: ast.Module) -> list[str]:
-    return [
-        node.name
-        for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not node.name.startswith("_")
-    ]
+    return [name for name in _functions(tree) if not name.startswith("_")]
 
 
 def _referenced_name(node: ast.expr) -> str | None:
@@ -90,22 +95,25 @@ def test_dependencies_exposes_only_injection_points() -> None:
     )
 
 
-def _infrastructure_names(tree: ast.Module) -> dict[str, str]:
-    """`app.infrastructure`から取り込んだ名前 → 取り込み元（`モジュール.名前`）。モジュールごと取り込んだ名前も入る。"""
-    out: dict[str, str] = {}
+def _read(root: Path, path: Path) -> tuple[ast.Module, dict[str, str]]:
+    """`root`（`app`）の下のファイルの木と、`app.infrastructure`から取り込んだ名前 → 取り込み元（`モジュール.名前`）。
+    モジュールごと取り込んだ名前も入る。"""
+    source = SourceTree(root.parent)
+    module = source.module_of(path)
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    imported: dict[str, str] = {}
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("app.infrastructure"):
+        if isinstance(node, ast.ImportFrom) and (base := source.absolute(module, node)).startswith("app.infrastructure"):
             for alias in node.names:
-                out[alias.asname or alias.name] = f"{node.module}.{alias.name}"
-    return out
+                imported[alias.asname or alias.name] = f"{base}.{alias.name}"
+    return tree, imported
 
 
-def _called_infrastructure(tree: ast.Module, within: ast.AST | None = None) -> list[tuple[int, str]]:
-    """`app.infrastructure`の名前を呼んだ箇所（行, `モジュール.名前`）。`C(...)`と`mod.C(...)`の両方を拾う。
-    `within`を渡すと、`tree`の中のその部分だけを見る。"""
-    imported = _infrastructure_names(tree)
+def _called_infrastructure(imported: dict[str, str], within: ast.AST) -> list[tuple[int, str]]:
+    """`within`の中で、取り込んだ`app.infrastructure`の名前を呼んだ箇所（行, `モジュール.名前`）。`C(...)`と`mod.C(...)`の
+    両方を拾う。"""
     out = []
-    for node in ast.walk(within or tree):
+    for node in ast.walk(within):
         if not isinstance(node, ast.Call):
             continue
         func = node.func
@@ -116,11 +124,17 @@ def _called_infrastructure(tree: ast.Module, within: ast.AST | None = None) -> l
     return out
 
 
+def _called_in_file(root: Path, path: Path) -> list[tuple[int, str]]:
+    tree, imported = _read(root, path)
+    return _called_infrastructure(imported, tree)
+
+
 def _infrastructure_classes(root: Path) -> set[str]:
     """`app.infrastructure`の各モジュールが定義するクラス（`モジュール.名前`）。"""
+    source = SourceTree(root.parent)
     out = set()
     for path in sorted((root / "infrastructure").rglob("*.py")):
-        module = "app." + ".".join(path.relative_to(root).with_suffix("").parts)
+        module = source.module_of(path)
         tree = ast.parse(path.read_text(encoding="utf-8"))
         out.update(f"{module}.{node.name}" for node in tree.body if isinstance(node, ast.ClassDef))
     return out
@@ -132,13 +146,13 @@ def services_assembling_infrastructure(root: Path) -> list[str]:
     assembled = {
         name
         for path in (root / DEPENDENCIES, root / "main.py")
-        for _line, name in _called_infrastructure(ast.parse(path.read_text(encoding="utf-8")))
+        for _line, name in _called_in_file(root, path)
         if name in classes
     }
     return [
         f"{path.relative_to(root).as_posix()}:{line} {name}"
         for path in sorted((root / "services").rglob("*.py"))
-        for line, name in _called_infrastructure(ast.parse(path.read_text(encoding="utf-8")))
+        for line, name in _called_in_file(root, path)
         if name in assembled
     ]
 
@@ -205,14 +219,9 @@ def test_detects_a_function_called_without_depends(tmp_path: Path) -> None:
     assert dependencies_functions_not_injected(root) == ["pick_material"]
 
 
-def _functions(tree: ast.Module) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
-    return {node.name: node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
-
-
 def factories_handing_out_calls_or_sessions(root: Path) -> list[str]:
     """`api/dependencies.py`の関数のうち、`await`するもの・開いたセッションを部品に組まずに配るもの。"""
-    tree = ast.parse((root / DEPENDENCIES).read_text(encoding="utf-8"))
-    imported = _infrastructure_names(tree)
+    tree, imported = _read(root, root / DEPENDENCIES)
     out: list[str] = []
     for name, function in _functions(tree).items():
         opened = {
@@ -254,10 +263,10 @@ def jobs_assembling_what_the_factories_assemble(root: Path) -> list[str]:
     classes = _infrastructure_classes(root)
     assembled = {
         name
-        for _line, name in _called_infrastructure(ast.parse((root / DEPENDENCIES).read_text(encoding="utf-8")))
+        for _line, name in _called_in_file(root, root / DEPENDENCIES)
         if name in classes
     }
-    main = ast.parse((root / "main.py").read_text(encoding="utf-8"))
+    main, imported = _read(root, root / "main.py")
     functions = _functions(main)
     jobs = {
         node.args[0].id
@@ -270,7 +279,7 @@ def jobs_assembling_what_the_factories_assemble(root: Path) -> list[str]:
     return [
         f"main.py:{line} {job} {name}"
         for job in sorted(jobs & functions.keys())
-        for line, name in _called_infrastructure(main, functions[job])
+        for line, name in _called_infrastructure(imported, functions[job])
         if name in assembled
     ]
 

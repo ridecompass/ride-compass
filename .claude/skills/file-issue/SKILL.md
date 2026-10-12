@@ -58,11 +58,10 @@ description: "流れの摩擦の記録の仕方、起票の仕方、issue の本
 
 導く原則: 3・1・4。
 
-- 種類は Issue types（不具合・要望・保守・調査・対話作業）で、1つのタスクにちょうど1つ。ステータスは Project の Status だけが持ち、
+- 種類は Issue types（不具合・要望・保守・調査・対話作業）で、1つのタスクにちょうど1つ。ステータスは issue の欄「ステータス」だけが持ち、
   ゲートが決める。ラベルはユーザーが付ける札（`急ぎ` は振り出しを優先度より先に並べる）で、状態や操作待ちには使わない。
-- **欄**（規模・優先度・着手可能日時。Project の欄で、回答フォームには出さない）: Claude が書くのは
-  `GH_TOKEN=$FLOW_BOT_TOKEN gh project item-edit <Project の番号> --owner ridecompass --url https://github.com/ridecompass/ride-compass-tasks/issues/<番号> --field <欄> --value <値>`
-  （消すのは `--clear`。番号は `flow.config.json: project`。ゲートが Project へ入れる前は断られるので、入ってから打ち直す）。
+- **欄**（規模・優先度・着手可能日時。issue の欄（issue fields）で、回答フォームには出さない）: Claude が書くのは、起票の
+  スクリプトの `--size`・`--priority`・`--start`。起こしたあとに入れ直すなら `node .claude/skills/file-issue/scripts/new-issue.mjs --fill <番号> [--size …] [--priority …] [--start …]`。
 - **優先度の見積もり**: 入っている値は誰かが決めた値なので書き換えない（変えるならユーザーに問う）。Claude は起票のときに仕事の重さで見積もって入れる:
   高は利用者に届いている不具合・データの誤り・止まっている流れ、低は調べ・整理・見た目の小さな直し、それ以外は中。子には入れない
   （ゲートが親の値を読む。「分ける」）。空は振り出しで `flow.config.json: unsetPriority` の位置に並ぶ。

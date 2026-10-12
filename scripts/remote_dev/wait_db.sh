@@ -4,23 +4,22 @@
 
 [ "$CLAUDE_CODE_REMOTE" = "true" ] || exit 0
 
-status=/tmp/ridecompass-db-status
-log=/tmp/ridecompass-db.log
-pid="$(cat "$status.pid" 2>/dev/null)"
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+pid="$(cat "$RC_DB_STATUS.pid" 2>/dev/null)"
 
 for _ in $(seq 1 240); do
-  [ -f "$status" ] && break
+  [ -f "$RC_DB_STATUS" ] && break
   if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
-    [ -f "$status" ] && break
-    echo "DBの裏の起動が見当たらない。CLAUDE_CODE_REMOTE=true bash scripts/remote_dev/session_start.sh db で起動する（$log）"
+    [ -f "$RC_DB_STATUS" ] && break
+    echo "DBの裏の起動が見当たらない。CLAUDE_CODE_REMOTE=true bash scripts/remote_dev/session_start.sh db で起動する（$RC_DB_LOG）"
     exit 1
   fi
   sleep 0.5
 done
 
-result="$(cat "$status" 2>/dev/null)"
+result="$(cat "$RC_DB_STATUS" 2>/dev/null)"
 case "$result" in
   ok*) echo "DB・Redis: $result"; exit 0 ;;
-  "") echo "DBの起動が120秒で終わらない（$log）"; exit 1 ;;
-  *) echo "DB・Redis: $result（$log）"; exit 1 ;;
+  "") echo "DBの起動が120秒で終わらない（$RC_DB_LOG）"; exit 1 ;;
+  *) echo "DB・Redis: $result（$RC_DB_LOG）"; exit 1 ;;
 esac

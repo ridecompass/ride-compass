@@ -1,9 +1,11 @@
-"""backendを本番へ出すかを決める（`.github/workflows/deploy-backend.yml`が呼ぶ）。
+"""本番へ出すかを決める（`.github/workflows/deploy-backend.yml`と`.github/workflows/deploy-frontend.yml`が呼ぶ）。
 
-    python backend/scripts/deploy_backend_gate.py <本番で動いているコミット> <出したいコミット>
+    python backend/scripts/deploy_gate.py [--any-change] <本番で動いているコミット> <出したいコミット>
 
-本番で動いているコミットから出したいコミットまでの変更に、`DEPLOY_PATHS`に当たり`NOT_DEPLOYED`に
-当たらないファイルが1つでもあれば出す。当てるのはgitのpathspec（`git diff --name-only`）で、
+本番がこのコミットかこれより新しいコミットで動いていれば出さない。本番より新しいなら、本番で動いている
+コミットから出したいコミットまでの変更に、`DEPLOY_PATHS`に当たり`NOT_DEPLOYED`に当たらないファイルが
+1つでもあれば出す（backend）。当てるのはgitのpathspec（`git diff --name-only`）。`--any-change`は
+ファイルを当てずに出す（frontend。届く変更があるかは、呼ぶ前に`ci.yml`の`changes`が決めている）。
 判定と理由を1行で出し、GitHub Actionsの中では`$GITHUB_OUTPUT`へ`deploy=true|false`を書く。
 
 **差分の起点を「直前のpush」ではなく「本番で動いているコミット」に取る。** CIが赤で出せなかった
@@ -15,8 +17,12 @@
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+
+from repo_git import run
 
 #: 本番へ届くファイル。gitのpathspecのglobとしてリポジトリの根から当てる
 #: （`*`は`/`を跨がず、`**`は跨ぐ）。
@@ -61,12 +67,12 @@ def pathspec(include: tuple[str, ...], exclude: tuple[str, ...]) -> list[str]:
     return [f":(top,glob){p}" for p in include] + [f":(top,glob,exclude){p}" for p in exclude]
 
 
-def decide(relation: str, hits: list[str]) -> tuple[bool, str]:
+def decide(relation: str, hits: list[str] | None) -> tuple[bool, str]:
     """`relation`は本番で動いているコミット（deployed）と出したいコミット（target）の関係。
 
     unknown: deployedが分からない／履歴に無い、same: 同じ、older: targetがdeployedの祖先、
     newer: deployedがtargetの祖先、diverged: どちらも祖先でない。`hits`はnewerのときの、
-    その間に変わった本番のイメージに届くファイル。
+    その間に変わった本番のイメージに届くファイルで、Noneはファイルを当てないこと。
     """
     if relation == "unknown":
         return True, "本番で動いているコミットが分からないため出す"
@@ -76,33 +82,32 @@ def decide(relation: str, hits: list[str]) -> tuple[bool, str]:
         return False, "本番はこれより新しいコミットで動いている（後から終わった古いCIの実行）"
     if relation == "diverged":
         return True, "本番のコミットと履歴が分かれているため出す"
+    if hits is None:
+        return True, "本番はこれより古いコミットで動いている"
     if not hits:
         return False, "本番のイメージに届く変更が無い"
     return True, f"本番のイメージに届く変更が{len(hits)}件ある（例: {hits[0]}）"
 
 
-def _git(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", *args], capture_output=True, text=True, check=False)
-
-
 def commit_relation(deployed: str, target: str) -> str:
-    if not deployed or _git("cat-file", "-e", f"{deployed}^{{commit}}").returncode != 0:
+    if not deployed or run("cat-file", "-e", f"{deployed}^{{commit}}").returncode != 0:
         return "unknown"
-    if _git("rev-parse", deployed).stdout.strip() == _git("rev-parse", target).stdout.strip():
+    if run("rev-parse", deployed).stdout.strip() == run("rev-parse", target).stdout.strip():
         return "same"
-    if _git("merge-base", "--is-ancestor", target, deployed).returncode == 0:
+    if run("merge-base", "--is-ancestor", target, deployed).returncode == 0:
         return "older"
-    if _git("merge-base", "--is-ancestor", deployed, target).returncode == 0:
+    if run("merge-base", "--is-ancestor", deployed, target).returncode == 0:
         return "newer"
     return "diverged"
 
 
 def main(argv: list[str]) -> int:
-    deployed, target = argv[1].strip(), argv[2].strip()
+    any_change = argv[1] == "--any-change"
+    deployed, target = (arg.strip() for arg in argv[1 + any_change :])
     relation = commit_relation(deployed, target)
-    hits: list[str] = []
-    if relation == "newer":
-        diff = _git("diff", "--name-only", deployed, target, "--", *pathspec(DEPLOY_PATHS, NOT_DEPLOYED))
+    hits: list[str] | None = None if any_change else []
+    if relation == "newer" and not any_change:
+        diff = run("diff", "--name-only", deployed, target, "--", *pathspec(DEPLOY_PATHS, NOT_DEPLOYED))
         if diff.returncode != 0:
             print(diff.stderr, file=sys.stderr)
             return 1

@@ -37,6 +37,7 @@ PostGIS統合テスト（`road_graph_session`フィクスチャを使うもの�
 |---|---|---|
 | 本番へつなぐ道具（例: `backend/scripts/run_probe.py`・`backend/scripts/axis_apply.py`） | `backend/scripts/_prod_env.py: read_prod_env`（接続情報を渡す前） | 本番へ流すのがこのチェックアウトのコード（プローブが読む`app`・管理APIへ送る形） |
 | `scripts/review_checks.py`の`size`・`metrics`・`trigger` | `scripts/review_checks.py: main` | 前回のレビューから HEAD までを測るので、HEAD が古いと変更を数え漏らす |
+| ベンチマークの実行口（`backend/benchmarks/`） | `backend/benchmarks/revision.py: announce_revision`（止めずに警告を出す。手元の反復でも測るため） | 測った数字が実測として引用され、古いコードの数字と見分けが付かない |
 
 開発機の手元のスクリプト（リポジトリに入れないもの）で本体のコードを流すものは、上の道具を経由するか、
 頭で`python <本体>/scripts/checkout_freshness.py`を打って終了コードを見る。
@@ -84,7 +85,7 @@ RideCompass/
 ### 前提
 
 - Node.js 22.12+（frontend のテストの道具 vitest の要件）
-- Python 3.12（`backend/Dockerfile`・CI と同じ）
+- Python（版は `backend/Dockerfile` の `FROM` と同じ。CI もそこから取る）
 - PostgreSQL + PostGIS（Road Graph・路面タイル生成の一次系統。**DBなしでは起動しない**）
 - Redis（JMA気象データの短命キャッシュ。未接続でもフォールバックする箇所が
   一部あるが、ローカル開発でも用意することを推奨）
@@ -136,14 +137,14 @@ docker compose run --rm backend python scripts/bootstrap_database.py --create-ex
   masterの浅いcloneから`setup.sh`を流す（セットアップの時点でリポジトリがどこにあるかに
   依存しないため）。backendのvenvとfrontendの`node_modules`をlockfileのダイジェストごとに
   リポジトリの外（`/opt/ridecompass-dev`）へ作り、postgres・redisのイメージを取る。さらにcomposeの
-  postgresを一度起動してボリュームを初期化し（テストの複製元DB`ridecompass_test`も作る）、止めてから終える。
+  postgresを一度起動してボリュームを初期化し（テストの複製元DB`backend/tests/database_names.py: SHARED_TEST_DATABASE`も作る）、止めてから終える。
   ボリュームがキャッシュに無いと、毎回の開始で空のボリュームへのinitdbとPostGIS拡張の読み込み（実測で約10秒）が走る。
   composeのプロジェクト名は`ride-compass`に固定している（一時ディレクトリのcloneから流しても、セッションの
   cloneと同じボリュームになるように）。
 - **SessionStartフック**（`.claude/settings.json`→`scripts/remote_dev/session_start.sh`）が
   毎セッションの開始時に、`backend/.venv`と`frontend/node_modules`をそこへ繋ぎ（lockfileが
   変わっていれば入れ直す）、dockerdを起こしてcomposeのpostgres・redisを起動し、テストの
-  複製元DB`ridecompass_test`を作る。`CLAUDE_CODE_REMOTE`が`true`でない（手元の）セッション
+  複製元DB（`backend/tests/database_names.py: SHARED_TEST_DATABASE`）を作る。`CLAUDE_CODE_REMOTE`が`true`でない（手元の）セッション
   では何もせずに抜ける。セットアップの欄が空でもフックが依存を入れる（開始が遅くなるだけ）。
   DB・Redisの起動は裏で行い、フックは待たない——保存から戻したディスクでは起動に20秒ほど
   かかる（キャッシュからの開始の実測22秒。温まったディスクなら7〜8秒）。DBを使う前に
@@ -219,3 +220,30 @@ frontendは`next dev`の既定の3000番で動かす。backendのCORSの許可�
 （使用中なら別の番号へ逃げずに失敗する）。ほかの番号で動かすときは、`backend/.env`に`CORS_ALLOWED_ORIGINS`と
 `BASEMAP_PUBLIC_BASE_URL`をその番号で書く（書いた値は既定を直しても残るので、戻すときは消す）。batはそれで
 その番号へ移る。
+
+## 厳選まで仮置き
+
+原則の見直しで消えた記載を、厳選まで元の節ごとに仮に置く。**今の決まりと食い違えば今の決まりを取る。**
+
+### 元: docs/architecture の setup.md
+
+#### テスト
+
+手元で検査とテストを回すかと、回すときの範囲は[../conventions/testing-operations.md](../../.claude/skills/run-checks/SKILL.md)「手元の検査の回し方」が決める。
+ここには、回すときの開発機での前提と所要を置く。
+
+PostGIS統合テスト（`road_graph_session`フィクスチャを使うもの。`postgis`マーカー付き）は、
+テスト専用DB（既定は作業ツリーごとのDB、`TEST_DATABASE_URL`で上書き可。
+[testing-operations.md](../../.claude/skills/run-checks/SKILL.md)「テストDBは作業ツリーごとに分かれる」）へ接続できないと
+落ちる（スキップにはしない。`backend/tests/conftest.py`）。DBの無い環境では
+`-m "not postgis"`で除外して回す。
+
+#### Docker Composeで起動する
+
+**スキーマを作っても、軸定義が0行のままではbackendは起動しない**（`refresh_axis_definitions`が
+0行を起動失敗にする。[axis-studio.md](../modules/backend/axis-studio.md)「まっさらなDBに軸の行は
+入らない」）。軸を入れる管理APIも起動したbackendにしか無いため、新しい環境へ軸が入るのは管理データの
+バックアップから戻したときだけで、それは本番を作り直すための経路である（[deployment-sync.md](../../.claude/skills/production-data/SKILL.md)
+「本番DBを失ったとき」）——composeのDB・クラウドのセッションは**テストを回す場**であり、アプリを実データで
+確かめるのは本番か手元の開発機で行う（地図に色を出すには軸のほかに取込済みのデータも要る）。
+テスト（`-m postgis`を含む）は軸を要らないので、この状態で回せる。

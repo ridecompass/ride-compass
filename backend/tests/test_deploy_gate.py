@@ -1,4 +1,4 @@
-"""`backend/scripts/deploy_backend_gate.py`の判定テスト（本番・ネットワークには触れない）。
+"""`backend/scripts/deploy_gate.py`の判定テスト（本番・ネットワークには触れない）。
 
 履歴は一時的なgitリポジトリで作り、振り分けの一覧は本物（`DEPLOY_PATHS`・`NOT_DEPLOYED`）を当てる。
 
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts import deploy_backend_gate as gate
+from scripts import deploy_gate as gate
 
 
 @pytest.mark.parametrize(
@@ -23,6 +23,9 @@ from scripts import deploy_backend_gate as gate
         ("diverged", [], True),
         ("newer", [], False),
         ("newer", ["backend/app/main.py"], True),
+        # ファイルを当てない呼び方（frontend）は、本番より新しければ出す。
+        ("newer", None, True),
+        ("older", None, False),
     ],
 )
 def test_decide(relation, hits, expected):
@@ -76,3 +79,16 @@ def test_only_changes_that_reach_production_deploy(tmp_path, monkeypatch):
     assert gate.main(["gate", deployed, changed_image]) == 0
     assert gate.main(["gate", changed_image, changed_host]) == 0
     assert output.read_text(encoding="utf-8").splitlines() == ["deploy=false", "deploy=true", "deploy=true"]
+
+
+def test_any_change_deploys_without_matching_paths(tmp_path, monkeypatch):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    deployed = _commit(tmp_path, "README.md")
+    target = _commit(tmp_path, "frontend/src/app/page.tsx")
+    output = tmp_path / "github_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    monkeypatch.chdir(tmp_path)
+
+    assert gate.main(["gate", "--any-change", deployed, target]) == 0
+    assert gate.main(["gate", "--any-change", target, deployed]) == 0
+    assert output.read_text(encoding="utf-8").splitlines() == ["deploy=true", "deploy=false"]

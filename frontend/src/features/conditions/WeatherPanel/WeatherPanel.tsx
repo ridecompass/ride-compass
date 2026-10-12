@@ -5,6 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover
 import { RaindropIcon, ThermometerIcon, WindDirectionArrowIcon } from "@/components/ui/icons/icons";
 import { Button } from "@/components/ui/Button/Button";
 import { formatJstHourMinute } from "@/lib/time";
+import { downwindDeg } from "@/lib/cardinalLabel";
 import { cn } from "@/lib/cn";
 import type { AmedasObservation } from "@/types/weather";
 import { getAmedasWeatherDisplay } from "./amedasWeatherIcon";
@@ -108,7 +109,7 @@ export default function WeatherPanel({ amedas, loading, error }: WeatherPanelPro
               <>
                 <span
                   className="inline-flex transition-transform duration-200"
-                  style={{ transform: `rotate(${wind.direction.deg + 180}deg)` }}
+                  style={{ transform: `rotate(${downwindDeg(wind.direction.deg)}deg)` }}
                 >
                   <WindDirectionArrowIcon size={16} />
                 </span>

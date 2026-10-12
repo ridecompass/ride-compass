@@ -21,6 +21,7 @@ from pydantic import PlainSerializer
 from app.domain.region import BoundingBox
 from app.domain.route import Coordinates
 from app.domain.strict_model import StrictModel
+from app.domain.time_zone import jst_local_text
 from app.domain.wind import grid_index_at_or_below
 
 # 格子間隔（度）。0.1°（緯度約11km・経度約9km）は、正方格子の最悪ケース（どの地点でも
@@ -118,5 +119,5 @@ class WindGridResponse(StrictModel):
     `times`と揃っている）。格子点が1つも無いときは`points`も`times`も空になる。"""
 
     #: JSTのローカル時刻を分までのISO文字列（タイムゾーン指定なし）で出す。画面の時刻の読み方と揃える。
-    times: list[Annotated[datetime, PlainSerializer(lambda moment: moment.strftime("%Y-%m-%dT%H:%M"), return_type=str)]]
+    times: list[Annotated[datetime, PlainSerializer(jst_local_text, return_type=str)]]
     points: list[WindGridPoint]
