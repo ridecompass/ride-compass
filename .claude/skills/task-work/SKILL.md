@@ -49,10 +49,6 @@ description: "タスクを作る担当・確かめる担当として進める手
    （`gh pr checks <番号> -R ridecompass/ride-compass`）か変異テストの注記（Mutation PR の実行の ANNOTATIONS）を読んで直す。
    直し方は .claude/rules/testing.md「テストが落ちたときの直し方」。生き残りは、利用者や運用に見える振る舞いが変わるものだけテストを足し、
    ほかは本文の検証に1件1行で理由を書く。
-   - **自分で起こした長く走る実行**（`docs/architecture/tech-stack.md`「CIの実行枠」の基準に当たるもの。試しの変異テスト等）も、
-     終わりを待たずに手放す。Pull Request を出す前なら、終わる見込みの時刻を欄「着手可能日時」に入れて終え、振り出されたら結果を読んで続ける。
-     早く回すために、作業ブランチの版で `strategy.max-parallel` を上げたり `concurrency` の group を変えたりしない（作業ブランチへの
-     push で起きる実行は、ブランチの版の定義で動き、上限を外せてしまう）。
    - **本文**: 題名と本文はそのまま master のコミットになる（`docs/conventions/flow.md`「コミット」）。`.github/pull_request_template.md` を
      作業ツリーの外へ写して `<…>` を埋め、`node scripts/pr-body.js <本文>` で形を照らしてから渡す。直すときは
      `gh issue edit <番号> -R ridecompass/ride-compass --body-file <本文>`。本番の宛先の値は書かず、tech-stack.md「本番の宛先」の名で書く。

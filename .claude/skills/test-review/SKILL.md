@@ -19,9 +19,8 @@ backend のテストを、.claude/rules/testing-review.md「テストを変異�
    起こしたタスクの番号があること）。
 2. **持つ**: .claude/skills/dev-session/SKILL.md「開発機の対話のセッション」の「持つ」で持ち、進行中へ動かす。
 3. **計画を伝える**（CLAUDE.md「作業の進め方」）: 何をどの順で、どれくらいかかるか。見込みは 2026-10-09 の同じ形の測りで、
-   shard 1本あたり、変異の生成と記録 約9分・変異 約1時間・当て直し 約26分、review 数分。shard は同時に動く本数に上限がある
-   （`.github/workflows/mutation.yml` の `max-parallel`）ので、実時間は1本の所要に巡の数（本数を上限で割って切り上げ）を掛けた分に、
-   ランナーの空き待ち（2026-10-10 の試しで、段ごとに最長16分）が足される。上限を入れてからの実時間は未計測。
+   実時間で約1時間40分（shard 1本あたり、変異の生成と記録 約9分・変異 約1時間・当て直し 約26分、review 数分）に、
+   ランナーの空き待ち（2026-10-10 の試しで、段ごとに最長16分）が足される。
 
 ### 2. 測りを起こす
 
@@ -31,7 +30,7 @@ backend のテストを、.claude/rules/testing-review.md「テストを変異�
 - 起こした実行の id は、`gh run list -R ridecompass/ride-compass --workflow mutation.yml -L 1 --json databaseId,createdAt,status` で
   取り、`createdAt` が起こした時刻のあとであることを見る。
 - 同じワークフローが動いていれば、終わるまで待ってから始まる（`concurrency: mutation`）。
-- 測りはランナーを同時に上限の本数まで使い、アカウントで同時に動かせるジョブの枠を担当（Claude Task）・CI と分け合う。担当や CI が
+- 測りは8本のランナーを約1時間半使い、アカウントで同時に動かせるジョブの枠を担当（Claude Task）・CI と分け合う。担当や CI が
   多く動いているとき（`gh run list -R ridecompass/ride-compass --status in_progress`）は、測りの空き待ちが延び、そのあいだ担当と
   CI の待ちも延びる。起こす前に動いている数を見て、6 の記録に書く。
 
