@@ -5,12 +5,14 @@
 # - 手で起こす（gh workflow run mutation-frontend.yml、または Actions → Mutation frontend → Run workflow）。測る版と台本は、
 #   起こすときに選んだ ref から読む（台本は frontend/scripts/mutation/ と backend/scripts/mutation/review.py）。
 # - 2段で回る:
-#   1. shard（8本）: 書き換えるファイルを行数がそろうように分け（plan.mjs）、1本ずつ別のランナーで Stryker を回す。
+#   1. shard（16本）: 書き換えるファイルを行数がそろうように分け（plan.mjs）、1本ずつ別のランナーで Stryker を回す。
 #   2. review（1本）: 1 を1つの表にし（report.mjs）、表から見直しの候補を出す（backend/scripts/mutation/review.py）。前の実行の
 #      見直し（成果物 mutation-frontend-review）を取ってきて比べ、前回も重なりの候補だったテストに印を付ける。
 # - compare にファイル（frontend からのパス）を渡すと、1・2 の代わりに、そのファイルを vitest の口と command の口（書き換えごとに
 #   テスト全体を回す。並び1本）で回して判定を突き合わせる（compare.mjs）。口の直しを外す・版を上げるときに使う。
-# - 成果物: 1 は mutation-frontend-<番号>（14日）、2 は mutation-frontend-review（次の見直しが比べるので90日）。
+# - 持ち時間: 8本に分けた試し（tasks#839）で、1本の書き換えは約1,400〜1,900件、Stryker の見込みで1本4時間ほどだった
+#   （書き換えを通るテストが重いもの（画面全体のテスト）ほど遅い）。16本に分けて、ジョブの上限（6時間）より前に終える。
+# - 成果物: 1 は mutation-frontend-shard-<番号>（14日）、2 は mutation-frontend-review（次の見直しが比べるので90日）。
 name: Mutation frontend
 
 on:
@@ -33,17 +35,17 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  SHARDS: 8
+  SHARDS: 16
 
 jobs:
   shard:
     if: inputs.compare == ''
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 340
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     defaults:
       run:
         working-directory: frontend
@@ -68,7 +70,7 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mutation-frontend-${{ matrix.shard }}
+          name: mutation-frontend-shard-${{ matrix.shard }}
           path: frontend/reports/mutation/mutation.json
           retention-days: 14
           if-no-files-found: warn
@@ -96,7 +98,7 @@ jobs:
       - run: npm ci
       - uses: actions/download-artifact@v4
         with:
-          pattern: mutation-frontend-?
+          pattern: mutation-frontend-shard-*
           path: /tmp/art
       - name: 前の実行の見直しを取る
         env:
