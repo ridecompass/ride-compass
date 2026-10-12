@@ -3,14 +3,14 @@
 // 使い方: node .claude/skills/ask/scripts/answer.mjs <issue の番号> [--choice <選んだ案か選択肢>] [--done] [--text <書いた文のファイル>]
 //   --done は確かめの「完了にする」（残りのユーザーが確かめる条件を全部確かめた）。書いた文のファイルには、ユーザーの言葉の引用を含めて書く。
 import { readFileSync } from "node:fs";
-import { bot, config, isMain } from "../../../../tools/flow-gate/src/bot.js";
+import { bot, comment, config, isMain, isNumber, usage } from "../../../../tools/flow-gate/src/bot.js";
 import { answerBody, answerProblem, confirmItems, isQuestion, latestQuestion, norm } from "../../../../tools/flow-gate/src/questions.js";
 
 // 本文とコメントを新しい方から1ページ読む。今の問いは末尾にあるので、読んだ中に問いが無いときだけ前のページを足す。
 const READ = "query($owner:String!,$name:String!,$number:Int!,$before:String){repository(owner:$owner,name:$name){issue(number:$number){body " +
   "comments(last:100,before:$before){pageInfo{hasPreviousPage startCursor} nodes{body}}}}}";
 function read(gh, number) {
-  const [owner, name] = config.tasks.split("/");
+  const { owner, name } = config.repos.tasks;
   const page = (before) => JSON.parse(gh(["api", "graphql", "--input", "-"],
     JSON.stringify({ query: READ, variables: { owner, name, number: Number(number), before } }))).data.repository.issue;
   const issue = page(null);
@@ -23,7 +23,7 @@ function read(gh, number) {
   return { body: issue.body, comments: nodes.map((c) => c.body) };
 }
 
-const USAGE = "使い方: node .claude/skills/ask/scripts/answer.mjs <issue の番号> [--choice <選んだ案か選択肢>] [--done] [--text <書いた文のファイル>]";
+const USAGE = "node .claude/skills/ask/scripts/answer.mjs <issue の番号> [--choice <選んだ案か選択肢>] [--done] [--text <書いた文のファイル>]";
 
 function main() {
   const [number, ...rest] = process.argv.slice(2);
@@ -34,14 +34,10 @@ function main() {
     else if (rest[i] === "--text" && rest[i + 1] !== undefined) opts.text = norm(readFileSync(rest[++i], "utf8")).trim();
     else opts.bad = rest[i];
   }
-  if (!/^\d+$/.test(number ?? "") || opts.bad) {
-    console.error(USAGE);
-    process.exit(2);
-  }
+  if (!isNumber(number) || opts.bad) usage(USAGE);
   const gh = bot();
-  const template = norm(readFileSync(new URL("../../../../tools/flow-gate/question_template.md", import.meta.url), "utf8"));
   const issue = read(gh, number);
-  const q = latestQuestion(issue.comments, template);
+  const q = latestQuestion(issue.comments, config.questionTemplate);
   if (!q || q.answer) {
     console.error(`#${number} に、答えていない問いがありません`);
     process.exit(1);
@@ -52,8 +48,7 @@ function main() {
     console.error(`答えを書かない: ${problem}`);
     process.exit(1);
   }
-  // REST で書けば1回で済む（gh issue comment は issue の ID を引く1回と書く1回を打つ）。
-  gh(["api", `repos/${config.tasks}/issues/${number}/comments`, "-F", "body=@-", "--silent"], answerBody(q, answer));
+  comment(gh, number, answerBody(q, answer));
   console.log(`#${number}: 「${q.text}」への答えを書いた`);
 }
 
