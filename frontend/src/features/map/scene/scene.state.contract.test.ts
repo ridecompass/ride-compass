@@ -7,6 +7,7 @@
 import { latest, validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
+import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
 import { matchesFilter } from "@/testing/mapExpressions";
 import { createRecordingMap, type StyleLayer } from "@/testing/mapTrace/recordingMap";
 import { catalogEntry, rampEntry, tileInput } from "@/testing/catalogAxes";
@@ -124,31 +125,6 @@ describe("状態を地図へ伝えた結果", () => {
     });
   });
   describe("基礎地図の店・施設の印", () => {
-    // libertyの店・施設のレイヤーの絞り（OpenFreeMapのスタイルから写した）。点を順位で3段に分け、駅・バス・空港は別に描く。
-    const POINT = ["match", ["geometry-type"], ["MultiPoint", "Point"], true, false];
-    const POI_LAYERS: readonly StyleLayer[] = [
-      { id: "road_minor", type: "line", "source-layer": "transportation" },
-      { id: "poi_r20", type: "symbol", "source-layer": "poi", filter: ["all", POINT, [">=", ["get", "rank"], 20]] },
-      {
-        id: "poi_r7",
-        type: "symbol",
-        "source-layer": "poi",
-        filter: ["all", POINT, [">=", ["get", "rank"], 7], ["<", ["get", "rank"], 20]],
-      },
-      {
-        id: "poi_r1",
-        type: "symbol",
-        "source-layer": "poi",
-        filter: ["all", POINT, [">=", ["get", "rank"], 1], ["<", ["get", "rank"], 7]],
-      },
-      {
-        id: "poi_transit",
-        type: "symbol",
-        "source-layer": "poi",
-        filter: ["match", ["get", "class"], ["airport", "bus", "rail"], true, false],
-      },
-    ];
-
     // OpenMapTilesのスキーマの値（`class`は束ねた種類、`subclass`は元のOSMのタグの値）と、それを出す立ち寄り先の群。
     const STOP_PLACE_KINDS = [
       ["飲食店", "eat_drink", { class: "restaurant", subclass: "restaurant" }],
@@ -167,7 +143,7 @@ describe("状態を地図へ伝えた結果", () => {
     /** 基礎地図を読んだ地図へ、状態を伝える。 */
     function drawBasemap() {
       const recording = createRecordingMap();
-      recording.handle.loadStyle(POI_LAYERS);
+      recording.handle.loadStyle(LIBERTY_POI_LAYERS);
       return recording;
     }
 

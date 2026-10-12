@@ -14,6 +14,7 @@ import { applyScene, sceneInputsFrom } from "@/features/map/scene/applyToMap";
 import { sceneState } from "@/testing/sceneState";
 import { buildMapScene } from "@/features/map/scene/buildScene";
 import type { DynamicWeatherGroupState } from "@/features/map/layers/dynamicWeather";
+import { PRECIPITATION_NONE_THRESHOLD_MM } from "@/features/map/layers/precipitationNowcast";
 import { WIND_CALM_THRESHOLD_MS } from "@/features/map/layers/windLayer";
 import { matchesFilter } from "@/testing/mapExpressions";
 
@@ -104,6 +105,21 @@ describe("動的気象を地図へ伝えた結果", () => {
     apply(map, "precipitationNowcast", { main: raster("https://example.test/b/{z}/{x}/{y}.png") });
 
     expect(handle.sourceContent(sourceId)?.tiles?.[0]).toContain("/b/");
+  });
+
+  // 境ちょうどの雨を塗らないと、いちばん弱い雨が地図から消える。
+  it.each([
+    [PRECIPITATION_NONE_THRESHOLD_MM, true],
+    [PRECIPITATION_NONE_THRESHOLD_MM * (1 - Number.EPSILON), false],
+  ])("1時間 %s mm の降水の格子を塗るか: %s", (mmPerHour, painted) => {
+    const { map, handle } = createRecordingMap();
+    const geojson: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
+
+    apply(map, "precipitationNowcast", { main: { visible: true, payload: { kind: "gridFill", geojson } } });
+
+    const [fill] = shownByWeather(handle);
+    expect(fill.type).toBe("fill");
+    expect(matchesFilter(fill.filter ?? true, { mmPerHour }, 3)).toBe(painted);
   });
 
   // 凡例は静穏の境ちょうどから「微風」の段にする。地図がそこで矢印を落とすと、凡例にある風が地図に無い。

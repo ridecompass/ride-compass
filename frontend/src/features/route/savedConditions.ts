@@ -3,6 +3,7 @@ import { syncHardFilterKeys } from "@/features/route/hardFilterSync";
 import { alignRoutePreference } from "@/features/route/routePreferenceSync";
 import { totalWeight } from "@/features/route/routeWeightShare";
 import type { AxisCatalog } from "@/lib/axisCatalog";
+import { isCoordinates, readStoredList, withEntryFirst } from "@/lib/storedList";
 import type { Coordinates, HardFilterOverride, RoutePreferenceWeights } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
@@ -48,17 +49,6 @@ export function acceptedMaxRoutesInput(raw: string): string | null {
     parsed <= routeGenerateConfig.max_routes
     ? raw
     : null;
-}
-
-function isCoordinates(value: unknown): value is Coordinates {
-  if (typeof value !== "object" || value === null) return false;
-  const { latitude, longitude } = value as Record<string, unknown>;
-  return (
-    typeof latitude === "number" &&
-    Number.isFinite(latitude) &&
-    typeof longitude === "number" &&
-    Number.isFinite(longitude)
-  );
 }
 
 function isWeights(value: unknown): value is RoutePreferenceWeights {
@@ -126,16 +116,9 @@ function readSavedCondition(value: unknown): SavedCondition | null {
   return read as unknown as SavedCondition;
 }
 
-/** 保存した一覧を読む。壊れた保存値は空の一覧、読めない件はその件だけを捨てる。 */
-export function readSavedConditions(raw: string): SavedCondition[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(parsed)) return [];
-  return parsed.map(readSavedCondition).filter((entry): entry is SavedCondition => entry !== null);
+/** 保存した生成の条件の一覧を読む。 */
+export function readSavedConditions(raw: string): SavedCondition[] | null {
+  return readStoredList(raw, readSavedCondition);
 }
 
 // 名前と説明が並べる、ルートの形。目的地が無ければ出発地へ戻る周回になる。
@@ -212,7 +195,7 @@ export function originDescription(fixed: boolean): string {
   return fixed ? "保存した地点に固定" : "呼び出した時の現在地";
 }
 
-/** 保存した一覧へ1件を入れる。同じ名前の件は上書きし、入れた件を先頭に置く（最近保存したものほど上）。 */
+/** 保存した一覧へ1件を入れる。同じ名前の件は上書きする。 */
 export function withSavedCondition(list: SavedCondition[], entry: SavedCondition): SavedCondition[] {
-  return [entry, ...list.filter((saved) => saved.name !== entry.name)];
+  return withEntryFirst(list, entry, (saved) => saved.name === entry.name);
 }

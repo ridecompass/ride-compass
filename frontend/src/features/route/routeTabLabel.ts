@@ -1,3 +1,5 @@
+import { MINUTE_UNIT, secondsToMinutes } from "@/lib/duration";
+import { signMark } from "@/lib/numberFormat";
 import type { RouteCandidate } from "@/types/route";
 
 // 候補タブの表記を組み立てる純関数。
@@ -87,9 +89,9 @@ export function durationDifferenceLabel(
   if (baselineSeconds === null) return null;
   const seconds = route.estimated_duration_seconds;
   if (seconds === null) return null;
-  const minutes = Math.round((seconds - baselineSeconds) / 60);
+  const minutes = Math.round(secondsToMinutes(seconds - baselineSeconds));
   if (minutes === 0) return null;
-  return `${minutes > 0 ? "+" : "−"}${Math.abs(minutes)}分`;
+  return `${signMark(minutes)}${Math.abs(minutes)}${MINUTE_UNIT}`;
 }
 
 /**

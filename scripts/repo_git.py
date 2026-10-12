@@ -1,7 +1,7 @@
 """道具が git を打つ口と、変更を比べる基準（origin の master）・本体のチェックアウトの場所。
 
 標準ライブラリだけで書く。`backend/` の下の道具もリポジトリの根の `scripts/` を `sys.path` へ足して読み、
-その中には依存を入れていない Python で走るもの（`backend/scripts/deploy_backend_gate.py`）がある。
+その中には依存を入れていない Python で走るもの（`backend/scripts/deploy_gate.py`）がある。
 """
 
 import os

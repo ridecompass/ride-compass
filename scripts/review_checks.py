@@ -51,8 +51,8 @@ SIZE_THRESHOLDS = REPO_ROOT / "scripts" / "size_thresholds.json"
 #: 日付を名前に使わないのは、同じ日に複数回レビューした実績があり一意にならないため。
 REVIEW_TAG_PREFIX = "periodic-review/"
 TRIGGER_DAYS = 14
-#: タスクの issue の置き場。`friction`が gh で読む（gh のトークンが置き場を読めること）。
-TASKS_REPO = "ridecompass/ride-compass-tasks"
+#: タスクの issue の置き場（名前はゲートの設定が持つ）。`friction`が gh で読む（gh のトークンが置き場を読めること）。
+TASKS_REPO = json.loads((REPO_ROOT / "tools" / "flow-gate" / "flow.config.json").read_text(encoding="utf-8"))["tasks"]
 #: 流れの摩擦の行。担当の終え方の要約は、後始末が終わりのコメントへ `> ` で引用して写すので、引用と箇条書きの頭も拾う。
 FRICTION_RE = re.compile(r"^(> )?(- )?流れの摩擦:")
 TRIGGER_IMPL_LINES = 20_000
