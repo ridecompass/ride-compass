@@ -25,14 +25,14 @@ const DISPATCH = ["実装", "検証"]; // 振り出す担当の種類（ステ�
 
 // 1階の待ち: 関係性で待つもの（前提・子が開いている・着手可能日時が先・親が保留か閉じた）。
 const waiting = (f) => f.blocked || f.future || f.held;
-// 2階: 持ち主（次に結果を出す者）。担当者と振り出しは、どちらもここから導く。ユーザーに問わないと進めない間（回答・保留）はユーザー。
-// 対話作業と、開発機のセッションが触っている issue は、開発機のセッションが進める（ユーザーが開いたときにしか動かないので、ラベル
-// 「開発機で作業中」が無い間はユーザー）。ほかの実装・検証は担当、検査・待機は事実が動くのを待つ（担当者は Claude）。完了は持ち主なし。
+// 2階: 持ち主（次に結果を出す者）。担当者と振り出しは、どちらもここから導く。ユーザーに問わないと進めない間（回答・保留）はユーザー、
+// 検査・待機は事実が動くのを待つ（担当者は Claude）。実装・検証は、対話作業と開発機のセッションが触っている issue なら開発機のセッションが
+// 進め（ユーザーが開いたときにしか動かないので、ラベル「開発機で作業中」が無い間はユーザー）、ほかは担当。完了は持ち主なし。
 function holder(status, f) {
   if (status === "完了") return null;
   if (WAIT.includes(status)) return "ユーザー";
-  if (f.dialog || f.dev) return f.dev ? "開発機" : "ユーザー";
-  return DISPATCH.includes(status) ? "担当" : "Claude";
+  if (!DISPATCH.includes(status)) return "Claude"; // 検査・待機は事実が動くのを待つ
+  return f.dialog || f.dev ? (f.dev ? "開発機" : "ユーザー") : "担当";
 }
 const owner = (status, f, config) => {
   const h = holder(status, f);
