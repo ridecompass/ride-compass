@@ -18,6 +18,7 @@ description: "タスクを作る担当・確かめる担当として進める手
 - **依存**: 依存とテスト用の DB は担当のワークフローが master の版で入れてある。`git diff --name-only origin/master -- backend/requirements*.txt frontend/package-lock.json`
   で違いが出たら、backend は `python -m pip install -q -r backend/requirements-batch.txt -r backend/requirements-dev.txt`、frontend は
   `npm ci --prefix frontend` と `npx --prefix frontend playwright install chromium` で入れ直す。
+- **置き場の issue**（`ridecompass/ride-compass-tasks`）を gh で読む・書くときは `GH_TOKEN=$FLOW_BOT_TOKEN` を付ける（担当の既定の鍵は置き場を読めず、`gh issue view` が「見つからない」と返す）。
 - **完了の条件のチェック**は `node .claude/skills/task-work/scripts/check.mjs <番号> <条件の文の頭> [...]` で付ける（本文を手で書き換えない）。
 
 **作る担当**
