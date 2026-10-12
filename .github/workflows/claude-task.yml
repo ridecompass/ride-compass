@@ -31,6 +31,10 @@ concurrency:
 
 jobs:
   task:
+    # 担当だけが使うレーン（docs/architecture/tech-stack.md「CIの実行枠」）。
+    concurrency:
+      group: orch/tasks-${{ inputs.issue }}-lane-0
+      queue: max
     # backend のテストを CI と同じ aarch64・同じ PostgreSQL + PostGIS で流す。
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 180

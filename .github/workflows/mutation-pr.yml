@@ -26,6 +26,9 @@ permissions:
 
 jobs:
   changed-functions:
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-5
+      queue: max
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     defaults:

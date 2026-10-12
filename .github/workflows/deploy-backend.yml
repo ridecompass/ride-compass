@@ -17,10 +17,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     # 判定とデプロイを1つのジョブにし、まとめて1本ずつ走らせる。判定だけ先に済ませると、
-    # 後から終わった古いCIの実行が、その間に出た新しいコミットを上書きしうる。
+    # 後から終わった古いCIの実行が、その間に出た新しいコミットを上書きしうる。どの ref から起こしても本番（公開先）は1つなので、
+    # レーンの鍵は master に決めてある（レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
     concurrency:
-      group: deploy-backend
-      cancel-in-progress: false
+      group: master-lane-5
+      queue: max
     steps:
       - uses: actions/checkout@v5
         with:
