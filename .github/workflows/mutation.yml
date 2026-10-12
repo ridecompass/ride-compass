@@ -122,9 +122,10 @@ jobs:
           RECHECK_OUT: /tmp/recheck
         run: |
           mkdir -p "$RECHECK_OUT"
-          python scripts/mutation/importtime.py "$MUT_OUT/results.jsonl" scripts/mutation/recheck.txt
+          recheck=$(python3 -c 'import sys; sys.path.insert(0, "scripts/mutation"); from _shared import RECHECK_LIST; print(RECHECK_LIST)')
+          python scripts/mutation/importtime.py "$MUT_OUT/results.jsonl" "$recheck"
           cd mutants
-          MUT_OUT="$RECHECK_OUT" MUT_STOP_AFTER=1800 python ../scripts/mutation/runner.py ../scripts/mutation/recheck.txt "$RECHECK_OUT/results.jsonl" "$WORKERS"
+          MUT_OUT="$RECHECK_OUT" MUT_STOP_AFTER=1800 python ../scripts/mutation/runner.py "$recheck" "$RECHECK_OUT/results.jsonl" "$WORKERS"
       - if: always() && steps.mode.outputs.full == 'true'
         uses: actions/upload-artifact@v4
         with:
