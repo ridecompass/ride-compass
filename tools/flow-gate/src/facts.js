@@ -76,8 +76,10 @@ function lastMove(config, i, pulls, runs) {
   const times = [i.createdAt, i.editor?.login !== gate && i.lastEditedAt, ...i.comments.nodes.filter((n) => n.author?.login !== gate).map((n) => n.createdAt), ...pulls.flatMap(pr)];
   return Math.max(0, ...times.map((t) => Date.parse(t)).filter(Number.isFinite), ...runs.map((r) => r.at));
 }
-// イレギュラーに「やり直す」と答えたあと（answered はその時刻）、まだ担当の実行が起きていないか（src/decide.js: redo）。
-const redo = (question, answered, runs) => question?.kind === "イレギュラー" && question.answer?.decision === "続ける" && !runs.some((r) => r.at > answered);
+// 担当の終わりのコメントの見出し（.github/claude-task/after.js が書く）。
+const END = /^### \S+担当の終わり/;
+// イレギュラーに「やり直す」と答えたあと（answered はその時刻）、まだ担当が終わっていないか（src/decide.js: redo）。issue に残るコメントで判じる。
+const redo = (question, answered, ends) => question?.kind === "イレギュラー" && question.answer?.decision === "続ける" && !ends.some((t) => t > answered);
 // 外の事情で振り出せない: 担当の枠が埋まっているか（種類ごと）。
 const full = (config, record) => Object.fromEntries(Object.entries(config.slots).map(([kind, n]) => [kind, record.filter((h) => h.state !== "completed" && h.kind === kind).length >= n]));
 
@@ -106,7 +108,7 @@ export async function readFacts(gh, config, number, { record, stopped }) {
   const by = (n, login) => n.author?.login === login;
   const types = i.timelineItems.nodes.map((e) => e.prevIssueType?.name ?? null); // 今より前の種類（古い順）
   const dialog = dialogOf(config, types, i.issueType?.name ?? null);
-  const reads = nodes.filter((n) => by(n, config.claude) && (dialog || /^### \S+担当の終わり/.test(norm(n.body))))
+  const reads = nodes.filter((n) => by(n, config.claude) && (dialog || END.test(norm(n.body))))
     .map((n) => Date.parse(/^読み始め: (\S+)$/m.exec(norm(n.body))?.[1] ?? n.createdAt));
   const lastRead = Math.max(0, ...reads);
   const closedAt = Date.parse(i.closedAt) || 0;
@@ -125,7 +127,7 @@ export async function readFacts(gh, config, number, { record, stopped }) {
   const task = taskOf(config, i, i.projectItems.nodes);
   const asking = task.dropped.length ? droppedQuestion(task.dropped) : null;
   const droppedAsked = Boolean(asking) && (comments.some((x) => x.includes(asking)) || (await allComments(gh, config, number)).some((x) => x.includes(asking)));
-  return { ...task, droppedAsked, lastMove: lastMove(config, i, c.pullRequests.nodes, mine), full: full(config, record), stopped: Boolean(stopped), now: config.now?.() ?? Date.now(), redo: redo(question, answer && at(answer), mine), unread, answerRead, answerApplied, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
+  return { ...task, droppedAsked, lastMove: lastMove(config, i, c.pullRequests.nodes, mine), full: full(config, record), stopped: Boolean(stopped), now: config.now?.() ?? Date.now(), redo: redo(question, answer && at(answer), nodes.filter((n) => END.test(norm(n.body))).map(at)), unread, answerRead, answerApplied, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
     conditions: conditions(i.body), remaining: remaining(i.body), assignees: i.assignees.nodes.map((a) => a.login), question,
     runs, parent: p && { number: p.number }, dead, children: i.subIssues.nodes, origin: Number(/^分割元: #(\d+)\s*$/m.exec(norm(i.body))?.[1]) || null,
     types, dialog,
