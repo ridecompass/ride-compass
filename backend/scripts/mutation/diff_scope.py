@@ -65,7 +65,8 @@ def main():
             found.update(functions(path, lines))
         except FileNotFoundError:
             continue  # ファイルごと消した
-    print("\n".join(sorted(found)))
+    for name in sorted(found):
+        print(name)
 
 
 if __name__ == "__main__":
