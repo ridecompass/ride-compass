@@ -23,10 +23,7 @@
 代表点の座標系は日本測地系2000（EPSG:4612）と2011（EPSG:6668）が混ざり（列`rep_srid`）、どちらも EPSG の変換で 4326 へ移す。
 """
 
-import csv
-import io
 import re
-import zipfile
 from collections import defaultdict
 from collections.abc import AsyncIterator, Generator, Iterable, Iterator
 from dataclasses import dataclass
@@ -39,6 +36,7 @@ import shapely
 from shapely.geometry import Point
 
 from app.batch.ingest import AdapterInputs, SourceRecord, file_origin, register_adapter
+from app.batch.source_adapters.zip_csv import read_zip_csv
 from app.batch.source_profile import SourceProfile, SourceSpec, Target
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "abr"
@@ -47,6 +45,8 @@ DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "abr"
 NATIONWIDE_ARCHIVES = ("mt_pref_all", "mt_pref_pos_all", "mt_city_all", "mt_city_pos_all", "mt_town_fullset_all")
 #: 配布元の URL の形。全国の1ファイルは`<種類>/<名前>.csv.zip`、町字の位置参照拡張は都道府県ごと。
 BASE_URL = "https://data.address-br.digital.go.jp"
+#: 配布の CSV の文字コード（BOM 付きの UTF-8）。
+ENCODING = "utf-8-sig"
 
 
 @dataclass(frozen=True)
@@ -93,10 +93,7 @@ def archive_path(snapshot: str, stem: str) -> Path:
 
 def read_rows(path: Path) -> Generator[dict[str, str]]:
     """配布の zip の中の CSV（1つ）を、列の名前 → 値の行で流す。"""
-    with zipfile.ZipFile(path) as archive:
-        [member] = archive.namelist()
-        with archive.open(member) as raw:
-            yield from csv.DictReader(io.TextIOWrapper(raw, encoding="utf-8-sig", newline=""))
+    return read_zip_csv(path, ENCODING)
 
 
 def _has_point(row: dict[str, str]) -> bool:

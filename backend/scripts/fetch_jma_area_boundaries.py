@@ -24,7 +24,6 @@ import zipfile
 from collections import defaultdict
 from pathlib import Path
 
-import httpx
 import shapefile
 import shapely
 from shapely.geometry import shape
@@ -33,6 +32,7 @@ from shapely.geometry.base import BaseGeometry
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.batch.common import fetch_verified
+from app.batch.fetch_cli import run_fetch_cli
 from app.infrastructure import jma_area_boundaries
 
 logger = logging.getLogger("ridecompass.fetch_jma_area_boundaries")
@@ -43,7 +43,7 @@ logger = logging.getLogger("ridecompass.fetch_jma_area_boundaries")
 SIMPLIFY_TOLERANCE_DEG = 0.0001
 
 _CODE_FIELD = "regioncode"
-_DOWNLOAD_TIMEOUT_SECONDS = 600.0
+_READ_TIMEOUT_SECONDS = 600.0
 
 
 def read_areas(archive_path: Path) -> dict[str, BaseGeometry]:
@@ -78,22 +78,17 @@ def _remove_other_versions(keep: Path) -> None:
             logger.info("他の版を消した %s", path.name)
 
 
-def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+def fetch() -> bool:
     destination = jma_area_boundaries.BOUNDARY_PATH
     if destination.exists():
         logger.info("既にある %s", destination)
         _remove_other_versions(destination)
-        return 0
+        return True
 
     archive = destination.with_suffix(".zip")
-    try:
-        if not fetch_verified(jma_area_boundaries.SOURCE_URL, archive, zipfile.is_zipfile,
-                              timeout=_DOWNLOAD_TIMEOUT_SECONDS, logger=logger):
-            return 1
-    except (httpx.HTTPError, OSError) as exc:
-        logger.error("取得に失敗しました url=%s error=%r", jma_area_boundaries.SOURCE_URL, exc)
-        return 1
+    if not fetch_verified(jma_area_boundaries.SOURCE_URL, archive, zipfile.is_zipfile,
+                          read_timeout=_READ_TIMEOUT_SECONDS, logger=logger):
+        return False
 
     started = time.perf_counter()
     areas = read_areas(archive)
@@ -103,8 +98,15 @@ def main() -> int:
                 sum(shapely.get_num_coordinates(geometry) for geometry in areas.values()),
                 time.perf_counter() - started)
     _remove_other_versions(destination)
-    return 0
+    return True
+
+
+def main() -> int:
+    return run_fetch_cli(fetch, logger=logger)
 
 
 if __name__ == "__main__":
+    from _stdio import use_utf8_stdio
+
+    use_utf8_stdio()
     raise SystemExit(main())
