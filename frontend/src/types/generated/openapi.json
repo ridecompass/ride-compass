@@ -2684,15 +2684,11 @@
             "title": "Osm Way Id"
           },
           "feature_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Feature Key"
+          },
+          "point": {
+            "$ref": "#/components/schemas/Coordinates"
           },
           "z": {
             "type": "integer",
@@ -2756,6 +2752,8 @@
         "type": "object",
         "required": [
           "osm_way_id",
+          "feature_key",
+          "point",
           "z",
           "x",
           "y",
@@ -2776,32 +2774,11 @@
             "type": "object",
             "title": "Tags"
           },
-          "axes": {
-            "items": {
-              "$ref": "#/components/schemas/AxisInspectorAxis"
-            },
-            "type": "array",
-            "title": "Axes"
+          "segment": {
+            "$ref": "#/components/schemas/InspectorValues"
           },
-          "composite_difficulty": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/InspectorComposite"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "landcover": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LandcoverPercentages"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "way": {
+            "$ref": "#/components/schemas/InspectorValues"
           }
         },
         "additionalProperties": false,
@@ -2809,9 +2786,8 @@
         "required": [
           "highway",
           "tags",
-          "axes",
-          "composite_difficulty",
-          "landcover"
+          "segment",
+          "way"
         ],
         "title": "AxisInspectorResult"
       },
@@ -3676,6 +3652,45 @@
           "covered_weight_fraction"
         ],
         "title": "InspectorComposite"
+      },
+      "InspectorValues": {
+        "properties": {
+          "axes": {
+            "items": {
+              "$ref": "#/components/schemas/AxisInspectorAxis"
+            },
+            "type": "array",
+            "title": "Axes"
+          },
+          "composite_difficulty": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InspectorComposite"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "landcover": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LandcoverPercentages"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "axes",
+          "composite_difficulty",
+          "landcover"
+        ],
+        "title": "InspectorValues"
       },
       "JmaTileIndexAvailable": {
         "properties": {

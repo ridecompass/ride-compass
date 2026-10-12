@@ -26,7 +26,16 @@ const AXES = [axis("axis_sample", "見本の軸", "車の通行量の説明"), a
 const AXIS_COLORS: Record<string, string> = { axis_sample: "#111111", night: "#222222" };
 /** 地図がいつも渡す走行の条件（押した点のタイル込み）と重み（nullは既定の重み）。 */
 const RIDE = {
-  conditions: { bearingDeg: 0, at: new Date("2026-09-24T00:00:00Z"), speedKmh: 20, z: 14, x: 1, y: 2 },
+  conditions: {
+    bearingDeg: 0,
+    at: new Date("2026-09-24T00:00:00Z"),
+    speedKmh: 20,
+    z: 14,
+    x: 1,
+    y: 2,
+    latitude: 35.6,
+    longitude: 139.4,
+  },
   routePreference: null,
 };
 /** 路面の区分の項目名と、呼び名を持つ値の1つ（書き写さず材料カタログから引く）。 */
@@ -36,7 +45,11 @@ const [SURFACE_CLASS_VALUE] = Object.entries(SURFACE_CLASS.value_labels ?? {}).f
 )!;
 
 /** 路面の区分を持つ1本の道。 */
-const SURFACED_ROAD: RoadSurfacePopupProperties = { osm_way_id: 1, surface_class: SURFACE_CLASS_VALUE };
+const SURFACED_ROAD: RoadSurfacePopupProperties = {
+  osm_way_id: 1,
+  feature_key: "1",
+  surface_class: SURFACE_CLASS_VALUE,
+};
 
 function renderPopup(properties: RoadSurfacePopupProperties = SURFACED_ROAD) {
   return render(<RoadInspectorPopup properties={properties} axes={AXES} axisColors={AXIS_COLORS} {...RIDE} />);
@@ -44,10 +57,18 @@ function renderPopup(properties: RoadSurfacePopupProperties = SURFACED_ROAD) {
 
 const openEvaluation = (user: UserEvent) => user.click(screen.getByRole("button", { name: "この道の評価を見る" }));
 
-function inspectorResult(): AxisInspectorResult {
+/** 道1本の評価（窓が出すもの）を`way`で差し替えた応答。押した区間の評価は、窓が出さない値にする。 */
+function inspectorResult(way: Partial<AxisInspectorResult["way"]> = {}): AxisInspectorResult {
   return {
     highway: "residential",
     tags: { lit: "yes", name: "明治通り" },
+    segment: { axes: [], composite_difficulty: { value: 99, covered_weight_fraction: 1 }, landcover: null },
+    way: { ...wayValues(), ...way },
+  };
+}
+
+function wayValues(): AxisInspectorResult["way"] {
+  return {
     axes: [
       { axis_id: "axis_sample", difficulty: 57.8, contribution: 30 },
       { axis_id: "night", difficulty: 20, contribution: 10 },
@@ -114,13 +135,14 @@ describe("RoadInspectorPopup", () => {
 
   it("どの軸の寄与も0の道では、帯の代わりに値を出せる軸が無いと案内する（空の欄にしない）", async () => {
     const user = userEvent.setup();
-    serveInspector({
-      ...inspectorResult(),
-      axes: [
-        { axis_id: "axis_sample", difficulty: 0, contribution: 0 },
-        { axis_id: "night", difficulty: 0, contribution: 0 },
-      ],
-    });
+    serveInspector(
+      inspectorResult({
+        axes: [
+          { axis_id: "axis_sample", difficulty: 0, contribution: 0 },
+          { axis_id: "night", difficulty: 0, contribution: 0 },
+        ],
+      }),
+    );
     renderPopup();
 
     await openEvaluation(user);
@@ -141,7 +163,7 @@ describe("RoadInspectorPopup", () => {
 
   it("出す割合が100%に丸まるなら、一部の軸だけだという注記を添えない", async () => {
     const user = userEvent.setup();
-    serveInspector({ ...inspectorResult(), composite_difficulty: { value: 40, covered_weight_fraction: 0.996 } });
+    serveInspector(inspectorResult({ composite_difficulty: { value: 40, covered_weight_fraction: 0.996 } }));
     renderPopup();
 
     await openEvaluation(user);
@@ -189,7 +211,7 @@ describe("評価の重み", () => {
   it("重みを変えたら、前の重みで取った評価を見せずに取り直しへ戻る", async () => {
     const user = userEvent.setup();
     serveInspector(inspectorResult());
-    const props = { properties: { osm_way_id: 1 }, axes: AXES, axisColors: AXIS_COLORS, ...RIDE };
+    const props = { properties: { osm_way_id: 1, feature_key: "1" }, axes: AXES, axisColors: AXIS_COLORS, ...RIDE };
     const { rerender } = render(<RoadInspectorPopup {...props} routePreference={WEIGHTS} />);
     await openEvaluation(user);
     await waitFor(() => expect(screen.getByText(/この道だけで見た難易度/)).toBeInTheDocument());
@@ -203,7 +225,7 @@ describe("評価の重み", () => {
 
 describe("評価の走行の条件", () => {
   const CONDITIONS = RIDE.conditions;
-  const props = { properties: { osm_way_id: 1 }, axes: AXES, axisColors: AXIS_COLORS, ...RIDE };
+  const props = { properties: { osm_way_id: 1, feature_key: "1" }, axes: AXES, axisColors: AXIS_COLORS, ...RIDE };
 
   it("開いている間に出発時刻が進んでも、押したときの条件で取った評価を出し続ける", async () => {
     const user = userEvent.setup();

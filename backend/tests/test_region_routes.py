@@ -6,15 +6,13 @@ check_tile_index`が持ち、ここでは入口ごとにそれを使っている
 タイルをキャッシュさせないこと（`_tile_http.py: tile_response`）、宣言に無い点のレイヤー・公開していない軸の404、
 地図のレンズが印の無い軸もタイルの材料から塗ること、軸の葉の材料を配るサービスの条件の欠けの422
 （`domain/dynamic_way_values.py: assemble_conditions`）、土地被覆のラスタが無いときの503、
-区間インスペクタが条件の揃った材料だけを足すこと（`services/dedicated_way_values.py: DirectionalMaterialService`）、
 種類ごとに別に数えるレート制限。
 
-差し替えるのは、注入されるサービス（`RegionService`・配信サービス・タイルの材料の読み出し。地図のレンズは
-それらの代役で組んだ本物の`AxisWayValueLens`を、区間インスペクタは代役の`RegionService`と材料で組んだ本物の
-`AxisInspectorService`を注入する）・土地被覆のタイルの取得・道路網の読み出し・レート制限の記録だけ。
+差し替えるのは、注入されるサービス（`RegionService`・配信サービス・タイルの材料の読み出し・区間インスペクタ。地図のレンズは
+それらの代役で組んだ本物の`AxisWayValueLens`を注入する）・土地被覆のタイルの取得・道路網の読み出し・レート制限の記録だけ。
 
 ここで見ないもの:
-- タイルの中身とキャッシュ → `test_region_service.py`・`test_landcover_tile.py`
+- タイルの中身とキャッシュ、区間インスペクタが出す値 → `test_region_service.py`・`test_landcover_tile.py`
 - 地図が塗る値への写し方 → `test_dynamic_way_values.py`
 - タイルの材料の読み出しとキャッシュ → `test_feature_materials.py`
 - 重みの検証（公開軸をすべて明示する等） → `test_routes_generate.py`（同じ`RoutePreferenceWeights`）
@@ -47,7 +45,7 @@ from app.domain.axis_definitions import (
     copy_axis_definitions,
 )
 from app.config import settings
-from app.domain.axis_inspector import AxisInspectorAxis, AxisInspectorResult, InspectorComposite
+from app.domain.axis_inspector import AxisInspectorAxis, AxisInspectorResult, InspectorComposite, InspectorValues
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
 from app.infrastructure import rate_limiter
 from app.infrastructure.derived_data_meta import DataRevisions
@@ -57,11 +55,13 @@ from app.infrastructure.region_tile_cache import TileResponse
 from app.domain.dynamic_way_values import (
     FeatureMaterials,
     FeatureSegments,
+    WayValueQuery,
     paint_feature_values,
     paint_folded_feature_values,
 )
-from app.services.dedicated_way_values import AxisWayValueLens, DirectionalMaterialService
-from app.services.region_service import AxisInspectorService
+from app.domain.geo import LatLon
+from app.domain.route_preference import RoutePreference
+from app.services.dedicated_way_values import AxisWayValueLens
 from app.services.gradient_way_service import GradientConditions
 from app.services.wind_way_service import WindConditions
 from app.main import app
@@ -76,13 +76,11 @@ POINT_LAYER = next(iter(POINT_TILE_LAYERS))
 
 
 class FakeRegionService:
-    def __init__(self, tile_bytes=b"\x00\x01\x02", axis_inspector_result=None, cacheable=True):
+    def __init__(self, tile_bytes=b"\x00\x01\x02", cacheable=True):
         self._tile_bytes = tile_bytes
-        self._axis_inspector_result = axis_inspector_result
         self._cacheable = cacheable
         # 頼まれたタイル（点のレイヤーの名前・路面ならNone、z、x、y）
         self.tile_request = None
-        self.last_axis_inspector_request = None
 
     async def get_road_surface_tile(self, z, x, y):
         self.tile_request = (None, z, x, y)
@@ -92,21 +90,22 @@ class FakeRegionService:
         self.tile_request = (layer.name, z, x, y)
         return TileResponse(self._tile_bytes, cacheable=self._cacheable)
 
-    async def get_axis_inspector(self, osm_way_id, edge_id=None, dynamic_materials=None, preference=None):
-        self.last_axis_inspector_request = (osm_way_id, edge_id, dynamic_materials)
-        self.last_axis_inspector_preference = preference
-        return self._axis_inspector_result
+class FakeAxisInspector:
+    """区間インスペクタの代役。受け取ったものを残し、決めた結果を返す。"""
+
+    def __init__(self, result: AxisInspectorResult | None = None):
+        self._result = result
+        self.request = None
+
+    async def inspect(self, osm_way_id: int, feature_key: str, z: int, x: int, y: int, point: LatLon,
+                      query: WayValueQuery, preference: RoutePreference | None) -> AxisInspectorResult | None:
+        self.request = (osm_way_id, feature_key, z, x, y, (point.latitude, point.longitude), query, preference)
+        return self._result
 
 
-class NoDirectionalMaterials:
-    """専用配信の材料を引かない代役（材料の受け渡しを見ないテストが使う）。"""
-
-    async def materials(self, *args):
-        return {}
-
-
-#: 区間インスペクタの要求が必ず運ぶもの（押した道・押したタイル・走行方位）。
-INSPECTED = {"osm_way_id": 12345, "z": 14, "x": 14551, "y": 6447, "bearing_deg": 90.0}
+#: 区間インスペクタの要求が必ず運ぶもの（押した道・押したフィーチャー・押した地点・押したタイル・走行方位）。
+INSPECTED = {"osm_way_id": 12345, "feature_key": "12345-0", "point": {"latitude": 35.6, "longitude": 139.4},
+             "z": 14, "x": 14551, "y": 6447, "bearing_deg": 90.0}
 
 
 # 一時的な失敗（DB障害・混雑）で取れなかった空タイルを1時間キャッシュさせると、サーバーが回復した後も
@@ -165,9 +164,7 @@ def test_region_tiles_hand_the_services_mvt_over(path, cacheable, requested, cac
 def test_region_requests_outside_each_quantitys_range_are_refused(path, inspected):
     app.dependency_overrides[get_region_service] = lambda: FakeRegionService()
     app.dependency_overrides[get_dedicated_way_value_service] = lambda: _lens(SIGNED)
-    app.dependency_overrides[get_axis_inspector_service] = lambda: AxisInspectorService(
-        FakeRegionService(), NoDirectionalMaterials()
-    )
+    app.dependency_overrides[get_axis_inspector_service] = lambda: FakeAxisInspector()
 
     try:
         response = client.get(path) if inspected is None else client.post(path, json={**INSPECTED, **inspected})
@@ -200,9 +197,7 @@ def test_each_kind_of_region_request_is_counted_on_its_own():
     point = "/api/region/point-tiles/{}/14/14551/6447.pbf"
     app.dependency_overrides[get_region_service] = lambda: FakeRegionService()
     app.dependency_overrides[get_dedicated_way_value_service] = lambda: _lens(SIGNED)
-    app.dependency_overrides[get_axis_inspector_service] = lambda: AxisInspectorService(
-        FakeRegionService(), NoDirectionalMaterials()
-    )
+    app.dependency_overrides[get_axis_inspector_service] = lambda: FakeAxisInspector()
 
     try:
         # 上限-1件は実HTTPを経由せず記録を直接埋め、境界の1回だけ実リクエストで見る。
@@ -226,93 +221,35 @@ def test_each_kind_of_region_request_is_counted_on_its_own():
     assert others == [200] * len(others)
 
 
-def test_region_axis_inspector_hands_the_maps_direction_and_the_result_over():
-    """地図が指定している走行方位・時刻・想定速度が、方向依存の材料を引く側まで届き、引いた値と
-    クリックされたフィーチャーの識別子がサービスへ渡り、その結果が応答になる。
+def test_region_axis_inspector_hands_the_pressed_feature_and_the_maps_conditions_over():
+    """押した道・フィーチャー・地点・タイルと、地図が指定している走行方位・時刻・想定速度がサービスへ渡り、その結果が
+    応答になる。
 
-    届かないと、1本の道が往復2方向で違う値を持つ材料（勾配・風）を算出できず、地図が色を塗っている
-    軸だけが内訳で「データなし」になる。識別子が届かないと、地図が区間単位で塗っている道でも内訳だけが
-    way単位になり、同じ場所で色と数字が食い違う。
+    条件が届かないと、1本の道が往復2方向で違う値を持つ材料（勾配・風）を算出できず、地図が色を塗っている軸だけが
+    内訳で「データなし」になる。フィーチャー・地点が届かないと、押した区間とは別の区間の値が出る。
     """
-    result = AxisInspectorResult(
-        highway="primary",
-        tags={},
+    values = InspectorValues(
         axes=[AxisInspectorAxis(axis_id="axis_b", difficulty=75.0, contribution=75.0)],
         composite_difficulty=InspectorComposite(value=75.0, covered_weight_fraction=1.0),
+        landcover=None,
     )
-    fake = FakeRegionService(axis_inspector_result=result)
-    seen = {}
-
-    class FakeDirectionalMaterialService:
-        async def materials(self, *args):
-            seen["args"] = args
-            return {"some_material": 4.2}
-
-    app.dependency_overrides[get_axis_inspector_service] = lambda: AxisInspectorService(
-        fake, FakeDirectionalMaterialService()
-    )
+    result = AxisInspectorResult(highway="primary", tags={}, segment=values, way=values)
+    fake = FakeAxisInspector(result)
+    app.dependency_overrides[get_axis_inspector_service] = lambda: fake
     try:
         response = client.post(
             "/api/region/axis-inspector",
-            json={
-                "osm_way_id": 12345,
-                "feature_key": "way-12345-seg0-fwd",
-                "z": 14,
-                "x": 14551,
-                "y": 6447,
-                "bearing_deg": 90.0,
-                "at": "2026-09-21T09:00:00+00:00",
-                "speed_kmh": 20.0,
-            },
+            json={**INSPECTED, "at": "2026-09-21T09:00:00+00:00", "speed_kmh": 20.0},
         )
     finally:
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
     assert response.json() == result.model_dump()
-    assert seen["args"] == (
-        12345,
-        "way-12345-seg0-fwd",
-        14,
-        14551,
-        6447,
-        datetime(2026, 9, 21, 9, 0, tzinfo=timezone.utc),
-        90.0,
-        20.0,
+    assert fake.request[:7] == (
+        12345, "12345-0", 14, 14551, 6447, (35.6, 139.4),
+        WayValueQuery(at=datetime(2026, 9, 21, 9, 0, tzinfo=timezone.utc), bearing_deg=90.0, speed_kmh=20.0),
     )
-    assert fake.last_axis_inspector_request == (
-        12345,
-        "way-12345-seg0-fwd",
-        {"some_material": 4.2},
-    )
-
-
-# 地図の配信なら422になる欠けは、内訳ではその材料だけを「データなし」にする（同じ組み立てで判定する）。
-@pytest.mark.usefixtures("dedicated_axes")
-@pytest.mark.parametrize(
-    ("given", "found"),
-    [
-        ({}, {"gradient_percent": 2.0}),
-        ({"speed_kmh": 20.0}, {"gradient_percent": 2.0, "wind_drag_ratio": 1.0}),
-    ],
-)
-def test_region_axis_inspector_leaves_out_materials_whose_conditions_are_missing(given, found):
-    fake = FakeRegionService(axis_inspector_result=None)
-    services = {
-        "wind_drag_ratio": FakeDynamicWayValueService({"12345": 1.0}, "wind_drag_ratio", WindConditions),
-        "gradient_percent": FakeDynamicWayValueService({"12345": 2.0}, "gradient_percent", GradientConditions),
-    }
-    app.dependency_overrides[get_axis_inspector_service] = lambda: AxisInspectorService(
-        fake, DirectionalMaterialService(services.__getitem__)
-    )
-
-    try:
-        response = client.post("/api/region/axis-inspector", json={**INSPECTED, **given})
-    finally:
-        app.dependency_overrides.clear()
-
-    assert response.status_code == 200
-    assert fake.last_axis_inspector_request[2] == found
 
 
 class FakeDynamicWayValueService:
@@ -605,12 +542,12 @@ def weighted_axes():
 @pytest.mark.usefixtures("weighted_axes")
 def test_region_axis_inspector_uses_the_weights_it_is_sent():
     """合成は利用者がいま設定している重みで計算する。送らなければ既定の重み。"""
-    fake = FakeRegionService(axis_inspector_result=None)
-    app.dependency_overrides[get_axis_inspector_service] = lambda: AxisInspectorService(fake, NoDirectionalMaterials())
+    fake = FakeAxisInspector()
+    app.dependency_overrides[get_axis_inspector_service] = lambda: fake
     weights = {axis_id: 0.0 for axis_id in _WEIGHTED_AXES}
     try:
         sent = client.post("/api/region/axis-inspector", json={**INSPECTED, "route_preference": weights})
-        sent_preference = fake.last_axis_inspector_preference
+        sent_preference = fake.request[-1]
         omitted = client.post("/api/region/axis-inspector", json=INSPECTED)
     finally:
         app.dependency_overrides.clear()
@@ -618,4 +555,4 @@ def test_region_axis_inspector_uses_the_weights_it_is_sent():
     assert sent.status_code == 200
     assert sent_preference.weights == weights
     assert omitted.status_code == 200
-    assert fake.last_axis_inspector_preference is None
+    assert fake.request[-1] is None

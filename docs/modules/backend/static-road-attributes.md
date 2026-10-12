@@ -600,15 +600,14 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
   OSMタグのまま焼き込む。前後空白を落とし、空になればキーごと省く（名前を持たないwayが
   大多数のためタイルが軽くなる、密度の`NULLIF`と同じ流儀）。**対訳表を持たない第三者編集
   データ**のため、埋め込む側は必ずエスケープする（[静的レイヤー・道路表示](../frontend/static-map-layers.md)）。
-- `get_axis_inspector(osm_way_id, edge_id, dynamic_materials, preference)`（区間インスペクタ）: クリックされたフィーチャーの
-  `osm_way_id`で該当行を完全一致で引き直す（緯度経度からの空間マッチ最近傍だと、
-  交差点付近で実際にクリックされたフィーチャーとは別の道路を拾いうるため採用しない）。
-  一次属性→[評価・スコアリング](evaluation-scoring.md)の`axis_inspector_breakdown`で
-  二次軸スコア・三次合成コスト（取得可能な軸だけの参考値）を返す。
-  進行方向に依存する材料（`dynamic_materials`）は、同じファイルの`AxisInspectorService.inspect`が
-  専用配信の材料（`services/dedicated_way_values.py: DirectionalMaterialService`）から地図と同じ経路で引いてから渡す。
-  ルーターは`inspect`を1回呼ぶだけで、2つの部品を束ねるのは`api/dependencies.py: get_axis_inspector_service`。
-  2つは同じセッションで順に引き、1回の内訳が持つDBの接続は1本（プールはタイル配信と分け合う）。
+- `inspected_road(osm_way_id, feature_key, z, x, y, point)`（区間インスペクタ）: クリックされたフィーチャーの
+  `osm_way_id`で道を完全一致で引き直し（緯度経度からの空間マッチ最近傍だと、交差点付近で実際にクリックされた
+  フィーチャーとは別の道路を拾いうるため採用しない）、一次属性と、評価する押した区間・道1本のフィーチャー（鍵・
+  評価するタイル・土地被覆）を返す。押した地点は、道1本で塗る倍率で押したときにその道の区間を選ぶのにだけ使う。
+  得点と合成は同じファイルの`AxisInspectorService.inspect`が、地図の配信と同じ値から出す
+  （[動的材料・フィーチャー値配信](dynamic-way-values.md)「区間インスペクタの値」）。
+  ルーターは`inspect`を1回呼ぶだけで、部品を束ねるのは`api/dependencies.py: get_axis_inspector_service`。
+  どれも同じセッションで順に引き、1回の内訳が持つDBの接続は1本（プールはタイル配信と分け合う）。
 - `get_accident_years()`: 事故データの収録年（今の派生の表を作った事故の取込の宣言。「事故の帰属」）。[軸スタジオ](axis-studio.md)の
   `GET /api/axis-catalog`がそのまま地図の説明文へ配り、年の数で割る実行時スケール定数も
   ここから組み立てる（読めず空なら定数を配らない）。
