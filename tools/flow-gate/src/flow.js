@@ -29,8 +29,9 @@ export async function handle(gh, { inbox }, config, name, payload) {
   // 閉じた・開き直した issue（出来事が指すものと、ゲートがいま閉じたもの）の矢印1本の先も、閉じるものが無くなるまで、振り出す前に決め直す
   // （古いステータスで親を振り出さない）。先の番号は、決め直しで読んだ事実にある。
   const seen = new Set(numbers);
-  for (let wave = settled, first = true; wave.length; first = false) {
-    const next = [...new Set(wave.filter((s) => (first && around) || s.closedNow).flatMap((s) => s.near))].filter((n) => !seen.has(n));
+  const spreads = (s) => s.closedNow || (around && numbers.includes(s.number));
+  for (let wave = settled; wave.length;) {
+    const next = [...new Set(wave.filter(spreads).flatMap((s) => s.near))].filter((n) => !seen.has(n));
     next.forEach((n) => seen.add(n));
     wave = await Promise.all(next.map((n) => settle(gh, config, n, runs)));
     settled.push(...wave);

@@ -4,7 +4,7 @@
 // 次のステータスは出さない。答えはユーザーの名義（env.FORM_TOKEN）でコメントに書き、ラベルの付け外しも同じ名義で、同じ1回の要求で書く。
 // 行き先はゲートが答えから決め、書いた文があれば Claude が読んでから当てる。
 import { GitHub } from "./github.js";
-import { jstText } from "./facts.js";
+import { byName, jstText } from "./facts.js";
 import { NONE, answerBody, answerProblem, isQuestion, isQuestionLabel, latestQuestion } from "./questions.js";
 
 const RECENT = 5; // 材料に載せる最近のコメント（上に出した問いのコメントは数えない）
@@ -53,7 +53,7 @@ async function read(gh, config, number) {
   const question = latestQuestion(comments.map((c) => c.body), config.questionForms); // ゲートと同じく、形に合わない問いは問いとして読まない
   const asked = comments.findLast((c) => isQuestion(c.body));
   // 問いのラベルはゲートだけが付け外しするので、ラベルの欄に出さず、送っても変えない。
-  return { issue, comments, asked, question, ids: Object.fromEntries(labels.nodes.map((l) => [l.name, l.id])),
+  return { issue, comments, asked, question, ids: byName(labels),
     all: labels.nodes.map((l) => l.name).filter((n) => !isQuestionLabel(n)), have: issue.labels.nodes.map((l) => l.name) };
 }
 
@@ -65,9 +65,9 @@ const fold = (title, inner, open = false) => (inner ? `<details${open ? " open" 
 // 書く者が立てた案なら1行ずつの丸に「どれでもない（書く欄に書く）」を添える。
 function answerField(q) {
   const { check, rows } = q.form;
-  if (check) return `<p class="sec">項目</p><ul class="items">${q.items.map((t, i) => `<li>${esc(t)}<input type="hidden" name="item${i}" value="${esc(t)}"></li>`).join("")}</ul>
+  if (check) return `<p class="sec">項目</p><ul class="items">${q.rows.map((t, i) => `<li>${esc(t)}<input type="hidden" name="item${i}" value="${esc(t)}"></li>`).join("")}</ul>
     ${box("checkbox", "done", "on", `${check}（上の全部）`, "", "check")}`;
-  return `<p class="sec">回答</p>${rows ? seg("choice", q.plans) : [...q.plans, NONE].map((p) => box("radio", "choice", p, p)).join("")}`;
+  return `<p class="sec">回答</p>${rows ? seg("choice", q.rows) : [...q.rows, NONE].map((p) => box("radio", "choice", p, p)).join("")}`;
 }
 
 async function submit(gh, env, config, number, form) {
@@ -76,7 +76,7 @@ async function submit(gh, env, config, number, form) {
   if (form.get("question") !== q.text) return { error: "問いが新しくなっています。開き直してください。" };
   // 項目は開いたときの文で送られる。今の問いの項目と違えば、開いたあとに問いが変わったので開き直してもらう。
   const items = [...form.keys()].filter((k) => /^item\d+$/.test(k)).map((k) => form.get(k));
-  if (JSON.stringify(items) !== JSON.stringify(q.items)) return { error: "問いが新しくなっています。開き直してください。" };
+  if (q.form.check && JSON.stringify(items) !== JSON.stringify(q.rows)) return { error: "問いが新しくなっています。開き直してください。" };
   const answer = { choice: form.get("choice"), done: Boolean(q.form.check) && form.get("done") === "on", text: String(form.get("note") ?? "").trim() };
   const problem = answerProblem(q, answer);
   if (problem) return { error: problem };

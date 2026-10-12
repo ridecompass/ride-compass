@@ -48,7 +48,7 @@ function runStatus(f, status) {
 // ゲートが読める事実から出ていない（ゲートは問いの中身を読まない）ので、答えるまで読む。
 function stale(f, q) {
   if (q.kind === "確かめ") return f.remaining.some((c) => c.verify !== "ユーザー"); // 残りが確かめだけでなくなった
-  if (q.kind === "イレギュラー") return f.prMoved > q.at; // 手放したあとに、作業ブランチの PR が開かれたかマージされた
+  if (q.kind === "イレギュラー") return f.handed > q.at; // 手放したあとに、作業ブランチで次の持ち主へ渡した
   return Boolean(droppedOf(q.text)?.some((n) => !f.dropped.includes(n))); // 見送りだった相手が見送りでなくなった
 }
 
@@ -71,6 +71,9 @@ function notice(f, status) {
   return text && text !== f.comments.at(-1) ? text : null;
 }
 
+// 入口で採否を問う issue: Claude が起こした要望。子と分割元のある切り出しは、採否を親か元から受け継ぐ（src/facts.js も、これで探すかを決める）。
+export const adoptable = (f, config) => f.author === config.claude && f.type === "要望" && !f.parent && !f.origin;
+
 function status(f, config) {
   // 完了は、完成（完了の条件が全部済んだ）か見送りでだけ受ける。条件が残ったまま完成で閉じたら、誰が閉じても開き直して決め直す。
   // ボードで完了へ動かしても、開いているなら下で事実から決め直す。
@@ -82,8 +85,8 @@ function status(f, config) {
   if (f.runs.length) return f.status === "保留" ? { status: "保留", cancel: f.runs.map((r) => r.id) }
     : { status: f.runs.some((r) => r.kind === "実装") ? "実装" : "検証", cancel: f.runs.slice(1).map((r) => r.id) };
   if (f.status === "保留") return { status: "保留" }; // ユーザーが置いた保留は、ユーザーが出すまで保つ
-  // 入口: Claude が起こした要望だけ、採否を一度問う。子と分割したものは、採否を親か分割元から受け継ぐ。
-  if (!f.adoptAsked && f.author === config.claude && f.type === "要望" && !f.parent && !f.origin) return { status: "回答", ask: "採否" };
+  // 入口: 採否を問う issue（adoptable）には、一度だけ問う。
+  if (adoptable(f, config) && !f.adoptAsked) return { status: "回答", ask: "採否" };
   // ユーザーが書いた文（答えの文・コメント）を Claude がまだ読んでいなければ、Claude の番にする（閉じていれば開き直す）。ゲートは文の中身を読まない。
   if (f.unread) return { status: "実装" };
   // 答えの無い問いがあっても、完了の条件が全部済んだら完成にする（済んだ作業への問いは要らない）。採否は、条件が済んでいても着手するかの答えが要る。

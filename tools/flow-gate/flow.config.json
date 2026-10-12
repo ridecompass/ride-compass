@@ -11,8 +11,8 @@
   "urls": { "gate": "https://ridecompass-gate.h7g4bin.workers.dev", "form": "https://ride-compass-answer.h7g4bin.workers.dev" },
   "dialogType": "対話作業",
   "fields": {
-    "status": {"name": "ステータス", "values": ["実装", "検査", "検証", "回答", "保留", "待機", "完了"]},
-    "run": {"name": "実行の status", "values": ["requested", "queued", "waiting", "pending", "in_progress", "completed"]},
+    "status": {"name": "ステータス"},
+    "run": {"name": "実行の status"},
     "priority": {"name": "優先度", "id": "IFSS_kgDOAuBdcg", "options": {"中": "IFSSO_kgDOBQkZCA", "低": "IFSSO_kgDOBQkZCQ", "高": "IFSSO_kgDOBQkZBw"}},
     "size": {"name": "規模", "id": "IFSS_kgDOAuBdcw", "options": {"L": "IFSSO_kgDOBQkZDA", "M": "IFSSO_kgDOBQkZCw", "S": "IFSSO_kgDOBQkZCg"}},
     "start": {"name": "着手可能日時", "id": "IFT_kgDOAuBddA"}

@@ -6,25 +6,18 @@
 //   子の本文に同じ文の条件があれば足さない（流し直してよい）。
 // 読むのは開いた issue の一覧（100件ごとに1回）、書くのはまとめた書き込み（25件ごとに1回）。既定は直す中身を出すだけで、--write のときだけ書く。
 // 使い方: node tools/flow-gate/migrate-842.mjs [--write]
-import { execFileSync } from "node:child_process";
-import { config } from "./src/bot.js";
+import { bot, config, graphqlData } from "./src/bot.js";
+import { batch } from "./src/gate.js";
+import { pages } from "./src/github.js";
 import { askText, checkQuestion, conditions, isQuestion, norm } from "./src/questions.js";
 
 const write = process.argv.includes("--write");
 const { owner, name } = config.repos.tasks;
-// 開いた issue の本文とコメントをまとめて読むので、応答は 1MB（execFileSync の既定の上限）を超える。
-const gql = (query, variables) => {
-  const out = execFileSync("gh", ["api", "graphql", "--input", "-"], { input: JSON.stringify({ query, variables }), encoding: "utf8", maxBuffer: 256 * 1024 * 1024,
-    env: { ...process.env, GH_TOKEN: process.env.FLOW_BOT_TOKEN } });
-  const r = JSON.parse(out);
-  if (r.errors) throw new Error(JSON.stringify(r.errors));
-  return r.data;
-};
+const gh = bot();
 
-const GATE = ["採否", "確かめ", "イレギュラー"];
 function question(text, body) {
   const head = /^## 問い(?:（(.+)）)?/.exec(text)?.[1] ?? "判断";
-  if (GATE.includes(head)) {
+  if (config.questionForms[head]?.by === "ゲート") {
     const mine = conditions(body).filter((c) => c.verify === "ユーザー");
     const left = mine.filter((c) => !c.done);
     return askText(head, config.questionForms, left.length ? left : mine);
@@ -61,14 +54,9 @@ function withConditions(body, rows) {
 }
 
 // 開いた issue と、その子（閉じた子も）の本文・最新のコメント。
-const issues = [];
-for (let after = null; ;) {
-  const r = gql(`query($o:String!,$n:String!,$a:String){repository(owner:$o,name:$n){issues(states:OPEN,first:100,after:$a){pageInfo{hasNextPage endCursor}
-    nodes{id number body comments(last:40){nodes{id body}} subIssues(first:50){nodes{id number body}}}}}}`, { o: owner, n: name, a: after }).repository.issues;
-  issues.push(...r.nodes);
-  if (!r.pageInfo.hasNextPage) break;
-  after = r.pageInfo.endCursor;
-}
+const issues = await Array.fromAsync(pages({ gql: async (q, v) => graphqlData(gh, q, v) }, `query($o:String!,$n:String!,$a:String){repository(owner:$o,name:$n){
+  issues(states:OPEN,first:100,after:$a){pageInfo{hasNextPage endCursor} nodes{id number body comments(last:40){nodes{id body}} subIssues(first:50){nodes{id number body}}}}}}`,
+{ o: owner, n: name }, (d) => d.repository.issues));
 
 const ops = []; // [書き込みの名前, 入力の型, 入力, 知らせ]
 const bodies = new Map(); // 書き換える本文（issue の id → 本文）。子は複数の親の行を受けうるので、ここで重ねる
@@ -112,9 +100,7 @@ console.log(`書き込み ${ops.length} 件${write ? "" : "（--write を付け�
 if (!write) console.error(JSON.stringify(ops.map(([op, , input, note]) => ({ op, note, body: input.body })), null, 1));
 if (write) {
   for (let k = 0; k < ops.length; k += 25) {
-    const part = ops.slice(k, k + 25);
-    gql(`mutation(${part.map(([, type], j) => `$v${j}:${type}!`).join(",")}){${part.map(([op], j) => `w${j}:${op}(input:$v${j}){clientMutationId}`).join(" ")}}`,
-      Object.fromEntries(part.map(([, , input], j) => [`v${j}`, input])));
+    graphqlData(gh, ...batch(ops.slice(k, k + 25)));
   }
   console.log("書いた");
 }

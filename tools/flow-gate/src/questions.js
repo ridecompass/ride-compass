@@ -17,7 +17,7 @@ export function splitBody(body) {
   const rest = norm(body).replace(BLOCK, "");
   return { foreign, rest: foreign.length ? `${foreign.join("\n")}\n\n${rest}` : rest };
 }
-export const bodyRest = (body) => splitBody(body).rest;
+const bodyRest = (body) => splitBody(body).rest;
 export const withButton = (body, config, number) =>
   `<!-- flow-gate -->\n[![回答する](${config.urls.gate}/button.svg)](${answerUrl(config, number)})\n<!-- /flow-gate -->\n\n${bodyRest(body)}`;
 // 完了の条件（.claude/skills/file-issue/SKILL.md「issue の形」）。1つの条件はチェックの行から、それより深く字下げした続きの行まで
@@ -107,11 +107,13 @@ export function loadForms(texts) {
     const meaning = Object.fromEntries((meta["答えの意味"] ?? "").split("・").filter(Boolean).map((x) => x.split(": ").map((v) => v.trim())));
     const check = q.header === "### 項目" ? Object.keys(meaning)[0] : null;
     if (q.header === "### 項目" && Object.keys(meaning).length !== 1) throw new Error(`「### 項目」の形は、答えの意味をちょうど1つ持つ: ${q.kind}`);
-    forms[q.kind] = { check, meaning, text: HOLE.test(q.text) ? null : q.text, header: q.header, rows: q.rows.some((r) => HOLE.test(r)) ? null : q.rows, sections: sectionsOf(q.material) };
+    forms[q.kind] = { by: meta["出す者"] ?? null, check, meaning, text: HOLE.test(q.text) ? null : q.text, header: q.header, rows: q.rows.some((r) => HOLE.test(r)) ? null : q.rows, sections: sectionsOf(q.material) };
   }
   return forms;
 }
-const render = (kind, text, header, rows, material) => `## 問い（${kind}）\n${text}\n\n${header}\n${rows.map((r) => `- ${r}`).join("\n")}\n\n` +
+// 問いの頭の行と、問いの組み立て（判断材料は節の名前と中身の並び）。
+export const questionHead = (kind) => `## 問い（${kind}）`;
+export const render = (kind, text, header, rows, material) => `${questionHead(kind)}\n${text}\n\n${header}\n${rows.map((r) => `- ${r}`).join("\n")}\n\n` +
   `<details><summary>判断材料</summary>\n\n${material.map((s) => `**${s.name}**: ${s.value}`).join("\n\n")}\n</details>`;
 
 // 問いが種類の形に合うか。合わない所を返す（空なら合う）。答えの節（案の無い判断も含む）・決まった問いの文と答えの行・判断材料の節の名前と順を照らす。
@@ -145,8 +147,8 @@ export function answerProblem(q, { choice, done, text }) {
     return done || text ? null : `「${check}」のチェックを付けるか、書く欄に書いてください。`;
   }
   if (done) return "チェックは、項目の並ぶ問いにだけ使えます。";
-  if (rows) return q.plans.includes(choice) ? null : `選べるのは ${q.plans.join("・")} です。`;
-  if (choice && ![...q.plans, NONE].includes(choice)) return `案にない答えです（案: ${[...q.plans, NONE].join(" / ")}）。`;
+  if (rows) return q.rows.includes(choice) ? null : `選べるのは ${q.rows.join("・")} です。`;
+  if (choice && ![...q.rows, NONE].includes(choice)) return `案にない答えです（案: ${[...q.rows, NONE].join(" / ")}）。`;
   return (!choice || choice === NONE) && !text ? "どれでもないときは、書く欄に書いてください。" : null;
 }
 // 答えのコメント（.claude/skills/ask/SKILL.md「答え」の形）。書いた文は形を付けずに、決まった形の行の塊のあとの空行の後ろにそのまま置く。
@@ -155,7 +157,7 @@ export function answerProblem(q, { choice, done, text }) {
 export function answerBody(q, { choice, done, labels = "", text = "" }) {
   const { check } = q.form;
   const lines = ["## 回答", `**${q.text}**`, ""];
-  if (done) lines.push(`回答: ${check}`, ...q.items.map((item) => `- 確かめた: ${item}`));
+  if (done) lines.push(`回答: ${check}`, ...q.rows.map((item) => `- 確かめた: ${item}`));
   else lines.push(`回答: ${choice || NONE}`);
   if (labels) lines.push(`ラベル: ${labels}`);
   if (text) lines.push("", text);
@@ -190,13 +192,13 @@ function parseAnswer(text, q) {
 }
 
 // コメントの並びから今の問いと、その答え（無ければ null）。種類の形（forms）に合わない問いは問いとして読まない（残す守り: 問いの形の検査）。
-// 問いは、形と、答えの節を案（plans）か項目（items）に分けたものを持つ。
+// 問いは、形と答えの節の行（rows。形の check があれば項目、無ければ案）を持つ。
 export function latestQuestion(comments, forms) {
   const i = comments.findLastIndex(isQuestion);
   if (i < 0 || checkQuestion(forms, comments[i]).length) return null;
   const p = parseQuestion(comments[i]);
   const form = forms[p.kind];
-  const q = { kind: p.kind, text: p.text, material: p.material, form, plans: form.check ? [] : p.rows, items: form.check ? p.rows : [] };
+  const q = { kind: p.kind, text: p.text, material: p.material, form, rows: p.rows };
   return { ...q, answer: comments.slice(i + 1).map((c) => parseAnswer(c, q)).find(Boolean) ?? null };
 }
 

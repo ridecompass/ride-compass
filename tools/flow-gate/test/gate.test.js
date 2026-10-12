@@ -6,7 +6,7 @@ import test from "node:test";
 import { config as loaded } from "../src/bot.js";
 import { endHead, readFromLine, startBlock } from "../src/facts.js";
 import { NO_GRANDCHILD, originLine } from "../src/family.js";
-import { SKELETON, formed as FORMED } from "./forms.js";
+import { MATERIAL, formed as FORMED } from "./forms.js";
 import { handle } from "../src/flow.js";
 import { answerForm } from "../src/form.js";
 import { Inbox, nextAlarm } from "../src/inbox.js";
@@ -23,14 +23,15 @@ const author = (i, k) => i.by[k] ?? (i.comments[k].startsWith("## 回答") ? con
 // その完了の条件を写す（無ければ写さない）。
 const END = (start, kind = "実装", before = "") =>
   [`${endHead(kind)}\n\n要約（担当の最後の発言）:\n\n> 読んだ\n\n${readFromLine(T(start - 0.5))}`, ...(before ? ["", startBlock(before)] : [])].join("\n");
-// 検査の実行（check suite）。置いたときの値（SUCCESS・FAILURE・PENDING）を、GitHub の status と conclusion の形にする。running は、ほかに走っている実行。
-const suites = (state, running = false) => ({ nodes: [...(state ? [state === "PENDING" ? { status: "IN_PROGRESS", conclusion: null } : { status: "COMPLETED", conclusion: state }] : []),
-  ...(running ? [{ status: "IN_PROGRESS", conclusion: null }] : [])].map((s, k) => ({ ...s, workflowRun: { databaseId: k + 1 } })) });
+// 検査の実行（check suite）。置いたときの値（SUCCESS・FAILURE・PENDING）を、GitHub の status と conclusion の形にする。running は、ほかに走っている実行、
+// at は検査が始まった時刻。
+const suites = (state, running = false, at = T(-1)) => ({ nodes: [...(state ? [state === "PENDING" ? { status: "IN_PROGRESS", conclusion: null } : { status: "COMPLETED", conclusion: state }] : []),
+  ...(running ? [{ status: "IN_PROGRESS", conclusion: null }] : [])].map((s, k) => ({ ...s, createdAt: at, workflowRun: { databaseId: k + 1 } })) });
 const TYPES = ["保守", "不具合", "要望", "調査", config.dialogType];
 const LOGIN = Object.fromEntries(Object.entries(config.ids).map(([login, id]) => [id, login]));
 
 function world(list, { workflow = "active", last = [], steps = [] } = {}) {
-  const w = { issues: new Map(), runs: [], writes: [], requests: 0 };
+  const w = { issues: new Map(), runs: [], writes: [] };
   for (const i of list) w.issues.set(i.n, { state: "OPEN", reason: null, body: "- [ ] 作る\n", author: config.user, type: null, assignees: [], blockedBy: [],
     comments: [], by: [], closedAt: null, status: null, run: null, priority: null, start: null, parent: null, labels: [], pr: null, ...i });
   w.at = (n) => w.issues.get(n);
@@ -49,7 +50,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
   // PR は、置いたときに決めた時刻（p.created・p.mergedAt）が無ければ、どのコメントより前に作られた。
   const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, merged: Boolean(p.merged), createdAt: p.created ?? T(-1), mergedAt: p.mergedAt ?? null,
     mergeCommit: { oid: p.sha ?? `m${i.n}`, checkSuites: suites(p.mergeChecks, p.mergeRunning) },
-    commits: { nodes: [{ commit: { oid: `c${i.n}`, committedDate: "2026-10-11T00:00:00Z", checkSuites: suites(p.checks) } }] },
+    commits: { nodes: [{ commit: { oid: `c${i.n}`, committedDate: "2026-10-11T00:00:00Z", checkSuites: suites(p.checks, false, p.checksAt ?? p.created) } }] },
     timelineItems: { nodes: p.drafted ? [{ createdAt: "2026-10-11T01:00:00Z" }] : [] } });
   const issueOf = (id) => w.at(Number(id.slice(1)));
   // 置き場のラベル: 決まったもの（急ぎ・開発機で作業中・問いのラベル）と、issue に付いたもの。
@@ -80,7 +81,6 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     },
   };
   const gql = async (q, v) => {
-    w.requests++;
     if (q.includes("addLabelsToLabelable") || (q.includes("c:addComment") && !q.includes("w0:"))) { // 回答フォームの送信（ユーザーの名義）
       const i = issueOf(v.i);
       i.by[i.comments.length] = config.user;
@@ -138,7 +138,6 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     throw new Error(`知らない問い合わせ: ${q.slice(0, 80)}`);
   };
   const rest = async (method, path, body, who = config.gateBot) => {
-    w.requests++;
     let m;
     if (path.endsWith(`/workflows/${config.workflow}`)) return { state: workflow };
     if (path.includes("/runs?per_page=100")) return { workflow_runs: [...w.runs, ...last].reverse().map((r) => ({ id: r.id, display_title: r.display_title ?? "#99 実装",
@@ -189,7 +188,7 @@ const ev = {
     parent_issue: { number: p, node_id: `I${p}` }, sub_issue: { number: c, node_id: `I${c}` } }],
 };
 const head = (i) => i.comments.at(-1)?.split("\n")[0] ?? null;
-const QUESTION = SKELETON.判断; // 形どおりの判断の問い
+const QUESTION = FORMED("判断", "どちらにしますか？", ["案A", "案B"]); // 形どおりの判断の問い
 const ANSWER = (line) => `## 回答\n**${QUESTION.split("\n")[1]}**\n\n${line}`;
 const CONFIRM = "- [x] 作る\n- [ ] 見た目\n  - 確かめる: ユーザー\n";
 const ASKED = (kind) => askText(kind, config.questionForms, [{ text: "見た目" }]); // ゲートが出す問い（確かめは CONFIRM のユーザーが確かめる条件を並べる）
@@ -732,7 +731,6 @@ test("回答フォーム（R10〜R12・決め2・合意したモック）: 問�
 });
 
 // tasks#892: 問いの形は種類ごとのファイルにあり、回答フォームは問いの節だけから導く（書く者が埋める問いは test/forms.js: formed で作る）。
-const MATERIAL = (kind) => SKELETON[kind].slice(SKELETON[kind].indexOf("<details>"));
 
 test("tasks#892 問いの形は種類ごとに5つあり、問いはその種類の形と照らす（案の無い判断・決まった文や案を変えた問い・知らない種類は読まない）", () => {
   const forms = config.questionForms;

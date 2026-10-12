@@ -11,7 +11,7 @@ const askBody = (ask, config, body) => (ask.dropped ? askDropped(ask.dropped, co
 
 // 今と違う所だけの書き込み（[GraphQL の書き込みの名前, 入力の型, 入力]）。GitHub は1回の要求に並べた書き込みを、並べた順に1つずつ行う。
 // 本文（ボタン）は問いのコメントより先に書く（問いの通知から開いたときにボタンがあるように）。閉じるのは最後。
-export function writesOf(f, d, config) {
+function writesOf(f, d, config) {
   const ops = [];
   const issue = {};
   if (d.open && !f.open) issue.stateInput = { value: "OPEN" };
@@ -31,7 +31,9 @@ export function writesOf(f, d, config) {
   if (!d.open && f.open) ops.push(["closeIssue", "CloseIssueInput", { issueId: f.id, stateReason: d.closeAs }]);
   return ops;
 }
-const mutation = (ops) => `mutation(${ops.map(([, type], k) => `$v${k}:${type}!`).join(",")}){${ops.map(([name], k) => `w${k}:${name}(input:$v${k}){clientMutationId}`).join(" ")}}`;
+// 書き込みの並びを、1回の要求の問い合わせと変数にする（src/gate.js: writesOf の形。移行の道具も使う）。
+export const batch = (ops) => [`mutation(${ops.map(([, type], k) => `$v${k}:${type}!`).join(",")}){${ops.map(([name], k) => `w${k}:${name}(input:$v${k}){clientMutationId}`).join(" ")}}`,
+  Object.fromEntries(ops.map(([, , input], k) => [`v${k}`, input]))];
 
 // 1つのタスクを決め直して、今と違う所だけを書く。runs は出来事1件につき1回読んだ担当の実行の一覧（src/facts.js: recentRuns）。
 // moved は、ユーザーがステータスの欄を変えた出来事で決め直すとき（戻したら知らせる）。
@@ -39,7 +41,7 @@ export async function settle(gh, config, number, runs, moved = false) {
   const f = { ...(await readFacts(gh, config, number, runs)), moved };
   const d = decide(f, config);
   const ops = writesOf(f, d, config);
-  if (ops.length) await gh.gql(mutation(ops), Object.fromEntries(ops.map(([, , input], k) => [`v${k}`, input])));
+  if (ops.length) await gh.gql(...batch(ops));
   // 取り消しは、もう終わった・取り消し中の実行なら済んでいる（GitHub は 409 を返す）。
   await Promise.all(d.cancel.map((id) => gh.rest("POST", `/repos/${config.code}/actions/runs/${id}/cancel`).catch((e) => {
     if (!/: 409 /.test(e.message)) throw e;
