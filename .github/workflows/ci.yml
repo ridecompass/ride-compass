@@ -106,12 +106,25 @@ jobs:
             echo "比べる相手: ${BASE:-無し}"
           fi
           area() { grep -qE "$1" <<< "$changed" && echo true || echo false; }
+          # CI の定義は YAML として読んだ中身（yq が JSON へ写したもの）で比べ、コメントの行・行末のコメントだけの差は
+          # 数えない。文字列の中の # と run のシェルの中のコメントは中身に残るので、変われば数える。
+          # 片側に無いファイル・読めないファイルは、変えたとして数える。
+          defined() {
+            local f a b
+            for f in $(git diff --name-only --no-renames "$BASE" "$GITHUB_SHA" -- .github/workflows/ci.yml .github/actions/); do
+              a=$(set -o pipefail; git show "$BASE:$f" | yq -o=json -I0 'explode(.)') || return 0
+              b=$(set -o pipefail; git show "$GITHUB_SHA:$f" | yq -o=json -I0 'explode(.)') || return 0
+              [ "$a" = "$b" ] || return 0
+              echo "コメントだけの差: $f"
+            done
+            return 1
+          }
           if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}"; then
             # 比べる相手が無い（手での実行・成功した master の実行が見つからない）ときは、すべて走らせる。
             backend=true; frontend=true; scripts=true
           else
             changed=$(git diff --name-only "$BASE" "$GITHUB_SHA")
-            if [ "$(area '^(\.github/workflows/ci\.yml|\.github/actions/)')" = true ]; then
+            if defined; then
               backend=true; frontend=true; scripts=true
             else
               # 本番の宛先は、backend の像（CORS の許可）と frontend の像（埋め込む宛先）の両方が読む。
