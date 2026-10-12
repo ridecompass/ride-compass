@@ -41,6 +41,9 @@ export function runOf(title) {
   const [, number, kind, key] = /^#(\d+) (\S+)(?: (\S+))?/.exec(title) ?? [];
   return number ? { number: Number(number), kind, key } : null;
 }
+// master のコミットの件名「tasks#<番号>: …」（docs/conventions/flow.md「コミット」。Pull Request の題名がそのまま件名になり、push で動いた
+// 実行の名前にもなる）の issue の番号。番号の無い件名はタスクでないコミットで、null。
+export const subjectTask = (subject) => Number(/^tasks#(\d+): /.exec(subject)?.[1]) || null;
 // 担当のワークフロー（config.workflow）の近ごろの実行（新しい順に100本）。動いているか・枠が埋まっているかは、出来事1件につき1回ここから読む。
 // status は GitHub の値のまま持つ（欄「実行の status」へ写す）。
 export async function recentRuns(gh, config) {

@@ -153,7 +153,6 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
       if (w.ended?.includes(Number(m[1]))) throw new Error(`GitHub POST ${path}: 409 {"message":"Cannot cancel a workflow run that is completed."}`);
       return void w.writes.push(["取り消し", Number(m[1])]);
     }
-    if ((m = /\/commits\/(\w+)\/pulls$/.exec(path))) return [...w.issues.values()].filter((i) => i.pr?.sha === m[1]).map((i) => ({ head: { ref: `${config.branchPrefix}${i.n}` } }));
     // 回答フォームは、答えとラベルの付け外しをユーザーの名義で書く（src/form.js）。
     if ((m = /\/issues\/(\d+)\/labels(?:\/(.+))?$/.exec(path))) {
       const i = w.at(Number(m[1]));
@@ -179,7 +178,10 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
 const ev = {
   // 実行の申し込み・始まり・終わりの知らせ。実行の status は知らせのとおりに進む（終わったあとに届いた始まりの知らせでは戻らない）。
   run: (r, action) => (r.status = r.status === "completed" || action === "completed" ? "completed" : action === "in_progress" ? "in_progress" : r.status ?? "queued", ["workflow_run", { action, sender: { login: config.gateBot }, repository: code, workflow_run: { id: r.id, path: `.github/workflows/${config.workflow}`, display_title: r.display_title } }]),
-  ci: (branch, sha = "x") => ["workflow_run", { action: "completed", sender: { login: config.user }, repository: code, workflow_run: { id: 1, path: ".github/workflows/ci.yml", head_branch: branch, head_sha: sha } }],
+  ci: (branch, sha = "x", title = "検査") => ["workflow_run", { action: "completed", sender: { login: config.user }, repository: code,
+    workflow_run: { id: 1, path: ".github/workflows/ci.yml", head_branch: branch, head_sha: sha, display_title: title } }],
+  // master の検査の実行（実行の名前は、マージのコミットの件名「tasks#<番号>: …」）。
+  merge: (n) => ev.ci(config.base, `m${n}`, `tasks#${n}: 直した (#99)`),
   comment: (n, login = config.user) => ["issue_comment", { action: "created", sender: { login }, issue: { number: n }, repository: tasks }],
   issue: (n, action, login = config.user, more = {}) => ["issues", { action, sender: { login }, issue: { number: n, body: more.body }, changes: more.changes, repository: tasks }],
   pr: (n, action) => ["pull_request", { action, sender: { login: config.user }, repository: code, pull_request: { head: { ref: `${config.branchPrefix}${n}` } } }],
@@ -269,8 +271,8 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め5・�
     ["R4 PR の検査が落ちた → 同じ枝で直す実装担当", { status: "検査", pr: { draft: true, checks: "FAILURE" } }, null, ev.ci(`${config.branchPrefix}1`), { status: "実装", runs: ["#1 実装"] }],
     ["R4 PR の検査が通った → PR をレビュー可能にして検証担当", { status: "検査", pr: { draft: true, checks: "SUCCESS" } }, null, ev.ci(`${config.branchPrefix}1`), { status: "検証", draft: false, runs: ["#1 検証"] }],
     ["原則の点検の1 マージのコミットの検査が落ちた → 本番に出ていないので確かめを問わず、打ち直すか直す実装担当", { status: "検査", body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, null,
-      ev.ci(config.base, "m1"), { status: "実装", comment: null, runs: ["#1 実装"] }],
-    ["親が保留の子のマージのコミットの検査が落ちた → 待機（振り出さない）", { status: "検査", parent: 4, body: "- [ ] 部品\n", pr: { ...merged, mergeChecks: "FAILURE" } }, null, ev.ci(config.base, "m1"), { status: "待機", runs: [] }],
+      ev.merge(1), { status: "実装", comment: null, runs: ["#1 実装"] }],
+    ["親が保留の子のマージのコミットの検査が落ちた → 待機（振り出さない）", { status: "検査", parent: 4, body: "- [ ] 部品\n", pr: { ...merged, mergeChecks: "FAILURE" } }, null, ev.merge(1), { status: "待機", runs: [] }],
     ["K2・R12 確かめの答えが完了にせず文だけ → 閉じず、Claude の番（実装担当が読む）", { status: "回答", body: CONFIRM, comments: [ASKED("確かめ"), "## 回答\n**完成にしてよいですか？**\n\n見た目が崩れる"] }, null, ev.comment(1),
       { state: "OPEN", status: "実装", runs: ["#1 実装"] }],
     ["決め6 前からある Claude の割り当ては外し、保留ではユーザーだけ", { status: "保留", assignees: [config.claude] }, null, ev.comment(1), { assignees: [config.user] }],
@@ -280,7 +282,7 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め5・�
     ["開発機のセッションが触っている間（ラベル「開発機で作業中」）は振り出さず、担当者は Claude", { status: "実装", labels: [config.devLabel] }, null, ev.comment(1),
       { status: "実装", assignees: [config.claude], runs: [] }],
     ["開発機のセッションが触っている対話作業は、担当者が Claude", { status: "実装", type: config.dialogType, labels: [config.devLabel] }, null, ev.comment(1), { assignees: [config.claude] }],
-    ["R8 マージのコミットの検査が通った → 確かめの問い", { status: "検査", body: CONFIRM, pr: merged }, null, ev.ci(config.base, "m1"), { status: "回答", comment: "## 問い（確かめ）" }],
+    ["R8 マージのコミットの検査が通った → 確かめの問い", { status: "検査", body: CONFIRM, pr: merged }, null, ev.merge(1), { status: "回答", comment: "## 問い（確かめ）" }],
     ["R8・決め7 検査が通ったあとに PR が下書きへ戻された（差し戻し）→ 実装担当", { status: "検証", pr: { draft: true, checks: "SUCCESS", drafted: true } }, null, ev.pr(1, "converted_to_draft"),
       { status: "実装", runs: ["#1 実装"] }],
     ["R5・決め1・決め6 判断の答えで続ける → 表で決め直して実装担当（ユーザーの番を出たら Claude の番）", { status: "回答", assignees: [config.user], comments: [QUESTION, ANSWER("補足: A で")] }, null,
@@ -352,7 +354,7 @@ test("tasks#868 答えの無い問いが残っていても、完了の条件が�
     ["確かめを問うたあとでユーザーの確かめの行にもチェックが付いた", { body: withButton("- [x] 作る\n- [x] 見た目\n  - 確かめる: ユーザー\n", config, 1), comments: [ASKED("確かめ")] },
       ev.issue(1, "edited"), "完了"],
     ["問いのあとで、子の PR がマージされ、マージのコミットの検査が通り、子の条件が全部済んだ", { parent: 2, body: withButton("- [x] 部品\n", config, 1), comments: [ASKED("イレギュラー")], pr: merged },
-      ev.ci(config.base, "m1"), "完了"],
+      ev.merge(1), "完了"],
     ["採否は、着手するかの答えが要るので待つ", { author: config.claude, type: "要望", body: withButton("説明だけ\n", config, 1), comments: [ASKED("採否")] }, ev.comment(1, config.claude), "回答"],
   ];
   for (const [name, task, event, status] of rows) {
@@ -371,7 +373,7 @@ test("tasks#877 問いを出した事実が無くなったら、条件が残っ�
     ["見送りの前提について問うたあとで、前提が開き直された", { blockedBy: [7], comments: [ASK_DROPPED([7])] }, ev.issue(7, "reopened"), "待機"],
     ["イレギュラーを問うたあとで、作業ブランチの PR が開かれた", { comments: [END(0), ASKED("イレギュラー")], pr: { created: T(1), checks: "PENDING" } }, ev.pr(1, "opened"), "検査"],
     ["イレギュラーを問うたあとで、問う前からあった PR がマージされた", { comments: [END(0, "検証"), ASKED("イレギュラー")], pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1", mergedAt: T(1) } },
-      ev.ci(config.base, "m1"), "実装"],
+      ev.merge(1), "実装"],
     ["確かめを問うたあとで、Claude が確かめる条件が足された", { body: withButton(left, config, 1), comments: [ASKED("確かめ")] }, ev.issue(1, "edited", config.claude), "実装"],
     ["見送りの前提がまだ見送りのままなら待つ", { blockedBy: [8], comments: [ASK_DROPPED([8])] }, ev.comment(1, config.claude), "回答"],
     ["検証担当が手放したイレギュラーは、問う前からある開いた PR では片付かない", { comments: [END(0, "検証"), ASKED("イレギュラー")], pr: { checks: "SUCCESS" } }, ev.pr(1, "synchronize"), "回答"],
@@ -574,7 +576,7 @@ test("tasks#878 確かめの問いの判断材料に、ユーザーが確かめ�
   const look = "[撮った画面](https://github.test/c) で、値の欄に区間の値が出ている";
   const w = world([{ n: 1, status: "検査", body: `- [x] 作る\n- [ ] 道を押すと値が出る\n  - 確かめる: ユーザー\n  - 見る所と要点: ${look}\n- [ ] 見た目\n  - 確かめる: ユーザー\n`,
     pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1" } }]);
-  await w.send(ev.ci(config.base, "m1"));
+  await w.send(ev.merge(1));
   const asked = w.at(1).comments.at(-1);
   assert.deepEqual([w.at(1).status, head(w.at(1))], ["回答", "## 問い（確かめ）"], "判断材料に条件を並べても、問いの形に合う");
   assert.ok(asked.includes(`- 道を押すと値が出る\n  - 見る所と要点: ${look}`), asked);
@@ -708,7 +710,7 @@ test("回答フォーム（R10〜R12・決め2・合意したモック）: 問�
     { n: 2, author: config.claude, type: "要望" }, { n: 3, status: "実装" }, { n: 4, status: "回答", comments: [QUESTION] },
     { n: 5, status: "回答", comments: [END(0), ASKED("イレギュラー")] }]);
   connect(w);
-  await w.send(ev.ci(config.base, "m1")); // 確かめの問い
+  await w.send(ev.merge(1)); // 確かめの問い
   await w.send(ev.issue(2, "opened", config.claude)); // 採否の問い
   const check = await (await open(1)).text();
   for (const text of ["項目", "見た目", "完了にする（上の全部）", "書くこと", "確認", "戻る", "送信", "判断材料"]) assert.ok(check.includes(text), `確かめ: ${text}`);

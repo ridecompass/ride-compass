@@ -2,7 +2,7 @@
 // ステータスと、変わってはいけない値（種類・担当者・本文のボタンと条件）を書くのはゲートだけ。GitHub への要求は、1件につき読む1回と書く1回
 // （と、取り消す実行ごとに1回。Actions の取り消しは1回にまとめる口が無い）。
 import { decide } from "./decide.js";
-import { readFacts } from "./facts.js";
+import { readFacts, subjectTask } from "./facts.js";
 import { NO_GRANDCHILD, makesGrandchild } from "./family.js";
 import { askText, confirmConditions, droppedQuestion, isQuestionLabel, norm } from "./questions.js";
 
@@ -85,11 +85,11 @@ const ROUTES = {
   },
   issue_comment: (gh, config, p) => ({ numbers: [p.issue.number] }),
   pull_request: (gh, config, p) => ({ numbers: branch(config, p.pull_request.head.ref) }),
-  // 検査の実行の出来事（申し込み・始まり・終わり）。マージのコミットの検査は、そのコミットの PR の作業ブランチのタスク。
-  async workflow_run(gh, config, p) {
+  // 検査の実行の出来事（申し込み・始まり・終わり）。作業ブランチの実行はブランチの名前から、master の実行（マージのコミットの検査）は
+  // 実行の名前（コミットの件名。src/facts.js: subjectTask）から、issue の番号を読む。
+  workflow_run(gh, config, p) {
     const w = p.workflow_run;
-    const pulls = w.head_branch === config.base ? await gh.rest("GET", `/repos/${config.code}/commits/${w.head_sha}/pulls`) : [];
-    return { numbers: [w.head_branch, ...pulls.map((pr) => pr.head.ref)].flatMap((ref) => branch(config, ref)) };
+    return { numbers: w.head_branch === config.base ? [subjectTask(w.display_title)].filter(Boolean) : branch(config, w.head_branch) };
   },
 };
 export const route = (gh, config, name, p) => ROUTES[name](gh, config, p);
