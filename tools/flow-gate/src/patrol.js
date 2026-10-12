@@ -30,7 +30,7 @@ async function stopReason(gh, config, runs) {
     ? `担当が Claude の利用の上限か認証で止まったため、${jstText(until)} まで（担当を1件手で起こせば早く戻る）` : null;
 }
 // 枠に空きがあり、止めていなければ、振り出せるタスクを急ぎ・優先度の順に枠の数まで振り出す。settled は決め直したばかりの
-// タスク、kinds は空きを確かめる担当の種類（定時と、担当が終わったとき）。runs は出来事1件につき1回読んだ担当の実行の一覧、tasks は
+// タスク、kinds は空きを検証担当の種類（定時と、担当が終わったとき）。runs は出来事1件につき1回読んだ担当の実行の一覧、tasks は
 // 同じ出来事で読んだ開いた issue の一覧（無ければ、振り出すときだけ読む）。
 export async function dispatch(gh, config, settled, kinds, runs, tasks = null) {
   const active = runs.filter((r) => r.active);
