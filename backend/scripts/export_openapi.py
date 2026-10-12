@@ -45,7 +45,9 @@ from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME
 from app.main import app
 from app.domain.hard_filters import DEFAULT_HARD_FILTERS, HARD_FILTER_LABELS, HARD_FILTER_NAMES
-from app.domain.geo import COMPASS_LABELS
+from app.domain.address_area import ADDRESS_AREA_LEVELS
+from app.domain.geo import COMPASS_LABELS, EARTH_RADIUS_KM
+from app.domain.value_distribution import QUANTILE_TARGETS
 from app.domain.place_search import (
     PLACE_KIND_LABELS,
     PLACE_MATCH_LEVEL_LABELS,
@@ -67,6 +69,7 @@ from app.domain.difficulty import DIFFICULTY_DECIMALS, OVERALL_DIFFICULTY_WORDIN
 from app.domain.map_paint import DEFAULT_DIFFICULTY_BOUNDARIES
 from app.domain.map_display import (
     ALWAYS_SHOWN_ATTRIBUTIONS,
+    MODEL_VALUE_DISCLAIMER,
     AXIS_LAYER_SPECS,
     LayerText,
     LEGEND_SHARED_ROWS,
@@ -162,6 +165,7 @@ from app.services.tile_version_service import TILE_SHAPES
 GENERATED_DIR = Path(__file__).resolve().parents[2] / "frontend" / "src" / "types" / "generated"
 OUTPUT_PATH = GENERATED_DIR / "openapi.json"
 REGION_TILE_CONFIG_PATH = GENERATED_DIR / "region-tile-config.json"
+GEO_CONFIG_PATH = GENERATED_DIR / "geo-config.json"
 PRIMARY_ATTRIBUTES_PATH = GENERATED_DIR / "primaryAttributes.ts"
 WIND_GRID_CONFIG_PATH = GENERATED_DIR / "wind-grid-config.json"
 ROUTE_GENERATE_CONFIG_PATH = GENERATED_DIR / "route-generate-config.json"
@@ -334,6 +338,8 @@ def main() -> None:
             },
         },
     )
+    # 地球を球とみなす半径（domain/geo.py）。画面の大円距離の式がこれを読む。
+    _write_json(GEO_CONFIG_PATH, {"earth_radius_km": EARTH_RADIUS_KM})
     # 役割ごとの色（domain/display_palette.py）。**画面は色の値を持たず、この名前で引く**。
     # 色を変えるときに触るのはbackendの1ファイルだけになる。
     _write_json(
@@ -379,6 +385,8 @@ def main() -> None:
             # 方位の呼び名。**画面が写しを持たない**——丸め規則が違うと境界で
             # ラベルが食い違うため、並びは1箇所（domain/geo.py）だけが持つ。
             "compassLabels": list(COMPASS_LABELS),
+            # 数値予報モデルの計算値に添える断りの文。
+            "modelValueDisclaimer": MODEL_VALUE_DISCLAIMER,
             # 地図へ常に出す出典。
             "alwaysShownAttributions": list(ALWAYS_SHOWN_ATTRIBUTIONS),
             # 値が無い線の破線（道・評価軸・ルートで共有）。
@@ -452,9 +460,13 @@ def main() -> None:
             "sourceRunStatuses": [{"key": key, "label": label} for key, label in SOURCE_RUN_STATUS_LABELS.items()],
             # 地点の検索の候補の種類と、当たった段（粗い→細かい）の呼び名。
             "placeKinds": [{"key": key, "label": PLACE_KIND_LABELS[key]} for key in get_args(PlaceKind)],
+            # `area`は住所の区画の段で、位置は区画の代表点（行きたい所から離れうる）。
             "placeMatchLevels": [
-                {"key": key, "label": PLACE_MATCH_LEVEL_LABELS[key]} for key in get_args(PlaceMatchLevel)
+                {"key": key, "label": PLACE_MATCH_LEVEL_LABELS[key], "area": key in ADDRESS_AREA_LEVELS}
+                for key in get_args(PlaceMatchLevel)
             ],
+            # 値の分布の分位点の名前（小さい比率から）。応答の`quantiles`の鍵がこの名前。
+            "quantiles": [name for name, _ in QUANTILE_TARGETS],
         },
     )
     # 気象の値を色へ写す段（domain/weather_display.py）。危険度・雷・竜巻は配信元が

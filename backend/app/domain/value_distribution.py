@@ -39,7 +39,8 @@ class ValueSpread(StrictModel):
 
 EMPTY_SPREAD = ValueSpread(quantiles={}, zero_share=0.0)
 
-_QUANTILE_TARGETS = [("p10", 0.10), ("p25", 0.25), ("p50", 0.50), ("p75", 0.75), ("p90", 0.90), ("p99", 0.99)]
+#: 分位点の名前と比率。名前は応答の`quantiles`の鍵で、生成物（`vocabulary.ts`）がこの並びで画面へ届ける。
+QUANTILE_TARGETS = [("p10", 0.10), ("p25", 0.25), ("p50", 0.50), ("p75", 0.75), ("p90", 0.90), ("p99", 0.99)]
 
 
 def weighted_quantiles(
@@ -60,7 +61,7 @@ def weighted_distribution(pairs: list[tuple[float, float]]) -> ValueDistribution
         return EMPTY_DISTRIBUTION
     lengths, values = np.asarray(pairs, dtype=float).T
     total_m = float(lengths.sum())
-    quantiles = weighted_quantiles(pairs, _QUANTILE_TARGETS, digits=3)
+    quantiles = weighted_quantiles(pairs, QUANTILE_TARGETS, digits=3)
 
     # 描画範囲は**データの値域から決める**。下限を0に固定すると、生値が負になる軸
     # （termsの重みがすべて負の軸）で全サンプルが階級0へ潰れ、「1本だけの棒＝全量が
@@ -100,7 +101,7 @@ def weighted_spread(pairs: list[tuple[float, float]]) -> ValueSpread:
     # 「下り勾配の道」まで0として数えられ、表示（「ゼロX%」）が意味と食い違う。
     zero_share = float(lengths[values == 0].sum()) / float(lengths.sum())
     return ValueSpread(
-        quantiles=weighted_quantiles(pairs, _QUANTILE_TARGETS, digits=3), zero_share=round(zero_share, 5)
+        quantiles=weighted_quantiles(pairs, QUANTILE_TARGETS, digits=3), zero_share=round(zero_share, 5)
     )
 
 
