@@ -2,6 +2,8 @@
 
 構造テストはコードを動かさずに読む（.claude/rules/testing-structure.md「ソースを読む検査は、専用ディレクトリへ置く」）。
 名前の定義元は、モジュールの最上位の束縛（`def`・`class`・`import`・代入）を辿って決める。
+ファイルとモジュールの名前の対応・相対の取り込み・テストの母集団・差し替えの読み方は、ここが1か所で持つ。
+`backend/scripts`の道具も`backend`を`sys.path`へ足してここから読む。
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ class Symbol:
     node: ast.AST | None = None
 
 
-def _bound_names(statements: list[ast.stmt]) -> dict[str, ast.AST]:
+def bound_names(statements: list[ast.stmt]) -> dict[str, ast.AST]:
     """最上位の文が束縛する名前と、束縛した文（`if`・`try`・`with`の中も最上位として読む）。"""
     out: dict[str, ast.AST] = {}
     for stmt in statements:
@@ -35,13 +37,13 @@ def _bound_names(statements: list[ast.stmt]) -> dict[str, ast.AST]:
             targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
             for target in targets:
                 for name in ast.walk(target):
-                    if isinstance(name, ast.Name):
+                    if isinstance(name, ast.Name) and isinstance(name.ctx, ast.Store):
                         out[name.id] = stmt
         elif isinstance(stmt, (ast.If, ast.Try, ast.With)):
             nested = list(stmt.body) + list(getattr(stmt, "orelse", [])) + list(getattr(stmt, "finalbody", []))
             for handler in getattr(stmt, "handlers", []):
                 nested += handler.body
-            out.update(_bound_names(nested))
+            out.update(bound_names(nested))
     return out
 
 
@@ -53,13 +55,15 @@ class SourceTree:
         self._trees: dict[str, ast.Module | None] = {}
 
     def path_of(self, module: str) -> Path | None:
+        """モジュールのファイル。同じ名前のパッケージとファイルがあればパッケージ（Python の読み込みと同じ）。"""
         base = self.root.joinpath(*module.split("."))
-        for path in (base.with_suffix(".py"), base / "__init__.py"):
+        for path in (base / "__init__.py", base.with_suffix(".py")):
             if path.is_file():
                 return path
         return None
 
     def module_of(self, path: Path) -> str:
+        """ファイルのモジュールの名前（`__init__.py`はパッケージの名前）。"""
         parts = list(path.relative_to(self.root).with_suffix("").parts)
         return ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
 
@@ -112,7 +116,7 @@ class SourceTree:
         tree = self.tree(module)
         if tree is None or depth > 20:
             return None
-        statement = _bound_names(tree.body).get(name)
+        statement = bound_names(tree.body).get(name)
         if statement is not None:
             return self.binding(module, name, statement, depth)
         if self.path_of(f"{module}.{name}"):
@@ -124,7 +128,7 @@ class SourceTree:
         if owner.kind == "module":
             return self.lookup(owner.module, name)
         if owner.kind == "class" and isinstance(owner.node, ast.ClassDef):
-            statement = _bound_names(owner.node.body).get(name)
+            statement = bound_names(owner.node.body).get(name)
             if statement is not None:
                 return self.binding(owner.module, name, statement)
         return None
@@ -149,7 +153,7 @@ class Scope:
     def __init__(self, source: SourceTree, module: str, tree: ast.Module):
         self.source = source
         self.module = module
-        self.names = _bound_names(tree.body)
+        self.names = bound_names(tree.body)
         for node in ast.walk(tree):
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 for alias in node.names:
@@ -165,13 +169,79 @@ class Scope:
         return None
 
 
+#: 持ち主と名前の文字列を受けて差し替える呼び出し（`monkeypatch.setattr`・`monkeypatch.delattr`・`patch.object`）。
+REPLACING_BY_NAME = frozenset({"setattr", "delattr", "object"})
+#: `"app.x.y"`の道筋を受けて差し替える呼び出し（`monkeypatch.setattr`・`monkeypatch.delattr`・`patch`）。
+REPLACING_BY_PATH = frozenset({"setattr", "delattr", "patch"})
+
+
+def called_name(call: ast.Call) -> str | None:
+    """呼び出した名前（`a.b.f(...)`なら`f`）。"""
+    func = call.func
+    return func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else None
+
+
 def replacement_calls(tree: ast.Module) -> Iterator[tuple[ast.Call, ast.AST]]:
     """差し替えの呼び出しと、それを含む最上位の定義（関数・クラス。無ければモジュール）。"""
     for top in tree.body:
         for node in ast.walk(top):
-            if not isinstance(node, ast.Call) or not node.args:
-                continue
-            func = node.func
-            name = func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else None
-            if name in ("setattr", "patch", "object"):
+            if isinstance(node, ast.Call) and node.args and called_name(node) in REPLACING_BY_NAME | REPLACING_BY_PATH:
                 yield node, top
+
+
+@dataclass(frozen=True)
+class Replaced:
+    """差し替えの呼び出しが差し替える先。`owner`は持ち主が決まらなければNone、`name`は名前を変数で渡せばNone。"""
+
+    owner_text: str
+    owner: Symbol | None
+    name: str | None
+    by_path: bool
+
+
+def replacement_of(scope: Scope, call: ast.Call) -> Replaced | None:
+    """差し替えの呼び出し（`replacement_calls`）が差し替える先。持ち主も名前も読めない形はNone。"""
+    first = call.args[0]
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        owner_text, _, name = first.value.rpartition(".")
+        split = scope.source.dotted(first.value)
+        return Replaced(owner_text, split[0] if split else None, name, by_path=True)
+    if len(call.args) < 2:
+        return None
+    second = call.args[1]
+    name = second.value if isinstance(second, ast.Constant) and isinstance(second.value, str) else None
+    return Replaced(ast.unparse(first), scope.resolve(first), name, by_path=False)
+
+
+def scanned_tests(root: Path) -> list[Path]:
+    """`root`（`backend`）の`tests`のうち、構造テストが読むファイル（構造テストのディレクトリを除く全`.py`）。"""
+    tests = root / "tests"
+    return [path for path in sorted(tests.rglob("*.py")) if "structure" not in path.relative_to(tests).parts]
+
+
+def is_scaffold(path: Path) -> bool:
+    """テストのファイルでなく、共有の足場（`conftest.py`・組み立ての関数・代役）か。"""
+    return not path.name.startswith("test_")
+
+
+def declares_table(tree: ast.Module) -> bool:
+    """クラスの本体で`__tablename__`へ代入するか、`Table(...)`を呼ぶか。"""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            for stmt in node.body:
+                targets = stmt.targets if isinstance(stmt, ast.Assign) else [getattr(stmt, "target", None)]
+                if any(isinstance(t, ast.Name) and t.id == "__tablename__" for t in targets):
+                    return True
+        elif isinstance(node, ast.Call) and called_name(node) == "Table":
+            return True
+    return False
+
+
+def table_modules(root: Path) -> set[str]:
+    """`root`（`backend`）の`app`で、表を宣言するモジュールの名前。"""
+    source = SourceTree(root)
+    return {
+        source.module_of(path)
+        for path in sorted((root / "app").rglob("*.py"))
+        if declares_table(ast.parse(path.read_text(encoding="utf-8")))
+    }
