@@ -88,13 +88,16 @@ jobs:
         run: |
           version=$(jq -er '.packages["node_modules/@playwright/test"].version' frontend/package-lock.json)
           echo "version=$version" >> "$GITHUB_OUTPUT"
+      - id: base
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/pr-base
       # 各置き場は自分のテストを自分の中に持ち、置き場が変わったときだけその置き場の検査を走らせる。それ以外の変更
       # （文書・タスク管理・ほかのワークフロー等）では何も走らせない。CI の定義（このファイル・.github/actions/）を変えたら、
       # その定義で全部を走らせて確かめる（コメントだけの変更は数えない。下の defined）。走らせるジョブの組はここだけが持ち
       # （run）、ジョブの if と ci-ok が読む。
       - id: diff
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ steps.base.outputs.sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           # master の push は、直前のコミット（github.event.before）でなく、master の祖先のうち push の実行が成功で

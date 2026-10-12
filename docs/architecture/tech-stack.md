@@ -266,6 +266,9 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
   （`github.event.before`）と比べると、直前の実行が失敗で終わったか待ちのまま取り消された（上の`concurrency`）とき、その変更が
   検査もデプロイもされないまま、次の文書だけの変更の実行がそれを飛ばして成功で終わる。デプロイだけが落ちた実行のあとは、
   確かめ済みのテストも走り直すが、余分に走るだけで抜けはしない。
+- **Pull Requestの`changes`と変異テストは、検査するマージのコミットの基の側の親と比べる。** `pull_request`の出来事の`base.sha`は
+  Pull Requestへpushしたあとに基の先端が進んでも新しくならず、そのまま比べるとその間に基へ入った変更が差に混ざる
+  （`.github/actions/pr-base`）。
 - **タスク管理は製品のCIと分ける。** タスク管理の置き場（`.github/taskflow-paths`。ゲートの`tools/flow-gate/`と
   担当のワークフロー）の検査とゲートの公開は`claude-gate.yml`が持ち、`ci.yml`はその置き場を読まない。そのため
   `ci.yml: changes`はその置き場だけの変更でどのジョブも走らせず、backend・frontendのデプロイも起動しない。
