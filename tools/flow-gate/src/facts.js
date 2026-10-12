@@ -1,5 +1,6 @@
 // タスクの事実を読む（src/decide.js: decide が受ける形）。置き場の issue・書くのに要る ID（種類・ラベル）・コードのリポジトリの作業ブランチの PR と
 // 検査を GraphQL の1回で、担当の実行は Actions の実行の一覧から読む。ゲートは issue の情報を持たない（持ち主は GitHub）。見回りの一覧も同じ読み方を使う。
+import { originOf } from "./family.js";
 import { FIELDS, START_FORM, valuesOf } from "./fields.js";
 import { pages } from "./github.js";
 import { APPLIED, answerText, checkQuestion, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, remaining } from "./questions.js";
@@ -67,31 +68,39 @@ function checksOf(commit) {
   return { stage: STAGES.find((s) => runs.some((r) => r.status === s)) ?? null, passed: runs.length > 0 && runs.every((r) => PASSED.includes(r.conclusion)) };
 }
 
+// 置き場のオーナーと名前（GraphQL の $o・$r）。
+const repo = ({ repos: { tasks } }) => ({ o: tasks.owner, r: tasks.name });
 // issue の全部のコメントの本文（古い順）。
 const allComments = async (gh, config, number) => (await Array.fromAsync(pages(gh, `query($o:String!,$r:String!,$n:Int!,$a:String){repository(owner:$o,name:$r){issue(number:$n){
-  comments(first:100,after:$a){pageInfo{hasNextPage endCursor} nodes{body}}}}}`, { ...repo(config.tasks), n: number }, (d) => d.repository.issue.comments))).map((c) => norm(c.body));
-const repo = (full) => ({ o: full.split("/")[0], r: full.split("/")[1] });
+  comments(first:100,after:$a){pageInfo{hasNextPage endCursor} nodes{body}}}}}`, { ...repo(config), n: number }, (d) => d.repository.issue.comments))).map((c) => norm(c.body));
 
 // since より後に、ユーザーがステータスを変えたか開き直したか（時系列を、見つかるまでページを送って読む）。
 async function movedSince(gh, config, number, since) {
   for await (const e of pages(gh, `query($o:String!,$r:String!,$n:Int!,$s:DateTime!,$a:String){repository(owner:$o,name:$r){issue(number:$n){
     timelineItems(since:$s,first:100,after:$a,itemTypes:[ISSUE_FIELD_ADDED_EVENT,ISSUE_FIELD_CHANGED_EVENT,REOPENED_EVENT]){pageInfo{hasNextPage endCursor} nodes{
      ...on IssueFieldAddedEvent{actor{login} issueField{...on IssueFieldSingleSelect{name}}} ...on IssueFieldChangedEvent{actor{login} issueField{...on IssueFieldSingleSelect{name}}}
-     ...on ReopenedEvent{actor{login}}}}}}}`, { ...repo(config.tasks), n: number, s: since }, (d) => d.repository.issue.timelineItems))
+     ...on ReopenedEvent{actor{login}}}}}}}`, { ...repo(config), n: number, s: since }, (d) => d.repository.issue.timelineItems))
     if (e.actor?.login === config.user && (!e.issueField || e.issueField.name === config.fields.status.name)) return true;
   return false;
 }
 
-// 担当の終わりのコメントの見出しと、読み始めの完了の条件の見出し（.github/claude-task/after.js が書く）。
+// 担当の終わりのコメントの形（.github/claude-task/after.js が書き、ゲートと回答フォームが読む）。見出しの kind は担当の種類。
+export const endHead = (kind) => `### ${kind}担当の終わり`;
 export const END = /^### (\S+)担当の終わり/;
-const START = "\n読み始めの完了の条件:\n";
+// 終わりのコメントの「読み始め」の行（担当の段が始まった時刻。それより前のユーザーの文を担当が読んでいる）。
+export const readFromLine = (at) => `読み始め: ${at}`;
+export const readFromOf = (body) => /^読み始め: (\S+)$/m.exec(body)?.[1] ?? null;
+// 終わりのコメントの「読み始めの完了の条件」の塊（担当の段が始まったときの本文の完了の条件を、文とチェックだけの1行ずつで写す）。本文が
+// 読めなければ読めなかったと書き、ゲートは約束が動いたと読まない。
+const START = "読み始めの完了の条件:";
+export const startBlock = (body) => (body ? [START, ...conditions(body).map((c) => `- [${c.done ? "x" : " "}] ${c.text}`)].join("\n") : `${START} 読めなかった`);
 // 最後に終わった担当（種類・読み始めの時刻・読み始めの完了の条件）。終わりのあとに問いが出ていれば、その終わりは問いの側で扱ったので null。
 function endedOf(nodes) {
   const k = nodes.findLastIndex((n) => END.test(norm(n.body)));
   if (k < 0 || nodes.slice(k + 1).some((n) => isQuestion(n.body))) return null;
   const body = norm(nodes[k].body);
-  const at = body.indexOf(START);
-  return { kind: END.exec(body)[1], from: /^読み始め: (\S+)$/m.exec(body)?.[1] ?? nodes[k].createdAt, before: at < 0 ? null : conditions(body.slice(at + START.length)) };
+  const at = body.indexOf(`\n${START}\n`);
+  return { kind: END.exec(body)[1], from: readFromOf(body) ?? nodes[k].createdAt, before: at < 0 ? null : conditions(body.slice(at + START.length + 2)) };
 }
 // その実行で約束が動いたか: 読み始めより今のチェックが多いか、読み始めの行のうち今の本文に無い行が、全部その実行の間にできた移管先（子・兄弟・
 // この issue を指す issue）の条件にある。消えた行があるときだけ移管先を読む（要求1回）。読み始めの条件が無ければ動いていない。
@@ -103,7 +112,7 @@ async function movedOf(gh, config, number, ended, now) {
   if (!gone.length) return false;
   const { repository: { issue: i } } = await gh.gql(`query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){issue(number:$n){
     subIssues(first:50){nodes{createdAt body}} parent{subIssues(first:50){nodes{createdAt body}}}
-    timelineItems(last:50,itemTypes:[CROSS_REFERENCED_EVENT]){nodes{...on CrossReferencedEvent{source{...on Issue{createdAt body}}}}}}}}`, { ...repo(config.tasks), n: number });
+    timelineItems(last:50,itemTypes:[CROSS_REFERENCED_EVENT]){nodes{...on CrossReferencedEvent{source{...on Issue{createdAt body}}}}}}}}`, { ...repo(config), n: number });
   const made = [...i.subIssues.nodes, ...(i.parent?.subIssues.nodes ?? []), ...i.timelineItems.nodes.map((x) => x.source).filter((x) => x?.body)]
     .filter((x) => Date.parse(x.createdAt) >= Date.parse(ended.from)).flatMap((x) => conditions(x.body));
   return gone.every((c) => made.some((x) => x.text === c.text));
@@ -111,9 +120,8 @@ async function movedOf(gh, config, number, ended, now) {
 
 // runs は出来事1件につき1回読んだ担当の実行の一覧（recentRuns）。
 export async function readFacts(gh, config, number, runs) {
-  const [to, tn] = config.tasks.split("/");
-  const [co, cn] = config.code.split("/");
-  const { t, c } = await gh.gql(query(), { to, tn, n: number, co, cn, head: `${config.branchPrefix}${number}` });
+  const { tasks, code } = config.repos;
+  const { t, c } = await gh.gql(query(), { to: tasks.owner, tn: tasks.name, n: number, co: code.owner, cn: code.name, head: `${config.branchPrefix}${number}` });
   const i = t.issue;
   const held = runs.filter((r) => r.number === number && r.active).sort((a, b) => a.created - b.created); // 古い順（2本目からは二重の実行）
   const open = c.pullRequests.nodes.find((p) => p.state === "OPEN");
@@ -131,7 +139,7 @@ export async function readFacts(gh, config, number, runs) {
   const types = i.timelineItems.nodes.map((e) => e.prevIssueType?.name ?? null); // 今より前の種類（古い順）
   const dialog = dialogOf(config, types, i.issueType?.name ?? null);
   const reads = nodes.filter((n) => by(n, config.claude) && (dialog || END.test(norm(n.body))))
-    .map((n) => Date.parse(/^読み始め: (\S+)$/m.exec(norm(n.body))?.[1] ?? n.createdAt));
+    .map((n) => Date.parse(readFromOf(norm(n.body)) ?? n.createdAt));
   const lastRead = Math.max(0, ...reads);
   const closedAt = Date.parse(i.closedAt) || 0;
   const said = (n) => (isAnswer(n.body) ? answerText(n.body) : norm(n.body).trim());
@@ -160,8 +168,7 @@ export async function readFacts(gh, config, number, runs) {
   const byName = (list) => Object.fromEntries(list.nodes.map((x) => [x.name, x.id]));
   return { ...task, droppedAsked, adoptAsked, unread, answerRead, answerApplied, superseded, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
     conditions: conditions(i.body), remaining: remaining(i.body), question, ended: ended && { kind: ended.kind, moved: await movedOf(gh, config, number, ended, conditions(i.body)) },
-    runs: held,
-    parent: p && { number: p.number }, dead, children: i.subIssues.nodes, origin: Number(/^分割元: #(\d+)\s*$/m.exec(norm(i.body))?.[1]) || null,
+    runs: held, parent: p && { number: p.number }, dead, children: i.subIssues.nodes, origin: originOf(norm(i.body)),
     types, dialog, ids: { types: byName(t.issueTypes), labels: byName(t.labels) },
     // 閉じた・開き直したときに決め直す、矢印1本でつながる開いた issue（後・親・子）。
     near: [...i.blocking.nodes, ...(p ? [p] : []), ...i.subIssues.nodes].filter((x) => x.state === "OPEN").map((x) => x.number),

@@ -3,15 +3,16 @@
 // 期待は要求の文から書く（各行・各 assert の名前）。GitHub の代わりの world は、置き場の issue・作業ブランチの PR と検査の実行・担当の実行を持つ。
 import assert from "node:assert/strict";
 import test from "node:test";
-import base from "../flow.config.json" with { type: "json" };
-import { questionForms } from "../src/bot.js";
+import { config as loaded } from "../src/bot.js";
+import { endHead, readFromLine, startBlock } from "../src/facts.js";
+import { NO_GRANDCHILD, originLine } from "../src/family.js";
 import { SKELETON, formed as FORMED } from "./forms.js";
 import { handle } from "../src/flow.js";
 import { answerForm } from "../src/form.js";
 import { Inbox, nextAlarm } from "../src/inbox.js";
 import { APPLIED, answerBody, askDropped, askText, checkQuestion, conditions, droppedQuestion, latestQuestion, loadForms, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
 
-const config = { ...base, questionForms, slots: { 実装: 2, 検証: 1 } };
+const config = { ...loaded, slots: { 実装: 2, 検証: 1 } };
 const tasks = { full_name: config.tasks };
 const code = { full_name: config.code };
 const names = (list) => ({ nodes: list.map((name) => ({ name })) });
@@ -20,13 +21,13 @@ const T = (k) => new Date(Date.UTC(2026, 9, 11) + k * 1000).toISOString();
 const author = (i, k) => i.by[k] ?? (i.comments[k].startsWith("## 回答") ? config.user : config.claude);
 // 担当の終わりのコメント（.github/claude-task/after.js）。start は担当が読み始めたときのコメントの数（それより前を読んでいる）。before は読み始めの本文で、
 // その完了の条件を写す（無ければ写さない）。
-const END = (start, kind = "実装", before = "") => [`### ${kind}担当の終わり\n\n要約（担当の最後の発言）:\n\n> 読んだ\n\n読み始め: ${T(start - 0.5)}`,
-  ...(before ? ["\n読み始めの完了の条件:", ...conditions(before).map((c) => `- [${c.done ? "x" : " "}] ${c.text}`)] : [])].join("\n");
+const END = (start, kind = "実装", before = "") =>
+  [`${endHead(kind)}\n\n要約（担当の最後の発言）:\n\n> 読んだ\n\n${readFromLine(T(start - 0.5))}`, ...(before ? ["", startBlock(before)] : [])].join("\n");
 // 検査の実行（check suite）。置いたときの値（SUCCESS・FAILURE・PENDING）を、GitHub の status と conclusion の形にする。running は、ほかに走っている実行。
 const suites = (state, running = false) => ({ nodes: [...(state ? [state === "PENDING" ? { status: "IN_PROGRESS", conclusion: null } : { status: "COMPLETED", conclusion: state }] : []),
   ...(running ? [{ status: "IN_PROGRESS", conclusion: null }] : [])].map((s, k) => ({ ...s, workflowRun: { databaseId: k + 1 } })) });
-const TYPES = ["保守", "不具合", "要望", "調査", base.dialogType];
-const LOGIN = Object.fromEntries(Object.entries(base.ids).map(([login, id]) => [id, login]));
+const TYPES = ["保守", "不具合", "要望", "調査", config.dialogType];
+const LOGIN = Object.fromEntries(Object.entries(config.ids).map(([login, id]) => [id, login]));
 
 function world(list, { workflow = "active", last = [], steps = [] } = {}) {
   const w = { issues: new Map(), runs: [], writes: [], requests: 0 };
@@ -52,7 +53,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     timelineItems: { nodes: p.drafted ? [{ createdAt: "2026-10-11T01:00:00Z" }] : [] } });
   const issueOf = (id) => w.at(Number(id.slice(1)));
   // 置き場のラベル: 決まったもの（急ぎ・開発機で作業中・問いのラベル）と、issue に付いたもの。
-  const repoLabels = () => [...new Set([config.urgentLabel, config.devLabel, "要確認", ...Object.keys(questionForms).map((k) => `問い: ${k}`),
+  const repoLabels = () => [...new Set([config.urgentLabel, config.devLabel, "要確認", ...Object.keys(config.questionForms).map((k) => `問い: ${k}`),
     ...[...w.issues.values()].flatMap((k) => k.labels)])];
   // ゲートの書き込み（src/gate.js: settle）。1回の要求に並べた書き込みを、並べた順に当てる。
   const WRITE = {
@@ -514,7 +515,7 @@ test("tasks#824 待つ相手が見送りで閉じたら、続けるかを一度�
 
 test("tasks#824 採否は親か分割元から受け継ぎ、一度だけ問う。孫は張られた直後に外す", async () => {
   const w = world([{ n: 1, status: "実装" }, { n: 2, author: config.claude, type: "要望", parent: 1, body: PART },
-    { n: 3, author: config.claude, type: "要望", body: "分割元: #1\n- [ ] 作る\n" }, { n: 4, author: config.claude, type: "要望" }]);
+    { n: 3, author: config.claude, type: "要望", body: `${originLine(1)}\n- [ ] 作る\n` }, { n: 4, author: config.claude, type: "要望" }]);
   for (const n of [2, 3, 4]) await w.send(ev.issue(n, "opened", config.claude));
   assert.deepEqual([2, 3, 4].map((n) => asked(w.at(n))), [0, 0, 1], "採否を問うのは、親も分割元も持たない新しい要望だけ");
   w.at(4).comments.push("## 回答\n**このタスクに着手しますか？**\n\n回答: 着手する", QUESTION);
@@ -528,7 +529,7 @@ test("tasks#824 採否は親か分割元から受け継ぎ、一度だけ問う�
     const g = world(list);
     await g.send(ev.sub(p, c));
     assert.equal(g.at(c).parent, want, name);
-    if (!want) assert.match(head(g.at(c)), /^孫は作れないので/, name);
+    if (!want) assert.ok(g.at(c).comments.at(-1).endsWith(NO_GRANDCHILD), name);
     else assert.equal(g.at(p).status, "待機", name);
   }
 });

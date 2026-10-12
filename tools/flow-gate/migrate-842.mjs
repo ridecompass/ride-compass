@@ -7,11 +7,11 @@
 // 読むのは開いた issue の一覧（100件ごとに1回）、書くのはまとめた書き込み（25件ごとに1回）。既定は直す中身を出すだけで、--write のときだけ書く。
 // 使い方: node tools/flow-gate/migrate-842.mjs [--write]
 import { execFileSync } from "node:child_process";
-import { config, questionForms } from "./src/bot.js";
+import { config } from "./src/bot.js";
 import { askText, checkQuestion, conditions, isQuestion, norm } from "./src/questions.js";
 
 const write = process.argv.includes("--write");
-const [owner, name] = config.tasks.split("/");
+const { owner, name } = config.repos.tasks;
 // 開いた issue の本文とコメントをまとめて読むので、応答は 1MB（execFileSync の既定の上限）を超える。
 const gql = (query, variables) => {
   const out = execFileSync("gh", ["api", "graphql", "--input", "-"], { input: JSON.stringify({ query, variables }), encoding: "utf8", maxBuffer: 256 * 1024 * 1024,
@@ -27,7 +27,7 @@ function question(text, body) {
   if (GATE.includes(head)) {
     const mine = conditions(body).filter((c) => c.verify === "ユーザー");
     const left = mine.filter((c) => !c.done);
-    return askText(head, questionForms, left.length ? left : mine);
+    return askText(head, config.questionForms, left.length ? left : mine);
   }
   const moved = /\n\n\*\*案ごとに起きること\*\*:([\s\S]*?)(?=\n\n\*\*[^*]+\*\*:|\n<\/details>)/.exec(text);
   const rest = (moved ? text.replace(moved[0], "") : text).replace(/^## 問い(?:（判断）)?/, "## 問い（判断）");
@@ -76,9 +76,9 @@ const nodeOf = new Map(issues.flatMap((i) => [[i.number, i], ...i.subIssues.node
 for (const issue of issues) {
   const last = issue.comments.nodes.findLast((c) => isQuestion(c.body));
   const text = last && norm(last.body).trim();
-  if (text && checkQuestion(questionForms, text).length) {
+  if (text && checkQuestion(config.questionForms, text).length) {
     const next = question(text, issue.body);
-    const problems = checkQuestion(questionForms, next);
+    const problems = checkQuestion(config.questionForms, next);
     if (problems.length) console.log(`#${issue.number} の問いは直せない（人が決める）: ${problems.join("・")}`);
     else ops.push(["updateIssueComment", "UpdateIssueCommentInput", { id: last.id, body: next }, `#${issue.number} の問いを直す: ${text.split("\n")[0]}`]);
   }

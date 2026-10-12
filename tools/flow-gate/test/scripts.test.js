@@ -1,18 +1,23 @@
-// 流れのスキルに同梱したスクリプト（印を付ける・答えを記録する・起票する）の照らし。決まりに合わない入力を断り、合う入力から決まった結果を作る。
+// 流れのスキルに同梱したスクリプト（印を付ける・答えを記録する・起票する）と担当の後始末（終わりのコメント）の照らし。決まりに合わない入力を断り、合う入力から決まった結果を作り、書いた形をゲートが同じ形で読む。
 // GitHub へ書く所は、gh を打つ関数を差し替えて、書く・書かないと、落ちたときに返す文を見る。
 import assert from "node:assert/strict";
 import test from "node:test";
-import base from "../flow.config.json" with { type: "json" };
-import { questionForms } from "../src/bot.js";
-import { formed as make } from "./forms.js";
+import { spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { config } from "../src/bot.js";
 import { NONE, answerBody, answerProblem, answerText, askText, checkByText, conditions, latestQuestion, withButton } from "../src/questions.js";
+import { formed as make } from "./forms.js";
 import { fillFields, issueProblems, parseArgs, withOrigin } from "../../../.claude/skills/file-issue/scripts/new-issue.mjs";
 import { check } from "../../../.claude/skills/task-work/scripts/check.mjs";
+import { END, readFromOf, startBlock } from "../src/facts.js";
+import { originOf } from "../src/family.js";
 // 読み込むだけで手順は動かない（打たれたときだけ動く）。読み込めることで、import の誤りを CI で落とす。
 import "../../../.claude/skills/ask/scripts/answer.mjs";
 import "../../../.claude/skills/ask/scripts/ask.mjs";
 
-const config = base;
 
 test("印を付ける（task-work の check.mjs）: 1つに決まる残りの条件にだけ付け、ユーザーが確かめる行は断る", () => {
   const body = withButton("要約\n\n- [ ] 道を押すと値が出る\n- [ ] 道を押すと窓が閉じる\n- [ ] 見た目\n  - 確かめる: ユーザー\n- [x] 済んだ\n", config, 1);
@@ -39,12 +44,12 @@ test("印を付ける（task-work の check.mjs）: 1つに決まる残りの条
 });
 
 // 書く者が埋める問い（判断・操作）は形の骨組みから作り（test/forms.js: formed）、ゲートが出す問いは、ゲートと同じ組み立てで作る。
-const asked = (text) => latestQuestion([text], questionForms);
+const asked = (text) => latestQuestion([text], config.questionForms);
 
 test("答えを記録する（ask の answer.mjs）: 回答フォームと同じ照らしで断り、書いた文はゲートが同じ文として読む", () => {
   const judgeText = make("判断", "どちらにしますか？", ["案A", "案B"]);
-  const confirmText = askText("確かめ", questionForms, [{ text: "見た目" }]);
-  const [judge, confirm, adopt, operate] = [judgeText, confirmText, askText("採否", questionForms), make("操作", "設定を変えてください", ["画面で設定を変える"])].map(asked);
+  const confirmText = askText("確かめ", config.questionForms, [{ text: "見た目" }]);
+  const [judge, confirm, adopt, operate] = [judgeText, confirmText, askText("採否", config.questionForms), make("操作", "設定を変えてください", ["画面で設定を変える"])].map(asked);
   const rows = [
     [judge, { choice: "案C" }, /案にない答え/], [judge, { choice: NONE }, /書く欄に書いて/], [judge, { choice: "案A" }, null], [judge, { text: "どれでもない" }, null],
     [confirm, {}, /「完了にする」のチェックを付けるか/], [adopt, { choice: "やる" }, /着手する・保留する・見送る/], [adopt, { text: "あとで決める" }, /選べるのは/],
@@ -58,13 +63,13 @@ test("答えを記録する（ask の answer.mjs）: 回答フォームと同じ
   assert.match(body, /^## 回答\n\*\*完成にしてよいですか？\*\*\n\n回答: 完了にする\n- 確かめた: 見た目\n\n/);
   assert.equal(answerText(body), said, "ゲートは決まった形の行の塊のあとを、書いた文としてそのまま読む");
   // 書いた文の中の、決まった形に似た行（太字だけの行・「次のステータス:」で始まる行）も書いた文として読み、決定にしない。
-  const read = (text) => latestQuestion([confirmText, answerBody(confirm, { done: true, text })], questionForms)?.answer;
+  const read = (text) => latestQuestion([confirmText, answerBody(confirm, { done: true, text })], config.questionForms)?.answer;
   assert.deepEqual(read("**ここを直して**"), { decision: "完了", confirmed: ["見た目"], text: "**ここを直して**" }, "太字だけの文も書いた文");
   assert.deepEqual(read("次のステータス: 保留\nにしたいくらい崩れる"), { decision: "完了", confirmed: ["見た目"], text: "次のステータス: 保留\nにしたいくらい崩れる" },
     "決まった形に似た行で決定を変えない");
-  assert.equal(latestQuestion([confirmText, "## 回答\n**完成にしてよいですか？**\n\n補足: 見た"], questionForms)?.answer.text, "補足: 見た", "前の形の補足も書いた文");
+  assert.equal(latestQuestion([confirmText, "## 回答\n**完成にしてよいですか？**\n\n補足: 見た"], config.questionForms)?.answer.text, "補足: 見た", "前の形の補足も書いた文");
   // 選ばずに書いた文だけで答えても（確かめで完了にしない・どの案でもない判断）、書いた文の頭が決まった形に似ていれば、決まった形の行として読まない。
-  const only = (text, q, question) => latestQuestion([question, answerBody(q, { text })], questionForms)?.answer;
+  const only = (text, q, question) => latestQuestion([question, answerBody(q, { text })], config.questionForms)?.answer;
   for (const text of ["次のステータス: 保留", "回答: 完了にする", "- 確かめた: 見た目\nここは崩れる", "ラベル: 急ぎ\n直して"]) {
     assert.deepEqual(only(text, confirm, confirmText), { decision: "続ける", confirmed: [], text }, text);
     assert.deepEqual(only(text, judge, judgeText), { decision: "続ける", confirmed: [], text }, text);
@@ -74,18 +79,18 @@ test("答えを記録する（ask の answer.mjs）: 回答フォームと同じ
 test("起票する（file-issue の new-issue.mjs）: 本文の形・子の決まり・欄の値を照らす", () => {
   const ok = "要約の1行\n\n<details><summary>要望: 困りごと</summary>\n\n- 困る\n\n</details>\n\n<details><summary>やること</summary>\n\n1. 作る\n\n</details>\n\n" +
     "<details><summary>完了の条件</summary>\n\n- [ ] 作った\n\n</details>\n";
-  const child = ok.replace("- [ ] 作った", "親の行の下に - 子: を付ける");
+  const bare = ok.replace("- [ ] 作った", "条件の無い行");
   assert.deepEqual(issueProblems(ok, { type: "要望", size: "S", priority: "中" }), []);
-  assert.deepEqual(issueProblems(child, { type: "要望", child: true, size: "S" }), [], "子は条件と優先度を持たない");
+  assert.deepEqual(issueProblems(ok, { type: "要望", child: true, size: "S" }), [], "子も自分の条件を持ち、優先度は持たない");
   const rows = [
     [ok.replace("要約の1行\n\n", ""), { type: "要望", size: "S", priority: "中" }, /畳まない要約が無い/],
     [ok.replace("やること", "経緯"), { type: "要望", size: "S", priority: "中" }, /順か重なりが違う/],
     [ok.replace("やること", "メモ"), { type: "要望", size: "S", priority: "中" }, /知らない節「メモ」/],
     [ok, { type: "不具合", size: "S", priority: "中" }, /種類「不具合」に合わない節「要望: 困りごと」/],
-    [child, { type: "要望", size: "S", priority: "中" }, /完了の条件が無い/],
+    [bare, { type: "要望", size: "S", priority: "中" }, /完了の条件が無い/],
     [ok, { type: "要望" }, /規模と優先度を入れる/],
-    [ok, { type: "要望", child: true }, /子は完了の条件を持たない/],
-    [child, { type: "要望", child: true, priority: "高" }, /子に優先度・着手可能日時を入れない/],
+    [bare, { type: "要望", child: true }, /完了の条件が無い/],
+    [ok, { type: "要望", child: true, priority: "高" }, /子は優先度・着手可能日時を持ちません/],
     [ok, { type: "要望", size: "XL", priority: "中" }, /規模「XL」/],
     [ok, { type: "要望", size: "S", priority: "中", start: "来週" }, /着手可能日時「来週」/],
     [ok.replace("<details><summary>やること", "<details>\n<summary>メモ"), { type: "要望", size: "S", priority: "中" }, /知らない節「メモ」/],
@@ -94,6 +99,7 @@ test("起票する（file-issue の new-issue.mjs）: 本文の形・子の決�
   for (const [body, opts, want] of rows) assert.match(issueProblems(body, opts).join("・"), want, String(want));
   assert.deepEqual(issueProblems(ok.replace("- [ ] 作った", "済んだら閉じる"), { type: config.dialogType }), ["完了の条件が無い"], "対話作業は欄を求めないが、条件は要る");
   assert.match(withOrigin(ok, 724), /^要約の1行\n\n分割元: #724\n\n<details>/, "分割元の行は要約のあとに置く");
+  assert.equal(originOf(withOrigin(ok, 724)), 724, "置いた分割元の行を、ゲートが分割元として読む");
   assert.equal(withOrigin(withOrigin(ok, 724), 724).match(/分割元/g).length, 1, "二度は置かない");
   assert.deepEqual(parseArgs(["--title", "題", "--body-file", "b.md", "--blocked-by", "5"]), { title: "題", "body-file": "b.md", "blocked-by": "5" });
   for (const argv of [["--blokced-by", "5"], ["--title"], ["--title", "--size", "S"], ["題"]]) assert.equal(parseArgs(argv), null, argv.join(" "));
@@ -112,7 +118,7 @@ test("起票する（file-issue の new-issue.mjs）: 欄を issue へ1回で入
     };
     return { left: fillFields(gh, 77, values), sent };
   };
-  const f = base.fields;
+  const f = config.fields;
   assert.deepEqual(run(), { left: null, sent: [{ i: "I77", v: [{ fieldId: f.size.id, singleSelectOptionId: f.size.options.S }, { fieldId: f.priority.id, singleSelectOptionId: f.priority.options.高 }] }] });
   for (const fail of ["view", "api"]) {
     const { left } = run(fail);
@@ -120,4 +126,44 @@ test("起票する（file-issue の new-issue.mjs）: 欄を issue へ1回で入
     assert.match(left, /--fill 77 --size S --priority 高$/, "入れ直すコマンド");
   }
   assert.match(fillFields(() => "{}", 77, [["size", "XL"]]), /規模「XL」は .*のどれか/, "選択肢に無い値は書かない");
+});
+
+// 担当の後始末（.github/claude-task/after.js）。ワークフロー（.github/workflows/claude-task.yml）と同じく、after.js と流れの道具（src と、src を
+// ES モジュールとして読ませる package.json）を、作業ツリーの外へ写して打つ。
+const AFTER = fileURLToPath(new URL("../../../.github/claude-task/after.js", import.meta.url));
+const execution = (messages) => {
+  const file = join(mkdtempSync(join(tmpdir(), "after-")), "execution.json");
+  writeFileSync(file, JSON.stringify(messages));
+  return file;
+};
+const copied = () => {
+  const dir = mkdtempSync(join(tmpdir(), "flow-"));
+  mkdirSync(join(dir, "claude-task"));
+  copyFileSync(AFTER, join(dir, "claude-task", "after.js"));
+  const src = fileURLToPath(new URL("../src", import.meta.url));
+  mkdirSync(join(dir, "src"));
+  for (const f of readdirSync(src)) copyFileSync(join(src, f), join(dir, "src", f)); // cpSync は開発機（Windows）の日本語のパスで落ちる
+  copyFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), join(dir, "package.json"));
+  return dir;
+};
+
+test("担当の終わりのコメント（after.js）: 写した流れの道具の形で、見出し・読み始め・読み始めの完了の条件を書き、ゲートが同じ形で読む", () => {
+  const dir = copied();
+  const file = execution([{ type: "result", result: "PR を出した" }]);
+  const body = "- [x] 作る\n- [ ] 直す\n";
+  writeFileSync(join(dir, "start.md"), body);
+  for (const [name, startFile, block] of [["読み始めの本文がある", join(dir, "start.md"), startBlock(body)], ["読めなかった", "", startBlock("")]]) {
+    const r = spawnSync(process.execPath, [join(dir, "claude-task", "after.js"), "検証", file, "", "https://example.invalid/run", startFile],
+      { encoding: "utf8", env: { ...process.env, FLOW_SRC: join(dir, "src"), READ_FROM: "2026-10-12T00:00:00Z" } });
+    assert.equal(r.status, 0, `${name}: ${r.stderr}`);
+    assert.deepEqual([END.exec(r.stdout)?.[1], readFromOf(r.stdout), r.stdout.trimEnd().endsWith(block)], ["検証", "2026-10-12T00:00:00Z", true], name);
+  }
+});
+
+test("担当の後始末（after.js --quota）: 流れの道具を読めない所でも、利用の上限で止まったときだけ 1 で終わる", () => {
+  const script = join(copied(), "claude-task", "after.js"); // FLOW_SRC を渡さない
+  for (const [messages, code] of [[[], 0], [[{ type: "assistant", error: "rate_limit" }], 1]]) {
+    const r = spawnSync(process.execPath, [script, "--quota", execution(messages)], { encoding: "utf8" });
+    assert.equal(r.status, code, `${JSON.stringify(messages)}: ${r.stderr}`);
+  }
 });

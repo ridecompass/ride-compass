@@ -45,9 +45,9 @@ details{border-bottom:1px solid #8884;padding:6px 0;overflow-wrap:anywhere}detai
 { status, headers: { "content-type": "text/html; charset=utf-8" } });
 
 async function read(gh, config, number) {
-  const [o, n] = config.tasks.split("/");
+  const { owner: o, name: n } = config.repos.tasks;
   const r = await gh.gql(`query($o:String!,$n:String!,$i:Int!){repository(owner:$o,name:$n){labels(first:100){nodes{id name}}
-    issue(number:$i){id title url body bodyHTML labels(first:50){nodes{name}} comments(last:40){nodes{body bodyHTML url createdAt author{login}}}}}}`, { o, n, i: number });
+    issue(number:$i){id title url bodyHTML labels(first:50){nodes{name}} comments(last:40){nodes{body bodyHTML url createdAt author{login}}}}}}`, { o, n, i: number });
   const { issue, labels } = r.repository;
   const comments = issue.comments.nodes;
   const question = latestQuestion(comments.map((c) => c.body), config.questionForms); // ゲートと同じく、形に合わない問いは問いとして読まない

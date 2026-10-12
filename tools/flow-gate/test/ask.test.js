@@ -7,8 +7,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import base from "../flow.config.json" with { type: "json" };
-import { questionForms } from "../src/bot.js";
+import { config } from "../src/bot.js";
 import { askText, withButton } from "../src/questions.js";
 
 const script = fileURLToPath(new URL("../../../.claude/skills/ask/scripts/ask.mjs", import.meta.url));
@@ -22,13 +21,13 @@ function ask(text) {
 }
 
 test("形に合わない問いは出さない（#823: 回答のボタンを先頭に付けた問い）", () => {
-  const r = ask(withButton(askText("採否", questionForms), base, 823));
+  const r = ask(withButton(askText("採否", config.questionForms), config, 823));
   assert.equal(r.status, 1);
   assert.match(r.stderr, /問いが形に合わないので出さない/);
 });
 
 test("形に合う問いは照らしを通り、出す段へ進む", () => {
-  const r = ask(askText("採否", questionForms));
+  const r = ask(askText("採否", config.questionForms));
   assert.equal(r.status, 1);
   assert.match(r.stderr, /FLOW_BOT_TOKEN が無いので書かない/);
 });

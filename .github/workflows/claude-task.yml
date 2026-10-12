@@ -53,14 +53,14 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.CODE_TOKEN }}
       # 置き場の名前は tools/flow-gate/flow.config.json の tasks だけが持つ。後の段は TASKS を、担当への指示は段の出力を読む。
-      # 後片付けの道具（.github/claude-task/after.js と、それが読む条件の読み方 tools/flow-gate/src）は、担当が作業ブランチへ移っても振り出された版で
-      # 動くよう、ここで写して後の段はそれを打つ。
+      # 後片付けの道具（.github/claude-task/after.js と、それが読む流れの道具 tools/flow-gate/src と、src を ES モジュールとして読ませる package.json）は、
+      # 担当が作業ツリーを変えても振り出された版で動くよう、ここで写して後の段はそれを打つ。
       - id: tasks
         run: |
           tasks=$(jq -er .tasks tools/flow-gate/flow.config.json)
           echo "TASKS=$tasks" >> "$GITHUB_ENV"
           echo "repo=$tasks" >> "$GITHUB_OUTPUT"
-          mkdir -p "$RUNNER_TEMP/flow" && cp -r .github/claude-task tools/flow-gate/src "$RUNNER_TEMP/flow/"
+          mkdir -p "$RUNNER_TEMP/flow" && cp -r .github/claude-task tools/flow-gate/src tools/flow-gate/package.json "$RUNNER_TEMP/flow/"
           echo "FLOW_SRC=$RUNNER_TEMP/flow/src" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v5
         with:

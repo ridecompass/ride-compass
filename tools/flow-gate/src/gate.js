@@ -3,6 +3,7 @@
 // （と、取り消す実行ごとに1回。Actions の取り消しは1回にまとめる口が無い）。
 import { decide } from "./decide.js";
 import { readFacts } from "./facts.js";
+import { NO_GRANDCHILD, makesGrandchild } from "./family.js";
 import { askDropped, askText, confirmConditions, isQuestionLabel, norm } from "./questions.js";
 
 // 決めた問い（種類の名前か、見送りの相手を持つもの）の文。確かめに並べる条件は、書く本文（決めた本文）から取る。
@@ -64,17 +65,17 @@ const ROUTES = {
     if (p.action === "field_added" || p.action === "field_removed") return { numbers: [p.issue.number], moved: p.sender.login === config.user };
     return { numbers: [p.issue.number], around: p.action === "closed" || p.action === "reopened" };
   },
-  // 親子が張られた・外された。孫になる張り方（親に親がある・子が子を持つ）は、張られた直後に外して子に知らせる（作る前に止める口は GitHub に無い）。
+  // 親子が張られた・外された。孫になる張り方（src/family.js: makesGrandchild）は、張られた直後に外して子に知らせる（作る前に止める口は GitHub に無い）。
   async sub_issues(gh, config, p) {
     const [parent, child] = [p.parent_issue, p.sub_issue];
     if (p.action === "sub_issue_added") {
-      const [o, r] = config.tasks.split("/");
+      const { owner: o, name: r } = config.repos.tasks;
       const x = (await gh.gql(`query($o:String!,$r:String!,$p:Int!,$c:Int!){repository(owner:$o,name:$r){p:issue(number:$p){parent{number}}
         c:issue(number:$c){subIssues(first:1){nodes{number}}}}}`, { o, r, p: parent.number, c: child.number })).repository;
-      if (x.p.parent || x.c.subIssues.nodes.length) {
+      if (makesGrandchild(x.p.parent, x.c.subIssues.nodes.length)) {
         await gh.gql(`mutation($p:ID!,$c:ID!,$b:String!){removeSubIssue(input:{issueId:$p,subIssueId:$c}){clientMutationId}
           addComment(input:{subjectId:$c,body:$b}){clientMutationId}}`,
-        { p: parent.node_id, c: child.node_id, b: `孫は作れないので、#${parent.number} との親子の関係を外しました。同じ親の兄弟に分けてください。` });
+        { p: parent.node_id, c: child.node_id, b: `#${parent.number} との親子の関係を外しました。${NO_GRANDCHILD}` });
       }
     }
     return { numbers: [parent.number, child.number] };
