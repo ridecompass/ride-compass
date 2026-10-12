@@ -18,10 +18,11 @@ export const bodyRest = (body) => splitBody(body).rest;
 export const withButton = (body, config, number) =>
   `<!-- flow-gate -->\n[![回答する](${config.urls.gate}/button.svg)](${answerUrl(config, number)})\n<!-- /flow-gate -->\n\n${bodyRest(body)}`;
 // 完了の条件（.claude/skills/file-issue/SKILL.md「issue の形」）。1つの条件はチェックの行から、それより深く字下げした続きの行まで
-// （Markdown と同じく、続きの間の空行も同じ条件に数える）。続きの行のうち「- 確かめる: 」「- 子: 」で始まる行だけが属性で、ほかは条件の文の続き。
+// （Markdown と同じく、続きの間の空行も同じ条件に数える）。続きの行のうち「- 確かめる: 」「- 子: 」「- 見る所と要点: 」で始まる行だけが属性で、ほかは条件の文の続き。
+// 見る所と要点は、ユーザーが確かめる条件の判断に要る中身（見る先へのリンクと、何が作られ・何が分かったか）で、ゲートは読まずに確かめの問いへ写す。
 // 属性を行の外に置くのは、文の中の記号と混ざらないため。index はチェックの行が本文（bodyRest）の何行目か（印はこの行に付ける）。
 const CHECK = /^(\s*)- \[([ x])\] (.+)$/;
-const ATTR = /^- (確かめる|子): (.+)$/;
+const ATTR = /^- (確かめる|子|見る所と要点): (.+)$/;
 const indent = (l) => /^\s*/.exec(l)[0].length;
 export function conditions(body) {
   const lines = bodyRest(body).split("\n");
@@ -29,7 +30,7 @@ export function conditions(body) {
   for (let i = 0; i < lines.length; i++) {
     const m = CHECK.exec(lines[i]);
     if (!m) continue;
-    const c = { index: i, text: [m[3].trim()], done: m[2] === "x", verify: "Claude", child: null };
+    const c = { index: i, text: [m[3].trim()], done: m[2] === "x", verify: "Claude", child: null, look: null };
     for (;;) {
       let j = i + 1;
       while (j < lines.length && !lines[j].trim()) j++;
@@ -38,6 +39,7 @@ export function conditions(body) {
       const t = lines[i].trim();
       const a = ATTR.exec(t);
       if (a?.[1] === "確かめる") c.verify = a[2].trim() === "ユーザー" ? "ユーザー" : "Claude";
+      else if (a?.[1] === "見る所と要点") c.look = a[2].trim();
       else if (a) c.child = Number(/^#(\d+)$/.exec(a[2].trim())?.[1]) || null;
       else c.text.push(t);
     }
@@ -52,7 +54,8 @@ export function checkLines(body, indexes) {
   return lines.join("\n");
 }
 export const remaining = (body) => conditions(body).filter((c) => !c.done);
-export const confirmItems = (body) => remaining(body).filter((c) => c.verify === "ユーザー").map((c) => c.text);
+export const confirmConditions = (body) => remaining(body).filter((c) => c.verify === "ユーザー");
+export const confirmItems = (body) => confirmConditions(body).map((c) => c.text);
 // Claude が条件の文の頭で指した行に印を付けた本文（.claude/skills/task-work/scripts/check.mjs）。指せるのは残りの条件のうちちょうど1つに
 // 当たるものだけで、ユーザーが確かめる行（答えでゲートが付ける）と子が受け持つ行（子が閉じたときにゲートが付ける）は指せない。
 // 本文の頭の回答のボタンは残す。合わなければ problems を返し、本文は返さない。
@@ -176,8 +179,12 @@ const ASKS = {
     "やり直す: 未着手へ戻し振り出す。保留する: 保留へ。見送る: 閉じる。", "直前の「担当の終わり」のコメント。"],
 };
 const material = (template, facts) => sections(template).map((n, i) => `**${n}**: ${facts[i] ?? "なし"}`).join("\n\n");
-export function askText(kind, template) {
-  const [question, ...facts] = ASKS[kind];
+// 確かめは、ユーザーが確かめる条件（confirmConditions）ごとに、条件の文と見る所と要点を「何の話か」に並べる。書かれていない条件も隠さずにそう出す。
+const NO_LOOK = "書かれていません";
+const listed = (items) => items.map((c) => `\n- ${c.text}\n  - 見る所と要点: ${c.look ?? NO_LOOK}`).join("");
+export function askText(kind, template, items = []) {
+  const [question, about, ...rest] = ASKS[kind];
+  const facts = [kind === "確かめ" && items.length ? `${about}\n${listed(items)}` : about, ...rest];
   return `## 問い（${kind}）\n${question}\n\n<details><summary>判断材料</summary>\n\n${material(template, facts)}\n</details>`;
 }
 

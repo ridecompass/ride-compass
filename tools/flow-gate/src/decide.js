@@ -25,7 +25,7 @@ export function decide(f, config) {
   return { type, status: s.status, open: s.status !== "完了", closeAs: s.closeAs, ask: s.ask ?? null, cancel: s.cancel ?? [], closePr: dropping && f.pr ? f.pr.id : null,
     notice: [notice(f, s.status), s.told].filter(Boolean).join("\n\n") || null,
     ready: s.status === "検証待ち" && Boolean(f.pr?.draft), assignees: owner(s.status, config),
-    body: s.status === "回答待ち" || (f.question && !f.question.answer) ? withButton(body, config, f.number) : body };
+    body: s.status === "回答待ち" || (s.status !== "完了" && f.question && !f.question.answer) ? withButton(body, config, f.number) : body };
 }
 
 // 2階: 担当者は2択。ユーザーに問わないと進めない（回答待ち・保留）ならユーザー、ほかは Claude（完了は持ち主なし）。
@@ -62,8 +62,12 @@ function status(f, config) {
   if (!f.status) return f.author === config.claude && f.type === "要望" && !f.parent && !f.origin ? { status: "回答待ち", ask: "採否" } : { status: "未着手" };
   // ユーザーが書いた文（答えの文・コメント）を Claude がまだ読んでいなければ、Claude の番にする（閉じていれば開き直す）。ゲートは文の中身を読まない。
   if (f.unread) return { status: "未着手" };
+  // 答えの無い問いがあっても、完了の条件が全部済んだら完成にする（済んだ作業への問いは要らない）。採否は、条件が済んでいても着手するかの答えが要る。
   const q = f.question;
-  if (q && !q.answer) return { status: "回答待ち" };
+  if (q && !q.answer) {
+    const t = table(f);
+    return t.status === "完了" && q.kind !== "採否" ? t : { status: "回答待ち" };
+  }
   // 答えは、ユーザーの番（回答待ち）に来たときに当てる。書いた文のある答えは、Claude が読んだあとに一度だけ当て、当てたことを知らせる。
   const a = q?.answer;
   if (!a || (f.status !== "回答待ち" && !(a.text && f.answerRead && !f.answerApplied))) return table(f);
@@ -82,7 +86,7 @@ function table(f) {
   if (pr) {
     if (pr.backToDraft) return { status: "未着手" }; // 確かめる担当の差し戻し
     if (!pr.checks || pr.checks === "PENDING") return { status: "CI待ち" }; // 下書きかどうかによらず、CI の結果を待つ間は手放す
-    if (pr.checks === "FAILURE" || pr.newSurvivors) return { status: "未着手" };
+    if (pr.checks === "FAILURE") return { status: "未着手" };
     // 確かめる担当が、マージも差し戻しも問いもせずに手放した（同じ PR を確かめ直し続けない）。
     return f.status === HELD.確かめる ? IRREGULAR : { status: "検証待ち" };
   }

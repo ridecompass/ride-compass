@@ -4,8 +4,7 @@
 （`derive_stop_places.derive`）。項目の形の小さな見本を置き場に書き、表に入った寺社を見る。
 
 ここで見ないもの:
-- 配信元から手元へ写す取得（`scripts/fetch_bunka_heritages.py`）→ どのテストも通さない（網の向こうの API を順に
-  読むだけで、判断を持たない）
+- 配信元から手元へ写す取得（`scripts/fetch_bunka_heritages.py`）→ `test_fetch_bunka_heritages.py`
 - Overture の地点の群とまとめ → `test_stop_places.py`
 """
 
