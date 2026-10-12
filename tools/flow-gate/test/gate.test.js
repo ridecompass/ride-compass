@@ -726,7 +726,10 @@ test("回答フォーム（合意したモック）: 回答内容（案と書く
   assert.equal((await open(3)).status, 404, "答えていない問いが無い");
   assert.match((await answer(1, { question: "前の問い" })).error, /問いが新しくなっています/);
   assert.match((await answer(4, { plan: "案A" })).error, /この issue をどうするか/, "次遷移はいつも要る");
+  const [mutations, writes] = [w.mutations ?? 0, w.writes.length];
   await answer(4, { next: "保留", plan: "案B", note: "あとで" });
+  assert.deepEqual([(w.mutations ?? 0) - mutations, w.writes.slice(writes).map(([k]) => k), w.at(4).status], [0, ["コメント"], "回答"],
+    "tasks#790 送るときは答えのコメントを書く1回だけで応答を返し、ゲートの書き込み（ステータスの移し）を待たない");
   assert.equal(w.at(4).comments.at(-1).split("\n").slice(3).join("\n"), "次遷移: 保留\n選んだ案: 案B\nコメント:\nあとで", "次遷移と選んだ案とコメントを、互いに変えずにそのまま書く");
   await answer(1, { next: "続ける", note: "崩れる" });
   await w.send(ev.comment(1));
