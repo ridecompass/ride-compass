@@ -90,11 +90,6 @@ function aboveFilter(property: string, min: number): FilterSpecification {
   return [">", ["to-number", ["get", property]], min] as unknown as FilterSpecification;
 }
 
-/** 生成物の`*_none_below_*`の境（これ未満は無いものと数える）で、無いものと数える地物を外す。 */
-function notBelowFilter(property: string, noneBelow: number): FilterSpecification {
-  return [">=", ["to-number", ["get", property]], noneBelow] as unknown as FilterSpecification;
-}
-
 const RASTER_DRAWING: Drawing = { paint: { "raster-opacity": AREA_OPACITY } };
 
 /** 線状降水帯の雨域の輪郭線。色・太さは配信元の公式の画面の描画定義の値で、塗らず、属性も読まない。 */
@@ -111,6 +106,11 @@ const RAINBAND_OUTLINE_DRAWING: Drawing = {
     },
   },
 };
+
+/** 生成物の`*_below_*`の境（これ未満は無い側）で絞る。境ちょうどの値は有る側に入れる。 */
+function notBelowFilter(property: string, below: number): FilterSpecification {
+  return [">=", ["to-number", ["get", property]], below] as unknown as FilterSpecification;
+}
 
 function markDrawing(options: {
   readonly iconId: string;
@@ -155,7 +155,7 @@ function markDrawing(options: {
     },
     ...(options.minValueToShow === undefined
       ? {}
-      : { filter: aboveFilter(options.valueProperty, options.minValueToShow) }),
+      : { filter: notBelowFilter(options.valueProperty, options.minValueToShow) }),
   };
 }
 
