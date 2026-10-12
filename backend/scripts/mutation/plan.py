@@ -14,12 +14,19 @@ import json
 import os
 import random
 
-from _shared import fn_of, mutation_line
+from _shared import BASELINE_LIST, BASELINES, ONLY_LIST, ORIGINAL, RECHECK_LIST, baselines, fn_of, layer, mutation_line, \
+    read_lines, read_stats
 
 OUT = os.environ["MUT_OUT"]
-st = json.load(open("mutmut-stats.json", encoding="utf-8"))
-tbf = st["tests_by_mangled_function_name"]
-dur = st["duration_by_test"]
+tbf, dur = read_stats()
+
+
+def shuffled(names):
+    """種を固定した無作為の並び。"""
+    random.Random(661).shuffle(names)
+    return names
+
+
 rows = []
 for f in glob.glob("app/**/*.meta", recursive=True):
     for k in json.load(open(f, encoding="utf-8"))["exit_code_by_key"]:
@@ -32,42 +39,35 @@ print("変異", len(rows), "テストの当たらない変異", sum(1 for r in r
       "テストの秒の合計", round(sum(r[3] for r in rows)), "行を読めなかった変異", sum(1 for r in rows if r[4] is None))
 by: dict[str, list[float]] = collections.defaultdict(lambda: [0, 0, 0.0])
 for f, _k, c, s, *_where in rows:
-    layer = f.split("/")[1] if f.count("/") > 1 else f
-    by[layer][0] += 1
-    by[layer][1] += c == 0
-    by[layer][2] += s
-for layer, v in sorted(by.items()):
-    print(layer, v[0], v[1], round(v[2]))
-pool = sorted(r[1] for r in rows if r[2] > 0)
-random.Random(661).shuffle(pool)
+    by[layer(f)][0] += 1
+    by[layer(f)][1] += c == 0
+    by[layer(f)][2] += s
+for name, v in sorted(by.items()):
+    print(name, v[0], v[1], round(v[2]))
+pool = shuffled(sorted(r[1] for r in rows if r[2] > 0))
 tested = sorted({fn_of(m) for m in pool})
 # 一覧があれば、それだけを回す。recheck.txt は runner.py がテスト全体を当てる（importtime.py の説明）。only.txt は
 # 記録のテスト（その関数を通るテスト）で回す——テストを消したあと、消したテストが見つけていた変異を残る側が
 # 落とすかを確かめる。両方あれば recheck.txt を使う。
-HERE = os.path.dirname(os.path.abspath(__file__))
 # baseline.txt があれば、変異を入れない基準を回す（runner.py の説明）。行は関数の名前（mutmut の mangled name）か、
 # 全部の関数なら「*」。「+orig」の行があれば、元の版（差し込んでいない版）の基準も回す。
-BASELINE = os.path.join(HERE, "baseline.txt")
-if os.path.exists(BASELINE):
-    lines = [line.strip() for line in open(BASELINE, encoding="utf-8") if line.strip()]
+if os.path.exists(BASELINE_LIST):
+    lines = read_lines(BASELINE_LIST)
     funcs = tested if "*" in lines else [f for f in tested if f in lines]
-    kinds = ["BASE1", "BASE2"] + (["ORIG"] if "+orig" in lines else [])
-    pool = [f"{k}:{f}" for f in funcs for k in kinds]
-    random.Random(661).shuffle(pool)
+    pool = shuffled(baselines(funcs, BASELINES + ((ORIGINAL,) if "+orig" in lines else ())))
     open(os.path.join(OUT, "all.txt"), "w", encoding="utf-8").write("\n".join(pool) + "\n")
     print("baseline.txt の基準を回す", len(funcs), "関数", len(pool), "件")
     raise SystemExit(0)
-for listed in ("recheck.txt", "only.txt"):
-    if os.path.exists(os.path.join(HERE, listed)):
-        pool = [line.strip() for line in open(os.path.join(HERE, listed), encoding="utf-8") if line.strip()]
-        print(listed, "の一覧を回す")
+for listed in (RECHECK_LIST, ONLY_LIST):
+    if os.path.exists(listed):
+        pool = read_lines(listed)
+        print(os.path.basename(listed), "の一覧を回す")
         break
 else:
     # 環境変数 MUT_WITH_BASELINE があれば、全部の変異に、テストの当たる関数ごとの基準（BASE1・BASE2）を混ぜて1つの一覧にする
     # （定期の測り。.github/workflows/mutation.yml。report.py が基準で落ちたテストを見つけたに数えない）。
     if os.environ.get("MUT_WITH_BASELINE"):
-        pool += [f"{k}:{f}" for f in tested for k in ("BASE1", "BASE2")]
-        random.Random(661).shuffle(pool)
+        pool = shuffled(pool + baselines(tested))
         print("基準を混ぜる", len(tested), "関数")
 open(os.path.join(OUT, "all.txt"), "w", encoding="utf-8").write("\n".join(pool) + "\n")
 print("all.txt", len(pool), "件")

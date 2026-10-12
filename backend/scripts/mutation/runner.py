@@ -18,30 +18,25 @@ import sys
 import threading
 import time
 
-from _shared import fn_of
+from _shared import ORIGINAL, RECHECK_LIST, baseline_of, fn_of, read_lines, read_results, read_stats
 
 OUT = os.environ["MUT_OUT"]
 DB_PREFIX = os.environ["MUT_DB_PREFIX"]
 STOP_AFTER = float(os.environ.get("MUT_STOP_AFTER") or "inf")
-names = [line.strip() for line in open(sys.argv[1], encoding="utf-8") if line.strip()]
+names = read_lines(sys.argv[1])
 out_path = sys.argv[2]
 workers = int(sys.argv[3])
 HERE = os.path.dirname(os.path.abspath(__file__))
-RECHECK_FILE = os.path.join(HERE, "recheck.txt")
 RECHECK = set()
-if os.path.exists(RECHECK_FILE):
-    RECHECK = {line.strip() for line in open(RECHECK_FILE, encoding="utf-8") if line.strip()}
+if os.path.exists(RECHECK_LIST):
+    RECHECK = set(read_lines(RECHECK_LIST))
     cfg = configparser.ConfigParser()
     cfg.read(os.path.join(HERE, "setup.cfg"), encoding="utf-8")
     FULL_SELECTION = cfg["mutmut"]["pytest_add_cli_args_test_selection"].split()
     XDIST = ["-n", str(workers), "--dist", "loadgroup"]
     workers = 1
-done = set()
-if os.path.exists(out_path):
-    done = {json.loads(line)["mutant"] for line in open(out_path, encoding="utf-8")}
-stats = json.load(open("mutmut-stats.json", encoding="utf-8"))
-tbf = stats["tests_by_mangled_function_name"]
-dur = stats["duration_by_test"]
+done = set(read_results(out_path))
+tbf, dur = read_stats()
 
 q: queue.Queue[str] = queue.Queue()
 for n in names:
@@ -119,7 +114,7 @@ def work(slot):
             name = q.get_nowait()
         except queue.Empty:
             return
-        base_kind, _, base_func = name.partition(":")
+        base_kind, base_func = baseline_of(name) or (None, None)
         if base_func:
             # 基準: 変異を入れずに、その関数の変異と同じテストの組み合わせを同じ並びで回す（BASE1・BASE2 は差し込んだ版を2回、
             # ORIG は元の版）。基準で落ちるテストは、変異の回で落ちても見つけたとは言えない。
@@ -149,7 +144,7 @@ def work(slot):
                 [sys.executable, "-m", "pytest", "-q", "--rootdir=.", "--tb=no", "-p", "no:cacheprovider",
                  "-p", "no:randomly", "-p", "mutkill", "-o", "timeout=60", *extra, f"@{args_file}"],
                 env, limit, os.path.join(args_dir, f"w{slot}.err"),
-                cwd=".." if base_kind == "ORIG" and base_func else None)  # 元の版は差し込んだ版の1つ上（backend）
+                cwd=".." if base_kind == ORIGINAL else None)  # 元の版は差し込んだ版の1つ上（backend）
             if code is None:
                 status = "timeout"
             else:
