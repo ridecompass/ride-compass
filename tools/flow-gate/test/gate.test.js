@@ -710,7 +710,8 @@ test("書いた文は Claude が読むまで決定を当てず、読んだあと
 
 test("回答フォーム（合意したモック）: 回答内容（案と書く欄）と「この issue を」の次遷移のボタンを分けて出し、送った答えでゲートが決め直す", async () => {
   const w = world([{ n: 1, status: "検査", body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1" } },
-    { n: 2, author: config.claude, type: "要望" }, { n: 3, status: "実装" }, { n: 4, status: "回答", comments: [QUESTION] }]);
+    { n: 2, author: config.claude, type: "要望" }, { n: 3, status: "実装" }, { n: 4, status: "回答", comments: [QUESTION] },
+    { n: 5, status: "回答", comments: ["## 問い（判断）\nどうしますか？\n\n### 案\n- 案A\n- 案B\n"] }]);
   connect(w);
   await w.send(ev.merge(1)); // 確かめの問い
   await w.send(ev.issue(2, "opened", config.claude)); // 採否の問い
@@ -724,6 +725,10 @@ test("回答フォーム（合意したモック）: 回答内容（案と書く
   assert.ok(/value="案A">.*推奨.*早い/s.test(judge) && /value="案B">.*安い/s.test(judge), "案ごとに理由を添え、推奨に印を付ける");
   assert.ok(!/<input[^>]*name="(plan|next)"[^>]*checked/.test(judge), "推奨も次遷移も、最初から選んだ状態にしない");
   assert.equal((await open(3)).status, 404, "答えていない問いが無い");
+  const bad = await open(5);
+  assert.deepEqual([bad.status, /#5 の最新の問いは形に合わないので.*推奨.*コメントで/s.test(await bad.text())], [404, true],
+    "形の外れた答えの無い問いは「問いが無い」と言わず、合わない所と、答えはコメントで書けることを出す");
+  assert.match((await answer(5, { next: "続ける" })).error, /最新の問いは形に合わない/, "送っても同じことを返す");
   assert.match((await answer(1, { question: "前の問い" })).error, /問いが新しくなっています/);
   assert.match((await answer(4, { plan: "案A" })).error, /この issue をどうするか/, "次遷移はいつも要る");
   await answer(4, { next: "保留", plan: "案B", note: "あとで" });

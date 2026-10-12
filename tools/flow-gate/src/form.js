@@ -5,7 +5,7 @@
 // 書いた文があれば Claude が読んでから当てる。
 import { GitHub } from "./github.js";
 import { byName, jstText } from "./facts.js";
-import { NEXT, answerBody, answerProblem, answerUrl, askerOf, isQuestion, isQuestionLabel, latestQuestion, nextsOf } from "./questions.js";
+import { NEXT, answerBody, answerProblem, answerUrl, askerOf, checkQuestion, isAnswer, isQuestion, isQuestionLabel, latestQuestion, nextsOf } from "./questions.js";
 
 const RECENT = 5; // 材料に載せる最近のコメント（上に出した問いのコメントは数えない）
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -51,10 +51,13 @@ async function read(gh, config, number) {
   const { issue, labels } = r.repository;
   const comments = issue.comments.nodes;
   const asked = comments.findLast((c) => isQuestion(c.body));
-  // ゲートと同じく、形に合わない問いと、ラベルの出す者でない者が書いた問いは、問いとして読まない。
-  const question = latestQuestion(comments.map((c) => c.body), config.questionForms, asked && askerOf(config, asked.author?.login));
+  const by = asked && askerOf(config, asked.author?.login);
+  // ゲートと同じく、形に合わない問いと、ラベルの出す者でない者が書いた問いは、問いとして読まない。答えの無いその問いは、読まない理由を出す。
+  const question = latestQuestion(comments.map((c) => c.body), config.questionForms, by);
+  const answered = asked && comments.slice(comments.indexOf(asked) + 1).some((c) => isAnswer(c.body));
+  const bad = asked && !question && !answered ? checkQuestion(config.questionForms, asked.body, by) : [];
   // 問いのラベルはゲートだけが付け外しするので、ラベルの欄に出さず、送っても変えない。
-  return { issue, comments, asked, question, ids: byName(labels),
+  return { issue, comments, asked, question, bad, ids: byName(labels),
     all: labels.nodes.map((l) => l.name).filter((n) => !isQuestionLabel(n)), have: issue.labels.nodes.map((l) => l.name) };
 }
 
@@ -75,9 +78,13 @@ function answerFields(q) {
 <p class="sec">この issue を</p>${seg("next", nextsOf(q).map((n) => [n, NEXT[n]]))}`;
 }
 
+// 答えられる問いが無いときの文。形の外れた問いは、ゲートが読まないので、答えはコメントで書けば Claude が読む（src/decide.js: status の unread）。
+const nothing = (number, bad) => (bad.length ? `#${number} の最新の問いは形に合わないので、問いとして読みません（${bad.join("・")}）。答えは issue へコメントで書いてください。Claude が読みます。`
+  : `#${number} に、答えていない問いはありません。`);
+
 async function submit(gh, env, config, number, form) {
-  const { issue, question: q, ids, all, have } = await read(gh, config, number);
-  if (!q || q.answer) return { error: "答えていない問いがありません。" };
+  const { issue, question: q, bad, ids, all, have } = await read(gh, config, number);
+  if (!q || q.answer) return { error: nothing(number, bad) };
   if (form.get("question") !== q.text) return { error: "問いが新しくなっています。開き直してください。" };
   // 行は開いたときの文で送られる。今の問いの行と違えば、開いたあとに問いが変わったので開き直してもらう。
   const items = [...form.keys()].filter((k) => /^item\d+$/.test(k)).map((k) => form.get(k));
@@ -100,8 +107,8 @@ export async function answerForm(request, env, config) {
   const number = Number(new URL(request.url).searchParams.get("issue"));
   const gh = await GitHub.app(env, config.installation);
   if (request.method === "POST") return Response.json(await submit(gh, env, config, number, await request.formData()));
-  const { issue, comments, asked, question: q, all, have } = await read(gh, config, number);
-  if (!q || q.answer) return page(`<p>#${number} に、答えていない問いはありません。</p>`, 404);
+  const { issue, comments, asked, question: q, bad, all, have } = await read(gh, config, number);
+  if (!q || q.answer) return page(`<p>${esc(nothing(number, bad))}</p>`, 404);
   const recent = comments.filter((c) => c !== asked).slice(-RECENT).reverse()
     .map((c) => `<p class="note"><a href="${esc(c.url)}">${esc(c.author?.login ?? "ghost")} ・ ${jstText(Date.parse(c.createdAt))}</a></p>${c.bodyHTML}`).join("");
   // 判断材料と本文は、読んだときに GitHub が描いた HTML を使う（判断材料は問いのコメントの <details>、本文は頭の回答のボタンを除く）。
