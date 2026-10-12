@@ -81,6 +81,8 @@ function status(f, config) {
 
 // 手放したあとの表。作業のステータスなのに持たれていないのが、担当が手放した事実。
 const IRREGULAR = { status: "回答待ち", ask: "イレギュラー" };
+// マージのコミットの master の CI が落ちたら、PR の CI が落ちたときと同じく作る担当が打ち直すか直す。直さず手放したらイレギュラー。
+const afterMerge = (f, released) => (f.mergeChecks === "FAILURE" ? (released ? IRREGULAR : { status: "未着手" }) : { status: "CI待ち" });
 function table(f) {
   const pr = f.pr;
   if (pr) {
@@ -97,10 +99,10 @@ function table(f) {
   if (f.dropped.length && !f.droppedAsked) return { status: "回答待ち", ask: { dropped: f.dropped } };
   const released = Object.values(HELD).includes(f.status);
   // 子は完了の条件を持たず、PR がマージされ、マージのコミットの master の CI が通ったら完了。
-  if (f.parent && !f.conditions.length) return f.merged ? { status: f.mergeChecks === "SUCCESS" ? "完了" : "CI待ち", closeAs: "COMPLETED" } : released ? IRREGULAR : { status: "未着手" };
+  if (f.parent && !f.conditions.length) return f.merged ? (f.mergeChecks === "SUCCESS" ? { status: "完了", closeAs: "COMPLETED" } : afterMerge(f, released)) : released ? IRREGULAR : { status: "未着手" };
   // マージのあとの残りは、マージのコミットの master の CI（デプロイを含む）が終わってから扱う（本番に出る前に確かめを問わない。原則2）。
   if (!f.remaining.length) return { status: "完了", closeAs: "COMPLETED" };
-  if (f.merged && f.mergeChecks !== "SUCCESS") return { status: "CI待ち" };
+  if (f.merged && f.mergeChecks !== "SUCCESS") return afterMerge(f, released);
   if (f.remaining.every((c) => c.verify === "ユーザー")) return { status: "回答待ち", ask: "確かめ" };
   if (f.future) return { status: "未着手" };
   return released && !f.merged ? IRREGULAR : { status: "未着手" };

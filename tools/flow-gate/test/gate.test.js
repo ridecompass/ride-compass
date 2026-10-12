@@ -170,6 +170,7 @@ test("R3・決め1・決め7: 担当の実行が終わったら、表の上か�
     ["R3h どれでもない（落ちた）→ 黙って振り出し直さない", {}, {}, "回答待ち", 1, "## 問い（イレギュラー）"],
     ["決め1 マージのあとの残り", {}, { pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS" } }, "進行中", 2, null],
     ["マージのコミットの CI がまだ（本番に出る前に確かめを問わない）", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "PENDING" } }, "CI待ち", 1, null],
+    ["マージのコミットの master の CI が落ちたまま、作る担当が打ち直しも直しもせずに手放した → イレギュラー", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "FAILURE" } }, "回答待ち", 1, "## 問い（イレギュラー）"],
   ];
   for (const [name, start, facts, status, runs, comment] of rows) {
     const w = world([{ n: 1, status: "未着手", ...start }, { n: 9, status: "保留" }]);
@@ -191,7 +192,9 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め5・�
     ["R4 PR の CI が落ちた → 未着手 → 同じ枝で直す作る担当", { status: "CI待ち", pr: { draft: true, checks: "FAILURE" } }, null, ev.ci(`${config.branchPrefix}1`), { status: "進行中", runs: ["#1 作る"] }],
     ["変異テストに生き残りがあっても CI が通った → 検証待ち → 生き残りを読む確かめる担当", { status: "CI待ち", pr: { draft: true, checks: "SUCCESS" }, survivors: ["書き換え"] }, null, ev.ci(`${config.branchPrefix}1`), { status: "検証中", draft: false, runs: ["#1 確かめる"] }],
     ["R4 PR の CI が通った → PR をレビュー可能にして検証待ち → 確かめる担当", { status: "CI待ち", pr: { draft: true, checks: "SUCCESS" } }, null, ev.ci(`${config.branchPrefix}1`), { status: "検証中", draft: false }],
-    ["原則の点検の1 master の CI が落ちた → 本番に出ていないので確かめを問わず CI待ち", { status: "CI待ち", body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, null, ev.ci(config.base, "m1"), { status: "CI待ち", comment: null }],
+    ["原則の点検の1・tasks#842 master の CI が落ちた → 本番に出ていないので確かめを問わず、未着手 → 打ち直すか直す作る担当", { status: "CI待ち", body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, null, ev.ci(config.base, "m1"),
+      { status: "進行中", comment: null, runs: ["#1 作る"] }],
+    ["子のマージのコミットの master の CI が落ちた → 同じく未着手（親が保留なので振り出さない）", { status: "CI待ち", parent: 4, body: CHILD, pr: { ...merged, mergeChecks: "FAILURE" } }, null, ev.ci(config.base, "m1"), { status: "未着手", runs: [] }],
     ["K2・R12 確かめの答えが完了にせず文だけ → 閉じず、Claude の番（作る担当が読む）", { status: "回答待ち", body: CONFIRM, comments: [ASKED("確かめ"), "## 回答\n**完成にしてよいですか？**\n\n見た目が崩れる"] }, null, ev.comment(1),
       { state: "OPEN", status: "進行中", runs: ["#1 作る"] }],
     ["決め6 前からある Claude の割り当ては外し、保留ではユーザーだけ", { status: "保留", assignees: [config.claude] }, null, ev.comment(1), { assignees: [config.user] }],
