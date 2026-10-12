@@ -8,7 +8,7 @@
 
 1. 最上位の定義の写し: 最上位の関数・クラス（名前と docstring を除いた本体）か、最上位の値（葉——定数と名前——が
    5つ以上の式）が、3つ以上のファイルで同じ。2つまでは落とさない（3箇所目から足場へ出す決まり）。
-2. 足場と同じ差し替え: 共有の足場が`setattr`・`patch`で差し替える名前を、テストのファイルも差し替える。持ち主
+2. 足場と同じ差し替え: 共有の足場が`setattr`・`patch`等で差し替える名前を、テストのファイルも差し替える。持ち主
    （モジュール・クラス・値）が決まる差し替えは持ち主と名前で、足場の側で持ち主が引数・変数で決まらない差し替えは
    名前だけで突き合わせる。差し替えたいときは足場の口（fixture の引数・`indirect`等）を通す。
 3. 足場の式の写し: 共有の足場の中で、呼び出しの引数に呼び出しが入れ子になった式（3段以上）と同じ式を、テストのファイルが
@@ -30,24 +30,12 @@ from collections import defaultdict
 from collections.abc import Iterator
 from pathlib import Path
 
-from tests.structure.source_symbols import Scope, SourceTree, Symbol, replacement_calls
+from tests.structure.source_symbols import Scope, SourceTree, Symbol, is_scaffold, replacement_calls, replacement_of, scanned_tests
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 MIN_VALUE_LEAVES = 5
 MIN_COPIES = 3
 MIN_NESTED_CALLS = 3
-
-
-def _sources(root: Path) -> list[Path]:
-    tests = root / "tests"
-    return [
-        path for path in sorted(tests.rglob("*.py"))
-        if "structure" not in path.relative_to(tests).parts and path.name != "__init__.py"
-    ]
-
-
-def _is_scaffold(path: Path) -> bool:
-    return not path.name.startswith("test_")
 
 
 def _without_docstring(body: list[ast.stmt]) -> list[ast.stmt]:
@@ -80,7 +68,7 @@ def _definitions(tree: ast.Module) -> Iterator[tuple[str, int, str]]:
 def copied_definitions(root: Path) -> list[str]:
     """3つ以上のファイルに同じ本体で現れる最上位の定義（`パス:行: 名前`）。"""
     places: dict[str, dict[str, str]] = defaultdict(dict)
-    for path in _sources(root):
+    for path in scanned_tests(root):
         for name, line, shape in _definitions(ast.parse(path.read_text(encoding="utf-8"))):
             places[shape].setdefault(path.relative_to(root).as_posix(), f"{line}: {name}")
     return sorted(
@@ -94,31 +82,27 @@ def _owner_key(owner: Symbol) -> tuple[str, str, int]:
 
 
 def _replacements(source: SourceTree, path: Path, tree: ast.Module) -> Iterator[tuple[int, tuple | None, str]]:
-    """差し替えの (行, 持ち主の鍵（決まらなければNone）, 名前)。名前が文字列で書かれたものだけ。"""
+    """差し替えの (行, 持ち主の鍵（決まらなければNone）, 名前)。名前が文字列で書かれたものだけで、道筋の文字列で書いた
+    差し替えは持ち主が`backend`のソースに辿れるものだけ。"""
     scope = Scope(source, source.module_of(path), tree)
     for call, _ in replacement_calls(tree):
-        first = call.args[0]
-        if isinstance(first, ast.Constant) and isinstance(first.value, str):
-            split = source.dotted(first.value)
-            if split is not None:
-                yield call.lineno, _owner_key(split[0]), split[1]
+        found = replacement_of(scope, call)
+        if found is None or found.name is None or (found.by_path and found.owner is None):
             continue
-        if len(call.args) >= 2 and isinstance(call.args[1], ast.Constant) and isinstance(call.args[1].value, str):
-            owner = scope.resolve(first)
-            yield call.lineno, _owner_key(owner) if owner else None, call.args[1].value
+        yield call.lineno, _owner_key(found.owner) if found.owner else None, found.name
 
 
 def scaffold_replacements_repeated(root: Path) -> list[str]:
     """共有の足場が差し替える名前を、テストのファイルも差し替えている箇所（`パス:行: 名前`）。"""
     source = SourceTree(root)
-    trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in _sources(root)}
+    trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in scanned_tests(root)}
     owned: set[tuple[tuple | None, str]] = set()
     for path, tree in trees.items():
-        if _is_scaffold(path):
+        if is_scaffold(path):
             owned.update((owner, name) for _, owner, name in _replacements(source, path, tree))
     out = []
     for path, tree in trees.items():
-        if _is_scaffold(path):
+        if is_scaffold(path):
             continue
         for line, owner, name in _replacements(source, path, tree):
             if (None, name) in owned or (owner is not None and (owner, name) in owned):
@@ -140,11 +124,11 @@ def _nested_calls(tree: ast.Module) -> Iterator[ast.Call]:
 
 def scaffold_expressions_rewritten(root: Path) -> list[str]:
     """共有の足場が組み立てる入れ子の呼び出しを、テストのファイルが同じ形で書いている箇所（`パス:行: 式`）。"""
-    trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in _sources(root)}
-    built = {ast.dump(call) for path, tree in trees.items() if _is_scaffold(path) for call in _nested_calls(tree)}
+    trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in scanned_tests(root)}
+    built = {ast.dump(call) for path, tree in trees.items() if is_scaffold(path) for call in _nested_calls(tree)}
     return sorted(
         f"{path.relative_to(root).as_posix()}:{call.lineno}: {ast.unparse(call)}"
-        for path, tree in trees.items() if not _is_scaffold(path)
+        for path, tree in trees.items() if not is_scaffold(path)
         for call in _nested_calls(tree) if ast.dump(call) in built
     )
 

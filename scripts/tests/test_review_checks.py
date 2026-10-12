@@ -1,10 +1,13 @@
-"""`scripts/review_checks.py`の差分の報告（`change`）と総量（`metrics`）のテスト。
+"""`scripts/review_checks.py`の差分の報告（`change`）と総量（`metrics`）と流れの摩擦の拾い方（`friction`）と、文書の整合（`docs`）の実在の母集団のテスト。
 
 履歴は一時的なgitリポジトリで作る。
 
-ここで見ないもの: `docs`はCI（Docs Consistency）が本物のリポジトリへ毎回流す。`trigger`と、`size`の表・発火は
-周期レビューで人が読む出力で、ここでは通さない。`size`の「閾値の見直し」と、種類ごとの上限に当たるファイルへ置いた
-ファイルごとの閾値を無視することは、緩んだ閾値に誰も気づかなくなるので通す。
+ここで見ないもの: `docs`の検知そのものはCI（Docs Consistency）が本物のリポジトリへ毎回流す。ここでは、まだ`git add`していない
+ファイルを実在に数えることだけを通す（名指しの検査と食い違うと、同じファイルを片方だけが無いと言う）。`trigger`の中身と、`size`の表・発火は
+周期レビューで人が読む出力で、ここでは通さない。`trigger`が発火したときだけ出す形は、誰も読まないセッションの始まりの
+フックが使うので通す。`size`の「閾値の見直し」と、種類ごとの上限に当たるファイルへ置いた
+ファイルごとの閾値を無視することは、緩んだ閾値に誰も気づかなくなるので通す。`friction`の gh で置き場を読む部分は
+本物の置き場でしか通らないので、ここではコメントから行を拾う判断だけを通す。
 """
 
 import argparse
@@ -108,6 +111,19 @@ def test_metrics_counts_everything_outside_the_product_places_as_tooling(repo, c
     assert "| テスト | 13 | 0 | +13 |" in out
 
 
+def test_docs_reads_and_counts_as_existing_the_files_not_yet_added(repo, monkeypatch, capsys):
+    _commit(repo, {"README.md": "[新しい文書](docs/new.md)\n"})
+    (repo / "docs").mkdir()
+    (repo / "docs" / "new.md").write_text("[消えた文書](gone.md)\n", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["review_checks.py", "docs"])
+
+    assert rc.main() == 1
+    out = capsys.readouterr().out
+
+    assert "docs/new.md:1: gone.md が存在しない" in out
+    assert "README.md" not in out
+
+
 _DECLARED_PREFIXES = sorted(
     {prefix for name, value in vars(rc).items() if name.endswith("_PREFIXES") for prefix in value}
 )
@@ -167,3 +183,37 @@ def test_size_holds_code_to_the_kind_limit_beyond_the_external_maximum(repo, mon
     assert "| app/over.ts | 301 | - | 新規 | 300 | 100% | 閾値300超過 |" in out
     assert "| frontend/src/types/generated/api.d.ts | 400 | - | 新規 | 500 | 80% |  |" in out
     assert "種類ごとの上限に当たるファイルごとの閾値（無視した。上限は instruction_limits・code_limits だけ） 1件: app/over.ts" in out
+
+
+@pytest.mark.parametrize("changed_lines, fired", [(rc.TRIGGER_IMPL_LINES - 1, False), (rc.TRIGGER_IMPL_LINES, True)])
+def test_trigger_for_the_session_start_says_nothing_until_it_fires(repo, capsys, changed_lines, fired):
+    # セッションの始まりのフックは発火したときだけ文脈へ出す。発火を出し損ねると、周期レビューに誰も気づかない。
+    _commit(repo, {"backend/a.py": "a\n"})
+    git(repo, "tag", f"{rc.REVIEW_TAG_PREFIX}001")
+    _commit(repo, {"backend/a.py": "a\n" + "b\n" * changed_lines})
+
+    assert rc.cmd_trigger(argparse.Namespace(only_fired=True)) == 0
+    out = capsys.readouterr().out
+
+    assert ("判定: **該当（変更行数）**" in out) if fired else out == ""
+
+
+def test_friction_picks_the_lines_written_after_the_review_including_quoted_and_listed_ones():
+    since = rc.dt.datetime(2026, 10, 7, 3, 39, 2, tzinfo=rc.dt.timezone.utc)
+    comments = [
+        {"createdAt": "2026-10-07T03:39:01Z", "body": "流れの摩擦: 前のレビューより前"},
+        {"createdAt": "2026-10-07T03:39:02Z", "body": (
+            "流れの摩擦: 地の文\n"
+            "> 流れの摩擦: 引用\n"
+            "> - 流れの摩擦: 引用の箇条書き\n"
+            "- 流れの摩擦: 箇条書き\n"
+            "本文の中の 流れの摩擦: は拾わない\n"
+            "  - 流れの摩擦: 字下げは拾わない"
+        )},
+    ]
+    assert rc.friction_lines(805, comments, since) == [
+        "#805 流れの摩擦: 地の文",
+        "#805 > 流れの摩擦: 引用",
+        "#805 > - 流れの摩擦: 引用の箇条書き",
+        "#805 - 流れの摩擦: 箇条書き",
+    ]

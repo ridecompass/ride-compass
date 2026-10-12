@@ -367,7 +367,8 @@ test.describe("タッチ端末", () => {
   test.use({ viewport: MOBILE_VIEWPORT, isMobile: true, hasTouch: true });
 
   // 地図のズームはデバッグログの"zoomend"で読む。
-  test("地図の上で始めたピンチは、ページではなく地図を拡大する", async ({ page }) => {
+  test("地図の上で始めたピンチは、ページではなく地図を拡大する", async ({ page, browserName }) => {
+    test.skip(browserName !== "chromium", "2本指のタッチはCDP（Chromiumだけの口）でしか送れない");
     const zoomEnds: string[] = [];
     page.on("console", (message) => {
       if (message.text().includes("[map:viewport] zoomend")) zoomEnds.push(message.text());

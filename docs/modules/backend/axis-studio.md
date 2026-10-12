@@ -100,8 +100,8 @@
 - 取り消しの後の段で失敗したら、元の定義へ戻す（戻せなければ元の定義を出して止まる）。書いた後は、管理APIの単体取得が
   書いた定義と一致することと、軸カタログに公開なら同じ内容で載り・下書きか削除なら載らないことを確かめる。
   軸カタログで確かめられるのは、backendが1プロセスで動き、書いたプロセスが配るから（`single_process.py`）。
-- 宛先と認証情報は`backend/.env.oracle.local`の`BACKEND_ORIGIN`・`ADMIN_BASIC_AUTH_USERNAME`・`ADMIN_BASIC_AUTH_PASSWORD`
-  から読む（`_prod_env.py`）。引数に取らず、出力にも出さない。
+- 宛先はリポジトリの`production-origins.json`（`_production_origins.py`）、認証情報は`backend/.env.oracle.local`の
+  `ADMIN_BASIC_AUTH_USERNAME`・`ADMIN_BASIC_AUTH_PASSWORD`（`_prod_env.py`）から読む。引数に取らず、出力にも出さない。
 
 ## データモデル（`domain/axis_definitions.py`）
 

@@ -93,24 +93,27 @@ Windowsでは`uvicorn --reload`がリローダー親プロセスとワーカー�
 
 ## 本番の宛先（frontendのオリジンからbackendへ届くのは一部だけ）
 
+**本番の宛先は、リポジトリの根の`production-origins.json`だけが持つ。** ワークフロー（像のビルド・デプロイ・デプロイのあとの
+確かめ）と道具（例: `axis_apply.py`）はそこから読む。値を書くしかない所（下の表・担当の設定の説明の文等）は、
+`backend/tests/structure/test_single_owner_values.py`が持ち主と照らし、違えば全部の Pull Request の CI
+（`docs-consistency.yml`）が落ちる。宛先が変わったら、このファイルと照らしで落ちた所を同じ Pull Request で直す。マージすると、
+`ci.yml: changes`がこのファイルの変更をbackendとfrontendの両方の変更に数えるので、frontendの像が新しい宛先で作られて出て、
+backendのデプロイがCORSの許可へ新しいfrontendの宛先を足す。
+
 | | 宛先 | 中身 |
 |---|---|---|
 | frontend | `https://ride-compass-frontend.onrender.com` | Render。backendのCORSの許可に無ければ、`deploy-backend.yml`がデプロイのたびに足す |
 | backend | `https://193-123-166-150.sslip.io` | Oracle Cloud VM。VMのnginxがTLS（certbot）を終端し、`127.0.0.1:8000`のコンテナへ渡す。名前はVMの公開IPをsslip.ioで引けるようにしたもので、**IPが変わると宛先も変わる** |
 
-**画面がbackendを呼ぶ宛先は、コードのリポジトリの変数`BACKEND_ORIGIN`にある。** ブラウザからのAPIは`NEXT_PUBLIC_API_URL`、タイルは
+**画面がbackendを呼ぶ宛先は、像のビルドのときに埋め込まれる。** ブラウザからのAPIは`NEXT_PUBLIC_API_URL`、タイルは
 `NEXT_PUBLIC_TILE_BASE_URL`（[static-map-layers.md](../modules/frontend/static-map-layers.md)）、rewritesと管理画面の転送の先は
-`BACKEND_INTERNAL_URL`で、`deploy-frontend.yml`が3つとも`BACKEND_ORIGIN`の値を像のビルドへ渡し、ビルドのときに埋め込まれる。
+`BACKEND_INTERNAL_URL`で、`frontend/scripts/image.mjs`が3つともbackendの宛先にして像のビルドへ渡す（撮影の道具も同じ組を使う）。
 
 **frontendのオリジンからbackendへ届くのは、`frontend/next.config.ts`のrewritesにあるタイル類と、管理画面の
 転送（`/admin/api/…`→backendの`/api/admin/…`、Basic認証をサーバー側で付ける）だけ。** それ以外のAPI
 （例: `/api/axis-catalog`・`/api/region/dynamic-way-values/…`・`/health`）をfrontendのオリジンへ投げると、
 Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で叩くとき・道具から引くときは、backendの
 宛先へ直接投げる。frontend自身の口（`/api/version`）はfrontendのオリジンにだけある。
-
-**手元の道具は、backendの宛先を`backend/.env.oracle.local`の`BACKEND_ORIGIN`から読む**（読み方は
-`backend/scripts/_prod_env.py`。例: `axis_apply.py`）。道具のコードに宛先を書き込まない——IPが変わったとき、
-道具の側で直すのが各自の`BACKEND_ORIGIN`だけで済むようにするため。
 
 ## デプロイの反映確認（backend/frontendで注入元が異なる）
 
@@ -130,10 +133,10 @@ Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で�
 `git rev-parse HEAD`と突き合わせる。frontendの版は、画面のメニューの「バージョン表示」でも見られる（`commit`の頭8文字）。
 
 **backendのデプロイは、masterのCIが通ったコミットを、本番プロセスに届く変更があるときだけ
-出す。** `ci.yml`の`deploy-backend`が、masterへのpushでbackend・api-contract・frontend・e2e・e2e-scanの
+出す。** `ci.yml`の`deploy-backend`が、masterへのpushでbackend・api-contract・frontend・e2eの
 ジョブが通ったときだけ`deploy-backend.yml`を呼ぶ——どれかが赤ならデプロイは起動しない（flow-gate・文書の検査は待たない）。呼ばれた側は、本番で
 動いているコミット（コンテナの`GIT_COMMIT`）からCIを通ったコミットまでの差分を
-`backend/scripts/deploy_backend_gate.py`で見て、出すかを決める。
+`backend/scripts/deploy_gate.py`で見て、出すかを決める。
 
 - **差分の起点は直前のpushではなく、本番で動いているコミット。** CIが赤で出せなかった変更は、
   次にCIを通ったコミットの差分にそのまま含まれて出る（直前のpushとの差分では、テストだけを
@@ -147,7 +150,7 @@ Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で�
   本番の実測（コンテナを入れ替えてから応答まで4秒）の十数倍——起動時に走るのはDBからの軸定義と較正値の読み込みだけで、
   上限に届くのは起動が止まったときに限る。起動が遅くなる変更を入れたら、ログの秒数を見て上限を決め直す。
 - **入れ替えたあと、本番のスキーマと出したコードのORMの宣言の差を測る**（同じイメージで`scripts/schema_gap.py`）。
-  差が1件でもあればジョブを失敗させ、差の行をログに出す。積み上げ式のmigrationは持たず、差は本番で埋める（打つのは開発機の対話のセッションで、`.claude/skills/dev-session/SKILL.md`の「本番へ書く」）。
+  差が1件でもあればジョブを失敗させ、差の行をログに出す。積み上げ式のmigrationは持たず、差は人が本番で埋める。
   埋めるのは、新しいコードが書く・読む表や列なら出す前（.claude/rules/deployment-sync.md「コミットと同時に揃えるもの」）、
   古いコードが読む列を消す・新しいコードが宣言しただけで読まない表を作るなら出した後で、
   **測るのは入れ替えの後、出すのは止めない**——前で止めると、出した後に埋める差がデプロイを止めて埋められなくなる。
@@ -164,7 +167,7 @@ Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で�
 - **CIを待つぶん、反映はpushからCIの所要だけ遅れる。** 急ぎの修正でも待つ。待たずに出す手段は
   `deploy-backend.yml`の手動起動（`workflow_dispatch`）で、選んだrefの先端を判定なしで出す。
 
-振り分けの一覧（`deploy_backend_gate.py: DEPLOY_PATHS`と`deploy_backend_gate.py: NOT_DEPLOYED`。gitのpathspecとして
+振り分けの一覧（`deploy_gate.py: DEPLOY_PATHS`と`deploy_gate.py: NOT_DEPLOYED`。gitのpathspecとして
 `git diff --name-only`に当てさせる）は`backend/**`から、イメージに入らないもの（テスト・lint設定等）と、イメージには入るが本番
 プロセスが読まないもの（`export_openapi.py`とそれだけが読む表示値の宣言）を外している。`backend/ops/`（VMのホストで動く
 systemdのユニットとシェル）はイメージに入らないが外さない——デプロイがVMの作業コピーをそのコミットへ揃えて
@@ -176,9 +179,9 @@ importすると、その変更だけが本番へ届かなくなる**（エラー
 導いてこれを検査する。
 
 **frontend（Render）のデプロイも、masterのCIが通ったコミットを出す。** `ci.yml`の`deploy-frontend`が、
-`deploy-backend`と同じ条件で`deploy-frontend.yml`を呼ぶ。呼ばれた側は、そのコミットから`frontend/Dockerfile`で像を
-ビルドしてGitHubのコンテナの置き場（`ghcr.io/<リポジトリの持ち主>/ride-compass-frontend:<コミット>`、公開）へ置き、
-Renderのデプロイフックへその像を`imgURL`で渡す（Render公式の[Deploy Hooks](https://render.com/docs/deploy-hooks)。
+`deploy-backend`と同じ条件で`deploy-frontend.yml`を呼ぶ。像は同じCIの実行の`frontend-image`が`frontend/Dockerfile`で本番と同じ引数で
+作り、e2eと全状態の走査がその中のアプリを試し、GitHubのコンテナの置き場（`ghcr.io/<リポジトリの持ち主>/ride-compass-frontend:<コミット>`）へ
+置いたもの——**本番に出る中身は、CIが試した中身と同じ**。呼ばれた側は作り直さず、Renderのデプロイフックへその像を`imgURL`で渡す（Render公式の[Deploy Hooks](https://render.com/docs/deploy-hooks)。
 フックのURLはリポジトリの秘密`RENDER_FRONTEND_DEPLOY_HOOK_URL`）。
 
 - **Renderではビルドしない。** Renderのサービスは、GitHubのリポジトリではなく上の像から出す形にしてある（ダッシュボードの
@@ -187,13 +190,13 @@ Renderのデプロイフックへその像を`imgURL`で渡す（Render公式の
   無料なので、ビルドはActionsでする。フックの`imgURL`は、タグ以外がサービスに設定した像のURLと同じでないと断られる
   （同じDeploy Hooksの文書）ので、リポジトリの持ち主が変わったらサービスの像のURLも直す。
 - **出すかは本番の`/api/version`の`commit`で決める。** CIを通ったコミットが本番のコミットか、その祖先なら出さない
-  （後から終わった古いCIの実行）。本番のコミットが読めない・履歴に無いときは出す。このワークフローは変更のパスでは
-  振り分けず、`ci.yml`が`frontend/`の変更があるときだけ呼ぶ（下の「CIの実行枠」）。
+  （後から終わった古いCIの実行）。本番のコミットが読めない・履歴に無いときは出す。この見分けはbackendと同じ道具
+  （`backend/scripts/deploy_gate.py`の`--any-change`）が持つ。このワークフローは変更のパスでは振り分けず、`ci.yml`が`frontend/`の変更があるときだけ呼ぶ（下の「CIの実行枠」）。
 - **出したあと、本番の`/api/version`がそのコミットになるまで待つ。** Renderは最後に頼まれたデプロイを出す
   （同じ文書の「Handling overlapping deploys」）ので、待たずに次へ進むと古いコミットが新しいコミットを上書きしうる。
   判定・ビルド・フック・待ちは1つのジョブで1本ずつ走る。上限（30分）までに変わらなければジョブを落とす——Renderの
   像の取得か起動が失敗している（ダッシュボードの Events に出る）。変わるまでの秒数は毎回ジョブのログに出る。
-- 待たずに出す手段は`deploy-frontend.yml`の手動起動（`workflow_dispatch`）で、選んだrefの先端を判定なしで出す。
+- 待たずに出す手段は`deploy-frontend.yml`の手動起動（`workflow_dispatch`）で、選んだrefの先端から像を作り、判定なしで出す。
 
 **タイルプロパティを削除する変更はデプロイ順序に制約がある。** backendとfrontendは別
 サービスとして独立にデプロイされ、反映タイミングは同期しない。プロパティの**追加**は
@@ -246,8 +249,15 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
   （.claude/skills/run-checks/SKILL.md「CIの結論を読む」）。数十秒で終わる`docs-consistency.yml`・`claude-gate.yml`には置かない
   （待ちが積もらない）。
 - ジョブの分け方・キャッシュは、所要時間と同時実行の枠で決める（理由は各ワークフローのコメント）。
+- **`ci.yml`は検査を2段に並べ、落ちた版の残りを走らせない。** 軽い検査（静的検査・単体のテスト・像の確かめ）を段1で
+  並べて走らせ、重い検査（e2e・全状態の走査）は段1のどれも落ちず・取り消されずに終わったときだけ始める。段に分けたぶん通る版の
+  待ちは延び、延びる幅は段1の一番長いジョブで決まるので、段1のジョブの持ち時間（`timeout-minutes`）を待ちの予算として詰めてある
+  （決め方は`ci.yml`の先頭）。段1の検査が予算を超えて延びたら持ち時間で切られ、上げるか・速くするか・段2へ移すかをその変更で決める。
+  重い検査のジョブを細かく割って待ちを縮めることはしない——待ちを決めているのは、検査の所要より同時に動くジョブの数の上限で、
+  ジョブごとに用意（containerの用意・`npm ci`）を払う本数を増やすと、取り合いのときの待ちが延びる。
 - **どのジョブを走らせるかは、変わった置き場で決める。** 置き場（`backend/`・`frontend/`・`scripts/`）はどれも自分のテストを自分の中に
-  持ち、`ci.yml: changes`は変わったファイルの頭からどの置き場が変わったかだけを見て、その置き場の検査（backendならテスト・api-contract・
+  持ち、`ci.yml: changes`は変わったファイルの頭からどの置き場が変わったかだけを見て（本番の宛先の`production-origins.json`は、
+  両方の像が読むのでbackendとfrontendの両方に数える）、その置き場の検査（backendならテスト・api-contract・
   像の確かめ、frontendならテスト・e2e・全状態の走査・api-contract・像の確かめ、`scripts/`なら道具のテスト）とデプロイを走らせる。
   それ以外の変更（文書・タスク管理・ほかのワークフロー）では何も走らせない。`ci.yml`と`.github/actions/`を変えたら、その定義で
   全部を走らせて確かめる。置き場をまたいで読むものは数えず、テストを読む側の置き場へ置く（backendのための道具は`backend/scripts/`）。
@@ -379,3 +389,52 @@ dockerdが行うので通る）。
 
 本番はこの構成をそのまま使わない——backendはOracle Cloud VM上のDockerコンテナ、
 frontendはRender、PostgreSQLとRedisはVMへネイティブに置く。
+
+## 厳選まで仮置き
+
+原則の見直しで消えた記載を、厳選まで元の節ごとに仮に置く。**今の決まりと食い違えば今の決まりを取る。**
+
+### 元: docs/architecture の tech-stack.md
+
+#### 採用しているもの
+
+| 領域 | 採用 | 備考 |
+|---|---|---|
+| 管理データの退避先 | Oracle Cloud Object Storage（非公開のバケット） | 本番VMのtimerが取り直せない管理データを置き、バケットのライフサイクルの規則が古いものを消す。仕組みと登録の手順は[deployment-sync.md](../../.claude/skills/production-data/SKILL.md)付録「管理データのバックアップ」 |
+
+#### 本番の宛先（frontendのオリジンからbackendへ届くのは一部だけ）
+
+道具のコードに宛先を書き込まない——IPが変わったとき、直すのが`production-origins.json`だけで済むようにするため。
+
+#### CIの実行枠（リポジトリがpublicである間の前提）
+
+- どの出来事でCIが走るかは.claude/skills/run-checks/SKILL.md「検査の置き場（手元・作業ブランチのCI・masterのCI）」が持つ。
+  作業ブランチへのpushで走らせないのは、検査はPull Requestの実行で済み、誰も待たないpushの実行で枠を使わないため。
+  backendの本番へのデプロイは、masterへの
+  pushでCIが通ったときだけ`ci.yml`から呼ばれる（上の「デプロイの反映確認」）。
+
+- `ci.yml`は、同じref（master・Pull Requestごと）の実行を1本ずつ動かし、待ちは一番新しい1件だけにする（`concurrency`）。
+  後のコミットは前の変更を全部含み、古いコミットの実行はデプロイにもマージの判断にも使わないため。Pull Requestは
+  新しいpushで走っている実行も打ち切り、masterは走っている実行を最後まで走らせる（デプロイが同じ実行の中で走るので、
+  途中で切らない）。打ち切った・待ちから外した実行のコミットにはCIの結論が残らないので、結論は最新のコミットで読む
+  （.claude/skills/run-checks/SKILL.md「CIの結論を読む」）。数十秒で終わる`docs-consistency.yml`・`claude-gate.yml`には置かない
+  （待ちが積もらない）。
+
+- **飛ばす範囲は、その検査が読む対象から導く。** 飛ばしてよいのは、`ci.yml`のどの検査も読まないパスだけ。
+  文書を読むテストを足したら、読む範囲がディレクトリに限られるなら`changes`の`case`でそこを先に当てて入れ直し、
+  全ての文書を読むなら常に走る`docs-consistency.yml`でも走らせる。飛ばす運用の道具（`scripts/`の一部）を
+  テストやデプロイが読むようにしたら、`case`からその行を外す。飛ばす道具の静的検査は`docs-consistency.yml`が
+  常に走らせる。
+
+#### 秘密の値とトークン
+
+| 入れた場所 | 名前 | 中身（作った人・Resource owner・届く範囲・権限・期限） | 使う所 |
+|---|---|---|---|
+| 同 | `FLOW_BOT_TOKEN` | hidakagit-botが作ったfine-grained。届くのはridecompass/ride-compass-tasksだけ。Contentsは読み書き（担当の手番の記録をリリースへ置く）。期限2027-09-29 | 担当と流れの道具が置き場へ書く・ゲートの公開のあと`refresh.js`。開発機ではユーザー環境変数の同じ名前 |
+
+#### 本番Redisの設定
+
+Redisは「TTL付きキャッシュ、または実データ源へのフォールバックが必ず効くcache-aside」
+専用の層で、**正本データを持たない**（方針は[caching.md](../../.claude/rules/caching.md)）。
+本番はOracle Cloud VMへネイティブに導入する（backendコンテナが`--network=host`のため
+追加設定なしで到達できる）。ローカル開発は`docker-compose.yml`のredisサービス。

@@ -33,6 +33,7 @@ import {
 import { Button } from "@/components/ui/Button/Button";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { cn } from "@/lib/cn";
+import { readStoredList } from "@/lib/storedList";
 import { Dot } from "@/components/ui/Dot/Dot";
 import { cardVariants } from "@/components/ui/Card/Card";
 import { badgeVariants } from "@/components/ui/Badge/Badge";
@@ -235,8 +236,7 @@ function hiddenKeyOf(group: MapOverlayGroup, id: MapLayerId): string {
 }
 
 function readStringArray(raw: string): string[] | null {
-  const parsed: unknown = JSON.parse(raw);
-  return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : null;
+  return readStoredList(raw, (value) => (typeof value === "string" ? value : null));
 }
 
 const storedStringArray = {

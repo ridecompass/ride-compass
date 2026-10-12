@@ -111,47 +111,10 @@ export default function RouteForm({
   return (
     <div>
       <KeptTabContent value="generate">
-        <div className="mb-2 flex items-center justify-end gap-2">
-          <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>候補数</span>
-          <div className="inline-flex items-center gap-2">
-            <Button
-              variant="stepper"
-              size="sm"
-              onClick={() => stepMaxRoutes(-1)}
-              disabled={Number(maxRoutesInput) <= MIN_ROUTES}
-              aria-label="候補数を減らす"
-              usage="一度に作る候補の数を減らします。"
-            >
-              ‹
-            </Button>
-            <span className="min-w-[2.5em] text-center tabular-nums">{`${maxRoutesInput}件`}</span>
-            <Button
-              variant="stepper"
-              size="sm"
-              onClick={() => stepMaxRoutes(1)}
-              disabled={Number(maxRoutesInput) >= MAX_ROUTES}
-              aria-label="候補数を増やす"
-              usage="一度に作る候補の数を増やします。"
-            >
-              ›
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <RoutePoints
-            conditions={conditions}
-            origin={origin}
-            originManual={originManual}
-            originLocated={originLocated}
-            onOriginReset={onOriginReset}
-            originFound={originFound}
-            mapCenter={mapCenter}
-            onPlaceFound={onPlaceFound}
-            savedPlaces={savedPlaces}
-          />
-          {/* 外している間もスライダーと値は出したまま薄くする（入れ直すと前の値に戻ることが見え、行の高さも変わらない）。 */}
-          <div className="flex items-center gap-2">
+        {/* 全長の目標と候補数を1行に並べ、パネルの縦幅を詰める。スライダーが最小の幅を割る狭い幅では、候補数を下の行へ
+            回す。全長の目標を外している間もスライダーと値は出したまま薄くする（入れ直すと前の値に戻ることが見える）。 */}
+        <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
+          <div className="flex flex-1 items-center gap-2">
             <Toggle
               variant="plain"
               className={cn(panelIconToggleClass, "flex-none")}
@@ -172,7 +135,7 @@ export default function RouteForm({
               value={distanceInput}
               disabled={!distanceTargeted}
               onChange={(e) => setDistanceInput(e.target.value)}
-              className="h-6 min-w-0 flex-1 disabled:opacity-40"
+              className="h-6 w-12 min-w-12 flex-1 disabled:opacity-40"
               data-usage="ルート全体の長さの目標を決めます。"
             />
             <span
@@ -184,7 +147,45 @@ export default function RouteForm({
               {`ルート全体の長さの目標です。作る候補は、この長さの±${DISTANCE_TOLERANCE_KM}kmに入るものだけです。外すと長さを決めず、目的地（無ければ出発地）へ良い道で向かいます。`}
             </InfoPopover>
           </div>
+          <div className="flex flex-none items-center gap-2">
+            <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>候補数</span>
+            <div className="inline-flex items-center gap-2">
+              <Button
+                variant="stepper"
+                size="sm"
+                onClick={() => stepMaxRoutes(-1)}
+                disabled={Number(maxRoutesInput) <= MIN_ROUTES}
+                aria-label="候補数を減らす"
+                usage="一度に作る候補の数を減らします。"
+              >
+                ‹
+              </Button>
+              <span className="min-w-[2.5em] text-center tabular-nums">{`${maxRoutesInput}件`}</span>
+              <Button
+                variant="stepper"
+                size="sm"
+                onClick={() => stepMaxRoutes(1)}
+                disabled={Number(maxRoutesInput) >= MAX_ROUTES}
+                aria-label="候補数を増やす"
+                usage="一度に作る候補の数を増やします。"
+              >
+                ›
+              </Button>
+            </div>
+          </div>
         </div>
+
+        <RoutePoints
+          conditions={conditions}
+          origin={origin}
+          originManual={originManual}
+          originLocated={originLocated}
+          onOriginReset={onOriginReset}
+          originFound={originFound}
+          mapCenter={mapCenter}
+          onPlaceFound={onPlaceFound}
+          savedPlaces={savedPlaces}
+        />
       </KeptTabContent>
 
       <KeptTabContent value="weights">{weightsPanel}</KeptTabContent>

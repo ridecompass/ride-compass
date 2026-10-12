@@ -1,7 +1,7 @@
 # frontendをRenderへデプロイする。
 #
-# CIを通ったコミットからfrontendの像をビルドしてGitHubのコンテナの置き場へ置き、Renderのデプロイフックにその像を
-# `imgURL`で渡して出させる。Renderではビルドしない（無料のプランのビルドの時間は月500分で、使い切るとその月は出せない）。
+# CIを通ったコミットのfrontendの像（ci.ymlのfrontend-imageが作り、e2eと全状態の走査が中身を試してGitHubのコンテナの
+# 置き場へ置いたもの）を、Renderのデプロイフックに`imgURL`で渡して出させる。手動の起動では、ここで像を作って置く。Renderではビルドしない（無料のプランのビルドの時間は月500分で、使い切るとその月は出せない）。
 # Renderの自動デプロイは使わない——「After CI Checks Pass」は連携したブランチの最新のコミットだけを、そのコミットの
 # チェックが全部終わってから出すため、masterの先頭に長く動くチェック（workflow_dispatchで動く実行）が付いている間は何も出ない。
 name: Deploy Frontend to Render
@@ -10,7 +10,7 @@ on:
   # ci.ymlが、masterへのpushでCIの全ジョブが通ったあとに呼ぶ（どれかが赤なら呼ばれない）。
   # 呼ばれたときの`github.sha`は、CIを通ったそのコミット。
   workflow_call:
-  # 手動のデプロイ。CIを待たず、選んだrefの先端をそのまま出す。
+  # 手動のデプロイ。CIを待たず、選んだrefの先端から像を作ってそのまま出す。
   workflow_dispatch:
 
 # 像をGitHubのコンテナの置き場へ置く。ci.ymlから呼ばれるときは、呼ぶ側のジョブが渡した権限が上限になる。
@@ -28,13 +28,13 @@ jobs:
       group: deploy-frontend
       cancel-in-progress: false
     env:
-      VERSION_URL: https://ride-compass-frontend.onrender.com/api/version
       # Renderのサービスに設定した像のURLと、タグ以外が同じでなければならない（フックが断る）。
       IMAGE: ghcr.io/${{ github.repository_owner }}/ride-compass-frontend
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      - run: echo "VERSION_URL=$(jq -r .frontend production-origins.json)/api/version" >> "$GITHUB_ENV"
       - name: 本番で動いているコミットを読む
         id: deployed
         run: |
@@ -50,26 +50,22 @@ jobs:
           if [ "${{ github.event_name }}" = workflow_dispatch ]; then
             echo "出す: 手動の起動"
             echo "deploy=true" >> "$GITHUB_OUTPUT"
-          elif [ -n "$DEPLOYED" ] && git cat-file -e "$DEPLOYED^{commit}" 2>/dev/null && git merge-base --is-ancestor "$GITHUB_SHA" "$DEPLOYED"; then
-            echo "出さない: 本番はこのコミットか、これより新しいコミットで動いている（本番 ${DEPLOYED:0:8} → ${GITHUB_SHA:0:8}）"
-            echo "deploy=false" >> "$GITHUB_OUTPUT"
           else
-            echo "出す: 本番のコミットが分からないか、これより古いか、履歴が分かれている（本番 ${DEPLOYED:0:8} → ${GITHUB_SHA:0:8}）"
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            python3 backend/scripts/deploy_gate.py --any-change "$DEPLOYED" "$GITHUB_SHA"
           fi
-      - name: このコミットの像をビルドして置く
+      - name: このコミットの像を用意する
         if: steps.gate.outputs.deploy == 'true'
         env:
-          BACKEND_ORIGIN: ${{ vars.BACKEND_ORIGIN }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -z "$BACKEND_ORIGIN" ]; then
-            echo "::error::リポジトリの変数 BACKEND_ORIGIN が無い（画面がbackendを呼ぶ宛先をビルドへ埋め込めない）"
-            exit 1
-          fi
           echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          # 画面のAPI・タイル・rewritesの宛先は、どれもbackendへ直接向ける（docs/architecture/tech-stack.md「本番の宛先」）。
-          docker build frontend             --build-arg NEXT_PUBLIC_API_URL="$BACKEND_ORIGIN"             --build-arg NEXT_PUBLIC_TILE_BASE_URL="$BACKEND_ORIGIN"             --build-arg BACKEND_INTERNAL_URL="$BACKEND_ORIGIN"             --build-arg GIT_COMMIT="$GITHUB_SHA"             --tag "$IMAGE:$GITHUB_SHA"
+          if [ "${{ github.event_name }}" != workflow_dispatch ]; then
+            # ci.yml の frontend-image が、e2e と全状態の走査が試した中身の像を置いてある。作り直さずにそれを出す。
+            docker buildx imagetools inspect "$IMAGE:$GITHUB_SHA" > /dev/null \
+              || { echo "::error::ci.yml の frontend-image が置いた像 $IMAGE:$GITHUB_SHA が置き場に無い"; exit 1; }
+            exit 0
+          fi
+          node frontend/scripts/image.mjs "$IMAGE:$GITHUB_SHA" "$GITHUB_SHA"
           docker push "$IMAGE:$GITHUB_SHA"
       - name: Renderのデプロイフックでこの像を出す
         if: steps.gate.outputs.deploy == 'true'

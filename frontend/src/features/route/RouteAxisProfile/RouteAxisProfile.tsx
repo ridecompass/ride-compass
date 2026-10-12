@@ -2,14 +2,14 @@
 
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import type { CatalogAxis } from "@/lib/catalogAxis";
-import { formatDurationShort } from "@/features/route/formatDuration";
+import { formatDurationShort } from "@/lib/duration";
 import type { OverallDifficulty, RoutePreferenceWeights } from "@/types/route";
 import AxisContributionBar, { hasContribution } from "@/components/AxisContributionBar/AxisContributionBar";
 import AxisDetail from "@/components/AxisContributionBar/AxisDetail";
 import { formatAxisRawValue, formatCategoryBreakdown, formatMaterialBreakdown } from "./axisRawValue";
 import { textVariants } from "@/components/ui/Text/Text";
 import WarningText from "@/features/route/WarningText/WarningText";
-import { formatDifficulty, formatLoad } from "@/lib/mapDisplay/valueScale";
+import { DIFFICULTY_SCALE_SUFFIX, formatDifficulty, formatLoad } from "@/lib/mapDisplay/valueScale";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 /** 区間ごとに速度を変える条件の名前（backendの走行モデルが宣言する並び）。 */
@@ -80,7 +80,7 @@ export default function RouteAxisProfile({
 
   // 評価に使っていない軸（重み0）はnullを返し、AxisContributionBarの凡例から落とす。
   // 内訳は候補ごとに縦へ伸びるため、使っていない軸まで並べると狭い幅で「このルートで
-  // 何が効いたか」が読めなくなる（.claude/rules/screen.md「消さずに薄くする」の例外）。
+  // 何が効いたか」が読めなくなる（設計原則「消さずに薄くする」の例外）。
   const renderAxisDetail = (axis: CatalogAxis) => {
     if ((weights[axis.axisId] ?? 0) <= 0) return null;
     // 折れ点を通す前の生値。単位が定まらない軸（合成軸等）はbackendがrawValueUnitを
@@ -119,7 +119,7 @@ export default function RouteAxisProfile({
             <span className="inline-flex flex-shrink-0 items-baseline gap-0.5">
               <span className={textVariants({ variant: "hint" })}>総合難易度</span>
               <span className="text-[1.05rem] font-semibold">{formatDifficulty(overallDifficulty.average)}</span>
-              <span className={textVariants({ variant: "hint" })}>/100</span>
+              <span className={textVariants({ variant: "hint" })}>{DIFFICULTY_SCALE_SUFFIX}</span>
               <InfoPopover triggerAriaLabel="総合難易度の説明">
                 <p>
                   {DIFFICULTY_WORDING.average}

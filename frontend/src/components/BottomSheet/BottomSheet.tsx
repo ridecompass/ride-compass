@@ -15,8 +15,6 @@ interface BottomSheetProps {
   headerAction: React.ReactNode;
   /** 見出しのすぐ右に置くもの（中身を切り替えるタブ等、右の操作と役割が違うもの）。 */
   headerLead?: React.ReactNode;
-  /** 見出しの行のすぐ下に置く知らせ。本文と違ってスクロールせず、見出しの行の操作の結果をいつも見える所に出す。 */
-  headerNote?: React.ReactNode;
   children: React.ReactNode;
   /** いま出している高さ（vh）。開いたときに中身へ合わせ直すので、利用者の恒久の設定ではない。 */
   heightVh: number;
@@ -61,7 +59,6 @@ export default function BottomSheet({
   titleId,
   headerAction,
   headerLead,
-  headerNote,
   children,
   heightVh,
   onHeightChange,
@@ -177,14 +174,17 @@ export default function BottomSheet({
         onKeyDown={handleHandleKeyDown}
       />
       <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-[var(--color-border)] px-3">
-        <h2
-          id={titleId}
-          tabIndex={-1}
-          className={cn(textVariants({ variant: "heading" }), "min-w-0 truncate focus:outline-none")}
-        >
-          {title}
-        </h2>
-        {headerLead && <div className="mr-auto flex min-w-0 items-center">{headerLead}</div>}
+        {/* 見出しの横に収まらなければ、見出しのすぐ右に置くものを見出しの下の行へ折り返す（右の操作はその右に残る）。 */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
+          <h2
+            id={titleId}
+            tabIndex={-1}
+            className={cn(textVariants({ variant: "heading" }), "min-w-0 truncate focus:outline-none")}
+          >
+            {title}
+          </h2>
+          {headerLead && <div className="flex min-w-0 items-center">{headerLead}</div>}
+        </div>
         <div className="flex flex-shrink-0 items-center gap-2">
           {headerAction}
           <Button
@@ -198,7 +198,6 @@ export default function BottomSheet({
           </Button>
         </div>
       </div>
-      {headerNote && <div className="flex-shrink-0 px-3 pt-2">{headerNote}</div>}
       {/* 本文のスクロールが下スワイプの判定まで届かないようにする（届くとスクロールしただけで閉じる）。 */}
       <div
         className="flex flex-col gap-2 overflow-y-auto px-3 pt-2 pb-3"

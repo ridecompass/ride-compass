@@ -6,8 +6,7 @@
 
 並びを実行時にソースから導かないのは、本番のプロセスにソースの走査を抱えさせないため。
 
-母集団はソースから導く（`backend/app`配下の全`.py`）。表を宣言するとみなすのは、クラスの本体で`__tablename__`へ
-代入するか、`Table(...)`を呼ぶモジュール。
+母集団はソースから導く（`backend/app`配下の全`.py`）。表を宣言するかの見分けは`source_symbols.py: declares_table`が持つ。
 
 ここで見ないもの:
 - 宣言した表と実DBの差 → `scripts/schema_gap.py`
@@ -15,34 +14,12 @@
 
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 
 from app.infrastructure.orm_base import TABLE_MODULES
+from tests.structure.source_symbols import table_modules
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
-
-
-def _declares_table(tree: ast.Module) -> bool:
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef):
-            for stmt in node.body:
-                targets = stmt.targets if isinstance(stmt, ast.Assign) else [getattr(stmt, "target", None)]
-                if any(isinstance(t, ast.Name) and t.id == "__tablename__" for t in targets):
-                    return True
-        elif isinstance(node, ast.Call):
-            name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
-            if name == "Table":
-                return True
-    return False
-
-
-def table_modules(root: Path) -> set[str]:
-    out = set()
-    for path in sorted((root / "app").rglob("*.py")):
-        if _declares_table(ast.parse(path.read_text(encoding="utf-8"))):
-            out.add(".".join(path.relative_to(root).with_suffix("").parts))
-    return out
 
 
 def test_表を宣言するモジュールを全部並べる() -> None:
@@ -52,3 +29,13 @@ def test_表を宣言するモジュールを全部並べる() -> None:
         "`orm_base.py: TABLE_MODULES`と、表を宣言するモジュールが違う"
         f"（並べていない: {sorted(declared - set(TABLE_MODULES))}、表を持たない: {sorted(set(TABLE_MODULES) - declared)}）"
     )
+
+
+def test_a_package_declaring_a_table_is_listed_by_the_name_it_is_imported_as(tmp_path: Path) -> None:
+    """`TABLE_MODULES`はimportする名前で並ぶので、パッケージは`__init__`を付けない名前で数える。"""
+    (tmp_path / "app" / "stores").mkdir(parents=True)
+    (tmp_path / "app" / "stores" / "__init__.py").write_text("t = Table('a', metadata)\n", encoding="utf-8")
+    (tmp_path / "app" / "rows.py").write_text("class Row:\n    __tablename__ = 'b'\n", encoding="utf-8")
+    (tmp_path / "app" / "plain.py").write_text("x = 1\n", encoding="utf-8")
+
+    assert table_modules(tmp_path) == {"app.stores", "app.rows"}

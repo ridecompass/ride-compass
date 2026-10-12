@@ -10,18 +10,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/T
 import { textVariants } from "@/components/ui/Text/Text";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { cn } from "@/lib/cn";
-import { formatDifficulty } from "@/lib/mapDisplay/valueScale";
+import { DIFFICULTY_SCALE_SUFFIX, formatDifficulty } from "@/lib/mapDisplay/valueScale";
 import { formatJstHourMinute } from "@/lib/time";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import AxisDetail from "@/components/AxisContributionBar/AxisDetail";
 import RouteAxisProfile from "@/features/route/RouteAxisProfile/RouteAxisProfile";
 import RouteSplicePanel from "@/features/route/RouteSplicePanel/RouteSplicePanel";
 import SegmentWind from "@/features/route/SegmentWind/SegmentWind";
-import { formatDurationShort } from "@/features/route/formatDuration";
+import { formatDurationShort } from "@/lib/duration";
 import { downloadGpx, MAX_GPX_TRACK_POINTS } from "@/features/route/gpxExport";
 import EditDifference from "@/features/route/EditDifference/EditDifference";
-import ErrorText from "@/features/route/ErrorText/ErrorText";
-import GenerationNotice from "@/features/route/GenerationNotice/GenerationNotice";
 import WarningText from "@/features/route/WarningText/WarningText";
 import {
   durationBaseline,
@@ -54,16 +52,10 @@ type RouteGeneration = ReturnType<typeof useRouteGeneration>;
 
 interface RouteOutcomeProps {
   results: RouteResults;
-  /** 生成の進み方・案内・条件のずれ。 */
+  /** 生成の進み方・条件のずれ。 */
   generation: Pick<
     RouteGeneration,
-    | "running"
-    | "progressLabel"
-    | "outcome"
-    | "failure"
-    | "conditionsDirty"
-    | "weightsNotApplied"
-    | "destinationCorrected"
+    "running" | "progressLabel" | "conditionsDirty" | "weightsNotApplied" | "destinationCorrected"
   >;
   splice: Pick<SpliceSessionView, "canStart" | "start" | "panel">;
   /** 軸を「未使用」と分ける重み（`useRoutePlanner.ts: routeWeights`）。 */
@@ -71,7 +63,7 @@ interface RouteOutcomeProps {
 }
 
 /**
- * 「ルート結果」の中身（デスクトップの区分・モバイルのシートの両方）: 生成前・生成中・失敗の案内、候補の一覧（縦のタブ）と
+ * 「ルート結果」の中身（デスクトップの区分・モバイルのシートの両方）: 生成前・生成中の案内、候補の一覧（縦のタブ）と
  * 選んだ候補の中身・地図で押した区間の詳細、編集中は区間の乗り換えの編集面。
  */
 export default function RouteOutcome({ results, generation, splice, routeWeights }: RouteOutcomeProps) {
@@ -85,14 +77,11 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
     if (reusedRouteId !== null) reusedRowRef.current?.scrollIntoView({ block: "nearest" });
   }, [reusedRouteId]);
 
-  // 「ルート結果」に候補が無いときの中身（生成前・生成中・候補0件・失敗）。候補0件で生成前の案内へ戻ると、押したのに何も
-  // 起きていないように見える。
+  // 「ルート結果」に候補が無いときの中身（生成前・生成中）。候補0件の理由と失敗は、ここでなく窓で知らせる。
   function renderRouteOutcomeEmptyState() {
-    const { outcome } = generation;
     if (generation.running) {
       return <p className={textVariants({ variant: "hint" })}>{generation.progressLabel ?? "生成中..."}</p>;
     }
-    if (outcome) return <GenerationNotice notice={outcome} />;
     return (
       <p className={textVariants({ variant: "hint" })}>
         <GuideText text="「ルート設定」の「ルート生成」を押すと候補がここに並びます" />
@@ -146,16 +135,10 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
     );
   }
 
-  // 「ルート結果」の中身（デスクトップの区分・モバイルのシートの両方）。候補がある間に「生成」が通らなかったら、
-  // 前の候補を残したまま先頭で知らせる（候補だけが並ぶと、作り直せたように見える）。
+  // 「ルート結果」の中身（デスクトップの区分・モバイルのシートの両方）。
   function renderRouteOutcome() {
     if (routes.length === 0) return renderRouteOutcomeEmptyState();
-    return (
-      <>
-        {generation.failure && <ErrorText>作り直せませんでした。{generation.failure}</ErrorText>}
-        {renderRouteOutcomeSectionBody()}
-      </>
-    );
+    return renderRouteOutcomeSectionBody();
   }
 
   // 候補ごとのタブの1列で、タブの切り替えが候補の切り替えを兼ねる。
@@ -175,8 +158,7 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
 
     return (
       <>
-        {/* 作り直しの失敗を出している間は、それが前の条件の候補であることも伝えているので重ねない。 */}
-        {generation.conditionsDirty && !generation.failure && <WarningText>生成条件が変更されています</WarningText>}
+        {generation.conditionsDirty && <WarningText>生成条件が変更されています</WarningText>}
         {generation.weightsNotApplied && <WarningText>重み配分を反映できず、既定の配分で作りました。</WarningText>}
         {generation.destinationCorrected && (
           <WarningText>
@@ -309,7 +291,7 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
                           ? "—"
                           : formatDifficulty(selectedRouteSegment.segment.difficulty)}
                       </span>
-                      <span className={textVariants({ variant: "hint" })}>/100</span>
+                      <span className={textVariants({ variant: "hint" })}>{DIFFICULTY_SCALE_SUFFIX}</span>
                     </span>
                     {selectedRouteSegment.segment.difficulty !== null &&
                       !Object.keys(selectedRouteSegment.segment.axis_contributions).some((axisId) =>

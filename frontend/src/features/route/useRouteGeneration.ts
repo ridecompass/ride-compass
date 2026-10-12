@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 
 import { debugLog } from "@/lib/debugLog";
+import { SECOND_MS } from "@/lib/duration";
 import { useRouteFormSubmit } from "@/features/route/RouteForm/useRouteFormSubmit";
 import {
   buildGenerateRequest,
@@ -35,7 +36,7 @@ interface GeneratedConditions {
   input: GenerationInput;
 }
 
-interface RouteGenerationInputs {
+export interface RouteGenerationInputs {
   conditions: GenerationConditionsState;
   origin: Coordinates;
   /** 出発地が実際の位置か（現在地を取れたか、地図で置いたか）。 */
@@ -153,11 +154,12 @@ export function useRouteGeneration({
     else onOutcome("failed");
   }
 
-  /** 直近の案内を消す（実行中なら何もしない）。 */
-  const clearNotice = useCallback(
-    () => setGeneration((current) => (current.status === "idle" ? GENERATION_IDLE : current)),
-    [],
-  );
+  /** 直近の案内（入力の誤りを含む）を消す（実行中なら何もしない）。 */
+  const { clear: clearFormError } = routeFormSubmit;
+  const clearNotice = useCallback(() => {
+    clearFormError();
+    setGeneration((current) => (current.status === "idle" ? GENERATION_IDLE : current));
+  }, [clearFormError]);
 
   /** 生成の結果（作った条件・案内）を消す。 */
   const clear = useCallback(() => {
@@ -183,12 +185,10 @@ export function useRouteGeneration({
       progress?.status === "queued"
         ? "順番待ち..."
         : progress?.status === "running"
-          ? `生成中...(${Math.round(progress.elapsedMs / 1000)}秒経過)`
+          ? `生成中...(${Math.round(progress.elapsedMs / SECOND_MS)}秒経過)`
           : undefined,
     /** 押した「生成」の直近の案内（候補0件の理由・入力の誤りか失敗）。候補が出たとき・実行中・まだ押していないときはnull。 */
     outcome,
-    /** 押した「生成」が通らなかった理由（入力の誤り・生成の失敗）。候補がある間も、前の候補の上に出す。 */
-    failure: outcome?.kind === "failed" ? outcome.message : null,
     conditionsDirty,
     destinationCorrected: generatedConditions?.destinationCorrected ?? false,
     weightsNotApplied: generatedConditions?.weightsNotApplied ?? false,
