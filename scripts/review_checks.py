@@ -545,6 +545,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
+    sys.path.append(str(REPO_ROOT / "backend" / "scripts"))
+    from _stdio import use_utf8_stdio
+
+    use_utf8_stdio()
     sys.exit(main())

@@ -21,6 +21,7 @@ import json
 import os
 import re
 import sys
+from pathlib import Path
 
 JAPANESE = re.compile(r"[぀-ヿ㐀-鿿ｦ-ﾟ]")
 WORD = re.compile(r"(?<![\w/.#@-])[A-Za-z]{2,}(?![\w/.#@-])")
@@ -134,9 +135,6 @@ def reason(lines: list[str]) -> str:
 
 
 def main() -> int:
-    # Claude Code はフックの入出力を UTF-8 でやり取りする。Windows の既定（cp932）のままだと理由の文が化ける。
-    sys.stdin.reconfigure(encoding="utf-8")
-    sys.stdout.reconfigure(encoding="utf-8")
     hook = json.load(sys.stdin)
     event = hook.get("hook_event_name")
     if event == "MessageDisplay":
@@ -157,4 +155,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    sys.path.append(str(Path(__file__).resolve().parents[2] / "backend" / "scripts"))
+    from _stdio import use_utf8_stdio
+
+    use_utf8_stdio()
     sys.exit(main())

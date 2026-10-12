@@ -42,6 +42,12 @@ describe("readSavedPlaces", () => {
     expect(readSavedPlaces(raw)).toEqual([CAFE, HOME]);
   });
 
+  it("街区・地番（block）で決めた住所の地点も読み戻す", () => {
+    const block: SavedPlace = { ...HOME, kind: "address", level: "block", name: "実家" };
+
+    expect(readSavedPlaces(JSON.stringify([block]))).toEqual([block]);
+  });
+
   it.each([
     ["壊れた値", "{"],
     ["一覧でない値", JSON.stringify(CAFE)],
