@@ -5,9 +5,11 @@
 # - 手で起こす（gh workflow run mutation-frontend.yml、または Actions → Mutation frontend → Run workflow）。測る版と台本は、
 #   起こすときに選んだ ref から読む（台本は frontend/scripts/mutation/ と backend/scripts/mutation/review.py）。
 # - 2段で回る:
-#   1. shard（16本）: 書き換えるファイルを行数がそろうように分け（plan.mjs）、1本ずつ別のランナーで Stryker を回す。
+#   1. shard（16本）: 書き換えるファイルを行数がそろうように分け（plan.mjs）、1本ずつ別のランナーで Stryker を回す。mutate に
+#      ファイルを渡すと、そのファイルだけを1本で回す（分けない）。
 #   2. review（1本）: 1 を1つの表にし（report.mjs）、表から見直しの候補を出す（backend/scripts/mutation/review.py）。前の実行の
-#      見直し（成果物 mutation-frontend-review）を取ってきて比べ、前回も重なりの候補だったテストに印を付ける。
+#      見直し（成果物 mutation-frontend-review）を取ってきて比べ、前回も重なりの候補だったテストに印を付ける。mutate で範囲を
+#      絞った測りの見直しは、次の見直しの前回にしない（残さない）。
 # - compare にファイル（frontend からのパス）を渡すと、1・2 の代わりに、そのファイルを vitest の口と command の口（書き換えごとに
 #   テスト全体を回す。並び1本）で回して判定を突き合わせる（compare.mjs）。口の直しを外す・版を上げるときに使う。
 # - 持ち時間: 8本に分けた試し（tasks#839）で、1本の書き換えは約1,400〜1,900件、Stryker の見込みで1本4時間ほどだった
@@ -22,6 +24,10 @@ on:
         description: 測る版（台本も同じ版から読む）
         required: true
         default: master
+      mutate:
+        description: 書き換えるファイル（frontend からのパスをカンマでつなぐ。Stryker の --mutate に渡す。空なら src/ の全部を16本に分ける）
+        required: false
+        default: ""
       compare:
         description: 2つの口の判定を突き合わせるファイル（frontend からのパス。空なら全部を測る）
         required: false
@@ -45,7 +51,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        shard: ${{ fromJSON(inputs.mutate == '' && '[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]' || '[0]') }}
     defaults:
       run:
         working-directory: frontend
@@ -63,8 +69,9 @@ jobs:
       - name: 回す
         env:
           SHARD: ${{ matrix.shard }}
+          MUTATE: ${{ inputs.mutate }}
         run: |
-          files=$(node scripts/mutation/plan.mjs "$SHARD" "$SHARDS")
+          files=${MUTATE:-$(node scripts/mutation/plan.mjs "$SHARD" "$SHARDS")}
           echo "この本で書き換えるファイル: $(echo "$files" | tr ',' '\n' | wc -l) 本"
           npx stryker run scripts/mutation/stryker.config.mjs --mutate "$files"
       - if: always()
@@ -122,8 +129,10 @@ jobs:
           cat /tmp/review/summary.md >> "$GITHUB_STEP_SUMMARY"
       - if: needs.shard.result != 'success'
         run: echo "落ちた本があり、書き換えが欠けているので、この見直しは次の見直しの前回にしない。" >> "$GITHUB_STEP_SUMMARY"
-      # 書き換えを全部回し終えた測りの見直しだけを残す（本が落ちて欠けた測りを、次の見直しが前回として読まないように）。
-      - if: steps.review.outputs.complete == 'true' && needs.shard.result == 'success'
+      - if: inputs.mutate != ''
+        run: echo "範囲を絞った測り（mutate）なので、この見直しは次の見直しの前回にしない。" >> "$GITHUB_STEP_SUMMARY"
+      # src/ の全部の書き換えを回し終えた測りの見直しだけを残す（本が落ちて欠けた測り・範囲を絞った測りを、次の見直しが前回として読まないように）。
+      - if: steps.review.outputs.complete == 'true' && needs.shard.result == 'success' && inputs.mutate == ''
         uses: actions/upload-artifact@v4
         with:
           name: mutation-frontend-review

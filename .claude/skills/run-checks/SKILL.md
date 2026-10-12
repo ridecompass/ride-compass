@@ -214,6 +214,7 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
 - **frontend の単体テスト**: `.github/workflows/mutation-frontend.yml`（手で起こす。段の中身は先頭のコメント）が Stryker で測り、
   backend と同じ表の形にして同じ `review.py` で候補を出す（成果物 `mutation-frontend-review`）。台本は `frontend/scripts/mutation/`
   （Stryker の版と vitest の口の直しは `install.sh` の1か所。クラス名の値にしか届かない書き換えは `ignore-class-names.mjs` が外す）。
+  範囲を絞って測るときは `-f mutate=<frontend からのパス,...>`（1本で回し、見直しは次の前回に残さない）。
   口の直しを外す・版を上げるときは、`-f compare=<frontend からのファイルのパス>` で、書き換えごとにテスト全体を回す口と判定が合うかを見る。
 
   ```bash
