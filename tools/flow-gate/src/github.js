@@ -16,7 +16,8 @@ export class GitHub {
     const part = (o) => b64url(new TextEncoder().encode(JSON.stringify(o)));
     const data = `${part({ alg: "RS256", typ: "JWT" })}.${part({ iat: now - 60, exp: now + 540, iss: String(env.APP_ID) })}`;
     const jwt = `${data}.${b64url(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(data)))}`;
-    return new GitHub((await new GitHub(jwt).rest("POST", `/app/installations/${installation}/access_tokens`)).token);
+    const t = await new GitHub(jwt).rest("POST", `/app/installations/${installation}/access_tokens`);
+    return Object.assign(new GitHub(t.token), { expires: Date.parse(t.expires_at) });
   }
 
   async rest(method, path, body) {

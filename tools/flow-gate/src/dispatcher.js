@@ -6,7 +6,14 @@ import { GitHub } from "./github.js";
 import { Inbox, nextAlarm } from "./inbox.js";
 
 export class Dispatcher extends DurableObject {
-  inbox = new Inbox(this.ctx.storage, async (name, payload) => handle(await GitHub.app(this.env, config.installation), this, config, name, payload));
+  inbox = new Inbox(this.ctx.storage, async (name, payload) => handle(await this.github(), this, config, name, payload));
+
+  // インストールの鍵は、GitHub が返す失効の時刻まで変わらないので、失効の5分前まで使い回す（作り直しも GitHub への要求1回）。
+  // 鍵だけを持ち、issue の情報は持たない。
+  async github() {
+    if (!(this.gh?.expires - Date.now() > 5 * 60e3)) this.gh = await GitHub.app(this.env, config.installation);
+    return this.gh;
+  }
 
   async enqueue(name, payload) {
     await this.inbox.push(name, payload);

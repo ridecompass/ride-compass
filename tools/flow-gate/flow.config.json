@@ -7,10 +7,12 @@
   "gateBot": "ridecompass-gate[bot]",
   "user": "hidakagit",
   "claude": "hidakagit-bot",
+  "ids": { "hidakagit": "MDQ6VXNlcjY3MzE4OTE=", "hidakagit-bot": "U_kgDOE_ZrBg" },
   "urls": { "gate": "https://ridecompass-gate.h7g4bin.workers.dev", "form": "https://ride-compass-answer.h7g4bin.workers.dev" },
   "dialogType": "対話作業",
   "fields": {
-    "status": {"name": "ステータス", "id": "IFSS_kgDOAuBdcQ", "options": {"CI待ち": "IFSSO_kgDOBQkZAw", "保留": "IFSSO_kgDOBQkZAA", "回答待ち": "IFSSO_kgDOBQkY_w", "完了": "IFSSO_kgDOBQkZBg", "未着手": "IFSSO_kgDOBQkZAQ", "検証中": "IFSSO_kgDOBQkZBQ", "検証待ち": "IFSSO_kgDOBQkZBA", "進行中": "IFSSO_kgDOBQkZAg"}},
+    "status": {"name": "ステータス", "values": ["実装", "検査", "検証", "回答", "保留", "待機", "完了"]},
+    "run": {"name": "実行の status", "values": ["requested", "queued", "waiting", "pending", "in_progress", "completed"]},
     "priority": {"name": "優先度", "id": "IFSS_kgDOAuBdcg", "options": {"中": "IFSSO_kgDOBQkZCA", "低": "IFSSO_kgDOBQkZCQ", "高": "IFSSO_kgDOBQkZBw"}},
     "size": {"name": "規模", "id": "IFSS_kgDOAuBdcw", "options": {"L": "IFSSO_kgDOBQkZDA", "M": "IFSSO_kgDOBQkZCw", "S": "IFSSO_kgDOBQkZCg"}},
     "start": {"name": "着手可能日時", "id": "IFT_kgDOAuBddA"}
@@ -18,9 +20,10 @@
   "priorities": ["高", "中", "低"],
   "unsetPriority": "中",
   "urgentLabel": "急ぎ",
+  "devLabel": "開発機で作業中",
   "branchPrefix": "orch/tasks-",
   "workflow": "claude-task.yml",
-  "slots": { "作る": 6, "確かめる": 4 },
+  "slots": { "実装": 6, "検証": 4 },
   "quotaStep": "利用の上限で止まった",
   "pauseMinutes": 60,
   "retries": 5
