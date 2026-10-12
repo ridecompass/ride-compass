@@ -3,7 +3,7 @@
 接続のプールはタイル配信と分け合っており（`config.py`の上限）、1回の内訳で2本持つと、地図を動かしている間の
 タイルが接続の空きを待つ。注入（`api/dependencies.py: get_axis_inspector_service`）から本物を通し、アプリの
 セッション工場をテストDBへ向けて、プールから貸し出された接続の数を数える。押す道は取込と道路網の導出を通して置き、
-内訳が道・区間とタイルの材料・配信の値を読むところまで進ませる。
+内訳が道・区間とタイルの材料・配信の値（DBを読む勾配と、気象も読む風）を読むところまで進ませる。
 
 ここで見ないもの:
 - 内訳の中身と、要求のどの値がどこへ渡るか → `test_region_routes.py`
@@ -37,6 +37,15 @@ GRADIENT_AXIS = AxisDefinition(
     ),
     default_weight=0.2,
     label="勾配",
+    is_published=True,
+)
+
+#: 気象を読む配信の軸（風）。注入が気象のサービスを渡さないと、内訳が開かない。
+WIND_AXIS = AxisDefinition(
+    axis_id="axis_wind",
+    shape=BreakpointLinearShape(terms=[MaterialTerm(material="wind_drag_ratio")], breakpoints=[(0.0, 0.0), (2.0, 100.0)]),
+    default_weight=0.2,
+    label="風",
     is_published=True,
 )
 
@@ -76,12 +85,12 @@ async def test_one_inspection_holds_one_connection_at_a_time():
     event.listen(pool, "checkout", checked_out)
     event.listen(pool, "checkin", checked_in)
     transport = httpx.ASGITransport(app=app)
-    with replaced_axis_definitions({GRADIENT_AXIS.axis_id: GRADIENT_AXIS}):
+    with replaced_axis_definitions({axis.axis_id: axis for axis in (GRADIENT_AXIS, WIND_AXIS)}):
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.post(
                 "/api/region/axis-inspector",
                 json={"osm_way_id": 1, "feature_key": "1-0", "point": {"latitude": middle, "longitude": west},
-                      "z": TILE[0], "x": TILE[1], "y": TILE[2], "bearing_deg": 90.0},
+                      "z": TILE[0], "x": TILE[1], "y": TILE[2], "bearing_deg": 90.0, "speed_kmh": 20.0},
             )
 
     assert response.status_code == 200

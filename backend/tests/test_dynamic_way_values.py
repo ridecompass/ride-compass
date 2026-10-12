@@ -250,20 +250,25 @@ def test_a_way_painted_with_a_signed_material_keeps_the_band_of_the_route_and_th
 
 
 def test_a_way_undetermined_by_bearing_stays_so_and_a_way_without_segments_keeps_its_own_value():
-    """向きで決まらない道は「向きで決まらない」のまま、区間の無い道（区間を作れない道）は道1本の値で塗り、その後ろの道も
-    塗る。"""
+    """向きで決まらない道は「向きで決まらない」のまま、区間の無い道（区間を作れない道）は道1本の値で塗り（得点で求める
+    ときは得点）、その後ろの道も塗る。"""
     keys, materials, served, segments, served_segments = _segment_tile()
-    served = {"seg_grade": {**served["seg_grade"], "way-1": None}}
+    served = {"seg_grade": {**served["seg_grade"], "way-1": None, "way-4": -6.0}}
     without = paint_folded_feature_values("axis_cover", FOLDED_AXES, keys, materials, served, segments, served_segments)
     keys = ["way-4", *keys]
     materials = {material_id: np.insert(column, 0, 7.0) for material_id, column in materials.items()}
 
     painted = paint_folded_feature_values("axis_cover", FOLDED_AXES, keys, materials, served, segments, served_segments)
     graded = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments)
+    scored = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments,
+                                         as_difficulty=True)
 
     assert painted == {**without, "way-4": paint_feature_values("axis_cover", FOLDED_AXES, ["way-4"], {
         material_id: column[:1] for material_id, column in materials.items()}, {})["way-4"]}
     assert graded["way-1"] is None
+    assert (graded["way-4"], scored["way-4"]) == (-6.0, paint_feature_values("axis_grade", FOLDED_AXES, ["way-4"], {
+        material_id: column[:1] for material_id, column in materials.items()}, {"seg_grade": {"way-4": -6.0}},
+        as_difficulty=True)["way-4"])
 
 
 def test_segments_of_a_way_the_tile_does_not_paint_change_no_other_way():

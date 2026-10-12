@@ -118,15 +118,21 @@ ON_SEGMENT = (
     (EDGE_TILE_BOUNDS.min_longitude + EDGE_TILE_BOUNDS.max_longitude) / 2,
 )
 
-#: 区間ごとに値の違う材料（勾配）を読む軸と、道のタグを読む軸。どちらも得点を塗る。
+#: 道のタグを読む軸と、区間ごとに値の違う材料（勾配）を読む軸。勾配の大きさだけを読む軸は、地図が得点ではなく勾配
+#: （符号付き材料）を塗る。タイルの材料を読む軸を先に置く（読めないときに、その後ろの軸の値を落とさないことも見る）。
+SIGNED = "axis_slope"
 INSPECTED_AXES = {
+    "axis_surface": shaped_axis(
+        CategoricalShape(material="surface_class", mapping={"paved": 10.0, "unpaved": 90.0}),
+        axis_id="axis_surface", is_published=True),
     "axis_grade": shaped_axis(
         BreakpointLinearShape(terms=[MaterialTerm(material="gradient_percent")],
                               breakpoints=[(-10.0, 100.0), (0.0, 0.0), (10.0, 50.0)]),
         axis_id="axis_grade", is_published=True),
-    "axis_surface": shaped_axis(
-        CategoricalShape(material="surface_class", mapping={"paved": 10.0, "unpaved": 90.0}),
-        axis_id="axis_surface", is_published=True),
+    SIGNED: shaped_axis(
+        BreakpointLinearShape(terms=[MaterialTerm(material="gradient_percent")], preprocess="abs",
+                              breakpoints=[(0.0, 0.0), (10.0, 100.0)]),
+        axis_id=SIGNED, is_published=True),
 }
 
 
@@ -148,16 +154,22 @@ class _InspectedWayRepository(RoadGraphRepository):
 
 
 class _TileMaterials:
-    """タイルごとのフィーチャーの材料と区間の材料（`services/feature_materials.py: FeatureMaterialService`の代役）。"""
+    """タイルごとのフィーチャーの材料と区間の材料（`services/feature_materials.py: FeatureMaterialService`の代役）。
+    `readable`が偽なら、取込範囲外・DB障害のタイルとしてどちらも読めない。"""
+
+    def __init__(self, readable: bool = True):
+        self._readable = readable
 
     async def materials(self, z, x, y):
         key = WAY if (z, x, y) == WAY_TILE else SEGMENT
         return FeatureMaterials(feature_keys=("other", key),
-                                columns={"surface_class": CategoricalColumn.encode(["unpaved", "paved"])})
+                                columns={"surface_class": CategoricalColumn.encode(["unpaved", "paved"])}
+                                ) if self._readable else None
 
     async def segments(self, z, x, y):
         return FeatureSegments(feature_keys=("other", WAY, WAY), distance_m=np.array([50.0, 100.0, 300.0]),
-                               feature_bearing_deg=np.zeros(3), columns={"gradient_percent": np.array([1.0, 8.0, -4.0])})
+                               feature_bearing_deg=np.zeros(3), columns={"gradient_percent": np.array([1.0, 8.0, -4.0])}
+                               ) if self._readable else None
 
 
 class _Gradients:
@@ -170,11 +182,12 @@ class _Gradients:
         return {"other": 9.0, WAY: -1.0} if (z, x, y) == WAY_TILE else {"other": 9.0, SEGMENT: 6.0}
 
     def segment_values(self, segments, conditions):
-        return np.asarray(segments.columns["gradient_percent"], dtype=float)
+        """区間の勾配は、走る向きで符号が変わる（ここでは区間の材料と逆向きに走る）。"""
+        return -np.asarray(segments.columns["gradient_percent"], dtype=float)
 
 
-def _inspector() -> AxisInspectorService:
-    return AxisInspectorService(RegionService(repository=_InspectedWayRepository()), _TileMaterials(),
+def _inspector(readable: bool = True) -> AxisInspectorService:
+    return AxisInspectorService(RegionService(repository=_InspectedWayRepository()), _TileMaterials(readable),
                                 {"gradient_percent": _Gradients()}.__getitem__)
 
 
@@ -185,11 +198,17 @@ def _scores(values) -> dict[str, float | None]:
     return {axis.axis_id: axis.difficulty for axis in values.axes}
 
 
+def _difficulty(axis_id: str, painted: float) -> float:
+    """地図が塗る値の得点。勾配を塗る軸は、塗った勾配の大きさの得点（地図の色の段と同じ段）。"""
+    return INSPECTED_AXES[SIGNED].shape.score_at(abs(painted)) if axis_id == SIGNED else painted
+
+
 @pytest.mark.parametrize(("pressed", "feature_key"), [(EDGE_TILE, SEGMENT), (WAY_TILE, WAY)],
                          ids=["区間で塗る倍率", "道1本で塗る倍率"])
 async def test_the_inspector_gives_the_values_the_map_paints_for_the_segment_and_for_its_way(pressed, feature_key):
     """押した区間の値は区間で塗る地図の色と、道1本の値は引いた地図の色と同じ値になる（倍率に依らない）。食い違うと、
-    同じ道の地図の色と窓の数字が違って見える。道1本で塗る倍率で押したときの区間は、押した地点に最も近いその道の区間。"""
+    同じ道の地図の色と窓の数字が違って見える。勾配を塗る軸も、窓には得点を出す。道1本で塗る倍率で押したときの区間は、
+    押した地点に最も近いその道の区間。道1本の値は、その道の区間を走った向きの勾配の得点の距離平均（ルートの値と同じ）。"""
     with replaced_axis_definitions(INSPECTED_AXES):
         result = await _inspector().inspect(int(WAY), feature_key, *pressed, LatLonPoint(35.6, 139.4), QUERY, None)
         painted = {
@@ -199,9 +218,26 @@ async def test_the_inspector_gives_the_values_the_map_paints_for_the_segment_and
             for tile in (EDGE_TILE, WAY_TILE)
         }
 
-    assert _scores(result.segment) == {axis_id: values[SEGMENT] for axis_id, values in painted[EDGE_TILE].items()}
-    assert _scores(result.way) == {axis_id: values[WAY] for axis_id, values in painted[WAY_TILE].items()}
-    assert _scores(result.way)["axis_grade"] != INSPECTED_AXES["axis_grade"].shape.score_at(-1.0)
+    assert _scores(result.segment) == {
+        axis_id: _difficulty(axis_id, values[SEGMENT]) for axis_id, values in painted[EDGE_TILE].items()}
+    assert _scores(result.way) == {
+        axis_id: _difficulty(axis_id, values[WAY]) for axis_id, values in painted[WAY_TILE].items()}
+    grade = INSPECTED_AXES["axis_grade"].shape
+    assert _scores(result.way)["axis_grade"] == (grade.score_at(-8.0) * 100 + grade.score_at(4.0) * 300) / 400
+
+
+@pytest.mark.parametrize(("readable", "pressed", "feature_key", "segment", "way"), [
+    (False, WAY_TILE, WAY, {"axis_surface": None, "axis_grade": 30.0, SIGNED: 60.0},
+     dict.fromkeys(INSPECTED_AXES)),
+    (True, EDGE_TILE, f"{WAY}-9", dict.fromkeys(INSPECTED_AXES), {"axis_surface": 10.0, "axis_grade": 35.0, SIGNED: 50.0}),
+], ids=["タイルの材料を読めない", "押した区間がタイルに無い"])
+async def test_what_the_map_does_not_paint_is_no_data_in_the_inspector(readable, pressed, feature_key, segment, way):
+    """取込範囲外・DB障害でタイルの材料を読めない軸と、押した区間を今のタイルが持たない（地図のタイルが前の世代）ときは、
+    窓はその軸を「データなし」にし、ほかの値は出す。失敗すると、道を押しても窓が開かない。"""
+    with replaced_axis_definitions(INSPECTED_AXES):
+        result = await _inspector(readable).inspect(int(WAY), feature_key, *pressed, LatLonPoint(*ON_SEGMENT), QUERY, None)
+
+    assert (_scores(result.segment), _scores(result.way)) == (segment, way)
 
 
 async def test_an_axis_whose_conditions_are_missing_has_no_value_and_the_others_combine_without_it():
@@ -211,7 +247,7 @@ async def test_an_axis_whose_conditions_are_missing_has_no_value_and_the_others_
             int(WAY), SEGMENT, *EDGE_TILE, LatLonPoint(*ON_SEGMENT), WayValueQuery(at=None, bearing_deg=None, speed_kmh=None),
             None)
 
-    assert _scores(result.segment) == {"axis_grade": None, "axis_surface": 10.0}
+    assert _scores(result.segment) == {"axis_surface": 10.0, "axis_grade": None, SIGNED: None}
     assert result.segment.composite_difficulty.value == 10.0
 
 
