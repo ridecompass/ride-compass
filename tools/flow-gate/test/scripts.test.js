@@ -64,7 +64,10 @@ test("答えを記録する（ask の answer.mjs）: 回答フォームと同じ
   assert.equal(tail(body), `次遷移: 完了\n選んだ案: なし（問いに案が無い）\n- 確かめた: 見た目\nコメント:\n${said}`, "完了は、確かめることを全部並べる");
   assert.equal(answerText(body), said, "コメントは形を付けずにそのまま読む");
   const read = (text) => latestQuestion([confirmText, answerBody(confirm, { next: "続ける", text })], config.questionForms)?.answer;
-  for (const text of ["次遷移: 完了", "- 確かめた: 見た目\nここは崩れる", "コメント: なし"]) assert.deepEqual(read(text), { decision: "続ける", confirmed: [], text }, `欄に似た行は欄として読まない: ${text}`);
+  for (const text of ["次遷移: 完了", "- 確かめた: 見た目\nここは崩れる", "コメント: なし", "なし"]) assert.deepEqual(read(text), { decision: "続ける", confirmed: [], text }, `欄に似た行は欄として読まない: ${text}`);
+  const odd = "次遷移: 保留する\n選んだ案: なし（問いに案が無い）\nコメント: なし";
+  assert.deepEqual(latestQuestion([confirmText, `## 回答\n**完成にしてよいですか？**\n\n${odd}`], config.questionForms)?.answer, { decision: "続ける", confirmed: [], text: odd },
+    "知らない次遷移の値は決定にせず、全部をコメントとして Claude へ渡す");
   assert.deepEqual(latestQuestion([confirmText, "## 回答\n**完成にしてよいですか？**\n\n見た"], config.questionForms)?.answer, { decision: "続ける", confirmed: [], text: "見た" },
     "次遷移の無い答えは、続けるとして全部をコメントに読む");
 });

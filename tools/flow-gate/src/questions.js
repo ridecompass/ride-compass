@@ -163,16 +163,17 @@ export function answerBody(q, { next, plan, labels = "", text = "" }) {
 export const APPLIED = "答えに書いた文を Claude が読んだので、答えを当てました"; // 書いた文のある答えを当てた印（二度は当てない）
 export const isAnswer = (t) => /^## 回答\n/.test(norm(t));
 // 答えのコメントを読む: 決定（次遷移）・確かめた条件・コメント。決まった欄は最初の「コメント:」の行より前にだけあり、そのあとは全部コメント
-// （コメントの中に欄に似た行があっても、欄として読まない）。次遷移の無い答えは、決定を続けるとし、頭のあとを全部コメントとして読む。
+// （コメントの中に欄に似た行があっても、欄として読まない）。コメントが無いのは「コメント: なし」の1行のときだけ。次遷移が無いか、決まった値で
+// ない答えは、決定を続けるとし、頭のあとを全部コメントとして Claude へ渡す（黙って捨てない）。
 function parseAnswer(text) {
   const lines = norm(text).split("\n");
   if (!isAnswer(text)) return null;
   const k = lines.findIndex((l) => /^コメント:/.test(l));
   const fixed = k < 0 ? [] : lines.slice(0, k);
   const next = fixed.map((l) => /^次遷移: (.+)$/.exec(l)?.[1].trim()).find(Boolean);
-  if (!next) return { decision: "続ける", confirmed: [], text: lines.slice(/^\*\*.+\*\*$/.test(lines[1] ?? "") ? 2 : 1).join("\n").trim() };
-  const said = [lines[k].replace(/^コメント:\s*/, ""), ...lines.slice(k + 1)].join("\n").trim();
-  return { decision: next, confirmed: fixed.map((l) => /^- 確かめた: (.+)$/.exec(l)?.[1].trim()).filter(Boolean), text: said === "なし" ? "" : said };
+  if (!Object.hasOwn(NEXT, next ?? "")) return { decision: "続ける", confirmed: [], text: lines.slice(/^\*\*.+\*\*$/.test(lines[1] ?? "") ? 2 : 1).join("\n").trim() };
+  const said = lines[k] === "コメント: なし" && k === lines.length - 1 ? "" : [lines[k].replace(/^コメント:\s*/, ""), ...lines.slice(k + 1)].join("\n").trim();
+  return { decision: next, confirmed: fixed.map((l) => /^- 確かめた: (.+)$/.exec(l)?.[1].trim()).filter(Boolean), text: said };
 }
 export const answerText = (text) => parseAnswer(text)?.text ?? "";
 

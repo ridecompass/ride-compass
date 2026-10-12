@@ -32,7 +32,7 @@ function writesOf(f, d, config) {
   if (!d.open && f.open) ops.push(["closeIssue", "CloseIssueInput", { issueId: f.id, stateReason: d.closeAs }]);
   return ops;
 }
-// 書き込みの並びを、1回の要求の問い合わせと変数にする（src/gate.js: writesOf の形。移行の道具も使う）。
+// 書き込みの並び（writesOf の形）を、1回の要求の問い合わせと変数にする。
 export const batch = (ops) => [`mutation(${ops.map(([, type], k) => `$v${k}:${type}!`).join(",")}){${ops.map(([name], k) => `w${k}:${name}(input:$v${k}){clientMutationId}`).join(" ")}}`,
   Object.fromEntries(ops.map(([, , input], k) => [`v${k}`, input]))];
 

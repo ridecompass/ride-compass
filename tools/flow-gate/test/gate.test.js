@@ -828,3 +828,11 @@ test("tasks#788 定時は、ユーザーの番でない開いた issue を決め
   await w.send(ev.schedule());
   assert.deepEqual([w.at(1).status, w.at(2).status], ["実装", "検証"], "PR の無い検証は実装へ直す。ユーザーの番のものは定時では触らない");
 });
+
+test("採否を問う issue（Claude が起こした要望）でも、ゲートが出した確かめの問いは、事実が続く間は1つだけ（問い直さない）", async () => {
+  const w = world([{ n: 1, author: config.claude, type: "要望", status: "検査", body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1" },
+    comments: [ASKED("採否"), REPLY(ASKED("採否"), "続ける")] }]);
+  await w.send(ev.merge(1));
+  await w.send(ev.comment(1, config.claude));
+  assert.deepEqual([w.at(1).status, w.at(1).comments.filter((c) => c.startsWith("## 問い（確かめ）")).length], ["回答", 1]);
+});

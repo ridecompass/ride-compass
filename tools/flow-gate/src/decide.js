@@ -67,13 +67,14 @@ function runStatus(f, status) {
   return f.runs.find((r) => r.kind === status)?.status ?? null;
 }
 
-// 答えの無い問いが生きているか。ゲートが出した問いは、同じ事実から決め直して同じ問いが出る間だけ生きる（一度問うたこと・担当の実行・
-// 保留・読まれていない文は、問いを出す事実に数えない）。無くなった問いは読まず、表で決め直す。担当が出した問いは、ゲートが中身を読まない
-// ので答えるまで生きる。
+// 答えの無い問いが生きているか。ゲートが出した問いは、同じ事実から決め直して同じ問いが出る間だけ生きる（その問いを一度問うたこと・担当の実行・
+// 保留・読まれていない文は、問いを出す事実に数えない。ほかの問いを問うたことは数える）。無くなった問いは読まず、表で決め直す。担当が出した問いは、
+// ゲートが中身を読まないので答えるまで生きる。
 function alive(f, q, config) {
   if (q.form.by !== "ゲート") return true;
   const dropped = droppedOf(q.text);
-  const s = status({ ...f, question: null, adoptAsked: false, droppedAsked: false, unread: false, runs: [], status: null }, config);
+  const once = { ...(q.kind === "採否" && { adoptAsked: false }), ...(dropped && { droppedAsked: false }) };
+  const s = status({ ...f, ...once, question: null, unread: false, runs: [], status: null }, config);
   return dropped ? String(s.ask?.dropped?.toSorted()) === String(dropped.toSorted()) : s.ask === q.kind;
 }
 
@@ -91,7 +92,7 @@ function notice(f, status) {
   return text && text !== f.comments.at(-1) ? text : null;
 }
 
-// 入口で採否を問う issue: Claude が起こした要望。子と分割元のある切り出しは、採否を親か元から受け継ぐ（src/facts.js も、これで探すかを決める）。
+// 入口で採否を問う issue: Claude が起こした要望。子と分割元のある切り出しは、採否を親か元から受け継ぐ。
 export const adoptable = (f, config) => f.author === config.claude && f.type === "要望" && !f.parent && !f.origin;
 
 function status(f, config) {
@@ -109,11 +110,12 @@ function status(f, config) {
   if (adoptable(f, config) && !need(f, "adoptAsked")) return { status: "回答", ask: "採否" };
   // ユーザーが書いた文（答えの文・コメント）を Claude がまだ読んでいなければ、Claude の番にする（閉じていれば開き直す）。ゲートは文の中身を読まない。
   if (f.unread) return { status: "実装" };
-  // 答えの無い問いがあっても、完了の条件が全部済んだら完成にする（済んだ作業への問いは要らない）。採否は、条件が済んでいても着手するかの答えが要る。
+  // 答えの無い問いがあっても、完了の条件が全部済んだら完成にする（済んだ作業への問いは要らない）。ゲートが出して生きている問いは、事実がまだ
+  // 問いを求めているので答えを待つ（条件が済んでいても、着手するかの採否の答えは要る）。
   const q = f.question;
   if (q && !q.answer) {
     const t = table(f);
-    return t.status === "完了" && q.kind !== "採否" ? t : { status: "回答" };
+    return t.status === "完了" && q.form.by !== "ゲート" ? t : { status: "回答" };
   }
   // 答えは、書いた文があれば Claude が読んだあとに当て、当てたことを一度だけ知らせる。答えのあとにユーザーがステータスを変えたか開き直したら、
   // 次の決定はそちらなので、その答えは当てない。
