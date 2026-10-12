@@ -101,7 +101,7 @@ describe("コマのURL", () => {
   const frame = { basetime: "20260924000000", member: "immed", validtime: "20260924010000" };
   const delivery = FEATURE_DELIVERY;
 
-  it("タイルのURLはbackendの表のパスを指し、同じ配信要素・コマ・タイル座標に読み戻せる", () => {
+  it("タイルのURLはbackendの表のパスを指し、読み戻したコマのURLはそのコマのテンプレートと同じ", () => {
     const rows = jmaExpectations.tile_path;
     expect(rows.length).toBeGreaterThan(0);
     for (const { element_id, frame: tileFrame, z, x, y, path } of rows) {
@@ -110,14 +110,18 @@ describe("コマのURL", () => {
       const { tileUrlTemplate } = jmaTilePayload("rasterTile", tile, tileFrame);
       const url = jmaTileUrlAt(tileUrlTemplate, z, x, y);
       expect(url).toBe(`${PROXY}${path}`);
-      expect(readJmaTileUrl(url), element_id).toEqual({
-        delivery: tile,
-        frame: tileFrame,
-        frameUrl: tileUrlTemplate,
-        z,
-        x,
-        y,
-      });
+      expect(readJmaTileUrl(url)?.frameUrl, element_id).toBe(tileUrlTemplate);
+    }
+  });
+
+  it("配信元のパスを、backendの表と同じ配信要素・コマ・タイル座標に読み戻す（タイルでないパスは読み戻さない）", () => {
+    const rows = jmaExpectations.read_tile_path;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const { path, tile } of rows) {
+      const ref = readJmaTileUrl(`${PROXY}${path}`);
+      expect(ref && { element_id: ref.delivery.id, frame: ref.frame, z: ref.z, x: ref.x, y: ref.y }, path).toEqual(
+        tile,
+      );
     }
   });
 

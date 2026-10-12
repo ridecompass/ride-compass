@@ -40,11 +40,9 @@ from app.batch.dem_tile_store import (
     mark_absent,
     write_tile,
 )
-from app.batch.common import (
-    PROGRESS_INTERVAL_SECONDS,
-    format_progress,
-)
-from app.batch.source_profile import SourceProfile, load_source_profile
+from app.batch.common import PROGRESS_INTERVAL_SECONDS, format_progress
+from app.batch.fetch_cli import run_profile_fetch_cli
+from app.batch.source_profile import SourceProfile, SourceSpec
 from app.domain.region import tiles_covering_bbox
 from app.infrastructure.source_models import Source
 
@@ -147,24 +145,24 @@ async def fetch(client: httpx.AsyncClient, root: Path, profile: SourceProfile,
     return results
 
 
-async def run(profile_path: Path | None, attempts: int) -> int:
-    profile = load_source_profile(profile_path)
+async def _run(profile: SourceProfile, attempts: int) -> bool:
     async with httpx.AsyncClient() as client:
         results = await fetch(client, TILE_ROOT, profile, attempts)
     if any(counts["諦めた"] for counts in results.values()):
         logger.warning("諦めたタイルがあります。もう一度実行すると、その分だけ取りに行きます")
-        return 1
-    return 0
+        return False
+    return True
+
+
+def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
+    return asyncio.run(_run(profile, args.attempts))
 
 
 def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     parser = argparse.ArgumentParser(description="標高タイルを手元へ写す")
-    parser.add_argument("--profile", default=None, type=Path)
     parser.add_argument("--attempts", default=_DEFAULT_ATTEMPTS, type=int,
                         help="1タイルあたりの試行回数。超えたら諦めて件数で報告する")
-    args = parser.parse_args()
-    return asyncio.run(run(args.profile, args.attempts))
+    return run_profile_fetch_cli(parser, "gsi_dem_tile", _fetch_specs, logger=logger)
 
 
 if __name__ == "__main__":
