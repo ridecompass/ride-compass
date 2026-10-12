@@ -37,7 +37,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     const p = i.parent && w.at(i.parent);
     return { blockedBy: blocked(i), subIssues: children(i), parent: p && { ...near(p.n), body: p.body, labels: names(p.labels), issueFieldValues: fields(p) } };
   };
-  const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, merged: Boolean(p.merged), mergeCommit: { statusCheckRollup: p.mergeChecks && { state: p.mergeChecks } },
+  const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, merged: Boolean(p.merged), mergeable: p.conflict ? "CONFLICTING" : "MERGEABLE", mergeCommit: { statusCheckRollup: p.mergeChecks && { state: p.mergeChecks } },
     commits: { nodes: [{ commit: { oid: `c${i.n}`, committedDate: "2026-10-11T00:00:00Z", statusCheckRollup: p.checks && { state: p.checks } } }] },
     timelineItems: { nodes: p.drafted ? [{ createdAt: "2026-10-11T01:00:00Z" }] : [] } });
   const gql = async (q, v) => {
@@ -159,6 +159,7 @@ test("R3・決め1・決め7: 担当の実行が終わったら、表の上か�
     // [要求, 始まりのタスク, 終わったときの事実, ステータス, 起きた担当の数, 最後のコメントの頭]
     ["R3a 答えの無い問い", {}, { comments: [QUESTION] }, "回答待ち", 1, "## 問い（判断）"],
     ["R3b 下書きの PR の CI が終わっていない", {}, { pr: { draft: true, checks: "PENDING" } }, "CI待ち", 1, null],
+    ["PR が master とぶつかっている（GitHub が CI を起こさない）→ 未着手 → 作る担当が解く", {}, { pr: { draft: true, conflict: true } }, "進行中", 2, null],
     ["R3c・原則の点検の3 下書きでない PR の CI が通った → 検証待ち → 確かめる担当", {}, { pr: { draft: false, checks: "SUCCESS" } }, "検証中", 2, null],
     ["R3d 確かめる担当が下書きへ戻した（差し戻し）→ 作る担当", verify, { pr: { draft: true, checks: "SUCCESS", drafted: true } }, "進行中", 2, null],
     ["確かめる担当が、マージも差し戻しも問いもせずに手放した → イレギュラー", verify, {}, "回答待ち", 1, "## 問い（イレギュラー）"],
