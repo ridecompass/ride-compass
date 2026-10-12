@@ -118,7 +118,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
         issueFieldValues: fields(i), ...relations(i) })) } } };
     if (q.includes("bodyHTML")) { // 回答フォームの読み（src/form.js）
       const i = w.at(v.i);
-      return { repository: { labels: { nodes: repoLabels().map((name) => ({ id: `L${name}`, name })) }, issue: { id: `I${i.n}`, title: "タスク", url: `https://github.test/${i.n}`, body: i.body,
+      return { repository: { labels: { nodes: repoLabels().map((name) => ({ id: `L${name}`, name })) }, issue: { id: `I${i.n}`, title: "タスク", url: `https://github.test/${i.n}`,
         bodyHTML: i.body, labels: names(i.labels),
         comments: { nodes: i.comments.map((body) => ({ body, bodyHTML: body, url: "https://github.test/c", createdAt: "2026-10-11T00:00:00Z", author: { login: "x" } })) } } } };
     }

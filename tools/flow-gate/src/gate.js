@@ -57,7 +57,7 @@ const ACTIONS = { issues: ["opened", "closed", "reopened", "typed", "untyped", "
 const REPO = { issues: "tasks", issue_comment: "tasks", pull_request: "code", workflow_run: "code", sub_issues: "tasks" };
 const OWN = ["workflow_run"]; // ゲート自身の出来事でも受けるもの（起こした担当の実行）
 export const ignored = (config, name, p) => !ACTIONS[name]?.includes(p.action) || (REPO[name] && p.repository.full_name !== config[REPO[name]])
-  || (p.sender.login === config.gateBot && !OWN.includes(name) && !OWN.includes(`${name} ${p.action}`));
+  || (p.sender.login === config.gateBot && !OWN.includes(name));
 const branch = (config, ref) => (ref?.startsWith(config.branchPrefix) ? [Number(ref.slice(config.branchPrefix.length))] : []);
 
 // 出来事が指す issue。around は、閉じた・開き直したので矢印1本でつながる開いた issue（後・親・子）も決め直すとき。
