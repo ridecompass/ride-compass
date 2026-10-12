@@ -2,6 +2,8 @@
 // AxisComposer.tsxから切り出した純粋関数群。DOM/Reactに依存しない（BreakpointCurveEditor.
 // test.tsxが単体で検証できるようにする、他のlib/*.ts純粋関数と同じ方針）。
 
+import { roundToDigits } from "@/lib/numberFormat";
+
 export type BreakpointShape = "flat" | "back_loaded" | "front_loaded" | "s_curve";
 
 export const BREAKPOINT_SHAPE_OPTIONS: readonly { id: BreakpointShape; label: string }[] = [
@@ -46,7 +48,7 @@ export function generateBreakpoints(
     const t = i / (GENERATED_POINT_COUNT - 1);
     const x = zeroValue + t * (hundredValue - zeroValue);
     const y = shapeScoreAt(shape, t);
-    points.push([Math.round(x * 100) / 100, Math.round(y)]);
+    points.push([roundToDigits(x, 2), Math.round(y)]);
   }
   return sortBreakpoints(points);
 }
@@ -115,7 +117,7 @@ export function insertBreakpointAtLargestGap(breakpoints: readonly [number, numb
   }
   const [x0, y0] = sorted[gapIndex];
   const [x1, y1] = sorted[gapIndex + 1];
-  const midpoint: [number, number] = [Math.round(((x0 + x1) / 2) * 100) / 100, Math.round((y0 + y1) / 2)];
+  const midpoint: [number, number] = [roundToDigits((x0 + x1) / 2, 2), Math.round((y0 + y1) / 2)];
   const next = [...sorted];
   next.splice(gapIndex + 1, 0, midpoint);
   return next;

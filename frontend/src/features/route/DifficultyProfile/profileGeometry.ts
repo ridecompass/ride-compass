@@ -6,6 +6,7 @@
 // 平均として数える（backend `domain/route.py: merge_overall_difficulty`）。一致が「ほぼ」なのは、ビンの中で値の無いEdgeが
 // そのビンの平均で数えられるためと、1kmあたりの回数で測る評価軸はルート全体の回数の平均から点数にし直すため。
 
+import { longitudeScale } from "@/lib/localPlane";
 import type { RouteSegmentDetail } from "@/types/route";
 
 type ProfileSegment = Pick<
@@ -105,7 +106,7 @@ export function pointAlongSegment(segment: ProfileSegment, fraction: number): [n
           [segment.end_longitude, segment.end_latitude],
         ];
   // 区間は短いので、緯度で経度方向を縮めた平面の距離で足りる（割合を決めるだけで、長さそのものは使わない）。
-  const scale = Math.cos((coordinates[0][1] * Math.PI) / 180);
+  const scale = longitudeScale(coordinates[0][1]);
   const lengths = coordinates.slice(1).map(([lng, lat], i) => {
     const [prevLng, prevLat] = coordinates[i];
     return Math.hypot((lng - prevLng) * scale, lat - prevLat);

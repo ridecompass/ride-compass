@@ -2,6 +2,7 @@
 
 import { vocabulary } from "@/types/generated/vocabulary";
 import { getDbStatus } from "@/features/admin/adminApi";
+import { formatMinutes, secondsToMinutes } from "@/lib/duration";
 import type { DbStatusResponse } from "@/types/route";
 import { formatCount, formatMoment, ReportCard } from "./ReportCard";
 import { type StatusRow, StatusRowList, StatusVerdict } from "./StatusRowList";
@@ -16,8 +17,8 @@ function rowsAndBytes(rows: number, bytes: number): string {
 }
 
 function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}秒`;
-  return `${Math.round(seconds / 60)}分`;
+  if (secondsToMinutes(seconds) < 1) return `${Math.round(seconds)}秒`;
+  return formatMinutes(seconds);
 }
 
 /** 「データ保守」タブの他のパネルと同じ1行の形。判定の種類（取込・テーブル・接続）が違っても、

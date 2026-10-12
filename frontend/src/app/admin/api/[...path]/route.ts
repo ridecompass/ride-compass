@@ -7,9 +7,7 @@
 import { BACKEND_INTERNAL_URL } from "@/lib/backendInternalUrl";
 import { ADMIN_PROXY_TIMEOUT_MS } from "@/lib/apiTimeouts";
 import { adminBasicAuthCredentials } from "@/lib/adminBasicAuth";
-
-const FRONTEND_PREFIX = "/admin/api";
-const BACKEND_PREFIX = "/api/admin";
+import { ADMIN_PROXY_PREFIX, BACKEND_ADMIN_PREFIX } from "@/lib/adminApiPrefix";
 
 async function forward(request: Request): Promise<Response> {
   const credentials = adminBasicAuthCredentials();
@@ -23,8 +21,8 @@ async function forward(request: Request): Promise<Response> {
   // パスは受けたままの符号化で渡す（区間の値に入った区切り文字を復号し直さない）。URLの解析が`..`を
   // 解決した後のパスで接頭辞を確かめるので、`/admin/api`の外は指せない。
   const { pathname, search } = new URL(request.url);
-  if (!pathname.startsWith(`${FRONTEND_PREFIX}/`)) return new Response(null, { status: 404 });
-  const backendPath = `${BACKEND_PREFIX}${pathname.slice(FRONTEND_PREFIX.length)}`;
+  if (!pathname.startsWith(`${ADMIN_PROXY_PREFIX}/`)) return new Response(null, { status: 404 });
+  const backendPath = `${BACKEND_ADMIN_PREFIX}${pathname.slice(ADMIN_PROXY_PREFIX.length)}`;
   const hasBody = request.method === "POST" || request.method === "PUT";
   let backendResponse: Response;
   try {
