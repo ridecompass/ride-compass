@@ -2265,6 +2265,14 @@
           "dynamic_way_value_undetermined_by_bearing": {
             "type": "boolean",
             "title": "Dynamic Way Value Undetermined By Bearing"
+          },
+          "time_scope": {
+            "type": "string",
+            "enum": [
+              "always",
+              "night_only"
+            ],
+            "title": "Time Scope"
           }
         },
         "additionalProperties": false,
@@ -2283,7 +2291,8 @@
           "raw_value_units",
           "material_breakdown",
           "dynamic_way_value_conditions",
-          "dynamic_way_value_undetermined_by_bearing"
+          "dynamic_way_value_undetermined_by_bearing",
+          "time_scope"
         ],
         "title": "AxisCatalogEntry"
       },

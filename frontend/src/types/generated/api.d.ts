@@ -729,6 +729,11 @@ export interface components {
             dynamic_way_value_conditions: ("at" | "bearing_deg" | "speed_kmh")[];
             /** Dynamic Way Value Undetermined By Bearing */
             dynamic_way_value_undetermined_by_bearing: boolean;
+            /**
+             * Time Scope
+             * @enum {string}
+             */
+            time_scope: "always" | "night_only";
         };
         /** AxisCatalogResponse */
         AxisCatalogResponse: {

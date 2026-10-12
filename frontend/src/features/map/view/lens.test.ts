@@ -6,7 +6,7 @@ import { LEGEND_NO_DATA_KEY, LEGEND_UNDETERMINED_KEY } from "@/lib/mapDisplay/ma
 
 import { catalogEntry, dedicatedEntry, rampEntry, tileInput } from "@/testing/catalogAxes";
 import { matchesFilter as matches } from "@/testing/mapExpressions";
-import { isRouteStyleModeId, lensConditionsLabel, lensLegend, lensOptions, paintedAxisId } from "./lens";
+import { isRouteStyleModeId, lensConditionsLabel, lensLegend, lensOptions, lensPremises, paintedAxisId } from "./lens";
 
 /** 道の値として読む材料。 */
 const VALUE = "v";
@@ -129,6 +129,23 @@ describe("lensConditionsLabel（周りの道の色が拠る走る条件）", () 
     [null, null],
   ])("塗っている軸（%s）が使う条件だけを並べ、使わなければnull", (axisId, expected) => {
     expect(lensConditionsLabel(axisId, conditional, ride, "19:30")).toBe(expected);
+  });
+});
+
+describe("lensPremises（凡例に書く、周りの道の色の前提）", () => {
+  const { axes } = mapCatalogOf([
+    dedicatedEntry("wind", [1], { dynamic_way_value_conditions: ["bearing_deg"] }),
+    rampEntry("night", [1], { time_scope: "night_only" }),
+    rampEntry("always", [1]),
+  ]);
+
+  it.each([
+    ["wind", "東へ走る", ["周りの道は「東へ走る」の条件で塗っています。"]],
+    ["night", null, [expect.stringContaining("夜に通る区間でだけ効き")]],
+    ["always", null, []],
+    [null, null, []],
+  ])("塗っている軸（%s）の走る条件と時間帯の印から、前提の文を並べる", (axisId, conditions, expected) => {
+    expect(lensPremises(axisId, axes, conditions)).toEqual(expected);
   });
 });
 

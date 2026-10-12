@@ -38,6 +38,8 @@ export interface CatalogAxis {
   weatherLayerGroups: readonly string[];
   /** 道の値を求めるのに要る走る条件（走行方位・想定速度・出発時刻）。条件で値の変わる軸だけが持ち、ほかは空。 */
   wayValueConditions: readonly WayValueCondition[];
+  /** 重みが効く時間帯。`always`以外の軸は、その時間帯に通る区間でだけ効く。 */
+  timeScope: AxisCatalogEntry["time_scope"];
 }
 
 type WayValueCondition = AxisCatalogEntry["dynamic_way_value_conditions"][number];
@@ -73,5 +75,6 @@ export function catalogAxisFromEntry(axis: AxisCatalogEntry): CatalogAxis {
     primaryAttributeIds: axis.primary_attribute_ids,
     weatherLayerGroups: axis.weather_layer_groups,
     wayValueConditions: axis.dynamic_way_value_conditions,
+    timeScope: axis.time_scope,
   };
 }
