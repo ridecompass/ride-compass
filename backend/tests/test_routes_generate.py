@@ -103,8 +103,8 @@ def world(monkeypatch):
     world = World()
 
     @asynccontextmanager
-    async def open_setup(**options):
-        yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network)), world.weather, **options)
+    async def open_setup(requested):
+        yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network)), world.weather, requested)
 
     serve_road_network(monkeypatch, world.current)
     monkeypatch.setitem(app.dependency_overrides, dependencies.get_route_generation_setup_opener, lambda: open_setup)

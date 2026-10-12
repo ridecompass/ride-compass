@@ -27,7 +27,7 @@ from typing import Any
 import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.domain.attributes import EdgeMaterialArrays
+from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, EdgeMaterialArrays
 from app.domain.road_network import RoadNetwork
 from app.domain.traffic import travel_allowed
 from app.infrastructure.cache_identity import shape_digest
@@ -371,11 +371,11 @@ class MaterialColumns:
             self._vocab = [{None: 0} for _ in materials.categorical_ids]
             self._arrays["categorical_codes"] = np.zeros(
                 (self._edge_count, len(materials.categorical_ids)), dtype=np.int16)
-            for name in _MATERIAL_ARRAY_FIELDS:
+            for name in EDGE_ROW_ARRAY_FIELDS:
                 value = getattr(materials, name)
                 self._arrays[name] = np.empty((self._edge_count, *value.shape[1:]), dtype=value.dtype)
         start, stop = self._filled, self._filled + len(materials.distance_m)
-        for name in _MATERIAL_ARRAY_FIELDS:
+        for name in EDGE_ROW_ARRAY_FIELDS:
             self._arrays[name][start:stop] = getattr(materials, name)
         for column, values in enumerate(materials.categorical_columns):
             codes = self._vocab[column]
@@ -394,12 +394,6 @@ class MaterialColumns:
         }
 
 
-#: `EdgeMaterialArrays`から、そのまま行を写す配列の列（分類の材料は束ごとの語彙の番号を全体の語彙の番号へ
-#: 付け替えるので含めない）。
-_MATERIAL_ARRAY_FIELDS = (
-    "numeric_values", "hard_filter_flags", "distance_m", "bearing_deg", "mid_lat", "mid_lon",
-    "elevation_present", "elevation_gain_m", "elevation_loss_m",
-)
 
 
 def _concatenate(parts: list[np.ndarray], dtype) -> np.ndarray:

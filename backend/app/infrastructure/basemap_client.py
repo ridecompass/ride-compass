@@ -3,7 +3,7 @@ import asyncio
 import httpx
 
 from app.infrastructure import tile_cache
-from app.infrastructure.debug_log import log_external_call, mark_failed
+from app.infrastructure.debug_log import log_external_call, mark_failed, mark_status_error
 
 UPSTREAM_HOST = "https://tiles.openfreemap.org"
 # 書き換え前（上流そのまま）のJSONを保存するキャッシュキーの接頭辞。
@@ -62,14 +62,8 @@ class BasemapClient:
                 response = await self._http_client.get(f"{UPSTREAM_HOST}/{path}")
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 404:
-                    # 配信元が用意していない部品（書体の一部等）。上流障害ではないため、
-                    # エラー扱い（WARNING・/api/debug/statsのerror集計）にしない。
-                    fields["result"] = "ok"
-                    fields["status"] = 404
-                    return BASEMAP_NOT_FOUND
-                mark_failed(fields, exc)
-                return None
+                # 404は配信元が用意していない部品（書体の一部等）。
+                return BASEMAP_NOT_FOUND if mark_status_error(fields, exc) else None
             except httpx.HTTPError as exc:
                 mark_failed(fields, exc)
                 return None

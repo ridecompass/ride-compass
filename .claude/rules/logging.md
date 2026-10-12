@@ -48,7 +48,7 @@ paths:
   残したいときだけ書く。HTTPステータスは`fields["status"]`、クォータ系ヘッダがあれば`fields["quota_remaining"]`等で残す。
 - 「取得できないのが正常」なケース（GSIの整備区域外等）は`fields["result"]`を`"error"`にせず
   理由を別フィールドへ残し（`fields["status"]=404`等）、WARNINGでログを埋めない
-  （`gsi_tile_client.py`の404分岐が実例）。
+  （上流の404は`debug_log.py: mark_status_error`がこの形で記録する）。
 - 例外を捕まえて既定値（空・None）へ倒すときは、`debug_log.py: mark_failed`で失敗を記録する。
   独自のWARNINGを書き足さない——対象を示す値（対象のタイル・ID等）は`log_external_call`へ渡す`fields`に入れる。
   捕まえずに送り出す例外は何も書かなくてよい。

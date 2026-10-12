@@ -1,7 +1,7 @@
 import asyncio
 import logging
-import time
 
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.config import settings
 from app.domain.errors import SearchAreaTooLargeError
 from app.domain.graph import LeanEdge
@@ -61,7 +61,7 @@ class GraphService:
                 bbox.min_latitude, bbox.min_longitude, bbox.max_latitude, bbox.max_longitude)
             return None
 
-        started = time.monotonic()
+        started = start_timer()
         tiles = tiles_covering_bbox(bbox, DETOUR_RATIO_SHARING_ZOOM)
         # 全区間を走査するので、読み込みと一緒にイベントループの外で切り出す。
         road = await asyncio.to_thread(_slice_current, bbox)
@@ -74,7 +74,7 @@ class GraphService:
             raise SearchAreaTooLargeError(road.edge_count, limit)
         logger.info(
             "get_search_slice tiles=%d edges=%d nodes=%d slice_ms=%d",
-            len(tiles), road.edge_count, road.node_count, round((time.monotonic() - started) * 1000),
+            len(tiles), road.edge_count, road.node_count, elapsed_ms(started),
         )
         tile_set = frozenset((DETOUR_RATIO_SHARING_ZOOM, x, y) for x, y in tiles)
         return road, tile_set
