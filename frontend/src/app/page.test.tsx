@@ -152,9 +152,8 @@ const SECOND = route("second", {
 const INSPECTED_ROAD: AxisInspectorResult = {
   highway: "residential",
   tags: {},
-  axes: [],
-  composite_difficulty: { value: 40, covered_weight_fraction: 1 },
-  landcover: null,
+  segment: { axes: [], composite_difficulty: { value: 40, covered_weight_fraction: 1 }, landcover: null },
+  way: { axes: [], composite_difficulty: { value: 40, covered_weight_fraction: 1 }, landcover: null },
 };
 
 /** 地図のソースに載った線の座標。 */
@@ -322,9 +321,9 @@ describe("ルートを作る", () => {
 
     // 道を押せるのは、道路のレイヤーを出している間。
     await showRoadSurface(user);
-    clickMap(HERE, [{ layer: "road-tiles-surface", properties: { osm_way_id: 1 } }]);
+    clickMap(HERE, [{ layer: "road-tiles-surface", properties: { osm_way_id: 1, feature_key: "1" } }]);
     await user.click(screen.getByRole("button", { name: "この道の評価を見る" }));
-    expect(await screen.findByText(/この道だけで見た難易度/)).toBeInTheDocument();
+    expect(await screen.findByText(/この道全体で見た難易度/)).toBeInTheDocument();
     jobs.respond([FIRST], LOOP_CONDITIONS);
     expect(await generate(user)).toMatchObject({ assumed_speed_kmh: 25, start_time: departure.toISOString() });
   });

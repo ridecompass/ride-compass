@@ -306,6 +306,14 @@ def test_turnaround_ring_falls_back_to_half_the_loop_when_the_tolerance_is_too_n
     assert (lower_m, upper_m) == (4750.0, 5250.0)
 
 
+@pytest.mark.parametrize(("distance_km", "tolerance_km"), [(10.0, 2.0), (60.0, 10.0)])
+def test_turnaround_ring_center_lies_inside_the_ring(distance_km, tolerance_km):
+    """折返し点の候補はリング中心に近い順に並ぶ。中心がリングの外にあると、リングの端の候補ばかりが先に試される。
+    許容が狭くリングが戻る場合は、リングだけが広がり中心は動かないので、ここでは戻らない許容で見る。"""
+    lower_m, upper_m, center_m = turnaround_ring_m(distance_km, tolerance_km)
+    assert lower_m <= center_m <= upper_m
+
+
 @pytest.mark.parametrize(
     ("outbound_m", "shortest_m", "in_band"),
     [

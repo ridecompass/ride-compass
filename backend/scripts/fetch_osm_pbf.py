@@ -22,7 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified
+from app.batch.common import fetch_verified, fetched_all
 from app.batch.fetch_cli import run_profile_fetch_cli
 from app.batch.source_adapters.osm_pbf import DATA_DIR
 from app.batch.source_profile import SourceProfile, SourceSpec
@@ -62,11 +62,11 @@ def _readable(path: Path) -> bool:
 
 def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
     names = sorted({spec.rows.file for spec in specs})
-    return all([
+    return fetched_all(
         fetch_verified(PBF_URL.format(name=name), DATA_DIR / name, _readable,
                        read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
         for name in names
-    ])
+    )
 
 
 def main() -> int:

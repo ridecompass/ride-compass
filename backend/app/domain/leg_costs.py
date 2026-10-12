@@ -9,7 +9,6 @@
 
 import logging
 import math
-import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import cached_property
@@ -17,6 +16,7 @@ from datetime import datetime
 
 import numpy as np
 
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import (
     AXIS_DEFINITIONS,
@@ -346,7 +346,7 @@ class LegCostComposer:
             logger.info("compose_leg_costs leg=%s mode=reused key=%s", label, key[0])
             return cached
 
-        started = time.monotonic()
+        started = start_timer()
         reused_bins = 0
         if not self.time_varying:
             bins = [self._compose_at(None)]
@@ -394,7 +394,7 @@ class LegCostComposer:
         logger.info(
             "compose_leg_costs leg=%s mode=%s bins=%d reused_bins=%d compose_ms=%d",
             label, "time_varying" if self.time_varying and anchor is not None else "snapshot",
-            len(bins), reused_bins, round((time.monotonic() - started) * 1000),
+            len(bins), reused_bins, elapsed_ms(started),
         )
         return leg
 

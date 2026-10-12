@@ -1,17 +1,22 @@
-// 流れのスキルに同梱したスクリプト（印を付ける・答えを記録する・起票する）の照らし。決まりに合わない入力を断り、合う入力から決まった結果を作る。
+// 流れのスキルに同梱したスクリプト（印を付ける・答えを記録する・起票する）と担当の後始末（終わりのコメント）の照らし。決まりに合わない入力を断り、合う入力から決まった結果を作り、書いた形をゲートが同じ形で読む。
 // GitHub へ書く所は、gh を打つ関数を差し替えて、書く・書かないと、落ちたときに返す文を見る。
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
-import base from "../flow.config.json" with { type: "json" };
+import { spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { config } from "../src/bot.js";
 import { NONE, answerBody, answerProblem, answerText, checkByText, conditions, latestQuestion, withButton } from "../src/questions.js";
 import { fillFields, issueProblems, parseArgs, withOrigin } from "../../../.claude/skills/file-issue/scripts/new-issue.mjs";
 import { check } from "../../../.claude/skills/task-work/scripts/check.mjs";
+import { END, readFromOf } from "../src/facts.js";
+import { originOf } from "../src/family.js";
 // 読み込むだけで手順は動かない（打たれたときだけ動く）。読み込めることで、import の誤りを CI で落とす。
 import "../../../.claude/skills/ask/scripts/answer.mjs";
 import "../../../.claude/skills/ask/scripts/ask.mjs";
 
-const config = { ...base, questionTemplate: readFileSync(new URL("../question_template.md", import.meta.url), "utf8") };
 
 test("印を付ける（task-work の check.mjs）: 1つに決まる残りの条件にだけ付け、ユーザーが確かめる行と子の行は断る", () => {
   const body = withButton("要約\n\n- [ ] 道を押すと値が出る\n- [ ] 道を押すと窓が閉じる\n- [ ] 見た目\n  - 確かめる: ユーザー\n- [ ] 区間の値\n  - 子: #9\n- [x] 済んだ\n", config, 1);
@@ -81,8 +86,8 @@ test("起票する（file-issue の new-issue.mjs）: 本文の形・子の決�
     [ok, { type: "不具合", size: "S", priority: "中" }, /種類「不具合」に合わない節「要望: 困りごと」/],
     [child, { type: "要望", size: "S", priority: "中" }, /完了の条件が無い/],
     [ok, { type: "要望" }, /規模と優先度を入れる/],
-    [ok, { type: "要望", child: true }, /子は完了の条件を持たない/],
-    [child, { type: "要望", child: true, priority: "高" }, /子に優先度・着手可能日時を入れない/],
+    [ok, { type: "要望", child: true }, /子は完了の条件を持ちません/],
+    [child, { type: "要望", child: true, priority: "高" }, /子は優先度・着手可能日時を持ちません/],
     [ok, { type: "要望", size: "XL", priority: "中" }, /規模「XL」/],
     [ok, { type: "要望", size: "S", priority: "中", start: "来週" }, /着手可能日時「来週」/],
     [ok.replace("<details><summary>やること", "<details>\n<summary>メモ"), { type: "要望", size: "S", priority: "中" }, /知らない節「メモ」/],
@@ -91,6 +96,7 @@ test("起票する（file-issue の new-issue.mjs）: 本文の形・子の決�
   for (const [body, opts, want] of rows) assert.match(issueProblems(body, opts).join("・"), want, String(want));
   assert.deepEqual(issueProblems(ok.replace("- [ ] 作った", "済んだら閉じる"), { type: config.dialogType }), ["完了の条件が無い"], "対話作業は欄を求めないが、条件は要る");
   assert.match(withOrigin(ok, 724), /^要約の1行\n\n分割元: #724\n\n<details>/, "分割元の行は要約のあとに置く");
+  assert.equal(originOf(withOrigin(ok, 724)), 724, "置いた分割元の行を、ゲートが分割元として読む");
   assert.equal(withOrigin(withOrigin(ok, 724), 724).match(/分割元/g).length, 1, "二度は置かない");
   assert.deepEqual(parseArgs(["--title", "題", "--body-file", "b.md", "--blocked-by", "5"]), { title: "題", "body-file": "b.md", "blocked-by": "5" });
   for (const argv of [["--blokced-by", "5"], ["--title"], ["--title", "--size", "S"], ["題"]]) assert.equal(parseArgs(argv), null, argv.join(" "));
@@ -109,7 +115,7 @@ test("起票する（file-issue の new-issue.mjs）: 欄を issue へ1回で入
     };
     return { left: fillFields(gh, 77, values), sent };
   };
-  const f = base.fields;
+  const f = config.fields;
   assert.deepEqual(run(), { left: null, sent: [{ i: "I77", v: [{ fieldId: f.size.id, singleSelectOptionId: f.size.options.S }, { fieldId: f.priority.id, singleSelectOptionId: f.priority.options.高 }] }] });
   for (const fail of ["view", "api"]) {
     const { left } = run(fail);
@@ -117,4 +123,40 @@ test("起票する（file-issue の new-issue.mjs）: 欄を issue へ1回で入
     assert.match(left, /--fill 77 --size S --priority 高$/, "入れ直すコマンド");
   }
   assert.match(fillFields(() => "{}", 77, [["size", "XL"]]), /規模「XL」は .*のどれか/, "選択肢に無い値は書かない");
+});
+
+// 担当の後始末（.github/claude-task/after.js）。CI は GITHUB_SHA を入れるので、作業ツリーの道を見るときは外す。
+const AFTER = fileURLToPath(new URL("../../../.github/claude-task/after.js", import.meta.url));
+const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const { GITHUB_SHA: _, ...noSha } = process.env;
+const execution = (messages) => {
+  const file = join(mkdtempSync(join(tmpdir(), "after-")), "execution.json");
+  writeFileSync(file, JSON.stringify(messages));
+  return file;
+};
+// after.js だけを、流れの道具（tools/）の無い所へ写す。
+const lone = () => {
+  const dir = join(mkdtempSync(join(tmpdir(), "after-lone-")), ".github", "claude-task");
+  mkdirSync(dir, { recursive: true });
+  copyFileSync(AFTER, join(dir, "after.js"));
+  return join(dir, "after.js");
+};
+
+test("担当の終わりのコメント（after.js）: 書いた見出しと読み始めを、ゲートが同じ形で読む（作業ツリーの形・実行が始まった版の形）", () => {
+  const file = execution([{ type: "result", result: "PR を出した" }]);
+  const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).stdout.trim();
+  for (const [name, script, env] of [["作業ツリー", AFTER, noSha], ["実行が始まった版（流れの道具の無い所から）", lone(), { ...noSha, GITHUB_SHA: head }]]) {
+    const r = spawnSync(process.execPath, [script, "確かめる", file, "", "https://example.invalid/run"], { cwd: ROOT, encoding: "utf8", env: { ...env, READ_FROM: "2026-10-12T00:00:00Z" } });
+    assert.equal(r.status, 0, `${name}: ${r.stderr}`);
+    assert.equal(END.exec(r.stdout)?.[1], "確かめる", `${name}: 担当の種類`);
+    assert.equal(readFromOf(r.stdout), "2026-10-12T00:00:00Z", `${name}: 読み始め`);
+  }
+});
+
+test("担当の後始末（after.js --quota）: 流れの道具を読めない所でも、利用の上限で止まったときだけ 1 で終わる", () => {
+  const script = lone();
+  for (const [messages, code] of [[[], 0], [[{ type: "assistant", error: "rate_limit" }], 1]]) {
+    const r = spawnSync(process.execPath, [script, "--quota", execution(messages)], { encoding: "utf8", env: noSha });
+    assert.equal(r.status, code, `${JSON.stringify(messages)}: ${r.stderr}`);
+  }
 });

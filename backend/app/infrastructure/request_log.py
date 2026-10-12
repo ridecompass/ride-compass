@@ -5,13 +5,13 @@
 """
 
 import logging
-import time
 from datetime import datetime
 
 from asgi_correlation_id import CorrelationIdFilter, correlation_id
 from fastapi import Request, Response
 from fastapi.responses import PlainTextResponse
 
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.time_zone import JST
 
 access_logger = logging.getLogger("ridecompass.access")
@@ -86,28 +86,26 @@ def access_level(path: str, status_code: int) -> int:
 
 
 async def request_log_middleware(request: Request, call_next) -> Response:
-    started = time.monotonic()
+    started = start_timer()
     client = request.client.host if request.client else "unknown"
     try:
         response = await call_next(request)
     except Exception:
-        elapsed_ms = round((time.monotonic() - started) * 1000)
         access_logger.exception(
             "%s %s -> unhandled exception after %dms client=%s",
             request.method,
             request.url.path,
-            elapsed_ms,
+            elapsed_ms(started),
             client,
         )
         raise
-    elapsed_ms = round((time.monotonic() - started) * 1000)
     access_logger.log(
         access_level(request.url.path, response.status_code),
         "%s %s -> %d in %dms client=%s",
         request.method,
         request.url.path,
         response.status_code,
-        elapsed_ms,
+        elapsed_ms(started),
         client,
     )
     return response

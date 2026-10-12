@@ -175,7 +175,8 @@ function ranges(numbers) {
   return out.map(([a, b]) => (a === b ? `${a}` : `${a}-${b}`)).join(", ") || "なし";
 }
 
-const percent = (covered, total) => (total === 0 ? "100%" : `${((covered / total) * 100).toFixed(2)}%`);
+const rate = (covered, total) =>
+  `${total === 0 ? "100" : ((covered / total) * 100).toFixed(1)}%（${covered}/${total}）`;
 
 const tests = implementationIsTest ? [implementation] : givenTests.length > 0 ? givenTests : collectPopulation();
 if (tests.length === 0) fail(`母集団が空: ${implementation} を import するテストが無い`);
@@ -228,10 +229,8 @@ const uncoveredBranches = branches.filter((branch) => branch.count === 0);
 
 console.log(`テストの本数（実行した数）: ${whole.executed.length}`);
 console.log(`テストの行数: ${totalLines}`);
-console.log(`行カバレッジ: ${coveredLines.length}/${hits.size}（${percent(coveredLines.length, hits.size)}）`);
-console.log(
-  `分岐カバレッジ: ${branches.length - uncoveredBranches.length}/${branches.length}（${percent(branches.length - uncoveredBranches.length, branches.length)}）`,
-);
+console.log(`行カバレッジ: ${rate(coveredLines.length, hits.size)}`);
+console.log(`分岐カバレッジ: ${rate(branches.length - uncoveredBranches.length, branches.length)}`);
 console.log(`届いていない行: ${ranges(uncoveredLines)}`);
 console.log(
   `届いていない分岐: ${uncoveredBranches.map((b) => `行${b.line} ${b.type} の${b.index + 1}つ目`).join("、") || "なし"}`,

@@ -8,14 +8,14 @@
 MSMの同期）だけは`main.py`が組み立てる。
 """
 
+from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from typing import AsyncIterator, Protocol
 
 from cachetools import LRUCache, TTLCache
 from fastapi import Depends
 
 from app.config import settings
-from app.domain.route_preference import RoutePreference
+from app.domain.route_request import RequestedConditions
 from app.infrastructure.address_search import AddressSearchQuery
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.infrastructure.basemap_client import BasemapClient
@@ -36,12 +36,9 @@ from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_
 from app.services.axis_preview_service import AxisPreviewService, new_sample_cache
 from app.services.axis_registry_service import AxisRegistryAdminService
 from app.services.db_status_service import DbStatusService
-from app.services.dedicated_way_values import (
-    DirectionalMaterialService,
-    axis_way_value_lens,
-    material_service_builder,
-)
+from app.services.dedicated_way_values import axis_way_value_lens, material_service_builder
 from app.services.derived_data_freshness_service import DerivedDataFreshnessService
+from app.services.feature_materials import FeatureMaterialService
 from app.services.flood_service import FloodService
 from app.services.graph_service import GraphService
 from app.services.jma_amedas_service import JmaAmedasService
@@ -99,37 +96,15 @@ def get_flood_service():
 
 
 @asynccontextmanager
-async def _open_route_generation_setup(
-    *,
-    preference_override: RoutePreference | None,
-    penalty_strength: float | None,
-    max_average_grade_percent: float | None,
-    hard_filters: frozenset[str],
-    assumed_speed_kmh: float,
-) -> AsyncIterator[RouteGenerationSetup]:
+async def _open_route_generation_setup(requested: RequestedConditions) -> AsyncIterator[RouteGenerationSetup]:
     """ルート生成ジョブが使う`RouteGenerationSetup`を組み立てる非同期コンテキストマネージャ。"""
     async with get_route_generation_session_factory()() as session:
         yield assemble_route_generation_setup(
-            GraphService(repository=RoadGraphRepository(session)),
-            get_weather_service(),
-            preference_override=preference_override,
-            penalty_strength=penalty_strength,
-            max_average_grade_percent=max_average_grade_percent,
-            hard_filters=hard_filters,
-            assumed_speed_kmh=assumed_speed_kmh,
+            GraphService(repository=RoadGraphRepository(session)), get_weather_service(), requested,
         )
 
 
-class RouteGenerationSetupOpener(Protocol):
-    def __call__(
-        self,
-        *,
-        preference_override: RoutePreference | None,
-        penalty_strength: float | None,
-        max_average_grade_percent: float | None,
-        hard_filters: frozenset[str],
-        assumed_speed_kmh: float,
-    ) -> AbstractAsyncContextManager[RouteGenerationSetup]: ...
+RouteGenerationSetupOpener = Callable[[RequestedConditions], AbstractAsyncContextManager[RouteGenerationSetup]]
 
 
 def get_route_generation_setup_opener() -> RouteGenerationSetupOpener:
@@ -199,13 +174,14 @@ async def get_dedicated_way_value_service(
 
 
 async def get_axis_inspector_service(weather_service: WeatherService = Depends(get_weather_service)):
-    """区間インスペクタ。配信のサービスが配る材料（値は地図のレンズと同じ経路で引く）と道の内訳を、同じセッションで順に引く
-    ——別々に開くと、先に引いた材料のセッションが要求の終わりまで接続を持ったまま、内訳がもう1本を取る。"""
+    """区間インスペクタ。道の読み出しと、地図の配信と同じタイルの材料・配信のサービスの値を、同じセッションで順に引く
+    ——別々に開くと、先に引いたセッションが要求の終わりまで接続を持ったまま、後の読み出しがもう1本を取る。"""
     async with get_session_factory()() as session:
         repository = RoadGraphRepository(session)
         yield AxisInspectorService(
             RegionService(repository=repository),
-            DirectionalMaterialService(material_service_builder(repository, weather_service)),
+            FeatureMaterialService(repository),
+            material_service_builder(repository, weather_service),
         )
 
 

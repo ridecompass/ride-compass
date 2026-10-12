@@ -2,11 +2,12 @@
 // ステータスと、変わってはいけない値（種類・担当者・本文のボタンと条件）を書くのはゲートだけ。
 import { decide } from "./decide.js";
 import { readFacts } from "./facts.js";
+import { NO_GRANDCHILD, makesGrandchild } from "./family.js";
 import { SET_FIELDS, fieldValues } from "./fields.js";
-import { askDropped, askText, bodyRest, norm } from "./questions.js";
+import { askDropped, askText, bodyRest, confirmConditions, norm } from "./questions.js";
 
-// 決めた問い（種類の名前か、見送りの相手を持つもの）の文。
-const askBody = (ask, config) => (ask.dropped ? askDropped(ask.dropped, config.questionTemplate) : askText(ask, config.questionTemplate));
+// 決めた問い（種類の名前か、見送りの相手を持つもの）の文。確かめに並べる条件は、書く本文（決めた本文）から取る。
+const askBody = (ask, config, body) => (ask.dropped ? askDropped(ask.dropped, config.questionTemplate) : askText(ask, config.questionTemplate, confirmConditions(body)));
 
 // 1つのタスクを決め直して、今と違う所だけを書く。本文（ボタン）は問いのコメントより先に書く（問いの通知から開いたときにボタンがあるように）。閉じるのは最後。
 // runs は出来事1件につき1回読んだ担当の実行の一覧（src/facts.js: recentRuns）。moved は、ユーザーがステータスの欄を変えた出来事で
@@ -18,7 +19,7 @@ export async function settle(gh, config, number, runs, moved = false) {
   const patch = { ...(d.open && !f.open ? { state: "open" } : {}), ...(d.type !== f.type ? { type: d.type } : {}), ...(d.body !== norm(f.body) ? { body: d.body } : {}),
     ...(String(d.assignees) !== String(f.assignees) ? { assignees: d.assignees } : {}) };
   if (Object.keys(patch).length) await gh.rest("PATCH", issue, patch);
-  if (d.ask) await gh.rest("POST", `${issue}/comments`, { body: askBody(d.ask, config) });
+  if (d.ask) await gh.rest("POST", `${issue}/comments`, { body: askBody(d.ask, config, d.body) });
   if (d.notice) await gh.rest("POST", `${issue}/comments`, { body: d.notice });
   if (d.closePr) await gh.gql(`mutation($id:ID!){closePullRequest(input:{pullRequestId:$id}){clientMutationId}}`, { id: d.closePr });
   if (d.ready) await gh.gql(`mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){clientMutationId}}`, { id: f.pr.id });
@@ -33,7 +34,7 @@ export async function settle(gh, config, number, runs, moved = false) {
 
 // 閉じた・開き直した issue から、矢印1本でつながる開いた issue（後・親・子）。
 export async function near(gh, config, number) {
-  const [o, r] = config.tasks.split("/");
+  const { owner: o, name: r } = config.repos.tasks;
   const x = (await gh.gql(`query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){issue(number:$n){blocking(first:20){nodes{number state}}
     parent{number state} subIssues(first:50){nodes{number state}}}}}`, { o, r, n: number })).repository.issue;
   return [...x.blocking.nodes, ...(x.parent ? [x.parent] : []), ...x.subIssues.nodes].filter((i) => i.state === "OPEN").map((i) => i.number);
@@ -59,17 +60,17 @@ const ROUTES = {
     // 閉じた・開き直したら、矢印1本でつながる開いた issue（後・親・子）も決め直す。
     return [p.issue.number, ...(await near(gh, config, p.issue.number))];
   },
-  // 親子が張られた・外された。孫になる張り方（親に親がある・子が子を持つ）は、張られた直後に外して子に知らせる（作る前に止める口は GitHub に無い）。
+  // 親子が張られた・外された。孫になる張り方（src/family.js: makesGrandchild）は、張られた直後に外して子に知らせる（作る前に止める口は GitHub に無い）。
   async sub_issues(gh, config, p) {
     const [parent, child] = [p.parent_issue, p.sub_issue];
     if (p.action === "sub_issue_added") {
-      const [o, r] = config.tasks.split("/");
+      const { owner: o, name: r } = config.repos.tasks;
       const x = (await gh.gql(`query($o:String!,$r:String!,$p:Int!,$c:Int!){repository(owner:$o,name:$r){p:issue(number:$p){parent{number}}
         c:issue(number:$c){subIssues(first:1){nodes{number}}}}}`, { o, r, p: parent.number, c: child.number })).repository;
-      if (x.p.parent || x.c.subIssues.nodes.length) {
+      if (makesGrandchild(x.p.parent, x.c.subIssues.nodes.length)) {
         await gh.gql(`mutation($p:ID!,$c:ID!){removeSubIssue(input:{issueId:$p,subIssueId:$c}){clientMutationId}}`, { p: parent.node_id, c: child.node_id });
         await gh.rest("POST", `/repos/${config.tasks}/issues/${child.number}/comments`,
-          { body: `孫は作れないので、#${parent.number} との親子の関係を外しました。同じ親の兄弟に分けてください。` });
+          { body: `#${parent.number} との親子の関係を外しました。${NO_GRANDCHILD}` });
       }
     }
     return [parent.number, child.number];

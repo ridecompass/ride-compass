@@ -5,9 +5,9 @@
 """
 
 import logging
-import time
 from datetime import datetime, timezone
 
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.strict_model import StrictModel
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.derived_data_freshness import (
@@ -68,7 +68,7 @@ class DerivedDataFreshnessService:
     async def get_freshness_report(self) -> DerivedDataFreshnessReport:
         """DB例外は呼び出し元（router）へそのまま伝播させる。管理者向けの診断APIのため、
         空のレポートへ倒して「鮮度不整合なし」に見せるより失敗を明示する方が安全。"""
-        started = time.monotonic()
+        started = start_timer()
         with log_external_call("admin:derived-data-freshness") as fields:
             freshness = await self._repository.get_freshness()
             fields["tables"] = len(freshness.tables)
@@ -78,6 +78,6 @@ class DerivedDataFreshnessService:
         logger.info(
             "derived data freshness computed tables=%d stale_sources=%d stale_tables=%d elapsed_ms=%d",
             len(report.tables), stale_sources, stale_tables,
-            round((time.monotonic() - started) * 1000),
+            elapsed_ms(started),
         )
         return report

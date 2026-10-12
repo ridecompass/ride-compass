@@ -90,6 +90,25 @@ describe("useMapView", () => {
     expect(result.current.look.paintedAxisId).toBeNull();
   });
 
+  it("密度の軸のレンズを選ぶと、材料の点のレイヤーを出し、項の重みをレンズに渡す（密度の軸でなければどちらもしない）", async () => {
+    const terms = [{ material_id: "signal", label: "信号", weight: 1.5 }];
+    serve([
+      rampEntry("axis_density", [10], { primary_attribute_ids: ["stop_poi"], density_terms: terms }),
+      rampEntry("axis_plain", [10], { primary_attribute_ids: ["accident_point"] }),
+    ]);
+    const { result } = render();
+    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(2));
+    expect(result.current.look.layerVisibility).toMatchObject({ stop_poi: false, accident_point: false });
+
+    act(() => result.current.lensControl.onLensChange("axis_plain"));
+    expect(result.current.look.layerVisibility.accident_point).toBe(false);
+    expect(result.current.lensControl.densityTerms).toBeNull();
+
+    act(() => result.current.lensControl.onLensChange("axis_density"));
+    expect(result.current.look.layerVisibility.stop_poi).toBe(true);
+    expect(result.current.lensControl.densityTerms).toEqual([{ materialId: "signal", label: "信号", weight: 1.5 }]);
+  });
+
   it("レンズの選択肢は公開軸から作り、塗れない軸と生成に使った重みが0の軸を分ける", async () => {
     serve([RAMP, catalogEntry({ axis_id: "axis_plain" })]);
 

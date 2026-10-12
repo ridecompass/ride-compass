@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified
+from app.batch.common import fetch_verified, fetched_all
 from app.batch.fetch_cli import run_profile_fetch_cli
 from app.batch.source_adapters.npa_honhyo import ENCODING, honhyo_path
 from app.batch.source_profile import SourceProfile, SourceSpec
@@ -46,11 +46,11 @@ def _readable(path: Path) -> bool:
 
 
 def fetch(years: list[int]) -> bool:
-    return all([
+    return fetched_all(
         fetch_verified(HONHYO_URL_TEMPLATE.format(year=year), honhyo_path(year), _readable,
                        read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
         for year in years
-    ])
+    )
 
 
 def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:

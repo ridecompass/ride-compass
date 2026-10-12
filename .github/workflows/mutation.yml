@@ -87,11 +87,8 @@ jobs:
       - id: mode
         name: 全部の測りか、一覧だけか
         run: |
-          if ls scripts/mutation/only.txt scripts/mutation/recheck.txt scripts/mutation/baseline.txt 2>/dev/null; then
-            echo "full=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "full=true" >> "$GITHUB_OUTPUT"
-          fi
+          full=$(python3 -c 'import os, sys; sys.path.insert(0, "scripts/mutation"); from _shared import LISTS; print(str(not any(map(os.path.exists, LISTS))).lower())')
+          echo "full=$full" >> "$GITHUB_OUTPUT"
       # 本番と同じ版を PostgreSQL 公式の apt リポジトリから入れる。取得が詰まると、ジョブの上限まで止まり続けた（2026-10-10 の
       # 試しで1本が37分止まった）ので、上限を付けて落とし、落ちた本だけをやり直す（test-review/SKILL.md の3）。
       # 担い手ごとのテストDBも作る。
@@ -134,10 +131,10 @@ jobs:
           RECHECK_OUT: /tmp/recheck
         run: |
           mkdir -p "$RECHECK_OUT"
-          python -c "import json, sys; print(json.dumps([r['mutant'] for r in map(json.loads, open(sys.argv[1], encoding='utf-8')) if r['status'] == 'survived' and ':' not in r['mutant']]))"             "$MUT_OUT/results.jsonl" > "$RECHECK_OUT/survived.json"
-          python scripts/mutation/importtime.py "$RECHECK_OUT/survived.json" scripts/mutation/recheck.txt
+          recheck=$(python3 -c 'import sys; sys.path.insert(0, "scripts/mutation"); from _shared import RECHECK_LIST; print(RECHECK_LIST)')
+          python scripts/mutation/importtime.py "$MUT_OUT/results.jsonl" "$recheck"
           cd mutants
-          MUT_OUT="$RECHECK_OUT" MUT_STOP_AFTER=1800 python ../scripts/mutation/runner.py ../scripts/mutation/recheck.txt "$RECHECK_OUT/results.jsonl" "$WORKERS"
+          MUT_OUT="$RECHECK_OUT" MUT_STOP_AFTER=1800 python ../scripts/mutation/runner.py "$recheck" "$RECHECK_OUT/results.jsonl" "$WORKERS"
       - if: always() && steps.mode.outputs.full == 'true'
         uses: actions/upload-artifact@v4
         with:
@@ -192,11 +189,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p /tmp/prev
+          # 一覧が成果物の ID まで返すので、ID で取る（gh run download はその実行の成果物を一覧し直してから取る）。
           prev=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=mutation-review&per_page=30" \
-            -q '[.artifacts[] | select(.expired | not) | select(.workflow_run.id != ${{ github.run_id }})][0].workflow_run.id // empty')
+            -q '[.artifacts[] | select(.expired | not) | select(.workflow_run.id != ${{ github.run_id }})][0] // empty | "\(.id) \(.workflow_run.id)"')
           if [ -n "$prev" ]; then
-            gh run download "$prev" -R "${{ github.repository }}" -n mutation-review -D /tmp/prev
-            echo "前の見直し: 実行 $prev"
+            gh api "repos/${{ github.repository }}/actions/artifacts/${prev% *}/zip" > /tmp/prev.zip
+            unzip -q /tmp/prev.zip -d /tmp/prev
+            echo "前の見直し: 実行 ${prev#* }"
           else
             echo "前の見直しは無い（前回も候補だった印は付かない）"
           fi
