@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 
 import { debugLog } from "@/lib/debugLog";
+import { SECOND_MS } from "@/lib/duration";
 import { useRouteFormSubmit } from "@/features/route/RouteForm/useRouteFormSubmit";
 import {
   buildGenerateRequest,
@@ -35,7 +36,7 @@ interface GeneratedConditions {
   input: GenerationInput;
 }
 
-interface RouteGenerationInputs {
+export interface RouteGenerationInputs {
   conditions: GenerationConditionsState;
   origin: Coordinates;
   /** 出発地が実際の位置か（現在地を取れたか、地図で置いたか）。 */
@@ -184,7 +185,7 @@ export function useRouteGeneration({
       progress?.status === "queued"
         ? "順番待ち..."
         : progress?.status === "running"
-          ? `生成中...(${Math.round(progress.elapsedMs / 1000)}秒経過)`
+          ? `生成中...(${Math.round(progress.elapsedMs / SECOND_MS)}秒経過)`
           : undefined,
     /** 押した「生成」の直近の案内（候補0件の理由・入力の誤りか失敗）。候補が出たとき・実行中・まだ押していないときはnull。 */
     outcome,

@@ -7,7 +7,7 @@
  * 既にある候補と同じ道であることの知らせとその候補への切り替え、合成の失敗。
  *
  * ここで見ないもの: どの区間を乗り換えるか・差分と作成の評価 → `features/route/useSpliceSession.test.ts`。
- * 差の表記（符号・桁）→ `features/route/routeEditDiff.test.ts`。所要の表記 → `features/route/formatDuration.test.ts`。
+ * 差の表記（符号・桁）→ `features/route/routeEditDiff.test.ts`。所要の表記 → `lib/duration.test.ts`。
  * 良し悪しの印から付く色（クラスで付ける見た目）。受け取った値や書いた文をそのまま出すもの（棒の軸の色・(i)の奥の使い方）。
  */
 import { render, screen, within } from "@testing-library/react";

@@ -2,7 +2,7 @@
 # 検知器は常に全件を見る（.claude/rules/fixing.md「検知器を足す条件は厳しい」）。
 #
 # - docs-consistency: scripts/review_checks.py docs。pure pythonで数秒。
-# - doc-reading-tests: 全ての文書を読むbackendのテスト。
+# - doc-reading-tests: 全ての文書（と、持ち主の値の写しを照らすときはほかの追跡しているファイル）を読むbackendのテスト。
 # - repo-wide: 運用の道具（backendの外のPython・追跡しているsh）の静的検査。依存が軽く数十秒で終わる。
 name: Docs Consistency
 
@@ -39,7 +39,7 @@ jobs:
             backend/requirements-dev.txt
       # tests/conftest.py と pytest.ini が読む依存（requirements-dev.txt が requirements.txt を内包する）。
       - run: pip install -r requirements-dev.txt
-      - run: python -m pytest -q tests/structure/test_named_references.py
+      - run: python -m pytest -q tests/structure/test_named_references.py tests/structure/test_single_owner_values.py
 
   repo-wide:
     runs-on: ubuntu-latest

@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { floorToDepartureStep } from "@/features/conditions/rideConditions";
+import { SECOND_MS } from "@/lib/duration";
 
 // 「今」は出発時刻として選べる値の刻みで進める。これより細かく進めてもどの気象レイヤーが選ぶ
 // フレームも変わらないまま、時刻をキーに持つ取得（useDedicatedWayValues）だけが無効化される。
 // 刻みの境界を跨いだかを見に行く間隔。刻みそのものより短くないと境界を跨ぎ越す。
-const NOW_POLL_INTERVAL_MS = 30 * 1000;
+const NOW_POLL_INTERVAL_MS = 30 * SECOND_MS;
 
 function steppedNow(): Date {
   return new Date(floorToDepartureStep(Date.now()));
