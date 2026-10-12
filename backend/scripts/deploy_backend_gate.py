@@ -15,8 +15,12 @@
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+
+from repo_git import run
 
 #: 本番へ届くファイル。gitのpathspecのglobとしてリポジトリの根から当てる
 #: （`*`は`/`を跨がず、`**`は跨ぐ）。
@@ -81,18 +85,14 @@ def decide(relation: str, hits: list[str]) -> tuple[bool, str]:
     return True, f"本番のイメージに届く変更が{len(hits)}件ある（例: {hits[0]}）"
 
 
-def _git(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", *args], capture_output=True, text=True, check=False)
-
-
 def commit_relation(deployed: str, target: str) -> str:
-    if not deployed or _git("cat-file", "-e", f"{deployed}^{{commit}}").returncode != 0:
+    if not deployed or run("cat-file", "-e", f"{deployed}^{{commit}}").returncode != 0:
         return "unknown"
-    if _git("rev-parse", deployed).stdout.strip() == _git("rev-parse", target).stdout.strip():
+    if run("rev-parse", deployed).stdout.strip() == run("rev-parse", target).stdout.strip():
         return "same"
-    if _git("merge-base", "--is-ancestor", target, deployed).returncode == 0:
+    if run("merge-base", "--is-ancestor", target, deployed).returncode == 0:
         return "older"
-    if _git("merge-base", "--is-ancestor", deployed, target).returncode == 0:
+    if run("merge-base", "--is-ancestor", deployed, target).returncode == 0:
         return "newer"
     return "diverged"
 
@@ -102,7 +102,7 @@ def main(argv: list[str]) -> int:
     relation = commit_relation(deployed, target)
     hits: list[str] = []
     if relation == "newer":
-        diff = _git("diff", "--name-only", deployed, target, "--", *pathspec(DEPLOY_PATHS, NOT_DEPLOYED))
+        diff = run("diff", "--name-only", deployed, target, "--", *pathspec(DEPLOY_PATHS, NOT_DEPLOYED))
         if diff.returncode != 0:
             print(diff.stderr, file=sys.stderr)
             return 1

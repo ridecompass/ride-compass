@@ -36,6 +36,10 @@ import tempfile
 from io import BytesIO
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+
+from repo_git import merge_base, run
+
 Item = tuple[str, str, str]
 
 TABLE = "表"
@@ -110,7 +114,7 @@ def _items_at(rev: str) -> set[Item]:
 
 
 def _git(*args: str) -> str:
-    return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout.strip()
+    return run(*args, check=True).stdout.strip()
 
 
 def main() -> int:
@@ -121,7 +125,7 @@ def main() -> int:
     parser.add_argument("base", nargs="?", default=None, help="前の版（既定: origin/master との合流点）")
     parser.add_argument("head", nargs="?", default="HEAD", help="後の版（既定: HEAD）")
     args = parser.parse_args()
-    base = args.base or _git("merge-base", "origin/master", args.head)
+    base = args.base or merge_base(args.head)
     if _git("rev-parse", f"{base}:backend/app") == _git("rev-parse", f"{args.head}:backend/app"):
         print(f"{base[:9]} と {args.head} で backend/app に差が無い（消えた制約なし）")
         return 0
