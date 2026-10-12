@@ -7,7 +7,7 @@ import { config } from "../src/bot.js";
 import { file } from "../../../.claude/skills/file-issue/scripts/new-issue.mjs";
 
 const BODY = "要約の1行\n\n<details><summary>要望: 困りごと</summary>\n\n- 困る\n\n</details>\n\n<details><summary>完了の条件</summary>\n\n- [ ] 作った\n\n</details>\n";
-const CHILD = "子の要約\n\n<details><summary>やること</summary>\n\n1. 作る\n\n</details>\n";
+const CHILD = "子の要約\n\n<details><summary>やること</summary>\n\n1. 作る\n\n</details>\n\n<details><summary>完了の条件</summary>\n\n- [ ] 部品を作った\n\n</details>\n"; // 子も自分の約束を持つ
 const TYPES = { nodes: [{ id: "T要望", name: "要望" }, { id: "T対話", name: config.dialogType }] };
 const OPEN_PARENT = { id: "P5", state: "OPEN", issueType: { name: "要望" }, parent: null };
 const MADE = { id: "I_NEW", number: 900, url: "https://example.invalid/900" };

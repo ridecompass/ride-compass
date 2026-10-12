@@ -7,7 +7,7 @@
 //   --parent は子（種類は親と同じ。子と孫の決まりは tools/flow-gate/src/family.js）。--origin は要望ごとの切り出し（本文に分割元の行を置く）。
 import { readFileSync } from "node:fs";
 import { bot, config, graphql, graphqlData, isMain, isNumber, messages, usage } from "../../../../tools/flow-gate/src/bot.js";
-import { CHILD_FIELDS, NO_GRANDCHILD, childRule, makesGrandchild, originLine, originOf } from "../../../../tools/flow-gate/src/family.js";
+import { CHILD_FIELDS, NO_GRANDCHILD, makesGrandchild, originLine, originOf } from "../../../../tools/flow-gate/src/family.js";
 import { SET_FIELDS, fieldProblems, fieldValues } from "../../../../tools/flow-gate/src/fields.js";
 import { conditions, norm } from "../../../../tools/flow-gate/src/questions.js";
 
@@ -37,14 +37,10 @@ export function issueProblems(body, { type, child = false, size, priority, start
     else at = k;
   }
   problems.push(...typeProblems(text, type));
-  const has = conditions(text).length > 0;
-  if (child) {
-    if (has) problems.push(childRule("<親>", "<この子>"));
-    if (priority || start) problems.push(CHILD_FIELDS);
-  } else {
-    if (!has) problems.push("完了の条件が無い");
-    if (type !== config.dialogType && (!size || !priority)) problems.push("規模と優先度を入れる（--size・--priority）");
-  }
+  // 子も自分の約束（完了の条件）を持つ。子は優先度・着手可能日時を持たず、親の値を読む。
+  if (!conditions(text).length) problems.push("完了の条件が無い");
+  if (child && (priority || start)) problems.push(CHILD_FIELDS);
+  if (!child && type !== config.dialogType && (!size || !priority)) problems.push("規模と優先度を入れる（--size・--priority）");
   return [...problems, ...fieldProblems(config, fieldsOf({ size, priority, start }))];
 }
 

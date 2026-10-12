@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../src/bot.js";
 import { askText, withButton } from "../src/questions.js";
+import { formed } from "./forms.js";
 
 const script = fileURLToPath(new URL("../../../.claude/skills/ask/scripts/ask.mjs", import.meta.url));
 const dir = mkdtempSync(join(tmpdir(), "ask-"));
@@ -20,14 +21,22 @@ function ask(text) {
   return spawnSync(process.execPath, [script, "823", file], { encoding: "utf8", env });
 }
 
+const judge = formed("判断", "どちらにしますか？", [["案A", "推奨", "早い"], ["案B", "理由", "安い"]]);
+
 test("形に合わない問いは出さない（#823: 回答のボタンを先頭に付けた問い）", () => {
-  const r = ask(withButton(askText("採否", config.questionTemplate), config, 823));
+  const r = ask(withButton(judge, config, 823));
   assert.equal(r.status, 1);
   assert.match(r.stderr, /問いが形に合わないので出さない/);
 });
 
+test("ゲートが出すラベルの問いは、Claude は出さない", () => {
+  const r = ask(askText("採否", config.questionForms));
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /採否の問いはゲートだけが出す/);
+});
+
 test("形に合う問いは照らしを通り、出す段へ進む", () => {
-  const r = ask(askText("採否", config.questionTemplate));
+  const r = ask(judge);
   assert.equal(r.status, 1);
   assert.match(r.stderr, /FLOW_BOT_TOKEN が無いので書かない/);
 });

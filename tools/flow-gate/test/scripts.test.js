@@ -3,28 +3,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../src/bot.js";
-import { NONE, answerBody, answerProblem, answerText, checkByText, conditions, latestQuestion, withButton } from "../src/questions.js";
+import { answerBody, answerProblem, answerText, askText, checkByText, conditions, latestQuestion, withButton } from "../src/questions.js";
+import { formed as make } from "./forms.js";
 import { fillFields, issueProblems, parseArgs, withOrigin } from "../../../.claude/skills/file-issue/scripts/new-issue.mjs";
 import { check } from "../../../.claude/skills/task-work/scripts/check.mjs";
-import { END, readFromOf } from "../src/facts.js";
+import { END, readFromOf, startBlock } from "../src/facts.js";
 import { originOf } from "../src/family.js";
 // 読み込むだけで手順は動かない（打たれたときだけ動く）。読み込めることで、import の誤りを CI で落とす。
 import "../../../.claude/skills/ask/scripts/answer.mjs";
 import "../../../.claude/skills/ask/scripts/ask.mjs";
 
 
-test("印を付ける（task-work の check.mjs）: 1つに決まる残りの条件にだけ付け、ユーザーが確かめる行と子の行は断る", () => {
-  const body = withButton("要約\n\n- [ ] 道を押すと値が出る\n- [ ] 道を押すと窓が閉じる\n- [ ] 見た目\n  - 確かめる: ユーザー\n- [ ] 区間の値\n  - 子: #9\n- [x] 済んだ\n", config, 1);
+test("印を付ける（task-work の check.mjs）: 1つに決まる残りの条件にだけ付け、ユーザーが確かめる行は断る", () => {
+  const body = withButton("要約\n\n- [ ] 道を押すと値が出る\n- [ ] 道を押すと窓が閉じる\n- [ ] 見た目\n  - 確かめる: ユーザー\n- [x] 済んだ\n", config, 1);
   const done = checkByText(body, ["道を押すと値"]);
   assert.ok(done.body.startsWith("<!-- flow-gate -->"), "本文の頭の回答のボタンは残す");
   assert.deepEqual(conditions(done.body).filter((c) => c.done).map((c) => c.text), ["道を押すと値が出る", "済んだ"]);
   const rows = [
-    ["道を押すと", "2 個"], ["無い条件", "0 個"], ["済んだ", "0 個"], ["見た目", "ユーザーが確かめる条件"], ["区間の値", "子 #9 が受け持つ条件"], ["", "空の頭"], ["  ", "空の頭"],
+    ["道を押すと", "2 個"], ["無い条件", "0 個"], ["済んだ", "0 個"], ["見た目", "ユーザーが確かめる条件"], ["", "空の頭"], ["  ", "空の頭"],
   ];
   for (const [head, why] of rows) assert.match(checkByText(body, [head]).problems?.join("") ?? "", new RegExp(why), head);
   assert.equal(checkByText(body, ["道を押すと値", "見た目"]).body, undefined, "1つでも合わなければ、どの行にも付けない");
@@ -42,52 +43,50 @@ test("印を付ける（task-work の check.mjs）: 1つに決まる残りの条
   assert.match(moved.error, /読んだあとに変わった/);
 });
 
-test("答えを記録する（ask の answer.mjs）: 回答フォームと同じ照らしで断り、書いた文はゲートが同じ文として読む", () => {
-  const judge = { kind: "判断", text: "どちらにしますか？", plans: ["案A", "案B"] };
+// 書く者が埋める問い（判断・操作）は形の骨組みから作り（test/forms.js: formed）、ゲートが出す問いは、ゲートと同じ組み立てで作る。
+const asked = (text) => latestQuestion([text], config.questionForms);
+
+test("答えを記録する（ask の answer.mjs）: 回答フォームと同じ照らしで断り、3つの欄を省かずに書き、ゲートは次遷移だけを決定に読む", () => {
+  const judgeText = make("判断", "どちらにしますか？", [["案A", "推奨", "早い"], ["案B", "理由", "安い"]]);
+  const confirmText = askText("確かめ", config.questionForms, [{ text: "見た目" }]);
+  const [judge, confirm, adopt] = [judgeText, confirmText, askText("採否", config.questionForms)].map(asked);
   const rows = [
-    [judge, { choice: "案C" }, /案にない答え/], [judge, { choice: NONE }, /書く欄に書いて/], [judge, { choice: "案A" }, null], [{ ...judge, plans: [] }, { choice: "見送る" }, /この問いに案はありません/],
-    [{ kind: "確かめ", text: "完成にしてよいですか？", plans: [] }, {}, /完了にするか/], [{ kind: "採否", text: "着手しますか？", plans: [] }, { choice: "やる" }, /着手する・保留する・見送る/],
-    [{ kind: "確かめ", text: "完成にしてよいですか？", plans: [] }, { choice: "見送る", done: true }, /確かめの問いに選択肢はありません/],
-    [{ kind: "確かめ", text: "完成にしてよいですか？", plans: [] }, { choice: "保留する", text: "あとで" }, /確かめの問いに選択肢はありません/],
-    [judge, { choice: "案A", done: true }, /確かめの問いにだけ/], [{ kind: "採否", text: "着手しますか？", plans: [] }, { choice: "着手する", done: true }, /確かめの問いにだけ/],
-    [{ kind: "確かめ", text: "完成にしてよいですか？", plans: [] }, { done: true }, null],
+    [judge, {}, /この issue をどうするか/], [judge, { next: "続ける", plan: "案C" }, /案にない答え/], [judge, { next: "保留", plan: "案A" }, null], [judge, { next: "続ける" }, null],
+    [adopt, { next: "完了" }, /この issue をどうするか/], [adopt, { next: "見送り" }, null], [adopt, { next: "続ける", plan: "着手する" }, /案にない答え/], [confirm, { next: "完了" }, null],
   ];
   for (const [q, a, want] of rows) want ? assert.match(answerProblem(q, a), want) : assert.equal(answerProblem(q, a), null);
+  assert.equal(answerBody(judge, { next: "保留", plan: "案B", text: "あとで" }), "## 回答\n**どちらにしますか？**\n\n次遷移: 保留\n選んだ案: 案B\nコメント:\nあとで");
+  const tail = (body) => body.split("\n").slice(3).join("\n");
+  assert.equal(tail(answerBody(judge, { next: "続ける" })), "次遷移: 続ける\n選んだ案: 選ばなかった\nコメント: なし", "空の欄も省かない");
+  assert.equal(tail(answerBody(adopt, { next: "見送り" })), "次遷移: 見送り\n選んだ案: なし（問いに案が無い）\nコメント: なし");
   const said = "> 距離のバーは候補数の横に\n\nとユーザーがチャットで言った（2026-10-12）";
-  const body = answerBody({ kind: "確かめ", text: "完成にしてよいですか？" }, { done: true, items: ["見た目"], text: said });
-  assert.match(body, /^## 回答\n\*\*完成にしてよいですか？\*\*\n\n回答: 完了にする\n- 確かめた: 見た目\n\n/);
-  assert.equal(answerText(body), said, "ゲートは決まった形の行の塊のあとを、書いた文としてそのまま読む");
-  // 書いた文の中の、決まった形に似た行（太字だけの行・「次のステータス:」で始まる行）も書いた文として読み、決定にしない。
-  const confirm = "## 問い（確かめ）\n完成にしてよいですか？";
-  const read = (text) => latestQuestion([confirm, answerBody({ kind: "確かめ", text: "完成にしてよいですか？" }, { done: true, items: ["見た目"], text })])?.answer;
-  assert.deepEqual(read("**ここを直して**"), { decision: "完了", confirmed: ["見た目"], text: "**ここを直して**" }, "太字だけの文も書いた文");
-  assert.deepEqual(read("次のステータス: 保留\nにしたいくらい崩れる"), { decision: "完了", confirmed: ["見た目"], text: "次のステータス: 保留\nにしたいくらい崩れる" },
-    "決まった形に似た行で決定を変えない");
-  assert.equal(latestQuestion([confirm, "## 回答\n**完成にしてよいですか？**\n\n補足: 見た"])?.answer.text, "補足: 見た", "前の形の補足も書いた文");
-  // 選ばずに書いた文だけで答えても（確かめで完了にしない・案の無い判断）、書いた文の頭が決まった形に似ていれば、決まった形の行として読まない。
-  const judge0 = "## 問い（判断）\nどうしますか？";
-  const only = (question, kind, text) => latestQuestion([question, answerBody({ kind, text: question.split("\n")[1], plans: [] }, { text })])?.answer;
-  for (const text of ["次のステータス: 保留", "回答: 完了にする", "- 確かめた: 見た目\nここは崩れる", "ラベル: 急ぎ\n直して"]) {
-    assert.deepEqual(only(confirm, "確かめ", text), { decision: "続ける", confirmed: [], text }, text);
-    assert.deepEqual(only(judge0, "判断", text), { decision: "続ける", confirmed: [], text }, text);
-  }
+  const body = answerBody(confirm, { next: "完了", text: said });
+  assert.equal(tail(body), `次遷移: 完了\n選んだ案: なし（問いに案が無い）\n- 確かめた: 見た目\nコメント:\n${said}`, "完了は、確かめることを全部並べる");
+  assert.equal(answerText(body), said, "コメントは形を付けずにそのまま読む");
+  const read = (text) => latestQuestion([confirmText, answerBody(confirm, { next: "続ける", text })], config.questionForms)?.answer;
+  for (const text of ["次遷移: 完了", "- 確かめた: 見た目\nここは崩れる", "コメント: なし", "なし"]) assert.deepEqual(read(text), { decision: "続ける", confirmed: [], text }, `欄に似た行は欄として読まない: ${text}`);
+  const odd = "次遷移: 保留する\n選んだ案: なし（問いに案が無い）\nコメント: なし";
+  assert.deepEqual(latestQuestion([confirmText, `## 回答\n**完成にしてよいですか？**\n\n${odd}`], config.questionForms)?.answer, { decision: "続ける", confirmed: [], text: odd },
+    "知らない次遷移の値は決定にせず、全部をコメントとして Claude へ渡す");
+  assert.deepEqual(latestQuestion([confirmText, "## 回答\n**完成にしてよいですか？**\n\n見た"], config.questionForms)?.answer, { decision: "続ける", confirmed: [], text: "見た" },
+    "次遷移の無い答えは、続けるとして全部をコメントに読む");
 });
 
 test("起票する（file-issue の new-issue.mjs）: 本文の形・子の決まり・欄の値を照らす", () => {
   const ok = "要約の1行\n\n<details><summary>要望: 困りごと</summary>\n\n- 困る\n\n</details>\n\n<details><summary>やること</summary>\n\n1. 作る\n\n</details>\n\n" +
     "<details><summary>完了の条件</summary>\n\n- [ ] 作った\n\n</details>\n";
-  const child = ok.replace("- [ ] 作った", "親の行の下に - 子: を付ける");
+  const bare = ok.replace("- [ ] 作った", "条件の無い行");
   assert.deepEqual(issueProblems(ok, { type: "要望", size: "S", priority: "中" }), []);
-  assert.deepEqual(issueProblems(child, { type: "要望", child: true, size: "S" }), [], "子は条件と優先度を持たない");
+  assert.deepEqual(issueProblems(ok, { type: "要望", child: true, size: "S" }), [], "子も自分の条件を持ち、優先度は持たない");
   const rows = [
     [ok.replace("要約の1行\n\n", ""), { type: "要望", size: "S", priority: "中" }, /畳まない要約が無い/],
     [ok.replace("やること", "経緯"), { type: "要望", size: "S", priority: "中" }, /順か重なりが違う/],
     [ok.replace("やること", "メモ"), { type: "要望", size: "S", priority: "中" }, /知らない節「メモ」/],
     [ok, { type: "不具合", size: "S", priority: "中" }, /種類「不具合」に合わない節「要望: 困りごと」/],
-    [child, { type: "要望", size: "S", priority: "中" }, /完了の条件が無い/],
+    [bare, { type: "要望", size: "S", priority: "中" }, /完了の条件が無い/],
     [ok, { type: "要望" }, /規模と優先度を入れる/],
-    [ok, { type: "要望", child: true }, /子は完了の条件を持ちません/],
-    [child, { type: "要望", child: true, priority: "高" }, /子は優先度・着手可能日時を持ちません/],
+    [bare, { type: "要望", child: true }, /完了の条件が無い/],
+    [ok, { type: "要望", child: true, priority: "高" }, /子は優先度・着手可能日時を持ちません/],
     [ok, { type: "要望", size: "XL", priority: "中" }, /規模「XL」/],
     [ok, { type: "要望", size: "S", priority: "中", start: "来週" }, /着手可能日時「来週」/],
     [ok.replace("<details><summary>やること", "<details>\n<summary>メモ"), { type: "要望", size: "S", priority: "中" }, /知らない節「メモ」/],
@@ -125,38 +124,42 @@ test("起票する（file-issue の new-issue.mjs）: 欄を issue へ1回で入
   assert.match(fillFields(() => "{}", 77, [["size", "XL"]]), /規模「XL」は .*のどれか/, "選択肢に無い値は書かない");
 });
 
-// 担当の後始末（.github/claude-task/after.js）。CI は GITHUB_SHA を入れるので、作業ツリーの道を見るときは外す。
+// 担当の後始末（.github/claude-task/after.js）。ワークフロー（.github/workflows/claude-task.yml）と同じく、after.js と流れの道具（src と、src を
+// ES モジュールとして読ませる package.json）を、作業ツリーの外へ写して打つ。
 const AFTER = fileURLToPath(new URL("../../../.github/claude-task/after.js", import.meta.url));
-const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
-const { GITHUB_SHA: _, ...noSha } = process.env;
 const execution = (messages) => {
   const file = join(mkdtempSync(join(tmpdir(), "after-")), "execution.json");
   writeFileSync(file, JSON.stringify(messages));
   return file;
 };
-// after.js だけを、流れの道具（tools/）の無い所へ写す。
-const lone = () => {
-  const dir = join(mkdtempSync(join(tmpdir(), "after-lone-")), ".github", "claude-task");
-  mkdirSync(dir, { recursive: true });
-  copyFileSync(AFTER, join(dir, "after.js"));
-  return join(dir, "after.js");
+const copied = () => {
+  const dir = mkdtempSync(join(tmpdir(), "flow-"));
+  mkdirSync(join(dir, "claude-task"));
+  copyFileSync(AFTER, join(dir, "claude-task", "after.js"));
+  const src = fileURLToPath(new URL("../src", import.meta.url));
+  mkdirSync(join(dir, "src"));
+  for (const f of readdirSync(src)) copyFileSync(join(src, f), join(dir, "src", f)); // cpSync は開発機（Windows）の日本語のパスで落ちる
+  copyFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), join(dir, "package.json"));
+  return dir;
 };
 
-test("担当の終わりのコメント（after.js）: 書いた見出しと読み始めを、ゲートが同じ形で読む（作業ツリーの形・実行が始まった版の形）", () => {
+test("担当の終わりのコメント（after.js）: 写した流れの道具の形で、見出し・読み始め・読み始めの完了の条件を書き、ゲートが同じ形で読む", () => {
+  const dir = copied();
   const file = execution([{ type: "result", result: "PR を出した" }]);
-  const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).stdout.trim();
-  for (const [name, script, env] of [["作業ツリー", AFTER, noSha], ["実行が始まった版（流れの道具の無い所から）", lone(), { ...noSha, GITHUB_SHA: head }]]) {
-    const r = spawnSync(process.execPath, [script, "確かめる", file, "", "https://example.invalid/run"], { cwd: ROOT, encoding: "utf8", env: { ...env, READ_FROM: "2026-10-12T00:00:00Z" } });
+  const body = "- [x] 作る\n- [ ] 直す\n";
+  writeFileSync(join(dir, "start.md"), body);
+  for (const [name, startFile, block] of [["読み始めの本文がある", join(dir, "start.md"), startBlock(body)], ["読めなかった", "", startBlock("")]]) {
+    const r = spawnSync(process.execPath, [join(dir, "claude-task", "after.js"), "検証", file, "", "https://example.invalid/run", startFile],
+      { encoding: "utf8", env: { ...process.env, FLOW_SRC: join(dir, "src"), READ_FROM: "2026-10-12T00:00:00Z" } });
     assert.equal(r.status, 0, `${name}: ${r.stderr}`);
-    assert.equal(END.exec(r.stdout)?.[1], "確かめる", `${name}: 担当の種類`);
-    assert.equal(readFromOf(r.stdout), "2026-10-12T00:00:00Z", `${name}: 読み始め`);
+    assert.deepEqual([END.exec(r.stdout)?.[1], readFromOf(r.stdout), r.stdout.trimEnd().endsWith(block)], ["検証", "2026-10-12T00:00:00Z", true], name);
   }
 });
 
 test("担当の後始末（after.js --quota）: 流れの道具を読めない所でも、利用の上限で止まったときだけ 1 で終わる", () => {
-  const script = lone();
+  const script = join(copied(), "claude-task", "after.js"); // FLOW_SRC を渡さない
   for (const [messages, code] of [[[], 0], [[{ type: "assistant", error: "rate_limit" }], 1]]) {
-    const r = spawnSync(process.execPath, [script, "--quota", execution(messages)], { encoding: "utf8", env: noSha });
+    const r = spawnSync(process.execPath, [script, "--quota", execution(messages)], { encoding: "utf8" });
     assert.equal(r.status, code, `${JSON.stringify(messages)}: ${r.stderr}`);
   }
 });
