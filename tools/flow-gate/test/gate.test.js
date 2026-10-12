@@ -406,11 +406,25 @@ test("tasks#824 親子を外したら親は待ちをやめ、子を開き直し�
   assert.deepEqual([x.at(1).status, asked(x.at(1)), x.titles()], ["未着手", 0, ["#2 作る"]], "開き直した子を待ち、親の確かめを問わない");
 });
 
-test("tasks#824 記法: 条件はチェックの行から字下げした続きまで。「- 確かめる:」「- 子:」だけが属性で、文の中の括弧や小項目は文の続き", () => {
-  assert.deepEqual(conditions("- [ ] 道を押すと値が出る（区間の境目を含む）\n  境目では両側の値\n  - 夜間も含む\n  - 子: #12\n- [x] 済んだ\n- [ ] 見た目（色）\n\n  - 確かめる: ユーザー\n説明の段落\n"), [
-    { index: 0, text: "道を押すと値が出る（区間の境目を含む） 境目では両側の値 - 夜間も含む", done: false, verify: "Claude", child: 12 },
-    { index: 4, text: "済んだ", done: true, verify: "Claude", child: null },
-    { index: 5, text: "見た目（色）", done: false, verify: "ユーザー", child: null }], "続きの間の空行のあとの属性も、同じ条件の属性");
+test("tasks#824・#878 記法: 条件はチェックの行から字下げした続きまで。「- 確かめる:」「- 子:」「- 見る所と要点:」だけが属性で、文の中の括弧や小項目は文の続き", () => {
+  assert.deepEqual(conditions("- [ ] 道を押すと値が出る（区間の境目を含む）\n  境目では両側の値\n  - 夜間も含む\n  - 子: #12\n- [x] 済んだ\n- [ ] 見た目（色）\n\n  - 確かめる: ユーザー\n  - 見る所と要点: [画面](https://github.test/c) の帯の色\n説明の段落\n"), [
+    { index: 0, text: "道を押すと値が出る（区間の境目を含む） 境目では両側の値 - 夜間も含む", done: false, verify: "Claude", child: 12, look: null },
+    { index: 4, text: "済んだ", done: true, verify: "Claude", child: null, look: null },
+    { index: 5, text: "見た目（色）", done: false, verify: "ユーザー", child: null, look: "[画面](https://github.test/c) の帯の色" }], "続きの間の空行のあとの属性も、同じ条件の属性");
+});
+
+test("tasks#878 確かめの問いの判断材料に、ユーザーが確かめる条件ごとの文と見る所と要点が並び、書かれていない条件はそう出る。答えは条件の文で当たる", async () => {
+  const look = "[撮った画面](https://github.test/c) で、値の欄に区間の値が出ている";
+  const w = world([{ n: 1, status: "CI待ち", body: `- [x] 作る\n- [ ] 道を押すと値が出る\n  - 確かめる: ユーザー\n  - 見る所と要点: ${look}\n- [ ] 見た目\n  - 確かめる: ユーザー\n`,
+    pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1" } }]);
+  await w.send(ev.ci(config.base, "m1"));
+  const asked = w.at(1).comments.at(-1);
+  assert.deepEqual([w.at(1).status, head(w.at(1))], ["回答待ち", "## 問い（確かめ）"], "判断材料に条件を並べても、問いの形に合う");
+  assert.ok(asked.includes(`- 道を押すと値が出る\n  - 見る所と要点: ${look}`), asked);
+  assert.ok(asked.includes("- 見た目\n  - 見る所と要点: 書かれていません"), asked);
+  w.at(1).comments.push(answerBody({ kind: "確かめ", text: "完成にしてよいですか？" }, { done: true, items: ["道を押すと値が出る", "見た目"] }));
+  await w.send(ev.comment(1));
+  assert.deepEqual([w.at(1).state, w.at(1).reason], ["CLOSED", "COMPLETED"]);
 });
 
 test("K6・受け箱: 止めたら振り出さない。処理が落ちても出来事を失わず、一時の失敗はやり直し、直らない失敗はすぐ諦める", async () => {
