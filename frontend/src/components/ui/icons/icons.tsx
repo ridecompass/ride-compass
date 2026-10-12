@@ -24,6 +24,7 @@ import {
   MapPinned,
   MapPinX,
   Moon,
+  Navigation,
   Play,
   RotateCcw,
   RotateCw,
@@ -476,6 +477,8 @@ export const BicycleIcon = fromLucide(Bike);
 /** 呼び出し側が風向・走行方位のぶん回転させて使うため、上向きのまっすぐな矢印にしてある。 */
 export const WindDirectionArrowIcon = fromLucide(ArrowUp);
 export const ThermometerIcon = fromLucide(Thermometer);
+/** 走行モード（現在地を追い続けて地図を動かす）。 */
+export const RideModeIcon = fromLucide(Navigation);
 export const RaindropIcon = fromLucide(Droplet);
 export const SunIcon = fromLucide(Sun);
 export const MoonIcon = fromLucide(Moon);

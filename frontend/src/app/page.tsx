@@ -46,6 +46,8 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useLocation } from "@/hooks/useLocation";
 import { useStoredState, useStoredBooleanState } from "@/hooks/useStoredState";
 import { useRideConditions } from "@/features/conditions/useRideConditions";
+import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
+import { useRideMode } from "@/features/ride/useRideMode";
 import { formatDepartureLabel } from "@/features/conditions/rideConditions";
 import { useMapView } from "@/features/map/view/useMapView";
 import { textVariants } from "@/components/ui/Text/Text";
@@ -129,6 +131,8 @@ export default function Home() {
     setFoundPoint({ latitude: candidate.latitude, longitude: candidate.longitude });
   }
   const ride = useRideConditions();
+  // 走行モード（現在地を追い続けて地図を動かす）。
+  const riding = useRideMode();
   // 名前を付けて保存した生成の条件（「保存」タブ）。
   const savedConditions = useSavedConditions({
     conditions,
@@ -510,6 +514,7 @@ export default function Home() {
               waypointsFull={conditions.waypoints.length >= routeGenerateConfig.max_waypoints}
               focusPoint={foundPoint}
               measureRouteFitObscuredPx={measureRouteFitObscuredPx}
+              ride={riding.map}
             />
 
             {/* 地図の左上に「表示」（重ねる情報の一覧）、上の中央に色分けを置く。 */}
@@ -534,7 +539,7 @@ export default function Home() {
             <TravelBearingControl value={ride.bearingDeg} onChange={ride.setBearingDeg} />
 
             {/* 走行条件（出発時刻・想定速度）は走行方位の直下に積む。出発時刻は気象レイヤーの表示時刻と同じもの。
-              その下へ現在地を続ける。 */}
+              その下へ現在地と走行モードを続ける。 */}
             <div
               {...mapOverlayEdge("right")}
               className="pointer-events-none absolute top-[calc(var(--map-ctrl-stack-top)+var(--map-ctrl-button-size)+var(--map-ctrl-stack-gap))] right-[var(--map-ctrl-margin)] z-[var(--z-map-control)] flex flex-col gap-[var(--map-ctrl-stack-gap)]"
@@ -571,6 +576,12 @@ export default function Home() {
                   </p>
                 )}
               </div>
+              <RideModeButton
+                status={riding.status}
+                error={riding.error}
+                screenWakeLock={riding.screenWakeLock}
+                onPress={riding.press}
+              />
             </div>
           </div>
         </div>
