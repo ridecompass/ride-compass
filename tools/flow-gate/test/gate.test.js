@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import base from "../flow.config.json" with { type: "json" };
 import { questionForms } from "../src/bot.js";
+import { SKELETON, formed as FORMED } from "./forms.js";
 import { handle } from "../src/flow.js";
 import { answerForm } from "../src/form.js";
 import { Inbox, nextAlarm } from "../src/inbox.js";
@@ -98,6 +99,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
       w.writes.push(["親子を外す", Number(v.c.slice(1))]);
       return void WRITE.addComment({ subjectId: v.c, body: v.b });
     }
+    if (q.includes("comments(first:100,after:$a)")) return { repository: { issue: { comments: { pageInfo: { hasNextPage: false }, nodes: w.at(v.n).comments.map((body) => ({ body })) } } } };
     if (q.includes("timelineItems(since:")) { // ユーザーの欄の変更と開き直し（i.moves: [だれが, 何番目のコメントの時刻の直後か, 欄の名前（開き直しなら無し）]）
       const nodes = (w.at(v.n).moves ?? []).filter(([, k]) => T(k + 0.5) > v.s).map(([login, , field]) => ({ actor: { login }, ...(field ? { issueField: { name: field } } : {}) }));
       return { repository: { issue: { timelineItems: { pageInfo: { hasNextPage: false }, nodes } } } };
@@ -125,15 +127,12 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
       const closedAt = i.state === "CLOSED" ? (i.closedAt ?? T(i.comments.length - 0.5)) : null;
       // GraphQL は App の書き手の名前を [bot] の付かない形で返す。コメントの時刻は並びの順。
       const comments = i.comments.map((body, k) => ({ body, createdAt: T(k), author: { login: author(i, k).replace(/\[bot\]$/, "") } })).slice(-40);
-      // master の新しい順のコミット: マージのあとのコミット（p.later の CI の結果）、マージのコミット、マージより前のコミット（p.earlier）。
-      const ci = (at) => (state, k) => ({ oid: `${at}${k}`, checkSuites: suites(state) });
-      const [later, earlier] = ["later", "earlier"].map((at) => (i.pr?.[at] ?? []).map(ci(at)));
       return { t: { issueTypes: { nodes: TYPES.map((name) => ({ id: `T${name}`, name })) }, labels: { nodes: repoLabels().map((name) => ({ id: `L${name}`, name })) },
         issue: { id: `I${i.n}`, state: i.state, stateReason: i.reason, closedAt, body: i.body, author: { login: i.author }, issueType: i.type && { name: i.type },
           assignees: { nodes: i.assignees.map((login) => ({ login })) }, labels: names(i.labels), ...relations(i), comments: { totalCount: i.comments.length, nodes: comments }, issueFieldValues: fields(i),
           blocking: { nodes: [...w.issues.values()].filter((k) => k.blockedBy.includes(v.n)).map((k) => ({ number: k.n, state: k.state })) },
           timelineItems: { nodes: (i.typeChanges ?? []).map(([a, b]) => ({ prevIssueType: { name: a }, issueType: { name: b } })) } } },
-      c: { pullRequests: { nodes: i.pr ? [pull(i, i.pr)] : [] }, ref: { target: { history: { nodes: [...later, { oid: i.pr?.sha ?? `m${i.n}` }, ...earlier] } } } } };
+      c: { pullRequests: { nodes: i.pr ? [pull(i, i.pr)] : [] } } };
     }
     throw new Error(`知らない問い合わせ: ${q.slice(0, 80)}`);
   };
@@ -154,7 +153,6 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
       return void w.writes.push(["取り消し", Number(m[1])]);
     }
     if ((m = /\/commits\/(\w+)\/pulls$/.exec(path))) return [...w.issues.values()].filter((i) => i.pr?.sha === m[1]).map((i) => ({ head: { ref: `${config.branchPrefix}${i.n}` } }));
-    if ((m = /\/issues\/(\d+)\/comments\?per_page=100&page=(\d+)$/.exec(path))) return w.at(Number(m[1])).comments.slice((m[2] - 1) * 100, m[2] * 100).map((b) => ({ body: b }));
     // 回答フォームは、答えとラベルの付け外しをユーザーの名義で書く（src/form.js）。
     if ((m = /\/issues\/(\d+)\/labels(?:\/(.+))?$/.exec(path))) {
       const i = w.at(Number(m[1]));
@@ -190,7 +188,7 @@ const ev = {
     parent_issue: { number: p, node_id: `I${p}` }, sub_issue: { number: c, node_id: `I${c}` } }],
 };
 const head = (i) => i.comments.at(-1)?.split("\n")[0] ?? null;
-const QUESTION = config.questionForms.判断.skeleton; // 形どおりの判断の問い
+const QUESTION = SKELETON.判断; // 形どおりの判断の問い
 const ANSWER = (line) => `## 回答\n**${QUESTION.split("\n")[1]}**\n\n${line}`;
 const CONFIRM = "- [x] 作る\n- [ ] 見た目\n  - 確かめる: ユーザー\n";
 const ASKED = (kind) => askText(kind, config.questionForms, [{ text: "見た目" }]); // ゲートが出す問い（確かめは CONFIRM のユーザーが確かめる条件を並べる）
@@ -238,7 +236,7 @@ test("R3・決め1・決め7・#760: 担当の実行が終わったら、表の�
     ["条件にチェックを付けて終えた（約束が動いた）→ 正当。残りを次の実装担当へ", { body: "- [ ] 作る\n- [ ] 直す\n" }, { body: "- [x] 作る\n- [ ] 直す\n" }, "実装", 2, null],
     ["決め1 検証担当がマージし、本番に出たあとに残りがある → 実装担当", verify, { pr: { ...merged, mergeChecks: "SUCCESS" } }, "実装", 2, null],
     ["マージのコミットの検査がまだ（本番に出る前に確かめを問わない）", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "PENDING" } }, "検査", 1, null],
-    ["検証担当がマージして手放したのに、マージのコミットの検査が1つも無い → イレギュラー", verify, { pr: merged }, "回答", 1, "## 問い（イレギュラー）"],
+    ["マージのコミットの検査が1つも無い（合格していない）→ 実装担当", verify, { pr: merged }, "実装", 2, null],
     ["マージのコミットの検査が落ちた → 打ち直すか直す実装担当", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, "実装", 2, null],
     ["マージのコミットの検査が取り消された（合格でない）→ 実装担当", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "CANCELLED" } }, "実装", 2, null],
     ["実装担当が、落ちたマージのコミットの検査を打ち直しも直しもせずに手放した → イレギュラー", { body: CONFIRM }, { pr: { ...merged, mergeChecks: "FAILURE" } }, "回答", 1, "## 問い（イレギュラー）"],
@@ -369,7 +367,7 @@ test("tasks#877 問いを出した事実が無くなったら、条件が残っ�
   const rows = [
     // [要求, タスク, 出来事, 期待するステータス]
     ["見送りの前提について問うたあとで、前提が開き直された", { blockedBy: [7], comments: [askDropped([7], config.questionForms)] }, ev.issue(7, "reopened"), "待機"],
-    ["イレギュラーを問うたあとで、作業ブランチの PR が開かれた", { comments: [ASKED("イレギュラー")], pr: { created: T(1) } }, ev.pr(1, "opened"), "検査"],
+    ["イレギュラーを問うたあとで、作業ブランチの PR が開かれた", { comments: [ASKED("イレギュラー")], pr: { created: T(1), checks: "PENDING" } }, ev.pr(1, "opened"), "検査"],
     ["イレギュラーを問うたあとで、問う前からあった PR がマージされた", { comments: [ASKED("イレギュラー")], pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1", mergedAt: T(1) } },
       ev.ci(config.base, "m1"), "実装"],
     ["確かめを問うたあとで、Claude が確かめる条件が足された", { body: withButton(left, config, 1), comments: [ASKED("確かめ")] }, ev.issue(1, "edited", config.claude), "実装"],
@@ -406,8 +404,8 @@ test("tasks#842・#843 担当者を手で変えたら決め直して戻す。1�
   assert.equal(gone.at(1).status, "実装");
 });
 
-test("イレギュラーに「やり直す」と答えたら、答えのあとに担当が終わるまで振り出せる形に保つ（検査へ戻さない）", async () => {
-  // 実装担当が、検査の出ない PR を出して手放した → イレギュラー → 「やり直す」と答える。
+test("検査の出ない PR は合格していないので実装。実装担当がそのまま手放したらイレギュラーで、「やり直す」と答えたら実装担当へ渡す", async () => {
+  // 実装担当が、検査の出ない PR を出して手放した（実装のまま）→ イレギュラー → 「やり直す」と答える。
   const handOff = async (w) => {
     await w.send(ev.schedule());
     const run = w.run(1);
@@ -732,13 +730,8 @@ test("回答フォーム（R10〜R12・決め2・合意したモック）: 問�
   assert.deepEqual([w.at(2).state, w.at(2).reason, w.at(2).labels], ["CLOSED", "NOT_PLANNED", ["急ぎ"]], "採否の見送るで閉じる。ラベルの付け外しも送る");
 });
 
-// tasks#892: 問いの形は種類ごとのファイルにあり、回答フォームは問いの節だけから導く。書く者が埋める問い（判断・操作）は、形の骨組みの問いの文と
-// 答えの行を差し替えて作る。
-const FORMED = (kind, text, rows) => {
-  const [first, , ...rest] = config.questionForms[kind].skeleton.split("\n");
-  return [first, text, "", rest.find((l) => l.startsWith("### ")), ...rows.map((r) => `- ${r}`), "", ...rest.slice(rest.indexOf("<details><summary>判断材料</summary>"))].join("\n");
-};
-const MATERIAL = (kind) => config.questionForms[kind].skeleton.slice(config.questionForms[kind].skeleton.indexOf("<details>"));
+// tasks#892: 問いの形は種類ごとのファイルにあり、回答フォームは問いの節だけから導く（書く者が埋める問いは test/forms.js: formed で作る）。
+const MATERIAL = (kind) => SKELETON[kind].slice(SKELETON[kind].indexOf("<details>"));
 
 test("tasks#892 問いの形は種類ごとに5つあり、問いはその種類の形と照らす（案の無い判断・決まった文や案を変えた問い・知らない種類は読まない）", () => {
   const forms = config.questionForms;

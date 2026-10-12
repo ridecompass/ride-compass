@@ -1,6 +1,7 @@
 // タスクの事実を読む（src/decide.js: decide が受ける形）。置き場の issue・書くのに要る ID（種類・ラベル）・コードのリポジトリの作業ブランチの PR と
 // 検査を GraphQL の1回で、担当の実行は Actions の実行の一覧から読む。ゲートは issue の情報を持たない（持ち主は GitHub）。見回りの一覧も同じ読み方を使う。
 import { FIELDS, START_FORM, valuesOf } from "./fields.js";
+import { pages } from "./github.js";
 import { APPLIED, answerText, checkQuestion, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, remaining } from "./questions.js";
 
 // 着手可能日時の形の合わない値は受け入れず（badStart はその値。ゲートが知らせる）、待つと決めた意図を守ってまだ先と読む。
@@ -22,18 +23,18 @@ export function taskOf(config, issue, now = new Date()) {
   const text = from[f.start.name]?.trim();
   const start = jst(text);
   const mine = own[f.start.name]?.trim();
-  const waits = [...issue.blockedBy.nodes, ...(issue.subIssues?.nodes ?? [])];
-  const labels = (i) => (i?.labels?.nodes ?? []).map((l) => l.name);
-  return { status: own[f.status.name], run: own[f.run.name] ?? null, priority: from[f.priority.name], type: issue.issueType?.name ?? null,
+  const waits = [...issue.blockedBy.nodes, ...issue.subIssues.nodes];
+  const labels = (i) => i.labels.nodes.map((l) => l.name);
+  return { status: own[f.status.name], run: own[f.run.name], priority: from[f.priority.name], type: issue.issueType?.name ?? null,
     open: issue.state === "OPEN", blocked: waits.some((w) => w.state === "OPEN"), dropped: waits.filter(dropped).map((w) => w.number),
     future: Boolean(text) && (!start || start > now), badStart: mine && !jst(mine) ? mine : null,
     urgent: labels(parent ?? issue).includes(config.urgentLabel), held: Boolean(parent) && (parent.state === "CLOSED" || from[f.status.name] === "保留"),
-    dev: labels(issue).includes(config.devLabel), assignees: (issue.assignees?.nodes ?? []).map((a) => a.login) };
+    labels: labels(issue), dev: labels(issue).includes(config.devLabel), assignees: issue.assignees.nodes.map((a) => a.login) };
 }
 export const jstText = (ms) => new Date(ms + 9 * 3600e3).toISOString().slice(0, 16).replace("T", " "); // 日本時間の「YYYY-MM-DD HH:MM」
 // 担当の実行の名前「#<番号> <種類> <振り出しの識別子>」（claude-task.yml の run-name。手で起こした実行は識別子が無い）。
 export function runOf(title) {
-  const [, number, kind, key] = /^#(\d+) (\S+)(?: (\S+))?/.exec(title ?? "") ?? [];
+  const [, number, kind, key] = /^#(\d+) (\S+)(?: (\S+))?/.exec(title) ?? [];
   return number ? { number: Number(number), kind, key } : null;
 }
 // 担当のワークフロー（config.workflow）の近ごろの実行（新しい順に100本）。動いているか・枠が埋まっているかは、出来事1件につき1回ここから読む。
@@ -59,40 +60,26 @@ const query = () => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:Strin
 const STAGES = ["REQUESTED", "QUEUED", "WAITING", "PENDING", "IN_PROGRESS", "COMPLETED"];
 // 合格の結論（GitHub が必須の検査の合格に数えるもの: 成功・スキップ・中立）。
 const PASSED = ["SUCCESS", "SKIPPED", "NEUTRAL"];
-// コミットの検査の実行（ワークフローの実行の無い suite は数えない）。stage は終わりから最も遠い実行の status、verdict は合否
-// （1本でも終わっていなければ PENDING。全部が合格なら SUCCESS、ほかは FAILURE）。実行が1本も無ければ null。
+// コミットの検査の実行（ワークフローの実行の無い suite は数えない）。stage は終わりから最も遠い実行の status（実行が無ければ null）、
+// passed は実行があって全部が合格したか（終わっていない実行は結論を持たないので合格しない）。
 function checksOf(commit) {
-  const runs = (commit?.checkSuites?.nodes ?? []).filter((s) => s.workflowRun);
-  if (!runs.length) return null;
-  const stage = STAGES.find((s) => runs.some((r) => r.status === s));
-  return { stage, verdict: stage !== "COMPLETED" ? "PENDING" : runs.every((r) => PASSED.includes(r.conclusion)) ? "SUCCESS" : "FAILURE" };
+  const runs = (commit?.checkSuites.nodes ?? []).filter((s) => s.workflowRun);
+  return { stage: STAGES.find((s) => runs.some((r) => r.status === s)) ?? null, passed: runs.length > 0 && runs.every((r) => PASSED.includes(r.conclusion)) };
 }
-
-// イレギュラーに「やり直す」と答えたあと（answered はその時刻）、まだ担当が終わっていないか（src/decide.js: redo）。issue に残るコメントで判じる。
-const redo = (question, answered, ends) => question?.kind === "イレギュラー" && question.answer?.decision === "続ける" && !ends.some((t) => t > answered);
 
 // issue の全部のコメントの本文（古い順）。
-async function allComments(gh, config, number) {
-  const all = [];
-  for (let page = 1; ; page++) {
-    const got = await gh.rest("GET", `/repos/${config.tasks}/issues/${number}/comments?per_page=100&page=${page}`);
-    all.push(...got.map((x) => norm(x.body)));
-    if (got.length < 100) return all;
-  }
-}
+const allComments = async (gh, config, number) => (await Array.fromAsync(pages(gh, `query($o:String!,$r:String!,$n:Int!,$a:String){repository(owner:$o,name:$r){issue(number:$n){
+  comments(first:100,after:$a){pageInfo{hasNextPage endCursor} nodes{body}}}}}`, { ...repo(config.tasks), n: number }, (d) => d.repository.issue.comments))).map((c) => norm(c.body));
+const repo = (full) => ({ o: full.split("/")[0], r: full.split("/")[1] });
 
-// since より後に、ユーザーがステータスを変えたか開き直したか（時系列を、ページを送って全部読む）。
+// since より後に、ユーザーがステータスを変えたか開き直したか（時系列を、見つかるまでページを送って読む）。
 async function movedSince(gh, config, number, since) {
-  const [o, r] = config.tasks.split("/");
-  for (let after = null; ;) {
-    const { repository: { issue: { timelineItems: t } } } = await gh.gql(`query($o:String!,$r:String!,$n:Int!,$s:DateTime!,$a:String){repository(owner:$o,name:$r){issue(number:$n){
-      timelineItems(since:$s,first:100,after:$a,itemTypes:[ISSUE_FIELD_ADDED_EVENT,ISSUE_FIELD_CHANGED_EVENT,REOPENED_EVENT]){pageInfo{hasNextPage endCursor} nodes{
-       ...on IssueFieldAddedEvent{actor{login} issueField{...on IssueFieldSingleSelect{name}}} ...on IssueFieldChangedEvent{actor{login} issueField{...on IssueFieldSingleSelect{name}}}
-       ...on ReopenedEvent{actor{login}}}}}}}`, { o, r, n: number, s: since, a: after });
-    if (t.nodes.some((e) => e.actor?.login === config.user && (!e.issueField || e.issueField.name === config.fields.status.name))) return true;
-    if (!t.pageInfo.hasNextPage) return false;
-    after = t.pageInfo.endCursor;
-  }
+  for await (const e of pages(gh, `query($o:String!,$r:String!,$n:Int!,$s:DateTime!,$a:String){repository(owner:$o,name:$r){issue(number:$n){
+    timelineItems(since:$s,first:100,after:$a,itemTypes:[ISSUE_FIELD_ADDED_EVENT,ISSUE_FIELD_CHANGED_EVENT,REOPENED_EVENT]){pageInfo{hasNextPage endCursor} nodes{
+     ...on IssueFieldAddedEvent{actor{login} issueField{...on IssueFieldSingleSelect{name}}} ...on IssueFieldChangedEvent{actor{login} issueField{...on IssueFieldSingleSelect{name}}}
+     ...on ReopenedEvent{actor{login}}}}}}}`, { ...repo(config.tasks), n: number, s: since }, (d) => d.repository.issue.timelineItems))
+    if (e.actor?.login === config.user && (!e.issueField || e.issueField.name === config.fields.status.name)) return true;
+  return false;
 }
 
 // 担当の終わりのコメントの見出しと、読み始めの完了の条件の見出し（.github/claude-task/after.js が書く）。
@@ -110,14 +97,13 @@ function endedOf(nodes) {
 // この issue を指す issue）の条件にある。消えた行があるときだけ移管先を読む（要求1回）。読み始めの条件が無ければ動いていない。
 async function movedOf(gh, config, number, ended, now) {
   const done = (list) => list.filter((c) => c.done).length;
-  if (!ended?.before) return false;
+  if (!ended.before) return false;
   if (done(now) > done(ended.before)) return true;
   const gone = ended.before.filter((c) => !now.some((x) => x.text === c.text));
   if (!gone.length) return false;
-  const [o, r] = config.tasks.split("/");
   const { repository: { issue: i } } = await gh.gql(`query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){issue(number:$n){
     subIssues(first:50){nodes{createdAt body}} parent{subIssues(first:50){nodes{createdAt body}}}
-    timelineItems(last:50,itemTypes:[CROSS_REFERENCED_EVENT]){nodes{...on CrossReferencedEvent{source{...on Issue{createdAt body}}}}}}}}`, { o, r, n: number });
+    timelineItems(last:50,itemTypes:[CROSS_REFERENCED_EVENT]){nodes{...on CrossReferencedEvent{source{...on Issue{createdAt body}}}}}}}}`, { ...repo(config.tasks), n: number });
   const made = [...i.subIssues.nodes, ...(i.parent?.subIssues.nodes ?? []), ...i.timelineItems.nodes.map((x) => x.source).filter((x) => x?.body)]
     .filter((x) => Date.parse(x.createdAt) >= Date.parse(ended.from)).flatMap((x) => conditions(x.body));
   return gone.every((c) => made.some((x) => x.text === c.text));
@@ -129,8 +115,7 @@ export async function readFacts(gh, config, number, runs) {
   const [co, cn] = config.code.split("/");
   const { t, c } = await gh.gql(query(), { to, tn, n: number, co, cn, head: `${config.branchPrefix}${number}` });
   const i = t.issue;
-  const mine = runs.filter((r) => r.number === number);
-  const held = mine.filter((r) => r.active).sort((a, b) => a.created - b.created); // 古い順（2本目からは二重の実行）
+  const held = runs.filter((r) => r.number === number && r.active).sort((a, b) => a.created - b.created); // 古い順（2本目からは二重の実行）
   const open = c.pullRequests.nodes.find((p) => p.state === "OPEN");
   const head = open?.commits.nodes.at(-1);
   const drafted = open?.timelineItems.nodes[0]?.createdAt;
@@ -172,19 +157,17 @@ export async function readFacts(gh, config, number, runs) {
   const droppedAsked = Boolean(asking) && (await ever((x) => x.includes(asking)));
   const adoptAsked = await ever((x) => x.startsWith("## 問い（採否）"));
   const ended = endedOf(nodes);
-  const prChecks = checksOf(head?.commit);
-  const mergeChecks = checksOf(merged?.mergeCommit);
   const byName = (list) => Object.fromEntries(list.nodes.map((x) => [x.name, x.id]));
-  return { ...task, droppedAsked, adoptAsked, redo: redo(question, answer && at(answer), nodes.filter((n) => END.test(norm(n.body))).map(at)), unread, answerRead, answerApplied, superseded, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
+  return { ...task, droppedAsked, adoptAsked, unread, answerRead, answerApplied, superseded, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
     conditions: conditions(i.body), remaining: remaining(i.body), question, ended: ended && { kind: ended.kind, moved: await movedOf(gh, config, number, ended, conditions(i.body)) },
-    runs: held, latest: Object.fromEntries(mine.map((r) => [r.kind, r]).reverse()), // 種類ごとの最新の実行
+    runs: held,
     parent: p && { number: p.number }, dead, children: i.subIssues.nodes, origin: Number(/^分割元: #(\d+)\s*$/m.exec(norm(i.body))?.[1]) || null,
-    types, dialog, labels: i.labels.nodes.map((l) => l.name), ids: { types: byName(t.issueTypes), labels: byName(t.labels) },
+    types, dialog, ids: { types: byName(t.issueTypes), labels: byName(t.labels) },
     // 閉じた・開き直したときに決め直す、矢印1本でつながる開いた issue（後・親・子）。
     near: [...i.blocking.nodes, ...(p ? [p] : []), ...i.subIssues.nodes].filter((x) => x.state === "OPEN").map((x) => x.number),
     // 作業ブランチの PR が最後に開かれたかマージされた時刻（担当が手放したあとに、別の所で作られたかを問いの時刻と比べる）。
     prMoved: Math.max(0, ...c.pullRequests.nodes.flatMap((x) => [Date.parse(x.createdAt), Date.parse(x.mergedAt) || 0])),
-    merged: Boolean(merged), mergeChecks: mergeChecks?.verdict ?? null, mergeStage: mergeChecks?.stage ?? null,
+    merged: Boolean(merged), mergeChecks: checksOf(merged?.mergeCommit),
     badQuestion: last && isQuestion(last) ? checkQuestion(config.questionForms, last) : [], comments,
-    pr: open && { id: open.id, draft: open.isDraft, checks: prChecks?.verdict ?? null, stage: prChecks?.stage ?? null, backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };
+    pr: open && { id: open.id, draft: open.isDraft, checks: checksOf(head.commit), backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };
 }

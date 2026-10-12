@@ -53,15 +53,15 @@ const ACTIONS = { issues: ["opened", "closed", "reopened", "typed", "untyped", "
   sub_issues: ["sub_issue_added", "sub_issue_removed"] }; // 親子1本につき親の側と子の側の2つが届くので、親の側だけを受ける
 const REPO = { issues: "tasks", issue_comment: "tasks", pull_request: "code", workflow_run: "code", sub_issues: "tasks" };
 const OWN = ["workflow_run"]; // ゲート自身の出来事でも受けるもの（起こした担当の実行）
-export const ignored = (config, name, p) => !ACTIONS[name]?.includes(p.action) || (REPO[name] && p.repository?.full_name !== config[REPO[name]])
-  || (p.sender?.login === config.gateBot && !OWN.includes(name) && !OWN.includes(`${name} ${p.action}`));
+export const ignored = (config, name, p) => !ACTIONS[name]?.includes(p.action) || (REPO[name] && p.repository.full_name !== config[REPO[name]])
+  || (p.sender.login === config.gateBot && !OWN.includes(name) && !OWN.includes(`${name} ${p.action}`));
 const branch = (config, ref) => (ref?.startsWith(config.branchPrefix) ? [Number(ref.slice(config.branchPrefix.length))] : []);
 
 // 出来事が指す issue。around は、閉じた・開き直したので矢印1本でつながる開いた issue（後・親・子）も決め直すとき。
 const ROUTES = {
   issues(gh, config, p) {
     // ユーザーが欄（ステータス等）を変えた。ゲートが事実へ戻したら知らせる。
-    if (p.action === "field_added" || p.action === "field_removed") return { numbers: [p.issue.number], moved: p.sender?.login === config.user };
+    if (p.action === "field_added" || p.action === "field_removed") return { numbers: [p.issue.number], moved: p.sender.login === config.user };
     return { numbers: [p.issue.number], around: p.action === "closed" || p.action === "reopened" };
   },
   // 親子が張られた・外された。孫になる張り方（親に親がある・子が子を持つ）は、張られた直後に外して子に知らせる（作る前に止める口は GitHub に無い）。

@@ -40,9 +40,8 @@ export function decide(f, config) {
 // 欄「実行の status」: ステータスが指す種類の、動いている実行の status（GitHub の値のまま。無ければ null）。検査は、終わりから最も遠い
 // 検査の実行の status（必須の検査が1本になるまでの暫定。tasks#810）。
 function runStatus(f, status) {
-  if (status === "検査") return (f.pr ? f.pr.stage : f.mergeStage)?.toLowerCase() ?? null;
-  const r = DISPATCH.includes(status) ? f.latest[status] : null;
-  return r?.active ? r.status : null;
+  if (status === "検査") return (f.pr ? f.pr.checks : f.mergeChecks).stage.toLowerCase(); // 検査は走っている実行があるときだけ
+  return f.runs.find((r) => r.kind === status)?.status ?? null;
 }
 
 // 答えの無い問いを出した事実が、あとの事実で無くなったか（無くなった問いは読まず、表で決め直す）。採否と Claude の判断の問いは、
@@ -96,48 +95,38 @@ function status(f, config) {
   // 答えは、書いた文があれば Claude が読んだあとに当て、当てたことを一度だけ知らせる。答えのあとにユーザーがステータスを変えたか開き直したら、
   // 次の決定はそちらなので、その答えは当てない。
   const a = q?.answer;
-  if (!a || f.superseded || (a.text && !f.answerRead)) return redo(f, table(f));
+  if (!a || f.superseded || (a.text && !f.answerRead)) return table(f);
   const told = a.text && !f.answerApplied ? `${APPLIED}（${a.decision}）。` : null;
   if (a.decision === "見送り") return { status: "完了", closeAs: "NOT_PLANNED", told };
   if (a.decision === "保留") return { status: "保留", told };
-  if (q.kind !== "確かめ" || a.decision !== "完了") return { ...redo(f, table(f)), told };
+  if (q.kind !== "確かめ" || a.decision !== "完了") return { ...table(f), told };
   const ok = f.remaining.filter((c) => c.verify === "ユーザー" && a.confirmed.includes(c.text));
   return { ...table({ ...f, remaining: f.remaining.filter((c) => !ok.includes(c)) }), check: ok.map((c) => c.index), told };
 }
 
-// イレギュラーに「やり直す」と答えたら、答えのあとに担当が終わるまで振り出せる形に保つ（検査は見回りが振り出さないので、
-// 実装担当へ渡す。答えを当てた1回だけにすると、枠が埋まっていて振り出せないうちに次の決め直しで検査へ戻る）。
-const redo = (f, t) => (f.redo && t.status === "検査" ? { ...t, status: "実装" } : t);
-
 // 次に結果を出すのが担当でも、待つ相手（着手可能日時・親の保留か閉じ）がある間は、担当は作らないので待機。
 const held = (f, t) => (DISPATCH.includes(t.status) && waiting(f) ? { ...t, status: "待機" } : t);
 
-const IRREGULAR = { status: "回答", ask: "イレギュラー" };
-// 検査の実行が1本も無いと、検査の持ち主がいない。担当が手放したあとなら止まるのでイレギュラー（PR の検査が出る形で push し、マージのあとの検査が
-// 出たことを確かめるのは担当の責務。.claude/skills/task-work/SKILL.md）。
-const noChecks = (f) => (f.ended ? IRREGULAR : { status: "検査" });
-const afterMerge = (f) => (!f.mergeChecks ? noChecks(f) : f.mergeChecks === "FAILURE" ? { status: "実装" } : { status: "検査" });
+// 検査は、走っている間は検査、合格していなければ（不合格か、検査の実行が1本も無い）実装（検査が始まる形で push するのも、直すのも実装担当）。
+const unchecked = (c) => ({ status: c.stage && c.stage !== "COMPLETED" ? "検査" : "実装" });
 
 // 1階: 成果物の事実と関係性から、次に結果を出す者の行為を決める（上から最初に当たる行）。次に結果を出すのが、いま手放した担当と
 // 同じ種類のまま（状態が動かず）、その実行で約束も動いていなければ、担当は責務を果たさずに終えた。
 const table = (f) => {
   const t = held(f, rows(f));
-  return f.ended && !f.ended.moved && t.status === f.ended.kind ? IRREGULAR : t;
+  return f.ended && !f.ended.moved && t.status === f.ended.kind ? { status: "回答", ask: "イレギュラー" } : t;
 };
 function rows(f) {
   const pr = f.pr;
   if (pr) {
     if (pr.backToDraft) return { status: "実装" }; // 検証担当の差し戻し
-    if (!pr.checks) return noChecks(f);
-    if (pr.checks === "PENDING") return { status: "検査" }; // 下書きかどうかによらず、検査の結果を待つ間は手放す
-    if (pr.checks === "FAILURE") return { status: "実装" };
-    return { status: "検証" };
+    return pr.checks.passed ? { status: "検証" } : unchecked(pr.checks); // 下書きかどうかによらず、検査の結果を待つ間は手放す
   }
   // 待つ相手（前提・子）が開いている間は、確かめも完了もしない。見送りで閉じた相手がいれば、続けるかを一度だけ問う。
   if (f.blocked) return { status: "待機" };
   if (f.dropped.length && !f.droppedAsked) return { status: "回答", ask: { dropped: f.dropped } };
   // 作る側の完了（マージのコミットの検査が通り、本番に出た）も約束のうち。マージのあとの残りは、本番に出てから扱う（本番に出る前に確かめを問わない。原則2）。
-  if (f.merged && f.mergeChecks !== "SUCCESS") return afterMerge(f);
+  if (f.merged && !f.mergeChecks.passed) return unchecked(f.mergeChecks);
   if (!f.remaining.length) return { status: "完了", closeAs: "COMPLETED" };
   if (f.remaining.every((c) => c.verify === "ユーザー")) return { status: "回答", ask: "確かめ" };
   return { status: "実装" };

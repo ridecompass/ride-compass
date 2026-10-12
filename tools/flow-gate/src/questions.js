@@ -6,7 +6,6 @@ const sectionsOf = (text) => {
   const heads = [...text.matchAll(/^\*\*([^*]+)\*\*: ?/gm)];
   return heads.map((m, i) => ({ name: m[1], value: text.slice(m.index + m[0].length, heads[i + 1]?.index ?? text.length).trim() }));
 };
-const sections = (text) => sectionsOf(text).map((s) => s.name);
 const BLOCK = /^<!-- flow-gate -->\n([\s\S]*?)<!-- \/flow-gate -->\n*/;
 const BUTTON = /^\[!\[回答する\]\([^)]*\/button\.svg\)\]\([^)]*\/answer\?issue=\d+\)$/;
 
@@ -103,13 +102,12 @@ export function loadForms(texts) {
     const all = norm(t);
     const at = all.search(/^## 問い/m);
     const meta = Object.fromEntries([...all.slice(0, Math.max(at, 0)).matchAll(/^(\S+): (.+)$/gm)].map((m) => [m[1], m[2].trim()]));
-    const skeleton = at < 0 ? "" : all.slice(at).trim();
-    const q = parseQuestion(skeleton);
+    const q = parseQuestion(at < 0 ? "" : all.slice(at));
     if (!q?.header) throw new Error(`問いの形が読めない（骨組みと答えの節が要る）: ${all.split("\n")[0]}`);
     const meaning = Object.fromEntries((meta["答えの意味"] ?? "").split("・").filter(Boolean).map((x) => x.split(": ").map((v) => v.trim())));
     const check = q.header === "### 項目" ? Object.keys(meaning)[0] : null;
     if (q.header === "### 項目" && Object.keys(meaning).length !== 1) throw new Error(`「### 項目」の形は、答えの意味をちょうど1つ持つ: ${q.kind}`);
-    forms[q.kind] = { kind: q.kind, skeleton, check, meaning, text: HOLE.test(q.text) ? null : q.text, header: q.header, rows: q.rows.some((r) => HOLE.test(r)) ? null : q.rows, sections: sectionsOf(q.material) };
+    forms[q.kind] = { check, meaning, text: HOLE.test(q.text) ? null : q.text, header: q.header, rows: q.rows.some((r) => HOLE.test(r)) ? null : q.rows, sections: sectionsOf(q.material) };
   }
   return forms;
 }
@@ -126,7 +124,7 @@ export function checkQuestion(forms, text) {
   return [q.header !== f.header && `${q.kind}の答えの節は「${f.header}」と1行1つ`,
     f.text && q.text !== f.text && `${q.kind}の問いの文は「${f.text}」`,
     f.rows && q.header === f.header && JSON.stringify(q.rows) !== JSON.stringify(f.rows) && `${q.kind}の「${f.header}」は ${f.rows.join("・")}`,
-    JSON.stringify(sections(q.material)) !== JSON.stringify(want) && `判断材料の節は ${want.join("・")} をこの順に1つずつ`].filter(Boolean);
+    JSON.stringify(sectionsOf(q.material).map((s) => s.name)) !== JSON.stringify(want) && `判断材料の節は ${want.join("・")} をこの順に1つずつ`].filter(Boolean);
 }
 
 // 答えのない問いの種類を見せるラベル（ゲートだけが付け外しする。回答フォームのラベルの欄には出さない）。

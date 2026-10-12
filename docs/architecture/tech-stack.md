@@ -75,7 +75,7 @@
 Dependabotは、masterが同じ版になってもPull Requestを閉じないことがあり、閉じる条件は公式の文書に無い。依存の版上げを
 取り込むタスクは、同じ版を出しているDependabotのPull Requestをissueの本文に番号で名指し、完了の条件に
 「dependabot の #<番号> が閉じている」を書く（判定役は、issueが名指したDependabotのPull Requestだけを担当が閉じてよいものと
-読む。`.github/claude-task/settings.json`の`autoMode`）。閉じるのは作る担当で、マージのあとの残りとして済ませる:
+読む。`.github/claude-task/settings.json`の`autoMode`）。閉じるのは実装担当で、マージのあとの残りとして済ませる:
 `gh pr view <番号> -R ridecompass/ride-compass --json state`が`OPEN`なら
 `gh pr close <番号> -R ridecompass/ride-compass --comment "<取り込んだ Pull Request> で同じ版を取り込んだ"`で閉じる。
 

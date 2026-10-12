@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import base from "../flow.config.json" with { type: "json" };
 import { questionForms } from "../src/bot.js";
+import { formed as make } from "./forms.js";
 import { NONE, answerBody, answerProblem, answerText, askText, checkByText, conditions, latestQuestion, withButton } from "../src/questions.js";
 import { fillFields, issueProblems, parseArgs, withOrigin } from "../../../.claude/skills/file-issue/scripts/new-issue.mjs";
 import { check } from "../../../.claude/skills/task-work/scripts/check.mjs";
@@ -37,11 +38,7 @@ test("印を付ける（task-work の check.mjs）: 1つに決まる残りの条
   assert.match(moved.error, /読んだあとに変わった/);
 });
 
-// 書く者が埋める問い（判断・操作）は、形の骨組みの問いの文と答えの行を差し替えて作る。ゲートが出す問いは、ゲートと同じ組み立てで作る。
-const make = (kind, text, rows) => {
-  const [head, , ...rest] = questionForms[kind].skeleton.split("\n");
-  return [head, text, "", rest.find((l) => l.startsWith("### ")), ...rows.map((r) => `- ${r}`), "", ...rest.slice(rest.indexOf("<details><summary>判断材料</summary>"))].join("\n");
-};
+// 書く者が埋める問い（判断・操作）は形の骨組みから作り（test/forms.js: formed）、ゲートが出す問いは、ゲートと同じ組み立てで作る。
 const asked = (text) => latestQuestion([text], questionForms);
 
 test("答えを記録する（ask の answer.mjs）: 回答フォームと同じ照らしで断り、書いた文はゲートが同じ文として読む", () => {
