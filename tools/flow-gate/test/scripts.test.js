@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -125,12 +125,38 @@ test("起票する（file-issue の new-issue.mjs）: 欄を issue へ1回で入
   assert.match(fillFields(() => "{}", 77, [["size", "XL"]]), /規模「XL」は .*のどれか/, "選択肢に無い値は書かない");
 });
 
-test("担当の終わりのコメント（.github/claude-task/after.js）: 書いた見出しと読み始めを、ゲートが同じ形で読む", () => {
+// 担当の後始末（.github/claude-task/after.js）。CI は GITHUB_SHA を入れるので、作業ツリーの道を見るときは外す。
+const AFTER = fileURLToPath(new URL("../../../.github/claude-task/after.js", import.meta.url));
+const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const { GITHUB_SHA: _, ...noSha } = process.env;
+const execution = (messages) => {
   const file = join(mkdtempSync(join(tmpdir(), "after-")), "execution.json");
-  writeFileSync(file, JSON.stringify([{ type: "result", result: "PR を出した" }]));
-  const script = fileURLToPath(new URL("../../../.github/claude-task/after.js", import.meta.url));
-  const r = spawnSync(process.execPath, [script, "確かめる", file, "", "https://example.invalid/run"], { encoding: "utf8", env: { ...process.env, READ_FROM: "2026-10-12T00:00:00Z" } });
-  assert.equal(r.status, 0, r.stderr);
-  assert.equal(END.exec(r.stdout)?.[1], "確かめる", "担当の種類");
-  assert.equal(readFromOf(r.stdout), "2026-10-12T00:00:00Z", "読み始め");
+  writeFileSync(file, JSON.stringify(messages));
+  return file;
+};
+// after.js だけを、流れの道具（tools/）の無い所へ写す。
+const lone = () => {
+  const dir = join(mkdtempSync(join(tmpdir(), "after-lone-")), ".github", "claude-task");
+  mkdirSync(dir, { recursive: true });
+  copyFileSync(AFTER, join(dir, "after.js"));
+  return join(dir, "after.js");
+};
+
+test("担当の終わりのコメント（after.js）: 書いた見出しと読み始めを、ゲートが同じ形で読む（作業ツリーの形・実行が始まった版の形）", () => {
+  const file = execution([{ type: "result", result: "PR を出した" }]);
+  const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).stdout.trim();
+  for (const [name, script, env] of [["作業ツリー", AFTER, noSha], ["実行が始まった版（流れの道具の無い所から）", lone(), { ...noSha, GITHUB_SHA: head }]]) {
+    const r = spawnSync(process.execPath, [script, "確かめる", file, "", "https://example.invalid/run"], { cwd: ROOT, encoding: "utf8", env: { ...env, READ_FROM: "2026-10-12T00:00:00Z" } });
+    assert.equal(r.status, 0, `${name}: ${r.stderr}`);
+    assert.equal(END.exec(r.stdout)?.[1], "確かめる", `${name}: 担当の種類`);
+    assert.equal(readFromOf(r.stdout), "2026-10-12T00:00:00Z", `${name}: 読み始め`);
+  }
+});
+
+test("担当の後始末（after.js --quota）: 流れの道具を読めない所でも、利用の上限で止まったときだけ 1 で終わる", () => {
+  const script = lone();
+  for (const [messages, code] of [[[], 0], [[{ type: "assistant", error: "rate_limit" }], 1]]) {
+    const r = spawnSync(process.execPath, [script, "--quota", execution(messages)], { encoding: "utf8", env: noSha });
+    assert.equal(r.status, code, `${JSON.stringify(messages)}: ${r.stderr}`);
+  }
 });
