@@ -5,7 +5,7 @@
 // 行き先はゲートが答えから決め、書いた文があれば Claude が読んでから当てる。
 import { GitHub } from "./github.js";
 import { byName, jstText } from "./facts.js";
-import { NONE, answerBody, answerProblem, isQuestion, isQuestionLabel, latestQuestion } from "./questions.js";
+import { NONE, answerBody, answerProblem, answerUrl, isQuestion, isQuestionLabel, latestQuestion } from "./questions.js";
 
 const RECENT = 5; // 材料に載せる最近のコメント（上に出した問いのコメントは数えない）
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -101,7 +101,8 @@ export async function answerForm(request, env, config) {
     .map((c) => `<p class="note"><a href="${esc(c.url)}">${esc(c.author?.login ?? "ghost")} ・ ${jstText(Date.parse(c.createdAt))}</a></p>${c.bodyHTML}`).join("");
   // 判断材料と本文は、読んだときに GitHub が描いた HTML を使う（判断材料は問いのコメントの <details>、本文は頭の回答のボタンを除く）。
   const material = /<details[\s\S]*<\/details>/.exec(asked.bodyHTML)?.[0].replace("<details", "<details open") ?? "";
-  const body = issue.bodyHTML.replace(/^\s*<p[^>]*>\s*<a[^>]*\/answer\?issue=\d+[\s\S]*?<\/p>/, "");
+  const button = issue.bodyHTML.indexOf(`href="${answerUrl(config, number)}"`);
+  const body = button < 0 ? issue.bodyHTML : issue.bodyHTML.slice(issue.bodyHTML.indexOf("</p>", button) + "</p>".length);
   return page(`<p class="num">#${number}</p><p class="title">${esc(issue.title)}</p><p>${esc(q.text)}</p>
 ${material}${fold("本文", body)}${fold("最近のコメント", recent)}
 <form><input type="hidden" name="question" value="${esc(q.text)}"><div class="inp">${answerField(q)}

@@ -119,7 +119,8 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     if (q.includes("bodyHTML")) { // 回答フォームの読み（src/form.js）
       const i = w.at(v.i);
       return { repository: { labels: { nodes: repoLabels().map((name) => ({ id: `L${name}`, name })) }, issue: { id: `I${i.n}`, title: "タスク", url: `https://github.test/${i.n}`,
-        bodyHTML: i.body, labels: names(i.labels),
+        // 本文の頭の回答のボタンは、GitHub が描く形（段落の中のリンクの付いた画像）にする。
+        bodyHTML: i.body.replace(/^<!-- flow-gate -->\n\[!\[回答する\]\(([^)]*)\)\]\(([^)]*)\)\n<!-- \/flow-gate -->\n/, '<p><a href="$2" rel="nofollow"><img src="$1"></a></p>'), labels: names(i.labels),
         comments: { nodes: i.comments.map((body) => ({ body, bodyHTML: body, url: "https://github.test/c", createdAt: "2026-10-11T00:00:00Z", author: { login: "x" } })) } } } };
     }
     if (q.includes("t:repository")) {
@@ -273,8 +274,8 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め5・�
       { state: "OPEN", status: "実装", runs: ["#1 実装"] }],
     ["決め6 前からある Claude の割り当ては外し、保留ではユーザーだけ", { status: "保留", assignees: [config.claude] }, null, ev.comment(1), { assignees: [config.user] }],
     ["R6 見送り（Close as not planned）で閉じたものは閉じたまま", { status: "完了", state: "CLOSED", reason: "NOT_PLANNED" }, null, ev.issue(1, "closed"), { state: "CLOSED" }],
-    ["A 対話作業は、検査・検証を開発機のセッションの中で済ませ、ラベル「開発機で作業中」が無い間はユーザーの番", { status: "実装", type: config.dialogType, pr: { draft: true, checks: "PENDING" } }, null,
-      ev.comment(1), { status: "実装", assignees: [config.user], runs: [] }],
+    ["A 対話作業も、ステータスは事実どおり（検査の間は検査）。振り出さず、ラベル「開発機で作業中」が無い間はユーザーの番", { status: "実装", type: config.dialogType, pr: { draft: true, checks: "PENDING" } }, null,
+      ev.comment(1), { status: "検査", assignees: [config.user], runs: [] }],
     ["開発機のセッションが触っている間（ラベル「開発機で作業中」）は振り出さず、担当者は Claude", { status: "実装", labels: [config.devLabel] }, null, ev.comment(1),
       { status: "実装", assignees: [config.claude], runs: [] }],
     ["開発機のセッションが触っている対話作業は、担当者が Claude", { status: "実装", type: config.dialogType, labels: [config.devLabel] }, null, ev.comment(1), { assignees: [config.claude] }],
@@ -367,12 +368,12 @@ test("tasks#877 問いを出した事実が無くなったら、条件が残っ�
   const rows = [
     // [要求, タスク, 出来事, 期待するステータス]
     ["見送りの前提について問うたあとで、前提が開き直された", { blockedBy: [7], comments: [askDropped([7], config.questionForms)] }, ev.issue(7, "reopened"), "待機"],
-    ["イレギュラーを問うたあとで、作業ブランチの PR が開かれた", { comments: [ASKED("イレギュラー")], pr: { created: T(1), checks: "PENDING" } }, ev.pr(1, "opened"), "検査"],
-    ["イレギュラーを問うたあとで、問う前からあった PR がマージされた", { comments: [ASKED("イレギュラー")], pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1", mergedAt: T(1) } },
+    ["イレギュラーを問うたあとで、作業ブランチの PR が開かれた", { comments: [END(0), ASKED("イレギュラー")], pr: { created: T(1), checks: "PENDING" } }, ev.pr(1, "opened"), "検査"],
+    ["イレギュラーを問うたあとで、問う前からあった PR がマージされた", { comments: [END(0, "検証"), ASKED("イレギュラー")], pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1", mergedAt: T(1) } },
       ev.ci(config.base, "m1"), "実装"],
     ["確かめを問うたあとで、Claude が確かめる条件が足された", { body: withButton(left, config, 1), comments: [ASKED("確かめ")] }, ev.issue(1, "edited", config.claude), "実装"],
     ["見送りの前提がまだ見送りのままなら待つ", { blockedBy: [8], comments: [askDropped([8], config.questionForms)] }, ev.comment(1, config.claude), "回答"],
-    ["検証担当が手放したイレギュラーは、問う前からある開いた PR では片付かない", { comments: [ASKED("イレギュラー")], pr: { checks: "SUCCESS" } }, ev.pr(1, "synchronize"), "回答"],
+    ["検証担当が手放したイレギュラーは、問う前からある開いた PR では片付かない", { comments: [END(0, "検証"), ASKED("イレギュラー")], pr: { checks: "SUCCESS" } }, ev.pr(1, "synchronize"), "回答"],
     ["Claude の判断の問いは、ゲートが中身を読まないので待つ", { comments: [QUESTION] }, ev.comment(1, config.claude), "回答"],
   ];
   for (const [name, task, event, status] of rows) {
@@ -710,6 +711,7 @@ test("回答フォーム（R10〜R12・決め2・合意したモック）: 問�
   await w.send(ev.issue(2, "opened", config.claude)); // 採否の問い
   const check = await (await open(1)).text();
   for (const text of ["項目", "見た目", "完了にする（上の全部）", "書くこと", "確認", "戻る", "送信", "判断材料"]) assert.ok(check.includes(text), `確かめ: ${text}`);
+  assert.ok(w.at(1).body.includes("button.svg") && !check.includes("button.svg"), "本文の頭の回答のボタンは、フォームの本文に出さない");
   for (const text of ["次のステータス", "問題なし", "問題あり"]) assert.ok(!check.includes(text), `確かめ: ${text} は出さない`);
   assert.match(check, /<textarea name="note" rows="4"/, "書く欄は1つで4行");
   const adopt = await (await open(2)).text();

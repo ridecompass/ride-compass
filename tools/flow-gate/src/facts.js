@@ -32,7 +32,8 @@ export function taskOf(config, issue, now = new Date()) {
     open: issue.state === "OPEN", blocked: waits.some((w) => w.state === "OPEN"), dropped: waits.filter(dropped).map((w) => w.number),
     future: Boolean(text) && (!start || start > now), badStart: mine && !jst(mine) ? mine : null,
     urgent: names(parent ?? issue).includes(config.urgentLabel), held: Boolean(parent) && (parent.state === "CLOSED" || from[f.status.name] === "保留"),
-    labels, dev: labels.includes(config.devLabel), assignees: issue.assignees.nodes.map((a) => a.login) };
+    labels, dev: labels.includes(config.devLabel), dialog: issue.issueType?.name === config.dialogType, // 1件を決め直すときは、作ったときの種類で読み直す
+    assignees: issue.assignees.nodes.map((a) => a.login) };
 }
 export const jstText = (ms) => new Date(ms + 9 * 3600e3).toISOString().slice(0, 16).replace("T", " "); // 日本時間の「YYYY-MM-DD HH:MM」
 // 担当の実行の名前「#<番号> <種類> <振り出しの識別子>」（claude-task.yml の run-name。手で起こした実行は識別子が無い）。
@@ -96,10 +97,10 @@ export const readFromOf = (body) => /^読み始め: (\S+)$/m.exec(body)?.[1] ?? 
 // 読めなければ読めなかったと書き、ゲートは約束が動いたと読まない。
 const START = "読み始めの完了の条件:";
 export const startBlock = (body) => (body ? [START, ...conditions(body).map((c) => `- [${c.done ? "x" : " "}] ${c.text}`)].join("\n") : `${START} 読めなかった`);
-// 最後に終わった担当（種類・読み始めの時刻・読み始めの完了の条件）。終わりのあとに問いが出ていれば、その終わりは問いの側で扱ったので null。
+// 最後に終わった担当（種類・読み始めの時刻・読み始めの完了の条件）。終わりのあとに答えがあれば、その終わりは答えで扱ったので null。
 function endedOf(nodes) {
   const k = nodes.findLastIndex((n) => END.test(norm(n.body)));
-  if (k < 0 || nodes.slice(k + 1).some((n) => isQuestion(n.body))) return null;
+  if (k < 0 || nodes.slice(k + 1).some((n) => isAnswer(n.body))) return null;
   const body = norm(nodes[k].body);
   const at = body.indexOf(`\n${START}\n`);
   return { kind: END.exec(body)[1], from: readFromOf(body) ?? nodes[k].createdAt, before: at < 0 ? null : conditions(body.slice(at + START.length + 2)) };

@@ -29,12 +29,12 @@ async function stopReason(gh, config, runs) {
 // 同じ出来事で読んだ開いた issue の一覧（無ければ、振り出すときだけ読む）。
 export async function dispatch(gh, config, settled, kinds, runs, tasks = null) {
   const active = runs.filter((r) => r.active);
-  const wanted = [...new Set([...kinds, ...settled.map((t) => dispatchKind(t, config)).filter(Boolean)])];
+  const wanted = [...new Set([...kinds, ...settled.map((t) => dispatchKind(t)).filter(Boolean)])];
   const free = Object.fromEntries(wanted.map((kind) => [kind, config.slots[kind] - active.filter((r) => r.kind === kind).length]));
   if (!Object.values(free).some((n) => n > 0) || (await stopReason(gh, config, runs))) return;
   const open = (tasks ?? (await openTasks(gh, config))).map((t) => ({ ...t, runs: active.filter((r) => r.number === t.number) }));
   const rank = (t) => config.priorities.indexOf(t.priority ?? config.unsetPriority);
-  const picked = Object.keys(free).flatMap((kind) => open.filter((t) => dispatchKind(t, config) === kind)
+  const picked = Object.keys(free).flatMap((kind) => open.filter((t) => dispatchKind(t) === kind)
     .sort((a, b) => b.urgent - a.urgent || rank(a) - rank(b) || a.number - b.number)
     .slice(0, Math.max(0, free[kind])).map((t) => ({ number: t.number, kind, key: `${t.number}-${Date.now()}` })));
   const results = await Promise.allSettled(picked.map((p) => gh.rest("POST", `/repos/${config.code}/actions/workflows/${config.workflow}/dispatches`,

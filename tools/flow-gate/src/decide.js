@@ -8,23 +8,33 @@
 import { APPLIED, checkLines, droppedOf, questionLabel, splitBody, withButton } from "./questions.js";
 
 const WAIT = ["回答", "保留"]; // ユーザーの番（担当者の欄にユーザーを入れる）
-const DIALOG = ["実装", "待機", ...WAIT, "完了"]; // 対話作業のステータス（検査・検証は開発機のセッションの中で済ませる）
 const DISPATCH = ["実装", "検証"]; // 振り出す担当の種類（ステータスの値と同じ名前）
 
 // 1階の待ち: 関係性で待つもの（前提・子が開いている・着手可能日時が先・親が保留か閉じた）。
 const waiting = (f) => f.blocked || f.future || f.held;
-// 振り出す担当の種類（無ければ null。src/patrol.js が読む）。1階の結果に従い、待っているもの・対話作業・開発機のセッションが触っているもの・
-// 担当の付いたものは振り出さない。
-export const dispatchKind = (f, config) =>
-  (f.open && !f.runs.length && !f.dev && !waiting(f) && f.type !== config.dialogType && DISPATCH.includes(f.status) ? f.status : null);
+// 2階: 持ち主（次に結果を出す者）。担当者と振り出しは、どちらもここから導く。ユーザーに問わないと進めない間（回答・保留）はユーザー。
+// 対話作業と、開発機のセッションが触っている issue は、開発機のセッションが進める（ユーザーが開いたときにしか動かないので、ラベル
+// 「開発機で作業中」が無い間はユーザー）。ほかの実装・検証は担当、検査・待機は事実が動くのを待つ（担当者は Claude）。完了は持ち主なし。
+function holder(status, f) {
+  if (status === "完了") return null;
+  if (WAIT.includes(status)) return "ユーザー";
+  if (f.dialog || f.dev) return f.dev ? "開発機" : "ユーザー";
+  return DISPATCH.includes(status) ? "担当" : "Claude";
+}
+const owner = (status, f, config) => {
+  const h = holder(status, f);
+  return h === null ? [] : h === "ユーザー" ? [config.user] : [config.claude];
+};
+// 振り出す担当の種類（無ければ null。src/patrol.js が読む）。持ち主が担当で、担当の実行がまだ無いもの。見回りが読むステータスは前に決めた値
+// なので、待つ相手（1階の待ち）を今の事実で当て直してから見る。
+export const dispatchKind = (f) => (f.open && !f.runs.length && holder(held(f, { status: f.status }).status, f) === "担当" ? f.status : null);
 
 export function decide(f, config) {
   // 種類は作るときに決まり、対話作業の境目をまたいで変わらない。境目の向こうへ変わったら、こちら側の最後の種類へ戻す。
   const mine = (t) => (t === config.dialogType) === f.dialog;
   const type = mine(f.type) ? f.type : (f.types.findLast(mine) ?? (f.dialog ? config.dialogType : null));
-  const question = f.question && !f.question.answer && stale(f, f.question) ? null : f.question;
+  const question = f.question && !f.question.answer && !alive(f, f.question, config) ? null : f.question;
   const s = status({ ...f, question }, config);
-  if (f.dialog && !DIALOG.includes(s.status)) s.status = "実装";
   const body = checkLines(f.body, s.check ?? []);
   // 見送りで閉じる・閉じた issue の開いた PR は、もう確かめもマージもしないので閉じる。
   const dropping = (s.closeAs ?? (f.open ? null : f.closedAs)) === "NOT_PLANNED";
@@ -44,18 +54,15 @@ function runStatus(f, status) {
   return f.runs.find((r) => r.kind === status)?.status ?? null;
 }
 
-// 答えの無い問いを出した事実が、あとの事実で無くなったか（無くなった問いは読まず、表で決め直す）。採否と Claude の判断の問いは、
-// ゲートが読める事実から出ていない（ゲートは問いの中身を読まない）ので、答えるまで読む。
-function stale(f, q) {
-  if (q.kind === "確かめ") return f.remaining.some((c) => c.verify !== "ユーザー"); // 残りが確かめだけでなくなった
-  if (q.kind === "イレギュラー") return f.handed > q.at; // 手放したあとに、作業ブランチで次の持ち主へ渡した
-  return Boolean(droppedOf(q.text)?.some((n) => !f.dropped.includes(n))); // 見送りだった相手が見送りでなくなった
+// 答えの無い問いが生きているか。ゲートが出した問いは、同じ事実から決め直して同じ問いが出る間だけ生きる（一度問うたこと・担当の実行・
+// 保留・読まれていない文は、問いを出す事実に数えない）。無くなった問いは読まず、表で決め直す。担当が出した問いは、ゲートが中身を読まない
+// ので答えるまで生きる。
+function alive(f, q, config) {
+  const dropped = droppedOf(q.text);
+  if (q.form.by !== "ゲート" && !dropped) return true;
+  const s = status({ ...f, question: null, adoptAsked: false, droppedAsked: false, unread: false, runs: [], status: null }, config);
+  return dropped ? String(s.ask?.dropped?.toSorted()) === String(dropped.toSorted()) : s.ask === q.kind;
 }
-
-// 2階: 担当者は2択。ユーザーに問わないと進めない（回答・保留）ならユーザー、ほかは Claude（完了は持ち主なし）。対話作業は開発機のセッションが
-// 進め、それはユーザーが開いたときにしか動かないので、ラベル「開発機で作業中」が無い間はユーザー。
-const owner = (status, f, config) =>
-  (status === "完了" ? [] : WAIT.includes(status) || (f.dialog && !f.dev) ? [config.user] : [config.claude]);
 
 // 受け入れなかった書き込みは、黙らずに1つのコメントで知らせる（形に合わない問い・印の間の見知らぬ行・形の合わない着手可能日時・
 // 事実へ戻したユーザーのボードの移動）と、親が閉じたので閉じた子の理由。最新のコメントが同じ知らせなら書かない。
@@ -102,7 +109,7 @@ function status(f, config) {
   const told = a.text && !f.answerApplied ? `${APPLIED}（${a.decision}）。` : null;
   if (a.decision === "見送り") return { status: "完了", closeAs: "NOT_PLANNED", told };
   if (a.decision === "保留") return { status: "保留", told };
-  if (q.kind !== "確かめ" || a.decision !== "完了") return { ...table(f), told };
+  if (a.decision !== "完了") return { ...table(f), told };
   const ok = f.remaining.filter((c) => c.verify === "ユーザー" && a.confirmed.includes(c.text));
   return { ...table({ ...f, remaining: f.remaining.filter((c) => !ok.includes(c)) }), check: ok.map((c) => c.index), told };
 }

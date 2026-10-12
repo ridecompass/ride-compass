@@ -10,7 +10,7 @@ const BLOCK = /^<!-- flow-gate -->\n([\s\S]*?)<!-- \/flow-gate -->\n*/;
 const BUTTON = /^\[!\[回答する\]\([^)]*\/button\.svg\)\]\([^)]*\/answer\?issue=\d+\)$/;
 
 // 本文の頭の回答のボタン（GitHub の画面にボタンは足せないので、リンク付きの画像。画像とフォームの道は src/index.js が開ける）。
-const answerUrl = (config, number) => `${config.urls.form}/answer?issue=${number}`;
+export const answerUrl = (config, number) => `${config.urls.form}/answer?issue=${number}`;
 // 印の間にゲートの書かない行があれば、黙って消さずに印の外の先頭へ出す。foreign はその行。
 export function splitBody(body) {
   const foreign = (BLOCK.exec(norm(body))?.[1] ?? "").split("\n").filter((l) => l.trim() && !BUTTON.test(l.trim()));
