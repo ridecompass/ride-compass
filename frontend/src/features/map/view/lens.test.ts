@@ -6,14 +6,7 @@ import { LEGEND_NO_DATA_KEY, LEGEND_UNDETERMINED_KEY } from "@/lib/mapDisplay/ma
 
 import { catalogEntry, dedicatedEntry, rampEntry, tileInput } from "@/testing/catalogAxes";
 import { matchesFilter as matches } from "@/testing/mapExpressions";
-import {
-  isRouteStyleModeId,
-  lensConditionsLabel,
-  lensLegend,
-  lensOptions,
-  lensPremises,
-  paintedAxisId,
-} from "./lens";
+import { isRouteStyleModeId, lensConditionsLabel, lensLegend, lensOptions, lensPremises, paintedAxisId } from "./lens";
 
 /** 道の値として読む材料。 */
 const VALUE = "v";
