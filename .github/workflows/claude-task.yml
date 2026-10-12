@@ -1,5 +1,5 @@
-# 担当（作る・確かめる）を1件、GitHub Actions のランナーで動かす。見回りが振り出す（tools/flow-gate/src/patrol.js）。手でも起こせる:
-#   gh workflow run claude-task.yml -R ridecompass/ride-compass -f issue=<置き場の issue の番号> -f kind=<作る|確かめる>
+# 担当（実装・検証）を1件、GitHub Actions のランナーで動かす。見回りが振り出す（tools/flow-gate/src/patrol.js）。手でも起こせる:
+#   gh workflow run claude-task.yml -R ridecompass/ride-compass -f issue=<置き場の issue の番号> -f kind=<実装|検証>
 # 担当は .claude/skills/task-work/SKILL.md の冒頭と自分の担当の節の手順を進め、ステータスは書かない（実行の始まりと終わりの出来事で、ゲートが決める）。
 # このワークフローを無効にすると、見回りは振り出さない（止める操作）。リポジトリは公開なので、担当の出力の全文は記録に出さない。
 name: Claude Task
@@ -16,7 +16,7 @@ on:
         description: 担当の種類
         required: true
         type: choice
-        options: [作る, 確かめる]
+        options: [実装, 検証]
       key:
         description: 振り出しの識別子（見回りが付ける。手で起こすときは空でよい）
         required: false
@@ -53,11 +53,15 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.CODE_TOKEN }}
       # 置き場の名前は tools/flow-gate/flow.config.json の tasks だけが持つ。後の段は TASKS を、担当への指示は段の出力を読む。
+      # 後片付けの道具（.github/claude-task/after.js と、それが読む条件の読み方 tools/flow-gate/src）は、担当が作業ブランチへ移っても振り出された版で
+      # 動くよう、ここで写して後の段はそれを打つ。
       - id: tasks
         run: |
           tasks=$(jq -er .tasks tools/flow-gate/flow.config.json)
           echo "TASKS=$tasks" >> "$GITHUB_ENV"
           echo "repo=$tasks" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/flow" && cp -r .github/claude-task tools/flow-gate/src "$RUNNER_TEMP/flow/"
+          echo "FLOW_SRC=$RUNNER_TEMP/flow/src" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v5
         with:
           node-version-file: frontend/package.json
@@ -72,8 +76,13 @@ jobs:
       - run: npm ci && npx playwright install --with-deps chromium
         working-directory: frontend
       - run: git config --global user.name hidakagit && git config --global user.email 6731891+hidakagit@users.noreply.github.com
-      # 担当が issue を読み始める時刻。終わりのコメントに書き、ゲートはこれより後のユーザーの文をまだ読まれていない文として扱う（.github/claude-task/after.js）。
-      - run: echo "READ_FROM=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+      # 担当が issue を読み始める時刻と、その時点の本文。終わりのコメントに読み始めとその時点の完了の条件を写し、ゲートはこれより後のユーザーの文を
+      # まだ読まれていない文として扱い、状態を動かさずに終えた担当がその実行で約束を動かしたかを決める（.github/claude-task/after.js）。
+      - env:
+          GH_TOKEN: ${{ secrets.FLOW_BOT_TOKEN }}
+        run: |
+          echo "READ_FROM=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          gh issue view "$ISSUE" -R "$TASKS" --json body -q .body > "$RUNNER_TEMP/start.md"
       - uses: anthropics/claude-code-action@v1
         id: claude
         with:
@@ -83,14 +92,14 @@ jobs:
           allowed_bots: ridecompass-gate
           # 担当の権限（連携がランナーのユーザー設定へ書く。判定役はユーザー設定の autoMode を読む）。
           settings: ${{ github.workspace }}/.github/claude-task/settings.json
-          claude_args: --model ${{ inputs.kind == '確かめる' && 'claude-sonnet-5-5' || 'claude-opus-5-5' }} --disallowedTools Monitor,ScheduleWakeup,CronCreate,CronDelete,CronList,Workflow
+          claude_args: --model ${{ inputs.kind == '検証' && 'claude-sonnet-5-5' || 'claude-opus-5-5' }} --disallowedTools Monitor,ScheduleWakeup,CronCreate,CronDelete,CronList,Workflow
           prompt: |
             あなたは RideCompass の${{ inputs.kind }}担当です。作業ツリー ${{ github.workspace }} で、置き場 ${{ steps.tasks.outputs.repo }} の issue #${{ inputs.issue }} を扱います。
-            まず CLAUDE.md と、.claude/skills/task-work/SKILL.md のうち冒頭と「${{ inputs.kind }}担当」の節を `awk -v k='**${{ inputs.kind }}担当**' '/^\*\*(作る|確かめる)担当\*\*/{s=(index($0,k)!=1)} /^\*\*競合を解く\*\*/{s=0} !s' .claude/skills/task-work/SKILL.md` で読み、その手順のとおりに進めてください。
-      # 作る担当の GitHub に無い変更は、ランナーと一緒に消えないよう wip の枝へ残す（作業ブランチは書き換えない）。
-      - if: always() && inputs.kind == '作る'
+            まず CLAUDE.md と、.claude/skills/task-work/SKILL.md のうち冒頭と「${{ inputs.kind }}担当」の節を `awk -v k='**${{ inputs.kind }}担当**' '/^\*\*(実装|検証)担当\*\*/{s=(index($0,k)!=1)} /^\*\*競合を解く\*\*/{s=0} !s' .claude/skills/task-work/SKILL.md` で読み、その手順のとおりに進めてください。
+      # 実装担当の GitHub に無い変更は、ランナーと一緒に消えないよう wip の枝へ残す（作業ブランチは書き換えない）。
+      - if: always() && inputs.kind == '実装'
         run: |
-          [ -z "$(git status --porcelain)" ] || { git add -A && git commit -q -m "tasks#${ISSUE}: 作業途中（作る担当の終わりに残った未コミットの変更）"; }
+          [ -z "$(git status --porcelain)" ] || { git add -A && git commit -q -m "tasks#${ISSUE}: 作業途中（実装担当の終わりに残った未コミットの変更）"; }
           git fetch -q origin
           if [ -z "$(git branch -r --contains HEAD)" ]; then git push -q origin "HEAD:refs/heads/wip/tasks-${ISSUE}-$(date -u +%Y%m%dT%H%M%SZ)"; fi
       # 手番の記録（実行のファイル）を非公開の置き場の日（UTC）ごとのリリースへ置き、issue に終わりを書く（.github/claude-task/after.js）。
@@ -106,11 +115,12 @@ jobs:
             gh release view "$TAG" -R "$TASKS" > /dev/null 2>&1 || gh release create "$TAG" -R "$TASKS" --title "担当の手番の記録 ${TAG#turns-}" --notes "" || true
             gh release upload "$TAG" "$RUNNER_TEMP/$NAME" -R "$TASKS" && LOG="https://github.com/$TASKS/releases/download/$TAG/$NAME"
           fi
-          node .github/claude-task/after.js "$KIND" "$EXECUTION_FILE" "$LOG" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > "$RUNNER_TEMP/end.md"
+          node "$RUNNER_TEMP/flow/claude-task/after.js" "$KIND" "$EXECUTION_FILE" "$LOG" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            "$RUNNER_TEMP/start.md" > "$RUNNER_TEMP/end.md"
           gh issue comment "$ISSUE" -R "$TASKS" --body-file "$RUNNER_TEMP/end.md"
       # 担当が Claude の利用の上限・認証で止まったら、この段が落ちる。ゲートはこの段の名前（flow.config.json: quotaStep）で読み、振り出しを止める。
       - name: 利用の上限で止まった
         if: always()
         env:
           EXECUTION_FILE: ${{ steps.claude.outputs.execution_file || format('{0}/claude-execution-output.json', runner.temp) }}
-        run: node .github/claude-task/after.js --quota "$EXECUTION_FILE"
+        run: node "$RUNNER_TEMP/flow/claude-task/after.js" --quota "$EXECUTION_FILE"

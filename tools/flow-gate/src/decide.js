@@ -3,9 +3,9 @@
 // 読んで担当者（ボールの持ち主）を決める。2階は前提や日時を読み直さない。見回りも、振り出すかを1階の結果（dispatchKind）で決める。
 // ライフサイクル（docs/conventions/flow.md「issue のライフサイクル」）: issue は自分の約束（完了の条件と、作る側の完了の定義）が全部果たされたら終わる。
 // 担当の実行は、状態か約束のどちらかを動かして終わる。どちらも動かさずに終わったらイレギュラーとしてユーザーに渡す。
-// 返すのは、ゲートが保つ値の全部（ステータス・欄「実行の status」・開き閉じ・種類・担当者・本文・PR をレビュー可能にするか・出す問い・
+// 返すのは、ゲートが保つ値の全部（ステータス・欄「実行の status」・開き閉じ・種類・担当者・本文・問いのラベル・PR をレビュー可能にするか・出す問い・
 // 取り消す実行）。ゲートは今の値と違う所だけを書くので、同じ事実からは何度決めても同じになる。
-import { APPLIED, checkLines, droppedOf, splitBody, withButton } from "./questions.js";
+import { APPLIED, checkLines, droppedOf, questionLabel, splitBody, withButton } from "./questions.js";
 
 const WAIT = ["回答", "保留"]; // ユーザーの番（担当者の欄にユーザーを入れる）
 const DIALOG = ["実装", "待機", ...WAIT, "完了"]; // 対話作業のステータス（検査・検証は開発機のセッションの中で済ませる）
@@ -28,10 +28,13 @@ export function decide(f, config) {
   const body = checkLines(f.body, s.check ?? []);
   // 見送りで閉じる・閉じた issue の開いた PR は、もう確かめもマージもしないので閉じる。
   const dropping = (s.closeAs ?? (f.open ? null : f.closedAs)) === "NOT_PLANNED";
+  // 答えの無い問いがある間（回答のボタンを置く間）は、その問いの種類（いま出す問いがあればその種類）をラベルで見せる。
+  const asking = s.status === "回答" || (s.status !== "完了" && question && !question.answer);
+  const kind = s.ask ? (s.ask.dropped ? "判断" : s.ask) : question?.kind;
   return { type, status: s.status, run: runStatus(f, s.status), open: s.status !== "完了", closeAs: s.closeAs, ask: s.ask ?? null, cancel: s.cancel ?? [],
     closePr: dropping && f.pr ? f.pr.id : null, notice: [notice(f, s.status), s.told].filter(Boolean).join("\n\n") || null,
     ready: s.status === "検証" && Boolean(f.pr?.draft), assignees: owner(s.status, f, config),
-    body: s.status === "回答" || (s.status !== "完了" && question && !question.answer) ? withButton(body, config, f.number) : body };
+    questionLabel: asking && kind ? questionLabel(kind) : null, body: asking ? withButton(body, config, f.number) : body };
 }
 
 // 欄「実行の status」: ステータスが指す種類の、動いている実行の status（GitHub の値のまま。無ければ null）。検査は、終わりから最も遠い
@@ -80,8 +83,8 @@ function status(f, config) {
   if (f.runs.length) return f.status === "保留" ? { status: "保留", cancel: f.runs.map((r) => r.id) }
     : { status: f.runs.some((r) => r.kind === "実装") ? "実装" : "検証", cancel: f.runs.slice(1).map((r) => r.id) };
   if (f.status === "保留") return { status: "保留" }; // ユーザーが置いた保留は、ユーザーが出すまで保つ
-  // 入口: Claude が起こした要望だけ採否を問う。子と分割したものは、採否を親か分割元から受け継ぐ。
-  if (!f.status && f.author === config.claude && f.type === "要望" && !f.parent && !f.origin) return { status: "回答", ask: "採否" };
+  // 入口: Claude が起こした要望だけ、採否を一度問う。子と分割したものは、採否を親か分割元から受け継ぐ。
+  if (!f.adoptAsked && f.author === config.claude && f.type === "要望" && !f.parent && !f.origin) return { status: "回答", ask: "採否" };
   // ユーザーが書いた文（答えの文・コメント）を Claude がまだ読んでいなければ、Claude の番にする（閉じていれば開き直す）。ゲートは文の中身を読まない。
   if (f.unread) return { status: "実装" };
   // 答えの無い問いがあっても、完了の条件が全部済んだら完成にする（済んだ作業への問いは要らない）。採否は、条件が済んでいても着手するかの答えが要る。
@@ -90,10 +93,11 @@ function status(f, config) {
     const t = table(f);
     return t.status === "完了" && q.kind !== "採否" ? t : { status: "回答" };
   }
-  // 答えは、ユーザーの番（回答）に来たときに当てる。書いた文のある答えは、Claude が読んだあとに一度だけ当て、当てたことを知らせる。
+  // 答えは、書いた文があれば Claude が読んだあとに当て、当てたことを一度だけ知らせる。答えのあとにユーザーがステータスを変えたか開き直したら、
+  // 次の決定はそちらなので、その答えは当てない。
   const a = q?.answer;
-  if (!a || (f.status !== "回答" && !(a.text && f.answerRead && !f.answerApplied))) return redo(f, table(f));
-  const told = a.text ? `${APPLIED}（${a.decision}）。` : null;
+  if (!a || f.superseded || (a.text && !f.answerRead)) return redo(f, table(f));
+  const told = a.text && !f.answerApplied ? `${APPLIED}（${a.decision}）。` : null;
   if (a.decision === "見送り") return { status: "完了", closeAs: "NOT_PLANNED", told };
   if (a.decision === "保留") return { status: "保留", told };
   if (q.kind !== "確かめ" || a.decision !== "完了") return { ...redo(f, table(f)), told };
@@ -105,23 +109,29 @@ function status(f, config) {
 // 実装担当へ渡す。答えを当てた1回だけにすると、枠が埋まっていて振り出せないうちに次の決め直しで検査へ戻る）。
 const redo = (f, t) => (f.redo && t.status === "検査" ? { ...t, status: "実装" } : t);
 
+// 次に結果を出すのが担当でも、待つ相手（着手可能日時・親の保留か閉じ）がある間は、担当は作らないので待機。
+const held = (f, t) => (DISPATCH.includes(t.status) && waiting(f) ? { ...t, status: "待機" } : t);
+
 const IRREGULAR = { status: "回答", ask: "イレギュラー" };
-// 次に結果を出す者が、いま手放した担当と同じ種類のまま（状態が動かず）、その実行で約束も動いていなければ、担当は責務を果たさずに終えた。
-const next = (f, s) => (f.ended?.kind === s && !f.ended.moved ? IRREGULAR : { status: s });
 // 検査の実行が1本も無いと、検査の持ち主がいない。担当が手放したあとなら止まるのでイレギュラー（PR の検査が出る形で push し、マージのあとの検査が
 // 出たことを確かめるのは担当の責務。.claude/skills/task-work/SKILL.md）。
 const noChecks = (f) => (f.ended ? IRREGULAR : { status: "検査" });
-const afterMerge = (f) => (!f.mergeChecks ? noChecks(f) : f.mergeChecks === "FAILURE" ? next(f, "実装") : { status: "検査" });
+const afterMerge = (f) => (!f.mergeChecks ? noChecks(f) : f.mergeChecks === "FAILURE" ? { status: "実装" } : { status: "検査" });
 
-// 1階: 成果物の事実と関係性から、次に結果を出す者の行為を決める（上から最初に当たる行）。
-function table(f) {
+// 1階: 成果物の事実と関係性から、次に結果を出す者の行為を決める（上から最初に当たる行）。次に結果を出すのが、いま手放した担当と
+// 同じ種類のまま（状態が動かず）、その実行で約束も動いていなければ、担当は責務を果たさずに終えた。
+const table = (f) => {
+  const t = held(f, rows(f));
+  return f.ended && !f.ended.moved && t.status === f.ended.kind ? IRREGULAR : t;
+};
+function rows(f) {
   const pr = f.pr;
   if (pr) {
     if (pr.backToDraft) return { status: "実装" }; // 検証担当の差し戻し
     if (!pr.checks) return noChecks(f);
     if (pr.checks === "PENDING") return { status: "検査" }; // 下書きかどうかによらず、検査の結果を待つ間は手放す
-    if (pr.checks === "FAILURE") return next(f, "実装");
-    return next(f, "検証");
+    if (pr.checks === "FAILURE") return { status: "実装" };
+    return { status: "検証" };
   }
   // 待つ相手（前提・子）が開いている間は、確かめも完了もしない。見送りで閉じた相手がいれば、続けるかを一度だけ問う。
   if (f.blocked) return { status: "待機" };
@@ -130,7 +140,5 @@ function table(f) {
   if (f.merged && f.mergeChecks !== "SUCCESS") return afterMerge(f);
   if (!f.remaining.length) return { status: "完了", closeAs: "COMPLETED" };
   if (f.remaining.every((c) => c.verify === "ユーザー")) return { status: "回答", ask: "確かめ" };
-  // 着手可能日時が先・親が保留か閉じた間は、約束が残っていても作らない。
-  if (f.future || f.held) return { status: "待機" };
-  return next(f, "実装");
+  return { status: "実装" };
 }

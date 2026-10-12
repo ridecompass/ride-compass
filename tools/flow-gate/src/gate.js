@@ -3,10 +3,10 @@
 // （と、取り消す実行ごとに1回。Actions の取り消しは1回にまとめる口が無い）。
 import { decide } from "./decide.js";
 import { readFacts } from "./facts.js";
-import { askDropped, askText, bodyRest, confirmConditions, norm } from "./questions.js";
+import { askDropped, askText, confirmConditions, isQuestionLabel, norm } from "./questions.js";
 
 // 決めた問い（種類の名前か、見送りの相手を持つもの）の文。確かめに並べる条件は、書く本文（決めた本文）から取る。
-const askBody = (ask, config, body) => (ask.dropped ? askDropped(ask.dropped, config.questionTemplate) : askText(ask, config.questionTemplate, confirmConditions(body)));
+const askBody = (ask, config, body) => (ask.dropped ? askDropped(ask.dropped, config.questionForms) : askText(ask, config.questionForms, confirmConditions(body)));
 
 // 今と違う所だけの書き込み（[GraphQL の書き込みの名前, 入力の型, 入力]）。GitHub は1回の要求に並べた書き込みを、並べた順に1つずつ行う。
 // 本文（ボタン）は問いのコメントより先に書く（問いの通知から開いたときにボタンがあるように）。閉じるのは最後。
@@ -17,6 +17,9 @@ export function writesOf(f, d, config) {
   if (d.type !== f.type) issue.issueTypeId = d.type ? f.ids.types[d.type] : null;
   if (d.body !== norm(f.body)) issue.body = d.body;
   if (String(d.assignees) !== String(f.assignees)) issue.assigneeIds = d.assignees.map((login) => config.ids[login]);
+  // 答えの無い問いの種類のラベルは、決めた1つ（無ければ無し）に揃える。ほかのラベルはそのまま残す（ラベルは並びごと置き換えで書く）。
+  const labels = [...f.labels.filter((n) => !isQuestionLabel(n)), ...(d.questionLabel ? [d.questionLabel] : [])];
+  if (String([...labels].sort()) !== String([...f.labels].sort())) issue.labelIds = labels.map((n) => f.ids.labels[n]);
   const fields = [["status", d.status, f.status], ["run", d.run, f.run]].filter(([, want, now]) => (want ?? null) !== (now ?? null));
   if (fields.length) issue.issueFieldUpdates = fields.map(([key, value]) =>
     (value ? { fieldName: config.fields[key].name, operation: "SET", value } : { fieldName: config.fields[key].name, operation: "CLEAR" }));
@@ -57,11 +60,9 @@ const branch = (config, ref) => (ref?.startsWith(config.branchPrefix) ? [Number(
 // 出来事が指す issue。around は、閉じた・開き直したので矢印1本でつながる開いた issue（後・親・子）も決め直すとき。
 const ROUTES = {
   issues(gh, config, p) {
-    // 回答のボタンだけを書き足した本文の書き換えは受けない（問う者はボタンを書いてから問いを書くので、ここで決め直すとボタンを消す）。
-    const buttonOnly = p.action === "edited" && p.changes?.body && bodyRest(p.changes.body.from) === bodyRest(p.issue.body);
     // ユーザーが欄（ステータス等）を変えた。ゲートが事実へ戻したら知らせる。
     if (p.action === "field_added" || p.action === "field_removed") return { numbers: [p.issue.number], moved: p.sender?.login === config.user };
-    return { numbers: buttonOnly ? [] : [p.issue.number], around: p.action === "closed" || p.action === "reopened" };
+    return { numbers: [p.issue.number], around: p.action === "closed" || p.action === "reopened" };
   },
   // 親子が張られた・外された。孫になる張り方（親に親がある・子が子を持つ）は、張られた直後に外して子に知らせる（作る前に止める口は GitHub に無い）。
   async sub_issues(gh, config, p) {

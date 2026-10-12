@@ -1,10 +1,10 @@
 // チャットで決めたことを、今の問いへの答えの形で記録する。組み立てと照らしは回答フォームと同じ（tools/flow-gate/src/questions.js:
 // answerProblem・answerBody）。合わなければ書かずに理由を出して 1 で終わる。
 // 使い方: node .claude/skills/ask/scripts/answer.mjs <issue の番号> [--choice <選んだ案か選択肢>] [--done] [--text <書いた文のファイル>]
-//   --done は確かめの「完了にする」（残りのユーザーが確かめる条件を全部確かめた）。書いた文のファイルには、ユーザーの言葉の引用を含めて書く。
+//   --done は項目の並ぶ問いのチェック（確かめなら「完了にする」で、問いの項目を全部確かめた）。書いた文のファイルには、ユーザーの言葉の引用を含めて書く。
 import { readFileSync } from "node:fs";
-import { bot, config, isMain } from "../../../../tools/flow-gate/src/bot.js";
-import { answerBody, answerProblem, confirmItems, latestQuestion, norm } from "../../../../tools/flow-gate/src/questions.js";
+import { bot, config, isMain, questionForms } from "../../../../tools/flow-gate/src/bot.js";
+import { answerBody, answerProblem, latestQuestion, norm } from "../../../../tools/flow-gate/src/questions.js";
 
 const USAGE = "使い方: node .claude/skills/ask/scripts/answer.mjs <issue の番号> [--choice <選んだ案か選択肢>] [--done] [--text <書いた文のファイル>]";
 
@@ -22,20 +22,18 @@ function main() {
     process.exit(2);
   }
   const gh = bot();
-  const template = norm(readFileSync(new URL("../../../../tools/flow-gate/question_template.md", import.meta.url), "utf8"));
-  const issue = JSON.parse(gh(["issue", "view", number, "-R", config.tasks, "--json", "body,comments"]));
-  const q = latestQuestion(issue.comments.map((c) => c.body), template);
+  const issue = JSON.parse(gh(["issue", "view", number, "-R", config.tasks, "--json", "comments"]));
+  const q = latestQuestion(issue.comments.map((c) => c.body), questionForms);
   if (!q || q.answer) {
     console.error(`#${number} に、答えていない問いがありません`);
     process.exit(1);
   }
-  const answer = { ...opts, items: opts.done ? confirmItems(issue.body) : [] };
-  const problem = answerProblem(q, answer);
+  const problem = answerProblem(q, opts);
   if (problem) {
     console.error(`答えを書かない: ${problem}`);
     process.exit(1);
   }
-  gh(["issue", "comment", number, "-R", config.tasks, "--body-file", "-"], answerBody(q, answer));
+  gh(["issue", "comment", number, "-R", config.tasks, "--body-file", "-"], answerBody(q, opts));
   console.log(`#${number}: 「${q.text}」への答えを書いた`);
 }
 
