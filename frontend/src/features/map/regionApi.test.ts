@@ -127,3 +127,48 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
     ]);
   });
 });
+
+describe("専用配信の軸の道ごとの値（fetchDynamicWayValues）", () => {
+  it("軸とタイルをパスへ、方位・時刻・速度を問い合わせへ載せ、道ごとの値を返す", async () => {
+    const sent = onBackend("GET", "/api/region/dynamic-way-values/:axisId/:z/:x/:y", () =>
+      Response.json({ "101": 3.5, "102": -1 }),
+    );
+
+    const result = await api.fetchDynamicWayValues(
+      "axis_a",
+      15,
+      29100,
+      12900,
+      90,
+      new Date("2026-10-01T00:00:00Z"),
+      25,
+    );
+
+    expect(result).toEqual({ values: { "101": 3.5, "102": -1 }, error: false });
+    expect(sent.map(({ method, path, query }) => ({ method, path, query }))).toEqual([
+      {
+        method: "GET",
+        path: "/api/region/dynamic-way-values/axis_a/15/29100/12900",
+        query: { bearing_deg: "90", at: "2026-10-01T00:00:00.000Z", speed_kmh: "25" },
+      },
+    ]);
+  });
+
+  it("渡さなかった条件と、有限でない速度は問い合わせに載せない", async () => {
+    const sent = onBackend("GET", "/api/region/dynamic-way-values/:axisId/:z/:x/:y", () => Response.json({}));
+
+    await api.fetchDynamicWayValues("axis_a", 15, 1, 2, undefined, undefined, undefined);
+    await api.fetchDynamicWayValues("axis_a", 15, 1, 2, 0, undefined, Number.NaN);
+
+    expect(sent.map(({ query }) => query)).toEqual([{}, { bearing_deg: "0" }]);
+  });
+
+  it("失敗は投げずに、空の値と失敗の印で返す（色分けの失敗で道路や他のレイヤーを止めない）", async () => {
+    onBackend("GET", "/api/region/dynamic-way-values/:axisId/:z/:x/:y", () => new Response(null, { status: 500 }));
+
+    await expect(api.fetchDynamicWayValues("axis_a", 15, 1, 2, 0, undefined, undefined)).resolves.toEqual({
+      values: {},
+      error: true,
+    });
+  });
+});
