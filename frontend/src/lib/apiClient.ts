@@ -1,5 +1,6 @@
 import createClient, { type Middleware } from "openapi-fetch";
 
+import { ADMIN_PROXY_PREFIX, BACKEND_ADMIN_PREFIX } from "@/lib/adminApiPrefix";
 import { API_BASE_URL } from "@/lib/apiBaseUrl";
 import { debugLog } from "@/lib/debugLog";
 import { formatErrorDetail } from "@/lib/apiError";
@@ -16,10 +17,12 @@ export const backendApi = createClient<paths>({ baseUrl: API_BASE_URL, fetch: fe
 
 /** backendの管理API`/api/admin<X>`だけを持つ契約。管理画面は同一オリジンの口`/admin/api<X>`を叩く
  * （`app/admin/api/[...path]/route.ts`。/adminのBasic認証をそのまま使う）。 */
-type AdminPaths = { [P in keyof paths as P extends `/api/admin${infer Rest}` ? Rest : never]: paths[P] };
+type AdminPaths = {
+  [P in keyof paths as P extends `${typeof BACKEND_ADMIN_PREFIX}${infer Rest}` ? Rest : never]: paths[P];
+};
 
 /** 管理APIを同一オリジンの口経由で呼ぶ口。パスはbackendのパスの`/api/admin`より後。 */
-export const adminApiClient = createClient<AdminPaths>({ baseUrl: "/admin/api", fetch: fetchNow });
+export const adminApiClient = createClient<AdminPaths>({ baseUrl: ADMIN_PROXY_PREFIX, fetch: fetchNow });
 
 /** 応答の形がbackendの契約に無い口（気象庁の配信をそのまま返す転送・フロント自身のroute handler）。 */
 type UndeclaredPaths = Record<

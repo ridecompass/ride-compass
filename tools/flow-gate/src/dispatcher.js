@@ -1,13 +1,11 @@
-// 見回りの置き場（Durable Object。1つだけ）。担当の記録と出来事の受け箱を置き、受け箱をアラームで処理する（アラームは少なくとも1回は動く）。
+// 出来事の受け箱の置き場（Durable Object。1つだけ）。受け箱をアラームで処理する（アラームは少なくとも1回は動く）。
 import { DurableObject } from "cloudflare:workers";
 import { config } from "./config.js";
 import { handle } from "./flow.js";
 import { GitHub } from "./github.js";
-import { Inbox } from "./inbox.js";
-import { Patrol } from "./patrol.js";
+import { Inbox, nextAlarm } from "./inbox.js";
 
 export class Dispatcher extends DurableObject {
-  patrol = new Patrol(this.ctx.storage);
   inbox = new Inbox(this.ctx.storage, async (name, payload) => handle(await GitHub.app(this.env, config.installation), this, config, name, payload));
 
   async enqueue(name, payload) {
@@ -15,10 +13,9 @@ export class Dispatcher extends DurableObject {
     if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now());
   }
 
-  // 処理の間に入った出来事が早いアラームを置いていれば、それより遅いやり直しの時刻で上書きしない。
+  // 出来事は1回の起こしで1件ずつ処理する（無料のプランの、1回の起こしで外へ出せる要求の上限 50 に、1件の決め直しと振り出しを収める）。
   async alarm() {
-    const next = await this.inbox.drain(config.retries);
-    const set = await this.ctx.storage.getAlarm();
-    if (next && !(set <= next)) await this.ctx.storage.setAlarm(next);
+    const at = nextAlarm(await this.inbox.drain(config.retries, Date.now(), 1), await this.ctx.storage.getAlarm());
+    if (at !== null) await this.ctx.storage.setAlarm(at);
   }
 }

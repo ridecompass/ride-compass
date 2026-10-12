@@ -3,6 +3,7 @@
   "entry": [
     "scripts/audit-test-rewrite.mjs",
     "scripts/capture.mjs",
+    "scripts/image.mjs",
     "scripts/structure-population.mjs",
     "scripts/mutation/*.{mjs,mts}",
     "capture/examples/*.ts"

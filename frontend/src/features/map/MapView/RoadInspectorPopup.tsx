@@ -15,7 +15,7 @@ import { roadDisplayName, roadFactRows, roadFeatureKey, roadWayId, type RoadSurf
 import { Button } from "@/components/ui/Button/Button";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
-import { formatDifficulty } from "@/lib/mapDisplay/valueScale";
+import { formatDifficultyOutOfScale } from "@/lib/mapDisplay/valueScale";
 
 interface RoadInspectorPopupProps {
   properties: RoadSurfacePopupProperties;
@@ -111,7 +111,7 @@ export default function RoadInspectorPopup({
           )}
           {result.composite_difficulty !== null && (
             <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
-              {`この道だけで見た難易度: ${formatDifficulty(result.composite_difficulty.value)}/100`}
+              {`この道だけで見た難易度: ${formatDifficultyOutOfScale(result.composite_difficulty.value)}`}
               {coveredWeightPercent !== null && coveredWeightPercent < 100
                 ? `[重みの約${coveredWeightPercent}%ぶんの評価軸だけ。残りの評価軸は、この道とこの走る条件では値が出せません]`
                 : ""}

@@ -3,6 +3,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { getQueryClient } from "@/lib/queryClient";
+import { SECOND_MS } from "@/lib/duration";
 import {
   getAmedasObservation,
   getCurrentWeather,
@@ -38,7 +39,7 @@ interface LocationFetchState<T> {
 }
 
 // 一定の間隔で取り直す（間隔はアメダスの更新に合わせる。警報は随時更新。一度きりだと、一時の失敗も残り続ける）。
-const WEATHER_REFRESH_INTERVAL_MS = refreshIntervals.amedas_seconds * 1000;
+const WEATHER_REFRESH_INTERVAL_MS = refreshIntervals.amedas_seconds * SECOND_MS;
 
 /** 位置が決まるまで待ち、位置が変わるたびに取り直す。位置を変えて取り直している間と、取り直しに失敗した後は前の値を
  * 残し、失敗には`error`を添える（消したい呼ぶ側は`error`を見て自分で落とす）。`key`は取得の種類の名前（同じ位置の

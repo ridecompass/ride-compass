@@ -1,30 +1,35 @@
 // タスクのあるべき姿を、事実だけから1つの決め方で決める。GitHub に触れない。facts は src/facts.js: readFacts が組む。
+// 決め方は2階: 1階（status・table）が成果物の事実と関係性からステータスを決め、2階（owner）がそのステータスだけを読んで
+// 担当者（ボールの持ち主）を決める。
 // 返すのは、ゲートが保つ値の全部（ステータス・開き閉じ・種類・担当者・本文・ボード・PR をレビュー可能にするか・出す問い・
 // 取り消す実行）。ゲートは今の値と違う所だけを書くので、同じ事実からは何度決めても同じになる。
 import { APPLIED, checkLines, splitBody, withButton } from "./questions.js";
 
 const HELD = { 作る: "進行中", 確かめる: "検証中" }; // 担当が持っている間のステータス
 const WAIT = ["回答待ち", "保留"]; // ユーザーの番（担当者の欄にユーザーを入れる）
-const DIALOG = ["未着手", ...WAIT, "完了"]; // 対話作業のボードのステータス（開発機のセッションが触っていることは持たない）
+const DIALOG = ["未着手", ...WAIT, "完了"]; // 対話作業のステータス（開発機のセッションが触っていることは持たない）
 const ACCEPTED = (k) => k.state === "CLOSED" && k.stateReason === "COMPLETED";
+export const DISPATCH = { 未着手: "作る", 検証待ち: "確かめる" }; // 見回りが振り出す担当の種類（src/patrol.js が読む）
 
 export function decide(f, config) {
-  const board = f.board ?? (f.type === config.dialogType ? "dialog" : "actions");
   // 種類は作るときに決まり、対話作業の境目をまたいで変わらない。境目の向こうへ変わったら、こちら側の最後の種類へ戻す。
-  const mine = (t) => (t === config.dialogType) === (board === "dialog");
-  const type = mine(f.type) ? f.type : (f.types.findLast(mine) ?? (board === "dialog" ? config.dialogType : null));
+  const mine = (t) => (t === config.dialogType) === f.dialog;
+  const type = mine(f.type) ? f.type : (f.types.findLast(mine) ?? (f.dialog ? config.dialogType : null));
   // 子が完成で閉じたら、その子が受け持つ条件（「- 子: #N」）は満たされた。
   const byChildren = f.remaining.filter((c) => c.child && f.children.some((k) => k.number === c.child && ACCEPTED(k)));
   const s = status({ ...f, remaining: f.remaining.filter((c) => !byChildren.includes(c)) }, config);
-  if (board === "dialog" && !DIALOG.includes(s.status)) s.status = "未着手";
+  if (f.dialog && !DIALOG.includes(s.status)) s.status = "未着手";
   const body = checkLines(f.body, [...byChildren.map((c) => c.index), ...(s.check ?? [])]);
   // 見送りで閉じる・閉じた issue の開いた PR は、もう確かめもマージもしないので閉じる。
   const dropping = (s.closeAs ?? (f.open ? null : f.closedAs)) === "NOT_PLANNED";
-  return { board, type, status: s.status, open: s.status !== "完了", closeAs: s.closeAs, ask: s.ask ?? null, cancel: s.cancel ?? [], closePr: dropping && f.pr ? f.pr.id : null,
+  return { type, status: s.status, open: s.status !== "完了", closeAs: s.closeAs, ask: s.ask ?? null, cancel: s.cancel ?? [], closePr: dropping && f.pr ? f.pr.id : null,
     notice: [notice(f, s.status), s.told].filter(Boolean).join("\n\n") || null,
-    ready: s.status === "検証待ち" && Boolean(f.pr?.draft), assignees: WAIT.includes(s.status) ? [config.user] : [],
+    ready: s.status === "検証待ち" && Boolean(f.pr?.draft), assignees: owner(s.status, config),
     body: s.status === "回答待ち" || (f.question && !f.question.answer) ? withButton(body, config, f.number) : body };
 }
+
+// 2階: 担当者は2択。ユーザーに問わないと進めない（回答待ち・保留）ならユーザー、ほかは Claude（完了は持ち主なし）。
+const owner = (status, config) => (status === "完了" ? [] : WAIT.includes(status) ? [config.user] : [config.claude]);
 
 // 受け入れなかった書き込みは、黙らずに1つのコメントで知らせる（形に合わない問い・印の間の見知らぬ行・形の合わない着手可能日時・
 // 事実へ戻したユーザーのボードの移動・子に書かれた完了の条件）と、親が閉じたので閉じた子の理由。最新のコメントが同じ知らせなら書かない。
@@ -35,7 +40,7 @@ function notice(f, status) {
     // 直るまで続く知らせは、最近のコメントに同じ知らせがあれば重ねない（値が変われば新しく知らせる）。
     f.badStart && !f.comments.some((c) => c.includes(`「${f.badStart}」`)) &&
       `着手可能日時「${f.badStart}」の形が合わないので受け付けず、その間は振り出しません（\`YYYY-MM-DD HH:MM\` か \`YYYY-MM-DD\`。日本時間）。`,
-    f.moved && f.status && status !== f.status && `ボードで「${f.status}」へ動かしましたが、事実から「${status}」にしました（ユーザーが直接決められるのは、保留と、完了（完了の条件が全部済んだときの完成か、見送り）だけです）。`,
+    f.moved && f.status && status !== f.status && `ステータスを「${f.status}」にしましたが、事実から「${status}」に戻しました（ユーザーが直接決められるのは、保留と、完了（完了の条件が全部済んだときの完成か、見送り）だけです）。`,
     childRule && f.conditions.length && !f.comments.some((c) => c.includes(childRule)) && childRule,
     f.dead && f.open && `親 #${f.parent.number} が閉じたので、見送りで閉じます。`,
   ].filter(Boolean).join("\n\n");
@@ -47,9 +52,11 @@ function status(f, config) {
   // ボードで完了へ動かしても、開いているなら下で事実から決め直す。
   if (!f.open && !f.unread && !(f.closedAs === "COMPLETED" && f.remaining.length)) return { status: "完了" };
   // 子は、親の要望が満たされた・やめたら、要らない。持っている実行も取り消す。
-  if (f.dead) return { status: "完了", closeAs: "NOT_PLANNED", cancel: f.runs.map((r) => r.id).filter(Boolean) };
-  // 持たれている間は決め直さない。ユーザーが保留へ置いたら、持っている実行を取り消す。
-  if (f.runs.length) return f.status === "保留" ? { status: "保留", cancel: f.runs.map((r) => r.id).filter(Boolean) } : { status: HELD[f.runs.some((r) => r.kind === "作る") ? "作る" : "確かめる"] };
+  if (f.dead) return { status: "完了", closeAs: "NOT_PLANNED", cancel: f.runs.map((r) => r.id) };
+  // 持たれている間は決め直さない。ユーザーが保留へ置いたら、持っている実行を取り消す。1つのタスクを触るのは1者だけなので、同じ issue の実行が
+  // 2本以上あれば（振り出した直後で一覧にまだ出ていない間に、もう一度振り出した等）、いちばん古いものを残してほかを取り消す。
+  if (f.runs.length) return f.status === "保留" ? { status: "保留", cancel: f.runs.map((r) => r.id) }
+    : { status: HELD[f.runs.some((r) => r.kind === "作る") ? "作る" : "確かめる"], cancel: f.runs.slice(1).map((r) => r.id) };
   if (f.status === "保留") return { status: "保留" }; // ユーザーが置いた保留は、ユーザーが出すまで保つ
   // 入口: Claude が起こした要望だけ採否を問い、ほかは未着手。子と分割したものは、採否を親か分割元から受け継ぐ。
   if (!f.status) return f.author === config.claude && f.type === "要望" && !f.parent && !f.origin ? { status: "回答待ち", ask: "採否" } : { status: "未着手" };

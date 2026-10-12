@@ -1,16 +1,17 @@
 // issue を起こす。本文の形（.claude/skills/file-issue/SKILL.md「issue の形」）と子の決まり（同「分ける」）を照らし、合えば gh で作り、
-// ゲートがボードへ入れるのを待って欄（規模・優先度・着手可能日時）を入れる。合わなければ作らずに理由を出して 1 で終わる。
+// issue の欄（規模・優先度・着手可能日時）を入れる。合わなければ作らずに理由を出して 1 で終わる。
 // 使い方: node .claude/skills/file-issue/scripts/new-issue.mjs --title <題名> --body-file <本文のファイル> [--type <種類>]
 //   [--parent <親>] [--origin <分割元>] [--blocked-by <前,...>] [--blocking <後,...>] [--size <S|M|L>] [--priority <高|中|低>] [--start <着手可能日時>]
+//   欄だけ入れ直す: node .claude/skills/file-issue/scripts/new-issue.mjs --fill <番号> [--size ...] [--priority ...] [--start ...]
 //   --parent は子（種類は親と同じ。条件と優先度・着手可能日時を持たない。孫は作らない）。--origin は要望ごとの切り出し（本文に「分割元: #N」を置く）。
 import { readFileSync } from "node:fs";
 import { bot, config, isMain } from "../../../../tools/flow-gate/src/bot.js";
+import { SET_FIELDS, fieldProblems, fieldValues } from "../../../../tools/flow-gate/src/fields.js";
 import { conditions, norm } from "../../../../tools/flow-gate/src/questions.js";
 
 // 畳んだ節の名前と順（2 は種類ごとに1つ）。
 const SECTIONS = [["不具合: 起きていること", "要望: 困りごと", "保守: 背景", "調査: 明らかにしたいこと"], ["やること", "調べ方"], ["決めること"],
   ["完了の条件"], ["経緯"], ["規模と優先度の根拠"]];
-const START = /^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})?$/;
 
 // 本文と欄が決まりに合わない所（空なら合う）。child は子として作るとき。
 export function issueProblems(body, { type, child = false, size, priority, start }) {
@@ -37,10 +38,7 @@ export function issueProblems(body, { type, child = false, size, priority, start
     if (!has) problems.push("完了の条件が無い");
     if (type !== config.dialogType && (!size || !priority)) problems.push("規模と優先度を入れる（--size・--priority）");
   }
-  if (size && !["S", "M", "L"].includes(size)) problems.push(`規模「${size}」は S・M・L のどれか`);
-  if (priority && !config.priorities.includes(priority)) problems.push(`優先度「${priority}」は ${config.priorities.join("・")} のどれか`);
-  if (start && !START.test(start)) problems.push(`着手可能日時「${start}」は YYYY-MM-DD か YYYY-MM-DD HH:MM（日本時間）`);
-  return problems;
+  return [...problems, ...fieldProblems(config, [["size", size], ["priority", priority], ["start", start]].filter(([, v]) => v))];
 }
 
 // 要望ごとの切り出しの本文に「分割元: #N」の行を、要約の段落のあとへ置く（もうあれば置かない）。
@@ -52,7 +50,7 @@ export function withOrigin(body, origin) {
 }
 
 // 引数を読む。知らない口・値の無い口があれば null（打ち間違いで前提や親の無い issue を作らない）。
-const KEYS = ["title", "body-file", "type", "parent", "origin", "blocked-by", "blocking", "size", "priority", "start"];
+const KEYS = ["title", "body-file", "type", "parent", "origin", "blocked-by", "blocking", "size", "priority", "start", "fill"];
 export function parseArgs(argv) {
   const opts = {};
   for (let i = 0; i < argv.length; i += 2) {
@@ -65,6 +63,7 @@ export function parseArgs(argv) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
+  if (opts?.fill) return fill(bot(), opts.fill, opts);
   if (!opts?.title || !opts["body-file"]) {
     console.error("使い方: node .claude/skills/file-issue/scripts/new-issue.mjs --title <題名> --body-file <本文のファイル> [--type <種類>] [--parent <親>] [--origin <分割元>] [--blocked-by <前,...>] [--blocking <後,...>] [--size <S|M|L>] [--priority <高|中|低>] [--start <着手可能日時>]");
     process.exit(2);
@@ -95,45 +94,31 @@ async function main() {
     ...(opts.parent ? ["--parent", opts.parent] : []), ...(opts["blocked-by"] ? ["--blocked-by", opts["blocked-by"]] : []),
     ...(opts.blocking ? ["--blocking", opts.blocking] : [])], body).trim();
   console.log(url);
-  const fields = [[config.fields.size, opts.size], [config.fields.priority, opts.priority], [config.fields.start, opts.start]].filter(([, v]) => v);
-  const left = await fillFields(gh, url, type, fields);
+  fill(gh, url.split("/").pop(), opts);
+}
+
+// 欄を入れて、入れた欄を出す。落ちても issue はできているので、作り直させずに、作った番号と入れ直すコマンドを出して 1 で終わる。
+function fill(gh, number, opts) {
+  const values = [["size", opts.size], ["priority", opts.priority], ["start", opts.start]].filter(([, v]) => v);
+  const left = fillFields(gh, number, values);
   if (left) {
     console.error(left);
     process.exit(1);
   }
-  for (const [field, value] of fields) console.log(`${field}: ${value}`);
+  for (const [key, value] of values) console.log(`${config.fields[key].name}: ${value}`);
 }
 
-// 作った issue の欄を入れる。欄はボードの項目にあり、ゲートが種類でボードへ入れるまでは入らない（入るのを待つ。ふつうは数秒）。
-// 落ちても issue はできているので、作り直させずに、作った番号と残りの欄だけを入れ直すコマンドを返す（全部入れば null）。
-export async function fillFields(gh, url, type, fields, { pause = 3000, tries = 20 } = {}) {
-  const [owner, name] = config.tasks.split("/");
-  const board = config.boards[type === config.dialogType ? "dialog" : "actions"];
-  const number = url.split("/").pop();
-  const edit = (field, value) => ["project", "item-edit", String(board), "--owner", config.owner, "--url", url, "--field", field, "--value", value];
-  const why = (e) => String(e.stderr || e.message).trim();
-  const left = (reason, rest) => [`#${number} は作った（作り直さない）。${reason}。欄は次で入れる:`,
-    ...rest.map(([f, v]) => `  GH_TOKEN=$FLOW_BOT_TOKEN gh ${edit(f, v).join(" ")}`)].join("\n");
-  if (!fields.length) return null;
-  const q = `query($n:Int!){repository(owner:"${owner}",name:"${name}"){issue(number:$n){projectItems(first:5){nodes{project{number}}}}}}`;
-  const onBoard = () => JSON.parse(gh(["api", "graphql", "-F", `n=${number}`, "-f", `query=${q}`])).data.repository.issue.projectItems.nodes.some((n) => n.project.number === board);
-  for (let n = 1; ; n++) {
-    try {
-      if (onBoard()) break;
-    } catch (e) {
-      return left(`ボードに入ったかを問い合わせられなかった（${why(e)}）`, fields);
-    }
-    if (n >= tries) return left(`${(tries * pause) / 1000}秒待ってもボードに入らないので、欄を入れていない`, fields);
-    await new Promise((r) => setTimeout(r, pause));
+// 作った issue の欄（issue fields）を1回で入れる。全部入れば null、落ちたら作った番号と入れ直すコマンドの文。
+export function fillFields(gh, number, values) {
+  if (!values.length) return null;
+  try {
+    const id = JSON.parse(gh(["issue", "view", String(number), "-R", config.tasks, "--json", "id"])).id;
+    gh(["api", "graphql", "--input", "-"], JSON.stringify({ query: SET_FIELDS, variables: { i: id, v: fieldValues(config, values) } }));
+    return null;
+  } catch (e) {
+    return `#${number} は作った（作り直さない）。欄を入れられなかった（${String(e.stderr || e.message).trim()}）。欄は次で入れる:\n` +
+      `  node .claude/skills/file-issue/scripts/new-issue.mjs --fill ${number} ${values.map(([k, v]) => `--${k} ${v}`).join(" ")}`;
   }
-  for (const [k, [field, value]] of fields.entries()) {
-    try {
-      gh(edit(field, value));
-    } catch (e) {
-      return left(`欄「${field}」を入れられなかった（${why(e)}）`, fields.slice(k));
-    }
-  }
-  return null;
 }
 
 if (isMain(import.meta.url)) await main();

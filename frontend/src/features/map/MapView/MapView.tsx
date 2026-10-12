@@ -66,6 +66,8 @@ import { debugLog } from "@/lib/debugLog";
 import { MAP_OVERLAY_EDGE_ATTRIBUTE, measureMapOverlayEdges, type RouteFitObscuredPx } from "@/lib/mapOverlayEdges";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
+import { closestPointOnSegment, longitudeScale } from "@/lib/localPlane";
+import { roundToDigits } from "@/lib/numberFormat";
 
 // 基礎地図のスタイルJSON。中のタイル・スプライト・グリフのURLはbackendがBASEMAP_PUBLIC_BASE_URLで
 // 組み立てるため、`tileBaseUrl()`と同じオリジンを指すよう揃える。
@@ -207,35 +209,28 @@ function flyToVisible(map: MapLibreMap, point: Coordinates, measureObscured: () 
 }
 
 // 区間の当たり判定は見た目の線より広いため、押した地点の印を区間の線上の最寄りの点へ寄せる。区間の距離なら
-// 経緯度を平面とみなした近似で足りる。
+// 押した地点の緯度で平面へ落とした近似で足りる。
 function nearestPointOnLineString(
   coordinates: readonly (readonly [number, number])[],
   point: readonly [number, number],
 ): [number, number] {
   if (coordinates.length === 0) return [point[0], point[1]];
 
-  let best: [number, number] = [coordinates[0][0], coordinates[0][1]];
+  const scale = longitudeScale(point[1]);
+  const toPlane = ([lng, lat]: readonly [number, number]) => ({ x: lng * scale, y: lat });
+  const p = toPlane(point);
+  let best = toPlane(coordinates[0]);
   let bestDistSq = Infinity;
 
   for (let i = 0; i < coordinates.length - 1; i++) {
-    const [ax, ay] = coordinates[i];
-    const [bx, by] = coordinates[i + 1];
-    const [px, py] = point;
-    const abx = bx - ax;
-    const aby = by - ay;
-    const lengthSq = abx * abx + aby * aby;
-    const t = lengthSq === 0 ? 0 : Math.min(1, Math.max(0, ((px - ax) * abx + (py - ay) * aby) / lengthSq));
-    const cx = ax + t * abx;
-    const cy = ay + t * aby;
-    const dx = px - cx;
-    const dy = py - cy;
-    const distSq = dx * dx + dy * dy;
+    const closest = closestPointOnSegment(p, toPlane(coordinates[i]), toPlane(coordinates[i + 1]));
+    const distSq = (p.x - closest.x) ** 2 + (p.y - closest.y) ** 2;
     if (distSq < bestDistSq) {
       bestDistSq = distSq;
-      best = [cx, cy];
+      best = closest;
     }
   }
-  return best;
+  return [best.x / scale, best.y];
 }
 
 interface MapViewProps {
@@ -593,9 +588,9 @@ export default function MapView({
     function handleMoveEnd() {
       const bounds = map.getBounds();
       debugLog("map:viewport", "moveend", {
-        zoom: Number(map.getZoom().toFixed(2)),
+        zoom: roundToDigits(map.getZoom(), 2),
         bounds: bounds
-          ? [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()].map((n) => Number(n.toFixed(4)))
+          ? [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()].map((n) => roundToDigits(n, 4))
           : null,
       });
       settleViewport();
@@ -604,7 +599,7 @@ export default function MapView({
     // zoomendとresizeで受ける。動いている最中のresizeはmoveendを出さず"resize"だけを出す。範囲を渡さないと、
     // 広がった所が塗られない。
     function handleZoomEndOrResize(e: { type: string }) {
-      debugLog("map:viewport", e.type, { zoom: Number(map.getZoom().toFixed(2)) });
+      debugLog("map:viewport", e.type, { zoom: roundToDigits(map.getZoom(), 2) });
       settleViewport();
       reportViewport();
     }
