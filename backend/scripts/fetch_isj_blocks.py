@@ -18,7 +18,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified, run_profile_fetch_cli
+from app.batch.common import fetch_verified
+from app.batch.fetch_cli import run_profile_fetch_cli
 from app.batch.source_adapters.estat_small_area import range_prefectures
 from app.batch.source_adapters.isj_block import DOWNLOAD_URL, ENCODING, archive_path
 from app.batch.source_adapters.zip_csv import zip_csv_readable

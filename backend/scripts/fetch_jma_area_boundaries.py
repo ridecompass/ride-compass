@@ -31,7 +31,8 @@ from shapely.geometry.base import BaseGeometry
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified, run_fetch_cli
+from app.batch.common import fetch_verified
+from app.batch.fetch_cli import run_fetch_cli
 from app.infrastructure import jma_area_boundaries
 
 logger = logging.getLogger("ridecompass.fetch_jma_area_boundaries")

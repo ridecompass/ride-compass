@@ -22,7 +22,8 @@ import shapefile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified, run_profile_fetch_cli
+from app.batch.common import fetch_verified
+from app.batch.fetch_cli import run_profile_fetch_cli
 from app.batch.source_adapters.estat_small_area import (
     DOWNLOAD_URL,
     boundary_path,

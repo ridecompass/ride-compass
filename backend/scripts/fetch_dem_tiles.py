@@ -40,11 +40,8 @@ from app.batch.dem_tile_store import (
     mark_absent,
     write_tile,
 )
-from app.batch.common import (
-    PROGRESS_INTERVAL_SECONDS,
-    format_progress,
-    run_profile_fetch_cli,
-)
+from app.batch.common import PROGRESS_INTERVAL_SECONDS, format_progress
+from app.batch.fetch_cli import run_profile_fetch_cli
 from app.batch.source_profile import SourceProfile, SourceSpec
 from app.domain.region import tiles_covering_bbox
 from app.infrastructure.source_models import Source

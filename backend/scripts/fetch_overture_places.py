@@ -22,7 +22,8 @@ import duckdb
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import place_verified, run_profile_fetch_cli
+from app.batch.common import place_verified
+from app.batch.fetch_cli import run_profile_fetch_cli
 from app.batch.source_adapters.overture_places import places_path
 from app.batch.source_profile import SourceProfile, SourceSpec
 
