@@ -61,6 +61,7 @@ export function catalogEntry(overrides: EntryOverrides = {}): AxisCatalogEntry {
     },
     raw_value_units: { unit: null, total_unit: null, ...rawValueUnits },
     material_breakdown: [],
+    density_terms: null,
     dynamic_way_value_conditions: [],
     dynamic_way_value_undetermined_by_bearing: false,
     ...rest,

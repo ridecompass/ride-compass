@@ -2250,6 +2250,20 @@
             "type": "array",
             "title": "Material Breakdown"
           },
+          "density_terms": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AxisDensityTerm"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Density Terms"
+          },
           "dynamic_way_value_conditions": {
             "items": {
               "type": "string",
@@ -2282,6 +2296,7 @@
           "map_paint",
           "raw_value_units",
           "material_breakdown",
+          "density_terms",
           "dynamic_way_value_conditions",
           "dynamic_way_value_undetermined_by_bearing"
         ],
@@ -2604,6 +2619,30 @@
           "weight_share_when_published"
         ],
         "title": "AxisDefinitionResponse"
+      },
+      "AxisDensityTerm": {
+        "properties": {
+          "material_id": {
+            "type": "string",
+            "title": "Material Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "weight": {
+            "type": "number",
+            "title": "Weight"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "material_id",
+          "label",
+          "weight"
+        ],
+        "title": "AxisDensityTerm"
       },
       "AxisDisplaySpec": {
         "properties": {

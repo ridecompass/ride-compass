@@ -64,6 +64,13 @@ describe("lensLegend（レンズの凡例）", () => {
     expect(hitsFor({ [VALUE]: 5 })).toEqual(["step-0"]);
   });
 
+  it("密度の軸は、ルートの前は線を塗らないので段を持たない", () => {
+    const density = mapCatalogOf([
+      valueRamp("density", [10], { density_terms: [{ material_id: VALUE, label: VALUE, weight: 1 }] }),
+    ]);
+    expect(lensLegend("density", false, density)).toEqual([]);
+  });
+
   it("ルート確定後は、ルート線の色分けモードの凡例。塗る軸でない・無いモードは空", () => {
     const mode = catalog.routeStyleModes.find((entry) => entry.legend.length > 0)!;
     expect(lensLegend(mode.id, true, catalog)).toBe(mode.legend);

@@ -35,6 +35,8 @@ from app.domain.axis_definitions import (
     AXIS_DEFINITIONS,
     AxisCategory,
     AxisDefinition,
+    BreakpointLinearShape,
+    averages_density,
     primary_attribute_ids_for,
     published_axis_definitions,
     weather_layer_groups_for,
@@ -75,6 +77,28 @@ def _material_breakdown(definition: AxisDefinition) -> list["AxisMaterialBreakdo
             )
         )
     return entries
+
+
+def _density_terms(definition: AxisDefinition) -> list["AxisDensityTerm"] | None:
+    """密度の軸（`domain/axis_definitions.py: averages_density`）の項を、軸定義の並びのまま。密度の軸でなければNone。"""
+    if not averages_density(definition):
+        return None
+    shape = definition.shape
+    assert isinstance(shape, BreakpointLinearShape)
+    return [
+        AxisDensityTerm(material_id=term.material, label=MATERIAL_CATALOG[term.material].label, weight=term.weight)
+        for term in shape.terms
+    ]
+
+
+class AxisDensityTerm(StrictModel):
+    """密度の軸の項1件。軸の生値は、項の材料（1kmあたりの回数・件数）にこの重みを掛けて足したもの。"""
+
+    material_id: str
+    #: 材料の表示名（`MaterialSpec.label`）。
+    label: str
+    #: 軸定義に書いた重みのまま（正規化しない）。0の項も並べる——材料の点が地図に出ても、数に入らないことを言える。
+    weight: float
 
 
 class AxisMaterialBreakdownEntry(StrictModel):
@@ -129,6 +153,9 @@ class AxisCatalogEntry(StrictModel):
     # 絶対の事実を出す。
     # 並びは正規化重みの降順で、フロントは先頭から順に出す（並べ替えを持たない）。
     material_breakdown: list[AxisMaterialBreakdownEntry]
+    # 密度の軸（`domain/axis_definitions.py: averages_density`）の項。密度の軸でなければnull。
+    # 地図はこれがある軸を、塗った線ではなく材料の点と項の重みで見せる。
+    density_terms: list[AxisDensityTerm] | None
     # 配信（`GET /api/region/dynamic-way-values/{axis_id}`）へ地図がこの軸について
     # 載せるクエリパラメータの名前（`services/dedicated_way_values.py: DedicatedWayValueLayer`。
     # 軸の葉の材料を配るサービスが受け取る条件の型から導く）。条件の要らない軸は空。受け取る側が
@@ -189,6 +216,7 @@ async def get_axis_catalog(region_service: RegionService = Depends(get_region_se
                 map_paint=map_paint(definition),
                 raw_value_units=raw_value_units(definition),
                 material_breakdown=_material_breakdown(definition),
+                density_terms=_density_terms(definition),
                 dynamic_way_value_conditions=way_value_layers[definition.axis_id].conditions,
                 dynamic_way_value_undetermined_by_bearing=way_value_layers[definition.axis_id].undetermined_by_bearing,
             )

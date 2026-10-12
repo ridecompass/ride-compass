@@ -725,6 +725,8 @@ export interface components {
             raw_value_units: components["schemas"]["RawValueUnits"];
             /** Material Breakdown */
             material_breakdown: components["schemas"]["AxisMaterialBreakdownEntry"][];
+            /** Density Terms */
+            density_terms: components["schemas"]["AxisDensityTerm"][] | null;
             /** Dynamic Way Value Conditions */
             dynamic_way_value_conditions: ("at" | "bearing_deg" | "speed_kmh")[];
             /** Dynamic Way Value Undetermined By Bearing */
@@ -855,6 +857,15 @@ export interface components {
             display: components["schemas"]["AxisDisplaySpec"];
             /** Weight Share When Published */
             weight_share_when_published: number | null;
+        };
+        /** AxisDensityTerm */
+        AxisDensityTerm: {
+            /** Material Id */
+            material_id: string;
+            /** Label */
+            label: string;
+            /** Weight */
+            weight: number;
         };
         /** AxisDisplaySpec */
         AxisDisplaySpec: {

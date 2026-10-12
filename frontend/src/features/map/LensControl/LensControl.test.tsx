@@ -40,6 +40,7 @@ function renderLens(props: Partial<Parameters<typeof LensControl>[0]> = {}) {
       routeShown
       routeSelectable
       conditions={null}
+      densityTerms={null}
       {...handlers}
       {...props}
     />,
@@ -132,6 +133,22 @@ describe("LensControl（レンズのピル）", () => {
       expect(onSetHiddenLegendKeys).toHaveBeenCalledWith(next);
     },
   );
+
+  it("密度の軸のレンズは、開いた先に項の重みを材料の名前と並べる", async () => {
+    renderLens({
+      densityTerms: [
+        { materialId: "signal", label: "信号", weight: 1 },
+        { materialId: "crossing", label: "横断歩道", weight: 0 },
+      ],
+    });
+    await open();
+    const terms = screen.getByRole("list", { name: "数え方（1件あたりの重み）" });
+    expect(
+      within(terms)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["信号×1", "横断歩道×0"]);
+  });
 
   it("凡例が無いレンズは、ピルにも開いた先にも凡例を出さない", async () => {
     renderLens({ legend: [] });

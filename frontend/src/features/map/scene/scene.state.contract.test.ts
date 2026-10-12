@@ -249,6 +249,17 @@ describe("状態を地図へ伝えた結果", () => {
       expect(opacityWith(true)).toBe(mapDisplay.road.underlayOpacity);
       expect(opacityWith(false)).not.toBe(mapDisplay.road.underlayOpacity);
     });
+
+    it("密度の軸は、塗っている軸でも線を出さない", () => {
+      const rampAxes = rampAxesFromCatalogAxes(
+        [rampEntry("density", [50], { density_terms: [{ material_id: "m", label: "m", weight: 1 }] })],
+        {},
+      );
+      const { map, handle } = createRecordingMap();
+      rebuild(map, sceneState({ catalog: { rampAxes }, look: { paintedAxisId: "density" } }));
+
+      expect(handle.layer(roadLayerId("density"))?.visibility).toBe("none");
+    });
   });
 });
 
