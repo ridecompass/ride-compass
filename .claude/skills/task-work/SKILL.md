@@ -54,6 +54,10 @@ description: "タスクを作る担当・確かめる担当として進める手
    **下書きの** Pull Request を出す（`gh pr create --draft --base master --head orch/tasks-<番号> --title <題名> --body-file <本文>`。gh の既定の
    名義のまま）。前の Pull Request が開いていれば、新しく出さずに push する。**CI は待たずに手放す**（ゲートが CI待ちにし、通れば
    レビュー可能にして確かめる担当へ渡し、落ちたら作る担当へ戻す。変異テストの生き残りが扱われていなければ、確かめる担当が下書きへ戻す）。
+   ただし手放す前に、CI が始まったこと（push した版の検査が GitHub に出たこと）を `gh pr checks <番号> -R ridecompass/ride-compass` で確かめる
+   （CI が始まる形で push するのは作る担当の責務。検査が1つも無いまま手放すと、ゲートがイレギュラーを問う）。行が出るまで打ち直し、2分出なければ
+   `gh pr view <番号> -R ridecompass/ride-compass --json mergeable` で master とぶつかっていないかを見て、ぶつかっていれば作業ブランチへ
+   `git merge origin/master` で取り込み（「競合を解く」）、push し直す。それでも出なければ、出ないことを報告して終える。CI の結果は待たない。
    戻ってきたら、落ちた検査（`gh pr checks <番号> -R ridecompass/ride-compass`）か、変異テストの注記（Mutation PR の実行の ANNOTATIONS）と
    Pull Request のコメントを読んで直す。
    直し方は .claude/rules/testing.md「テストが落ちたときの直し方」。生き残りは、利用者や運用に見える振る舞いが変わるものだけテストを足し、
@@ -91,7 +95,9 @@ description: "タスクを作る担当・確かめる担当として進める手
 5. 満たしていれば、確かめた条件に `check.mjs`（冒頭の「完了の条件のチェック」）でチェックを付ける（確かめの行・マージのあとの条件・3 で足した行は付けない。子の作業なら付けず、子が閉じたときにゲートが親の行に付ける）。完了の条件に
    本番での前後の比べがあり、今の本番の前の値が issue に無ければ、本番を読むだけの口（`backend/scripts/prod_route_check.py` と同じ口）で
    取って書いてからマージする。読むだけの口で取れないなら、4 のとおり戻し、前の値を取る対話作業の issue を起こして前提に張る。
-   `gh pr merge <番号> -R ridecompass/ride-compass --squash` でマージし、`MERGED` になるまで打ち直す。
+   `gh pr merge <番号> -R ridecompass/ride-compass --squash` でマージし、`MERGED` になるまで打ち直す。マージしたら手放す前に、マージのコミットの
+   master の CI が始まったことを `gh run list -R ridecompass/ride-compass --commit <マージのコミット>` で確かめる（行が1つ以上出るまで打ち直す。
+   2分出なければ、出ないことを報告して終える。検査が1つも無いまま手放すと、ゲートがイレギュラーを問う）。CI の結果は待たない。
 6. master と競合してマージできなければ、`git -c merge.conflictStyle=diff3 merge origin/master` で取り込み、塊ごとに、合流点の行を片側だけが
    変えていれば変えた側を採り、両側が別の行を変えただけなら両方をそのまま残す。合流点の同じ行を両側が変えた塊が1つでもあれば
    `git merge --abort` で戻し、重なった所を書いて 4 のとおり戻す。解けたら push して終える（ゲートが CI を待ってまた渡す）。

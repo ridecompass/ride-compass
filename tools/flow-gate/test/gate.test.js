@@ -38,7 +38,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     return { blockedBy: blocked(i), subIssues: children(i), parent: p && { ...near(p.n), body: p.body, labels: names(p.labels), issueFieldValues: fields(p) } };
   };
   // PR は、置いたときに決めた時刻（p.created・p.mergedAt）が無ければ、どのコメントより前に作られた。
-  const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, merged: Boolean(p.merged), mergeable: p.conflict ? "CONFLICTING" : "MERGEABLE", createdAt: p.created ?? T(-1), mergedAt: p.mergedAt ?? null, mergeCommit: { oid: p.sha ?? `m${i.n}`, statusCheckRollup: p.mergeChecks && { state: p.mergeChecks, contexts: { nodes: [{ status: "COMPLETED" }, ...(p.mergeRunning ? [{ status: "IN_PROGRESS" }] : [])] } } },
+  const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, merged: Boolean(p.merged), createdAt: p.created ?? T(-1), mergedAt: p.mergedAt ?? null, mergeCommit: { oid: p.sha ?? `m${i.n}`, statusCheckRollup: p.mergeChecks && { state: p.mergeChecks, contexts: { nodes: [{ status: "COMPLETED" }, ...(p.mergeRunning ? [{ status: "IN_PROGRESS" }] : [])] } } },
     commits: { nodes: [{ commit: { oid: `c${i.n}`, committedDate: "2026-10-11T00:00:00Z", statusCheckRollup: p.checks && { state: p.checks } } }] },
     timelineItems: { nodes: p.drafted ? [{ createdAt: "2026-10-11T01:00:00Z" }] : [] } });
   const gql = async (q, v) => {
@@ -163,7 +163,7 @@ test("R3・決め1・決め7: 担当の実行が終わったら、表の上か�
     // [要求, 始まりのタスク, 終わったときの事実, ステータス, 起きた担当の数, 最後のコメントの頭]
     ["R3a 答えの無い問い", {}, { comments: [QUESTION] }, "回答待ち", 1, "## 問い（判断）"],
     ["R3b 下書きの PR の CI が終わっていない", {}, { pr: { draft: true, checks: "PENDING" } }, "CI待ち", 1, null],
-    ["PR が master とぶつかっている（GitHub が CI を起こさない）→ 未着手 → 作る担当が解く", {}, { pr: { draft: true, conflict: true } }, "進行中", 2, null],
+    ["作る担当が、検査の出ない PR を出して手放した（CI が始まる形で push していない）→ イレギュラー", {}, { pr: { draft: true } }, "回答待ち", 1, "## 問い（イレギュラー）"],
     ["R3c・原則の点検の3 下書きでない PR の CI が通った → 検証待ち → 確かめる担当", {}, { pr: { draft: false, checks: "SUCCESS" } }, "検証中", 2, null],
     ["R3d 確かめる担当が下書きへ戻した（差し戻し）→ 作る担当", verify, { pr: { draft: true, checks: "SUCCESS", drafted: true } }, "進行中", 2, null],
     ["確かめる担当が、マージも差し戻しも問いもせずに手放した → イレギュラー", verify, {}, "回答待ち", 1, "## 問い（イレギュラー）"],
@@ -174,6 +174,7 @@ test("R3・決め1・決め7: 担当の実行が終わったら、表の上か�
     ["R3h どれでもない（落ちた）→ 黙って振り出し直さない", {}, {}, "回答待ち", 1, "## 問い（イレギュラー）"],
     ["決め1 マージのあとの残り", {}, { pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS" } }, "進行中", 2, null],
     ["マージのコミットの CI がまだ（本番に出る前に確かめを問わない）", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "PENDING" } }, "CI待ち", 1, null],
+    ["確かめる担当がマージして手放したのに、マージのコミットの検査が1つも無い → イレギュラー", verify, { pr: { state: "MERGED", merged: true } }, "回答待ち", 1, "## 問い（イレギュラー）"],
     ["マージのコミットの master の CI が落ちたまま（マージより前の master のコミットは通っていた）、作る担当が打ち直しも直しもせずに手放した → イレギュラー", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "FAILURE", earlier: ["SUCCESS"] } }, "回答待ち", 1, "## 問い（イレギュラー）"],
     ["マージのコミットの master の CI は落ちたが、あとの master のコミットの CI が通った（前の変更も検査とデプロイに含む）→ 本番に出たので確かめを問う（tasks#856）", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "FAILURE", later: ["FAILURE", "SUCCESS"] } }, "回答待ち", 1, "## 問い（確かめ）"],
     ["作る担当が打ち直した master の CI で、ほかの検査が走っている間に1つが落ちた → 終わるまで CI待ち（tasks#856）", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "FAILURE", mergeRunning: true } }, "CI待ち", 1, null],
@@ -301,6 +302,36 @@ test("tasks#842・#843 担当者を手で変えたら決め直して戻す。1�
   gone.runs.push(...two.runs.map((r) => ({ ...r })));
   await assert.doesNotReject(handle(gone.gh, { inbox: gone.inbox }, config, ...ev.run(gone.runs[1], "requested")), "409 で出来事の処理を落とさない");
   assert.equal(gone.at(1).status, "進行中");
+});
+
+test("イレギュラーに「やり直す」と答えたら、答えのあとに担当が終わるまで振り出せる形に保つ（CI待ちへ戻さない）", async () => {
+  // 作る担当が、検査の出ない PR を出して手放した → イレギュラー → 「やり直す」と答える。
+  const handOff = async (w) => {
+    await w.send(ev.schedule());
+    const run = w.run(1);
+    await w.send(ev.run(run, "requested"));
+    w.at(1).pr = { draft: true };
+    await w.send(ev.run(run, "completed"));
+    assert.equal(head(w.at(1)), "## 問い（イレギュラー）");
+    w.at(1).comments.push(answerBody({ kind: "イレギュラー", text: w.at(1).comments.at(-1).split("\n")[1] }, { choice: "やり直す" }));
+  };
+  const w = world([{ n: 1, status: "未着手" }]);
+  await handOff(w);
+  await w.send(ev.comment(1));
+  assert.deepEqual([w.at(1).status, w.titles(), w.at(1).assignees], ["進行中", ["#1 作る", "#1 作る"], [config.claude]], "作る担当へ渡す");
+  // 枠が埋まっていてすぐ振り出せなくても、答えのあとに担当が終わるまで「やり直す」を保つ。
+  const full = world([{ n: 1, status: "未着手" }, { n: 2, status: "未着手" }, { n: 3, status: "未着手" }]);
+  await handOff(full);
+  assert.deepEqual(full.titles().filter((t) => t !== "#1 作る"), ["#2 作る", "#3 作る"], "作るの枠（2）が埋まる");
+  await full.send(ev.comment(1));
+  await full.send(ev.comment(1));
+  assert.equal(full.at(1).status, "未着手", "次の決め直しでも CI待ちへ戻さない");
+  await full.send(ev.run(full.run(2), "completed"));
+  assert.deepEqual([full.at(1).status, full.titles().filter((t) => t === "#1 作る").length], ["進行中", 2], "枠が空いたら作る担当へ渡す");
+  // 答えのあとに担当が終わっていれば（終わりのコメントが issue に残る）、「やり直す」は効き終わっている。
+  const ended = world([{ n: 1, status: "回答待ち", pr: { draft: true, checks: "PENDING" }, comments: [...w.at(1).comments, END(w.at(1).comments.length + 1)] }]);
+  await ended.send(ev.comment(1, config.claude));
+  assert.equal(ended.at(1).status, "CI待ち", "担当が終わったあとの CI は CI待ち");
 });
 
 test("前提が閉じたら、後ろで待っていたタスクも決め直して振り出す", async () => {
