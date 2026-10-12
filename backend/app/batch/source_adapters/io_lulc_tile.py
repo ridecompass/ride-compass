@@ -38,12 +38,12 @@ def _opened_raster_paths() -> list[str]:
     return opened_raster_paths()
 
 
-def lulc_tile_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
+def lulc_adapter_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
     """開けたGeoTIFF。タイルを切るのは開けたものからだけ。"""
     return AdapterInputs(files=tuple(Path(raster) for raster in _opened_raster_paths()))
 
 
-@register_adapter("io_lulc_tile", grid=LulcGrid, required=(SourceFeatureRow.rast,), inputs=lulc_tile_inputs)
+@register_adapter("io_lulc_tile", grid=LulcGrid, required=(SourceFeatureRow.rast,), inputs=lulc_adapter_inputs)
 async def read_lulc_tiles(spec: SourceSpec, profile: SourceProfile,
                           origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     from app.infrastructure.landcover_raster import tile_classes

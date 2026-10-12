@@ -4,18 +4,17 @@
 - 軸そのものの不変条件（折れ点・段の境界・段ラベル）と公開の不変性・材料の排他、軸の外（材料カタログ・
   ほかの軸）に照らす値の不変条件（`check_axis_definition`）の中身 → `test_axis_definitions.py`
 - 書き込みの本体（DBへの反映と`AXIS_DEFINITIONS`の差し替え） → `test_axis_registry_service.py`
-- 地図表示の導出・段が落ちるかの判定 → `test_axis_display.py`
 - 下書きの点数の計算と段の境界の並びの検証の入力違い → `test_axis_definitions.py`
 - 分布の計算 → `test_value_distribution.py`
 - 認可（どの口もBasic認証の依存を持つこと・その依存が拒むこと） → `test_admin_route_authorization.py`
 - DBの失敗の503 → `test_admin_db_unavailable.py`
 
-ここで見るのは、口ごとの受け渡し（無い軸・断られた書き込みを状態コードへ変えること・
-応答に地図表示を添えること）と、ルーターが自分で持つ検証（URLと本文の軸の一致）。
+ここで見るのは、口ごとの受け渡し（無い軸・断られた書き込みを状態コードへ変えること）と、ルーターが自分で持つ
+検証（URLと本文の軸の一致）。
 
 **ルーターが名前空間に持つ外向きの参照は差し替える**——軸の集合。注入するサービス（軸の書き込み・
 分布の計算（DB））は依存の差し替えで与える。どれも読むだけなので、応答を差し替えるだけで呼ばれ方は見ない。
-地図表示の導出（domain）と材料カタログは本物を通し、材料は性質ごとに本物のカタログから選ぶ。
+材料カタログは本物を通し、材料は性質ごとに本物のカタログから選ぶ。
 """
 
 import pytest
@@ -24,7 +23,6 @@ from fastapi.testclient import TestClient
 
 from app.api.routers import axis_admin
 from app.domain.axis_definitions import REQUEST_DYNAMIC_MATERIAL_IDS
-from app.domain.axis_display import axis_display_for
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.value_distribution import ValueDistribution
 from tests.admin_auth import AUTH_HEADERS
@@ -36,12 +34,6 @@ def _static_materials(dtype: str) -> list[str]:
 
 BASE = "/api/admin/axis-definitions"
 NUM_A, NUM_B = _static_materials("numeric")[:2]
-#: 地図に塗れる（タイルに向きによらない値を持つ）数値の材料。
-RAMP_NUM = next(
-    m
-    for m in _static_materials("numeric")
-    if MATERIAL_CATALOG[m].tile_property and not MATERIAL_CATALOG[m].tile_property_direction_dependent
-)
 REFERENCED_AXIS = "ref"
 
 
@@ -61,11 +53,6 @@ def payload(axis_id="a", **fields):
 
 def stored(axis_id="a", **fields):
     return axis_admin.AxisDefinition.model_validate(payload(axis_id, **fields))
-
-
-def display_of(definition):
-    """応答に添える地図の表示（JSON の形）。"""
-    return axis_display_for(definition).model_dump(mode="json")
 
 
 class FakeAxisRegistry:
@@ -149,23 +136,17 @@ def client(app, admin_credentials):
 
 
 class TestRead:
-    def test_list_returns_every_axis_with_its_map_display(self, client, registry):
+    def test_list_returns_every_axis(self, client, registry):
         registry.axes = {"a": stored("a"), "b": stored("b", label="軸B")}
 
         body = client.get(BASE).json()
 
-        assert [(item["axis_id"], item["display"]) for item in body] == [
-            ("a", display_of(registry.axes["a"])),
-            ("b", display_of(registry.axes["b"])),
-        ]
+        assert [(item["axis_id"], item["label"]) for item in body] == [("a", "軸A"), ("b", "軸B")]
 
-    def test_get_returns_the_axis_with_its_map_display(self, client, registry):
+    def test_get_returns_the_axis(self, client, registry):
         registry.axes["a"] = stored()
 
-        body = client.get(BASE + "/a").json()
-
-        assert body["axis_id"] == "a"
-        assert body["display"] == display_of(stored())
+        assert client.get(BASE + "/a").json()["axis_id"] == "a"
 
     def test_an_axis_whose_material_left_the_catalog_can_still_be_read(self, client, registry):
         """読み出しは保存済みの内容を返すだけで、書き込み時の検証をやり直さない。"""
@@ -175,13 +156,13 @@ class TestRead:
 
 
 class TestWrite:
-    def test_create_stores_a_plain_axis_definition_and_returns_it_with_its_display(self, client, registry):
+    def test_create_stores_a_plain_axis_definition_and_returns_it(self, client, registry):
         """ペイロードの型のまま渡すと、公開後の見た目だけの更新を判定する等価比較が型の違いで
         常に不一致になる。"""
         response = client.post(BASE, json=payload())
 
         assert response.status_code == 201
-        assert response.json()["display"] == display_of(stored())
+        assert response.json()["axis_id"] == "a"
         ((name, definition),) = registry.writes
         assert (name, type(definition)) == ("create", axis_admin.AxisDefinition)
 
@@ -244,7 +225,7 @@ class TestWrite:
 
         body = client.post(BASE + "/a/unpublish").json()
 
-        assert (body["is_published"], body["display"]) == (False, display_of(stored()))
+        assert (body["axis_id"], body["is_published"]) == ("a", False)
 
 
 class TestPayloadValidation:
@@ -271,29 +252,6 @@ class TestPreviews:
             "quantiles": {"p50": 2.0},
             "bins": [[0.0, 4.0, 1.0]],
         }
-
-    def test_display_thresholds_answer_which_bands_the_map_drops_and_keeps(self, client):
-        """5より上は点数が100で平らなので、6と8の境界は地図では区別できない。"""
-        shape = {
-            "kind": "breakpoint_linear",
-            "terms": [{"material": RAMP_NUM}],
-            "breakpoints": [[0, 0], [5, 100], [10, 100]],
-        }
-
-        body = client.post(
-            BASE + "/preview-display-thresholds",
-            json={"axis_id": "a", "shape": shape, "thresholds": [1.0, 6.0, 8.0]},
-        ).json()
-
-        assert body == {"dropped_on_map": [8.0], "bands_on_map": [0, 1, 2]}
-
-    def test_display_thresholds_must_rise_strictly(self, client):
-        response = client.post(
-            BASE + "/preview-display-thresholds",
-            json={"axis_id": "a", "shape": linear_shape(NUM_A), "thresholds": [1.0, 1.0]},
-        )
-
-        assert response.status_code == 422
 
     def test_scores_of_a_draft_with_two_terms(self, client):
         """1つ目の項の材料の値ごとの点数は、ほかの項の材料が無い道を評価したときの点数である。"""

@@ -72,7 +72,7 @@ def _products(spec: SourceSpec) -> dict[str, int]:
     return {str(product): int(zoom) for product, zoom in spec.grid.products.items()}
 
 
-def gsi_dem_tile_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
+def gsi_dem_adapter_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
     """置き場にある、範囲を覆うタイル。区域外の印とまだ写していないタイルは、どちらも行にならない。"""
     root = dem_tile_store.TILE_ROOT
     return AdapterInputs(files=tuple(
@@ -82,7 +82,7 @@ def gsi_dem_tile_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInpu
         if dem_tile_store.is_stored(root, product, zoom, x, y)))
 
 
-@register_adapter("gsi_dem_tile", grid=DemGrid, required=(SourceFeatureRow.rast,), inputs=gsi_dem_tile_inputs)
+@register_adapter("gsi_dem_tile", grid=DemGrid, required=(SourceFeatureRow.rast,), inputs=gsi_dem_adapter_inputs)
 async def read_gsi_dem_tiles(spec: SourceSpec, profile: SourceProfile,
                              origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     root = dem_tile_store.TILE_ROOT

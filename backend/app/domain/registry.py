@@ -1,15 +1,12 @@
-"""一次属性と、地図表示の宣言の型。
+"""一次属性の宣言の型。
 
 一次属性の語彙そのものは`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`が宣言する
 （ビルド時生成物`primaryAttributes.ts`の元）。
-
-`AxisDisplaySpec`/`TileInputSpec`は地図が軸をどう塗るかの宣言の型で、
-`domain/axis_display.py`が組み立て`GET /api/axis-catalog`がそのまま配る。
 """
 
 from typing import Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, model_validator
 from app.domain.strict_model import StrictModel
 
 
@@ -141,108 +138,4 @@ class PrimaryAttributeSpec(StrictModel):
             raise ValueError(f"'{self.attr_id}'の間引きは、絵記号で描く点にだけ付けられる")
         if sorted(self.point_thinning.rows) != sorted(category.key for category in categories):
             raise ValueError(f"'{self.attr_id}'の間引きの順は、先頭の軸の行の鍵を1度ずつ全部並べる")
-        return self
-
-
-class TileInputSpec(StrictModel):
-    """地図表示（ramp）が読むMVTタイルプロパティ1つと、その道の値への寄与。軸の値は寄与の和。
-
-    数値材料（既定）: `property × weight`。プロパティが無い道は寄与0。
-
-    真偽値材料（`boolean=True`）: MVTの真偽値プロパティは真偽比較でしか読めず重み付け
-    結合が成立しないため、`true_value`/`false_value`で寄与値を直接指定する（`weight`は
-    無視される）。
-
-    N値文字列材料（`categories`）: 文字列値を`categories`で引いた点数×`weight`。
-    `CategoricalShape`のmappingがbool2値ではなく3値以上（highway/surface等）の場合に使う。
-
-    自己変換材料（`breakpoints`）: 区分線形（`BreakpointLinearShape`）で変換される参照先の軸の
-    点数（小数1桁）×`weight`を、タイル生値から直接求める。プロパティが無い道は寄与0。
-
-    `has_unknown_fallback`: 値が引けないときの意味が「true/falseどちらでもない不明」
-    （例: 未分類の路面）ならTrueにし、その道の軸の値を「不明」にする。既定Falseは
-    「欠損=falseとみなしてよい」材料（例: lit。タグ不在は「無し」の安全側既定）を表す。
-    `categories`材料では**未登録値**も不明に含める——`evaluate_categorical`が未登録値に
-    Noneを返し`required=True`の軸全体を評価不能にするため、欠損だけを見ると、実際には
-    未評価の区間が0点＝最良（緑）で表示されてしまう。真偽値材料には「未登録の値」という
-    状態が無いため、欠損のみが不明になる。
-
-    `needs_runtime_scale`: タイル生値が実行時にしか決まらない係数でのスケール変換を要する
-    材料（例: 収録年数で正規化する前の事故件数）でTrue。`weight`が静的な変換係数を
-    表現できないが、`GET /api/axis-catalog`が配るスケール定数（`tile_runtime_scales`、
-    `property`で引く）をフロントのJS式が追加で掛けるため、地図表示の対象には含める。`thresholds`は材料スケールの値のままでよい。
-    """
-
-    property: str = Field(min_length=1)
-    weight: float = 1.0
-    boolean: bool = False
-    true_value: float = 0.0
-    false_value: float = 0.0
-    has_unknown_fallback: bool = False
-    categories: dict[str, float] | None = None
-    breakpoints: list[tuple[float, float]] | None = None
-    needs_runtime_scale: bool = False
-
-    @model_validator(mode="after")
-    def _check_one_form(self) -> "TileInputSpec":
-        """寄与値の置き場は形ごとに1つだけ。2つ載せるとフロントの式がどちらか片方を選び、
-        選ばれなかった側の指定が黙って消える。"""
-        forms = [
-            name
-            for name, declared in (
-                ("boolean", self.boolean),
-                ("categories", self.categories is not None),
-                ("breakpoints", self.breakpoints is not None),
-            )
-            if declared
-        ]
-        if len(forms) > 1:
-            raise ValueError(f"tile input '{self.property}' declares more than one form: {forms}")
-        if not self.boolean and (self.true_value or self.false_value):
-            raise ValueError(f"tile input '{self.property}' sets true/false values without boolean=True")
-        if self.boolean and self.weight != 1.0:
-            raise ValueError(
-                f"tile input '{self.property}' sets a weight the boolean form ignores; "
-                "put the weight into true_value/false_value"
-            )
-        return self
-
-    @field_validator("categories")
-    @classmethod
-    def _sort_categories(cls, value: dict[str, float] | None) -> dict[str, float] | None:
-        # 構築元（コード内リテラル・DB経由・APIレスポンス等）によって挿入順が非決定に
-        # なりうるため、経路によらず決定的な順序へ正規化する。
-        if value is None:
-            return None
-        return dict(sorted(value.items()))
-
-
-class AxisDisplaySpec(StrictModel):
-    """二次軸の地図レイヤー表示宣言（「事実はタイルに、解釈はクライアントに」）。
-
-    - kind="ramp": タイルへ焼き込み済みの事実プロパティ（`tile_inputs`の線形結合）を
-      `thresholds`（昇順、色段階の境界値）で色分けする汎用レイヤーを、フロントの
-      レイヤーファクトリが自動生成する。新しい軸はこれを宣言するだけで地図に現れる。
-    - kind="none": 専用の二次レイヤーを持たない（既存レイヤーで代替、またはデータ未整備）。
-
-    凡例に添える単位と目盛りはここに持たず、これを`tiles`に持つ`map_paint.py: MapPaint`が持つ。
-    """
-
-    kind: Literal["ramp", "none"]
-    tile_inputs: list[TileInputSpec] = Field(default_factory=list)
-    thresholds: list[float] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def _check_kind_carries_its_payload(self) -> "AxisDisplaySpec":
-        """`kind`とレイヤーの中身を食い違わせない。読む側は`kind`だけを見てレイヤーを
-        作るため、食い違いはどちらの側でも「地図に出ているのに何も塗られない」に化ける。
-        """
-        if self.kind == "ramp":
-            if not self.tile_inputs:
-                raise ValueError("ramp display has nothing to read from the tile")
-        elif self.tile_inputs or self.thresholds:
-            raise ValueError("display is kind=none but carries a ramp payload")
-        if any(b <= a for a, b in zip(self.thresholds, self.thresholds[1:])):
-            # 昇順でない段はフロントのstep式が読めず、境界が1つ先の帯へ吸われる。
-            raise ValueError(f"display thresholds are not ascending: {self.thresholds}")
         return self

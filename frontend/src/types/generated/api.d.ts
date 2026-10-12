@@ -468,22 +468,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/axis-definitions/preview-display-thresholds": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["preview_display_thresholds_api_admin_axis_definitions_preview_display_thresholds_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/admin/tuning": {
         parameters: {
             query?: never;
@@ -742,13 +726,6 @@ export interface components {
             /** Axes */
             axes: components["schemas"]["AxisCatalogEntry"][];
             /**
-             * Tile Runtime Scales
-             * @default {}
-             */
-            tile_runtime_scales: {
-                [key: string]: number;
-            };
-            /**
              * Client Tuning
              * @default {}
              */
@@ -859,7 +836,6 @@ export interface components {
              * @default false
              */
             dedicated_way_value_layer: boolean;
-            display: components["schemas"]["AxisDisplaySpec"];
             /** Weight Share When Published */
             weight_share_when_published: number | null;
         };
@@ -871,18 +847,6 @@ export interface components {
             label: string;
             /** Weight */
             weight: number;
-        };
-        /** AxisDisplaySpec */
-        AxisDisplaySpec: {
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "ramp" | "none";
-            /** Tile Inputs */
-            tile_inputs: components["schemas"]["TileInputSpec"][];
-            /** Thresholds */
-            thresholds: number[];
         };
         /** AxisInspectorAxis */
         AxisInspectorAxis: {
@@ -1128,24 +1092,6 @@ export interface components {
              */
             kind: "difficulty";
         };
-        /** DisplayThresholdsPreviewRequest */
-        DisplayThresholdsPreviewRequest: {
-            /** Axis Id */
-            axis_id: string;
-            /** Shape */
-            shape: components["schemas"]["BreakpointLinearShape-Input"] | components["schemas"]["CategoricalShape-Input"];
-            /** Priority Overrides */
-            priority_overrides?: components["schemas"]["PriorityCondition"][];
-            /** Thresholds */
-            thresholds: number[];
-        };
-        /** DisplayThresholdsPreviewResponse */
-        DisplayThresholdsPreviewResponse: {
-            /** Dropped On Map */
-            dropped_on_map: number[];
-            /** Bands On Map */
-            bands_on_map: number[];
-        };
         /** ExternalCallStats */
         ExternalCallStats: {
             /** Calls */
@@ -1345,7 +1291,6 @@ export interface components {
             /** Thresholds */
             thresholds: number[];
             legend: components["schemas"]["MapLegendScale"];
-            tiles: components["schemas"]["AxisDisplaySpec"];
             /** Band Labels */
             band_labels: string[] | null;
         };
@@ -1787,50 +1732,6 @@ export interface components {
             min_c: number;
             /** Max C */
             max_c: number;
-        };
-        /** TileInputSpec */
-        TileInputSpec: {
-            /** Property */
-            property: string;
-            /**
-             * Weight
-             * @default 1
-             */
-            weight: number;
-            /**
-             * Boolean
-             * @default false
-             */
-            boolean: boolean;
-            /**
-             * True Value
-             * @default 0
-             */
-            true_value: number;
-            /**
-             * False Value
-             * @default 0
-             */
-            false_value: number;
-            /**
-             * Has Unknown Fallback
-             * @default false
-             */
-            has_unknown_fallback: boolean;
-            /** Categories */
-            categories: {
-                [key: string]: number;
-            } | null;
-            /** Breakpoints */
-            breakpoints: [
-                number,
-                number
-            ][] | null;
-            /**
-             * Needs Runtime Scale
-             * @default false
-             */
-            needs_runtime_scale: boolean;
         };
         /** TuningParameterView */
         TuningParameterView: {
@@ -2966,39 +2867,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScoresPreviewResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_display_thresholds_api_admin_axis_definitions_preview_display_thresholds_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DisplayThresholdsPreviewRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DisplayThresholdsPreviewResponse"];
                 };
             };
             /** @description Validation Error */

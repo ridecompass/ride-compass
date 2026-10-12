@@ -17,11 +17,9 @@ docs/modules/backend/evaluation-scoring.md「材料カタログ」参照）。
 変更なしに軸コンポーザーの選択肢へ現れる。
 
 `tile_property`はMVTタイル（`road_tile_sql.py:
-ROAD_SURFACE_TILE_MVT_SQL`）に既に焼き込まれているプロパティ名（無ければ材料が
-タイル非依存＝地図レイヤーのramp自動生成が不可能なことを表す）。
+ROAD_SURFACE_TILE_MVT_SQL`）に既に焼き込まれているプロパティ名（無ければ材料がタイルに載らない）。
 """
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from itertools import groupby
@@ -166,7 +164,7 @@ class CoverageExcluded:
     「どちらの一覧にも載っていない材料」は型として作れない。
 
     測らない材料も`missing_semantics`は持つ。**欠損率を測るかと、値が無いときにどう
-    扱うかは別の問い**で、後者は地図の表示（`display_axis_missing_semantics`・`axis_display.py`）が全材料について読む
+    扱うかは別の問い**で、後者は地図の表示（`display_axis_missing_semantics`）が全材料について読む
     ——3つの型のうち1つだけがこの宣言を欠くと、そこだけ答えを作り出すことになる。"""
 
     reason: str
@@ -207,7 +205,7 @@ MaterialDType = Literal["numeric", "boolean", "categorical"]
 
 #: タイルの生値を材料の値へ換算する、実行時にしか決まらない係数の源。
 #: `per_accident_year`は事故の収録年数の逆数（タイルは収録した全年分の件数を持ち、収録年数は
-#: 取り込むたびに増える）。源を足すときは`tile_runtime_scales`にその値の求め方を足す。
+#: 取り込むたびに増える）。
 TileRuntimeScale = Literal["per_accident_year"]
 
 #: 係数の源→その係数で割る値式が読むSQLの引数。タイルは係数を掛ける前の生値を焼くので、焼く文では
@@ -275,20 +273,16 @@ class MaterialSpec(StrictModel):
     # 単位が「◯◯/km」であることだけを条件にすると、この区別が付かない。
     total_unit: str | None = None
     # MVTタイルへ既に焼き込み済みのプロパティ名。Noneは「タイル非依存」（GSI標高の都度取得、
-    # 気象の動的取得、レシピ合成値等）で、地図レイヤーのramp自動生成対象になりえない。
+    # 気象の動的取得、レシピ合成値等）。
     # タイルの列は、この名前と`value_sql`・`tile_encoding`から組み立てる（`tile_column_sql`）。
     tile_property: str | None
     # 数値の材料をタイルへ載せる形（丸め・0の省略・倍精度）。
     tile_encoding: TileEncoding = TileEncoding()
     # tile_propertyの生値を材料の値へ換算する係数が実行時にしか決まらないとき、その係数の源
-    # （`TileRuntimeScale`）。Noneは生値がそのまま材料の値。係数は`tile_runtime_scales`が
-    # この宣言から導き、地図の式がタイルの生値へ掛ける。
+    # （`TileRuntimeScale`）。Noneは生値がそのまま材料の値。
     tile_property_runtime_scale: TileRuntimeScale | None = None
-    # 材料の値が進行方向によって変わる（有向）場合True。地図のrampレイヤーは
-    # 1本の線を単色で塗る前提のため、方向依存材料は単純な重み付き和で表現できない
-    # （時間依存の風レイヤー・降水ナウキャストと同じく、矢印等の専用表示が別途必要）。
-    # 方向で値が変わる材料は方向を持たないMVTプロパティへ焼き込めないため、
-    # `tile_property=None`と両輪で「この材料はramp化しない」を宣言する。
+    # 材料の値が進行方向によって変わる（有向）場合True。方向で値が変わる材料は方向を持たない
+    # MVTプロパティへ焼き込めないため、`tile_property=None`と両輪で宣言する。
     tile_property_direction_dependent: bool = False
     # この材料の由来となる一次属性。`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`の要素そのものを、表の中で付けた名前で指す
     # （表の外の宣言は`_check_primary_attribute_is_declared`が断る）。
@@ -932,7 +926,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     ),
     # --- 停止要因POIの種別別密度。`domain/traffic.py: POI_COUNT_KINDS`から生成する ---
     # 材料を1件ずつ手書きせず一覧から作るため、キーを増やすときに触るのはその一覧だけで済む。
-    # タイル側のプロパティ名は材料idと同じにし、地図のramp自動導出がそのまま効く。
+    # タイル側のプロパティ名は材料idと同じにする。
     **{
         poi_density_material_id(kind): MaterialSpec(
             material_id=poi_density_material_id(kind),
@@ -1022,25 +1016,6 @@ def display_axis_missing_semantics(attr: PrimaryAttributeSpec, tile_property: st
         if spec.primary_attribute is attr and spec.tile_property == tile_property:
             return spec.coverage.missing_semantics
     return None
-
-
-def tile_runtime_scales(accident_years: Sequence[int]) -> dict[str, float]:
-    """タイルのプロパティ名→そのタイルの生値を材料の値へ換算する係数。係数の源
-    （`MaterialSpec.tile_property_runtime_scale`）を宣言した材料ごとに1件。
-
-    源の値が決まらない材料（事故の収録年が0件）は含めない——地図は係数の無い材料を使う軸を
-    どの道でも「データなし」として塗る（寄与0にすると、値が無いのに最良側の色になる）。
-    """
-    values: dict[TileRuntimeScale, float] = {}
-    if accident_years:
-        values["per_accident_year"] = 1 / len(accident_years)
-    return {
-        spec.tile_property: values[spec.tile_property_runtime_scale]
-        for spec in MATERIAL_CATALOG.values()
-        if spec.tile_property is not None
-        and spec.tile_property_runtime_scale is not None
-        and spec.tile_property_runtime_scale in values
-    }
 
 
 def tile_column_sql(spec: MaterialSpec) -> str:

@@ -174,10 +174,9 @@ export default function AxisStudio() {
   }
 
   const editingDefinition = definitions?.find((d) => d.axis_id === editingAxisId) ?? null;
-  // 編集中の軸を地図がどの値の種類で塗るかは、軸の形ではなく「どの経路で地図に出ているか」で
-  // 決まる（ramp軸はタイルの重み付き和を、専用way値配信軸は地図表示値を塗る）。判定を持たずに
-  // 軸カタログの実際の分類をそのまま引き、地図と同じ`bandColorsFor`を通すことで、しきい値
-  // プレビューの色が地図とずれない。
+  // 編集中の軸を地図がどの値の種類（得点か、符号付きの材料の値か）で塗るかは、公開した軸についてbackendが
+  // 軸カタログへ載せる。判定を持たずに軸カタログの分類をそのまま引き、地図と同じ`bandColorsFor`を通すことで、
+  // しきい値プレビューの色が地図とずれない。
   const catalog = useAxisCatalog();
   const previewAxisId = editingAxisId ?? duplicateFrom?.axis_id ?? null;
   const previewCatalogAxis = catalog.axes.find((axis) => axis.axisId === previewAxisId);

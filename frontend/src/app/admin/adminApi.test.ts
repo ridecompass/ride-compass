@@ -13,7 +13,7 @@
  * ここで見ないもの:
  * - 転送そのもの（資格情報・本文・状態の受け渡し） → `app/admin/api/[...path]/route.test.ts`
  * - 骨格（失敗時の文言・204・ログ） → `lib/apiClient.ts`
- * - 判断の無い詰め替え（応答の項目名・問い合わせの絞り込み） → 使う側（`useMapBandsOfThresholds.test.ts`・`BackendLogsPanel.test.tsx`）が網の層で見る
+ * - 判断の無い詰め替え（応答の項目名・問い合わせの絞り込み） → 使う側（`BackendLogsPanel.test.tsx`）が網の層で見る
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";

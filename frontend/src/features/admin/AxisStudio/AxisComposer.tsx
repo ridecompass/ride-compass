@@ -6,7 +6,6 @@
 
 import { useState } from "react";
 import { FieldLabel } from "@/components/ui/FieldLabel/FieldLabel";
-import { useMapBandsOfThresholds } from "@/features/admin/useMapBandsOfThresholds";
 import type { AxisDefinitionPayload, AxisDefinitionResponse } from "@/types/route";
 import { MATERIAL_CATALOG, type AxisMaterialOption } from "@/lib/axisMaterialsCatalog";
 
@@ -40,7 +39,7 @@ interface AxisComposerProps {
   duplicateFrom: AxisDefinitionResponse | null;
   /** 編集中の軸を地図が塗るときの段階色（しきい値の配列→段階数ぶんの色）。段階プレビューを
    * 実際の地図と同じ色で描くために親が渡す。地図に出る経路がまだ決まっていない軸
-   * （下書き・ramp表示も専用配信も持たない軸）ではundefinedで、プレビューは色を持たない。 */
+   * （下書き等）ではundefinedで、プレビューは色を持たない。 */
   mapBandColors: ((boundaries: readonly number[]) => readonly string[]) | undefined;
   /** 段階プレビューのレンジに添える単位（軸カタログのmap_paint.unit、無ければ空）。 */
   mapValueUnit: string;
@@ -81,17 +80,6 @@ export default function AxisComposer({
   const [error, setError] = useState<string | null>(null);
   const isNew = editing === null;
   const unknownMaterials = unknownMaterialIds(buildShape(draft, MATERIAL_CATALOG), MATERIAL_CATALOG, axisIds);
-  const thresholds = draft.displayThresholdsOverride;
-  const mapBands = useMapBandsOfThresholds(
-    thresholds && thresholds.length > 0
-      ? {
-          axis_id: draft.axisId,
-          shape: buildShape(draft, MATERIAL_CATALOG),
-          priority_overrides: draft.passthrough.priority_overrides,
-          thresholds,
-        }
-      : null,
-  );
 
   // backend側は元々MaterialTerm.materialへ他の軸のaxis_idを指定できる設計
   // （domain/axis_definitions.py: AxisDefinition docstring「軸の階層」）。「他の軸の
@@ -262,12 +250,10 @@ export default function AxisComposer({
       <AxisMapDisplaySection
         draft={draft}
         setDraft={setDraft}
-        editing={editing}
         restrictedDisplayOnly={restrictedDisplayOnly}
         republishing={republishing}
         mapBandColors={mapBandColors}
         mapValueUnit={mapValueUnit}
-        mapBands={mapBands}
         thresholdError={thresholdError}
         setThresholdError={setThresholdError}
       />

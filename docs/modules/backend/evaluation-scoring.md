@@ -349,10 +349,10 @@ MaterialSpec]`が単一ソース。
 | `unit` | 値の単位（凡例・数値表示用、無次元・真偽値・カテゴリ値は空文字）。生成物`material-catalog.json`がfrontendへ届け、frontendは単位を持たない（唯一の正）。**`label`へ単位を書かない**——ラベルと単位を別々に組み立てる画面で「制限速度(km/h) 35km/h」のように二重になる |
 | `additive` | 同じ単位の他の材料と**足し合わせて意味を持つ量**か（示量／示強の区別）。個数と、それを同じ距離で割った密度はTrue。%・km/h・倍率のような割合・率はFalse。`raw_value_unit`が2項以上の和を見せてよいかの判定に使う |
 | `total_unit` | 生値へ走行距離を掛けた**総量**を出すときの単位（出す意味が無ければ`None`）。`additive`とは別の問い——事故密度（件/[km・年]）は足せるが、総量に比べる尺度が無い。|
-| `tile_property` | MVTタイルへ既に焼き込み済みのプロパティ名。`None`は「タイル非依存」（地図レイヤーのramp自動生成の対象になりえない）。列は`value_sql`から組む（上の「タイルへ焼く列」） |
+| `tile_property` | MVTタイルへ既に焼き込み済みのプロパティ名。`None`はタイルに載らない材料。列は`value_sql`から組む（上の「タイルへ焼く列」） |
 | `tile_encoding` | 数値の材料をタイルへ載せる形（`TileEncoding`: 丸めの桁・0の省略・倍精度）。ST_AsMVTはnumeric型を文字列で載せるため、丸めた値は倍精度へ戻す |
-| `tile_property_runtime_scale` | タイル側の生値を材料の値へ換算する係数が実行時にしか決まらないときの、係数の源（例: 事故の収録年数の逆数）。地図表示の自動導出はこの材料のタイル入力に`needs_runtime_scale`の印を付け、係数は`GET /api/axis-catalog`の`tile_runtime_scales`（`domain/material_catalog.py: tile_runtime_scales`が宣言から導く）で配る。ほかの軸が参照する折れ点の軸の材料だと、その参照は地図に畳めない（タイル入力は係数を掛ける前に折れ点を当てる形を表せない） |
-| `tile_property_direction_dependent` | 値が進行方向によって変わる（有向）か。地図のrampレイヤーは単色の線という前提のため、これがTrueの材料を含む軸もramp自動導出を拒否する |
+| `tile_property_runtime_scale` | タイル側の生値を材料の値へ換算する係数が実行時にしか決まらないときの、係数の源（例: 事故の収録年数の逆数）。タイルは係数を掛ける前の生値を焼く（`domain/material_catalog.py: tile_unscaled_sql_params`が値式の係数の引数を1にする） |
+| `tile_property_direction_dependent` | 値が進行方向によって変わる（有向）か。方向を持たないタイルへは焼けないので、Trueの材料は`tile_property`を持たない |
 | `primary_attribute` | 対応する一次属性（`PRIMARY_ATTRIBUTES`の宣言そのもの。idの文字列では指さない。[軸スタジオ](axis-studio.md)「一次属性の語彙」節）。材料idと一次属性id（frontendの`primaryAttributes.ts`が使う名前空間）は名前が異なるため明示的に対応させる |
 | `weather_grid_value` | 材料が読む自前のMSM格子の値（例: 風）。一次属性を持たない動的な材料の元データを、同じ格子の値を描く気象のチップ（`domain/weather_elements.py: WeatherElement.grid_value`）が地図に見せる。`GET /api/axis-catalog`はこれを軸ごとに`weather_layer_groups`へ解決し、地図の説明文がその評価の名前を差し込む |
 | `value_sql` | その材料の値をDBから求めるSQL式。`None`は「SQLでは求められない」（リクエスト時に決まる風、評価へ配線していないトリガー付きDEFER）。タイルへ焼く材料は必ず持つ |
@@ -471,7 +471,7 @@ way粒度で引くときは、同じ式のまま`w`の行から同じ名前の�
 - `missing_semantics`: `"unknown"`（欠損は不明値[NaN/None]として扱われ、その材料を使う軸は
   評価対象外になる）／`"definite"`（欠損は確定値[タグ不在=非該当等]として扱われ、軸は
   通常どおり評価される）。宣言はタグの不在の意味で、値の式がそれに合わせて`NULL`か`false`を返し、配列では読み替えない
-  （真偽の材料はどちらでも数値の行列へ載り、`NULL`を`NaN`で持つ）。地図の不明の帯（`axis_display.py`）もこの宣言から引く。
+  （真偽の材料はどちらでも数値の行列へ載り、`NULL`を`NaN`で持つ）。地図の不明の帯（`domain/material_catalog.py: display_axis_missing_semantics`）もこの宣言から引く。
 - `CoverageExcluded(reason=...)`: 集計対象外の材料とその理由（動的計算材料の
   `wind_drag_ratio`、NOT NULL列由来の`oneway`、生データの道のCHECK`source_features_way_has_kind`でhighwayを必ず持つ`highway`・`highway_is_cycleway`等）。
   欠損し得ない材料を集計対象へ置かない——欠損の判定が常に0件を数える式になり、DBが持つ前提を式の側でもう一度持つことになる。

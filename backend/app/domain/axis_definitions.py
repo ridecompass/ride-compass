@@ -323,23 +323,19 @@ class AxisDefinition(StrictModel):
     見て判定する。別の時間帯を足すときもこのLiteralへ値を1つ増やすだけで、エンジン側の
     コード変更は要らない。"""
     display_thresholds_override: list[float] | None = Field(default=None, min_length=1)
-    """地図の色分けしきい値だけを差し替える軽量な上書き。未設定なら`breakpoints`のX軸の
-    値がそのまま段の境界になる。
+    """地図の色分けしきい値だけを差し替える軽量な上書き。未設定なら軸の形から段の境界を導く
+    （`domain/map_paint.py: map_paint`）。
 
-    材料をどう合成して1つの表示用の値にするかは厳密に導けるが、段の刻み方は
-    `breakpoints`のX軸を流用するため粗くなりがちで、見やすさのために細かく刻みたいという
+    形から導く段は`breakpoints`の節を流用するため粗くなりがちで、見やすさのために細かく刻みたいという
     正当なニーズがある。導出能力ではなく好みの問題なので、しきい値だけを独立させてある。
 
-    値は`breakpoints`のX軸と同じ材料スケール（実行時スケール変換が要る材料を含む軸でも
-    変換後のスケールなので、係数が変わっても書き直さなくてよい）。地図表示そのものを
-    導けない軸には効果が無い。"""
+    値は地図が塗る値の目盛り——得点（0〜100）、符号付きの材料を塗る軸はその材料の値。"""
     display_band_labels_override: list[str] | None = None
     """地図の色分け段階に添える体感ラベル。未設定は
     段階の数値レンジ表記（例:「2〜6」）のみを凡例に出す。
 
     `display_thresholds_override`と対になる概念（どちらも「地図の色分け段階の見せ方」の
-    軸ごとの好み）で、dedicated_way_value_layer軸だけでなく、通常のramp軸の凡例にも
-    同じ仕組みで使える。"""
+    軸ごとの好み）。"""
     dedicated_way_value_layer: bool = False
     """**ルート未確定時**の地図が、この軸を配信（`/api/region/dynamic-way-values`、`services/dedicated_way_values.py`）の
     値で塗るかの宣言。配信はどの公開軸の値も返すので、この印は塗り方を選ぶだけで、配信できるかを表さない。
