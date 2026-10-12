@@ -80,7 +80,7 @@ description: "検査とテストを手元・作業ブランチのCI・masterのC
   あれば本体の版に合わせて`requirements-dev.txt`へ固定する。無いものだけを設定の`ignore_missing_imports`の節へ足す。
 - **Linuxとして検査する**（`platform = linux`。本番とCIがLinuxで動くため）。
 - `scripts/`は`mypy_path`に入れる（スクリプトは`from _stdio import …`のように同じ場所のモジュールを読む）。
-  backendの道具が読むリポジトリ直下の`scripts/`のモジュール（`checkout_freshness.py`）も入れる。
+  backendの道具が読むリポジトリ直下の`scripts/`のモジュール（`checkout_freshness.py`・`repo_git.py`等）も入れる。
 - **`mypy.ini`はASCIIだけで書く**（日本語のWindows（cp932）では非ASCIIの1文字で起動に失敗する）。
 
 ### 層の向き（import-linter）

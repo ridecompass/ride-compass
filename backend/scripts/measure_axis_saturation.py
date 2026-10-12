@@ -24,7 +24,6 @@
 
 import argparse
 import asyncio
-import os
 import sys
 from collections import defaultdict
 from collections.abc import Callable
@@ -33,6 +32,7 @@ from typing import Literal
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from _probe_env import probe_database_url
 from app.batch.common import batch_session_factory
 from app.domain.axis_definitions import (
     AXIS_DEFINITIONS,
@@ -106,7 +106,7 @@ def saturation_cause(rows: list[Row]) -> Cause | None:
 
 
 async def run(
-    database_url: str | None,
+    database_url: str,
     axis_filter: str | None,
     sample_percent: float,
     limit: int,
@@ -201,8 +201,7 @@ def main() -> int:
     parser.add_argument("--database-url", default=None, help="既定: 本番の調査の道具が渡す接続先、無ければ設定値")
     args = parser.parse_args()
     bbox = parse_bbox(args.bbox) if args.bbox else None
-    database_url = args.database_url or os.environ.get("PROBE_DATABASE_URL")
-    return asyncio.run(run(database_url, args.axis, args.sample_percent, args.limit, bbox))
+    return asyncio.run(run(probe_database_url(args.database_url), args.axis, args.sample_percent, args.limit, bbox))
 
 
 if __name__ == "__main__":

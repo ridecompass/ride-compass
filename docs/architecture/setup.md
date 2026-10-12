@@ -37,6 +37,7 @@ PostGIS統合テスト（`road_graph_session`フィクスチャを使うもの�
 |---|---|---|
 | 本番へつなぐ道具（例: `backend/scripts/run_probe.py`・`backend/scripts/axis_apply.py`） | `backend/scripts/_prod_env.py: read_prod_env`（接続情報を渡す前） | 本番へ流すのがこのチェックアウトのコード（プローブが読む`app`・管理APIへ送る形） |
 | `scripts/review_checks.py`の`size`・`metrics`・`trigger` | `scripts/review_checks.py: main` | 前回のレビューから HEAD までを測るので、HEAD が古いと変更を数え漏らす |
+| ベンチマークの実行口（`backend/benchmarks/`） | `backend/benchmarks/revision.py: announce_revision`（止めずに警告を出す。手元の反復でも測るため） | 測った数字が実測として引用され、古いコードの数字と見分けが付かない |
 
 開発機の手元のスクリプト（リポジトリに入れないもの）で本体のコードを流すものは、上の道具を経由するか、
 頭で`python <本体>/scripts/checkout_freshness.py`を打って終了コードを見る。
