@@ -14,6 +14,8 @@ import { applyScene, sceneInputsFrom } from "@/features/map/scene/applyToMap";
 import { sceneState } from "@/testing/sceneState";
 import { buildMapScene } from "@/features/map/scene/buildScene";
 import type { DynamicWeatherGroupState } from "@/features/map/layers/dynamicWeather";
+import { WIND_CALM_THRESHOLD_MS } from "@/features/map/layers/windLayer";
+import { matchesFilter } from "@/testing/mapExpressions";
 
 type Chip = "precipitationNowcast" | "windVector" | "disaster";
 
@@ -102,5 +104,20 @@ describe("動的気象を地図へ伝えた結果", () => {
     apply(map, "precipitationNowcast", { main: raster("https://example.test/b/{z}/{x}/{y}.png") });
 
     expect(handle.sourceContent(sourceId)?.tiles?.[0]).toContain("/b/");
+  });
+
+  // 凡例は静穏の境ちょうどから「微風」の段にする。地図がそこで矢印を落とすと、凡例にある風が地図に無い。
+  it.each([
+    ["静穏の境ちょうどの風は矢印を出す", WIND_CALM_THRESHOLD_MS, true],
+    ["静穏の境より弱い風は矢印を出さない", WIND_CALM_THRESHOLD_MS - 0.01, false],
+  ])("%s", (_name, speed, drawn) => {
+    const { map, handle } = createRecordingMap();
+
+    apply(map, "windVector", {
+      arrow: { visible: true, payload: { kind: "gridMark", geojson: { type: "FeatureCollection", features: [] } } },
+    });
+
+    const [arrow] = shownByWeather(handle);
+    expect(matchesFilter(arrow.filter, { speed, bearing: 0 }, 1)).toBe(drawn);
   });
 });
