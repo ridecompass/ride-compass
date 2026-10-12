@@ -46,7 +46,7 @@ const query = (config) => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn
   comments(last:40){nodes{body createdAt author{login}}} ${FIELDS} ${relationsOf(true)}
   timelineItems(first:50,itemTypes:[ISSUE_TYPE_CHANGED_EVENT]){nodes{...on IssueTypeChangedEvent{prevIssueType{name} issueType{name}}}}}}
  c:repository(owner:$co,name:$cn){pullRequests(headRefName:$head,first:5,orderBy:{field:CREATED_AT,direction:DESC}){nodes{
-  id state isDraft mergeable merged createdAt mergedAt mergeCommit{oid statusCheckRollup{state contexts(first:100){nodes{...on CheckRun{status} ...on StatusContext{state}}}}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{state}}}}
+  id state isDraft merged createdAt mergedAt mergeCommit{oid statusCheckRollup{state contexts(first:100){nodes{...on CheckRun{status} ...on StatusContext{state}}}}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{state}}}}
   timelineItems(last:1,itemTypes:[CONVERT_TO_DRAFT_EVENT]){nodes{...on ConvertToDraftEvent{createdAt}}}}}
   ref(qualifiedName:$base){target{...on Commit{history(first:20){nodes{oid statusCheckRollup{state contexts(first:100){nodes{...on CheckRun{status} ...on StatusContext{state}}}}}}}}}}}`;
 const ROLLUP = { SUCCESS: "SUCCESS", FAILURE: "FAILURE", ERROR: "FAILURE", PENDING: "PENDING", EXPECTED: "PENDING" };
@@ -61,6 +61,9 @@ const deployed = (merged, history) => {
   const after = since < 0 ? history : history.slice(0, since);
   return after.some((n) => finished(n.statusCheckRollup) === "SUCCESS") ? "SUCCESS" : finished(merged.mergeCommit?.statusCheckRollup);
 };
+
+// イレギュラーに「やり直す」と答えたあと（answered はその時刻）、まだ担当が終わっていないか（src/decide.js: redo）。issue に残るコメントで判じる。
+const redo = (question, answered, ends) => question?.kind === "イレギュラー" && question.answer?.decision === "続ける" && !ends.some((t) => t > answered);
 
 // issue の全部のコメントの本文（古い順）。
 async function allComments(gh, config, number) {
@@ -116,7 +119,7 @@ export async function readFacts(gh, config, number, runs) {
   const task = taskOf(config, i);
   const asking = task.dropped.length ? droppedQuestion(task.dropped) : null;
   const droppedAsked = Boolean(asking) && (comments.some((x) => x.includes(asking)) || (await allComments(gh, config, number)).some((x) => x.includes(asking)));
-  return { ...task, droppedAsked, unread, answerRead, answerApplied, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
+  return { ...task, droppedAsked, redo: redo(question, answer && at(answer), nodes.filter((n) => END.test(norm(n.body))).map(at)), unread, answerRead, answerApplied, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
     conditions: conditions(i.body), remaining: remaining(i.body), assignees: i.assignees.nodes.map((a) => a.login), question,
     runs: held, parent: p && { number: p.number }, dead, children: i.subIssues.nodes, origin: Number(/^分割元: #(\d+)\s*$/m.exec(norm(i.body))?.[1]) || null,
     types, dialog,
@@ -124,5 +127,5 @@ export async function readFacts(gh, config, number, runs) {
     prMoved: Math.max(0, ...c.pullRequests.nodes.flatMap((x) => [Date.parse(x.createdAt), Date.parse(x.mergedAt) || 0])),
     merged: Boolean(merged), mergeChecks: merged && deployed(merged, c.ref.target.history.nodes),
     badQuestion: last && isQuestion(last) ? checkQuestion(config.questionTemplate, last) : [], comments,
-    pr: open && { id: open.id, draft: open.isDraft, checks, conflict: open.mergeable === "CONFLICTING", backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };
+    pr: open && { id: open.id, draft: open.isDraft, checks, backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };
 }
