@@ -822,3 +822,9 @@ test("読むのに要求の要る事実は、決め方が使うときだけ読�
   await w.send(ev.run(run, "completed"));
   assert.deepEqual([w.olderReads, w.at(1).comments.filter((c) => c.startsWith("## 問い（採否）")).length], [1, 1], "担当が終わって採否を問うかを決めるときに1回だけさかのぼり、問い直さない");
 });
+
+test("tasks#788 定時は、ユーザーの番でない開いた issue を決め直して、ボードと事実の食い違いを直す。ユーザーの番の issue は、ユーザーの出来事で決め直す", async () => {
+  const w = world([{ n: 1, status: "検証", assignees: [config.claude] }, { n: 2, status: "検証", assignees: [config.user] }], { workflow: "disabled" });
+  await w.send(ev.schedule());
+  assert.deepEqual([w.at(1).status, w.at(2).status], ["実装", "検証"], "PR の無い検証は実装へ直す。ユーザーの番のものは定時では触らない");
+});
