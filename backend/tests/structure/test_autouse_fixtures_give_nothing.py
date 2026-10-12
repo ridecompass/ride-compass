@@ -28,7 +28,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tests.structure.source_symbols import Scope, SourceTree, Symbol
+from tests.structure.source_symbols import Scope, SourceTree, Symbol, replacement_of, scanned_tests
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 TEMPORARY = {"tmp_path", "tmp_path_factory"}
@@ -207,15 +207,11 @@ class Reader:
             if isinstance(node, ast.Call) and isinstance(node.func, (ast.Attribute, ast.Name)):
                 name = node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
                 args = node.args
-                if name == "setattr" and len(args) == 3 and isinstance(args[1], ast.Constant):
-                    owner = frame.scope.resolve(args[0])
-                    replaced = self.source.attribute(owner, args[1].value) if owner else None
-                    yield node, args[2], f"{ast.unparse(args[0])}.{args[1].value}", replaced
-                elif name == "setattr" and len(args) == 3:
-                    yield node, args[2], ast.unparse(args[0]), None
-                elif name == "setattr" and len(args) == 2 and isinstance(args[0], ast.Constant):
-                    split = self.source.dotted(str(args[0].value))
-                    yield node, args[1], str(args[0].value), (self.source.attribute(*split) if split else None)
+                found = replacement_of(frame.scope, node) if name == "setattr" and len(args) in (2, 3) else None
+                if found is not None:
+                    target = f"{found.owner_text}.{found.name}" if found.name is not None else found.owner_text
+                    replaced = self.source.attribute(found.owner, found.name) if found.owner and found.name else None
+                    yield node, args[-1], target, replaced
                 elif name == "setitem" and len(args) == 3:
                     yield node, args[2], ast.unparse(args[0]), None
                 elif name == "setenv" and len(args) >= 2:
@@ -279,9 +275,7 @@ def autouse_violations(root: Path) -> list[str]:
     source = SourceTree(root)
     reader = Reader(source)
     out: list[str] = []
-    for path in sorted((root / "tests").rglob("*.py")):
-        if "structure" in path.relative_to(root / "tests").parts:
-            continue
+    for path in scanned_tests(root):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         scope = Scope(source, source.module_of(path), tree)
         for node in ast.walk(tree):

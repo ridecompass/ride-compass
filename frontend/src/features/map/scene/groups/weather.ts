@@ -171,7 +171,7 @@ const DRAWINGS: { readonly [K in DrawnKey]: Drawing } = {
       "fill-opacity": AREA_OPACITY,
     },
     // 降っていない格子まで塗ると、地図全体が薄く覆われて下が読めない。
-    filter: aboveFilter("mmPerHour", PRECIPITATION_NONE_THRESHOLD_MM),
+    filter: notBelowFilter("mmPerHour", PRECIPITATION_NONE_THRESHOLD_MM),
   },
   "windVector/arrow/gridMark": markDrawing({
     iconId: "weather-wind-arrow",
