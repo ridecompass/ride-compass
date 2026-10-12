@@ -8,13 +8,16 @@
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from script_module import load_script
 
-HOOK = Path(__file__).resolve().parents[2] / "scripts" / "hooks" / "format_frontend.py"
+REPO = Path(__file__).resolve().parents[2]
+HOOK = REPO / "scripts" / "hooks" / "format_frontend.py"
 FAKE_PRETTIER = """
 const fs = require("fs");
 fs.appendFileSync(process.env.PRETTIER_LOG, JSON.stringify({ cwd: process.cwd(), args: process.argv.slice(2) }) + "\\n");
@@ -51,7 +54,7 @@ def _write(tmp_path: Path, path: Path) -> list[dict]:
     ("e2e/a.ts", False),
 ])
 def test_formats_what_the_ci_format_check_reads(tmp_path, relative, formatted):
-    """CI の`format:check`が見る`src/**/*.{ts,tsx,css}`だけを、frontend の設定（`.prettierrc.json`）が効く場所で整える。"""
+    """CI の`format:check`が見る範囲だけを、frontend の設定（`.prettierrc.json`）が効く場所で整える。"""
     frontend = _frontend(tmp_path)
 
     calls = _write(tmp_path, frontend / relative)
@@ -63,3 +66,12 @@ def test_does_nothing_where_dependencies_are_not_installed(tmp_path):
     frontend = _frontend(tmp_path, with_prettier=False)
 
     assert _write(tmp_path, frontend / "src" / "a.ts") == []
+
+
+def test_range_is_the_one_the_ci_format_check_reads():
+    """片方だけ変えると、フックが整えないファイルを CI の`format:check`が落とすか、CI が見ないファイルをフックが書き換える。"""
+    hook = load_script("hooks/format_frontend")
+    script = json.loads((REPO / "frontend" / "package.json").read_text(encoding="utf-8"))["scripts"]["format:check"]
+    suffixes = ",".join(suffix.removeprefix(".") for suffix in hook.SUFFIXES)
+
+    assert shlex.split(script) == ["prettier", "--check", f"{hook.SOURCE_DIR}/**/*.{{{suffixes}}}"]

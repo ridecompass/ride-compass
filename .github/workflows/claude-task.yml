@@ -44,6 +44,8 @@ jobs:
       KIND: ${{ inputs.kind }}
       # 担当は最初の結果で終わる。裏の処理（run_in_background・裏の subagent）は外す。
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
+      # 担当の手番の間はほとんど数秒なので、キャッシュは単価の低い5分の保持で足りる（購読の既定は1時間）。
+      CLAUDE_CODE_PROMPT_CACHE_TTL: 5m
     steps:
       - uses: actions/checkout@v5
         with:
