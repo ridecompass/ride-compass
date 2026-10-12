@@ -6,6 +6,7 @@
 // 使い方: node .github/claude-task/after.js --quota <実行のファイル>
 //   担当が Claude の利用の上限・認証で止まったときだけ 1 で終わる（見回りがこの段の失敗を読んで振り出しを止める。tools/flow-gate/src/patrol.js）。
 import { existsSync, readFileSync } from "node:fs";
+import { endHead, readFromLine } from "../../tools/flow-gate/src/facts.js";
 
 const [kind, file, log, url] = process.argv.slice(2);
 const messages = file && existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : [];
@@ -17,8 +18,8 @@ const result = messages.findLast((m) => m?.type === "result");
 const said = messages.filter((m) => m?.type === "assistant").map((m) => (m.message?.content ?? []).filter((c) => c?.type === "text").map((c) => c.text).join("\n").trim()).findLast(Boolean);
 const words = (typeof result?.result === "string" && result.result.trim()) || said || "（無い）";
 const denied = (result?.permission_denials ?? []).map((d) => `${d.tool_name}: ${String(d.tool_input?.command ?? d.tool_input?.file_path ?? d.tool_input?.url ?? "").replace(/\s+/g, " ").slice(0, 100)}`);
-const head = `### ${kind}担当の終わり\n\n要約（担当の最後の発言）:\n\n`;
+const head = `${endHead(kind)}\n\n要約（担当の最後の発言）:\n\n`;
 const tail = ["", "", `手番の記録: ${log || "置けなかった（実行のファイルが無いか、置くのに失敗した）"}`,
   ...(denied.length ? ["", "判定に断られた操作:", ...denied.map((d) => `- ${d}`)] : []), "", `実行: ${url}`,
-  ...(process.env.READ_FROM ? ["", `読み始め: ${process.env.READ_FROM}`] : [])].join("\n");
+  ...(process.env.READ_FROM ? ["", readFromLine(process.env.READ_FROM)] : [])].join("\n");
 console.log(head + words.split("\n").map((l) => `> ${l}`).join("\n").slice(0, 65536 - head.length - tail.length) + tail);

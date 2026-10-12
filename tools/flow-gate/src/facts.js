@@ -1,5 +1,6 @@
 // タスクの事実を読む（src/decide.js: decide が受ける形）。置き場の issue とコードのリポジトリの作業ブランチの PR を GraphQL の1回で、担当の実行は
 // Actions の実行の一覧から読む。ゲートは事実の写しを持たない（持ち主は GitHub）。見回りの一覧も同じ読み方を使う。
+import { originOf } from "./family.js";
 import { FIELDS, START_FORM, valuesOf } from "./fields.js";
 import { APPLIED, answerText, checkQuestion, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, remaining } from "./questions.js";
 
@@ -67,14 +68,17 @@ async function allComments(gh, config, number) {
   }
 }
 
-// 担当の終わりのコメントの見出し（.github/claude-task/after.js が書く）。
+// 担当の終わりのコメントの見出し（.github/claude-task/after.js が書き、ゲートと回答フォームが END で読む）。kind は担当の種類。
+export const endHead = (kind) => `### ${kind}担当の終わり`;
 export const END = /^### (\S+)担当の終わり/;
+// 終わりのコメントの「読み始め」の行（担当の段が始まった時刻。それより前のユーザーの文を担当が読んでいる）。
+export const readFromLine = (at) => `読み始め: ${at}`;
+export const readFromOf = (body) => /^読み始め: (\S+)$/m.exec(body)?.[1] ?? null;
 
 // runs は出来事1件につき1回読んだ担当の実行の一覧（recentRuns）。
 export async function readFacts(gh, config, number, runs) {
-  const [to, tn] = config.tasks.split("/");
-  const [co, cn] = config.code.split("/");
-  const { t: { issue: i }, c } = await gh.gql(query(config), { to, tn, n: number, co, cn, head: `${config.branchPrefix}${number}` });
+  const { tasks: t, code } = config.repos;
+  const { t: { issue: i }, c } = await gh.gql(query(config), { to: t.owner, tn: t.name, n: number, co: code.owner, cn: code.name, head: `${config.branchPrefix}${number}` });
   const held = runs.filter((r) => r.number === number && r.active).sort((a, b) => a.created - b.created); // 古い順（2本目からは二重の実行）
   const open = c.pullRequests.nodes.find((p) => p.state === "OPEN");
   const head = open?.commits.nodes.at(-1);
@@ -96,7 +100,7 @@ export async function readFacts(gh, config, number, runs) {
   const types = i.timelineItems.nodes.map((e) => e.prevIssueType?.name ?? null); // 今より前の種類（古い順）
   const dialog = dialogOf(config, types, i.issueType?.name ?? null);
   const reads = nodes.filter((n) => by(n, config.claude) && (dialog || END.test(norm(n.body))))
-    .map((n) => Date.parse(/^読み始め: (\S+)$/m.exec(norm(n.body))?.[1] ?? n.createdAt));
+    .map((n) => Date.parse(readFromOf(norm(n.body)) ?? n.createdAt));
   const lastRead = Math.max(0, ...reads);
   const closedAt = Date.parse(i.closedAt) || 0;
   const said = (n) => (isAnswer(n.body) ? answerText(n.body) : norm(n.body).trim());
@@ -116,7 +120,7 @@ export async function readFacts(gh, config, number, runs) {
   const droppedAsked = Boolean(asking) && (comments.some((x) => x.includes(asking)) || (await allComments(gh, config, number)).some((x) => x.includes(asking)));
   return { ...task, droppedAsked, unread, answerRead, answerApplied, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
     conditions: conditions(i.body), remaining: remaining(i.body), assignees: i.assignees.nodes.map((a) => a.login), question,
-    runs: held, parent: p && { number: p.number }, dead, children: i.subIssues.nodes, origin: Number(/^分割元: #(\d+)\s*$/m.exec(norm(i.body))?.[1]) || null,
+    runs: held, parent: p && { number: p.number }, dead, children: i.subIssues.nodes, origin: originOf(norm(i.body)),
     types, dialog,
     merged: Boolean(merged), mergeChecks: ROLLUP[merged?.mergeCommit?.statusCheckRollup?.state],
     badQuestion: last && isQuestion(last) ? checkQuestion(config.questionTemplate, last) : [], comments,

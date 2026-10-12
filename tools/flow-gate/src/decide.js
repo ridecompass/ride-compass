@@ -3,6 +3,7 @@
 // 担当者（ボールの持ち主）を決める。
 // 返すのは、ゲートが保つ値の全部（ステータス・開き閉じ・種類・担当者・本文・ボード・PR をレビュー可能にするか・出す問い・
 // 取り消す実行）。ゲートは今の値と違う所だけを書くので、同じ事実からは何度決めても同じになる。
+import { childRule } from "./family.js";
 import { APPLIED, checkLines, splitBody, withButton } from "./questions.js";
 
 const HELD = { 作る: "進行中", 確かめる: "検証中" }; // 担当が持っている間のステータス
@@ -34,14 +35,14 @@ const owner = (status, config) => (status === "完了" ? [] : WAIT.includes(stat
 // 受け入れなかった書き込みは、黙らずに1つのコメントで知らせる（形に合わない問い・印の間の見知らぬ行・形の合わない着手可能日時・
 // 事実へ戻したユーザーのボードの移動・子に書かれた完了の条件）と、親が閉じたので閉じた子の理由。最新のコメントが同じ知らせなら書かない。
 function notice(f, status) {
-  const childRule = f.parent && `子は完了の条件を持ちません。条件は親 #${f.parent.number} に置き、行の下に「- 子: #${f.number}」を付けてください。`;
+  const rule = f.parent && childRule(f.parent.number, f.number);
   const text = [f.badQuestion.length && `この問いは形に合わないので、問いとして読みません: ${f.badQuestion.join("・")}`,
     splitBody(f.body).foreign.length && "本文の先頭の印の間に、ゲートの書かない行があったので、消さずに印の外へ出しました。",
     // 直るまで続く知らせは、最近のコメントに同じ知らせがあれば重ねない（値が変われば新しく知らせる）。
     f.badStart && !f.comments.some((c) => c.includes(`「${f.badStart}」`)) &&
       `着手可能日時「${f.badStart}」の形が合わないので受け付けず、その間は振り出しません（\`YYYY-MM-DD HH:MM\` か \`YYYY-MM-DD\`。日本時間）。`,
     f.moved && f.status && status !== f.status && `ステータスを「${f.status}」にしましたが、事実から「${status}」に戻しました（ユーザーが直接決められるのは、保留と、完了（完了の条件が全部済んだときの完成か、見送り）だけです）。`,
-    childRule && f.conditions.length && !f.comments.some((c) => c.includes(childRule)) && childRule,
+    rule && f.conditions.length && !f.comments.some((c) => c.includes(rule)) && rule,
     f.dead && f.open && `親 #${f.parent.number} が閉じたので、見送りで閉じます。`,
   ].filter(Boolean).join("\n\n");
   return text && text !== f.comments.at(-1) ? text : null;

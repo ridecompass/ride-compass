@@ -6,7 +6,7 @@ import { FIELDS } from "./fields.js";
 
 // 置き場の開いた issue（1件を決め直すときと同じ読み方で組む）。
 async function openTasks(gh, config) {
-  const [o, n] = config.tasks.split("/");
+  const { owner: o, name: n } = config.repos.tasks;
   const all = [];
   for (let after = null; ;) {
     const r = await gh.gql(`query($o:String!,$n:String!,$a:String){repository(owner:$o,name:$n){issues(states:OPEN,first:100,after:$a){pageInfo{hasNextPage endCursor}

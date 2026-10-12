@@ -3,14 +3,15 @@
 // 期待は要求の文から書く（各行・各 assert の名前）。GitHub の代わりの world は、置き場の issue・ボード・作業ブランチの PR・担当の実行を持つ。
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
-import base from "../flow.config.json" with { type: "json" };
+import { config as loaded } from "../src/bot.js";
+import { endHead, readFromLine } from "../src/facts.js";
+import { NO_GRANDCHILD, childRule, originLine } from "../src/family.js";
 import { handle } from "../src/flow.js";
 import { answerForm } from "../src/form.js";
 import { Inbox, nextAlarm } from "../src/inbox.js";
 import { APPLIED, answerBody, askDropped, askText, conditions, droppedQuestion, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
 
-const config = { ...base, questionTemplate: readFileSync(new URL("../question_template.md", import.meta.url), "utf8"), slots: { 作る: 2, 確かめる: 1 } };
+const config = { ...loaded, slots: { 作る: 2, 確かめる: 1 } };
 const tasks = { full_name: config.tasks };
 const code = { full_name: config.code };
 const names = (list) => ({ nodes: list.map((name) => ({ name })) });
@@ -18,7 +19,7 @@ const names = (list) => ({ nodes: list.map((name) => ({ name })) });
 const T = (k) => new Date(Date.UTC(2026, 9, 11) + k * 1000).toISOString();
 const author = (i, k) => i.by[k] ?? (i.comments[k].startsWith("## 回答") ? config.user : config.claude);
 // 担当の終わりのコメント（.github/claude-task/after.js）。start は担当が読み始めたときのコメントの数（それより前を読んでいる）。
-const END = (start) => `### 作る担当の終わり\n\n要約（担当の最後の発言）:\n\n> 読んだ\n\n読み始め: ${T(start - 0.5)}`;
+const END = (start) => `${endHead("作る")}\n\n要約（担当の最後の発言）:\n\n> 読んだ\n\n${readFromLine(T(start - 0.5))}`;
 
 function world(list, { workflow = "active", last = [], steps = [] } = {}) {
   const w = { issues: new Map(), runs: [], writes: [] };
@@ -333,14 +334,14 @@ test("tasks#824 待つ相手が見送りで閉じたら、続けるかを一度�
 
 test("tasks#824 採否は親か分割元から受け継ぐ。子に書かれた完了の条件は知らせる。孫は張られた直後に外す", async () => {
   const w = world([{ n: 1, status: "未着手" }, { n: 2, author: config.claude, type: "要望", parent: 1, body: CHILD },
-    { n: 3, author: config.claude, type: "要望", body: "分割元: #1\n- [ ] 作る\n" }, { n: 4, author: config.claude, type: "要望" }]);
+    { n: 3, author: config.claude, type: "要望", body: `${originLine(1)}\n- [ ] 作る\n` }, { n: 4, author: config.claude, type: "要望" }]);
   for (const n of [2, 3, 4]) await w.send(ev.issue(n, "opened", config.claude));
   assert.deepEqual([2, 3, 4].map((n) => asked(w.at(n))), [0, 0, 1], "採否を問うのは、親も分割元も持たない新しい要望だけ");
 
   const x = world([{ n: 1, status: "未着手", body: "- [ ] a\n  - 子: #2\n" }, { n: 2, parent: 1, status: "保留", body: "- [ ] 何か\n" }]);
   await x.send(ev.issue(2, "edited"));
   await x.send(ev.comment(2));
-  assert.deepEqual([head(x.at(2))?.startsWith("子は完了の条件を持ちません"), x.at(2).comments.length], [true, 1], "知らせは一度だけ");
+  assert.deepEqual([x.at(2).comments.at(-1), x.at(2).comments.length], [childRule(1, 2), 1], "知らせは一度だけ");
 
   for (const [name, list, [p, c], want] of [
     ["親に親がある", [{ n: 1 }, { n: 2, parent: 1 }, { n: 3, parent: 2 }], [2, 3], null],
@@ -349,7 +350,7 @@ test("tasks#824 採否は親か分割元から受け継ぐ。子に書かれた�
     const g = world(list);
     await g.send(ev.sub(p, c));
     assert.equal(g.at(c).parent, want, name);
-    if (!want) assert.match(head(g.at(c)), /^孫は作れないので/, name);
+    if (!want) assert.ok(g.at(c).comments.at(-1).endsWith(NO_GRANDCHILD), name);
     else assert.equal(g.at(p).status, "未着手", name);
   }
 });
