@@ -10,41 +10,26 @@ import { describe, expect, it } from "vitest";
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
 import { matchesFilter } from "@/testing/mapExpressions";
 import { createRecordingMap, type StyleLayer } from "@/testing/mapTrace/recordingMap";
-import { catalogEntry, rampEntry, tileInput } from "@/testing/catalogAxes";
-import { dedicatedWayValueAxesFromCatalogAxes, rampAxesFromCatalogAxes } from "@/lib/mapDisplay/axisLayers";
+import { catalogEntry, dedicatedEntry } from "@/testing/catalogAxes";
+import { dedicatedWayValueAxesFromCatalogAxes } from "@/lib/mapDisplay/axisLayers";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
 import { POINT_LAYERS, POINT_TILE_SOURCES, pointAxisKey } from "@/features/map/scene/groups/points";
 import { ROAD_LINE_SOURCE_ID, ROAD_TRACKS } from "@/features/map/scene/groups/roadLines";
 import { pointLegendAxes, roadLegendAxes } from "@/features/map/scene/legends";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
-import { dedicatedAxisBands, rampAxisBands } from "@/lib/mapDisplay/valueScale";
+import { dedicatedAxisBands } from "@/lib/mapDisplay/valueScale";
 import { applyScene, sceneInputsFrom } from "@/features/map/scene/applyToMap";
 import { sceneState, type SceneState, type SceneStateOverrides } from "@/testing/sceneState";
 import { buildMapScene } from "@/features/map/scene/buildScene";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 
-const RAMP_AXES = rampAxesFromCatalogAxes(
-  [
-    catalogEntry({
-      axis_id: "ramp",
-      map_paint: {
-        tiles: {
-          kind: "ramp",
-          tile_inputs: [tileInput({ property: "v", has_unknown_fallback: true })],
-          thresholds: [50],
-        },
-      },
-    }),
-  ],
-  {},
-);
 const DEDICATED_AXES = dedicatedWayValueAxesFromCatalogAxes([
   catalogEntry({ axis_id: "ded1", dedicated_way_value_layer: true }),
   catalogEntry({ axis_id: "ded2", dedicated_way_value_layer: true }),
 ]);
 
-const CATALOG = { rampAxes: RAMP_AXES, dedicatedAxes: DEDICATED_AXES };
+const CATALOG = { dedicatedAxes: DEDICATED_AXES };
 
 /** 表示ONのレイヤーだけを持つ状態。 */
 function shown(layerVisibility: Record<string, boolean>, look: SceneStateOverrides["look"] = {}) {
@@ -235,13 +220,15 @@ describe("状態を地図へ伝えた結果", () => {
       expect(handle.layer(roadLayerId("ded2"))?.visibility).toBe("none");
     });
 
-    it("塗っているramp軸は、その材料のレイヤーが出ている間だけ下敷きになる", () => {
-      const rampAxes = rampAxesFromCatalogAxes([rampEntry("paved", [50], { primary_attribute_ids: ["surface"] })], {});
+    it("塗っている軸は、その材料のレイヤーが出ている間だけ下敷きになる", () => {
+      const dedicatedAxes = dedicatedWayValueAxesFromCatalogAxes([
+        dedicatedEntry("paved", [50], { primary_attribute_ids: ["surface"] }),
+      ]);
       const opacityWith = (surface: boolean) => {
         const { map, handle } = createRecordingMap();
         rebuild(
           map,
-          sceneState({ catalog: { rampAxes }, look: { paintedAxisId: "paved", layerVisibility: { surface } } }),
+          sceneState({ catalog: { dedicatedAxes }, look: { paintedAxisId: "paved", layerVisibility: { surface } } }),
         );
         return handle.layer(roadLayerId("paved"))?.paint["line-opacity"];
       };
@@ -251,12 +238,11 @@ describe("状態を地図へ伝えた結果", () => {
     });
 
     it("密度の軸は、塗っている軸でも線を出さない", () => {
-      const rampAxes = rampAxesFromCatalogAxes(
-        [rampEntry("density", [50], { density_terms: [{ material_id: "m", label: "m", weight: 1 }] })],
-        {},
-      );
+      const dedicatedAxes = dedicatedWayValueAxesFromCatalogAxes([
+        dedicatedEntry("density", [50], { density_terms: [{ material_id: "m", label: "m", weight: 1 }] }),
+      ]);
       const { map, handle } = createRecordingMap();
-      rebuild(map, sceneState({ catalog: { rampAxes }, look: { paintedAxisId: "density" } }));
+      rebuild(map, sceneState({ catalog: { dedicatedAxes }, look: { paintedAxisId: "density" } }));
 
       expect(handle.layer(roadLayerId("density"))?.visibility).toBe("none");
     });
@@ -317,12 +303,11 @@ describe("レイヤーを横断する要求", () => {
       catalog: { ...CATALOG, routeStyleModes: [mode] as never },
       look: {
         layerVisibility: visibility,
-        paintedAxisId: RAMP_AXES[0].axisId,
+        paintedAxisId: DEDICATED_AXES[0].axisId,
         lens: "difficulty",
         hiddenLegendKeys: {
           ...firstKeyHidden(roadLegendAxes()),
           ...firstKeyHidden(pointLegendAxes()),
-          ...Object.fromEntries(RAMP_AXES.map((axis) => [axis.axisId, firstBandAndNoData(rampAxisBands(axis))])),
           ...Object.fromEntries(
             DEDICATED_AXES.map((axis) => [axis.axisId, firstBandAndNoData(dedicatedAxisBands(axis.display))]),
           ),

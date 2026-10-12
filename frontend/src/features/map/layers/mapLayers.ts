@@ -31,7 +31,6 @@ import { HOUR_MS, MINUTE_MS } from "@/lib/duration";
 import { LANDCOVER_PAINTED_CLASSES } from "./landcoverClasses";
 import { PRECIPITATION_INTENSITY_LEVELS } from "./precipitationNowcast";
 import { WIND_SPEED_LEGEND_LEVELS } from "./windLayer";
-import { axisMapLayerId, type AxisMapLayerId, type RampAxis } from "@/lib/mapDisplay/axisLayers";
 import type { MapAxisCatalog } from "@/features/map/mapAxisCatalog";
 import { axisNamesInText, type CatalogAxis } from "@/lib/catalogAxis";
 import { FIXED_LENS_LABELS, LENS_DIFFICULTY_ID } from "@/lib/mapDisplay/routeStyleModes";
@@ -40,7 +39,7 @@ import { FIXED_LENS_LABELS, LENS_DIFFICULTY_ID } from "@/lib/mapDisplay/routeSty
 type StaticMapLayerId = (typeof mapDisplay.layers)[number]["id"];
 
 /** 地図に載るものの名前。静的な一覧は源泉が持ち、軸スタジオ由来のものは実行時に決まる。 */
-export type MapLayerId = StaticMapLayerId | AxisMapLayerId | DedicatedWayValueMapLayerId;
+export type MapLayerId = StaticMapLayerId | DedicatedWayValueMapLayerId;
 
 // 選んだルートに付くデータ（選び直すたびに描き直す）か、地域に固定のデータ（表示の切り替えだけ）か。値が時間で
 // 変わるかは別の`dataNature`が表す（降水ナウキャストは地域に固定で、値が時間で変わる）。
@@ -196,7 +195,7 @@ const GROUP_BY_CATEGORY: Readonly<Record<string, MapOverlayGroup>> = Object.from
   mapDisplay.layerCategories.map((category) => [category.key, category.group]),
 );
 
-/** 軸スタジオ由来のレイヤー（ramp軸・専用配信の軸）か。地図のチップに出さない。idの集合でなく記述子の印で決める。 */
+/** 軸スタジオ由来のレイヤー（評価軸で道を塗るもの）か。地図のチップに出さない。idの集合でなく記述子の印で決める。 */
 export function isAxisStudioLayer(layer: MapLayerDescriptor): layer is AxisStudioLayerDescriptor {
   return layer.axisStudioLayer === true;
 }
@@ -296,9 +295,9 @@ function coverageYearsLabel(years: readonly number[]): string {
 }
 
 /** レイヤーの一覧を組むのに要る軸カタログの項目。 */
-type LayerCatalog = Pick<MapAxisCatalog, "axes" | "rampAxes" | "dedicatedAxes" | "accidentYears">;
+type LayerCatalog = Pick<MapAxisCatalog, "axes" | "dedicatedAxes" | "accidentYears">;
 
-export const NO_AXES: LayerCatalog = { axes: [], rampAxes: [], dedicatedAxes: [], accidentYears: [] };
+export const NO_AXES: LayerCatalog = { axes: [], dedicatedAxes: [], accidentYears: [] };
 
 /** そのレイヤーが見せる元データを材料に持つ公開中の評価の名前（「A」「B」）。無ければ空文字で、呼ぶ側は評価に触れる一文を出さない。 */
 function axisNamesReading(axes: readonly CatalogAxis[], layerId: StaticMapLayerId): string {
@@ -307,12 +306,7 @@ function axisNamesReading(axes: readonly CatalogAxis[], layerId: StaticMapLayerI
   );
 }
 
-export function buildMapLayers({
-  axes,
-  rampAxes,
-  dedicatedAxes,
-  accidentYears,
-}: LayerCatalog): readonly MapLayerDescriptor[] {
+export function buildMapLayers({ axes, dedicatedAxes, accidentYears }: LayerCatalog): readonly MapLayerDescriptor[] {
   // 取れていないときは年に触れない（既定の年を出すと、それが正しいように見える）。
   const accidentCoverage = coverageYearsLabel(accidentYears);
   // 並びはレンズの選択肢と同じ（公開中の評価と総合難易度）。
@@ -331,13 +325,7 @@ export function buildMapLayers({
   });
   return [
     ...staticLayers,
-    // ramp軸は軸カタログから作る（軸を公開すればここを変えずに現れる）。
-    ...rampAxes.map((axis): AxisStudioLayerDescriptor => ({
-      id: axisMapLayerId(axis.axisId),
-      ...declaredLayer(mapDisplay.axisLayers.ramp),
-      axisStudioLayer: true,
-    })),
-    // 専用配信の軸。チップには出ないが、地図の組み立てが情報源をここから引く（無いと描く時点で落ちる）。
+    // 評価軸は軸カタログから作る（軸を公開すればここを変えずに現れる）。チップには出ないが、地図の組み立てが情報源をここから引く（無いと描く時点で落ちる）。
     ...dedicatedAxes.map((axis): AxisStudioLayerDescriptor => ({
       id: dedicatedWayValueMapLayerId(axis.axisId),
       ...declaredLayer(mapDisplay.axisLayers.dedicated),
@@ -357,11 +345,11 @@ export const TILE_ZOOM_TOO_WIDE_NOTICE = "ズームインすると表示され�
 /** チップ下に出す、タイルの世代が届いていないときの案内（届くまでソースを作らないので何も描けない）。 */
 export const TILE_VERSIONS_MISSING_NOTICE = "配信情報を取得できず表示できません";
 
-/** タイルの世代が届くまで何も描けないレイヤー。ramp軸も路面タイルを読むので含める。 */
-export function tileVersionGatedLayerIds(rampAxes: readonly RampAxis[]): readonly MapLayerId[] {
-  return buildMapLayers({ ...NO_AXES, rampAxes })
-    .filter((layer) => TILE_VERSION_GATED_SOURCES.has(layer.dataSource))
-    .map((layer) => layer.id);
+/** タイルの世代が届くまで何も描けないレイヤー。軸のレイヤーはチップが無く案内の出し先が無いので含めない。 */
+export function tileVersionGatedLayerIds(): readonly MapLayerId[] {
+  return LAYERS_WITHOUT_AXES.filter((layer) => TILE_VERSION_GATED_SOURCES.has(layer.dataSource)).map(
+    (layer) => layer.id,
+  );
 }
 
 /** そのズームではタイルが要求されず、ONにしても何も出ないレイヤー。軸のレイヤーはチップが無く案内の出し先が無いので含めない。 */
@@ -409,7 +397,6 @@ export function deriveFetchLayerStatus(
   return undefined;
 }
 
-/** ramp軸の`axis:${axisId}`とは別の名前（同じ軸がramp・専用配信の両方を持ちうる）。 */
 type DedicatedWayValueMapLayerId = `${string}Axis`;
 
 function dedicatedWayValueMapLayerId(axisId: string): DedicatedWayValueMapLayerId {

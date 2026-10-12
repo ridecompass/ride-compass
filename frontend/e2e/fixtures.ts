@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import type { components } from "@/types/generated/api";
 import type { RouteCandidate, RouteGenerateJobStatusResponse } from "@/types/route";
-import { catalogEntry, catalogResponse, tileInput } from "@/testing/catalogAxes";
+import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
 import {
   makeGenerationConditions,
   makeRouteCandidate as makeCandidate,
@@ -159,15 +159,7 @@ export function axisCatalogFixture(
 /** 既定の軸カタログ。アプリが軸一覧を引ける最小の1軸だけを持つ。 */
 export function defaultAxisCatalogFixture(): components["schemas"]["AxisCatalogResponse"] {
   return axisCatalogFixture([
-    {
-      ...catalogEntry({
-        axis_id: "ramp",
-        map_paint: {
-          tiles: { kind: "ramp", tile_inputs: [tileInput({ property: "v", weight: 1 })], thresholds: [50] },
-        },
-      }),
-      default_weight: 0,
-    },
+    { ...catalogEntry({ axis_id: "axis_a", map_paint: { thresholds: [50] } }), default_weight: 0 },
   ]);
 }
 
@@ -211,6 +203,8 @@ export async function installApiMocks(page: Page): Promise<void> {
   await page.route(`${API_BASE}/api/routes/generate/*`, (route) => route.fulfill({ json: doneJobFixture() }));
 
   await page.route(`${API_BASE}/api/axis-catalog*`, (route) => route.fulfill({ json: defaultAxisCatalogFixture() }));
+  // 軸のレンズで塗る道ごとの値。値を持つ道が無い形で答える。
+  await page.route(`${API_BASE}/api/region/dynamic-way-values/**`, (route) => route.fulfill({ json: {} }));
 
   // 地点の詳しくが、置いた位置の辺りを引く。辺り無し（境界の外）で答える。
   await page.route(`${API_BASE}/api/place-area*`, (route) => route.fulfill({ json: { area: null } }));

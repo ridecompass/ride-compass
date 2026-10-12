@@ -39,7 +39,6 @@ import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import { isStyleReady, reloadStyle, runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
 import {
   applyScene,
-  effectiveLayerVisibility,
   ROAD_TILE_SOURCE_LAYER,
   sceneInputsFrom,
   type SpliceStretchInput,
@@ -358,12 +357,8 @@ export default function MapView({
   const styleReloadPendingRef = useRef(false);
   // 最初のタイルが揃うまでの白紙を覆う。
   const [initialTilesLoading, setInitialTilesLoading] = useState(true);
-  // 取得状態の算出が見る表示ON/OFF。塗っているramp軸はレンズが決める。
-  const { layerVisibility: shownLayers, paintedAxisId } = look;
-  const layerVisibility = useMemo(
-    () => effectiveLayerVisibility({ layerVisibility: shownLayers, paintedAxisId }, mapCatalog.rampAxes),
-    [shownLayers, paintedAxisId, mapCatalog.rampAxes],
-  );
+  // 取得状態の算出が見る表示ON/OFF。
+  const { layerVisibility } = look;
   // 地図のイベント（初期化のeffectで一度だけ登録する）が、いまのpropsを読むための参照。
   const latestProps = {
     scene,

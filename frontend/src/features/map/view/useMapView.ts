@@ -136,9 +136,10 @@ export function useMapView({
     now,
   });
   const painted = paintedAxisId(lens, hasDetail, keepAfterRoute);
-  // 専用配信の値は、全道路を塗っている軸の分だけ取る（塗っていない軸の値は地図に出ない。表示中のものだけ叩く）。
+  // 道ごとの値は、全道路を塗っている軸の分だけ取る（塗っていない軸の値は地図に出ない。表示中のものだけ叩く）。
+  // 密度の軸は線を塗らないので取らない。
   const fetchAxes = useMemo(
-    () => mapCatalog.dedicatedAxes.filter((axis) => axis.axisId === painted),
+    () => mapCatalog.dedicatedAxes.filter((axis) => axis.axisId === painted && axis.densityTerms === null),
     [mapCatalog.dedicatedAxes, painted],
   );
   const dedicatedWayValues = useDedicatedWayValues(fetchAxes, viewport, ride.bearingDeg, ride.at, ride.speedKmh);
@@ -170,7 +171,7 @@ export function useMapView({
     hidden,
     dataStatus: { ...mapLayerStatus, ...weather.dynamicWeatherDataStatus },
     zoomTooWideLayerIds: viewport ? tileZoomTooWideLayerIds(viewport.zoom) : [],
-    versionMissingLayerIds: mapCatalog.tileVersions ? [] : tileVersionGatedLayerIds(mapCatalog.rampAxes),
+    versionMissingLayerIds: mapCatalog.tileVersions ? [] : tileVersionGatedLayerIds(),
     catalogSettled: catalog.loaded || catalog.failed,
   });
   const setRouteShown = (on: boolean) => setLayerVisibility((prev) => ({ ...prev, [ROUTE_LAYER_ID]: on }));
@@ -193,12 +194,7 @@ export function useMapView({
           ...Object.fromEntries(pointIds.map((layerId) => [layerId, true])),
         }));
       },
-      axisOptions: lensOptions(
-        catalog.axes,
-        new Set([...mapCatalog.rampAxes, ...mapCatalog.dedicatedAxes].map((axis) => axis.axisId)),
-        routeWeights,
-        catalog.axisColors,
-      ),
+      axisOptions: lensOptions(catalog.axes, routeWeights, catalog.axisColors),
       legend,
       hiddenLegendKeys: lensHidden,
       onToggleLegendKey: (key) => toggleHiddenFor(lens, key),

@@ -38,7 +38,6 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
       layerVisibility: (look.layerVisibility ?? {}) as MapLayerVisibility,
     },
     catalog: {
-      rampAxes: [],
       dedicatedAxes: [],
       routeStyleModes: ROUTE_STYLE_MODES_WITHOUT_AXES,
       ...catalog,

@@ -38,7 +38,7 @@ export interface CaptureContext {
   fixtures: typeof fixtures;
   /** e2e/states.ts の全状態の走査の段取り（installScanMocks・splice 等）。 */
   states: typeof states;
-  /** src/testing/catalogAxes.ts の軸の雛形（catalogEntry・rampEntry 等）。モックの軸カタログを組むときに fixtures.axisCatalogFixture へ渡す。 */
+  /** src/testing/catalogAxes.ts の軸の雛形（catalogEntry・dedicatedEntry 等）。モックの軸カタログを組むときに fixtures.axisCatalogFixture へ渡す。 */
   catalogAxes: typeof catalogAxes;
   /** アプリを開き、地図の全ソースの読み終わりまで待つ。初回の案内は閉じた状態で開く。 */
   open(options?: OpenOptions): Promise<void>;

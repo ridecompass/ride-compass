@@ -94,7 +94,6 @@ export const mapDisplay = {
   ],
   "layerDataNatures": [
     "raw",
-    "composite",
     "dynamic"
   ],
   "layerKinds": [
@@ -412,13 +411,6 @@ export const mapDisplay = {
     }
   ],
   "axisLayers": {
-    "ramp": {
-      "dataSource": "road_surface",
-      "category": null,
-      "kind": "static",
-      "dataNature": "composite",
-      "defaultOn": false
-    },
     "dedicated": {
       "dataSource": "road_surface",
       "category": null,

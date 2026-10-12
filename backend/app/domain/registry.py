@@ -171,9 +171,6 @@ class TileInputSpec(StrictModel):
     材料（例: 収録年数で正規化する前の事故件数）でTrue。`weight`が静的な変換係数を
     表現できないが、`GET /api/axis-catalog`が配るスケール定数（`tile_runtime_scales`、
     `property`で引く）をフロントのJS式が追加で掛けるため、地図表示の対象には含める。`thresholds`は材料スケールの値のままでよい。
-
-    画面の式が形ごとに評価と同じ値・同じ「不明」を出すことは、`scripts/cross_language_expectations.py:
-    axis_ramp_expectations`が表にして配り、画面のテストが通して確かめる。
     """
 
     property: str = Field(min_length=1)

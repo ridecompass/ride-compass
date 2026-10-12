@@ -90,9 +90,8 @@ MAP_LAYER_DATA_SOURCES: tuple[MapLayerDataSource, ...] = (
 #: （docs/architecture/data-sources.md「気象業務法の予報業務許可」節）。生成物（`mapDisplay.modelValueDisclaimer`）が画面へ届ける。
 MODEL_VALUE_DISCLAIMER = "予報ではなく、誤差を含みえます。"
 
-#: 値の性質。生データか、計算した推定か、時刻で中身が変わるか。
-#: 評価軸は"composite"で、「表示」の一覧には出さない。
-MAP_LAYER_DATA_NATURES: tuple[str, ...] = ("raw", "composite", "dynamic")
+#: 値の性質。生データか、時刻で中身が変わるか。
+MAP_LAYER_DATA_NATURES: tuple[str, ...] = ("raw", "dynamic")
 
 #: レイヤーの種別と、属するグループ。**種別を1つ足すときは必ず所属も決まる**。
 MAP_LAYER_CATEGORIES: tuple[LayerCategory, ...] = (
@@ -579,10 +578,8 @@ def _map_layers() -> tuple[tuple[str, MapLayerSpec], ...]:
 #: 地図に載るものの宣言（`_LAYER_SPECS`の順）。
 MAP_LAYERS: tuple[tuple[str, MapLayerSpec], ...] = _map_layers()
 
-#: 軸スタジオ由来の軸のレイヤー。どちらも路面タイルの道へ色を塗る。ramp軸はタイルへ焼き込んだ
-#: 一次属性を合成した値（composite）、専用配信の軸は時刻で変わる値（dynamic）を読む。
+#: 軸スタジオ由来の軸のレイヤー。路面タイルの道へ、道ごとに配る得点の色を塗る（得点は時刻で変わりうる）。
 AXIS_LAYER_SPECS: dict[str, MapLayerSpec] = {
-    "ramp": MapLayerSpec("road_surface", None, data_nature="composite"),
     "dedicated": MapLayerSpec("road_surface", None, data_nature="dynamic"),
 }
 

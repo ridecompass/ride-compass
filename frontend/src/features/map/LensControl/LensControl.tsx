@@ -28,7 +28,7 @@ export interface LensOption {
   color: string;
   /** 重みが0（評価に使っていない）。選べるが「未使用」の見出しの下に並ぶ。 */
   unused: boolean;
-  /** ルート未確定時に塗る手段（ramp・専用配信）を持たない軸。選べるがルート前は塗らない。 */
+  /** ルート未確定時に周りの道を塗る値を持たない選択肢。選べるがルート前は塗らない。 */
   routeOnly: boolean;
 }
 

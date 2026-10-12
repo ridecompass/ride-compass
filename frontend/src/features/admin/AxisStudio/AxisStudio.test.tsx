@@ -15,7 +15,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { MATERIAL_CATALOG } from "@/lib/axisMaterialsCatalog";
 import { heldReplies, inTurn, onSameOrigin, type SentRequest, serveAxisCatalog } from "@/testing/backendServer";
-import { catalogResponse, rampEntry } from "@/testing/catalogAxes";
+import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
 import type { AxisCatalogEntry, AxisDefinitionPayload, AxisDefinitionResponse } from "@/types/route";
 
 import AxisStudio from "./AxisStudio";
@@ -495,7 +495,7 @@ describe("段階プレビューの配色と単位", () => {
   });
 
   it("複製のときは、複製元の軸の配色と単位を使う", async () => {
-    catalogAxes = [rampEntry(DRAFT.axis_id, [], { map_paint: { unit: "km/h" } })];
+    catalogAxes = [catalogEntry({ axis_id: DRAFT.axis_id, map_paint: { unit: "km/h" } })];
     const user = await renderStudio();
     await user.click(within(rowOf("下書きの軸")).getByRole("button", { name: "複製して新規作成" }));
     const preview = await previewOf(user);

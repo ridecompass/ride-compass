@@ -244,7 +244,7 @@ test("宣言された地図レイヤーを全部ONにしても、スタイル検
   await seedStoredState(page, {
     ...allLayersOn(),
     // installApiMocks の軸カタログが持つ軸。
-    "ridecompass:route-style-mode": "ramp",
+    "ridecompass:route-style-mode": "axis_a",
   });
   await page.goto("/");
   await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
