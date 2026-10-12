@@ -114,7 +114,7 @@ issue へ前後関係を張らず、本文に「<記録する issue> の見直�
      `kept_test` があることを見る。
   3. `only.txt` を消してから Pull Request を出す（残すと `backend/tests/structure/test_mutation_lists_absent.py` が CI で落とす）。テスト全体が通ることは Pull Request の CI が見る。CI で
      落ちたテストがあれば、消したテストを戻して隠さず、testing-review.md の隔離のとおり汚した側を直す（直すまで、そのテストは消さない）。
-  4. Pull Request の本文の検証に、testing-review.md「消す・まとめる前に、残す側が落ちるかを見る」の4の表を、2 の変異と結果で書く。
+  4. Pull Request の本文の検証に、testing-review.md「消す・まとめる前に、残す側が落ちるかを見る」の4を、2 の変異と結果で書く。
 
 ### 6. 記録して終える
 
