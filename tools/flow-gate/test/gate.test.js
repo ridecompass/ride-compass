@@ -32,7 +32,7 @@ const TYPES = ["保守", "不具合", "要望", "調査", config.dialogType];
 const LOGIN = Object.fromEntries(Object.entries(config.ids).map(([login, id]) => [id, login]));
 
 function world(list, { workflow = "active", last = [], steps = [] } = {}) {
-  const w = { issues: new Map(), runs: [], writes: [] };
+  const w = { issues: new Map(), runs: [], writes: [], olderReads: 0 }; // olderReads は、最近のコメントより前までさかのぼって読んだ回数
   for (const i of list) w.issues.set(i.n, { state: "OPEN", reason: null, body: "- [ ] 作る\n", author: config.user, type: null, assignees: [], blockedBy: [],
     comments: [], by: [], closedAt: null, status: null, run: null, priority: null, start: null, parent: null, labels: [], pr: null, ...i });
   w.at = (n) => w.issues.get(n);
@@ -101,7 +101,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
       w.writes.push(["親子を外す", Number(v.c.slice(1))]);
       return void WRITE.addComment({ subjectId: v.c, body: v.b });
     }
-    if (q.includes("comments(first:100,after:$a)")) return { repository: { issue: { comments: { pageInfo: { hasNextPage: false }, nodes: w.at(v.n).comments.map((body) => ({ body })) } } } };
+    if (q.includes("comments(first:100,after:$a)")) return w.olderReads++, { repository: { issue: { comments: { pageInfo: { hasNextPage: false }, nodes: w.at(v.n).comments.map((body) => ({ body })) } } } };
     if (q.includes("timelineItems(since:")) { // ユーザーの欄の変更と開き直し（i.moves: [だれが, 何番目のコメントの時刻の直後か, 欄の名前（開き直しなら無し）]）
       const nodes = (w.at(v.n).moves ?? []).filter(([, k]) => T(k + 0.5) > v.s).map(([login, , field]) => ({ actor: { login }, ...(field ? { issueField: { name: field } } : {}) }));
       return { repository: { issue: { timelineItems: { pageInfo: { hasNextPage: false }, nodes } } } };
@@ -809,4 +809,16 @@ test("答えの無い問いがある間だけ、ゲートがラベル「問い: 
   assert.deepEqual([w.at(5).labels, /判断は「### 案」を1行1つ以上書く/.test(w.at(5).comments.at(-1))], [[], true], "形に合わない問い（案の無い判断）は読まず、付けない");
   await w.send(ev.comment(6, config.claude));
   assert.deepEqual([w.at(6).labels, /確かめの問いはゲートだけが出す/.test(w.at(6).comments.at(-1))], [[], true], "ゲートのラベルの問いを Claude が書いたら、読まずに知らせる");
+});
+
+test("読むのに要求の要る事実は、決め方が使うときだけ読む（担当が動いている間は、採否の問いを古いコメントまでさかのぼって探さない）", async () => {
+  const notes = Array.from({ length: 45 }, (_, k) => `メモ ${k}`);
+  const w = world([{ n: 1, author: config.claude, type: "要望", status: "実装", comments: [ASKED("採否"), REPLY(ASKED("採否"), "続ける"), ...notes] }]);
+  await w.send(ev.schedule());
+  const run = w.run(1);
+  await w.send(ev.run(run, "requested"));
+  assert.equal(w.olderReads, 0, "担当が動いている間は、採否を問うたかを読まない");
+  w.at(1).comments.push(END(w.at(1).comments.length));
+  await w.send(ev.run(run, "completed"));
+  assert.deepEqual([w.olderReads, w.at(1).comments.filter((c) => c.startsWith("## 問い（採否）")).length], [1, 1], "担当が終わって採否を問うかを決めるときに1回だけさかのぼり、問い直さない");
 });

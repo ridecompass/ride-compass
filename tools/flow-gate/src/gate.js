@@ -1,7 +1,7 @@
 // ゲート: GitHub の出来事から決め直すタスクを決め、事実を全部読み（src/facts.js）、あるべき姿を決め（src/decide.js）、今と違う所だけを書く。
 // ステータスと、変わってはいけない値（種類・担当者・本文のボタンと条件）を書くのはゲートだけ。GitHub への要求は、1件につき読む1回と書く1回
 // （と、取り消す実行ごとに1回。Actions の取り消しは1回にまとめる口が無い）。
-import { decide } from "./decide.js";
+import { Need, decide } from "./decide.js";
 import { readFacts, subjectTask } from "./facts.js";
 import { NO_GRANDCHILD, makesGrandchild } from "./family.js";
 import { askText, confirmConditions, droppedQuestion, isQuestionLabel, norm } from "./questions.js";
@@ -39,8 +39,18 @@ export const batch = (ops) => [`mutation(${ops.map(([, type], k) => `$v${k}:${ty
 // 1つのタスクを決め直して、今と違う所だけを書く。runs は出来事1件につき1回読んだ担当の実行の一覧（src/facts.js: recentRuns）。
 // moved は、ユーザーがステータスの欄を変えた出来事で決め直すとき（戻したら知らせる）。
 export async function settle(gh, config, number, runs, moved = false) {
-  const f = { ...(await readFacts(gh, config, number, runs)), moved };
-  const d = decide(f, config);
+  let f = { ...(await readFacts(gh, config, number, runs)), moved };
+  let d;
+  // 決め方が使う事実だけを、使うときに読んで決め直す（src/decide.js: Need）。
+  for (;;) {
+    try {
+      d = decide(f, config);
+      break;
+    } catch (e) {
+      if (!(e instanceof Need)) throw e;
+      f = { ...f, [e.fact]: await f.later[e.fact]() };
+    }
+  }
   const ops = writesOf(f, d, config);
   if (ops.length) await gh.gql(...batch(ops));
   // 取り消しは、もう終わった・取り消し中の実行なら済んでいる（GitHub は 409 を返す）。

@@ -7,6 +7,19 @@
 // 取り消す実行）。ゲートは今の値と違う所だけを書くので、同じ事実からは何度決めても同じになる。
 import { APPLIED, checkLines, droppedOf, questionLabel, splitBody, withButton } from "./questions.js";
 
+// 読むのに要求の要る事実（src/facts.js: readFacts の later）は、決め方が使うときだけ読む。まだ読んでいなければ Need を投げ、src/gate.js: settle が
+// 読んでから決め直す（決め方の順番を、事実を読む側に写さない）。
+export class Need extends Error {
+  constructor(fact) {
+    super(fact);
+    this.fact = fact;
+  }
+}
+const need = (f, fact) => {
+  if (f[fact] === undefined) throw new Need(fact);
+  return f[fact];
+};
+
 const WAIT = ["回答", "保留"]; // ユーザーの番（担当者の欄にユーザーを入れる）
 const DISPATCH = ["実装", "検証"]; // 振り出す担当の種類（ステータスの値と同じ名前）
 
@@ -93,7 +106,7 @@ function status(f, config) {
     : { status: f.runs.some((r) => r.kind === "実装") ? "実装" : "検証", cancel: f.runs.slice(1).map((r) => r.id) };
   if (f.status === "保留") return { status: "保留" }; // ユーザーが置いた保留は、ユーザーが出すまで保つ
   // 入口: 採否を問う issue（adoptable）には、一度だけ問う。
-  if (adoptable(f, config) && !f.adoptAsked) return { status: "回答", ask: "採否" };
+  if (adoptable(f, config) && !need(f, "adoptAsked")) return { status: "回答", ask: "採否" };
   // ユーザーが書いた文（答えの文・コメント）を Claude がまだ読んでいなければ、Claude の番にする（閉じていれば開き直す）。ゲートは文の中身を読まない。
   if (f.unread) return { status: "実装" };
   // 答えの無い問いがあっても、完了の条件が全部済んだら完成にする（済んだ作業への問いは要らない）。採否は、条件が済んでいても着手するかの答えが要る。
@@ -105,7 +118,7 @@ function status(f, config) {
   // 答えは、書いた文があれば Claude が読んだあとに当て、当てたことを一度だけ知らせる。答えのあとにユーザーがステータスを変えたか開き直したら、
   // 次の決定はそちらなので、その答えは当てない。
   const a = q?.answer;
-  if (!a || f.superseded || (a.text && !f.answerRead)) return table(f);
+  if (!a || (a.text && !f.answerRead) || (["保留", "見送り"].includes(a.decision) && need(f, "superseded"))) return table(f);
   const told = a.text && !f.answerApplied ? `${APPLIED}（${a.decision}）。` : null;
   if (a.decision === "見送り") return { status: "完了", closeAs: "NOT_PLANNED", told };
   if (a.decision === "保留") return { status: "保留", told };
@@ -124,7 +137,7 @@ const unchecked = (c) => ({ status: c.stage && c.stage !== "COMPLETED" ? "検査
 // 同じ種類のまま（状態が動かず）、その実行で約束も動いていなければ、担当は責務を果たさずに終えた。
 const table = (f) => {
   const t = held(f, rows(f));
-  return f.ended && !f.ended.moved && t.status === f.ended.kind ? { status: "回答", ask: "イレギュラー" } : t;
+  return f.ended && t.status === f.ended.kind && !need(f, "ranMoved") ? { status: "回答", ask: "イレギュラー" } : t;
 };
 function rows(f) {
   const pr = f.pr;
@@ -134,7 +147,7 @@ function rows(f) {
   }
   // 待つ相手（前提・子）が開いている間は、確かめも完了もしない。見送りで閉じた相手がいれば、続けるかを一度だけ問う。
   if (f.blocked) return { status: "待機" };
-  if (f.dropped.length && !f.droppedAsked) return { status: "回答", ask: { dropped: f.dropped } };
+  if (f.dropped.length && !need(f, "droppedAsked")) return { status: "回答", ask: { dropped: f.dropped } };
   // 作る側の完了（マージのコミットの検査が通り、本番に出た）も約束のうち。マージのあとの残りは、本番に出てから扱う（本番に出る前に確かめを問わない。原則2）。
   if (f.merged && !f.mergeChecks.passed) return unchecked(f.mergeChecks);
   if (!f.remaining.length) return { status: "完了", closeAs: "COMPLETED" };

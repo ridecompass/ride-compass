@@ -4,7 +4,6 @@ import { originOf } from "./family.js";
 import { FIELDS, START_FORM, valuesOf } from "./fields.js";
 import { pages } from "./github.js";
 import { APPLIED, answerText, askerOf, checkQuestion, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, questionHead, remaining } from "./questions.js";
-import { adoptable } from "./decide.js";
 
 // 着手可能日時の形の合わない値は受け入れず（badStart はその値。ゲートが知らせる）、待つと決めた意図を守ってまだ先と読む。
 const jst = (text) => (START_FORM.test(text) ? new Date(`${text.replace(" ", "T")}${text.includes(":") ? "" : "T00:00"}:00+09:00`) : null);
@@ -162,9 +161,6 @@ export async function readFacts(gh, config, number, runs) {
   const asker = asked < 0 ? null : askerOf(config, nodes[asked].author?.login);
   const latest = latestQuestion(comments, config.questionForms, asker);
   const question = latest && { ...latest, at: at(nodes[asked]) };
-  // 答えのあとに、ユーザーがステータスを変えたか開き直したら、その答えはユーザーの次の決定で置き換わった（答えを当て直さない）。
-  // 当て直すと結果が変わる答え（保留・見送り）のときだけ、答えより後の時系列を読む。
-  const superseded = ["保留", "見送り"].includes(latest?.answer?.decision) && (await movedSince(gh, config, number, answer.createdAt));
   // 子は、親が閉じて開き直されないなら（要望が満たされた・やめた）生きていない。条件が残ったまま完成で閉じた親は、ゲートが開き直す。
   const p = i.parent;
   const dead = Boolean(p) && p.state === "CLOSED" && !(p.stateReason === "COMPLETED" && remaining(p.body).length);
@@ -173,19 +169,21 @@ export async function readFacts(gh, config, number, runs) {
   const ever = async (has) => comments.some(has) || (i.comments.totalCount > nodes.length && (older ??= await allComments(gh, config, number)).some(has));
   const task = taskOf(config, i);
   const asking = task.dropped.length ? droppedQuestion(task.dropped) : null;
-  const droppedAsked = Boolean(asking) && (await ever((x) => x.includes(asking)));
-  const facts = { author: i.author?.login, type: task.type, parent: p && { number: p.number }, origin: originOf(norm(i.body)) };
-  // 採否は、問う issue（src/decide.js: adoptable）でだけ探す（ほかの issue でさかのぼって読まない）。
-  const adoptAsked = adoptable(facts, config) && (await ever((x) => x.startsWith(questionHead("採否"))));
   // 作業ブランチで次の持ち主へ渡した最後の時刻（検査が始まった・マージした・下書きへ戻した）。担当の実行の間か問いのあとにこれが動いて
   // いれば、状態が動いた（検査の出ない push は検査へ渡していない）。
   const handed = Math.max(0, ...c.pullRequests.nodes.flatMap((x) => [x.mergedAt, x.timelineItems.nodes[0]?.createdAt,
     ...x.commits.nodes[0].commit.checkSuites.nodes.filter((s) => s.workflowRun).map((s) => s.createdAt)]).map((t) => Date.parse(t) || 0));
   const conds = conditions(i.body);
   const ended = endedOf(nodes);
-  return { ...task, ...facts, droppedAsked, adoptAsked, unread, answerRead, answerApplied, superseded, number, id: i.id, closedAs: i.stateReason, body: i.body,
-    remaining: conds.filter((x) => !x.done), question, dead, types, dialog, ids: { types: byName(t.issueTypes), labels: byName(t.labels) }, handed,
-    ended: ended && { kind: ended.kind, moved: handed > Date.parse(ended.from) || (await movedOf(gh, config, number, ended, conds)) }, runs: held,
+  // 読むのに要求の要る事実は、決め方が使うときだけ読む（src/decide.js: Need。src/gate.js: settle が読んで決め直す）:
+  // superseded は、答えのあとにユーザーがステータスを変えたか開き直したか（その答えはユーザーの次の決定で置き換わり、当て直さない）。
+  // adoptAsked・droppedAsked は、採否・続行の問いを一度でも出したか（最近のコメントに無く、それより前があれば全部を読む）。
+  // ranMoved は、最後に終わった担当の実行で状態か約束が動いたか。
+  const later = { superseded: () => movedSince(gh, config, number, answer.createdAt), droppedAsked: () => ever((x) => x.includes(asking)),
+    adoptAsked: () => ever((x) => x.startsWith(questionHead("採否"))), ranMoved: async () => handed > Date.parse(ended.from) || movedOf(gh, config, number, ended, conds) };
+  return { ...task, later, author: i.author?.login, parent: p && { number: p.number }, origin: originOf(norm(i.body)), unread, answerRead, answerApplied, number,
+    id: i.id, closedAs: i.stateReason, body: i.body, remaining: conds.filter((x) => !x.done), question, dead, types, dialog,
+    ids: { types: byName(t.issueTypes), labels: byName(t.labels) }, handed, ended: ended && { kind: ended.kind }, runs: held,
     // 閉じた・開き直したときに決め直す、矢印1本でつながる開いた issue（後・親・子）。
     near: [...i.blocking.nodes, ...(p ? [p] : []), ...i.subIssues.nodes].filter((x) => x.state === "OPEN").map((x) => x.number),
     merged: Boolean(merged), mergeChecks: checksOf(merged?.mergeCommit),
