@@ -15,7 +15,7 @@
 | レイヤー | ファイル |
 |---|---|
 | domain | `wind.py`・`wind_grid.py`・`gradient.py`・`rain.py`（雨の材料の宣言——窓の長さの一覧——と、1時間雨量の履歴から材料の値を求める計算・配ってよい履歴の古さ）・`dynamic_way_values.py`（要求の条件の組み立てと、フィーチャーの材料から地図が塗る値への写し） |
-| services | `wind_way_service.py`・`gradient_way_service.py`・`rain_way_service.py`・`feature_midpoints.py`（配信サービスが、タイル内のフィーチャーの値をDBから引き、DB障害・取込範囲外・空のタイルを同じ形でログの欄へ記録する口と、地点の値を引く配信サービスが中ほどを鍵と緯度・経度の配列で引く口）・`feature_materials.py`（タイルのフィーチャーごとの材料と、道1本のフィーチャーごとの区間の材料を読み、ディスクへ持つ）・`dedicated_way_values.py`（材料→配信の実装の表、軸の葉の材料から実装を選ぶこと、条件を組んで値を引く共通の口、地図のレンズ、区間インスペクタが足す材料をまとめて引くこと） |
+| services | `wind_way_service.py`・`gradient_way_service.py`・`rain_way_service.py`・`feature_midpoints.py`（配信サービスが、タイル内のフィーチャーの値をDBから引き、DB障害・取込範囲外・空のタイルを同じ形でログの欄へ記録する口と、地点の値を引く配信サービスが中ほどを鍵と緯度・経度の配列で引く口）・`feature_materials.py`（タイルのフィーチャーごとの材料と、道1本のフィーチャーごとの区間の材料を読み、ディスクへ持つ）・`dedicated_way_values.py`（材料→配信の実装の表、軸の葉の材料から実装を選ぶこと、タイルの材料とサービスの値を1回ずつ引いて軸ごとの値を求める口——地図のレンズと区間インスペクタが使う——、地図のレンズ） |
 | infrastructure | `dynamic_way_value_cache.py`（配信サービスの値は勾配のみ。ディスク経由）・`feature_material_cache.py`（タイルのフィーチャーごとの材料と区間の材料。ディスク経由）・`tile_persistent_cache.py`（呼び出し元が設計したタプルの鍵でPythonオブジェクトを置く汎用のディスクキャッシュ。`diskcache`の包み） |
 | api | `region.py`（`GET /api/region/dynamic-way-values/{axis_id}/...`）・`dependencies.py`（`get_dedicated_way_value_service`・`get_axis_inspector_service`） |
 
@@ -95,7 +95,7 @@ frontendはどのクエリパラメータをどの軸のリクエストへ載せ
 
 | 関数 | 意味 |
 |---|---|
-| `paint_feature_values(axis_id, definitions, feature_keys, materials, served)` | 材料→地図表示値。塗る値が難易度なら軸とそれが読む内部軸をタイル内の全道路について1回の配列評価、符号付き材料ならその材料の列（サービスが配った値か、タイルの材料）をそのまま。評価できない道は落とし、サービスがNoneで返した道（走行方位で決まらない）はNoneのまま返す |
+| `paint_feature_values(axis_id, definitions, feature_keys, materials, served)` | 材料→地図表示値。塗る値が難易度なら軸とそれが読む内部軸をタイル内の全道路について1回の配列評価、符号付き材料ならその材料の列（サービスが配った値か、タイルの材料）をそのまま（`as_difficulty`なら符号付き材料の軸も難易度）。評価できない道は落とし、サービスがNoneで返した道（走行方位で決まらない）はNoneのまま返す |
 
 `services/dedicated_way_values.py: _SERVICES_BY_MATERIAL`は、材料id→担当するサービス実装本体
 （`WindWayService`/`GradientWayService`/`RainWayService`）のdictで、配信の組み立てと地図が載せる条件の導出がここから引く。こちらはPython実装本体
@@ -132,6 +132,24 @@ frontendはどのクエリパラメータをどの軸のリクエストへ載せ
   区間の材料が読めないタイル（取込範囲外・DB障害）は値なし（`{}`）。
 - 区間の材料を読むのは道1本のズームで畳む軸を要求されたときだけで、読み直しは重い（2026-10-10 の本番の実測で、
   都心 z12 の初回が約4秒）ので、タイルの材料と同じキャッシュに持つ（下の「キャッシュ」）。
+
+## 区間インスペクタの値（`services/region_service.py: AxisInspectorService`）
+
+道を押したときの窓（`POST /api/region/axis-inspector`）は、**押した区間**と**その区間を含む道1本**の両方について、公開軸の
+得点と合成を返す。どちらの値も、地図の配信がそのフィーチャーを塗るタイルの値（`services/dedicated_way_values.py:
+tile_axis_values`）を、押したフィーチャーだけについて求めたもの——窓のために別の評価を持たず、押した倍率に依らず
+区間の値は寄せた地図（区間で塗る倍率）の色、道1本の値は引いた地図（道1本で塗る倍率）の色と同じになる。
+
+- **評価するタイル**: 区間は区間で焼くタイル、道1本は道1本で焼くタイル（`domain/region.py: edge_unit_tile`・
+  `way_unit_tile`）。寄せた地図で押したときの道1本は、押したタイルを含む道1本のタイルで評価する。
+- **押した区間**: 区間で塗る倍率では、押したフィーチャーの鍵が指す区間。道1本で塗る倍率では、押した地点に最も近い
+  その道の区間（`infrastructure/road_graph_repository.py: RoadGraphRepository.get_nearest_way_segment`。区間を1本も持たない
+  道は道丸ごと）を、その区間の上で押した地点に最も近い点を含む区間のタイルで評価する。
+- **得点**: 符号付き材料を塗る軸（勾配）も難易度で返す（`as_difficulty`）。要る条件が欠けた軸（地図の配信なら422）と、
+  走行方位で値の決まらない道の軸は得点が無い。合成は送られた重みで、得点のある軸だけから出す
+  （`domain/axis_inspector.py: inspector_values`）。
+- 寄せた地図で押しても道1本の値のために引いた地図のタイルの材料（畳む軸があれば区間の材料も）を読むので、キャッシュに
+  無いタイルでは初めの1回が重い。
 
 ## API（`api/routers/region.py`）
 
@@ -178,8 +196,8 @@ axis_id → get_dedicated_way_value_service(axis_id) が今の軸の集合の写
   どちら向きに辿るかが決まらず符号を選べない。0%として配ると、実際には急な坂の道が凡例の
   「平坦」の段へ入り、平坦な道と同じ色で塗られる——言えるのは「勾配を示せない」であって
   「平坦だ」ではない。結果から落とすと、値の無い道（「データなし」）と見分けられない。
-  `null`にする幅（`LENS_PERPENDICULAR_BAND_DEG`）は実地を見て決め直す値。区間インスペクタは`null`の材料を
-  値の無い材料と同じく足さない。
+  `null`にする幅（`LENS_PERPENDICULAR_BAND_DEG`）は実地を見て決め直す値。区間インスペクタでは、その材料を読む軸の
+  得点が無い（`null`）。
 - 各サービスは`material_id`属性で自分が返す生値の材料idを宣言し、レンズはそれを軸定義の
   どの材料として評価するかに使う。勾配は`gradient_percent`固定、風は`wind_drag_ratio`固定
   （走行速度依存、`speed_kmh`必須）。
@@ -366,7 +384,7 @@ get_way_values(z, x, y, ...)
   値の定義（窓の中に欠測があれば値なし、止んでからの時間の上限）は材料カタログの説明と`domain/rain.py`が持つ。
 
 各サービスとも`get_way_values(z, x, y, 条件) -> dict[str, float]`という同じ形で、地図のレンズと区間インスペクタから
-材料非依存に呼ばれる（`services/dedicated_way_values.py: AxisWayValueLens.values`・`way_values`）。条件は`assemble_conditions`が組み立てたそのサービスの`conditions_type`の値
+材料非依存に呼ばれる（`services/dedicated_way_values.py: tile_axis_values`）。条件は`assemble_conditions`が組み立てたそのサービスの`conditions_type`の値
 （上の「軸登録と要求の条件」）。
 
 各サービスが例外を空dictへ倒すのは**DB障害だけ**（`database.py: DB_UNAVAILABLE_ERRORS`。

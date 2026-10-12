@@ -74,20 +74,22 @@ export interface RideConditions {
   speedKmh: number;
 }
 
-/** 上記に、クリックされた点を含む道路タイルを足したもの（レンズが引いたのと同じタイルを
+/** 上記に、クリックされた点と、それを含む道路タイルを足したもの（レンズが引いたのと同じタイルを
  * 指すため、backendは同じキャッシュから値を引ける）。 */
 export interface AxisInspectorConditions extends RideConditions {
   z: number;
   x: number;
   y: number;
+  latitude: number;
+  longitude: number;
 }
 
 export type AxisInspectorResult = components["schemas"]["AxisInspectorResult"];
 
-/** 地図で押した道（`osm_way_id`）の一次属性・全軸・合成を取る。 */
+/** 地図で押した道（`osm_way_id`）の一次属性と、押した区間・その区間を含む道1本の全軸・合成を取る。 */
 export async function fetchAxisInspector(
   osmWayId: number,
-  featureKey: string | null,
+  featureKey: string,
   conditions: AxisInspectorConditions,
   routePreference: RoutePreferenceWeights | null,
 ): Promise<AxisInspectorResult | null> {
@@ -95,8 +97,9 @@ export async function fetchAxisInspector(
     osm_way_id: osmWayId,
     // 合成に使う重み（利用者がいま設定しているもの）。送らなければbackendの既定の重み。
     ...(routePreference != null ? { route_preference: routePreference } : {}),
-    // 押した地物の識別子。区間単位のズームで押した道は内訳も区間単位で計算される（地図の色と数字を揃える）。
-    ...(featureKey != null ? { feature_key: featureKey } : {}),
+    // 押した地物の識別子と押した点。道1本で塗るズームで押した道は、押した点に最も近い区間がbackendで選ばれる。
+    feature_key: featureKey,
+    point: { latitude: conditions.latitude, longitude: conditions.longitude },
     z: conditions.z,
     x: conditions.x,
     y: conditions.y,
@@ -109,7 +112,7 @@ export async function fetchAxisInspector(
     category: "api:axis-inspector",
     messages: { failure: "内訳の取得に失敗しました", parseFailure: "内訳の取得に失敗しました" },
     requestMeta: { body },
-    successMeta: (data) => ({ composite: data?.composite_difficulty }),
+    successMeta: (data) => ({ composite: data?.way.composite_difficulty }),
   });
 }
 

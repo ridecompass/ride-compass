@@ -7,7 +7,7 @@ import argparse
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
+from collections.abc import AsyncIterator, Callable, Coroutine, Iterable, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, TypeVar
@@ -43,6 +43,11 @@ async def batch_session_factory(
         await engine.dispose()
 
 
+def configure_cli_logging() -> None:
+    """バッチと取得の道具が端末へ出すログの書式。"""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+
+
 def run_batch_cli(
     parser: argparse.ArgumentParser,
     start: Callable[[argparse.Namespace, str], Coroutine[Any, Any, int]],
@@ -53,7 +58,7 @@ def run_batch_cli(
     本体のコルーチンを返す。イベントループの外で呼ぶので、引数の検査（`parser.error`）は
     `start`の中に置いてよい。
     """
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+    configure_cli_logging()
     parser.add_argument("--database-url", default=None)
     args = parser.parse_args()
     return asyncio.run(start(args, args.database_url or settings.database_url))
@@ -142,56 +147,95 @@ FETCH_PART_SUFFIX = ".part"
 FETCH_BROKEN_SUFFIX = ".broken"
 
 
+def fetch_timeout(read_seconds: float) -> httpx.Timeout:
+    """配布元から1つのファイルを取るときのタイムアウト。
+
+    つなぐ・送る・接続の空きを待つ上限はどの配布元でも同じで、応答の途中で黙ってよい秒数（`read_seconds`）だけが
+    配布元ごとに違う。
+    """
+    return httpx.Timeout(connect=10.0, read=read_seconds, write=30.0, pool=30.0)
+
+
+def place_verified(
+    destination: Path,
+    readable: Callable[[Path], bool],
+    write: Callable[[Path], bool],
+    *,
+    source: str,
+    logger: logging.Logger,
+) -> bool:
+    """配布元から取ったものを手元の所定の名前へ置く。何度実行しても安全で、終わる。
+
+    - 手元にあって読めるファイルは取り直さない
+    - `write`に一時ファイルへ書かせてから所定の名前へ移す。途中で落ちた半端なものを「取得済み」に見せない
+    - 書き終えたら`readable`で実際に開いてみる。開けないか、`write`が欠けていると返したら（False）退けてFalseを
+      返す——読めないファイルを置いたまま成功を報告すると、次に落ちるのはそれを読む取込の途中になる
+
+    開いてみるのは所定の名前へ移してから——開く道具には名前の拡張子で形を決めるものがあり、一時ファイルの印の付いた
+    名前では開けない。`source`は取りに行く先で、ログにだけ使う。`write`の例外はそのまま呼び出し側へ出す。
+    """
+    if destination.exists() and readable(destination):
+        logger.info("既にある %s", destination)
+        return True
+    logger.info("取りに行く %s", source)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(destination.name + FETCH_PART_SUFFIX)
+    broken = destination.with_name(destination.name + FETCH_BROKEN_SUFFIX)
+    started = time.perf_counter()
+    if write(temporary):
+        temporary.replace(destination)
+        logger.info("取得した %s（%.1f MB / %s）", destination.name,
+                    destination.stat().st_size / (1024 * 1024), format_duration(time.perf_counter() - started))
+        if readable(destination):
+            return True
+        destination.replace(broken)
+    else:
+        temporary.replace(broken)
+    logger.error("取ったが読めない: %s（%s へ退けた。もう一度実行すると取り直す）", destination.name, broken.name)
+    return False
+
+
 def fetch_verified(
     url: str,
     destination: Path,
     readable: Callable[[Path], bool],
     *,
-    timeout: httpx.Timeout | float,
+    read_timeout: float,
     logger: logging.Logger,
 ) -> bool:
-    """配布元のファイルを手元の所定の名前へ写す。何度実行しても安全で、終わる。
+    """配布元のURLのファイルを、`place_verified`の手順で手元の所定の名前へ写す。
 
-    - 手元にあって読めるファイルは落とし直さない
-    - 一時ファイルへ書いてから所定の名前へ移す。途中で落ちた半端なものを「取得済み」に
-      見せない
-    - 落とし終えたら`readable`で実際に開いてみる。開けなければ退けてFalseを返す——読めない
-      ファイルを置いたまま成功を報告すると、次に落ちるのはそれを読む取込の途中になる
-
-    大きさだけでは半端なファイルも配布元が200で返すエラー本文も弾けないため、`readable`は
-    中身を開いて確かめるものを渡す。通信の失敗は例外のまま呼び出し側へ出す。
+    大きさだけでは半端なファイルも配布元が200で返すエラー本文も弾けないため、`readable`は中身を開いて確かめる
+    ものを渡す。`read_timeout`は`fetch_timeout`へ渡す。通信の失敗は例外のまま呼び出し側へ出す。
     """
-    if destination.exists() and readable(destination):
-        logger.info("既にある %s", destination)
+    def write(temporary: Path) -> bool:
+        started = time.perf_counter()
+        last_report = started
+        written = 0
+        with httpx.stream("GET", url, timeout=fetch_timeout(read_timeout), follow_redirects=True) as response:
+            response.raise_for_status()
+            total = int(response.headers.get("content-length") or 0) or None
+            with temporary.open("wb") as sink:
+                for chunk in response.iter_bytes():
+                    sink.write(chunk)
+                    written += len(chunk)
+                    now = time.perf_counter()
+                    if now - last_report < PROGRESS_INTERVAL_SECONDS:
+                        continue
+                    last_report = now
+                    logger.info("取得中 %s", format_progress(
+                        written // (1024 * 1024),
+                        total // (1024 * 1024) if total else None,
+                        now - started, "MB"))
         return True
-    logger.info("取りに行く %s", url)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_name(destination.name + FETCH_PART_SUFFIX)
-    started = time.perf_counter()
-    last_report = started
-    written = 0
-    with httpx.stream("GET", url, timeout=timeout, follow_redirects=True) as response:
-        response.raise_for_status()
-        total = int(response.headers.get("content-length") or 0) or None
-        with temporary.open("wb") as sink:
-            for chunk in response.iter_bytes():
-                sink.write(chunk)
-                written += len(chunk)
-                now = time.perf_counter()
-                if now - last_report < PROGRESS_INTERVAL_SECONDS:
-                    continue
-                last_report = now
-                logger.info("取得中 %s", format_progress(
-                    written // (1024 * 1024),
-                    total // (1024 * 1024) if total else None,
-                    now - started, "MB"))
-    temporary.replace(destination)
-    logger.info("取得した %s（%.1f MB / %s）", destination.name,
-                written / (1024 * 1024), format_duration(time.perf_counter() - started))
-    if readable(destination):
-        return True
-    broken = destination.with_name(destination.name + FETCH_BROKEN_SUFFIX)
-    destination.replace(broken)
-    logger.error("落としたが開けない: %s（%s へ退けた。もう一度実行すると取り直す）",
-                 destination.name, broken.name)
-    return False
+
+    return place_verified(destination, readable, write, source=url, logger=logger)
+
+
+def fetched_all(attempts: Iterable[bool]) -> bool:
+    """取得を全部試してから、全部を置けたかを返す。
+
+    `attempts`は1件ずつ取りに行く生成器を渡す。1つ置けなくても残りを取りに行く——置けたものは次の実行で取り直さない
+    ので、止めると直したあとの実行で残りを初めて取ることになる。`all`へ生成器をそのまま渡すと最初の失敗で止まる。
+    """
+    return all(list(attempts))

@@ -18,13 +18,13 @@ Road Graphのトポロジーと、既に計算済みのEdge Costのみ。
 """
 import logging
 import math
-import time
 from collections.abc import Callable, Container, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TypeVar
 
 import numpy as np
 from numba import njit
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.geo import LatLonPoint, bearing_between, haversine_distance_km_array, km_per_degree_longitude
 from app.domain.route import Coordinates
 from app.domain.traffic import MAJOR_CROSSING_MIN_RANK
@@ -1086,7 +1086,7 @@ def build_turn_expanded_tree(
         indptr, target_state, transition_seconds = (
             structure.indptr, structure.target_state, structure.turn_seconds
         )
-    started = time.perf_counter()
+    started = start_timer()
     state_cost, predecessor, state_length_m, state_seconds = _turn_expanded_dijkstra(
         _kernel_array(indptr, np.int64), _kernel_array(target_state, np.int64),
         _kernel_array(transition_seconds, np.float64),
@@ -1095,9 +1095,9 @@ def build_turn_expanded_tree(
         _kernel_array(entry_state_indices, np.int64), float(cost_limit),
         len(entry_state_indices) + HEAP_INITIAL_SLACK,
     )
-    dijkstra_ms = (time.perf_counter() - started) * 1000
+    dijkstra_ms = elapsed_ms(started)
 
-    fold_started = time.perf_counter()
+    fold_started = start_timer()
     # Nodeごとに最小コストの状態を1つ選ぶ（正方向はNodeへ入る状態、逆方向は出る状態）。
     incoming = structure.edge_from if reverse else structure.edge_to
     order = np.lexsort((state_cost, incoming))
@@ -1113,9 +1113,9 @@ def build_turn_expanded_tree(
     node_seconds[incoming[finite_best]] = state_seconds[finite_best]
 
     logger.info(
-        "turn_expanded_tree reverse=%s states=%d bins=%d dijkstra_ms=%.0f fold_ms=%.0f",
+        "turn_expanded_tree reverse=%s states=%d bins=%d dijkstra_ms=%d fold_ms=%d",
         reverse, state_count, cost_bins.shape[0], dijkstra_ms,
-        (time.perf_counter() - fold_started) * 1000,
+        elapsed_ms(fold_started),
     )
     return TurnExpandedTree(
         state_cost=state_cost, state_length_m=state_length_m,

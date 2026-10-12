@@ -1,10 +1,10 @@
 """Pull Request の変異の結果を知らせる。backend の下で、runner.py のあとに打つ。
 
 引数: 比べる版（diff_scope.py に渡したもの）
-読むもの（環境変数 MUT_OUT の場所）: results.jsonl・kills/（runner.py が書く）・scope.json（pr_plan.py が書く）。
-- 生き残り: 変異を入れてもテストが1本も落ちなかったもの。落ちたテストが全部、その関数の基準（変異を入れない版で同じ組み合わせを
-  2回）でも落ちたものも、生き残りに数える（変異と関係なく落ちていて、気づいたとは言えない）。集める時点で落ちたもの・
-  時間切れは気づいた側。
+読むもの（環境変数 MUT_OUT の場所）: results.jsonl・kills/（runner.py が書く）・rows.json（plan.py が書く）・scope.json（pr_plan.py が
+書く）。mutants/ の mutmut-stats.json（gen.py が書かせる）。
+- 生き残り・気づいたの分け方は、全部の測りの表と同じ判断（`_shared.py: judge`。変異を入れない版で同じ組み合わせを2回回した、
+  その関数の基準で落ちたテストは数えない）。
 - 生き残りのうち、書き換えた行が Pull Request で変わった行に当たるものを、その行への注記（GitHub Actions の
   `::warning file=…,line=…::…`）として出す。同じ行には1つだけ、全体で MUT_PR_MAX_NOTES 件まで（既定の10は、Actions が1つの段で
   出せる warning の注記の上限。それを超えた分は黙って捨てられる。REST の Checks の文書「Update a check run」）。
@@ -15,39 +15,32 @@ import json
 import os
 import sys
 
-from _shared import fn_of, mutation_line, read_kills
+from _shared import baseline_failures, baseline_of, cell, expand, fn_of, judge, read_kills, read_results, read_stats
 from diff_scope import changed_lines
 
 OUT = os.environ["MUT_OUT"]
 MAX_NOTES = int(os.environ.get("MUT_PR_MAX_NOTES", "10"))
 base = sys.argv[1]
 scope = json.load(open(os.path.join(OUT, "scope.json"), encoding="utf-8"))
-results = [json.loads(line) for line in open(os.path.join(OUT, "results.jsonl"), encoding="utf-8")] \
-    if os.path.exists(os.path.join(OUT, "results.jsonl")) else []
+where = {m: (path, line, old, new) for path, m, _n, _secs, line, old, new in
+         json.load(open(os.path.join(OUT, "rows.json"), encoding="utf-8"))}
+results = read_results(os.path.join(OUT, "results.jsonl"))
 kills = read_kills(OUT)
+tbf, _duration = read_stats("mutants")
+baseline_failed = baseline_failures(results, kills, tbf)
 
-base_fail: dict[str, set[str]] = collections.defaultdict(set)
-for name, tests in kills.items():
-    kind, _, fn = name.partition(":")
-    if fn and kind in ("BASE1", "BASE2"):
-        base_fail[fn] |= tests
-
-survivors, detected = [], 0
-for r in results:
-    name = r["mutant"]
-    if ":" in name:
+counts: collections.Counter[str] = collections.Counter()
+survivors = []
+for name, r in results.items():
+    if baseline_of(name):
         continue
-    if r["status"] == "survived" or (r["status"] == "killed" and not (kills[name] - base_fail[fn_of(name)])):
+    fn = fn_of(name)
+    status = judge(r, expand(kills.get(name, set()), fn, tbf), baseline_failed.get(fn, set()))[0]
+    counts[status] += 1
+    if status == "Survived":
         survivors.append(name)
-    else:
-        detected += 1
-
-
-def file_of(mutant):
-    """mutmut の名前から、backend からのファイルのパス（パッケージなら __init__.py）。"""
-    module = fn_of(mutant).rsplit(".", 1)[0]
-    path = module.replace(".", "/")
-    return f"{path}.py" if os.path.exists(f"{path}.py") else f"{path}/__init__.py"
+detected = counts["Killed"] + counts["Timeout"]
+others = counts.total() - detected - len(survivors)
 
 
 def escape(s):
@@ -57,12 +50,10 @@ def escape(s):
 diff = changed_lines(base)
 rows, notes, noted_lines = [], 0, set()
 for m in sorted(survivors):
-    path = file_of(m)
-    where = mutation_line(m, path, "mutants", ".")
-    if where is None:
+    path, line, old, new = where[m]
+    if line is None:
         rows.append((path, "", fn_of(m), "（書き換えた行を読めなかった）", False))
         continue
-    line, old, new = where
     on_diff = line in diff.get(path, set())
     rows.append((path, line, fn_of(m), f"`{old}` → `{new}`", on_diff))
     if on_diff and (path, line) not in noted_lines and notes < MAX_NOTES:
@@ -72,13 +63,14 @@ for m in sorted(survivors):
               + escape(f"この行を「{new}」に書き換えても、この関数を通るテストが全部通った（元: {old}）"))
 
 lines = ["## 変えた関数の変異テスト", "",
-         f"変えた関数 {len(scope['funcs'])}・回した変異 {detected + len(survivors)}・気づいた {detected}・生き残り {len(survivors)}"
+         f"変えた関数 {len(scope['funcs'])}・回した変異 {counts.total()}・気づいた {detected}・生き残り {len(survivors)}"
+         f"{f'・ほか {others}' if others else ''}"
          f"（変えた行への注記 {notes}、上限 {MAX_NOTES}）", ""]
 if scope["untested"]:
     lines += ["### 変わったのに、どのテストも通らない関数", ""] + [f"- `{f}`" for f in scope["untested"]] + [""]
 if rows:
     lines += ["### 生き残り", "", "| ファイル | 行 | 関数 | 書き換え | 変えた行 |", "|---|---:|---|---|---|"]
-    lines += [f"| `{f}` | {ln} | `{fn.rsplit('.', 1)[1]}` | {d.replace('|', '\\|')} | {'◯' if od else ''} |"
+    lines += [f"| `{f}` | {ln} | `{fn.rsplit('.', 1)[1]}` | {cell(d)} | {'◯' if od else ''} |"
               for f, ln, fn, d, od in rows]
 text = "\n".join(lines) + "\n"
 summary = os.environ.get("GITHUB_STEP_SUMMARY")

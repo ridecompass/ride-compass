@@ -96,7 +96,7 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 | 経路 | 入口 | 粒度 |
 |---|---|---|
 | 区間の評価 | `road_graph_repository.py: get_edge_material_arrays` | 区間群（タイル1枚ぶん） |
-| way1本 | `road_graph_repository.py: get_way_material_values` | way1本（区間インスペクタ） |
+| タイルのフィーチャー | `road_graph_repository.py: get_feature_materials_in_tile` | タイル1枚の区間か道1本（地図の配信・区間インスペクタ） |
 | way標本 | `road_graph_repository.py: sample_way_material_values` | way標本（軸スタジオの分布プレビュー） |
 
 way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`がwayの行から同じ名前の
@@ -134,10 +134,9 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
   cost・difficulty配列（0次フィルタの除外は`compute_hard_filter_excluded`が別途判定）
 ```
 
-way1本を指す区間インスペクタも同じ評価・合成を長さ1の配列で通す（`axis_inspector_breakdown`→
-`evaluate_axes_values`・`difficulty.py: composite_difficulty`）。軸の評価と合成の式は配列版の
-1本ずつで、入口ごとに書き写さない——書き写すと、区間を押して見える得点とルート選びが使う得点が
-同じ道で食い違う。
+区間インスペクタも同じ評価・合成を通す（得点は地図の配信と同じ値、合成は`difficulty.py: composite_difficulty`を
+長さ1の配列で）。軸の評価と合成の式は配列版の1本ずつで、入口ごとに書き写さない——書き写すと、区間を押して見える
+得点とルート選びが使う得点が同じ道で食い違う。
 
 - 評価できなかった軸は合成から除外され、残りの重みで再正規化される。
 - `penalty_strength`（P）は**主観的割増と時間の換算レート**。リクエストが省略したときの値は
@@ -487,17 +486,13 @@ way粒度で引くときは、同じ式のまま`w`の行から同じ名前の�
   超えうるため）。
 - 欠損の扱いと母集団の画面の名前（管理画面の欠損率の見出し・説明）は、同じファイルの`MISSING_SEMANTICS_DISPLAY`・`POPULATION_LABELS`が持ち、生成物`vocabulary.ts`で画面へ届く。
 
-## 区間インスペクタ（`axis_inspector_breakdown`）
+## 区間インスペクタ（`axis_inspector.py: inspector_values`）
 
-単独でクリックされたway（ルート文脈が無い）について、「一次属性→二次軸→三次合成コスト」を
-算出する。材料値は`RoadGraphRepository.get_way_material_values`が返したものをそのまま受け
-取り、この関数は合成だけを行う。進行方向に依存する材料（勾配%・風ペナルティ）は
-**1本の道が往復2方向で違う値を持つ**ためDBのway単位の値には無く、走行方位・時刻・想定速度を
-指定して呼び出し側（`services/dedicated_way_values.py: DirectionalMaterialService`）が引いたものを
-`materials`へ足して渡す。足されなければその軸の`difficulty`はNoneになる。合成
-（`composite_difficulty`）は値と`covered_weight_fraction`（全軸の重み合計に対する取得できた軸の
-重み合計の割合）を1つの任意の項目で持ち、取得できた軸が無ければNone。割合はフロントの
-「参考値」表示に使う。
+単独でクリックされた道（ルート文脈が無い）の押した区間と道1本それぞれについて、軸ごとの得点から「二次軸→三次合成
+コスト」の内訳を作る。得点は呼び出し側が地図の配信と同じ値で求めて渡し（[動的材料・フィーチャー値配信](dynamic-way-values.md)
+「区間インスペクタの値」）、評価できない軸はNoneで渡る。合成（`composite_difficulty`）は値と`covered_weight_fraction`
+（全軸の重み合計に対する取得できた軸の重み合計の割合）を1つの任意の項目で持ち、取得できた軸が無ければNone。割合は
+フロントの「参考値」表示に使う。
 
 
 ## RoutePreference（`domain/route_preference.py`）

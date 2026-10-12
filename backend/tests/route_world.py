@@ -24,6 +24,7 @@ from app.domain.traffic import stop_count_material_ids
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
 from app.domain.route_preference import RoutePreference
+from app.domain.route_request import RequestedConditions
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
 from app.services.graph_service import GraphService
@@ -211,9 +212,11 @@ def generator_for(monkeypatch, network: RoadNetwork, avoid_weight: float, wind: 
     serve_road_network(monkeypatch, lambda: network)
     return assemble_route_generation_setup(
         GraphService(NetworkRepository(network)), Weather(wind),
-        preference_override=RoutePreference(weights={AVOID_AXIS: avoid_weight}),
-        penalty_strength=1.0, max_average_grade_percent=None, hard_filters=DEFAULT_HARD_FILTERS,
-        assumed_speed_kmh=20.0,
+        RequestedConditions(
+            preference_override=RoutePreference(weights={AVOID_AXIS: avoid_weight}),
+            penalty_strength=1.0, max_average_grade_percent=None, hard_filters=DEFAULT_HARD_FILTERS,
+            assumed_speed_kmh=20.0,
+        ),
     ).generator
 
 

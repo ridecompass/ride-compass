@@ -42,21 +42,29 @@ export async function recentRuns(gh, config) {
     created: Date.parse(r.created_at), updated: Date.parse(r.updated_at) })).filter((r) => r.number);
 }
 
-const query = (config) => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:String!,$head:String!){
+const query = (config) => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:String!,$head:String!,$base:String!){
  t:repository(owner:$to,name:$tn){issue(number:$n){id state stateReason closedAt body author{login} issueType{name} assignees(first:10){nodes{login}}
   comments(last:40){nodes{body createdAt author{login}}} ${FIELDS} ${relationsOf(true)}
   timelineItems(first:50,itemTypes:[ISSUE_TYPE_CHANGED_EVENT]){nodes{...on IssueTypeChangedEvent{prevIssueType{name} issueType{name}}}}}}
  c:repository(owner:$co,name:$cn){pullRequests(headRefName:$head,first:5,orderBy:{field:CREATED_AT,direction:DESC}){nodes{
-  id state isDraft merged mergeCommit{statusCheckRollup{state}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{state}}}}
-  timelineItems(last:1,itemTypes:[CONVERT_TO_DRAFT_EVENT]){nodes{...on ConvertToDraftEvent{createdAt}}}}}}}`;
+  id state isDraft merged createdAt mergedAt mergeCommit{oid statusCheckRollup{state contexts(first:100){nodes{...on CheckRun{status} ...on StatusContext{state}}}}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{state}}}}
+  timelineItems(last:1,itemTypes:[CONVERT_TO_DRAFT_EVENT]){nodes{...on ConvertToDraftEvent{createdAt}}}}}
+  ref(qualifiedName:$base){target{...on Commit{history(first:20){nodes{oid statusCheckRollup{state contexts(first:100){nodes{...on CheckRun{status} ...on StatusContext{state}}}}}}}}}}}`;
 const ROLLUP = { SUCCESS: "SUCCESS", FAILURE: "FAILURE", ERROR: "FAILURE", PENDING: "PENDING", EXPECTED: "PENDING" };
+// マージのコミットの CI が終わったか。GitHub の集計は、1つが落ちるとほかの検査が走っている間も FAILURE を返すので、走っている検査が
+// 残る間は終わっていない（作る担当が打ち直した直後に落ちたのを、打ち直さずに手放したと読まない）。
+const running = (n) => (n.status ? n.status !== "COMPLETED" : ["PENDING", "EXPECTED"].includes(n.state));
+const finished = (rollup) => (rollup?.contexts?.nodes.some(running) ? "PENDING" : ROLLUP[rollup?.state]);
+// マージが本番に出たか。master の CI は、前のコミットで落ちた・取り消された変更も次の push の検査とデプロイに含むので、マージのコミットか、
+// それより後の master のコミット（history は新しい順。マージのコミットが見えなければ全部が後）のどれかで通れば出ている。
+const deployed = (merged, history) => {
+  const since = history.findIndex((n) => n.oid === merged.mergeCommit?.oid);
+  const after = since < 0 ? history : history.slice(0, since);
+  return after.some((n) => finished(n.statusCheckRollup) === "SUCCESS") ? "SUCCESS" : finished(merged.mergeCommit?.statusCheckRollup);
+};
 
-// 変異テストの生き残りの数と、その結果が出た時刻。
-async function survivors(gh, config, sha) {
-  const { check_runs: [run] } = await gh.rest("GET", `/repos/${config.code}/commits/${sha}/check-runs?check_name=${config.mutationCheck}`);
-  const notes = run ? await gh.rest("GET", `/repos/${config.code}/check-runs/${run.id}/annotations?per_page=100`) : [];
-  return { count: notes.filter((a) => a.title === "テストが気づかない書き換え").length, at: Date.parse(run?.completed_at) };
-}
+// イレギュラーに「やり直す」と答えたあと（answered はその時刻）、まだ担当が終わっていないか（src/decide.js: redo）。issue に残るコメントで判じる。
+const redo = (question, answered, ends) => question?.kind === "イレギュラー" && question.answer?.decision === "続ける" && !ends.some((t) => t > answered);
 
 // issue の全部のコメントの本文（古い順）。
 async function allComments(gh, config, number) {
@@ -78,13 +86,11 @@ export const readFromOf = (body) => /^読み始め: (\S+)$/m.exec(body)?.[1] ?? 
 // runs は出来事1件につき1回読んだ担当の実行の一覧（recentRuns）。
 export async function readFacts(gh, config, number, runs) {
   const { tasks: t, code } = config.repos;
-  const { t: { issue: i }, c } = await gh.gql(query(config), { to: t.owner, tn: t.name, n: number, co: code.owner, cn: code.name, head: `${config.branchPrefix}${number}` });
+  const { t: { issue: i }, c } = await gh.gql(query(config), { to: t.owner, tn: t.name, n: number, co: code.owner, cn: code.name, head: `${config.branchPrefix}${number}`, base: config.base });
   const held = runs.filter((r) => r.number === number && r.active).sort((a, b) => a.created - b.created); // 古い順（2本目からは二重の実行）
   const open = c.pullRequests.nodes.find((p) => p.state === "OPEN");
   const head = open?.commits.nodes.at(-1);
   const checks = ROLLUP[head?.commit.statusCheckRollup?.state];
-  // 生き残りは、持たれていない PR の CI が通ったときだけ要る。作る担当がその結果のあとに持っていなければ新しい。
-  const mutants = !held.length && open && checks === "SUCCESS" ? await survivors(gh, config, head.commit.oid) : { count: 0 };
   const drafted = open?.timelineItems.nodes[0]?.createdAt;
   const merged = c.pullRequests.nodes.find((p) => p.merged); // 新しいものから並ぶ
   const nodes = i.comments.nodes;
@@ -94,8 +100,6 @@ export async function readFacts(gh, config, number, runs) {
   // 読んでいる（前の形の終わりのコメントは書いた時刻）。対話作業の issue は開発機の対話のセッションが読んでから書くので、Claude のコメントがあれば
   // それより前を読んでいる。閉じたあとの文だけを数える（閉じるときに一緒に書いた文は、閉じる決定の一部）。
   const at = (n) => Date.parse(n.createdAt);
-  // 作る担当が最後に終わった時刻（変異テストの生き残りを見たあとか）。実行の一覧は近ごろの分しか無いので、issue に残る終わりのコメントで判じる。
-  const made = Math.max(0, ...nodes.filter((n) => END.exec(norm(n.body))?.[1] === "作る").map(at));
   const by = (n, login) => n.author?.login === login;
   const types = i.timelineItems.nodes.map((e) => e.prevIssueType?.name ?? null); // 今より前の種類（古い順）
   const dialog = dialogOf(config, types, i.issueType?.name ?? null);
@@ -110,7 +114,8 @@ export async function readFacts(gh, config, number, runs) {
   const answer = asked < 0 ? null : nodes.slice(asked + 1).find((n) => isAnswer(n.body));
   const answerRead = Boolean(answer) && reads.some((t) => t > at(answer));
   const answerApplied = Boolean(answer) && nodes.some((n) => at(n) > at(answer) && norm(n.body).startsWith(APPLIED));
-  const question = latestQuestion(comments, config.questionTemplate);
+  const latest = latestQuestion(comments, config.questionTemplate);
+  const question = latest && { ...latest, at: at(nodes[asked]) };
   // 子は、親が閉じて開き直されないなら（要望が満たされた・やめた）生きていない。条件が残ったまま完成で閉じた親は、ゲートが開き直す。
   const p = i.parent;
   const dead = Boolean(p) && p.state === "CLOSED" && !(p.stateReason === "COMPLETED" && remaining(p.body).length);
@@ -118,11 +123,13 @@ export async function readFacts(gh, config, number, runs) {
   const task = taskOf(config, i);
   const asking = task.dropped.length ? droppedQuestion(task.dropped) : null;
   const droppedAsked = Boolean(asking) && (comments.some((x) => x.includes(asking)) || (await allComments(gh, config, number)).some((x) => x.includes(asking)));
-  return { ...task, droppedAsked, unread, answerRead, answerApplied, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
+  return { ...task, droppedAsked, redo: redo(question, answer && at(answer), nodes.filter((n) => END.test(norm(n.body))).map(at)), unread, answerRead, answerApplied, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
     conditions: conditions(i.body), remaining: remaining(i.body), assignees: i.assignees.nodes.map((a) => a.login), question,
     runs: held, parent: p && { number: p.number }, dead, children: i.subIssues.nodes, origin: originOf(norm(i.body)),
     types, dialog,
-    merged: Boolean(merged), mergeChecks: ROLLUP[merged?.mergeCommit?.statusCheckRollup?.state],
+    // 作業ブランチの PR が最後に開かれたかマージされた時刻（担当が手放したあとに、別の所で作られたかを問いの時刻と比べる）。
+    prMoved: Math.max(0, ...c.pullRequests.nodes.flatMap((x) => [Date.parse(x.createdAt), Date.parse(x.mergedAt) || 0])),
+    merged: Boolean(merged), mergeChecks: merged && deployed(merged, c.ref.target.history.nodes),
     badQuestion: last && isQuestion(last) ? checkQuestion(config.questionTemplate, last) : [], comments,
-    pr: open && { id: open.id, draft: open.isDraft, checks, newSurvivors: mutants.count > 0 && !(made > mutants.at), backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };
+    pr: open && { id: open.id, draft: open.isDraft, checks, backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };
 }

@@ -24,7 +24,6 @@ docs/modules/backend/routing-engine.mdが持つ。ここには、このファイ
 import asyncio
 import logging
 import math
-import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
@@ -33,6 +32,7 @@ from typing import NoReturn
 
 import numpy as np
 
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.time_zone import JST, as_series_time
 from app.domain.traffic import highway_rank
 from app.domain.tuning import tuning_value
@@ -73,6 +73,7 @@ from app.domain.route import (
 )
 from app.domain.route_search import (
     DETOUR_RATIO_MIN_ROAD_M,
+    LengthBand,
     LOOP_MAX_OVERLAP_RATIO,
     MAX_SNAP_CORRECTION_KM,
     TURNAROUND_MAX_OVERLAP_RATIO,
@@ -204,9 +205,9 @@ def _static_score_matrix(road: RoadSlice, rain: StationRainMaterials | None) -> 
     """切り出した区間の材料に、区間の中点に最も近い雨量計の観測（雨の材料）を足して静的スコア行列を組む。
     戻り値の2つ目は雨の材料を引くのにかかった時間（ms）。"""
     materials = material_arrays_of(road)
-    started = time.monotonic()
+    started = start_timer()
     observed = {} if rain is None else rain_material_columns(rain, materials.mid_lat, materials.mid_lon)
-    rain_ms = round((time.monotonic() - started) * 1000)
+    rain_ms = elapsed_ms(started)
     return build_static_edge_score_matrix(materials, observed), rain_ms
 
 
@@ -332,40 +333,40 @@ class RoadGraphEngine:
         ベクトルを適用してコスト配列を**bbox全体ぶん1回だけ**numpyで合成する。探索本体へは
         合成済みのnumpy配列をそのまま渡すだけにする。
         """
-        stage_started = time.monotonic()
+        stage_started = start_timer()
         built = await self._graph_service.get_search_slice(bbox)
-        slice_ms = round((time.monotonic() - stage_started) * 1000)
+        slice_ms = elapsed_ms(stage_started)
         if built is None:
             return None
         road, tile_set = built
         if road.edge_count == 0:
             return None
 
-        weather_started = time.monotonic()
+        weather_started = start_timer()
         departure_wind = await self._weather_service.get_departure_wind(origin)
         # 探索範囲を覆う格子点ごとの時別風予報（MSMのローカルファイルから読む。外部API呼び出しは無い）。
         wind_series = await self._weather_service.get_wind_forecast_lattice(bbox)
         rain = await self._weather_service.get_station_rain_materials(datetime.now(JST))
-        weather_ms = round((time.monotonic() - weather_started) * 1000)
+        weather_ms = elapsed_ms(weather_started)
         if rain is None:
             log_throttled_warning("engine:rain-materials", "雨の観測の履歴が無いか古いため、雨の材料を欠損として探索範囲を組む")
 
-        materials_started = time.monotonic()
+        materials_started = start_timer()
         score_matrix, rain_ms = await asyncio.to_thread(_static_score_matrix, road, rain)
-        materials_ms = round((time.monotonic() - materials_started) * 1000)
+        materials_ms = elapsed_ms(materials_started)
         # 通過予定時刻の基準（出発時刻）。
         start = as_series_time(now)
 
         # --- bbox全体ぶんのコスト配列の合成（レグごと。まず起点から離れる往路レグ） ---
-        cost_started = time.monotonic()
+        cost_started = start_timer()
         hard_filter_excluded = compute_hard_filter_excluded(
             score_matrix.hard_filter_flags,
             score_matrix.gradient_percent, self._hard_filters, self._max_average_grade_percent,
         )
 
-        graph_started = time.monotonic()
+        graph_started = start_timer()
         lazy_graph = await asyncio.to_thread(build_lazy_road_graph, road.edge_from, road.edge_to, road.node_count)
-        graph_ms = round((time.monotonic() - graph_started) * 1000)
+        graph_ms = elapsed_ms(graph_started)
 
         # 迂回率は同じ探索範囲で前回の往路木から学習した値があればそれを使う（無ければ既定値）。
         learned_detour_ratio = detour_ratio_cache.get_detour_ratio(tile_set)
@@ -376,7 +377,7 @@ class RoadGraphEngine:
             twilight_origin=origin,
         )
         outbound = composer.compose("outbound", origin, 0.0, +1)
-        cost_ms = round((time.monotonic() - cost_started) * 1000) - graph_ms
+        cost_ms = elapsed_ms(cost_started) - graph_ms
         # 重み付き軸がすべてNaNのEdge比率（探索コストはbbox内平均difficultyで補完される。
         # 実際の発生頻度を把握するためのサマリ）。
         missing_axis_mask = np.isnan(outbound.difficulty_array)
@@ -384,7 +385,7 @@ class RoadGraphEngine:
             score_matrix.distance_m[missing_axis_mask].sum() / float(score_matrix.distance_m.sum())
         )
 
-        total_ms = round((time.monotonic() - stage_started) * 1000)
+        total_ms = elapsed_ms(stage_started)
         logger.info(
             "_build_search_graph edges=%d nodes=%d slice_ms=%d weather_ms=%d materials_ms=%d rain_ms=%d cost_ms=%d "
             "graph_ms=%d total_ms=%d rain_hour=%s time_varying=%s speed_kmh=%.1f detour_ratio=%.2f(%s) "
@@ -419,7 +420,7 @@ class RoadGraphEngine:
         区間が残っていても出て戻れないNode（孤立した小さな塊・一方通行の袋）は、置いた点を寄せるときに
         外す（`domain/routing.py: snap_to_accessible_node`）。
         """
-        started = time.monotonic()
+        started = start_timer()
         road = search.road
         routable = compute_routable_nodes(road.edge_from, road.edge_to, search.hard_filter_excluded, road.node_count)
         node_index = await asyncio.to_thread(build_node_spatial_index, search.node_lat, search.node_lon, routable)
@@ -427,13 +428,13 @@ class RoadGraphEngine:
         accessible = await asyncio.to_thread(
             largest_strongly_connected_nodes, statics.csr, ~search.hard_filter_excluded[search.lazy_graph.edge_rows],
         )
-        index_ms = round((time.monotonic() - started) * 1000)
-        turn_started = time.monotonic()
+        index_ms = elapsed_ms(started)
+        turn_started = start_timer()
         turn_structure = await asyncio.to_thread(self._build_turn_structure, search, statics)
         logger.info(
             "prepare structures edges=%d states=%d transitions=%d index_ms=%d turn_ms=%d",
             road.edge_count, turn_structure.state_count, len(turn_structure.target_state),
-            index_ms, round((time.monotonic() - turn_started) * 1000),
+            index_ms, elapsed_ms(turn_started),
         )
         return node_index, accessible, statics, turn_structure
 
@@ -532,7 +533,7 @@ class RoadGraphEngine:
                 raise RoutingError("could not snap waypoints to road graph")
             node_sequence.append(snapped[0])
 
-        trace_started = time.monotonic()
+        trace_started = start_timer()
         context.legs = context.legs[:1]
         segments: list[list[int]] = []
         cumulative_m = 0.0
@@ -542,7 +543,7 @@ class RoadGraphEngine:
                 raise RoutingError("no path found between waypoints")
             segments.append(segment)
             cumulative_m += float(context.statics.edge_length_m[segment].sum())
-        logger.info("trace_fixed_points legs=%d wall_ms=%d", len(segments), round((time.monotonic() - trace_started) * 1000))
+        logger.info("trace_fixed_points legs=%d wall_ms=%d", len(segments), elapsed_ms(trace_started))
         return FixedLegs(segments=segments, nodes=node_sequence, length_m=cumulative_m)
 
     async def select_loop_turnarounds(
@@ -608,7 +609,7 @@ class RoadGraphEngine:
                 _destination_states(context.turn_structure, end_node), statics.csr.node_count,
                 reverse=True, edge_seconds=inbound.travel_seconds_lazy,
             )
-            outbound_upper_m = (distance_km + distance_tolerance_km) * 1000 - fixed_m
+            outbound_upper_m = LengthBand.from_km(distance_km, distance_tolerance_km).upper_m - fixed_m
         if outbound_upper_m <= 0:
             logger.info("select_turnarounds fixed_km=%.1f exceeds the target", fixed_m / 1000)
             return []
@@ -621,7 +622,7 @@ class RoadGraphEngine:
             * (1.0 + max(self._penalty_strength, 0.0)) * _COST_LIMIT_SLACK
         )
 
-        tree_started = time.monotonic()
+        tree_started = start_timer()
         tree = await asyncio.to_thread(
             build_turn_expanded_tree,
             context.turn_structure, _avoiding_traveled(outbound.cost_bins_lazy, traveled), statics.edge_length_m,
@@ -629,7 +630,7 @@ class RoadGraphEngine:
             cost_limit=cost_limit, edge_seconds=outbound.travel_bins_lazy,
             bin_seconds=outbound.bin_seconds,
         )
-        tree_ms = round((time.monotonic() - tree_started) * 1000)
+        tree_ms = elapsed_ms(tree_started)
 
         length = tree.node_length_m
         if backward_tree is None:
@@ -728,7 +729,7 @@ class RoadGraphEngine:
             "ring_km=[%.1f,%.1f] fixed_km=%.1f detour_ratio_median=%.2f tree_ms=%d total_ms=%d",
             len(ring), len(ranked_list), len(turnarounds), pool_size,
             band_km[0], band_km[1], fixed_m / 1000, detour_ratio_median, tree_ms,
-            round((time.monotonic() - tree_started) * 1000),
+            elapsed_ms(tree_started),
         )
         return turnarounds
 
@@ -778,7 +779,7 @@ class RoadGraphEngine:
         destination_index, destination = end
         traveled = _traveled_columns(context, fixed.edges)
 
-        tree_started = time.monotonic()
+        tree_started = start_timer()
         # 往路レグを、最後の固定点→終点の見込み所要時間ぶんの時刻ビンで組み直す。
         outbound = context.composer.compose(
             _leg_name(leg_index), start_point, fixed_hours, +1,
@@ -827,14 +828,14 @@ class RoadGraphEngine:
             _destination_states(context.turn_structure, destination_index),
             context.statics.csr.node_count, reverse=True, edge_seconds=inbound.travel_seconds_lazy,
         )
-        tree_ms = round((time.monotonic() - tree_started) * 1000)
+        tree_ms = elapsed_ms(tree_started)
 
         # Nodeで単に前向き＋後ろ向きを足すと、そのNodeで曲がる費用が抜ける。
-        junction_started = time.monotonic()
+        junction_started = start_timer()
         junction = combine_forward_backward_at_nodes(
             context.turn_structure, forward_tree, backward_tree, context.statics.csr.node_count
         )
-        junction_ms = round((time.monotonic() - junction_started) * 1000)
+        junction_ms = elapsed_ms(junction_started)
         # 終点そのものを経由Nodeとする経路（＝経由せず直行する経路）も候補に含める。
         # junctionは「入る区間×出る区間」の対で作るため、そこで終わる経路は現れない。
         add_terminal_candidate(junction, forward_tree, destination_index)
@@ -949,7 +950,7 @@ class RoadGraphEngine:
             return None
         destination_index = snapped[0]
 
-        started = time.monotonic()
+        started = start_timer()
         stops = [*fixed.nodes, destination_index]
         path: list[int] = []
         leg_of_edge: list[int] = []
@@ -977,7 +978,7 @@ class RoadGraphEngine:
         logger.info(
             "select_fastest_route fastest_km=%.1f edges=%d forward_edges=%d elapsed_ms=%d",
             distance_km, len(path), sum(1 for leg in leg_of_edge if leg < len(fixed.segments) + 1),
-            round((time.monotonic() - started) * 1000),
+            elapsed_ms(started),
         )
         return TracedLoop(bearing=None, distance_km=distance_km, data=path, leg_of_edge=leg_of_edge, reversible=False)
 
@@ -1021,9 +1022,9 @@ class RoadGraphEngine:
             finally:
                 cost_bins[:, penalized_columns] = original
 
-        trace_started = time.monotonic()
+        trace_started = start_timer()
         return_edge_index_list = await asyncio.to_thread(search_avoiding_traveled)
-        trace_wall_ms = round((time.monotonic() - trace_started) * 1000)
+        trace_wall_ms = elapsed_ms(trace_started)
         if return_edge_index_list is None:
             raise RoutingError(f"turnaround bearing={turnaround.bearing}: no return path found")
 

@@ -290,7 +290,6 @@ async def test_every_declared_expression_reads_only_what_each_reading_path_provi
 
     arrays = await road_graph_repository.get_edge_material_arrays([1], [0], [True], 1)
     assert len(arrays.distance_m) == 1
-    assert await road_graph_repository.get_way_material_values(1, 1) is None
     assert await road_graph_repository.sample_way_material_values(1, 100.0, 10, None) == []
     assert await road_graph_repository.sample_way_material_values(1, 100.0, 10, area) == []
     for material_id in material_value_sql():

@@ -38,7 +38,8 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     const p = i.parent && w.at(i.parent);
     return { blockedBy: blocked(i), subIssues: children(i), parent: p && { ...near(p.n), body: p.body, labels: names(p.labels), issueFieldValues: fields(p) } };
   };
-  const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, merged: Boolean(p.merged), mergeCommit: { statusCheckRollup: p.mergeChecks && { state: p.mergeChecks } },
+  // PR は、置いたときに決めた時刻（p.created・p.mergedAt）が無ければ、どのコメントより前に作られた。
+  const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, merged: Boolean(p.merged), createdAt: p.created ?? T(-1), mergedAt: p.mergedAt ?? null, mergeCommit: { oid: p.sha ?? `m${i.n}`, statusCheckRollup: p.mergeChecks && { state: p.mergeChecks, contexts: { nodes: [{ status: "COMPLETED" }, ...(p.mergeRunning ? [{ status: "IN_PROGRESS" }] : [])] } } },
     commits: { nodes: [{ commit: { oid: `c${i.n}`, committedDate: "2026-10-11T00:00:00Z", statusCheckRollup: p.checks && { state: p.checks } } }] },
     timelineItems: { nodes: p.drafted ? [{ createdAt: "2026-10-11T01:00:00Z" }] : [] } });
   const gql = async (q, v) => {
@@ -63,10 +64,13 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
       const closedAt = i.state === "CLOSED" ? (i.closedAt ?? T(i.comments.length - 0.5)) : null;
       // GraphQL は App の書き手の名前を [bot] の付かない形で返す。コメントの時刻は並びの順。
       const comments = i.comments.map((body, k) => ({ body, createdAt: T(k), author: { login: author(i, k).replace(/\[bot\]$/, "") } })).slice(-40);
+      // master の新しい順のコミット: マージのあとのコミット（p.later の CI の結果）、マージのコミット、マージより前のコミット（p.earlier）。
+      const ci = (at) => (state, k) => ({ oid: `${at}${k}`, statusCheckRollup: { state, contexts: { nodes: [{ status: "COMPLETED" }] } } });
+      const [later, earlier] = ["later", "earlier"].map((at) => (i.pr?.[at] ?? []).map(ci(at)));
       return { t: { issue: { id: `I${i.n}`, state: i.state, stateReason: i.reason, closedAt, body: i.body, author: { login: i.author }, issueType: i.type && { name: i.type },
         assignees: { nodes: i.assignees.map((login) => ({ login })) }, ...relations(i), comments: { nodes: comments }, issueFieldValues: fields(i),
         timelineItems: { nodes: (i.typeChanges ?? []).map(([a, b]) => ({ prevIssueType: { name: a }, issueType: { name: b } })) } } },
-      c: { pullRequests: { nodes: i.pr ? [pull(i, i.pr)] : [] } } };
+      c: { pullRequests: { nodes: i.pr ? [pull(i, i.pr)] : [] }, ref: { target: { history: { nodes: [...later, { oid: i.pr?.sha ?? `m${i.n}` }, ...earlier] } } } } };
     }
     if (q.includes("setIssueFieldValue")) {
       const i = w.at(Number(v.i.slice(1)));
@@ -160,6 +164,7 @@ test("R3・決め1・決め7: 担当の実行が終わったら、表の上か�
     // [要求, 始まりのタスク, 終わったときの事実, ステータス, 起きた担当の数, 最後のコメントの頭]
     ["R3a 答えの無い問い", {}, { comments: [QUESTION] }, "回答待ち", 1, "## 問い（判断）"],
     ["R3b 下書きの PR の CI が終わっていない", {}, { pr: { draft: true, checks: "PENDING" } }, "CI待ち", 1, null],
+    ["作る担当が、検査の出ない PR を出して手放した（CI が始まる形で push していない）→ イレギュラー", {}, { pr: { draft: true } }, "回答待ち", 1, "## 問い（イレギュラー）"],
     ["R3c・原則の点検の3 下書きでない PR の CI が通った → 検証待ち → 確かめる担当", {}, { pr: { draft: false, checks: "SUCCESS" } }, "検証中", 2, null],
     ["R3d 確かめる担当が下書きへ戻した（差し戻し）→ 作る担当", verify, { pr: { draft: true, checks: "SUCCESS", drafted: true } }, "進行中", 2, null],
     ["確かめる担当が、マージも差し戻しも問いもせずに手放した → イレギュラー", verify, {}, "回答待ち", 1, "## 問い（イレギュラー）"],
@@ -167,10 +172,13 @@ test("R3・決め1・決め7: 担当の実行が終わったら、表の上か�
     ["R3f 残りがユーザーの確かめだけ", {}, { body: CONFIRM }, "回答待ち", 1, "## 問い（確かめ）"],
     ["R3g 開いた前提", {}, { blockedBy: [9] }, "未着手", 1, null],
     ["R3g 未来の着手可能日時", {}, { start: "2099-01-01" }, "未着手", 1, null],
-    ["決め3 作る担当が CI の結果のあとに持って見た生き残りは通す → 検証待ち → 確かめる担当", {}, { pr: { draft: true, checks: "SUCCESS" }, survivors: ["書き換え"], comments: ["作り始めた", END(2)] }, "検証中", 2, "### 作る担当の終わり"],
     ["R3h どれでもない（落ちた）→ 黙って振り出し直さない", {}, {}, "回答待ち", 1, "## 問い（イレギュラー）"],
     ["決め1 マージのあとの残り", {}, { pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS" } }, "進行中", 2, null],
     ["マージのコミットの CI がまだ（本番に出る前に確かめを問わない）", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "PENDING" } }, "CI待ち", 1, null],
+    ["確かめる担当がマージして手放したのに、マージのコミットの検査が1つも無い → イレギュラー", verify, { pr: { state: "MERGED", merged: true } }, "回答待ち", 1, "## 問い（イレギュラー）"],
+    ["マージのコミットの master の CI が落ちたまま（マージより前の master のコミットは通っていた）、作る担当が打ち直しも直しもせずに手放した → イレギュラー", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "FAILURE", earlier: ["SUCCESS"] } }, "回答待ち", 1, "## 問い（イレギュラー）"],
+    ["マージのコミットの master の CI は落ちたが、あとの master のコミットの CI が通った（前の変更も検査とデプロイに含む）→ 本番に出たので確かめを問う（tasks#856）", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "FAILURE", later: ["FAILURE", "SUCCESS"] } }, "回答待ち", 1, "## 問い（確かめ）"],
+    ["作る担当が打ち直した master の CI で、ほかの検査が走っている間に1つが落ちた → 終わるまで CI待ち（tasks#856）", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "FAILURE", mergeRunning: true } }, "CI待ち", 1, null],
   ];
   for (const [name, start, facts, status, runs, comment] of rows) {
     const w = world([{ n: 1, status: "未着手", ...start }, { n: 9, status: "保留" }]);
@@ -185,14 +193,16 @@ test("R3・決め1・決め7: 担当の実行が終わったら、表の上か�
   }
 });
 
-test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め3・決め5・決め7・Claude の本文の書き換え）", async () => {
+test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め5・決め7・Claude の本文の書き換え）", async () => {
   const merged = { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1" };
   const rows = [
     // [要求, タスク, 担当が付いた後に変わる事実（無ければ担当なし）, 出来事, 期待]
     ["R4 PR の CI が落ちた → 未着手 → 同じ枝で直す作る担当", { status: "CI待ち", pr: { draft: true, checks: "FAILURE" } }, null, ev.ci(`${config.branchPrefix}1`), { status: "進行中", runs: ["#1 作る"] }],
-    ["決め3 新しい変異テストの生き残り → 落ちたものと同じ", { status: "CI待ち", pr: { draft: true, checks: "SUCCESS" }, survivors: ["書き換え"] }, null, ev.ci(`${config.branchPrefix}1`), { status: "進行中", runs: ["#1 作る"] }],
+    ["変異テストに生き残りがあっても CI が通った → 検証待ち → 生き残りを読む確かめる担当", { status: "CI待ち", pr: { draft: true, checks: "SUCCESS" }, survivors: ["書き換え"] }, null, ev.ci(`${config.branchPrefix}1`), { status: "検証中", draft: false, runs: ["#1 確かめる"] }],
     ["R4 PR の CI が通った → PR をレビュー可能にして検証待ち → 確かめる担当", { status: "CI待ち", pr: { draft: true, checks: "SUCCESS" } }, null, ev.ci(`${config.branchPrefix}1`), { status: "検証中", draft: false }],
-    ["原則の点検の1 master の CI が落ちた → 本番に出ていないので確かめを問わず CI待ち", { status: "CI待ち", body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, null, ev.ci(config.base, "m1"), { status: "CI待ち", comment: null }],
+    ["原則の点検の1・tasks#842 master の CI が落ちた → 本番に出ていないので確かめを問わず、未着手 → 打ち直すか直す作る担当", { status: "CI待ち", body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, null, ev.ci(config.base, "m1"),
+      { status: "進行中", comment: null, runs: ["#1 作る"] }],
+    ["子のマージのコミットの master の CI が落ちた → 同じく未着手（親が保留なので振り出さない）", { status: "CI待ち", parent: 4, body: CHILD, pr: { ...merged, mergeChecks: "FAILURE" } }, null, ev.ci(config.base, "m1"), { status: "未着手", runs: [] }],
     ["K2・R12 確かめの答えが完了にせず文だけ → 閉じず、Claude の番（作る担当が読む）", { status: "回答待ち", body: CONFIRM, comments: [ASKED("確かめ"), "## 回答\n**完成にしてよいですか？**\n\n見た目が崩れる"] }, null, ev.comment(1),
       { state: "OPEN", status: "進行中", runs: ["#1 作る"] }],
     ["決め6 前からある Claude の割り当ては外し、保留ではユーザーだけ", { status: "保留", assignees: [config.claude] }, null, ev.comment(1), { assignees: [config.user] }],
@@ -253,6 +263,29 @@ test("tasks#868 答えの無い問いが残っていても、完了の条件が�
   }
 });
 
+test("tasks#877 問いを出した事実が無くなったら、条件が残っていても回答待ちに留めず表で決め直し、ボタンを外す。事実が残る問いと Claude の判断の問いは待つ", async () => {
+  const left = "- [x] 作る\n- [ ] 見た目\n  - 確かめる: ユーザー\n- [ ] 直す\n";
+  const rows = [
+    // [要求, タスク, 出来事, 期待するステータス]
+    ["見送りの前提について問うたあとで、前提が開き直された", { blockedBy: [7], comments: [askDropped([7], config.questionTemplate)] }, ev.issue(7, "reopened"), "未着手"],
+    ["イレギュラーを問うたあとで、作業ブランチの PR が開かれた", { comments: [ASKED("イレギュラー")], pr: { created: T(1) } }, ev.pr(1, "opened"), "CI待ち"],
+    ["イレギュラーを問うたあとで、問う前からあった PR がマージされた", { comments: [ASKED("イレギュラー")], pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1", mergedAt: T(1) } },
+      ev.ci(config.base, "m1"), "未着手"],
+    ["確かめを問うたあとで、Claude が確かめる条件が足された", { body: withButton(left, config, 1), comments: [ASKED("確かめ")] }, ev.issue(1, "edited", config.claude), "未着手"],
+    ["見送りの前提がまだ見送りのままなら待つ", { blockedBy: [8], comments: [askDropped([8], config.questionTemplate)] }, ev.comment(1, config.claude), "回答待ち"],
+    ["確かめる担当が手放したイレギュラーは、問う前からある開いた PR では片付かない", { comments: [ASKED("イレギュラー")], pr: { checks: "SUCCESS" } }, ev.pr(1, "synchronize"), "回答待ち"],
+    ["Claude の判断の問いは、ゲートが中身を読まないので待つ", { comments: [QUESTION] }, ev.comment(1, config.claude), "回答待ち"],
+  ];
+  for (const [name, task, event, status] of rows) {
+    const w = world([{ n: 1, status: "回答待ち", assignees: [config.user], body: withButton("- [ ] 作る\n", config, 1), ...task }, { n: 7, status: "未着手" },
+      { n: 8, status: "完了", state: "CLOSED", reason: "NOT_PLANNED" }], { workflow: "disabled" });
+    await w.send(event);
+    const i = w.at(1);
+    const waiting = status === "回答待ち";
+    assert.deepEqual([i.status, i.state, i.body.startsWith("<!-- flow-gate -->"), i.assignees, asked(i)], [status, "OPEN", waiting, waiting ? [config.user] : [config.claude], 1], name);
+  }
+});
+
 test("tasks#842・#843 担当者を手で変えたら決め直して戻す。1つのタスクを触るのは1者だけ", async () => {
   // 担当者を手で変えたら、その出来事で決め直し、ゲートの決めた値へ戻す。
   const hand = world([{ n: 1, status: "回答待ち", comments: [QUESTION], assignees: [config.user, config.claude] }]);
@@ -270,6 +303,36 @@ test("tasks#842・#843 担当者を手で変えたら決め直して戻す。1�
   gone.runs.push(...two.runs.map((r) => ({ ...r })));
   await assert.doesNotReject(handle(gone.gh, { inbox: gone.inbox }, config, ...ev.run(gone.runs[1], "requested")), "409 で出来事の処理を落とさない");
   assert.equal(gone.at(1).status, "進行中");
+});
+
+test("イレギュラーに「やり直す」と答えたら、答えのあとに担当が終わるまで振り出せる形に保つ（CI待ちへ戻さない）", async () => {
+  // 作る担当が、検査の出ない PR を出して手放した → イレギュラー → 「やり直す」と答える。
+  const handOff = async (w) => {
+    await w.send(ev.schedule());
+    const run = w.run(1);
+    await w.send(ev.run(run, "requested"));
+    w.at(1).pr = { draft: true };
+    await w.send(ev.run(run, "completed"));
+    assert.equal(head(w.at(1)), "## 問い（イレギュラー）");
+    w.at(1).comments.push(answerBody({ kind: "イレギュラー", text: w.at(1).comments.at(-1).split("\n")[1] }, { choice: "やり直す" }));
+  };
+  const w = world([{ n: 1, status: "未着手" }]);
+  await handOff(w);
+  await w.send(ev.comment(1));
+  assert.deepEqual([w.at(1).status, w.titles(), w.at(1).assignees], ["進行中", ["#1 作る", "#1 作る"], [config.claude]], "作る担当へ渡す");
+  // 枠が埋まっていてすぐ振り出せなくても、答えのあとに担当が終わるまで「やり直す」を保つ。
+  const full = world([{ n: 1, status: "未着手" }, { n: 2, status: "未着手" }, { n: 3, status: "未着手" }]);
+  await handOff(full);
+  assert.deepEqual(full.titles().filter((t) => t !== "#1 作る"), ["#2 作る", "#3 作る"], "作るの枠（2）が埋まる");
+  await full.send(ev.comment(1));
+  await full.send(ev.comment(1));
+  assert.equal(full.at(1).status, "未着手", "次の決め直しでも CI待ちへ戻さない");
+  await full.send(ev.run(full.run(2), "completed"));
+  assert.deepEqual([full.at(1).status, full.titles().filter((t) => t === "#1 作る").length], ["進行中", 2], "枠が空いたら作る担当へ渡す");
+  // 答えのあとに担当が終わっていれば（終わりのコメントが issue に残る）、「やり直す」は効き終わっている。
+  const ended = world([{ n: 1, status: "回答待ち", pr: { draft: true, checks: "PENDING" }, comments: [...w.at(1).comments, END(w.at(1).comments.length + 1)] }]);
+  await ended.send(ev.comment(1, config.claude));
+  assert.equal(ended.at(1).status, "CI待ち", "担当が終わったあとの CI は CI待ち");
 });
 
 test("前提が閉じたら、後ろで待っていたタスクも決め直して振り出す", async () => {
@@ -408,11 +471,25 @@ test("tasks#824 親子を外したら親は待ちをやめ、子を開き直し�
   assert.deepEqual([x.at(1).status, asked(x.at(1)), x.titles()], ["未着手", 0, ["#2 作る"]], "開き直した子を待ち、親の確かめを問わない");
 });
 
-test("tasks#824 記法: 条件はチェックの行から字下げした続きまで。「- 確かめる:」「- 子:」だけが属性で、文の中の括弧や小項目は文の続き", () => {
-  assert.deepEqual(conditions("- [ ] 道を押すと値が出る（区間の境目を含む）\n  境目では両側の値\n  - 夜間も含む\n  - 子: #12\n- [x] 済んだ\n- [ ] 見た目（色）\n\n  - 確かめる: ユーザー\n説明の段落\n"), [
-    { index: 0, text: "道を押すと値が出る（区間の境目を含む） 境目では両側の値 - 夜間も含む", done: false, verify: "Claude", child: 12 },
-    { index: 4, text: "済んだ", done: true, verify: "Claude", child: null },
-    { index: 5, text: "見た目（色）", done: false, verify: "ユーザー", child: null }], "続きの間の空行のあとの属性も、同じ条件の属性");
+test("tasks#824・#878 記法: 条件はチェックの行から字下げした続きまで。「- 確かめる:」「- 子:」「- 見る所と要点:」だけが属性で、文の中の括弧や小項目は文の続き", () => {
+  assert.deepEqual(conditions("- [ ] 道を押すと値が出る（区間の境目を含む）\n  境目では両側の値\n  - 夜間も含む\n  - 子: #12\n- [x] 済んだ\n- [ ] 見た目（色）\n\n  - 確かめる: ユーザー\n  - 見る所と要点: [画面](https://github.test/c) の帯の色\n説明の段落\n"), [
+    { index: 0, text: "道を押すと値が出る（区間の境目を含む） 境目では両側の値 - 夜間も含む", done: false, verify: "Claude", child: 12, look: null },
+    { index: 4, text: "済んだ", done: true, verify: "Claude", child: null, look: null },
+    { index: 5, text: "見た目（色）", done: false, verify: "ユーザー", child: null, look: "[画面](https://github.test/c) の帯の色" }], "続きの間の空行のあとの属性も、同じ条件の属性");
+});
+
+test("tasks#878 確かめの問いの判断材料に、ユーザーが確かめる条件ごとの文と見る所と要点が並び、書かれていない条件はそう出る。答えは条件の文で当たる", async () => {
+  const look = "[撮った画面](https://github.test/c) で、値の欄に区間の値が出ている";
+  const w = world([{ n: 1, status: "CI待ち", body: `- [x] 作る\n- [ ] 道を押すと値が出る\n  - 確かめる: ユーザー\n  - 見る所と要点: ${look}\n- [ ] 見た目\n  - 確かめる: ユーザー\n`,
+    pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1" } }]);
+  await w.send(ev.ci(config.base, "m1"));
+  const asked = w.at(1).comments.at(-1);
+  assert.deepEqual([w.at(1).status, head(w.at(1))], ["回答待ち", "## 問い（確かめ）"], "判断材料に条件を並べても、問いの形に合う");
+  assert.ok(asked.includes(`- 道を押すと値が出る\n  - 見る所と要点: ${look}`), asked);
+  assert.ok(asked.includes("- 見た目\n  - 見る所と要点: 書かれていません"), asked);
+  w.at(1).comments.push(answerBody({ kind: "確かめ", text: "完成にしてよいですか？" }, { done: true, items: ["道を押すと値が出る", "見た目"] }));
+  await w.send(ev.comment(1));
+  assert.deepEqual([w.at(1).state, w.at(1).reason], ["CLOSED", "COMPLETED"]);
 });
 
 test("K6・受け箱: 止めたら振り出さない。処理が落ちても出来事を失わず、一時の失敗はやり直し、直らない失敗はすぐ諦める", async () => {

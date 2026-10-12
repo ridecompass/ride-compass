@@ -12,6 +12,7 @@ from app.domain.route_preference import RoutePreference
 from app.domain.route_request import (
     DistanceTarget,
     NoDistanceTarget,
+    RequestedConditions,
     RouteTarget,
     SplicedTarget,
 )
@@ -47,39 +48,30 @@ class RouteGenerationSetup:
 def assemble_route_generation_setup(
     graph_service: GraphService,
     weather_service: WeatherService,
-    *,
-    preference_override: RoutePreference | None,
-    penalty_strength: float | None,
-    max_average_grade_percent: float | None,
-    hard_filters: frozenset[str],
-    assumed_speed_kmh: float,
+    requested: RequestedConditions,
 ) -> RouteGenerationSetup:
     """エンジンを組む唯一の入口。ルート生成・計測・テストのどれもここを通る。
 
     省略された評価条件の既定はここで1度だけ決める。以後は解決済みの値だけを回し、
     レスポンスのconditionsへも同じ値をエコーする（画面が見る値と探索が使う値を分けない）。
     """
-    preference = preference_override or RoutePreference()
-    resolved_penalty_strength = resolve_penalty_strength(penalty_strength)
+    applied = AppliedConditions(
+        route_preference=requested.preference_override or RoutePreference(),
+        penalty_strength=resolve_penalty_strength(requested.penalty_strength),
+        assumed_speed_kmh=requested.assumed_speed_kmh,
+        max_average_grade_percent=requested.max_average_grade_percent,
+        hard_filters=requested.hard_filters,
+    )
     engine = RoadGraphEngine(
         graph_service,
         weather_service,
-        route_preference=preference,
-        penalty_strength=resolved_penalty_strength,
-        max_average_grade_percent=max_average_grade_percent,
-        hard_filters=hard_filters,
-        assumed_speed_kmh=assumed_speed_kmh,
+        route_preference=applied.route_preference,
+        penalty_strength=applied.penalty_strength,
+        max_average_grade_percent=applied.max_average_grade_percent,
+        hard_filters=applied.hard_filters,
+        assumed_speed_kmh=applied.assumed_speed_kmh,
     )
-    return RouteGenerationSetup(
-        generator=RouteGenerator(engine),
-        conditions=AppliedConditions(
-            route_preference=preference,
-            penalty_strength=resolved_penalty_strength,
-            assumed_speed_kmh=assumed_speed_kmh,
-            max_average_grade_percent=max_average_grade_percent,
-            hard_filters=hard_filters,
-        ),
-    )
+    return RouteGenerationSetup(generator=RouteGenerator(engine), conditions=applied)
 
 
 @dataclass(frozen=True)

@@ -20,6 +20,7 @@ import { Dot } from "@/components/ui/Dot/Dot";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge/Badge";
+import type { DensityTerm } from "@/lib/catalogAxis";
 
 export interface LensOption {
   id: LensId;
@@ -54,6 +55,10 @@ interface LensControlProps {
   onRouteShownChange: (shown: boolean) => void;
   /** 周りの道の色が拠る走る条件の文（`view/lens.ts: lensConditionsLabel`）。条件を使わない色分けではnull。 */
   conditions: string | null;
+  /** 今のレンズが密度の軸なら、材料ごとの1件あたりの重み。地図は線を塗らずに材料の点を出すので、点の数え方をここで読ませる。 */
+  densityTerms: readonly DensityTerm[] | null;
+  /** 凡例に書く、周りの道の色の前提（`view/lens.ts: lensPremises`）。 */
+  premises: readonly string[];
   /** 今のレンズの取得の状態（専用配信の軸のときだけ）。塗りは失敗でもデータ無しでも同じ無彩色なので、印で見分ける。 */
   dataStatus?: LayerDataStatus;
 }
@@ -113,6 +118,8 @@ export default function LensControl({
   routeSelectable,
   onRouteShownChange,
   conditions,
+  densityTerms,
+  premises,
   dataStatus,
 }: LensControlProps) {
   const [open, setOpen] = useState(false);
@@ -195,8 +202,15 @@ export default function LensControl({
           collisionPadding={POPOVER_COLLISION_PADDING_PX}
         >
           <p className="mb-1.5 font-semibold">{LENS_SCREEN_NAME}</p>
-          {conditions && (
-            <p className="mb-1.5 text-[length:var(--font-size-sm)]">{`周りの道は「${conditions}」の条件で塗っています。`}</p>
+          {densityTerms && (
+            <ul
+              aria-label="数え方（1件あたりの重み）"
+              className="mb-1.5 flex flex-wrap gap-x-2 text-[length:var(--font-size-sm)]"
+            >
+              {densityTerms.map((term) => (
+                <li key={term.materialId}>{`${term.label}×${term.weight}`}</li>
+              ))}
+            </ul>
           )}
           {/* ピルの状態ドットの意味。titleはスマホでは出ないため、開いた先で文として読ませる。 */}
           {statusNotice && (
@@ -246,6 +260,8 @@ export default function LensControl({
           </label>
           {legend.length > 0 && (
             <div
+              role="group"
+              aria-label="凡例"
               className="mt-2 border-t border-[var(--color-border)] pt-2"
               data-usage="チェックを外した段階は、地図の色分けから隠れます。「凡例」のチェックで全部をまとめて切り替えます。"
             >
@@ -265,6 +281,11 @@ export default function LensControl({
                 rowClassName="flex items-center gap-1 whitespace-nowrap tabular-nums"
                 swatchClassName={LEGEND_BAR_CLASS}
               />
+              {premises.map((premise) => (
+                <p key={premise} className="mt-1 text-[length:var(--font-size-sm)] text-[var(--color-muted)]">
+                  {premise}
+                </p>
+              ))}
             </div>
           )}
         </PopoverContent>

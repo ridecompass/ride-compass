@@ -19,11 +19,10 @@ import logging
 import sys
 from pathlib import Path
 
-import httpx
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified
+from app.batch.common import fetch_verified, fetched_all
+from app.batch.fetch_cli import run_fetch_cli
 from app.config import settings
 from app.infrastructure.proj_data import pin_bundled_proj_data
 
@@ -37,7 +36,7 @@ logger = logging.getLogger("ridecompass.fetch_lulc_raster")
 #: 配布元。`aws s3 cp --no-sign-request`と同じ内容をHTTPSで取得する（認証もCLIも要らない）。
 BUCKET_BASE_URL = "https://io-10m-annual-lulc.s3.us-west-2.amazonaws.com"
 
-_DOWNLOAD_TIMEOUT_SECONDS = 600.0
+_READ_TIMEOUT_SECONDS = 600.0
 
 
 def _readable(path: Path) -> bool:
@@ -49,28 +48,27 @@ def _readable(path: Path) -> bool:
         return False
 
 
-def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+def fetch() -> bool:
     paths = settings.lulc_raster_paths_list
     if not paths:
         logger.warning(
             "LULC_RASTER_PATHSが未設定のため取得するものがありません"
             "（土地被覆の地図レイヤーは配信できない状態になります）"
         )
-        return 0
+        return True
+    return fetched_all(
+        fetch_verified(f"{BUCKET_BASE_URL}/{Path(raw_path).name}", Path(raw_path), _readable,
+                       read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
+        for raw_path in paths
+    )
 
-    for raw_path in paths:
-        destination = Path(raw_path)
-        url = f"{BUCKET_BASE_URL}/{destination.name}"
-        try:
-            if not fetch_verified(url, destination, _readable,
-                                  timeout=_DOWNLOAD_TIMEOUT_SECONDS, logger=logger):
-                return 1
-        except (httpx.HTTPError, OSError) as exc:
-            logger.error("取得に失敗しました url=%s error=%r", url, exc)
-            return 1
-    return 0
+
+def main() -> int:
+    return run_fetch_cli(fetch, logger=logger)
 
 
 if __name__ == "__main__":
+    from _stdio import use_utf8_stdio
+
+    use_utf8_stdio()
     raise SystemExit(main())

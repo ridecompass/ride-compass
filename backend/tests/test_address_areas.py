@@ -2,7 +2,7 @@
 街区レベル位置参照情報の配布の形から作る。
 
 入口は取込（`ingest_source`。アダプタ`abr`・`isj_block`は本物で、手元の zip を読む）と派生の段
-（`derive_addresses.derive`）。配布の形の小さな見本（ABR の CSV の zip・位置参照情報の Shift_JIS の CSV の zip）を置き場に
+（`derive_addresses.derive`）。配布の形の小さな見本（ABR の BOM 付きの CSV の zip・位置参照情報の Shift_JIS の CSV の zip）を置き場に
 書き、表に入った区画・鍵・街区を見る。範囲は道路の取込の範囲で、見本の道を範囲の宣言つきで取り込んで決める。
 
 ここで見ないもの:
@@ -161,7 +161,7 @@ def _write_csv_zip(path: Path, columns: str, rows: list[dict[str, str]]) -> None
     writer.writerows(rows)
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w") as archive:
-        archive.writestr(path.name.removesuffix(".zip"), text.getvalue())
+        archive.writestr(path.name.removesuffix(".zip"), text.getvalue().encode(abr.ENCODING))
 
 
 def _position(code: str, lon: float, lat: float, srid: str) -> dict[str, str]:

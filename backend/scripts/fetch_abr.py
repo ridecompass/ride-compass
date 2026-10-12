@@ -18,15 +18,14 @@ r"""アドレス・ベース・レジストリ（都道府県・市区町村・�
 import argparse
 import logging
 import sys
-import zipfile
 from pathlib import Path
-
-import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified
+from app.batch.common import fetch_verified, fetched_all
+from app.batch.fetch_cli import run_profile_fetch_cli
 from app.batch.source_adapters.abr import (
+    ENCODING,
     NATIONWIDE_ARCHIVES,
     archive_path,
     archive_url,
@@ -34,49 +33,40 @@ from app.batch.source_adapters.abr import (
     prefectures_in_range,
     read_rows,
 )
-from app.batch.source_profile import load_source_profile
+from app.batch.source_adapters.zip_csv import zip_csv_readable
+from app.batch.source_profile import SourceProfile, SourceSpec
 
 logger = logging.getLogger("ridecompass.fetch_abr")
 
-_REQUEST_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=30.0)
+_READ_TIMEOUT_SECONDS = 120.0
 
 
 def _readable(path: Path) -> bool:
-    """CSV を1つ持つ zip で、見出しが全国地方公共団体コードから始まり、1行以上あるか。"""
-    try:
-        rows = read_rows(path)
-        first = next(rows, None)
-        rows.close()
-        return first is not None and "lg_code" in first
-    except (OSError, ValueError, zipfile.BadZipFile, UnicodeDecodeError):
-        return False
+    """見出しに全国地方公共団体コードがあり、1行以上あるか。"""
+    return zip_csv_readable(path, ENCODING, "lg_code")
 
 
 def _fetch(snapshot: str, stem: str) -> bool:
     return fetch_verified(archive_url(stem), archive_path(snapshot, stem), _readable,
-                          timeout=_REQUEST_TIMEOUT, logger=logger)
+                          read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
 
 
 def fetch(snapshot: str, bbox: tuple[float, float, float, float]) -> bool:
-    if not all([_fetch(snapshot, stem) for stem in NATIONWIDE_ARCHIVES]):
+    if not fetched_all(_fetch(snapshot, stem) for stem in NATIONWIDE_ARCHIVES):
         return False
     prefectures = prefectures_in_range(read_rows(archive_path(snapshot, "mt_city_pos_all")), bbox)
     logger.info("範囲に掛かる都道府県: %s", ", ".join(prefectures))
-    return all([_fetch(snapshot, stem) for code in prefectures for stem in prefecture_stems(code)])
+    return fetched_all(_fetch(snapshot, stem) for code in prefectures for stem in prefecture_stems(code))
+
+
+def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
+    snapshots = sorted({spec.rows.snapshot for spec in specs})
+    return fetched_all(fetch(snapshot, profile.target.bbox) for snapshot in snapshots)
 
 
 def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     parser = argparse.ArgumentParser(description="アドレス・ベース・レジストリを手元へ写す")
-    parser.add_argument("--profile", default=None, type=Path)
-    args = parser.parse_args()
-
-    profile = load_source_profile(args.profile)
-    snapshots = sorted({spec.rows.snapshot for spec in profile.sources if spec.adapter == "abr"})
-    if not snapshots:
-        logger.info("プロファイルにアドレス・ベース・レジストリの指定がありません")
-        return 0
-    return 0 if all([fetch(snapshot, profile.target.bbox) for snapshot in snapshots]) else 1
+    return run_profile_fetch_cli(parser, "abr", _fetch_specs, logger=logger)
 
 
 if __name__ == "__main__":

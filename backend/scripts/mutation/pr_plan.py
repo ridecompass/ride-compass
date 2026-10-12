@@ -8,14 +8,14 @@ import json
 import os
 import sys
 
-from _shared import fn_of
+from _shared import baselines, fn_of, read_lines
 
 OUT = os.environ["MUT_OUT"]
-funcs = {line.strip() for line in open(sys.argv[1], encoding="utf-8") if line.strip()}
+funcs = set(read_lines(sys.argv[1]))
 rows = json.load(open(os.path.join(OUT, "rows.json"), encoding="utf-8"))
 mutants = sorted(r[1] for r in rows if r[2] > 0 and fn_of(r[1]) in funcs)
 tested = sorted({fn_of(m) for m in mutants})
-pool = mutants + [f"{k}:{f}" for f in tested for k in ("BASE1", "BASE2")]
+pool = mutants + baselines(tested)
 open(os.path.join(OUT, "all.txt"), "w", encoding="utf-8").write("\n".join(pool) + ("\n" if pool else ""))
 untested = sorted({fn_of(r[1]) for r in rows if r[2] == 0 and fn_of(r[1]) in funcs})
 json.dump({"funcs": sorted(funcs), "untested": untested}, open(os.path.join(OUT, "scope.json"), "w", encoding="utf-8"),

@@ -4,10 +4,10 @@ import { decide } from "./decide.js";
 import { readFacts } from "./facts.js";
 import { NO_GRANDCHILD, makesGrandchild } from "./family.js";
 import { SET_FIELDS, fieldValues } from "./fields.js";
-import { askDropped, askText, bodyRest, norm } from "./questions.js";
+import { askDropped, askText, bodyRest, confirmConditions, norm } from "./questions.js";
 
-// 決めた問い（種類の名前か、見送りの相手を持つもの）の文。
-const askBody = (ask, config) => (ask.dropped ? askDropped(ask.dropped, config.questionTemplate) : askText(ask, config.questionTemplate));
+// 決めた問い（種類の名前か、見送りの相手を持つもの）の文。確かめに並べる条件は、書く本文（決めた本文）から取る。
+const askBody = (ask, config, body) => (ask.dropped ? askDropped(ask.dropped, config.questionTemplate) : askText(ask, config.questionTemplate, confirmConditions(body)));
 
 // 1つのタスクを決め直して、今と違う所だけを書く。本文（ボタン）は問いのコメントより先に書く（問いの通知から開いたときにボタンがあるように）。閉じるのは最後。
 // runs は出来事1件につき1回読んだ担当の実行の一覧（src/facts.js: recentRuns）。moved は、ユーザーがステータスの欄を変えた出来事で
@@ -19,7 +19,7 @@ export async function settle(gh, config, number, runs, moved = false) {
   const patch = { ...(d.open && !f.open ? { state: "open" } : {}), ...(d.type !== f.type ? { type: d.type } : {}), ...(d.body !== norm(f.body) ? { body: d.body } : {}),
     ...(String(d.assignees) !== String(f.assignees) ? { assignees: d.assignees } : {}) };
   if (Object.keys(patch).length) await gh.rest("PATCH", issue, patch);
-  if (d.ask) await gh.rest("POST", `${issue}/comments`, { body: askBody(d.ask, config) });
+  if (d.ask) await gh.rest("POST", `${issue}/comments`, { body: askBody(d.ask, config, d.body) });
   if (d.notice) await gh.rest("POST", `${issue}/comments`, { body: d.notice });
   if (d.closePr) await gh.gql(`mutation($id:ID!){closePullRequest(input:{pullRequestId:$id}){clientMutationId}}`, { id: d.closePr });
   if (d.ready) await gh.gql(`mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){clientMutationId}}`, { id: f.pr.id });

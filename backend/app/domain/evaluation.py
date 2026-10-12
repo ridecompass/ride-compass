@@ -6,8 +6,7 @@ Route Engineから独立させ、Route Engine自身は「勾配がきつい」�
 
 評価は探索範囲ごとの静的スコア行列（`build_static_edge_score_matrix`）へ一本化してある。
 入力はDBが導出した材料の行列（`EdgeMaterialArrays`）で、このモジュールは材料の値を
-どう求めるかを知らない。way1本を指す区間インスペクタは、同じ評価を長さ1の配列で通す
-（`domain/axis_inspector.py`→`evaluate_axes_values`）。
+どう求めるかを知らない。
 
 三次（重み付き合成）は`compose_costs_from_axis_matrix`が単独で使える——軸別スコアが
 既にあるなら、材料からやり直さずここだけを呼ぶ。
@@ -15,7 +14,7 @@ Route Engineから独立させ、Route Engine自身は「勾配がきつい」�
 変更理由の異なる以下は別モジュールにある:
 `domain/route_preference.py`（重み指定）・`domain/hard_filters.py`（0次フィルタ）・
 `domain/dynamic_materials.py`（風などリクエスト時に決まる材料）・
-`domain/axis_inspector.py`（区間インスペクタ、Way単位の材料解決）。
+`domain/axis_inspector.py`（区間インスペクタの合成）。
 
 Score（難易度換算）は`domain/difficulty.py`（0-100、値が大きいほど走りにくい絶対基準）を
 そのまま再利用する。ルート単位の可視化とEdge単位の評価が同じ「難易度」の意味・スケールを
