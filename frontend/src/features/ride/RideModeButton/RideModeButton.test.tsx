@@ -28,13 +28,24 @@ describe("RideModeButton", () => {
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it.each([
-    { case: "頼めていれば出さない", screenWakeLock: "held", shown: false },
-    { case: "頼めない端末では出す", screenWakeLock: "unavailable", shown: true },
-  ] as const)("画面を点けたままにできないこと: $case", ({ screenWakeLock, shown }) => {
-    render(<RideModeButton status="following" error={null} screenWakeLock={screenWakeLock} onPress={() => {}} />);
-    if (shown) expect(screen.getByText(WAKE_LOCK_NOTICE)).toBeInTheDocument();
-    else expect(screen.queryByText(WAKE_LOCK_NOTICE)).toBeNull();
+  it("画面を点けたままにできない端末では、文を出し、閉じても印と読み上げの説明は残す。頼めていれば何も出さない", async () => {
+    const { rerender } = render(
+      <RideModeButton status="following" error={null} screenWakeLock="held" onPress={() => {}} />,
+    );
+    const button = screen.getByRole("button", { name: "走行モード" });
+    expect(screen.queryByText(WAKE_LOCK_NOTICE)).toBeNull();
+    expect(button).not.toHaveAttribute("aria-description");
+
+    rerender(<RideModeButton status="following" error={null} screenWakeLock="unavailable" onPress={() => {}} />);
+    expect(screen.getByText(WAKE_LOCK_NOTICE)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "閉じる" }));
+    expect(screen.queryByText(WAKE_LOCK_NOTICE)).toBeNull();
+    expect(button).toHaveAttribute("aria-description", expect.stringMatching(WAKE_LOCK_NOTICE));
+
+    // 止めて始め直すと、また文を出す。
+    rerender(<RideModeButton status="off" error={null} screenWakeLock="off" onPress={() => {}} />);
+    rerender(<RideModeButton status="following" error={null} screenWakeLock="unavailable" onPress={() => {}} />);
+    expect(screen.getByText(WAKE_LOCK_NOTICE)).toBeInTheDocument();
   });
 
   it("始められなかった理由を出す", () => {
