@@ -68,39 +68,37 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
       if (x.labelIds) i.labels = x.labelIds.map((id) => id.slice(1));
       for (const u of x.issueFieldUpdates ?? []) i[Object.keys(f).find((k) => f[k].name === u.fieldName)] = u.operation === "SET" ? u.value : null;
     },
-    addComment(x) {
+    addComment(x, who) {
       const i = issueOf(x.subjectId);
-      i.by[i.comments.length] = config.gateBot;
+      i.by[i.comments.length] = who;
       i.comments.push(x.body);
       w.writes.push(["コメント", i.n, x.body.split("\n")[0]]);
     },
     closePullRequest: (x) => (w.at(Number(x.pullRequestId.slice(2))).pr.state = "CLOSED", w.writes.push(["PR を閉じる", Number(x.pullRequestId.slice(2))])),
     markPullRequestReadyForReview: (x) => void (w.at(Number(x.pullRequestId.slice(2))).pr.draft = false),
+    addLabelsToLabelable: (x) => void (issueOf(x.labelableId).labels.push(...x.labelIds.map((id) => id.slice(1)))),
+    removeLabelsFromLabelable(x) {
+      const i = issueOf(x.labelableId);
+      i.labels = i.labels.filter((n) => !x.labelIds.includes(`L${n}`));
+    },
     closeIssue(x) {
       const i = issueOf(x.issueId);
       Object.assign(i, { state: "CLOSED", reason: x.stateReason, closedAt: T(i.comments.length - 0.5) });
     },
   };
-  const gql = async (q, v) => {
-    if (q.includes("addLabelsToLabelable") || (q.includes("c:addComment") && !q.includes("w0:"))) { // 回答フォームの送信（ユーザーの名義）
-      const i = issueOf(v.i);
-      i.by[i.comments.length] = config.user;
-      i.comments.push(v.b);
-      w.writes.push(["コメント", i.n, v.b.split("\n")[0]]);
-      if (q.includes("a:addLabelsToLabelable")) i.labels = [...i.labels, ...v.a.map((id) => id.slice(1))];
-      if (q.includes("r:removeLabelsFromLabelable")) i.labels = i.labels.filter((n) => !v.r.includes(`L${n}`));
-      if (q.includes("e:updateIssue")) (i.body = v.e, w.writes.push(["本文", i.n]));
-      return {};
-    }
-    if (q.startsWith("mutation(")) w.mutations = (w.mutations ?? 0) + 1;
+  // who は書いた名義（ゲートは App、回答フォームはユーザー）。本物と同じく、宣言したのに使わない変数がある問い合わせは断る。
+  const gql = async (q, v, who = config.gateBot) => {
+    const header = /^[^{]*/.exec(q)[0];
+    for (const [, name] of header.matchAll(/\$(\w+):/g)) if (!new RegExp(`\\$${name}\\b`).test(q.slice(header.length))) throw new Error(`Variable $${name} is declared but not used`);
+    if (q.startsWith("mutation(") && who === config.gateBot) w.mutations = (w.mutations ?? 0) + 1; // ゲートの書き込みの要求の数
     if (q.startsWith("mutation(") && q.includes("w0:")) {
-      for (const [, k, name] of q.matchAll(/w(\d+):(\w+)\(/g)) WRITE[name](v[`v${k}`]);
+      for (const [, k, name] of q.matchAll(/w(\d+):(\w+)\(/g)) WRITE[name](v[`v${k}`], who);
       return {};
     }
     if (q.includes("removeSubIssue")) {
       w.at(Number(v.c.slice(1))).parent = null;
       w.writes.push(["親子を外す", Number(v.c.slice(1))]);
-      return void WRITE.addComment({ subjectId: v.c, body: v.b });
+      return void WRITE.addComment({ subjectId: v.c, body: v.b }, config.gateBot);
     }
     if (q.includes("comments(first:100,after:$a)")) return w.olderReads++, { repository: { issue: { comments: { pageInfo: { hasNextPage: false }, nodes: w.at(v.n).comments.map((body) => ({ body })) } } } };
     if (q.includes("timelineItems(since:")) { // ユーザーの欄の変更と開き直し（i.moves: [だれが, 何番目のコメントの時刻の直後か, 欄の名前（開き直しなら無し）]）
@@ -648,7 +646,7 @@ function connect(w) {
     const body = init.body ? JSON.parse(init.body) : undefined;
     const reply = (x, type = "application/json") => new Response(x == null ? null : type === "application/json" ? JSON.stringify(x) : x, { status: x == null ? 204 : 200, headers: { "content-type": type } });
     if (path.startsWith("/app/installations/")) return reply({ token: "app", expires_at: "2099-01-01T00:00:00Z" });
-    if (path === "/graphql") return reply({ data: await w.gh.gql(body.query, body.variables) });
+    if (path === "/graphql") return reply({ data: await w.gh.gql(body.query, body.variables, init.headers?.authorization === `Bearer ${env.FORM_TOKEN}` ? config.user : config.gateBot) });
     if (path === "/markdown") return reply(`<p>${body.text}</p>`, "text/html");
     // 回答フォームは答えをユーザーの名義（FORM_TOKEN）で書く。
     return reply(await w.gh.rest(init.method, path, body, init.headers?.authorization === `Bearer ${env.FORM_TOKEN}` ? config.user : config.gateBot));

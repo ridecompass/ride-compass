@@ -2,6 +2,7 @@
 // ステータスと、変わってはいけない値（種類・担当者・本文のボタンと条件）を書くのはゲートだけ。GitHub への要求は、1件につき読む1回と書く1回
 // （と、取り消す実行ごとに1回。Actions の取り消しは1回にまとめる口が無い）。
 import { Need, decide } from "./decide.js";
+import { batch } from "./github.js";
 import { readFacts, subjectTask } from "./facts.js";
 import { NO_GRANDCHILD, makesGrandchild } from "./family.js";
 import { askText, confirmConditions, droppedQuestion, isQuestionLabel, norm } from "./questions.js";
@@ -32,10 +33,6 @@ function writesOf(f, d, config) {
   if (!d.open && f.open) ops.push(["closeIssue", "CloseIssueInput", { issueId: f.id, stateReason: d.closeAs }]);
   return ops;
 }
-// 書き込みの並び（writesOf の形）を、1回の要求の問い合わせと変数にする。
-export const batch = (ops) => [`mutation(${ops.map(([, type], k) => `$v${k}:${type}!`).join(",")}){${ops.map(([name], k) => `w${k}:${name}(input:$v${k}){clientMutationId}`).join(" ")}}`,
-  Object.fromEntries(ops.map(([, , input], k) => [`v${k}`, input]))];
-
 // 1つのタスクを決め直して、今と違う所だけを書く。runs は出来事1件につき1回読んだ担当の実行の一覧（src/facts.js: recentRuns）。
 // moved は、ユーザーがステータスの欄を変えた出来事で決め直すとき（戻したら知らせる）。
 export async function settle(gh, config, number, runs, moved = false) {

@@ -49,3 +49,8 @@ export async function* pages(gh, query, vars, at) {
     a = c.pageInfo.endCursor;
   }
 }
+
+// 書き込みの並び（[書き込みの名前, 入力の型, 入力]）を、1回の要求の問い合わせと変数にする。宣言する変数は並べた書き込みが使うものだけ（GitHub は
+// 使わない変数を宣言した問い合わせを断る）。
+export const batch = (ops) => [`mutation(${ops.map(([, type], k) => `$v${k}:${type}!`).join(",")}){${ops.map(([name], k) => `w${k}:${name}(input:$v${k}){clientMutationId}`).join(" ")}}`,
+  Object.fromEntries(ops.map(([, , input], k) => [`v${k}`, input]))];
