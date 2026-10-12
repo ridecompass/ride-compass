@@ -2,6 +2,7 @@ import { Map as MapLibreMap } from "maplibre-gl";
 import { describe, expect, it, vi } from "vitest";
 
 import { mapOnScreen } from "@/testing/maplibre";
+import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
 import { matchesFilter } from "@/testing/mapExpressions";
 import type { StyleLayer } from "@/testing/mapTrace/recordingMap";
 
@@ -112,31 +113,6 @@ describe("文字に場所を譲る点の差し込み位置", () => {
 });
 
 describe("基礎地図の店・施設", () => {
-  // libertyの店・施設のレイヤーの絞り（OpenFreeMapのスタイルから写した）。点を順位で3段に分け、駅・バス・空港は別に描く。
-  const POINT = ["match", ["geometry-type"], ["MultiPoint", "Point"], true, false];
-  const POI_LAYERS: readonly StyleLayer[] = [
-    { id: "road_minor", type: "line", "source-layer": "transportation" },
-    { id: "poi_r20", type: "symbol", "source-layer": "poi", filter: ["all", POINT, [">=", ["get", "rank"], 20]] },
-    {
-      id: "poi_r7",
-      type: "symbol",
-      "source-layer": "poi",
-      filter: ["all", POINT, [">=", ["get", "rank"], 7], ["<", ["get", "rank"], 20]],
-    },
-    {
-      id: "poi_r1",
-      type: "symbol",
-      "source-layer": "poi",
-      filter: ["all", POINT, [">=", ["get", "rank"], 1], ["<", ["get", "rank"], 7]],
-    },
-    {
-      id: "poi_transit",
-      type: "symbol",
-      "source-layer": "poi",
-      filter: ["match", ["get", "class"], ["airport", "bus", "rail"], true, false],
-    },
-  ];
-
   /** その地物（点）を描くレイヤーのid。 */
   function drawnBy(map: MapLibreMap, properties: Record<string, unknown>): string[] {
     return map
@@ -153,7 +129,7 @@ describe("基礎地図の店・施設", () => {
   const HIDE = { class: ["restaurant"], subclass: ["convenience"] };
 
   it("名指した種類（束ねた種類か元のタグの値）だけを、どの順位でも描かない", () => {
-    const { map } = drawMap(POI_LAYERS);
+    const { map } = drawMap(LIBERTY_POI_LAYERS);
     prepareBasemap(map);
 
     hideBasemapPois(map, HIDE);
@@ -167,7 +143,7 @@ describe("基礎地図の店・施設", () => {
   });
 
   it("種類を空にすると、配信元の絞りへ戻す", () => {
-    const { map } = drawMap(POI_LAYERS);
+    const { map } = drawMap(LIBERTY_POI_LAYERS);
     prepareBasemap(map);
     const original = map.getStyle().layers;
 
@@ -178,7 +154,7 @@ describe("基礎地図の店・施設", () => {
   });
 
   it("何度当てても絞りを重ねない", () => {
-    const { map } = drawMap(POI_LAYERS);
+    const { map } = drawMap(LIBERTY_POI_LAYERS);
     prepareBasemap(map);
     hideBasemapPois(map, HIDE);
     const once = map.getStyle().layers;
@@ -190,7 +166,7 @@ describe("基礎地図の店・施設", () => {
   });
 
   it("スタイルを取り直す間に当てても、新しいスタイルが読み込まれてから、その配信元の絞りへ当て直す", () => {
-    const { map, screen } = drawMap(POI_LAYERS);
+    const { map, screen } = drawMap(LIBERTY_POI_LAYERS);
     const apply = (kinds: BasemapPoiKinds) => {
       prepareBasemap(map);
       hideBasemapPois(map, kinds);
@@ -200,7 +176,7 @@ describe("基礎地図の店・施設", () => {
 
     reloadStyle(map, "basemap", () => apply(HIDE));
     apply(HIDE);
-    screen.loadStyle(POI_LAYERS);
+    screen.loadStyle(LIBERTY_POI_LAYERS);
     screen.emit("style.load");
 
     expect(drawnBy(map, { ...RESTAURANT, rank: 3 })).toEqual([]);

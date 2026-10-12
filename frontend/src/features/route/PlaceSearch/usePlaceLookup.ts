@@ -5,12 +5,13 @@ import { useEffect, useRef, useState } from "react";
 
 import { searchPlaces } from "@/features/route/placeSearchApi";
 import { getQueryClient } from "@/lib/queryClient";
+import { SECOND_MS } from "@/lib/duration";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { Coordinates } from "@/types/route";
 
 // 打ちかけで引き始める長さ（空白を除いた文字数）と、打つのが止まってから引くまでの間。口の回数制限はこの間から決まる。
 export const PREDICTION_MIN_LENGTH = routeGenerateConfig.place_prediction_min_length;
-const PREDICTION_DELAY_MS = routeGenerateConfig.place_prediction_delay_seconds * 1000;
+const PREDICTION_DELAY_MS = routeGenerateConfig.place_prediction_delay_seconds * SECOND_MS;
 
 /**
  * 住所か施設の名前を打つ欄の中身と、地点の検索の口の引き方。打ちかけでも打つのが止まってから引き、かな漢字の変換中は引かない。
