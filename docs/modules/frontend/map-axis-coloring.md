@@ -20,7 +20,7 @@
 | `features/map/layers/webMercatorTile.ts` | Web MercatorのXYZタイルと緯度経度の行き来（点のタイル座標・点を含むタイル（世界の端はタイルの番号の範囲へ寄せる）・タイルが覆う範囲）。backendと同じ式で、一致は表の組`region`で照らす。道路タイルの値を引くタイルと、気象庁のタイルの在否の判定（`jmaTileIndex.ts`）が同じ式を通る |
 | `lib/mapDisplay/axisLayers.ts`（`RampAxis`関連のみ） | 軸カタログ→ramp軸一覧の変換（`rampAxesFromCatalogAxes`）。段の色は持たない（`valueScale.ts: rampAxisBands`）。値が無い道の色は`palette.json: semantic.no_data`を別名を付けずに指す。ramp軸自体の全面的な生成ロジックは主に[地図: 静的レイヤー・道路表示](static-map-layers.md)の管轄 |
 | `lib/mapDisplay/mapColorLegend.ts` | 地図上の色分け凡例（`MapColorLegendBand`型・`buildRangeLegendBands`・`rangeStepLabel`）の共通ロジックと、値が無い行（`NO_DATA_LEGEND_BAND`）。凡例を作る関数（`features/map/view/lens.ts`）・道の属性の凡例（`features/map/scene/legends.ts`）と管理画面が使う |
-| `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「地図の色分け」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上の中央のピルが現在のレンズと凡例を示し、タップで単一選択の札の並び（なし／総合難易度／評価に使用中の軸／未使用の軸。スマホの幅でも地図の塗りが窓の外に見えるよう、札と凡例を横へ流して窓を低く保つ）と「ルートを地図に出す」（ルートの線の出し入れ。候補を選ぶまで押せない）・「ルート後も周囲の道路を薄く塗る」トグルを開く（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`page.tsx`はそのまま渡す）。周りの道を走る条件で塗っている間は、その条件の文（`view/lens.ts: lensConditionsLabel`）をピルに出し、色の前提（`view/lens.ts: lensPremises`）を開いた先の凡例に出す |
+| `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「地図の色分け」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上の中央のピルが現在のレンズと凡例を示し、タップで単一選択の札の並び（なし／総合難易度／評価に使用中の軸／未使用の軸。スマホの幅でも地図の塗りが窓の外に見えるよう、札と凡例を横へ流して窓を低く保つ）と「ルートを地図に出す」（ルートの線の出し入れ。候補を選ぶまで押せない）・「ルート後も周囲の道路を薄く塗る」トグルを開く（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`page.tsx`はそのまま渡す）。周りの道を走る条件で塗っている間は、その条件の文（`view/lens.ts: lensConditionsLabel`）をピルに出し、色の前提（`view/lens.ts: lensPremises`）を開いた先の凡例に出す。密度の軸では、開いた先に材料ごとの1件あたりの重みを並べる |
 | `features/map/layers/mapLayers.ts` | `isAxisStudioLayer`（記述子の印で判定。地図上チップの一覧`overlayChips`が除くのに使う）・専用配信軸のレイヤーIDの導出（`dedicatedWayValueMapLayerId`） |
 | `features/map/MapView/MapView.tsx`（専用way値配信軸・ルート線の区間クリックの箇所のみ） | 画面の状態を宣言の入力へ渡すだけの配線（下記「MapView.tsx側の配線」）。軸ごとの処理は持たない |
 | `features/map/scene/groups/routes.ts` | 色分け線そのものを引く側。レンズの配色式・凡例フィルタを受け取ってMapLibreの線レイヤーへ流す |
@@ -101,6 +101,12 @@ localStorageキーは`ridecompass:route-style-mode`）。ルート前は全道�
 持たない）。ルート後も全道路の塗りを残すかは「ルート後も周囲を塗る」（既定ON）。
 **レンズを選ぶと、ルートのレイヤーがOFFならONにする**——選んだ色分けがルート線に出ないまま、
 理由が画面のどこにも無い状態を作らない。レンズは生成リクエストに載らず、切り替えてもルートを作り直さない。
+**密度の軸（軸カタログの`density_terms`がnullでない軸）は、ルートの前に道の線を塗らず、数える材料の点で見せる。**
+密度は近くの点の件数を区間の長さで割った値で、線の色だけでは、どの点を数えて濃くなったかが読めない。レンズでその軸を
+選ぶと、`primary_attribute_ids`のうち地図のレイヤーに当たるもの（点のレイヤー）をONにし（`useMapView`）、道の線は
+塗っている軸でも出さず（`scene/applyToMap.ts`）、凡例の段も出さない（`view/lens.ts: lensLegend`）。点の数え方は、
+レンズの開いた先に材料の名前と1件あたりの重みを並べて読ませる（`density_terms`の`label`と`weight`）。ルートの後は
+ほかの軸と同じくルート線を塗る。
 ルート線をどのレンズでも塗れるよう、backendは重み0の軸でも区間に値を載せる——軸の難易度（`axis_difficulties`）は
 どの軸も、`signed_material`種の軸の材料は`material_values`へいつも載せる（backend側は
 `evaluation.py: displayed_material_ids`、[routing-engine.md](../backend/routing-engine.md)参照）。

@@ -67,7 +67,7 @@ export function lensPremises(
 }
 
 /** レンズの凡例。地図がいま塗っているものの凡例だけを出す——塗っていない間に出すと、
- * 地図のどこにも無い色見本の表になる。ルート確定後はルート線のモードの凡例。 */
+ * 地図のどこにも無い色見本の表になる。ルート確定後はルート線のモードの凡例。密度の軸はルートの前に線を塗らない。 */
 export function lensLegend(
   lens: LensId,
   hasDetail: boolean,
@@ -79,7 +79,7 @@ export function lensLegend(
 ): readonly LegendEntry[] {
   if (hasDetail) return catalog.routeStyleModes.find((mode) => mode.id === lens)?.legend ?? [];
   const ramp = catalog.rampAxes.find((axis) => axis.axisId === lens);
-  if (ramp) return buildAxisRampLegend(ramp);
+  if (ramp) return ramp.densityTerms === null ? buildAxisRampLegend(ramp) : [];
   const dedicated = catalog.dedicatedAxes.find((axis) => axis.axisId === lens);
   if (dedicated) return dedicatedWayValueLegend(dedicated);
   return [];
