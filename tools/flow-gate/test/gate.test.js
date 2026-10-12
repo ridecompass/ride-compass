@@ -233,6 +233,26 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め3・�
   }
 });
 
+test("tasks#868 答えの無い問いが残っていても、完了の条件が全部済めば完成で閉じ、ボタンを外す。採否だけは答えを待つ", async () => {
+  const merged = { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1" };
+  const rows = [
+    // [要求, タスク, 出来事, 期待するステータス]
+    ["#865 イレギュラーを問うたあと、別の所で作って条件が全部済んだ", { body: withButton("- [x] 作る\n", config, 1), comments: [ASKED("イレギュラー")] }, ev.comment(1, config.claude), "完了"],
+    ["判断を問うたあとで条件が全部済んだ", { body: withButton("- [x] 作る\n", config, 1), comments: [QUESTION] }, ev.comment(1, config.claude), "完了"],
+    ["確かめを問うたあとでユーザーの確かめの行にも印が付いた", { body: withButton("- [x] 作る\n- [x] 見た目\n  - 確かめる: ユーザー\n", config, 1), comments: [ASKED("確かめ")] },
+      ev.issue(1, "edited"), "完了"],
+    ["問いのあとで、子の PR がマージされ master の CI が通った", { parent: 2, body: withButton(CHILD, config, 1), comments: [ASKED("イレギュラー")], pr: merged }, ev.ci(config.base, "m1"), "完了"],
+    ["採否は、着手するかの答えが要るので待つ", { author: config.claude, type: "要望", body: withButton("説明だけ\n", config, 1), comments: [ASKED("採否")] }, ev.comment(1, config.claude), "回答待ち"],
+  ];
+  for (const [name, task, event, status] of rows) {
+    const w = world([{ n: 1, status: "回答待ち", assignees: [config.user], ...task }, { n: 2, status: "未着手", body: "- [ ] a\n  - 子: #1\n" }]);
+    await w.send(event);
+    const i = w.at(1);
+    const done = status === "完了";
+    assert.deepEqual([i.status, i.state, i.reason, i.body.startsWith("<!-- flow-gate -->"), i.assignees], [status, done ? "CLOSED" : "OPEN", done ? "COMPLETED" : null, !done, done ? [] : [config.user]], name);
+  }
+});
+
 test("tasks#842・#843 担当者を手で変えたら決め直して戻す。1つのタスクを触るのは1者だけ", async () => {
   // 担当者を手で変えたら、その出来事で決め直し、ゲートの決めた値へ戻す。
   const hand = world([{ n: 1, status: "回答待ち", comments: [QUESTION], assignees: [config.user, config.claude] }]);
