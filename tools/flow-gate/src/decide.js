@@ -40,7 +40,7 @@ export function decide(f, config) {
   const dropping = (s.closeAs ?? (f.open ? null : f.closedAs)) === "NOT_PLANNED";
   // 答えの無い問いがある間（回答のボタンを置く間）は、その問いの種類（いま出す問いがあればその種類）をラベルで見せる。
   const asking = s.status === "回答" || (s.status !== "完了" && question && !question.answer);
-  const kind = s.ask ? (s.ask.dropped ? "判断" : s.ask) : question?.kind;
+  const kind = s.ask ? (s.ask.dropped ? "続行" : s.ask) : question?.kind;
   return { type, status: s.status, run: runStatus(f, s.status), open: s.status !== "完了", closeAs: s.closeAs, ask: s.ask ?? null, cancel: s.cancel ?? [],
     closePr: dropping && f.pr ? f.pr.id : null, notice: [notice(f, s.status), s.told].filter(Boolean).join("\n\n") || null,
     ready: s.status === "検証" && Boolean(f.pr?.draft), assignees: owner(s.status, f, config),
@@ -58,8 +58,8 @@ function runStatus(f, status) {
 // 保留・読まれていない文は、問いを出す事実に数えない）。無くなった問いは読まず、表で決め直す。担当が出した問いは、ゲートが中身を読まない
 // ので答えるまで生きる。
 function alive(f, q, config) {
+  if (q.form.by !== "ゲート") return true;
   const dropped = droppedOf(q.text);
-  if (q.form.by !== "ゲート" && !dropped) return true;
   const s = status({ ...f, question: null, adoptAsked: false, droppedAsked: false, unread: false, runs: [], status: null }, config);
   return dropped ? String(s.ask?.dropped?.toSorted()) === String(dropped.toSorted()) : s.ask === q.kind;
 }

@@ -202,27 +202,21 @@ export function latestQuestion(comments, forms) {
   return { ...q, answer: comments.slice(i + 1).map((c) => parseAnswer(c, q)).find(Boolean) ?? null };
 }
 
-// ゲートが出す問い（採否・確かめ・イレギュラー）。形の決まった値をそのまま使い、書く者が埋める所は、ユーザーが確かめる条件（conds。
-// src/questions.js: confirmConditions）で埋める: 答えの行は条件の文、判断材料の節は条件ごとの文と見る所と要点（書かれていない条件も隠さずにそう出す）。
+// ゲートが出す問い（形の「出す者」がゲートのもの）。形の決まった値をそのまま使い、書く者が埋める所を埋める: 問いの文は text（続行の
+// 相手の番号）、答えの行と判断材料の節はユーザーが確かめる条件（conds。src/questions.js: confirmConditions）の文と、見る所と要点（書かれていない
+// 条件も隠さずにそう出す）。
 const NO_LOOK = "書かれていません";
 const listed = (conds) => conds.map((c) => `\n- ${c.text}\n  - 見る所と要点: ${c.look ?? NO_LOOK}`).join("");
-export function askText(kind, forms, conds = []) {
+export function askText(kind, forms, conds = [], text = forms[kind].text) {
   const f = forms[kind];
-  return render(kind, f.text, f.header, f.rows ?? conds.map((c) => c.text), f.sections.map((s) => (HOLE.test(s.value) ? { ...s, value: listed(conds) } : s)));
+  return render(kind, text, f.header, f.rows ?? conds.map((c) => c.text), f.sections.map((s) => (HOLE.test(s.value) ? { ...s, value: listed(conds) } : s)));
 }
 
-// 待つ相手（前提・子）が見送りで閉じたときの判断の問い。問いの文に相手の番号を入れ、同じ文の問いが既にあれば二度は問わない
+// 待つ相手（前提・子）が見送りで閉じたときの続行の問いの文。相手の番号を入れ、同じ文の問いが既にあれば二度は問わない
 // （答えで「続ける」を選んだあとも、相手は見送りのまま残るため）。
 export const droppedQuestion = (numbers) => `待っていた ${numbers.map((n) => `#${n}`).join("・")} が見送りで閉じました。この issue を続けますか？`;
-// 見送りの判断の問いの文から、問うた相手の番号（その問いでなければ null）。
+// 続行の問いの文から、問うた相手の番号（その問いでなければ null）。
 export function droppedOf(text) {
   const numbers = /^待っていた (\S+) が/.exec(text)?.[1].split("・").map((n) => Number(n.slice(1)));
   return numbers && droppedQuestion(numbers) === text ? numbers : null;
 }
-const DROPPED = {
-  何の話か: "この issue が待っていた相手（前提か子）が見送りで閉じ、その結果を当てにしていた作業を続けるかを決める必要があります。",
-  利用者への約束: "当てにしていた結果が無いまま、黙って作り進めない。", 問題が起きる場面: "前の結果を使う作業を、前が無いまま作る。", 起きない場面: "待っていた相手が完成で閉じたとき。",
-  進行中の作業との関係: "見送りで閉じた相手の issue。", 答えごとに起きること: "続ける: 待つ相手を除いて決め直す。保留する: 保留へ。見送る: この issue も閉じる。",
-};
-export const askDropped = (numbers, forms) => render("判断", droppedQuestion(numbers), forms.判断.header, ["続ける", "保留する", "見送る"],
-  forms.判断.sections.map((s) => ({ name: s.name, value: DROPPED[s.name] ?? "なし" })));

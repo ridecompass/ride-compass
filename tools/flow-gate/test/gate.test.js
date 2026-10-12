@@ -10,7 +10,7 @@ import { MATERIAL, formed as FORMED } from "./forms.js";
 import { handle } from "../src/flow.js";
 import { answerForm } from "../src/form.js";
 import { Inbox, nextAlarm } from "../src/inbox.js";
-import { APPLIED, answerBody, askDropped, askText, checkQuestion, conditions, droppedQuestion, latestQuestion, loadForms, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
+import { APPLIED, answerBody, askText, checkQuestion, conditions, droppedQuestion, latestQuestion, loadForms, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
 
 const config = { ...loaded, slots: { 実装: 2, 検証: 1 } };
 const tasks = { full_name: config.tasks };
@@ -189,6 +189,7 @@ const ev = {
     parent_issue: { number: p, node_id: `I${p}` }, sub_issue: { number: c, node_id: `I${c}` } }],
 };
 const head = (i) => i.comments.at(-1)?.split("\n")[0] ?? null;
+const ASK_DROPPED = (numbers) => askText("続行", config.questionForms, [], droppedQuestion(numbers)); // ゲートが出す続行の問い
 const QUESTION = FORMED("判断", "どちらにしますか？", ["案A", "案B"]); // 形どおりの判断の問い
 const ANSWER = (line) => `## 回答\n**${QUESTION.split("\n")[1]}**\n\n${line}`;
 const CONFIRM = "- [x] 作る\n- [ ] 見た目\n  - 確かめる: ユーザー\n";
@@ -367,12 +368,12 @@ test("tasks#877 問いを出した事実が無くなったら、条件が残っ�
   const left = "- [x] 作る\n- [ ] 見た目\n  - 確かめる: ユーザー\n- [ ] 直す\n";
   const rows = [
     // [要求, タスク, 出来事, 期待するステータス]
-    ["見送りの前提について問うたあとで、前提が開き直された", { blockedBy: [7], comments: [askDropped([7], config.questionForms)] }, ev.issue(7, "reopened"), "待機"],
+    ["見送りの前提について問うたあとで、前提が開き直された", { blockedBy: [7], comments: [ASK_DROPPED([7])] }, ev.issue(7, "reopened"), "待機"],
     ["イレギュラーを問うたあとで、作業ブランチの PR が開かれた", { comments: [END(0), ASKED("イレギュラー")], pr: { created: T(1), checks: "PENDING" } }, ev.pr(1, "opened"), "検査"],
     ["イレギュラーを問うたあとで、問う前からあった PR がマージされた", { comments: [END(0, "検証"), ASKED("イレギュラー")], pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1", mergedAt: T(1) } },
       ev.ci(config.base, "m1"), "実装"],
     ["確かめを問うたあとで、Claude が確かめる条件が足された", { body: withButton(left, config, 1), comments: [ASKED("確かめ")] }, ev.issue(1, "edited", config.claude), "実装"],
-    ["見送りの前提がまだ見送りのままなら待つ", { blockedBy: [8], comments: [askDropped([8], config.questionForms)] }, ev.comment(1, config.claude), "回答"],
+    ["見送りの前提がまだ見送りのままなら待つ", { blockedBy: [8], comments: [ASK_DROPPED([8])] }, ev.comment(1, config.claude), "回答"],
     ["検証担当が手放したイレギュラーは、問う前からある開いた PR では片付かない", { comments: [END(0, "検証"), ASKED("イレギュラー")], pr: { checks: "SUCCESS" } }, ev.pr(1, "synchronize"), "回答"],
     ["Claude の判断の問いは、ゲートが中身を読まないので待つ", { comments: [QUESTION] }, ev.comment(1, config.claude), "回答"],
   ];
@@ -492,7 +493,7 @@ test("tasks#824 親が閉じたら: 開き直されない閉じ方なら、開�
   await w.send(ev.issue(1, "closed"));
   assert.deepEqual([w.at(2).state, w.at(2).reason, head(w.at(2)), w.writes.filter(([k]) => k === "取り消し").map(([, id]) => id)],
     ["CLOSED", "NOT_PLANNED", "親 #1 が閉じたので、見送りで閉じます。", [w.run(2).id]]);
-  assert.deepEqual([w.at(3).status, head(w.at(3))], ["回答", "## 問い（判断）"], "ゲートが閉じた子の先（その子を待つ issue）まで、同じ出来事の中で決め直す");
+  assert.deepEqual([w.at(3).status, head(w.at(3))], ["回答", "## 問い（続行）"], "ゲートが閉じた子の先（その子を待つ issue）まで、同じ出来事の中で決め直す");
   for (const [name, parent, want] of [["条件の残る親を完成で閉じた → 親は開き直し、子はそのまま", { reason: "COMPLETED" }, ["OPEN", "OPEN"]],
     ["親を見送りで閉じた → 子も見送り", { reason: "NOT_PLANNED" }, ["CLOSED", "CLOSED"]]]) {
     const x = world([{ n: 1, status: "実装", state: "CLOSED", body: ACCEPT, ...parent }, { n: 2, parent: 1, status: "保留", body: PART }]);
@@ -504,13 +505,13 @@ test("tasks#824 親が閉じたら: 開き直されない閉じ方なら、開�
 test("tasks#824 待つ相手が見送りで閉じたら、続けるかを一度だけ問う（前提でも子でも同じ）", async () => {
   const w = world([{ n: 6, status: "待機", blockedBy: [7] }, { n: 7, status: "完了", state: "CLOSED", reason: "NOT_PLANNED" }]);
   await w.send(ev.issue(7, "closed"));
-  assert.deepEqual([w.at(6).status, head(w.at(6)), w.at(6).comments.at(-1).includes(droppedQuestion([7]))], ["回答", "## 問い（判断）", true]);
+  assert.deepEqual([w.at(6).status, head(w.at(6)), w.at(6).comments.at(-1).includes(droppedQuestion([7]))], ["回答", "## 問い（続行）", true]);
   w.at(6).comments.push(`## 回答\n**${droppedQuestion([7])}**\n\n回答: 続ける`);
   await w.send(ev.comment(6));
   assert.deepEqual([w.at(6).status, w.titles(), asked(w.at(6))], ["実装", ["#6 実装"], 1], "続けると決めたら問い直さない");
   const x = world([{ n: 1, status: "待機", body: ACCEPT }, { n: 2, parent: 1, status: "完了", state: "CLOSED", reason: "NOT_PLANNED", body: PART }]);
   await x.send(ev.issue(2, "closed"));
-  assert.deepEqual([x.at(1).status, head(x.at(1))], ["回答", "## 問い（判断）"], "子が見送りなら、親で問う");
+  assert.deepEqual([x.at(1).status, head(x.at(1))], ["回答", "## 問い（続行）"], "子が見送りなら、親で問う");
 });
 
 test("tasks#824 採否は親か分割元から受け継ぎ、一度だけ問う。孫は張られた直後に外す", async () => {
@@ -537,9 +538,9 @@ test("tasks#824 採否は親か分割元から受け継ぎ、一度だけ問う�
 test("tasks#824 レビューの直し: 重複も見送り側・古い問いもさかのぼる・閉じた親の子は振り出さない・見送りで閉じたら PR も閉じる", async () => {
   const dup = world([{ n: 1, status: "待機", body: ACCEPT }, { n: 2, parent: 1, status: "完了", state: "CLOSED", reason: "DUPLICATE", body: PART }]);
   await dup.send(ev.issue(2, "closed"));
-  assert.deepEqual([dup.at(1).status, head(dup.at(1))], ["回答", "## 問い（判断）"], "重複で閉じた子も、続けるかを問う");
+  assert.deepEqual([dup.at(1).status, head(dup.at(1))], ["回答", "## 問い（続行）"], "重複で閉じた子も、続けるかを問う");
 
-  const old = world([{ n: 6, status: "待機", blockedBy: [7], comments: [askDropped([7], config.questionForms), `## 回答\n**${droppedQuestion([7])}**\n\n回答: 続ける`,
+  const old = world([{ n: 6, status: "待機", blockedBy: [7], comments: [ASK_DROPPED([7]), `## 回答\n**${droppedQuestion([7])}**\n\n回答: 続ける`,
     ...Array.from({ length: 45 }, (_, k) => `メモ ${k}`)] }, { n: 7, status: "完了", state: "CLOSED", reason: "NOT_PLANNED" }]);
   await old.send(ev.comment(6));
   assert.deepEqual([asked(old.at(6)), old.titles()], [1, ["#6 実装"]], "最近の40件より前に答えた問いも見つけ、問い直さない");
@@ -734,10 +735,10 @@ test("回答フォーム（R10〜R12・決め2・合意したモック）: 問�
 
 // tasks#892: 問いの形は種類ごとのファイルにあり、回答フォームは問いの節だけから導く（書く者が埋める問いは test/forms.js: formed で作る）。
 
-test("tasks#892 問いの形は種類ごとに5つあり、問いはその種類の形と照らす（案の無い判断・決まった文や案を変えた問い・知らない種類は読まない）", () => {
+test("tasks#892 問いの形は種類ごとにあり、問いはその種類の形と照らす（案の無い判断・決まった文や案を変えた問い・知らない種類は読まない）", () => {
   const forms = config.questionForms;
-  assert.deepEqual(Object.keys(forms).sort(), ["イレギュラー", "判断", "採否", "操作", "確かめ"].sort());
-  const ok = [askText("採否", forms), askText("確かめ", forms, [{ text: "見た目" }]), askText("イレギュラー", forms), askDropped([7], forms),
+  assert.deepEqual(Object.keys(forms).sort(), ["イレギュラー", "判断", "採否", "操作", "確かめ", "続行"].sort());
+  const ok = [askText("採否", forms), askText("確かめ", forms, [{ text: "見た目" }]), askText("イレギュラー", forms), ASK_DROPPED([7]),
     FORMED("判断", "どちらにしますか？", ["A", "B"]), FORMED("操作", "設定を変えてください", ["画面で設定を変える"])];
   for (const text of ok) assert.deepEqual(checkQuestion(forms, text), [], text.split("\n")[0]);
   const judge = FORMED("判断", "どちらにしますか？", ["A", "B"]);

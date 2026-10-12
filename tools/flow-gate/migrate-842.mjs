@@ -1,6 +1,6 @@
 // 使い捨て（tasks#842 の段階2）: ゲートを公開した直後に1回流し、流したらこのファイルを消す。開いた issue を次の2つの形へ一度で直す。
 // - 前の形の問い: 最新の「## 問い」が種類ごとの形（question_forms/）に合わなければ直す。採否・確かめ・イレギュラー（ゲートが出す）は、ゲートと同じ
-//   組み立て（src/questions.js: askText）で書き直す。確かめの項目は本文のユーザーが確かめる条件（残りがあれば残り、無ければ全部）。判断は、前の形の節
+//   組み立て（src/questions.js: askText）で書き直す（前の形の判断のうち、見送りの相手を問うものは続行へ）。確かめの項目は本文のユーザーが確かめる条件（残りがあれば残り、無ければ全部）。判断は、前の形の節
 //   「案ごとに起きること」を「答えごとに起きること」へ名を変えて形の位置へ移す。それでも形に合わないものは直さずに出す（置き換え先は人が決める）。
 // - 子の約束（C4）: 親の完了の条件の行のうち「- 子: #<子>」の付いた行を、文とチェックを変えずに子の本文の完了の条件へ移管し、親から消す。
 //   子の本文に同じ文の条件があれば足さない（流し直してよい）。
@@ -9,7 +9,7 @@
 import { bot, config, graphqlData } from "./src/bot.js";
 import { batch } from "./src/gate.js";
 import { pages } from "./src/github.js";
-import { askText, checkQuestion, conditions, isQuestion, norm } from "./src/questions.js";
+import { askText, checkQuestion, conditions, droppedOf, isQuestion, norm } from "./src/questions.js";
 
 const write = process.argv.includes("--write");
 const { owner, name } = config.repos.tasks;
@@ -17,6 +17,8 @@ const gh = bot();
 
 function question(text, body) {
   const head = /^## 問い(?:（(.+)）)?/.exec(text)?.[1] ?? "判断";
+  const line = text.split("\n")[1]?.trim() ?? "";
+  if (droppedOf(line)) return askText("続行", config.questionForms, [], line); // 前の形の、見送りの相手を問う判断
   if (config.questionForms[head]?.by === "ゲート") {
     const mine = conditions(body).filter((c) => c.verify === "ユーザー");
     const left = mine.filter((c) => !c.done);

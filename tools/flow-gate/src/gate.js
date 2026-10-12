@@ -4,10 +4,11 @@
 import { decide } from "./decide.js";
 import { readFacts } from "./facts.js";
 import { NO_GRANDCHILD, makesGrandchild } from "./family.js";
-import { askDropped, askText, confirmConditions, isQuestionLabel, norm } from "./questions.js";
+import { askText, confirmConditions, droppedQuestion, isQuestionLabel, norm } from "./questions.js";
 
 // 決めた問い（種類の名前か、見送りの相手を持つもの）の文。確かめに並べる条件は、書く本文（決めた本文）から取る。
-const askBody = (ask, config, body) => (ask.dropped ? askDropped(ask.dropped, config.questionForms) : askText(ask, config.questionForms, confirmConditions(body)));
+const askBody = (ask, config, body) =>
+  (ask.dropped ? askText("続行", config.questionForms, [], droppedQuestion(ask.dropped)) : askText(ask, config.questionForms, confirmConditions(body)));
 
 // 今と違う所だけの書き込み（[GraphQL の書き込みの名前, 入力の型, 入力]）。GitHub は1回の要求に並べた書き込みを、並べた順に1つずつ行う。
 // 本文（ボタン）は問いのコメントより先に書く（問いの通知から開いたときにボタンがあるように）。閉じるのは最後。
