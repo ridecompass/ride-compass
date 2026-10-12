@@ -41,7 +41,7 @@ def run_profile_fetch_cli(
     `--profile`はここで足す（省けば既定のプロファイル）。`fetch`は読んだ引数・プロファイルと、アダプタが`adapter`の
     ソースを受ける。そのソースが無ければ取るものが無いので、`fetch`を呼ばずに成功で終える。
     """
-    parser.add_argument("--profile", default=None, type=Path)
+    parser.add_argument("--profile", type=Path)
     args = parser.parse_args()
 
     def start() -> bool:
