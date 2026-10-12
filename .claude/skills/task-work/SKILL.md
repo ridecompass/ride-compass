@@ -45,8 +45,9 @@ description: "タスクを作る担当・確かめる担当として進める手
 5. マージの前に済ませる本番への書き込みが要るなら、出さずに `docs/conventions/flow.md`「担当」の「自動で進めないもの」のとおり返す。
    **下書きの** Pull Request を出す（`gh pr create --draft --base master --head orch/tasks-<番号> --title <題名> --body-file <本文>`。gh の既定の
    名義のまま）。前の Pull Request が開いていれば、新しく出さずに push する。**CI は待たずに手放す**（ゲートが CI待ちにし、通れば
-   レビュー可能にして確かめる担当へ渡し、落ちたか変異テストに新しい生き残りが出たら作る担当へ戻す）。戻ってきたら、落ちた検査
-   （`gh pr checks <番号> -R ridecompass/ride-compass`）か変異テストの注記（Mutation PR の実行の ANNOTATIONS）を読んで直す。
+   レビュー可能にして確かめる担当へ渡し、落ちたら作る担当へ戻す。変異テストの生き残りが扱われていなければ、確かめる担当が下書きへ戻す）。
+   戻ってきたら、落ちた検査（`gh pr checks <番号> -R ridecompass/ride-compass`）か、変異テストの注記（Mutation PR の実行の ANNOTATIONS）と
+   Pull Request のコメントを読んで直す。
    直し方は .claude/rules/testing.md「テストが落ちたときの直し方」。生き残りは、利用者や運用に見える振る舞いが変わるものだけテストを足し、
    ほかは本文の検証に1件1行で理由を書く。
    - **本文**: 題名と本文はそのまま master のコミットになる（`docs/conventions/flow.md`「コミット」）。`.github/pull_request_template.md` を
@@ -67,6 +68,9 @@ description: "タスクを作る担当・確かめる担当として進める手
    issue の完了の条件（子の作業なら、親の完了の条件のうち `- 子: #<この子>` の付いた行）・変更が届く範囲を、作る担当の報告を写さずに自分で見る。完了の条件と、利用者に見える結果（画面・API の応答・
    テストが見る振る舞い）を先に見る。画面は作る担当と同じ道具・脚本で後を撮り、前は貼られた画像（コメントの添付の URL を
    `curl -sSL -o <作業ツリーの外> <URL>` で取って Read で見る）と比べる。`lost_constraints.py` も回し、「消えた」制約に本文の処置が無ければ満たしていない。
+   変異テストの生き残り（Pull Request の先頭のコミットの Mutation PR の実行。`gh run list -R ridecompass/ride-compass --workflow mutation-pr.yml --commit <SHA>`
+   の実行を `gh run view <id> -R ridecompass/ride-compass` で開いた ANNOTATIONS の、変えた行への注記）も1件ずつ見て、その書き換えに
+   気づくテストを足したか、本文の検証に理由があるかを確かめる。どちらも無い生き残りが1件でもあれば満たしていない。
    ゲート（`tools/flow-gate/`）の変更は、事実を `tools/flow-gate/src/decide.js: decide` へ渡して出る値で見る（本物の GitHub へは書かない）。
 2. 結果を、満たしていてもいなくても issue にコメントで書く（見出し「確かめた結果」。条件ごとに、何をどう見て何が出たか）。
 3. 利用者から見える振る舞い・モジュールの設計が変わるなら、完了の条件（子の作業なら親の完了の条件）に `- 確かめる: ユーザー` と `- 見る所と要点:` を付けた条件を足して理由を書く（マージは待たない。テスト・CI で合否が決まることは足さない。
@@ -74,7 +78,7 @@ description: "タスクを作る担当・確かめる担当として進める手
    issue の答えがマージの前のユーザーの確認を求めていて答えがまだなら、マージせずに問う。作る担当の着手より後に届いた依頼
    （コメント）と、範囲の中で master に残る直し漏れは、完了の条件にチェックの無い行として足す（戻す理由にしない。マージのあとの残りになる）。
    開発機にしか無いもので確かめる行だけが残るなら、マージの前に対話作業の issue を起こして前提に張る（.claude/skills/file-issue/SKILL.md「分ける」）。
-4. 満たしていなければ、足りないことを Pull Request のコメントに書き、下書きへ戻す（`gh pr ready <番号> -R ridecompass/ride-compass --undo`。
+4. 満たしていなければ（1 の扱われていない生き残りを含む）、足りないこと（生き残りなら注記の位置と書き換え）を Pull Request のコメントに書き、下書きへ戻す（`gh pr ready <番号> -R ridecompass/ride-compass --undo`。
    `gh pr view --json isDraft` が `true` になるまで打ち直す）。ゲートが作る担当へ戻す。
 5. 満たしていれば、確かめた条件に `check.mjs`（作る担当の 3）でチェックを付ける（確かめの行・マージのあとの条件・3 で足した行は付けない。子の作業なら付けず、子が閉じたときにゲートが親の行に付ける）。完了の条件に
    本番での前後の比べがあり、今の本番の前の値が issue に無ければ、本番を読むだけの口（`backend/scripts/prod_route_check.py` と同じ口）で

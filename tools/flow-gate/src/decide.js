@@ -86,7 +86,7 @@ function table(f) {
   if (pr) {
     if (pr.backToDraft) return { status: "未着手" }; // 確かめる担当の差し戻し
     if (!pr.checks || pr.checks === "PENDING") return { status: "CI待ち" }; // 下書きかどうかによらず、CI の結果を待つ間は手放す
-    if (pr.checks === "FAILURE" || pr.newSurvivors) return { status: "未着手" };
+    if (pr.checks === "FAILURE") return { status: "未着手" };
     // 確かめる担当が、マージも差し戻しも問いもせずに手放した（同じ PR を確かめ直し続けない）。
     return f.status === HELD.確かめる ? IRREGULAR : { status: "検証待ち" };
   }
