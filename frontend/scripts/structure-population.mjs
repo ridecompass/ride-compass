@@ -2,12 +2,13 @@
 //
 //   node scripts/structure-population.mjs [--axis-catalog <JSONのファイル>]
 //
-// 母集団は src の .ts・.tsx のうち、テスト（*.test.ts(x)）・テストの足場（src/testing・src/structure）・生成物（src/types/generated）を除いたもの。
+// 母集団は src の .ts・.tsx のうち、テスト（*.test.ts(x)）・テストの足場・生成物を除いたもの。足場と生成物の置き場、生成物が名前として
+// 配る値の取り方は scripts/repo_population.json が持つ（鍵の意味は scripts/repo_population.py の docstring）。
 // 出すのは候補で、判じない（偶然の一致・型で縛られた分岐が混ざる）。どれを直すかは読む人が決める。
 //   (a) 文字列リテラル∩生成物の識別子: 式の中の文字列リテラルで、値が生成物の文字列の値（識別子の形のもの）と同じもの。
 //       import の指定子・型の位置・オブジェクトの鍵の位置は除く。
-//   (b) 画面の文∩本番の軸名・現象の語: 日本語を含む文字列・テンプレートの断片・JSX の文のうち、語を含むもの。語は生成物の
-//       名前（鍵が label の日本語の値で3字以上）と、--axis-catalog で渡した軸カタログ（本番の backend の /api/axis-catalog の応答）の
+//   (b) 画面の文∩本番の軸名・現象の語: 日本語を含む文字列・テンプレートの断片・JSX の文のうち、語を含むもの。語は生成物が
+//       名前として配る値と、--axis-catalog で渡した軸カタログ（本番の backend の /api/axis-catalog の応答）の
 //       軸の label。渡さなければ軸名は入らない。
 //   (c) 重み・閾値の文脈の数値リテラル（関数の中を含む）: 0・1 を除く数値で、比べる式の片側・`||`／`??` の右・Math.min／max の引数か、
 //       名前が重み・閾値・上下限を表す宣言・引数の既定・代入の値になっているもの。
@@ -28,8 +29,10 @@ import { parseArgs } from "node:util";
 import ts from "typescript";
 
 const frontendRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const repoRoot = path.dirname(frontendRoot);
 const srcRoot = path.join(frontendRoot, "src");
-const generatedRoot = path.join(srcRoot, "types", "generated");
+const population = JSON.parse(readFileSync(path.join(repoRoot, "scripts", "repo_population.json"), "utf-8"));
+const generatedRoot = path.resolve(repoRoot, population.generated);
 
 const { values } = parseArgs({
   options: { "axis-catalog": { type: "string" } },
@@ -42,18 +45,17 @@ function walk(dir) {
   });
 }
 
-const EXCLUDED_DIRS = ["testing", "structure", path.join("types", "generated")].map(
-  (dir) => path.join(srcRoot, dir) + path.sep,
+const EXCLUDED_DIRS = [...population.scaffold, population.generated].map(
+  (dir) => path.resolve(repoRoot, dir) + path.sep,
 );
 const sources = walk(srcRoot).filter(
   (file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file) && !EXCLUDED_DIRS.some((dir) => file.startsWith(dir)),
 );
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const JAPANESE = /[぀-ヿ㐀-鿿]/;
+const JAPANESE = new RegExp(population.japanese);
 
-/** 生成物の文字列の値と、その値を持つ鍵（配列の要素なら外側の鍵）。.ts の生成物は構文木から、.json は値の木から取る。
- * openapi.json・api.d.ts は API の型で、宣言の値を持たない。 */
+/** 生成物の文字列の値と、その値を持つ鍵（配列の要素なら外側の鍵）。.ts の生成物は構文木から、.json は値の木から取る。 */
 function generatedStrings() {
   const strings = [];
   const visitJson = (value, key) => {
@@ -63,7 +65,7 @@ function generatedStrings() {
   };
   for (const file of walk(generatedRoot)) {
     const name = path.basename(file);
-    if (name === "openapi.json" || name === "api.d.ts") continue;
+    if (population.generatedWithoutNames.includes(name)) continue;
     const text = readFileSync(file, "utf-8");
     if (name.endsWith(".json")) {
       visitJson(JSON.parse(text), null);
@@ -94,9 +96,11 @@ function axisCatalogWords() {
   return catalog.axes.map((axis) => axis.label);
 }
 
-/** 現象の語は、生成物が名前として配る値（鍵が label）のうち3字以上のもの。2字以下は「風」「時間」のような一般語と区別できない。 */
+/** 現象の語は、生成物が名前として配る値。 */
 const phenomenonWords = generated
-  .filter(({ value, key }) => key === "label" && JAPANESE.test(value) && value.length >= 3)
+  .filter(
+    ({ value, key }) => key === population.nameKey && JAPANESE.test(value) && value.length >= population.nameMinLength,
+  )
   .map(({ value }) => value);
 const words = [...new Set([...phenomenonWords, ...axisCatalogWords()])].sort((a, b) => b.length - a.length);
 

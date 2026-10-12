@@ -14,8 +14,8 @@ NOT NULL・表に付けた生のDDL（`event.listen(..., DDL(...))`）。制約�
 見ないもの: SQLの文の中の絞り込み（WHERE・JOINの条件）。SQLは断片をつないで組み立てる形が
 多く、文字列から構文木を取れないものが残るため、期待値テストで守る。
 
-表の宣言は、`backend/app`の下で`__tablename__`か`Table(`を含むモジュールを全部importして
-集める。版によって全表を集める入口（`orm_base.declared_metadata`）が無いため。
+表の宣言は、`backend/app`の下で表を宣言するモジュール（`tests/structure/source_symbols.py: table_modules`）を
+全部importして集める。版によって全表を集める入口（`orm_base.declared_metadata`）が無いため。
 
 実行方法（作業ツリーの根からでも`backend`からでも同じ結果になる）:
     backend\.venv\Scripts\python.exe backend\scripts\lost_constraints.py             # master との合流点 → HEAD
@@ -39,6 +39,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 from repo_git import merge_base, run
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from tests.structure.source_symbols import table_modules  # sys.pathを通した後に読む
 
 Item = tuple[str, str, str]
 
@@ -85,15 +89,13 @@ def lost(before: set[Item], after: set[Item]) -> list[Item]:
     return sorted(item for item in before - after if item[0] == TABLE or item[1] not in gone_tables)
 
 
-def _dump(backend_dir: Path) -> None:
-    """取り出した版の`backend`で表を宣言するモジュールを全部importし、制約をJSONで出す。"""
+def _dump(backend_dir: Path, modules: list[str]) -> None:
+    """取り出した版の`backend`で、渡したモジュールを全部importし、制約をJSONで出す。"""
     from sqlalchemy import MetaData
 
     sys.path.insert(0, str(backend_dir))
-    for path in sorted((backend_dir / "app").rglob("*.py")):
-        source = path.read_text(encoding="utf-8")
-        if "__tablename__" in source or "Table(" in source:
-            importlib.import_module(".".join(path.relative_to(backend_dir).with_suffix("").parts))
+    for module in modules:
+        importlib.import_module(module)
     metadatas = [o for o in gc.get_objects() if isinstance(o, MetaData)]
     print(json.dumps(sorted(constraint_items(metadatas)), ensure_ascii=False))
 
@@ -106,7 +108,8 @@ def _items_at(rev: str) -> set[Item]:
             tar.extractall(tmp, filter="data")
         backend = Path(tmp) / "backend"
         env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "PYTHONIOENCODING": "utf-8"}
-        out = subprocess.run([sys.executable, __file__, "--dump", str(backend)], cwd=backend, env=env,
+        modules = sorted(table_modules(backend))
+        out = subprocess.run([sys.executable, __file__, "--dump", str(backend), *modules], cwd=backend, env=env,
                              capture_output=True, text=True, encoding="utf-8")
     if out.returncode:
         raise SystemExit(f"{rev} の宣言を読めませんでした:\n{out.stderr}")
@@ -119,7 +122,7 @@ def _git(*args: str) -> str:
 
 def main() -> int:
     if sys.argv[1:2] == ["--dump"]:
-        _dump(Path(sys.argv[2]))
+        _dump(Path(sys.argv[2]), sys.argv[3:])
         return 0
     parser = argparse.ArgumentParser(description="2つの版のORM宣言から、消えた制約を出す")
     parser.add_argument("base", nargs="?", default=None, help="前の版（既定: origin/master との合流点）")
