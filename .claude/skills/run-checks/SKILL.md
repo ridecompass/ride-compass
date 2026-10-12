@@ -24,7 +24,7 @@ description: "検査とテストを手元・作業ブランチのCI・masterのC
 - **回さないもの**: フルスイート（backendの`tests`全体・frontendの`vitest run`全体）と、pushの前の念のための全体。
   1行・1ファイル変えただけで全体を流し直さない。静的検査も、1の再現と下の`tsc`の例外のほかは回さない。
 - **コミットの前に、frontendで変えたファイルへ整形をかける**: CIの`format:check`（`frontend/package.json`）が見る
-  `src/**/*.{ts,tsx,css}`に当たる変えたファイルへ、`./node_modules/.bin/prettier --write <変えたファイル>`をかけてからコミットする。
+  範囲に当たる変えたファイルへ、`./node_modules/.bin/prettier --write <変えたファイル>`をかけてからコミットする。
   `format:check`（`--check`）は回さない。
 - 回すときは、どの場面でも次のとおりにする。
   - **範囲の例**: backend `pytest backend/tests/<テストのファイル> -q`、frontend `./node_modules/.bin/vitest run <該当ファイル>`、
