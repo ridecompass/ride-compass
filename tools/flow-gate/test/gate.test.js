@@ -38,7 +38,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     return { blockedBy: blocked(i), subIssues: children(i), parent: p && { ...near(p.n), body: p.body, labels: names(p.labels), issueFieldValues: fields(p) } };
   };
   // PR は、置いたときに決めた時刻（p.created・p.mergedAt）が無ければ、どのコメントより前に作られた。
-  const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, merged: Boolean(p.merged), mergeable: p.conflict ? "CONFLICTING" : "MERGEABLE", createdAt: p.created ?? T(-1), mergedAt: p.mergedAt ?? null, mergeCommit: { statusCheckRollup: p.mergeChecks && { state: p.mergeChecks } },
+  const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, merged: Boolean(p.merged), mergeable: p.conflict ? "CONFLICTING" : "MERGEABLE", createdAt: p.created ?? T(-1), mergedAt: p.mergedAt ?? null, mergeCommit: { statusCheckRollup: p.mergeChecks && { state: p.mergeChecks, contexts: { nodes: [{ status: "COMPLETED" }, ...(p.mergeRunning ? [{ status: "IN_PROGRESS" }] : [])] } } },
     commits: { nodes: [{ commit: { oid: `c${i.n}`, committedDate: "2026-10-11T00:00:00Z", statusCheckRollup: p.checks && { state: p.checks } } }] },
     timelineItems: { nodes: p.drafted ? [{ createdAt: "2026-10-11T01:00:00Z" }] : [] } });
   const gql = async (q, v) => {
@@ -172,6 +172,7 @@ test("R3・決め1・決め7: 担当の実行が終わったら、表の上か�
     ["決め1 マージのあとの残り", {}, { pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS" } }, "進行中", 2, null],
     ["マージのコミットの CI がまだ（本番に出る前に確かめを問わない）", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "PENDING" } }, "CI待ち", 1, null],
     ["マージのコミットの master の CI が落ちたまま、作る担当が打ち直しも直しもせずに手放した → イレギュラー", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "FAILURE" } }, "回答待ち", 1, "## 問い（イレギュラー）"],
+    ["作る担当が打ち直した master の CI で、ほかの検査が走っている間に1つが落ちた → 終わるまで CI待ち（tasks#856）", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "FAILURE", mergeRunning: true } }, "CI待ち", 1, null],
   ];
   for (const [name, start, facts, status, runs, comment] of rows) {
     const w = world([{ n: 1, status: "未着手", ...start }, { n: 9, status: "保留" }]);

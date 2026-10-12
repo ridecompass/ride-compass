@@ -35,7 +35,7 @@ description: "タスクを作る担当・確かめる担当として進める手
      狭まるなら書き換えず、`docs/conventions/flow.md`「担当」の「開発機でしかできない作業」のとおり返す。
    - 1つの Pull Request に収まらないと分かったら、.claude/skills/file-issue/SKILL.md「分ける」のとおり分けて終える。
    - マージのコミットの master の CI が落ちて戻ってきたら、落ちたジョブ（`gh run list -R ridecompass/ride-compass --commit <マージのコミット>`）を
-     読み、取り消された・一時の失敗なら `gh run rerun <実行> -R ridecompass/ride-compass --failed` で打ち直し、コードの誤りなら直す
+     読み、取り消された・一時の失敗なら `gh run rerun <実行> -R ridecompass/ride-compass --failed` で打ち直し（ジョブが始まる前に取り消された実行は `--failed` を外して全体を）、コードの誤りなら直す
      Pull Request を出す。どちらもせずに手放すと、ゲートがイレギュラーを問う。
    - マージのあとの残りは、済ませて完了の条件にチェックを付ける。時間を待つものだけが残るなら、欄「着手可能日時」に済ませられる
      日本時間を入れ（.claude/skills/file-issue/SKILL.md「ラベルと種類と欄」）、何をその日に済ませるかをコメントに書いて終える。その日に
