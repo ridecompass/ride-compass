@@ -111,6 +111,7 @@ def asyncpg_dsn(sqlalchemy_url: str) -> str:
 #: 取込と派生の作り直しが取るadvisory lockの名前（`hashtext`で鍵にする）。作り直しは排他で、取込は共有で
 #: 取る——取込どうしは並んで走れ、取込と作り直しはどちらかが止まる。作り直しの段と段の間に取込が
 #: 終わると、段ごとに違う取込を読み、記録した取込（`derived_source_runs`）とも食い違うため。
+#: DBのバックアップ（`backend/ops/admin_data_backup.sh`）も書き出す間は排他で持ち、取込と作り直しの途中を書き出さない。
 SOURCE_DATA_LOCK = "source_data"
 
 
