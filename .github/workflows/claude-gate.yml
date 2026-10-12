@@ -13,6 +13,9 @@ on:
 
 jobs:
   flow-gate:
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-2
+      queue: max
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

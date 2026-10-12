@@ -3,7 +3,9 @@
 # 見直す」の候補を出す（tasks#661）。回し方と結果の読み方は .claude/skills/test-review/SKILL.md。
 #
 # - 手で起こす（gh workflow run mutation.yml、または Actions → Mutation → Run workflow）。測る版と台本は、起こすときに
-#   選んだ ref から読む（台本は backend/scripts/mutation/。台本を直すたびにこのファイルを変えずに済む）。
+#   選んだ ref から読む（台本は backend/scripts/mutation/。台本を直すたびにこのファイルを変えずに済む）。測りは入力の issue の
+#   レーンで動くので、本はその issue のほかのジョブ（担当の Pull Request の CI 等）と枠を分け合い、レーンより多い本は空くまで待つ
+#   （レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
 # - 2段で回る:
 #   1. shard（8本）: 変異と、テストの当たる関数ごとの基準（変異を入れずに同じテストを2回）を1つの無作為の並び（種を固定）に
 #      して、行を順に配り、1本ずつ別のランナーで回す。1本の中ではテストDBを分けた4つの担い手で回す（CI の backend と同じ
@@ -24,6 +26,9 @@ name: Mutation
 on:
   workflow_dispatch:
     inputs:
+      issue:
+        description: この測りを持つ置き場の issue の番号（同時に動かすジョブの数をその issue のレーンで数える）
+        required: true
       ref:
         description: 測る版（台本も同じ版の backend/scripts/mutation/ から読む）
         required: true
@@ -52,12 +57,24 @@ env:
 
 jobs:
   shard:
+    concurrency:
+      group: orch/tasks-${{ inputs.issue }}-lane-${{ matrix.lane }}
+      queue: max
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        # 本をレーン 1〜5 へ順に振る。1回の測りが同時に取るのは、この issue のレーンの数まで。
+        include:
+          - { shard: 0, lane: 1 }
+          - { shard: 1, lane: 2 }
+          - { shard: 2, lane: 3 }
+          - { shard: 3, lane: 4 }
+          - { shard: 4, lane: 5 }
+          - { shard: 5, lane: 1 }
+          - { shard: 6, lane: 2 }
+          - { shard: 7, lane: 3 }
     defaults:
       run:
         working-directory: backend
@@ -146,6 +163,9 @@ jobs:
   review:
     needs: shard
     if: needs.shard.outputs.full == 'true'
+    concurrency:
+      group: orch/tasks-${{ inputs.issue }}-lane-1
+      queue: max
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     permissions:
