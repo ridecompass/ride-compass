@@ -65,7 +65,7 @@ const fold = (title, inner, open = false) => (inner ? `<details${open ? " open" 
 // 回答内容（案は1行ずつの丸に推奨の印と理由を添え、確かめること・済ませることは1行ずつの YES／NO）と書く欄、「この issue を」の次遷移のボタン。
 // 行は隠しの欄でも送り、開いたあとに問いが変わっていないかを照らす。読めない問いは、読めない所を先に出し、回答内容を出さない。
 // YES／NO の初めの値は、確かめることなら本文の約束の今の値、済ませることなら NO。
-const why = (r) => r.attrs.map(([, v]) => `<span class="why">${esc(v)}</span>`).join("");
+const why = (r) => r.attrs.map(([n, v]) => `<span class="why">${esc(n)}: ${esc(v)}</span>`).join("");
 const yesNo = (name, yes) => `<div class="seg">${[["YES", yes], ["NO", !yes]].map(([v, on]) => `<label><input type="radio" name="${name}" value="${v}"${on ? " checked" : ""}>${v}</label>`).join("")}</div>`;
 function answerFields(q, body) {
   const plan = q.header === "### 案";
