@@ -51,8 +51,10 @@ export async function recentRuns(gh, config) {
     created: Date.parse(r.created_at), updated: Date.parse(r.updated_at) })).filter((r) => r.number);
 }
 
-// 検査は、コミットに付いたワークフローの実行（check suite）を1本ずつ、GitHub の status と conclusion のまま読む。
-const SUITES = "checkSuites(first:30){nodes{status conclusion createdAt workflowRun{databaseId}}}";
+// 検査は、コミットに付いたワークフローの実行（check suite）を1本ずつ、GitHub の status と conclusion のまま読む。担当のワークフロー
+// （flow.config.json: workflow）の実行は、振り出した時点の master の先頭のコミットに付くが、検査ではないので数えない。
+const SUITES = "checkSuites(first:30){nodes{status conclusion createdAt workflowRun{databaseId file{path}}}}";
+const checkRuns = (config, commit) => (commit?.checkSuites.nodes ?? []).filter((s) => s.workflowRun && !s.workflowRun.file?.path.endsWith(`/${config.workflow}`));
 const query = () => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:String!,$head:String!){
  t:repository(owner:$to,name:$tn){issueTypes(first:20){nodes{id name}} labels(first:100){nodes{id name}}
   issue(number:$n){id state stateReason closedAt body author{login} issueType{name} assignees(first:10){nodes{login}} labels(first:20){nodes{name}}
@@ -68,8 +70,8 @@ const STAGES = ["REQUESTED", "QUEUED", "WAITING", "PENDING", "IN_PROGRESS", "COM
 const PASSED = ["SUCCESS", "SKIPPED", "NEUTRAL"];
 // コミットの検査の実行（ワークフローの実行の無い suite は数えない）。stage は終わりから最も遠い実行の status（実行が無ければ null）、
 // passed は実行があって全部が合格したか（終わっていない実行は結論を持たないので合格しない）。
-function checksOf(commit) {
-  const runs = (commit?.checkSuites.nodes ?? []).filter((s) => s.workflowRun);
+function checksOf(config, commit) {
+  const runs = checkRuns(config, commit);
   return { stage: STAGES.find((s) => runs.some((r) => r.status === s)) ?? null, passed: runs.length > 0 && runs.every((r) => PASSED.includes(r.conclusion)) };
 }
 
@@ -172,7 +174,7 @@ export async function readFacts(gh, config, number, runs) {
   // 作業ブランチで次の持ち主へ渡した最後の時刻（検査が始まった・マージした・下書きへ戻した）。担当の実行の間か問いのあとにこれが動いて
   // いれば、状態が動いた（検査の出ない push は検査へ渡していない）。
   const handed = Math.max(0, ...c.pullRequests.nodes.flatMap((x) => [x.mergedAt, x.timelineItems.nodes[0]?.createdAt,
-    ...x.commits.nodes[0].commit.checkSuites.nodes.filter((s) => s.workflowRun).map((s) => s.createdAt)]).map((t) => Date.parse(t) || 0));
+    ...checkRuns(config, x.commits.nodes[0].commit).map((s) => s.createdAt)]).map((t) => Date.parse(t) || 0));
   const conds = conditions(i.body);
   const ended = endedOf(nodes);
   // 読むのに要求の要る事実は、決め方が使うときだけ読む（src/decide.js: Need。src/gate.js: settle が読んで決め直す）:
@@ -186,7 +188,7 @@ export async function readFacts(gh, config, number, runs) {
     ids: { types: byName(t.issueTypes), labels: byName(t.labels) }, handed, ended: ended && { kind: ended.kind }, runs: held,
     // 閉じた・開き直したときに決め直す、矢印1本でつながる開いた issue（後・親・子）。
     near: [...i.blocking.nodes, ...(p ? [p] : []), ...i.subIssues.nodes].filter((x) => x.state === "OPEN").map((x) => x.number),
-    merged: Boolean(merged), mergeChecks: checksOf(merged?.mergeCommit),
+    merged: Boolean(merged), mergeChecks: checksOf(config, merged?.mergeCommit),
     badQuestion: last && isQuestion(last) ? readProblems(config.questionForms, last, asker) : [], comments,
-    pr: open && { id: open.id, draft: open.isDraft, checks: checksOf(head.commit), backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };
+    pr: open && { id: open.id, draft: open.isDraft, checks: checksOf(config, head.commit), backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };
 }

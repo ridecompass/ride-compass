@@ -102,6 +102,9 @@ function status(f, config) {
   if (!f.open && !f.unread && !(f.closedAs === "COMPLETED" && f.remaining.length)) return { status: "完了" };
   // 子は、親の要望が満たされた・やめたら、要らない。持っている実行も取り消す。
   if (f.dead) return { status: "完了", closeAs: "NOT_PLANNED", cancel: f.runs.map((r) => r.id) };
+  // 約束が全部果たされたら、どの時点でも完了（PR・前提・子・担当の実行・マージの検査に関係なく）。ユーザーが置いた保留と、Claude がまだ読んで
+  // いないユーザーの文（答えの文・コメント）は待つ。動いている担当の実行は要らないので取り消す。
+  if (!f.remaining.length && f.status !== "保留" && !f.unread) return { status: "完了", closeAs: "COMPLETED", cancel: f.runs.map((r) => r.id) };
   // 持たれている間は決め直さない。ユーザーが保留へ置いたら、持っている実行を取り消す。1つのタスクを触るのは1者だけなので、同じ issue の実行が
   // 2本以上あれば（振り出した直後で一覧にまだ出ていない間に、もう一度振り出した等）、いちばん古いものを残してほかを取り消す。
   if (f.runs.length) return f.status === "保留" ? { status: "保留", cancel: f.runs.map((r) => r.id) }
@@ -111,13 +114,9 @@ function status(f, config) {
   if (adoptable(f, config) && !need(f, "adoptAsked")) return { status: "回答", ask: "採否" };
   // ユーザーが書いた文（答えの文・コメント）を Claude がまだ読んでいなければ、Claude の番にする（閉じていれば開き直す）。ゲートは文の中身を読まない。
   if (f.unread) return { status: "実装" };
-  // 答えの無い問いがあっても、完了の条件が全部済んだら完成にする（済んだ作業への問いは要らない）。ゲートが出して生きている問いは、事実がまだ
-  // 問いを求めているので答えを待つ（条件が済んでいても、着手するかの採否の答えは要る）。
+  // 答えの無い問いは、答えを待つ。
   const q = f.question;
-  if (q && !q.answer) {
-    const t = table(f);
-    return t.status === "完了" && q.form?.by !== "ゲート" ? t : { status: "回答" };
-  }
+  if (q && !q.answer) return { status: "回答" };
   // 答えは、書いた文があれば Claude が読んだあとに当て、当てたことを一度だけ知らせる。答えのあとにユーザーがステータスを変えたか開き直したら、
   // 次の決定はそちらなので、その答えは当てない。
   const a = q?.answer;
@@ -125,9 +124,8 @@ function status(f, config) {
   const told = a.text && !f.answerApplied ? `${APPLIED}（${a.decision}）。` : null;
   if (a.decision === "見送り") return { status: "完了", closeAs: "NOT_PLANNED", told };
   if (a.decision === "保留") return { status: "保留", told };
-  // 続けるの遷移先は Claude: 答え（回答内容）を Claude が読むまでは実装。約束が全部果たされていれば、事実から完成で閉じる。
-  const t = table(f);
-  return f.answerRead || t.status === "完了" ? { ...t, told } : { status: "実装", told };
+  // 続けるの遷移先は Claude: 答え（回答内容）を Claude が読むまでは実装。
+  return f.answerRead ? { ...table(f), told } : { status: "実装", told };
 }
 
 // 次に結果を出すのが担当でも、待つ相手（着手可能日時・親の保留か閉じ）がある間は、担当は作らないので待機。
@@ -153,7 +151,6 @@ function rows(f) {
   if (f.dropped.length && !need(f, "droppedAsked")) return { status: "回答", ask: { dropped: f.dropped } };
   // 作る側の完了（マージのコミットの検査が通り、本番に出た）も約束のうち。マージのあとの残りは、本番に出てから扱う（本番に出る前に確かめを問わない。原則2）。
   if (f.merged && !f.mergeChecks.passed) return unchecked(f.mergeChecks);
-  if (!f.remaining.length) return { status: "完了", closeAs: "COMPLETED" };
   if (f.remaining.every((c) => c.verify === "ユーザー")) return { status: "回答", ask: "確かめ" };
   return { status: "実装" };
 }

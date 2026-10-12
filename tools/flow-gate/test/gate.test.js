@@ -26,8 +26,11 @@ const END = (start, kind = "実装", before = "") =>
   [`${endHead(kind)}\n\n要約（担当の最後の発言）:\n\n> 読んだ\n\n${readFromLine(T(start - 0.5))}`, ...(before ? ["", startBlock(before)] : [])].join("\n");
 // 検査の実行（check suite）。置いたときの値（SUCCESS・FAILURE・PENDING）を、GitHub の status と conclusion の形にする。running は、ほかに走っている実行、
 // at は検査が始まった時刻。
-const suites = (state, running = false, at = T(-1)) => ({ nodes: [...(state ? [state === "PENDING" ? { status: "IN_PROGRESS", conclusion: null } : { status: "COMPLETED", conclusion: state }] : []),
-  ...(running ? [{ status: "IN_PROGRESS", conclusion: null }] : [])].map((s, k) => ({ ...s, createdAt: at, workflowRun: { databaseId: k + 1 } })) });
+// コミットに付いたワークフローの実行。tasks は、そのコミットの上で動いた担当のワークフローの実行の結論（本番の担当は master の先頭で動く）。
+const suites = (state, running = false, at = T(-1), tasks = []) => ({ nodes: [...[...(state ? [state === "PENDING" ? { status: "IN_PROGRESS", conclusion: null } : { status: "COMPLETED", conclusion: state }] : []),
+  ...(running ? [{ status: "IN_PROGRESS", conclusion: null }] : [])].map((s) => ({ ...s, file: ".github/workflows/ci.yml" })),
+  ...tasks.map((conclusion) => ({ status: "COMPLETED", conclusion, file: `.github/workflows/${config.workflow}` }))]
+  .map(({ file, ...s }, k) => ({ ...s, createdAt: at, workflowRun: { databaseId: k + 1, file: { path: file } } })) });
 const TYPES = ["保守", "不具合", "要望", "調査", config.dialogType];
 const LOGIN = Object.fromEntries(Object.entries(config.ids).map(([login, id]) => [id, login]));
 
@@ -50,7 +53,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
   };
   // PR は、置いたときに決めた時刻（p.created・p.mergedAt）が無ければ、どのコメントより前に作られた。
   const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, merged: Boolean(p.merged), createdAt: p.created ?? T(-1), mergedAt: p.mergedAt ?? null,
-    mergeCommit: { oid: p.sha ?? `m${i.n}`, checkSuites: suites(p.mergeChecks, p.mergeRunning) },
+    mergeCommit: { oid: p.sha ?? `m${i.n}`, checkSuites: suites(p.mergeChecks, p.mergeRunning, T(-1), p.mergeTasks) },
     commits: { nodes: [{ commit: { oid: `c${i.n}`, committedDate: "2026-10-11T00:00:00Z", checkSuites: suites(p.checks, false, p.checksAt ?? p.created) } }] },
     timelineItems: { nodes: p.drafted ? [{ createdAt: "2026-10-11T01:00:00Z" }] : [] } });
   const issueOf = (id) => w.at(Number(id.slice(1)));
@@ -251,6 +254,8 @@ test("R3・決め1・決め7・#760: 担当の実行が終わったら、表の�
     ["マージのコミットの検査が1つも無い（合格していない）→ 実装担当", verify, { pr: merged }, "実装", 2, null],
     ["マージのコミットの検査が落ちた → 打ち直すか直す実装担当", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, "実装", 2, null],
     ["マージのコミットの検査が取り消された（合格でない）→ 実装担当", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "CANCELLED" } }, "実装", 2, null],
+    ["マージのコミットの上で担当の実行が取り消されても、担当の実行は検査に数えない → 確かめの問い", verify,
+      { body: CONFIRM, pr: { ...merged, mergeChecks: "SUCCESS", mergeTasks: ["CANCELLED", "SUCCESS"] } }, "回答", 1, "## 問い（確かめ）"],
     ["実装担当が、落ちたマージのコミットの検査を打ち直しも直しもせずに手放した → イレギュラー", { body: CONFIRM }, { pr: { ...merged, mergeChecks: "FAILURE" } }, "回答", 1, "## 問い（イレギュラー）"],
     ["検査の1つが落ちても、ほかが走っている間は終わっていない → 検査", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE", mergeRunning: true } }, "検査", 1, null],
   ];
@@ -353,7 +358,7 @@ test("1件の決め直しの書き込みは、GitHub への書き込みの要求
   assert.deepEqual([w.at(2).state, w.at(2).labels, w.mutations - before], ["CLOSED", [], 1], "ラベルを外して閉じるのも1回");
 });
 
-test("tasks#868 答えの無い問いが残っていても、完了の条件が全部済めば完成で閉じ、ボタンを外す。採否だけは答えを待つ", async () => {
+test("tasks#868 答えの無い問いが残っていても、完了の条件が全部済めば完成で閉じ、ボタンを外す（採否の問いも）", async () => {
   const merged = { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1" };
   const rows = [
     // [要求, タスク, 出来事, 期待するステータス]
@@ -363,7 +368,7 @@ test("tasks#868 答えの無い問いが残っていても、完了の条件が�
       ev.issue(1, "edited"), "完了"],
     ["問いのあとで、子の PR がマージされ、マージのコミットの検査が通り、子の条件が全部済んだ", { parent: 2, body: withButton("- [x] 部品\n", config, 1), comments: [ASKED("イレギュラー")], pr: merged },
       ev.merge(1), "完了"],
-    ["採否は、着手するかの答えが要るので待つ", { author: config.claude, type: "要望", body: withButton("説明だけ\n", config, 1), comments: [ASKED("採否")] }, ev.comment(1, config.claude), "回答"],
+    ["採否を問うたあとで条件が全部済んだ", { author: config.claude, type: "要望", body: withButton("- [x] 作る\n", config, 1), comments: [ASKED("採否")] }, ev.comment(1, config.claude), "完了"],
   ];
   for (const [name, task, event, status] of rows) {
     const w = world([{ n: 1, status: "回答", assignees: [config.user], ...task }, { n: 2, status: "待機", body: "- [ ] a\n  - 確かめる: ユーザー\n" }]);
@@ -372,6 +377,31 @@ test("tasks#868 答えの無い問いが残っていても、完了の条件が�
     const done = status === "完了";
     assert.deepEqual([i.status, i.state, i.reason, i.body.startsWith("<!-- flow-gate -->"), i.assignees], [status, done ? "CLOSED" : "OPEN", done ? "COMPLETED" : null, !done, done ? [] : [config.user]], name);
   }
+});
+
+test("原則7: 約束が全部果たされたら、どの時点でも完了（PR・前提・子・担当の実行・マージの検査に関係なく）。ユーザーの保留と、まだ読んでいない文は待つ", async () => {
+  const done = "- [x] 作る\n";
+  const rows = [
+    // [要求, タスク, 期待するステータス]
+    ["検査の終わっていない PR が開いている", { pr: { draft: true, checks: "PENDING" } }, "完了"],
+    ["前提が開いている", { blockedBy: [9] }, "完了"],
+    ["子が開いている", { n: 1 }, "完了"],
+    ["マージのコミットの検査が落ちたまま", { pr: { state: "MERGED", merged: true, mergeChecks: "FAILURE" } }, "完了"],
+    ["ユーザーが保留にした", { status: "保留" }, "保留"],
+  ];
+  for (const [name, task, status] of rows) {
+    const w = world([{ n: 1, status: "実装", body: done, ...task }, { n: 2, parent: 1, status: "実装", body: "- [ ] 部品\n" }, { n: 9, status: "実装" }]);
+    await w.send(ev.issue(1, "edited", config.claude));
+    assert.deepEqual([w.at(1).status, w.at(1).state], [status, status === "完了" ? "CLOSED" : "OPEN"], name);
+  }
+  const run = world([{ n: 1, status: "実装", body: "- [ ] 作る\n" }]);
+  await run.send(ev.schedule());
+  run.at(1).body = done; // 担当が動いている間に、約束が全部果たされた
+  await run.send(ev.issue(1, "edited", config.claude));
+  assert.deepEqual([run.at(1).state, run.writes.filter(([k]) => k === "取り消し").length], ["CLOSED", 1], "担当が動いていても完了にし、要らなくなった実行は取り消す");
+  const said = world([{ n: 1, status: "実装", body: done, comments: ["ここも直して"], by: [config.user] }]);
+  await said.send(ev.comment(1));
+  assert.deepEqual([said.at(1).status, said.at(1).state], ["実装", "OPEN"], "ユーザーの文を Claude がまだ読んでいなければ、読むまで待つ");
 });
 
 test("tasks#877 問いを出した事実が無くなったら、条件が残っていても回答に留めず表で決め直し、ボタンを外す。事実が残る問いと Claude の判断の問いは待つ", async () => {

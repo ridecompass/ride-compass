@@ -14,6 +14,12 @@ const SCRIPT = `<script>
 const f = document.querySelector("form"), err = document.getElementById("err");
 document.getElementById("go")?.addEventListener("click", () => f.classList.add("lock"));
 document.getElementById("back")?.addEventListener("click", () => f.classList.remove("lock"));
+// 案は選ばずに答えてもよいので、選んだ案の丸をもう一度押すと外す（丸は押しても外れない）。
+let picked = null;
+f?.querySelectorAll("input[name=plan]").forEach((r) => r.addEventListener("click", () => {
+  if (picked === r) (r.checked = false, picked = null);
+  else picked = r;
+}));
 f?.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!f.classList.contains("lock")) return;
