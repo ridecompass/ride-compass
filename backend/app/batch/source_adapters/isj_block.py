@@ -17,9 +17,6 @@ Shift_JIS の CSV が1つと説明の HTML・XML）を読む。読む都道府�
 緯度・経度は日本測地系2011（EPSG:6668）で、ABR と同じく EPSG の変換で 4326 へ移す。
 """
 
-import csv
-import io
-import zipfile
 from collections.abc import AsyncIterator, Generator
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +28,7 @@ from shapely.geometry import Point
 from app.batch.ingest import AdapterInputs, SourceRecord, file_origin, register_adapter
 from app.batch.source_adapters.abr import wgs84_transformer
 from app.batch.source_adapters.estat_small_area import range_inputs, range_prefectures
+from app.batch.source_adapters.zip_csv import read_zip_csv
 from app.batch.source_profile import SourceProfile, SourceSpec
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "isj"
@@ -38,7 +36,7 @@ DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "isj"
 #: 配布元の取得の口（位置参照情報ダウンロードサービス。都道府県コード2桁に`000`をつないだ名前）。
 DOWNLOAD_URL = "https://nlftp.mlit.go.jp/isj/dls/data/{version}/{prefecture}000-{version}.zip"
 _SOURCE_SRID = "EPSG:6668"
-_ENCODING = "cp932"
+ENCODING = "cp932"
 #: 鍵にする列（都道府県名から街区符号・地番まで）。
 _KEY_COLUMNS = ("都道府県名", "市区町村名", "大字・丁目名", "小字・通称名", "街区符号・地番")
 #: 更新後履歴フラグの「削除」。
@@ -60,10 +58,7 @@ def archive_path(version: str, prefecture: str) -> Path:
 
 def read_rows(path: Path) -> Generator[dict[str, str]]:
     """配布の zip の中の CSV（1つ）を、列の名前 → 値の行で流す。"""
-    with zipfile.ZipFile(path) as archive:
-        [member] = [name for name in archive.namelist() if name.lower().endswith(".csv")]
-        with archive.open(member) as raw:
-            yield from csv.DictReader(io.TextIOWrapper(raw, encoding=_ENCODING, newline=""))
+    return read_zip_csv(path, ENCODING)
 
 
 def _paths(rows: IsjBlockRows, prefectures: list[str]) -> list[Path]:
