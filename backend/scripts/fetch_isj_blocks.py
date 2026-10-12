@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified
+from app.batch.common import fetch_verified, fetched_all
 from app.batch.fetch_cli import run_profile_fetch_cli
 from app.batch.source_adapters.estat_small_area import range_prefectures
 from app.batch.source_adapters.isj_block import DOWNLOAD_URL, ENCODING, archive_path
@@ -39,10 +39,10 @@ def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[S
     versions = sorted({spec.rows.version for spec in specs})
     prefectures = range_prefectures(profile)
     logger.info("範囲に掛かる都道府県: %s", ", ".join(prefectures))
-    return all([
+    return fetched_all(
         fetch_verified(DOWNLOAD_URL.format(version=version, prefecture=code), archive_path(version, code), _readable,
                        read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
-        for version in versions for code in prefectures])
+        for version in versions for code in prefectures)
 
 
 def main() -> int:

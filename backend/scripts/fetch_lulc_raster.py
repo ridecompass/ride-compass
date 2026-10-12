@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified
+from app.batch.common import fetch_verified, fetched_all
 from app.batch.fetch_cli import run_fetch_cli
 from app.config import settings
 from app.infrastructure.proj_data import pin_bundled_proj_data
@@ -56,11 +56,11 @@ def fetch() -> bool:
             "（土地被覆の地図レイヤーは配信できない状態になります）"
         )
         return True
-    return all([
+    return fetched_all(
         fetch_verified(f"{BUCKET_BASE_URL}/{Path(raw_path).name}", Path(raw_path), _readable,
                        read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
         for raw_path in paths
-    ])
+    )
 
 
 def main() -> int:

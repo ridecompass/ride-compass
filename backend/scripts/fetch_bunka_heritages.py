@@ -28,7 +28,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_timeout, place_verified
+from app.batch.common import fetch_timeout, fetched_all, place_verified
 from app.batch.fetch_cli import run_profile_fetch_cli
 from app.batch.source_adapters.bunka_heritages import heritages_path
 from app.batch.source_profile import SourceProfile, SourceSpec
@@ -84,7 +84,7 @@ def fetch(snapshot: str) -> bool:
 
 
 def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
-    return all([fetch(snapshot) for snapshot in sorted({spec.rows.snapshot for spec in specs})])
+    return fetched_all(fetch(snapshot) for snapshot in sorted({spec.rows.snapshot for spec in specs}))
 
 
 def main() -> int:
