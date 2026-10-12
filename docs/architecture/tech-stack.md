@@ -130,10 +130,10 @@ Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で�
 `git rev-parse HEAD`と突き合わせる。frontendの版は、画面のメニューの「バージョン表示」でも見られる（`commit`の頭8文字）。
 
 **backendのデプロイは、masterのCIが通ったコミットを、本番プロセスに届く変更があるときだけ
-出す。** `ci.yml`の`deploy-backend`が、masterへのpushでbackend・api-contract・frontend・e2e・e2e-scan・e2e-webkitの
+出す。** `ci.yml`の`deploy-backend`が、masterへのpushでbackend・api-contract・frontend・e2eの
 ジョブが通ったときだけ`deploy-backend.yml`を呼ぶ——どれかが赤ならデプロイは起動しない（flow-gate・文書の検査は待たない）。呼ばれた側は、本番で
 動いているコミット（コンテナの`GIT_COMMIT`）からCIを通ったコミットまでの差分を
-`backend/scripts/deploy_backend_gate.py`で見て、出すかを決める。
+`backend/scripts/deploy_gate.py`で見て、出すかを決める。
 
 - **差分の起点は直前のpushではなく、本番で動いているコミット。** CIが赤で出せなかった変更は、
   次にCIを通ったコミットの差分にそのまま含まれて出る（直前のpushとの差分では、テストだけを
@@ -164,7 +164,7 @@ Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で�
 - **CIを待つぶん、反映はpushからCIの所要だけ遅れる。** 急ぎの修正でも待つ。待たずに出す手段は
   `deploy-backend.yml`の手動起動（`workflow_dispatch`）で、選んだrefの先端を判定なしで出す。
 
-振り分けの一覧（`deploy_backend_gate.py: DEPLOY_PATHS`と`deploy_backend_gate.py: NOT_DEPLOYED`。gitのpathspecとして
+振り分けの一覧（`deploy_gate.py: DEPLOY_PATHS`と`deploy_gate.py: NOT_DEPLOYED`。gitのpathspecとして
 `git diff --name-only`に当てさせる）は`backend/**`から、イメージに入らないもの（テスト・lint設定等）と、イメージには入るが本番
 プロセスが読まないもの（`export_openapi.py`とそれだけが読む表示値の宣言）を外している。`backend/ops/`（VMのホストで動く
 systemdのユニットとシェル）はイメージに入らないが外さない——デプロイがVMの作業コピーをそのコミットへ揃えて
@@ -187,8 +187,8 @@ importすると、その変更だけが本番へ届かなくなる**（エラー
   無料なので、ビルドはActionsでする。フックの`imgURL`は、タグ以外がサービスに設定した像のURLと同じでないと断られる
   （同じDeploy Hooksの文書）ので、リポジトリの持ち主が変わったらサービスの像のURLも直す。
 - **出すかは本番の`/api/version`の`commit`で決める。** CIを通ったコミットが本番のコミットか、その祖先なら出さない
-  （後から終わった古いCIの実行）。本番のコミットが読めない・履歴に無いときは出す。このワークフローは変更のパスでは
-  振り分けず、`ci.yml`が`frontend/`の変更があるときだけ呼ぶ（下の「CIの実行枠」）。
+  （後から終わった古いCIの実行）。本番のコミットが読めない・履歴に無いときは出す。この見分けはbackendと同じ道具
+  （`backend/scripts/deploy_gate.py`の`--any-change`）が持つ。このワークフローは変更のパスでは振り分けず、`ci.yml`が`frontend/`の変更があるときだけ呼ぶ（下の「CIの実行枠」）。
 - **出したあと、本番の`/api/version`がそのコミットになるまで待つ。** Renderは最後に頼まれたデプロイを出す
   （同じ文書の「Handling overlapping deploys」）ので、待たずに次へ進むと古いコミットが新しいコミットを上書きしうる。
   判定・ビルド・フック・待ちは1つのジョブで1本ずつ走る。上限（30分）までに変わらなければジョブを落とす——Renderの

@@ -1,6 +1,6 @@
 """backendのデプロイ対象から外したファイルが、本番で読まれていないことの検査。
 
-`backend/scripts/deploy_backend_gate.py`は、本番プロセスに届かない変更でコンテナを入れ替えないよう、
+`backend/scripts/deploy_gate.py`は、本番プロセスに届かない変更でコンテナを入れ替えないよう、
 一部のファイルを`NOT_DEPLOYED`で外している。外したファイルを本番側のコードが
 importすると、**そのファイルの変更だけが本番へ届かなくなる**。エラーにはならず、古い値で
 動き続ける。
@@ -10,7 +10,7 @@ importすると、**そのファイルの変更だけが本番へ届かなくな
 範囲の`.py`からの参照（関数内の遅延importと、モジュール名を文字列で渡す形を含む）を探す。
 
 ここで見ないもの:
-- 変更をデプロイするかの判定 → `tests/test_deploy_backend_gate.py`
+- 変更をデプロイするかの判定 → `tests/test_deploy_gate.py`
 """
 
 from __future__ import annotations
@@ -19,12 +19,12 @@ import ast
 import subprocess
 from pathlib import Path
 
-from scripts import deploy_backend_gate
+from scripts import deploy_gate
 
 BACKEND = Path(__file__).resolve().parents[2]
 REPO = BACKEND.parent
 
-_GATE = deploy_backend_gate
+_GATE = deploy_gate
 
 
 def _image_code_dirs() -> list[Path]:
@@ -96,6 +96,6 @@ def test_excluded_code_in_the_image_is_not_referenced_by_production_code() -> No
                 violations.append(f"{path.relative_to(BACKEND).as_posix()} -> {name}")
 
     assert violations == [], (
-        "deploy_backend_gate.pyのNOT_DEPLOYEDで外したモジュールを本番側のコードが参照している。"
+        "deploy_gate.pyのNOT_DEPLOYEDで外したモジュールを本番側のコードが参照している。"
         "参照を残すならNOT_DEPLOYEDから外す:\n" + "\n".join(violations)
     )
