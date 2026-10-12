@@ -730,6 +730,7 @@ test("回答フォーム（合意したモック）: 回答内容（案と書く
   assert.ok(w.at(1).body.includes("button.svg") && !check.includes("button.svg"), "本文の頭の回答のボタンは、フォームの本文に出さない");
   assert.match(check, /<textarea name="note" rows="4"/, "書く欄は1つで4行");
   assert.ok(/name="v0" value="NO" checked/.test(check) && !check.includes("完了にする"), "確かめることは YES／NO で、初めの値は本文の約束の値（まだ NO）。完了は次遷移に無い");
+  assert.ok(check.includes("見る所と要点: 書かれていません"), "行の属性は、名前を添えて出す（何が書かれていないかが読める）");
   const adopt = await (await open(2)).text();
   assert.ok(!adopt.includes('name="plan"') && !adopt.includes("完了にする"), "案の無い問いは案を出さず、確かめることが無ければ完了にするも出さない");
   const judge = await (await open(4)).text();
