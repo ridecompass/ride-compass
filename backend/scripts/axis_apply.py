@@ -12,7 +12,7 @@ r"""軸の定義1本を、本番の今の定義との差を見てから管理API
 差を見てから書くまでに本番が変わっていれば一致せず、何も書かずに止まる。公開の取り消しの後の段で失敗したら
 元の定義へ戻す。書いた後は、管理APIの単体取得と公開の軸カタログの両方で反映を確かめる。
 
-宛先と認証情報は`backend/.env.oracle.local`の`BACKEND_ORIGIN`（本番backendの直接のオリジン）・
+宛先はリポジトリの`production-origins.json`の`backend`、認証情報は`backend/.env.oracle.local`の
 `ADMIN_BASIC_AUTH_USERNAME`・`ADMIN_BASIC_AUTH_PASSWORD`から読み、引数には取らず出力にも出さない。
 """
 
@@ -230,10 +230,11 @@ def run(args: argparse.Namespace, client: httpx.Client) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     from _prod_env import read_prod_env
+    from _production_origins import production_origin
 
     args = parse_args(argv)
     auth = httpx.BasicAuth(read_prod_env("ADMIN_BASIC_AUTH_USERNAME"), read_prod_env("ADMIN_BASIC_AUTH_PASSWORD"))
-    with httpx.Client(base_url=read_prod_env("BACKEND_ORIGIN").rstrip("/"), auth=auth, timeout=30.0) as client:
+    with httpx.Client(base_url=production_origin("backend"), auth=auth, timeout=30.0) as client:
         return run(args, client)
 
 

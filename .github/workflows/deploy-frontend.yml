@@ -28,13 +28,13 @@ jobs:
       group: deploy-frontend
       cancel-in-progress: false
     env:
-      VERSION_URL: https://ride-compass-frontend.onrender.com/api/version
       # Renderのサービスに設定した像のURLと、タグ以外が同じでなければならない（フックが断る）。
       IMAGE: ghcr.io/${{ github.repository_owner }}/ride-compass-frontend
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      - run: echo "VERSION_URL=$(jq -r .frontend production-origins.json)/api/version" >> "$GITHUB_ENV"
       - name: 本番で動いているコミットを読む
         id: deployed
         run: |
@@ -60,7 +60,6 @@ jobs:
       - name: このコミットの像を用意する
         if: steps.gate.outputs.deploy == 'true'
         env:
-          BACKEND_ORIGIN: ${{ vars.BACKEND_ORIGIN }}
           GH_TOKEN: ${{ github.token }}
         run: |
           echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
@@ -70,12 +69,7 @@ jobs:
               || { echo "::error::ci.yml の frontend-image が置いた像 $IMAGE:$GITHUB_SHA が置き場に無い"; exit 1; }
             exit 0
           fi
-          if [ -z "$BACKEND_ORIGIN" ]; then
-            echo "::error::リポジトリの変数 BACKEND_ORIGIN が無い（画面がbackendを呼ぶ宛先をビルドへ埋め込めない）"
-            exit 1
-          fi
-          # 画面のAPI・タイル・rewritesの宛先は、どれもbackendへ直接向ける（docs/architecture/tech-stack.md「本番の宛先」）。
-          docker build frontend             --build-arg NEXT_PUBLIC_API_URL="$BACKEND_ORIGIN"             --build-arg NEXT_PUBLIC_TILE_BASE_URL="$BACKEND_ORIGIN"             --build-arg BACKEND_INTERNAL_URL="$BACKEND_ORIGIN"             --build-arg GIT_COMMIT="$GITHUB_SHA"             --tag "$IMAGE:$GITHUB_SHA"
+          node frontend/scripts/image.mjs "$IMAGE:$GITHUB_SHA" "$GITHUB_SHA"
           docker push "$IMAGE:$GITHUB_SHA"
       - name: Renderのデプロイフックでこの像を出す
         if: steps.gate.outputs.deploy == 'true'
