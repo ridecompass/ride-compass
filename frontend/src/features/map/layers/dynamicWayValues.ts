@@ -1,24 +1,11 @@
 // 専用配信の値を取るタイルの座標と、複数タイルの応答の統合（軸によらない）。
 
-import regionTileConfig from "@/types/generated/region-tile-config.json";
+import { lonLatToTileIndex } from "@/features/map/layers/webMercatorTile";
 
 export interface TileXY {
   z: number;
   x: number;
   y: number;
-}
-
-// Web Mercatorで表せる緯度の限界。挟まないとlogがNaN/Infinityになりうる。
-const MAX_MERCATOR_LATITUDE = regionTileConfig.max_mercator_latitude;
-
-/** 緯度経度を含むXYZタイルのx,y。 */
-function lonLatToTileIndex(lon: number, lat: number, z: number): [number, number] {
-  const n = 2 ** z;
-  const x = Math.floor(((lon + 180) / 360) * n);
-  const clampedLat = Math.max(-MAX_MERCATOR_LATITUDE, Math.min(lat, MAX_MERCATOR_LATITUDE));
-  const latRad = (clampedLat * Math.PI) / 180;
-  const y = Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n);
-  return [x, y];
 }
 
 // 1回に求めるタイルの数の上限（ズームは範囲へ丸めるので、ふつうの画面では届かない）。

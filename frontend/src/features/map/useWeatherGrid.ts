@@ -13,10 +13,11 @@ import type { WindGridPoint } from "@/types/weather";
 import { getWindGrid, getWindGridDetail, type Bbox } from "@/services/weatherApi";
 import { MAP_FETCH_DEBOUNCE_MS, useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { getQueryClient } from "@/lib/queryClient";
+import { SECOND_MS } from "@/lib/duration";
 import refreshIntervals from "@/types/generated/refresh-intervals.json";
 
 // 配信元（気象庁MSM）の更新の間隔に合わせる（短くしても新しい値は無く、MB級の応答を取り直すだけ）。
-const WEATHER_GRID_REFRESH_INTERVAL_MS = refreshIntervals.msm_seconds * 1000;
+const WEATHER_GRID_REFRESH_INTERVAL_MS = refreshIntervals.msm_seconds * SECOND_MS;
 // 空の格子は1つを使い回す（描くたびに新しい配列を返すと、読む側の参照の比較が無用に変わる）。
 const EMPTY_GRID: WindGridPoint[] = [];
 

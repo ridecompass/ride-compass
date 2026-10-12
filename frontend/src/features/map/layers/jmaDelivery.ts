@@ -4,8 +4,10 @@
 
 import { fetchJson } from "@/lib/apiClient";
 import { apiPath } from "@/lib/apiPath";
+import { fillTemplate, TEMPLATE_PLACEHOLDER } from "@/lib/urlTemplate";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import { DEFAULT_API_TIMEOUT_MS } from "@/lib/apiTimeouts";
+import { MINUTE_MS } from "@/lib/duration";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { DynamicWeatherRenderPayload } from "@/features/map/layers/dynamicWeather";
 
@@ -54,13 +56,9 @@ export function jmaFrameKey(frame: JmaFrame): string {
   return `${frame.basetime}/${frame.member}/${frame.validtime}`;
 }
 
-const PLACEHOLDER = /\{([^}]+)\}/g;
-
 /** 源泉のテンプレート（`urlTemplate`）の、コマの項目を埋める。タイル座標の`{z}/{x}/{y}`は地図ライブラリが埋めるので残す。 */
 function fillFrame(template: string, frame: JmaFrame): string {
-  return template.replace(PLACEHOLDER, (whole, name: string) =>
-    name in frame ? frame[name as keyof JmaFrame] : whole,
-  );
+  return fillTemplate(template, { ...frame });
 }
 
 /** そのコマの配信元のURL。タイルなら`{z}/{x}/{y}`を残したテンプレート、地点ならGeoJSONのURL。 */
@@ -111,7 +109,7 @@ function escapeRegExp(text: string): string {
 
 /** 源泉のテンプレートを、URLの末尾に当てる正規表現と項目名の並びにする。 */
 function templateMatcher(template: string): { pattern: RegExp; names: string[] } {
-  const parts = template.split(PLACEHOLDER);
+  const parts = template.split(TEMPLATE_PLACEHOLDER);
   const names = parts.filter((_, index) => index % 2 === 1);
   const body = parts
     .map((part, index) => (index % 2 === 0 ? escapeRegExp(part) : TILE_COORDINATES.has(part) ? "(\\d+)" : "([^/?]+)"))
@@ -270,7 +268,7 @@ export function jmaFramesOf(delivery: JmaDelivery, rows: readonly unknown[]): Jm
  * 同じく、その要素の最新の`basetime`から遅れの幅に入るコマを、幅の端まで前の`basetime`へずらす（実況のコマは
  * `validtime`も同じだけ戻し、ずらした先の実況にする）。 */
 function delayed(frames: JmaFrame[], ownRows: readonly RawTargetTime[], delivery: JmaDelivery): JmaFrame[] {
-  const delayMs = delivery.dataDelayMinutes * 60_000;
+  const delayMs = delivery.dataDelayMinutes * MINUTE_MS;
   if (delayMs === 0) return frames;
   const latest = Math.max(...ownRows.map((row) => parseValidtime(row.basetime).getTime()));
   return frames.map((frame) => {

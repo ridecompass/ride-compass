@@ -10,14 +10,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/T
 import { textVariants } from "@/components/ui/Text/Text";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { cn } from "@/lib/cn";
-import { formatDifficulty } from "@/lib/mapDisplay/valueScale";
+import { DIFFICULTY_SCALE_SUFFIX, formatDifficulty } from "@/lib/mapDisplay/valueScale";
 import { formatJstHourMinute } from "@/lib/time";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import AxisDetail from "@/components/AxisContributionBar/AxisDetail";
 import RouteAxisProfile from "@/features/route/RouteAxisProfile/RouteAxisProfile";
 import RouteSplicePanel from "@/features/route/RouteSplicePanel/RouteSplicePanel";
 import SegmentWind from "@/features/route/SegmentWind/SegmentWind";
-import { formatDurationShort } from "@/features/route/formatDuration";
+import { formatDurationShort } from "@/lib/duration";
 import { downloadGpx, MAX_GPX_TRACK_POINTS } from "@/features/route/gpxExport";
 import EditDifference from "@/features/route/EditDifference/EditDifference";
 import WarningText from "@/features/route/WarningText/WarningText";
@@ -291,7 +291,7 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
                           ? "—"
                           : formatDifficulty(selectedRouteSegment.segment.difficulty)}
                       </span>
-                      <span className={textVariants({ variant: "hint" })}>/100</span>
+                      <span className={textVariants({ variant: "hint" })}>{DIFFICULTY_SCALE_SUFFIX}</span>
                     </span>
                     {selectedRouteSegment.segment.difficulty !== null &&
                       !Object.keys(selectedRouteSegment.segment.axis_contributions).some((axisId) =>
