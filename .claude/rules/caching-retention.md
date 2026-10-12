@@ -279,7 +279,7 @@ Redisを選ぶと、RAMを恒久的に占有したうえで`volatile-lru`の退�
 
 鍵・読み書きの骨格・掃除は`infrastructure/`のモジュールが持ち（例: 地域タイルは`region_tile_cache.py`）、`services/`とは値で
 やり取りする。Redisと同じく、上の層が`tile_cache.py`・`tile_persistent_cache.py`を直にimportすると`lint-imports`が落ちる
-（[directory-layout.md](../architecture/directory-layout.md)「backend」）。
+（[directory-layout.md](../../docs/architecture/directory-layout.md)「backend」）。
 
 現在のディスク保持（本番実測、2026-09-07）:
 
@@ -338,7 +338,7 @@ per_second`＝5.0で自主制限しているが、これはプロセス内の制
 #### ワーカー複数化に備えて注意すること
 
 backendは1プロセスでしか正しく動かず、ワーカーを増やすと起動を止める（`infrastructure/single_process.py: require_single_worker`。
-[cross-cutting-infrastructure.md](../modules/backend/cross-cutting-infrastructure.md)「1プロセスの境界」）。
+[cross-cutting-infrastructure.md](../../docs/modules/backend/cross-cutting-infrastructure.md)「1プロセスの境界」）。
 複数化するときに問題になるのは**キャッシュだけではない**:
 
 - **APSchedulerのバッチ**（アメダス更新10分・JMAタイルのプリウォーム10分・MSM同期30分）は
@@ -357,7 +357,7 @@ backendは1プロセスでしか正しく動かず、ワーカーを増やすと
 
 **呼び出し元は`infrastructure/`のモジュールにする**。鍵・保存する形・TTL・保存した形の検査は
 そのモジュールが持ち、`services/`とは値でやり取りする（例: `infrastructure/jma_amedas_store.py`）。
-上の層がRedisの接続を直にimportすると`lint-imports`が落ちる（[directory-layout.md](../architecture/directory-layout.md)「backend」）。
+上の層がRedisの接続を直にimportすると`lint-imports`が落ちる（[directory-layout.md](../../docs/architecture/directory-layout.md)「backend」）。
 `services/`がプロセス内（`cachetools`）に持つ、自分で求めた値のキャッシュはこの規則の外にある。
 
 #### TTLの決め方
@@ -469,6 +469,6 @@ push型の無効化はfail-openと組み合わさると「伝え漏れても誰�
 
 #### 関連
 
-- 各キャッシュの実装詳細: [docs/modules/backend/cross-cutting-infrastructure.md](../modules/backend/cross-cutting-infrastructure.md)
+- 各キャッシュの実装詳細: [docs/modules/backend/cross-cutting-infrastructure.md](../../docs/modules/backend/cross-cutting-infrastructure.md)
 
 - ログの出し方（`log_external_call`のfields）: [docs/conventions/logging.md](logging.md)

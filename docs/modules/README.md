@@ -104,23 +104,23 @@
 
 - **禁止**: 「以前は…」「tasks#123で…に変更した」「実機/実測で…だったため」といった
   経緯の説明、変更前後のbefore/afterの数値比較、事故・インシデントの詳細な顛末。
-  これらはタスクの issue（経緯の置き場。[documentation.md](../conventions/documentation.md)「用語集」）の役割である。
+  これらはタスクの issue（経緯の置き場。[documentation.md](../../.claude/rules/documentation.md)「用語集」）の役割である。
   **タスク番号もここへは書かない**——タスクの issue は閉じたあと更新されないため、
   維持する文書から辿らせると、指す先の中身が今のコードと合わなくなっても気づけない。
 
 - **要素を数え上げない**（個数・全件の一覧）。示すべきは挙動で、代表例を挙げるのは
-  許容する。詳細は[documentation.md](../conventions/documentation.md)。このディレクトリの
+  許容する。詳細は[documentation.md](../../.claude/rules/documentation.md)。このディレクトリの
   **対象ファイル表だけは例外**——新しい実装ファイルの責務を逆引きするために全件を持つ
   （完全性は周期レビューで人が見る）。`backend/scripts/`もこの母集団に入り、どれかのモジュールの表に載せる。
 
 - **表・図を優先し、地の文を増やさない**。1関数・1テーブルにつき1〜2文を目安にする。
   実装の逐次説明（コードを上から読み下すような記述）はしない。何を書くかは
-  [documentation.md](../conventions/documentation.md)「適用範囲の目安」。
+  [documentation.md](../../.claude/rules/documentation.md)「適用範囲の目安」。
 
 #### このディレクトリが扱わない領域（正本は別にある）
 
 | 領域 | 正本 | 例 |
 |---|---|---|
-| デプロイ順序・本番反映の前後関係 | [architecture/tech-stack.md](../architecture/tech-stack.md)・[deployment-sync.md](../conventions/deployment-sync.md) | DB移行を先に済ませないと起動に失敗する変更の扱い |
+| デプロイ順序・本番反映の前後関係 | [architecture/tech-stack.md](../architecture/tech-stack.md)・[deployment-sync.md](../../.claude/skills/production-data/SKILL.md) | DB移行を先に済ませないと起動に失敗する変更の扱い |
 | タスクの流れのゲート（`tools/flow-gate/`） | [conventions/flow.md](../conventions/flow.md) | ステータスの遷移の表・問いと答えの形・回答フォーム。アプリの外の運用の道具で、下の対象ファイル表の母集団に入らない |
-| 壊れ方の確かめ（`scripts/break_tests.py`） | [conventions/testing.md](../conventions/testing.md)「そのテストは要るか（3問を順に）」の消す・まとめる前の段 | 壊れ方の一覧の形・断る条件・前の版のテストの並べ方 |
+| 壊れ方の確かめ（`scripts/break_tests.py`） | [conventions/testing.md](../../.claude/rules/testing.md)「そのテストは要るか（3問を順に）」の消す・まとめる前の段 | 壊れ方の一覧の形・断る条件・前の版のテストの並べ方 |

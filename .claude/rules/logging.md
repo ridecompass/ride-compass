@@ -192,7 +192,7 @@ RideCompassのログは本番のbackendコンテナのログだけで障害調�
 - フロントのデバッグログはブラウザのローカル時刻。両者を並べて読むために時間帯を揃えてある。
 
 - コンテナの`TZ`は変えない（素の`datetime.now()`の意味まで変わり、スケジューラ・DBへ書く
-  時刻へ波及するため）。詳細は[modules/backend/cross-cutting-infrastructure.md](../modules/backend/cross-cutting-infrastructure.md)参照。
+  時刻へ波及するため）。詳細は[modules/backend/cross-cutting-infrastructure.md](../../docs/modules/backend/cross-cutting-infrastructure.md)参照。
 
 #### 外部データの読み飛ばし
 

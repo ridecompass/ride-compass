@@ -503,10 +503,10 @@ push型更新と同じ前提）。`JobRecord`は状態ごとの型の共用体�
 
 | レイヤー | ファイル | 責務 |
 |---|---|---|
-| scripts | `derived_distribution.py` | 派生の表の値の列ごとに、値のある割合と、型に応じた分布（数: 0でない割合・合計・分位・最大、真偽: 真の割合、文字: 種類の数）を1列1行で出す。表と列は`infrastructure/derived_data_freshness.py: derived_tables`・`value_columns`から導く。`--column`を付けなければ全部の値の列を測る。本番の派生の作り直しの前後を並べるための道具（[deployment-sync.md](../../conventions/deployment-sync.md)「派生データの作り直し」）。本番DBへは`run_probe.py`で当てる |
-| scripts | `serve_e2e_live.py` | e2e-live（`frontend/e2e-live/`）のために、この作業ツリーのbackendを開発DBへ向けて空いたポートで起動し、路面タイルに道が出る起点を開発DBの区間から選んで、ビルドと実行のコマンドを出す（手順の正本は[testing.md](../../conventions/testing.md)） |
-| scripts | `audit_test_rewrite.py` | 実装から起こし直したテストを外から測る（実装を変えていないか・テストが読む`app.*`・対象の属性の出どころ・seams 数・実装へ1行も入らないテスト・そのテストだけが通す行が0行のテスト・カバレッジ・テストファイルごとの項目と関数と行の数・テストからしか使われない公開の名前の候補。テストは対象を読む母集団を並べて渡す。PostGISのテストはテスト用DBへ繋がるときだけ含める。`--ref`で前の版を一時の作業ツリーへ取り出して同じ母集団で測り、前後のカバレッジ・数と新たに未到達になった行を並べる。作業ツリーに無く前の版にあるテスト（消した・改名した）は前の測りにだけ入れる）。起こし直しの手順は[testing.md](../../conventions/testing.md) |
-| scripts | `mutation/` | 変異テストの台本。mutmut 3.8.0（測るときだけ入れる）には`app`の関数の中の変異の生成と、関数ごとに通るテストの記録だけをさせ（`gen.py`）、変異ごとに別のプロセスでそのテストを最後まで回して、落ちたテストを記録する（`runner.py`・`mutkill.py`）。回す変異の並べ方と一覧の口（`plan.py`）・集計（`analyze.py`）・生き残りの振り分け（`classify.py`・`importtime.py`）。回し方は[testing-operations.md](../../conventions/testing-operations.md)「変異テストでテストの効きを測る」 |
+| scripts | `derived_distribution.py` | 派生の表の値の列ごとに、値のある割合と、型に応じた分布（数: 0でない割合・合計・分位・最大、真偽: 真の割合、文字: 種類の数）を1列1行で出す。表と列は`infrastructure/derived_data_freshness.py: derived_tables`・`value_columns`から導く。`--column`を付けなければ全部の値の列を測る。本番の派生の作り直しの前後を並べるための道具（[deployment-sync.md](../../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」）。本番DBへは`run_probe.py`で当てる |
+| scripts | `serve_e2e_live.py` | e2e-live（`frontend/e2e-live/`）のために、この作業ツリーのbackendを開発DBへ向けて空いたポートで起動し、路面タイルに道が出る起点を開発DBの区間から選んで、ビルドと実行のコマンドを出す（手順の正本は[testing.md](../../../.claude/rules/testing.md)） |
+| scripts | `audit_test_rewrite.py` | 実装から起こし直したテストを外から測る（実装を変えていないか・テストが読む`app.*`・対象の属性の出どころ・seams 数・実装へ1行も入らないテスト・そのテストだけが通す行が0行のテスト・カバレッジ・テストファイルごとの項目と関数と行の数・テストからしか使われない公開の名前の候補。テストは対象を読む母集団を並べて渡す。PostGISのテストはテスト用DBへ繋がるときだけ含める。`--ref`で前の版を一時の作業ツリーへ取り出して同じ母集団で測り、前後のカバレッジ・数と新たに未到達になった行を並べる。作業ツリーに無く前の版にあるテスト（消した・改名した）は前の測りにだけ入れる）。起こし直しの手順は[testing.md](../../../.claude/rules/testing.md) |
+| scripts | `mutation/` | 変異テストの台本。mutmut 3.8.0（測るときだけ入れる）には`app`の関数の中の変異の生成と、関数ごとに通るテストの記録だけをさせ（`gen.py`）、変異ごとに別のプロセスでそのテストを最後まで回して、落ちたテストを記録する（`runner.py`・`mutkill.py`）。回す変異の並べ方と一覧の口（`plan.py`）・集計（`analyze.py`）・生き残りの振り分け（`classify.py`・`importtime.py`）。回し方は[testing-operations.md](../../../.claude/skills/run-checks/SKILL.md)「変異テストでテストの効きを測る」 |
 
 #### アプリ起動（`main.py`）
 
@@ -535,7 +535,7 @@ FastAPI(lifespan=lifespan)
         │       ローカルにファイルが無く、完了するまで風グリッド・ルート評価の風が使えない）
         ├─ (6) 同じくAPSchedulerでディスク永続キャッシュの旧世代掃除ジョブを登録
         │       （trigger="date"で起動直後に1回だけ。世代を上げたデプロイの直後がこの
-        │       タイミングに当たる、docs/conventions/caching.md「無効化」参照）
+        │       タイミングに当たる、.claude/rules/caching.md「無効化」参照）
         └─ (7) 同じくAPSchedulerで地域タイルの旧世代掃除ジョブを登録（interval=24時間＋
                 next_run_time=now。世代は派生の作り直し・取込でも再起動なしに変わるため定期に回す。
                 [静的道路属性](static-road-attributes.md)「共通骨格」の旧世代の掃除）
@@ -562,21 +562,21 @@ FastAPI(lifespan=lifespan)
 `apscheduler.executors.default`へスタックトレース付きのERRORで出す。そのうえで`main.py`の
 `_log_job_failure`（`EVENT_JOB_ERROR`の受け口）が`ridecompass.scheduler`へジョブidと例外を
 1行のWARNINGで出す——APScheduler側の名前は接頭辞`ridecompass.`から外れ、接頭辞単位で
-レベルを絞ると漏れるため（[logging.md](../../conventions/logging.md)「その他の運用上の注意」）。
+レベルを絞ると漏れるため（[logging.md](../../../.claude/rules/logging.md)「その他の運用上の注意」）。
 スケジューラも受け口もlifespanの中で作って付けるので、lifespanを通るたびに同じ受け口の付いた新しいスケジューラになる。
 
 #### Redisのcache-aside（`redis_json_cache.py`）
 
-どの層に持つか・TTLをどう決めるか・無効化の手段といった方針は[docs/conventions/caching.md](../../conventions/caching.md)が
+どの層に持つか・TTLをどう決めるか・無効化の手段といった方針は[docs/conventions/caching.md](../../../.claude/rules/caching.md)が
 正本で、ここは実装の説明に絞る。
 
 新しくRedisへ持つキャッシュはこれを使う（例: 気象庁タイル本体の`jma_tile_redis_cache`・在否インデックスの
 `jma_tile_index`・アメダスの`jma_amedas_store`）。タイル本体は値がバイナリ（PNG/PBF）なので`get_bytes`/`set_bytes`に乗せている。
-自前の骨格を持ってよい場合はdocs/conventions/caching.md「自前で骨格を書いてよい例外」が決める。
+自前の骨格を持ってよい場合は.claude/rules/caching.md「自前で骨格を書いてよい例外」が決める。
 
 #### 取り直せない管理データのバックアップ（`ops/admin_data_backup.sh`）
 
 管理画面で人が積み上げた行（軸の定義・較正値の上書き等）は、外部から取り直せず派生からも作り直せない。
 DBを失ったときに戻せるよう、本番VMのsystemdのtimerが毎日、その表だけを`pg_dump`（custom形式）で書き出し、
 Oracle Cloud Object Storageの非公開バケットへ置く。戻しは`pg_restore`（登録・戻しの手順は
-[deployment-sync.md](../../conventions/deployment-sync.md)「管理データのバックアップ」「本番DBを失ったとき」）。
+[deployment-sync.md](../../../.claude/skills/production-data/SKILL.md)「管理データのバックアップ」「本番DBを失ったとき」）。

@@ -132,3 +132,14 @@ Pull Request の題名・本文・コメントには、打ったコマンドを�
 .claude/skills/run-checks/SKILL.md「手元の検査の回し方」で、この失敗の再現はその1。直し方は .claude/rules/testing.md「テストが落ちたときの直し方」）、4 から続ける。
 取り消し（`cancelled`）で終わったチェックも「落ちたら」と同じに扱う。master を取り込んでも直すものが無ければ（GitHub Actions の
 障害でランナーが付かなかった等）、`gh run rerun <id> --failed -R hidakagit/ride-compass` で流し直して `gh run watch` から待ち直す。
+
+### 元: .github の pull_request_template.md
+
+#### （冒頭）
+
+背景: <なぜ必要だったか。何が起きていたか>
+課題: <何を直す・作るか。範囲をどう決めたか。約束の差分（足した約束・消した約束・変えた約束を1行ずつ。約束は利用者や運用から見た振る舞いで、issue の要約・完了の条件・設計書の決まりの言葉で書く）。約束が増えない変更で実装かテストの行が増えたら、増えた行ごとの理由>
+成果: <何が変わったか。挙動・画面・運用の差>
+検証: <実行したコマンドと観測値。backend/scripts/lost_constraints.py が出した「消えた」制約の1件ずつの処置（移した先・意図して外した理由）。消した・まとめたテストがあれば、.claude/rules/testing.md「そのテストは要るか（3問を順に）」の4の表>
+増減: <python scripts/review_checks.py change の出力の「増減:」の行の続き>
+残り: <このタスクに残るもの。無ければ「なし」>

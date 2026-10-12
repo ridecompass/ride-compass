@@ -204,7 +204,7 @@ NULLは、まだ値を出していない状態を表してよい。
 
 #### 派生の表のNULLの意味は、正本の1か所にだけ書く
 
-派生の表の列がNULLのとき何を表すかは、[静的道路属性](../modules/backend/static-road-attributes.md)「値が無ければNULL」
+派生の表の列がNULLのとき何を表すかは、[静的道路属性](../../docs/modules/backend/static-road-attributes.md)「値が無ければNULL」
 だけが書く。読み手の側の文書・docstring・コメントは「値が無い」とだけ書くか、その節を名指す——言い換えて写すと、
 正本の意味が変わったときに読み手の側だけが古い意味（「未計算」等）を言い続ける。作り直しの段の中（作業用のスキーマ）の
 NULLは、まだ値を出していない状態を表してよい（入れ替えの前の状態で、読み手には届かない）。
@@ -295,6 +295,6 @@ NULLは、まだ値を出していない状態を表してよい（入れ替え�
 固定の制約は1か月後の再検証でも正しかった）。
 
 **古くなるのは写しの側**で、写しは更新し続ける対象ではなく削る対象
-（[T707](../records/tasks/T707.md)・[T723](../records/tasks/T723.md)・[T724](../records/tasks/T724.md)）。
+（[T707](../../docs/records/tasks/T707.md)・[T723](../../docs/records/tasks/T723.md)・[T724](../../docs/records/tasks/T724.md)）。
 検査の母集団についての同じ原則は
-[design-principles.md](../architecture/design-principles.md)構造仕様12にある。
+[design-principles.md](../../docs/architecture/design-principles.md)構造仕様12にある。

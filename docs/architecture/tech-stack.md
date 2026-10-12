@@ -396,7 +396,7 @@ frontendはRender、PostgreSQLとRedisはVMへネイティブに置く。
 
 | 領域 | 採用 | 備考 |
 |---|---|---|
-| 管理データの退避先 | Oracle Cloud Object Storage（非公開のバケット） | 本番VMのtimerが取り直せない管理データを置き、バケットのライフサイクルの規則が古いものを消す。仕組みと登録の手順は[deployment-sync.md](../conventions/deployment-sync.md)付録「管理データのバックアップ」 |
+| 管理データの退避先 | Oracle Cloud Object Storage（非公開のバケット） | 本番VMのtimerが取り直せない管理データを置き、バケットのライフサイクルの規則が古いものを消す。仕組みと登録の手順は[deployment-sync.md](../../.claude/skills/production-data/SKILL.md)付録「管理データのバックアップ」 |
 
 #### 本番の宛先（frontendのオリジンからbackendへ届くのは一部だけ）
 
@@ -407,7 +407,7 @@ Actionsの変数`BACKEND_ORIGIN`から読む（宛先が変わったらここも
 
 #### CIの実行枠（リポジトリがpublicである間の前提）
 
-- どの出来事でCIが走るかはdocs/conventions/testing-operations.md「検査の置き場（手元・作業ブランチのCI・masterのCI）」が持つ。
+- どの出来事でCIが走るかは.claude/skills/run-checks/SKILL.md「検査の置き場（手元・作業ブランチのCI・masterのCI）」が持つ。
   作業ブランチへのpushで走らせないのは、検査はPull Requestの実行で済み、誰も待たないpushの実行で枠を使わないため。
   backendの本番へのデプロイは、masterへの
   pushでCIが通ったときだけ`ci.yml`から呼ばれる（上の「デプロイの反映確認」）。
@@ -416,7 +416,7 @@ Actionsの変数`BACKEND_ORIGIN`から読む（宛先が変わったらここも
   後のコミットは前の変更を全部含み、古いコミットの実行はデプロイにもマージの判断にも使わないため。Pull Requestは
   新しいpushで走っている実行も打ち切り、masterは走っている実行を最後まで走らせる（デプロイが同じ実行の中で走るので、
   途中で切らない）。打ち切った・待ちから外した実行のコミットにはCIの結論が残らないので、結論は最新のコミットで読む
-  （docs/conventions/testing-operations.md「CIの結論を読む」）。数十秒で終わる`docs-consistency.yml`・`claude-gate.yml`には置かない
+  （.claude/skills/run-checks/SKILL.md「CIの結論を読む」）。数十秒で終わる`docs-consistency.yml`・`claude-gate.yml`には置かない
   （待ちが積もらない）。
 
 - **飛ばす範囲は、その検査が読む対象から導く。** 飛ばしてよいのは、`ci.yml`のどの検査も読まないパスだけ。
@@ -434,6 +434,6 @@ Actionsの変数`BACKEND_ORIGIN`から読む（宛先が変わったらここも
 #### 本番Redisの設定
 
 Redisは「TTL付きキャッシュ、または実データ源へのフォールバックが必ず効くcache-aside」
-専用の層で、**正本データを持たない**（方針は[caching.md](../conventions/caching.md)）。
+専用の層で、**正本データを持たない**（方針は[caching.md](../../.claude/rules/caching.md)）。
 本番はOracle Cloud VMへネイティブに導入する（backendコンテナが`--network=host`のため
 追加設定なしで到達できる）。ローカル開発は`docker-compose.yml`のredisサービス。

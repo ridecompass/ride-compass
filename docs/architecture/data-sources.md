@@ -201,7 +201,7 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 
 5. 群ごとの件数（`SELECT place_group, count(*) FROM stop_places GROUP BY 1`）を前の版と比べ、大きく動いた群があれば 1 の変更を疑う。
 
-4. 本番 VM で、別のコンテナ（[deployment-sync.md](../conventions/deployment-sync.md)「派生データの作り直し」と同じ`docker run`）から
+4. 本番 VM で、別のコンテナ（[deployment-sync.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
    `python scripts/fetch_overture_places.py`（範囲の地点を写す。関東の枠で約190MB。Actions のランナーで17秒）→ `python -m app.batch.ingest_cli --source overture_place`
    → `python -m app.batch.derive_cli`の順に打つ。本番 DB へ書くので、開発機の対話のセッションで、ユーザーがチャットで言ったときだけ Claude が打つ（[flow.md](../conventions/flow.md)「本番へ書く」）。
 
@@ -211,13 +211,13 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
    大きく動いていれば、取込が読む項目（指定の別`bunka-11-s`・所有者`bunka-14-s`・`common.coordinates`）の名前か、
    所有者の書き方（`backend/app/domain/stop_place.py`の寺社の語）が変わっていないかを見る。
 
-3. 本番 VM で、別のコンテナ（[deployment-sync.md](../conventions/deployment-sync.md)「派生データの作り直し」と同じ`docker run`）から
+3. 本番 VM で、別のコンテナ（[deployment-sync.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
    `python scripts/fetch_bunka_heritages.py` → `python -m app.batch.ingest_cli --source bunka_heritage` → `python -m app.batch.derive_cli`
    の順に打つ。本番 DB へ書くので、開発機の対話のセッションで、ユーザーがチャットで言ったときだけ Claude が打つ（[flow.md](../conventions/flow.md)「本番へ書く」）。
 
 #### 住所の区画の元データ（アドレス・ベース・レジストリ・e-Stat の小地域の境界）
 
-3. 本番 VM で、別のコンテナ（[deployment-sync.md](../conventions/deployment-sync.md)「派生データの作り直し」と同じ`docker run`）から
+3. 本番 VM で、別のコンテナ（[deployment-sync.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
    `python scripts/fetch_abr.py` → `python scripts/fetch_estat_small_areas.py`（都道府県を ABR の市区町村の代表点から決めるので、この順）
    → `python -m app.batch.ingest_cli --source abr --source estat_small_area` → `python -m app.batch.derive_cli`の順に打つ。
    本番 DB へ書くので、開発機の対話のセッションで、ユーザーがチャットで言ったときだけ Claude が打つ（[flow.md](../conventions/flow.md)「本番へ書く」）。
