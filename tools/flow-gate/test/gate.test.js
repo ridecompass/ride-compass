@@ -623,7 +623,7 @@ test("tasks#307・K3・G4・G7: 本文の印の間・形に合わない問い・
   await w.send(ev.issue(1, "edited"));
   assert.deepEqual([w.at(1).body.startsWith("メモ\n"), w.at(1).comments.length], [true, 1], "G3 印の間の見知らぬ行は、消さずに印の外の先頭へ出してコメントで知らせる");
   await w.send(ev.comment(2, config.claude));
-  assert.match(head(w.at(2)), /形に合わないので/);
+  assert.match(head(w.at(2)), /形が外れているので.*判断は「### 案」を1行1つ以上書く/, "K3 形の外れた問いは、読めない理由を知らせる");
   await w.send(ev.issue(3, "edited"));
   assert.deepEqual([/着手可能日時「来週」/.test(head(w.at(3))), w.titles().includes("#3 実装")], [true, false], "G7 形の合わない着手可能日時は知らせ、まだ先と読んで振り出さない");
   w.at(1).status = "完了";
@@ -719,21 +719,23 @@ test("回答フォーム（合意したモック）: 回答内容（案と書く
   for (const text of ["見た目", "回答内容", "Claude に伝えること", "この issue を", "完了にする", "保留する", "見送る", "確認", "戻る", "送信", "判断材料"]) assert.ok(check.includes(text), `確かめ: ${text}`);
   assert.ok(w.at(1).body.includes("button.svg") && !check.includes("button.svg"), "本文の頭の回答のボタンは、フォームの本文に出さない");
   assert.match(check, /<textarea name="note" rows="4"/, "書く欄は1つで4行");
+  assert.ok(/type="checkbox" name="checked" value="見た目"/.test(check) && !/name="checked"[^>]*checked/.test(check), "確かめることはチェックボックスで、最初は外す");
   const adopt = await (await open(2)).text();
   assert.ok(!adopt.includes('name="plan"') && !adopt.includes("完了にする"), "案の無い問いは案を出さず、確かめることが無ければ完了にするも出さない");
   const judge = await (await open(4)).text();
   assert.ok(/value="案A">.*推奨.*早い/s.test(judge) && /value="案B">.*安い/s.test(judge), "案ごとに理由を添え、推奨に印を付ける");
   assert.ok(!/<input[^>]*name="(plan|next)"[^>]*checked/.test(judge), "推奨も次遷移も、最初から選んだ状態にしない");
   assert.equal((await open(3)).status, 404, "答えていない問いが無い");
-  const bad = await open(5);
-  assert.deepEqual([bad.status, /#5 の最新の問いは形に合わないので.*推奨.*コメントで/s.test(await bad.text())], [404, true],
-    "形の外れた答えの無い問いは「問いが無い」と言わず、合わない所と、答えはコメントで書けることを出す");
-  assert.match((await answer(5, { next: "続ける" })).error, /最新の問いは形に合わない/, "送っても同じことを返す");
+  const loose = await (await open(5)).text();
+  assert.ok(/value="案A">/.test(loose) && !loose.includes('class="rec"') && !loose.includes("回答内容を出せません"), "推奨と理由の無い案は、印と理由の無い丸として並べる");
+  await answer(5, { next: "保留", plan: "案B" });
+  assert.match(w.at(5).comments.at(-1), /次遷移: 保留\n選んだ案: 案B/, "形の決まりに外れた問いにも、いつもどおりフォームで答える");
   assert.match((await answer(1, { question: "前の問い" })).error, /問いが新しくなっています/);
   assert.match((await answer(4, { plan: "案A" })).error, /この issue をどうするか/, "次遷移はいつも要る");
   await answer(4, { next: "保留", plan: "案B", note: "あとで" });
   assert.equal(w.at(4).comments.at(-1).split("\n").slice(3).join("\n"), "次遷移: 保留\n選んだ案: 案B\nコメント:\nあとで", "次遷移と選んだ案とコメントを、互いに変えずにそのまま書く");
-  await answer(1, { next: "続ける", note: "崩れる" });
+  await answer(1, { next: "続ける", checked: ["見た目"], note: "崩れる" });
+  assert.match(w.at(1).comments.at(-1), /次遷移: 続ける\n選んだ案: なし（問いに案が無い）\n- 確かめた: 見た目\nコメント:\n崩れる/, "チェックした行を、遷移先へそのまま書く");
   await w.send(ev.comment(1));
   assert.deepEqual([w.at(1).state, w.at(1).status, w.titles().filter((t) => t.startsWith("#1"))], ["OPEN", "実装", ["#1 実装"]], "決め2 書いた文は実装担当が読む（完成にしない）");
   await answer(2, { next: "見送り", label: ["急ぎ"] });
@@ -758,7 +760,8 @@ test("ラベルごとの形: 書く節・書かない節・案の決まり・決
     ["回答内容の節を書いた採否", askText("採否", forms).replace("\n\n<details>", "\n\n### 済ませること\n- 読む\n\n<details>"), /採否は回答内容の節を書かない/],
     ["確かめの決まった問いの文を変えた", askText("確かめ", forms, [{ text: "見た目" }]).replace("完成にしてよいですか？", "閉じますか？"), /確かめの問いの文は「完成にしてよいですか？」/],
     ["前の形の判断材料の節（推奨を判断材料に書く）", QUESTION.replace("\n</details>", "\n\n**推奨**: 案A\n</details>"), /判断材料の節は/],
-    ["知らないラベル", QUESTION.replace("## 問い（判断）", "## 問い（相談）"), /ラベルは .*のどれか/],
+    ["知らないラベル", QUESTION.replace("## 問い（判断）", "## 問い（相談）"), /ラベルは .*のどれか（「相談」）/],
+    ["「- 」で始まらない回答内容の行", QUESTION.replace("- 案B", "案B"), /回答内容の節の行は「- 」で始める（「案B」）/],
     ["ゲートのラベルを Claude が書いた", askText("確かめ", forms, [{ text: "見た目" }]), /確かめの問いはゲートだけが出す/, "Claude"],
   ];
   for (const [name, text, want, by] of rows) assert.match(checkQuestion(forms, text, by).join("・"), want, name);
@@ -791,7 +794,7 @@ test("回答フォームはラベルで分けず、問いの回答内容の節�
   for (const html of [plain, items]) assert.match(html, /<textarea name="note" rows="4"/, "書く欄はいつも出す");
 });
 
-test("答えの無い問いがある間だけ、ゲートがラベル「問い: <ラベル>」を付け、答えが当たったら外す。外れた問いは読まずに知らせる", async () => {
+test("答えの無い問いがある間だけ、ゲートがラベル「問い: <ラベル>」を付け、答えが当たったら外す。読めない問いも答えを待ち、読めない理由を知らせる", async () => {
   const left = "- [x] 作る\n- [ ] 見た目\n  - 確かめる: ユーザー\n- [ ] 直す\n";
   const w = world([{ n: 2, author: config.claude, type: "要望" }, { n: 3, status: "回答", labels: ["問い: 確かめ"], body: withButton(left, config, 3), comments: [ASKED("確かめ")] },
     { n: 4, status: "回答", labels: ["急ぎ", "問い: 判断"], comments: [END(0), ASKED("イレギュラー")] },
@@ -811,9 +814,16 @@ test("答えの無い問いがある間だけ、ゲートがラベル「問い: 
   await w.send(ev.comment(4, config.claude));
   assert.deepEqual(w.at(4).labels, ["急ぎ", "問い: イレギュラー"], "違うラベルは、今の問いのラベルへ揃える");
   await w.send(ev.comment(5, config.claude));
-  assert.deepEqual([w.at(5).labels, /判断は「### 案」を1行1つ以上書く/.test(w.at(5).comments.at(-1))], [[], true], "形に合わない問い（案の無い判断）は読まず、付けない");
+  assert.deepEqual([w.at(5).status, w.at(5).labels, /判断は「### 案」を1行1つ以上書く/.test(w.at(5).comments.at(-1))], ["回答", ["問い: 判断"], true],
+    "読めない問い（案の無い判断）も答えを待ち、読めない理由を知らせる");
+  const loose = await (await open(5)).text();
+  assert.ok(/回答内容を出せません（判断は「### 案」を1行1つ以上書く）/.test(loose) && !loose.includes('name="plan"') && !loose.includes("完了にする"),
+    "回答フォームは読めない理由を出し、回答内容と完了にするを出さずに、書く欄と次遷移で受ける");
+  await answer(5, { next: "保留" });
+  await w.send(ev.comment(5));
+  assert.equal(w.at(5).status, "保留", "読めない問いへの答えも、ゲートが次遷移で決める");
   await w.send(ev.comment(6, config.claude));
-  assert.deepEqual([w.at(6).labels, /確かめの問いはゲートだけが出す/.test(w.at(6).comments.at(-1))], [[], true], "ゲートのラベルの問いを Claude が書いたら、読まずに知らせる");
+  assert.deepEqual([w.at(6).labels, /確かめの問いはゲートだけが出す/.test(w.at(6).comments.at(-1))], [["問い: 確かめ"], true], "ゲートのラベルの問いを Claude が書いたら、読めない理由を知らせる");
 });
 
 test("読むのに要求の要る事実は、決め方が使うときだけ読む（担当が動いている間は、採否の問いを古いコメントまでさかのぼって探さない）", async () => {

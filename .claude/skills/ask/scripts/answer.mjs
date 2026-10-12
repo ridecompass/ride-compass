@@ -1,7 +1,7 @@
 // チャットで決めたことを、今の問いへの答えの形で記録する。組み立てと照らしは回答フォームと同じ（tools/flow-gate/src/questions.js:
 // answerProblem・answerBody）。合わなければ書かずに理由を出して 1 で終わる。
-// 使い方: node .claude/skills/ask/scripts/answer.mjs <issue の番号> --next <続ける|保留|見送り|完了> [--plan <選んだ案>] [--text <書いた文のファイル>]
-//   --next は回答フォームの「この issue を」（完了は、確かめることを並べた問いだけ）。書いた文のファイルには、ユーザーの言葉の引用を含めて書く。
+// 使い方: node .claude/skills/ask/scripts/answer.mjs <issue の番号> --next <続ける|保留|見送り|完了> [--plan <選んだ案>] [--checked <行>]... [--text <書いた文のファイル>]
+//   --next は回答フォームの「この issue を」（完了は、確かめることを並べた問いだけ）。--checked は確かめること・済ませることのうちユーザーが済ませた行（行ごとに1つ）。書いた文のファイルには、ユーザーの言葉の引用を含めて書く。
 import { readFileSync } from "node:fs";
 import { bot, comment, config, graphqlData, isMain, isNumber, usage } from "../../../../tools/flow-gate/src/bot.js";
 import { answerBody, answerProblem, askerOf, isQuestion, latestQuestion, norm } from "../../../../tools/flow-gate/src/questions.js";
@@ -21,20 +21,21 @@ function read(gh, number) {
   return nodes;
 }
 
-const USAGE = "node .claude/skills/ask/scripts/answer.mjs <issue の番号> --next <続ける|保留|見送り|完了> [--plan <選んだ案>] [--text <書いた文のファイル>]";
+const USAGE = "node .claude/skills/ask/scripts/answer.mjs <issue の番号> --next <続ける|保留|見送り|完了> [--plan <選んだ案>] [--checked <行>]... [--text <書いた文のファイル>]";
 
 function main() {
   const [number, ...rest] = process.argv.slice(2);
-  const opts = {};
+  const opts = { checked: [] };
   for (let i = 0; i < rest.length; i++) {
     if (rest[i] === "--next" && rest[i + 1] !== undefined) opts.next = rest[++i];
     else if (rest[i] === "--plan" && rest[i + 1] !== undefined) opts.plan = rest[++i];
+    else if (rest[i] === "--checked" && rest[i + 1] !== undefined) opts.checked.push(rest[++i]);
     else if (rest[i] === "--text" && rest[i + 1] !== undefined) opts.text = norm(readFileSync(rest[++i], "utf8")).trim();
     else opts.bad = rest[i];
   }
   if (!isNumber(number) || opts.bad) usage(USAGE);
   const gh = bot();
-  // ゲートと同じく、形に合わない問いと、ラベルの出す者でない者が書いた問いは読まない。
+  // ゲートと同じ読み方（読めない問いは、回答内容を無いものとして読む）。
   const nodes = read(gh, number);
   const asked = nodes.findLast((c) => isQuestion(c.body));
   const q = latestQuestion(nodes.map((c) => c.body), config.questionForms, asked && askerOf(config, asked.author?.login));

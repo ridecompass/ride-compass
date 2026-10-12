@@ -53,6 +53,7 @@ test("答えを記録する（ask の answer.mjs）: 回答フォームと同じ
   const rows = [
     [judge, {}, /この issue をどうするか/], [judge, { next: "続ける", plan: "案C" }, /案にない答え/], [judge, { next: "保留", plan: "案A" }, null], [judge, { next: "続ける" }, null],
     [adopt, { next: "完了" }, /この issue をどうするか/], [adopt, { next: "見送り" }, null], [adopt, { next: "続ける", plan: "着手する" }, /案にない答え/], [confirm, { next: "完了" }, null],
+    [confirm, { next: "続ける", checked: ["無い行"] }, /問いにない行/], [judge, { next: "続ける", checked: ["案A"] }, /チェックする行はありません/],
   ];
   for (const [q, a, want] of rows) want ? assert.match(answerProblem(q, a), want) : assert.equal(answerProblem(q, a), null);
   assert.equal(answerBody(judge, { next: "保留", plan: "案B", text: "あとで" }), "## 回答\n**どちらにしますか？**\n\n次遷移: 保留\n選んだ案: 案B\nコメント:\nあとで");
@@ -60,15 +61,18 @@ test("答えを記録する（ask の answer.mjs）: 回答フォームと同じ
   assert.equal(tail(answerBody(judge, { next: "続ける" })), "次遷移: 続ける\n選んだ案: 選ばなかった\nコメント: なし", "空の欄も省かない");
   assert.equal(tail(answerBody(adopt, { next: "見送り" })), "次遷移: 見送り\n選んだ案: なし（問いに案が無い）\nコメント: なし");
   const said = "> 距離のバーは候補数の横に\n\nとユーザーがチャットで言った（2026-10-12）";
-  const body = answerBody(confirm, { next: "完了", text: said });
-  assert.equal(tail(body), `次遷移: 完了\n選んだ案: なし（問いに案が無い）\n- 確かめた: 見た目\nコメント:\n${said}`, "完了は、確かめることを全部並べる");
+  const body = answerBody(confirm, { next: "完了", checked: ["見た目"], text: said });
+  assert.equal(tail(body), `次遷移: 完了\n選んだ案: なし（問いに案が無い）\n- 確かめた: 見た目\nコメント:\n${said}`, "チェックした確かめることを行ごとに並べる");
+  const operate = asked(make("操作", "設定を変えてください", ["手順1", "手順2"]));
+  assert.equal(tail(answerBody(operate, { next: "続ける", checked: ["手順1"] })), "次遷移: 続ける\n選んだ案: なし（問いに案が無い）\n- 済ませた: 手順1\nコメント: なし",
+    "済ませることは、済ませた行を並べる");
   assert.equal(answerText(body), said, "コメントは形を付けずにそのまま読む");
   const read = (text) => latestQuestion([confirmText, answerBody(confirm, { next: "続ける", text })], config.questionForms)?.answer;
-  for (const text of ["次遷移: 完了", "- 確かめた: 見た目\nここは崩れる", "コメント: なし", "なし"]) assert.deepEqual(read(text), { decision: "続ける", confirmed: [], text }, `欄に似た行は欄として読まない: ${text}`);
+  for (const text of ["次遷移: 完了", "- 確かめた: 見た目\nここは崩れる", "コメント: なし", "なし"]) assert.deepEqual(read(text), { decision: "続ける", text }, `欄に似た行は欄として読まない: ${text}`);
   const odd = "次遷移: 保留する\n選んだ案: なし（問いに案が無い）\nコメント: なし";
-  assert.deepEqual(latestQuestion([confirmText, `## 回答\n**完成にしてよいですか？**\n\n${odd}`], config.questionForms)?.answer, { decision: "続ける", confirmed: [], text: odd },
+  assert.deepEqual(latestQuestion([confirmText, `## 回答\n**完成にしてよいですか？**\n\n${odd}`], config.questionForms)?.answer, { decision: "続ける", text: odd },
     "知らない次遷移の値は決定にせず、全部をコメントとして Claude へ渡す");
-  assert.deepEqual(latestQuestion([confirmText, "## 回答\n**完成にしてよいですか？**\n\n見た"], config.questionForms)?.answer, { decision: "続ける", confirmed: [], text: "見た" },
+  assert.deepEqual(latestQuestion([confirmText, "## 回答\n**完成にしてよいですか？**\n\n見た"], config.questionForms)?.answer, { decision: "続ける", text: "見た" },
     "次遷移の無い答えは、続けるとして全部をコメントに読む");
 });
 

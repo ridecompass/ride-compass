@@ -71,7 +71,7 @@ function runStatus(f, status) {
 // 保留・読まれていない文は、問いを出す事実に数えない。ほかの問いを問うたことは数える）。無くなった問いは読まず、表で決め直す。担当が出した問いは、
 // ゲートが中身を読まないので答えるまで生きる。
 function alive(f, q, config) {
-  if (q.form.by !== "ゲート") return true;
+  if (q.form?.by !== "ゲート") return true;
   const dropped = droppedOf(q.text);
   const once = { ...(q.kind === "採否" && { adoptAsked: false }), ...(dropped && { droppedAsked: false }) };
   const s = status({ ...f, ...once, question: null, unread: false, runs: [], status: null }, config);
@@ -81,7 +81,7 @@ function alive(f, q, config) {
 // 受け入れなかった書き込みは、黙らずに1つのコメントで知らせる（形に合わない問い・印の間の見知らぬ行・形の合わない着手可能日時・
 // 事実へ戻したユーザーのボードの移動）と、親が閉じたので閉じた子の理由。最新のコメントが同じ知らせなら書かない。
 function notice(f, status) {
-  const text = [f.badQuestion.length && `この問いは形に合わないので、問いとして読みません: ${f.badQuestion.join("・")}`,
+  const text = [f.badQuestion.length && `この問いは形が外れているので、回答フォームは回答内容を出さずに、書く欄と次遷移だけで答えを受けます: ${f.badQuestion.join("・")}`,
     splitBody(f.body).foreign.length && "本文の先頭の印の間に、ゲートの書かない行があったので、消さずに印の外へ出しました。",
     // 直るまで続く知らせは、最近のコメントに同じ知らせがあれば重ねない（値が変われば新しく知らせる）。
     f.badStart && !f.comments.some((c) => c.includes(`「${f.badStart}」`)) &&
@@ -115,7 +115,7 @@ function status(f, config) {
   const q = f.question;
   if (q && !q.answer) {
     const t = table(f);
-    return t.status === "完了" && q.form.by !== "ゲート" ? t : { status: "回答" };
+    return t.status === "完了" && q.form?.by !== "ゲート" ? t : { status: "回答" };
   }
   // 答えは、書いた文があれば Claude が読んだあとに当て、当てたことを一度だけ知らせる。答えのあとにユーザーがステータスを変えたか開き直したら、
   // 次の決定はそちらなので、その答えは当てない。
@@ -125,7 +125,8 @@ function status(f, config) {
   if (a.decision === "見送り") return { status: "完了", closeAs: "NOT_PLANNED", told };
   if (a.decision === "保留") return { status: "保留", told };
   if (a.decision !== "完了") return { ...table(f), told };
-  const ok = f.remaining.filter((c) => c.verify === "ユーザー" && a.confirmed.includes(c.text));
+  // 完了は、ユーザーが確かめる約束が全部果たされたという決定なので、その条件を全部チェックする（回答内容のチェックした行は読まない）。
+  const ok = f.remaining.filter((c) => c.verify === "ユーザー");
   return { ...table({ ...f, remaining: f.remaining.filter((c) => !ok.includes(c)) }), check: ok.map((c) => c.index), told };
 }
 
