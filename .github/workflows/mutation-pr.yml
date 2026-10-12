@@ -6,7 +6,9 @@
 #   差分で変わった関数の変異と、その関数の基準（変異を入れずに同じテストの組み合わせを2回）だけ。台本は backend/scripts/mutation/
 #   （diff_scope.py・pr_plan.py・runner.py・report_pr.py）。
 # - 比べる版は Pull Request の基の先端（pull_request の出来事の base.sha）。checkout は Pull Request と master を合わせた版。
-# - 持ち時間: 生成と記録で約3分（tasks#661 の実測）。回す数は変えた関数しだいで、担い手は stop_after で新しい変異を取らずに抜ける。
+# - 持ち時間: 回す数は変えた関数しだいで、担い手はジョブの始まりから MUT_RUN_UNTIL 秒を過ぎたら新しい変異を取らずに抜ける。
+#   ジョブの始まりから数えるのは、生成と記録の長さが変わっても、抜けたあと回しかけの変異を終えて結果を残す間を
+#   timeout-minutes の前に残すため。
 name: Mutation PR
 
 on:
@@ -33,7 +35,7 @@ jobs:
       WORKERS: 4
       MUT_OUT: /tmp/mutation
       MUT_DB_PREFIX: mut_w
-      MUT_STOP_AFTER: "2400"
+      MUT_RUN_UNTIL: "2700"
       TEST_DATABASE_URL: postgresql+asyncpg://ridecompass:ridecompass@localhost:5432/ridecompass_test
       DATABASE_URL: postgresql+asyncpg://ridecompass:ridecompass@localhost:5432/ridecompass_test
       BASE: ${{ github.event.pull_request.base.sha }}
@@ -44,6 +46,7 @@ jobs:
       - name: 変えた関数
         id: scope
         run: |
+          echo "MUT_JOB_START=$(date +%s)" >> "$GITHUB_ENV"
           mkdir -p "$MUT_OUT"
           python3 scripts/mutation/diff_scope.py "$BASE" > "$MUT_OUT/funcs.txt"
           echo "変えた関数: $(grep -c . "$MUT_OUT/funcs.txt" || true)"
@@ -78,7 +81,7 @@ jobs:
         run: |
           python ../scripts/mutation/plan.py > /dev/null
           python ../scripts/mutation/pr_plan.py "$MUT_OUT/funcs.txt"
-          python ../scripts/mutation/runner.py "$MUT_OUT/all.txt" "$MUT_OUT/results.jsonl" "$WORKERS"
+          MUT_STOP_AFTER=$((MUT_JOB_START + MUT_RUN_UNTIL - $(date +%s))) python ../scripts/mutation/runner.py "$MUT_OUT/all.txt" "$MUT_OUT/results.jsonl" "$WORKERS"
       - if: steps.scope.outputs.any == 'true'
         name: 生き残りを知らせる
         run: python scripts/mutation/report_pr.py "$BASE"
