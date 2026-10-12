@@ -1,7 +1,7 @@
 """Pull Request の差分で変わった行を含む `app` の関数を、mutmut の関数の名前（mangled name）で出す。backend の下で打つ。
 
 引数: 比べる版（ふつうは master との合流点のコミット）
-出すもの: 1行に1つ、`app.domain.route.x_route_elevation_gain`・`app.services.x.xǁClassǁmethod` の形。
+出すもの: 1行に1つ（無ければ何も出さない）、`app.domain.route.x_route_elevation_gain`・`app.services.x.xǁClassǁmethod` の形。
 mutmut が変異を作るのはモジュールの直下の関数と、モジュールの直下のクラスのメソッドだけなので、それに合わせる
 （入れ子の関数の行が変わったら、それを囲む直下の関数を出す）。行を消しただけの所は、消した位置を含む関数を出す。
 """
@@ -62,7 +62,8 @@ def main():
             found.update(functions(path, lines))
         except FileNotFoundError:
             continue  # ファイルごと消した
-    print("\n".join(sorted(found)))
+    for name in sorted(found):
+        print(name)
 
 
 if __name__ == "__main__":
