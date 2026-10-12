@@ -463,8 +463,8 @@ def main() -> int:
         unknown = sorted(a for a in touched if a not in defined and a not in imported)
         print(f"③ テストが触る {alias}.X: 自ファイル定義 {len(own)}種"
               f" / 他モジュール由来 {len(foreign)}種 / 判定不能 {len(unknown)}種")
-        for name, source in foreign:
-            print(f"     {alias}.{name:<32} <- {source}  ({touched[name]}回)"
+        for name, origin in foreign:
+            print(f"     {alias}.{name:<32} <- {origin}  ({touched[name]}回)"
                   "  ← seamか責務外かを言うこと")
         for name in unknown:
             print(f"     {alias}.{name}  （判定不能）")

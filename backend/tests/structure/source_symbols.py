@@ -209,8 +209,8 @@ def replacement_of(scope: Scope, call: ast.Call) -> Replaced | None:
     if len(call.args) < 2:
         return None
     second = call.args[1]
-    name = second.value if isinstance(second, ast.Constant) and isinstance(second.value, str) else None
-    return Replaced(ast.unparse(first), scope.resolve(first), name, by_path=False)
+    named = second.value if isinstance(second, ast.Constant) and isinstance(second.value, str) else None
+    return Replaced(ast.unparse(first), scope.resolve(first), named, by_path=False)
 
 
 def scanned_tests(root: Path) -> list[Path]:
