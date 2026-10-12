@@ -1,8 +1,8 @@
 """Edit・Write で書いた frontend のファイルへ prettier をかけるフック（CI の`format:check`が落とす形を残さない）。
 
 .claude/settings.json の PostToolUse から打つ（標準入力でフックの JSON を受け取る。書いたファイルは`tool_input.file_path`。
-公式「Hooks reference」）。対象は`format:check`（`frontend/package.json`）と同じ`frontend/src/**/*.{ts,tsx,css}`で、
-書いたファイルのある作業ツリーの frontend で打つ（その`.prettierrc.json`・`.prettierignore`が効く）。その frontend に
+公式「Hooks reference」）。対象は`format:check`（`frontend/package.json`）が見る範囲で（`SOURCE_DIR`・`SUFFIXES`。
+食い違えば`scripts/tests/test_format_frontend_hook.py`が落ちる）、書いたファイルのある作業ツリーの frontend で打つ（その`.prettierrc.json`・`.prettierignore`が効く）。その frontend に
 依存が入っていなければ（`npm ci`の前の作業ツリー）何もしない。
 """
 
@@ -11,6 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+SOURCE_DIR = "src"
 SUFFIXES = (".ts", ".tsx", ".css")
 
 
@@ -19,7 +20,7 @@ def frontend_of(path: Path) -> Path | None:
     if path.suffix not in SUFFIXES:
         return None
     for parent in path.parents:
-        if parent.name == "src" and parent.parent.name == "frontend":
+        if parent.name == SOURCE_DIR and parent.parent.name == "frontend":
             return parent.parent
     return None
 
@@ -47,6 +48,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.stdin.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
+    sys.path.append(str(Path(__file__).resolve().parents[2] / "backend" / "scripts"))
+    from _stdio import use_utf8_stdio
+
+    use_utf8_stdio()
     sys.exit(main())

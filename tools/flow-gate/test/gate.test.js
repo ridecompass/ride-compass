@@ -282,6 +282,10 @@ test("tasks#842 担当者はユーザーに問わないと進めないかの2択
   assert.equal(full.at(1).status, "未着手", "次の決め直しでも CI待ちへ戻さない");
   await full.send(ev.run(full.run(2), "completed"));
   assert.deepEqual([full.at(1).status, full.titles().filter((t) => t === "#1 作る").length], ["進行中", 1], "枠が空いたら作る担当へ渡す");
+  // 答えのあとに担当が終わっていれば（終わりのコメントが issue に残る）、見回りの記録が無くても「やり直す」は効き終わっている。
+  const ended = world([{ n: 1, ...ci, comments: [...full.at(1).comments, END(full.at(1).comments.length + 1)] }]);
+  await ended.send(ev.comment(1, config.claude));
+  assert.equal(ended.at(1).status, "CI待ち", "担当が終わったあとの CI は CI待ち");
 });
 
 test("前提が閉じたら、後ろで待っていたタスクも決め直して振り出す", async () => {

@@ -385,3 +385,55 @@ dockerdが行うので通る）。
 
 本番はこの構成をそのまま使わない——backendはOracle Cloud VM上のDockerコンテナ、
 frontendはRender、PostgreSQLとRedisはVMへネイティブに置く。
+
+## 厳選まで仮置き
+
+原則の見直しで消えた記載を、厳選まで元の節ごとに仮に置く。**今の決まりと食い違えば今の決まりを取る。**
+
+### 元: docs/architecture の tech-stack.md
+
+#### 採用しているもの
+
+| 領域 | 採用 | 備考 |
+|---|---|---|
+| 管理データの退避先 | Oracle Cloud Object Storage（非公開のバケット） | 本番VMのtimerが取り直せない管理データを置き、バケットのライフサイクルの規則が古いものを消す。仕組みと登録の手順は[deployment-sync.md](../../.claude/skills/production-data/SKILL.md)付録「管理データのバックアップ」 |
+
+#### 本番の宛先（frontendのオリジンからbackendへ届くのは一部だけ）
+
+**手元の道具は、backendの宛先を`backend/.env.oracle.local`の`BACKEND_ORIGIN`から読む**（読み方は
+`backend/scripts/_prod_env.py`。例: `axis_apply.py`）。道具のコードに宛先を書き込まない——IPが変わったとき、
+道具の側で直すのが各自の`BACKEND_ORIGIN`だけで済むようにするため。振り出しの見回りは、同じ値をコードのリポジトリの
+Actionsの変数`BACKEND_ORIGIN`から読む（宛先が変わったらここも書き換える）。
+
+#### CIの実行枠（リポジトリがpublicである間の前提）
+
+- どの出来事でCIが走るかは.claude/skills/run-checks/SKILL.md「検査の置き場（手元・作業ブランチのCI・masterのCI）」が持つ。
+  作業ブランチへのpushで走らせないのは、検査はPull Requestの実行で済み、誰も待たないpushの実行で枠を使わないため。
+  backendの本番へのデプロイは、masterへの
+  pushでCIが通ったときだけ`ci.yml`から呼ばれる（上の「デプロイの反映確認」）。
+
+- `ci.yml`は、同じref（master・Pull Requestごと）の実行を1本ずつ動かし、待ちは一番新しい1件だけにする（`concurrency`）。
+  後のコミットは前の変更を全部含み、古いコミットの実行はデプロイにもマージの判断にも使わないため。Pull Requestは
+  新しいpushで走っている実行も打ち切り、masterは走っている実行を最後まで走らせる（デプロイが同じ実行の中で走るので、
+  途中で切らない）。打ち切った・待ちから外した実行のコミットにはCIの結論が残らないので、結論は最新のコミットで読む
+  （.claude/skills/run-checks/SKILL.md「CIの結論を読む」）。数十秒で終わる`docs-consistency.yml`・`claude-gate.yml`には置かない
+  （待ちが積もらない）。
+
+- **飛ばす範囲は、その検査が読む対象から導く。** 飛ばしてよいのは、`ci.yml`のどの検査も読まないパスだけ。
+  文書を読むテストを足したら、読む範囲がディレクトリに限られるなら`changes`の`case`でそこを先に当てて入れ直し、
+  全ての文書を読むなら常に走る`docs-consistency.yml`でも走らせる。飛ばす運用の道具（`scripts/`の一部）を
+  テストやデプロイが読むようにしたら、`case`からその行を外す。飛ばす道具の静的検査は`docs-consistency.yml`が
+  常に走らせる。
+
+#### 秘密の値とトークン
+
+| 入れた場所 | 名前 | 中身（作った人・Resource owner・届く範囲・権限・期限） | 使う所 |
+|---|---|---|---|
+| 同 | `FLOW_BOT_TOKEN` | hidakagit-botが作ったfine-grained。届くのはridecompass/ride-compass-tasksだけ。Contentsは読み書き（担当の手番の記録をリリースへ置く）。期限2027-09-29 | 担当と流れの道具が置き場へ書く・ゲートの公開のあと`refresh.js`。開発機ではユーザー環境変数の同じ名前 |
+
+#### 本番Redisの設定
+
+Redisは「TTL付きキャッシュ、または実データ源へのフォールバックが必ず効くcache-aside」
+専用の層で、**正本データを持たない**（方針は[caching.md](../../.claude/rules/caching.md)）。
+本番はOracle Cloud VMへネイティブに導入する（backendコンテナが`--network=host`のため
+追加設定なしで到達できる）。ローカル開発は`docker-compose.yml`のredisサービス。
