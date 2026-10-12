@@ -38,7 +38,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     return { blockedBy: blocked(i), subIssues: children(i), parent: p && { ...near(p.n), body: p.body, labels: names(p.labels), issueFieldValues: fields(p) } };
   };
   // PR は、置いたときに決めた時刻（p.created・p.mergedAt）が無ければ、どのコメントより前に作られた。
-  const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, merged: Boolean(p.merged), mergeable: p.conflict ? "CONFLICTING" : "MERGEABLE", createdAt: p.created ?? T(-1), mergedAt: p.mergedAt ?? null, mergeCommit: { statusCheckRollup: p.mergeChecks && { state: p.mergeChecks, contexts: { nodes: [{ status: "COMPLETED" }, ...(p.mergeRunning ? [{ status: "IN_PROGRESS" }] : [])] } } },
+  const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, merged: Boolean(p.merged), mergeable: p.conflict ? "CONFLICTING" : "MERGEABLE", createdAt: p.created ?? T(-1), mergedAt: p.mergedAt ?? null, mergeCommit: { oid: p.sha ?? `m${i.n}`, statusCheckRollup: p.mergeChecks && { state: p.mergeChecks, contexts: { nodes: [{ status: "COMPLETED" }, ...(p.mergeRunning ? [{ status: "IN_PROGRESS" }] : [])] } } },
     commits: { nodes: [{ commit: { oid: `c${i.n}`, committedDate: "2026-10-11T00:00:00Z", statusCheckRollup: p.checks && { state: p.checks } } }] },
     timelineItems: { nodes: p.drafted ? [{ createdAt: "2026-10-11T01:00:00Z" }] : [] } });
   const gql = async (q, v) => {
@@ -63,10 +63,13 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
       const closedAt = i.state === "CLOSED" ? (i.closedAt ?? T(i.comments.length - 0.5)) : null;
       // GraphQL は App の書き手の名前を [bot] の付かない形で返す。コメントの時刻は並びの順。
       const comments = i.comments.map((body, k) => ({ body, createdAt: T(k), author: { login: author(i, k).replace(/\[bot\]$/, "") } })).slice(-40);
+      // master の新しい順のコミット: マージのあとのコミット（p.later の CI の結果）、マージのコミット、マージより前のコミット（p.earlier）。
+      const ci = (at) => (state, k) => ({ oid: `${at}${k}`, statusCheckRollup: { state, contexts: { nodes: [{ status: "COMPLETED" }] } } });
+      const [later, earlier] = ["later", "earlier"].map((at) => (i.pr?.[at] ?? []).map(ci(at)));
       return { t: { issue: { id: `I${i.n}`, state: i.state, stateReason: i.reason, closedAt, body: i.body, author: { login: i.author }, issueType: i.type && { name: i.type },
         assignees: { nodes: i.assignees.map((login) => ({ login })) }, ...relations(i), comments: { nodes: comments }, issueFieldValues: fields(i),
         timelineItems: { nodes: (i.typeChanges ?? []).map(([a, b]) => ({ prevIssueType: { name: a }, issueType: { name: b } })) } } },
-      c: { pullRequests: { nodes: i.pr ? [pull(i, i.pr)] : [] } } };
+      c: { pullRequests: { nodes: i.pr ? [pull(i, i.pr)] : [] }, ref: { target: { history: { nodes: [...later, { oid: i.pr?.sha ?? `m${i.n}` }, ...earlier] } } } } };
     }
     if (q.includes("setIssueFieldValue")) {
       const i = w.at(Number(v.i.slice(1)));
@@ -171,7 +174,8 @@ test("R3・決め1・決め7: 担当の実行が終わったら、表の上か�
     ["R3h どれでもない（落ちた）→ 黙って振り出し直さない", {}, {}, "回答待ち", 1, "## 問い（イレギュラー）"],
     ["決め1 マージのあとの残り", {}, { pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS" } }, "進行中", 2, null],
     ["マージのコミットの CI がまだ（本番に出る前に確かめを問わない）", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "PENDING" } }, "CI待ち", 1, null],
-    ["マージのコミットの master の CI が落ちたまま、作る担当が打ち直しも直しもせずに手放した → イレギュラー", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "FAILURE" } }, "回答待ち", 1, "## 問い（イレギュラー）"],
+    ["マージのコミットの master の CI が落ちたまま（マージより前の master のコミットは通っていた）、作る担当が打ち直しも直しもせずに手放した → イレギュラー", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "FAILURE", earlier: ["SUCCESS"] } }, "回答待ち", 1, "## 問い（イレギュラー）"],
+    ["マージのコミットの master の CI は落ちたが、あとの master のコミットの CI が通った（前の変更も検査とデプロイに含む）→ 本番に出たので確かめを問う（tasks#856）", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "FAILURE", later: ["FAILURE", "SUCCESS"] } }, "回答待ち", 1, "## 問い（確かめ）"],
     ["作る担当が打ち直した master の CI で、ほかの検査が走っている間に1つが落ちた → 終わるまで CI待ち（tasks#856）", {}, { body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "FAILURE", mergeRunning: true } }, "CI待ち", 1, null],
   ];
   for (const [name, start, facts, status, runs, comment] of rows) {
