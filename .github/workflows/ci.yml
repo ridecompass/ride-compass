@@ -113,7 +113,8 @@ jobs:
             if [ "$(area '^(\.github/workflows/ci\.yml|\.github/actions/)')" = true ]; then
               backend=true; frontend=true; scripts=true
             else
-              backend=$(area '^backend/'); frontend=$(area '^frontend/'); scripts=$(area '^scripts/')
+              # 本番の宛先は、backend の像（CORS の許可）と frontend の像（埋め込む宛先）の両方が読む。
+              backend=$(area '^(backend/|production-origins\.json$)'); frontend=$(area '^(frontend/|production-origins\.json$)'); scripts=$(area '^scripts/')
             fi
           fi
           push=$([ "$GITHUB_EVENT_NAME" = push ] && echo true || echo false)
@@ -382,28 +383,9 @@ jobs:
       - uses: actions/checkout@v5
       - name: 本番と同じ引数で像を作る
         id: build
-        env:
-          BACKEND_ORIGIN: ${{ vars.BACKEND_ORIGIN }}
         run: |
-          api=$BACKEND_ORIGIN
-          if [ -z "$api" ]; then
-            # masterの像は出すので、宛先が無ければ止める。Pull Request の実行（Dependabot が起こしたもの等）には
-            # リポジトリの変数が渡らないことがあるので、届かない代わりの宛先を焼き込んで確かめは続ける。
-            if [ "$GITHUB_EVENT_NAME" = push ]; then
-              echo "::error::リポジトリの変数 BACKEND_ORIGIN が無い（画面がbackendを呼ぶ宛先をビルドへ埋め込めない）"
-              exit 1
-            fi
-            api=https://backend.invalid
-            echo "::notice::リポジトリの変数 BACKEND_ORIGIN が無いので、宛先を $api にして作る"
-          fi
-          echo "api=$api" >> "$GITHUB_OUTPUT"
-          # 画面のAPI・タイル・rewritesの宛先は、どれもbackendへ直接向ける（docs/architecture/tech-stack.md「本番の宛先」）。
-          docker build frontend \
-            --build-arg NEXT_PUBLIC_API_URL="$api" \
-            --build-arg NEXT_PUBLIC_TILE_BASE_URL="$api" \
-            --build-arg BACKEND_INTERNAL_URL="$api" \
-            --build-arg GIT_COMMIT="$GITHUB_SHA" \
-            --tag "$IMAGE:$GITHUB_SHA"
+          echo "api=$(jq -r .backend production-origins.json)" >> "$GITHUB_OUTPUT"
+          node frontend/scripts/image.mjs "$IMAGE:$GITHUB_SHA" "$GITHUB_SHA"
       # 起こす前のコンテナから取る（起こしたサーバーが書いたものを混ぜない）。
       - name: 像の中のアプリを取り出す
         run: |

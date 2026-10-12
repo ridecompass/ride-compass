@@ -93,24 +93,27 @@ Windowsでは`uvicorn --reload`がリローダー親プロセスとワーカー�
 
 ## 本番の宛先（frontendのオリジンからbackendへ届くのは一部だけ）
 
+**本番の宛先は、リポジトリの根の`production-origins.json`だけが持つ。** ワークフロー（像のビルド・デプロイ・デプロイのあとの
+確かめ）と道具（例: `axis_apply.py`）はそこから読む。値を書くしかない所（下の表・担当の設定の説明の文等）は、
+`backend/tests/structure/test_single_owner_values.py`が持ち主と照らし、違えば全部の Pull Request の CI
+（`docs-consistency.yml`）が落ちる。宛先が変わったら、このファイルと照らしで落ちた所を同じ Pull Request で直す。マージすると、
+`ci.yml: changes`がこのファイルの変更をbackendとfrontendの両方の変更に数えるので、frontendの像が新しい宛先で作られて出て、
+backendのデプロイがCORSの許可へ新しいfrontendの宛先を足す。
+
 | | 宛先 | 中身 |
 |---|---|---|
 | frontend | `https://ride-compass-frontend.onrender.com` | Render。backendのCORSの許可に無ければ、`deploy-backend.yml`がデプロイのたびに足す |
 | backend | `https://193-123-166-150.sslip.io` | Oracle Cloud VM。VMのnginxがTLS（certbot）を終端し、`127.0.0.1:8000`のコンテナへ渡す。名前はVMの公開IPをsslip.ioで引けるようにしたもので、**IPが変わると宛先も変わる** |
 
-**画面がbackendを呼ぶ宛先は、コードのリポジトリの変数`BACKEND_ORIGIN`にある。** ブラウザからのAPIは`NEXT_PUBLIC_API_URL`、タイルは
+**画面がbackendを呼ぶ宛先は、像のビルドのときに埋め込まれる。** ブラウザからのAPIは`NEXT_PUBLIC_API_URL`、タイルは
 `NEXT_PUBLIC_TILE_BASE_URL`（[static-map-layers.md](../modules/frontend/static-map-layers.md)）、rewritesと管理画面の転送の先は
-`BACKEND_INTERNAL_URL`で、`deploy-frontend.yml`が3つとも`BACKEND_ORIGIN`の値を像のビルドへ渡し、ビルドのときに埋め込まれる。
+`BACKEND_INTERNAL_URL`で、`frontend/scripts/image.mjs`が3つともbackendの宛先にして像のビルドへ渡す（撮影の道具も同じ組を使う）。
 
 **frontendのオリジンからbackendへ届くのは、`frontend/next.config.ts`のrewritesにあるタイル類と、管理画面の
 転送（`/admin/api/…`→backendの`/api/admin/…`、Basic認証をサーバー側で付ける）だけ。** それ以外のAPI
 （例: `/api/axis-catalog`・`/api/region/dynamic-way-values/…`・`/health`）をfrontendのオリジンへ投げると、
 Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で叩くとき・道具から引くときは、backendの
 宛先へ直接投げる。frontend自身の口（`/api/version`）はfrontendのオリジンにだけある。
-
-**手元の道具は、backendの宛先を`backend/.env.oracle.local`の`BACKEND_ORIGIN`から読む**（読み方は
-`backend/scripts/_prod_env.py`。例: `axis_apply.py`）。道具のコードに宛先を書き込まない——IPが変わったとき、
-道具の側で直すのが各自の`BACKEND_ORIGIN`だけで済むようにするため。
 
 ## デプロイの反映確認（backend/frontendで注入元が異なる）
 
@@ -253,7 +256,8 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
   重い検査のジョブを細かく割って待ちを縮めることはしない——待ちを決めているのは、検査の所要より同時に動くジョブの数の上限で、
   ジョブごとに用意（containerの用意・`npm ci`）を払う本数を増やすと、取り合いのときの待ちが延びる。
 - **どのジョブを走らせるかは、変わった置き場で決める。** 置き場（`backend/`・`frontend/`・`scripts/`）はどれも自分のテストを自分の中に
-  持ち、`ci.yml: changes`は変わったファイルの頭からどの置き場が変わったかだけを見て、その置き場の検査（backendならテスト・api-contract・
+  持ち、`ci.yml: changes`は変わったファイルの頭からどの置き場が変わったかだけを見て（本番の宛先の`production-origins.json`は、
+  両方の像が読むのでbackendとfrontendの両方に数える）、その置き場の検査（backendならテスト・api-contract・
   像の確かめ、frontendならテスト・e2e・全状態の走査・api-contract・像の確かめ、`scripts/`なら道具のテスト）とデプロイを走らせる。
   それ以外の変更（文書・タスク管理・ほかのワークフロー）では何も走らせない。`ci.yml`と`.github/actions/`を変えたら、その定義で
   全部を走らせて確かめる。置き場をまたいで読むものは数えず、テストを読む側の置き場へ置く（backendのための道具は`backend/scripts/`）。
@@ -400,10 +404,7 @@ frontendはRender、PostgreSQLとRedisはVMへネイティブに置く。
 
 #### 本番の宛先（frontendのオリジンからbackendへ届くのは一部だけ）
 
-**手元の道具は、backendの宛先を`backend/.env.oracle.local`の`BACKEND_ORIGIN`から読む**（読み方は
-`backend/scripts/_prod_env.py`。例: `axis_apply.py`）。道具のコードに宛先を書き込まない——IPが変わったとき、
-道具の側で直すのが各自の`BACKEND_ORIGIN`だけで済むようにするため。振り出しの見回りは、同じ値をコードのリポジトリの
-Actionsの変数`BACKEND_ORIGIN`から読む（宛先が変わったらここも書き換える）。
+道具のコードに宛先を書き込まない——IPが変わったとき、直すのが`production-origins.json`だけで済むようにするため。
 
 #### CIの実行枠（リポジトリがpublicである間の前提）
 

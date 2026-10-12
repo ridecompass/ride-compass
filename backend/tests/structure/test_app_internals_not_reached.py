@@ -25,14 +25,20 @@ import ast
 from collections.abc import Callable
 from pathlib import Path
 
-from tests.structure.source_symbols import Scope, SourceTree
+from tests.structure.source_symbols import (
+    REPLACING_BY_NAME,
+    REPLACING_BY_PATH,
+    Scope,
+    SourceTree,
+    called_name,
+    is_scaffold,
+    scanned_tests,
+)
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 APP = "app"
-#: 持ち主と名前の文字列を受ける呼び出し（`monkeypatch.setattr`・`patch.object`・組み込みの`getattr`等）。
-NAMED_BY_STRING = {"setattr", "getattr", "delattr", "hasattr", "object"}
-#: `"app.x.y"`の道筋を受ける呼び出し（`monkeypatch.setattr`・`monkeypatch.delattr`・`patch`）。
-NAMED_BY_PATH = {"setattr", "delattr", "patch"}
+#: 持ち主と名前の文字列を受ける呼び出し（差し替えと、組み込みの`getattr`・`hasattr`）。
+NAMED_BY_STRING = REPLACING_BY_NAME | {"getattr", "hasattr"}
 
 
 def _internal(name: str) -> bool:
@@ -60,13 +66,12 @@ def _defined(tree: ast.AST) -> set[str]:
 
 
 def _named_by_string(call: ast.Call, reaches: Callable[[ast.expr, str], bool]) -> str | None:
-    func = call.func
-    name = func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else None
+    name = called_name(call)
     args = call.args
     if (name in NAMED_BY_STRING and len(args) >= 2 and isinstance(args[1], ast.Constant)
             and isinstance(args[1].value, str) and reaches(args[0], args[1].value)):
         return f"{ast.unparse(args[0])}.{args[1].value}"
-    if name in NAMED_BY_PATH and args and isinstance(args[0], ast.Constant) and isinstance(args[0].value, str):
+    if name in REPLACING_BY_PATH and args and isinstance(args[0], ast.Constant) and isinstance(args[0].value, str):
         parts = args[0].value.split(".")
         if parts[0] == APP and any(_internal(part) for part in parts):
             return args[0].value
@@ -77,12 +82,8 @@ def internal_reaches(root: Path) -> list[str]:
     """`root`（`backend`）の`tests`で、`app`の内部名へ入っている箇所。"""
     source = SourceTree(root)
     defined = set().union(*(_defined(ast.parse(path.read_text(encoding="utf-8"))) for path in (root / APP).rglob("*.py")))
-    tests = {
-        path: ast.parse(path.read_text(encoding="utf-8"))
-        for path in sorted((root / "tests").rglob("*.py"))
-        if "structure" not in path.relative_to(root / "tests").parts
-    }
-    shared = set().union(*(_defined(tree) for path, tree in tests.items() if not path.name.startswith("test_")))
+    tests = {path: ast.parse(path.read_text(encoding="utf-8")) for path in scanned_tests(root)}
+    shared = set().union(*(_defined(tree) for path, tree in tests.items() if is_scaffold(path)))
     found: list[tuple[str, int, str]] = []
     for path, tree in tests.items():
         module = source.module_of(path)

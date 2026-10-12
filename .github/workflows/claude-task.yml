@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       issue:
-        description: 置き場（ridecompass/ride-compass-tasks）の issue の番号
+        description: 置き場（tools/flow-gate/flow.config.json の tasks）の issue の番号
         required: true
       kind:
         description: 担当の種類
@@ -42,15 +42,22 @@ jobs:
       GH_TOKEN: ${{ secrets.CODE_TOKEN }}
       MAPILLARY_TOKEN: ${{ secrets.MAPILLARY_TOKEN }}
       ISSUE: ${{ inputs.issue }}
-      TASKS: ridecompass/ride-compass-tasks
       KIND: ${{ inputs.kind }}
       # 担当は最初の結果で終わる。裏の処理（run_in_background・裏の subagent）は外す。
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
+      # 担当の手番の間はほとんど数秒なので、キャッシュは単価の低い5分の保持で足りる（購読の既定は1時間）。
+      CLAUDE_CODE_PROMPT_CACHE_TTL: 5m
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.CODE_TOKEN }}
+      # 置き場の名前は tools/flow-gate/flow.config.json の tasks だけが持つ。後の段は TASKS を、担当への指示は段の出力を読む。
+      - id: tasks
+        run: |
+          tasks=$(jq -er .tasks tools/flow-gate/flow.config.json)
+          echo "TASKS=$tasks" >> "$GITHUB_ENV"
+          echo "repo=$tasks" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v5
         with:
           node-version-file: frontend/package.json
@@ -84,7 +91,7 @@ jobs:
           settings: ${{ github.workspace }}/.github/claude-task/settings.json
           claude_args: --model claude-opus-5-5 --disallowedTools Monitor,ScheduleWakeup,CronCreate,CronDelete,CronList,Workflow
           prompt: |
-            あなたは RideCompass の${{ inputs.kind }}担当です。作業ツリー ${{ github.workspace }} で、置き場 ridecompass/ride-compass-tasks の issue #${{ inputs.issue }} を扱います。
+            あなたは RideCompass の${{ inputs.kind }}担当です。作業ツリー ${{ github.workspace }} で、置き場 ${{ steps.tasks.outputs.repo }} の issue #${{ inputs.issue }} を扱います。
             まず CLAUDE.md と .claude/skills/task-work/SKILL.md の全文（「${{ inputs.kind }}担当」の手順を進める）を読み、その手順のとおりに進めてください。
       # 作る担当の GitHub に無い変更は、ランナーと一緒に消えないよう wip の枝へ残す（作業ブランチは書き換えない）。
       - if: always() && inputs.kind == '作る'
