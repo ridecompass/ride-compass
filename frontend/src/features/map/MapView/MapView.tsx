@@ -59,6 +59,7 @@ import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { useLayerDataStatus, type LayerDataSourceEntry } from "@/features/map/MapView/useLayerDataStatus";
 import { ORIGIN_ZOOM, useMapMarkers } from "@/features/map/MapView/useMapMarkers";
+import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
 import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
 import { registerJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
 import { debugLog } from "@/lib/debugLog";
@@ -198,13 +199,21 @@ const FOCUS_ZOOM = 16;
 /** 地点を、見えている所の中ほどへ寄せる。`flyTo`の`padding`は寄せたあとも地図に残るので、残らない`offset`でずらす。 */
 function flyToVisible(map: MapLibreMap, point: Coordinates, measureObscured: () => RouteFitObscuredPx | undefined) {
   runWhenStyleReady(map, () => {
-    const padding = visiblePadding(map, measureObscured);
     map.flyTo({
       center: [point.longitude, point.latitude],
       zoom: FOCUS_ZOOM,
-      offset: [(padding.left - padding.right) / 2, (padding.top - padding.bottom) / 2],
+      offset: visibleCenterOffset(map, measureObscured),
     });
   });
+}
+
+/** 地図の中心から、見えている所の中ほどへのずれ（px）。寄せるときの`offset`に渡す。 */
+function visibleCenterOffset(
+  map: MapLibreMap,
+  measureObscured: () => RouteFitObscuredPx | undefined,
+): [number, number] {
+  const padding = visiblePadding(map, measureObscured);
+  return [(padding.left - padding.right) / 2, (padding.top - padding.bottom) / 2];
 }
 
 // 区間の当たり判定は見た目の線より広いため、押した地点の印を区間の線上の最寄りの点へ寄せる。区間の距離なら
@@ -285,6 +294,8 @@ interface MapViewProps {
   /** 地図の上に重なるUIで覆われている辺ごとの高さ(px)をいま測る。ルートを収めるとき、覆われた所へ収めないため。
    * レイアウトを持つ呼び出し側が測る。地図の上に置いた部品は、ここで測らず`mapOverlayEdge`の印を付ければ地図が測る。 */
   measureRouteFitObscuredPx: () => RouteFitObscuredPx | undefined;
+  /** 走行モードの間だけ値がある。現在地の点を出し、追っている間は地図を現在地へ動かし続ける。 */
+  ride: RideFollow | null;
 }
 
 export default function MapView({
@@ -312,6 +323,7 @@ export default function MapView({
   onDestinationClear,
   focusPoint,
   measureRouteFitObscuredPx,
+  ride,
 }: MapViewProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -668,6 +680,8 @@ export default function MapView({
     onDestinationClear,
     onRouteSegmentSelect,
   });
+
+  useRideFollow(mapRef, ride, (map) => visibleCenterOffset(map, latest.current.measureRouteFitObscuredPx));
 
   // 住所の検索で置いた地点へ寄せる。出発地を置いたときは印のフックの位置の更新も寄せるが、このeffectが後に走るので
   // こちらが勝つ。
