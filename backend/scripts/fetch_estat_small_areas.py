@@ -18,23 +18,22 @@ import sys
 import zipfile
 from pathlib import Path
 
-import httpx
 import shapefile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified
+from app.batch.common import fetch_verified, run_profile_fetch_cli
 from app.batch.source_adapters.estat_small_area import (
     DOWNLOAD_URL,
     boundary_path,
     open_shapefile,
     range_prefectures,
 )
-from app.batch.source_profile import load_source_profile
+from app.batch.source_profile import SourceProfile, SourceSpec
 
 logger = logging.getLogger("ridecompass.fetch_estat_small_areas")
 
-_REQUEST_TIMEOUT = httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=30.0)
+_READ_TIMEOUT_SECONDS = 300.0
 
 
 def _readable(path: Path) -> bool:
@@ -46,24 +45,19 @@ def _readable(path: Path) -> bool:
         return False
 
 
-def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-    parser = argparse.ArgumentParser(description="e-Stat の小地域の境界を手元へ写す")
-    parser.add_argument("--profile", default=None, type=Path)
-    args = parser.parse_args()
-
-    profile = load_source_profile(args.profile)
-    surveys = sorted({spec.rows.survey for spec in profile.sources if spec.adapter == "estat_small_area"})
-    if not surveys:
-        logger.info("プロファイルに e-Stat の小地域の境界の指定がありません")
-        return 0
+def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
+    surveys = sorted({spec.rows.survey for spec in specs})
     prefectures = range_prefectures(profile)
     logger.info("範囲に掛かる都道府県: %s", ", ".join(prefectures))
-    fetched = [
+    return all([
         fetch_verified(DOWNLOAD_URL.format(survey=survey, prefecture=code), boundary_path(survey, code), _readable,
-                       timeout=_REQUEST_TIMEOUT, logger=logger)
-        for survey in surveys for code in prefectures]
-    return 0 if all(fetched) else 1
+                       read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
+        for survey in surveys for code in prefectures])
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="e-Stat の小地域の境界を手元へ写す")
+    return run_profile_fetch_cli(parser, "estat_small_area", _fetch_specs, logger=logger)
 
 
 if __name__ == "__main__":

@@ -7,8 +7,8 @@ r"""国の指定・登録の文化財の建造物（文化遺産オンライン�
 `from`・`size`は2,000件で止まる）。配信元は間を空けて打つよう求め、上限の目安を示さないので、1回ごとに
 `_REQUEST_INTERVAL_SECONDS`待つ（同じガイドの1.4）。
 
-手順は`app.batch.common.fetch_verified`と同じく、読めるものは取り直さず、一時ファイルへ書いてから所定の名前へ移す。
-書き終えたら、行の数が応答の件数（`hit`）と合うかを見る——途中で打ち切られた一覧を取得済みに見せない。
+置く手順（読めるものは取り直さない・一時ファイル経由・書き終えたら開いてみる）は`app.batch.common.place_verified`が持つ。
+書き終えたら、行の数が応答の件数（`hit`）と合うかも見る——途中で打ち切られた一覧を取得済みに見せない。
 
 置き場の名前はプロファイルの取った日（`bunka_heritages`ソースの`rows.snapshot`）で決まる。取り直すときは日を変える。
 
@@ -28,9 +28,9 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import FETCH_PART_SUFFIX, format_duration
+from app.batch.common import fetch_timeout, place_verified, run_profile_fetch_cli
 from app.batch.source_adapters.bunka_heritages import heritages_path
-from app.batch.source_profile import load_source_profile
+from app.batch.source_profile import SourceProfile, SourceSpec
 
 logger = logging.getLogger("ridecompass.fetch_bunka_heritages")
 
@@ -40,7 +40,7 @@ SCROLL_URL = "https://jpsearch.go.jp/api/item/scroll/jps-cross"
 SEARCH_PARAMS = {"f-db": "bunka", "f-type": "architecture"}
 
 _REQUEST_INTERVAL_SECONDS = 1.0
-_REQUEST_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=30.0)
+_READ_TIMEOUT_SECONDS = 120.0
 
 
 def _readable(path: Path) -> bool:
@@ -53,17 +53,12 @@ def _readable(path: Path) -> bool:
         return False
 
 
-def fetch(snapshot: str) -> bool:
-    destination = heritages_path(snapshot)
-    if destination.exists() and _readable(destination):
-        logger.info("既にある %s", destination)
-        return True
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_name(destination.name + FETCH_PART_SUFFIX)
-    started = time.perf_counter()
+def _write(temporary: Path) -> bool:
+    """全件を1行1件で書く。行の数が応答の件数に合えばTrue。"""
     written = 0
     params: dict[str, str] = SEARCH_PARAMS
-    with httpx.Client(timeout=_REQUEST_TIMEOUT) as client, temporary.open("w", encoding="utf-8") as sink:
+    with httpx.Client(timeout=fetch_timeout(_READ_TIMEOUT_SECONDS)) as client, \
+            temporary.open("w", encoding="utf-8") as sink:
         while True:
             response = client.get(SCROLL_URL, params=params)
             response.raise_for_status()
@@ -77,27 +72,23 @@ def fetch(snapshot: str) -> bool:
                 break
             params = {"scrollId": page["scrollId"]}
             time.sleep(_REQUEST_INTERVAL_SECONDS)
-    if written != hit or not _readable(temporary):
-        temporary.unlink(missing_ok=True)
-        logger.error("取り出した一覧が件数に合わない（%d件 / 応答の件数 %d件）。もう一度実行すると取り直す", written, hit)
+    if written != hit:
+        logger.error("取り出した一覧が件数に合わない（%d件 / 応答の件数 %d件）", written, hit)
         return False
-    temporary.replace(destination)
-    logger.info("置いた %s（%d件 / %s）", destination, written, format_duration(time.perf_counter() - started))
     return True
 
 
-def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-    parser = argparse.ArgumentParser(description="国の文化財の建造物を手元へ写す")
-    parser.add_argument("--profile", default=None, type=Path)
-    args = parser.parse_args()
+def fetch(snapshot: str) -> bool:
+    return place_verified(heritages_path(snapshot), _readable, _write, source=SCROLL_URL, logger=logger)
 
-    profile = load_source_profile(args.profile)
-    snapshots = sorted({spec.rows.snapshot for spec in profile.sources if spec.adapter == "bunka_heritages"})
-    if not snapshots:
-        logger.info("プロファイルに文化財の建造物の指定がありません")
-        return 0
-    return 0 if all(fetch(snapshot) for snapshot in snapshots) else 1
+
+def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
+    return all([fetch(snapshot) for snapshot in sorted({spec.rows.snapshot for spec in specs})])
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="国の文化財の建造物を手元へ写す")
+    return run_profile_fetch_cli(parser, "bunka_heritages", _fetch_specs, logger=logger)
 
 
 if __name__ == "__main__":
