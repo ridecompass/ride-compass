@@ -12,7 +12,7 @@ import { useScreenWakeLock, type ScreenWakeLockStatus } from "./useScreenWakeLoc
 export type RideStatus = "off" | "waiting" | "following" | "paused";
 
 /** 地図へ渡す走行モードの値。地図はこれで現在地の点を出し、追っている間は中心と向きを動かす。 */
-export interface RideOnMap {
+interface RideOnMap {
   position: Coordinates | null;
   /** 進む向き（真北0・時計回りの度）。まだ分からなければnull。 */
   bearing: number | null;
