@@ -14,7 +14,7 @@ import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
 
 import type { MapLayerVisibility } from "@/features/map/layers/mapLayers";
-import { axisMapLayerId, type DedicatedWayValueAxis, type RampAxis } from "@/lib/mapDisplay/axisLayers";
+import type { DedicatedWayValueAxis } from "@/lib/mapDisplay/axisLayers";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import { debugLog } from "@/lib/debugLog";
 import type {
@@ -34,7 +34,7 @@ import { primaryAttributeIdsToLayerIds } from "@/features/map/layers/primaryAttr
 import { ROUTE_ARROW_ICON_ID, createRouteArrowIcon } from "@/features/map/layers/routeArrowIcon";
 import type { LensId, RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
 import type { RouteCandidate } from "@/types/route";
-import { dedicatedAxisBands, rampAxisBands, type ValueBand } from "@/lib/mapDisplay/valueScale";
+import { dedicatedAxisBands, type ValueBand } from "@/lib/mapDisplay/valueScale";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import {
   ROAD_TILE_MAX_ZOOM,
@@ -49,12 +49,7 @@ import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { drawPointIcon } from "@/features/map/layers/pointIcon";
 
 import { applyMapScene } from "./applyMapScene";
-import {
-  buildAxisRampUnknownExpression,
-  buildAxisRampValueExpression,
-  type AxisBand,
-  type AxisLineState,
-} from "./groups/axisLines";
+import type { AxisBand, AxisLineState } from "./groups/axisLines";
 import { POINT_ICONS, POINT_TILE_LAYERS } from "./groups/points";
 import type { RouteState } from "./groups/routes";
 import { WEATHER_ICONS, weatherElementKey, type WeatherPayload, type WeatherState } from "./groups/weather";
@@ -94,7 +89,6 @@ export interface SceneLook {
 type SceneWiringProps = {
   readonly look: SceneLook;
   readonly catalog: {
-    readonly rampAxes: readonly RampAxis[];
     readonly dedicatedAxes: readonly DedicatedWayValueAxis[];
     readonly routeStyleModes: readonly RouteStyleMode[];
   };
@@ -118,17 +112,6 @@ function isAxisShown(
   axis: Pick<CatalogAxis, "axisId" | "densityTerms">,
 ): boolean {
   return axis.axisId === look.paintedAxisId && axis.densityTerms === null;
-}
-
-/** レイヤーごとの実際の表示。ramp軸のレイヤーは表示の状態に無く、塗っている軸かで決まる。 */
-export function effectiveLayerVisibility(
-  look: Pick<SceneLook, "layerVisibility" | "paintedAxisId">,
-  rampAxes: readonly RampAxis[],
-): MapLayerVisibility {
-  return {
-    ...look.layerVisibility,
-    ...Object.fromEntries(rampAxes.map((axis) => [axisMapLayerId(axis.axisId), isAxisShown(look, axis)])),
-  };
 }
 
 function routeStateFrom(props: SceneWiringProps): RouteState {
@@ -180,12 +163,12 @@ function axisLineBands(bands: readonly ValueBand[]): AxisBand[] {
   return bands.map(({ key, lowerBound, color }) => ({ key, lowerBound, color })).reverse();
 }
 
-/** 下敷きで描くramp軸。その軸の材料（一次属性の表示レイヤー）が1つでも出ている間は、材料の
+/** 下敷きで描く軸。その軸の材料（一次属性の表示レイヤー）が1つでも出ている間は、材料の
  * 線を隠さないよう下へ敷く。 */
 function underlaidAxisIds(props: SceneWiringProps): ReadonlySet<string> {
   const visible = props.look.layerVisibility;
   return new Set(
-    props.catalog.rampAxes
+    props.catalog.dedicatedAxes
       .filter((axis) => primaryAttributeIdsToLayerIds(axis.primaryAttributeIds).some((id) => visible[id]))
       .map((axis) => axis.axisId),
   );
@@ -194,45 +177,19 @@ function underlaidAxisIds(props: SceneWiringProps): ReadonlySet<string> {
 function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): AxisLineState {
   const { look } = props;
   const underlaid = underlaidAxisIds(props);
-  const entry = (
-    axis: CatalogAxis,
-    bands: readonly ValueBand[],
-    value: AxisLineState["axes"][number]["value"],
-    underlay: boolean,
-  ): AxisLineState["axes"][number] => ({
-    axisId: axis.axisId,
-    visible: isAxisShown(look, axis),
-    bands: axisLineBands(bands),
-    value,
-    hiddenBandKeys: look.hiddenLegendKeys[axis.axisId] ?? NO_KEYS,
-    underlay,
-  });
-  const ramp = props.catalog.rampAxes.map((axis) =>
-    entry(
-      axis,
-      rampAxisBands(axis),
-      {
-        kind: "tile",
-        expression: buildAxisRampValueExpression(axis),
-        unknown: buildAxisRampUnknownExpression(axis),
-      },
-      underlaid.has(axis.axisId),
-    ),
-  );
-  const dedicated = props.catalog.dedicatedAxes.map((axis) => {
+  const axes = props.catalog.dedicatedAxes.map((axis) => {
     const delivered = look.dedicatedWayValues.get(axis.axisId);
-    return entry(
-      axis,
-      dedicatedAxisBands(axis.display),
-      {
-        kind: "delivered",
-        values: delivered?.values ?? new Map<string, number | null>(),
-        loading: delivered?.loading === true,
-      },
-      false,
-    );
+    return {
+      axisId: axis.axisId,
+      visible: isAxisShown(look, axis),
+      bands: axisLineBands(dedicatedAxisBands(axis.display)),
+      values: delivered?.values ?? new Map<string, number | null>(),
+      loading: delivered?.loading === true,
+      hiddenBandKeys: look.hiddenLegendKeys[axis.axisId] ?? NO_KEYS,
+      underlay: underlaid.has(axis.axisId),
+    };
   });
-  return { axes: [...ramp, ...dedicated], sourceLayer };
+  return { axes, sourceLayer };
 }
 
 /** 届いている中身を、要素の鍵（`groups/weather.ts: weatherElementKey`）で引ける形へ移す。 */

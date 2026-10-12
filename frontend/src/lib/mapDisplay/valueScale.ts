@@ -1,10 +1,9 @@
-// 地図が軸について塗る値の段と配色。ルート前の道路の線（ramp軸・専用配信の軸）・ルートの線・凡例・管理画面の
+// 地図が軸について塗る値の段と配色。ルート前の道路の線・ルートの線・凡例・管理画面の
 // プレビューが同じ関数を通るので、同じ軸の同じ段はどこでも同じ色になる。
 
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { components } from "@/types/generated/api";
 import palette from "@/types/generated/palette.json";
-import type { RampAxis } from "./axisLayers";
 import type { DedicatedWayValueDisplay } from "./dedicatedWayValueLayer";
 import { bandLabelsForBandCount, buildRangeLegendBands, type MapColorLegendBand } from "./mapColorLegend";
 
@@ -190,12 +189,6 @@ export function valueBands(
     ...band,
     lowerBound: index === 0 ? Number.NEGATIVE_INFINITY : boundaries[index - 1],
   }));
-}
-
-/** ramp軸の段。境界は軸の地図表示のしきい値（重み付き和の目盛り）。重み付き和は向きの符号を持たないので、
- * backendはramp軸の値の種類を難易度として配る。範囲の文字はルート後の線と同じ目盛り（`legend`）で書く。 */
-export function rampAxisBands(axis: RampAxis): ValueBand[] {
-  return valueBands(axis.mapValueKind, axis.thresholds, axis.legend, axis.bandLabelsOverride);
 }
 
 /** 専用配信の軸の段。 */

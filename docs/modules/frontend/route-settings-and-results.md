@@ -43,7 +43,7 @@
 | `hooks/useAxisCatalog.ts` | `GET /api/axis-catalog`の取得。機能をまたいで読むカタログ（軸一覧・既定重み・軸ラベル・識別色・較正値）を`useAxisCatalog`が返す。1つの機能だけが読む形は、その機能が同じ取得の応答から`useAxisCatalogSelect`で導く（地図の表示の軸・タイルの世代は[地図: 静的レイヤー・道路表示](static-map-layers.md)の`features/map/useMapAxisCatalog.ts`）——共有のカタログへ相乗りさせると、読み手が1機能だけの知識を共有の層が運ぶ |
 | `lib/axisCatalog.ts` | 上記フックが返すカタログを、応答から導く純関数（`axisCatalogFromResponse`）と、画面が読む較正値（`CLIENT_TUNING_IDS`・`clientTuningValue`。並べるidは生成物`route-generate-config.json`に在るものだけを型が通す）。フックが持つのは「いつ取りに行き、誰と共有するか」だけ |
 | `services/axisCatalogApi.ts` | 上記フックが叩くbackend APIの薄いラッパー |
-| `lib/catalogAxis.ts` | 軸カタログの1行を画面が読む形へ移す型（`CatalogAxis`）と唯一の変換（`catalogAxisFromEntry`）。重み一覧の1行はこの型そのもので、ramp軸・専用配信の軸・地図のチップの軸はこれに用途の項目を足した型。文へ評価の名前を差し込む形（「A」「B」。`axisNamesInText`・走る条件で値の変わる軸に絞る`axisNamesUsing`）もここが持つ |
+| `lib/catalogAxis.ts` | 軸カタログの1行を画面が読む形へ移す型（`CatalogAxis`）と唯一の変換（`catalogAxisFromEntry`）。重み一覧の1行はこの型そのもので、地図が塗る軸・地図のチップの軸はこれに用途の項目を足した型。文へ評価の名前を差し込む形（「A」「B」。`axisNamesInText`・走る条件で値の変わる軸に絞る`axisNamesUsing`）もここが持つ |
 | `features/route/DifficultyProfile/DifficultyProfile.tsx`・`profileGeometry.ts` | 候補の中身の先頭に出す、道のりに沿った難易度のグラフ。横が始点からの距離、縦が区間ごとの難易度で、区間ごとの階段を軸の寄与で色分けして下から積む。区間はbackendがEdgeを約500mのビンへ畳んだもの（`aggregate_segments_into_bins`）で、Edge 1本ずつではない。**塗った面積がルートの負荷にほぼ一致する**——値の無い区間はルートの総合難易度の高さで灰色に描く（負荷は「値のある区間の距離加重平均×全長」で、値の無い区間を平均として数えるため）。ほぼなのは、ビンの中で値の無いEdgeがそのビンの平均で数えられるためと、1kmあたりの回数で測る評価軸はルート全体の回数の平均から点数にし直すため（backend: `domain/route.py: merge_difficulty`）。横軸の右端は**一覧の中で最も長い候補の距離**で、候補どうしで面積を見比べられる。押したまま動かす（キーボードは矢印・Home・End）と、その距離の区間と、区間の道なりの形の上で距離の割合ぶん進んだ地点を選ぶ——選択は地図で区間を押したときと同じ`selectedRouteSegment`で、地図に印が出て下に区間の詳細が出る。グラフ自体は区間を選んでいる間も残る |
 | `features/route/geoDistance.ts` | 座標列の距離計算（`cumulativeDistancesKm`）。区間の位置と代替の距離差を出すのに使う。地球の半径はbackendの値を生成物`geo-config.json`で読み、2点の距離がbackendと合うことは、`cardinalLabel`と同じ表をテストが通して確かめる |
 | `features/route/ErrorText/ErrorText.tsx` | 操作した箇所の直下に出すエラー文言（`role=alert`）。ルート結果と区間の乗り換えの面が使う |
@@ -85,7 +85,7 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
   運ぶ（地図は同じ取得から世代を導く）ため、地図の道路・POI・事故も出ない（[静的地図レイヤー](static-map-layers.md)「配信情報を取得できず
   表示できません」節）。告知の文面はその両方を述べる。
 - **カタログ1件→画面の軸の変換は`catalogAxis.ts: catalogAxisFromEntry`1本**で、重み一覧も、
-  ramp軸・専用配信の軸（`axisLayers.ts`）の共通の項目もこれを通る——経路ごとに行を写すと、同じ行の欠けた
+  地図が塗る軸（`axisLayers.ts`）の共通の項目もこれを通る——経路ごとに行を写すと、同じ行の欠けた
   項目（アイコンの`icon_id`が無い等）の補い方が経路ごとに食い違う。
 - カテゴリ（観測/推定/動的）によるグルーピング表示は行わない。軸スタジオは常に
   `category="推定"`固定で軸を作るため、フラットな1本のリストで表示する。

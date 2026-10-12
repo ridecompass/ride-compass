@@ -10,10 +10,10 @@ import {
 import { roadLegendAxes } from "@/features/map/scene/legends";
 
 import { mapCatalogOf } from "@/testing/mapAxisCatalog";
-import { dedicatedEntry, rampEntry } from "@/testing/catalogAxes";
+import { dedicatedEntry } from "@/testing/catalogAxes";
 import { deserializeLayerVisibility, overlayChips } from "./overlayChips";
 
-const catalog = mapCatalogOf([rampEntry("ramp_a", [1]), dedicatedEntry("dedicated_b", [1])]);
+const catalog = mapCatalogOf([dedicatedEntry("axis_a", [1])]);
 const LAYERS = buildMapLayers(catalog);
 
 type Options = Parameters<typeof overlayChips>[0];
@@ -34,7 +34,7 @@ const chipOf = (list: ReturnType<typeof chips>, id: string) => list.find((chip) 
 describe("overlayChips（地図上チップの状態）", () => {
   it("軸スタジオ由来のレイヤーと、ルートにひもづくレイヤーはチップにしない（どちらも色分けが持つ）", () => {
     const ids = chips().map((chip) => chip.id);
-    expect(ids).not.toContain("axis:ramp_a");
+    expect(ids).not.toContain("axis_aAxis");
     expect(ids).not.toContain("route");
     expect(ids).toContain("tunnel");
   });

@@ -1,5 +1,5 @@
 // 軸カタログ（`GET /api/axis-catalog`）の1行を、画面が読む形へ移す。**行から移すのはここの1か所だけ**——
-// 重みを付けられる軸の一覧・ramp軸・専用配信の軸は、どれもこの形に自分の用途の項目を足した型で、
+// 重みを付けられる軸の一覧・地図が塗る軸は、どれもこの形に自分の用途の項目を足した型で、
 // 共通の項目（名前・アイコン・説明・単位・内訳）を自前で写さない。写すと、同じ行の欠けた項目の補い方が型ごとに食い違う。
 import type { MapValueKind } from "@/lib/mapDisplay/valueScale";
 import type { AxisCatalogEntry } from "@/types/route";

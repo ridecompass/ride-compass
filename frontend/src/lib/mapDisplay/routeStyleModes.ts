@@ -14,7 +14,7 @@ import {
 } from "./valueScale";
 
 /** レンズ（地図を何で塗るか）の識別子。`"none"`（塗らない）・`"difficulty"`（総合難易度）
- * 以外は公開軸のaxis_id。ルート前は全道路（rampタイル・専用配信）、ルート後はルート線
+ * 以外は公開軸のaxis_id。ルート前は全道路（道ごとの得点の配信）、ルート後はルート線
  * （`axis_difficulties`）を同じ識別子で塗る。 */
 export type LensId = "difficulty" | "none" | (string & {});
 /** レンズの中立色。「なし」「総合難易度」のようにどの軸にも紐づかないレンズと、

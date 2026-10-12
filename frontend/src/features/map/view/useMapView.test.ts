@@ -14,14 +14,14 @@ import { TILE_VERSIONS_MISSING_NOTICE, TILE_ZOOM_TOO_WIDE_NOTICE } from "@/featu
 import { ROAD_OTHER_KEY } from "@/features/map/scene/groups/roadLines";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { onBackend, onSameOrigin } from "@/testing/backendServer";
-import { catalogEntry, catalogResponse, dedicatedEntry, rampEntry } from "@/testing/catalogAxes";
+import { catalogEntry, catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";
 import type { AxisCatalogEntry } from "@/types/route";
 
 import { LEGEND_FILTER_DEBOUNCE_MS, useMapView } from "./useMapView";
 
 const NOW = new Date("2026-10-07T03:00:00Z");
 const TILE_VERSIONS = { accident: "a1", poi: "p1", road_surface: "r1" };
-const RAMP = rampEntry("axis_ramp", [10, 20]);
+const SCORE = dedicatedEntry("axis_score", [10, 20]);
 const DEDICATED = dedicatedEntry("axis_wind", [10, 20], { dynamic_way_value_conditions: ["bearing_deg"] });
 const OTHER_DEDICATED = dedicatedEntry("axis_other", [10, 20]);
 /** 道路タイルのズームの、狭い表示範囲（覆うタイルが少ない）。 */
@@ -30,7 +30,7 @@ const VIEWPORT = { west: 139.7, south: 35.68, east: 139.701, north: 35.681, zoom
 type Inputs = Parameters<typeof useMapView>[0];
 
 /** 軸カタログに`catalog`で応え、既定で表示する災害のチップが読む配信元の時刻一覧には空で応える。 */
-function serve(catalog: Response | readonly AxisCatalogEntry[] = [RAMP]) {
+function serve(catalog: Response | readonly AxisCatalogEntry[] = [SCORE]) {
   onBackend("GET", "/api/axis-catalog", () =>
     catalog instanceof Response ? catalog : Response.json(catalogResponse(catalog, { tile_versions: TILE_VERSIONS })),
   );
@@ -62,10 +62,10 @@ afterEach(() => {
 
 describe("useMapView", () => {
   it.each([
-    { name: "軸カタログにあれば、届いてから戻す", entries: [RAMP], lens: "axis_ramp" },
+    { name: "軸カタログにあれば、届いてから戻す", entries: [SCORE], lens: "axis_score" },
     { name: "軸カタログに無ければ、総合難易度のまま", entries: [], lens: "difficulty" },
   ])("保存したレンズは、$name", async ({ entries, lens }) => {
-    window.localStorage.setItem("ridecompass:route-style-mode", "axis_ramp");
+    window.localStorage.setItem("ridecompass:route-style-mode", "axis_score");
     serve(entries);
 
     const { result } = render();
@@ -81,9 +81,9 @@ describe("useMapView", () => {
     const { result, rerender } = render();
     act(() => result.current.lensControl.onRouteShownChange(false));
 
-    act(() => result.current.lensControl.onLensChange("axis_ramp"));
+    act(() => result.current.lensControl.onLensChange("axis_score"));
 
-    expect(result.current.look).toMatchObject({ lens: "axis_ramp", paintedAxisId: "axis_ramp" });
+    expect(result.current.look).toMatchObject({ lens: "axis_score", paintedAxisId: "axis_score" });
     expect(result.current.look.layerVisibility.route).toBe(true);
     rerender({ hasDetail: true });
     act(() => result.current.lensControl.onKeepAfterRouteChange(false));
@@ -93,8 +93,8 @@ describe("useMapView", () => {
   it("密度の軸のレンズを選ぶと、材料の点のレイヤーを出し、項の重みをレンズに渡す（密度の軸でなければどちらもしない）", async () => {
     const terms = [{ material_id: "signal", label: "信号", weight: 1.5 }];
     serve([
-      rampEntry("axis_density", [10], { primary_attribute_ids: ["stop_poi"], density_terms: terms }),
-      rampEntry("axis_plain", [10], { primary_attribute_ids: ["accident_point"] }),
+      dedicatedEntry("axis_density", [10], { primary_attribute_ids: ["stop_poi"], density_terms: terms }),
+      dedicatedEntry("axis_plain", [10], { primary_attribute_ids: ["accident_point"] }),
     ]);
     const { result } = render();
     await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(2));
@@ -109,15 +109,15 @@ describe("useMapView", () => {
     expect(result.current.lensControl.densityTerms).toEqual([{ materialId: "signal", label: "信号", weight: 1.5 }]);
   });
 
-  it("レンズの選択肢は公開軸から作り、塗れない軸と生成に使った重みが0の軸を分ける", async () => {
-    serve([RAMP, catalogEntry({ axis_id: "axis_plain" })]);
+  it("レンズの選択肢は公開軸から作り、生成に使った重みが0の軸を「未使用」に分ける", async () => {
+    serve([SCORE, catalogEntry({ axis_id: "axis_plain" })]);
 
-    const { result } = render({ routeWeights: { axis_ramp: 0.5 } });
+    const { result } = render({ routeWeights: { axis_score: 0.5 } });
 
     await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(2));
     expect(result.current.lensControl.axisOptions).toMatchObject([
-      { id: "axis_ramp", unused: false, routeOnly: false },
-      { id: "axis_plain", unused: true, routeOnly: true },
+      { id: "axis_score", unused: false, routeOnly: false },
+      { id: "axis_plain", unused: true, routeOnly: false },
     ]);
   });
 
@@ -149,7 +149,7 @@ describe("useMapView", () => {
     serve();
     const { result } = render();
     await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(1));
-    act(() => result.current.lensControl.onLensChange("axis_ramp"));
+    act(() => result.current.lensControl.onLensChange("axis_score"));
     const key = result.current.lensControl.legend[0].key;
     vi.useFakeTimers();
 
@@ -158,9 +158,9 @@ describe("useMapView", () => {
     expect(result.current.lensControl.hiddenLegendKeys).toEqual([key]);
     expect(result.current.overlayControls.anyLegendHidden).toBe(true);
     act(() => vi.advanceTimersByTime(LEGEND_FILTER_DEBOUNCE_MS - 1));
-    expect(result.current.look.hiddenLegendKeys.axis_ramp).toBeUndefined();
+    expect(result.current.look.hiddenLegendKeys.axis_score).toBeUndefined();
     act(() => vi.advanceTimersByTime(1));
-    expect(result.current.look.hiddenLegendKeys.axis_ramp).toEqual([key]);
+    expect(result.current.look.hiddenLegendKeys.axis_score).toEqual([key]);
     const allKeys = result.current.lensControl.legend.map((entry) => entry.key);
     act(() => result.current.lensControl.onSetHiddenLegendKeys(allKeys));
     expect(result.current.lensControl.hiddenLegendKeys).toEqual(allKeys);
@@ -221,14 +221,14 @@ describe("useMapView", () => {
     const first = render();
     await waitFor(() => expect(first.result.current.lensControl.axisOptions).toHaveLength(1));
     act(() => first.result.current.overlayControls.onToggle("hillshade", true));
-    act(() => first.result.current.lensControl.onLensChange("axis_ramp"));
+    act(() => first.result.current.lensControl.onLensChange("axis_score"));
     act(() => first.result.current.lensControl.onKeepAfterRouteChange(false));
     act(() => first.result.current.overlayControls.onLegendEntryToggle("disaster", "heavyRain"));
     first.unmount();
 
     const { result } = render();
 
-    await waitFor(() => expect(result.current.lensControl.lens).toBe("axis_ramp"));
+    await waitFor(() => expect(result.current.lensControl.lens).toBe("axis_score"));
     expect(result.current.look.layerVisibility.hillshade).toBe(true);
     expect(result.current.lensControl.keepAfterRoute).toBe(false);
     expect(chip(result, "disaster")?.legendDetails?.[0].hiddenKeys).toEqual(["heavyRain"]);

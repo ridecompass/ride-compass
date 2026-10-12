@@ -39,7 +39,7 @@ import { clampSheetHeightVh, DEFAULT_SHEET_HEIGHT_VH } from "@/components/Bottom
 import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
 import { setDebugEnabled } from "@/lib/debugLog";
 import { heldReplies, onBackend, onSameOrigin, serveAxisCatalog } from "@/testing/backendServer";
-import { catalogEntry, catalogResponse, rampEntry } from "@/testing/catalogAxes";
+import { catalogEntry, catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
@@ -59,7 +59,7 @@ const DESTINATION: Coordinates = { latitude: 35.6, longitude: 139.73 };
 const ELSEWHERE: Coordinates = { latitude: 35.65, longitude: 139.72 };
 
 // 地図が道路のタイルを載せる（軸で塗れる）のは、タイルの世代が全部の系統で揃ってから。
-const CATALOG = catalogResponse([rampEntry("axis_a", [25, 50, 75], { label: "軸A", default_weight: 1 })], {
+const CATALOG = catalogResponse([dedicatedEntry("axis_a", [25, 50, 75], { label: "軸A", default_weight: 1 })], {
   client_tuning: { [CLIENT_TUNING_IDS.minStretchKm]: 0.1 },
   tile_versions: Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "1-test"])),
 });

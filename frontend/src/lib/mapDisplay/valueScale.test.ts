@@ -7,7 +7,7 @@
  * ここで見ないもの:
  * - 範囲の文字・鍵の書き方と、体感ラベルを添える条件 → `mapColorLegend.test.ts`
  * - 段で道・ルートの線を塗る式 → `routeStyleModes.test.ts`・`features/map/scene/groups/axisLines.test.ts`
- * - ramp軸・専用配信の軸の段（`rampAxisBands`・`dedicatedAxisBands`）→ 軸の項目を`valueBands`へそのまま渡すだけで、
+ * - 軸の段（`dedicatedAxisBands`）→ 軸の項目を`valueBands`へそのまま渡すだけで、
  *   軸の凡例（`features/map/view/lens.test.ts`）が通す
  * - 中継点の間の色の見え方（濁らないこと）→ 数の性質として書けず、管理画面の段のプレビューで見る
  */

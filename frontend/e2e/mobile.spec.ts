@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { catalogEntry, tileInput } from "@/testing/catalogAxes";
+import { catalogEntry } from "@/testing/catalogAxes";
 import {
   MOBILE_VIEWPORT,
   axisCatalogFixture,
@@ -61,11 +61,7 @@ test("モバイル: レンズの凡例が、段階の細かい軸でも幅に収
                     "とても多い",
                     "非常に多い",
                   ],
-                  tiles: {
-                    kind: "ramp",
-                    tile_inputs: [tileInput({ property: "v", weight: 1 })],
-                    thresholds: [0.125, 0.375, 0.625, 0.875, 1.125, 1.375, 1.625, 1.875],
-                  },
+                  thresholds: [0.125, 0.375, 0.625, 0.875, 1.125, 1.375, 1.625, 1.875],
                 },
               }),
               default_weight: 0,
