@@ -3,7 +3,7 @@
 import { originOf } from "./family.js";
 import { FIELDS, START_FORM, valuesOf } from "./fields.js";
 import { pages } from "./github.js";
-import { APPLIED, answerText, askerOf, checkQuestion, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, questionHead, remaining } from "./questions.js";
+import { APPLIED, answerText, askerOf, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, questionHead, readProblems, remaining } from "./questions.js";
 
 // 着手可能日時の形の合わない値は受け入れず（badStart はその値。ゲートが知らせる）、待つと決めた意図を守ってまだ先と読む。
 const jst = (text) => (START_FORM.test(text) ? new Date(`${text.replace(" ", "T")}${text.includes(":") ? "" : "T00:00"}:00+09:00`) : null);
@@ -140,13 +140,14 @@ export async function readFacts(gh, config, number, runs) {
   const comments = nodes.map((n) => norm(n.body)); // 最近のコメント（同じ知らせを重ねないためにも読む）
   const last = comments.at(-1);
   // ユーザーが書いた文（答えなら決まった形の行のほかの文）を、Claude が読んだか。担当は、終わりのコメントの「読み始め:」の時刻より前のコメントを
-  // 読んでいる（前の形の終わりのコメントは書いた時刻）。対話作業の issue は開発機の対話のセッションが読んでから書くので、Claude のコメントがあれば
+  // 読んでいる（前の形の終わりのコメントは書いた時刻）。対話作業とラベル「開発機で作業中」の issue は開発機の対話のセッションが読んでから書くので、Claude のコメントがあれば
   // それより前を読んでいる。閉じたあとの文だけを数える（閉じるときに一緒に書いた文は、閉じる決定の一部）。
   const at = (n) => Date.parse(n.createdAt);
   const by = (n, login) => n.author?.login === login;
   const types = i.timelineItems.nodes.map((e) => e.prevIssueType?.name ?? null); // 今より前の種類（古い順）
   const dialog = dialogOf(config, types, i.issueType?.name ?? null);
-  const reads = nodes.filter((n) => by(n, config.claude) && (dialog || END.test(norm(n.body))))
+  const task = taskOf(config, i);
+  const reads = nodes.filter((n) => by(n, config.claude) && (dialog || task.dev || END.test(norm(n.body))))
     .map((n) => Date.parse(readFromOf(norm(n.body)) ?? n.createdAt));
   const lastRead = Math.max(0, ...reads);
   const closedAt = Date.parse(i.closedAt) || 0;
@@ -167,7 +168,6 @@ export async function readFacts(gh, config, number, runs) {
   // 一度でも出した問いか。最近のコメントに無く、それより前のコメントがあれば、さかのぼって全部を読む（答えたあとに問い直さない）。
   let older = null;
   const ever = async (has) => comments.some(has) || (i.comments.totalCount > nodes.length && (older ??= await allComments(gh, config, number)).some(has));
-  const task = taskOf(config, i);
   const asking = task.dropped.length ? droppedQuestion(task.dropped) : null;
   // 作業ブランチで次の持ち主へ渡した最後の時刻（検査が始まった・マージした・下書きへ戻した）。担当の実行の間か問いのあとにこれが動いて
   // いれば、状態が動いた（検査の出ない push は検査へ渡していない）。
@@ -187,6 +187,6 @@ export async function readFacts(gh, config, number, runs) {
     // 閉じた・開き直したときに決め直す、矢印1本でつながる開いた issue（後・親・子）。
     near: [...i.blocking.nodes, ...(p ? [p] : []), ...i.subIssues.nodes].filter((x) => x.state === "OPEN").map((x) => x.number),
     merged: Boolean(merged), mergeChecks: checksOf(merged?.mergeCommit),
-    badQuestion: last && isQuestion(last) ? checkQuestion(config.questionForms, last, asker) : [], comments,
+    badQuestion: last && isQuestion(last) ? readProblems(config.questionForms, last, asker) : [], comments,
     pr: open && { id: open.id, draft: open.isDraft, checks: checksOf(head.commit), backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };
 }

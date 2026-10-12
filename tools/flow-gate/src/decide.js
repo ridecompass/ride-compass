@@ -5,7 +5,7 @@
 // 担当の実行は、状態か約束のどちらかを動かして終わる。どちらも動かさずに終わったらイレギュラーとしてユーザーに渡す。
 // 返すのは、ゲートが保つ値の全部（ステータス・欄「実行の status」・開き閉じ・種類・担当者・本文・問いのラベル・PR をレビュー可能にするか・出す問い・
 // 取り消す実行）。ゲートは今の値と違う所だけを書くので、同じ事実からは何度決めても同じになる。
-import { APPLIED, checkLines, droppedOf, questionLabel, splitBody, withButton } from "./questions.js";
+import { APPLIED, droppedOf, questionLabel, splitBody, withButton } from "./questions.js";
 
 // 読むのに要求の要る事実（src/facts.js: readFacts の later）は、決め方が使うときだけ読む。まだ読んでいなければ Need を投げ、src/gate.js: settle が
 // 読んでから決め直す（決め方の順番を、事実を読む側に写さない）。
@@ -48,7 +48,7 @@ export function decide(f, config) {
   const type = mine(f.type) ? f.type : (f.types.findLast(mine) ?? (f.dialog ? config.dialogType : null));
   const question = f.question && !f.question.answer && !alive(f, f.question, config) ? null : f.question;
   const s = status({ ...f, question }, config);
-  const body = checkLines(f.body, s.check ?? []);
+  const body = splitBody(f.body).rest;
   // 見送りで閉じる・閉じた issue の開いた PR は、もう確かめもマージもしないので閉じる。
   const dropping = (s.closeAs ?? (f.open ? null : f.closedAs)) === "NOT_PLANNED";
   // 答えの無い問いがある間（回答のボタンを置く間）は、その問いのラベル（いま出す問いがあればそのラベル）をラベルで見せる。
@@ -71,7 +71,8 @@ function runStatus(f, status) {
 // 保留・読まれていない文は、問いを出す事実に数えない。ほかの問いを問うたことは数える）。無くなった問いは読まず、表で決め直す。担当が出した問いは、
 // ゲートが中身を読まないので答えるまで生きる。
 function alive(f, q, config) {
-  if (q.form.by !== "ゲート") return true;
+  if (q.form?.by !== "ゲート") return true;
+  if (q.form.text && q.text !== q.form.text) return false; // 決まった文が変わった問いは、今の文で問い直す
   const dropped = droppedOf(q.text);
   const once = { ...(q.kind === "採否" && { adoptAsked: false }), ...(dropped && { droppedAsked: false }) };
   const s = status({ ...f, ...once, question: null, unread: false, runs: [], status: null }, config);
@@ -81,7 +82,7 @@ function alive(f, q, config) {
 // 受け入れなかった書き込みは、黙らずに1つのコメントで知らせる（形に合わない問い・印の間の見知らぬ行・形の合わない着手可能日時・
 // 事実へ戻したユーザーのボードの移動）と、親が閉じたので閉じた子の理由。最新のコメントが同じ知らせなら書かない。
 function notice(f, status) {
-  const text = [f.badQuestion.length && `この問いは形に合わないので、問いとして読みません: ${f.badQuestion.join("・")}`,
+  const text = [f.badQuestion.length && `この問いは形が外れているので、回答フォームは回答内容を出さずに、書く欄と次遷移だけで答えを受けます: ${f.badQuestion.join("・")}`,
     splitBody(f.body).foreign.length && "本文の先頭の印の間に、ゲートの書かない行があったので、消さずに印の外へ出しました。",
     // 直るまで続く知らせは、最近のコメントに同じ知らせがあれば重ねない（値が変われば新しく知らせる）。
     f.badStart && !f.comments.some((c) => c.includes(`「${f.badStart}」`)) &&
@@ -115,7 +116,7 @@ function status(f, config) {
   const q = f.question;
   if (q && !q.answer) {
     const t = table(f);
-    return t.status === "完了" && q.form.by !== "ゲート" ? t : { status: "回答" };
+    return t.status === "完了" && q.form?.by !== "ゲート" ? t : { status: "回答" };
   }
   // 答えは、書いた文があれば Claude が読んだあとに当て、当てたことを一度だけ知らせる。答えのあとにユーザーがステータスを変えたか開き直したら、
   // 次の決定はそちらなので、その答えは当てない。
@@ -124,9 +125,9 @@ function status(f, config) {
   const told = a.text && !f.answerApplied ? `${APPLIED}（${a.decision}）。` : null;
   if (a.decision === "見送り") return { status: "完了", closeAs: "NOT_PLANNED", told };
   if (a.decision === "保留") return { status: "保留", told };
-  if (a.decision !== "完了") return { ...table(f), told };
-  const ok = f.remaining.filter((c) => c.verify === "ユーザー" && a.confirmed.includes(c.text));
-  return { ...table({ ...f, remaining: f.remaining.filter((c) => !ok.includes(c)) }), check: ok.map((c) => c.index), told };
+  // 続けるの遷移先は Claude: 答え（回答内容）を Claude が読むまでは実装。約束が全部果たされていれば、事実から完成で閉じる。
+  const t = table(f);
+  return f.answerRead || t.status === "完了" ? { ...t, told } : { status: "実装", told };
 }
 
 // 次に結果を出すのが担当でも、待つ相手（着手可能日時・親の保留か閉じ）がある間は、担当は作らないので待機。
