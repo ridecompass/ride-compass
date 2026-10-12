@@ -2,7 +2,8 @@
 # 検知器は常に全件を見る（.claude/rules/fixing.md「検知器を足す条件は厳しい」）。
 #
 # - docs-consistency: scripts/review_checks.py docs。pure pythonで数秒。
-# - doc-reading-tests: 全ての文書（と、持ち主の値の写しを照らすときはほかの追跡しているファイル）を読むbackendのテスト。
+# - doc-reading-tests: 全ての文書（と、持ち主の値の写しを照らすときはほかの追跡しているファイル）と、ワークフローを読むbackendのテスト。
+#   ワークフローだけの変更では ci.yml のどのジョブも走らないので、ワークフローを読むテストもここで回す。
 # - repo-wide: 運用の道具（backendの外のPython・追跡しているsh）の静的検査。依存が軽く数十秒で終わる。
 name: Docs Consistency
 
@@ -15,6 +16,9 @@ on:
 
 jobs:
   docs-consistency:
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-5
+      queue: max
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -22,6 +26,9 @@ jobs:
       - run: python scripts/review_checks.py docs
 
   doc-reading-tests:
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-5
+      queue: max
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -32,9 +39,12 @@ jobs:
       - uses: ./.github/actions/python
         with:
           requirements: requirements-dev.txt
-      - run: python -m pytest -q tests/structure/test_named_references.py tests/structure/test_single_owner_values.py
+      - run: python -m pytest -q tests/structure/test_named_references.py tests/structure/test_single_owner_values.py tests/structure/test_workflow_lanes.py
 
   repo-wide:
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-5
+      queue: max
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

@@ -15,6 +15,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 
 import type { MapLayerVisibility } from "@/features/map/layers/mapLayers";
 import { axisMapLayerId, type DedicatedWayValueAxis, type RampAxis } from "@/lib/mapDisplay/axisLayers";
+import type { CatalogAxis } from "@/lib/catalogAxis";
 import { debugLog } from "@/lib/debugLog";
 import type {
   DynamicWeatherGroupState,
@@ -111,9 +112,12 @@ type SceneWiringProps = {
 
 const NO_KEYS: readonly string[] = [];
 
-/** 道の線を塗る評価軸は、レンズが塗っている1本だけ。 */
-function isAxisShown(look: Pick<SceneLook, "paintedAxisId">, axisId: string): boolean {
-  return axisId === look.paintedAxisId;
+/** 道の線を塗る評価軸は、レンズが塗っている1本だけ。密度の軸は線を塗らず、材料の点で見せる。 */
+function isAxisShown(
+  look: Pick<SceneLook, "paintedAxisId">,
+  axis: Pick<CatalogAxis, "axisId" | "densityTerms">,
+): boolean {
+  return axis.axisId === look.paintedAxisId && axis.densityTerms === null;
 }
 
 /** レイヤーごとの実際の表示。ramp軸のレイヤーは表示の状態に無く、塗っている軸かで決まる。 */
@@ -123,7 +127,7 @@ export function effectiveLayerVisibility(
 ): MapLayerVisibility {
   return {
     ...look.layerVisibility,
-    ...Object.fromEntries(rampAxes.map((axis) => [axisMapLayerId(axis.axisId), isAxisShown(look, axis.axisId)])),
+    ...Object.fromEntries(rampAxes.map((axis) => [axisMapLayerId(axis.axisId), isAxisShown(look, axis)])),
   };
 }
 
@@ -191,21 +195,21 @@ function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): Axi
   const { look } = props;
   const underlaid = underlaidAxisIds(props);
   const entry = (
-    axisId: string,
+    axis: CatalogAxis,
     bands: readonly ValueBand[],
     value: AxisLineState["axes"][number]["value"],
     underlay: boolean,
   ): AxisLineState["axes"][number] => ({
-    axisId,
-    visible: isAxisShown(look, axisId),
+    axisId: axis.axisId,
+    visible: isAxisShown(look, axis),
     bands: axisLineBands(bands),
     value,
-    hiddenBandKeys: look.hiddenLegendKeys[axisId] ?? NO_KEYS,
+    hiddenBandKeys: look.hiddenLegendKeys[axis.axisId] ?? NO_KEYS,
     underlay,
   });
   const ramp = props.catalog.rampAxes.map((axis) =>
     entry(
-      axis.axisId,
+      axis,
       rampAxisBands(axis),
       {
         kind: "tile",
@@ -218,7 +222,7 @@ function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): Axi
   const dedicated = props.catalog.dedicatedAxes.map((axis) => {
     const delivered = look.dedicatedWayValues.get(axis.axisId);
     return entry(
-      axis.axisId,
+      axis,
       dedicatedAxisBands(axis.display),
       {
         kind: "delivered",

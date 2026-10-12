@@ -5,7 +5,7 @@
 区間の値を配れることを見る。
 
 ここで見ないもの:
-- 軸の葉の材料から配るサービスを選ぶこと・区間インスペクタが足す材料（`DirectionalMaterialService`） → `test_region_routes.py`
+- 軸の葉の材料から配るサービスを選ぶこと → `test_region_routes.py`、区間インスペクタが引く値 → `test_region_service.py`
 - 地図が載せる条件の名前（`dedicated_way_value_layers`） → `test_axis_catalog_routes.py`
 - 各サービスが返す値 → `test_gradient_way_service.py`・`test_rain_way_service.py`・`test_wind_way_service.py`
 """

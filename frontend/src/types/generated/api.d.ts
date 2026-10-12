@@ -725,10 +725,17 @@ export interface components {
             raw_value_units: components["schemas"]["RawValueUnits"];
             /** Material Breakdown */
             material_breakdown: components["schemas"]["AxisMaterialBreakdownEntry"][];
+            /** Density Terms */
+            density_terms: components["schemas"]["AxisDensityTerm"][] | null;
             /** Dynamic Way Value Conditions */
             dynamic_way_value_conditions: ("at" | "bearing_deg" | "speed_kmh")[];
             /** Dynamic Way Value Undetermined By Bearing */
             dynamic_way_value_undetermined_by_bearing: boolean;
+            /**
+             * Time Scope
+             * @enum {string}
+             */
+            time_scope: "always" | "night_only";
         };
         /** AxisCatalogResponse */
         AxisCatalogResponse: {
@@ -856,6 +863,15 @@ export interface components {
             /** Weight Share When Published */
             weight_share_when_published: number | null;
         };
+        /** AxisDensityTerm */
+        AxisDensityTerm: {
+            /** Material Id */
+            material_id: string;
+            /** Label */
+            label: string;
+            /** Weight */
+            weight: number;
+        };
         /** AxisDisplaySpec */
         AxisDisplaySpec: {
             /**
@@ -882,7 +898,8 @@ export interface components {
             /** Osm Way Id */
             osm_way_id: number;
             /** Feature Key */
-            feature_key?: string | null;
+            feature_key: string;
+            point: components["schemas"]["Coordinates"];
             /** Z */
             z: number;
             /** X */
@@ -905,10 +922,8 @@ export interface components {
             tags: {
                 [key: string]: string;
             };
-            /** Axes */
-            axes: components["schemas"]["AxisInspectorAxis"][];
-            composite_difficulty: components["schemas"]["InspectorComposite"] | null;
-            landcover: components["schemas"]["LandcoverPercentages"] | null;
+            segment: components["schemas"]["InspectorValues"];
+            way: components["schemas"]["InspectorValues"];
         };
         /** AxisMaterialBreakdownEntry */
         AxisMaterialBreakdownEntry: {
@@ -1212,6 +1227,13 @@ export interface components {
             value: number;
             /** Covered Weight Fraction */
             covered_weight_fraction: number;
+        };
+        /** InspectorValues */
+        InspectorValues: {
+            /** Axes */
+            axes: components["schemas"]["AxisInspectorAxis"][];
+            composite_difficulty: components["schemas"]["InspectorComposite"] | null;
+            landcover: components["schemas"]["LandcoverPercentages"] | null;
         };
         /** JmaTileIndexAvailable */
         JmaTileIndexAvailable: {

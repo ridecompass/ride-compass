@@ -82,20 +82,39 @@ DETOUR_RATIO_MIN_ROAD_M = 1000.0
 DETOUR_RATIO_SHARING_ZOOM = 12
 
 
+@dataclass(frozen=True)
+class LengthBand:
+    """候補にする全長の帯（m）。目標±許容で、帯に入る全長だけを候補にする。"""
+
+    target_m: float
+    tolerance_m: float
+
+    @classmethod
+    def from_km(cls, distance_km: float, tolerance_km: float) -> "LengthBand":
+        return cls(target_m=distance_km * 1000.0, tolerance_m=tolerance_km * 1000.0)
+
+    @property
+    def lower_m(self) -> float:
+        return self.target_m - self.tolerance_m
+
+    @property
+    def upper_m(self) -> float:
+        return self.target_m + self.tolerance_m
+
+
 def turnaround_ring_m(distance_km: float, tolerance_km: float) -> tuple[float, float, float]:
     """折返し点を探すリング（往路の実距離の範囲）の下限・上限と中心（m）。
 
     周回全長が目標±許容に収まるよう`[(目標-許容)/MIN, (目標+許容)/MAX]`に置き、許容が狭く
     範囲が反転する場合は`目標/2 ± 許容/2`へ戻す。中心は`目標/RING_CENTER_RATIO`。
     """
-    target_m = distance_km * 1000.0
-    tolerance_m = tolerance_km * 1000.0
-    lower_m = max(0.0, (target_m - tolerance_m) / LOOP_TO_OUTBOUND_RATIO_MIN)
-    upper_m = (target_m + tolerance_m) / LOOP_TO_OUTBOUND_RATIO_MAX
+    band = LengthBand.from_km(distance_km, tolerance_km)
+    lower_m = max(0.0, band.lower_m / LOOP_TO_OUTBOUND_RATIO_MIN)
+    upper_m = band.upper_m / LOOP_TO_OUTBOUND_RATIO_MAX
     if lower_m > upper_m:
-        lower_m = max(0.0, (target_m - tolerance_m) / 2.0)
-        upper_m = (target_m + tolerance_m) / 2.0
-    return lower_m, upper_m, target_m / RING_CENTER_RATIO
+        lower_m = max(0.0, band.lower_m / 2.0)
+        upper_m = band.upper_m / 2.0
+    return lower_m, upper_m, band.target_m / RING_CENTER_RATIO
 
 
 def relay_band(
@@ -110,18 +129,17 @@ def relay_band(
     鍵は全長の見込みの中央（帰り×MINとMAXの平均）と目標のずれ（m）で、周回のリング中心からのずれと同じく
     目標より短すぎる経路も長すぎる経路も対称に扱う。
     """
-    target_m = distance_km * 1000.0
-    tolerance_m = tolerance_km * 1000.0
+    band = LengthBand.from_km(distance_km, tolerance_km)
     head_m = fixed_m + np.asarray(outbound_m, dtype=float)
     shortest_m = np.asarray(return_shortest_m, dtype=float)
     low_m = head_m + shortest_m * RETURN_TO_SHORTEST_RATIO_MIN
     high_m = head_m + shortest_m * RETURN_TO_SHORTEST_RATIO_MAX
-    too_wide = high_m - low_m > 2.0 * tolerance_m
+    too_wide = high_m - low_m > 2.0 * band.tolerance_m
     high_m = np.where(too_wide, low_m, high_m)
     with np.errstate(invalid="ignore"):
-        in_band = (low_m >= target_m - tolerance_m) & (high_m <= target_m + tolerance_m)
+        in_band = (low_m >= band.lower_m) & (high_m <= band.upper_m)
     center_m = head_m + shortest_m * (RETURN_TO_SHORTEST_RATIO_MIN + RETURN_TO_SHORTEST_RATIO_MAX) / 2.0
-    return in_band, np.abs(center_m - target_m)
+    return in_band, np.abs(center_m - band.target_m)
 
 
 def ring_closeness_m(ring_length_m: np.ndarray, ring_center_m: float) -> np.ndarray:
@@ -427,7 +445,8 @@ def keep_routes_with_baseline(
 
 def fits_loop_distance(loop_km: float, target_km: float, tolerance_km: float) -> bool:
     """周回の全長が目標±許容に入るか。入らない周回は候補にしない。"""
-    return abs(loop_km - target_km) <= tolerance_km
+    band = LengthBand.from_km(target_km, tolerance_km)
+    return band.lower_m <= loop_km * 1000.0 <= band.upper_m
 
 
 def by_closeness_to_target(loops: list[TracedLoop], target_km: float) -> list[TracedLoop]:

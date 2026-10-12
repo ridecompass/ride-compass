@@ -1,5 +1,5 @@
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any
 
 import numpy as np
@@ -134,6 +134,13 @@ class EdgeMaterialArrays:
     def hard_filter_columns(self) -> dict[str, np.ndarray]:
         """0次フィルタ名→該当フラグ。行列の列はビューのためコピーしない。"""
         return {name: self.hard_filter_flags[:, i] for i, name in enumerate(self.hard_filter_ids)}
+
+
+#: `EdgeMaterialArrays`のうち、区間の行をそのまま並べる配列の欄。区間の束を継ぐ・行を切り出す側はこれを回し、
+#: 欄の名前を並べ直さない。分類の材料は列ごとに語彙が違うので含めない。
+EDGE_ROW_ARRAY_FIELDS: tuple[str, ...] = tuple(
+    field.name for field in fields(EdgeMaterialArrays) if field.type is np.ndarray
+)
 
 
 def elevation_values_sql(vertices: str) -> str:

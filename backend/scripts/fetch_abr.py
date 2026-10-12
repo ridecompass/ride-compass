@@ -22,7 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified
+from app.batch.common import fetch_verified, fetched_all
 from app.batch.fetch_cli import run_profile_fetch_cli
 from app.batch.source_adapters.abr import (
     ENCODING,
@@ -52,16 +52,16 @@ def _fetch(snapshot: str, stem: str) -> bool:
 
 
 def fetch(snapshot: str, bbox: tuple[float, float, float, float]) -> bool:
-    if not all([_fetch(snapshot, stem) for stem in NATIONWIDE_ARCHIVES]):
+    if not fetched_all(_fetch(snapshot, stem) for stem in NATIONWIDE_ARCHIVES):
         return False
     prefectures = prefectures_in_range(read_rows(archive_path(snapshot, "mt_city_pos_all")), bbox)
     logger.info("範囲に掛かる都道府県: %s", ", ".join(prefectures))
-    return all([_fetch(snapshot, stem) for code in prefectures for stem in prefecture_stems(code)])
+    return fetched_all(_fetch(snapshot, stem) for code in prefectures for stem in prefecture_stems(code))
 
 
 def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
     snapshots = sorted({spec.rows.snapshot for spec in specs})
-    return all([fetch(snapshot, profile.target.bbox) for snapshot in snapshots])
+    return fetched_all(fetch(snapshot, profile.target.bbox) for snapshot in snapshots)
 
 
 def main() -> int:

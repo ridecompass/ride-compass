@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays, MaterialColumn
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments
-from app.domain.graph import LeanEdge, edge_key, node_key, parse_edge_feature_key
+from app.domain.graph import LeanEdge, edge_feature_key_sql, edge_key, node_key, parse_edge_feature_key
 from app.domain.hard_filters import HARD_FILTER_VALUE_SQL, hard_filter_columns
 from app.domain.landcover import LandcoverPercentages, landcover_key
 from app.domain.material_catalog import (
@@ -92,7 +92,7 @@ async def create_tables(engine: AsyncEngine) -> None:
 # --- way粒度の材料 -----------------------------------------------------------
 #
 # 材料の式は区間向けの別名を前提にする。**way1本を指すときも同じ式を使う**——wayの行から
-# 同じ名前の別名を組み立てるだけで、式を2組持たない（区間インスペクタ・軸スタジオ）。
+# 同じ名前の別名を組み立てるだけで、式を2組持たない（軸スタジオ）。
 # way粒度では区間そのものの長さが無いため、`re`はwayの長さを返す1行にする。
 
 _WAY_RE_CLAUSE = ("CROSS JOIN LATERAL (SELECT ST_Length(w.geom::geography) AS distance_m,"
@@ -116,13 +116,6 @@ _WAY_MATERIAL_COLUMN_PREFIX = "m_"
 
 _WAY_MATERIAL_SELECT_SQL = ", ".join(
     f"({expr}) AS {_WAY_MATERIAL_COLUMN_PREFIX}{name}" for name, expr in sorted(material_value_sql().items())
-)
-
-
-_WAY_MATERIAL_VALUES_SQL = text(
-    f"SELECT {_WAY_MATERIAL_SELECT_SQL}"
-    + way_from_clause(list(material_value_sql().values()),
-                       source=ways_lookup_sql(":osm_way_id"))
 )
 
 
@@ -157,6 +150,24 @@ _FEATURE_LANDCOVER_SQL = text(
     + material_from_clause(_FEATURE_LANDCOVER_COLUMNS, "k.osm_way_id", "k.segment_index",
                            way_when_no_segment=True)
 )
+
+
+#: 道のフィーチャーのうち地点に最も近いものの鍵と、その上で地点に最も近い点。フィーチャーは区間で焼くズームのタイルと
+#: 同じ単位——区間を1本も持たない道は道丸ごと。
+_NEAREST_WAY_SEGMENT_SQL = text(f"""
+    WITH pt AS (SELECT ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326) AS geom)
+    SELECT f.feature_key, ST_Y(ST_ClosestPoint(f.geom, pt.geom)) AS latitude,
+           ST_X(ST_ClosestPoint(f.geom, pt.geom)) AS longitude
+    FROM (
+        SELECT {edge_feature_key_sql("re.osm_way_id", "re.segment_index")} AS feature_key, re.geom
+        FROM road_edges re WHERE re.osm_way_id = :osm_way_id
+        UNION ALL
+        SELECT w.osm_way_id::text, w.geom FROM {ways_lookup_sql(":osm_way_key")} w
+        WHERE NOT EXISTS (SELECT 1 FROM road_edges re2 WHERE re2.osm_way_id = :osm_way_id)
+    ) f CROSS JOIN pt
+    ORDER BY ST_Distance(f.geom::geography, pt.geom::geography)
+    LIMIT 1
+""")
 
 
 def _material_values_from_row(row: Row) -> dict[str, object]:
@@ -458,20 +469,6 @@ class RoadGraphRepository:
             elevation_loss_m=_float_array(raw["elevation_loss_m"]),
         )
 
-    async def get_way_material_values(
-        self, osm_way_id: int, accident_years_covered: int
-    ) -> dict[str, object] | None:
-        """way1本ぶんの材料値（材料id→スカラー）。行が無ければNone。
-
-        区間インスペクタが使う。式は区間の評価と同じもので、way粒度の別名を
-        `way_from_clause`が用意する。
-        """
-        rows = await self._session.execute(_WAY_MATERIAL_VALUES_SQL, {
-            # 鍵はtextで渡す（`ways_lookup_sql`が主キーで引くため）。
-            "osm_way_id": str(osm_way_id), "accident_years": accident_years_covered})
-        row = rows.first()
-        return None if row is None else _material_values_from_row(row)
-
     async def sample_way_material_values(
         self,
         accident_years_covered: int,
@@ -511,6 +508,17 @@ class RoadGraphRepository:
         if row is None:
             return None
         return (row.highway, row.tags)
+
+    async def get_nearest_way_segment(
+        self, osm_way_id: int, latitude: float, longitude: float
+    ) -> tuple[str, float, float] | None:
+        """道のうち地点に最も近い区間の、区間で焼くタイルのフィーチャーの鍵と、その区間の上で地点に最も近い点
+        `(緯度, 経度)`。区間を1本も持たない道は道丸ごとの鍵。道が無ければNone。"""
+        row = (await self._session.execute(_NEAREST_WAY_SEGMENT_SQL, {
+            # 道の生データは鍵をtextで渡す（`ways_lookup_sql`が主キーで引くため）。
+            "osm_way_id": osm_way_id, "osm_way_key": str(osm_way_id), "latitude": latitude, "longitude": longitude,
+        })).first()
+        return None if row is None else (row.feature_key, row.latitude, row.longitude)
 
     async def get_feature_landcover(
         self, osm_way_id: int, feature_key: str | None

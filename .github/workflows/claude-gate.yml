@@ -13,6 +13,9 @@ on:
 
 jobs:
   flow-gate:
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-2
+      queue: max
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -32,9 +35,10 @@ jobs:
     needs: [flow-gate]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    # どの ref から起こしても本番（公開先）は1つなので、レーンの鍵は master に決めてある（レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
     concurrency:
-      group: deploy-gate
-      cancel-in-progress: false
+      group: master-lane-5
+      queue: max
     strategy:
       max-parallel: 1
       matrix:

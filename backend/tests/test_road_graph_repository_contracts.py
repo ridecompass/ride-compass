@@ -280,20 +280,19 @@ async def test_paired_edge_columns_are_not_swapped():
 async def test_way_is_looked_up_by_its_key_as_text():
     """道の生データの主キー（`source_features.natural_key`）はtext。数で渡すと1件も当たらず、
     区間インスペクタが常に空になる。"""
-    repo, session = _repo([_Row(m_material_a=1.0)],
-                          [_Row(highway="highway_a", tags={"tag_a": "value_a"})])
+    repo, session = _repo([_Row(highway="highway_a", tags={"tag_a": "value_a"})], [])
 
-    await repo.get_way_material_values(123, 1)
     await repo.get_way_tags_by_osm_way_id(123)
+    await repo.get_nearest_way_segment(123, 35.0, 139.0)
 
-    assert [params["osm_way_id"] for params in session.params] == ["123", "123"]
+    assert [session.params[0]["osm_way_id"], session.params[1]["osm_way_key"]] == ["123", "123"]
 
 
-async def test_unknown_way_has_neither_materials_nor_tags():
+async def test_unknown_way_has_neither_tags_nor_a_segment():
     repo, _ = _repo([], [])
 
-    assert await repo.get_way_material_values(123, 1) is None
     assert await repo.get_way_tags_by_osm_way_id(123) is None
+    assert await repo.get_nearest_way_segment(123, 35.0, 139.0) is None
 
 
 async def test_sampled_way_without_length_is_dropped():

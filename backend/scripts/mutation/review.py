@@ -34,8 +34,9 @@ import heapq
 import json
 import math
 import os
-import re
 import sys
+
+from _shared import cell, function_of_test, layer
 
 REPORT, PREV, OUT = sys.argv[1], sys.argv[2], sys.argv[3]
 SCAFFOLD_TESTS = 200
@@ -66,23 +67,9 @@ def tests(m, key):
     return {name_of[i] for i in m.get(key, ())}
 
 
-PYTEST_PARAMS = re.compile(r"(::[A-Za-z_]\w*)\[.*\]$")
-
-
-def key_of(nodeid):
-    """テスト関数（pytest のパラメータの組を外した名前）。"""
-    return PYTEST_PARAMS.sub(r"\1", nodeid)
-
-
 # 層の高さ。表の層の並びは上から並ぶので、下ほど低い。
 layers = report["config"]["layers"]
 rank = {name.strip(): len(layers) - 1 - i for i, line in enumerate(layers) for name in line.split("|")}
-
-
-def layer(path):
-    """ファイルの層（app・src の直下のパッケージかモジュールの名前）。"""
-    parts = path.split("/")
-    return parts[1].removesuffix(".py") if len(parts) > 1 else path
 
 
 found = collections.defaultdict(set)
@@ -112,12 +99,12 @@ for t in judge:
         why_kept[t] = "高さを決める関数が無い"
 by_key = collections.defaultdict(set)
 for t in judge:
-    by_key[key_of(t)].add(t)
+    by_key[function_of_test(t)].add(t)
 
 
 def close_siblings(kept):
     """残すテストの、同じテスト関数のパラメータの組も残す。"""
-    for k in {key_of(t) for t in kept}:
+    for k in {function_of_test(t) for t in kept}:
         kept |= by_key[k]
     return kept
 
@@ -196,7 +183,7 @@ def source_of(key):
 
 span_by_key: dict[str, tuple[str, int, int]] = {}
 for t in sorted(span_of):
-    span_by_key.setdefault(key_of(t), span_of[t])
+    span_by_key.setdefault(function_of_test(t), span_of[t])
 prev_path = os.path.join(PREV, "review.json")
 prev = json.load(open(prev_path, encoding="utf-8")) if os.path.exists(prev_path) else None
 prev_overlap = {c["test"]: c["hash"] for c in prev["candidates"]["overlap"]} if prev else {}
@@ -212,12 +199,12 @@ for k in cand_keys:
 
 instances = collections.defaultdict(set)
 for t in set(covering) | judge:
-    instances[key_of(t)].add(t)
+    instances[function_of_test(t)].add(t)
 
 
 def whole(group):
     """全部のパラメータの組が group に入るテスト関数。"""
-    return sorted(k for k in {key_of(t) for t in group} if instances[k] <= group)
+    return sorted(k for k in {function_of_test(t) for t in group} if instances[k] <= group)
 
 
 finders = collections.Counter(m for t in found for m in found[t])
@@ -230,7 +217,7 @@ effect = [{"mutant": k, "file": m["file"], "line": m["location"]["start"]["line"
            "status": m["status"], "static": bool(m.get("static")), "breaks": ""}
           for k, m in sorted(mutants.items(), key=lambda x: (x[1]["file"], x[1]["location"]["start"]["line"], x[0]))
           if m["status"] in ("Survived", "NoCoverage")]
-isolation = [{"test": k} for k in sorted({key_of(t) for t in baseline_failed})]
+isolation = [{"test": k} for k in sorted({function_of_test(t) for t in baseline_failed})]
 
 measured = report.get("config", {}).get("revision", "")
 counts = collections.Counter(m["status"] for m in mutants.values())
@@ -239,10 +226,6 @@ review = {"measured": measured, "previous": prev["measured"] if prev else None, 
           "candidates": {"effect": effect, "overlap": overlap, "isolation": isolation, "writing": writing},
           "kept_reasons": dict(collections.Counter(why_kept.values()))}
 json.dump(review, open(os.path.join(OUT, "review.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-
-
-def cell(s):
-    return str(s).replace("|", "\\|").replace("\n", " ")
 
 
 def wilson(k, n):
@@ -281,7 +264,7 @@ for name in sorted(by, key=lambda x: (x == "全体", x)):
 
 
 def total_lines(group):
-    return sum(source_of(k)[1] for k in {key_of(t) for t in group})
+    return sum(source_of(k)[1] for k in {function_of_test(t) for t in group})
 
 
 all_tests = set(name_of.values())
@@ -305,7 +288,7 @@ groups = [("全体（収集した）", all_tests), ("どの変異も通らない
           ("見つけたものが全部ほかでも見つかる", set(found) - unique), ("ほかに無い発見を持つ", unique),
           ("全部の発見を保つ最小の組（貪欲法）", chosen), ("100本以上が一緒に落ちる書き換えだけで落ちた", broad_only)]
 md += ["", "### テストの区分", "", "| 区分 | テスト | テスト関数 | 行数 |", "|---|---:|---:|---:|"]
-md += [f"| {name} | {len(s)} | {len({key_of(t) for t in s})} | {total_lines(s)} |" for name, s in groups]
+md += [f"| {name} | {len(s)} | {len({function_of_test(t) for t in s})} | {total_lines(s)} |" for name, s in groups]
 both = [c for c in overlap if c["previous"]]
 md += ["", "### 候補（1件ずつ「落ちると利用者に何が壊れるか」を書いてから決める。成果物の candidates.md）", "",
        "| 観点 | 件数 | テスト関数の行数 |", "|---|---:|---:|",

@@ -75,7 +75,7 @@
 Dependabotは、masterが同じ版になってもPull Requestを閉じないことがあり、閉じる条件は公式の文書に無い。依存の版上げを
 取り込むタスクは、同じ版を出しているDependabotのPull Requestをissueの本文に番号で名指し、完了の条件に
 「dependabot の #<番号> が閉じている」を書く（判定役は、issueが名指したDependabotのPull Requestだけを担当が閉じてよいものと
-読む。`.github/claude-task/settings.json`の`autoMode`）。閉じるのは作る担当で、マージのあとの残りとして済ませる:
+読む。`.github/claude-task/settings.json`の`autoMode`）。閉じるのは実装担当で、マージのあとの残りとして済ませる:
 `gh pr view <番号> -R ridecompass/ride-compass --json state`が`OPEN`なら
 `gh pr close <番号> -R ridecompass/ride-compass --comment "<取り込んだ Pull Request> で同じ版を取り込んだ"`で閉じる。
 
@@ -277,6 +277,20 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
 - **文書の整合は`ci.yml`と分けたワークフローに置く。** 文書の整合の検査（`scripts/review_checks.py docs`）は
   文書だけの変更こそが対象なので、`changes`が文書だけの変更でジョブを飛ばす`ci.yml`に置かず、常に走る`docs-consistency.yml`に置く。
   backendの外のPythonとshの静的検査も、置き場を問わず同じワークフローが常に走らせる。
+- **1つの持ち主（タスクの issue・master）が同時に動かせるジョブは、レーンの数までにする。** 同時に動くジョブの上限は
+  組織全体で1つで、GitHub の標準の道具には持ち主ごとの取り分が無い（`strategy.max-parallel` は1回の実行の中だけ、
+  `concurrency` は同じ group を1本ずつにするだけ）。そこで、ランナーを取るジョブはどれも、ジョブの `concurrency` の group を
+  「<鍵>-lane-<レーン>」にし、`queue: max` で待たせる。group はワークフローをまたいでリポジトリで1つなので、同じ鍵のジョブは
+  レーンの数より多くは動かず、多い分は取り消されずに順に待つ。持ち主の数×レーンの数が組織の上限を超えた分は、ふつうの順番待ちになる。
+  - 鍵は、Pull Request なら元のブランチ（タスクの作業ブランチ `orch/tasks-<番号>`）、push・定時・手の起こしなら ref の名前。
+    担当（`claude-task.yml`）と変異テストの全部の測り（`mutation.yml`）は、起こすときの入力の issue から作業ブランチの名を組む。
+    本番へ出す・公開するジョブは、どの ref から起こしても行き先が1つなので、鍵を master に決めてある。
+  - レーンは決め打ちで、ジョブごと（matrix なら行ごと）にどのレーンかを書く。式に余りの演算が無く、空いたレーンを取り合う形は
+    書けない。担当は持ち時間いっぱいまで動くので、レーン0を担当だけに与え、ほかのジョブはレーン1以降に置く（同じレーンに置くと、
+    担当が終わるまで待つ）。同じ実行の中で並んで始まるジョブは別のレーンへ、長いジョブ（変更した関数の変異テスト）は始まりの
+    短いジョブとだけ同じレーンへ置き、Pull Request の CI の通しの長さを延ばさない。
+  - レーンの数と、どのジョブもレーンを持つことは `backend/tests/structure/test_workflow_lanes.py: LANES` のテストが持ち、
+    ワークフローを足す・ジョブを足すときに書き漏れると落ちる。
 
 **privateにしたら、この節の前提が崩れる。** 公式の同じページによれば、Freeプランのprivate
 リポジトリは標準ランナーで月2,000分までで、支払い方法が未登録なら使い切った時点で実行が止まる

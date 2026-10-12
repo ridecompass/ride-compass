@@ -3,7 +3,8 @@
 # （.claude/rules/testing-review.md「テストを変異テストで見直す」）。Stryker と口の直しは frontend/scripts/mutation/install.sh。
 #
 # - 手で起こす（gh workflow run mutation-frontend.yml、または Actions → Mutation frontend → Run workflow）。測る版と台本は、
-#   起こすときに選んだ ref から読む（台本は frontend/scripts/mutation/ と backend/scripts/mutation/review.py）。
+#   起こすときに選んだ ref から読む（台本は frontend/scripts/mutation/ と backend/scripts/mutation/review.py）。測りは入力の issue の
+#   レーンで動き、レーンより多い本は空くまで待つ（レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
 # - 2段で回る:
 #   1. shard（16本）: 書き換えるファイルを行数がそろうように分け（plan.mjs）、1本ずつ別のランナーで Stryker を回す。mutate に
 #      ファイルを渡すと、そのファイルだけを1本で回す（分けない）。
@@ -20,6 +21,9 @@ name: Mutation frontend
 on:
   workflow_dispatch:
     inputs:
+      issue:
+        description: この測りを持つ置き場の issue の番号（同時に動かすジョブの数をその issue のレーンで数える）
+        required: true
       ref:
         description: 測る版（台本も同じ版から読む）
         required: true
@@ -46,12 +50,33 @@ env:
 jobs:
   shard:
     if: inputs.compare == ''
+    concurrency:
+      group: orch/tasks-${{ inputs.issue }}-lane-${{ matrix.lane }}
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 340
     strategy:
       fail-fast: false
       matrix:
-        shard: ${{ fromJSON(inputs.mutate == '' && '[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]' || '[0]') }}
+        # 本をレーン 1〜5 へ順に振る。mutate を渡したら本 0 だけを回す。
+        include:
+          - { shard: 0, lane: 1 }
+          - { shard: 1, lane: 2 }
+          - { shard: 2, lane: 3 }
+          - { shard: 3, lane: 4 }
+          - { shard: 4, lane: 5 }
+          - { shard: 5, lane: 1 }
+          - { shard: 6, lane: 2 }
+          - { shard: 7, lane: 3 }
+          - { shard: 8, lane: 4 }
+          - { shard: 9, lane: 5 }
+          - { shard: 10, lane: 1 }
+          - { shard: 11, lane: 2 }
+          - { shard: 12, lane: 3 }
+          - { shard: 13, lane: 4 }
+          - { shard: 14, lane: 5 }
+          - { shard: 15, lane: 1 }
+        exclude: ${{ fromJSON(inputs.mutate == '' && '[]' || '[{"shard":1},{"shard":2},{"shard":3},{"shard":4},{"shard":5},{"shard":6},{"shard":7},{"shard":8},{"shard":9},{"shard":10},{"shard":11},{"shard":12},{"shard":13},{"shard":14},{"shard":15}]') }}
     defaults:
       run:
         working-directory: frontend
@@ -85,6 +110,9 @@ jobs:
   review:
     needs: shard
     if: ${{ !cancelled() && inputs.compare == '' }}
+    concurrency:
+      group: orch/tasks-${{ inputs.issue }}-lane-1
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -142,6 +170,9 @@ jobs:
 
   compare:
     if: inputs.compare != ''
+    concurrency:
+      group: orch/tasks-${{ inputs.issue }}-lane-1
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 300
     defaults:

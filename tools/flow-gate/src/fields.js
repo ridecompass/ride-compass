@@ -4,7 +4,7 @@
 // 読み方（GraphQL の issue の中に置く）と、欄の名前ごとの値。
 export const FIELDS = `issueFieldValues(first:20){nodes{...on IssueFieldSingleSelectValue{name field{...on IssueFieldSingleSelect{name}}}
  ...on IssueFieldTextValue{value field{...on IssueFieldText{name}}}}}`;
-export const valuesOf = (issue) => Object.fromEntries((issue?.issueFieldValues?.nodes ?? []).filter((v) => v.field).map((v) => [v.field.name, v.name ?? v.value]));
+export const valuesOf = (issue) => Object.fromEntries(issue.issueFieldValues.nodes.filter((v) => v.field).map((v) => [v.field.name, v.name ?? v.value]));
 
 // 着手可能日時は「YYYY-MM-DD」か「YYYY-MM-DD HH:MM」（日本時間）だけを受ける。
 export const START_FORM = /^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})?$/;

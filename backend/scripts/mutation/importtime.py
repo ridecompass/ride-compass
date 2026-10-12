@@ -4,12 +4,14 @@ mutmut の「関数ごとに通るテスト」の記録は、テストが走る�
 呼ばれた関数のテストを漏らす。そうした関数の変異は、記録にあるテストだけを回すと生き残りに見えるので、テスト全体を
 当て直す（issue #661 の検算の3）。関数の外で呼ばれる名前を集め、生き残りの関数の名前と照らす。メソッドの get は
 辞書の get と名前がぶつかるので外す。report.py も、同じ照らしで読み込みのときに呼ばれうる関数の変異に印（static）を付ける。
-引数: 生き残りの変異の名前の JSON の配列のファイル 出力のファイル
+引数: 変異の結果（runner.py が書く results.jsonl） 出力のファイル
+当て直すのは、その回でどのテストも落ちなかった変異（基準と比べるのは、全部の本の結果がそろう report.py）。
 """
 import ast
 import glob
-import json
 import sys
+
+from _shared import baseline_of, read_results, split_name
 
 
 def _visit(node, called):
@@ -35,14 +37,14 @@ def called_at_import():
 
 
 def is_import_time(mangled, called):
-    """mutmut の関数の名前（`app.x.x_f`・`app.x.xǁCǁm`。変異の名前でもよい）が、読み込みのときに呼ばれうるか。"""
-    fn = mangled.rsplit(".", 1)[1].split("__mutmut_")[0]
-    name = fn.split("ǁ")[-1] if "ǁ" in fn else fn[2:]
-    return name in called and not (fn.startswith("xǁ") and name == "get")
+    """mutmut の関数か変異の名前が、読み込みのときに呼ばれうるか。"""
+    _module, cls, name = split_name(mangled)
+    return name in called and not (cls and name == "get")
 
 
 if __name__ == "__main__":
     names = called_at_import()
-    hits = [m for m in json.load(open(sys.argv[1], encoding="utf-8")) if is_import_time(m, names)]
+    hits = [m for m, r in read_results(sys.argv[1]).items()
+            if r["status"] == "survived" and baseline_of(m) is None and is_import_time(m, names)]
     open(sys.argv[2], "w", encoding="utf-8").write("\n".join(hits) + "\n")
     print(len(hits), "件")

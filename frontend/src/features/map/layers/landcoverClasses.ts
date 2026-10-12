@@ -7,7 +7,7 @@
 import landcoverClassesJson from "@/types/generated/landcover-classes.json";
 
 interface LandcoverClass {
-  /** AxisInspectorResult.landcoverの対応する割合列の名前。 */
+  /** 区間インスペクタの土地被覆（`InspectorValues.landcover`）の対応する割合列の名前。 */
   percentField: string;
   label: string;
   color: string;

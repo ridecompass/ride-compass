@@ -14,8 +14,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+import httpx
 from pydantic import Field
 
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.strict_model import StrictModel
 
 logger = logging.getLogger("ridecompass.external")
@@ -153,6 +155,20 @@ def mark_failed(fields: dict, exc: BaseException) -> None:
     fields["error_type"] = error_type_label(exc)
 
 
+def mark_status_error(fields: dict, exc: httpx.HTTPStatusError) -> bool:
+    """`log_external_call`の中で上流の失敗の応答を捕まえたときの記録の入口。404ならTrueを返す。
+
+    404は配信元に無いことを確かめた正常系で、成功として数え（`status`に404を残す）、WARNINGを出さない。
+    ほかの応答は`mark_failed`で失敗として記録する。
+    """
+    if exc.response.status_code == 404:
+        fields["result"] = "ok"
+        fields["status"] = 404
+        return True
+    mark_failed(fields, exc)
+    return False
+
+
 def log_throttled_warning(category: str, message: str, *args: object) -> None:
     """カテゴリ単位の抑制付きWARNING（カテゴリごとの固定窓で数を絞る）。
 
@@ -212,23 +228,23 @@ def log_external_call(category: str, **fields: object) -> Iterator[dict]:
     常時出力し、成功はDEBUG(debug_mode時のみ実質出力)に留める。例外を捕まえて既定値へ
     倒す呼び出し元は`mark_failed`で失敗を記録する。
     """
-    started = time.monotonic()
+    started = start_timer()
     logger.debug("[%s] start %s", category, fields)
     try:
         yield fields
     except Exception as exc:
-        elapsed_ms = round((time.monotonic() - started) * 1000)
+        took_ms = elapsed_ms(started)
         fields["error_type"] = error_type_label(exc)
-        _record(category, elapsed_ms, fields, error=True)
+        _record(category, took_ms, fields, error=True)
         log_throttled_warning(
-            category, "[%s] error after %dms %s error=%r", category, elapsed_ms, _round_floats(fields), exc
+            category, "[%s] error after %dms %s error=%r", category, took_ms, _round_floats(fields), exc
         )
         raise
     else:
-        elapsed_ms = round((time.monotonic() - started) * 1000)
+        took_ms = elapsed_ms(started)
         error = fields.get("result") == "error"
-        _record(category, elapsed_ms, fields, error=error)
+        _record(category, took_ms, fields, error=error)
         if error:
-            log_throttled_warning(category, "[%s] failed after %dms %s", category, elapsed_ms, _round_floats(fields))
+            log_throttled_warning(category, "[%s] failed after %dms %s", category, took_ms, _round_floats(fields))
         else:
-            logger.debug("[%s] done in %dms %s", category, elapsed_ms, fields)
+            logger.debug("[%s] done in %dms %s", category, took_ms, fields)

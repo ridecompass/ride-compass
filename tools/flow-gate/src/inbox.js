@@ -28,6 +28,8 @@ export class Inbox {
             await this.storage.put(key, { ...e, tries: e.tries + 1, after: now + 2 ** e.tries * 60e3 });
             continue;
           }
+          // 諦める出来事は、黙って捨てずに Worker の記録へ残す（何がなぜ落ちたかを、あとから読めるように）。
+          console.error(`出来事 ${e.name} を諦めた（${e.tries + 1} 回目）: ${error.stack ?? error.message}`);
         }
         await this.storage.delete(key);
       }

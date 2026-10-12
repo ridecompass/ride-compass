@@ -1,6 +1,7 @@
 """地図の配信が評価するタイルの材料（`infrastructure/road_graph_repository.py: RoadGraphRepository.get_feature_materials_in_tile`）が、
 区間単位のズームで、探索が同じ区間に読む材料（`RoadGraphRepository.get_edge_material_arrays`）と同じ値になること。道1本の
-ズームで読む区間の材料（`RoadGraphRepository.get_feature_segments_in_tile`）も同じ。
+ズームで読む区間の材料（`RoadGraphRepository.get_feature_segments_in_tile`）も同じ。道1本のズームで押した地点に最も近い区間
+（`RoadGraphRepository.get_nearest_way_segment`）が、区間単位のズームのタイルと同じ鍵で返ること。
 
 区間は道路網の形の導出（`batch/derive_topology.py`）が切り、勾配・密度の件数は派生の段（`batch/derive_elevation.py`・
 `batch/derive_counts.py`）が出したものを使う——区間と区間の値の行を手で書くと、2つの読み出しが同じ表を読むという前提を
@@ -108,3 +109,21 @@ async def test_segments_of_a_way_on_the_zoomed_out_map_have_the_materials_the_se
     gradient_inputs = await road_graph_repository.get_feature_gradient_inputs_in_tile(z, 0, 0, AREA)
     assert {key: bearing for key, bearing in zip(segments.feature_keys, segments.feature_bearing_deg)} == {
         key: bearing for key, (_, bearing) in gradient_inputs.items()}
+
+
+async def test_the_segment_nearest_to_a_pressed_point_has_the_key_of_the_zoomed_in_map(road_graph_repository):
+    """引いた地図で道を押したときに窓へ出す区間は、押した地点に最も近いその道の区間で、寄せた地図がその区間を塗る鍵で
+    返る。鍵が違うと区間の値が出ず、別の区間を選ぶと窓の値が押した所の色と食い違う。返す点は区間の上の点。"""
+    await _derive_world()
+    async with raw_connection() as conn:
+        midpoints = await conn.fetch(
+            "SELECT osm_way_id, segment_index, ST_Y(ST_LineInterpolatePoint(geom, 0.5)) AS lat,"
+            " ST_X(ST_LineInterpolatePoint(geom, 0.5)) AS lon FROM road_edges WHERE osm_way_id = 1")
+    tile = await road_graph_repository.get_feature_materials_in_tile(EDGE_UNIT_MIN_ZOOM, 0, 0, AREA, ACCIDENT_YEARS)
+
+    assert len(midpoints) > 1
+    for midpoint in midpoints:
+        key, latitude, longitude = await road_graph_repository.get_nearest_way_segment(1, midpoint["lat"], midpoint["lon"])
+        assert key in tile.feature_keys
+        assert tuple(map(int, key.split("-"))) == (1, midpoint["segment_index"])
+        assert (latitude, longitude) == pytest.approx((midpoint["lat"], midpoint["lon"]))

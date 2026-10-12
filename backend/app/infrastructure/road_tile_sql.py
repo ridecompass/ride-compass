@@ -22,7 +22,7 @@ from app.domain.region import EDGE_UNIT_MIN_ZOOM
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.source_models import COVERAGE_SQL, WAYS_SOURCE_SQL, ways_lookup_sql
-from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES
+from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, TILE_BUFFER
 
 #: どちらの単位も`feature_key`という同じ名前で出す。フロントは`promoteId`でこれを
 #: feature.idへ昇格させるだけでよく、中身がway_idか区間の鍵かを知らなくてよい。
@@ -110,7 +110,7 @@ ROAD_SURFACE_TILE_MVT_SQL = text(
             SELECT ST_AsMVT(mvt.*, :layer_name, :extent, 'geom') FROM (
                 SELECT
                     ST_AsMVTGeom(
-                        ST_Transform(src.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, 256, true
+                        ST_Transform(src.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true
                     ) AS geom,
                     src.feature_key AS {ROAD_FEATURE_PROPERTIES['feature_key']},
                     -- 区間インスペクタが、ポップアップに出た値と同じ行を曖昧さ無く引き

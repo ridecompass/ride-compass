@@ -41,7 +41,7 @@
 #   だけ通る版の待ちが延びる。持ち時間で切られたら、上げる前に検査を速くするか段2へ移せないかを見て、上げるならその理由を
 #   Pull Request の本文に書く。
 #   段が止まったジョブ（playwright install が進まなくなった等）を既定の360分まで待たせず、取り消しで終わらせて、
-#   作る担当・確かめる担当が流し直す（.claude/skills/task-work/SKILL.md「作る担当」の5）。成功する実行が切られるようになったら、同じ決め方で
+#   実装担当・検証担当が流し直す（.claude/skills/task-work/SKILL.md「実装担当」の5）。成功する実行が切られるようになったら、同じ決め方で
 #   測り直す。deploy-backend・deploy-frontend の持ち時間は、呼ばれる側の deploy-*.yml が持つ。
 name: CI
 
@@ -67,6 +67,9 @@ concurrency:
 
 jobs:
   changes:
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-1
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # master の実行の一覧を読む（下の BASE）。
@@ -125,6 +128,9 @@ jobs:
   backend:
     needs: changes
     if: fromJSON(needs.changes.outputs.run)['backend']
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-1
+      queue: max
     # 本番（Oracle Cloud VMのAmpere A1）と同じaarch64・同じUbuntu 24.04で判定する。版の正本は
     # docs/architecture/tech-stack.md「DBの版」。
     runs-on: ubuntu-24.04-arm
@@ -161,6 +167,9 @@ jobs:
   api-contract:
     needs: changes
     if: fromJSON(needs.changes.outputs.run)['api-contract']
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-2
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 2
     defaults:
@@ -194,6 +203,9 @@ jobs:
   frontend:
     needs: changes
     if: fromJSON(needs.changes.outputs.run)['frontend']
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-2
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 3
     defaults:
@@ -225,7 +237,7 @@ jobs:
   # - WebKit: 全状態の走査を除くspec（走査は playwright.config.ts の webkit の project が外す）。
   # - 全状態の走査（frontend/e2e/all-states.spec.ts）: Chromiumで、幅ごとに段階（生成前・生成後・乗り換え後）の数の別のジョブ（--shard）。
   #   段階の所要は揃っている（2026-10-08 の成功した実行で desktop 35〜41秒ずつ）ので、1つのジョブに1段階ずつ割る。
-  # 持ち時間（timeout）は組ごとに先頭の「持ち時間」の決め方で決める。
+  # 持ち時間（timeout）は組ごとに先頭の「持ち時間」の決め方で決める。レーン（lane）は、組が段1のレーン（1〜4）へ同じ数ずつ載るように振る。
   e2e:
     # 段1を全部待つ。置き場が変わらずに飛ばされた段1のジョブは、始めるのを止めない。
     needs: [changes, backend, api-contract, frontend, scripts, frontend-image, backend-image]
@@ -234,15 +246,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { id: chromium, timeout: 50, args: '--project=chromium --grep-invert "全状態の走査"' }
-          - { id: webkit, timeout: 5, args: "--project=webkit" }
-          - { id: scan-mobile-1, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile" --shard=1/3' }
-          - { id: scan-mobile-2, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile" --shard=2/3' }
-          - { id: scan-mobile-3, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile" --shard=3/3' }
-          - { id: scan-desktop-1, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop" --shard=1/3' }
-          - { id: scan-desktop-2, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop" --shard=2/3' }
-          - { id: scan-desktop-3, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop" --shard=3/3' }
+          - { id: chromium, lane: 1, timeout: 50, args: '--project=chromium --grep-invert "全状態の走査"' }
+          - { id: webkit, lane: 2, timeout: 5, args: "--project=webkit" }
+          - { id: scan-mobile-1, lane: 3, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile" --shard=1/3' }
+          - { id: scan-mobile-2, lane: 4, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile" --shard=2/3' }
+          - { id: scan-mobile-3, lane: 1, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile" --shard=3/3' }
+          - { id: scan-desktop-1, lane: 2, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop" --shard=1/3' }
+          - { id: scan-desktop-2, lane: 3, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop" --shard=2/3' }
+          - { id: scan-desktop-3, lane: 4, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop" --shard=3/3' }
     name: e2e (${{ matrix.id }})
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-${{ matrix.lane }}
+      queue: max
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v${{ needs.changes.outputs.playwright }}-noble
@@ -286,6 +301,9 @@ jobs:
   frontend-image:
     needs: changes
     if: fromJSON(needs.changes.outputs.run)['frontend-image']
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-3
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 3
     permissions:
@@ -350,6 +368,9 @@ jobs:
   backend-image:
     needs: changes
     if: fromJSON(needs.changes.outputs.run)['backend-image']
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-3
+      queue: max
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 2
     steps:
@@ -359,6 +380,9 @@ jobs:
   scripts:
     needs: changes
     if: fromJSON(needs.changes.outputs.run)['scripts']
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-4
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 2
     defaults:
@@ -373,6 +397,9 @@ jobs:
   ci-ok:
     needs: [changes, backend, api-contract, frontend, e2e, frontend-image, backend-image, scripts]
     if: always()
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-4
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

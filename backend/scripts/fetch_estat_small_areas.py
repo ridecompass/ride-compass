@@ -22,7 +22,7 @@ import shapefile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified
+from app.batch.common import fetch_verified, fetched_all
 from app.batch.fetch_cli import run_profile_fetch_cli
 from app.batch.source_adapters.estat_small_area import (
     DOWNLOAD_URL,
@@ -50,10 +50,10 @@ def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[S
     surveys = sorted({spec.rows.survey for spec in specs})
     prefectures = range_prefectures(profile)
     logger.info("範囲に掛かる都道府県: %s", ", ".join(prefectures))
-    return all([
+    return fetched_all(
         fetch_verified(DOWNLOAD_URL.format(survey=survey, prefecture=code), boundary_path(survey, code), _readable,
                        read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
-        for survey in surveys for code in prefectures])
+        for survey in surveys for code in prefectures)
 
 
 def main() -> int:

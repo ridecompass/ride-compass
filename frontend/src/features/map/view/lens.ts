@@ -45,8 +45,29 @@ export function lensConditionsLabel(
   return parts.length > 0 ? parts.join("・") : null;
 }
 
+/** 時間帯の印ごとの、周りの道の色の前提。周りの道は通過する時刻を持たないので、時間帯で効く軸は前提を書き添える。 */
+const TIME_SCOPE_PREMISE: Record<CatalogAxis["timeScope"], string | null> = {
+  always: null,
+  night_only:
+    "周りの道は通過する時刻を置かずに塗っています。この評価は夜に通る区間でだけ効き、ルートを作ると区間ごとに決まります。",
+};
+
+/** 凡例に書く、周りの道の色の前提（走る条件・時間帯）。どの入力に依るかは軸カタログの宣言（走る条件の文・時間帯の印）
+ * から決め、軸idで分けない。前提の無い軸は空。 */
+export function lensPremises(
+  paintedAxis: LensId | null,
+  axes: readonly CatalogAxis[],
+  conditions: string | null,
+): string[] {
+  const timeScope = axes.find((axis) => axis.axisId === paintedAxis)?.timeScope ?? "always";
+  return [
+    conditions !== null ? `周りの道は「${conditions}」の条件で塗っています。` : null,
+    TIME_SCOPE_PREMISE[timeScope],
+  ].filter((premise) => premise !== null);
+}
+
 /** レンズの凡例。地図がいま塗っているものの凡例だけを出す——塗っていない間に出すと、
- * 地図のどこにも無い色見本の表になる。ルート確定後はルート線のモードの凡例。 */
+ * 地図のどこにも無い色見本の表になる。ルート確定後はルート線のモードの凡例。密度の軸はルートの前に線を塗らない。 */
 export function lensLegend(
   lens: LensId,
   hasDetail: boolean,
@@ -58,7 +79,7 @@ export function lensLegend(
 ): readonly LegendEntry[] {
   if (hasDetail) return catalog.routeStyleModes.find((mode) => mode.id === lens)?.legend ?? [];
   const ramp = catalog.rampAxes.find((axis) => axis.axisId === lens);
-  if (ramp) return buildAxisRampLegend(ramp);
+  if (ramp) return ramp.densityTerms === null ? buildAxisRampLegend(ramp) : [];
   const dedicated = catalog.dedicatedAxes.find((axis) => axis.axisId === lens);
   if (dedicated) return dedicatedWayValueLegend(dedicated);
   return [];
