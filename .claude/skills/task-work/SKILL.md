@@ -5,20 +5,24 @@ description: "タスクを作る担当・確かめる担当として進める手
 
 作る担当・確かめる担当は、担当のワークフローが取り出した作業ツリーの中だけで作業し、ステータスは書かない（ゲートが事実から決める。
 `docs/conventions/flow.md`「ステータスと割り当て」）。どの終わり方でも、push と issue への報告をして終える。
+担当は、この冒頭と自分の担当の節（と末尾の「競合を解く」）だけを読んで進めるので、片方の担当の節から他方の担当の節を指さない。
 
 - **終え方**: 最後の発言は、その回の要約にする（後始末が終わりのコメントへ写す）。終わり方（PR を出した・問うた・分けた・
   マージした・下書きへ戻した等）と、作ったもの・書いたもの（Pull Request・コミット・問い・issue）を番号かコミットの ID で名指す。
   手順の中で当たった流れの摩擦は .claude/skills/file-issue/SKILL.md「流れの摩擦を記録する」のとおり書く。
 - **範囲の外の気づき**（今のタスクの外の製品の誤りや残骸）: 今の差分で直せるものは直す。ほかは1件ずつ、直す場所が同じ開いた issue へ
   コメントで寄せるか（探し方は .claude/skills/file-issue/SKILL.md「前後関係と組」）、無ければ起票するか、直さない理由を書き、どれをしたかを報告に書く。
+- **作業ブランチ**: `git fetch origin`。作業ブランチ `orch/tasks-<番号>` が GitHub にあれば `git checkout -B orch/tasks-<番号> origin/orch/tasks-<番号>` のあと
+  `git merge origin/master`（競合したら「競合を解く」）。無ければ `git checkout -B orch/tasks-<番号> origin/master`。前の担当の残り
+  （`wip/tasks-<番号>-*` の枝）があれば要るものを取り込み、枝を消す。
+- **依存**: 依存とテスト用の DB は担当のワークフローが master の版で入れてある。`git diff --name-only origin/master -- backend/requirements*.txt frontend/package-lock.json`
+  で違いが出たら、backend は `python -m pip install -q -r backend/requirements-batch.txt -r backend/requirements-dev.txt`、frontend は
+  `npm ci --prefix frontend` と `npx --prefix frontend playwright install chromium` で入れ直す。
+- **完了の条件のチェック**は `node .claude/skills/task-work/scripts/check.mjs <番号> <条件の文の頭> [...]` で付ける（本文を手で書き換えない）。
 
 **作る担当**
-1. `git fetch origin`。作業ブランチ `orch/tasks-<番号>` が GitHub にあれば `git checkout -B orch/tasks-<番号> origin/orch/tasks-<番号>` のあと
-   `git merge origin/master`（競合したら「競合を解く」）。無ければ `git checkout -B orch/tasks-<番号> origin/master`。前の担当の残り
-   （`wip/tasks-<番号>-*` の枝）があれば要るものを取り込み、枝を消す。
-2. 依存とテスト用の DB は担当のワークフローが master の版で入れてある。`git diff --name-only origin/master -- backend/requirements*.txt frontend/package-lock.json`
-   で違いが出たら、backend は `python -m pip install -q -r backend/requirements-batch.txt -r backend/requirements-dev.txt`、frontend は
-   `npm ci --prefix frontend` と `npx --prefix frontend playwright install chromium` で入れ直す。
+1. 作業ブランチを取る（冒頭の「作業ブランチ」）。
+2. 依存を揃える（冒頭の「依存」）。
 3. issue の本文とコメントを読む（`GH_TOKEN=$FLOW_BOT_TOKEN gh issue view <番号> -R ridecompass/ride-compass-tasks --json title,body,comments --jq '.title, .body, (.comments[] | "--- \(.author.login) \(.createdAt)", .body)'`。
    `--comments` は本文を出さない）。下書きへ戻されたタスクなら、Pull Request のコメントも読む。CLAUDE.md と規約のとおりに作る。
    - ユーザーが書いた文（答えの文・コメント）のうち、前の担当の終わりの「読み始め」より後のものを読む。直してほしいこと・同じ要望の足し分なら
@@ -37,7 +41,6 @@ description: "タスクを作る担当・確かめる担当として進める手
      作る変更が要る条件は、親で作らず、受け持つ子を足して終える（.claude/skills/file-issue/SKILL.md「分ける」）。
    - コードを変えないタスク（調査・計測）は、結果を本文に書いて自分の分の条件にチェックを付け、結果を見てほしいなら
      `- 確かめる: ユーザー` を付けた条件を足す。
-   - 完了の条件のチェックは `node .claude/skills/task-work/scripts/check.mjs <番号> <条件の文の頭> [...]` で付ける（本文を手で書き換えない）。
    - 閉じない。条件に全部チェックが付けば、ゲートが完成で閉じる。
 4. `tasks#<番号>:` の件名でコミットし、`git push origin orch/tasks-<番号>` を、ほかのコマンドとつながずに1つで打つ（拒否の一覧の
    `Bash(git push *master*)` はつないだ全文に当たる）。手元で回す検査と整形は .claude/skills/run-checks/SKILL.md「手元の検査の回し方」だけが決め、
@@ -62,7 +65,7 @@ description: "タスクを作る担当・確かめる担当として進める手
 6. issue の本文（経緯・完了の条件のチェック。マージのあとでないとできない条件だけを残す）を直し、Pull Request へのリンクを報告する。
 
 **確かめる担当**（CI が通った検証待ちのタスク。作った担当とは別）
-1. 作業ブランチを取り（作る担当の1・2）、Pull Request（`gh pr view <番号> -R ridecompass/ride-compass --json title,body,comments,reviews`）・差分・
+1. 作業ブランチと依存を取り（冒頭の「作業ブランチ」「依存」）、Pull Request（`gh pr view <番号> -R ridecompass/ride-compass --json title,body,comments,reviews`）・差分・
    issue の完了の条件（子の作業なら、親の完了の条件のうち `- 子: #<この子>` の付いた行）・変更が届く範囲を、作る担当の報告を写さずに自分で見る。完了の条件と、利用者に見える結果（画面・API の応答・
    テストが見る振る舞い）を先に見る。画面は作る担当と同じ道具・脚本で後を撮り、前は貼られた画像（コメントの添付の URL を
    `curl -sSL -o <作業ツリーの外> <URL>` で取って Read で見る）と比べる。`lost_constraints.py` も回し、「消えた」制約に本文の処置が無ければ満たしていない。
@@ -74,7 +77,7 @@ description: "タスクを作る担当・確かめる担当として進める手
    開発機にしか無いもので確かめる行だけが残るなら、マージの前に対話作業の issue を起こして前提に張る（.claude/skills/file-issue/SKILL.md「分ける」）。
 4. 満たしていなければ、足りないことを Pull Request のコメントに書き、下書きへ戻す（`gh pr ready <番号> -R ridecompass/ride-compass --undo`。
    `gh pr view --json isDraft` が `true` になるまで打ち直す）。ゲートが作る担当へ戻す。
-5. 満たしていれば、確かめた条件に `check.mjs`（作る担当の 3）でチェックを付ける（確かめの行・マージのあとの条件・3 で足した行は付けない。子の作業なら付けず、子が閉じたときにゲートが親の行に付ける）。完了の条件に
+5. 満たしていれば、確かめた条件に `check.mjs`（冒頭の「完了の条件のチェック」）でチェックを付ける（確かめの行・マージのあとの条件・3 で足した行は付けない。子の作業なら付けず、子が閉じたときにゲートが親の行に付ける）。完了の条件に
    本番での前後の比べがあり、今の本番の前の値が issue に無ければ、本番を読むだけの口（`backend/scripts/prod_route_check.py` と同じ口）で
    取って書いてからマージする。読むだけの口で取れないなら、4 のとおり戻し、前の値を取る対話作業の issue を起こして前提に張る。
    `gh pr merge <番号> -R ridecompass/ride-compass --squash` でマージし、`MERGED` になるまで打ち直す。
