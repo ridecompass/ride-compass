@@ -12,7 +12,7 @@
 差し替えは「そのソースのパーティションを空にしてから入れ直す」。同一トランザクション内で
 行うため、途中の状態が読まれることはない。
 
-取込は派生の作り直しと同時に走らない（`common.py: SOURCE_DATA_LOCK`）。作り直しが走っていれば
+取込は派生の作り直し・DBのバックアップと同時に走らない（`common.py: SOURCE_DATA_LOCK`）。どちらかが走っていれば
 始めずに止まる。
 
 **入力が前回と同じなら取り込まない。** 取込の行は、アダプタが読むファイルの中身・プロファイルの宣言・
@@ -236,7 +236,7 @@ async def ingest_source(
     if conn.is_in_transaction():
         raise RuntimeError("取込はトランザクションの外の接続で呼ぶ（中で呼ぶと、失敗の記録が行と一緒に巻き戻る）")
     if not await conn.fetchval("SELECT pg_try_advisory_lock_shared(hashtext($1))", SOURCE_DATA_LOCK):
-        raise RuntimeError("派生の作り直しが走っている")
+        raise RuntimeError("派生の作り直しかDBのバックアップが走っている")
     try:
         return await _ingest(conn, profile, source_name)
     finally:

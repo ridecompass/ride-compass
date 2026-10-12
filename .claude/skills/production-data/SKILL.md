@@ -27,8 +27,8 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
 - 作り直しは、入力（読むソースの取込・前の段・較正値・書く表の列・段のコード・実行環境の版）が前回の作り直しと同じ段を
   流さず、ログに「段 <名前> を飛ばした」と出す。全部の段が同じなら何も入れ替えずに終える。段を選んで流す口は無く、
   どの場面（取り直した・段のやり方を変えた・較正値を変えた・列を足した）でも上の1コマンドを打つ。
-- 取込と作り直しは同時に走らない（後から始めた方が止まる。終わってから打ち直す）。
-  仕組みは[静的道路属性](../../../docs/modules/backend/static-road-attributes.md)「派生」。
+- 取込と作り直しは同時に走らない（後から始めた方が止まる。終わってから打ち直す）。DBのバックアップの書き出し（毎日03:17（日本時間）から
+  30分ほど）の間に打った取込と作り直しも止まる。仕組みは[静的道路属性](../../../docs/modules/backend/static-road-attributes.md)「派生」。
 
 ## 本番へ効かせたい軸定義の変更は、本番の管理APIへ入れる
 
@@ -68,7 +68,7 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
   Oracle Cloud Object Storageの非公開バケットへ`db/<UTCの時刻>.dump`として置き、前の回のものを消す。残すのは、バケットに
   1個（無料の枠の10GBに1個だけ入る）と、VMのDBのディスクの`/mnt/pgdata/ridecompass-backup/latest.dump`に1個。
   置けたら時刻を書き、backendの`/health`が`admin_data_backup_age_hours`（最後に置けてからの時間）を返す。
-  **VMを作り直したら、下の登録の1.〜5.をやり直す**。
+  **VMを作り直したら、下の登録の1.〜4.をやり直す**。
 - 登録（1回。Oracle Cloudのコンソールと、VMにSSHで入って打つ）:
   1. バケットを作る: コンソールの Storage → Buckets で、ホームリージョンに
      標準の層・既定の見え方（公開しない）で作る（例: `ridecompass-admin-data`）。ネームスペースは同じ画面か、
@@ -83,18 +83,9 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
      ```
      動的グループをDefault以外のアイデンティティ・ドメインに作ったときは、`dynamic-group '<ドメイン名>'/'ridecompass-vm'`と書く。
      バケットがテナンシのルートのコンパートメントにあるときは、`in compartment <コンパートメント名>`の代わりに`in tenancy`と書く
-     （場所の書き方は公式の文書「Policy Syntax」の Location）。4.も同じ。ルートを`compartment`で書くと、コンソールが
+     （場所の書き方は公式の文書「Policy Syntax」の Location）。ルートを`compartment`で書くと、コンソールが
      `Compartment {<ルートの名前>} does not exist or is not part of the policy compartment subtree`で断る。
-  4. 送りかけで残った部分を消す: 大きな書き出しは分割して送られ、送る途中で落ちると、送り終えた部分が枠を使ったまま残る。
-     Object Storageのサービスにバケットのオブジェクトを扱う権限を与え（公式の文書「Using Object Lifecycle Policies」）、
-     Identity → Policies で、**テナンシのルートのコンパートメント**に次の1文のポリシーを作る（`<リージョン>`はバケットのある
-     リージョンの識別子。例: `ap-tokyo-1`）。
-     ```
-     Allow service objectstorage-<リージョン> to manage object-family in compartment <コンパートメント名>
-     ```
-     続けて Storage → Buckets → バケット → Policies の「Lifecycle policy rules」で Create Rule を押し、Lifecycle target を
-     Uncommitted multipart uploads・Lifecycle action を Delete・日数を1にして作る。規則が効き始めるまで最大24時間かかる（同じ文書）。
-  5. VMで設定ファイルを置き、ユニットを登録し、1回打って確かめてからtimerを有効にする（ユニットはデプロイが
+  4. VMで設定ファイルを置き、ユニットを登録し、1回打って確かめてからtimerを有効にする（ユニットはデプロイが
      揃える作業コピーのものを`systemctl link`で指す）:
      ```
      sudo mkdir -p /etc/ridecompass
@@ -140,7 +131,7 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
      sudo docker logs --tail 50 ridecompass-backend 2>&1 | grep -E '軸定義|AxisDefinitionSyncError|TuningOverrideError'
      ```
      `/health`が応答し、ログに「軸定義をDBから読み込みました axes=<戻した軸の数>」が出ていれば済み。
-  6. VMを作り直したときは、上の「DBのバックアップ」の登録の5.をやり直す。
+  6. VMを作り直したときは、上の「DBのバックアップ」の登録の2.〜4.をやり直す（動的グループのルールはVMのOCIDを指す）。
 
 ## 厳選まで仮置き
 

@@ -9,4 +9,6 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 EnvironmentFile=/etc/ridecompass/admin-data-backup.env
+# 圧縮はpg_dumpが1コアを使い切るので、backendと取り合ったときにbackendを先にする。
+Nice=10
 ExecStart=/bin/bash /home/ubuntu/ridecompass-repo/backend/ops/admin_data_backup.sh

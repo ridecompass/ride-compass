@@ -255,7 +255,7 @@ async def test_an_import_is_refused_while_a_rebuild_runs(derived_before, monkeyp
     runs_before = await derived_before.fetchval("SELECT count(*) FROM source_runs")
 
     async def import_meanwhile():
-        with pytest.raises(RuntimeError, match="派生の作り直しが走っている"):
+        with pytest.raises(RuntimeError, match="派生の作り直しかDBのバックアップが走っている"):
             await ingest_records("accident", [], conn=derived_before)
 
     _observe_after("topology", monkeypatch, import_meanwhile)

@@ -396,12 +396,6 @@ frontendはRender、PostgreSQLとRedisはVMへネイティブに置く。
 
 ### 元: docs/architecture の tech-stack.md
 
-#### 採用しているもの
-
-| 領域 | 採用 | 備考 |
-|---|---|---|
-| 管理データの退避先 | Oracle Cloud Object Storage（非公開のバケット） | 本番VMのtimerが取り直せない管理データを置き、バケットのライフサイクルの規則が古いものを消す。仕組みと登録の手順は[deployment-sync.md](../../.claude/skills/production-data/SKILL.md)付録「管理データのバックアップ」 |
-
 #### 本番の宛先（frontendのオリジンからbackendへ届くのは一部だけ）
 
 道具のコードに宛先を書き込まない——IPが変わったとき、直すのが`production-origins.json`だけで済むようにするため。
