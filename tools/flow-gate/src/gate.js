@@ -19,7 +19,7 @@ function writesOf(f, d, config) {
   if (d.type !== f.type) issue.issueTypeId = d.type ? f.ids.types[d.type] : null;
   if (d.body !== norm(f.body)) issue.body = d.body;
   if (String(d.assignees) !== String(f.assignees)) issue.assigneeIds = d.assignees.map((login) => config.ids[login]);
-  // 答えの無い問いの種類のラベルは、決めた1つ（無ければ無し）に揃える。ほかのラベルはそのまま残す（ラベルは並びごと置き換えで書く）。
+  // 答えの無い問いのラベルは、決めた1つ（無ければ無し）に揃える。ほかのラベルはそのまま残す（ラベルは並びごと置き換えで書く）。
   const labels = [...f.labels.filter((n) => !isQuestionLabel(n)), ...(d.questionLabel ? [d.questionLabel] : [])];
   if (String([...labels].sort()) !== String([...f.labels].sort())) issue.labelIds = labels.map((n) => f.ids.labels[n]);
   const fields = [["status", d.status, f.status], ["run", d.run, f.run]].filter(([, want, now]) => (want ?? null) !== (now ?? null));

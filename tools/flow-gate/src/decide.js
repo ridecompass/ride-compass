@@ -38,7 +38,7 @@ export function decide(f, config) {
   const body = checkLines(f.body, s.check ?? []);
   // 見送りで閉じる・閉じた issue の開いた PR は、もう確かめもマージもしないので閉じる。
   const dropping = (s.closeAs ?? (f.open ? null : f.closedAs)) === "NOT_PLANNED";
-  // 答えの無い問いがある間（回答のボタンを置く間）は、その問いの種類（いま出す問いがあればその種類）をラベルで見せる。
+  // 答えの無い問いがある間（回答のボタンを置く間）は、その問いのラベル（いま出す問いがあればそのラベル）をラベルで見せる。
   const asking = s.status === "回答" || (s.status !== "完了" && question && !question.answer);
   const kind = s.ask ? (s.ask.dropped ? "続行" : s.ask) : question?.kind;
   return { type, status: s.status, run: runStatus(f, s.status), open: s.status !== "完了", closeAs: s.closeAs, ask: s.ask ?? null, cancel: s.cancel ?? [],

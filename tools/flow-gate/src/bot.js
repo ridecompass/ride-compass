@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import base from "../flow.config.json" with { type: "json" };
 import { settings } from "./settings.js";
 
-// 問いの種類ごとの形は置き場の .md を全部読む（Worker は src/config.js が並べて読む）。
+// 問いのラベルごとの形は置き場の .md を全部読む（Worker は src/config.js が並べて読む）。
 const FORMS = new URL("../question_forms/", import.meta.url);
 export const config = settings(base, readdirSync(FORMS).filter((f) => f.endsWith(".md")).map((f) => readFileSync(new URL(f, FORMS), "utf8")));
 // gh を bot の名義で打つ関数。名義のトークンが無ければ、何も打たずに 1 で終わる（置き場へユーザーの名義で書かない）。一覧の応答は

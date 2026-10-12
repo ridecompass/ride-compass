@@ -1,4 +1,4 @@
-// 問いを種類の形（tools/flow-gate/question_forms/）で照らし、合えば置き場の issue へコメントで出す。合わなければ出さず、合わない所を出して終わる。
+// 問いをラベルの形（tools/flow-gate/question_forms/）で照らし、合えば置き場の issue へコメントで出す。合わなければ出さず、合わない所を出して終わる。
 // ゲートが問いとして読むのと同じ照らし方（tools/flow-gate/src/questions.js: checkQuestion。書き手は Claude）を、出す前に当てる。
 // 使い方: node .claude/skills/ask/scripts/ask.mjs <issue の番号> <問いのファイル>
 import { readFileSync } from "node:fs";
