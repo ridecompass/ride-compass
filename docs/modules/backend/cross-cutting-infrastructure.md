@@ -13,7 +13,7 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | ルート | `main.py` | アプリ起動（lifespan）・ミドルウェア登録 |
 | ルート | `config.py` | 設定（`Settings`、環境変数） |
 | ルート | `version.py` | プロセス起動時刻（デプロイ確認用） |
-| domain | `time_zone.py` | 日本標準時（`JST`）の正準定義と時刻の読み方（タイムゾーンの無い時刻はJSTとして読む`as_jst`、予報の系列の時刻＝タイムゾーンの無いJSTへ直す`as_series_time`）。時刻を扱う全モジュールがここを参照する |
+| domain | `time_zone.py` | 日本標準時（`JST`）の正準定義と時刻の読み方（タイムゾーンの無い時刻はJSTとして読む`as_jst`、予報の系列の時刻＝タイムゾーンの無いJSTへ直す`as_series_time`）と、応答へ書くタイムゾーンの無い時刻の形（`jst_local_text`。画面と同じ形になることは生成物`time-expectations.json`の表を画面のテストが通して確かめる）。時刻を扱う全モジュールがここを参照する |
 | domain | `warning_levels.py` | 警戒度バッジ4段階（`WarningBadgeLevel`）の正準定義。JMA警報・WBGT・河川氾濫予報が判定根拠は別々のまま同じ語彙を返す |
 | domain | `strict_model.py` | 全Pydanticモデルの基底（`StrictModel`）。未知のフィールドを黙って捨てず例外にする |
 | api | `admin_auth.py` | 管理API共通の認可境界 |

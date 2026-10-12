@@ -7,6 +7,7 @@ JMAの配信データ・薄明の計算・ルートの通過予定時刻など�
 
 時刻の読み方も同じ理由でここに置く: タイムゾーンの無い時刻をJSTとして読むことと、予報の系列の時刻へ直す前に
 JSTへ寄せることを呼び手ごとに書くと、tzinfoを剥がすだけの読み方が混ざり、JST以外の時刻が時差ぶんずれる。
+応答へタイムゾーンの無い時刻を書く形（`jst_local_text`）も同じで、画面はその形をJSTとして読む。
 """
 
 from datetime import datetime
@@ -25,3 +26,8 @@ def as_jst(value: datetime) -> datetime:
 def as_series_time(value: datetime) -> datetime:
     """時刻を予報の系列の時刻（タイムゾーンの無いJSTの時刻）にする。読み方は`as_jst`と同じ。"""
     return as_jst(value).replace(tzinfo=None)
+
+
+def jst_local_text(value: datetime) -> str:
+    """時刻を、タイムゾーンの無いJSTのローカル時刻の分までの文字列（`YYYY-MM-DDTHH:MM`）にする。読み方は`as_jst`と同じ。"""
+    return as_series_time(value).isoformat(timespec="minutes")
