@@ -49,7 +49,7 @@ env:
 
 jobs:
   shard:
-    if: inputs.compare == ''
+    if: inputs.compare == '' && inputs.mutate == ''
     concurrency:
       group: orch/tasks-${{ inputs.issue }}-lane-${{ matrix.lane }}
       queue: max
@@ -58,7 +58,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 本をレーン 1〜5 へ順に振る。mutate を渡したら本 0 だけを回す。
+        # 本をレーン 1〜5 へ順に振る。
         include:
           - { shard: 0, lane: 1 }
           - { shard: 1, lane: 2 }
@@ -76,11 +76,10 @@ jobs:
           - { shard: 13, lane: 4 }
           - { shard: 14, lane: 5 }
           - { shard: 15, lane: 1 }
-        exclude: ${{ fromJSON(inputs.mutate == '' && '[]' || '[{"shard":1},{"shard":2},{"shard":3},{"shard":4},{"shard":5},{"shard":6},{"shard":7},{"shard":8},{"shard":9},{"shard":10},{"shard":11},{"shard":12},{"shard":13},{"shard":14},{"shard":15}]') }}
-    defaults:
+    defaults: &frontend
       run:
         working-directory: frontend
-    steps:
+    steps: &shard-steps
       - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref }}
@@ -107,8 +106,23 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+  # mutate に名指したファイルだけを1本で回す（手順は shard と同じ）。matrix の行を exclude の式で外す形では、本が1本も作られない。
+  file:
+    if: inputs.compare == '' && inputs.mutate != ''
+    concurrency:
+      group: orch/tasks-${{ inputs.issue }}-lane-${{ matrix.lane }}
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      matrix:
+        include:
+          - { shard: 0, lane: 1 }
+    defaults: *frontend
+    steps: *shard-steps
+
   review:
-    needs: shard
+    needs: [shard, file]
     if: ${{ !cancelled() && inputs.compare == '' }}
     concurrency:
       group: orch/tasks-${{ inputs.issue }}-lane-1
@@ -155,7 +169,7 @@ jobs:
           node scripts/mutation/report.mjs /tmp/art /tmp/review/report.json
           python3 ../backend/scripts/mutation/review.py /tmp/review/report.json /tmp/prev /tmp/review
           cat /tmp/review/summary.md >> "$GITHUB_STEP_SUMMARY"
-      - if: needs.shard.result != 'success'
+      - if: (inputs.mutate == '' && needs.shard.result || needs.file.result) != 'success'
         run: echo "落ちた本があり、書き換えが欠けているので、この見直しは次の見直しの前回にしない。" >> "$GITHUB_STEP_SUMMARY"
       - if: inputs.mutate != ''
         run: echo "範囲を絞った測り（mutate）なので、この見直しは次の見直しの前回にしない。" >> "$GITHUB_STEP_SUMMARY"
