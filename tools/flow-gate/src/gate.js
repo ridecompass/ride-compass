@@ -4,15 +4,15 @@ import { decide } from "./decide.js";
 import { jstText, readFacts } from "./facts.js";
 import { askDropped, askStalled, askText, bodyRest, norm } from "./questions.js";
 
-// ボードの id と単一選択の欄。
-const board = (gh, config, world) => gh.gql(`query($o:String!,$n:Int!){organization(login:$o){projectV2(number:$n){id
-  fields(first:30){nodes{...on ProjectV2SingleSelectField{id name options{id name}}}}}}}`, { o: config.owner, n: config.boards[world] }).then((r) => r.organization.projectV2);
+// ステータスの欄を置く Project の id と単一選択の欄。
+const project = (gh, config) => gh.gql(`query($o:String!,$n:Int!){organization(login:$o){projectV2(number:$n){id
+  fields(first:30){nodes{...on ProjectV2SingleSelectField{id name options{id name}}}}}}}`, { o: config.owner, n: config.project }).then((r) => r.organization.projectV2);
 
-async function setField(gh, config, world, item, name, option) {
-  const p = await board(gh, config, world);
+async function setField(gh, config, item, name, option) {
+  const p = await project(gh, config);
   const field = p.fields.nodes.find((n) => n.name === name);
   const value = field?.options.find((o) => o.name === option);
-  if (!value) throw new Error(`${world} のボードの ${name} に「${option}」が無い`);
+  if (!value) throw new Error(`Project の ${name} に「${option}」が無い`);
   await gh.gql(`mutation($p:ID!,$i:ID!,$f:ID!,$v:String!){updateProjectV2ItemFieldValue(input:{projectId:$p,itemId:$i,fieldId:$f,value:{singleSelectOptionId:$v}}){clientMutationId}}`,
     { p: p.id, i: item, f: field.id, v: value.id });
 }
@@ -35,10 +35,10 @@ export async function settle(gh, config, number, held, moved = false) {
   if (d.closePr) await gh.gql(`mutation($id:ID!){closePullRequest(input:{pullRequestId:$id}){clientMutationId}}`, { id: d.closePr });
   if (d.ready) await gh.gql(`mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){clientMutationId}}`, { id: f.pr.id });
   await Promise.all(d.cancel.map((id) => gh.rest("POST", `/repos/${config.code}/actions/runs/${id}/cancel`)));
-  // ボードへ入っていなければ、決めた世界のボードへ入れる（入口）。
+  // Project へ入っていなければ入れる（入口）。
   const item = f.item ?? (await gh.gql(`mutation($p:ID!,$c:ID!){addProjectV2ItemById(input:{projectId:$p,contentId:$c}){item{id}}}`,
-    { p: (await board(gh, config, d.board)).id, c: f.id })).addProjectV2ItemById.item.id;
-  if (d.status !== f.status) await setField(gh, config, d.board, item, config.fields.status, d.status);
+    { p: (await project(gh, config)).id, c: f.id })).addProjectV2ItemById.item.id;
+  if (d.status !== f.status) await setField(gh, config, item, config.fields.status, d.status);
   if (!d.open && f.open) await gh.rest("PATCH", issue, { state: "closed", state_reason: d.closeAs.toLowerCase() });
   return { ...f, ...d, closedNow: f.open && !d.open };
 }
@@ -95,8 +95,7 @@ const ROUTES = {
   },
   async projects_v2_item(gh, config, p) {
     if (p.changes?.field_value?.field_name !== config.fields.status) return [];
-    const ours = await Promise.all(Object.keys(config.boards).map((w) => board(gh, config, w)));
-    if (!ours.some((x) => x.id === p.projects_v2_item.project_node_id)) return [];
+    if ((await project(gh, config)).id !== p.projects_v2_item.project_node_id) return [];
     const node = (await gh.gql(`query($id:ID!){node(id:$id){...on Issue{number}}}`, { id: p.projects_v2_item.content_node_id })).node;
     return { numbers: node?.number ? [node.number] : [], moved: p.sender?.login === config.user };
   },
@@ -109,7 +108,7 @@ export async function route(gh, config, name, p) {
 // 盤面に表れないゲートの事実を、Actions のボードの状況の更新に出す（盤面を持つのはゲート。ユーザーの決定）。諦めた出来事がある（Off track。
 // その出来事での決め直しが抜けている）・振り出しを止めている（At risk。理由といつまで）・保っている（On track）。変わったときだけ足す。
 export async function reportHealth(gh, config, { stopped = null, failed = [] } = {}) {
-  const p = await board(gh, config, "actions");
+  const p = await project(gh, config);
   const r = await gh.gql(`query($id:ID!){node(id:$id){...on ProjectV2{statusUpdates(first:1,orderBy:{field:CREATED_AT,direction:DESC}){nodes{status body}}}}}`, { id: p.id });
   const last = r.node.statusUpdates.nodes[0];
   const [status, head] = failed.length ? ["OFF_TRACK", "ゲートがやり直しても処理できなかった出来事がある（その出来事での決め直しが抜けている）"]

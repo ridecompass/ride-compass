@@ -27,9 +27,9 @@ const END = (start) => `### 作る担当の終わり\n\n要約（担当の最後
 function world(list, { workflow = "active", last = [], steps = [] } = {}) {
   const w = { issues: new Map(), runs: [], writes: [], updates: [] };
   for (const i of list) w.issues.set(i.n, { state: "OPEN", reason: null, body: "- [ ] 作る\n", author: config.user, type: null, assignees: [], blockedBy: [],
-    comments: [], by: [], closedAt: null, status: null, priority: null, start: null, board: "actions", parent: null, labels: [], pr: null, ...i });
+    comments: [], by: [], closedAt: null, status: null, priority: null, start: null, board: true, parent: null, labels: [], pr: null, ...i });
   w.at = (n) => w.issues.get(n);
-  const item = (i) => (i.board ? [{ id: `IT${i.n}`, project: { number: config.boards[i.board] }, status: i.status && { name: i.status },
+  const item = (i) => (i.board ? [{ id: `IT${i.n}`, project: { number: config.project }, status: i.status && { name: i.status },
     priority: i.priority && { name: i.priority }, start: i.start && { text: i.start } }] : []);
   const near = (n) => ({ number: n, state: w.at(n).state, stateReason: w.at(n).reason });
   const blocked = (i) => ({ nodes: i.blockedBy.map(near) });
@@ -47,7 +47,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     if (q.includes("closePullRequest")) return void (w.at(Number(v.id.slice(2))).pr.state = "CLOSED", w.writes.push(["PR を閉じる", Number(v.id.slice(2))]));
     if (q.includes("removeSubIssue")) return void (w.at(Number(v.c.slice(1))).parent = null, w.writes.push(["親子を外す", Number(v.c.slice(1))]));
     if (q.includes("c:issue(number:$c)")) return { repository: { p: { parent: w.at(v.p).parent && { number: w.at(v.p).parent } }, c: { subIssues: children(w.at(v.c)) } } };
-    if (q.includes("items(first:100")) return { organization: { projectV2: { items: { pageInfo: { hasNextPage: false }, nodes: [...w.issues.values()].filter((i) => i.board === "actions")
+    if (q.includes("items(first:100")) return { organization: { projectV2: { items: { pageInfo: { hasNextPage: false }, nodes: [...w.issues.values()].filter((i) => i.board)
       .map((i) => ({ ...item(i)[0], content: { number: i.n, state: i.state, issueType: i.type && { name: i.type }, labels: names(i.labels), ...relations(i) } })) } } } };
     if (q.includes("blocking(")) {
       const i = w.at(v.n);
@@ -74,7 +74,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     if (q.includes("node(id:")) return { node: { number: Number(v.id.slice(1)) } };
     if (q.includes("updateProjectV2ItemFieldValue")) return void (w.at(Number(v.i.slice(2)))[v.f === config.fields.status ? "status" : "priority"] = v.v);
     if (q.includes("addProjectV2ItemById")) {
-      w.at(Number(v.c.slice(1))).board = Object.keys(config.boards).find((k) => v.p === `P${config.boards[k]}`);
+      w.at(Number(v.c.slice(1))).board = v.p === `P${config.project}`;
       return { addProjectV2ItemById: { item: { id: `IT${v.c.slice(1)}` } } };
     }
     if (q.includes("markPullRequestReadyForReview")) return void (w.at(Number(v.id.slice(2))).pr.draft = false);
@@ -124,7 +124,7 @@ const ev = {
   issue: (n, action, login = config.user, more = {}) => ["issues", { action, sender: { login }, issue: { number: n, body: more.body }, changes: more.changes, repository: tasks }],
   pr: (n, action) => ["pull_request", { action, sender: { login: config.user }, repository: code, pull_request: { head: { ref: `${config.branchPrefix}${n}` } } }],
   move: (n) => ["projects_v2_item", { action: "edited", sender: { login: config.user }, changes: { field_value: { field_name: config.fields.status } },
-    projects_v2_item: { project_node_id: `P${config.boards.actions}`, content_node_id: `I${n}` } }],
+    projects_v2_item: { project_node_id: `P${config.project}`, content_node_id: `I${n}` } }],
   schedule: () => ["schedule", {}],
   sub: (p, c, action = "sub_issue_added") => ["sub_issues", { action, sender: { login: config.claude }, repository: tasks,
     parent_issue: { number: p, node_id: `I${p}` }, sub_issue: { number: c, node_id: `I${c}` } }],
@@ -193,7 +193,7 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め3・�
       { state: "OPEN", status: "進行中", runs: ["#1 作る"] }],
     ["決め6 前からある Claude の割り当ては外し、保留ではユーザーだけ", { status: "保留", assignees: [config.claude] }, null, ev.comment(1), { assignees: [config.user] }],
     ["R6 見送り（Close as not planned）で閉じたものは閉じたまま", { status: "完了", state: "CLOSED", reason: "NOT_PLANNED" }, null, ev.issue(1, "closed"), { state: "CLOSED" }],
-    ["A 対話作業のボードは、開発機のセッションが触っていることを持たない（作業のステータスを書かない）", { status: "未着手", board: "dialog", type: config.dialogType, pr: { draft: true, checks: "PENDING" } }, null,
+    ["A 対話作業のボードは、開発機のセッションが触っていることを持たない（作業のステータスを書かない）", { status: "未着手", type: config.dialogType, pr: { draft: true, checks: "PENDING" } }, null,
       ev.comment(1), { status: "未着手" }],
     ["R8 マージのコミットの master の CI が終わった → 確かめの問い", { status: "CI待ち", body: CONFIRM, pr: merged }, null, ev.ci(config.base, "m1"), { status: "回答待ち", comment: "## 問い（確かめ）" }],
     ["R8・決め7 CI が通ったあとに PR が下書きへ戻された（差し戻し）→ 未着手 → 作る担当", { status: "検証待ち", pr: { draft: true, checks: "SUCCESS", drafted: true } }, null, ev.pr(1, "converted_to_draft"), { status: "進行中", runs: ["#1 作る"] }],
@@ -208,10 +208,10 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め3・�
       { status: "進行中", runs: ["#1 作る"], button: true }],
     ["R9・R13 Claude が起こした要望は採否を問い、本文の頭のボタンは問いより先に書く", { author: config.claude, type: "要望", board: null }, null, ev.issue(1, "opened", config.claude),
       { status: "回答待ち", comment: "## 問い（採否）", writes: ["本文", "コメント"] }],
-    ["R16 対話作業は別のボードへ入れ、振り出さない", { type: config.dialogType, board: null }, null, ev.issue(1, "opened"), { board: "dialog", status: "未着手", runs: [] }],
+    ["R16 対話作業も同じ Project へ入れ、振り出さない", { type: config.dialogType, board: null }, null, ev.issue(1, "opened"), { board: true, status: "未着手", runs: [] }],
     ["子は優先度を自分の欄に持たない（親の値を見るので、書き写さない）", { board: null, parent: 4 }, null, ev.issue(1, "opened"), { priority: null, status: "未着手" }],
     ["R16 対話作業の境目をまたがない種類の変更は通す", { status: "保留", type: "要望", typeChanges: [["不具合", "要望"]] }, null, ev.issue(1, "typed"), { type: "要望" }],
-    ["R16 対話作業の境目をまたぐ種類の変更は戻す", { status: "未着手", board: "dialog", type: "不具合", typeChanges: [[config.dialogType, "不具合"]] }, null, ev.issue(1, "typed"), { type: config.dialogType }],
+    ["R16 対話作業の境目をまたぐ種類の変更は戻す", { status: "未着手", type: "不具合", typeChanges: [[config.dialogType, "不具合"]] }, null, ev.issue(1, "typed"), { type: config.dialogType }],
     ["Claude が本文の完了の条件に印を付けた → 決め直す", { status: "未着手", body: "- [x] 作る\n" }, null, ev.issue(1, "edited", config.claude, { body: "- [x] 作る\n", changes: { body: { from: "- [ ] 作る\n" } } }), { status: "完了" }],
     ["条件の無い（子でない）issue は、今までどおり決め直しで完成で閉じる", { status: "未着手", body: "説明だけ\n" }, null, ev.comment(1), { state: "CLOSED", reason: "COMPLETED" }],
     ["回答のボタンだけを書き足した本文の書き換え → 受けない（問いの前にボタンを消さない）", { status: "未着手", body: withButton("- [ ] 作る\n", config, 1) }, null,
@@ -242,7 +242,7 @@ test("tasks#842 担当者はユーザーに問わないと進めないかの2択
       start + 3 * HOUR, "回答待ち", [config.user], "## 問い（イレギュラー）"],
     ["前提が開いている（関係性で待つ）→ 何時間でも問わない", { status: "未着手", blockedBy: [9] }, start + 30 * HOUR, "未着手", [config.claude], null],
     ["振り出しを止めている（外の事情で待つ）→ 問わない", { status: "未着手" }, start + 30 * HOUR, "未着手", [config.claude], null, "disabled"],
-    ["対話作業で3時間だれも書かない → 止まった", { status: "未着手", type: config.dialogType, board: "dialog" }, start + 3 * HOUR, "回答待ち", [config.user], "## 問い（イレギュラー）"],
+    ["対話作業で3時間だれも書かない → 止まった", { status: "未着手", type: config.dialogType }, start + 3 * HOUR, "回答待ち", [config.user], "## 問い（イレギュラー）"],
     ["保留はユーザーの番で、確かめない", { status: "保留" }, start + 30 * HOUR, "保留", [config.user], null],
     ["ゲートの書き込みは動きに数えない", { ...ci, comments: ["知らせ"], by: [config.gateBot], times: [new Date(start + 2 * HOUR).toISOString()] }, start + 3 * HOUR,
       "回答待ち", [config.user], "## 問い（イレギュラー）"],
@@ -542,7 +542,7 @@ test("書いた文は Claude が読むまで決定を当てず、読んだあと
   await mid.send(ev.run(run, "completed"));
   assert.deepEqual([mid.at(5).status, mid.titles()], ["進行中", ["#5 作る", "#5 作る"]], "担当が読み始めたあとに書いた文は、次の担当が読む");
 
-  const dialog = world([{ n: 6, status: "回答待ち", board: "dialog", type: config.dialogType, comments: [QUESTION, ANSWER("回答: 保留する\n\n来週にする")] }]);
+  const dialog = world([{ n: 6, status: "回答待ち", type: config.dialogType, comments: [QUESTION, ANSWER("回答: 保留する\n\n来週にする")] }]);
   await dialog.send(ev.comment(6));
   assert.deepEqual([dialog.at(6).status, dialog.titles()], ["未着手", []], "対話作業: 文があれば開発機のセッションの番（振り出さない）");
   dialog.at(6).comments.push("来週に回すと読んだ");
