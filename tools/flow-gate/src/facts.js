@@ -1,14 +1,9 @@
 // タスクの事実を読む（src/decide.js: decide が受ける形）。置き場の issue とコードのリポジトリの作業ブランチの PR を GraphQL の1回で、担当の実行は
 // Actions の実行の一覧から読む。ゲートは事実の写しを持たない（持ち主は GitHub）。見回りの一覧も同じ読み方を使う。
+import { FIELDS, START_FORM, valuesOf } from "./fields.js";
 import { APPLIED, answerText, checkQuestion, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, remaining } from "./questions.js";
 
-// issue の欄（issue fields。ステータス・優先度・規模・着手可能日時）の読み方と、欄の名前ごとの値。
-export const FIELDS = `issueFieldValues(first:20){nodes{...on IssueFieldSingleSelectValue{name field{...on IssueFieldSingleSelect{name}}}
- ...on IssueFieldTextValue{value field{...on IssueFieldText{name}}}}}`;
-const valuesOf = (issue) => Object.fromEntries((issue?.issueFieldValues?.nodes ?? []).filter((v) => v.field).map((v) => [v.field.name, v.name ?? v.value]));
-// 着手可能日時は「YYYY-MM-DD」か「YYYY-MM-DD HH:MM」（日本時間）だけを受ける。形の合わない値は受け入れず（badStart はその値。ゲートが知らせる）、
-// 待つと決めた意図を守ってまだ先と読む。
-const START_FORM = /^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})?$/;
+// 着手可能日時の形の合わない値は受け入れず（badStart はその値。ゲートが知らせる）、待つと決めた意図を守ってまだ先と読む。
 const jst = (text) => (START_FORM.test(text) ? new Date(`${text.replace(" ", "T")}${text.includes(":") ? "" : "T00:00"}:00+09:00`) : null);
 // 対話作業か。種類は作るとき（最初に付いた種類）で決まり、あとから境目をまたいで変えても変わらない（types は今より前の種類の古い順）。
 const dialogOf = (config, types, type) => [...types, type].find(Boolean) === config.dialogType;
@@ -41,18 +36,17 @@ export function runOf(title) {
 }
 // 担当のワークフロー（config.workflow）の近ごろの実行（新しい順に100本）。動いているか・枠が埋まっているか・最後の動きは、決め直すたびにここから読む。
 export async function recentRuns(gh, config) {
-  const { workflow_runs: runs } = await gh.rest("GET", `/repos/${config.code}/actions/workflows/${config.workflow}/runs?per_page=100`);
+  const { workflow_runs: runs } = await gh.rest("GET", `/repos/${config.code}/actions/workflows/${config.workflow}/runs?per_page=100&exclude_pull_requests=true`);
   return runs.map((r) => ({ ...runOf(r.display_title), id: r.id, active: r.status !== "completed", conclusion: r.conclusion,
     created: Date.parse(r.created_at), updated: Date.parse(r.updated_at) })).filter((r) => r.number);
 }
 
 const query = (config) => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:String!,$head:String!){
- t:repository(owner:$to,name:$tn){issue(number:$n){id state stateReason createdAt closedAt lastEditedAt editor{login} body author{login} issueType{name} assignees(first:10){nodes{login}}
+ t:repository(owner:$to,name:$tn){issue(number:$n){id state stateReason closedAt body author{login} issueType{name} assignees(first:10){nodes{login}}
   comments(last:40){nodes{body createdAt author{login}}} ${FIELDS} ${relationsOf(true)}
   timelineItems(first:50,itemTypes:[ISSUE_TYPE_CHANGED_EVENT]){nodes{...on IssueTypeChangedEvent{prevIssueType{name} issueType{name}}}}}}
  c:repository(owner:$co,name:$cn){pullRequests(headRefName:$head,first:5,orderBy:{field:CREATED_AT,direction:DESC}){nodes{
-  id state isDraft merged mergedAt mergeCommit{statusCheckRollup{state} checkSuites(last:20){nodes{updatedAt}}}
-  commits(last:1){nodes{commit{oid committedDate statusCheckRollup{state} checkSuites(last:20){nodes{updatedAt}}}}}
+  id state isDraft merged mergeCommit{statusCheckRollup{state}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{state}}}}
   timelineItems(last:1,itemTypes:[CONVERT_TO_DRAFT_EVENT]){nodes{...on ConvertToDraftEvent{createdAt}}}}}}}`;
 const ROLLUP = { SUCCESS: "SUCCESS", FAILURE: "FAILURE", ERROR: "FAILURE", PENDING: "PENDING", EXPECTED: "PENDING" };
 
@@ -74,7 +68,7 @@ async function allComments(gh, config, number) {
 }
 
 // 担当の終わりのコメントの見出し（.github/claude-task/after.js が書く）。
-const END = /^### (\S+)担当の終わり/;
+export const END = /^### (\S+)担当の終わり/;
 
 // runs は出来事1件につき1回読んだ担当の実行の一覧（recentRuns）。
 export async function readFacts(gh, config, number, runs) {

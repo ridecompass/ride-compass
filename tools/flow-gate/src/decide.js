@@ -19,7 +19,6 @@ export function decide(f, config) {
   const byChildren = f.remaining.filter((c) => c.child && f.children.some((k) => k.number === c.child && ACCEPTED(k)));
   const s = status({ ...f, remaining: f.remaining.filter((c) => !byChildren.includes(c)) }, config);
   if (f.dialog && !DIALOG.includes(s.status)) s.status = "未着手";
-
   const body = checkLines(f.body, [...byChildren.map((c) => c.index), ...(s.check ?? [])]);
   // 見送りで閉じる・閉じた issue の開いた PR は、もう確かめもマージもしないので閉じる。
   const dropping = (s.closeAs ?? (f.open ? null : f.closedAs)) === "NOT_PLANNED";
@@ -28,7 +27,6 @@ export function decide(f, config) {
     ready: s.status === "検証待ち" && Boolean(f.pr?.draft), assignees: owner(s.status, config),
     body: s.status === "回答待ち" || (f.question && !f.question.answer) ? withButton(body, config, f.number) : body };
 }
-
 
 // 2階: 担当者は2択。ユーザーに問わないと進めない（回答待ち・保留）ならユーザー、ほかは Claude（完了は持ち主なし）。
 const owner = (status, config) => (status === "完了" ? [] : WAIT.includes(status) ? [config.user] : [config.claude]);

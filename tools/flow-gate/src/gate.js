@@ -2,19 +2,8 @@
 // ステータスと、変わってはいけない値（種類・担当者・本文のボタンと条件）を書くのはゲートだけ。
 import { decide } from "./decide.js";
 import { readFacts } from "./facts.js";
+import { SET_FIELDS, fieldValues } from "./fields.js";
 import { askDropped, askText, bodyRest, norm } from "./questions.js";
-
-// issue の欄（issue fields）へ値を書く1回の問い合わせ（起票のスクリプト .claude/skills/file-issue/scripts/new-issue.mjs も使う）。欄と選択肢の id は
-// 設定が持つ（ゲートの App は組織の欄の一覧を読めない）。values は [設定の欄の名前（status 等）, 値] の並び。
-export const SET_FIELDS = "mutation($i:ID!,$v:[IssueFieldCreateOrUpdateInput!]!){setIssueFieldValue(input:{issueId:$i,issueFields:$v}){clientMutationId}}";
-export function fieldValues(config, values) {
-  return values.map(([key, value]) => {
-    const f = config.fields[key];
-    if (!f.options) return { fieldId: f.id, textValue: value };
-    if (!f.options[value]) throw new Error(`欄「${f.name}」に「${value}」が無い（${Object.keys(f.options).join("・")}）`);
-    return { fieldId: f.id, singleSelectOptionId: f.options[value] };
-  });
-}
 
 // 決めた問い（種類の名前か、見送りの相手を持つもの）の文。
 const askBody = (ask, config) => (ask.dropped ? askDropped(ask.dropped, config.questionTemplate) : askText(ask, config.questionTemplate));

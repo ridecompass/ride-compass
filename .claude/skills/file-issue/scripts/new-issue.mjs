@@ -6,13 +6,12 @@
 //   --parent は子（種類は親と同じ。条件と優先度・着手可能日時を持たない。孫は作らない）。--origin は要望ごとの切り出し（本文に「分割元: #N」を置く）。
 import { readFileSync } from "node:fs";
 import { bot, config, isMain } from "../../../../tools/flow-gate/src/bot.js";
-import { SET_FIELDS, fieldValues } from "../../../../tools/flow-gate/src/gate.js";
+import { SET_FIELDS, fieldProblems, fieldValues } from "../../../../tools/flow-gate/src/fields.js";
 import { conditions, norm } from "../../../../tools/flow-gate/src/questions.js";
 
 // 畳んだ節の名前と順（2 は種類ごとに1つ）。
 const SECTIONS = [["不具合: 起きていること", "要望: 困りごと", "保守: 背景", "調査: 明らかにしたいこと"], ["やること", "調べ方"], ["決めること"],
   ["完了の条件"], ["経緯"], ["規模と優先度の根拠"]];
-const START = /^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})?$/;
 
 // 本文と欄が決まりに合わない所（空なら合う）。child は子として作るとき。
 export function issueProblems(body, { type, child = false, size, priority, start }) {
@@ -39,10 +38,7 @@ export function issueProblems(body, { type, child = false, size, priority, start
     if (!has) problems.push("完了の条件が無い");
     if (type !== config.dialogType && (!size || !priority)) problems.push("規模と優先度を入れる（--size・--priority）");
   }
-  if (size && !["S", "M", "L"].includes(size)) problems.push(`規模「${size}」は S・M・L のどれか`);
-  if (priority && !config.priorities.includes(priority)) problems.push(`優先度「${priority}」は ${config.priorities.join("・")} のどれか`);
-  if (start && !START.test(start)) problems.push(`着手可能日時「${start}」は YYYY-MM-DD か YYYY-MM-DD HH:MM（日本時間）`);
-  return problems;
+  return [...problems, ...fieldProblems(config, [["size", size], ["priority", priority], ["start", start]].filter(([, v]) => v))];
 }
 
 // 要望ごとの切り出しの本文に「分割元: #N」の行を、要約の段落のあとへ置く（もうあれば置かない）。
@@ -103,10 +99,6 @@ async function main() {
 
 // 欄を入れて、入れた欄を出す。落ちても issue はできているので、作り直させずに、作った番号と入れ直すコマンドを出して 1 で終わる。
 function fill(gh, number, opts) {
-  if (opts.start && !START.test(opts.start)) {
-    console.error(`着手可能日時「${opts.start}」は YYYY-MM-DD か YYYY-MM-DD HH:MM（日本時間）で書く`);
-    process.exit(1);
-  }
   const values = [["size", opts.size], ["priority", opts.priority], ["start", opts.start]].filter(([, v]) => v);
   const left = fillFields(gh, number, values);
   if (left) {

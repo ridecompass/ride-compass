@@ -62,12 +62,11 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
       const closedAt = i.state === "CLOSED" ? (i.closedAt ?? T(i.comments.length - 0.5)) : null;
       // GraphQL は App の書き手の名前を [bot] の付かない形で返す。コメントの時刻は並びの順。
       const comments = i.comments.map((body, k) => ({ body, createdAt: T(k), author: { login: author(i, k).replace(/\[bot\]$/, "") } })).slice(-40);
-      return { t: { issue: { id: `I${i.n}`, state: i.state, stateReason: i.reason, createdAt: T(0), closedAt, body: i.body, author: { login: i.author }, issueType: i.type && { name: i.type },
+      return { t: { issue: { id: `I${i.n}`, state: i.state, stateReason: i.reason, closedAt, body: i.body, author: { login: i.author }, issueType: i.type && { name: i.type },
         assignees: { nodes: i.assignees.map((login) => ({ login })) }, ...relations(i), comments: { nodes: comments }, issueFieldValues: fields(i),
         timelineItems: { nodes: (i.typeChanges ?? []).map(([a, b]) => ({ prevIssueType: { name: a }, issueType: { name: b } })) } } },
       c: { pullRequests: { nodes: i.pr ? [pull(i, i.pr)] : [] } } };
     }
-    if (q.includes("node(id:")) return { node: { number: Number(v.id.slice(1)) } };
     if (q.includes("setIssueFieldValue")) {
       const i = w.at(Number(v.i.slice(1)));
       for (const x of v.v) {

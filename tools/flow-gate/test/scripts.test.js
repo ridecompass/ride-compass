@@ -116,5 +116,5 @@ test("起票する（file-issue の new-issue.mjs）: 欄を issue へ1回で入
     assert.match(left, /^#77 は作った（作り直さない）。欄を入れられなかった（許しが無い）/, fail);
     assert.match(left, /--fill 77 --size S --priority 高$/, "入れ直すコマンド");
   }
-  assert.match(fillFields(() => "{}", 77, [["size", "XL"]]), /欄「規模」に「XL」が無い/, "選択肢に無い値は書かない");
+  assert.match(fillFields(() => "{}", 77, [["size", "XL"]]), /規模「XL」は .*のどれか/, "選択肢に無い値は書かない");
 });

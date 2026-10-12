@@ -22,6 +22,7 @@ export async function handle(gh, { inbox }, config, name, payload) {
   const w = payload.workflow_run;
   const run = name === "workflow_run" && w.path.endsWith(config.workflow) && runOf(w.display_title);
   const { numbers, moved } = run ? { numbers: [run.number] } : await route(gh, config, name, payload);
+  if (!numbers.length) return; // 担当でないワークフローの出来事等。実行の一覧も読まない
   const runs = await recentRuns(gh, config);
   const settled = await Promise.all(numbers.map((n) => settle(gh, config, n, runs, moved)));
   // ゲートがいま閉じた issue の矢印1本の先も、閉じるものが無くなるまで、振り出す前に決め直す（古いステータスで親を振り出さない）。
