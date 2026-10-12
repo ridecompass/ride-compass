@@ -46,7 +46,7 @@ const query = (config) => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn
   comments(last:40){nodes{body createdAt author{login}}} ${FIELDS} ${relationsOf(true)}
   timelineItems(first:50,itemTypes:[ISSUE_TYPE_CHANGED_EVENT]){nodes{...on IssueTypeChangedEvent{prevIssueType{name} issueType{name}}}}}}
  c:repository(owner:$co,name:$cn){pullRequests(headRefName:$head,first:5,orderBy:{field:CREATED_AT,direction:DESC}){nodes{
-  id state isDraft mergeable merged mergeCommit{statusCheckRollup{state}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{state}}}}
+  id state isDraft mergeable merged createdAt mergedAt mergeCommit{statusCheckRollup{state}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{state}}}}
   timelineItems(last:1,itemTypes:[CONVERT_TO_DRAFT_EVENT]){nodes{...on ConvertToDraftEvent{createdAt}}}}}}}`;
 const ROLLUP = { SUCCESS: "SUCCESS", FAILURE: "FAILURE", ERROR: "FAILURE", PENDING: "PENDING", EXPECTED: "PENDING" };
 
@@ -95,7 +95,8 @@ export async function readFacts(gh, config, number, runs) {
   const answer = asked < 0 ? null : nodes.slice(asked + 1).find((n) => isAnswer(n.body));
   const answerRead = Boolean(answer) && reads.some((t) => t > at(answer));
   const answerApplied = Boolean(answer) && nodes.some((n) => at(n) > at(answer) && norm(n.body).startsWith(APPLIED));
-  const question = latestQuestion(comments, config.questionTemplate);
+  const latest = latestQuestion(comments, config.questionTemplate);
+  const question = latest && { ...latest, at: at(nodes[asked]) };
   // 子は、親が閉じて開き直されないなら（要望が満たされた・やめた）生きていない。条件が残ったまま完成で閉じた親は、ゲートが開き直す。
   const p = i.parent;
   const dead = Boolean(p) && p.state === "CLOSED" && !(p.stateReason === "COMPLETED" && remaining(p.body).length);
@@ -107,6 +108,8 @@ export async function readFacts(gh, config, number, runs) {
     conditions: conditions(i.body), remaining: remaining(i.body), assignees: i.assignees.nodes.map((a) => a.login), question,
     runs: held, parent: p && { number: p.number }, dead, children: i.subIssues.nodes, origin: Number(/^分割元: #(\d+)\s*$/m.exec(norm(i.body))?.[1]) || null,
     types, dialog,
+    // 作業ブランチの PR が最後に開かれたかマージされた時刻（担当が手放したあとに、別の所で作られたかを問いの時刻と比べる）。
+    prMoved: Math.max(0, ...c.pullRequests.nodes.flatMap((x) => [Date.parse(x.createdAt), Date.parse(x.mergedAt) || 0])),
     merged: Boolean(merged), mergeChecks: ROLLUP[merged?.mergeCommit?.statusCheckRollup?.state],
     badQuestion: last && isQuestion(last) ? checkQuestion(config.questionTemplate, last) : [], comments,
     pr: open && { id: open.id, draft: open.isDraft, checks, conflict: open.mergeable === "CONFLICTING", backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };

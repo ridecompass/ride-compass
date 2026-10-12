@@ -37,7 +37,8 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     const p = i.parent && w.at(i.parent);
     return { blockedBy: blocked(i), subIssues: children(i), parent: p && { ...near(p.n), body: p.body, labels: names(p.labels), issueFieldValues: fields(p) } };
   };
-  const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, merged: Boolean(p.merged), mergeable: p.conflict ? "CONFLICTING" : "MERGEABLE", mergeCommit: { statusCheckRollup: p.mergeChecks && { state: p.mergeChecks } },
+  // PR は、置いたときに決めた時刻（p.created・p.mergedAt）が無ければ、どのコメントより前に作られた。
+  const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, merged: Boolean(p.merged), mergeable: p.conflict ? "CONFLICTING" : "MERGEABLE", createdAt: p.created ?? T(-1), mergedAt: p.mergedAt ?? null, mergeCommit: { statusCheckRollup: p.mergeChecks && { state: p.mergeChecks } },
     commits: { nodes: [{ commit: { oid: `c${i.n}`, committedDate: "2026-10-11T00:00:00Z", statusCheckRollup: p.checks && { state: p.checks } } }] },
     timelineItems: { nodes: p.drafted ? [{ createdAt: "2026-10-11T01:00:00Z" }] : [] } });
   const gql = async (q, v) => {
@@ -249,6 +250,29 @@ test("tasks#868 答えの無い問いが残っていても、完了の条件が�
     const i = w.at(1);
     const done = status === "完了";
     assert.deepEqual([i.status, i.state, i.reason, i.body.startsWith("<!-- flow-gate -->"), i.assignees], [status, done ? "CLOSED" : "OPEN", done ? "COMPLETED" : null, !done, done ? [] : [config.user]], name);
+  }
+});
+
+test("tasks#877 問いを出した事実が無くなったら、条件が残っていても回答待ちに留めず表で決め直し、ボタンを外す。事実が残る問いと Claude の判断の問いは待つ", async () => {
+  const left = "- [x] 作る\n- [ ] 見た目\n  - 確かめる: ユーザー\n- [ ] 直す\n";
+  const rows = [
+    // [要求, タスク, 出来事, 期待するステータス]
+    ["見送りの前提について問うたあとで、前提が開き直された", { blockedBy: [7], comments: [askDropped([7], config.questionTemplate)] }, ev.issue(7, "reopened"), "未着手"],
+    ["イレギュラーを問うたあとで、作業ブランチの PR が開かれた", { comments: [ASKED("イレギュラー")], pr: { created: T(1) } }, ev.pr(1, "opened"), "CI待ち"],
+    ["イレギュラーを問うたあとで、問う前からあった PR がマージされた", { comments: [ASKED("イレギュラー")], pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1", mergedAt: T(1) } },
+      ev.ci(config.base, "m1"), "未着手"],
+    ["確かめを問うたあとで、Claude が確かめる条件が足された", { body: withButton(left, config, 1), comments: [ASKED("確かめ")] }, ev.issue(1, "edited", config.claude), "未着手"],
+    ["見送りの前提がまだ見送りのままなら待つ", { blockedBy: [8], comments: [askDropped([8], config.questionTemplate)] }, ev.comment(1, config.claude), "回答待ち"],
+    ["確かめる担当が手放したイレギュラーは、問う前からある開いた PR では片付かない", { comments: [ASKED("イレギュラー")], pr: { checks: "SUCCESS" } }, ev.pr(1, "synchronize"), "回答待ち"],
+    ["Claude の判断の問いは、ゲートが中身を読まないので待つ", { comments: [QUESTION] }, ev.comment(1, config.claude), "回答待ち"],
+  ];
+  for (const [name, task, event, status] of rows) {
+    const w = world([{ n: 1, status: "回答待ち", assignees: [config.user], body: withButton("- [ ] 作る\n", config, 1), ...task }, { n: 7, status: "未着手" },
+      { n: 8, status: "完了", state: "CLOSED", reason: "NOT_PLANNED" }], { workflow: "disabled" });
+    await w.send(event);
+    const i = w.at(1);
+    const waiting = status === "回答待ち";
+    assert.deepEqual([i.status, i.state, i.body.startsWith("<!-- flow-gate -->"), i.assignees, asked(i)], [status, "OPEN", waiting, waiting ? [config.user] : [config.claude], 1], name);
   }
 });
 
