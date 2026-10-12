@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import fnmatch
+import functools
 import json
 import re
 import subprocess
@@ -416,18 +417,52 @@ def friction_lines(number: int, comments: list[dict], since: dt.datetime) -> lis
     return [
         f"#{number} {line}"
         for comment in comments
-        if dt.datetime.fromisoformat(comment["createdAt"].replace("Z", "+00:00")) >= since
+        if _stamp(comment) >= since
         for line in comment["body"].split("\n")
         if FRICTION_RE.match(line)
     ]
 
 
-def gh_json(*args: str):
-    result = subprocess.run(["gh", *args], capture_output=True, text=True, encoding="utf-8",
-                            errors="replace", check=False)
+def comments_since(comments: dict, since: dt.datetime, read_earlier) -> list[dict]:
+    """新しい方から読んだコメントの1ページ（GraphQL の `comments(last:)`）へ、`since`以後のものが前のページに
+    まだありうる間だけ、`read_earlier(cursor)`で前のページを足し、古い順に並べて返す。"""
+    nodes = list(comments["nodes"])
+    page = comments["pageInfo"]
+    while page["hasPreviousPage"] and nodes and _stamp(nodes[0]) >= since:
+        earlier = read_earlier(page["startCursor"])
+        nodes = earlier["nodes"] + nodes
+        page = earlier["pageInfo"]
+    return nodes
+
+
+def _stamp(comment: dict) -> dt.datetime:
+    return dt.datetime.fromisoformat(comment["createdAt"].replace("Z", "+00:00"))
+
+
+def gh_graphql(query: str, **variables: str | int | None) -> dict:
+    """GraphQL を gh で1回打つ。値が None の変数は渡さない（問い合わせの側で null になる）。"""
+    fields = [arg for name, value in variables.items() if value is not None
+              for arg in ("-F" if isinstance(value, int) else "-f", f"{name}={value}")]
+    result = subprocess.run(["gh", "api", "graphql", "-f", f"query={query}", *fields], capture_output=True,
+                            text=True, encoding="utf-8", errors="replace", check=False)
     if result.returncode != 0:
-        raise RuntimeError(f"gh {' '.join(args)}: {result.stderr.strip()}")
-    return json.loads(result.stdout)
+        raise RuntimeError(f"gh api graphql: {result.stderr.strip()}")
+    return json.loads(result.stdout)["data"]
+
+
+#: 検索が返す issue の上限（GitHub の検索の決まり）。
+SEARCH_LIMIT = 1000
+#: issue は1回に50件、コメントは issue ごとに新しい方から100件（GraphQL の1ページの上限）を一緒に読む。
+_COMMENTS = "comments(last:100,before:$before){pageInfo{hasPreviousPage startCursor} nodes{createdAt body}}"
+FRICTION_SEARCH = ("query($q:String!,$after:String,$before:String){search(type:ISSUE,query:$q,first:50,after:$after){issueCount "
+                   "pageInfo{hasNextPage endCursor} nodes{...on Issue{number " + _COMMENTS + "}}}}")
+FRICTION_EARLIER = ("query($owner:String!,$name:String!,$number:Int!,$before:String){repository(owner:$owner,name:$name){"
+                    "issue(number:$number){" + _COMMENTS + "}}}")
+
+
+def _earlier_comments(number: int, cursor: str) -> dict:
+    owner, name = TASKS_REPO.split("/")
+    return gh_graphql(FRICTION_EARLIER, owner=owner, name=name, number=number, before=cursor)["repository"]["issue"]["comments"]
 
 
 def cmd_friction(args: argparse.Namespace) -> int:
@@ -438,18 +473,20 @@ def cmd_friction(args: argparse.Namespace) -> int:
     stamp = git("for-each-ref", "--format=%(creatordate:unix)", f"refs/tags/{tags[0][0]}").strip()
     since = dt.datetime.fromtimestamp(int(stamp), tz=dt.timezone.utc)
     # 検索の日付は日の粒度なので、その日の更新から引き、コメントの時刻で絞る。
-    # 一覧の `--json comments` は100件を超えるコメントを読めずに落ちるので、番号だけを取って1件ずつ読む。
-    limit = 1000
-    numbers = [row["number"] for row in gh_json(
-        "issue", "list", "-R", TASKS_REPO, "--state", "all", "--limit", str(limit),
-        "--search", f"updated:>={since.date().isoformat()}", "--json", "number")]
-    if len(numbers) >= limit:
-        print(f"更新された issue が上限の {limit} 件に達した（取りこぼしうる）", file=sys.stderr)
-    for number in numbers:
-        comments = gh_json("issue", "view", str(number), "-R", TASKS_REPO, "--json", "comments")["comments"]
-        for line in friction_lines(number, comments, since):
-            print(line)
-    return 0
+    query = f"repo:{TASKS_REPO} is:issue updated:>={since.date().isoformat()}"
+    after = None
+    while True:
+        found = gh_graphql(FRICTION_SEARCH, q=query, after=after)["search"]
+        if after is None and found["issueCount"] > SEARCH_LIMIT:
+            print(f"更新された issue が {found['issueCount']} 件あり、検索が返す {SEARCH_LIMIT} 件を超える（取りこぼしうる）",
+                  file=sys.stderr)
+        for issue in found["nodes"]:
+            comments = comments_since(issue["comments"], since, functools.partial(_earlier_comments, issue["number"]))
+            for line in friction_lines(issue["number"], comments, since):
+                print(line)
+        if not found["pageInfo"]["hasNextPage"]:
+            return 0
+        after = found["pageInfo"]["endCursor"]
 
 
 # --- 差分の報告（作業者が自分の差分に対して打つ。検査ではない） -----------------

@@ -26,5 +26,28 @@ export function usage(text) {
   console.error(`使い方: ${text}`);
   process.exit(2);
 }
-// 置き場の issue へコメントを書く。
-export const comment = (gh, number, body) => gh(["issue", "comment", String(number), "-R", config.tasks, "--body-file", "-"], body);
+// 置き場の issue へコメントを書く。REST で書けば1回で済む（gh issue comment は issue の ID を引く1回と書く1回を打つ）。
+export const comment = (gh, number, body) => gh(["api", `repos/${config.tasks}/issues/${number}/comments`, "-F", "body=@-", "--silent"], body);
+// GraphQL の誤りを1行の文にする。
+export const messages = (errors) => errors.map((e) => e.message).join("・");
+// GraphQL を1回打ち、応答（data と errors）を返す。無い issue を読むと gh は 1 で終わるが、応答に data があれば読む。
+export function graphql(gh, query, variables = {}) {
+  try {
+    return JSON.parse(gh(["api", "graphql", "--input", "-"], JSON.stringify({ query, variables })));
+  } catch (e) {
+    let reply = null;
+    try {
+      reply = JSON.parse(e.stdout);
+    } catch {
+      // 応答が JSON でない（5xx・通信の途切れ）。
+    }
+    if (reply?.data) return reply;
+    throw e;
+  }
+}
+// GraphQL を1回打ち、誤りが返れば投げ、data を返す。
+export function graphqlData(gh, query, variables = {}) {
+  const reply = graphql(gh, query, variables);
+  if (reply.errors?.length) throw new Error(messages(reply.errors));
+  return reply.data;
+}

@@ -169,11 +169,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p /tmp/prev
+          # 一覧が成果物の ID まで返すので、ID で取る（gh run download はその実行の成果物を一覧し直してから取る）。
           prev=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=mutation-review&per_page=30" \
-            -q '[.artifacts[] | select(.expired | not) | select(.workflow_run.id != ${{ github.run_id }})][0].workflow_run.id // empty')
+            -q '[.artifacts[] | select(.expired | not) | select(.workflow_run.id != ${{ github.run_id }})][0] // empty | "\(.id) \(.workflow_run.id)"')
           if [ -n "$prev" ]; then
-            gh run download "$prev" -R "${{ github.repository }}" -n mutation-review -D /tmp/prev
-            echo "前の見直し: 実行 $prev"
+            gh api "repos/${{ github.repository }}/actions/artifacts/${prev% *}/zip" > /tmp/prev.zip
+            unzip -q /tmp/prev.zip -d /tmp/prev
+            echo "前の見直し: 実行 ${prev#* }"
           else
             echo "前の見直しは無い（前回も候補だった印は付かない）"
           fi
