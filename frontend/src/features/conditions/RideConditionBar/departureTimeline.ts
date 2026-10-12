@@ -1,11 +1,11 @@
 // 出発時刻ピッカー（RideConditionBar）のドラッグタイムライン用の目盛り生成。気象レイヤーの
 // 取得結果に依存しない理由と刻みの粒度はdocs/modules/frontend/dynamic-weather-layers.md
 // 「共有タイムラインのラベル」節が持つ。
+import { HOUR_MS } from "@/lib/duration";
 import { formatJstDateTime, formatJstHourMinute, formatJstMinute, jstParts } from "@/lib/time";
 import type { DynamicLayerTimeSliderFrame } from "@/features/conditions/DynamicLayerTimeSlider/DynamicLayerTimeSlider";
 import { DEPARTURE_STEP_MS, floorToDepartureStep } from "@/features/conditions/rideConditions";
 
-const HOUR_MS = 60 * 60_000;
 const FINE_WINDOW_MS = HOUR_MS;
 const HORIZON_MS = 48 * HOUR_MS;
 

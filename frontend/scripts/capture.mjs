@@ -28,9 +28,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import { imageEnv, productionOrigins } from "./image.mjs";
+
 const frontendRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const playwright = path.join(frontendRoot, "node_modules", "@playwright", "test", "cli.js");
-const PRODUCTION_FRONTEND = "https://ride-compass-frontend.onrender.com";
 /** e2e/fixtures.ts: installApiMocks が待ち受ける向け先。ビルドの環境変数に別の向け先があっても、モックへ向ける。 */
 const MOCKED_API = "http://localhost:8000";
 /** frontend/e2e（3100）・e2e-live（3200）・devサーバー（3000）と取り合わないポート。 */
@@ -60,18 +61,14 @@ function run(command, args, { cwd = frontendRoot, env = {} } = {}) {
 }
 
 /**
- * 手元で起動する版へ渡す環境変数。本番（deploy-frontend.yml が像のビルドへ渡す値と、像に入れる GIT_COMMIT。docs/architecture/tech-stack.md
- * 「本番の宛先」）と同じく、API もタイルも backend へ直接向け、ビルド（NEXT_PUBLIC_ を埋め込む）と起動の両方へ渡す。管理画面
- * （src/proxy.ts）の資格情報は撮影用の値で、capture/context.ts: openAdmin が同じ環境変数から読む。
+ * 手元で起動する版へ渡す環境変数。本番の像と同じ組（scripts/image.mjs: imageEnv）を、ビルド（NEXT_PUBLIC_ を埋め込む）と起動の
+ * 両方へ渡す。管理画面（src/proxy.ts）の資格情報は撮影用の値で、capture/context.ts: openAdmin が同じ環境変数から読む。
  */
 function frontendEnv(target, commit) {
   return {
-    NEXT_PUBLIC_API_URL: target,
-    NEXT_PUBLIC_TILE_BASE_URL: target,
-    BACKEND_INTERNAL_URL: target,
+    ...imageEnv(target, commit),
     ADMIN_BASIC_AUTH_USERNAME: "capture",
     ADMIN_BASIC_AUTH_PASSWORD: "capture",
-    GIT_COMMIT: commit,
   };
 }
 
@@ -255,7 +252,7 @@ if (!production) {
   const unpassed = unpassedEnv(serverDir, env);
   if (unpassed.length > 0)
     fail(
-      `frontend が読む環境変数を手元の版へ渡していない: ${unpassed.join(" / ")}（scripts/capture.mjs: frontendEnv へ本番と同じ向きで足す）`,
+      `frontend が読む環境変数を手元の版へ渡していない: ${unpassed.join(" / ")}（本番の像へも渡すものは scripts/image.mjs: imageEnv、撮影だけのものは scripts/capture.mjs: frontendEnv へ足す）`,
     );
   const build = JSON.stringify({ source: checkout.source, env });
   if (builtWith(serverDir) === build) {
@@ -288,12 +285,12 @@ if (values.backend.length > 0) {
   await waitReady("作業ツリーの backend", `${worktreeBackend.origin}/health`);
 }
 
-if (production) await waitReady("本番の frontend", `${PRODUCTION_FRONTEND}/api/version`);
+if (production) await waitReady("本番の frontend", `${productionOrigins.frontend}/api/version`);
 if (!mocked && !production) await waitReady("backend", `${api}/health`);
 
 const status = run(process.execPath, [playwright, "test", "-c", "playwright.capture.config.ts"], {
   env: {
-    CAPTURE_BASE_URL: production ? PRODUCTION_FRONTEND : `http://localhost:${LOCAL_PORT}`,
+    CAPTURE_BASE_URL: production ? productionOrigins.frontend : `http://localhost:${LOCAL_PORT}`,
     ...(serverDir ? { CAPTURE_LOCAL_PORT: LOCAL_PORT, CAPTURE_SERVER_DIR: serverDir } : {}),
     // 手元で起動する版は Playwright の webServer が起こし、環境変数を継ぐ。
     ...env,

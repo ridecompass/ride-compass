@@ -8,6 +8,7 @@ import { gridToFeatureCollection, type DynamicWeatherRenderPayload } from "@/fea
 import type { WindGridPoint } from "@/types/weather";
 import windGridConfig from "@/types/generated/wind-grid-config.json";
 import { buildRangeLegendBands, type MapColorLegendBand } from "@/lib/mapDisplay/mapColorLegend";
+import { downwindDeg } from "@/lib/cardinalLabel";
 
 /** 格子の点と、その格子の間隔（度）。 */
 export interface SpacedWindGrid {
@@ -63,7 +64,7 @@ export const WIND_SPEED_LEGEND_LEVELS: readonly MapColorLegendBand[] = buildRang
 interface WindPointFeatureProperties {
   /** 風速（m/s） */
   speed: number;
-  /** 矢印の向き（度、北=0・時計回り）。風が吹いていく方向なので、気象の風向（吹いてくる方向）+180。 */
+  /** 矢印の向き（度、北=0・時計回り）。風が吹いていく方向。 */
   bearing: number;
 }
 
@@ -80,7 +81,7 @@ export function windArrows(grid: readonly WindGridPoint[], time: string): Dynami
     (point, { speed, direction }) => ({
       type: "Feature",
       geometry: { type: "Point", coordinates: [point.longitude, point.latitude] },
-      properties: { speed, bearing: (direction + 180) % 360 },
+      properties: { speed, bearing: downwindDeg(direction) },
     }),
   );
   return { kind: "gridMark", geojson };

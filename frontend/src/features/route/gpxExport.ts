@@ -1,3 +1,4 @@
+import { closestPointOnSegment, longitudeScale, type PlanePoint } from "@/lib/localPlane";
 import type { RouteCandidate } from "@/types/route";
 
 // Suuntoアプリは1000点を超えるGPXの取り込みで問題が起きることがある
@@ -12,12 +13,9 @@ const SIMPLIFY_TOLERANCE_M = 3;
 
 const METERS_PER_DEGREE_LATITUDE = 111_320;
 
-type PlanePoint = { x: number; y: number };
-
-/** 緯度経度を、座標列の中央緯度を基準にした局所平面（m）へ落とす。緯度経度のまま距離を
- * 測ると経度方向が実際より長くなり（日本では約1.2倍）、東西の曲がりだけが残りやすくなる。 */
+/** 緯度経度を、座標列の中央緯度を基準にした局所平面（m）へ落とす。緯度経度のまま測ると、東西の曲がりだけが残りやすくなる。 */
 function toLocalPlane(coordinates: readonly GeoJSON.Position[]): PlanePoint[] {
-  const lonScale = Math.cos((coordinates[Math.floor(coordinates.length / 2)][1] * Math.PI) / 180);
+  const lonScale = longitudeScale(coordinates[Math.floor(coordinates.length / 2)][1]);
   return coordinates.map(([lon, lat]) => ({
     x: lon * METERS_PER_DEGREE_LATITUDE * lonScale,
     y: lat * METERS_PER_DEGREE_LATITUDE,
@@ -26,12 +24,8 @@ function toLocalPlane(coordinates: readonly GeoJSON.Position[]): PlanePoint[] {
 
 /** 点`p`と線分`a`-`b`の距離（m）。`a`と`b`が同じ点なら点どうしの距離。 */
 function distanceToSegment(p: PlanePoint, a: PlanePoint, b: PlanePoint): number {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const lengthSquared = dx * dx + dy * dy;
-  if (lengthSquared === 0) return Math.hypot(p.x - a.x, p.y - a.y);
-  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared));
-  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+  const closest = closestPointOnSegment(p, a, b);
+  return Math.hypot(p.x - closest.x, p.y - closest.y);
 }
 
 /** Ramer–Douglas–Peucker。両端を結んだ線分から`toleranceM`より離れる点を残し、その点で

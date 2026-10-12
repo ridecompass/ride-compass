@@ -10,6 +10,7 @@
 
 import type { JmaTileIndexResponse } from "@/types/route";
 import { jmaFrameKey, type JmaTileRef } from "@/features/map/layers/jmaDelivery";
+import { tileBoundsLonLat } from "@/features/map/layers/webMercatorTile";
 
 type AvailableIndex = Extract<JmaTileIndexResponse, { available: true }>;
 
@@ -40,17 +41,9 @@ export function buildJmaTileIndexLookup(response: JmaTileIndexResponse | null): 
   return elements.size > 0 ? { coverage: response.coverage, elements } : null;
 }
 
-/** タイル(z,x,y)の地理範囲がcoverageと交差するか（Webメルカトル）。 */
+/** タイル(z,x,y)の地理範囲がcoverageと交差するか。 */
 function intersectsCoverage(ref: Pick<JmaTileRef, "z" | "x" | "y">, coverage: JmaTileIndexLookup["coverage"]): boolean {
-  const n = 2 ** ref.z;
-  const west = (ref.x / n) * 360 - 180;
-  const east = ((ref.x + 1) / n) * 360 - 180;
-  const latOf = (tileY: number) => {
-    const t = Math.PI * (1 - (2 * tileY) / n);
-    return (Math.atan(Math.sinh(t)) * 180) / Math.PI;
-  };
-  const north = latOf(ref.y);
-  const south = latOf(ref.y + 1);
+  const { west, east, north, south } = tileBoundsLonLat(ref.z, ref.x, ref.y);
   return (
     west < coverage.max_longitude &&
     east > coverage.min_longitude &&
