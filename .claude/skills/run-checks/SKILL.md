@@ -696,9 +696,5 @@ gh workflow run mutation.yml -R hidakagit/ride-compass --ref master -f ref=<測�
 
 #### 変異テストでテストの効きを測る
 
-- **結果は成果物**: 見直しの `mutation-review`（90日。`summary.md`・`review.json`・`analyze.txt`。読み方は test-review スキルの4）と、
-  元の記録の `mutation-<番号>`・`recheck-<番号>`（14日）。元の記録から集計し直すときは、`gh run download <実行の id> -R hidakagit/ride-compass -D <場所>` で取り、
-  測った版のチェックアウトの `backend/` で `python scripts/mutation/analyze.py <場所> [当て直しの成果物の場所]` を打つ。残したい数字は issue に書く。
-
 - **1本のランナーが「The runner has received a shutdown signal」で止まったら**、`gh run rerun <実行の id> -R hidakagit/ride-compass --failed`
   で、その本と続く段だけを同じ入力でやり直す。同じ所で止まり続けるなら、ジョブの記録の「始め」の行で走っていた変異を見る。

@@ -88,51 +88,6 @@ description: "タスクを作る担当・確かめる担当として進める手
 
 原則の見直しで消えた記載を、厳選まで元の節ごとに仮に置く。**今の決まりと食い違えば今の決まりを取る。**
 
-### 元: .claude/skills/task-work の SKILL.md
-
-#### （冒頭）
-
-- 検証: 下の確かめ方と、`backend/scripts/lost_constraints.py` が出した「消えた」制約の1件ずつの処置（移した先・意図して
-  外した理由）
-画面の変更は、修正前後のキャプチャを Pull Request のコメントに貼る（`node tools/flow-gate/bin/attach.js <Pull Request の番号> '<画像>#<見出し>' ...`。
-見出しに画面・幅など、何を撮ったかを書く。下の「貼り方」。画像はコミットに残さない）。画面は `node frontend/scripts/capture.mjs --script <脚本>` で撮る
-  （開く版を `--app`、応答を `--api` で選び、見せたい状態までは脚本で進める。脚本の口と使い方はスクリプトの先頭、例は
-  `frontend/capture/examples/`。脚本は作業ツリーの外に置いてよい。外に置いた脚本は確かめる担当に届かないので、キャプチャの
-  あとのコメントに、`<details>` で畳んだコードの囲みで脚本の全文と打った `capture.mjs` の引数を貼る。脚本は何も読み込まないので、モックへ
-  足した応答も脚本の `patch` ごと貼れる）。前は本番を撮り（`--app production`。ビルドしない）、後は
-  `--api <本番の backend>`（作業ツリーの版を手元でビルドし、本番の backend へ向ける。宛先は docs/architecture/tech-stack.md「本番の宛先」）で、
-  前と同じ脚本で撮る。backend の応答も変わる変更は、変わる経路が DB を読まない（タイルの中継等）なら
-  `--backend <パスの頭>`（例: `--backend /api/jma-tile/`）でその経路だけを作業ツリーの backend に返させ、DB を読む経路なら変わる応答を脚本の `patch`
-  （JSON の応答だけ。本番の backend にまだ無い経路も）で差し替えて後を撮る。
-  本番で開けない画面（認証の要る管理画面等）は、e2e のモックの応答（既定）で、前は `--app origin/master`、後は既定の作業ツリーの版で撮る。
-  管理画面は脚本の口 `openAdmin` で開く（撮影用の資格情報は `capture.mjs` が渡すので、環境変数は要らない。管理APIの応答は口の `routes` で差し替える）。
-  本番の版（`/api/version` の `commit`）と作業ブランチの合流点
-  （`git merge-base HEAD origin/master`）の間で frontend が変わっていて（`git diff --name-only <本番の commit> <合流点> -- frontend`）、
-  それが撮る画面に関わるなら、前は本番の代わりに `--app <合流点> --api <本番の backend>` で撮る。
-  **貼り方**: `attach.js` は画像を1枚ずつ別のコメントで貼り、貼れなければそこで止まって、出た文言とそれまでに貼った分を出す。
-  名義の誤りで止まったら `GH_TOKEN` を見直す。ほかの文言で止まったら、出た行を 6 の報告に書いて進める。
-  画面に出ない変更は、確かめ方と根拠（実行したコマンドと出た値・読んだ公式の文書）を検証に書く。
-Pull Request の題名・本文・コメントには、打ったコマンドを写すときも本番の宛先の値を書かず、
-`--api <本番の backend>` のように tech-stack.md「本番の宛先」の名で書く（値を含む書き込みは、自動モードの判定に
-`[Excess Sensitive Detail]` で断られうる。`--attach` の付いた書き込みそのものは断られない）。
-前の Pull Request が開いたまま残っていれば、新しく出さずに push し、撮り直したキャプチャを `attach.js` で足す。
-本文を直すときは `gh issue edit <番号> -R hidakagit/ride-compass --body-file <ファイル>` で書き換える（`gh pr edit` と、欄を選ばない
-`gh pr view` は、組織を読む権限の無いトークンでは断られる）。
-出したら（push したら）、Pull Request の CI の実行（master と合わせた版。`ci.yml`・Docs Consistency・Claude Gate のどれも）の id を
-`gh run list -R hidakagit/ride-compass --commit "$(git rev-parse HEAD)" --event pull_request --json databaseId` で引く
-（ID は手で写さずにこの形で渡す）。
-0件なら `gh pr view <番号> -R hidakagit/ride-compass --json mergeable` を見て、`CONFLICTING` なら待たずに下の
-「落ちたら」と同じく master を取り込んで push する。それ以外（`MERGEABLE`・まだ決まっていない `UNKNOWN`）なら、同じ2つを打ち直す。
-打ち直しの前に `sleep` を置かない。id が出たら、出た id ごとに `gh run watch <id> --compact -i 30 -R hidakagit/ride-compass --exit-status`
-で終わるまで前に出したまま待つ（Bash の `timeout` を上限の 600000 にして打つ。上限で止まったら同じコマンドを打ち直す。裏へ回さない）。
-全部が終わったら、`gh pr checks <番号> -R hidakagit/ride-compass --required` で必須のチェックが全部 `pass` で、出た名前が
-ルールセットの必須のチェック（`gh api repos/hidakagit/ride-compass/rules/branches/master --jq '.[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'`）
-と揃っていることを見る。揃っていなければまだ起きていない実行があるので、`gh run list` から打ち直す。`gh pr checks --watch` では待たない。
-落ちたら `git merge origin/master` で今の master を取り込み、失敗を直して（手元で回す場面と範囲は
-.claude/skills/run-checks/SKILL.md「手元の検査の回し方」で、この失敗の再現はその1。直し方は .claude/rules/testing.md「テストが落ちたときの直し方」）、4 から続ける。
-取り消し（`cancelled`）で終わったチェックも「落ちたら」と同じに扱う。master を取り込んでも直すものが無ければ（GitHub Actions の
-障害でランナーが付かなかった等）、`gh run rerun <id> --failed -R hidakagit/ride-compass` で流し直して `gh run watch` から待ち直す。
-
 ### 元: .github の pull_request_template.md
 
 #### （冒頭）

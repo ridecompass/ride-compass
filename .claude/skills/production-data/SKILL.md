@@ -207,14 +207,6 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
   消え、表だけが入れ替わってルート生成は古い配列を読み続ける。途中で落ちたとき（配列を作れなかったときを
   含む）は何も入れ替わらず、backendは前の表と配列を読み続けるので、原因を直して打ち直す。
 
-- 分布の前後: 作り直すたびに、上のコマンドを打つ前と終わった後に、派生の表の全部の値の列の分布を本番で測る
-  （開発機の`backend`から`python scripts/run_probe.py scripts/derived_distribution.py`。`--column`を付けなければ
-  全部の派生の表の全部の値の列を1回で測る。表と列は宣言から導くので、表・列が増えても打つものは変わらない）。
-  前と後の出力を、作り直しを頼んだタスクの issue にコメントで書く。前後で大きく動いた列があれば、その作り直しに
-  含まれた変更（前の作り直しの後に master へ入った、派生の値に届く変更）を疑う。値を変える目的の変更も、
-  値を変えるつもりのない変更も、この同じ記録で確かめる——落ちた絞り込み・二重に数えた値はエラーにもテストの
-  失敗にもならず値の偏りとしてだけ現れ、タスクの作業ではこれを測らない（[flow.md](../../../docs/conventions/flow.md)「分布の前後」）。
-
 - 作り直しは、どの取込から作ったかを全ソースぶん（表`derived_source_runs`）、どの列の表を作ったかを派生の表ごと
   （表`derived_columns`）に記録する。記録が段の読んだ生データと一致するよう、取込と作り直しは同時に走らず
   （後から始めた方が止まる。終わってから打ち直す）、途中の段から流す`--from`は、生データか派生の表の列が前の
@@ -281,10 +273,6 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
 5. 30日より古いものを消す: Object Storageの規則は、Object Storageのサービスにバケットのオブジェクトを扱う権限が無いと
    動かない（公式の文書「Using Object Lifecycle Policies」）。Identity → Policies で、**テナンシのルートのコンパートメント**に
    次の1文のポリシーを作る（`<リージョン>`はバケットのあるリージョンの識別子。例: `ap-tokyo-1`）。
-
-6. 見回りに宛先を教える: コードのリポジトリの Settings → Secrets and variables → Actions → Variables で、変数
-   `BACKEND_ORIGIN`（`tools/flow-gate/flow.config.json: coordinator.backendVariable`）にbackendの宛先
-   （docs/architecture/tech-stack.md「本番の宛先」。末尾の`/`は付けない）を置く。宛先が変わったら書き換える。
 
 - 動いているかを見る: 止まれば見回りの状況の更新に出る。詳しくはVMで`systemctl list-timers ridecompass-admin-data-backup.timer`
   （前回・次回）と`sudo journalctl -u ridecompass-admin-data-backup.service --since -2d`。
