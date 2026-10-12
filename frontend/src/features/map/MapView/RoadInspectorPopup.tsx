@@ -55,17 +55,19 @@ export default function RoadInspectorPopup({
       queryKey: ["axis-inspector", wayId, featureKey, JSON.stringify(pinned?.conditions ?? conditions), weightsKey],
       // 取りに行くのは押したあと（`pinned`がある間）だけ。
       queryFn: async () => {
-        const value = await fetchAxisInspector(wayId!, featureKey, pinned!.conditions, routePreference);
+        const value = await fetchAxisInspector(wayId!, featureKey!, pinned!.conditions, routePreference);
         if (value === null) throw new Error("評価が返りませんでした");
         return value;
       },
-      enabled: pinned !== null && wayId != null,
+      enabled: pinned !== null && wayId != null && featureKey != null,
       // 同じ道を同じ条件・重みで開き直したときは、前に取った評価を出す（押すたびに引くとレート制限に当たる）。
       staleTime: Infinity,
     },
     getQueryClient(),
   );
   const result: AxisInspectorResult | null = inspector.data ?? null;
+  // 窓は道1本の値を出す（応答は押した区間の値も持つ）。
+  const values = result?.way ?? null;
 
   const load = () => {
     if (pinned !== null) void inspector.refetch();
@@ -75,25 +77,25 @@ export default function RoadInspectorPopup({
   // 寄与度はbackendが返す（軸ごとの重み付き寄与、合計が合成スコアと一致する）。
   // フロントで重みを掛け直さない——ルート結果側と同じ規約。
   const contributions: Record<string, number> = {};
-  for (const axis of result?.axes ?? []) {
+  for (const axis of values?.axes ?? []) {
     if (axis.contribution != null) contributions[axis.axis_id] = axis.contribution;
   }
 
   // 合成に使えた軸の重みの割合（%）。出すのと同じ丸めで100%に届かないときだけ、一部の軸だけの値だと添える。
   const coveredWeightPercent =
-    result?.composite_difficulty != null ? Math.round(result.composite_difficulty.covered_weight_fraction * 100) : null;
+    values?.composite_difficulty != null ? Math.round(values.composite_difficulty.covered_weight_fraction * 100) : null;
 
   return (
     // 高さに上限を付け、あふれたら中でスクロールする——地図の上の枠は、中身が伸びても画面の外へ出てはいけない。
     <div className="max-h-[min(22rem,45vh)] max-w-68 overflow-y-auto text-[length:var(--font-size-md)] leading-[1.4]">
       {name !== null && <div className="mb-1 font-semibold">{name}</div>}
-      {wayId != null && result === null && (
+      {wayId != null && featureKey != null && result === null && (
         <Button size="sm" className="disabled:cursor-progress" onClick={load} disabled={inspector.isFetching}>
           {inspector.isFetching ? "評価を取得中…" : "この道の評価を見る"}
         </Button>
       )}
       {inspector.isError && <p className={textVariants({ variant: "hint" })}>評価を取得できませんでした。</p>}
-      {result !== null && (
+      {values !== null && (
         <div className="grid gap-1">
           {axes.some((axis) => hasContribution(contributions, axis.axisId)) ? (
             <AxisContributionBar
@@ -101,7 +103,7 @@ export default function RoadInspectorPopup({
               contributions={contributions}
               axisColors={axisColors}
               renderDetail={(axis) => {
-                const found = result.axes.find((a) => a.axis_id === axis.axisId);
+                const found = values.axes.find((a) => a.axis_id === axis.axisId);
                 if (found === undefined || found.difficulty === null) return null;
                 return <AxisDetail axis={axis} difficulty={found.difficulty} />;
               }}
@@ -109,9 +111,9 @@ export default function RoadInspectorPopup({
           ) : (
             <p className={textVariants({ variant: "hint" })}>この道で値を出せる評価軸がありません。</p>
           )}
-          {result.composite_difficulty !== null && (
+          {values.composite_difficulty !== null && (
             <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
-              {`この道だけで見た難易度: ${formatDifficulty(result.composite_difficulty.value)}/100`}
+              {`この道だけで見た難易度: ${formatDifficulty(values.composite_difficulty.value)}/100`}
               {coveredWeightPercent !== null && coveredWeightPercent < 100
                 ? `[重みの約${coveredWeightPercent}%ぶんの評価軸だけ。残りの評価軸は、この道とこの走る条件では値が出せません]`
                 : ""}
@@ -121,7 +123,7 @@ export default function RoadInspectorPopup({
       )}
       <div className="mt-1 grid gap-0.5 border-t border-[var(--color-border)] pt-1">
         <RoadAttributeRows properties={properties} result={result} />
-        {result !== null && <RoadLandcoverRows result={result} />}
+        {values !== null && <RoadLandcoverRows landcover={values.landcover} />}
       </div>
       {isDebugEnabled() && wayId != null && <p className={textVariants({ variant: "hint" })}>OSM way id: {wayId}</p>}
     </div>
@@ -145,9 +147,8 @@ function FactList({ rows }: { rows: readonly { label: string; value: string }[] 
 /** 道路の周囲100mリングの土地被覆。走行中に読むものではないため畳んでおき、閉じている
  * 間は最も多いクラスだけを見せる。クラスの割合は合計100%になるため、開いたときは割合の
  * 大きい順に並べ、0%のクラスは出さない。 */
-function RoadLandcoverRows({ result }: { result: AxisInspectorResult }) {
-  const landcover = result.landcover;
-  if (landcover === null || landcover === undefined) return null;
+function RoadLandcoverRows({ landcover }: { landcover: AxisInspectorResult["way"]["landcover"] }) {
+  if (landcover === null) return null;
   const rows = LANDCOVER_CLASSES.map((cls) => ({
     label: cls.label,
     value: landcover[cls.percentField as keyof typeof landcover] as number,

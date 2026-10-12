@@ -882,7 +882,8 @@ export interface components {
             /** Osm Way Id */
             osm_way_id: number;
             /** Feature Key */
-            feature_key?: string | null;
+            feature_key: string;
+            point: components["schemas"]["Coordinates"];
             /** Z */
             z: number;
             /** X */
@@ -905,10 +906,8 @@ export interface components {
             tags: {
                 [key: string]: string;
             };
-            /** Axes */
-            axes: components["schemas"]["AxisInspectorAxis"][];
-            composite_difficulty: components["schemas"]["InspectorComposite"] | null;
-            landcover: components["schemas"]["LandcoverPercentages"] | null;
+            segment: components["schemas"]["InspectorValues"];
+            way: components["schemas"]["InspectorValues"];
         };
         /** AxisMaterialBreakdownEntry */
         AxisMaterialBreakdownEntry: {
@@ -1212,6 +1211,13 @@ export interface components {
             value: number;
             /** Covered Weight Fraction */
             covered_weight_fraction: number;
+        };
+        /** InspectorValues */
+        InspectorValues: {
+            /** Axes */
+            axes: components["schemas"]["AxisInspectorAxis"][];
+            composite_difficulty: components["schemas"]["InspectorComposite"] | null;
+            landcover: components["schemas"]["LandcoverPercentages"] | null;
         };
         /** JmaTileIndexAvailable */
         JmaTileIndexAvailable: {

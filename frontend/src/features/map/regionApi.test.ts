@@ -62,21 +62,40 @@ describe("タイルの世代とURL", () => {
 });
 
 describe("押した道の内訳（fetchAxisInspector）", () => {
-  const CONDITIONS = { z: 15, x: 1, y: 2, bearingDeg: 0, at: new Date("2026-10-01T00:30:00Z"), speedKmh: 20 };
+  const CONDITIONS = {
+    z: 15,
+    x: 1,
+    y: 2,
+    latitude: 35.6,
+    longitude: 139.4,
+    bearingDeg: 0,
+    at: new Date("2026-10-01T00:30:00Z"),
+    speedKmh: 20,
+  };
 
-  it("押した地物・重み・タイルと走行の条件を、backendの項目名で送る", async () => {
-    const sent = onBackend("POST", "/api/region/axis-inspector", () => Response.json({}));
+  it("押した地物・地点・重み・タイルと走行の条件を、backendの項目名で送る", async () => {
+    const sent = onBackend("POST", "/api/region/axis-inspector", () => Response.json(null));
 
     await api.fetchAxisInspector(
       123,
       "123:4",
-      { z: 15, x: 29100, y: 12900, bearingDeg: 270, at: new Date("2026-10-01T00:30:00Z"), speedKmh: 22 },
+      {
+        z: 15,
+        x: 29100,
+        y: 12900,
+        latitude: 35.68,
+        longitude: 139.77,
+        bearingDeg: 270,
+        at: new Date("2026-10-01T00:30:00Z"),
+        speedKmh: 22,
+      },
       { wind: 2, slope: 0 },
     );
 
     expect(sent[0].body).toEqual({
       osm_way_id: 123,
       feature_key: "123:4",
+      point: { latitude: 35.68, longitude: 139.77 },
       route_preference: { wind: 2, slope: 0 },
       z: 15,
       x: 29100,
@@ -87,59 +106,24 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
     });
   });
 
-  it("地物・重みが無ければ、その項目を送らない（重みはbackendの既定に任せる）", async () => {
-    const result = { composite_difficulty: 42 };
+  it("重みが無ければ、その項目を送らない（重みはbackendの既定に任せる）", async () => {
+    const result = { way: { composite_difficulty: 42 } };
     const sent = onBackend("POST", "/api/region/axis-inspector", () => Response.json(result));
 
-    await expect(api.fetchAxisInspector(123, null, CONDITIONS, null)).resolves.toEqual(result);
+    await expect(api.fetchAxisInspector(123, "123", CONDITIONS, null)).resolves.toEqual(result);
 
     expect(sent.map(({ body }) => body)).toEqual([
-      { osm_way_id: 123, z: 15, x: 1, y: 2, bearing_deg: 0, at: "2026-10-01T00:30:00.000Z", speed_kmh: 20 },
-    ]);
-  });
-});
-
-describe("専用配信の軸の道ごとの値（fetchDynamicWayValues）", () => {
-  it("軸とタイルをパスへ、方位・時刻・速度を問い合わせへ載せ、道ごとの値を返す", async () => {
-    const sent = onBackend("GET", "/api/region/dynamic-way-values/:axisId/:z/:x/:y", () =>
-      Response.json({ "101": 3.5, "102": -1 }),
-    );
-
-    const result = await api.fetchDynamicWayValues(
-      "axis_a",
-      15,
-      29100,
-      12900,
-      90,
-      new Date("2026-10-01T00:00:00Z"),
-      25,
-    );
-
-    expect(result).toEqual({ values: { "101": 3.5, "102": -1 }, error: false });
-    expect(sent.map(({ method, path, query }) => ({ method, path, query }))).toEqual([
       {
-        method: "GET",
-        path: "/api/region/dynamic-way-values/axis_a/15/29100/12900",
-        query: { bearing_deg: "90", at: "2026-10-01T00:00:00.000Z", speed_kmh: "25" },
+        osm_way_id: 123,
+        feature_key: "123",
+        point: { latitude: 35.6, longitude: 139.4 },
+        z: 15,
+        x: 1,
+        y: 2,
+        bearing_deg: 0,
+        at: "2026-10-01T00:30:00.000Z",
+        speed_kmh: 20,
       },
     ]);
-  });
-
-  it("渡さなかった条件と、有限でない速度は問い合わせに載せない", async () => {
-    const sent = onBackend("GET", "/api/region/dynamic-way-values/:axisId/:z/:x/:y", () => Response.json({}));
-
-    await api.fetchDynamicWayValues("axis_a", 15, 1, 2, undefined, undefined, undefined);
-    await api.fetchDynamicWayValues("axis_a", 15, 1, 2, 0, undefined, Number.NaN);
-
-    expect(sent.map(({ query }) => query)).toEqual([{}, { bearing_deg: "0" }]);
-  });
-
-  it("失敗は投げずに、空の値と失敗の印で返す（色分けの失敗で道路や他のレイヤーを止めない）", async () => {
-    onBackend("GET", "/api/region/dynamic-way-values/:axisId/:z/:x/:y", () => new Response(null, { status: 500 }));
-
-    await expect(api.fetchDynamicWayValues("axis_a", 15, 1, 2, 0, undefined, undefined)).resolves.toEqual({
-      values: {},
-      error: true,
-    });
   });
 });

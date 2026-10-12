@@ -789,7 +789,12 @@ export default function MapView({
             properties={roadPopup.properties}
             axes={catalog.axes}
             axisColors={catalog.axisColors}
-            conditions={{ ...rideConditions, ...roadPopup.tile }}
+            conditions={{
+              ...rideConditions,
+              ...roadPopup.tile,
+              longitude: roadPopup.lngLat[0],
+              latitude: roadPopup.lngLat[1],
+            }}
             routePreference={routePreference}
           />,
           roadPopupContainer,
