@@ -12,7 +12,8 @@ export function check(gh, number, heads) {
   const result = checkByText(before, heads);
   if (result.problems) return { error: `印を付けない: ${result.problems.join("・")}` };
   if (read() !== before) return { error: `#${number} の本文が読んだあとに変わったので、上書きしない（打ち直す）` };
-  gh(["issue", "edit", number, "-R", config.tasks, "--body-file", "-"], result.body);
+  // REST で書けば1回で済む（gh issue edit は issue を引く1回と書く1回を打つ）。
+  gh(["api", `repos/${config.tasks}/issues/${number}`, "-X", "PATCH", "-F", "body=@-", "--silent"], result.body);
   return { done: `#${number}: ${heads.length}行に印を付けた` };
 }
 
