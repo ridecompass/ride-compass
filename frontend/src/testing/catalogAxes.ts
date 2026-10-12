@@ -51,11 +51,10 @@ export function catalogEntry(overrides: EntryOverrides = {}): AxisCatalogEntry {
   };
 }
 
-/** 配信された値で塗る専用配信軸。 */
+/** 段の境界を持つ軸（地図は全軸を配信された値で塗る）。 */
 export function dedicatedEntry(axisId: string, thresholds: number[], overrides: EntryOverrides = {}) {
   return catalogEntry({
     axis_id: axisId,
-    dedicated_way_value_layer: true,
     ...overrides,
     map_paint: { thresholds, ...overrides.map_paint },
   });

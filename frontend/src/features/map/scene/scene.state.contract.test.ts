@@ -25,8 +25,8 @@ import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 
 const DEDICATED_AXES = dedicatedWayValueAxesFromCatalogAxes([
-  catalogEntry({ axis_id: "ded1", dedicated_way_value_layer: true }),
-  catalogEntry({ axis_id: "ded2", dedicated_way_value_layer: true }),
+  catalogEntry({ axis_id: "ded1" }),
+  catalogEntry({ axis_id: "ded2" }),
 ]);
 
 const CATALOG = { dedicatedAxes: DEDICATED_AXES };
