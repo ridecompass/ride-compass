@@ -13,11 +13,17 @@ import io
 import json
 import re
 import subprocess
+import sys
 import tokenize
 from collections.abc import Iterator
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+
+# 実在の母集団・維持しない置き場・例の形は、文書のリンクの検査（`scripts/review_checks.py`）と同じ口から取る。
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+from repo_population import EXAMPLE, UNMAINTAINED_PREFIXES, read_text, repository_files  # noqa: E402
 
 TARGET_EXTENSIONS = r"(?:py|tsx?|js|mjs|cjs|ya?ml|json|sql|sh|toml|ini|css)"
 
@@ -41,14 +47,13 @@ PATH = re.compile(
 TEST_FILE = re.compile(r"(?:^|/)(?:test_[^/]*\.py|[^/]*\.test\.tsx?)$")
 
 # `<…>`・`{…}`はその位置に何かが入る例として読む（`/api/admin<X>`・`/api/admin/<X>`）。
-API_PATH = re.compile(r"(?<![A-Za-z0-9_./:<>{}-])(?P<path>/api/(?:<[^<>\s]*>|[A-Za-z0-9_.{}*/-])*)")
+API_PATH = re.compile(rf"(?<![A-Za-z0-9_./:<>{{}}-])(?P<path>/api/(?:{EXAMPLE.pattern}|[A-Za-z0-9_.{{}}*/-])*)")
 OPENAPI = "frontend/src/types/generated/openapi.json"
 ROUTE_HANDLER = re.compile(r"^frontend/src/app/(?P<path>.*)/route\.ts$")
 
 HASH_COMMENT_SUFFIXES = {".yml", ".yaml", ".sh", ".ini", ".toml"}
 SLASH_COMMENT_SUFFIXES = {".ts", ".tsx", ".js", ".mjs", ".cjs", ".css"}
 SCANNED_SUFFIXES = {".md", ".py", ".sql"} | HASH_COMMENT_SUFFIXES | SLASH_COMMENT_SUFFIXES
-UNMAINTAINED_PREFIXES = ("docs/records/",)
 
 
 def _line_offsets(text: str) -> list[int]:
@@ -149,17 +154,6 @@ def _keep(text: str, spans: list[tuple[int, int]], *, inside: bool) -> str:
     return "".join(ch if keep or ch == "\n" else " " for ch, keep in zip(text, mask, strict=True))
 
 
-def repository_files(root: Path) -> list[str]:
-    """追跡下のファイルと、まだ`git add`していない無視されていないファイル。"""
-    out = subprocess.run(
-        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-        cwd=root,
-        check=True,
-        capture_output=True,
-    ).stdout.decode("utf-8")
-    return [f for f in out.split("\0") if f]
-
-
 class _Repository:
     def __init__(self, root: Path, files: list[str]) -> None:
         self.root = root
@@ -170,10 +164,7 @@ class _Repository:
         self._code: dict[str, str] = {}
 
     def text(self, rel_path: str) -> str:
-        try:
-            return (self.root / rel_path).read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            return ""
+        return read_text(self.root / rel_path)
 
     def resolve(self, written: str) -> list[str]:
         written = re.sub(r"^(?:\.\.?/)+", "", written)
@@ -269,7 +260,7 @@ def _api_exists(written: str, routes: list[str]) -> bool:
     """書いたパスが、あるAPIのパスそのものか、その先頭の区切り（`/api/admin`）か。"""
     written = written.rstrip("./")
     pattern = re.escape(written)
-    pattern = re.sub(r"<[^<>]*>", ".*", pattern)
+    pattern = EXAMPLE.sub(".*", pattern)
     pattern = re.sub(r"\\\{[^/]*?\\\}", "[^/]*", pattern)
     pattern = pattern.replace(r"\*\*", ".*").replace(r"\*", "[^/]*")
     for route in routes:

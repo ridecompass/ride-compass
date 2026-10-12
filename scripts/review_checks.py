@@ -34,13 +34,17 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from repo_population import (
+    EXAMPLE,
+    GENERATED_PREFIXES,
+    SCAFFOLD_PREFIXES,
+    UNMAINTAINED_PREFIXES,
+    read_text,
+    repository_files,
+)
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SIZE_THRESHOLDS = REPO_ROOT / "scripts" / "size_thresholds.json"
-
-#: 記録。**維持しない**（`docs/records/README.md`）。記録時点で嘘が無ければよく、後から
-#: 実装と食い違っても欠陥ではないので、整合を求める対象にしない。走査範囲を文脈で絞る
-#: のとは別物で、パスで決まる恒久的な分類。実在はするのでリンク先の母集団には入れる。
-FROZEN_PREFIXES = ("docs/records/",)
 
 #: 周期レビューを実施した対象コミットへ打つ注釈付きタグ。`NNN`は回数。
 #: 日付を名前に使わないのは、同じ日に複数回レビューした実績があり一意にならないため。
@@ -54,13 +58,11 @@ TRIGGER_IMPL_LINES = 20_000
 
 MARKDOWN_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s#]+)(?:#[^)]*)?\)")
 #: 雛形の綴り。「タスク番号1件=1ファイル」等を説明するためのもので、実在しなくてよい。
-PLACEHOLDER_RE = re.compile(r"Txxx|YYYY-MM-DD|<[^>]+>")
+PLACEHOLDER_RE = re.compile(rf"Txxx|YYYY-MM-DD|{EXAMPLE.pattern}")
 
 CODE_SUFFIXES = (".py", ".ts", ".tsx", ".js", ".mjs", ".mts", ".sh", ".bat", ".css")
 #: ワークフローの YAML は CI・デプロイ・担当の実行の手順そのものなので、コードとして数える。
 WORKFLOW_PREFIXES = (".github/workflows/",)
-#: テストのファイル名を持たないテストの足場の置き場（`/tests/`・`/test/`の外にあるもの）。
-TEST_PREFIXES = ("frontend/src/testing/", "frontend/src/structure/")
 #: 総量の「実装」の内訳は置き場で決める。製品は本番で動くコードの置き場で、ほかの実装は
 #: 道具（運用・計測・検査の道具・E2Eの共通部品・テストランナーとビルドの設定・CIのワークフロー・
 #: 開発機での起動の道具）。道具の置き場を列挙しないのは、道具が改名・新設されても製品へ
@@ -68,7 +70,6 @@ TEST_PREFIXES = ("frontend/src/testing/", "frontend/src/structure/")
 #: タスク管理は製品と無関係に作り直されるので、道具の増減に混ぜずに分ける。
 #: ここで宣言する置き場は、どれも追跡下のファイルに当たる（`scripts/tests/test_review_checks.py`）。
 PRODUCT_PREFIXES = ("backend/app/", "frontend/src/")
-GENERATED_PREFIXES = ("frontend/src/types/generated/",)
 #: タスク管理の置き場の正本は CI 側（`.github/taskflow-paths`。製品の CI はここだけの変更で重い検査を飛ばす）。
 TASKFLOW_PREFIXES = tuple(
     line for line in (REPO_ROOT / ".github" / "taskflow-paths").read_text(encoding="utf-8").splitlines()
@@ -108,19 +109,8 @@ def git(*args: str, check: bool = True) -> str:
 
 
 def tracked_files() -> list[str]:
-    """追跡下の全ファイル。**「実在するか」の母集団はこちら。**
-
-    走査対象と取り違えると、記録を走査から外したとたんに、そこを指す生きた文書のリンクが
-    一斉に「実在しない」へ化ける。
-    """
+    """追跡下の全ファイル。HEAD から測る計測の母集団で、実在の母集団（`repo_population.py: repository_files`）とは別。"""
     return [line for line in git("ls-files").splitlines() if line]
-
-
-def read(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return ""
 
 
 def review_tags() -> list[tuple[str, str, dt.date | None]]:
@@ -155,7 +145,7 @@ def find_dead_doc_links(md_files: list[str], universe: set[str]) -> list[str]:
     out = []
     for f in md_files:
         path = REPO_ROOT / f
-        for lineno, line in enumerate(read(path).splitlines(), 1):
+        for lineno, line in enumerate(read_text(path).splitlines(), 1):
             for target in MARKDOWN_LINK_RE.findall(line):
                 if target.startswith(("http://", "https://", "mailto:")):
                     continue
@@ -173,7 +163,9 @@ def find_dead_doc_links(md_files: list[str], universe: set[str]) -> list[str]:
 
 
 def cmd_docs(args: argparse.Namespace) -> int:
-    universe = set(tracked_files())
+    # 走査する文書と実在の母集団を取り違えると、記録を走査から外したとたんに、そこを指す生きた文書のリンクが
+    # 一斉に「実在しない」へ化ける。
+    universe = set(repository_files(REPO_ROOT))
     lines = find_dead_doc_links(sorted(f for f in universe if is_maintained_doc(f)), universe)
     print(f"## [dead_doc_links] 文書のリンクが解決しない: {len(lines)}件")
     for line in lines:
@@ -224,11 +216,11 @@ def files_at(sha: str) -> list[str]:
 
 def is_test(path: str) -> bool:
     return (".test." in path or ".spec." in path or "/tests/" in path or "/test/" in path
-            or path.startswith(TEST_PREFIXES))
+            or path.startswith(SCAFFOLD_PREFIXES))
 
 
 def is_maintained_doc(path: str) -> bool:
-    return path.endswith(".md") and not path.startswith(FROZEN_PREFIXES)
+    return path.endswith(".md") and not path.startswith(UNMAINTAINED_PREFIXES)
 
 
 def is_code(path: str) -> bool:
@@ -272,7 +264,7 @@ def volume_totals(counts: dict[str, int]) -> dict[str, int]:
 
 def cmd_size(args: argparse.Namespace) -> int:
     counts = volume_counts(tracked_files())
-    decided = json.loads(read(SIZE_THRESHOLDS)) if SIZE_THRESHOLDS.exists() else {}
+    decided = json.loads(read_text(SIZE_THRESHOLDS)) if SIZE_THRESHOLDS.exists() else {}
     # 指示の文書とコードは種類ごとの上限だけで見て、ファイルごとに置いた閾値は上書きする。
     # 生成物は書き手が分けられないので、コードの上限に当てずファイルごとの閾値で見る。
     code_limits = {f: limit for f in counts if not f.startswith(GENERATED_PREFIXES)
@@ -362,8 +354,8 @@ def cmd_metrics(args: argparse.Namespace) -> int:
         by_area[f.split("/")[0] if "/" in f else "（ルート）"] += n
     tests = [f for f in counts if is_test(f)]
     current = volume_totals(volume)
-    records_lines = sum(len(read(REPO_ROOT / f).splitlines())
-                        for f in files if f.startswith(FROZEN_PREFIXES))
+    records_lines = sum(len(read_text(REPO_ROOT / f).splitlines())
+                        for f in files if f.startswith(UNMAINTAINED_PREFIXES))
 
     tags = review_tags()
     churn = "-"
@@ -499,7 +491,7 @@ def cmd_change(args: argparse.Namespace) -> int:
             rows.append((path, int(plus), int(minus)))
     if not args.head:
         for path in git("ls-files", "--others", "--exclude-standard").splitlines():
-            rows.append((path, len(read(REPO_ROOT / path).splitlines()), 0))
+            rows.append((path, len(read_text(REPO_ROOT / path).splitlines()), 0))
     totals = {kind: [0, 0] for kind in ("実装", "テスト", "文書", "設定", "生成物")}
     for path, added, deleted in rows:
         pair = totals[change_kind(path)]

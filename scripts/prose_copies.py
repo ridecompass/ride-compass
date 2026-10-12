@@ -7,16 +7,16 @@ frontend の文∩宣言の名前は `frontend/scripts/structure-population.mjs`
 どれを直すかは読む人が決める。
 
 backend の文は宣言（`backend/app/domain`）の文字列の字句（f 文字列の地の部分を含む。docstring・コメントは除く）のうち日本語を含むもの。
-  (1) 文∩宣言の名前: 生成物（`frontend/src/types/generated/`。API の型の2本を除く）の、鍵が `label` の日本語の値で
-      3字以上のものを含む文。その名前そのものを宣言する字句（値が名前と同じもの・`label=` の値）は除く。
+  (1) 文∩宣言の名前: 生成物が名前として配る値（置き場と取り方は `scripts/repo_population.py` の宣言の鍵）を含む文。
+      その名前そのものを宣言する字句（値が名前と同じもの・名前の鍵を引数の名前にした値）は除く。
   (2) 文∩色・寸法・時間幅の語: 色の名前・線の描き方・大小の語、数字と単位（分・時間・日・px・m・km・%）を含む文。
   (3) 説明∩同じ行の値: 1つの呼び出しの中で、説明の文が、同じ呼び出しのほかの文字列（`values` の並び・位置で
       渡した値を含む）のうち英数字の3字以上のものを含む。
 frontend と backend の文:
   (4) 走行モデル・難易度の数え方を述べる文: 所要時間の語（所要・走行時間・速度・速さ）と道や天気の条件の語
       （坂・勾配・風・路面）を同じ行に持つ文と、平均・負荷・総量の語と距離・区間の語を同じ行に持つ文。frontend は
-      `frontend/src` の .ts・.tsx（テスト・テストの足場・生成物を除く）の行で、コメントの行（`//`・`*`・`/*`・`{/*` で
-      始まる行）を除く。
+      `frontend/src` の .ts・.tsx（テスト・テストの足場・生成物を除く。`frontend/scripts/structure-population.mjs` と同じ母集団）の
+      行で、コメントの行（`//`・`*`・`/*`・`{/*` で始まる行）を除く。
 拾わない形（性質に当たりうるのに上に入らない。0件でも無いとは言えず、使う人が読んで見る）:
   - 言い換え: 名前を別の語で書いた文（語の表の別名。`frontend-design-system.md`「5-4. 画面の語」）は (1) に当たらない。
   - 数字を語で書いた時間幅・大きさ（「半日」「倍」等）は (2) に当たらない。
@@ -34,13 +34,18 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
+from repo_population import (
+    GENERATED,
+    GENERATED_WITHOUT_NAMES,
+    JAPANESE,
+    NAME_KEY,
+    NAME_MIN_LENGTH,
+    SCAFFOLD_PREFIXES,
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DOMAIN = ROOT / "backend" / "app" / "domain"
 FRONTEND_SRC = ROOT / "frontend" / "src"
-GENERATED = FRONTEND_SRC / "types" / "generated"
-
-JAPANESE = re.compile(r"[぀-ヿ㐀-鿿]")
-NAME_KEYS = {"label"}
 LOOK = re.compile(
     r"(?:濃い|薄い|明るい|暗い)?(?:紫|水色|灰色|赤|青|緑|黄色|橙|黒|白)|破線|実線|点線|太く|細く|大きく|小さく"
     r"|\d+(?:\.\d+)?\s*(?:分|時間|日|px|m|km|%)"
@@ -50,7 +55,7 @@ TRAVEL_TIME = re.compile(r"所要|走行時間|速度|速さ")
 TRAVEL_CONDITION = re.compile(r"坂|勾配|風|路面")
 DIFFICULTY_TOTAL = re.compile(r"平均|負荷|総量")
 DIFFICULTY_SPAN = re.compile(r"距離|区間")
-FRONTEND_EXCLUDED = [FRONTEND_SRC / name for name in ("testing", "structure", Path("types") / "generated")]
+FRONTEND_EXCLUDED = [ROOT / prefix for prefix in (*SCAFFOLD_PREFIXES, GENERATED)]
 COMMENT_LINE = ("//", "*", "/*", "{/*")
 
 
@@ -60,7 +65,7 @@ def generated_names() -> list[str]:
 
     def visit(value: object, key: str | None) -> None:
         if isinstance(value, str):
-            if key in NAME_KEYS and JAPANESE.search(value) and len(value) >= 3:
+            if key == NAME_KEY and JAPANESE.search(value) and len(value) >= NAME_MIN_LENGTH:
                 names.add(value)
         elif isinstance(value, list):
             for item in value:
@@ -69,8 +74,8 @@ def generated_names() -> list[str]:
             for k, v in value.items():
                 visit(v, k)
 
-    for path in sorted(GENERATED.iterdir()):
-        if path.name in ("openapi.json", "api.d.ts"):
+    for path in sorted((ROOT / GENERATED).iterdir()):
+        if path.name in GENERATED_WITHOUT_NAMES:
             continue
         text = path.read_text(encoding="utf-8")
         if path.suffix == ".ts":
@@ -99,13 +104,13 @@ def phrase(node: ast.AST) -> str | None:
 
 
 def name_declarations(tree: ast.AST) -> set[int]:
-    """名前そのものを宣言する字句（`label=` の値）。"""
+    """名前そのものを宣言する字句（名前の鍵を引数の名前にした値）。"""
     return {
         id(keyword.value)
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         for keyword in node.keywords
-        if keyword.arg in NAME_KEYS
+        if keyword.arg == NAME_KEY
     }
 
 
