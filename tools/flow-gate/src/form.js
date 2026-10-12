@@ -3,7 +3,7 @@
 // 戻る」だけ。欄は問いの回答内容の節だけから導き、ラベルで分けない（.claude/skills/ask/SKILL.md「問い」）。推奨も次遷移も最初から選んだ状態にしない。
 // 答えはユーザーの名義（env.FORM_TOKEN）でコメントに書き、ラベルの付け外しも同じ名義で、同じ1回の要求で書く。ゲートは次遷移だけを読み、
 // 書いた文があれば Claude が読んでから当てる。
-import { GitHub } from "./github.js";
+import { GitHub, batch } from "./github.js";
 import { byName, jstText } from "./facts.js";
 import { NEXT, answerBody, answerProblem, answerUrl, askerOf, conditions, isQuestion, isQuestionLabel, latestQuestion, withValues } from "./questions.js";
 
@@ -96,11 +96,10 @@ async function submit(gh, env, config, number, form) {
   const labels = [...added.map((n) => `+${n}`), ...removed.map((n) => `−${n}`)].join(" ");
   // 確かめることの値は本文の約束へ、答えと同じ1回の要求でユーザーの名義で書く。
   const after = withValues(issue.body, q, answer.yes);
-  const v = { i: issue.id, b: answerBody(q, { ...answer, labels }), e: after, a: added.map((n) => ids[n]), r: removed.map((n) => ids[n]) };
-  await new GitHub(env.FORM_TOKEN).gql(`mutation($i:ID!,$b:String!,$e:String!,$a:[ID!]!,$r:[ID!]!){c:addComment(input:{subjectId:$i,body:$b}){clientMutationId}
-    ${after !== issue.body ? "e:updateIssue(input:{id:$i,body:$e}){clientMutationId}" : ""}
-    ${added.length ? "a:addLabelsToLabelable(input:{labelableId:$i,labelIds:$a}){clientMutationId}" : ""}
-    ${removed.length ? "r:removeLabelsFromLabelable(input:{labelableId:$i,labelIds:$r}){clientMutationId}" : ""}}`, v);
+  await new GitHub(env.FORM_TOKEN).gql(...batch([["addComment", "AddCommentInput", { subjectId: issue.id, body: answerBody(q, { ...answer, labels }) }],
+    ...(after !== issue.body ? [["updateIssue", "UpdateIssueInput", { id: issue.id, body: after }]] : []),
+    ...(added.length ? [["addLabelsToLabelable", "AddLabelsToLabelableInput", { labelableId: issue.id, labelIds: added.map((n) => ids[n]) }]] : []),
+    ...(removed.length ? [["removeLabelsFromLabelable", "RemoveLabelsFromLabelableInput", { labelableId: issue.id, labelIds: removed.map((n) => ids[n]) }]] : [])]));
   return { url: issue.url, label: NEXT[answer.next] };
 }
 
