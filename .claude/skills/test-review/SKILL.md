@@ -19,20 +19,23 @@ backend のテストを、.claude/rules/testing-review.md「テストを変異�
    起こしたタスクの番号があること）。
 2. **持つ**: .claude/skills/dev-session/SKILL.md「開発機の対話のセッション」の「持つ」で持つ。
 3. **計画を伝える**（CLAUDE.md「作業の進め方」）: 何をどの順で、どれくらいかかるか。見込みは 2026-10-09 の同じ形の測りで、
-   実時間で約1時間40分（shard 1本あたり、変異の生成と記録 約9分・変異 約1時間・当て直し 約26分、review 数分）に、
-   ランナーの空き待ち（2026-10-10 の試しで、段ごとに最長16分）が足される。
+   shard 1本あたり約1時間40分（変異の生成と記録 約9分・変異 約1時間・当て直し 約26分）で、本は issue のレーンへ載るので
+   2巡して実時間で約3時間20分（レーンへ載せてからの実時間は未計測）、review 数分に、ランナーの空き待ち（2026-10-10 の試しで、
+   段ごとに最長16分）が足される。
 
 ### 2. 測りを起こす
 
-    gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=master
+    gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=master -f issue=<記録する issue の番号>
 
-- `--ref` はワークフローの定義を読む版、`-f ref=` は測る版（台本も同じ版から読む）。ふだんはどちらも master。
+- `--ref` はワークフローの定義を読む版、`-f ref=` は測る版（台本も同じ版から読む）。ふだんはどちらも master。`-f issue=` は 1 で決めた
+  issue で、測りはその issue のレーンで動く（docs/architecture/tech-stack.md「CIの実行枠」）。
 - 起こした実行の id は、`gh run list -R ridecompass/ride-compass --workflow mutation.yml -L 1 --json databaseId,createdAt,status` で
   取り、`createdAt` が起こした時刻のあとであることを見る。
 - 同じワークフローが動いていれば、終わるまで待ってから始まる（`concurrency: mutation`）。
-- 測りは8本のランナーを約1時間半使い、アカウントで同時に動かせるジョブの枠を担当（Claude Task）・CI と分け合う。担当や CI が
-  多く動いているとき（`gh run list -R ridecompass/ride-compass --status in_progress`）は、測りの空き待ちが延び、そのあいだ担当と
-  CI の待ちも延びる。起こす前に動いている数を見て、6 の記録に書く。
+- 測りの8本は issue のレーン（担当のレーンのほか）に載り、レーンより多い本は前の本が終わるまで待つ。その間、同じ issue の
+  Pull Request の CI も同じレーンで待つ。ほかの issue の担当・CI とは、組織で同時に動かせるジョブの枠を分け合う。担当や CI が
+  多く動いているとき（`gh run list -R ridecompass/ride-compass --status in_progress`）は、測りの空き待ちが延びる。起こす前に
+  動いている数を見て、6 の記録に書く。
 
 ### 3. 待つ
 
@@ -106,7 +109,7 @@ issue へ前後関係を張らず、本文に「<記録する issue> の見直�
 - 子の本文のやることに、消すテスト関数の表（テスト関数・行数・高さ・`mutant`・`kept_test`・問いに書いた `breaks`）と、次の確かめを書く。
   1. 表のテスト関数を消す。
   2. 表の `mutant` を1行ずつ `only.txt`（置き場は `backend/scripts/mutation/`）に書いて作業ブランチへ push し、
-     `gh workflow run mutation.yml -R ridecompass/ride-compass --ref <作業ブランチ> -f ref=<作業ブランチ>` で回す（一覧だけを回し、
+     `gh workflow run mutation.yml -R ridecompass/ride-compass --ref <作業ブランチ> -f ref=<作業ブランチ> -f issue=<子の番号>` で回す（一覧だけを回し、
      当て直しと review は走らない）。成果物 `mutation-*` の `results.jsonl` で表の変異が全部 `killed` で、`kills/` にその行の
      `kept_test` があることを見る。
   3. `only.txt` を消してから Pull Request を出す（残すと `backend/tests/structure/test_mutation_lists_absent.py` が CI で落とす）。テスト全体が通ることは Pull Request の CI が見る。CI で

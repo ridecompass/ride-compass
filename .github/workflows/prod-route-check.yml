@@ -15,6 +15,9 @@ permissions:
 
 jobs:
   check:
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-2
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

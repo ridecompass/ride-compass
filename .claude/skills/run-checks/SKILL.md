@@ -188,7 +188,7 @@ PYTHONUTF8=1 backend/.venv/Scripts/python.exe -m pytest backend/tests/<テスト
 全部の測りでテストを見直す1回の進め方（起こす・待つ・読む・行き先を決める）は [test-review/SKILL.md](../test-review/SKILL.md)。
 
 ```bash
-gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<測る版> -f count=0 -f stop_after=150
+gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<測る版> -f issue=<測りを持つ issue の番号> -f count=0 -f stop_after=150
 ```
 
 - **測る版と台本は `ref` から読む**。台本を直した作業ブランチを `ref` に渡せば、ワークフローを変えずに直した台本で回る。
