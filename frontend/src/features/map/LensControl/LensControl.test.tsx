@@ -40,6 +40,7 @@ function renderLens(props: Partial<Parameters<typeof LensControl>[0]> = {}) {
       routeShown
       routeSelectable
       conditions={null}
+      premises={[]}
       {...handlers}
       {...props}
     />,
@@ -97,12 +98,14 @@ describe("LensControl（レンズのピル）", () => {
     expect(within(pill()).getByText("ルート後のみ")).toBeInTheDocument();
   });
 
-  it("走る条件で塗るレンズは、ピルと開いた先に条件を出す", async () => {
-    renderLens({ conditions: "北へ走る・時速20km" });
+  it("走る条件で塗るレンズは、ピルに条件を出し、開いた先の凡例に前提の行を出す", async () => {
+    renderLens({ conditions: "北へ走る・時速20km", premises: ["前提の1行目", "前提の2行目"] });
     expect(pill()).toHaveAccessibleName("地図の色分け: usedの軸・北へ走る・時速20km（タップで変更）");
     expect(within(pill()).getByText("北へ走る・時速20km")).toBeInTheDocument();
     await open();
-    expect(screen.getByText("周りの道は「北へ走る・時速20km」の条件で塗っています。")).toBeInTheDocument();
+    const legendSection = screen.getByRole("group", { name: "凡例" });
+    expect(within(legendSection).getByText("前提の1行目")).toBeInTheDocument();
+    expect(within(legendSection).getByText("前提の2行目")).toBeInTheDocument();
   });
 
   it("ルート確定後は「ルート後のみ」を付けず、使用中・未使用の見出しは中身があるときだけ", async () => {

@@ -42,6 +42,7 @@ import {
   DEFAULT_ROUTE_STYLE_MODE_ID,
   isRouteStyleModeId,
   lensConditionsLabel,
+  lensPremises,
   lensLegend,
   lensOptions,
   paintedAxisId,
@@ -159,6 +160,7 @@ export function useMapView({
   );
 
   const legend = lensLegend(lens, hasDetail, mapCatalog);
+  const conditions = lensConditionsLabel(painted, mapCatalog.dedicatedAxes, ride, departureLabel);
   const lensHidden = presentHiddenKeys(legend, hiddenKeysOf(hidden, lens));
   const lensFetch = dedicatedWayValues.get(lens);
   const chips = overlayChips({
@@ -200,7 +202,8 @@ export function useMapView({
       routeShown: layerVisibility[ROUTE_LAYER_ID] === true,
       routeSelectable: hasSelectedRoute,
       onRouteShownChange: setRouteShown,
-      conditions: lensConditionsLabel(painted, mapCatalog.dedicatedAxes, ride, departureLabel),
+      conditions,
+      premises: lensPremises(painted, catalog.axes, conditions),
       dataStatus: lensFetch
         ? deriveFetchLayerStatus(
             lensFetch.loading,

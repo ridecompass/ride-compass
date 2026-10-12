@@ -20,7 +20,7 @@
 | `features/map/layers/webMercatorTile.ts` | Web MercatorのXYZタイルと緯度経度の行き来（点のタイル座標・点を含むタイル（世界の端はタイルの番号の範囲へ寄せる）・タイルが覆う範囲）。backendと同じ式で、一致は表の組`region`で照らす。道路タイルの値を引くタイルと、気象庁のタイルの在否の判定（`jmaTileIndex.ts`）が同じ式を通る |
 | `lib/mapDisplay/axisLayers.ts`（`RampAxis`関連のみ） | 軸カタログ→ramp軸一覧の変換（`rampAxesFromCatalogAxes`）。段の色は持たない（`valueScale.ts: rampAxisBands`）。値が無い道の色は`palette.json: semantic.no_data`を別名を付けずに指す。ramp軸自体の全面的な生成ロジックは主に[地図: 静的レイヤー・道路表示](static-map-layers.md)の管轄 |
 | `lib/mapDisplay/mapColorLegend.ts` | 地図上の色分け凡例（`MapColorLegendBand`型・`buildRangeLegendBands`・`rangeStepLabel`）の共通ロジックと、値が無い行（`NO_DATA_LEGEND_BAND`）。凡例を作る関数（`features/map/view/lens.ts`）・道の属性の凡例（`features/map/scene/legends.ts`）と管理画面が使う |
-| `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「地図の色分け」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上の中央のピルが現在のレンズと凡例を示し、タップで単一選択の札の並び（なし／総合難易度／評価に使用中の軸／未使用の軸。スマホの幅でも地図の塗りが窓の外に見えるよう、札と凡例を横へ流して窓を低く保つ）と「ルートを地図に出す」（ルートの線の出し入れ。候補を選ぶまで押せない）・「ルート後も周囲の道路を薄く塗る」トグルを開く（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`page.tsx`はそのまま渡す）。周りの道を走る条件で塗っている間は、その条件の文（`view/lens.ts: lensConditionsLabel`）をピルと開いた先に出す |
+| `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「地図の色分け」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上の中央のピルが現在のレンズと凡例を示し、タップで単一選択の札の並び（なし／総合難易度／評価に使用中の軸／未使用の軸。スマホの幅でも地図の塗りが窓の外に見えるよう、札と凡例を横へ流して窓を低く保つ）と「ルートを地図に出す」（ルートの線の出し入れ。候補を選ぶまで押せない）・「ルート後も周囲の道路を薄く塗る」トグルを開く（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`page.tsx`はそのまま渡す）。周りの道を走る条件で塗っている間は、その条件の文（`view/lens.ts: lensConditionsLabel`）をピルに出し、色の前提（`view/lens.ts: lensPremises`）を開いた先の凡例に出す |
 | `features/map/layers/mapLayers.ts` | `isAxisStudioLayer`（記述子の印で判定。地図上チップの一覧`overlayChips`が除くのに使う）・専用配信軸のレイヤーIDの導出（`dedicatedWayValueMapLayerId`） |
 | `features/map/MapView/MapView.tsx`（専用way値配信軸・ルート線の区間クリックの箇所のみ） | 画面の状態を宣言の入力へ渡すだけの配線（下記「MapView.tsx側の配線」）。軸ごとの処理は持たない |
 | `features/map/scene/groups/routes.ts` | 色分け線そのものを引く側。レンズの配色式・凡例フィルタを受け取ってMapLibreの線レイヤーへ流す |
@@ -81,8 +81,18 @@ backend（`domain/map_paint.py: map_paint`）が軸の折れ線で写してか�
 
 **周りの道の色が拠る走る条件は、画面に出す**（`view/lens.ts: lensConditionsLabel`。例:「北へ走る・時速20km・19:30出発」）。
 専用配信の軸で周りの道を塗っている間、その軸が載せる条件（`needsBearing`・`needsSpeed`・`needsTime`）だけを並べ、
-`LensControl`がピルと開いた先に出す。走行方位は右上の別の操作で決め、保存されない——出さないと、見えない条件で
+`LensControl`がピルに出す。走行方位は右上の別の操作で決め、保存されない——出さないと、見えない条件で
 同じ道の色が変わる。
+
+**周りの道の色の前提は、開いた先の凡例に1行ずつ書く**（`view/lens.ts: lensPremises`）。周りの道はルートを作るまで決まらない
+入力（走る向き・速度・通過する時刻）を仮に置いて塗るので、塗っている軸がどの入力に依るかを、軸idで分けずに軸カタログの宣言から決める。
+
+| 前提 | 決める宣言 | 凡例の行 |
+|---|---|---|
+| 走る条件（向き・速度・出発時刻） | `AxisCatalogEntry.dynamic_way_value_conditions`（`lensConditionsLabel`の文） | 「周りの道は「◯◯」の条件で塗っています。」 |
+| 時間帯（通過する時刻で効くか） | `AxisCatalogEntry.time_scope`（`"always"`以外） | 通過する時刻を置かずに塗っていること・その時間帯に通る区間でだけ効き、ルートを作ると区間ごとに決まること |
+
+ルートの線は実際に走る向き・時刻で決まるので、周りの道を塗っていない間（ルート後に周りを塗らない設定）は前提を出さない。
 
 **レンズ状態は1つ**（`features/map/view/useMapView.ts: lens`、`"none" | "difficulty" | axis_id`。
 localStorageキーは`ridecompass:route-style-mode`）。ルート前は全道路、ルート後はルート線を

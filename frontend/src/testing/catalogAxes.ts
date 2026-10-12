@@ -63,6 +63,7 @@ export function catalogEntry(overrides: EntryOverrides = {}): AxisCatalogEntry {
     material_breakdown: [],
     dynamic_way_value_conditions: [],
     dynamic_way_value_undetermined_by_bearing: false,
+    time_scope: "always",
     ...rest,
   };
 }

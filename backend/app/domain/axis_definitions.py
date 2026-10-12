@@ -187,6 +187,7 @@ AxisShape = Annotated[
 
 
 AxisCategory = Literal["観測", "推定", "動的"]
+TimeScope = Literal["always", "night_only"]
 
 
 class PriorityCondition(StrictModel):
@@ -315,7 +316,7 @@ class AxisDefinition(StrictModel):
     icon_id: str | None = None
     """ルート設定・ルート結果の評価の内訳で軸の名前に添えるアイコンのid。画面が持つ固定のパレットから選び、
     画面の知らないid・未設定は汎用のアイコンで出る。パレットへ形を足すには画面のコード変更が要る。"""
-    time_scope: Literal["always", "night_only"] = "always"
+    time_scope: TimeScope = "always"
     """この軸の重みが常に有効か、特定の時間帯でのみ有効かの宣言。
     「`time_scope != "always"`な軸の重みを、その時間帯に区間を通るときだけ残し、ほかは0倍にする」
     という汎用ロジック（`domain/axis_definitions.py: time_scoped_weights`参照）が、このフィールドだけを
