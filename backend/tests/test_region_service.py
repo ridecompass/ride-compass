@@ -2,7 +2,8 @@
 
 確かめるのは、焼けなかったタイル（範囲外・DB障害）の空タイルとブラウザに持たせてよいか、焼いたタイルを世代付きの鍵で
 ディスクへ残すか、区間インスペクタ（`AxisInspectorService`）が押した区間と道1本の値を地図の配信と同じ値で出し、渡された
-重みで合成すること、DB障害の倒し方。差し替えるのはDBの口と、インスペクタが読むタイルの材料・配信のサービスだけ。
+重みで合成すること、DB障害の倒し方。差し替えるのはDBの口と、インスペクタが読むタイルの材料・配信のサービスと、
+失敗の記録（`log_external_call`）だけ。
 
 ここで見ないもの:
 - キャッシュの読み書きの骨格 → `test_region_tile_cache.py`
@@ -20,6 +21,7 @@ from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import BreakpointLinearShape, CategoricalShape, MaterialTerm, copy_axis_definitions
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments, WayValueQuery
 from app.domain.geo import LatLonPoint
+from app.domain.landcover import LandcoverPercentages
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, tile_bounds_lonlat
 from app.domain.route_preference import RoutePreference
 from app.infrastructure.derived_data_meta import DataRevisions
@@ -28,8 +30,10 @@ from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, encode_empty
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services.dedicated_way_values import AxisWayValueLens
 from app.services.gradient_way_service import GradientConditions
+from app.services import region_service
 from app.services.region_service import AxisInspectorService, RegionService
 from tests.axis_system_fixture import replaced_axis_definitions, shaped_axis
+from tests.fake_external_log import record_external_calls
 
 
 Z, X, Y = 14, 14551, 6447
@@ -117,6 +121,14 @@ ON_SEGMENT = (
     (EDGE_TILE_BOUNDS.min_latitude + EDGE_TILE_BOUNDS.max_latitude) / 2,
     (EDGE_TILE_BOUNDS.min_longitude + EDGE_TILE_BOUNDS.max_longitude) / 2,
 )
+#: 押した地点。
+PRESSED = LatLonPoint(35.6, 139.4)
+#: 押した道の区間と道1本の土地被覆（別のクラスが全部を占める）。
+_LANDCOVER_FIELDS = list(LandcoverPercentages.model_fields)
+LANDCOVER = {
+    (int(WAY), key): LandcoverPercentages(**{field: 100.0 if field == only else 0.0 for field in _LANDCOVER_FIELDS})
+    for key, only in ((SEGMENT, _LANDCOVER_FIELDS[0]), (WAY, _LANDCOVER_FIELDS[1]))
+}
 
 #: 道のタグを読む軸と、区間ごとに値の違う材料（勾配）を読む軸。勾配の大きさだけを読む軸は、地図が得点ではなく勾配
 #: （符号付き材料）を塗る。タイルの材料を読む軸を先に置く（読めないときに、その後ろの軸の値を落とさないことも見る）。
@@ -138,19 +150,22 @@ INSPECTED_AXES = {
 
 class _InspectedWayRepository(RoadGraphRepository):
     """押した道の読み出しだけに答えるなりすまし（実セッションを持たない）。区間を選ぶ空間の照合は実DBで
-    `test_feature_materials_in_tile.py`が見る。"""
+    `test_feature_materials_in_tile.py`が見る。押した道を押した地点で引いたときだけ区間を返し、土地被覆は押した道の
+    区間と道1本で別のものを返す。`unavailable`なら、DB障害として読み出しが失敗する。"""
 
-    def __init__(self):
-        pass
+    def __init__(self, unavailable: bool = False):
+        self._unavailable = unavailable
 
     async def get_way_tags_by_osm_way_id(self, osm_way_id):
+        if self._unavailable:
+            raise ConnectionRefusedError("db down")
         return ("primary", {})
 
     async def get_nearest_way_segment(self, osm_way_id, latitude, longitude):
-        return (SEGMENT, *ON_SEGMENT)
+        return (SEGMENT, *ON_SEGMENT) if (osm_way_id, latitude, longitude) == (int(WAY), *PRESSED) else None
 
     async def get_feature_landcover(self, osm_way_id, feature_key):
-        return None
+        return LANDCOVER.get((osm_way_id, feature_key))
 
 
 class _TileMaterials:
@@ -186,8 +201,8 @@ class _Gradients:
         return -np.asarray(segments.columns["gradient_percent"], dtype=float)
 
 
-def _inspector(readable: bool = True) -> AxisInspectorService:
-    return AxisInspectorService(RegionService(repository=_InspectedWayRepository()), _TileMaterials(readable),
+def _inspector(readable: bool = True, unavailable: bool = False) -> AxisInspectorService:
+    return AxisInspectorService(RegionService(repository=_InspectedWayRepository(unavailable)), _TileMaterials(readable),
                                 {"gradient_percent": _Gradients()}.__getitem__)
 
 
@@ -208,13 +223,18 @@ def _difficulty(axis_id: str, painted: float) -> float:
 async def test_the_inspector_gives_the_values_the_map_paints_for_the_segment_and_for_its_way(pressed, feature_key):
     """押した区間の値は区間で塗る地図の色と、道1本の値は引いた地図の色と同じ値になる（倍率に依らない）。食い違うと、
     同じ道の地図の色と窓の数字が違って見える。勾配を塗る軸も、窓には得点を出す。道1本で塗る倍率で押したときの区間は、
-    押した地点に最も近いその道の区間。道1本の値は、その道の区間を走った向きの勾配の得点の距離平均（ルートの値と同じ）。"""
-    with replaced_axis_definitions(INSPECTED_AXES):
-        result = await _inspector().inspect(int(WAY), feature_key, *pressed, LatLonPoint(35.6, 139.4), QUERY, None)
+    押した地点に最も近いその道の区間。道1本の値は、その道の区間を走った向きの勾配の得点の距離平均（ルートの値と同じ）で、
+    道のタグも読む軸も区間から畳む。土地被覆は、区間と道1本でそれぞれのもの。"""
+    axes = {**INSPECTED_AXES, "axis_mixed": shaped_axis(
+        BreakpointLinearShape(terms=[MaterialTerm(material="axis_surface"), MaterialTerm(material="axis_grade")],
+                              breakpoints=[(0.0, 0.0), (200.0, 100.0)]),
+        axis_id="axis_mixed", is_published=True)}
+    with replaced_axis_definitions(axes):
+        result = await _inspector().inspect(int(WAY), feature_key, *pressed, PRESSED, QUERY, None)
         painted = {
             tile: {axis_id: await AxisWayValueLens(axis_id, copy_axis_definitions(), _TileMaterials(),
                                                    {"gradient_percent": _Gradients()}.__getitem__).values(*tile, QUERY)
-                   for axis_id in INSPECTED_AXES}
+                   for axis_id in axes}
             for tile in (EDGE_TILE, WAY_TILE)
         }
 
@@ -224,6 +244,7 @@ async def test_the_inspector_gives_the_values_the_map_paints_for_the_segment_and
         axis_id: _difficulty(axis_id, values[WAY]) for axis_id, values in painted[WAY_TILE].items()}
     grade = INSPECTED_AXES["axis_grade"].shape
     assert _scores(result.way)["axis_grade"] == (grade.score_at(-8.0) * 100 + grade.score_at(4.0) * 300) / 400
+    assert (result.segment.landcover, result.way.landcover) == (LANDCOVER[(int(WAY), SEGMENT)], LANDCOVER[(int(WAY), WAY)])
 
 
 @pytest.mark.parametrize(("readable", "pressed", "feature_key", "segment", "way"), [
@@ -235,7 +256,7 @@ async def test_what_the_map_does_not_paint_is_no_data_in_the_inspector(readable,
     """取込範囲外・DB障害でタイルの材料を読めない軸と、押した区間を今のタイルが持たない（地図のタイルが前の世代）ときは、
     窓はその軸を「データなし」にし、ほかの値は出す。失敗すると、道を押しても窓が開かない。"""
     with replaced_axis_definitions(INSPECTED_AXES):
-        result = await _inspector(readable).inspect(int(WAY), feature_key, *pressed, LatLonPoint(*ON_SEGMENT), QUERY, None)
+        result = await _inspector(readable).inspect(int(WAY), feature_key, *pressed, PRESSED, QUERY, None)
 
     assert (_scores(result.segment), _scores(result.way)) == (segment, way)
 
@@ -244,7 +265,7 @@ async def test_an_axis_whose_conditions_are_missing_has_no_value_and_the_others_
     """地図の配信なら断る条件の欠け（勾配の走行方位）は、内訳ではその軸だけを「データなし」にし、合成はほかの軸で出す。"""
     with replaced_axis_definitions(INSPECTED_AXES):
         result = await _inspector().inspect(
-            int(WAY), SEGMENT, *EDGE_TILE, LatLonPoint(*ON_SEGMENT), WayValueQuery(at=None, bearing_deg=None, speed_kmh=None),
+            int(WAY), SEGMENT, *EDGE_TILE, PRESSED, WayValueQuery(at=None, bearing_deg=None, speed_kmh=None),
             None)
 
     assert _scores(result.segment) == {"axis_surface": 10.0, "axis_grade": None, SIGNED: None}
@@ -255,13 +276,23 @@ async def test_axis_inspector_combines_with_the_weights_it_is_given():
     """重みを0にした軸は、値があっても合成に効かない（利用者の重みで見せる）。"""
     with replaced_axis_definitions(INSPECTED_AXES):
         weighted, ignored = [
-            await _inspector().inspect(int(WAY), SEGMENT, *EDGE_TILE, LatLonPoint(*ON_SEGMENT), QUERY,
+            await _inspector().inspect(int(WAY), SEGMENT, *EDGE_TILE, PRESSED, QUERY,
                                        RoutePreference(weights={"axis_grade": weight, "axis_surface": 1.0}))
             for weight in (1.0, 0.0)
         ]
 
     assert next(axis for axis in weighted.segment.axes if axis.axis_id == "axis_grade").contribution not in (None, 0)
     assert not next(axis for axis in ignored.segment.axes if axis.axis_id == "axis_grade").contribution
+
+
+async def test_the_inspector_does_not_open_and_is_counted_as_a_failure_when_the_db_is_down(monkeypatch):
+    """DB障害では窓は開かず（応答はNone）、失敗が`/api/debug/stats`の集計に載る。"""
+    calls = record_external_calls(monkeypatch, region_service)
+
+    result = await _inspector(unavailable=True).inspect(int(WAY), WAY, *WAY_TILE, PRESSED, QUERY, None)
+
+    assert result is None
+    assert [(call.fields["result"], call.fields["error_type"]) for call in calls] == [("error", "ConnectionRefusedError")]
 
 
 # --- 事故データ収録年数 ---

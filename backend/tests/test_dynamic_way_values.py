@@ -266,6 +266,7 @@ def test_a_way_undetermined_by_bearing_stays_so_and_a_way_without_segments_keeps
     assert painted == {**without, "way-4": paint_feature_values("axis_cover", FOLDED_AXES, ["way-4"], {
         material_id: column[:1] for material_id, column in materials.items()}, {})["way-4"]}
     assert graded["way-1"] is None
+    assert set(graded) == set(keys)
     assert (graded["way-4"], scored["way-4"]) == (-6.0, paint_feature_values("axis_grade", FOLDED_AXES, ["way-4"], {
         material_id: column[:1] for material_id, column in materials.items()}, {"seg_grade": {"way-4": -6.0}},
         as_difficulty=True)["way-4"])
