@@ -46,16 +46,9 @@ const query = (config) => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn
   comments(last:40){nodes{body createdAt author{login}}} ${FIELDS} ${relationsOf(true)}
   timelineItems(first:50,itemTypes:[ISSUE_TYPE_CHANGED_EVENT]){nodes{...on IssueTypeChangedEvent{prevIssueType{name} issueType{name}}}}}}
  c:repository(owner:$co,name:$cn){pullRequests(headRefName:$head,first:5,orderBy:{field:CREATED_AT,direction:DESC}){nodes{
-  id state isDraft merged createdAt mergedAt mergeCommit{statusCheckRollup{state}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{state}}}}
+  id state isDraft mergeable merged createdAt mergedAt mergeCommit{statusCheckRollup{state}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{state}}}}
   timelineItems(last:1,itemTypes:[CONVERT_TO_DRAFT_EVENT]){nodes{...on ConvertToDraftEvent{createdAt}}}}}}}`;
 const ROLLUP = { SUCCESS: "SUCCESS", FAILURE: "FAILURE", ERROR: "FAILURE", PENDING: "PENDING", EXPECTED: "PENDING" };
-
-// 変異テストの生き残りの数と、その結果が出た時刻。
-async function survivors(gh, config, sha) {
-  const { check_runs: [run] } = await gh.rest("GET", `/repos/${config.code}/commits/${sha}/check-runs?check_name=${config.mutationCheck}`);
-  const notes = run ? await gh.rest("GET", `/repos/${config.code}/check-runs/${run.id}/annotations?per_page=100`) : [];
-  return { count: notes.filter((a) => a.title === "テストが気づかない書き換え").length, at: Date.parse(run?.completed_at) };
-}
 
 // issue の全部のコメントの本文（古い順）。
 async function allComments(gh, config, number) {
@@ -79,8 +72,6 @@ export async function readFacts(gh, config, number, runs) {
   const open = c.pullRequests.nodes.find((p) => p.state === "OPEN");
   const head = open?.commits.nodes.at(-1);
   const checks = ROLLUP[head?.commit.statusCheckRollup?.state];
-  // 生き残りは、持たれていない PR の CI が通ったときだけ要る。作る担当がその結果のあとに持っていなければ新しい。
-  const mutants = !held.length && open && checks === "SUCCESS" ? await survivors(gh, config, head.commit.oid) : { count: 0 };
   const drafted = open?.timelineItems.nodes[0]?.createdAt;
   const merged = c.pullRequests.nodes.find((p) => p.merged); // 新しいものから並ぶ
   const nodes = i.comments.nodes;
@@ -90,8 +81,6 @@ export async function readFacts(gh, config, number, runs) {
   // 読んでいる（前の形の終わりのコメントは書いた時刻）。対話作業の issue は開発機の対話のセッションが読んでから書くので、Claude のコメントがあれば
   // それより前を読んでいる。閉じたあとの文だけを数える（閉じるときに一緒に書いた文は、閉じる決定の一部）。
   const at = (n) => Date.parse(n.createdAt);
-  // 作る担当が最後に終わった時刻（変異テストの生き残りを見たあとか）。実行の一覧は近ごろの分しか無いので、issue に残る終わりのコメントで判じる。
-  const made = Math.max(0, ...nodes.filter((n) => END.exec(norm(n.body))?.[1] === "作る").map(at));
   const by = (n, login) => n.author?.login === login;
   const types = i.timelineItems.nodes.map((e) => e.prevIssueType?.name ?? null); // 今より前の種類（古い順）
   const dialog = dialogOf(config, types, i.issueType?.name ?? null);
@@ -123,5 +112,5 @@ export async function readFacts(gh, config, number, runs) {
     prMoved: Math.max(0, ...c.pullRequests.nodes.flatMap((x) => [Date.parse(x.createdAt), Date.parse(x.mergedAt) || 0])),
     merged: Boolean(merged), mergeChecks: ROLLUP[merged?.mergeCommit?.statusCheckRollup?.state],
     badQuestion: last && isQuestion(last) ? checkQuestion(config.questionTemplate, last) : [], comments,
-    pr: open && { id: open.id, draft: open.isDraft, checks, newSurvivors: mutants.count > 0 && !(made > mutants.at), backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };
+    pr: open && { id: open.id, draft: open.isDraft, checks, conflict: open.mergeable === "CONFLICTING", backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };
 }

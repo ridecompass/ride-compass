@@ -5,13 +5,21 @@ import regionTileConfig from "@/types/generated/region-tile-config.json";
 // Web Mercatorで表せる緯度の限界。挟まないとlogがNaN/Infinityになりうる。
 const MAX_MERCATOR_LATITUDE = regionTileConfig.max_mercator_latitude;
 
-/** 緯度経度を含むXYZタイルのx,y（ズームzのタイルの範囲へは収めない）。 */
-export function lonLatToTileIndex(lon: number, lat: number, z: number): [number, number] {
+/** 緯度経度のXYZタイル座標を小数のまま返す（整数部がタイルの番号、小数部がタイルの中の位置）。 */
+export function lonLatToTilePosition(lon: number, lat: number, z: number): [number, number] {
   const n = 2 ** z;
-  const x = Math.floor(((lon + 180) / 360) * n);
+  const x = ((lon + 180) / 360) * n;
   const clampedLat = Math.max(-MAX_MERCATOR_LATITUDE, Math.min(lat, MAX_MERCATOR_LATITUDE));
   const latRad = (clampedLat * Math.PI) / 180;
-  const y = Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n);
+  const y = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n;
+  return [x, y];
+}
+
+/** 緯度経度を含むXYZタイルのx,y。世界の東端・Web Mercatorの南の限界はタイルの外に落ちるので、
+ * ズームzのタイルの範囲へ収める。 */
+export function lonLatToTileIndex(lon: number, lat: number, z: number): [number, number] {
+  const last = 2 ** z - 1;
+  const [x, y] = lonLatToTilePosition(lon, lat, z).map((value) => Math.max(0, Math.min(Math.floor(value), last)));
   return [x, y];
 }
 

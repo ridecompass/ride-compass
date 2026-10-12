@@ -1,6 +1,6 @@
 # 担当（作る・確かめる）を1件、GitHub Actions のランナーで動かす。見回りが振り出す（tools/flow-gate/src/patrol.js）。手でも起こせる:
 #   gh workflow run claude-task.yml -R ridecompass/ride-compass -f issue=<置き場の issue の番号> -f kind=<作る|確かめる>
-# 担当は .claude/skills/task-work/SKILL.md の手順を進め、ステータスは書かない（実行の始まりと終わりの出来事で、ゲートが決める）。
+# 担当は .claude/skills/task-work/SKILL.md の冒頭と自分の担当の節の手順を進め、ステータスは書かない（実行の始まりと終わりの出来事で、ゲートが決める）。
 # このワークフローを無効にすると、見回りは振り出さない（止める操作）。リポジトリは公開なので、担当の出力の全文は記録に出さない。
 name: Claude Task
 # 見回りは、この名前からどのタスクのどの担当の、どの振り出しの実行かを読む（tools/flow-gate/src/facts.js: runOf）。
@@ -45,6 +45,8 @@ jobs:
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
       # 担当の手番の間はほとんど数秒なので、キャッシュは単価の低い5分の保持で足りる（購読の既定は1時間）。
       CLAUDE_CODE_PROMPT_CACHE_TTL: 5m
+      # 毎手番に文脈の全体を読み直すので、長い実行は窓の既定（モデルの文脈の窓）より早く要約して文脈を抑える。
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: "200000"
     steps:
       - uses: actions/checkout@v5
         with:
@@ -81,10 +83,10 @@ jobs:
           allowed_bots: ridecompass-gate
           # 担当の権限（連携がランナーのユーザー設定へ書く。判定役はユーザー設定の autoMode を読む）。
           settings: ${{ github.workspace }}/.github/claude-task/settings.json
-          claude_args: --model claude-opus-5-5 --disallowedTools Monitor,ScheduleWakeup,CronCreate,CronDelete,CronList,Workflow
+          claude_args: --model ${{ inputs.kind == '確かめる' && 'claude-sonnet-5-5' || 'claude-opus-5-5' }} --disallowedTools Monitor,ScheduleWakeup,CronCreate,CronDelete,CronList,Workflow
           prompt: |
             あなたは RideCompass の${{ inputs.kind }}担当です。作業ツリー ${{ github.workspace }} で、置き場 ${{ steps.tasks.outputs.repo }} の issue #${{ inputs.issue }} を扱います。
-            まず CLAUDE.md と .claude/skills/task-work/SKILL.md の全文（「${{ inputs.kind }}担当」の手順を進める）を読み、その手順のとおりに進めてください。
+            まず CLAUDE.md と、.claude/skills/task-work/SKILL.md のうち冒頭と「${{ inputs.kind }}担当」の節を `awk -v k='**${{ inputs.kind }}担当**' '/^\*\*(作る|確かめる)担当\*\*/{s=(index($0,k)!=1)} /^\*\*競合を解く\*\*/{s=0} !s' .claude/skills/task-work/SKILL.md` で読み、その手順のとおりに進めてください。
       # 作る担当の GitHub に無い変更は、ランナーと一緒に消えないよう wip の枝へ残す（作業ブランチは書き換えない）。
       - if: always() && inputs.kind == '作る'
         run: |
