@@ -18,9 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
+      - uses: ./.github/actions/python
       - run: python scripts/review_checks.py docs
 
   doc-reading-tests:
@@ -30,26 +28,19 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: |
-            backend/requirements.txt
-            backend/requirements-dev.txt
       # tests/conftest.py と pytest.ini が読む依存（requirements-dev.txt が requirements.txt を内包する）。
-      - run: pip install -r requirements-dev.txt
+      - uses: ./.github/actions/python
+        with:
+          requirements: requirements-dev.txt
       - run: python -m pytest -q tests/structure/test_named_references.py
 
   repo-wide:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: ./.github/actions/python
         with:
-          python-version: "3.12"
-      # 版はbackendの依存の宣言から取る（ci.ymlのbackendジョブと同じ版）。
-      - run: pip install $(grep -hE '^ruff==' backend/requirements.txt backend/requirements-dev.txt)
+          tools: ruff
       # backendの外のPythonすべて。backendの下はci.ymlのbackendジョブが見る。設定ファイルが無いので
       # ruffの既定のルールで見る（backend/ruff.tomlが選ぶものと同じ）。構文の誤りもruffが出す。
       - run: ruff check --extend-exclude backend .

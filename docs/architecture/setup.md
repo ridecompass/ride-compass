@@ -84,7 +84,7 @@ RideCompass/
 ### 前提
 
 - Node.js 22.12+（frontend のテストの道具 vitest の要件）
-- Python 3.12（`backend/Dockerfile`・CI と同じ）
+- Python（版は `backend/Dockerfile` の `FROM` と同じ。CI もそこから取る）
 - PostgreSQL + PostGIS（Road Graph・路面タイル生成の一次系統。**DBなしでは起動しない**）
 - Redis（JMA気象データの短命キャッシュ。未接続でもフォールバックする箇所が
   一部あるが、ローカル開発でも用意することを推奨）
@@ -136,14 +136,14 @@ docker compose run --rm backend python scripts/bootstrap_database.py --create-ex
   masterの浅いcloneから`setup.sh`を流す（セットアップの時点でリポジトリがどこにあるかに
   依存しないため）。backendのvenvとfrontendの`node_modules`をlockfileのダイジェストごとに
   リポジトリの外（`/opt/ridecompass-dev`）へ作り、postgres・redisのイメージを取る。さらにcomposeの
-  postgresを一度起動してボリュームを初期化し（テストの複製元DB`ridecompass_test`も作る）、止めてから終える。
+  postgresを一度起動してボリュームを初期化し（テストの複製元DB`backend/tests/database_names.py: SHARED_TEST_DATABASE`も作る）、止めてから終える。
   ボリュームがキャッシュに無いと、毎回の開始で空のボリュームへのinitdbとPostGIS拡張の読み込み（実測で約10秒）が走る。
   composeのプロジェクト名は`ride-compass`に固定している（一時ディレクトリのcloneから流しても、セッションの
   cloneと同じボリュームになるように）。
 - **SessionStartフック**（`.claude/settings.json`→`scripts/remote_dev/session_start.sh`）が
   毎セッションの開始時に、`backend/.venv`と`frontend/node_modules`をそこへ繋ぎ（lockfileが
   変わっていれば入れ直す）、dockerdを起こしてcomposeのpostgres・redisを起動し、テストの
-  複製元DB`ridecompass_test`を作る。`CLAUDE_CODE_REMOTE`が`true`でない（手元の）セッション
+  複製元DB（`backend/tests/database_names.py: SHARED_TEST_DATABASE`）を作る。`CLAUDE_CODE_REMOTE`が`true`でない（手元の）セッション
   では何もせずに抜ける。セットアップの欄が空でもフックが依存を入れる（開始が遅くなるだけ）。
   DB・Redisの起動は裏で行い、フックは待たない——保存から戻したディスクでは起動に20秒ほど
   かかる（キャッシュからの開始の実測22秒。温まったディスクなら7〜8秒）。DBを使う前に

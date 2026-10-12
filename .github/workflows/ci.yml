@@ -133,26 +133,15 @@ jobs:
     defaults:
       run:
         working-directory: backend
-    env:
-      TEST_DATABASE_URL: postgresql+asyncpg://ridecompass:ridecompass@localhost:5432/ridecompass_test
-      DATABASE_URL: postgresql+asyncpg://ridecompass:ridecompass@localhost:5432/ridecompass_test
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/postgis
-      - uses: actions/setup-python@v6
-        with:
-          # 本番のイメージ（backend/Dockerfile）と同じ3.12系に固定する
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: |
-            backend/requirements.txt
-            backend/requirements-batch.txt
-            backend/requirements-dev.txt
       # requirements-batch.txt（-r requirements.txtを内包し、取込バッチの依存を足す）を入れる。
       # 本番のイメージ（backend/Dockerfile）と同じ組で、tests/には取込バッチ（app/batch/）の
       # テストがあり無条件でosmiumをimportするため、requirements.txtだけでは収集で失敗する。
-      - run: pip install -r requirements-batch.txt
-      - run: pip install -r requirements-dev.txt
+      - uses: ./.github/actions/python
+        with:
+          requirements: requirements-batch.txt requirements-dev.txt
       # lintはテストより先に置く（frontendジョブがeslint→tsc→vitestの順であるのと同じ、
       # 実行の速いものから）。設定はbackend/ruff.toml。対象はbackendの下のPythonすべてで、backendの外は
       # docs-consistency.ymlが見る。
@@ -180,18 +169,15 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      # export_openapi.pyはwebアプリの宣言だけをimportするため、取込バッチの追加依存は要らない。
+      - uses: ./.github/actions/python
         with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
+          requirements: requirements.txt
       - uses: actions/setup-node@v5
         with:
           node-version-file: frontend/package.json
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      # export_openapi.pyはwebアプリの宣言だけをimportするため、取込バッチの追加依存は要らない。
-      - run: pip install -r requirements.txt
       # 差分が出た場合は、backendの宣言を変えたのに backend/scripts/export_openapi.py →
       # cd frontend && npm run generate:api の実行とコミットが漏れている。**生成物はすべてコードの宣言から決まり、DBを読まない**
       # ——軸定義はDBが正本で、実行時の GET /api/axis-catalog が配る。
@@ -467,11 +453,9 @@ jobs:
         working-directory: scripts
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: ./.github/actions/python
         with:
-          python-version: "3.12"
-      # 版はbackendの依存の宣言から取る（backendジョブと同じ版）。
-      - run: pip install $(grep -hE '^pytest==' ../backend/requirements-dev.txt)
+          tools: pytest
       - run: python -m pytest -q
   ci-ok:
     needs: [changes, backend, api-contract, frontend, e2e, e2e-scan, e2e-webkit, frontend-image, backend-image, scripts]

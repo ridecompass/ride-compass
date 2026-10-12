@@ -9,7 +9,8 @@
 
 RC_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RC_CACHE="${RC_CACHE:-/opt/ridecompass-dev}"
-RC_PYTHON="${RC_PYTHON:-python3.12}"
+# 版は本番のイメージ（backend/Dockerfile の FROM）に合わせる。
+RC_PYTHON="${RC_PYTHON:-python$(sed -n 's/^FROM python:\([0-9.]*\).*/\1/p' "$RC_REPO/backend/Dockerfile")}"
 RC_TIMES="$(mktemp)"
 
 rc_log() { printf '[remote_dev %s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
@@ -132,11 +133,15 @@ rc_db() { rc_ensure_dockerd && rc_start_services; }
 # クラッシュリカバリも起こさないようにする。
 rc_prime_db() { rc_ensure_dockerd && rc_start_services && rc_compose stop >/dev/null 2>&1; }
 
-# postgres・redisを起動し、テストの複製元になる共有DB（conftest.pyのSHARED_TEST_DATABASE）を用意する。
+# postgres・redisを起動し、テストの複製元になる共有DB（backend/tests/database_names.py: SHARED_TEST_DATABASE）を用意する。
+# 名前はその定義の行から読み、利用者はcomposeがコンテナへ渡すPOSTGRES_USERを使う。
 rc_start_services() {
+  local db
+  db=$(sed -n 's/^SHARED_TEST_DATABASE = "\(.*\)"$/\1/p' "$RC_REPO/backend/tests/database_names.py")
+  [ -n "$db" ] || { rc_log "database_names.pyからSHARED_TEST_DATABASEを読めない"; return 1; }
   rc_pull_images || return 1
   rc_compose up -d --wait postgres redis >/dev/null 2>&1 || { rc_compose ps -a >&2; return 1; }
-  rc_compose exec -T postgres sh -c \
-    'psql -U ridecompass -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '\''ridecompass_test'\''" | grep -q 1 \
-     || createdb -U ridecompass ridecompass_test'
+  rc_compose exec -T -e DB="$db" postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '\''$DB'\''" | grep -q 1 \
+     || createdb -U "$POSTGRES_USER" "$DB"'
 }
