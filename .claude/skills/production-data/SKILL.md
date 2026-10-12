@@ -49,8 +49,8 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
   ```
 
   担当は打たず、開発機の対話のセッションがユーザーがチャットで言ったときだけ打つ
-  （[dev-session/SKILL.md](../dev-session/SKILL.md)「本番へ書く」）。差（項目ごとの「前 → 後」）と指紋をチャットで見せ、書くよう言われてから、同じ指紋で書く。宛先と認証情報は
-  `backend/.env.oracle.local`の`BACKEND_ORIGIN`（本番backendの直接のオリジン）・`ADMIN_BASIC_AUTH_USERNAME`・
+  （[dev-session/SKILL.md](../dev-session/SKILL.md)「本番へ書く」）。差（項目ごとの「前 → 後」）と指紋をチャットで見せ、書くよう言われてから、同じ指紋で書く。宛先は
+  リポジトリの`production-origins.json`から読み、認証情報は`backend/.env.oracle.local`の`ADMIN_BASIC_AUTH_USERNAME`・
   `ADMIN_BASIC_AUTH_PASSWORD`に置く。JSONは`docs/records/`へ置かない（記録はタスクの issue に書く）。
   本番の写しとして直し続けない（次に変えるときは本番の今の定義から新しいJSONを作る）。
 - 完了の条件: 道具が「反映を確かめました」を出したこと。
@@ -189,7 +189,7 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
 - **既存DBの行データを新しいコードが読めなくなる変更（Pydanticモデルの破壊的変更等）を
   含む`backend/**`の変更は、本番DBのデータ移行を完了させてからmasterへ入れる（マージする）**。
   作業ブランチへのpushでは本番へ出ない。masterに入ってCI（`.github/workflows/ci.yml`）が通ると、backendは本番へ自動デプロイされる
-  （コンテナを入れ替えるかの振り分けは`scripts/deploy_backend_gate.py`が正本）。
+  （コンテナを入れ替えるかの振り分けは`scripts/deploy_gate.py`が正本）。
   DB移行より先にmasterへ入れると、新コードが本番DBに残る旧形式データを読めず、
   `refresh_axis_definitions`等のfail-fast設計により本番backendが起動失敗する。
   対応順序は事前に次のいずれかを選ぶこと: 1) 本番DBのデータ移行を先に完了させてから
@@ -244,8 +244,8 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
 - なぜ: 開発DBだけに反映してタスクを完了扱いにすると、本番だけ古い軸定義のまま取り残される。
 
 道具は本番の管理APIを読み書きするので、担当は打たず、開発機の対話のセッションがユーザーがチャットで言ったときだけ打つ
-（[flow.md](../../../docs/conventions/flow.md)「本番へ書く」）。差（項目ごとの「前 → 後」）と指紋をチャットで見せ、書くよう言われてから、同じ指紋で書く。宛先と認証情報は
-`backend/.env.oracle.local`の`BACKEND_ORIGIN`（本番backendの直接のオリジン）・`ADMIN_BASIC_AUTH_USERNAME`・
+（[flow.md](../../../docs/conventions/flow.md)「本番へ書く」）。差（項目ごとの「前 → 後」）と指紋をチャットで見せ、書くよう言われてから、同じ指紋で書く。宛先は
+リポジトリの`production-origins.json`から読み、認証情報は`backend/.env.oracle.local`の`ADMIN_BASIC_AUTH_USERNAME`・
 `ADMIN_BASIC_AUTH_PASSWORD`に置く。JSONは1回当てたら役目を終えるもので、`docs/records/`へは置かない（維持しない階層。
 記録はタスクの issue に書く）。本番の写しとして直し続けない（次に変えるときは本番の今の定義から新しいJSONを作る）。
 

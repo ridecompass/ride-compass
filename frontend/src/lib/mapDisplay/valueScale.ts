@@ -48,6 +48,14 @@ export function formatDifficulty(value: number): string {
   return value.toFixed(DIFFICULTY_DECIMALS);
 }
 
+/** 難易度の目盛りの上端を添える書き方（得点は0〜100）。数字と別の見た目で添える所が使う。 */
+export const DIFFICULTY_SCALE_SUFFIX = "/100";
+
+/** 難易度を目盛りの上端と並べて書く（「42.0/100」）。 */
+export function formatDifficultyOutOfScale(value: number): string {
+  return `${formatDifficulty(value)}${DIFFICULTY_SCALE_SUFFIX}`;
+}
+
 /** 負荷を`LOAD_DECIMALS`の桁で書く。 */
 export function formatLoad(value: number): string {
   return value.toFixed(LOAD_DECIMALS);

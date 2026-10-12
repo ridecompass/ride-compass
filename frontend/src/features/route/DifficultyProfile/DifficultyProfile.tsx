@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
+import { roundToDigits } from "@/lib/numberFormat";
 import palette from "@/types/generated/palette.json";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 
@@ -28,7 +29,7 @@ interface DifficultyProfileProps {
 
 /** 距離を描画の横座標へ。 */
 function xAt(km: number, widthKm: number): number {
-  return Math.round((km / widthKm) * VIEW_WIDTH * 100) / 100;
+  return roundToDigits((km / widthKm) * VIEW_WIDTH, 2);
 }
 
 function boxesPath(boxes: readonly ProfileBox[], xOf: (km: number) => number): string {
@@ -154,8 +155,8 @@ export default function DifficultyProfile({
         aria-label="道のりに沿った難易度（動かすと、その地点を地図に出す）"
         data-usage="横が道のり、縦がその区間の難易度で、塗った面積がルートの負荷です。なぞるか押して離すと、その地点を地図に印で出し、下にその区間の詳細を出します。"
         aria-valuemin={0}
-        aria-valuemax={Math.round(routeKm * 10) / 10}
-        aria-valuenow={Math.round(positionKm * 10) / 10}
+        aria-valuemax={roundToDigits(routeKm, 1)}
+        aria-valuenow={roundToDigits(positionKm, 1)}
         aria-valuetext={`${positionKm.toFixed(1)} km地点`}
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture?.(event.pointerId);

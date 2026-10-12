@@ -11,6 +11,7 @@
 
 import { useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 
+import { roundToDigits } from "@/lib/numberFormat";
 import { niceStep, snapToStep } from "./breakpointTools";
 import {
   maxBarShare,
@@ -27,7 +28,7 @@ function niceTicks(min: number, max: number): number[] {
   const start = Math.ceil(min / step) * step;
   const ticks: number[] = [];
   for (let v = start; v <= max + step * 1e-6; v += step) {
-    ticks.push(Math.round(v * 1000) / 1000);
+    ticks.push(roundToDigits(v, 3));
   }
   return ticks;
 }

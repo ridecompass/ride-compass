@@ -7,7 +7,7 @@
  * （軸別難易度の丸めと「データなし」・生値・材料の内訳・説明）。
  *
  * ここで見ないもの: 帯の積み方・チップの値と色 → `components/AxisContributionBar`。生値と内訳の1件の書き方 →
- * `features/route/RouteAxisProfile/axisRawValue.ts`。所要の書き方 → `features/route/formatDuration.ts`。
+ * `features/route/RouteAxisProfile/axisRawValue.ts`。所要の書き方 → `lib/duration.ts`。
  *
  * 軸は架空のもの（`axis_a`等）を`src/testing/catalogAxes.ts`の雛形から作る。
  */

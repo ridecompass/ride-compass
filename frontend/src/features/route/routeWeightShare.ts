@@ -1,3 +1,4 @@
+import { roundToDigits } from "@/lib/numberFormat";
 import type { RoutePreferenceWeights } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
@@ -13,7 +14,7 @@ const STEP_EPSILON = 1e-9;
 export const ENABLED_AXIS_WEIGHT = routeGenerateConfig.enabled_axis_weight;
 
 function roundToStep(value: number): number {
-  return Number(value.toFixed(2));
+  return roundToDigits(value, 2);
 }
 
 function clamp(value: number, min: number, max: number): number {

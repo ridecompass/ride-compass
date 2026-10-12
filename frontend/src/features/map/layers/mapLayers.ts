@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/icons/icons";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { TILE_VERSION_GATED_SOURCES } from "@/lib/mapDisplay/tileVersionGated";
+import { HOUR_MS, MINUTE_MS } from "@/lib/duration";
 import { LANDCOVER_PAINTED_CLASSES } from "./landcoverClasses";
 import { PRECIPITATION_INTENSITY_LEVELS } from "./precipitationNowcast";
 import { WIND_SPEED_LEGEND_LEVELS } from "./windLayer";
@@ -73,7 +74,7 @@ function weatherSourceOf(source: string) {
 function windowHoursOf(source: string): number {
   const minutes = weatherSourceOf(source).frameRule.windowMinutes;
   if (minutes == null) throw new Error(`${source}は重ねる幅を宣言していない`);
-  return minutes / 60;
+  return (minutes * MINUTE_MS) / HOUR_MS;
 }
 
 const LINEAR_RAINBAND_HOURS = windowHoursOf("linearRainband");

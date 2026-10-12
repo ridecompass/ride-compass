@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * `features/route/formatDuration.ts: formatDurationShort`——秒を分の表記にする。1時間を超えても分で書き、
+ * `lib/duration.ts: formatDurationShort`——秒を分の表記にする。1時間を超えても分で書き、
  * 1分に満たないものは「1分未満」、数として読めない秒は「—」にする。
  *
  * ここで見ないもの:
@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { formatDurationShort } from "./formatDuration";
+import { formatDurationShort } from "./duration";
 
 describe("formatDurationShort", () => {
   it("丸めて1分に満たないものは「1分未満」、半分ちょうどからは「1分」", () => {

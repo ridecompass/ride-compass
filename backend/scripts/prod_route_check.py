@@ -18,8 +18,6 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-#: 本番のbackend（docs/architecture/tech-stack.md「本番の宛先」）。
-PRODUCTION_BACKEND = "https://193-123-166-150.sslip.io"
 #: 画面の既定の生成条件（候補数・許容幅・巡航速度・道の除外）。backendのOpenAPIの生成物で、画面も同じものを読む。
 GENERATE_CONFIG = Path(__file__).resolve().parents[2] / "frontend/src/types/generated/route-generate-config.json"
 #: 起点（緯度, 経度）。取込範囲の中の決まった地点で、毎回同じ所を作る。
@@ -101,10 +99,13 @@ def generate(origin: str, body: dict) -> dict:
 
 
 def main() -> int:
+    from _production_origins import production_origin
+
+    backend = production_origin("backend")
     config = json.loads(GENERATE_CONFIG.read_text(encoding="utf-8"))
-    catalog = _request("GET", f"{PRODUCTION_BACKEND}/api/axis-catalog")
+    catalog = _request("GET", f"{backend}/api/axis-catalog")
     try:
-        result = generate(PRODUCTION_BACKEND, generation_request(config, datetime.now(JST)))
+        result = generate(backend, generation_request(config, datetime.now(JST)))
     except RuntimeError as error:
         print(f"失敗: {error}")
         return 1
