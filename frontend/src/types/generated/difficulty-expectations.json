@@ -1,0 +1,73 @@
+{
+  "overall_difficulty": [
+    {
+      "scene": "どの区間にも値がある",
+      "segments": [
+        {
+          "distance_km": 1.0,
+          "difficulty": 20.0,
+          "axis_contributions": {
+            "a": 10.0,
+            "b": 10.0
+          }
+        },
+        {
+          "distance_km": 1.0,
+          "difficulty": 40.0,
+          "axis_contributions": {
+            "a": 40.0
+          }
+        }
+      ],
+      "overall_difficulty": {
+        "average": 30.0,
+        "load": 60.0
+      }
+    },
+    {
+      "scene": "値の無い区間がある",
+      "segments": [
+        {
+          "distance_km": 1.0,
+          "difficulty": 20.0,
+          "axis_contributions": {
+            "a": 10.0,
+            "b": 10.0
+          }
+        },
+        {
+          "distance_km": 2.0,
+          "difficulty": null,
+          "axis_contributions": {}
+        },
+        {
+          "distance_km": 1.0,
+          "difficulty": 40.0,
+          "axis_contributions": {
+            "a": 40.0
+          }
+        }
+      ],
+      "overall_difficulty": {
+        "average": 30.0,
+        "load": 120.0
+      }
+    },
+    {
+      "scene": "どの区間にも値が無い",
+      "segments": [
+        {
+          "distance_km": 1.0,
+          "difficulty": null,
+          "axis_contributions": {}
+        },
+        {
+          "distance_km": 2.0,
+          "difficulty": null,
+          "axis_contributions": {}
+        }
+      ],
+      "overall_difficulty": null
+    }
+  ]
+}

@@ -40,6 +40,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+import repo_git
+
 REPO = Path(__file__).resolve().parents[1]
 _KEYS = ("name", "file", "before", "after", "tests")
 
@@ -68,13 +70,9 @@ class Breakage:
     tests: tuple[str, ...]
 
 
-def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, encoding="utf-8", check=False)
-
-
 def _changed(repo: Path, file: str) -> bool:
     """実装が HEAD から変わっているか。"""
-    return _git(repo, "diff", "--quiet", "HEAD", "--", file).returncode != 0
+    return repo_git.run("diff", "--quiet", "HEAD", "--", file, cwd=repo).returncode != 0
 
 
 def _side(test: str) -> str:
@@ -120,11 +118,11 @@ def ref_copy(test: str) -> str:
 def ref_copies(repo: Path, ref: str | None, tests: list[str]) -> Iterator[dict[str, str]]:
     """--ref の版のテストを書き出し、一時の名前から元のパスへの対応を渡す。抜けるときに消す。"""
     written: dict[str, str] = {}
-    if ref and _git(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode != 0:
+    if ref and repo_git.run("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}", cwd=repo).returncode != 0:
         raise Refused(f"版が無い: {ref}")
     try:
         for test in tests if ref else []:
-            shown = _git(repo, "show", f"{ref}:{test}")
+            shown = repo_git.run("show", f"{ref}:{test}", cwd=repo)
             if shown.returncode != 0:  # その版に無いテストのファイルは、前の版では何も見ていない
                 continue
             copy = ref_copy(test)

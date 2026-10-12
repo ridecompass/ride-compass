@@ -86,6 +86,10 @@ MAP_LAYER_DATA_SOURCES: tuple[MapLayerDataSource, ...] = (
     MapLayerDataSource("ownFetch"),
 )
 
+#: 数値予報モデルの計算値に添える断りの文。計算値を「予報」と呼ばない
+#: （docs/architecture/data-sources.md「気象業務法の予報業務許可」節）。生成物（`mapDisplay.modelValueDisclaimer`）が画面へ届ける。
+MODEL_VALUE_DISCLAIMER = "予報ではなく、誤差を含みえます。"
+
 #: 値の性質。生データか、計算した推定か、時刻で中身が変わるか。
 #: 評価軸は"composite"で、「表示」の一覧には出さない。
 MAP_LAYER_DATA_NATURES: tuple[str, ...] = ("raw", "composite", "dynamic")
@@ -506,7 +510,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         description=("気象庁の数値予報モデルMSMが計算した風向・風速を矢印で表示[1〜3日先まで。予報ではなく誤差を含みうる]",),
         panel_hint=(
             "気象庁MSM[メソ数値予報モデル、5kmメッシュ]が計算した風向・風速を格子点で矢印表示します。"
-            "モデルの計算値で、予報ではなく、誤差を含みえます。"
+            f"モデルの計算値で、{MODEL_VALUE_DISCLAIMER}"
             "矢印の向きが風向、長さ・太さ・色の濃淡が風速の強さを表します。ごく弱い風の地点は"
             "矢印を表示しません。ONにすると地図上に時刻スライダーが現れ、1時間刻みで切り替えられます"
             "[先まで見られる範囲は配信中の計算値の長さによって1〜3日の間で変わります]。",

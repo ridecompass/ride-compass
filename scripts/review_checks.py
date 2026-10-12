@@ -34,6 +34,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from repo_git import UPSTREAM, merge_base, run
 from repo_population import (
     EXAMPLE,
     GENERATED_PREFIXES,
@@ -101,11 +102,7 @@ def kind_limit(path: str, limits: dict[str, int]) -> int | None:
 
 
 def git(*args: str, check: bool = True) -> str:
-    result = subprocess.run(["git", *args], cwd=str(REPO_ROOT), capture_output=True,
-                            text=True, encoding="utf-8", errors="replace", check=False)
-    if result.returncode != 0 and check:
-        raise RuntimeError(f"git {' '.join(args)}: {result.stderr.strip()}")
-    return result.stdout
+    return run(*args, cwd=REPO_ROOT, check=check).stdout
 
 
 def tracked_files() -> list[str]:
@@ -476,7 +473,7 @@ def change_kind(path: str) -> str:
 
 def cmd_change(args: argparse.Namespace) -> int:
     target = args.head or "HEAD"
-    mb = git("merge-base", args.base, target).strip()
+    mb = merge_base(target, args.base, cwd=REPO_ROOT)
     # -z では、移したファイルの行が「追加\t削除\t」のあと移す前と後のパスを別の欄に持つ。
     fields = git("diff", "-M", "--numstat", "-z", mb, *([args.head] if args.head else [])).split("\0")
     rows = []
@@ -523,7 +520,7 @@ def main() -> int:
     p.add_argument("--only-fired", action="store_true", help="発火したときだけ出す（セッションの始まりのフック）")
     p.set_defaults(func=cmd_trigger, measures_head=True)
     p = sub.add_parser("change", help="変更の増減と規模の札")
-    p.add_argument("--base", default="origin/master", help="比べる相手（合流点から見る）")
+    p.add_argument("--base", default=UPSTREAM, help="比べる相手（合流点から見る）")
     p.add_argument("--head", help="見る版（省くと作業ツリー）")
     p.set_defaults(func=cmd_change, measures_head=False)
     p = sub.add_parser("size", help="規模と前回比")

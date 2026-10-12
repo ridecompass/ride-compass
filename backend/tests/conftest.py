@@ -44,6 +44,12 @@ from app.config import settings
 from app.services import derived_data_revision_service
 from scripts.schema_gap import collect_gaps
 from tests.admin_auth import ADMIN_PASSWORD, ADMIN_USERNAME
+from tests.database_names import (
+    SHARED_TEST_DATABASE,
+    TEMPLATE_TEST_DATABASE,
+    TEST_DATABASE_PREFIX,
+    TEST_DATABASE_SERVER,
+)
 
 # hypothesisは1例ごとに壁時計の締め切り（既定200ms）を持ち、超えると落とす。共有のランナーでは同じ例の所要時間が
 # 実行ごとに揺れて別のテストが落ちるため外す。止まったテストはpytest-timeoutが落とす。
@@ -238,11 +244,6 @@ def _use_temp_disk_cache_dirs(tmp_path, monkeypatch, _keep_disk_caches_out_of_th
         yield
 
 
-# road_graph_repository.pyのPostGIS統合テスト専用の接続先。開発機で稼働中の実DB
-# (ridecompass, backend/.envのDATABASE_URLが指す先)とは別のテスト専用DBを使う
-# (取り込んだ実データに触れないため)。ローカルでのみ実行する
-# 前提で、環境変数postgis_database_url()で上書き可能にしておく（CIはこの経路で注入する）。
-TEST_DATABASE_SERVER = "postgresql+asyncpg://ridecompass:ridecompass@localhost:5432"
 #: 作業ツリーの場所を書いておくDB。消してよいかの判断に使う（drop_orphan_test_databases.py）。
 TEST_DATABASE_MAINTENANCE = f"{TEST_DATABASE_SERVER}/postgres"
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
@@ -258,16 +259,9 @@ def default_test_database_name(root: Path) -> str:
     同名の作業ツリーがあると衝突するため、絶対パスのダイジェストを添える。
     """
     slug = re.sub(r"[^a-z0-9]+", "_", root.name.lower()).strip("_")[:24] or "wt"
-    return f"ridecompass_test_{slug}_{hashlib.sha1(str(root).encode('utf-8')).hexdigest()[:8]}"
+    return f"{TEST_DATABASE_PREFIX}{slug}_{hashlib.sha1(str(root).encode('utf-8')).hexdigest()[:8]}"
 
 
-#: 作業ツリー専用のDBを作れない環境（ロールにCREATEDBが無い等）での退避先。
-#: **分離できないことより、PostGISテストが丸ごと走らなくなる方が害が大きい。**
-SHARED_TEST_DATABASE = "ridecompass_test"
-#: 複製元。`CREATE EXTENSION postgis`はsuperuserを要求する（postgisはtrusted拡張ではない）
-#: ため、空のDBを作っても拡張を入れられない。**拡張を持つDBを複製する**ことで、
-#: superuserなしで使えるDBを増やせる。
-TEMPLATE_TEST_DATABASE = "ridecompass_test_template"
 #: 同時に作ろうとして競り負けたときの例外。PostgreSQLは競争の負け側へ、宣言的な
 #: 42P04（duplicate_database）ではなく23505（unique_violation、pg_databaseの一意索引違反）を
 #: 返すことがある。**片方だけを捕まえると、並行実行のときだけ退避してしまう。**

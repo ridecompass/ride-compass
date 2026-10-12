@@ -23,11 +23,14 @@ import configparser
 import glob
 import json
 import os
-import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
 
 from _shared import def_span, fn_of, read_kills
 from importtime import called_at_import, is_import_time
+from repo_git import run
 
 ART, RECHECK_ART, OUT = sys.argv[1], sys.argv[2], sys.argv[3]
 shard_dirs = sorted(glob.glob(os.path.join(ART, "mutation-*")))
@@ -149,7 +152,7 @@ for t in sorted(all_tests):
         entry["baselineFailed"] = True
     test_files[path]["tests"].append(entry)
 
-revision = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+revision = run("rev-parse", "HEAD").stdout.strip()
 cfg = configparser.ConfigParser()
 cfg.read(".importlinter", encoding="ascii")
 layers = [line.strip() for line in cfg["importlinter:contract:layers"]["layers"].splitlines() if line.strip()]
