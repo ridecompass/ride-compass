@@ -185,7 +185,7 @@ PYTHONUTF8=1 backend/.venv/Scripts/python.exe -m pytest backend/tests/<テスト
 今のテストが、実装の1か所の書き換え（`<` を `<=` に・`+` を `-` に等）を見つけられるかを測り、テストを消す・足す判断の
 材料にする（結果から何を足す・消す・直すかは [testing-review.md](../../rules/testing-review.md)「テストを変異テストで見直す」）。台本は `backend/scripts/mutation/`（各ファイルの先頭に使い方）、回すのは
 `.github/workflows/mutation.yml`（手で起こす。全部の測り・当て直し・見直しを1回の起こしでつなぐ。段の中身は先頭のコメント）。
-全部の測りでテストを見直す1回の進め方（起こす・待つ・読む・行き先を決める）は [test-review/SKILL.md](../test-review/SKILL.md)。
+3つの層（backend・frontend の単体テストと e2e）でテストを見直す1回の進め方（起こす・待つ・読む・候補を問う・行き先を決める）は [test-review/SKILL.md](../test-review/SKILL.md)。
 
 ```bash
 gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<測る版> -f issue=<測りを持つ issue の番号> -f count=0 -f stop_after=150
@@ -205,7 +205,7 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
 - **Pull Request ごと**: `backend/app` を変えた Pull Request では `.github/workflows/mutation-pr.yml` が自動で走り、変えた関数の変異と
   その基準だけを回して、生き残りを変えた行への注記と実行の要約に出す（`diff_scope.py`・`pr_plan.py`・`report_pr.py`）。必須の
   チェックではない。読み方は .claude/skills/task-work/SKILL.md「実装担当」の5と「検証担当」の1。
-- **結果は成果物**: 見直しの `mutation-review`（90日。`summary.md`・`candidates.md`・`review.json`・`report.json`。読み方は test-review スキルの4）と、
+- **結果は成果物**: 見直しの `mutation-review`（90日。`summary.md`・`candidates.md`・`review.json`・`report.json`。読み方は test-review スキルの3）と、
   元の記録の `mutation-<番号>`・`recheck-<番号>`（14日）。元の記録から表と候補を出し直すときは、`gh run download <実行の id> -R ridecompass/ride-compass -D <場所>` で取り、
   測った版のチェックアウトの `backend/` で `python scripts/mutation/report.py <場所> <当て直しの成果物の場所> <表のファイル>` と
   `python scripts/mutation/review.py <表のファイル> <前回の見直しの場所> <書き出す場所>` を打つ。残したい数字は issue に書く。
