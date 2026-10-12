@@ -1,11 +1,11 @@
 // 回答フォーム（Cloudflare Access の内側の Worker）。見た目と流れはユーザーと合意したモック:
 // スマホの幅で1列・材料と選ぶ行は下の区切り線だけ・欄は「選ぶ1つ」と「書く1つ」（書く欄は4行）・「確認」で入力を固めて戻る／送信を横に並べ・
-// 送ったあとは結果と「GitHub に戻る」だけ。確かめは項目を並べ、「完了にする」のチェック1つで答える（項目ごとの欄は持たない）。
+// 送ったあとは結果と「GitHub に戻る」だけ。選ぶ欄は問いの答えの節だけから導き、種類で分けない（.claude/skills/ask/SKILL.md「問い」）。
 // 次のステータスは出さない。答えはユーザーの名義（env.FORM_TOKEN）でコメントに書き、ラベルの付け外しも同じ名義で打つ。
 // 行き先はゲートが答えから決め、書いた文があれば Claude が読んでから当てる。
 import { GitHub } from "./github.js";
 import { END, jstText } from "./facts.js";
-import { CHOICES, DONE, NONE, answerBody, answerProblem, bodyRest, confirmItems, isQuestion, latestQuestion, norm } from "./questions.js";
+import { NONE, answerBody, answerProblem, bodyRest, isQuestion, isQuestionLabel, latestQuestion, norm } from "./questions.js";
 
 const RECENT = 5; // 材料に載せる最近のコメント（上に出した問いのコメントは数えない）
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -50,31 +50,33 @@ async function read(gh, config, number) {
     issue(number:$i){id title url body labels(first:50){nodes{name}} comments(last:40){nodes{body bodyHTML url createdAt author{login}}}}}}`, { o, n, i: number });
   const { issue, labels } = r.repository;
   const comments = issue.comments.nodes;
-  const question = latestQuestion(comments.map((c) => c.body), config.questionTemplate); // ゲートと同じく、形に合わない問いは問いとして読まない
+  const question = latestQuestion(comments.map((c) => c.body), config.questionForms); // ゲートと同じく、形に合わない問いは問いとして読まない
   const asked = comments.findLast((c) => isQuestion(c.body));
-  return { issue, comments, asked, question, all: labels.nodes.map((l) => l.name), have: issue.labels.nodes.map((l) => l.name) };
+  // 問いのラベルはゲートだけが付け外しするので、ラベルの欄に出さず、送っても変えない。
+  return { issue, comments, asked, question, all: labels.nodes.map((l) => l.name).filter((n) => !isQuestionLabel(n)), have: issue.labels.nodes.map((l) => l.name) };
 }
 
 const seg = (name, values) => `<div class="seg">${values.map((v, i) => `<label><input type="radio" name="${name}" value="${esc(v)}"${i ? "" : " checked"}>${esc(v)}</label>`).join("")}</div>`;
 const box = (type, name, value, text, extra = "", cls = "opt") => `<label class="${cls}"><input type="${type}" name="${name}" value="${esc(value)}"${extra}><span>${esc(text)}</span></label>`;
 const fold = (title, inner, open = false) => (inner ? `<details${open ? " open" : ""}><summary>${title}</summary><div>${inner}</div></details>` : "");
 
-// 問いの種類ごとの選ぶ欄。判断は案（無ければ書く欄だけ）、確かめは項目の一覧と「完了にする」のチェック1つ、採否とイレギュラーは決まった選択肢。
-function answerField(q, items) {
-  if (q.kind === "判断") return q.plans.length ? `<p class="sec">回答</p>${[...q.plans, NONE].map((p) => box("radio", "choice", p, p)).join("")}` : "";
-  if (q.kind === "確かめ") return `<p class="sec">確かめること</p><ul class="items">${items.map((t, i) => `<li>${esc(t)}<input type="hidden" name="item${i}" value="${esc(t)}"></li>`).join("")}</ul>
-    ${box("checkbox", "done", "on", `${DONE}（上の全部）`, "", "check")}`;
-  return `<p class="sec">回答</p>${seg("choice", CHOICES[q.kind])}`;
+// 選ぶ欄は問いの答えの節から導く: 項目は一覧と、形が決めるチェックの文のチェック1つ。案は、形が決めた案なら横並びの区切り、
+// 書く者が立てた案なら1行ずつの丸に「どれでもない（書く欄に書く）」を添える。
+function answerField(q) {
+  const { check, rows } = q.form;
+  if (check) return `<p class="sec">${esc(q.form.heading)}</p><ul class="items">${q.items.map((t, i) => `<li>${esc(t)}<input type="hidden" name="item${i}" value="${esc(t)}"></li>`).join("")}</ul>
+    ${box("checkbox", "done", "on", `${check.yes}（上の全部）`, "", "check")}`;
+  return `<p class="sec">回答</p>${rows ? seg("choice", q.plans) : [...q.plans, NONE].map((p) => box("radio", "choice", p, p)).join("")}`;
 }
 
 async function submit(gh, env, config, number, form) {
   const { issue, question: q, all, have } = await read(gh, config, number);
   if (!q || q.answer) return { error: "答えていない問いがありません。" };
   if (form.get("question") !== q.text) return { error: "問いが新しくなっています。開き直してください。" };
-  // 確かめの項目は開いたときの文で送られる。今の本文の残りに無い項目があれば、開いたあとに本文が変わったので開き直してもらう。
+  // 項目は開いたときの文で送られる。今の問いの項目と違えば、開いたあとに問いが変わったので開き直してもらう。
   const items = [...form.keys()].filter((k) => /^item\d+$/.test(k)).map((k) => form.get(k));
-  if (items.some((t) => !confirmItems(issue.body).includes(t))) return { error: "本文の完了の条件が変わっています。開き直してください。" };
-  const answer = { choice: form.get("choice"), done: q.kind === "確かめ" && form.get("done") === "on", items, text: String(form.get("note") ?? "").trim() };
+  if (JSON.stringify(items) !== JSON.stringify(q.items)) return { error: "問いが新しくなっています。開き直してください。" };
+  const answer = { choice: form.get("choice"), done: Boolean(q.form.check) && form.get("done") === "on", text: String(form.get("note") ?? "").trim() };
   const problem = answerProblem(q, answer);
   if (problem) return { error: problem };
   const chosen = form.getAll("label").filter((n) => all.includes(n));
@@ -86,7 +88,7 @@ async function submit(gh, env, config, number, form) {
   await user.rest("POST", `${path}/comments`, { body: answerBody(q, { ...answer, labels }) });
   await Promise.all([added.length && user.rest("POST", `${path}/labels`, { labels: added }),
     ...removed.map((n) => user.rest("DELETE", `${path}/labels/${encodeURIComponent(n)}`))].filter(Boolean));
-  return { url: issue.url, label: answer.choice || (answer.done ? DONE : "書いたこと") };
+  return { url: issue.url, label: answer.choice || (answer.done ? q.form.check.yes : "書いたこと") };
 }
 
 export async function answerForm(request, env, config) {
@@ -95,7 +97,7 @@ export async function answerForm(request, env, config) {
   if (request.method === "POST") return Response.json(await submit(gh, env, config, number, await request.formData()));
   const { issue, comments, asked, question: q, all, have } = await read(gh, config, number);
   if (!q || q.answer) return page(`<p>#${number} に、答えていない問いはありません。</p>`, 404);
-  const said = q.kind === "イレギュラー" ? comments.findLast((c) => END.test(norm(c.body)))?.bodyHTML : null;
+  const said = q.form.above ? comments.findLast((c) => END.test(norm(c.body)))?.bodyHTML : null;
   const recent = comments.filter((c) => c !== asked).slice(-RECENT).reverse()
     .map((c) => `<p class="note"><a href="${esc(c.url)}">${esc(c.author?.login ?? "ghost")} ・ ${jstText(Date.parse(c.createdAt))}</a></p>${c.bodyHTML}`).join("");
   // 判断材料と本文は GitHub の Markdown の描き方で HTML にする。互いに独立なので並べて打つ。
@@ -103,9 +105,9 @@ export async function answerForm(request, env, config) {
   const [material, body] = await Promise.all([md(q.material), md(bodyRest(issue.body).trim())]);
   return page(`<p class="num">#${number}</p><p class="title">${esc(issue.title)}</p><p>${esc(q.text)}</p>${said ? `<div>${said}</div>` : ""}
 ${fold("判断材料", material, true)}${fold("本文", body)}${fold("最近のコメント", recent)}
-<form><input type="hidden" name="question" value="${esc(q.text)}"><div class="inp">${answerField(q, confirmItems(issue.body))}
+<form><input type="hidden" name="question" value="${esc(q.text)}"><div class="inp">${answerField(q)}
 <textarea name="note" rows="4" placeholder="書くこと（任意）" aria-label="書くこと"></textarea>
-<p class="hint">書けば Claude が読んでから進みます。${q.kind === "確かめ" ? "直してほしいことも、ここに書きます。" : ""}</p>
+<p class="hint">書けば Claude が読んでから進みます。${esc(q.form.hint)}</p>
 <details class="labels"><summary class="s">ラベル（任意）</summary><div>${all.map((n) => box("checkbox", "label", n, n, have.includes(n) ? " checked" : "", "")).join("")}</div></details>
 </div><p id="err"></p><button type="button" id="go" class="sub">確認</button><div class="row"><button type="button" id="back" class="sub">戻る</button><button class="main">送信</button></div></form>`);
 }

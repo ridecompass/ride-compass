@@ -1,9 +1,14 @@
 // 流れのスキルに同梱したスクリプト（.claude/skills/*/scripts/）が、置き場へ hidakagit-bot の名義で gh を打つ包み。Worker は読み込まない。
 import { execFileSync } from "node:child_process";
+import { readdirSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import base from "../flow.config.json" with { type: "json" };
+import { loadForms } from "./questions.js";
 
 export const config = base;
+// 問いの種類ごとの形（Worker は src/config.js が読む）。置き場の .md を全部読む。
+const FORMS = new URL("../question_forms/", import.meta.url);
+export const questionForms = loadForms(readdirSync(FORMS).filter((f) => f.endsWith(".md")).map((f) => readFileSync(new URL(f, FORMS), "utf8")));
 // gh を bot の名義で打つ関数。名義のトークンが無ければ、何も打たずに 1 で終わる（置き場へユーザーの名義で書かない）。
 export function bot() {
   if (!process.env.FLOW_BOT_TOKEN) {

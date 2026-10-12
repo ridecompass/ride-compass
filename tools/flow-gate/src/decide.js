@@ -1,9 +1,9 @@
 // タスクのあるべき姿を、事実だけから1つの決め方で決める。GitHub に触れない。facts は src/facts.js: readFacts が組む。
 // 決め方は2階: 1階（status・table・waiting）が成果物の事実と関係性からステータスと「待っているか」を決め、2階（owner）がその結果だけを
 // 読んで担当者（ボールの持ち主）を決める。2階は前提や日時を読み直さない。見回りも、振り出すかを1階の結果（dispatchKind）で決める。
-// 返すのは、ゲートが保つ値の全部（ステータス・開き閉じ・種類・担当者・本文・ボード・PR をレビュー可能にするか・出す問い・
+// 返すのは、ゲートが保つ値の全部（ステータス・開き閉じ・種類・担当者・本文・問いのラベル・ボード・PR をレビュー可能にするか・出す問い・
 // 取り消す実行）。ゲートは今の値と違う所だけを書くので、同じ事実からは何度決めても同じになる。
-import { APPLIED, checkLines, droppedOf, splitBody, withButton } from "./questions.js";
+import { APPLIED, checkLines, droppedOf, questionLabel, splitBody, withButton } from "./questions.js";
 
 const HELD = { 作る: "進行中", 確かめる: "検証中" }; // 担当が持っている間のステータス
 const WAIT = ["回答待ち", "保留"]; // ユーザーの番（担当者の欄にユーザーを入れる）
@@ -30,10 +30,13 @@ export function decide(f, config) {
   const body = checkLines(f.body, [...byChildren.map((c) => c.index), ...(s.check ?? [])]);
   // 見送りで閉じる・閉じた issue の開いた PR は、もう確かめもマージもしないので閉じる。
   const dropping = (s.closeAs ?? (f.open ? null : f.closedAs)) === "NOT_PLANNED";
+  // 答えの無い問いがある間（回答のボタンを置く間）は、その問いの種類（いま出す問いがあればその種類）をラベルで見せる。
+  const asking = s.status === "回答待ち" || (s.status !== "完了" && question && !question.answer);
+  const kind = s.ask ? (s.ask.dropped ? "判断" : s.ask) : question?.kind;
   return { type, status: s.status, open: s.status !== "完了", closeAs: s.closeAs, ask: s.ask ?? null, cancel: s.cancel ?? [], closePr: dropping && f.pr ? f.pr.id : null,
     notice: [notice(f, s.status), s.told].filter(Boolean).join("\n\n") || null,
     ready: s.status === "検証待ち" && Boolean(f.pr?.draft), assignees: owner(s.status, config),
-    body: s.status === "回答待ち" || (s.status !== "完了" && question && !question.answer) ? withButton(body, config, f.number) : body };
+    questionLabel: asking && kind ? questionLabel(kind) : null, body: asking ? withButton(body, config, f.number) : body };
 }
 
 // 答えの無い問いを出した事実が、あとの事実で無くなったか（無くなった問いは読まず、表で決め直す）。採否と Claude の判断の問いは、

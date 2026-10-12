@@ -42,7 +42,7 @@ export async function recentRuns(gh, config) {
 }
 
 const query = (config) => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:String!,$head:String!,$base:String!){
- t:repository(owner:$to,name:$tn){issue(number:$n){id state stateReason closedAt body author{login} issueType{name} assignees(first:10){nodes{login}}
+ t:repository(owner:$to,name:$tn){issue(number:$n){id state stateReason closedAt body author{login} issueType{name} assignees(first:10){nodes{login}} labels(first:50){nodes{name}}
   comments(last:40){nodes{body createdAt author{login}}} ${FIELDS} ${relationsOf(true)}
   timelineItems(first:50,itemTypes:[ISSUE_TYPE_CHANGED_EVENT]){nodes{...on IssueTypeChangedEvent{prevIssueType{name} issueType{name}}}}}}
  c:repository(owner:$co,name:$cn){pullRequests(headRefName:$head,first:5,orderBy:{field:CREATED_AT,direction:DESC}){nodes{
@@ -110,7 +110,7 @@ export async function readFacts(gh, config, number, runs) {
   const answer = asked < 0 ? null : nodes.slice(asked + 1).find((n) => isAnswer(n.body));
   const answerRead = Boolean(answer) && reads.some((t) => t > at(answer));
   const answerApplied = Boolean(answer) && nodes.some((n) => at(n) > at(answer) && norm(n.body).startsWith(APPLIED));
-  const latest = latestQuestion(comments, config.questionTemplate);
+  const latest = latestQuestion(comments, config.questionForms);
   const question = latest && { ...latest, at: at(nodes[asked]) };
   // 子は、親が閉じて開き直されないなら（要望が満たされた・やめた）生きていない。条件が残ったまま完成で閉じた親は、ゲートが開き直す。
   const p = i.parent;
@@ -120,12 +120,12 @@ export async function readFacts(gh, config, number, runs) {
   const asking = task.dropped.length ? droppedQuestion(task.dropped) : null;
   const droppedAsked = Boolean(asking) && (comments.some((x) => x.includes(asking)) || (await allComments(gh, config, number)).some((x) => x.includes(asking)));
   return { ...task, droppedAsked, redo: redo(question, answer && at(answer), nodes.filter((n) => END.test(norm(n.body))).map(at)), unread, answerRead, answerApplied, number, id: i.id, closedAs: i.stateReason, author: i.author?.login, body: i.body,
-    conditions: conditions(i.body), remaining: remaining(i.body), assignees: i.assignees.nodes.map((a) => a.login), question,
+    conditions: conditions(i.body), remaining: remaining(i.body), assignees: i.assignees.nodes.map((a) => a.login), labels: i.labels.nodes.map((l) => l.name), question,
     runs: held, parent: p && { number: p.number }, dead, children: i.subIssues.nodes, origin: Number(/^分割元: #(\d+)\s*$/m.exec(norm(i.body))?.[1]) || null,
     types, dialog,
     // 作業ブランチの PR が最後に開かれたかマージされた時刻（担当が手放したあとに、別の所で作られたかを問いの時刻と比べる）。
     prMoved: Math.max(0, ...c.pullRequests.nodes.flatMap((x) => [Date.parse(x.createdAt), Date.parse(x.mergedAt) || 0])),
     merged: Boolean(merged), mergeChecks: merged && deployed(merged, c.ref.target.history.nodes),
-    badQuestion: last && isQuestion(last) ? checkQuestion(config.questionTemplate, last) : [], comments,
+    badQuestion: last && isQuestion(last) ? checkQuestion(config.questionForms, last) : [], comments,
     pr: open && { id: open.id, draft: open.isDraft, checks, backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };
 }
