@@ -184,6 +184,11 @@ export function askText(kind, template) {
 // 待つ相手（前提・子）が見送りで閉じたときの判断の問い。問いの文に相手の番号を入れ、同じ文の問いが既にあれば二度は問わない
 // （答えで「続ける」を選んだあとも、相手は見送りのまま残るため）。
 export const droppedQuestion = (numbers) => `待っていた ${numbers.map((n) => `#${n}`).join("・")} が見送りで閉じました。この issue を続けますか？`;
+// 見送りの判断の問いの文から、問うた相手の番号（その問いでなければ null）。
+export function droppedOf(text) {
+  const numbers = /^待っていた (\S+) が/.exec(text)?.[1].split("・").map((n) => Number(n.slice(1)));
+  return numbers && droppedQuestion(numbers) === text ? numbers : null;
+}
 export const askDropped = (numbers, template) => `## 問い（判断）\n${droppedQuestion(numbers)}\n\n### 案\n- 続ける\n- 保留する\n- 見送る\n\n<details><summary>判断材料</summary>\n\n${material(template, [
   "この issue が待っていた相手（前提か子）が見送りで閉じ、その結果を当てにしていた作業を続けるかを決める必要があります。", "当てにしていた結果が無いまま、黙って作り進めない。",
   "前の結果を使う作業を、前が無いまま作る。", "待っていた相手が完成で閉じたとき。",
