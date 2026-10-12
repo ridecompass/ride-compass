@@ -12,7 +12,6 @@ import asyncio
 import json
 import logging
 import threading
-import time
 from pathlib import Path
 
 import httpx
@@ -20,6 +19,7 @@ import shapely
 from cachetools import LRUCache, TTLCache, cached
 from shapely.geometry.base import BaseGeometry
 
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.jma_area import NEAREST_LIMIT_DEG, ResolvedArea, resolve_area
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.debug_log import log_throttled_warning
@@ -64,12 +64,12 @@ def write_boundaries(path: Path, areas: dict[str, BaseGeometry]) -> None:
 
 @cached(cache=LRUCache(maxsize=1), lock=threading.Lock())
 def load_boundaries(path: Path) -> AreaBoundaries:
-    started = time.perf_counter()
+    started = start_timer()
     payload: dict[str, str] = json.loads(path.read_text(encoding="utf-8"))
     boundaries = AreaBoundaries(list(payload), list(shapely.from_wkb(list(payload.values()))))
     logger.info(
-        "区域の境界を読み込んだ path=%s areas=%d ms=%.0f",
-        path.name, len(boundaries), (time.perf_counter() - started) * 1000,
+        "区域の境界を読み込んだ path=%s areas=%d ms=%d",
+        path.name, len(boundaries), elapsed_ms(started),
     )
     return boundaries
 

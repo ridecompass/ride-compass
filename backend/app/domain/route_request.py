@@ -11,6 +11,7 @@ from pydantic import Field
 from pydantic_core import PydanticCustomError
 
 from app.domain.route import Coordinates
+from app.domain.route_preference import RoutePreference
 
 # ルート生成距離の上限（km）。上限が無いと探索の範囲が際限なく広がり、道路網の読み込みが
 # 長時間止まりうる。30km規模までの検証実績に余裕を見た値。経由地・目的地は出発地からこの
@@ -104,3 +105,15 @@ class SplicedTarget:
 # 検証を通った要求が何を生成するか。距離の有無（仕上げの戦略）は要求の検証がここで1回だけ選び、生成は型だけを見る。
 # 距離はどの型でも全長の目標で、置いた点の有無で意味を変えない。
 RouteTarget = DistanceTarget | NoDistanceTarget | SplicedTarget
+
+
+@dataclass(frozen=True)
+class RequestedConditions:
+    """要求が指定した評価条件。Noneは省略で、既定はエンジンを組む側（`services/route_generation_setup.py:
+    assemble_route_generation_setup`）が決める。"""
+
+    preference_override: RoutePreference | None
+    penalty_strength: float | None
+    max_average_grade_percent: float | None
+    hard_filters: frozenset[str]
+    assumed_speed_kmh: float

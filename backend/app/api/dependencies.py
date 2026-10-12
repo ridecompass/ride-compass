@@ -8,14 +8,14 @@
 MSMの同期）だけは`main.py`が組み立てる。
 """
 
+from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from typing import AsyncIterator, Protocol
 
 from cachetools import LRUCache, TTLCache
 from fastapi import Depends
 
 from app.config import settings
-from app.domain.route_preference import RoutePreference
+from app.domain.route_request import RequestedConditions
 from app.infrastructure.address_search import AddressSearchQuery
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.infrastructure.basemap_client import BasemapClient
@@ -99,37 +99,15 @@ def get_flood_service():
 
 
 @asynccontextmanager
-async def _open_route_generation_setup(
-    *,
-    preference_override: RoutePreference | None,
-    penalty_strength: float | None,
-    max_average_grade_percent: float | None,
-    hard_filters: frozenset[str],
-    assumed_speed_kmh: float,
-) -> AsyncIterator[RouteGenerationSetup]:
+async def _open_route_generation_setup(requested: RequestedConditions) -> AsyncIterator[RouteGenerationSetup]:
     """ルート生成ジョブが使う`RouteGenerationSetup`を組み立てる非同期コンテキストマネージャ。"""
     async with get_route_generation_session_factory()() as session:
         yield assemble_route_generation_setup(
-            GraphService(repository=RoadGraphRepository(session)),
-            get_weather_service(),
-            preference_override=preference_override,
-            penalty_strength=penalty_strength,
-            max_average_grade_percent=max_average_grade_percent,
-            hard_filters=hard_filters,
-            assumed_speed_kmh=assumed_speed_kmh,
+            GraphService(repository=RoadGraphRepository(session)), get_weather_service(), requested,
         )
 
 
-class RouteGenerationSetupOpener(Protocol):
-    def __call__(
-        self,
-        *,
-        preference_override: RoutePreference | None,
-        penalty_strength: float | None,
-        max_average_grade_percent: float | None,
-        hard_filters: frozenset[str],
-        assumed_speed_kmh: float,
-    ) -> AbstractAsyncContextManager[RouteGenerationSetup]: ...
+RouteGenerationSetupOpener = Callable[[RequestedConditions], AbstractAsyncContextManager[RouteGenerationSetup]]
 
 
 def get_route_generation_setup_opener() -> RouteGenerationSetupOpener:

@@ -23,6 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.batch.common import asyncpg_dsn
+from app.domain import stopwatch
 from app.infrastructure import (
     debug_log,
     jma_area_boundaries,
@@ -146,7 +147,7 @@ async def fake_redis(monkeypatch, redis_server):
 
 
 class MonotonicClock:
-    """回数制限・外部I/Oの記録・データの世代の読み直しが読む単調時計。止まっていて、進めたぶんだけ進む。"""
+    """回数制限・外部I/Oの記録・所要時間の測り・データの世代の読み直しが読む単調時計。止まっていて、進めたぶんだけ進む。"""
 
     def __init__(self) -> None:
         self._now = 0.0
@@ -160,7 +161,7 @@ class MonotonicClock:
 
 @pytest.fixture(autouse=True, scope="session")
 def _monotonic_clock_for_the_session():
-    """回数制限・外部I/Oの記録・データの世代の読み直しが読む時計を、テストが進める時計へ替える。
+    """回数制限・外部I/Oの記録・所要時間の測り・データの世代の読み直しが読む時計を、テストが進める時計へ替える。
 
     戻すのはセッションの終わりだけ。途中で実時計へ戻すと、進めた時計で数えた回数・窓の始まり・TTLが
     未来の時刻として残り、後のテストに食い込む。freezegun（`clock`）はこの時計を動かさない——止めた時刻は
@@ -170,6 +171,7 @@ def _monotonic_clock_for_the_session():
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(rate_limiter, "time", clock)
         patch.setattr(debug_log, "time", clock)
+        patch.setattr(stopwatch, "time", clock)
         patch.setattr(derived_data_revision_service, "time", clock)
         yield clock
 

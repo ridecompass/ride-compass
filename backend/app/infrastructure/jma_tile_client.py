@@ -9,7 +9,7 @@ from cachetools import TTLCache
 from app.config import settings
 from app.domain.jma_tile_specs import JmaFrame, TargetTimesRow
 from app.infrastructure import jma_tile_redis_cache
-from app.infrastructure.debug_log import log_external_call, mark_failed
+from app.infrastructure.debug_log import log_external_call, mark_failed, mark_status_error
 from app.infrastructure.jma_tile_paths import is_final_absence
 from app.infrastructure.jma_tile_recolor import recolored
 from app.infrastructure.jma_tile_redis_cache import EmptyTile
@@ -123,9 +123,7 @@ class JmaTileClient:
                 response = await self._http_client.get(f"{UPSTREAM_HOST}/{path}")
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 404:
-                    fields["result"] = "ok"
-                    fields["status"] = 404
+                if mark_status_error(fields, exc):
                     not_found = True
                     # 確定した404だけを覚え、次回以降は上流へ問い合わせずJmaTileNotFoundErrorで即座に済ませる。
                     # 配信前の地物の404を覚えると、配信された後もその間は「無い」を返し続ける。
@@ -133,8 +131,6 @@ class JmaTileClient:
                         self._shared.target_times[path] = jma_tile_redis_cache.EMPTY_TILE
                     elif is_final_absence(path):
                         await jma_tile_redis_cache.set_empty(path)
-                else:
-                    mark_failed(fields, exc)
             except httpx.HTTPError as exc:
                 mark_failed(fields, exc)
             else:

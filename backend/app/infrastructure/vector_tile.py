@@ -6,6 +6,8 @@ import mapbox_vector_tile
 # 空タイル生成の両方が共有する。手で揃えると片方だけ変えたときにクライアントがレイヤーを見失う。
 # 点のレイヤー名は`point_tile_layers.py`の宣言が持つ。
 TILE_EXTENT = 4096
+# PostGIS側の`ST_AsMVTGeom`がタイルの境の外に残す幅（`TILE_EXTENT`と同じタイル座標の単位）。
+TILE_BUFFER = 256
 ROAD_SURFACE_LAYER_NAME = "road_surface"
 
 # 路面タイルのフィーチャーが材料の外に持つ列（役割→列名）。材料の列の名前は材料の`tile_property`が持つ。

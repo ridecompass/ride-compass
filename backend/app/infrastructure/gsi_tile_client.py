@@ -4,7 +4,7 @@ import httpx
 from cachetools import LRUCache
 
 from app.infrastructure import tile_cache
-from app.infrastructure.debug_log import log_external_call, mark_failed
+from app.infrastructure.debug_log import log_external_call, mark_failed, mark_status_error
 from app.infrastructure.media_types import PNG_CONTENT_TYPE
 
 UPSTREAM_HOST = "https://cyberjapandata.gsi.go.jp"
@@ -58,14 +58,10 @@ class GsiTileClient:
                 response = await self._http_client.get(f"{UPSTREAM_HOST}/{path}")
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 404:
-                    # 整備区域外。珍しくない正常系のため、エラー扱い（WARNING・
-                    # /api/debug/statsのerror集計）にしない。
-                    fields["result"] = "ok"
-                    fields["status"] = 404
+                # 404は整備区域外。
+                if mark_status_error(fields, exc):
                     self._not_found_paths[path] = None
                     return GSI_TILE_NOT_FOUND
-                mark_failed(fields, exc)
                 return None
             except httpx.HTTPError as exc:
                 mark_failed(fields, exc)

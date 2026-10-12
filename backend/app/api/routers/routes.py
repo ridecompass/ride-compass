@@ -27,6 +27,7 @@ from app.domain.route_request import (
     DistanceTarget,
     FixedPoints,
     NoDistanceTarget,
+    RequestedConditions,
     RouteTarget,
     SplicedTarget,
     check_points_within_reach,
@@ -355,11 +356,13 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
         generated = await generate_route_candidates(
             partial(
                 open_setup,
-                preference_override=preference_override,
-                penalty_strength=request.penalty_strength,
-                max_average_grade_percent=request.max_average_grade_percent,
-                hard_filters=request.hard_filters.to_frozenset(),
-                assumed_speed_kmh=request.assumed_speed_kmh,
+                RequestedConditions(
+                    preference_override=preference_override,
+                    penalty_strength=request.penalty_strength,
+                    max_average_grade_percent=request.max_average_grade_percent,
+                    hard_filters=request.hard_filters.to_frozenset(),
+                    assumed_speed_kmh=request.assumed_speed_kmh,
+                ),
             ),
             origin=Coordinates(latitude=request.latitude, longitude=request.longitude),
             target=target,

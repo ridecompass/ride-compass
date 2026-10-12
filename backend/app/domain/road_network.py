@@ -13,10 +13,11 @@
 """
 
 from dataclasses import dataclass, fields
+from typing import Any
 
 import numpy as np
 
-from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays, ElevationAttribute
+from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, CategoricalColumn, EdgeMaterialArrays, ElevationAttribute
 from app.domain.material_catalog import GRADIENT_PERCENT
 
 
@@ -153,21 +154,16 @@ def material_arrays_of(road: RoadSlice) -> EdgeMaterialArrays:
     # 分類の材料は(区間, 列)の行列なので、行を1回だけ引いてから列へ分ける。
     codes = np.asarray(network.categorical_codes[rows])
 
-    def take(values: np.ndarray) -> np.ndarray:
-        return np.asarray(values[rows])
-
+    row_arrays: dict[str, Any] = {name: np.asarray(getattr(network, name)[rows]) for name in EDGE_ROW_ARRAY_FIELDS}
     return EdgeMaterialArrays(
-        numeric_ids=network.numeric_ids, numeric_values=take(network.numeric_values),
+        numeric_ids=network.numeric_ids,
         categorical_ids=network.categorical_ids,
         categorical_columns=tuple(
             CategoricalColumn(np.ascontiguousarray(codes[:, column]), vocab)
             for column, vocab in enumerate(network.categorical_vocab)
         ),
-        hard_filter_ids=network.hard_filter_ids, hard_filter_flags=take(network.hard_filter_flags),
-        distance_m=take(network.distance_m), bearing_deg=take(network.bearing_deg),
-        mid_lat=take(network.mid_lat), mid_lon=take(network.mid_lon),
-        elevation_present=take(network.elevation_present),
-        elevation_gain_m=take(network.elevation_gain_m), elevation_loss_m=take(network.elevation_loss_m),
+        hard_filter_ids=network.hard_filter_ids,
+        **row_arrays,
     )
 
 
