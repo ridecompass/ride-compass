@@ -3,7 +3,7 @@
 import { originOf } from "./family.js";
 import { FIELDS, START_FORM, valuesOf } from "./fields.js";
 import { pages } from "./github.js";
-import { APPLIED, answerText, checkQuestion, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, questionHead, remaining } from "./questions.js";
+import { APPLIED, answerText, askerOf, checkQuestion, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, questionHead, remaining } from "./questions.js";
 import { adoptable } from "./decide.js";
 
 // 着手可能日時の形の合わない値は受け入れず（badStart はその値。ゲートが知らせる）、待つと決めた意図を守ってまだ先と読む。
@@ -158,7 +158,9 @@ export async function readFacts(gh, config, number, runs) {
   const answer = asked < 0 ? null : nodes.slice(asked + 1).find((n) => isAnswer(n.body));
   const answerRead = Boolean(answer) && reads.some((x) => x > at(answer));
   const answerApplied = Boolean(answer) && nodes.some((n) => at(n) > at(answer) && norm(n.body).startsWith(APPLIED));
-  const latest = latestQuestion(comments, config.questionForms);
+  // 今の問いは、ラベルの形に合い、ラベルの出す者が書いたものだけを読む。
+  const asker = asked < 0 ? null : askerOf(config, nodes[asked].author?.login);
+  const latest = latestQuestion(comments, config.questionForms, asker);
   const question = latest && { ...latest, at: at(nodes[asked]) };
   // 答えのあとに、ユーザーがステータスを変えたか開き直したら、その答えはユーザーの次の決定で置き換わった（答えを当て直さない）。
   // 当て直すと結果が変わる答え（保留・見送り）のときだけ、答えより後の時系列を読む。
@@ -187,6 +189,6 @@ export async function readFacts(gh, config, number, runs) {
     // 閉じた・開き直したときに決め直す、矢印1本でつながる開いた issue（後・親・子）。
     near: [...i.blocking.nodes, ...(p ? [p] : []), ...i.subIssues.nodes].filter((x) => x.state === "OPEN").map((x) => x.number),
     merged: Boolean(merged), mergeChecks: checksOf(merged?.mergeCommit),
-    badQuestion: last && isQuestion(last) ? checkQuestion(config.questionForms, last) : [], comments,
+    badQuestion: last && isQuestion(last) ? checkQuestion(config.questionForms, last, asker) : [], comments,
     pr: open && { id: open.id, draft: open.isDraft, checks: checksOf(head.commit), backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };
 }

@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../src/bot.js";
-import { NONE, answerBody, answerProblem, answerText, askText, checkByText, conditions, latestQuestion, withButton } from "../src/questions.js";
+import { answerBody, answerProblem, answerText, askText, checkByText, conditions, latestQuestion, withButton } from "../src/questions.js";
 import { formed as make } from "./forms.js";
 import { fillFields, issueProblems, parseArgs, withOrigin } from "../../../.claude/skills/file-issue/scripts/new-issue.mjs";
 import { check } from "../../../.claude/skills/task-work/scripts/check.mjs";
@@ -46,34 +46,27 @@ test("印を付ける（task-work の check.mjs）: 1つに決まる残りの条
 // 書く者が埋める問い（判断・操作）は形の骨組みから作り（test/forms.js: formed）、ゲートが出す問いは、ゲートと同じ組み立てで作る。
 const asked = (text) => latestQuestion([text], config.questionForms);
 
-test("答えを記録する（ask の answer.mjs）: 回答フォームと同じ照らしで断り、書いた文はゲートが同じ文として読む", () => {
-  const judgeText = make("判断", "どちらにしますか？", ["案A", "案B"]);
+test("答えを記録する（ask の answer.mjs）: 回答フォームと同じ照らしで断り、3つの欄を省かずに書き、ゲートは次遷移だけを決定に読む", () => {
+  const judgeText = make("判断", "どちらにしますか？", [["案A", "推奨", "早い"], ["案B", "理由", "安い"]]);
   const confirmText = askText("確かめ", config.questionForms, [{ text: "見た目" }]);
-  const [judge, confirm, adopt, operate] = [judgeText, confirmText, askText("採否", config.questionForms), make("操作", "設定を変えてください", ["画面で設定を変える"])].map(asked);
+  const [judge, confirm, adopt] = [judgeText, confirmText, askText("採否", config.questionForms)].map(asked);
   const rows = [
-    [judge, { choice: "案C" }, /案にない答え/], [judge, { choice: NONE }, /書く欄に書いて/], [judge, { choice: "案A" }, null], [judge, { text: "どれでもない" }, null],
-    [confirm, {}, /「完了にする」のチェックを付けるか/], [adopt, { choice: "やる" }, /着手する・保留する・見送る/], [adopt, { text: "あとで決める" }, /選べるのは/],
-    [confirm, { choice: "見送る", done: true }, /選ぶ案はありません/], [confirm, { choice: "保留する", text: "あとで" }, /選ぶ案はありません/],
-    [judge, { choice: "案A", done: true }, /項目の並ぶ問いにだけ/], [adopt, { choice: "着手する", done: true }, /項目の並ぶ問いにだけ/],
-    [confirm, { done: true }, null], [operate, { done: true }, null], [operate, {}, /「済ませた」のチェックを付けるか/], [operate, { text: "権限が無くて止まった" }, null],
+    [judge, {}, /この issue をどうするか/], [judge, { next: "続ける", plan: "案C" }, /案にない答え/], [judge, { next: "保留", plan: "案A" }, null], [judge, { next: "続ける" }, null],
+    [adopt, { next: "完了" }, /この issue をどうするか/], [adopt, { next: "見送り" }, null], [adopt, { next: "続ける", plan: "着手する" }, /案にない答え/], [confirm, { next: "完了" }, null],
   ];
   for (const [q, a, want] of rows) want ? assert.match(answerProblem(q, a), want) : assert.equal(answerProblem(q, a), null);
+  assert.equal(answerBody(judge, { next: "保留", plan: "案B", text: "あとで" }), "## 回答\n**どちらにしますか？**\n\n次遷移: 保留\n選んだ案: 案B\nコメント:\nあとで");
+  const tail = (body) => body.split("\n").slice(3).join("\n");
+  assert.equal(tail(answerBody(judge, { next: "続ける" })), "次遷移: 続ける\n選んだ案: 選ばなかった\nコメント: なし", "空の欄も省かない");
+  assert.equal(tail(answerBody(adopt, { next: "見送り" })), "次遷移: 見送り\n選んだ案: なし（問いに案が無い）\nコメント: なし");
   const said = "> 距離のバーは候補数の横に\n\nとユーザーがチャットで言った（2026-10-12）";
-  const body = answerBody(confirm, { done: true, text: said });
-  assert.match(body, /^## 回答\n\*\*完成にしてよいですか？\*\*\n\n回答: 完了にする\n- 確かめた: 見た目\n\n/);
-  assert.equal(answerText(body), said, "ゲートは決まった形の行の塊のあとを、書いた文としてそのまま読む");
-  // 書いた文の中の、決まった形に似た行（太字だけの行・「次のステータス:」で始まる行）も書いた文として読み、決定にしない。
-  const read = (text) => latestQuestion([confirmText, answerBody(confirm, { done: true, text })], config.questionForms)?.answer;
-  assert.deepEqual(read("**ここを直して**"), { decision: "完了", confirmed: ["見た目"], text: "**ここを直して**" }, "太字だけの文も書いた文");
-  assert.deepEqual(read("次のステータス: 保留\nにしたいくらい崩れる"), { decision: "完了", confirmed: ["見た目"], text: "次のステータス: 保留\nにしたいくらい崩れる" },
-    "決まった形に似た行で決定を変えない");
-  assert.equal(latestQuestion([confirmText, "## 回答\n**完成にしてよいですか？**\n\n補足: 見た"], config.questionForms)?.answer.text, "補足: 見た", "前の形の補足も書いた文");
-  // 選ばずに書いた文だけで答えても（確かめで完了にしない・どの案でもない判断）、書いた文の頭が決まった形に似ていれば、決まった形の行として読まない。
-  const only = (text, q, question) => latestQuestion([question, answerBody(q, { text })], config.questionForms)?.answer;
-  for (const text of ["次のステータス: 保留", "回答: 完了にする", "- 確かめた: 見た目\nここは崩れる", "ラベル: 急ぎ\n直して"]) {
-    assert.deepEqual(only(text, confirm, confirmText), { decision: "続ける", confirmed: [], text }, text);
-    assert.deepEqual(only(text, judge, judgeText), { decision: "続ける", confirmed: [], text }, text);
-  }
+  const body = answerBody(confirm, { next: "完了", text: said });
+  assert.equal(tail(body), `次遷移: 完了\n選んだ案: なし（問いに案が無い）\n- 確かめた: 見た目\nコメント:\n${said}`, "完了は、確かめることを全部並べる");
+  assert.equal(answerText(body), said, "コメントは形を付けずにそのまま読む");
+  const read = (text) => latestQuestion([confirmText, answerBody(confirm, { next: "続ける", text })], config.questionForms)?.answer;
+  for (const text of ["次遷移: 完了", "- 確かめた: 見た目\nここは崩れる", "コメント: なし"]) assert.deepEqual(read(text), { decision: "続ける", confirmed: [], text }, `欄に似た行は欄として読まない: ${text}`);
+  assert.deepEqual(latestQuestion([confirmText, "## 回答\n**完成にしてよいですか？**\n\n見た"], config.questionForms)?.answer, { decision: "続ける", confirmed: [], text: "見た" },
+    "次遷移の無い答えは、続けるとして全部をコメントに読む");
 });
 
 test("起票する（file-issue の new-issue.mjs）: 本文の形・子の決まり・欄の値を照らす", () => {

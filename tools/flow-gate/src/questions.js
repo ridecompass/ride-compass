@@ -1,4 +1,4 @@
-// 問いと答えの形（.claude/skills/ask/SKILL.md「問い」）。問いの頭は「## 問い（種類）」で、種類ごとの形は tools/flow-gate/question_forms/ のファイルが持つ。
+// 問いと答えの形（.claude/skills/ask/SKILL.md「問い」）。問いの頭は「## 問い（<ラベル>）」で、ラベルごとの形は tools/flow-gate/question_forms/ のファイルが持つ。
 export const norm = (t) => (t ?? "").replace(/\r\n/g, "\n");
 export const isQuestion = (t) => /^## 問い/.test(norm(t));
 // 判断材料の節（行頭の「**<名前>**:」から次の節の前まで）の名前と中身。
@@ -76,141 +76,121 @@ export function checkByText(body, heads) {
   return { body: head + checkLines(body, indexes) };
 }
 
-// 問い: 頭の行「## 問い（<種類>）」・問いの文1行・（あれば）答えの節（「### 案」か「### 項目」と1行1つ）・（あれば）<details> の判断材料。ほかの行があれば null。
-const HEADERS = ["### 案", "### 項目"];
+// 問い: 頭の行「## 問い（<ラベル>）」・問いの文1行・（あれば）回答内容の節（SECTIONS のどれか1つを1行1つ。行の下に字下げした属性の行
+// 「- <名前>: <値>」を置ける）・（あれば）<details> の判断材料。ほかの行があれば null。
+const SECTIONS = ["### 案", "### 確かめること", "### 済ませること"];
+const ATTRIBUTE = /^\s+- ([^:]+): (.+)$/;
 function parseQuestion(text) {
   const all = norm(text).trim();
   const cut = all.indexOf("<details>");
-  const [head, ...lines] = (cut < 0 ? all : all.slice(0, cut)).split("\n");
-  const kind = /^## 問い（(.+)）\s*$/.exec(head)?.[1];
-  if (!kind) return null;
-  const [question, header, ...rows] = lines.map((l) => l.trim()).filter(Boolean);
-  if (!question || /^(#|- )/.test(question)) return null;
-  if (header !== undefined && (!HEADERS.includes(header) || !rows.length || rows.some((l) => !l.startsWith("- ")))) return null;
+  const [head, question, header, ...lines] = (cut < 0 ? all : all.slice(0, cut)).split("\n").filter((l) => l.trim());
+  const kind = /^## 問い（(.+)）\s*$/.exec(head ?? "")?.[1];
+  if (!kind || !question || /^\s*(#|- )/.test(question) || (header !== undefined && !SECTIONS.includes(header.trim()))) return null;
+  const rows = [];
+  for (const line of lines) {
+    const a = ATTRIBUTE.exec(line);
+    if (a && rows.length) rows.at(-1).attrs.push([a[1].trim(), a[2].trim()]);
+    else if (/^- \S/.test(line)) rows.push({ text: line.slice(2).trim(), attrs: [] });
+    else return null;
+  }
   const material = cut < 0 ? "" : /^<details>\s*<summary>[^<]*<\/summary>([\s\S]*?)<\/details>$/.exec(all.slice(cut))?.[1].trim();
-  return material === undefined ? null : { kind, text: question, header: header ?? null, rows: rows.map((l) => l.slice(2).trim()), material };
+  return material === undefined ? null : { kind, text: question.trim(), header: header?.trim() ?? null, rows, material };
 }
 
-// 種類ごとの形（tools/flow-gate/question_forms/ のファイルの中身）を種類で引けるようにする。「## 問い」の行より前は形の決まり（「<名前>: <値>」の行）で、
-// そこから下が問いの骨組み。骨組みの中で値の全体が「<…>」のもの（問いの文・答えの行・判断材料の節）は書く者が埋め、ほかは決まった値。
-// 決まり「答えの意味」は、答えの文ごとの決定（続ける・保留・見送り・完了）で、ここに無い答えは「続ける」（Claude が読んで進める）。
-// 答えの節が「### 項目」の形は、答えの意味をちょうど1つ持ち、その文がチェックの文になる。
+// ラベルごとの形（tools/flow-gate/question_forms/ のファイルの中身）をラベルで引けるようにする。「## 問い」の行より前は形の決まり（「出す者: <ゲートか Claude>」）、
+// そこから下が問いの骨組み。骨組みの回答内容の節が、そのラベルで書く節（無ければ書かない）。判断材料の節が、そのラベルの節とその並び。値の全体が
+// 「<…>」の所（問いの文・節の行・判断材料の中身）は書く者が埋め、ほかは決まった値。
 const HOLE = /^<[\s\S]*>$/;
 export function loadForms(texts) {
   const forms = {};
   for (const t of texts) {
     const all = norm(t);
     const at = all.search(/^## 問い/m);
-    const meta = Object.fromEntries([...all.slice(0, Math.max(at, 0)).matchAll(/^(\S+): (.+)$/gm)].map((m) => [m[1], m[2].trim()]));
     const q = parseQuestion(at < 0 ? "" : all.slice(at));
-    if (!q?.header) throw new Error(`問いの形が読めない（骨組みと答えの節が要る）: ${all.split("\n")[0]}`);
-    const meaning = Object.fromEntries((meta["答えの意味"] ?? "").split("・").filter(Boolean).map((x) => x.split(": ").map((v) => v.trim())));
-    const check = q.header === "### 項目" ? Object.keys(meaning)[0] : null;
-    if (q.header === "### 項目" && Object.keys(meaning).length !== 1) throw new Error(`「### 項目」の形は、答えの意味をちょうど1つ持つ: ${q.kind}`);
-    forms[q.kind] = { by: meta["出す者"] ?? null, check, meaning, text: HOLE.test(q.text) ? null : q.text, header: q.header, rows: q.rows.some((r) => HOLE.test(r)) ? null : q.rows, sections: sectionsOf(q.material) };
+    if (!q) throw new Error(`問いの形が読めない: ${all.split("\n")[0]}`);
+    forms[q.kind] = { by: /^出す者: (.+)$/m.exec(all.slice(0, at))?.[1].trim() ?? null, header: q.header, text: HOLE.test(q.text) ? null : q.text, sections: sectionsOf(q.material) };
   }
   return forms;
 }
-// 問いの頭の行と、問いの組み立て（判断材料は節の名前と中身の並び）。
+// 問いの頭の行と、問いの組み立て（rows は回答内容の節の行と属性、material は判断材料の節の名前と中身の並び）。
 export const questionHead = (kind) => `## 問い（${kind}）`;
-export const render = (kind, text, header, rows, material) => `${questionHead(kind)}\n${text}\n\n${header}\n${rows.map((r) => `- ${r}`).join("\n")}\n\n` +
-  `<details><summary>判断材料</summary>\n\n${material.map((s) => `**${s.name}**: ${s.value}`).join("\n\n")}\n</details>`;
+export const render = (kind, text, header, rows, material) => [`${questionHead(kind)}\n${text}`,
+  header && [header, ...rows.flatMap((r) => [`- ${r.text}`, ...r.attrs.map(([n, v]) => `  - ${n}: ${v}`)])].join("\n"),
+  `<details><summary>判断材料</summary>\n\n${material.map((s) => `**${s.name}**: ${s.value}`).join("\n\n")}\n</details>`].filter(Boolean).join("\n\n");
 
-// 問いが種類の形に合うか。合わない所を返す（空なら合う）。答えの節（案の無い判断も含む）・決まった問いの文と答えの行・判断材料の節の名前と順を照らす。
-export function checkQuestion(forms, text) {
+// 問いの書き手（ゲートか Claude）。ゲートは App の名義で書く（GraphQL は名義を [bot] の付かない形で返す）。
+export const askerOf = (config, login) => (login === config.gateBot.replace(/\[bot\]$/, "") ? "ゲート" : "Claude");
+// 問いがラベルの形に合うか。合わない所を返す（空なら合う）。照らすのは、書き手（by。渡したときだけ）・回答内容の節（ラベルが書く節だけを、1行1つ以上）・
+// 決まった問いの文・判断材料の節の名前と順と、案の決まり（2つ以上。どの案にも「推奨」か「理由」を1つ。推奨はちょうど1つ）。
+export function checkQuestion(forms, text, by = null) {
   const q = parseQuestion(text);
-  if (!q) return ["頭の行「## 問い（<種類>）」・問いの文（1行）・答えの節（「### 案」か「### 項目」）と1行1つ・<details> の判断材料のほかに行がある"];
+  if (!q) return ["頭の行「## 問い（<ラベル>）」・問いの文（1行）・回答内容の節（「### 案」「### 確かめること」「### 済ませること」のどれか）と1行1つ・<details> の判断材料のほかに行がある"];
   const f = forms[q.kind];
-  if (!f) return [`種類は ${Object.keys(forms).join("・")} のどれか`];
+  if (!f) return [`ラベルは ${Object.keys(forms).join("・")} のどれか`];
   const want = f.sections.map((s) => s.name);
-  return [q.header !== f.header && `${q.kind}の答えの節は「${f.header}」と1行1つ`,
+  const reasons = q.rows.map((r) => r.attrs.filter(([n]) => n === "推奨" || n === "理由"));
+  const plans = q.header === "### 案";
+  return [by && f.by !== by && `${q.kind}の問いは${f.by}だけが出す`,
+    (q.header !== f.header || (f.header && !q.rows.length)) && (f.header ? `${q.kind}は「${f.header}」を1行1つ以上書く` : `${q.kind}は回答内容の節を書かない`),
     f.text && q.text !== f.text && `${q.kind}の問いの文は「${f.text}」`,
-    f.rows && q.header === f.header && JSON.stringify(q.rows) !== JSON.stringify(f.rows) && `${q.kind}の「${f.header}」は ${f.rows.join("・")}`,
+    plans && q.rows.length < 2 && "案は2つ以上",
+    plans && reasons.some((r) => r.length !== 1) && "どの案にも「- 推奨:」か「- 理由:」を1つ",
+    plans && reasons.flat().filter(([n]) => n === "推奨").length !== 1 && "推奨はちょうど1つ",
     JSON.stringify(sectionsOf(q.material).map((s) => s.name)) !== JSON.stringify(want) && `判断材料の節は ${want.join("・")} をこの順に1つずつ`].filter(Boolean);
 }
 
-// 答えのない問いの種類を見せるラベル（ゲートだけが付け外しする。回答フォームのラベルの欄には出さない）。
+// 答えのない問いのラベルを見せる印（ゲートだけが付け外しする。回答フォームのラベルの欄には出さない）。
 const LABEL = "問い: ";
 export const questionLabel = (kind) => `${LABEL}${kind}`;
 export const isQuestionLabel = (name) => name.startsWith(LABEL);
 
-// 答え: 決定（続ける・保留・見送り・完了）・確かめた項目・書いた文。前の形の「次のステータス:」「- 問題なし:」の行も読む。
-// 書いた文は、決まった形の行のほかの全部（前の形の「補足:」「- 問題あり:」も入る）。ゲートは文の中身を読まず、Claude が読むまで決定を当てない。
-export const NONE = "どれでもない（書く欄に書く）"; // 書く者が立てた案の問いで、どの案でもないとき
-// 答えの入力が問いに足りているか（回答フォームと、チャットの答えの記録 .claude/skills/ask/scripts/answer.mjs が同じに照らす）。足りなければ理由。
-// 項目の問いはチェックか書いた文で答え、案の問いは案から選ぶ（書く者が立てた案なら、選ばずに書いた文だけでもよい）。ゲートは最初の「回答:」行を
-// 読むので、選ぶこととチェックは同じ答えに並べない。
-export function answerProblem(q, { choice, done, text }) {
-  const { check, rows } = q.form;
-  if (check) {
-    if (choice) return `この問いに選ぶ案はありません（「${check}」のチェックを付けるか、書く欄に書いてください）。`;
-    return done || text ? null : `「${check}」のチェックを付けるか、書く欄に書いてください。`;
-  }
-  if (done) return "チェックは、項目の並ぶ問いにだけ使えます。";
-  if (rows) return q.rows.includes(choice) ? null : `選べるのは ${q.rows.join("・")} です。`;
-  if (choice && ![...q.rows, NONE].includes(choice)) return `案にない答えです（案: ${[...q.rows, NONE].join(" / ")}）。`;
-  return (!choice || choice === NONE) && !text ? "どれでもないときは、書く欄に書いてください。" : null;
+// 次遷移（回答フォームの「この issue を」のボタンの言葉）。キーは答えの「次遷移:」の行とゲートの決め方の名前。完了は、確かめることを並べた問いだけ。
+export const NEXT = { 続ける: "続ける", 保留: "保留する", 見送り: "見送る", 完了: "完了にする" };
+export const nextsOf = (q) => Object.keys(NEXT).filter((n) => n !== "完了" || q.header === "### 確かめること");
+const plansOf = (q) => (q.header === "### 案" ? q.rows.map((r) => r.text) : []);
+// 答えの入力が問いに足りているか（回答フォームと、答えの記録 .claude/skills/ask/scripts/answer.mjs が同じに照らす）。足りなければ理由。
+// 次遷移はいつも要り、案は問いの案のどれかか、選ばない（選ばずに次遷移だけでも受ける）。
+export function answerProblem(q, { next, plan }) {
+  if (!nextsOf(q).includes(next)) return `この issue をどうするか（${nextsOf(q).map((n) => NEXT[n]).join("・")}）を選んでください。`;
+  return plan && !plansOf(q).includes(plan) ? `案にない答えです（案: ${plansOf(q).join(" / ")}）。` : null;
 }
-// 答えのコメント（.claude/skills/ask/SKILL.md「答え」の形）。書いた文は形を付けずに、決まった形の行の塊のあとの空行の後ろにそのまま置く。
-// 「回答:」の行はいつも置き（選ばずに書いた文だけで答えたときも）、塊が空にならないようにする（書いた文の頭が塊として読まれない）。
-// チェックを付けたら、問いの項目を全部「- 確かめた:」で並べる。
-export function answerBody(q, { choice, done, labels = "", text = "" }) {
-  const { check } = q.form;
-  const lines = ["## 回答", `**${q.text}**`, ""];
-  if (done) lines.push(`回答: ${check}`, ...q.rows.map((item) => `- 確かめた: ${item}`));
-  else lines.push(`回答: ${choice || NONE}`);
-  if (labels) lines.push(`ラベル: ${labels}`);
-  if (text) lines.push("", text);
-  return lines.join("\n");
+// 答えのコメント（.claude/skills/ask/SKILL.md「答え」の形）。次遷移・選んだ案・コメントの3つの欄を、空でも省かずに置く。完了なら、問いの確かめることを
+// 全部「- 確かめた:」で並べる。コメントは「コメント:」の行のあとに形を付けずにそのまま置き、ゲートは読まない。
+export function answerBody(q, { next, plan, labels = "", text = "" }) {
+  return ["## 回答", `**${q.text}**`, "", `次遷移: ${next}`, `選んだ案: ${plan || (plansOf(q).length ? "選ばなかった" : "なし（問いに案が無い）")}`,
+    ...(next === "完了" ? q.rows.map((r) => `- 確かめた: ${r.text}`) : []), ...(labels ? [`ラベル: ${labels}`] : []), text ? `コメント:\n${text}` : "コメント: なし"].join("\n");
 }
 export const APPLIED = "答えに書いた文を Claude が読んだので、答えを当てました"; // 書いた文のある答えを当てた印（二度は当てない）
 export const isAnswer = (t) => /^## 回答\n/.test(norm(t));
-// 答えのコメントを、決まった形の行と書いた文に分ける。決まった形の行は、頭（「## 回答」と問いの文の太字の行）のあとの最初の塊（次の空行まで）に
-// だけ置かれ（answerBody の形）、そのあとは全部書いた文。塊に決まった形でない行が1つでもあれば、塊は無く全部が書いた文（前の形の答え）。
-// 書いた文の中に決まった形に似た行があっても、決まった形の行としては読まない。
-const FIELD = /^(?:(?:回答|次のステータス): .+|- (?:確かめた|問題なし): .+|ラベル: .*)$/;
-function splitAnswer(text) {
+// 答えのコメントを読む: 決定（次遷移）・確かめた条件・コメント。決まった欄は最初の「コメント:」の行より前にだけあり、そのあとは全部コメント
+// （コメントの中に欄に似た行があっても、欄として読まない）。次遷移の無い答えは、決定を続けるとし、頭のあとを全部コメントとして読む。
+function parseAnswer(text) {
   const lines = norm(text).split("\n");
-  let k = /^\*\*.+\*\*$/.test(lines[1] ?? "") ? 2 : 1;
-  while (k < lines.length && !lines[k].trim()) k++;
-  let end = k;
-  while (end < lines.length && lines[end].trim()) end++;
-  const block = lines.slice(k, end).map((l) => l.trim());
-  const fixed = block.every((l) => FIELD.test(l)) ? block : [];
-  return { fixed, text: lines.slice(k + fixed.length).join("\n").trim() };
+  if (!isAnswer(text)) return null;
+  const k = lines.findIndex((l) => /^コメント:/.test(l));
+  const fixed = k < 0 ? [] : lines.slice(0, k);
+  const next = fixed.map((l) => /^次遷移: (.+)$/.exec(l)?.[1].trim()).find(Boolean);
+  if (!next) return { decision: "続ける", confirmed: [], text: lines.slice(/^\*\*.+\*\*$/.test(lines[1] ?? "") ? 2 : 1).join("\n").trim() };
+  const said = [lines[k].replace(/^コメント:\s*/, ""), ...lines.slice(k + 1)].join("\n").trim();
+  return { decision: next, confirmed: fixed.map((l) => /^- 確かめた: (.+)$/.exec(l)?.[1].trim()).filter(Boolean), text: said === "なし" ? "" : said };
 }
-export const answerText = (text) => splitAnswer(text).text;
-// 答えの決定は、形の「答えの意味」で引く（無ければ「続ける」）。
-function parseAnswer(text, q) {
-  const all = norm(text);
-  if (!isAnswer(all)) return null;
-  const { fixed, text: said } = splitAnswer(all);
-  const picked = (fixed.map((l) => /^(?:回答|次のステータス): (.+)$/.exec(l)?.[1]).find(Boolean) ?? "").trim();
-  const decision = q.form.meaning[picked] ?? "続ける";
-  const confirmed = fixed.map((l) => /^- (?:確かめた|問題なし): (.+)$/.exec(l)?.[1]?.trim()).filter(Boolean);
-  return { decision, confirmed, text: said };
-}
+export const answerText = (text) => parseAnswer(text)?.text ?? "";
 
-// コメントの並びから今の問いと、その答え（無ければ null）。種類の形（forms）に合わない問いは問いとして読まない（残す守り: 問いの形の検査）。
-// 問いは、形と答えの節の行（rows。形の check があれば項目、無ければ案）を持つ。
-export function latestQuestion(comments, forms) {
+// コメントの並びから今の問いと、その答え（無ければ null）。ラベルの形に合わない問いは問いとして読まない（残す守り: 問いの形の検査）。by は今の問いの
+// 書き手（渡したときだけ、ラベルの出す者と照らす）。問いは、ラベルの形と、回答内容の節の行（rows）を持つ。
+export function latestQuestion(comments, forms, by = null) {
   const i = comments.findLastIndex(isQuestion);
-  if (i < 0 || checkQuestion(forms, comments[i]).length) return null;
+  if (i < 0 || checkQuestion(forms, comments[i], by).length) return null;
   const p = parseQuestion(comments[i]);
-  const form = forms[p.kind];
-  const q = { kind: p.kind, text: p.text, material: p.material, form, rows: p.rows };
-  return { ...q, answer: comments.slice(i + 1).map((c) => parseAnswer(c, q)).find(Boolean) ?? null };
+  return { kind: p.kind, text: p.text, material: p.material, header: p.header, rows: p.rows, form: forms[p.kind],
+    answer: comments.slice(i + 1).map(parseAnswer).find(Boolean) ?? null };
 }
 
-// ゲートが出す問い（形の「出す者」がゲートのもの）。形の決まった値をそのまま使い、書く者が埋める所を埋める: 問いの文は text（続行の
-// 相手の番号）、答えの行と判断材料の節はユーザーが確かめる条件（conds。src/questions.js: confirmConditions）の文と、見る所と要点（書かれていない
-// 条件も隠さずにそう出す）。
+// ゲートが出す問い（形の「出す者」がゲートのもの）。形の決まった値をそのまま使い、問いの文は text（続行の相手の番号）、確かめることはユーザーが
+// 確かめる条件（conds。src/questions.js: confirmConditions）の文と見る所と要点（書かれていない条件も隠さずにそう出す）で埋める。
 const NO_LOOK = "書かれていません";
-const listed = (conds) => conds.map((c) => `\n- ${c.text}\n  - 見る所と要点: ${c.look ?? NO_LOOK}`).join("");
-export function askText(kind, forms, conds = [], text = forms[kind].text) {
-  const f = forms[kind];
-  return render(kind, text, f.header, f.rows ?? conds.map((c) => c.text), f.sections.map((s) => (HOLE.test(s.value) ? { ...s, value: listed(conds) } : s)));
-}
+export const askText = (kind, forms, conds = [], text = forms[kind].text) =>
+  render(kind, text, forms[kind].header, conds.map((c) => ({ text: c.text, attrs: [["見る所と要点", c.look ?? NO_LOOK]] })), forms[kind].sections);
 
 // 待つ相手（前提・子）が見送りで閉じたときの続行の問いの文。相手の番号を入れ、同じ文の問いが既にあれば二度は問わない
 // （答えで「続ける」を選んだあとも、相手は見送りのまま残るため）。

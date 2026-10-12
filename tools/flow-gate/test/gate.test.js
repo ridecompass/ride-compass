@@ -10,15 +10,16 @@ import { MATERIAL, formed as FORMED } from "./forms.js";
 import { handle } from "../src/flow.js";
 import { answerForm } from "../src/form.js";
 import { Inbox, nextAlarm } from "../src/inbox.js";
-import { APPLIED, answerBody, askText, checkQuestion, conditions, droppedQuestion, latestQuestion, loadForms, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
+import { APPLIED, NEXT, answerBody, askText, checkQuestion, conditions, droppedQuestion, latestQuestion, loadForms, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
 
 const config = { ...loaded, slots: { 実装: 2, 検証: 1 } };
 const tasks = { full_name: config.tasks };
 const code = { full_name: config.code };
 const names = (list) => ({ nodes: list.map((name) => ({ name })) });
-// コメントの時刻は並びの順（k 番目は k 秒）。書いた人は、置いたときに決めたもの（i.by）か、答え（## 回答）ならユーザー、ほかは Claude。
+// コメントの時刻は並びの順（k 番目は k 秒）。書いた人は、置いたときに決めたもの（i.by）か、答え（## 回答）ならユーザー、ゲートのラベルの問いならゲート、ほかは Claude。
 const T = (k) => new Date(Date.UTC(2026, 9, 11) + k * 1000).toISOString();
-const author = (i, k) => i.by[k] ?? (i.comments[k].startsWith("## 回答") ? config.user : config.claude);
+const author = (i, k) => i.by[k] ?? (i.comments[k].startsWith("## 回答") ? config.user
+  : config.questionForms[/^## 問い（(.+)）/.exec(i.comments[k])?.[1]]?.by === "ゲート" ? config.gateBot : config.claude);
 // 担当の終わりのコメント（.github/claude-task/after.js）。start は担当が読み始めたときのコメントの数（それより前を読んでいる）。before は読み始めの本文で、
 // その完了の条件を写す（無ければ写さない）。
 const END = (start, kind = "実装", before = "") =>
@@ -121,7 +122,7 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
       return { repository: { labels: { nodes: repoLabels().map((name) => ({ id: `L${name}`, name })) }, issue: { id: `I${i.n}`, title: "タスク", url: `https://github.test/${i.n}`,
         // 本文の頭の回答のボタンは、GitHub が描く形（段落の中のリンクの付いた画像）にする。
         bodyHTML: i.body.replace(/^<!-- flow-gate -->\n\[!\[回答する\]\(([^)]*)\)\]\(([^)]*)\)\n<!-- \/flow-gate -->\n/, '<p><a href="$2" rel="nofollow"><img src="$1"></a></p>'), labels: names(i.labels),
-        comments: { nodes: i.comments.map((body) => ({ body, bodyHTML: body, url: "https://github.test/c", createdAt: "2026-10-11T00:00:00Z", author: { login: "x" } })) } } } };
+        comments: { nodes: i.comments.map((body, k) => ({ body, bodyHTML: body, url: "https://github.test/c", createdAt: T(k), author: { login: author(i, k).replace(/\[bot\]$/, "") } })) } } } };
     }
     if (q.includes("t:repository")) {
       const i = w.at(v.n);
@@ -192,8 +193,10 @@ const ev = {
 };
 const head = (i) => i.comments.at(-1)?.split("\n")[0] ?? null;
 const ASK_DROPPED = (numbers) => askText("続行", config.questionForms, [], droppedQuestion(numbers)); // ゲートが出す続行の問い
-const QUESTION = FORMED("判断", "どちらにしますか？", ["案A", "案B"]); // 形どおりの判断の問い
-const ANSWER = (line) => `## 回答\n**${QUESTION.split("\n")[1]}**\n\n${line}`;
+const QUESTION = FORMED("判断", "どちらにしますか？", [["案A", "推奨", "早い"], ["案B", "理由", "安い"]]); // 形どおりの判断の問い
+// 問いへの答え（答えの組み立ての持ち主で作る）。
+const REPLY = (question, next, text = "", plan = "") => answerBody(latestQuestion([question], config.questionForms), { next, text, plan });
+const ANSWER = (next, text = "") => REPLY(QUESTION, next, text);
 const CONFIRM = "- [x] 作る\n- [ ] 見た目\n  - 確かめる: ユーザー\n";
 const ASKED = (kind) => askText(kind, config.questionForms, [{ text: "見た目" }]); // ゲートが出す問い（確かめは CONFIRM のユーザーが確かめる条件を並べる）
 
@@ -273,7 +276,7 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め5・�
     ["原則の点検の1 マージのコミットの検査が落ちた → 本番に出ていないので確かめを問わず、打ち直すか直す実装担当", { status: "検査", body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, null,
       ev.merge(1), { status: "実装", comment: null, runs: ["#1 実装"] }],
     ["親が保留の子のマージのコミットの検査が落ちた → 待機（振り出さない）", { status: "検査", parent: 4, body: "- [ ] 部品\n", pr: { ...merged, mergeChecks: "FAILURE" } }, null, ev.merge(1), { status: "待機", runs: [] }],
-    ["K2・R12 確かめの答えが完了にせず文だけ → 閉じず、Claude の番（実装担当が読む）", { status: "回答", body: CONFIRM, comments: [ASKED("確かめ"), "## 回答\n**完成にしてよいですか？**\n\n見た目が崩れる"] }, null, ev.comment(1),
+    ["K2・R12 確かめの答えが完了にせず文だけ → 閉じず、Claude の番（実装担当が読む）", { status: "回答", body: CONFIRM, comments: [ASKED("確かめ"), REPLY(ASKED("確かめ"), "続ける", "見た目が崩れる")] }, null, ev.comment(1),
       { state: "OPEN", status: "実装", runs: ["#1 実装"] }],
     ["決め6 前からある Claude の割り当ては外し、保留ではユーザーだけ", { status: "保留", assignees: [config.claude] }, null, ev.comment(1), { assignees: [config.user] }],
     ["R6 見送り（Close as not planned）で閉じたものは閉じたまま", { status: "完了", state: "CLOSED", reason: "NOT_PLANNED" }, null, ev.issue(1, "closed"), { state: "CLOSED" }],
@@ -285,9 +288,9 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め5・�
     ["R8 マージのコミットの検査が通った → 確かめの問い", { status: "検査", body: CONFIRM, pr: merged }, null, ev.merge(1), { status: "回答", comment: "## 問い（確かめ）" }],
     ["R8・決め7 検査が通ったあとに PR が下書きへ戻された（差し戻し）→ 実装担当", { status: "検証", pr: { draft: true, checks: "SUCCESS", drafted: true } }, null, ev.pr(1, "converted_to_draft"),
       { status: "実装", runs: ["#1 実装"] }],
-    ["R5・決め1・決め6 判断の答えで続ける → 表で決め直して実装担当（ユーザーの番を出たら Claude の番）", { status: "回答", assignees: [config.user], comments: [QUESTION, ANSWER("補足: A で")] }, null,
+    ["R5・決め1・決め6 判断の答えで続ける → 表で決め直して実装担当（ユーザーの番を出たら Claude の番）", { status: "回答", assignees: [config.user], comments: [QUESTION, ANSWER("続ける", "A で")] }, null,
       ev.comment(1), { status: "実装", runs: ["#1 実装"], assignees: [config.claude] }],
-    ["R5・決め6 答えが保留 → 保留（ユーザーの番）", { status: "回答", comments: [QUESTION, ANSWER("回答: 保留する")] }, null, ev.comment(1), { status: "保留", assignees: [config.user] }],
+    ["R5・決め6 答えが保留 → 保留（ユーザーの番）", { status: "回答", comments: [QUESTION, ANSWER("保留")] }, null, ev.comment(1), { status: "保留", assignees: [config.user] }],
     ["R6・決め5 ユーザーが保留から出す → 表で決め直す", { status: "実装" }, null, ev.move(1), { status: "実装", runs: ["#1 実装"] }],
     ["R6 条件が全部済んでユーザーが完了へ動かす → 受ける（完成）", { status: "完了", body: "- [x] 作る\n" }, null, ev.move(1), { status: "完了", state: "CLOSED", reason: "COMPLETED" }],
     ["K2 条件が残ったまま完成で閉じた → 開き直す", { status: "保留", state: "CLOSED", reason: "COMPLETED" }, null, ev.issue(1, "closed"), { state: "OPEN" }],
@@ -316,8 +319,8 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め5・�
 });
 
 test("答えは、そのあとにユーザーがステータスを変えたか開き直したら当て直さない（ゲートは自分の書いた値でなく、時系列の事実で決める）", async () => {
-  const w = world([{ n: 1, status: "回答", comments: [QUESTION, ANSWER("回答: 保留する")] },
-    { n: 2, status: "回答", author: config.claude, type: "要望", comments: [ASKED("採否"), "## 回答\n**このタスクに着手しますか？**\n\n回答: 見送る"] }]);
+  const w = world([{ n: 1, status: "回答", comments: [QUESTION, ANSWER("保留")] },
+    { n: 2, status: "回答", author: config.claude, type: "要望", comments: [ASKED("採否"), REPLY(ASKED("採否"), "見送り")] }]);
   await w.send(ev.comment(1));
   assert.equal(w.at(1).status, "保留", "答えの保留を当てる");
   Object.assign(w.at(1), { status: "実装", moves: [[config.user, 1, config.fields.status.name]] });
@@ -418,7 +421,7 @@ test("検査の出ない PR は合格していないので実装。実装担当�
     w.at(1).comments.push(END(0));
     await w.send(ev.run(run, "completed"));
     assert.equal(head(w.at(1)), "## 問い（イレギュラー）");
-    w.at(1).comments.push(answerBody(latestQuestion(w.at(1).comments, config.questionForms), { choice: "やり直す" }));
+    w.at(1).comments.push(answerBody(latestQuestion(w.at(1).comments, config.questionForms), { next: "続ける" }));
   };
   const w = world([{ n: 1, status: "実装" }]);
   await handOff(w);
@@ -460,7 +463,7 @@ test("C4 待つ相手: 開いた子がある親は待機し、確かめを問わ
   assert.deepEqual([w.at(1).body.includes("- [ ] 動く"), w.at(1).status, head(w.at(1)), asked(w.at(1))], [true, "回答", "## 問い（確かめ）", 1]);
   await w.send(ev.comment(1));
   assert.equal(asked(w.at(1)), 1, "確かめは一度だけ");
-  w.at(1).comments.push("## 回答\n**完成にしてよいですか？**\n\n回答: 完了にする\n- 確かめた: 動く");
+  w.at(1).comments.push(answerBody(latestQuestion(w.at(1).comments, config.questionForms), { next: "完了" }));
   await w.send(ev.comment(1));
   assert.deepEqual([w.at(1).state, w.at(1).reason], ["CLOSED", "COMPLETED"]);
 });
@@ -508,7 +511,7 @@ test("tasks#824 待つ相手が見送りで閉じたら、続けるかを一度�
   const w = world([{ n: 6, status: "待機", blockedBy: [7] }, { n: 7, status: "完了", state: "CLOSED", reason: "NOT_PLANNED" }]);
   await w.send(ev.issue(7, "closed"));
   assert.deepEqual([w.at(6).status, head(w.at(6)), w.at(6).comments.at(-1).includes(droppedQuestion([7]))], ["回答", "## 問い（続行）", true]);
-  w.at(6).comments.push(`## 回答\n**${droppedQuestion([7])}**\n\n回答: 続ける`);
+  w.at(6).comments.push(REPLY(ASK_DROPPED([7]), "続ける"));
   await w.send(ev.comment(6));
   assert.deepEqual([w.at(6).status, w.titles(), asked(w.at(6))], ["実装", ["#6 実装"], 1], "続けると決めたら問い直さない");
   const x = world([{ n: 1, status: "待機", body: ACCEPT }, { n: 2, parent: 1, status: "完了", state: "CLOSED", reason: "NOT_PLANNED", body: PART }]);
@@ -521,7 +524,7 @@ test("tasks#824 採否は親か分割元から受け継ぎ、一度だけ問う�
     { n: 3, author: config.claude, type: "要望", body: `${originLine(1)}\n- [ ] 作る\n` }, { n: 4, author: config.claude, type: "要望" }]);
   for (const n of [2, 3, 4]) await w.send(ev.issue(n, "opened", config.claude));
   assert.deepEqual([2, 3, 4].map((n) => asked(w.at(n))), [0, 0, 1], "採否を問うのは、親も分割元も持たない新しい要望だけ");
-  w.at(4).comments.push("## 回答\n**このタスクに着手しますか？**\n\n回答: 着手する", QUESTION);
+  w.at(4).comments.push(REPLY(ASKED("採否"), "続ける"), QUESTION);
   await w.send(ev.comment(4, config.claude));
   assert.equal(w.at(4).comments.filter((c) => c.startsWith("## 問い（採否）")).length, 1, "採否を問うたことがあれば、ほかの問いのあとでも問い直さない");
 
@@ -542,7 +545,7 @@ test("tasks#824 レビューの直し: 重複も見送り側・古い問いも�
   await dup.send(ev.issue(2, "closed"));
   assert.deepEqual([dup.at(1).status, head(dup.at(1))], ["回答", "## 問い（続行）"], "重複で閉じた子も、続けるかを問う");
 
-  const old = world([{ n: 6, status: "待機", blockedBy: [7], comments: [ASK_DROPPED([7]), `## 回答\n**${droppedQuestion([7])}**\n\n回答: 続ける`,
+  const old = world([{ n: 6, status: "待機", blockedBy: [7], comments: [ASK_DROPPED([7]), REPLY(ASK_DROPPED([7]), "続ける"),
     ...Array.from({ length: 45 }, (_, k) => `メモ ${k}`)] }, { n: 7, status: "完了", state: "CLOSED", reason: "NOT_PLANNED" }]);
   await old.send(ev.comment(6));
   assert.deepEqual([asked(old.at(6)), old.titles()], [1, ["#6 実装"]], "最近の40件より前に答えた問いも見つけ、問い直さない");
@@ -572,16 +575,16 @@ test("tasks#824・#878・C4 記法: 条件はチェックの行から字下げ�
     { index: 4, text: "見た目（色）", done: false, verify: "ユーザー", look: "[画面](https://github.test/c) の帯の色" }], "続きの間の空行のあとの属性も、同じ条件の属性");
 });
 
-test("tasks#878 確かめの問いの判断材料に、ユーザーが確かめる条件ごとの文と見る所と要点が並び、書かれていない条件はそう出る。答えは条件の文で当たる", async () => {
+test("tasks#878 確かめの問いの確かめることに、ユーザーが確かめる条件ごとの文と見る所と要点が並び、書かれていない条件はそう出る。答えは条件の文で当たる", async () => {
   const look = "[撮った画面](https://github.test/c) で、値の欄に区間の値が出ている";
   const w = world([{ n: 1, status: "検査", body: `- [x] 作る\n- [ ] 道を押すと値が出る\n  - 確かめる: ユーザー\n  - 見る所と要点: ${look}\n- [ ] 見た目\n  - 確かめる: ユーザー\n`,
     pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1" } }]);
   await w.send(ev.merge(1));
   const asked = w.at(1).comments.at(-1);
-  assert.deepEqual([w.at(1).status, head(w.at(1))], ["回答", "## 問い（確かめ）"], "判断材料に条件を並べても、問いの形に合う");
+  assert.deepEqual([w.at(1).status, head(w.at(1))], ["回答", "## 問い（確かめ）"], "条件を並べた確かめの問いは、形に合う");
   assert.ok(asked.includes(`- 道を押すと値が出る\n  - 見る所と要点: ${look}`), asked);
   assert.ok(asked.includes("- 見た目\n  - 見る所と要点: 書かれていません"), asked);
-  w.at(1).comments.push(answerBody(latestQuestion(w.at(1).comments, config.questionForms), { done: true }));
+  w.at(1).comments.push(answerBody(latestQuestion(w.at(1).comments, config.questionForms), { next: "完了" }));
   await w.send(ev.comment(1));
   assert.deepEqual([w.at(1).state, w.at(1).reason], ["CLOSED", "COMPLETED"]);
 });
@@ -657,7 +660,7 @@ async function answer(n, picks) {
 
 // ユーザーが書いた文（答えの文・コメント）は、必ず Claude が読んでから進む（#724 の確かめの答えの文が、読まれずに閉じて消えた）。
 test("書いた文は Claude が読むまで決定を当てず、読んだあとに一度だけ当てて知らせる", async () => {
-  const done = "## 回答\n**完成にしてよいですか？**\n\n回答: 完了にする\n- 確かめた: 見た目\n\n距離のバーは候補数の横に置いて";
+  const done = REPLY(ASKED("確かめ"), "完了", "距離のバーは候補数の横に置いて");
   const w = world([{ n: 1, status: "回答", body: CONFIRM, comments: [ASKED("確かめ"), done] }]);
   await w.send(ev.comment(1));
   assert.deepEqual([w.at(1).state, w.at(1).status, w.titles()], ["OPEN", "実装", ["#1 実装"]], "#724: 完了にしても文があれば閉じず、実装担当が読む");
@@ -670,7 +673,7 @@ test("書いた文は Claude が読むまで決定を当てず、読んだあと
   assert.equal(w.at(1).comments.filter((c) => c.startsWith(APPLIED)).length, 1, "答えは一度だけ当てる");
 
   const drop = world([{ n: 2, status: "回答", author: config.claude, type: "要望",
-    comments: [ASKED("採否"), "## 回答\n**このタスクに着手しますか？**\n\n回答: 見送る\n\n代わりにパネル全体を2列にしたい"] }]);
+    comments: [ASKED("採否"), REPLY(ASKED("採否"), "見送り", "代わりにパネル全体を2列にしたい")] }]);
   await drop.send(ev.comment(2));
   assert.deepEqual([drop.at(2).state, drop.at(2).status], ["OPEN", "実装"], "見送るでも文があれば、閉じる前に実装担当が読む");
   drop.at(2).comments.push(END(2));
@@ -697,7 +700,7 @@ test("書いた文は Claude が読むまで決定を当てず、読んだあと
   await mid.send(ev.run(run, "completed"));
   assert.deepEqual([mid.at(5).status, mid.titles()], ["実装", ["#5 実装", "#5 実装"]], "担当が読み始めたあとに書いた文は、次の担当が読む");
 
-  const dialog = world([{ n: 6, status: "回答", type: config.dialogType, comments: [QUESTION, ANSWER("回答: 保留する\n\n来週にする")] }]);
+  const dialog = world([{ n: 6, status: "回答", type: config.dialogType, comments: [QUESTION, ANSWER("保留", "来週にする")] }]);
   await dialog.send(ev.comment(6));
   assert.deepEqual([dialog.at(6).status, dialog.titles()], ["実装", []], "対話作業: 文があれば開発機のセッションの番（振り出さない）");
   dialog.at(6).comments.push("来週に回すと読んだ");
@@ -705,114 +708,105 @@ test("書いた文は Claude が読むまで決定を当てず、読んだあと
   assert.deepEqual([dialog.at(6).status, head(dialog.at(6))], ["保留", `${APPLIED}（保留）。`], "対話作業: Claude が書いたら読んだとして、答えを当てる");
 });
 
-test("回答フォーム（R10〜R12・決め2・合意したモック）: 問いの節から選ぶ欄を導き、次のステータスは出さない。送った答えでゲートが決め直す", async () => {
+test("回答フォーム（合意したモック）: 回答内容（案と書く欄）と「この issue を」の次遷移のボタンを分けて出し、送った答えでゲートが決め直す", async () => {
   const w = world([{ n: 1, status: "検査", body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1" } },
-    { n: 2, author: config.claude, type: "要望" }, { n: 3, status: "実装" }, { n: 4, status: "回答", comments: [QUESTION] },
-    { n: 5, status: "回答", comments: [END(0), ASKED("イレギュラー")] }]);
+    { n: 2, author: config.claude, type: "要望" }, { n: 3, status: "実装" }, { n: 4, status: "回答", comments: [QUESTION] }]);
   connect(w);
   await w.send(ev.merge(1)); // 確かめの問い
   await w.send(ev.issue(2, "opened", config.claude)); // 採否の問い
   const check = await (await open(1)).text();
-  for (const text of ["項目", "見た目", "完了にする（上の全部）", "書くこと", "確認", "戻る", "送信", "判断材料"]) assert.ok(check.includes(text), `確かめ: ${text}`);
+  for (const text of ["見た目", "回答内容", "Claude に伝えること", "この issue を", "完了にする", "保留する", "見送る", "確認", "戻る", "送信", "判断材料"]) assert.ok(check.includes(text), `確かめ: ${text}`);
   assert.ok(w.at(1).body.includes("button.svg") && !check.includes("button.svg"), "本文の頭の回答のボタンは、フォームの本文に出さない");
-  for (const text of ["次のステータス", "問題なし", "問題あり"]) assert.ok(!check.includes(text), `確かめ: ${text} は出さない`);
   assert.match(check, /<textarea name="note" rows="4"/, "書く欄は1つで4行");
   const adopt = await (await open(2)).text();
-  for (const text of ["着手する", "保留する", "見送る"]) assert.ok(adopt.includes(text), `採否: ${text}`);
-  assert.ok((await (await open(4)).text()).includes("どれでもない（書く欄に書く）"), "判断: 案と、どれでもない（書く欄に書く）");
-  const irregular = await (await open(5)).text();
-  for (const text of ["やり直す", "保留する", "見送る"]) assert.ok(irregular.includes(text), `イレギュラー: ${text}`);
+  assert.ok(!adopt.includes('name="plan"') && !adopt.includes("完了にする"), "案の無い問いは案を出さず、確かめることが無ければ完了にするも出さない");
+  const judge = await (await open(4)).text();
+  assert.ok(/value="案A">.*推奨.*早い/s.test(judge) && /value="案B">.*安い/s.test(judge), "案ごとに理由を添え、推奨に印を付ける");
+  assert.ok(!/<input[^>]*name="(plan|next)"[^>]*checked/.test(judge), "推奨も次遷移も、最初から選んだ状態にしない");
   assert.equal((await open(3)).status, 404, "答えていない問いが無い");
   assert.match((await answer(1, { question: "前の問い" })).error, /問いが新しくなっています/);
-  assert.match((await answer(1, {})).error, /「完了にする」のチェックを付けるか、書く欄に書いてください/, "確かめは、完了にするか書くかのどちらかが要る");
-  assert.match((await answer(4, { choice: "どれでもない（書く欄に書く）" })).error, /書く欄に書いてください/);
-  await answer(1, { note: "崩れる" });
-  assert.match(w.at(1).comments.at(-1), /\n\n崩れる$/, "書いた文は形を付けずにそのまま置く");
+  assert.match((await answer(4, { plan: "案A" })).error, /この issue をどうするか/, "次遷移はいつも要る");
+  await answer(4, { next: "保留", plan: "案B", note: "あとで" });
+  assert.equal(w.at(4).comments.at(-1).split("\n").slice(3).join("\n"), "次遷移: 保留\n選んだ案: 案B\nコメント:\nあとで", "次遷移と選んだ案とコメントを、互いに変えずにそのまま書く");
+  await answer(1, { next: "続ける", note: "崩れる" });
   await w.send(ev.comment(1));
   assert.deepEqual([w.at(1).state, w.at(1).status, w.titles().filter((t) => t.startsWith("#1"))], ["OPEN", "実装", ["#1 実装"]], "決め2 書いた文は実装担当が読む（完成にしない）");
-  await answer(2, { choice: "見送る", label: ["急ぎ"] });
+  await answer(2, { next: "見送り", label: ["急ぎ"] });
   await w.send(ev.comment(2));
   assert.deepEqual([w.at(2).state, w.at(2).reason, w.at(2).labels], ["CLOSED", "NOT_PLANNED", ["急ぎ"]], "採否の見送るで閉じる。ラベルの付け外しも送る");
 });
 
-// tasks#892: 問いの形は種類ごとのファイルにあり、回答フォームは問いの節だけから導く（書く者が埋める問いは test/forms.js: formed で作る）。
+// 問いの形はラベルごとのファイルにあり、回答フォームは問いの回答内容の節だけから導く（書く者が埋める問いは test/forms.js: formed で作る）。
 
-test("tasks#892 問いの形は種類ごとにあり、問いはその種類の形と照らす（案の無い判断・決まった文や案を変えた問い・知らない種類は読まない）", () => {
+test("ラベルごとの形: 書く節・書かない節・案の決まり・決まった文・判断材料の節・出す者を照らす", () => {
   const forms = config.questionForms;
   assert.deepEqual(Object.keys(forms).sort(), ["イレギュラー", "判断", "採否", "操作", "確かめ", "続行"].sort());
-  const ok = [askText("採否", forms), askText("確かめ", forms, [{ text: "見た目" }]), askText("イレギュラー", forms), ASK_DROPPED([7]),
-    FORMED("判断", "どちらにしますか？", ["A", "B"]), FORMED("操作", "設定を変えてください", ["画面で設定を変える"])];
-  for (const text of ok) assert.deepEqual(checkQuestion(forms, text), [], text.split("\n")[0]);
-  const judge = FORMED("判断", "どちらにしますか？", ["A", "B"]);
+  const ok = [[askText("採否", forms), "ゲート"], [askText("確かめ", forms, [{ text: "見た目" }]), "ゲート"], [askText("イレギュラー", forms), "ゲート"], [ASK_DROPPED([7]), "ゲート"],
+    [QUESTION, "Claude"], [FORMED("操作", "設定を変えてください", ["画面で設定を変える"]), "Claude"]];
+  for (const [text, by] of ok) assert.deepEqual(checkQuestion(forms, text, by), [], text.split("\n")[0]);
   const rows = [
-    ["案の無い判断", `## 問い（判断）\nどちらにしますか？\n\n${MATERIAL("判断")}`, /判断の答えの節は「### 案」/],
-    ["項目で答える判断", judge.replace("### 案", "### 項目"), /判断の答えの節は「### 案」/],
-    ["案で答える操作", FORMED("操作", "設定を変えてください", ["画面で設定を変える"]).replace("### 項目", "### 案"), /操作の答えの節は「### 項目」/],
-    ["採否の決まった案を変えた", askText("採否", forms).replace("- 見送る", "- やめる"), /採否の「### 案」は 着手する・保留する・見送る/],
+    ["案の無い判断", `## 問い（判断）\nどちらにしますか？\n\n${MATERIAL("判断")}`, /判断は「### 案」を1行1つ以上書く/],
+    ["案が1つの判断", FORMED("判断", "どちらにしますか？", [["案A", "推奨", "早い"]]), /案は2つ以上/],
+    ["理由の無い案", FORMED("判断", "どちらにしますか？", [["案A", "推奨", "早い"], "案B"]), /どの案にも「- 推奨:」か「- 理由:」を1つ/],
+    ["推奨が2つ", FORMED("判断", "どちらにしますか？", [["案A", "推奨", "早い"], ["案B", "推奨", "安い"]]), /推奨はちょうど1つ/],
+    ["案を書いた操作", FORMED("操作", "設定を変えてください", ["画面で設定を変える"]).replace("### 済ませること", "### 案"), /操作は「### 済ませること」/],
+    ["回答内容の節を書いた採否", askText("採否", forms).replace("\n\n<details>", "\n\n### 済ませること\n- 読む\n\n<details>"), /採否は回答内容の節を書かない/],
     ["確かめの決まった問いの文を変えた", askText("確かめ", forms, [{ text: "見た目" }]).replace("完成にしてよいですか？", "閉じますか？"), /確かめの問いの文は「完成にしてよいですか？」/],
-    ["前の形の判断材料の節（案ごとに起きること）", judge.replace("**答えごとに起きること**", "**案ごとに起きること**"), /判断材料の節は/],
-    ["種類の無い頭", judge.replace("## 問い（判断）", "## 問い"), /頭の行/],
-    ["知らない種類", judge.replace("## 問い（判断）", "## 問い（相談）"), /種類は .*のどれか/],
+    ["前の形の判断材料の節（推奨を判断材料に書く）", QUESTION.replace("\n</details>", "\n\n**推奨**: 案A\n</details>"), /判断材料の節は/],
+    ["知らないラベル", QUESTION.replace("## 問い（判断）", "## 問い（相談）"), /ラベルは .*のどれか/],
+    ["ゲートのラベルを Claude が書いた", askText("確かめ", forms, [{ text: "見た目" }]), /確かめの問いはゲートだけが出す/, "Claude"],
   ];
-  for (const [name, text, want] of rows) assert.match(checkQuestion(forms, text).join("・"), want, name);
+  for (const [name, text, want, by] of rows) assert.match(checkQuestion(forms, text, by).join("・"), want, name);
 });
 
-test("tasks#892 種類「操作」の問いを出すと、回答フォームに項目の一覧と「済ませた」のチェック1つが出て、済ませたら Claude の番へ戻る", async () => {
-  const asked = FORMED("操作", "秘密の値を入れ直してください", ["Cloudflare の画面で秘密の値を入れ直す"]);
-  const w = world([{ n: 1, status: "実装", comments: [asked] }]);
+test("ラベル「操作」の問いは、済ませることを並べ、次遷移のボタンで答える。続けたら Claude の番へ戻る", async () => {
+  const w = world([{ n: 1, status: "実装", comments: [FORMED("操作", "秘密の値を入れ直してください", ["Cloudflare の画面で秘密の値を入れ直す"])] }]);
   connect(w);
   await w.send(ev.comment(1, config.claude));
   assert.deepEqual([w.at(1).status, w.at(1).assignees, w.at(1).labels], ["回答", [config.user], ["問い: 操作"]]);
   const html = await (await open(1)).text();
-  for (const text of ["項目", "Cloudflare の画面で秘密の値を入れ直す", "済ませた（上の全部）"]) assert.ok(html.includes(text), text);
-  assert.ok(!html.includes('type="radio"'), "選ぶ案は出さない");
-  assert.match((await answer(1, {})).error, /「済ませた」のチェックを付けるか/);
-  await answer(1, { done: "on" });
-  assert.match(w.at(1).comments.at(-1), /\n\n回答: 済ませた\n- 確かめた: Cloudflare の画面で秘密の値を入れ直す$/);
+  assert.ok(html.includes("Cloudflare の画面で秘密の値を入れ直す") && !html.includes('name="plan"') && !html.includes("完了にする"), "済ませることの一覧を出し、案と完了にするは出さない");
+  await answer(1, { next: "続ける" });
   await w.send(ev.comment(1));
-  assert.deepEqual([w.at(1).status, w.titles(), w.at(1).labels], ["実装", ["#1 実装"], []], "済ませたら実装担当へ渡し、問いのラベルを外す");
+  assert.deepEqual([w.at(1).status, w.titles(), w.at(1).labels], ["実装", ["#1 実装"], []], "続けたら実装担当へ渡し、問いのラベルを外す");
 });
 
-test("tasks#892 回答フォームは種類で分けず、問いの答えの節と形の答えの意味だけから選ぶ欄を導く（形を足しても、フォームは変えずに出せる）", async () => {
-  const form = (kind, header, rows, more = "") => `出す者: ゲート\n${more}\n## 問い（${kind}）\n読みましたか？\n\n${header}\n${rows.map((r) => `- ${r}`).join("\n")}\n\n` +
-    "<details><summary>判断材料</summary>\n\n**何の話か**: 試しの種類です。\n</details>\n";
-  const added = loadForms([form("知らせ", "### 案", ["読んだ", "あとで読む"], "答えの意味: あとで読む: 保留\n"), form("相談", "### 案", ["<案>"]),
-    form("点検", "### 項目", ["<点検すること>"], "答えの意味: 見た: 完了\n")]);
+test("回答フォームはラベルで分けず、問いの回答内容の節だけから導く（ラベルを足しても、フォームは変えずに出せる）", async () => {
+  const form = (kind, section = "") => `出す者: ゲート\n\n## 問い（${kind}）\n読みましたか？\n\n${section}<details><summary>判断材料</summary>\n\n**何の話か**: 試しのラベルです。\n</details>\n`;
+  const added = loadForms([form("知らせ"), form("点検", "### 確かめること\n- <点検すること>\n\n")]);
   const cfg = { ...config, questionForms: { ...config.questionForms, ...added } };
-  const w = world([{ n: 1, status: "回答", comments: [askText("知らせ", added)] },
-    { n: 2, status: "回答", comments: ["## 問い（相談）\n読みましたか？\n\n### 案\n- 先に読む\n- 後で読む\n\n<details><summary>判断材料</summary>\n\n**何の話か**: 相談です。\n</details>"] },
-    { n: 3, status: "回答", comments: [askText("点検", added, [{ text: "地図の色" }])] }]);
+  const w = world([{ n: 1, status: "回答", comments: [askText("知らせ", added)], by: [config.gateBot] },
+    { n: 3, status: "回答", comments: [askText("点検", added, [{ text: "地図の色" }])], by: [config.gateBot] }]);
   connect(w);
   const page = async (n) => (await answerForm(new Request(url(n)), env, cfg)).text();
-  const fixed = await page(1);
-  assert.ok(/<div class="seg">.*読んだ.*あとで読む.*<\/div>/s.test(fixed) && !fixed.includes("どれでもない"), "形が決めた案は横並びの区切りで、どれでもないは添えない");
-  const open2 = await page(2);
-  assert.ok(!open2.includes('class="seg"') && ["先に読む", "後で読む", "どれでもない（書く欄に書く）"].every((t) => open2.includes(`type="radio" name="choice" value="${t}"`)),
-    "書く者が立てた案は1行ずつの丸に、どれでもないを添える");
+  const plain = await page(1);
+  assert.ok(["続ける", "保留する", "見送る"].every((t) => plain.includes(`value="${Object.keys(NEXT).find((k) => NEXT[k] === t)}"`)) && !plain.includes("完了にする"), "案も確かめることも無い問いは、次遷移の3つだけ");
   const items = await page(3);
-  assert.ok(items.includes("<li>地図の色") && items.includes("見た（上の全部）") && !items.includes('type="radio"'), "項目は一覧と、形が決めた文のチェック1つ");
-  for (const html of [fixed, open2, items]) assert.match(html, /<textarea name="note" rows="4"/, "書く欄はいつも出す");
-  assert.equal(latestQuestion([askText("知らせ", added), "## 回答\n**読みましたか？**\n\n回答: あとで読む"], cfg.questionForms).answer.decision, "保留", "答えの決定は形の答えの意味で引く");
+  assert.ok(items.includes("地図の色") && items.includes("完了にする"), "確かめることを並べた問いは、その一覧と完了にする");
+  for (const html of [plain, items]) assert.match(html, /<textarea name="note" rows="4"/, "書く欄はいつも出す");
 });
 
-test("tasks#892 答えの無い問いがある間だけ、ゲートがラベル「問い: <種類>」を付け、答えが当たったら外す。回答フォームのラベルの欄には出さない", async () => {
+test("答えの無い問いがある間だけ、ゲートがラベル「問い: <ラベル>」を付け、答えが当たったら外す。外れた問いは読まずに知らせる", async () => {
   const left = "- [x] 作る\n- [ ] 見た目\n  - 確かめる: ユーザー\n- [ ] 直す\n";
   const w = world([{ n: 2, author: config.claude, type: "要望" }, { n: 3, status: "回答", labels: ["問い: 確かめ"], body: withButton(left, config, 3), comments: [ASKED("確かめ")] },
     { n: 4, status: "回答", labels: ["急ぎ", "問い: 判断"], comments: [END(0), ASKED("イレギュラー")] },
-    { n: 5, status: "実装", comments: [`## 問い（判断）\nどちらにしますか？\n\n${MATERIAL("判断")}`] }], { workflow: "disabled" });
+    { n: 5, status: "実装", comments: [`## 問い（判断）\nどちらにしますか？\n\n${MATERIAL("判断")}`] },
+    { n: 6, status: "実装", body: "- [ ] 作る\n", comments: [ASKED("確かめ")], by: [config.claude] }], { workflow: "disabled" });
   connect(w);
   await w.send(ev.issue(2, "opened", config.claude));
   assert.deepEqual(w.at(2).labels, ["問い: 採否"], "採否を問うたら付ける");
   const html = await (await open(2)).text();
   assert.ok(html.includes('value="急ぎ"') && !html.includes('value="問い: 採否"'), "ラベルの欄に問いのラベルは出さない");
-  await answer(2, { choice: "着手する", label: ["急ぎ"] });
+  await answer(2, { next: "続ける", label: ["急ぎ"] });
   assert.deepEqual(w.at(2).labels, ["問い: 採否", "急ぎ"], "フォームで送っても、問いのラベルは外さない");
   await w.send(ev.comment(2));
   assert.deepEqual(w.at(2).labels, ["急ぎ"], "答えが当たったら外す");
   await w.send(ev.issue(3, "edited", config.claude));
   assert.deepEqual([w.at(3).status, w.at(3).labels], ["実装", []], "問いを出した事実が無くなったら外す");
   await w.send(ev.comment(4, config.claude));
-  assert.deepEqual(w.at(4).labels, ["急ぎ", "問い: イレギュラー"], "違う種類のラベルは、今の問いの種類へ揃える");
+  assert.deepEqual(w.at(4).labels, ["急ぎ", "問い: イレギュラー"], "違うラベルは、今の問いのラベルへ揃える");
   await w.send(ev.comment(5, config.claude));
-  assert.deepEqual([w.at(5).labels, /判断の答えの節は「### 案」/.test(w.at(5).comments.at(-1))], [[], true], "形に合わない問い（案の無い判断）は読まず、付けない");
+  assert.deepEqual([w.at(5).labels, /判断は「### 案」を1行1つ以上書く/.test(w.at(5).comments.at(-1))], [[], true], "形に合わない問い（案の無い判断）は読まず、付けない");
+  await w.send(ev.comment(6, config.claude));
+  assert.deepEqual([w.at(6).labels, /確かめの問いはゲートだけが出す/.test(w.at(6).comments.at(-1))], [[], true], "ゲートのラベルの問いを Claude が書いたら、読まずに知らせる");
 });
