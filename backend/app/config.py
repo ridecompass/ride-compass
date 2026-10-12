@@ -14,12 +14,15 @@ _ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 # `basemap_public_base_url`（.envの上書きを含む）の番号でfrontendを止め・起こす。
 _LOCAL_FRONTEND_ORIGIN = "http://localhost:3000"
 
+#: 手元のPostgreSQL（開発機に入れたものと、composeのpostgres）。開発のDBとPostGIS統合テストのDBが載る。
+LOCAL_DATABASE_SERVER = "postgresql+asyncpg://ridecompass:ridecompass@localhost:5432"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
 
     cors_allowed_origins: str = _LOCAL_FRONTEND_ORIGIN
-    database_url: str = "postgresql+asyncpg://ridecompass:ridecompass@localhost:5432/ridecompass"
+    database_url: str = f"{LOCAL_DATABASE_SERVER}/ridecompass"
     # 基礎地図プロキシのスタイルJSON内URLを書き換える先。MapLibreは相対URLをスタイルの
     # 取得元ではなくページのオリジンに対して解決するため絶対URLが必須で、かつ**backend自身
     # ではなくフロントエンドのオリジン**にする（タイルの大量リクエストとAPI呼び出しを

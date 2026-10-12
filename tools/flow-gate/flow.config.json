@@ -8,18 +8,20 @@
   "user": "hidakagit",
   "claude": "hidakagit-bot",
   "urls": { "gate": "https://ridecompass-gate.h7g4bin.workers.dev", "form": "https://ride-compass-answer.h7g4bin.workers.dev" },
-  "project": 2,
   "dialogType": "対話作業",
-  "fields": { "status": "Status", "priority": "優先度", "size": "規模", "start": "着手可能日時" },
+  "fields": {
+    "status": {"name": "ステータス", "id": "IFSS_kgDOAuBdcQ", "options": {"CI待ち": "IFSSO_kgDOBQkZAw", "保留": "IFSSO_kgDOBQkZAA", "回答待ち": "IFSSO_kgDOBQkY_w", "完了": "IFSSO_kgDOBQkZBg", "未着手": "IFSSO_kgDOBQkZAQ", "検証中": "IFSSO_kgDOBQkZBQ", "検証待ち": "IFSSO_kgDOBQkZBA", "進行中": "IFSSO_kgDOBQkZAg"}},
+    "priority": {"name": "優先度", "id": "IFSS_kgDOAuBdcg", "options": {"中": "IFSSO_kgDOBQkZCA", "低": "IFSSO_kgDOBQkZCQ", "高": "IFSSO_kgDOBQkZBw"}},
+    "size": {"name": "規模", "id": "IFSS_kgDOAuBdcw", "options": {"L": "IFSSO_kgDOBQkZDA", "M": "IFSSO_kgDOBQkZCw", "S": "IFSSO_kgDOBQkZCg"}},
+    "start": {"name": "着手可能日時", "id": "IFT_kgDOAuBddA"}
+  },
   "priorities": ["高", "中", "低"],
   "unsetPriority": "中",
   "urgentLabel": "急ぎ",
   "branchPrefix": "orch/tasks-",
   "workflow": "claude-task.yml",
   "slots": { "作る": 6, "確かめる": 4 },
-  "mutationCheck": "changed-functions",
   "quotaStep": "利用の上限で止まった",
   "pauseMinutes": 60,
-  "stallHours": 3,
   "retries": 5
 }

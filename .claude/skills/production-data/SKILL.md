@@ -189,7 +189,7 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
 - **既存DBの行データを新しいコードが読めなくなる変更（Pydanticモデルの破壊的変更等）を
   含む`backend/**`の変更は、本番DBのデータ移行を完了させてからmasterへ入れる（マージする）**。
   作業ブランチへのpushでは本番へ出ない。masterに入ってCI（`.github/workflows/ci.yml`）が通ると、backendは本番へ自動デプロイされる
-  （コンテナを入れ替えるかの振り分けは`scripts/deploy_backend_gate.py`が正本）。
+  （コンテナを入れ替えるかの振り分けは`scripts/deploy_gate.py`が正本）。
   DB移行より先にmasterへ入れると、新コードが本番DBに残る旧形式データを読めず、
   `refresh_axis_definitions`等のfail-fast設計により本番backendが起動失敗する。
   対応順序は事前に次のいずれかを選ぶこと: 1) 本番DBのデータ移行を先に完了させてから

@@ -50,12 +50,8 @@ jobs:
           if [ "${{ github.event_name }}" = workflow_dispatch ]; then
             echo "出す: 手動の起動"
             echo "deploy=true" >> "$GITHUB_OUTPUT"
-          elif [ -n "$DEPLOYED" ] && git cat-file -e "$DEPLOYED^{commit}" 2>/dev/null && git merge-base --is-ancestor "$GITHUB_SHA" "$DEPLOYED"; then
-            echo "出さない: 本番はこのコミットか、これより新しいコミットで動いている（本番 ${DEPLOYED:0:8} → ${GITHUB_SHA:0:8}）"
-            echo "deploy=false" >> "$GITHUB_OUTPUT"
           else
-            echo "出す: 本番のコミットが分からないか、これより古いか、履歴が分かれている（本番 ${DEPLOYED:0:8} → ${GITHUB_SHA:0:8}）"
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            python3 backend/scripts/deploy_gate.py --any-change "$DEPLOYED" "$GITHUB_SHA"
           fi
       - name: このコミットの像を用意する
         if: steps.gate.outputs.deploy == 'true'

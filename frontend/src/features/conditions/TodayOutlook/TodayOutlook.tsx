@@ -5,6 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover
 import { ClockIcon, RaindropIcon, ThermometerIcon, WindIcon } from "@/components/ui/icons/icons";
 import { formatJstHourMinute } from "@/lib/time";
 import type { WeatherConditions, WeatherPeriodOutlook } from "@/types/weather";
+import { mapDisplay } from "@/types/generated/mapDisplay";
 import weatherScales from "@/types/generated/weather-scales.json";
 import { Button } from "@/components/ui/Button/Button";
 import { textVariants } from "@/components/ui/Text/Text";
@@ -196,7 +197,7 @@ export default function TodayOutlook({ weather, loading, error }: TodayOutlookPr
           <>
             <ModelHeading />
             <p className={cn(textVariants({ variant: "note" }), "mb-2")}>
-              気象庁の数値予報モデルMSMの計算値です。予報ではなく、誤差を含みえます。
+              気象庁の数値予報モデルMSMの計算値です。{mapDisplay.modelValueDisclaimer}
             </p>
           </>
         )}

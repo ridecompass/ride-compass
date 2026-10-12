@@ -57,6 +57,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from tests.structure.source_symbols import SourceTree, bound_names
 from app.batch.common import asyncpg_dsn  # sys.pathを通した後に読む
 from pytest_report import Case, junit_args, read_cases
+from repo_git import merge_base, run
 
 
 def module_symbols(source: SourceTree, path: Path) -> tuple[set[str], dict[str, str]]:
@@ -403,17 +404,13 @@ def main() -> int:
     print("=" * 78)
 
     # --- ① 実装を変えていないか ---
-    def git(*command: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["git", *command], cwd=backend, capture_output=True, text=True, encoding="utf-8", errors="replace",
-        )
-
     # origin/master との合流点から作業ツリーまでの差（コミット済みの変更も含む）。
-    base = git("merge-base", "origin/master", "HEAD")
-    if base.returncode != 0:
-        print(f"\n① 実装の変更: **測れない**（origin/master との合流点が取れない: {base.stderr.strip()}）")
+    try:
+        base = merge_base(cwd=backend)
+    except RuntimeError as e:
+        print(f"\n① 実装の変更: **測れない**（origin/master との合流点が取れない: {e}）")
     else:
-        status = git("diff", "--stat", base.stdout.strip(), "--", args.implementation).stdout.strip()
+        status = run("diff", "--stat", base, "--", args.implementation, cwd=backend).stdout.strip()
         print(f"\n① 実装の変更（origin/master との合流点から）: {'**あり** → ' + status if status else 'なし'}")
 
     defined, imported = module_symbols(source, impl_path)

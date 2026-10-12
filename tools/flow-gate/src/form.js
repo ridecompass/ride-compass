@@ -4,7 +4,7 @@
 // 次のステータスは出さない。答えはユーザーの名義（env.FORM_TOKEN）でコメントに書き、ラベルの付け外しも同じ名義で打つ。
 // 行き先はゲートが答えから決め、書いた文があれば Claude が読んでから当てる。
 import { GitHub } from "./github.js";
-import { jstText } from "./facts.js";
+import { END, jstText } from "./facts.js";
 import { CHOICES, DONE, NONE, answerBody, answerProblem, bodyRest, confirmItems, isQuestion, latestQuestion, norm } from "./questions.js";
 
 const RECENT = 5; // 材料に載せる最近のコメント（上に出した問いのコメントは数えない）
@@ -95,7 +95,7 @@ export async function answerForm(request, env, config) {
   if (request.method === "POST") return Response.json(await submit(gh, env, config, number, await request.formData()));
   const { issue, comments, asked, question: q, all, have } = await read(gh, config, number);
   if (!q || q.answer) return page(`<p>#${number} に、答えていない問いはありません。</p>`, 404);
-  const said = q.kind === "イレギュラー" ? comments.findLast((c) => /^### \S+担当の終わり/.test(norm(c.body)))?.bodyHTML : null;
+  const said = q.kind === "イレギュラー" ? comments.findLast((c) => END.test(norm(c.body)))?.bodyHTML : null;
   const recent = comments.filter((c) => c !== asked).slice(-RECENT).reverse()
     .map((c) => `<p class="note"><a href="${esc(c.url)}">${esc(c.author?.login ?? "ghost")} ・ ${jstText(Date.parse(c.createdAt))}</a></p>${c.bodyHTML}`).join("");
   // 判断材料と本文は GitHub の Markdown の描き方で HTML にする。互いに独立なので並べて打つ。

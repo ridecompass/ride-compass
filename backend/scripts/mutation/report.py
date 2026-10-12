@@ -21,11 +21,14 @@ import collections
 import glob
 import json
 import os
-import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
 
 from _shared import baseline_failures, def_span, expand, fn_of, function_of_test, judge, read_kills, read_results, read_stats
 from importtime import called_at_import, is_import_time
+from repo_git import run
 
 ART, RECHECK_ART, OUT = sys.argv[1], sys.argv[2], sys.argv[3]
 shard_dirs = sorted(glob.glob(os.path.join(ART, "mutation-*")))
@@ -104,7 +107,7 @@ for t in sorted(all_tests):
         entry["baselineFailed"] = True
     test_files[path]["tests"].append(entry)
 
-revision = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+revision = run("rev-parse", "HEAD").stdout.strip()
 report = {"schemaVersion": "2", "thresholds": {"high": 80, "low": 60}, "projectRoot": "backend",
           "framework": {"name": "mutmut"}, "config": {"revision": revision}, "files": files, "testFiles": test_files}
 json.dump(report, open(OUT, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
