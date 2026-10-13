@@ -1,9 +1,9 @@
 import { distanceM, longitudeScale } from "@/lib/localPlane";
 import type { Coordinates } from "@/types/route";
 
-// 前の点からこれだけ動くまで、動いたと数えない（位置に向きが無いときの向き・走った実績の1歩）。位置の誤差（街中で数m）の
-// 揺れで、止まっている間に地図が回ったり、走った距離が積もったりしないようにする。
-export const MIN_TRAVEL_M = 15;
+// 位置に向きが無いとき、前の点からこれだけ動くまで向きを出さない。位置の誤差（街中で数m）の揺れで、止まっている間に
+// 地図が回らないようにする。
+export const MIN_TRAVEL_FOR_BEARING_M = 15;
 
 /** 受け取った位置1つ。`heading`は位置が持つ進む向き（真北0・時計回りの度）で、止まっている・取れないときはnull。 */
 export interface TravelFix extends Coordinates {
@@ -24,7 +24,7 @@ export function nextTravelBearing(previous: TravelBearing | null, fix: TravelFix
   if (fix.heading !== null && Number.isFinite(fix.heading)) return { anchor: here, bearing: fix.heading };
   if (previous === null) return { anchor: here, bearing: null };
 
-  if (distanceM(previous.anchor, here) < MIN_TRAVEL_M) return previous;
+  if (distanceM(previous.anchor, here) < MIN_TRAVEL_FOR_BEARING_M) return previous;
   const x = (fix.longitude - previous.anchor.longitude) * longitudeScale(previous.anchor.latitude);
   const y = fix.latitude - previous.anchor.latitude;
   const degrees = (Math.atan2(x, y) * 180) / Math.PI;

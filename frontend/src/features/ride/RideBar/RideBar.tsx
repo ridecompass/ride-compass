@@ -6,7 +6,7 @@ import { BicycleIcon, ClockIcon, GoalFlagIcon, WindDirectionArrowIcon } from "@/
 import { downwindDeg } from "@/lib/cardinalLabel";
 import { formatJstHourMinute } from "@/lib/time";
 
-import type { RideRemaining } from "../ridePace";
+import type { RideRemaining } from "../rideRemaining";
 
 /** 走りの帯に出す風（最寄りの観測所の実測）。 */
 interface RideBarWind {

@@ -3,7 +3,7 @@
  *
  * ここで見ないもの:
  * - 走行モードの間だけ天気の帯の代わりに出ること → `app/page.test.tsx`
- * - 残りと到着予想の出し方 → `ridePace.test.ts`
+ * - 残りと到着予想の出し方 → `rideRemaining.test.ts`
  */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";

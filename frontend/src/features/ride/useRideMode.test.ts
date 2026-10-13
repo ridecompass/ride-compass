@@ -5,7 +5,6 @@
  *
  * ここで見ないもの:
  * - 進む向きの出し方（位置の向き・動いた向き・止まっている間）→ `travelBearing.test.ts`
- * - 走った実績の積み方（揺れ・止まっていた1歩）→ `ridePace.test.ts`
  * - 地図が受けた値で中心と向きを動かすこと → `e2e/ride-mode.spec.ts`（実ブラウザの地図）
  *
  * 差し替えたもの: 位置情報の受け取り（`navigator.geolocation`。テスト環境に無いブラウザの機能）。受け取りごとに、
@@ -185,17 +184,15 @@ describe("useRideMode", () => {
     expect(result.current.speedKmh).toBeNull();
   });
 
-  it("走った実績は、届いた位置とその時刻から積み、止めると捨てる", () => {
+  it("最後に受けた位置を測った時刻を出し、止めると捨てる", () => {
     const { result } = renderHook(() => useRideMode());
     act(() => result.current.press());
-    expect(result.current.pace).toBeNull();
-    // 北へ緯度0.01度（約1.1km）を2分で進む。
-    deliver(35.68, 139.76, null, null, 0);
-    deliver(35.69, 139.76, null, null, 120_000);
-    expect(result.current.pace).toMatchObject({ lastMs: 120_000, movingMs: 120_000 });
-    expect(result.current.pace?.movingKm).toBeCloseTo(1.11, 2);
+    expect(result.current.fixedAtMs).toBeNull();
+    deliver(35.68, 139.76, null, null, 1_000);
+    deliver(35.681, 139.76, null, null, 21_000);
+    expect(result.current.fixedAtMs).toBe(21_000);
     act(() => result.current.press());
-    expect(result.current.pace).toBeNull();
+    expect(result.current.fixedAtMs).toBeNull();
   });
 
   it("位置が速さを持たなければ、続けて受けた2つの位置の距離と時刻の差から出す", () => {

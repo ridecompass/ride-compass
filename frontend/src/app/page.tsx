@@ -50,7 +50,7 @@ import RideBar from "@/features/ride/RideBar/RideBar";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { useRideMode } from "@/features/ride/useRideMode";
-import { rideRemaining } from "@/features/ride/ridePace";
+import { rideRemaining } from "@/features/ride/rideRemaining";
 import { useRouteProgress } from "@/features/ride/useRouteProgress";
 import { useRideSession } from "@/features/ride/useRideSession";
 import { formatDepartureLabel } from "@/features/conditions/rideConditions";
@@ -234,15 +234,10 @@ export default function Home() {
   });
 
   // 走行モードの間、現在地を選んだ候補の上の距離へ当てる。プロファイルの印と、地図とプロファイルの薄めに使う。
-  const ridingSegments = navigating ? (results.selectedCandidate?.segments ?? null) : null;
-  const progressKm = useRouteProgress(ridingSegments, riding.map?.position ?? null);
-  // 到着予想は、走り始めの実績が少ない間は選んだ候補を作ったときの想定速度で出す。
-  const remaining = rideRemaining(
-    ridingSegments,
-    progressKm,
-    riding.pace,
-    generation.generatedInput?.assumedSpeedKmh ?? null,
-  );
+  const ridingRoute = navigating ? results.selectedCandidate : null;
+  const progressKm = useRouteProgress(ridingRoute?.segments ?? null, riding.map?.position ?? null);
+  // 残りと到着予想。到着予想は、最後に位置を受けた時刻へ選んだ候補の計画の残り時間を足す。
+  const remaining = rideRemaining(ridingRoute, progressKm, riding.fixedAtMs);
 
   const isMobile = useIsMobile();
 

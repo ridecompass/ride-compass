@@ -18,7 +18,7 @@
  *   ルートを収めるときに避けるシートの高さ・高さの保存と保存値の検査）、区分の開閉の保存、
  *   ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、メニューから入る使い方の説明とデバッグログ、
  *   走行モードの間の配置と、届いた現在地がプロファイルの印と地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、
- *   到着予想が候補を作ったときの想定速度で出ること
+ *   到着予想が位置を受けた時刻と選んだ候補の計画から出ること
  *
  * ここで見ないもの: 子の部品は本物を描き、子が値をどう描くか（一覧の書式・印の色・天候の値）は各部品のテストが見る。
  * 地図の見え方の中身（どのレイヤーをどの色・重なりで描くか・レンズの選択肢・凡例）は地図の側（`features/map/scene/`）の
@@ -40,7 +40,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clampSheetHeightVh, DEFAULT_SHEET_HEIGHT_VH } from "@/components/BottomSheet/BottomSheet";
 import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
 import { setDebugEnabled } from "@/lib/debugLog";
-import { HOUR_MS } from "@/lib/duration";
+import { MINUTE_MS } from "@/lib/duration";
 import { formatJstHourMinute } from "@/lib/time";
 import { heldReplies, onBackend, onSameOrigin, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";
@@ -52,7 +52,6 @@ import { makeGenerationConditions, makeRouteCandidate, makeRouteSegment } from "
 import type { Coordinates, RouteCandidate } from "@/types/route";
 import type { AxisInspectorResult } from "@/features/map/regionApi";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
-import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { AmedasObservation, WeatherConditions } from "@/types/weather";
 
 import Home from "./page";
@@ -170,7 +169,7 @@ const SECOND = route("second", {
 });
 
 /** 道の評価の応答（ここでは中身を見ない）。 */
-// 東へ1km進む区間1つのルート。走行モードのテストで、現在地をその真ん中（東経139.705度）に置く。
+// 東へ1km進む区間1つで、計画では4分かかるルート。走行モードのテストで、現在地をその真ん中（東経139.705度）に置く。
 const RIDDEN = route("ridden", {
   segments: [
     makeRouteSegment({
@@ -179,9 +178,11 @@ const RIDDEN = route("ridden", {
       end_latitude: 35.7,
       end_longitude: 139.71,
       distance_km: 1,
+      estimated_arrival_time: "2026-10-13T09:00:00+09:00",
     }),
   ],
   distance_km: 1,
+  estimated_duration_seconds: 4 * 60,
 });
 const RIDDEN_MIDDLE: Coordinates = { latitude: 35.7, longitude: 139.705 };
 
@@ -747,18 +748,12 @@ describe("画面の枠", () => {
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
 
-    // 作ったあとに想定速度を変えても、到着予想は作ったときの速さで出す。
-    await user.click(screen.getByRole("button", { name: /^想定速度: / }));
-    const speed = await screen.findByRole("spinbutton", { name: "想定速度（km/h）" });
-    await user.clear(speed);
-    await user.type(speed, String(routeGenerateConfig.default_assumed_speed_kmh * 2));
-    await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "走行モード" }));
-    const fixedAt = Date.parse("2026-10-13T03:00:00Z");
+    const fixedAt = Date.parse("2026-10-13T05:00:00Z");
     geolocation.move(RIDDEN_MIDDLE, fixedAt);
 
-    // 走り始めは実績が無いので、候補を作ったときの想定速度で残りの0.5kmを走る。
-    const arrival = new Date(fixedAt + (0.5 / routeGenerateConfig.default_assumed_speed_kmh) * HOUR_MS);
+    // 残りの0.5kmは、計画では2分。計画の時刻（出発）ではなく、位置を受けた時刻から数える。
+    const arrival = new Date(fixedAt + 2 * MINUTE_MS);
     const rideBar = screen.getByRole("group", { name: "走りの数字" });
     expect(rideBar).toHaveTextContent("残り: 0.5km");
     expect(rideBar).toHaveTextContent(`到着予想: ${formatJstHourMinute(arrival)}`);
@@ -768,7 +763,7 @@ describe("画面の枠", () => {
     expect(drawn.map((feature) => feature.properties?.travelled ?? false)).toEqual([true, false]);
   });
 
-  it("走行中に画面を読み込み直しても、同じ候補を出して走行モードを続け、到着予想は候補を作ったときの想定速度で出す", async () => {
+  it("走行中に画面を読み込み直しても、同じ候補を出して走行モードを続け、到着予想はその候補の計画から出す", async () => {
     const geolocation = installGeolocation(HERE);
     const first = renderHome();
     jobs.respond([RIDDEN], LOOP_CONDITIONS);
@@ -780,10 +775,9 @@ describe("画面の枠", () => {
     renderHome();
     const rideBar = await screen.findByRole("group", { name: "走りの数字" });
     expect(screen.getByRole("region", { name: "予定ルートのプロファイル" })).toBeInTheDocument();
-    // 読み込み直すと走った実績は無いので、保存した想定速度で残りの0.5kmを走る。
-    const fixedAt = Date.parse("2026-10-13T03:00:00Z");
+    const fixedAt = Date.parse("2026-10-13T05:00:00Z");
     geolocation.move(RIDDEN_MIDDLE, fixedAt);
-    const arrival = new Date(fixedAt + (0.5 / routeGenerateConfig.default_assumed_speed_kmh) * HOUR_MS);
+    const arrival = new Date(fixedAt + 2 * MINUTE_MS);
     expect(rideBar).toHaveTextContent(`到着予想: ${formatJstHourMinute(arrival)}`);
   });
 
