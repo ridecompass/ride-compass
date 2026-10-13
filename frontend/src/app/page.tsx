@@ -52,6 +52,7 @@ import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProf
 import { useRideMode } from "@/features/ride/useRideMode";
 import { rideRemaining } from "@/features/ride/ridePace";
 import { useRouteProgress } from "@/features/ride/useRouteProgress";
+import { useRideSession } from "@/features/ride/useRideSession";
 import { formatDepartureLabel } from "@/features/conditions/rideConditions";
 import { useMapView } from "@/features/map/view/useMapView";
 import { textVariants } from "@/components/ui/Text/Text";
@@ -209,6 +210,16 @@ export default function Home() {
     onOutcome: notifyRouteOutcome,
   });
   const { results, generation, splice } = route;
+
+  // 走行中のルートを端末に一時保存し、読み込み直されたら同じ候補を出して、走っていたなら走行モードを始め直す。
+  useRideSession({
+    route: results.selectedCandidate,
+    riding: navigating,
+    onRestore: (session) => {
+      results.replaceWithGenerated([session.route], null);
+      if (session.riding) riding.press();
+    },
+  });
   const editingRoute = splice.editingRoute;
   // 「候補を全消去」を押したか。確認の窓で「消す」を押すまで消さない。
   const [confirmingClear, setConfirmingClear] = useState(false);

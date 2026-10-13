@@ -170,6 +170,21 @@ const SECOND = route("second", {
 });
 
 /** 道の評価の応答（ここでは中身を見ない）。 */
+// 東へ1km進む区間1つのルート。走行モードのテストで、現在地をその真ん中（東経139.705度）に置く。
+const RIDDEN = route("ridden", {
+  segments: [
+    makeRouteSegment({
+      start_latitude: 35.7,
+      start_longitude: 139.7,
+      end_latitude: 35.7,
+      end_longitude: 139.71,
+      distance_km: 1,
+    }),
+  ],
+  distance_km: 1,
+});
+const RIDDEN_MIDDLE: Coordinates = { latitude: 35.7, longitude: 139.705 };
+
 const INSPECTED_ROAD: AxisInspectorResult = {
   highway: "residential",
   tags: {},
@@ -728,20 +743,7 @@ describe("画面の枠", () => {
   it("走行モードで届いた現在地を選んだ候補の上の距離へ当て、プロファイルに印を出し、地図のルート線のそこまでを薄め、走りの帯に残りと到着予想を出す", async () => {
     const geolocation = installGeolocation(HERE);
     const { user } = renderHome();
-    // 東へ1km進む区間1つのルート。現在地はその真ん中。
-    const ridden = route("ridden", {
-      segments: [
-        makeRouteSegment({
-          start_latitude: 35.7,
-          start_longitude: 139.7,
-          end_latitude: 35.7,
-          end_longitude: 139.71,
-          distance_km: 1,
-        }),
-      ],
-      distance_km: 1,
-    });
-    jobs.respond([ridden], LOOP_CONDITIONS);
+    jobs.respond([RIDDEN], LOOP_CONDITIONS);
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
 
@@ -753,7 +755,7 @@ describe("画面の枠", () => {
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "走行モード" }));
     const fixedAt = Date.parse("2026-10-13T03:00:00Z");
-    geolocation.move({ latitude: 35.7, longitude: 139.705 }, fixedAt);
+    geolocation.move(RIDDEN_MIDDLE, fixedAt);
 
     // 走り始めは実績が無いので、候補を作ったときの想定速度で残りの0.5kmを走る。
     const arrival = new Date(fixedAt + (0.5 / routeGenerateConfig.default_assumed_speed_kmh) * HOUR_MS);
@@ -764,6 +766,25 @@ describe("画面の枠", () => {
     expect(profile.querySelector('[data-progress="position"]')).not.toBeNull();
     const drawn = mapOnScreen().sourceFeatures("route-segments");
     expect(drawn.map((feature) => feature.properties?.travelled ?? false)).toEqual([true, false]);
+  });
+
+  it("走行中に画面を読み込み直しても、同じ候補を出して走行モードを続け、到着予想は候補を作ったときの想定速度で出す", async () => {
+    const geolocation = installGeolocation(HERE);
+    const first = renderHome();
+    jobs.respond([RIDDEN], LOOP_CONDITIONS);
+    await generate(first.user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    await first.user.click(screen.getByRole("button", { name: "走行モード" }));
+    first.unmount();
+
+    renderHome();
+    const rideBar = await screen.findByRole("group", { name: "走りの数字" });
+    expect(screen.getByRole("region", { name: "予定ルートのプロファイル" })).toBeInTheDocument();
+    // 読み込み直すと走った実績は無いので、保存した想定速度で残りの0.5kmを走る。
+    const fixedAt = Date.parse("2026-10-13T03:00:00Z");
+    geolocation.move(RIDDEN_MIDDLE, fixedAt);
+    const arrival = new Date(fixedAt + (0.5 / routeGenerateConfig.default_assumed_speed_kmh) * HOUR_MS);
+    expect(rideBar).toHaveTextContent(`到着予想: ${formatJstHourMinute(arrival)}`);
   });
 
   it("スマホでは、走行モードの間は下部タブも隠す", async () => {

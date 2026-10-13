@@ -27,8 +27,8 @@
 | components（特定モジュールの責務ではない共通部品） | `BottomSheet/BottomSheet.tsx`（モバイル下部シート、下記「モバイル/デスクトップのレイアウト分岐」節参照）・`Disclosure/Disclosure.tsx`（折りたたみ表示、[ルート設定・結果パネル](route-settings-and-results.md)等が使う）・`UsageGuide/UsageGuide.tsx`（説明を見る状態。下記「使い方の説明」）・`UsageGuide/usageTarget.ts`（押された要素から説明する部品・名前・使い方の文を引く）・`FirstVisitIntro/FirstVisitIntro.tsx`（初めて開いたときだけ出す案内。下記「初回の案内」） |
 | features/conditions/RideConditionBar | `RideConditionBar.tsx`（地図右上、走行方位アイコン直下の走行条件アイコン列本体。出発時刻・想定速度ともTravelBearingControlと同じ列の幅のアイコンボタンで、アイコンの下へ現在値（出発時刻は当日なら「12:40」、別の日は「9/24」「12:40」の2行。想定速度は「20km/h」）を出す。表示・`aria-label`・`title`は同じ文字列から作る。タップしたポップオーバー内はドラッグ式タイムライン（「今」の目盛りを選ぶと追従へ戻す）＋`input[type=datetime-local]`の直接指定[出発時刻、日本時間で読み書きする。説明の文は、出発時刻で値の変わる評価の名前を軸カタログから差し込み、無ければ評価に触れない]、スライダー＋数値入力[想定速度。平地・無風の巡航速度であることを添え、(i)の奥に、速度を変える条件の名前を走行モデルの宣言（生成物の`segment_speed_conditions`）から、走行モデルの体格・機材の標準値を軸カタログの較正値から書く——引けない間は標準値の文を出さない]）・`departureTimeline.ts`（出発時刻ポップオーバーのドラッグタイムライン用の目盛り生成。気象レイヤーの実フレームには依存しない自己完結した合成タイムライン） |
 | features/conditions/TravelBearingControl | `TravelBearingControl.tsx`（地図右上の走行方位のアイコンボタン。押すと`WindBearingSlider`のダイヤルをPopoverで開く。説明の文は、向きで値の変わる評価の名前を軸カタログ（`dynamic_way_value_conditions`）から差し込み、無ければ評価に触れない。詳しくは[ルート設定・結果パネル](route-settings-and-results.md)） |
-| features/ride | `useRideMode.ts`（走行モードの状態と、地図へ渡す値。下記「走行モード」）・`travelBearing.ts`（受け取った位置から進む向きを決める）・`routeProgress.ts`（現在地をルートの上のどこと見るか）・`useRouteProgress.ts`（走行モードの間、届いた位置を選んだ候補の上の距離へ当て続ける）・`ridePace.ts`（走った実績のペースと、ルートの残りと到着予想）・`useScreenWakeLock.ts`（走行モードの間、画面が自動で消えないよう端末に頼む）・`useDeviceHeading.ts`（走行モードの間、スマホが向いている方角を端末のコンパスから読む）・`RideModeButton/RideModeButton.tsx`（地図の右の列の末尾の走行モードのボタン）・`RideBar/RideBar.tsx`（走行モードの間、画面の上の1行に出す走りの数字） |
-| features/map/MapView（走行モード） | `useRideFollow.ts`（走行モードの値を受けて、現在地の点・追うカメラ・指で動かしたら休む知らせ・方位のボタンの切り替えを地図へ当てる） |
+| features/ride | `useRideMode.ts`（走行モードの状態と、地図へ渡す値。下記「走行モード」）・`travelBearing.ts`（受け取った位置から進む向きを決める）・`routeProgress.ts`（現在地をルートの上のどこと見るか）・`useRouteProgress.ts`（走行モードの間、届いた位置を選んだ候補の上の距離へ当て続ける）・`ridePace.ts`（走った実績のペースと、ルートの残りと到着予想）・`useScreenWakeLock.ts`（走行モードの間、画面が自動で消えないよう端末に頼む）・`useDeviceHeading.ts`（走行モードの間、スマホが向いている方角を端末のコンパスから読む）・`RideModeButton/RideModeButton.tsx`（地図の右の列の末尾の走行モードのボタン）・`RideBar/RideBar.tsx`（走行モードの間、画面の上の1行に出す走りの数字）・`rideSession.ts`（走行中のルートの一時保存の書き方・読み方・期限）・`useRideSession.ts`（一時保存を書き、開いたときに復元を知らせる） |
+| features/map/MapView（走行モード） | `useRideFollow.ts`（走行モードの値を受けて、現在地の点・追うカメラ・指で動かしたら休む知らせ・方位のボタンの切り替えを地図へ当てる）・`rideZoom.ts`（走る速さから、追っている間の倍率をどれだけ引くかを決める） |
 | features/conditions/DynamicLayerTimeSlider | `DynamicLayerTimeSlider.tsx`（ドラッグ/横スクロールで時刻を選ぶ汎用タイムラインUI。`RideConditionBar`が出発時刻ピッカーとして使う唯一の呼び出し元） |
 
 `apiBaseUrl.ts`/`backendInternalUrl.ts`はブラウザからのfetch先（`NEXT_PUBLIC_API_URL`）と
@@ -272,6 +272,7 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 |---|---|---|
 | `localStorage` | 利用者が自分で決めた設定で、次に開いたときも同じであってほしいもの | 評価の設定（`routePreference`・`hardFilters`）、生成条件の入力（全長の目標を決めるか・距離・候補数）、走行条件のうち想定速度、レイヤー表示（`layerVisibility`・`lens`）、パネル開閉、下部シートの高さ |
 | なし | そのセッション限りの結果・場所の指定・行くたびに変わる走行条件・地図の見え方 | 生成結果（`routes`・`selectedRouteId`）、目的地・経由地のピン、出発時刻・走行方位、地図ビューポート、データ取得状態 |
+| 期限つきの`localStorage` | 走っている途中で読み込み直されても続けたいもの | 選んだ候補と走行モードの入切（下記「走行モード」の一時保存） |
 
 地図のタップで地点を置けるのは、「ルート設定」の「条件」タブで役割を選んでいる間だけ
 （`pinPlacementArmedRole`）。地図で地点・区間を扱えるのは、そのパネルを見ている間だけで、デスクトップでは
@@ -363,6 +364,9 @@ MapLibreの`GeolocateControl`を使わないのは、地図を進む向きへ回
 - **画面を点けたままにする**: 画面が消えるとブラウザは位置を届けなくなるので、走行モードの間はScreen Wake Lockを頼む。画面が隠れると
   端末が頼みを外すので、見えたときに頼み直す。口が無いか断られた端末では、その旨をボタンの横に出す。走っている間ずっと地図を
   覆わないよう文は閉じられ、閉じたあとはボタンの角の印と読み上げの説明に残す（上の「失敗・空・待ちの伝え方」の3）。
+- **追っている間の倍率**: 追い始めの倍率（引きすぎていれば寄せたもの）を基準にし、走る速さに応じて引く（`rideZoom.ts: rideZoomOut`）。
+  速さは位置が持つ値で、持たなければ続けて受けた2つの位置の距離と時刻の差から出す（走りの帯の今の速さも同じ値）。位置ごとの揺れで
+  倍率がちらつかないよう、なめらかにしてから使う。追っている間に利用者が拡大・縮小したら、その倍率を基準にし直す。
 - **走行中の配置**: 走行モードの間は、地図と予定ルートのプロファイルに集中する配置にする。画面の上の1行は天気の帯の代わりに
   走りの帯（ルートの残り・到着予想・今の速さ・風）になり、左のパネル（スマホは下部タブとシート）・地図の上の操作（「表示」・地図の色分け・走行方位・
   走行条件・「現在地に移動」）を出さない。残すのは拡大・縮小・方位のボタンと走行モードのボタン。選んだ候補があれば、地図の下に
@@ -381,7 +385,10 @@ MapLibreの`GeolocateControl`を使わないのは、地図を進む向きへ回
   `ridePace.ts: MIN_RECORD_MOVING_MS`に届くまでは、選んだ候補を作ったときの想定速度で出す。止まっているとみなす速さは、
   自転車を押して歩く速さより下に置き、登りを遅く漕ぐ間を止まっていると数えない値として置いた（未計測。実走で合わなければこの
   定数だけを直す）。実績は走行モードを止めると捨てる。
-- 走行モードの状態は保存しない（開き直すと止まっている）。
+- **一時保存**: 選んだ候補と走行モードの入切を、変わるたびにこの端末へ書く（`useRideSession.ts`）。スマホのブラウザは裏に回したタブを
+  捨てて読み込み直すことがあり、走行中にそれが起きても同じ候補で走行モードを続けるため。開いたときに期限の内の保存があれば
+  （期限は`rideSession.ts: RIDE_SESSION_TTL_MS`）、その候補だけを一覧に戻して選び、走っていたなら走行モードを始め直す。期限を過ぎた保存・形の
+  合わない保存は使わない。生成の結果のほかの候補・生成に使われた重みは戻さない。
 
 ## 状態の永続化（`hooks/useStoredState.ts`）
 

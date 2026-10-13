@@ -198,6 +198,19 @@ describe("useRideMode", () => {
     expect(result.current.pace).toBeNull();
   });
 
+  it("位置が速さを持たなければ、続けて受けた2つの位置の距離と時刻の差から出す", () => {
+    const { result } = renderHook(() => useRideMode());
+    act(() => result.current.press());
+    deliver(35.68, 139.76, null, null, 0);
+    expect(result.current.speedKmh).toBeNull();
+    // 緯度0.001度（約111m）を20秒で動いた: 約20km/h。
+    deliver(35.681, 139.76, null, null, 20_000);
+    expect(result.current.speedKmh).toBeCloseTo(20, 0);
+    // 時刻が進まない位置からは出さない（同じ位置を2度受けた等）。
+    deliver(35.682, 139.76, null, null, 20_000);
+    expect(result.current.speedKmh).toBeNull();
+  });
+
   it("画面を離れたら受け取りをやめる", () => {
     const { result, unmount } = renderHook(() => useRideMode());
     act(() => result.current.press());
