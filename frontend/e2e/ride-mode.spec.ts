@@ -175,6 +175,8 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   const east = moved(START, 0, 200);
   await context.setGeolocation(east);
   await expectDrawnAt(page, east, anchor);
+  // 200m を数秒で動いた（とても速い）ので、追い始めの倍率（15）からいちばん引いた所（2段）まで引く。
+  await expect.poll(() => page.evaluate(() => window.__liveMap().getZoom()), { timeout: 10_000 }).toBeCloseTo(13, 1);
 
   // 進む向きを上にすると、地図は動いた向き（東）を上に回す。北を上に戻すと向きも戻る。
   await page.getByRole("button", { name: /^進む向きを上にする/ }).click();
@@ -193,7 +195,8 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   // 面の色は移り変わり（transition）を持つので、落ち着くまで待って比べる。
   await expect.poll(async () => (await buttonLook(rideButton)).background).toBe(offLook.background);
   expect((await buttonLook(rideButton)).ring).not.toBe(offLook.ring);
-  const pausedAt = moved(east, 200, 0);
+  // 引いた倍率でも画面の上で見分けられるだけ動かす。
+  const pausedAt = moved(east, 1500, 0);
   await deliverPosition(page, context, pausedAt);
   await expect.poll(() => dotOffsetFrom(page, pausedAt), { timeout: 10_000 }).toBeLessThan(2);
   const whilePaused = (await screenPointOf(page, pausedAt))!;

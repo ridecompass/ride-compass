@@ -40,10 +40,16 @@ function installGeolocation() {
 }
 
 /** 受け取り中の全員へ位置を届ける。 */
-function deliver(latitude: number, longitude: number, heading: number | null = null, speed: number | null = null) {
+function deliver(
+  latitude: number,
+  longitude: number,
+  heading: number | null = null,
+  speed: number | null = null,
+  timestamp = 0,
+) {
   act(() => {
     for (const watch of watches.values()) {
-      watch.onSuccess({ coords: { latitude, longitude, heading, speed } } as GeolocationPosition);
+      watch.onSuccess({ coords: { latitude, longitude, heading, speed }, timestamp } as GeolocationPosition);
     }
   });
 }
@@ -175,6 +181,19 @@ describe("useRideMode", () => {
     expect(result.current.speedKmh).toBeNull();
     deliver(35.7, 139.76, null, 5);
     act(() => result.current.press());
+    expect(result.current.speedKmh).toBeNull();
+  });
+
+  it("位置が速さを持たなければ、続けて受けた2つの位置の距離と時刻の差から出す", () => {
+    const { result } = renderHook(() => useRideMode());
+    act(() => result.current.press());
+    deliver(35.68, 139.76, null, null, 0);
+    expect(result.current.speedKmh).toBeNull();
+    // 緯度0.001度（約111m）を20秒で動いた: 約20km/h。
+    deliver(35.681, 139.76, null, null, 20_000);
+    expect(result.current.speedKmh).toBeCloseTo(20, 0);
+    // 時刻が進まない位置からは出さない（同じ位置を2度受けた等）。
+    deliver(35.682, 139.76, null, null, 20_000);
     expect(result.current.speedKmh).toBeNull();
   });
 

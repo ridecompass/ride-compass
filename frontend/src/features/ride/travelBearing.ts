@@ -19,6 +19,17 @@ export interface TravelBearing {
   bearing: number | null;
 }
 
+/** 狭い範囲の2点の間の、平面に落とした差（緯度の度の単位。xは経度方向をcos(緯度)で縮めたもの）。 */
+function planeOffset(from: Coordinates, to: Coordinates): { x: number; y: number } {
+  return { x: (to.longitude - from.longitude) * longitudeScale(from.latitude), y: to.latitude - from.latitude };
+}
+
+/** 狭い範囲の2点の間の距離（m）。続けて受けた位置の間のように、数百mまでの差に使う。 */
+export function planeDistanceM(from: Coordinates, to: Coordinates): number {
+  const { x, y } = planeOffset(from, to);
+  return Math.hypot(x, y) * METERS_PER_DEGREE;
+}
+
 /** 新しい位置を受けたあとの進む向き。位置が向きを持てばそれを使い、無ければ測り始めの点から十分に動いたときだけ
  * 動いた向きを出す（足りなければ前の向きのまま）。 */
 export function nextTravelBearing(previous: TravelBearing | null, fix: TravelFix): TravelBearing {
@@ -27,9 +38,8 @@ export function nextTravelBearing(previous: TravelBearing | null, fix: TravelFix
   if (fix.heading !== null && Number.isFinite(fix.heading)) return { anchor: here, bearing: fix.heading };
   if (previous === null) return { anchor: here, bearing: null };
 
-  const x = (fix.longitude - previous.anchor.longitude) * longitudeScale(previous.anchor.latitude);
-  const y = fix.latitude - previous.anchor.latitude;
-  if (Math.hypot(x, y) * METERS_PER_DEGREE < MIN_TRAVEL_FOR_BEARING_M) return previous;
+  if (planeDistanceM(previous.anchor, here) < MIN_TRAVEL_FOR_BEARING_M) return previous;
+  const { x, y } = planeOffset(previous.anchor, here);
   const degrees = (Math.atan2(x, y) * 180) / Math.PI;
   return { anchor: here, bearing: (degrees + 360) % 360 };
 }
