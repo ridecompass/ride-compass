@@ -1589,6 +1589,8 @@ export interface components {
             edge_point_offsets: number[];
             /** Node Ids */
             node_ids: string[];
+            /** Turns */
+            turns: components["schemas"]["RouteTurn"][];
             /** Id */
             id: string;
             /**
@@ -1713,6 +1715,20 @@ export interface components {
             /** Difficulty */
             difficulty: number | null;
             wind: components["schemas"]["SegmentWind"] | null;
+        };
+        /** RouteTurn */
+        RouteTurn: {
+            /** Distance Km */
+            distance_km: number;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "left" | "right" | "uturn";
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
         };
         /** ScorePoint */
         ScorePoint: {

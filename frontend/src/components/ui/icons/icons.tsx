@@ -11,6 +11,7 @@ import {
   Cloud,
   Copy,
   CornerUpLeft,
+  CornerUpRight,
   Download,
   Droplet,
   EllipsisVertical,
@@ -569,3 +570,17 @@ export const ResetDefaultsIcon = fromLucide(RotateCcw);
 export const RetryIcon = fromLucide(RotateCw);
 /** 編集で作ったルートの元にしたルートを見る。 */
 export const ShowOriginIcon = fromLucide(CornerUpLeft);
+/** 走行中の曲がる所の案内: 左折。 */
+export const TurnLeftIcon = fromLucide(CornerUpLeft);
+/** 走行中の曲がる所の案内: 右折。 */
+export const TurnRightIcon = fromLucide(CornerUpRight);
+
+/** 走行中の曲がる所の案内: Uターン。上へ進んで折り返し、下へ戻る矢印。 */
+export function UTurnIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      <path d="M13.5 17V7.5a3.5 3.5 0 0 0-7 0V13" strokeLinejoin="round" />
+      <path d="M3.5 10.5 6.5 13.5 9.5 10.5" strokeLinejoin="round" />
+    </svg>
+  );
+}

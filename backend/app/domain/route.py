@@ -131,6 +131,19 @@ class RouteSegmentDetail(StrictModel):
 RouteKind = Literal["loop", "destination", "spliced"]
 
 
+class RouteTurn(StrictModel):
+    """経路が分かれ道で曲がる所。画面が走行中の曲がる所の案内に使う。
+
+    `distance_km`は始点からその点までの道のりで、区間の`distance_km`を始点から積んだ値と同じ物差し（画面はルートの上の
+    現在地を区間の距離を積んで数えるので、同じ物差しでないと案内の残りの距離がずれる）。
+    """
+
+    distance_km: float
+    direction: Literal["left", "right", "uturn"]
+    latitude: float
+    longitude: float
+
+
 class RouteDraft(StrictModel):
     """組み立て途中の1本の経路。エンジンが作り、並べ終えたあと`RouteCandidate`になる。
 
@@ -181,6 +194,9 @@ class RouteDraft(StrictModel):
     # 「同じ地点」の判定が結果を左右するため、グラフが持つ同一性をそのまま渡す。
     # `edge_ids`が空の候補では空のまま。
     node_ids: list[str] = Field(default_factory=list)
+    # 経路が分かれ道で曲がる所（左折・右折・Uターン）を経路の順に。分かれ道の無い点の曲がりは入れない
+    # （`domain/routing.py: turns_along`）。`edge_ids`が空の候補では空のまま。
+    turns: list[RouteTurn] = Field(default_factory=list)
 
 
 class RouteCandidate(RouteDraft):

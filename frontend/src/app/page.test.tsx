@@ -765,6 +765,25 @@ describe("画面の枠", () => {
     expect(drawn.map((feature) => feature.properties?.travelled ?? false)).toEqual([true, false]);
   });
 
+  it("走行中は、現在地より先でいちばん近い曲がる所の向きと距離を地図の上のカードに出し、その地点に印を出す", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    const turnPoint = { latitude: 35.7, longitude: 139.708 };
+    jobs.respond([{ ...RIDDEN, turns: [{ distance_km: 0.8, direction: "right", ...turnPoint }] }], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+
+    geolocation.move(RIDDEN_MIDDLE, 0, 20);
+    expect(screen.getByRole("status", { name: "300m先で右折" })).toBeInTheDocument();
+    expect(marksAt(turnPoint).map((mark) => mark.element.getAttribute("aria-label"))).toEqual(["曲がる所"]);
+
+    // 曲がる所を過ぎたら出さない。
+    geolocation.move({ latitude: 35.7, longitude: 139.709 }, 0, 20);
+    expect(screen.queryByRole("status", { name: /先で右折$/ })).toBeNull();
+    expect(marksAt(turnPoint)).toEqual([]);
+  });
+
   it("走行中にルートを外れたら、走りの帯に外れたと出して残りを外れた点のまま止め、ルートへ戻ったら戻った点から続ける", async () => {
     const geolocation = installGeolocation(HERE);
     const { user } = renderHome();

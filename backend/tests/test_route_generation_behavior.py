@@ -14,6 +14,7 @@
 """
 
 import logging
+from collections import Counter
 import math
 import re
 from dataclasses import replace
@@ -520,6 +521,42 @@ async def test_segment_arrival_times_run_from_the_departure_within_the_duration(
     assert arrivals[0] == DEPARTURE
     assert arrivals == sorted(set(arrivals))
     assert arrivals[-1] < DEPARTURE + timedelta(seconds=candidate.estimated_duration_seconds)
+
+
+@pytest.mark.parametrize("via", [[], [SOUTH_EAST]])
+async def test_turns_are_listed_where_the_route_changes_direction_at_a_branch(engine_over, via):
+    """曲がる所は、経路が分かれ道（3本以上の道が集まる点）で向きを変える点にだけ、経路の順に並ぶ。左右は進む向きの
+    変わり方で決まり、距離は始点からの道のり。分かれ道の無い角（格子の四隅）で曲がっても案内しない——案内すると、道なりに
+    進むだけの所で「曲がる」と言ってしまう。南東の角を経由すると、その角で必ず曲がる。"""
+    generator = engine_over(grid_network())
+    degree = Counter(node for ends in WAYS.values() for node in ends)
+
+    candidates = await generator.generate_via_waypoints(
+        at(SOUTH_WEST), [at(node) for node in via], destination=at(NORTH_EAST), max_routes=3, start_time=DEPARTURE)
+
+    assert candidates
+    bent_at_a_corner = False
+    for candidate in candidates:
+        nodes = [int(node_id.split("-")[-1]) for node_id in candidate.node_ids]
+        expected = []
+        for k in range(1, len(nodes) - 1):
+            (a_lat, a_lon), (b_lat, b_lon), (c_lat, c_lon) = (COORDINATES[n] for n in nodes[k - 1:k + 2])
+            cross = (b_lon - a_lon) * (c_lat - b_lat) - (b_lat - a_lat) * (c_lon - b_lon)
+            if cross == 0:
+                continue
+            if degree[nodes[k]] < 3:
+                bent_at_a_corner = True
+                continue
+            along_km = sum(haversine_distance_km(at(a), at(b)) for a, b in zip(nodes[:k], nodes[1:k + 1]))
+            expected.append((COORDINATES[nodes[k]], "left" if cross > 0 else "right", along_km))
+        turns = [((turn.latitude, turn.longitude), turn.direction, turn.distance_km) for turn in candidate.turns]
+        assert [(point, direction) for point, direction, _ in turns] == [
+            (pytest.approx(point), direction) for point, direction, _ in expected
+        ]
+        for (_, _, km), (_, _, along_km) in zip(turns, expected):
+            assert km == pytest.approx(along_km, abs=0.02)
+    if via:
+        assert bent_at_a_corner
 
 
 async def test_a_segment_without_data_does_not_show_the_axis_as_zero(engine_over):

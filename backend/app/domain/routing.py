@@ -20,6 +20,7 @@ import logging
 import math
 from collections.abc import Callable, Container, Mapping, Sequence
 from dataclasses import dataclass, field
+from enum import IntEnum
 from typing import TypeVar
 
 import numpy as np
@@ -712,6 +713,8 @@ class TurnExpandedStructure:
     target_state: np.ndarray
     # 遷移ごとのターンの時間損失（秒）。
     turn_seconds: np.ndarray
+    # 遷移ごとの曲がりの種類（`TurnKind`の値）。時間損失も経路の曲がる所の案内もこの分け方を読む。
+    turn_kind: np.ndarray
     # 状態（有向Edge）の始点・終点Node index。
     edge_from: np.ndarray
     edge_to: np.ndarray
@@ -754,12 +757,27 @@ def edge_bearings(
     return bearings
 
 
-def _turn_seconds_for(
-    delta: np.ndarray, straight: np.ndarray, is_uturn: np.ndarray, spec: TurnCostSpec
-) -> np.ndarray:
-    """遷移ごとのターンの時間損失（秒）。方位差`delta`の符号で左右を分ける（負＝反時計回り＝左折）。"""
-    turning = np.where(delta < 0, spec.left_seconds, spec.right_seconds)
-    return np.where(is_uturn, spec.uturn_seconds, np.where(straight, 0.0, turning))
+class TurnKind(IntEnum):
+    """遷移の曲がりの種類。"""
+
+    STRAIGHT = 0
+    LEFT = 1
+    RIGHT = 2
+    UTURN = 3
+
+
+def _turn_kinds(delta: np.ndarray, is_uturn: np.ndarray, spec: TurnCostSpec) -> np.ndarray:
+    """遷移ごとの曲がりの種類。方位差`delta`が直進とみなす幅の内なら直進、外なら符号で左右を分ける
+    （負＝反時計回り＝左折）。始点へ戻る遷移はUターン。"""
+    turning = np.where(delta < 0, TurnKind.LEFT, TurnKind.RIGHT)
+    kinds = np.where(np.abs(delta) <= spec.straight_max_deg, TurnKind.STRAIGHT, turning)
+    return np.where(is_uturn, TurnKind.UTURN, kinds).astype(np.int8)
+
+
+def _turn_seconds_for(kinds: np.ndarray, spec: TurnCostSpec) -> np.ndarray:
+    """遷移ごとのターンの時間損失（秒）。"""
+    by_kind = np.array([0.0, spec.left_seconds, spec.right_seconds, spec.uturn_seconds])
+    return by_kind[kinds]
 
 
 def build_turn_expanded_structure(
@@ -799,8 +817,9 @@ def build_turn_expanded_structure(
     target_state = csr.entry_edge_index[entry_index].astype(np.int64)
     is_uturn = csr.indices[entry_index].astype(np.int64) == edge_from[source]
     delta = (bearing_deg[target_state] - bearing_deg[source] + 180.0) % 360.0 - 180.0
-    straight = np.abs(delta) <= spec.straight_max_deg
-    turn_seconds = _turn_seconds_for(delta, straight, is_uturn, spec)
+    turn_kind = _turn_kinds(delta, is_uturn, spec)
+    straight = turn_kind == TurnKind.STRAIGHT
+    turn_seconds = _turn_seconds_for(turn_kind, spec)
 
     # ノードの階級は、読み込んだ部分グラフに現れる道から導く。DB側の事前集計値
     # （`node_turns.max_highway_rank`）があれば大きい方を採る——bboxの外へはみ出した
@@ -829,8 +848,37 @@ def build_turn_expanded_structure(
 
     return TurnExpandedStructure(
         state_count=state_count, indptr=new_indptr, target_state=target_state,
-        turn_seconds=turn_seconds, edge_from=edge_from, edge_to=edge_to,
+        turn_seconds=turn_seconds, turn_kind=turn_kind, edge_from=edge_from, edge_to=edge_to,
     )
+
+
+@dataclass(frozen=True)
+class PathTurn:
+    """経路の中の、案内する曲がり。`index`は曲がった先の区間の、経路の中の位置（`path[index]`へ入るところで曲がる）。"""
+
+    index: int
+    kind: TurnKind
+
+
+def turns_along(structure: TurnExpandedStructure, path: Sequence[int]) -> list[PathTurn]:
+    """経路が分かれ道で曲がる所（左折・右折・Uターン）を、経路の順に。
+
+    分かれ道は、来た道へ戻る遷移を除いて2本以上の道へ進める点。分かれ道の無い点の曲がり（道なりのカーブ・
+    データの上で道が途中で切れている点）は、道なりに進むだけなので案内しない。曲がりの種類は時間損失と同じ分け方
+    （`turn_kind`）を読む。
+    """
+    turns: list[PathTurn] = []
+    for index, (previous, following) in enumerate(zip(path, path[1:]), start=1):
+        start, stop = int(structure.indptr[previous]), int(structure.indptr[previous + 1])
+        kinds = structure.turn_kind[start:stop]
+        matches = np.flatnonzero(structure.target_state[start:stop] == following)
+        if len(matches) == 0:
+            continue
+        kind = TurnKind(int(kinds[int(matches[0])]))
+        if kind == TurnKind.STRAIGHT or int(np.count_nonzero(kinds != TurnKind.UTURN)) < 2:
+            continue
+        turns.append(PathTurn(index=index, kind=kind))
+    return turns
 
 
 # 探索の優先度キュー（numpy配列のバイナリヒープ）。順位のキー・状態・積んだ時点のコスト`g`の列と、

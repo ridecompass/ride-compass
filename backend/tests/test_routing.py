@@ -158,6 +158,16 @@ def state_index(lazy):
     return {edge_id: i for i, edge_id in enumerate(lazy.edge_ids)}
 
 
+def transition_kinds(lazy, structure):
+    """`(遷移元edge_id, 遷移先edge_id) -> 曲がりの種類`。"""
+    out = {}
+    for source in range(structure.state_count):
+        for entry in range(int(structure.indptr[source]), int(structure.indptr[source + 1])):
+            target = int(structure.target_state[entry])
+            out[(lazy.edge_ids[source], lazy.edge_ids[target])] = routing.TurnKind(int(structure.turn_kind[entry]))
+    return out
+
+
 def transition_seconds(lazy, structure):
     """`(遷移元edge_id, 遷移先edge_id) -> ターンの秒数`。"""
     out = {}
@@ -628,6 +638,47 @@ def test_turn_transitions_lead_to_every_outgoing_edge_and_classify_the_turn():
         "CS": TURN_SPEC.right_seconds,
         "CW": TURN_SPEC.uturn_seconds,
     })
+    kinds = {target: kind for (source, target), kind in transition_kinds(lazy, structure).items() if source == "WC"}
+    assert kinds == {
+        "CE": routing.TurnKind.STRAIGHT,
+        "CN": routing.TurnKind.LEFT,
+        "CS": routing.TurnKind.RIGHT,
+        "CW": routing.TurnKind.UTURN,
+    }
+
+
+# 角 A-B-C で B が直角に曲がる（B に分かれ道は無い）。
+BEND_NODES = {"A": (35.0, 138.99), "B": (35.0, 139.0), "C": (35.01, 139.0)}
+BEND_EDGES = {
+    "AB": ("A", "B", 100.0, 90.0),
+    "BA": ("B", "A", 100.0, 270.0),
+    "BC": ("B", "C", 100.0, 0.0),
+    "CB": ("C", "B", 100.0, 180.0),
+}
+
+
+@pytest.mark.parametrize(
+    ("nodes", "edges", "route", "expected"),
+    [
+        # 十字路で左折・右折・Uターン・直進。直進は案内しない。
+        (PLUS_NODES, PLUS_EDGES, ["WC", "CN"], [(1, routing.TurnKind.LEFT)]),
+        (PLUS_NODES, PLUS_EDGES, ["WC", "CS"], [(1, routing.TurnKind.RIGHT)]),
+        (PLUS_NODES, PLUS_EDGES, ["WC", "CW"], [(1, routing.TurnKind.UTURN)]),
+        (PLUS_NODES, PLUS_EDGES, ["WC", "CE"], []),
+        # 分かれ道の無い角では、道なりに曲がるだけなので案内しない。
+        (BEND_NODES, BEND_EDGES, ["AB", "BC"], []),
+    ],
+)
+def test_turns_along_a_path_are_the_turns_at_a_branch(nodes, edges, route, expected):
+    """案内する曲がりは、来た道へ戻る遷移を除いて2本以上の道へ進める点（分かれ道）での、直進でない遷移だけ。
+    分かれ道の無い角で案内すると、道なりに進むだけの所で「曲がる」と言ってしまう。"""
+    graph = make_graph(nodes, edges)
+    lazy, _, structure = build_all(graph, spec=TURN_SPEC)
+    index = state_index(lazy)
+
+    turns = routing.turns_along(structure, [index[edge_id] for edge_id in route])
+
+    assert [(turn.index, turn.kind) for turn in turns] == expected
 
 
 # 「そもそも待ちの要る階級か」の境目（`domain/traffic.py`が決める）。
