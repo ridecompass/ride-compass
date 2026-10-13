@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { debugLog } from "@/lib/debugLog";
 import type { Coordinates } from "@/types/route";
 
-import { nextTravelBearing, type TravelBearing } from "./travelBearing";
+import { nextTravelBearing, planeDistanceM, type TravelBearing } from "./travelBearing";
 import { useDeviceHeading } from "./useDeviceHeading";
 import { useScreenWakeLock, type ScreenWakeLockStatus } from "./useScreenWakeLock";
 
@@ -20,6 +20,8 @@ interface RideOnMap {
   /** スマホが向いている方角（磁北0・時計回りの度）。読めなければnull。 */
   facing: number | null;
   following: boolean;
+  /** 今の速さ（時速km）。分からなければnull。 */
+  speedKmh: number | null;
   /** 進む向きを上にするか（偽なら北が上）。 */
   headingUp: boolean;
   /** 利用者が地図を動かした（追うのを休む）。 */
@@ -57,6 +59,8 @@ export function useRideMode(): UseRideModeResult {
   const [travel, setTravel] = useState<TravelBearing | null>(null);
   const [headingUp, setHeadingUp] = useState(false);
   const watchId = useRef<number | null>(null);
+  // 位置が速さを持たないときに、次の位置との距離と時刻の差から速さを出すための、前に受けた位置と時刻。
+  const lastFix = useRef<{ at: Coordinates; timestamp: number } | null>(null);
   const device = useDeviceHeading(status !== "off");
   const requestHeading = device.request;
 
@@ -71,6 +75,7 @@ export function useRideMode(): UseRideModeResult {
     setStatus("off");
     setPosition(null);
     setSpeedMs(null);
+    lastFix.current = null;
     setTravel(null);
     debugLog("ride:mode", "止めた");
   }, [stopWatching]);
@@ -89,7 +94,13 @@ export function useRideMode(): UseRideModeResult {
       (fix) => {
         const { latitude, longitude, heading, speed } = fix.coords;
         setPosition({ latitude, longitude });
-        setSpeedMs(speed !== null && Number.isFinite(speed) ? speed : null);
+        const here = { latitude, longitude };
+        const previous = lastFix.current;
+        lastFix.current = { at: here, timestamp: fix.timestamp };
+        if (speed !== null && Number.isFinite(speed)) setSpeedMs(speed);
+        else if (previous !== null && fix.timestamp > previous.timestamp)
+          setSpeedMs(planeDistanceM(previous.at, here) / ((fix.timestamp - previous.timestamp) / 1000));
+        else setSpeedMs(null);
         setTravel((previous) => nextTravelBearing(previous, { latitude, longitude, heading }));
         setStatus((current) => (current === "waiting" ? "following" : current));
       },
@@ -101,6 +112,7 @@ export function useRideMode(): UseRideModeResult {
         setStatus("off");
         setPosition(null);
         setSpeedMs(null);
+        lastFix.current = null;
         setTravel(null);
         setError("位置情報の利用が許可されていないため、走行モードを止めました。");
       },
@@ -129,11 +141,12 @@ export function useRideMode(): UseRideModeResult {
             bearing: travel?.bearing ?? null,
             facing: device.heading,
             following: status === "following",
+            speedKmh: speedMs !== null ? speedMs * 3.6 : null,
             headingUp,
             onPause: pause,
             onToggleHeadingUp: toggleHeadingUp,
           },
-    [status, position, travel, device.heading, headingUp, pause, toggleHeadingUp],
+    [status, position, travel, device.heading, speedMs, headingUp, pause, toggleHeadingUp],
   );
 
   const screenWakeLock = useScreenWakeLock(status !== "off");
