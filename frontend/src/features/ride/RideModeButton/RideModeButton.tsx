@@ -51,11 +51,12 @@ export default function RideModeButton({ status, error, screenWakeLock, onPress 
         aria-description={wakeLockUnavailable ? WAKE_LOCK_UNAVAILABLE : undefined}
         title={NEXT_ACTION[status]}
         usage="押すと走行モードを始め、現在地を追って地図を動かし続けます（画面も点けたままにします）。地図を指で動かすと追うのを休み、もう一度押すと現在地へ戻ります。追っている間に押すと止めます。走行モードの間は、方位のボタンで北が上と進む向きが上を切り替えます。"
+        data-ride={status}
         className={cn(
           "relative",
-          status === "following" && "text-[var(--color-accent)]",
-          status === "waiting" && "animate-pulse text-[var(--color-accent)] motion-reduce:animate-none",
-          status === "paused" && "text-[var(--color-muted-strong)]",
+          "data-[ride=following]:bg-[var(--color-accent)] data-[ride=following]:text-white",
+          "data-[ride=waiting]:animate-pulse data-[ride=waiting]:bg-[var(--color-accent)] data-[ride=waiting]:text-white motion-reduce:animate-none",
+          "data-[ride=paused]:text-[var(--color-accent)] data-[ride=paused]:shadow-[0_0_0_2px_var(--color-accent)]",
         )}
       >
         <RideModeIcon />

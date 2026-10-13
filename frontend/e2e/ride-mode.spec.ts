@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { INTRO_CLOSED, installApiMocks, installMapFinder, seedStoredState } from "./fixtures";
 
 // 走行モードで、ブラウザが届ける位置の変化が実際の地図の動き（中心・向き）まで届くこと（パターン4 観点2）。単体テストの地図は
@@ -101,6 +101,26 @@ async function dotOffsetFrom(page: Page, at: { latitude: number; longitude: numb
   return Math.hypot(box.x + box.width / 2 - point.x, box.y + box.height / 2 - point.y);
 }
 
+/** ボタンの計算後の面の色と縁の影。 */
+const buttonLook = (button: Locator) =>
+  button.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { background: style.backgroundColor, ring: style.boxShadow };
+  });
+
+/** 現在地の印の扇形の中心が、点の中心からどちらにあるか（画面の上が0・時計回りの度）。扇形が出ていなければnull。 */
+const coneDirection = (page: Page) =>
+  page.evaluate(() => {
+    const cone = document.querySelector("[data-facing-cone]");
+    const dot = cone?.parentElement?.querySelector("circle");
+    if (!cone || !dot || cone.getAttribute("visibility") === "hidden") return null;
+    const a = cone.getBoundingClientRect();
+    const b = dot.getBoundingClientRect();
+    const dx = a.x + a.width / 2 - (b.x + b.width / 2);
+    const dy = a.y + a.height / 2 - (b.y + b.height / 2);
+    return ((Math.atan2(dx, -dy) * 180) / Math.PI + 360) % 360;
+  });
+
 const mapBearing = (page: Page) =>
   page.evaluate(() => {
     const map = window.__liveMap();
@@ -119,11 +139,36 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   await page.goto("/");
   await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
 
+  // 走行モードの入切と休んでいる間は、ボタンの面の色と縁で見分けられる（パターン4 観点3: 地図の操作のボタンの既定の面に負けない）。
   const rideButton = page.getByRole("button", { name: "走行モード" });
+  const offLook = await buttonLook(rideButton);
   await rideButton.click();
   await expect(rideButton).toHaveAttribute("aria-pressed", "true");
   const dot = page.getByRole("img", { name: "現在地" });
   await expect(dot).toBeVisible();
+  await expect.poll(async () => (await buttonLook(rideButton)).background).not.toBe(offLook.background);
+
+  // 走り出す位置は出発地と同じ（共通の段取りの位置を置き直してから開いた）。現在地の印は、出発地の印がいつ作り直されても上に
+  // 描かれるよう、ほかの印より大きい重なり順を持つ（パターン4 観点3: 計算後の値）。
+  const zOrder = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>(".maplibregl-marker")].map((marker) => ({
+      ride: marker.querySelector("[data-facing-cone]") !== null,
+      z: Number(getComputedStyle(marker).zIndex) || 0,
+    })),
+  );
+  const rideZ = zOrder.filter(({ ride }) => ride).map(({ z }) => z);
+  expect(rideZ).toHaveLength(1);
+  expect(zOrder.filter(({ ride }) => !ride).length).toBeGreaterThan(0);
+  expect(zOrder.filter(({ ride, z }) => !ride && z >= rideZ[0])).toEqual([]);
+
+  // スマホが東を向くと、現在地の印の扇形が東を指す（地図が北を上にしている間）。出来事はブラウザの違いによらず読める形で届ける。
+  expect(await coneDirection(page)).toBeNull();
+  await page.evaluate(() => {
+    const event = new Event("deviceorientation");
+    Object.assign(event, { alpha: 0, webkitCompassHeading: 90 });
+    window.dispatchEvent(event);
+  });
+  await expect.poll(() => coneDirection(page)).toBeCloseTo(90, -1);
 
   // 最初の位置へ寄せ終わったら、そこに描かれた所を基準にし、東へ動いても同じ所に描かれる（地図が追った）。
   const anchor = await settledScreenPoint(page, START);
@@ -145,6 +190,9 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   await page.mouse.move(from.x - 120, from.y + 60, { steps: 10 });
   await page.mouse.up();
   await expect(rideButton).toHaveAttribute("title", "地図を現在地へ戻す");
+  // 面の色は移り変わり（transition）を持つので、落ち着くまで待って比べる。
+  await expect.poll(async () => (await buttonLook(rideButton)).background).toBe(offLook.background);
+  expect((await buttonLook(rideButton)).ring).not.toBe(offLook.ring);
   const pausedAt = moved(east, 200, 0);
   await deliverPosition(page, context, pausedAt);
   await expect.poll(() => dotOffsetFrom(page, pausedAt), { timeout: 10_000 }).toBeLessThan(2);

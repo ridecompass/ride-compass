@@ -6,6 +6,7 @@ import { debugLog } from "@/lib/debugLog";
 import type { Coordinates } from "@/types/route";
 
 import { nextTravelBearing, type TravelBearing } from "./travelBearing";
+import { useDeviceHeading } from "./useDeviceHeading";
 import { useScreenWakeLock, type ScreenWakeLockStatus } from "./useScreenWakeLock";
 
 /** 走行モードの様子。`waiting`は始めて最初の位置を待つ間、`paused`は地図を指で動かして追うのを休んでいる間。 */
@@ -16,6 +17,8 @@ interface RideOnMap {
   position: Coordinates | null;
   /** 進む向き（真北0・時計回りの度）。まだ分からなければnull。 */
   bearing: number | null;
+  /** スマホが向いている方角（磁北0・時計回りの度）。読めなければnull。 */
+  facing: number | null;
   following: boolean;
   /** 進む向きを上にするか（偽なら北が上）。 */
   headingUp: boolean;
@@ -50,6 +53,8 @@ export function useRideMode(): UseRideModeResult {
   const [travel, setTravel] = useState<TravelBearing | null>(null);
   const [headingUp, setHeadingUp] = useState(false);
   const watchId = useRef<number | null>(null);
+  const device = useDeviceHeading(status !== "off");
+  const requestHeading = device.request;
 
   const stopWatching = useCallback(() => {
     if (watchId.current === null) return;
@@ -70,6 +75,8 @@ export function useRideMode(): UseRideModeResult {
       setError("この端末では位置情報を受け取れないため、走行モードを使えません。");
       return;
     }
+    // iPhone は向きを読む許しを利用者の操作の中でしか求められないので、始めるボタンの操作の中で求める。
+    requestHeading();
     setError(null);
     setStatus("waiting");
     debugLog("ride:mode", "始めた");
@@ -92,7 +99,7 @@ export function useRideMode(): UseRideModeResult {
       },
       WATCH_OPTIONS,
     );
-  }, [stopWatching]);
+  }, [stopWatching, requestHeading]);
 
   const press = useCallback(() => {
     if (status === "off") start();
@@ -113,12 +120,13 @@ export function useRideMode(): UseRideModeResult {
         : {
             position,
             bearing: travel?.bearing ?? null,
+            facing: device.heading,
             following: status === "following",
             headingUp,
             onPause: pause,
             onToggleHeadingUp: toggleHeadingUp,
           },
-    [status, position, travel, headingUp, pause, toggleHeadingUp],
+    [status, position, travel, device.heading, headingUp, pause, toggleHeadingUp],
   );
 
   const screenWakeLock = useScreenWakeLock(status !== "off");

@@ -27,7 +27,7 @@
 | components（特定モジュールの責務ではない共通部品） | `BottomSheet/BottomSheet.tsx`（モバイル下部シート、下記「モバイル/デスクトップのレイアウト分岐」節参照）・`Disclosure/Disclosure.tsx`（折りたたみ表示、[ルート設定・結果パネル](route-settings-and-results.md)等が使う）・`UsageGuide/UsageGuide.tsx`（説明を見る状態。下記「使い方の説明」）・`UsageGuide/usageTarget.ts`（押された要素から説明する部品・名前・使い方の文を引く）・`FirstVisitIntro/FirstVisitIntro.tsx`（初めて開いたときだけ出す案内。下記「初回の案内」） |
 | features/conditions/RideConditionBar | `RideConditionBar.tsx`（地図右上、走行方位アイコン直下の走行条件アイコン列本体。出発時刻・想定速度ともTravelBearingControlと同じ列の幅のアイコンボタンで、アイコンの下へ現在値（出発時刻は当日なら「12:40」、別の日は「9/24」「12:40」の2行。想定速度は「20km/h」）を出す。表示・`aria-label`・`title`は同じ文字列から作る。タップしたポップオーバー内はドラッグ式タイムライン（「今」の目盛りを選ぶと追従へ戻す）＋`input[type=datetime-local]`の直接指定[出発時刻、日本時間で読み書きする。説明の文は、出発時刻で値の変わる評価の名前を軸カタログから差し込み、無ければ評価に触れない]、スライダー＋数値入力[想定速度。平地・無風の巡航速度であることを添え、(i)の奥に、速度を変える条件の名前を走行モデルの宣言（生成物の`segment_speed_conditions`）から、走行モデルの体格・機材の標準値を軸カタログの較正値から書く——引けない間は標準値の文を出さない]）・`departureTimeline.ts`（出発時刻ポップオーバーのドラッグタイムライン用の目盛り生成。気象レイヤーの実フレームには依存しない自己完結した合成タイムライン） |
 | features/conditions/TravelBearingControl | `TravelBearingControl.tsx`（地図右上の走行方位のアイコンボタン。押すと`WindBearingSlider`のダイヤルをPopoverで開く。説明の文は、向きで値の変わる評価の名前を軸カタログ（`dynamic_way_value_conditions`）から差し込み、無ければ評価に触れない。詳しくは[ルート設定・結果パネル](route-settings-and-results.md)） |
-| features/ride | `useRideMode.ts`（走行モードの状態と、地図へ渡す値。下記「走行モード」）・`travelBearing.ts`（受け取った位置から進む向きを決める）・`useScreenWakeLock.ts`（走行モードの間、画面が自動で消えないよう端末に頼む）・`RideModeButton/RideModeButton.tsx`（地図の右の列の末尾の走行モードのボタン） |
+| features/ride | `useRideMode.ts`（走行モードの状態と、地図へ渡す値。下記「走行モード」）・`travelBearing.ts`（受け取った位置から進む向きを決める）・`useScreenWakeLock.ts`（走行モードの間、画面が自動で消えないよう端末に頼む）・`useDeviceHeading.ts`（走行モードの間、スマホが向いている方角を端末のコンパスから読む）・`RideModeButton/RideModeButton.tsx`（地図の右の列の末尾の走行モードのボタン） |
 | features/map/MapView（走行モード） | `useRideFollow.ts`（走行モードの値を受けて、現在地の点・追うカメラ・指で動かしたら休む知らせ・方位のボタンの切り替えを地図へ当てる） |
 | features/conditions/DynamicLayerTimeSlider | `DynamicLayerTimeSlider.tsx`（ドラッグ/横スクロールで時刻を選ぶ汎用タイムラインUI。`RideConditionBar`が出発時刻ピッカーとして使う唯一の呼び出し元） |
 
@@ -349,13 +349,17 @@ propを新設しない」）。表示宣言（種類・単位・しきい値・�
 ボタンと同じで、地図を指で動かすか回すと追うのを休み（拡大・縮小だけでは休まない）、押すと現在地へ戻って追い直し、追っている間に
 押すと止めて受け取りをやめる。位置の利用を断られたら止めて理由をボタンの横に出し、一時に取れないだけなら受け取りを続ける。
 MapLibreの`GeolocateControl`を使わないのは、地図を進む向きへ回せず、位置が届くたびに精度から拡大率を決め直し（利用者が寄せた倍率が戻る）、
-休んでいる間と止めた後を見分ける出来事を出さない（画面を点けたままにする頼みを入切に合わせられない）ため。現在地の点の見た目だけは
-標準（`maplibregl-user-location-dot`）に合わせる。
+休んでいる間と止めた後を見分ける出来事を出さない（画面を点けたままにする頼みを入切に合わせられない）ため。ボタンは様子
+（`data-ride`）で面を塗り分け、追っている間は強調色の面、休んでいる間は強調色の縁にする。
 
+- **現在地の印**: 青い点と白い縁に、スマホが向いている方角の扇形を添える（`useRideFollow.ts`。扇形は北を上にした絵を印ごと地図に沿わせて
+  回すので、地図を回しても方角を指す）。方角は端末のコンパスの読みを画面の上の向きに直したもので（`useDeviceHeading.ts: headingFromOrientation`）、
+  磁北が基準。iPhoneのSafariは向きを読む許しを利用者の操作の中でしか求められないので、走行モードを始めるボタンの操作の中で求め、断られたら
+  扇形を出さない。Android のChromeは北を基準にした向きを別の出来事で出し、iPhoneはふつうの出来事にコンパスの読みを添えるので、両方を受けて
+  方角が分かる読みだけを使う。地図を回す「進む向き」は、これとは別に位置の動きから出す（下の「地図の向き」）。
 - **地図の向き**: 走行モードの間だけ、方位のボタン（`NavigationControl`のコンパス）を押すと、北を上に戻す代わりに北が上と進む向きが上を
   切り替える（ボタンへ届く前に押す出来事を止める）。走行モードの外では今どおり北を上に戻す。進む向きは、位置が向きを持てばそれ、
   無ければ前の点から十分に動いた向きで、止まっている間は向きを変えない（`travelBearing.ts: MIN_TRAVEL_FOR_BEARING_M`）。
-  端末のコンパス（`DeviceOrientationEvent`）は、iPhoneで操作ごとの許可が要るので使わない。
 - **画面を点けたままにする**: 画面が消えるとブラウザは位置を届けなくなるので、走行モードの間はScreen Wake Lockを頼む。画面が隠れると
   端末が頼みを外すので、見えたときに頼み直す。口が無いか断られた端末では、その旨をボタンの横に出す。走っている間ずっと地図を
   覆わないよう文は閉じられ、閉じたあとはボタンの角の印と読み上げの説明に残す（上の「失敗・空・待ちの伝え方」の3）。
