@@ -331,6 +331,17 @@ export function RouteIcon({ size = 16 }: IconProps) {
   );
 }
 
+/** ルートを外れている: ルートの道なり（点線）が途中で切れ、先に×。 */
+export function OffRouteIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      <path d="M3.5 16c2.8-1 2.8-5.2 6-6" strokeDasharray="0.2 3" />
+      <circle cx="3.5" cy="16" r="1.6" fill="currentColor" stroke="none" />
+      <path d="M12 3.5l4.5 4.5M16.5 3.5L12 8" />
+    </svg>
+  );
+}
+
 /** ログ: 記録済みの行を表す簡易ターミナル/リスト */
 export function LogIcon({ size = 16 }: IconProps) {
   return (

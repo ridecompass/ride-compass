@@ -39,6 +39,8 @@ interface UseRideModeResult {
   speedKmh: number | null;
   /** 最後に受けた位置を測った時刻（エポックからのms）。位置をまだ受けていない・走行モードでない間はnull。 */
   fixedAtMs: number | null;
+  /** 最後に受けた位置の誤差（m、端末が返す95%の信頼の半径）。位置をまだ受けていない・走行モードでない間はnull。 */
+  accuracyM: number | null;
   /** 走行モードの間、画面が自動で消えないよう頼めているか（画面が消えると位置も届かなくなる）。 */
   screenWakeLock: ScreenWakeLockStatus;
   /** 止まっていれば始め、休んでいれば追い直し、追っていれば止める。 */
@@ -61,6 +63,7 @@ export function useRideMode(): UseRideModeResult {
   const [speedMs, setSpeedMs] = useState<number | null>(null);
   const [travel, setTravel] = useState<TravelBearing | null>(null);
   const [fixedAtMs, setFixedAtMs] = useState<number | null>(null);
+  const [accuracyM, setAccuracyM] = useState<number | null>(null);
   const [headingUp, setHeadingUp] = useState(false);
   const watchId = useRef<number | null>(null);
   // 位置が速さを持たないときに、次の位置との距離と時刻の差から速さを出すための、前に受けた位置と時刻。
@@ -82,6 +85,7 @@ export function useRideMode(): UseRideModeResult {
     lastFix.current = null;
     setTravel(null);
     setFixedAtMs(null);
+    setAccuracyM(null);
     debugLog("ride:mode", "止めた");
   }, [stopWatching]);
 
@@ -97,7 +101,7 @@ export function useRideMode(): UseRideModeResult {
     debugLog("ride:mode", "始めた");
     watchId.current = navigator.geolocation.watchPosition(
       (fix) => {
-        const { latitude, longitude, heading, speed } = fix.coords;
+        const { latitude, longitude, heading, speed, accuracy } = fix.coords;
         setPosition({ latitude, longitude });
         const here = { latitude, longitude };
         const previous = lastFix.current;
@@ -108,6 +112,7 @@ export function useRideMode(): UseRideModeResult {
         else setSpeedMs(null);
         setTravel((previous) => nextTravelBearing(previous, { latitude, longitude, heading }));
         setFixedAtMs(fix.timestamp);
+        setAccuracyM(Number.isFinite(accuracy) ? accuracy : null);
         setStatus((current) => (current === "waiting" ? "following" : current));
       },
       (failure) => {
@@ -121,6 +126,7 @@ export function useRideMode(): UseRideModeResult {
         lastFix.current = null;
         setTravel(null);
         setFixedAtMs(null);
+        setAccuracyM(null);
         setError("位置情報の利用が許可されていないため、走行モードを止めました。");
       },
       WATCH_OPTIONS,
@@ -160,5 +166,5 @@ export function useRideMode(): UseRideModeResult {
 
   const speedKmh = status !== "off" && speedMs !== null ? speedMs * 3.6 : null;
 
-  return { status, error, speedKmh, fixedAtMs, screenWakeLock, press, map };
+  return { status, error, speedKmh, fixedAtMs, accuracyM, screenWakeLock, press, map };
 }

@@ -111,8 +111,10 @@ function installGeolocation(point: Coordinates | null) {
     configurable: true,
   });
   return {
-    move(to: Coordinates, timestamp = 0) {
-      act(() => watcher?.({ coords: { ...to, heading: null, speed: null }, timestamp } as GeolocationPosition));
+    move(to: Coordinates, timestamp = 0, accuracy = 10) {
+      act(() =>
+        watcher?.({ coords: { ...to, heading: null, speed: null, accuracy }, timestamp } as GeolocationPosition),
+      );
     },
   };
 }
@@ -761,6 +763,27 @@ describe("画面の枠", () => {
     expect(profile.querySelector('[data-progress="position"]')).not.toBeNull();
     const drawn = mapOnScreen().sourceFeatures("route-segments");
     expect(drawn.map((feature) => feature.properties?.travelled ?? false)).toEqual([true, false]);
+  });
+
+  it("走行中にルートを外れたら、走りの帯に外れたと出して残りを外れた点のまま止め、ルートへ戻ったら戻った点から続ける", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    jobs.respond([RIDDEN], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    const rideBar = screen.getByRole("group", { name: "走りの数字" });
+
+    geolocation.move(RIDDEN_MIDDLE, 0, 20);
+    expect(rideBar).toHaveTextContent("残り: 0.5km");
+    // 0.8km の所の北へ約220m（位置の誤差 20m を超えて）離れた。
+    geolocation.move({ latitude: 35.702, longitude: 139.708 }, 0, 20);
+    expect(screen.getByRole("status", { name: "ルートを外れています" })).toBeInTheDocument();
+    expect(rideBar).toHaveTextContent("残り: 0.5km");
+    // 回り道して、0.8km の所でルートへ戻った。
+    geolocation.move({ latitude: 35.7, longitude: 139.708 }, 0, 20);
+    expect(screen.queryByRole("status", { name: "ルートを外れています" })).toBeNull();
+    expect(rideBar).toHaveTextContent("残り: 0.2km");
   });
 
   it("走行中に画面を読み込み直しても、同じ候補を出して走行モードを続け、到着予想はその候補の計画から出す", async () => {
