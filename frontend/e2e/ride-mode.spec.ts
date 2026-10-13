@@ -190,9 +190,9 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   await page.mouse.move(from.x - 120, from.y + 60, { steps: 10 });
   await page.mouse.up();
   await expect(rideButton).toHaveAttribute("title", "地図を現在地へ戻す");
-  const pausedLook = await buttonLook(rideButton);
-  expect(pausedLook.background).toBe(offLook.background);
-  expect(pausedLook.ring).not.toBe(offLook.ring);
+  // 面の色は移り変わり（transition）を持つので、落ち着くまで待って比べる。
+  await expect.poll(async () => (await buttonLook(rideButton)).background).toBe(offLook.background);
+  expect((await buttonLook(rideButton)).ring).not.toBe(offLook.ring);
   const pausedAt = moved(east, 200, 0);
   await deliverPosition(page, context, pausedAt);
   await expect.poll(() => dotOffsetFrom(page, pausedAt), { timeout: 10_000 }).toBeLessThan(2);
