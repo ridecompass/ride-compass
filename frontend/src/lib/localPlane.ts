@@ -1,6 +1,11 @@
 // 狭い範囲の緯度経度を平面として扱う近似。経度方向をcos(緯度)で縮め、経度1度と緯度1度の長さを揃えてから測る
 // （緯度経度のまま測ると、日本では経度方向が実際より約1.2倍長くなる）。
 
+import geoConfig from "@/types/generated/geo-config.json";
+
+/** 緯度1度の長さ（m）。 */
+export const METERS_PER_DEGREE = (geoConfig.earth_radius_km * 1000 * Math.PI) / 180;
+
 /** 平面へ落とした点。`x`は経度方向、`y`は緯度方向で、単位は落とした側が決める。 */
 export interface PlanePoint {
   x: number;

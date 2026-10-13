@@ -920,7 +920,8 @@ export const mapDisplay = {
       "selectedHalo": 0.25,
       "splice": 0.75,
       "candidate": 0.65,
-      "arrowHalo": 0.95
+      "arrowHalo": 0.95,
+      "travelled": 0.35
     },
     "spliceDash": [
       2,

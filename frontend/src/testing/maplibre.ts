@@ -105,6 +105,14 @@ export class Marker extends Evented {
     return this.lngLat;
   }
 
+  getElement() {
+    return this.element;
+  }
+
+  setRotation() {
+    return this;
+  }
+
   setDraggable(draggable: boolean) {
     this.draggable = draggable;
     return this;
@@ -227,6 +235,14 @@ class StandInMap extends Evented {
 
   flyTo() {
     return this;
+  }
+
+  easeTo() {
+    return this;
+  }
+
+  getBearing() {
+    return 0;
   }
 
   fitBounds(_bounds: LngLatBounds, options: unknown) {

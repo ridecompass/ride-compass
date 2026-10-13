@@ -8,7 +8,7 @@ import { latest, validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
-import { matchesFilter } from "@/testing/mapExpressions";
+import { evaluateExpression, matchesFilter } from "@/testing/mapExpressions";
 import { createRecordingMap, type StyleLayer } from "@/testing/mapTrace/recordingMap";
 import { catalogEntry, dedicatedEntry } from "@/testing/catalogAxes";
 import { dedicatedWayValueAxesFromCatalogAxes } from "@/lib/mapDisplay/axisLayers";
@@ -245,6 +245,66 @@ describe("状態を地図へ伝えた結果", () => {
       rebuild(map, sceneState({ catalog: { dedicatedAxes }, look: { paintedAxisId: "density" } }));
 
       expect(handle.layer(roadLayerId("density"))?.visibility).toBe("none");
+    });
+  });
+
+  describe("ルート", () => {
+    // 北緯35.6度の上を東へ進む、長さ1kmの区間を2つつないだルート。
+    const segment = (from: number, to: number) => ({
+      distance_km: 1,
+      start_longitude: from,
+      start_latitude: 35.6,
+      end_longitude: to,
+      end_latitude: 35.6,
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [from, 35.6],
+          [to, 35.6],
+        ],
+      },
+    });
+    const route = {
+      id: "a",
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [139.7, 35.6],
+          [139.72, 35.6],
+        ],
+      },
+      segments: [segment(139.7, 139.71), segment(139.71, 139.72)],
+    };
+
+    it("走り終えた距離までの区間の線と縁取りを薄め、途中の区間はその地点で分ける", () => {
+      const { map, handle } = createRecordingMap();
+      rebuild(
+        map,
+        sceneState({
+          look: { layerVisibility: { route: true } },
+          routes: [route] as never,
+          selectedRouteId: "a",
+          travelledKm: 1.5,
+        }),
+      );
+
+      for (const role of ["detailLine", "detailCasing"]) {
+        const layerId = handle.layerOrder().find((id) => id.endsWith(`-${role}`))!;
+        const layer = handle.layer(layerId)!;
+        const { features } = handle.sourceContent(layer.source!)!.data as {
+          features: { geometry: { coordinates: number[][] }; properties: Record<string, unknown> }[];
+        };
+        const drawn = features.map(({ geometry, properties }) => [
+          geometry.coordinates.map(([lng]) => Number(lng.toFixed(4))),
+          evaluateExpression(layer.paint["line-opacity"] ?? 1, properties),
+        ]);
+        const travelled = mapDisplay.route.opacities.travelled;
+        expect(drawn, role).toEqual([
+          [[139.7, 139.71], travelled],
+          [[139.71, 139.715], travelled],
+          [[139.715, 139.72], 1],
+        ]);
+      }
     });
   });
 });

@@ -296,6 +296,8 @@ interface MapViewProps {
   measureRouteFitObscuredPx: () => RouteFitObscuredPx | undefined;
   /** 走行モードの間だけ値がある。現在地の点を出し、追っている間は地図を現在地へ動かし続ける。 */
   ride: RideFollow | null;
+  /** 選んだ候補の上で走り終えた距離（km）。そこまでのルートの線を薄める。走っていなければnull。 */
+  travelledKm: number | null;
 }
 
 export default function MapView({
@@ -324,6 +326,7 @@ export default function MapView({
   focusPoint,
   measureRouteFitObscuredPx,
   ride,
+  travelledKm,
 }: MapViewProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -356,8 +359,9 @@ export default function MapView({
         splicedRoute,
         tileVersions: mapCatalog.tileVersions,
         inspectedWayId,
+        travelledKm,
       }),
-    [look, mapCatalog, routes, selectedRouteId, spliceStretches, splicedRoute, inspectedWayId],
+    [look, mapCatalog, routes, selectedRouteId, spliceStretches, splicedRoute, inspectedWayId, travelledKm],
   );
   const scene = useMemo(() => buildMapScene(sceneInputs), [sceneInputs]);
   // 押せるのは scene が当たり判定を宣言したレイヤーだけ。

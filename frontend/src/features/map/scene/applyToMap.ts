@@ -35,6 +35,7 @@ import { ROUTE_ARROW_ICON_ID, createRouteArrowIcon } from "@/features/map/layers
 import type { LensId, RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
 import type { RouteCandidate } from "@/types/route";
 import { dedicatedAxisBands, type ValueBand } from "@/lib/mapDisplay/valueScale";
+import { routeStretches, segmentPath, splitSegmentAt } from "@/lib/routeDistance";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import {
   ROAD_TILE_MAX_ZOOM,
@@ -102,6 +103,8 @@ type SceneWiringProps = {
   readonly tileVersions: TileVersions | null;
   /** 詳細を見ている道（ポップアップが開いている間だけ非null）。 */
   readonly inspectedWayId: number | null;
+  /** 選んだ候補の上で走り終えた距離（km）。走っていなければnull。 */
+  readonly travelledKm: number | null;
 };
 
 const NO_KEYS: readonly string[] = [];
@@ -133,16 +136,20 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
       path: route.geometry.coordinates,
     })),
     selectedRouteId: props.selectedRouteId,
-    segments: segments.map((segment) => {
-      const { geometry, ...properties } = segment;
-      return {
-        // 道なりの形が無い区間（2点未満のEdge等）は、始点と終点を結ぶ直線で代替する。
-        path: geometry?.coordinates ?? [
-          [segment.start_longitude, segment.start_latitude],
-          [segment.end_longitude, segment.end_latitude],
-        ],
-        properties,
-      };
+    segments: routeStretches(segments).flatMap(({ segment, startKm, endKm }) => {
+      // 形は`segmentPath`が読み、地物の属性には載せない。
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { geometry: _geometry, ...properties } = segment;
+      const travelled = { ...properties, travelled: true };
+      const km = props.travelledKm;
+      if (km === null || km <= startKm) return [{ path: segmentPath(segment), properties }];
+      if (km >= endKm) return [{ path: segmentPath(segment), properties: travelled }];
+      // 走り終えた地点で区間を分け、手前だけを薄める。
+      const { before, after } = splitSegmentAt(segment, (km - startKm) / (endKm - startKm));
+      return [
+        { path: before, properties: travelled },
+        { path: after, properties },
+      ];
     }),
     segmentColor: mode.colorExpression as maplibregl.ExpressionSpecification,
     ...(mode.noDataExpression === undefined

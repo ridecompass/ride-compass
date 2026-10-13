@@ -1,12 +1,9 @@
-import { longitudeScale } from "@/lib/localPlane";
-import geoConfig from "@/types/generated/geo-config.json";
+import { METERS_PER_DEGREE, longitudeScale } from "@/lib/localPlane";
 import type { Coordinates } from "@/types/route";
 
 // 位置に向きが無いとき、前の点からこれだけ動くまで向きを出さない。位置の誤差（街中で数m）の揺れで、止まっている間に
 // 地図が回らないようにする。
 export const MIN_TRAVEL_FOR_BEARING_M = 15;
-
-const METERS_PER_DEGREE = (geoConfig.earth_radius_km * 1000 * Math.PI) / 180;
 
 /** 受け取った位置1つ。`heading`は位置が持つ進む向き（真北0・時計回りの度）で、止まっている・取れないときはnull。 */
 export interface TravelFix extends Coordinates {

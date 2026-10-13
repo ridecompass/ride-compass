@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 import { roundToDigits } from "@/lib/numberFormat";
+import { pointAlongSegment, routeStretches } from "@/lib/routeDistance";
+import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 
-import { columnAtKm, pointAlongSegment, profileBoxes, profileColumns, type ProfileBox } from "./profileGeometry";
+import { columnAtKm, profileBoxes, type ProfileBox } from "./profileGeometry";
 
 /** 描画の座標。横は距離を`VIEW_WIDTH`へ、縦は難易度0〜100をそのまま使い、枠いっぱいへ伸ばす。 */
 const VIEW_WIDTH = 1000;
@@ -25,6 +27,8 @@ interface DifficultyProfileProps {
   scaleKm: number;
   selected: SelectedRouteSegment | null;
   onSelect: (selection: SelectedRouteSegment) => void;
+  /** 走行中の現在地のルートの上の距離。印を引き、始点からそこまでを走り終えた区間として薄める。 */
+  progressKm?: number | null;
 }
 
 /** 距離を描画の横座標へ。 */
@@ -53,6 +57,7 @@ export default function DifficultyProfile({
   scaleKm,
   selected,
   onSelect,
+  progressKm = null,
 }: DifficultyProfileProps) {
   const [scrubKm, setScrubKm] = useState<number | null>(null);
   // グラフに触れている指（ポインター）と、いまの操作に2本目が加わったか。
@@ -76,7 +81,7 @@ export default function DifficultyProfile({
       window.removeEventListener("pointercancel", up, true);
     };
   }, []);
-  const columns = useMemo(() => profileColumns(segments), [segments]);
+  const columns = useMemo(() => routeStretches(segments), [segments]);
   const routeKm = columns.length === 0 ? 0 : columns[columns.length - 1].endKm;
   const widthKm = Math.max(scaleKm, routeKm);
   // 塗る形はルートと横軸が変わったときだけ組む（なぞる間に動くのは、カーソルの線と選んだ区間の帯だけ）。
@@ -105,6 +110,7 @@ export default function DifficultyProfile({
       ? scrubKm
       : null;
   const positionKm = cursorKm ?? selectedColumn?.startKm ?? 0;
+  const travelledKm = progressKm === null ? null : Math.min(routeKm, Math.max(0, progressKm));
 
   function selectAt(km: number) {
     // 横軸が候補より長いとき、候補の終わりより右は終点として選び、線も終点に引く。
@@ -189,6 +195,30 @@ export default function DifficultyProfile({
         {paths.byAxis.map(({ axisId, d }) => (
           <path key={axisId} d={d} fill={axisColors[axisId] ?? palette.semantic.no_data} />
         ))}
+        {travelledKm !== null && (
+          <>
+            {/* 背景の色を重ねて、塗りを地図の走り終えた区間の線と同じ濃さまで薄める。 */}
+            <rect
+              data-progress="travelled"
+              x={0}
+              y={0}
+              width={xOf(travelledKm)}
+              height={VIEW_HEIGHT}
+              className="fill-[var(--color-surface-2)]"
+              opacity={1 - mapDisplay.route.opacities.travelled}
+            />
+            <line
+              data-progress="position"
+              x1={xOf(travelledKm)}
+              x2={xOf(travelledKm)}
+              y1={0}
+              y2={VIEW_HEIGHT}
+              className="stroke-[var(--color-accent)]"
+              strokeWidth={3}
+              vectorEffect="non-scaling-stroke"
+            />
+          </>
+        )}
         {cursorKm !== null && (
           <line
             x1={xOf(cursorKm)}
