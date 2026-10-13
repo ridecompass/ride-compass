@@ -750,6 +750,19 @@ describe("画面の枠", () => {
     expect(drawn.map((feature) => feature.properties?.travelled ?? false)).toEqual([true, false]);
   });
 
+  it("走行中に画面を読み込み直しても、同じ候補を出して走行モードを続ける", async () => {
+    const first = renderHome();
+    jobs.respond([FIRST], LOOP_CONDITIONS);
+    await generate(first.user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    await first.user.click(screen.getByRole("button", { name: "走行モード" }));
+    first.unmount();
+
+    renderHome();
+    expect(await screen.findByRole("group", { name: "走りの数字" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "予定ルートのプロファイル" })).toBeInTheDocument();
+  });
+
   it("スマホでは、走行モードの間は下部タブも隠す", async () => {
     useMobileLayout();
     const { user } = renderHome();
