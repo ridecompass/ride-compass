@@ -29,7 +29,9 @@ import nextConfig from "../next.config";
 export const API_BASE = process.env.E2E_API_BASE ?? "http://localhost:8000";
 
 // backend/app/domain/route.py RouteCandidate相当の最小フィクスチャ（1候補）。
-function makeSegment(index: number, coordinates: [number, number][]) {
+// 区間へ入る時刻（到達予想）は本物の生成が必ず付ける（無いと走行モードの到着予想が出ない）。区間は所要時間を等分する。
+const DEPARTED_AT = Date.parse("2026-10-13T00:00:00Z");
+function makeSegment(index: number, coordinates: [number, number][], secondsEach: number) {
   return makeRouteSegment({
     geometry: { type: "LineString", coordinates },
     start_latitude: coordinates[0][1],
@@ -39,6 +41,7 @@ function makeSegment(index: number, coordinates: [number, number][]) {
     cumulative_distance_km: index * 10,
     distance_km: 10,
     difficulty: 20 + index * 30,
+    estimated_arrival_time: new Date(DEPARTED_AT + index * secondsEach * 1000).toISOString(),
   });
 }
 
@@ -67,14 +70,22 @@ function makeRouteCandidate(
     // 選択中候補の区間色分け線は区間が無いと描かれない。
     // 地図の描画に関わる検証（縁取り等）が成り立つよう、最小限の2区間を持たせる。
     segments: [
-      makeSegment(0, [
-        [139.7387, 35.7597],
-        [139.75, 35.765],
-      ]),
-      makeSegment(1, [
-        [139.75, 35.765],
-        [139.7387, 35.7597],
-      ]),
+      makeSegment(
+        0,
+        [
+          [139.7387, 35.7597],
+          [139.75, 35.765],
+        ],
+        durationSeconds / 2,
+      ),
+      makeSegment(
+        1,
+        [
+          [139.75, 35.765],
+          [139.7387, 35.7597],
+        ],
+        durationSeconds / 2,
+      ),
     ],
     overall_difficulty: { average: 35, load: 700 },
   });

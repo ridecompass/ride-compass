@@ -50,6 +50,7 @@ import RideBar from "@/features/ride/RideBar/RideBar";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { useRideMode } from "@/features/ride/useRideMode";
+import { rideRemaining } from "@/features/ride/rideRemaining";
 import { useRouteProgress } from "@/features/ride/useRouteProgress";
 import { useRideSession } from "@/features/ride/useRideSession";
 import { formatDepartureLabel } from "@/features/conditions/rideConditions";
@@ -233,10 +234,10 @@ export default function Home() {
   });
 
   // 走行モードの間、現在地を選んだ候補の上の距離へ当てる。プロファイルの印と、地図とプロファイルの薄めに使う。
-  const progressKm = useRouteProgress(
-    navigating ? (results.selectedCandidate?.segments ?? null) : null,
-    riding.map?.position ?? null,
-  );
+  const ridingRoute = navigating ? results.selectedCandidate : null;
+  const progressKm = useRouteProgress(ridingRoute?.segments ?? null, riding.map?.position ?? null);
+  // 残りと到着予想。到着予想は、最後に位置を受けた時刻へ選んだ候補の計画の残り時間を足す。
+  const remaining = rideRemaining(ridingRoute, progressKm, riding.fixedAtMs);
 
   const isMobile = useIsMobile();
 
@@ -464,6 +465,7 @@ export default function Home() {
       <header className="flex flex-shrink-0 flex-nowrap items-center gap-2 overflow-x-auto border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {navigating ? (
           <RideBar
+            remaining={remaining}
             speedKmh={riding.speedKmh}
             wind={
               amedas?.wind_speed_ms != null && amedas.wind_direction !== null

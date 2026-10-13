@@ -39,7 +39,7 @@ function installGeolocation() {
   Object.defineProperty(navigator, "geolocation", { value: geolocation, configurable: true });
 }
 
-/** 受け取り中の全員へ位置を届ける。 */
+/** 受け取り中の全員へ、時刻`timestamp`に測った位置を届ける。 */
 function deliver(
   latitude: number,
   longitude: number,
@@ -182,6 +182,17 @@ describe("useRideMode", () => {
     deliver(35.7, 139.76, null, 5);
     act(() => result.current.press());
     expect(result.current.speedKmh).toBeNull();
+  });
+
+  it("最後に受けた位置を測った時刻を出し、止めると捨てる", () => {
+    const { result } = renderHook(() => useRideMode());
+    act(() => result.current.press());
+    expect(result.current.fixedAtMs).toBeNull();
+    deliver(35.68, 139.76, null, null, 1_000);
+    deliver(35.681, 139.76, null, null, 21_000);
+    expect(result.current.fixedAtMs).toBe(21_000);
+    act(() => result.current.press());
+    expect(result.current.fixedAtMs).toBeNull();
   });
 
   it("位置が速さを持たなければ、続けて受けた2つの位置の距離と時刻の差から出す", () => {
