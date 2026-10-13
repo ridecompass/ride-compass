@@ -27,7 +27,7 @@ import userEvent from "@testing-library/user-event";
 import { useState, type ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ORIGIN_MARK_COLOR, ORIGIN_MARK_FALLBACK_COLOR } from "@/components/PinMark/PinMark";
+import { ORIGIN_MARK_FALLBACK_COLOR, PIN_MARK_COLOR } from "@/components/PinMark/PinMark";
 import { Tabs } from "@/components/ui/Tabs/Tabs";
 import { onBackend } from "@/testing/backendServer";
 import { AZA_CANDIDATE as AZA, FACILITY_CANDIDATE as FACILITY } from "@/testing/routeFixtures";
@@ -213,7 +213,7 @@ describe("RouteForm 全長の目標", () => {
 });
 
 describe("RouteForm 出発地", () => {
-  /** 印（現在地のアイコン）を描く要素。 */
+  /** 印（スタートの旗）を描く要素。 */
   function originMark() {
     const mark = detail("出発地").querySelector<HTMLElement>("svg")?.parentElement;
     if (!mark) throw new Error("出発地の印が無い");
@@ -221,7 +221,7 @@ describe("RouteForm 出発地", () => {
   }
 
   it.each([
-    [true, "現在地", ORIGIN_MARK_COLOR],
+    [true, "現在地", PIN_MARK_COLOR.origin],
     [false, "現在地を取得できていません", ORIGIN_MARK_FALLBACK_COLOR],
   ])(
     "現在地を取れたか（%s）で名前を「%s」とし、印の色を変え、現在地に戻す操作は押せなくしておく",

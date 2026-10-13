@@ -491,11 +491,11 @@ page-composition.md「生成に関するフィードバックの置き場」）�
   口は`GET /api/place-area`）。探して置いた住所は名前が住所で、位置は代表の位置なので引かない。現在地を取れていない出発地も、仮の位置なので
   引かない。引いている間・引けない・名前のある境界の外では辺りを出さない（名前と出どころは出ている）。
 
-- 地図のピンは3つとも同じ丸いバッジ（`features/map/MapView/useMapMarkers.tsx: createPointMarkerElement`、出発地だけは
-  現在地アイコン入りの、テーマの面の色（`--color-surface`。ダークなら暗い台）のバッジ）で、**どれもつかんで動かせる**。**行頭の印と地図のピンは
-  同じ図形を使う**（`components/PinMark/PinMark.tsx`が中身と背景色を持ち、出発地の現在地の印はアイコン集の
-  `components/ui/icons/icons.tsx: LocateIcon`。地図側はMarkerへ渡す要素へ出発地の印をportalで描き、経由地・目的地の
-  文字は`components/PinMark/PinMark.tsx: pinMarkText`を要素の文字として入れる）——同じものを2箇所で描くと、片方だけ直したときに
+- 地図のピンは3つとも同じ、テーマの面の色（`--color-surface`。ダークなら暗い台）の丸（`features/map/MapView/useMapMarkers.tsx: createPinElement`）で、
+  役割は中の記号とその色で見分ける（出発地はスタートの旗・経由地は番号・目的地はゴールの旗。出発地の記号は「現在地に移動」の現在地の記号と
+  分ける——走行モードでは本物の現在地の印も出るため）。ピンは役割の名前（「出発地」「経由地 1」「目的地」）を読み上げ名に持ち、
+  **どれもつかんで動かせる**。**行頭の印と地図のピンは同じ図形を使う**（`components/PinMark/PinMark.tsx`が中身・面・色を持ち、地図側は
+  Markerへ渡す要素へ中身をportalで描く）——同じものを2箇所で描くと、片方だけ直したときに
   行とピンが違う見た目になる。動かした直後のclickは読み飛ばす（`bindDragAwareClick`）——同じ操作の
   終わりにclickが飛ぶため、動かしただけで削除・解除が起きてしまう。
 - **詳しくには住所・施設の名前を打てる欄**を置く（探す欄を別に設けず、地点の所で打てるほうが動線が単純）。
