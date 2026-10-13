@@ -6,6 +6,8 @@ import type { Map as MapLibreMap, Marker } from "maplibre-gl";
 
 import type { Coordinates } from "@/types/route";
 
+import { rideZoomOut } from "./rideZoom";
+
 /** 走行モードで地図が受ける値（走行モードの間だけ渡る）。 */
 export interface RideFollow {
   position: Coordinates | null;
@@ -14,6 +16,8 @@ export interface RideFollow {
   /** スマホが向いている方角（磁北0・時計回りの度）。読めなければnull（向きの印を出さない）。 */
   facing: number | null;
   following: boolean;
+  /** 今の速さ（時速km）。分からなければnull。追っている間の倍率に使う。 */
+  speedKmh: number | null;
   /** 進む向きを上にするか（偽なら北が上）。 */
   headingUp: boolean;
   /** 利用者が地図を指で動かした・回した。 */
@@ -24,6 +28,8 @@ export interface RideFollow {
 
 // 追い始めたときに、これより引いていれば寄せる（道の分かれ目が見分けられる倍率）。
 const RIDE_MIN_ZOOM = 15;
+// 速さは位置ごとに揺れるので、新しい値をこの割合だけ混ぜてから倍率に使う（倍率がちらつかないように）。
+const SPEED_SMOOTHING = 0.3;
 
 const COMPASS_SELECTOR = ".maplibregl-ctrl-compass";
 
@@ -65,6 +71,10 @@ export function useRideFollow(
   visibleOffset: (map: MapLibreMap) => [number, number],
 ): void {
   const latest = useRef(ride);
+  // 追っている間の倍率の基準（速さで引く前）と、なめらかにした速さ、いま当てている引きの段の数。
+  const baseZoom = useRef<number | null>(null);
+  const smoothedSpeed = useRef<number | null>(null);
+  const appliedZoomOut = useRef(0);
   useEffect(() => {
     latest.current = ride;
   });
@@ -88,11 +98,18 @@ export function useRideFollow(
       event.preventDefault();
       ride.onToggleHeadingUp();
     }
+    // 追っている間に利用者が拡大・縮小したら、その倍率を基準にし直す（速さの分の引きはその上に重ねる）。
+    function rebaseOnUserZoom(event: { originalEvent?: unknown }) {
+      if (event.originalEvent === undefined || !latest.current?.following || baseZoom.current === null) return;
+      baseZoom.current = shown.getZoom() + appliedZoomOut.current;
+    }
     const container = map.getContainer();
     map.on("movestart", pauseOnUserMove);
+    map.on("zoomend", rebaseOnUserZoom);
     container.addEventListener("click", toggleOnCompass, true);
     return () => {
       map.off("movestart", pauseOnUserMove);
+      map.off("zoomend", rebaseOnUserZoom);
       container.removeEventListener("click", toggleOnCompass, true);
     };
   }, [mapRef]);
@@ -149,8 +166,10 @@ export function useRideFollow(
   );
 
   // 追っている間、届いた位置へ中心を、進む向きが上なら向きも動かす（向きがまだ分からなければ今の向きのまま）。
+  // 倍率は基準から速さの分だけ引く（速いほど先が見える）。
   const following = ride?.following ?? false;
   const bearing = ride?.bearing ?? null;
+  const speedKmh = ride?.speedKmh ?? null;
   const wasFollowing = useRef(false);
   useEffect(() => {
     const map = mapRef.current;
@@ -158,15 +177,23 @@ export function useRideFollow(
       if (!following) wasFollowing.current = false;
       return;
     }
-    const justStarted = !wasFollowing.current;
+    if (!wasFollowing.current) {
+      baseZoom.current = Math.max(map.getZoom(), RIDE_MIN_ZOOM);
+      smoothedSpeed.current = null;
+    }
     wasFollowing.current = true;
+    if (speedKmh !== null) {
+      const previous = smoothedSpeed.current;
+      smoothedSpeed.current = previous === null ? speedKmh : previous + SPEED_SMOOTHING * (speedKmh - previous);
+    }
+    appliedZoomOut.current = rideZoomOut(smoothedSpeed.current);
     map.easeTo({
       center: [position.longitude, position.latitude],
       bearing: headingUp ? (bearing ?? map.getBearing()) : 0,
-      ...(justStarted ? { zoom: Math.max(map.getZoom(), RIDE_MIN_ZOOM) } : {}),
+      zoom: (baseZoom.current ?? map.getZoom()) - appliedZoomOut.current,
       offset: visibleOffset(map),
     });
     // visibleOffsetは寄せる瞬間の覆いを測るだけで、変わっても動かし直さない。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapRef, following, position, bearing, headingUp]);
+  }, [mapRef, following, position, bearing, headingUp, speedKmh]);
 }
