@@ -63,6 +63,7 @@ from app.domain.route import (
     DensityScoreInput,
     RouteDraft,
     RouteSegmentDetail,
+    RouteTurn,
     DISTANCE_KM_DECIMALS,
     aggregate_segments_into_bins,
     concat_edge_geometries,
@@ -108,12 +109,14 @@ from app.domain.routing import (
     build_search_graph_statics,
     current_turn_cost,
     TurnExpandedStructure,
+    TurnKind,
     add_terminal_candidate,
     build_turn_expanded_structure,
     build_turn_expanded_tree,
     combine_forward_backward_at_nodes,
     edge_bearings,
     edge_index_between,
+    turns_along,
     largest_strongly_connected_nodes,
     lengths_by_physical_segment,
     overlap_ratio,
@@ -1233,6 +1236,7 @@ class RoadGraphEngine:
         )
         # 返すsegmentsは集約する。Edge単位のままだとペイロードとフロントの描画費用が嵩む。
         segments = aggregate_segments_into_bins(segments)
+        turns = _route_turns(context.turn_structure, path, edges_in_path)
 
         return RouteDraft(
             # 方位を持たない経路の名前は、種類と一緒に`route_generator.py: _label`が付ける。
@@ -1245,6 +1249,7 @@ class RoadGraphEngine:
                 [edges_in_path[0].from_node_id, *(edge.to_node_id for edge in edges_in_path)]
                 if edges_in_path else []
             ),
+            turns=turns,
             segments=segments,
             material_category_shares=material_category_shares,
             axis_raw_values=axis_raw_values,
@@ -1523,6 +1528,29 @@ def _origin_states(statics: SearchGraphStatics, node_index: int) -> np.ndarray:
     """`node_index`から出る有向Edge（＝辺基準の木の始点となる状態）。"""
     csr = statics.csr
     return csr.entry_edge_index[csr.indptr[node_index]:csr.indptr[node_index + 1]].astype(np.int64)
+
+
+_TURN_DIRECTION = {TurnKind.LEFT: "left", TurnKind.RIGHT: "right", TurnKind.UTURN: "uturn"}
+
+
+def _route_turns(
+    structure: TurnExpandedStructure, path: list[int], edges_in_path: list[LeanEdge]
+) -> list[RouteTurn]:
+    """経路が分かれ道で曲がる所を、応答の形にする。距離は区間の`distance_km`（区間ごとに丸めた値）を始点から積んだ値で、
+    画面が区間の距離を積んで数えるルートの上の現在地と同じ物差しにする。地点は曲がった先の区間の始点。"""
+    along_km = [0.0]
+    for edge in edges_in_path:
+        along_km.append(along_km[-1] + round(edge.distance_m / 1000, DISTANCE_KM_DECIMALS))
+    turns = []
+    for turn in turns_along(structure, path):
+        latitude, longitude = edges_in_path[turn.index].geometry[0]
+        turns.append(RouteTurn(
+            distance_km=round(along_km[turn.index], DISTANCE_KM_DECIMALS),
+            direction=_TURN_DIRECTION[turn.kind],
+            latitude=latitude,
+            longitude=longitude,
+        ))
+    return turns
 
 
 def _destination_states(structure: TurnExpandedStructure, node_index: int) -> np.ndarray:

@@ -59,6 +59,7 @@ import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { useLayerDataStatus, type LayerDataSourceEntry } from "@/features/map/MapView/useLayerDataStatus";
 import { ORIGIN_ZOOM, useMapMarkers } from "@/features/map/MapView/useMapMarkers";
+import { useTurnMark } from "@/features/map/MapView/useTurnMark";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
 import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
 import { registerJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
@@ -298,6 +299,8 @@ interface MapViewProps {
   ride: RideFollow | null;
   /** 選んだ候補の上で走り終えた距離（km）。そこまでのルートの線を薄める。走っていなければnull。 */
   travelledKm: number | null;
+  /** 走行中に次に曲がる所の地点。印を出す。無ければnull。 */
+  turnPoint: Coordinates | null;
 }
 
 export default function MapView({
@@ -327,6 +330,7 @@ export default function MapView({
   measureRouteFitObscuredPx,
   ride,
   travelledKm,
+  turnPoint,
 }: MapViewProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -686,6 +690,7 @@ export default function MapView({
   });
 
   useRideFollow(mapRef, ride, (map) => visibleCenterOffset(map, latest.current.measureRouteFitObscuredPx));
+  useTurnMark(mapRef, turnPoint);
 
   // 住所の検索で置いた地点へ寄せる。出発地を置いたときは印のフックの位置の更新も寄せるが、このeffectが後に走るので
   // こちらが勝つ。

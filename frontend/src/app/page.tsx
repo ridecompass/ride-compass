@@ -52,6 +52,8 @@ import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProf
 import { useRideMode } from "@/features/ride/useRideMode";
 import { rideRemaining } from "@/features/ride/rideRemaining";
 import { useRouteProgress } from "@/features/ride/useRouteProgress";
+import { nextTurn } from "@/features/ride/nextTurn";
+import TurnCard from "@/features/ride/TurnCard/TurnCard";
 import { useRideSession } from "@/features/ride/useRideSession";
 import { formatDepartureLabel } from "@/features/conditions/rideConditions";
 import { useMapView } from "@/features/map/view/useMapView";
@@ -236,6 +238,8 @@ export default function Home() {
   // 走行モードの間、現在地を選んだ候補の上の距離へ当てる。プロファイルの印と、地図とプロファイルの薄めに使う。
   const ridingRoute = navigating ? results.selectedCandidate : null;
   const progress = useRouteProgress(ridingRoute?.segments ?? null, riding.map?.position ?? null, riding.accuracyM);
+  // 次に曲がる所。ルートを外れている間は計画どおりに走っていないので出さない。
+  const upcomingTurn = progress.offRoute ? null : nextTurn(ridingRoute?.turns ?? [], progress.km);
   const progressKm = progress.km;
   // 残りと到着予想。到着予想は、最後に位置を受けた時刻へ選んだ候補の計画の残り時間を足す。
   const remaining = rideRemaining(ridingRoute, progressKm, riding.fixedAtMs);
@@ -586,6 +590,7 @@ export default function Home() {
               measureRouteFitObscuredPx={measureRouteFitObscuredPx}
               ride={riding.map}
               travelledKm={progressKm}
+              turnPoint={upcomingTurn}
             />
 
             {!navigating && (
@@ -668,6 +673,14 @@ export default function Home() {
                 onPress={riding.press}
               />
             </div>
+            {upcomingTurn !== null && (
+              <div
+                {...mapOverlayEdge("top")}
+                className="pointer-events-none absolute top-3 left-3 z-[var(--z-map-control)] flex"
+              >
+                <TurnCard direction={upcomingTurn.direction} distanceM={upcomingTurn.distanceM} />
+              </div>
+            )}
             {navigating && renderRideProfile()}
           </div>
         </div>
