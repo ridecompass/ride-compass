@@ -46,10 +46,11 @@ function deliver(
   heading: number | null = null,
   speed: number | null = null,
   timestamp = 0,
+  accuracy = 10,
 ) {
   act(() => {
     for (const watch of watches.values()) {
-      watch.onSuccess({ coords: { latitude, longitude, heading, speed }, timestamp } as GeolocationPosition);
+      watch.onSuccess({ coords: { latitude, longitude, heading, speed, accuracy }, timestamp } as GeolocationPosition);
     }
   });
 }
@@ -182,6 +183,16 @@ describe("useRideMode", () => {
     deliver(35.7, 139.76, null, 5);
     act(() => result.current.press());
     expect(result.current.speedKmh).toBeNull();
+  });
+
+  it("最後に受けた位置の誤差を出し、止めると捨てる", () => {
+    const { result } = renderHook(() => useRideMode());
+    act(() => result.current.press());
+    expect(result.current.accuracyM).toBeNull();
+    deliver(35.68, 139.76, null, null, 0, 12);
+    expect(result.current.accuracyM).toBe(12);
+    act(() => result.current.press());
+    expect(result.current.accuracyM).toBeNull();
   });
 
   it("最後に受けた位置を測った時刻を出し、止めると捨てる", () => {

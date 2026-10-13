@@ -17,18 +17,23 @@ describe("RideBar", () => {
     { case: "速さがあれば時速の整数で出す", speedKmh: 18.4, text: "18km/h" },
     { case: "速さが無ければ、無いことを出す", speedKmh: null, text: "—km/h" },
   ])("$case", ({ speedKmh, text }) => {
-    render(<RideBar remaining={null} speedKmh={speedKmh} wind={null} />);
+    render(<RideBar remaining={null} offRoute={false} speedKmh={speedKmh} wind={null} />);
     expect(bar()).toHaveTextContent(text);
   });
 
   it("風があれば向きと速さを出し、無ければ出さない", () => {
     const { rerender } = render(
-      <RideBar remaining={null} speedKmh={null} wind={{ directionDeg: 180, directionLabel: "南", speedMs: 3.24 }} />,
+      <RideBar
+        remaining={null}
+        offRoute={false}
+        speedKmh={null}
+        wind={{ directionDeg: 180, directionLabel: "南", speedMs: 3.24 }}
+      />,
     );
     expect(bar()).toHaveTextContent("南の風");
     expect(bar()).toHaveTextContent("3.2m/s");
 
-    rerender(<RideBar remaining={null} speedKmh={null} wind={null} />);
+    rerender(<RideBar remaining={null} offRoute={false} speedKmh={null} wind={null} />);
     expect(bar()).not.toHaveTextContent("の風");
   });
 
@@ -44,12 +49,20 @@ describe("RideBar", () => {
       texts: ["残り: —km", "到着予想: —"],
     },
   ])("$case", ({ remaining, texts }) => {
-    render(<RideBar remaining={remaining} speedKmh={null} wind={null} />);
+    render(<RideBar remaining={remaining} offRoute={false} speedKmh={null} wind={null} />);
     for (const text of texts) expect(bar()).toHaveTextContent(text);
   });
 
+  it("ルートを外れている間だけ、外れていることを出す", () => {
+    const remaining = { remainingKm: 3, arrivalAt: null };
+    const { rerender } = render(<RideBar remaining={remaining} offRoute={true} speedKmh={null} wind={null} />);
+    expect(screen.getByRole("status", { name: "ルートを外れています" })).toBeInTheDocument();
+    rerender(<RideBar remaining={remaining} offRoute={false} speedKmh={null} wind={null} />);
+    expect(screen.queryByRole("status", { name: "ルートを外れています" })).toBeNull();
+  });
+
   it("選んだ候補が無ければ、残りも到着予想も出さない", () => {
-    render(<RideBar remaining={null} speedKmh={null} wind={null} />);
+    render(<RideBar remaining={null} offRoute={false} speedKmh={null} wind={null} />);
     expect(bar()).not.toHaveTextContent("残り");
     expect(bar()).not.toHaveTextContent("到着予想");
   });

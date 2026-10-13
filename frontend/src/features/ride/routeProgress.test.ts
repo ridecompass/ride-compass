@@ -4,6 +4,7 @@
  * - 最も近い点の距離。ルートから離れていても最も近い点
  * - 往復で同じ道を2度通るところは、前の位置から続く側。前の位置が無ければ始点に近い側。前後に同じだけ離れていれば前へ進んだ側
  * - 続く側が最も近い点より余裕以上に遠ければ、最も近い点へ移る
+ * - ルートを外れたか: 端末が返す位置の誤差を超えてルートから離れたか。誤差が分からなければ外れていないとみなす
  *
  * ここで見ないもの:
  * - 辺ごとの最も近い点の距離と隔たり → `lib/routeDistance.test.ts`
@@ -14,7 +15,7 @@ import { METERS_PER_DEGREE } from "@/lib/localPlane";
 import { routeTrack } from "@/lib/routeDistance";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 
-import { ROUTE_MATCH_SLACK_M, locateOnRoute } from "./routeProgress";
+import { ROUTE_MATCH_SLACK_M, locateOnRoute, offRoute } from "./routeProgress";
 
 // 北緯35度の上を、東へ経度0.02度進んで同じ道を戻る往復（片道 2km として、行きは0〜2km、帰りは2〜4km）。
 const OUT_AND_BACK = routeTrack([
@@ -105,5 +106,18 @@ describe("locateOnRoute", () => {
 
   it("ルートの形が無ければnull", () => {
     expect(locateOnRoute([], quarterWay(), null)).toBeNull();
+  });
+});
+
+describe("offRoute", () => {
+  // 0.5km の所（東経139.005度）の北へ`meters`だけ離れた点。
+  const away = (meters: number) => ({ latitude: 35 + meters / METERS_PER_DEGREE, longitude: 139.005 });
+
+  it.each([
+    { case: "ルートからの隔たりが位置の誤差の内", meters: 15, accuracyM: 20, expected: false },
+    { case: "ルートからの隔たりが位置の誤差を超える", meters: 25, accuracyM: 20, expected: true },
+    { case: "位置の誤差が分からない", meters: 500, accuracyM: null, expected: false },
+  ])("$case", ({ meters, accuracyM, expected }) => {
+    expect(offRoute(OUT_AND_BACK, away(meters), accuracyM)).toBe(expected);
   });
 });

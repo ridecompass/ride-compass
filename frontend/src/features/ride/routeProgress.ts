@@ -45,3 +45,15 @@ export function locateOnRoute(
   });
   return best;
 }
+
+/**
+ * 現在地`position`が、ルートから外れているか。端末が位置と一緒に返す誤差`accuracyM`（m）を超えてルートから離れていれば
+ * 外れている。誤差は測った位置がどれだけ確かかという端末の事実で、外れの境目をこちらで決めた数字にしない。誤差が
+ * 分からなければ、外れていないとみなす。
+ */
+export function offRoute(track: readonly RouteTrackEdge[], position: Coordinates, accuracyM: number | null): boolean {
+  if (accuracyM === null) return false;
+  const projected = projectOnTrack(track, position);
+  if (projected.length === 0) return false;
+  return Math.min(...projected.map(({ offsetM }) => offsetM)) > accuracyM;
+}
