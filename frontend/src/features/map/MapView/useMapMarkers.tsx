@@ -14,7 +14,7 @@ import { runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
 /** 出発地点を見せる倍率（地図を作ったとき・出発地点が変わったとき）。 */
 export const ORIGIN_ZOOM = 13;
 
-// 地点のピンの器: 面の色（テーマに従う）の丸。出発地・経由地・目的地で同じ形にし、中の記号（PinMark）をReactでportalして
+// 地点のピンの器: 白い丸（`PIN_MARK_BACKGROUND`）。出発地・経由地・目的地で同じ形にし、中の記号（PinMark）をReactでportalして
 // 描く。左右対称なので、アンカーは地点＝中心（"center"）。影はどの配色の上でも輪郭が消えないため、touch-action:noneは指の起点が
 // ピンに乗ってもパンとして確定させるため。
 function createPinElement(role: PinRole, label?: string): HTMLDivElement {

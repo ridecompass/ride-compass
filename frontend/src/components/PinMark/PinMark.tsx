@@ -3,11 +3,11 @@ import palette from "@/types/generated/palette.json";
 import type { PinRole } from "@/types/route";
 
 // 地点（出発地・経由地・目的地）の印。**地図のピンと、ルート設定パネルの地点の印は同じ図形**
-// ——パネルとピンが同じものを指していることを、色と形だけで読めるようにする。外形はどの役割も同じ面の色の丸で、
+// ——パネルとピンが同じものを指していることを、色と形だけで読めるようにする。外形はどの役割も同じ白い丸で、
 // 役割は中の記号（出発地はスタートの旗・経由地は番号・目的地はゴールの旗）と、その色で見分ける。
 
-/** 印の丸の面。テーマに従う（ダークなら暗い台）ので、配信された1つの値ではなくCSSのトークンを読む（`lib/paletteCssVariables.ts`の決まり）。 */
-export const PIN_MARK_BACKGROUND = "var(--color-surface)";
+/** 印の丸の面（どの役割も、どのテーマでも同じ）。 */
+export const PIN_MARK_BACKGROUND = palette.semantic.pin_face;
 
 /** 印の記号の色（役割ごと）。 */
 export const PIN_MARK_COLOR: Record<PinRole, string> = {
