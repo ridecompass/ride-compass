@@ -40,10 +40,10 @@ function installGeolocation() {
 }
 
 /** 受け取り中の全員へ位置を届ける。 */
-function deliver(latitude: number, longitude: number, heading: number | null = null) {
+function deliver(latitude: number, longitude: number, heading: number | null = null, speed: number | null = null) {
   act(() => {
     for (const watch of watches.values()) {
-      watch.onSuccess({ coords: { latitude, longitude, heading } } as GeolocationPosition);
+      watch.onSuccess({ coords: { latitude, longitude, heading, speed } } as GeolocationPosition);
     }
   });
 }
@@ -163,6 +163,19 @@ describe("useRideMode", () => {
     } finally {
       holder.DeviceOrientationEvent = undefined;
     }
+  });
+
+  it("今の速さは、位置が持つ速さ（秒速）を時速にして出し、持たなければ出さない。止めると消える", () => {
+    const { result } = renderHook(() => useRideMode());
+    act(() => result.current.press());
+    expect(result.current.speedKmh).toBeNull();
+    deliver(35.68, 139.76, null, 5);
+    expect(result.current.speedKmh).toBeCloseTo(18, 6);
+    deliver(35.69, 139.76, null, null);
+    expect(result.current.speedKmh).toBeNull();
+    deliver(35.7, 139.76, null, 5);
+    act(() => result.current.press());
+    expect(result.current.speedKmh).toBeNull();
   });
 
   it("画面を離れたら受け取りをやめる", () => {

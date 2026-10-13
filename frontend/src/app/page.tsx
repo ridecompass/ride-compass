@@ -46,7 +46,9 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useLocation } from "@/hooks/useLocation";
 import { useStoredState, useStoredBooleanState } from "@/hooks/useStoredState";
 import { useRideConditions } from "@/features/conditions/useRideConditions";
+import RideBar from "@/features/ride/RideBar/RideBar";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
+import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { useRideMode } from "@/features/ride/useRideMode";
 import { formatDepartureLabel } from "@/features/conditions/rideConditions";
 import { useMapView } from "@/features/map/view/useMapView";
@@ -133,6 +135,8 @@ export default function Home() {
   const ride = useRideConditions();
   // 走行モード（現在地を追い続けて地図を動かす）。
   const riding = useRideMode();
+  // 走行モードの間は、地図と予定ルートのプロファイルに集中する配置にする（パネル・地図の上の操作を出さない）。
+  const navigating = riding.status !== "off";
   // 名前を付けて保存した生成の条件（「保存」タブ）。
   const savedConditions = useSavedConditions({
     conditions,
@@ -236,7 +240,7 @@ export default function Home() {
   const mobileTabBarRef = useRef<HTMLElement>(null);
   const measureRouteFitObscuredPx = (): RouteFitObscuredPx | undefined => {
     if (!isMobile) return undefined;
-    const sheetPx = mobileSheet ? (window.innerHeight * mobileSheetHeightVh) / 100 : 0;
+    const sheetPx = mobileSheet && !navigating ? (window.innerHeight * mobileSheetHeightVh) / 100 : 0;
     return { bottom: (mobileTabBarRef.current?.getBoundingClientRect().height ?? 0) + sheetPx };
   };
 
@@ -410,31 +414,74 @@ export default function Home() {
     );
   }
 
+  // 走行モードの間、地図の下に選んだ候補の道のりに沿った難易度を出す（候補が無ければ地図だけ）。
+  function renderRideProfile() {
+    const selected = results.routes.find((candidate) => candidate.id === results.selectedRouteId);
+    if (!selected || selected.segments.length === 0) return null;
+    return (
+      <section
+        aria-label="予定ルートのプロファイル"
+        {...mapOverlayEdge("bottom")}
+        className={cn(
+          cardVariants({ variant: "float" }),
+          "absolute inset-x-2 bottom-2 z-[var(--z-map-control)] rounded-md px-2 py-1.5",
+        )}
+      >
+        <DifficultyProfile
+          segments={selected.segments}
+          overallDifficulty={selected.overall_difficulty?.average ?? null}
+          axisOrder={axisCatalog.axes.map((axis) => axis.axisId)}
+          axisColors={axisCatalog.axisColors}
+          scaleKm={selected.distance_km}
+          selected={results.selectedRouteSegment}
+          onSelect={results.selectSegment}
+        />
+      </section>
+    );
+  }
+
   return (
     <div className="flex h-dvh flex-col">
       <header className="flex flex-shrink-0 flex-nowrap items-center gap-2 overflow-x-auto border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {/* 風と「今日」のパネルは左端に固定して常に見せる。入り切らないときに隠れるのは警報の側。 */}
-        <div className="left-0 flex flex-shrink-0 items-center gap-2 sticky z-1 bg-[var(--color-surface)]">
-          <WeatherPanel amedas={amedas} loading={amedasLoading} error={amedasError} />
-          <TodayOutlook weather={weather} loading={weatherLoading} error={weatherError} />
-        </div>
-        <div className="ml-auto flex flex-shrink-0 items-center gap-2">
-          <WarningBadgeList items={warningBadgeItems} failures={headerFetchFailures} />
-          <div className="right-0 flex items-center sticky z-1 bg-[var(--color-surface)]">
-            <HeaderMenu
-              debugEnabled={debugEnabled}
-              debugConsoleOpen={debugConsoleOpen}
-              onToggleDebugConsole={() => setDebugConsoleOpen((v) => !v)}
-              onStartUsageGuide={() => setUsageGuideActive(true)}
-              onRedrawMap={mapView.redrawMap}
-            />
-          </div>
-        </div>
+        {navigating ? (
+          <RideBar
+            speedKmh={riding.speedKmh}
+            wind={
+              amedas?.wind_speed_ms != null && amedas.wind_direction !== null
+                ? {
+                    directionDeg: amedas.wind_direction.deg,
+                    directionLabel: amedas.wind_direction.label,
+                    speedMs: amedas.wind_speed_ms,
+                  }
+                : null
+            }
+          />
+        ) : (
+          <>
+            {/* 風と「今日」のパネルは左端に固定して常に見せる。入り切らないときに隠れるのは警報の側。 */}
+            <div className="left-0 flex flex-shrink-0 items-center gap-2 sticky z-1 bg-[var(--color-surface)]">
+              <WeatherPanel amedas={amedas} loading={amedasLoading} error={amedasError} />
+              <TodayOutlook weather={weather} loading={weatherLoading} error={weatherError} />
+            </div>
+            <div className="ml-auto flex flex-shrink-0 items-center gap-2">
+              <WarningBadgeList items={warningBadgeItems} failures={headerFetchFailures} />
+              <div className="right-0 flex items-center sticky z-1 bg-[var(--color-surface)]">
+                <HeaderMenu
+                  debugEnabled={debugEnabled}
+                  debugConsoleOpen={debugConsoleOpen}
+                  onToggleDebugConsole={() => setDebugConsoleOpen((v) => !v)}
+                  onStartUsageGuide={() => setUsageGuideActive(true)}
+                  onRedrawMap={mapView.redrawMap}
+                />
+              </div>
+            </div>
+          </>
+        )}
       </header>
       <DebugConsole open={debugConsoleOpen} onClose={() => setDebugConsoleOpen(false)} />
 
       <div className="app-shell">
-        {!isMobile && (
+        {!isMobile && !navigating && (
           <aside className={`app-sidebar${sidebarCollapsed ? " is-collapsed" : ""}`}>
             <Button
               size="sm"
@@ -517,65 +564,79 @@ export default function Home() {
               ride={riding.map}
             />
 
-            {/* 地図の左上に「表示」（重ねる情報の一覧）、上の中央に色分けを置く。 */}
-            <div
-              {...mapOverlayEdge("top")}
-              className="pointer-events-none absolute top-3 left-3 z-[var(--z-map-control)] flex"
-            >
-              <MapOverlayControls {...mapView.overlayControls} />
-            </div>
-            {/* 左右の余白は、右の縦の列を両側で避ける幅（中央に置くため）。 */}
-            <div
-              {...mapOverlayEdge("top")}
-              className="pointer-events-none absolute inset-x-0 top-3 z-[var(--z-map-control)] flex justify-center px-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))]"
-            >
-              <LensControl {...mapView.lensControl} />
-            </div>
+            {!navigating && (
+              <>
+                {/* 地図の左上に「表示」（重ねる情報の一覧）、上の中央に色分けを置く。 */}
+                <div
+                  {...mapOverlayEdge("top")}
+                  className="pointer-events-none absolute top-3 left-3 z-[var(--z-map-control)] flex"
+                >
+                  <MapOverlayControls {...mapView.overlayControls} />
+                </div>
+                {/* 左右の余白は、右の縦の列を両側で避ける幅（中央に置くため）。 */}
+                <div
+                  {...mapOverlayEdge("top")}
+                  className="pointer-events-none absolute inset-x-0 top-3 z-[var(--z-map-control)] flex justify-center px-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))]"
+                >
+                  <LensControl {...mapView.lensControl} />
+                </div>
 
-            <FirstVisitIntro isMobile={isMobile} locationUnknown={locationFailure !== null} />
+                <FirstVisitIntro isMobile={isMobile} locationUnknown={locationFailure !== null} />
+              </>
+            )}
 
             {usageGuideActive && <UsageGuide onEnd={() => setUsageGuideActive(false)} />}
 
-            <TravelBearingControl value={ride.bearingDeg} onChange={ride.setBearingDeg} />
+            {!navigating && <TravelBearingControl value={ride.bearingDeg} onChange={ride.setBearingDeg} />}
 
             {/* 走行条件（出発時刻・想定速度）は走行方位の直下に積む。出発時刻は気象レイヤーの表示時刻と同じもの。
               その下へ現在地と走行モードを続ける。 */}
             <div
               {...mapOverlayEdge("right")}
-              className="pointer-events-none absolute top-[calc(var(--map-ctrl-stack-top)+var(--map-ctrl-button-size)+var(--map-ctrl-stack-gap))] right-[var(--map-ctrl-margin)] z-[var(--z-map-control)] flex flex-col gap-[var(--map-ctrl-stack-gap)]"
+              className={cn(
+                "pointer-events-none absolute right-[var(--map-ctrl-margin)] z-[var(--z-map-control)] flex flex-col gap-[var(--map-ctrl-stack-gap)]",
+                // 走行モードの間は走行方位のボタンを出さないので、その段を空けずに積む。
+                navigating
+                  ? "top-[var(--map-ctrl-stack-top)]"
+                  : "top-[calc(var(--map-ctrl-stack-top)+var(--map-ctrl-button-size)+var(--map-ctrl-stack-gap))]",
+              )}
             >
-              <RideConditionBar
-                departureTime={ride.departure.at}
-                onDepartureTimeChange={ride.departure.setAt}
-                onDepartureNow={ride.departure.followNow}
-                speedKmh={ride.speedKmh}
-                onSpeedKmhChange={ride.setSpeedKmh}
-              />
-              <div className="relative flex">
-                <Button
-                  variant="mapCtrl"
-                  size="mapCtrl"
-                  onClick={handleLocateMe}
-                  disabled={locating}
-                  aria-label="現在地に移動"
-                  title="現在地に移動"
-                  usage="現在地を取り直して地図をそこへ動かし、出発地を現在地にします。"
-                  className={cn(locating && "cursor-wait opacity-60")}
-                >
-                  {locating ? "…" : <LocateIcon />}
-                </Button>
-                {locateError && (
-                  <p
-                    className={cn(
-                      cardVariants({ variant: "float" }),
-                      textVariants({ variant: "error" }),
-                      "pointer-events-none absolute top-0 right-full mr-2 w-max max-w-55 border-0 px-2.5 py-1.5",
+              {!navigating && (
+                <>
+                  <RideConditionBar
+                    departureTime={ride.departure.at}
+                    onDepartureTimeChange={ride.departure.setAt}
+                    onDepartureNow={ride.departure.followNow}
+                    speedKmh={ride.speedKmh}
+                    onSpeedKmhChange={ride.setSpeedKmh}
+                  />
+                  <div className="relative flex">
+                    <Button
+                      variant="mapCtrl"
+                      size="mapCtrl"
+                      onClick={handleLocateMe}
+                      disabled={locating}
+                      aria-label="現在地に移動"
+                      title="現在地に移動"
+                      usage="現在地を取り直して地図をそこへ動かし、出発地を現在地にします。"
+                      className={cn(locating && "cursor-wait opacity-60")}
+                    >
+                      {locating ? "…" : <LocateIcon />}
+                    </Button>
+                    {locateError && (
+                      <p
+                        className={cn(
+                          cardVariants({ variant: "float" }),
+                          textVariants({ variant: "error" }),
+                          "pointer-events-none absolute top-0 right-full mr-2 w-max max-w-55 border-0 px-2.5 py-1.5",
+                        )}
+                      >
+                        {locateError}
+                      </p>
                     )}
-                  >
-                    {locateError}
-                  </p>
-                )}
-              </div>
+                  </div>
+                </>
+              )}
               <RideModeButton
                 status={riding.status}
                 error={riding.error}
@@ -583,12 +644,13 @@ export default function Home() {
                 onPress={riding.press}
               />
             </div>
+            {navigating && renderRideProfile()}
           </div>
         </div>
       </div>
 
       {/* モバイル: 下部タブと部分シート。シートを開いたままでも地図の上側は見えて動かせる。 */}
-      {isMobile && (
+      {isMobile && !navigating && (
         <>
           <nav
             ref={mobileTabBarRef}

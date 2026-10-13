@@ -208,7 +208,8 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   await expect(rideButton).toHaveAttribute("aria-pressed", "false");
   await expect(dot).toBeHidden();
   const afterStop = moved(pausedAt, 0, 200);
-  const before = (await screenPointOf(page, pausedAt))!;
+  // 止めると左のパネルが戻って地図の幅が変わるので、落ち着いた位置を基準にする。
+  const before = await settledScreenPoint(page, pausedAt);
   await deliverPosition(page, context, afterStop);
   const after = await screenPointOf(page, pausedAt);
   expect(after).not.toBeNull();

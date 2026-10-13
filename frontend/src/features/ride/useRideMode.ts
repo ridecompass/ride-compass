@@ -32,6 +32,8 @@ interface UseRideModeResult {
   status: RideStatus;
   /** 走行モードを始められなかった・止めた理由。次に始めると消える。 */
   error: string | null;
+  /** 今の速さ（時速km）。位置が速さを持たない・走行モードでない間はnull。 */
+  speedKmh: number | null;
   /** 走行モードの間、画面が自動で消えないよう頼めているか（画面が消えると位置も届かなくなる）。 */
   screenWakeLock: ScreenWakeLockStatus;
   /** 止まっていれば始め、休んでいれば追い直し、追っていれば止める。 */
@@ -50,6 +52,8 @@ export function useRideMode(): UseRideModeResult {
   const [status, setStatus] = useState<RideStatus>("off");
   const [error, setError] = useState<string | null>(null);
   const [position, setPosition] = useState<Coordinates | null>(null);
+  // 位置が持つ速さ（秒速m）。止まっている・取れないときはnull。
+  const [speedMs, setSpeedMs] = useState<number | null>(null);
   const [travel, setTravel] = useState<TravelBearing | null>(null);
   const [headingUp, setHeadingUp] = useState(false);
   const watchId = useRef<number | null>(null);
@@ -66,6 +70,7 @@ export function useRideMode(): UseRideModeResult {
     stopWatching();
     setStatus("off");
     setPosition(null);
+    setSpeedMs(null);
     setTravel(null);
     debugLog("ride:mode", "止めた");
   }, [stopWatching]);
@@ -82,8 +87,9 @@ export function useRideMode(): UseRideModeResult {
     debugLog("ride:mode", "始めた");
     watchId.current = navigator.geolocation.watchPosition(
       (fix) => {
-        const { latitude, longitude, heading } = fix.coords;
+        const { latitude, longitude, heading, speed } = fix.coords;
         setPosition({ latitude, longitude });
+        setSpeedMs(speed !== null && Number.isFinite(speed) ? speed : null);
         setTravel((previous) => nextTravelBearing(previous, { latitude, longitude, heading }));
         setStatus((current) => (current === "waiting" ? "following" : current));
       },
@@ -94,6 +100,7 @@ export function useRideMode(): UseRideModeResult {
         stopWatching();
         setStatus("off");
         setPosition(null);
+        setSpeedMs(null);
         setTravel(null);
         setError("位置情報の利用が許可されていないため、走行モードを止めました。");
       },
@@ -131,5 +138,7 @@ export function useRideMode(): UseRideModeResult {
 
   const screenWakeLock = useScreenWakeLock(status !== "off");
 
-  return { status, error, screenWakeLock, press, map };
+  const speedKmh = status !== "off" && speedMs !== null ? speedMs * 3.6 : null;
+
+  return { status, error, speedKmh, screenWakeLock, press, map };
 }
