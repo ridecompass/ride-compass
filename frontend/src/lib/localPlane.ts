@@ -2,6 +2,7 @@
 // （緯度経度のまま測ると、日本では経度方向が実際より約1.2倍長くなる）。
 
 import geoConfig from "@/types/generated/geo-config.json";
+import type { Coordinates } from "@/types/route";
 
 /** 緯度1度の長さ（m）。 */
 export const METERS_PER_DEGREE = (geoConfig.earth_radius_km * 1000 * Math.PI) / 180;
@@ -15,6 +16,12 @@ export interface PlanePoint {
 /** 緯度`latitude`（度）で、経度1度の長さが緯度1度の長さの何倍か。 */
 export function longitudeScale(latitude: number): number {
   return Math.cos((latitude * Math.PI) / 180);
+}
+
+/** 2点`a`と`b`の間の長さ（m）。 */
+export function distanceM(a: Coordinates, b: Coordinates): number {
+  const x = (b.longitude - a.longitude) * longitudeScale(a.latitude);
+  return Math.hypot(x, b.latitude - a.latitude) * METERS_PER_DEGREE;
 }
 
 /** 線分`a`-`b`の上で、点`p`に最も近い点。`a`と`b`が同じ点ならその点。 */

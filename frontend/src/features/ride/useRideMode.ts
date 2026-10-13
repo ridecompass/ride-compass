@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { debugLog } from "@/lib/debugLog";
 import type { Coordinates } from "@/types/route";
 
+import { nextRidePace, type RidePace } from "./ridePace";
 import { nextTravelBearing, type TravelBearing } from "./travelBearing";
 import { useDeviceHeading } from "./useDeviceHeading";
 import { useScreenWakeLock, type ScreenWakeLockStatus } from "./useScreenWakeLock";
@@ -34,6 +35,8 @@ interface UseRideModeResult {
   error: string | null;
   /** 今の速さ（時速km）。位置が速さを持たない・走行モードでない間はnull。 */
   speedKmh: number | null;
+  /** 走行モードを始めてからの走った実績。位置をまだ受け取っていない・走行モードでない間はnull。 */
+  pace: RidePace | null;
   /** 走行モードの間、画面が自動で消えないよう頼めているか（画面が消えると位置も届かなくなる）。 */
   screenWakeLock: ScreenWakeLockStatus;
   /** 止まっていれば始め、休んでいれば追い直し、追っていれば止める。 */
@@ -55,6 +58,7 @@ export function useRideMode(): UseRideModeResult {
   // 位置が持つ速さ（秒速m）。止まっている・取れないときはnull。
   const [speedMs, setSpeedMs] = useState<number | null>(null);
   const [travel, setTravel] = useState<TravelBearing | null>(null);
+  const [pace, setPace] = useState<RidePace | null>(null);
   const [headingUp, setHeadingUp] = useState(false);
   const watchId = useRef<number | null>(null);
   const device = useDeviceHeading(status !== "off");
@@ -72,6 +76,7 @@ export function useRideMode(): UseRideModeResult {
     setPosition(null);
     setSpeedMs(null);
     setTravel(null);
+    setPace(null);
     debugLog("ride:mode", "止めた");
   }, [stopWatching]);
 
@@ -91,6 +96,7 @@ export function useRideMode(): UseRideModeResult {
         setPosition({ latitude, longitude });
         setSpeedMs(speed !== null && Number.isFinite(speed) ? speed : null);
         setTravel((previous) => nextTravelBearing(previous, { latitude, longitude, heading }));
+        setPace((previous) => nextRidePace(previous, { latitude, longitude, timeMs: fix.timestamp }));
         setStatus((current) => (current === "waiting" ? "following" : current));
       },
       (failure) => {
@@ -102,6 +108,7 @@ export function useRideMode(): UseRideModeResult {
         setPosition(null);
         setSpeedMs(null);
         setTravel(null);
+        setPace(null);
         setError("位置情報の利用が許可されていないため、走行モードを止めました。");
       },
       WATCH_OPTIONS,
@@ -140,5 +147,5 @@ export function useRideMode(): UseRideModeResult {
 
   const speedKmh = status !== "off" && speedMs !== null ? speedMs * 3.6 : null;
 
-  return { status, error, speedKmh, screenWakeLock, press, map };
+  return { status, error, speedKmh, pace, screenWakeLock, press, map };
 }

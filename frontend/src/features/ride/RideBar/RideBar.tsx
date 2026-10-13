@@ -2,8 +2,11 @@
 
 import type { ReactNode } from "react";
 
-import { BicycleIcon, WindDirectionArrowIcon } from "@/components/ui/icons/icons";
+import { BicycleIcon, ClockIcon, GoalFlagIcon, WindDirectionArrowIcon } from "@/components/ui/icons/icons";
 import { downwindDeg } from "@/lib/cardinalLabel";
+import { formatJstHourMinute } from "@/lib/time";
+
+import type { RideRemaining } from "../ridePace";
 
 /** 走りの帯に出す風（最寄りの観測所の実測）。 */
 interface RideBarWind {
@@ -15,6 +18,8 @@ interface RideBarWind {
 }
 
 interface RideBarProps {
+  /** 選んだ候補の残り。候補が無ければnull（出さない）。 */
+  remaining: RideRemaining | null;
   speedKmh: number | null;
   wind: RideBarWind | null;
 }
@@ -31,10 +36,27 @@ function Unit({ children }: { children: ReactNode }) {
   return <span className="text-[0.8em] font-normal text-[var(--color-muted)]">{children}</span>;
 }
 
-/** 走行モードの間、画面の上の1行（ふだんは天気の帯）に出す走りの数字。 */
-export default function RideBar({ speedKmh, wind }: RideBarProps) {
+/** 走行モードの間、画面の上の1行（ふだんは天気の帯）に出す走りの数字（ルートの残り・到着予想・今の速さ・風）。 */
+export default function RideBar({ remaining, speedKmh, wind }: RideBarProps) {
   return (
     <div role="group" aria-label="走りの数字" className="flex min-w-0 items-center gap-3">
+      {remaining !== null && (
+        <>
+          <Stat>
+            <GoalFlagIcon size={16} />
+            <span className="sr-only">残り: </span>
+            <span>
+              {remaining.remainingKm === null ? "—" : remaining.remainingKm.toFixed(1)}
+              <Unit>km</Unit>
+            </span>
+          </Stat>
+          <Stat>
+            <ClockIcon size={16} />
+            <span className="sr-only">到着予想: </span>
+            <span>{remaining.arrivalAt === null ? "—" : formatJstHourMinute(remaining.arrivalAt)}</span>
+          </Stat>
+        </>
+      )}
       <Stat>
         <BicycleIcon size={16} />
         <span className="sr-only">今の速さ: </span>

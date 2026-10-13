@@ -5,6 +5,7 @@
  *
  * ここで見ないもの:
  * - 進む向きの出し方（位置の向き・動いた向き・止まっている間）→ `travelBearing.test.ts`
+ * - 走った実績の積み方（揺れ・止まっていた1歩）→ `ridePace.test.ts`
  * - 地図が受けた値で中心と向きを動かすこと → `e2e/ride-mode.spec.ts`（実ブラウザの地図）
  *
  * 差し替えたもの: 位置情報の受け取り（`navigator.geolocation`。テスト環境に無いブラウザの機能）。受け取りごとに、
@@ -39,11 +40,17 @@ function installGeolocation() {
   Object.defineProperty(navigator, "geolocation", { value: geolocation, configurable: true });
 }
 
-/** 受け取り中の全員へ位置を届ける。 */
-function deliver(latitude: number, longitude: number, heading: number | null = null, speed: number | null = null) {
+/** 受け取り中の全員へ、時刻`timestamp`に測った位置を届ける。 */
+function deliver(
+  latitude: number,
+  longitude: number,
+  heading: number | null = null,
+  speed: number | null = null,
+  timestamp = 0,
+) {
   act(() => {
     for (const watch of watches.values()) {
-      watch.onSuccess({ coords: { latitude, longitude, heading, speed } } as GeolocationPosition);
+      watch.onSuccess({ coords: { latitude, longitude, heading, speed }, timestamp } as GeolocationPosition);
     }
   });
 }
@@ -176,6 +183,19 @@ describe("useRideMode", () => {
     deliver(35.7, 139.76, null, 5);
     act(() => result.current.press());
     expect(result.current.speedKmh).toBeNull();
+  });
+
+  it("走った実績は、届いた位置とその時刻から積み、止めると捨てる", () => {
+    const { result } = renderHook(() => useRideMode());
+    act(() => result.current.press());
+    expect(result.current.pace).toBeNull();
+    // 北へ緯度0.01度（約1.1km）を2分で進む。
+    deliver(35.68, 139.76, null, null, 0);
+    deliver(35.69, 139.76, null, null, 120_000);
+    expect(result.current.pace).toMatchObject({ lastMs: 120_000, movingMs: 120_000 });
+    expect(result.current.pace?.movingKm).toBeCloseTo(1.11, 2);
+    act(() => result.current.press());
+    expect(result.current.pace).toBeNull();
   });
 
   it("画面を離れたら受け取りをやめる", () => {

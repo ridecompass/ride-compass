@@ -17,7 +17,8 @@
  *   いれば「ルート結果」へ移ってそこから全消去でき、ほかのときは移らず合図を出すこと・候補を出せなかった理由の1行・
  *   ルートを収めるときに避けるシートの高さ・高さの保存と保存値の検査）、区分の開閉の保存、
  *   ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、メニューから入る使い方の説明とデバッグログ、
- *   走行モードの間の配置と、届いた現在地がプロファイルの印と地図のルート線の薄めへ同じ距離で渡ること
+ *   走行モードの間の配置と、届いた現在地がプロファイルの印と地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、
+ *   到着予想が候補を作ったときの想定速度で出ること
  *
  * ここで見ないもの: 子の部品は本物を描き、子が値をどう描くか（一覧の書式・印の色・天候の値）は各部品のテストが見る。
  * 地図の見え方の中身（どのレイヤーをどの色・重なりで描くか・レンズの選択肢・凡例）は地図の側（`features/map/scene/`）の
@@ -39,6 +40,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clampSheetHeightVh, DEFAULT_SHEET_HEIGHT_VH } from "@/components/BottomSheet/BottomSheet";
 import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
 import { setDebugEnabled } from "@/lib/debugLog";
+import { HOUR_MS } from "@/lib/duration";
+import { formatJstHourMinute } from "@/lib/time";
 import { heldReplies, onBackend, onSameOrigin, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
@@ -49,6 +52,7 @@ import { makeGenerationConditions, makeRouteCandidate, makeRouteSegment } from "
 import type { Coordinates, RouteCandidate } from "@/types/route";
 import type { AxisInspectorResult } from "@/features/map/regionApi";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
+import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { AmedasObservation, WeatherConditions } from "@/types/weather";
 
 import Home from "./page";
@@ -108,8 +112,8 @@ function installGeolocation(point: Coordinates | null) {
     configurable: true,
   });
   return {
-    move(to: Coordinates) {
-      act(() => watcher?.({ coords: { ...to, heading: null, speed: null } } as GeolocationPosition));
+    move(to: Coordinates, timestamp = 0) {
+      act(() => watcher?.({ coords: { ...to, heading: null, speed: null }, timestamp } as GeolocationPosition));
     },
   };
 }
@@ -721,7 +725,7 @@ describe("画面の枠", () => {
     expect(rideProfile()).toBeNull();
   });
 
-  it("走行モードで届いた現在地を選んだ候補の上の距離へ当て、プロファイルに印を出し、地図のルート線のそこまでを薄める", async () => {
+  it("走行モードで届いた現在地を選んだ候補の上の距離へ当て、プロファイルに印を出し、地図のルート線のそこまでを薄め、走りの帯に残りと到着予想を出す", async () => {
     const geolocation = installGeolocation(HERE);
     const { user } = renderHome();
     // 東へ1km進む区間1つのルート。現在地はその真ん中。
@@ -741,9 +745,21 @@ describe("画面の枠", () => {
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
 
+    // 作ったあとに想定速度を変えても、到着予想は作ったときの速さで出す。
+    await user.click(screen.getByRole("button", { name: /^想定速度: / }));
+    const speed = await screen.findByRole("spinbutton", { name: "想定速度（km/h）" });
+    await user.clear(speed);
+    await user.type(speed, String(routeGenerateConfig.default_assumed_speed_kmh * 2));
+    await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "走行モード" }));
-    geolocation.move({ latitude: 35.7, longitude: 139.705 });
+    const fixedAt = Date.parse("2026-10-13T03:00:00Z");
+    geolocation.move({ latitude: 35.7, longitude: 139.705 }, fixedAt);
 
+    // 走り始めは実績が無いので、候補を作ったときの想定速度で残りの0.5kmを走る。
+    const arrival = new Date(fixedAt + (0.5 / routeGenerateConfig.default_assumed_speed_kmh) * HOUR_MS);
+    const rideBar = screen.getByRole("group", { name: "走りの数字" });
+    expect(rideBar).toHaveTextContent("残り: 0.5km");
+    expect(rideBar).toHaveTextContent(`到着予想: ${formatJstHourMinute(arrival)}`);
     const profile = screen.getByRole("region", { name: "予定ルートのプロファイル" });
     expect(profile.querySelector('[data-progress="position"]')).not.toBeNull();
     const drawn = mapOnScreen().sourceFeatures("route-segments");
