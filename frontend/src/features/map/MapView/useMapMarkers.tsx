@@ -6,7 +6,7 @@ import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap, Marker } from "maplibre-gl";
 
 import type { Coordinates, LocationSource, PinRole, SelectedRouteSegment } from "@/types/route";
-import { originMarkColor, PIN_MARK_BACKGROUND, PinMark, pinMarkText } from "@/components/PinMark/PinMark";
+import { originMarkColor, PIN_MARK_BACKGROUND, PinMark, pinMarkName } from "@/components/PinMark/PinMark";
 import { SelectedSpotIcon } from "@/components/ui/icons/icons";
 import palette from "@/types/generated/palette.json";
 import { runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
@@ -14,29 +14,17 @@ import { runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
 /** 出発地点を見せる倍率（地図を作ったとき・出発地点が変わったとき）。 */
 export const ORIGIN_ZOOM = 13;
 
-// 出発地点は現在地の記号（十字線と中心の点）を面の色（テーマに従う）の円に乗せる。左右対称なので、アンカーは地点＝中心（"center"）。
-// 中身の印はReactでportalして描く。
-function createOriginMarkerElement(): HTMLDivElement {
+// 地点のピンの器: 白い丸（`PIN_MARK_BACKGROUND`）。出発地・経由地・目的地で同じ形にし、中の記号（PinMark）をReactでportalして
+// 描く。左右対称なので、アンカーは地点＝中心（"center"）。影はどの配色の上でも輪郭が消えないため、touch-action:noneは指の起点が
+// ピンに乗ってもパンとして確定させるため。
+function createPinElement(role: PinRole, label?: string): HTMLDivElement {
   const el = document.createElement("div");
+  el.setAttribute("role", "img");
+  el.setAttribute("aria-label", pinMarkName(role, label));
   el.style.cssText =
-    "width:32px; height:32px; border-radius:50%; background:" +
-    PIN_MARK_BACKGROUND.origin +
-    "; display:flex; " +
+    `width:32px; height:32px; border-radius:50%; background:${PIN_MARK_BACKGROUND}; display:flex; ` +
     "align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,0.4); " +
     "touch-action:none; cursor:grab;";
-  return el;
-}
-
-// 経由地・目的地のピン。3つの地点はどれもつかんで動かせるため、出発地と同じ丸いバッジで揃える。白縁と影は
-// どの配色の上でも輪郭が消えないため、touch-action:noneは指の起点がピンに乗ってもパンとして確定させるため。
-function createPointMarkerElement(role: Exclude<PinRole, "origin">, label?: string): HTMLDivElement {
-  const el = document.createElement("div");
-  const background = PIN_MARK_BACKGROUND[role];
-  el.textContent = pinMarkText(role, label);
-  el.style.cssText =
-    `width:26px; height:26px; border-radius:50%; background:${background}; color:#fff; ` +
-    "font-size:13px; font-weight:bold; display:flex; align-items:center; justify-content:center; " +
-    "border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.4); touch-action:none; cursor:grab;";
   return el;
 }
 
@@ -118,6 +106,9 @@ export function useMapMarkers(
   const selectedSegmentMarkerRef = useRef<Marker | null>(null);
   // 出発地点の印の器（Markerの要素）と、中身の印の色。
   const [originMark, setOriginMark] = useState<{ element: HTMLDivElement; color: string } | null>(null);
+  // 経由地・目的地の印の器（Markerの要素）。中身の印はportalで描く。
+  const [waypointMarks, setWaypointMarks] = useState<HTMLDivElement[]>([]);
+  const [destinationMark, setDestinationMark] = useState<HTMLDivElement | null>(null);
   // 選んでいる区間の印の器（Markerの要素）。中身はアイコン集の形をportalで描く。
   const [selectedSegmentMark, setSelectedSegmentMark] = useState<HTMLDivElement | null>(null);
   // 印の操作（作ったときに一度だけ結ぶ）が、いまのpropsを読むための参照。
@@ -158,7 +149,7 @@ export function useMapMarkers(
       } else {
         markerRef.current?.remove();
         const color = originMarkColor(locationSource !== "default");
-        const element = createOriginMarkerElement();
+        const element = createPinElement("origin");
         setOriginMark({ element, color });
         markerRef.current = new maplibregl.Marker({
           element,
@@ -186,12 +177,14 @@ export function useMapMarkers(
 
     const applyWaypointMarkers = () => {
       waypointMarkersRef.current.forEach((marker) => marker.remove());
+      const elements = waypoints.map((_, index) => createPinElement("waypoint", String(index + 1)));
       waypointMarkersRef.current = waypoints.map((point, index) =>
-        addPointMarker(map, point, createPointMarkerElement("waypoint", String(index + 1)), pointEditingEnabled, {
+        addPointMarker(map, point, elements[index], pointEditingEnabled, {
           onMove: (coordinates) => latest.current.onWaypointMove(index, coordinates),
           onClick: () => latest.current.onWaypointRemove(index),
         }),
       );
+      setWaypointMarks(elements);
     };
 
     runWhenStyleReady(map, applyWaypointMarkers);
@@ -211,18 +204,15 @@ export function useMapMarkers(
     const applyDestinationMarker = () => {
       destinationMarkerRef.current?.remove();
       destinationMarkerRef.current = null;
+      setDestinationMark(null);
       if (!destination) return;
+      const element = createPinElement("destination");
+      setDestinationMark(element);
 
-      destinationMarkerRef.current = addPointMarker(
-        map,
-        destination,
-        createPointMarkerElement("destination"),
-        pointEditingEnabled,
-        {
-          onMove: (coordinates) => latest.current.onPinPlace("destination", coordinates),
-          onClick: () => latest.current.onDestinationClear(),
-        },
-      );
+      destinationMarkerRef.current = addPointMarker(map, destination, element, pointEditingEnabled, {
+        onMove: (coordinates) => latest.current.onPinPlace("destination", coordinates),
+        onClick: () => latest.current.onDestinationClear(),
+      });
     };
 
     runWhenStyleReady(map, applyDestinationMarker);
@@ -259,7 +249,11 @@ export function useMapMarkers(
   return (
     <>
       {originMark !== null &&
-        createPortal(<PinMark role="origin" size={20} color={originMark.color} />, originMark.element)}
+        createPortal(<PinMark role="origin" size={20} originColor={originMark.color} />, originMark.element)}
+      {waypointMarks.map((element, index) =>
+        createPortal(<PinMark role="waypoint" label={String(index + 1)} size={20} />, element, `waypoint-${index}`),
+      )}
+      {destinationMark !== null && createPortal(<PinMark role="destination" size={20} />, destinationMark)}
       {selectedSegmentMark !== null && createPortal(<SelectedSpotIcon size={26} />, selectedSegmentMark)}
     </>
   );

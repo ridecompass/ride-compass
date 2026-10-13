@@ -184,7 +184,7 @@ test("目的地を探して置いた地点は地図のその位置にピンが�
     .click();
 
   // ピンの位置（印の要素の中心）が、地図がその地点を描く位置にある。寄せる動きが終わるまで待つ。
-  const pin = page.locator(".maplibregl-marker", { hasText: "⚑" });
+  const pin = page.getByRole("img", { name: "目的地", exact: true });
   const offset = async () => {
     const box = (await pin.boundingBox())!;
     const at = await page.evaluate(
@@ -325,7 +325,7 @@ test("モバイル: 目的地を探すと候補を画面の上側でキーボー
   await choice.click();
 
   await expect(settings.getByRole("button", { name: `目的地: ${candidate.name}` })).toBeVisible();
-  await expect(page.locator(".maplibregl-marker", { hasText: "⚑" })).toHaveCount(1);
+  await expect(page.getByRole("img", { name: "目的地", exact: true })).toHaveCount(1);
 });
 
 // ルートを収める余白は、地図の上に重ねた部品が覆う幅を含む（含まないと、ルートの端が操作列の下に隠れる）。

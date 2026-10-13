@@ -461,6 +461,15 @@ describe("地図で扱えること", () => {
     await user.click(screen.getByRole("button", { name: "目的地にする" }));
     expect(marksAt(shop)).toHaveLength(2);
     expect(screen.getByRole("button", { name: "目的地: 角の店" })).toBeInTheDocument();
+    // 地図の印は役割の名前で見分けられ、地点の並びの印と同じ記号を描く。
+    const [waypointMark, destinationMark] = marksAt(shop).map(({ element }) => element);
+    expect(waypointMark).toHaveAccessibleName("経由地 1");
+    expect(destinationMark).toHaveAccessibleName("目的地");
+    expect(screen.getByRole("img", { name: "出発地" })).toBeInTheDocument();
+    const listedDestination = screen.getByRole("button", { name: "目的地: 角の店" }).querySelector("svg");
+    // 大きさは置き場ごとに違うので、記号の中身で比べる。
+    expect(listedDestination?.innerHTML).toBeTruthy();
+    expect(destinationMark.querySelector("svg")?.innerHTML).toBe(listedDestination?.innerHTML);
 
     await user.click(screen.getByRole("tab", { name: "重み" }));
     clickMap(shop, pointed);

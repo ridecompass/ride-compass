@@ -57,9 +57,9 @@ export default function FirstVisitIntro({ isMobile, locationUnknown }: FirstVisi
         <li className="flex items-start gap-1.5">
           <span
             className="inline-flex shrink-0 rounded-full p-0.5 shadow-sm"
-            style={{ background: PIN_MARK_BACKGROUND.origin }}
+            style={{ background: PIN_MARK_BACKGROUND }}
           >
-            <PinMark role="origin" size={14} color={locationUnknown ? ORIGIN_MARK_FALLBACK_COLOR : undefined} />
+            <PinMark role="origin" size={14} originColor={locationUnknown ? ORIGIN_MARK_FALLBACK_COLOR : undefined} />
           </span>
           <span>
             <GuideText

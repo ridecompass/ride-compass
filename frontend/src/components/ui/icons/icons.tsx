@@ -450,7 +450,32 @@ export function DisplayItemsIcon({ size = 16 }: IconProps) {
   );
 }
 
-/** 現在地（出発地の印・現在地へ移動）: 照準の輪と、塗った中心の点。lucideの`LocateFixed`は中心が輪で、
+/** 出発地の印: 竿に、塗った旗。目的地の`GoalFlagIcon`と竿をそろえ、旗の模様だけで見分ける。 */
+export function StartFlagIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      <path d="M4 18V2.5" />
+      <path d="M4 3h11.5l-2.8 3.75L15.5 10.5H4Z" fill="currentColor" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** 目的地の印: 竿に、市松の旗（ゴールの旗）。 */
+export function GoalFlagIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      <path d="M4 18V2.5" />
+      <rect x="4" y="3" width="12" height="7.5" strokeLinejoin="round" />
+      <path
+        d="M4 3h3v2.5H4ZM10 3h3v2.5h-3ZM7 5.5h3V8H7ZM13 5.5h3V8h-3ZM4 8h3v2.5H4ZM10 8h3v2.5h-3Z"
+        fill="currentColor"
+        stroke="none"
+      />
+    </svg>
+  );
+}
+
+/** 現在地（現在地へ移動）: 照準の輪と、塗った中心の点。lucideの`LocateFixed`は中心が輪で、
  * 行頭の印の大きさ（13px）では点に見えない。この形だけ24単位の枠で描く。 */
 export function LocateIcon({ size = 16 }: IconProps) {
   return (
