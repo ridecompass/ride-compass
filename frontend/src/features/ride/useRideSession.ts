@@ -11,14 +11,12 @@ interface UseRideSessionInputs {
   /** 選んでいるルート（無ければnull）。 */
   route: RouteCandidate | null;
   riding: boolean;
-  /** ルートを作ったときの想定速度（km/h）。分からなければnull。 */
-  assumedSpeedKmh: number | null;
   /** 開いたときに期限の内の保存があれば、1度だけ呼ぶ。 */
   onRestore: (session: RideSession) => void;
 }
 
-/** 選んだルート・走行モードの入切・ルートを作ったときの想定速度を端末に一時保存し、読み込み直したときに復元を知らせる。 */
-export function useRideSession({ route, riding, assumedSpeedKmh, onRestore }: UseRideSessionInputs): void {
+/** 選んだルートと走行モードの入切を端末に一時保存し、読み込み直したときに復元を知らせる。 */
+export function useRideSession({ route, riding, onRestore }: UseRideSessionInputs): void {
   const latestOnRestore = useRef(onRestore);
   useEffect(() => {
     latestOnRestore.current = onRestore;
@@ -35,9 +33,6 @@ export function useRideSession({ route, riding, assumedSpeedKmh, onRestore }: Us
         return;
       }
     }
-    writeStoredValue(
-      RIDE_SESSION_STORAGE_KEY,
-      route === null ? "" : writeRideSession({ route, riding, assumedSpeedKmh }, Date.now()),
-    );
-  }, [route, riding, assumedSpeedKmh]);
+    writeStoredValue(RIDE_SESSION_STORAGE_KEY, route === null ? "" : writeRideSession({ route, riding }, Date.now()));
+  }, [route, riding]);
 }

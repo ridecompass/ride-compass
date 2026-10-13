@@ -211,18 +211,12 @@ export default function Home() {
   });
   const { results, generation, splice } = route;
 
-  // 候補を作ったときの想定速度。読み込み直して一時保存から候補を戻した間は、生成の入力が無いので保存から戻した値を使う。
-  const [restoredSpeedKmh, setRestoredSpeedKmh] = useState<number | null>(null);
-  const generatedSpeedKmh = generation.generatedInput?.assumedSpeedKmh ?? restoredSpeedKmh;
-
   // 走行中のルートを端末に一時保存し、読み込み直されたら同じ候補を出して、走っていたなら走行モードを始め直す。
   useRideSession({
     route: results.selectedCandidate,
     riding: navigating,
-    assumedSpeedKmh: generatedSpeedKmh,
     onRestore: (session) => {
       results.replaceWithGenerated([session.route], null);
-      setRestoredSpeedKmh(session.assumedSpeedKmh);
       if (session.riding) riding.press();
     },
   });
@@ -243,7 +237,12 @@ export default function Home() {
   const ridingSegments = navigating ? (results.selectedCandidate?.segments ?? null) : null;
   const progressKm = useRouteProgress(ridingSegments, riding.map?.position ?? null);
   // 到着予想は、走り始めの実績が少ない間は選んだ候補を作ったときの想定速度で出す。
-  const remaining = rideRemaining(ridingSegments, progressKm, riding.pace, generatedSpeedKmh);
+  const remaining = rideRemaining(
+    ridingSegments,
+    progressKm,
+    riding.pace,
+    generation.generatedInput?.assumedSpeedKmh ?? null,
+  );
 
   const isMobile = useIsMobile();
 

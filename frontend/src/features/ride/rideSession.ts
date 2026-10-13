@@ -14,8 +14,6 @@ export const RIDE_SESSION_TTL_MS = 12 * HOUR_MS;
 export interface RideSession {
   route: RouteCandidate;
   riding: boolean;
-  /** ルートを作ったときの想定速度（km/h）。走った実績が少ない間の到着予想に使う。分からなければnull。 */
-  assumedSpeedKmh: number | null;
 }
 
 /** 保存する文字列。`savedAt`は保存した時刻（ミリ秒）。 */
@@ -33,11 +31,10 @@ export function readRideSession(raw: string | null, now: number): RideSession | 
     return null;
   }
   if (typeof parsed !== "object" || parsed === null) return null;
-  const { route, riding, assumedSpeedKmh, savedAt } = parsed as Record<string, unknown>;
+  const { route, riding, savedAt } = parsed as Record<string, unknown>;
   if (typeof riding !== "boolean" || typeof savedAt !== "number" || now - savedAt > RIDE_SESSION_TTL_MS) return null;
   if (!isRouteCandidate(route)) return null;
-  // 想定速度を足す前に書いた保存には無いので、無ければ分からないとして読む。
-  return { route, riding, assumedSpeedKmh: typeof assumedSpeedKmh === "number" ? assumedSpeedKmh : null };
+  return { route, riding };
 }
 
 // 保存したあとに画面が更新されて形が変わっていても、描くのに要る項目があるものだけを使う。
