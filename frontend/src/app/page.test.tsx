@@ -94,7 +94,13 @@ function installGeolocation(point: Coordinates | null) {
     if (point) onSuccess({ coords: point } as GeolocationPosition);
     else onError({ code: 1 } as GeolocationPositionError);
   };
-  Object.defineProperty(navigator, "geolocation", { value: { getCurrentPosition }, configurable: true });
+  // 走行モードは位置を受け取り続ける。ここでは位置を届けず、受け取りを始めた・やめたことだけを受ける。
+  const watchPosition = () => 1;
+  const clearWatch = () => {};
+  Object.defineProperty(navigator, "geolocation", {
+    value: { getCurrentPosition, watchPosition, clearWatch },
+    configurable: true,
+  });
 }
 
 function useMobileLayout() {
@@ -677,6 +683,41 @@ describe("地図で扱えること", () => {
 });
 
 describe("画面の枠", () => {
+  it("走行モードの間は、上の帯を走りの数字に替え、パネルと地図の上の操作を隠し、選んだ候補のプロファイルを地図の下に出す。止めると元に戻る", async () => {
+    const { user } = renderHome();
+    jobs.respond([FIRST], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    const rideProfile = () => screen.queryByRole("region", { name: "予定ルートのプロファイル" });
+    const shownWhileIdle = () => [
+      screen.queryByText(/^気温:/),
+      screen.queryByRole("button", { name: "地図に出す情報" }),
+      screen.queryByRole("button", { name: "ルート設定" }),
+      screen.queryByRole("button", { name: "現在地に移動" }),
+    ];
+    await screen.findByText(/^気温:/);
+    expect(shownWhileIdle().every((element) => element !== null)).toBe(true);
+    expect(rideProfile()).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    expect(screen.getByRole("group", { name: "走りの数字" })).toBeInTheDocument();
+    expect(shownWhileIdle()).toEqual([null, null, null, null]);
+    expect(within(rideProfile()!).getByRole("slider", { name: /^道のりに沿った難易度/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    expect(screen.queryByRole("group", { name: "走りの数字" })).toBeNull();
+    expect(shownWhileIdle().every((element) => element !== null)).toBe(true);
+    expect(rideProfile()).toBeNull();
+  });
+
+  it("スマホでは、走行モードの間は下部タブも隠す", async () => {
+    useMobileLayout();
+    const { user } = renderHome();
+    expect(screen.getByRole("navigation", { name: "パネル切り替え" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    expect(screen.queryByRole("navigation", { name: "パネル切り替え" })).toBeNull();
+  });
+
   it("スマホでは下部タブでシートを1枚ずつ開き、地図で地点を扱えるのは「ルート設定」の条件タブを開いている間だけ。結果の合図は「ルート結果」を開くまで残り、押した結果が候補を出せなかった理由（候補0件の理由・入力の誤り）はシートでなく窓で出し、閉じると消える。候補0件の合図は成功と見分ける", async () => {
     installGeolocation(null);
     useMobileLayout();
