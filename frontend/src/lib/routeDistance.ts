@@ -1,0 +1,128 @@
+// ルートの上の距離（始点から区間の長さを積み上げたkm）と、地図の地点の行き来。
+//
+// 区間の中の位置は、区間の道なりの形の長さの割合で決める。区間の長さ（`distance_km`）はbackendが測った値で、形を平面で
+// 測った長さとは少しずれるので、割合でつなぐ——こうすると、道のりのグラフの距離・地図の上の地点・現在地の位置が
+// どれも同じ物差しで行き来する。
+
+import { METERS_PER_DEGREE, closestPointOnSegment, longitudeScale } from "@/lib/localPlane";
+import type { Coordinates, RouteSegmentDetail } from "@/types/route";
+
+export type RouteSegmentShape = Pick<
+  RouteSegmentDetail,
+  "distance_km" | "geometry" | "start_latitude" | "start_longitude" | "end_latitude" | "end_longitude"
+>;
+
+/** [経度, 緯度]。 */
+type LngLat = [number, number];
+
+/** 区間1本と、その始まりと終わりのルートの上の距離。`startKm`は区間の長さを積み上げた値（丸めた累積距離は使わない
+ * ——丸めの分だけ区間の間に隙間ができる）。 */
+export type RouteStretch<S = RouteSegmentShape> = {
+  readonly segment: S;
+  readonly startKm: number;
+  readonly endKm: number;
+};
+
+export function routeStretches<S extends RouteSegmentShape>(segments: readonly S[]): RouteStretch<S>[] {
+  const stretches: RouteStretch<S>[] = [];
+  let km = 0;
+  segments.forEach((segment) => {
+    const length = Math.max(0, segment.distance_km);
+    stretches.push({ segment, startKm: km, endKm: km + length });
+    km += length;
+  });
+  return stretches;
+}
+
+/** 区間の道なりの形。形が無い区間（2点未満のEdge等）は、始点と終点を結ぶ直線。 */
+export function segmentPath(segment: RouteSegmentShape): LngLat[] {
+  return segment.geometry !== null
+    ? (segment.geometry.coordinates as LngLat[])
+    : [
+        [segment.start_longitude, segment.start_latitude],
+        [segment.end_longitude, segment.end_latitude],
+      ];
+}
+
+/** 形の辺ごとの長さ。区間は短いので、緯度で経度方向を縮めた平面の距離で足りる（割合を決めるだけで、長さそのものは使わない）。 */
+function edgeLengths(path: readonly LngLat[]): number[] {
+  const scale = longitudeScale(path[0][1]);
+  return path.slice(1).map(([lng, lat], i) => Math.hypot((lng - path[i][0]) * scale, lat - path[i][1]));
+}
+
+/** 形の上で、始点から割合`fraction`だけ進んだ点と、その点が載る辺（`index`から`index + 1`）。 */
+function locateAlong(path: readonly LngLat[], fraction: number): { index: number; point: LngLat } {
+  const lengths = edgeLengths(path);
+  const total = lengths.reduce((sum, length) => sum + length, 0);
+  if (total === 0) return { index: 0, point: path[0] };
+  let remaining = Math.min(1, Math.max(0, fraction)) * total;
+  let i = 0;
+  while (i < lengths.length - 1 && remaining > lengths[i]) {
+    remaining -= lengths[i];
+    i += 1;
+  }
+  const t = lengths[i] === 0 ? 0 : Math.min(1, remaining / lengths[i]);
+  const [fromLng, fromLat] = path[i];
+  const [toLng, toLat] = path[i + 1];
+  return { index: i, point: [fromLng + (toLng - fromLng) * t, fromLat + (toLat - fromLat) * t] };
+}
+
+/** 区間の道なりの形の上で、始点から割合`fraction`だけ進んだ点。 */
+export function pointAlongSegment(segment: RouteSegmentShape, fraction: number): LngLat {
+  return locateAlong(segmentPath(segment), fraction).point;
+}
+
+/** 区間の道なりの形を、始点から割合`fraction`だけ進んだ点で前と後ろに分ける（分けた点は両方に入る）。 */
+export function splitSegmentAt(segment: RouteSegmentShape, fraction: number): { before: LngLat[]; after: LngLat[] } {
+  const path = segmentPath(segment);
+  const { index, point } = locateAlong(path, fraction);
+  return { before: [...path.slice(0, index + 1), point], after: [point, ...path.slice(index + 1)] };
+}
+
+/** 道なりの形の辺1本と、その両端のルートの上の距離。 */
+export type RouteTrackEdge = {
+  readonly from: LngLat;
+  readonly to: LngLat;
+  readonly fromKm: number;
+  readonly toKm: number;
+};
+
+/** ルートの道なりの形を、ルートの順に辺へ分ける。辺の両端の距離は、区間の中の長さの割合を区間の距離へ当てたもの。 */
+export function routeTrack(segments: readonly RouteSegmentShape[]): RouteTrackEdge[] {
+  const edges: RouteTrackEdge[] = [];
+  for (const { segment, startKm, endKm } of routeStretches(segments)) {
+    const path = segmentPath(segment);
+    const lengths = edgeLengths(path);
+    const total = lengths.reduce((sum, length) => sum + length, 0);
+    let along = 0;
+    lengths.forEach((length, i) => {
+      const fromKm = total === 0 ? startKm : startKm + (along / total) * (endKm - startKm);
+      along += length;
+      const toKm = total === 0 ? endKm : startKm + (along / total) * (endKm - startKm);
+      edges.push({ from: path[i], to: path[i + 1], fromKm, toKm });
+    });
+  }
+  return edges;
+}
+
+/** 辺ごとの、`position`に最も近い点のルートの上の距離（km）と、`position`からの隔たり（m）。並びは`track`の順。 */
+export function projectOnTrack(
+  track: readonly RouteTrackEdge[],
+  position: Coordinates,
+): { km: number; offsetM: number }[] {
+  const scale = longitudeScale(position.latitude) * METERS_PER_DEGREE;
+  // 現在地を原点にした平面（m）。
+  const toPlane = ([lng, lat]: LngLat) => ({
+    x: (lng - position.longitude) * scale,
+    y: (lat - position.latitude) * METERS_PER_DEGREE,
+  });
+  const origin = { x: 0, y: 0 };
+  return track.map(({ from, to, fromKm, toKm }) => {
+    const a = toPlane(from);
+    const b = toPlane(to);
+    const closest = closestPointOnSegment(origin, a, b);
+    const edgeLength = Math.hypot(b.x - a.x, b.y - a.y);
+    const t = edgeLength === 0 ? 0 : Math.hypot(closest.x - a.x, closest.y - a.y) / edgeLength;
+    return { km: fromKm + (toKm - fromKm) * t, offsetM: Math.hypot(closest.x, closest.y) };
+  });
+}

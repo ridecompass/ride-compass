@@ -50,6 +50,7 @@ import RideBar from "@/features/ride/RideBar/RideBar";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { useRideMode } from "@/features/ride/useRideMode";
+import { useRouteProgress } from "@/features/ride/useRouteProgress";
 import { useRideSession } from "@/features/ride/useRideSession";
 import { formatDepartureLabel } from "@/features/conditions/rideConditions";
 import { useMapView } from "@/features/map/view/useMapView";
@@ -230,6 +231,12 @@ export default function Home() {
     departureLabel: formatDepartureLabel(ride.departure.at, ride.departure.now),
     routeWeights: route.routeWeights,
   });
+
+  // 走行モードの間、現在地を選んだ候補の上の距離へ当てる。プロファイルの印と、地図とプロファイルの薄めに使う。
+  const progressKm = useRouteProgress(
+    navigating ? (results.selectedCandidate?.segments ?? null) : null,
+    riding.map?.position ?? null,
+  );
 
   const isMobile = useIsMobile();
 
@@ -427,7 +434,7 @@ export default function Home() {
 
   // 走行モードの間、地図の下に選んだ候補の道のりに沿った難易度を出す（候補が無ければ地図だけ）。
   function renderRideProfile() {
-    const selected = results.routes.find((candidate) => candidate.id === results.selectedRouteId);
+    const selected = results.selectedCandidate;
     if (!selected || selected.segments.length === 0) return null;
     return (
       <section
@@ -444,6 +451,7 @@ export default function Home() {
           axisOrder={axisCatalog.axes.map((axis) => axis.axisId)}
           axisColors={axisCatalog.axisColors}
           scaleKm={selected.distance_km}
+          progressKm={progressKm}
           selected={results.selectedRouteSegment}
           onSelect={results.selectSegment}
         />
@@ -573,6 +581,7 @@ export default function Home() {
               focusPoint={foundPoint}
               measureRouteFitObscuredPx={measureRouteFitObscuredPx}
               ride={riding.map}
+              travelledKm={progressKm}
             />
 
             {!navigating && (

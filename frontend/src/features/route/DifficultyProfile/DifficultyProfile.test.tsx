@@ -5,11 +5,12 @@
  * 軸ごとの塗り（`axisOrder`の順に下から積む・軸の色と色の無い軸の色）、値の無い区間の灰色の塗り（総合難易度の高さ。
  * 総合難易度が無ければ塗らない）、選ばれた区間の帯とスライダーとしての値、キーボード（矢印・Home・End）と
  * 1本の指（マウス）でなぞる・押して離す操作で選ぶ区間と地点、押しただけ・ボタンを押していない動き・2本目の指が
- * 加わった操作では選ばないこと、自分で動かした地点の線（選ばれた区間の中にあるときだけ）。
+ * 加わった操作では選ばないこと、自分で動かした地点の線（選ばれた区間の中にあるときだけ）、走行中の現在地の印と、
+ * 始点からそこまでの薄め（候補の終わりより先は終わりに寄せる）。
  *
- * ここで見ないもの: 区間の柱と積み上げの長方形の組み方（総合難易度が0なら値の無い区間を塗らないことを含む）・
- * 区間の中の割合から地点を引く計算（道なりの形の上） →
- * `features/route/DifficultyProfile/profileGeometry.ts`。
+ * ここで見ないもの: 区間の柱と積み上げの長方形の組み方（総合難易度が0なら値の無い区間を塗らないことを含む） →
+ * `features/route/DifficultyProfile/profileGeometry.ts`。区間の中の割合から地点を引く計算（道なりの形の上） →
+ * `lib/routeDistance.ts`。
  *
  * 差し替えたもの: グラフの実寸（`getBoundingClientRect`。テスト環境は実寸を返さない）。
  */
@@ -17,6 +18,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { makeRouteSegment } from "@/testing/routeFixtures";
+import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 import DifficultyProfile from "./DifficultyProfile";
@@ -130,6 +132,24 @@ describe("DifficultyProfile", () => {
     });
     first.unmount();
     expect(missingPath(renderProfile({ overallDifficulty: null }).container)).toBeUndefined();
+  });
+
+  it("現在地の距離に印を引き、始点からそこまでを薄める。候補の終わりより先は終わりに寄せ、無ければ描かない", () => {
+    const { container, rerender } = renderProfile({ scaleKm: 4, progressKm: 0.5 });
+    const marks = () => ({
+      travelled: container.querySelector('[data-progress="travelled"]'),
+      position: container.querySelector('[data-progress="position"]'),
+    });
+    expect(marks().travelled).toHaveAttribute("width", "125");
+    expect(marks().travelled).toHaveAttribute("opacity", String(1 - mapDisplay.route.opacities.travelled));
+    expect(marks().position).toHaveAttribute("x1", "125");
+
+    rerender(<DifficultyProfile {...profileProps({ scaleKm: 4, progressKm: 3 })} />);
+    expect(marks().travelled).toHaveAttribute("width", "500");
+    expect(marks().position).toHaveAttribute("x1", "500");
+
+    rerender(<DifficultyProfile {...profileProps({ scaleKm: 4, progressKm: null })} />);
+    expect(marks()).toEqual({ travelled: null, position: null });
   });
 
   it("スライダーの値は、選ばれた区間の始まりの距離（選ばれていなければ0）", () => {

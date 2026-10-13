@@ -16,7 +16,8 @@
  * - 画面の枠: スマホの下部タブとシート（1枚ずつ開く・地点を扱える間・結果の合図・候補が届いた時点で「ルート設定」を開いて
  *   いれば「ルート結果」へ移ってそこから全消去でき、ほかのときは移らず合図を出すこと・候補を出せなかった理由の1行・
  *   ルートを収めるときに避けるシートの高さ・高さの保存と保存値の検査）、区分の開閉の保存、
- *   ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、メニューから入る使い方の説明とデバッグログ
+ *   ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、メニューから入る使い方の説明とデバッグログ、
+ *   走行モードの間の配置と、届いた現在地がプロファイルの印と地図のルート線の薄めへ同じ距離で渡ること
  *
  * ここで見ないもの: 子の部品は本物を描き、子が値をどう描くか（一覧の書式・印の色・天候の値）は各部品のテストが見る。
  * 地図の見え方の中身（どのレイヤーをどの色・重なりで描くか・レンズの選択肢・凡例）は地図の側（`features/map/scene/`）の
@@ -88,19 +89,29 @@ const OBSERVATION: AmedasObservation = {
 
 let jobs: ReturnType<typeof serveGenerationJobs>;
 
-/** 位置情報の取得。`point`が無ければ断る。 */
+/** 位置情報の取得。`point`が無ければ断る。走行モードが受け取り続ける位置は、戻り値の`move`で届ける。 */
 function installGeolocation(point: Coordinates | null) {
   const getCurrentPosition = (onSuccess: PositionCallback, onError: PositionErrorCallback) => {
     if (point) onSuccess({ coords: point } as GeolocationPosition);
     else onError({ code: 1 } as GeolocationPositionError);
   };
-  // 走行モードは位置を受け取り続ける。ここでは位置を届けず、受け取りを始めた・やめたことだけを受ける。
-  const watchPosition = () => 1;
-  const clearWatch = () => {};
+  let watcher: PositionCallback | null = null;
+  const watchPosition = (onSuccess: PositionCallback) => {
+    watcher = onSuccess;
+    return 1;
+  };
+  const clearWatch = () => {
+    watcher = null;
+  };
   Object.defineProperty(navigator, "geolocation", {
     value: { getCurrentPosition, watchPosition, clearWatch },
     configurable: true,
   });
+  return {
+    move(to: Coordinates) {
+      act(() => watcher?.({ coords: { ...to, heading: null, speed: null } } as GeolocationPosition));
+    },
+  };
 }
 
 function useMobileLayout() {
@@ -708,6 +719,35 @@ describe("画面の枠", () => {
     expect(screen.queryByRole("group", { name: "走りの数字" })).toBeNull();
     expect(shownWhileIdle().every((element) => element !== null)).toBe(true);
     expect(rideProfile()).toBeNull();
+  });
+
+  it("走行モードで届いた現在地を選んだ候補の上の距離へ当て、プロファイルに印を出し、地図のルート線のそこまでを薄める", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    // 東へ1km進む区間1つのルート。現在地はその真ん中。
+    const ridden = route("ridden", {
+      segments: [
+        makeRouteSegment({
+          start_latitude: 35.7,
+          start_longitude: 139.7,
+          end_latitude: 35.7,
+          end_longitude: 139.71,
+          distance_km: 1,
+        }),
+      ],
+      distance_km: 1,
+    });
+    jobs.respond([ridden], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    geolocation.move({ latitude: 35.7, longitude: 139.705 });
+
+    const profile = screen.getByRole("region", { name: "予定ルートのプロファイル" });
+    expect(profile.querySelector('[data-progress="position"]')).not.toBeNull();
+    const drawn = mapOnScreen().sourceFeatures("route-segments");
+    expect(drawn.map((feature) => feature.properties?.travelled ?? false)).toEqual([true, false]);
   });
 
   it("走行中に画面を読み込み直しても、同じ候補を出して走行モードを続ける", async () => {

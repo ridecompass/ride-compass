@@ -27,6 +27,7 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
     splicedRoute: null,
     tileVersions: READY_TILE_VERSIONS,
     inspectedWayId: null,
+    travelledKm: null,
     ...rest,
     look: {
       dynamicWeather: {},

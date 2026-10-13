@@ -22,6 +22,13 @@ const ROUTE = mapDisplay.route;
  * ——媒体（指の大きさ）が決める値で、配信側は知らない。 */
 const HIT_WIDTH_PX = 24;
 
+const TRAVELLED_OPACITY: ExpressionSpecification = [
+  "case",
+  ["==", ["get", "travelled"], true],
+  ROUTE.opacities.travelled,
+  1,
+];
+
 const HIT_PAINT = { "line-color": palette.semantic.hit, "line-opacity": 0 } as const;
 const ROUND_CAP = { "line-cap": "round", "line-join": "round" } as const;
 
@@ -35,6 +42,7 @@ export type RouteState = {
   readonly visible: boolean;
   readonly candidates: readonly { readonly routeId: string; readonly path: RoutePath }[];
   readonly selectedRouteId: string | null;
+  /** 区間の形。`properties.travelled`が真の区間は、走り終えたものとして薄める。 */
   readonly segments: readonly Shape[];
   /** 区間の色。段の切り方・配色は軸カタログが決めるため、出来上がった式のまま受け取る。 */
   readonly segmentColor: string | ExpressionSpecification;
@@ -187,7 +195,11 @@ export const routeGroup = declareGroup<RouteState>((state) => {
       source: SOURCE.segments,
       type: "line",
       visible: state.visible,
-      paint: { "line-color": palette.semantic.route_casing, "line-width": ROUTE.casingWidthsPx.detail },
+      paint: {
+        "line-color": palette.semantic.route_casing,
+        "line-width": ROUTE.casingWidthsPx.detail,
+        "line-opacity": TRAVELLED_OPACITY,
+      },
     }),
     withBandFilter({
       role: "detailLine",
@@ -198,6 +210,7 @@ export const routeGroup = declareGroup<RouteState>((state) => {
       paint: {
         "line-color": state.segmentColor,
         "line-width": ROUTE.lineWidthsPx.detail,
+        "line-opacity": TRAVELLED_OPACITY,
         ...(state.segmentNoData === undefined ? {} : { "line-dasharray": noDataDashExpression(state.segmentNoData) }),
       },
     }),
