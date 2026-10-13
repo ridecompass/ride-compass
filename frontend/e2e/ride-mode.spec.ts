@@ -130,6 +130,7 @@ const mapBearing = (page: Page) =>
 test("走行モードの間、地図は届いた位置を同じ所に描き続け、進む向きを上にでき、指で動かすと休み、止めると追わない", async ({
   page,
   context,
+  browserName,
 }) => {
   // 共通の段取りが位置を許して初期の地点に置くので、そのあとに走り出す位置へ置き直す。
   await installApiMocks(page);
@@ -175,8 +176,12 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   const east = moved(START, 0, 200);
   await context.setGeolocation(east);
   await expectDrawnAt(page, east, anchor);
-  // 200m を数秒で動いた（とても速い）ので、追い始めの倍率（15）からいちばん引いた所（2段）まで引く。
-  await expect.poll(() => page.evaluate(() => window.__liveMap().getZoom()), { timeout: 10_000 }).toBeCloseTo(13, 1);
+  // 200m を数秒で動いた（とても速い）ので、追い始めの倍率（15）からいちばん引いた所（2段）まで引く。WebKit では見ない:
+  // Playwright が差し替えの位置の時刻をミリ秒で渡し、WebKit がそれを秒として受けて1000倍にする（WebCore の
+  // `Geolocation.cpp` の `convertSecondsToEpochTimeStamp`）ため、2つの位置の間が1000倍長く見え、速さがほぼ0になる。
+  if (browserName !== "webkit") {
+    await expect.poll(() => page.evaluate(() => window.__liveMap().getZoom()), { timeout: 10_000 }).toBeCloseTo(13, 1);
+  }
 
   // 進む向きを上にすると、地図は動いた向き（東）を上に回す。北を上に戻すと向きも戻る。
   await page.getByRole("button", { name: /^進む向きを上にする/ }).click();
