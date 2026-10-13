@@ -148,6 +148,19 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   await expect(dot).toBeVisible();
   await expect.poll(async () => (await buttonLook(rideButton)).background).not.toBe(offLook.background);
 
+  // 走り出す位置は出発地と同じ（共通の段取りの位置を置き直してから開いた）。現在地の印は、出発地の印がいつ作り直されても上に
+  // 描かれるよう、ほかの印より大きい重なり順を持つ（パターン4 観点3: 計算後の値）。
+  const zOrder = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>(".maplibregl-marker")].map((marker) => ({
+      ride: marker.querySelector("[data-facing-cone]") !== null,
+      z: Number(getComputedStyle(marker).zIndex) || 0,
+    })),
+  );
+  const rideZ = zOrder.filter(({ ride }) => ride).map(({ z }) => z);
+  expect(rideZ).toHaveLength(1);
+  expect(zOrder.filter(({ ride }) => !ride).length).toBeGreaterThan(0);
+  expect(zOrder.filter(({ ride, z }) => !ride && z >= rideZ[0])).toEqual([]);
+
   // スマホが東を向くと、現在地の印の扇形が東を指す（地図が北を上にしている間）。出来事はブラウザの違いによらず読める形で届ける。
   expect(await coneDirection(page)).toBeNull();
   await page.evaluate(() => {

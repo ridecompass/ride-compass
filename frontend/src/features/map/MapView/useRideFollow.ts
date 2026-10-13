@@ -36,6 +36,8 @@ function createLocationMark(): HTMLElement {
   element.setAttribute("role", "img");
   element.setAttribute("aria-label", "現在地");
   element.style.pointerEvents = "none";
+  // 出発地の印は出発地が変わるたびに作り直されて後ろの順に並ぶので、重なり順で常に上に描く（出発地にいる間も現在地が見える）。
+  element.style.zIndex = "1";
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("viewBox", "-32 -32 64 64");
   svg.setAttribute("width", "64");
