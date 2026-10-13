@@ -17,12 +17,14 @@ describe("RideModeButton", () => {
     { status: "off", pressed: "false", next: "走行モードを始める" },
     { status: "following", pressed: "true", next: "走行モードを止める" },
     { status: "paused", pressed: "true", next: "地図を現在地へ戻す" },
-  ] as const)("$status: 入切と、押したときの動きを示す", async ({ status, pressed, next }) => {
+  ] as const)("$status: 入切と、押したときの動きを示し、面の塗りを様子で分ける", async ({ status, pressed, next }) => {
     const onPress = vi.fn();
     render(<RideModeButton status={status} error={null} screenWakeLock="off" onPress={onPress} />);
     const button = screen.getByRole("button", { name: "走行モード" });
     expect(button).toHaveAttribute("aria-pressed", pressed);
     expect(button).toHaveAttribute("title", next);
+    // 面の塗りは様子の印（data-ride）に当てる。塗りが効いて見分けられるかは e2e/ride-mode.spec.ts が計算後の色で見る。
+    expect(button).toHaveAttribute("data-ride", status);
 
     await userEvent.click(button);
     expect(onPress).toHaveBeenCalledTimes(1);

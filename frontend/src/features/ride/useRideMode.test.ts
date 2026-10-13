@@ -139,6 +139,32 @@ describe("useRideMode", () => {
     expect(result.current.error).toMatch(/位置情報/);
   });
 
+  it("始める操作の中でスマホの向きを読む許しを求め（iPhone）、許されたら地図へ向いている方角を渡す", async () => {
+    let asked = 0;
+    const holder = globalThis as unknown as { DeviceOrientationEvent?: { requestPermission?: () => Promise<string> } };
+    holder.DeviceOrientationEvent = {
+      requestPermission: async () => {
+        asked += 1;
+        return "granted";
+      },
+    };
+    try {
+      const { result } = renderHook(() => useRideMode());
+      await act(async () => result.current.press());
+      expect(asked).toBe(1);
+      deliver(35.68, 139.76);
+      expect(result.current.map?.facing).toBeNull();
+      act(() => {
+        const event = new Event("deviceorientation");
+        Object.assign(event, { webkitCompassHeading: 45, alpha: 0 });
+        window.dispatchEvent(event);
+      });
+      expect(result.current.map?.facing).toBeCloseTo(45, 6);
+    } finally {
+      holder.DeviceOrientationEvent = undefined;
+    }
+  });
+
   it("画面を離れたら受け取りをやめる", () => {
     const { result, unmount } = renderHook(() => useRideMode());
     act(() => result.current.press());
