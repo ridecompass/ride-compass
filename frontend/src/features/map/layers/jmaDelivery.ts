@@ -9,7 +9,11 @@ import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import { DEFAULT_API_TIMEOUT_MS } from "@/lib/apiTimeouts";
 import { MINUTE_MS } from "@/lib/duration";
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import type { DynamicWeatherRenderPayload } from "@/features/map/layers/dynamicWeather";
+import {
+  isTileRenderKind,
+  type DynamicWeatherRenderPayload,
+  type TileRenderKind,
+} from "@/features/map/layers/dynamicWeather";
 
 /**
  * JMAプロキシ配下のパスを、タイル本体と同じ配信オリジンの絶対URLにする。
@@ -33,14 +37,6 @@ type DeclaredElement = (typeof mapDisplay.weatherElements)[number];
 
 /** 時刻の段1つぶんの配信要素（要素id・時刻一覧のパス・コマのパスのテンプレート・読み方・更新間隔）。 */
 export type JmaDelivery = DeclaredElement["jmaElements"][number];
-
-/** 配信元のタイルで描く描き方。 */
-type JmaTileKind = "rasterTile" | "vectorTile";
-
-/** 配信元のタイルで描く描き方か。それ以外の描き方の配信要素は、コマごとの地物をGeoJSONで配る。 */
-export function isJmaTileKind(kind: DeclaredElement["kind"]): kind is JmaTileKind {
-  return kind === "rasterTile" || kind === "vectorTile";
-}
 
 /** 時刻一覧から読み出したコマ1つ。タイル・地点のURLを決める時刻と系列。項目名は源泉のパスのテンプレートの
  * `{basetime}`等と同じ名前で、テンプレートはこの名前で埋める。 */
@@ -68,10 +64,10 @@ function jmaFrameUrl(delivery: JmaDelivery, frame: JmaFrame): string {
 
 /** 配信元のタイルで描く段の、そのコマの描画ペイロード。 */
 export function jmaTilePayload(
-  kind: JmaTileKind,
+  kind: TileRenderKind,
   delivery: JmaDelivery,
   frame: JmaFrame,
-): Extract<DynamicWeatherRenderPayload, { kind: JmaTileKind }> {
+): Extract<DynamicWeatherRenderPayload, { kind: TileRenderKind }> {
   return { kind, tileUrlTemplate: jmaFrameUrl(delivery, frame) };
 }
 
@@ -118,7 +114,7 @@ function templateMatcher(template: string): { pattern: RegExp; names: string[] }
 }
 
 const TILE_DELIVERY_MATCHERS = mapDisplay.weatherElements
-  .filter((element) => isJmaTileKind(element.kind))
+  .filter((element) => isTileRenderKind(element.kind))
   .flatMap((element): readonly JmaDelivery[] => element.jmaElements)
   .map((delivery) => ({ delivery, ...templateMatcher(delivery.urlTemplate) }));
 

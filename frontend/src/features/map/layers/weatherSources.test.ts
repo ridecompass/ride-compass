@@ -2,10 +2,20 @@
 import { describe, expect, it } from "vitest";
 
 import { jst } from "@/testing/jst";
+import { jmaDeliveryOf } from "@/testing/jmaDeliveries";
 import jmaExpectations from "@/types/generated/jma-expectations.json";
 import type { WindGridPoint } from "@/types/weather";
 
-import { gridStageFrames, jmaStageFrames, selectFrame, sourceTimeline, type FrameRule } from "./weatherSources";
+import {
+  gridStageFrames,
+  jmaStageFrames,
+  selectFrame,
+  sourceTimeline,
+  type FrameRule,
+  type GridStage,
+  type JmaStage,
+  type StageFrameRef,
+} from "./weatherSources";
 
 const frame = (validtime: string) => ({ basetime: validtime, member: "none", validtime });
 /** 格子（日本時間・オフセット無しの時刻）。 */
@@ -23,6 +33,16 @@ const grid = (times: string[]): WindGridPoint[] => [
 // 格子のどの時刻よりも前（何も落とさない）。
 const BEFORE_GRID = jst("2026-09-24T00:00");
 
+/** 配信元の段。配信要素のidだけで見分ける（idは架空）。 */
+const jmaStage = (id: string): JmaStage => ({
+  origin: "jma",
+  kind: "rasterTile",
+  delivery: { ...jmaDeliveryOf("hrpns"), id } as JmaStage["delivery"],
+});
+const GRID_STAGE: GridStage = { origin: "grid", value: "precipitation" };
+/** コマがどの段のものか。 */
+const stageOf = (ref: StageFrameRef) => (ref.origin === "jma" ? ref.delivery.id : ref.origin);
+
 describe("gridStageFrames（格子の段のコマ）", () => {
   const HOURS = ["2026-09-24T09:00", "2026-09-24T10:00", "2026-09-24T11:00"];
 
@@ -32,24 +52,24 @@ describe("gridStageFrames（格子の段のコマ）", () => {
     ["先頭がまだ来ていなければ何も落とさない", grid(HOURS), "2026-09-24T08:30", HOURS],
     ["空の格子は空", [], "2026-09-24T10:00", []],
   ])("%s", (_scene, points, now, expected) => {
-    const frames = gridStageFrames(0, points, jst(now));
-    expect(frames.map(({ ref }) => ("time" in ref ? ref.time : ""))).toEqual(expected);
+    const frames = gridStageFrames(GRID_STAGE, points, jst(now));
+    expect(frames.map(({ ref }) => (ref.origin === "grid" ? ref.time : ""))).toEqual(expected);
   });
 });
 
 describe("sourceTimeline（段を1本の時系列へつなぐ）", () => {
   it("段の順に、前の段の最後より後の時刻だけを継ぐ", () => {
     const timeline = sourceTimeline([
-      jmaStageFrames(0, [frame("20260924000000"), frame("20260924010000")]),
-      jmaStageFrames(1, [frame("20260924010000"), frame("20260924020000")]),
+      jmaStageFrames(jmaStage("a"), [frame("20260924000000"), frame("20260924010000")]),
+      jmaStageFrames(jmaStage("b"), [frame("20260924010000"), frame("20260924020000")]),
       // 日本時間 11:00 = 協定世界時 02:00（前の段の最後と同時刻）、12:00 = 03:00
-      gridStageFrames(2, grid(["2026-09-24T11:00", "2026-09-24T12:00"]), BEFORE_GRID),
+      gridStageFrames(GRID_STAGE, grid(["2026-09-24T11:00", "2026-09-24T12:00"]), BEFORE_GRID),
     ]);
-    expect(timeline.map(({ time, ref }) => [time.toISOString(), ref.stage])).toEqual([
-      ["2026-09-24T00:00:00.000Z", 0],
-      ["2026-09-24T01:00:00.000Z", 0],
-      ["2026-09-24T02:00:00.000Z", 1],
-      ["2026-09-24T03:00:00.000Z", 2],
+    expect(timeline.map(({ time, ref }) => [time.toISOString(), stageOf(ref)])).toEqual([
+      ["2026-09-24T00:00:00.000Z", "a"],
+      ["2026-09-24T01:00:00.000Z", "a"],
+      ["2026-09-24T02:00:00.000Z", "b"],
+      ["2026-09-24T03:00:00.000Z", "grid"],
     ]);
   });
 
@@ -57,10 +77,10 @@ describe("sourceTimeline（段を1本の時系列へつなぐ）", () => {
     const rows = jmaExpectations.stage_first_frames;
     expect(rows.length).toBeGreaterThan(0);
     for (const { scene, stages, first_frames } of rows) {
-      const timeline = sourceTimeline(stages.map((frames, stage) => jmaStageFrames(stage, frames)));
+      const timeline = sourceTimeline(stages.map((frames, stage) => jmaStageFrames(jmaStage(`${stage}`), frames)));
       const firsts = stages.map((_, stage) => {
-        const ref = timeline.find((each) => each.ref.stage === stage)?.ref;
-        return ref !== undefined && "frame" in ref ? ref.frame : null;
+        const ref = timeline.find((each) => stageOf(each.ref) === `${stage}`)?.ref;
+        return ref?.origin === "jma" ? ref.frame : null;
       });
       expect(firsts, scene).toEqual(first_frames);
     }

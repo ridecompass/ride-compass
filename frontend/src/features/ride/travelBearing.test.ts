@@ -1,17 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
+
+import { moved } from "@/testing/movedPoint";
+
 import { MIN_TRAVEL_FOR_BEARING_M, nextTravelBearing, type TravelFix } from "./travelBearing";
 
-// 東京の辺りで、真北・真東へ`meters`だけ動いた点（緯度1度≒111km）。
 const ORIGIN = { latitude: 35.68, longitude: 139.76 };
-const METERS_PER_DEGREE = 111_195;
-function movedNorth(meters: number) {
-  return { latitude: ORIGIN.latitude + meters / METERS_PER_DEGREE, longitude: ORIGIN.longitude };
-}
-function movedEast(meters: number) {
-  const scale = Math.cos((ORIGIN.latitude * Math.PI) / 180);
-  return { latitude: ORIGIN.latitude, longitude: ORIGIN.longitude + meters / (METERS_PER_DEGREE * scale) };
-}
 
 function fix(at: { latitude: number; longitude: number }, heading: number | null = null): TravelFix {
   return { ...at, heading };
@@ -27,19 +21,19 @@ describe("nextTravelBearing: 地図を進む向きへ回すときの向き", () 
     },
     {
       case: "向きが無くても、前の点から十分に動いたら、その向きを出す（東へ）",
-      fix: fix(movedEast(MIN_TRAVEL_FOR_BEARING_M + 1)),
+      fix: fix(moved(ORIGIN, 0, MIN_TRAVEL_FOR_BEARING_M + 1)),
       previous: { anchor: ORIGIN, bearing: null },
       bearing: 90,
     },
     {
       case: "向きが無くても、前の点から十分に動いたら、その向きを出す（北へ）",
-      fix: fix(movedNorth(MIN_TRAVEL_FOR_BEARING_M + 1)),
+      fix: fix(moved(ORIGIN, MIN_TRAVEL_FOR_BEARING_M + 1)),
       previous: { anchor: ORIGIN, bearing: 90 },
       bearing: 0,
     },
     {
       case: "止まっている（動いた距離が短い）間は、前の向きを保つ",
-      fix: fix(movedEast(MIN_TRAVEL_FOR_BEARING_M - 1)),
+      fix: fix(moved(ORIGIN, 0, MIN_TRAVEL_FOR_BEARING_M - 1)),
       previous: { anchor: ORIGIN, bearing: 45 },
       bearing: 45,
     },
@@ -58,10 +52,10 @@ describe("nextTravelBearing: 地図を進む向きへ回すときの向き", () 
   it("止まっている間は、測り始めの点を動かさない（少しずつ動いても、合わせた距離で向きを出す）", () => {
     const halfway = nextTravelBearing(
       { anchor: ORIGIN, bearing: null },
-      fix(movedEast(MIN_TRAVEL_FOR_BEARING_M / 2 + 1)),
+      fix(moved(ORIGIN, 0, MIN_TRAVEL_FOR_BEARING_M / 2 + 1)),
     );
     expect(halfway.bearing).toBeNull();
-    const after = nextTravelBearing(halfway, fix(movedEast(MIN_TRAVEL_FOR_BEARING_M + 2)));
+    const after = nextTravelBearing(halfway, fix(moved(ORIGIN, 0, MIN_TRAVEL_FOR_BEARING_M + 2)));
     expect(after.bearing).toBeCloseTo(90, 0);
   });
 });

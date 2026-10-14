@@ -5,7 +5,7 @@
 """
 
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, TypeGuard
 
 from pydantic import Field
 from pydantic_core import PydanticCustomError
@@ -94,9 +94,15 @@ class NoDistanceTarget:
     points: FixedPoints
 
 
+def spliceable(destination: Coordinates | None) -> TypeGuard[Coordinates]:
+    """目的地`destination`へ向かう候補が、走る途中で別の候補の区間へ乗り換えられるか。目的地を持つ候補だけが乗り換えられる。"""
+    # 周回は起点へ戻る制約があり、途中で別候補へ乗り換えると戻れる保証が無くなる。
+    return destination is not None
+
+
 @dataclass(frozen=True)
 class SplicedTarget:
-    """区間を差し替えて組み立てた経路を、探索せずに評価する。目的地ルートだけが対象。"""
+    """区間を差し替えて組み立てた経路を、探索せずに評価する。乗り換えられる候補（`spliceable`）だけが対象。"""
 
     destination: Coordinates
     edge_ids: tuple[str, *tuple[str, ...]]

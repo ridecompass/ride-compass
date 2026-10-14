@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import AxisContributionBar, { hasContribution } from "@/components/AxisContributionBar/AxisContributionBar";
+import AxisContributionBar, { hasAnyContribution } from "@/components/AxisContributionBar/AxisContributionBar";
 import AxisDetail from "@/components/AxisContributionBar/AxisDetail";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import { isDebugEnabled } from "@/lib/debugLog";
@@ -135,7 +135,7 @@ function FeatureValues({
   return (
     <section aria-label={feature.heading} className="mt-1 grid gap-1">
       <h3 className={cn(textVariants({ variant: "label" }), "m-0")}>{feature.heading}</h3>
-      {axes.some((axis) => hasContribution(contributions, axis.axisId)) ? (
+      {hasAnyContribution(axes, contributions) ? (
         <AxisContributionBar
           axes={axes}
           contributions={contributions}

@@ -153,6 +153,13 @@ def normalized_sql(text_expr: str) -> str:
     return f"lower(regexp_replace(normalize({text_expr}, NFKC), '[[:space:]・･{HYPHEN_CHARACTERS}]', '', 'g'))"
 
 
+def match_rank_sql(group: str, queried_group: str, name: str, query: str) -> str:
+    """地点の検索で、施設が入力に当たった順位の式（小さいほど先）。群`group`が入力の群`queried_group`の店 → 名前`name`
+    （`normalized_sql`の形）が入力`query`（同じ形）と同じ → 入力で始まる → 入力を含む。"""
+    return (f"CASE WHEN {group} = {queried_group} THEN 0 WHEN {name} = {query} THEN 1"
+            f" WHEN starts_with({name}, {query}) THEN 2 ELSE 3 END")
+
+
 def japanese_name_sql(name_expr: str) -> str:
     """名前に日本語の文字（ひらがな・カタカナ・半角カナ・漢字）があるかの式。"""
     return f"({name_expr} ~ '[ぁ-ゟ゠-ヿｦ-ﾟ㐀-䶿一-鿿々〆]')"

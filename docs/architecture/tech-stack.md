@@ -79,6 +79,22 @@ Dependabotは、masterが同じ版になってもPull Requestを閉じないこ�
 `gh pr view <番号> -R ridecompass/ride-compass --json state`が`OPEN`なら
 `gh pr close <番号> -R ridecompass/ride-compass --comment "<取り込んだ Pull Request> で同じ版を取り込んだ"`で閉じる。
 
+## 走行モードが頼るブラウザの制約
+
+走行モード（画面の作りは[page-composition.md](../modules/frontend/page-composition.md)「走行モード」）は、自転車に固定した
+スマホのブラウザで、画面を点けたまま使う前提で作る。前提を決めているのは次のブラウザの決まり。
+
+- **位置は見えている文書にだけ届く**: `watchPosition`は、文書が見えていない間の位置の変化を届けず、見えたあとも溜めておいた分を
+  届けない（[W3C Geolocation](https://www.w3.org/TR/geolocation/)「Request a position」）。画面が消えると走った道のりが途切れる。
+- **画面を点けたままにする頼み（Screen Wake Lock）は、文書が隠れると外れる**: 隠れた文書は頼めず、見えたときに頼み直す必要がある
+  （[W3C Screen Wake Lock](https://www.w3.org/TR/screen-wake-lock/)「Handling document loss of visibility」）。
+- **向きを読む許しは、利用者の操作の中でしか求められない**: `DeviceOrientationEvent.requestPermission()`は、許しがまだ決まって
+  いない間は利用者の操作の中で呼ばないと断られる（[W3C Device Orientation](https://www.w3.org/TR/orientation-event/)
+  「requestPermission()」）。この口を持つのはiPhoneのSafariで、ほかのブラウザは許しを求めずに向きを届ける。
+- **裏に回したタブは捨てられることがある**: スマホのブラウザはメモリが足りないと、裏のタブを捨て、戻ったときに読み込み直す
+  （Chromeは[Page Lifecycle API](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)の`discarded`）。画面の中の
+  状態だけに持った値は消えるので、走行中のルートは端末へ一時保存する。
+
 ## Windows: `uvicorn --reload`の多重プロセス
 
 Windowsでは`uvicorn --reload`がリローダー親プロセスとワーカー子プロセス
