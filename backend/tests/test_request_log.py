@@ -16,6 +16,7 @@ from asgi_correlation_id import CorrelationIdMiddleware
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.api.cache_policy import TILE_PATH_PREFIXES
 from app.main import app as main_app
 from app.infrastructure.request_log import (
     access_level,
@@ -63,14 +64,14 @@ def test_access_log_line_carries_the_request_id(caplog):
     ],
 )
 def test_access_level_policy(path, status_code, level):
-    assert access_level(path, status_code) == level
+    assert access_level(path, status_code, TILE_PATH_PREFIXES) == level
 
 
 def test_unhandled_exception_logged_as_error_with_traceback(caplog):
     caplog.set_level(logging.ERROR, logger="ridecompass.access")
 
     test_app = FastAPI()
-    test_app.middleware("http")(request_log_middleware)
+    test_app.middleware("http")(request_log_middleware(TILE_PATH_PREFIXES))
 
     @test_app.get("/boom")
     def boom():
@@ -90,7 +91,7 @@ def test_unhandled_exception_logged_as_error_with_traceback(caplog):
 # raise_server_exceptions=Trueのため、実際のHTTPレスポンスを得るにはFalseを指定する。
 def test_unhandled_exception_response_has_request_id_header():
     test_app = FastAPI()
-    test_app.middleware("http")(request_log_middleware)
+    test_app.middleware("http")(request_log_middleware(TILE_PATH_PREFIXES))
     test_app.add_middleware(CorrelationIdMiddleware)
     test_app.add_exception_handler(Exception, unhandled_exception_handler)
 

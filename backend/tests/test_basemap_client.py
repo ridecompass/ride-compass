@@ -18,6 +18,7 @@ import pytest
 import respx
 
 from app.infrastructure import basemap_client
+from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from tests.fake_http import client_for
 
 PROXY = "http://localhost:8000/api/basemap"
@@ -104,7 +105,7 @@ async def test_a_part_the_upstream_does_not_have_is_reported_as_missing_not_as_a
 
     result = await client(router).get("fonts/Noto Sans Bold/65024-65279.pbf")
 
-    assert result is basemap_client.BASEMAP_NOT_FOUND
+    assert result is UPSTREAM_NOT_FOUND
     assert warnings() == []
 
 

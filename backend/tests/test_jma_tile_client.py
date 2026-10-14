@@ -25,7 +25,8 @@ from app.domain.jma_tile_specs import JmaFrame, TargetTimesRow
 from app.domain.weather_display import PRECIPITATION_COLOR_STOPS
 from app.infrastructure.jma_tile_recolor import JMA_PRECIPITATION_TILE_COLORS
 from app.infrastructure import jma_tile_client
-from app.infrastructure.jma_tile_client import EmptyTile, JmaTileClient, JmaTileNotFoundError, JmaTileSharedState
+from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
+from app.infrastructure.jma_tile_client import JmaTileClient, JmaTileSharedState
 from tests.fake_external_log import record_external_calls
 from tests.fake_http import client_for
 from tests.test_jma_tile_recolor import palette_tile, pixels, rgba
@@ -134,37 +135,34 @@ async def test_tiles_are_shared_through_redis_and_time_listings_are_kept_in_this
     assert await client(upstream).get_cached(LISTING) == (b"[]", "application/json")
 
 
-async def test_a_missing_tile_is_raised_apart_from_failures_and_remembered_as_nothing_to_draw(
+async def test_a_missing_tile_is_told_apart_from_failures_and_remembered_as_nothing_to_draw(
     monkeypatch, upstream, fake_redis, client
 ):
     """疎な格子の穴は正常系なので、失敗として数えず（WARNINGも出さず）、次からは上流へ問い合わせない。"""
     recorded = record_external_calls(monkeypatch, jma_tile_client)
     upstream.get(f"/{TILE}").respond(404)
 
-    with pytest.raises(JmaTileNotFoundError):
-        await client(upstream).fetch(TILE)
+    assert await client(upstream).fetch(TILE) is UPSTREAM_NOT_FOUND
 
     assert recorded[0].fields["result"] == "ok"
     assert recorded[0].fields["status"] == 404
-    assert isinstance(await client(upstream).get_cached(TILE), EmptyTile)
+    assert await client(upstream).get_cached(TILE) is UPSTREAM_NOT_FOUND
 
 
 async def test_a_missing_time_listing_is_remembered_in_this_process(upstream, fake_redis, redis_server, client):
     upstream.get(f"/{LISTING}").respond(404)
 
-    with pytest.raises(JmaTileNotFoundError):
-        await client(upstream).fetch(LISTING)
+    assert await client(upstream).fetch(LISTING) is UPSTREAM_NOT_FOUND
 
     redis_server.connected = False
-    assert isinstance(await client(upstream).get_cached(LISTING), EmptyTile)
+    assert await client(upstream).get_cached(LISTING) is UPSTREAM_NOT_FOUND
 
 
-async def test_features_not_yet_delivered_are_raised_but_not_remembered(upstream, fake_redis, client):
+async def test_features_not_yet_delivered_are_missing_but_not_remembered(upstream, fake_redis, client):
     """地物は配信されるまで404が返るので、覚えると配信された後も「無い」を返し続ける。"""
     upstream.get(f"/{FEATURES}").respond(404)
 
-    with pytest.raises(JmaTileNotFoundError):
-        await client(upstream).fetch(FEATURES)
+    assert await client(upstream).fetch(FEATURES) is UPSTREAM_NOT_FOUND
 
     assert await client(upstream).get_cached(FEATURES) is None
 
@@ -210,7 +208,7 @@ async def test_a_locally_built_time_listing_is_kept_in_this_process(upstream, fa
 @pytest.mark.parametrize(
     "answer, expected",
     [
-        (httpx.Response(404), EmptyTile),
+        (httpx.Response(404), UPSTREAM_NOT_FOUND),
         (httpx.Response(500), None),
     ],
     ids=["missing", "failed"],
@@ -221,12 +219,7 @@ async def test_get_tells_a_tile_with_nothing_to_draw_apart_from_a_failure(
     """プリウォームは空を正常に数え、失敗だけを数える。混ぜると平常時の大半の空が失敗に見える。"""
     upstream.get(f"/{TILE}").return_value = answer
 
-    result = await client(upstream).get(TILE)
-
-    if expected is EmptyTile:
-        assert isinstance(result, EmptyTile)
-    else:
-        assert result == expected
+    assert await client(upstream).get(TILE) is expected
 
 
 async def test_upstream_requests_are_spaced_by_the_configured_rate_only_until_the_interval_has_passed(

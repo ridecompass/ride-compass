@@ -131,7 +131,7 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 |---|---|---|---|
 | `targetTimes*.json`（`jma_tile_client.py: is_target_times_path`で判定） | プロセス内メモリ`TTLCache`（maxsize=16） | 2分 | `public, max-age=60` |
 | タイル本体（ラスタPNG・洪水キキクルのベクタPBF。降水は塗り替えたあと） | `jma_tile_redis_cache.py`（Redis cache-aside、正本を持たない。鍵に塗り替えの版`jma_tile_recolor.py: RECOLOR_VERSION`を入れる） | 20分 | `public, max-age=1200, immutable` |
-| 描くものが無いタイル（`EmptyTile`。上流の404、または200で返った空タイル） | 上記と同じキー・TTL（実体ではなくフラグ） | 20分 | `public, max-age=600` |
+| 描くものが無いタイル（`infrastructure/http_client.py: UpstreamNotFound`。上流の404、または200で返った空タイル） | 上記と同じキー・TTL（実体ではなくフラグ） | 20分 | `public, max-age=600` |
 | 配信前のコマの地物（GeoJSON）の404 | 保存しない | — | `no-store` |
 | 502（上流障害） | 保存しない | — | 付けない |
 
@@ -159,23 +159,22 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 `JmaTileClient.fetch(path)`（外部フェッチ＋キャッシュ書き戻し）へ進む。`JmaTileClient.get(path)`（`get_cached`→ミスなら`fetch`の一括呼び出し）はレート
 制限の適用順序を気にしない呼び出し元（プリウォームバッチ・テスト等）向けに残している。
 
-**フェイルステータスの使い分け**: `fetch`は上流の404を`JmaTileNotFoundError`
-として送出し、`jma_tile.py`はこれを404（他の失敗は502）として返す。降水・浸水想定区域等の
+**フェイルステータスの使い分け**: `fetch`は上流の404を`UPSTREAM_NOT_FOUND`、他の失敗をNoneとして返し
+（取得と404の見分けは`infrastructure/http_client.py: fetch_upstream`が持つ）、`jma_tile.py`はこれを404（Noneは502）として返す。降水・浸水想定区域等の
 疎な格子状タイルは、ズームレベル・場所によって存在しないz/x/yが珍しくない正常系のため、
 タイムアウト・5xx等の実際の障害と同列に502・WARNINGログ・`/api/debug/stats`のerror集計へは
-乗せない。`get`（プリウォームバッチ等、404と他の失敗を区別する必要が無い呼び出し元向け）は
-`JmaTileNotFoundError`を`EMPTY_TILE`へ揃えて返す（Noneは取得失敗だけを表す。平常時は
+乗せない。`get`も同じ値を返す（Noneは取得失敗だけを表す。平常時は
 空が大半のため、失敗と混ぜるとエラー件数が常に大きくなり本物の障害が埋もれる）。
 
 **「得るものが無い」の持ち方**: 上流は、データの無いタイルを404で返すことも、200で
 全画素が透明なタイル（334バイトのRGBA PNG）・0バイトのMVTで返すこともある。**どちらも
 利用者から見れば同じ**ため、サーバーは区別せず1つの事実として持つ——
 `jma_tile_redis_cache.set_empty`が実際のタイルと同じキー・TTLで0バイトの値を保存し、
-`get`は`EMPTY_TILE`センチネルを返す。空だと分かったタイルは`set`も実体を保存せずこの
+`get`は`UPSTREAM_NOT_FOUND`を返す。空だと分かったタイルは`set`も実体を保存せずこの
 フラグへ倒す（空の判定は`jma_tile_content.py: is_empty_tile`が唯一持ち、在否インデックスも
-同じ判定を使う）。`targetTimes*.json`はプロセス内`TTLCache`へ直接`EMPTY_TILE`を積む。
+同じ判定を使う）。`targetTimes*.json`はプロセス内`TTLCache`へ直接`UPSTREAM_NOT_FOUND`を積む。
 
-`jma_tile.py`は`EmptyTile`を受け取ると上流へ再問い合わせせず即座に404を返す（レート制限も
+`jma_tile.py`は`UPSTREAM_NOT_FOUND`を受け取ると上流へ再問い合わせせず即座に404を返す（レート制限も
 消費しない）。クライアント側（`jmaTileProtocol.ts`）は404も空タイルも透明タイルへ倒すため、
 200＋空タイルを返す必要はない。配信された`basetime`/`validtime`の一時点への結果のため、
 この事実は再フェッチしても変わらない。
@@ -186,7 +185,7 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 画面は配信の遅れ（`domain/jma_tile_specs.py: JmaElement.data_delay_minutes`、公式の画面の`dataDelay`）のぶん
 前の`basetime`を取るので配信前のコマを取りに行かないが、時刻の食い違いで取りに行く利用者が1人でもいると、覚えた404が
 配信された後もその間は全員に「無い」を返す。そこで、404が確定した事実か
-（`infrastructure/jma_tile_paths.py: is_final_absence`。パスの形が地物か）で分け、地物の404は`EmptyTile`として保存せず、
+（`infrastructure/jma_tile_paths.py: is_final_absence`。パスの形が地物か）で分け、地物の404は空として保存せず、
 ブラウザへも`no-store`で返す。画面の側は[動的気象レイヤー（frontend）](../frontend/dynamic-weather-layers.md)
 「配信の遅れを持つ要素は、時刻一覧のコマをそのまま取らない」。
 
@@ -516,10 +515,10 @@ Terrain-RGBの刻みと原点は製品の定義として`domain/terrain_rgb.py`�
 **恒久404のキャッシュ**: 色別標高図の整備区域外（404）は珍しくない正常系
 で、他の失敗（タイムアウト・
 5xx等）と区別して502・WARNINGログ・`/api/debug/stats`のerror集計へは乗せない。確認済みの
-404は`GsiTileNotFound`センチネルとしてプロセス内メモリのみ（上限付きLRU、キー=path）に
+404は`UPSTREAM_NOT_FOUND`としてプロセス内メモリのみ（上限付きLRU、キー=path）に
 記憶し、`tile_cache.py`の永続ディスクキャッシュへは書かない（将来GSI側の整備区域が広がった
 場合、プロセス再起動だけで再取得の機会が来るようにするため）。`api/routers/gsi_tile.py`
-は`GsiTileNotFound`を受け取ると404（それ以外の`None`は502）を返す。
+は`UPSTREAM_NOT_FOUND`を受け取ると404（それ以外の`None`は502）を返す。
 
 ## 気象庁MSMの同期と読み出し（`msm_client.py`・`domain/msm.py`）
 
