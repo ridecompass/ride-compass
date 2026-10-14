@@ -42,8 +42,13 @@ from app.domain.axis_definitions import (
     published_axis_definitions,
     weather_layer_groups_for,
 )
-from app.domain.material_catalog import MATERIAL_CATALOG, MaterialDType, tile_runtime_scales
-from app.domain.axis_raw_value import RawValueUnits, axis_material_shares, raw_value_units
+from app.domain.material_catalog import MATERIAL_CATALOG, tile_runtime_scales
+from app.domain.axis_raw_value import (
+    AxisMaterialBreakdownEntry,
+    RawValueUnits,
+    axis_material_breakdown,
+    raw_value_units,
+)
 from app.domain.dynamic_way_values import WayValueConditionName
 from app.domain.map_paint import MapPaint, map_paint
 from app.domain.tuning import client_tuning_values
@@ -52,32 +57,6 @@ from app.services.region_service import RegionService
 from app.domain.strict_model import StrictModel
 
 router = APIRouter()
-
-
-def _material_breakdown(definition: AxisDefinition) -> list["AxisMaterialBreakdownEntry"]:
-    """軸の内訳（材料まで分解した絶対量の並び）。カタログに無い材料は落とす。
-
-    categorical材料（`highway`等）も含めて返す——値ごとの延長割合を運ぶ器はまだ無いが、
-    内訳の並び自体は軸定義から決まるため、運搬側の都合で並びを変えると軸定義との
-    対応が読めなくなる。値が来ない材料を
-    フロントが飛ばす形にする。
-    """
-    entries = []
-    for share in axis_material_shares(definition, AXIS_DEFINITIONS):
-        spec = MATERIAL_CATALOG.get(share.material_id)
-        if spec is None:
-            continue
-        entries.append(
-            AxisMaterialBreakdownEntry(
-                material_id=share.material_id,
-                label=spec.label,
-                dtype=spec.dtype,
-                unit=spec.unit or "",
-                share=round(share.share, 4),
-                value_labels=dict(spec.value_labels) if spec.dtype == "categorical" else {},
-            )
-        )
-    return entries
 
 
 def _density_terms(definition: AxisDefinition) -> list["AxisDensityTerm"] | None:
@@ -100,25 +79,6 @@ class AxisDensityTerm(StrictModel):
     label: str
     #: 軸定義に書いた重みのまま（正規化しない）。0の項も並べる——材料の点が地図に出ても、数に入らないことを言える。
     weight: float
-
-
-class AxisMaterialBreakdownEntry(StrictModel):
-    """合成軸の内訳1件（材料と、その材料が軸の生値に占める割合）。"""
-
-    material_id: str
-    #: 材料の表示名（`MaterialSpec.label`）。フロントは対応表を持たない。
-    label: str
-    #: 値の型。`numeric`＝距離加重平均＋単位、`boolean`＝該当区間の延長割合、`categorical`＝値ごとの延長割合。
-    dtype: MaterialDType
-    #: numeric材料の単位。真偽値材料は空文字。
-    unit: str
-    #: 各階層で正規化した重みの積（0〜1）。並び順の根拠を画面側でも示せるよう返す。
-    share: float
-    #: categorical材料の「タグ生値→論理名」対訳（`MaterialSpec.value_labels`）。
-    #: ルート結果は`material_category_shares`の値をこれで日本語にする。他の型では空。
-    #: 軸スタジオが使う`value_label()`の「論理名 - 物理名」形式にしないのは、走行中に見る
-    #: 画面へ物理名を並べても読み手の判断が増えないため。
-    value_labels: dict[str, str]
 
 
 class AxisCatalogEntry(StrictModel):
@@ -145,7 +105,7 @@ class AxisCatalogEntry(StrictModel):
     # この単位で生値を出す。**総量を出しても読み手の判断が変わらない軸は総量の単位がnull**
     # （「約3322度曲がる」には比べる尺度が無い）。フロントは単位の綴りから総量の可否を判断しない。
     raw_value_units: RawValueUnits
-    # 生値の単位が定まらない軸の内訳（`domain/axis_raw_value.py: axis_material_shares`）。
+    # 生値の単位が定まらない軸の内訳（`domain/axis_raw_value.py: axis_material_breakdown`）。
     # 得点だけでは軸単体で経路を判断できないため、材料まで分解して較正に依存しない
     # 絶対の事実を出す。
     # 並びは正規化重みの降順で、フロントは先頭から順に出す（並べ替えを持たない）。
@@ -215,7 +175,7 @@ async def get_axis_catalog(region_service: RegionService = Depends(get_region_se
                 weather_layer_groups=weather_layer_groups_for(definition),
                 map_paint=map_paint(definition),
                 raw_value_units=raw_value_units(definition),
-                material_breakdown=_material_breakdown(definition),
+                material_breakdown=axis_material_breakdown(definition, AXIS_DEFINITIONS),
                 density_terms=_density_terms(definition),
                 dynamic_way_value_conditions=way_value_layers[definition.axis_id].conditions,
                 dynamic_way_value_undetermined_by_bearing=way_value_layers[definition.axis_id].undetermined_by_bearing,

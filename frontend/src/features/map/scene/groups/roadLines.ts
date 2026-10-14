@@ -28,7 +28,7 @@ const ROAD = mapDisplay.road;
 
 export const ROAD_LINE_SOURCE_ID = sceneSourceId("road-tiles");
 /** 押したときに拾う対象。道路の線はどれも共通の名前を名乗る。 */
-const ROAD_LINE_HIT_TARGET = "road";
+export const ROAD_LINE_HIT_TARGET = "road";
 
 /** `feature_key`は地物へ安定したidを与えるための昇格先（**この列でなければ feature-state が効かない**
  * ——タイルの地物はズームによって道1本にも区間にもなり、この列だけがその単位に追従する）。`way_id`は詳細の強調が

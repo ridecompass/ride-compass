@@ -19,6 +19,7 @@ import math
 import re
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from itertools import accumulate
 
 import numpy as np
 import pytest
@@ -560,6 +561,39 @@ async def test_turns_are_listed_where_the_route_changes_direction_at_a_branch(en
             assert km == pytest.approx(along_km, abs=0.02)
     if via:
         assert bent_at_a_corner
+
+
+async def test_a_segment_and_a_turn_sit_where_the_segments_before_them_add_up_to(engine_over):
+    """区間の始まりの道のり（`cumulative_distance_km`）と曲がる所の道のりは、手前の区間の`distance_km`を始点から足した値に
+    載る——別の積み方だと、同じ地点の距離が「km地点」・道のりのグラフ・曲がる所までの残りで食い違う。格子の1辺は区間の
+    まとめる幅より長いので、区間は辺ごとに分かれ、曲がる所はどれかの区間の始まりに来る。"""
+    generator = engine_over(grid_network())
+
+    candidates = await generator.generate_via_waypoints(
+        at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=3, start_time=DEPARTURE)
+
+    assert any(candidate.turns for candidate in candidates)
+    for candidate in candidates:
+        added_up = list(accumulate((segment.distance_km for segment in candidate.segments), initial=0.0))
+        assert [segment.cumulative_distance_km for segment in candidate.segments] == pytest.approx(added_up[:-1])
+        segment_at = {(s.start_latitude, s.start_longitude): i for i, s in enumerate(candidate.segments)}
+        for turn in candidate.turns:
+            assert turn.distance_km == pytest.approx(added_up[segment_at[(turn.latitude, turn.longitude)]])
+
+
+async def test_the_distance_along_the_route_is_the_length_of_the_roads_behind(engine_over):
+    """区間の始まりの道のりは、手前の道の長さ——違う長さだと「km地点」が地図の上の場所とずれる。道の長さの換算の誤りは
+    約1kmの道では応答の桁の丸めに埋もれるので、約20kmの道を通る。"""
+    start, far, east = (BASE_LAT, BASE_LON), (BASE_LAT + 20 * LAT_STEP, BASE_LON), (BASE_LAT + 20 * LAT_STEP, BASE_LON + LON_STEP)
+    generator = engine_over(road_network({1: (1, 2), 2: (2, 3)}, {1: start, 2: far, 3: east}))
+
+    (candidate, *_) = await generator.generate_via_waypoints(
+        Coordinates(latitude=start[0], longitude=start[1]), [],
+        destination=Coordinates(latitude=east[0], longitude=east[1]), max_routes=1, start_time=DEPARTURE)
+
+    beyond = next(s for s in candidate.segments if (s.start_latitude, s.start_longitude) == pytest.approx(far))
+    road_km = haversine_distance_km(Coordinates(latitude=start[0], longitude=start[1]), Coordinates(latitude=far[0], longitude=far[1]))
+    assert beyond.cumulative_distance_km == pytest.approx(road_km, abs=0.005)
 
 
 async def test_a_segment_without_data_does_not_show_the_axis_as_zero(engine_over):

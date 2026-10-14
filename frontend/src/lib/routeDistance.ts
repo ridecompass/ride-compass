@@ -4,7 +4,7 @@
 // 測った長さとは少しずれるので、割合でつなぐ——こうすると、道のりのグラフの距離・地図の上の地点・現在地の位置が
 // どれも同じ物差しで行き来する。
 
-import { METERS_PER_DEGREE, closestPointOnSegment, longitudeScale } from "@/lib/localPlane";
+import { longitudeScale, projectOnEdge } from "@/lib/localPlane";
 import type { Coordinates, RouteSegmentDetail } from "@/types/route";
 
 export type RouteSegmentShape = Pick<
@@ -79,6 +79,30 @@ export function splitSegmentAt(segment: RouteSegmentShape, fraction: number): { 
   return { before: [...path.slice(0, index + 1), point], after: [point, ...path.slice(index + 1)] };
 }
 
+/**
+ * Edgeの境界ごとのルートの上の距離（km。`edgePointOffsets`と同じ並び）。区間の形を順につなぐと候補の座標の列になる
+ * （前の区間の終点と同じ先頭点は重ねず、形の無い区間は点を持たない）ので、座標の点ごとの距離を区間の中の長さの割合で
+ * 決めてから、Edgeの境界の位置で引く。
+ */
+export function routeEdgeKms(segments: readonly RouteSegmentShape[], edgePointOffsets: readonly number[]): number[] {
+  const pointKms: number[] = [];
+  let last: LngLat | null = null;
+  for (const { segment, startKm, endKm } of routeStretches(segments)) {
+    if (segment.geometry === null) continue;
+    const path = segment.geometry.coordinates as LngLat[];
+    const lengths = edgeLengths(path);
+    const total = lengths.reduce((sum, length) => sum + length, 0);
+    let along = 0;
+    path.forEach((point, i) => {
+      if (i > 0) along += lengths[i - 1];
+      if (i === 0 && last !== null && point[0] === last[0] && point[1] === last[1]) return;
+      pointKms.push(total === 0 ? startKm : startKm + (along / total) * (endKm - startKm));
+    });
+    last = path.at(-1)!;
+  }
+  return edgePointOffsets.map((offset) => pointKms[offset]);
+}
+
 /** 道なりの形の辺1本と、その両端のルートの上の距離。 */
 export type RouteTrackEdge = {
   readonly from: LngLat;
@@ -110,19 +134,9 @@ export function projectOnTrack(
   track: readonly RouteTrackEdge[],
   position: Coordinates,
 ): { km: number; offsetM: number }[] {
-  const scale = longitudeScale(position.latitude) * METERS_PER_DEGREE;
-  // 現在地を原点にした平面（m）。
-  const toPlane = ([lng, lat]: LngLat) => ({
-    x: (lng - position.longitude) * scale,
-    y: (lat - position.latitude) * METERS_PER_DEGREE,
-  });
-  const origin = { x: 0, y: 0 };
+  const at: LngLat = [position.longitude, position.latitude];
   return track.map(({ from, to, fromKm, toKm }) => {
-    const a = toPlane(from);
-    const b = toPlane(to);
-    const closest = closestPointOnSegment(origin, a, b);
-    const edgeLength = Math.hypot(b.x - a.x, b.y - a.y);
-    const t = edgeLength === 0 ? 0 : Math.hypot(closest.x - a.x, closest.y - a.y) / edgeLength;
-    return { km: fromKm + (toKm - fromKm) * t, offsetM: Math.hypot(closest.x, closest.y) };
+    const { fraction, offsetM } = projectOnEdge(at, from, to);
+    return { km: fromKm + (toKm - fromKm) * fraction, offsetM };
   });
 }

@@ -5,6 +5,7 @@ import { featureFilter } from "@maplibre/maplibre-gl-style-spec";
 import type { AxisCatalogResponse } from "@/types/route";
 import { FIXED_LENS_LABELS } from "@/lib/mapDisplay/routeStyleModes";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
+import { lonLatToTileIndex } from "@/features/map/layers/webMercatorTile";
 import { ROUTE_HIT_TARGET_SEGMENT } from "@/features/map/scene/groups/routes";
 import { INTRO_CLOSED, MOBILE_VIEWPORT, installMapFinder, seedStoredState } from "../e2e/fixtures";
 import { installPageHelpers } from "../e2e/states";
@@ -28,10 +29,7 @@ export async function fetchCatalog(): Promise<AxisCatalogResponse> {
 }
 
 export function tileOf(z: number, { latitude, longitude }: { latitude: number; longitude: number }) {
-  const n = 2 ** z;
-  const x = Math.floor(((longitude + 180) / 360) * n);
-  const rad = (latitude * Math.PI) / 180;
-  const y = Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n);
+  const [x, y] = lonLatToTileIndex(longitude, latitude, z);
   return { z, x, y };
 }
 

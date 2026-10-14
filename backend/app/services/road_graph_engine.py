@@ -66,6 +66,7 @@ from app.domain.route import (
     RouteTurn,
     DISTANCE_KM_DECIMALS,
     aggregate_segments_into_bins,
+    along_route_km,
     concat_edge_geometries,
     merge_material_category_shares,
     reverse_elevation_by_edge,
@@ -1223,8 +1224,9 @@ class RoadGraphEngine:
             context.legs, context.turn_structure, path, rows,
             [edge.distance_m for edge in edges_in_path], leg_of_edge, context.composer.speed_kmh,
         )
+        along_km = along_route_km(edge.distance_m / 1000 for edge in edges_in_path)
         segments, segment_categories, segment_raw_values = self._build_segment_details(
-            edges_in_path, rows, passages, elevation_by_edge, context, start_time, leg_of_edge
+            edges_in_path, along_km, rows, passages, elevation_by_edge, context, start_time, leg_of_edge
         )
         # categorical材料の延長割合は**集約より前に**Edge単位の値から畳む。集約後に
         # 計算すると、ビンの代表値を1つ選ぶ形になり割合がビンの粒度へ量子化される。
@@ -1236,7 +1238,7 @@ class RoadGraphEngine:
         )
         # 返すsegmentsは集約する。Edge単位のままだとペイロードとフロントの描画費用が嵩む。
         segments = aggregate_segments_into_bins(segments)
-        turns = _route_turns(context.turn_structure, path, edges_in_path)
+        turns = _route_turns(context.turn_structure, path, edges_in_path, along_km)
 
         return EvaluatedRoute(
             # 方位を持たない経路の名前は、種類と一緒に`route_generator.py: _label`が付ける。
@@ -1265,6 +1267,7 @@ class RoadGraphEngine:
     def _build_segment_details(
         self,
         edges: list[LeanEdge],
+        along_km: list[float],
         rows: list[int],
         passages: list[EdgePassage],
         elevation_by_edge: dict,
@@ -1284,7 +1287,6 @@ class RoadGraphEngine:
         segments = []
         segment_categories: list[dict[str, str]] = []
         segment_raw_values: list[dict[str, float]] = []
-        cumulative_km = 0.0
         active_material_ids = displayed_material_ids(context.composer.weights)
         timed = _values_at_passages(context, rows, leg_of_edge, passages)
         winds = context.composer.winds_at(
@@ -1371,7 +1373,7 @@ class RoadGraphEngine:
                     start_longitude=start_lon,
                     end_latitude=end_lat,
                     end_longitude=end_lon,
-                    cumulative_distance_km=round(cumulative_km, DISTANCE_KM_DECIMALS),
+                    cumulative_distance_km=along_km[index],
                     distance_km=round(distance_km, DISTANCE_KM_DECIMALS),
                     estimated_arrival_time=arrival_time.isoformat(),
                     axis_difficulties=axis_scores,
@@ -1381,7 +1383,6 @@ class RoadGraphEngine:
                     wind=winds[index],
                 ).with_density_inputs(density_inputs)
             )
-            cumulative_km += distance_km
 
         return segments, segment_categories, segment_raw_values
 
@@ -1534,18 +1535,14 @@ _TURN_DIRECTION = {TurnKind.LEFT: "left", TurnKind.RIGHT: "right", TurnKind.UTUR
 
 
 def _route_turns(
-    structure: TurnExpandedStructure, path: list[int], edges_in_path: list[LeanEdge]
+    structure: TurnExpandedStructure, path: list[int], edges_in_path: list[LeanEdge], along_km: list[float]
 ) -> list[RouteTurn]:
-    """経路が分かれ道で曲がる所を、応答の形にする。距離は区間の`distance_km`（区間ごとに丸めた値）を始点から積んだ値で、
-    画面が区間の距離を積んで数えるルートの上の現在地と同じ物差しにする。地点は曲がった先の区間の始点。"""
-    along_km = [0.0]
-    for edge in edges_in_path:
-        along_km.append(along_km[-1] + round(edge.distance_m / 1000, DISTANCE_KM_DECIMALS))
+    """経路が分かれ道で曲がる所を、応答の形にする。距離は曲がった先の区間の始まりの道のり（`along_km`）、地点はその区間の始点。"""
     turns = []
     for turn in turns_along(structure, path):
         latitude, longitude = edges_in_path[turn.index].geometry[0]
         turns.append(RouteTurn(
-            distance_km=round(along_km[turn.index], DISTANCE_KM_DECIMALS),
+            distance_km=along_km[turn.index],
             direction=_TURN_DIRECTION[turn.kind],
             latitude=latitude,
             longitude=longitude,

@@ -25,7 +25,7 @@ const SCORE = dedicatedEntry("axis_score", [10, 20]);
 const DEDICATED = dedicatedEntry("axis_wind", [10, 20], { dynamic_way_value_conditions: ["bearing_deg"] });
 const OTHER_DEDICATED = dedicatedEntry("axis_other", [10, 20]);
 /** 道路タイルのズームの、狭い表示範囲（覆うタイルが少ない）。 */
-const VIEWPORT = { west: 139.7, south: 35.68, east: 139.701, north: 35.681, zoom: 14 };
+const VIEWPORT = { west: 139.7, south: 35.68, east: 139.701, north: 35.681, zoom: 14, bearing: 0 };
 
 type Inputs = Parameters<typeof useMapView>[0];
 
@@ -249,6 +249,18 @@ describe("useMapView", () => {
     expect(result.current.look).toBe(look);
     act(() => result.current.redrawMap());
     expect(result.current.look).toMatchObject({ ...look, refreshToken: 1 });
+  });
+
+  it.each([
+    { case: "地図がまだ範囲を知らせていなければ北が上", reported: null, bearing: 0 },
+    { case: "地図が知らせた向き", reported: 30, bearing: 30 },
+  ])("地図の向きは、地図が知らせた範囲の向きを返す: $case", ({ reported, bearing }) => {
+    serve();
+    const { result } = render();
+
+    if (reported !== null) act(() => result.current.look.onViewportChange({ ...VIEWPORT, bearing: reported }));
+
+    expect(result.current.bearing).toBe(bearing);
   });
 
   it("チップには、地図から上がる取得の状態と気象の取得の状態を合わせ、表示範囲のズームで出ないレイヤーに案内を出す", async () => {

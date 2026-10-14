@@ -31,8 +31,8 @@
 | `features/map/layers/primaryAttributes.ts` | 一次属性のカタログと、二次軸→一次属性の導出（軸増減時の観測データ連動表示に使用） |
 | `features/map/layers/mapLayers.ts` | レイヤーカタログ本体（`MapLayerDescriptor[]`）・地図上チップの最上位グループ（`MAP_OVERLAY_GROUP_ORDER`が正本。現在は道路/環境/スポット）判定・軸スタジオ由来レイヤーの除外判定（軸スタジオ由来のレイヤーはチップに出ないので、名前・アイコン・説明を持たず、idと源泉の宣言だけを持つ`AxisStudioLayerDescriptor`）・`deriveFetchLayerStatus`（MapLibreのソースイベントを経由しないレイヤーのデータ状態判定）。静的なレイヤーは源泉の宣言（生成物`mapDisplay.layers`）の並びを列挙して組み、足すのはアイコン（`STATIC_LAYER_ICONS`）と表示専用の凡例（`READ_ONLY_LEGENDS`）だけ。名前・略名・説明・(i)の文は源泉が持ち、説明の差し込み口だけを軸カタログの値で埋める（下記「説明文に評価の名前を書き込まない」）。**`layers/`は`scene/`を読まない**（`scene/`が`layers/`を読む一方向） |
 | `features/map/scene/mapScene.ts` | 地図に載っているべきものの宣言の型（ソース・レイヤー・feature-state）と、重なりの段（`MAP_SCENE_TIERS`）・押せるレイヤーの引き方 |
-| `features/map/scene/applyMapScene.ts` | 宣言を地図へ当てる唯一の実装（`addSource`/`addLayer`/`setPaintProperty`/`setFilter`/`setFeatureState`）。前回の宣言との差分だけを当て、段の順に差し込む |
-| `features/map/MapView/MapView.tsx`（静的レイヤーの箇所のみ） | 画面の状態をsceneの入力へ渡す配線・押された点や道の判定とポップアップ・レイヤーのデータ取得状態の算出元（`buildLayerDataSources`）。レイヤーの描画コードは持たない |
+| `features/map/scene/applyMapScene.ts` | 宣言を地図へ当てる唯一の実装（`addImage`/`addSource`/`addLayer`/`setPaintProperty`/`setFilter`/`setFeatureState`）。前回の宣言との差分だけを当て、段の順に差し込む |
+| `features/map/MapView/MapView.tsx`（静的レイヤーの箇所のみ） | 画面の状態をsceneの入力へ渡す配線・押した所で一番上の地物を、そのレイヤーが宣言した当たり判定の対象（`hitTargets`）で開く手続きへ振り分けること・ポップアップ・レイヤーのデータ取得状態の算出元（`buildLayerDataSources`）。レイヤーの描画コードは持たない |
 | `features/map/layers/mapStyleOps.ts` | 地図インスタンスへの低水準操作（スタイル読み込み後の実行・面レイヤーと文字に場所を譲る点の差し込み位置・ズーム依存のicon-size式）。このアプリのどのレイヤーかを知らないものだけを置く |
 | `features/map/layers/routeArrowIcon.ts`・`icons.tsx` | ルート矢印・アイコン集（下記「本モジュールとの関係」参照） |
 | `features/map/layers/sdfIcon.ts` | 地図の記号に使う単色シルエット（例: 風の矢印・ルート矢印）の描画の土台。白で塗った絵を`sdf: true`で登録し、色はicon-colorで付ける。canvasの2D描画が使えなければ投げる——空の絵を黙って返すと記号が地図から消えるだけで誰も気づけない。**単体テストは持たない**（テスト環境のcanvasは2D描画を実装しない。絵の中身は座標の宣言そのもので、写してもなにも守らない） |
@@ -162,6 +162,11 @@ backendから取り、タイル本体はrewrites経由に戻る。
 `scene/groups/*.ts`は色分け式・分類の**宣言**のみを持ち、
 DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの入力へ渡すだけで、
 レイヤーを直接は触らない。
+
+**記号の絵もsceneが宣言し、地図に同じidの絵が無いときだけ足す。** 記号のレイヤーが名指す絵は、そのレイヤーを
+宣言するグループがsceneの`images`として返し、`applyMapScene`が記号のレイヤーより先に足す。足すかは前回の宣言ではなく
+地図に有るか（`hasImage`）で決める——スタイルを差分で差し替えても絵は地図に残り、同じidを足し直すとMapLibreは
+投げずに誤りの出来事を出す（`maplibre-gl/src/style/style.ts`の`addImage`）。宣言から外れた絵も地図から消さない。
 
 **前回の宣言との差分は自前で取り、依存に既にある`@maplibre/maplibre-gl-style-spec`の`diff()`は使わない。**
 `diff()`はスタイル全体どうしを比べて地図への操作の列を返すもので、このアプリの当て方と次の点で合わない
@@ -739,7 +744,7 @@ E2Eの`e2e/map-runtime.spec.ts`「宣言された地図レイヤーを全部ON�
 
 **点の形も源泉が決める。** 先頭の軸の行が絵記号の名前（`domain/registry.py: DisplayCategorySpec.glyph`）を持つレイヤーは、行の色の
 角丸四角に白い絵記号を載せた記号で描き（例: 補給・休憩のコンビニ＝袋・トイレ＝WC）、持たないレイヤーは丸い点で描く。
-絵は行ごとに地図へ登録し（`applyToMap.ts: applyScene`）、記号は行の値から絵の名前を引く。丸い点と同じく、重なっても
+絵は行ごとにsceneの絵として宣言し（`scene/groups/points.ts: POINT_IMAGES`）、記号は行の値から絵の名前を引く。丸い点と同じく、重なっても
 間引かずに全部描く。ただし源泉が間引きの順（一次属性の`point_thinning`）を宣言したレイヤー（立ち寄り先。街中は飲食店だけで
 絵が埋まる）は、重なった絵を省く。残す順は宣言の行の並び（地点の少ない群から）で、同じ行の中では宣言のプロパティ
 （確からしさ`confidence`）の大きい点を先に残す（`symbol-sort-key`）。自分どうしで省き合うには置いた絵がほかの記号を退ける
@@ -841,7 +846,7 @@ HTMLでもよい。第三者が書ける値——`?? 生値`の
   [ページ構成](page-composition.md)・[地図: 軸・ルート色分け](map-axis-coloring.md)に近い。
   区間クリック時の詳細表示（地点・到達予想時刻・軸別内訳）はボトムシート側
   （[ルート設定・結果パネル](route-settings-and-results.md)のRouteAxisProfile）が持ち、
-  地図上は、押された区間を`MapView.tsx: handleRouteSegmentClick`が選んだ区間として渡し、
+  地図上は、押された区間を`MapView.tsx: openRouteSegment`が選んだ区間として渡し、
   `useMapMarkers.tsx: applySelectedSegmentMarker`が軽量なマーカーを立てるのみで
   テキストポップアップを持たない。押された区間から読み戻す`feature.properties`は、軸別内訳等の
   入れ子のオブジェクトもオブジェクトのまま届く（MapLibre v6は内部表現へ移すときに印付きのJSON文字列へ

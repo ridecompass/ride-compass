@@ -83,6 +83,8 @@ interface MapViewState {
   redrawMap: () => void;
   /** 地図の見えている範囲の真ん中。地図がまだ範囲を知らせていなければnull。 */
   center: Coordinates | null;
+  /** 地図が今当てている向き（北から時計回りの度）。地図がまだ範囲を知らせていなければ0（北が上）。 */
+  bearing: number;
 }
 
 export function useMapView({
@@ -235,5 +237,6 @@ export function useMapView({
     },
     redrawMap: () => setRefreshToken((token) => token + 1),
     center,
+    bearing: viewport?.bearing ?? 0,
   };
 }

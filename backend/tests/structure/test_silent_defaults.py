@@ -40,13 +40,6 @@ _VALIDATING_METHODS = frozenset({"model_validate", "model_validate_json"})
 #: ルーターの入口を宣言するデコレータ（`@router.get(...)`）。
 _ROUTE_DECORATORS = frozenset({"get", "post", "put", "patch", "delete"})
 
-#: 直す issue が決まっている欄（`パス: クラス.欄` → 直す issue）。実態が無くなった登録は落ちる。
-ALLOWED_MODEL_FIELDS = {
-    "app/domain/jma_amedas.py: AmedasObservation.valid_area": "tasks#922",
-    "app/services/wbgt_service.py: WbgtStatus.valid_area": "tasks#922",
-}
-
-
 @dataclass(frozen=True)
 class _Class:
     module: str
@@ -252,23 +245,13 @@ def always_passed_defaults(root: Path) -> list[str]:
 
 
 def test_model_defaults_are_used_by_some_producer() -> None:
-    violations = {
-        field: reason for field, reason in silent_model_defaults(BACKEND_ROOT).items() if field not in ALLOWED_MODEL_FIELDS
-    }
+    violations = silent_model_defaults(BACKEND_ROOT)
 
     assert violations == {}, (
         "StrictModelの既定値を、本番の作り手が一部だけ省くようにする。どの作り手も渡さない欄は"
         "組み立て途中の型と応答の型を分けて応答の型で必須にし、全部の作り手が渡す欄は既定値を外す:\n  "
         + "\n  ".join(f"{field}（{reason}）" for field, reason in sorted(violations.items()))
     )
-
-
-def test_model_allowlist_has_no_stale_entries() -> None:
-    found = silent_model_defaults(BACKEND_ROOT)
-
-    stale = sorted(field for field in ALLOWED_MODEL_FIELDS if field not in found)
-
-    assert stale == [], "直って実態の無い登録を`ALLOWED_MODEL_FIELDS`から消す:\n  " + "\n  ".join(stale)
 
 
 def test_function_defaults_are_omitted_by_some_caller() -> None:
