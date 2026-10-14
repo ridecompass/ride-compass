@@ -100,4 +100,4 @@ def divided_sql(row: str, candidates: str) -> str:
 
 def oneway_material_sql(direction: str, divided: str) -> str:
     """一方通行の道かのSQL式（材料`oneway`の値）。上下線が分かれた道の片側は外す。"""
-    return f"{one_way_sql(direction)} AND NOT COALESCE({divided}, false)"
+    return f"{one_way_sql(direction)} AND NOT {divided}"
