@@ -92,7 +92,7 @@ describe("保存して呼び出す", () => {
     expect(conditions.hardFilters[filterKey]).toBe(!DEFAULT_HARD_FILTERS[filterKey]);
   });
 
-  it("重みを上書きせずに保存した条件は、呼び出すと上書きをやめる", async () => {
+  it("重みを上書きせずに保存した条件は、呼び出すと上書きをやめ、重みのタブは送らない間に効く既定の重みを出す", async () => {
     const { result } = renderSaved();
     act(() => result.current.saved.save("既定の重み", false));
     act(() => {
@@ -104,6 +104,7 @@ describe("保存して呼び出す", () => {
     act(() => result.current.saved.recall(result.current.saved.saved[0]));
 
     expect(result.current.conditions.routePreferenceToSend).toBeNull();
+    expect(result.current.conditions.routePreference).toEqual({ axis_a: 0.4, axis_b: 0.6 });
   });
 
   it("名前が空なら仮の名前で保存し、一覧は開き直しても残る", () => {
