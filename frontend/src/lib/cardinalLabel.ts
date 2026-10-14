@@ -7,7 +7,6 @@
 import { mapDisplay } from "@/types/generated/mapDisplay";
 
 const CARDINAL_LABELS = mapDisplay.compassLabels;
-const SECTOR_DEG = 360 / CARDINAL_LABELS.length;
 
 /** 角度を0以上360未満へ畳む。 */
 export function normalizeDeg(deg: number): number {
@@ -19,7 +18,11 @@ export function downwindDeg(windFromDeg: number): number {
   return normalizeDeg(windFromDeg + 180);
 }
 
+/** 角度を、北を中心にした`count`等分の区分の番号（0〜count-1）へ丸める。境界は上の区分へ倒す。 */
+export function bearingSector(bearingDeg: number, count: number): number {
+  return Math.round(normalizeDeg(bearingDeg) / (360 / count)) % count;
+}
+
 export function cardinalLabel(bearingDeg: number): string {
-  const index = Math.round(normalizeDeg(bearingDeg) / SECTOR_DEG) % CARDINAL_LABELS.length;
-  return CARDINAL_LABELS[index];
+  return CARDINAL_LABELS[bearingSector(bearingDeg, CARDINAL_LABELS.length)];
 }

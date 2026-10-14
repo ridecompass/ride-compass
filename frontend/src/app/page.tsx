@@ -51,10 +51,10 @@ import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { useRideMode } from "@/features/ride/useRideMode";
 import { rideRemaining } from "@/features/ride/rideRemaining";
-import { useRouteProgress } from "@/features/ride/useRouteProgress";
 import { nextTurn } from "@/features/ride/nextTurn";
 import TurnCard from "@/features/ride/TurnCard/TurnCard";
-import { useRideSession } from "@/features/ride/useRideSession";
+import { useRideProgress } from "@/features/ride/useRideProgress";
+import { useRideWayConditions } from "@/features/ride/useRideWayConditions";
 import { formatDepartureLabel } from "@/features/conditions/rideConditions";
 import { useMapView } from "@/features/map/view/useMapView";
 import { textVariants } from "@/components/ui/Text/Text";
@@ -140,6 +140,7 @@ export default function Home() {
   const riding = useRideMode();
   // 走行モードの間は、地図と予定ルートのプロファイルに集中する配置にする（パネル・地図の上の操作を出さない）。
   const navigating = riding.status !== "off";
+  const wayConditions = useRideWayConditions(riding.map, ride.ride);
   // 名前を付けて保存した生成の条件（「保存」タブ）。
   const savedConditions = useSavedConditions({
     conditions,
@@ -198,9 +199,11 @@ export default function Home() {
   const { results, generation, splice } = route;
 
   // 走行中のルートを端末に一時保存し、読み込み直されたら同じ候補を出して、走っていたなら走行モードを始め直す。
-  useRideSession({
+  const progress = useRideProgress({
     route: results.selectedCandidate,
     riding: navigating,
+    position: riding.map?.position ?? null,
+    accuracyM: riding.accuracyM,
     onRestore: (session) => {
       results.replaceWithGenerated([session.route], null);
       if (session.riding) riding.press();
@@ -213,7 +216,7 @@ export default function Home() {
   const mapView = useMapView({
     hasSelectedRoute: results.selectedCandidate !== null,
     hasDetail: results.hasDetail,
-    ride: ride.ride,
+    ride: wayConditions,
     now: ride.departure.now,
     departureLabel: formatDepartureLabel(ride.departure.at, ride.departure.now),
     routeWeights: route.routeWeights,
@@ -221,7 +224,6 @@ export default function Home() {
 
   // 走行モードの間、現在地を選んだ候補の上の距離へ当てる。プロファイルの印と、地図とプロファイルの薄めに使う。
   const ridingRoute = navigating ? results.selectedCandidate : null;
-  const progress = useRouteProgress(ridingRoute?.segments ?? null, riding.map?.position ?? null, riding.accuracyM);
   // 次に曲がる所。ルートを外れている間は計画どおりに走っていないので出さない。
   const upcomingTurn = progress.offRoute ? null : nextTurn(ridingRoute?.turns ?? [], progress.km);
   const progressKm = progress.km;
@@ -545,7 +547,7 @@ export default function Home() {
               location={location}
               locationSource={locationSource}
               look={mapView.look}
-              rideConditions={ride.ride}
+              rideConditions={wayConditions}
               routePreference={conditions.routePreferenceToSend}
               selectedRouteSegment={results.selectedRouteSegment}
               onRouteSegmentSelect={(selection) => {

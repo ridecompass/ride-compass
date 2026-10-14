@@ -104,7 +104,7 @@ describe("useRideMode", () => {
     expect(result.current.error).toMatch(/位置情報/);
   });
 
-  it("始める操作の中でスマホの向きを読む許しを求め（iPhone）、許されたら地図へ向いている方角を渡す", async () => {
+  it("始める操作の中でスマホの向きを読む許しを求め（iPhone）、許されたら地図へ向いている方角を真北の基準にして渡す", async () => {
     let asked = 0;
     const holder = globalThis as unknown as { DeviceOrientationEvent?: { requestPermission?: () => Promise<string> } };
     holder.DeviceOrientationEvent = {
@@ -117,14 +117,16 @@ describe("useRideMode", () => {
       const { result } = renderHook(() => useRideMode());
       await act(async () => result.current.press());
       expect(asked).toBe(1);
-      geolocation.deliver({ latitude: 35.68, longitude: 139.76 });
+      // 国土地理院の偏角の計算例の地点（東京。約7°36.5′の西偏）。
+      geolocation.deliver({ latitude: 35.68, longitude: 139.7 });
       expect(result.current.map?.facing).toBeNull();
       act(() => {
         const event = new Event("deviceorientation");
         Object.assign(event, { webkitCompassHeading: 45, alpha: 0 });
         window.dispatchEvent(event);
       });
-      expect(result.current.map?.facing).toBeCloseTo(45, 6);
+      // コンパスの読みは磁北が基準なので、偏角の分だけ戻す。
+      expect(result.current.map?.facing).toBeCloseTo(45 - (7 + 36.5 / 60), 2);
     } finally {
       holder.DeviceOrientationEvent = undefined;
     }

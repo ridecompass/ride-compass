@@ -20,14 +20,14 @@
 | hooks | `useStoredState.ts`・`useIsMobile.ts`・`useVisualViewport.ts`・`useLocation.ts`・`useDebouncedValue.ts`・`useIsomorphicLayoutEffect.ts` |
 | features/map/view | `useMapView.ts`（地図の見え方の状態と、地図・操作部品へ渡す値）・`mapLook.ts`（地図へ渡す見え方の値の型）・`lens.ts`（レンズから塗る軸・凡例・選択肢を導く）・`overlayChips.ts`（地図上チップの状態とレイヤー表示の保存形式）・`legendFilters.ts`（凡例で隠した行の保存先の読み書き） |
 | features/map/MapView | `useLayerDataStatus.ts`（MapLibreのソースイベントからレイヤーごとの取得状態を算出して渡す） |
-| lib | `apiBaseUrl.ts`・`apiClient.ts`（backendのAPIを呼ぶ口と、全呼び出しが共有する骨格。下記）・`apiPath.ts`（アプリ自身が呼ばないURL［地図ライブラリへ渡すタイル・スタイル］のパスをOpenAPIの宣言と型で照合して作る）・`apiError.ts`・`backendInternalUrl.ts`・`queryClient.ts`（画面のデータ取得が共有するTanStack Queryのキャッシュ。下記「データ取得の骨格」）・`apiTimeouts.ts`（APIリクエストのタイムアウト。呼び出しの性質ごとの名前付き定数）・`safeStorage.ts`（localStorageの読み書きで例外を外へ出さない薄いラッパ）・`paletteCssVariables.ts`（地図に塗る色と同じ色をUIにも出す箇所へ、配信された値をCSS変数として流す。`layout.tsx`がサーバー側で`:root`へ入れる。CSSが値を持つのはライト/ダークで2値を持つものだけ）・`duration.ts`（時間の長さの単位［秒・分・時のミリ秒］と、所要時間・待ち時間を「N分」で書く書き方。1時間を超えても分で書き、候補の一覧・候補の中身・差し替えの比較で同じ単位で見比べる）・`numberFormat.ts`（桁での丸めと、差の前に置く符号）・`urlTemplate.ts`（パスのテンプレートの`{名前}`を埋める。`apiPath.ts`と気象庁の配信のパスが使う）・`localPlane.ts`（狭い範囲の緯度経度を、経度方向をcos(緯度)で縮めた平面として扱う近似と、線分の上で最も近い点）・`routeDistance.ts`（ルートの区間を始点からの距離で読む: 区間の道なりの形・形の上で距離の割合ぶん進んだ点とそこで分けた前後・ある点に最も近いルートの上の点。道のりのグラフと地図と走行モードが同じ距離で読む）・`storedList.ts`（この端末に保存した一覧の読み方と入れ方。下記「状態の永続化」）・`adminApiPrefix.ts`（管理APIの転送の口と、backendの管理APIのパスの接頭辞）・`mapOverlayEdges.ts`（地図の上に重ねる部品へ付ける「どの辺を覆うか」の印と、印の付いた部品が覆う幅の実測。印を付ける部品は地図の機能の外にもあるので共有の層に置く。下記「`MapView`との境界」）・`validArea.ts`（backend が添える値の範囲が地点を含むか・走行中に取る地点を動かすか） |
+| lib | `apiBaseUrl.ts`・`apiClient.ts`（backendのAPIを呼ぶ口と、全呼び出しが共有する骨格。下記）・`apiPath.ts`（アプリ自身が呼ばないURL［地図ライブラリへ渡すタイル・スタイル］のパスをOpenAPIの宣言と型で照合して作る）・`apiError.ts`・`backendInternalUrl.ts`・`queryClient.ts`（画面のデータ取得が共有するTanStack Queryのキャッシュ。下記「データ取得の骨格」）・`apiTimeouts.ts`（APIリクエストのタイムアウト。呼び出しの性質ごとの名前付き定数）・`safeStorage.ts`（localStorageの読み書きで例外を外へ出さない薄いラッパ）・`paletteCssVariables.ts`（地図に塗る色と同じ色をUIにも出す箇所へ、配信された値をCSS変数として流す。`layout.tsx`がサーバー側で`:root`へ入れる。CSSが値を持つのはライト/ダークで2値を持つものだけ）・`duration.ts`（時間の長さの単位［秒・分・時のミリ秒］と、所要時間・待ち時間を「N分」で書く書き方。1時間を超えても分で書き、候補の一覧・候補の中身・差し替えの比較で同じ単位で見比べる）・`numberFormat.ts`（桁での丸めと、差の前に置く符号）・`urlTemplate.ts`（パスのテンプレートの`{名前}`を埋める。`apiPath.ts`と気象庁の配信のパスが使う）・`localPlane.ts`（狭い範囲の緯度経度を、経度方向をcos(緯度)で縮めた平面として扱う近似と、線分の上で最も近い点）・`routeDistance.ts`（ルートの区間を始点からの距離で読む: 区間の道なりの形・形の上で距離の割合ぶん進んだ点とそこで分けた前後・ある点に最も近いルートの上の点。道のりのグラフと地図と走行モードが同じ距離で読む）・`storedList.ts`（この端末に保存した一覧の読み方と入れ方。下記「状態の永続化」）・`adminApiPrefix.ts`（管理APIの転送の口と、backendの管理APIのパスの接頭辞）・`mapOverlayEdges.ts`（地図の上に重ねる部品へ付ける「どの辺を覆うか」の印と、印の付いた部品が覆う幅の実測。印を付ける部品は地図の機能の外にもあるので共有の層に置く。下記「`MapView`との境界」）・`validArea.ts`（backend が添える値の範囲が地点を含むか・走行中に取る地点を動かすか）・`assumedSpeed.ts`（想定速度の範囲と丸め。走行条件の入力と、走行中に地図の道の値へ載せる速さが使う）・`magneticDeclination.ts`（日本付近の偏角と、磁北を基準にした方角を真北の基準へ直すこと） |
 | features/route | `routeApi.ts`（ルート生成API。ジョブを投げ、終わるまで問い合わせる）・`generationRequest.ts`（生成リクエストのpayloadと`conditionsDirty`の比較キーを同じ入力から導出する純関数）・`routeSplice.ts`（候補どうしが別々の道を通る区間を`edge_ids`の集合演算で求め、表示中の側と相手側を対応づけ、選んだ区間を差し替えた経路を組み立て純関数。差し替えた経路の評価はbackendが行うため計算式は持たない。区間を割る下限は持たず呼び出し側から受け取る［backendの較正値で、管理画面から変えられる］） |
 | features/conditions | `useRideConditions.ts`（走行条件: 走行方位・出発時刻・想定速度。想定速度だけを保存し、保存値は画面の範囲内の整数だけを受け入れる）・`useDepartureTime.ts`（出発時刻。選ぶまでは5分刻みの「今」へ追従し、選んだ時刻は動かさない）・`rideConditions.ts`（走行条件の出発時刻ラベル・出発時刻の刻みと想定速度の丸め。速度の上下限はbackendの`routeGenerateConfig`から読む） |
 | types | `types/route.ts`（`RouteCandidate`等の生成APIレスポンス型）・`types/fetchFailure.ts`（常設ヘッダーの「未取得」の印に並ぶ項目の型。下記「失敗・空・待ちの伝え方」） |
 | components（特定モジュールの責務ではない共通部品） | `BottomSheet/BottomSheet.tsx`（モバイル下部シート、下記「モバイル/デスクトップのレイアウト分岐」節参照）・`Disclosure/Disclosure.tsx`（折りたたみ表示、[ルート設定・結果パネル](route-settings-and-results.md)等が使う）・`UsageGuide/UsageGuide.tsx`（説明を見る状態。下記「使い方の説明」）・`UsageGuide/usageTarget.ts`（押された要素から説明する部品・名前・使い方の文を引く）・`FirstVisitIntro/FirstVisitIntro.tsx`（初めて開いたときだけ出す案内。下記「初回の案内」） |
 | features/conditions/RideConditionBar | `RideConditionBar.tsx`（地図右上、走行方位アイコン直下の走行条件アイコン列本体。出発時刻・想定速度ともTravelBearingControlと同じ列の幅のアイコンボタンで、アイコンの下へ現在値（出発時刻は当日なら「12:40」、別の日は「9/24」「12:40」の2行。想定速度は「20km/h」）を出す。表示・`aria-label`・`title`は同じ文字列から作る。タップしたポップオーバー内はドラッグ式タイムライン（「今」の目盛りを選ぶと追従へ戻す）＋`input[type=datetime-local]`の直接指定[出発時刻、日本時間で読み書きする。説明の文は、出発時刻で値の変わる評価の名前を軸カタログから差し込み、無ければ評価に触れない]、スライダー＋数値入力[想定速度。平地・無風の巡航速度であることを添え、(i)の奥に、速度を変える条件の名前を走行モデルの宣言（生成物の`segment_speed_conditions`）から、走行モデルの体格・機材の標準値を軸カタログの較正値から書く——引けない間は標準値の文を出さない]）・`departureTimeline.ts`（出発時刻ポップオーバーのドラッグタイムライン用の目盛り生成。気象レイヤーの実フレームには依存しない自己完結した合成タイムライン） |
 | features/conditions/TravelBearingControl | `TravelBearingControl.tsx`（地図右上の走行方位のアイコンボタン。押すと`WindBearingSlider`のダイヤルをPopoverで開く。説明の文は、向きで値の変わる評価の名前を軸カタログ（`dynamic_way_value_conditions`）から差し込み、無ければ評価に触れない。詳しくは[ルート設定・結果パネル](route-settings-and-results.md)） |
-| features/ride | `useRideMode.ts`（走行モードの状態と、地図へ渡す値。下記「走行モード」）・`travelBearing.ts`（受け取った位置から進む向きを決める）・`routeProgress.ts`（現在地をルートの上のどこと見るか）・`useRouteProgress.ts`（走行モードの間、届いた位置を選んだ候補の上の距離へ当て続ける）・`rideRemaining.ts`（ルートの残りと、選んだ候補の計画から出す到着予想）・`useScreenWakeLock.ts`（走行モードの間、画面が自動で消えないよう端末に頼む）・`useDeviceHeading.ts`（走行モードの間、スマホが向いている方角を端末のコンパスから読む）・`RideModeButton/RideModeButton.tsx`（地図の右の列の末尾の走行モードのボタン）・`RideBar/RideBar.tsx`（走行モードの間、画面の上の1行に出す走りの数字）・`rideSession.ts`（走行中のルートの一時保存の書き方・読み方・期限）・`useRideSession.ts`（一時保存を書き、開いたときに復元を知らせる）・`nextTurn.ts`（ルートの曲がる所の並びから、現在地より先でいちばん近いものを選ぶ）・`TurnCard/TurnCard.tsx`（次に曲がる所の向きと距離のカード） |
+| features/ride | `useRideMode.ts`（走行モードの状態と、地図へ渡す値。下記「走行モード」）・`travelBearing.ts`（受け取った位置から進む向きを決める）・`routeProgress.ts`（現在地をルートの上のどこと見るか）・`useRouteProgress.ts`（走行モードの間、届いた位置を選んだ候補の上の距離へ当て続ける）・`useRideProgress.ts`（ルートの上の位置と一時保存を組にし、読み込み直したら前に当てた位置から続ける）・`useRideWayConditions.ts`（地図の道の値を取る向き・速さ。走行中は実際の進む向きと速さ）・`rideRemaining.ts`（ルートの残りと、選んだ候補の計画から出す到着予想）・`useScreenWakeLock.ts`（走行モードの間、画面が自動で消えないよう端末に頼む）・`useDeviceHeading.ts`（走行モードの間、スマホが向いている方角を端末のコンパスから読む）・`RideModeButton/RideModeButton.tsx`（地図の右の列の末尾の走行モードのボタン）・`RideBar/RideBar.tsx`（走行モードの間、画面の上の1行に出す走りの数字）・`rideSession.ts`（走行中のルートの一時保存の書き方・読み方・期限）・`useRideSession.ts`（一時保存を書き、開いたときに復元を知らせる）・`nextTurn.ts`（ルートの曲がる所の並びから、現在地より先でいちばん近いものを選ぶ）・`TurnCard/TurnCard.tsx`（次に曲がる所の向きと距離のカード） |
 | features/map/MapView（走行モード） | `useRideFollow.ts`（走行モードの値を受けて、現在地の点・追うカメラ・指で動かしたら休む知らせ・方位のボタンの切り替えを地図へ当てる）・`rideZoom.ts`（走る速さから、追っている間の倍率をどれだけ引くかを決める）・`useTurnMark.ts`（走行中に次に曲がる所の地点に印を出す） |
 | features/conditions/DynamicLayerTimeSlider | `DynamicLayerTimeSlider.tsx`（ドラッグ/横スクロールで時刻を選ぶ汎用タイムラインUI。`RideConditionBar`が出発時刻ピッカーとして使う唯一の呼び出し元） |
 
@@ -359,7 +359,8 @@ MapLibreの`GeolocateControl`を使わないのは、地図を進む向きへ回
   計画を計算し直さない。
 - **現在地の印**: 青い点と白い縁に、スマホが向いている方角の扇形を添える（`useRideFollow.ts`。扇形は北を上にした絵を印ごと地図に沿わせて
   回すので、地図を回しても方角を指す）。方角は端末のコンパスの読みを画面の上の向きに直したもので（`useDeviceHeading.ts: headingFromOrientation`）、
-  磁北が基準。iPhoneのSafariは向きを読む許しを利用者の操作の中でしか求められないので、走行モードを始めるボタンの操作の中で求め、断られたら
+  読みは磁北が基準（iPhone の`webkitCompassHeading`、Android の北を基準にした向きのどちらも）。地図と進む向きは真北が基準なので、現在地の偏角
+  （`lib/magneticDeclination.ts`。国土地理院の磁気図の近似式）で真北の基準へ直してから扇形を回す（`useRideMode.ts`）。iPhoneのSafariは向きを読む許しを利用者の操作の中でしか求められないので、走行モードを始めるボタンの操作の中で求め、断られたら
   扇形を出さない。Android のChromeは北を基準にした向きを別の出来事で出し、iPhoneはふつうの出来事にコンパスの読みを添えるので、両方を受けて
   方角が分かる読みだけを使う。地図を回す「進む向き」は、これとは別に位置の動きから出す（下の「地図の向き」）。
 - **地図の向き**: 走行モードの間だけ、方位のボタン（`NavigationControl`のコンパス）を押すと、北を上に戻す代わりに北が上と進む向きが上を
@@ -395,15 +396,19 @@ MapLibreの`GeolocateControl`を使わないのは、地図を進む向きへ回
   （`lib/validArea.ts: leftTheArea`）。取り直しの途中に残る前の値の範囲では決めない。どの種類も、取り直しの間隔が来たら
   その時の今の位置で取り直す（範囲の無い予報はこれだけで動く）。警報・注意報等は、出ているときだけ走りの帯に最も重い段の色のアイコンを出し、押すと中身を開く
   （`WarningBadgeList`の`compact`）。帯の風の矢印は、地図が今当てている向き（地図が範囲と倍率と一緒に知らせる`MapViewport`の`bearing`）の分だけ戻して回す——進む向きを上にしていなくても、指で回した地図の向きに合う。
+- **走行中の道の色**: 向き・速さで変わる道の値（勾配・風等）は、走行中は手で決めた走行方位と想定速度でなく、実際の進む向きと速さで取る
+  （`features/ride/useRideWayConditions.ts`。今は実）。向きは backend が同じ値で代える幅（生成物`region-tile-config.json`の
+  `way_value_bearing_bucket_deg`）の区分の中心へ丸め、速さは向きの区分が変わったときのものを使うので、位置が届くたびには取り直さない。
+  止まっている間の速さは想定速度の範囲の下限へ寄せる。地図の道を押したときの窓も同じ条件で取る。
 - **残りと到着予想**: 残りは、ルートの上の現在地から終わりまでの道のり。到着予想は、最後に位置を受けた時刻へ、選んだ候補の
   計画の残り時間を足す（`rideRemaining.ts`）。計画の残り時間は、区間の到達予想（区間へ入る時刻）と所要時間を、ルートの上の距離で読んだ
   時刻の差で、区間の中は距離に比例させる。計画の時刻が欠けた候補では到着予想を出さない。走った実績では補正しない（下の「今の事実と
   ルートの計画」）。
-- **一時保存**: 選んだ候補と走行モードの入切を、変わるたびにこの端末へ書く（`useRideSession.ts`）。スマホのブラウザは裏に回したタブを
+- **一時保存**: 選んだ候補と走行モードの入切と、前に当てたルートの上の距離を、変わるたびにこの端末へ書く（`useRideSession.ts`）。スマホのブラウザは裏に回したタブを
   捨てて読み込み直すことがあり、走行中にそれが起きても同じ候補で走行モードを続けるため。開いたときに期限の内の保存があれば
   （期限は`rideSession.ts: RIDE_SESSION_TTL_MS`）、その候補だけを一覧に戻して選び、走っていたなら走行モードを始め直す。期限を過ぎた保存・形の
   合わない保存は使わない。候補の型が今の版と違う版で書いた保存も使わない——保存に添えた型の印を、生成物
-  `route-generate-config.json`の`route_candidate_shape`（応答の候補の型と、そこから辿れる型の宣言から作る）と照らす。生成の結果のほかの候補・生成に使われた重みは戻さない。
+  `route-generate-config.json`の`route_candidate_shape`（応答の候補の型と、そこから辿れる型の宣言から作る）と照らす。生成の結果のほかの候補・生成に使われた重みは戻さない。戻した候補を走る間は、読み込み直す前に当てた距離を前に当てた位置として使い、往復の帰り道で読み込み直しても行きの側に当てない（`useRideProgress.ts`）。
 
 ## 状態の永続化（`hooks/useStoredState.ts`）
 

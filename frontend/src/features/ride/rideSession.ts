@@ -15,6 +15,8 @@ export const RIDE_SESSION_TTL_MS = 12 * HOUR_MS;
 export interface RideSession {
   route: RouteCandidate;
   riding: boolean;
+  /** 前に当てたルートの上の距離（km）。読み込み直したら、ここから続く側を選ぶ。まだ当てていなければnull。 */
+  km: number | null;
 }
 
 // 保存した版のルート候補の型の印。画面が更新されて型が変わったら、前の版の候補を今の型として読まない。
@@ -35,8 +37,9 @@ export function readRideSession(raw: string | null, now: number): RideSession | 
     return null;
   }
   if (typeof parsed !== "object" || parsed === null) return null;
-  const { route, riding, savedAt, shape } = parsed as Record<string, unknown>;
+  const { route, riding, km, savedAt, shape } = parsed as Record<string, unknown>;
   if (shape !== ROUTE_CANDIDATE_SHAPE) return null;
   if (typeof riding !== "boolean" || typeof savedAt !== "number" || now - savedAt > RIDE_SESSION_TTL_MS) return null;
-  return { route: route as RouteCandidate, riding };
+  if (km !== null && typeof km !== "number") return null;
+  return { route: route as RouteCandidate, riding, km };
 }
