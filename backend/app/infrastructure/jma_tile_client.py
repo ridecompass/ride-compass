@@ -97,7 +97,7 @@ class JmaTileClient:
             fields["cache"] = "hit" if cached is not None else "miss"
             return cached
 
-    async def fetch(self, path: str) -> tuple[bytes, str] | None:
+    async def fetch(self, path: str) -> tuple[bytes, str] | EmptyTile | None:
         """キャッシュを一切参照せず外部フェッチのみ行い、結果をキャッシュへ書き戻す。
         呼び出し側の歯止め（レート制限）は、ここを呼ぶ前に済んでいる前提。
         実際にJMAへ問い合わせる直前で`JmaTileSharedState.wait_for_upstream_rate_limit`を待つ（プリウォーム
@@ -108,7 +108,7 @@ class JmaTileClient:
 
         上流の404は`JmaTileNotFoundError`を送出する（疎な格子状タイルでは珍しくない正常系、配信前の
         地物では毎回の配信の間に必ず起きる正常系のため、`result="ok"`のまま記録しWARNINGを出さない。
-        他の失敗はNoneを返す）。
+        他の失敗はNoneを返す）。取得できたものは`store`が返す形で返す。
         """
         await self._shared.wait_for_upstream_rate_limit()
         is_target_times = is_target_times_path(path)
@@ -117,7 +117,7 @@ class JmaTileClient:
         # 成功/失敗を判定するため、404を非エラー扱いにするにはブロック内で例外を送出しない
         # 必要がある）。
         not_found = False
-        result: tuple[bytes, str] | None = None
+        result: tuple[bytes, str] | EmptyTile | None = None
         with log_external_call("weather:jma-tile", path=path, cache="miss") as fields:
             try:
                 response = await self._http_client.get(f"{UPSTREAM_HOST}/{path}")
@@ -137,24 +137,23 @@ class JmaTileClient:
                 fields["result"] = "ok"
                 fields["status"] = response.status_code
                 content_type = response.headers.get("content-type", "application/octet-stream")
-                content = recolored(path, response.content)
-                result = (content, content_type)
-                await self.store(path, content, content_type)
+                result = await self.store(path, recolored(path, response.content), content_type)
         if not_found:
             raise JmaTileNotFoundError(path)
         return result
 
-    async def store(self, path: str, content: bytes, content_type: str) -> None:
+    async def store(self, path: str, content: bytes, content_type: str) -> tuple[bytes, str] | EmptyTile:
         """上流フェッチを伴わずに生成したタイルをキャッシュへ書き戻す。
 
         奇数ズームの補間結果（`services/jma_tile_interpolation_service.py: interpolated_tile`）のように、上流に実体が無く
         アプリ側で組み立てたタイルを、次回以降そのまま返せるようにするための入口。
         書き込み先は`fetch`と同じ（`targetTimes*.json`はプロセス内、それ以外はRedis）。
+        戻り値は、次に`get_cached`が返すのと同じ形（中身が空なら`EMPTY_TILE`）。
         """
         if is_target_times_path(path):
             self._shared.target_times[path] = (content, content_type)
-        else:
-            await jma_tile_redis_cache.set(path, content, content_type)
+            return content, content_type
+        return await jma_tile_redis_cache.set(path, content, content_type)
 
     async def get(self, path: str) -> tuple[bytes, str] | EmptyTile | None:
         """キャッシュ参照→ミスなら外部フェッチ、という一括呼び出し。

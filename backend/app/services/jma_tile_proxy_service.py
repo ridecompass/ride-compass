@@ -23,6 +23,5 @@ async def proxied_tile(
     interpolated = await interpolated_tile(jma_tile_client, path)
     if interpolated is not None:
         content, content_type = interpolated
-        await jma_tile_client.store(path, content, content_type)
-        return interpolated
+        return await jma_tile_client.store(path, content, content_type)
     return await jma_tile_client.fetch(path)

@@ -62,6 +62,7 @@ class FakeJmaTileClient:
 
     async def store(self, path, content, content_type):
         self.stored.append((path, content_type))
+        return content, content_type
 
 
 def _answer(monkeypatch, **answers) -> FakeJmaTileClient:

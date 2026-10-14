@@ -28,6 +28,7 @@ from app.infrastructure import jma_tile_client
 from app.infrastructure.jma_tile_client import EmptyTile, JmaTileClient, JmaTileNotFoundError, JmaTileSharedState
 from tests.fake_external_log import record_external_calls
 from tests.fake_http import client_for
+from tests.test_jma_tile_content import encode, transparent
 from tests.test_jma_tile_recolor import palette_tile, pixels, rgba
 
 TILE = "bosai/jmatile/data/risk/20260101000000/none/20260101000000/surf/land/6/57/25.png"
@@ -111,6 +112,21 @@ async def test_a_fetched_precipitation_tile_is_served_and_cached_in_the_legend_c
 
     assert fetched == cached
     assert pixels(fetched[0])[1:] == [rgba(stop.color) for stop in PRECIPITATION_COLOR_STOPS]
+
+
+async def test_a_fetched_tile_with_nothing_to_draw_reads_the_same_the_first_time_as_from_the_cache(upstream, fake_redis, client):
+    """初めての取得だけが中身を返すと、同じタイルが1回目は透明な画像、2回目からは「無い」で届く。"""
+    upstream.get(f"/{TILE}").respond(content=encode(transparent()), content_type="image/png")
+
+    fetched = await client(upstream).fetch(TILE)
+    cached = await client(upstream).get_cached(TILE)
+
+    assert isinstance(fetched, EmptyTile)
+    assert isinstance(cached, EmptyTile)
+
+
+async def test_a_locally_built_tile_with_nothing_to_draw_reads_as_nothing_to_draw(upstream, fake_redis, client):
+    assert isinstance(await client(upstream).store(TILE, encode(transparent()), "image/png"), EmptyTile)
 
 
 async def test_a_fetch_without_a_content_type_is_served_as_generic_bytes(upstream, fake_redis, client):
