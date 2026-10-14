@@ -118,6 +118,13 @@ class TestTopologicalOrder:
 
         assert axis_definitions.topological_axis_order(definitions) == ["a", "b"]
 
+    def test_published_axes_come_in_dependency_order_without_the_internal_axes(self):
+        definitions = axes(
+            axis("outer", "plain", "inner", published=True), axis("plain", "num_b", published=True), axis("inner", "num_a")
+        )
+
+        assert axis_definitions.published_axis_order(definitions) == ["plain", "outer"]
+
 
 class TestDynamicOrder:
     def test_only_axes_reading_an_hourly_material_directly_or_through_axes_are_listed_in_order(self):
