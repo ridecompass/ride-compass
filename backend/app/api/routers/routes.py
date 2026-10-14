@@ -32,6 +32,7 @@ from app.domain.route_request import (
     SplicedTarget,
     check_points_within_reach,
     check_spliced_edge_count,
+    spliceable,
     check_waypoint_count,
     nothing_to_generate_error,
 )
@@ -183,9 +184,7 @@ class RouteGenerateRequest(StrictModel):
             origin = Coordinates(latitude=self.latitude, longitude=self.longitude)
             check_points_within_reach(max(haversine_distance_km(origin, point) for point in points))
         if self.spliced_edge_ids:
-            # 合成の対象は目的地ルートだけ（周回は起点へ戻る制約があり、途中で別候補へ
-            # 乗り換えると戻れる保証が無くなる）。
-            if self.destination is None:
+            if not spliceable(self.destination):
                 raise ValueError("spliced_edge_ids requires destination")
             first, *rest = self.spliced_edge_ids
             self._target = SplicedTarget(destination=self.destination, edge_ids=(first, *rest))

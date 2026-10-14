@@ -338,16 +338,7 @@ class AxisDefinition(StrictModel):
     段階の数値レンジ表記（例:「2〜6」）のみを凡例に出す。
 
     `display_thresholds_override`と対になる概念（どちらも「地図の色分け段階の見せ方」の
-    軸ごとの好み）で、dedicated_way_value_layer軸だけでなく、通常のramp軸の凡例にも
-    同じ仕組みで使える。"""
-    dedicated_way_value_layer: bool = False
-    """**ルート未確定時**の地図が、この軸を配信（`/api/region/dynamic-way-values`、`services/dedicated_way_values.py`）の
-    値で塗るかの宣言。配信はどの公開軸の値も返すので、この印は塗り方を選ぶだけで、配信できるかを表さない。
-    `axis_id`の文字列比較によるハードコード分岐ではなく、性質ベースの宣言的フィールドとして持たせ、軸スタジオの
-    編集画面（管理API）からも設定できるようにする。
-
-    **ルート確定後**の地図色分け（ルート結果の`axis_difficulties[axis_id]`でルート線を段に塗る。公開軸なら自動的に
-    対象になりこのフィールドとは無関係）とは別の概念であることに注意。"""
+    軸ごとの好み）。"""
 
     @field_validator("display_thresholds_override")
     @classmethod
@@ -910,6 +901,13 @@ def dynamic_axis_topological_order(definitions: dict[str, AxisDefinition]) -> li
     return [axis_id for axis_id in topological_axis_order(definitions) if axis_id in dynamic_ids]
 
 
+def published_axis_order(definitions: dict[str, AxisDefinition]) -> list[str]:
+    """公開軸のidを依存順（`topological_axis_order`）に。静的スコア行列の列と、軸ごとの値を並べる所はこの並びで持つ。
+
+    宣言の順（`published_axis_definitions`）とは違いうる——公開軸が別の公開軸を材料に読むと、読まれる側が先に来る。"""
+    return [axis_id for axis_id in topological_axis_order(definitions) if definitions[axis_id].is_published]
+
+
 def published_axis_definitions(definitions: Mapping[str, AxisDefinition] | None = None) -> list[AxisDefinition]:
     """公開軸（`is_published=True`）を宣言の順に。`definitions`を省くと今の`AXIS_DEFINITIONS`。
 
@@ -1025,17 +1023,13 @@ def evaluate_axis_values(
 
 
 def evaluate_axes_values(materials: Mapping[str, Sequence[object]], length: int) -> dict[str, list[float | None]]:
-    """`evaluate_axis_values`の全軸版。公開軸だけを依存順（`topological_axis_order`）に返す。
+    """`evaluate_axis_values`の全軸版。公開軸だけを依存順（`published_axis_order`）に返す。
 
     評価できなかった公開軸も、キーを残して値をNoneにする（区間インスペクタの`available=False`・
     合成の分母からの除外がこれを前提にする）。
     """
     evaluated = evaluate_axes_array(_axes_python_value_columns(materials, length), AXIS_DEFINITIONS)
-    return {
-        axis_id: _scores_or_none(evaluated[axis_id])
-        for axis_id in topological_axis_order(AXIS_DEFINITIONS)
-        if AXIS_DEFINITIONS[axis_id].is_published
-    }
+    return {axis_id: _scores_or_none(evaluated[axis_id]) for axis_id in published_axis_order(AXIS_DEFINITIONS)}
 
 
 def evaluate_axes_inputs(materials: Mapping[str, Sequence[object]], length: int) -> dict[str, list[object]]:
@@ -1047,11 +1041,8 @@ def evaluate_axes_inputs(materials: Mapping[str, Sequence[object]], length: int)
     columns = _axes_python_value_columns(materials, length)
     with_axes: dict[str, MaterialColumn] = {**columns, **evaluate_axes_array(columns, AXIS_DEFINITIONS)}
     inputs: dict[str, list[object]] = {}
-    for axis_id in topological_axis_order(AXIS_DEFINITIONS):
-        definition = AXIS_DEFINITIONS[axis_id]
-        if not definition.is_published:
-            continue
-        shape = definition.shape
+    for axis_id in published_axis_order(AXIS_DEFINITIONS):
+        shape = AXIS_DEFINITIONS[axis_id].shape
         if isinstance(shape, BreakpointLinearShape):
             inputs[axis_id] = list(_scores_or_none(_breakpoint_raw_value_array(shape, with_axes)))
         else:

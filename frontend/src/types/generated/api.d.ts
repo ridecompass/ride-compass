@@ -720,8 +720,6 @@ export interface components {
             primary_attribute_ids: string[];
             /** Weather Layer Groups */
             weather_layer_groups: string[];
-            /** Dedicated Way Value Layer */
-            dedicated_way_value_layer: boolean;
             map_paint: components["schemas"]["MapPaint"];
             raw_value_units: components["schemas"]["RawValueUnits"];
             /** Material Breakdown */
@@ -797,11 +795,6 @@ export interface components {
             display_thresholds_override?: number[] | null;
             /** Display Band Labels Override */
             display_band_labels_override?: string[] | null;
-            /**
-             * Dedicated Way Value Layer
-             * @default false
-             */
-            dedicated_way_value_layer: boolean;
         };
         /** AxisDefinitionResponse */
         AxisDefinitionResponse: {
@@ -843,11 +836,6 @@ export interface components {
             display_thresholds_override: number[] | null;
             /** Display Band Labels Override */
             display_band_labels_override: string[] | null;
-            /**
-             * Dedicated Way Value Layer
-             * @default false
-             */
-            dedicated_way_value_layer: boolean;
             display: components["schemas"]["AxisDisplaySpec"];
             /** Weight Share When Published */
             weight_share_when_published: number | null;

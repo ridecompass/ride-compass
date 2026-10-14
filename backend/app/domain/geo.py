@@ -83,6 +83,17 @@ def ground_m_sql(geom_expr: str) -> str:
     return f"ST_Transform({geom_expr}, '{_GROUND_M_PROJ}')"
 
 
+def bearing_sql(start: str, end: str) -> str:
+    """点`start`から点`end`を見た方位（度、0=北・時計回り）を求めるSQLの式。2点が同じならNULL。"""
+    # geographyで測る。geometry(4326)のままだと経度緯度を平面として扱った角度になり、緯度35度では真の方位と数度ずれる。
+    return f"degrees(ST_Azimuth({start}::geography, {end}::geography))"
+
+
+def midpoint_sql(start: str, end: str) -> tuple[str, str]:
+    """点`start`と点`end`の中点の緯度・経度を求めるSQLの式の組。区間の値を1点で引く所（予報の格子点等）に使う。"""
+    return f"(ST_Y({start}) + ST_Y({end})) / 2", f"(ST_X({start}) + ST_X({end})) / 2"
+
+
 #: 16方位の呼び名（0=北から時計回り）。8方位の呼び名はこの1つおきで、別に持たない——
 #: 片方だけ直すと、同じ向きを場所によって違う名前で出す。
 SIXTEEN_POINT_LABELS = [

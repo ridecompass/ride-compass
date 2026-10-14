@@ -153,7 +153,7 @@ RAIN_LINE = ((0.0, 0.0), (5.0, 30.0), (20.0, 70.0), (50.0, 100.0))
 
 def test_an_axis_scoring_a_quantity_is_cut_at_its_knots_and_written_in_that_quantity():
     """雨のように単位のある量1つから得点を作る軸は、軸が効きの変わり目とした節で段を切り、凡例はその量で書く。"""
-    paint = map_paint(shaped_axis(_line("rain_live", breakpoints=RAIN_LINE), dedicated_way_value_layer=True))
+    paint = map_paint(shaped_axis(_line("rain_live", breakpoints=RAIN_LINE)))
 
     assert paint.thresholds == [30.0, 70.0, 100.0]
     assert paint.legend == MapLegendScale(boundaries=[5.0, 20.0, 50.0], unit="mm")
@@ -210,7 +210,6 @@ OVERRIDDEN_BAND_AXES = {
     ),
     "専用配信の軸": shaped_axis(
         _line("rain_live", breakpoints=RAIN_LINE),
-        dedicated_way_value_layer=True,
         display_thresholds_override=[20.0, 40.0],
         display_band_labels_override=list("abc"),
     ),

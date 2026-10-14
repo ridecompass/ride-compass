@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef } from "react";
 
-import AxisContributionBar, { hasContribution } from "@/components/AxisContributionBar/AxisContributionBar";
+import AxisContributionBar, { hasAnyContribution } from "@/components/AxisContributionBar/AxisContributionBar";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { DownloadIcon, FastestRouteIcon, RouteSpliceIcon } from "@/components/ui/icons/icons";
@@ -294,9 +294,9 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
                       <span className={textVariants({ variant: "hint" })}>{DIFFICULTY_SCALE_SUFFIX}</span>
                     </span>
                     {selectedRouteSegment.segment.difficulty !== null &&
-                      !Object.keys(selectedRouteSegment.segment.axis_contributions).some((axisId) =>
-                        hasContribution(selectedRouteSegment.segment.axis_contributions, axisId),
-                      ) && <p className={cn(textVariants({ variant: "hint" }), "m-0")}>どの評価軸も0（易しい）</p>}
+                      !hasAnyContribution(axisCatalog.axes, selectedRouteSegment.segment.axis_contributions) && (
+                        <p className={cn(textVariants({ variant: "hint" }), "m-0")}>どの評価軸も0（易しい）</p>
+                      )}
                     <AxisContributionBar
                       axes={axisCatalog.axes}
                       contributions={selectedRouteSegment.segment.axis_contributions}

@@ -725,6 +725,15 @@ class TurnExpandedStructure:
         default=None, repr=False, compare=False
     )
 
+    def entries_along(self, path: Sequence[int]) -> list[int | None]:
+        """経路`path`（区間の番号の並び）の隣り合う区間の遷移が、遷移の列のどこにあるか（区間の数−1個）。遷移が無ければNone。"""
+        entries: list[int | None] = []
+        for previous, following in zip(path, path[1:]):
+            start = int(self.indptr[previous])
+            matches = np.flatnonzero(self.target_state[start:int(self.indptr[previous + 1])] == following)
+            entries.append(start + int(matches[0]) if len(matches) else None)
+        return entries
+
     def reverse_transitions(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """`(indptr, source_state, turn_seconds)`を遷移の向きを反転した形で返す。
 
@@ -869,13 +878,11 @@ def turns_along(structure: TurnExpandedStructure, path: Sequence[int]) -> list[P
     （`turn_kind`）を読む。
     """
     turns: list[PathTurn] = []
-    for index, (previous, following) in enumerate(zip(path, path[1:]), start=1):
-        start, stop = int(structure.indptr[previous]), int(structure.indptr[previous + 1])
-        kinds = structure.turn_kind[start:stop]
-        matches = np.flatnonzero(structure.target_state[start:stop] == following)
-        if len(matches) == 0:
+    for index, (previous, entry) in enumerate(zip(path, structure.entries_along(path)), start=1):
+        if entry is None:
             continue
-        kind = TurnKind(int(kinds[int(matches[0])]))
+        kind = TurnKind(int(structure.turn_kind[entry]))
+        kinds = structure.turn_kind[int(structure.indptr[previous]):int(structure.indptr[previous + 1])]
         if kind == TurnKind.STRAIGHT or int(np.count_nonzero(kinds != TurnKind.UTURN)) < 2:
             continue
         turns.append(PathTurn(index=index, kind=kind))

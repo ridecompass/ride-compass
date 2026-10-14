@@ -240,7 +240,7 @@ class WayDirectionRow(_WayKey, Base):
     direction: Mapped[str] = mapped_column(String, nullable=False, server_default="both")
 
     #: 上下線が分かれた道の片側か。
-    divided: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    divided: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
 
 class WayLandcoverRow(_WayKey, _Landcover, Base):

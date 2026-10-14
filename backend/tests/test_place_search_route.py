@@ -383,9 +383,9 @@ def _convenience_record(key: int, name: str, longitude: float, latitude: float =
 
 @pytest.mark.usefixtures("area")
 async def test_a_name_of_a_group_finds_the_nearest_stores_of_the_group_before_the_names_it_matches():
-    """「コンビニ」と打つと、名前に「コンビニ」を含まない近くのコンビニの店が、名前に当たる店（より近くても）より先に近い順に出る。"""
+    """「コンビニ」と打つと、名前に「コンビニ」を含まない近くのコンビニの店が、名前が入力と同じ店（より近くても）より先に近い順に出る。"""
     await _ingest_facilities([
-        _facility_record(1, "コンビニ食堂", LON, LAT),
+        _facility_record(1, "コンビニ", LON, LAT),
         _convenience_record(2, "セブン-イレブン 西新宿店", LON + 0.02),
         _convenience_record(3, "ファミリーマート 新宿店", LON + 0.01),
         _convenience_record(4, "ローソン 道頓堀店", OUTSIDE_LON, OUTSIDE_LAT),
@@ -398,7 +398,7 @@ async def test_a_name_of_a_group_finds_the_nearest_stores_of_the_group_before_th
     assert response.json() == {"candidates": [
         _facility("ファミリーマート 新宿店", LON + 0.01),
         _facility("セブン-イレブン 西新宿店", LON + 0.02),
-        _facility("コンビニ食堂", LON),
+        _facility("コンビニ", LON),
     ]}
 
 
