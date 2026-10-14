@@ -5,7 +5,7 @@
  * 応答を与えないことで確かめる。
  *
  * ここで見ないもの: 時刻一覧の行の読み方・段のつなぎ方・コマの規則（`jmaDelivery.test.ts`・`weatherSources.test.ts`）、
- * 詳細格子（`useWeatherGrid.test.ts`）、タイルの失敗の記録とコマの突き合わせ（`jmaTileProtocol.test.ts`・`dynamicWeather.test.ts`）。
+ * 詳細格子（`useWeatherGrid.test.ts`）、タイルの失敗の記録（`jmaTileProtocol.test.ts`）とコマの突き合わせ（`dynamicWeather.test.ts`）。
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { HttpResponse } from "msw";
@@ -235,26 +235,53 @@ describe("useDynamicWeatherLayers", () => {
     ]).toEqual(kinds);
   });
 
-  it("描いているコマのタイルの配信が落ちている間は、そのチップを失敗にする", async () => {
-    onSameOrigin("GET", timesPath("risk/targetTimes.json"), () => Response.json(rows("rain_mesh")));
-    const { result } = render({ disaster: true }, { disaster: DISASTER_NOWCAST });
-    await waitFor(() => expect(result.current.dynamicWeather.disaster?.heavyRain?.payload).toBeDefined());
-    registerJmaTileProtocol();
-    const requestTile = protocolHandler(withJmaTileProtocol("").split("://")[0]) as (
-      params: { url: string },
-      abort: AbortController,
-    ) => Promise<unknown>;
-    const template = jmaTilePayload("rasterTile", jmaDeliveryOf("rain_mesh"), FRAME).tileUrlTemplate;
-    const tile = jmaTileUrlAt(template, 5, 28, 12);
-    const tilePath = new URL(tile).pathname;
+  it.each([
+    {
+      name: "災害の配信元のタイルだけを読むソース",
+      group: "disaster" as const,
+      source: "heavyRain",
+      delivery: "rain_mesh",
+      arrange: () => {
+        onSameOrigin("GET", timesPath("risk/targetTimes.json"), () => Response.json(rows("rain_mesh")));
+        return render({ disaster: true }, { disaster: DISASTER_NOWCAST });
+      },
+    },
+    {
+      name: "自前の格子の段も持つソースの、配信元のタイルの段",
+      group: "precipitationNowcast" as const,
+      source: "main",
+      delivery: "hrpns",
+      arrange: () => {
+        onSameOrigin("GET", timesPath("nowc/targetTimes_N1.json"), () => Response.json(rows("hrpns")));
+        onSameOrigin("GET", timesPath("nowc/targetTimes_N2.json"), () => Response.json([]));
+        onSameOrigin("GET", timesPath("rasrf/targetTimes.json"), () => Response.json([]));
+        onBackend("GET", "/api/weather/wind-grid", () => windGrid());
+        return render({ precipitationNowcast: true }, { precipitationNowcast: PRECIPITATION_EXCEPT_MAIN });
+      },
+    },
+  ])(
+    "描いているコマのタイルの配信が落ちている間は、そのチップを失敗にする（$name）",
+    async ({ group, source, delivery, arrange }) => {
+      const { result } = arrange();
+      await waitFor(() => expect(result.current.dynamicWeather[group]?.[source]?.payload).toBeDefined());
+      expect(result.current.dynamicWeatherDataStatus[group]).toBeUndefined();
+      registerJmaTileProtocol();
+      const requestTile = protocolHandler(withJmaTileProtocol("").split("://")[0]) as (
+        params: { url: string },
+        abort: AbortController,
+      ) => Promise<unknown>;
+      const template = jmaTilePayload("rasterTile", jmaDeliveryOf(delivery), FRAME).tileUrlTemplate;
+      const tile = jmaTileUrlAt(template, 5, 28, 12);
+      const tilePath = new URL(tile).pathname;
 
-    onSameOrigin("GET", tilePath, failure);
-    await act(() => requestTile({ url: withJmaTileProtocol(tile) }, new AbortController()));
-    expect(result.current.dynamicWeatherDataStatus.disaster).toBe("error");
+      onSameOrigin("GET", tilePath, failure);
+      await act(() => requestTile({ url: withJmaTileProtocol(tile) }, new AbortController()));
+      expect(result.current.dynamicWeatherDataStatus[group]).toBe("error");
 
-    // 配信が戻れば外れる（記録はモジュールが持つので、後のテストへ残さない）。
-    onSameOrigin("GET", tilePath, () => new HttpResponse(new ArrayBuffer(0)));
-    await act(() => requestTile({ url: withJmaTileProtocol(tile) }, new AbortController()));
-    expect(result.current.dynamicWeatherDataStatus.disaster).toBeUndefined();
-  });
+      // 配信が戻れば外れる（記録はモジュールが持つので、後のテストへ残さない）。
+      onSameOrigin("GET", tilePath, () => new HttpResponse(new ArrayBuffer(0)));
+      await act(() => requestTile({ url: withJmaTileProtocol(tile) }, new AbortController()));
+      expect(result.current.dynamicWeatherDataStatus[group]).toBeUndefined();
+    },
+  );
 });

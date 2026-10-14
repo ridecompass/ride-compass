@@ -22,7 +22,6 @@ import type {
   DynamicWeatherLayerId,
   DynamicWeatherRenderPayload,
 } from "@/features/map/layers/dynamicWeather";
-import { withJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
 import {
   areaLayerAnchor,
   hideBasemapPois,
@@ -53,7 +52,7 @@ import { applyMapScene } from "./applyMapScene";
 import type { AxisBand, AxisLineState } from "./groups/axisLines";
 import { POINT_ICONS, POINT_TILE_LAYERS } from "./groups/points";
 import type { RouteState } from "./groups/routes";
-import { WEATHER_ICONS, weatherElementKey, type WeatherPayload, type WeatherState } from "./groups/weather";
+import { WEATHER_ICONS, weatherElementKey, type WeatherState } from "./groups/weather";
 import { buildLegendFilterExpression } from "./sceneBuilders";
 import type { SceneInputs } from "./buildScene";
 import { EMPTY_MAP_SCENE, hiddenBasemapPois, type MapScene } from "./mapScene";
@@ -201,31 +200,18 @@ function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): Axi
 
 /** 届いている中身を、要素の鍵（`groups/weather.ts: weatherElementKey`）で引ける形へ移す。 */
 function weatherStateFrom(props: SceneWiringProps): WeatherState {
-  const shown = new Map<string, { visible: boolean; payload?: WeatherPayload }>();
+  const shown = new Map<string, { visible: boolean; payload?: DynamicWeatherRenderPayload }>();
   for (const [groupId, group] of Object.entries(props.look.dynamicWeather)) {
     if (group === undefined) continue;
     for (const [sourceId, source] of Object.entries(group)) {
       if (source === undefined) continue;
       shown.set(weatherElementKey({ group: groupId, source: sourceId }), {
         visible: source.visible,
-        ...(source.payload === undefined ? {} : { payload: weatherPayloadFrom(source.payload) }),
+        ...(source.payload === undefined ? {} : { payload: source.payload }),
       });
     }
   }
   return { shown };
-}
-
-function weatherPayloadFrom(payload: DynamicWeatherRenderPayload): WeatherPayload {
-  switch (payload.kind) {
-    case "rasterTile":
-    case "vectorTile":
-      // 配信元のタイルは自前のプロトコル経由で取りに行く（空タイルの肩代わり・失敗の観測）。
-      return { kind: payload.kind, tiles: [withJmaTileProtocol(payload.tileUrlTemplate)] };
-    case "gridFill":
-    case "gridMark":
-    case "outline":
-      return { kind: payload.kind, data: payload.geojson };
-  }
 }
 
 /** 点のタイルごとのURL。 */
