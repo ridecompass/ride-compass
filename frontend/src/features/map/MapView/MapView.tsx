@@ -161,34 +161,23 @@ function computeRouteFitPadding(
   return padding;
 }
 
-/** 呼び出し側が測った覆いと、印の付いた部品（`mapOverlayEdge`）の覆いの、辺ごとの大きい方。 */
-function mergeObscured(a: RouteFitObscuredPx | undefined, b: RouteFitObscuredPx): Required<RouteFitObscuredPx> {
-  return {
-    top: Math.max(a?.top ?? 0, b.top ?? 0),
-    bottom: Math.max(a?.bottom ?? 0, b.bottom ?? 0),
-    left: Math.max(a?.left ?? 0, b.left ?? 0),
-    right: Math.max(a?.right ?? 0, b.right ?? 0),
-  };
-}
-
-/** 地図の上に重なるもの（呼び出し側が測った覆いと、印の付いた部品）を避けた、見えている所までの辺ごとの余白。 */
-function visiblePadding(map: MapLibreMap, measureObscured: () => RouteFitObscuredPx | undefined) {
+/** 地図の上に重なる印の付いた部品（`mapOverlayEdge`）を避けた、見えている所までの辺ごとの余白。 */
+function visiblePadding(map: MapLibreMap) {
   const canvas = map.getCanvas();
-  const obscured = mergeObscured(measureObscured(), measureMapOverlayEdges(canvas.getBoundingClientRect()));
-  return computeRouteFitPadding(obscured, { width: canvas.clientWidth, height: canvas.clientHeight });
+  const { top = 0, bottom = 0, left = 0, right = 0 } = measureMapOverlayEdges(canvas.getBoundingClientRect());
+  return computeRouteFitPadding(
+    { top, bottom, left, right },
+    { width: canvas.clientWidth, height: canvas.clientHeight },
+  );
 }
 
-function fitBoundsToRoutes(
-  map: MapLibreMap,
-  routes: RouteCandidate[],
-  measureObscured: () => RouteFitObscuredPx | undefined,
-) {
+function fitBoundsToRoutes(map: MapLibreMap, routes: RouteCandidate[]) {
   if (routes.length === 0) return;
 
   const bounds = computeRouteBounds(routes);
 
   runWhenStyleReady(map, () => {
-    const padding = visiblePadding(map, measureObscured);
+    const padding = visiblePadding(map);
     debugLog("map:viewport", "ルートを収める", { padding });
     map.fitBounds(bounds, { padding });
   });
@@ -198,22 +187,19 @@ function fitBoundsToRoutes(
 const FOCUS_ZOOM = 16;
 
 /** 地点を、見えている所の中ほどへ寄せる。`flyTo`の`padding`は寄せたあとも地図に残るので、残らない`offset`でずらす。 */
-function flyToVisible(map: MapLibreMap, point: Coordinates, measureObscured: () => RouteFitObscuredPx | undefined) {
+function flyToVisible(map: MapLibreMap, point: Coordinates) {
   runWhenStyleReady(map, () => {
     map.flyTo({
       center: [point.longitude, point.latitude],
       zoom: FOCUS_ZOOM,
-      offset: visibleCenterOffset(map, measureObscured),
+      offset: visibleCenterOffset(map),
     });
   });
 }
 
 /** 地図の中心から、見えている所の中ほどへのずれ（px）。寄せるときの`offset`に渡す。 */
-function visibleCenterOffset(
-  map: MapLibreMap,
-  measureObscured: () => RouteFitObscuredPx | undefined,
-): [number, number] {
-  const padding = visiblePadding(map, measureObscured);
+function visibleCenterOffset(map: MapLibreMap): [number, number] {
+  const padding = visiblePadding(map);
   return [(padding.left - padding.right) / 2, (padding.top - padding.bottom) / 2];
 }
 
@@ -292,9 +278,6 @@ interface MapViewProps {
   onDestinationClear: () => void;
   /** 地図を寄せる地点（住所の検索で置いた地点）。新しい値を渡すたびに寄せる。 */
   focusPoint: Coordinates | null;
-  /** 地図の上に重なるUIで覆われている辺ごとの高さ(px)をいま測る。ルートを収めるとき、覆われた所へ収めないため。
-   * レイアウトを持つ呼び出し側が測る。地図の上に置いた部品は、ここで測らず`mapOverlayEdge`の印を付ければ地図が測る。 */
-  measureRouteFitObscuredPx: () => RouteFitObscuredPx | undefined;
   /** 走行モードの間だけ値がある。現在地の点を出し、追っている間は地図を現在地へ動かし続ける。 */
   ride: RideFollow | null;
   /** 選んだ候補の上で走り終えた距離（km）。そこまでのルートの線を薄める。走っていなければnull。 */
@@ -327,7 +310,6 @@ export default function MapView({
   destination,
   onDestinationClear,
   focusPoint,
-  measureRouteFitObscuredPx,
   ride,
   travelledKm,
   turnPoint,
@@ -387,7 +369,6 @@ export default function MapView({
     interactiveLayerIds,
     onPinPlace,
     armedPinRole,
-    measureRouteFitObscuredPx,
     onRouteSegmentSelect,
     onSpliceStretchSelect,
   };
@@ -689,7 +670,7 @@ export default function MapView({
     onRouteSegmentSelect,
   });
 
-  useRideFollow(mapRef, ride, (map) => visibleCenterOffset(map, latest.current.measureRouteFitObscuredPx));
+  useRideFollow(mapRef, ride, visibleCenterOffset);
   useTurnMark(mapRef, turnPoint);
 
   // 住所の検索で置いた地点へ寄せる。出発地を置いたときは印のフックの位置の更新も寄せるが、このeffectが後に走るので
@@ -697,7 +678,7 @@ export default function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !focusPoint) return;
-    flyToVisible(map, focusPoint, latest.current.measureRouteFitObscuredPx);
+    flyToVisible(map, focusPoint);
   }, [focusPoint]);
 
   // 地図に載るもの（面・道路の線・評価軸・点・気象・ルート）は、1つの scene として
@@ -715,7 +696,7 @@ export default function MapView({
     const map = mapRef.current;
     if (!map) return;
 
-    fitBoundsToRoutes(map, routes, latest.current.measureRouteFitObscuredPx);
+    fitBoundsToRoutes(map, routes);
   }, [routes]);
 
   // 「地図の表示を再描画」: スタイルを取り直し、消えたレイヤーをいまの宣言から当て直す（押した人の地図だけ）。

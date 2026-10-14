@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button/Button";
 import { ConfirmDialog } from "@/components/ui/Dialog/Dialog";
 import { cn } from "@/lib/cn";
 import MapView from "@/features/map/MapView/MapView";
-import { mapOverlayEdge, type RouteFitObscuredPx } from "@/lib/mapOverlayEdges";
+import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
 import MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayControls";
 import {
   ClearRoutesIcon,
@@ -17,7 +17,7 @@ import {
   RouteIcon,
   RouteSettingsIcon,
 } from "@/components/ui/icons/icons";
-import BottomSheet, { clampSheetHeightVh, DEFAULT_SHEET_HEIGHT_VH } from "@/components/BottomSheet/BottomSheet";
+import BottomSheet, { useChosenSheetHeight } from "@/components/BottomSheet/BottomSheet";
 import LensControl from "@/features/map/LensControl/LensControl";
 import RouteForm, { type SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import RouteSettingsPanel from "@/features/route/RouteSettingsPanel/RouteSettingsPanel";
@@ -44,7 +44,7 @@ import DebugConsole from "@/components/DebugConsole/DebugConsole";
 import { useDebugEnabled } from "@/hooks/useDebugLog";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useLocation } from "@/hooks/useLocation";
-import { useStoredState, useStoredBooleanState } from "@/hooks/useStoredState";
+import { useStoredBooleanState } from "@/hooks/useStoredState";
 import { useRideConditions } from "@/features/conditions/useRideConditions";
 import RideBar from "@/features/ride/RideBar/RideBar";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
@@ -65,8 +65,6 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 const GENERATE_OPEN_STORAGE_KEY = "ridecompass:generate-open";
 const OUTCOME_OPEN_STORAGE_KEY = "ridecompass:outcome-open";
-// モバイルの下部シートの高さ。シートは1つずつしか開かないため、1つの値を共有する。
-const MOBILE_SHEET_HEIGHT_STORAGE_KEY = "ridecompass:mobile-sheet-height-vh";
 // 区分の見出しのDOM id（デスクトップの区分・モバイルのシート）。
 const GENERATE_SECTION_TITLE_ID = "generate-section-title";
 const OUTCOME_SECTION_TITLE_ID = "outcome-section-title";
@@ -159,21 +157,7 @@ export default function Home() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // モバイルで開いている下部シート（1つだけ。無ければ地図だけ）。
   const [mobileSheet, setMobileSheet] = useState<MobileSheet>(null);
-  // シートの高さは、利用者がドラッグで確定した値だけを保存する。保存値があることが「決めた」印で、決めた後は
-  // 中身に合わせた自動調整をやめる。ドラッグ中と自動調整の値は保存しない（毎フレーム書き込まない）。
-  const [chosenSheetHeightVh, setChosenSheetHeightVh] = useStoredState<number | null>(
-    MOBILE_SHEET_HEIGHT_STORAGE_KEY,
-    null,
-    {
-      serialize: JSON.stringify,
-      deserialize: (raw) => {
-        const parsed: unknown = JSON.parse(raw);
-        return typeof parsed === "number" && Number.isFinite(parsed) ? clampSheetHeightVh(parsed) : null;
-      },
-    },
-  );
-  const [workingSheetHeightVh, setWorkingSheetHeightVh] = useState<number | null>(null);
-  const mobileSheetHeightVh = workingSheetHeightVh ?? chosenSheetHeightVh ?? DEFAULT_SHEET_HEIGHT_VH;
+  const [chosenSheetHeightVh, chooseSheetHeight] = useChosenSheetHeight();
 
   const debugEnabled = useDebugEnabled();
   const [debugConsoleOpen, setDebugConsoleOpen] = useState(false);
@@ -259,15 +243,6 @@ export default function Home() {
   const routeInspectionEnabled = routeOutcomeActive && editingRoute === null;
   const pinPlacementArmedRole = pointEditingEnabled ? conditions.armedPinRole : null;
 
-  // 地図はモバイルの下部タブバー・シートの下にも描かれるため、ルートを収めるときに覆われた高さを測って渡す
-  // （そのままだとシートの裏へ収まって1本も見えない）。
-  const mobileTabBarRef = useRef<HTMLElement>(null);
-  const measureRouteFitObscuredPx = (): RouteFitObscuredPx | undefined => {
-    if (!isMobile) return undefined;
-    const sheetPx = mobileSheet && !navigating ? (window.innerHeight * mobileSheetHeightVh) / 100 : 0;
-    return { bottom: (mobileTabBarRef.current?.getBoundingClientRect().height ?? 0) + sheetPx };
-  };
-
   // モバイルのタブ。同じタブをもう一度押したら閉じる。
   const handleMobileTabClick = (sheet: Exclude<MobileSheet, null>) => {
     setMobileSheet((prev) => (prev === sheet ? null : sheet));
@@ -278,13 +253,8 @@ export default function Home() {
   // 2枚のシートが共有する開閉と高さ。
   const sharedSheetProps = {
     onClose: () => setMobileSheet(null),
-    heightVh: mobileSheetHeightVh,
-    onHeightChange: setWorkingSheetHeightVh,
-    onHeightCommit: (vh: number) => {
-      setChosenSheetHeightVh(vh);
-      setWorkingSheetHeightVh(null);
-    },
-    autoFitHeight: chosenSheetHeightVh === null,
+    chosenHeightVh: chosenSheetHeightVh,
+    onHeightChoose: chooseSheetHeight,
   };
 
   const handleSettingsTabChange = (value: string) => setSettingsTab(value as SettingsTab);
@@ -593,7 +563,6 @@ export default function Home() {
               onSpotPlace={(role, spot) => placeFound(role, spot, null)}
               waypointsFull={conditions.waypoints.length >= routeGenerateConfig.max_waypoints}
               focusPoint={foundPoint}
-              measureRouteFitObscuredPx={measureRouteFitObscuredPx}
               ride={riding.map}
               travelledKm={progressKm}
               turnPoint={upcomingTurn}
@@ -696,7 +665,7 @@ export default function Home() {
       {isMobile && !navigating && (
         <>
           <nav
-            ref={mobileTabBarRef}
+            {...mapOverlayEdge("bottom")}
             className="fixed right-0 bottom-0 left-0 z-[var(--z-bottom-sheet)] flex h-[var(--mobile-tabbar-height)] touch-none border-t border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_-1px_8px_rgba(0,0,0,0.15)]"
             aria-label="パネル切り替え"
           >

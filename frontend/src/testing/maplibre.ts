@@ -183,7 +183,6 @@ const drawn: StandInMap[] = [];
 
 class StandInMap extends Evented {
   readonly markers = new Set<Marker>();
-  readonly fits: unknown[] = [];
   readonly styles: string[];
   readonly content: RecordingMap;
   private readonly container: HTMLElement;
@@ -245,8 +244,7 @@ class StandInMap extends Evented {
     return 0;
   }
 
-  fitBounds(_bounds: LngLatBounds, options: unknown) {
-    this.fits.push(options);
+  fitBounds() {
     return this;
   }
 
@@ -323,8 +321,6 @@ export interface MapOnScreen {
   sourceFeatures(sourceId: string): GeoJSON.Feature[];
   /** 地図に置いた印。 */
   markers(): { coordinates: Coordinates; draggable: boolean; element: HTMLElement }[];
-  /** 範囲を収めたときの指定（余白等。古い順）。 */
-  readonly fits: readonly unknown[];
   /** 求めたスタイル（最初の1つと、取り直しの分）。 */
   readonly styles: readonly string[];
 }
@@ -345,7 +341,6 @@ export function mapOnScreen(): MapOnScreen {
         draggable: marker.draggable,
         element: marker.element,
       })),
-    fits: map.fits,
     styles: map.styles,
   };
 }
