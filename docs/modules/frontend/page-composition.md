@@ -20,7 +20,7 @@
 | hooks | `useStoredState.ts`・`useIsMobile.ts`・`useVisualViewport.ts`・`useLocation.ts`・`useDebouncedValue.ts`・`useIsomorphicLayoutEffect.ts` |
 | features/map/view | `useMapView.ts`（地図の見え方の状態と、地図・操作部品へ渡す値）・`mapLook.ts`（地図へ渡す見え方の値の型）・`lens.ts`（レンズから塗る軸・凡例・選択肢を導く）・`overlayChips.ts`（地図上チップの状態とレイヤー表示の保存形式）・`legendFilters.ts`（凡例で隠した行の保存先の読み書き） |
 | features/map/MapView | `useLayerDataStatus.ts`（MapLibreのソースイベントからレイヤーごとの取得状態を算出して渡す） |
-| lib | `apiBaseUrl.ts`・`apiClient.ts`（backendのAPIを呼ぶ口と、全呼び出しが共有する骨格。下記）・`apiPath.ts`（アプリ自身が呼ばないURL［地図ライブラリへ渡すタイル・スタイル］のパスをOpenAPIの宣言と型で照合して作る）・`apiError.ts`・`backendInternalUrl.ts`・`queryClient.ts`（画面のデータ取得が共有するTanStack Queryのキャッシュ。下記「データ取得の骨格」）・`apiTimeouts.ts`（APIリクエストのタイムアウト。呼び出しの性質ごとの名前付き定数）・`safeStorage.ts`（localStorageの読み書きで例外を外へ出さない薄いラッパ）・`paletteCssVariables.ts`（地図に塗る色と同じ色をUIにも出す箇所へ、配信された値をCSS変数として流す。`layout.tsx`がサーバー側で`:root`へ入れる。CSSが値を持つのはライト/ダークで2値を持つものだけ）・`duration.ts`（時間の長さの単位［秒・分・時のミリ秒］と、所要時間・待ち時間を「N分」で書く書き方。1時間を超えても分で書き、候補の一覧・候補の中身・差し替えの比較で同じ単位で見比べる）・`numberFormat.ts`（桁での丸めと、差の前に置く符号）・`urlTemplate.ts`（パスのテンプレートの`{名前}`を埋める。`apiPath.ts`と気象庁の配信のパスが使う）・`localPlane.ts`（狭い範囲の緯度経度を、経度方向をcos(緯度)で縮めた平面として扱う近似と、線分の上で最も近い点）・`routeDistance.ts`（ルートの区間を始点からの距離で読む: 区間の道なりの形・形の上で距離の割合ぶん進んだ点とそこで分けた前後・ある点に最も近いルートの上の点。道のりのグラフと地図と走行モードが同じ距離で読む）・`storedList.ts`（この端末に保存した一覧の読み方と入れ方。下記「状態の永続化」）・`adminApiPrefix.ts`（管理APIの転送の口と、backendの管理APIのパスの接頭辞）・`mapOverlayEdges.ts`（地図の上に重ねる部品へ付ける「どの辺を覆うか」の印と、印の付いた部品が覆う幅の実測。印を付ける部品は地図の機能の外にもあるので共有の層に置く。下記「`MapView`との境界」） |
+| lib | `apiBaseUrl.ts`・`apiClient.ts`（backendのAPIを呼ぶ口と、全呼び出しが共有する骨格。下記）・`apiPath.ts`（アプリ自身が呼ばないURL［地図ライブラリへ渡すタイル・スタイル］のパスをOpenAPIの宣言と型で照合して作る）・`apiError.ts`・`backendInternalUrl.ts`・`queryClient.ts`（画面のデータ取得が共有するTanStack Queryのキャッシュ。下記「データ取得の骨格」）・`apiTimeouts.ts`（APIリクエストのタイムアウト。呼び出しの性質ごとの名前付き定数）・`safeStorage.ts`（localStorageの読み書きで例外を外へ出さない薄いラッパ）・`paletteCssVariables.ts`（地図に塗る色と同じ色をUIにも出す箇所へ、配信された値をCSS変数として流す。`layout.tsx`がサーバー側で`:root`へ入れる。CSSが値を持つのはライト/ダークで2値を持つものだけ）・`duration.ts`（時間の長さの単位［秒・分・時のミリ秒］と、所要時間・待ち時間を「N分」で書く書き方。1時間を超えても分で書き、候補の一覧・候補の中身・差し替えの比較で同じ単位で見比べる）・`numberFormat.ts`（桁での丸めと、差の前に置く符号）・`urlTemplate.ts`（パスのテンプレートの`{名前}`を埋める。`apiPath.ts`と気象庁の配信のパスが使う）・`localPlane.ts`（狭い範囲の緯度経度を、経度方向をcos(緯度)で縮めた平面として扱う近似と、線分の上で最も近い点）・`routeDistance.ts`（ルートの区間を始点からの距離で読む: 区間の道なりの形・形の上で距離の割合ぶん進んだ点とそこで分けた前後・ある点に最も近いルートの上の点。道のりのグラフと地図と走行モードが同じ距離で読む）・`storedList.ts`（この端末に保存した一覧の読み方と入れ方。下記「状態の永続化」）・`adminApiPrefix.ts`（管理APIの転送の口と、backendの管理APIのパスの接頭辞）・`mapOverlayEdges.ts`（地図の上に重ねる部品へ付ける「どの辺を覆うか」の印と、印の付いた部品が覆う幅の実測。印を付ける部品は地図の機能の外にもあるので共有の層に置く。下記「`MapView`との境界」）・`validArea.ts`（backend が添える値の範囲が地点を含むか・走行中に取る地点を動かすか） |
 | features/route | `routeApi.ts`（ルート生成API。ジョブを投げ、終わるまで問い合わせる）・`generationRequest.ts`（生成リクエストのpayloadと`conditionsDirty`の比較キーを同じ入力から導出する純関数）・`routeSplice.ts`（候補どうしが別々の道を通る区間を`edge_ids`の集合演算で求め、表示中の側と相手側を対応づけ、選んだ区間を差し替えた経路を組み立て純関数。差し替えた経路の評価はbackendが行うため計算式は持たない。区間を割る下限は持たず呼び出し側から受け取る［backendの較正値で、管理画面から変えられる］） |
 | features/conditions | `useRideConditions.ts`（走行条件: 走行方位・出発時刻・想定速度。想定速度だけを保存し、保存値は画面の範囲内の整数だけを受け入れる）・`useDepartureTime.ts`（出発時刻。選ぶまでは5分刻みの「今」へ追従し、選んだ時刻は動かさない）・`rideConditions.ts`（走行条件の出発時刻ラベル・出発時刻の刻みと想定速度の丸め。速度の上下限はbackendの`routeGenerateConfig`から読む） |
 | types | `types/route.ts`（`RouteCandidate`等の生成APIレスポンス型）・`types/fetchFailure.ts`（常設ヘッダーの「未取得」の印に並ぶ項目の型。下記「失敗・空・待ちの伝え方」） |
@@ -389,6 +389,12 @@ MapLibreの`GeolocateControl`を使わないのは、地図を進む向きへ回
   入れる）を選び（`nextTurn.ts`）、地図の左上のカードに向きの矢印と距離だけを出し（`TurnCard/TurnCard.tsx`。向きの言葉は
   読み上げの名前で伝える）、その地点に印を出す（`features/map/MapView/useTurnMark.ts`）。曲がる所を全部過ぎたら出さず、
   ルートを外れている間も計画どおりに走っていないので出さない。
+- **今の位置の天気・警報**: 走行中は、天気・観測・警報等を出発地ではなく走行モードが受けた位置で取る
+  （`features/conditions/useWeatherConditions.ts`の`following`）。位置が届くたびには取り直さない（backend の回数の制限に
+  当たる）。範囲（backend の`valid_area`）が添えられた種類は、その範囲を出たときだけ、その種類を今の位置で取り直す
+  （`lib/validArea.ts: leftTheArea`）。取り直しの途中に残る前の値の範囲では決めない。どの種類も、取り直しの間隔が来たら
+  その時の今の位置で取り直す（範囲の無い予報はこれだけで動く）。警報・注意報等は、出ているときだけ走りの帯に最も重い段の色のアイコンを出し、押すと中身を開く
+  （`WarningBadgeList`の`compact`）。帯の風の矢印は地図の向き（進む向きを上にしているとき）の分だけ戻して回す。
 - **残りと到着予想**: 残りは、ルートの上の現在地から終わりまでの道のり。到着予想は、最後に位置を受けた時刻へ、選んだ候補の
   計画の残り時間を足す（`rideRemaining.ts`）。計画の残り時間は、区間の到達予想（区間へ入る時刻）と所要時間を、ルートの上の距離で読んだ
   時刻の差で、区間の中は距離に比例させる。計画の時刻が欠けた候補では到着予想を出さない。走った実績では補正しない（下の「今の事実と

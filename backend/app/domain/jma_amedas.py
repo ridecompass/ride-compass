@@ -3,6 +3,7 @@
 import math
 from datetime import datetime
 
+from app.domain.valid_area import ValidArea
 from app.domain.strict_model import StrictModel
 from app.domain.twilight import Twilight
 
@@ -56,3 +57,6 @@ class AmedasObservation(StrictModel):
     # WMO天気コード（`weather.derive_observed_weather_code`）。晴れ・くもりはリクエストの地点の推計気象分布で
     # 決まるため、twilightと同じく応答のたびに入れ、Redisには持たない。
     weather_code: int | None
+    #: 同じ観測所の観測が当たる範囲（その観測所が最寄りである範囲）。観測所の値（風・気温等）はこの中で変わらない。
+    #: 天気コード・日の出と日没はリクエストの地点で決まり、この範囲の中でも変わる。
+    valid_area: ValidArea | None = None

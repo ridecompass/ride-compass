@@ -147,6 +147,7 @@ function amedasObservationFixture(): AmedasObservation {
     precipitation_10min_mm: null,
     weather_code: null,
     twilight: null,
+    valid_area: null,
   };
 }
 
@@ -197,9 +198,9 @@ export async function installApiMocks(page: Page): Promise<void> {
   // マッチ判定される）で/api/weather/amedasだけこちらを優先させる。
   await page.route(`${API_BASE}/api/weather/amedas*`, (route) => route.fulfill({ json: amedasObservationFixture() }));
   // 警告バッジ3種は「警告なし」の成功応答にする。応答しないと取得失敗の印がヘッダーに出る。
-  const noWarnings: WeatherWarnings = { warnings: [] };
-  const noWbgt: WbgtStatus = { reading: null };
-  const noFlood: FloodForecasts = { forecasts: [] };
+  const noWarnings: WeatherWarnings = { warnings: [], valid_area: null };
+  const noWbgt: WbgtStatus = { reading: null, valid_area: null };
+  const noFlood: FloodForecasts = { forecasts: [], valid_area: null };
   await page.route(`${API_BASE}/api/weather/warnings*`, (route) => route.fulfill({ json: noWarnings }));
   await page.route(`${API_BASE}/api/weather/wbgt*`, (route) => route.fulfill({ json: noWbgt }));
   await page.route(`${API_BASE}/api/weather/flood-forecast*`, (route) => route.fulfill({ json: noFlood }));

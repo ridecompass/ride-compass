@@ -299,7 +299,7 @@ export default function Home() {
     amedasError,
     warningBadgeItems,
     warningFetchFailures,
-  } = useWeatherConditions(location, locationKnown);
+  } = useWeatherConditions(location, locationKnown, navigating ? (riding.map?.position ?? null) : null);
   const axisCatalogFailure = axisCatalogFetchFailure(axisCatalog);
   const headerFetchFailures = useMemo(
     () => [
@@ -472,6 +472,7 @@ export default function Home() {
           <RideBar
             remaining={remaining}
             offRoute={progress.offRoute}
+            mapBearingDeg={riding.map?.headingUp ? (riding.map.bearing ?? 0) : 0}
             speedKmh={riding.speedKmh}
             wind={
               amedas?.wind_speed_ms != null && amedas.wind_direction !== null
@@ -483,6 +484,11 @@ export default function Home() {
                 : null
             }
           />
+        ) : null}
+        {navigating ? (
+          <div className="ml-auto flex flex-shrink-0 items-center">
+            <WarningBadgeList items={warningBadgeItems} failures={headerFetchFailures} compact />
+          </div>
         ) : (
           <>
             {/* 風と「今日」のパネルは左端に固定して常に見せる。入り切らないときに隠れるのは警報の側。 */}

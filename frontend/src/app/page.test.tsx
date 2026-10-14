@@ -88,6 +88,7 @@ const OBSERVATION: AmedasObservation = {
   precipitation_10min_mm: null,
   twilight: null,
   weather_code: null,
+  valid_area: null,
 };
 
 let jobs: ReturnType<typeof serveGenerationJobs>;
