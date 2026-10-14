@@ -12,14 +12,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { installGeolocation, removeGeolocation, type PendingRequest } from "@/testing/geolocation";
 import type { Coordinates } from "@/types/route";
 
 import { useLocation } from "./useLocation";
-
-interface PendingRequest {
-  succeed: (point: Coordinates) => void;
-  fail: () => void;
-}
 
 const HERE: Coordinates = { latitude: 35.6812, longitude: 139.7671 };
 const THERE: Coordinates = { latitude: 34.7025, longitude: 135.4959 };
@@ -27,28 +23,8 @@ const PICKED: Coordinates = { latitude: 43.0687, longitude: 141.3508 };
 
 let requests: PendingRequest[];
 
-function installGeolocation() {
-  requests = [];
-  const geolocation = {
-    getCurrentPosition(onSuccess: PositionCallback, onError: PositionErrorCallback) {
-      requests.push({
-        succeed: (point) =>
-          act(() =>
-            onSuccess({ coords: { latitude: point.latitude, longitude: point.longitude } } as GeolocationPosition),
-          ),
-        fail: () => act(() => onError({ code: 1, message: "denied" } as GeolocationPositionError)),
-      });
-    },
-  };
-  Object.defineProperty(navigator, "geolocation", { value: geolocation, configurable: true });
-}
-
-function removeGeolocation() {
-  Object.defineProperty(navigator, "geolocation", { value: undefined, configurable: true });
-}
-
 beforeEach(() => {
-  installGeolocation();
+  ({ requests } = installGeolocation());
 });
 
 afterEach(() => {
