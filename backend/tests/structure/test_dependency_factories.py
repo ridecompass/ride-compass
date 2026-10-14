@@ -8,9 +8,10 @@
 母集団はソースから導く——`app`配下の全`.py`をASTで読み、`Depends(...)`の最初の引数に書かれた名前
 （`Depends(x)`・`Depends(mod.x)`）と、`main.py`に現れる名前を集める。
 
-`services/`は、組み立ての置き場（`api/dependencies.py`・`main.py`）が組む`app.infrastructure`のクラスを
-呼ばない——自分で組むと、DI工場と別のタイムアウト・別の共有状態で動く。母集団は、組み立ての置き場が呼ぶ
-`app.infrastructure`のクラス（値の型は組み立ての置き場が組まないので入らない）。
+`services/`は、組み立ての置き場（`api/dependencies.py`・`main.py`）が組む`app.infrastructure`・`app.services`の
+クラスを呼ばない——自分で組むと、DI工場と別のタイムアウト・別の共有状態で動き、テストが部品を差し替えられない。
+母集団は、組み立ての置き場が呼ぶ`app.infrastructure`・`app.services`のクラス（値の型は組み立ての置き場が組まないので
+入らない）。部品を返す関数（`material_service_builder`の類）を呼ぶ形は見ない——クラスを組まない関数と見分けられない。
 
 DI工場が配るのは組み立てた部品だけで、`api/dependencies.py`の関数は`await`しない（呼び出しの結果を配らない）、
 `app.infrastructure`から開いた`with ... as`の名前（DBのセッション）をそのままか、`app.infrastructure`のクラスに
@@ -95,15 +96,17 @@ def test_dependencies_exposes_only_injection_points() -> None:
     )
 
 
-def _read(root: Path, path: Path) -> tuple[ast.Module, dict[str, str]]:
-    """`root`（`app`）の下のファイルの木と、`app.infrastructure`から取り込んだ名前 → 取り込み元（`モジュール.名前`）。
+def _read(
+    root: Path, path: Path, packages: tuple[str, ...] = ("app.infrastructure",)
+) -> tuple[ast.Module, dict[str, str]]:
+    """`root`（`app`）の下のファイルの木と、`packages`から取り込んだ名前 → 取り込み元（`モジュール.名前`）。
     モジュールごと取り込んだ名前も入る。"""
     source = SourceTree(root.parent)
     module = source.module_of(path)
     tree = ast.parse(path.read_text(encoding="utf-8"))
     imported: dict[str, str] = {}
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and (base := source.absolute(module, node)).startswith("app.infrastructure"):
+        if isinstance(node, ast.ImportFrom) and (base := source.absolute(module, node)).startswith(packages):
             for alias in node.names:
                 imported[alias.asname or alias.name] = f"{base}.{alias.name}"
     return tree, imported
@@ -124,41 +127,47 @@ def _called_infrastructure(imported: dict[str, str], within: ast.AST) -> list[tu
     return out
 
 
-def _called_in_file(root: Path, path: Path) -> list[tuple[int, str]]:
-    tree, imported = _read(root, path)
+def _called_in_file(
+    root: Path, path: Path, packages: tuple[str, ...] = ("app.infrastructure",)
+) -> list[tuple[int, str]]:
+    tree, imported = _read(root, path, packages)
     return _called_infrastructure(imported, tree)
 
 
-def _infrastructure_classes(root: Path) -> set[str]:
-    """`app.infrastructure`の各モジュールが定義するクラス（`モジュール.名前`）。"""
+def _infrastructure_classes(root: Path, directories: tuple[str, ...] = ("infrastructure",)) -> set[str]:
+    """`directories`（`app`の下）の各モジュールが定義するクラス（`モジュール.名前`）。"""
     source = SourceTree(root.parent)
     out = set()
-    for path in sorted((root / "infrastructure").rglob("*.py")):
+    for path in sorted(path for directory in directories for path in (root / directory).rglob("*.py")):
         module = source.module_of(path)
         tree = ast.parse(path.read_text(encoding="utf-8"))
         out.update(f"{module}.{node.name}" for node in tree.body if isinstance(node, ast.ClassDef))
     return out
 
 
-def services_assembling_infrastructure(root: Path) -> list[str]:
-    """`services/`が、組み立ての置き場の組む`app.infrastructure`のクラスを呼んでいる箇所。"""
-    classes = _infrastructure_classes(root)
+#: 組み立ての置き場が組む部品の取り込み元。
+ASSEMBLED_PACKAGES = ("app.infrastructure", "app.services")
+
+
+def services_assembling_what_the_factories_assemble(root: Path) -> list[str]:
+    """`services/`が、組み立ての置き場の組む`app.infrastructure`・`app.services`のクラスを呼んでいる箇所。"""
+    classes = _infrastructure_classes(root, ("infrastructure", "services"))
     assembled = {
         name
         for path in (root / DEPENDENCIES, root / "main.py")
-        for _line, name in _called_in_file(root, path)
+        for _line, name in _called_in_file(root, path, ASSEMBLED_PACKAGES)
         if name in classes
     }
     return [
         f"{path.relative_to(root).as_posix()}:{line} {name}"
         for path in sorted((root / "services").rglob("*.py"))
-        for line, name in _called_in_file(root, path)
+        for line, name in _called_in_file(root, path, ASSEMBLED_PACKAGES)
         if name in assembled
     ]
 
 
 def test_services_do_not_assemble_what_the_factories_assemble() -> None:
-    violations = services_assembling_infrastructure(APP_ROOT)
+    violations = services_assembling_what_the_factories_assemble(APP_ROOT)
 
     assert violations == [], (
         "`services/`が、`api/dependencies.py`・`main.py`の組むクラスを自分で組んでいる（コンストラクタで受け取る）:\n  "
@@ -167,31 +176,39 @@ def test_services_do_not_assemble_what_the_factories_assemble() -> None:
 
 
 def test_detects_a_service_assembling_a_client(tmp_path: Path) -> None:
-    """検査が効いていること（わざと置いた2つの呼び方を捕まえ、値の型は見逃す）。"""
+    """検査が効いていること（わざと置いた2つの呼び方と、工場の組む services のクラスを捕まえ、値の型は見逃す）。"""
     root = tmp_path / "app"
     for directory in ("api", "services", "infrastructure"):
         (root / directory).mkdir(parents=True)
     (root / "infrastructure" / "tile_client.py").write_text(
         "class TileClient: ...\nclass TileValue: ...\n", encoding="utf-8"
     )
+    (root / "services" / "materials.py").write_text(
+        "class MaterialService: ...\nclass MaterialValue: ...\n", encoding="utf-8"
+    )
     (root / "api" / "dependencies.py").write_text(
         "from app.infrastructure.tile_client import TileClient\n"
+        "from app.services.materials import MaterialService\n"
         "def get_tile_client():\n"
-        "    return TileClient()\n",
+        "    return TileClient()\n"
+        "def get_material_service():\n"
+        "    return MaterialService()\n",
         encoding="utf-8",
     )
     (root / "main.py").write_text("", encoding="utf-8")
     (root / "services" / "sample.py").write_text(
         "from app.infrastructure import tile_client\n"
         "from app.infrastructure.tile_client import TileClient as Client, TileValue\n"
+        "from .materials import MaterialService, MaterialValue\n"
         "def build():\n"
-        "    return Client(), tile_client.TileClient(), TileValue()\n",
+        "    return Client(), tile_client.TileClient(), TileValue(), MaterialService(), MaterialValue()\n",
         encoding="utf-8",
     )
 
-    assert services_assembling_infrastructure(root) == [
-        "services/sample.py:4 app.infrastructure.tile_client.TileClient",
-        "services/sample.py:4 app.infrastructure.tile_client.TileClient",
+    assert services_assembling_what_the_factories_assemble(root) == [
+        "services/sample.py:5 app.infrastructure.tile_client.TileClient",
+        "services/sample.py:5 app.infrastructure.tile_client.TileClient",
+        "services/sample.py:5 app.services.materials.MaterialService",
     ]
 
 
