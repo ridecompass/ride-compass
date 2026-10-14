@@ -167,11 +167,12 @@ Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で�
 - **CIを待つぶん、反映はpushからCIの所要だけ遅れる。** 急ぎの修正でも待つ。待たずに出す手段は
   `deploy-backend.yml`の手動起動（`workflow_dispatch`）で、選んだrefの先端を判定なしで出す。
 
-振り分けの一覧（`deploy_gate.py: DEPLOY_PATHS`と`deploy_gate.py: NOT_DEPLOYED`。gitのpathspecとして
-`git diff --name-only`に当てさせる）は`backend/**`から、イメージに入らないもの（テスト・lint設定等）と、イメージには入るが本番
-プロセスが読まないもの（`export_openapi.py`とそれだけが読む表示値の宣言）を外している。`backend/ops/`（VMのホストで動く
-systemdのユニットとシェル）はイメージに入らないが外さない——デプロイがVMの作業コピーをそのコミットへ揃えて
-`systemctl daemon-reload`を打つことでだけ届く。
+本番へ届くファイル（`deploy_gate.py: deploy_paths`。gitのpathspecとして`git diff --name-only`に当てさせる）は、
+イメージに入るもの——`backend/Dockerfile`と、出したいコミットのそのDockerfileがCOPYするもの——と、イメージの外から届くもの
+（`deploy_gate.py: HOST_PATHS`）である。イメージに入らないもの（テスト・lint設定・ベンチマーク等）は、COPYしないことで外れ、
+別の一覧を持たない。`backend/ops/`（VMのホストで動くsystemdのユニットとシェル）はイメージに入らないが`HOST_PATHS`に入る
+——デプロイがVMの作業コピーをそのコミットへ揃えて`systemctl daemon-reload`を打つことでだけ届く。イメージには入るが本番
+プロセスが読まないもの（`export_openapi.py`とそれだけが読む表示値の宣言）は`deploy_gate.py: NOT_DEPLOYED`が外す。
 表示値の変更は生成物（`frontend/src/types/generated/`）を経由してfrontendのデプロイで
 画面へ届くため、backendのコンテナを入れ替える理由にならない。**外したモジュールを本番側が
 importすると、その変更だけが本番へ届かなくなる**（エラーにならず古い値で動き続ける）。
