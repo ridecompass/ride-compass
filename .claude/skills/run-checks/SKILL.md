@@ -12,7 +12,7 @@ description: "検査とテストを手元・作業ブランチのCI・masterのC
 
 - **手元とCIで同じ答えを2回買わない**: CIはPull Requestで毎回、静的検査（`.github/workflows/ci.yml`のジョブ
   （backend・frontend）がテスト（`pytest`・`npm test`）より前に回す段・`api-contract`のOpenAPI生成物のドリフト・
-  `.github/workflows/docs-consistency.yml`の段）とフルスイートを回す（[task-work/SKILL.md](../task-work/SKILL.md)「実装担当」の4・5。
+  置き場に依らずいつも走る文書とゲートの検査）とフルスイートを回す（[task-work/SKILL.md](../task-work/SKILL.md)「実装担当」の4・5。
   どの変更で何が走るかは下の「検査の置き場」）。手元では、CIの結論より先に知らないと作業が無駄になる答えだけを、
   その答えに要る最小の範囲で取る。
 - **回してよい場面は3つ**。どれでもなければ回さずにpushし、CIの結論を待つ。
@@ -49,7 +49,7 @@ description: "検査とテストを手元・作業ブランチのCI・masterのC
 |---|---|---|
 | 手元 | 上の「手元の検査の回し方」 | CIの失敗の再現・書いているテストの動作・怪しいところの念押し（どれも届く範囲だけ） |
 | 作業ブランチ（`orch/**`）のCI | 必須チェックのワークフロー（名前と、変更ごとにどのジョブを走らせるかの決め方は[tech-stack.md](../../../docs/architecture/tech-stack.md)「CIの実行枠（リポジトリがpublicである間の前提）」。Pull Requestで走り、作業ブランチへのpushでは走らない） | 静的検査とフルスイート（Linuxでの結果）。masterと合わせた版で、masterへ入れてよいかの判定 |
-| masterのCI | 同じワークフロー | 作業ブランチで個別に通ったコミットを組み合わせた木の検査。`ci.yml`の`ci-ok`が通るまでbackend・frontendのデプロイは起動しない（flow-gate・文書の検査は待たない） |
+| masterのCI | 同じワークフロー | 作業ブランチで個別に通ったコミットを組み合わせた木の検査。`ci.yml`の`ci-ok`（文書とゲートの検査も含む全部の結論）が通るまでbackend・frontendのデプロイは起動しない |
 | 本番 | `backend/scripts/prod_route_check.py`（backendを出したあとと毎日1回。[tech-stack.md](../../../docs/architecture/tech-stack.md)「本番でルートを作る確かめ」） | 本物の応答で、ルートを作ってレンズを替える操作が壊れていないか。デプロイを伴わない本番の値の変化も拾う |
 
 - **コミット・pushの直前（gitのフック）には検査を置かない。** 何を見ているかの正本は`scripts/review_checks.py`と各CIの段で、ここへ写さない。
@@ -359,9 +359,9 @@ backend/.venv/Scripts/python.exe backend/scripts/drop_orphan_test_databases.py -
 
 - **手元とCIで同じ答えを2回買わない**: CIはPull Requestで毎回、変更が届く側の静的検査（`.github/workflows/ci.yml`の
   ジョブ（backend・frontend）がテスト（`pytest`・`npm test`）より前に回す段・`api-contract`のOpenAPI生成物のドリフト・
-  `.github/workflows/docs-consistency.yml`の段）とフルスイートを回す（[flow.md](../../../docs/conventions/flow.md)「作る担当」の4・5）。
+  置き場に依らずいつも走る文書とゲートの検査）とフルスイートを回す（[flow.md](../../../docs/conventions/flow.md)「作る担当」の4・5）。
   文書や運用の道具・タスク管理だけの変更では、`ci.yml: changes`ジョブが重い検査を飛ばす（[tech-stack.md](../../../docs/architecture/tech-stack.md)「CIの実行枠（リポジトリがpublicである間の前提）」）。
-  masterでは`ci.yml`のbackend〜e2eが通るまでbackend・frontendのデプロイを起動しない（下の「検査の置き場」）。手元では、CIの結論より先に
+  masterでは`ci.yml`の`ci-ok`が通るまでbackend・frontendのデプロイを起動しない（下の「検査の置き場」）。手元では、CIの結論より先に
   知らないと作業が無駄になる答えだけを、その答えに要る最小の範囲で取る。
 
 1. **CIが落ちた失敗を再現して直すとき**（[testing.md](../../rules/testing.md)「テストが落ちたときの直し方」）。回すのは落ちた失敗に届く範囲だけ。
@@ -407,8 +407,8 @@ backend/.venv/Scripts/python.exe backend/scripts/drop_orphan_test_databases.py -
 
 | 層 | 回すもの | 担うこと |
 |---|---|---|
-| 作業ブランチ（`orch/**`）のCI | `ci.yml`の全ジョブと`docs-consistency.yml`・`claude-gate.yml`（Pull Requestで走る。作業ブランチへのpushでは走らない。文書や運用の道具・タスク管理だけの変更では`ci.yml: changes`ジョブが重い検査を飛ばす） | 静的検査とフルスイート（Linuxでの結果）。masterと合わせた版で、masterへ入れてよいかの判定 |
-| masterのCI | 同じ`ci.yml`と`docs-consistency.yml`・`claude-gate.yml` | 作業ブランチで個別に通ったコミットを組み合わせた木の検査。`ci.yml`のbackend〜e2eが通るまでbackend・frontendのデプロイは起動しない（flow-gate・文書の検査は待たない。**本番へ出る前の門はここ**） |
+| 作業ブランチ（`orch/**`）のCI | `ci.yml`の全ジョブ（Pull Requestで走る。作業ブランチへのpushでは走らない。文書や運用の道具・タスク管理だけの変更では`ci.yml: changes`ジョブが重い検査を飛ばす） | 静的検査とフルスイート（Linuxでの結果）。masterと合わせた版で、masterへ入れてよいかの判定 |
+| masterのCI | 同じ`ci.yml` | 作業ブランチで個別に通ったコミットを組み合わせた木の検査。`ci.yml`の`ci-ok`が通るまでbackend・frontendのデプロイは起動しない（**本番へ出る前の門はここ**） |
 
 - **コミット・pushの直前（gitのフック）には検査を置かない。** CIと同じ検査をpushの直前に置くと、作業ブランチへのpushの
   たびに手元で同じ答えを買い直す。何を見ているかの正本は`scripts/review_checks.py`と各CIの段で、ここへ写さない。

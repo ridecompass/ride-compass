@@ -60,8 +60,7 @@ export function decide(f, config) {
     questionLabel: asking && kind ? questionLabel(kind) : null, body: asking ? withButton(body, config, f.number) : body };
 }
 
-// 欄「実行の status」: ステータスが指す種類の、動いている実行の status（GitHub の値のまま。無ければ null）。検査は、終わりから最も遠い
-// 検査の実行の status（必須の検査が1本になるまでの暫定）。
+// 欄「実行の status」: ステータスが指す種類の、動いている実行の status（GitHub の値のまま。無ければ null）。検査は、最も新しい検査の実行の status。
 function runStatus(f, status) {
   if (status === "検査") return (f.pr ? f.pr.checks : f.mergeChecks).stage.toLowerCase(); // 検査は走っている実行があるときだけ
   return f.runs.find((r) => r.kind === status)?.status ?? null;
