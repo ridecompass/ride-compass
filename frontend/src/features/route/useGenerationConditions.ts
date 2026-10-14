@@ -148,9 +148,10 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     {},
   );
   // 画面が読む重みは、軸カタログの公開軸へ揃えたこの値だけ（保存値は次に重みを動かしたときに揃った形で書かれる）。
+  // 上書きしていない間は保存した重みを読まず、送らない間に効く既定の重みにする（重みのタブが出す値と送る値を食い違わせない）。
   const routePreference = useMemo(
-    () => alignRoutePreference(storedRoutePreference, axisCatalog),
-    [storedRoutePreference, axisCatalog],
+    () => alignRoutePreference(weightOverrideEnabled ? storedRoutePreference : {}, axisCatalog),
+    [weightOverrideEnabled, storedRoutePreference, axisCatalog],
   );
   // 除外の設定。常に送る。保存値に今は無い項目が混じっていても、読むときに今の項目へ揃える。
   const [hardFilters, setHardFilters] = useStoredState<HardFilterOverride>(

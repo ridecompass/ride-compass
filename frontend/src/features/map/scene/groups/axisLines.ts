@@ -11,25 +11,20 @@ import palette from "@/types/generated/palette.json";
 
 import type { MapSceneFeatureStates, MapSceneFeatureStateValue } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
-import { LEGEND_NO_DATA_KEY, LEGEND_UNDETERMINED_KEY } from "@/lib/mapDisplay/mapColorLegend";
+import { LEGEND_NO_DATA_KEY, NO_DATA_LEGEND_BAND, UNDETERMINED_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
+import { bandCondition, type ValueBand } from "@/lib/mapDisplay/valueScale";
 
 import { ROAD_LINE_SOURCE_ID, ROAD_TRACKS } from "./roadLines";
 
 /** 材料が同時に出ているときの下敷き。**材料の線が全部出たときの帯幅**から決まるので、
  * トラックが増えれば自動で広がる（直書きすると追従しない）。 */
 const UNDERLAY_WIDTH_PX = (ROAD_TRACKS.length - 1) * mapDisplay.road.trackOffsetStepPx + mapDisplay.road.lineWidthPx;
-/** 段1つぶん。境界は下限で、判定は`>= 下限`・`< 次の下限`。 */
-export type AxisBand = {
-  readonly key: string;
-  readonly lowerBound: number;
-  readonly color: string;
-};
-
 export type AxisLineState = {
   readonly axes: readonly {
     readonly axisId: string;
     readonly visible: boolean;
-    readonly bands: readonly AxisBand[];
+    /** 段の並び（低い段から。`valueScale.ts: valueBands`）。 */
+    readonly bands: readonly ValueBand[];
     /** 配信された値。値が無い道は鍵ごと無く、走行方位で値が決まらない道は null。 */
     readonly values: ReadonlyMap<string, number | null>;
     /** 今の範囲の値を取りに行っている間か。 */
@@ -74,22 +69,25 @@ function dashesMissing(axis: AxisLine): boolean {
 function colorExpression(axis: AxisLine): unknown {
   const value = ["feature-state", axisFeatureStateKey(axis.axisId)];
   const shown = (key: string, color: string) => (axis.hiddenBandKeys.includes(key) ? palette.semantic.hidden : color);
-  const cases = axis.bands.flatMap((band) => [[">=", value, band.lowerBound], shown(band.key, band.color)]);
+  const cases = axis.bands.flatMap((band, index) => [
+    bandCondition(axis.bands, index, value),
+    shown(band.key, band.color),
+  ]);
   // 取得中の色は「値なし」を隠していても残す——消すと「まだ来ていない」と「隠した」が区別できなくなる。
   // 破線の線が値の無い道を描くときは、実線の側は透明にする（重ねると破線が実線に埋もれる）。
   const missingColor = axis.loading
     ? palette.semantic.loading
     : dashesMissing(axis)
       ? palette.semantic.hidden
-      : shown(LEGEND_NO_DATA_KEY, palette.semantic.no_data);
+      : shown(LEGEND_NO_DATA_KEY, NO_DATA_LEGEND_BAND.color);
   return [
     "case",
     undeterminedCondition(axis.axisId),
-    shown(LEGEND_UNDETERMINED_KEY, palette.semantic.undetermined),
+    shown(UNDETERMINED_LEGEND_BAND.key, UNDETERMINED_LEGEND_BAND.color),
     missingCondition(axis.axisId),
     missingColor,
     ...cases,
-    palette.semantic.no_data,
+    NO_DATA_LEGEND_BAND.color,
   ];
 }
 
@@ -161,7 +159,7 @@ export const axisLineGroup = declareGroup<AxisLineState>((state) => {
     {
       ...lineOf(`${axis.axisId}-no-data`),
       paint: {
-        "line-color": palette.semantic.no_data,
+        "line-color": NO_DATA_LEGEND_BAND.color,
         "line-width": mapDisplay.road.lineWidthPx,
         "line-opacity": [
           "case",

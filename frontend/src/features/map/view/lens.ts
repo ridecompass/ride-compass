@@ -9,7 +9,7 @@ import {
   UNDETERMINED_LEGEND_BAND,
   type MapColorLegendBand,
 } from "@/lib/mapDisplay/mapColorLegend";
-import { dedicatedAxisBands } from "@/lib/mapDisplay/valueScale";
+import { valueBands } from "@/lib/mapDisplay/valueScale";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import {
   LENS_DIFFICULTY_ID,
@@ -37,9 +37,9 @@ export function lensConditionsLabel(
   const axis = dedicatedAxes.find((candidate) => candidate.axisId === paintedAxis);
   if (axis === undefined) return null;
   const parts = [
-    axis.needsBearing ? `${cardinalLabel(ride.bearingDeg)}へ走る` : null,
-    axis.needsSpeed ? `時速${ride.speedKmh}km` : null,
-    axis.needsTime ? `${departureLabel}出発` : null,
+    axis.wayValueConditions.includes("bearing_deg") ? `${cardinalLabel(ride.bearingDeg)}へ走る` : null,
+    axis.wayValueConditions.includes("speed_kmh") ? `時速${ride.speedKmh}km` : null,
+    axis.wayValueConditions.includes("at") ? `${departureLabel}出発` : null,
   ].filter((part) => part !== null);
   return parts.length > 0 ? parts.join("・") : null;
 }
@@ -104,7 +104,7 @@ export function lensOptions(
  * ルート確定後のルート線の凡例（`routeStyleModes.ts`）と段階の並び・キーを揃える。
  * 「向きで決まらない」は、配信がその道を返しうる軸だけに足す（ルートの線は実際に走る向きで決まるので持たない）。 */
 function dedicatedWayValueLegend(axis: DedicatedWayValueAxis): MapColorLegendBand[] {
-  const bands = dedicatedAxisBands(axis.display).map(({ key, label, color }) => ({ key, label, color }));
+  const bands = valueBands(axis.display).map(({ key, label, color }) => ({ key, label, color }));
   return [...bands, ...(axis.undeterminedByBearing ? [UNDETERMINED_LEGEND_BAND] : []), NO_DATA_LEGEND_BAND];
 }
 

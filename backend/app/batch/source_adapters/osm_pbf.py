@@ -30,7 +30,7 @@ from typing import Any
 import shapely
 from shapely.geometry import LineString, Point, Polygon
 
-from app.batch.ingest import AdapterInputs, SourceRecord, file_origin, register_adapter
+from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceProfileError, SourceSpec
 from app.domain.traffic import has_supply_poi_tag
 from app.infrastructure.source_models import WAY_KIND_TAG, SourceFeatureRow
@@ -174,11 +174,10 @@ class _Handoff:
             raise self.error
 
 
-def _pbf_origin(path: Path) -> dict[str, Any]:
-    """PBFの素性。`osmosis_replication_timestamp`は**配信元がいつの断面を焼いたか**で、
+def _record_replication_timestamp(path: Path, origin: dict[str, Any]) -> None:
+    """PBFの素性へ`osmosis_replication_timestamp`を足す。これは**配信元がいつの断面を焼いたか**で、
     ファイルのmtime（こちらがいつ落としたか）とは別物。取れないPBFもあるので、
     取れたときだけ入れる。"""
-    origin: dict[str, Any] = file_origin(path)
     try:
         from app.batch.pbf_source import replication_timestamp
 
@@ -187,7 +186,6 @@ def _pbf_origin(path: Path) -> dict[str, Any]:
             origin["replication_timestamp"] = stamp
     except Exception:  # 出所の付帯情報が取れないだけで取込は続ける
         pass
-    return origin
 
 
 def osm_way_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
@@ -195,12 +193,12 @@ def osm_way_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
 
 
 @register_adapter("osm_pbf_way", rows=OsmWayRows, required=(SourceFeatureRow.payload,), inputs=osm_way_inputs)
-async def read_osm_ways(spec: SourceSpec, profile: SourceProfile,
+async def read_osm_ways(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                         origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     from app.batch.pbf_source import stream_ways
 
-    path = _pbf_path(spec.rows)
-    origin.update(_pbf_origin(path))
+    (path,) = inputs.files
+    _record_replication_timestamp(path, origin)
     target = profile.target
     logger.info("OSM way: %s", path.name)
 
@@ -251,7 +249,7 @@ def osm_node_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
 
 
 @register_adapter("osm_pbf_node", rows=OsmNodeRows, inputs=osm_node_inputs)
-async def read_osm_nodes(spec: SourceSpec, profile: SourceProfile,
+async def read_osm_nodes(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                          origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     """採ったwayが参照する頂点と、`standalone_supply_poi`なら補給・休憩の点を、タグ込みで返す。
 
@@ -263,10 +261,9 @@ async def read_osm_nodes(spec: SourceSpec, profile: SourceProfile,
     target = profile.target
     referenced_by = spec.rows.referenced_by
     standalone = spec.rows.standalone_supply_poi
-    way_rows = _referenced_way_rows(spec, profile)
-    path = _pbf_path(way_rows)
-    origin.update(_pbf_origin(path))
-    road_matches = way_rows.matches
+    road_matches = _referenced_way_rows(spec, profile).matches
+    (path,) = inputs.files
+    _record_replication_timestamp(path, origin)
     logger.info("OSM node: %s（%s の頂点%s）", path.name, referenced_by,
                 "と補給・休憩の点" if standalone else "")
 

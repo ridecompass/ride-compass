@@ -23,7 +23,7 @@ from typing import Any
 
 import duckdb
 
-from app.batch.ingest import AdapterInputs, SourceRecord, file_origin, register_adapter
+from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceSpec
 from app.domain.stop_place import OVERTURE_GROUPED_WORDS
 
@@ -70,11 +70,11 @@ def overture_places_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterI
 
 
 @register_adapter("overture_places", rows=OverturePlaceRows, inputs=overture_places_inputs)
-async def read_overture_places(spec: SourceSpec, profile: SourceProfile,
+async def read_overture_places(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                                origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     rows: OverturePlaceRows = spec.rows
-    path = _existing_places_path(rows)
-    origin.update({"release": rows.release, **file_origin(path)})
+    (path,) = inputs.files
+    origin["release"] = rows.release
     min_lat, min_lon, max_lat, max_lon = profile.target.bbox
     # 点の`bbox`の最小は点そのもの（公式の文書「DuckDB」の Overture の読み方）。
     with duckdb.connect() as conn:
