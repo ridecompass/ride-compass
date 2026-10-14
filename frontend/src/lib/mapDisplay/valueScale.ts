@@ -4,7 +4,6 @@
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { components } from "@/types/generated/api";
 import palette from "@/types/generated/palette.json";
-import type { DedicatedWayValueDisplay } from "./dedicatedWayValueLayer";
 import { bandLabelsForBandCount, buildRangeLegendBands, type MapColorLegendBand } from "./mapColorLegend";
 
 /** 地図がその軸について塗る値の種類（正本はbackend）。`difficulty`は評価済みの0〜100、`signed_material`は
@@ -60,8 +59,32 @@ export function formatLoad(value: number): string {
   return value.toFixed(LOAD_DECIMALS);
 }
 
-/** 総合難易度の凡例の目盛り（得点）。 */
-export const DIFFICULTY_LEGEND: MapLegendScale = { boundaries: [...DEFAULT_DIFFICULTY_BOUNDARIES], unit: null };
+/** 地図が値を塗る宣言。`boundaries`は塗る値の目盛りの境界で、凡例は`legend`の同じ番号の境界で範囲を書く（雨は得点で
+ * 塗り、量で書く）。`bandLabels`は段ごとの体感ラベル（未設定なら数値の範囲だけ）。軸もルートの総合難易度もこの形で持ち、
+ * 段は`valueBands`だけが求める。 */
+export interface MapPaintDeclaration {
+  kind: MapValueKind;
+  boundaries: readonly number[];
+  legend: MapLegendScale;
+  bandLabels?: readonly string[] | null;
+}
+
+/** 軸カタログの行の`map_paint`から塗る宣言を作る。境界は宣言の無い軸の既定もbackendが解いて入れる。 */
+export function mapPaintDeclarationOf(paint: components["schemas"]["MapPaint"]): MapPaintDeclaration {
+  return {
+    kind: paint.value.kind,
+    boundaries: paint.thresholds,
+    legend: paint.legend,
+    bandLabels: paint.band_labels ?? undefined,
+  };
+}
+
+/** 総合難易度を塗る宣言。凡例は得点で書く。 */
+export const DIFFICULTY_PAINT: MapPaintDeclaration = {
+  kind: "difficulty",
+  boundaries: DEFAULT_DIFFICULTY_BOUNDARIES,
+  legend: { boundaries: [...DEFAULT_DIFFICULTY_BOUNDARIES], unit: null },
+};
 
 /** 得点の境界に添える単位と、体感ラベルが無い段で範囲の前に置く語。数字だけでは量か得点か読めない。 */
 const SCORE_UNIT = "点";
@@ -171,15 +194,10 @@ export interface ValueBand extends MapColorLegendBand {
   lowerBound: number;
 }
 
-/** 軸を塗る段の並び（低い段から）。鍵・範囲の文字・体感ラベル・色をここで一度に決める。`boundaries`は塗る値の目盛りの
- * 境界で、範囲の文字は`legend`の同じ番号の境界で書く（雨は得点で塗り、量で書く）。体感ラベルは件数が段の数と合うときだけ
- * 添える（`bandLabelsForBandCount`）。 */
-export function valueBands(
-  kind: MapValueKind,
-  boundaries: readonly number[],
-  legend: MapLegendScale,
-  bandLabels: readonly string[] | null | undefined,
-): ValueBand[] {
+/** 塗る宣言から段の並び（低い段から）を求める。鍵・範囲の文字・体感ラベル・色をここで一度に決める。体感ラベルは件数が
+ * 段の数と合うときだけ添える（`bandLabelsForBandCount`）。 */
+export function valueBands(paint: MapPaintDeclaration): ValueBand[] {
+  const { kind, boundaries, legend, bandLabels } = paint;
   const colors = bandColorsFor(kind, boundaries);
   const labels = bandLabelsForBandCount(bandLabels, colors.length);
   const isScore = legend.unit === null;
@@ -191,7 +209,11 @@ export function valueBands(
   }));
 }
 
-/** 専用配信の軸の段。 */
-export function dedicatedAxisBands(display: DedicatedWayValueDisplay): ValueBand[] {
-  return valueBands(display.kind, display.boundaries, display.legend, display.bandLabels);
+/** 値（MapLibreの式）が段`index`に入るときに真になる式。地図の線・ルートの線の色と凡例の絞り込みはどれもこれで段を
+ * 引くので、境界ちょうどの値もどこでも同じ段に入る。値が無い場合は呼ぶ側が先に分ける。 */
+export function bandCondition(bands: readonly ValueBand[], index: number, value: unknown): unknown[] {
+  const conditions: unknown[] = [];
+  if (index > 0) conditions.push([">=", value, bands[index].lowerBound]);
+  if (index < bands.length - 1) conditions.push(["<", value, bands[index + 1].lowerBound]);
+  return ["all", ...conditions];
 }

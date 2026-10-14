@@ -34,7 +34,7 @@ import { primaryAttributeIdsToLayerIds } from "@/features/map/layers/primaryAttr
 import { ROUTE_ARROW_ICON_ID, createRouteArrowIcon } from "@/features/map/layers/routeArrowIcon";
 import type { LensId, RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
 import type { RouteCandidate } from "@/types/route";
-import { dedicatedAxisBands, type ValueBand } from "@/lib/mapDisplay/valueScale";
+import { valueBands } from "@/lib/mapDisplay/valueScale";
 import { routeStretches, segmentPath, splitSegmentAt } from "@/lib/routeDistance";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import {
@@ -50,7 +50,7 @@ import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { drawPointIcon } from "@/features/map/layers/pointIcon";
 
 import { applyMapScene } from "./applyMapScene";
-import type { AxisBand, AxisLineState } from "./groups/axisLines";
+import type { AxisLineState } from "./groups/axisLines";
 import { POINT_ICONS, POINT_TILE_LAYERS } from "./groups/points";
 import type { RouteState } from "./groups/routes";
 import { WEATHER_ICONS, weatherElementKey, type WeatherPayload, type WeatherState } from "./groups/weather";
@@ -165,11 +165,6 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
   };
 }
 
-/** 評価軸の段を線の宣言へ渡す形にする。**上の段から順に**並べる——色式は最初に当たった段を採るため。 */
-function axisLineBands(bands: readonly ValueBand[]): AxisBand[] {
-  return bands.map(({ key, lowerBound, color }) => ({ key, lowerBound, color })).reverse();
-}
-
 /** 下敷きで描く軸。その軸の材料（一次属性の表示レイヤー）が1つでも出ている間は、材料の
  * 線を隠さないよう下へ敷く。 */
 function underlaidAxisIds(props: SceneWiringProps): ReadonlySet<string> {
@@ -189,7 +184,7 @@ function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): Axi
     return {
       axisId: axis.axisId,
       visible: isAxisShown(look, axis),
-      bands: axisLineBands(dedicatedAxisBands(axis.display)),
+      bands: valueBands(axis.display),
       values: delivered?.values ?? new Map<string, number | null>(),
       loading: delivered?.loading === true,
       hiddenBandKeys: look.hiddenLegendKeys[axis.axisId] ?? NO_KEYS,
