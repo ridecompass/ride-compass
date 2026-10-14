@@ -112,7 +112,7 @@ Windowsでは`uvicorn --reload`がリローダー親プロセスとワーカー�
 **本番の宛先は、リポジトリの根の`production-origins.json`だけが持つ。** ワークフロー（像のビルド・デプロイ・デプロイのあとの
 確かめ）と道具（例: `axis_apply.py`）はそこから読む。値を書くしかない所（下の表・担当の設定の説明の文等）は、
 `backend/tests/structure/test_single_owner_values.py`が持ち主と照らし、違えば全部の Pull Request の CI
-（`docs-consistency.yml`）が落ちる。宛先が変わったら、このファイルと照らしで落ちた所を同じ Pull Request で直す。マージすると、
+（`ci.yml`の`doc-reading-tests`）が落ちる。宛先が変わったら、このファイルと照らしで落ちた所を同じ Pull Request で直す。マージすると、
 `ci.yml: changes`がこのファイルの変更をbackendとfrontendの両方の変更に数えるので、frontendの像が新しい宛先で作られて出て、
 backendのデプロイがCORSの許可へ新しいfrontendの宛先を足す。
 
@@ -149,8 +149,8 @@ Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で�
 `git rev-parse HEAD`と突き合わせる。frontendの版は、画面のメニューの「バージョン表示」でも見られる（`commit`の頭8文字）。
 
 **backendのデプロイは、masterのCIが通ったコミットを、本番プロセスに届く変更があるときだけ
-出す。** `ci.yml`の`deploy-backend`が、masterへのpushでbackend・api-contract・frontend・e2eの
-ジョブが通ったときだけ`deploy-backend.yml`を呼ぶ——どれかが赤ならデプロイは起動しない（flow-gate・文書の検査は待たない）。呼ばれた側は、本番で
+出す。** `ci.yml`の`deploy-backend`が、masterへのpushで`ci-ok`（このワークフローの検査の全部の結論）が
+通ったときだけ`deploy-backend.yml`を呼ぶ——どれかが赤ならデプロイは起動しない。呼ばれた側は、本番で
 動いているコミット（コンテナの`GIT_COMMIT`）からCIを通ったコミットまでの差分を
 `backend/scripts/deploy_gate.py`で見て、出すかを決める。
 
@@ -263,8 +263,8 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
   後のコミットは前の変更を全部含み、古いコミットの実行はデプロイにもマージの判断にも使わないため。Pull Requestは
   新しいpushで走っている実行も打ち切り、masterは走っている実行を最後まで走らせる（デプロイが同じ実行の中で走るので、
   途中で切らない）。打ち切った・待ちから外した実行のコミットにはCIの結論が残らないので、結論は最新のコミットで読む
-  （.claude/skills/run-checks/SKILL.md「CIの結論を読む」）。数十秒で終わる`docs-consistency.yml`・`claude-gate.yml`には置かない
-  （待ちが積もらない）。
+  （.claude/skills/run-checks/SKILL.md「CIの結論を読む」）。ゲートの公開（`deploy-gate`）も同じ実行の中で走るので、masterの
+  前の実行が終わるまで待つ。
 - ジョブの分け方・キャッシュは、所要時間と同時実行の枠で決める（理由は各ワークフローのコメント）。
 - **`ci.yml`は検査を2段に並べ、落ちた版の残りを走らせない。** 軽い検査（静的検査・単体のテスト・像の確かめ）を段1で
   並べて走らせ、重い検査（e2e・全状態の走査）は段1のどれも落ちず・取り消されずに終わったときだけ始める。段に分けたぶん通る版の
@@ -276,7 +276,7 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
   持ち、`ci.yml: changes`は変わったファイルの頭からどの置き場が変わったかだけを見て（本番の宛先の`production-origins.json`は、
   両方の像が読むのでbackendとfrontendの両方に数える）、その置き場の検査（backendならテスト・api-contract・
   像の確かめ、frontendならテスト・e2e・全状態の走査・api-contract・像の確かめ、`scripts/`なら道具のテスト）とデプロイを走らせる。
-  それ以外の変更（文書・タスク管理・ほかのワークフロー）では何も走らせない。`ci.yml`と`.github/actions/`を変えたら、その定義で
+  それ以外の変更（文書・タスク管理・ほかのワークフロー）では、置き場に依らないジョブ（文書の整合・ゲートの検査等）だけを走らせる。`ci.yml`と`.github/actions/`を変えたら、その定義で
   全部を走らせて確かめる。YAMLとして読んだ中身で比べ、コメントだけの変更は定義の変更に数えない（`run`のシェルの中のコメントは中身なので数える）。置き場をまたいで読むものは数えず、テストを読む側の置き場へ置く（backendのための道具は`backend/scripts/`）。
   走らせるジョブの組は`changes`の段だけが持ち、ジョブの`if`と`ci-ok`が読む。
 - **masterのpushの`changes`は、pushの実行が成功した一番近い祖先と比べる。** 直前のコミット
@@ -287,16 +287,16 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
   Pull Requestへpushしたあとに基の先端が進んでも新しくならず、そのまま比べるとその間に基へ入った変更が差に混ざる
   （`.github/actions/pr-base`）。
 - **タスク管理は製品のCIと分ける。** タスク管理の置き場（`.github/taskflow-paths`。ゲートの`tools/flow-gate/`と
-  担当のワークフロー）の検査とゲートの公開は`claude-gate.yml`が持ち、`ci.yml`はその置き場を読まない。そのため
-  `ci.yml: changes`はその置き場だけの変更でどのジョブも走らせず、backend・frontendのデプロイも起動しない。
+  担当のワークフロー）の検査とゲートの公開は`ci.yml`の`flow-gate`・`deploy-gate`が持ち、置き場に依らずいつも走る。
+  `ci.yml: changes`はその置き場だけの変更で製品のジョブを走らせず、backend・frontendのデプロイも起動しない。
   置き場の定義は、総量の計測（`scripts/review_checks.py: TASKFLOW_PREFIXES`）が読む。
 - **ワークフローは`paths`で飛ばさず、いつも起こす。** コードのリポジトリは、master へ入れる前に必須チェック
-  （`ci.yml`の`ci-ok`・`docs-consistency.yml`のジョブ・`claude-gate.yml`の`flow-gate`）が通ることを求める。ワークフローごと飛ばすと必須チェックが Pending のまま残り、
+  （`ci.yml`の`ci-ok`。このワークフローの検査の全部の結論）が通ることを求める。ワークフローごと飛ばすと必須チェックが Pending のまま残り、
   Pull Request がマージできない（公式の「Troubleshooting required status checks」）。ジョブを飛ばすのは
   `changes`ジョブが決め、ジョブの`if`で飛ばしたものはスキップとして必須チェックを通る。
-- **文書の整合は`ci.yml`と分けたワークフローに置く。** 文書の整合の検査（`scripts/review_checks.py docs`）は
-  文書だけの変更こそが対象なので、`changes`が文書だけの変更でジョブを飛ばす`ci.yml`に置かず、常に走る`docs-consistency.yml`に置く。
-  backendの外のPythonとshの静的検査も、置き場を問わず同じワークフローが常に走らせる。
+- **文書の整合は、置き場に依らずいつも走るジョブに置く。** 文書の整合の検査（`scripts/review_checks.py docs`）は
+  文書だけの変更こそが対象なので、`changes`の決める組に入れず、常に走る`ci.yml`の`docs-consistency`に置く。
+  全ての文書とワークフローを読むテスト（`doc-reading-tests`）と、backendの外のPythonとshの静的検査（`repo-wide`）も同じく常に走らせる。
 - **1つの持ち主（タスクの issue・master）が同時に動かせるジョブは、レーンの数までにする。** 同時に動くジョブの上限は
   組織全体で1つで、GitHub の標準の道具には持ち主ごとの取り分が無い（`strategy.max-parallel` は1回の実行の中だけ、
   `concurrency` は同じ group を1本ずつにするだけ）。そこで、ランナーを取るジョブはどれも、ジョブの `concurrency` の group を
@@ -331,7 +331,7 @@ CIだけに置いているため、CIの分数が尽きると検査そのもの�
 | ridecompass/ride-compassのActionsの秘密の値 | `CODE_TOKEN` | hidakagitが作ったfine-grained。Resource ownerはridecompassで、届くのはridecompass/ride-compassだけ。Actions・Contents・Issues・Pull requests・Variables・Workflowsは読み書き（Workflowsは2026-10-09に足した。担当が`.github/workflows/`を自分でpushする）、Commit statusesは読むだけ。期限は未記録 | `claude-task.yml`（checkout・Claudeの連携・ghの既定） |
 | 同 | `FLOW_BOT_TOKEN` | hidakagit-botが作ったfine-grained。届くのはridecompass/ride-compass-tasksだけ。Contentsは読み書き（担当の手番の記録をリリースへ置く）。期限2027-09-29 | 担当と流れの道具が置き場へ書く。開発機ではユーザー環境変数の同じ名前 |
 | 同 | `CLAUDE_CODE_OAUTH_TOKEN` | Claudeの契約のトークン（GitHubのトークンではない） | `claude-task.yml` |
-| 同 | `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID` | Cloudflare | ゲートと回答フォームの公開（`claude-gate.yml`） |
+| 同 | `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID` | Cloudflare | ゲートと回答フォームの公開（`ci.yml`の`deploy-gate`） |
 | 同 | `MAPILLARY_TOKEN` | hidakagitがMapillaryの開発者の画面で登録したアプリのClient Token（読むだけ。GitHubのトークンではない）。期限は未記録 | `claude-task.yml`（担当の環境変数。Mapillaryの街灯の点の付き方の測定） |
 | 同 | `ORACLE_VM_HOST`・`ORACLE_VM_SSH_KEY` | 本番のVM | backendのデプロイ |
 | 同 | `RENDER_FRONTEND_DEPLOY_HOOK_URL` | Render | frontendのデプロイ |
@@ -451,13 +451,13 @@ frontendはRender、PostgreSQLとRedisはVMへネイティブに置く。
   後のコミットは前の変更を全部含み、古いコミットの実行はデプロイにもマージの判断にも使わないため。Pull Requestは
   新しいpushで走っている実行も打ち切り、masterは走っている実行を最後まで走らせる（デプロイが同じ実行の中で走るので、
   途中で切らない）。打ち切った・待ちから外した実行のコミットにはCIの結論が残らないので、結論は最新のコミットで読む
-  （.claude/skills/run-checks/SKILL.md「CIの結論を読む」）。数十秒で終わる`docs-consistency.yml`・`claude-gate.yml`には置かない
-  （待ちが積もらない）。
+  （.claude/skills/run-checks/SKILL.md「CIの結論を読む」）。ゲートの公開（`deploy-gate`）も同じ実行の中で走るので、masterの
+  前の実行が終わるまで待つ。
 
 - **飛ばす範囲は、その検査が読む対象から導く。** 飛ばしてよいのは、`ci.yml`のどの検査も読まないパスだけ。
   文書を読むテストを足したら、読む範囲がディレクトリに限られるなら`changes`の`case`でそこを先に当てて入れ直し、
-  全ての文書を読むなら常に走る`docs-consistency.yml`でも走らせる。飛ばす運用の道具（`scripts/`の一部）を
-  テストやデプロイが読むようにしたら、`case`からその行を外す。飛ばす道具の静的検査は`docs-consistency.yml`が
+  全ての文書を読むなら常に走る`ci.yml`の`doc-reading-tests`でも走らせる。飛ばす運用の道具（`scripts/`の一部）を
+  テストやデプロイが読むようにしたら、`case`からその行を外す。飛ばす道具の静的検査は`ci.yml`の`repo-wide`が
   常に走らせる。
 
 #### 秘密の値とトークン
