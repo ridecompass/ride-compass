@@ -6,7 +6,7 @@ import { fetchJson } from "@/lib/apiClient";
 import { apiPath } from "@/lib/apiPath";
 import { fillTemplate, TEMPLATE_PLACEHOLDER } from "@/lib/urlTemplate";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
-import { DEFAULT_API_TIMEOUT_MS } from "@/lib/apiTimeouts";
+import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
 import { MINUTE_MS } from "@/lib/duration";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { DynamicWeatherRenderPayload } from "@/features/map/layers/dynamicWeather";
@@ -156,7 +156,7 @@ export async function fetchJmaGeojson(
   label: string,
 ): Promise<GeoJSON.FeatureCollection> {
   const geojson = await fetchJson<GeoJSON.FeatureCollection>(jmaFrameUrl(delivery, frame), {
-    timeoutMs: DEFAULT_API_TIMEOUT_MS,
+    timeoutMs: API_TIMEOUT_MS.default,
     category: "api:jma-geojson",
     errorLabel: label,
   });
@@ -184,7 +184,7 @@ interface RawTargetTime {
 /** 時刻一覧のファイル1つ（源泉の`targetTimesPaths`の1つ）の行。`label`はエラーメッセージに使う対象名（「の時刻一覧」は本関数が付ける）。 */
 export async function fetchJmaTargetTimesFile(path: string, label: string): Promise<unknown[]> {
   const data = await fetchJson<unknown>(jmaProxyUrl(path), {
-    timeoutMs: DEFAULT_API_TIMEOUT_MS,
+    timeoutMs: API_TIMEOUT_MS.default,
     category: "api:jma-nowcast-times",
     errorLabel: `${label}の時刻一覧`,
   });
