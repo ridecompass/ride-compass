@@ -98,10 +98,6 @@ class AxisCatalogEntry(StrictModel):
     # この軸の材料の元データを描く気象のチップ（`domain/axis_definitions.py: weather_layer_groups_for`）。
     # 一次属性を持たない動的な材料（風等）は`primary_attribute_ids`に現れないため、こちらが運ぶ。
     weather_layer_groups: list[str]
-    # ルート未確定時の地図がこの軸を配信の値で塗るかの宣言（domain/axis_definitions.py:
-    # AxisDefinition.dedicated_way_value_layerのdocstring参照）。
-    # 受け取る側が、axis_idの文字列比較ではなくこのフィールドで地図レイヤー・取得の対象を決めるための宣言。
-    dedicated_way_value_layer: bool
     # 地図がこの軸について塗るもの——塗る値・単位・段の境界・凡例の目盛り・タイルの塗り・段の体感ラベル
     # （domain/map_paint.py: map_paint）。ルート確定前の塗り・ルート確定後のルート線色分け・凡例のどれもこれに従う。
     map_paint: MapPaint
@@ -177,7 +173,6 @@ async def get_axis_catalog(region_service: RegionService = Depends(get_region_se
                 icon_id=definition.icon_id,
                 primary_attribute_ids=primary_attribute_ids_for(definition),
                 weather_layer_groups=weather_layer_groups_for(definition),
-                dedicated_way_value_layer=definition.dedicated_way_value_layer,
                 map_paint=map_paint(definition),
                 raw_value_units=raw_value_units(definition),
                 material_breakdown=axis_material_breakdown(definition, AXIS_DEFINITIONS),

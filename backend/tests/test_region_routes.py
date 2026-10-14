@@ -308,7 +308,6 @@ DEDICATED_AXES = {
         ),
         default_weight=0.2,
         label="軸ウ",
-        dedicated_way_value_layer=True,
     ),
     "axis_way_value_signed": AxisDefinition(
         axis_id="axis_way_value_signed",
@@ -319,7 +318,6 @@ DEDICATED_AXES = {
         ),
         default_weight=0.2,
         label="軸グ",
-        dedicated_way_value_layer=True,
     ),
 }
 
