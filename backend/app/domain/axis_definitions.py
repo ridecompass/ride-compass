@@ -338,16 +338,7 @@ class AxisDefinition(StrictModel):
     段階の数値レンジ表記（例:「2〜6」）のみを凡例に出す。
 
     `display_thresholds_override`と対になる概念（どちらも「地図の色分け段階の見せ方」の
-    軸ごとの好み）で、dedicated_way_value_layer軸だけでなく、通常のramp軸の凡例にも
-    同じ仕組みで使える。"""
-    dedicated_way_value_layer: bool = False
-    """**ルート未確定時**の地図が、この軸を配信（`/api/region/dynamic-way-values`、`services/dedicated_way_values.py`）の
-    値で塗るかの宣言。配信はどの公開軸の値も返すので、この印は塗り方を選ぶだけで、配信できるかを表さない。
-    `axis_id`の文字列比較によるハードコード分岐ではなく、性質ベースの宣言的フィールドとして持たせ、軸スタジオの
-    編集画面（管理API）からも設定できるようにする。
-
-    **ルート確定後**の地図色分け（ルート結果の`axis_difficulties[axis_id]`でルート線を段に塗る。公開軸なら自動的に
-    対象になりこのフィールドとは無関係）とは別の概念であることに注意。"""
+    軸ごとの好み）。"""
 
     @field_validator("display_thresholds_override")
     @classmethod
