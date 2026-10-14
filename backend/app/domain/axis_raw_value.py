@@ -13,7 +13,7 @@ from app.domain.axis_definitions import (
     AxisDefinition,
     BreakpointLinearShape,
 )
-from app.domain.material_catalog import MATERIAL_CATALOG
+from app.domain.material_catalog import MATERIAL_CATALOG, MaterialDType
 from app.domain.strict_model import StrictModel
 
 
@@ -148,3 +148,51 @@ def axis_material_shares(
         return []
     # 挿入順（＝定義順の深さ優先）を保つ安定ソートのため、キーは share と depth だけにする。
     return sorted(shares.values(), key=lambda entry: (-entry.share, entry.depth))
+
+
+class AxisMaterialBreakdownEntry(StrictModel):
+    """合成軸の内訳1件（材料と、その材料が軸の生値に占める割合）。"""
+
+    material_id: str
+    #: 材料の表示名（`MaterialSpec.label`）。フロントは対応表を持たない。
+    label: str
+    #: 値の型。`numeric`＝距離加重平均＋単位、`boolean`＝該当区間の延長割合、`categorical`＝値ごとの延長割合。
+    dtype: MaterialDType
+    #: numeric材料の単位。真偽値材料は空文字。
+    unit: str
+    #: 各階層で正規化した重みの積（0〜1）。並び順の根拠を画面側でも示せるよう返す。
+    share: float
+    #: categorical材料の「タグ生値→論理名」対訳（`MaterialSpec.value_labels`）。
+    #: ルート結果は`material_category_shares`の値をこれで日本語にする。他の型では空。
+    #: 軸スタジオが使う`value_label()`の「論理名 - 物理名」形式にしないのは、走行中に見る
+    #: 画面へ物理名を並べても読み手の判断が増えないため。
+    value_labels: dict[str, str] = {}
+
+
+def axis_material_breakdown(
+    definition: AxisDefinition, definitions: Mapping[str, AxisDefinition]
+) -> list[AxisMaterialBreakdownEntry]:
+    """軸の内訳（材料まで分解した絶対量の並び）。参照先の軸は`definitions`から引く。
+
+    分解の葉はどれもカタログの材料である——軸の集合は、軸が指すidを材料か同じ集合の軸に限る検査
+    （`domain/axis_definitions.py: check_axis_definition`）を通ったものだけが入る。
+
+    categorical材料（`highway`等）も含めて返す——値ごとの延長割合を運ぶ器はまだ無いが、
+    内訳の並び自体は軸定義から決まるため、運搬側の都合で並びを変えると軸定義との
+    対応が読めなくなる。値が来ない材料を
+    フロントが飛ばす形にする。
+    """
+    entries = []
+    for share in axis_material_shares(definition, definitions):
+        spec = MATERIAL_CATALOG[share.material_id]
+        entries.append(
+            AxisMaterialBreakdownEntry(
+                material_id=share.material_id,
+                label=spec.label,
+                dtype=spec.dtype,
+                unit=spec.unit or "",
+                share=round(share.share, 4),
+                value_labels=dict(spec.value_labels) if spec.dtype == "categorical" else {},
+            )
+        )
+    return entries

@@ -65,7 +65,6 @@ from app.services.dedicated_way_values import AxisWayValueLens
 from app.services.gradient_way_service import GradientConditions
 from app.services.wind_way_service import WindConditions
 from app.main import app
-from app.api.routers import region as region_router
 from app.domain.landcover import LANDCOVER_TILE_MAX_ZOOM, LANDCOVER_TILE_MIN_ZOOM
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 from tests.bound_fake import bound
@@ -485,7 +484,7 @@ def test_region_dedicated_way_values_serves_every_published_axis(monkeypatch, ma
 
 
 @pytest.fixture
-def landcover_tiles(monkeypatch):
+def landcover_tiles():
     """配信の口が呼ぶタイルの取得（サービス）の代役。返す値は`result`で決め、呼ばれた座標を`calls`に残す。"""
     state = {"result": TileResponse(b"png-bytes"), "calls": []}
 
@@ -493,8 +492,10 @@ def landcover_tiles(monkeypatch):
         state["calls"].append((z, x, y))
         return state["result"]
 
-    monkeypatch.setattr(region_router, "get_landcover_tile", bound(region_router.get_landcover_tile, fake))
-    return state
+    reader = bound(dependencies.get_landcover_tile_reader(), fake)
+    app.dependency_overrides[dependencies.get_landcover_tile_reader] = lambda: reader
+    yield state
+    app.dependency_overrides.clear()
 
 
 def test_landcover_tile_endpoint_returns_the_tile_as_png(landcover_tiles):

@@ -379,7 +379,7 @@ DB側の値が変わっても追従しない。軸の中身が主題でないテ
 [評価・スコアリング](evaluation-scoring.md)「ルート単位の集約」節を参照。
 
 `GET /api/axis-catalog`が`material_breakdown`として、材料id・表示名・型・単位・
-正規化重みの並びで配信する（フロントは材料の対応表も並べ替えも持たない）。
+正規化重みの並び（`axis_raw_value.py: axis_material_breakdown`が分解の結果へ材料カタログの宣言を添える）で配信する（フロントは材料の対応表も並べ替えも持たない）。
 
 ## 一次属性の語彙（`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`、別系統）
 
