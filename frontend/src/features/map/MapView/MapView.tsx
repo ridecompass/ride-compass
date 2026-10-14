@@ -63,7 +63,7 @@ import { debugLog } from "@/lib/debugLog";
 import { MAP_OVERLAY_EDGE_ATTRIBUTE, measureMapOverlayEdges, type RouteFitObscuredPx } from "@/lib/mapOverlayEdges";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
-import { closestPointOnSegment, longitudeScale } from "@/lib/localPlane";
+import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
 import { roundToDigits } from "@/lib/numberFormat";
 
 // 基礎地図のスタイルJSON。中のタイル・スプライト・グリフのURLはbackendがBASEMAP_PUBLIC_BASE_URLで
@@ -200,23 +200,14 @@ function nearestPointOnLineString(
   coordinates: readonly (readonly [number, number])[],
   point: readonly [number, number],
 ): [number, number] {
-  if (coordinates.length === 0) return [point[0], point[1]];
-
-  const scale = longitudeScale(point[1]);
-  const toPlane = ([lng, lat]: readonly [number, number]) => ({ x: lng * scale, y: lat });
-  const p = toPlane(point);
-  let best = toPlane(coordinates[0]);
-  let bestDistSq = Infinity;
-
+  let best: EdgeProjection | null = null;
   for (let i = 0; i < coordinates.length - 1; i++) {
-    const closest = closestPointOnSegment(p, toPlane(coordinates[i]), toPlane(coordinates[i + 1]));
-    const distSq = (p.x - closest.x) ** 2 + (p.y - closest.y) ** 2;
-    if (distSq < bestDistSq) {
-      bestDistSq = distSq;
-      best = closest;
-    }
+    const projected = projectOnEdge(point, coordinates[i], coordinates[i + 1]);
+    if (best === null || projected.offsetM < best.offsetM) best = projected;
   }
-  return [best.x / scale, best.y];
+  if (best !== null) return best.point;
+  const [lng, lat] = coordinates[0] ?? point;
+  return [lng, lat];
 }
 
 interface MapViewProps {

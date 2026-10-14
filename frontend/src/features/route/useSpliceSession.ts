@@ -6,6 +6,7 @@ import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { errorMessage } from "@/lib/apiError";
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect";
 import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
+import { routeEdgeKms } from "@/lib/routeDistance";
 import { buildGenerateRequest, type GenerationInput } from "@/features/route/generationRequest";
 import { generateRoutes } from "@/features/route/routeApi";
 import {
@@ -57,6 +58,7 @@ const shapeOfRoute = (route: RouteCandidate): SplicedRouteShape => ({
   edgeIds: route.edge_ids,
   coordinates: route.geometry.coordinates as GeoJSON.Position[],
   edgePointOffsets: route.edge_point_offsets,
+  edgeKms: routeEdgeKms(route.segments, route.edge_point_offsets),
   nodeIds: route.node_ids,
 });
 

@@ -48,7 +48,13 @@ import { installGeolocation } from "@/testing/geolocation";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
-import { makeGenerationConditions, makeRouteCandidate, makeRouteSegment } from "@/testing/routeFixtures";
+import {
+  makeGenerationConditions,
+  makeRouteCandidate,
+  makeRouteSegment,
+  routeThrough,
+  type Places,
+} from "@/testing/routeFixtures";
 import type { Coordinates, RouteCandidate } from "@/types/route";
 import type { AxisInspectorResult } from "@/features/map/regionApi";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
@@ -553,33 +559,22 @@ describe("地図で扱えること", () => {
   describe("区間の乗り換え", () => {
     // 地点（[経度, 緯度]）。元の候補は P0→P1→P2→P3→P4 を進み、もう1本は P1 と P2 の間を Q、P3 と P4 の間を R を通って進む
     // （片方の分かれ道だけを乗り換えると、どちらの候補とも違う道になる）。
-    const P0 = [139.7, 35.6];
-    const P1 = [139.71, 35.6];
-    const P2 = [139.72, 35.6];
-    const P3 = [139.73, 35.6];
-    const P4 = [139.74, 35.6];
-    const Q = [139.715, 35.61];
-    const R = [139.735, 35.61];
+    const PLACES: Places = {
+      P0: [139.7, 35.6],
+      P1: [139.71, 35.6],
+      P2: [139.72, 35.6],
+      P3: [139.73, 35.6],
+      P4: [139.74, 35.6],
+      Q: [139.715, 35.61],
+      R: [139.735, 35.61],
+    };
 
-    function through(id: string, edgeIds: string[], points: number[][], overrides: Partial<RouteCandidate> = {}) {
-      return route(id, {
-        kind: "destination",
-        spliceable: true,
-        edge_ids: edgeIds,
-        node_ids: points.map((point) => point.join(",")),
-        edge_point_offsets: points.map((_, index) => index),
-        geometry: { type: "LineString", coordinates: points },
-        ...overrides,
-      });
+    function through(id: string, names: string[], overrides: Partial<RouteCandidate> = {}) {
+      return route(id, { kind: "destination", spliceable: true, ...routeThrough(PLACES, names), ...overrides });
     }
 
-    const BASE = through("base", ["e1", "e2", "e3", "e4"], [P0, P1, P2, P3, P4], {
-      estimated_duration_seconds: 1800,
-      segments: [SEGMENT],
-    });
-    const OTHER = through("other", ["e1", "q1", "q2", "e3", "r1", "r2"], [P0, P1, Q, P2, P3, R, P4], {
-      estimated_duration_seconds: 2400,
-    });
+    const BASE = through("base", ["P0", "P1", "P2", "P3", "P4"], { estimated_duration_seconds: 1800 });
+    const OTHER = through("other", ["P0", "P1", "Q", "P2", "P3", "R", "P4"], { estimated_duration_seconds: 2400 });
     const DESTINATION_CONDITIONS = makeGenerationConditions({
       latitude: HERE.latitude,
       longitude: HERE.longitude,
@@ -656,7 +651,10 @@ describe("地図で扱えること", () => {
       clickMap(HERE, [
         { layer: "route-splice-bands-spliceBandHit", properties: band.properties ?? {}, geometry: band.geometry },
       ]);
-      jobs.respond([route("evaluated", { edge_ids: ["e1", "q1", "q2", "e3", "e4"] })], DESTINATION_CONDITIONS);
+      jobs.respond(
+        [route("evaluated", { edge_ids: ["P0-P1", "P1-Q", "Q-P2", "P2-P3", "P3-P4"] })],
+        DESTINATION_CONDITIONS,
+      );
       await user.click(await screen.findByRole("button", { name: "新しいルートを作成" }));
 
       await waitFor(() => expect(routeLinesOnMap()).toHaveLength(2));
