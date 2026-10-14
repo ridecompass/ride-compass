@@ -6,7 +6,7 @@
 // 見えなくなる。取得できるまでは軸0件で描く（`hooks/useAxisCatalog.ts`）。軸は軸スタジオで公開すれば、
 // 再デプロイなしに地図のレイヤーとして現れる。
 
-import type { DedicatedWayValueDisplay } from "./dedicatedWayValueLayer";
+import { mapPaintDeclarationOf, type MapPaintDeclaration } from "./valueScale";
 import { catalogAxisFromEntry, type CatalogAxis } from "@/lib/catalogAxis";
 import type { AxisCatalogEntry } from "@/types/route";
 
@@ -15,16 +15,10 @@ import type { AxisCatalogEntry } from "@/types/route";
  * ハードコードなしに導出できる（軸を軸スタジオで公開しただけで
  * 地図に現れる）。 */
 export interface DedicatedWayValueAxis extends CatalogAxis {
-  /** 専用way値配信APIへ添えるクエリパラメータ（軸カタログの`dynamic_way_value_conditions`）。`features/map/useDedicatedWayValues.ts`が
-   * 「どの軸のフェッチに時刻・想定速度を乗せるか」をaxis_idの分岐ではなくここから決める
-   * （乗せない入力は依存配列からも外れるため、時刻を動かしても時刻非依存の軸は再フェッチしない）。 */
-  needsTime: boolean;
-  needsBearing: boolean;
-  needsSpeed: boolean;
   /** 配信が、走行方位で値の決まらない道（値がnull）を返しうるか。trueの軸だけ凡例に「向きで決まらない」の行を持つ。 */
   undeterminedByBearing: boolean;
   /** 地図に塗るときの表示宣言。軸と同じカタログの行から作るため、軸が在れば必ず在る。 */
-  display: DedicatedWayValueDisplay;
+  display: MapPaintDeclaration;
 }
 
 export function dedicatedWayValueAxesFromCatalogAxes(axes: readonly AxisCatalogEntry[]): DedicatedWayValueAxis[] {
@@ -32,16 +26,8 @@ export function dedicatedWayValueAxesFromCatalogAxes(axes: readonly AxisCatalogE
     const base = catalogAxisFromEntry(axis);
     return {
       ...base,
-      needsTime: base.wayValueConditions.includes("at"),
-      needsBearing: base.wayValueConditions.includes("bearing_deg"),
-      needsSpeed: base.wayValueConditions.includes("speed_kmh"),
       undeterminedByBearing: axis.dynamic_way_value_undetermined_by_bearing,
-      display: {
-        kind: base.mapValueKind,
-        boundaries: axis.map_paint.thresholds,
-        legend: axis.map_paint.legend,
-        bandLabels: axis.map_paint.band_labels ?? undefined,
-      },
+      display: mapPaintDeclarationOf(axis.map_paint),
     };
   });
 }

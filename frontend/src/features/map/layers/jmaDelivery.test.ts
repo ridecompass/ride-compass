@@ -4,11 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { JMA_DELIVERIES, jmaTileUrlAt } from "@/testing/jmaDeliveries";
 import jmaExpectations from "@/types/generated/jma-expectations.json";
 import { mapDisplay } from "@/types/generated/mapDisplay";
+import { isTileRenderKind } from "@/features/map/layers/dynamicWeather";
 
 import {
   fetchJmaGeojson,
   fetchJmaTargetTimesFile,
-  isJmaTileKind,
   jmaFramesOf,
   JMA_POINT_VALUE_PROPERTY,
   jmaPlaceholderTileUrl,
@@ -22,7 +22,7 @@ import {
 vi.mock("@/lib/tileBaseUrl", () => ({ tileBaseUrl: () => "https://tiles.test" }));
 const PROXY = "https://tiles.test/api/jma-tile/";
 const isTileElement = (element: (typeof mapDisplay.weatherElements)[number]) =>
-  isJmaTileKind(element.kind) && element.jmaElements.length > 0;
+  isTileRenderKind(element.kind) && element.jmaElements.length > 0;
 const TILE_ELEMENTS = mapDisplay.weatherElements.filter(isTileElement);
 const TILE_DELIVERIES = TILE_ELEMENTS.flatMap((element): readonly JmaDelivery[] => element.jmaElements);
 const FEATURE_ELEMENT = mapDisplay.weatherElements.find(

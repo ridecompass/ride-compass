@@ -117,4 +117,3 @@ async def derive(conn: asyncpg.Connection, *, previous: str | None) -> None:
         await _derive_edges(conn, previous)
         await conn.execute("ANALYZE edge_landcover")
         await conn.execute(_WAY_ROLLUP)
-        await conn.execute("ANALYZE way_landcover")

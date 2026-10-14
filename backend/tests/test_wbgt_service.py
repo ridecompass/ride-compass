@@ -18,6 +18,7 @@ from shapely.geometry import Point, shape
 from app.domain.route import Coordinates
 from app.infrastructure import wbgt_client
 from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_cache
+from app.services.nearest_point_areas import new_cells_cache
 from app.services.wbgt_service import WbgtService
 from tests.fake_http import client_for
 
@@ -51,15 +52,19 @@ def _service(*, point_master=POINT_MASTER_CSV, forecast=None) -> tuple[WbgtServi
     else:
         forecasts.respond(json={"status": "success", "data": forecast})
     service = WbgtService(
-        client_for(upstream), point_master_cache=new_point_master_cache(), forecast_cache=new_forecast_cache()
+        client_for(upstream),
+        point_master_cache=new_point_master_cache(),
+        forecast_cache=new_forecast_cache(),
+        cells_cache=new_cells_cache(),
     )
     return service, upstream
 
 
 async def test_the_status_carries_the_area_the_same_point_holds_for():
-    """同じ情報提供地点の予測が当たる範囲（その地点が最寄りである範囲）を添える。もう1つの地点の近くは含まない。"""
+    """同じ情報提供地点の予測が当たる範囲（その地点が最寄りである範囲）を添える。もう1つの地点の近くは含まない。
+    範囲のために地点の表を取り直さない（予測を引くときに取った表を使う）。"""
     master = POINT_MASTER_CSV + ",,44263,大阪,,,,34,40.9,135,31.1,,9999-99-99,,,,,\n"
-    service, _ = _service(
+    service, upstream = _service(
         point_master=master, forecast=[_forecast("2026/08/22 14:00:00", "2026/08/22 15:00:00", "300")]
     )
 
@@ -69,6 +74,7 @@ async def test_the_status_carries_the_area_the_same_point_holds_for():
     area = shape(result.valid_area.model_dump())
     assert area.contains(Point(POINT.longitude, POINT.latitude))
     assert not area.contains(Point(135 + 31.1 / 60, 34 + 40.9 / 60))
+    assert [call.request.url for call in upstream.calls].count(wbgt_client.WBGT_POINT_MASTER_URL) == 1
 
 
 async def test_a_value_outside_the_provision_period_is_shown():

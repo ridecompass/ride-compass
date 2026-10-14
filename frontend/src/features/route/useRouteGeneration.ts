@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 
 import { debugLog } from "@/lib/debugLog";
+import { errorMessage } from "@/lib/apiError";
 import { SECOND_MS } from "@/lib/duration";
 import { useRouteFormSubmit } from "@/features/route/RouteForm/useRouteFormSubmit";
 import {
@@ -132,7 +133,7 @@ export function useRouteGeneration({
       }
       onOutcome(candidates.length > 0 ? "fresh" : "empty");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "不明なエラーが発生しました";
+      const message = errorMessage(error, "不明なエラーが発生しました");
       notice = { kind: "failed", message };
       debugLog("api:route", "ルート生成ハンドラで例外", { error: message }, "error");
       onOutcome("failed");

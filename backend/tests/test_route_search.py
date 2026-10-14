@@ -15,7 +15,7 @@
 - 起点・終点の状態の引き方（CSR／遷移構造からの索引）→ 周回・目的地の経路が起点に戻る・目的地へ着くことで
   `test_route_generation_behavior.py`が通す。
 - 標高属性の逆向き（`ElevationAttribute.reversed_as`）→ `test_attributes.py`。候補の難易度の距離加重平均
-  （`distance_weighted_difficulty`）→ `test_difficulty.py`。
+  （`domain/difficulty.py: weighted_mean_by_distance`）→ `test_difficulty.py`。
 - レグごとのコスト配列の合成（`domain/leg_costs.py`）→ `test_leg_costs.py`。
 - 探索カーネル（`domain/routing.py`）・評価軸（`domain/evaluation.py`）・走行モデル
   （`domain/cycling_speed.py`）・風（`domain/wind.py`）・0次フィルタ（`domain/hard_filters.py`）

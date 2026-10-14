@@ -96,6 +96,8 @@ export interface MapViewport {
   east: number;
   north: number;
   zoom: number;
+  /** 地図が今当てている向き（北から時計回りの度。0で北が上）。 */
+  bearing: number;
 }
 
 // ズームに応じた詳細格子の間隔。面で塗るセルは1点が受け持つ実面積なので、表示を縮めても隙間ができるだけ——ズームする

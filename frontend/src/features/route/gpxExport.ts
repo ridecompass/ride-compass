@@ -1,4 +1,4 @@
-import { closestPointOnSegment, longitudeScale, type PlanePoint } from "@/lib/localPlane";
+import { METERS_PER_DEGREE, closestPointOnSegment, longitudeScale, type PlanePoint } from "@/lib/localPlane";
 import type { RouteCandidate } from "@/types/route";
 
 // Suuntoアプリは1000点を超えるGPXの取り込みで問題が起きることがある
@@ -11,14 +11,12 @@ export const MAX_GPX_TRACK_POINTS = 1000;
 // ずれは道の形として見分けられない。上限点数に収まらない場合はこの値を倍にして再試行する。
 const SIMPLIFY_TOLERANCE_M = 3;
 
-const METERS_PER_DEGREE_LATITUDE = 111_320;
-
 /** 緯度経度を、座標列の中央緯度を基準にした局所平面（m）へ落とす。緯度経度のまま測ると、東西の曲がりだけが残りやすくなる。 */
 function toLocalPlane(coordinates: readonly GeoJSON.Position[]): PlanePoint[] {
   const lonScale = longitudeScale(coordinates[Math.floor(coordinates.length / 2)][1]);
   return coordinates.map(([lon, lat]) => ({
-    x: lon * METERS_PER_DEGREE_LATITUDE * lonScale,
-    y: lat * METERS_PER_DEGREE_LATITUDE,
+    x: lon * METERS_PER_DEGREE * lonScale,
+    y: lat * METERS_PER_DEGREE,
   }));
 }
 

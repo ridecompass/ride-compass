@@ -81,9 +81,10 @@ CONDITIONS = WeatherConditions(
 )
 WARNINGS = WeatherWarnings(
     warnings=[ActiveWarning(code="14", name="雷注意報", level="advisory", additions=["竜巻"])],
+    valid_area=None,
 )
 WBGT = WbgtStatus(
-    reading=WbgtReading(level="severe_warning", label="厳重警戒", value=30.0)
+    reading=WbgtReading(level="severe_warning", label="厳重警戒", value=30.0), valid_area=None
 )
 FLOODS = FloodForecasts(
     forecasts=[
@@ -93,7 +94,8 @@ FLOODS = FloodForecasts(
             label="神田川氾濫危険警報",
             condition="レベル４氾濫危険警報（発表）",
         )
-    ]
+    ],
+    valid_area=None,
 )
 AMEDAS = AmedasObservation(
     station_name="東京",
@@ -105,6 +107,7 @@ AMEDAS = AmedasObservation(
     precipitation_10min_mm=0.0,
     twilight=Twilight(sunrise="2026-08-29T05:12:00+09:00", sunset="2026-08-29T18:41:00+09:00"),
     weather_code=0,
+    valid_area=None,
 )
 
 #: 地点を問う経路と、そのサービスの依存・取れたときの答え。

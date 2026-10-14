@@ -7,8 +7,7 @@ import {
   gridToFeatureCollection,
   isWithinFutureWindow,
   observationIndexForTime,
-  tileDeliveryFailureLayerIds,
-  type DynamicWeatherGroupState,
+  pointsAtFailedTiles,
   type DynamicWeatherRenderPayload,
 } from "./dynamicWeather";
 
@@ -84,44 +83,24 @@ describe("gridToFeatureCollection・gridCellRing（格子から地物へ）", ()
   });
 });
 
-describe("tileDeliveryFailureLayerIds（配信が止まっている要素を表示中のチップ）", () => {
+describe("pointsAtFailedTiles（描く中身が、配信の返らないタイルのコマを指すか）", () => {
   // 記録の値は、失敗したタイルのコマのテンプレート（`jmaTileProtocol.ts`が描画ペイロードと同じ文字列で持つ）。
   const TEMPLATE = "https://example.com/risk/20260924000000/none/20260924010000/inund/{z}/{x}/{y}.png";
-  const tile = (kind: "rasterTile" | "vectorTile", template = TEMPLATE): DynamicWeatherRenderPayload => ({
-    kind,
-    tileUrlTemplate: template,
-  });
   const failures = new Map([["inund", TEMPLATE]]);
-  const group = (payload: DynamicWeatherRenderPayload | undefined, visible = true): DynamicWeatherGroupState => ({
-    main: { visible, payload },
-  });
   const grid: DynamicWeatherRenderPayload = { kind: "gridFill", geojson: { type: "FeatureCollection", features: [] } };
   const nextFrame = TEMPLATE.replace("20260924010000", "20260924011000");
 
   it.each([
+    ["ベクタタイルが、いま失敗しているコマを指す", { kind: "vectorTile", tileUrlTemplate: TEMPLATE }, true],
+    ["ラスタタイルも同じ", { kind: "rasterTile", tileUrlTemplate: TEMPLATE }, true],
+    ["自前で取る表現（格子）は対象外", grid, false],
+    ["描く中身がまだ無ければ対象外", undefined, false],
     [
-      "表示中のベクタタイルが、いま失敗しているコマを指す",
-      { disaster: group(tile("vectorTile")) },
-      failures,
-      ["disaster"],
+      "コマが進んで別のコマを指していれば、古い失敗は当たらない",
+      { kind: "vectorTile", tileUrlTemplate: nextFrame },
+      false,
     ],
-    [
-      "表示中のラスタタイルも同じ",
-      { precipitationNowcast: group(tile("rasterTile")) },
-      failures,
-      ["precipitationNowcast"],
-    ],
-    ["非表示のソースは対象外", { disaster: group(tile("vectorTile"), false) }, failures, []],
-    ["自前で取る表現（格子）は対象外", { precipitationNowcast: group(grid) }, failures, []],
-    ["描く中身がまだ無いソースは対象外", { windVector: group(undefined) }, failures, []],
-    [
-      "フレームが進んで別のコマを指していれば、古い失敗は当たらない",
-      { disaster: group(tile("vectorTile", nextFrame)) },
-      failures,
-      [],
-    ],
-    ["失敗が無ければ空", { disaster: group(tile("vectorTile")) }, new Map<string, string>(), []],
-  ])("%s", (_scene, groups, given, expected) => {
-    expect(tileDeliveryFailureLayerIds(groups, given)).toEqual(expected);
+  ] satisfies [string, DynamicWeatherRenderPayload | undefined, boolean][])("%s", (_scene, payload, expected) => {
+    expect(pointsAtFailedTiles(payload, failures)).toBe(expected);
   });
 });

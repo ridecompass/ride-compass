@@ -36,6 +36,7 @@ from app.infrastructure.debug_log import get_stats
 from app.infrastructure.jma_amedas_client import new_latest_time_cache, new_station_table_cache
 from app.infrastructure.jma_tile_client import JmaTileClient, JmaTileSharedState
 from app.services.jma_amedas_service import JmaAmedasService, load_station_rain_materials, new_rain_materials_cache
+from app.services.nearest_point_areas import new_cells_cache
 from tests.fake_http import client_for
 
 POINT = Coordinates(latitude=35.68, longitude=139.76)
@@ -145,6 +146,7 @@ def _service(http_client: httpx.AsyncClient) -> JmaAmedasService:
         JmaTileClient(http_client, JmaTileSharedState()),
         station_table_cache=new_station_table_cache(),
         latest_time_cache=new_latest_time_cache(),
+        cells_cache=new_cells_cache(),
     )
 
 

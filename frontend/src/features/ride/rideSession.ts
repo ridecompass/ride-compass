@@ -1,4 +1,5 @@
 import { HOUR_MS } from "@/lib/duration";
+import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { RouteCandidate } from "@/types/route";
 
 // 走行中のルートの一時保存。スマホのブラウザは裏に回したタブを捨てて読み込み直すことがあり、走行中にそれが起きても
@@ -16,12 +17,15 @@ export interface RideSession {
   riding: boolean;
 }
 
+// 保存した版のルート候補の型の印。画面が更新されて型が変わったら、前の版の候補を今の型として読まない。
+const ROUTE_CANDIDATE_SHAPE = routeGenerateConfig.route_candidate_shape;
+
 /** 保存する文字列。`savedAt`は保存した時刻（ミリ秒）。 */
 export function writeRideSession(session: RideSession, savedAt: number): string {
-  return JSON.stringify({ ...session, savedAt });
+  return JSON.stringify({ ...session, savedAt, shape: ROUTE_CANDIDATE_SHAPE });
 }
 
-/** 保存を読む。無い・空・読めない・形が違う・期限を過ぎた保存はnull。 */
+/** 保存を読む。無い・空・読めない・形が違う・ルート候補の型が違う版で書いた・期限を過ぎた保存はnull。 */
 export function readRideSession(raw: string | null, now: number): RideSession | null {
   if (!raw) return null;
   let parsed: unknown;
@@ -31,21 +35,8 @@ export function readRideSession(raw: string | null, now: number): RideSession | 
     return null;
   }
   if (typeof parsed !== "object" || parsed === null) return null;
-  const { route, riding, savedAt } = parsed as Record<string, unknown>;
+  const { route, riding, savedAt, shape } = parsed as Record<string, unknown>;
+  if (shape !== ROUTE_CANDIDATE_SHAPE) return null;
   if (typeof riding !== "boolean" || typeof savedAt !== "number" || now - savedAt > RIDE_SESSION_TTL_MS) return null;
-  if (!isRouteCandidate(route)) return null;
-  return { route, riding };
-}
-
-// 保存したあとに画面が更新されて形が変わっていても、描くのに要る項目があるものだけを使う。
-function isRouteCandidate(value: unknown): value is RouteCandidate {
-  if (typeof value !== "object" || value === null) return false;
-  const { id, geometry, segments } = value as Record<string, unknown>;
-  return (
-    typeof id === "string" &&
-    Array.isArray(segments) &&
-    typeof geometry === "object" &&
-    geometry !== null &&
-    Array.isArray((geometry as { coordinates?: unknown }).coordinates)
-  );
+  return { route: route as RouteCandidate, riding };
 }

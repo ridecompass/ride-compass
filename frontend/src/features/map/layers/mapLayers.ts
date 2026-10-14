@@ -33,6 +33,7 @@ import { PRECIPITATION_INTENSITY_LEVELS } from "./precipitationNowcast";
 import { WIND_SPEED_LEGEND_LEVELS } from "./windLayer";
 import type { MapAxisCatalog } from "@/features/map/mapAxisCatalog";
 import { axisNamesInText, type CatalogAxis } from "@/lib/catalogAxis";
+import { DISASTER_ELEMENTS } from "@/features/map/scene/groups/weather";
 import { FIXED_LENS_LABELS, LENS_DIFFICULTY_ID } from "@/lib/mapDisplay/routeStyleModes";
 
 /** 源泉が宣言する、地図に載るものの名前。 */
@@ -86,8 +87,6 @@ function forecastMinutesOf(source: string): number {
 }
 
 type WeatherElementDeclaration = (typeof mapDisplay.weatherElements)[number];
-
-const DISASTER_ELEMENTS = mapDisplay.weatherElements.filter((element) => element.group === "disaster");
 
 /** 名前の並び。同じ名前を名乗る要素（描き方違いの同じ名前付きソース）は1つにする。 */
 function labelList(elements: readonly WeatherElementDeclaration[]): string {

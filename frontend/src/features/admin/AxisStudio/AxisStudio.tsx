@@ -43,6 +43,24 @@ function labelForMaterialOrAxis(id: string, definitions: readonly AxisDefinition
   return definitions.find((d) => d.axis_id === id)?.label ?? materialCatalogLabel(id);
 }
 
+/** 開いているフォーム。1つの値なので、2つのフォームが同時に開いた状態を作れない。`republish`は「調整する」で
+ * 一時的に下書きへ戻した軸の編集で、保存時に公開へ戻す。 */
+type OpenForm =
+  | { kind: "edit"; axisId: string; republish: boolean }
+  | { kind: "duplicate"; from: AxisDefinitionResponse }
+  | { kind: "new" };
+
+function composerKeyOf(form: OpenForm): string {
+  if (form.kind === "edit") return form.axisId;
+  return form.kind === "duplicate" ? `duplicate-${form.from.axis_id}` : "new";
+}
+
+function composerTitleOf(editing: AxisDefinitionResponse | null, duplicateFrom: AxisDefinitionResponse | null): string {
+  if (editing)
+    return editing.is_published ? `表示専用フィールドを編集: ${editing.label}` : `軸を編集: ${editing.label}`;
+  return duplicateFrom ? `「${duplicateFrom.label}」を複製して新しい軸を作る` : "新しい軸を作る";
+}
+
 // 軸スタジオのトップレベルコンポーネント。一覧取得・作成・更新・削除の状態管理をここに
 // 集約し、フォーム自体はAxisComposerへ委ねる。認証・route handler経由の詳細は
 // docs/modules/frontend/axis-studio.md「AxisStudio.tsx（一覧・状態管理）」節参照。
@@ -52,27 +70,22 @@ export default function AxisStudio() {
   // 作成・更新以外の操作（下書きへ戻す・削除）の失敗。一覧を読み直すと消える。
   const [actionError, setActionError] = useState<string | null>(null);
   const listError = actionError ?? definitionsQuery.error?.message ?? null;
-  const [editingAxisId, setEditingAxisId] = useState<string | null>(null);
+  // 閉じていればnull。編集・複製・新規作成のいずれかを選んだときだけモーダル（components/ui/Dialog）で
+  // AxisComposerを開く（一覧を隠さない・目的の操作を選んでから開く導線）。複製はAxisComposerを「新規作成」モードの
+  // まま複製元の内容で初期化する（axis_idは空のまま、is_publishedは常にfalseへ落とす）。「調整する」で下書きへ
+  // 戻した軸の編集を保存せずに閉じると下書きのまま残るため、その事実を`notice`で必ず知らせる（黙って非公開になると
+  // 一般ユーザー向けの軸カタログから消えたことに気づけない）。
+  const [form, setForm] = useState<OpenForm | null>(null);
   const [deletingAxisId, setDeletingAxisId] = useState<string | null>(null);
   // 「削除」を押した軸。確認で「削除する」を押すまで消さない（消した軸を戻す手段が無いため）。
   const [confirmingDelete, setConfirmingDelete] = useState<AxisDefinitionResponse | null>(null);
   const [unpublishingAxisId, setUnpublishingAxisId] = useState<string | null>(null);
-  // 「調整する」で一時的に下書きへ戻した軸。保存時に公開へ戻す。編集を中断した場合は
-  // 下書きのまま残るため、その事実を`notice`で必ず知らせる（黙って非公開になると
-  // 一般ユーザー向けの軸カタログから消えたことに気づけない）。
-  const [republishAxisId, setRepublishAxisId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  // 複製元。nullでなければAxisComposerを「新規作成」モードのままduplicateFromの内容で
-  // 初期化する（axis_idは空のまま、is_publishedは常にfalseへ落とす——公開済み軸を
-  // 複製しても複製先は下書きから始まる）。
-  const [duplicateFrom, setDuplicateFrom] = useState<AxisDefinitionResponse | null>(null);
-  // 「新しい軸を作る」ボタンを押したときだけtrueになる。編集・複製・新規作成のいずれかを
-  // 選んだときだけモーダル（components/ui/Dialog）でAxisComposerを開く（一覧を隠さない・
-  // 目的の操作を選んでから開く導線）。
-  const [creatingNew, setCreatingNew] = useState(false);
-  // 開いているフォーム（閉じていればnull）。AxisComposerのkeyでもあり、別のフォームを開くと中身を作り直す。
-  const composerKey =
-    editingAxisId ?? (duplicateFrom ? `duplicate-${duplicateFrom.axis_id}` : creatingNew ? "new" : null);
+  // AxisComposerのkeyでもあり、別のフォームを開くと中身を作り直す。
+  const composerKey = form && composerKeyOf(form);
+  const editingAxisId = form?.kind === "edit" ? form.axisId : null;
+  const republishing = form?.kind === "edit" && form.republish;
+  const duplicateFrom = form?.kind === "duplicate" ? form.from : null;
   // いま開いているフォーム。待った後は、押した時点に閉じ込めた値ではなくこれを見る（待つ間に閉じる・別のフォームを
   // 開くと、押した時点のフォームはもう開いていない）。
   const liveComposerKey = useRef(composerKey);
@@ -85,16 +98,10 @@ export default function AxisStudio() {
     await definitionsQuery.refetch();
   }
 
-  /** モーダルを閉じる。`republished`は「保存で公開へ戻したか」で、**呼び出し側が渡す**
-   * ——`setRepublishAxisId(null)`の直後に呼んでも、この関数が読む`republishAxisId`は
-   * そのレンダーのクロージャのままで、再公開に成功した直後に「下書きのまま残った」と
-   * 通知してしまう（Reactのstate更新は次のレンダーまで反映されない）。 */
+  /** モーダルを閉じる。`republished`は「保存で公開へ戻したか」。 */
   function closeComposer(republished = false) {
-    if (republishAxisId !== null && !republished) setNotice(LEFT_AS_DRAFT_NOTICE);
-    setRepublishAxisId(null);
-    setEditingAxisId(null);
-    setDuplicateFrom(null);
-    setCreatingNew(false);
+    if (republishing && !republished) setNotice(LEFT_AS_DRAFT_NOTICE);
+    setForm(null);
   }
 
   async function handleSave(payload: AxisDefinitionPayload, isNew: boolean) {
@@ -106,7 +113,7 @@ export default function AxisStudio() {
       // 「調整する」で一時的に下書きへ戻した軸は、保存と同時に公開へ戻す
       // （公開済み軸は不変という原則は保ったまま、unpublish→更新→再公開という
       // 正規の手順をボタン1つに畳んだもの）。
-      republished = republishAxisId === payload.axis_id;
+      republished = republishing;
       await updateAxisDefinition(payload.axis_id, republished ? { ...payload, is_published: true } : payload);
     }
     await reload();
@@ -145,15 +152,8 @@ export default function AxisStudio() {
         setNotice(LEFT_AS_DRAFT_NOTICE);
         return;
       }
-      setRepublishAxisId(def.axis_id);
-      setEditingAxisId(def.axis_id);
+      setForm({ kind: "edit", axisId: def.axis_id, republish: true });
     });
-  }
-
-  function handleDuplicate(def: AxisDefinitionResponse) {
-    setEditingAxisId(null);
-    setCreatingNew(false);
-    setDuplicateFrom(def);
   }
 
   async function handleUnpublish(axisId: string) {
@@ -188,13 +188,7 @@ export default function AxisStudio() {
     ? (boundaries: readonly number[]) => bandColorsFor(previewMapValueKind, boundaries)
     : undefined;
   const mapValueUnit = previewCatalogAxis?.mapValueUnit ?? "";
-  const composerTitle = editingDefinition
-    ? editingDefinition.is_published
-      ? `表示専用フィールドを編集: ${editingDefinition.label}`
-      : `軸を編集: ${editingDefinition.label}`
-    : duplicateFrom
-      ? `「${duplicateFrom.label}」を複製して新しい軸を作る`
-      : "新しい軸を作る";
+  const composerTitle = composerTitleOf(editingDefinition, duplicateFrom);
 
   const draftDefs = definitions?.filter((d) => !d.is_published) ?? [];
   const publishedDefs = definitions?.filter((d) => d.is_published) ?? [];
@@ -242,10 +236,10 @@ export default function AxisStudio() {
             renderRow(
               def,
               <>
-                <Button size="sm" onClick={() => setEditingAxisId(def.axis_id)}>
+                <Button size="sm" onClick={() => setForm({ kind: "edit", axisId: def.axis_id, republish: false })}>
                   編集
                 </Button>
-                <Button size="sm" onClick={() => handleDuplicate(def)}>
+                <Button size="sm" onClick={() => setForm({ kind: "duplicate", from: def })}>
                   複製して新規作成
                 </Button>
                 <Button
@@ -280,7 +274,7 @@ export default function AxisStudio() {
             renderRow(
               def,
               <>
-                <Button size="sm" onClick={() => setEditingAxisId(def.axis_id)}>
+                <Button size="sm" onClick={() => setForm({ kind: "edit", axisId: def.axis_id, republish: false })}>
                   表示だけ編集
                 </Button>
                 <Button
@@ -290,7 +284,7 @@ export default function AxisStudio() {
                 >
                   調整する
                 </Button>
-                <Button size="sm" onClick={() => handleDuplicate(def)}>
+                <Button size="sm" onClick={() => setForm({ kind: "duplicate", from: def })}>
                   複製して新規作成
                 </Button>
                 <Button
@@ -306,15 +300,7 @@ export default function AxisStudio() {
         </TabsContent>
       </Tabs>
 
-      <Button
-        size="sm"
-        className="self-start font-bold"
-        onClick={() => {
-          setEditingAxisId(null);
-          setDuplicateFrom(null);
-          setCreatingNew(true);
-        }}
-      >
+      <Button size="sm" className="self-start font-bold" onClick={() => setForm({ kind: "new" })}>
         + 新しい軸を作る
       </Button>
 
@@ -335,7 +321,7 @@ export default function AxisStudio() {
             otherAxes={definitions ?? []}
             mapBandColors={mapBandColors}
             mapValueUnit={mapValueUnit}
-            republishing={republishAxisId !== null && republishAxisId === editingAxisId}
+            republishing={republishing}
             onCancelEdit={() => closeComposer()}
             onSave={handleSave}
           />

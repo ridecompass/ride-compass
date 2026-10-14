@@ -4,6 +4,8 @@ import {
   MOBILE_VIEWPORT,
   axisCatalogFixture,
   doneJobFixture,
+  generateRoutes,
+  installMapFinder,
   openMobileApp,
   openMobileSheet,
   routeGenerateResponseFixture,
@@ -131,4 +133,46 @@ test("モバイル: 候補0件の理由の窓が、開いている「ルート�
 
   await notice.getByRole("button", { name: "閉じる" }).click();
   await expect(notice).toBeHidden();
+});
+
+// 観点1（収まる）: 生成したルートを地図へ収めると、開いた「ルート結果」のシートに隠れず、その上の見えている所に描かれる。
+// 地図がどこまで覆われているかは実寸でしか決まらない（シートの高さは中身に合わせて決まる）。
+// ルートは南北に長くする。東西に長いと幅で倍率が決まり、覆う物を避けなくても地図の中ほどの細い帯に収まってしまう。
+const NORTH_SOUTH_ROUTE: [number, number][] = [
+  [139.7387, 35.74],
+  [139.74, 35.78],
+  [139.7387, 35.74],
+];
+
+test("モバイル: 生成したルートを地図へ収めると、開いた「ルート結果」のシートの上に描かれる", async ({ page }) => {
+  const generated = routeGenerateResponseFixture();
+  const routes = generated.routes.map((route) => ({
+    ...route,
+    geometry: { type: "LineString" as const, coordinates: NORTH_SOUTH_ROUTE },
+  }));
+  await page.addInitScript(installMapFinder);
+  await openMobileApp(page, {
+    routes: (page) =>
+      page.route("**/api/routes/generate/*", (route) =>
+        route.fulfill({ json: doneJobFixture({ ...generated, routes }) }),
+      ),
+  });
+  const sheet = await generateRoutes(page);
+
+  // 収める動きが終わって地図が止まってから読む。
+  await expect
+    .poll(() => page.evaluate(() => !window.__liveMap().isMoving() && window.__liveMap().loaded()), { timeout: 15_000 })
+    .toBe(true);
+  const sheetBox = await sheet.boundingBox();
+  expect(sheetBox).not.toBeNull();
+  const onScreen = await page.evaluate((points) => {
+    const map = window.__liveMap();
+    const box = map.getCanvas().getBoundingClientRect();
+    return points.map(([lng, lat]) => {
+      const { x, y } = map.project([lng, lat]);
+      return { x: Math.round(box.left + x), y: Math.round(box.top + y) };
+    });
+  }, NORTH_SOUTH_ROUTE);
+  const sheetTop = sheetBox?.y ?? 0;
+  expect(onScreen.filter(({ x, y }) => x < 0 || x > MOBILE_VIEWPORT.width || y < 0 || y > sheetTop)).toEqual([]);
 });

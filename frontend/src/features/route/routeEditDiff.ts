@@ -6,11 +6,11 @@
  * には手順の全部が要る。差なら、隣り合った乗り換えが1つの区間にまとまることも含めて、利用者が
  * 地図で見比べる形そのものになる。
  */
-import { cumulativeDistancesKm } from "@/features/route/geoDistance";
 import { pairedStretches } from "@/features/route/routeSplice";
 import { MINUTE_UNIT, secondsToMinutes } from "@/lib/duration";
 import { DIFFICULTY_DECIMALS, LOAD_DECIMALS } from "@/lib/mapDisplay/valueScale";
 import { roundToDigits, signMark } from "@/lib/numberFormat";
+import { routeEdgeKms } from "@/lib/routeDistance";
 import type { RouteCandidate } from "@/types/route";
 
 /** 変えた区間1つ。位置は元のルートの始点からの距離。 */
@@ -66,13 +66,6 @@ export interface EditDifference {
   stretches: ChangedStretch[];
 }
 
-type Shape = Pick<RouteCandidate, "edge_point_offsets">;
-
-/** `edge_ids`の`index`番目のEdgeの始点までの距離（km）。 */
-function kmAtEdge(shape: Shape, cumulativeKm: readonly number[], index: number): number {
-  return cumulativeKm[shape.edge_point_offsets[index]];
-}
-
 /** 指標ごとの元・編集後と差。編集後がまだ無ければ（評価する前）元の値だけを持つ。 */
 export function metricDifferences(origin: RouteCandidate, edited: RouteCandidate | null): MetricDifference[] {
   return EDIT_METRICS.map(({ value, ...metric }) => {
@@ -89,13 +82,13 @@ export function formatMetric(metric: Pick<MetricDifference, "digits" | "unit">, 
 
 export function editDifference(origin: RouteCandidate, edited: RouteCandidate): EditDifference {
   const pairs = pairedStretches(origin.edge_ids, edited.edge_ids);
-  const originKm = cumulativeDistancesKm(origin.geometry.coordinates);
-  const editedKm = cumulativeDistancesKm(edited.geometry.coordinates);
+  const originKm = routeEdgeKms(origin.segments, origin.edge_point_offsets);
+  const editedKm = routeEdgeKms(edited.segments, edited.edge_point_offsets);
   const stretches = pairs.map((pair) => {
-    const startKm = kmAtEdge(origin, originKm, pair.displayed.start);
-    const endKm = kmAtEdge(origin, originKm, pair.displayed.end);
-    const editedStartKm = kmAtEdge(edited, editedKm, pair.target.start);
-    const editedEndKm = kmAtEdge(edited, editedKm, pair.target.end);
+    const startKm = originKm[pair.displayed.start];
+    const endKm = originKm[pair.displayed.end];
+    const editedStartKm = editedKm[pair.target.start];
+    const editedEndKm = editedKm[pair.target.end];
     return { startKm, endKm, lengthDiffKm: editedEndKm - editedStartKm - (endKm - startKm) };
   });
   return { metrics: metricDifferences(origin, edited), stretches };

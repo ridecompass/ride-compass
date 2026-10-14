@@ -4,8 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import model_validator
 
 from app.api.dependencies import (
+    LandcoverTileReader,
     get_axis_inspector_service,
     get_dedicated_way_value_service,
+    get_landcover_tile_reader,
     get_region_service,
 )
 from app.api.rate_limit import enforce_rate_limit
@@ -21,7 +23,6 @@ from app.domain.region import RoadTileZoom, TileIndex, check_tile_index
 from app.domain.route import Coordinates
 from app.infrastructure.media_types import PNG_CONTENT_TYPE
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
-from app.services.landcover_tile_service import get_landcover_tile
 from app.services.dedicated_way_values import AxisWayValueLens
 from app.services.region_service import AxisInspectorService, RegionService
 from app.domain.strict_model import StrictModel
@@ -100,7 +101,13 @@ async def region_point_tile(
 
 
 @router.get("/api/region/landcover-tiles/{z}/{x}/{y}.png")
-async def region_landcover_tile(z: LandcoverTileZoom, x: TileIndex, y: TileIndex, request: Request) -> Response:
+async def region_landcover_tile(
+    z: LandcoverTileZoom,
+    x: TileIndex,
+    y: TileIndex,
+    request: Request,
+    read_tile: LandcoverTileReader = Depends(get_landcover_tile_reader),
+) -> Response:
     """土地被覆ラスタ（Esri×Impact Observatory 10m LULC）をそのまま面で塗ったラスタタイル。
 
     DBを読まないため`_region_tile_semaphore`（DB接続プールの取り合いを抑えるもの）には
@@ -109,7 +116,7 @@ async def region_landcover_tile(z: LandcoverTileZoom, x: TileIndex, y: TileIndex
     _check_tile_rate_limit(request, "landcover-tile")
     validate_tile_coords(z, x, y)
     async with _landcover_tile_semaphore:
-        tile = await get_landcover_tile(z, x, y)
+        tile = await read_tile(z, x, y)
     if tile is None:
         raise HTTPException(status_code=503, detail="土地被覆データが利用できません")
     return tile_response(tile, PNG_CONTENT_TYPE)
