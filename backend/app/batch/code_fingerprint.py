@@ -10,6 +10,7 @@
 """
 
 import ast
+import functools
 import hashlib
 import importlib.metadata
 from pathlib import Path
@@ -33,11 +34,18 @@ def _in_app(name: str) -> bool:
     return name == _PACKAGE or name.startswith(f"{_PACKAGE}.")
 
 
-def _imported(name: str, path: Path) -> set[str]:
+def _imported(name: str, path: Path) -> frozenset[str]:
     """`path`（モジュール`name`）が読み込む`app`の中のモジュールの名前（モジュールでない名前も混ざる）。"""
     package = name if path.name == "__init__.py" else name.rpartition(".")[0]
+    return _imported_by_source(package, path.read_bytes())
+
+
+# 読み解きは中身で決まるので、同じ中身は1プロセスで1度だけ読み解く。取込・派生の段は1回ごとに全部のモジュールを
+# たどり直し、読み解きが指紋の時間の大半を占める。
+@functools.cache
+def _imported_by_source(package: str, source: bytes) -> frozenset[str]:
     found: set[str] = set()
-    for node in ast.walk(ast.parse(path.read_bytes(), filename=str(path))):
+    for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
             found.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
@@ -49,7 +57,7 @@ def _imported(name: str, path: Path) -> set[str]:
                 module = node.module or ""
             found.add(module)
             found.update(f"{module}.{alias.name}" for alias in node.names)
-    return {module for module in found if _in_app(module)}
+    return frozenset(module for module in found if _in_app(module))
 
 
 def _with_parents(name: str) -> list[str]:
@@ -83,6 +91,8 @@ def code_fingerprint(module: str) -> str:
     return digest.hexdigest()
 
 
-def library_versions() -> list[str]:
+# 読み込んだライブラリはプロセスの間に替わらないので、1プロセスで1度だけ読む。
+@functools.cache
+def library_versions() -> tuple[str, ...]:
     """入っているライブラリの名前と版（`<名前>==<版>`）。"""
-    return sorted(f"{dist.metadata['Name']}=={dist.version}" for dist in importlib.metadata.distributions())
+    return tuple(sorted(f"{dist.metadata['Name']}=={dist.version}" for dist in importlib.metadata.distributions()))
