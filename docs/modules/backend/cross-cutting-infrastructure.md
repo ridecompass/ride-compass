@@ -340,6 +340,10 @@ SSLコンテキスト構築（CA証明書バンドルの読み込み・パース
 なりうるため、リクエストごとの新規生成をやめプロセス全体で使い回す（`main.py`の
 lifespanが起動時に主要なtimeout値[10.0/15.0]を事前ウォームアップするのもこのため）。
 
+タイルを中継するクライアントは、上流から1件取る所を`fetch_upstream`へ寄せる。上流の404（このパスで得るものが無い事実）は
+`UPSTREAM_NOT_FOUND`、ほかの失敗はNoneとして返し、404は`log_external_call`の失敗に数えない。404を受けた応答の本文と
+`Cache-Control`は、配信元ごとの宣言（`api/routers/_tile_http.py: UpstreamReplies`）から引く。
+
 ## 応答のgzip圧縮（`response_compression.py`）
 
 `ContentTypeGZipMiddleware`はStarletteの`GZipMiddleware`を、応答の`content-type`が
@@ -408,7 +412,7 @@ Basic認証必須）はサーバー側のファイルキャッシュしか消せ
 |---|---|
 | ステータス5xx | ERROR |
 | ステータス429 | DEBUG（`record_rate_limit_rejection`が抑制付きWARNINGで別途記録するため、ここでは重ねない） |
-| タイルの経路（`HIGH_FREQUENCY_PATH_PREFIXES`。どれもGETだけ）の成功と404（疎な格子・整備区域の外・配信前のタイルでは正常系） | DEBUG |
+| タイルの経路（`api/cache_policy.py: TILE_PATH_PREFIXES`。ブラウザに覚えさせる時間の対応表のタイルの行から導く。どれもGETだけ）の成功と404（疎な格子・整備区域の外・配信前のタイルでは正常系） | DEBUG |
 | ステータス4xx（429以外。タイルの経路の404を除く） | WARNING |
 | それ以外 | INFO |
 
