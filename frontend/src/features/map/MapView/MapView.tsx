@@ -598,6 +598,7 @@ export default function MapView({
         east: bounds.getEast(),
         north: bounds.getNorth(),
         zoom: map.getZoom(),
+        bearing: map.getBearing(),
       });
     }
     function handleMoveEnd() {

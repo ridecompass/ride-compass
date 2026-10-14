@@ -472,7 +472,7 @@ export default function Home() {
           <RideBar
             remaining={remaining}
             offRoute={progress.offRoute}
-            mapBearingDeg={riding.map?.headingUp ? (riding.map.bearing ?? 0) : 0}
+            mapBearingDeg={mapView.bearing}
             speedKmh={riding.speedKmh}
             wind={
               amedas?.wind_speed_ms != null && amedas.wind_direction !== null

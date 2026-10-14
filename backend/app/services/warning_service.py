@@ -16,7 +16,7 @@ from app.domain.strict_model import StrictModel
 class WeatherWarnings(StrictModel):
     warnings: list[ActiveWarning]
     #: 同じ警報が当たる範囲（地点を含む区域）。区域が分からない・地点を含まないならNone。
-    valid_area: ValidArea | None = None
+    valid_area: ValidArea | None
 
 
 class WarningService:
@@ -35,7 +35,7 @@ class WarningService:
         if resolved is None:
             return None
         if isinstance(resolved, OutsideAreas):
-            return WeatherWarnings(warnings=[])
+            return WeatherWarnings(warnings=[], valid_area=None)
 
         bulletins = await fetch_warning_documents(self._http_client, resolved.office_code, self._warning_cache)
         if bulletins is None:

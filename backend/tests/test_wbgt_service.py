@@ -18,6 +18,7 @@ from shapely.geometry import Point, shape
 from app.domain.route import Coordinates
 from app.infrastructure import wbgt_client
 from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_cache
+from app.services.nearest_point_areas import new_cells_cache
 from app.services.wbgt_service import WbgtService
 from tests.fake_http import client_for
 
@@ -51,7 +52,10 @@ def _service(*, point_master=POINT_MASTER_CSV, forecast=None) -> tuple[WbgtServi
     else:
         forecasts.respond(json={"status": "success", "data": forecast})
     service = WbgtService(
-        client_for(upstream), point_master_cache=new_point_master_cache(), forecast_cache=new_forecast_cache()
+        client_for(upstream),
+        point_master_cache=new_point_master_cache(),
+        forecast_cache=new_forecast_cache(),
+        cells_cache=new_cells_cache(),
     )
     return service, upstream
 

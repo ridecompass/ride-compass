@@ -1,16 +1,17 @@
-"""`domain/valid_area.py`——値が成り立つ範囲（画面が「今の地点がこの中にある間は取り直さない」と読む形）。
+"""`domain/valid_area.py`——値が成り立つ範囲（この中では同じ値が当たると約束する形）。
 
 - 区域の形は、地点を含むときだけ範囲にする
 - 最寄りの点（観測所・情報提供地点）で値が決まるものは、その点が最寄りである範囲
 
-ここで見ないもの: 4つの応答（警報・洪水・観測・暑さ指数）が範囲を添えること → それぞれのサービスのテスト
+ここで見ないもの: 4つの応答（警報・洪水・観測・暑さ指数）が範囲を添えること → それぞれのサービスのテスト、
+点の表ごとに図を一度だけ作ること → `test_nearest_point_areas.py`
 """
 
 import pytest
 from shapely.geometry import MultiPolygon, Point, box, shape
 
 from app.domain.route import Coordinates
-from app.domain.valid_area import nearest_point_area, valid_area_of
+from app.domain.valid_area import NearestPointCells, valid_area_of
 
 INSIDE = Coordinates(latitude=35.5, longitude=139.5)
 
@@ -24,8 +25,8 @@ def _contains(area, point: Coordinates) -> bool:
     [
         (box(139.0, 35.0, 140.0, 36.0), True),
         (MultiPolygon([box(139.0, 35.0, 140.0, 36.0), box(141.0, 37.0, 142.0, 38.0)]), True),
-        # 地点を含まない形（最寄りの区域へ寄せた・計算の境目で外れた）を範囲にすると、画面はすぐ外に出たと読み、
-        # 取り直しを繰り返す。
+        # 地点を含まない形（最寄りの区域へ寄せた・計算の境目で外れた）を範囲にすると、受け取った時点で地点が
+        # 範囲の外にあり、同じ値が当たる範囲という約束が成り立たない。
         (box(141.0, 37.0, 142.0, 38.0), False),
     ],
 )
@@ -56,7 +57,7 @@ STATIONS = [
 )
 def test_the_area_of_the_nearest_point_holds_the_point_and_only_that_station(point, nearest):
     """最寄りの点の範囲は今の地点と最寄りの点を含み、ほかの点を含まない（ほかの点の近くへ行けば、最寄りが変わる）。"""
-    area = nearest_point_area(point, STATIONS)
+    area = NearestPointCells(STATIONS).area(point)
 
     assert area is not None
     assert _contains(area, point)
@@ -66,4 +67,4 @@ def test_the_area_of_the_nearest_point_holds_the_point_and_only_that_station(poi
 
 def test_a_single_point_has_no_boundary():
     """点が1つなら、どこでもそれが最寄りで、外に出ることが無い。"""
-    assert nearest_point_area(INSIDE, STATIONS[:1]) is None
+    assert NearestPointCells(STATIONS[:1]).area(INSIDE) is None

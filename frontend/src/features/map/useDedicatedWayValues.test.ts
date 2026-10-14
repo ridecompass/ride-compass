@@ -22,7 +22,7 @@ const { dedicatedAxes } = mapCatalogOf([
 ]);
 const [, STATIC] = dedicatedAxes;
 // z14で横2枚×縦1枚のタイルにまたがる範囲
-const VIEWPORT: MapViewport = { west: 139.76, south: 35.68, east: 139.77, north: 35.685, zoom: 14 };
+const VIEWPORT: MapViewport = { west: 139.76, south: 35.68, east: 139.77, north: 35.685, zoom: 14, bearing: 0 };
 const AT = new Date("2026-09-24T00:00:00Z");
 const SPEED_KMH = 20;
 
