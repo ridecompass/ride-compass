@@ -16,7 +16,7 @@ description: "開発機の対話のセッションでタスクを進める決ま
 | 依存 | 担当のワークフローが入れてある | 要る道具を動かすときだけ、作業ツリーごとに `npm ci --prefix frontend` から入れる（docs/architecture/setup.md「作業ツリーどうしで node_modules を共有しない」）。backend は .claude/skills/run-checks/SKILL.md「開発機でのbackendテストの回し方」 |
 | 本番 | 接続情報を持たない（`docs/conventions/flow.md`「自動で進めないもの」） | 読める（`run_probe.py`）。書くのは下の「本番へ書く」 |
 | マージ | 検証担当がマージする | 検証担当と同じ確かめ（.claude/skills/task-work/SKILL.md「検証担当」の1〜5）を自分でして、満たしていれば聞かずにマージする |
-| 答え | 回答フォーム | ユーザーがチャットで決めたことを、Claude が issue に記録する（.claude/skills/ask/SKILL.md「答え」） |
+| 答え | 回答フォーム | ユーザーがチャットで決めたことを、Claude が issue に記録する（.claude/skills/ask/SKILL.md「答え」。答えを待つ問いがあれば `answer.mjs` で） |
 
 - **決まりの出どころ**: どちらも CLAUDE.md と、そこから指す docs/・`.claude/` の rules・skills・commands と `.claude/settings.json` のフックを読む。
   権限だけは使う人が決めるもので、担当は `.github/claude-task/settings.json`、開発機はユーザー自身の `~/.claude/settings.json` が持つ
