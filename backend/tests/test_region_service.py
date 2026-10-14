@@ -224,12 +224,14 @@ async def test_the_inspector_gives_the_values_the_map_paints_for_the_segment_and
     """押した区間の値は区間で塗る地図の色と、道1本の値は引いた地図の色と同じ値になる（倍率に依らない）。食い違うと、
     同じ道の地図の色と窓の数字が違って見える。勾配を塗る軸も、窓には得点を出す。道1本で塗る倍率で押したときの区間は、
     押した地点に最も近いその道の区間。道1本の値は、その道の区間を走った向きの勾配の得点の距離平均（ルートの値と同じ）で、
-    道のタグも読む軸も区間から畳む。土地被覆は、区間と道1本でそれぞれのもの。"""
+    道のタグも読む軸も区間から畳む。土地被覆は、区間と道1本でそれぞれのもの。内部軸は地図が塗らないので、窓にも出ない。"""
     axes = {**INSPECTED_AXES, "axis_mixed": shaped_axis(
         BreakpointLinearShape(terms=[MaterialTerm(material="axis_surface"), MaterialTerm(material="axis_grade")],
                               breakpoints=[(0.0, 0.0), (200.0, 100.0)]),
         axis_id="axis_mixed", is_published=True)}
-    with replaced_axis_definitions(axes):
+    internal = shaped_axis(BreakpointLinearShape(terms=[MaterialTerm(material="gradient_percent")],
+                                                 breakpoints=[(0.0, 0.0), (10.0, 100.0)]), axis_id="axis_internal")
+    with replaced_axis_definitions({**axes, internal.axis_id: internal}):
         result = await _inspector().inspect(int(WAY), feature_key, *pressed, PRESSED, QUERY, None)
         painted = {
             tile: {axis_id: await AxisWayValueLens(axis_id, copy_axis_definitions(), _TileMaterials(),

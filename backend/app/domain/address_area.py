@@ -4,7 +4,8 @@
 区画の表（`address_areas`）・鍵の表（`address_search_keys`）・街区の表（`address_blocks`）は派生の段
 （`batch/derive_addresses.py`）が作り、ここは段と街区の種類の語彙と、入力と鍵の両方にかける揃え方（`standardize_address`）・
 区画の名前から鍵を作る形（`search_keys`）・番地付きの残りから街区の番号を取る形（`BLOCK_NUMBER_PATTERN`）・
-区画と街区の表示の名前（地点の検索の住所の表示名。`area_label`・`block_label`）を持つ。
+区画と街区の表示の名前（地点の検索の住所の表示名。`area_label`・`block_label`）・地点の検索の住所の並び
+（`address_hit_order_sql`）・地番の名前を区画に当てる鍵の順（`parcel_name_candidates`）を持つ。
 アドレス・ベース・レジストリ（ABR）の列の読み方は`infrastructure/source_models.py`が持ち、ここへは名前で届く。
 """
 
@@ -12,6 +13,7 @@ import re
 import unicodedata
 from collections.abc import Iterable, Sequence
 
+from app.domain.material_sql import sql_literals
 from app.domain.place_search import PlaceMatchLevel
 
 #: 区画の段（粗い→細かい）。郡は段にせず、郡に属す町村の区画が名前（`county_name`）で持つ。
@@ -119,3 +121,43 @@ def search_keys(heads: Sequence[tuple[str, str]], tails: Iterable[str] = ("",)) 
     keys = {standardize_address("".join(parts) + tail) for parts in variants for tail in tails}
     return frozenset(key for key in keys if key)
 
+
+
+def longest_head_rank_sql(key: str) -> str:
+    """番地付きの入力の頭に当たった鍵`key`のうち、最も長いものを1位にする順位の式（窓関数）。区画の鍵の後ろに番地が続く
+    入力（「西新宿2-8-1」）では、短い鍵（「西新宿」）より長い鍵（「西新宿2-」）の区画が細かい。"""
+    return f"rank() OVER (ORDER BY length({key}) DESC)"
+
+
+def address_hit_order_sql(numbered: str, level: str, continued: str, distance: str) -> str:
+    """住所の候補の並び（`ORDER BY`の式の列）。`numbered`・`continued`は番地付き・続きで当たったら1の式、`level`は区画の段、
+    `distance`は検索の中心からの距離。
+
+    「全部に当たる・続き」→ 番地付き、その中は段の粗いもの → 全部に当たるもの → 続き → 近いもの。
+    """
+    # 段を当たり方より先にするのは、1文字の入力（「柏」）で同じ名前の大字が上限を埋め、市区町村（「柏市」）が漏れないため。
+    levels = f"array_position(ARRAY[{sql_literals(ADDRESS_AREA_LEVELS)}]::text[], {level})"
+    return f"{numbered}, {levels}, {continued}, {distance}"
+
+
+#: 地番の名前の頭・お尻に当てる区画の名前の最短の長さ（揃えた形の文字数）。1文字では無関係な名前に当たる。
+_PARTIAL_NAME_MIN_LENGTH = 2
+
+#: 名前の括弧とその中（全角・半角）。
+_PARENTHESIZED = re.compile(r"[（(][^）)]*[）)]")
+
+
+def parcel_name_key(name: str) -> str:
+    """地番の名前と区画を結ぶ形。字の「字」を除いて揃え、丁目の区切りの`-`を末尾から除く（「２丁目」→「2」）。"""
+    return standardize_address(name.removeprefix("字")).replace("字", "").rstrip("-")
+
+
+def parcel_name_candidates(written: str) -> list[str]:
+    """地番の名前`written`（大字・丁目名＋小字・通称名）を区画の名前（`parcel_name_key`の形）へ当てる鍵を、当てる順に。
+    同じ → 頭に当たる長いもの → お尻に当たる長いもの（2文字以上）。名前の括弧の中は除く。"""
+    name = parcel_name_key(_PARENTHESIZED.sub("", written))
+    if not name:
+        return []
+    return [name,
+            *(name[:n] for n in range(len(name) - 1, _PARTIAL_NAME_MIN_LENGTH - 1, -1)),
+            *(name[n:] for n in range(1, len(name) - _PARTIAL_NAME_MIN_LENGTH + 1))]
