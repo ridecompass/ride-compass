@@ -190,12 +190,7 @@ def poi_density_material_id(kind: str) -> str:
 
 
 def stop_count_material_ids() -> tuple[str, ...]:
-    """停止の待ちを所要時間へ足すのに要る材料id（`POI_COUNT_KINDS`と1対1）。
-
-    走行モデルはこれらを**軸の構成と無関係に**必要とする。軸が分解した材料だけを
-    経路へ運ぶ既定（`evaluation.py: route_facing_material_ids`）に任せると、停止の軸を
-    非公開にした瞬間に所要時間から停止の待ちが静かに消える。
-    """
+    """停止の待ちを所要時間へ足すのに要る材料id（`POI_COUNT_KINDS`と1対1）。"""
     return tuple(poi_density_material_id(kind) for kind in POI_COUNT_KINDS)
 
 

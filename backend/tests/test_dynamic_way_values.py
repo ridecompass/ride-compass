@@ -39,7 +39,7 @@ def _material(material_id, dtype="numeric", unit="", value_sql=None, additive=Fa
         dtype=dtype,
         unit=unit,
         tile_property=None,
-        value_sql=value_sql,
+        value_sql=value_sql or f"w.{material_id}",
         additive=additive,
         coverage=CoverageExcluded(reason="架空", missing_semantics="definite"),
     )

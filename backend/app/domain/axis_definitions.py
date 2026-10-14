@@ -50,7 +50,6 @@ from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.axis_templates import evaluate_breakpoint_linear, evaluate_categorical
 from app.domain.difficulty import round_difficulty_array, weight_share
 from app.domain import material_catalog
-from app.domain.material_catalog import WIND_DRAG_RATIO
 from app.domain.strict_model import StrictModel
 from app.domain.weather_elements import WEATHER_ELEMENTS
 
@@ -856,13 +855,11 @@ def check_axis_set(definitions: dict[str, AxisDefinition]) -> None:
     topological_axis_order(definitions)
 
 
-# リクエストごとに値が変わりうる材料id（風向・風速・走行速度由来）。`MATERIAL_CATALOG`の
-# `value_sql=None`は「SQLでは求められない」という別の意味も持つ（動的データ以外に、
-# 評価へ配線していない材料もNoneになる）ため流用せず、ここに正準定義を置く。
+# リクエストごとに値が変わりうる材料id（風向・風速・走行速度由来）。
 # `dynamic_axis_topological_order`がこの集合を起点に、依存する軸を機械的に導出する
 # （軸id・材料idのハードコードを個別の軸ぶん増やさない汎用設計）。各材料の評価関数は
 # `domain/dynamic_materials.py: DYNAMIC_MATERIAL_EVALUATORS`に1対1で登録する。
-REQUEST_DYNAMIC_MATERIAL_IDS = frozenset({WIND_DRAG_RATIO})
+REQUEST_DYNAMIC_MATERIAL_IDS = material_catalog.materials_of_source("request")
 
 
 def _axes_depending_on_materials(
