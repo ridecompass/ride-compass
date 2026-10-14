@@ -10,7 +10,6 @@ import { deriveFetchLayerStatus, type LayerDataStatus, type MapLayerVisibility }
 import {
   fetchJmaGeojson,
   fetchJmaTargetTimesFile,
-  isJmaTileKind,
   jmaFrameKey,
   jmaFramesOf,
   jmaTilePayload,
@@ -31,7 +30,8 @@ import {
 import { precipitationCells } from "@/features/map/layers/precipitationNowcast";
 import { gridAtTime, windArrows, type MapViewport } from "@/features/map/layers/windLayer";
 import {
-  tileDeliveryFailureLayerIds,
+  isTileRenderKind,
+  pointsAtFailedTiles,
   type DynamicWeatherGroupState,
   type DynamicWeatherLayerId,
   type DynamicWeatherRenderPayload,
@@ -220,10 +220,10 @@ export function useDynamicWeatherLayers({
     () =>
       WEATHER_SOURCES.map((source) =>
         sourceTimeline(
-          source.stages.map((stage, index) =>
+          source.stages.map((stage) =>
             stage.origin === "grid"
-              ? gridStageFrames(index, grid.grid, now)
-              : jmaStageFrames(index, deliveryResults.get(stage.delivery.id)?.frames ?? []),
+              ? gridStageFrames(stage, grid.grid, now)
+              : jmaStageFrames(stage, deliveryResults.get(stage.delivery.id)?.frames ?? []),
           ),
         ),
       ),
@@ -251,13 +251,11 @@ export function useDynamicWeatherLayers({
     }[] = [];
     for (const source of shownSources) {
       const ref = selected.get(source);
-      if (ref === undefined || !("frame" in ref)) continue;
-      const stage = source.stages[ref.stage];
-      if (stage.origin !== "jma" || isJmaTileKind(stage.kind)) continue;
+      if (ref?.origin !== "jma" || isTileRenderKind(ref.kind)) continue;
       requests.push({
-        key: geojsonKey(stage.delivery, ref.frame),
+        key: geojsonKey(ref.delivery, ref.frame),
         group: source.group,
-        delivery: stage.delivery,
+        delivery: ref.delivery,
         frame: ref.frame,
         label: source.label,
       });
@@ -289,16 +287,13 @@ export function useDynamicWeatherLayers({
     (source: WeatherSource): DynamicWeatherRenderPayload | undefined => {
       const ref = selected.get(source);
       if (ref === undefined) return undefined;
-      const stage = source.stages[ref.stage];
-      if ("time" in ref) {
-        if (stage.origin !== "grid") return undefined;
+      if (ref.origin === "grid") {
         const drawn = gridAtTime(grid.grid, grid.detail, ref.time);
-        return GRID_PAYLOAD[stage.value](drawn.points, ref.time, drawn.spacingDeg);
+        return GRID_PAYLOAD[ref.value](drawn.points, ref.time, drawn.spacingDeg);
       }
-      if (stage.origin !== "jma") return undefined;
-      if (isJmaTileKind(stage.kind)) return jmaTilePayload(stage.kind, stage.delivery, ref.frame);
-      const geojson = geojsons.get(geojsonKey(stage.delivery, ref.frame));
-      return geojson && { kind: stage.kind, geojson };
+      if (isTileRenderKind(ref.kind)) return jmaTilePayload(ref.kind, ref.delivery, ref.frame);
+      const geojson = geojsons.get(geojsonKey(ref.delivery, ref.frame));
+      return geojson && { kind: ref.kind, geojson };
     },
     [selected, grid.grid, grid.detail, geojsons],
   );
@@ -313,8 +308,7 @@ export function useDynamicWeatherLayers({
   }, [isShown, payloadOf]);
 
   // 配信元のタイルが返らない状態は、空タイルで代替するぶんフェッチ側のerrorに現れない
-  // （`jmaTileProtocol.ts`）。表示中のフレームのURLと突き合わせて、そのタイルを出している
-  // チップだけをエラーにする。
+  // （`jmaTileProtocol.ts`）。表示中のソースが描くコマのURLと突き合わせ、取得の失敗に数える。
   const tileFailures = useSyncExternalStore(subscribeJmaTileFailures, jmaTileFailures, jmaTileFailures);
 
   // チップごとの取得状態。チップは複数の名前付きソースを束ねるため、表示中のソースのどれかが
@@ -326,6 +320,8 @@ export function useDynamicWeatherLayers({
       const results = deliveriesOf(sources).map(({ delivery }) => deliveryResults.get(delivery.id));
       const groupGeojsons = geojsonStates.filter((_, index) => geojsonRequests[index]?.group === group);
       const onGrid = sources.some(readsGrid);
+      const payloads = sources.map((source) => dynamicWeather[source.group]?.[source.source]?.payload);
+      const failedTiles = sources.find((_, index) => pointsAtFailedTiles(payloads[index], tileFailures));
       const loading =
         results.some((result) => result === undefined) ||
         groupGeojsons.some((geojson) => geojson.pending) ||
@@ -333,14 +329,12 @@ export function useDynamicWeatherLayers({
       const error =
         results.find((result) => result?.error)?.error ??
         groupGeojsons.find((geojson) => geojson.error)?.error ??
-        (onGrid ? grid.error : null);
+        (onGrid ? grid.error : null) ??
+        (failedTiles ? `${failedTiles.label}のタイルの配信が返らない` : null);
       const hasFetched = results.some((result) => result !== undefined) || (onGrid && grid.hasFetched);
-      const hasPayload = sources.some((source) => dynamicWeather[source.group]?.[source.source]?.payload !== undefined);
+      const hasPayload = payloads.some((payload) => payload !== undefined);
       status[group] = deriveFetchLayerStatus(loading, error, hasPayload, hasFetched);
     }
-    // 配信が落ちている要素を出しているチップは、フェッチ側が正常でもエラーにする
-    // （deriveFetchLayerStatusと同じくエラーを最優先にする）。
-    for (const layerId of tileDeliveryFailureLayerIds(dynamicWeather, tileFailures)) status[layerId] = "error";
     return status;
   }, [
     shownSources,
