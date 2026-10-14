@@ -17,7 +17,7 @@ describe("RideBar", () => {
     { case: "速さがあれば時速の整数で出す", speedKmh: 18.4, text: "18km/h" },
     { case: "速さが無ければ、無いことを出す", speedKmh: null, text: "—km/h" },
   ])("$case", ({ speedKmh, text }) => {
-    render(<RideBar remaining={null} offRoute={false} speedKmh={speedKmh} wind={null} />);
+    render(<RideBar remaining={null} offRoute={false} mapBearingDeg={0} speedKmh={speedKmh} wind={null} />);
     expect(bar()).toHaveTextContent(text);
   });
 
@@ -26,6 +26,7 @@ describe("RideBar", () => {
       <RideBar
         remaining={null}
         offRoute={false}
+        mapBearingDeg={0}
         speedKmh={null}
         wind={{ directionDeg: 180, directionLabel: "南", speedMs: 3.24 }}
       />,
@@ -33,8 +34,25 @@ describe("RideBar", () => {
     expect(bar()).toHaveTextContent("南の風");
     expect(bar()).toHaveTextContent("3.2m/s");
 
-    rerender(<RideBar remaining={null} offRoute={false} speedKmh={null} wind={null} />);
+    rerender(<RideBar remaining={null} offRoute={false} mapBearingDeg={0} speedKmh={null} wind={null} />);
     expect(bar()).not.toHaveTextContent("の風");
+  });
+
+  it.each([
+    { case: "北が上の地図", mapBearingDeg: 0, rotation: "rotate(0deg)" },
+    // 地図が東を上に回っているときは、矢印も同じだけ戻して地図の上の向きに合わせる。
+    { case: "東が上の地図", mapBearingDeg: 90, rotation: "rotate(270deg)" },
+  ])("風の矢印は地図の向きに合わせて回す: $case", ({ mapBearingDeg, rotation }) => {
+    render(
+      <RideBar
+        remaining={null}
+        offRoute={false}
+        mapBearingDeg={mapBearingDeg}
+        speedKmh={null}
+        wind={{ directionDeg: 180, directionLabel: "南", speedMs: 3 }}
+      />,
+    );
+    expect(bar().querySelector("[data-wind-arrow]")).toHaveStyle({ transform: rotation });
   });
 
   it.each([
@@ -49,20 +67,22 @@ describe("RideBar", () => {
       texts: ["残り: —km", "到着予想: —"],
     },
   ])("$case", ({ remaining, texts }) => {
-    render(<RideBar remaining={remaining} offRoute={false} speedKmh={null} wind={null} />);
+    render(<RideBar remaining={remaining} offRoute={false} mapBearingDeg={0} speedKmh={null} wind={null} />);
     for (const text of texts) expect(bar()).toHaveTextContent(text);
   });
 
   it("ルートを外れている間だけ、外れていることを出す", () => {
     const remaining = { remainingKm: 3, arrivalAt: null };
-    const { rerender } = render(<RideBar remaining={remaining} offRoute={true} speedKmh={null} wind={null} />);
+    const { rerender } = render(
+      <RideBar remaining={remaining} offRoute={true} mapBearingDeg={0} speedKmh={null} wind={null} />,
+    );
     expect(screen.getByRole("status", { name: "ルートを外れています" })).toBeInTheDocument();
-    rerender(<RideBar remaining={remaining} offRoute={false} speedKmh={null} wind={null} />);
+    rerender(<RideBar remaining={remaining} offRoute={false} mapBearingDeg={0} speedKmh={null} wind={null} />);
     expect(screen.queryByRole("status", { name: "ルートを外れています" })).toBeNull();
   });
 
   it("選んだ候補が無ければ、残りも到着予想も出さない", () => {
-    render(<RideBar remaining={null} offRoute={false} speedKmh={null} wind={null} />);
+    render(<RideBar remaining={null} offRoute={false} mapBearingDeg={0} speedKmh={null} wind={null} />);
     expect(bar()).not.toHaveTextContent("残り");
     expect(bar()).not.toHaveTextContent("到着予想");
   });

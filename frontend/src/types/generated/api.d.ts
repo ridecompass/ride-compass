@@ -697,6 +697,7 @@ export interface components {
             twilight: components["schemas"]["Twilight"] | null;
             /** Weather Code */
             weather_code: number | null;
+            valid_area: components["schemas"]["ValidArea"] | null;
         };
         /** AxisCatalogEntry */
         AxisCatalogEntry: {
@@ -1168,6 +1169,7 @@ export interface components {
         FloodForecasts: {
             /** Forecasts */
             forecasts: components["schemas"]["ActiveFloodForecast"][];
+            valid_area: components["schemas"]["ValidArea"] | null;
         };
         /** GenerationConditions */
         GenerationConditions: {
@@ -1885,6 +1887,16 @@ export interface components {
             /** Sunset */
             sunset: string;
         };
+        /** ValidArea */
+        ValidArea: {
+            /**
+             * Type
+             * @constant
+             */
+            type: "MultiPolygon";
+            /** Coordinates */
+            coordinates: number[][][][];
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -1926,6 +1938,7 @@ export interface components {
         /** WbgtStatus */
         WbgtStatus: {
             reading: components["schemas"]["WbgtReading"] | null;
+            valid_area: components["schemas"]["ValidArea"] | null;
         };
         /** WeatherConditions */
         WeatherConditions: {
@@ -1955,6 +1968,7 @@ export interface components {
         WeatherWarnings: {
             /** Warnings */
             warnings: components["schemas"]["ActiveWarning"][];
+            valid_area: components["schemas"]["ValidArea"] | null;
         };
         /** WindDirection */
         WindDirection: {

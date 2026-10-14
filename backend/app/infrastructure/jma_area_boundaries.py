@@ -36,10 +36,17 @@ BOUNDARY_PATH = DATA_DIR / "jma_area" / (SOURCE_URL.rsplit("/", 1)[1].removesuff
 class AreaBoundaries:
     def __init__(self, codes: list[str], geometries: list[BaseGeometry]):
         self._codes = codes
+        self._geometries = geometries
+        self._index = {code: index for index, code in enumerate(codes)}
         self._tree = shapely.STRtree(geometries)
 
     def __len__(self) -> int:
         return len(self._codes)
+
+    def shape(self, code: str) -> BaseGeometry | None:
+        """区域のコードの境界。無いコードならNone。"""
+        index = self._index.get(code)
+        return None if index is None else self._geometries[index]
 
     def find(self, lat: float, lon: float) -> str | None:
         """地点を含む区域のコード。含む区域が無ければ`NEAREST_LIMIT_DEG`以内で最も近い区域。"""
@@ -95,6 +102,15 @@ async def find_class20_code(lat: float, lon: float) -> str | None:
         )
         raise AreaBoundariesUnavailableError from exc
     return boundaries.find(lat, lon)
+
+
+async def area_shape(class20_code: str) -> BaseGeometry | None:
+    """区域（area.jsonのclass20）の境界。境界を読めない・無いコードならNone（範囲を添えないだけで、警報の取得は止めない）。"""
+    try:
+        boundaries = await asyncio.to_thread(load_boundaries, BOUNDARY_PATH)
+    except (OSError, ValueError, shapely.errors.GEOSException):
+        return None
+    return boundaries.shape(class20_code)
 
 
 class OutsideAreas:

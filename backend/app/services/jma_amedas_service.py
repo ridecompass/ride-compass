@@ -24,6 +24,7 @@ from cachetools import TTLCache
 from app.domain.rain import RAIN_HISTORY_HOURS, StationRainMaterials, is_rain_history_current, rain_material_values
 from app.domain.time_zone import JST, as_jst
 from app.domain.geo import nearest_point_index
+from app.domain.valid_area import nearest_point_area
 from app.domain.jma_amedas import AmedasObservation, apparent_temperature_from_amedas
 from app.domain.route import Coordinates
 from app.domain.twilight import sunrise_sunset_jst
@@ -87,6 +88,7 @@ class JmaAmedasService:
                 "weather_code": derive_observed_weather_code(
                     observation.precipitation_10min_mm, suikei, observation.temperature_c
                 ),
+                "valid_area": nearest_point_area(point, list(stations.values())),
             }
         )
 

@@ -7,13 +7,16 @@ from cachetools import TTLCache
 
 from app.domain.jma_warning import ActiveWarning, collect_active_warnings
 from app.domain.route import Coordinates
-from app.infrastructure.jma_area_boundaries import OutsideAreas, resolve_point_area
+from app.domain.valid_area import ValidArea, valid_area_of
+from app.infrastructure.jma_area_boundaries import OutsideAreas, area_shape, resolve_point_area
 from app.infrastructure.jma_warning_client import fetch_warning_documents
 from app.domain.strict_model import StrictModel
 
 
 class WeatherWarnings(StrictModel):
     warnings: list[ActiveWarning]
+    #: 同じ警報が当たる範囲（地点を含む区域）。区域が分からない・地点を含まないならNone。
+    valid_area: ValidArea | None = None
 
 
 class WarningService:
@@ -38,6 +41,8 @@ class WarningService:
         if bulletins is None:
             return None
 
+        shape = await area_shape(resolved.class20_code)
         return WeatherWarnings(
-            warnings=collect_active_warnings(bulletins, resolved.class20_code, resolved.class10_code)
+            warnings=collect_active_warnings(bulletins, resolved.class20_code, resolved.class10_code),
+            valid_area=None if shape is None else valid_area_of(shape, point),
         )

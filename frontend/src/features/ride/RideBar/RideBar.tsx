@@ -9,7 +9,7 @@ import {
   OffRouteIcon,
   WindDirectionArrowIcon,
 } from "@/components/ui/icons/icons";
-import { downwindDeg } from "@/lib/cardinalLabel";
+import { downwindDeg, normalizeDeg } from "@/lib/cardinalLabel";
 import { formatJstHourMinute } from "@/lib/time";
 
 import type { RideRemaining } from "../rideRemaining";
@@ -28,6 +28,8 @@ interface RideBarProps {
   remaining: RideRemaining | null;
   /** ルートを外れているか。外れている間、残りと到着予想は外れる前の所のまま止まる。 */
   offRoute: boolean;
+  /** 地図の向き（地図の上が真北から時計回りに何度か）。風の矢印をこの分だけ戻し、地図の上の向きに合わせる。 */
+  mapBearingDeg: number;
   speedKmh: number | null;
   wind: RideBarWind | null;
 }
@@ -45,7 +47,7 @@ function Unit({ children }: { children: ReactNode }) {
 }
 
 /** 走行モードの間、画面の上の1行（ふだんは天気の帯）に出す走りの数字（ルートの残り・到着予想・今の速さ・風）。 */
-export default function RideBar({ remaining, offRoute, speedKmh, wind }: RideBarProps) {
+export default function RideBar({ remaining, offRoute, mapBearingDeg, speedKmh, wind }: RideBarProps) {
   return (
     <div role="group" aria-label="走りの数字" className="flex min-w-0 items-center gap-3">
       {remaining !== null && (
@@ -85,7 +87,11 @@ export default function RideBar({ remaining, offRoute, speedKmh, wind }: RideBar
       </Stat>
       {wind !== null && (
         <Stat>
-          <span className="inline-flex" style={{ transform: `rotate(${downwindDeg(wind.directionDeg)}deg)` }}>
+          <span
+            data-wind-arrow=""
+            className="inline-flex"
+            style={{ transform: `rotate(${normalizeDeg(downwindDeg(wind.directionDeg) - mapBearingDeg)}deg)` }}
+          >
             <WindDirectionArrowIcon size={16} />
           </span>
           <span className="sr-only">{wind.directionLabel}の風: </span>

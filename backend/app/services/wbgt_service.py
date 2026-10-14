@@ -10,6 +10,7 @@ from cachetools import TTLCache
 from app.domain.warning_levels import WarningBadgeLevel
 from app.domain.route import Coordinates
 from app.domain.geo import nearest_point_index
+from app.domain.valid_area import ValidArea, nearest_point_area
 from app.domain.wbgt import (
     FORECAST_SEARCH_WINDOW_HOURS,
     WbgtForecast,
@@ -31,6 +32,8 @@ class WbgtReading(StrictModel):
 class WbgtStatus(StrictModel):
     #: 警告として出す段の値。提供期間の外で値が得られないときと、警告として意味を持たない低いレベルのときはNone。
     reading: WbgtReading | None
+    #: 同じ情報提供地点の予測が当たる範囲（その地点が最寄りである範囲）。地点の表が無い・地点を含まないならNone。
+    valid_area: ValidArea | None = None
 
 
 class WbgtService:
@@ -40,6 +43,15 @@ class WbgtService:
         self._forecast_cache = forecast_cache
 
     async def get_status(self, point: Coordinates, now: datetime) -> WbgtStatus | None:
+        """出発地点の`now`（JST）時点の暑さ指数警戒レベルと、同じ予測が当たる範囲。"""
+        status = await self._status(point, now)
+        if status is None:
+            return None
+        # 地点の表は予測を引くときに取ってあり（キャッシュ）、範囲のために外部へ問い合わせることはない。
+        points = await fetch_point_master(self._http_client, self._point_master_cache)
+        return status.model_copy(update={"valid_area": nearest_point_area(point, points) if points else None})
+
+    async def _status(self, point: Coordinates, now: datetime) -> WbgtStatus | None:
         """出発地点の`now`（JST）時点の暑さ指数警戒レベルを取得する。
 
         空（段なし）を返すのは、警告として意味を持たない低いレベルのときと、提供期間の外で今の時刻の値が

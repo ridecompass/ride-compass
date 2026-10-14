@@ -45,6 +45,7 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 |---|---|---|
 | `weather.py` | 天候のPydanticモデル（`WeatherConditions`・`WeatherPeriodOutlook`。MSMの計算値）と「今日」のパネルの読み方（時系列の先頭と同じ暦日の時刻・日次の最大と範囲・一定間隔のコマ（間隔は応答にも載る））、アメダスの10分間の実測（降水量・気温）と推計気象分布の区分からWMO天気コードを導く`derive_observed_weather_code`（降っているかと雨・雪は観測所の実測が、降っていないときの晴れ・くもりは推計気象分布が決め、推計の雨・雪の区分はくもりに数える。日照時間は夜は空によらず0になるので使わない。「降っていない」の境`PRECIPITATION_MIN_MM`は、「今日」のパネルの降水量の「-」と地図の降水の塗りにも生成物で届く） | `weather_service.py`・`jma_amedas.py` |
 | `jma_amedas.py` | 風の来る向き`WindDirection`（16方位コードからの読み替えは`jma_amedas_client.py`。静穏・欠測・範囲外のコードは方位なし。呼び名は`domain/geo.py: SIXTEEN_POINT_LABELS`から引く）・体感温度計算（BOM式）・`AmedasObservation`モデル（観測所名と観測の時刻は観測所ごとに決まり、Redisに持つ。天気コード`weather_code`はリクエストの地点の推計気象分布で決まるため、日の出・日没と同じく応答のたびにサービスが入れ、Redisには持たない） | `jma_amedas_service.py` |
+| `valid_area.py` | 値が成り立つ範囲（区域の境界・最寄りの点のボロノイ領域）を、地点を含むときだけ応答の形`ValidArea`にする | `warning_service.py`・`flood_service.py`・`wbgt_service.py`・`jma_amedas_service.py` |
 | `jma_area.py` | 区域（class20）のコード→JMA警報エリア（class20→class15→class10→office）の親子関係解決。辿る地域マスタは`AreaMaster`（area.jsonの形は`jma_warning_client.py`が解く。区域の名前は読まず、二次細分区域は親の府県予報区があれば解決する） | `warning_service.py`・`flood_service.py` |
 | `jma_warning.py` | サイクリングで出さない種別（名称で持つ。既定は出す）・電文1件`WarningBulletin`と、区域の種別の引き方（区域の項目が無い電文だけを二次細分区域で引く）・アクティブ警報抽出（電文の1地域ぶんの種別`AreaWarningKind`から。種別は名称と発表中かへ読み替え済みで届く）・警戒度の段と呼び名（`JMA_LEVEL_LABELS`。段は名称が含む呼び名から導く。危険警報＝警戒レベル4は警報と特別警報の間の段で、氾濫危険警報と同じ段） | `warning_service.py`・`warning_display.py` |
 | `wbgt.py` | WBGT警戒レベル判定（熱中症予防運動指針の5段階閾値）・提供期間判定・段階の表示名（`WBGT_LEVEL_LABELS`）・情報提供地点`WbgtPoint`と予測値`WbgtForecast`・今の予測の選び方（`current_forecast`） | `wbgt_service.py`・`warning_display.py` |
@@ -54,6 +55,17 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 `twilight.py`は外部APIに依存しないローカルの天文計算のみで、
 実際の主消費者は[routing-engine.md](routing-engine.md)が主管する`road_graph_engine.py`
 である。
+
+### 値が成り立つ範囲（`domain/valid_area.py`）
+
+バッジ系（警報・WBGT・洪水予報・アメダス）の応答は、同じ値が当たる範囲（`valid_area`）を添える。警報・洪水予報は地点を
+含む区域の境界、アメダス・WBGTは最寄りの観測所・情報提供地点が最寄りであり続ける範囲（点の並びのボロノイ図のその点の
+領域。地点の緯度で経度を縮めた平面で引く）。画面は今の地点がこの中にある間は取り直さない——境目をまたいだかを画面が
+数字（何km・何分）で決めず、値を決めたのと同じ事実で読むため。範囲は地点を含むときだけ添える（最寄りの区域へ寄せた・
+計算の境目で外れたときに添えると、画面はすぐ外に出たと読んで取り直しを繰り返す）。区域は地点を含む1つの面だけを送り
+（島の多い区域を丸ごと送ると重い）、座標の桁は区域の境界を置くときの簡略化に合わせて丸める。範囲は取ってある境界・点の
+表（キャッシュ）から作り、外部への問い合わせは増やさない。アメダスの天気コード・日の出と日没はリクエストの地点で決まり、
+範囲の中でも変わる（画面の取り直しの間隔で追う）。
 
 ## API（`api/routers/weather.py`）
 

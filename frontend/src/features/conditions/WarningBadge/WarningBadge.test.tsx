@@ -31,6 +31,14 @@ describe("WarningBadgeList", () => {
     expect(button).toHaveTextContent(expected.label);
   });
 
+  it("小さく出すときは文字を出さず、最も重い段階の色のアイコンだけにする（読み上げの名前は同じ）", () => {
+    render(<WarningBadgeList items={[item("a", "wbgt", "warning")]} failures={[]} compact />);
+    const expected = display("wbgt", "warning");
+    const button = screen.getByRole("button", { name: `気象警報・注意報あり: ${expected.label}。押すと詳細を表示` });
+    expect(button).toHaveTextContent("");
+    expect(button).toHaveStyle({ color: expected.color });
+  });
+
   it("複数なら、最も重い段階の呼び名に件数を添える（同じ重さなら先の方）", () => {
     render(
       <WarningBadgeList

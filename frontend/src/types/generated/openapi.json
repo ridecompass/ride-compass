@@ -2164,6 +2164,16 @@
               }
             ],
             "title": "Weather Code"
+          },
+          "valid_area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -2177,7 +2187,8 @@
           "wind_direction",
           "precipitation_10min_mm",
           "twilight",
-          "weather_code"
+          "weather_code",
+          "valid_area"
         ],
         "title": "AmedasObservation"
       },
@@ -3495,12 +3506,23 @@
             },
             "type": "array",
             "title": "Forecasts"
+          },
+          "valid_area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "forecasts"
+          "forecasts",
+          "valid_area"
         ],
         "title": "FloodForecasts"
       },
@@ -5602,6 +5624,38 @@
         ],
         "title": "Twilight"
       },
+      "ValidArea": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "MultiPolygon",
+            "title": "Type"
+          },
+          "coordinates": {
+            "items": {
+              "items": {
+                "items": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Coordinates"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "ValidArea"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -5724,12 +5778,23 @@
                 "type": "null"
               }
             ]
+          },
+          "valid_area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "reading"
+          "reading",
+          "valid_area"
         ],
         "title": "WbgtStatus"
       },
@@ -5859,12 +5924,23 @@
             },
             "type": "array",
             "title": "Warnings"
+          },
+          "valid_area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "warnings"
+          "warnings",
+          "valid_area"
         ],
         "title": "WeatherWarnings"
       },

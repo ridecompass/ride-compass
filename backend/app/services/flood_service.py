@@ -8,12 +8,15 @@ from cachetools import TTLCache
 from app.domain.flood_forecast import ActiveFloodForecast, extract_active_flood_forecast
 from app.domain.route import Coordinates
 from app.infrastructure.flood_client import fetch_flood_documents
-from app.infrastructure.jma_area_boundaries import OutsideAreas, resolve_point_area
+from app.domain.valid_area import ValidArea, valid_area_of
+from app.infrastructure.jma_area_boundaries import OutsideAreas, area_shape, resolve_point_area
 from app.domain.strict_model import StrictModel
 
 
 class FloodForecasts(StrictModel):
     forecasts: list[ActiveFloodForecast]
+    #: 同じ予報が当たる範囲（地点を含む区域）。区域が分からない・地点を含まないならNone。
+    valid_area: ValidArea | None = None
 
 
 class FloodService:
@@ -38,9 +41,13 @@ class FloodService:
         if bulletins is None:
             return None
 
-        return FloodForecasts(forecasts=[
-            forecast
-            for bulletin in bulletins
-            if (forecast := extract_active_flood_forecast(bulletin, resolved.class20_code, resolved.class10_code))
-            is not None
-        ])
+        shape = await area_shape(resolved.class20_code)
+        return FloodForecasts(
+            forecasts=[
+                forecast
+                for bulletin in bulletins
+                if (forecast := extract_active_flood_forecast(bulletin, resolved.class20_code, resolved.class10_code))
+                is not None
+            ],
+            valid_area=None if shape is None else valid_area_of(shape, point),
+        )
