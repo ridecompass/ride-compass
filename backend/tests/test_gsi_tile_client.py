@@ -20,6 +20,7 @@ import respx
 from cachetools import LRUCache
 
 from app.infrastructure import gsi_tile_client
+from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from tests.fake_http import client_for
 
 UPSTREAM = "https://cyberjapandata.gsi.go.jp"
@@ -63,7 +64,7 @@ async def test_outside_coverage_is_remembered_for_the_process_but_not_across_a_r
     same_process = await client(unreachable(), not_found).get(RELIEF)
     after_restart = await client(router).get(RELIEF)
 
-    assert first is same_process is gsi_tile_client.GSI_TILE_NOT_FOUND
+    assert first is same_process is UPSTREAM_NOT_FOUND
     assert after_restart == (b"\x89PNG", "image/png")
     assert warnings() == []
 
