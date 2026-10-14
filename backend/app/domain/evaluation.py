@@ -239,7 +239,7 @@ def compose_costs_from_axis_matrix(
     penalty_strength: float,
     *,
     static_sums: tuple[np.ndarray, np.ndarray] | None = None,
-    density: Mapping[str, DensityCost] | None = None,
+    density: Mapping[str, DensityCost],
 ) -> AxisComposition:
     """`build_static_edge_score_matrix`/`evaluate_dynamic_axis_arrays`が求めた軸別
     スコア配列群から、重み付き合成のcost・composite difficulty配列を求める。

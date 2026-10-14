@@ -350,7 +350,7 @@ def dedicated_axes():
 )
 def test_region_dedicated_way_values_returns_map_values_json(axis_id, material_id, params, conditions):
     raw = {"1": 2.0, "2": -1.5}
-    expected = paint_feature_values(axis_id, AXIS_DEFINITIONS, list(raw), {}, {material_id: raw})
+    expected = paint_feature_values(axis_id, AXIS_DEFINITIONS, list(raw), {}, {material_id: raw}, as_difficulty=False)
     fake = FakeDynamicWayValueService(values=dict(raw), material_id=material_id, conditions_type=type(conditions))
     app.dependency_overrides[get_dedicated_way_value_service] = lambda: _lens(axis_id, {material_id: fake})
 
@@ -373,7 +373,8 @@ def test_region_dedicated_way_values_folds_the_segments_of_a_way_on_the_zoomed_o
     segments = FeatureSegments(feature_keys=("1", "1"), distance_m=np.full(2, 100.0), feature_bearing_deg=np.zeros(2),
                                columns={"gradient_percent": grades})
     expected = paint_folded_feature_values(
-        SIGNED, AXIS_DEFINITIONS, list(raw), {}, {"gradient_percent": raw}, segments, {"gradient_percent": grades})
+        SIGNED, AXIS_DEFINITIONS, list(raw), {}, {"gradient_percent": raw}, segments, {"gradient_percent": grades},
+        as_difficulty=False)
     fake = FakeDynamicWayValueService(values=dict(raw), segment_values=grades)
     app.dependency_overrides[get_dedicated_way_value_service] = lambda: _lens(
         SIGNED, {"gradient_percent": fake}, segments=segments)

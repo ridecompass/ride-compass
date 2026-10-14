@@ -143,59 +143,64 @@ class RouteTurn(StrictModel):
     longitude: float
 
 
-class RouteDraft(StrictModel):
-    """組み立て途中の1本の経路。エンジンが作り、並べ終えたあと`RouteCandidate`になる。
-
-    辞書フィールドは`RouteSegmentDetail`の同名フィールドを候補の全区間へ距離加重平均で
-    集約したもので、「データ無しはキーを持たない」規約も引き継ぐ。
-    """
+class EvaluatedRoute(StrictModel):
+    """エンジンが評価した1本の経路。区間から候補単位への集約の前で、集約を足すと`RouteDraft`になる。"""
 
     # エンジンは周回の方位だけを付け、方位を持たない経路は空のまま。`RouteCandidate`になるときに付け直せる。
     direction_label: str
     distance_km: float
     geometry: LineStringGeometry
-    elevation_gain_m: float | None = None
-    segments: list[RouteSegmentDetail] = Field(default_factory=list)
-    overall_difficulty: OverallDifficulty | None = None
+    elevation_gain_m: float | None
+    segments: list[RouteSegmentDetail]
     # 所要時間の見積もり（秒）。区間の走行時間（`domain/cycling_speed.py`の走行モデルが巡航速度と区間の条件から求めた
     # 速度）＋停止の待ち＋ターンの待ち。経路の選び方には使っておらず、表示のためだけに持つ。
-    estimated_duration_seconds: float | None = None
+    estimated_duration_seconds: float | None
     # 所要時間の見積もりで風を使えなかった（風の予報が読めず、無風として計算した）。画面が利用者へ知らせる。
-    wind_unavailable: bool = False
+    wind_unavailable: bool
     # 所要時間の見積もりで、勾配か停止要因の件数の値が無く、既定（平地・待ち無し）で数えた区間の距離の割合（0〜1）。
     # 数えるのはビンへ畳む前のEdge単位。画面が「データの無い区間が◯%」と知らせる。区間が無ければNone。
-    missing_travel_data_share: float | None = None
-    axis_difficulties: dict[str, float] = Field(default_factory=dict)
-    # 合計は丸め誤差を除いて`overall_difficulty`と一致する。フロントの「内訳（重み付き
-    # 寄与度）」表示はこれをそのまま使い、ルート設定の重みを使った独自再計算はしない。
-    axis_contributions: dict[str, float] = Field(default_factory=dict)
+    missing_travel_data_share: float | None
     # axis_id→折れ点を通す前の生値。単位が定まる軸だけが持つ。得点（0-100）は目盛りの
     # 引き方に依存する相対評価のため、軸単体で経路を判断するにはこの絶対値が要る。
     # 単位は`GET /api/axis-catalog`の`raw_value_units.unit`が持ち、`total_unit`のある軸は走行距離を
     # 掛けて経路全体の実数（例: 止まる回数）にできる。区間の値は持たない（`route_axis_raw_values`）。
-    axis_raw_values: dict[str, float] = Field(default_factory=dict)
-    material_values: dict[str, float] = Field(default_factory=dict)
+    axis_raw_values: dict[str, float]
     # categorical材料id→{値: その値が占める延長割合(0〜1)}。平均できない材料の内訳。
-    material_category_shares: dict[str, dict[str, float]] = Field(default_factory=dict)
+    material_category_shares: dict[str, dict[str, float]]
     # 経路を構成するEdge idの列（起点から順）。フロントは候補どうしの共通部分を集合演算で
     # 求め、別の道を通る区間を出すのに使う（区間の乗り換え）。
     # backendはステートレスのため、乗り換え後の経路もこのidの列で受け取って評価し直す。
     # エンジンが経路をEdgeの列として持たない場合は空のまま。
-    edge_ids: list[str] = Field(default_factory=list)
+    edge_ids: list[str]
     # `geometry.coordinates`におけるEdgeの境界点の位置（`edge_ids`より1件多い）。
     # 隣接Edgeの境界点は重複させずに連結するため、座標列だけからはEdgeの境目を復元
     # できない。Edge単位で決めた区間を地図へ帯として描くのに使う
     # （`coordinates[offsets[i]:offsets[j] + 1]`がEdge i〜j-1の形状）。
-    edge_point_offsets: list[int] = Field(default_factory=list)
+    edge_point_offsets: list[int]
     # 経路が通るNode idの列（起点から順。`edge_ids`より1件多く、`node_ids[i]`が
     # `edge_ids[i]`の始点、末尾が終点）。フロントは「候補どうしが同じ地点を通るか」を
     # これで判定する——座標の完全一致でも実質は一致するが、乗り換えを鎖で伸ばすほど
     # 「同じ地点」の判定が結果を左右するため、グラフが持つ同一性をそのまま渡す。
     # `edge_ids`が空の候補では空のまま。
-    node_ids: list[str] = Field(default_factory=list)
+    node_ids: list[str]
     # 経路が分かれ道で曲がる所（左折・右折・Uターン）を経路の順に。分かれ道の無い点の曲がりは入れない
     # （`domain/routing.py: turns_along`）。`edge_ids`が空の候補では空のまま。
-    turns: list[RouteTurn] = Field(default_factory=list)
+    turns: list[RouteTurn]
+
+
+class RouteDraft(EvaluatedRoute):
+    """組み立て途中の1本の経路。評価した経路へ区間からの集約を足したもので、並べ終えたあと`RouteCandidate`になる。
+
+    辞書フィールドは`RouteSegmentDetail`の同名フィールドを候補の全区間へ距離加重平均で
+    集約したもので、「データ無しはキーを持たない」規約も引き継ぐ。
+    """
+
+    overall_difficulty: OverallDifficulty | None
+    axis_difficulties: dict[str, float]
+    # 合計は丸め誤差を除いて`overall_difficulty`と一致する。フロントの「内訳（重み付き
+    # 寄与度）」表示はこれをそのまま使い、ルート設定の重みを使った独自再計算はしない。
+    axis_contributions: dict[str, float]
+    material_values: dict[str, float]
 
 
 class RouteCandidate(RouteDraft):

@@ -186,7 +186,7 @@ def paint_feature_values(
     materials: Mapping[str, MaterialColumn],
     served: Mapping[str, Mapping[str, float | None]],
     *,
-    as_difficulty: bool = False,
+    as_difficulty: bool,
 ) -> dict[str, float | None]:
     """フィーチャーごとに、地図が軸`axis_id`について塗る値（`map_paint`の塗る値が難易度なら得点、符号付き材料なら
     その材料の値）。`as_difficulty`なら、符号付き材料を塗る軸も得点を返す（区間インスペクタ）。
@@ -238,7 +238,7 @@ def paint_folded_feature_values(
     segments: FeatureSegments,
     served_segments: Mapping[str, np.ndarray],
     *,
-    as_difficulty: bool = False,
+    as_difficulty: bool,
 ) -> dict[str, float | None]:
     """道1本のフィーチャーごとに地図が軸`axis_id`について塗る値を、その道の区間をルートの区間に見立てて、ルートの値と
     同じ決まり（`domain/route.py: merge_axis_difficulties`の、区間の得点の距離平均）で畳んで求める。

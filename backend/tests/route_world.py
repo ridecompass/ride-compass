@@ -4,7 +4,7 @@
 本物の`GraphService`・エンジンの組み立て（`services/route_generation_setup.py: assemble_route_generation_setup`）・戦略層を通す。
 
 使う側: `test_route_generation_behavior.py`（戦略層の入口）・`test_routes_generate.py`（HTTPの入口）・
-`test_routing.py`（生成の経路がPythonから呼ぶJIT）。
+`test_routing.py`（生成の経路がPythonから呼ぶJIT）・`test_route_generator.py`（経由地の無い周回の指定だけ）。
 """
 
 from collections.abc import Callable
@@ -24,12 +24,15 @@ from app.domain.traffic import stop_count_material_ids
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
 from app.domain.route_preference import RoutePreference
-from app.domain.route_request import RequestedConditions
+from app.domain.route_request import FixedPoints, RequestedConditions
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
 from app.services.graph_service import GraphService
 from app.services.weather_service import WeatherService
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
+
+#: 経由地も目的地も置かない周回の指定。
+NO_POINTS = FixedPoints(waypoints=[], destination=None)
 
 AVOID_AXIS = "avoid"
 BAD_MATERIAL = "m_bad"
