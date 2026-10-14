@@ -24,7 +24,7 @@ from app.infrastructure.db_status import DbStatusQuery
 from app.infrastructure.derived_data_freshness import DerivedDataFreshnessQuery
 from app.infrastructure.flood_client import new_flood_cache
 from app.infrastructure.gsi_tile_client import NOT_FOUND_MAX_ENTRIES, GsiTileClient
-from app.infrastructure.http_client import JSON_API_TIMEOUT, TILE_PROXY_TIMEOUT, get_http_client
+from app.infrastructure.http_client import JMA_JSON_TIMEOUT, SLOW_JSON_TIMEOUT, TILE_PROXY_TIMEOUT, get_http_client
 from app.infrastructure.jma_amedas_client import new_latest_time_cache, new_station_table_cache
 from app.infrastructure.jma_tile_client import JmaTileClient, JmaTileSharedState
 from app.infrastructure.jma_warning_client import new_area_data_cache, new_warning_cache
@@ -80,12 +80,12 @@ def get_weather_service():
 
 
 def get_warning_service():
-    return WarningService(get_http_client(JSON_API_TIMEOUT), area_data_cache=_area_data_cache, warning_cache=_warning_cache)
+    return WarningService(get_http_client(JMA_JSON_TIMEOUT), area_data_cache=_area_data_cache, warning_cache=_warning_cache)
 
 
 def get_amedas_service():
     return JmaAmedasService(
-        get_http_client(JSON_API_TIMEOUT),
+        get_http_client(JMA_JSON_TIMEOUT),
         get_jma_tile_client(),
         station_table_cache=_station_table_cache,
         latest_time_cache=_latest_time_cache,
@@ -95,7 +95,7 @@ def get_amedas_service():
 
 def get_wbgt_service():
     return WbgtService(
-        get_http_client(JSON_API_TIMEOUT),
+        get_http_client(SLOW_JSON_TIMEOUT),
         point_master_cache=_point_master_cache,
         forecast_cache=_forecast_cache,
         cells_cache=_point_cells_cache,
@@ -103,7 +103,7 @@ def get_wbgt_service():
 
 
 def get_flood_service():
-    return FloodService(get_http_client(JSON_API_TIMEOUT), area_data_cache=_area_data_cache, flood_cache=_flood_cache)
+    return FloodService(get_http_client(SLOW_JSON_TIMEOUT), area_data_cache=_area_data_cache, flood_cache=_flood_cache)
 
 
 @asynccontextmanager

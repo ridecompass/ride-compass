@@ -60,8 +60,8 @@ async def get(path: str) -> tuple[bytes, str] | EmptyTile | None:
     return None if cached is UNAVAILABLE else cached
 
 
-async def set(path: str, content: bytes, content_type: str) -> None:
-    """取得できたタイルをRedisへ書き戻す。
+async def set(path: str, content: bytes, content_type: str) -> tuple[bytes, str] | EmptyTile:
+    """取得できたタイルをRedisへ書き戻し、次に`get`が返すのと同じ形で返す（呼び出し元は書いたその場でもこれを返す）。
 
     中身が空なら実体ではなく`EMPTY_TILE`と同じフラグで持つ。実体を保持しても
     返す先が無い——クライアントは在否インデックス（`jma_tile_index.py`）を見て
@@ -69,9 +69,10 @@ async def set(path: str, content: bytes, content_type: str) -> None:
     """
     if is_empty_tile(content, _extension(path)):
         await set_empty(path)
-        return
+        return EMPTY_TILE
     value = content_type.encode("latin-1", errors="replace") + b"\0" + content
     await set_bytes(_key(path), value, ttl_seconds=TTL_SECONDS, category=_CATEGORY, path=path)
+    return content, content_type
 
 
 async def set_empty(path: str) -> None:

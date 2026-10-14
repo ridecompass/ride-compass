@@ -46,7 +46,7 @@ class FakeJmaTileClient:
         self._fetched = fetched
         self._parent = parent
         self.fetched_paths: list[str] = []
-        self.stored: list[tuple[str, str]] = []
+        self.stored: list[tuple[str, bytes, str]] = []
 
     async def get_cached(self, path):
         return self._cached
@@ -61,7 +61,8 @@ class FakeJmaTileClient:
         return self._parent
 
     async def store(self, path, content, content_type):
-        self.stored.append((path, content_type))
+        self.stored.append((path, content, content_type))
+        return content, content_type
 
 
 def _answer(monkeypatch, **answers) -> FakeJmaTileClient:
@@ -182,7 +183,7 @@ def test_jma_tile_proxy_interpolates_zoom_without_native_data(monkeypatch):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/png")
     assert fake.fetched_paths == []
-    assert fake.stored == [(f"{RAIN_FRAME}/9/455/201.png", "image/png")]
+    assert fake.stored == [(f"{RAIN_FRAME}/9/455/201.png", response.content, "image/png")]
 
 
 def test_jma_tile_proxy_interpolates_vector_tiles(monkeypatch):
@@ -197,7 +198,7 @@ def test_jma_tile_proxy_interpolates_vector_tiles(monkeypatch):
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("binary/octet-stream")
-    assert fake.stored == [(f"{FLOOD_FRAME}/9/455/201.pbf", "binary/octet-stream")]
+    assert fake.stored == [(f"{FLOOD_FRAME}/9/455/201.pbf", response.content, "binary/octet-stream")]
 
 
 def test_jma_tile_proxy_falls_back_when_parent_tile_is_unavailable(monkeypatch):

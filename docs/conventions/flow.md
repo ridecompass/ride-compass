@@ -392,8 +392,8 @@ Pull Request・問い・issue に書き、最後の発言へ写さない。
   見分ける方法を必ず書く（出る前に見ると、ユーザーが前の版を見て「直っていない」と答える）。master の CI（e2e とデプロイ）を
   待たないのは、待ちが確かめの作業より長くなるためで、版を見分けるのはユーザーが答えるときに任せる。問う前に、本番に
   出たかを1度だけ見る。見る口は変更が届く側で決まる: frontend は `/api/version`、backend は `/health` の `commit`
-  （宛先は docs/architecture/tech-stack.md「本番の宛先」。backend は、Pull Request の差分に `scripts/deploy_gate.py: DEPLOY_PATHS`
-  に当たるファイルがあるときだけ見る）。`git merge-base --is-ancestor <マージのコミット> <本番の commit>` が 0 で終われば出ている
+  （宛先は docs/architecture/tech-stack.md「本番の宛先」。backend は、Pull Request の差分に `scripts/deploy_gate.py: deploy_paths`
+  が導くファイルがあるときだけ見る）。`git merge-base --is-ancestor <マージのコミット> <本番の commit>` が 0 で終われば出ている
   （本番の commit が手元に無ければ先に `git fetch origin`）。
   変更が frontend に届くなら、出ていてもいなくても、判断材料の先頭に画面での見分け方を書く: 「画面右上のメニュー（︙）の
   『バージョン表示』の版が <8文字> なら修正を含む版。違えば下の見分け方で見る」。8文字は、出ていれば見た時点の本番の `commit`、
