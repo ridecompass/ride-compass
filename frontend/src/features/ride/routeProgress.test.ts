@@ -11,8 +11,8 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { METERS_PER_DEGREE } from "@/lib/localPlane";
 import { routeTrack } from "@/lib/routeDistance";
+import { moved } from "@/testing/movedPoint";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 
 import { ROUTE_MATCH_SLACK_M, locateOnRoute, offRoute } from "./routeProgress";
@@ -41,10 +41,8 @@ const OUT_AND_BACK = routeTrack([
   }),
 ]);
 
-// 道の上の、始点から東へ経度0.005度（片道の4分の1）の地点を、北へ`northM`だけずらしたもの。
-function quarterWay(northM = 0) {
-  return { latitude: 35 + northM / METERS_PER_DEGREE, longitude: 139.005 };
-}
+// 道の上の、始点から東へ経度0.005度（片道の4分の1）の地点。
+const QUARTER_WAY = { latitude: 35, longitude: 139.005 };
 
 describe("locateOnRoute", () => {
   it.each([
@@ -52,7 +50,7 @@ describe("locateOnRoute", () => {
     ["行きを走っていたなら、行き", 0.4, 0.5],
     ["帰りを走っていたなら、帰り", 3.6, 3.5],
   ])("%s", (_label, previousKm, expected) => {
-    expect(locateOnRoute(OUT_AND_BACK, quarterWay(), previousKm)).toBeCloseTo(expected);
+    expect(locateOnRoute(OUT_AND_BACK, QUARTER_WAY, previousKm)).toBeCloseTo(expected);
   });
 
   it("折り返しから戻り始めたら、前の位置から同じだけ離れた行きと帰りのうち、前へ進んだ帰り", () => {
@@ -65,7 +63,7 @@ describe("locateOnRoute", () => {
 
   it("続く側が最も近い点より余裕以上に遠ければ、最も近い点へ移る", () => {
     // 行きの道の北へ余裕の2倍だけずらした帰りの道（折り返しで北へ上がってから戻る）。前の位置は行き。
-    const north = 35 + (2 * ROUTE_MATCH_SLACK_M) / METERS_PER_DEGREE;
+    const north = moved(QUARTER_WAY, 2 * ROUTE_MATCH_SLACK_M).latitude;
     const apart = routeTrack([
       makeRouteSegment({
         distance_km: 2,
@@ -100,24 +98,21 @@ describe("locateOnRoute", () => {
     ]);
     const backQuarterKm = 2 + (2 * ROUTE_MATCH_SLACK_M) / 1000 + 1.5;
     // 帰りの道の上（行きより余裕だけ遠い所より北）なら帰りへ移り、行きと帰りへの隔たりの差が余裕より小さい所なら行きに留まる。
-    expect(locateOnRoute(apart, quarterWay(2 * ROUTE_MATCH_SLACK_M), 0.4)).toBeCloseTo(backQuarterKm);
-    expect(locateOnRoute(apart, quarterWay(ROUTE_MATCH_SLACK_M * 1.25), 0.4)).toBeCloseTo(0.5);
+    expect(locateOnRoute(apart, moved(QUARTER_WAY, 2 * ROUTE_MATCH_SLACK_M), 0.4)).toBeCloseTo(backQuarterKm);
+    expect(locateOnRoute(apart, moved(QUARTER_WAY, ROUTE_MATCH_SLACK_M * 1.25), 0.4)).toBeCloseTo(0.5);
   });
 
   it("ルートの形が無ければnull", () => {
-    expect(locateOnRoute([], quarterWay(), null)).toBeNull();
+    expect(locateOnRoute([], QUARTER_WAY, null)).toBeNull();
   });
 });
 
 describe("offRoute", () => {
-  // 0.5km の所（東経139.005度）の北へ`meters`だけ離れた点。
-  const away = (meters: number) => ({ latitude: 35 + meters / METERS_PER_DEGREE, longitude: 139.005 });
-
   it.each([
     { case: "ルートからの隔たりが位置の誤差の内", meters: 15, accuracyM: 20, expected: false },
     { case: "ルートからの隔たりが位置の誤差を超える", meters: 25, accuracyM: 20, expected: true },
     { case: "位置の誤差が分からない", meters: 500, accuracyM: null, expected: false },
   ])("$case", ({ meters, accuracyM, expected }) => {
-    expect(offRoute(OUT_AND_BACK, away(meters), accuracyM)).toBe(expected);
+    expect(offRoute(OUT_AND_BACK, moved(QUARTER_WAY, meters), accuracyM)).toBe(expected);
   });
 });
