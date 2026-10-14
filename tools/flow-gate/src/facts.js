@@ -10,7 +10,7 @@ const jst = (text) => (START_FORM.test(text) ? new Date(`${text.replace(" ", "T"
 // 対話作業か。種類は作るとき（最初に付いた種類）で決まり、あとから境目をまたいで変えても変わらない（types は今より前の種類の古い順）。
 const dialogOf = (config, types, type) => [...types, type].find(Boolean) === config.dialogType;
 // 矢印1本でつながる issue（前提・子・親）の読み方。1件を決め直すときも、振り出しの一覧も同じ（親の本文は、1件を決め直すときだけ要る）。
-export const relationsOf = (body = false) => `blockedBy(first:20){nodes{number state stateReason}} subIssues(first:50){nodes{number state stateReason}}
+export const relationsOf = (body = false) => `blockedBy(first:20){nodes{number state stateReason issueType{name} updatedAt}} subIssues(first:50){nodes{number state stateReason}}
  parent{number state stateReason ${body ? "body" : ""} labels(first:20){nodes{name}} ${FIELDS}}`;
 // 完成でなく閉じた（見送り・重複）相手は、その結果を当てにできないので、続けるかを問う側に数える。
 const dropped = (x) => x.state === "CLOSED" && ["NOT_PLANNED", "DUPLICATE"].includes(x.stateReason);
@@ -25,10 +25,13 @@ export function taskOf(config, issue, now = new Date()) {
   const start = jst(text);
   const mine = own[f.start.name]?.trim();
   const waits = [...issue.blockedBy.nodes, ...issue.subIssues.nodes];
+  // 開発機の対話のセッションしか進めない前提は、閉じ忘れると黙って待ち続けるので、長く動いていなければユーザーに知らせる（src/decide.js: notice）。
+  const idle = issue.blockedBy.nodes.filter((b) => b.state === "OPEN" && b.issueType?.name === config.dialogType
+    && now - Date.parse(b.updatedAt) > config.dialogIdleHours * 3600e3).map((b) => b.number);
   const names = (i) => i.labels.nodes.map((l) => l.name);
   const labels = names(issue);
   return { status: own[f.status.name], run: own[f.run.name], priority: from[f.priority.name], type: issue.issueType?.name ?? null,
-    open: issue.state === "OPEN", blocked: waits.some((w) => w.state === "OPEN"), dropped: waits.filter(dropped).map((w) => w.number),
+    open: issue.state === "OPEN", blocked: waits.some((w) => w.state === "OPEN"), dropped: waits.filter(dropped).map((w) => w.number), idle,
     future: Boolean(text) && (!start || start > now), badStart: mine && !jst(mine) ? mine : null,
     urgent: names(parent ?? issue).includes(config.urgentLabel), held: Boolean(parent) && (parent.state === "CLOSED" || from[f.status.name] === "保留"),
     labels, dev: labels.includes(config.devLabel), dialog: issue.issueType?.name === config.dialogType, // 1件を決め直すときは、作ったときの種類で読み直す
@@ -61,7 +64,7 @@ const query = () => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:Strin
   comments(last:40){totalCount nodes{body createdAt author{login}}} ${FIELDS} ${relationsOf(true)} blocking(first:20){nodes{number state}}
   timelineItems(first:50,itemTypes:[ISSUE_TYPE_CHANGED_EVENT]){nodes{...on IssueTypeChangedEvent{prevIssueType{name} issueType{name}}}}}}
  c:repository(owner:$co,name:$cn){pullRequests(headRefName:$head,first:5,orderBy:{field:CREATED_AT,direction:DESC}){nodes{
-  id state isDraft merged createdAt mergedAt mergeCommit{${SUITES}} commits(last:1){nodes{commit{committedDate ${SUITES}}}}
+  id state isDraft mergeable merged createdAt mergedAt mergeCommit{${SUITES}} commits(last:1){nodes{commit{committedDate ${SUITES}}}}
   timelineItems(last:1,itemTypes:[CONVERT_TO_DRAFT_EVENT]){nodes{...on ConvertToDraftEvent{createdAt}}}}}}}`;
 
 // 検査の実行の status の、終わりから遠い順（GitHub の値）。
@@ -190,5 +193,6 @@ export async function readFacts(gh, config, number, runs) {
     near: [...i.blocking.nodes, ...(p ? [p] : []), ...i.subIssues.nodes].filter((x) => x.state === "OPEN").map((x) => x.number),
     merged: Boolean(merged), mergeChecks: checksOf(config, merged?.mergeCommit),
     badQuestion: last && isQuestion(last) ? readProblems(config.questionForms, last, asker) : [], comments,
-    pr: open && { id: open.id, draft: open.isDraft, checks: checksOf(config, head.commit), backToDraft: Boolean(drafted && drafted > head.commit.committedDate) } };
+    pr: open && { id: open.id, draft: open.isDraft, checks: checksOf(config, head.commit), backToDraft: Boolean(drafted && drafted > head.commit.committedDate),
+      conflicting: open.mergeable === "CONFLICTING" } }; // GitHub が計算中（UNKNOWN）の間は、ぶつかりに数えない
 }
