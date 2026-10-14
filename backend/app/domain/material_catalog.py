@@ -37,7 +37,7 @@ from app.domain.landcover import (
     landcover_key,
     landcover_tile_property,
 )
-from app.domain.divided_carriageway import oneway_material_sql
+from app.domain.divided_carriageway import DIVIDED_ROAD_NOTE, oneway_material_sql
 from app.domain.registry import PrimaryAttributeSpec
 from app.domain.primary_attributes import (
     PRIMARY_ATTRIBUTES,
@@ -60,9 +60,16 @@ from app.domain.primary_attributes import (
 
 from app.domain.material_sql import (
     BICYCLE_NORMALIZED_SQL,
+    BRIDGE_STRUCTURE_VALUES,
     CYCLEWAY_CLASS_SQL,
     CYCLEWAY_CLASSES,
+    CYCLEWAY_HIGHWAY,
+    CYCLEWAY_LANE_VALUES,
+    CYCLEWAY_SHARED_VALUES,
+    CYCLEWAY_TRACK_VALUES,
+    SHARED_PEDESTRIAN_PATH_NOTE,
     SHARED_PEDESTRIAN_PATH_SQL,
+    TUNNEL_STRUCTURE_VALUES,
     LANES_COUNT_CASE_SQL,
     MAXSPEED_KMH_CASE_SQL,
     SMOOTHNESS_NORMALIZED_SQL,
@@ -85,6 +92,7 @@ from app.domain.material_sql import (
     TUNNEL_NORMALIZED_SQL,
     tag_is_value_sql,
     tag_absent_is_false_sql,
+    tag_note,
 )
 from app.domain.traffic import (
     INTERSECTION_DEGREE_THRESHOLD,
@@ -195,6 +203,9 @@ _CYCLEWAY_TAGS_COVERAGE = WayMaterialCoverageSpec(
     missing_semantics="definite",
 )
 #: 生データの道は親の表のCHECK（`infrastructure/source_models.py: source_features_way_has_kind`）でhighwayを必ず持つ。
+#: 街灯・自動車の通行止めを判定するタグと値。判定の式と説明の文が同じ組を引く。
+_LIT_YES = ("lit", "yes")
+_MOTOR_VEHICLE_NO = ("motor_vehicle", "no")
 _HIGHWAY_ALWAYS_PRESENT = "生データの道はDBの制約でhighwayタグを必ず持ち、欠損が無い"
 _EDGE_COUNTS_COVERAGE = EdgeMaterialCoverageSpec(
     present_condition="em.intersection_count IS NOT NULL",
@@ -645,11 +656,11 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "lit": MaterialSpec(
         material_id="lit",
         label="街灯あり",
-        description="OSMの街灯タグ(lit=yes)に該当する区間はtrue。タグ不在はfalse（街灯なし扱い）。",
+        description=f"OSMの街灯タグ({tag_note(*_LIT_YES)})に該当する区間はtrue。タグ不在はfalse（街灯なし扱い）。",
         dtype="boolean",
         tile_property="lit",
         primary_attribute=ATTR_LIT,
-        value_sql=tag_is_value_sql("lit", "yes"),
+        value_sql=tag_is_value_sql(*_LIT_YES),
         coverage=WayMaterialCoverageSpec(
                 missing_condition=f"{LIT_NORMALIZED_SQL} IS NULL",
                 source="OSM wayのタグ lit（タグ不在は街灯なし扱い）",
@@ -659,7 +670,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "has_tunnel": MaterialSpec(
         material_id="has_tunnel",
         label="トンネル",
-        description="OSMのトンネルタグが地中を通るもの(tunnel=yes・覆道)に該当する区間はtrue。",
+        description=f"OSMのトンネルタグが地中を通るもの({tag_note('tunnel', *TUNNEL_STRUCTURE_VALUES)})に該当する区間はtrue。",
         dtype="boolean",
         tile_property="tunnel",
         primary_attribute=ATTR_TUNNEL,
@@ -674,7 +685,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "bridge": MaterialSpec(
         material_id="bridge",
         label="橋・高架",
-        description="OSMの橋・高架タグが地面から浮いたもの(bridge=yes・高架橋等)に該当する区間はtrue。",
+        description=f"OSMの橋・高架タグが地面から浮いたもの({tag_note('bridge', *BRIDGE_STRUCTURE_VALUES)})に該当する区間はtrue。",
         dtype="boolean",
         tile_property="bridge",
         value_sql=IS_BRIDGE_SQL,
@@ -687,14 +698,14 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "motor_vehicle_no": MaterialSpec(
         material_id="motor_vehicle_no",
         label="自動車通行不可",
-        description="OSMのタグ(motor_vehicle=no)から判定した、自動車が通行できない区間かどうか。",
+        description=f"OSMのタグ({tag_note(*_MOTOR_VEHICLE_NO)})から判定した、自動車が通行できない区間かどうか。",
         dtype="boolean",
         # OSMのmotor_vehicleタグがnoの区間（内部軸
         # [domain/axis_definitions.py]でも参照される材料だが、軸合成前の生の真偽値自体は
         # 独立して材料登録していなかった）。
         tile_property="motor_vehicle_no",
         primary_attribute=ATTR_MOTOR_VEHICLE_ACCESS,
-        value_sql=tag_is_value_sql("motor_vehicle", "no"),
+        value_sql=tag_is_value_sql(*_MOTOR_VEHICLE_NO),
         coverage=WayMaterialCoverageSpec(
                 missing_condition=f"{MOTOR_VEHICLE_NORMALIZED_SQL} IS NULL",
                 source="OSM wayのタグ motor_vehicle（タグ不在は通行可扱い）",
@@ -704,7 +715,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "oneway": MaterialSpec(
         material_id="oneway",
         label="一方通行",
-        description="OSMのタグから判定した一方通行の区間かどうか。上下線が分かれた道の片側（逆方向が隣を並走する）は一方通行に数えない。",
+        description=f"OSMのタグから判定した一方通行の区間かどうか。{DIVIDED_ROAD_NOTE}の片側は一方通行に数えない。",
         dtype="boolean",
         tile_property="oneway",
         primary_attribute=ATTR_ONEWAY,
@@ -823,56 +834,62 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "highway_is_cycleway": MaterialSpec(
         material_id="highway_is_cycleway",
         label="道路種別が自転車道",
-        description="道路種別(highway)自体が自転車道(cycleway)かどうか。",
+        description=f"道路種別(highway)自体が自転車道({tag_note('highway', CYCLEWAY_HIGHWAY)})かどうか。",
         dtype="boolean",
         tile_property="highway_is_cycleway",
         # 判定式はhighway生タグを見るが、意味的にはこの群の他の材料と同じ「自転車走行環境の
         # 分類」という1つのまとまりのため、cycleway_has_track等と同じ一次属性へ寄せる。
         primary_attribute=ATTR_CYCLEWAY,
-        value_sql=f"{HIGHWAY_SQL} = 'cycleway'",
+        value_sql=f"{HIGHWAY_SQL} = '{CYCLEWAY_HIGHWAY}'",
         coverage=CoverageExcluded(reason=_HIGHWAY_ALWAYS_PRESENT, missing_semantics="definite"),
     ),
     "cycleway_has_track": MaterialSpec(
         material_id="cycleway_has_track",
         label="自転車道(track)を併設",
-        description="車道と分離された自転車道(cycleway=track)を併設しているかどうか。",
+        description=f"車道と分離された自転車道({tag_note('cycleway', *CYCLEWAY_TRACK_VALUES)})を併設しているかどうか。",
         dtype="boolean",
         tile_property="cycleway_has_track",
         primary_attribute=ATTR_CYCLEWAY,
-        value_sql=cycleway_has_value_sql("track"),
+        value_sql=cycleway_has_value_sql(*CYCLEWAY_TRACK_VALUES),
         coverage=_CYCLEWAY_TAGS_COVERAGE,
     ),
     "cycleway_has_lane": MaterialSpec(
         material_id="cycleway_has_lane",
         label="自転車レーン(lane)を併設",
-        description="車道上に線で区切られた自転車レーン(cycleway=lane)を併設しているかどうか。",
+        description=f"車道上に線で区切られた自転車レーン({tag_note('cycleway', *CYCLEWAY_LANE_VALUES)})を併設しているかどうか。",
         dtype="boolean",
         tile_property="cycleway_has_lane",
         primary_attribute=ATTR_CYCLEWAY,
-        value_sql=cycleway_has_value_sql("lane"),
+        value_sql=cycleway_has_value_sql(*CYCLEWAY_LANE_VALUES),
         coverage=_CYCLEWAY_TAGS_COVERAGE,
     ),
     "cycleway_has_shared": MaterialSpec(
         material_id="cycleway_has_shared",
         label="バス共用等の自転車レーンを併設",
-        description="バス専用レーン共用など、簡易な自転車レーン(cycleway=share_busway/shared_lane)を併設しているかどうか。",
+        description=(
+            "バス専用レーン共用など、簡易な自転車レーン"
+            f"({tag_note('cycleway', *CYCLEWAY_SHARED_VALUES)})を併設しているかどうか。"
+        ),
         dtype="boolean",
         tile_property="cycleway_has_shared",
         primary_attribute=ATTR_CYCLEWAY,
-        value_sql=cycleway_has_value_sql("share_busway", "shared_lane"),
+        value_sql=cycleway_has_value_sql(*CYCLEWAY_SHARED_VALUES),
         coverage=_CYCLEWAY_TAGS_COVERAGE,
     ),
     "shared_pedestrian_path": MaterialSpec(
         material_id="shared_pedestrian_path",
         label="歩行者自転車共用道",
-        description="車道と分離された歩行者道のうち、自転車の通行が認められている区間（河川敷サイクリングロード等、highway=footway/pathかつbicycle=yes/designated）かどうか。",
+        description=(
+            "車道と分離された歩行者道のうち、自転車の通行が認められている区間"
+            f"（河川敷サイクリングロード等、{SHARED_PEDESTRIAN_PATH_NOTE}）かどうか。"
+        ),
         dtype="boolean",
         tile_property="shared_pedestrian_path",
         primary_attribute=ATTR_CYCLEWAY,
         value_sql=tag_absent_is_false_sql(SHARED_PEDESTRIAN_PATH_SQL),
         coverage=WayMaterialCoverageSpec(
                 missing_condition=f"{BICYCLE_NORMALIZED_SQL} IS NULL",
-                source="OSM wayのタグ bicycle（highway=footway/pathとの組み合わせで判定、タグ不在は非該当扱い）",
+                source=f"OSM wayのタグ bicycle（{SHARED_PEDESTRIAN_PATH_NOTE}で判定、タグ不在は非該当扱い）",
                 missing_semantics="definite",
             ),
     ),

@@ -7,6 +7,7 @@
 from typing import Literal, NamedTuple
 
 from app.domain.display_palette import ORDERED_END_COLOR_NAMES
+from app.domain.divided_carriageway import DIVIDED_ROAD_NOTE
 from app.domain.gsi_tiles import TERRAIN_MIN_ZOOM
 from app.domain.landcover import LANDCOVER_CLASSES, LANDCOVER_RING_OUTER_M, LANDCOVER_TILE_MIN_ZOOM
 from app.domain.place_search import ADDRESS_AREA_ATTRIBUTIONS
@@ -405,9 +406,9 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         "roadCondition",
         description=("来た道を戻れない区間を色分け表示",),
         panel_hint=(
-            "その向きにしか通れない区間です。上下線が分かれているだけの道[逆方向が数m隣にある]"
-            "は除いてあります。ルート探索は既に一方通行の向きを守っており[逆走経路自体が"
-            "生成されません]、このレイヤーは表示のみで評価には影響しません。",
+            f"その向きにしか通れない区間です。{DIVIDED_ROAD_NOTE}は除いてあります。"
+            "ルート探索は一方通行の向きを守っています[逆走する経路は作りません]。",
+            LayerTextSlot("axes", "評価軸", "の材料の1つです。"),
         ),
     ),
     # 当てはまらない道（大多数）を描くと地図が灰色の線で覆われるので、最初は隠す。
@@ -417,7 +418,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         label="自転車レーン",
         description=(f"自転車の走る場所を色で表示[{'・'.join(c.label for c in _first_axis('cycleway').categories)}]",),
         panel_hint=(
-            "OSMの自転車のためのタグ[cycleway・highway=cycleway・bicycle]から、自転車の走る場所を区分にまとめて色分けしています。"
+            "OSMの自転車のためのタグから、自転車の走る場所を区分にまとめて色分けしています。"
             "1本の道が複数に当たれば、車道から分けられた方で出します。当てはまらない道は最初は隠してあり、凡例のチェックで出せます。",
             LayerTextSlot("axes", "評価軸", "の材料の1つです。"),
         ),

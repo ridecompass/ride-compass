@@ -12,10 +12,11 @@ from app.domain.registry import (
     PointThinningSpec,
     PrimaryAttributeSpec,
 )
-from app.domain.material_sql import CYCLEWAY_CLASSES
+from app.domain.divided_carriageway import DIVIDED_ROAD_NOTE
+from app.domain.material_sql import CYCLEWAY_CLASSES, TUNNEL_STRUCTURE_VALUES, tag_note
 from app.domain.road import SURFACE_CLASSES, TRACK_GRADES, surface_class_description
 from app.domain.stop_place import StopPlaceGroup
-from app.domain.traffic import TAG_KIND_RULES, kind_map_sql, kinds_shown_as, stop_kind_sql
+from app.domain.traffic import DIRECTION_TAG_KEYS, TAG_KIND_RULES, kind_map_sql, kinds_shown_as, stop_kind_sql
 
 #: 元のタグの値をこの数より多く持つ種別は、説明でタグの名前だけを言う（値を並べると説明が値の一覧になる）。
 _LISTED_TAG_VALUES = 3
@@ -189,7 +190,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                         key="tunnel",
                         label="トンネル",
                         values=(True,),
-                        description="トンネルの中を通る区間[OSM の tunnel タグ]。",
+                        description=f"トンネルの中を通る区間[OSM の {tag_note('tunnel', *TUNNEL_STRUCTURE_VALUES)}]。",
                     ),
                 ),
             ),
@@ -212,8 +213,8 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                         label="一方通行",
                         values=(True,),
                         description=(
-                            "一方向にしか進めない道。環状交差点も含み、自転車だけ両方向に通れる道は含まない"
-                            "[OSM の oneway・oneway:bicycle・junction タグ]。"
+                            "一方向にしか進めない道。環状交差点も含み、自転車だけ両方向に通れる道と"
+                            f"{DIVIDED_ROAD_NOTE}は含まない[OSM の {'・'.join(DIRECTION_TAG_KEYS)} タグ]。"
                         ),
                     ),
                 ),

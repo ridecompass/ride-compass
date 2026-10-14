@@ -163,7 +163,7 @@ export default function RouteAxisProfile({
             <WarningText>風のモデルの計算値を使えなかったため、無風として所要時間を出しています</WarningText>
           )}
           {missingPct >= 1 && (
-            <WarningText>{`データの無い区間が${missingPct}%[坂・信号の無い道として所要時間を出しています]`}</WarningText>
+            <WarningText>{`データの無い区間が${missingPct}%[${routeGenerateConfig.missing_travel_data_wording}]`}</WarningText>
           )}
           {contributionRows.length > 0 ? (
             <AxisContributionBar

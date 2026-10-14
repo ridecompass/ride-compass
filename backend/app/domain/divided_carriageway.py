@@ -30,6 +30,12 @@ SAMPLE_FRACTIONS = (0.05, 0.25, 0.5, 0.75, 0.95)
 #: OSMが「上下線が分かれている」と言っている`carriageway`の値。
 TAG_VALUES = ("dual", "triple", "2")
 
+#: 説明の文が判定を指す言い方。分かれた道として除く距離を、判定の値から引く。
+DIVIDED_ROAD_NOTE = (
+    f"上下線が分かれているだけの道[逆向きの一方通行が{GEOMETRIC_GAP_M:g}m以内、"
+    f"同じ路線番号・名前なら{NAMED_GAP_M:g}m以内を並走する道]"
+)
+
 
 def facts_sql(way: str, direction: str) -> str:
     """`divided_sql`が読む道1本の値を出すSELECTの列（`carriageway`・`ident`・`travel_deg`）。

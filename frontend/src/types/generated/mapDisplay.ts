@@ -230,7 +230,12 @@ export const mapDisplay = {
         "来た道を戻れない区間を色分け表示"
       ],
       "panelHint": [
-        "その向きにしか通れない区間です。上下線が分かれているだけの道[逆方向が数m隣にある]は除いてあります。ルート探索は既に一方通行の向きを守っており[逆走経路自体が生成されません]、このレイヤーは表示のみで評価には影響しません。"
+        "その向きにしか通れない区間です。上下線が分かれているだけの道[逆向きの一方通行が15m以内、同じ路線番号・名前なら40m以内を並走する道]は除いてあります。ルート探索は一方通行の向きを守っています[逆走する経路は作りません]。",
+        {
+          "name": "axes",
+          "before": "評価軸",
+          "after": "の材料の1つです。"
+        }
       ],
       "hideMissingRows": false
     },
@@ -246,7 +251,7 @@ export const mapDisplay = {
         "自転車の走る場所を色で表示[自転車道・自転車レーン・共用の道]"
       ],
       "panelHint": [
-        "OSMの自転車のためのタグ[cycleway・highway=cycleway・bicycle]から、自転車の走る場所を区分にまとめて色分けしています。1本の道が複数に当たれば、車道から分けられた方で出します。当てはまらない道は最初は隠してあり、凡例のチェックで出せます。",
+        "OSMの自転車のためのタグから、自転車の走る場所を区分にまとめて色分けしています。1本の道が複数に当たれば、車道から分けられた方で出します。当てはまらない道は最初は隠してあり、凡例のチェックで出せます。",
         {
           "name": "axes",
           "before": "評価軸",
@@ -494,7 +499,7 @@ export const mapDisplay = {
       },
       "gridValue": null,
       "levelScale": null,
-      "description": null,
+      "description": "今後3時間以内に大雨のおそれ[矩形の予測領域。現在〜3時間先のみ]",
       "jmaElements": [
         {
           "id": "sjfcstmap",
@@ -525,7 +530,7 @@ export const mapDisplay = {
       },
       "gridValue": null,
       "levelScale": null,
-      "description": null,
+      "description": "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[赤い輪郭線。実況〜30分先のみ]",
       "jmaElements": [
         {
           "id": "slmcs_unify",
@@ -552,7 +557,7 @@ export const mapDisplay = {
       },
       "gridValue": null,
       "levelScale": null,
-      "description": null,
+      "description": "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[赤い輪郭線。実況〜30分先のみ]",
       "jmaElements": [
         {
           "id": "slmcs_unifyfcst",
