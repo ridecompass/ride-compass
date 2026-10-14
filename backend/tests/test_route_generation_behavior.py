@@ -79,8 +79,9 @@ def avoid_axis():
 def engine_over(monkeypatch, avoid_axis):
     """道路網から、本物のエンジンの上に戦略層（`RouteGenerator`）を組む。軸は`avoid_axis`の1本。"""
 
-    def build(network: RoadNetwork, *, avoid_weight: float = 0.0, wind: WindForecastSeries | None = None):
-        return generator_for(monkeypatch, network, avoid_weight, wind)
+    def build(network: RoadNetwork, *, avoid_weight: float = 0.0, wind: WindForecastSeries | None = None,
+              max_average_grade_percent: float | None = None):
+        return generator_for(monkeypatch, network, avoid_weight, wind, max_average_grade_percent)
 
     return build
 
@@ -145,9 +146,12 @@ async def test_oneway_road_is_never_driven_against_its_direction(engine_over):
         assert not [e for e in candidate.edge_ids if int(e.split("-")[1]) in oneway and e.endswith("bwd")]
 
 
-async def test_motorway_is_never_used_even_when_it_is_the_short_way(engine_over):
-    motorway = {100, 101}  # 南の横の道
-    generator = engine_over(grid_network(motorway_ways=motorway))
+async def test_motorway_and_a_road_steeper_than_the_requested_limit_are_never_used_even_when_short(engine_over):
+    """南の横の道（近道）の西が高速道路、東が上限より急な坂。勾配の上限を指定しても高速道路は除かれたままで、
+    どちらも通らない。"""
+    motorway, steep = {100}, {101}
+    generator = engine_over(
+        grid_network(motorway_ways=motorway, gradient_of={101: 9.0}), max_average_grade_percent=8.0)
 
     candidates = await generator.generate_via_waypoints(
         at(SOUTH_WEST), [], destination=at(NODE_OF[0, 2]), max_routes=3, start_time=DEPARTURE)
@@ -155,7 +159,7 @@ async def test_motorway_is_never_used_even_when_it_is_the_short_way(engine_over)
     assert candidates
     for candidate in candidates:
         assert_connected(candidate, SOUTH_WEST, NODE_OF[0, 2])
-        assert not set(ways_of(candidate)) & motorway
+        assert not set(ways_of(candidate)) & (motorway | steep)
 
 
 async def test_loop_returns_to_its_origin(engine_over):

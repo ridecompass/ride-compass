@@ -40,6 +40,7 @@ from app.domain.evaluation import (
     compose_costs_from_axis_matrix,
     density_costs,
 )
+from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.route import Coordinates, SegmentWind
 from app.domain.time_zone import jst_local_text
 from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_seconds
@@ -204,7 +205,7 @@ class LegCostComposer:
             axis_id: score_matrix.axis_raw_values[:, i]
             for i, axis_id in enumerate(score_matrix.raw_axis_ids)
         }
-        # 内訳として見せる静的材料の値（`route_facing_material_ids`の列をそのまま指す）。
+        # 内訳として見せる静的材料と所要時間が読む材料の値（`route_facing_material_ids`の列をそのまま指す）。
         self._static_material_arrays = {
             material_id: score_matrix.material_values[:, i]
             for i, material_id in enumerate(score_matrix.material_ids)
@@ -274,19 +275,14 @@ class LegCostComposer:
             return self._travel_inputs_cache
         take = _row_taker(rows)
         distance_m = take(self._score_matrix.distance_m)
-        # 勾配は静的スコア行列が生配列として常に持つ（0次フィルタの勾配しきい値と同じ列）。
-        # 内訳として見せる材料だけを運ぶ`material_arrays`では、勾配軸が分解されていない構成で欠ける。
-        grade = np.nan_to_num(take(self._score_matrix.gradient_percent)) / 100.0
+        grade = np.nan_to_num(take(self._static_material_arrays[GRADIENT_PERCENT])) / 100.0
         surface = self._categorical_material_arrays[ROLLING_RESISTANCE_MATERIAL_ID]
         crr = crr_for_surface(surface if rows is None else surface.take(rows))
         model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=self.speed_kmh), grade, crr)
         stops = np.zeros(len(distance_m))
-        # 材料idの綴りは`stop_count_material_ids()`が単一の情報源。ここで組み立て直すと、
-        # 向こうで綴りを変えたときにここだけがNoneを引き、全区間の停止の待ちが無言で0秒になる。
         for kind, material_id in zip(POI_COUNT_KINDS, stop_count_material_ids(), strict=True):
-            per_km = self._static_material_arrays.get(material_id)
-            if per_km is not None:
-                stops += np.nan_to_num(take(per_km)) * (distance_m / 1000.0) * stop_seconds(kind)
+            per_km = self._static_material_arrays[material_id]
+            stops += np.nan_to_num(take(per_km)) * (distance_m / 1000.0) * stop_seconds(kind)
         if rows is None:
             self._travel_inputs_cache = (model, stops)
         return model, stops
@@ -566,11 +562,9 @@ class LegCostComposer:
         total = float(distance.sum())
         if total <= 0:
             return None
-        missing = np.isnan(self._score_matrix.gradient_percent[rows])
+        missing = np.isnan(self._static_material_arrays[GRADIENT_PERCENT][rows])
         for material_id in stop_count_material_ids():
-            per_km = self._static_material_arrays.get(material_id)
-            if per_km is not None:
-                missing |= np.isnan(per_km[rows])
+            missing |= np.isnan(self._static_material_arrays[material_id][rows])
         return round(float(distance[missing].sum()) / total, 4)
 
     def winds_at(

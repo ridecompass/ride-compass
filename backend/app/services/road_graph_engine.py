@@ -364,8 +364,7 @@ class RoadGraphEngine:
         # --- bbox全体ぶんのコスト配列の合成（レグごと。まず起点から離れる往路レグ） ---
         cost_started = start_timer()
         hard_filter_excluded = compute_hard_filter_excluded(
-            score_matrix.hard_filter_flags,
-            score_matrix.gradient_percent, self._hard_filters, self._max_average_grade_percent,
+            score_matrix, self._hard_filters, self._max_average_grade_percent,
         )
 
         graph_started = start_timer()
@@ -1305,8 +1304,7 @@ class RoadGraphEngine:
             elevation_attr = elevation_by_edge.get(edge.edge_id)
 
             gradient_percent = elevation_attr.average_grade if elevation_attr else None
-            # 勾配だけは`leg.material_arrays`ではなくこのループが持つ値から載せる
-            # （標高属性として既に引いてあり、改めて計算する必要が無いため）。
+            # 勾配は地図の配信と同じ桁へ丸めた値で、材料の列の値を上書きする。
             static_material_values = (
                 {GRADIENT_PERCENT: round(gradient_percent, GRADIENT_VALUE_DECIMALS)}
                 if GRADIENT_PERCENT in active_material_ids and gradient_percent is not None
@@ -1341,12 +1339,12 @@ class RoadGraphEngine:
             difficulty_value = values.difficulty_array[value_row]
             composite_difficulty_value = None if math.isnan(difficulty_value) else float(difficulty_value)
             material_values = {
-                **static_material_values,
                 **{
                     material_id: value
                     for material_id in active_material_ids
                     if (value := material_value_at(values, material_id, value_row)) is not None
                 },
+                **static_material_values,
             }
             segment_categories.append({
                 material_id: raw
