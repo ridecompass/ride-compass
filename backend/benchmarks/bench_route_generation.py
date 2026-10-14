@@ -42,7 +42,7 @@ from app.domain.route import Coordinates
 from app.domain.time_zone import JST
 from app.domain.route_request import ASSUMED_SPEED_KMH
 from app.domain.route_request import DEFAULT_MAX_ROUTES
-from app.domain.route_request import RequestedConditions
+from app.domain.route_request import FixedPoints, RequestedConditions
 from benchmarks._resources import sample_resources
 from benchmarks.revision import announce_revision
 
@@ -157,6 +157,7 @@ async def main() -> int:
                 started = time.perf_counter()
                 candidates = await generator.generate_loops(
                     origin, distance_km=distance_km, distance_tolerance_km=5.0,
+                    points=FixedPoints(waypoints=[], destination=None),
                     max_routes=DEFAULT_MAX_ROUTES, start_time=datetime.now(JST))
                 elapsed = time.perf_counter() - started
             print(f"\n  [{kind}] {elapsed:7.1f}秒 / 候補 {len(candidates)}件")

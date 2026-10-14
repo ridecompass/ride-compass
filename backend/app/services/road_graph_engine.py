@@ -61,7 +61,7 @@ from app.domain.road_network import RoadSlice, edge_row_of, elevation_attribute,
 from app.domain.route import (
     Coordinates,
     DensityScoreInput,
-    RouteDraft,
+    EvaluatedRoute,
     RouteSegmentDetail,
     RouteTurn,
     DISTANCE_KM_DECIMALS,
@@ -1136,7 +1136,7 @@ class RoadGraphEngine:
 
     async def evaluate_loops(
         self, context: _RoadGraphContext, traced: list[TracedLoop], start_time: datetime
-    ) -> list[RouteDraft]:
+    ) -> list[EvaluatedRoute]:
         # 実ジオメトリは距離フィルタを通った候補ぶんだけを、全候補まとめて1回で取り直す
         # （棄却済み候補ぶんは問い合わせない）。引けない区間があれば落とす——探索が通った
         # 区間の実体がDBに無いということで、線の欠けた経路を配るより落ちる方がよい。
@@ -1159,7 +1159,7 @@ class RoadGraphEngine:
 
     async def _build_best_candidate(
         self, context: _RoadGraphContext, traced: TracedLoop, edges_in_path: list[LeanEdge], start_time: datetime
-    ) -> RouteDraft:
+    ) -> EvaluatedRoute:
         """1候補ぶんの周回を組み立てる。
 
         同じ周回の逆回りは追加のI/Oなしで合成できるため、合成して**難易度の小さい方だけ**を
@@ -1213,7 +1213,7 @@ class RoadGraphEngine:
         elevation_by_edge: dict[str, ElevationAttribute],
         start_time: datetime,
         leg_of_edge: list[int],
-    ) -> RouteDraft:
+    ) -> EvaluatedRoute:
         # 区間と標高属性を引数で受けるのは、逆回り候補も同じ組み立てを通すため。
         # distance_km・bearingは同じ物理経路なので順方向の`traced`のものをそのまま使う。
         geometry, edge_point_offsets = concat_edge_geometries(edges_in_path)
@@ -1238,7 +1238,7 @@ class RoadGraphEngine:
         segments = aggregate_segments_into_bins(segments)
         turns = _route_turns(context.turn_structure, path, edges_in_path)
 
-        return RouteDraft(
+        return EvaluatedRoute(
             # 方位を持たない経路の名前は、種類と一緒に`route_generator.py: _label`が付ける。
             direction_label=compass_label(traced.bearing) if traced.bearing is not None else "",
             distance_km=traced.distance_km,

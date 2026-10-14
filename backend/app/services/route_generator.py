@@ -74,7 +74,7 @@ def turnaround_pool_size(max_routes: int) -> int:
 #: 並び順・id等を読まないため、呼び出し側がそれらを付ける前でも後でも結果は変わらない。
 #: 辞書のフィールドはビンと同じ畳み方。**categorical材料の延長割合はここで触らない**——`segments`は既に
 #: 約500m単位へ畳まれており、代表値からでは正しい割合を作れない（エンジンがビニングの
-#: 前に計算して`RouteDraft`へ載せている。`road_graph_engine.py: _build_candidate`）。
+#: 前に計算して`EvaluatedRoute`へ載せている。`road_graph_engine.py: _build_candidate`）。
 #: 軸の生値（`axis_raw_values`）も区間が持たないため、同じくエンジンが載せる。
 SEGMENT_AGGREGATES: dict[str, Callable[[list[Any]], Any]] = {
     # ルート単位の絶対基準。エンジン非依存のため、engine実装側には持たせない。
@@ -372,9 +372,10 @@ class RouteGenerator:
                 f"evaluate_loopsの戻り値が入力と対応していません traced={len(traced)} candidates={len(candidates)}"
             )
         return [
-            candidate if not candidate.segments else candidate.model_copy(
-                update={name: build(candidate.segments)
-                        for name, build in SEGMENT_AGGREGATES.items()})
+            RouteDraft(
+                **dict(candidate),
+                **{name: build(candidate.segments) for name, build in SEGMENT_AGGREGATES.items()},
+            )
             for candidate in candidates
         ]
 
@@ -432,11 +433,10 @@ class RouteGenerator:
         distance_tolerance_km: float,
         max_routes: int,
         start_time: datetime,
-        points: FixedPoints | None = None,
+        points: FixedPoints,
     ) -> list[RouteCandidate]:
-        """距離ありの生成。置いた点（`points`。省略時は無し）の経由地を順に通り、全長が目標±許容に入る経路で目的地
+        """距離ありの生成。置いた点（`points`）の経由地を順に通り、全長が目標±許容に入る経路で目的地
         （無ければ起点）へ向かう（`_DistanceFinish`）。"""
-        points = points or FixedPoints(waypoints=[], destination=None)
         return await self._generate(
             origin, points, start_time, _DistanceFinish(distance_km, distance_tolerance_km, max_routes, points),
         )

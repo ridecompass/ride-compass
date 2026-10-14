@@ -456,7 +456,8 @@ def find_nearest_node_indexed(
     index: NodeSpatialIndex,
     point: Coordinates,
     allowed: np.ndarray | None = None,
-    max_distance_km: float | None = None,
+    *,
+    max_distance_km: float | None,
 ) -> int | None:
     """`build_node_spatial_index`が作った索引を使い、指定地点に最も近いNodeを総当たり
     より高速に探す。

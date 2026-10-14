@@ -118,7 +118,7 @@ class AxisMaterialBreakdownEntry(StrictModel):
     #: ルート結果は`material_category_shares`の値をこれで日本語にする。他の型では空。
     #: 軸スタジオが使う`value_label()`の「論理名 - 物理名」形式にしないのは、走行中に見る
     #: 画面へ物理名を並べても読み手の判断が増えないため。
-    value_labels: dict[str, str] = {}
+    value_labels: dict[str, str]
 
 
 class AxisCatalogEntry(StrictModel):
@@ -177,19 +177,19 @@ class AxisCatalogResponse(StrictModel):
     # タイルのプロパティ名→実行時にしか決まらない換算係数（タイル生値に掛けると材料の値になる倍率、
     # `domain/material_catalog.py: tile_runtime_scales`）。`TileInputSpec.needs_runtime_scale=True`な
     # tile_inputのタイル生値へ、受け取る側が`property`で引いて掛ける。
-    tile_runtime_scales: dict[str, float] = {}
+    tile_runtime_scales: dict[str, float]
     # フロントが使う較正値（id → いま効いている値、`domain/tuning.py`が宣言）。管理画面から
     # 変えた値を**再デプロイなしに**画面へ届けるため、起動時に1回取るこのカタログへ相乗り
     # させる（ビルド時生成物のroute-generate-config.jsonが持つ既定値は、画面がidの型にだけ使い、値は読まない）。
-    client_tuning: dict[str, float] = {}
+    client_tuning: dict[str, float]
     # 配信するタイルの世代（系統名 → `<派生の世代>.<生データの世代>-<形の署名>`、`services/
     # tile_version_service.py`）。フロントはこれをタイルURLのクエリへ入れてブラウザの
     # キャッシュを分ける。**ビルド時生成物では配れない**——バッチが中身を作り直しても
     # デプロイは起きないため、次のデプロイまで古い値を配り続ける。
-    tile_versions: dict[str, str] = {}
+    tile_versions: dict[str, str]
     # 事故データの収録年（今の事故の数を数えた取込の宣言そのもの）。地図の説明文が範囲を書くために
     # 使う。**表示側に持たせない**——文字列で持つと取り込み直したときに黙って食い違う。
-    accident_years: list[int] = []
+    accident_years: list[int]
 
 
 @router.get("/api/axis-catalog", response_model=AxisCatalogResponse)

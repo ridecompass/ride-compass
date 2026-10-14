@@ -104,7 +104,7 @@ ADAPTERS: dict[str, RegisteredAdapter] = {}
 
 def register_adapter(name: str, *, rows: type = NoFields, grid: type = NoFields,
                      required: tuple[InstrumentedAttribute[Any], ...] = (),
-                     inputs: InputsOf | None = None
+                     inputs: InputsOf
                      ) -> Callable[[SourceAdapter], SourceAdapter]:
     def decorate(fn: SourceAdapter) -> SourceAdapter:
         if name in ADAPTERS:

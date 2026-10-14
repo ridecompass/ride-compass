@@ -17,7 +17,7 @@ from app.domain.geo import (
     km_per_degree_longitude,
 )
 from app.domain.leg_costs import LegCostArrays
-from app.domain.route import RouteDraft, merge_difficulty
+from app.domain.route import EvaluatedRoute, RouteDraft, merge_difficulty
 from app.domain.routing import TurnExpandedStructure, pareto_layer_index, time_bin_of
 from app.domain.wind import cruise_hours, kmh_to_ms
 
@@ -402,7 +402,7 @@ def best_first(ranked: list[int], best: int) -> list[int]:
     return [best, *(node for node in ranked if node != best)]
 
 
-def pick_better_candidate(forward: RouteDraft, reverse: RouteDraft) -> RouteDraft:
+def pick_better_candidate(forward: EvaluatedRoute, reverse: EvaluatedRoute) -> EvaluatedRoute:
     """順方向・逆回り候補のうち、区間の合成difficultyの距離加重平均（`merge_difficulty`）が小さい
     （走りやすい）方を採用する。逆回り側が算出不能（segments欠損等）なら順方向を採用する
     （比較不能を「逆回りの方が良い」とは解釈しない、安全側）。

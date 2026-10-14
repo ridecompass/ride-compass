@@ -742,31 +742,19 @@ export interface components {
         AxisCatalogResponse: {
             /** Axes */
             axes: components["schemas"]["AxisCatalogEntry"][];
-            /**
-             * Tile Runtime Scales
-             * @default {}
-             */
+            /** Tile Runtime Scales */
             tile_runtime_scales: {
                 [key: string]: number;
             };
-            /**
-             * Client Tuning
-             * @default {}
-             */
+            /** Client Tuning */
             client_tuning: {
                 [key: string]: number;
             };
-            /**
-             * Tile Versions
-             * @default {}
-             */
+            /** Tile Versions */
             tile_versions: {
                 [key: string]: string;
             };
-            /**
-             * Accident Years
-             * @default []
-             */
+            /** Accident Years */
             accident_years: number[];
         };
         /** AxisDefinitionPayload */
@@ -941,10 +929,7 @@ export interface components {
             unit: string;
             /** Share */
             share: number;
-            /**
-             * Value Labels
-             * @default {}
-             */
+            /** Value Labels */
             value_labels: {
                 [key: string]: string;
             };
@@ -1553,30 +1538,14 @@ export interface components {
             elevation_gain_m: number | null;
             /** Segments */
             segments: components["schemas"]["RouteSegmentDetail"][];
-            overall_difficulty: components["schemas"]["OverallDifficulty"] | null;
             /** Estimated Duration Seconds */
             estimated_duration_seconds: number | null;
-            /**
-             * Wind Unavailable
-             * @default false
-             */
+            /** Wind Unavailable */
             wind_unavailable: boolean;
             /** Missing Travel Data Share */
             missing_travel_data_share: number | null;
-            /** Axis Difficulties */
-            axis_difficulties: {
-                [key: string]: number;
-            };
-            /** Axis Contributions */
-            axis_contributions: {
-                [key: string]: number;
-            };
             /** Axis Raw Values */
             axis_raw_values: {
-                [key: string]: number;
-            };
-            /** Material Values */
-            material_values: {
                 [key: string]: number;
             };
             /** Material Category Shares */
@@ -1593,6 +1562,19 @@ export interface components {
             node_ids: string[];
             /** Turns */
             turns: components["schemas"]["RouteTurn"][];
+            overall_difficulty: components["schemas"]["OverallDifficulty"] | null;
+            /** Axis Difficulties */
+            axis_difficulties: {
+                [key: string]: number;
+            };
+            /** Axis Contributions */
+            axis_contributions: {
+                [key: string]: number;
+            };
+            /** Material Values */
+            material_values: {
+                [key: string]: number;
+            };
             /** Id */
             id: string;
             /**

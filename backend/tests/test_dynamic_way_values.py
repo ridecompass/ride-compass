@@ -136,7 +136,8 @@ def test_values_from_a_service_replace_the_material_of_the_tile():
     tile = {"num_a": np.array([1.0, 1.0, 1.0])}
 
     painted = paint_feature_values(
-        "axis_signed", AXES, keys, tile, {"num_b": {"feature-0": -4.0, "feature-1": None, "elsewhere": 9.0}}
+        "axis_signed", AXES, keys, tile, {"num_b": {"feature-0": -4.0, "feature-1": None, "elsewhere": 9.0}},
+        as_difficulty=False,
     )
 
     assert painted == {"feature-0": -4.0, "feature-1": None}
@@ -241,7 +242,8 @@ def test_a_way_painted_with_a_signed_material_keeps_the_band_of_the_route_and_th
     expected = _route_values(segments, served_segments["seg_grade"])
     shape = FOLDED_AXES["axis_grade"].shape
 
-    painted = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments)
+    painted = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments,
+                                          as_difficulty=False)
 
     assert {key: shape.score_at(abs(value)) for key, value in painted.items()} == {
         key: expected[key]["axis_grade"] for key in keys}
@@ -254,17 +256,20 @@ def test_a_way_undetermined_by_bearing_stays_so_and_a_way_without_segments_keeps
     ときは得点）、その後ろの道も塗る。"""
     keys, materials, served, segments, served_segments = _segment_tile()
     served = {"seg_grade": {**served["seg_grade"], "way-1": None, "way-4": -6.0}}
-    without = paint_folded_feature_values("axis_cover", FOLDED_AXES, keys, materials, served, segments, served_segments)
+    without = paint_folded_feature_values("axis_cover", FOLDED_AXES, keys, materials, served, segments, served_segments,
+                                          as_difficulty=False)
     keys = ["way-4", *keys]
     materials = {material_id: np.insert(column, 0, 7.0) for material_id, column in materials.items()}
 
-    painted = paint_folded_feature_values("axis_cover", FOLDED_AXES, keys, materials, served, segments, served_segments)
-    graded = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments)
+    painted = paint_folded_feature_values("axis_cover", FOLDED_AXES, keys, materials, served, segments, served_segments,
+                                          as_difficulty=False)
+    graded = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments,
+                                         as_difficulty=False)
     scored = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments,
                                          as_difficulty=True)
 
     assert painted == {**without, "way-4": paint_feature_values("axis_cover", FOLDED_AXES, ["way-4"], {
-        material_id: column[:1] for material_id, column in materials.items()}, {})["way-4"]}
+        material_id: column[:1] for material_id, column in materials.items()}, {}, as_difficulty=False)["way-4"]}
     assert graded["way-1"] is None
     assert set(graded) == set(keys)
     assert (graded["way-4"], scored["way-4"]) == (-6.0, paint_feature_values("axis_grade", FOLDED_AXES, ["way-4"], {
@@ -276,14 +281,15 @@ def test_segments_of_a_way_the_tile_does_not_paint_change_no_other_way():
     """配信が値を返さなかった道（勾配の地図で向きの定まらない道等）は、区間があっても塗る道に入らず、ほかの道の値を
     変えない。"""
     keys, materials, served, segments, served_segments = _segment_tile()
-    whole = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments)
+    whole = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments,
+                                        as_difficulty=False)
     kept = [row for row, key in enumerate(keys) if key != "way-2"]
 
     painted = paint_folded_feature_values(
         "axis_grade", FOLDED_AXES, [keys[row] for row in kept],
         {material_id: column[kept] for material_id, column in materials.items()},
         {"seg_grade": {key: value for key, value in served["seg_grade"].items() if key != "way-2"}},
-        segments, served_segments)
+        segments, served_segments, as_difficulty=False)
 
     assert painted == {key: value for key, value in whole.items() if key != "way-2"}
 
@@ -295,6 +301,7 @@ def test_a_tile_without_ways_paints_nothing():
                                columns={"seg_cover": empty, "seg_count": empty})
     materials = {"seg_cover": empty, "seg_count": empty, "way_num": empty}
 
-    painted = paint_folded_feature_values("axis_cover", FOLDED_AXES, [], materials, {}, segments, {"seg_grade": empty})
+    painted = paint_folded_feature_values("axis_cover", FOLDED_AXES, [], materials, {}, segments, {"seg_grade": empty},
+                                          as_difficulty=False)
 
     assert painted == {}

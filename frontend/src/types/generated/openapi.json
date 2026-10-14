@@ -2336,32 +2336,28 @@
               "type": "number"
             },
             "type": "object",
-            "title": "Tile Runtime Scales",
-            "default": {}
+            "title": "Tile Runtime Scales"
           },
           "client_tuning": {
             "additionalProperties": {
               "type": "number"
             },
             "type": "object",
-            "title": "Client Tuning",
-            "default": {}
+            "title": "Client Tuning"
           },
           "tile_versions": {
             "additionalProperties": {
               "type": "string"
             },
             "type": "object",
-            "title": "Tile Versions",
-            "default": {}
+            "title": "Tile Versions"
           },
           "accident_years": {
             "items": {
               "type": "integer"
             },
             "type": "array",
-            "title": "Accident Years",
-            "default": []
+            "title": "Accident Years"
           }
         },
         "additionalProperties": false,
@@ -2882,8 +2878,7 @@
               "type": "string"
             },
             "type": "object",
-            "title": "Value Labels",
-            "default": {}
+            "title": "Value Labels"
           }
         },
         "additionalProperties": false,
@@ -4640,16 +4635,6 @@
             "type": "array",
             "title": "Segments"
           },
-          "overall_difficulty": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OverallDifficulty"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "estimated_duration_seconds": {
             "anyOf": [
               {
@@ -4663,8 +4648,7 @@
           },
           "wind_unavailable": {
             "type": "boolean",
-            "title": "Wind Unavailable",
-            "default": false
+            "title": "Wind Unavailable"
           },
           "missing_travel_data_share": {
             "anyOf": [
@@ -4677,33 +4661,12 @@
             ],
             "title": "Missing Travel Data Share"
           },
-          "axis_difficulties": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Axis Difficulties"
-          },
-          "axis_contributions": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Axis Contributions"
-          },
           "axis_raw_values": {
             "additionalProperties": {
               "type": "number"
             },
             "type": "object",
             "title": "Axis Raw Values"
-          },
-          "material_values": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Material Values"
           },
           "material_category_shares": {
             "additionalProperties": {
@@ -4743,6 +4706,37 @@
             "type": "array",
             "title": "Turns"
           },
+          "overall_difficulty": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverallDifficulty"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "axis_difficulties": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Axis Difficulties"
+          },
+          "axis_contributions": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Axis Contributions"
+          },
+          "material_values": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Material Values"
+          },
           "id": {
             "type": "string",
             "title": "Id"
@@ -4773,19 +4767,19 @@
           "geometry",
           "elevation_gain_m",
           "segments",
-          "overall_difficulty",
           "estimated_duration_seconds",
           "wind_unavailable",
           "missing_travel_data_share",
-          "axis_difficulties",
-          "axis_contributions",
           "axis_raw_values",
-          "material_values",
           "material_category_shares",
           "edge_ids",
           "edge_point_offsets",
           "node_ids",
           "turns",
+          "overall_difficulty",
+          "axis_difficulties",
+          "axis_contributions",
+          "material_values",
           "id",
           "kind",
           "is_fastest",

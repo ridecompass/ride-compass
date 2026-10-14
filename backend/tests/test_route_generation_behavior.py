@@ -48,6 +48,7 @@ from tests.route_world import (
     LON_STEP,
     NODE_OF,
     NORTH_EAST,
+    NO_POINTS,
     SOUTH_EAST,
     SOUTH_WEST,
     WAYS,
@@ -62,6 +63,8 @@ from tests.route_world import (
     road_network,
     ways_of,
 )
+
+
 
 
 @pytest.fixture
@@ -157,7 +160,7 @@ async def test_motorway_is_never_used_even_when_it_is_the_short_way(engine_over)
 async def test_loop_returns_to_its_origin(engine_over):
     generator = engine_over(grid_network())
 
-    candidates = await generator.generate_loops(at(CENTER), 4.0, 1.5, max_routes=3, start_time=DEPARTURE)
+    candidates = await generator.generate_loops(at(CENTER), 4.0, 1.5, max_routes=3, start_time=DEPARTURE, points=NO_POINTS)
 
     assert candidates
     for candidate in candidates:
@@ -247,7 +250,7 @@ async def test_loop_candidates_are_never_the_same_loop_twice(engine_over):
     """向きを入れ替えただけの周回も同じ周回として扱い、一覧に2度並べない。"""
     generator = engine_over(grid_network())
 
-    candidates = await generator.generate_loops(at(CENTER), 4.0, 1.5, max_routes=5, start_time=DEPARTURE)
+    candidates = await generator.generate_loops(at(CENTER), 4.0, 1.5, max_routes=5, start_time=DEPARTURE, points=NO_POINTS)
 
     loops = [frozenset(ways_of(c)) for c in candidates]
     assert len(loops) == len(set(loops))
@@ -257,7 +260,7 @@ async def test_loop_never_drives_against_a_one_way_road(engine_over):
     oneway = {101, 103, 105, 202, 205}  # 東側の横の道（西→東だけ）と東の縦の道（南→北だけ）
     generator = engine_over(grid_network(oneway_ways=oneway))
 
-    candidates = await generator.generate_loops(at(CENTER), 4.0, 1.5, max_routes=5, start_time=DEPARTURE)
+    candidates = await generator.generate_loops(at(CENTER), 4.0, 1.5, max_routes=5, start_time=DEPARTURE, points=NO_POINTS)
 
     assert candidates
     for candidate in candidates:
@@ -464,7 +467,7 @@ async def test_a_point_whose_nearest_road_cannot_be_left_is_moved_to_the_nearest
     generator = engine_over(network)
 
     if placed == "origin_of_distance_loop":
-        candidates = await generator.generate_loops(point, 6.0, 1.5, max_routes=3, start_time=DEPARTURE)  # 角から回れる長さ
+        candidates = await generator.generate_loops(point, 6.0, 1.5, max_routes=3, start_time=DEPARTURE, points=NO_POINTS)  # 角から回れる長さ
     elif placed == "origin_of_waypoint_loop":
         candidates = await generator.generate_via_waypoints(
             point, [at(SOUTH_WEST)], destination=None, max_routes=3, start_time=DEPARTURE)
@@ -492,7 +495,7 @@ async def test_a_point_with_no_road_it_can_ride_nearby_is_refused(engine_over, n
     generator = engine_over(network)
 
     if placed == "origin":
-        candidates = await generator.generate_loops(point, 6.0, 1.5, max_routes=3, start_time=DEPARTURE)  # 角から回れる長さ
+        candidates = await generator.generate_loops(point, 6.0, 1.5, max_routes=3, start_time=DEPARTURE, points=NO_POINTS)  # 角から回れる長さ
     elif placed == "waypoint":
         candidates = await generator.generate_via_waypoints(
             at(SOUTH_WEST), [point], destination=None, max_routes=3, start_time=DEPARTURE)
