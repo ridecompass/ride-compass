@@ -325,13 +325,10 @@ def cmd_size(args: argparse.Namespace) -> int:
     for f in fired:
         if f in on_fire:
             print(f"  - {f} の既定の対応: {on_fire[f]}")
-    # コードの上限を超えたら分けるしかないので、分け方の既定が無いものと、発火しなくなって既定が要らなくなったものを出す。
+    # コードの上限を超えたら分けるしかないので、分け方の既定が無いものを出す。
     undecided = sorted(f for f, limit in code_limits.items() if counts[f] > limit and f not in on_fire)
     print(f"既定の対応（on_fire）の無いコードの上限超え {len(undecided)}件: "
           + (", ".join(undecided) if undecided else "なし"))
-    unneeded = sorted(set(on_fire) - set(fired))
-    print(f"発火していないファイルの既定の対応（on_fire から外す） {len(unneeded)}件: "
-          + (", ".join(unneeded) if unneeded else "なし"))
     print(f"閾値の見直し（今の行数+{GROWTH_PERCENT}%を{THRESHOLD_STEP_LINES}行に切り上げた値より緩い・削除済み） "
           f"{len(slack)}件: "
           + (", ".join(slack) if slack else "なし"))
