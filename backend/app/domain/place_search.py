@@ -76,8 +76,8 @@ class PlaceCandidate(StrictModel):
 
 
 class PlaceSearchResult(StrictModel):
-    """当たった候補。並びは住所 → 施設。住所の中の並びは`infrastructure/address_search.py`、施設の中の並びは
-    `infrastructure/stop_place_search.py`。入力の一部にだけ当たった住所（「小杉湯」の「小杉」）は候補にしない。
+    """当たった候補。並びは住所 → 施設。住所の中の並びは`domain/address_area.py: address_hit_order_sql`、施設の中の並びは
+    当たり方（`domain/stop_place.py: match_rank_sql`）→ 近さ。入力の一部にだけ当たった住所（「小杉湯」の「小杉」）は候補にしない。
     何も当たらなければ空。"""
 
     candidates: list[PlaceCandidate]

@@ -2,13 +2,15 @@
 
 打った入力と区画の鍵の両方に同じ揃え方をかけるので、書き方の違う同じ住所が同じ文字列になることを見る。
 
+地番の名前を区画へ当てる鍵の順（`parcel_name_candidates`）も見る。
+
 ここで見ないもの:
 - 区画の名前から作る鍵の別形（書き始める段・郡を省いた形・字の有無）→ `test_address_areas.py`（派生の段を通して見る）
 """
 
 import pytest
 
-from app.domain.address_area import chome_name, standardize_address
+from app.domain.address_area import chome_name, parcel_name_candidates, standardize_address
 
 
 @pytest.mark.parametrize(("typed", "listed"), [
@@ -57,3 +59,8 @@ def test_丁目の名前は番号から漢数字でそろえる(number, written,
     """ABR の丁目の表記（全角の算用数字・漢数字・「丁」）が混ざっても、区画の名前は漢数字の同じ見た目になり、鍵も変わらない。"""
     assert chome_name(number, written) == name
     assert standardize_address(name) == standardize_address(written)
+
+
+def test_地番の名前は同じ名前の区画から頭とお尻の長い区画の順に当てる():
+    """頭の短い区画（「上大」）を先に当てると、より細かい区画（「上大塚」）がある地番が粗い区画に結ばれる。括弧の中は名前に数えない。"""
+    assert parcel_name_candidates("上大塚西（大字なし）") == ["上大塚西", "上大塚", "上大", "大塚西", "塚西"]
