@@ -301,7 +301,8 @@ class _NoDistanceFinish:
     async def select(self, engine: "RoadGraphEngine", context: "_RoadGraphContext", fixed: "FixedLegs") -> _Selection:
         """`select_via_nodes`が確定済みの経路だけを返すため、候補ごとの再探索・失敗スキップが無く「選定→評価」の2段で済む。
 
-        目的地があれば、所要時間が最短の経路を基準線として必ず1本含め（件数を切るときも残す）、最速の印を付ける。軸の重みを
+        目的地があれば、所要時間が最短の経路を基準線として1本含め（件数を切るときも残す。ただし1本だけ返すときは比べる相手が
+        無いので残さず、印も付けない。`domain/route_search.py: keep_routes_with_baseline`）、最速の印を付ける。軸の重みを
         すべて0にしたときの経路であり、軸設定に沿った候補が何分余計にかかるかを対価として
         読めるようにするため。並びは周回と同じ総合難易度の昇順で、基準線も難易度の位置に並ぶ。
         """
