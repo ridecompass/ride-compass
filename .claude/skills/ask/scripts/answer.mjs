@@ -1,6 +1,6 @@
 // チャットで決めたことを、今の問いへの答えの形で記録する。組み立てと照らしは回答フォームと同じ（tools/flow-gate/src/questions.js:
 // answerProblem・answerBody）。合わなければ書かずに理由を出して 1 で終わる。
-// 使い方: node .claude/skills/ask/scripts/answer.mjs <issue の番号> --next <続ける|保留|見送り|完了> [--plan <選んだ案>] [--yes <行>]... [--text <書いた文のファイル>]
+// 使い方: node .claude/skills/ask/scripts/answer.mjs <issue の番号> --next <続ける|保留|見送り> [--plan <選んだ案>] [--yes <行>]... [--text <書いた文のファイル>]
 //   --next は回答フォームの「この issue を」。--yes は確かめること・済ませることのうちユーザーが YES と答えた行（行ごとに1つ。ほかは NO）。
 //   確かめることの値は、答えと同じ1回の要求で本文の約束へ書く（回答フォームと同じ。tools/flow-gate/src/questions.js: withValues）。書いた文のファイルには、ユーザーの言葉の引用を含めて書く。
 import { readFileSync } from "node:fs";
@@ -23,7 +23,7 @@ function read(gh, number) {
   return { id: first.id, body: first.body, nodes };
 }
 
-const USAGE = "node .claude/skills/ask/scripts/answer.mjs <issue の番号> --next <続ける|保留|見送り|完了> [--plan <選んだ案>] [--yes <行>]... [--text <書いた文のファイル>]";
+const USAGE = "node .claude/skills/ask/scripts/answer.mjs <issue の番号> --next <続ける|保留|見送り> [--plan <選んだ案>] [--yes <行>]... [--text <書いた文のファイル>]";
 
 function main() {
   const [number, ...rest] = process.argv.slice(2);
