@@ -45,6 +45,7 @@ import { formatJstHourMinute } from "@/lib/time";
 import { heldReplies, onBackend, onSameOrigin, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
+import { installGeolocation } from "@/testing/geolocation";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
@@ -92,33 +93,6 @@ const OBSERVATION: AmedasObservation = {
 };
 
 let jobs: ReturnType<typeof serveGenerationJobs>;
-
-/** 位置情報の取得。`point`が無ければ断る。走行モードが受け取り続ける位置は、戻り値の`move`で届ける。 */
-function installGeolocation(point: Coordinates | null) {
-  const getCurrentPosition = (onSuccess: PositionCallback, onError: PositionErrorCallback) => {
-    if (point) onSuccess({ coords: point } as GeolocationPosition);
-    else onError({ code: 1 } as GeolocationPositionError);
-  };
-  let watcher: PositionCallback | null = null;
-  const watchPosition = (onSuccess: PositionCallback) => {
-    watcher = onSuccess;
-    return 1;
-  };
-  const clearWatch = () => {
-    watcher = null;
-  };
-  Object.defineProperty(navigator, "geolocation", {
-    value: { getCurrentPosition, watchPosition, clearWatch },
-    configurable: true,
-  });
-  return {
-    move(to: Coordinates, timestamp = 0, accuracy = 10) {
-      act(() =>
-        watcher?.({ coords: { ...to, heading: null, speed: null, accuracy }, timestamp } as GeolocationPosition),
-      );
-    },
-  };
-}
 
 function useMobileLayout() {
   document.documentElement.style.setProperty("--is-mobile", "1");
@@ -753,7 +727,7 @@ describe("画面の枠", () => {
 
     await user.click(screen.getByRole("button", { name: "走行モード" }));
     const fixedAt = Date.parse("2026-10-13T05:00:00Z");
-    geolocation.move(RIDDEN_MIDDLE, fixedAt);
+    geolocation.deliver({ ...RIDDEN_MIDDLE, timestamp: fixedAt });
 
     // 残りの0.5kmは、計画では2分。計画の時刻（出発）ではなく、位置を受けた時刻から数える。
     const arrival = new Date(fixedAt + 2 * MINUTE_MS);
@@ -775,12 +749,12 @@ describe("画面の枠", () => {
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
     await user.click(screen.getByRole("button", { name: "走行モード" }));
 
-    geolocation.move(RIDDEN_MIDDLE, 0, 20);
+    geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
     expect(screen.getByRole("status", { name: "300m先で右折" })).toBeInTheDocument();
     expect(marksAt(turnPoint).map((mark) => mark.element.getAttribute("aria-label"))).toEqual(["曲がる所"]);
 
     // 曲がる所を過ぎたら出さない。
-    geolocation.move({ latitude: 35.7, longitude: 139.709 }, 0, 20);
+    geolocation.deliver({ latitude: 35.7, longitude: 139.709, accuracy: 20 });
     expect(screen.queryByRole("status", { name: /先で右折$/ })).toBeNull();
     expect(marksAt(turnPoint)).toEqual([]);
   });
@@ -794,14 +768,14 @@ describe("画面の枠", () => {
     await user.click(screen.getByRole("button", { name: "走行モード" }));
     const rideBar = screen.getByRole("group", { name: "走りの数字" });
 
-    geolocation.move(RIDDEN_MIDDLE, 0, 20);
+    geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
     expect(rideBar).toHaveTextContent("残り: 0.5km");
     // 0.8km の所の北へ約220m（位置の誤差 20m を超えて）離れた。
-    geolocation.move({ latitude: 35.702, longitude: 139.708 }, 0, 20);
+    geolocation.deliver({ latitude: 35.702, longitude: 139.708, accuracy: 20 });
     expect(screen.getByRole("status", { name: "ルートを外れています" })).toBeInTheDocument();
     expect(rideBar).toHaveTextContent("残り: 0.5km");
     // 回り道して、0.8km の所でルートへ戻った。
-    geolocation.move({ latitude: 35.7, longitude: 139.708 }, 0, 20);
+    geolocation.deliver({ latitude: 35.7, longitude: 139.708, accuracy: 20 });
     expect(screen.queryByRole("status", { name: "ルートを外れています" })).toBeNull();
     expect(rideBar).toHaveTextContent("残り: 0.2km");
   });
@@ -819,7 +793,7 @@ describe("画面の枠", () => {
     const rideBar = await screen.findByRole("group", { name: "走りの数字" });
     expect(screen.getByRole("region", { name: "予定ルートのプロファイル" })).toBeInTheDocument();
     const fixedAt = Date.parse("2026-10-13T05:00:00Z");
-    geolocation.move(RIDDEN_MIDDLE, fixedAt);
+    geolocation.deliver({ ...RIDDEN_MIDDLE, timestamp: fixedAt });
     const arrival = new Date(fixedAt + 2 * MINUTE_MS);
     expect(rideBar).toHaveTextContent(`到着予想: ${formatJstHourMinute(arrival)}`);
   });
