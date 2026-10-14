@@ -2,7 +2,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from functools import partial
 
-from app.domain.axis_definitions import copy_axis_definitions, topological_axis_order
+from app.domain.axis_definitions import copy_axis_definitions, published_axis_order
 from app.domain.axis_inspector import AxisInspectorResult, InspectorValues, inspector_values
 from app.domain.dynamic_way_values import MissingConditions, WayValueQuery
 from app.domain.geo import LatLon
@@ -265,7 +265,7 @@ class AxisInspectorService:
         if road is None:
             return None
         definitions = copy_axis_definitions()
-        published = [axis_id for axis_id in topological_axis_order(definitions) if definitions[axis_id].is_published]
+        published = published_axis_order(definitions)
         weights = preference or RoutePreference()
 
         async def values(feature: InspectedFeature) -> InspectorValues:
