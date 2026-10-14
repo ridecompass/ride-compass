@@ -3,8 +3,9 @@
 アダプタが必ず持つと宣言した列が空の行を、区画が断ること。
 
 本番の取込は上限つきの使い捨てコンテナで走り、標高のタイルは1件が約0.26MB（256×256画素のint32）ある。
-ここでは同じ大きさの行を数百件、本物の入口へ流し、取込の間のPythonの確保の最大が、流した総量より
-桁で小さいことを見る。アダプタは取込の追加点（`ADAPTERS`）へ差し込んだ、行を作って返すだけのもの。
+ここでは同じ大きさの行を数百件、本物の入口へ流し、アダプタが行を出し始めてからのPythonの確保の最大が、
+流した総量より桁で小さいことを見る。アダプタは取込の追加点（`ADAPTERS`）へ差し込んだ、行を作って返すだけのもの。
+測り始めを行の前に置くのは、入力の指紋がコードを読む分（行数によらず、コードの大きさで決まる）を測りから外すため。
 
 ここで見ないもの:
 - アダプタが外部の形をどう読むか → `test_npa_honhyo.py`・`test_osm_pbf.py`・`test_gsi_dem_tile.py`
@@ -56,6 +57,7 @@ def _adapter(read, required=()) -> RegisteredAdapter:
 
 
 async def _large_rows(spec, profile, inputs, origin):
+    tracemalloc.start()
     for i in range(ROWS):
         yield SourceRecord(natural_key=str(i), geom_wkb=POINT_WKB, attrs={"i": i},
                            payload=bytes(ROW_BYTES))
@@ -77,7 +79,6 @@ async def test_memory_held_while_ingesting_does_not_grow_with_the_rows(conn, mon
     monkeypatch.setitem(ADAPTERS, SOURCE, _adapter(_large_rows))
     profile = _only(SOURCE, SOURCE)
 
-    tracemalloc.start()
     try:
         await ingest_source(conn, profile, SOURCE)
         _, peak = tracemalloc.get_traced_memory()
@@ -87,8 +88,8 @@ async def test_memory_held_while_ingesting_does_not_grow_with_the_rows(conn, mon
     count, total = await conn.fetchrow(
         f'SELECT count(*), sum(octet_length(payload)) FROM "{partition_table_name(SOURCE)}"')
     assert (count, total) == (ROWS, ROWS * ROW_BYTES)
-    # 流した総量は約79MB。溜めずに流していれば、確保の最大は行数によらず一定（数MB）に留まる。
-    assert peak < ROWS * ROW_BYTES / 10, f"取込の間の確保の最大 {peak / 1e6:.1f}MB"
+    # 流した総量は約79MB。溜めずに流していれば、行を流す間の確保の最大は行数によらず一定（数MB）に留まる。
+    assert peak < ROWS * ROW_BYTES / 10, f"行を流す間の確保の最大 {peak / 1e6:.1f}MB"
 
 
 async def _breaks_midway(spec, profile, inputs, origin):
