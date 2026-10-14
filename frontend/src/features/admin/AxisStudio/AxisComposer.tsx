@@ -5,6 +5,7 @@
 // ここは状態・検証・保存と、その組み立てだけを担う。
 
 import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { FieldLabel } from "@/components/ui/FieldLabel/FieldLabel";
 import { useMapBandsOfThresholds } from "@/features/admin/useMapBandsOfThresholds";
 import type { AxisDefinitionPayload, AxisDefinitionResponse } from "@/types/route";
@@ -27,6 +28,7 @@ import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { cardVariants } from "@/components/ui/Card/Card";
 import { errorMessage } from "@/lib/apiError";
+import { getQueryClient } from "@/lib/queryClient";
 
 interface AxisComposerProps {
   /** 編集対象。nullなら新規作成（下記duplicateFromが無ければ空欄から）。公開済み軸も
@@ -77,9 +79,15 @@ export default function AxisComposer({
   const restrictedDisplayOnly = editing !== null && editing.is_published;
   // 地図の色分けしきい値のまとめ入力が読めない間は保存させない（節から受け取る）。
   const [thresholdError, setThresholdError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const isNew = editing === null;
+  // 保存の成功の後は呼び出し側（AxisStudio）がモーダルごと閉じるので、フォームを戻さない。
+  const save = useMutation(
+    { mutationFn: (payload: AxisDefinitionPayload) => onSave(payload, isNew) },
+    getQueryClient(),
+  );
+  // 送る前に止めた入力の誤り。送った後の誤りより先に出す。
+  const [invalid, setInvalid] = useState<string | null>(null);
+  const error = invalid ?? (save.isError ? errorMessage(save.error) : null);
   const unknownMaterials = unknownMaterialIds(buildShape(draft, MATERIAL_CATALOG), MATERIAL_CATALOG, axisIds);
   const thresholds = draft.displayThresholdsOverride;
   const mapBands = useMapBandsOfThresholds(
@@ -112,14 +120,14 @@ export default function AxisComposer({
   // 一覧から別の軸の編集を選び直した場合の切り替えは、呼び出し側（AxisStudio）が
   // keyを変えてコンポーネント自体を再マウントする方式に委ねる（このコンポーネント内でeditingの変化を検知しない）。
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
+    setInvalid(null);
     // 保存前の検証。軸の不変条件（表示名・折れ点の昇順・値の行の件数・略称・しきい値の件数と昇順等）はbackendが検証し、保存の
     // 誤りとして日本語の文を返す（`axis_definitions.py: axis_error`）。ここで写さない——写すと、backendの条件を
     // 変えたとき画面だけが古い条件で止める。ここに残すのは、入力の読み取りの誤りだけ（しきい値は制限モードでも編集できる）。
     if (draft.displayThresholdsOverride !== null && thresholdError) {
-      setError(thresholdError);
+      setInvalid(thresholdError);
       return;
     }
     const payload: AxisDefinitionPayload = {
@@ -138,16 +146,7 @@ export default function AxisComposer({
       display_thresholds_override: draft.displayThresholdsOverride,
       display_band_labels_override: draft.displayBandLabelsOverride,
     };
-    setSaving(true);
-    try {
-      // 保存成功後は呼び出し側（AxisStudio）がモーダルごと閉じるため、ここでフォームを
-      // リセットして開いたままにする必要はない。
-      await onSave(payload, isNew);
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setSaving(false);
-    }
+    save.mutate(payload);
   }
 
   /** 既定重みの絶対値だけでは効果が分からない。
@@ -275,11 +274,11 @@ export default function AxisComposer({
       {error && <p className={textVariants({ variant: "error" })}>{error}</p>}
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="primary" size="sm" type="submit" disabled={saving || unknownMaterials.length > 0}>
-          {saving ? "保存中..." : isNew ? "作成する" : "更新する"}
+        <Button variant="primary" size="sm" type="submit" disabled={save.isPending || unknownMaterials.length > 0}>
+          {save.isPending ? "保存中..." : isNew ? "作成する" : "更新する"}
         </Button>
         {!isNew && (
-          <Button size="sm" onClick={onCancelEdit} disabled={saving}>
+          <Button size="sm" onClick={onCancelEdit} disabled={save.isPending}>
             編集をやめる
           </Button>
         )}

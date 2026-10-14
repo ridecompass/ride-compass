@@ -15,7 +15,8 @@ export function formatErrorDetail(detail: unknown): string | undefined {
   return JSON.stringify(detail);
 }
 
-/** 捕まえた例外を画面へ出す文言にする（`Error`以外が投げられても文字列にする）。 */
-export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+/** 捕まえた例外を画面へ出す文言にする。`Error`以外が投げられたら`fallback`、無ければその値を文字列にする。 */
+export function errorMessage(error: unknown, fallback?: string): string {
+  if (error instanceof Error) return error.message;
+  return fallback ?? String(error);
 }

@@ -22,7 +22,6 @@ import type {
   DynamicWeatherLayerId,
   DynamicWeatherRenderPayload,
 } from "@/features/map/layers/dynamicWeather";
-import { withJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
 import {
   areaLayerAnchor,
   hideBasemapPois,
@@ -34,7 +33,7 @@ import { primaryAttributeIdsToLayerIds } from "@/features/map/layers/primaryAttr
 import { ROUTE_ARROW_ICON_ID, createRouteArrowIcon } from "@/features/map/layers/routeArrowIcon";
 import type { LensId, RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
 import type { RouteCandidate } from "@/types/route";
-import { dedicatedAxisBands, type ValueBand } from "@/lib/mapDisplay/valueScale";
+import { valueBands } from "@/lib/mapDisplay/valueScale";
 import { routeStretches, segmentPath, splitSegmentAt } from "@/lib/routeDistance";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import {
@@ -50,10 +49,10 @@ import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { drawPointIcon } from "@/features/map/layers/pointIcon";
 
 import { applyMapScene } from "./applyMapScene";
-import type { AxisBand, AxisLineState } from "./groups/axisLines";
+import type { AxisLineState } from "./groups/axisLines";
 import { POINT_ICONS, POINT_TILE_LAYERS } from "./groups/points";
 import type { RouteState } from "./groups/routes";
-import { WEATHER_ICONS, weatherElementKey, type WeatherPayload, type WeatherState } from "./groups/weather";
+import { WEATHER_ICONS, weatherElementKey, type WeatherState } from "./groups/weather";
 import { buildLegendFilterExpression } from "./sceneBuilders";
 import type { SceneInputs } from "./buildScene";
 import { EMPTY_MAP_SCENE, hiddenBasemapPois, type MapScene } from "./mapScene";
@@ -165,11 +164,6 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
   };
 }
 
-/** 評価軸の段を線の宣言へ渡す形にする。**上の段から順に**並べる——色式は最初に当たった段を採るため。 */
-function axisLineBands(bands: readonly ValueBand[]): AxisBand[] {
-  return bands.map(({ key, lowerBound, color }) => ({ key, lowerBound, color })).reverse();
-}
-
 /** 下敷きで描く軸。その軸の材料（一次属性の表示レイヤー）が1つでも出ている間は、材料の
  * 線を隠さないよう下へ敷く。 */
 function underlaidAxisIds(props: SceneWiringProps): ReadonlySet<string> {
@@ -189,7 +183,7 @@ function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): Axi
     return {
       axisId: axis.axisId,
       visible: isAxisShown(look, axis),
-      bands: axisLineBands(dedicatedAxisBands(axis.display)),
+      bands: valueBands(axis.display),
       values: delivered?.values ?? new Map<string, number | null>(),
       loading: delivered?.loading === true,
       hiddenBandKeys: look.hiddenLegendKeys[axis.axisId] ?? NO_KEYS,
@@ -201,31 +195,18 @@ function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): Axi
 
 /** 届いている中身を、要素の鍵（`groups/weather.ts: weatherElementKey`）で引ける形へ移す。 */
 function weatherStateFrom(props: SceneWiringProps): WeatherState {
-  const shown = new Map<string, { visible: boolean; payload?: WeatherPayload }>();
+  const shown = new Map<string, { visible: boolean; payload?: DynamicWeatherRenderPayload }>();
   for (const [groupId, group] of Object.entries(props.look.dynamicWeather)) {
     if (group === undefined) continue;
     for (const [sourceId, source] of Object.entries(group)) {
       if (source === undefined) continue;
       shown.set(weatherElementKey({ group: groupId, source: sourceId }), {
         visible: source.visible,
-        ...(source.payload === undefined ? {} : { payload: weatherPayloadFrom(source.payload) }),
+        ...(source.payload === undefined ? {} : { payload: source.payload }),
       });
     }
   }
   return { shown };
-}
-
-function weatherPayloadFrom(payload: DynamicWeatherRenderPayload): WeatherPayload {
-  switch (payload.kind) {
-    case "rasterTile":
-    case "vectorTile":
-      // 配信元のタイルは自前のプロトコル経由で取りに行く（空タイルの肩代わり・失敗の観測）。
-      return { kind: payload.kind, tiles: [withJmaTileProtocol(payload.tileUrlTemplate)] };
-    case "gridFill":
-    case "gridMark":
-    case "outline":
-      return { kind: payload.kind, data: payload.geojson };
-  }
 }
 
 /** 点のタイルごとのURL。 */

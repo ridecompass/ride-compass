@@ -129,7 +129,7 @@ frontendはどのクエリパラメータをどの軸のリクエストへ載せ
   下る道も坂のきつさの色になり、上りと下りが釣り合う道はどちらかの色に寄る。
 - 区間の無い道（長さ0の区間しか作れない道等）は、道1本の材料で評価する。走行方位で決まらない道は`null`のまま。
   区間の材料が読めないタイル（取込範囲外・DB障害）は値なし（`{}`）。
-- 区間の材料を読むのは道1本のズームで畳む軸を要求されたときだけで、読み直しは重い（2026-10-10 の本番の実測で、
+- 区間の材料を読むのは道1本のズームで畳む軸を要求されたときだけで、読み直しは重い（本番の実測で、
   都心 z12 の初回が約4秒）ので、タイルの材料と同じキャッシュに持つ（下の「キャッシュ」）。
 
 ## 区間インスペクタの値（`services/region_service.py: AxisInspectorService`）
@@ -245,7 +245,7 @@ axis_id → get_dedicated_way_value_service(axis_id) が今の軸の集合の写
 - 取込範囲外・空のタイル・DB障害は持たない（次の要求で読み直す）。
 - Redisに置かないのは、失っても自前のPostGISから読み直せるため（[.claude/rules/caching-retention.md](../../../.claude/rules/caching-retention.md)
   「Redisへ置くもの・置かないもの」）。読み直しの重さは、本番でタイルを焼く文と同じ結び方で全材料を読んで都心 z12 で
-  0.65秒・z14 で0.08秒（2026-10-10 の実測）。1エントリの大きさ（材料の列×フィーチャー数）は未計測。
+  0.65秒・z14 で0.08秒。1エントリの大きさ（材料の列×フィーチャー数）は未計測。
 - hit/missは`FeatureMaterialService`の`log_external_call`（`region:feature-materials`・`region:feature-segments`）の`fields["cache"]`に書く。
 
 ### 配信サービスの値（`infrastructure/dynamic_way_value_cache.py`）

@@ -12,12 +12,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { moved } from "@/testing/movedPoint";
 import { makeRouteCandidate } from "@/testing/routeFixtures";
 import type { RouteCandidate } from "@/types/route";
 
 import { downloadGpx } from "./gpxExport";
-
-const METERS_PER_DEGREE_LATITUDE = 111_320;
 
 interface Download {
   fileName: string;
@@ -76,10 +75,8 @@ async function exportGpx(route: RouteCandidate) {
 
 /** (lon, lat)から東へ`eastM`・北へ`northM`進んだ点。 */
 function offset([lon, lat]: GeoJSON.Position, eastM: number, northM: number): GeoJSON.Position {
-  return [
-    lon + eastM / (METERS_PER_DEGREE_LATITUDE * Math.cos((lat * Math.PI) / 180)),
-    lat + northM / METERS_PER_DEGREE_LATITUDE,
-  ];
+  const point = moved({ latitude: lat, longitude: lon }, northM, eastM);
+  return [point.longitude, point.latitude];
 }
 
 /** 起点から1点ごとに東へ`stepEastM`・北へ`stepNorthM`ずつ進む`count`点の直線。 */

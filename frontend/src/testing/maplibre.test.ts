@@ -108,4 +108,18 @@ describe("maplibre-gl の代役", () => {
     expect(map.getContainer()).not.toContainElement(element);
     map.remove();
   });
+
+  it("外した地図をもう一度外しても、ほかの地図は画面に残る", () => {
+    const removed = drawMap();
+    const remaining = drawMap();
+    const onLoad = vi.fn();
+    remaining.on("load", onLoad);
+
+    removed.remove();
+    removed.remove();
+    mapOnScreen().emit("load");
+
+    expect(onLoad).toHaveBeenCalledOnce();
+    remaining.remove();
+  });
 });

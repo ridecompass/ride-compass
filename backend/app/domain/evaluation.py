@@ -42,7 +42,7 @@ from app.domain.axis_definitions import (
     density_slope,
     evaluate_axes_array,
     published_axis_definitions,
-    topological_axis_order,
+    published_axis_order,
 )
 from app.domain.axis_raw_value import axis_material_shares, raw_value_unit
 from app.domain.difficulty import (
@@ -75,11 +75,7 @@ def has_route_facing_raw_value(definition: AxisDefinition) -> bool:
 
 def route_facing_raw_axis_ids(definitions: dict[str, AxisDefinition]) -> list[str]:
     """静的スコア行列が生値の列として持つ軸id（**並びも含めた唯一の定義元**）。"""
-    return [
-        axis_id
-        for axis_id in topological_axis_order(definitions)
-        if definitions[axis_id].is_published and has_route_facing_raw_value(definitions[axis_id])
-    ]
+    return [axis_id for axis_id in published_axis_order(definitions) if has_route_facing_raw_value(definitions[axis_id])]
 
 
 def _published_axis_leaf_material_ids(definitions: dict[str, AxisDefinition]) -> list[str]:
@@ -89,8 +85,7 @@ def _published_axis_leaf_material_ids(definitions: dict[str, AxisDefinition]) ->
     """
     return list(dict.fromkeys(
         entry.material_id
-        for axis_id in topological_axis_order(definitions)
-        if definitions[axis_id].is_published
+        for axis_id in published_axis_order(definitions)
         for entry in axis_material_shares(definitions[axis_id], definitions)
     ))
 
@@ -482,11 +477,7 @@ def build_static_edge_score_matrix(
     axis_scores_by_id = evaluate_axes_array(material_arrays, definitions)
     # 合成の対象（axis_arrays）は公開軸だけ。内部軸は公開軸の材料として読まれるだけで、
     # 利用者の重みの対象ではない。
-    axis_arrays = {
-        axis_id: axis_scores_by_id[axis_id]
-        for axis_id in topological_axis_order(definitions)
-        if definitions[axis_id].is_published
-    }
+    axis_arrays = {axis_id: axis_scores_by_id[axis_id] for axis_id in published_axis_order(definitions)}
     material_arrays_with_axes = {**material_arrays, **axis_scores_by_id}
     axis_raw_arrays: dict[str, np.ndarray] = {}
     for axis_id in route_facing_raw_axis_ids(definitions):

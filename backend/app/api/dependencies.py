@@ -43,6 +43,7 @@ from app.services.flood_service import FloodService
 from app.services.graph_service import GraphService
 from app.services.jma_amedas_service import JmaAmedasService
 from app.services.material_coverage_service import MaterialCoverageService
+from app.services.nearest_point_areas import new_cells_cache
 from app.services.place_search_service import PlaceSearchReads, PlaceSearchService
 from app.services.region_service import AxisInspectorService, RegionService
 from app.services.route_generation_setup import (
@@ -63,8 +64,10 @@ _warning_cache = new_warning_cache()
 _flood_cache = new_flood_cache()
 _station_table_cache = new_station_table_cache()
 _latest_time_cache = new_latest_time_cache()
+_station_cells_cache = new_cells_cache()
 _point_master_cache = new_point_master_cache()
 _forecast_cache = new_forecast_cache()
+_point_cells_cache = new_cells_cache()
 _jma_tile_shared = JmaTileSharedState()
 #: 雨の材料を実体の中に持つため、プロセスに1つ。
 _weather_service = WeatherService()
@@ -84,11 +87,17 @@ def get_amedas_service():
         get_jma_tile_client(),
         station_table_cache=_station_table_cache,
         latest_time_cache=_latest_time_cache,
+        cells_cache=_station_cells_cache,
     )
 
 
 def get_wbgt_service():
-    return WbgtService(get_http_client(JSON_API_TIMEOUT), point_master_cache=_point_master_cache, forecast_cache=_forecast_cache)
+    return WbgtService(
+        get_http_client(JSON_API_TIMEOUT),
+        point_master_cache=_point_master_cache,
+        forecast_cache=_forecast_cache,
+        cells_cache=_point_cells_cache,
+    )
 
 
 def get_flood_service():

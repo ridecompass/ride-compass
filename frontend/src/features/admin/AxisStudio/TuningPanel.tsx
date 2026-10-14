@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import { Card } from "@/components/ui/Card/Card";
@@ -10,6 +10,7 @@ import { NumberInput } from "@/components/ui/NumberInput/NumberInput";
 import { textVariants } from "@/components/ui/Text/Text";
 import { Dot } from "@/components/ui/Dot/Dot";
 import { cn } from "@/lib/cn";
+import { errorMessage } from "@/lib/apiError";
 import { getQueryClient } from "@/lib/queryClient";
 
 const TUNING_QUERY_KEY = ["tuning-parameters"];
@@ -80,9 +81,6 @@ export default function TuningPanel() {
   const parameters = query.data ?? null;
   // 入力中の値（id → 値）。触った行だけを持ち、触っていない行はbackendの値を映す。
   const [drafts, setDrafts] = useState<Record<string, number>>({});
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const error = saveError ?? query.error?.message ?? null;
 
   const rows = parameters ?? [];
   const draftOf = (parameter: TuningParameter) => drafts[parameter.id] ?? parameter.value;
@@ -93,32 +91,29 @@ export default function TuningPanel() {
     return draft !== undefined && draft !== parameter.value;
   });
 
-  const save = async () => {
-    setSaving(true);
-    try {
-      for (const parameter of edited) {
-        const next = drafts[parameter.id]!;
-        // 既定と同じ値に戻したら上書きを消す（DBに持つのは動かしたぶんだけ）。
-        const updated = await updateTuningParameter(parameter.id, next === parameter.default ? null : next);
-        client.setQueryData<TuningParameter[]>(TUNING_QUERY_KEY, (prev) =>
-          prev?.map((p) => (p.id === updated.id ? updated : p)),
-        );
-        // 送った値のままの行だけ下書きを消す（保存を待つ間に打ち直した値は、次に保存するまで残す）。
-        setDrafts((prev) => {
-          if (prev[updated.id] !== next) return prev;
-          const rest = { ...prev };
-          delete rest[updated.id];
-          return rest;
-        });
-      }
-      setSaveError(null);
-    } catch (err) {
-      // 打った値は消さない（範囲外なら直して押し直せる）。
-      setSaveError(err instanceof Error ? err.message : "保存に失敗しました");
-    } finally {
-      setSaving(false);
-    }
-  };
+  // 失敗しても打った値は消さない（範囲外なら直して押し直せる）。
+  const save = useMutation(
+    {
+      mutationFn: async (targets: readonly { parameter: TuningParameter; next: number }[]) => {
+        for (const { parameter, next } of targets) {
+          // 既定と同じ値に戻したら上書きを消す（DBに持つのは動かしたぶんだけ）。
+          const updated = await updateTuningParameter(parameter.id, next === parameter.default ? null : next);
+          client.setQueryData<TuningParameter[]>(TUNING_QUERY_KEY, (prev) =>
+            prev?.map((p) => (p.id === updated.id ? updated : p)),
+          );
+          // 送った値のままの行だけ下書きを消す（保存を待つ間に打ち直した値は、次に保存するまで残す）。
+          setDrafts((prev) => {
+            if (prev[updated.id] !== next) return prev;
+            const rest = { ...prev };
+            delete rest[updated.id];
+            return rest;
+          });
+        }
+      },
+    },
+    client,
+  );
+  const error = save.isError ? errorMessage(save.error, "保存に失敗しました") : (query.error?.message ?? null);
 
   // 効き方ごとにまとめる。**効き方の一覧も見出しも持たない**——どちらもbackendの宣言
   // （`TuningEffect`）が持ち、APIが値（`effect`）と見出し（`effect_title`）を各項目へ
@@ -147,8 +142,12 @@ export default function TuningPanel() {
           </InfoPopover>
         </span>
         {parameters && (
-          <Button variant="primary" onClick={() => void save()} disabled={saving || edited.length === 0}>
-            {saving ? "保存中…" : "DBへ保存"}
+          <Button
+            variant="primary"
+            onClick={() => save.mutate(edited.map((parameter) => ({ parameter, next: drafts[parameter.id]! })))}
+            disabled={save.isPending || edited.length === 0}
+          >
+            {save.isPending ? "保存中…" : "DBへ保存"}
           </Button>
         )}
         {edited.length > 0 && <span className={textVariants({ variant: "note" })}>{edited.length}件が未保存</span>}

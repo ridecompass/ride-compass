@@ -17,7 +17,7 @@ import { POINT_LAYERS, POINT_TILE_SOURCES, pointAxisKey } from "@/features/map/s
 import { ROAD_LINE_SOURCE_ID, ROAD_TRACKS } from "@/features/map/scene/groups/roadLines";
 import { pointLegendAxes, roadLegendAxes } from "@/features/map/scene/legends";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
-import { dedicatedAxisBands } from "@/lib/mapDisplay/valueScale";
+import { valueBands } from "@/lib/mapDisplay/valueScale";
 import { applyScene, sceneInputsFrom } from "@/features/map/scene/applyToMap";
 import { sceneState, type SceneState, type SceneStateOverrides } from "@/testing/sceneState";
 import { buildMapScene } from "@/features/map/scene/buildScene";
@@ -369,7 +369,7 @@ describe("レイヤーを横断する要求", () => {
           ...firstKeyHidden(roadLegendAxes()),
           ...firstKeyHidden(pointLegendAxes()),
           ...Object.fromEntries(
-            DEDICATED_AXES.map((axis) => [axis.axisId, firstBandAndNoData(dedicatedAxisBands(axis.display))]),
+            DEDICATED_AXES.map((axis) => [axis.axisId, firstBandAndNoData(valueBands(axis.display))]),
           ),
         },
         dynamicWeather: everyWeatherGroupState() as never,

@@ -16,7 +16,7 @@ from app.domain.strict_model import StrictModel
 class FloodForecasts(StrictModel):
     forecasts: list[ActiveFloodForecast]
     #: 同じ予報が当たる範囲（地点を含む区域）。区域が分からない・地点を含まないならNone。
-    valid_area: ValidArea | None = None
+    valid_area: ValidArea | None
 
 
 class FloodService:
@@ -35,7 +35,7 @@ class FloodService:
         if resolved is None:
             return None
         if isinstance(resolved, OutsideAreas):
-            return FloodForecasts(forecasts=[])
+            return FloodForecasts(forecasts=[], valid_area=None)
 
         bulletins = await fetch_flood_documents(self._http_client, self._flood_cache)
         if bulletins is None:

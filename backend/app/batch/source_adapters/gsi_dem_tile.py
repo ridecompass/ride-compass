@@ -68,41 +68,65 @@ class DemGrid:
                 f"選んでください（知らない製品: {unknown}）")
 
 
-def _products(spec: SourceSpec) -> dict[str, int]:
-    return {str(product): int(zoom) for product, zoom in spec.grid.products.items()}
+@dataclass(frozen=True)
+class ProductTiles:
+    """1製品の、範囲を覆うタイルの内訳。"""
+
+    product: str
+    zoom: int
+    #: 範囲を覆うタイルの数。
+    covering: int
+    #: 置き場にあるタイルの (x, y)。区域外の印とまだ写していないタイルは、どちらも行にならない。
+    stored: tuple[tuple[int, int], ...]
+    #: 区域外の印のあるタイルの数。
+    absent: int
+
+    @property
+    def unfetched(self) -> int:
+        return self.covering - len(self.stored) - self.absent
 
 
-def gsi_dem_tile_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
-    """置き場にある、範囲を覆うタイル。区域外の印とまだ写していないタイルは、どちらも行にならない。"""
+@dataclass(frozen=True, kw_only=True)
+class DemInputs(AdapterInputs):
+    products: tuple[ProductTiles, ...]
+
+    def origin(self) -> dict[str, Any]:
+        # タイルは数千枚になるので、ファイルの一覧ではなく置き場と製品を書く。
+        return {"tile_root": str(dem_tile_store.TILE_ROOT),
+                "products": {tiles.product: tiles.zoom for tiles in self.products}}
+
+
+def _product_tiles(product: str, zoom: int, profile: SourceProfile) -> ProductTiles:
     root = dem_tile_store.TILE_ROOT
-    return AdapterInputs(files=tuple(
-        dem_tile_store.tile_path(root, product, zoom, x, y)
-        for product, zoom in _products(spec).items()
-        for x, y in tiles_covering_bbox(profile.target.bounding_box(), zoom)
-        if dem_tile_store.is_stored(root, product, zoom, x, y)))
+    covering = tiles_covering_bbox(profile.target.bounding_box(), zoom)
+    stored: list[tuple[int, int]] = []
+    absent = 0
+    for x, y in covering:
+        if dem_tile_store.is_stored(root, product, zoom, x, y):
+            stored.append((x, y))
+        elif dem_tile_store.is_absent(root, product, zoom, x, y):
+            absent += 1
+    return ProductTiles(product=product, zoom=zoom, covering=len(covering), stored=tuple(stored), absent=absent)
+
+
+def gsi_dem_tile_inputs(spec: SourceSpec, profile: SourceProfile) -> DemInputs:
+    root = dem_tile_store.TILE_ROOT
+    products = tuple(_product_tiles(str(product), int(zoom), profile) for product, zoom in spec.grid.products.items())
+    return DemInputs(files=tuple(dem_tile_store.tile_path(root, tiles.product, tiles.zoom, x, y)
+                                 for tiles in products for x, y in tiles.stored),
+                     products=products)
 
 
 @register_adapter("gsi_dem_tile", grid=DemGrid, required=(SourceFeatureRow.rast,), inputs=gsi_dem_tile_inputs)
-async def read_gsi_dem_tiles(spec: SourceSpec, profile: SourceProfile,
+async def read_gsi_dem_tiles(spec: SourceSpec, profile: SourceProfile, inputs: DemInputs,
                              origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
-    root = dem_tile_store.TILE_ROOT
-    products = _products(spec)
     # タイルは`fetch_dem_tiles.py`が先に写している。取込が読むのはその置き場。
-    origin.update({"tile_root": str(root), "products": products})
-    bbox = profile.target.bounding_box()
+    root = dem_tile_store.TILE_ROOT
     newest = None
 
-    for product, zoom in products.items():
-        tiles = tiles_covering_bbox(bbox, zoom)
-        stored = absent = unfetched = 0
-        for x, y in tiles:
-            if not dem_tile_store.is_stored(root, product, zoom, x, y):
-                if dem_tile_store.is_absent(root, product, zoom, x, y):
-                    absent += 1
-                else:
-                    unfetched += 1
-                continue
-            stored += 1
+    for tiles in inputs.products:
+        product, zoom = tiles.product, tiles.zoom
+        for x, y in tiles.stored:
             modified = dem_tile_store.tile_modified(root, product, zoom, x, y)
             newest = modified if newest is None else max(newest, modified)
             pixels, missing = pack_elevations(dem_tile_store.read_tile(root, product, zoom, x, y))
@@ -122,8 +146,8 @@ async def read_gsi_dem_tiles(spec: SourceSpec, profile: SourceProfile,
                     dtype="int32_le", nodata=NODATA),
             )
         logger.info("標高タイル: product=%s zoom=%d 対象%d枚 / 読んだ%d枚・区域外%d枚 / 置き場 %s",
-                    product, zoom, len(tiles), stored, absent, root)
-        if unfetched:
+                    product, zoom, tiles.covering, len(tiles.stored), tiles.absent, root)
+        if tiles.unfetched:
             logger.warning("まだ写していない標高タイル: product=%s zoom=%d %d枚"
-                           "（scripts/fetch_dem_tiles.py が写す）", product, zoom, unfetched)
+                           "（scripts/fetch_dem_tiles.py が写す）", product, zoom, tiles.unfetched)
     origin["tiles_last_modified"] = None if newest is None else newest.isoformat()
