@@ -185,7 +185,25 @@ def test_size_holds_code_to_the_kind_limit_beyond_the_external_maximum(repo, mon
     assert "種類ごとの上限に当たるファイルごとの閾値（無視した。上限は instruction_limits・code_limits だけ） 1件: app/over.ts" in out
 
 
-@pytest.mark.parametrize("changed_lines, fired", [(rc.TRIGGER_IMPL_LINES - 1, False), (rc.TRIGGER_IMPL_LINES, True)])
+def test_size_names_code_over_the_limit_without_a_default_split_and_defaults_no_longer_needed(
+        repo, monkeypatch, capsys):
+    # 上限を超えたコードは分けるしかないので、分け方の既定（on_fire）が無ければ名指しし、発火しなくなった
+    # （上限に収まった・消えた）ファイルの既定は外す側に出す。出し損ねると、発火しても次の手が無いまま鳴り続ける。
+    _commit(repo, {"app/decided.ts": "a\n" * 301, "app/undecided.ts": "b\n" * 301, "app/shrunk.ts": "c\n" * 300})
+    thresholds = repo / "size_thresholds.json"
+    thresholds.write_text('{"code_limits": {"*.ts": 300},'
+                          ' "on_fire": {"app/decided.ts": "分ける", "app/shrunk.ts": "分ける", "app/gone.ts": "分ける"}}',
+                          encoding="utf-8")
+    monkeypatch.setattr(rc, "SIZE_THRESHOLDS", thresholds)
+
+    assert rc.cmd_size(argparse.Namespace(top=5)) == 0
+    out = capsys.readouterr().out
+
+    assert "既定の対応（on_fire）の無いコードの上限超え 1件: app/undecided.ts" in out
+    assert "発火していないファイルの既定の対応（on_fire から外す） 2件: app/gone.ts, app/shrunk.ts" in out
+
+
+@pytest.mark.parametrize("changed_lines, fired",[(rc.TRIGGER_IMPL_LINES - 1, False), (rc.TRIGGER_IMPL_LINES, True)])
 def test_trigger_for_the_session_start_says_nothing_until_it_fires(repo, capsys, changed_lines, fired):
     # セッションの始まりのフックは発火したときだけ文脈へ出す。発火を出し損ねると、周期レビューに誰も気づかない。
     _commit(repo, {"backend/a.py": "a\n"})
