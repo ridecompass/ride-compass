@@ -24,7 +24,7 @@ paths:
   docs/architecture/・docs/modules/の追従を既定で含める**（書き分けはdocs/architecture/README.md「書き分け」）。
   どちらもコード変更と同一コミットで更新する。
 - **既存の仕組みと技術的に別方式の新しい配信・レンダリング機構（例: タイル焼き込み済み
-  ramp軸に対する、フィーチャーの鍵で値を配る`dedicated_way_value_layer`）を新設するときは、
+  ramp軸に対する、フィーチャーの鍵で値を配る専用way値の配信）を新設するときは、
   着手前に`docs/architecture/design-principles.md`の構造仕様3・8（1本道の追加点）がこの新しい機構にも
   適用されるかを点検し、適用されるなら軸ごとのファイル・関数・定数・propを新設しない
   汎用設計にする**。

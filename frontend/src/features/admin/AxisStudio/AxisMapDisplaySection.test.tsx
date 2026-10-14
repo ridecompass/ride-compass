@@ -96,7 +96,6 @@ function editingAxis(kind: "ramp" | "none"): AxisDefinitionResponse {
     default_weight: 0,
     is_published: false,
     time_scope: "always",
-    dedicated_way_value_layer: false,
     shape: { kind: "breakpoint_linear", terms: [], preprocess: "identity", breakpoints: [] },
     display: { kind, tile_inputs: [], thresholds: [] },
   };

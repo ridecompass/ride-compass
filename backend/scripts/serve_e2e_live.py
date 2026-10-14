@@ -113,20 +113,19 @@ def road_tile_counter(api: str) -> Callable[[float, float], int]:
     """起点の最大ズームの路面タイルに道が何本出るかを数える関数。0本の起点ではE2Eの前準備が止まる。"""
     import mapbox_vector_tile
 
-    from app.domain.region import tile_position
+    from app.domain.region import ROAD_TILE_MAX_ZOOM, tile_position
+    from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME
 
-    config = json.loads((WORKTREE / "frontend/src/types/generated/region-tile-config.json").read_text(encoding="utf-8"))
     catalog = json.loads(get(f"{api}/api/axis-catalog") or b"{}")
     version = (catalog.get("tile_versions") or {}).get("road_surface")
-    z = int(config["road_tile_max_zoom"])
-    layer_name = config["road_surface"]["layer_name"]
+    z = ROAD_TILE_MAX_ZOOM
 
     def roads_in_tile(lat: float, lon: float) -> int:
         x, y = (int(v) for v in tile_position(lon, lat, z))
         body = get(f"{api}/api/region/road-surface-tiles/{z}/{x}/{y}.pbf?v={version}")
         if not body:
             return 0
-        layer = mapbox_vector_tile.decode(body).get(layer_name) or {}
+        layer = mapbox_vector_tile.decode(body).get(ROAD_SURFACE_LAYER_NAME) or {}
         return len(layer.get("features") or [])
 
     return roads_in_tile

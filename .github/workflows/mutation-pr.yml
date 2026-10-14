@@ -62,20 +62,11 @@ jobs:
           copies: ${{ env.WORKERS }}
           copy-prefix: ${{ env.MUT_DB_PREFIX }}
       - if: steps.scope.outputs.any == 'true'
-        uses: ./.github/actions/python
-        with:
-          requirements: requirements-batch.txt requirements-dev.txt
-          extra: mutmut==3.8.0
-      - if: steps.scope.outputs.any == 'true'
-        name: 変異を作り、関数ごとに通るテストを記録する
-        run: |
-          cp scripts/mutation/setup.cfg setup.cfg
-          python scripts/mutation/gen.py
+        uses: ./.github/actions/mutmut
       - if: steps.scope.outputs.any == 'true'
         name: 変えた関数の変異を回す
         working-directory: backend/mutants
         run: |
-          python ../scripts/mutation/plan.py > /dev/null
           python ../scripts/mutation/pr_plan.py "$MUT_OUT/funcs.txt"
           MUT_STOP_AFTER=$((MUT_JOB_START + MUT_RUN_UNTIL - $(date +%s))) python ../scripts/mutation/runner.py "$MUT_OUT/all.txt" "$MUT_OUT/results.jsonl" "$WORKERS"
       - if: steps.scope.outputs.any == 'true'

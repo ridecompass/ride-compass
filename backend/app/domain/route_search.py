@@ -338,16 +338,8 @@ class EdgePassage:
 
 
 def turn_waits_along(structure: TurnExpandedStructure, path: Sequence[int]) -> list[float]:
-    """経路に沿った遷移ごとのターンの待ち（秒、区間の数−1個）。区間の番号がそのまま探索の状態。"""
-    waits: list[float] = []
-    for previous, following in zip(path, path[1:]):
-        wait = 0.0
-        for entry in range(structure.indptr[previous], structure.indptr[previous + 1]):
-            if structure.target_state[entry] == following:
-                wait = float(structure.turn_seconds[entry])
-                break
-        waits.append(wait)
-    return waits
+    """経路に沿った遷移ごとのターンの待ち（秒、区間の数−1個）。区間の番号がそのまま探索の状態。遷移が無ければ待ち0。"""
+    return [0.0 if entry is None else float(structure.turn_seconds[entry]) for entry in structure.entries_along(path)]
 
 
 def route_passages(
