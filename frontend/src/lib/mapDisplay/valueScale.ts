@@ -29,7 +29,7 @@ const EVALUATION_ANCHORS: readonly string[] = [
 const SIGNED_DESCENT_ANCHORS: readonly string[] = [COLOR_SIGNED_LOW, COLOR_SIGNED_FLAT];
 
 /** 凡例が段の境界を書く目盛り（正本はbackend）。`unit`がnullなら境界は得点（0〜100）。 */
-export type MapLegendScale = components["schemas"]["MapLegendScale"];
+type MapLegendScale = components["schemas"]["MapLegendScale"];
 
 /** 総合難易度（軸ではない）の段の境界。backendが配る。軸の段は宣言の無い軸の既定もbackendが解いて軸ごとに返す。 */
 export const DEFAULT_DIFFICULTY_BOUNDARIES: readonly number[] = mapDisplay.valueScale.difficultyBoundaries;
