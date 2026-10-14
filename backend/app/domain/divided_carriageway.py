@@ -6,7 +6,7 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 逆方向は数m隣にある）。判定は逆向きに並走する相方の有無で行う。
 """
 
-from app.domain.geo import degrees_covering_m
+from app.domain.geo import bearing_sql, degrees_covering_m
 from app.domain.material_sql import sql_literals
 from app.domain.traffic import DIRECTION_BACKWARD, one_way_sql
 
@@ -38,7 +38,7 @@ def facts_sql(way: str, direction: str) -> str:
     """
     return f"""lower(btrim(coalesce({way}.tags->>'carriageway', ''))) AS carriageway,
        COALESCE(NULLIF(btrim({way}.tags->>'ref'), ''), NULLIF(btrim({way}.tags->>'name'), '')) AS ident,
-       degrees(ST_Azimuth(ST_StartPoint({way}.geom)::geography, ST_EndPoint({way}.geom)::geography))
+       {bearing_sql(f"ST_StartPoint({way}.geom)", f"ST_EndPoint({way}.geom)")}
            + CASE WHEN {direction} = '{DIRECTION_BACKWARD}' THEN 180 ELSE 0 END AS travel_deg"""
 
 

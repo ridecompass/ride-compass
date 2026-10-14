@@ -424,8 +424,8 @@ import済みの参照が古い辞書を指したままになる）。差し替�
 ## 応答の候補のid・種類・最速の印
 
 候補のid・種類（`kind`: 周回`loop`・目的地`destination`・合成`spliced`）・方位を持たない候補の名前・
-最速の印（`is_fastest`）・乗り換えの元にできるか（`spliceable`。目的地を持つ生成の候補だけで、上の`spliced_edge_ids`が
-`destination`を要るのと同じ条件）は、どの入口でも並べ終えた最後に`route_generator.py: _label`が1か所で付ける。idは
+最速の印（`is_fastest`）・乗り換えの元にできるか（`spliceable`。目的地を持つ生成の候補だけで、上の`spliced_edge_ids`を受け付ける条件と
+1つの判断（`domain/route_request.py: spliceable`）を読む）は、どの入口でも並べ終えた最後に`route_generator.py: _label`が1か所で付ける。idは
 `<種類>-<並びの位置>`（例: `loop-00`・`destination-01`）で、応答の中で一意になる（同じ方位に複数候補が並びうるため、
 方位からは作らない）。種類は終点で決まる——出発地へ戻れば`loop`、目的地で終われば`destination`（経由地の有無・距離の有無を問わない）。
 距離ありの周回の名前は方位、距離なしで出発地へ戻る候補は「経由地ルート」、目的地で終わる候補は「目的地ルート」。
