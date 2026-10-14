@@ -7,6 +7,7 @@ import { RIDE_SESSION_TTL_MS, readRideSession, writeRideSession } from "./rideSe
 
 const ROUTE = makeRouteCandidate({ id: "r1" });
 const SAVED_AT = Date.UTC(2026, 9, 13, 6, 0);
+const WRITTEN = JSON.parse(writeRideSession({ route: ROUTE, riding: true }, SAVED_AT)) as Record<string, unknown>;
 
 describe("rideSession: 走行中のルートの一時保存の書き方と読み方", () => {
   it("書いたものを期限の内に読むと、同じルートと走行モードの入切が返る", () => {
@@ -23,11 +24,9 @@ describe("rideSession: 走行中のルートの一時保存の書き方と読み
     { case: "保存が無い", raw: null, now: SAVED_AT },
     { case: "消した保存（空）", raw: "", now: SAVED_AT },
     { case: "読めない保存", raw: "{", now: SAVED_AT },
-    {
-      case: "形の違う保存",
-      raw: JSON.stringify({ route: { id: 1 }, riding: "yes", savedAt: SAVED_AT }),
-      now: SAVED_AT,
-    },
+    { case: "形の違う保存", raw: JSON.stringify({ ...WRITTEN, riding: "yes" }), now: SAVED_AT },
+    // 型の印は、ルート候補の型が今の版と違う版で書いた保存を見分ける。印の無い保存も同じ側に入る。
+    { case: "ルート候補の型が違う版で書いた保存", raw: JSON.stringify({ ...WRITTEN, shape: "前の版" }), now: SAVED_AT },
   ])("$case は使わない", ({ raw, now }) => {
     expect(readRideSession(raw, now)).toBeNull();
   });

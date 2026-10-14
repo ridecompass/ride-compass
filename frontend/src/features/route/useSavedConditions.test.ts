@@ -24,6 +24,7 @@ import { useSavedConditions } from "./useSavedConditions";
 const A: Coordinates = { latitude: 35.1, longitude: 139.1 };
 const B: Coordinates = { latitude: 35.2, longitude: 139.2 };
 const ORIGIN: Coordinates = { latitude: 35.3, longitude: 139.3 };
+const STORAGE_KEY = "ridecompass:saved-conditions";
 
 interface OriginProps {
   origin: Coordinates | null;
@@ -112,6 +113,28 @@ describe("保存して呼び出す", () => {
     first.unmount();
 
     expect(renderSaved().result.current.saved.saved.map((entry) => entry.name)).toEqual(["周回 30km"]);
+  });
+
+  it("前にモードで保存した一覧は、開くと今の形で書き戻す", () => {
+    const before = {
+      name: "いつもの周回",
+      routeMode: "loop",
+      distance: "40",
+      maxRoutes: "3",
+      origin: null,
+      waypoints: [A],
+      destination: null,
+      routePreference: null,
+      hardFilters: DEFAULT_HARD_FILTERS,
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([before]));
+
+    const { result } = renderSaved();
+
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual(result.current.saved.saved);
+    expect(result.current.saved.saved).toEqual([
+      expect.objectContaining({ name: "いつもの周回", distanceTargeted: true, waypoints: [] }),
+    ]);
   });
 
   it("消すとその件だけが一覧から外れる", () => {
