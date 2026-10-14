@@ -16,9 +16,12 @@ APIを呼ぶ）・「データ保守」タブ（派生データ鮮度台帳の�
 
 | ファイル | 責務 |
 |---|---|
-| `features/admin/AxisStudio/AxisStudio.tsx` | トップレベル。一覧取得・作成/更新/削除/複製/非公開化の状態管理 |
+| `features/admin/AxisStudio/AxisStudio.tsx` | トップレベル。一覧取得・作成/更新/削除/複製/非公開化の状態管理。開いているフォーム（新規・編集・複製・表示だけ編集）は1つの状態で持ち、2つのフォームが同時に開かない |
 | `features/admin/AxisStudio/AxisComposer.tsx` | 1画面フォームの本体。draftの状態・保存前の検証・保存と、節の組み立てだけを持つ |
-| `features/admin/AxisStudio/AxisScoringSection.tsx` | 「点数の決め方」の節。材料の選択と、その材料の型に応じた点数入力（0点/100点・効き方、はい/いいえ、値ごと、他軸の係数）。折れ点の直接編集は畳んだ詳細設定の中 |
+| `features/admin/AxisStudio/AxisScoringSection.tsx` | 「点数の決め方」の節。材料の選択と必須の印を持ち、点数の入力はその材料の型に応じた部品へ振り分ける（他軸の係数はこのファイルが`ScoringTerms`を描く） |
+| `features/admin/AxisStudio/NumericScoring.tsx` | 値の材料・はい/いいえの材料の点数入力（0点/100点・効き方、はい/いいえ）。折れ点の直接編集は畳んだ詳細設定の中 |
+| `features/admin/AxisStudio/CategoricalScoring.tsx` | 値ごとの材料の点数入力（値ごとの点数の行） |
+| `features/admin/AxisStudio/ScoringTerms.tsx` | 材料・軸を組み合わせる行（係数・前処理）の入力と、材料の選択肢の描き方。`AxisScoringSection.tsx`と`NumericScoring.tsx`が使う |
 | `features/admin/AxisStudio/AxisMapDisplaySection.tsx` | 「地図表示・公開」の節。色分けしきい値のまとめ入力と段階プレビュー・アイコン・公開チェック |
 | `features/admin/AxisStudio/AxisFormFields.tsx` | 上記2節とAxisComposerが共有する入力部品（`InfoPopoverButton`・`MaterialInfoButton`・`RequiredCheckbox`・`SectionLabel`・`SliderNumberField`） |
 | `features/admin/AxisStudio/axisDraft.ts` | Draft（フォームの内部状態）とbackendのpayloadの相互変換。`buildShape`・`draftFromExisting`・`pickPassthroughFields`・`PASSTHROUGH_PAYLOAD_KEYS`。変更理由はbackendのpayloadスキーマで、フォームUIの増減とは独立している |
@@ -27,7 +30,7 @@ APIを呼ぶ）・「データ保守」タブ（派生データ鮮度台帳の�
 | `features/admin/AxisStudio/scoreDistribution.ts` | 生値の分布へ折れ点を当てはめ、得点帯ごとの延長割合と警告を求める純粋関数（DOM非依存、`DistributionPreview.tsx`が使う） |
 | `features/admin/AxisStudio/DistributionPreview.tsx` | 折れ点の下に「この折れ点での得点分布」を出すパネル。満点への張り付き・0点への偏りを警告する |
 | `features/admin/AxisStudio/MaterialRangeHint.tsx` | 材料選択行の下に、その材料が実データで取る値の分位（p50/p75/p90）を出す1行表示 |
-| `features/admin/adminApi.ts` | 管理画面のAPIクライアントをまとめたもの。管理API（backend `/api/admin/**`）は`lib/apiClient.ts: adminApiClient`で同一オリジンの口`/admin/api/**`へ投げ、backendのパスの`/api/admin`より後をそのまま使う（例: backend `GET /api/admin/db-status`は`/admin/api/db-status`）。パス・本文・応答の型は管理APIの宣言から決まり、宣言に無いパスは型検査で落ちる（[ページ全体構成](page-composition.md)）。待ち時間は呼び出しごとに決める（全表走査の集計は`HEAVY_ADMIN_API_TIMEOUT_MS`、分布は`DISTRIBUTION_API_TIMEOUT_MS`）。稼働状況の口（`/health`・`/api/debug/stats`）も同じファイルに置く（フロント自身の版の口`/api/version`は、一般の画面のメニューも読むので`services/versionApi.ts`） |
+| `features/admin/adminApi.ts` | 管理画面のAPIクライアントをまとめたもの。管理API（backend `/api/admin/**`）は`lib/apiClient.ts: adminApiClient`で同一オリジンの口`/admin/api/**`へ投げ、backendのパスの`/api/admin`より後をそのまま使う（例: backend `GET /api/admin/db-status`は`/admin/api/db-status`）。パス・本文・応答の型は管理APIの宣言から決まり、宣言に無いパスは型検査で落ちる（[ページ全体構成](page-composition.md)）。待ち時間は呼び出しごとに決める（全表走査の集計は`lib/apiTimeouts.ts: API_TIMEOUT_MS`の`heavyAdmin`、分布は`lib/apiTimeouts.ts: API_TIMEOUT_MS`の`distribution`）。稼働状況の口（`/health`・`/api/debug/stats`）も同じファイルに置く（フロント自身の版の口`/api/version`は、一般の画面のメニューも読むので`services/versionApi.ts`） |
 | `app/admin/api/[...path]/route.ts` | 管理APIの転送の口。`/admin/api/<X>`への要求を、サーバーの環境変数から組み立てたBasic認証を付けてbackendの`/api/admin/<X>`へ、メソッド・クエリ・本文・応答の状態と本文ごとそのまま渡す。転送の待ち時間はどのクライアントよりも長く取り（`ADMIN_PROXY_TIMEOUT_MS`）、打ち切りはクライアントに任せる |
 | `proxy.ts` | `/admin`配下（画面と管理APIへの転送の口）の手前のBasic認証。ファイル名と`config.matcher`はNext.jsの規約で、`matcher`が認証を求める道を決める。資格情報が未設定なら、どの要求も拒む |
 | `lib/adminBasicAuth.ts` | Basic認証の資格情報を環境変数から読む口。片方でも空なら未設定（`null`）とし、`proxy.ts`と転送の口が同じ結果を見る |
@@ -36,7 +39,7 @@ APIを呼ぶ）・「データ保守」タブ（派生データ鮮度台帳の�
 | `features/admin/useMapBandsOfThresholds.ts` | 下書きのしきい値が地図でどの段になるか（段にならない値・地図の各段に当たる入力の段）を取得する（下書きが落ち着いてから問い合わせる。失敗時は判定なしで、失敗したことも返す） |
 | `features/admin/useAxisValueDistribution.ts` | 編集中のshapeの生値分布を取得。取得キーに折れ点を含めないため、折れ点のドラッグ中は通信しない。取り直している間は前の分布を出したまま読み込み中にする |
 | `features/admin/useMaterialDistribution.ts` | 材料1件の値の分布を取得。同じ材料を複数行が選んでも、画面を開いている間に取りに行くのは1回（取れなかったことも覚える） |
-| `features/admin/AxisStudio/breakpointTools.ts` | 折れ点の自動生成・区分線形補間・追加位置決定・ドラッグスナップ刻み幅算出（DOM非依存の純粋関数、`AxisComposer.tsx`が使う） |
+| `features/admin/AxisStudio/breakpointTools.ts` | 折れ点の自動生成・区分線形補間・追加位置決定・ドラッグスナップ刻み幅算出（DOM非依存の純粋関数、`NumericScoring.tsx`が使う） |
 | `features/admin/AxisStudio/MaterialCoveragePanel.tsx` | 「材料」タブ本体。材料ごとの欠損割合を「欠損時の扱い」でグループに分けた表（各グループ内は欠損割合降順）と集計対象外材料の理由一覧。グループの見出し・説明と母集団の名前はbackendの宣言（`domain/material_catalog.py: MISSING_SEMANTICS_DISPLAY`・`domain/material_catalog.py: POPULATION_LABELS`）が生成物`vocabulary.ts`で配る |
 | `features/admin/AxisStudio/DerivedDataFreshnessPanel.tsx` | 「データ保守」タブ本体。ソースごとの鮮度（成功した最新の取込と作り直しに使った取込）と、派生テーブルごとの列の比較（作ったときの列と今の宣言の列。値の列ごとの値なしの件数は参考）を、それぞれ1行へまとめて表示。対象の表・列はbackendが宣言から導く（表の印を持つ表が派生データ）。作り直しが要るかもbackendが決め（`needs_rebuild`）、画面は理由を問わずそれで数える |
 | `features/admin/AxisStudio/DbStatusPanel.tsx` | 「データ保守」タブ・本番DBの状態。取込runの最終実行・テーブルの実数と容量・統計とVACUUMの鮮度・接続を1件1行で出す |
@@ -201,7 +204,7 @@ default_weight等）は`draftFromExisting`が読み込んだ既存値のまま�
 `Draft`は「今は選ばれていないkindの入力値」も保持する（kindを切り替えて戻したときに
 打ち直しにならないようにするため）。保存時に`buildShape`が選択中のkindぶんだけを取り出す。
 
-### 点数の決め方は材料から導く（`AxisScoringSection.tsx`）
+### 点数の決め方は材料から導く（`AxisScoringSection.tsx`と型ごとの部品）
 
 **「なめらか評価／ぴったり評価」のような呼び名を利用者に選ばせない。** 選ぶのは
 「点数のもとになるもの」（材料、または他の軸）1つだけで、その型が点数の入力欄を決める。
@@ -248,7 +251,7 @@ default_weight等）は`draftFromExisting`が読み込んだ既存値のまま�
 
 ### 折れ点エディタ・スライダー・数値入力
 
-- `breakpointTools.ts`（DOM非依存の純粋関数、`AxisScoringSection.tsx`が使う単一の実装）:
+- `breakpointTools.ts`（DOM非依存の純粋関数、`NumericScoring.tsx`が使う単一の実装）:
   - `generateBreakpoints(zeroValue, hundredValue, shape)`: 「0点にする値」「100点にする値」
     「形」（一定/後半で急/前半で急/S字）の3入力から6点の折れ点を生成する。
     `zeroValue > hundredValue`（値が大きいほど走りやすい軸）でも常にx昇順で返す。
@@ -268,7 +271,7 @@ default_weight等）は`draftFromExisting`が読み込んだ既存値のまま�
   場合にのみ、そのterm1件の材料が持つ`referencePoints`（生成物`material-catalog.json`の
   `reference_points`）から出す。
   複数termの組み合わせ・他軸参照は参考点の対応が取れないため対象外
-  （`AxisScoringSection.tsx: primaryMaterial`）。参考点の生値を折れ点の横軸の値（重みと前処理を当てた値）へ
+  （`NumericScoring.tsx: primaryMaterial`）。参考点の生値を折れ点の横軸の値（重みと前処理を当てた値）へ
   写すのも、その点数も、backendの軽い口（`preview-scores`の`material_points`）が返す。届くまではボタンと表を
   出さない。
 - `BreakpointCurveEditor`（`BreakpointCurveEditor.tsx`）: SVGでbreakpointsをドラッグ・

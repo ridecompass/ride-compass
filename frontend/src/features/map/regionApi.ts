@@ -4,7 +4,7 @@ import { apiPath } from "@/lib/apiPath";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import { backendApi, requestApi } from "@/lib/apiClient";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
-import { DEFAULT_API_TIMEOUT_MS } from "@/lib/apiTimeouts";
+import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
 
 const ROAD_SURFACE_TILE_PATH = apiPath("/api/region/road-surface-tiles/{z}/{x}/{y}.pbf");
 
@@ -108,7 +108,7 @@ export async function fetchAxisInspector(
     speed_kmh: conditions.speedKmh,
   };
   return requestApi((init) => backendApi.POST("/api/region/axis-inspector", { body, ...init }), {
-    timeoutMs: DEFAULT_API_TIMEOUT_MS,
+    timeoutMs: API_TIMEOUT_MS.default,
     category: "api:axis-inspector",
     messages: { failure: "内訳の取得に失敗しました", parseFailure: "内訳の取得に失敗しました" },
     requestMeta: { body },
@@ -152,7 +152,7 @@ export async function fetchDynamicWayValues(
     const values = await requestApi(
       (init) => backendApi.GET("/api/region/dynamic-way-values/{axis_id}/{z}/{x}/{y}", { params, ...init }),
       {
-        timeoutMs: DEFAULT_API_TIMEOUT_MS,
+        timeoutMs: API_TIMEOUT_MS.default,
         category: `api:${axisId}-way-values`,
         messages: { failure: "道路の色分けの取得に失敗しました", parseFailure: "道路の色分けの解析に失敗しました" },
         successMeta: (data) => ({ wayCount: Object.keys(data).length }),

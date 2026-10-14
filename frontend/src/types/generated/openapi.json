@@ -2866,8 +2866,7 @@
               "type": "string"
             },
             "type": "object",
-            "title": "Value Labels",
-            "default": {}
+            "title": "Value Labels"
           }
         },
         "additionalProperties": false,

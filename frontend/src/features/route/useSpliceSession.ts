@@ -3,8 +3,10 @@
 import { useCallback, useMemo, useRef, useState, type ComponentProps } from "react";
 
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { errorMessage } from "@/lib/apiError";
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect";
 import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
+import { routeEdgeKms } from "@/lib/routeDistance";
 import { buildGenerateRequest, type GenerationInput } from "@/features/route/generationRequest";
 import { generateRoutes } from "@/features/route/routeApi";
 import {
@@ -52,14 +54,11 @@ const withApplied = (session: SpliceSession, applied: StretchAlternative[]): Spl
   task: withoutError(session.task),
 });
 
-function spliceFailureMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "組み合わせたルートの評価に失敗しました";
-}
-
 const shapeOfRoute = (route: RouteCandidate): SplicedRouteShape => ({
   edgeIds: route.edge_ids,
   coordinates: route.geometry.coordinates as GeoJSON.Position[],
   edgePointOffsets: route.edge_point_offsets,
+  edgeKms: routeEdgeKms(route.segments, route.edge_point_offsets),
   nodeIds: route.node_ids,
 });
 
@@ -196,7 +195,8 @@ export function useSpliceSession({
 
   const canEvaluate = splice !== null && editingRoute !== null && appliedAlternatives.length > 0;
   const failTask = (token: symbol, error: unknown) => {
-    if (isLive(token)) setSpliceTask({ status: "idle", error: spliceFailureMessage(error) });
+    if (isLive(token))
+      setSpliceTask({ status: "idle", error: errorMessage(error, "組み合わせたルートの評価に失敗しました") });
   };
 
   // 選んだ組み合わせをbackendで評価する（frontendは経路を組み立てるだけ）。差分の表示と「作る」で同じものを使い、

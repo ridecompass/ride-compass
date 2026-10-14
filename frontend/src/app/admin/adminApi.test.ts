@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as adminApi from "@/features/admin/adminApi";
 import * as adminRoute from "@/app/admin/api/[...path]/route";
 import { ADMIN_PROXY_TIMEOUT_MS } from "@/lib/apiTimeouts";
-import { inTurn, onBackend } from "@/testing/backendServer";
+import { inTurn, onBackend, onUrl } from "@/testing/backendServer";
 import { openApi } from "@/testing/openApi";
 
 vi.mock("@/lib/adminBasicAuth", () => ({
@@ -57,8 +57,7 @@ interface Recorded {
 let lastTimeoutMs: number | undefined;
 let recorded: Recorded[] = [];
 
-async function dispatch(input: Request | string, init?: RequestInit): Promise<Response> {
-  const request = typeof input === "string" ? new Request(input, init) : input;
+async function dispatch(request: Request): Promise<Response> {
   const text = await request.text();
   const body = text === "" ? undefined : text;
   const { method, url } = request;
@@ -83,12 +82,11 @@ describe("叩く先", () => {
       lastTimeoutMs = ms;
       return new AbortController().signal;
     });
-    vi.stubGlobal("fetch", vi.fn(dispatch));
+    onUrl("*", dispatch);
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    vi.unstubAllGlobals();
   });
 
   it("関数が1つ以上ある", () => {

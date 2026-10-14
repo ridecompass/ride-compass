@@ -1,4 +1,5 @@
-import { distanceM, longitudeScale } from "@/lib/localPlane";
+import { haversineKm } from "@/lib/geoDistance";
+import { longitudeScale } from "@/lib/localPlane";
 import type { Coordinates } from "@/types/route";
 
 // 位置に向きが無いとき、前の点からこれだけ動くまで向きを出さない。位置の誤差（街中で数m）の揺れで、止まっている間に
@@ -24,7 +25,7 @@ export function nextTravelBearing(previous: TravelBearing | null, fix: TravelFix
   if (fix.heading !== null && Number.isFinite(fix.heading)) return { anchor: here, bearing: fix.heading };
   if (previous === null) return { anchor: here, bearing: null };
 
-  if (distanceM(previous.anchor, here) < MIN_TRAVEL_FOR_BEARING_M) return previous;
+  if (haversineKm(previous.anchor, here) * 1000 < MIN_TRAVEL_FOR_BEARING_M) return previous;
   const x = (fix.longitude - previous.anchor.longitude) * longitudeScale(previous.anchor.latitude);
   const y = fix.latitude - previous.anchor.latitude;
   const degrees = (Math.atan2(x, y) * 180) / Math.PI;

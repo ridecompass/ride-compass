@@ -15,7 +15,7 @@
  *   地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）
  * - 画面の枠: スマホの下部タブとシート（1枚ずつ開く・地点を扱える間・結果の合図・候補が届いた時点で「ルート設定」を開いて
  *   いれば「ルート結果」へ移ってそこから全消去でき、ほかのときは移らず合図を出すこと・候補を出せなかった理由の1行・
- *   ルートを収めるときに避けるシートの高さ・高さの保存と保存値の検査）、区分の開閉の保存、
+ *   決めた高さを2枚のシートで分け合うこと）、区分の開閉の保存、
  *   ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、メニューから入る使い方の説明とデバッグログ、
  *   走行モードの間の配置と、届いた現在地がプロファイルの印と地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、
  *   到着予想が位置を受けた時刻と選んだ候補の計画から出ること
@@ -26,8 +26,8 @@
  * 機能の状態の移り変わり（生成の検証と要求の形・候補の並び・地点の置き方・レイヤーと凡例の状態）は各フックのテストが
  * 見る。子へ渡す受け口へフックの関数や値をそのまま渡す所（重み・除外の入力・経由地を地図で動かす・消す・「現在地に戻す」・
  * 保存した条件を呼び出して現在地へ戻す・実行中の「ルート生成」・取り直している間の「現在地に移動」・まとめてレイヤーを消す
- * 操作を押せるか）は1行の委譲なので見ない。中身に合わせたシートの高さは、レイアウトの実寸が要るので見ない
- * （テスト環境は実寸を0で返し、シートは合わせない）。
+ * 操作を押せるか）は1行の委譲なので見ない。シートの高さの決め方・覚え方は`components/BottomSheet/BottomSheet.test.tsx`、
+ * ルートを収めるときにシートを避けることは実寸が要るので`e2e/mobile.spec.ts`が見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得（`navigator.geolocation`）、地図の描画（`maplibre-gl`）。
  * どれもテスト環境に無いものか、その手前の境界。地図は `@/testing/maplibre` の代役が受けたものを記録し、地図の操作
@@ -37,7 +37,6 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clampSheetHeightVh, DEFAULT_SHEET_HEIGHT_VH } from "@/components/BottomSheet/BottomSheet";
 import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
 import { setDebugEnabled } from "@/lib/debugLog";
 import { MINUTE_MS } from "@/lib/duration";
@@ -49,7 +48,13 @@ import { installGeolocation } from "@/testing/geolocation";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
-import { makeGenerationConditions, makeRouteCandidate, makeRouteSegment } from "@/testing/routeFixtures";
+import {
+  makeGenerationConditions,
+  makeRouteCandidate,
+  makeRouteSegment,
+  routeThrough,
+  type Places,
+} from "@/testing/routeFixtures";
 import type { Coordinates, RouteCandidate } from "@/types/route";
 import type { AxisInspectorResult } from "@/features/map/regionApi";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
@@ -554,33 +559,22 @@ describe("地図で扱えること", () => {
   describe("区間の乗り換え", () => {
     // 地点（[経度, 緯度]）。元の候補は P0→P1→P2→P3→P4 を進み、もう1本は P1 と P2 の間を Q、P3 と P4 の間を R を通って進む
     // （片方の分かれ道だけを乗り換えると、どちらの候補とも違う道になる）。
-    const P0 = [139.7, 35.6];
-    const P1 = [139.71, 35.6];
-    const P2 = [139.72, 35.6];
-    const P3 = [139.73, 35.6];
-    const P4 = [139.74, 35.6];
-    const Q = [139.715, 35.61];
-    const R = [139.735, 35.61];
+    const PLACES: Places = {
+      P0: [139.7, 35.6],
+      P1: [139.71, 35.6],
+      P2: [139.72, 35.6],
+      P3: [139.73, 35.6],
+      P4: [139.74, 35.6],
+      Q: [139.715, 35.61],
+      R: [139.735, 35.61],
+    };
 
-    function through(id: string, edgeIds: string[], points: number[][], overrides: Partial<RouteCandidate> = {}) {
-      return route(id, {
-        kind: "destination",
-        spliceable: true,
-        edge_ids: edgeIds,
-        node_ids: points.map((point) => point.join(",")),
-        edge_point_offsets: points.map((_, index) => index),
-        geometry: { type: "LineString", coordinates: points },
-        ...overrides,
-      });
+    function through(id: string, names: string[], overrides: Partial<RouteCandidate> = {}) {
+      return route(id, { kind: "destination", spliceable: true, ...routeThrough(PLACES, names), ...overrides });
     }
 
-    const BASE = through("base", ["e1", "e2", "e3", "e4"], [P0, P1, P2, P3, P4], {
-      estimated_duration_seconds: 1800,
-      segments: [SEGMENT],
-    });
-    const OTHER = through("other", ["e1", "q1", "q2", "e3", "r1", "r2"], [P0, P1, Q, P2, P3, R, P4], {
-      estimated_duration_seconds: 2400,
-    });
+    const BASE = through("base", ["P0", "P1", "P2", "P3", "P4"], { estimated_duration_seconds: 1800 });
+    const OTHER = through("other", ["P0", "P1", "Q", "P2", "P3", "R", "P4"], { estimated_duration_seconds: 2400 });
     const DESTINATION_CONDITIONS = makeGenerationConditions({
       latitude: HERE.latitude,
       longitude: HERE.longitude,
@@ -623,6 +617,26 @@ describe("地図で扱えること", () => {
       await waitFor(() => expect(mapOnScreen().sourceFeatures("route-splice-bands")).toEqual([]));
     });
 
+    it("乗り換えの帯が区間と道に重なった所を押すと、帯の乗り換えだけを選び、区間も道も開かない", async () => {
+      const { user } = renderHome();
+      await showRoadSurface(user);
+      await generateTwo(user);
+      await startEditing(user);
+      const [band] = mapOnScreen().sourceFeatures("route-splice-bands");
+      const [segment] = mapOnScreen().sourceFeatures("route-segments");
+      // 一番上に描かれた地物から並べる（帯は区間の上に重ねて描く）。
+      clickMap(HERE, [
+        { layer: "route-splice-bands-spliceBandHit", properties: band.properties ?? {}, geometry: band.geometry },
+        { layer: "route-segments-detailHit", properties: segment.properties ?? {}, geometry: segment.geometry },
+        { layer: "road-tiles-surface", properties: { osm_way_id: 1, feature_key: "1" } },
+      ]);
+
+      expect(await screen.findByRole("button", { name: "1つ戻す" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "この道の評価を見る" })).toBeNull();
+      await user.click(screen.getByRole("button", { name: "編集をやめて候補へ戻る" }));
+      expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
+    });
+
     it("作り直しの失敗は前の候補を残して窓で知らせ、作った合成ルートを選んでいる間は、地図に元のルートだけを重ねる", async () => {
       const { user } = renderHome();
       await generateTwo(user);
@@ -637,7 +651,10 @@ describe("地図で扱えること", () => {
       clickMap(HERE, [
         { layer: "route-splice-bands-spliceBandHit", properties: band.properties ?? {}, geometry: band.geometry },
       ]);
-      jobs.respond([route("evaluated", { edge_ids: ["e1", "q1", "q2", "e3", "e4"] })], DESTINATION_CONDITIONS);
+      jobs.respond(
+        [route("evaluated", { edge_ids: ["P0-P1", "P1-Q", "Q-P2", "P2-P3", "P3-P4"] })],
+        DESTINATION_CONDITIONS,
+      );
       await user.click(await screen.findByRole("button", { name: "新しいルートを作成" }));
 
       await waitFor(() => expect(routeLinesOnMap()).toHaveLength(2));
@@ -836,9 +853,6 @@ describe("画面の枠", () => {
     jobs.respond([FIRST], LOOP_CONDITIONS);
     expect(await generate(user)).toMatchObject({ latitude: HERE.latitude, longitude: HERE.longitude });
     const outcomeSheet = await screen.findByRole("dialog", { name: "ルート結果" });
-    // ルートは、開いているシートが覆う高さ（画面の半分）を避けて収める。
-    const { padding } = mapOnScreen().fits.at(-1) as { padding: { top: number; bottom: number } };
-    expect(padding.bottom - padding.top).toBe(window.innerHeight * 0.5);
     await user.click(within(outcomeSheet).getByRole("button", { name: "閉じる" }));
     expect(screen.queryByRole("dialog")).toBeNull();
 
@@ -908,39 +922,6 @@ describe("画面の枠", () => {
     renderHome();
     await user.click(screen.getByRole("button", { name: "ルート結果" }));
     expect(screen.getByRole("separator", { name: "パネルの高さを変更" })).toHaveAttribute("aria-valuenow", "55");
-  });
-
-  it("スマホのシートをつまみで動かしている間の高さは、すぐ使うが保存しない", async () => {
-    useMobileLayout();
-    const { user, unmount } = renderHome();
-    await user.click(screen.getByRole("button", { name: "ルート設定" }));
-    const handle = screen.getByRole("separator", { name: "パネルの高さを変更" });
-    fireEvent.pointerDown(handle, { pointerId: 1, clientY: window.innerHeight * 0.5 });
-    fireEvent.pointerMove(handle, { pointerId: 1, clientY: window.innerHeight * 0.3 });
-    expect(handle).toHaveAttribute("aria-valuenow", "70");
-    unmount();
-
-    renderHome();
-    await user.click(screen.getByRole("button", { name: "ルート設定" }));
-    expect(screen.getByRole("separator", { name: "パネルの高さを変更" })).toHaveAttribute(
-      "aria-valuenow",
-      String(DEFAULT_SHEET_HEIGHT_VH),
-    );
-  });
-
-  it.each([
-    ["数として読めない", "高い", DEFAULT_SHEET_HEIGHT_VH],
-    ["数でない値", '"70"', DEFAULT_SHEET_HEIGHT_VH],
-    ["シートの範囲の外", "500", clampSheetHeightVh(500)],
-  ])("保存されたシートの高さが%sなら、%sから%d%%で開く", async (_, stored, expected) => {
-    window.localStorage.setItem("ridecompass:mobile-sheet-height-vh", stored);
-    useMobileLayout();
-    const { user } = renderHome();
-    await user.click(screen.getByRole("button", { name: "ルート設定" }));
-    expect(screen.getByRole("separator", { name: "パネルの高さを変更" })).toHaveAttribute(
-      "aria-valuenow",
-      String(Math.round(expected)),
-    );
   });
 
   it("区分の開閉は、次に開いたときも同じになる", async () => {

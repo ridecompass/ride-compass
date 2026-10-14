@@ -34,6 +34,7 @@ from app.domain.route_search import (
     difficulty_order,
     fits_loop_distance,
     keep_routes_with_baseline,
+    turnaround_ring_m,
 )
 
 if TYPE_CHECKING:
@@ -191,8 +192,9 @@ class _DistanceFinish:
         )
         select_ms = elapsed_ms(select_started)
         if not turnarounds:
+            ring_lower_m, ring_upper_m, _ = turnaround_ring_m(self.distance_km, self.distance_tolerance_km)
             return _Selection.empty(
-                f"起点から片道{self.distance_km / 2:.1f}km前後で到達できる折返し地点が見つかりませんでした。"
+                f"起点から片道{ring_lower_m / 1000:.1f}〜{ring_upper_m / 1000:.1f}kmで到達できる折返し地点が見つかりませんでした。"
                 "距離や除外する道路の設定を変えてお試しください。"
                 if not self.points.waypoints and self.points.destination is None
                 else f"置いた地点を通って全長{self.distance_km:.1f}km前後になる経路が見つかりませんでした。"

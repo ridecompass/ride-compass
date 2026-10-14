@@ -29,6 +29,8 @@ import type { FilterSpecification } from "maplibre-gl";
 import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
 import { primaryAttributes } from "@/types/generated/primaryAttributes";
 
+import { drawPointIcon } from "@/features/map/layers/pointIcon";
+import type { MapSceneImage } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 
 const POINT = mapDisplay.point;
@@ -135,7 +137,7 @@ function basemapPoisHiddenBy(layer: PointLayer, hiddenKeys: PointState["hiddenKe
 
 /** 押したときに拾う対象。**どの点も共通の`point`を名乗る**ので、点を1枚足しても
  * 拾う側の判定は変わらない。 */
-const POINT_HIT_TARGET = "point";
+export const POINT_HIT_TARGET = "point";
 
 /** 軸の絞り込みの鍵。役割をまたいで同じ軸名を使えるようにする。 */
 export function pointAxisKey(layer: PointLayer, axis: PointAxis): string {
@@ -188,7 +190,7 @@ function pointIconId(layer: PointLayer, category: GlyphCategory): string {
   return `point-icon:${layer.attr_id}:${category.key}`;
 }
 
-/** 絵記号で描く点の絵（名前・下地の色・絵記号）。**出す前に地図へ登録しないと点が描かれない。** */
+/** 絵記号で描く点の絵（名前・下地の色・絵記号）。 */
 export const POINT_ICONS: readonly { id: string; color: string; glyph: PointGlyph }[] = POINT_LAYERS.flatMap((layer) =>
   glyphCategories(layer).map((category) => ({
     id: pointIconId(layer, category),
@@ -196,6 +198,15 @@ export const POINT_ICONS: readonly { id: string; color: string; glyph: PointGlyp
     glyph: category.glyph,
   })),
 );
+
+/** 色を焼き込んだ絵なので、記号のレイヤーは色を付けない。 */
+const POINT_IMAGES: readonly MapSceneImage[] = POINT_ICONS.map((icon) => ({
+  id: icon.id,
+  draw: () => {
+    const { data, pixelRatio } = drawPointIcon(icon.color, icon.glyph);
+    return { data, options: { pixelRatio } };
+  },
+}));
 
 /** 間引くときに先に残す順の鍵（小さいほど先に残す）。行の順位を2つ刻みにし、行の中では割合（0〜1）の大きいほうを
  * 先にする——刻みが割合の幅より広いので、行をまたいで順が入れ替わらない。 */
@@ -289,5 +300,5 @@ export const pointGroup = declareGroup<PointState>((state) => {
     };
   });
 
-  return { sources, layers };
+  return { sources, layers, images: POINT_IMAGES };
 });

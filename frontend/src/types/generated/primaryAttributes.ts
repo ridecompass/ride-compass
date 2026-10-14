@@ -315,7 +315,7 @@ export const primaryAttributes = [
             "values": [
               true
             ],
-            "description": "トンネルの中を通る区間[OSM の tunnel タグ]。",
+            "description": "トンネルの中を通る区間[OSM の tunnel=yes・avalanche_protector]。",
             "color": "#8e729e"
           }
         ],
@@ -343,7 +343,7 @@ export const primaryAttributes = [
             "values": [
               true
             ],
-            "description": "一方向にしか進めない道。環状交差点も含み、自転車だけ両方向に通れる道は含まない[OSM の oneway・oneway:bicycle・junction タグ]。",
+            "description": "一方向にしか進めない道。環状交差点も含み、自転車だけ両方向に通れる道と上下線が分かれているだけの道[逆向きの一方通行が15m以内、同じ路線番号・名前なら40m以内を並走する道]は含まない[OSM の oneway:bicycle・oneway・junction タグ]。",
             "color": "#a66e5b"
           }
         ],
