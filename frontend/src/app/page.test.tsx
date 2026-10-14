@@ -15,7 +15,7 @@
  *   地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）
  * - 画面の枠: スマホの下部タブとシート（1枚ずつ開く・地点を扱える間・結果の合図・候補が届いた時点で「ルート設定」を開いて
  *   いれば「ルート結果」へ移ってそこから全消去でき、ほかのときは移らず合図を出すこと・候補を出せなかった理由の1行・
- *   ルートを収めるときに避けるシートの高さ・高さの保存と保存値の検査）、区分の開閉の保存、
+ *   決めた高さを2枚のシートで分け合うこと）、区分の開閉の保存、
  *   ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、メニューから入る使い方の説明とデバッグログ、
  *   走行モードの間の配置と、届いた現在地がプロファイルの印と地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、
  *   到着予想が位置を受けた時刻と選んだ候補の計画から出ること
@@ -26,8 +26,8 @@
  * 機能の状態の移り変わり（生成の検証と要求の形・候補の並び・地点の置き方・レイヤーと凡例の状態）は各フックのテストが
  * 見る。子へ渡す受け口へフックの関数や値をそのまま渡す所（重み・除外の入力・経由地を地図で動かす・消す・「現在地に戻す」・
  * 保存した条件を呼び出して現在地へ戻す・実行中の「ルート生成」・取り直している間の「現在地に移動」・まとめてレイヤーを消す
- * 操作を押せるか）は1行の委譲なので見ない。中身に合わせたシートの高さは、レイアウトの実寸が要るので見ない
- * （テスト環境は実寸を0で返し、シートは合わせない）。
+ * 操作を押せるか）は1行の委譲なので見ない。シートの高さの決め方・覚え方は`components/BottomSheet/BottomSheet.test.tsx`、
+ * ルートを収めるときにシートを避けることは実寸が要るので`e2e/mobile.spec.ts`が見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得（`navigator.geolocation`）、地図の描画（`maplibre-gl`）。
  * どれもテスト環境に無いものか、その手前の境界。地図は `@/testing/maplibre` の代役が受けたものを記録し、地図の操作
@@ -37,7 +37,6 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clampSheetHeightVh, DEFAULT_SHEET_HEIGHT_VH } from "@/components/BottomSheet/BottomSheet";
 import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
 import { setDebugEnabled } from "@/lib/debugLog";
 import { MINUTE_MS } from "@/lib/duration";
@@ -836,9 +835,6 @@ describe("画面の枠", () => {
     jobs.respond([FIRST], LOOP_CONDITIONS);
     expect(await generate(user)).toMatchObject({ latitude: HERE.latitude, longitude: HERE.longitude });
     const outcomeSheet = await screen.findByRole("dialog", { name: "ルート結果" });
-    // ルートは、開いているシートが覆う高さ（画面の半分）を避けて収める。
-    const { padding } = mapOnScreen().fits.at(-1) as { padding: { top: number; bottom: number } };
-    expect(padding.bottom - padding.top).toBe(window.innerHeight * 0.5);
     await user.click(within(outcomeSheet).getByRole("button", { name: "閉じる" }));
     expect(screen.queryByRole("dialog")).toBeNull();
 
@@ -908,39 +904,6 @@ describe("画面の枠", () => {
     renderHome();
     await user.click(screen.getByRole("button", { name: "ルート結果" }));
     expect(screen.getByRole("separator", { name: "パネルの高さを変更" })).toHaveAttribute("aria-valuenow", "55");
-  });
-
-  it("スマホのシートをつまみで動かしている間の高さは、すぐ使うが保存しない", async () => {
-    useMobileLayout();
-    const { user, unmount } = renderHome();
-    await user.click(screen.getByRole("button", { name: "ルート設定" }));
-    const handle = screen.getByRole("separator", { name: "パネルの高さを変更" });
-    fireEvent.pointerDown(handle, { pointerId: 1, clientY: window.innerHeight * 0.5 });
-    fireEvent.pointerMove(handle, { pointerId: 1, clientY: window.innerHeight * 0.3 });
-    expect(handle).toHaveAttribute("aria-valuenow", "70");
-    unmount();
-
-    renderHome();
-    await user.click(screen.getByRole("button", { name: "ルート設定" }));
-    expect(screen.getByRole("separator", { name: "パネルの高さを変更" })).toHaveAttribute(
-      "aria-valuenow",
-      String(DEFAULT_SHEET_HEIGHT_VH),
-    );
-  });
-
-  it.each([
-    ["数として読めない", "高い", DEFAULT_SHEET_HEIGHT_VH],
-    ["数でない値", '"70"', DEFAULT_SHEET_HEIGHT_VH],
-    ["シートの範囲の外", "500", clampSheetHeightVh(500)],
-  ])("保存されたシートの高さが%sなら、%sから%d%%で開く", async (_, stored, expected) => {
-    window.localStorage.setItem("ridecompass:mobile-sheet-height-vh", stored);
-    useMobileLayout();
-    const { user } = renderHome();
-    await user.click(screen.getByRole("button", { name: "ルート設定" }));
-    expect(screen.getByRole("separator", { name: "パネルの高さを変更" })).toHaveAttribute(
-      "aria-valuenow",
-      String(Math.round(expected)),
-    );
   });
 
   it("区分の開閉は、次に開いたときも同じになる", async () => {
