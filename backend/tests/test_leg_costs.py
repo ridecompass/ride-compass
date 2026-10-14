@@ -23,6 +23,7 @@ import pytest
 from app.domain import leg_costs
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm
+from app.domain.cycling_speed import RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.evaluation import DensityAxisColumn, StaticEdgeScoreMatrix
 from app.domain.leg_costs import LegCostComposer
 from app.domain.route import Coordinates
@@ -126,12 +127,13 @@ def test_a_flat_paved_segment_without_wind_or_stops_is_ridden_at_the_cruise_spee
 
 
 def test_the_gradient_in_percent_slows_the_rider_as_that_grade_and_a_missing_one_counts_as_flat():
-    """勾配の材料は%で、走行モデルは割合で読む。20km/hの人は5%の登りで時速10km前後になり、平地の倍ほどかかる
-    （500%として読めば押して歩く速度で4倍超、0.05%として読めば平地とほぼ同じ）。"""
+    """勾配の材料は%で、走行モデルは割合で読む。読み違えると、坂の所要時間が別の勾配の坂のものになる。"""
     leg = _snapshot(_matrix(3, gradient=[5.0, np.nan, 0.0]))
     climb, missing, flat = leg.travel_seconds_full
+    five_percent = SegmentSpeedModel(
+        RiderProfile(cruise_speed_kmh=CRUISE_KMH), np.array([0.05]), crr_for_surface(CategoricalColumn.encode(["paved"])))
 
-    assert 1.5 * flat < climb < 3.0 * flat
+    assert climb == pytest.approx(five_percent.travel_seconds(np.array([1000.0]), np.zeros(1), np.zeros(1))[0])
     assert missing == flat
 
 
