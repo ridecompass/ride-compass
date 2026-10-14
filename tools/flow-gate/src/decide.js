@@ -55,7 +55,7 @@ export function decide(f, config) {
   const asking = s.status === "回答" || (s.status !== "完了" && question && !question.answer);
   const kind = s.ask ? (s.ask.dropped ? "続行" : s.ask) : question?.kind;
   return { type, status: s.status, run: runStatus(f, s.status), open: s.status !== "完了", closeAs: s.closeAs, ask: s.ask ?? null, cancel: s.cancel ?? [],
-    closePr: dropping && f.pr ? f.pr.id : null, notice: [notice(f, s.status), s.told].filter(Boolean).join("\n\n") || null,
+    closePr: dropping && f.pr ? f.pr.id : null, notice: [notice(f, s.status, config), s.told].filter(Boolean).join("\n\n") || null,
     ready: s.status === "検証" && Boolean(f.pr?.draft), assignees: owner(s.status, f, config),
     questionLabel: asking && kind ? questionLabel(kind) : null, body: asking ? withButton(body, config, f.number) : body };
 }
@@ -80,8 +80,8 @@ function alive(f, q, config) {
 }
 
 // 受け入れなかった書き込みは、黙らずに1つのコメントで知らせる（形に合わない問い・印の間の見知らぬ行・形の合わない着手可能日時・
-// 事実へ戻したユーザーのボードの移動）と、親が閉じたので閉じた子の理由。最新のコメントが同じ知らせなら書かない。
-function notice(f, status) {
+// 事実へ戻したユーザーのボードの移動）と、親が閉じたので閉じた子の理由と、長く動いていない前提の対話作業。最新のコメントが同じ知らせなら書かない。
+function notice(f, status, config) {
   const text = [f.badQuestion.length && `この問いは形が外れているので、回答フォームは回答内容を出さずに、書く欄と次遷移だけで答えを受けます: ${f.badQuestion.join("・")}`,
     splitBody(f.body).foreign.length && "本文の先頭の印の間に、ゲートの書かない行があったので、消さずに印の外へ出しました。",
     // 直るまで続く知らせは、最近のコメントに同じ知らせがあれば重ねない（値が変われば新しく知らせる）。
@@ -89,9 +89,14 @@ function notice(f, status) {
       `着手可能日時「${f.badStart}」の形が合わないので受け付けず、その間は振り出しません（\`YYYY-MM-DD HH:MM\` か \`YYYY-MM-DD\`。日本時間）。`,
     f.moved && f.status && status !== f.status && `ステータスを「${f.status}」にしましたが、事実から「${status}」に戻しました（ユーザーが直接決められるのは、保留と、完了（完了の条件が全部済んだときの完成か、見送り）だけです）。`,
     f.dead && f.open && `親 #${f.parent.number} が閉じたので、見送りで閉じます。`,
+    // 担当者は Claude なので、ユーザーへ届くようにメンションする。
+    status === "待機" && f.idle.length && !f.comments.some((c) => c.includes(idleText(f.idle, config))) &&
+      `@${config.user} ${idleText(f.idle, config)}。対話作業を終えたなら閉じてください（閉じるまで、このタスクは待ったまま振り出しません）。`,
   ].filter(Boolean).join("\n\n");
   return text && text !== f.comments.at(-1) ? text : null;
 }
+
+const idleText = (idle, config) => `前提の対話作業 ${idle.map((n) => `#${n}`).join("・")} が ${config.dialogIdleHours} 時間より長く動いていません`;
 
 // 入口で採否を問う issue: Claude が起こした要望。子と分割元のある切り出しは、採否を親か元から受け継ぐ。
 export const adoptable = (f, config) => f.author === config.claude && f.type === "要望" && !f.parent && !f.origin;
@@ -143,7 +148,8 @@ const table = (f) => {
 function rows(f) {
   const pr = f.pr;
   if (pr) {
-    if (pr.backToDraft) return { status: "実装" }; // 検証担当の差し戻し
+    // 検証担当の差し戻しと、master とのぶつかり（取り込むのは実装担当。検証担当はマージの手前で当たって差し戻すだけになる）。
+    if (pr.backToDraft || pr.conflicting) return { status: "実装" };
     return pr.checks.passed ? { status: "検証" } : unchecked(pr.checks); // 下書きかどうかによらず、検査の結果を待つ間は手放す
   }
   // 待つ相手（前提・子）が開いている間は、確かめも完了もしない。見送りで閉じた相手がいれば、続けるかを一度だけ問う。
