@@ -303,7 +303,7 @@ TravelBearingControl.tsx`（`page.tsx`から直接importされ地図上に置か
 
 地図上でルート線の区間をクリックすると、`useRouteResults.ts: selectedRouteSegment` state
 （`{ segment: RouteSegmentDetail, latitude, longitude }`、`MapView.tsx:
-handleRouteSegmentClick`がクリック地点の座標とともに設定する）が入る。地図側は
+openRouteSegment`がクリック地点の座標とともに設定する）が入る。地図側は
 クリック地点へ軽量なマーカーを立てるだけでテキストポップアップは出さない
 （[地図: 静的レイヤー・道路表示](static-map-layers.md)参照）。`selectedRouteSegment`が
 non-nullの間、「ルート結果」タブはルート全体の内訳の代わりにその区間の地点・到達予想

@@ -8,9 +8,10 @@ import { applyMapScene, type MapSceneTarget } from "./applyMapScene";
 import {
   EMPTY_MAP_SCENE,
   interactiveSceneLayerIds,
-  sceneLayerIdsForHitTarget,
   type MapScene,
   type MapSceneFeatureStateValue,
+  type MapSceneImage,
+  type MapSceneImageOptions,
   type MapSceneLayer,
   type MapSceneSource,
   type MapSceneTier,
@@ -87,7 +88,7 @@ function scene(
   layers: readonly MapSceneLayer[],
   sources: readonly MapSceneSource[] = [roadsSource(), LANDCOVER_SOURCE],
 ): MapScene {
-  return { sources, layers };
+  return { sources, layers, images: [] };
 }
 
 const SCENE_LAYERS: readonly MapSceneLayer[] = [
@@ -95,7 +96,7 @@ const SCENE_LAYERS: readonly MapSceneLayer[] = [
   lineLayer("surface-line", "observedLine", { hitTargets: ["road"] }),
   lineLayer("lens-line", "lensLine"),
   lineLayer("poi", "point", { hitTargets: ["poi"] }),
-  lineLayer("route", "route", { hitTargets: ["road", "routeSegment"] }),
+  lineLayer("route", "route", { hitTargets: ["routeSegment"] }),
 ];
 const SHUFFLED_LAYERS = [...SCENE_LAYERS].reverse();
 
@@ -129,11 +130,10 @@ function statesScene(byKey: Record<string, Record<string, MapSceneFeatureStateVa
 }
 
 describe("mapScene", () => {
-  it("押せるレイヤーの一覧も、対象ごとの一覧も、同じ宣言から段の順で導ける", () => {
+  it("押せるレイヤーの一覧は、当たり判定の宣言から段の順で導ける", () => {
     const shuffled = scene(SHUFFLED_LAYERS);
 
     expect(interactiveSceneLayerIds(shuffled)).toEqual(["surface-line", "poi", "route"]);
-    expect(sceneLayerIdsForHitTarget(shuffled, "road")).toEqual(["surface-line", "route"]);
   });
 });
 
@@ -146,6 +146,34 @@ describe("applyMapScene", () => {
     expect(handle.layerOrder()).toEqual(EXPECTED_ORDER);
     expect(handle.sourceSpec("roads")).toEqual({ type: "vector", tiles: ROAD_TILES });
     expect(handle.layer("surface-line")?.visibility).toBe("visible");
+  });
+
+  it("記号の絵は、地図に無いものだけを描いて、記号のレイヤーより先に足す", () => {
+    const { map, handle } = recordingMap();
+    const drawn: string[] = [];
+    const added: { id: string; options: MapSceneImageOptions; layersOnMap: readonly string[] }[] = [];
+    const image = (id: string, options: MapSceneImageOptions): MapSceneImage => ({
+      id,
+      draw: () => {
+        drawn.push(id);
+        return { data: {} as ImageData, options };
+      },
+    });
+    const target: MapSceneTarget = {
+      ...map,
+      // スタイルを差分で差し替えた後のように、前回の宣言に無くても地図には残っている絵。
+      hasImage: (id) => id === "kept",
+      addImage: (id, _data, options) => added.push({ id, options, layersOnMap: handle.layerOrder() }),
+    };
+
+    applyMapScene(target, {
+      scene: { ...scene(SHUFFLED_LAYERS), images: [image("kept", { sdf: true }), image("arrow", { pixelRatio: 2 })] },
+      previous: EMPTY_MAP_SCENE,
+      basemapAnchors: BASEMAP_ANCHORS,
+    });
+
+    expect(drawn).toEqual(["arrow"]);
+    expect(added).toEqual([{ id: "arrow", options: { pixelRatio: 2 }, layersOnMap: BASEMAP_LAYER_IDS }]);
   });
 
   it("文字に場所を譲る点の段は、呼び出し側が渡した基礎地図の文字の位置より下へ入る", () => {

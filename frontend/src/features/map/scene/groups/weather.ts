@@ -25,6 +25,7 @@ import { PRECIPITATION_COLOR_STOPS, PRECIPITATION_NONE_THRESHOLD_MM } from "@/fe
 import { createWindArrowIcon } from "@/features/map/layers/windArrowIcon";
 import { WIND_CALM_THRESHOLD_MS, WIND_SPEED_COLOR_STOPS } from "@/features/map/layers/windLayer";
 
+import type { MapSceneImage } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 import { AREA_OPACITY } from "./areaRasters";
 import { zoomScaleExpression, sceneSourceId, type SceneSourceId } from "@/features/map/scene/sceneBuilders";
@@ -38,6 +39,16 @@ const WEATHER = mapDisplay.weather;
 type DeclaredElement = (typeof mapDisplay.weatherElements)[number];
 
 type WeatherRenderKind = DeclaredElement["kind"];
+
+/** 災害のチップのid（源泉の気象のグループの名前）。 */
+export const DISASTER_LAYER_ID = "disaster" as const;
+
+export type DisasterElement = Extract<DeclaredElement, { group: typeof DISASTER_LAYER_ID }>;
+
+/** 災害のチップに載る要素。並びは源泉の宣言のまま。 */
+export const DISASTER_ELEMENTS: readonly DisasterElement[] = mapDisplay.weatherElements.filter(
+  (element): element is DisasterElement => element.group === DISASTER_LAYER_ID,
+);
 
 /** 描き方ごとの、重なりの段とレイヤーの型。 */
 const LAYER_OF_KIND = {
@@ -56,8 +67,8 @@ type Drawing = {
   readonly paint: Readonly<Record<string, unknown>>;
   readonly layout?: Readonly<Record<string, unknown>>;
   readonly filter?: FilterSpecification;
-  /** 記号を描くのに要るアイコン。登録してからでないと出ない。 */
-  readonly icon?: { readonly id: string; readonly create: () => ImageData };
+  /** 記号を描くのに要るアイコン。 */
+  readonly icon?: MapSceneImage;
   /** 主の線の下に敷く縁取りの線の見た目。背景の色に関わらず線を読めるようにする。 */
   readonly casing?: { readonly paint: Readonly<Record<string, unknown>> };
 };
@@ -121,7 +132,7 @@ function markDrawing(options: {
   readonly minValueToShow?: number;
 }): Drawing {
   return {
-    icon: { id: options.iconId, create: options.createIcon },
+    icon: { id: options.iconId, draw: () => ({ data: options.createIcon(), options: { sdf: true } }) },
     layout: {
       "icon-image": options.iconId,
       "icon-rotate": options.rotateProperty === undefined ? 0 : ["to-number", ["get", options.rotateProperty]],
@@ -275,8 +286,7 @@ export function weatherElementKey(element: Pick<WeatherElement, "group" | "sourc
   return `${element.group}/${element.source}`;
 }
 
-/** 登録が要るアイコン。**出す前に登録しないと記号が描かれない。** */
-export const WEATHER_ICONS: readonly { id: string; create: () => ImageData }[] = WEATHER_ELEMENTS.flatMap((element) =>
+const WEATHER_IMAGES: readonly MapSceneImage[] = WEATHER_ELEMENTS.flatMap((element) =>
   element.drawing.icon === undefined ? [] : [element.drawing.icon],
 );
 
@@ -326,5 +336,5 @@ export const weatherGroup = declareGroup<WeatherState>((state) => {
     layers.push(layerOf(element.kind, drawing.paint));
   }
 
-  return { sources, layers };
+  return { sources, layers, images: WEATHER_IMAGES };
 });
