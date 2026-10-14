@@ -103,8 +103,8 @@ function status(f, config) {
   // 子は、親の要望が満たされた・やめたら、要らない。持っている実行も取り消す。
   if (f.dead) return { status: "完了", closeAs: "NOT_PLANNED", cancel: f.runs.map((r) => r.id) };
   // 約束が全部果たされたら、どの時点でも完了（PR・前提・子・担当の実行・マージの検査に関係なく）。ユーザーが置いた保留と、Claude がまだ読んで
-  // いないユーザーの文（答えの文・コメント）は待つ。動いている担当の実行は要らないので取り消す。
-  if (!f.remaining.length && f.status !== "保留" && !f.unread) return { status: "完了", closeAs: "COMPLETED", cancel: f.runs.map((r) => r.id) };
+  // いないユーザーの文（答えの文・コメント）は待つ。動いている担当の実行は要らないので取り消す。条件の行が無い issue は、果たしたかを決められないので完了にしない。
+  if (f.promised && !f.remaining.length && f.status !== "保留" && !f.unread) return { status: "完了", closeAs: "COMPLETED", cancel: f.runs.map((r) => r.id) };
   // 持たれている間は決め直さない。ユーザーが保留へ置いたら、持っている実行を取り消す。1つのタスクを触るのは1者だけなので、同じ issue の実行が
   // 2本以上あれば（振り出した直後で一覧にまだ出ていない間に、もう一度振り出した等）、いちばん古いものを残してほかを取り消す。
   if (f.runs.length) return f.status === "保留" ? { status: "保留", cancel: f.runs.map((r) => r.id) }
@@ -141,6 +141,7 @@ const table = (f) => {
   return f.ended && t.status === f.ended.kind && !need(f, "ranMoved") ? { status: "回答", ask: "イレギュラー" } : t;
 };
 function rows(f) {
+  if (!f.promised) return { status: "回答", ask: "約束" }; // 約束が読めない issue は、何を作れば終わるかが決まらないので、作る前に問う
   const pr = f.pr;
   if (pr) {
     if (pr.backToDraft) return { status: "実装" }; // 検証担当の差し戻し

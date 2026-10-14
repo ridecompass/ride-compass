@@ -317,7 +317,7 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め5・�
     ["R16 対話作業の境目をまたがない種類の変更は通す", { status: "保留", type: "要望", typeChanges: [["不具合", "要望"]] }, null, ev.issue(1, "typed"), { type: "要望" }],
     ["R16 対話作業の境目をまたぐ種類の変更は戻す", { status: "実装", type: "不具合", typeChanges: [[config.dialogType, "不具合"]] }, null, ev.issue(1, "typed"), { type: config.dialogType }],
     ["Claude が本文の完了の条件にチェックを付けた → 決め直す", { status: "実装", body: "- [x] 作る\n" }, null, ev.issue(1, "edited", config.claude), { status: "完了" }],
-    ["条件の無い issue は、約束が全部果たされた（無い）ので完成で閉じる", { status: "実装", body: "説明だけ\n" }, null, ev.comment(1), { state: "CLOSED", reason: "COMPLETED" }],
+    ["#919 条件の行が無い issue は、約束が読めないので完成にせず問う", { status: "実装", body: "説明だけ\n" }, null, ev.comment(1), { state: "OPEN", status: "回答", comment: "## 問い（約束）", runs: [] }],
   ];
   for (const [name, task, change, event, want] of rows) {
     const w = world([{ n: 1, ...task }, { n: 4, status: "保留", priority: "高" }]);
@@ -794,8 +794,8 @@ test("回答フォーム（合意したモック）: 回答内容（案と書く
 
 test("ラベルごとの形: 書く節・書かない節・案の決まり・決まった文・判断材料の節・出す者を照らす", () => {
   const forms = config.questionForms;
-  assert.deepEqual(Object.keys(forms).sort(), ["イレギュラー", "判断", "採否", "操作", "確かめ", "続行"].sort());
-  const ok = [[askText("採否", forms), "ゲート"], [askText("確かめ", forms, [{ text: "見た目" }]), "ゲート"], [askText("イレギュラー", forms), "ゲート"], [ASK_DROPPED([7]), "ゲート"],
+  assert.deepEqual(Object.keys(forms).sort(), ["イレギュラー", "判断", "採否", "操作", "確かめ", "続行", "約束"].sort());
+  const ok = [[askText("採否", forms), "ゲート"], [askText("確かめ", forms, [{ text: "見た目" }]), "ゲート"], [askText("イレギュラー", forms), "ゲート"], [askText("約束", forms), "ゲート"], [ASK_DROPPED([7]), "ゲート"],
     [QUESTION, "Claude"], [FORMED("操作", "設定を変えてください", ["画面で設定を変える"]), "Claude"]];
   for (const [text, by] of ok) assert.deepEqual(checkQuestion(forms, text, by), [], text.split("\n")[0]);
   const rows = [

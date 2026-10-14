@@ -184,7 +184,7 @@ export async function readFacts(gh, config, number, runs) {
   const later = { superseded: () => movedSince(gh, config, number, answer.createdAt), droppedAsked: () => ever((x) => x.includes(asking)),
     adoptAsked: () => ever((x) => x.startsWith(questionHead("採否"))), ranMoved: async () => handed > Date.parse(ended.from) || movedOf(gh, config, number, ended, conds) };
   return { ...task, later, author: i.author?.login, parent: p && { number: p.number }, origin: originOf(norm(i.body)), unread, answerRead, answerApplied, number,
-    id: i.id, closedAs: i.stateReason, body: i.body, remaining: conds.filter((x) => !x.done), question, dead, types, dialog,
+    id: i.id, closedAs: i.stateReason, body: i.body, promised: conds.length > 0, remaining: conds.filter((x) => !x.done), question, dead, types, dialog,
     ids: { types: byName(t.issueTypes), labels: byName(t.labels) }, handed, ended: ended && { kind: ended.kind }, runs: held,
     // 閉じた・開き直したときに決め直す、矢印1本でつながる開いた issue（後・親・子）。
     near: [...i.blocking.nodes, ...(p ? [p] : []), ...i.subIssues.nodes].filter((x) => x.state === "OPEN").map((x) => x.number),
