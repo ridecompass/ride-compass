@@ -494,6 +494,10 @@ SNAP_GRAPH = make_graph(
 )
 
 
+#: 索引の範囲より広い上限。これを渡す呼び出しでは、寄せるかを索引の範囲だけが決める。
+WIDER_THAN_THE_AREA_KM = 1000.0
+
+
 def node_index_of(net):
     return routing.build_node_spatial_index(net.latitude, net.longitude, None)
 
@@ -507,7 +511,7 @@ def nearest(net, index, point, allowed_names=None, *, max_distance_km):
 
 def test_nearest_node_is_none_when_the_index_has_no_nodes():
     index = node_index_of(make_graph({}, {}))
-    assert routing.find_nearest_node_indexed(index, coords(35.0, 139.0), max_distance_km=None) is None
+    assert routing.find_nearest_node_indexed(index, coords(35.0, 139.0), max_distance_km=WIDER_THAN_THE_AREA_KM) is None
 
 
 @pytest.mark.parametrize(
@@ -526,19 +530,19 @@ def test_nearest_node_is_none_far_outside_the_indexed_area(point):
     指した覚えのない場所を通るルートになる。
     """
     index = node_index_of(SNAP_GRAPH)
-    assert routing.find_nearest_node_indexed(index, point, max_distance_km=None) is None
+    assert routing.find_nearest_node_indexed(index, point, max_distance_km=WIDER_THAN_THE_AREA_KM) is None
 
 
 def test_nearest_node_tolerates_a_point_just_outside_the_indexed_area():
     """範囲の縁を1セルだけ外した点は、すぐ隣の道へ寄せる（地図の端をクリックした場合）。"""
     index = node_index_of(SNAP_GRAPH)
-    assert nearest(SNAP_GRAPH, index, coords(35.0550, 139.0000), max_distance_km=None) == "far"
+    assert nearest(SNAP_GRAPH, index, coords(35.0550, 139.0000), max_distance_km=WIDER_THAN_THE_AREA_KM) == "far"
 
 
 def test_nearest_node_is_none_when_no_node_is_allowed():
     """1件も真にならないときも索引の範囲を出た時点で止まる（走査が終わる）。"""
     index = node_index_of(SNAP_GRAPH)
-    assert nearest(SNAP_GRAPH, index, coords(35.0050, 139.0050), set(), max_distance_km=None) is None
+    assert nearest(SNAP_GRAPH, index, coords(35.0050, 139.0050), set(), max_distance_km=WIDER_THAN_THE_AREA_KM) is None
 
 
 def test_nearest_node_respects_max_distance_km():
@@ -571,7 +575,7 @@ def test_nearest_node_is_the_closest_candidate_by_great_circle_distance(span_deg
         for mask in (candidates, candidates & allowed):
             expected = int(np.flatnonzero(mask)[np.argmin(distances[mask])])
             found = routing.find_nearest_node_indexed(
-                index, point, None if mask is candidates else allowed, max_distance_km=None)
+                index, point, None if mask is candidates else allowed, max_distance_km=WIDER_THAN_THE_AREA_KM)
             assert found == expected
 
 

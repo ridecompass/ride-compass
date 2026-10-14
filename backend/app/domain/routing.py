@@ -457,7 +457,7 @@ def find_nearest_node_indexed(
     point: Coordinates,
     allowed: np.ndarray | None = None,
     *,
-    max_distance_km: float | None,
+    max_distance_km: float,
 ) -> int | None:
     """`build_node_spatial_index`が作った索引を使い、指定地点に最も近いNodeを総当たり
     より高速に探す。
@@ -484,10 +484,8 @@ def find_nearest_node_indexed(
     **この判定が無いと、何十kmも離れた道へ黙って寄せた結果を返す**——呼び出し側はそれを
     「利用者が指した地点」として扱うため、指した覚えのない場所を通るルートになる。
 
-    `max_distance_km`を渡すと、それより遠いNodeは返さない（Noneになる）。探索する
-    リング数もその距離ぶんで打ち切るため、`allowed`が1つも真にならない場合の走査量も
-    同時に抑えられる。「近くに無いなら寄せない」という意味を持つ呼び出しは、範囲の
-    広さではなく距離でこれを表す。
+    `max_distance_km`より遠いNodeは返さない（Noneになる）。探索するリング数もその距離ぶんで
+    打ち切るため、`allowed`が1つも真にならない場合の走査量も同時に抑えられる。
 
     戻り値はノード番号。
     """
@@ -520,12 +518,9 @@ def find_nearest_node_indexed(
         abs(cell_lon - min_cell_lon),
         abs(cell_lon - max_cell_lon),
     )
-    if max_distance_km is not None:
-        # 1セルの物理的な最小の幅で割る（切り上げ）。最小で割ることで、まだ範囲内にある
-        # Nodeをリング不足で取りこぼさない。
-        max_radius = min(
-            max_radius, math.ceil(max_distance_km / cell_size_km_lower_bound) + 1
-        )
+    # 1セルの物理的な最小の幅で割る（切り上げ）。最小で割ることで、まだ範囲内にある
+    # Nodeをリング不足で取りこぼさない。
+    max_radius = min(max_radius, math.ceil(max_distance_km / cell_size_km_lower_bound) + 1)
     while radius <= max_radius:
         for dx in range(-radius, radius + 1):
             for dy in range(-radius, radius + 1):
@@ -551,7 +546,7 @@ def find_nearest_node_indexed(
         if nearest_distance is not None and radius * cell_size_km_lower_bound >= nearest_distance:
             break
         radius += 1
-    if max_distance_km is not None and (nearest_distance is None or nearest_distance > max_distance_km):
+    if nearest_distance is None or nearest_distance > max_distance_km:
         return None
     return nearest_node
 

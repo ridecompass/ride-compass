@@ -11,9 +11,14 @@ runの記録・パーティション・入れ替えは本物を通す。外部�
 変えた後の全行を渡して入れ直す。失敗したrunは、途中で例外を投げる`records`を渡して作る。
 """
 
+import atexit
 import io
+import os
+import tempfile
+import uuid
 from collections.abc import AsyncIterator, Callable, Iterable, Sequence
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 import asyncpg
@@ -34,6 +39,19 @@ from tests.conftest import raw_connection
 
 #: テストが渡した行を返すアダプタの名前。取込の間だけ`ADAPTERS`に置く。
 _ADAPTER = "given_records"
+
+#: 取り直したファイルの置き場。プロセスごとに1つで、プロセスが終わると消す。
+_FETCHED = Path(tempfile.gettempdir()) / f"source_ingest_{os.getpid()}"
+atexit.register(_FETCHED.unlink, missing_ok=True)
+
+
+def fetched_anew(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
+    """取込のたびに配信元から取り直した、前と中身の違うファイルを読む入力（アダプタの`inputs`）。
+
+    指紋が毎回変わるので、取込は入力が前回と同じとは読まず、毎回行を入れ替えて新しいrunにする。
+    """
+    _FETCHED.write_text(uuid.uuid4().hex)
+    return AdapterInputs(files=(_FETCHED,))
 
 
 def way_record(way_id: int, points: Sequence[tuple[float, float]], node_ids: Sequence[int],
@@ -196,7 +214,7 @@ async def ingest_records(source: str, records: Iterable[SourceRecord], *,
     if conn is None:
         async with raw_connection() as connection:
             return await ingest_records(source, records, conn=connection, bbox=bbox, rows=rows)
-    ADAPTERS[_ADAPTER] = RegisteredAdapter(read=read, rows=NoFields, grid=NoFields)
+    ADAPTERS[_ADAPTER] = RegisteredAdapter(read=read, rows=NoFields, grid=NoFields, inputs=fetched_anew)
     try:
         return await ingest_source(conn, _profile(source, bbox, rows), source)
     finally:

@@ -31,6 +31,7 @@ from app.batch.ingest import (
 from app.batch.source_profile import NoFields, SourceProfile, SourceSpec, load_source_profile
 from app.infrastructure.source_models import SourceFeatureRow
 from tests.conftest import postgis_database_url, raw_connection
+from tests.source_ingest import fetched_anew
 
 # road_graph_session（conftest.py）と同じDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
@@ -48,6 +49,10 @@ POINT_WKB = shapely.to_wkb(Point(139.7, 35.6))
 def _only(source: str, adapter: str) -> SourceProfile:
     return replace(load_source_profile(None), sources=(
         SourceSpec(name=source, adapter=adapter, rows=NoFields(), grid=NoFields()),))
+
+
+def _adapter(read, required=()) -> RegisteredAdapter:
+    return RegisteredAdapter(read=read, rows=NoFields, grid=NoFields, inputs=fetched_anew, required=required)
 
 
 async def _large_rows(spec, profile, inputs, origin):
@@ -69,8 +74,7 @@ async def conn(road_graph_engine):
 
 
 async def test_memory_held_while_ingesting_does_not_grow_with_the_rows(conn, monkeypatch):
-    monkeypatch.setitem(ADAPTERS, SOURCE,
-                        RegisteredAdapter(read=_large_rows, rows=NoFields, grid=NoFields))
+    monkeypatch.setitem(ADAPTERS, SOURCE, _adapter(_large_rows))
     profile = _only(SOURCE, SOURCE)
 
     tracemalloc.start()
@@ -96,8 +100,8 @@ async def test_a_failed_ingest_leaves_a_failed_run_and_the_previous_rows(conn, m
     async def one_row(spec, profile, inputs, origin):
         yield SourceRecord(natural_key="old", geom_wkb=POINT_WKB, attrs={})
 
-    monkeypatch.setitem(ADAPTERS, "one_row", RegisteredAdapter(read=one_row, rows=NoFields, grid=NoFields))
-    monkeypatch.setitem(ADAPTERS, "breaks", RegisteredAdapter(read=_breaks_midway, rows=NoFields, grid=NoFields))
+    monkeypatch.setitem(ADAPTERS, "one_row", _adapter(one_row))
+    monkeypatch.setitem(ADAPTERS, "breaks", _adapter(_breaks_midway))
     succeeded = await ingest_source(conn, _only(SOURCE, "one_row"), SOURCE)
 
     with pytest.raises(OSError):
@@ -112,7 +116,7 @@ async def test_a_failed_ingest_leaves_a_failed_run_and_the_previous_rows(conn, m
 
 
 async def test_ingesting_inside_a_transaction_is_refused(conn, monkeypatch):
-    monkeypatch.setitem(ADAPTERS, "breaks", RegisteredAdapter(read=_breaks_midway, rows=NoFields, grid=NoFields))
+    monkeypatch.setitem(ADAPTERS, "breaks", _adapter(_breaks_midway))
     async with conn.transaction():
         with pytest.raises(RuntimeError, match="トランザクションの外"):
             await ingest_source(conn, _only(SOURCE, "breaks"), SOURCE)
@@ -124,7 +128,7 @@ async def test_a_rebuild_is_refused_while_an_import_runs(conn, monkeypatch):
             await derive_cli.run(postgis_database_url())
         yield SourceRecord(natural_key="new", geom_wkb=POINT_WKB, attrs={})
 
-    monkeypatch.setitem(ADAPTERS, "rebuild", RegisteredAdapter(read=rebuild_meanwhile, rows=NoFields, grid=NoFields))
+    monkeypatch.setitem(ADAPTERS, "rebuild", _adapter(rebuild_meanwhile))
     await ingest_source(conn, _only(SOURCE, "rebuild"), SOURCE)
 
 
@@ -132,7 +136,6 @@ async def test_a_row_missing_a_column_the_adapter_requires_is_refused(conn, monk
     async def without_payload(spec, profile, inputs, origin):
         yield SourceRecord(natural_key="1", geom_wkb=POINT_WKB, attrs={})
 
-    monkeypatch.setitem(ADAPTERS, "without_payload", RegisteredAdapter(
-        read=without_payload, rows=NoFields, grid=NoFields, required=(SourceFeatureRow.payload,)))
+    monkeypatch.setitem(ADAPTERS, "without_payload", _adapter(without_payload, required=(SourceFeatureRow.payload,)))
     with pytest.raises(asyncpg.NotNullViolationError, match="payload"):
         await ingest_source(conn, _only(REQUIRED_SOURCE, "without_payload"), REQUIRED_SOURCE)
