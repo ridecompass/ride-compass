@@ -12,6 +12,7 @@ import palette from "@/types/generated/palette.json";
 import weatherScales from "@/types/generated/weather-scales.json";
 
 import { POINT_LAYERS, pointAxisKey, pointCategoryRadiusPx, type PointAxis } from "@/features/map/scene/groups/points";
+import { DISASTER_ELEMENTS, DISASTER_LAYER_ID, type DisasterElement } from "@/features/map/scene/groups/weather";
 import { ROAD_OTHER_KEY, ROAD_TRACKS, roadTrackAxis, roadTrackHasMissing } from "@/features/map/scene/groups/roadLines";
 
 /** 凡例1本ぶん。1つのチップが複数の軸を持つことがある（事故は当事者と重大度）。 */
@@ -98,16 +99,12 @@ export function pointLegendAxes(): readonly SceneLegendAxis[] {
   );
 }
 
-const DISASTER_LAYER_ID = "disaster" as const;
-
 /** 段の並びから鍵で1段の色を引く。位置で引くと、源泉が段を足した・並べ替えたときに別の段を指す。 */
 function levelColor(levels: readonly { key: string; color: string }[], key: string): string {
   const level = levels.find((candidate) => candidate.key === key);
   if (!level) throw new Error(`気象の段に鍵が無い: ${key}`);
   return level.color;
 }
-
-type DisasterElement = Extract<(typeof mapDisplay.weatherElements)[number], { group: typeof DISASTER_LAYER_ID }>;
 
 /** 段で塗る災害の要素の色見本にする段。注意を促す段の色（平常時の色を見本にすると、どの要素も同じに見える）。 */
 const SWATCH_LEVEL_KEY: Record<NonNullable<DisasterElement["levelScale"]>, string> = {
@@ -130,14 +127,11 @@ function disasterSwatch(element: DisasterElement): string {
 /** 災害チップの要素ごとの表示切替。隠した要素は取りに行かない（地図の絞り込みではなく取得を止める）。
  * 行の並びと名前は源泉の要素の宣言のまま。 */
 export function disasterSourceLegendAxis(): SceneLegendAxis {
-  const sources = mapDisplay.weatherElements.filter(
-    (element): element is DisasterElement => element.group === DISASTER_LAYER_ID,
-  );
   return {
     layerId: DISASTER_LAYER_ID,
     axisId: DISASTER_LAYER_ID,
     label: "表示する情報",
-    entries: [...new Map(sources.map((element) => [element.source, element]))].map(([source, element]) => ({
+    entries: [...new Map(DISASTER_ELEMENTS.map((element) => [element.source, element]))].map(([source, element]) => ({
       key: source,
       label: element.label,
       description: element.description ?? undefined,

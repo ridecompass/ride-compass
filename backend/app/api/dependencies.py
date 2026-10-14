@@ -8,7 +8,7 @@
 MSMの同期）だけは`main.py`が組み立てる。
 """
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 from cachetools import LRUCache, TTLCache
@@ -30,6 +30,7 @@ from app.infrastructure.jma_tile_client import JmaTileClient, JmaTileSharedState
 from app.infrastructure.jma_warning_client import new_area_data_cache, new_warning_cache
 from app.infrastructure.material_coverage import MaterialCoverageQuery
 from app.infrastructure.place_area_query import PlaceAreaQuery
+from app.infrastructure.region_tile_cache import TileResponse
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.stop_place_search import StopPlaceSearchQuery
 from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_cache
@@ -42,6 +43,7 @@ from app.services.feature_materials import FeatureMaterialService
 from app.services.flood_service import FloodService
 from app.services.graph_service import GraphService
 from app.services.jma_amedas_service import JmaAmedasService
+from app.services.landcover_tile_service import get_landcover_tile
 from app.services.material_coverage_service import MaterialCoverageService
 from app.services.nearest_point_areas import new_cells_cache
 from app.services.place_search_service import PlaceSearchReads, PlaceSearchService
@@ -125,6 +127,15 @@ def get_route_generation_setup_opener() -> RouteGenerationSetupOpener:
     return _open_route_generation_setup
 
 
+LandcoverTileReader = Callable[[int, int, int], Awaitable[TileResponse | None]]
+
+
+def get_landcover_tile_reader() -> LandcoverTileReader:
+    """土地被覆のタイル（z, x, y）を読む口。ラスタはプロセスが開いたものを共有し、要求ごとに組む部品が無いので、
+    読む関数を配る。"""
+    return get_landcover_tile
+
+
 #: 軸スタジオの分布の標本。サービスはリクエストごとに作られるため、プロセスの側で持つ。
 _axis_preview_sample_cache = new_sample_cache()
 
@@ -179,7 +190,10 @@ async def get_dedicated_way_value_service(
     Noneを返し、呼び出し元が404を返す。
     """
     async with get_session_factory()() as session:
-        yield axis_way_value_lens(axis_id, RoadGraphRepository(session), weather_service)
+        repository = RoadGraphRepository(session)
+        yield axis_way_value_lens(
+            axis_id, FeatureMaterialService(repository), material_service_builder(repository, weather_service)
+        )
 
 
 async def get_axis_inspector_service(weather_service: WeatherService = Depends(get_weather_service)):

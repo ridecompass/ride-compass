@@ -24,13 +24,15 @@ const author = (i, k) => i.by[k] ?? (i.comments[k].startsWith("## 回答") ? con
 // その完了の条件を写す（無ければ写さない）。
 const END = (start, kind = "実装", before = "") =>
   [`${endHead(kind)}\n\n要約（担当の最後の発言）:\n\n> 読んだ\n\n${readFromLine(T(start - 0.5))}`, ...(before ? ["", startBlock(before)] : [])].join("\n");
-// 検査の実行（check suite）。置いたときの値（SUCCESS・FAILURE・PENDING）を、GitHub の status と conclusion の形にする。running は、ほかに走っている実行、
-// at は検査が始まった時刻。
-// コミットに付いたワークフローの実行。tasks は、そのコミットの上で動いた担当のワークフローの実行の結論（本番の担当は master の先頭で動く）。
-const suites = (state, running = false, at = T(-1), tasks = []) => ({ nodes: [...[...(state ? [state === "PENDING" ? { status: "IN_PROGRESS", conclusion: null } : { status: "COMPLETED", conclusion: state }] : []),
-  ...(running ? [{ status: "IN_PROGRESS", conclusion: null }] : [])].map((s) => ({ ...s, file: ".github/workflows/ci.yml" })),
-  ...tasks.map((conclusion) => ({ status: "COMPLETED", conclusion, file: `.github/workflows/${config.workflow}` }))]
-  .map(({ file, ...s }, k) => ({ ...s, createdAt: at, workflowRun: { databaseId: k + 1, file: { path: file } } })) });
+// コミットに付いたワークフローの実行（check suite）。置いたときの値（SUCCESS・FAILURE・CANCELLED・PENDING）を、GitHub の status と conclusion の形にする
+// （PENDING は走っている）。state は検査のワークフロー（config.checks.workflow）の最も新しい実行（at に始まった）、before はそれより前に同じコミットで始まった検査の実行
+// （古い順。説明文を書き直して打ち直したもの等）、others はほかのワークフローの実行、tasks は担当のワークフローの実行（本番の担当は master の先頭で動く）。
+const outcome = (s) => (s === "PENDING" ? { status: "IN_PROGRESS", conclusion: null } : { status: "COMPLETED", conclusion: s });
+const suite = (file, s, at) => ({ ...outcome(s), createdAt: at, workflowRun: { file: { path: `.github/workflows/${file}` } } });
+const suites = (state, { at = T(-1), before = [], others = [], tasks = [] } = {}) => ({ nodes: [
+  ...before.map((s, k) => suite(config.checks.workflow, s, new Date(Date.parse(at) - (before.length - k) * 1000).toISOString())),
+  ...(state ? [suite(config.checks.workflow, state, at)] : []),
+  ...others.map((s) => suite("mutation-pr.yml", s, at)), ...tasks.map((s) => suite(config.workflow, s, at))] });
 const TYPES = ["保守", "不具合", "要望", "調査", config.dialogType];
 const LOGIN = Object.fromEntries(Object.entries(config.ids).map(([login, id]) => [id, login]));
 
@@ -55,8 +57,8 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
   };
   // PR は、置いたときに決めた時刻（p.created・p.mergedAt）が無ければ、どのコメントより前に作られた。
   const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, mergeable: p.mergeable ?? "MERGEABLE", merged: Boolean(p.merged), createdAt: p.created ?? T(-1), mergedAt: p.mergedAt ?? null,
-    mergeCommit: { oid: p.sha ?? `m${i.n}`, checkSuites: suites(p.mergeChecks, p.mergeRunning, T(-1), p.mergeTasks) },
-    commits: { nodes: [{ commit: { oid: `c${i.n}`, committedDate: "2026-10-11T00:00:00Z", checkSuites: suites(p.checks, false, p.checksAt ?? p.created) } }] },
+    mergeCommit: { oid: p.sha ?? `m${i.n}`, checkSuites: suites(p.mergeChecks, { others: p.mergeOthers, tasks: p.mergeTasks }) },
+    commits: { nodes: [{ commit: { oid: `c${i.n}`, committedDate: "2026-10-11T00:00:00Z", checkSuites: suites(p.checks, { at: p.checksAt ?? p.created, before: p.checksBefore }) } }] },
     timelineItems: { nodes: p.drafted ? [{ createdAt: "2026-10-11T01:00:00Z" }] : [] } });
   const issueOf = (id) => w.at(Number(id.slice(1)));
   // 置き場のラベル: 決まったもの（急ぎ・開発機で作業中・問いのラベル）と、issue に付いたもの。
@@ -240,6 +242,8 @@ test("R3・決め1・決め7・#760: 担当の実行が終わったら、表の�
     ["R3b 下書きの PR の検査が終わっていない", {}, { pr: { draft: true, checks: "PENDING" } }, "検査", 1, null],
     ["実装担当が、検査の出ない PR を出して手放した（検査の持ち主がいない）→ イレギュラー", {}, { pr: { draft: true } }, "回答", 1, "## 問い（イレギュラー）"],
     ["R3c 下書きでない PR の検査が通った → 検証 → 検証担当", {}, { pr: { draft: false, checks: "SUCCESS" } }, "検証", 2, null],
+    ["R3c 説明文を書き直して同じコミットで検査を打ち直した → 最も新しい実行の結論で決める", {}, { pr: { draft: false, checks: "SUCCESS", checksBefore: ["CANCELLED"] } }, "検証", 2, null],
+    ["R3b 前の検査の実行が通っても、打ち直した実行が走っている間は検査", {}, { pr: { draft: true, checks: "PENDING", checksBefore: ["SUCCESS"] } }, "検査", 1, null],
     ["R3d 検証担当が下書きへ戻した（差し戻し）→ 実装担当", verify, { pr: { draft: true, checks: "SUCCESS", drafted: true } }, "実装", 2, null],
     ["検証担当が、マージも差し戻しも問いもせずに手放した → イレギュラー", verify, {}, "回答", 1, "## 問い（イレギュラー）"],
     ["R3e 条件が全部済んだ → 完成で閉じる", {}, { body: "- [x] 作る\n" }, "完了", 1, null],
@@ -259,7 +263,8 @@ test("R3・決め1・決め7・#760: 担当の実行が終わったら、表の�
     ["マージのコミットの上で担当の実行が取り消されても、担当の実行は検査に数えない → 確かめの問い", verify,
       { body: CONFIRM, pr: { ...merged, mergeChecks: "SUCCESS", mergeTasks: ["CANCELLED", "SUCCESS"] } }, "回答", 1, "## 問い（確かめ）"],
     ["実装担当が、落ちたマージのコミットの検査を打ち直しも直しもせずに手放した → イレギュラー", { body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, { pr: { ...merged, mergeChecks: "FAILURE" } }, "回答", 1, "## 問い（イレギュラー）"],
-    ["検査の1つが落ちても、ほかが走っている間は終わっていない → 検査", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE", mergeRunning: true } }, "検査", 1, null],
+    ["必須でない検査（検査のワークフローの外）が落ちても走っていても、検査のワークフローが通れば合格 → 確かめの問い", verify,
+      { body: CONFIRM, pr: { ...merged, mergeChecks: "SUCCESS", mergeOthers: ["FAILURE", "PENDING"] } }, "回答", 1, "## 問い（確かめ）"],
   ];
   for (const [name, start, { made = [], ...facts }, status, runs, comment] of rows) {
     const w = world([{ n: 1, status: "実装", ...start }, { n: 9, status: "保留" }]);
@@ -275,7 +280,7 @@ test("R3・決め1・決め7・#760: 担当の実行が終わったら、表の�
     await w.send(ev.run(run, "completed"));
     assert.deepEqual([w.at(1).status, w.runs.length, said(w.at(1))], [status, runs, comment], name);
     if (status === "回答") assert.deepEqual([w.at(1).assignees, w.at(1).body.startsWith("<!-- flow-gate -->")], [[config.user], true], `${name}: ユーザーの番で、本文の頭に回答のボタン`);
-    if (status === "検査") assert.equal(w.at(1).run, "in_progress", `${name}: 欄「実行の status」は、終わりから最も遠い検査の実行の status`);
+    if (status === "検査") assert.equal(w.at(1).run, "in_progress", `${name}: 欄「実行の status」は、検査のワークフローの最も新しい実行の status`);
   }
 });
 

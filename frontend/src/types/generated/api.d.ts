@@ -929,10 +929,7 @@ export interface components {
             unit: string;
             /** Share */
             share: number;
-            /**
-             * Value Labels
-             * @default {}
-             */
+            /** Value Labels */
             value_labels: {
                 [key: string]: string;
             };

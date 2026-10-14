@@ -31,7 +31,6 @@ from app.domain.dynamic_way_values import (
 from app.domain.material_catalog import segment_material_ids
 from app.domain.region import EDGE_UNIT_MIN_ZOOM
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.services.feature_materials import FeatureMaterialService
 from app.services.gradient_way_service import GradientWayService
 from app.services.rain_way_service import RainWayService
 from app.services.weather_service import WeatherService
@@ -265,16 +264,14 @@ class AxisWayValueLens:
 
 
 def axis_way_value_lens(
-    axis_id: str, repository: RoadGraphRepository, weather_service: WeatherService
+    axis_id: str, feature_materials: FeatureMaterialSource, build_service: MaterialServiceBuilder
 ) -> AxisWayValueLens | None:
     """公開軸のレンズを組み立てる。軸は組み立てた時点の軸の集合で評価する。公開軸でなければNone。"""
     definitions = copy_axis_definitions()
     definition = definitions.get(axis_id)
     if definition is None or not definition.is_published:
         return None
-    return AxisWayValueLens(
-        axis_id, definitions, FeatureMaterialService(repository), material_service_builder(repository, weather_service)
-    )
+    return AxisWayValueLens(axis_id, definitions, feature_materials, build_service)
 
 
 @dataclass(frozen=True)

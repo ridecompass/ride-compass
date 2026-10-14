@@ -63,7 +63,7 @@ class TuningParameter:
 
     id: str
     #: 管理画面の表示名。値を使う側の宣言が対象を持つもの（路面の見込みの転がり抵抗・停止要因の待ち）は、
-    #: 対象の名前を管理APIがそこから添える（`api/routers/tuning_admin.py`）——ここはその宣言を読めない（循環する）ため、
+    #: 対象の名前は`domain/tuning_labels.py: tuning_label`がそこから添える——ここはその宣言を読めない（循環する）ため、
     #: 対象の名前を写すと、対象の名前を変えたときに古くなる。
     label: str
     #: 単位（管理画面が値の右に出す）。無次元の比率等は空。
@@ -111,6 +111,14 @@ def _stop_parameter(kind: str, default: float, description: str) -> TuningParame
     )
 
 
+#: 説明の文が名指す較正値のid。宣言と説明が同じ綴りを引く。
+_MAJOR_CROSSING_ID = "turn.major_crossing_seconds"
+_STOP_ID = stop_seconds_parameter_id("stop")
+_SIGNAL_ID = stop_seconds_parameter_id("signal")
+_CRR_ID = "speed.crr"
+_CRR_GRAVEL_ID = "speed.crr_gravel"
+
+
 TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     # --- ターンの費用（方位差だけで決まる） ---
     TuningParameter(
@@ -135,13 +143,13 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "この角度までの曲がりは直進とみなし、費用を足さない。",
     ),
     TuningParameter(
-        "turn.major_crossing_seconds",
+        _MAJOR_CROSSING_ID,
         "上位の道の横断", "秒", 8.0, 0.0, 300.0,
         TuningEffect.TURN_STRUCTURE,
         "信号の無い交差点で、上位の階級の道を直進で渡るときに足す。"
-        "一時停止で止まるぶん（stop.stop_seconds）とは別で、義務の停止を超えて相手の"
+        f"一時停止で止まるぶん（{_STOP_ID}）とは別で、義務の停止を超えて相手の"
         "流れが途切れるのを待つぶんを表す（止まること自体は交通ルール上、車が来ていなくても"
-        "発生する）。信号のある交差点では足さない——signal_secondsが赤で待つ時間、"
+        f"発生する）。信号のある交差点では足さない——{_SIGNAL_ID}が赤で待つ時間、"
         "すなわち渡れるようになるまでの待ちそのものを表すため。",
     ),
     TuningParameter(
@@ -154,13 +162,13 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     _stop_parameter("signal", 21.0,
                     "一般的な信号サイクルからの見積もり。赤で待つ時間、すなわち渡れるように"
                     "なるまでの待ちそのものを表すため、信号のある交差点では"
-                    "turn.major_crossing_secondsを足さない。"),
+                    f"{_MAJOR_CROSSING_ID}を足さない。"),
     _stop_parameter("crossing", 0.0,
                     "自転車が止まる前提を置いていないため既定は0秒。"),
     _stop_parameter("stop", 8.0,
                     "標識・標示で減速して止まるぶん。交通ルール上、車が来ていなくても止まる"
                     "ため相手の交通と無関係に発生する。相手の流れが途切れるのを待つぶんは"
-                    "含まず、そちらはturn.major_crossing_secondsが上位の道を渡るときだけ"
+                    f"含まず、そちらは{_MAJOR_CROSSING_ID}が上位の道を渡るときだけ"
                     "足す。"),
     _stop_parameter("level_crossing", 25.0, "遮断機の待ちを含む見積もり。"),
     _stop_parameter("barrier", 8.0, "ボラード等で減速するぶん。"),
@@ -180,7 +188,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         shown_to_users=True,
     ),
     TuningParameter(
-        "speed.crr",
+        _CRR_ID,
         "転がり抵抗", "", 0.005, 0.001, 0.05, TuningEffect.IMMEDIATE,
         "舗装路の23〜28mmタイヤの標準値。",
     ),
@@ -188,10 +196,10 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         "speed.crr_compacted",
         "転がり抵抗", "", 0.010, 0.001, 0.1, TuningEffect.IMMEDIATE,
-        "締め固めた路面の計測値が見当たらないため、舗装（speed.crr）と砂利（speed.crr_gravel）の中間に置く。",
+        f"締め固めた路面の計測値が見当たらないため、舗装（{_CRR_ID}）と砂利（{_CRR_GRAVEL_ID}）の中間に置く。",
     ),
     TuningParameter(
-        "speed.crr_gravel",
+        _CRR_GRAVEL_ID,
         "転がり抵抗", "", 0.015, 0.001, 0.1, TuningEffect.IMMEDIATE,
         "未舗装の値域（0.012〜0.020）の中ほどで、舗装の約3倍（惰行試験で砂利は舗装の約3倍）。",
     ),
@@ -209,7 +217,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         "speed.crr_unknown",
         "転がり抵抗", "", 0.010, 0.001, 0.1, TuningEffect.IMMEDIATE,
-        "舗装の道も未舗装の道も多いため、舗装（speed.crr）と砂利（speed.crr_gravel）の中間に置く。",
+        f"舗装の道も未舗装の道も多いため、舗装（{_CRR_ID}）と砂利（{_CRR_GRAVEL_ID}）の中間に置く。",
     ),
     TuningParameter(
         "speed.mass_kg",

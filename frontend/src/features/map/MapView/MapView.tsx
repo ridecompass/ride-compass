@@ -12,7 +12,7 @@ import { configureMaplibreWorker } from "@/features/map/maplibreWorker";
 import type {
   ErrorEvent as MapLibreErrorEvent,
   Map as MapLibreMap,
-  MapLayerMouseEvent,
+  MapGeoJSONFeature,
   MapMouseEvent,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -43,16 +43,12 @@ import {
   sceneInputsFrom,
   type SpliceStretchInput,
 } from "@/features/map/scene/applyToMap";
-import { interactiveSceneLayerIds, sceneLayerIdsForHitTarget, type MapScene } from "@/features/map/scene/mapScene";
-import {
-  ROUTE_HIT_TARGET,
-  ROUTE_HIT_TARGET_SEGMENT,
-  ROUTE_HIT_TARGET_SPLICE_BAND,
-} from "@/features/map/scene/groups/routes";
+import { interactiveSceneLayerIds, sceneHitTargetsOfLayer } from "@/features/map/scene/mapScene";
+import { ROUTE_HIT_TARGET_SEGMENT, ROUTE_HIT_TARGET_SPLICE_BAND } from "@/features/map/scene/groups/routes";
 import { buildMapScene, type SceneInputs } from "@/features/map/scene/buildScene";
-import { POINT_TILE_SOURCES, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
+import { POINT_HIT_TARGET, POINT_TILE_SOURCES, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
-import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
+import { ROAD_LINE_HIT_TARGET, ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { MapLook } from "@/features/map/view/mapLook";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
@@ -67,7 +63,7 @@ import { debugLog } from "@/lib/debugLog";
 import { MAP_OVERLAY_EDGE_ATTRIBUTE, measureMapOverlayEdges, type RouteFitObscuredPx } from "@/lib/mapOverlayEdges";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
-import { closestPointOnSegment, longitudeScale } from "@/lib/localPlane";
+import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
 import { roundToDigits } from "@/lib/numberFormat";
 
 // 基礎地図のスタイルJSON。中のタイル・スプライト・グリフのURLはbackendがBASEMAP_PUBLIC_BASE_URLで
@@ -75,11 +71,6 @@ import { roundToDigits } from "@/lib/numberFormat";
 const MAP_STYLE_PATH = apiPath("/api/basemap/{path}", { path: "styles/liberty" });
 function mapStyleUrl(): string {
   return `${tileBaseUrl()}${MAP_STYLE_PATH}`;
-}
-
-/** ルート線の当たり判定レイヤー。**idは scene が決める**ので、当たり判定の名前で引く。 */
-function routeHitLayerId(scene: MapScene, target: string): string | undefined {
-  return sceneLayerIdsForHitTarget(scene, target)[0];
 }
 
 // 初期表示の覆い（「地図を読み込み中…」）を出しておく上限。覆いは基礎地図が描けた時点（"load"）で外すので、
@@ -209,23 +200,14 @@ function nearestPointOnLineString(
   coordinates: readonly (readonly [number, number])[],
   point: readonly [number, number],
 ): [number, number] {
-  if (coordinates.length === 0) return [point[0], point[1]];
-
-  const scale = longitudeScale(point[1]);
-  const toPlane = ([lng, lat]: readonly [number, number]) => ({ x: lng * scale, y: lat });
-  const p = toPlane(point);
-  let best = toPlane(coordinates[0]);
-  let bestDistSq = Infinity;
-
+  let best: EdgeProjection | null = null;
   for (let i = 0; i < coordinates.length - 1; i++) {
-    const closest = closestPointOnSegment(p, toPlane(coordinates[i]), toPlane(coordinates[i + 1]));
-    const distSq = (p.x - closest.x) ** 2 + (p.y - closest.y) ** 2;
-    if (distSq < bestDistSq) {
-      bestDistSq = distSq;
-      best = closest;
-    }
+    const projected = projectOnEdge(point, coordinates[i], coordinates[i + 1]);
+    if (best === null || projected.offsetM < best.offsetM) best = projected;
   }
-  return [best.x / scale, best.y];
+  if (best !== null) return best.point;
+  const [lng, lat] = coordinates[0] ?? point;
+  return [lng, lat];
 }
 
 interface MapViewProps {
@@ -462,47 +444,49 @@ export default function MapView({
         latest.current.onPinPlace(armed, { latitude: e.lngLat.lat, longitude: e.lngLat.lng });
         return;
       }
-      // ルートの線は専用のハンドラ（レイヤーへの"click"）が受ける。MapLibreは地図全体の"click"とレイヤーの
-      // "click"を両方出すため、ルートの線に当たったらここでは何もしない（道の詳細と同時に開かない）。
-      for (const hitLayerId of sceneLayerIdsForHitTarget(latest.current.scene, ROUTE_HIT_TARGET)) {
-        if (map.getLayer(hitLayerId) && map.queryRenderedFeatures(e.point, { layers: [hitLayerId] }).length > 0) {
-          return;
-        }
-      }
-      const features = interactiveFeaturesAt(e.point);
-      if (features.length === 0) return;
+      // 押した所で一番上に描かれた地物だけを、そのレイヤーが宣言した対象で開く（乗り換えの帯は区間の上に描くので、
+      // 重なった所は帯を選ぶ）。
+      const feature = interactiveFeaturesAt(e.point)[0];
+      if (feature === undefined) return;
+      const targets = sceneHitTargetsOfLayer(latest.current.scene, feature.layer.id);
+      const open = targets.map((target) => OPEN_BY_HIT_TARGET.get(target)).find((handler) => handler !== undefined);
+      if (open === undefined)
+        throw new Error(`押せるレイヤー ${feature.layer.id} の対象 ${targets.join("・")} を開く手続きが無い`);
+      open(feature, e);
+    }
 
-      const feature = features[0];
-      // 道はルート結果と同じ「軸ごとの効き方」を見せるためReactの部品で描く。点（事故・POI）は数行の事実だけなので
-      // MapLibreのPopupへ直接載せる。
+    // 道はルート結果と同じ「軸ごとの効き方」を見せるためReactの部品で描く。点（事故・POI）は数行の事実だけなので
+    // MapLibreのPopupへ直接載せる。
+    function openPoint(feature: MapGeoJSONFeature, e: MapMouseEvent) {
       const point = pointLayerOfSceneLayer(feature.layer.id);
-      if (point !== undefined) {
-        // 外の地図で探す位置は点そのものの位置（押した所は絵の端のことがある）。点の層のタイルは点1つずつを焼く。
-        if (feature.geometry.type !== "Point") throw new Error(`点の層 ${point.attr_id} の地物が点でない`);
-        const [lng, lat] = feature.geometry.coordinates;
-        const pointContent = buildPointPopupContent(point, feature.properties, { lng, lat });
-        const name = pointPlaceName(point, feature.properties);
-        popupRef.current?.remove();
-        setRoadPopup(null);
-        const popup = new maplibregl.Popup({ closeButton: true })
-          .setLngLat(e.lngLat)
-          .setDOMContent(pointContent)
-          .addTo(map);
-        popupRef.current = popup;
-        if (name === null) {
-          setSpotActions(null);
-        } else {
-          const container = document.createElement("div");
-          pointContent.appendChild(container);
-          // 探して選んだ施設と同じ形で渡し、並びと詳しくに名前を出す（辺りは置いた位置から引く）。
-          setSpotActions({
-            container,
-            spot: { kind: "facility", level: "point", name, area: null, latitude: lat, longitude: lng },
-          });
-          popup.on("close", () => setSpotActions((current) => (current?.container === container ? null : current)));
-        }
+      if (point === undefined) throw new Error(`点の対象を名乗るレイヤー ${feature.layer.id} に点の宣言が無い`);
+      // 外の地図で探す位置は点そのものの位置（押した所は絵の端のことがある）。点の層のタイルは点1つずつを焼く。
+      if (feature.geometry.type !== "Point") throw new Error(`点の層 ${point.attr_id} の地物が点でない`);
+      const [lng, lat] = feature.geometry.coordinates;
+      const pointContent = buildPointPopupContent(point, feature.properties, { lng, lat });
+      const name = pointPlaceName(point, feature.properties);
+      popupRef.current?.remove();
+      setRoadPopup(null);
+      const popup = new maplibregl.Popup({ closeButton: true })
+        .setLngLat(e.lngLat)
+        .setDOMContent(pointContent)
+        .addTo(map);
+      popupRef.current = popup;
+      if (name === null) {
+        setSpotActions(null);
         return;
       }
+      const container = document.createElement("div");
+      pointContent.appendChild(container);
+      // 探して選んだ施設と同じ形で渡し、並びと詳しくに名前を出す（辺りは置いた位置から引く）。
+      setSpotActions({
+        container,
+        spot: { kind: "facility", level: "point", name, area: null, latitude: lat, longitude: lng },
+      });
+      popup.on("close", () => setSpotActions((current) => (current?.container === container ? null : current)));
+    }
+
+    function openRoad(feature: MapGeoJSONFeature, e: MapMouseEvent) {
       popupRef.current?.remove();
       popupRef.current = null;
       setRoadPopup({
@@ -513,16 +497,14 @@ export default function MapView({
     }
 
     // 乗り換えられる区間の帯を押したら、その区間の道を選ぶ（選ぶ操作の中心を地図へ置く）。
-    function handleSpliceStretchClick(e: MapLayerMouseEvent) {
-      const index = e.features?.[0]?.properties?.index;
+    function openSpliceStretch(feature: MapGeoJSONFeature) {
+      const index = feature.properties.index;
       if (typeof index !== "number") return;
       popupRef.current?.remove();
       latest.current.onSpliceStretchSelect(index);
     }
 
-    function handleRouteSegmentClick(e: MapLayerMouseEvent) {
-      const feature = e.features?.[0];
-      if (!feature) return;
+    function openRouteSegment(feature: MapGeoJSONFeature, e: MapMouseEvent) {
       // 前に開いた点の詳細が残らないよう閉じる。
       popupRef.current?.remove();
       const properties = feature.properties as unknown as Omit<RouteSegmentDetail, "geometry">;
@@ -532,6 +514,14 @@ export default function MapView({
       const [snappedLng, snappedLat] = nearestPointOnLineString(lineCoordinates, [e.lngLat.lng, e.lngLat.lat]);
       latest.current.onRouteSegmentSelect({ segment, latitude: snappedLat, longitude: snappedLng });
     }
+
+    /** scene の当たり判定の対象ごとの、押した地物を開く手続き。 */
+    const OPEN_BY_HIT_TARGET = new Map<string, (feature: MapGeoJSONFeature, e: MapMouseEvent) => void>([
+      [ROUTE_HIT_TARGET_SPLICE_BAND, openSpliceStretch],
+      [ROUTE_HIT_TARGET_SEGMENT, openRouteSegment],
+      [POINT_HIT_TARGET, openPoint],
+      [ROAD_LINE_HIT_TARGET, openRoad],
+    ]);
 
     function handleMouseMove(e: MapMouseEvent) {
       map.getCanvas().style.cursor = interactiveFeaturesAt(e.point).length > 0 ? "pointer" : "";
@@ -608,14 +598,6 @@ export default function MapView({
     }
 
     map.on("click", handleClick);
-    // ルートの線のハンドラは、レイヤーがまだ無い（ルート未生成）間に登録しても、MapLibreは発火しないだけで例外を
-    // 出さない。
-    const routeHitLayers = {
-      segment: routeHitLayerId(latest.current.scene, ROUTE_HIT_TARGET_SEGMENT),
-      spliceBand: routeHitLayerId(latest.current.scene, ROUTE_HIT_TARGET_SPLICE_BAND),
-    };
-    if (routeHitLayers.segment !== undefined) map.on("click", routeHitLayers.segment, handleRouteSegmentClick);
-    if (routeHitLayers.spliceBand !== undefined) map.on("click", routeHitLayers.spliceBand, handleSpliceStretchClick);
     map.on("mousemove", handleMouseMove);
     map.on("load", handleLoad);
     map.on("error", handleMapError);
@@ -637,9 +619,6 @@ export default function MapView({
       map.off("styledata", collapseAttribution);
       map.off("sourcedata", collapseAttribution);
       map.off("click", handleClick);
-      if (routeHitLayers.segment !== undefined) map.off("click", routeHitLayers.segment, handleRouteSegmentClick);
-      if (routeHitLayers.spliceBand !== undefined)
-        map.off("click", routeHitLayers.spliceBand, handleSpliceStretchClick);
       map.off("mousemove", handleMouseMove);
       map.off("load", handleLoad);
       map.off("error", handleMapError);

@@ -44,7 +44,8 @@ from app.domain.weather_elements import (
     weather_element_deliveries,
     weather_element_tile,
 )
-from app.infrastructure.jma_tile_client import EmptyTile, JmaTileClient, get_target_times
+from app.infrastructure.http_client import UpstreamNotFound
+from app.infrastructure.jma_tile_client import JmaTileClient, get_target_times
 from app.infrastructure.jma_tile_content import is_empty_tile
 from app.infrastructure.jma_tile_index import JmaTileIndex, JmaTileIndexCoverage, JmaTileIndexElement, set_index
 
@@ -183,7 +184,7 @@ async def prewarm_jma_tiles(client: JmaTileClient, area: BoundingBox) -> None:
         if result is None:
             errors += 1
             return
-        if isinstance(result, EmptyTile):
+        if isinstance(result, UpstreamNotFound):
             # 描くものが無いと確認済み（上流の404、または前回の取得で空と分かってフラグで
             # 保持されているもの）。平常時はこれが大半のため、失敗として数えない。
             empty += 1

@@ -3,18 +3,12 @@ import asyncio
 import httpx
 
 from app.infrastructure import tile_cache
-from app.infrastructure.debug_log import log_external_call, mark_failed, mark_status_error
+from app.infrastructure.debug_log import log_external_call
+from app.infrastructure.http_client import UpstreamNotFound, fetch_upstream
 
 UPSTREAM_HOST = "https://tiles.openfreemap.org"
 # 書き換え前（上流そのまま）のJSONを保存するキャッシュキーの接頭辞。
 _RAW_JSON_CACHE_PREFIX = "basemap-raw/"
-
-
-class BasemapNotFound:
-    """要求された部品が配信元に存在しないこと（404）を確認済みという事実を表すセンチネル。"""
-
-
-BASEMAP_NOT_FOUND = BasemapNotFound()
 
 
 class BasemapClient:
@@ -36,7 +30,7 @@ class BasemapClient:
         self._http_client = http_client
         self._proxy_base_url = proxy_base_url
 
-    async def get(self, path: str) -> tuple[bytes, str] | BasemapNotFound | None:
+    async def get(self, path: str) -> tuple[bytes, str] | UpstreamNotFound | None:
         with log_external_call("basemap:openfreemap", path=path) as fields:
             # tile_cacheの読み書きは同期的なディスクI/O。基礎地図読み込み時は数十件のタイル/フォント
             # リクエストが同時に来るため、awaitせず直接呼ぶとイベントループ全体をブロックし、
@@ -58,18 +52,11 @@ class BasemapClient:
                 return self._rewrite_upstream_urls(content), content_type
             fields["cache"] = "miss"
 
-            try:
-                response = await self._http_client.get(f"{UPSTREAM_HOST}/{path}")
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                # 404は配信元が用意していない部品（書体の一部等）。
-                return BASEMAP_NOT_FOUND if mark_status_error(fields, exc) else None
-            except httpx.HTTPError as exc:
-                mark_failed(fields, exc)
-                return None
+            # 404は配信元が用意していない部品（書体の一部等）。
+            response = await fetch_upstream(self._http_client, f"{UPSTREAM_HOST}/{path}", fields)
+            if not isinstance(response, httpx.Response):
+                return response
 
-            fields["result"] = "ok"
-            fields["status"] = response.status_code
             content_type = response.headers.get("content-type", "application/octet-stream")
             content = response.content
             if "json" in content_type:

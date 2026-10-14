@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { debugLog } from "@/lib/debugLog";
-import { distanceM } from "@/lib/localPlane";
+import { haversineKm } from "@/lib/geoDistance";
 import type { Coordinates } from "@/types/route";
 
 import { trueHeadingDeg } from "@/lib/magneticDeclination";
@@ -110,7 +110,7 @@ export function useRideMode(): UseRideModeResult {
         lastFix.current = { at: here, timestamp: fix.timestamp };
         if (speed !== null && Number.isFinite(speed)) setSpeedMs(speed);
         else if (previous !== null && fix.timestamp > previous.timestamp)
-          setSpeedMs(distanceM(previous.at, here) / ((fix.timestamp - previous.timestamp) / 1000));
+          setSpeedMs((haversineKm(previous.at, here) * 1000) / ((fix.timestamp - previous.timestamp) / 1000));
         else setSpeedMs(null);
         setTravel((previous) => nextTravelBearing(previous, { latitude, longitude, heading }));
         setFixedAtMs(fix.timestamp);

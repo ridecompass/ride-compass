@@ -134,8 +134,7 @@ RouteKind = Literal["loop", "destination", "spliced"]
 class RouteTurn(StrictModel):
     """経路が分かれ道で曲がる所。画面が走行中の曲がる所の案内に使う。
 
-    `distance_km`は始点からその点までの道のりで、区間の`distance_km`を始点から積んだ値と同じ物差し（画面はルートの上の
-    現在地を区間の距離を積んで数えるので、同じ物差しでないと案内の残りの距離がずれる）。
+    `distance_km`は始点からその点までの道のりで、区間の`distance_km`を始点から足した値と同じ物差し（`along_route_km`）。
     """
 
     distance_km: float
@@ -215,6 +214,15 @@ class RouteCandidate(RouteDraft):
     # この候補を元に区間を乗り換えられるか（目的地を持つ生成の候補だけ。合成の要求は目的地を要る:
     # `api/routers/routes.py: RouteGenerateRequest._resolve_target`）。画面は生成の入力から決め直さずにこれを読む。
     spliceable: bool
+
+
+def along_route_km(distances_km: Iterable[float]) -> list[float]:
+    """始点から、並んだ区間それぞれの始まりまでの道のり（km）と、末尾に終わりまでの道のり。区間の距離を応答の桁へ丸めてから
+    積むので、区間の`distance_km`を始点から足した値と同じ物差しになる（区間の始まりの道のりと曲がる所の道のりがこれを読む）。"""
+    along = [0.0]
+    for distance_km in distances_km:
+        along.append(round(along[-1] + round(distance_km, DISTANCE_KM_DECIMALS), DISTANCE_KM_DECIMALS))
+    return along
 
 
 # エンジンが返すsegmentsはEdge単位（交差点間）でAPIペイロード・フロント描画コストが
