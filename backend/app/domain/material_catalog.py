@@ -914,10 +914,12 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "smoothness": MaterialSpec(
         material_id="smoothness",
         label="路面の状態",
-        description="OSMの路面状態タグ(smoothness)の生値（excellent〜impassable）。同じ路面種別(surface)でも実際の荒れ具合を区別したい場合に使います。",
+        description=(
+            f"OSMの路面状態タグ(smoothness)の生値（{next(iter(_SMOOTHNESS_VALUE_LABELS))}〜"
+            f"{next(reversed(_SMOOTHNESS_VALUE_LABELS))}）。同じ路面種別(surface)でも実際の荒れ具合を区別したい場合に使います。"
+        ),
         dtype="categorical",
-        # OSMのsmoothnessタグ生値（excellent/good/intermediate/bad/very_bad/horrible/
-        # very_horrible/impassable、正規化: lower/btrim）。surfaceが路面「種別」なのに
+        # 値の表は良い順に並べる（説明の範囲が表の最初と最後から組まれる）。surfaceが路面「種別」なのに
         # 対し、smoothnessは実際の走行感（同じasphaltでも荒れ具合が違う等）。
         tile_property="smoothness",
         value_labels=_SMOOTHNESS_VALUE_LABELS,
