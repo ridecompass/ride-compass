@@ -45,23 +45,34 @@ STATIONS = [
     Coordinates(latitude=35.5, longitude=139.5),
     Coordinates(latitude=35.5, longitude=139.7),
 ]
+# 三角に並ぶ3つの観測所と、その内側の1つ。内側の領域の外接矩形は、周りの観測所を含む。
+SURROUNDED = [
+    Coordinates(latitude=35.0, longitude=139.0),
+    Coordinates(latitude=35.6, longitude=139.5),
+    Coordinates(latitude=35.0, longitude=140.0),
+    Coordinates(latitude=35.1, longitude=139.5),
+]
 
 
 @pytest.mark.parametrize(
-    ("point", "nearest"),
+    ("stations", "point", "nearest"),
     [
-        (Coordinates(latitude=35.52, longitude=139.52), 1),
-        (Coordinates(latitude=35.48, longitude=139.38), 0),
-        (Coordinates(latitude=35.5, longitude=139.69), 2),
+        (STATIONS, Coordinates(latitude=35.52, longitude=139.52), 1),
+        (STATIONS, Coordinates(latitude=35.48, longitude=139.38), 0),
+        (STATIONS, Coordinates(latitude=35.5, longitude=139.69), 2),
+        # 観測所の並びの外でも、外接矩形の周り1度の内なら範囲を持つ。
+        (STATIONS, Coordinates(latitude=35.5, longitude=138.6), 0),
+        (SURROUNDED, Coordinates(latitude=35.12, longitude=139.5), 3),
+        (SURROUNDED, Coordinates(latitude=35.55, longitude=139.5), 1),
     ],
 )
-def test_the_area_of_the_nearest_point_holds_the_point_and_only_that_station(point, nearest):
+def test_the_area_of_the_nearest_point_holds_the_point_and_only_that_station(stations, point, nearest):
     """最寄りの点の範囲は今の地点と最寄りの点を含み、ほかの点を含まない（ほかの点の近くへ行けば、最寄りが変わる）。"""
-    area = NearestPointCells(STATIONS).area(point)
+    area = NearestPointCells(stations).area(point)
 
     assert area is not None
     assert _contains(area, point)
-    for index, station in enumerate(STATIONS):
+    for index, station in enumerate(stations):
         assert _contains(area, station) == (index == nearest)
 
 

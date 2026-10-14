@@ -75,12 +75,9 @@ class NearestPointCells:
         )
         tree = shapely.STRtree(sites)
         for cell in shapely.voronoi_polygons(MultiPoint(sites), extend_to=frame).geoms:
-            # 同じ座標の点は1つの領域を分け合う。
-            indices = tree.query(cell, predicate="contains")
-            if len(indices) == 0:
-                continue
             unprojected = shapely.transform(cell.intersection(frame), _unproject)
-            for index in indices:
+            # 同じ座標の点は1つの領域を分け合う。
+            for index in tree.query(cell, predicate="contains"):
                 self._cells[int(index)] = unprojected
 
     def area(self, point: LatLon) -> ValidArea | None:
