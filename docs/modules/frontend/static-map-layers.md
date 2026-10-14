@@ -150,7 +150,7 @@ backendから取り、タイル本体はrewrites経由に戻る。
 （`domain/weather_elements.py: WeatherElement.description`）、受け皿の行（その他・該当なし・データなし）は
 名前ごと`domain/map_display.py: LEGEND_SHARED_ROWS`が持ち、生成物で画面へ届く。受け皿の行は評価軸・ルートの凡例の
 「データなし」も同じ行なので、レンズの凡例にも（i）が出る。数の範囲の段（降水・風・評価の段）と、名前が説明そのものの
-行（災害の段・線状降水帯）は説明を持たず、（i）を出さない。説明が空でないことは、道と点の分類の行では源泉の型
+行（災害の段と、要素の説明を行の名前に出す線状降水帯）は（i）を出さない。説明が空でないことは、道と点の分類の行では源泉の型
 （`DisplayCategorySpec.description`の`min_length=1`）が、受け皿の行では`LEGEND_SHARED_ROWS`の宣言が保証する。
 源泉で説明を省ける災害の要素の行（`WeatherElement.description`は`str | None`）と土地被覆の凡例の全行は、テスト
 （`scene/legends.test.ts`・`layers/mapLayers.test.ts`）が確かめる。
