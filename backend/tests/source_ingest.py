@@ -22,7 +22,7 @@ import shapely
 from PIL import Image
 from shapely.geometry import LineString, Point, Polygon
 
-from app.batch.ingest import ADAPTERS, RegisteredAdapter, SourceRecord, ingest_source
+from app.batch.ingest import ADAPTERS, AdapterInputs, RegisteredAdapter, SourceRecord, ingest_source
 from app.batch.source_adapters.gsi_dem_tile import NODATA, SCALE, pack_elevations
 from app.batch.source_adapters.raster_wkb import tile_bbox_wkb, tile_raster_wkb
 from app.batch.source_adapters.osm_pbf import way_payload
@@ -188,7 +188,7 @@ async def ingest_records(source: str, records: Iterable[SourceRecord], *,
     （(min_lat, min_lon, max_lat, max_lon)）で、省けば本物の宣言の範囲。`rows`はそのソースの絞り込みの宣言
     （例: 事故の年`HonhyoRows`）で、省けば本物の宣言。
     """
-    async def read(spec: SourceSpec, profile: SourceProfile,
+    async def read(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                    origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
         for record in records:
             yield record

@@ -5,7 +5,7 @@
 
 **配信元は叩かない。** 取りに行くのは`scripts/fetch_isj_blocks.py`の仕事で、ここは手元の配布の zip（都道府県ごと。中に
 Shift_JIS の CSV が1つと説明の HTML・XML）を読む。読む都道府県は、住所の生データと同じく取込の範囲に掛かる都道府県
-（`source_adapters/estat_small_area.py: range_prefectures`。ABR の市区町村の代表点から決める）。
+（`source_adapters/abr.py: range_prefectures`。ABR の市区町村の代表点から決める）。
 
 列は配布のまま（都道府県名・市区町村名・大字・丁目名・小字・通称名・街区符号・地番・緯度・経度・住居表示フラグ・
 代表フラグ・更新前履歴フラグ・更新後履歴フラグ等）を全部`attrs`へ入れる。意味は配布の zip の中の説明（`<版>.html`）が持つ。
@@ -25,9 +25,8 @@ from typing import Any
 import shapely
 from shapely.geometry import Point
 
-from app.batch.ingest import AdapterInputs, SourceRecord, file_origin, register_adapter
-from app.batch.source_adapters.abr import wgs84_transformer
-from app.batch.source_adapters.estat_small_area import range_inputs, range_prefectures
+from app.batch.ingest import SourceRecord, register_adapter
+from app.batch.source_adapters.abr import JGD2011, RangeInputs, range_inputs, wgs84_transformer
 from app.batch.source_adapters.zip_csv import read_zip_csv
 from app.batch.source_profile import SourceProfile, SourceSpec
 
@@ -35,7 +34,6 @@ DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "isj"
 
 #: 配布元の取得の口（位置参照情報ダウンロードサービス。都道府県コード2桁に`000`をつないだ名前）。
 DOWNLOAD_URL = "https://nlftp.mlit.go.jp/isj/dls/data/{version}/{prefecture}000-{version}.zip"
-_SOURCE_SRID = "EPSG:6668"
 ENCODING = "cp932"
 #: 鍵にする列（都道府県名から街区符号・地番まで）。
 _KEY_COLUMNS = ("都道府県名", "市区町村名", "大字・丁目名", "小字・通称名", "街区符号・地番")
@@ -69,20 +67,17 @@ def _paths(rows: IsjBlockRows, prefectures: list[str]) -> list[Path]:
     return paths
 
 
-def isj_block_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
-    return range_inputs(profile, _paths(spec.rows, range_prefectures(profile)))
+def isj_block_inputs(spec: SourceSpec, profile: SourceProfile) -> RangeInputs:
+    return range_inputs(profile, lambda prefectures: _paths(spec.rows, prefectures))
 
 
 @register_adapter("isj_block", rows=IsjBlockRows, inputs=isj_block_inputs)
-async def read_isj_blocks(spec: SourceSpec, profile: SourceProfile,
+async def read_isj_blocks(spec: SourceSpec, profile: SourceProfile, inputs: RangeInputs,
                           origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
-    rows: IsjBlockRows = spec.rows
-    prefectures = range_prefectures(profile)
-    paths = _paths(rows, prefectures)
-    origin.update({"version": rows.version, "prefectures": prefectures, "files": [file_origin(path) for path in paths]})
-    transformer = wgs84_transformer(_SOURCE_SRID)
+    origin["version"] = spec.rows.version
+    transformer = wgs84_transformer(JGD2011)
     seen: set[str] = set()
-    for path in paths:
+    for path in inputs.archives:
         for row in read_rows(path):
             if row["代表フラグ"] != "1" or row["更新後履歴フラグ"] == _DELETED:
                 continue

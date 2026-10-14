@@ -1,7 +1,7 @@
 """派生の作り直し（`batch/derive_cli.py`）が、入力（読むソースの取込・前の段・較正値・書く表の列・段のコード）が前回と
 同じ段を流さず、流す段の表だけを作業用のスキーマに作ることと、道路網の配列を入力が前回と同じなら作らずに使い回すことと、
 区間ごとに写す段が前の段の外の入力が前回と同じとき形の同じ区間を数えないことと、段の宣言（`STAGES`）が
-段の読むもの・書くものを漏らしていないことと、配列の入力が配列の読む表を漏らしていないこと。
+段の読むもの・書くものを漏らしていないことと、段の書いた表が統計を持つことと、配列の入力が配列の読む表を漏らしていないこと。
 
 流した段は段の関数が呼ばれたかで見る。飛ばした段のある作り直しの表の値は、同じ入力で全部の段を流した作り直しと比べる。
 どの生データにも行があり、どの段も値を書く小さな世界（道2本・信号・事故・標高と土地被覆のタイル・住所・小地域の境界・
@@ -407,6 +407,15 @@ async def test_each_stage_declares_what_it_reads_and_writes(world, monkeypatch):
                     (mine.read - mine.written) & touched[prior.name].written or mine.written & touched[prior.name].rows):
                 missing.setdefault(stage.name, set()).add(prior.name)
     assert missing == {}
+
+
+@pytest.mark.parametrize("table", [table for stage in derive_cli.STAGES for table in stage.tables])
+async def test_every_table_a_stage_writes_has_statistics_after_the_rebuild(world, table):
+    """段が書いた表は、作り直しの後に統計（`pg_stats`）を持つ——無いまま配信と後ろの段が読むと、実行計画が桁で外れる。
+    表は段の宣言から取るので、足した段の表も宣言するだけでここに入る。統計を書くのは`ANALYZE`だけで、表を作り直すたびに
+    消える（作業用のスキーマに新しく作る）。"""
+    assert await world.fetchval(
+        "SELECT count(*) > 0 FROM pg_stats WHERE schemaname = 'public' AND tablename = $1", table)
 
 
 async def test_the_network_inputs_refuse_a_table_no_stage_writes():
