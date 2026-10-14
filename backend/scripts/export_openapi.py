@@ -153,7 +153,7 @@ from app.domain.material_catalog import (
 )
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from app.domain.region import MAX_MERCATOR_LATITUDE, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
-from app.domain.leg_costs import MAX_TIME_BINS, TIME_BIN_HOURS
+from app.domain.leg_costs import MAX_TIME_BINS, MISSING_TRAVEL_DATA_WORDING, TIME_BIN_HOURS
 from app.config import Settings
 from app.domain.route_preference import ENABLED_AXIS_WEIGHT, MAX_AXIS_SHARE
 from app.domain.tuning import client_tuning_values
@@ -623,6 +623,8 @@ def main() -> None:
             "segment_speed_conditions": list(SEGMENT_SPEED_CONDITIONS),
             # ルート全体の難易度（平均・総量）の数え方の文。結果の難易度の説明が差し込む。
             "overall_difficulty_wording": OVERALL_DIFFICULTY_WORDING,
+            # 所要時間の計算が値の無い区間をどう数えるかの文。結果の「データの無い区間」の注記が差し込む。
+            "missing_travel_data_wording": MISSING_TRAVEL_DATA_WORDING,
             # フロントが使う較正値の**既定**（`domain/tuning.py`の宣言そのまま）。フロントはidの型にだけ使い、
             # 値は読まない——効いている値はGET /api/axis-catalogが返し、取れるまではその値を使う機能を出さない。
             "client_tuning": client_tuning_values(),

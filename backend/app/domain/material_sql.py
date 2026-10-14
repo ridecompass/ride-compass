@@ -117,16 +117,21 @@ def tag_is_value_sql(tag: str, expected: str) -> str:
     return tag_absent_is_false_sql(f"{normalized_tag_sql(tag)} = '{expected}'")
 
 
+def tag_note(tag: str, *values: str) -> str:
+    """説明の文がタグの条件を指す書き方（`cycleway=share_busway・shared_lane`）。条件の式と同じ値から作る。"""
+    return f"{tag}={'・'.join(values)}"
+
+
 # 橋・トンネルとみなすのは、道が地面から浮いているか地中にある値だけ（値の意味は OSM wiki の
 # Key:bridge・Key:tunnel）。地図の「橋・高架」「トンネル」と、勾配で地表を拾わない区間
 # （`attributes.py: elevation_values_sql` の on_structure）が同じ道を指すよう、両方がここを読む。
 # 建物の下の通路（building_passage）・道の下の水路（culvert）・水面すれすれの低い橋
 # （low_water_crossing）は道が地表にあり、載っていない値も普通の道として扱う——知らない値を
 # 構造物に入れると、地図に誤った橋・トンネルが出る。
-_BRIDGE_STRUCTURE_VALUES = ("yes", "viaduct", "cantilever", "covered", "suspension_bridge", "boardwalk")
-_TUNNEL_STRUCTURE_VALUES = ("yes", "avalanche_protector")
-IS_BRIDGE_SQL = tag_absent_is_false_sql(f"{BRIDGE_NORMALIZED_SQL} IN ({sql_literals(_BRIDGE_STRUCTURE_VALUES)})")
-IS_TUNNEL_SQL = tag_absent_is_false_sql(f"{TUNNEL_NORMALIZED_SQL} IN ({sql_literals(_TUNNEL_STRUCTURE_VALUES)})")
+BRIDGE_STRUCTURE_VALUES = ("yes", "viaduct", "cantilever", "covered", "suspension_bridge", "boardwalk")
+TUNNEL_STRUCTURE_VALUES = ("yes", "avalanche_protector")
+IS_BRIDGE_SQL = tag_absent_is_false_sql(f"{BRIDGE_NORMALIZED_SQL} IN ({sql_literals(BRIDGE_STRUCTURE_VALUES)})")
+IS_TUNNEL_SQL = tag_absent_is_false_sql(f"{TUNNEL_NORMALIZED_SQL} IN ({sql_literals(TUNNEL_STRUCTURE_VALUES)})")
 
 
 def _cycleway_tags_include_sql(*values: str) -> str:
@@ -137,8 +142,21 @@ def cycleway_has_value_sql(*values: str) -> str:
     return tag_absent_is_false_sql(_cycleway_tags_include_sql(*values))
 
 
+#: 自転車のためのタグの値。条件の式と説明の文の両方がここから作る。
+CYCLEWAY_HIGHWAY = "cycleway"
+CYCLEWAY_TRACK_VALUES = ("track",)
+CYCLEWAY_LANE_VALUES = ("lane",)
+CYCLEWAY_SHARED_VALUES = ("share_busway", "shared_lane")
+_SHARED_PATH_HIGHWAYS = ("footway", "path")
+_SHARED_PATH_BICYCLE = ("yes", "designated")
+
 #: 車道と分けられた歩行者道のうち、自転車も通ってよい道（河川敷のサイクリングロード等）。
-SHARED_PEDESTRIAN_PATH_SQL = f"{HIGHWAY_SQL} IN ('footway', 'path') AND {BICYCLE_NORMALIZED_SQL} IN ('yes', 'designated')"
+SHARED_PEDESTRIAN_PATH_SQL = (
+    f"{HIGHWAY_SQL} IN ({sql_literals(_SHARED_PATH_HIGHWAYS)}) "
+    f"AND {BICYCLE_NORMALIZED_SQL} IN ({sql_literals(_SHARED_PATH_BICYCLE)})"
+)
+#: `SHARED_PEDESTRIAN_PATH_SQL`の条件を説明の文で指す書き方。
+SHARED_PEDESTRIAN_PATH_NOTE = f"{tag_note('highway', *_SHARED_PATH_HIGHWAYS)} かつ {tag_note('bicycle', *_SHARED_PATH_BICYCLE)}"
 
 
 class CyclewayClass(NamedTuple):
@@ -156,21 +174,22 @@ CYCLEWAY_CLASSES: tuple[CyclewayClass, ...] = (
     CyclewayClass(
         "separated",
         "自転車道",
-        "車道から分けられた、自転車の通る道[OSM の highway=cycleway・cycleway=track]。",
-        f"{HIGHWAY_SQL} = 'cycleway' OR {_cycleway_tags_include_sql('track')}",
+        f"車道から分けられた、自転車の通る道[OSM の {tag_note('highway', CYCLEWAY_HIGHWAY)}・"
+        f"{tag_note('cycleway', *CYCLEWAY_TRACK_VALUES)}]。",
+        f"{HIGHWAY_SQL} = '{CYCLEWAY_HIGHWAY}' OR {_cycleway_tags_include_sql(*CYCLEWAY_TRACK_VALUES)}",
     ),
     CyclewayClass(
         "lane",
         "自転車レーン",
-        "車道の上に線で区切った、自転車の通る帯[OSM の cycleway=lane]。",
-        _cycleway_tags_include_sql("lane"),
+        f"車道の上に線で区切った、自転車の通る帯[OSM の {tag_note('cycleway', *CYCLEWAY_LANE_VALUES)}]。",
+        _cycleway_tags_include_sql(*CYCLEWAY_LANE_VALUES),
     ),
     CyclewayClass(
         "shared",
         "共用の道",
         "バス・車と共用の帯か、自転車も通ってよい歩道・遊歩道"
-        "[OSM の cycleway=share_busway・shared_lane、highway=footway・path かつ bicycle=yes・designated]。",
-        f"{_cycleway_tags_include_sql('share_busway', 'shared_lane')} OR ({SHARED_PEDESTRIAN_PATH_SQL})",
+        f"[OSM の {tag_note('cycleway', *CYCLEWAY_SHARED_VALUES)}、{SHARED_PEDESTRIAN_PATH_NOTE}]。",
+        f"{_cycleway_tags_include_sql(*CYCLEWAY_SHARED_VALUES)} OR ({SHARED_PEDESTRIAN_PATH_SQL})",
     ),
 )
 

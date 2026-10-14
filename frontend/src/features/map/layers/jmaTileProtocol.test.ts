@@ -1,10 +1,14 @@
 // @vitest-environment node
 import { inflateSync } from "node:zlib";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { HttpResponse } from "msw";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
+// 配信のオリジンは`@/lib/tileBaseUrl`が決める（`src/lib/tileBaseUrl.test.ts`）。網へ出すURLは絶対にするため、ここで固定する。
+vi.mock("@/lib/tileBaseUrl", () => ({ tileBaseUrl: () => "https://tiles.test" }));
 
+import { heldReplies, inTurn, onUrl } from "@/testing/backendServer";
 import { jmaDeliveryOf, jmaTileUrlAt } from "@/testing/jmaDeliveries";
 
 import { jmaTilePayload } from "./jmaDelivery";
@@ -45,17 +49,14 @@ async function load() {
   return { ...protocol, request, warnings };
 }
 
-const fetchMock = vi.fn<typeof fetch>();
+/** 配信元のタイルへの要求（`TEMPLATE`の要素の全タイル）に`reply`で応える。 */
+const serveTiles = (reply: () => Response | Promise<Response>) =>
+  onUrl(`${TEMPLATE.slice(0, TEMPLATE.indexOf("{"))}*`, reply);
+
 beforeEach(() => {
-  fetchMock.mockReset();
-  vi.stubGlobal("fetch", fetchMock);
   // 調査用のログは、記録と同時にコンソールへも出す。
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
-
 /** PNGの画素がすべて完全な透明か（IDATを展開し、各行のフィルタ種別の後ろを見る）。 */
 function isFullyTransparentPng(bytes: Uint8Array): boolean {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -78,14 +79,13 @@ describe("jmatile:// プロトコル", () => {
     const first = (await request(EMPTY_PNG_URL)).data as Uint8Array;
     const second = (await request(EMPTY_PNG_URL)).data as Uint8Array;
     expect((await request(EMPTY_PBF_URL)).data).toHaveLength(0);
-    expect(fetchMock).not.toHaveBeenCalled();
     expect(isFullyTransparentPng(first)).toBe(true);
     expect(second.buffer).not.toBe(first.buffer);
   });
 
   it("空と分からないタイルは実URLへ取りに行き、中身をそのまま返す", async () => {
     const { request } = await load();
-    fetchMock.mockImplementation(async (url) => new Response(url === EMPTY_PNG_URL ? new Uint8Array([1, 2, 3]) : null));
+    onUrl(EMPTY_PNG_URL, () => new Response(new Uint8Array([1, 2, 3])));
     const { data } = await request(EMPTY_PNG_URL);
     expect(new Uint8Array(data as ArrayBuffer)).toEqual(new Uint8Array([1, 2, 3]));
   });
@@ -96,7 +96,7 @@ describe("配信の失敗の記録", () => {
     const { request, jmaTileFailures, subscribeJmaTileFailures, warnings } = await load();
     const listener = vi.fn();
     subscribeJmaTileFailures(listener);
-    fetchMock.mockResolvedValue(new Response(null, { status: 503 }));
+    serveTiles(() => new Response(null, { status: 503 }));
 
     const { data } = await request(PRESENT_PNG_URL);
     expect(isFullyTransparentPng(data as Uint8Array)).toBe(true);
@@ -107,7 +107,7 @@ describe("配信の失敗の記録", () => {
 
   it("同じ失敗が続く間は記録の参照を変えず、知らせもしない", async () => {
     const { request, jmaTileFailures, subscribeJmaTileFailures } = await load();
-    fetchMock.mockResolvedValue(new Response(null, { status: 500 }));
+    serveTiles(() => new Response(null, { status: 500 }));
     await request(PRESENT_PNG_URL);
     const recorded = jmaTileFailures();
     const listener = vi.fn();
@@ -119,37 +119,36 @@ describe("配信の失敗の記録", () => {
 
   it("配信元が応答すれば（404の空応答も含む）その要素の失敗を消す", async () => {
     const { request, jmaTileFailures, warnings } = await load();
-    fetchMock.mockResolvedValueOnce(new Response(null, { status: 502 }));
+    serveTiles(
+      inTurn(
+        new Response(null, { status: 502 }),
+        new Response(null, { status: 404 }),
+        new Response(null, { status: 502 }),
+        new Response(new Uint8Array([1])),
+      ),
+    );
     await request(PRESENT_PNG_URL);
-    fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
     await request(PRESENT_PNG_URL);
     expect(jmaTileFailures().size).toBe(0);
     expect(warnings()).toHaveLength(1);
 
-    fetchMock.mockResolvedValueOnce(new Response(null, { status: 502 }));
     await request(PRESENT_PNG_URL);
-    fetchMock.mockResolvedValueOnce(new Response(new Uint8Array([1])));
     await request(PRESENT_PNG_URL);
     expect(jmaTileFailures().size).toBe(0);
   });
 
   it("到達できなければ失敗として記録して例外を返す。地図が取り消すと取りに行った要求も止め、失敗に数えない", async () => {
     const { request, jmaTileFailures } = await load();
-    // 網は、渡された中断の合図で止まるまで答えない。
-    fetchMock.mockImplementationOnce(
-      (_url, init) =>
-        new Promise((_resolve, reject) =>
-          init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))),
-        ),
-    );
+    // 網は、中断されるまで答えない。
+    serveTiles(heldReplies().reply);
     const abort = new AbortController();
     const pending = request(PRESENT_PNG_URL, abort);
     abort.abort();
     await expect(pending).rejects.toThrow("aborted");
     expect(jmaTileFailures().size).toBe(0);
 
-    fetchMock.mockRejectedValueOnce(new TypeError("network"));
-    await expect(request(PRESENT_PNG_URL)).rejects.toThrow("network");
+    serveTiles(() => HttpResponse.error());
+    await expect(request(PRESENT_PNG_URL)).rejects.toThrow("fetch failed");
     expect(jmaTileFailures().get("inund")).toBe(TEMPLATE);
   });
 
@@ -157,7 +156,7 @@ describe("配信の失敗の記録", () => {
     const { request, subscribeJmaTileFailures } = await load();
     const listener = vi.fn();
     subscribeJmaTileFailures(listener)();
-    fetchMock.mockResolvedValue(new Response(null, { status: 500 }));
+    serveTiles(() => new Response(null, { status: 500 }));
     await request(PRESENT_PNG_URL);
     expect(listener).not.toHaveBeenCalled();
   });

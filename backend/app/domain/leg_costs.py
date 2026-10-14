@@ -54,6 +54,10 @@ from app.domain.wind import DepartureWind, WindForecastSeries, kmh_to_ms
 TIME_BIN_HOURS = 1.0
 MAX_TIME_BINS = 4
 
+#: 所要時間の計算が値の無い区間をどう数えるかを、利用者に言う文（`_travel_time_seconds`が勾配の欠けを0%、
+#: 停止要因の件数の欠けを0件に置き換える）。置き換え方を変えたら、ここも変える。
+MISSING_TRAVEL_DATA_WORDING = "坂の無い平地で、止まる所も無い道として所要時間を出しています"
+
 logger = logging.getLogger("ridecompass.graph")
 
 

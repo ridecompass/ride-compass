@@ -101,7 +101,7 @@ export async function requestApi<R extends ApiResult>(
       // ただしCORS/CSP/拡張機能ブロック等の「本当の理由」はセキュリティ上の理由でfetch()の
       // 仕様としてJSへ一切渡されないため、これを足しても取れないケースの方が多い——その場合の
       // 唯一の手掛かりはブラウザ自身が出すネイティブなコンソールログ（アプリのdebugLogとは別）。
-      const cause = error instanceof Error && "cause" in error ? error.cause : undefined;
+      const cause = typeof error === "object" && error !== null && "cause" in error ? error.cause : undefined;
       debugLog(
         category,
         isTimeout ? `失敗 (タイムアウト ${timeoutMs}ms)` : "失敗 (通信エラー)",

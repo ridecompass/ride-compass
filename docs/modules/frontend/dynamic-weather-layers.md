@@ -26,7 +26,7 @@
 | `features/map/layers/jmaTileIndex.ts` | 在否インデックスの解釈（「空だと確認済み」の判定、純ロジック） |
 | `features/map/layers/jmaTileProtocol.ts` | `jmatile://`スキームのMapLibreプロトコル。空と分かっているタイルをネットワークへ出さずに透明タイルで返し、配信の失敗を要素ごとに記録して購読できるようにする |
 | `features/map/useJmaTileIndex.ts` | 在否インデックスの定期取得 |
-| `features/map/scene/groups/weather.ts` | 動的気象の描き方。何を描くか（チップid・名前付きソース・描き方の種類・配信元）は源泉の`mapDisplay.weatherElements`をループして受け取り、ここは要素ごとの見た目（`paint`・`layout`・`filter`・記号の絵）だけを持つ。ソース名（`weatherSourceId`）・ソースの宣言・レイヤー・記号の絵の登録（`WEATHER_ICONS`）はこの2つから導かれる。描画内容をソースの中身（タイルのURL・GeoJSON）へ移し、JMAタイルのURLへ`jmatile://`スキームを付ける |
+| `features/map/scene/groups/weather.ts` | 動的気象の描き方。何を描くか（チップid・名前付きソース・描き方の種類・配信元）は源泉の`mapDisplay.weatherElements`をループして受け取り、ここは要素ごとの見た目（`paint`・`layout`・`filter`・記号の絵）だけを持つ。ソース名（`weatherSourceId`）・ソースの宣言・レイヤー・記号の絵（sceneの`images`）はこの2つから導かれる。描画内容をソースの中身（タイルのURL・GeoJSON）へ移し、JMAタイルのURLへ`jmatile://`スキームを付ける |
 | `features/map/scene/applyToMap.ts`（`weatherStateFrom`） | `dynamicWeather`（チップid→名前付きソース→表示・中身）を宣言の入力へ移す |
 | `features/map/useDynamicWeatherLayers.ts`・`useWeatherGrid.ts`・`features/conditions/useWeatherConditions.ts` | 状態管理・フェッチ。動的気象は要素を名指さず、表示中の名前付きソースをループして段の種類（配信元のタイル・配信元の地点・自前の格子）ごとに1つずつの実装で描画内容を作る。取得の骨格（重複排除・定期の取り直し・読み込み中と失敗の状態）はTanStack Queryが持ち（[ページ全体構成](page-composition.md)「データ取得の骨格」）、配信元の時刻一覧・風格子（粗い格子と詳細格子）・在否インデックスは`refetchInterval`で、現在地に追随する取得は`useWeatherConditions`内の`useLocationFetch`（キーに位置を持つ）で取り直す。取り直す間隔（アメダス・在否インデックス・風格子）はbackendの宣言が生成物`refresh-intervals.json`で配る（新しい値が出る間隔そのもの。配信元の時刻一覧の間隔は`jmaElements[].refreshIntervalMs`）。「降っていない」「無風」の境も生成物`weather-scales.json`から読み、画面は持たない |
 | `features/conditions/WeatherPanel/WeatherPanel.tsx`・`amedasWeatherIcon.ts`・`features/conditions/TodayOutlook/TodayOutlook.tsx`・`features/conditions/WarningBadge/WarningBadge.tsx` | UI（警報バッジの出所ごとの段階の呼び名と色は、backendの宣言`domain/warning_display.py`が生成物`vocabulary.ts`で配る） |
@@ -361,8 +361,8 @@ basetime・validtimeを含む）で持つため、フレームが進んで取得
 実況と予測の行で載るため、共有タイムラインに乗る（`nearest`。取るコマは上の「配信の遅れを持つ要素」のとおりずらす）。どちらの配信要素も実況と予測の
 両方の時刻に地物を持ち、公式の画面は2つを同じ見た目（赤い実線・白い縁取り・塗りなし）で重ねてどちらが実況かを
 描き分けないため、画面もそうする（破線は公式の詳細表示の予測だけで、既定の表示は使わない）。色・太さは公式の
-描画定義の値を源泉（`domain/weather_display.py`・`domain/map_display.py`）が持つ。▶パネルの凡例の見出しは、要素の名前と、予測の
-配信要素が宣言する予測が届く先（源泉の`jmaElements[].forecastMinutes`）から組む（`mapLayers.ts`）。
+描画定義の値を源泉（`domain/weather_display.py`・`domain/map_display.py`）が持つ。▶パネルの凡例は、見出しに要素の名前を、行に
+要素の説明（`domain/weather_elements.py: WeatherElement.description`。予測が届く先は予測の配信要素の宣言から組む）を出す。
 
 ## キキクル・線状降水帯予測マップ（特殊系）
 
@@ -377,12 +377,12 @@ basetime・validtimeを含む）で持つため、フレームが進んで取得
   （防災級の情報はユーザー操作を待たず表示すべきという理由。[静的レイヤー・道路表示](static-map-layers.md)参照）。地図上チップは複数同時にONにできるため、他の環境レイヤー
   （降水・風・標高図）を選んでも災害情報は地図に残る。
 - 線状降水帯予測マップ: `precipitationNowcast`チップの4つ目のソース（`linearRainband`）。
-  共有タイムラインの選択時刻が現在〜3時間先の範囲内（`isWithinFutureWindow`）のときだけ、
+  共有タイムラインの選択時刻が源泉のコマの規則の窓（`domain/weather_elements.py: _LINEAR_RAINBAND_WINDOW_MINUTES`）の範囲内のときだけ、
   他のソースと重ねて表示する（キキクルと異なりタイムラインと連動し続ける）。
   配信元は予測領域を**格子単位の単色（`rgb(255,40,0)`）で塗る**ため、地図上では矩形に
   見える。降水ナウキャストの細かい雨域と重なると描画不具合と受け取られやすいため、凡例の
-  色をこの実際の塗り色へ合わせ、形状が予測領域であることを文言に含めている
-  （凡例はレイヤーカタログの`readOnlyLegend`が持つ）。示すのは「今後3時間以内に発生するおそれ」
+  色をこの実際の塗り色へ合わせ、形状が予測領域であることを要素の説明（`WeatherElement.description`）に含めている
+  （凡例の行はレイヤーカタログの`readOnlyLegend`が置く）。示すのは窓の間に発生するおそれ
   であり、**今まさに発生している線状降水帯の雨域とは別物**。
 
 ## 共有タイムラインのラベル

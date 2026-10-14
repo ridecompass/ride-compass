@@ -21,14 +21,16 @@
  *    モジュール）は除く。子の部品の差し替え（差し替えの中身が部品の名前（大文字で始まり、全部が大文字でない名前）
  *    だけを置き換えるもの）も除く——testing-frontend.md は条件（子の中身がテスト環境に無い境界を要し、境界の側で差し替え
  *    られない）を満たす子の差し替えを許し、その条件は構文木から決まらない。
- * 5. 外部の境界の差し替えの写し: `Object.defineProperty(<対象>, "<名前>", …)`で置き換える同じ (対象, 名前)
- *    （`navigator`の`geolocation`等）を、`src/testing`の外の3つ以上のテストのファイルが置き換えるか、`src/testing`の足場が
- *    置き換えるのに外のテストが自分で置き換える。関数の中の差し替えも数える。
+ * 5. 外部の境界の差し替えの写し: `Object.defineProperty(<対象>, "<名前>", …)`・`vi.stubGlobal("<名前>", …)`
+ *    （`globalThis`の名前として数える）で置き換える同じ (対象, 名前)（`navigator`の`geolocation`・`globalThis`の`fetch`等）を、
+ *    `src/testing`の外の3つ以上のテストのファイルが置き換えるか、`src/testing`の足場が置き換えるのに外のテストが自分で
+ *    置き換える。関数の中の差し替えも数える。`msw/node`の`setupServer`を呼ぶファイルは`globalThis`の`fetch`を置き換えると
+ *    数える（mswは網の層で要求を横取りし、プロパティの置き換えが構文木に現れない）。
  *
  * **判定しない形**: 関数の中の定義（1の写し）。組み立て関数の項目の一部だけを持つリテラル（関心のある項目だけを書いた入力）と、
  * 上書きを受けない部品の関数（`routeThrough`等、型の一部を組むもの）。代役の無い型（`FilterSpecification`等の値の型）への`as`。
- * 葉が5つ未満の値。`vi.stubGlobal`等、
- * `Object.defineProperty`でない置き換え。`e2e-live`・`capture`（別のランナーの道具で、`src/testing`の足場を使わない）。
+ * 葉が5つ未満の値。`vi.spyOn(globalThis, …)`・代入（`window.<名前> =`）等、
+ * 上の3つの形でない置き換え。`e2e-live`・`capture`（別のランナーの道具で、`src/testing`の足場を使わない）。
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -319,20 +321,35 @@ function ownModuleMocks(sources: Source[]): Finding[] {
     );
 }
 
-/** `Object.defineProperty(<対象>, "<名前>", …)`の (対象.名前, 呼び出し)。 */
+/** `<対象>.<名前>(…)`の呼び出しか。 */
+const isMethodCall = (node: ts.CallExpression, target: string, name: string) =>
+  ts.isPropertyAccessExpression(node.expression) &&
+  ts.isIdentifier(node.expression.expression) &&
+  node.expression.expression.text === target &&
+  node.expression.name.text === name;
+
+/**
+ * 置き換える (対象.名前, 呼び出し): `Object.defineProperty(<対象>, "<名前>", …)`、`vi.stubGlobal("<名前>", …)`
+ * （`globalThis.<名前>`）、`msw/node`の`setupServer(…)`（`globalThis.fetch`）。
+ */
 function replacedProperties(file: ts.SourceFile): { key: string; node: ts.Node }[] {
   const out: { key: string; node: ts.Node }[] = [];
+  const msw = file.statements.some(
+    (statement) =>
+      ts.isImportDeclaration(statement) &&
+      ts.isStringLiteral(statement.moduleSpecifier) &&
+      statement.moduleSpecifier.text === "msw/node",
+  );
   const visit = (node: ts.Node) => {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      ts.isIdentifier(node.expression.expression) &&
-      node.expression.expression.text === "Object" &&
-      node.expression.name.text === "defineProperty" &&
-      node.arguments.length >= 2 &&
-      ts.isStringLiteralLike(node.arguments[1])
-    ) {
-      out.push({ key: `${node.arguments[0].getText(file)}.${node.arguments[1].text}`, node });
+    if (ts.isCallExpression(node)) {
+      const [first, second] = node.arguments;
+      if (isMethodCall(node, "Object", "defineProperty") && second && ts.isStringLiteralLike(second)) {
+        out.push({ key: `${first.getText(file)}.${second.text}`, node });
+      } else if (isMethodCall(node, "vi", "stubGlobal") && first && ts.isStringLiteralLike(first)) {
+        out.push({ key: `globalThis.${first.text}`, node });
+      } else if (msw && ts.isIdentifier(node.expression) && node.expression.text === "setupServer") {
+        out.push({ key: "globalThis.fetch", node });
+      }
     }
     ts.forEachChild(node, visit);
   };
@@ -508,6 +525,25 @@ describe("検査が効いていること", () => {
         "e2e/c.spec.ts:5: navigator.clock（足場がある）",
         "src/a.test.ts:2: navigator.geolocation（3ファイル）",
         "src/b.test.ts:2: navigator.geolocation（3ファイル）",
+      ],
+    });
+  });
+
+  it("`vi.stubGlobal`を`globalThis`の置き換えに数え、`msw/node`の`setupServer`を呼ぶ足場を`fetch`の足場に数える", () => {
+    const stub = (name: string) => `vi.stubGlobal("${name}", vi.fn());\n`;
+    expect(
+      within({
+        "src/testing/server.ts": `import { setupServer } from "msw/node";\nexport const server = setupServer();\n`,
+        "src/a.test.ts": stub("fetch") + stub("crypto"),
+        "src/b.test.ts": stub("crypto"),
+        "src/c.test.ts": `Object.defineProperty(globalThis, "crypto", { value: {} });\n`,
+      }),
+    ).toMatchObject({
+      boundaries: [
+        "src/a.test.ts:1: globalThis.fetch（足場がある）",
+        "src/a.test.ts:2: globalThis.crypto（3ファイル）",
+        "src/b.test.ts:1: globalThis.crypto（3ファイル）",
+        "src/c.test.ts:1: globalThis.crypto（3ファイル）",
       ],
     });
   });

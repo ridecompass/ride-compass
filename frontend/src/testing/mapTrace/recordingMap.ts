@@ -109,6 +109,9 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
     // 記号の絵はブラウザのcanvasが要るため、「登録済み」を返して作らせない
     // （比べたいのはレイヤーの構成で、絵の中身ではない）。
     hasImage: () => true,
+    addImage: () => {
+      throw new Error("記号の絵は登録済みとして答えるので、足されることは無い");
+    },
 
     addSource: (id: string, spec: unknown) => {
       record("addSource", id, spec);
