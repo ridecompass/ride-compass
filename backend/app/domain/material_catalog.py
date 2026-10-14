@@ -210,6 +210,11 @@ MaterialDType = Literal["numeric", "boolean", "categorical"]
 #: 取り込むたびに増える）。源を足すときは`tile_runtime_scales`にその値の求め方を足す。
 TileRuntimeScale = Literal["per_accident_year"]
 
+#: 材料の値の出どころ。`db`はDBの値式（`MaterialSpec.value_sql`）で求める。`request`はリクエストの条件（風・
+#: 想定速度）から都度求め、`domain/dynamic_materials.py: DYNAMIC_MATERIAL_EVALUATORS`が評価する。`observation`は
+#: 観測から都度引き、静的スコア行列の組み立てへ観測の列として渡す（`evaluation.py: build_static_edge_score_matrix`）。
+MaterialSource = Literal["db", "request", "observation"]
+
 #: 係数の源→その係数で割る値式が読むSQLの引数。タイルは係数を掛ける前の生値を焼くので、焼く文では
 #: この引数を1で束ねる（`tile_unscaled_sql_params`）。
 TILE_RUNTIME_SCALE_SQL_PARAMS: dict[TileRuntimeScale, str] = {"per_accident_year": "accident_years"}
@@ -254,8 +259,6 @@ class MaterialSpec(StrictModel):
     material_id: str
     label: str
     # 生成物`material-catalog.json`へ含め、材料を選ぶ人へ見せる説明文として配る。
-    # `value_sql`を持たない材料は、選んでも評価軸としては機能しない
-    # 旨をここに明記する（配線状況が変わったら追従が必要）。
     # 空を許すと、軸スタジオのⓘが何も出さない材料を登録できてしまう。
     description: str = Field(min_length=1)
     dtype: MaterialDType
@@ -302,9 +305,12 @@ class MaterialSpec(StrictModel):
     # この材料が読む自前のMSM格子の値（`weather_elements.py: GridValue`）。一次属性を持たない動的な材料の
     # 元データを、同じ格子の値を描く気象のチップ（`WeatherElement.grid_value`）が地図に見せる。
     weather_grid_value: GridValue | None = None
+    # 値の出どころ（`MaterialSource`）。リクエストごとに決まる材料の集合・観測の列として受ける材料の集合は
+    # ここから導く（`materials_of_source`）。値式・欠損率の測り方との揃いは`_check_fields_match_the_source`が見る。
+    source: MaterialSource = "db"
     # この材料の値をDBから求めるSQL式。読み出し側がFROM句で固定の別名（`material_sql.py`の
-    # モジュールの説明の表）を用意し、この式をそのまま並べる。Noneは「SQLでは求められない」——リクエスト時に決まる風、
-    # 評価へ配線していないDEFER材料。**材料の値の求め方をここ以外へ書かない**
+    # モジュールの説明の表）を用意し、この式をそのまま並べる。出どころが`db`の材料だけが持つ。
+    # **材料の値の求め方をここ以外へ書かない**
     # （設計原則 構造仕様8。別の辞書へ分けると、材料を増やしたとき片方が取り残される）。
     value_sql: str | None = None
     # 欠損率の測り方（`/admin`の材料タブ）。`CoverageExcluded`を含む3択で、**どれかを必ず
@@ -365,6 +371,17 @@ class MaterialSpec(StrictModel):
             # タイルの列は値式から組む（`tile_column_sql`）。式を持たない材料の列は手で書くしかなく、
             # 地図と評価が別々の求め方になる。
             raise ValueError(f"{self.material_id}: タイルへ焼く材料は値式（value_sql）を持つ")
+        return self
+
+    @model_validator(mode="after")
+    def _check_fields_match_the_source(self) -> "MaterialSpec":
+        """出どころと噛み合わない宣言を登録時に落とす。値式を持つのにDB以外とした材料は値式が行列へ載って
+        都度の値と二重になり、値式を持たないのにDBとした材料は行列に列が無く、どの軸でも黙って欠損になる。"""
+        if (self.source == "db") != (self.value_sql is not None):
+            raise ValueError(f"{self.material_id}: 値式（value_sql）は出どころがdbの材料だけが持つ")
+        if self.source != "db" and not isinstance(self.coverage, CoverageExcluded):
+            # 欠損率はDBの値を数えるので、DBに値を持たない材料には数える相手が無い。
+            raise ValueError(f"{self.material_id}: 出どころがdbでない材料は欠損率を測らない（CoverageExcluded）")
         return self
 
 
@@ -554,6 +571,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         tile_property=None,
         tile_property_direction_dependent=True,
         weather_grid_value="wind",
+        source="request",
         reference_points=[
             MaterialReferencePoint(label=f"{_WIND_REFERENCE_SPEED_LABEL}・{situation}", value=ratio)
             for situation, ratio in _WIND_DRAG_RATIO_BY_SITUATION.items()
@@ -577,6 +595,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
             dtype="numeric",
             unit="mm",
             tile_property=None,
+            source="observation",
             coverage=_RAIN_COVERAGE,
         )
         for hours in RAIN_WINDOW_HOURS
@@ -593,6 +612,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         dtype="numeric",
         unit="時間",
         tile_property=None,
+        source="observation",
         coverage=_RAIN_COVERAGE,
     ),
     # --- 土地被覆のクラス別の割合。`domain/landcover.py: LANDCOVER_CLASSES`から生成する ---
@@ -980,6 +1000,11 @@ def material_array_columns() -> tuple[tuple[str, ...], tuple[str, ...]]:
         tuple(m for m in ids if MATERIAL_CATALOG[m].dtype != "categorical"),
         tuple(m for m in ids if MATERIAL_CATALOG[m].dtype == "categorical"),
     )
+
+
+def materials_of_source(source: MaterialSource) -> frozenset[str]:
+    """出どころが`source`の材料id。"""
+    return frozenset(material_id for material_id, spec in MATERIAL_CATALOG.items() if spec.source == source)
 
 
 def material_value_sql() -> dict[str, str]:

@@ -128,8 +128,8 @@ Edgeコストは「探索範囲の静的Edge×公開軸スコア行列＋リク�
 `RouteSegmentDetail.material_values`/`RouteCandidate.material_values`（重み>0の公開軸が
 参照する材料id→値、`AXIS_DEFINITIONS`の`materials`プロパティから導出、
 `evaluation.py: displayed_material_ids`が集合を決める）は、動的材料（風等）は`material_arrays`から
-（`material_value_at`）、静的材料（`gradient_percent`）はEdgeごとに計算済みの値を
-そのまま読む。`displayed_material_ids`は符号付き材料を塗る公開軸（`map_paint.py: map_paint`の`value`）の
+（`material_value_at`）、静的材料は材料の列から読む。勾配（`gradient_percent`）だけは地図の配信と同じ桁へ丸めた
+Edgeごとの値で上書きする。`displayed_material_ids`は符号付き材料を塗る公開軸（`map_paint.py: map_paint`の`value`）の
 材料も重みに関わらずいつも含める（地図のレンズはルートを作ったあとにも切り替わり、作り直さずに
 区間の値で塗るため。レンズは要求に載らない）。
 逆回り候補はレグ割当ても反転する（先に走る側が往路配列、`reverse_leg_assignment`）。レグ番号は走行順に振られるため、Edge列の反転と同時に番号自体も`max_leg - leg`へ振り直す。探索範囲を覆う格子点ごとの時別風予報
@@ -480,10 +480,9 @@ NaN）へ動的軸（風、`domain/dynamic_materials.py: evaluate_dynamic_axis_a
 コストで選べない。同じ`LegCostArrays`は`_build_segment_details`（区間表示）からも区間の番号→切り出した
 区間の行（`_slice_row`）で参照され、探索コストと表示の二重計算を避ける。
 
-**走行モデルが読む入力は軸の構成に依存しない**。勾配は静的スコア行列が常に持つ生配列
-（0次フィルタの勾配しきい値と同じ列）から、停止の回数は
-`domain/traffic.py: stop_count_material_ids`が宣言する材料から、転がり抵抗は路面の見込み
-（`domain/cycling_speed.py: ROLLING_RESISTANCE_MATERIAL_ID`。分類の材料なので分類の列で運ぶ）から読む——
+**走行モデルが読む入力は軸の構成に依存しない**。読む材料は`domain/cycling_speed.py: travel_model_material_ids`が
+1つに宣言し、静的スコア行列はその列をいつも持つ（欠けた行列は組み立てで断る）。勾配（0次フィルタの勾配しきい値と
+同じ列）・停止の回数・転がり抵抗の元の路面の見込み（分類の材料なので分類の列で運ぶ）をそこから読む——
 「内訳として画面へ見せる材料」だけを運ぶ既定に任せると、軸を非公開にした瞬間に所要時間の中身が静かに変わる。
 見込みは語彙への番号の列で届き、転がり抵抗へ写すのは語彙の値ごとに1回だけ引いた表を番号で配る形になる
 （開発機で100万区間あたり約0.02秒、リクエストに1回）。
