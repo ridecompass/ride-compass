@@ -578,6 +578,21 @@ async def test_a_segment_and_a_turn_sit_where_the_segments_before_them_add_up_to
             assert turn.distance_km == pytest.approx(added_up[segment_at[(turn.latitude, turn.longitude)]])
 
 
+async def test_the_distance_along_the_route_is_the_length_of_the_roads_behind(engine_over):
+    """区間の始まりの道のりは、手前の道の長さ——違う長さだと「km地点」が地図の上の場所とずれる。道の長さの換算の誤りは
+    約1kmの道では応答の桁の丸めに埋もれるので、約20kmの道を通る。"""
+    start, far, east = (BASE_LAT, BASE_LON), (BASE_LAT + 20 * LAT_STEP, BASE_LON), (BASE_LAT + 20 * LAT_STEP, BASE_LON + LON_STEP)
+    generator = engine_over(road_network({1: (1, 2), 2: (2, 3)}, {1: start, 2: far, 3: east}))
+
+    (candidate, *_) = await generator.generate_via_waypoints(
+        Coordinates(latitude=start[0], longitude=start[1]), [],
+        destination=Coordinates(latitude=east[0], longitude=east[1]), max_routes=1, start_time=DEPARTURE)
+
+    beyond = next(s for s in candidate.segments if (s.start_latitude, s.start_longitude) == pytest.approx(far))
+    road_km = haversine_distance_km(Coordinates(latitude=start[0], longitude=start[1]), Coordinates(latitude=far[0], longitude=far[1]))
+    assert beyond.cumulative_distance_km == pytest.approx(road_km, abs=0.005)
+
+
 async def test_a_segment_without_data_does_not_show_the_axis_as_zero(engine_over):
     """データの無い区間に0を出すと、「データが無い」と「良い」が画面で区別できない。"""
     generator = engine_over(grid_network(unknown_ways={100}), avoid_weight=1.0)
