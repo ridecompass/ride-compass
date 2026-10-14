@@ -101,6 +101,20 @@ def test_access_log_line_reports_the_request_at_the_level_of_its_path(caplog):
     assert re.fullmatch(r"GET /api/basemap/missing -> 404 in \d+ms client=testclient", record.getMessage())
 
 
+def test_access_log_line_names_unknown_client_when_the_server_gives_none(caplog):
+    """ASGIの`client`はUnixソケット越し等で None になる。そのときも1行を出し、接続元は`unknown`と書く。"""
+    inner = _app_with_access_log()
+
+    async def without_client(scope, receive, send):
+        await inner({**scope, "client": None}, receive, send)
+
+    caplog.set_level(logging.DEBUG, logger="ridecompass.access")
+    TestClient(without_client).get("/api/basemap/missing")
+
+    [record] = _access_records(caplog)
+    assert re.fullmatch(r"GET /api/basemap/missing -> 404 in \d+ms client=unknown", record.getMessage())
+
+
 def test_unhandled_exception_logged_as_error_with_traceback(caplog):
     caplog.set_level(logging.ERROR, logger="ridecompass.access")
 
