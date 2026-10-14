@@ -248,6 +248,7 @@ describe("距離と候補数", () => {
 
 describe("重み", () => {
   it("揃えても保存した重みは書き換えず、公開を取り下げた軸が戻ればその重みも戻る", async () => {
+    window.localStorage.setItem("ridecompass:weight-override-enabled", "true");
     window.localStorage.setItem("ridecompass:route-preference", JSON.stringify({ axis_a: 0.7, axis_c: 0.2 }));
     serveAxisCatalog(TWO_AXIS_CATALOG);
     const first = renderConditions();

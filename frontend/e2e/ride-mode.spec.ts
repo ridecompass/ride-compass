@@ -1,5 +1,6 @@
 import { expect, test, type BrowserContext, type Locator, type Page } from "@playwright/test";
-import { METERS_PER_DEGREE } from "@/lib/localPlane";
+import { moved } from "@/testing/movedPoint";
+
 import { INTRO_CLOSED, installApiMocks, installMapFinder, seedStoredState } from "./fixtures";
 
 // 走行モードで、ブラウザが届ける位置の変化が実際の地図の動き（中心・向き）まで届くこと（パターン4 観点2）。単体テストの地図は
@@ -7,13 +8,6 @@ import { INTRO_CLOSED, installApiMocks, installMapFinder, seedStoredState } from
 // それが地図に現れるかだけを見る。位置はブラウザの位置の差し替え（`setGeolocation`）で届け、向きを持たせない（動いた向きから出る）。
 
 const START = { latitude: 35.7536, longitude: 139.7378 };
-function moved(from: { latitude: number; longitude: number }, northM: number, eastM: number) {
-  const scale = Math.cos((from.latitude * Math.PI) / 180);
-  return {
-    latitude: from.latitude + northM / METERS_PER_DEGREE,
-    longitude: from.longitude + eastM / (METERS_PER_DEGREE * scale),
-  };
-}
 
 /** 地図が止まっていれば、その地点を地図が描く画面の位置。動いている間はnull。 */
 async function screenPointOf(page: Page, at: { latitude: number; longitude: number }) {
