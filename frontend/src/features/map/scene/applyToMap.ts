@@ -31,7 +31,6 @@ import {
   runWhenStyleReady,
 } from "@/features/map/layers/mapStyleOps";
 import { primaryAttributeIdsToLayerIds } from "@/features/map/layers/primaryAttributes";
-import { ROUTE_ARROW_ICON_ID, createRouteArrowIcon } from "@/features/map/layers/routeArrowIcon";
 import type { LensId, RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
 import type { RouteCandidate } from "@/types/route";
 import { dedicatedAxisBands, type ValueBand } from "@/lib/mapDisplay/valueScale";
@@ -47,13 +46,12 @@ import {
   type TileVersions,
 } from "@/features/map/regionApi";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
-import { drawPointIcon } from "@/features/map/layers/pointIcon";
 
 import { applyMapScene } from "./applyMapScene";
 import type { AxisBand, AxisLineState } from "./groups/axisLines";
-import { POINT_ICONS, POINT_TILE_LAYERS } from "./groups/points";
+import { POINT_TILE_LAYERS } from "./groups/points";
 import type { RouteState } from "./groups/routes";
-import { WEATHER_ICONS, weatherElementKey, type WeatherPayload, type WeatherState } from "./groups/weather";
+import { weatherElementKey, type WeatherPayload, type WeatherState } from "./groups/weather";
 import { buildLegendFilterExpression } from "./sceneBuilders";
 import type { SceneInputs } from "./buildScene";
 import { EMPTY_MAP_SCENE, hiddenBasemapPois, type MapScene } from "./mapScene";
@@ -161,7 +159,6 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
       properties: { index: band.index },
     })),
     composite: composite !== null && composite.length > 1 ? { path: composite } : null,
-    arrowIconImage: ROUTE_ARROW_ICON_ID,
   };
 }
 
@@ -267,25 +264,11 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
   };
 }
 
-/** 記号に要る単色の絵（色は記号の側で付ける）。**出す前に登録しないと記号が描かれない。** 色を焼き込んだ点の絵は`POINT_ICONS`。 */
-const SCENE_ICONS: readonly { id: string; create: () => ImageData }[] = [
-  ...WEATHER_ICONS,
-  { id: ROUTE_ARROW_ICON_ID, create: createRouteArrowIcon },
-];
-
 /** 地図へ当てた宣言を地図ごとに覚える。スタイルを差し替えた後は `reset` で作り直す。 */
 const appliedScene = new WeakMap<MapLibreMap, MapScene>();
 
 export function applyScene(map: MapLibreMap, scene: MapScene, options: { reset?: boolean } = {}) {
   runWhenStyleReady(map, () => {
-    for (const icon of SCENE_ICONS) {
-      if (!map.hasImage(icon.id)) map.addImage(icon.id, icon.create(), { sdf: true });
-    }
-    for (const icon of POINT_ICONS) {
-      if (map.hasImage(icon.id)) continue;
-      const { data, pixelRatio } = drawPointIcon(icon.color, icon.glyph);
-      map.addImage(icon.id, data, { pixelRatio });
-    }
     prepareBasemap(map);
     hideBasemapPois(map, hiddenBasemapPois(scene));
     applyMapScene(map, {

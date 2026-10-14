@@ -167,6 +167,7 @@ const STYLE_OPERATIONS = [
   "getLayer",
   "getSource",
   "hasImage",
+  "addImage",
   "addSource",
   "removeSource",
   "addLayer",
