@@ -48,8 +48,7 @@ DBから取り出す`infrastructure/road_graph_repository.py: get_feature_gradie
 配信するのは`AXIS_DEFINITIONS`（[軸スタジオ](axis-studio.md)のDB管理データ）の公開軸すべてで、レンズを組む都度
 `AXIS_DEFINITIONS`の写しを取る（`services/dedicated_way_values.py: axis_way_value_lens`）。軸スタジオでの登録・公開は
 次の要求から効く。公開していない軸（内部軸・下書き）と未知の`axis_id`は404を返す（500にするとフロントの
-「データなし」フォールバックが効かない）。軸の`dedicated_way_value_layer`は、地図がその軸を配信の値で塗るかを
-受け取る側へ伝える印で、配信できるかには関わらない。
+「データなし」フォールバックが効かない）。
 
 値は、軸とそれが読む内部軸だけを探索と同じ評価（`domain/axis_definitions.py: evaluate_axes_array`）へ通して求める
 （`domain/dynamic_way_values.py: paint_feature_values`）。評価へ渡す材料の列は2つの出どころを合わせる:

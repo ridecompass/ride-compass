@@ -2244,10 +2244,6 @@
             "type": "array",
             "title": "Weather Layer Groups"
           },
-          "dedicated_way_value_layer": {
-            "type": "boolean",
-            "title": "Dedicated Way Value Layer"
-          },
           "map_paint": {
             "$ref": "#/components/schemas/MapPaint"
           },
@@ -2311,7 +2307,6 @@
           "icon_id",
           "primary_attribute_ids",
           "weather_layer_groups",
-          "dedicated_way_value_layer",
           "map_paint",
           "raw_value_units",
           "material_breakdown",
@@ -2478,11 +2473,6 @@
               }
             ],
             "title": "Display Band Labels Override"
-          },
-          "dedicated_way_value_layer": {
-            "type": "boolean",
-            "title": "Dedicated Way Value Layer",
-            "default": false
           }
         },
         "additionalProperties": false,
@@ -2599,11 +2589,6 @@
             ],
             "title": "Display Band Labels Override"
           },
-          "dedicated_way_value_layer": {
-            "type": "boolean",
-            "title": "Dedicated Way Value Layer",
-            "default": false
-          },
           "display": {
             "$ref": "#/components/schemas/AxisDisplaySpec"
           },
@@ -2634,7 +2619,6 @@
           "time_scope",
           "display_thresholds_override",
           "display_band_labels_override",
-          "dedicated_way_value_layer",
           "display",
           "weight_share_when_published"
         ],

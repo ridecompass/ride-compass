@@ -120,7 +120,6 @@
 | `time_scope` | "always"\|"night_only" | 特定時間帯のみ重みを持つか |
 | `display_thresholds_override` | list[float]\|None | 色分けしきい値の上書き |
 | `display_band_labels_override` | list[str]\|None | 段階ごとの体感ラベルの上書き（例:「強い向かい風」）。設定する場合は`display_thresholds_override`も設定済みで要素数が段階数（しきい値数+1）と一致すること |
-| `dedicated_way_value_layer` | bool | ルート未確定時の地図がこの軸を配信の値で塗るか（配信はどの公開軸の値も返す。[dynamic-way-values.md](dynamic-way-values.md)） |
 
 **表示に関するフィールドは、軸idの分岐をコードへ持たないための宣言**である。
 

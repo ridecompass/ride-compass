@@ -58,7 +58,6 @@ def _with_every_field_set(axis_id: str) -> AxisDefinition:
         time_scope="night_only",
         display_thresholds_override=[10.0, 20.0],
         display_band_labels_override=["低", "中", "高"],
-        dedicated_way_value_layer=True,
     )
 
 
