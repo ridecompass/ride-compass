@@ -415,7 +415,7 @@ str(Path("venv") / "Scripts" / "uvicorn.exe")
    壊れ方と並べて照らせる。
 
 **消す・まとめる・題名を変えるテストを名指す設計書の行は、同じ差分で直す。** 設計書（`docs/modules/*.md`）は、性質の
-固定先としてテストのファイルと題名を名指す。`scripts/review_checks.py docs`（CI の Docs Consistency）はリンクが解決するかしか
+固定先としてテストのファイルと題名を名指す。`scripts/review_checks.py docs`（CI の `ci.yml` の `docs-consistency`）はリンクが解決するかしか
 見ないので、ファイルが残って中身や題名だけが変わったテストを名指す行は、どの検査でも落ちずに残る。手を入れたテストの
 ファイル名を `docs/` で grep し（例: `grep -rn 'legends.test' docs/modules`）、そのテストが確かめる・固定すると書いた行があれば、
 保証の今の置き場（残す側のテストとその題名・型・源泉の宣言）に合わせて書き直す。
