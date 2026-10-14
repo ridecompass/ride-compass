@@ -1,4 +1,4 @@
-// 見回り（tasks#788・#843）: 振り出しを頼むだけで、実行の記録は持たない。枠が埋まっているか・動いているかは、その都度 GitHub の担当の実行の
+// 見回り: 振り出しを頼むだけで、実行の記録は持たない。枠が埋まっているか・動いているかは、その都度 GitHub の担当の実行の
 // 一覧（src/facts.js: recentRuns）から読む。
 import { dispatchKind } from "./decide.js";
 import { jstText, relationsOf, taskOf } from "./facts.js";
