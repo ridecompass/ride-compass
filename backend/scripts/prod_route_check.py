@@ -20,12 +20,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from pydantic import TypeAdapter  # noqa: E402
+from pydantic import TypeAdapter
 
-from app.domain.hard_filters import DEFAULT_HARD_FILTERS, HARD_FILTER_NAMES  # noqa: E402
-from app.domain.map_paint import MapValue  # noqa: E402
-from app.domain.route import RouteSegmentDetail  # noqa: E402
-from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_DISTANCE_TOLERANCE_KM, DEFAULT_MAX_ROUTES  # noqa: E402
+from app.domain.hard_filters import DEFAULT_HARD_FILTERS, HARD_FILTER_NAMES
+from app.domain.map_paint import MapValue
+from app.domain.route import RouteSegmentDetail
+from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_DISTANCE_TOLERANCE_KM, DEFAULT_MAX_ROUTES
 
 #: 起点（緯度, 経度）。取込範囲の中の決まった地点で、毎回同じ所を作る。
 START_POINT = (35.7597, 139.7387)
