@@ -34,6 +34,7 @@ from app.api.dependencies import (
     get_axis_inspector_service,
     get_dedicated_way_value_service,
     get_region_service,
+    get_weather_service,
 )
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import (
@@ -46,6 +47,7 @@ from app.domain.axis_definitions import (
 )
 from app.config import settings
 from app.domain.axis_inspector import AxisInspectorAxis, AxisInspectorResult, InspectorComposite, InspectorValues
+from app.domain.rain import RAIN_WINDOW_HOURS, rain_window_material_id
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
 from app.infrastructure import rate_limiter
 from app.infrastructure.derived_data_meta import DataRevisions
@@ -63,6 +65,7 @@ from app.domain.geo import LatLon
 from app.domain.route_preference import RoutePreference
 from app.services.dedicated_way_values import AxisWayValueLens
 from app.services.gradient_way_service import GradientConditions
+from app.services.weather_service import WeatherService
 from app.services.wind_way_service import WindConditions
 from app.main import app
 from app.domain.landcover import LANDCOVER_TILE_MAX_ZOOM, LANDCOVER_TILE_MIN_ZOOM
@@ -461,19 +464,37 @@ class UncoveredRepository:
         return None
 
 
-# 実際のget_dedicated_way_value_serviceを通し、初めて見る名前の公開軸が、配信のサービスの材料（勾配）でも
-# タイルの材料（制限速度）でも配信されること・公開していない軸と無い軸は404になることを見る（Noneは軸を置かない）。
+class NoRainHistoryWeather:
+    """雨の観測の履歴が無いと答える気象サービスの代役。"""
+
+    async def get_station_rain_materials(self, *args, **kwargs):
+        inspect.signature(WeatherService.get_station_rain_materials).bind(self, *args, **kwargs)
+        return None
+
+
+# 実際のget_dedicated_way_value_serviceを通し、初めて見る名前の公開軸が、配信のサービスの材料（勾配、要求の気象サービスを
+# 読む雨）でもタイルの材料（制限速度）でも配信されること・公開していない軸と無い軸は404になることを見る（Noneは軸を置かない）。
 @pytest.mark.parametrize(
     ("material", "published", "status"),
-    [("gradient_percent", True, 200), ("maxspeed_kmh", True, 200), ("maxspeed_kmh", False, 404), (None, True, 404)],
+    [
+        ("gradient_percent", True, 200),
+        (rain_window_material_id(RAIN_WINDOW_HOURS[0]), True, 200),
+        ("maxspeed_kmh", True, 200),
+        ("maxspeed_kmh", False, 404),
+        (None, True, 404),
+    ],
 )
 def test_region_dedicated_way_values_serves_every_published_axis(monkeypatch, material, published, status):
     if material is not None:
         axis = axis_definition("axis_new_name", material=material, is_published=published)
         monkeypatch.setitem(AXIS_DEFINITIONS, "axis_new_name", axis)
     monkeypatch.setattr(dependencies, "RoadGraphRepository", lambda session: UncoveredRepository())
+    app.dependency_overrides[get_weather_service] = NoRainHistoryWeather
 
-    response = client.get("/api/region/dynamic-way-values/axis_new_name/14/14551/6447", params={"bearing_deg": 0})
+    try:
+        response = client.get("/api/region/dynamic-way-values/axis_new_name/14/14551/6447", params={"bearing_deg": 0})
+    finally:
+        app.dependency_overrides.clear()
 
     assert response.status_code == status
 
