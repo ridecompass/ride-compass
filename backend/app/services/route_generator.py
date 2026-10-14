@@ -28,7 +28,7 @@ from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.errors import RoutingError, SearchAreaTooLargeError
 from app.domain.geo import haversine_distance_km
 from app.domain.loop_routing import TracedLoop
-from app.domain.route_request import FixedPoints
+from app.domain.route_request import FixedPoints, spliceable
 from app.domain.route_search import (
     by_closeness_to_target,
     difficulty_order,
@@ -87,13 +87,14 @@ SEGMENT_AGGREGATES: dict[str, Callable[[list[Any]], Any]] = {
 def _label(
     drafts: list[RouteDraft],
     kind: RouteKind,
+    destination: Coordinates | None,
     name: str | None = None,
     fastest: RouteDraft | None = None,
 ) -> list[RouteCandidate]:
     """並べ終えた経路へ応答のid・種類・名前・最速の印・乗り換えの可否を付けて候補にする。候補を返す経路はすべて最後にここを通る。
 
     idは種類と並びの位置から作り、応答の中で一意になる。`name`を渡さなければエンジンが方位から付けた名前のまま。
-    最速の印は`fastest`と同じオブジェクトの1本にだけ付く。乗り換えられるのは目的地を持つ候補（周回でないもの）だけ。
+    最速の印は`fastest`と同じオブジェクトの1本にだけ付く。乗り換えの可否は目的地`destination`から決める。
     """
     return [
         RouteCandidate(**{
@@ -101,7 +102,7 @@ def _label(
             "id": f"{kind}-{rank:02d}",
             "kind": kind,
             "is_fastest": draft is fastest,
-            "spliceable": kind != "loop",
+            "spliceable": spliceable(destination),
             **({"direction_label": name} if name is not None else {}),
         })
         for rank, draft in enumerate(drafts)
@@ -253,9 +254,10 @@ class _DistanceFinish:
         # 同点は評価前に付けた「目標距離に近い順」を安定ソートで引き継ぐ。周回の名前はエンジンが方位から付けたもの
         # （同じ方位に複数並びうるので、idは並びの位置から作る）。
         ordered = sorted(drafts, key=difficulty_order)
-        if self.points.destination is None:
-            return _label(ordered, "loop")
-        return _label(ordered, "destination", "目的地ルート")
+        destination = self.points.destination
+        if destination is None:
+            return _label(ordered, "loop", destination)
+        return _label(ordered, "destination", destination, "目的地ルート")
 
     def _describe_no_traced_reason(self, failed: int, filtered_out: int) -> str:
         """周回候補が1本も残らなかったときの、利用者へ見せる要約を組み立てる。
@@ -320,7 +322,7 @@ class _NoDistanceFinish:
         if destination is None:
             def arrange_loops(drafts: list[RouteDraft]) -> list[RouteCandidate]:
                 kept, _ = keep_routes_with_baseline(drafts, None, self.max_routes)
-                return _label(kept, "loop", "経由地ルート")
+                return _label(kept, "loop", destination, "経由地ルート")
 
             return _Selection(traced, arrange_loops, f"select_ms={select_ms}")
 
@@ -338,7 +340,7 @@ class _NoDistanceFinish:
             # 件数を切るときに残し、印を付けるために、基準線をオブジェクトの同一性で覚えておく。
             baseline = drafts[fastest_index] if fastest_index is not None else None
             kept, baseline = keep_routes_with_baseline(drafts, baseline, self.max_routes)
-            return _label(kept, "destination", "目的地ルート", fastest=baseline)
+            return _label(kept, "destination", destination, "目的地ルート", fastest=baseline)
 
         return _Selection(traced, arrange, f"select_ms={select_ms}")
 
@@ -557,7 +559,7 @@ class RouteGenerator:
 
         evaluate_started = start_timer()
         drafts = await self._evaluate_and_aggregate(context, [traced], start_time)
-        candidates = _label(drafts, "spliced", "組み合わせたルート")
+        candidates = _label(drafts, "spliced", destination, "組み合わせたルート")
         evaluate_ms = elapsed_ms(evaluate_started)
         logger.info(
             "generate(spliced) origin=%s edges=%d -> distance_km=%.1f "

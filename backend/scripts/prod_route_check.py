@@ -18,8 +18,15 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-#: 画面の既定の生成条件（候補数・許容幅・巡航速度・道の除外）。backendのOpenAPIの生成物で、画面も同じものを読む。
-GENERATE_CONFIG = Path(__file__).resolve().parents[2] / "frontend/src/types/generated/route-generate-config.json"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from pydantic import TypeAdapter
+
+from app.domain.hard_filters import DEFAULT_HARD_FILTERS, HARD_FILTER_NAMES
+from app.domain.map_paint import MapValue
+from app.domain.route import RouteSegmentDetail
+from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_DISTANCE_TOLERANCE_KM, DEFAULT_MAX_ROUTES
+
 #: 起点（緯度, 経度）。取込範囲の中の決まった地点で、毎回同じ所を作る。
 START_POINT = (35.7597, 139.7387)
 DISTANCE_KM = 15.0
@@ -31,29 +38,22 @@ REQUEST_TIMEOUT_SECONDS = 30
 JST = timezone(timedelta(hours=9))
 
 
-def generation_request(config: dict, now: datetime) -> dict:
-    """画面の既定の条件の生成の要求。重みは送らず、backendの既定の重みで作らせる。"""
+def generation_request(now: datetime) -> dict:
+    """画面の既定の条件（候補数・許容幅・巡航速度・道の除外）の生成の要求。既定はbackendの宣言が持ち、画面へは生成物で
+    配られる。重みは送らず、backendの既定の重みで作らせる。"""
     return {
         "latitude": START_POINT[0],
         "longitude": START_POINT[1],
         "distance_km": DISTANCE_KM,
-        "distance_tolerance_km": config["default_distance_tolerance_km"],
-        "hard_filters": {
-            item["key"]: item["key"] in config["hard_filters"]["defaults"] for item in config["hard_filters"]["filters"]
-        },
-        "max_routes": config["default_max_routes"],
-        "assumed_speed_kmh": config["default_assumed_speed_kmh"],
+        "distance_tolerance_km": DEFAULT_DISTANCE_TOLERANCE_KM,
+        "hard_filters": {name: name in DEFAULT_HARD_FILTERS for name in sorted(HARD_FILTER_NAMES)},
+        "max_routes": DEFAULT_MAX_ROUTES,
+        "assumed_speed_kmh": ASSUMED_SPEED_KMH,
         "start_time": now.astimezone(JST).isoformat(timespec="seconds"),
     }
 
 
-def painted_value(axis: dict, segment: dict) -> float | None:
-    """ルートの区間をその軸のレンズで塗るときの値。どの値で塗るかは軸カタログの`map_paint.value`が決める
-    （材料の生値なら`material_values`、ほかは`axis_difficulties`）。値が無ければNone。"""
-    value = axis["map_paint"]["value"]
-    if value["kind"] == "signed_material":
-        return segment.get("material_values", {}).get(value["material"])
-    return segment.get("axis_difficulties", {}).get(axis["axis_id"])
+_MAP_VALUE: TypeAdapter[MapValue] = TypeAdapter(MapValue)
 
 
 def problems(catalog: dict, result: dict) -> list[str]:
@@ -61,15 +61,16 @@ def problems(catalog: dict, result: dict) -> list[str]:
     routes = result["routes"]
     if not routes:
         return [f"候補が0件（理由: {result.get('no_candidates_reason')}）"]
-    segments = routes[0]["segments"]
+    segments = [RouteSegmentDetail.model_validate(segment) for segment in routes[0]["segments"]]
     axes = catalog["axes"]
     if not axes:
         return ["軸カタログに軸が無い"]
-    return [
-        f"「{axis['label']}」（{axis['axis_id']}）: 候補1の区間 {len(segments)} 件のどれにも、レンズが塗る値が無い"
-        for axis in axes
-        if all(painted_value(axis, segment) is None for segment in segments)
-    ]
+    found = []
+    for axis in axes:
+        painted = _MAP_VALUE.validate_python(axis["map_paint"]["value"])
+        if all(painted.segment_value(axis["axis_id"], segment) is None for segment in segments):
+            found.append(f"「{axis['label']}」（{axis['axis_id']}）: 候補1の区間 {len(segments)} 件のどれにも、レンズが塗る値が無い")
+    return found
 
 
 def _request(method: str, url: str, body: dict | None = None) -> dict:
@@ -102,10 +103,9 @@ def main() -> int:
     from _production_origins import production_origin
 
     backend = production_origin("backend")
-    config = json.loads(GENERATE_CONFIG.read_text(encoding="utf-8"))
     catalog = _request("GET", f"{backend}/api/axis-catalog")
     try:
-        result = generate(backend, generation_request(config, datetime.now(JST)))
+        result = generate(backend, generation_request(datetime.now(JST)))
     except RuntimeError as error:
         print(f"失敗: {error}")
         return 1
