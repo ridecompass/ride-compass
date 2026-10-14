@@ -33,11 +33,16 @@ interface AxisContributionBarProps {
 
 const FALLBACK_COLOR = palette.semantic.neutral;
 
-/** その軸に表示すべき寄与があるか（0はキーが無い＝欠損と同じく無し）。空のときの案内を出す側も同じ判定を使う
- * （別々に書くとずれ、案内も帯も出ない状態ができる）。 */
-export function hasContribution(contributions: Record<string, number>, axisId: string): boolean {
+/** その軸に表示すべき寄与があるか（0はキーが無い＝欠損と同じく無し）。 */
+function hasContribution(contributions: Record<string, number>, axisId: string): boolean {
   const value = contributions[axisId];
   return value != null && value !== 0;
+}
+
+/** `axes`のどれかに表示すべき寄与があるか（帯が何かを描くか）。空のときの案内を出す側はこれを読む——帯と違う軸で
+ * 数えるとずれ、案内も帯も出ない状態ができる。 */
+export function hasAnyContribution(axes: readonly CatalogAxis[], contributions: Record<string, number>): boolean {
+  return axes.some((axis) => hasContribution(contributions, axis.axisId));
 }
 
 /** 重み付きの寄与の内訳を、積み上げの帯1本と凡例で出す。ルート全体と区間の内訳が同じ部品を使う。寄与が1つも
@@ -49,8 +54,8 @@ export default function AxisContributionBar({
   legendAxes,
   renderDetail,
 }: AxisContributionBarProps) {
+  if (!hasAnyContribution(axes, contributions)) return null;
   const rows = axes.filter((axis) => hasContribution(contributions, axis.axisId));
-  if (rows.length === 0) return null;
   const colorOf = (axisId: string) => axisColors[axisId] ?? FALLBACK_COLOR;
 
   return (

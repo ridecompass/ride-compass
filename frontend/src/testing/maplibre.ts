@@ -271,7 +271,8 @@ class StandInMap extends Evented {
   }
 
   remove() {
-    drawn.splice(drawn.indexOf(this), 1);
+    const index = drawn.indexOf(this);
+    if (index !== -1) drawn.splice(index, 1);
   }
 
   /** テストが起こす出来事。 */

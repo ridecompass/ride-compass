@@ -60,53 +60,60 @@ class SourceRecord:
     rast: bytes | None = None
 
 
-#: プロファイルの`adapter`名 → 実装。**ソースを足す唯一の追加点**。
-#:
-#: 非同期にするのは、外部からタイル単位で取るソースが並行取得を要るため。同期で足りる
-#: ソース（ローカルのCSVを読むだけ等）も同じ契約に乗せ、経路を2本にしない。
-#:
-#: 第3引数は`origin`。**どこから取ったかを知っているのはアダプタだけ**なので、ここへ
-#: 書き込ませて`source_runs.origin`へ残す。呼び出し側は中身を知らない——ソースごとに
-#: 意味のある項目が違い、共通の型を決めるとソースを足すたびに型が増える。
-SourceAdapter = Callable[
-    [SourceSpec, SourceProfile, dict[str, Any]], AsyncIterator[SourceRecord]]
-
-
 @dataclass(frozen=True)
 class AdapterInputs:
-    """アダプタが読む入力。取込は、行を読む前にこれを聞いて指紋（`input_fingerprint`）を作る。"""
+    """アダプタが読む入力。取込は、行を読む前にこれを聞いて指紋（`input_fingerprint`）を作り、同じものを読み手へ渡す。
+
+    読み方の材料（範囲に掛かる都道府県等）が要るアダプタは、欄を足した型を作って返す——読み手は入力を求め直さない。
+    """
 
     #: 読むファイル全部。読み方（どのファイルを開くか）はプロファイルと置き場で決まる。
     files: tuple[Path, ...]
     #: このソースのほかに、宣言（`rows`・`grid`）を読むソースの名前。
     sources: tuple[str, ...] = ()
 
+    def origin(self) -> dict[str, Any]:
+        """runの`origin`へ残す、読んだ入力の素性。"""
+        return {"files": [file_origin(path) for path in self.files]}
+
 
 #: アダプタが読む入力を、行を読まずに答える関数。
-InputsOf = Callable[[SourceSpec, SourceProfile], AdapterInputs]
+type InputsOf[I: AdapterInputs] = Callable[[SourceSpec, SourceProfile], I]
+
+#: プロファイルの`adapter`名 → 実装。**ソースを足す唯一の追加点**。
+#:
+#: 非同期にするのは、外部からタイル単位で取るソースが並行取得を要るため。同期で足りる
+#: ソース（ローカルのCSVを読むだけ等）も同じ契約に乗せ、経路を2本にしない。
+#:
+#: 第3引数は、取込が指紋のために求めた入力（`InputsOf`の答え）。
+#: 第4引数は`origin`。**どこから取ったかを知っているのはアダプタだけ**なので、読んだ入力の素性
+#: （`AdapterInputs.origin`）のほかに分かったこと（配信元の断面の時刻等）をここへ書き込ませて
+#: `source_runs.origin`へ残す。呼び出し側は中身を知らない——ソースごとに意味のある項目が違い、
+#: 共通の型を決めるとソースを足すたびに型が増える。
+type SourceAdapter[I: AdapterInputs] = Callable[
+    [SourceSpec, SourceProfile, I, dict[str, Any]], AsyncIterator[SourceRecord]]
 
 
 @dataclass(frozen=True)
-class RegisteredAdapter:
-    read: SourceAdapter
+class RegisteredAdapter[I: AdapterInputs]:
+    read: SourceAdapter[I]
     #: プロファイルの`rows`/`grid`の型。読み込みはこのフィールドにある欄だけを受け付ける。
     rows: type
     grid: type
     #: このアダプタのソースの行が必ず持つ列（`SourceFeatureRow`の空を許す列）。取込が区画を作るときに
     #: NOT NULLで張り、`scripts/schema_gap.py`が実DBの区画と比べる。
     required: tuple[InstrumentedAttribute[Any], ...] = ()
-    #: 読む入力。無ければ指紋を作れず、毎回取り込む。
-    inputs: InputsOf | None = None
+    #: 読む入力。無ければ指紋を作れず毎回取り込み、読み手へはファイルの無い入力を渡す。
+    inputs: InputsOf[I] | None = None
 
 
 ADAPTERS: dict[str, RegisteredAdapter] = {}
 
 
-def register_adapter(name: str, *, rows: type = NoFields, grid: type = NoFields,
-                     required: tuple[InstrumentedAttribute[Any], ...] = (),
-                     inputs: InputsOf | None = None
-                     ) -> Callable[[SourceAdapter], SourceAdapter]:
-    def decorate(fn: SourceAdapter) -> SourceAdapter:
+def register_adapter[I: AdapterInputs](name: str, *, inputs: InputsOf[I], rows: type = NoFields,
+                                       grid: type = NoFields, required: tuple[InstrumentedAttribute[Any], ...] = ()
+                                       ) -> Callable[[SourceAdapter[I]], SourceAdapter[I]]:
+    def decorate(fn: SourceAdapter[I]) -> SourceAdapter[I]:
         if name in ADAPTERS:
             raise ValueError(f"アダプタ名が重複しています: {name}")
         ADAPTERS[name] = RegisteredAdapter(read=fn, rows=rows, grid=grid, required=required, inputs=inputs)
@@ -119,21 +126,17 @@ def register_adapter(name: str, *, rows: type = NoFields, grid: type = NoFields,
 INPUT_FINGERPRINT = "input_fingerprint"
 
 
-def input_fingerprint(spec: SourceSpec, profile: SourceProfile) -> str | None:
-    """そのソースの取込の入力の指紋。アダプタが入力を宣言していなければNone。
+def input_fingerprint(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs) -> str:
+    """そのソースの取込の入力（アダプタが答えた`inputs`）の指紋。
 
     入力は、読むファイルの場所と中身・範囲と読むソースの宣言・アダプタからたどれるコード
     （`code_fingerprint.py`）・Pythonとライブラリの版。ファイルは中身を全部読む——大きさと更新時刻が
     同じでも、中身が同じとは言えない。
     """
-    registered = ADAPTERS[spec.adapter]
-    if registered.inputs is None:
-        return None
-    inputs = registered.inputs(spec, profile)
     digest = hashlib.sha256(_json({
         "target": asdict(profile.target),
         "sources": [_source_dict(profile.source(name)) for name in (spec.name, *inputs.sources)],
-        "code": code_fingerprint(registered.read.__module__),
+        "code": code_fingerprint(ADAPTERS[spec.adapter].read.__module__),
         "python": sys.version,
         "libraries": library_versions(),
     }).encode())
@@ -245,10 +248,11 @@ async def ingest_source(
 
 async def _ingest(conn: asyncpg.Connection, profile: SourceProfile, source_name: str) -> int:
     spec = profile.source(source_name)
-    adapter = ADAPTERS[spec.adapter].read
+    registered = ADAPTERS[spec.adapter]
 
     hashing = time.perf_counter()
-    fingerprint = input_fingerprint(spec, profile)
+    inputs = AdapterInputs(files=()) if registered.inputs is None else registered.inputs(spec, profile)
+    fingerprint = None if registered.inputs is None else input_fingerprint(spec, profile, inputs)
     hashed = time.perf_counter() - hashing
     if fingerprint is not None:
         previous = await conn.fetchrow(
@@ -260,7 +264,7 @@ async def _ingest(conn: asyncpg.Connection, profile: SourceProfile, source_name:
             return previous["run_id"]
 
     await _ensure_partition(conn, spec)
-    origin: dict[str, Any] = {}
+    origin = inputs.origin()
     run_id = await _open_run(conn, spec, profile)
     started = time.perf_counter()
     written = 0
@@ -268,7 +272,7 @@ async def _ingest(conn: asyncpg.Connection, profile: SourceProfile, source_name:
     async def rows() -> AsyncIterator[tuple[str, bytes, str, bytes | None, bytes | None]]:
         nonlocal written
         last_report = started
-        async for record in adapter(spec, profile, origin):
+        async for record in registered.read(spec, profile, inputs, origin):
             written += 1
             now = time.perf_counter()
             if now - last_report >= PROGRESS_INTERVAL_SECONDS:

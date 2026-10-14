@@ -511,7 +511,6 @@ push型更新と同じ前提）。`JobRecord`は状態ごとの型の共用体�
 | レイヤー | ファイル | 責務 |
 |---|---|---|
 | scripts | `derived_distribution.py` | 派生の表の値の列ごとに、値のある割合と、型に応じた分布（数: 0でない割合・合計・分位・最大、真偽: 真の割合、文字: 種類の数）を1列1行で出す。表と列は`infrastructure/derived_data_freshness.py: derived_tables`・`value_columns`から導く。`--column`を付けなければ全部の値の列を測る。本番の派生の作り直しの前後を並べるための道具（[deployment-sync.md](../../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」）。本番DBへは`run_probe.py`で当てる |
-| scripts | `serve_e2e_live.py` | e2e-live（`frontend/e2e-live/`）のために、この作業ツリーのbackendを開発DBへ向けて空いたポートで起動し、路面タイルに道が出る起点を開発DBの区間から選んで、ビルドと実行のコマンドを出す（手順の正本は[testing.md](../../../.claude/rules/testing.md)） |
 | scripts | `audit_test_rewrite.py` | 実装から起こし直したテストを外から測る（実装を変えていないか・テストが読む`app.*`・対象の属性の出どころ・seams 数・実装へ1行も入らないテスト・そのテストだけが通す行が0行のテスト・カバレッジ・テストファイルごとの項目と関数と行の数・テストからしか使われない公開の名前の候補。テストは対象を読む母集団を並べて渡す。PostGISのテストはテスト用DBへ繋がるときだけ含める。`--ref`で前の版を一時の作業ツリーへ取り出して同じ母集団で測り、前後のカバレッジ・数と新たに未到達になった行を並べる。作業ツリーに無く前の版にあるテスト（消した・改名した）は前の測りにだけ入れる）。起こし直しの手順は[testing.md](../../../.claude/rules/testing.md) |
 | scripts | `mutation/` | 変異テストの台本。mutmut 3.8.0（測るときだけ入れる）には`app`の関数の中の変異の生成と、関数ごとに通るテストの記録だけをさせ（`gen.py`）、変異ごとに別のプロセスでそのテストを最後まで回して、落ちたテストを記録する（`runner.py`・`mutkill.py`）。回す変異の並べ方と一覧の口（`plan.py`）・集計（`analyze.py`）・生き残りの振り分け（`classify.py`・`importtime.py`）。回し方は[testing-operations.md](../../../.claude/skills/run-checks/SKILL.md)「変異テストでテストの効きを測る」 |
 

@@ -131,7 +131,7 @@ describe("詳細格子の間隔と範囲", () => {
   });
 
   it("狭い画面はそのまま、広い画面は中心から点数の上限に収まる範囲へ切る", () => {
-    const small = { west: 139.7, south: 35.6, east: 139.72, north: 35.62, zoom: 15 };
+    const small = { west: 139.7, south: 35.6, east: 139.72, north: 35.62, zoom: 15, bearing: 0 };
     expect(clampWindDetailBbox(small, coarsest)).toEqual({
       minLon: 139.7,
       minLat: 35.6,
@@ -139,7 +139,7 @@ describe("詳細格子の間隔と範囲", () => {
       maxLat: 35.62,
     });
 
-    const wide = { west: 139, south: 35, east: 141, north: 37, zoom: 10 };
+    const wide = { west: 139, south: 35, east: 141, north: 37, zoom: 10, bearing: 0 };
     const bbox = clampWindDetailBbox(wide, coarsest);
     expect((bbox.minLon + bbox.maxLon) / 2).toBeCloseTo(140);
     expect((bbox.minLat + bbox.maxLat) / 2).toBeCloseTo(36);

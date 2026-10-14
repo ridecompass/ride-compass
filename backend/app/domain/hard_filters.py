@@ -33,7 +33,7 @@ class TagHardFilter(NamedTuple):
 # 周回ルートにとって「実質的に走りにくい・危険」という実務判断で除外対象に含める。
 HARD_FILTER_HIGHWAY_TYPES: dict[str, HighwayHardFilter] = {
     "motorway": HighwayHardFilter("高速道路", frozenset({"motorway", "motorway_link"})),
-    "trunk": HighwayHardFilter("幹線道路", frozenset({"trunk", "trunk_link"})),
+    "trunk": HighwayHardFilter("国道", frozenset({"trunk", "trunk_link"})),
 }
 
 # highwayでは決まらない、タグ由来のフィルタ。足すならここへ1エントリ書くだけでよい。
