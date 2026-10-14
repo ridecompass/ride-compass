@@ -276,6 +276,5 @@ async def derive(conn: asyncpg.Connection) -> None:
         await conn.execute(_PARCEL_LINKS)
         await conn.copy_records_to_table("_parcel_links", records=parcel_links)
         parcels = affected_rows(await conn.execute(_INSERT_PARCELS))
-    await conn.execute("ANALYZE address_areas, address_search_keys, address_blocks")
     logger.info("住所: 区画 %d件・鍵 %d件、街区 %d件・地番 %d件（地番の名前 %d通りを区画に結んだ） / %.1f秒",
                 len(areas), len(keys), residential, parcels, len(parcel_links), time.perf_counter() - started)

@@ -56,4 +56,3 @@ async def derive(conn: asyncpg.Connection) -> None:
         ways = await conn.fetchval("SELECT count(*) FROM road_ways")
         if count != ways:
             raise RuntimeError(f"通行方向を持たない道がある: 道 {ways}本に対して通行方向 {count}本")
-        await conn.execute("ANALYZE way_directions")

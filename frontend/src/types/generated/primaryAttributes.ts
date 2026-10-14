@@ -64,7 +64,7 @@ export const primaryAttributes = [
               "bridleway",
               "steps"
             ],
-            "description": "自転車道・歩道・遊歩道・歩行者専用の道・階段など、車が通らない道[OSM の highway=cycleway・path・footway・pedestrian・bridleway・steps]。",
+            "description": "自転車専用道・歩道・遊歩道・歩行者専用の道・階段など、車が通らない道[OSM の highway=cycleway・path・footway・pedestrian・bridleway・steps]。",
             "color": "#0e7e98"
           },
           {

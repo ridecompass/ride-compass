@@ -6,11 +6,11 @@ import type { LegendEntry } from "./legendFilter";
 import { NO_DATA_LEGEND_BAND } from "./mapColorLegend";
 import type { AxisCatalogEntry } from "@/types/route";
 import {
-  DEFAULT_DIFFICULTY_BOUNDARIES,
-  DIFFICULTY_LEGEND,
+  bandCondition,
+  DIFFICULTY_PAINT,
+  mapPaintDeclarationOf,
   valueBands,
-  type MapLegendScale,
-  type MapValueKind,
+  type MapPaintDeclaration,
 } from "./valueScale";
 
 /** レンズ（地図を何で塗るか）の識別子。`"none"`（塗らない）・`"difficulty"`（総合難易度）
@@ -42,54 +42,38 @@ function buildRangeSteppedMode(options: {
   id: string;
   label: string;
   valueExpression: unknown[];
-  kind: MapValueKind;
-  boundaries: readonly number[];
-  legend: MapLegendScale;
-  bandLabels?: readonly string[] | null;
+  paint: MapPaintDeclaration;
 }): RouteStyleMode {
-  const { id, label, valueExpression, kind, boundaries, legend, bandLabels } = options;
-  const bands = valueBands(kind, boundaries, legend, bandLabels);
+  const { id, label, valueExpression, paint } = options;
+  const bands = valueBands(paint);
   const value: unknown[] = ["to-number", valueExpression];
   const noData: unknown[] = ["==", valueExpression, null];
   const hasData: unknown[] = ["!=", valueExpression, null];
 
-  const colorExpression: unknown[] = ["step", value, bands[0].color];
-  for (const band of bands.slice(1)) colorExpression.push(band.lowerBound, band.color);
+  const colorExpression: unknown[] = ["case", noData, NO_DATA_LEGEND_BAND.color];
+  bands.forEach((band, i) => colorExpression.push(bandCondition(bands, i, value), band.color));
+  colorExpression.push(NO_DATA_LEGEND_BAND.color);
 
-  const legendEntries: LegendEntry[] = bands.map(({ key, label: bandLabel, color, lowerBound }, i) => {
-    const conditions: unknown[] = [hasData];
-    if (i > 0) conditions.push([">=", value, lowerBound]);
-    if (i < bands.length - 1) conditions.push(["<", value, bands[i + 1].lowerBound]);
-    return { key, label: bandLabel, color, filter: ["all", ...conditions] };
-  });
+  const legendEntries: LegendEntry[] = bands.map(({ key, label: bandLabel, color }, i) => ({
+    key,
+    label: bandLabel,
+    color,
+    filter: ["all", hasData, bandCondition(bands, i, value)],
+  }));
   legendEntries.push({ ...NO_DATA_LEGEND_BAND, filter: noData });
 
-  return {
-    id,
-    label,
-    legend: legendEntries,
-    colorExpression: ["case", noData, NO_DATA_LEGEND_BAND.color, colorExpression],
-    noDataExpression: noData,
-  };
+  return { id, label, legend: legendEntries, colorExpression, noDataExpression: noData };
 }
 
 // 公開軸1本のモード。塗る値の種類・単位・しきい値はbackendが決め、ルート前の専用配信の塗りと同じ尺度・配色になる。
 // 生値を塗る材料はbackendが名指す（`map_paint.value.material`）。
 function routeColorableModeFromAxis(axis: AxisCatalogEntry): RouteStyleMode {
-  const { value: mapValue, thresholds: boundaries, legend, band_labels: bandLabels } = axis.map_paint;
+  const mapValue = axis.map_paint.value;
   const painted =
     mapValue.kind === "signed_material"
-      ? {
-          label: axis.label,
-          valueExpression: ["get", mapValue.material, ["get", "material_values"]],
-          kind: mapValue.kind,
-        }
-      : {
-          label: `${axis.label}の影響`,
-          valueExpression: ["get", axis.axis_id, ["get", "axis_difficulties"]],
-          kind: "difficulty" as const,
-        };
-  return buildRangeSteppedMode({ id: axis.axis_id, ...painted, boundaries, legend, bandLabels });
+      ? { label: axis.label, valueExpression: ["get", mapValue.material, ["get", "material_values"]] }
+      : { label: `${axis.label}の影響`, valueExpression: ["get", axis.axis_id, ["get", "axis_difficulties"]] };
+  return buildRangeSteppedMode({ id: axis.axis_id, ...painted, paint: mapPaintDeclarationOf(axis.map_paint) });
 }
 
 // 総合難易度（全軸を重みで合成した0-100）。特定の軸に紐づかない固定のモード。
@@ -97,9 +81,7 @@ const DIFFICULTY_MODE: RouteStyleMode = buildRangeSteppedMode({
   id: LENS_DIFFICULTY_ID,
   label: "総合難易度",
   valueExpression: ["get", "difficulty"],
-  kind: "difficulty",
-  boundaries: DEFAULT_DIFFICULTY_BOUNDARIES,
-  legend: DIFFICULTY_LEGEND,
+  paint: DIFFICULTY_PAINT,
 });
 
 // レンズ「なし」: ルート線を単色（候補線の非選択色と同じ中立グレー）で描き、凡例を持たない。

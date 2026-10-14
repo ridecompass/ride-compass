@@ -163,10 +163,6 @@ async def derive(conn: asyncpg.Connection) -> None:
         nodes = await conn.execute(_INSERT_NODES)
         await conn.execute(_INSERT_WAYS)
         edges = await conn.execute(_INSERT_EDGES)
-        # 後ろの段はこれらの表を読む。autovacuumは既定60秒周期の背景処理で、派生は
-        # 数秒で走り切るため、統計が付くのを待てない。無いまま読まれると実行計画が
-        # 桁で外れる。
-        await conn.execute("ANALYZE road_edges, road_nodes, road_ways")
 
     logger.info("導出完了: way %d本 → 区間 %d本 / ノード %d点 / %.1f秒",
                 ways, affected_rows(edges), affected_rows(nodes), time.perf_counter() - started)
