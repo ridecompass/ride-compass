@@ -1,10 +1,10 @@
 import type { Coordinates } from "@/types/route";
 import type { WindGridPoint, WindGridResponse } from "@/types/weather";
 import { backendApi, getOptions, requestApi } from "@/lib/apiClient";
-import { DEFAULT_API_TIMEOUT_MS } from "@/lib/apiTimeouts";
+import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
 
 function weatherOptions(category: string, errorLabel: string) {
-  return getOptions({ timeoutMs: DEFAULT_API_TIMEOUT_MS, category, errorLabel });
+  return getOptions({ timeoutMs: API_TIMEOUT_MS.default, category, errorLabel });
 }
 
 /** 地点1つを問い合わせる項目。 */

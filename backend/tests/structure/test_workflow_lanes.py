@@ -19,7 +19,7 @@ import yaml
 
 WORKFLOWS = Path(__file__).resolve().parents[3] / ".github" / "workflows"
 
-# 1つの持ち主が同時に動かせるジョブの数（ユーザーの決定。tasks#870）。
+# 1つの持ち主が同時に動かせるジョブの数。
 LANES = range(6)
 # 担当の実行だけが使うレーン。担当は持ち時間いっぱいまで動くので、CI のジョブと同じレーンに置くと、CI が担当の終わりまで待つ。
 WORKER_LANE = 0

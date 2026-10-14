@@ -416,8 +416,8 @@
     "value_labels": {
       "motorway": "高速道路",
       "motorway_link": "高速道路の連絡路",
-      "trunk": "幹線道路",
-      "trunk_link": "幹線道路の連絡路",
+      "trunk": "国道",
+      "trunk_link": "国道の連絡路",
       "primary": "主要幹線道路",
       "primary_link": "主要幹線道路の連絡路",
       "secondary": "地方主要道",
@@ -514,9 +514,9 @@
   },
   {
     "material_id": "highway_is_cycleway",
-    "label": "道路種別が自転車道 - highway_is_cycleway",
-    "name": "道路種別が自転車道",
-    "description": "道路種別(highway)自体が自転車道(highway=cycleway)かどうか。",
+    "label": "道路種別が自転車専用道 - highway_is_cycleway",
+    "name": "道路種別が自転車専用道",
+    "description": "道路種別(highway)自体が自転車専用道(highway=cycleway)かどうか。",
     "dtype": "boolean",
     "unit": "",
     "reference_points": [],

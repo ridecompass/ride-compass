@@ -27,8 +27,8 @@ const point = (latitude: number, longitude: number, speed = 1): WindGridPoint =>
     precipitation_mm: HOURS.map(() => 0),
   }) as WindGridPoint;
 
-const WIDE: MapViewport = { west: 139, south: 35, east: 140, north: 36, zoom: 9 };
-const ZOOMED: MapViewport = { west: 139.7, south: 35.6, east: 139.72, north: 35.62, zoom: 12 };
+const WIDE: MapViewport = { west: 139, south: 35, east: 140, north: 36, zoom: 9, bearing: 0 };
+const ZOOMED: MapViewport = { west: 139.7, south: 35.6, east: 139.72, north: 35.62, zoom: 12, bearing: 0 };
 const DETAIL_SPACING = windGridDetailSpacingDegForZoom(ZOOMED.zoom);
 const FINER_SPACING = windGridDetailSpacingDegForZoom(13);
 

@@ -92,7 +92,7 @@ function useLocationFetch<T>(
 export function useWeatherConditions(
   location: Coordinates,
   locationKnown: boolean,
-  following: Coordinates | null = null,
+  following: Coordinates | null,
 ): UseWeatherConditionsResult {
   const weather = useLocationFetch("forecast", getCurrentWeather, location, locationKnown, following);
   const amedas = useLocationFetch("amedas", getAmedasObservation, location, locationKnown, following, validArea);

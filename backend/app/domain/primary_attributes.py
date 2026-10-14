@@ -105,7 +105,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                         "cycleway",
                         "自転車・歩行者道",
                         ("cycleway", "path", "footway", "pedestrian", "bridleway", "steps"),
-                        "自転車道・歩道・遊歩道・歩行者専用の道・階段など、車が通らない道",
+                        "自転車専用道・歩道・遊歩道・歩行者専用の道・階段など、車が通らない道",
                     ),
                     _tag_row("highway", "track", "農道・林道", ("track",), "田畑や山林へ入るための道。舗装も未舗装もある"),
                 ),

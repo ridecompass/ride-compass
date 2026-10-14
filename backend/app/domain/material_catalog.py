@@ -473,8 +473,8 @@ _LANES_COUNT_REFERENCE_POINTS = [
 _HIGHWAY_VALUE_LABELS: dict[str, str] = {
     "motorway": "高速道路",
     "motorway_link": "高速道路の連絡路",
-    "trunk": "幹線道路",
-    "trunk_link": "幹線道路の連絡路",
+    "trunk": "国道",
+    "trunk_link": "国道の連絡路",
     "primary": "主要幹線道路",
     "primary_link": "主要幹線道路の連絡路",
     "secondary": "地方主要道",
@@ -833,8 +833,8 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     # 持ち、MVTタイルへ焼き込む。
     "highway_is_cycleway": MaterialSpec(
         material_id="highway_is_cycleway",
-        label="道路種別が自転車道",
-        description=f"道路種別(highway)自体が自転車道({tag_note('highway', CYCLEWAY_HIGHWAY)})かどうか。",
+        label="道路種別が自転車専用道",
+        description=f"道路種別(highway)自体が自転車専用道({tag_note('highway', CYCLEWAY_HIGHWAY)})かどうか。",
         dtype="boolean",
         tile_property="highway_is_cycleway",
         # 判定式はhighway生タグを見るが、意味的にはこの群の他の材料と同じ「自転車走行環境の

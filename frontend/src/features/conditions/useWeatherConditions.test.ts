@@ -47,7 +47,7 @@ afterEach(() => {
 const fetched = () => vi.waitFor(() => expect(getQueryClient().isFetching()).toBe(0));
 
 function render(location = TOKYO, ready = true) {
-  return renderHook(({ location, ready }) => useWeatherConditions(location, ready), {
+  return renderHook(({ location, ready }) => useWeatherConditions(location, ready, null), {
     initialProps: { location, ready },
   });
 }

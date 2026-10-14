@@ -22,7 +22,6 @@ import type {
   DynamicWeatherLayerId,
   DynamicWeatherRenderPayload,
 } from "@/features/map/layers/dynamicWeather";
-import { withJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
 import {
   areaLayerAnchor,
   hideBasemapPois,
@@ -31,10 +30,9 @@ import {
   runWhenStyleReady,
 } from "@/features/map/layers/mapStyleOps";
 import { primaryAttributeIdsToLayerIds } from "@/features/map/layers/primaryAttributes";
-import { ROUTE_ARROW_ICON_ID, createRouteArrowIcon } from "@/features/map/layers/routeArrowIcon";
 import type { LensId, RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
 import type { RouteCandidate } from "@/types/route";
-import { dedicatedAxisBands, type ValueBand } from "@/lib/mapDisplay/valueScale";
+import { valueBands } from "@/lib/mapDisplay/valueScale";
 import { routeStretches, segmentPath, splitSegmentAt } from "@/lib/routeDistance";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import {
@@ -47,13 +45,12 @@ import {
   type TileVersions,
 } from "@/features/map/regionApi";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
-import { drawPointIcon } from "@/features/map/layers/pointIcon";
 
 import { applyMapScene } from "./applyMapScene";
-import type { AxisBand, AxisLineState } from "./groups/axisLines";
-import { POINT_ICONS, POINT_TILE_LAYERS } from "./groups/points";
+import type { AxisLineState } from "./groups/axisLines";
+import { POINT_TILE_LAYERS } from "./groups/points";
 import type { RouteState } from "./groups/routes";
-import { WEATHER_ICONS, weatherElementKey, type WeatherPayload, type WeatherState } from "./groups/weather";
+import { weatherElementKey, type WeatherState } from "./groups/weather";
 import { buildLegendFilterExpression } from "./sceneBuilders";
 import type { SceneInputs } from "./buildScene";
 import { EMPTY_MAP_SCENE, hiddenBasemapPois, type MapScene } from "./mapScene";
@@ -161,13 +158,7 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
       properties: { index: band.index },
     })),
     composite: composite !== null && composite.length > 1 ? { path: composite } : null,
-    arrowIconImage: ROUTE_ARROW_ICON_ID,
   };
-}
-
-/** 評価軸の段を線の宣言へ渡す形にする。**上の段から順に**並べる——色式は最初に当たった段を採るため。 */
-function axisLineBands(bands: readonly ValueBand[]): AxisBand[] {
-  return bands.map(({ key, lowerBound, color }) => ({ key, lowerBound, color })).reverse();
 }
 
 /** 下敷きで描く軸。その軸の材料（一次属性の表示レイヤー）が1つでも出ている間は、材料の
@@ -189,7 +180,7 @@ function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): Axi
     return {
       axisId: axis.axisId,
       visible: isAxisShown(look, axis),
-      bands: axisLineBands(dedicatedAxisBands(axis.display)),
+      bands: valueBands(axis.display),
       values: delivered?.values ?? new Map<string, number | null>(),
       loading: delivered?.loading === true,
       hiddenBandKeys: look.hiddenLegendKeys[axis.axisId] ?? NO_KEYS,
@@ -201,31 +192,18 @@ function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): Axi
 
 /** 届いている中身を、要素の鍵（`groups/weather.ts: weatherElementKey`）で引ける形へ移す。 */
 function weatherStateFrom(props: SceneWiringProps): WeatherState {
-  const shown = new Map<string, { visible: boolean; payload?: WeatherPayload }>();
+  const shown = new Map<string, { visible: boolean; payload?: DynamicWeatherRenderPayload }>();
   for (const [groupId, group] of Object.entries(props.look.dynamicWeather)) {
     if (group === undefined) continue;
     for (const [sourceId, source] of Object.entries(group)) {
       if (source === undefined) continue;
       shown.set(weatherElementKey({ group: groupId, source: sourceId }), {
         visible: source.visible,
-        ...(source.payload === undefined ? {} : { payload: weatherPayloadFrom(source.payload) }),
+        ...(source.payload === undefined ? {} : { payload: source.payload }),
       });
     }
   }
   return { shown };
-}
-
-function weatherPayloadFrom(payload: DynamicWeatherRenderPayload): WeatherPayload {
-  switch (payload.kind) {
-    case "rasterTile":
-    case "vectorTile":
-      // 配信元のタイルは自前のプロトコル経由で取りに行く（空タイルの肩代わり・失敗の観測）。
-      return { kind: payload.kind, tiles: [withJmaTileProtocol(payload.tileUrlTemplate)] };
-    case "gridFill":
-    case "gridMark":
-    case "outline":
-      return { kind: payload.kind, data: payload.geojson };
-  }
 }
 
 /** 点のタイルごとのURL。 */
@@ -267,25 +245,11 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
   };
 }
 
-/** 記号に要る単色の絵（色は記号の側で付ける）。**出す前に登録しないと記号が描かれない。** 色を焼き込んだ点の絵は`POINT_ICONS`。 */
-const SCENE_ICONS: readonly { id: string; create: () => ImageData }[] = [
-  ...WEATHER_ICONS,
-  { id: ROUTE_ARROW_ICON_ID, create: createRouteArrowIcon },
-];
-
 /** 地図へ当てた宣言を地図ごとに覚える。スタイルを差し替えた後は `reset` で作り直す。 */
 const appliedScene = new WeakMap<MapLibreMap, MapScene>();
 
 export function applyScene(map: MapLibreMap, scene: MapScene, options: { reset?: boolean } = {}) {
   runWhenStyleReady(map, () => {
-    for (const icon of SCENE_ICONS) {
-      if (!map.hasImage(icon.id)) map.addImage(icon.id, icon.create(), { sdf: true });
-    }
-    for (const icon of POINT_ICONS) {
-      if (map.hasImage(icon.id)) continue;
-      const { data, pixelRatio } = drawPointIcon(icon.color, icon.glyph);
-      map.addImage(icon.id, data, { pixelRatio });
-    }
     prepareBasemap(map);
     hideBasemapPois(map, hiddenBasemapPois(scene));
     applyMapScene(map, {

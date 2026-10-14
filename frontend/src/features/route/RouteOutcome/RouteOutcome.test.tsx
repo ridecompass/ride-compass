@@ -23,7 +23,7 @@
  *
  * 軸は架空のもの（`axis_a`等）を`src/testing/catalogAxes.ts`の雛形から作る。
  */
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -325,12 +325,14 @@ describe("選んだ候補の中身", () => {
   it.each([
     ["寄与のある", { difficulty: 12.4, axis_contributions: { axis_a: 12.4 } }, "12.4", false],
     ["寄与が全部0の", { difficulty: 0, axis_contributions: { axis_a: 0 } }, "0.0", true],
+    ["カタログに無い軸にだけ寄与のある", { difficulty: 3, axis_contributions: { retired_axis: 3 } }, "3.0", true],
     ["算出できなかった", { difficulty: null, axis_contributions: {} }, "—", false],
-  ])("%s区間は総合難易度を出し、全部0のときだけ0であることを文で言う", (_, segment, shown, allZero) => {
+  ])("%s区間は総合難易度を出し、全部0のときだけ0であることを文で言う", async (_, segment, shown, allZero) => {
     renderOutcome({ results: resultsOf({ generated: [FAST], selectedRouteSegment: segmentSelection(segment) }) });
 
     expect(screen.getByText("総合難易度").parentElement).toHaveTextContent(`総合難易度${shown}/100`);
-    expect(screen.queryByText("どの評価軸も0（易しい）") !== null).toBe(allZero);
+    // 0かどうかは軸カタログの軸で数えるので、カタログが届くのを待つ。
+    await waitFor(() => expect(screen.queryByText("どの評価軸も0（易しい）") !== null).toBe(allZero));
   });
 
   it("区間の内訳のチップから開く詳細は、候補全体ではなくその区間の軸別難易度を出す", async () => {

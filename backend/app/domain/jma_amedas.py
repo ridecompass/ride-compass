@@ -59,4 +59,4 @@ class AmedasObservation(StrictModel):
     weather_code: int | None
     #: 同じ観測所の観測が当たる範囲（その観測所が最寄りである範囲）。観測所の値（風・気温等）はこの中で変わらない。
     #: 天気コード・日の出と日没はリクエストの地点で決まり、この範囲の中でも変わる。
-    valid_area: ValidArea | None = None
+    valid_area: ValidArea | None

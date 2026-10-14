@@ -57,6 +57,7 @@ from app.domain.place_search import (
     PlaceMatchLevel,
 )
 from cross_language_expectations import EXPECTATIONS
+from schema_shape import schema_shape_mark
 from app.domain.weather_elements import (
     WEATHER_ELEMENTS,
     WEATHER_LAYER_GROUPS,
@@ -281,7 +282,8 @@ def _weather_element_entry(element: WeatherElement) -> dict:
 
 def main() -> None:
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
-    _write_json(OUTPUT_PATH, _strip_prose(app.openapi()))  # type: ignore[arg-type]
+    openapi = _strip_prose(app.openapi())
+    _write_json(OUTPUT_PATH, openapi)  # type: ignore[arg-type]
     # 地域タイルのレイヤー名・ズーム範囲等。画面はこのJSONを読み、値を手で写さない
     # （生成物と宣言のずれはCIのapi-contractジョブが検知する）。
     _write_json(
@@ -610,6 +612,8 @@ def main() -> None:
             # フロントのポーリングの打ち切り。backendが結果を持つ時間より長く待つと、
             # 掃除済みのjob_idを引いて「ジョブが見つかりません」になる。
             "job_result_ttl_seconds": JOB_TTL_SECONDS,
+            # ルート候補の型の契約の印。画面は端末に置いた候補にこの印を添え、印が違う候補は今の型で読めないとして使わない。
+            "route_candidate_shape": schema_shape_mark(openapi, "RouteCandidate"),  # type: ignore[arg-type]
             # 風の予報を追う長さ（レグごと、時刻ビンの本数×幅）。区間の詳細の説明が、この先は最後に追った時刻の予報を
             # そのまま使うことを数字で示す。
             "wind_forecast_hours_per_leg": MAX_TIME_BINS * TIME_BIN_HOURS,

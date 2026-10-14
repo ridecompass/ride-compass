@@ -9,6 +9,8 @@ import palette from "@/types/generated/palette.json";
 import type { ExpressionSpecification, FilterSpecification } from "maplibre-gl";
 import type { Feature, FeatureCollection, LineString, Position } from "geojson";
 
+import { createRouteArrowIcon, ROUTE_ARROW_ICON_ID } from "@/features/map/layers/routeArrowIcon";
+import type { MapSceneImage } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 import { noDataDashExpression, zoomScaleExpression, sceneSourceId } from "@/features/map/scene/sceneBuilders";
 
@@ -32,7 +34,6 @@ const TRAVELLED_OPACITY: ExpressionSpecification = [
 const HIT_PAINT = { "line-color": palette.semantic.hit, "line-opacity": 0 } as const;
 const ROUND_CAP = { "line-cap": "round", "line-join": "round" } as const;
 
-export const ROUTE_HIT_TARGET = "route";
 export const ROUTE_HIT_TARGET_SEGMENT = "routeSegment";
 export const ROUTE_HIT_TARGET_SPLICE_BAND = "routeSpliceBand";
 
@@ -52,8 +53,6 @@ export type RouteState = {
   readonly hiddenBandFilter?: FilterSpecification;
   readonly spliceBands: readonly Shape[];
   readonly composite: Shape | null;
-  /** 進行方向の矢印の絵。色を持たないシルエット（SDF）であること——色はレイヤーが決める。 */
-  readonly arrowIconImage: string;
 };
 
 const SOURCE = {
@@ -76,6 +75,12 @@ function collection(features: readonly Feature<LineString>[]): FeatureCollection
   return { type: "FeatureCollection", features: [...features] };
 }
 
+/** 進行方向の矢印の絵。色を持たないシルエットで、色はレイヤーが決める。 */
+const ROUTE_ARROW_IMAGE: MapSceneImage = {
+  id: ROUTE_ARROW_ICON_ID,
+  draw: () => ({ data: createRouteArrowIcon(), options: { sdf: true } }),
+};
+
 export const routeGroup = declareGroup<RouteState>((state) => {
   // 衝突判定を無効にする——有効にすると、同じ位置の2層のうち後ろが丸ごと落ちる。
   const arrowLayer = (role: string, scale: number, color: string, opacity: number): SceneLayerEntry => ({
@@ -85,7 +90,7 @@ export const routeGroup = declareGroup<RouteState>((state) => {
     type: "symbol",
     visible: state.visible,
     layout: {
-      "icon-image": state.arrowIconImage,
+      "icon-image": ROUTE_ARROW_ICON_ID,
       "symbol-placement": "line",
       "symbol-spacing": ROUTE.arrowSpacingPx,
       "icon-allow-overlap": true,
@@ -221,7 +226,7 @@ export const routeGroup = declareGroup<RouteState>((state) => {
       type: "line",
       visible: state.visible,
       paint: { ...HIT_PAINT, "line-width": HIT_WIDTH_PX },
-      hitTargets: [ROUTE_HIT_TARGET, ROUTE_HIT_TARGET_SEGMENT],
+      hitTargets: [ROUTE_HIT_TARGET_SEGMENT],
     }),
     // 帯の当たり判定は区間の当たり判定より前面——区間の当たり判定はルート全体を覆うため、
     // 後ろだと帯を一度も押せない。
@@ -232,11 +237,11 @@ export const routeGroup = declareGroup<RouteState>((state) => {
       type: "line",
       visible: state.visible,
       paint: { ...HIT_PAINT, "line-width": HIT_WIDTH_PX },
-      hitTargets: [ROUTE_HIT_TARGET, ROUTE_HIT_TARGET_SPLICE_BAND],
+      hitTargets: [ROUTE_HIT_TARGET_SPLICE_BAND],
     },
     arrowLayer("arrowHalo", ROUTE.arrowHaloScale, palette.semantic.route_arrow_halo, ROUTE.opacities.arrowHalo),
     arrowLayer("arrow", 1, palette.semantic.route_arrow, 1),
   ];
 
-  return { sources, layers };
+  return { sources, layers, images: [ROUTE_ARROW_IMAGE] };
 });
