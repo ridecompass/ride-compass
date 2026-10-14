@@ -45,7 +45,7 @@
    材料の値式（`domain/material_catalog.py: MaterialSpec.value_sql`へ1件）→ 軸定義（軸スタジオが
    `axis_definitions`へ1行）→ フロントは軸カタログから汎用機構が組み立てる、という一本の
    データフローのみを持つ。エンジンファイルに軸固有の知識を
-   持たない。この構造は`dedicated_way_value_layer`軸（wind/gradient等、専用の
+   持たない。この構造は専用配信の軸（wind/gradient等、専用の
    フィーチャー→値の配信レイヤーを持つ軸）にも同様に適用する——feature-stateキー・
    color expression・redraw再適用・interactiveLayerIds所属・環境グループのgridFill計算は、
    いずれも軸スタジオのデータから導出する汎用機構1つが持つ。

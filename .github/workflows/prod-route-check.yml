@@ -22,6 +22,10 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
+      # 生成の既定の条件と、レンズが区間のどの値を塗るかは、backendの宣言から読む。
+      - uses: ./.github/actions/python
+        with:
+          requirements: requirements.txt
       - name: 本番でルートを作って区間の値を見る
         timeout-minutes: 3
-        run: python3 backend/scripts/prod_route_check.py
+        run: python backend/scripts/prod_route_check.py

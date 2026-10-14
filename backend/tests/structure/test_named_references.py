@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import ast
 import io
-import json
 import re
 import subprocess
 import sys
@@ -48,7 +47,6 @@ TEST_FILE = re.compile(r"(?:^|/)(?:test_[^/]*\.py|[^/]*\.test\.tsx?)$")
 
 # `<…>`・`{…}`はその位置に何かが入る例として読む（`/api/admin<X>`・`/api/admin/<X>`）。
 API_PATH = re.compile(rf"(?<![A-Za-z0-9_./:<>{{}}-])(?P<path>/api/(?:{EXAMPLE.pattern}|[A-Za-z0-9_.{{}}*/-])*)")
-OPENAPI = "frontend/src/types/generated/openapi.json"
 ROUTE_HANDLER = re.compile(r"^frontend/src/app/(?P<path>.*)/route\.ts$")
 
 HASH_COMMENT_SUFFIXES = {".yml", ".yaml", ".sh", ".ini", ".toml"}
@@ -272,11 +270,10 @@ def _api_exists(written: str, routes: list[str]) -> bool:
     return False
 
 
-def dangling_api_paths(root: Path, files: list[str]) -> list[str]:
-    """名指ししたAPIのパス（`/api/…`）のうち、backendのOpenAPIにもNextのroute handlerにも無いものを返す。"""
+def dangling_api_paths(root: Path, files: list[str], api_paths: list[str]) -> list[str]:
+    """名指ししたAPIのパス（`/api/…`）のうち、backendのAPIのパス（`api_paths`）にもNextのroute handlerにも無いものを返す。"""
     repo = _Repository(root, files)
-    routes = list(json.loads(repo.text(OPENAPI))["paths"])
-    routes += [t for t in map(_route_template, files) if t and t.startswith("/api/")]
+    routes = api_paths + [t for t in map(_route_template, files) if t and t.startswith("/api/")]
     found = []
     for rel_path, prose in _prose_files(repo):
         for m in API_PATH.finditer(prose):
@@ -304,7 +301,9 @@ def test_named_paths_exist() -> None:
 
 
 def test_named_api_paths_exist() -> None:
-    dangling = dangling_api_paths(REPO_ROOT, repository_files(REPO_ROOT))
+    from app.main import app
+
+    dangling = dangling_api_paths(REPO_ROOT, repository_files(REPO_ROOT), list(app.openapi()["paths"]))
 
     assert dangling == [], (
         "文書・コメントが名指ししたAPIのパスが見つからない。今のパスへ直すか、例なら`<…>`の形で書く:\n  "
@@ -402,7 +401,6 @@ def test_detects_dangling_api_paths(tmp_path: Path) -> None:
     files = _write_repository(
         tmp_path,
         {
-            OPENAPI: '{"paths": {"/api/admin/items/{item_id}/values": {}, "/api/tiles/{path}": {}}}\n',
             "frontend/src/app/api/version/route.ts": "export const GET = 1;\n",
             "frontend/src/app/admin/api/[...path]/route.ts": "export const GET = 1;\n",
             "backend/app/c.py": 'URL = "/api/gone"\n',
@@ -414,7 +412,7 @@ def test_detects_dangling_api_paths(tmp_path: Path) -> None:
         },
     )
 
-    assert dangling_api_paths(tmp_path, files) == [
+    assert dangling_api_paths(tmp_path, files, ["/api/admin/items/{item_id}/values", "/api/tiles/{path}"]) == [
         "docs/api.md:2: /api/items/{item_id}/values（そのパスのAPIが無い）",
         "docs/api.md:2: /api/version/gone（そのパスのAPIが無い）",
         "docs/api.md:2: /api/admi（そのパスのAPIが無い）",
