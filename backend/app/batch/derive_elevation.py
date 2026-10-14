@@ -171,5 +171,3 @@ async def derive(conn: asyncpg.Connection, *, previous: str | None) -> None:
     """`previous`は前回の表のスキーマ。Noneなら全区間を計算する。"""
     async with conn.transaction():
         await _derive_elevation(conn, previous)
-        # 道路網の配列が作業用のスキーマのこの表を区間ごとに主キーで引く。統計が無いと実行計画が桁で外れる。
-        await conn.execute("ANALYZE edge_elevation")
