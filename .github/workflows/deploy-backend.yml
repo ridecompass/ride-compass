@@ -7,7 +7,8 @@
 name: Deploy Backend to Oracle VM
 
 on:
-  # ci.ymlが、masterへのpushでCIの全ジョブが通ったあとに呼ぶ（どれかが赤なら呼ばれない）。
+  # ci.ymlが、masterへのpushで、changesがbackendを出すと決め、ci-okが通ったときだけ呼ぶ（changesが要らないと
+  # 決めて飛ばしたジョブは ci-ok を止めない。走らせたジョブのどれかが赤なら呼ばれない）。
   # 呼ばれたときの`github.sha`は、CIを通ったそのコミット。
   workflow_call:
   # 手動のデプロイ。CIを待たず、選んだrefの先端をそのまま出す。

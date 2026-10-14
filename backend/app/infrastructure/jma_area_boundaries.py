@@ -105,11 +105,8 @@ async def find_class20_code(lat: float, lon: float) -> str | None:
 
 
 async def area_shape(class20_code: str) -> BaseGeometry | None:
-    """区域（area.jsonのclass20）の境界。境界を読めない・無いコードならNone（範囲を添えないだけで、警報の取得は止めない）。"""
-    try:
-        boundaries = await asyncio.to_thread(load_boundaries, BOUNDARY_PATH)
-    except (OSError, ValueError, shapely.errors.GEOSException):
-        return None
+    """区域（area.jsonのclass20）の境界。無いコードならNone。境界は`find_class20_code`が読み込んだあとに呼ぶ。"""
+    boundaries = await asyncio.to_thread(load_boundaries, BOUNDARY_PATH)
     return boundaries.shape(class20_code)
 
 

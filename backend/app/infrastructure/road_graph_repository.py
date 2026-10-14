@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays, MaterialColumn
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments
+from app.domain.geo import midpoint_sql
 from app.domain.graph import LeanEdge, edge_feature_key_sql, edge_key, node_key, parse_edge_feature_key
 from app.domain.hard_filters import HARD_FILTER_VALUE_SQL, hard_filter_columns
 from app.domain.landcover import LandcoverPercentages, landcover_key
@@ -193,8 +194,7 @@ _EXTRA_MATERIAL_ARRAY_COLUMNS: dict[str, str] = {
     "distance_m": "re.distance_m",
     # 逆向きの方位は+180°ではない。両向きぶんを列で持つ（`road_edges`）。
     "bearing_deg": "CASE WHEN ids.forward THEN re.bearing_deg ELSE re.reverse_bearing_deg END",
-    "mid_lat": "(ST_Y(nf.geom) + ST_Y(nt.geom)) / 2",
-    "mid_lon": "(ST_X(nf.geom) + ST_X(nt.geom)) / 2",
+    **dict(zip(("mid_lat", "mid_lon"), midpoint_sql("nf.geom", "nt.geom"), strict=True)),
     "elevation_present": "em.start_elevation_m IS NOT NULL",
     "elevation_gain_m": "em.elevation_gain_m",
     "elevation_loss_m": "em.elevation_loss_m",

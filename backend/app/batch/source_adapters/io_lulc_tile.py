@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app.batch.ingest import AdapterInputs, SourceRecord, file_origin, register_adapter
+from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
 from app.batch.source_adapters.raster_wkb import tile_bbox_wkb, tile_raster_wkb
 from app.batch.source_profile import SourceProfile, SourceSpec
 from app.domain.region import tiles_covering_bbox
@@ -44,15 +44,12 @@ def lulc_tile_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
 
 
 @register_adapter("io_lulc_tile", grid=LulcGrid, required=(SourceFeatureRow.rast,), inputs=lulc_tile_inputs)
-async def read_lulc_tiles(spec: SourceSpec, profile: SourceProfile,
+async def read_lulc_tiles(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                           origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     from app.infrastructure.landcover_raster import tile_classes
 
-    rasters = _opened_raster_paths()
-
     zoom = int(spec.grid.zoom)
-    origin.update({"zoom": zoom,
-                   "rasters": [file_origin(Path(raster)) for raster in rasters]})
+    origin["zoom"] = zoom
     tiles = tiles_covering_bbox(profile.target.bounding_box(), zoom)
     logger.info("土地被覆タイル: zoom=%d 対象%d枚", zoom, len(tiles))
 

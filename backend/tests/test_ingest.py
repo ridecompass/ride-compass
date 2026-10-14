@@ -50,7 +50,7 @@ def _only(source: str, adapter: str) -> SourceProfile:
         SourceSpec(name=source, adapter=adapter, rows=NoFields(), grid=NoFields()),))
 
 
-async def _large_rows(spec, profile, origin):
+async def _large_rows(spec, profile, inputs, origin):
     for i in range(ROWS):
         yield SourceRecord(natural_key=str(i), geom_wkb=POINT_WKB, attrs={"i": i},
                            payload=bytes(ROW_BYTES))
@@ -87,13 +87,13 @@ async def test_memory_held_while_ingesting_does_not_grow_with_the_rows(conn, mon
     assert peak < ROWS * ROW_BYTES / 10, f"取込の間の確保の最大 {peak / 1e6:.1f}MB"
 
 
-async def _breaks_midway(spec, profile, origin):
+async def _breaks_midway(spec, profile, inputs, origin):
     yield SourceRecord(natural_key="new", geom_wkb=POINT_WKB, attrs={})
     raise OSError("配信元が途中で切れた")
 
 
 async def test_a_failed_ingest_leaves_a_failed_run_and_the_previous_rows(conn, monkeypatch):
-    async def one_row(spec, profile, origin):
+    async def one_row(spec, profile, inputs, origin):
         yield SourceRecord(natural_key="old", geom_wkb=POINT_WKB, attrs={})
 
     monkeypatch.setitem(ADAPTERS, "one_row", RegisteredAdapter(read=one_row, rows=NoFields, grid=NoFields))
@@ -119,7 +119,7 @@ async def test_ingesting_inside_a_transaction_is_refused(conn, monkeypatch):
 
 
 async def test_a_rebuild_is_refused_while_an_import_runs(conn, monkeypatch):
-    async def rebuild_meanwhile(spec, profile, origin):
+    async def rebuild_meanwhile(spec, profile, inputs, origin):
         with pytest.raises(RuntimeError, match="取込が走っている"):
             await derive_cli.run(postgis_database_url())
         yield SourceRecord(natural_key="new", geom_wkb=POINT_WKB, attrs={})
@@ -129,7 +129,7 @@ async def test_a_rebuild_is_refused_while_an_import_runs(conn, monkeypatch):
 
 
 async def test_a_row_missing_a_column_the_adapter_requires_is_refused(conn, monkeypatch):
-    async def without_payload(spec, profile, origin):
+    async def without_payload(spec, profile, inputs, origin):
         yield SourceRecord(natural_key="1", geom_wkb=POINT_WKB, attrs={})
 
     monkeypatch.setitem(ADAPTERS, "without_payload", RegisteredAdapter(

@@ -63,8 +63,8 @@ function isWeights(value: unknown): value is RoutePreferenceWeights {
 const coordinatesOrNull = (value: unknown) => (value === null || isCoordinates(value) ? value : undefined);
 
 // 全長の目標の有無を持たない件は、前に周回・目的地のモードで保存した件。周回は距離で作り、経由地・目的地を置いてあっても
-// 隠して使わず、目的地は距離を決めずに作っていた。この端末の保存は書き換えられないので、読むたびにモードから読み替える
-// （次に一覧を保存すると今の形で書かれる）。
+// 隠して使わず、目的地は距離を決めずに作っていた。一覧を読むと今の形で書き戻す（`useSavedConditions.ts`の`rewrite`）ので、
+// この読み替えは一覧をまだ開いていない端末のためだけにある。
 function savedMode(entry: Record<string, unknown>): "loop" | "destination" | null {
   if (entry.distanceTargeted !== undefined) return null;
   return entry.routeMode === "loop" || entry.routeMode === "destination" ? entry.routeMode : null;

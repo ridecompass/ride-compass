@@ -676,7 +676,7 @@ REQUIRED_EXTENSIONS`が正本で、足りないときは`create_tables()`が実�
 #### 変異テストでテストの効きを測る
 
 今のテストが、実装の1か所の書き換え（`<` を `<=` に・`+` を `-` に等）を見つけられるかを測る。テストを消す・足す判断の
-材料にする（tasks#661）。台本は `backend/scripts/mutation/`（各ファイルの先頭に使い方）、回すのは
+材料にする。台本は `backend/scripts/mutation/`（各ファイルの先頭に使い方）、回すのは
 `.github/workflows/mutation.yml`（手で起こす。CI の backend と同じ arm64・4コアのランナーを8本並べる）。
 
 ```bash

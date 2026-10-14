@@ -173,7 +173,6 @@ async def derive(conn: asyncpg.Connection) -> None:
         temples = affected_rows(await conn.execute(_INSERT_TEMPLES, HERITAGE_MERGE_RADIUS_M))
         await conn.execute(_SET_AREAS)
         located = await conn.fetchval("SELECT count(*) FROM stop_places WHERE area IS NOT NULL")
-    await conn.execute("ANALYZE stop_places")
     logger.info("立ち寄り先: 群に入った %d件 → 連絡先で寄せて %d件減 → まとめて %d件、寺社の文化財 %d件 → 寺社 %d件、"
                 "辺りの付いた %d件 / %.1f秒", grouped, merged_by_contact, inserted, temple_buildings, temples, located,
                 time.perf_counter() - started)

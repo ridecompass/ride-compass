@@ -303,7 +303,7 @@ TravelBearingControl.tsx`（`page.tsx`から直接importされ地図上に置か
 
 地図上でルート線の区間をクリックすると、`useRouteResults.ts: selectedRouteSegment` state
 （`{ segment: RouteSegmentDetail, latitude, longitude }`、`MapView.tsx:
-handleRouteSegmentClick`がクリック地点の座標とともに設定する）が入る。地図側は
+openRouteSegment`がクリック地点の座標とともに設定する）が入る。地図側は
 クリック地点へ軽量なマーカーを立てるだけでテキストポップアップは出さない
 （[地図: 静的レイヤー・道路表示](static-map-layers.md)参照）。`selectedRouteSegment`が
 non-nullの間、「ルート結果」タブはルート全体の内訳の代わりにその区間の地点・到達予想
@@ -355,7 +355,7 @@ non-nullの間、「ルート結果」タブはルート全体の内訳の代わ
   条件・重み・除外を組み直すことになるため（[デザイン基盤](frontend-design-system.md)「意図的に作らない・統合しないもの」の確認の窓の決まり）。
 - **読み方**: 保存値は読むときに、今の画面が受け付けない件（範囲の外の距離・候補数、上限を超える経由地等）だけを捨て、
   ほかの件は残す。周回・目的地のモードを切り替えていた頃に保存した件は、周回なら全長の目標を決めて経由地・目的地を外し（周回は置いて
-  あっても隠して使わなかった）、目的地なら全長の目標を外した形で読む——端末の保存は書き換えられないので、読むたびに読み替える。除外は今の項目へ揃え、重みは「重み」へ入れたあと、いつもの保存値と同じく軸カタログの公開軸へ揃える
+  あっても隠して使わなかった）、目的地なら全長の目標を外した形で読み、読んだ一覧を今の形で書き戻す（`useStoredState`の`rewrite`）。除外は今の項目へ揃え、重みは「重み」へ入れたあと、いつもの保存値と同じく軸カタログの公開軸へ揃える
   （「RouteSettingsPanel.tsx」）。
 
 ## 保存した地点（SavedPlacesPanel.tsx・useSavedPlaces.ts・PointDetail.tsx）
