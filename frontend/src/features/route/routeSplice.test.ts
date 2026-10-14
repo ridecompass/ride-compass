@@ -15,6 +15,7 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { routeEdgeKms } from "@/lib/routeDistance";
 import { routeThrough, type Places } from "@/testing/routeFixtures";
 
 import { buildSplicedShape, pairedStretches, stretchAlternativeGroups } from "./routeSplice";
@@ -43,6 +44,7 @@ function shape(names: string) {
     coordinates: route.geometry.coordinates,
     edgePointOffsets: route.edge_point_offsets,
     nodeIds: route.node_ids,
+    edgeKms: routeEdgeKms(route.segments, route.edge_point_offsets),
   };
 }
 

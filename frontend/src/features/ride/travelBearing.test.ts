@@ -1,10 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
+import { METERS_PER_DEGREE } from "@/lib/localPlane";
+
 import { MIN_TRAVEL_FOR_BEARING_M, nextTravelBearing, type TravelFix } from "./travelBearing";
 
-// 東京の辺りで、真北・真東へ`meters`だけ動いた点（緯度1度≒111km）。
+// 東京の辺りで、真北・真東へ`meters`だけ動いた点。
 const ORIGIN = { latitude: 35.68, longitude: 139.76 };
-const METERS_PER_DEGREE = 111_195;
 function movedNorth(meters: number) {
   return { latitude: ORIGIN.latitude + meters / METERS_PER_DEGREE, longitude: ORIGIN.longitude };
 }
