@@ -3,12 +3,8 @@
  * **画面部品ではなくここに置く**——値の整形・丸めは「描くもの」の持ち物ではない。
  * 部品に置くと、確かめる側が部品へ口を開けることになる。
  */
-import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import { MINUTE_MS } from "@/lib/duration";
 import { formatJstMinute, isSameJstDay, jstParts } from "@/lib/time";
-
-export const MIN_SPEED_KMH = routeGenerateConfig.min_assumed_speed_kmh;
-export const MAX_SPEED_KMH = routeGenerateConfig.max_assumed_speed_kmh;
 
 /** 出発時刻として選べる値の刻み。「今」もこの刻みで進む。 */
 export const DEPARTURE_STEP_MS = 5 * MINUTE_MS;
@@ -29,9 +25,4 @@ export function departureLabelParts(time: Date, now: Date): string[] {
 /** 出発時刻の表示ラベル。`now`と同じ日（日本時間）は「9:30」、別日は「9/6 9:30」。 */
 export function formatDepartureLabel(time: Date, now: Date): string {
   return departureLabelParts(time, now).join(" ");
-}
-
-export function clampSpeedKmh(value: number): number {
-  if (!Number.isFinite(value)) return routeGenerateConfig.default_assumed_speed_kmh;
-  return Math.min(MAX_SPEED_KMH, Math.max(MIN_SPEED_KMH, Math.round(value)));
 }

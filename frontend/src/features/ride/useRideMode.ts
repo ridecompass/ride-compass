@@ -6,6 +6,8 @@ import { debugLog } from "@/lib/debugLog";
 import { haversineKm } from "@/lib/geoDistance";
 import type { Coordinates } from "@/types/route";
 
+import { trueHeadingDeg } from "@/lib/magneticDeclination";
+
 import { nextTravelBearing, type TravelBearing } from "./travelBearing";
 import { useDeviceHeading } from "./useDeviceHeading";
 import { useScreenWakeLock, type ScreenWakeLockStatus } from "./useScreenWakeLock";
@@ -18,7 +20,7 @@ interface RideOnMap {
   position: Coordinates | null;
   /** 進む向き（真北0・時計回りの度）。まだ分からなければnull。 */
   bearing: number | null;
-  /** スマホが向いている方角（磁北0・時計回りの度）。読めなければnull。 */
+  /** スマホが向いている方角（真北0・時計回りの度。端末の読みは磁北が基準なので、現在地の偏角で直す）。読めなければnull。 */
   facing: number | null;
   following: boolean;
   /** 今の速さ（時速km）。分からなければnull。 */
@@ -152,7 +154,7 @@ export function useRideMode(): UseRideModeResult {
         : {
             position,
             bearing: travel?.bearing ?? null,
-            facing: device.heading,
+            facing: device.heading !== null && position !== null ? trueHeadingDeg(device.heading, position) : null,
             following: status === "following",
             speedKmh: speedMs !== null ? speedMs * 3.6 : null,
             headingUp,

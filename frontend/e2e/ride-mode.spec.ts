@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Locator, type Page } from "@playwright/test";
+import { trueHeadingDeg } from "@/lib/magneticDeclination";
 import { moved } from "@/testing/movedPoint";
 
 import { INTRO_CLOSED, installApiMocks, installMapFinder, seedStoredState } from "./fixtures";
@@ -156,14 +157,15 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   expect(zOrder.filter(({ ride }) => !ride).length).toBeGreaterThan(0);
   expect(zOrder.filter(({ ride, z }) => !ride && z >= rideZ[0])).toEqual([]);
 
-  // スマホが東を向くと、現在地の印の扇形が東を指す（地図が北を上にしている間）。出来事はブラウザの違いによらず読める形で届ける。
+  // スマホのコンパスが東（磁北から90度）を向くと、現在地の印の扇形は、その地点の偏角だけ戻した真北の基準の方角を指す（地図が北を上に
+  // している間）。出来事はブラウザの違いによらず読める形で届ける。
   expect(await coneDirection(page)).toBeNull();
   await page.evaluate(() => {
     const event = new Event("deviceorientation");
     Object.assign(event, { alpha: 0, webkitCompassHeading: 90 });
     window.dispatchEvent(event);
   });
-  await expect.poll(() => coneDirection(page)).toBeCloseTo(90, -1);
+  await expect.poll(() => coneDirection(page)).toBeCloseTo(trueHeadingDeg(90, START), 0);
 
   // 最初の位置へ寄せ終わったら、そこに描かれた所を基準にし、東へ動いても同じ所に描かれる（地図が追った）。
   const anchor = await settledScreenPoint(page, START);

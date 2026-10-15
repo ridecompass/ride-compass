@@ -13,7 +13,7 @@ export interface RideFollow {
   position: Coordinates | null;
   /** 進む向き（真北0・時計回りの度）。まだ分からなければnull。 */
   bearing: number | null;
-  /** スマホが向いている方角（磁北0・時計回りの度）。読めなければnull（向きの印を出さない）。 */
+  /** スマホが向いている方角（真北0・時計回りの度）。読めなければnull（向きの印を出さない）。 */
   facing: number | null;
   following: boolean;
   /** 今の速さ（時速km）。分からなければnull。追っている間の倍率に使う。 */
