@@ -7,16 +7,18 @@
  *   全消去は確認の窓で「消す」を押してから両方から消えること、候補がある間だけ条件のずれの印が点き全消去で消えること、走行条件の想定速度・出発時刻が
  *   生成と地図の道の詳細へ同じ値で渡ること、「地図の色分け」の未使用を分ける重み（生成の前はいまの重み・後は使われた重み）、
  *   保存した条件が地図で置いた出発地を持ち、呼び出すとその出発地から生成すること、前に保存した条件が「保存」の「設定」に出ること
- * - 地図で扱えること: 地点を置けるのは「ルート設定」の条件タブを見ている間だけで、目的地の行で探して置いた地点と、
- *   名前のある点の小窓から置いた地点が地図に立ち、行にその名前が出ること、
- *   名前を付けて保存した地点を打つ欄から選び直せ、「保存」の「地点」に並ぶこと、
- *   区間を押して詳細を出せるのは「ルート結果」を見ている間だけのこと、編集の間は地図で地点も区間も扱わず全部の候補を重ね、
+ * - 地図で扱えること: 地図を押したときの意味は効いているパネルで決まり（「ルート設定」の条件タブは選んでいる地点を置く、
+ *   「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
+ *   2つの区分を開いていれば最後に触った区分が効いてその題に添えること、ピンを押しても消えずルート設定ではその地点を選ぶこと、
+ *   目的地の行で探して置いた地点と、名前のある点を押して置いた地点が地図に立ち、行にその名前が出ること、
+ *   名前を付けて保存した地点を打つ欄から選び直せ、「保存」の「地点」に並ぶこと、編集の間は地図で地点も区間も扱わず全部の候補を重ね、
  *   作り直すと編集が終わること、作ると直前の作り直しの失敗の文言を消し、合成ルートを選んでいる間は元のルートだけを重ねること、
  *   地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）
  * - 画面の枠: スマホの下部タブとシート（1枚ずつ開く・地点を扱える間・結果の合図・候補が届いた時点で「ルート設定」を開いて
  *   いれば「ルート結果」へ移ってそこから全消去でき、ほかのときは移らず合図を出すこと・候補を出せなかった理由の1行・
  *   決めた高さを2枚のシートで分け合うこと）、区分の開閉の保存、
- *   ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、メニューから入る使い方の説明とデバッグログ、
+ *   ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、「現在地に移動」が出発地を変えずに地図を寄せて現在地に点を
+ *   出すこと、メニューから入る使い方の説明とデバッグログ、
  *   走行モードの間の配置と、届いた現在地がプロファイルの印と地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、
  *   到着予想が位置を受けた時刻と選んだ候補の計画から出ること
  *
@@ -202,10 +204,9 @@ function marksAt(point: Coordinates) {
     .filter((mark) => mark.coordinates.latitude === point.latitude && mark.coordinates.longitude === point.longitude);
 }
 
-/** 地点の並びで目的地を押し、地図で選ぶ状態にする（押さなければ地図のタップは地点を置かない）。 */
-async function armDestination(user: User) {
+/** 地点の並びで目的地を押して選ぶ（「ルート設定」が効いている間、地図を押すと選んでいる地点を置く。何も押していなければ出発地）。 */
+async function selectDestination(user: User) {
   await user.click(screen.getByRole("button", { name: "目的地: 未設定" }));
-  await user.click(screen.getByRole("button", { name: "目的地を地図で選ぶ" }));
 }
 
 /** 地図を押す。`features`はそこに描かれている地物。 */
@@ -338,11 +339,13 @@ describe("ルートを作る", () => {
     // 出発日時の入力は日本時間で読む。
     fireEvent.change(await screen.findByLabelText("出発日時を直接指定"), { target: { value: "2026-10-05T09:00" } });
 
-    // 道を押せるのは、道路のレイヤーを出している間。
+    // 道を押せるのは、道路のレイヤーを出していて、パネルを閉じて見るだけの間。
     await showRoadSurface(user);
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     clickMap(HERE, [{ layer: "road-tiles-surface", properties: { osm_way_id: 1, feature_key: "1" } }]);
     await user.click(screen.getByRole("button", { name: "この道の評価を見る" }));
     expect(await screen.findByText(/この道全体で見た難易度/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "パネルを開く" }));
     jobs.respond([FIRST], LOOP_CONDITIONS);
     expect(await generate(user)).toMatchObject({ assumed_speed_kmh: 25, start_time: departure.toISOString() });
   });
@@ -371,7 +374,6 @@ describe("ルートを作る", () => {
     };
     const origin = (body: Record<string, unknown>) => ({ latitude: body.latitude, longitude: body.longitude });
 
-    await user.click(screen.getByRole("button", { name: "出発地を地図で選ぶ" }));
     clickMap(PLACED);
     await saveAs("置いた所");
     await user.click(screen.getByRole("button", { name: "出発地を現在地に戻す" }));
@@ -432,9 +434,9 @@ describe("ルートを作る", () => {
 });
 
 describe("地図で扱えること", () => {
-  it("地点を置けるのは「ルート設定」の条件タブを見ている間だけ（パネルを畳むと区分ごと隠れる）", async () => {
+  it("地図を押したときの意味は効いているパネルで決まる: 「ルート設定」の条件タブは選んでいる地点を置き、ほかのタブ・閉じている間は置かない", async () => {
     const { user } = renderHome();
-    await armDestination(user);
+    await selectDestination(user);
     clickMap(DESTINATION);
     expect(marksAt(DESTINATION)).toEqual([expect.objectContaining({ draggable: true })]);
     expect(screen.getByRole("button", { name: "目的地を消す" })).toBeInTheDocument();
@@ -455,9 +457,57 @@ describe("地図で扱えること", () => {
     await user.click(screen.getByRole("button", { name: "パネルを開く" }));
     clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([expect.objectContaining({ draggable: true })]);
+    expect(screen.getByRole("button", { name: "経由地1: 地図で選んだ地点" })).toBeInTheDocument();
   });
 
-  it("名前のある点の小窓から、経由地に足す・目的地にすると地図と地点の並びにその名前で出し、条件タブを見ていない間は置く操作を出さない", async () => {
+  it("PC で2つの区分を開いているときは最後に触った区分が効いてその題に添え、「ルート結果」では候補の線を押すとそのルートを選ぶ", async () => {
+    const { user } = renderHome();
+    expect(section("ルート設定")).toHaveAccessibleDescription("地図で操作中");
+    expect(section("ルート結果")).not.toHaveAccessibleDescription();
+
+    jobs.respond([FIRST, SECOND], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(2));
+    // 結果が届いたら「ルート結果」が効く。
+    expect(section("ルート結果")).toHaveAccessibleDescription("地図で操作中");
+    expect(section("ルート設定")).not.toHaveAccessibleDescription();
+    const [secondLine] = mapOnScreen()
+      .sourceFeatures("route-candidates")
+      .filter((line) => line.properties?.routeId === SECOND.id);
+    clickMap(ELSEWHERE, [
+      {
+        layer: "route-candidates-candidateHit",
+        properties: secondLine.properties ?? {},
+        geometry: secondLine.geometry,
+      },
+    ]);
+    expect(linesOn("route-selected")).toEqual([SECOND.geometry.coordinates]);
+    expect(marksAt(ELSEWHERE)).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: "出発地: 現在地" }));
+    expect(section("ルート設定")).toHaveAccessibleDescription("地図で操作中");
+    clickMap(ELSEWHERE);
+    expect(marksAt(ELSEWHERE)).toHaveLength(1);
+  });
+
+  it("ピンを押しただけでは消えず、ルート設定ではその地点を選んで詳しくを出し、閉じている間は呼び名と名前を小窓に出す", async () => {
+    const { user } = renderHome();
+    await selectDestination(user);
+    clickMap(DESTINATION);
+    await user.click(screen.getByRole("button", { name: "出発地: 現在地" }));
+
+    const [destinationPin] = marksAt(DESTINATION);
+    await user.click(destinationPin.element);
+    expect(marksAt(DESTINATION)).toHaveLength(1);
+    expect(screen.getByRole("region", { name: "目的地" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
+    await user.click(destinationPin.element);
+    expect(marksAt(DESTINATION)).toHaveLength(1);
+    expect(screen.getByText("目的地: 地図で選んだ地点")).toBeInTheDocument();
+  });
+
+  it("名前のある点を押すと、選んでいる地点をその点へその名前で置き、地図と地点の並びに出す。閉じている間は置かない", async () => {
     const shop: Coordinates = { latitude: 35.71, longitude: 139.71 };
     const pointed = [
       {
@@ -471,13 +521,14 @@ describe("地図で扱えること", () => {
     await user.click(screen.getByRole("checkbox", { name: "補給・休憩ポイント" }));
     await user.keyboard("{Escape}");
 
-    clickMap(shop, pointed);
-    await user.click(screen.getByRole("button", { name: "経由地に足す" }));
+    await user.click(screen.getByRole("button", { name: "経由地を足す" }));
+    // 押した所は絵の端でも、点そのものの位置へ置く。
+    clickMap(ELSEWHERE, pointed);
     expect(marksAt(shop)).toHaveLength(1);
     expect(screen.getByRole("button", { name: "経由地1: 角の店" })).toBeInTheDocument();
 
+    await selectDestination(user);
     clickMap(shop, pointed);
-    await user.click(screen.getByRole("button", { name: "目的地にする" }));
     expect(marksAt(shop)).toHaveLength(2);
     expect(screen.getByRole("button", { name: "目的地: 角の店" })).toBeInTheDocument();
     // 地図の印は役割の名前で見分けられ、地点の並びの印と同じ記号を描く。
@@ -490,9 +541,9 @@ describe("地図で扱えること", () => {
     expect(listedDestination?.innerHTML).toBeTruthy();
     expect(destinationMark.querySelector("svg")?.innerHTML).toBe(listedDestination?.innerHTML);
 
-    await user.click(screen.getByRole("tab", { name: "重み" }));
-    clickMap(shop, pointed);
-    expect(screen.queryByRole("button", { name: "経由地に足す" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
+    clickMap(ELSEWHERE, pointed);
+    expect(marksAt(shop)).toHaveLength(2);
   });
 
   it("目的地を探して選んだ地点は地図に目的地として立ち、地点の並びにその名前が出る", async () => {
@@ -518,7 +569,7 @@ describe("地図で扱えること", () => {
 
   it("名前を付けて保存した地点は、目的地を消したあとも打つ欄を押して選び直せ、「保存」の「地点」に並ぶ", async () => {
     const { user } = renderHome();
-    await armDestination(user);
+    await selectDestination(user);
     clickMap(DESTINATION);
     await user.click(screen.getByRole("button", { name: "地点を保存" }));
     const dialog = screen.getByRole("dialog", { name: "地点を保存" });
@@ -540,20 +591,24 @@ describe("地図で扱えること", () => {
     expect(screen.getByRole("button", { name: "「いつものカフェ」を消す" })).toBeInTheDocument();
   });
 
-  it("地図で区間を押して詳細を出せるのは「ルート結果」を見ている間だけ", async () => {
+  it("区間を押すと、「ルート結果」が効いている間はその中に、閉じている間は地図の小窓に中身を出し、「ルート設定」が効いている間は出さない", async () => {
     const { user } = renderHome();
     jobs.respond([FIRST], LOOP_CONDITIONS);
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
     const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
 
-    await user.click(section("ルート結果"));
     clickSegment(drawnSegment, HERE);
-    await user.click(section("ルート結果"));
-    expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "区間の選択を解除" }));
 
+    await user.click(screen.getByRole("button", { name: "出発地: 現在地" }));
     clickSegment(drawnSegment, HERE);
-    expect(screen.getByRole("button", { name: "区間の選択を解除" })).toBeInTheDocument();
+    expect(screen.queryByText(/km地点/)).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
+    clickSegment(drawnSegment, HERE);
+    expect(screen.getByText(/km地点/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
   });
 
   describe("区間の乗り換え", () => {
@@ -583,7 +638,7 @@ describe("地図で扱えること", () => {
 
     /** 目的地を置いて2本の候補を作る。 */
     async function generateTwo(user: User) {
-      await armDestination(user);
+      await selectDestination(user);
       clickMap(DESTINATION);
       jobs.respond([BASE, OTHER], DESTINATION_CONDITIONS);
       await generate(user);
@@ -844,7 +899,6 @@ describe("画面の枠", () => {
     await user.click(within(notice).getByRole("button", { name: "閉じる" }));
     expect(screen.queryByRole("dialog", { name: "ルートを作れませんでした" })).toBeNull();
 
-    await user.click(within(settingsSheet).getByRole("button", { name: "出発地を地図で選ぶ" }));
     expect(originMark().draggable).toBe(true);
     await user.click(within(settingsSheet).getByRole("tab", { name: "重み" }));
     expect(originMark().draggable).toBe(false);
@@ -946,10 +1000,21 @@ describe("画面の枠", () => {
     await user.click(screen.getByRole("button", { name: "現在地に移動" }));
     expect(screen.getByText(/現在地を取得できませんでした/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "出発地を地図で選ぶ" }));
     clickMap(HERE);
     await waitFor(() => expect(missing()).toHaveAccessibleName(/警報/));
     expect(missing()).not.toHaveAccessibleName(/現在地/);
+  });
+
+  it("「現在地に移動」は現在地を取り直して地図を寄せ、出発地は変えずに現在地に点を出す", async () => {
+    const { user } = renderHome();
+    clickMap(ELSEWHERE);
+    expect(marksAt(ELSEWHERE)).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: "現在地に移動" }));
+
+    expect(marksAt(ELSEWHERE)).toHaveLength(1);
+    expect(screen.getByRole("img", { name: "現在地" })).toBeInTheDocument();
+    expect(marksAt(HERE).map(({ element }) => element.getAttribute("aria-label"))).toEqual(["現在地"]);
   });
 
   it("メニューから使い方の説明に入って「やめる」で抜け、デバッグログをメニューから開いてログの側から閉じられる", async () => {

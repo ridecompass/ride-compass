@@ -33,7 +33,7 @@ export function useRouteFormSubmit({
 
   function check() {
     if (!originKnown) {
-      setError("現在地が分かりません。位置情報を許可するか、「出発地を地図で選ぶ」を押して地図をタップしてください。");
+      setError("現在地が分かりません。位置情報を許可するか、地図をタップして出発地を置いてください。");
       return false;
     }
     if (!distanceTargeted && waypointCount === 0 && !destinationSet) {

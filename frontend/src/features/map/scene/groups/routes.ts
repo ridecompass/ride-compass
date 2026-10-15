@@ -35,6 +35,7 @@ const HIT_PAINT = { "line-color": palette.semantic.hit, "line-opacity": 0 } as c
 const ROUND_CAP = { "line-cap": "round", "line-join": "round" } as const;
 
 export const ROUTE_HIT_TARGET_SEGMENT = "routeSegment";
+export const ROUTE_HIT_TARGET_CANDIDATE = "routeCandidate";
 export const ROUTE_HIT_TARGET_SPLICE_BAND = "routeSpliceBand";
 
 type Shape = { readonly path: RoutePath; readonly properties?: Readonly<Record<string, unknown>> };
@@ -110,7 +111,7 @@ export const routeGroup = declareGroup<RouteState>((state) => {
     {
       id: SOURCE.candidates,
       spec: { type: "geojson" },
-      data: collection(references.map((c) => line(c.path))),
+      data: collection(references.map((c) => line(c.path, { routeId: c.routeId }))),
     },
     {
       id: SOURCE.selected,
@@ -162,6 +163,16 @@ export const routeGroup = declareGroup<RouteState>((state) => {
         "line-width": ROUTE.lineWidthsPx.candidate,
         "line-opacity": ROUTE.opacities.candidate,
       },
+    },
+    // 候補の線の当たり判定は、区間と乗り換えの帯の当たり判定より後ろ——重なった所は選んでいるルートの区間・帯を選ぶ。
+    {
+      role: "candidateHit",
+      tier: "route",
+      source: SOURCE.candidates,
+      type: "line",
+      visible: state.visible,
+      paint: { ...HIT_PAINT, "line-width": HIT_WIDTH_PX },
+      hitTargets: [ROUTE_HIT_TARGET_CANDIDATE],
     },
     {
       role: "spliceBandLine",

@@ -22,7 +22,6 @@ import {
   Layers,
   ListChecks,
   MapPin,
-  MapPinned,
   MapPinX,
   Moon,
   Navigation,
@@ -560,8 +559,6 @@ export const SelectedSpotIcon = fromLucide(MapPin);
 export const ClearPointsIcon = fromLucide(MapPinX);
 /** ルートの全長の目標を決める（押している間は全長が目標に合うルートを作る）。 */
 export const DistanceTargetIcon = fromLucide(Ruler);
-/** 地点を地図で置く（地図で選ぶ・地図で追加・地図で置き直す。押している間は地図のタップがその地点を置く）。 */
-export const PlaceOnMapIcon = fromLucide(MapPinned);
 /** 置いた地点を1つ消す。保存したものを消す`DeleteSavedIcon`と同じく、消す操作はごみ箱の形にそろえる。 */
 export const RemovePointIcon = fromLucide(Trash);
 /** 変えた値を既定値に戻す。 */
