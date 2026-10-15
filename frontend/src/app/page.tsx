@@ -275,8 +275,11 @@ export default function Home() {
               ? "routeOutcome"
               : null;
   const tapMode = mapTapModeOf(activePanel, settingsTab, editingRoute !== null);
-  // 区分の中を押す・中へ移ると、その区分が地図で効く。
+  // 区分の中を押す・中へ移ると、その区分が地図で効く。効いているかは包む要素の印で見せ、区分のクラスは変えない（変えると中の
+  // 部品の見た目の見分けが、押すたびに変わる）。
   const touchPanel = (panel: Panel) => ({
+    className: "group/panel",
+    "data-active": activePanel === panel,
     onPointerDownCapture: () => setLastTouchedPanel(panel),
     onFocusCapture: () => setLastTouchedPanel(panel),
   });
@@ -784,7 +787,7 @@ export default function Home() {
 }
 
 // デスクトップのサイドバーの区分（「ルート設定」「ルート結果」）。見出しの見た目と開閉の矢印をここに1つだけ持つ。
-// 地図で効いている区分は、上の線と題を強調色にし、題の読み上げに添える（2つ開いていても、地図を押した意味が見て分かる）。
+// 地図で効いている区分は、包む要素の印（`touchPanel`）で上の線と題を強調色にし、題の読み上げに添える（2つ開いていても、地図を押した意味が見て分かる）。
 function SectionDisclosure({
   title,
   active,
@@ -796,15 +799,11 @@ function SectionDisclosure({
   return (
     <Disclosure
       {...props}
-      className={cn(
-        "border-t pt-2",
-        active ? "border-t-2 border-[var(--color-accent)]" : "border-[var(--color-border)]",
-      )}
+      className="border-t border-[var(--color-border)] pt-2 group-data-[active=true]/panel:border-t-2 group-data-[active=true]/panel:border-[var(--color-accent)]"
       headerClassName="flex items-center justify-between gap-2"
       triggerClassName={cn(
         textVariants({ variant: "heading" }),
-        "group flex cursor-pointer items-center gap-1.5",
-        active && "text-[var(--color-accent-strong)]",
+        "group flex cursor-pointer items-center gap-1.5 group-data-[active=true]/panel:text-[var(--color-accent-strong)]",
       )}
       bodyClassName="flex flex-col gap-2"
       summary={
