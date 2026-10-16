@@ -57,10 +57,11 @@ describe("保存して呼び出す", () => {
     const { result } = renderSaved();
     await waitFor(() => expect(result.current.conditions.routePreference).toEqual({ axis_a: 0.4, axis_b: 0.6 }));
     const [filterKey] = Object.keys(DEFAULT_HARD_FILTERS);
+    act(() => result.current.conditions.selectPoint({ role: "waypoint", index: null }));
     act(() => {
       result.current.conditions.setDistanceTargeted(false);
       result.current.conditions.setMaxRoutesInput("3");
-      result.current.conditions.placePin("waypoint", A);
+      result.current.conditions.placeAtSelected(A, null);
       result.current.conditions.setDestination(B);
       result.current.conditions.setRoutePreference({ axis_a: 0.7, axis_b: 0.3 });
       result.current.conditions.setWeightOverrideEnabled(true);
@@ -88,7 +89,7 @@ describe("保存して呼び出す", () => {
     expect(conditions.maxRoutesInput).toBe("3");
     expect(conditions.waypoints).toEqual([A]);
     expect(conditions.destination).toEqual(B);
-    expect(conditions.armedPinRole).toBeNull();
+    expect(conditions.selectedPoint).toEqual({ role: "origin" });
     expect(conditions.routePreferenceToSend).toEqual({ axis_a: 0.7, axis_b: 0.3 });
     expect(conditions.hardFilters[filterKey]).toBe(!DEFAULT_HARD_FILTERS[filterKey]);
   });

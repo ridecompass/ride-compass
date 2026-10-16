@@ -363,10 +363,9 @@ export async function splice(page: Page, width: WidthName): Promise<void> {
   const settings = width === "mobile" ? await openMobileSheet(page, "ルート設定") : null;
   const scope = settings ?? page;
   await scope.getByRole("button", { name: "目的地: 未設定", exact: true }).click();
-  await scope.getByRole("button", { name: "目的地を地図で選ぶ" }).click();
-  // スマホ幅は、シートを閉じると目的地の指定が外れるので、開いたまま見えている地図を押す。
+  // スマホ幅は、シートを閉じると地図で地点を置けなくなるので、開いたまま見えている地図を押す。
   await clickVisible(page, SPLICE_PLACES.D);
-  await expect(scope.getByRole("button", { name: "目的地を地図で置き直す" })).toBeVisible();
+  await expect(scope.getByRole("button", { name: "目的地を消す" })).toBeEnabled();
   if (settings) {
     const sheet = await generateInMobileSheet(page, settings);
     await sheet.getByRole("button", { name: "ルートを合成" }).first().click();

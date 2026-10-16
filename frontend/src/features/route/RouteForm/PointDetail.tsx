@@ -6,9 +6,8 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge/Badge";
 import { Button } from "@/components/ui/Button/Button";
 import { DialogContent, DialogRoot } from "@/components/ui/Dialog/Dialog";
-import { PlaceOnMapIcon, SavedPlaceIcon, SavePlaceIcon } from "@/components/ui/icons/icons";
+import { SavedPlaceIcon, SavePlaceIcon } from "@/components/ui/icons/icons";
 import { Input } from "@/components/ui/Input/Input";
-import { panelIconToggleClass, Toggle } from "@/components/ui/Toggle/Toggle";
 import { textVariants } from "@/components/ui/Text/Text";
 import PlaceCandidates, { isRepresentative } from "@/features/route/PlaceSearch/PlaceCandidates";
 import { PREDICTION_MIN_LENGTH, usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
@@ -39,22 +38,17 @@ interface PointDetailProps {
   at: Coordinates | null;
   /** 地点が置いてあるか。打つ欄の誘いを「置き直す」にする。 */
   placed: boolean;
-  /** 地図で置く操作の名前（地図で選ぶ／地図で追加／地図で置き直す）。 */
-  armLabel: string;
-  /** 地図で置く操作の右に並べる別の操作（消す・現在地に戻す。どれもアイコンだけの形）。要らない間も出し入れせず、押せない形で
+  /** 打つ欄の右に並べる操作（消す・現在地に戻す。どれもアイコンだけの形）。要らない間も出し入れせず、押せない形で
    * 渡す（押した直後に並びが動くと、続けて押したときに別の操作に当たる）。 */
   extra?: React.ReactNode;
-  /** 地図で置く状態の間に、打つ欄の中に出す文言。置いた数を隠さないため、経由地を足す間は件数を添える。 */
-  armedHint?: string;
-  /** 地図で置く操作の使い方の文。 */
-  usage: string;
+  /** 地図をタップするとこの地点を置く間に、打つ欄の中に出す文言。置いた数を隠さないため、経由地を足す間は件数を添える。 */
+  placingHint?: string;
   /** 候補を選ぶと何が起きるか（「目的地にします」等）。 */
   chooseResult: string;
   /** 上限まで置いてあり、これ以上置けない（地図でも探してもの両方）。 */
   full?: boolean;
-  armed: boolean;
-  /** 地図で置く状態を切り替える。 */
-  onArmToggle: () => void;
+  /** 地図をタップするとこの地点を置くか（ルート設定が地図で効いている間）。 */
+  placing: boolean;
   /** 出発地の印を、実際の位置（現在地か置いた地点）の色で出すか。 */
   originLocated: boolean;
   /** 地図でいま見ている所の真ん中。施設の候補はここから近い順に並ぶ。 */
@@ -83,7 +77,7 @@ function scrollToScrollerTop(element: HTMLElement) {
  * 押した地点の詳しく: どの地点か・どうやって置いたか・名前・辺り（探した施設は候補の辺り、地図で選んだ地点・現在地・辺りの
  * 無い施設は位置から引いた辺り。探した住所は名前が住所なので出さない）と、住所・施設の名前を打って置き直す欄（候補は欄のすぐ下。
  * 欄を押すと、保存した地点のうち打った文字を名前に含むものを住所・施設の候補の上に出す。狭い画面では、欄を押してから選ぶ・閉じる
- * までは、欄のあった位置からせり上がって、欄と候補を見えている範囲の上側に出す）、地図で置く操作と、消す・現在地に戻す・置いた地点の保存（保存した地点なら保存をやめる）。
+ * までは、欄のあった位置からせり上がって、欄と候補を見えている範囲の上側に出す）と、消す・現在地に戻す・置いた地点の保存（保存した地点なら保存をやめる）。
  */
 export default function PointDetail({
   role,
@@ -94,14 +88,11 @@ export default function PointDetail({
   found,
   at,
   placed,
-  armLabel,
   extra,
-  armedHint = "地図をタップ",
-  usage,
+  placingHint = "地図をタップ",
   chooseResult,
   full = false,
-  armed,
-  onArmToggle,
+  placing,
   originLocated,
   mapCenter,
   onChoose,
@@ -159,13 +150,6 @@ export default function PointDetail({
   // 引けない間・引けなかったときは辺りを出さない（名前と出どころは出ている）。
   const area = found?.area ?? (areaPoint !== null ? (placedArea.data ?? null) : null);
 
-  // アイコンだけの操作なので、押せない・押している間の名前も読み上げと吹き出しで伝える。
-  const armToggleName = full
-    ? `${title}は上限まで置いてあります`
-    : armed
-      ? `${title}の指定をやめる`
-      : `${title}を${armLabel}`;
-
   function closeList() {
     lookup.close({ clearText: true });
     setBrowsing(false);
@@ -210,8 +194,8 @@ export default function PointDetail({
   return (
     <section
       aria-label={title}
-      className="group flex flex-col gap-1 rounded-sm border border-[var(--color-border)] p-1.5 data-[armed=true]:border-[var(--color-accent)] data-[armed=true]:shadow-[inset_0_0_0_1px_var(--color-accent)]"
-      data-armed={armed}
+      className="group flex flex-col gap-1 rounded-sm border border-[var(--color-border)] p-1.5 data-[placing=true]:border-[var(--color-accent)] data-[placing=true]:shadow-[inset_0_0_0_1px_var(--color-accent)]"
+      data-placing={placing}
     >
       <div className="flex min-w-0 items-start gap-2">
         <PointMark role={role} label={markLabel} originLocated={originLocated} className="mt-0.5" />
@@ -221,7 +205,7 @@ export default function PointDetail({
             <span
               className={cn(
                 textVariants({ variant: "note" }),
-                "group-data-[armed=true]:text-[var(--color-accent-strong)]",
+                "group-data-[placing=true]:text-[var(--color-accent-strong)]",
               )}
             >
               {title}
@@ -261,7 +245,7 @@ export default function PointDetail({
             {closeButton}
           </div>
         )}
-        {/* 打つ欄と地図で置く操作・消す等を1行に並べ、入らなければ操作を次の行へ送る。上側に出している間は欄だけにする。 */}
+        {/* 打つ欄と消す等を1行に並べ、入らなければ操作を次の行へ送る。上側に出している間は欄だけにする。 */}
         <div className="flex flex-wrap items-center gap-1">
           <form
             ref={formRef}
@@ -277,7 +261,7 @@ export default function PointDetail({
               type="search"
               aria-label={`${title}を住所・施設で探す`}
               // 上側に出している間は地図が隠れていて、地図で置く案内のとおりに操作できない。
-              placeholder={armed && !raised ? armedHint : placed ? "住所・施設で置き直す" : "住所・施設で探す"}
+              placeholder={placing && !raised ? placingHint : placed ? "住所・施設で置き直す" : "住所・施設で探す"}
               disabled={full}
               enterKeyHint="search"
               className={cn(
@@ -296,18 +280,6 @@ export default function PointDetail({
             />
           </form>
           <div className={raised ? "hidden" : "contents"}>
-            <Toggle
-              variant="plain"
-              className={cn(panelIconToggleClass, "flex-none")}
-              pressed={armed}
-              disabled={full}
-              aria-label={armToggleName}
-              title={armToggleName}
-              onClick={onArmToggle}
-              usage={usage}
-            >
-              <PlaceOnMapIcon />
-            </Toggle>
             {extra}
             {savedHere !== null ? (
               <Button

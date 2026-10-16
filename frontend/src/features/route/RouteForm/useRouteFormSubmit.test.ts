@@ -15,8 +15,7 @@ import { describe, expect, it } from "vitest";
 
 import { useRouteFormSubmit } from "./useRouteFormSubmit";
 
-const ORIGIN_UNKNOWN =
-  "現在地が分かりません。位置情報を許可するか、「出発地を地図で選ぶ」を押して地図をタップしてください。";
+const ORIGIN_UNKNOWN = "現在地が分かりません。位置情報を許可するか、地図をタップして出発地を置いてください。";
 const NOTHING_TO_MAKE = "「全長の目標を決める」を押すか、経由地・目的地を置いてください。";
 
 interface Options {

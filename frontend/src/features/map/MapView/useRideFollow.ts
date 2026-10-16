@@ -63,11 +63,13 @@ function createLocationMark(): HTMLElement {
 }
 
 /** 走行モードの間、現在地の点を出し、追っている間は地図の中心（と向き）を現在地へ動かし続ける。利用者が地図を指で
- * 動かすか回すと追うのを休むよう知らせ、方位のボタンは北を上に戻す代わりに向きの切り替えを知らせる。
+ * 動かすか回すと追うのを休むよう知らせ、方位のボタンは北を上に戻す代わりに向きの切り替えを知らせる。走っていない間は、
+ * `here`（取り直した現在地）に同じ点を出す。
  * `visibleOffset`は、地図に重なる部品を避けて見えている所の中ほどへ寄せるための、中心からのずれ（px）。 */
 export function useRideFollow(
   mapRef: RefObject<MapLibreMap | null>,
   ride: RideFollow | null,
+  here: Coordinates | null,
   visibleOffset: (map: MapLibreMap) => [number, number],
 ): void {
   const latest = useRef(ride);
@@ -132,7 +134,7 @@ export function useRideFollow(
 
   // 現在地の点と、スマホが向いている方角の扇形。扇形は北を上にした絵で、印を地図に沿わせて回す（地図を回しても方角を指す）。
   const dotRef = useRef<Marker | null>(null);
-  const position = ride?.position ?? null;
+  const position = ride !== null ? ride.position : here;
   const facing = ride?.facing ?? null;
   useEffect(() => {
     const map = mapRef.current;

@@ -2,7 +2,6 @@
 
 import { Fragment, useEffect, useMemo, useRef } from "react";
 
-import AxisContributionBar, { hasAnyContribution } from "@/components/AxisContributionBar/AxisContributionBar";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { DownloadIcon, FastestRouteIcon, RouteSpliceIcon } from "@/components/ui/icons/icons";
@@ -10,13 +9,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/T
 import { textVariants } from "@/components/ui/Text/Text";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { cn } from "@/lib/cn";
-import { DIFFICULTY_SCALE_SUFFIX, formatDifficulty } from "@/lib/mapDisplay/valueScale";
-import { formatJstHourMinute } from "@/lib/time";
+import { formatDifficulty } from "@/lib/mapDisplay/valueScale";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
-import AxisDetail from "@/components/AxisContributionBar/AxisDetail";
 import RouteAxisProfile from "@/features/route/RouteAxisProfile/RouteAxisProfile";
 import RouteSplicePanel from "@/features/route/RouteSplicePanel/RouteSplicePanel";
-import SegmentWind from "@/features/route/SegmentWind/SegmentWind";
+import SegmentDetail from "@/features/route/SegmentDetail/SegmentDetail";
 import { formatDurationShort } from "@/lib/duration";
 import { downloadGpx, MAX_GPX_TRACK_POINTS } from "@/features/route/gpxExport";
 import EditDifference from "@/features/route/EditDifference/EditDifference";
@@ -40,13 +37,6 @@ const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIco
   fastest: { Icon: FastestRouteIcon, meaning: "最速ルート" },
   spliced: { Icon: RouteSpliceIcon, meaning: "合成ルート" },
 };
-
-function formatSegmentArrivalTime(iso: string | null): string {
-  if (!iso) return "不明";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "不明";
-  return formatJstHourMinute(date);
-}
 
 type RouteGeneration = ReturnType<typeof useRouteGeneration>;
 
@@ -261,54 +251,7 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
                 )}
                 {/* 押した区間がある間は、その区間の地点・到達予想・内訳を出す（区間は選んでいる候補にしか描かれない）。 */}
                 {selectedRouteSegment ? (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="inline-flex items-baseline gap-2 text-[length:var(--font-size-md)] font-medium">
-                        <span className="whitespace-nowrap">
-                          {selectedRouteSegment.segment.cumulative_distance_km.toFixed(1)} km地点
-                        </span>
-                        <span className={cn(textVariants({ variant: "hint" }), "break-keep")}>
-                          到達予想 {formatSegmentArrivalTime(selectedRouteSegment.segment.estimated_arrival_time)}
-                        </span>
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="bare"
-                        className="px-1 text-[1.1rem]"
-                        aria-label="区間の選択を解除"
-                        onClick={() => results.selectSegment(null)}
-                      >
-                        ×
-                      </Button>
-                    </div>
-                    <SegmentWind wind={selectedRouteSegment.segment.wind} />
-                    {/* 内訳の帯は寄与が無いと何も描かないので、総合難易度を常に出し、全部0なら0であることを文で言う
-                        （何も出ないと、壊れたのと見分けがつかない）。算出できなかった区間は「—」。 */}
-                    <span className="inline-flex items-baseline gap-0.5">
-                      <span className={textVariants({ variant: "hint" })}>総合難易度</span>
-                      <span className="font-semibold">
-                        {selectedRouteSegment.segment.difficulty === null
-                          ? "—"
-                          : formatDifficulty(selectedRouteSegment.segment.difficulty)}
-                      </span>
-                      <span className={textVariants({ variant: "hint" })}>{DIFFICULTY_SCALE_SUFFIX}</span>
-                    </span>
-                    {selectedRouteSegment.segment.difficulty !== null &&
-                      !hasAnyContribution(axisCatalog.axes, selectedRouteSegment.segment.axis_contributions) && (
-                        <p className={cn(textVariants({ variant: "hint" }), "m-0")}>どの評価軸も0（易しい）</p>
-                      )}
-                    <AxisContributionBar
-                      axes={axisCatalog.axes}
-                      contributions={selectedRouteSegment.segment.axis_contributions}
-                      axisColors={axisCatalog.axisColors}
-                      renderDetail={(axis) => (
-                        <AxisDetail
-                          axis={axis}
-                          difficulty={selectedRouteSegment.segment.axis_difficulties[axis.axisId]}
-                        />
-                      )}
-                    />
-                  </div>
+                  <SegmentDetail selection={selectedRouteSegment} onClear={() => results.selectSegment(null)} />
                 ) : (
                   <RouteAxisProfile
                     axes={axisCatalog.axes}
