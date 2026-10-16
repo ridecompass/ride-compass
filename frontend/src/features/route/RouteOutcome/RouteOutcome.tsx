@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef } from "react";
+import { Fragment, useEffect, useRef } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
@@ -10,7 +10,8 @@ import { textVariants } from "@/components/ui/Text/Text";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { cn } from "@/lib/cn";
 import { formatDifficulty } from "@/lib/mapDisplay/valueScale";
-import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
+import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
+import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
 import RouteAxisProfile from "@/features/route/RouteAxisProfile/RouteAxisProfile";
 import RouteSplicePanel from "@/features/route/RouteSplicePanel/RouteSplicePanel";
 import SegmentDetail from "@/features/route/SegmentDetail/SegmentDetail";
@@ -52,16 +53,23 @@ interface RouteOutcomeProps {
   routeWeights: RoutePreferenceWeights;
   /** 「このルートで走る」を押した（その候補で走行モードを始める）。無ければボタンを出さない（もう走っている間）。 */
   onRide?: (routeId: string) => void;
+  /** 道のりのグラフに重ねるレイヤの選択（走行中の図と共有する）。 */
+  profileLayers: ProfileLayerSelection;
 }
 
 /**
  * 「ルート結果」の中身（デスクトップの区分・モバイルのシートの両方）: 生成前・生成中の案内、候補の一覧（縦のタブ）と
  * 選んだ候補の中身・地図で押した区間の詳細、編集中は区間の乗り換えの編集面。
  */
-export default function RouteOutcome({ results, generation, splice, routeWeights, onRide }: RouteOutcomeProps) {
+export default function RouteOutcome({
+  results,
+  generation,
+  splice,
+  routeWeights,
+  onRide,
+  profileLayers,
+}: RouteOutcomeProps) {
   const axisCatalog = useAxisCatalog();
-  // 道のりのグラフが下から積む軸の並び。同じ参照を渡し、描き直しのたびにグラフの形を組み直させない。
-  const axisOrder = useMemo(() => axisCatalog.axes.map((axis) => axis.axisId), [axisCatalog.axes]);
   const { routes, selectedRouteId, selectedRouteSegment, reusedRouteId } = results;
   // 乗り換えで作った経路と同じ道だったので選んだ行。一覧の見える範囲の外にあっても、選んだことが見えるように出す。
   const reusedRowRef = useRef<HTMLButtonElement>(null);
@@ -251,16 +259,17 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
                 )}
                 {renderCandidateActions(route)}
                 {renderEditDifference(route, nameOf)}
-                {/* 道のりに沿った難易度。区間を選んでいる間も残す（動かして地点を選ぶ操作の置き場のため）。 */}
+                {/* 道のりのグラフ。区間を選んでいる間も残す（動かして地点を選ぶ操作の置き場のため）。 */}
                 {route.segments.length > 0 && (
-                  <DifficultyProfile
+                  <RouteProfile
                     segments={route.segments}
                     overallDifficulty={route.overall_difficulty?.average ?? null}
-                    axisOrder={axisOrder}
+                    axes={axisCatalog.axes}
                     axisColors={axisCatalog.axisColors}
                     scaleKm={longestDistanceKm}
                     selected={selectedRouteSegment}
                     onSelect={results.selectSegment}
+                    layers={profileLayers}
                   />
                 )}
                 {/* 押した区間がある間は、その区間の地点・到達予想・内訳を出す（区間は選んでいる候補にしか描かれない）。 */}

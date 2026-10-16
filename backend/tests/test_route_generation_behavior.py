@@ -17,7 +17,6 @@ import logging
 from collections import Counter
 import math
 import re
-from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from itertools import accumulate
 
@@ -613,6 +612,18 @@ async def test_a_segment_without_data_does_not_show_the_axis_as_zero(engine_over
     assert second.axis_difficulties[AVOID_AXIS] == 0.0
 
 
+async def test_each_segment_starts_and_ends_at_the_elevation_of_its_road_in_the_direction_ridden(engine_over):
+    """画面は区間の端の標高を距離に沿って結んで描く。逆向きに走る道で端を入れ替えないと、登りが下りに描かれる。
+    南東→南西の最速は道101（標高が無い）と、西→東に引いた道100を東→西へ走る区間。"""
+    generator = engine_over(grid_network(elevation_of={100: (10.0, 12.04)}))
+
+    candidates = await generator.generate_via_waypoints(
+        at(SOUTH_EAST), [], destination=at(SOUTH_WEST), max_routes=3, start_time=DEPARTURE)
+
+    first, second = fastest_of(candidates).segments
+    assert [(s.start_elevation_m, s.end_elevation_m) for s in (first, second)] == [(None, None), (12.0, 10.0)]
+
+
 def _slope_axis(*, is_published: bool) -> AxisDefinition:
     """勾配の符号付きの値を地図が塗る軸（本番の勾配の軸と同じく、勾配の絶対値を読む折れ線）。"""
     return AxisDefinition(
@@ -629,9 +640,7 @@ async def test_a_published_slope_axis_carries_its_grade_on_every_segment_even_wi
 ):
     """地図のレンズはルートを作ったあとにも勾配へ切り替わり、切り替えでは作り直さない。重み0の勾配の軸でも
     区間が勾配の値を持たないと、あとから勾配のレンズにしたとき全区間が「データなし」になる。下書きの軸はレンズに出ない。"""
-    network = grid_network()
-    flat = np.zeros(len(network.edge_way_id))
-    surveyed = replace(network, elevation_present=flat == 0, elevation_gain_m=flat, elevation_loss_m=flat)
+    surveyed = grid_network(elevation_of={way: (0.0, 0.0) for way in WAYS})
     with replaced_axis_definitions({**AXIS_DEFINITIONS, "slope": _slope_axis(is_published=is_published)}):
         candidates = await engine_over(surveyed).generate_via_waypoints(
             at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=1, start_time=DEPARTURE)

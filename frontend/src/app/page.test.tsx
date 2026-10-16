@@ -786,6 +786,9 @@ describe("画面の枠", () => {
     expect(screen.getByRole("group", { name: "走りの数字" })).toBeInTheDocument();
     expect(shownWhileIdle()).toEqual([null, null, null, null]);
     expect(within(rideProfile()!).getByRole("img", { name: "道のりに沿った難易度" })).toBeInTheDocument();
+    // 重ねるレイヤは、ページが持つ1つの選択（はじめは標高）を走行中の図にも渡す。
+    await user.click(within(rideProfile()!).getByRole("tab", { name: "レイヤ" }));
+    expect(within(rideProfile()!).getByRole("button", { name: "標高" })).toHaveAttribute("aria-pressed", "true");
 
     await user.click(screen.getByRole("button", { name: "走行モード" }));
     expect(screen.queryByRole("group", { name: "走りの数字" })).toBeNull();

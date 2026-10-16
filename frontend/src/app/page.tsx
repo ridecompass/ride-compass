@@ -51,7 +51,8 @@ import { useStoredBooleanState } from "@/hooks/useStoredState";
 import { useRideConditions } from "@/features/conditions/useRideConditions";
 import RideBar from "@/features/ride/RideBar/RideBar";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
-import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
+import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
+import { useProfileLayers } from "@/features/route/RouteProfile/useProfileLayers";
 import { useRideMode } from "@/features/ride/useRideMode";
 import { rideRemaining } from "@/features/ride/rideRemaining";
 import { nextTurn } from "@/features/ride/nextTurn";
@@ -147,6 +148,8 @@ export default function Home() {
   const originManual = locationSource === "manual";
 
   const axisCatalog = useAxisCatalog();
+  // 道のりのグラフに重ねるレイヤは、結果のパネルと走行中の図が同時に出ても1つの選択を共有する。
+  const profileLayers = useProfileLayers();
 
   // 生成の結果が出て、まだ「ルート結果」を開いていない（モバイルのタブの合図）。失敗と候補0件は形を変えて見分けられるようにする。
   const [unseenOutcome, setUnseenOutcome] = useState<RouteOutcomeKind | null>(null);
@@ -461,6 +464,7 @@ export default function Home() {
         generation={generation}
         splice={splice}
         routeWeights={route.routeWeights}
+        profileLayers={profileLayers}
         onRide={
           navigating
             ? undefined
@@ -532,14 +536,15 @@ export default function Home() {
             aria-label="予定ルートのプロファイル"
             className={cn(cardVariants({ variant: "float" }), "pointer-events-auto w-full rounded-md px-2 py-1.5")}
           >
-            <DifficultyProfile
+            <RouteProfile
               segments={profile.segments}
               overallDifficulty={profile.overall_difficulty?.average ?? null}
-              axisOrder={axisCatalog.axes.map((axis) => axis.axisId)}
+              axes={axisCatalog.axes}
               axisColors={axisCatalog.axisColors}
               scaleKm={profile.distance_km}
               progressKm={progressKm}
               selected={null}
+              layers={profileLayers}
             />
           </section>
         )}

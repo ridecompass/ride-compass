@@ -46,7 +46,8 @@ RETRY = "距離や除外する道路の設定を変えてお試しください�
 def _segment(difficulty: float | None, **fields) -> RouteSegmentDetail:
     return RouteSegmentDetail(
         start_latitude=0.0, start_longitude=0.0, end_latitude=0.0, end_longitude=0.0,
-        cumulative_distance_km=0.0, distance_km=1.0, difficulty=difficulty, **fields,
+        cumulative_distance_km=0.0, distance_km=1.0, start_elevation_m=None, end_elevation_m=None,
+        difficulty=difficulty, **fields,
     )
 
 

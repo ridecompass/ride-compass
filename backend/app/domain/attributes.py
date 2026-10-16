@@ -15,16 +15,21 @@ class ElevationAttribute(StrictModel):
     """
 
     edge_id: str
+    # 進む向きに見た始まりと終わりの標高（m）。
+    start_elevation_m: float
+    end_elevation_m: float
     elevation_gain_m: float
     elevation_loss_m: float
     average_grade: float | None
 
     def reversed_as(self, reverse_edge_id: str) -> "ElevationAttribute":
         """同じ地形を逆方向に走った区間（`reverse_edge_id`）の値。標高は進行方向に依存しないため
-        代数的に厳密に決まる: 獲得標高↔喪失標高の入れ替え、平均勾配の符号反転。
+        代数的に厳密に決まる: 始まり↔終わりの標高と獲得標高↔喪失標高の入れ替え、平均勾配の符号反転。
         """
         return ElevationAttribute(
             edge_id=reverse_edge_id,
+            start_elevation_m=self.end_elevation_m,
+            end_elevation_m=self.start_elevation_m,
             elevation_gain_m=self.elevation_loss_m,
             elevation_loss_m=self.elevation_gain_m,
             average_grade=-self.average_grade if self.average_grade is not None else None,
@@ -117,7 +122,8 @@ class EdgeMaterialArrays:
     bearing_deg: np.ndarray  # dtype=float64, NaN=方位が決まらない
     mid_lat: np.ndarray  # dtype=float64
     mid_lon: np.ndarray  # dtype=float64
-    elevation_present: np.ndarray  # dtype=bool
+    start_elevation_m: np.ndarray  # dtype=float64, NaN=標高が無い（獲得・損失も無い）
+    end_elevation_m: np.ndarray  # dtype=float64, NaN=標高が無い
     elevation_gain_m: np.ndarray  # dtype=float64, NaN=欠損
     elevation_loss_m: np.ndarray
 

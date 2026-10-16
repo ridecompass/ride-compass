@@ -122,7 +122,15 @@ function renderOutcome({
   generation?: Generation;
   splice?: Splice;
 } = {}) {
-  render(<RouteOutcome results={results} generation={generation} splice={splice} routeWeights={{}} />);
+  render(
+    <RouteOutcome
+      results={results}
+      generation={generation}
+      splice={splice}
+      routeWeights={{}}
+      profileLayers={{ ids: ["elevation"], toggle: vi.fn() }}
+    />,
+  );
   return { results, splice };
 }
 

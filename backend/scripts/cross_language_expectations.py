@@ -379,6 +379,8 @@ def _segment(distance_km: float, contributions: dict[str, float] | None) -> Rout
         end_longitude=139.0,
         cumulative_distance_km=0.0,
         distance_km=distance_km,
+        start_elevation_m=None,
+        end_elevation_m=None,
         axis_contributions=contributions or {},
         difficulty=None if contributions is None else sum(contributions.values()),
     )

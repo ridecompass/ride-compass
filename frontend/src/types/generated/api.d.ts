@@ -1670,6 +1670,10 @@ export interface components {
             cumulative_distance_km: number;
             /** Distance Km */
             distance_km: number;
+            /** Start Elevation M */
+            start_elevation_m: number | null;
+            /** End Elevation M */
+            end_elevation_m: number | null;
             /** Estimated Arrival Time */
             estimated_arrival_time: string | null;
             /** Axis Difficulties */

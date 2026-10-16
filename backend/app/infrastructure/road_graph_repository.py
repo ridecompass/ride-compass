@@ -195,7 +195,8 @@ _EXTRA_MATERIAL_ARRAY_COLUMNS: dict[str, str] = {
     # 逆向きの方位は+180°ではない。両向きぶんを列で持つ（`road_edges`）。
     "bearing_deg": "CASE WHEN ids.forward THEN re.bearing_deg ELSE re.reverse_bearing_deg END",
     **dict(zip(("mid_lat", "mid_lon"), midpoint_sql("nf.geom", "nt.geom"), strict=True)),
-    "elevation_present": "em.start_elevation_m IS NOT NULL",
+    "start_elevation_m": "em.start_elevation_m",
+    "end_elevation_m": "em.end_elevation_m",
     "elevation_gain_m": "em.elevation_gain_m",
     "elevation_loss_m": "em.elevation_loss_m",
 }
@@ -464,7 +465,8 @@ class RoadGraphRepository:
             bearing_deg=_float_array(raw["bearing_deg"]),
             mid_lat=_float_array(raw["mid_lat"]),
             mid_lon=_float_array(raw["mid_lon"]),
-            elevation_present=np.array(raw["elevation_present"], dtype=bool),
+            start_elevation_m=_float_array(raw["start_elevation_m"]),
+            end_elevation_m=_float_array(raw["end_elevation_m"]),
             elevation_gain_m=_float_array(raw["elevation_gain_m"]),
             elevation_loss_m=_float_array(raw["elevation_loss_m"]),
         )

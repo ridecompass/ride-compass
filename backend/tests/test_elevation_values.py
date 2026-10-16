@@ -159,7 +159,7 @@ async def test_segments_are_computed_separately(road_graph_session):
 
 
 def attribute(row: dict, edge_id: str) -> ElevationAttribute:
-    """SQLの行のうち、属性が持つ欄（始点・終点の標高は派生の表にだけ残る）。"""
+    """SQLの行のうち、属性が持つ欄。"""
     return ElevationAttribute(edge_id=edge_id, **{name: row[name] for name in ElevationAttribute.model_fields.keys() - {"edge_id"}})
 
 
