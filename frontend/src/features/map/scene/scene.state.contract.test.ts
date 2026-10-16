@@ -246,6 +246,38 @@ describe("状態を地図へ伝えた結果", () => {
 
       expect(handle.layer(roadLayerId("density"))?.visibility).toBe("none");
     });
+
+    describe("密度の軸を選んでいる間は、数えている点を描く", () => {
+      const dedicatedAxes = dedicatedWayValueAxesFromCatalogAxes([
+        dedicatedEntry("density", [50], {
+          primary_attribute_ids: ["accident_point"],
+          density_terms: [{ material_id: "m", label: "m", weight: 1 }],
+        }),
+        dedicatedEntry("plain", [50], { primary_attribute_ids: ["accident_point"] }),
+      ]);
+      const accident = pointLayerId("accident_point");
+
+      it.each([
+        { lens: "density", layerOn: false, visibility: "visible" },
+        { lens: "plain", layerOn: false, visibility: "none" },
+        { lens: "density", layerOn: true, visibility: "visible" },
+      ])("色分け $lens、レイヤの入切 $layerOn → 点は $visibility", ({ lens, layerOn, visibility }) => {
+        const { map, handle } = createRecordingMap();
+
+        rebuild(
+          map,
+          sceneState({ catalog: { dedicatedAxes }, look: { lens, layerVisibility: { accident_point: layerOn } } }),
+        );
+
+        expect(handle.layer(accident)?.visibility).toBe(visibility);
+        // 色分けとレイヤの一覧の両方が同じ点を出しても、その点を描くレイヤは1つだけ。
+        const sourceLayer = handle.layer(accident)?.sourceLayer;
+        const drawing = handle
+          .layerOrder()
+          .filter((id) => handle.layer(id)?.sourceLayer === sourceLayer && handle.layer(id)?.visibility === "visible");
+        expect(drawing).toHaveLength(visibility === "visible" ? 1 : 0);
+      });
+    });
   });
 
   describe("ルート", () => {
