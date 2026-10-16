@@ -70,6 +70,36 @@ interface Fix {
   accuracyM: number | null;
 }
 
+/** 速さを測り始めた位置。 */
+interface MotionAnchor {
+  at: Coordinates;
+  /** 測った時刻（エポックからのms）。 */
+  timestamp: number;
+  /** 誤差（m）。端末が返さなければnull。 */
+  accuracyM: number | null;
+}
+
+/** 受け取った位置1つ。`speedMs`は位置が持つ速さ（秒速m）で、持たなければnull。 */
+interface MotionFix extends MotionAnchor {
+  speedMs: number | null;
+}
+
+/**
+ * 新しい位置を受けたときの速さ（秒速m）と、次の測り始めの位置。位置が速さを持てばそれを使う。持たなければ、測り始めの
+ * 位置から2つの位置の誤差の和を超えて動いたときだけ、その間の距離と時刻の差から出す。誤差の内の動きは位置の揺れと
+ * 見分けられないので止まっている（0）と読み、測り始めの位置を動かさない（直前の位置から測ると、細かく届く位置の間の
+ * 動きはいつも誤差の内に収まり、走っていても0になる）。
+ */
+function nextMotion(anchor: MotionAnchor | null, fix: MotionFix): { speedMs: number | null; anchor: MotionAnchor } {
+  const here = { at: fix.at, timestamp: fix.timestamp, accuracyM: fix.accuracyM };
+  if (fix.speedMs !== null) return { speedMs: fix.speedMs, anchor: here };
+  if (anchor === null) return { speedMs: null, anchor: here };
+  const movedM = haversineKm(anchor.at, fix.at) * 1000;
+  if (movedM <= (anchor.accuracyM ?? 0) + (fix.accuracyM ?? 0)) return { speedMs: 0, anchor };
+  const elapsedS = (fix.timestamp - anchor.timestamp) / 1000;
+  return { speedMs: elapsedS > 0 ? movedM / elapsedS : null, anchor: here };
+}
+
 /** 走行モード: 現在地を受け取り続け、地図に追わせる。 */
 export function useRideMode(): UseRideModeResult {
   const [status, setStatus] = useState<RideStatus>("off");
@@ -77,8 +107,8 @@ export function useRideMode(): UseRideModeResult {
   const [fix, setFix] = useState<Fix | null>(null);
   const [headingUp, setHeadingUp] = useState(false);
   const watchId = useRef<number | null>(null);
-  // 位置が速さを持たないときに、次の位置との距離と時刻の差から速さを出すための、前に受けた位置と時刻。
-  const lastFix = useRef<{ at: Coordinates; timestamp: number } | null>(null);
+  // 位置が速さを持たないときに、距離と時刻の差から速さを出す測り始めの位置（`nextMotion`）。
+  const motion = useRef<MotionAnchor | null>(null);
   const device = useDeviceHeading(status !== "off");
   const requestHeading = device.request;
 
@@ -93,7 +123,7 @@ export function useRideMode(): UseRideModeResult {
     stopWatching();
     setStatus("off");
     setFix(null);
-    lastFix.current = null;
+    motion.current = null;
     setHeadingUp(false);
   }, [stopWatching]);
 
@@ -111,20 +141,21 @@ export function useRideMode(): UseRideModeResult {
       (received) => {
         const { latitude, longitude, heading, speed, accuracy } = received.coords;
         const here = { latitude, longitude };
-        const previous = lastFix.current;
-        lastFix.current = { at: here, timestamp: received.timestamp };
-        const speedMs =
-          speed !== null && Number.isFinite(speed)
-            ? speed
-            : previous !== null && received.timestamp > previous.timestamp
-              ? (haversineKm(previous.at, here) * 1000) / ((received.timestamp - previous.timestamp) / 1000)
-              : null;
+        const accuracyM = Number.isFinite(accuracy) ? accuracy : null;
+        const next = nextMotion(motion.current, {
+          at: here,
+          timestamp: received.timestamp,
+          accuracyM,
+          speedMs: speed !== null && Number.isFinite(speed) ? speed : null,
+        });
+        motion.current = next.anchor;
+        debugLog("ride:position", "受け取った", { speed, accuracy, speedMs: next.speedMs });
         setFix((current) => ({
           position: here,
-          speedMs,
+          speedMs: next.speedMs,
           travel: nextTravelBearing(current?.travel ?? null, { latitude, longitude, heading }),
           fixedAtMs: received.timestamp,
-          accuracyM: Number.isFinite(accuracy) ? accuracy : null,
+          accuracyM,
         }));
         setStatus((current) => (current === "waiting" ? "following" : current));
       },
