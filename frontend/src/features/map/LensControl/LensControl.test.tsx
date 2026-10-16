@@ -42,6 +42,7 @@ function renderLens(props: Partial<Parameters<typeof LensControl>[0]> = {}) {
       conditions={null}
       densityTerms={null}
       premises={[]}
+      compact={false}
       {...handlers}
       {...props}
     />,

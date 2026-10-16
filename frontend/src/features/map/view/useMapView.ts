@@ -77,7 +77,7 @@ interface MapViewInputs {
 
 interface MapViewState {
   look: MapLook;
-  lensControl: ComponentProps<typeof LensControl>;
+  lensControl: Omit<ComponentProps<typeof LensControl>, "compact">;
   overlayControls: ComponentProps<typeof MapOverlayControls>;
   /** 押した人の地図だけを、スタイルから取り直して組み直す。 */
   redrawMap: () => void;

@@ -21,6 +21,8 @@ import {
   Info,
   Layers,
   ListChecks,
+  // 組み込みの`Map`と名前が重ならないよう、別名で読み込む。
+  Map as FoldedMap,
   MapPin,
   MapPinX,
   Moon,
@@ -521,6 +523,8 @@ export const MoonIcon = fromLucide(Moon);
 export const CloudIcon = fromLucide(Cloud);
 export const SnowflakeIcon = fromLucide(Snowflake);
 export const GenerateRoutesIcon = fromLucide(Play);
+/** 走行中に地図の「表示」と色分けを出し入れする。出すと並ぶ「表示」の`DisplayItemsIcon`・積層の軸の`LayersStackIcon`と別の形にする。 */
+export const MapControlsIcon = fromLucide(FoldedMap);
 /** 生成した候補を捨てる。バツ印にしない——パネルを閉じる✕の隣に並び、同じ形だと見分けられない。 */
 export const ClearRoutesIcon = fromLucide(Trash);
 /** 保存した設定を消す。 */

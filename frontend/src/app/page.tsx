@@ -14,6 +14,7 @@ import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
 import MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayControls";
 import {
   ClearRoutesIcon,
+  MapControlsIcon,
   GenerateRoutesIcon,
   LocateIcon,
   RouteIcon,
@@ -185,12 +186,15 @@ export default function Home() {
   const [chosenSheetHeightVh, chooseSheetHeight] = useChosenSheetHeight();
   // 走行中に帯の「ルート」でパネルを出しているか（デスクトップ。モバイルはシートを開いていること）。
   const [ridePanelOpen, setRidePanelOpen] = useState(false);
+  // 走行中に帯の「地図の表示」で、地図の「表示」と色分けを出しているか。走るたびに隠した配置から始める。
+  const [rideMapControlsShown, setRideMapControlsShown] = useState(false);
   // 走り始めたときの作業台（モバイルで開いていたシート）。走り始めたらシートを閉じて覚え、止めたら（どの止まり方でも）戻す。
   const [workbenchBeforeRide, setWorkbenchBeforeRide] = useState<{ sheet: MobileSheet } | null>(null);
   if (navigating && workbenchBeforeRide === null) {
     setWorkbenchBeforeRide({ sheet: mobileSheet });
     setMobileSheet(null);
     setRidePanelOpen(false);
+    setRideMapControlsShown(false);
   } else if (!navigating && workbenchBeforeRide !== null) {
     setMobileSheet(workbenchBeforeRide.sheet);
     setWorkbenchBeforeRide(null);
@@ -275,6 +279,8 @@ export default function Home() {
 
   // パネルを出しているか。走行モードの間は、帯の「ルート」で開いている間だけ（モバイルはシートを開いている間）。
   const panelsShown = !navigating || (isMobile ? mobileSheet !== null : ridePanelOpen);
+  // 地図の「表示」と色分けを出しているか。走行モードの間は、帯の「地図の表示」で出している間だけ（隠している間も色分けは小さく出す）。
+  const mapControlsShown = !navigating || rideMapControlsShown;
   // 地図で効いているパネル（いつも1つ）。モバイルは開いているシート。デスクトップは出していて畳んでいない左のパネルの、
   // 開いている区分で、2つとも開いていれば最後に触った区分（畳むと区分の開閉は保ったまま中身が見えなくなる）。走行中に
   // 帯の「ルート」で出したパネルは畳めない。
@@ -566,6 +572,15 @@ export default function Home() {
             <WarningBadgeList items={warningBadgeItems} failures={headerFetchFailures} compact />
             <Button
               size="panelIcon"
+              onClick={() => setRideMapControlsShown((shown) => !shown)}
+              aria-label="地図の表示"
+              aria-expanded={rideMapControlsShown}
+              usage="走行モードのまま、地図の「表示」と色分け（凡例つき）を出します。変えた表示は走っていないときと同じ設定に残ります。もう一度押すと隠します。"
+            >
+              <MapControlsIcon size={18} />
+            </Button>
+            <Button
+              size="panelIcon"
               onClick={toggleRidePanel}
               aria-label="ルート"
               aria-expanded={panelsShown}
@@ -703,26 +718,27 @@ export default function Home() {
               turnPoint={upcomingTurn}
             />
 
-            {!navigating && (
-              <>
-                {/* 地図の左上に「表示」（重ねる情報の一覧）、上の中央に色分けを置く。 */}
-                <div
-                  {...mapOverlayEdge("top")}
-                  className="pointer-events-none absolute top-3 left-3 z-[var(--z-map-control)] flex"
-                >
-                  <MapOverlayControls {...mapView.overlayControls} />
-                </div>
-                {/* 左右の余白は、右の縦の列を両側で避ける幅（中央に置くため）。 */}
-                <div
-                  {...mapOverlayEdge("top")}
-                  className="pointer-events-none absolute inset-x-0 top-3 z-[var(--z-map-control)] flex justify-center px-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))]"
-                >
-                  <LensControl {...mapView.lensControl} />
-                </div>
-
-                <FirstVisitIntro isMobile={isMobile} locationUnknown={locationFailure !== null} />
-              </>
+            {/* 地図の左上に「表示」（重ねる情報の一覧）と、走行中は次に曲がる所のカードを縦に積む。 */}
+            {(mapControlsShown || upcomingTurn !== null) && (
+              <div
+                {...mapOverlayEdge("top")}
+                className="pointer-events-none absolute top-3 left-3 z-[var(--z-map-control)] flex flex-col items-start gap-2"
+              >
+                {mapControlsShown && <MapOverlayControls {...mapView.overlayControls} />}
+                {upcomingTurn !== null && (
+                  <TurnCard direction={upcomingTurn.direction} distanceM={upcomingTurn.distanceM} />
+                )}
+              </div>
             )}
+            {/* 上の中央に色分けを置く。地図の操作を隠している走行中も、ルートの線と道の色が何かを示すため小さく出す。
+                左右の余白は、右の縦の列を両側で避ける幅（中央に置くため）。 */}
+            <div
+              {...mapOverlayEdge("top")}
+              className="pointer-events-none absolute inset-x-0 top-3 z-[var(--z-map-control)] flex justify-center px-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))]"
+            >
+              <LensControl {...mapView.lensControl} compact={!mapControlsShown} />
+            </div>
+            {!navigating && <FirstVisitIntro isMobile={isMobile} locationUnknown={locationFailure !== null} />}
 
             {usageGuideActive && <UsageGuide onEnd={() => setUsageGuideActive(false)} />}
 
@@ -783,14 +799,6 @@ export default function Home() {
                 onPress={riding.press}
               />
             </div>
-            {upcomingTurn !== null && (
-              <div
-                {...mapOverlayEdge("top")}
-                className="pointer-events-none absolute top-3 left-3 z-[var(--z-map-control)] flex"
-              >
-                <TurnCard direction={upcomingTurn.direction} distanceM={upcomingTurn.distanceM} />
-              </div>
-            )}
             {navigating && renderRideBottom()}
           </div>
         </div>
