@@ -6,7 +6,7 @@
  * 総合難易度が無ければ塗らない）、選ばれた区間の帯とスライダーとしての値、キーボード（矢印・Home・End）と
  * 1本の指（マウス）でなぞる・押して離す操作で選ぶ区間と地点、押しただけ・ボタンを押していない動き・2本目の指が
  * 加わった操作では選ばないこと、自分で動かした地点の線（選ばれた区間の中にあるときだけ）、走行中の現在地の印と、
- * 始点からそこまでの薄め（候補の終わりより先は終わりに寄せる）。
+ * 始点からそこまでの薄め（候補の終わりより先は終わりに寄せる）、選ぶ受け口が無ければ見るだけの図にすること。
  *
  * ここで見ないもの: 区間の柱と積み上げの長方形の組み方（総合難易度が0なら値の無い区間を塗らないことを含む） →
  * `features/route/DifficultyProfile/profileGeometry.ts`。区間の中の割合から地点を引く計算（道なりの形の上） →
@@ -220,6 +220,12 @@ describe("DifficultyProfile", () => {
     rerender(<DifficultyProfile {...profileProps({ selected: selection(FIRST) })} />);
     expect(slider?.querySelector("line")).toBeNull();
     expect(slider).toHaveAttribute("aria-valuenow", "0");
+  });
+
+  it("選ぶ受け口が無ければ、押せない（選べると読み上げず、キーでも移れない）見るだけの図として描く", () => {
+    const { container } = render(<DifficultyProfile {...profileProps({ onSelect: undefined })} />);
+    expect(within(container).queryByRole("slider")).toBeNull();
+    expect(within(container).getByRole("img", { name: "道のりに沿った難易度" })).not.toHaveAttribute("tabindex");
   });
 
   it("押したまま動かすとその地点を選び、離した地点も選ぶ", () => {

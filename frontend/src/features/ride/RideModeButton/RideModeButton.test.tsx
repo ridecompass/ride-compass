@@ -16,7 +16,7 @@ describe("RideModeButton", () => {
   it.each([
     { status: "off", pressed: "false", next: "走行モードを始める" },
     { status: "following", pressed: "true", next: "走行モードを止める" },
-    { status: "paused", pressed: "true", next: "地図を現在地へ戻す" },
+    { status: "paused", pressed: "true", next: "走行モードを止める" },
   ] as const)("$status: 入切と、押したときの動きを示し、面の塗りを様子で分ける", async ({ status, pressed, next }) => {
     const onPress = vi.fn();
     render(<RideModeButton status={status} error={null} screenWakeLock="off" onPress={onPress} />);

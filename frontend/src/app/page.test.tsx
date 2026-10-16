@@ -19,8 +19,10 @@
  *   決めた高さを2枚のシートで分け合うこと）、区分の開閉の保存、
  *   ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、「現在地に移動」が出発地を変えずに地図を寄せて現在地に点を
  *   出すこと、メニューから入る使い方の説明とデバッグログ、
- *   走行モードの間の配置と、届いた現在地がプロファイルの印と地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、
- *   到着予想が位置を受けた時刻と選んだ候補の計画から出ること
+ *   走行モードの間の配置（プロファイルは見るだけ・休んでいる間だけ「現在地へ戻る」）と、届いた現在地がプロファイルの印と
+ *   地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、到着予想が位置を受けた時刻と選んだ候補の計画から出ること、
+ *   走行中に帯の「ルート」で開いたパネルで選び直す・作り直すと走行モードが新しい候補を追い、パネルを出していない間は地図で
+ *   何も変えも開きもしないこと、「このルートで走る」でその候補で走り始めてシートを閉じ、止めると走る前のシートへ戻ること
  *
  * ここで見ないもの: 子の部品は本物を描き、子が値をどう描くか（一覧の書式・印の色・天候の値）は各部品のテストが見る。
  * 地図の見え方の中身（どのレイヤーをどの色・重なりで描くか・レンズの選択肢・凡例）は地図の側（`features/map/scene/`）の
@@ -763,7 +765,7 @@ describe("地図で扱えること", () => {
 });
 
 describe("画面の枠", () => {
-  it("走行モードの間は、上の帯を走りの数字に替え、パネルと地図の上の操作を隠し、選んだ候補のプロファイルを地図の下に出す。止めると元に戻る", async () => {
+  it("走行モードの間は、上の帯を走りの数字に替え、パネルと地図の上の操作を隠し、選んだ候補のプロファイルを見るだけで地図の下に出す。止めると元に戻る", async () => {
     const { user } = renderHome();
     jobs.respond([FIRST], LOOP_CONDITIONS);
     await generate(user);
@@ -782,7 +784,7 @@ describe("画面の枠", () => {
     await user.click(screen.getByRole("button", { name: "走行モード" }));
     expect(screen.getByRole("group", { name: "走りの数字" })).toBeInTheDocument();
     expect(shownWhileIdle()).toEqual([null, null, null, null]);
-    expect(within(rideProfile()!).getByRole("slider", { name: /^道のりに沿った難易度/ })).toBeInTheDocument();
+    expect(within(rideProfile()!).getByRole("img", { name: "道のりに沿った難易度" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "走行モード" }));
     expect(screen.queryByRole("group", { name: "走りの数字" })).toBeNull();
@@ -876,6 +878,138 @@ describe("画面の枠", () => {
     expect(screen.getByRole("navigation", { name: "パネル切り替え" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "走行モード" }));
     expect(screen.queryByRole("navigation", { name: "パネル切り替え" })).toBeNull();
+  });
+
+  it("地図を指で動かして休んでいる間だけ地図の下に「現在地へ戻る」を出し、押すと追い直す。走行モードのボタンは休んでいても止める", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    const backToHere = () => screen.queryByRole("button", { name: "現在地へ戻る" });
+    const moveMapByHand = () =>
+      act(() => mapOnScreen().emit("movestart", { originalEvent: new MouseEvent("mousedown") }));
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    geolocation.deliver(RIDDEN_MIDDLE);
+    expect(backToHere()).toBeNull();
+
+    moveMapByHand();
+    await user.click(backToHere()!);
+    expect(backToHere()).toBeNull();
+
+    moveMapByHand();
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    expect(screen.queryByRole("group", { name: "走りの数字" })).toBeNull();
+    expect(backToHere()).toBeNull();
+  });
+
+  it("走行モードのまま帯の「ルート」で左のパネルを出し、候補を選び直す・作り直すと、走行モードはその候補を追い続ける", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    // 東へ2km進む区間1つのルート。現在地（東経139.705度）はその4分の1の所。
+    const longer = route("longer", {
+      segments: [
+        makeRouteSegment({
+          start_latitude: 35.7,
+          start_longitude: 139.7,
+          end_latitude: 35.7,
+          end_longitude: 139.72,
+          distance_km: 2,
+        }),
+      ],
+      distance_km: 2,
+    });
+    jobs.respond([RIDDEN, longer], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(2));
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
+    const rideBar = screen.getByRole("group", { name: "走りの数字" });
+    expect(rideBar).toHaveTextContent("残り: 0.5km");
+    expect(screen.queryByRole("button", { name: "ルート結果" })).toBeNull();
+
+    const routePanel = screen.getByRole("button", { name: "ルート" });
+    await user.click(routePanel);
+    expect(routePanel).toHaveAttribute("aria-expanded", "true");
+    await user.click(candidateTabs()[1]);
+    geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
+    expect(rideBar).toHaveTextContent("残り: 1.5km");
+
+    jobs.respond([RIDDEN], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
+    expect(screen.getByRole("group", { name: "走りの数字" })).toHaveTextContent("残り: 0.5km");
+
+    await user.click(routePanel);
+    expect(screen.queryByRole("button", { name: "ルート結果" })).toBeNull();
+  });
+
+  it("スマホでは、走行中に帯の「ルート」で「ルート結果」のシートを開き、下部タブで「ルート設定」へ移れ、閉じると地図だけに戻る", async () => {
+    useMobileLayout();
+    const { user } = renderHome();
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    const routePanel = screen.getByRole("button", { name: "ルート" });
+
+    await user.click(routePanel);
+    expect(screen.getByRole("dialog", { name: "ルート結果" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ルート設定" }));
+    expect(screen.getByRole("dialog", { name: "ルート設定" })).toBeInTheDocument();
+
+    await user.click(routePanel);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "パネル切り替え" })).toBeNull();
+    expect(screen.getByRole("group", { name: "走りの数字" })).toBeInTheDocument();
+  });
+
+  it("走行中は、帯の「ルート」で開いたパネルの中を除き、地図を押しても地点を置かず、線・区間・ピンを押しても選ばず中身も出さない", async () => {
+    const { user } = renderHome();
+    jobs.respond([FIRST, SECOND], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(2));
+    const [secondLine] = mapOnScreen()
+      .sourceFeatures("route-candidates")
+      .filter((line) => line.properties?.routeId === SECOND.id);
+    const clickSecondLine = () =>
+      clickMap(ELSEWHERE, [
+        {
+          layer: "route-candidates-candidateHit",
+          properties: secondLine.properties ?? {},
+          geometry: secondLine.geometry,
+        },
+      ]);
+    const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+
+    clickMap(ELSEWHERE);
+    expect(marksAt(ELSEWHERE)).toEqual([]);
+    clickSecondLine();
+    expect(linesOn("route-selected")).toEqual([FIRST.geometry.coordinates]);
+    clickSegment(drawnSegment, HERE);
+    expect(screen.queryByText(/km地点/)).toBeNull();
+    const [originPin] = marksAt(HERE);
+    expect(originPin.draggable).toBe(false);
+    await user.click(originPin.element);
+    expect(screen.queryByText(/^出発地: /)).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "ルート" }));
+    clickSecondLine();
+    expect(linesOn("route-selected")).toEqual([SECOND.geometry.coordinates]);
+  });
+
+  it("「このルートで走る」を押すと、その候補を選んで走行モードを始め、スマホはシートを閉じる。止めると走る前のシートへ戻る", async () => {
+    useMobileLayout();
+    const { user } = renderHome();
+    jobs.respond([FIRST, SECOND], LOOP_CONDITIONS);
+    await user.click(screen.getByRole("button", { name: "ルート設定" }));
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(2));
+    await user.click(candidateTabs()[1]);
+
+    await user.click(screen.getByRole("button", { name: "このルートで走る" }));
+    expect(screen.getByRole("group", { name: "走りの数字" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(linesOn("route-selected")).toEqual([SECOND.geometry.coordinates]);
+
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    expect(screen.getByRole("dialog", { name: "ルート結果" })).toBeInTheDocument();
   });
 
   it("スマホでは下部タブでシートを1枚ずつ開き、地図で地点を扱えるのは「ルート設定」の条件タブを開いている間だけ。結果の合図は「ルート結果」を開くまで残り、押した結果が候補を出せなかった理由（候補0件の理由・入力の誤り）はシートでなく窓で出し、閉じると消える。候補0件の合図は成功と見分ける", async () => {

@@ -19,7 +19,7 @@ interface UseLocationResult {
   locationSource: LocationSource;
   /** 位置が分かっているか（取れたか、手で置いたか）。分からない間の`location`は初期地点で、利用者のいる場所と関係が無い。 */
   locationKnown: boolean;
-  /** 最後に取れた現在地。まだ取れていなければnull。 */
+  /** 現在地（走行モードの間は走行モードが受けた位置、ほかは最後に取れた位置）。まだ取れていなければnull。 */
   here: Coordinates | null;
   /** 出発地が、最後に取れた現在地にあるか（偽なら「出発地を現在地に戻す」で動く）。 */
   originAtHere: boolean;
@@ -30,15 +30,16 @@ interface UseLocationResult {
   locateError: string | null;
   /** 「現在地に移動」: 現在地を取り直し、取れたら`onLocated`へ渡す。分かっている出発地は動かさない。 */
   locateMe: (onLocated?: (point: Coordinates) => void) => void;
-  /** 「出発地を現在地に戻す」: 現在地を取り直し、出発地もそこへ置く。 */
+  /** 「出発地を現在地に戻す」: 現在地を取り直し、出発地もそこへ置く。走行モードの間は取り直さず、走行モードが受けた位置へ置く。 */
   resetOriginToCurrent: () => void;
   /** 出発地を手で決める（地図のタップ・ピンのドラッグ・探して選んだ地点）。まだ返っていない取得が後から上書きしないようにする。 */
   setManualLocation: (point: Coordinates) => void;
 }
 
 /** 位置の取得と保持。出発地と現在地を分けて持ち、取れた現在地は出発地がまだ分からないとき（と、出発地を現在地に戻すとき）
- * だけ出発地にする。マウント時の自動取得と取り直しは並走しうるので、最後に出した要求の結果だけを反映する。 */
-export function useLocation(): UseLocationResult {
+ * だけ出発地にする。マウント時の自動取得と取り直しは並走しうるので、最後に出した要求の結果だけを反映する。
+ * `ridingAt`は走行モードが受けた現在地（走行モードの間だけ。ほかはnull）で、走っている間はこれを現在地にする。 */
+export function useLocation(ridingAt: Coordinates | null): UseLocationResult {
   const [origin, setOrigin] = useState<Origin>({ point: DEFAULT_LOCATION, source: "default" });
   const [here, setHere] = useState<Coordinates | null>(null);
   const [locationReady, setLocationReady] = useState(false);
@@ -101,7 +102,14 @@ export function useLocation(): UseLocationResult {
     [requestPosition],
   );
   const locateMe = useCallback((onLocated?: (point: Coordinates) => void) => locate(false, onLocated), [locate]);
-  const resetOriginToCurrent = useCallback(() => locate(true), [locate]);
+  const resetOriginToCurrent = useCallback(() => {
+    if (ridingAt === null) {
+      locate(true);
+      return;
+    }
+    originRequestId.current = null;
+    setOrigin({ point: ridingAt, source: "geolocation" });
+  }, [locate, ridingAt]);
 
   const setManualLocation = useCallback((point: Coordinates) => {
     originRequestId.current = null;
@@ -109,11 +117,12 @@ export function useLocation(): UseLocationResult {
   }, []);
 
   const locationKnown = origin.source !== "default";
+  const currentHere = ridingAt ?? here;
   const originAtHere =
     origin.source === "geolocation" &&
-    here !== null &&
-    here.latitude === origin.point.latitude &&
-    here.longitude === origin.point.longitude;
+    currentHere !== null &&
+    currentHere.latitude === origin.point.latitude &&
+    currentHere.longitude === origin.point.longitude;
   const locationFailure = useMemo<FetchFailure | null>(
     () =>
       locationReady && !locationKnown
@@ -132,7 +141,7 @@ export function useLocation(): UseLocationResult {
     location: origin.point,
     locationSource: origin.source,
     locationKnown,
-    here,
+    here: currentHere,
     originAtHere,
     locationFailure,
     locating,

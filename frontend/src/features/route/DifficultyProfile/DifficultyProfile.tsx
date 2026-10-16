@@ -26,7 +26,8 @@ interface DifficultyProfileProps {
   /** 横軸の右端の距離。一覧の中で最も長い候補の距離にすると、候補どうしで面積（負荷）を見比べられる。 */
   scaleKm: number;
   selected: SelectedRouteSegment | null;
-  onSelect: (selection: SelectedRouteSegment) => void;
+  /** なぞる・押して離すと、その地点の区間を選ぶ。無ければ押せない見るだけの図にする（走行中は地図を追うことに専念する）。 */
+  onSelect?: (selection: SelectedRouteSegment) => void;
   /** 走行中の現在地のルートの上の距離。印を引き、始点からそこまでを走り終えた区間として薄める。 */
   progressKm?: number | null;
 }
@@ -119,7 +120,7 @@ export default function DifficultyProfile({
     if (hit === null) return;
     const [longitude, latitude] = pointAlongSegment(hit.column.segment, hit.fraction);
     setScrubKm(clamped);
-    onSelect({ segment: hit.column.segment, latitude, longitude });
+    onSelect?.({ segment: hit.column.segment, latitude, longitude });
   }
 
   function kmAtPointer(event: PointerEvent<SVGSVGElement>): number {
@@ -155,31 +156,39 @@ export default function DifficultyProfile({
         viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
         preserveAspectRatio="none"
         // 押したまま横へ動かす操作をシートのスクロール・スワイプへ渡さない。
-        className="h-14 w-full cursor-crosshair touch-none rounded-sm bg-[var(--color-surface-2)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
-        role="slider"
-        tabIndex={0}
-        aria-label="道のりに沿った難易度（動かすと、その地点を地図に出す）"
-        data-usage="横が道のり、縦がその区間の難易度で、塗った面積がルートの負荷です。なぞるか押して離すと、その地点を地図に印で出し、下にその区間の詳細を出します。"
-        aria-valuemin={0}
-        aria-valuemax={roundToDigits(routeKm, 1)}
-        aria-valuenow={roundToDigits(positionKm, 1)}
-        aria-valuetext={`${positionKm.toFixed(1)} km地点`}
-        onPointerDown={(event) => {
-          event.currentTarget.setPointerCapture?.(event.pointerId);
-          gesture.current.pointers.add(event.pointerId);
-          // 画面全体の指は窓の捕捉の段で先に数えてあるので、グラフの上の指もそこに含まれる。
-          if (screenPointers.current.size > 1) gesture.current.multi = true;
-        }}
-        onPointerMove={(event) => {
-          if (event.buttons === 0 || gesture.current.multi || !gesture.current.pointers.has(event.pointerId)) return;
-          selectAt(kmAtPointer(event));
-        }}
-        onPointerUp={(event) => {
-          if (!gesture.current.multi && gesture.current.pointers.has(event.pointerId)) selectAt(kmAtPointer(event));
-          releasePointer(event.pointerId);
-        }}
-        onPointerCancel={(event) => releasePointer(event.pointerId)}
-        onKeyDown={handleKeyDown}
+        className="h-14 w-full touch-none rounded-sm bg-[var(--color-surface-2)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] data-[pickable=true]:cursor-crosshair"
+        data-pickable={onSelect !== undefined}
+        {...(onSelect === undefined
+          ? { role: "img", "aria-label": "道のりに沿った難易度" }
+          : {
+              role: "slider",
+              tabIndex: 0,
+              "aria-label": "道のりに沿った難易度（動かすと、その地点を地図に出す）",
+              "data-usage":
+                "横が道のり、縦がその区間の難易度で、塗った面積がルートの負荷です。なぞるか押して離すと、その地点を地図に印で出し、下にその区間の詳細を出します。",
+              "aria-valuemin": 0,
+              "aria-valuemax": roundToDigits(routeKm, 1),
+              "aria-valuenow": roundToDigits(positionKm, 1),
+              "aria-valuetext": `${positionKm.toFixed(1)} km地点`,
+              onPointerDown: (event: PointerEvent<SVGSVGElement>) => {
+                event.currentTarget.setPointerCapture?.(event.pointerId);
+                gesture.current.pointers.add(event.pointerId);
+                // 画面全体の指は窓の捕捉の段で先に数えてあるので、グラフの上の指もそこに含まれる。
+                if (screenPointers.current.size > 1) gesture.current.multi = true;
+              },
+              onPointerMove: (event: PointerEvent<SVGSVGElement>) => {
+                if (event.buttons === 0 || gesture.current.multi || !gesture.current.pointers.has(event.pointerId))
+                  return;
+                selectAt(kmAtPointer(event));
+              },
+              onPointerUp: (event: PointerEvent<SVGSVGElement>) => {
+                if (!gesture.current.multi && gesture.current.pointers.has(event.pointerId))
+                  selectAt(kmAtPointer(event));
+                releasePointer(event.pointerId);
+              },
+              onPointerCancel: (event: PointerEvent<SVGSVGElement>) => releasePointer(event.pointerId),
+              onKeyDown: handleKeyDown,
+            })}
       >
         {selectedColumn !== undefined && (
           <rect
