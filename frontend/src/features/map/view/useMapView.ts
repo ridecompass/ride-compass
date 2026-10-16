@@ -18,7 +18,6 @@ import {
   type MapLayerVisibility,
 } from "@/features/map/layers/mapLayers";
 import type { LensId } from "@/lib/mapDisplay/routeStyleModes";
-import { primaryAttributeIdsToLayerIds } from "@/features/map/layers/primaryAttributes";
 import type { MapViewport } from "@/features/map/layers/windLayer";
 import type MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayControls";
 import { isLegendFiltered } from "@/features/map/MapOverlayControls/MapOverlayControls";
@@ -185,16 +184,10 @@ export function useMapView({
     look,
     lensControl: {
       lens,
-      // 選んだ色分けが見えるように、ルートのレイヤーがOFFならONにする。密度の軸は線を塗らないので、数える材料の点も出す。
+      // 選んだ色分けが見えるように、ルートのレイヤーがOFFならONにする。
       onLensChange: (id) => {
         setLens(id);
-        const axis = catalog.axes.find((entry) => entry.axisId === id);
-        const pointIds = axis?.densityTerms ? primaryAttributeIdsToLayerIds(axis.primaryAttributeIds) : [];
-        setLayerVisibility((prev) => ({
-          ...prev,
-          [ROUTE_LAYER_ID]: true,
-          ...Object.fromEntries(pointIds.map((layerId) => [layerId, true])),
-        }));
+        setRouteShown(true);
       },
       axisOptions: lensOptions(catalog.axes, routeWeights, catalog.axisColors),
       legend,

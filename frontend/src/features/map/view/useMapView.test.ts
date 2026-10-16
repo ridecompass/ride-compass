@@ -90,7 +90,7 @@ describe("useMapView", () => {
     expect(result.current.look.paintedAxisId).toBeNull();
   });
 
-  it("密度の軸のレンズを選ぶと、材料の点のレイヤーを出し、項の重みをレンズに渡す（密度の軸でなければどちらもしない）", async () => {
+  it("密度の軸のレンズを選ぶと項の重みをレンズに渡し、どのレンズを選んでもレイヤーの入切は変えない", async () => {
     const terms = [{ material_id: "signal", label: "信号", weight: 1.5 }];
     serve([
       dedicatedEntry("axis_density", [10], { primary_attribute_ids: ["stop_poi"], density_terms: terms }),
@@ -105,7 +105,7 @@ describe("useMapView", () => {
     expect(result.current.lensControl.densityTerms).toBeNull();
 
     act(() => result.current.lensControl.onLensChange("axis_density"));
-    expect(result.current.look.layerVisibility.stop_poi).toBe(true);
+    expect(result.current.look.layerVisibility.stop_poi).toBe(false);
     expect(result.current.lensControl.densityTerms).toEqual([{ materialId: "signal", label: "信号", weight: 1.5 }]);
   });
 
