@@ -61,6 +61,8 @@ interface LensControlProps {
   premises: readonly string[];
   /** 今のレンズの取得の状態（専用配信の軸のときだけ）。塗りは失敗でもデータ無しでも同じ無彩色なので、印で見分ける。 */
   dataStatus?: LayerDataStatus;
+  /** ピルを小さく出す（走行中に地図の操作を隠している間）。名前・札・色の帯だけを詰めて出し、条件の文は出さない。 */
+  compact: boolean;
 }
 
 /** 画面の名前。コードの「レンズ」は画面には出さない（利用者が見る名前はこれだけ）。 */
@@ -121,6 +123,7 @@ export default function LensControl({
   densityTerms,
   premises,
   dataStatus,
+  compact,
 }: LensControlProps) {
   const [open, setOpen] = useState(false);
   const statusLabel = dataStatus ? LAYER_DATA_STATUS_LABELS[dataStatus] : undefined;
@@ -159,7 +162,10 @@ export default function LensControl({
             variant="float"
             size="bare"
             shape="pill"
-            className="flex-col items-stretch gap-1 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
+            className={cn(
+              "flex-col items-stretch border-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]",
+              compact ? "gap-0.5 px-2 py-0.5 text-[0.7rem]" : "gap-1 px-2.5 py-1 text-[length:var(--font-size-sm)]",
+            )}
             aria-label={`${LENS_SCREEN_NAME}: ${[current.label, currentRouteOnly && ROUTE_ONLY_BADGE, conditions].filter(Boolean).join("・")}（タップで変更）`}
             title={statusLabel}
             usage="地図の道路（ルートを作った後はルートの線）を何で色分けするかを選びます。下の帯は今の色分けの凡例です。"
@@ -174,7 +180,7 @@ export default function LensControl({
                 ▾
               </span>
             </span>
-            {conditions && (
+            {conditions && !compact && (
               <span aria-hidden="true" className="text-center text-[0.7rem] text-[var(--color-muted)]">
                 {conditions}
               </span>

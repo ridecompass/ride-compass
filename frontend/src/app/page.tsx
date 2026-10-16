@@ -279,7 +279,7 @@ export default function Home() {
 
   // パネルを出しているか。走行モードの間は、帯の「ルート」で開いている間だけ（モバイルはシートを開いている間）。
   const panelsShown = !navigating || (isMobile ? mobileSheet !== null : ridePanelOpen);
-  // 地図の「表示」と色分けを出しているか。走行モードの間は、帯の「地図の表示」で出している間だけ。
+  // 地図の「表示」と色分けを出しているか。走行モードの間は、帯の「地図の表示」で出している間だけ（隠している間も色分けは小さく出す）。
   const mapControlsShown = !navigating || rideMapControlsShown;
   // 地図で効いているパネル（いつも1つ）。モバイルは開いているシート。デスクトップは出していて畳んでいない左のパネルの、
   // 開いている区分で、2つとも開いていれば最後に触った区分（畳むと区分の開閉は保ったまま中身が見えなくなる）。走行中に
@@ -730,15 +730,14 @@ export default function Home() {
                 )}
               </div>
             )}
-            {mapControlsShown && (
-              // 上の中央に色分けを置く。左右の余白は、右の縦の列を両側で避ける幅（中央に置くため）。
-              <div
-                {...mapOverlayEdge("top")}
-                className="pointer-events-none absolute inset-x-0 top-3 z-[var(--z-map-control)] flex justify-center px-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))]"
-              >
-                <LensControl {...mapView.lensControl} />
-              </div>
-            )}
+            {/* 上の中央に色分けを置く。地図の操作を隠している走行中も、ルートの線と道の色が何かを示すため小さく出す。
+                左右の余白は、右の縦の列を両側で避ける幅（中央に置くため）。 */}
+            <div
+              {...mapOverlayEdge("top")}
+              className="pointer-events-none absolute inset-x-0 top-3 z-[var(--z-map-control)] flex justify-center px-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))]"
+            >
+              <LensControl {...mapView.lensControl} compact={!mapControlsShown} />
+            </div>
             {!navigating && <FirstVisitIntro isMobile={isMobile} locationUnknown={locationFailure !== null} />}
 
             {usageGuideActive && <UsageGuide onEnd={() => setUsageGuideActive(false)} />}
