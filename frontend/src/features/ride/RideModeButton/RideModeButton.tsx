@@ -12,14 +12,6 @@ import { cn } from "@/lib/cn";
 import type { RideStatus } from "../useRideMode";
 import type { ScreenWakeLockStatus } from "../useScreenWakeLock";
 
-/** 押したときに何が起きるか（吹き出しの名前）。名前（`aria-label`）は「走行モード」のまま、入切は`aria-pressed`で示す。 */
-const NEXT_ACTION: Record<RideStatus, string> = {
-  off: "走行モードを始める",
-  waiting: "走行モードを止める",
-  following: "走行モードを止める",
-  paused: "地図を現在地へ戻す",
-};
-
 const WAKE_LOCK_UNAVAILABLE =
   "この端末では画面を点けたままにできません。画面が消えると現在地も届かなくなるので、自動ロックの設定を確かめてください。";
 
@@ -49,8 +41,9 @@ export default function RideModeButton({ status, error, screenWakeLock, onPress 
         aria-label="走行モード"
         aria-pressed={status !== "off"}
         aria-description={wakeLockUnavailable ? WAKE_LOCK_UNAVAILABLE : undefined}
-        title={NEXT_ACTION[status]}
-        usage="押すと走行モードを始め、現在地を追って地図を動かし続けます（画面も点けたままにします）。地図を指で動かすと追うのを休み、もう一度押すと現在地へ戻ります。追っている間に押すと止めます。走行モードの間は、方位のボタンで北が上と進む向きが上を切り替えます。"
+        // 押したときに何が起きるか。名前（`aria-label`）は「走行モード」のまま、入切は`aria-pressed`で示す。
+        title={status === "off" ? "走行モードを始める" : "走行モードを止める"}
+        usage="押すと走行モードを始め、現在地を追って地図を動かし続けます（画面も点けたままにします）。地図を指で動かすと追うのを休み、地図の下の「現在地へ戻る」で追い直します。走行モードの間に押すと止めます。走行モードの間は、方位のボタンで北が上と進む向きが上を切り替えます。"
         data-ride={status}
         className={cn(
           "relative",

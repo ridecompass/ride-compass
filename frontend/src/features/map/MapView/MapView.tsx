@@ -220,9 +220,10 @@ function nearestPointOnLineString(
 /**
  * 地図を押したときの意味。地点: 選んでいる地点を置く・ピンを押すとその地点を選ぶ。ルート: 候補の線を押すとそのルートを
  * 選び、選んだルートの区間を押すとその区間を選ぶ。乗り換え: 乗り換える区間を選ぶ。見る: 押した物（道・点・区間・ピン）の
- * 中身を小窓に出すだけで、地点もルートも変えない。
+ * 中身を小窓に出すだけで、地点もルートも変えない。走る: 何も開かず、地図は現在地を追うことに専念する（走行中にパネルを
+ * 開いていない間）。
  */
-export type MapTapMode = "points" | "routes" | "splice" | "look";
+export type MapTapMode = "points" | "routes" | "splice" | "look" | "ride";
 
 /** 意味ごとに、押して開ける当たり判定の対象（地点の意味は地物を開かない）。 */
 const OPENABLE_TARGETS: Record<MapTapMode, ReadonlySet<string>> = {
@@ -230,6 +231,7 @@ const OPENABLE_TARGETS: Record<MapTapMode, ReadonlySet<string>> = {
   routes: new Set([ROUTE_HIT_TARGET_CANDIDATE, ROUTE_HIT_TARGET_SEGMENT]),
   splice: new Set([ROUTE_HIT_TARGET_SPLICE_BAND]),
   look: new Set([ROUTE_HIT_TARGET_SEGMENT, POINT_HIT_TARGET, ROAD_LINE_HIT_TARGET]),
+  ride: new Set(),
 };
 
 /** 地点のピンの名前（見るだけの間にピンを押すと、小窓に呼び名と並べて出す）。 */
@@ -701,8 +703,9 @@ export default function MapView({
     onOriginMove,
     onWaypointMove,
     onDestinationMove,
-    // 地点の意味の間はその地点を選び、ほかの間は呼び名と名前を小窓に出すだけ（押しただけでは消さない）。
+    // 地点の意味の間はその地点を選び、走る間は何も出さず、ほかの間は呼び名と名前を小窓に出すだけ（押しただけでは消さない）。
     onPointPress: (target, at) => {
+      if (tapMode === "ride") return;
       if (tapMode === "points") {
         onPointSelect(target);
         return;

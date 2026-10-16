@@ -122,7 +122,7 @@ const mapBearing = (page: Page) =>
     return map.isMoving() ? NaN : (map.getBearing() + 360) % 360;
   });
 
-test("走行モードの間、地図は届いた位置を同じ所に描き続け、進む向きを上にでき、指で動かすと休み、止めると追わない", async ({
+test("走行モードの間、地図は届いた位置を同じ所に描き続け、進む向きを上にでき、指で動かすと休み、止めると追わずに北を上へ戻す", async ({
   page,
   context,
   browserName,
@@ -192,7 +192,8 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   await page.mouse.down();
   await page.mouse.move(from.x - 120, from.y + 60, { steps: 10 });
   await page.mouse.up();
-  await expect(rideButton).toHaveAttribute("title", "地図を現在地へ戻す");
+  const backToHere = page.getByRole("button", { name: "現在地へ戻る" });
+  await expect(backToHere).toBeVisible();
   // 面の色は移り変わり（transition）を持つので、落ち着くまで待って比べる。
   await expect.poll(async () => (await buttonLook(rideButton)).background).toBe(offLook.background);
   expect((await buttonLook(rideButton)).ring).not.toBe(offLook.ring);
@@ -203,19 +204,25 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   const whilePaused = (await screenPointOf(page, pausedAt))!;
   expect(Math.hypot(whilePaused.x - anchor.x, whilePaused.y - anchor.y)).toBeGreaterThan(50);
 
-  // 押すと現在地へ戻って追い直す。
-  await rideButton.click();
+  // 地図の下の「現在地へ戻る」を押すと現在地へ戻って追い直す。
+  await backToHere.click();
   await expectDrawnAt(page, pausedAt, anchor);
+  await expect(backToHere).toBeHidden();
 
-  // 止めると点が消え、次の位置が届いても地図は動かない。
+  // 東へ進んでから進む向きを上にしたまま止めると、地図を北が上へ戻し、点が消え、次の位置が届いても地図は動かない。
+  const lastRidden = moved(pausedAt, 0, 200);
+  await deliverPosition(page, context, lastRidden);
+  await page.getByRole("button", { name: /^進む向きを上にする/ }).click();
+  await expect.poll(() => mapBearing(page), { timeout: 10_000 }).toBeCloseTo(90, 0);
   await rideButton.click();
   await expect(rideButton).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(() => mapBearing(page), { timeout: 10_000 }).toBeCloseTo(0, 0);
   await expect(dot).toBeHidden();
-  const afterStop = moved(pausedAt, 0, 200);
+  const afterStop = moved(lastRidden, 0, 200);
   // 止めると左のパネルが戻って地図の幅が変わるので、落ち着いた位置を基準にする。
-  const before = await settledScreenPoint(page, pausedAt);
+  const before = await settledScreenPoint(page, lastRidden);
   await deliverPosition(page, context, afterStop);
-  const after = await screenPointOf(page, pausedAt);
+  const after = await screenPointOf(page, lastRidden);
   expect(after).not.toBeNull();
   expect(Math.hypot(after!.x - before.x, after!.y - before.y)).toBeLessThan(1);
 });

@@ -63,8 +63,8 @@ function createLocationMark(): HTMLElement {
 }
 
 /** 走行モードの間、現在地の点を出し、追っている間は地図の中心（と向き）を現在地へ動かし続ける。利用者が地図を指で
- * 動かすか回すと追うのを休むよう知らせ、方位のボタンは北を上に戻す代わりに向きの切り替えを知らせる。走っていない間は、
- * `here`（取り直した現在地）に同じ点を出す。
+ * 動かすか回すと追うのを休むよう知らせ、方位のボタンは北を上に戻す代わりに向きの切り替えを知らせる。止めたら地図の向きを
+ * 走る前に戻す。走っていない間は、`here`（取り直した現在地）に同じ点を出す。
  * `visibleOffset`は、地図に重なる部品を避けて見えている所の中ほどへ寄せるための、中心からのずれ（px）。 */
 export function useRideFollow(
   mapRef: RefObject<MapLibreMap | null>,
@@ -116,8 +116,22 @@ export function useRideFollow(
     };
   }, [mapRef]);
 
-  // 走行モードの間、方位のボタンの名前を、押したときの動き（向きの切り替え）にする。終えたら元の名前へ戻す。
+  // 走り始めたときの地図の向きを覚え、止めたらそこへ戻す（進む向きを上にして回した地図を、作業台に持ち越さない）。
+  // 戻すのは止めたときだけで、画面を離れて地図を片付けるときは動かさない。
   const riding = ride !== null;
+  const bearingBeforeRide = useRef<number | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (riding) {
+      bearingBeforeRide.current = map.getBearing();
+    } else if (bearingBeforeRide.current !== null) {
+      map.easeTo({ bearing: bearingBeforeRide.current });
+      bearingBeforeRide.current = null;
+    }
+  }, [mapRef, riding]);
+
+  // 走行モードの間、方位のボタンの名前を、押したときの動き（向きの切り替え）にする。終えたら元の名前へ戻す。
   const headingUp = ride?.headingUp ?? false;
   useEffect(() => {
     const compass = mapRef.current?.getContainer().querySelector(COMPASS_SELECTOR);

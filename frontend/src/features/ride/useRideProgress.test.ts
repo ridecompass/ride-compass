@@ -59,10 +59,7 @@ describe("useRideProgress", () => {
   });
 
   it("帰り道で読み込み直して戻したルートは、前に当てた位置から続く側に当て、別のルートでは始点に近い側から当てる", () => {
-    window.localStorage.setItem(
-      RIDE_SESSION_STORAGE_KEY,
-      writeRideSession({ route: ROUTE, riding: true, km: 3.4 }, Date.now()),
-    );
+    window.localStorage.setItem(RIDE_SESSION_STORAGE_KEY, writeRideSession({ route: ROUTE, km: 3.4 }, Date.now()));
     const { result, rerender } = render();
     rerender({ route: ROUTE, riding: true, position: QUARTER });
     expect(result.current.km).toBeCloseTo(3.5);

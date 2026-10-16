@@ -1,7 +1,7 @@
 /**
  * 走行モード（`features/ride/useRideMode.ts: useRideMode`）——ボタンで始めると現在地を受け取り続けて地図に追わせ、
- * 地図を指で動かすと追うのを休み、ボタンで戻し、もう一度押すと止めて受け取りをやめる。走行モードの間は、地図の向きを
- * 北が上と進む向きが上で切り替える。
+ * 地図を指で動かすと追うのを休み、「現在地へ戻る」で追い直し、ボタンをもう一度押すと（休んでいても）止めて受け取りをやめる。
+ * 走行モードの間は、地図の向きを北が上と進む向きが上で切り替え、止めると北が上に戻す。
  *
  * ここで見ないもの:
  * - 進む向きの出し方（位置の向き・動いた向き・止まっている間）→ `travelBearing.test.ts`
@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 describe("useRideMode", () => {
-  it("押すと受け取りを始め、届いた位置を地図に追わせ続け、動かすと休み、押すと戻り、もう一度押すと受け取りをやめる", () => {
+  it("押すと受け取りを始め、届いた位置を地図に追わせ続け、動かすと休み、戻すと追い直し、休んでいても押すと受け取りをやめる", () => {
     const { result } = renderHook(() => useRideMode());
     expect(result.current.status).toBe("off");
     expect(result.current.map).toBeNull();
@@ -53,17 +53,18 @@ describe("useRideMode", () => {
     geolocation.deliver({ latitude: 35.7, longitude: 139.76 });
     expect(result.current.map?.position).toEqual({ latitude: 35.7, longitude: 139.76 });
 
-    act(() => result.current.press());
+    act(() => result.current.resume());
     expect(result.current.status).toBe("following");
     expect(geolocation.watching()).toBe(1);
 
+    act(() => result.current.map?.onPause());
     act(() => result.current.press());
     expect(result.current.status).toBe("off");
     expect(result.current.map).toBeNull();
     expect(geolocation.watching()).toBe(0);
   });
 
-  it("北が上と進む向きが上を切り替え、進む向きは届いた位置から出す", () => {
+  it("北が上と進む向きが上を切り替え、進む向きは届いた位置から出す。止めて始め直すと北が上から始まる", () => {
     const { result } = renderHook(() => useRideMode());
     act(() => result.current.press());
     geolocation.deliver({ latitude: 35.68, longitude: 139.76, heading: 120 });
@@ -72,6 +73,11 @@ describe("useRideMode", () => {
     act(() => result.current.map?.onToggleHeadingUp());
     expect(result.current.map?.headingUp).toBe(true);
     act(() => result.current.map?.onToggleHeadingUp());
+    expect(result.current.map?.headingUp).toBe(false);
+
+    act(() => result.current.map?.onToggleHeadingUp());
+    act(() => result.current.press());
+    act(() => result.current.press());
     expect(result.current.map?.headingUp).toBe(false);
   });
 

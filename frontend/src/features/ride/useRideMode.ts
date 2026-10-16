@@ -45,8 +45,10 @@ interface UseRideModeResult {
   accuracyM: number | null;
   /** 走行モードの間、画面が自動で消えないよう頼めているか（画面が消えると位置も届かなくなる）。 */
   screenWakeLock: ScreenWakeLockStatus;
-  /** 止まっていれば始め、休んでいれば追い直し、追っていれば止める。 */
+  /** 止まっていれば始め、走行モードの間（休んでいても）は止める。 */
   press: () => void;
+  /** 休んでいれば追い直す。 */
+  resume: () => void;
   /** 走行モードの間だけ値がある。 */
   map: RideOnMap | null;
 }
@@ -56,16 +58,23 @@ const WATCH_OPTIONS: PositionOptions = { enableHighAccuracy: true, maximumAge: 0
 // `GeolocationPositionError.PERMISSION_DENIED`。
 const PERMISSION_DENIED = 1;
 
+/** 最後に受けた位置から読むもの。 */
+interface Fix {
+  position: Coordinates;
+  /** 速さ（秒速m）。位置が持たず、前の位置からも出せなければnull。 */
+  speedMs: number | null;
+  travel: TravelBearing | null;
+  /** 測った時刻（エポックからのms）。 */
+  fixedAtMs: number;
+  /** 誤差（m）。端末が返さなければnull。 */
+  accuracyM: number | null;
+}
+
 /** 走行モード: 現在地を受け取り続け、地図に追わせる。 */
 export function useRideMode(): UseRideModeResult {
   const [status, setStatus] = useState<RideStatus>("off");
   const [error, setError] = useState<string | null>(null);
-  const [position, setPosition] = useState<Coordinates | null>(null);
-  // 位置が持つ速さ（秒速m）。止まっている・取れないときはnull。
-  const [speedMs, setSpeedMs] = useState<number | null>(null);
-  const [travel, setTravel] = useState<TravelBearing | null>(null);
-  const [fixedAtMs, setFixedAtMs] = useState<number | null>(null);
-  const [accuracyM, setAccuracyM] = useState<number | null>(null);
+  const [fix, setFix] = useState<Fix | null>(null);
   const [headingUp, setHeadingUp] = useState(false);
   const watchId = useRef<number | null>(null);
   // 位置が速さを持たないときに、次の位置との距離と時刻の差から速さを出すための、前に受けた位置と時刻。
@@ -79,16 +88,13 @@ export function useRideMode(): UseRideModeResult {
     watchId.current = null;
   }, []);
 
+  // 受け取りをやめ、受けた位置を捨て、次に始めるときは北を上から始める。
   const stop = useCallback(() => {
     stopWatching();
     setStatus("off");
-    setPosition(null);
-    setSpeedMs(null);
+    setFix(null);
     lastFix.current = null;
-    setTravel(null);
-    setFixedAtMs(null);
-    setAccuracyM(null);
-    debugLog("ride:mode", "止めた");
+    setHeadingUp(false);
   }, [stopWatching]);
 
   const start = useCallback(() => {
@@ -102,44 +108,45 @@ export function useRideMode(): UseRideModeResult {
     setStatus("waiting");
     debugLog("ride:mode", "始めた");
     watchId.current = navigator.geolocation.watchPosition(
-      (fix) => {
-        const { latitude, longitude, heading, speed, accuracy } = fix.coords;
-        setPosition({ latitude, longitude });
+      (received) => {
+        const { latitude, longitude, heading, speed, accuracy } = received.coords;
         const here = { latitude, longitude };
         const previous = lastFix.current;
-        lastFix.current = { at: here, timestamp: fix.timestamp };
-        if (speed !== null && Number.isFinite(speed)) setSpeedMs(speed);
-        else if (previous !== null && fix.timestamp > previous.timestamp)
-          setSpeedMs((haversineKm(previous.at, here) * 1000) / ((fix.timestamp - previous.timestamp) / 1000));
-        else setSpeedMs(null);
-        setTravel((previous) => nextTravelBearing(previous, { latitude, longitude, heading }));
-        setFixedAtMs(fix.timestamp);
-        setAccuracyM(Number.isFinite(accuracy) ? accuracy : null);
+        lastFix.current = { at: here, timestamp: received.timestamp };
+        const speedMs =
+          speed !== null && Number.isFinite(speed)
+            ? speed
+            : previous !== null && received.timestamp > previous.timestamp
+              ? (haversineKm(previous.at, here) * 1000) / ((received.timestamp - previous.timestamp) / 1000)
+              : null;
+        setFix((current) => ({
+          position: here,
+          speedMs,
+          travel: nextTravelBearing(current?.travel ?? null, { latitude, longitude, heading }),
+          fixedAtMs: received.timestamp,
+          accuracyM: Number.isFinite(accuracy) ? accuracy : null,
+        }));
         setStatus((current) => (current === "waiting" ? "following" : current));
       },
       (failure) => {
         // 一時に取れない（電波・時間切れ）なら受け取りを続け、次に届くのを待つ。
         debugLog("ride:position", "位置を受け取れなかった", { code: failure.code }, "warn");
         if (failure.code !== PERMISSION_DENIED) return;
-        stopWatching();
-        setStatus("off");
-        setPosition(null);
-        setSpeedMs(null);
-        lastFix.current = null;
-        setTravel(null);
-        setFixedAtMs(null);
-        setAccuracyM(null);
+        stop();
         setError("位置情報の利用が許可されていないため、走行モードを止めました。");
       },
       WATCH_OPTIONS,
     );
-  }, [stopWatching, requestHeading]);
+  }, [stop, requestHeading]);
 
   const press = useCallback(() => {
     if (status === "off") start();
-    else if (status === "paused") setStatus("following");
-    else stop();
+    else {
+      stop();
+      debugLog("ride:mode", "止めた");
+    }
   }, [status, start, stop]);
+  const resume = useCallback(() => setStatus((current) => (current === "paused" ? "following" : current)), []);
 
   // 画面を離れたら受け取りをやめる。
   useEffect(() => stopWatching, [stopWatching]);
@@ -147,6 +154,9 @@ export function useRideMode(): UseRideModeResult {
   const pause = useCallback(() => setStatus((current) => (current === "following" ? "paused" : current)), []);
   const toggleHeadingUp = useCallback(() => setHeadingUp((current) => !current), []);
 
+  const speedKmh = fix?.speedMs != null ? fix.speedMs * 3.6 : null;
+  const position = fix?.position ?? null;
+  const travel = fix?.travel ?? null;
   const map = useMemo<RideOnMap | null>(
     () =>
       status === "off"
@@ -156,17 +166,25 @@ export function useRideMode(): UseRideModeResult {
             bearing: travel?.bearing ?? null,
             facing: device.heading !== null && position !== null ? trueHeadingDeg(device.heading, position) : null,
             following: status === "following",
-            speedKmh: speedMs !== null ? speedMs * 3.6 : null,
+            speedKmh,
             headingUp,
             onPause: pause,
             onToggleHeadingUp: toggleHeadingUp,
           },
-    [status, position, travel, device.heading, speedMs, headingUp, pause, toggleHeadingUp],
+    [status, position, travel, device.heading, speedKmh, headingUp, pause, toggleHeadingUp],
   );
 
   const screenWakeLock = useScreenWakeLock(status !== "off");
 
-  const speedKmh = status !== "off" && speedMs !== null ? speedMs * 3.6 : null;
-
-  return { status, error, speedKmh, fixedAtMs, accuracyM, screenWakeLock, press, map };
+  return {
+    status,
+    error,
+    speedKmh,
+    fixedAtMs: fix?.fixedAtMs ?? null,
+    accuracyM: fix?.accuracyM ?? null,
+    screenWakeLock,
+    press,
+    resume,
+    map,
+  };
 }

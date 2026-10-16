@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
-import { DownloadIcon, FastestRouteIcon, RouteSpliceIcon } from "@/components/ui/icons/icons";
+import { DownloadIcon, FastestRouteIcon, RideModeIcon, RouteSpliceIcon } from "@/components/ui/icons/icons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { textVariants } from "@/components/ui/Text/Text";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
@@ -50,13 +50,15 @@ interface RouteOutcomeProps {
   splice: Pick<SpliceSessionView, "canStart" | "start" | "panel">;
   /** 軸を「未使用」と分ける重み（`useRoutePlanner.ts: routeWeights`）。 */
   routeWeights: RoutePreferenceWeights;
+  /** 「このルートで走る」を押した（その候補で走行モードを始める）。無ければボタンを出さない（もう走っている間）。 */
+  onRide?: (routeId: string) => void;
 }
 
 /**
  * 「ルート結果」の中身（デスクトップの区分・モバイルのシートの両方）: 生成前・生成中の案内、候補の一覧（縦のタブ）と
  * 選んだ候補の中身・地図で押した区間の詳細、編集中は区間の乗り換えの編集面。
  */
-export default function RouteOutcome({ results, generation, splice, routeWeights }: RouteOutcomeProps) {
+export default function RouteOutcome({ results, generation, splice, routeWeights, onRide }: RouteOutcomeProps) {
   const axisCatalog = useAxisCatalog();
   // 道のりのグラフが下から積む軸の並び。同じ参照を渡し、描き直しのたびにグラフの形を組み直させない。
   const axisOrder = useMemo(() => axisCatalog.axes.map((axis) => axis.axisId), [axisCatalog.axes]);
@@ -235,6 +237,18 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
           <div className="min-w-0 flex-auto">
             {routes.map((route) => (
               <TabsContent key={route.id} className="flex flex-col gap-2 data-[state=inactive]:hidden" value={route.id}>
+                {onRide && (
+                  <Button
+                    variant="primary"
+                    size="md"
+                    className="w-full justify-center gap-1.5"
+                    onClick={() => onRide(route.id)}
+                    usage="この候補で走行モードを始め、現在地を追って地図を動かし続けます。地図の右の走行モードのボタンでも始められます。"
+                  >
+                    <RideModeIcon size={18} />
+                    このルートで走る
+                  </Button>
+                )}
                 {renderCandidateActions(route)}
                 {renderEditDifference(route, nameOf)}
                 {/* 道のりに沿った難易度。区間を選んでいる間も残す（動かして地点を選ぶ操作の置き場のため）。 */}
