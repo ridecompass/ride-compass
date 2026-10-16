@@ -185,6 +185,32 @@ describe("useRideMode", () => {
     expect(result.current.speedKmh).toBeNull();
   });
 
+  it("位置が速さを持たず、2つの位置の誤差の内でしか動かない間は止まっていると読んで0を出し、地図へも0を渡す", () => {
+    const { result } = renderHook(() => useRideMode());
+    act(() => result.current.press());
+    geolocation.deliver({ latitude: 35.68, longitude: 139.76, accuracy: 10, timestamp: 0 });
+    // 約5.6mと約4.4m。どちらも2つの誤差の和（20m）の内で、そのまま割れば10km/h前後になる揺れ。
+    geolocation.deliver({ latitude: 35.68005, longitude: 139.76, accuracy: 10, timestamp: 2_000 });
+    expect(result.current.speedKmh).toBe(0);
+    geolocation.deliver({ latitude: 35.67996, longitude: 139.76, accuracy: 10, timestamp: 4_000 });
+    expect(result.current.speedKmh).toBe(0);
+    expect(result.current.map?.speedKmh).toBe(0);
+  });
+
+  it("誤差を超えて動いたら、止まっていると読んだ間の初めの位置からの距離と時刻の差で速さを出す", () => {
+    const { result } = renderHook(() => useRideMode());
+    act(() => result.current.press());
+    geolocation.deliver({ latitude: 35.68, longitude: 139.76, accuracy: 10, timestamp: 0 });
+    geolocation.deliver({ latitude: 35.68005, longitude: 139.76, accuracy: 10, timestamp: 4_000 });
+    // 初めの位置から約55.6mを14秒: 約14.3km/h（直前の位置からなら約50mを10秒で18km/h）。
+    geolocation.deliver({ latitude: 35.6805, longitude: 139.76, accuracy: 10, timestamp: 14_000 });
+    expect(result.current.speedKmh).toBeCloseTo(14.3, 0);
+    // 誤差が小さければ、同じ約5.6mの動き（2秒）も動いたと読む: 約10km/h。
+    geolocation.deliver({ latitude: 35.681, longitude: 139.76, accuracy: 2, timestamp: 100_000 });
+    geolocation.deliver({ latitude: 35.68105, longitude: 139.76, accuracy: 2, timestamp: 102_000 });
+    expect(result.current.speedKmh).toBeCloseTo(10, 0);
+  });
+
   it("画面を離れたら受け取りをやめる", () => {
     const { result, unmount } = renderHook(() => useRideMode());
     act(() => result.current.press());
