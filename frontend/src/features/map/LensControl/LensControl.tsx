@@ -1,41 +1,60 @@
 "use client";
 
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
-import { useState } from "react";
+import { createElement, useId, useState, type ReactElement } from "react";
 import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckboxList";
+import { DescriptionToggle, RowDescription } from "@/features/map/LegendCheckboxList/LegendRow";
 import { hiddenAfterToggleAll } from "@/features/map/view/legendFilters";
 import { LEGEND_SWATCH_RING_CLASS, legendSwatchBackground, type LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { LAYER_DATA_STATUS_LABELS, layerDataStatusNotice, type LayerDataStatus } from "@/features/map/layers/mapLayers";
 import {
-  FIXED_LENS_LABELS,
+  DIFFICULTY_LENS_LABEL,
   LENS_DIFFICULTY_ID,
   LENS_NEUTRAL_COLOR,
-  LENS_NONE_ID,
   type LensId,
 } from "@/lib/mapDisplay/routeStyleModes";
+import type { WayValueCondition } from "@/lib/catalogAxis";
 import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { Button } from "@/components/ui/Button/Button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { Dot } from "@/components/ui/Dot/Dot";
 import { textVariants } from "@/components/ui/Text/Text";
+import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
+import {
+  ClearAllFiltersIcon,
+  ClearAllLayersIcon,
+  ClockIcon,
+  SpeedGaugeIcon,
+  WindDirectionArrowIcon,
+} from "@/components/ui/icons/icons";
 import { cn } from "@/lib/cn";
-import { Badge } from "@/components/ui/Badge/Badge";
-import type { DensityTerm } from "@/lib/catalogAxis";
+import { EVALUATION_PAINT_NAME } from "@/lib/screenNames";
 
 export interface LensOption {
   id: LensId;
   label: string;
   color: string;
-  /** 重みが0（評価に使っていない）。選べるが「未使用」の見出しの下に並ぶ。 */
+  /** 重みが0（評価に使っていない）。選べるが薄く出し、「未使用」を添えて後ろに並べる。 */
   unused: boolean;
-  /** ルート未確定時に周りの道を塗る値を持たない選択肢。選べるがルート前は塗らない。 */
-  routeOnly: boolean;
+  /** 軸の説明（重みのタブと同じ軸カタログの説明文）。(i) で行の下に開く。 */
+  description: string;
+  /** 軸のアイコン（重みのタブと同じ）。未設定は汎用のアイコン。 */
+  iconId?: string;
+  /** 値が変わる走る条件（夜だけ効く軸は出発時刻）。地図の右の列の走る条件のボタンと同じアイコンを名前に添える。 */
+  conditions: readonly WayValueCondition[];
 }
+
+/** 走る条件ごとの、地図の右の列のボタンと同じアイコンと名前。 */
+const CONDITION_MARKS: Record<WayValueCondition, { Icon: (props: { size?: number }) => ReactElement; name: string }> = {
+  bearing_deg: { Icon: WindDirectionArrowIcon, name: "走行方位" },
+  speed_kmh: { Icon: SpeedGaugeIcon, name: "想定速度" },
+  at: { Icon: ClockIcon, name: "出発時刻" },
+};
 
 interface LensControlProps {
   lens: LensId;
   onLensChange: (id: LensId) => void;
-  /** 軸カタログ順の公開軸（総合難易度・なしはこのコンポーネントが固定で足す）。 */
+  /** 軸カタログ順の公開軸。 */
   axisOptions: readonly LensOption[];
   /** 今のレンズの凡例（ルートの前は道路、後はルートの線。どちらも呼ぶ側が組む）。 */
   legend: readonly LegendEntry[];
@@ -46,51 +65,30 @@ interface LensControlProps {
   onSetHiddenLegendKeys: (hiddenKeys: string[]) => void;
   keepAfterRoute: boolean;
   onKeepAfterRouteChange: (keep: boolean) => void;
-  /** ルート確定済みか（ルート前は「ルート後のみ」バッジを出す）。 */
+  /** ルート確定済みか（評価軸を選んでいないときのピルの名前が、ルートの前後で変わる）。 */
   hasDetail: boolean;
-  /** ルートの線を地図に出しているか。 */
-  routeShown: boolean;
-  /** 候補を選んでいるか。選ぶまでルートの線は無いので、出し入れを押せない。 */
-  routeSelectable: boolean;
-  onRouteShownChange: (shown: boolean) => void;
-  /** 周りの道の色が拠る走る条件の文（`view/lens.ts: lensConditionsLabel`）。条件を使わない色分けではnull。 */
-  conditions: string | null;
-  /** 今のレンズが密度の軸なら、材料ごとの1件あたりの重み。地図は線を塗らずに材料の点を出すので、点の数え方をここで読ませる。 */
-  densityTerms: readonly DensityTerm[] | null;
-  /** 凡例に書く、周りの道の色の前提（`view/lens.ts: lensPremises`）。 */
+  /** 候補を選んでいるのに、ルートの線を「表示」で出していない（色分けがルートの線に効かない）。 */
+  routeHidden: boolean;
+  /** 凡例の下に書く、周りの道の色の前提（`view/lens.ts: lensPremises`）。 */
   premises: readonly string[];
   /** 今のレンズの取得の状態（専用配信の軸のときだけ）。塗りは失敗でもデータ無しでも同じ無彩色なので、印で見分ける。 */
   dataStatus?: LayerDataStatus;
 }
 
 /** 画面の名前。コードの「レンズ」は画面には出さない（利用者が見る名前はこれだけ）。 */
-const LENS_SCREEN_NAME = "地図の色分け";
+const LENS_SCREEN_NAME = EVALUATION_PAINT_NAME;
 
-/** ルートを作る前は道に何も塗らない色分けに付ける札。 */
-const ROUTE_ONLY_BADGE = "ルート後のみ";
+/** 評価軸を選んでいないルートの前のピルの名前（道路は塗らない）。 */
+const UNSELECTED_LABEL = "評価軸を選ぶ";
 
-/** 凡例の段の見本（ピルの帯と開いた先の一覧で同じ形）。 */
-const LEGEND_BAR_CLASS = "inline-block h-1.5 w-2.5 flex-shrink-0 rounded-[1px]";
+/** 凡例の段の見本（開いた先の凡例の行）。 */
+const LEGEND_SWATCH_CLASS = "inline-block h-1.5 w-2.5 flex-shrink-0 rounded-[1px]";
 
-/** 軸の外に固定で並べる色分け。総合難易度はルートの線にだけ色を付ける（周りの道を塗る値を持たない）。 */
-const FIXED_LENS_OPTIONS: readonly LensOption[] = [
-  {
-    id: LENS_NONE_ID,
-    label: FIXED_LENS_LABELS[LENS_NONE_ID],
-    color: LENS_NEUTRAL_COLOR,
-    unused: false,
-    routeOnly: false,
-  },
-  {
-    id: LENS_DIFFICULTY_ID,
-    label: FIXED_LENS_LABELS[LENS_DIFFICULTY_ID],
-    color: LENS_NEUTRAL_COLOR,
-    unused: false,
-    routeOnly: true,
-  },
-];
-
-const GROUP_HEADING_CLASS = cn(textVariants({ variant: "note" }), "basis-full pt-0.5 tracking-wide");
+// 部品は軸カタログのアイコンの固定の辞書から引くので描くたびに作られないが、`const Icon = …; <Icon />`の形は
+// react-hooks/static-componentsが描くたびに作る形と読むため、createElementで描く。
+function AxisIcon({ iconId }: { iconId?: string }) {
+  return createElement(axisIconFor(iconId), { size: 14 });
+}
 
 function LensSwatch({ color }: { color: string }) {
   return (
@@ -102,7 +100,11 @@ function LensSwatch({ color }: { color: string }) {
   );
 }
 
-/** レンズ（地図を何で塗るか）の唯一の入口。地図の上のピルが今のレンズを示し、押すと一覧を開く。置き場は呼び出し側が決める。 */
+/**
+ * レンズ（地図を何で塗るか）の唯一の入口。地図の上のピルが今のレンズを示し、押すと一覧を開く。置き場は呼び出し側が決める。
+ * 一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——縦の1行、(i) で行の下に開く説明、▶ で行の下に
+ * 開く凡例、選んでも閉じない、下の解除のボタン。チェックの代わりに1つだけ選ぶ印を出し、選んでいる行をもう一度押すと外れる。
+ */
 export default function LensControl({
   lens,
   onLensChange,
@@ -114,42 +116,57 @@ export default function LensControl({
   keepAfterRoute,
   onKeepAfterRouteChange,
   hasDetail,
-  routeShown,
-  routeSelectable,
-  onRouteShownChange,
-  conditions,
-  densityTerms,
+  routeHidden,
   premises,
   dataStatus,
 }: LensControlProps) {
   const [open, setOpen] = useState(false);
   const statusLabel = dataStatus ? LAYER_DATA_STATUS_LABELS[dataStatus] : undefined;
   const statusNotice = layerDataStatusNotice(dataStatus);
-  const current = [...FIXED_LENS_OPTIONS, ...axisOptions].find((option) => option.id === lens) ?? {
-    label: lens,
-    color: LENS_NEUTRAL_COLOR,
-    routeOnly: false,
-  };
-  const used = axisOptions.filter((option) => !option.unused);
-  const unused = axisOptions.filter((option) => option.unused);
-  const routeOnlyBadge = (routeOnly: boolean) =>
-    routeOnly && !hasDetail ? <Badge variant="warning">{ROUTE_ONLY_BADGE}</Badge> : null;
-  const currentRouteOnly = !hasDetail && current.routeOnly;
+  // 評価軸を選んでいないときは、ルートの前は道路を塗らず、ルートの後はルートの線を総合難易度で塗る。
+  const unselected = lens === LENS_DIFFICULTY_ID;
+  const selected = axisOptions.find((option) => option.id === lens);
+  const pillLabel = unselected ? (hasDetail ? DIFFICULTY_LENS_LABEL : UNSELECTED_LABEL) : (selected?.label ?? lens);
+  const pillColor = selected?.color ?? LENS_NEUTRAL_COLOR;
+  // ピルの帯は色の段だけを並べる（受け皿の「データなし」は除く）。
+  const bands = legend.filter((entry) => !entry.isFallback);
+  // 並びは重みのタブと同じ（重みのある軸が先、残りはカタログの順）。
+  const ordered = [...axisOptions.filter((option) => !option.unused), ...axisOptions.filter((option) => option.unused)];
 
-  const select = (id: LensId) => {
-    onLensChange(id);
-    setOpen(false);
-  };
-
-  function renderOption(option: LensOption) {
-    return (
-      <ToggleGroupItem key={option.id} value={option.id}>
-        <LensSwatch color={option.color} />
-        {option.label}
-        {routeOnlyBadge(option.routeOnly)}
-      </ToggleGroupItem>
-    );
-  }
+  // 選んでいる行の ▶ の中身。「表示」の一覧の凡例と同じ形（見出しのチェックと段ごとのチェック）と、前提の文。
+  const legendPanel =
+    legend.length > 0 || premises.length > 0 ? (
+      <div
+        className="flex flex-col gap-1"
+        data-usage="チェックを外した段階は、地図から隠れます。見出しのチェックで、その全部をまとめて切り替えます。"
+      >
+        {legend.length > 0 && (
+          <>
+            <label className="flex cursor-pointer items-center gap-1.5">
+              <Checkbox
+                checked={hiddenLegendKeys.length === 0}
+                onCheckedChange={() => onSetHiddenLegendKeys(hiddenAfterToggleAll(legend, hiddenLegendKeys))}
+                aria-label="凡例の全段階をまとめて表示/非表示"
+              />
+              <span className="text-[length:var(--font-size-xs)] font-bold text-[var(--color-neutral)]">凡例</span>
+            </label>
+            <LegendCheckboxList
+              legend={legend}
+              hiddenKeys={hiddenLegendKeys}
+              onToggle={onToggleLegendKey}
+              listClassName="m-0 flex list-none flex-col gap-0.5 p-0"
+              rowClassName="flex items-center gap-1.5 text-[length:var(--font-size-sm)]"
+              swatchClassName={LEGEND_SWATCH_CLASS}
+            />
+          </>
+        )}
+        {premises.map((premise) => (
+          <p key={premise} className="m-0 text-[length:var(--font-size-xs)] text-[var(--color-neutral)]">
+            {premise}
+          </p>
+        ))}
+      </div>
+    ) : null;
 
   return (
     <div className="pointer-events-auto min-w-0 max-w-56">
@@ -159,40 +176,29 @@ export default function LensControl({
             variant="float"
             size="bare"
             shape="pill"
-            className="flex-col items-stretch gap-1 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
-            aria-label={`${LENS_SCREEN_NAME}: ${[current.label, currentRouteOnly && ROUTE_ONLY_BADGE, conditions].filter(Boolean).join("・")}（タップで変更）`}
+            className="max-w-full flex-row items-center gap-1.5 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
+            aria-label={`${LENS_SCREEN_NAME}: ${pillLabel}（タップで変更）`}
             title={statusLabel}
-            usage="地図の道路（ルートを作った後はルートの線）を何で色分けするかを選びます。下の帯は今の色分けの凡例です。"
+            usage="評価軸を1つ選び、その道を走ったときの点数で、地図の道路（ルートを作った後はルートの線）を塗ります。横の帯は点数の凡例です。"
           >
-            {/* 地図が狭い（デスクトップのブレークポイントのすぐ外側）と1行に収まらないので、札から先を次の行へ折り返す。 */}
-            <span className="flex flex-wrap items-center justify-center gap-x-1.5">
-              <LensSwatch color={current.color} />
-              <span className="font-semibold whitespace-nowrap">{current.label}</span>
-              {routeOnlyBadge(currentRouteOnly)}
-              {dataStatus && <Dot aria-hidden="true" tone={dataStatus} />}
-              <span aria-hidden="true" className="text-[0.7rem] text-[var(--color-muted)]">
-                ▾
+            <LensSwatch color={pillColor} />
+            <span className="flex-shrink-0 font-semibold">{pillLabel}</span>
+            {dataStatus && <Dot aria-hidden="true" tone={dataStatus} />}
+            {/* 段の数に依らず固定の幅で等分し、段の多い軸でもピルを横に伸ばさない。地図が狭いときは名前より先に縮める。 */}
+            {bands.length > 0 && (
+              <span className="flex h-1.5 w-12 min-w-0 shrink-[8] overflow-hidden rounded-[1px]" aria-hidden="true">
+                {bands.map((entry) => (
+                  <span
+                    key={entry.key}
+                    className={cn("flex-1", hiddenLegendKeys.includes(entry.key) && "opacity-25")}
+                    style={{ background: legendSwatchBackground(entry) }}
+                  />
+                ))}
               </span>
+            )}
+            <span aria-hidden="true" className="text-[0.7rem] text-[var(--color-muted)]">
+              ▾
             </span>
-            {conditions && (
-              <span aria-hidden="true" className="text-center text-[0.7rem] text-[var(--color-muted)]">
-                {conditions}
-              </span>
-            )}
-            {legend.length > 0 && (
-              <span className="flex flex-wrap justify-center gap-0.5" aria-hidden="true">
-                {legend
-                  .filter((entry) => !hiddenLegendKeys.includes(entry.key))
-                  .map((entry) => (
-                    <span
-                      key={entry.key}
-                      className={cn(LEGEND_BAR_CLASS, LEGEND_SWATCH_RING_CLASS)}
-                      style={{ background: legendSwatchBackground(entry) }}
-                      title={entry.label}
-                    />
-                  ))}
-              </span>
-            )}
           </Button>
         </PopoverTrigger>
         <PopoverContent
@@ -202,15 +208,10 @@ export default function LensControl({
           collisionPadding={POPOVER_COLLISION_PADDING_PX}
         >
           <p className="mb-1.5 font-semibold">{LENS_SCREEN_NAME}</p>
-          {densityTerms && (
-            <ul
-              aria-label="数え方（1件あたりの重み）"
-              className="mb-1.5 flex flex-wrap gap-x-2 text-[length:var(--font-size-sm)]"
-            >
-              {densityTerms.map((term) => (
-                <li key={term.materialId}>{`${term.label}×${term.weight}`}</li>
-              ))}
-            </ul>
+          {routeHidden && (
+            <p className="mb-1.5 text-[length:var(--font-size-sm)]" role="status">
+              ルートの線を「表示」で出していないので、ルートの線は塗っていません。
+            </p>
           )}
           {/* ピルの状態ドットの意味。titleはスマホでは出ないため、開いた先で文として読ませる。 */}
           {statusNotice && (
@@ -220,36 +221,25 @@ export default function LensControl({
           )}
           <ToggleGroup
             variant="chips"
-            value={lens}
-            onValueChange={(id) => select(id as LensId)}
+            className="flex-col flex-nowrap gap-0"
+            deselectable
+            value={unselected ? "" : lens}
+            onValueChange={(id) => onLensChange(id === "" ? LENS_DIFFICULTY_ID : id)}
             aria-label={LENS_SCREEN_NAME}
-            usage="押した項目で、地図の道路（ルートを作った後はルートの線）を色分けします。"
+            usage="押した評価軸の点数で、地図の道路（ルートを作った後はルートの線）を塗ります。選んでいる行をもう一度押すと外れます。"
           >
-            {FIXED_LENS_OPTIONS.map(renderOption)}
-            {used.length > 0 && <span className={GROUP_HEADING_CLASS}>評価軸に使用中</span>}
-            {used.map(renderOption)}
-            {unused.length > 0 && <span className={GROUP_HEADING_CLASS}>未使用</span>}
-            {unused.map(renderOption)}
+            {ordered.map((option) => (
+              <LensRow
+                key={option.id}
+                option={option}
+                panel={option.id === lens ? legendPanel : null}
+                filtered={option.id === lens && hiddenLegendKeys.length > 0}
+              />
+            ))}
           </ToggleGroup>
           <label
-            className={cn(
-              "mt-2 flex items-center gap-1.5 border-t border-dashed border-[var(--color-border)] pt-2",
-              routeSelectable ? "cursor-pointer" : "text-[var(--color-neutral)]",
-            )}
-            data-usage="選んだ候補のルートの線を、地図に出し入れします。"
-          >
-            <Checkbox
-              checked={routeShown && routeSelectable}
-              disabled={!routeSelectable}
-              onCheckedChange={() => onRouteShownChange(!routeShown)}
-              aria-label="ルートを地図に出す"
-            />
-            ルートを地図に出す
-            {!routeSelectable && <span className={textVariants({ variant: "note" })}>（候補を選ぶと出せます）</span>}
-          </label>
-          <label
-            className="mt-1 flex items-center gap-1.5"
-            data-usage="ルートを作った後も、ルートの外の道路を薄く色分けしたまま残します。"
+            className="mt-2 flex items-center gap-1.5 border-t border-dashed border-[var(--color-border)] pt-2"
+            data-usage="ルートを作った後も、ルートの外の道路を薄く塗ったまま残します。"
           >
             <Checkbox
               checked={keepAfterRoute}
@@ -258,38 +248,109 @@ export default function LensControl({
             />
             ルート後も周囲の道路を薄く塗る
           </label>
-          {legend.length > 0 && (
-            <div
-              role="group"
-              aria-label="凡例"
-              className="mt-2 border-t border-[var(--color-border)] pt-2"
-              data-usage="チェックを外した段階は、地図の色分けから隠れます。「凡例」のチェックで全部をまとめて切り替えます。"
+          <div className="mt-1.5 flex justify-end gap-1 border-t border-[var(--color-border)] pt-1.5">
+            <Button
+              size="panelIcon"
+              aria-label="選択を外す"
+              onClick={() => onLensChange(LENS_DIFFICULTY_ID)}
+              disabled={unselected}
+              usage="選んでいる評価軸を外します。外すと、ルートの前は道路を塗らず、ルートの後は総合難易度で塗ります。"
             >
-              <label className="mb-1 flex cursor-pointer items-center gap-1.5 font-semibold text-[var(--color-muted)]">
-                <Checkbox
-                  checked={hiddenLegendKeys.length === 0}
-                  onCheckedChange={() => onSetHiddenLegendKeys(hiddenAfterToggleAll(legend, hiddenLegendKeys))}
-                  aria-label="凡例の全段階をまとめて表示/非表示"
-                />
-                凡例
-              </label>
-              <LegendCheckboxList
-                legend={legend}
-                hiddenKeys={hiddenLegendKeys}
-                onToggle={onToggleLegendKey}
-                listClassName="flex flex-wrap gap-x-3 gap-y-0.5"
-                rowClassName="flex items-center gap-1 whitespace-nowrap tabular-nums"
-                swatchClassName={LEGEND_BAR_CLASS}
-              />
-              {premises.map((premise) => (
-                <p key={premise} className="mt-1 text-[length:var(--font-size-sm)] text-[var(--color-muted)]">
-                  {premise}
-                </p>
-              ))}
-            </div>
-          )}
+              <ClearAllLayersIcon />
+            </Button>
+            <Button
+              size="panelIcon"
+              aria-label="絞り込みをすべて解除"
+              onClick={() => onSetHiddenLegendKeys([])}
+              disabled={hiddenLegendKeys.length === 0}
+              usage="凡例のチェックを外して隠した段階を、まとめて地図に戻します。"
+            >
+              <ClearAllFiltersIcon />
+            </Button>
+          </div>
         </PopoverContent>
       </Popover>
+    </div>
+  );
+}
+
+/** 選択肢の1行。「表示」の一覧の行（`MapOverlayControls.tsx: LayerRow`）と同じ形で、チェックの代わりに1つだけ選ぶ印を出す。
+ * (i) は説明を、▶（選んでいる行だけ）は凡例を、行のすぐ下に開く。 */
+function LensRow({ option, panel, filtered }: { option: LensOption; panel: ReactElement | null; filtered: boolean }) {
+  const [hintOpen, setHintOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const hintId = useId();
+  const panelId = useId();
+  return (
+    <div className="flex w-full flex-col text-[length:var(--font-size-sm)]">
+      <div className="flex items-center gap-1">
+        <ToggleGroupItem
+          value={option.id}
+          className="group min-w-0 flex-1 justify-start gap-1.5 rounded-sm border-0 px-1 py-1 text-left whitespace-normal hover:bg-[var(--color-surface-hover)] data-[state=on]:bg-[var(--color-accent-bg)] data-[state=on]:font-semibold"
+        >
+          <span
+            aria-hidden="true"
+            className="size-3.5 flex-shrink-0 rounded-full border-2 border-[var(--color-border-strong)] group-data-[state=on]:border-[5px] group-data-[state=on]:border-[var(--color-accent)]"
+          />
+          <span
+            aria-hidden="true"
+            className="inline-flex w-5 flex-shrink-0 justify-center"
+            style={{ color: option.color }}
+          >
+            <AxisIcon iconId={option.iconId} />
+          </span>
+          <span className={cn("min-w-0", option.unused && "text-[var(--color-muted)]")}>{option.label}</span>
+          {option.conditions.map((condition) => {
+            const { Icon, name } = CONDITION_MARKS[condition];
+            return (
+              <span key={condition} title={name} className="inline-flex text-[var(--color-muted)]">
+                <Icon size={12} />
+                <span className="sr-only">（{name}で変わる）</span>
+              </span>
+            );
+          })}
+          {option.unused && <span className={textVariants({ variant: "note" })}>未使用</span>}
+          {filtered && <span className={textVariants({ variant: "note" })}>絞り込み中</span>}
+        </ToggleGroupItem>
+        <DescriptionToggle
+          label={option.label}
+          open={hintOpen}
+          descriptionId={hintId}
+          usage="この評価軸の説明を、行のすぐ下に開きます。"
+          onToggle={() => setHintOpen((value) => !value)}
+        />
+        {panel && (
+          <Button
+            variant="float"
+            size="iconRound"
+            className="group text-[var(--color-neutral)] shadow-none aria-expanded:border-[var(--color-accent)] aria-expanded:text-[var(--foreground)]"
+            aria-expanded={panelOpen}
+            aria-controls={panelOpen ? panelId : undefined}
+            aria-label={`${option.label}の凡例`}
+            title="凡例"
+            onClick={() => setPanelOpen((current) => !current)}
+            usage="凡例を行のすぐ下に開きます。チェックを外した段階は地図から隠れます。"
+          >
+            <span
+              aria-hidden="true"
+              className="inline-block text-[0.6rem] leading-none transition-transform duration-150 group-aria-expanded:rotate-90"
+            >
+              ▶
+            </span>
+          </Button>
+        )}
+      </div>
+      {hintOpen && <RowDescription id={hintId}>{option.description}</RowDescription>}
+      {panel && panelOpen && (
+        <div
+          id={panelId}
+          role="region"
+          aria-label={`${option.label}の内訳`}
+          className="mt-0.5 mb-1.5 ml-6 border-l-2 border-[var(--color-border)] pl-2"
+        >
+          {panel}
+        </div>
+      )}
     </div>
   );
 }

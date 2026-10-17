@@ -1,5 +1,5 @@
 // Pull Request の本文が .github/pull_request_template.md の形（「名前: 中身」の節がこの順に1つずつ、空でもテンプレートのままでもない）に
-// 沿うかを照らし、沿わなければ落ちる。担当が出す前と、claude-gate.yml の flow-gate が打つ。GitHub に触れない。
+// 沿うかを照らし、沿わなければ落ちる。担当が出す前と、ci.yml の flow-gate が打つ。GitHub に触れない。
 import { readFileSync } from "node:fs";
 
 const [file] = process.argv.slice(2);

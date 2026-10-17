@@ -7,13 +7,21 @@
 from typing import Literal, NamedTuple
 
 from app.domain.display_palette import ORDERED_END_COLOR_NAMES
+from app.domain.divided_carriageway import DIVIDED_ROAD_NOTE
 from app.domain.gsi_tiles import TERRAIN_MIN_ZOOM
 from app.domain.landcover import LANDCOVER_CLASSES, LANDCOVER_RING_OUTER_M, LANDCOVER_TILE_MIN_ZOOM
 from app.domain.place_search import ADDRESS_AREA_ATTRIBUTIONS
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, PRIMARY_ATTRIBUTES_BY_ID
 from app.domain.registry import DisplayAxisSpec
 from app.domain.region import ROAD_TILE_MIN_ZOOM
-from app.domain.weather_elements import WEATHER_ELEMENTS, WEATHER_LAYER_GROUPS, FrameRuleKind, forecast_reach
+from app.domain.weather_elements import (
+    MSM_FORECAST_HOURS,
+    WEATHER_ELEMENTS,
+    WEATHER_LAYER_GROUPS,
+    FrameRuleKind,
+    forecast_reach,
+    reach_text,
+)
 
 
 class OverlayGroup(NamedTuple):
@@ -168,7 +176,7 @@ _MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS, 
 
 #: 説明の文の差し込み口の名前。どれも軸カタログ（実行時の応答）から来る値で、画面が埋める。
 #: `axes`はそのレイヤーの元データを材料に持つ公開中の評価の名前、`accidentYears`は事故の収録年、
-#: `routeLenses`はルートの色分けで選べるもの（公開中の評価と総合難易度）。
+#: `routeLenses`はルートの線を塗れるもの（公開中の評価と総合難易度）。
 LayerTextSlotName = Literal["axes", "accidentYears", "routeLenses"]
 
 
@@ -308,7 +316,7 @@ _DISASTER_FRAME_RULE_WORDING: dict[FrameRuleKind, tuple[str, str]] = {
     "latestObservation": ("直近の観測", "は観測だけのため、最新の観測より先の時刻には出ません。"),
     "current": (
         "現在の危険度のみ",
-        "は色分けした現在の危険度で、「現在の危険度」単一値のみの配信のため時刻スライダーには連動しません。",
+        "は色で示した現在の危険度で、「現在の危険度」単一値のみの配信のため時刻スライダーには連動しません。",
     ),
 }
 
@@ -327,6 +335,65 @@ def _disaster_by_frame_rule() -> list[tuple[str, str, str]]:
 
 
 _DISASTER_BY_FRAME_RULE = _disaster_by_frame_rule()
+
+
+def msm_layer_specs(forecast_hours: int) -> dict[str, MapLayerSpec]:
+    """自前のMSM格子から描くレイヤー。先まで見られる長さは、読み出しが予報を切る長さ（時間）から言う。"""
+    reach = reach_text(forecast_hours * 60)
+    return {
+        # 降水短時間予報より先は数値予報モデル（MSM）の計算値なので「予報」と呼ばない
+        # （docs/architecture/data-sources.md「気象業務法の予報業務許可」節）。
+        "precipitationNowcast": MapLayerSpec(
+            "ownFetch",
+            "weather",
+            data_nature="dynamic",
+            label="降水ナウキャスト",
+            description=(
+                "気象庁の降水ナウキャスト・降水短時間予報・線状降水帯予測マップ・線状降水帯の雨域と、数値予報モデルが計算した降水量を重ねて表示"
+                f"[実況〜{_NOWCAST_REACH}先は5分刻み、{_NOWCAST_REACH}〜{_SHORT_RANGE_REACH}先は気象庁の降水短時間予報、"
+                f"{_SHORT_RANGE_REACH}〜{reach}先は気象庁の数値予報モデルMSMの計算値を1時間刻みで、予報ではなく誤差を含みうる。"
+                f"線状降水帯予測マップは現在〜{_LINEAR_RAINBAND_HOURS}時間先、線状降水帯の雨域は"
+                f"実況〜{_RAINBAND_AREA_REACH}先の間だけ追加で重畳]",
+            ),
+            panel_hint=(
+                "気象庁の高解像度降水ナウキャストです。ONにすると地図上に時刻スライダーが現れ、"
+                f"実況[直近]から{_NOWCAST_REACH}先までの雨雲の分布を切り替えて確認できます。{_NOWCAST_REACH}より先は、"
+                f"同じ気象庁の降水短時間予報へ自動的に切り替わり、{_SHORT_RANGE_REACH}先まで"
+                "確認できます——こちらは実況の外挿ではなく数値予報モデルによる予測のため、先に"
+                f"なるほど不確実性が増します。{_SHORT_RANGE_REACH}より先は、風と同じ仕組み[気象庁の数値予報モデルMSMが"
+                "格子点ごとに計算した降水量]で、格子を降水強度に応じた色で塗る表示へさらに切り替わり、"
+                f"{reach}先まで確認できます[降水短時間予報よりも粗い5kmメッシュのモデルの計算値で、予報ではなく"
+                f"誤差を含みえます]。加えて、現在〜{_LINEAR_RAINBAND_HOURS}時間先の"
+                f"間だけ、気象庁の線状降水帯予測マップを重ねて表示します[今後{_LINEAR_RAINBAND_HOURS}時間以内に大雨の"
+                "おそれがある領域を赤で示すもので、予測は格子単位のため矩形に見えます。"
+                "今まさに発生している線状降水帯の雨域を示すものではありません]。"
+                f"今まさに発生している線状降水帯は、実況から{_RAINBAND_AREA_REACH}先までの間、その雨域を赤い輪郭線で重ねます"
+                "[気象庁が線状降水帯を解析しているときだけ出ます]。"
+                f"非公式の内部APIを利用している実況・{_NOWCAST_REACH}先までの"
+                "部分・線状降水帯予測マップ・線状降水帯の雨域は、取得に失敗することがあります。",
+            ),
+        ),
+        # 「評価で塗る」の道路の塗り（向かい風・追い風）と見分けられる名前にする。
+        "windVector": MapLayerSpec(
+            "ownFetch",
+            "weather",
+            data_nature="dynamic",
+            label="風[矢印]",
+            description=(f"気象庁の数値予報モデルMSMが計算した風向・風速を矢印で表示[{reach}先まで。予報ではなく誤差を含みうる]",),
+            panel_hint=(
+                "気象庁MSM[メソ数値予報モデル、5kmメッシュ]が計算した風向・風速を格子点で矢印表示します。"
+                f"モデルの計算値で、{MODEL_VALUE_DISCLAIMER}"
+                "矢印の向きが風向、長さ・太さ・色の濃淡が風速の強さを表します。ごく弱い風の地点は"
+                "矢印を表示しません。ONにすると地図上に時刻スライダーが現れ、1時間刻みで切り替えられます"
+                f"[先まで見られる範囲は配信中の計算値の長さによって変わり、長くて{reach}先までです]。",
+                LayerTextSlot(
+                    "axes",
+                    "走行方位に対する向かい風/追い風の強さは、「評価で塗る」で評価軸",
+                    "を選ぶと別途確認できます。",
+                ),
+            ),
+        ),
+    }
 
 
 #: `_MAP_LAYER_IDS`の1つずつの宣言。並びが一覧の行の並び（種別の中の順）になる。**過不足は生成の時点で落ちる**（`MAP_LAYERS`）。
@@ -366,7 +433,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         "roadCondition",
         description=(f"道路の種類を色で表示[{ordered_ends_text(_first_axis('highway'))}]",),
         panel_hint=(
-            "OSMのhighwayタグを区分にまとめて色分けしています。"
+            "OSMのhighwayタグを区分にまとめて塗り分けています。"
             f"「{_first_axis('highway').categories[0].label}」が最も濃く、下位の道ほど明るい色です。"
             "ほかの道路のレイヤーと一緒に表示すると、同じ道に線を横へ並べて描きます。",
         ),
@@ -376,7 +443,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         "roadCondition",
         description=("路面の材質を色で表示[舗装・砂利・土など]",),
         panel_hint=(
-            "OSMのsurfaceタグ[路面の材質]を区分にまとめて色分けしています。"
+            "OSMのsurfaceタグ[路面の材質]を区分にまとめて塗り分けています。"
             f"区分に当てはまらない値の道は「{LEGEND_SHARED_ROWS["other"].label}」で出します。"
             f"タグの無い道[{LEGEND_SHARED_ROWS["noData"].label}]は郊外ではほとんどの道に当たり、値のある道を埋もれさせるため、"
             "最初は隠してあり、凡例のチェックで出せます"
@@ -389,7 +456,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         "roadCondition",
         description=(f"農道・林道の路面の等級を色で表示[{ordered_ends_text(_first_axis('tracktype'))}]",),
         panel_hint=(
-            "OSMのtracktypeタグ[農道・林道の路面の固さの等級]を色分けしています。路面の材質[surfaceタグ]とは別のタグで、"
+            "OSMのtracktypeタグ[農道・林道の路面の固さの等級]を塗り分けています。路面の材質[surfaceタグ]とは別のタグで、"
             "材質のタグが無い農道・林道にも付いていることがあります。"
             f"タグの無い道は「{LEGEND_SHARED_ROWS["noData"].label}」です。",
         ),
@@ -397,17 +464,17 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
     "tunnel": _tile_layer(
         "tunnel",
         "roadCondition",
-        description=("トンネル区間[OSMのtunnelタグ]を色分け表示",),
+        description=("トンネル区間[OSMのtunnelタグ]を表示",),
         panel_hint=("OSMのtunnelタグが該当する区間です。", LayerTextSlot("axes", "評価軸", "の材料の1つです。")),
     ),
     "oneway": _tile_layer(
         "oneway",
         "roadCondition",
-        description=("来た道を戻れない区間を色分け表示",),
+        description=("来た道を戻れない区間を表示",),
         panel_hint=(
-            "その向きにしか通れない区間です。上下線が分かれているだけの道[逆方向が数m隣にある]"
-            "は除いてあります。ルート探索は既に一方通行の向きを守っており[逆走経路自体が"
-            "生成されません]、このレイヤーは表示のみで評価には影響しません。",
+            f"その向きにしか通れない区間です。{DIVIDED_ROAD_NOTE}は除いてあります。"
+            "ルート探索は一方通行の向きを守っています[逆走する経路は作りません]。",
+            LayerTextSlot("axes", "評価軸", "の材料の1つです。"),
         ),
     ),
     # 当てはまらない道（大多数）を描くと地図が灰色の線で覆われるので、最初は隠す。
@@ -417,7 +484,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         label="自転車レーン",
         description=(f"自転車の走る場所を色で表示[{'・'.join(c.label for c in _first_axis('cycleway').categories)}]",),
         panel_hint=(
-            "OSMの自転車のためのタグ[cycleway・highway=cycleway・bicycle]から、自転車の走る場所を区分にまとめて色分けしています。"
+            "OSMの自転車のためのタグから、自転車の走る場所を区分にまとめて塗り分けています。"
             "1本の道が複数に当たれば、車道から分けられた方で出します。当てはまらない道は最初は隠してあり、凡例のチェックで出せます。",
             LayerTextSlot("axes", "評価軸", "の材料の1つです。"),
         ),
@@ -426,17 +493,17 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
     "stop_poi": _tile_layer(
         "stop_poi",
         "trafficSafety",
-        description=(f"{_point_kind_list('stop_poi')}の位置を種別ごとに色分け表示",),
+        description=(f"{_point_kind_list('stop_poi')}の位置を種別ごとに表示",),
         panel_hint=(
             f"{_point_kind_list('stop_poi')}の位置です。",
-            LayerTextSlot("axes", "評価軸", "が近傍のこれらを数えて算出しているものを、種別ごとの色分けで直接確認できます。"),
+            LayerTextSlot("axes", "評価軸", "が近傍のこれらを数えて算出しているものを、種別ごとに直接確認できます。"),
         ),
     ),
     # 種別ごとの鮮度の差を書く根拠は docs/modules/frontend/static-map-layers.md「点で示すもの」。
     "supply_poi": _tile_layer(
         "supply_poi",
         "amenity",
-        description=(f"{_point_kind_list('supply_poi')}の位置を種別ごとに色分け表示",),
+        description=(f"{_point_kind_list('supply_poi')}の位置を種別ごとに表示",),
         panel_hint=(
             f"{_point_kind_list('supply_poi')}の位置です。自販機は飲み物が買えると分かって"
             f"いるものだけを「{_row_label('supply_poi', 'vending_drinks')}」として出し、売っているものが分からないものは"
@@ -448,7 +515,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
     "stop_place": _tile_layer(
         "stop_place",
         "amenity",
-        description=(f"{_point_kind_list('stop_place')}の位置を群ごとに色分け表示",),
+        description=(f"{_point_kind_list('stop_place')}の位置を群ごとに表示",),
         panel_hint=(
             f"{_point_kind_list('stop_place')}の位置です。寺社は国の文化財の建造物を持つものを、ほかはOverture Mapsの地点を出します。"
             "閉店にデータが追いついていないことがあります。現地の状況と異なる場合があることをご留意ください。",
@@ -468,58 +535,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
             f"]の発生地点です。{size_text('accident_point')}",
         ),
     ),
-    # 降水短時間予報より先は数値予報モデル（MSM）の計算値なので「予報」と呼ばない
-    # （docs/architecture/data-sources.md「気象業務法の予報業務許可」節）。
-    "precipitationNowcast": MapLayerSpec(
-        "ownFetch",
-        "weather",
-        data_nature="dynamic",
-        label="降水ナウキャスト",
-        description=(
-            "気象庁の降水ナウキャスト・降水短時間予報・線状降水帯予測マップ・線状降水帯の雨域と、数値予報モデルが計算した降水量を重ねて表示"
-            f"[実況〜{_NOWCAST_REACH}先は5分刻み、{_NOWCAST_REACH}〜{_SHORT_RANGE_REACH}先は気象庁の降水短時間予報、"
-            "以降は気象庁の数値予報モデルMSMの計算値を1時間刻みで、予報ではなく誤差を含みうる。"
-            f"線状降水帯予測マップは現在〜{_LINEAR_RAINBAND_HOURS}時間先、線状降水帯の雨域は"
-            f"実況〜{_RAINBAND_AREA_REACH}先の間だけ追加で重畳]",
-        ),
-        panel_hint=(
-            "気象庁の高解像度降水ナウキャストです。ONにすると地図上に時刻スライダーが現れ、"
-            f"実況[直近]から{_NOWCAST_REACH}先までの雨雲の分布を切り替えて確認できます。{_NOWCAST_REACH}より先は、"
-            f"同じ気象庁の降水短時間予報へ自動的に切り替わり、{_SHORT_RANGE_REACH}先まで"
-            "確認できます——こちらは実況の外挿ではなく数値予報モデルによる予測のため、先に"
-            f"なるほど不確実性が増します。{_SHORT_RANGE_REACH}より先は、風と同じ仕組み[気象庁の数値予報モデルMSMが"
-            "格子点ごとに計算した降水量]で、格子を降水強度に応じた色で塗る表示へさらに切り替わり、"
-            "1〜3日先まで確認できます[降水短時間予報よりも粗い5kmメッシュのモデルの計算値で、予報ではなく"
-            f"誤差を含みえます]。加えて、現在〜{_LINEAR_RAINBAND_HOURS}時間先の"
-            f"間だけ、気象庁の線状降水帯予測マップを重ねて表示します[今後{_LINEAR_RAINBAND_HOURS}時間以内に大雨の"
-            "おそれがある領域を赤で示すもので、予測は格子単位のため矩形に見えます。"
-            "今まさに発生している線状降水帯の雨域を示すものではありません]。"
-            f"今まさに発生している線状降水帯は、実況から{_RAINBAND_AREA_REACH}先までの間、その雨域を赤い輪郭線で重ねます"
-            "[気象庁が線状降水帯を解析しているときだけ出ます]。"
-            f"非公式の内部APIを利用している実況・{_NOWCAST_REACH}先までの"
-            "部分・線状降水帯予測マップ・線状降水帯の雨域は、取得に失敗することがあります。",
-        ),
-    ),
-    # 道路の色分け（向かい風・追い風）と見分けられる名前にする。
-    "windVector": MapLayerSpec(
-        "ownFetch",
-        "weather",
-        data_nature="dynamic",
-        label="風[矢印]",
-        description=("気象庁の数値予報モデルMSMが計算した風向・風速を矢印で表示[1〜3日先まで。予報ではなく誤差を含みうる]",),
-        panel_hint=(
-            "気象庁MSM[メソ数値予報モデル、5kmメッシュ]が計算した風向・風速を格子点で矢印表示します。"
-            f"モデルの計算値で、{MODEL_VALUE_DISCLAIMER}"
-            "矢印の向きが風向、長さ・太さ・色の濃淡が風速の強さを表します。ごく弱い風の地点は"
-            "矢印を表示しません。ONにすると地図上に時刻スライダーが現れ、1時間刻みで切り替えられます"
-            "[先まで見られる範囲は配信中の計算値の長さによって1〜3日の間で変わります]。",
-            LayerTextSlot(
-                "axes",
-                "走行方位に対する向かい風/追い風の強さは、道路の色分けで評価軸",
-                "を選ぶと別途確認できます。",
-            ),
-        ),
-    ),
+    **msm_layer_specs(MSM_FORECAST_HOURS),
     # 予兆が出てからONにするのでは手遅れになるため既定ONにする。危険度が出ている間は広い範囲が
     # 塗られ、他の面レイヤー（緑と水・標高図）も基礎地図の色も覆われるが、危険度ゼロの領域は
     # 配信元のタイルが透明なので、影響が出るのは警戒度が上がっている間だけ。そのときは防災の
@@ -549,7 +565,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         kind="dynamic",
         default_on=True,
         label="ルート",
-        description=("選択中ルート沿いの情報", LayerTextSlot("routeLenses", "[", "]"), "を色分け表示"),
+        description=("選択中ルート沿いの情報", LayerTextSlot("routeLenses", "[", "]"), "で塗って表示"),
     ),
 }
 

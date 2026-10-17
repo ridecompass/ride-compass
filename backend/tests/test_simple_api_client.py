@@ -9,6 +9,8 @@
   だけを見るため、`log_external_call`を差し替えて受け取る
 """
 
+import asyncio
+
 import httpx
 import pytest
 from cachetools import TTLCache
@@ -106,3 +108,48 @@ async def test_exception_outside_catch_propagates():
 
     with pytest.raises(httpx.ConnectError):
         await simple_api_client.cached_fetch("cat", fetch, catch=(KeyError,))
+
+
+def _held_fetch(outcome):
+    """`release`が立つまで返らないfetch。先の要求が上流を待つ間に、次の要求を来させる。"""
+    release = asyncio.Event()
+    calls: list[int] = []
+
+    async def fetch():
+        calls.append(1)
+        await release.wait()
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    return fetch, calls, release
+
+
+@pytest.mark.parametrize(("outcome", "expected"), [("v", "v"), (ValueError("bad json"), None)])
+async def test_requests_for_a_key_being_fetched_share_that_fetch(outcome, expected):
+    """同じ鍵に同時に来た要求は、上流へ1回だけ取りに行き、その結果（失敗も）を分け合う。"""
+    cache: TTLCache = TTLCache(maxsize=4, ttl=60)
+    fetch, calls, release = _held_fetch(outcome)
+
+    requests = [asyncio.ensure_future(simple_api_client.cached_fetch("cat", fetch, cache=cache, key="k")) for _ in range(2)]
+    await asyncio.sleep(0)
+    release.set()
+
+    assert await asyncio.gather(*requests) == [expected, expected]
+    assert len(calls) == 1
+
+
+async def test_a_dropped_request_does_not_stop_the_fetch_others_wait_for():
+    """先に来た要求が切れても（利用者が画面を離れる）、同じ取得を待つ要求は値を受け、値はキャッシュへ残る。"""
+    cache: TTLCache = TTLCache(maxsize=4, ttl=60)
+    fetch, calls, release = _held_fetch("v")
+
+    dropped = asyncio.ensure_future(simple_api_client.cached_fetch("cat", fetch, cache=cache, key="k"))
+    waiting = asyncio.ensure_future(simple_api_client.cached_fetch("cat", fetch, cache=cache, key="k"))
+    await asyncio.sleep(0)
+    dropped.cancel()
+    release.set()
+
+    assert await waiting == "v"
+    assert await simple_api_client.cached_fetch("cat", fetch, cache=cache, key="k") == "v"
+    assert len(calls) == 1

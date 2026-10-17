@@ -10,7 +10,7 @@ from sqlalchemy import Boolean, DateTime, Float, Integer, String, UniqueConstrai
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.infrastructure.orm_base import IRREPLACEABLE, Base
+from app.infrastructure.orm_base import Base
 
 
 class AxisDefinitionRow(Base):
@@ -22,10 +22,7 @@ class AxisDefinitionRow(Base):
     """
 
     __tablename__ = "axis_definitions"
-    __table_args__ = (
-        UniqueConstraint("sort_order", name="axis_definitions_sort_order_key"),
-        {"info": IRREPLACEABLE},
-    )
+    __table_args__ = (UniqueConstraint("sort_order", name="axis_definitions_sort_order_key"),)
 
     axis_id: Mapped[str] = mapped_column(String, primary_key=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -42,5 +39,4 @@ class AxisDefinitionRow(Base):
     time_scope: Mapped[str] = mapped_column(String, nullable=False, server_default="always")
     display_thresholds_override: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     display_band_labels_override: Mapped[list | None] = mapped_column(JSONB, nullable=True)
-    dedicated_way_value_layer: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

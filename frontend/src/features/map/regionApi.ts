@@ -4,7 +4,8 @@ import { apiPath } from "@/lib/apiPath";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import { backendApi, requestApi } from "@/lib/apiClient";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
-import { DEFAULT_API_TIMEOUT_MS } from "@/lib/apiTimeouts";
+import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
+import type { PointTileLayer } from "@/lib/mapDisplay/pointLayers";
 
 const ROAD_SURFACE_TILE_PATH = apiPath("/api/region/road-surface-tiles/{z}/{x}/{y}.pbf");
 
@@ -44,9 +45,6 @@ function tileVersion(versions: TileVersions, kind: TileKind): string {
 export function roadSurfaceTileUrl(versions: TileVersions): string {
   return `${tileBaseUrl()}${ROAD_SURFACE_TILE_PATH}?v=${tileVersion(versions, "road_surface")}`;
 }
-
-/** 点のレイヤーの名前（生成物の`point_layers`の鍵）。名前が配信のパスとタイルの世代の系統を兼ねる。 */
-export type PointTileLayer = keyof typeof regionTileConfig.point_layers & TileKind;
 
 // 点のレイヤーはどれも同じ1つの配信で、パスのレイヤー名だけが違う。停止要因と補給の点は同じタイルを分け合う（種別の集合で分ける）。
 export function pointTileUrl(versions: TileVersions, layer: PointTileLayer): string {
@@ -108,7 +106,7 @@ export async function fetchAxisInspector(
     speed_kmh: conditions.speedKmh,
   };
   return requestApi((init) => backendApi.POST("/api/region/axis-inspector", { body, ...init }), {
-    timeoutMs: DEFAULT_API_TIMEOUT_MS,
+    timeoutMs: API_TIMEOUT_MS.default,
     category: "api:axis-inspector",
     messages: { failure: "内訳の取得に失敗しました", parseFailure: "内訳の取得に失敗しました" },
     requestMeta: { body },
@@ -152,9 +150,9 @@ export async function fetchDynamicWayValues(
     const values = await requestApi(
       (init) => backendApi.GET("/api/region/dynamic-way-values/{axis_id}/{z}/{x}/{y}", { params, ...init }),
       {
-        timeoutMs: DEFAULT_API_TIMEOUT_MS,
+        timeoutMs: API_TIMEOUT_MS.default,
         category: `api:${axisId}-way-values`,
-        messages: { failure: "道路の色分けの取得に失敗しました", parseFailure: "道路の色分けの解析に失敗しました" },
+        messages: { failure: "道路の塗りの値の取得に失敗しました", parseFailure: "道路の塗りの値の解析に失敗しました" },
         successMeta: (data) => ({ wayCount: Object.keys(data).length }),
       },
     );

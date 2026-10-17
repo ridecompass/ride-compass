@@ -24,9 +24,14 @@ export type FrameRule = DeclaredElement["frameRule"];
 /** 自前のMSM格子から描く段が読む値。 */
 export type GridValue = NonNullable<DeclaredElement["gridValue"]>;
 
-/** 時刻の段1つ。配信元から取る段と、自前の格子から描く段がある。 */
-type WeatherStage =
-  { origin: "jma"; kind: DeclaredElement["kind"]; delivery: JmaDelivery } | { origin: "grid"; value: GridValue };
+/** 配信元から取る時刻の段。 */
+export type JmaStage = { origin: "jma"; kind: DeclaredElement["kind"]; delivery: JmaDelivery };
+
+/** 自前の格子から描く時刻の段。 */
+export type GridStage = { origin: "grid"; value: GridValue };
+
+/** 時刻の段1つ。 */
+type WeatherStage = JmaStage | GridStage;
 
 /** 名前付きソース1つ。同じ名前を名乗る要素の段を、宣言の順（近い時刻から）に持つ。 */
 export interface WeatherSource {
@@ -73,14 +78,14 @@ export function readsGrid(source: WeatherSource): boolean {
   return source.stages.some((stage) => stage.origin === "grid");
 }
 
-/** 段のコマ。配信元の段は時刻一覧から読んだコマ、格子の段は格子の時刻の値
+/** 段のコマ。段そのものと、配信元の段なら時刻一覧から読んだコマ、格子の段なら格子の時刻の値
  * （描くときの格子はズーム依存の詳細格子になりうるため、コマを作った格子の点そのものは指さない。
  * `windLayer.ts: gridAtTime`）。 */
-export type StageFrameRef = { stage: number; frame: JmaFrame } | { stage: number; time: string };
+export type StageFrameRef = (JmaStage & { frame: JmaFrame }) | (GridStage & { time: string });
 
 /** 配信元の段のコマを、共有タイムラインのコマにする。 */
-export function jmaStageFrames(stage: number, frames: readonly JmaFrame[]): DynamicWeatherFrame<StageFrameRef>[] {
-  return frames.map((frame) => ({ time: parseValidtime(frame.validtime), ref: { stage, frame } }));
+export function jmaStageFrames(stage: JmaStage, frames: readonly JmaFrame[]): DynamicWeatherFrame<StageFrameRef>[] {
+  return frames.map((frame) => ({ time: parseValidtime(frame.validtime), ref: { ...stage, frame } }));
 }
 
 /** 格子の段のコマ。1回の取得の時刻の列は全点で共通なので、先頭の点（最後に届いた応答の点）だけを見る。
@@ -88,11 +93,11 @@ export function jmaStageFrames(stage: number, frames: readonly JmaFrame[]): Dyna
  * 過去になる）。「属する1時間」は最も近い時刻ではなく`now`以下で最も新しい時刻——最も近い時刻だと、正時を少し
  * 過ぎただけで今の1時間が消える。 */
 export function gridStageFrames(
-  stage: number,
+  stage: GridStage,
   grid: readonly WindGridPoint[],
   now: Date,
 ): DynamicWeatherFrame<StageFrameRef>[] {
-  const frames = (grid[0]?.times ?? []).map((time) => ({ time: parseJstLocalValue(time), ref: { stage, time } }));
+  const frames = (grid[0]?.times ?? []).map((time) => ({ time: parseJstLocalValue(time), ref: { ...stage, time } }));
   const current = frames.findLastIndex((frame) => frame.time.getTime() <= now.getTime());
   return frames.slice(Math.max(current, 0));
 }

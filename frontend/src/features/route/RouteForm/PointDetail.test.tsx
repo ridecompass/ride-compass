@@ -69,7 +69,7 @@ function renderDetail({
   mapCenter = TOKYO_STATION,
   found = null as PlaceCandidate | null,
   at = null as Coordinates | null,
-  armed = false,
+  placing = false,
 } = {}) {
   const onChoose = vi.fn();
   const detail = (center: Coordinates) => (
@@ -80,11 +80,8 @@ function renderDetail({
       found={found}
       at={at}
       placed={found !== null}
-      armLabel="地図で選ぶ"
-      usage=""
       chooseResult=""
-      armed={armed}
-      onArmToggle={() => {}}
+      placing={placing}
       originLocated
       mapCenter={center}
       onChoose={onChoose}
@@ -337,7 +334,7 @@ describe("PointDetail 狭い画面", () => {
   });
 
   it("地図で置く待ちでも、上側に出している間は地図が隠れているので、欄の空の案内に地図で置く案内を出さない", async () => {
-    renderDetail({ armed: true });
+    renderDetail({ placing: true });
     expect(searchBox()).toHaveAttribute("placeholder", "地図をタップ");
 
     await userEvent.click(searchBox());

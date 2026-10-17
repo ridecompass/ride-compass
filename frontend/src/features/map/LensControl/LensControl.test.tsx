@@ -1,9 +1,18 @@
+/**
+ * `LensControl.tsx`——「評価で塗る」のピルが今の評価軸を示し、開いた一覧で評価軸を1つ選び・外し、選んでいる行の ▶ で
+ * 凡例を絞り込み、行の印（走る条件・未使用・絞り込み中）と前提の文を読ませること。
+ *
+ * ここで見ないもの:
+ * - 選択肢・凡例・前提の文の中身を軸カタログから組むこと → `features/map/view/lens.test.ts`
+ * - 凡例の行のチェックの描き方 → `LegendCheckboxList`
+ * - 浮かせた一覧の位置取り・外を押すと閉じること → Radix Popover
+ */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { LAYER_DATA_STATUS_LABELS } from "@/features/map/layers/mapLayers";
-import { FIXED_LENS_LABELS, LENS_DIFFICULTY_ID, LENS_NONE_ID } from "@/lib/mapDisplay/routeStyleModes";
+import { DIFFICULTY_LENS_LABEL, LENS_DIFFICULTY_ID } from "@/lib/mapDisplay/routeStyleModes";
 
 import LensControl, { type LensOption } from "./LensControl";
 
@@ -12,10 +21,11 @@ const option = (id: string, overrides: Partial<LensOption> = {}): LensOption => 
   label: `${id}の軸`,
   color: "#123456",
   unused: false,
-  routeOnly: false,
+  description: `${id}の説明`,
+  conditions: [],
   ...overrides,
 });
-const OPTIONS = [option("used"), option("idle", { unused: true }), option("route", { routeOnly: true })];
+const OPTIONS = [option("idle", { unused: true }), option("used", { conditions: ["bearing_deg", "at"] })];
 const LEGEND = [
   { key: "step-0", label: "低い", color: "#00ff00", filter: [] },
   { key: "step-1", label: "高い", color: "#ff0000", filter: [] },
@@ -27,7 +37,6 @@ function renderLens(props: Partial<Parameters<typeof LensControl>[0]> = {}) {
     onToggleLegendKey: vi.fn(),
     onSetHiddenLegendKeys: vi.fn(),
     onKeepAfterRouteChange: vi.fn(),
-    onRouteShownChange: vi.fn(),
   };
   render(
     <LensControl
@@ -37,10 +46,7 @@ function renderLens(props: Partial<Parameters<typeof LensControl>[0]> = {}) {
       hiddenLegendKeys={[]}
       keepAfterRoute
       hasDetail={false}
-      routeShown
-      routeSelectable
-      conditions={null}
-      densityTerms={null}
+      routeHidden={false}
       premises={[]}
       {...handlers}
       {...props}
@@ -48,20 +54,20 @@ function renderLens(props: Partial<Parameters<typeof LensControl>[0]> = {}) {
   );
   return handlers;
 }
-const pill = () => screen.getByRole("button", { name: /^地図の色分け:/ });
+const pill = () => screen.getByRole("button", { name: /^評価で塗る:/ });
 const open = () => userEvent.click(pill());
+const list = () => screen.getByRole("radiogroup", { name: "評価で塗る" });
 
-describe("LensControl（レンズのピル）", () => {
+describe("LensControl", () => {
   it.each([
-    ["used", "usedの軸"],
-    [LENS_DIFFICULTY_ID, FIXED_LENS_LABELS[LENS_DIFFICULTY_ID]],
+    ["used", false, "usedの軸"],
+    [LENS_DIFFICULTY_ID, false, "評価軸を選ぶ"],
+    [LENS_DIFFICULTY_ID, true, DIFFICULTY_LENS_LABEL],
   ])(
-    "ピルは今のレンズ（%s）の名前（固定のレンズは固定の名前）を出し、隠していない段の色見本を並べる",
-    (lens, label) => {
-      renderLens({ lens, hiddenLegendKeys: ["step-1"], hasDetail: true });
-      expect(pill()).toHaveAccessibleName(`地図の色分け: ${label}（タップで変更）`);
-      const swatches = pill().querySelectorAll("[title]");
-      expect([...swatches].map((swatch) => swatch.getAttribute("title"))).toEqual(["低い"]);
+    "ピルは選んでいる評価軸（%s・ルートの確定後 %s）の名前を出し、選んでいなければ塗り方を出す",
+    (lens, hasDetail, label) => {
+      renderLens({ lens, hasDetail });
+      expect(pill()).toHaveAccessibleName(`評価で塗る: ${label}（タップで変更）`);
     },
   );
 
@@ -72,56 +78,64 @@ describe("LensControl（レンズのピル）", () => {
     expect(screen.getByRole("status")).toHaveTextContent(LAYER_DATA_STATUS_LABELS.error);
   });
 
-  it("選択肢は「なし」「総合難易度」、評価軸に使用中の軸、未使用の軸の順で、使用中か未使用かは見出しで分け、ルート後のみの印を付ける（総合難易度にも）", async () => {
+  it("一覧は重みのある軸を先に並べ、値が変わる走る条件と「未使用」を名前に添える", async () => {
     renderLens();
     await open();
-    const group = screen.getByRole("radiogroup", { name: "地図の色分け" });
-    const labels = within(group)
-      .getAllByRole("radio")
-      .map((item) => item.textContent);
-    expect(labels).toEqual([
-      FIXED_LENS_LABELS[LENS_NONE_ID],
-      `${FIXED_LENS_LABELS[LENS_DIFFICULTY_ID]}ルート後のみ`,
-      "usedの軸",
-      "routeの軸ルート後のみ",
-      "idleの軸",
-    ]);
-    expect(within(group).getByText("評価軸に使用中")).toBeInTheDocument();
-    expect(within(group).getByText("未使用")).toBeInTheDocument();
+    expect(
+      within(list())
+        .getAllByRole("radio")
+        .map((row) => row.textContent),
+    ).toEqual(["usedの軸（走行方位で変わる）（出発時刻で変わる）", "idleの軸未使用"]);
+  });
+
+  it("行を押すとその評価軸を選び、一覧は閉じない。選んでいる行をもう一度押すと外す", async () => {
+    const { onLensChange } = renderLens();
+    await open();
+    await userEvent.click(within(list()).getByRole("radio", { name: /^idleの軸/ }));
+    expect(onLensChange).toHaveBeenLastCalledWith("idle");
+    expect(list()).toBeInTheDocument();
+
+    await userEvent.click(within(list()).getByRole("radio", { name: /^usedの軸/ }));
+    expect(onLensChange).toHaveBeenLastCalledWith(LENS_DIFFICULTY_ID);
   });
 
   it.each([
-    [LENS_DIFFICULTY_ID, `地図の色分け: ${FIXED_LENS_LABELS[LENS_DIFFICULTY_ID]}・ルート後のみ（タップで変更）`],
-    ["route", "地図の色分け: routeの軸・ルート後のみ（タップで変更）"],
-  ])("ルート前は、ルートの線にだけ色を付けるレンズ（%s）のピルにも「ルート後のみ」を付ける", (lens, name) => {
-    renderLens({ lens });
-    expect(pill()).toHaveAccessibleName(name);
-    expect(within(pill()).getByText("ルート後のみ")).toBeInTheDocument();
+    ["used", false],
+    [LENS_DIFFICULTY_ID, true],
+  ])("「選択を外す」は文字の無いアイコンで、評価軸を選んでいる（%s）間だけ押せる", async (lens, disabled) => {
+    const { onLensChange } = renderLens({ lens });
+    await open();
+    const clear = screen.getByRole("button", { name: "選択を外す" });
+    expect(clear).toHaveTextContent(/^$/);
+    if (disabled) {
+      expect(clear).toBeDisabled();
+      return;
+    }
+    await userEvent.click(clear);
+    expect(onLensChange).toHaveBeenCalledWith(LENS_DIFFICULTY_ID);
   });
 
-  it("走る条件で塗るレンズは、ピルに条件を出し、開いた先の凡例に前提の行を出す", async () => {
-    renderLens({ conditions: "北へ走る・時速20km", premises: ["前提の1行目", "前提の2行目"] });
-    expect(pill()).toHaveAccessibleName("地図の色分け: usedの軸・北へ走る・時速20km（タップで変更）");
-    expect(within(pill()).getByText("北へ走る・時速20km")).toBeInTheDocument();
+  it("(i) で軸の説明を行の下に開く", async () => {
+    renderLens();
     await open();
-    const legendSection = screen.getByRole("group", { name: "凡例" });
-    expect(within(legendSection).getByText("前提の1行目")).toBeInTheDocument();
-    expect(within(legendSection).getByText("前提の2行目")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "idleの軸の説明を表示" }));
+    expect(screen.getByText("idleの説明")).toBeInTheDocument();
   });
 
-  it("ルート確定後は「ルート後のみ」を付けず、使用中・未使用の見出しは中身があるときだけ", async () => {
-    renderLens({ hasDetail: true, lens: LENS_DIFFICULTY_ID, axisOptions: [option("used")] });
+  it("選んでいる行にだけ ▶ を出し、開くと凡例と前提の文を出す", async () => {
+    renderLens({ premises: ["前提の文"] });
     await open();
-    expect(screen.queryByText("ルート後のみ")).not.toBeInTheDocument();
-    expect(screen.queryByText("未使用")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "idleの軸の凡例" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "usedの軸の凡例" }));
+    const panel = screen.getByRole("region", { name: "usedの軸の内訳" });
+    expect(within(panel).getByText("低い")).toBeInTheDocument();
+    expect(within(panel).getByText("前提の文")).toBeInTheDocument();
   });
 
-  it("選ぶとレンズを変えて閉じる", async () => {
-    const { onLensChange } = renderLens();
+  it("凡例も前提も無い軸には ▶ を出さない", async () => {
+    renderLens({ legend: [] });
     await open();
-    await userEvent.click(screen.getByRole("radio", { name: /idleの軸/ }));
-    expect(onLensChange).toHaveBeenCalledWith("idle");
-    expect(screen.queryByRole("radiogroup", { name: "地図の色分け" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "usedの軸の凡例" })).not.toBeInTheDocument();
   });
 
   it.each([
@@ -132,46 +146,38 @@ describe("LensControl（レンズのピル）", () => {
     async (hidden, next) => {
       const { onSetHiddenLegendKeys } = renderLens({ hiddenLegendKeys: hidden });
       await open();
+      await userEvent.click(screen.getByRole("button", { name: "usedの軸の凡例" }));
       await userEvent.click(screen.getByRole("checkbox", { name: "凡例の全段階をまとめて表示/非表示" }));
       expect(onSetHiddenLegendKeys).toHaveBeenCalledWith(next);
     },
   );
 
-  it("密度の軸のレンズは、開いた先に項の重みを材料の名前と並べる", async () => {
-    renderLens({
-      densityTerms: [
-        { materialId: "signal", label: "信号", weight: 1 },
-        { materialId: "crossing", label: "横断歩道", weight: 0 },
-      ],
-    });
+  it.each([
+    [[], false],
+    [["step-0"], true],
+  ])("段を隠している（%j）間だけ、選んでいる行に「絞り込み中」を添え、まとめて戻せる", async (hidden, filtered) => {
+    const { onSetHiddenLegendKeys } = renderLens({ hiddenLegendKeys: hidden });
     await open();
-    const terms = screen.getByRole("list", { name: "数え方（1件あたりの重み）" });
-    expect(
-      within(terms)
-        .getAllByRole("listitem")
-        .map((item) => item.textContent),
-    ).toEqual(["信号×1", "横断歩道×0"]);
+    expect(within(list()).queryByText("絞り込み中") !== null).toBe(filtered);
+    const clear = screen.getByRole("button", { name: "絞り込みをすべて解除" });
+    if (!filtered) {
+      expect(clear).toBeDisabled();
+      return;
+    }
+    await userEvent.click(clear);
+    expect(onSetHiddenLegendKeys).toHaveBeenCalledWith([]);
   });
 
-  it("凡例が無いレンズは、ピルにも開いた先にも凡例を出さない", async () => {
-    renderLens({ legend: [] });
-    expect(pill().querySelectorAll("[title]")).toHaveLength(0);
+  it("ルートの線を出していなければ、塗っていないことを開いた先で伝える", async () => {
+    renderLens({ routeHidden: true });
     await open();
-    expect(screen.queryByText("凡例")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("ルートの線は塗っていません");
   });
 
-  it("一覧の「ルートを地図に出す」を押すと、出し入れを反転した値で知らせる", async () => {
-    const { onRouteShownChange } = renderLens({ routeShown: true });
+  it("「ルート後も周囲の道路を薄く塗る」を押すと、反転した値で知らせる", async () => {
+    const { onKeepAfterRouteChange } = renderLens({ keepAfterRoute: true });
     await open();
-    await userEvent.click(screen.getByRole("checkbox", { name: "ルートを地図に出す" }));
-    expect(onRouteShownChange).toHaveBeenCalledWith(false);
-  });
-
-  it("候補を選ぶまでは、「ルートを地図に出す」を押せず、ONに見えない", async () => {
-    renderLens({ routeShown: true, routeSelectable: false });
-    await open();
-    const route = screen.getByRole("checkbox", { name: "ルートを地図に出す" });
-    expect(route).toBeDisabled();
-    expect(route).not.toBeChecked();
+    await userEvent.click(screen.getByRole("checkbox", { name: "ルート後も周囲の道路を薄く塗る" }));
+    expect(onKeepAfterRouteChange).toHaveBeenCalledWith(false);
   });
 });

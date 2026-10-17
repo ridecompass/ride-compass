@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 
 import { useStoredState } from "@/hooks/useStoredState";
 import { useDepartureTime } from "@/features/conditions/useDepartureTime";
-import { clampSpeedKmh } from "@/features/conditions/rideConditions";
+import { clampSpeedKmh } from "@/lib/assumedSpeed";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 // 走行条件のうち想定速度だけを保つ（出発時刻・走行方位は行くたびに変わる）。

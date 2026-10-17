@@ -27,13 +27,13 @@ import {
 } from "@/components/ui/icons/icons";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { TILE_VERSION_GATED_SOURCES } from "@/lib/mapDisplay/tileVersionGated";
-import { HOUR_MS, MINUTE_MS } from "@/lib/duration";
-import { LANDCOVER_PAINTED_CLASSES } from "./landcoverClasses";
+import { LANDCOVER_PAINTED_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { PRECIPITATION_INTENSITY_LEVELS } from "./precipitationNowcast";
 import { WIND_SPEED_LEGEND_LEVELS } from "./windLayer";
 import type { MapAxisCatalog } from "@/features/map/mapAxisCatalog";
 import { axisNamesInText, type CatalogAxis } from "@/lib/catalogAxis";
-import { FIXED_LENS_LABELS, LENS_DIFFICULTY_ID } from "@/lib/mapDisplay/routeStyleModes";
+import { DISASTER_ELEMENTS } from "@/features/map/scene/groups/weather";
+import { DIFFICULTY_LENS_LABEL } from "@/lib/mapDisplay/routeStyleModes";
 
 /** 源泉が宣言する、地図に載るものの名前。 */
 type StaticMapLayerId = (typeof mapDisplay.layers)[number]["id"];
@@ -62,32 +62,17 @@ interface ReadOnlyLegendBlock {
   legend: readonly LegendEntry[];
 }
 
-/** 名前付きソースの宣言（同じソースを名乗る要素は名前・コマの規則・配信を共有するので、先頭の要素で引く）。 */
+/** 名前付きソースの宣言（同じソースを名乗る要素は名前・説明を共有するので、先頭の要素で引く）。 */
 function weatherSourceOf(source: string) {
   const element = mapDisplay.weatherElements.find((candidate) => candidate.source === source);
-  if (!element) throw new Error(`${source}は宣言されていない`);
-  return element;
+  if (!element?.description) throw new Error(`${source}は説明を宣言していない`);
+  return { label: element.label, description: element.description };
 }
 
-/** 名前付きソースを重ねる幅（「今」から何時間先まで）。源泉が要素の描くコマの規則として宣言する値。 */
-function windowHoursOf(source: string): number {
-  const minutes = weatherSourceOf(source).frameRule.windowMinutes;
-  if (minutes == null) throw new Error(`${source}は重ねる幅を宣言していない`);
-  return (minutes * MINUTE_MS) / HOUR_MS;
-}
-
-const LINEAR_RAINBAND_HOURS = windowHoursOf("linearRainband");
-
-/** 名前付きソースの予測が届く先（分）。源泉が配信の要素ごとに宣言する値。 */
-function forecastMinutesOf(source: string): number {
-  const minutes = weatherSourceOf(source).jmaElements[0]?.forecastMinutes;
-  if (minutes == null) throw new Error(`${source}は予測が届く先を宣言していない`);
-  return minutes;
-}
+const LINEAR_RAINBAND = weatherSourceOf("linearRainband");
+const LINEAR_RAINBAND_AREA = weatherSourceOf("linearRainbandArea");
 
 type WeatherElementDeclaration = (typeof mapDisplay.weatherElements)[number];
-
-const DISASTER_ELEMENTS = mapDisplay.weatherElements.filter((element) => element.group === "disaster");
 
 /** 名前の並び。同じ名前を名乗る要素（描き方違いの同じ名前付きソース）は1つにする。 */
 function labelList(elements: readonly WeatherElementDeclaration[]): string {
@@ -144,23 +129,22 @@ const READ_ONLY_LEGENDS: Partial<Record<StaticMapLayerId, readonly ReadOnlyLegen
       legend: PRECIPITATION_INTENSITY_LEVELS,
     },
     {
-      label: `${weatherSourceOf("linearRainband").label}[現在〜${LINEAR_RAINBAND_HOURS}時間先のみ]`,
-      // 色は配信元の塗り色そのもの。矩形に見えることも書く（細かい雨域と重なると描画の不具合に見える）。
+      label: LINEAR_RAINBAND.label,
+      // 色は配信元の塗り色そのもの。
       legend: [
         {
           key: "linearRainband",
-          label: `今後${LINEAR_RAINBAND_HOURS}時間以内に大雨のおそれ[矩形の予測領域]`,
+          label: LINEAR_RAINBAND.description,
           color: weatherScales.linear_rainband_color,
         },
       ],
     },
     {
-      label: `${weatherSourceOf("linearRainbandArea").label}[実況〜${forecastMinutesOf("linearRainbandAreaForecast")}分先のみ]`,
-      // 文言は配信元の公式の画面の凡例に合わせる。
+      label: LINEAR_RAINBAND_AREA.label,
       legend: [
         {
           key: "linearRainbandArea",
-          label: "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[赤い輪郭線]",
+          label: LINEAR_RAINBAND_AREA.description,
           color: weatherScales.linear_rainband_outline_color,
         },
       ],
@@ -310,7 +294,7 @@ export function buildMapLayers({ axes, dedicatedAxes, accidentYears }: LayerCata
   // 取れていないときは年に触れない（既定の年を出すと、それが正しいように見える）。
   const accidentCoverage = coverageYearsLabel(accidentYears);
   // 並びはレンズの選択肢と同じ（公開中の評価と総合難易度）。
-  const routeLenses = [...axes.map((axis) => axis.label), FIXED_LENS_LABELS[LENS_DIFFICULTY_ID]].join("・");
+  const routeLenses = [...axes.map((axis) => axis.label), DIFFICULTY_LENS_LABEL].join("・");
   const staticLayers = mapDisplay.layers.map((layer): ChipLayerDescriptor => {
     const slots = { axes: axisNamesReading(axes, layer.id), accidentYears: accidentCoverage, routeLenses };
     return {

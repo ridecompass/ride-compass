@@ -1,13 +1,10 @@
 """`api/routers/axis_catalog.py`——公開軸の一覧（`GET /api/axis-catalog`、認可不要）。
 
 ここで見るもの: 公開軸だけを配ること、軸ごとの欄へ domain の導出を受け渡すこと、domain に低い層の
-テストが無い導出（気象のチップ・生値の単位・材料の内訳・専用配信の条件・画面へ配る較正値）の結果、
-実行時の換算係数を地図の塗る式がタイルのプロパティ名で引けること。
+テストが無い導出（気象のチップ・生値の単位・材料の内訳・専用配信の条件・画面へ配る較正値）の結果。
 
 ここで見ないもの:
-- 地図表示の導出と段のラベル → `test_axis_display.py`、一次属性 → `test_axis_hierarchy.py`、
-  塗る値の種類と単位 → `test_map_paint.py`
-- 換算係数を収録年から導くこと → `test_material_catalog.py`
+- 地図の塗り（値の種類・単位・段・凡例・ラベル） → `test_map_paint.py`、一次属性 → `test_axis_hierarchy.py`
 - タイルの世代 → `test_derived_data_revision_service.py`・`test_derived_data_meta.py`
 - 軸の項目を応答へそのまま写すこと（表示名・重み・チップの欄等）——書き写しで、判断が無い
 - 画面へ配る較正値の顔ぶれ（`tuning.py: client_tuning_values`）——同じ関数がビルド時生成物の`client_tuning`も書き、
@@ -82,17 +79,6 @@ CATALOG_AXES: dict[str, AxisDefinition] = {
         label="軸オ",
         is_published=True,
     ),
-    # 実行時スケールを要する材料（収録年数で割る前の生値がタイルに焼かれている）を使う軸。
-    "axis_runtime_scaled": AxisDefinition(
-        axis_id="axis_runtime_scaled",
-        shape=BreakpointLinearShape(
-            terms=[MaterialTerm(material="accident_count_per_km_year")],
-            breakpoints=[(0.0, 0.0), (1.0, 100.0)],
-        ),
-        default_weight=0.1,
-        label="軸ラ",
-        is_published=True,
-    ),
     # 真偽の材料を符号の違う重みで合成する軸（材料まで分解した内訳を持つ）。
     "axis_boolean_terms": AxisDefinition(
         axis_id="axis_boolean_terms",
@@ -107,6 +93,20 @@ CATALOG_AXES: dict[str, AxisDefinition] = {
         label="軸ナ",
         is_published=True,
     ),
+    # 分類の軸と単位のある材料を合成する軸（内訳に対訳・単位・割り切れない割合が出る）。
+    "axis_mixed_terms": AxisDefinition(
+        axis_id="axis_mixed_terms",
+        shape=BreakpointLinearShape(
+            terms=[
+                MaterialTerm(material="axis_categorical", weight=1.0),
+                MaterialTerm(material="poi_signal_per_km", weight=2.0),
+            ],
+            breakpoints=[(0.0, 0.0), (100.0, 100.0)],
+        ),
+        default_weight=0.0,
+        label="軸ミ",
+        is_published=True,
+    ),
 }
 
 
@@ -119,22 +119,18 @@ def catalog_axes():
 class _CatalogRepository:
     """`/api/axis-catalog`が`RegionService`越しに読むDBの口（データの世代・事故の収録年）の代役。"""
 
-    def __init__(self, accident_years: list[int] | None = None):
-        self._accident_years = accident_years or []
-
     async def get_data_revisions(self):
         return DataRevisions(derived=None, imported=0)
 
     async def get_accident_years(self):
-        return self._accident_years
+        return []
 
 
 @pytest.fixture
 def client():
     """`/api/axis-catalog`を叩く口。このファイルの検証対象は軸カタログの内容で、DBの値は見ない。
 
-    `/api/axis-catalog`は`tile_runtime_scales`（事故の収録年数）とタイル世代を出すためだけに
-    `RegionService`を経由する。実DBが繋がる環境ではリクエストごとに接続を開き、
+    `/api/axis-catalog`は事故の収録年とタイル世代を出すためだけに`RegionService`を経由する。実DBが繋がる環境ではリクエストごとに接続を開き、
     `TestClient`のイベントループをまたいだasyncpg接続がGCされる際にキャンセル用の
     コルーチンが未awaitのまま残る（`RuntimeWarning: coroutine 'Connection._cancel' was
     never awaited`）。DBの口を代役へ固定して、DBの有無でこのファイルの経路が変わらないようにする。
@@ -160,7 +156,6 @@ def test_each_axis_carries_what_the_domain_derives_for_it(client, catalog_axes):
     entries = _entries(client)
 
     categorical = entries["axis_categorical"]
-    assert categorical["map_paint"]["tiles"]["tile_inputs"][0]["property"] == MATERIAL_CATALOG[SURFACE_ESTIMATE].tile_property
     assert categorical["primary_attribute_ids"] == ["surface"]
     signed = entries["axis_way_value_signed"]
     assert (signed["map_paint"]["value"], signed["map_paint"]["unit"]) == (
@@ -175,28 +170,6 @@ def test_get_axis_catalog_names_the_weather_chip_that_shows_a_dynamic_material(c
 
     assert entries["axis_way_value_scored"]["weather_layer_groups"] == ["windVector"]
     assert entries["axis_categorical"]["weather_layer_groups"] == []
-
-
-def _runtime_scaled_tile_properties(body) -> set[str]:
-    return {
-        tile_input["property"]
-        for entry in body["axes"]
-        for tile_input in entry["map_paint"]["tiles"]["tile_inputs"]
-        if tile_input["needs_runtime_scale"]
-    }
-
-
-def test_every_runtime_scaled_tile_input_finds_its_scale_by_its_tile_property(client, catalog_axes):
-    """換算係数は材料の宣言から導かれ、地図が塗る値の式はタイルのプロパティ名でそれを引く。"""
-    app.dependency_overrides[get_region_service] = lambda: RegionService(
-        repository=_CatalogRepository(accident_years=[2019, 2020, 2021, 2022, 2023, 2024])
-    )
-
-    body = client.get("/api/axis-catalog").json()
-
-    scaled = _runtime_scaled_tile_properties(body)
-    assert scaled
-    assert {p: body["tile_runtime_scales"].get(p) for p in scaled} == {p: pytest.approx(1 / 6) for p in scaled}
 
 
 def test_get_axis_catalog_carries_the_calibration_values_the_client_needs(client, monkeypatch):
@@ -260,20 +233,9 @@ def test_get_axis_catalog_includes_material_breakdown(client, catalog_axes):
     assert entries["axis_way_value_signed"]["material_breakdown"] == []
     night = entries["axis_boolean_terms"]["material_breakdown"]
     assert [(entry["material_id"], entry["share"]) for entry in night] == [("lit", 0.5), ("has_tunnel", 0.5)]
-    # 真偽値材料に対訳は要らない（走行中に見る画面へ不要なデータを載せない）。
-    assert night[0]["value_labels"] == {}
-
-
-def test_get_axis_catalog_marks_density_axes_with_their_terms(client, catalog_axes):
-    """地図は密度の軸だけを、線ではなく材料の点と項の重みで見せる。印が無いと線で塗り、重みが無いと凡例が点の数え方を言えない。"""
-    entries = _entries(client)
-    # 重み0の項も並べる——地図に出る点（横断歩道）が数えられていないことを凡例で言うため。
-    assert [(term["material_id"], term["weight"]) for term in entries["axis_optional_terms"]["density_terms"]] == [
-        ("poi_signal_per_km", 1.0),
-        ("poi_level_crossing_per_km", 1.5),
-        ("poi_stop_per_km", 0.3),
-        ("poi_crossing_per_km", 0.0),
-    ]
-    assert entries["axis_optional_terms"]["density_terms"][0]["label"] == MATERIAL_CATALOG["poi_signal_per_km"].label
-    # 足せない材料の軸は密度の軸ではない。
-    assert entries["axis_boolean_terms"]["density_terms"] is None
+    # 割合は画面に出す桁へ丸めて配り、分類の材料はルート結果が値ごとの割合を日本語にする対訳を、数値の材料は単位を運ぶ。
+    mixed = {entry["material_id"]: entry for entry in entries["axis_mixed_terms"]["material_breakdown"]}
+    signal = mixed["poi_signal_per_km"]
+    assert (signal["share"], signal["unit"]) == (0.6667, MATERIAL_CATALOG["poi_signal_per_km"].unit)
+    assert mixed[SURFACE_ESTIMATE]["share"] == 0.3333
+    assert mixed[SURFACE_ESTIMATE]["value_labels"] == MATERIAL_CATALOG[SURFACE_ESTIMATE].value_labels

@@ -27,6 +27,7 @@ import { makeGenerationConditions, makeRouteCandidate } from "@/testing/routeFix
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { Coordinates, GenerationConditions, RouteCandidate } from "@/types/route";
 
+import { AVOIDABLE_ROWS, AVOIDANCE_LEVELS, DEFAULT_ROAD_AVOIDANCE } from "./roadAvoidance";
 import { useGenerationConditions } from "./useGenerationConditions";
 import { useRouteGeneration } from "./useRouteGeneration";
 
@@ -118,14 +119,21 @@ afterEach(() => {
 });
 
 describe("送る要求", () => {
-  it("全長の目標を決めていれば、いまの位置・入力した距離と候補数・走行条件・除外と、置いた経由地（置いた順）・目的地をそのまま送り、重みは送らない", async () => {
+  it("全長の目標を決めていれば、いまの位置・入力した距離と候補数・走行条件・除外・選んだ道の避け方と、置いた経由地（置いた順）・目的地をそのまま送り、重みは送らない", async () => {
     const rendered = renderGeneration();
     const { conditions } = rendered.result.current;
     act(() => conditions.setDistanceInput("42"));
     act(() => rendered.result.current.conditions.setMaxRoutesInput("3"));
     act(() => rendered.result.current.conditions.setDestination(A));
-    act(() => rendered.result.current.conditions.placePin("waypoint", B));
-    act(() => rendered.result.current.conditions.placePin("waypoint", A));
+    act(() => rendered.result.current.conditions.selectPoint({ role: "waypoint", index: null }));
+    act(() => rendered.result.current.conditions.placeAtSelected(B, null));
+    act(() => rendered.result.current.conditions.placeAtSelected(A, null));
+    const [{ key: rowKey }] = AVOIDABLE_ROWS;
+    const avoidance = {
+      ...DEFAULT_ROAD_AVOIDANCE,
+      [rowKey]: AVOIDANCE_LEVELS.find(({ key }) => key !== DEFAULT_ROAD_AVOIDANCE[rowKey])!.key,
+    };
+    act(() => rendered.result.current.conditions.setRoadAvoidance(avoidance));
     respond([route("r1")]);
 
     await submit(rendered);
@@ -136,6 +144,7 @@ describe("送る要求", () => {
       distance_km: 42,
       distance_tolerance_km: routeGenerateConfig.default_distance_tolerance_km,
       hard_filters: DEFAULT_HARD_FILTERS,
+      road_avoidance: avoidance,
       max_routes: 3,
       assumed_speed_kmh: 20,
       start_time: T1.toISOString(),
@@ -147,7 +156,7 @@ describe("送る要求", () => {
   it("全長の目標を外すと距離を送らず、置いた地点は同じに送る", async () => {
     const rendered = renderGeneration();
     act(() => rendered.result.current.conditions.setDistanceTargeted(false));
-    act(() => rendered.result.current.conditions.placePin("destination", A));
+    act(() => rendered.result.current.conditions.setDestination(A));
     respond([route("r1")]);
 
     await submit(rendered);
@@ -274,7 +283,7 @@ describe("生成の結果", () => {
 
   it("backendが目的地を補正したら、置いた目的地を補正後の地点へ動かして知らせ、条件が変わったとは扱わない", async () => {
     const rendered = renderGeneration();
-    act(() => rendered.result.current.conditions.placePin("destination", A));
+    act(() => rendered.result.current.conditions.setDestination(A));
     respond([route("r1")], used({ destination: A, corrected_destination: B }));
 
     await submit(rendered);
@@ -288,7 +297,7 @@ describe("生成の結果", () => {
 
   it("生成を待つ間に目的地を置き直したら、補正後の地点で置き直した目的地を上書きせず、条件が変わったと返す", async () => {
     const rendered = renderGeneration();
-    act(() => rendered.result.current.conditions.placePin("destination", A));
+    act(() => rendered.result.current.conditions.setDestination(A));
     const job = heldReplies();
     jobs.answerWith(job.reply);
     let generating: Promise<void> = Promise.resolve();
@@ -297,7 +306,7 @@ describe("生成の結果", () => {
     });
 
     const moved: Coordinates = { latitude: 35.72, longitude: 139.82 };
-    act(() => rendered.result.current.conditions.placePin("destination", moved));
+    act(() => rendered.result.current.conditions.setDestination(moved));
     await act(async () => {
       await job.answer(
         0,
@@ -387,7 +396,7 @@ describe("消す", () => {
   it("生成の結果（作った条件・補正・既定の配分・案内）を消す", async () => {
     const rendered = renderGeneration();
     act(() => rendered.result.current.conditions.setWeightOverrideEnabled(true));
-    act(() => rendered.result.current.conditions.placePin("destination", A));
+    act(() => rendered.result.current.conditions.setDestination(A));
     respond([route("r1")], used({ corrected_destination: B }));
     await submit(rendered);
     jobs.fail("リクエストに失敗しました");

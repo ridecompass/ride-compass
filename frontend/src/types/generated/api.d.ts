@@ -468,22 +468,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/axis-definitions/preview-display-thresholds": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["preview_display_thresholds_api_admin_axis_definitions_preview_display_thresholds_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/admin/tuning": {
         parameters: {
             query?: never;
@@ -720,14 +704,10 @@ export interface components {
             primary_attribute_ids: string[];
             /** Weather Layer Groups */
             weather_layer_groups: string[];
-            /** Dedicated Way Value Layer */
-            dedicated_way_value_layer: boolean;
             map_paint: components["schemas"]["MapPaint"];
             raw_value_units: components["schemas"]["RawValueUnits"];
             /** Material Breakdown */
             material_breakdown: components["schemas"]["AxisMaterialBreakdownEntry"][];
-            /** Density Terms */
-            density_terms: components["schemas"]["AxisDensityTerm"][] | null;
             /** Dynamic Way Value Conditions */
             dynamic_way_value_conditions: ("at" | "bearing_deg" | "speed_kmh")[];
             /** Dynamic Way Value Undetermined By Bearing */
@@ -742,31 +722,15 @@ export interface components {
         AxisCatalogResponse: {
             /** Axes */
             axes: components["schemas"]["AxisCatalogEntry"][];
-            /**
-             * Tile Runtime Scales
-             * @default {}
-             */
-            tile_runtime_scales: {
-                [key: string]: number;
-            };
-            /**
-             * Client Tuning
-             * @default {}
-             */
+            /** Client Tuning */
             client_tuning: {
                 [key: string]: number;
             };
-            /**
-             * Tile Versions
-             * @default {}
-             */
+            /** Tile Versions */
             tile_versions: {
                 [key: string]: string;
             };
-            /**
-             * Accident Years
-             * @default []
-             */
+            /** Accident Years */
             accident_years: number[];
         };
         /** AxisDefinitionPayload */
@@ -809,11 +773,6 @@ export interface components {
             display_thresholds_override?: number[] | null;
             /** Display Band Labels Override */
             display_band_labels_override?: string[] | null;
-            /**
-             * Dedicated Way Value Layer
-             * @default false
-             */
-            dedicated_way_value_layer: boolean;
         };
         /** AxisDefinitionResponse */
         AxisDefinitionResponse: {
@@ -855,35 +814,8 @@ export interface components {
             display_thresholds_override: number[] | null;
             /** Display Band Labels Override */
             display_band_labels_override: string[] | null;
-            /**
-             * Dedicated Way Value Layer
-             * @default false
-             */
-            dedicated_way_value_layer: boolean;
-            display: components["schemas"]["AxisDisplaySpec"];
             /** Weight Share When Published */
             weight_share_when_published: number | null;
-        };
-        /** AxisDensityTerm */
-        AxisDensityTerm: {
-            /** Material Id */
-            material_id: string;
-            /** Label */
-            label: string;
-            /** Weight */
-            weight: number;
-        };
-        /** AxisDisplaySpec */
-        AxisDisplaySpec: {
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "ramp" | "none";
-            /** Tile Inputs */
-            tile_inputs: components["schemas"]["TileInputSpec"][];
-            /** Thresholds */
-            thresholds: number[];
         };
         /** AxisInspectorAxis */
         AxisInspectorAxis: {
@@ -941,10 +873,7 @@ export interface components {
             unit: string;
             /** Share */
             share: number;
-            /**
-             * Value Labels
-             * @default {}
-             */
+            /** Value Labels */
             value_labels: {
                 [key: string]: string;
             };
@@ -1129,23 +1058,14 @@ export interface components {
              */
             kind: "difficulty";
         };
-        /** DisplayThresholdsPreviewRequest */
-        DisplayThresholdsPreviewRequest: {
-            /** Axis Id */
-            axis_id: string;
-            /** Shape */
-            shape: components["schemas"]["BreakpointLinearShape-Input"] | components["schemas"]["CategoricalShape-Input"];
-            /** Priority Overrides */
-            priority_overrides?: components["schemas"]["PriorityCondition"][];
-            /** Thresholds */
-            thresholds: number[];
-        };
-        /** DisplayThresholdsPreviewResponse */
-        DisplayThresholdsPreviewResponse: {
-            /** Dropped On Map */
-            dropped_on_map: number[];
-            /** Bands On Map */
-            bands_on_map: number[];
+        /** ElevationStretch */
+        ElevationStretch: {
+            /** Distance Km */
+            distance_km: number;
+            /** Start Elevation M */
+            start_elevation_m: number | null;
+            /** End Elevation M */
+            end_elevation_m: number | null;
         };
         /** ExternalCallStats */
         ExternalCallStats: {
@@ -1187,6 +1107,7 @@ export interface components {
             /** Max Average Grade Percent */
             max_average_grade_percent: number | null;
             hard_filters: components["schemas"]["HardFilterOverride"];
+            road_avoidance: components["schemas"]["RoadAvoidanceOverride"];
             /** Max Routes */
             max_routes: number;
             /**
@@ -1347,7 +1268,6 @@ export interface components {
             /** Thresholds */
             thresholds: number[];
             legend: components["schemas"]["MapLegendScale"];
-            tiles: components["schemas"]["AxisDisplaySpec"];
             /** Band Labels */
             band_labels: string[] | null;
         };
@@ -1537,6 +1457,17 @@ export interface components {
             /** Total Unit */
             total_unit: string | null;
         };
+        /** RoadAvoidanceOverride */
+        RoadAvoidanceOverride: {
+            [key: string]: "pass" | "avoid" | "exclude";
+        };
+        /** RoadClassStretch */
+        RoadClassStretch: {
+            /** Distance Km */
+            distance_km: number;
+            /** Value */
+            value: string | boolean | null;
+        };
         /** RouteCandidate */
         RouteCandidate: {
             /** Direction Label */
@@ -1553,30 +1484,14 @@ export interface components {
             elevation_gain_m: number | null;
             /** Segments */
             segments: components["schemas"]["RouteSegmentDetail"][];
-            overall_difficulty: components["schemas"]["OverallDifficulty"] | null;
             /** Estimated Duration Seconds */
             estimated_duration_seconds: number | null;
-            /**
-             * Wind Unavailable
-             * @default false
-             */
+            /** Wind Unavailable */
             wind_unavailable: boolean;
             /** Missing Travel Data Share */
             missing_travel_data_share: number | null;
-            /** Axis Difficulties */
-            axis_difficulties: {
-                [key: string]: number;
-            };
-            /** Axis Contributions */
-            axis_contributions: {
-                [key: string]: number;
-            };
             /** Axis Raw Values */
             axis_raw_values: {
-                [key: string]: number;
-            };
-            /** Material Values */
-            material_values: {
                 [key: string]: number;
             };
             /** Material Category Shares */
@@ -1593,6 +1508,23 @@ export interface components {
             node_ids: string[];
             /** Turns */
             turns: components["schemas"]["RouteTurn"][];
+            /** Points */
+            points: components["schemas"]["RoutePoint"][];
+            /** Waypoint Distances Km */
+            waypoint_distances_km: number[];
+            overall_difficulty: components["schemas"]["OverallDifficulty"] | null;
+            /** Axis Difficulties */
+            axis_difficulties: {
+                [key: string]: number;
+            };
+            /** Axis Contributions */
+            axis_contributions: {
+                [key: string]: number;
+            };
+            /** Material Values */
+            material_values: {
+                [key: string]: number;
+            };
             /** Id */
             id: string;
             /**
@@ -1653,6 +1585,7 @@ export interface components {
             /** Max Average Grade Percent */
             max_average_grade_percent?: number | null;
             hard_filters: components["schemas"]["HardFilterOverride"];
+            road_avoidance: components["schemas"]["RoadAvoidanceOverride"];
             /** Max Routes */
             max_routes: number;
             /** Assumed Speed Kmh */
@@ -1675,6 +1608,17 @@ export interface components {
             conditions: components["schemas"]["GenerationConditions"];
             /** No Candidates Reason */
             no_candidates_reason: string | null;
+        };
+        /** RoutePoint */
+        RoutePoint: {
+            /** Distance Km */
+            distance_km: number;
+            /** Layer */
+            layer: string;
+            /** Properties */
+            properties: {
+                [key: string]: string | number | boolean;
+            };
         };
         /** RoutePreferenceWeights */
         RoutePreferenceWeights: {
@@ -1700,6 +1644,8 @@ export interface components {
             cumulative_distance_km: number;
             /** Distance Km */
             distance_km: number;
+            /** Elevations */
+            elevations: components["schemas"]["ElevationStretch"][];
             /** Estimated Arrival Time */
             estimated_arrival_time: string | null;
             /** Axis Difficulties */
@@ -1717,6 +1663,10 @@ export interface components {
             /** Difficulty */
             difficulty: number | null;
             wind: components["schemas"]["SegmentWind"] | null;
+            /** Road Classes */
+            road_classes: {
+                [key: string]: components["schemas"]["RoadClassStretch"][];
+            };
         };
         /** RouteTurn */
         RouteTurn: {
@@ -1805,50 +1755,6 @@ export interface components {
             min_c: number;
             /** Max C */
             max_c: number;
-        };
-        /** TileInputSpec */
-        TileInputSpec: {
-            /** Property */
-            property: string;
-            /**
-             * Weight
-             * @default 1
-             */
-            weight: number;
-            /**
-             * Boolean
-             * @default false
-             */
-            boolean: boolean;
-            /**
-             * True Value
-             * @default 0
-             */
-            true_value: number;
-            /**
-             * False Value
-             * @default 0
-             */
-            false_value: number;
-            /**
-             * Has Unknown Fallback
-             * @default false
-             */
-            has_unknown_fallback: boolean;
-            /** Categories */
-            categories: {
-                [key: string]: number;
-            } | null;
-            /** Breakpoints */
-            breakpoints: [
-                number,
-                number
-            ][] | null;
-            /**
-             * Needs Runtime Scale
-             * @default false
-             */
-            needs_runtime_scale: boolean;
         };
         /** TuningParameterView */
         TuningParameterView: {
@@ -2996,39 +2902,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScoresPreviewResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_display_thresholds_api_admin_axis_definitions_preview_display_thresholds_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DisplayThresholdsPreviewRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DisplayThresholdsPreviewResponse"];
                 };
             };
             /** @description Validation Error */

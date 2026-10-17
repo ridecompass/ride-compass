@@ -4,9 +4,9 @@
  * 見るもの: 長さのある区間が無ければ何も描かないこと、横軸の右端（候補の距離と渡された物差しの長い方）と目盛り、
  * 軸ごとの塗り（`axisOrder`の順に下から積む・軸の色と色の無い軸の色）、値の無い区間の灰色の塗り（総合難易度の高さ。
  * 総合難易度が無ければ塗らない）、選ばれた区間の帯とスライダーとしての値、キーボード（矢印・Home・End）と
- * 1本の指（マウス）でなぞる・押して離す操作で選ぶ区間と地点、押しただけ・ボタンを押していない動き・2本目の指が
- * 加わった操作では選ばないこと、自分で動かした地点の線（選ばれた区間の中にあるときだけ）、走行中の現在地の印と、
- * 始点からそこまでの薄め（候補の終わりより先は終わりに寄せる）。
+ * 1本の指（マウス）で横になぞる・押して離す操作で選ぶ区間と地点、押しただけ・ボタンを押していない動き・縦に動き出した操作・
+ * 2本目の指が加わった操作では選ばないこと、自分で動かした地点の線（選ばれた区間の中にあるときだけ）、走行中の現在地の印（その距離の柱の上端）と、
+ * 始点からそこまでの色を抜いた薄め（候補の終わりより先は終わりに寄せる）、選ぶ受け口が無ければ見るだけの図にすること。
  *
  * ここで見ないもの: 区間の柱と積み上げの長方形の組み方（総合難易度が0なら値の無い区間を塗らないことを含む） →
  * `features/route/DifficultyProfile/profileGeometry.ts`。区間の中の割合から地点を引く計算（道なりの形の上） →
@@ -54,6 +54,7 @@ function profileProps(props: Partial<Props> = {}): Props {
     scaleKm: 2,
     selected: null,
     onSelect: vi.fn(),
+    waypointKms: [],
     ...props,
   };
 }
@@ -134,22 +135,48 @@ describe("DifficultyProfile", () => {
     expect(missingPath(renderProfile({ overallDifficulty: null }).container)).toBeUndefined();
   });
 
-  it("現在地の距離に印を引き、始点からそこまでを薄める。候補の終わりより先は終わりに寄せ、無ければ描かない", () => {
+  it("現在地の距離に印を、その距離の柱の上端に置き、始点からそこまでは色を抜いて薄め、残りは元の色で描く。候補の終わりより先は終わりに寄せ、無ければ描かない", () => {
     const { container, rerender } = renderProfile({ scaleKm: 4, progressKm: 0.5 });
-    const marks = () => ({
-      travelled: container.querySelector('[data-progress="travelled"]'),
-      position: container.querySelector('[data-progress="position"]'),
+    const progress = () => {
+      const travelled = container.querySelector('[data-progress="travelled"]');
+      const ahead = container.querySelector('[data-progress="ahead"]');
+      const clipWidth = (group: Element | null) => {
+        const id = group?.getAttribute("clip-path")?.match(/#([^)]+)/)?.[1];
+        return id === undefined ? null : container.querySelector(`[id="${id}"] rect`)?.getAttribute("width");
+      };
+      const filterId = travelled?.getAttribute("filter")?.match(/#([^)]+)/)?.[1];
+      const mark = screen.queryByRole("img", { name: "現在地" });
+      return {
+        travelledWidth: clipWidth(travelled),
+        travelledOpacity: travelled?.getAttribute("opacity") ?? null,
+        travelledSaturate:
+          filterId === undefined
+            ? null
+            : (container.querySelector(`[id="${filterId}"] feColorMatrix`)?.getAttribute("values") ?? null),
+        travelledPaths: travelled?.querySelectorAll("path").length ?? 0,
+        aheadPaths: ahead?.querySelectorAll("path").length ?? 0,
+        aheadFilter: ahead?.getAttribute("filter") ?? null,
+        mark: mark === null ? null : { left: mark.style.left, top: mark.style.top },
+      };
+    };
+    const drawnPaths = 3;
+    expect(progress()).toEqual({
+      travelledWidth: "125",
+      travelledOpacity: String(mapDisplay.route.opacities.travelled),
+      travelledSaturate: "0",
+      travelledPaths: drawnPaths,
+      aheadPaths: drawnPaths,
+      aheadFilter: null,
+      // 0.5kmの柱は2軸を積んだ難易度60まで、値の無い区間の柱は総合難易度30まで。
+      mark: { left: "12.5%", top: "40%" },
     });
-    expect(marks().travelled).toHaveAttribute("width", "125");
-    expect(marks().travelled).toHaveAttribute("opacity", String(1 - mapDisplay.route.opacities.travelled));
-    expect(marks().position).toHaveAttribute("x1", "125");
 
     rerender(<DifficultyProfile {...profileProps({ scaleKm: 4, progressKm: 3 })} />);
-    expect(marks().travelled).toHaveAttribute("width", "500");
-    expect(marks().position).toHaveAttribute("x1", "500");
+    expect(progress()).toMatchObject({ travelledWidth: "500", mark: { left: "50%", top: "70%" } });
 
     rerender(<DifficultyProfile {...profileProps({ scaleKm: 4, progressKm: null })} />);
-    expect(marks()).toEqual({ travelled: null, position: null });
+    expect(progress()).toMatchObject({ travelledWidth: null, aheadPaths: 0, mark: null });
+    expect(container.querySelectorAll("path")).toHaveLength(drawnPaths);
   });
 
   it("スライダーの値は、選ばれた区間の始まりの距離（選ばれていなければ0）", () => {
@@ -222,17 +249,38 @@ describe("DifficultyProfile", () => {
     expect(slider).toHaveAttribute("aria-valuenow", "0");
   });
 
-  it("押したまま動かすとその地点を選び、離した地点も選ぶ", () => {
+  it("選ぶ受け口が無ければ、押せない（選べると読み上げず、キーでも移れない）見るだけの図として描く", () => {
+    const { container } = render(<DifficultyProfile {...profileProps({ onSelect: undefined })} />);
+    expect(within(container).queryByRole("slider")).toBeNull();
+    expect(within(container).getByRole("img", { name: "道のりに沿った難易度" })).not.toHaveAttribute("tabindex");
+  });
+
+  it("押したまま横へ動かすとその地点を選び、離した地点も選ぶ", () => {
     const { slider, onSelect } = renderProfile();
     layOut(slider!);
-    fireEvent.pointerDown(slider!, { pointerId: 1, clientX: 150, buttons: 1 });
-    fireEvent.pointerMove(slider!, { pointerId: 1, clientX: 150, buttons: 1 });
+    fireEvent.pointerDown(slider!, { pointerId: 1, clientX: 140, clientY: 10, buttons: 1 });
+    fireEvent.pointerMove(slider!, { pointerId: 1, clientX: 150, clientY: 12, buttons: 1 });
     expect(lastSelection(onSelect).segment).toBe(FIRST);
     expect(lastSelection(onSelect).longitude).toBeCloseTo(139.005, 9);
 
     fireEvent.pointerUp(slider!, { pointerId: 1, clientX: 250 });
     expect(lastSelection(onSelect).segment).toBe(MISSING);
     expect(lastSelection(onSelect).longitude).toBeCloseTo(139.015, 9);
+  });
+
+  it("縦に動き出した操作（シートのスクロール）は、そのあと横へ動かしても離しても選ばない", () => {
+    const { slider, onSelect } = renderProfile();
+    layOut(slider!);
+    fireEvent.pointerDown(slider!, { pointerId: 1, clientX: 150, clientY: 10, buttons: 1 });
+    fireEvent.pointerMove(slider!, { pointerId: 1, clientX: 152, clientY: 30, buttons: 1 });
+    fireEvent.pointerMove(slider!, { pointerId: 1, clientX: 250, clientY: 30, buttons: 1 });
+    fireEvent.pointerUp(slider!, { pointerId: 1, clientX: 250, clientY: 30 });
+    expect(onSelect).not.toHaveBeenCalled();
+
+    // 指が離れたあとの操作は、また向きを決め直す。
+    fireEvent.pointerDown(slider!, { pointerId: 2, clientX: 150, clientY: 10, buttons: 1 });
+    fireEvent.pointerUp(slider!, { pointerId: 2, clientX: 150, clientY: 10 });
+    expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
   it("ボタンを押していない動きでは選ばない", () => {

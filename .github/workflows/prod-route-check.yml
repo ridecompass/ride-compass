@@ -2,6 +2,7 @@
 # デプロイを伴わない変化（派生データの作り直し・取込・軸スタジオでの軸の変更・外部の観測の取込の止まり）で
 # 壊れたものを、次のデプロイを待たずに拾う。落ちたらGitHub Actionsの失敗の知らせが届く。
 # 何を見るか・上限の根拠は docs/architecture/tech-stack.md「本番でルートを作る確かめ」。
+# 同じ時刻に、本番のDBのバックアップが止まっていないかも見る（docs/modules/backend/cross-cutting-infrastructure.md「本番DBのバックアップ」）。
 name: Prod Route Check
 
 on:
@@ -22,6 +23,22 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
+      # 生成の既定の条件と、レンズが区間のどの値を塗るかは、backendの宣言から読む。
+      - uses: ./.github/actions/python
+        with:
+          requirements: requirements.txt
       - name: 本番でルートを作って区間の値を見る
         timeout-minutes: 3
-        run: python3 backend/scripts/prod_route_check.py
+        run: python backend/scripts/prod_route_check.py
+
+  # ルートの確かめとは別のジョブにし、互いの失敗で飛ばさない。標準ライブラリだけで読むので、ランナーのPythonで打つ。
+  backup:
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-3
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: 本番のDBのバックアップの経過時間を見る
+        run: python3 backend/scripts/prod_backup_check.py

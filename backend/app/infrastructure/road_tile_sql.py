@@ -9,13 +9,13 @@ from collections.abc import Iterable
 from sqlalchemy import text
 
 from app.domain.attributes import AVERAGE_GRADE_DECIMALS
+from app.domain.geo import bearing_sql, midpoint_sql
 from app.domain.graph import edge_feature_key_sql
 from app.domain.material_catalog import (
     GRADIENT_PERCENT,
     material_tile_columns,
     material_value_sql,
     segment_material_ids,
-    tile_unscaled_sql_params,
 )
 from app.domain.material_sql import length_weighted_mean_sql
 from app.domain.region import EDGE_UNIT_MIN_ZOOM
@@ -62,6 +62,9 @@ _TILE_FEATURE_SOURCE_SQL = f"""
       AND ST_Intersects(w3.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
       AND NOT EXISTS (SELECT 1 FROM road_edges re2 WHERE re2.osm_way_id = w3.osm_way_id)
 """
+#: フィーチャー（`_TILE_FEATURE_SOURCE_SQL`の行`src`）の始点と終点で決める中点と方位。
+_FEATURE_MIDPOINT_SQL = midpoint_sql("ST_StartPoint(src.geom)", "ST_EndPoint(src.geom)")
+_FEATURE_BEARING_SQL = bearing_sql("ST_StartPoint(src.geom)", "ST_EndPoint(src.geom)")
 
 
 #: 材料の焼き込み列。`tile_property`を持つ全材料について、値式から組んだ式を並べる
@@ -97,7 +100,6 @@ def _tile_material_joins(expressions: Iterable[str]) -> str:
 # **最終値（軸の得点）を焼かない。** タイルは全利用者で共有してキャッシュされるため、
 # 判定基準を変えるたびに世界中のタイルを作り直すことになる。焼くのは材料の値（レシピに
 # 依存しない静的な事実）だけで、最終値はフロントとルート採点がそれぞれ同じ材料から計算する。
-# 実行時にしか決まらない係数で割る材料は、割る前の値を焼く（係数の引数を1で束ねる）。
 #
 # カバレッジ判定も同じクエリへ畳み込み、1タイルあたりのDB往復を1回にする。CASE式は条件が
 # falseの分岐を評価しないため、カバレッジ外ではMVT生成のサブクエリ自体が実行されない。
@@ -130,7 +132,7 @@ ROAD_SURFACE_TILE_MVT_SQL = text(
         ) END AS tile
     FROM coverage
     """
-).bindparams(**tile_unscaled_sql_params())
+)
 
 
 # 鍵→動的値配信層（風、「評価軸」グループ）。**タイルと同じソース**から鍵の一覧を引く。
@@ -148,8 +150,8 @@ FEATURE_MIDPOINTS_IN_TILE_SQL = text(
                 jsonb_object_agg(
                     src.feature_key,
                     jsonb_build_array(
-                        (ST_Y(ST_StartPoint(src.geom)) + ST_Y(ST_EndPoint(src.geom))) / 2,
-                        (ST_X(ST_StartPoint(src.geom)) + ST_X(ST_EndPoint(src.geom))) / 2
+                        {_FEATURE_MIDPOINT_SQL[0]},
+                        {_FEATURE_MIDPOINT_SQL[1]}
                     )
                 ) FILTER (WHERE ST_StartPoint(src.geom) IS NOT NULL),
                 '{{}}'::jsonb
@@ -185,13 +187,10 @@ FEATURE_GRADIENT_INPUTS_IN_TILE_SQL = text(
                     src.feature_key,
                     round(({length_weighted_mean_sql(_GRADIENT_SQL)})::numeric, {AVERAGE_GRADE_DECIMALS})
                         ::double precision AS average_grade,
-                    degrees(ref.azimuth) AS bearing_deg
+                    ref.bearing_deg
                 FROM ({_TILE_FEATURE_SOURCE_SQL}) src
                 CROSS JOIN LATERAL (
-                    -- geographyへキャストする。geometry(4326)のままだと経度緯度を平面と
-                    -- して扱った角度になり、緯度35度では真の方位と数度ずれる。
-                    SELECT ST_Azimuth(ST_StartPoint(src.geom)::geography,
-                                      ST_EndPoint(src.geom)::geography) AS azimuth
+                    SELECT {_FEATURE_BEARING_SQL} AS bearing_deg
                 ) ref
                 CROSS JOIN LATERAL (
                     -- 区間を道ごとに主キーの索引で引く。`OFFSET 0`は副問い合わせを外の結合へ
@@ -204,8 +203,8 @@ FEATURE_GRADIENT_INPUTS_IN_TILE_SQL = text(
                 ) re
                 {material_from_clause([_GRADIENT_SQL], 're.osm_way_id', 're.segment_index')}
                 WHERE ({_GRADIENT_SQL}) IS NOT NULL
-                  AND ref.azimuth IS NOT NULL
-                GROUP BY src.feature_key, ref.azimuth
+                  AND ref.bearing_deg IS NOT NULL
+                GROUP BY src.feature_key, ref.bearing_deg
             ) t
         ) END AS feature_gradient_inputs
     FROM coverage
@@ -213,8 +212,8 @@ FEATURE_GRADIENT_INPUTS_IN_TILE_SQL = text(
 )
 
 
-#: フィーチャーごとの材料。値は探索と同じ値式（`material_value_sql`）で求め、タイルへ焼くときの丸め・係数を通さない
-#: ——地図に配る得点を、探索が同じ道に付ける得点と揃える。並びは配列の位置（`ord`）で揃え、列ごとに別々に並べない。
+#: フィーチャーごとの材料。値は探索と同じ値式（`material_value_sql`）で求め、地図に配る得点を、
+#: 探索が同じ道に付ける得点と揃える。並びは配列の位置（`ord`）で揃え、列ごとに別々に並べない。
 #: 材料の列は`c_<材料id>`、鍵は`feature_keys`。取込範囲の外は`covered`が偽で、範囲内で0件なら配列はNULL。
 _FEATURE_MATERIAL_EXPRESSIONS = dict(sorted(material_value_sql().items()))
 FEATURE_MATERIALS_IN_TILE_SQL = text(
@@ -264,7 +263,7 @@ FEATURE_SEGMENTS_IN_TILE_SQL = text(
             src.feature_key,
             row_number() OVER () AS ord,
             re.distance_m,
-            degrees(ST_Azimuth(ST_StartPoint(src.geom)::geography, ST_EndPoint(src.geom)::geography)) AS bearing_deg,
+            {_FEATURE_BEARING_SQL} AS bearing_deg,
             {", ".join(f"({expression}) AS m_{material_id}"
                        for material_id, expression in _FEATURE_SEGMENT_EXPRESSIONS.items())}
         FROM ({_TILE_FEATURE_SOURCE_SQL}) src

@@ -131,6 +131,20 @@ describe("useStoredState", () => {
     expect(result.current[0]).toBe("axis_b");
   });
 
+  // 前の形の保存（`old:`）も読む変換で、今の形（`ok:`）へ書き戻すかを見る。
+  it.each([
+    { case: "書き戻しを選ぶと、前の形の保存を今の形で書き直す", rewrite: true, stored: "old:a", after: "ok:a" },
+    { case: "書き戻しを選ばなければ、読んでも保存を変えない", rewrite: false, stored: "old:a", after: "old:a" },
+    { case: "読めない保存は、書き戻しを選んでも残す", rewrite: true, stored: "broken", after: "broken" },
+  ])("$case", ({ rewrite, stored, after }) => {
+    window.localStorage.setItem(KEY, stored);
+    const deserialize = (raw: string) => (raw.startsWith("old:") ? raw.slice(4) : PREFIXED.deserialize(raw));
+
+    renderHook(() => useStoredState(KEY, "default", { ...PREFIXED, deserialize, rewrite }));
+
+    expect(window.localStorage.getItem(KEY)).toBe(after);
+  });
+
   it("読み直しの合図が同じなら、描き直しのたびに変換や既定値が新しく渡されても読み直さない", () => {
     window.localStorage.setItem(KEY, "ok:saved");
     let renders = 0;

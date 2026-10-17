@@ -38,7 +38,8 @@ def _segments(distances: list[float], **fields_per_segment) -> list[RouteSegment
             start_latitude=35.0, start_longitude=139.0 + i * 0.01,
             end_latitude=35.0, end_longitude=139.0 + (i + 1) * 0.01,
             cumulative_distance_km=cumulative, distance_km=distance,
-            **{name: values[i] for name, values in fields_per_segment.items()},
+            **({"elevations": [], "road_classes": {}}
+               | {name: values[i] for name, values in fields_per_segment.items()}),
         ))
         cumulative += distance
     return segments
@@ -258,6 +259,40 @@ def test_a_bin_shows_the_arrival_and_the_wind_of_its_first_segment():
     ))
 
     assert (bins[0].estimated_arrival_time, bins[0].wind) == ("09:00", winds[0])
+
+
+def test_a_bin_lists_the_elevations_of_its_roads_in_the_order_ridden():
+    """道のりのグラフはビンの中の道の端の標高を結んで描く。ビンの両端だけにすると、ビンの中の上り下りが線から消える。
+    標高の無い道は値の無い部分のまま残す（前後の道の標高で埋めると、無い起伏を描く）。"""
+    stretch = route.ElevationStretch
+    bins = route.aggregate_segments_into_bins(_segments(
+        [0.3, 0.3, 0.3],
+        elevations=[[stretch(distance_km=0.3, start_elevation_m=10.0, end_elevation_m=25.0)],
+                    [stretch(distance_km=0.3, start_elevation_m=25.0, end_elevation_m=20.0)],
+                    [stretch(distance_km=0.3, start_elevation_m=None, end_elevation_m=None)]],
+    ))
+
+    assert [[(s.start_elevation_m, s.end_elevation_m) for s in b.elevations] for b in bins] == [
+        [(10.0, 25.0), (25.0, 20.0)], [(None, None)],
+    ]
+
+
+def test_a_bin_lists_the_road_classes_of_its_segments_joining_equal_neighbours_and_dropping_empty_ones():
+    """道のりのグラフはビンの部分を距離の比で並べて帯を描く。隣どうしの同じ値をつながないと同じ色の帯に境ができ、
+    距離0の部分を残すと幅の無い帯が呼び名の行に出る。"""
+    stretch = route.RoadClassStretch
+    bins = route.aggregate_segments_into_bins(_segments(
+        [0.1, 0.0, 0.2, 0.3],
+        road_classes=[
+            {"surface": [stretch(distance_km=0.1, value="paved")]},
+            {"surface": [stretch(distance_km=0.0, value="gravel")]},
+            {"surface": [stretch(distance_km=0.2, value="paved")]},
+            {"surface": [stretch(distance_km=0.3, value=None)]},
+        ],
+    ))
+
+    assert [b.road_classes for b in bins] == [
+        {"surface": [stretch(distance_km=0.3, value="paved"), stretch(distance_km=0.3, value=None)]}]
 
 
 def test_category_shares_are_the_share_of_distance_among_segments_that_have_the_material():

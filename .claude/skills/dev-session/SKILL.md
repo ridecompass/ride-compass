@@ -15,8 +15,8 @@ description: "開発機の対話のセッションでタスクを進める決ま
 | タスクを持つ | 担当の実行がある間、ゲートがその担当の種類（実装・検証）にして振り出さない | ラベル「開発機で作業中」を付けて持つ（下の「持つ」） |
 | 依存 | 担当のワークフローが入れてある | 要る道具を動かすときだけ、作業ツリーごとに `npm ci --prefix frontend` から入れる（docs/architecture/setup.md「作業ツリーどうしで node_modules を共有しない」）。backend は .claude/skills/run-checks/SKILL.md「開発機でのbackendテストの回し方」 |
 | 本番 | 接続情報を持たない（`docs/conventions/flow.md`「自動で進めないもの」） | 読める（`run_probe.py`）。書くのは下の「本番へ書く」 |
-| マージ | 検証担当がマージする | 検証担当と同じ確かめ（.claude/skills/task-work/SKILL.md「検証担当」の1〜5）を自分でして、満たしていれば聞かずにマージする |
-| 答え | 回答フォーム | ユーザーがチャットで決めたことを、Claude が issue に記録する（.claude/skills/ask/SKILL.md「答え」） |
+| マージ | 検証担当がマージする | 検証担当と同じ確かめ（.claude/skills/task-work/SKILL.md「検証担当」の1〜5）を自分でして、満たしていれば聞かずにマージする。ワークフローのファイル（`.github/workflows/`）を変える Pull Request は、開発機の gh のトークンに `workflow` の権限が無いので、ユーザーがブラウザでマージする |
+| 答え | 回答フォーム | ユーザーがチャットで決めたことを、Claude が issue に記録する（.claude/skills/ask/SKILL.md「答え」。答えを待つ問いがあれば `answer.mjs` で） |
 
 - **決まりの出どころ**: どちらも CLAUDE.md と、そこから指す docs/・`.claude/` の rules・skills・commands と `.claude/settings.json` のフックを読む。
   権限だけは使う人が決めるもので、担当は `.github/claude-task/settings.json`、開発機はユーザー自身の `~/.claude/settings.json` が持つ
@@ -34,15 +34,3 @@ description: "開発機の対話のセッションでタスクを進める決ま
     打つ1行のコマンドを渡す。
 
   打ったあと、前後に読んで比べるもの（`run_probe.py` の読み取り等）で確かめ、ユーザーの言葉と結果を issue に記録する。
-
-## 厳選まで仮置き
-
-原則の見直しで消えた記載を、厳選まで元の節ごとに仮に置く。**今の決まりと食い違えば今の決まりを取る。**
-
-### 元: .claude/skills/dev-session の SKILL.md
-
-#### 開発機の対話のセッション
-
-- 本番のデータ・ファイルを完全に消す（取り戻せない形で消す）: Claude が打てない操作なので、`docs/conventions/flow.md`「原則」の1の
-  とおりにする。消す話が出た時点で、ユーザーが打つ操作だとチャットで先に伝える。Claude は対象・中身・消してよい状態（使っている
-  者がいない等）を確かめてから消すスクリプトを書いて置き、ユーザーがそれを打つ1行のコマンドをチャットで渡す。

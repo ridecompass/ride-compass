@@ -30,7 +30,7 @@ from sqlalchemy import text
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.graph import LeanEdge
-from app.domain.hard_filters import hard_filter_columns
+from app.domain.hard_filters import route_flag_columns
 from app.domain.landcover import LandcoverPercentages, landcover_key
 from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns, tile_column_sql
 from app.domain.region import BoundingBox
@@ -224,26 +224,26 @@ async def test_material_values_land_in_the_matrix_of_their_dtype():
     assert [column.value_at(row) for row in range(len(column))] == ["value_a", None, None]
 
 
-async def test_hard_filter_flags_are_named_by_their_filter():
+async def test_route_flags_are_named_by_their_filter():
     """列が取り違うと、そのフィルタが常に「該当しない」になって黙って素通りする。"""
-    names = hard_filter_columns()
+    names = route_flag_columns()
     assert names, "0次ハードフィルタが1つも無い"
     repo, _ = _repo([_arrays_row(1, {f"hf_{names[0]}": [True]})])
 
     arrays = await repo.get_edge_material_arrays([1], [0], [True], 1)
 
-    assert arrays.hard_filter_columns()[names[0]].tolist() == [True]
+    assert arrays.route_flag_columns()[names[0]].tolist() == [True]
 
 
 class _EchoingArraysSession:
     """材料配列のクエリに、受け取った区間をそのまま値として返すセッション（DBの`WITH ORDINALITY`の代わり）。
-    way・区間の番号・向きを、それぞれ距離・獲得標高・標高の有無の列に入れる。"""
+    way・区間の番号・向きを、それぞれ距離・獲得標高・始まりの標高（順向きは1、逆向きは0）の列に入れる。"""
 
     async def execute(self, statement, params):
         count = len(params["way_ids"])
         return _Result([_arrays_row(count, {"distance_m": params["way_ids"],
                                             "elevation_gain_m": params["segment_indexes"],
-                                            "elevation_present": params["forwards"]})])
+                                            "start_elevation_m": [float(f) for f in params["forwards"]]})])
 
 
 async def test_rows_keep_the_order_of_the_given_edges_across_chunks():
@@ -258,20 +258,22 @@ async def test_rows_keep_the_order_of_the_given_edges_across_chunks():
 
     assert arrays.distance_m.tolist() == way_ids
     assert arrays.elevation_gain_m.tolist() == segment_indexes
-    assert arrays.elevation_present.tolist() == forwards
+    assert arrays.start_elevation_m.tolist() == [float(f) for f in forwards]
 
 
 async def test_paired_edge_columns_are_not_swapped():
-    """取り違えても型では落ちない対だけを見る（緯度と経度・登りと下り）。"""
+    """取り違えても型では落ちない対だけを見る（緯度と経度・登りと下り・始まりと終わりの標高）。"""
     repo, _ = _repo([_arrays_row(1, {
         "mid_lat": [35.5], "mid_lon": [139.5],
         "elevation_gain_m": [2.0], "elevation_loss_m": [1.0],
+        "start_elevation_m": [10.0], "end_elevation_m": [12.0],
     })])
 
     arrays = await repo.get_edge_material_arrays([1], [0], [True], 1)
 
     assert (arrays.mid_lat[0], arrays.mid_lon[0]) == (35.5, 139.5)
     assert (arrays.elevation_gain_m[0], arrays.elevation_loss_m[0]) == (2.0, 1.0)
+    assert (arrays.start_elevation_m[0], arrays.end_elevation_m[0]) == (10.0, 12.0)
 
 
 # --- way粒度の読み出し --------------------------------------------------------

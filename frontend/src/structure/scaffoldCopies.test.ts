@@ -7,7 +7,7 @@
  *
  * 母集団は`frontend/src`（この検査のディレクトリを除く）と`frontend/e2e`の全`.ts(x)`で、TypeScriptの構文木で読む。
  * `src/testing`の`*.test.ts(x)`でないファイルを共有の足場、`*.test.ts(x)`と`e2e`のファイルをテストとして読む
- * （`e2e`の`*.spec.ts`でないファイルは e2e の足場だが、`src/testing`を迂回すれば違反に数える）。違反は次の4つ:
+ * （`e2e`の`*.spec.ts`でないファイルは e2e の足場だが、`src/testing`を迂回すれば違反に数える）。違反は次の5つ:
  *
  * 1. 最上位の定義の写し: テストと足場の最上位の関数・`const`で、名前を除いた本体が同じものが3つ以上のファイルにある。
  *    値（関数でない`const`）は、葉（名前・リテラル）が5つ以上のものだけ。2つまでは落とさない（3箇所目から足場へ出す決まり）。
@@ -21,10 +21,16 @@
  *    モジュール）は除く。子の部品の差し替え（差し替えの中身が部品の名前（大文字で始まり、全部が大文字でない名前）
  *    だけを置き換えるもの）も除く——testing-frontend.md は条件（子の中身がテスト環境に無い境界を要し、境界の側で差し替え
  *    られない）を満たす子の差し替えを許し、その条件は構文木から決まらない。
+ * 5. 外部の境界の差し替えの写し: `Object.defineProperty(<対象>, "<名前>", …)`・`vi.stubGlobal("<名前>", …)`
+ *    （`globalThis`の名前として数える）で置き換える同じ (対象, 名前)（`navigator`の`geolocation`・`globalThis`の`fetch`等）を、
+ *    `src/testing`の外の3つ以上のテストのファイルが置き換えるか、`src/testing`の足場が置き換えるのに外のテストが自分で
+ *    置き換える。関数の中の差し替えも数える。`msw/node`の`setupServer`を呼ぶファイルは`globalThis`の`fetch`を置き換えると
+ *    数える（mswは網の層で要求を横取りし、プロパティの置き換えが構文木に現れない）。
  *
- * **判定しない形**: 関数の中の定義。組み立て関数の項目の一部だけを持つリテラル（関心のある項目だけを書いた入力）と、
+ * **判定しない形**: 関数の中の定義（1の写し）。組み立て関数の項目の一部だけを持つリテラル（関心のある項目だけを書いた入力）と、
  * 上書きを受けない部品の関数（`routeThrough`等、型の一部を組むもの）。代役の無い型（`FilterSpecification`等の値の型）への`as`。
- * 葉が5つ未満の値。`e2e-live`・`capture`（別のランナーの道具で、`src/testing`の足場を使わない）。
+ * 葉が5つ未満の値。`vi.spyOn(globalThis, …)`・代入（`window.<名前> =`）等、
+ * 上の3つの形でない置き換え。`e2e-live`・`capture`（別のランナーの道具で、`src/testing`の足場を使わない）。
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -315,6 +321,64 @@ function ownModuleMocks(sources: Source[]): Finding[] {
     );
 }
 
+/** `<対象>.<名前>(…)`の呼び出しか。 */
+const isMethodCall = (node: ts.CallExpression, target: string, name: string) =>
+  ts.isPropertyAccessExpression(node.expression) &&
+  ts.isIdentifier(node.expression.expression) &&
+  node.expression.expression.text === target &&
+  node.expression.name.text === name;
+
+/**
+ * 置き換える (対象.名前, 呼び出し): `Object.defineProperty(<対象>, "<名前>", …)`、`vi.stubGlobal("<名前>", …)`
+ * （`globalThis.<名前>`）、`msw/node`の`setupServer(…)`（`globalThis.fetch`）。
+ */
+function replacedProperties(file: ts.SourceFile): { key: string; node: ts.Node }[] {
+  const out: { key: string; node: ts.Node }[] = [];
+  const msw = file.statements.some(
+    (statement) =>
+      ts.isImportDeclaration(statement) &&
+      ts.isStringLiteral(statement.moduleSpecifier) &&
+      statement.moduleSpecifier.text === "msw/node",
+  );
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node)) {
+      const [first, second] = node.arguments;
+      if (isMethodCall(node, "Object", "defineProperty") && second && ts.isStringLiteralLike(second)) {
+        out.push({ key: `${first.getText(file)}.${second.text}`, node });
+      } else if (isMethodCall(node, "vi", "stubGlobal") && first && ts.isStringLiteralLike(first)) {
+        out.push({ key: `globalThis.${first.text}`, node });
+      } else if (msw && ts.isIdentifier(node.expression) && node.expression.text === "setupServer") {
+        out.push({ key: "globalThis.fetch", node });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return out;
+}
+
+function copiedBoundaries(sources: Source[]): Finding[] {
+  const scaffolded = new Set(
+    sources
+      .filter(({ path }) => isScaffold(path))
+      .flatMap(({ file }) => replacedProperties(file).map(({ key }) => key)),
+  );
+  const places = new Map<string, Map<string, Finding>>();
+  for (const { path, file } of sources.filter(({ path }) => isTest(path) && !path.startsWith("src/testing/"))) {
+    for (const { key, node } of replacedProperties(file)) {
+      const files = places.get(key) ?? new Map<string, Finding>();
+      if (!files.has(path)) files.set(path, { file: path, line: lineOf(file, node), reason: key });
+      places.set(key, files);
+    }
+  }
+  return [...places.entries()].flatMap(([key, files]) => {
+    if (scaffolded.has(key)) return [...files.values()].map((found) => ({ ...found, reason: `${key}（足場がある）` }));
+    return files.size >= MIN_COPIES
+      ? [...files.values()].map((found) => ({ ...found, reason: `${key}（${files.size}ファイル）` }))
+      : [];
+  });
+}
+
 function scaffoldViolations(root: string) {
   const sources = readSources(root);
   return {
@@ -322,6 +386,7 @@ function scaffoldViolations(root: string) {
     builders: bypassedBuilders(sources),
     standIns: bypassedStandIns(sources),
     ownMocks: ownModuleMocks(sources),
+    boundaries: copiedBoundaries(sources),
   };
 }
 
@@ -345,6 +410,10 @@ describe("共有の足場の写し", () => {
   it("自前のモジュールを差し替えない（境界の表の読み取り口・ファイルを落とす関数・子の部品を除く）", () => {
     expect(lines(found.ownMocks)).toEqual([]);
   });
+
+  it("同じ外部の境界を3つ以上のファイルで自前に差し替えず、`src/testing`に足場があればそれを使う", () => {
+    expect(lines(found.boundaries)).toEqual([]);
+  });
 });
 
 describe("検査が効いていること", () => {
@@ -357,6 +426,7 @@ describe("検査が効いていること", () => {
         builders: lines(bypassedBuilders(sources)),
         standIns: lines(bypassedStandIns(sources)),
         ownMocks: lines(ownModuleMocks(sources)),
+        boundaries: lines(copiedBoundaries(sources)),
       };
     } finally {
       removeTree(root);
@@ -435,6 +505,45 @@ describe("検査が効いていること", () => {
         "src/hooks/useValue.test.ts:2: ./useValue",
         "src/hooks/useValue.test.ts:8: @/hooks/useValue",
         "src/hooks/useValue.test.ts:9: @/hooks/useValue",
+      ],
+    });
+  });
+
+  it("同じ境界の差し替えを3ファイルで落とし、足場があれば1ファイルでも落とす。2ファイルと`src/testing`の中は落とさない", () => {
+    const replace = (target: string, name: string) =>
+      `function install() {\n  Object.defineProperty(${target}, "${name}", { value: {}, configurable: true });\n}\n`;
+    expect(
+      within({
+        "src/testing/clock.ts": replace("navigator", "clock"),
+        "src/a.test.ts": replace("navigator", "geolocation") + replace("document", "hidden"),
+        "src/b.test.ts": replace("navigator", "geolocation") + replace("document", "hidden"),
+        "e2e/c.spec.ts": replace("navigator", "geolocation") + replace("navigator", "clock"),
+      }),
+    ).toMatchObject({
+      boundaries: [
+        "e2e/c.spec.ts:2: navigator.geolocation（3ファイル）",
+        "e2e/c.spec.ts:5: navigator.clock（足場がある）",
+        "src/a.test.ts:2: navigator.geolocation（3ファイル）",
+        "src/b.test.ts:2: navigator.geolocation（3ファイル）",
+      ],
+    });
+  });
+
+  it("`vi.stubGlobal`を`globalThis`の置き換えに数え、`msw/node`の`setupServer`を呼ぶ足場を`fetch`の足場に数える", () => {
+    const stub = (name: string) => `vi.stubGlobal("${name}", vi.fn());\n`;
+    expect(
+      within({
+        "src/testing/server.ts": `import { setupServer } from "msw/node";\nexport const server = setupServer();\n`,
+        "src/a.test.ts": stub("fetch") + stub("crypto"),
+        "src/b.test.ts": stub("crypto"),
+        "src/c.test.ts": `Object.defineProperty(globalThis, "crypto", { value: {} });\n`,
+      }),
+    ).toMatchObject({
+      boundaries: [
+        "src/a.test.ts:1: globalThis.fetch（足場がある）",
+        "src/a.test.ts:2: globalThis.crypto（3ファイル）",
+        "src/b.test.ts:1: globalThis.crypto（3ファイル）",
+        "src/c.test.ts:1: globalThis.crypto（3ファイル）",
       ],
     });
   });

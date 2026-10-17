@@ -4,7 +4,7 @@ import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import { formatDurationShort } from "@/lib/duration";
 import type { OverallDifficulty, RoutePreferenceWeights } from "@/types/route";
-import AxisContributionBar, { hasContribution } from "@/components/AxisContributionBar/AxisContributionBar";
+import AxisContributionBar, { hasAnyContribution } from "@/components/AxisContributionBar/AxisContributionBar";
 import AxisDetail from "@/components/AxisContributionBar/AxisDetail";
 import { formatAxisRawValue, formatCategoryBreakdown, formatMaterialBreakdown } from "./axisRawValue";
 import { textVariants } from "@/components/ui/Text/Text";
@@ -76,8 +76,6 @@ export default function RouteAxisProfile({
 }: RouteAxisProfileProps) {
   // 値の無い区間の割合（丸めた%）。値が無ければ0として扱い、知らせない。
   const missingPct = missingTravelDataShare == null ? 0 : Math.round(missingTravelDataShare * 100);
-  const contributionRows = axes.filter((axis) => hasContribution(axisContributions, axis.axisId));
-
   // 評価に使っていない軸（重み0）はnullを返し、AxisContributionBarの凡例から落とす。
   // 内訳は候補ごとに縦へ伸びるため、使っていない軸まで並べると狭い幅で「このルートで
   // 何が効いたか」が読めなくなる（設計原則「消さずに薄くする」の例外）。
@@ -163,11 +161,11 @@ export default function RouteAxisProfile({
             <WarningText>風のモデルの計算値を使えなかったため、無風として所要時間を出しています</WarningText>
           )}
           {missingPct >= 1 && (
-            <WarningText>{`データの無い区間が${missingPct}%[坂・信号の無い道として所要時間を出しています]`}</WarningText>
+            <WarningText>{`データの無い区間が${missingPct}%[${routeGenerateConfig.missing_travel_data_wording}]`}</WarningText>
           )}
-          {contributionRows.length > 0 ? (
+          {hasAnyContribution(axes, axisContributions) ? (
             <AxisContributionBar
-              axes={contributionRows}
+              axes={axes}
               legendAxes={axes}
               contributions={axisContributions}
               axisColors={axisColors}

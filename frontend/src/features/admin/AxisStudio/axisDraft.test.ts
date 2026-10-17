@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * `axisDraft.ts`——下書き（フォームの内部状態）とbackendの軸定義の相互変換と、しきい値のまとめ入力の
- * 読み書き、地図の段への引き直し。
+ * 読み書き。
  *
  * 材料と軸は性質だけを持つ架空のもの（数値・真偽・種類）を与える。フォームの既定値（新規の既定重み等）は
  * 宣言なので書き写さない。
@@ -19,7 +19,6 @@ import type { AxisMaterialOption } from "@/lib/axisMaterialsCatalog";
 import type { AxisDefinitionResponse, AxisShape } from "@/types/route";
 
 import {
-  bandLabelsOnMap,
   buildShape,
   draftFromDuplicate,
   draftFromExisting,
@@ -27,7 +26,6 @@ import {
   formatThresholdList,
   parseThresholdList,
   resizeBandLabels,
-  thresholdsKeptOnMap,
   unknownMaterialIds,
 } from "./axisDraft";
 
@@ -56,9 +54,7 @@ function axis(overrides: Partial<AxisDefinitionResponse> = {}): AxisDefinitionRe
     default_weight: 0,
     is_published: false,
     time_scope: "always",
-    dedicated_way_value_layer: false,
     shape: { kind: "breakpoint_linear", terms: [], preprocess: "identity", breakpoints: [] },
-    display: { kind: "none", tile_inputs: [], thresholds: [] },
     ...overrides,
   };
 }
@@ -287,27 +283,6 @@ describe("formatThresholdList", () => {
     const values = [-1, 0.5, 12];
     expect(parseThresholdList(formatThresholdList(values)).values).toEqual(values);
   });
-});
-
-describe("thresholdsKeptOnMap", () => {
-  it("地図で段にならない境界を除き、並びは保つ", () => {
-    expect(thresholdsKeptOnMap([1, 2, 3, 4], [2, 4])).toEqual([1, 3]);
-  });
-});
-
-describe("bandLabelsOnMap", () => {
-  it.each([
-    [
-      [0, 2, 5],
-      ["低", "高", ""],
-    ],
-    [null, ["低", "中", "高"]],
-  ])(
-    "地図の段の判定 %j では、各段に当たる入力の段の番号でラベルを引き直し、無い番号は空欄、判定が無ければ入力どおり",
-    (bandsOnMap, expected) => {
-      expect(bandLabelsOnMap(["低", "中", "高"], bandsOnMap)).toEqual(expected);
-    },
-  );
 });
 
 describe("resizeBandLabels", () => {

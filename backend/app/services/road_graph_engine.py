@@ -24,10 +24,11 @@ docs/modules/backend/routing-engine.mdが持つ。ここには、このファイ
 import asyncio
 import logging
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from functools import cached_property
+from itertools import accumulate
 from typing import NoReturn
 
 import numpy as np
@@ -43,11 +44,12 @@ from app.domain.evaluation import (
     build_static_edge_score_matrix,
     displayed_material_ids,
 )
-from app.domain.hard_filters import compute_hard_filter_excluded, compute_routable_nodes
+from app.domain.hard_filters import compute_routable_nodes, compute_search_exclusion
 from app.domain.leg_costs import LegCostArrays, LegCostComposer, RowValues, material_value_at
 from app.domain.gradient import GRADIENT_VALUE_DECIMALS
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.route_preference import RoutePreference
+from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.geo import (
     bearing_between,
     bearing_between_array,
@@ -58,14 +60,20 @@ from app.domain.graph import LeanEdge, edge_key, node_key, parse_edge_key
 from app.domain.region import BoundingBox, bbox_covering_points
 from app.domain.rain import StationRainMaterials, rain_material_columns
 from app.domain.road_network import RoadSlice, edge_row_of, elevation_attribute, material_arrays_of
+from app.domain.route_points import RoutePointHit, points_along_route
+from app.domain.route_road_classes import RoadClassReader
 from app.domain.route import (
     Coordinates,
     DensityScoreInput,
-    RouteDraft,
+    ElevationStretch,
+    EvaluatedRoute,
+    RoadClassStretch,
     RouteSegmentDetail,
     RouteTurn,
     DISTANCE_KM_DECIMALS,
+    ELEVATION_M_DECIMALS,
     aggregate_segments_into_bins,
+    along_route_km,
     concat_edge_geometries,
     merge_material_category_shares,
     reverse_elevation_by_edge,
@@ -230,9 +238,9 @@ class _SearchGraph:
     outbound: LegCostArrays
     node_lat: np.ndarray
     node_lon: np.ndarray
-    # 0次フィルタ除外配列（`compute_hard_filter_excluded`、切り出した区間の順。cost_arrayをinfに
+    # 探索から除く区間（`domain/hard_filters.py: compute_search_exclusion`、切り出した区間の順。cost_arrayをinfに
     # するのに使ったのと同じ配列）。routable Node判定にこの配列をそのまま使い回す。
-    hard_filter_excluded: np.ndarray
+    excluded: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -276,6 +284,11 @@ class FixedLegs:
     def leg_of_edge(self) -> list[int]:
         return [leg_index for leg_index, segment in enumerate(self.segments) for _ in segment]
 
+    @cached_property
+    def waypoint_offsets(self) -> list[int]:
+        """置いた経由地を通る所（`TracedLoop.waypoint_offsets`）。経由地は各区間の終わりにある。"""
+        return list(accumulate(len(segment) for segment in self.segments))
+
     def joined(self, outbound: list[int], inbound: list[int]) -> tuple[list[int], list[int]]:
         """前段の道に仕上げの往路と帰りを継いだ区間の番号列と、区間ごとのレグの添字（`TracedLoop.leg_of_edge`）。"""
         leg_index = len(self.segments)
@@ -303,6 +316,7 @@ class RoadGraphEngine:
         penalty_strength: float,
         max_average_grade_percent: float | None,
         hard_filters: frozenset[str],
+        road_avoidance: Mapping[str, AvoidanceLevel],
         assumed_speed_kmh: float,
     ):
         self._graph_service = graph_service
@@ -314,10 +328,14 @@ class RoadGraphEngine:
         # コスト式`所要時間 × (1 + P × difficulty/100)`のP＝「主観 vs 時間」の換算レート。
         self._penalty_strength = penalty_strength
         # 0次ハードフィルタの勾配しきい値（%、None＝除外しない）。
-        # `domain/hard_filters.py: compute_hard_filter_excluded`参照。
+        # `domain/hard_filters.py: compute_search_exclusion`参照。
         self._max_average_grade_percent = max_average_grade_percent
         # 有効にする0次ハードフィルタ名の集合。
         self._hard_filters = hard_filters
+        # 道のレイヤの行→避け方の段。
+        self._road_avoidance = road_avoidance
+        # 「なるべく避ける」区間の費用の倍率。較正値のため、組み立てた時点の値で1回の生成を通す。
+        self._avoid_cost_multiplier = tuning_value("avoidance.avoid_cost_multiplier")
         # 交差点でのターンの費用（秒）。較正値のため、組み立てた時点の値で1回の生成を通す。
         self._turn_cost = current_turn_cost()
 
@@ -362,9 +380,8 @@ class RoadGraphEngine:
 
         # --- bbox全体ぶんのコスト配列の合成（レグごと。まず起点から離れる往路レグ） ---
         cost_started = start_timer()
-        hard_filter_excluded = compute_hard_filter_excluded(
-            score_matrix.hard_filter_flags,
-            score_matrix.gradient_percent, self._hard_filters, self._max_average_grade_percent,
+        search_masks = compute_search_exclusion(
+            score_matrix, self._hard_filters, self._road_avoidance, self._max_average_grade_percent,
         )
 
         graph_started = start_timer()
@@ -374,7 +391,8 @@ class RoadGraphEngine:
         # 迂回率は同じ探索範囲で前回の往路木から学習した値があればそれを使う（無ければ既定値）。
         learned_detour_ratio = detour_ratio_cache.get_detour_ratio(tile_set)
         composer = LegCostComposer(
-            score_matrix, self._route_preference.weights, self._penalty_strength, hard_filter_excluded, departure_wind,
+            score_matrix, self._route_preference.weights, self._penalty_strength, search_masks,
+            self._avoid_cost_multiplier, departure_wind,
             wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
             detour_ratio=detour_ratio_or_default(learned_detour_ratio),
             twilight_origin=origin,
@@ -408,7 +426,7 @@ class RoadGraphEngine:
             outbound=outbound,
             node_lat=road.node_lat,
             node_lon=road.node_lon,
-            hard_filter_excluded=hard_filter_excluded,
+            excluded=search_masks.excluded,
         )
 
     async def _build_search_structures(
@@ -425,11 +443,11 @@ class RoadGraphEngine:
         """
         started = start_timer()
         road = search.road
-        routable = compute_routable_nodes(road.edge_from, road.edge_to, search.hard_filter_excluded, road.node_count)
+        routable = compute_routable_nodes(road.edge_from, road.edge_to, search.excluded, road.node_count)
         node_index = await asyncio.to_thread(build_node_spatial_index, search.node_lat, search.node_lon, routable)
         statics = build_search_graph_statics(search.lazy_graph, search.composer.distance_m)
         accessible = await asyncio.to_thread(
-            largest_strongly_connected_nodes, statics.csr, ~search.hard_filter_excluded[search.lazy_graph.edge_rows],
+            largest_strongly_connected_nodes, statics.csr, ~search.excluded[search.lazy_graph.edge_rows],
         )
         index_ms = elapsed_ms(started)
         turn_started = start_timer()
@@ -448,10 +466,11 @@ class RoadGraphEngine:
         network = road.network
         rank_of_code = np.array([highway_rank(highway) for highway in network.highway_vocab], dtype=np.int64)
         edge_rank = rank_of_code[network.edge_highway[road.rows[lazy_graph.edge_rows]]]
+        start_bearings, end_bearings = (
+            edge_bearings(lazy_graph, bearing_deg[road.rows], search.node_lat, search.node_lon)
+            for bearing_deg in (network.edge_start_bearing_deg, network.edge_end_bearing_deg))
         return build_turn_expanded_structure(
-            statics.csr, lazy_graph,
-            edge_bearings(lazy_graph, search.composer.bearing_deg, search.node_lat, search.node_lon),
-            edge_rank, self._turn_cost,
+            statics.csr, lazy_graph, start_bearings, end_bearings, edge_rank, self._turn_cost,
             np.asarray(network.node_has_signals[road.nodes], dtype=bool),
             np.asarray(network.node_max_rank[road.nodes], dtype=np.int64),
         )
@@ -917,7 +936,7 @@ class RoadGraphEngine:
             path, leg_of_edge = fixed.joined(*found)
             traced.append(TracedLoop(
                 bearing=None, distance_km=_path_km(context, path), data=path, leg_of_edge=leg_of_edge,
-                reversible=closes and fixed.reversible,
+                waypoint_offsets=fixed.waypoint_offsets, reversible=closes and fixed.reversible,
             ))
 
         logger.info(
@@ -957,6 +976,7 @@ class RoadGraphEngine:
         stops = [*fixed.nodes, destination_index]
         path: list[int] = []
         leg_of_edge: list[int] = []
+        waypoint_offsets: list[int] = []
         for leg_index, (from_node, to_node) in enumerate(zip(stops, stops[1:])):
             leg = context.legs[leg_index]
             time_bins = leg.travel_bins_lazy
@@ -976,6 +996,8 @@ class RoadGraphEngine:
                 leg_of_edge.extend(leg_index + half for half in halves)
             else:
                 leg_of_edge.extend([leg_index] * len(edges))
+            if leg_index < len(fixed.segments):
+                waypoint_offsets.append(len(path))
         distance_km = _path_km(context, path)
 
         logger.info(
@@ -983,7 +1005,10 @@ class RoadGraphEngine:
             distance_km, len(path), sum(1 for leg in leg_of_edge if leg < len(fixed.segments) + 1),
             elapsed_ms(started),
         )
-        return TracedLoop(bearing=None, distance_km=distance_km, data=path, leg_of_edge=leg_of_edge, reversible=False)
+        return TracedLoop(
+            bearing=None, distance_km=distance_km, data=path, leg_of_edge=leg_of_edge,
+            waypoint_offsets=waypoint_offsets, reversible=False,
+        )
 
     async def trace_loop_from_turnaround(
         self, context: _RoadGraphContext, fixed: FixedLegs, turnaround: LoopTurnaround,
@@ -1043,7 +1068,7 @@ class RoadGraphEngine:
         )
         return TracedLoop(
             bearing=turnaround.bearing if data.closes else None, distance_km=distance_km, data=path,
-            leg_of_edge=leg_of_edge, reversible=data.reversible,
+            leg_of_edge=leg_of_edge, waypoint_offsets=fixed.waypoint_offsets, reversible=data.reversible,
         )
 
     def build_traced_from_edge_ids(
@@ -1100,7 +1125,8 @@ class RoadGraphEngine:
             ]
         return TracedLoop(
             bearing=None, distance_km=round(total_m / 1000, DISTANCE_KM_DECIMALS), data=path, leg_of_edge=leg_of_edge,
-            reversible=False,
+            # 乗り換えで組んだ経路は、置いた経由地を知らない。
+            waypoint_offsets=[], reversible=False,
         )
 
     def is_loop_too_similar(
@@ -1136,7 +1162,7 @@ class RoadGraphEngine:
 
     async def evaluate_loops(
         self, context: _RoadGraphContext, traced: list[TracedLoop], start_time: datetime
-    ) -> list[RouteDraft]:
+    ) -> list[EvaluatedRoute]:
         # 実ジオメトリは距離フィルタを通った候補ぶんだけを、全候補まとめて1回で取り直す
         # （棄却済み候補ぶんは問い合わせない）。引けない区間があれば落とす——探索が通った
         # 区間の実体がDBに無いということで、線の欠けた経路を配るより落ちる方がよい。
@@ -1145,21 +1171,28 @@ class RoadGraphEngine:
             for index in dict.fromkeys(index for t in traced for index in t.data)
         }
         hydrated = await self._graph_service.get_edges_with_geometry(list(topology.values()))
+        # 1つのセッションは並行に問い合わせられないので、形を引いてから順に引く。
+        side_points = await self._graph_service.get_route_side_points(list(topology.values()))
         edges_by_candidate: list[list[LeanEdge]] = [
             [hydrated[topology[index].edge_id] for index in t.data] for t in traced
         ]
         return list(
             await asyncio.gather(
                 *(
-                    self._build_best_candidate(context, t, edges_in_path, start_time)
+                    self._build_best_candidate(context, t, edges_in_path, side_points, start_time)
                     for t, edges_in_path in zip(traced, edges_by_candidate)
                 )
             )
         )
 
     async def _build_best_candidate(
-        self, context: _RoadGraphContext, traced: TracedLoop, edges_in_path: list[LeanEdge], start_time: datetime
-    ) -> RouteDraft:
+        self,
+        context: _RoadGraphContext,
+        traced: TracedLoop,
+        edges_in_path: list[LeanEdge],
+        side_points: Mapping[tuple[int, int], Sequence[RoutePointHit]],
+        start_time: datetime,
+    ) -> EvaluatedRoute:
         """1候補ぶんの周回を組み立てる。
 
         同じ周回の逆回りは追加のI/Oなしで合成できるため、合成して**難易度の小さい方だけ**を
@@ -1172,7 +1205,8 @@ class RoadGraphEngine:
         elevation_by_edge = self._elevation_by_edge(context, edges_in_path, path)
         leg_of_edge = traced.leg_of_edge
         forward_candidate = self._build_candidate(
-            context, traced, edges_in_path, path, elevation_by_edge, start_time, leg_of_edge
+            context, traced, edges_in_path, path, elevation_by_edge, side_points, start_time, leg_of_edge,
+            traced.waypoint_offsets,
         )
 
         if not traced.reversible:
@@ -1184,8 +1218,10 @@ class RoadGraphEngine:
         reverse_edges, reverse_path = reversed_path
         reverse_elevation = reverse_elevation_by_edge(edges_in_path, reverse_edges, elevation_by_edge)
         reverse_candidate = self._build_candidate(
-            context, traced, reverse_edges, reverse_path, reverse_elevation, start_time,
+            context, traced, reverse_edges, reverse_path, reverse_elevation, side_points, start_time,
             reverse_leg_assignment(leg_of_edge),
+            # 逆に回ると、経由地より前の区間は経由地より後の区間になる。
+            [len(path) - offset for offset in traced.waypoint_offsets],
         )
         return pick_better_candidate(forward_candidate, reverse_candidate)
 
@@ -1211,9 +1247,11 @@ class RoadGraphEngine:
         edges_in_path: list[LeanEdge],
         path: list[int],
         elevation_by_edge: dict[str, ElevationAttribute],
+        side_points: Mapping[tuple[int, int], Sequence[RoutePointHit]],
         start_time: datetime,
         leg_of_edge: list[int],
-    ) -> RouteDraft:
+        waypoint_offsets: list[int],
+    ) -> EvaluatedRoute:
         # 区間と標高属性を引数で受けるのは、逆回り候補も同じ組み立てを通すため。
         # distance_km・bearingは同じ物理経路なので順方向の`traced`のものをそのまま使う。
         geometry, edge_point_offsets = concat_edge_geometries(edges_in_path)
@@ -1223,8 +1261,9 @@ class RoadGraphEngine:
             context.legs, context.turn_structure, path, rows,
             [edge.distance_m for edge in edges_in_path], leg_of_edge, context.composer.speed_kmh,
         )
+        along_km = along_route_km(edge.distance_m / 1000 for edge in edges_in_path)
         segments, segment_categories, segment_raw_values = self._build_segment_details(
-            edges_in_path, rows, passages, elevation_by_edge, context, start_time, leg_of_edge
+            edges_in_path, along_km, rows, passages, elevation_by_edge, context, start_time, leg_of_edge
         )
         # categorical材料の延長割合は**集約より前に**Edge単位の値から畳む。集約後に
         # 計算すると、ビンの代表値を1つ選ぶ形になり割合がビンの粒度へ量子化される。
@@ -1236,9 +1275,9 @@ class RoadGraphEngine:
         )
         # 返すsegmentsは集約する。Edge単位のままだとペイロードとフロントの描画費用が嵩む。
         segments = aggregate_segments_into_bins(segments)
-        turns = _route_turns(context.turn_structure, path, edges_in_path)
+        turns = _route_turns(context.turn_structure, path, edges_in_path, along_km)
 
-        return RouteDraft(
+        return EvaluatedRoute(
             # 方位を持たない経路の名前は、種類と一緒に`route_generator.py: _label`が付ける。
             direction_label=compass_label(traced.bearing) if traced.bearing is not None else "",
             distance_km=traced.distance_km,
@@ -1250,6 +1289,8 @@ class RoadGraphEngine:
                 if edges_in_path else []
             ),
             turns=turns,
+            points=points_along_route(edges_in_path, along_km, side_points),
+            waypoint_distances_km=[along_km[offset] for offset in waypoint_offsets],
             segments=segments,
             material_category_shares=material_category_shares,
             axis_raw_values=axis_raw_values,
@@ -1265,6 +1306,7 @@ class RoadGraphEngine:
     def _build_segment_details(
         self,
         edges: list[LeanEdge],
+        along_km: list[float],
         rows: list[int],
         passages: list[EdgePassage],
         elevation_by_edge: dict,
@@ -1284,8 +1326,8 @@ class RoadGraphEngine:
         segments = []
         segment_categories: list[dict[str, str]] = []
         segment_raw_values: list[dict[str, float]] = []
-        cumulative_km = 0.0
         active_material_ids = displayed_material_ids(context.composer.weights)
+        road_classes = RoadClassReader.of(context.road.network)
         timed = _values_at_passages(context, rows, leg_of_edge, passages)
         winds = context.composer.winds_at(
             rows,
@@ -1300,11 +1342,11 @@ class RoadGraphEngine:
             # 2本以上のレグは経路上の行だけをそのビンの時刻で合成し直した値（`LegCostArrays.bin_start_hours`参照）。
             values, value_row = timed.get(index, (leg, row))
             distance_km = edge.distance_m / 1000
+            rounded_km = round(distance_km, DISTANCE_KM_DECIMALS)
             elevation_attr = elevation_by_edge.get(edge.edge_id)
 
             gradient_percent = elevation_attr.average_grade if elevation_attr else None
-            # 勾配だけは`leg.material_arrays`ではなくこのループが持つ値から載せる
-            # （標高属性として既に引いてあり、改めて計算する必要が無いため）。
+            # 勾配は地図の配信と同じ桁へ丸めた値で、材料の列の値を上書きする。
             static_material_values = (
                 {GRADIENT_PERCENT: round(gradient_percent, GRADIENT_VALUE_DECIMALS)}
                 if GRADIENT_PERCENT in active_material_ids and gradient_percent is not None
@@ -1339,12 +1381,12 @@ class RoadGraphEngine:
             difficulty_value = values.difficulty_array[value_row]
             composite_difficulty_value = None if math.isnan(difficulty_value) else float(difficulty_value)
             material_values = {
-                **static_material_values,
                 **{
                     material_id: value
                     for material_id in active_material_ids
                     if (value := material_value_at(values, material_id, value_row)) is not None
                 },
+                **static_material_values,
             }
             segment_categories.append({
                 material_id: raw
@@ -1371,17 +1413,34 @@ class RoadGraphEngine:
                     start_longitude=start_lon,
                     end_latitude=end_lat,
                     end_longitude=end_lon,
-                    cumulative_distance_km=round(cumulative_km, DISTANCE_KM_DECIMALS),
-                    distance_km=round(distance_km, DISTANCE_KM_DECIMALS),
+                    cumulative_distance_km=along_km[index],
+                    distance_km=rounded_km,
+                    # 標高の表は単精度で持つので、表に入れた桁へ丸め直す。
+                    elevations=[
+                        ElevationStretch(
+                            distance_km=rounded_km,
+                            start_elevation_m=(
+                                round(elevation_attr.start_elevation_m, ELEVATION_M_DECIMALS)
+                                if elevation_attr
+                                else None
+                            ),
+                            end_elevation_m=(
+                                round(elevation_attr.end_elevation_m, ELEVATION_M_DECIMALS) if elevation_attr else None
+                            ),
+                        )
+                    ],
                     estimated_arrival_time=arrival_time.isoformat(),
                     axis_difficulties=axis_scores,
                     axis_contributions=axis_contributions,
                     material_values=material_values,
                     difficulty=composite_difficulty_value,
                     wind=winds[index],
+                    road_classes={
+                        layer: [RoadClassStretch(distance_km=rounded_km, value=value)]
+                        for layer, value in road_classes.values_at(int(context.road.rows[row])).items()
+                    },
                 ).with_density_inputs(density_inputs)
             )
-            cumulative_km += distance_km
 
         return segments, segment_categories, segment_raw_values
 
@@ -1534,18 +1593,14 @@ _TURN_DIRECTION = {TurnKind.LEFT: "left", TurnKind.RIGHT: "right", TurnKind.UTUR
 
 
 def _route_turns(
-    structure: TurnExpandedStructure, path: list[int], edges_in_path: list[LeanEdge]
+    structure: TurnExpandedStructure, path: list[int], edges_in_path: list[LeanEdge], along_km: list[float]
 ) -> list[RouteTurn]:
-    """経路が分かれ道で曲がる所を、応答の形にする。距離は区間の`distance_km`（区間ごとに丸めた値）を始点から積んだ値で、
-    画面が区間の距離を積んで数えるルートの上の現在地と同じ物差しにする。地点は曲がった先の区間の始点。"""
-    along_km = [0.0]
-    for edge in edges_in_path:
-        along_km.append(along_km[-1] + round(edge.distance_m / 1000, DISTANCE_KM_DECIMALS))
+    """経路が分かれ道で曲がる所を、応答の形にする。距離は曲がった先の区間の始まりの道のり（`along_km`）、地点はその区間の始点。"""
     turns = []
     for turn in turns_along(structure, path):
         latitude, longitude = edges_in_path[turn.index].geometry[0]
         turns.append(RouteTurn(
-            distance_km=round(along_km[turn.index], DISTANCE_KM_DECIMALS),
+            distance_km=along_km[turn.index],
             direction=_TURN_DIRECTION[turn.kind],
             latitude=latitude,
             longitude=longitude,

@@ -89,6 +89,608 @@
       "label": "北東"
     }
   ],
+  "way_value_bearing_bucket": [
+    {
+      "bearing_deg": 0.0,
+      "bucket": 0
+    },
+    {
+      "bearing_deg": 2.5,
+      "bucket": 1
+    },
+    {
+      "bearing_deg": 2.499999,
+      "bucket": 0
+    },
+    {
+      "bearing_deg": 7.5,
+      "bucket": 2
+    },
+    {
+      "bearing_deg": 7.499999,
+      "bucket": 1
+    },
+    {
+      "bearing_deg": 12.5,
+      "bucket": 3
+    },
+    {
+      "bearing_deg": 12.499999,
+      "bucket": 2
+    },
+    {
+      "bearing_deg": 17.5,
+      "bucket": 4
+    },
+    {
+      "bearing_deg": 17.499999,
+      "bucket": 3
+    },
+    {
+      "bearing_deg": 22.5,
+      "bucket": 5
+    },
+    {
+      "bearing_deg": 22.499999,
+      "bucket": 4
+    },
+    {
+      "bearing_deg": 27.5,
+      "bucket": 6
+    },
+    {
+      "bearing_deg": 27.499999,
+      "bucket": 5
+    },
+    {
+      "bearing_deg": 32.5,
+      "bucket": 7
+    },
+    {
+      "bearing_deg": 32.499999,
+      "bucket": 6
+    },
+    {
+      "bearing_deg": 37.5,
+      "bucket": 8
+    },
+    {
+      "bearing_deg": 37.499999,
+      "bucket": 7
+    },
+    {
+      "bearing_deg": 42.5,
+      "bucket": 9
+    },
+    {
+      "bearing_deg": 42.499999,
+      "bucket": 8
+    },
+    {
+      "bearing_deg": 47.5,
+      "bucket": 10
+    },
+    {
+      "bearing_deg": 47.499999,
+      "bucket": 9
+    },
+    {
+      "bearing_deg": 52.5,
+      "bucket": 11
+    },
+    {
+      "bearing_deg": 52.499999,
+      "bucket": 10
+    },
+    {
+      "bearing_deg": 57.5,
+      "bucket": 12
+    },
+    {
+      "bearing_deg": 57.499999,
+      "bucket": 11
+    },
+    {
+      "bearing_deg": 62.5,
+      "bucket": 13
+    },
+    {
+      "bearing_deg": 62.499999,
+      "bucket": 12
+    },
+    {
+      "bearing_deg": 67.5,
+      "bucket": 14
+    },
+    {
+      "bearing_deg": 67.499999,
+      "bucket": 13
+    },
+    {
+      "bearing_deg": 72.5,
+      "bucket": 15
+    },
+    {
+      "bearing_deg": 72.499999,
+      "bucket": 14
+    },
+    {
+      "bearing_deg": 77.5,
+      "bucket": 16
+    },
+    {
+      "bearing_deg": 77.499999,
+      "bucket": 15
+    },
+    {
+      "bearing_deg": 82.5,
+      "bucket": 17
+    },
+    {
+      "bearing_deg": 82.499999,
+      "bucket": 16
+    },
+    {
+      "bearing_deg": 87.5,
+      "bucket": 18
+    },
+    {
+      "bearing_deg": 87.499999,
+      "bucket": 17
+    },
+    {
+      "bearing_deg": 92.5,
+      "bucket": 19
+    },
+    {
+      "bearing_deg": 92.499999,
+      "bucket": 18
+    },
+    {
+      "bearing_deg": 97.5,
+      "bucket": 20
+    },
+    {
+      "bearing_deg": 97.499999,
+      "bucket": 19
+    },
+    {
+      "bearing_deg": 102.5,
+      "bucket": 21
+    },
+    {
+      "bearing_deg": 102.499999,
+      "bucket": 20
+    },
+    {
+      "bearing_deg": 107.5,
+      "bucket": 22
+    },
+    {
+      "bearing_deg": 107.499999,
+      "bucket": 21
+    },
+    {
+      "bearing_deg": 112.5,
+      "bucket": 23
+    },
+    {
+      "bearing_deg": 112.499999,
+      "bucket": 22
+    },
+    {
+      "bearing_deg": 117.5,
+      "bucket": 24
+    },
+    {
+      "bearing_deg": 117.499999,
+      "bucket": 23
+    },
+    {
+      "bearing_deg": 122.5,
+      "bucket": 25
+    },
+    {
+      "bearing_deg": 122.499999,
+      "bucket": 24
+    },
+    {
+      "bearing_deg": 127.5,
+      "bucket": 26
+    },
+    {
+      "bearing_deg": 127.499999,
+      "bucket": 25
+    },
+    {
+      "bearing_deg": 132.5,
+      "bucket": 27
+    },
+    {
+      "bearing_deg": 132.499999,
+      "bucket": 26
+    },
+    {
+      "bearing_deg": 137.5,
+      "bucket": 28
+    },
+    {
+      "bearing_deg": 137.499999,
+      "bucket": 27
+    },
+    {
+      "bearing_deg": 142.5,
+      "bucket": 29
+    },
+    {
+      "bearing_deg": 142.499999,
+      "bucket": 28
+    },
+    {
+      "bearing_deg": 147.5,
+      "bucket": 30
+    },
+    {
+      "bearing_deg": 147.499999,
+      "bucket": 29
+    },
+    {
+      "bearing_deg": 152.5,
+      "bucket": 31
+    },
+    {
+      "bearing_deg": 152.499999,
+      "bucket": 30
+    },
+    {
+      "bearing_deg": 157.5,
+      "bucket": 32
+    },
+    {
+      "bearing_deg": 157.499999,
+      "bucket": 31
+    },
+    {
+      "bearing_deg": 162.5,
+      "bucket": 33
+    },
+    {
+      "bearing_deg": 162.499999,
+      "bucket": 32
+    },
+    {
+      "bearing_deg": 167.5,
+      "bucket": 34
+    },
+    {
+      "bearing_deg": 167.499999,
+      "bucket": 33
+    },
+    {
+      "bearing_deg": 172.5,
+      "bucket": 35
+    },
+    {
+      "bearing_deg": 172.499999,
+      "bucket": 34
+    },
+    {
+      "bearing_deg": 177.5,
+      "bucket": 36
+    },
+    {
+      "bearing_deg": 177.499999,
+      "bucket": 35
+    },
+    {
+      "bearing_deg": 182.5,
+      "bucket": 37
+    },
+    {
+      "bearing_deg": 182.499999,
+      "bucket": 36
+    },
+    {
+      "bearing_deg": 187.5,
+      "bucket": 38
+    },
+    {
+      "bearing_deg": 187.499999,
+      "bucket": 37
+    },
+    {
+      "bearing_deg": 192.5,
+      "bucket": 39
+    },
+    {
+      "bearing_deg": 192.499999,
+      "bucket": 38
+    },
+    {
+      "bearing_deg": 197.5,
+      "bucket": 40
+    },
+    {
+      "bearing_deg": 197.499999,
+      "bucket": 39
+    },
+    {
+      "bearing_deg": 202.5,
+      "bucket": 41
+    },
+    {
+      "bearing_deg": 202.499999,
+      "bucket": 40
+    },
+    {
+      "bearing_deg": 207.5,
+      "bucket": 42
+    },
+    {
+      "bearing_deg": 207.499999,
+      "bucket": 41
+    },
+    {
+      "bearing_deg": 212.5,
+      "bucket": 43
+    },
+    {
+      "bearing_deg": 212.499999,
+      "bucket": 42
+    },
+    {
+      "bearing_deg": 217.5,
+      "bucket": 44
+    },
+    {
+      "bearing_deg": 217.499999,
+      "bucket": 43
+    },
+    {
+      "bearing_deg": 222.5,
+      "bucket": 45
+    },
+    {
+      "bearing_deg": 222.499999,
+      "bucket": 44
+    },
+    {
+      "bearing_deg": 227.5,
+      "bucket": 46
+    },
+    {
+      "bearing_deg": 227.499999,
+      "bucket": 45
+    },
+    {
+      "bearing_deg": 232.5,
+      "bucket": 47
+    },
+    {
+      "bearing_deg": 232.499999,
+      "bucket": 46
+    },
+    {
+      "bearing_deg": 237.5,
+      "bucket": 48
+    },
+    {
+      "bearing_deg": 237.499999,
+      "bucket": 47
+    },
+    {
+      "bearing_deg": 242.5,
+      "bucket": 49
+    },
+    {
+      "bearing_deg": 242.499999,
+      "bucket": 48
+    },
+    {
+      "bearing_deg": 247.5,
+      "bucket": 50
+    },
+    {
+      "bearing_deg": 247.499999,
+      "bucket": 49
+    },
+    {
+      "bearing_deg": 252.5,
+      "bucket": 51
+    },
+    {
+      "bearing_deg": 252.499999,
+      "bucket": 50
+    },
+    {
+      "bearing_deg": 257.5,
+      "bucket": 52
+    },
+    {
+      "bearing_deg": 257.499999,
+      "bucket": 51
+    },
+    {
+      "bearing_deg": 262.5,
+      "bucket": 53
+    },
+    {
+      "bearing_deg": 262.499999,
+      "bucket": 52
+    },
+    {
+      "bearing_deg": 267.5,
+      "bucket": 54
+    },
+    {
+      "bearing_deg": 267.499999,
+      "bucket": 53
+    },
+    {
+      "bearing_deg": 272.5,
+      "bucket": 55
+    },
+    {
+      "bearing_deg": 272.499999,
+      "bucket": 54
+    },
+    {
+      "bearing_deg": 277.5,
+      "bucket": 56
+    },
+    {
+      "bearing_deg": 277.499999,
+      "bucket": 55
+    },
+    {
+      "bearing_deg": 282.5,
+      "bucket": 57
+    },
+    {
+      "bearing_deg": 282.499999,
+      "bucket": 56
+    },
+    {
+      "bearing_deg": 287.5,
+      "bucket": 58
+    },
+    {
+      "bearing_deg": 287.499999,
+      "bucket": 57
+    },
+    {
+      "bearing_deg": 292.5,
+      "bucket": 59
+    },
+    {
+      "bearing_deg": 292.499999,
+      "bucket": 58
+    },
+    {
+      "bearing_deg": 297.5,
+      "bucket": 60
+    },
+    {
+      "bearing_deg": 297.499999,
+      "bucket": 59
+    },
+    {
+      "bearing_deg": 302.5,
+      "bucket": 61
+    },
+    {
+      "bearing_deg": 302.499999,
+      "bucket": 60
+    },
+    {
+      "bearing_deg": 307.5,
+      "bucket": 62
+    },
+    {
+      "bearing_deg": 307.499999,
+      "bucket": 61
+    },
+    {
+      "bearing_deg": 312.5,
+      "bucket": 63
+    },
+    {
+      "bearing_deg": 312.499999,
+      "bucket": 62
+    },
+    {
+      "bearing_deg": 317.5,
+      "bucket": 64
+    },
+    {
+      "bearing_deg": 317.499999,
+      "bucket": 63
+    },
+    {
+      "bearing_deg": 322.5,
+      "bucket": 65
+    },
+    {
+      "bearing_deg": 322.499999,
+      "bucket": 64
+    },
+    {
+      "bearing_deg": 327.5,
+      "bucket": 66
+    },
+    {
+      "bearing_deg": 327.499999,
+      "bucket": 65
+    },
+    {
+      "bearing_deg": 332.5,
+      "bucket": 67
+    },
+    {
+      "bearing_deg": 332.499999,
+      "bucket": 66
+    },
+    {
+      "bearing_deg": 337.5,
+      "bucket": 68
+    },
+    {
+      "bearing_deg": 337.499999,
+      "bucket": 67
+    },
+    {
+      "bearing_deg": 342.5,
+      "bucket": 69
+    },
+    {
+      "bearing_deg": 342.499999,
+      "bucket": 68
+    },
+    {
+      "bearing_deg": 347.5,
+      "bucket": 70
+    },
+    {
+      "bearing_deg": 347.499999,
+      "bucket": 69
+    },
+    {
+      "bearing_deg": 352.5,
+      "bucket": 71
+    },
+    {
+      "bearing_deg": 352.499999,
+      "bucket": 70
+    },
+    {
+      "bearing_deg": 357.5,
+      "bucket": 0
+    },
+    {
+      "bearing_deg": 357.499999,
+      "bucket": 71
+    },
+    {
+      "bearing_deg": -5,
+      "bucket": 71
+    },
+    {
+      "bearing_deg": -2.5,
+      "bucket": 0
+    },
+    {
+      "bearing_deg": 360.0,
+      "bucket": 0
+    },
+    {
+      "bearing_deg": 362.5,
+      "bucket": 1
+    },
+    {
+      "bearing_deg": 725.0,
+      "bucket": 1
+    }
+  ],
   "distance_km": [
     {
       "from": {

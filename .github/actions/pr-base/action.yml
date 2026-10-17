@@ -1,4 +1,4 @@
-# Pull Request の実行で「Pull Request が変えたもの」を見るときの比べる版を出す。ci.yml の changes と mutation-pr.yml が使う。
+# Pull Request の実行で「Pull Request が変えたもの」を見るときの比べる版を出す。ci.yml の changes が使う。
 # 検査する版（GITHUB_SHA）は、基の先端と Pull Request を合わせたマージのコミット。pull_request の出来事の base.sha は、
 # Pull Request へ push したあとに基の先端が進んでも新しくならず、そのまま比べると、その間に基へ入った変更が差に混ざる。
 # そこで、マージのコミットの親のうち Pull Request の先端（head.sha）でない方を比べる版にする。親の並びは公式の文書に

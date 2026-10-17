@@ -24,7 +24,7 @@ from pathlib import Path
 import shapely
 from shapely.geometry import Point
 
-from app.batch.ingest import AdapterInputs, SourceRecord, file_origin, register_adapter
+from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceSpec
 
 logger = logging.getLogger("ridecompass.ingest.npa_honhyo")
@@ -103,15 +103,11 @@ def npa_honhyo_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs
 
 
 @register_adapter("npa_honhyo", rows=HonhyoRows, inputs=npa_honhyo_inputs)
-async def read_npa_honhyo(spec: SourceSpec, profile: SourceProfile,
+async def read_npa_honhyo(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                           origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     target = profile.target
-    years = spec.rows.years
-    origin["files"] = []
     skipped = 0
-    for year in years:
-        path = _existing_honhyo_path(int(year))
-        origin["files"].append({"year": int(year), **file_origin(path)})
+    for year, path in zip(spec.rows.years, inputs.files, strict=True):
         with open(path, encoding=ENCODING, newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:

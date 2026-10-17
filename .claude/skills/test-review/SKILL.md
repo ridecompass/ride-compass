@@ -25,7 +25,7 @@ description: "テストを3つの層（backend・frontend の単体テストと 
 
 1. **記録する issue を決める**: 頼まれたときに issue の番号があればそれ。無ければ .claude/skills/file-issue/SKILL.md「issue の形」の
    とおり、種類は保守、題名「テストの定期の見直し（<日付>）」で起こす（やること: この節の 2〜7、完了の条件: 7 の記録と、5 で
-   決めたものを 6 で子・タスクにしたこと）。
+   決めたものを 6 で子・タスクにしたこと、と `- 確かめる: ユーザー` を付けた見直しの結果の行。子があるうちは閉じない親にするため）。
 2. **持つ**: .claude/skills/dev-session/SKILL.md「開発機の対話のセッション」の「持つ」で持つ。
 3. **計画を伝える**（CLAUDE.md「作業の進め方」）: 何をどの順で、どれくらいかかるか。2つの測りを続けて起こし、待つ間に e2e を読む。
    どちらの測りの本も記録する issue のレーンへ載るので、同じレーンで順に待ち、実時間は2つの和に近い（2つを続けた実時間は未計測）。
@@ -75,7 +75,7 @@ description: "テストを3つの層（backend・frontend の単体テストと 
 
 - **shard の1本が「The runner has received a shutdown signal」で止まった**（変異がランナーのメモリを使い切った）:
   `gh run rerun <id> -R ridecompass/ride-compass --failed` で落ちた本と、それに続く段だけをやり直す。同じ本が続けて止まるなら、
-  その本の記録（`gh run view <id> --job <ジョブの id> --log`）の最後に走っていた変異が原因なので、7 の記録に書いて止める
+  その本の記録（`gh run view <id> --job <ジョブの id> --log`）の最後の「始め <変異>」の行の変異が原因なので、7 の記録に書いて止める
   （台本の直しは、その回の外のタスクにする。.claude/skills/file-issue/SKILL.md「改善を起票する」）。
 - **backend の shard の1本が、DB を用意する手順（`./.github/actions/postgis`）の10分の上限で落ちた**（apt の取得が詰まった）:
   同じく `gh run rerun <id> -R ridecompass/ride-compass --failed` で1回やり直す。続けて落ちるなら、次の「それ以外」と同じに扱う。
@@ -138,7 +138,7 @@ testing.md の2問目（その答えはモジュールの外——利用者の�
 | 決めたもの | 行き先 |
 |---|---|
 | 消す（重なり・書き方・e2e） | 記録する issue を親にして、消す子を作る（下の「消す子」） |
-| 足す（効き） | 記録する issue を親にして、足す子を作る。やることに、生き残りの書き換え（ファイル・行・書き換え）と 4 で書いた壊れを並べ、足したテストがその書き換えで落ちることを見る（testing.md「挙動を変えるなら、テストを先に書く」）。子の分け方は消す子と同じ |
+| 足す（効き） | 記録する issue を親にして、足す子を作る。やることに、生き残りの書き換え（ファイル・行・書き換え）と 4 で書いた壊れを並べ、足したテストがその書き換えで落ちることを見る（testing.md「挙動を変えたら、入口で確かめる」）。子の分け方は消す子と同じ |
 | 直す（書き方・e2e のコメント・vitest へ移す） | 1つのタスクに並べて起こす。やることは testing-review.md の書き方（型として決まったものを「消すべきテストの型」と構造の検査に足す）か、e2e の移す・直す |
 | 隔離（問わない） | あれば、1つのタスクに並べて起こす。やることは .claude/skills/run-checks/SKILL.md「実行順をばらす」の汚した側の探し方 |
 
@@ -171,49 +171,5 @@ testing.md の2問目（その答えはモジュールの外——利用者の�
    コメントに残す。
 2. 片付け: 取ってきた場所を消す。作業ツリーを作ったなら消す。
 3. 記録する issue の完了の条件の済んだ行にチェックを付ける（全部済めばゲートが閉じる）。
-   子の行は付けない（子が閉じたときにゲートが付ける）。終えたら持ちを手放す（dev-session「持つ」）。
+   子の行は記録する issue に無い（子の本文にある）。ユーザーが確かめる行は残り、子が全部閉じるとゲートがユーザーに確かめを問う。終えたら持ちを手放す（dev-session「持つ」）。
 4. ユーザーへ報告する: 層ごと・観点ごとの数・決めたもの・起こした子とタスク・止めたならその理由。
-
-## 厳選まで仮置き
-
-原則の見直しで消えた記載を、厳選まで元の節ごとに仮に置く。**今の決まりと食い違えば今の決まりを取る。**
-
-### 元: .claude/skills/test-review の SKILL.md
-
-#### 2. 測りを起こす
-
-- 測りは8本のランナーを約1時間半使い、アカウントで同時に動かせるジョブの枠を担当（Claude Task）・CI と分け合う。担当や CI が
-  多く動いているとき（`gh run list -R hidakagit/ride-compass --status in_progress`）は、測りの空き待ちが延び、そのあいだ担当と
-  CI の待ちも延びる。起こす前に動いている数を見て、6 の記録に書く。
-
-#### 3. 待つ
-
-終わった本の記録は、実行全体が終わる前でも
-`gh api --allow-escape-sequences repos/hidakagit/ride-compass/actions/jobs/<ジョブの id>/logs` で読める（`gh run view --log` は
-実行全体が終わるまで読めない。ジョブの id は `gh run view <id> --json jobs`）。本の中の手順ごとの始まりと終わりは
-`gh api repos/hidakagit/ride-compass/actions/jobs/<ジョブの id>` の `steps` で見られ、1つの手順が見込みより長く止まっていれば
-（DB を用意する手順は普段1分弱、変異の生成と記録は約9分）、下の「落ちたとき」に当たるかを見る。
-
-- **shard の1本が「The runner has received a shutdown signal」で止まった**（変異がランナーのメモリを使い切った）:
-  `gh run rerun <id> -R hidakagit/ride-compass --failed` で落ちた本と、それに続く段だけをやり直す。同じ本が続けて止まるなら、
-  その本の記録（`gh run view <id> --job <ジョブの id> --log`）の最後の「始め <変異>」の変異が原因なので、6 の記録に書いて止める
-  （台本の直しは、その回の外のタスクにする。.claude/skills/file-issue/SKILL.md「改善を起票する」）。
-
-- **それ以外で落ちた**: `gh run view <id> -R hidakagit/ride-compass --log-failed` で読む。台本・ワークフローの誤りなら、その回の
-  中で直さず、起票して 6 の記録に書いて止める（直したあとの回で測り直す）。
-
-#### 5. 観点ごとに行き先を決める
-
-2. 表の `mutant` を1行ずつ `only.txt`（置き場は `backend/scripts/mutation/`）に書いて作業ブランチへ push し、
-   `gh workflow run mutation.yml -R hidakagit/ride-compass --ref <作業ブランチ> -f ref=<作業ブランチ>` で回す（一覧だけを回し、
-   当て直しと review は走らない）。成果物 `mutation-*` の `results.jsonl` で表の変異が全部 `killed` で、`kills/` にその行の
-   `kept_test` があることを見る。
-
-3. `only.txt` を消してから Pull Request を出す（master へ入れない）。テスト全体が通ることは Pull Request の CI が見る。CI で
-   落ちたテストがあれば、消したテストを戻して隠さず、testing-review.md の隔離のとおり汚した側を直す（直すまで、そのテストは消さない）。
-
-#### 6. 記録して終える
-
-3. 消す段階を作らなかったら、記録する issue の完了の条件を確かめて閉じる（`GH_TOKEN=$FLOW_BOT_TOKEN gh issue close <番号> -R ridecompass/ride-compass-tasks --reason completed`）。
-   作ったら閉じない（`stage.js` が段階を親の前提に張り、段階が全部閉じたあとで担当が親を閉じる。file-issue「段階に分ける」）。
-   どちらも、終えたら持ちを手放す（dev-session「持つ」）。

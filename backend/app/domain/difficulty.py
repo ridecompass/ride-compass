@@ -126,7 +126,7 @@ def composite_weighted_sums(
     axis_arrays: Mapping[str, np.ndarray],
     weights: Mapping[str, float | np.ndarray],
     length: int,
-    static_sums: tuple[np.ndarray, np.ndarray] | None = None,
+    static_sums: tuple[np.ndarray, np.ndarray] | None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """合成の`(重み付きスコアの和, データのある軸の重みの和)`。`static_sums`は`axis_arrays`に**含めなかった**軸ぶんの
     和（`axis_weighted_sums`）。"""
@@ -260,7 +260,7 @@ class OverallDifficulty(StrictModel):
 OVERALL_DIFFICULTY_WORDING: dict[str, str] = {
     "average": (
         "区間ごとの難易度を距離で重みづけて平均した値です。長く走っても難しさが同じなら増えません。"
-        "停止や事故のように1kmあたりの回数で測る評価軸は、回数を距離で平均してから点数にします。"
+        "1kmあたりの回数で測る評価軸は、回数を距離で平均してから点数にします。"
     ),
     "load": (
         "平均に距離[km]を掛けた総量で、走り切るまでのしんどさの目安です。"

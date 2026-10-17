@@ -40,6 +40,8 @@ from app.domain.evaluation import (
     compose_costs_from_axis_matrix,
     density_costs,
 )
+from app.domain.material_catalog import GRADIENT_PERCENT
+from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates, SegmentWind
 from app.domain.time_zone import jst_local_text
 from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_seconds
@@ -52,6 +54,10 @@ from app.domain.wind import DepartureWind, WindForecastSeries, kmh_to_ms
 # 幅を細かくしても隣のビンが同じ予報時刻を引くだけで、合成の回数だけが増える。
 TIME_BIN_HOURS = 1.0
 MAX_TIME_BINS = 4
+
+#: 所要時間の計算が値の無い区間をどう数えるかを、利用者に言う文（`_travel_time_seconds`が勾配の欠けを0%、
+#: 停止要因の件数の欠けを0件に置き換える）。置き換え方を変えたら、ここも変える。
+MISSING_TRAVEL_DATA_WORDING = "坂の無い平地で、止まる所も無い道として所要時間を出しています"
 
 logger = logging.getLogger("ridecompass.graph")
 
@@ -186,7 +192,8 @@ class LegCostComposer:
         score_matrix: StaticEdgeScoreMatrix,
         weights: dict[str, float],
         penalty_strength: float,
-        hard_filter_excluded: np.ndarray,
+        search_masks: RoadAvoidanceMasks,
+        avoid_cost_multiplier: float,
         departure_wind: DepartureWind | None,
         wind_series: WindForecastSeries | None,
         start: datetime,
@@ -200,7 +207,7 @@ class LegCostComposer:
             axis_id: score_matrix.axis_raw_values[:, i]
             for i, axis_id in enumerate(score_matrix.raw_axis_ids)
         }
-        # 内訳として見せる静的材料の値（`route_facing_material_ids`の列をそのまま指す）。
+        # 内訳として見せる静的材料と所要時間が読む材料の値（`route_facing_material_ids`の列をそのまま指す）。
         self._static_material_arrays = {
             material_id: score_matrix.material_values[:, i]
             for i, material_id in enumerate(score_matrix.material_ids)
@@ -232,7 +239,10 @@ class LegCostComposer:
             {a: c for a, c in score_matrix.density_axes.items() if weights.get(a, 0.0) > 0},
             self._static_axis_scores, score_matrix.distance_m, speed_kmh,
         )
-        self._hard_filter_excluded = hard_filter_excluded
+        # 探索から除く区間（費用を無限大にする）と、費用を割り増す区間。割り増しは探索の費用にだけ掛け、
+        # 所要時間・難易度には掛けない。倍率は1以上で、費用を下げないので探索の下限の見積もりは崩れない。
+        self._excluded = search_masks.excluded
+        self._cost_scale = np.where(search_masks.avoided, avoid_cost_multiplier, 1.0)
         self._departure_wind = departure_wind
         self._wind_series = wind_series
         # 各Edgeの中点に最も近い予報の格子点（切り出した区間の順）。
@@ -270,19 +280,14 @@ class LegCostComposer:
             return self._travel_inputs_cache
         take = _row_taker(rows)
         distance_m = take(self._score_matrix.distance_m)
-        # 勾配は静的スコア行列が生配列として常に持つ（0次フィルタの勾配しきい値と同じ列）。
-        # 内訳として見せる材料だけを運ぶ`material_arrays`では、勾配軸が分解されていない構成で欠ける。
-        grade = np.nan_to_num(take(self._score_matrix.gradient_percent)) / 100.0
+        grade = np.nan_to_num(take(self._static_material_arrays[GRADIENT_PERCENT])) / 100.0
         surface = self._categorical_material_arrays[ROLLING_RESISTANCE_MATERIAL_ID]
         crr = crr_for_surface(surface if rows is None else surface.take(rows))
         model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=self.speed_kmh), grade, crr)
         stops = np.zeros(len(distance_m))
-        # 材料idの綴りは`stop_count_material_ids()`が単一の情報源。ここで組み立て直すと、
-        # 向こうで綴りを変えたときにここだけがNoneを引き、全区間の停止の待ちが無言で0秒になる。
         for kind, material_id in zip(POI_COUNT_KINDS, stop_count_material_ids(), strict=True):
-            per_km = self._static_material_arrays.get(material_id)
-            if per_km is not None:
-                stops += np.nan_to_num(take(per_km)) * (distance_m / 1000.0) * stop_seconds(kind)
+            per_km = self._static_material_arrays[material_id]
+            stops += np.nan_to_num(take(per_km)) * (distance_m / 1000.0) * stop_seconds(kind)
         if rows is None:
             self._travel_inputs_cache = (model, stops)
         return model, stops
@@ -295,13 +300,13 @@ class LegCostComposer:
         走行モデル（`domain/cycling_speed.py`）で勾配・風の成分・路面・巡航速度から求めた
         走行時間に、その区間にある停止要因の待ちを足したもの。
         ターンの待ちは遷移ごとに決まるためここには含まない（探索側が足す）。
-        0次フィルタで除外された区間は無限大にする（探索から見た通行可否をコストの下地だけで
+        探索から除く区間は無限大にする（探索から見た通行可否をコストの下地だけで
         表すため）。`rows`を渡すとその行だけ（引数の配列も同じ並び）で求める。
         """
         take = _row_taker(rows)
         model, stops = self._travel_inputs(rows)
         travel = model.travel_seconds(take(self._score_matrix.distance_m), headwind_ms, crosswind_ms)
-        return np.where(take(self._hard_filter_excluded), np.inf, travel + stops)
+        return np.where(take(self._excluded), np.inf, travel + stops)
 
     def compose(
         self,
@@ -562,11 +567,9 @@ class LegCostComposer:
         total = float(distance.sum())
         if total <= 0:
             return None
-        missing = np.isnan(self._score_matrix.gradient_percent[rows])
+        missing = np.isnan(self._static_material_arrays[GRADIENT_PERCENT][rows])
         for material_id in stop_count_material_ids():
-            per_km = self._static_material_arrays.get(material_id)
-            if per_km is not None:
-                missing |= np.isnan(per_km[rows])
+            missing |= np.isnan(self._static_material_arrays[material_id][rows])
         return round(float(distance[missing].sum()) / total, 4)
 
     def winds_at(
@@ -603,7 +606,7 @@ class LegCostComposer:
         """指定した通過時刻（`None`は出発時点のスナップショット）で1本ぶん合成する。"""
         evaluated = self._evaluate(passage)
         composed, travel = evaluated.composed, evaluated.travel
-        cost_array = np.where(self._hard_filter_excluded, np.inf, composed.cost(travel))
+        cost_array = np.where(self._excluded, np.inf, self._cost_scale * composed.cost(travel))
         lazy_cost = cost_array[self._lazy_row_index]
         lazy_travel = travel[self._lazy_row_index]
         return LegCostArrays(

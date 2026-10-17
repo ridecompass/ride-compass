@@ -134,21 +134,20 @@ test("モバイル: ルート結果を見ている間は地図タップでピン
 
   const settings = await openMobileSheet(page, "ルート設定");
   await settings.getByRole("button", { name: "目的地: 未設定", exact: true }).click();
-  await settings.getByRole("button", { name: "目的地を地図で選ぶ" }).click();
   await page.locator(".app-map-pane canvas").click({ position: { x: 180, y: 150 } });
-  await expect(settings.getByRole("button", { name: "目的地を地図で置き直す" })).toBeVisible();
+  await expect(settings.getByRole("button", { name: "目的地を消す" })).toBeEnabled();
 
-  // 経由地を置ける状態にしてから「ルート結果」へ移る。結果を見ている間は、置ける状態の
+  // 新しい経由地を選んでから「ルート結果」へ移る。結果を見ている間は、選んだ
   // ままでも地図のタップでピンが増えない。
   await settings.getByRole("button", { name: "経由地を足す" }).click();
   await openMobileSheet(page, "ルート結果");
   await page.locator(".app-map-pane canvas").click({ position: { x: 220, y: 200 } });
   await page.waitForTimeout(400);
 
-  // 戻ってきても「置ける状態」は保たれている（離れている間だけ置けない）。経由地が増えて
+  // 戻ってきても新しい経由地を選んだまま（離れている間だけ置けない）。経由地が増えて
   // いないことは、地点の並びに経由地の番号の丸が無いことで見る。
   const settingsAgain = await openMobileSheet(page, "ルート設定");
-  await expect(settingsAgain.getByRole("button", { name: "新しい経由地の指定をやめる" })).toBeVisible();
+  await expect(settingsAgain.getByRole("button", { name: "経由地を足す" })).toHaveAttribute("aria-pressed", "true");
   const firstWaypoint = settingsAgain.getByRole("button", { name: /^経由地1:/ });
   await expect(firstWaypoint).toHaveCount(0);
   await page.locator(".app-map-pane canvas").click({ position: { x: 240, y: 220 } });
@@ -351,7 +350,7 @@ test("ルートを収めるとき、地図の上の操作部品が覆う所へ�
   };
   const depths = {
     right: (await covers(/^(拡大|縮小|走行方位を設定|現在地に移動)$/)).map((box) => canvas.x + canvas.width - box.x),
-    top: (await covers(/^(地図の色分け:|地図に出す情報$)/)).map((box) => box.y + box.height - canvas.y),
+    top: (await covers(/^(評価で塗る:|地図に出す情報$)/)).map((box) => box.y + box.height - canvas.y),
   };
   for (const [edge, values] of Object.entries(depths) as [keyof typeof depths, number[]][]) {
     expect(values.length, `${edge}の辺を覆う部品が見つからない`).toBeGreaterThan(0);

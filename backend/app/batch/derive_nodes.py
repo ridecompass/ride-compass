@@ -95,8 +95,6 @@ async def derive(conn: asyncpg.Connection, signal_radius_m: float) -> None:
         await conn.execute("ANALYZE _near_signal")
         classified = affected_rows(await conn.execute(_INSERT_KINDS))
         await conn.execute(_INSERT_TURNS)
-        # 後ろの段（数）が読む。統計が無いまま読まれると実行計画が桁で外れる。
-        await conn.execute("ANALYZE node_kinds, node_turns")
 
     logger.info("ノードの値を埋めた: 種別が付いた %d点 / 信号 %d点（半径 %.1fm） / %.1f秒",
                 classified, signals, signal_radius_m, time.perf_counter() - started)

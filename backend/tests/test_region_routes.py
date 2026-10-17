@@ -34,6 +34,7 @@ from app.api.dependencies import (
     get_axis_inspector_service,
     get_dedicated_way_value_service,
     get_region_service,
+    get_weather_service,
 )
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import (
@@ -46,6 +47,7 @@ from app.domain.axis_definitions import (
 )
 from app.config import settings
 from app.domain.axis_inspector import AxisInspectorAxis, AxisInspectorResult, InspectorComposite, InspectorValues
+from app.domain.rain import RAIN_WINDOW_HOURS, rain_window_material_id
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
 from app.infrastructure import rate_limiter
 from app.infrastructure.derived_data_meta import DataRevisions
@@ -63,9 +65,9 @@ from app.domain.geo import LatLon
 from app.domain.route_preference import RoutePreference
 from app.services.dedicated_way_values import AxisWayValueLens
 from app.services.gradient_way_service import GradientConditions
+from app.services.weather_service import WeatherService
 from app.services.wind_way_service import WindConditions
 from app.main import app
-from app.api.routers import region as region_router
 from app.domain.landcover import LANDCOVER_TILE_MAX_ZOOM, LANDCOVER_TILE_MIN_ZOOM
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 from tests.bound_fake import bound
@@ -309,7 +311,6 @@ DEDICATED_AXES = {
         ),
         default_weight=0.2,
         label="軸ウ",
-        dedicated_way_value_layer=True,
     ),
     "axis_way_value_signed": AxisDefinition(
         axis_id="axis_way_value_signed",
@@ -320,7 +321,6 @@ DEDICATED_AXES = {
         ),
         default_weight=0.2,
         label="軸グ",
-        dedicated_way_value_layer=True,
     ),
 }
 
@@ -350,7 +350,7 @@ def dedicated_axes():
 )
 def test_region_dedicated_way_values_returns_map_values_json(axis_id, material_id, params, conditions):
     raw = {"1": 2.0, "2": -1.5}
-    expected = paint_feature_values(axis_id, AXIS_DEFINITIONS, list(raw), {}, {material_id: raw})
+    expected = paint_feature_values(axis_id, AXIS_DEFINITIONS, list(raw), {}, {material_id: raw}, as_difficulty=False)
     fake = FakeDynamicWayValueService(values=dict(raw), material_id=material_id, conditions_type=type(conditions))
     app.dependency_overrides[get_dedicated_way_value_service] = lambda: _lens(axis_id, {material_id: fake})
 
@@ -373,7 +373,8 @@ def test_region_dedicated_way_values_folds_the_segments_of_a_way_on_the_zoomed_o
     segments = FeatureSegments(feature_keys=("1", "1"), distance_m=np.full(2, 100.0), feature_bearing_deg=np.zeros(2),
                                columns={"gradient_percent": grades})
     expected = paint_folded_feature_values(
-        SIGNED, AXIS_DEFINITIONS, list(raw), {}, {"gradient_percent": raw}, segments, {"gradient_percent": grades})
+        SIGNED, AXIS_DEFINITIONS, list(raw), {}, {"gradient_percent": raw}, segments, {"gradient_percent": grades},
+        as_difficulty=False)
     fake = FakeDynamicWayValueService(values=dict(raw), segment_values=grades)
     app.dependency_overrides[get_dedicated_way_value_service] = lambda: _lens(
         SIGNED, {"gradient_percent": fake}, segments=segments)
@@ -464,19 +465,37 @@ class UncoveredRepository:
         return None
 
 
-# 実際のget_dedicated_way_value_serviceを通し、初めて見る名前の公開軸が、配信のサービスの材料（勾配）でも
-# タイルの材料（制限速度）でも配信されること・公開していない軸と無い軸は404になることを見る（Noneは軸を置かない）。
+class NoRainHistoryWeather:
+    """雨の観測の履歴が無いと答える気象サービスの代役。"""
+
+    async def get_station_rain_materials(self, *args, **kwargs):
+        inspect.signature(WeatherService.get_station_rain_materials).bind(self, *args, **kwargs)
+        return None
+
+
+# 実際のget_dedicated_way_value_serviceを通し、初めて見る名前の公開軸が、配信のサービスの材料（勾配、要求の気象サービスを
+# 読む雨）でもタイルの材料（制限速度）でも配信されること・公開していない軸と無い軸は404になることを見る（Noneは軸を置かない）。
 @pytest.mark.parametrize(
     ("material", "published", "status"),
-    [("gradient_percent", True, 200), ("maxspeed_kmh", True, 200), ("maxspeed_kmh", False, 404), (None, True, 404)],
+    [
+        ("gradient_percent", True, 200),
+        (rain_window_material_id(RAIN_WINDOW_HOURS[0]), True, 200),
+        ("maxspeed_kmh", True, 200),
+        ("maxspeed_kmh", False, 404),
+        (None, True, 404),
+    ],
 )
 def test_region_dedicated_way_values_serves_every_published_axis(monkeypatch, material, published, status):
     if material is not None:
         axis = axis_definition("axis_new_name", material=material, is_published=published)
         monkeypatch.setitem(AXIS_DEFINITIONS, "axis_new_name", axis)
     monkeypatch.setattr(dependencies, "RoadGraphRepository", lambda session: UncoveredRepository())
+    app.dependency_overrides[get_weather_service] = NoRainHistoryWeather
 
-    response = client.get("/api/region/dynamic-way-values/axis_new_name/14/14551/6447", params={"bearing_deg": 0})
+    try:
+        response = client.get("/api/region/dynamic-way-values/axis_new_name/14/14551/6447", params={"bearing_deg": 0})
+    finally:
+        app.dependency_overrides.clear()
 
     assert response.status_code == status
 
@@ -485,7 +504,7 @@ def test_region_dedicated_way_values_serves_every_published_axis(monkeypatch, ma
 
 
 @pytest.fixture
-def landcover_tiles(monkeypatch):
+def landcover_tiles():
     """配信の口が呼ぶタイルの取得（サービス）の代役。返す値は`result`で決め、呼ばれた座標を`calls`に残す。"""
     state = {"result": TileResponse(b"png-bytes"), "calls": []}
 
@@ -493,8 +512,10 @@ def landcover_tiles(monkeypatch):
         state["calls"].append((z, x, y))
         return state["result"]
 
-    monkeypatch.setattr(region_router, "get_landcover_tile", bound(region_router.get_landcover_tile, fake))
-    return state
+    reader = bound(dependencies.get_landcover_tile_reader(), fake)
+    app.dependency_overrides[dependencies.get_landcover_tile_reader] = lambda: reader
+    yield state
+    app.dependency_overrides.clear()
 
 
 def test_landcover_tile_endpoint_returns_the_tile_as_png(landcover_tiles):

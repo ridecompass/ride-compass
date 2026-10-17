@@ -19,6 +19,7 @@ import time
 import asyncpg
 
 from app.batch.common import affected_rows
+from app.domain.geo import bearing_sql
 from app.infrastructure.source_models import ways_source_sql
 
 logger = logging.getLogger("ridecompass.derive_topology")
@@ -50,7 +51,7 @@ CROSS JOIN LATERAL (
 #:
 #: 長さは測地線（楕円体）で測る。利用者が見る距離であり、時間コストの分母でもある。
 #: 球で近似しても費用は変わらないので、近似する理由が無い。
-_SEGMENTS = """
+_SEGMENTS = f"""
 CREATE TEMP TABLE _seg ON COMMIT DROP AS
 WITH n AS (
   SELECT way_id, ord, node_id
@@ -90,10 +91,8 @@ built AS (
 SELECT b.way_id AS osm_way_id, b.segment_index::smallint AS segment_index,
        a.node_id AS from_node_id, z.node_id AS to_node_id, b.geom,
        ST_Length(b.geom::geography)::real AS distance_m,
-       degrees(ST_Azimuth(ST_StartPoint(b.geom)::geography,
-                          ST_EndPoint(b.geom)::geography))::real AS bearing_deg,
-       degrees(ST_Azimuth(ST_EndPoint(b.geom)::geography,
-                          ST_StartPoint(b.geom)::geography))::real AS reverse_bearing_deg
+       ({bearing_sql("ST_StartPoint(b.geom)", "ST_EndPoint(b.geom)")})::real AS bearing_deg,
+       ({bearing_sql("ST_EndPoint(b.geom)", "ST_StartPoint(b.geom)")})::real AS reverse_bearing_deg
 FROM built b
 JOIN n a ON a.way_id = b.way_id AND a.ord = b.start_ord
 JOIN n z ON z.way_id = b.way_id AND z.ord = b.end_ord
@@ -164,10 +163,6 @@ async def derive(conn: asyncpg.Connection) -> None:
         nodes = await conn.execute(_INSERT_NODES)
         await conn.execute(_INSERT_WAYS)
         edges = await conn.execute(_INSERT_EDGES)
-        # 後ろの段はこれらの表を読む。autovacuumは既定60秒周期の背景処理で、派生は
-        # 数秒で走り切るため、統計が付くのを待てない。無いまま読まれると実行計画が
-        # 桁で外れる。
-        await conn.execute("ANALYZE road_edges, road_nodes, road_ways")
 
     logger.info("導出完了: way %d本 → 区間 %d本 / ノード %d点 / %.1f秒",
                 ways, affected_rows(edges), affected_rows(nodes), time.perf_counter() - started)

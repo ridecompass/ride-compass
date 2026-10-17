@@ -26,6 +26,8 @@ interface DisclosureProps {
   onOpenChange?: (open: boolean) => void;
   /** 見出し（開閉のトリガー）の使い方の文（`Button`の`usage`と同じ）。 */
   usage?: string;
+  /** 見出しの今の状態を、名前とは別に読み上げで添える文。 */
+  description?: string;
 }
 
 const ITEM_VALUE = "content";
@@ -42,6 +44,7 @@ export default function Disclosure({
   open,
   onOpenChange,
   usage,
+  description,
 }: DisclosureProps) {
   const handleValueChange = onOpenChange ? (value: string) => onOpenChange(value === ITEM_VALUE) : undefined;
 
@@ -50,6 +53,7 @@ export default function Disclosure({
       <Accordion.Trigger
         className={cn("block min-h-6 w-full cursor-pointer text-left", triggerClassName)}
         data-usage={usage}
+        aria-description={description}
       >
         {summary}
       </Accordion.Trigger>

@@ -5,10 +5,13 @@
 import type { ReactElement } from "react";
 import {
   ArrowUp,
+  Ban,
   Bike,
+  CalendarDays,
   CircleQuestionMark,
   Clock,
   Cloud,
+  CloudOff,
   Copy,
   CornerUpLeft,
   CornerUpRight,
@@ -17,12 +20,13 @@ import {
   EllipsisVertical,
   Gauge,
   GitCommitHorizontal,
+  History,
   Import,
   Info,
   Layers,
   ListChecks,
+  // 組み込みの`Map`と名前が重ならないよう、別名で読み込む。
   MapPin,
-  MapPinned,
   MapPinX,
   Moon,
   Navigation,
@@ -31,6 +35,7 @@ import {
   RotateCw,
   Ruler,
   Save,
+  Search,
   Shield,
   SlidersHorizontal,
   Snowflake,
@@ -560,14 +565,22 @@ export const SelectedSpotIcon = fromLucide(MapPin);
 export const ClearPointsIcon = fromLucide(MapPinX);
 /** ルートの全長の目標を決める（押している間は全長が目標に合うルートを作る）。 */
 export const DistanceTargetIcon = fromLucide(Ruler);
-/** 地点を地図で置く（地図で選ぶ・地図で追加・地図で置き直す。押している間は地図のタップがその地点を置く）。 */
-export const PlaceOnMapIcon = fromLucide(MapPinned);
 /** 置いた地点を1つ消す。保存したものを消す`DeleteSavedIcon`と同じく、消す操作はごみ箱の形にそろえる。 */
 export const RemovePointIcon = fromLucide(Trash);
+/** 通らない道（除外する道路の種類）。 */
+export const ExcludedRoadIcon = fromLucide(Ban);
 /** 変えた値を既定値に戻す。 */
 export const ResetDefaultsIcon = fromLucide(RotateCcw);
 /** 取れなかったものを取り直す。 */
 export const RetryIcon = fromLucide(RotateCw);
+/** 取れていない情報がある印。警報の色と取り違えないよう、三角の形を使わない。 */
+export const NotFetchedIcon = fromLucide(CloudOff);
+/** 今日1日の見通し。 */
+export const TodayOutlookIcon = fromLucide(CalendarDays);
+/** 時刻を送った重ねを、いまの時刻に戻す。 */
+export const BackToNowIcon = fromLucide(History);
+/** 地図で選んだ道の評価を調べる。 */
+export const InspectRoadIcon = fromLucide(Search);
 /** 編集で作ったルートの元にしたルートを見る。 */
 export const ShowOriginIcon = fromLucide(CornerUpLeft);
 /** 走行中の曲がる所の案内: 左折。 */

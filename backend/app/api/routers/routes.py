@@ -15,6 +15,7 @@ from app.api.dependencies import (
 from app.api.rate_limit import client_id, enforce_rate_limit
 from app.config import settings
 from app.domain.hard_filters import HARD_FILTER_NAMES
+from app.domain.road_avoidance import AVOIDABLE_ROWS, AvoidanceLevel
 from app.domain.route_preference import RoutePreference, check_axis_weights, published_axis_ids
 from app.domain.route_request import (
     MAX_DISTANCE_TOLERANCE_KM,
@@ -32,6 +33,7 @@ from app.domain.route_request import (
     SplicedTarget,
     check_points_within_reach,
     check_spliced_edge_count,
+    spliceable,
     check_waypoint_count,
     nothing_to_generate_error,
 )
@@ -109,6 +111,25 @@ class HardFilterOverride(RootModel[dict[str, bool]]):
         return cls({name: name in active for name in sorted(HARD_FILTER_NAMES)})
 
 
+class RoadAvoidanceOverride(RootModel[dict[str, AvoidanceLevel]]):
+    """道のレイヤの凡例の行ごとの避け方（通る・なるべく避ける・通らない）。
+    鍵は`domain/road_avoidance.py: AVOIDABLE_ROWS`と同じ集合で、全部を明示する（省いた行に既定が
+    黙って入ると、画面が見せる段と探索が使う段がずれる）。
+    """
+
+    @model_validator(mode="after")
+    def _check_row_keys(self) -> "RoadAvoidanceOverride":
+        actual = self.root.keys()
+        if actual != AVOIDABLE_ROWS.keys():
+            missing = sorted(AVOIDABLE_ROWS.keys() - actual)
+            extra = sorted(actual - AVOIDABLE_ROWS.keys())
+            raise ValueError(
+                f"road_avoidance must specify exactly the {len(AVOIDABLE_ROWS)} known rows "
+                f"(missing={missing}, unknown={extra})"
+            )
+        return self
+
+
 class RouteGenerateRequest(StrictModel):
     latitude: Latitude
     longitude: Longitude
@@ -125,10 +146,12 @@ class RouteGenerateRequest(StrictModel):
     # 値の意味と根拠もそちら）。ここへ既定値を書くとimport時に束ねられ、DBの上書きが効かない。
     penalty_strength: float | None = Field(ge=0, default=None)
     # 0次ハードフィルタの勾配しきい値（%、絶対値。省略時は除外なし。
-    # `domain/hard_filters.py: compute_hard_filter_excluded`参照）。
+    # `domain/hard_filters.py: compute_search_exclusion`参照）。
     max_average_grade_percent: float | None = Field(ge=0, default=None)
-    # 0次ハードフィルタ名（no_bicycle/motorway/trunk）の個別ON/OFF。
+    # 0次ハードフィルタ名の個別ON/OFF。
     hard_filters: HardFilterOverride
+    # 道のレイヤの凡例の行ごとの避け方。
+    road_avoidance: RoadAvoidanceOverride
     # 返す候補の上限件数。距離があれば距離フィルタ合格・overall_difficulty昇順の上位この件数、距離が無ければ
     # 最後の区間の代わりの道をこの件数まで返す。下限・上限と画面の既定値はOpenAPI生成物
     # （route-generate-config.json）経由でフロントへ渡す唯一の情報源にする。
@@ -183,9 +206,7 @@ class RouteGenerateRequest(StrictModel):
             origin = Coordinates(latitude=self.latitude, longitude=self.longitude)
             check_points_within_reach(max(haversine_distance_km(origin, point) for point in points))
         if self.spliced_edge_ids:
-            # 合成の対象は目的地ルートだけ（周回は起点へ戻る制約があり、途中で別候補へ
-            # 乗り換えると戻れる保証が無くなる）。
-            if self.destination is None:
+            if not spliceable(self.destination):
                 raise ValueError("spliced_edge_ids requires destination")
             first, *rest = self.spliced_edge_ids
             self._target = SplicedTarget(destination=self.destination, edge_ids=(first, *rest))
@@ -224,6 +245,8 @@ class GenerationConditions(StrictModel):
     max_average_grade_percent: float | None
     # 0次ハードフィルタの個別ON/OFF上書き（実際に適用された値）。
     hard_filters: HardFilterOverride
+    # 道のレイヤの凡例の行ごとの避け方（実際に適用された値）。
+    road_avoidance: RoadAvoidanceOverride
     # 候補数の上限。
     max_routes: int
     # 実際に適用された出発時刻（JST）。
@@ -237,7 +260,7 @@ class GenerationConditions(StrictModel):
     # `destination`の一番近いNodeから出て戻れない（メインの道路網から孤立した歩道橋・私有地内通路、
     # 一方通行の袋等）ため、出て戻れる最寄りNodeへ寄せ直して探索した場合の座標。寄せ直さなかった
     # （`destination`をそのまま使えた）場合はNone。
-    corrected_destination: Coordinates | None = None
+    corrected_destination: Coordinates | None
     # ISO8601（JST）。周回の風評価は生成時刻に依存するため、厳密な再現はできない点に注意
     generated_at: str
 
@@ -249,7 +272,7 @@ class RouteGenerateResponse(StrictModel):
     # route_generator.pyのlogger.warning行と同じ情報源）。ユーザーが原因を推測できず
     # SSHでサーバーログを見る以外に切り分け手段が無い状態を避けるための情報。
     # routesが1件以上あるときは常にNone。
-    no_candidates_reason: str | None = None
+    no_candidates_reason: str | None
 
 
 class RouteGenerateJobCreatedResponse(StrictModel):
@@ -361,6 +384,7 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
                     penalty_strength=request.penalty_strength,
                     max_average_grade_percent=request.max_average_grade_percent,
                     hard_filters=request.hard_filters.to_frozenset(),
+                    road_avoidance=dict(request.road_avoidance.root),
                     assumed_speed_kmh=request.assumed_speed_kmh,
                 ),
             ),
@@ -383,6 +407,7 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
                 penalty_strength=applied.penalty_strength,
                 max_average_grade_percent=applied.max_average_grade_percent,
                 hard_filters=HardFilterOverride.from_frozenset(applied.hard_filters),
+                road_avoidance=RoadAvoidanceOverride(dict(applied.road_avoidance)),
                 max_routes=generated.max_routes,
                 start_time=request.start_time,
                 assumed_speed_kmh=applied.assumed_speed_kmh,

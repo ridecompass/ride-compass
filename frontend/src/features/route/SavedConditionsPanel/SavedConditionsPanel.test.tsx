@@ -1,9 +1,9 @@
 /**
- * 設定の保存（`SavedConditionsPanel.tsx`）。
- * - 見出しの「いまの設定を保存」（`SaveConditionsButton`）——押すと窓で保存する条件・重みの割合・除外と出発地の扱いを並べ、
+ * `SavedConditionsPanel.tsx`——「条件」タブの「いまの設定を保存」と、「保存済み」タブの「プリセット」の保存した設定の一覧。
+ * - 「いまの設定を保存」——押すと窓で保存する条件・重みの割合・除外と出発地の扱いを並べ、
  *   名前の欄に仮の名前を入れて出し、そのまま・書き換えて保存でき、保存すると窓を閉じる。出発地は固定するかを選べ、選ぶまでは
  *   地図で置いたかで決まる。同じ名前があれば上書きと分かるように出す。
- * - 「保存」タブの「設定」（`SavedConditionsPanel`）——保存した設定を名前だけで並べ、無ければ無いと出して保存の仕方を(i)に置く。
+ * - 保存した設定の一覧——名前だけで並べ、無ければ無いと出して保存の仕方を(i)に置く。
  *   「呼び出す」は窓で中身を見せて「反映する」を押したときだけ呼び出し、「消す」は確認の窓で「消す」を押したときだけ消す。
  *
  * ここで見ないもの:
@@ -18,6 +18,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_HARD_FILTERS } from "@/features/route/RouteSettingsPanel/HardFilterPanel";
+import { DEFAULT_ROAD_AVOIDANCE } from "@/features/route/roadAvoidance";
 import type { GenerationConditionsSnapshot, SavedCondition } from "@/features/route/savedConditions";
 import { serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
@@ -32,6 +33,7 @@ const CURRENT: GenerationConditionsSnapshot = {
   destination: null,
   routePreference: null,
   hardFilters: DEFAULT_HARD_FILTERS,
+  roadAvoidance: DEFAULT_ROAD_AVOIDANCE,
 };
 const LOOP: SavedCondition = { ...CURRENT, name: "朝の荒川", origin: null };
 const POINT = { latitude: 35.1, longitude: 139.1 };
@@ -85,7 +87,7 @@ beforeEach(() => {
 });
 
 describe("保存", () => {
-  it("ボタンだけを置き、押すと窓で、いまの設定の条件と重みの割合を並べる", async () => {
+  it("押すまで中身を出さず、押すと窓で、いまの設定の条件と重みの割合を並べる", async () => {
     renderSaveButton();
     expect(screen.queryByText("周回 40km・候補 8本")).not.toBeInTheDocument();
 
@@ -158,8 +160,8 @@ describe("保存した設定", () => {
   it("無いうちはまだ無いと出し、保存の仕方を(i)に置く", () => {
     renderPanel();
 
-    expect(screen.getByText("保存した設定はまだありません。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "設定の保存の仕方を表示" })).toBeInTheDocument();
+    expect(screen.getByText("保存したプリセットはまだありません。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "プリセットの保存の仕方を表示" })).toBeInTheDocument();
   });
 
   it("行は名前だけを出し、条件・出発地・重み・除外は呼び出しの窓で読める", async () => {

@@ -10,7 +10,7 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { METERS_PER_DEGREE } from "@/lib/localPlane";
+import { moved } from "@/testing/movedPoint";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 import type { Coordinates, RouteSegmentDetail } from "@/types/route";
 
@@ -39,17 +39,18 @@ const QUARTER: Coordinates = { latitude: 35, longitude: 139.005 };
 const TURN: Coordinates = { latitude: 35, longitude: 139.02 };
 const ACCURACY_M = 20;
 
-/** 経度`longitude`の所から、道より北へ`meters`だけ離れた点。 */
-function northOf(longitude: number, meters: number): Coordinates {
-  return { latitude: 35 + meters / METERS_PER_DEGREE, longitude };
-}
-
-type Props = { route: RouteSegmentDetail[] | null; position: Coordinates | null; accuracyM: number | null };
+type Props = {
+  route: RouteSegmentDetail[] | null;
+  position: Coordinates | null;
+  accuracyM: number | null;
+  startKm?: number | null;
+};
 
 function renderProgress(initialProps: Props) {
-  return renderHook(({ route, position, accuracyM }: Props) => useRouteProgress(route, position, accuracyM), {
-    initialProps,
-  });
+  return renderHook(
+    ({ route, position, accuracyM, startKm = null }: Props) => useRouteProgress(route, position, accuracyM, startKm),
+    { initialProps },
+  );
 }
 
 describe("useRouteProgress", () => {
@@ -63,9 +64,9 @@ describe("useRouteProgress", () => {
     rerender({ route: segments, position: QUARTER, accuracyM: ACCURACY_M });
     expect(result.current.km).toBeCloseTo(3.5);
 
-    // 位置が届かない間は出さず、届き直したら覚えた位置から続ける。
+    // 位置が無い間（休んでいる間）は覚えた位置を出し、届き直したらそこから続ける。
     rerender({ route: segments, position: null, accuracyM: null });
-    expect(result.current.km).toBeNull();
+    expect(result.current).toEqual({ km: expect.closeTo(3.5), offRoute: false });
     rerender({ route: segments, position: QUARTER, accuracyM: ACCURACY_M });
     expect(result.current.km).toBeCloseTo(3.5);
 
@@ -76,13 +77,28 @@ describe("useRouteProgress", () => {
     expect(result.current.km).toBeNull();
   });
 
+  it("このルートで当てた位置がまだ無ければ、渡された距離（読み込み直す前に当てた位置）から続く側を選ぶ", () => {
+    // 帰り道の3.5km（行きの0.5kmと同じ地点）で読み込み直した。
+    const { result } = renderProgress({ route: outAndBack(), position: QUARTER, accuracyM: ACCURACY_M, startKm: 3.4 });
+    expect(result.current.km).toBeCloseTo(3.5);
+  });
+
+  it("このルートで当てた位置も現在地もまだ無ければ、渡された距離（読み込み直す前に当てた位置）を出す", () => {
+    const { result } = renderProgress({ route: outAndBack(), position: null, accuracyM: null, startKm: 3.4 });
+    expect(result.current).toEqual({ km: 3.4, offRoute: false });
+  });
+
   it("ルートを外れている間は外れた点で止めて外れたと出し、戻ったら戻った点から続ける", () => {
     const segments = outAndBack();
     const { result, rerender } = renderProgress({ route: segments, position: QUARTER, accuracyM: ACCURACY_M });
     expect(result.current).toEqual({ km: expect.closeTo(0.5), offRoute: false });
 
     // 1km の所の北へ誤差より遠く離れた。最も近い点（1km）へは当てず、外れた点（0.5km）で止める。
-    rerender({ route: segments, position: northOf(139.01, ACCURACY_M * 10), accuracyM: ACCURACY_M });
+    rerender({
+      route: segments,
+      position: moved({ latitude: 35, longitude: 139.01 }, ACCURACY_M * 10),
+      accuracyM: ACCURACY_M,
+    });
     expect(result.current).toEqual({ km: expect.closeTo(0.5), offRoute: true });
 
     // 回り道して、外れた点より先（1.5km）で戻った。
@@ -93,7 +109,7 @@ describe("useRouteProgress", () => {
   it("ルートの外から走り始めたら、ルートへ当てるまでは距離を出さず外れたと出す", () => {
     const { result } = renderProgress({
       route: outAndBack(),
-      position: northOf(139.005, ACCURACY_M * 10),
+      position: moved(QUARTER, ACCURACY_M * 10),
       accuracyM: ACCURACY_M,
     });
     expect(result.current).toEqual({ km: null, offRoute: true });

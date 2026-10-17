@@ -3,7 +3,7 @@
 // 「共有タイムラインのラベル」節が持つ。
 import { HOUR_MS } from "@/lib/duration";
 import { formatJstDateTime, formatJstHourMinute, formatJstMinute, jstParts } from "@/lib/time";
-import type { DynamicLayerTimeSliderFrame } from "@/features/conditions/DynamicLayerTimeSlider/DynamicLayerTimeSlider";
+import type { RulerFrame } from "@/components/ui/Ruler/Ruler";
 import { DEPARTURE_STEP_MS, floorToDepartureStep } from "@/features/conditions/rideConditions";
 
 const FINE_WINDOW_MS = HOUR_MS;
@@ -30,13 +30,13 @@ export function buildDepartureTimeline(anchor: Date): Date[] {
 
 /** DynamicLayerTimeSlider向けのラベル列。ラベルの書式は気象レイヤーの共有タイムラインと
  * 同じものを使う（`lib/time.ts`）。正時の目盛りには、日本時間の偶数時だけ時刻を書く。 */
-export function buildDepartureFrames(timeline: readonly Date[]): DynamicLayerTimeSliderFrame[] {
+export function buildDepartureFrames(timeline: readonly Date[]): RulerFrame[] {
   return timeline.map((time) => {
     const { hour, minute } = jstParts(time);
     const isHour = minute === 0;
     return {
       label: formatJstDateTime(time),
-      hourMark: isHour,
+      major: isHour,
       tickLabel: isHour ? (hour % 2 === 0 ? formatJstHourMinute(time) : undefined) : formatJstMinute(time),
     };
   });

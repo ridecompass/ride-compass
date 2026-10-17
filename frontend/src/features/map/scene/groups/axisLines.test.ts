@@ -13,16 +13,17 @@ import { axisLineGroup, type AxisLineState } from "./axisLines";
 // 1本の道がどの色・どの濃さになるかを見る。式の形を見ると、同じ意味の別の書き方で落ちる。
 const TRANSPARENT = "rgba(0,0,0,0)";
 
-/** 上の段から並べた3段（applyToMapが渡す順）。 */
+/** 低い段から並べた3段（`valueScale.ts: valueBands`の並び）。 */
 const THREE_BANDS = [
-  { key: "high", lowerBound: 20, color: "#dc2626" },
-  { key: "mid", lowerBound: 10, color: "#f59e0b" },
-  { key: "low", lowerBound: Number.NEGATIVE_INFINITY, color: "#16a34a" },
+  { key: "low", label: "低", lowerBound: Number.NEGATIVE_INFINITY, color: "#16a34a" },
+  { key: "mid", label: "中", lowerBound: 10, color: "#f59e0b" },
+  { key: "high", label: "高", lowerBound: 20, color: "#dc2626" },
 ];
 
 const VALUES = new Map<string, number | null>([
   ["perpendicular", null],
   ["along", 15],
+  ["onBoundary", 20],
 ]);
 
 type AxisLine = AxisLineState["axes"][number];
@@ -60,6 +61,10 @@ describe("段の色", () => {
     expect(lookOf("along").color).toBe("#f59e0b");
     expect(lookOf("along", { hiddenBandKeys: ["mid"] }).color).toBe(TRANSPARENT);
     expect(lookOf("along", { hiddenBandKeys: ["high"] }).color).toBe("#f59e0b");
+  });
+
+  it("段の境界ちょうどの値の道は上の段の色（段の引き方は`valueScale.ts: bandCondition`の1つ）", () => {
+    expect(lookOf("onBoundary").color).toBe("#dc2626");
   });
 });
 

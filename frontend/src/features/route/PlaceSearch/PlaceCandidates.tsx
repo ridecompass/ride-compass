@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/Badge/Badge";
 import { textVariants } from "@/components/ui/Text/Text";
 import ErrorText from "@/features/route/ErrorText/ErrorText";
-import { haversineKm } from "@/features/route/geoDistance";
+import { haversineKm } from "@/lib/geoDistance";
 import { cn } from "@/lib/cn";
 import { vocabulary } from "@/types/generated/vocabulary";
 import type { PlaceCandidate } from "@/types/route";

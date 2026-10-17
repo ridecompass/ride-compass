@@ -14,6 +14,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_HARD_FILTERS } from "@/features/route/RouteSettingsPanel/HardFilterPanel";
+import { AVOIDABLE_ROWS, AVOIDANCE_LEVELS, DEFAULT_ROAD_AVOIDANCE } from "@/features/route/roadAvoidance";
 import { serveAxisCatalog } from "@/testing/backendServer";
 import { TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
 import type { Coordinates } from "@/types/route";
@@ -24,6 +25,7 @@ import { useSavedConditions } from "./useSavedConditions";
 const A: Coordinates = { latitude: 35.1, longitude: 139.1 };
 const B: Coordinates = { latitude: 35.2, longitude: 139.2 };
 const ORIGIN: Coordinates = { latitude: 35.3, longitude: 139.3 };
+const STORAGE_KEY = "ridecompass:saved-conditions";
 
 interface OriginProps {
   origin: Coordinates | null;
@@ -56,10 +58,13 @@ describe("保存して呼び出す", () => {
     const { result } = renderSaved();
     await waitFor(() => expect(result.current.conditions.routePreference).toEqual({ axis_a: 0.4, axis_b: 0.6 }));
     const [filterKey] = Object.keys(DEFAULT_HARD_FILTERS);
+    const [{ key: rowKey }] = AVOIDABLE_ROWS;
+    const otherLevel = AVOIDANCE_LEVELS.find(({ key }) => key !== DEFAULT_ROAD_AVOIDANCE[rowKey])!.key;
+    act(() => result.current.conditions.selectPoint({ role: "waypoint", index: null }));
     act(() => {
       result.current.conditions.setDistanceTargeted(false);
       result.current.conditions.setMaxRoutesInput("3");
-      result.current.conditions.placePin("waypoint", A);
+      result.current.conditions.placeAtSelected(A, null);
       result.current.conditions.setDestination(B);
       result.current.conditions.setRoutePreference({ axis_a: 0.7, axis_b: 0.3 });
       result.current.conditions.setWeightOverrideEnabled(true);
@@ -67,6 +72,7 @@ describe("保存して呼び出す", () => {
         ...DEFAULT_HARD_FILTERS,
         [filterKey]: !DEFAULT_HARD_FILTERS[filterKey],
       });
+      result.current.conditions.setRoadAvoidance({ ...DEFAULT_ROAD_AVOIDANCE, [rowKey]: otherLevel });
     });
     act(() => result.current.saved.save("荒川へ", false));
 
@@ -78,6 +84,7 @@ describe("保存して呼び出す", () => {
       result.current.conditions.clearDestination();
       result.current.conditions.setWeightOverrideEnabled(false);
       result.current.conditions.setHardFilters(DEFAULT_HARD_FILTERS);
+      result.current.conditions.setRoadAvoidance(DEFAULT_ROAD_AVOIDANCE);
     });
     act(() => result.current.saved.recall(result.current.saved.saved[0]));
 
@@ -87,12 +94,13 @@ describe("保存して呼び出す", () => {
     expect(conditions.maxRoutesInput).toBe("3");
     expect(conditions.waypoints).toEqual([A]);
     expect(conditions.destination).toEqual(B);
-    expect(conditions.armedPinRole).toBeNull();
+    expect(conditions.selectedPoint).toEqual({ role: "origin" });
     expect(conditions.routePreferenceToSend).toEqual({ axis_a: 0.7, axis_b: 0.3 });
     expect(conditions.hardFilters[filterKey]).toBe(!DEFAULT_HARD_FILTERS[filterKey]);
+    expect(conditions.roadAvoidance).toEqual({ ...DEFAULT_ROAD_AVOIDANCE, [rowKey]: otherLevel });
   });
 
-  it("重みを上書きせずに保存した条件は、呼び出すと上書きをやめる", async () => {
+  it("重みを上書きせずに保存した条件は、呼び出すと上書きをやめ、重みのタブは送らない間に効く既定の重みを出す", async () => {
     const { result } = renderSaved();
     act(() => result.current.saved.save("既定の重み", false));
     act(() => {
@@ -104,6 +112,7 @@ describe("保存して呼び出す", () => {
     act(() => result.current.saved.recall(result.current.saved.saved[0]));
 
     expect(result.current.conditions.routePreferenceToSend).toBeNull();
+    expect(result.current.conditions.routePreference).toEqual({ axis_a: 0.4, axis_b: 0.6 });
   });
 
   it("名前が空なら仮の名前で保存し、一覧は開き直しても残る", () => {
@@ -112,6 +121,28 @@ describe("保存して呼び出す", () => {
     first.unmount();
 
     expect(renderSaved().result.current.saved.saved.map((entry) => entry.name)).toEqual(["周回 30km"]);
+  });
+
+  it("前にモードで保存した一覧は、開くと今の形で書き戻す", () => {
+    const before = {
+      name: "いつもの周回",
+      routeMode: "loop",
+      distance: "40",
+      maxRoutes: "3",
+      origin: null,
+      waypoints: [A],
+      destination: null,
+      routePreference: null,
+      hardFilters: DEFAULT_HARD_FILTERS,
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([before]));
+
+    const { result } = renderSaved();
+
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual(result.current.saved.saved);
+    expect(result.current.saved.saved).toEqual([
+      expect.objectContaining({ name: "いつもの周回", distanceTargeted: true, waypoints: [] }),
+    ]);
   });
 
   it("消すとその件だけが一覧から外れる", () => {

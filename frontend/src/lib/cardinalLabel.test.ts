@@ -13,7 +13,8 @@
 import { describe, expect, it } from "vitest";
 
 import geoExpectations from "@/types/generated/geo-expectations.json";
-import { cardinalLabel, downwindDeg } from "@/lib/cardinalLabel";
+import regionTileConfig from "@/types/generated/region-tile-config.json";
+import { bearingSector, cardinalLabel, downwindDeg } from "@/lib/cardinalLabel";
 
 describe("cardinalLabel", () => {
   it("backendが出す表の全行で、backendと同じ呼び名になる", () => {
@@ -21,6 +22,17 @@ describe("cardinalLabel", () => {
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) {
       expect(cardinalLabel(row.bearing_deg), `${row.bearing_deg}度`).toBe(row.label);
+    }
+  });
+});
+
+describe("bearingSector", () => {
+  it("backendが出す表の全行で、道の値の向きの区分がbackendと同じ番号になる", () => {
+    const rows = geoExpectations.way_value_bearing_bucket;
+    const count = 360 / regionTileConfig.way_value_bearing_bucket_deg;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(bearingSector(row.bearing_deg, count), `${row.bearing_deg}度`).toBe(row.bucket);
     }
   });
 });

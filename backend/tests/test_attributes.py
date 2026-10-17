@@ -67,13 +67,14 @@ def arrays() -> EdgeMaterialArrays:
         numeric_values=np.array([[1.0, 2.0], [3.0, np.nan]]),
         categorical_ids=("cat_a",),
         categorical_columns=(CategoricalColumn.encode(["x", None]),),
-        hard_filter_ids=("filter_a", "filter_b"),
-        hard_filter_flags=np.array([[True, False], [False, True]]),
+        route_flag_ids=("filter_a", "filter_b"),
+        route_flags=np.array([[True, False], [False, True]]),
         distance_m=np.array([100.0, 200.0]),
         bearing_deg=nan,
         mid_lat=nan,
         mid_lon=nan,
-        elevation_present=np.zeros(n, dtype=bool),
+        start_elevation_m=nan,
+        end_elevation_m=nan,
         elevation_gain_m=nan,
         elevation_loss_m=nan,
     )
@@ -89,7 +90,7 @@ def test_every_material_is_found_by_its_id_whatever_its_dtype():
 
 
 def test_each_hard_filter_is_found_by_its_name():
-    flags = arrays().hard_filter_columns()
+    flags = arrays().route_flag_columns()
 
     assert flags["filter_a"].tolist() == [True, False]
     assert flags["filter_b"].tolist() == [False, True]
@@ -98,6 +99,8 @@ def test_each_hard_filter_is_found_by_its_name():
 def climb() -> ElevationAttribute:
     return ElevationAttribute(
         edge_id="1:0:f",
+        start_elevation_m=100.0,
+        end_elevation_m=120.0,
         elevation_gain_m=25.0,
         elevation_loss_m=5.0,
         average_grade=4.0,
@@ -109,6 +112,8 @@ def test_the_reverse_turns_climbs_into_descents():
 
     assert reverse.model_dump() == {
         "edge_id": "1:0:r",
+        "start_elevation_m": 120.0,
+        "end_elevation_m": 100.0,
         "elevation_gain_m": 5.0,
         "elevation_loss_m": 25.0,
         "average_grade": -4.0,

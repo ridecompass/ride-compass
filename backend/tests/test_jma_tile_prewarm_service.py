@@ -26,6 +26,7 @@ import pytest
 from PIL import Image
 
 from app.domain.region import BoundingBox, tiles_covering_bbox
+from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from app.infrastructure.jma_tile_client import JmaTileClient
 from app.services import jma_tile_prewarm_service as prewarm
 from tests.bound_fake import bound
@@ -106,7 +107,7 @@ class Source:
         for fragment, value in self.tiles.items():
             if fragment in path:
                 return value
-        return prewarm.EmptyTile()
+        return UPSTREAM_NOT_FOUND
 
     get = bound(JmaTileClient.get, get)
 

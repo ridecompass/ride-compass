@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { buildPointPopupContent, pointPlaceName } from "@/features/map/MapView/pointPopup";
-import SpotPlaceActions, { type SpotPlaceRole } from "@/features/map/MapView/SpotPlaceActions";
+import { buildPointPopupContent } from "@/features/map/MapView/pointPopup";
+import { pointPlaceName } from "@/lib/mapDisplay/pointLayers";
 import RoadInspectorPopup from "@/features/map/MapView/RoadInspectorPopup";
 import { roadWayId, type RoadSurfacePopupProperties } from "@/features/map/MapView/roadFacts";
 import * as maplibregl from "maplibre-gl";
@@ -12,15 +12,15 @@ import { configureMaplibreWorker } from "@/features/map/maplibreWorker";
 import type {
   ErrorEvent as MapLibreErrorEvent,
   Map as MapLibreMap,
-  MapLayerMouseEvent,
+  MapGeoJSONFeature,
   MapMouseEvent,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type {
   Coordinates,
   LocationSource,
-  PinRole,
   PlaceCandidate,
+  PointTarget,
   RouteCandidate,
   RoutePreferenceWeights,
   RouteSegmentDetail,
@@ -43,23 +43,24 @@ import {
   sceneInputsFrom,
   type SpliceStretchInput,
 } from "@/features/map/scene/applyToMap";
-import { interactiveSceneLayerIds, sceneLayerIdsForHitTarget, type MapScene } from "@/features/map/scene/mapScene";
+import { interactiveSceneLayerIds, sceneHitTargetsOfLayer } from "@/features/map/scene/mapScene";
 import {
-  ROUTE_HIT_TARGET,
+  ROUTE_HIT_TARGET_CANDIDATE,
   ROUTE_HIT_TARGET_SEGMENT,
   ROUTE_HIT_TARGET_SPLICE_BAND,
 } from "@/features/map/scene/groups/routes";
 import { buildMapScene, type SceneInputs } from "@/features/map/scene/buildScene";
-import { POINT_TILE_SOURCES, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
+import { POINT_HIT_TARGET, POINT_TILE_SOURCES, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
-import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
+import { ROAD_LINE_HIT_TARGET, ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { MapLook } from "@/features/map/view/mapLook";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { useLayerDataStatus, type LayerDataSourceEntry } from "@/features/map/MapView/useLayerDataStatus";
 import { ORIGIN_ZOOM, useMapMarkers } from "@/features/map/MapView/useMapMarkers";
-import { useTurnMark } from "@/features/map/MapView/useTurnMark";
+import { pinMarkName } from "@/components/PinMark/PinMark";
+import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
 import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
 import { registerJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
@@ -67,7 +68,7 @@ import { debugLog } from "@/lib/debugLog";
 import { MAP_OVERLAY_EDGE_ATTRIBUTE, measureMapOverlayEdges, type RouteFitObscuredPx } from "@/lib/mapOverlayEdges";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
-import { closestPointOnSegment, longitudeScale } from "@/lib/localPlane";
+import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
 import { roundToDigits } from "@/lib/numberFormat";
 
 // 基礎地図のスタイルJSON。中のタイル・スプライト・グリフのURLはbackendがBASEMAP_PUBLIC_BASE_URLで
@@ -75,11 +76,6 @@ import { roundToDigits } from "@/lib/numberFormat";
 const MAP_STYLE_PATH = apiPath("/api/basemap/{path}", { path: "styles/liberty" });
 function mapStyleUrl(): string {
   return `${tileBaseUrl()}${MAP_STYLE_PATH}`;
-}
-
-/** ルート線の当たり判定レイヤー。**idは scene が決める**ので、当たり判定の名前で引く。 */
-function routeHitLayerId(scene: MapScene, target: string): string | undefined {
-  return sceneLayerIdsForHitTarget(scene, target)[0];
 }
 
 // 初期表示の覆い（「地図を読み込み中…」）を出しておく上限。覆いは基礎地図が描けた時点（"load"）で外すので、
@@ -161,59 +157,48 @@ function computeRouteFitPadding(
   return padding;
 }
 
-/** 呼び出し側が測った覆いと、印の付いた部品（`mapOverlayEdge`）の覆いの、辺ごとの大きい方。 */
-function mergeObscured(a: RouteFitObscuredPx | undefined, b: RouteFitObscuredPx): Required<RouteFitObscuredPx> {
-  return {
-    top: Math.max(a?.top ?? 0, b.top ?? 0),
-    bottom: Math.max(a?.bottom ?? 0, b.bottom ?? 0),
-    left: Math.max(a?.left ?? 0, b.left ?? 0),
-    right: Math.max(a?.right ?? 0, b.right ?? 0),
-  };
-}
-
-/** 地図の上に重なるもの（呼び出し側が測った覆いと、印の付いた部品）を避けた、見えている所までの辺ごとの余白。 */
-function visiblePadding(map: MapLibreMap, measureObscured: () => RouteFitObscuredPx | undefined) {
+/** 地図の上に重なる印の付いた部品（`mapOverlayEdge`）を避けた、見えている所までの辺ごとの余白。 */
+function visiblePadding(map: MapLibreMap) {
   const canvas = map.getCanvas();
-  const obscured = mergeObscured(measureObscured(), measureMapOverlayEdges(canvas.getBoundingClientRect()));
-  return computeRouteFitPadding(obscured, { width: canvas.clientWidth, height: canvas.clientHeight });
+  const { top = 0, bottom = 0, left = 0, right = 0 } = measureMapOverlayEdges(canvas.getBoundingClientRect());
+  return computeRouteFitPadding(
+    { top, bottom, left, right },
+    { width: canvas.clientWidth, height: canvas.clientHeight },
+  );
 }
 
-function fitBoundsToRoutes(
-  map: MapLibreMap,
-  routes: RouteCandidate[],
-  measureObscured: () => RouteFitObscuredPx | undefined,
-) {
+function fitBoundsToRoutes(map: MapLibreMap, routes: RouteCandidate[]) {
   if (routes.length === 0) return;
 
   const bounds = computeRouteBounds(routes);
 
   runWhenStyleReady(map, () => {
-    const padding = visiblePadding(map, measureObscured);
+    const padding = visiblePadding(map);
     debugLog("map:viewport", "ルートを収める", { padding });
     map.fitBounds(bounds, { padding });
   });
 }
 
-// 住所の検索で置いた地点へ寄せる倍率。ピンを直せるように、街区が見分けられるまで寄る。
+// 区間の小窓を、押した区間の印（下端を地点に置いた絵）の上へ出すずれ。
+const SEGMENT_POPUP_OFFSET_PX = 28;
+
+// 住所の検索で置いた地点・取り直した現在地へ寄せる倍率。ピンを直せるように、街区が見分けられるまで寄る。
 const FOCUS_ZOOM = 16;
 
 /** 地点を、見えている所の中ほどへ寄せる。`flyTo`の`padding`は寄せたあとも地図に残るので、残らない`offset`でずらす。 */
-function flyToVisible(map: MapLibreMap, point: Coordinates, measureObscured: () => RouteFitObscuredPx | undefined) {
+function flyToVisible(map: MapLibreMap, point: Coordinates) {
   runWhenStyleReady(map, () => {
     map.flyTo({
       center: [point.longitude, point.latitude],
       zoom: FOCUS_ZOOM,
-      offset: visibleCenterOffset(map, measureObscured),
+      offset: visibleCenterOffset(map),
     });
   });
 }
 
 /** 地図の中心から、見えている所の中ほどへのずれ（px）。寄せるときの`offset`に渡す。 */
-function visibleCenterOffset(
-  map: MapLibreMap,
-  measureObscured: () => RouteFitObscuredPx | undefined,
-): [number, number] {
-  const padding = visiblePadding(map, measureObscured);
+function visibleCenterOffset(map: MapLibreMap): [number, number] {
+  const padding = visiblePadding(map);
   return [(padding.left - padding.right) / 2, (padding.top - padding.bottom) / 2];
 }
 
@@ -223,23 +208,38 @@ function nearestPointOnLineString(
   coordinates: readonly (readonly [number, number])[],
   point: readonly [number, number],
 ): [number, number] {
-  if (coordinates.length === 0) return [point[0], point[1]];
-
-  const scale = longitudeScale(point[1]);
-  const toPlane = ([lng, lat]: readonly [number, number]) => ({ x: lng * scale, y: lat });
-  const p = toPlane(point);
-  let best = toPlane(coordinates[0]);
-  let bestDistSq = Infinity;
-
+  let best: EdgeProjection | null = null;
   for (let i = 0; i < coordinates.length - 1; i++) {
-    const closest = closestPointOnSegment(p, toPlane(coordinates[i]), toPlane(coordinates[i + 1]));
-    const distSq = (p.x - closest.x) ** 2 + (p.y - closest.y) ** 2;
-    if (distSq < bestDistSq) {
-      bestDistSq = distSq;
-      best = closest;
-    }
+    const projected = projectOnEdge(point, coordinates[i], coordinates[i + 1]);
+    if (best === null || projected.offsetM < best.offsetM) best = projected;
   }
-  return [best.x / scale, best.y];
+  if (best !== null) return best.point;
+  const [lng, lat] = coordinates[0] ?? point;
+  return [lng, lat];
+}
+
+/**
+ * 地図を押したときの意味。地点: 選んでいる地点を置く・ピンを押すとその地点を選ぶ。ルート: 候補の線を押すとそのルートを
+ * 選び、選んだルートの区間を押すとその区間を選ぶ。乗り換え: 乗り換える区間を選ぶ。見る: 押した物（道・点・区間・ピン）の
+ * 中身を小窓に出すだけで、地点もルートも変えない。走る: 何も開かず、地図は現在地を追うことに専念する（走行中にパネルを
+ * 開いていない間）。
+ */
+export type MapTapMode = "points" | "routes" | "splice" | "look" | "ride";
+
+/** 意味ごとに、押して開ける当たり判定の対象（地点の意味は地物を開かない）。 */
+const OPENABLE_TARGETS: Record<MapTapMode, ReadonlySet<string>> = {
+  points: new Set(),
+  routes: new Set([ROUTE_HIT_TARGET_CANDIDATE, ROUTE_HIT_TARGET_SEGMENT]),
+  splice: new Set([ROUTE_HIT_TARGET_SPLICE_BAND]),
+  look: new Set([ROUTE_HIT_TARGET_SEGMENT, POINT_HIT_TARGET, ROAD_LINE_HIT_TARGET]),
+  ride: new Set(),
+};
+
+/** 地点のピンの名前（見るだけの間にピンを押すと、小窓に呼び名と並べて出す）。 */
+interface PinNames {
+  origin: string;
+  waypoints: readonly string[];
+  destination: string;
 }
 
 interface MapViewProps {
@@ -270,37 +270,36 @@ interface MapViewProps {
   onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => void;
   /** 経由地（通る順）。 */
   waypoints: Coordinates[];
-  /** 武装中の役割。nullの間、地図のタップはピンを置かない（地物の詳細表示のみ）。 */
-  armedPinRole: PinRole | null;
-  /** 地点（出発地・経由地・目的地）をつかんで動かす・押して消すことを受け付けるか。
-   * 地図でできることは、いま見ているパネルが持つ操作だけにする（地点は「ルート設定」の
-   * 条件タブ）。falseの間、マーカーは表示だけで動かせない。 */
-  pointEditingEnabled: boolean;
-  /** 武装中の役割の地点として、タップした座標を渡す。 */
-  onPinPlace: (role: PinRole, coordinates: Coordinates) => void;
-  /** 名前のある点の小窓から、その点を経由地・目的地として置く（地点を置ける間だけ小窓に置く操作を出す）。 */
-  onSpotPlace: (role: SpotPlaceRole, spot: PlaceCandidate) => void;
-  /** 経由地が生成の受け付ける数まで置いてあるか（小窓の経由地に足す操作を押せなくする）。 */
-  waypointsFull: boolean;
-  /** 経由地マーカークリックで呼ばれる（該当indexを削除）。 */
-  onWaypointRemove: (index: number) => void;
-  /** 経由地マーカーをドラッグして動かしたときに呼ばれる（該当indexの座標を差し替え）。 */
-  onWaypointMove: (index: number, coordinates: Coordinates) => void;
   /** 目的地（あれば片道のルート）。 */
   destination: Coordinates | null;
-  /** 目的地マーカークリックで呼ばれる（解除）。 */
-  onDestinationClear: () => void;
-  /** 地図を寄せる地点（住所の検索で置いた地点）。新しい値を渡すたびに寄せる。 */
+  /** 地点のピンを押したときに小窓へ出す名前（見るだけの間）。 */
+  pinNames: PinNames;
+  /** 地図を押したときの意味（効いているパネルが決める）。 */
+  tapMode: MapTapMode;
+  /** 地点の意味の間に押した所（名前のある点の上なら、その点の位置と候補）を、選んでいる地点として置く。 */
+  onPointPlace: (coordinates: Coordinates, spot: PlaceCandidate | null) => void;
+  /** 地点の意味の間にピンを押したとき（その地点を選ぶ）。 */
+  onPointSelect: (target: PointTarget) => void;
+  /** 出発地のピンをつかんで動かしたとき。 */
+  onOriginMove: (coordinates: Coordinates) => void;
+  /** 経由地のピンをつかんで動かしたとき（該当indexの座標を差し替え）。 */
+  onWaypointMove: (index: number, coordinates: Coordinates) => void;
+  /** 目的地のピンをつかんで動かしたとき。 */
+  onDestinationMove: (coordinates: Coordinates) => void;
+  /** ルートの意味の間に、選んでいない候補の線を押したとき。 */
+  onRouteSelect: (routeId: string) => void;
+  /** 見るだけの間に押した区間の中身（ページが描く）。区間を選んでいなければnull。押した区間の印の上の小窓に出す。 */
+  segmentDetail: ReactNode | null;
+  /** 地図を寄せる地点（住所の検索で置いた地点・取り直した現在地）。新しい値を渡すたびに寄せる。 */
   focusPoint: Coordinates | null;
-  /** 地図の上に重なるUIで覆われている辺ごとの高さ(px)をいま測る。ルートを収めるとき、覆われた所へ収めないため。
-   * レイアウトを持つ呼び出し側が測る。地図の上に置いた部品は、ここで測らず`mapOverlayEdge`の印を付ければ地図が測る。 */
-  measureRouteFitObscuredPx: () => RouteFitObscuredPx | undefined;
+  /** 走っていない間に点を出す現在地。出さなければnull（出発地のピンが現在地にあるとき等）。 */
+  here: Coordinates | null;
   /** 走行モードの間だけ値がある。現在地の点を出し、追っている間は地図を現在地へ動かし続ける。 */
   ride: RideFollow | null;
   /** 選んだ候補の上で走り終えた距離（km）。そこまでのルートの線を薄める。走っていなければnull。 */
   travelledKm: number | null;
-  /** 走行中に次に曲がる所の地点。印を出す。無ければnull。 */
-  turnPoint: Coordinates | null;
+  /** 走行中に次に曲がる所の地点と向き。印を出す。無ければnull。 */
+  turnPoint: TurnMarkPoint | null;
 }
 
 export default function MapView({
@@ -317,17 +316,18 @@ export default function MapView({
   selectedRouteSegment,
   onRouteSegmentSelect,
   waypoints,
-  armedPinRole,
-  pointEditingEnabled,
-  onPinPlace,
-  onSpotPlace,
-  waypointsFull,
-  onWaypointRemove,
-  onWaypointMove,
   destination,
-  onDestinationClear,
+  pinNames,
+  tapMode,
+  onPointPlace,
+  onPointSelect,
+  onOriginMove,
+  onWaypointMove,
+  onDestinationMove,
+  onRouteSelect,
+  segmentDetail,
   focusPoint,
-  measureRouteFitObscuredPx,
+  here,
   ride,
   travelledKm,
   turnPoint,
@@ -343,9 +343,8 @@ export default function MapView({
     tile: TileXY;
   } | null>(null);
   const [roadPopupContainer, setRoadPopupContainer] = useState<HTMLDivElement | null>(null);
-  // 名前のある点の小窓の、置く操作の器と、置くときに渡す点。器は小窓の本文の末尾に置き、操作はReactで描いてportalで差し込む
-  // （置けるか・経由地が上限かは小窓を開いたあとにも変わる）。
-  const [spotActions, setSpotActions] = useState<{ container: HTMLDivElement; spot: PlaceCandidate } | null>(null);
+  // 見るだけの間に押した区間の小窓の器。中身はページが描き、portalで差し込む。
+  const [segmentPopupContainer, setSegmentPopupContainer] = useState<HTMLDivElement | null>(null);
   const catalog = useAxisCatalog();
   const mapCatalog = useMapAxisCatalog();
   const layerDataSources = useMemo(() => buildLayerDataSources(mapCatalog.layers), [mapCatalog.layers]);
@@ -385,16 +384,25 @@ export default function MapView({
     look,
     layerVisibility,
     interactiveLayerIds,
-    onPinPlace,
-    armedPinRole,
-    measureRouteFitObscuredPx,
+    tapMode,
+    onPointPlace,
     onRouteSegmentSelect,
     onSpliceStretchSelect,
+    onRouteSelect,
   };
   const latest = useRef(latestProps);
   useEffect(() => {
     latest.current = latestProps;
   });
+
+  // 点・ピンの小窓（MapLibreのPopupへDOMを直接載せる）。開くと前の小窓と道の小窓を閉じる。
+  const openPopupAt = useCallback((lngLat: [number, number], content: HTMLElement) => {
+    const map = mapRef.current;
+    if (!map) return;
+    popupRef.current?.remove();
+    setRoadPopup(null);
+    popupRef.current = new maplibregl.Popup({ closeButton: true }).setLngLat(lngLat).setDOMContent(content).addTo(map);
+  }, []);
 
   // スタイルを差し替えた後、いまの宣言を空から当て直す。
   const redrawFromCurrentProps = useCallback((map: MapLibreMap) => {
@@ -473,55 +481,61 @@ export default function MapView({
       return layers.length === 0 ? [] : map.queryRenderedFeatures(point, { layers });
     }
 
-    // 地物を押すと詳細を出す。**どれかの役割で武装している間だけ**、その1タップは地物を見ずにピンを置く（道の
-    // 上を目的地にしたいこともある）。武装していなければピンは増えない（見ているだけの操作で経由地が増えない）。
-    function handleClick(e: MapMouseEvent) {
-      const armed = latest.current.armedPinRole;
-      if (armed) {
-        latest.current.onPinPlace(armed, { latitude: e.lngLat.lat, longitude: e.lngLat.lng });
-        return;
+    /** 意味ごとに押して開ける対象で、押した所に重なった地物のうち一番上に描かれたもの（乗り換えの帯は区間の上に描くので、
+     * 重なった所は帯を選ぶ）。開けない対象の地物は、上に重なっていても飛ばす。 */
+    function openableFeatureAt(point: MapMouseEvent["point"]) {
+      const openable = OPENABLE_TARGETS[latest.current.tapMode];
+      for (const feature of interactiveFeaturesAt(point)) {
+        const target = sceneHitTargetsOfLayer(latest.current.scene, feature.layer.id).find((t) => openable.has(t));
+        if (target !== undefined) return { feature, target };
       }
-      // ルートの線は専用のハンドラ（レイヤーへの"click"）が受ける。MapLibreは地図全体の"click"とレイヤーの
-      // "click"を両方出すため、ルートの線に当たったらここでは何もしない（道の詳細と同時に開かない）。
-      for (const hitLayerId of sceneLayerIdsForHitTarget(latest.current.scene, ROUTE_HIT_TARGET)) {
-        if (map.getLayer(hitLayerId) && map.queryRenderedFeatures(e.point, { layers: [hitLayerId] }).length > 0) {
-          return;
-        }
-      }
-      const features = interactiveFeaturesAt(e.point);
-      if (features.length === 0) return;
+      return null;
+    }
 
-      const feature = features[0];
-      // 道はルート結果と同じ「軸ごとの効き方」を見せるためReactの部品で描く。点（事故・POI）は数行の事実だけなので
-      // MapLibreのPopupへ直接載せる。
-      const point = pointLayerOfSceneLayer(feature.layer.id);
-      if (point !== undefined) {
-        // 外の地図で探す位置は点そのものの位置（押した所は絵の端のことがある）。点の層のタイルは点1つずつを焼く。
-        if (feature.geometry.type !== "Point") throw new Error(`点の層 ${point.attr_id} の地物が点でない`);
-        const [lng, lat] = feature.geometry.coordinates;
-        const pointContent = buildPointPopupContent(point, feature.properties, { lng, lat });
-        const name = pointPlaceName(point, feature.properties);
-        popupRef.current?.remove();
-        setRoadPopup(null);
-        const popup = new maplibregl.Popup({ closeButton: true })
-          .setLngLat(e.lngLat)
-          .setDOMContent(pointContent)
-          .addTo(map);
-        popupRef.current = popup;
-        if (name === null) {
-          setSpotActions(null);
-        } else {
-          const container = document.createElement("div");
-          pointContent.appendChild(container);
-          // 探して選んだ施設と同じ形で渡し、並びと詳しくに名前を出す（辺りは置いた位置から引く）。
-          setSpotActions({
-            container,
-            spot: { kind: "facility", level: "point", name, area: null, latitude: lat, longitude: lng },
-          });
-          popup.on("close", () => setSpotActions((current) => (current?.container === container ? null : current)));
-        }
+    // 地点の意味の間は、地物を開かずに、押した所へ選んでいる地点を置く（道の上を目的地にしたいこともある）。名前のある
+    // 点（店など）の上なら、その点の位置へ、その点の候補として置く。ほかの意味の間は、その意味が開ける地物だけを開く。
+    function handleClick(e: MapMouseEvent) {
+      if (latest.current.tapMode === "points") {
+        const spot = interactiveFeaturesAt(e.point)
+          .map(namedSpotOf)
+          .find((found) => found !== null);
+        latest.current.onPointPlace(
+          spot !== undefined
+            ? { latitude: spot.latitude, longitude: spot.longitude }
+            : { latitude: e.lngLat.lat, longitude: e.lngLat.lng },
+          spot ?? null,
+        );
         return;
       }
+      const hit = openableFeatureAt(e.point);
+      if (hit === null) return;
+      const open = OPEN_BY_HIT_TARGET.get(hit.target);
+      if (open === undefined) throw new Error(`押せる対象 ${hit.target} を開く手続きが無い`);
+      open(hit.feature, e);
+    }
+
+    /** 名前のある点（店など）の地物なら、探して選んだ施設と同じ形の候補（辺りは置いた位置から引く）。 */
+    function namedSpotOf(feature: MapGeoJSONFeature): PlaceCandidate | null {
+      const point = pointLayerOfSceneLayer(feature.layer.id);
+      if (point === undefined || feature.geometry.type !== "Point") return null;
+      const name = pointPlaceName(point, feature.properties);
+      if (name === null) return null;
+      const [longitude, latitude] = feature.geometry.coordinates;
+      return { kind: "facility", level: "point", name, area: null, latitude, longitude };
+    }
+
+    // 道はルート結果と同じ「軸ごとの効き方」を見せるためReactの部品で描く。点（事故・POI）は数行の事実だけなので
+    // MapLibreのPopupへ直接載せる。
+    function openPoint(feature: MapGeoJSONFeature, e: MapMouseEvent) {
+      const point = pointLayerOfSceneLayer(feature.layer.id);
+      if (point === undefined) throw new Error(`点の対象を名乗るレイヤー ${feature.layer.id} に点の宣言が無い`);
+      // 外の地図で探す位置は点そのものの位置（押した所は絵の端のことがある）。点の層のタイルは点1つずつを焼く。
+      if (feature.geometry.type !== "Point") throw new Error(`点の層 ${point.attr_id} の地物が点でない`);
+      const [lng, lat] = feature.geometry.coordinates;
+      openPopupAt([e.lngLat.lng, e.lngLat.lat], buildPointPopupContent(point, feature.properties, { lng, lat }));
+    }
+
+    function openRoad(feature: MapGeoJSONFeature, e: MapMouseEvent) {
       popupRef.current?.remove();
       popupRef.current = null;
       setRoadPopup({
@@ -532,16 +546,14 @@ export default function MapView({
     }
 
     // 乗り換えられる区間の帯を押したら、その区間の道を選ぶ（選ぶ操作の中心を地図へ置く）。
-    function handleSpliceStretchClick(e: MapLayerMouseEvent) {
-      const index = e.features?.[0]?.properties?.index;
+    function openSpliceStretch(feature: MapGeoJSONFeature) {
+      const index = feature.properties.index;
       if (typeof index !== "number") return;
       popupRef.current?.remove();
       latest.current.onSpliceStretchSelect(index);
     }
 
-    function handleRouteSegmentClick(e: MapLayerMouseEvent) {
-      const feature = e.features?.[0];
-      if (!feature) return;
+    function openRouteSegment(feature: MapGeoJSONFeature, e: MapMouseEvent) {
       // 前に開いた点の詳細が残らないよう閉じる。
       popupRef.current?.remove();
       const properties = feature.properties as unknown as Omit<RouteSegmentDetail, "geometry">;
@@ -552,8 +564,25 @@ export default function MapView({
       latest.current.onRouteSegmentSelect({ segment, latitude: snappedLat, longitude: snappedLng });
     }
 
+    function openRouteCandidate(feature: MapGeoJSONFeature) {
+      const routeId = feature.properties.routeId;
+      if (typeof routeId !== "string") return;
+      popupRef.current?.remove();
+      latest.current.onRouteSelect(routeId);
+    }
+
+    /** scene の当たり判定の対象ごとの、押した地物を開く手続き。 */
+    const OPEN_BY_HIT_TARGET = new Map<string, (feature: MapGeoJSONFeature, e: MapMouseEvent) => void>([
+      [ROUTE_HIT_TARGET_SPLICE_BAND, openSpliceStretch],
+      [ROUTE_HIT_TARGET_SEGMENT, openRouteSegment],
+      [ROUTE_HIT_TARGET_CANDIDATE, openRouteCandidate],
+      [POINT_HIT_TARGET, openPoint],
+      [ROAD_LINE_HIT_TARGET, openRoad],
+    ]);
+
     function handleMouseMove(e: MapMouseEvent) {
-      map.getCanvas().style.cursor = interactiveFeaturesAt(e.point).length > 0 ? "pointer" : "";
+      map.getCanvas().style.cursor =
+        latest.current.tapMode === "points" ? "crosshair" : openableFeatureAt(e.point) !== null ? "pointer" : "";
     }
 
     // "load"は載っているすべてのタイルが揃った最初の描画で来る。アプリのソースは"load"の後に足す
@@ -598,6 +627,7 @@ export default function MapView({
         east: bounds.getEast(),
         north: bounds.getNorth(),
         zoom: map.getZoom(),
+        bearing: map.getBearing(),
       });
     }
     function handleMoveEnd() {
@@ -626,14 +656,6 @@ export default function MapView({
     }
 
     map.on("click", handleClick);
-    // ルートの線のハンドラは、レイヤーがまだ無い（ルート未生成）間に登録しても、MapLibreは発火しないだけで例外を
-    // 出さない。
-    const routeHitLayers = {
-      segment: routeHitLayerId(latest.current.scene, ROUTE_HIT_TARGET_SEGMENT),
-      spliceBand: routeHitLayerId(latest.current.scene, ROUTE_HIT_TARGET_SPLICE_BAND),
-    };
-    if (routeHitLayers.segment !== undefined) map.on("click", routeHitLayers.segment, handleRouteSegmentClick);
-    if (routeHitLayers.spliceBand !== undefined) map.on("click", routeHitLayers.spliceBand, handleSpliceStretchClick);
     map.on("mousemove", handleMouseMove);
     map.on("load", handleLoad);
     map.on("error", handleMapError);
@@ -655,9 +677,6 @@ export default function MapView({
       map.off("styledata", collapseAttribution);
       map.off("sourcedata", collapseAttribution);
       map.off("click", handleClick);
-      if (routeHitLayers.segment !== undefined) map.off("click", routeHitLayers.segment, handleRouteSegmentClick);
-      if (routeHitLayers.spliceBand !== undefined)
-        map.off("click", routeHitLayers.spliceBand, handleSpliceStretchClick);
       map.off("mousemove", handleMouseMove);
       map.off("load", handleLoad);
       map.off("error", handleMapError);
@@ -681,23 +700,60 @@ export default function MapView({
     waypoints,
     destination,
     selectedRouteSegment,
-    pointEditingEnabled,
-    onPinPlace,
-    onWaypointRemove,
+    pointsEditable: tapMode === "points",
+    onOriginMove,
     onWaypointMove,
-    onDestinationClear,
+    onDestinationMove,
+    // 地点の意味の間はその地点を選び、走る間は何も出さず、ほかの間は呼び名と名前を小窓に出すだけ（押しただけでは消さない）。
+    onPointPress: (target, at) => {
+      if (tapMode === "ride") return;
+      if (tapMode === "points") {
+        onPointSelect(target);
+        return;
+      }
+      const index = target.role === "waypoint" ? (target.index ?? 0) : 0;
+      const name =
+        target.role === "origin"
+          ? pinNames.origin
+          : target.role === "destination"
+            ? pinNames.destination
+            : pinNames.waypoints[index];
+      const content = document.createElement("p");
+      content.textContent = `${pinMarkName(target.role, target.role === "waypoint" ? String(index + 1) : undefined)}: ${name}`;
+      openPopupAt([at.longitude, at.latitude], content);
+    },
     onRouteSegmentSelect,
   });
 
-  useRideFollow(mapRef, ride, (map) => visibleCenterOffset(map, latest.current.measureRouteFitObscuredPx));
-  useTurnMark(mapRef, turnPoint);
+  useRideFollow(mapRef, ride, here, visibleCenterOffset);
+  const turnMarkContent = useTurnMark(mapRef, turnPoint);
 
-  // 住所の検索で置いた地点へ寄せる。出発地を置いたときは印のフックの位置の更新も寄せるが、このeffectが後に走るので
-  // こちらが勝つ。
+  // 見るだけの間に押した区間の中身を、押した区間の印の上の小窓に出す。閉じると区間の選択を外す。
+  const segmentPopupAt = segmentDetail !== null ? selectedRouteSegment : null;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || segmentPopupAt === null) return;
+    const container = document.createElement("div");
+    const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "20rem", offset: SEGMENT_POPUP_OFFSET_PX })
+      .setLngLat([segmentPopupAt.longitude, segmentPopupAt.latitude])
+      .setDOMContent(container)
+      .addTo(map);
+    setSegmentPopupContainer(container);
+    const close = () => latest.current.onRouteSegmentSelect(null);
+    popup.on("close", close);
+    return () => {
+      popup.off("close", close);
+      popup.remove();
+      setSegmentPopupContainer(null);
+    };
+  }, [segmentPopupAt]);
+
+  // 住所の検索で置いた地点・取り直した現在地へ寄せる。出発地を置いたときは印のフックの位置の更新も寄せるが、このeffectが
+  // 後に走るのでこちらが勝つ。
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !focusPoint) return;
-    flyToVisible(map, focusPoint, latest.current.measureRouteFitObscuredPx);
+    flyToVisible(map, focusPoint);
   }, [focusPoint]);
 
   // 地図に載るもの（面・道路の線・評価軸・点・気象・ルート）は、1つの scene として
@@ -715,7 +771,7 @@ export default function MapView({
     const map = mapRef.current;
     if (!map) return;
 
-    fitBoundsToRoutes(map, routes, latest.current.measureRouteFitObscuredPx);
+    fitBoundsToRoutes(map, routes);
   }, [routes]);
 
   // 「地図の表示を再描画」: スタイルを取り直し、消えたレイヤーをいまの宣言から当て直す（押した人の地図だけ）。
@@ -812,19 +868,9 @@ export default function MapView({
           />,
           roadPopupContainer,
         )}
-      {spotActions !== null &&
-        pointEditingEnabled &&
-        createPortal(
-          <SpotPlaceActions
-            waypointsFull={waypointsFull}
-            onPlace={(role) => {
-              onSpotPlace(role, spotActions.spot);
-              popupRef.current?.remove();
-            }}
-          />,
-          spotActions.container,
-        )}
+      {segmentDetail !== null && segmentPopupContainer !== null && createPortal(segmentDetail, segmentPopupContainer)}
       {markerContents}
+      {turnMarkContent}
     </div>
   );
 }

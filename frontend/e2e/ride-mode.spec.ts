@@ -1,19 +1,15 @@
 import { expect, test, type BrowserContext, type Locator, type Page } from "@playwright/test";
-import { INTRO_CLOSED, installApiMocks, installMapFinder, seedStoredState } from "./fixtures";
+import { trueHeadingDeg } from "@/lib/magneticDeclination";
+import { moved } from "@/testing/movedPoint";
+import { RIDE_MIN_ZOOM, RIDE_ZOOM_MAX_OUT } from "@/features/map/MapView/rideZoom";
+
+import { INTRO_CLOSED, MOBILE_VIEWPORT, installApiMocks, installMapFinder, seedStoredState } from "./fixtures";
 
 // 走行モードで、ブラウザが届ける位置の変化が実際の地図の動き（中心・向き）まで届くこと（パターン4 観点2）。単体テストの地図は
 // 代役で、カメラを動かさない。走行モードの移り変わり（休む・戻す・止める）の判断は useRideMode.test.ts が持ち、ここでは
 // それが地図に現れるかだけを見る。位置はブラウザの位置の差し替え（`setGeolocation`）で届け、向きを持たせない（動いた向きから出る）。
 
 const START = { latitude: 35.7536, longitude: 139.7378 };
-const METERS_PER_DEGREE = 111_195;
-function moved(from: { latitude: number; longitude: number }, northM: number, eastM: number) {
-  const scale = Math.cos((from.latitude * Math.PI) / 180);
-  return {
-    latitude: from.latitude + northM / METERS_PER_DEGREE,
-    longitude: from.longitude + eastM / (METERS_PER_DEGREE * scale),
-  };
-}
 
 /** 地図が止まっていれば、その地点を地図が描く画面の位置。動いている間はnull。 */
 async function screenPointOf(page: Page, at: { latitude: number; longitude: number }) {
@@ -41,6 +37,25 @@ async function settledScreenPoint(page: Page, at: { latitude: number; longitude:
         const second = await screenPointOf(page, at);
         settled =
           first !== null && second !== null && Math.hypot(first.x - second.x, first.y - second.y) < 0.5 ? second : null;
+        return settled !== null;
+      },
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+  return settled!;
+}
+
+/** 地図が動き終わって落ち着いたときの倍率。指を離したあとの慣性と、続けて寄せる動きが終わるまで待つ。 */
+async function settledZoom(page: Page) {
+  let settled: number | null = null;
+  await expect
+    .poll(
+      async () => {
+        const read = () => page.evaluate(() => (window.__liveMap().isMoving() ? null : window.__liveMap().getZoom()));
+        const first = await read();
+        await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 500)));
+        const second = await read();
+        settled = first !== null && second !== null && Math.abs(first - second) < 1e-3 ? second : null;
         return settled !== null;
       },
       { timeout: 15_000 },
@@ -127,7 +142,7 @@ const mapBearing = (page: Page) =>
     return map.isMoving() ? NaN : (map.getBearing() + 360) % 360;
   });
 
-test("走行モードの間、地図は届いた位置を同じ所に描き続け、進む向きを上にでき、指で動かすと休み、止めると追わない", async ({
+test("走行モードの間、地図は届いた位置を同じ所に描き続け、進む向きを上にでき、指で動かすと休み、止めると追わずに北を上へ戻す", async ({
   page,
   context,
   browserName,
@@ -162,25 +177,28 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   expect(zOrder.filter(({ ride }) => !ride).length).toBeGreaterThan(0);
   expect(zOrder.filter(({ ride, z }) => !ride && z >= rideZ[0])).toEqual([]);
 
-  // スマホが東を向くと、現在地の印の扇形が東を指す（地図が北を上にしている間）。出来事はブラウザの違いによらず読める形で届ける。
+  // スマホのコンパスが東（磁北から90度）を向くと、現在地の印の扇形は、その地点の偏角だけ戻した真北の基準の方角を指す（地図が北を上に
+  // している間）。出来事はブラウザの違いによらず読める形で届ける。
   expect(await coneDirection(page)).toBeNull();
   await page.evaluate(() => {
     const event = new Event("deviceorientation");
     Object.assign(event, { alpha: 0, webkitCompassHeading: 90 });
     window.dispatchEvent(event);
   });
-  await expect.poll(() => coneDirection(page)).toBeCloseTo(90, -1);
+  await expect.poll(() => coneDirection(page)).toBeCloseTo(trueHeadingDeg(90, START), 0);
 
   // 最初の位置へ寄せ終わったら、そこに描かれた所を基準にし、東へ動いても同じ所に描かれる（地図が追った）。
   const anchor = await settledScreenPoint(page, START);
   const east = moved(START, 0, 200);
   await context.setGeolocation(east);
   await expectDrawnAt(page, east, anchor);
-  // 200m を数秒で動いた（とても速い）ので、追い始めの倍率（15）からいちばん引いた所（2段）まで引く。WebKit では見ない:
+  // 200m を数秒で動いた（とても速い）ので、追い始めの倍率からいちばん引いた所まで引く。WebKit では見ない:
   // Playwright が差し替えの位置の時刻をミリ秒で渡し、WebKit がそれを秒として受けて1000倍にする（WebCore の
   // `Geolocation.cpp` の `convertSecondsToEpochTimeStamp`）ため、2つの位置の間が1000倍長く見え、速さがほぼ0になる。
   if (browserName !== "webkit") {
-    await expect.poll(() => page.evaluate(() => window.__liveMap().getZoom()), { timeout: 10_000 }).toBeCloseTo(13, 1);
+    await expect
+      .poll(() => page.evaluate(() => window.__liveMap().getZoom()), { timeout: 10_000 })
+      .toBeCloseTo(RIDE_MIN_ZOOM - RIDE_ZOOM_MAX_OUT, 1);
   }
 
   // 進む向きを上にすると、地図は動いた向き（東）を上に回す。北を上に戻すと向きも戻る。
@@ -196,7 +214,8 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   await page.mouse.down();
   await page.mouse.move(from.x - 120, from.y + 60, { steps: 10 });
   await page.mouse.up();
-  await expect(rideButton).toHaveAttribute("title", "地図を現在地へ戻す");
+  const backToHere = page.getByRole("button", { name: "現在地へ戻る" });
+  await expect(backToHere).toBeVisible();
   // 面の色は移り変わり（transition）を持つので、落ち着くまで待って比べる。
   await expect.poll(async () => (await buttonLook(rideButton)).background).toBe(offLook.background);
   expect((await buttonLook(rideButton)).ring).not.toBe(offLook.ring);
@@ -207,19 +226,96 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   const whilePaused = (await screenPointOf(page, pausedAt))!;
   expect(Math.hypot(whilePaused.x - anchor.x, whilePaused.y - anchor.y)).toBeGreaterThan(50);
 
-  // 押すと現在地へ戻って追い直す。
-  await rideButton.click();
+  // 地図の下の「現在地へ戻る」を押すと現在地へ戻って追い直す。
+  await backToHere.click();
   await expectDrawnAt(page, pausedAt, anchor);
+  await expect(backToHere).toBeHidden();
 
-  // 止めると点が消え、次の位置が届いても地図は動かない。
+  // 東へ進んでから進む向きを上にしたまま止めると、地図を北が上へ戻し、点が消え、次の位置が届いても地図は動かない。
+  const lastRidden = moved(pausedAt, 0, 200);
+  await deliverPosition(page, context, lastRidden);
+  await page.getByRole("button", { name: /^進む向きを上にする/ }).click();
+  await expect.poll(() => mapBearing(page), { timeout: 10_000 }).toBeCloseTo(90, 0);
   await rideButton.click();
+  await page.getByRole("button", { name: "案内を終える" }).click();
   await expect(rideButton).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(() => mapBearing(page), { timeout: 10_000 }).toBeCloseTo(0, 0);
   await expect(dot).toBeHidden();
-  const afterStop = moved(pausedAt, 0, 200);
+  const afterStop = moved(lastRidden, 0, 200);
   // 止めると左のパネルが戻って地図の幅が変わるので、落ち着いた位置を基準にする。
-  const before = await settledScreenPoint(page, pausedAt);
+  const before = await settledScreenPoint(page, lastRidden);
   await deliverPosition(page, context, afterStop);
-  const after = await screenPointOf(page, pausedAt);
+  const after = await screenPointOf(page, lastRidden);
   expect(after).not.toBeNull();
   expect(Math.hypot(after!.x - before.x, after!.y - before.y)).toBeLessThan(1);
+});
+
+// 2本指でつまむ・広げる操作は、MapLibre が先に指の重心のずれを移動として受け、倍率が変わるのはそのあとになりうる。
+// 出来事の並び（移動の始まり→拡大の始まり）は実ブラウザの MapLibre でしか出ないので、ここで指ごとのタッチを送って見る
+// （パターン4 観点2）。
+test.describe("タッチ端末", () => {
+  test.use({ viewport: MOBILE_VIEWPORT, isMobile: true, hasTouch: true });
+
+  test("走行モードで追っている間に2本指でつまむと、休まずにその倍率で追い続け、つまむ最中に位置が届いても倍率を戻さず、1本指で動かすと休む", async ({
+    page,
+    context,
+    browserName,
+  }) => {
+    test.skip(browserName !== "chromium", "指ごとのタッチの列はCDP（Chromiumだけの口）でしか送れない");
+    // 位置の誤差を持たせ、その内の動きで届けて速さを0と読ませる（倍率に速さの引きを混ぜない）。
+    const at = (point: { latitude: number; longitude: number }) => ({ ...point, accuracy: 50 });
+    await installApiMocks(page);
+    await context.setGeolocation(at(START));
+    await seedStoredState(page, INTRO_CLOSED);
+    await page.addInitScript(installMapFinder);
+    await page.goto("/");
+    await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
+    await page.getByRole("button", { name: "走行モード" }).click();
+    const anchor = await settledScreenPoint(page, START);
+    const zoom = () => page.evaluate(() => window.__liveMap().getZoom());
+    const followedZoom = await zoom();
+    const backToHere = page.getByRole("button", { name: "現在地へ戻る" });
+
+    const client = await context.newCDPSession(page);
+    const touch = (type: "touchStart" | "touchMove", points: { x: number; y: number }[]) =>
+      client.send("Input.dispatchTouchEvent", { type, touchPoints: points.map((p, id) => ({ ...p, id })) });
+    const canvas = (await page.locator(".maplibregl-canvas").boundingBox())!;
+    const center = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 };
+    const fingers = (gap: number, dx: number) => [
+      { x: center.x + dx - gap / 2, y: center.y },
+      { x: center.x + dx + gap / 2, y: center.y },
+    ];
+
+    // 指の間を240pxから80pxへ縮める。先に重心だけを横へ動かし、移動として始まらせる
+    // （2本の指を揃えて縦に動かすと、地図を傾ける操作になる）。
+    const [fromGap, toGap, steps] = [240, 80, 10];
+    const gapAt = (step: number) => fromGap + ((toGap - fromGap) * step) / steps;
+    await touch("touchStart", fingers(fromGap, 0));
+    await touch("touchMove", fingers(fromGap, 6));
+    for (let step = 1; step <= steps / 2; step += 1) await touch("touchMove", fingers(gapAt(step), 6));
+    // つまむ最中に届いた位置で、倍率を元へ戻さず、つまむ操作も止めない。
+    const duringPinch = moved(START, 0, 10);
+    await deliverPosition(page, context, at(duringPinch));
+    for (let step = steps / 2 + 1; step <= steps; step += 1) await touch("touchMove", fingers(gapAt(step), 6));
+    await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+
+    // 指を離したあとの慣性で倍率がどれだけ進むかは指の動きの速さで変わるので、落ち着いた倍率を読む。つまむ前の倍率へ
+    // 戻していれば、つまんだ分（log2(3) 段から、拡大・縮小と見なすまでの遊びを引いた分）だけ下がっていない。
+    const pinchedZoom = await settledZoom(page);
+    expect(followedZoom - pinchedZoom).toBeGreaterThan(1);
+    // 休まず、つまむ最中に届いた位置へ寄せ直し、次の位置もつまんだ倍率のまま追う。
+    await expectDrawnAt(page, duringPinch, anchor);
+    await expect(backToHere).toBeHidden();
+    const next = moved(START, 0, 20);
+    await deliverPosition(page, context, at(next));
+    await expectDrawnAt(page, next, anchor);
+    expect(await zoom()).toBeCloseTo(pinchedZoom, 2);
+    await expect(backToHere).toBeHidden();
+
+    // 1本指で動かすと休む。
+    await touch("touchStart", [center]);
+    for (let step = 1; step <= 10; step += 1) await touch("touchMove", [{ x: center.x - step * 10, y: center.y }]);
+    await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await expect(backToHere).toBeVisible();
+  });
 });

@@ -43,7 +43,8 @@ DYNAMIC = next(iter(axis_definitions.REQUEST_DYNAMIC_MATERIAL_IDS))
 
 
 def material(
-    material_id: str, label: str, dtype: material_catalog.MaterialDType, *, additive: bool = False
+    material_id: str, label: str, dtype: material_catalog.MaterialDType, *, additive: bool = False,
+    source: material_catalog.MaterialSource = "db",
 ) -> material_catalog.MaterialSpec:
     return material_catalog.MaterialSpec(
         material_id=material_id,
@@ -52,6 +53,8 @@ def material(
         dtype=dtype,
         additive=additive,
         tile_property=None,
+        source=source,
+        value_sql=f"w.{material_id}" if source == "db" else None,
         coverage=material_catalog.CoverageExcluded(reason="テスト用", missing_semantics="unknown"),
     )
 
@@ -65,7 +68,7 @@ def catalog(monkeypatch):
         "count_b": material("count_b", "回数B", "numeric", additive=True),
         "flag": material("flag", "旗", "boolean"),
         "cat": material("cat", "種類", "categorical"),
-        DYNAMIC: material(DYNAMIC, "時刻の材料", "numeric"),
+        DYNAMIC: material(DYNAMIC, "時刻の材料", "numeric", source="request"),
     }
     monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", specs)
     return specs

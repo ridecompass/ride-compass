@@ -189,7 +189,6 @@ async def derive(conn: asyncpg.Connection) -> None:
         await conn.execute(_EDGE_ACCIDENTS, ACCIDENT_FATAL_WEIGHT, degrees_covering_m(ACCIDENT_MATCH_MAX_DISTANCE_M),
                            ACCIDENT_MATCH_MAX_DISTANCE_M)
         await conn.execute(_WAY_FROM_EDGES)
-        await conn.execute("ANALYZE edge_counts, way_counts")
 
     logger.info("数の値を埋めた: 停止要因 %d点（まとまり %d・区間に乗る点 %d） / %.1f秒",
                 stops["points"], stops["clusters"], stops["on_network"],

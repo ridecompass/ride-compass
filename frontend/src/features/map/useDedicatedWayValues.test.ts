@@ -21,8 +21,13 @@ const { dedicatedAxes } = mapCatalogOf([
   dedicatedEntry("static", [1]),
 ]);
 const [, STATIC] = dedicatedAxes;
+/** 条件の一部だけを要る軸（条件の名前を取り違えると、載せる入力が入れ替わる）。 */
+const { dedicatedAxes: PARTIAL_AXES } = mapCatalogOf([
+  dedicatedEntry("time_only", [1], { dynamic_way_value_conditions: ["at"] }),
+  dedicatedEntry("bearing_speed", [1], { dynamic_way_value_conditions: ["bearing_deg", "speed_kmh"] }),
+]);
 // z14で横2枚×縦1枚のタイルにまたがる範囲
-const VIEWPORT: MapViewport = { west: 139.76, south: 35.68, east: 139.77, north: 35.685, zoom: 14 };
+const VIEWPORT: MapViewport = { west: 139.76, south: 35.68, east: 139.77, north: 35.685, zoom: 14, bearing: 0 };
 const AT = new Date("2026-09-24T00:00:00Z");
 const SPEED_KMH = 20;
 
@@ -84,12 +89,15 @@ describe("useDedicatedWayValues（専用配信の値）", () => {
   });
 
   it("時刻・向き・想定速度は、要ると宣言した軸のリクエストにだけ載せる", async () => {
-    const { result } = render({ axes: dedicatedAxes, viewport: VIEWPORT, bearing: 90, at: AT, speed: 22 });
+    const axes = [...dedicatedAxes, ...PARTIAL_AXES];
+    const { result } = render({ axes, viewport: VIEWPORT, bearing: 90, at: AT, speed: 22 });
     await fetched(result);
     const conditionsOf = (axisId: string) =>
       new Set(wayKeys(result.current.get(axisId)?.values).map((key) => key.split("@")[2]));
     expect(conditionsOf("timed")).toEqual(new Set([`90|${AT.toISOString()}|22`]));
     expect(conditionsOf("static")).toEqual(new Set(["-|-|-"]));
+    expect(conditionsOf("time_only")).toEqual(new Set([`-|${AT.toISOString()}|-`]));
+    expect(conditionsOf("bearing_speed")).toEqual(new Set(["90|-|22"]));
   });
 
   it("入力が変わった軸だけを取り直し、取り直す間は前の値を残して読み込み中にする", async () => {

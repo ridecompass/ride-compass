@@ -13,11 +13,13 @@ import { createRecordingMap, type StyleLayer } from "@/testing/mapTrace/recordin
 import { catalogEntry, dedicatedEntry } from "@/testing/catalogAxes";
 import { dedicatedWayValueAxesFromCatalogAxes } from "@/lib/mapDisplay/axisLayers";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
-import { POINT_LAYERS, POINT_TILE_SOURCES, pointAxisKey } from "@/features/map/scene/groups/points";
-import { ROAD_LINE_SOURCE_ID, ROAD_TRACKS } from "@/features/map/scene/groups/roadLines";
+import { POINT_TILE_SOURCES, pointAxisKey } from "@/features/map/scene/groups/points";
+import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
+import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
+import { ROAD_TRACKS } from "@/lib/mapDisplay/roadTracks";
 import { pointLegendAxes, roadLegendAxes } from "@/features/map/scene/legends";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
-import { dedicatedAxisBands } from "@/lib/mapDisplay/valueScale";
+import { valueBands } from "@/lib/mapDisplay/valueScale";
 import { applyScene, sceneInputsFrom } from "@/features/map/scene/applyToMap";
 import { sceneState, type SceneState, type SceneStateOverrides } from "@/testing/sceneState";
 import { buildMapScene } from "@/features/map/scene/buildScene";
@@ -236,16 +238,6 @@ describe("状態を地図へ伝えた結果", () => {
       expect(opacityWith(true)).toBe(mapDisplay.road.underlayOpacity);
       expect(opacityWith(false)).not.toBe(mapDisplay.road.underlayOpacity);
     });
-
-    it("密度の軸は、塗っている軸でも線を出さない", () => {
-      const dedicatedAxes = dedicatedWayValueAxesFromCatalogAxes([
-        dedicatedEntry("density", [50], { density_terms: [{ material_id: "m", label: "m", weight: 1 }] }),
-      ]);
-      const { map, handle } = createRecordingMap();
-      rebuild(map, sceneState({ catalog: { dedicatedAxes }, look: { paintedAxisId: "density" } }));
-
-      expect(handle.layer(roadLayerId("density"))?.visibility).toBe("none");
-    });
   });
 
   describe("ルート", () => {
@@ -369,7 +361,7 @@ describe("レイヤーを横断する要求", () => {
           ...firstKeyHidden(roadLegendAxes()),
           ...firstKeyHidden(pointLegendAxes()),
           ...Object.fromEntries(
-            DEDICATED_AXES.map((axis) => [axis.axisId, firstBandAndNoData(dedicatedAxisBands(axis.display))]),
+            DEDICATED_AXES.map((axis) => [axis.axisId, firstBandAndNoData(valueBands(axis.display))]),
           ),
         },
         dynamicWeather: everyWeatherGroupState() as never,

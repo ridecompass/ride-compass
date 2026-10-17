@@ -7,7 +7,7 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 
 import weatherScales from "@/types/generated/weather-scales.json";
 
-import { LANDCOVER_PAINTED_CLASSES } from "./landcoverClasses";
+import { LANDCOVER_PAINTED_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import {
   buildMapLayers,
   deriveFetchLayerStatus,

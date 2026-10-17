@@ -23,7 +23,7 @@ class LoopTurnaround:
 @dataclass
 class TracedLoop:
     """`trace_loop_from_turnaround`/`select_via_nodes`等、探索が確定した1本の経路。距離フィルタに必要な情報と、
-    `evaluate_loops`が`RouteDraft`を組み立てるための経路（探索用グラフの区間の番号列。
+    `evaluate_loops`が`EvaluatedRoute`を組み立てるための経路（探索用グラフの区間の番号列。
     戦略層は中身を読まない）を運ぶ。
     """
 
@@ -36,6 +36,9 @@ class TracedLoop:
     # コスト配列で探索されたか。区間表示が探索と同じ配列から値を読むために使う。既定値を持たせない——省略できると、
     # 帰りまで往路の時刻で評価した区間表示が黙って出る（探索と表示が別の配列を読む）。
     leg_of_edge: list[int]
+    # 置いた経由地を通る所（経路の区間の列での位置。その経由地より前の区間の数）。置いた順に並ぶ。既定値を持たせない——
+    # 省略できると、経由地を通る経路が経由地の道のりを持たないまま黙って出る。
+    waypoint_offsets: list[int]
     # 逆に回った経路も作って比べてよいか。出発地へ戻り、逆に回っても置いた経由地を置いた順に通るとき（経由地が
     # 1つ以下）だけ真（`road_graph_engine.py: _build_best_candidate`）。置いた順は利用者の意図なので崩さない。
     reversible: bool

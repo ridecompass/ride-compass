@@ -84,7 +84,9 @@ async def _read(tmp_path: Path, monkeypatch) -> dict[str, tuple[shapely.Geometry
         if spec.name == "osm_way" else spec
         for spec in profile.sources)
     profile = dataclasses.replace(profile, sources=sources)
-    records = [r async for r in osm_pbf.read_osm_nodes(profile.source("osm_node"), profile, {})]
+    node = profile.source("osm_node")
+    records = [r async for r in osm_pbf.read_osm_nodes(
+        node, profile, osm_pbf.osm_node_inputs(node, profile), {})]
     keys = [r.natural_key for r in records]
     assert len(keys) == len(set(keys))
     return {r.natural_key: (shapely.from_wkb(r.geom_wkb), r.attrs) for r in records}

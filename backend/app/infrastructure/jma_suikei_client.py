@@ -23,7 +23,7 @@ from app.domain.region import tile_position
 from app.domain.weather import SuikeiWeather
 from app.infrastructure.debug_log import log_throttled_warning
 from app.infrastructure.jma_tile_client import JmaTileClient, get_target_times
-from app.infrastructure.jma_tile_redis_cache import EmptyTile
+from app.infrastructure.http_client import UpstreamNotFound
 
 #: 時刻一覧に載る天気の要素id。
 _WEATHER_ELEMENT = "wthr"
@@ -94,7 +94,7 @@ async def fetch_weather(client: JmaTileClient, latitude: float, longitude: float
     pixel = _pixel(latitude, longitude)
     path = _tile_path(frames[0], pixel)
     raw = await client.get(path)
-    if raw is None or isinstance(raw, EmptyTile):
+    if raw is None or isinstance(raw, UpstreamNotFound):
         return None
     content, _content_type = raw
     try:

@@ -55,11 +55,6 @@ ROUTE_CASES = {
     ("POST", AXIS + "/{axis_id}/unpublish"): (AXIS + "/a/unpublish", None, 503),
     ("POST", AXIS + "/preview-distribution"): (AXIS + "/preview-distribution", {"shape": SHAPE}, 503),
     ("POST", AXIS + "/preview-scores"): (AXIS + "/preview-scores", {"shape": SHAPE, "xs": [0.5]}, 200),
-    ("POST", AXIS + "/preview-display-thresholds"): (
-        AXIS + "/preview-display-thresholds",
-        {"axis_id": "a", "shape": SHAPE, "thresholds": [1.0]},
-        200,
-    ),
     ("GET", "/api/admin/tuning"): ("/api/admin/tuning", None, 503),
     ("PUT", "/api/admin/tuning/{param_id}"): (f"/api/admin/tuning/{TUNING_PARAMETERS[0].id}", {"value": None}, 503),
     ("GET", "/api/admin/material-catalog/{material_id}/distribution"): (

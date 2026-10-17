@@ -3,13 +3,7 @@
 import { useRef, useState } from "react";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
-import {
-  ENABLED_AXIS_WEIGHT,
-  MAX_AXIS_SHARE,
-  WEIGHT_STEP,
-  clampBoundaryDrag,
-  totalWeight,
-} from "@/features/route/routeWeightShare";
+import { ENABLED_AXIS_WEIGHT, clampBoundaryDrag, totalWeight, weightStep } from "@/features/route/routeWeightShare";
 import { axisCatalogFetchFailure, retryAxisCatalogFetch, useAxisCatalog } from "@/hooks/useAxisCatalog";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import type { RoutePreferenceWeights } from "@/types/route";
@@ -130,12 +124,11 @@ export default function RouteSettingsPanel({
     axisIdB: string,
     weightB: number,
   ) {
-    let rawDelta = 0;
-    if (e.key === "ArrowLeft" || e.key === "ArrowDown") rawDelta = -WEIGHT_STEP;
-    else if (e.key === "ArrowRight" || e.key === "ArrowUp") rawDelta = WEIGHT_STEP;
-    else return;
+    const direction =
+      e.key === "ArrowLeft" || e.key === "ArrowDown" ? -1 : e.key === "ArrowRight" || e.key === "ArrowUp" ? 1 : 0;
+    if (direction === 0) return;
     e.preventDefault();
-    const next = clampBoundaryDrag(weightA, weightB, rawDelta, total);
+    const next = clampBoundaryDrag(weightA, weightB, direction * weightStep(total), total);
     if (next.weightA === weightA && next.weightB === weightB) return;
     handlePairWeightChange(axisIdA, next.weightA, axisIdB, next.weightB);
   }
@@ -242,8 +235,7 @@ export default function RouteSettingsPanel({
           })}
         </div>
         <InfoPopover triggerAriaLabel="重みの配分の説明">
-          帯の境目を動かして、評価軸ごとの重みの割合を変えます。1つの評価軸に置ける重みは
-          {Math.round(MAX_AXIS_SHARE * 100)}%までで、境目はそこで止まります。
+          帯の境目を動かして、評価軸ごとの重みの割合を変えます。境目は、どの評価軸も重みが0（無効）になる手前で止まります。
         </InfoPopover>
       </div>
 

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.geo import LatLon
 from app.domain.place_search import PLACE_PREDICTION_LIMIT, PlaceCandidate
 from app.domain.region import BoundingBox
-from app.domain.stop_place import normalized_sql, queried_group
+from app.domain.stop_place import match_rank_sql, normalized_sql, queried_group
 
 #: 子午線の曲率半径の下限（m）。WGS84 の赤道での値 a(1−e²)（約 6,335,439m）より小さく丸め、緯度の帯を計算の誤差の分だけ広げる。
 _MERIDIAN_RADIUS_LOWER_M = 6_335_000
@@ -34,9 +34,7 @@ _SEARCH_SQL = text(f"""
     ),
     hit AS MATERIALIZED (
         SELECT s.name, s.area, s.geom, s.source, s.source_key,
-               CASE WHEN s.place_group = CAST(:place_group AS varchar) THEN 0
-                    WHEN s.search_name = (SELECT name FROM q) THEN 1
-                    WHEN starts_with(s.search_name, (SELECT name FROM q)) THEN 2 ELSE 3 END AS rank
+               {match_rank_sql("s.place_group", "CAST(:place_group AS varchar)", "s.search_name", "(SELECT name FROM q)")} AS rank
         FROM stop_places s
         WHERE (s.place_group = CAST(:place_group AS varchar)
                OR ((SELECT name FROM q) <> '' AND strpos(s.search_name, (SELECT name FROM q)) > 0))

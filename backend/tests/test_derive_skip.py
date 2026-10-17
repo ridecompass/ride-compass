@@ -1,7 +1,7 @@
 """派生の作り直し（`batch/derive_cli.py`）が、入力（読むソースの取込・前の段・較正値・書く表の列・段のコード）が前回と
 同じ段を流さず、流す段の表だけを作業用のスキーマに作ることと、道路網の配列を入力が前回と同じなら作らずに使い回すことと、
 区間ごとに写す段が前の段の外の入力が前回と同じとき形の同じ区間を数えないことと、段の宣言（`STAGES`）が
-段の読むもの・書くものを漏らしていないことと、配列の入力が配列の読む表を漏らしていないこと。
+段の読むもの・書くものを漏らしていないことと、段の書いた表が統計を持つことと、配列の入力が配列の読む表を漏らしていないこと。
 
 流した段は段の関数が呼ばれたかで見る。飛ばした段のある作り直しの表の値は、同じ入力で全部の段を流した作り直しと比べる。
 どの生データにも行があり、どの段も値を書く小さな世界（道2本・信号・事故・標高と土地被覆のタイル・住所・小地域の境界・
@@ -34,7 +34,7 @@ from app.infrastructure import derived_data_meta, road_network_store
 from app.infrastructure.derived_data_freshness import declared_columns, derived_tables
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.source_models import PARTY_TYPE_CODES, Source
-from tests.conftest import empty_ingested_tables, postgis_database_url, raw_connection
+from tests.conftest import APP_TABLES_SQL, empty_ingested_tables, postgis_database_url, raw_connection
 from tests.source_ingest import (
     abr_block_record,
     abr_city_record,
@@ -409,6 +409,15 @@ async def test_each_stage_declares_what_it_reads_and_writes(world, monkeypatch):
     assert missing == {}
 
 
+@pytest.mark.parametrize("table", [table for stage in derive_cli.STAGES for table in stage.tables])
+async def test_every_table_a_stage_writes_has_statistics_after_the_rebuild(world, table):
+    """段が書いた表は、作り直しの後に統計（`pg_stats`）を持つ——無いまま配信と後ろの段が読むと、実行計画が桁で外れる。
+    表は段の宣言から取るので、足した段の表も宣言するだけでここに入る。統計を書くのは`ANALYZE`だけで、表を作り直すたびに
+    消える（作業用のスキーマに新しく作る）。"""
+    assert await world.fetchval(
+        "SELECT count(*) > 0 FROM pg_stats WHERE schemaname = 'public' AND tablename = $1", table)
+
+
 async def test_the_network_inputs_refuse_a_table_no_stage_writes():
     """配列がどの段も書かず生データでもない表を読む形にすると、配列の入力を導くところで断る——その表が変わっても入力の指紋が
     変わらず、前回の配列を使い回してしまう。"""
@@ -416,9 +425,10 @@ async def test_the_network_inputs_refuse_a_table_no_stage_writes():
         derive_cli.network_inputs(["road_edges", "source_features_osm_way", "tuning_overrides"])
 
 
-#: この接続のトランザクションで表を読んだ数（`_TOUCHED_SQL`と同じ統計）。
+#: この接続のトランザクションでアプリ側の表を読んだ数（`_TOUCHED_SQL`と同じ統計）。拡張が持ち込んだ表は外す——
+#: `::geography`は SRID の定義を`spatial_ref_sys`から実行時に引くが、計画には出ず、行は拡張が決めて段も取込も変えない。
 _SCANS_SQL = text("SELECT relname, coalesce(seq_scan, 0) + coalesce(idx_scan, 0) AS scans"
-                  " FROM pg_stat_xact_user_tables WHERE schemaname = 'public'")
+                  f" FROM pg_stat_xact_user_tables WHERE schemaname = 'public' AND relname IN ({APP_TABLES_SQL})")
 
 
 async def _scans(session: AsyncSession) -> dict[str, int]:

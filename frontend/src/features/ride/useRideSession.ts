@@ -10,13 +10,18 @@ import { RIDE_SESSION_STORAGE_KEY, readRideSession, writeRideSession, type RideS
 interface UseRideSessionInputs {
   /** 選んでいるルート（無ければnull）。 */
   route: RouteCandidate | null;
+  /** 走行モードの間か。走っていなければ保存を消す（読み込み直しても走っていない間の候補を戻さない）。 */
   riding: boolean;
+  /** 前に当てたルートの上の距離（km。まだ当てていなければnull）。 */
+  km: number | null;
+  /** 休んでいるか。 */
+  resting: boolean;
   /** 開いたときに期限の内の保存があれば、1度だけ呼ぶ。 */
   onRestore: (session: RideSession) => void;
 }
 
-/** 選んだルートと走行モードの入切を端末に一時保存し、読み込み直したときに復元を知らせる。 */
-export function useRideSession({ route, riding, onRestore }: UseRideSessionInputs): void {
+/** 走行モードの間、選んだルートと前に当てたルートの上の距離と休んでいるかを端末に一時保存し、読み込み直したときに復元を知らせる。 */
+export function useRideSession({ route, riding, km, resting, onRestore }: UseRideSessionInputs): void {
   const latestOnRestore = useRef(onRestore);
   useEffect(() => {
     latestOnRestore.current = onRestore;
@@ -33,6 +38,9 @@ export function useRideSession({ route, riding, onRestore }: UseRideSessionInput
         return;
       }
     }
-    writeStoredValue(RIDE_SESSION_STORAGE_KEY, route === null ? "" : writeRideSession({ route, riding }, Date.now()));
-  }, [route, riding]);
+    writeStoredValue(
+      RIDE_SESSION_STORAGE_KEY,
+      riding && route !== null ? writeRideSession({ route, km, resting }, Date.now()) : "",
+    );
+  }, [route, riding, km, resting]);
 }

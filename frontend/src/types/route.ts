@@ -10,9 +10,11 @@ type GetJson<P extends keyof paths> = paths[P] extends {
 
 export type Coordinates = Schemas["Coordinates"];
 
-/** 地図をタップして置ける地点の役割。どれか1つだけが「置ける状態」になり、その間だけ
- * 地図のタップがピンの配置として扱われる。 */
+/** 地点（出発地・経由地・目的地）の役割。 */
 export type PinRole = "origin" | "waypoint" | "destination";
+
+/** 選んでいる地点。地図のタップはこの地点を置く。経由地の`index`がnullなのは、新しく足す経由地。 */
+export type PointTarget = { role: "origin" } | { role: "destination" } | { role: "waypoint"; index: number | null };
 
 /** 位置情報の出所。"manual"は地図のタップで出発地点を置いたもの。 */
 export type LocationSource = "geolocation" | "default" | "manual";
@@ -21,6 +23,7 @@ export type RouteSegmentDetail = Schemas["RouteSegmentDetail"];
 
 export type RouteCandidate = Schemas["RouteCandidate"];
 export type RouteTurn = Schemas["RouteTurn"];
+export type RoutePoint = Schemas["RoutePoint"];
 /** 住所の検索で当たった地点の候補。 */
 export type PlaceCandidate = Schemas["PlaceCandidate"];
 export type OverallDifficulty = Schemas["OverallDifficulty"];
@@ -39,6 +42,7 @@ export type RouteGenerateJobStatusResponse = GetJson<"/api/routes/generate/{job_
 export type RoutePreferenceWeights = Schemas["RoutePreferenceWeights"];
 // 0次ハードフィルタの個別のON/OFFの上書き。
 export type HardFilterOverride = Schemas["HardFilterOverride"];
+export type RoadAvoidanceOverride = Schemas["RoadAvoidanceOverride"];
 
 // 実際に適用された条件のエコー。
 export type GenerationConditions = Schemas["GenerationConditions"];

@@ -34,9 +34,7 @@ function axis(overrides: Partial<AxisDefinitionResponse> = {}): AxisDefinitionRe
     default_weight: 0.25,
     is_published: false,
     time_scope: "always",
-    dedicated_way_value_layer: false,
     shape: { kind: "breakpoint_linear", terms: [], preprocess: "identity", breakpoints: [] },
-    display: { kind: "none", tile_inputs: [], thresholds: [] },
     ...overrides,
   };
 }
@@ -94,14 +92,11 @@ let catalogAxes: AxisCatalogEntry[] = [];
 beforeEach(() => {
   writes = serveAxisDefinitions([DRAFT, PUBLISHED, PUBLISHED_2]);
   catalogAxes = [];
-  // フォームの点数の節が描くと同時に取る分布・点数と、地図の段の判定（段にならない値なし）。
+  // フォームの点数の節が描くと同時に取る分布・点数。
   onSameOrigin("POST", `${DEFINITIONS}/preview-distribution`, () =>
     Response.json({ sample_ways: 1, total_km: 1, quantiles: {}, bins: [[0, 2, 1]] }),
   );
   onSameOrigin("POST", `${DEFINITIONS}/preview-scores`, () => Response.json({ scores: [0], material_points: [] }));
-  onSameOrigin("POST", `${DEFINITIONS}/preview-display-thresholds`, () =>
-    Response.json({ dropped_on_map: [], bands_on_map: [0, 1] }),
-  );
 });
 
 /** 描いて、既定の一覧が届くまで待つ（`loaded: false`なら待たない。一覧を差し替えたテスト用）。 */
@@ -317,21 +312,30 @@ describe("公開済みの軸を「調整する」", () => {
     await waitFor(() => expect(screen.queryByText(/下書きへ戻したまま編集を終えました/)).not.toBeInTheDocument());
   });
 
-  it("下書きへ戻す間に別の軸の編集を開いたら、そのフォームを替えず、下書きのまま残ったことを知らせる", async () => {
-    const held = heldReplies();
-    onSameOrigin("POST", UNPUBLISH, held.reply);
-    const user = await renderStudio();
-    await adjust(user);
-    await user.click(screen.getByRole("tab", { name: /下書き/ }));
-    await user.click(within(rowOf("下書きの軸")).getByRole("button", { name: "編集" }));
-    await user.type(labelField(), "（打ちかけ）");
-    await held.answer(0, Response.json({ ...PUBLISHED, is_published: false }));
+  it.each([
+    ["別の軸の編集", "編集", "軸を編集: 下書きの軸", "下書きの軸"],
+    ["複製", "複製して新規作成", "「下書きの軸」を複製して新しい軸を作る", "下書きの軸"],
+    ["新規", "+ 新しい軸を作る", "新しい軸を作る", ""],
+  ])(
+    "下書きへ戻す間に%sのフォームを開いたら、そのフォームだけを開いたまま替えず、下書きのまま残ったことを知らせる",
+    async (_form, button, title, label) => {
+      const held = heldReplies();
+      onSameOrigin("POST", UNPUBLISH, held.reply);
+      const user = await renderStudio();
+      await adjust(user);
+      await user.click(screen.getByRole("tab", { name: /下書き/ }));
+      const opener = button.startsWith("+") ? screen : within(rowOf("下書きの軸"));
+      await user.click(opener.getByRole("button", { name: button }));
+      await user.type(labelField(), "（打ちかけ）");
+      await held.answer(0, Response.json({ ...PUBLISHED, is_published: false }));
 
-    expect(await screen.findByText(/下書きへ戻したまま編集を終えました/)).toBeInTheDocument();
-    const dialog = screen.getByRole("dialog", { name: "軸を編集: 下書きの軸" });
-    expect(labelField()).toHaveValue("下書きの軸（打ちかけ）");
-    expect(within(dialog).queryByText(REPUBLISH_NOTE)).not.toBeInTheDocument();
-  });
+      expect(await screen.findByText(/下書きへ戻したまま編集を終えました/)).toBeInTheDocument();
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
+      const dialog = screen.getByRole("dialog", { name: title });
+      expect(labelField()).toHaveValue(`${label}（打ちかけ）`);
+      expect(within(dialog).queryByText(REPUBLISH_NOTE)).not.toBeInTheDocument();
+    },
+  );
 
   it("公開へ戻す保存を待つ間に閉じたら、下書きのまま残ったと知らせ、保存が済むと知らせを外す", async () => {
     const held = heldReplies();

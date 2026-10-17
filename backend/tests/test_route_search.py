@@ -15,13 +15,13 @@
 - 起点・終点の状態の引き方（CSR／遷移構造からの索引）→ 周回・目的地の経路が起点に戻る・目的地へ着くことで
   `test_route_generation_behavior.py`が通す。
 - 標高属性の逆向き（`ElevationAttribute.reversed_as`）→ `test_attributes.py`。候補の難易度の距離加重平均
-  （`distance_weighted_difficulty`）→ `test_difficulty.py`。
+  （`domain/difficulty.py: weighted_mean_by_distance`）→ `test_difficulty.py`。
 - レグごとのコスト配列の合成（`domain/leg_costs.py`）→ `test_leg_costs.py`。
 - 探索カーネル（`domain/routing.py`）・評価軸（`domain/evaluation.py`）・走行モデル
   （`domain/cycling_speed.py`）・風（`domain/wind.py`）・0次フィルタ（`domain/hard_filters.py`）
   → それぞれの持ち主のテストが持つ。
 
-このファイルが組み立てて渡し、読むデータ型（探索構造・`RouteDraft`等）は本物で作る——代役にしても
+このファイルが組み立てて渡し、読むデータ型（探索構造・`EvaluatedRoute`等）は本物で作る——代役にしても
 何も切り離せず、本物が変わったときに黙ってずれるだけになる。
 """
 
@@ -32,7 +32,7 @@ import pytest
 from app.domain.attributes import ElevationAttribute
 from app.domain.graph import LeanEdge
 from app.domain.route import (
-    RouteDraft,
+    EvaluatedRoute,
     RouteSegmentDetail,
     concat_edge_geometries,
     reverse_elevation_by_edge,
@@ -66,8 +66,8 @@ def lean_edge(edge_id, from_node_id="n0", to_node_id="n1", *, distance_m=100.0, 
 
 
 def elevation(edge_id, **fields):
-    """テストが名指さない欄は、獲得・喪失標高は0m、勾配は値が取れなかった（None）として埋める。"""
-    ends = {"elevation_gain_m": 0.0, "elevation_loss_m": 0.0}
+    """テストが名指さない欄は、端の標高と獲得・喪失標高は0m、勾配は値が取れなかった（None）として埋める。"""
+    ends = {"start_elevation_m": 0.0, "end_elevation_m": 0.0, "elevation_gain_m": 0.0, "elevation_loss_m": 0.0}
     grades = dict.fromkeys(ElevationAttribute.model_fields.keys() - {"edge_id"} - ends.keys())
     return ElevationAttribute(edge_id=edge_id, **{**ends, **grades, **fields})
 
@@ -87,13 +87,19 @@ def turn_tree(state_count, *, node_cost, node_length_m, node_seconds, node_best_
 def segment_detail(difficulty, distance_km):
     return RouteSegmentDetail(
         start_latitude=35.0, start_longitude=139.0, end_latitude=35.0, end_longitude=139.0,
-        cumulative_distance_km=0.0, distance_km=distance_km, difficulty=difficulty,
+        cumulative_distance_km=0.0, distance_km=distance_km, elevations=[],
+        road_classes={}, difficulty=difficulty,
     )
 
 
 def route_candidate(name, segments=()):
     """`name`は候補を見分けるためだけの名前。"""
-    return RouteDraft(direction_label=name, distance_km=1.0, geometry={}, segments=list(segments))
+    return EvaluatedRoute(
+        direction_label=name, distance_km=1.0, geometry={}, elevation_gain_m=None, segments=list(segments),
+        estimated_duration_seconds=None, wind_unavailable=False, missing_travel_data_share=None, axis_raw_values={},
+        material_category_shares={}, edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[], points=[],
+        waypoint_distances_km=[],
+    )
 
 
 # --------------------------------------------------------------------------------------

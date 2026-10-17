@@ -171,7 +171,7 @@
     "unit": "%",
     "reference_points": [],
     "value_labels": null,
-    "tile_property": "built_pct"
+    "tile_property": null
   },
   {
     "material_id": "trees_percent",
@@ -182,7 +182,7 @@
     "unit": "%",
     "reference_points": [],
     "value_labels": null,
-    "tile_property": "trees_pct"
+    "tile_property": null
   },
   {
     "material_id": "crops_percent",
@@ -193,7 +193,7 @@
     "unit": "%",
     "reference_points": [],
     "value_labels": null,
-    "tile_property": "crops_pct"
+    "tile_property": null
   },
   {
     "material_id": "rangeland_percent",
@@ -204,7 +204,7 @@
     "unit": "%",
     "reference_points": [],
     "value_labels": null,
-    "tile_property": "rangeland_pct"
+    "tile_property": null
   },
   {
     "material_id": "water_percent",
@@ -215,7 +215,7 @@
     "unit": "%",
     "reference_points": [],
     "value_labels": null,
-    "tile_property": "water_pct"
+    "tile_property": null
   },
   {
     "material_id": "flooded_veg_percent",
@@ -226,7 +226,7 @@
     "unit": "%",
     "reference_points": [],
     "value_labels": null,
-    "tile_property": "flooded_veg_pct"
+    "tile_property": null
   },
   {
     "material_id": "bare_percent",
@@ -237,7 +237,7 @@
     "unit": "%",
     "reference_points": [],
     "value_labels": null,
-    "tile_property": "bare_pct"
+    "tile_property": null
   },
   {
     "material_id": "snow_ice_percent",
@@ -248,7 +248,7 @@
     "unit": "%",
     "reference_points": [],
     "value_labels": null,
-    "tile_property": "snow_ice_pct"
+    "tile_property": null
   },
   {
     "material_id": "intersection_count_per_km",
@@ -272,7 +272,7 @@
       }
     ],
     "value_labels": null,
-    "tile_property": "intersection_per_km"
+    "tile_property": null
   },
   {
     "material_id": "accident_count_per_km_year",
@@ -296,7 +296,7 @@
       }
     ],
     "value_labels": null,
-    "tile_property": "accident_per_km"
+    "tile_property": null
   },
   {
     "material_id": "lit",
@@ -307,13 +307,13 @@
     "unit": "",
     "reference_points": [],
     "value_labels": null,
-    "tile_property": "lit"
+    "tile_property": null
   },
   {
     "material_id": "has_tunnel",
     "label": "トンネル - has_tunnel",
     "name": "トンネル",
-    "description": "OSMのトンネルタグが地中を通るもの(tunnel=yes・覆道)に該当する区間はtrue。",
+    "description": "OSMのトンネルタグが地中を通るもの(tunnel=yes・avalanche_protector)に該当する区間はtrue。",
     "dtype": "boolean",
     "unit": "",
     "reference_points": [],
@@ -324,7 +324,7 @@
     "material_id": "bridge",
     "label": "橋・高架 - bridge",
     "name": "橋・高架",
-    "description": "OSMの橋・高架タグが地面から浮いたもの(bridge=yes・高架橋等)に該当する区間はtrue。",
+    "description": "OSMの橋・高架タグが地面から浮いたもの(bridge=yes・viaduct・cantilever・covered・suspension_bridge・boardwalk)に該当する区間はtrue。",
     "dtype": "boolean",
     "unit": "",
     "reference_points": [],
@@ -340,13 +340,13 @@
     "unit": "",
     "reference_points": [],
     "value_labels": null,
-    "tile_property": "motor_vehicle_no"
+    "tile_property": null
   },
   {
     "material_id": "oneway",
     "label": "一方通行 - oneway",
     "name": "一方通行",
-    "description": "OSMのタグから判定した一方通行の区間かどうか。上下線が分かれた道の片側（逆方向が隣を並走する）は一方通行に数えない。",
+    "description": "OSMのタグから判定した一方通行の区間かどうか。上下線が分かれているだけの道[逆向きの一方通行が15m以内、同じ路線番号・名前なら40m以内を並走する道]の片側は一方通行に数えない。",
     "dtype": "boolean",
     "unit": "",
     "reference_points": [],
@@ -379,7 +379,7 @@
       }
     ],
     "value_labels": null,
-    "tile_property": "maxspeed_kmh"
+    "tile_property": null
   },
   {
     "material_id": "lanes_count",
@@ -403,7 +403,7 @@
       }
     ],
     "value_labels": null,
-    "tile_property": "lanes_count"
+    "tile_property": null
   },
   {
     "material_id": "highway",
@@ -416,8 +416,8 @@
     "value_labels": {
       "motorway": "高速道路",
       "motorway_link": "高速道路の連絡路",
-      "trunk": "幹線道路",
-      "trunk_link": "幹線道路の連絡路",
+      "trunk": "国道",
+      "trunk_link": "国道の連絡路",
       "primary": "主要幹線道路",
       "primary_link": "主要幹線道路の連絡路",
       "secondary": "地方主要道",
@@ -473,7 +473,7 @@
       "cobblestone": "玉石舗装",
       "unhewn_cobblestone": "玉石舗装[未加工]"
     },
-    "tile_property": "surface"
+    "tile_property": null
   },
   {
     "material_id": "surface_class",
@@ -510,18 +510,18 @@
       "unknown_track": "不明[農道・林道]",
       "unknown_road": "不明[一般の道]"
     },
-    "tile_property": "surface_estimate"
+    "tile_property": null
   },
   {
     "material_id": "highway_is_cycleway",
-    "label": "道路種別が自転車道 - highway_is_cycleway",
-    "name": "道路種別が自転車道",
-    "description": "道路種別(highway)自体が自転車道(cycleway)かどうか。",
+    "label": "道路種別が自転車専用道 - highway_is_cycleway",
+    "name": "道路種別が自転車専用道",
+    "description": "道路種別(highway)自体が自転車専用道(highway=cycleway)かどうか。",
     "dtype": "boolean",
     "unit": "",
     "reference_points": [],
     "value_labels": null,
-    "tile_property": "highway_is_cycleway"
+    "tile_property": null
   },
   {
     "material_id": "cycleway_has_track",
@@ -532,7 +532,7 @@
     "unit": "",
     "reference_points": [],
     "value_labels": null,
-    "tile_property": "cycleway_has_track"
+    "tile_property": null
   },
   {
     "material_id": "cycleway_has_lane",
@@ -543,29 +543,29 @@
     "unit": "",
     "reference_points": [],
     "value_labels": null,
-    "tile_property": "cycleway_has_lane"
+    "tile_property": null
   },
   {
     "material_id": "cycleway_has_shared",
     "label": "バス共用等の自転車レーンを併設 - cycleway_has_shared",
     "name": "バス共用等の自転車レーンを併設",
-    "description": "バス専用レーン共用など、簡易な自転車レーン(cycleway=share_busway/shared_lane)を併設しているかどうか。",
+    "description": "バス専用レーン共用など、簡易な自転車レーン(cycleway=share_busway・shared_lane)を併設しているかどうか。",
     "dtype": "boolean",
     "unit": "",
     "reference_points": [],
     "value_labels": null,
-    "tile_property": "cycleway_has_shared"
+    "tile_property": null
   },
   {
     "material_id": "shared_pedestrian_path",
     "label": "歩行者自転車共用道 - shared_pedestrian_path",
     "name": "歩行者自転車共用道",
-    "description": "車道と分離された歩行者道のうち、自転車の通行が認められている区間（河川敷サイクリングロード等、highway=footway/pathかつbicycle=yes/designated）かどうか。",
+    "description": "車道と分離された歩行者道のうち、自転車の通行が認められている区間（河川敷サイクリングロード等、highway=footway・path かつ bicycle=yes・designated）かどうか。",
     "dtype": "boolean",
     "unit": "",
     "reference_points": [],
     "value_labels": null,
-    "tile_property": "shared_pedestrian_path"
+    "tile_property": null
   },
   {
     "material_id": "cycleway_class",
@@ -641,7 +641,7 @@
       }
     ],
     "value_labels": null,
-    "tile_property": "poi_signal_per_km"
+    "tile_property": null
   },
   {
     "material_id": "poi_crossing_per_km",
@@ -665,7 +665,7 @@
       }
     ],
     "value_labels": null,
-    "tile_property": "poi_crossing_per_km"
+    "tile_property": null
   },
   {
     "material_id": "poi_stop_per_km",
@@ -689,7 +689,7 @@
       }
     ],
     "value_labels": null,
-    "tile_property": "poi_stop_per_km"
+    "tile_property": null
   },
   {
     "material_id": "poi_level_crossing_per_km",
@@ -713,7 +713,7 @@
       }
     ],
     "value_labels": null,
-    "tile_property": "poi_level_crossing_per_km"
+    "tile_property": null
   },
   {
     "material_id": "poi_barrier_per_km",
@@ -737,6 +737,6 @@
       }
     ],
     "value_labels": null,
-    "tile_property": "poi_barrier_per_km"
+    "tile_property": null
   }
 ]
