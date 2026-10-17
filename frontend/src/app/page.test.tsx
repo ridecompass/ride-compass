@@ -792,7 +792,9 @@ describe("画面の枠", () => {
     expect(within(rideProfile()!).getByRole("img", { name: "道のりに沿った難易度" })).toBeInTheDocument();
     // グラフに出す情報は、ページが持つ1つの選択（はじめは標高）を走行中の図にも渡す。
     await user.click(within(rideProfile()!).getByRole("tab", { name: FACT_DISPLAY_NAME }));
-    expect(within(rideProfile()!).getByRole("button", { name: "標高" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(within(rideProfile()!).getByRole("button", { name: "グラフに出す情報" }));
+    expect(within(screen.getByRole("dialog")).getByRole("checkbox", { name: "標高" })).toBeChecked();
+    await user.keyboard("{Escape}");
 
     await user.click(screen.getByRole("button", { name: "走行モード" }));
     expect(screen.queryByRole("group", { name: "走りの数字" })).toBeNull();
