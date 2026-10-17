@@ -122,7 +122,11 @@ const CONDITIONS_DIRTY_SIGNAL: OutcomeTabSignal = { tone: "warning", label: "生
 
 /** 「ルート設定」のタブ（中身は `RouteForm` が描く）。 */
 const SETTINGS_TABS: readonly { value: SettingsTab; label: string; usage: string }[] = [
-  { value: "generate", label: "条件", usage: "地点・全長の目標・候補の数を決め、いまの設定や地点に名前を付けて保存します。" },
+  {
+    value: "generate",
+    label: "条件",
+    usage: "地点・全長の目標・候補の数を決め、いまの設定や地点に名前を付けて保存します。",
+  },
   { value: "weights", label: "重み", usage: "道を選ぶときに、どの評価軸をどれだけ重く見るかを決めます。" },
   { value: "exclusions", label: "除外", usage: "ルートに使わない道路の種類を選びます。" },
   { value: "saved", label: "保存", usage: "名前を付けて保存した地点と設定を並べ、呼び出します。" },
