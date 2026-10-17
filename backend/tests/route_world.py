@@ -16,7 +16,8 @@ import numpy as np
 from app.services.route_generation_setup import assemble_route_generation_setup
 from app.domain.geo import bearing_between, haversine_distance_km
 from app.domain.graph import node_key
-from app.domain.hard_filters import DEFAULT_HARD_FILTERS, hard_filter_columns
+from app.domain.hard_filters import DEFAULT_HARD_FILTERS, route_flag_columns
+from app.domain.road_avoidance import DEFAULT_ROAD_AVOIDANCE
 from app.domain.cycling_speed import ROLLING_RESISTANCE_MATERIAL_ID
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.landcover import LANDCOVER_CLASSES
@@ -146,10 +147,10 @@ def road_network(
     forward = np.array([f for _w, f, _a, _b in rows])
     points = [(Coordinates(latitude=lat[a], longitude=lon[a]), Coordinates(latitude=lat[b], longitude=lon[b]))
               for a, b in zip(tail, head, strict=True)]
-    hard_filter_ids = hard_filter_columns()
-    flags = np.zeros((n, len(hard_filter_ids)), dtype=bool)
-    if "motorway" in hard_filter_ids:
-        flags[:, hard_filter_ids.index("motorway")] = np.isin(way_of_row, list(motorway_ways))
+    route_flag_ids = route_flag_columns()
+    flags = np.zeros((n, len(route_flag_ids)), dtype=bool)
+    if "motorway" in route_flag_ids:
+        flags[:, route_flag_ids.index("motorway")] = np.isin(way_of_row, list(motorway_ways))
     bad = (np.isin(way_of_row, list(bad_ways)) | (np.isin(way_of_row, list(bad_forward_ways)) & forward)).astype(float)
     bad[np.isin(way_of_row, list(unknown_ways))] = np.nan
     gradient = np.where(np.isin(way_of_row, list(no_gradient_ways)), np.nan, 0.0)
@@ -190,7 +191,7 @@ def road_network(
         categorical_vocab=(
             (None, UNKNOWN_ROAD_SURFACE.key), (None, "residential"), *((None,) for _ in ROAD_CLASS_CATEGORICAL_IDS[1:]),
         ),
-        hard_filter_ids=hard_filter_ids, hard_filter_flags=flags,
+        route_flag_ids=route_flag_ids, route_flags=flags,
         distance_m=np.array([haversine_distance_km(a, b) * 1000 for a, b in points]),
         bearing_deg=np.array([bearing_between(a, b) for a, b in points]),
         mid_lat=(lat[tail] + lat[head]) / 2, mid_lon=(lon[tail] + lon[head]) / 2,
@@ -263,7 +264,7 @@ def generator_for(
         RequestedConditions(
             preference_override=RoutePreference(weights={AVOID_AXIS: avoid_weight}),
             penalty_strength=1.0, max_average_grade_percent=max_average_grade_percent, hard_filters=DEFAULT_HARD_FILTERS,
-            assumed_speed_kmh=20.0,
+            road_avoidance=DEFAULT_ROAD_AVOIDANCE, assumed_speed_kmh=20.0,
         ),
     ).generator
 

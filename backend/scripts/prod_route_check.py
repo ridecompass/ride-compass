@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pydantic import TypeAdapter
 
 from app.domain.hard_filters import DEFAULT_HARD_FILTERS, HARD_FILTER_NAMES
+from app.domain.road_avoidance import DEFAULT_ROAD_AVOIDANCE
 from app.domain.map_paint import MapValue
 from app.domain.route import RouteSegmentDetail
 from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_DISTANCE_TOLERANCE_KM, DEFAULT_MAX_ROUTES
@@ -47,6 +48,7 @@ def generation_request(now: datetime) -> dict:
         "distance_km": DISTANCE_KM,
         "distance_tolerance_km": DEFAULT_DISTANCE_TOLERANCE_KM,
         "hard_filters": {name: name in DEFAULT_HARD_FILTERS for name in sorted(HARD_FILTER_NAMES)},
+        "road_avoidance": DEFAULT_ROAD_AVOIDANCE,
         "max_routes": DEFAULT_MAX_ROUTES,
         "assumed_speed_kmh": ASSUMED_SPEED_KMH,
         "start_time": now.astimezone(JST).isoformat(timespec="seconds"),

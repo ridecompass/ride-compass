@@ -67,8 +67,8 @@ def arrays() -> EdgeMaterialArrays:
         numeric_values=np.array([[1.0, 2.0], [3.0, np.nan]]),
         categorical_ids=("cat_a",),
         categorical_columns=(CategoricalColumn.encode(["x", None]),),
-        hard_filter_ids=("filter_a", "filter_b"),
-        hard_filter_flags=np.array([[True, False], [False, True]]),
+        route_flag_ids=("filter_a", "filter_b"),
+        route_flags=np.array([[True, False], [False, True]]),
         distance_m=np.array([100.0, 200.0]),
         bearing_deg=nan,
         mid_lat=nan,
@@ -90,7 +90,7 @@ def test_every_material_is_found_by_its_id_whatever_its_dtype():
 
 
 def test_each_hard_filter_is_found_by_its_name():
-    flags = arrays().hard_filter_columns()
+    flags = arrays().route_flag_columns()
 
     assert flags["filter_a"].tolist() == [True, False]
     assert flags["filter_b"].tolist() == [False, True]

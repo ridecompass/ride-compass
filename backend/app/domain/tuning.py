@@ -252,6 +252,13 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         TuningEffect.IMMEDIATE,
         "平地の巡航に対して何倍まで踏むか。増え方をここで頭打ちにする。",
     ),
+    # --- 道の避け方 ---
+    TuningParameter(
+        "avoidance.avoid_cost_multiplier",
+        "「なるべく避ける」の割り増し", "倍", 2.0, 1.0, 20.0, TuningEffect.IMMEDIATE,
+        "道のレイヤの行を「なるべく避ける」にしたとき、その行に当たる区間の探索の費用に掛ける倍率。"
+        "2なら、その区間を通るより倍の長さまでの回り道を選ぶ。1は避けない。",
+    ),
     # --- 画面が使う値（カタログ取得でフロントへ配る） ---
     TuningParameter(
         "splice.min_stretch_km",

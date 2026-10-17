@@ -30,7 +30,7 @@ from sqlalchemy import text
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.graph import LeanEdge
-from app.domain.hard_filters import hard_filter_columns
+from app.domain.hard_filters import route_flag_columns
 from app.domain.landcover import LandcoverPercentages, landcover_key
 from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns, tile_column_sql
 from app.domain.region import BoundingBox
@@ -224,15 +224,15 @@ async def test_material_values_land_in_the_matrix_of_their_dtype():
     assert [column.value_at(row) for row in range(len(column))] == ["value_a", None, None]
 
 
-async def test_hard_filter_flags_are_named_by_their_filter():
+async def test_route_flags_are_named_by_their_filter():
     """列が取り違うと、そのフィルタが常に「該当しない」になって黙って素通りする。"""
-    names = hard_filter_columns()
+    names = route_flag_columns()
     assert names, "0次ハードフィルタが1つも無い"
     repo, _ = _repo([_arrays_row(1, {f"hf_{names[0]}": [True]})])
 
     arrays = await repo.get_edge_material_arrays([1], [0], [True], 1)
 
-    assert arrays.hard_filter_columns()[names[0]].tolist() == [True]
+    assert arrays.route_flag_columns()[names[0]].tolist() == [True]
 
 
 class _EchoingArraysSession:

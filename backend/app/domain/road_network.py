@@ -56,8 +56,8 @@ class RoadNetwork:
     categorical_ids: tuple[str, ...]
     categorical_codes: np.ndarray  # (区間, 列) int16。0は値なし
     categorical_vocab: tuple[tuple[str | None, ...], ...]  # 列ごとの語彙。先頭は必ずNone
-    hard_filter_ids: tuple[str, ...]
-    hard_filter_flags: np.ndarray  # (区間, 列) bool
+    route_flag_ids: tuple[str, ...]
+    route_flags: np.ndarray  # (区間, 列) bool
     distance_m: np.ndarray  # float64
     bearing_deg: np.ndarray  # float64, NaN=方位が決まらない
     mid_lat: np.ndarray
@@ -85,7 +85,7 @@ class RoadNetwork:
             for name, matrix, ids in (
                 ("numeric_values", self.numeric_values, self.numeric_ids),
                 ("categorical_codes", self.categorical_codes, self.categorical_ids),
-                ("hard_filter_flags", self.hard_filter_flags, self.hard_filter_ids),
+                ("route_flags", self.route_flags, self.route_flag_ids),
             )
             if matrix.shape[1] != len(ids)
         }
@@ -166,7 +166,7 @@ def material_arrays_of(road: RoadSlice) -> EdgeMaterialArrays:
             CategoricalColumn(np.ascontiguousarray(codes[:, column]), vocab)
             for column, vocab in enumerate(network.categorical_vocab)
         ),
-        hard_filter_ids=network.hard_filter_ids,
+        route_flag_ids=network.route_flag_ids,
         **row_arrays,
     )
 

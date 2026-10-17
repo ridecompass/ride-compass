@@ -101,7 +101,7 @@ class EdgeMaterialArrays:
     1.0/0.0/NaNで載る。分け方は`material_catalog.material_array_columns`が唯一の判定）。
     カテゴリは列ごとに語彙が違うため、行列ではなく列ごとの`CategoricalColumn`で持つ。
 
-    0次ハードフィルタの生フラグを同じ1回のクエリで求めてここへ持たせるのは、別に引くと
+    探索の旗（0次ハードフィルタと避け方の行）を同じ1回のクエリで求めてここへ持たせるのは、別に引くと
     区間の束ごとにもう1往復増えるため。
 
     標高の列は**材料ではない表示用の値**で、経路が確定したあとの区間について
@@ -113,10 +113,10 @@ class EdgeMaterialArrays:
     numeric_values: np.ndarray  # shape=(n, len(numeric_ids)), float64, NaN=欠損
     categorical_ids: tuple[str, ...]
     categorical_columns: tuple[CategoricalColumn, ...]  # categorical_idsと同じ並び
-    # 0次ハードフィルタの生フラグ。フィルタ名がそのまま列で、`domain/hard_filters.py:
-    # HARD_FILTER_VALUE_SQL`から生成する。**フィルタごとに専用のフィールドを作らない**。
-    hard_filter_ids: tuple[str, ...]
-    hard_filter_flags: np.ndarray  # shape=(n, len(hard_filter_ids)), bool
+    # 探索の旗。旗の名前がそのまま列で、`domain/hard_filters.py: ROUTE_FLAG_VALUE_SQL`から
+    # 生成する。**旗ごとに専用のフィールドを作らない**。
+    route_flag_ids: tuple[str, ...]
+    route_flags: np.ndarray  # shape=(n, len(route_flag_ids)), bool
     # 区間そのものの値。グラフのオブジェクトから組み直さず、材料と同じクエリで受ける。
     distance_m: np.ndarray  # dtype=float64
     bearing_deg: np.ndarray  # dtype=float64, NaN=方位が決まらない
@@ -137,9 +137,9 @@ class EdgeMaterialArrays:
             **dict(zip(self.categorical_ids, self.categorical_columns, strict=True)),
         }
 
-    def hard_filter_columns(self) -> dict[str, np.ndarray]:
-        """0次フィルタ名→該当フラグ。行列の列はビューのためコピーしない。"""
-        return {name: self.hard_filter_flags[:, i] for i, name in enumerate(self.hard_filter_ids)}
+    def route_flag_columns(self) -> dict[str, np.ndarray]:
+        """旗の名前→該当フラグ。行列の列はビューのためコピーしない。"""
+        return {name: self.route_flags[:, i] for i, name in enumerate(self.route_flag_ids)}
 
 
 #: `EdgeMaterialArrays`のうち、区間の行をそのまま並べる配列の欄。区間の束を継ぐ・行を切り出す側はこれを回し、

@@ -82,8 +82,8 @@ def network() -> RoadNetwork:
         categorical_ids=("cat_a",),
         categorical_codes=np.array([[1], [1], [2], [0], [2]], dtype=np.int16),
         categorical_vocab=((None, "x", "y"),),
-        hard_filter_ids=("filter_a",),
-        hard_filter_flags=np.array([[False], [False], [True], [False], [False]]),
+        route_flag_ids=("filter_a",),
+        route_flags=np.array([[False], [False], [True], [False], [False]]),
         distance_m=row * 100 + 100,
         bearing_deg=np.array([90.0, 270.0, 90.0, 90.0, NAN]),
         mid_lat=lat[edge_from],
@@ -146,7 +146,7 @@ def test_the_materials_of_a_slice_follow_its_rows():
     columns = materials.columns()
     assert columns["num_a"].tolist() == [20.0, 30.0]
     assert [columns["cat_a"].value_at(i) for i in range(2)] == ["y", None]
-    assert materials.hard_filter_columns()["filter_a"].tolist() == [True, False]
+    assert materials.route_flag_columns()["filter_a"].tolist() == [True, False]
 
 
 def test_the_elevation_attribute_reads_the_average_grade_from_the_material():

@@ -376,7 +376,7 @@ class MaterialColumns:
         """次の束を、前の束の続きの行へ詰める。"""
         if not self._arrays:
             self._ids = {"numeric_ids": materials.numeric_ids, "categorical_ids": materials.categorical_ids,
-                         "hard_filter_ids": materials.hard_filter_ids}
+                         "route_flag_ids": materials.route_flag_ids}
             self._vocab = [{None: 0} for _ in materials.categorical_ids]
             self._arrays["categorical_codes"] = np.zeros(
                 (self._edge_count, len(materials.categorical_ids)), dtype=np.int16)

@@ -42,6 +42,7 @@ export type RouteGenerateJobStatusResponse = GetJson<"/api/routes/generate/{job_
 export type RoutePreferenceWeights = Schemas["RoutePreferenceWeights"];
 // 0次ハードフィルタの個別のON/OFFの上書き。
 export type HardFilterOverride = Schemas["HardFilterOverride"];
+export type RoadAvoidanceOverride = Schemas["RoadAvoidanceOverride"];
 
 // 実際に適用された条件のエコー。
 export type GenerationConditions = Schemas["GenerationConditions"];

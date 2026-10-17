@@ -468,7 +468,7 @@ idの文字列や要求の形から決め直さない。
 Redisから読み（実体の中に5分持つ）、無い・古ければ雨の材料は欠損のまま組む（WARNINGを抑制付きで出し、
 INFOサマリの`rain_hour=none`で分かる。雨を読む軸だけがその生成で「データなし」になる）。行列はキャッシュしない
 ——軸定義の編集と雨の観測がそのまま次の生成に効き、軸定義の世代を突き合わせる仕組みが要らない。
-続けて0次フィルタの除外（`compute_hard_filter_excluded`）を決めて
+続けて0次フィルタの除外と道の行ごとの避け方（`compute_search_exclusion`）を決めて
 `LegCostComposer`を組む。合成器は`StaticEdgeScoreMatrix`（風などリクエストごとに変わる動的軸の列は
 NaN）へ動的軸（風、`domain/dynamic_materials.py: evaluate_dynamic_axis_arrays`。材料id→evaluator
 関数の登録制`DYNAMIC_MATERIAL_EVALUATORS`で軸名をハードコードしない汎用実装）と重み
@@ -659,8 +659,8 @@ Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を
 候補が基準線に対して何を犠牲に何を得たかを読むための物差しになる。コストが秒のため
 A*のヒューリスティックも秒の下界にする（直線距離÷出せる最大速度）。
 
-**軸の重みは使わないが、0次フィルタ（`no_bicycle`・`motorway`・`trunk`・
-`max_average_grade_percent`）は使う**——これらは好みではなく通行可否・走行可否の表明で、
+**軸の重みは使わないが、0次フィルタ（`no_bicycle`・`motorway`・
+`max_average_grade_percent`）と道の行ごとの「通らない」は使う**——これらは好みではなく通行可否・走行可否の表明で、
 所要時間を優先する経路でも越えてよいものではない。除外Edgeの所要時間を`inf`にすることで
 表現する（軸コスト経路で`cost_lazy`が`inf`になっているのと同じ意味）。
 
@@ -873,7 +873,7 @@ segments構築はEdge単位の軽量な計算のため並行化してよい。�
   lazy評価ではEdgeコストを事前計算しないため、Hard Constraintだけを軽量に評価する
   専用関数として0次フィルタのモジュール（`domain/hard_filters.py`）に置く
   （`domain/routing.py`側には持たない）。
-  入力は区間の始点・終点と、`compute_hard_filter_excluded`が返す`excluded`配列
+  入力は区間の始点・終点と、`compute_search_exclusion`が返す`excluded`配列
   （`_build_search_graph`がコスト配列を`inf`にするのに使うのと同じ配列）で、ノード番号順の真偽を返す。
 
 ### `domain/graph.py`

@@ -44,11 +44,12 @@ from app.domain.evaluation import (
     build_static_edge_score_matrix,
     displayed_material_ids,
 )
-from app.domain.hard_filters import compute_hard_filter_excluded, compute_routable_nodes
+from app.domain.hard_filters import compute_routable_nodes, compute_search_exclusion
 from app.domain.leg_costs import LegCostArrays, LegCostComposer, RowValues, material_value_at
 from app.domain.gradient import GRADIENT_VALUE_DECIMALS
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.route_preference import RoutePreference
+from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.geo import (
     bearing_between,
     bearing_between_array,
@@ -237,9 +238,9 @@ class _SearchGraph:
     outbound: LegCostArrays
     node_lat: np.ndarray
     node_lon: np.ndarray
-    # 0次フィルタ除外配列（`compute_hard_filter_excluded`、切り出した区間の順。cost_arrayをinfに
+    # 探索から除く区間（`domain/hard_filters.py: compute_search_exclusion`、切り出した区間の順。cost_arrayをinfに
     # するのに使ったのと同じ配列）。routable Node判定にこの配列をそのまま使い回す。
-    hard_filter_excluded: np.ndarray
+    excluded: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -315,6 +316,7 @@ class RoadGraphEngine:
         penalty_strength: float,
         max_average_grade_percent: float | None,
         hard_filters: frozenset[str],
+        road_avoidance: Mapping[str, AvoidanceLevel],
         assumed_speed_kmh: float,
     ):
         self._graph_service = graph_service
@@ -326,10 +328,14 @@ class RoadGraphEngine:
         # コスト式`所要時間 × (1 + P × difficulty/100)`のP＝「主観 vs 時間」の換算レート。
         self._penalty_strength = penalty_strength
         # 0次ハードフィルタの勾配しきい値（%、None＝除外しない）。
-        # `domain/hard_filters.py: compute_hard_filter_excluded`参照。
+        # `domain/hard_filters.py: compute_search_exclusion`参照。
         self._max_average_grade_percent = max_average_grade_percent
         # 有効にする0次ハードフィルタ名の集合。
         self._hard_filters = hard_filters
+        # 道のレイヤの行→避け方の段。
+        self._road_avoidance = road_avoidance
+        # 「なるべく避ける」区間の費用の倍率。較正値のため、組み立てた時点の値で1回の生成を通す。
+        self._avoid_cost_multiplier = tuning_value("avoidance.avoid_cost_multiplier")
         # 交差点でのターンの費用（秒）。較正値のため、組み立てた時点の値で1回の生成を通す。
         self._turn_cost = current_turn_cost()
 
@@ -374,8 +380,8 @@ class RoadGraphEngine:
 
         # --- bbox全体ぶんのコスト配列の合成（レグごと。まず起点から離れる往路レグ） ---
         cost_started = start_timer()
-        hard_filter_excluded = compute_hard_filter_excluded(
-            score_matrix, self._hard_filters, self._max_average_grade_percent,
+        search_masks = compute_search_exclusion(
+            score_matrix, self._hard_filters, self._road_avoidance, self._max_average_grade_percent,
         )
 
         graph_started = start_timer()
@@ -385,7 +391,8 @@ class RoadGraphEngine:
         # 迂回率は同じ探索範囲で前回の往路木から学習した値があればそれを使う（無ければ既定値）。
         learned_detour_ratio = detour_ratio_cache.get_detour_ratio(tile_set)
         composer = LegCostComposer(
-            score_matrix, self._route_preference.weights, self._penalty_strength, hard_filter_excluded, departure_wind,
+            score_matrix, self._route_preference.weights, self._penalty_strength, search_masks,
+            self._avoid_cost_multiplier, departure_wind,
             wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
             detour_ratio=detour_ratio_or_default(learned_detour_ratio),
             twilight_origin=origin,
@@ -419,7 +426,7 @@ class RoadGraphEngine:
             outbound=outbound,
             node_lat=road.node_lat,
             node_lon=road.node_lon,
-            hard_filter_excluded=hard_filter_excluded,
+            excluded=search_masks.excluded,
         )
 
     async def _build_search_structures(
@@ -436,11 +443,11 @@ class RoadGraphEngine:
         """
         started = start_timer()
         road = search.road
-        routable = compute_routable_nodes(road.edge_from, road.edge_to, search.hard_filter_excluded, road.node_count)
+        routable = compute_routable_nodes(road.edge_from, road.edge_to, search.excluded, road.node_count)
         node_index = await asyncio.to_thread(build_node_spatial_index, search.node_lat, search.node_lon, routable)
         statics = build_search_graph_statics(search.lazy_graph, search.composer.distance_m)
         accessible = await asyncio.to_thread(
-            largest_strongly_connected_nodes, statics.csr, ~search.hard_filter_excluded[search.lazy_graph.edge_rows],
+            largest_strongly_connected_nodes, statics.csr, ~search.excluded[search.lazy_graph.edge_rows],
         )
         index_ms = elapsed_ms(started)
         turn_started = start_timer()

@@ -258,9 +258,9 @@ def compose_costs_from_axis_matrix(
     （合成の時間は軸数にほぼ比例するため、動的な軸だけを毎回足す形にすると大きく減る）。密度の軸の点数は
     `axis_arrays`と`static_sums`のどちらに入っていてもよい。
 
-    0次フィルタによる除外（cost=inf/None）は呼び出し元の責務（`compute_hard_filter_excluded`
-    参照、Edgeの通行可否そのものであり軸別スコアの合成とは独立した判定のため）。戻り値の
-    difficultyはNaN=データ無し、costは0次フィルタを考慮しない「仮に許可された場合のコスト」、
+    0次フィルタ・避け方による除外と割り増しは呼び出し元の責務（`domain/hard_filters.py:
+    compute_search_exclusion`、Edgeの通行可否そのものであり軸別スコアの合成とは独立した判定のため）。戻り値の
+    difficultyはNaN=データ無し、costは除外も割り増しも考慮しない「仮に許可された場合のコスト」、
     weight_sumsは軸別寄与度の分母。
 
     重み付き軸がすべてデータ欠損（composite=NaN）のEdgeは、costの算出だけ`distance_m`
@@ -342,7 +342,7 @@ def density_costs(
 
 @dataclass(frozen=True, slots=True)
 class StaticEdgeScoreMatrix:
-    """探索範囲の区間ごとの「Edge×公開軸」の静的スコア行列＋0次フィルタ・A*
+    """探索範囲の区間ごとの「Edge×公開軸」の静的スコア行列＋探索の旗・A*
     ヒューリスティック用の生配列。全ての配列は同じ行順（切り出した区間の順）で揃う。
 
     `axis_scores`の列（`axis_ids`）は風などREQUEST_DYNAMIC_MATERIAL_IDSに依存する軸を
@@ -358,11 +358,11 @@ class StaticEdgeScoreMatrix:
     axis_scores: np.ndarray  # shape (区間, len(axis_ids))
     distance_m: np.ndarray
     bearing_deg: np.ndarray
-    # 0次フィルタ名→該当フラグ（`HARD_FILTER_NAMES`と同じキー集合）。リクエストごとに
-    # 変わる有効/無効の絞り込みは`compute_hard_filter_excluded`が行う。
-    # フィルタを1つ増やしてもこの構造は変わらない——専用フィールドへ潰すと、
+    # 旗の名前→該当フラグ（`domain/hard_filters.py: ROUTE_FLAG_VALUE_SQL`と同じキー集合）。リクエストごとに
+    # 変わる絞り込みと割り増しは`domain/hard_filters.py: compute_search_exclusion`が決める。
+    # 旗を1つ増やしてもこの構造は変わらない——専用フィールドへ潰すと、
     # dataclass・結合・受け渡しの全段で1本ずつ追加が要る。
-    hard_filter_flags: dict[str, np.ndarray]
+    route_flags: dict[str, np.ndarray]
     # Edge中点の緯度経度（from/toノードの平均）。探索前に各Edgeの通過予定時刻を基準点からの
     # 直線距離で推定するために使う。
     mid_lat: np.ndarray
@@ -417,7 +417,7 @@ class StaticEdgeScoreMatrix:
                 ("bearing_deg", self.bearing_deg),
                 ("mid_lat", self.mid_lat),
                 ("mid_lon", self.mid_lon),
-                *((f"hard_filter_flags[{name}]", flags) for name, flags in self.hard_filter_flags.items()),
+                *((f"route_flags[{name}]", flags) for name, flags in self.route_flags.items()),
                 *((name, matrix) for name, matrix, _ in matrices),
                 *((f"categorical_material_columns[{material_id}]", column.codes) for material_id, column in zip(
                     self.categorical_material_ids, self.categorical_material_columns)),
@@ -460,8 +460,8 @@ def build_static_edge_score_matrix(
     観測（`MaterialSpec.source`）の材料に限る。
 
     重み付き合成は含まない——重みが定まった時点で呼び出し元が`compose_costs_from_axis_matrix`へ
-    渡す。0次フィルタは生フラグだけを持ち、リクエストごとに変わる絞り込みは
-    `compute_hard_filter_excluded`が別途行う。
+    渡す。探索の旗は生フラグだけを持ち、リクエストごとに変わる絞り込みと割り増しは
+    `domain/hard_filters.py: compute_search_exclusion`が別途決める。
 
     **動的材料（風）の列は常にNaN**。風は区間の通過時刻で変わるため、この行列では値を持てず、
     リクエスト時に`evaluate_dynamic_axis_arrays`が該当列を通過時刻ごとに上書きする。
@@ -519,7 +519,7 @@ def build_static_edge_score_matrix(
         density_axes=density_axes,
         distance_m=materials.distance_m,
         bearing_deg=materials.bearing_deg,
-        hard_filter_flags=materials.hard_filter_columns(),
+        route_flags=materials.route_flag_columns(),
         mid_lat=materials.mid_lat,
         mid_lon=materials.mid_lon,
     )
