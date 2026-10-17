@@ -527,8 +527,8 @@ export default function Home() {
     );
   }
 
-  // 走行モードの間、地図の下に選んだ候補の道のりに沿った難易度を見るだけで出し（候補が無ければ出さない。区間の中身を出す
-  // 所は走行中に開いていないので選ばせない）、そのすぐ上に続きから走るための操作を1か所で出す: 休んでいる間は
+  // 走行モードの間、地図の下に選んだ候補の道のりのグラフを出し（候補が無ければ出さない。結果の図と同じくなぞると地点を選び、
+  // 地図に印を出して図の下にその地点の詳しくを出す）、そのすぐ上に続きから走るための操作を1か所で出す: 休んでいる間は
   // 「続きから走る」、地図を指で動かして追うのを休んでいる間は「現在地へ戻る」、追っている間にルートを外れたら、
   // 戻れば続きから案内すること。
   function renderRideBottom() {
@@ -591,7 +591,8 @@ export default function Home() {
               scaleKm={profile.distance_km}
               progressKm={progressKm}
               waypointKms={profile.waypoint_distances_km}
-              selected={null}
+              selected={results.selectedRouteSegment}
+              onSelect={results.selectSegment}
               layers={profileLayers}
               riding
             />

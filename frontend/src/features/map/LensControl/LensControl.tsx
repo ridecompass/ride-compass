@@ -24,6 +24,7 @@ import {
   ClearAllFiltersIcon,
   ClearAllLayersIcon,
   ClockIcon,
+  EvaluationPaintIcon,
   SpeedGaugeIcon,
   WindDirectionArrowIcon,
 } from "@/components/ui/icons/icons";
@@ -181,6 +182,8 @@ export default function LensControl({
             title={statusLabel}
             usage="評価軸を1つ選び、その道を走ったときの点数で、地図の道路（ルートを作った後はルートの線）を塗ります。横の帯は点数の凡例です。"
           >
+            {/* 道のりのグラフの「評価で塗る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
+            <EvaluationPaintIcon size={14} />
             <LensSwatch color={pillColor} />
             <span className="flex-shrink-0 font-semibold">{pillLabel}</span>
             {dataStatus && <Dot aria-hidden="true" tone={dataStatus} />}

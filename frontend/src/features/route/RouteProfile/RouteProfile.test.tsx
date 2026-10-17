@@ -5,8 +5,11 @@
  * （塗る区間の無い軸は出さない）、「表示」のタブのチップが選んだ情報を重ね・外す知らせを上げること、標高の折れ線と最高・最低、
  * 選んだ地点の標高、走行中の現在地の印を最初の折れ線のその地点の高さに置くこと（値が無ければ中ほど）、出す情報が無いときと値が無いときの文、道の区分のレイヤの帯をレイヤごとに地図と同じ色で出し、その凡例と
  * 選んだ地点の区分の呼び名を出すこと、点のレイヤはルートの近くの点を通る距離に地図と同じ色の印で並べ、選んだ地点の点の区分と名前と、
- * 現れた区分の凡例を出すこと、両方のタブで経由地を通る所に線と番号の印を出し、走り終えた経由地を薄めること。走行中の図は、タブ・目盛り・
- * 図の下の文字を結果の図より大きくし、「表示」の図に標高の目盛りを出し、押すと今の地点の標高・勾配・道の区分・区間の詳細を出すこと。
+ * 現れた区分の凡例を出すこと、両方のタブで経由地を通る所に線と番号の印を出し、走り終えた経由地を薄めること。タブに地図の入口と同じ絵を
+ * 付けること。走行中の図は、タブを絵だけにし、目盛り・図の下の文字を結果の図より大きくし、「表示」の図に標高の目盛りを出し、なぞって
+ * 選んだ地点の標高・勾配・道の区分・区間の詳細を図の下に出し、閉じると選択を外すこと。
+ *
+ * 差し替えたもの: グラフの実寸（`getBoundingClientRect`。テスト環境は実寸を返さない）。
  *
  * ここで見ないもの: 難易度の塗り・なぞって地点を選ぶ操作 → `DifficultyProfile.test.tsx`。折れ線の点・帯の切れ目と地点の値・行の計算 →
  * `profileLayers.test.ts`（点の印の色・区分の名前・地点の印の選び方も）。選んだレイヤを覚えること → `useProfileLayers.test.ts`。
@@ -14,15 +17,16 @@
 import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
 import { roadTrackRows, ROAD_TRACKS } from "@/lib/mapDisplay/roadTracks";
 import { EVALUATION_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogOf, catalogResponse } from "@/testing/catalogAxes";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import type { RouteSegmentDetail } from "@/types/route";
+import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 
 import RouteProfile from "./RouteProfile";
 
@@ -255,16 +259,20 @@ describe("RouteProfile", () => {
   it.each([
     { riding: false, large: false },
     { riding: true, large: true },
-  ])("走行中の図（$riding）だけ、タブ・距離の目盛り・図の下の文字を大きくする", async ({ riding, large }) => {
-    renderProfile({ riding, progressKm: riding ? 0.25 : null });
-    await openLayers();
-    for (const text of [
-      screen.getByRole("tab", { name: FACT_DISPLAY_NAME }),
-      screen.getByText("2.0km"),
-      screen.getByText("標高 最高 32m・最低 12m"),
-    ])
-      expect(text.closest(".text-base") !== null).toBe(large);
-  });
+  ])(
+    "走行中の図（$riding）だけ、タブを絵だけにし、距離の目盛り・図の下の文字を大きくする",
+    async ({ riding, large }) => {
+      renderProfile({ riding, progressKm: riding ? 0.25 : null });
+      await openLayers();
+      for (const name of [FACT_DISPLAY_NAME, EVALUATION_PAINT_NAME]) {
+        const tab = screen.getByRole("tab", { name });
+        expect(tab.querySelector("svg")).not.toBeNull();
+        expect(within(tab).getByText(name).classList.contains("sr-only")).toBe(riding);
+      }
+      for (const text of [screen.getByText("2.0km"), screen.getByText("標高 最高 32m・最低 12m")])
+        expect(text.closest(".text-base") !== null).toBe(large);
+    },
+  );
 
   it("走行中の「表示」の図は、最初の折れ線の最高と最低の高さに単位つきの標高の目盛りを出す（結果の図には出さない）", async () => {
     const { rerender } = renderProfile({ riding: true, progressKm: 0.25 });
@@ -289,32 +297,55 @@ describe("RouteProfile", () => {
     expect(screen.queryByText("標高 32m")).toBeNull();
   });
 
-  it("走行中の図を押すと、今の地点の標高と道の勾配・道の区分・区間の詳細を出す（結果の図は押しても出さない）", async () => {
-    serveAxisCatalog(catalogResponse(ENTRIES));
-    const paved = { ...CLIMB, road_classes: { surface: [{ distance_km: 1, value: "paved" }] } };
-    const { rerender } = renderProfile({ segments: [paved, UNKNOWN], riding: true, progressKm: 0.25 });
+  it.each([{ tab: EVALUATION_PAINT_NAME }, { tab: FACT_DISPLAY_NAME }])(
+    "走行中の「$tab」の図をなぞると、結果の図と同じく地点を選び、その地点の標高と道の勾配・道の区分・区間の詳細を図の下に出し、閉じると外す",
+    async ({ tab }) => {
+      serveAxisCatalog(catalogResponse(ENTRIES));
+      const paved = { ...CLIMB, road_classes: { surface: [{ distance_km: 1, value: "paved" }] } };
+      // 選択はページが持つので、選んだ地点を図へ戻す。
+      function Riding() {
+        const [selected, setSelected] = useState<SelectedRouteSegment | null>(null);
+        return (
+          <RouteProfile
+            segments={[paved, UNKNOWN]}
+            overallDifficulty={20}
+            axes={CATALOG.axes}
+            axisColors={CATALOG.axisColors}
+            scaleKm={2}
+            selected={selected}
+            onSelect={setSelected}
+            layers={{ ids: ["elevation"], toggle: vi.fn() }}
+            points={[]}
+            waypointKms={[]}
+            progressKm={1.5}
+            riding
+          />
+        );
+      }
+      render(<Riding />);
+      await userEvent.click(screen.getByRole("tab", { name: tab }));
+      const slider = screen.getByRole("slider");
+      vi.spyOn(slider, "getBoundingClientRect").mockReturnValue({ left: 0, width: 200 } as DOMRect);
+      // 横幅200pxのうち25px＝2kmの物差しで0.25km地点。現在地（1.5km）とは別の所を選べる。
+      fireEvent.pointerDown(slider, { pointerId: 1, clientX: 25, buttons: 1 });
+      fireEvent.pointerUp(slider, { pointerId: 1, clientX: 25 });
 
-    await userEvent.click(screen.getByRole("button", { name: "今の地点の詳しく" }));
-    const detail = screen.getByRole("dialog");
-    // 標高は12mから31.6mへ1kmで上る道の1/4の地点。
-    expect(within(detail).getByText("標高 17m・勾配 +2.0%")).toBeInTheDocument();
-    expect(within(detail).getByText("路面の種類 舗装")).toBeInTheDocument();
-    expect(within(detail).getByText("0.0 km地点")).toBeInTheDocument();
-    expect(await within(detail).findByRole("button", { name: "坂の詳細を表示" })).toBeInTheDocument();
+      // 標高は12mから31.6mへ1kmで上る道の1/4の地点。
+      expect(screen.getByText("標高 17m・勾配 +2.0%")).toBeInTheDocument();
+      expect(screen.getByText("路面の種類 舗装")).toBeInTheDocument();
+      expect(screen.getByText("0.0 km地点")).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "坂の詳細を表示" })).toBeInTheDocument();
 
-    rerender(
-      <RouteProfile
-        segments={[paved, UNKNOWN]}
-        overallDifficulty={20}
-        axes={CATALOG.axes}
-        axisColors={CATALOG.axisColors}
-        scaleKm={2}
-        selected={null}
-        layers={{ ids: ["elevation"], toggle: vi.fn() }}
-        points={[]}
-        waypointKms={[]}
-      />,
-    );
-    expect(screen.queryByRole("button", { name: "今の地点の詳しく" })).toBeNull();
+      await userEvent.click(screen.getByRole("button", { name: "区間の選択を解除" }));
+      expect(screen.queryByText("標高 17m・勾配 +2.0%")).toBeNull();
+      expect(slider).toHaveAttribute("aria-valuenow", "0");
+    },
+  );
+
+  it("結果の図は、地点を選んでも図の下に標高・勾配の詳しくを出さない（区間の詳細は図の外に出す）", async () => {
+    renderProfile({ selected: { segment: CLIMB, latitude: 35, longitude: 139 }, onSelect: vi.fn() });
+    expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
+    await openLayers();
+    expect(screen.queryByText(/勾配/)).toBeNull();
   });
 });

@@ -64,7 +64,7 @@ interface ProfileChartProps {
   /** 押せる図の使い方の文。 */
   usage: string;
   selected: SelectedRouteSegment | null;
-  /** なぞる・押して離すと、その地点の区間を選ぶ。無ければ押せない見るだけの図にする（走行中は地図を追うことに専念する）。 */
+  /** なぞる・押して離すと、その地点の区間を選ぶ。無ければ押せない見るだけの図にする。 */
   onSelect?: (selection: SelectedRouteSegment) => void;
   /** 走行中の現在地のルートの上の距離。印を引き、始点からそこまでを走り終えた区間として薄める。 */
   progressKm?: number | null;
@@ -299,6 +299,7 @@ export default function ProfileChart({
               opacity={travelledKm !== null && km <= travelledKm ? mapDisplay.route.opacities.travelled : undefined}
             />
           ))}
+          {/* 現在地の線は、標高等の折れ線の色（青）と見分けるため文字の色で引き、青は地図の現在地と同じ丸い印だけに使う。 */}
           {travelledKm !== null && (
             <line
               data-progress="position"
@@ -306,7 +307,7 @@ export default function ProfileChart({
               x2={xOf(travelledKm)}
               y1={0}
               y2={PROFILE_VIEW_HEIGHT}
-              className="stroke-[var(--color-accent)]"
+              className="stroke-[var(--foreground)]"
               strokeWidth={2}
               vectorEffect="non-scaling-stroke"
             />
