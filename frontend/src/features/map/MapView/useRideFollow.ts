@@ -6,7 +6,7 @@ import type { Map as MapLibreMap, Marker } from "maplibre-gl";
 
 import type { Coordinates } from "@/types/route";
 
-import { rideZoomOut } from "./rideZoom";
+import { RIDE_MIN_ZOOM, rideZoomOut } from "./rideZoom";
 
 /** 走行モードで地図が受ける値（走行モードの間だけ渡る）。 */
 export interface RideFollow {
@@ -26,8 +26,6 @@ export interface RideFollow {
   onToggleHeadingUp: () => void;
 }
 
-// 追い始めたときに、これより引いていれば寄せる（数十m先の曲がり角が地図の上で見分けられる倍率。17で1pxが約1m）。
-export const RIDE_MIN_ZOOM = 17;
 // 速さは位置ごとに揺れるので、新しい値をこの割合だけ混ぜてから倍率に使う（倍率がちらつかないように）。
 const SPEED_SMOOTHING = 0.3;
 

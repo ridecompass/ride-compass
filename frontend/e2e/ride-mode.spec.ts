@@ -1,8 +1,7 @@
 import { expect, test, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { trueHeadingDeg } from "@/lib/magneticDeclination";
 import { moved } from "@/testing/movedPoint";
-import { RIDE_ZOOM_MAX_OUT } from "@/features/map/MapView/rideZoom";
-import { RIDE_MIN_ZOOM } from "@/features/map/MapView/useRideFollow";
+import { RIDE_MIN_ZOOM, RIDE_ZOOM_MAX_OUT } from "@/features/map/MapView/rideZoom";
 
 import { INTRO_CLOSED, installApiMocks, installMapFinder, seedStoredState } from "./fixtures";
 
