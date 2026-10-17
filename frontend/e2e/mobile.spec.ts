@@ -145,7 +145,9 @@ const NORTH_SOUTH_ROUTE: [number, number][] = [
   [139.7387, 35.74],
 ];
 
-test("モバイル: 生成したルートを地図へ収めると、開いた「ルート結果」のシートの上に描かれる", async ({ page }) => {
+test("モバイル: 生成したルートを地図へ収めると、開いた「ルート結果」のシートの上の空きを埋めて描かれる", async ({
+  page,
+}) => {
   const generated = routeGenerateResponseFixture();
   const routes = generated.routes.map((route) => ({
     ...route,
@@ -176,6 +178,16 @@ test("モバイル: 生成したルートを地図へ収めると、開いた「
   }, NORTH_SOUTH_ROUTE);
   const sheetTop = sheetBox?.y ?? 0;
   expect(onScreen.filter(({ x, y }) => x < 0 || x > MOBILE_VIEWPORT.width || y < 0 || y > sheetTop)).toEqual([]);
+  // 収めるのは生成を押した「ルート設定」のシートが「ルート結果」へ切り替わる前なので、落ち着いたあとの空きで収め直して
+  // いなければ、ルートは空きの上の方に小さく残る。空きは上の部品の下端からシートの上端まで。
+  const freeTop = await page.evaluate(() =>
+    Math.max(
+      0,
+      ...[...document.querySelectorAll('[data-map-overlay-edge="top"]')].map((el) => el.getBoundingClientRect().bottom),
+    ),
+  );
+  const ys = onScreen.map(({ y }) => y);
+  expect((Math.max(...ys) - Math.min(...ys)) / (sheetTop - freeTop)).toBeGreaterThan(0.7);
 });
 
 // 観点1（収まる）: 走行中の地図の下の道のりのグラフは、切り替えとボタンの行を図の上に出して図に重ねず、結果のシートの図より
