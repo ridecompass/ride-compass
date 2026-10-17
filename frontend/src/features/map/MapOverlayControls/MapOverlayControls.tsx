@@ -33,7 +33,6 @@ import {
 import { Button } from "@/components/ui/Button/Button";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { cn } from "@/lib/cn";
-import { textVariants } from "@/components/ui/Text/Text";
 import { readStoredList } from "@/lib/storedList";
 import { Dot } from "@/components/ui/Dot/Dot";
 import { cardVariants } from "@/components/ui/Card/Card";
@@ -599,8 +598,7 @@ export default function MapOverlayControls({
             onCheckedChange={() => route.onChange(!route.shown)}
             aria-label="ルート"
           />
-          ルート（選んだ候補の線）
-          {!route.selectable && <span className={textVariants({ variant: "note" })}>（候補を選ぶと出せます）</span>}
+          {route.selectable ? "ルート（選んだ候補の線）" : "ルート（候補を選ぶと出せます）"}
         </label>
         {groups}
         <div className="mt-1.5 flex flex-col border-t border-[var(--color-border)] pt-1">
