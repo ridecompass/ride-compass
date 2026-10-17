@@ -9,7 +9,7 @@
 - 道の周りの帯から画素を数えること → `test_derive_landcover.py`
 - ラスタを読んでタイルを塗ること → `test_landcover_raster.py`
 - どのクラスが難易度に効くか（評価軸の項）→ 軸の宣言のテスト
-- 割合列の名前から材料の列と焼き込み列の名前を導く規則（`landcover_key`・`landcover_tile_property`）→ 書く側も読む側も
+- 割合列の名前から材料の列の名前を導く規則（`landcover_key`）→ 書く側も読む側も
   同じ関数で名前を導くので、食い違いようが無い
 """
 
@@ -96,7 +96,7 @@ async def test_every_class_in_the_declaration_is_counted_and_the_row_fits_the_mo
 
 
 def test_the_class_declaration_can_be_told_apart_everywhere_it_is_read():
-    """画素値が重なると1つの画素が2クラスに数えられ、割合列の名前が重なると材料の列と焼き込み列がぶつかる。
+    """画素値が重なると1つの画素が2クラスに数えられ、割合列の名前が重なると材料の列がぶつかる。
     表示名・色が重なると凡例と区間インスペクタで見分けられない。"""
     classes = landcover.LANDCOVER_CLASSES
     for attribute in ("value", "percent_field", "label", "color"):
