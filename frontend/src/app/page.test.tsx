@@ -19,8 +19,8 @@
  *   決めた高さを2枚のシートで分け合うこと）、区分の開閉の保存、
  *   ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、「現在地に移動」が出発地を変えずに地図を寄せて現在地に点を
  *   出すこと、メニューから入る使い方の説明とデバッグログ、
- *   走行モードの間の配置（プロファイルは見るだけ・休んでいる間だけ「現在地へ戻る」・帯の「地図の表示」で「表示」と「評価で塗る」を
- *   出し入れし、隠している間も「評価で塗る」のピルから一覧を開け、走り始めるたびに隠すこと）と、届いた現在地がプロファイルの印と
+ *   走行モードの間の配置（プロファイルは見るだけ・休んでいる間だけ「現在地へ戻る」・「表示」と「評価で塗る」は走っていないときと
+ *   同じに出し、走行中に効かない操作は出さないこと）と、届いた現在地がプロファイルの印と
  *   地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、到着予想が位置を受けた時刻と選んだ候補の計画から出ること、
  *   走行中に帯の「ルート」で開いたパネルで選び直す・作り直すと走行モードが新しい候補を追い、パネルを出していない間は地図で
  *   何も変えも開きもしないこと、「このルートで走る」でその候補で走り始めてシートを閉じ、止めると走る前のシートへ戻ること
@@ -771,7 +771,7 @@ describe("地図で扱えること", () => {
 });
 
 describe("画面の枠", () => {
-  it("走行モードの間は、上の帯を走りの数字に替え、パネルと地図の上の操作を隠し、選んだ候補のプロファイルを見るだけで地図の下に出す。止めると元に戻る", async () => {
+  it("走行モードの間は、上の帯を走りの数字に替え、パネルと「現在地に移動」を隠し、選んだ候補のプロファイルを見るだけで地図の下に出す。止めると元に戻る", async () => {
     const { user } = renderHome();
     jobs.respond([FIRST], LOOP_CONDITIONS);
     await generate(user);
@@ -779,7 +779,6 @@ describe("画面の枠", () => {
     const rideProfile = () => screen.queryByRole("region", { name: "予定ルートのプロファイル" });
     const shownWhileIdle = () => [
       screen.queryByText(/^気温:/),
-      screen.queryByRole("button", { name: "地図に出す情報" }),
       screen.queryByRole("button", { name: "ルート設定" }),
       screen.queryByRole("button", { name: "現在地に移動" }),
     ];
@@ -789,7 +788,7 @@ describe("画面の枠", () => {
 
     await user.click(screen.getByRole("button", { name: "走行モード" }));
     expect(screen.getByRole("group", { name: "走りの数字" })).toBeInTheDocument();
-    expect(shownWhileIdle()).toEqual([null, null, null, null]);
+    expect(shownWhileIdle()).toEqual([null, null, null]);
     expect(within(rideProfile()!).getByRole("img", { name: "道のりに沿った難易度" })).toBeInTheDocument();
     // グラフに出す情報は、ページが持つ1つの選択（はじめは標高）を走行中の図にも渡す。
     await user.click(within(rideProfile()!).getByRole("tab", { name: FACT_DISPLAY_NAME }));
@@ -801,48 +800,26 @@ describe("画面の枠", () => {
     expect(rideProfile()).toBeNull();
   });
 
-  it("走行中は帯の「地図の表示」で「表示」と「評価で塗る」を出し入れでき、隠している間も「評価で塗る」のピルは出て押すと一覧を開き、出している間も現在地を追い、走行方位・走行条件・「現在地に移動」は出さない。止めて走り直すと隠した配置から始まる", async () => {
+  it("走行中も「表示」と「評価で塗る」を出してピルから一覧を開け、出したまま現在地を追い、走行方位・走行条件・「現在地に移動」は出さない", async () => {
     const geolocation = installGeolocation(HERE);
     const { user } = renderHome();
     jobs.respond([FIRST], LOOP_CONDITIONS);
     await generate(user);
-    const overlayControls = () => screen.queryByRole("button", { name: "地図に出す情報" });
-    const lensPill = () => screen.getByRole("button", { name: /^評価で塗る: / });
-    const ridingOnlyHidden = () => [
+
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    geolocation.deliver(RIDDEN_MIDDLE);
+
+    expect(screen.getByRole("button", { name: "地図に出す情報" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^評価で塗る: / }));
+    expect(await screen.findByRole("radiogroup", { name: "評価で塗る" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect([
       screen.queryByRole("button", { name: "走行方位を設定" }),
       screen.queryByRole("group", { name: "走行条件" }),
       screen.queryByRole("button", { name: "現在地に移動" }),
-    ];
-    const startRide = async () => {
-      await user.click(screen.getByRole("button", { name: "走行モード" }));
-      geolocation.deliver(RIDDEN_MIDDLE);
-      return screen.getByRole("button", { name: "地図の表示" });
-    };
-
-    let toggle = await startRide();
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(overlayControls()).toBeNull();
-    await user.click(lensPill());
-    expect(await screen.findByRole("radiogroup", { name: "評価で塗る" })).toBeInTheDocument();
-    await user.keyboard("{Escape}");
-
-    await user.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(overlayControls()).not.toBeNull();
-    expect(lensPill()).toBeInTheDocument();
-    expect(ridingOnlyHidden()).toEqual([null, null, null]);
+    ]).toEqual([null, null, null]);
     geolocation.deliver(RIDDEN_MIDDLE);
     expect(screen.queryByRole("button", { name: "現在地へ戻る" })).toBeNull();
-
-    await user.click(toggle);
-    expect(overlayControls()).toBeNull();
-    await user.click(toggle);
-
-    await user.click(screen.getByRole("button", { name: "走行モード" }));
-    expect(screen.queryByRole("button", { name: "地図の表示" })).toBeNull();
-    toggle = await startRide();
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(overlayControls()).toBeNull();
   });
 
   it("走行モードで届いた現在地を選んだ候補の上の距離へ当て、プロファイルに印を出し、地図のルート線のそこまでを薄め、走りの帯に残りと到着予想を出す", async () => {

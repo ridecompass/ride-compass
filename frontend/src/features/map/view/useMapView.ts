@@ -74,7 +74,7 @@ interface MapViewInputs {
 
 interface MapViewState {
   look: MapLook;
-  lensControl: Omit<ComponentProps<typeof LensControl>, "compact">;
+  lensControl: ComponentProps<typeof LensControl>;
   overlayControls: ComponentProps<typeof MapOverlayControls>;
   /** 周りの道を塗っている軸が使う走る条件（向き・速さ・出発時刻）。地図の右の列の、その条件のボタンに印を付ける。 */
   lensConditions: readonly WayValueCondition[];
