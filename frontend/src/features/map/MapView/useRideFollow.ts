@@ -60,6 +60,11 @@ function createLocationMark(): HTMLElement {
   return element;
 }
 
+/** MapLibreの出来事の元の入力が、2本以上の指のタッチか。 */
+function isTwoFingerTouch(input: unknown): boolean {
+  return typeof input === "object" && input !== null && "touches" in input && (input as TouchEvent).touches.length >= 2;
+}
+
 /** 走行モードの間、現在地の点を出し、追っている間は地図の中心（と向き）を現在地へ動かし続ける。利用者が地図を指で
  * 動かすか回すと追うのを休むよう知らせ、方位のボタンは北を上に戻す代わりに向きの切り替えを知らせる。止めたら地図の向きを
  * 走る前に戻す。走っていない間は、`here`（取り直した現在地）に同じ点を出す。
@@ -75,19 +80,43 @@ export function useRideFollow(
   const baseZoom = useRef<number | null>(null);
   const smoothedSpeed = useRef<number | null>(null);
   const appliedZoomOut = useRef(0);
+  // 利用者が休まずに続ける操作（拡大・縮小、まだ決めていない2本指）の最中か。最中にカメラを動かすとMapLibreが操作を打ち切る。
+  const gesture = useRef<{ twoFingers: boolean; zoomed: boolean } | null>(null);
+  // 最後に届いた位置へカメラを寄せる。操作の最中に届いた位置へは、操作が終わってから寄せる。
+  const followCamera = useRef<(() => void) | null>(null);
   useEffect(() => {
     latest.current = ride;
   });
 
   // 利用者の操作だけが出来事に元の入力（`originalEvent`）を持つ。地図を動かすアプリの操作（追う・ルートを収める）では休まない。
-  // 拡大・縮小だけでは休まない（MapLibreの標準の現在地のボタンと同じ）。
+  // 拡大・縮小だけでは休まない（MapLibreの標準の現在地のボタンと同じ）。休まずに続ける操作の最中は、`gesture`に持つ。
+  // MapLibreは2本指の操作を、指の重心がずれると倍率が変わる前に移動として始めるので、2本指は始まりで決めず、回す・傾けるが
+  // 始まれば休み、どれも無いまま終われば（2本指で動かしただけなら）休む。
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const shown = map;
-    function pauseOnUserMove(event: { originalEvent?: unknown }) {
-      if (event.originalEvent === undefined || shown.isZooming() || !latest.current?.following) return;
-      latest.current.onPause();
+    function onUserMoveStart(event: { originalEvent?: unknown }) {
+      if (event.originalEvent === undefined || !latest.current?.following) return;
+      if (isTwoFingerTouch(event.originalEvent)) gesture.current = { twoFingers: true, zoomed: false };
+      else if (shown.isZooming()) gesture.current = { twoFingers: false, zoomed: true };
+      else latest.current.onPause();
+    }
+    function noteZoom() {
+      if (gesture.current !== null) gesture.current.zoomed = true;
+    }
+    function pauseOnTwoFingerTurn() {
+      if (!gesture.current?.twoFingers) return;
+      gesture.current = null;
+      latest.current?.onPause();
+    }
+    function onUserMoveEnd(event: { originalEvent?: unknown }) {
+      const ended = gesture.current;
+      if (event.originalEvent === undefined || ended === null) return;
+      gesture.current = null;
+      if (!latest.current?.following) return;
+      if (ended.zoomed) followCamera.current?.();
+      else latest.current.onPause();
     }
     // 方位のボタンは押すと自分で北へ戻すので、走行モードの間は、ボタンへ届く前（捕捉の段）で止めて切り替えに替える。
     function toggleOnCompass(event: MouseEvent) {
@@ -104,12 +133,20 @@ export function useRideFollow(
       baseZoom.current = shown.getZoom() + appliedZoomOut.current;
     }
     const container = map.getContainer();
-    map.on("movestart", pauseOnUserMove);
+    map.on("movestart", onUserMoveStart);
+    map.on("zoomstart", noteZoom);
+    map.on("rotatestart", pauseOnTwoFingerTurn);
+    map.on("pitchstart", pauseOnTwoFingerTurn);
     map.on("zoomend", rebaseOnUserZoom);
+    map.on("moveend", onUserMoveEnd);
     container.addEventListener("click", toggleOnCompass, true);
     return () => {
-      map.off("movestart", pauseOnUserMove);
+      map.off("movestart", onUserMoveStart);
+      map.off("zoomstart", noteZoom);
+      map.off("rotatestart", pauseOnTwoFingerTurn);
+      map.off("pitchstart", pauseOnTwoFingerTurn);
       map.off("zoomend", rebaseOnUserZoom);
+      map.off("moveend", onUserMoveEnd);
       container.removeEventListener("click", toggleOnCompass, true);
     };
   }, [mapRef]);
@@ -194,6 +231,7 @@ export function useRideFollow(
     if (!wasFollowing.current) {
       baseZoom.current = Math.max(map.getZoom(), RIDE_MIN_ZOOM);
       smoothedSpeed.current = null;
+      gesture.current = null;
     }
     wasFollowing.current = true;
     if (speedKmh !== null) {
@@ -201,12 +239,15 @@ export function useRideFollow(
       smoothedSpeed.current = previous === null ? speedKmh : previous + SPEED_SMOOTHING * (speedKmh - previous);
     }
     appliedZoomOut.current = rideZoomOut(smoothedSpeed.current);
-    map.easeTo({
-      center: [position.longitude, position.latitude],
-      bearing: headingUp ? (bearing ?? map.getBearing()) : 0,
-      zoom: (baseZoom.current ?? map.getZoom()) - appliedZoomOut.current,
-      offset: visibleOffset(map),
-    });
+    const center: [number, number] = [position.longitude, position.latitude];
+    followCamera.current = () =>
+      map.easeTo({
+        center,
+        bearing: headingUp ? (bearing ?? map.getBearing()) : 0,
+        zoom: (baseZoom.current ?? map.getZoom()) - appliedZoomOut.current,
+        offset: visibleOffset(map),
+      });
+    if (gesture.current === null) followCamera.current();
     // visibleOffsetは寄せる瞬間の覆いを測るだけで、変わっても動かし直さない。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRef, following, position, bearing, headingUp, speedKmh]);
