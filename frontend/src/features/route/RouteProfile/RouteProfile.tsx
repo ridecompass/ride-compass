@@ -9,6 +9,7 @@ import { Dot } from "@/components/ui/Dot/Dot";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
+import { cn } from "@/lib/cn";
 import { DisplayItemsIcon } from "@/components/ui/icons/icons";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { profileBoxes } from "@/features/route/DifficultyProfile/profileGeometry";
@@ -59,8 +60,12 @@ interface RouteProfileProps {
   onSelect?: (selection: SelectedRouteSegment) => void;
   /** 走行中の現在地のルートの上の距離。 */
   progressKm?: number | null;
+  /** 置いた経由地を通る所のルートの上の距離（置いた順）。 */
+  waypointKms: readonly number[];
   /** グラフに出す情報の選択（結果と走行中の図で1つを共有する）。 */
   layers: ProfileLayerSelection;
+  /** 走行中の地図の下の図。切り替えと見方・出す情報のボタンを図に重ねず、図の上の行に出す（高くした図の線と印を覆わない）。 */
+  riding?: boolean;
 }
 
 /** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「評価で塗る」は区間の難易度を、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、同じ横軸で出す。 */
@@ -74,7 +79,9 @@ export default function RouteProfile({
   selected,
   onSelect,
   progressKm = null,
+  waypointKms,
   layers,
+  riding = false,
 }: RouteProfileProps) {
   const [tab, setTab] = useState("lens");
   const axisOrder = useMemo(() => axes.map((axis) => axis.axisId), [axes]);
@@ -129,11 +136,22 @@ export default function RouteProfile({
   }
   const marksOf = new Map(shownLayers.marks.map(({ layer, marks }) => [layer.id, { layer, marks }]));
 
+  // 現在地の印は、最初の折れ線（標高等）のその地点の値の高さに置く。
+  const firstLine = shownLayers.lines.find(({ range }) => range !== null);
+  const progressValue =
+    progressKm === null || firstLine === undefined ? null : layerValueAtKm(scale.columns, firstLine.layer, progressKm);
+  const progressMarkY = progressValue === null || firstLine?.range == null ? null : yOf(progressValue, firstLine.range);
+
   return (
     <Tabs value={tab} onValueChange={setTab} className="relative flex flex-col gap-1">
-      {/* 切り替えと見方・出す情報のボタンは図の上の角に重ね、図の上に段を取らない（スマホのシートの低い高さで図を大きく
-          見せる）。重ねた部品の外では、図をなぞって地点を選べる。 */}
-      <div className="pointer-events-none absolute inset-x-1 top-1 z-10 flex items-start justify-between gap-1 [&>*]:pointer-events-auto">
+      {/* 結果では、切り替えと見方・出す情報のボタンは図の上の角に重ね、図の上に段を取らない（スマホのシートの低い高さで図を
+          大きく見せる）。重ねた部品の外では、図をなぞって地点を選べる。 */}
+      <div
+        className={cn(
+          "flex items-start justify-between gap-1",
+          !riding && "pointer-events-none absolute inset-x-1 top-1 z-10 [&>*]:pointer-events-auto",
+        )}
+      >
         <TabsList aria-label="道のりのグラフ" variant="overlay">
           <TabsTrigger value="layer" usage="選んだ情報（標高・道の区分等）を、道のりに沿って出します。">
             {FACT_DISPLAY_NAME}
@@ -251,6 +269,7 @@ export default function RouteProfile({
           selected={selected}
           onSelect={onSelect}
           progressKm={progressKm}
+          waypointKms={waypointKms}
         />
       </TabsContent>
       <TabsContent value="layer" className="flex flex-col gap-1">
@@ -261,6 +280,8 @@ export default function RouteProfile({
           selected={selected}
           onSelect={onSelect}
           progressKm={progressKm}
+          progressMarkY={progressMarkY}
+          waypointKms={waypointKms}
           caption={(pointKm) => (
             <div className="text-[length:var(--font-size-xs)] text-[var(--color-muted)] tabular-nums">
               {shownLayers.lines.length + rowCount === 0 ? (

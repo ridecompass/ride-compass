@@ -45,6 +45,25 @@ async function settledScreenPoint(page: Page, at: { latitude: number; longitude:
   return settled!;
 }
 
+/** 地図が動き終わって落ち着いたときの倍率。指を離したあとの慣性と、続けて寄せる動きが終わるまで待つ。 */
+async function settledZoom(page: Page) {
+  let settled: number | null = null;
+  await expect
+    .poll(
+      async () => {
+        const read = () => page.evaluate(() => (window.__liveMap().isMoving() ? null : window.__liveMap().getZoom()));
+        const first = await read();
+        await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 500)));
+        const second = await read();
+        settled = first !== null && second !== null && Math.abs(first - second) < 1e-3 ? second : null;
+        return settled !== null;
+      },
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+  return settled!;
+}
+
 /** 地図が止まっていて、その地点が画面の`expected`に描かれるまで待つ（地図がその地点を追ったか）。 */
 async function expectDrawnAt(
   page: Page,
@@ -218,6 +237,7 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   await page.getByRole("button", { name: /^進む向きを上にする/ }).click();
   await expect.poll(() => mapBearing(page), { timeout: 10_000 }).toBeCloseTo(90, 0);
   await rideButton.click();
+  await page.getByRole("button", { name: "案内を終える" }).click();
   await expect(rideButton).toHaveAttribute("aria-pressed", "false");
   await expect.poll(() => mapBearing(page), { timeout: 10_000 }).toBeCloseTo(0, 0);
   await expect(dot).toBeHidden();
@@ -266,7 +286,7 @@ test.describe("タッチ端末", () => {
       { x: center.x + dx + gap / 2, y: center.y },
     ];
 
-    // 指の間を240pxから80pxへ縮める（倍率は log2(3) 段だけ下がる）。先に重心だけを横へ動かし、移動として始まらせる
+    // 指の間を240pxから80pxへ縮める。先に重心だけを横へ動かし、移動として始まらせる
     // （2本の指を揃えて縦に動かすと、地図を傾ける操作になる）。
     const [fromGap, toGap, steps] = [240, 80, 10];
     const gapAt = (step: number) => fromGap + ((toGap - fromGap) * step) / steps;
@@ -279,15 +299,17 @@ test.describe("タッチ端末", () => {
     for (let step = steps / 2 + 1; step <= steps; step += 1) await touch("touchMove", fingers(gapAt(step), 6));
     await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
 
-    const pinchedZoom = followedZoom - Math.log2(fromGap / toGap);
-    await expect.poll(zoom, { timeout: 10_000 }).toBeCloseTo(pinchedZoom, 1);
+    // 指を離したあとの慣性で倍率がどれだけ進むかは指の動きの速さで変わるので、落ち着いた倍率を読む。つまむ前の倍率へ
+    // 戻していれば、つまんだ分（log2(3) 段から、拡大・縮小と見なすまでの遊びを引いた分）だけ下がっていない。
+    const pinchedZoom = await settledZoom(page);
+    expect(followedZoom - pinchedZoom).toBeGreaterThan(1);
     // 休まず、つまむ最中に届いた位置へ寄せ直し、次の位置もつまんだ倍率のまま追う。
     await expectDrawnAt(page, duringPinch, anchor);
     await expect(backToHere).toBeHidden();
     const next = moved(START, 0, 20);
     await deliverPosition(page, context, at(next));
     await expectDrawnAt(page, next, anchor);
-    expect(await zoom()).toBeCloseTo(pinchedZoom, 1);
+    expect(await zoom()).toBeCloseTo(pinchedZoom, 2);
     await expect(backToHere).toBeHidden();
 
     // 1本指で動かすと休む。

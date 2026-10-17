@@ -1,6 +1,6 @@
 /**
  * 走行モード（`features/ride/useRideMode.ts: useRideMode`）——ボタンで始めると現在地を受け取り続けて地図に追わせ、
- * 地図を指で動かすと追うのを休み、「現在地へ戻る」で追い直し、ボタンをもう一度押すと（休んでいても）止めて受け取りをやめる。
+ * 休むか地図を指で動かすと追うのを休み（位置は受け続ける）、「現在地へ戻る」で追い直し、止めると（休んでいても）受け取りをやめる。
  * 走行モードの間は、地図の向きを北が上と進む向きが上で切り替え、止めると北が上に戻す。
  *
  * ここで見ないもの:
@@ -66,6 +66,23 @@ describe("useRideMode", () => {
     expect(result.current.status).toBe("off");
     expect(result.current.map).toBeNull();
     expect(geolocation.watching()).toBe(0);
+  });
+
+  it("休むと、走行モードのまま追うのをやめて位置を受け続け、追い直せる。最初の位置を待つ間にも休める", () => {
+    const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
+    act(() => result.current.press());
+    act(() => result.current.rest());
+    expect(result.current.status).toBe("paused");
+
+    geolocation.deliver({ latitude: 35.68, longitude: 139.76 });
+    expect(result.current.status).toBe("paused");
+    expect(result.current.map).toMatchObject({ position: { latitude: 35.68, longitude: 139.76 }, following: false });
+    expect(geolocation.watching()).toBe(1);
+
+    act(() => result.current.resume());
+    expect(result.current.map?.following).toBe(true);
+    act(() => result.current.rest());
+    expect(result.current.map?.following).toBe(false);
   });
 
   it("北が上と進む向きが上を切り替え、進む向きは届いた位置から出す。止めて始め直すと北が上から始まる", () => {

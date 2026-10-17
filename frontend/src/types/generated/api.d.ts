@@ -1496,6 +1496,8 @@ export interface components {
             turns: components["schemas"]["RouteTurn"][];
             /** Points */
             points: components["schemas"]["RoutePoint"][];
+            /** Waypoint Distances Km */
+            waypoint_distances_km: number[];
             overall_difficulty: components["schemas"]["OverallDifficulty"] | null;
             /** Axis Difficulties */
             axis_difficulties: {

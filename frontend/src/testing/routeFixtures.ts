@@ -28,6 +28,7 @@ export function makeRouteCandidate(overrides: Partial<RouteCandidate> = {}): Rou
     node_ids: [],
     turns: [],
     points: [],
+    waypoint_distances_km: [],
     axis_contributions: {},
     ...overrides,
   };

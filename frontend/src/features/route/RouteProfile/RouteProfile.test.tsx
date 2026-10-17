@@ -3,9 +3,9 @@
  *
  * 見るもの: 既定で「評価で塗る」（難易度のグラフ）を出すこと、その (i) が塗った軸の色と名前・値の無い区間の色・意味の文を出すこと
  * （塗る区間の無い軸は出さない）、「表示」のタブのチップが選んだ情報を重ね・外す知らせを上げること、標高の折れ線と最高・最低、
- * 選んだ地点の標高、出す情報が無いときと値が無いときの文、道の区分のレイヤの帯をレイヤごとに地図と同じ色で出し、その凡例と
+ * 選んだ地点の標高、走行中の現在地の印を最初の折れ線のその地点の高さに置くこと（値が無ければ中ほど）、出す情報が無いときと値が無いときの文、道の区分のレイヤの帯をレイヤごとに地図と同じ色で出し、その凡例と
  * 選んだ地点の区分の呼び名を出すこと、点のレイヤはルートの近くの点を通る距離に地図と同じ色の印で並べ、選んだ地点の点の区分と名前と、
- * 現れた区分の凡例を出すこと。
+ * 現れた区分の凡例を出すこと、両方のタブで経由地を通る所に線と番号の印を出し、走り終えた経由地を薄めること。
  *
  * ここで見ないもの: 難易度の塗り・なぞって地点を選ぶ操作 → `DifficultyProfile.test.tsx`。折れ線の点・帯の切れ目と地点の値・行の計算 →
  * `profileLayers.test.ts`（点の印の色・区分の名前・地点の印の選び方も）。選んだレイヤを覚えること → `useProfileLayers.test.ts`。
@@ -19,6 +19,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { catalogEntry, catalogOf } from "@/testing/catalogAxes";
 import { makeRouteSegment } from "@/testing/routeFixtures";
+import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { RouteSegmentDetail } from "@/types/route";
 
 import RouteProfile from "./RouteProfile";
@@ -62,6 +63,7 @@ function renderProfile(props: Partial<Props> = {}) {
       selected={null}
       layers={{ ids: ["elevation"], toggle }}
       points={[]}
+      waypointKms={[]}
       {...props}
     />,
   );
@@ -109,6 +111,7 @@ describe("RouteProfile", () => {
         selected={{ segment: CLIMB, latitude: 35, longitude: 139 }}
         layers={{ ids: ["elevation"], toggle }}
         points={[]}
+        waypointKms={[]}
       />,
     );
     expect(screen.getByText("標高 最高 32m・最低 12m・この地点 12m")).toBeInTheDocument();
@@ -118,6 +121,30 @@ describe("RouteProfile", () => {
     expect(elevation).toBeChecked();
     await userEvent.click(elevation);
     expect(toggle).toHaveBeenCalledWith("elevation");
+  });
+
+  it("「表示」のタブの現在地の印は、最初の折れ線のその地点の値の高さに置き、その地点に値が無ければ図の中ほどに置く", async () => {
+    const { rerender } = renderProfile({ scaleKm: 2, progressKm: 0.25 });
+    await openLayers();
+    const mark = () => screen.getByRole("img", { name: "現在地" });
+    // 標高12〜31.6mの1/4の高さ（上下の余白8を除いた84の1/4だけ下端から上がる）。
+    expect(mark().style).toMatchObject({ left: "12.5%", top: "71%" });
+
+    rerender(
+      <RouteProfile
+        segments={[CLIMB, UNKNOWN]}
+        overallDifficulty={20}
+        axes={CATALOG.axes}
+        axisColors={CATALOG.axisColors}
+        scaleKm={2}
+        selected={null}
+        layers={{ ids: ["elevation"], toggle: vi.fn() }}
+        points={[]}
+        progressKm={1.5}
+        waypointKms={[]}
+      />,
+    );
+    expect(mark().style).toMatchObject({ left: "75%", top: "50%" });
   });
 
   it("道の区分のレイヤは、レイヤごとに地図と同じ色の帯を出し、選んだ地点の区分の呼び名をグラフの下に、帯に現れた区分の凡例を「グラフに出す情報」の一覧の行に出す", async () => {
@@ -196,5 +223,33 @@ describe("RouteProfile", () => {
     await openLayers();
     expect(screen.getByText(text)).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "道のりに沿った情報" }).querySelector("polyline")).toBeNull();
+  });
+
+  it("両方のタブで、経由地を通る所に縦の線と地図のピンと同じ番号の印を出し、走行中は走り終えた経由地を薄める", async () => {
+    renderProfile({ waypointKms: [0.5, 1.5], progressKm: 1 });
+    const marks = () =>
+      screen.getAllByRole("img", { name: /^経由地/ }).map((mark) => ({
+        name: mark.getAttribute("aria-label"),
+        number: mark.textContent,
+        left: mark.style.left,
+        opacity: mark.style.opacity,
+      }));
+    const expected = [
+      {
+        name: "経由地 1（0.5km地点）",
+        number: "1",
+        left: "25%",
+        opacity: String(mapDisplay.route.opacities.travelled),
+      },
+      { name: "経由地 2（1.5km地点）", number: "2", left: "75%", opacity: "" },
+    ];
+    const lines = (name: string) =>
+      [...screen.getByRole("img", { name }).querySelectorAll("[data-waypoint]")].map((line) => line.getAttribute("x1"));
+
+    expect(marks()).toEqual(expected);
+    expect(lines("道のりに沿った難易度")).toEqual(["250", "750"]);
+    await openLayers();
+    expect(marks()).toEqual(expected);
+    expect(lines("道のりに沿った情報")).toEqual(["250", "750"]);
   });
 });

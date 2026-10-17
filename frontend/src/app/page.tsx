@@ -512,11 +512,13 @@ export default function Home() {
   }
 
   // 走行モードの間、地図の下に選んだ候補の道のりに沿った難易度を見るだけで出し（候補が無ければ出さない。区間の中身を出す
-  // 所は走行中に開いていないので選ばせない）、地図を指で動かして追うのを休んでいる間は、そのすぐ上に「現在地へ戻る」を出す。
+  // 所は走行中に開いていないので選ばせない）、そのすぐ上に続きから走るための操作を1か所で出す: 追うのを休んでいる間は
+  // 「現在地へ戻る」、追っている間にルートを外れたら、戻れば続きから案内すること。
   function renderRideBottom() {
     const selected = results.selectedCandidate;
     const profile = selected !== null && selected.segments.length > 0 ? selected : null;
-    if (profile === null && riding.status !== "paused") return null;
+    const awayNotice = riding.status === "following" && progress.offRoute;
+    if (profile === null && riding.status !== "paused" && !awayNotice) return null;
     return (
       <div
         {...mapOverlayEdge("bottom")}
@@ -528,11 +530,22 @@ export default function Home() {
             size="md"
             className="pointer-events-auto gap-1.5 shadow-md"
             onClick={riding.resume}
-            usage="地図を指で動かしている間は、現在地を追うのを休んでいます。押すと地図を現在地へ戻し、また追います。"
+            usage="休んでいる間（休むを選んだ・地図を指で動かした）は、現在地を追いません。押すと地図を現在地へ戻し、休む前の進み具合から続きを追います。"
           >
             <LocateIcon />
             現在地へ戻る
           </Button>
+        )}
+        {awayNotice && (
+          <p
+            className={cn(
+              cardVariants({ variant: "float" }),
+              textVariants({ variant: "hint" }),
+              "pointer-events-auto rounded-md px-2.5 py-1.5",
+            )}
+          >
+            ルートを外れています。ルートへ戻ると続きから案内します。
+          </p>
         )}
         {profile !== null && (
           <section
@@ -547,8 +560,10 @@ export default function Home() {
               axisColors={axisCatalog.axisColors}
               scaleKm={profile.distance_km}
               progressKm={progressKm}
+              waypointKms={profile.waypoint_distances_km}
               selected={null}
               layers={profileLayers}
+              riding
             />
           </section>
         )}
@@ -808,6 +823,7 @@ export default function Home() {
                 error={riding.error}
                 screenWakeLock={riding.screenWakeLock}
                 onPress={riding.press}
+                onRest={riding.rest}
               />
             </div>
             {navigating && renderRideBottom()}
