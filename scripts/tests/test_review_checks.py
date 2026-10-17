@@ -199,7 +199,7 @@ def test_size_names_code_over_the_limit_without_a_default_split(repo, monkeypatc
     assert "既定の対応（on_fire）の無いコードの上限超え 1件: app/undecided.ts" in out
 
 
-@pytest.mark.parametrize("changed_lines, fired",[(rc.TRIGGER_IMPL_LINES - 1, False), (rc.TRIGGER_IMPL_LINES, True)])
+@pytest.mark.parametrize("changed_lines, fired", [(rc.TRIGGER_IMPL_LINES - 1, False), (rc.TRIGGER_IMPL_LINES, True)])
 def test_trigger_for_the_session_start_says_nothing_until_it_fires(repo, capsys, changed_lines, fired):
     # セッションの始まりのフックは発火したときだけ文脈へ出す。発火を出し損ねると、周期レビューに誰も気づかない。
     _commit(repo, {"backend/a.py": "a\n"})
