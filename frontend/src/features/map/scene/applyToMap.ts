@@ -172,6 +172,16 @@ function underlaidAxisIds(props: SceneWiringProps): ReadonlySet<string> {
   );
 }
 
+/** 点の家族へ渡す入切。レイヤーの入切に、選んでいる密度の軸が数える材料の点を足す——密度の軸は線を塗らず、
+ * 点で見せる。足すのはここだけで、レイヤーの入切そのものは変えない。 */
+function pointVisibility(props: SceneWiringProps): MapLayerVisibility {
+  const { look } = props;
+  const lensAxis = props.catalog.dedicatedAxes.find((axis) => axis.axisId === look.lens && axis.densityTerms !== null);
+  if (lensAxis === undefined) return look.layerVisibility;
+  const counted = primaryAttributeIdsToLayerIds(lensAxis.primaryAttributeIds);
+  return { ...look.layerVisibility, ...Object.fromEntries(counted.map((layerId) => [layerId, true])) };
+}
+
 function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): AxisLineState {
   const { look } = props;
   const underlaid = underlaidAxisIds(props);
@@ -237,7 +247,7 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
     axis: axisStateFrom(props, roadTiles?.sourceLayer ?? null),
     point: {
       tiles: versions === null ? null : { urls: pointTileUrls(versions), ...zoom },
-      visible,
+      visible: pointVisibility(props),
       hiddenKeys,
     },
     weather: weatherStateFrom(props),
