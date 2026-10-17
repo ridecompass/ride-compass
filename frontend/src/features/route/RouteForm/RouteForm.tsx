@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/T
 import type { Coordinates, PinRole, PlaceCandidate } from "@/types/route";
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import { DISTANCE_STEP_KM, MIN_DISTANCE_KM } from "@/features/route/savedConditions";
+import { DISTANCE_STEP_KM } from "@/features/route/savedConditions";
 import SavedPlacesPanel from "@/features/route/SavedPlacesPanel/SavedPlacesPanel";
 import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
 import RoutePoints from "./RoutePoints";
@@ -74,10 +74,10 @@ interface RouteFormProps {
 
 const MAX_DISTANCE_KM = routeGenerateConfig.max_distance_km;
 const DISTANCE_TOLERANCE_KM = routeGenerateConfig.default_distance_tolerance_km;
-/** スライダーの目盛。止まる刻みごとに付ける。 */
+/** スライダーの目盛。止まる刻みごとに付ける（下限は1刻み分）。 */
 const DISTANCE_MARKS_KM = Array.from(
-  { length: Math.floor((MAX_DISTANCE_KM - MIN_DISTANCE_KM) / DISTANCE_STEP_KM) + 1 },
-  (_, i) => MIN_DISTANCE_KM + i * DISTANCE_STEP_KM,
+  { length: Math.floor(MAX_DISTANCE_KM / DISTANCE_STEP_KM) },
+  (_, i) => (i + 1) * DISTANCE_STEP_KM,
 );
 const MIN_ROUTES = routeGenerateConfig.min_routes;
 const MAX_ROUTES = routeGenerateConfig.max_routes;
@@ -141,7 +141,7 @@ export default function RouteForm({
             <input
               aria-label="全長の目標"
               type="range"
-              min={MIN_DISTANCE_KM}
+              min={DISTANCE_STEP_KM}
               max={MAX_DISTANCE_KM}
               step={DISTANCE_STEP_KM}
               list={distanceMarksId}
