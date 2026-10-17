@@ -75,6 +75,8 @@ def network() -> RoadNetwork:
         edge_min_lat=np.minimum(lat[edge_from], lat[edge_to]),
         edge_max_lon=np.maximum(lon[edge_from], lon[edge_to]),
         edge_max_lat=np.maximum(lat[edge_from], lat[edge_to]),
+        edge_start_bearing_deg=np.array([80.0, 260.0, 100.0, 90.0, NAN]),
+        edge_end_bearing_deg=np.array([100.0, 280.0, 80.0, 90.0, NAN]),
         numeric_ids=("num_a", GRADE),
         numeric_values=np.column_stack([row * 10, [3.0, -3.0, NAN, 1.5, 2.5]]),
         categorical_ids=("cat_a",),

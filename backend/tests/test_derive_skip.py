@@ -34,7 +34,7 @@ from app.infrastructure import derived_data_meta, road_network_store
 from app.infrastructure.derived_data_freshness import declared_columns, derived_tables
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.source_models import PARTY_TYPE_CODES, Source
-from tests.conftest import empty_ingested_tables, postgis_database_url, raw_connection
+from tests.conftest import APP_TABLES_SQL, empty_ingested_tables, postgis_database_url, raw_connection
 from tests.source_ingest import (
     abr_block_record,
     abr_city_record,
@@ -425,9 +425,10 @@ async def test_the_network_inputs_refuse_a_table_no_stage_writes():
         derive_cli.network_inputs(["road_edges", "source_features_osm_way", "tuning_overrides"])
 
 
-#: この接続のトランザクションで表を読んだ数（`_TOUCHED_SQL`と同じ統計）。
+#: この接続のトランザクションでアプリ側の表を読んだ数（`_TOUCHED_SQL`と同じ統計）。拡張が持ち込んだ表は外す——
+#: `::geography`は SRID の定義を`spatial_ref_sys`から実行時に引くが、計画には出ず、行は拡張が決めて段も取込も変えない。
 _SCANS_SQL = text("SELECT relname, coalesce(seq_scan, 0) + coalesce(idx_scan, 0) AS scans"
-                  " FROM pg_stat_xact_user_tables WHERE schemaname = 'public'")
+                  f" FROM pg_stat_xact_user_tables WHERE schemaname = 'public' AND relname IN ({APP_TABLES_SQL})")
 
 
 async def _scans(session: AsyncSession) -> dict[str, int]:

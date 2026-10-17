@@ -20,6 +20,7 @@ DBから組むテストは、道とノードを取込の入口から入れ、派
 
 import json
 import logging
+import math
 import shutil
 from dataclasses import fields
 
@@ -74,6 +75,8 @@ def _network(revision: int | None, distance_m: float = 100.0) -> RoadNetwork:
         edge_min_lat=np.array([35.0, 35.0]),
         edge_max_lon=np.array([139.001, 139.001]),
         edge_max_lat=np.array([35.001, 35.001]),
+        edge_start_bearing_deg=np.array([40.0, np.nan]),
+        edge_end_bearing_deg=np.array([50.0, np.nan]),
         numeric_ids=("num_a",),
         numeric_values=np.array([[1.5], [np.nan]]),
         categorical_ids=("cat_a", "cat_b"),
@@ -348,6 +351,30 @@ async def test_the_network_is_built_from_the_derived_tables_with_one_row_per_dri
     assert copied
     for name in copied:
         np.testing.assert_array_equal(getattr(network, name), getattr(materials, name), err_msg=name)
+
+
+def _bearing(a: int, b: int) -> float:
+    """ノード`a`から`b`を見た方位（度、0=北・時計回り）を球面の式で求める。"""
+    (lon1, lat1), (lon2, lat2) = (map(math.radians, _NODES[n]) for n in (a, b))
+    x = math.sin(lon2 - lon1) * math.cos(lat2)
+    y = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(lon2 - lon1)
+    return math.degrees(math.atan2(x, y)) % 360
+
+
+@_on_test_db
+async def test_each_directed_edge_carries_the_bearings_beside_the_node_it_leaves_and_the_node_it_enters(
+        road_graph_engine):
+    """折れた1区間（ノード2で曲がり、分かれ道は無い）は、出る点のそばと入る点のそばで別の向きを持つ。
+    弦（端から端）の向きで交差点の曲がりを測ると、折れ目の向きの変わりが曲がりに混ざる。"""
+    await _derive(ways=((100, [1, 2, 3], {"highway": "residential"}),))
+    await road_network_store.ensure_current(async_sessionmaker(road_graph_engine))
+    network = road_network_store.current()
+
+    osm = network.node_osm_id
+    ends = [(int(osm[a]), int(osm[b])) for a, b in zip(network.edge_from, network.edge_to)]
+    assert ends == [(1, 3), (3, 1)]
+    assert network.edge_start_bearing_deg.tolist() == pytest.approx([_bearing(1, 2), _bearing(3, 2)], abs=0.5)
+    assert network.edge_end_bearing_deg.tolist() == pytest.approx([_bearing(2, 3), _bearing(2, 1)], abs=0.5)
 
 
 @_on_test_db
