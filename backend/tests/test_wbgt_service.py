@@ -8,6 +8,7 @@
 - 配信元の応答を解くこと → `test_wbgt_client.py`
 """
 
+import asyncio
 from datetime import datetime
 
 import httpx
@@ -127,3 +128,13 @@ async def test_get_status_returns_empty_when_below_almost_safe_threshold():
     result = await service.get_status(POINT, now=SUMMER_NOW)  # 15.0、21未満
 
     assert result is not None and result.reading is None
+
+
+async def test_points_asked_at_once_fetch_each_table_once():
+    """同時に開いた画面の問い合わせは、地点の表と予測を環境省へ1回ずつだけ取りに行く。"""
+    service, upstream = _service(forecast=[_forecast("2026/08/22 14:00:00", "2026/08/22 15:00:00", "300")])
+
+    await asyncio.gather(service.get_status(POINT, now=SUMMER_NOW), service.get_status(POINT, now=SUMMER_NOW))
+
+    urls = [str(call.request.url) for call in upstream.calls]
+    assert sorted(urls) == sorted(set(urls)) and len(urls) == 2

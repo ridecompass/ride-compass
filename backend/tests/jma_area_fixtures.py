@@ -14,7 +14,6 @@ from shapely.geometry import box
 
 from app.domain.route import Coordinates
 from app.infrastructure import flood_client, jma_area_boundaries, jma_warning_client
-from tests.fake_http import client_for
 
 CLASS20_CODE = "1310100"
 CLASS10_CODE = "130010"
@@ -39,8 +38,8 @@ def area_lookup_upstream(
     area_data=AREA_DATA,
     warning_documents=None,
     flood_documents=None,
-) -> httpx.AsyncClient:
-    """区域の境界を`CHIYODA_POINT`を囲む1区域だけにし、気象庁の代役を返す。
+) -> respx.Router:
+    """区域の境界を`CHIYODA_POINT`を囲む1区域だけにし、気象庁の代役の経路を返す。
 
     境界は置き場（`boundary_path`。`tests/conftest.py`の同じ名前のフィクスチャ）へ書き、ディスクから読む本物を通す。代役は地域マスタ・
     `OFFICE_CODE`の警報・洪水予報をURLで返し（Noneなら接続の失敗）、それ以外のURL（別の府県予報区の
@@ -64,4 +63,4 @@ def area_lookup_upstream(
             upstream.get(url).mock(side_effect=httpx.ConnectError)
         else:
             upstream.get(url).respond(json=payload)
-    return client_for(upstream)
+    return upstream

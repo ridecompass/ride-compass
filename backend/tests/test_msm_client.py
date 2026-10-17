@@ -1,6 +1,6 @@
 """`infrastructure/msm_client.py`——気象庁MSMの予報を配信元と同期し、ローカルの`.om`ファイルから読む。
 
-確かめるのは公開の入口（`refresh`・`read_series`・`freshness`/`freshness_from_meta`/`warn_if_stale`）から
+確かめるのは公開の入口（`refresh`・`read_series`・`forecast_version`・`freshness`/`freshness_from_meta`/`warn_if_stale`）から
 見える振る舞いだけ。差し替えるのはプロセス境界だけで、網は本物の`httpx.AsyncClient`へ配信元の代役
 （`MockTransport`）を付け、ディスクは一時ディレクトリ、時計は固定する。何時間先まで同期し・読むかは
 設定（`settings.msm_forecast_hours`）をテストごとに与える。
@@ -157,6 +157,22 @@ class TestSyncing:
             again = await msm_client.refresh(client)
 
         assert again == 0
+
+    async def test_the_forecast_version_changes_only_when_a_sync_brings_something_new(self, tmp_path, msm_dir):
+        """読み手は版を鍵に組み立てた応答を使い回す。何も届かない同期で版が変わると同じ予報から作り直し、届いた同期で
+        変わらないと前の予報を配り続ける。"""
+        source = Source(tmp_path)
+        async with source.client() as client:
+            msm_dir.forecast_hours(3)
+            await msm_client.refresh(client)
+            synced = msm_client.forecast_version()
+            await msm_client.refresh(client)
+            unchanged = msm_client.forecast_version()
+            source.meta = _meta(last_run_initialisation_time=NOW)
+            await msm_client.refresh(client)
+
+        assert unchanged == synced
+        assert msm_client.forecast_version() != synced
 
     async def test_a_chunk_whose_file_was_lost_is_fetched_again_even_with_a_known_etag(self, tmp_path, msm_dir):
         """「変更なし」を信じて、無いファイルを読みに行かない。"""
