@@ -520,7 +520,7 @@ JSはその旗を読むだけで数値を写さない:
 - デスクトップ: サイドバー（`aside.app-sidebar`）にモバイルの下部タブと同じ2区分
   「ルート設定 / ルート結果」を同じ順序で縦積み。各区分は独立した`Disclosure`折りたたみで、
   開閉状態は`generateOpen`・`outcomeOpen`（localStorage）で永続化する。「ルート設定」「ルート結果」の見出し行はどちらも
-  `trailing`に操作枠を持つ（前者は`renderRouteSectionHeaderActions()`の「いまの設定を保存」と「ルート生成」の
+  `trailing`に操作枠を持つ（前者は`renderRouteSectionHeaderActions()`の「ルート生成」の
   ボタン、後者は`renderRouteResultHeaderActions()`。選んでいる候補1本への操作［走る・合成・GPX出力］を全消去の手前に並べ、編集の間は
   候補1本への操作を出さない）。「ルート結果」の中身は上から**候補の一覧（横に並ぶカード）・道のりのグラフ（幅いっぱい）・
   内訳**の1列で、スマホの低い高さのシートでも候補の切り替えとグラフが先に見える。候補は1枚ずつのカード（`Tabs`の`cards`）で横に並べ、
@@ -567,7 +567,7 @@ JSはその旗を読むだけで数値を写さない:
   分けず、急いで見るべき失敗と、開いても候補の無い候補0件だけを見分けさせる。点は色と形だけなので、意味をタブの`aria-description`にも持たせる。デスクトップと同じく
   「ルート設定」シートは`RouteForm`（タブの中身を描く。タブ列と選択状態は`page.tsx`側の
   `Tabs.Root`が持つ）を描画し、`headerLead`propへタブ列（`renderSettingsTabs()`）、
-  `headerAction`propへ`renderRouteSectionHeaderActions()`（「いまの設定を保存」「ルート生成」のボタンと、
+  `headerAction`propへ`renderRouteSectionHeaderActions()`（「ルート生成」のボタンと、
   条件が変わっている印）をデスクトップと同じヘルパーから渡す。
 
 `BottomSheet`はposition:fixedのオーバーレイで暗幕を敷かない（表示中も地図をパン/ズーム

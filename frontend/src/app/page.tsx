@@ -24,7 +24,7 @@ import LensControl from "@/features/map/LensControl/LensControl";
 import RouteForm, { type SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import RouteSettingsPanel from "@/features/route/RouteSettingsPanel/RouteSettingsPanel";
 import HardFilterPanel from "@/features/route/RouteSettingsPanel/HardFilterPanel";
-import SavedConditionsPanel, { SaveConditionsButton } from "@/features/route/SavedConditionsPanel/SavedConditionsPanel";
+import SavedConditionsPanel from "@/features/route/SavedConditionsPanel/SavedConditionsPanel";
 import { useGenerationConditions } from "@/features/route/useGenerationConditions";
 import { useSavedConditions } from "@/features/route/useSavedConditions";
 import { useSavedPlaces } from "@/features/route/useSavedPlaces";
@@ -362,7 +362,7 @@ export default function Home() {
       ? CONDITIONS_DIRTY_SIGNAL
       : null;
 
-  // 「ルート設定」のタブ列は見出し行に置き（本文の縦を空ける）、「いまの設定を保存」「ルート生成」は同じ行の右端に離して置く
+  // 「ルート設定」のタブ列は見出し行に置き（本文の縦を空ける）、「ルート生成」は同じ行の右端に離して置く
   // （どのタブを見ていても押せる）。タブの間と左右の余白・操作の間を詰めているのは、スマホの幅で見出しの題・タブ・操作（条件の
   // 変更の印も）を1行に切らずに収めるため。
   function renderSettingsTabs() {
@@ -389,14 +389,6 @@ export default function Home() {
             生成条件が変更されています。表示中の候補は変更前の条件で作ったものです。
           </InfoPopover>
         )}
-        <SaveConditionsButton
-          saved={savedConditions.saved}
-          current={savedConditions.current}
-          suggestedName={savedConditions.suggestedName}
-          originManual={originManual}
-          originKnown={locationKnown}
-          onSave={savedConditions.save}
-        />
         <Button
           variant="primary"
           size="panelIcon"
@@ -427,6 +419,7 @@ export default function Home() {
         mapCenter={mapView.center ?? location}
         onPlaceFound={placeFound}
         savedPlaces={savedPlaces}
+        onPointsShow={() => setSettingsTab("generate")}
         placing={tapMode === "points"}
         weightsPanel={
           <RouteSettingsPanel
@@ -442,6 +435,11 @@ export default function Home() {
         savedConditionsPanel={
           <SavedConditionsPanel
             saved={savedConditions.saved}
+            current={savedConditions.current}
+            suggestedName={savedConditions.suggestedName}
+            originManual={originManual}
+            originKnown={locationKnown}
+            onSave={savedConditions.save}
             onRecall={savedConditions.recall}
             onRemove={savedConditions.remove}
           />
