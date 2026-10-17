@@ -46,7 +46,14 @@ type Props = { route: RouteCandidate | null; riding: boolean; position: Coordina
 function render(onRestore: (route: RouteCandidate) => void = () => {}) {
   return renderHook(
     ({ route, riding, position }: Props) =>
-      useRideProgress({ route, riding, position, accuracyM: 20, onRestore: (session) => onRestore(session.route) }),
+      useRideProgress({
+        route,
+        riding,
+        resting: false,
+        position,
+        accuracyM: 20,
+        onRestore: (session) => onRestore(session.route),
+      }),
     { initialProps: { route: null, riding: false, position: null } as Props },
   );
 }
@@ -59,7 +66,10 @@ describe("useRideProgress", () => {
   });
 
   it("帰り道で読み込み直して戻したルートは、前に当てた位置から続く側に当て、別のルートでは始点に近い側から当てる", () => {
-    window.localStorage.setItem(RIDE_SESSION_STORAGE_KEY, writeRideSession({ route: ROUTE, km: 3.4 }, Date.now()));
+    window.localStorage.setItem(
+      RIDE_SESSION_STORAGE_KEY,
+      writeRideSession({ route: ROUTE, km: 3.4, resting: false }, Date.now()),
+    );
     const { result, rerender } = render();
     rerender({ route: ROUTE, riding: true, position: QUARTER });
     expect(result.current.km).toBeCloseTo(3.5);

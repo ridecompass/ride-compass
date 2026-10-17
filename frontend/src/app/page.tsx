@@ -16,6 +16,7 @@ import {
   ClearRoutesIcon,
   GenerateRoutesIcon,
   LocateIcon,
+  RideModeIcon,
   RouteIcon,
   RouteSettingsIcon,
 } from "@/components/ui/icons/icons";
@@ -240,15 +241,17 @@ export default function Home() {
   });
   const { results, generation, splice } = route;
 
-  // 走行中のルートを端末に一時保存し、読み込み直されたら同じ候補を出して走行モードを始め直す。
+  // 走行中のルートを端末に一時保存し、読み込み直されたら同じ候補を出して走行モードを始め直す（休んでいたら休んだまま戻す）。
   const progress = useRideProgress({
     route: results.selectedCandidate,
     riding: navigating,
+    resting: riding.status === "resting",
     position: ridePosition,
     accuracyM: riding.accuracyM,
     onRestore: (session) => {
       results.replaceWithGenerated([session.route], null);
-      riding.press();
+      if (session.resting) riding.rest();
+      else riding.press();
     },
   });
   const editingRoute = splice.editingRoute;
@@ -512,25 +515,39 @@ export default function Home() {
   }
 
   // 走行モードの間、地図の下に選んだ候補の道のりに沿った難易度を見るだけで出し（候補が無ければ出さない。区間の中身を出す
-  // 所は走行中に開いていないので選ばせない）、そのすぐ上に続きから走るための操作を1か所で出す: 追うのを休んでいる間は
-  // 「現在地へ戻る」、追っている間にルートを外れたら、戻れば続きから案内すること。
+  // 所は走行中に開いていないので選ばせない）、そのすぐ上に続きから走るための操作を1か所で出す: 休んでいる間は
+  // 「続きから走る」、地図を指で動かして追うのを休んでいる間は「現在地へ戻る」、追っている間にルートを外れたら、
+  // 戻れば続きから案内すること。
   function renderRideBottom() {
     const selected = results.selectedCandidate;
     const profile = selected !== null && selected.segments.length > 0 ? selected : null;
     const awayNotice = riding.status === "following" && progress.offRoute;
-    if (profile === null && riding.status !== "paused" && !awayNotice) return null;
+    const resumable = riding.status === "paused" || riding.status === "resting";
+    if (profile === null && !resumable && !awayNotice) return null;
     return (
       <div
         {...mapOverlayEdge("bottom")}
         className="pointer-events-none absolute inset-x-2 bottom-2 z-[var(--z-map-control)] flex flex-col items-center gap-2"
       >
+        {riding.status === "resting" && (
+          <Button
+            variant="primary"
+            size="md"
+            className="pointer-events-auto gap-1.5 shadow-md"
+            onClick={riding.resume}
+            usage="休んでいる間は、現在地を受けず、画面も点けたままにしません。押すと現在地を受け直し、休む前の進み具合から案内を続けます。"
+          >
+            <RideModeIcon />
+            続きから走る
+          </Button>
+        )}
         {riding.status === "paused" && (
           <Button
             variant="primary"
             size="md"
             className="pointer-events-auto gap-1.5 shadow-md"
             onClick={riding.resume}
-            usage="休んでいる間（休むを選んだ・地図を指で動かした）は、現在地を追いません。押すと地図を現在地へ戻し、休む前の進み具合から続きを追います。"
+            usage="地図を指で動かしている間は、現在地を追いません。押すと地図を現在地へ戻し、続きを追います。"
           >
             <LocateIcon />
             現在地へ戻る
@@ -824,6 +841,7 @@ export default function Home() {
                 screenWakeLock={riding.screenWakeLock}
                 onPress={riding.press}
                 onRest={riding.rest}
+                onResume={riding.resume}
               />
             </div>
             {navigating && renderRideBottom()}

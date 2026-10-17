@@ -12,6 +12,8 @@ interface UseRideProgressInputs {
   /** 選んでいるルート（無ければnull）。走行モードの間、このルートの上の位置を当てる。 */
   route: RouteCandidate | null;
   riding: boolean;
+  /** 休んでいるか（一時保存に載せる）。 */
+  resting: boolean;
   /** 走行モードが受けた現在地と、その誤差（m）。 */
   position: Coordinates | null;
   accuracyM: number | null;
@@ -26,6 +28,7 @@ interface UseRideProgressInputs {
 export function useRideProgress({
   route,
   riding,
+  resting,
   position,
   accuracyM,
   onRestore,
@@ -37,6 +40,7 @@ export function useRideProgress({
     route,
     riding,
     km: progress.km,
+    resting,
     onRestore: (session) => {
       setRestored(session);
       onRestore(session);

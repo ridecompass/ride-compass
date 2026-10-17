@@ -18,7 +18,7 @@ export interface RouteProgress {
  * 現在地`position`の、ルート`segments`の上の距離（km）。前に当てた位置を覚えて、往復で続く側を選ぶのに使う。このルートで
  * まだ当てていなければ`startKm`（読み込み直す前に当てた位置。無ければnull）を前に当てた位置として使う。
  * ルートを外れている間（`accuracyM`は位置の誤差）は外れる前に当てた距離で止め、ルートへ戻ったら戻った点から続ける。
- * ルートか現在地が無ければ距離はnull。
+ * 現在地が無い間（休んでいる間・最初の位置を待つ間）は前に当てた位置を出す。ルートが無ければ距離はnull。
  */
 export function useRouteProgress(
   segments: readonly RouteSegmentShape[] | null,
@@ -36,6 +36,7 @@ export function useRouteProgress(
     [track, position, away, previousKm],
   );
   if (track !== null && km !== null && km !== previousKm) setLast({ track, km });
-  if (track === null || position === null) return { km: null, offRoute: false };
+  if (track === null) return { km: null, offRoute: false };
+  if (position === null) return { km: previousKm, offRoute: false };
   return away ? { km: previousKm, offRoute: true } : { km, offRoute: false };
 }
