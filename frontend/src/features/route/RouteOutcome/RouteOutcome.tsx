@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useLayoutEffect, useRef } from "react";
+import { Fragment, useLayoutEffect, useRef, type CSSProperties } from "react";
 
 import { SHEET_FIT_END_ATTRIBUTE } from "@/components/BottomSheet/BottomSheet";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
@@ -210,7 +210,8 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
             <TabsContent
               key={route.id}
               // 結果の中の道のりのグラフは、走行中の地図の下の図より高くして読みやすくする。
-              className="flex flex-col gap-2 [--profile-chart-height:5.5rem] data-[state=inactive]:hidden"
+              className="flex flex-col gap-2 data-[state=inactive]:hidden"
+              style={{ "--profile-chart-height": "5.5rem" } as CSSProperties}
               value={route.id}
             >
               {/* 道のりのグラフ。区間を選んでいる間も残す（動かして地点を選ぶ操作の置き場のため）。シートは、高さを決めて
