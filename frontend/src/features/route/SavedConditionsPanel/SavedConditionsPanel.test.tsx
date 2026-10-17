@@ -1,5 +1,5 @@
 /**
- * `SavedConditionsPanel.tsx`——「条件」タブの「いまの設定を保存」と、「保存」タブの「設定」の保存した設定の一覧。
+ * `SavedConditionsPanel.tsx`——「条件」タブの「いまの設定を保存」と、「保存済み」タブの「プリセット」の保存した設定の一覧。
  * - 「いまの設定を保存」——押すと窓で保存する条件・重みの割合・除外と出発地の扱いを並べ、
  *   名前の欄に仮の名前を入れて出し、そのまま・書き換えて保存でき、保存すると窓を閉じる。出発地は固定するかを選べ、選ぶまでは
  *   地図で置いたかで決まる。同じ名前があれば上書きと分かるように出す。
@@ -160,8 +160,8 @@ describe("保存した設定", () => {
   it("無いうちはまだ無いと出し、保存の仕方を(i)に置く", () => {
     renderPanel();
 
-    expect(screen.getByText("保存した設定はまだありません。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "設定の保存の仕方を表示" })).toBeInTheDocument();
+    expect(screen.getByText("保存したプリセットはまだありません。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "プリセットの保存の仕方を表示" })).toBeInTheDocument();
   });
 
   it("行は名前だけを出し、条件・出発地・重み・除外は呼び出しの窓で読める", async () => {

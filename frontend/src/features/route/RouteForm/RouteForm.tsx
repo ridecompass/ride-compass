@@ -60,9 +60,9 @@ interface RouteFormProps {
   mapCenter: Coordinates;
   /** 探して選んだ候補を、その役割の地点として置く（経由地は`waypointIndex`番目を置き直し、無ければ足す）。 */
   onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
-  /** 保存した地点（地点の詳しくで保存して打つ欄の候補に出し、「保存」タブの「地点」に並べて呼び出す）。 */
+  /** 保存した地点（地点の詳しくで保存して打つ欄の候補に出し、「保存済み」タブの「地点」に並べて呼び出す）。 */
   savedPlaces: SavedPlacesState;
-  /** 「条件」タブへ移る（「保存」タブの「地点」から呼び出した地点を見せる）。 */
+  /** 「条件」タブへ移る（「保存済み」タブの「地点」から呼び出した地点を見せる）。 */
   onPointsShow: () => void;
   /** 地図をタップすると選んでいる地点を置くか（ルート設定が地図で効いている間）。 */
   placing: boolean;
@@ -72,7 +72,7 @@ interface RouteFormProps {
   exclusionsPanel: React.ReactNode;
   /** 「条件」タブの、いまの設定を保存するアイコン（保存するものは各タブに及ぶが、条件を詰める所で保存する）。 */
   saveConditionsButton: React.ReactNode;
-  /** 「保存」タブの「設定」の中身（保存した設定の一覧）。 */
+  /** 「保存済み」タブの「プリセット」の中身（保存した設定の一覧）。 */
   savedConditionsPanel: React.ReactNode;
 }
 
@@ -218,9 +218,9 @@ export default function RouteForm({
       <KeptTabContent value="exclusions">{exclusionsPanel}</KeptTabContent>
 
       <KeptTabContent value="saved">
-        {/* 保存するものは地点と設定の2つで、呼び出すと変わるものが違う（地点は選んだ1地点を置き、設定は各タブの値を入れ替える）。 */}
+        {/* 保存したものは地点とプリセットの2つで、呼び出すと変わるものが違う（地点は選んだ1地点を置き、プリセットは各タブの値を入れ替える）。 */}
         <Tabs defaultValue="places">
-          <TabsList className="mb-2" aria-label="保存するもの">
+          <TabsList className="mb-2" aria-label="保存したもの">
             <TabsTrigger
               value="places"
               usage="条件タブで名前を付けて保存した地点の一覧です。呼び出すと、出発地・経由地・目的地に置きます。"
@@ -229,9 +229,9 @@ export default function RouteForm({
             </TabsTrigger>
             <TabsTrigger
               value="conditions"
-              usage="条件タブで名前を付けて保存した設定の一覧です。呼び出すと、各タブの値を入れ替えます。"
+              usage="条件タブで名前を付けて保存した設定（プリセット）の一覧です。呼び出すと、各タブの値を入れ替えます。"
             >
-              設定
+              プリセット
             </TabsTrigger>
           </TabsList>
           <KeptTabContent value="places">

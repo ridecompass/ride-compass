@@ -8,6 +8,7 @@ import { RecallSavedIcon, SaveConditionsIcon } from "@/components/ui/icons/icons
 import { Input } from "@/components/ui/Input/Input";
 import { textVariants } from "@/components/ui/Text/Text";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
+import { cn } from "@/lib/cn";
 import {
   describeConditions,
   originDescription,
@@ -81,7 +82,7 @@ export function SaveConditionsButton({
         aria-label="いまの設定を保存"
         aria-haspopup="dialog"
         aria-expanded={saving}
-        usage="いまの設定（条件・出発地・重み・除外）を開いて確かめ、名前を付けてこの端末に保存します。保存した設定は、「保存」タブの「設定」から呼び出せます。"
+        usage="いまの設定（条件・出発地・重み・除外）を開いて確かめ、名前を付けてプリセットとしてこの端末に保存します。保存したプリセットは、「保存済み」タブの「プリセット」から呼び出せます。"
         onClick={() => setSaving(true)}
       >
         <SaveConditionsIcon size={18} />
@@ -149,7 +150,7 @@ export function SaveConditionsButton({
   );
 }
 
-// 「ルート設定」区分の「保存」タブの「設定」。保存した設定の一覧（呼び出す・消す）を置く（保存は「条件」タブ）。
+// 「ルート設定」区分の「保存済み」タブの「プリセット」。保存した設定の一覧（呼び出す・消す）を置く（保存は「条件」タブ）。
 // 一覧の行は名前とアイコンの操作だけで、呼び出すと窓で中身を見せ、「反映する」で各タブの値と地図のピンが入れ替わる。
 // 生成はいつもの「ルート生成」で行う（入れ替えたあとに値を確かめたり少し変えたりできる）。
 export default function SavedConditionsPanel({ saved, onRecall, onRemove }: SavedConditionsPanelProps) {
@@ -161,17 +162,17 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
 
   return (
     <div className="flex flex-col gap-3">
-      {/* 知らせの行は読み上げが変化を拾えるよう常に置く。 */}
-      <p role="status" className={textVariants({ variant: "hint" })}>
+      {/* 知らせの行は読み上げが変化を拾えるよう常に置き、空のときは場所を取らない（一覧の上に空白を作らない）。 */}
+      <p role="status" className={cn("empty:sr-only", textVariants({ variant: "hint" }))}>
         {recalled !== null && saved.some((entry) => entry.name === recalled.name)
           ? `「${recalled.name}」を反映しました。`
-          : ""}
+          : null}
       </p>
 
       <SavedList
         items={saved}
-        noun="設定"
-        howToSave="条件タブの「いまの設定を保存」で、いまの設定（条件・出発地・重み・除外）に名前を付けて保存します。保存した設定は、ここで行の「呼び出す」を押すと各タブへ戻せます。"
+        noun="プリセット"
+        howToSave="条件タブの「いまの設定を保存」で、いまの設定（条件・出発地・重み・除外）に名前を付けてプリセットとして保存します。保存したプリセットは、ここで行の「呼び出す」を押すと各タブへ戻せます。"
         renderMain={(entry) => <span className="min-w-0 flex-auto truncate font-semibold">{entry.name}</span>}
         renderActions={(entry) => (
           <Button
@@ -179,7 +180,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
             aria-label={`「${entry.name}」を呼び出す`}
             aria-haspopup="dialog"
             aria-expanded={recalling?.name === entry.name}
-            usage="この設定の中身を窓で見て、「反映する」で各タブの値と地図の地点を入れ替えます。作るのはいつもの「ルート生成」です。"
+            usage="このプリセットの中身を窓で見て、「反映する」で各タブの値と地図の地点を入れ替えます。作るのはいつもの「ルート生成」です。"
             onClick={() => setRecalling(entry)}
           >
             <RecallSavedIcon size={18} />

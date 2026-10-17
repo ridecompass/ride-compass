@@ -6,12 +6,12 @@
  *   開くこと、候補が「ルート結果」と地図の両方へ出て、選んだ候補が地図でも選ばれ、区間を持つかで周りの塗りが決まること、
  *   全消去は確認の窓で「消す」を押してから両方から消えること、候補がある間だけ条件のずれの印が点き全消去で消えること、走行条件の想定速度・出発時刻が
  *   生成と地図の道の詳細へ同じ値で渡ること、「評価で塗る」の未使用を分ける重み（生成の前はいまの重み・後は使われた重み）、
- *   「条件」タブで保存した条件が地図で置いた出発地を持ち、呼び出すとその出発地から生成すること、前に保存した条件が「保存」の「設定」に出ること
+ *   「条件」タブで保存した条件が地図で置いた出発地を持ち、呼び出すとその出発地から生成すること、前に保存した条件が「保存済み」の「プリセット」に出ること
  * - 地図で扱えること: 地図を押したときの意味は効いているパネルで決まり（「ルート設定」の条件タブは選んでいる地点を置く、
  *   「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
  *   2つの区分を開いていれば最後に触った区分が効いてその題に添えること、ピンを押しても消えずルート設定ではその地点を選ぶこと、
  *   目的地の行で探して置いた地点と、名前のある点を押して置いた地点が地図に立ち、行にその名前が出ること、
- *   名前を付けて保存した地点を打つ欄から選び直せ、「保存」の「地点」から呼び出すと条件タブへ移って置くこと、編集の間は地図で地点も区間も扱わず全部の候補を重ね、
+ *   名前を付けて保存した地点を打つ欄から選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置くこと、編集の間は地図で地点も区間も扱わず全部の候補を重ね、
  *   「ルート結果」の見出しに候補1本への操作を出さず、作り直すと編集が終わること、作ると直前の作り直しの失敗の文言を消し、合成ルートを選んでいる間は元のルートだけを重ねること、
  *   地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）、右上の方位磁針（地図の北を指し、開いたダイヤルで
  *   地図を回して北へ戻す。走行中は北が上と進む向きが上を切り替える）と拡大・縮小
@@ -363,7 +363,7 @@ describe("ルートを作る", () => {
   it("保存した条件は地図で置いた出発地を持ち、呼び出すとその出発地から生成する", async () => {
     const PLACED: Coordinates = { latitude: 35.65, longitude: 139.75 };
     const { user } = renderHome();
-    // 保存は「条件」タブ、呼び出しは「保存」の「設定」で行う（隠れたタブの中身も描いてあるので、ほかのタブにも保存のボタンが
+    // 保存は「条件」タブ、呼び出しは「保存済み」の「プリセット」で行う（隠れたタブの中身も描いてあるので、ほかのタブにも保存のボタンが
     // あれば、ボタンが2つに当たって落ちる）。
     const saveAs = async (name: string) => {
       await user.click(screen.getByRole("tab", { name: "条件" }));
@@ -377,8 +377,8 @@ describe("ルートを作る", () => {
       await user.click(within(dialog).getByRole("button", { name: "保存" }));
     };
     const recall = async (name: string) => {
-      await user.click(screen.getByRole("tab", { name: "保存" }));
-      await user.click(screen.getByRole("tab", { name: "設定" }));
+      await user.click(screen.getByRole("tab", { name: "保存済み" }));
+      await user.click(screen.getByRole("tab", { name: "プリセット" }));
       await user.click(screen.getByRole("button", { name: `「${name}」を呼び出す` }));
       await user.click(
         within(screen.getByRole("dialog", { name: `「${name}」を反映します` })).getByRole("button", {
@@ -397,7 +397,7 @@ describe("ルートを作る", () => {
     expect(origin(await generate(user))).toEqual(PLACED);
   });
 
-  it("前に保存した設定は、「保存」の「設定」に出る", async () => {
+  it("前に保存した設定は、「保存済み」の「プリセット」に出る", async () => {
     const stored = {
       name: "いつもの周回",
       routeMode: "loop",
@@ -412,8 +412,8 @@ describe("ルートを作る", () => {
     );
     const { user } = renderHome();
 
-    await user.click(screen.getByRole("tab", { name: "保存" }));
-    await user.click(screen.getByRole("tab", { name: "設定" }));
+    await user.click(screen.getByRole("tab", { name: "保存済み" }));
+    await user.click(screen.getByRole("tab", { name: "プリセット" }));
 
     expect(screen.getByRole("button", { name: "「いつもの周回」を呼び出す" })).toBeInTheDocument();
   });
@@ -585,7 +585,7 @@ describe("地図で扱えること", () => {
     expect(screen.getByRole("button", { name: `目的地: ${candidate.name}` })).toBeInTheDocument();
   });
 
-  it("名前を付けて保存した地点は、目的地を消したあとも打つ欄を押して選び直せ、「保存」の「地点」から呼び出すと条件タブへ移って置く", async () => {
+  it("名前を付けて保存した地点は、目的地を消したあとも打つ欄を押して選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置く", async () => {
     const { user } = renderHome();
     await selectDestination(user);
     clickMap(DESTINATION);
@@ -604,7 +604,7 @@ describe("地図で扱えること", () => {
 
     expect(marksAt(DESTINATION)).toHaveLength(1);
     expect(screen.getByRole("button", { name: "目的地: いつものカフェ" })).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "保存" }));
+    await user.click(screen.getByRole("tab", { name: "保存済み" }));
     await user.click(screen.getByRole("tab", { name: "地点" }));
     await user.click(screen.getByRole("button", { name: "「いつものカフェ」を呼び出す" }));
     const menu = screen.getByRole("dialog", { name: "「いつものカフェ」をどこに置くか" });

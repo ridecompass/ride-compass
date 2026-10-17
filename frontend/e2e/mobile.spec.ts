@@ -136,6 +136,41 @@ test("モバイル: 候補0件の理由の窓が、開いている「ルート�
   await expect(notice).toBeHidden();
 });
 
+// 観点1（収まる）: 「保存済み」タブの「プリセット」の一覧は、何も知らせていない間、上に空白を作らず「地点」の一覧と同じ高さから
+// 始まる。知らせの行は読み上げのために置いたままなので、場所を取るかは実寸でしか見えない。
+test("モバイル: 「保存済み」の「プリセット」の一覧は、「地点」の一覧と同じ高さから始まる", async ({ page }) => {
+  await openMobileApp(page, {
+    storedState: {
+      "ridecompass:saved-places": JSON.stringify([
+        { kind: "address", level: "block", name: "自宅", area: null, latitude: 37.4, longitude: 140.4 },
+      ]),
+      "ridecompass:saved-conditions": JSON.stringify([
+        {
+          name: "いつもの周回",
+          routeMode: "loop",
+          distance: "40",
+          maxRoutes: "3",
+          origin: null,
+          waypoints: [],
+          destination: null,
+          routePreference: null,
+          hardFilters: {},
+        },
+      ]),
+    },
+  });
+  const sheet = await openMobileSheet(page, "ルート設定");
+  await sheet.getByRole("tab", { name: "保存済み" }).click();
+
+  const firstRowTop = async (tab: string) => {
+    await sheet.getByRole("tab", { name: tab }).click();
+    const row = sheet.getByRole("tabpanel", { name: tab }).getByRole("listitem").first();
+    await expect(row).toBeVisible();
+    return (await row.boundingBox())!.y;
+  };
+  expect(await firstRowTop("プリセット")).toBe(await firstRowTop("地点"));
+});
+
 // 観点1（収まる）: 生成したルートを地図へ収めると、開いた「ルート結果」のシートに隠れず、その上の見えている所に描かれる。
 // 地図がどこまで覆われているかは実寸でしか決まらない（シートの高さは中身に合わせて決まる）。
 // ルートは南北に長くする。東西に長いと幅で倍率が決まり、覆う物を避けなくても地図の中ほどの細い帯に収まってしまう。
