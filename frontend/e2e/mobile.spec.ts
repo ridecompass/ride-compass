@@ -238,7 +238,7 @@ test("モバイル: 走行中の道のりのグラフは、切り替えの行を
 
   await sheet.getByRole("button", { name: /このルートで走る/ }).click();
   const ride = page.getByRole("region", { name: "予定ルートのプロファイル" });
-  const rideGraph = (await ride.getByRole("img", { name: "道のりに沿った難易度" }).boundingBox())!;
+  const rideGraph = (await ride.getByRole("slider", { name: /^道のりに沿った難易度/ }).boundingBox())!;
   const rideTabs = (await ride.getByRole("tablist", { name: "道のりのグラフ" }).boundingBox())!;
   expect(rideTabs.y + rideTabs.height).toBeLessThanOrEqual(rideGraph.y);
   expect(rideGraph.height).toBeGreaterThan(resultGraph.height);
