@@ -124,12 +124,11 @@ export default function RouteSettingsPanel({
     axisIdB: string,
     weightB: number,
   ) {
-    let rawDelta = 0;
-    if (e.key === "ArrowLeft" || e.key === "ArrowDown") rawDelta = -weightStep(total);
-    else if (e.key === "ArrowRight" || e.key === "ArrowUp") rawDelta = weightStep(total);
-    else return;
+    const direction =
+      e.key === "ArrowLeft" || e.key === "ArrowDown" ? -1 : e.key === "ArrowRight" || e.key === "ArrowUp" ? 1 : 0;
+    if (direction === 0) return;
     e.preventDefault();
-    const next = clampBoundaryDrag(weightA, weightB, rawDelta, total);
+    const next = clampBoundaryDrag(weightA, weightB, direction * weightStep(total), total);
     if (next.weightA === weightA && next.weightB === weightB) return;
     handlePairWeightChange(axisIdA, next.weightA, axisIdB, next.weightB);
   }
