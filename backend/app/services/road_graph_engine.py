@@ -28,6 +28,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from functools import cached_property
+from itertools import accumulate
 from typing import NoReturn
 
 import numpy as np
@@ -280,6 +281,11 @@ class FixedLegs:
     @cached_property
     def leg_of_edge(self) -> list[int]:
         return [leg_index for leg_index, segment in enumerate(self.segments) for _ in segment]
+
+    @cached_property
+    def waypoint_offsets(self) -> list[int]:
+        """置いた経由地を通る所（`TracedLoop.waypoint_offsets`）。経由地は各区間の終わりにある。"""
+        return list(accumulate(len(segment) for segment in self.segments))
 
     def joined(self, outbound: list[int], inbound: list[int]) -> tuple[list[int], list[int]]:
         """前段の道に仕上げの往路と帰りを継いだ区間の番号列と、区間ごとのレグの添字（`TracedLoop.leg_of_edge`）。"""
@@ -921,7 +927,7 @@ class RoadGraphEngine:
             path, leg_of_edge = fixed.joined(*found)
             traced.append(TracedLoop(
                 bearing=None, distance_km=_path_km(context, path), data=path, leg_of_edge=leg_of_edge,
-                reversible=closes and fixed.reversible,
+                waypoint_offsets=fixed.waypoint_offsets, reversible=closes and fixed.reversible,
             ))
 
         logger.info(
@@ -961,6 +967,7 @@ class RoadGraphEngine:
         stops = [*fixed.nodes, destination_index]
         path: list[int] = []
         leg_of_edge: list[int] = []
+        waypoint_offsets: list[int] = []
         for leg_index, (from_node, to_node) in enumerate(zip(stops, stops[1:])):
             leg = context.legs[leg_index]
             time_bins = leg.travel_bins_lazy
@@ -980,6 +987,8 @@ class RoadGraphEngine:
                 leg_of_edge.extend(leg_index + half for half in halves)
             else:
                 leg_of_edge.extend([leg_index] * len(edges))
+            if leg_index < len(fixed.segments):
+                waypoint_offsets.append(len(path))
         distance_km = _path_km(context, path)
 
         logger.info(
@@ -987,7 +996,10 @@ class RoadGraphEngine:
             distance_km, len(path), sum(1 for leg in leg_of_edge if leg < len(fixed.segments) + 1),
             elapsed_ms(started),
         )
-        return TracedLoop(bearing=None, distance_km=distance_km, data=path, leg_of_edge=leg_of_edge, reversible=False)
+        return TracedLoop(
+            bearing=None, distance_km=distance_km, data=path, leg_of_edge=leg_of_edge,
+            waypoint_offsets=waypoint_offsets, reversible=False,
+        )
 
     async def trace_loop_from_turnaround(
         self, context: _RoadGraphContext, fixed: FixedLegs, turnaround: LoopTurnaround,
@@ -1047,7 +1059,7 @@ class RoadGraphEngine:
         )
         return TracedLoop(
             bearing=turnaround.bearing if data.closes else None, distance_km=distance_km, data=path,
-            leg_of_edge=leg_of_edge, reversible=data.reversible,
+            leg_of_edge=leg_of_edge, waypoint_offsets=fixed.waypoint_offsets, reversible=data.reversible,
         )
 
     def build_traced_from_edge_ids(
@@ -1104,7 +1116,8 @@ class RoadGraphEngine:
             ]
         return TracedLoop(
             bearing=None, distance_km=round(total_m / 1000, DISTANCE_KM_DECIMALS), data=path, leg_of_edge=leg_of_edge,
-            reversible=False,
+            # 乗り換えで組んだ経路は、置いた経由地を知らない。
+            waypoint_offsets=[], reversible=False,
         )
 
     def is_loop_too_similar(
@@ -1183,7 +1196,8 @@ class RoadGraphEngine:
         elevation_by_edge = self._elevation_by_edge(context, edges_in_path, path)
         leg_of_edge = traced.leg_of_edge
         forward_candidate = self._build_candidate(
-            context, traced, edges_in_path, path, elevation_by_edge, side_points, start_time, leg_of_edge
+            context, traced, edges_in_path, path, elevation_by_edge, side_points, start_time, leg_of_edge,
+            traced.waypoint_offsets,
         )
 
         if not traced.reversible:
@@ -1197,6 +1211,8 @@ class RoadGraphEngine:
         reverse_candidate = self._build_candidate(
             context, traced, reverse_edges, reverse_path, reverse_elevation, side_points, start_time,
             reverse_leg_assignment(leg_of_edge),
+            # 逆に回ると、経由地より前の区間は経由地より後の区間になる。
+            [len(path) - offset for offset in traced.waypoint_offsets],
         )
         return pick_better_candidate(forward_candidate, reverse_candidate)
 
@@ -1225,6 +1241,7 @@ class RoadGraphEngine:
         side_points: Mapping[tuple[int, int], Sequence[RoutePointHit]],
         start_time: datetime,
         leg_of_edge: list[int],
+        waypoint_offsets: list[int],
     ) -> EvaluatedRoute:
         # 区間と標高属性を引数で受けるのは、逆回り候補も同じ組み立てを通すため。
         # distance_km・bearingは同じ物理経路なので順方向の`traced`のものをそのまま使う。
@@ -1264,6 +1281,7 @@ class RoadGraphEngine:
             ),
             turns=turns,
             points=points_along_route(edges_in_path, along_km, side_points),
+            waypoint_distances_km=[along_km[offset] for offset in waypoint_offsets],
             segments=segments,
             material_category_shares=material_category_shares,
             axis_raw_values=axis_raw_values,

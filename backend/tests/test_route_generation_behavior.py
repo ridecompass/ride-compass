@@ -423,6 +423,38 @@ async def test_a_loop_is_ridden_the_easier_way_round_only_when_that_keeps_the_pl
     assert [candidate.node_ids for candidate in candidates] == [[node_key(n) for n in expected]]
 
 
+@pytest.mark.parametrize(
+    ("network", "origin", "waypoints"),
+    [
+        pytest.param(LATTICE, lattice_node(1, 1), [lattice_node(1, 4), lattice_node(4, 4)], id="経由地2つ"),
+        # Wだけを置いた周回は逆に回って出る（上のテスト）ので、逆回りの経由地の道のりを見る。
+        pytest.param(RING, 1, [3], id="逆に回った経由地1つ"),
+    ],
+)
+async def test_each_placed_point_is_listed_at_the_distance_where_the_route_passes_it(
+    engine_over, network, origin, waypoints,
+):
+    """経由地ごとの道のりは、置いた順に、経路がその経由地を通るまでの道の長さ——違う距離だと、道のりのグラフの
+    経由地の印が地図のピンと別の所に出る。"""
+    generator = engine_over(network, avoid_weight=1.0)
+
+    candidates = await generator.generate_via_waypoints(
+        node_point(network, origin), [node_point(network, point) for point in waypoints], destination=None,
+        max_routes=3, start_time=DEPARTURE)
+
+    assert candidates
+    for candidate in candidates:
+        osm_ids = [int(node_id.split("-")[-1]) for node_id in candidate.node_ids]
+        road_km = [0.0, *accumulate(
+            haversine_distance_km(node_point(network, a), node_point(network, b)) for a, b in zip(osm_ids, osm_ids[1:])
+        )]
+        expected, position = [], 0
+        for point in waypoints:
+            position = osm_ids.index(point, position)
+            expected.append(road_km[position])
+        assert candidate.waypoint_distances_km == pytest.approx(expected, abs=0.02)
+
+
 @pytest.mark.parametrize("where", ["waypoint", "destination"])
 async def test_a_point_far_from_every_road_is_refused(engine_over, where):
     """道の無い所を指した点を、何kmも離れた道へ黙って寄せない。"""

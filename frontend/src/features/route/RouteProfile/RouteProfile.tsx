@@ -60,6 +60,8 @@ interface RouteProfileProps {
   onSelect?: (selection: SelectedRouteSegment) => void;
   /** 走行中の現在地のルートの上の距離。 */
   progressKm?: number | null;
+  /** 置いた経由地を通る所のルートの上の距離（置いた順）。 */
+  waypointKms: readonly number[];
   /** グラフに出す情報の選択（結果と走行中の図で1つを共有する）。 */
   layers: ProfileLayerSelection;
   /** 走行中の地図の下の図。切り替えと見方・出す情報のボタンを図に重ねず、図の上の行に出す（高くした図の線と印を覆わない）。 */
@@ -77,6 +79,7 @@ export default function RouteProfile({
   selected,
   onSelect,
   progressKm = null,
+  waypointKms,
   layers,
   riding = false,
 }: RouteProfileProps) {
@@ -266,6 +269,7 @@ export default function RouteProfile({
           selected={selected}
           onSelect={onSelect}
           progressKm={progressKm}
+          waypointKms={waypointKms}
         />
       </TabsContent>
       <TabsContent value="layer" className="flex flex-col gap-1">
@@ -277,6 +281,7 @@ export default function RouteProfile({
           onSelect={onSelect}
           progressKm={progressKm}
           progressMarkY={progressMarkY}
+          waypointKms={waypointKms}
           caption={(pointKm) => (
             <div className="text-[length:var(--font-size-xs)] text-[var(--color-muted)] tabular-nums">
               {shownLayers.lines.length + rowCount === 0 ? (

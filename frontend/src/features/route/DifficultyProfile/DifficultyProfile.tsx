@@ -22,6 +22,8 @@ interface DifficultyProfileProps {
   onSelect?: (selection: SelectedRouteSegment) => void;
   /** 走行中の現在地のルートの上の距離。印を引き、始点からそこまでを走り終えた区間として薄める。 */
   progressKm?: number | null;
+  /** 置いた経由地を通る所のルートの上の距離（置いた順）。 */
+  waypointKms: readonly number[];
 }
 
 function boxesPath(boxes: readonly ProfileBox[], xOf: (km: number) => number): string {
@@ -43,6 +45,7 @@ export default function DifficultyProfile({
   selected,
   onSelect,
   progressKm = null,
+  waypointKms,
 }: DifficultyProfileProps) {
   const scale = useProfileScale(segments, scaleKm);
   // 塗る形はルートと横軸が変わったときだけ組む（なぞる間に動くのは、カーソルの線と選んだ区間の帯だけ）。
@@ -73,6 +76,7 @@ export default function DifficultyProfile({
       onSelect={onSelect}
       progressKm={progressKm}
       progressMarkY={progressMarkY}
+      waypointKms={waypointKms}
     >
       {paths.missing !== null && <path d={paths.missing} fill={palette.semantic.no_data} opacity={0.6} />}
       {paths.byAxis.map(({ axisId, d }) => (

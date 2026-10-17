@@ -11,6 +11,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { pinMarkName } from "@/components/PinMark/PinMark";
+import PointMark from "@/components/PinMark/PointMark";
 import { columnAtKm } from "@/features/route/DifficultyProfile/profileGeometry";
 import { roundToDigits } from "@/lib/numberFormat";
 import { pointAlongSegment, routeStretches, type RouteStretch } from "@/lib/routeDistance";
@@ -63,6 +65,8 @@ interface ProfileChartProps {
   progressKm?: number | null;
   /** 現在地の印の縦の位置（0〜`PROFILE_VIEW_HEIGHT`）。無ければ図の中ほどに置く。 */
   progressMarkY?: number | null;
+  /** 置いた経由地を通る所のルートの上の距離（置いた順）。縦の線と、地図のピンと同じ番号の印を出す。走り終えた経由地は薄める。 */
+  waypointKms: readonly number[];
   /** 図の中身（`scale.xOf`の横座標と、0〜`PROFILE_VIEW_HEIGHT`の縦座標で描く）。 */
   children: ReactNode;
   /** 図の下の1行。区間を選んでいれば、その地点の距離を受け取る。 */
@@ -83,6 +87,7 @@ export default function ProfileChart({
   onSelect,
   progressKm = null,
   progressMarkY = null,
+  waypointKms,
   children,
   caption,
 }: ProfileChartProps) {
@@ -266,17 +271,34 @@ export default function ProfileChart({
               <g data-progress="ahead" clipPath={`url(#${clipId}-ahead)`}>
                 {children}
               </g>
-              <line
-                data-progress="position"
-                x1={xOf(travelledKm)}
-                x2={xOf(travelledKm)}
-                y1={0}
-                y2={PROFILE_VIEW_HEIGHT}
-                className="stroke-[var(--color-accent)]"
-                strokeWidth={2}
-                vectorEffect="non-scaling-stroke"
-              />
             </>
+          )}
+          {waypointKms.map((km, index) => (
+            <line
+              key={index}
+              data-waypoint={index + 1}
+              x1={xOf(km)}
+              x2={xOf(km)}
+              y1={0}
+              y2={PROFILE_VIEW_HEIGHT}
+              className="stroke-[var(--color-muted-strong)]"
+              strokeWidth={1}
+              strokeDasharray="3 2"
+              vectorEffect="non-scaling-stroke"
+              opacity={travelledKm !== null && km <= travelledKm ? mapDisplay.route.opacities.travelled : undefined}
+            />
+          ))}
+          {travelledKm !== null && (
+            <line
+              data-progress="position"
+              x1={xOf(travelledKm)}
+              x2={xOf(travelledKm)}
+              y1={0}
+              y2={PROFILE_VIEW_HEIGHT}
+              className="stroke-[var(--color-accent)]"
+              strokeWidth={2}
+              vectorEffect="non-scaling-stroke"
+            />
           )}
           {cursorKm !== null && (
             <line
@@ -290,6 +312,20 @@ export default function ProfileChart({
             />
           )}
         </svg>
+        {waypointKms.map((km, index) => (
+          <span
+            key={index}
+            role="img"
+            aria-label={`${pinMarkName("waypoint", String(index + 1))}（${km.toFixed(1)}km地点）`}
+            className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
+            style={{
+              left: `${(xOf(km) / PROFILE_VIEW_WIDTH) * 100}%`,
+              opacity: travelledKm !== null && km <= travelledKm ? mapDisplay.route.opacities.travelled : undefined,
+            }}
+          >
+            <PointMark role="waypoint" label={String(index + 1)} originLocated={false} />
+          </span>
+        ))}
         {travelledKm !== null && (
           <span
             role="img"
