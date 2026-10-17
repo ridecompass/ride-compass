@@ -87,7 +87,7 @@ describe("RouteProfile", () => {
     );
   });
 
-  it("「表示」のタブは選んだ情報の折れ線と最高・最低を出し、地点を選べばその地点の値を足し、チップで重ねる・外す", async () => {
+  it("「表示」のタブは選んだ情報の折れ線と最高・最低を出し、地点を選べばその地点の値を足し、「グラフに出す情報」の一覧で重ねる・外す", async () => {
     const { rerender, toggle } = renderProfile();
     await openLayers();
     const chart = screen.getByRole("img", { name: "道のりに沿った情報" });
@@ -109,15 +109,14 @@ describe("RouteProfile", () => {
     );
     expect(screen.getByText("標高 最高 32m・最低 12m・この地点 12m")).toBeInTheDocument();
 
-    const chip = within(screen.getByRole("group", { name: "グラフに出す情報" })).getByRole("button", {
-      name: "標高",
-    });
-    expect(chip).toHaveAttribute("aria-pressed", "true");
-    await userEvent.click(chip);
+    await userEvent.click(screen.getByRole("button", { name: "グラフに出す情報" }));
+    const elevation = within(screen.getByRole("dialog")).getByRole("checkbox", { name: "標高" });
+    expect(elevation).toBeChecked();
+    await userEvent.click(elevation);
     expect(toggle).toHaveBeenCalledWith("elevation");
   });
 
-  it("道の区分のレイヤは、レイヤごとに地図と同じ色の帯を出し、帯に現れた区分の凡例と、選んだ地点の区分の呼び名を出す", async () => {
+  it("道の区分のレイヤは、レイヤごとに地図と同じ色の帯を出し、選んだ地点の区分の呼び名をグラフの下に、帯に現れた区分の凡例を「グラフに出す情報」の一覧の行に出す", async () => {
     const surfaceRows = roadTrackRows(ROAD_TRACKS.find((track) => track.attr_id === "surface")!);
     const color = (key: string) => surfaceRows.find((row) => row.key === key)!.color;
     const paved = {
@@ -143,12 +142,13 @@ describe("RouteProfile", () => {
     expect(chart.querySelectorAll('[data-layer="tunnel"] rect')).toHaveLength(2);
 
     expect(screen.getByText("路面の種類・この地点 砂利・未舗装")).toBeInTheDocument();
+    expect(screen.getByText("トンネル・この地点 該当なし")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "グラフに出す情報" }));
     expect(
       within(screen.getByRole("list", { name: "路面の種類の凡例" }))
         .getAllByRole("listitem")
         .map((item) => item.textContent),
     ).toEqual(["舗装", "砂利・未舗装"]);
-    expect(screen.getByText("トンネル・この地点 該当なし")).toBeInTheDocument();
   });
 
   it.each<{ why: string; ids: string[]; segments: RouteSegmentDetail[]; text: string }>([
