@@ -109,7 +109,9 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
      ```
      1回は30分ほどかかる。`journalctl`の最後に「DBの全体を置きました object=db/…」が出て、コンソールのバケットにそのオブジェクトが
      1個だけ見え、`curl -fsS http://localhost:8000/health`の`admin_data_backup_age_hours`が0.0なら済み。
-- 動いているかを見る: backendの`/health`の`admin_data_backup_age_hours`。詳しくはVMで`systemctl list-timers ridecompass-admin-data-backup.timer`
+- 動いているかを見る: 止まると、毎日06:23（日本時間）の`.github/workflows/prod-route-check.yml`のジョブ`backup`が落ち、
+  GitHub Actionsの失敗の知らせが届く（backendの`/health`の`admin_data_backup_age_hours`を読む。上限は
+  [横断基盤](../../../docs/modules/backend/cross-cutting-infrastructure.md)「本番DBのバックアップ」）。落ちた理由はVMで`systemctl list-timers ridecompass-admin-data-backup.timer`
   （前回・次回）と`sudo journalctl -u ridecompass-admin-data-backup.service --since -2d`。
 
 ### 本番DBを失ったとき

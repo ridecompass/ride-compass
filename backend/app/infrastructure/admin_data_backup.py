@@ -2,7 +2,7 @@
 
 退避のスクリプトは本番VMのホストで動き、置けた時刻（UTC、ISO 8601）を1行だけ`MARKER_PATH`へ書く。ホストの
 `/home/ubuntu/ridecompass-cache-data`がコンテナの`data/`（`deploy-backend.yml`の`-v`）なので、スクリプトの書き先と
-この名前は揃える。止まっても知らせが来ないため、`/health`が経過時間を返し、それを読んで気づく。
+この名前は揃える。`/health`が経過時間を返し、定時のActions（`backend/scripts/prod_backup_check.py`）がそれを読んで止まりを知らせる。
 """
 
 from datetime import datetime
