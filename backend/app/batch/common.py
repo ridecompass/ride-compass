@@ -7,7 +7,7 @@ import argparse
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
+from collections.abc import AsyncIterator, Callable, Coroutine, Iterable, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, TypeVar
@@ -231,3 +231,12 @@ def fetch_verified(
         return True
 
     return place_verified(destination, readable, write, source=url, logger=logger)
+
+
+def fetched_all(attempts: Iterable[bool]) -> bool:
+    """取得を全部試してから、全部を置けたかを返す。
+
+    `attempts`は1件ずつ取りに行く生成器を渡す。1つ置けなくても残りを取りに行く——置けたものは次の実行で取り直さない
+    ので、止めると直したあとの実行で残りを初めて取ることになる。`all`へ生成器をそのまま渡すと最初の失敗で止まる。
+    """
+    return all(list(attempts))

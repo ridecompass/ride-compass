@@ -97,6 +97,14 @@ class FeatureMaterials:
     def __len__(self) -> int:
         return len(self.feature_keys)
 
+    def of_feature(self, feature_key: str) -> "FeatureMaterials":
+        """`feature_key`のフィーチャーの行だけのもの（タイルに無ければ0行）。"""
+        rows = _rows_of(self.feature_keys, feature_key)
+        return FeatureMaterials(
+            feature_keys=(feature_key,) * len(rows),
+            columns={material_id: _take(column, rows) for material_id, column in self.columns.items()},
+        )
+
 
 @dataclass(frozen=True)
 class FeatureSegments:
@@ -112,6 +120,20 @@ class FeatureSegments:
 
     def __len__(self) -> int:
         return len(self.feature_keys)
+
+    def of_feature(self, feature_key: str) -> "FeatureSegments":
+        """`feature_key`のフィーチャーの区間だけのもの（タイルに無ければ0行）。"""
+        rows = _rows_of(self.feature_keys, feature_key)
+        return FeatureSegments(
+            feature_keys=(feature_key,) * len(rows),
+            distance_m=np.asarray(self.distance_m)[rows],
+            feature_bearing_deg=np.asarray(self.feature_bearing_deg)[rows],
+            columns={material_id: _take(column, rows) for material_id, column in self.columns.items()},
+        )
+
+
+def _rows_of(feature_keys: Sequence[str], feature_key: str) -> np.ndarray:
+    return np.array([row for row, key in enumerate(feature_keys) if key == feature_key], dtype=np.int64)
 
 
 def axis_with_dependencies(axis_id: str, definitions: Mapping[str, AxisDefinition]) -> dict[str, AxisDefinition]:
@@ -163,9 +185,11 @@ def paint_feature_values(
     feature_keys: Sequence[str],
     materials: Mapping[str, MaterialColumn],
     served: Mapping[str, Mapping[str, float | None]],
+    *,
+    as_difficulty: bool,
 ) -> dict[str, float | None]:
     """フィーチャーごとに、地図が軸`axis_id`について塗る値（`map_paint`の塗る値が難易度なら得点、符号付き材料なら
-    その材料の値）。
+    その材料の値）。`as_difficulty`なら、符号付き材料を塗る軸も得点を返す（区間インスペクタ）。
 
     `materials`は`feature_keys`と同じ並びの材料の列、`served`は配信のサービスが返した材料ごとの`{フィーチャーの鍵: 値}`で、
     同じ材料の列を置き換える（鍵の無いフィーチャーは欠損）。得点は探索の静的スコア行列と同じ評価
@@ -176,7 +200,7 @@ def paint_feature_values(
     """
     columns, undetermined = _feature_columns(feature_keys, materials, served)
     paint = map_paint(definitions[axis_id]).value
-    if isinstance(paint, SignedMaterialMapValue):
+    if isinstance(paint, SignedMaterialMapValue) and not as_difficulty:
         painted = np.asarray(columns[paint.material], dtype=float)
     else:
         painted = evaluate_axes_array(columns, axis_with_dependencies(axis_id, definitions))[axis_id]
@@ -213,6 +237,8 @@ def paint_folded_feature_values(
     served: Mapping[str, Mapping[str, float | None]],
     segments: FeatureSegments,
     served_segments: Mapping[str, np.ndarray],
+    *,
+    as_difficulty: bool,
 ) -> dict[str, float | None]:
     """道1本のフィーチャーごとに地図が軸`axis_id`について塗る値を、その道の区間をルートの区間に見立てて、ルートの値と
     同じ決まり（`domain/route.py: merge_axis_difficulties`の、区間の得点の距離平均）で畳んで求める。
@@ -223,9 +249,10 @@ def paint_folded_feature_values(
 
     符号付き材料を塗る軸は、畳んだ得点を、その得点に当たる材料の値の大きさへ戻し（`smallest_magnitude_at`）、区間の
     材料の値の距離平均の符号（道全体で上るか下るか。平均が0なら正）を付ける——段はルートの値と揃い、地図は材料の
-    目盛りと向きの塗り分けを保つ。配信が値をNoneで返したフィーチャーは、Noneのまま返す。
+    目盛りと向きの塗り分けを保つ。`as_difficulty`なら、符号付き材料を塗る軸も畳んだ得点を返す。配信が値をNoneで返した
+    フィーチャーは、Noneのまま返す。
     """
-    whole = paint_feature_values(axis_id, definitions, feature_keys, materials, served)
+    whole = paint_feature_values(axis_id, definitions, feature_keys, materials, served, as_difficulty=as_difficulty)
     if not folds_segments(axis_id, definitions):
         return whole
     columns, undetermined = _feature_columns(feature_keys, materials, served)
@@ -247,7 +274,7 @@ def paint_folded_feature_values(
         by_feature.setdefault(row, []).append(index)
     paint = map_paint(definitions[axis_id]).value
     signed = np.asarray(segment_columns[paint.material], dtype=float) if isinstance(
-        paint, SignedMaterialMapValue) else None
+        paint, SignedMaterialMapValue) and not as_difficulty else None
     out: dict[str, float | None] = {}
     for row, key in enumerate(feature_keys):
         indexes = by_feature.get(row)

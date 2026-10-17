@@ -19,21 +19,22 @@
 """
 
 import logging
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.errors import RoutingError, SearchAreaTooLargeError
 from app.domain.geo import haversine_distance_km
 from app.domain.loop_routing import TracedLoop
-from app.domain.route_request import FixedPoints
+from app.domain.route_request import FixedPoints, spliceable
 from app.domain.route_search import (
     by_closeness_to_target,
     difficulty_order,
     fits_loop_distance,
     keep_routes_with_baseline,
+    turnaround_ring_m,
 )
 
 if TYPE_CHECKING:
@@ -74,7 +75,7 @@ def turnaround_pool_size(max_routes: int) -> int:
 #: 並び順・id等を読まないため、呼び出し側がそれらを付ける前でも後でも結果は変わらない。
 #: 辞書のフィールドはビンと同じ畳み方。**categorical材料の延長割合はここで触らない**——`segments`は既に
 #: 約500m単位へ畳まれており、代表値からでは正しい割合を作れない（エンジンがビニングの
-#: 前に計算して`RouteDraft`へ載せている。`road_graph_engine.py: _build_candidate`）。
+#: 前に計算して`EvaluatedRoute`へ載せている。`road_graph_engine.py: _build_candidate`）。
 #: 軸の生値（`axis_raw_values`）も区間が持たないため、同じくエンジンが載せる。
 SEGMENT_AGGREGATES: dict[str, Callable[[list[Any]], Any]] = {
     # ルート単位の絶対基準。エンジン非依存のため、engine実装側には持たせない。
@@ -86,13 +87,14 @@ SEGMENT_AGGREGATES: dict[str, Callable[[list[Any]], Any]] = {
 def _label(
     drafts: list[RouteDraft],
     kind: RouteKind,
+    destination: Coordinates | None,
     name: str | None = None,
     fastest: RouteDraft | None = None,
 ) -> list[RouteCandidate]:
     """並べ終えた経路へ応答のid・種類・名前・最速の印・乗り換えの可否を付けて候補にする。候補を返す経路はすべて最後にここを通る。
 
     idは種類と並びの位置から作り、応答の中で一意になる。`name`を渡さなければエンジンが方位から付けた名前のまま。
-    最速の印は`fastest`と同じオブジェクトの1本にだけ付く。乗り換えられるのは目的地を持つ候補（周回でないもの）だけ。
+    最速の印は`fastest`と同じオブジェクトの1本にだけ付く。乗り換えの可否は目的地`destination`から決める。
     """
     return [
         RouteCandidate(**{
@@ -100,7 +102,7 @@ def _label(
             "id": f"{kind}-{rank:02d}",
             "kind": kind,
             "is_fastest": draft is fastest,
-            "spliceable": kind != "loop",
+            "spliceable": spliceable(destination),
             **({"direction_label": name} if name is not None else {}),
         })
         for rank, draft in enumerate(drafts)
@@ -184,14 +186,15 @@ class _DistanceFinish:
     async def select(self, engine: "RoadGraphEngine", context: "_RoadGraphContext", fixed: "FixedLegs") -> _Selection:
         # 中継点候補を往路の軸的な良さの順に選定する（一対全木、エンジン側）。
         pool_size = turnaround_pool_size(self.max_routes)
-        select_started = time.monotonic()
+        select_started = start_timer()
         turnarounds = await engine.select_loop_turnarounds(
             context, fixed, self.points.destination, self.distance_km, self.distance_tolerance_km, pool_size
         )
-        select_ms = round((time.monotonic() - select_started) * 1000)
+        select_ms = elapsed_ms(select_started)
         if not turnarounds:
+            ring_lower_m, ring_upper_m, _ = turnaround_ring_m(self.distance_km, self.distance_tolerance_km)
             return _Selection.empty(
-                f"起点から片道{self.distance_km / 2:.1f}km前後で到達できる折返し地点が見つかりませんでした。"
+                f"起点から片道{ring_lower_m / 1000:.1f}〜{ring_upper_m / 1000:.1f}kmで到達できる折返し地点が見つかりませんでした。"
                 "距離や除外する道路の設定を変えてお試しください。"
                 if not self.points.waypoints and self.points.destination is None
                 else f"置いた地点を通って全長{self.distance_km:.1f}km前後になる経路が見つかりませんでした。"
@@ -202,7 +205,7 @@ class _DistanceFinish:
         # 候補はランク順に逐次処理し、距離フィルタ合格がmax_routes件に達した時点で停止する
         # （復路探索は共有のコスト配列を書き換えるため並べられず[`road_graph_engine.py: RoadGraphEngine.trace_loop_from_turnaround`]、
         # 逐次ループの方が無駄な探索を省ける）。
-        trace_started = time.monotonic()
+        trace_started = start_timer()
         traced: list[TracedLoop] = []
         examined = 0
         failed = 0
@@ -237,7 +240,7 @@ class _DistanceFinish:
                 dedup_skipped += 1
                 continue
             traced.append(loop)
-        trace_ms = round((time.monotonic() - trace_started) * 1000)
+        trace_ms = elapsed_ms(trace_started)
 
         summary = (
             f"turnarounds={len(turnarounds)} examined={examined} trace_failed={failed} "
@@ -251,9 +254,10 @@ class _DistanceFinish:
         # 同点は評価前に付けた「目標距離に近い順」を安定ソートで引き継ぐ。周回の名前はエンジンが方位から付けたもの
         # （同じ方位に複数並びうるので、idは並びの位置から作る）。
         ordered = sorted(drafts, key=difficulty_order)
-        if self.points.destination is None:
-            return _label(ordered, "loop")
-        return _label(ordered, "destination", "目的地ルート")
+        destination = self.points.destination
+        if destination is None:
+            return _label(ordered, "loop", destination)
+        return _label(ordered, "destination", destination, "目的地ルート")
 
     def _describe_no_traced_reason(self, failed: int, filtered_out: int) -> str:
         """周回候補が1本も残らなかったときの、利用者へ見せる要約を組み立てる。
@@ -301,14 +305,15 @@ class _NoDistanceFinish:
     async def select(self, engine: "RoadGraphEngine", context: "_RoadGraphContext", fixed: "FixedLegs") -> _Selection:
         """`select_via_nodes`が確定済みの経路だけを返すため、候補ごとの再探索・失敗スキップが無く「選定→評価」の2段で済む。
 
-        目的地があれば、所要時間が最短の経路を基準線として必ず1本含め（件数を切るときも残す）、最速の印を付ける。軸の重みを
+        目的地があれば、所要時間が最短の経路を基準線として1本含め（件数を切るときも残す。ただし1本だけ返すときは比べる相手が
+        無いので残さず、印も付けない。`domain/route_search.py: keep_routes_with_baseline`）、最速の印を付ける。軸の重みを
         すべて0にしたときの経路であり、軸設定に沿った候補が何分余計にかかるかを対価として
         読めるようにするため。並びは周回と同じ総合難易度の昇順で、基準線も難易度の位置に並ぶ。
         """
         destination = self.points.destination
-        select_started = time.monotonic()
+        select_started = start_timer()
         traced = await engine.select_via_nodes(context, fixed, destination, self.max_routes)
-        select_ms = round((time.monotonic() - select_started) * 1000)
+        select_ms = elapsed_ms(select_started)
         if not traced:
             if self.points.waypoints:
                 reason = _UNREACHABLE_POINTS_REASON
@@ -318,7 +323,7 @@ class _NoDistanceFinish:
         if destination is None:
             def arrange_loops(drafts: list[RouteDraft]) -> list[RouteCandidate]:
                 kept, _ = keep_routes_with_baseline(drafts, None, self.max_routes)
-                return _label(kept, "loop", "経由地ルート")
+                return _label(kept, "loop", destination, "経由地ルート")
 
             return _Selection(traced, arrange_loops, f"select_ms={select_ms}")
 
@@ -336,7 +341,7 @@ class _NoDistanceFinish:
             # 件数を切るときに残し、印を付けるために、基準線をオブジェクトの同一性で覚えておく。
             baseline = drafts[fastest_index] if fastest_index is not None else None
             kept, baseline = keep_routes_with_baseline(drafts, baseline, self.max_routes)
-            return _label(kept, "destination", "目的地ルート", fastest=baseline)
+            return _label(kept, "destination", destination, "目的地ルート", fastest=baseline)
 
         return _Selection(traced, arrange, f"select_ms={select_ms}")
 
@@ -372,9 +377,10 @@ class RouteGenerator:
                 f"evaluate_loopsの戻り値が入力と対応していません traced={len(traced)} candidates={len(candidates)}"
             )
         return [
-            candidate if not candidate.segments else candidate.model_copy(
-                update={name: build(candidate.segments)
-                        for name, build in SEGMENT_AGGREGATES.items()})
+            RouteDraft(
+                **dict(candidate),
+                **{name: build(candidate.segments) for name, build in SEGMENT_AGGREGATES.items()},
+            )
             for candidate in candidates
         ]
 
@@ -394,7 +400,7 @@ class RouteGenerator:
         生成の入口ごとに写経すると、文言を直したときに片方だけ古くなる。**どの入口で
         落ちたかはログのラベルが持つ**ので、ここでは骨格だけを共有する。
         """
-        started = time.monotonic()
+        started = start_timer()
         origin_label = _origin_label(origin)
         try:
             context = await self._engine.prepare(origin, points, radius_km, now=start_time)
@@ -402,7 +408,7 @@ class RouteGenerator:
             logger.warning(
                 "%s origin=%s %s -> search area too large edges=%d limit=%d prepare_ms=%d",
                 log_label, origin_label, log_detail, exc.edges, exc.limit,
-                round((time.monotonic() - started) * 1000),
+                elapsed_ms(started),
             )
             self.last_no_candidates_reason = (
                 "探索範囲の道路が多すぎるため、ルートを生成できませんでした。"
@@ -411,7 +417,7 @@ class RouteGenerator:
         except RoutingError as exc:
             logger.warning(
                 "%s origin=%s %s -> origin not snapped: %s prepare_ms=%d",
-                log_label, origin_label, log_detail, exc, round((time.monotonic() - started) * 1000),
+                log_label, origin_label, log_detail, exc, elapsed_ms(started),
             )
             self.last_no_candidates_reason = (
                 "起点から走り出せる道が見つかりませんでした。出発地を道路沿いへ動かしてお試しください。")
@@ -419,7 +425,7 @@ class RouteGenerator:
         if context is None:
             logger.warning(
                 "%s origin=%s %s -> no context (road data unavailable) prepare_ms=%d",
-                log_label, origin_label, log_detail, round((time.monotonic() - started) * 1000),
+                log_label, origin_label, log_detail, elapsed_ms(started),
             )
             self.last_no_candidates_reason = (
                 f"起点付近の道路データが未整備のため、{failure_phrase}")
@@ -432,11 +438,10 @@ class RouteGenerator:
         distance_tolerance_km: float,
         max_routes: int,
         start_time: datetime,
-        points: FixedPoints | None = None,
+        points: FixedPoints,
     ) -> list[RouteCandidate]:
-        """距離ありの生成。置いた点（`points`。省略時は無し）の経由地を順に通り、全長が目標±許容に入る経路で目的地
+        """距離ありの生成。置いた点（`points`）の経由地を順に通り、全長が目標±許容に入る経路で目的地
         （無ければ起点）へ向かう（`_DistanceFinish`）。"""
-        points = points or FixedPoints(waypoints=[], destination=None)
         return await self._generate(
             origin, points, start_time, _DistanceFinish(distance_km, distance_tolerance_km, max_routes, points),
         )
@@ -464,29 +469,29 @@ class RouteGenerator:
 
         1回の生成を、段ごとの所要時間と戦略の中間結果の減り方を持つ1行で残す。候補が0件ならWARNINGにする。
         """
-        started = time.monotonic()
+        started = start_timer()
         origin_label = _origin_label(origin)
         # 探索の範囲は置いた点（目的地を含む）を覆い、仕上げの戦略が自由に選ぶ部分の届く半径を足す。
         context = await self._prepare(
             origin, points.placed, finish.search_radius_km(origin), start_time,
             log_label=finish.log_label, log_detail=finish.log_detail,
             failure_phrase="候補を生成できませんでした。対応エリア外の可能性があります。")
-        prepare_ms = round((time.monotonic() - started) * 1000)
+        prepare_ms = elapsed_ms(started)
         if context is None:
             return []
 
-        fixed_started = time.monotonic()
+        fixed_started = start_timer()
         finish_ms = 0
         try:
             fixed = await self._engine.trace_fixed_points(context, points.waypoints)
         except RoutingError as exc:
-            fixed_ms = round((time.monotonic() - fixed_started) * 1000)
+            fixed_ms = elapsed_ms(fixed_started)
             selection = _Selection.empty(_UNREACHABLE_POINTS_REASON, f"fixed points failed: {exc}")
         else:
-            fixed_ms = round((time.monotonic() - fixed_started) * 1000)
-            finish_started = time.monotonic()
+            fixed_ms = elapsed_ms(fixed_started)
+            finish_started = start_timer()
             selection = await finish.select(self._engine, context, fixed)
-            finish_ms = round((time.monotonic() - finish_started) * 1000)
+            finish_ms = elapsed_ms(finish_started)
         # engineが目的地をアクセス可能な最寄りNodeへ補正した場合、その座標を引き継ぐ。
         self.last_destination_correction = context.destination_correction
         if not selection.traced:
@@ -497,16 +502,16 @@ class RouteGenerator:
             self.last_no_candidates_reason = selection.no_candidates_reason
             return []
 
-        evaluate_started = time.monotonic()
+        evaluate_started = start_timer()
         candidates = selection.arrange(await self._evaluate_and_aggregate(context, selection.traced, start_time))
-        evaluate_ms = round((time.monotonic() - evaluate_started) * 1000)
+        evaluate_ms = elapsed_ms(evaluate_started)
         # 候補ごとの同じ道を2度目に走る距離の割合（選んだ順。並べ直す前）。
         repeated = ",".join(f"{share:.2f}" for share in self._engine.repeated_shares(context, selection.traced))
         logger.info(
             "%s origin=%s %s -> candidates=%d %s repeated=%s "
             "prepare_ms=%d fixed_ms=%d finish_ms=%d evaluate_ms=%d total_ms=%d",
             finish.log_label, origin_label, finish.log_detail, len(candidates), selection.summary, repeated,
-            prepare_ms, fixed_ms, finish_ms, evaluate_ms, round((time.monotonic() - started) * 1000),
+            prepare_ms, fixed_ms, finish_ms, evaluate_ms, elapsed_ms(started),
         )
         return candidates
 
@@ -524,14 +529,14 @@ class RouteGenerator:
         Edgeコストは一度だけ計算し、探索と表示が同じ値を共有する）。前半・後半の値を
         混ぜる近似にすると、その共有が壊れる。
         """
-        started = time.monotonic()
+        started = start_timer()
         origin_label = _origin_label(origin)
 
         context = await self._prepare(
             origin, [destination], 0.0, start_time,
             log_label="generate(spliced)", log_detail=f"edges={len(edge_ids)}",
             failure_phrase="ルートを組み立てられませんでした。")
-        prepare_ms = round((time.monotonic() - started) * 1000)
+        prepare_ms = elapsed_ms(started)
         if context is None:
             return []
 
@@ -553,14 +558,14 @@ class RouteGenerator:
             )
             return []
 
-        evaluate_started = time.monotonic()
+        evaluate_started = start_timer()
         drafts = await self._evaluate_and_aggregate(context, [traced], start_time)
-        candidates = _label(drafts, "spliced", "組み合わせたルート")
-        evaluate_ms = round((time.monotonic() - evaluate_started) * 1000)
+        candidates = _label(drafts, "spliced", destination, "組み合わせたルート")
+        evaluate_ms = elapsed_ms(evaluate_started)
         logger.info(
             "generate(spliced) origin=%s edges=%d -> distance_km=%.1f "
             "prepare_ms=%d evaluate_ms=%d total_ms=%d",
             origin_label, len(edge_ids), traced.distance_km,
-            prepare_ms, evaluate_ms, round((time.monotonic() - started) * 1000),
+            prepare_ms, evaluate_ms, elapsed_ms(started),
         )
         return candidates

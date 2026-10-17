@@ -15,6 +15,7 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | ルート | `version.py` | プロセス起動時刻（デプロイ確認用） |
 | domain | `time_zone.py` | 日本標準時（`JST`）の正準定義と時刻の読み方（タイムゾーンの無い時刻はJSTとして読む`as_jst`、予報の系列の時刻＝タイムゾーンの無いJSTへ直す`as_series_time`）と、応答へ書くタイムゾーンの無い時刻の形（`jst_local_text`。画面と同じ形になることは生成物`time-expectations.json`の表を画面のテストが通して確かめる）。時刻を扱う全モジュールがここを参照する |
 | domain | `warning_levels.py` | 警戒度バッジ4段階（`WarningBadgeLevel`）の正準定義。JMA警報・WBGT・河川氾濫予報が判定根拠は別々のまま同じ語彙を返す |
+| domain | `stopwatch.py` | ログへ出す所要時間の測り方（測り始めの`start_timer`とミリ秒の整数の`elapsed_ms`）。測り始めと終わりは同じ時計で読む |
 | domain | `strict_model.py` | 全Pydanticモデルの基底（`StrictModel`）。未知のフィールドを黙って捨てず例外にする |
 | api | `admin_auth.py` | 管理API共通の認可境界 |
 | api | `admin_db_errors.py` | 管理APIのDB障害を、どの口でも503で返すアプリ単位の例外の扱い（下の「DB障害として扱う例外」） |
@@ -41,12 +42,12 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | infrastructure | `single_process.py` | 起動時にワーカー数を読み、複数なら起動を止める（プロセス内に持つ状態の前提を落ちる形にする） |
 | infrastructure | `tuning_overrides.py` | 較正値の上書き（宣言の既定値から動かしたぶんだけをDBへ持つ）の読み書きと、宣言の範囲での検算。プロセス内の値へは書かない |
 | services | `tuning_service.py` | 較正値の上書きの取引境界（構造仕様7）と、プロセス内の値への反映（起動時の読み込みと、書いた直後） |
-| api | `tuning_admin.py` | 較正値の一覧・更新（管理画面用、`require_admin_basic_auth`の内側）。並べる項目も、効き方ごとの見出しと並び順も宣言から導く。名前に添える対象（どの路面の見込み・停止要因の種別の値か）は、値を使う側の宣言（`domain/road.py`・`domain/traffic.py`）から引く |
+| api | `tuning_admin.py` | 較正値の一覧・更新（管理画面用、`require_admin_basic_auth`の内側）。並べる項目も、効き方ごとの見出しと並び順も宣言から導く。名前は`domain/tuning_labels.py: tuning_label`が付ける |
 | ops | `admin_data_backup.sh` | 本番VMのホストで、DBの全体を`pg_dump`し、Object Storageの非公開バケットの前の1個と入れ替え、置けた時刻を書く |
 | ops | `ridecompass-admin-data-backup.service`・`ridecompass-admin-data-backup.timer` | それを毎日打つsystemdのユニット（VMへの登録は手で1回） |
 | scripts | `schema_gap.py` | 実DBのスキーマとORMの宣言（`orm_base.declared_metadata`）の差を出す。宣言どおりの表を同じ接続の一時スキーマへ作ってから巻き戻すまでの間に、`public`とカタログを突き合わせる——制約・既定値・索引の式をPostgreSQLが正規化した形で比べるので、CHECKの式・主キー・一意も比べられる。名前は比べない。取込が作る子パーティション（生データの区画）は、列のNULL許容だけをアダプタの宣言（`batch/ingest.py: partition_required_columns`）と比べ、カタログの値だけを読む（取込が入れ直している最中でも、そのロックを待たずに測れる）。本番DBへは、backendのデプロイがコンテナを入れ替えたあとに毎回当てる（差があればデプロイが失敗で終わる。docs/architecture/tech-stack.md「デプロイの反映確認」）ほか、手で`run_probe.py`から当てる |
 | scripts | `lost_constraints.py` | 2つの版の`backend/app`をgitから取り出し、ORMが宣言する表・制約を名前抜きの同じ形へ揃えて、消えたものを出す（DBは使わない）。SQLの文の中の絞り込みは見ない——断片をつないで組み立てるSQLは文字列から構文木を取れないものが残るため |
-| scripts | `mutation/` | 変異テストの台本。mutmut 3.8.0（測るときだけ入れる）には`app`の関数の中の変異の生成と、関数ごとに通るテストの記録だけをさせ（`gen.py`）、変異ごとに別のプロセスでそのテストを最後まで回して、落ちたテストを記録する（`runner.py`・`mutkill.py`）。回す変異と基準の並べ方と一覧の口（`plan.py`）・記録を層や道具に依らない表（Stryker の結果の JSON の形）にする（`report.py`）・生き残りの振り分け（`classify.py`・`importtime.py`）・その表からテストの見直しの候補を出し、前回と比べる（`review.py`）・Pull Request の差分で変わった関数を拾って回し、生き残りを知らせる（`diff_scope.py`・`pr_plan.py`・`report_pr.py`）。回し方は[run-checks/SKILL.md](../../../.claude/skills/run-checks/SKILL.md)「変異テストでテストの効きを測る」、見直しの1回の進め方は[test-review/SKILL.md](../../../.claude/skills/test-review/SKILL.md) |
+| scripts | `mutation/` | 変異テストの台本。mutmut 3.8.0（測るときだけ入れる）には`app`の関数の中の変異の生成と、関数ごとに通るテストの記録だけをさせ（`gen.py`）、変異ごとに別のプロセスでそのテストを最後まで回して、落ちたテストを記録する（`runner.py`・`mutkill.py`）。回す変異と基準の並べ方と一覧の口（`plan.py`）・記録を層や道具に依らない表（Stryker の結果の JSON の形）にする（`report.py`）・生き残りの振り分け（`classify.py`・`importtime.py`）・その表からテストの見直しの候補を出し、前回と比べる（`review.py`）。台本どうしが同じに読むもの（変異と基準の名前・記録・一覧の口）と生き残りの判断は`_shared.py`が持ち、全部の測りの表と Pull Request の知らせは同じ判断で数える。回し方は[run-checks/SKILL.md](../../../.claude/skills/run-checks/SKILL.md)「変異テストでテストの効きを測る」、見直しの1回の進め方は[test-review/SKILL.md](../../../.claude/skills/test-review/SKILL.md) |
 | scripts | `_stdio.py` | `scripts/`の実行口と、リポジトリの根の`scripts/`の道具・フックが共通で使う、標準の入出力のUTF-8化。backendの像の中の実行口も読むので、根の側ではなくここに置く |
 | scripts | `run_probe.py` | 調査用のスクリプトを本番DBに対して走らせる（手元のPythonから本番DBを引くか、本番のbackendコンテナの中で走らせる）。手元実行では接続文字列をSQLAlchemy用と素のasyncpg用の両方の形で環境変数へ渡す。プローブの後ろに書いた引数はそのままプローブへ渡す |
 | scripts | `_prod_env.py` | 本番へつなぐ道具（`run_probe.py`・`axis_apply.py`等）が共有する、手元の接続情報（`backend/.env.oracle.local`）の読み方。worktreeから打ったときは本体のチェックアウト側のファイルを読む（gitignore対象のファイルはworktreeへ写らない）。接続情報を渡す前に、このチェックアウトがorigin/masterより遅れていれば止まる（[setup.md](../../architecture/setup.md)「開発機の本体のチェックアウトの遅れ」） |
@@ -338,6 +339,10 @@ SSLコンテキスト構築（CA証明書バンドルの読み込み・パース
 なりうるため、リクエストごとの新規生成をやめプロセス全体で使い回す（`main.py`の
 lifespanが起動時に主要なtimeout値[10.0/15.0]を事前ウォームアップするのもこのため）。
 
+タイルを中継するクライアントは、上流から1件取る所を`fetch_upstream`へ寄せる。上流の404（このパスで得るものが無い事実）は
+`UPSTREAM_NOT_FOUND`、ほかの失敗はNoneとして返し、404は`log_external_call`の失敗に数えない。404を受けた応答の本文と
+`Cache-Control`は、配信元ごとの宣言（`api/routers/_tile_http.py: UpstreamReplies`）から引く。
+
 ## 応答のgzip圧縮（`response_compression.py`）
 
 `ContentTypeGZipMiddleware`はStarletteの`GZipMiddleware`を、応答の`content-type`が
@@ -406,7 +411,7 @@ Basic認証必須）はサーバー側のファイルキャッシュしか消せ
 |---|---|
 | ステータス5xx | ERROR |
 | ステータス429 | DEBUG（`record_rate_limit_rejection`が抑制付きWARNINGで別途記録するため、ここでは重ねない） |
-| タイルの経路（`HIGH_FREQUENCY_PATH_PREFIXES`。どれもGETだけ）の成功と404（疎な格子・整備区域の外・配信前のタイルでは正常系） | DEBUG |
+| タイルの経路（`api/cache_policy.py: TILE_PATH_PREFIXES`。ブラウザに覚えさせる時間の対応表のタイルの行から導く。どれもGETだけ）の成功と404（疎な格子・整備区域の外・配信前のタイルでは正常系） | DEBUG |
 | ステータス4xx（429以外。タイルの経路の404を除く） | WARNING |
 | それ以外 | INFO |
 
@@ -509,7 +514,6 @@ push型更新と同じ前提）。`JobRecord`は状態ごとの型の共用体�
 | レイヤー | ファイル | 責務 |
 |---|---|---|
 | scripts | `derived_distribution.py` | 派生の表の値の列ごとに、値のある割合と、型に応じた分布（数: 0でない割合・合計・分位・最大、真偽: 真の割合、文字: 種類の数）を1列1行で出す。表と列は`infrastructure/derived_data_freshness.py: derived_tables`・`value_columns`から導く。`--column`を付けなければ全部の値の列を測る。本番の派生の作り直しの前後を並べるための道具（[deployment-sync.md](../../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」）。本番DBへは`run_probe.py`で当てる |
-| scripts | `serve_e2e_live.py` | e2e-live（`frontend/e2e-live/`）のために、この作業ツリーのbackendを開発DBへ向けて空いたポートで起動し、路面タイルに道が出る起点を開発DBの区間から選んで、ビルドと実行のコマンドを出す（手順の正本は[testing.md](../../../.claude/rules/testing.md)） |
 | scripts | `audit_test_rewrite.py` | 実装から起こし直したテストを外から測る（実装を変えていないか・テストが読む`app.*`・対象の属性の出どころ・seams 数・実装へ1行も入らないテスト・そのテストだけが通す行が0行のテスト・カバレッジ・テストファイルごとの項目と関数と行の数・テストからしか使われない公開の名前の候補。テストは対象を読む母集団を並べて渡す。PostGISのテストはテスト用DBへ繋がるときだけ含める。`--ref`で前の版を一時の作業ツリーへ取り出して同じ母集団で測り、前後のカバレッジ・数と新たに未到達になった行を並べる。作業ツリーに無く前の版にあるテスト（消した・改名した）は前の測りにだけ入れる）。起こし直しの手順は[testing.md](../../../.claude/rules/testing.md) |
 | scripts | `mutation/` | 変異テストの台本。mutmut 3.8.0（測るときだけ入れる）には`app`の関数の中の変異の生成と、関数ごとに通るテストの記録だけをさせ（`gen.py`）、変異ごとに別のプロセスでそのテストを最後まで回して、落ちたテストを記録する（`runner.py`・`mutkill.py`）。回す変異の並べ方と一覧の口（`plan.py`）・集計（`analyze.py`）・生き残りの振り分け（`classify.py`・`importtime.py`）。回し方は[testing-operations.md](../../../.claude/skills/run-checks/SKILL.md)「変異テストでテストの効きを測る」 |
 

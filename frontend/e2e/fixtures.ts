@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import type { components } from "@/types/generated/api";
 import type { RouteCandidate, RouteGenerateJobStatusResponse } from "@/types/route";
-import { catalogEntry, catalogResponse, tileInput } from "@/testing/catalogAxes";
+import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
 import {
   makeGenerationConditions,
   makeRouteCandidate as makeCandidate,
@@ -29,7 +29,9 @@ import nextConfig from "../next.config";
 export const API_BASE = process.env.E2E_API_BASE ?? "http://localhost:8000";
 
 // backend/app/domain/route.py RouteCandidate相当の最小フィクスチャ（1候補）。
-function makeSegment(index: number, coordinates: [number, number][]) {
+// 区間へ入る時刻（到達予想）は本物の生成が必ず付ける（無いと走行モードの到着予想が出ない）。区間は所要時間を等分する。
+const DEPARTED_AT = Date.parse("2026-10-13T00:00:00Z");
+function makeSegment(index: number, coordinates: [number, number][], secondsEach: number) {
   return makeRouteSegment({
     geometry: { type: "LineString", coordinates },
     start_latitude: coordinates[0][1],
@@ -39,6 +41,7 @@ function makeSegment(index: number, coordinates: [number, number][]) {
     cumulative_distance_km: index * 10,
     distance_km: 10,
     difficulty: 20 + index * 30,
+    estimated_arrival_time: new Date(DEPARTED_AT + index * secondsEach * 1000).toISOString(),
   });
 }
 
@@ -67,14 +70,22 @@ function makeRouteCandidate(
     // 選択中候補の区間色分け線は区間が無いと描かれない。
     // 地図の描画に関わる検証（縁取り等）が成り立つよう、最小限の2区間を持たせる。
     segments: [
-      makeSegment(0, [
-        [139.7387, 35.7597],
-        [139.75, 35.765],
-      ]),
-      makeSegment(1, [
-        [139.75, 35.765],
-        [139.7387, 35.7597],
-      ]),
+      makeSegment(
+        0,
+        [
+          [139.7387, 35.7597],
+          [139.75, 35.765],
+        ],
+        durationSeconds / 2,
+      ),
+      makeSegment(
+        1,
+        [
+          [139.75, 35.765],
+          [139.7387, 35.7597],
+        ],
+        durationSeconds / 2,
+      ),
     ],
     overall_difficulty: { average: 35, load: 700 },
   });
@@ -99,7 +110,7 @@ export function routeGenerateResponseFixture(): DoneJob["result"] {
       distance_km: 20,
       distance_tolerance_km: 5,
       penalty_strength: 1.0,
-      hard_filters: { no_bicycle: true, motorway: true, trunk: true },
+      hard_filters: { no_bicycle: true, motorway: true },
       max_routes: 8,
       assumed_speed_kmh: 20,
       start_time: "2026-09-05T09:30:00+09:00",
@@ -136,6 +147,7 @@ function amedasObservationFixture(): AmedasObservation {
     precipitation_10min_mm: null,
     weather_code: null,
     twilight: null,
+    valid_area: null,
   };
 }
 
@@ -159,15 +171,7 @@ export function axisCatalogFixture(
 /** 既定の軸カタログ。アプリが軸一覧を引ける最小の1軸だけを持つ。 */
 export function defaultAxisCatalogFixture(): components["schemas"]["AxisCatalogResponse"] {
   return axisCatalogFixture([
-    {
-      ...catalogEntry({
-        axis_id: "ramp",
-        map_paint: {
-          tiles: { kind: "ramp", tile_inputs: [tileInput({ property: "v", weight: 1 })], thresholds: [50] },
-        },
-      }),
-      default_weight: 0,
-    },
+    { ...catalogEntry({ axis_id: "axis_a", map_paint: { thresholds: [50] } }), default_weight: 0 },
   ]);
 }
 
@@ -194,9 +198,9 @@ export async function installApiMocks(page: Page): Promise<void> {
   // マッチ判定される）で/api/weather/amedasだけこちらを優先させる。
   await page.route(`${API_BASE}/api/weather/amedas*`, (route) => route.fulfill({ json: amedasObservationFixture() }));
   // 警告バッジ3種は「警告なし」の成功応答にする。応答しないと取得失敗の印がヘッダーに出る。
-  const noWarnings: WeatherWarnings = { warnings: [] };
-  const noWbgt: WbgtStatus = { reading: null };
-  const noFlood: FloodForecasts = { forecasts: [] };
+  const noWarnings: WeatherWarnings = { warnings: [], valid_area: null };
+  const noWbgt: WbgtStatus = { reading: null, valid_area: null };
+  const noFlood: FloodForecasts = { forecasts: [], valid_area: null };
   await page.route(`${API_BASE}/api/weather/warnings*`, (route) => route.fulfill({ json: noWarnings }));
   await page.route(`${API_BASE}/api/weather/wbgt*`, (route) => route.fulfill({ json: noWbgt }));
   await page.route(`${API_BASE}/api/weather/flood-forecast*`, (route) => route.fulfill({ json: noFlood }));
@@ -211,6 +215,8 @@ export async function installApiMocks(page: Page): Promise<void> {
   await page.route(`${API_BASE}/api/routes/generate/*`, (route) => route.fulfill({ json: doneJobFixture() }));
 
   await page.route(`${API_BASE}/api/axis-catalog*`, (route) => route.fulfill({ json: defaultAxisCatalogFixture() }));
+  // 軸のレンズで塗る道ごとの値。値を持つ道が無い形で答える。
+  await page.route(`${API_BASE}/api/region/dynamic-way-values/**`, (route) => route.fulfill({ json: {} }));
 
   // 地点の詳しくが、置いた位置の辺りを引く。辺り無し（境界の外）で答える。
   await page.route(`${API_BASE}/api/place-area*`, (route) => route.fulfill({ json: { area: null } }));
@@ -323,8 +329,17 @@ export async function openMobileSheet(page: Page, name: MobileSheetName) {
  */
 export async function generateRoutes(page: Page, { distanceKm = 20 }: { distanceKm?: number } = {}) {
   const sheet = await openMobileSheet(page, "ルート設定");
-  await sheet.getByLabel("全長の目標", { exact: true }).fill(String(distanceKm));
+  await setDistance(sheet, distanceKm);
   return generateInMobileSheet(page, sheet);
+}
+
+/** 開いている「ルート設定」シートの全長の目標のルーラーを、キー操作で`distanceKm`（5km刻み）のコマへ合わせる。 */
+export async function setDistance(sheet: Locator, distanceKm: number) {
+  const ruler = sheet.getByRole("slider", { name: "全長の目標", exact: true });
+  await ruler.focus();
+  await ruler.press("Home");
+  for (let km = 5; km < distanceKm; km += 5) await ruler.press("ArrowRight");
+  await expect(ruler).toHaveAttribute("aria-valuetext", `${distanceKm}km`);
 }
 
 /** 開いている「ルート設定」シートで「ルート生成」を押し、候補が出て「ルート結果」シートへ移るまで待って、そのシートを返す。

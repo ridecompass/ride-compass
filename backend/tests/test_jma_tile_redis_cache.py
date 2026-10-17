@@ -15,7 +15,7 @@ import io
 from PIL import Image
 
 from app.infrastructure import jma_tile_redis_cache
-from app.infrastructure.jma_tile_redis_cache import EmptyTile
+from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 
 TILE = "bosai/jmatile/data/risk/20260101000000/none/20260101000000/surf/land/10/908/403.png"
 OTHER_TILE = "bosai/jmatile/data/risk/20260101000000/none/20260101000000/surf/land/10/908/404.png"
@@ -46,20 +46,20 @@ async def test_each_path_keeps_its_own_entry(fake_redis):
 async def test_a_tile_with_nothing_to_draw_comes_back_as_the_flag(fake_redis):
     await jma_tile_redis_cache.set(TILE, png(0), "image/png")
 
-    assert isinstance(await jma_tile_redis_cache.get(TILE), EmptyTile)
+    assert await jma_tile_redis_cache.get(TILE) is UPSTREAM_NOT_FOUND
 
 
 async def test_a_vector_tile_is_judged_as_a_vector_by_its_path(fake_redis):
     """ベクタは長さで空を見る。画像として読もうとすると、空のベクタも「中身あり」で実体を持つ。"""
     await jma_tile_redis_cache.set(VECTOR_TILE, b"", "application/x-protobuf")
 
-    assert isinstance(await jma_tile_redis_cache.get(VECTOR_TILE), EmptyTile)
+    assert await jma_tile_redis_cache.get(VECTOR_TILE) is UPSTREAM_NOT_FOUND
 
 
 async def test_a_path_recorded_as_having_nothing_to_draw_comes_back_as_the_flag(fake_redis):
     await jma_tile_redis_cache.set_empty(TILE)
 
-    assert isinstance(await jma_tile_redis_cache.get(TILE), EmptyTile)
+    assert await jma_tile_redis_cache.get(TILE) is UPSTREAM_NOT_FOUND
 
 
 async def test_tiles_and_flags_are_forgotten_after_twenty_minutes(fake_redis, clock):

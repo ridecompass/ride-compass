@@ -108,6 +108,9 @@ class DeriveStage:
         if self.per_edge:
             arguments["previous"] = previous
         await self.module.derive(conn, **arguments)
+        # 後ろの段と配信はこれらの表を読む。autovacuumは既定60秒周期の背景処理で、派生は数秒で走り切るため、
+        # 統計が付くのを待てない。無いまま読まれると実行計画が桁で外れる。
+        await conn.execute(f"ANALYZE {', '.join(self.tables)}")
 
 
 def _outside_key(stage: DeriveStage) -> str:

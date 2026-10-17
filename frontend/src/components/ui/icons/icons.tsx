@@ -5,30 +5,37 @@
 import type { ReactElement } from "react";
 import {
   ArrowUp,
+  Ban,
   Bike,
+  CalendarDays,
   CircleQuestionMark,
   Clock,
   Cloud,
+  CloudOff,
   Copy,
   CornerUpLeft,
+  CornerUpRight,
   Download,
   Droplet,
   EllipsisVertical,
   Gauge,
   GitCommitHorizontal,
+  History,
   Import,
   Info,
   Layers,
   ListChecks,
+  // 組み込みの`Map`と名前が重ならないよう、別名で読み込む。
   MapPin,
-  MapPinned,
   MapPinX,
   Moon,
+  Navigation,
   Play,
   RotateCcw,
   RotateCw,
   Ruler,
   Save,
+  Search,
   Shield,
   SlidersHorizontal,
   Snowflake,
@@ -330,6 +337,17 @@ export function RouteIcon({ size = 16 }: IconProps) {
   );
 }
 
+/** ルートを外れている: ルートの道なり（点線）が途中で切れ、先に×。 */
+export function OffRouteIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      <path d="M3.5 16c2.8-1 2.8-5.2 6-6" strokeDasharray="0.2 3" />
+      <circle cx="3.5" cy="16" r="1.6" fill="currentColor" stroke="none" />
+      <path d="M12 3.5l4.5 4.5M16.5 3.5L12 8" />
+    </svg>
+  );
+}
+
 /** ログ: 記録済みの行を表す簡易ターミナル/リスト */
 export function LogIcon({ size = 16 }: IconProps) {
   return (
@@ -449,7 +467,32 @@ export function DisplayItemsIcon({ size = 16 }: IconProps) {
   );
 }
 
-/** 現在地（出発地の印・現在地へ移動）: 照準の輪と、塗った中心の点。lucideの`LocateFixed`は中心が輪で、
+/** 出発地の印: 竿に、塗った旗。目的地の`GoalFlagIcon`と竿をそろえ、旗の模様だけで見分ける。 */
+export function StartFlagIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      <path d="M4 18V2.5" />
+      <path d="M4 3h11.5l-2.8 3.75L15.5 10.5H4Z" fill="currentColor" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** 目的地の印: 竿に、市松の旗（ゴールの旗）。 */
+export function GoalFlagIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      <path d="M4 18V2.5" />
+      <rect x="4" y="3" width="12" height="7.5" strokeLinejoin="round" />
+      <path
+        d="M4 3h3v2.5H4ZM10 3h3v2.5h-3ZM7 5.5h3V8H7ZM13 5.5h3V8h-3ZM4 8h3v2.5H4ZM10 8h3v2.5h-3Z"
+        fill="currentColor"
+        stroke="none"
+      />
+    </svg>
+  );
+}
+
+/** 現在地（現在地へ移動）: 照準の輪と、塗った中心の点。lucideの`LocateFixed`は中心が輪で、
  * 行頭の印の大きさ（13px）では点に見えない。この形だけ24単位の枠で描く。 */
 export function LocateIcon({ size = 16 }: IconProps) {
   return (
@@ -476,6 +519,8 @@ export const BicycleIcon = fromLucide(Bike);
 /** 呼び出し側が風向・走行方位のぶん回転させて使うため、上向きのまっすぐな矢印にしてある。 */
 export const WindDirectionArrowIcon = fromLucide(ArrowUp);
 export const ThermometerIcon = fromLucide(Thermometer);
+/** 走行モード（現在地を追い続けて地図を動かす）。 */
+export const RideModeIcon = fromLucide(Navigation);
 export const RaindropIcon = fromLucide(Droplet);
 export const SunIcon = fromLucide(Sun);
 export const MoonIcon = fromLucide(Moon);
@@ -520,13 +565,35 @@ export const SelectedSpotIcon = fromLucide(MapPin);
 export const ClearPointsIcon = fromLucide(MapPinX);
 /** ルートの全長の目標を決める（押している間は全長が目標に合うルートを作る）。 */
 export const DistanceTargetIcon = fromLucide(Ruler);
-/** 地点を地図で置く（地図で選ぶ・地図で追加・地図で置き直す。押している間は地図のタップがその地点を置く）。 */
-export const PlaceOnMapIcon = fromLucide(MapPinned);
 /** 置いた地点を1つ消す。保存したものを消す`DeleteSavedIcon`と同じく、消す操作はごみ箱の形にそろえる。 */
 export const RemovePointIcon = fromLucide(Trash);
+/** 通らない道（除外する道路の種類）。 */
+export const ExcludedRoadIcon = fromLucide(Ban);
 /** 変えた値を既定値に戻す。 */
 export const ResetDefaultsIcon = fromLucide(RotateCcw);
 /** 取れなかったものを取り直す。 */
 export const RetryIcon = fromLucide(RotateCw);
+/** 取れていない情報がある印。警報の色と取り違えないよう、三角の形を使わない。 */
+export const NotFetchedIcon = fromLucide(CloudOff);
+/** 今日1日の見通し。 */
+export const TodayOutlookIcon = fromLucide(CalendarDays);
+/** 時刻を送った重ねを、いまの時刻に戻す。 */
+export const BackToNowIcon = fromLucide(History);
+/** 地図で選んだ道の評価を調べる。 */
+export const InspectRoadIcon = fromLucide(Search);
 /** 編集で作ったルートの元にしたルートを見る。 */
 export const ShowOriginIcon = fromLucide(CornerUpLeft);
+/** 走行中の曲がる所の案内: 左折。 */
+export const TurnLeftIcon = fromLucide(CornerUpLeft);
+/** 走行中の曲がる所の案内: 右折。 */
+export const TurnRightIcon = fromLucide(CornerUpRight);
+
+/** 走行中の曲がる所の案内: Uターン。上へ進んで折り返し、下へ戻る矢印。 */
+export function UTurnIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      <path d="M13.5 17V7.5a3.5 3.5 0 0 0-7 0V13" strokeLinejoin="round" />
+      <path d="M3.5 10.5 6.5 13.5 9.5 10.5" strokeLinejoin="round" />
+    </svg>
+  );
+}

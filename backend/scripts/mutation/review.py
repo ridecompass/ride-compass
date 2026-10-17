@@ -1,6 +1,6 @@
-"""変異テストの表（Stryker の結果の JSON の形。backend は report.py が書く）から、テストの見直しの候補を出す
-（.claude/rules/testing-review.md「テストを変異テストで見直す」）。backend の下で、測った版と同じ版のチェックアウトで打つ
-（層の並びと、テスト関数の中身を読む）。
+"""変異テストの表（Stryker の結果の JSON の形。backend は report.py、frontend は frontend/scripts/mutation/report.mjs が書く）から、
+テストの見直しの候補を出す（.claude/rules/testing-review.md「テストを変異テストで見直す」）。表を書いた層の下（backend か frontend）で、
+測った版と同じ版のチェックアウトで打つ（テスト関数の中身を、表のテストの場所から読む）。
 
 引数: 表のファイル 前回の見直しの場所（review.json がある所。無ければ空のディレクトリ） 書き出す場所
 書くもの（書き出す場所）:
@@ -17,17 +17,17 @@
 - writing（書き方）: 通るのに変異を1つも見つけないテスト・100本以上のテストが一緒に落ちる書き換えでしか落ちないテスト
 
 重なりの選び方（testing-review.md の重なりの 1〜3）:
-- テストの高さは、通る変異のファイルの層（.importlinter の layers）の一番上。200本以上のテストが通る変異（足場）と、読み込みの
+- テストの高さは、通る変異のファイルの層（表の config.layers。上から並び、| でつないだものは同じ高さ）の一番上。200本以上のテストが通る変異（足場）と、読み込みの
   ときに呼ばれうる変異（static）は数えない。数える変異が無いテストは判断できないので残す。
 - 判断できないものは残す: static の変異を見つけるテスト・基準で落ちたテスト（隔離の候補）。変異を1つも見つけないテストは
   比べようがないので候補にしない（書き方の候補に出す）。
 - API の経路（app/api/routers の関数）ごとに、それを通るテストを1本は残す。表は関数の名前を持たないので、経路のファイルの変異を
   通るテストの組ごとに数える（同じ関数の変異は、同じテストの組に通られる）。
 - 低い高さから順に、同じ高さ以下の残すテストで見つからない変異を多く見つける順に残し、何も足さないものを候補にする。
-- 候補はテスト関数ごと: パラメータの組の1つでも残すなら、その関数は候補にしない。
+- 候補はテスト関数ごと: パラメータの組の1つでも残すなら、その関数は候補にしない。パラメータの組は pytest の名前の形
+  （`関数[組]`）で見る。vitest の it.each の行は、それぞれを1本のテスト関数に数える。
 """
 import collections
-import configparser
 import functools
 import hashlib
 import heapq
@@ -35,6 +35,8 @@ import json
 import math
 import os
 import sys
+
+from _shared import cell, function_of_test, layer
 
 REPORT, PREV, OUT = sys.argv[1], sys.argv[2], sys.argv[3]
 SCAFFOLD_TESTS = 200
@@ -65,22 +67,9 @@ def tests(m, key):
     return {name_of[i] for i in m.get(key, ())}
 
 
-def key_of(nodeid):
-    """テスト関数（パラメータの組を外した名前）。"""
-    return nodeid.split("[")[0]
-
-
-# 層の高さ。.importlinter の layers は上から並ぶので、下ほど低い。
-cfg = configparser.ConfigParser()
-cfg.read(".importlinter", encoding="ascii")
-layers = [line.strip() for line in cfg["importlinter:contract:layers"]["layers"].splitlines() if line.strip()]
+# 層の高さ。表の層の並びは上から並ぶので、下ほど低い。
+layers = report["config"]["layers"]
 rank = {name.strip(): len(layers) - 1 - i for i, line in enumerate(layers) for name in line.split("|")}
-
-
-def layer(path):
-    """ファイルの層（app の直下のパッケージかモジュールの名前）。"""
-    parts = path.split("/")
-    return parts[1].removesuffix(".py") if len(parts) > 1 else path
 
 
 found = collections.defaultdict(set)
@@ -110,12 +99,12 @@ for t in judge:
         why_kept[t] = "高さを決める関数が無い"
 by_key = collections.defaultdict(set)
 for t in judge:
-    by_key[key_of(t)].add(t)
+    by_key[function_of_test(t)].add(t)
 
 
 def close_siblings(kept):
     """残すテストの、同じテスト関数のパラメータの組も残す。"""
-    for k in {key_of(t) for t in kept}:
+    for k in {function_of_test(t) for t in kept}:
         kept |= by_key[k]
     return kept
 
@@ -194,7 +183,7 @@ def source_of(key):
 
 span_by_key: dict[str, tuple[str, int, int]] = {}
 for t in sorted(span_of):
-    span_by_key.setdefault(key_of(t), span_of[t])
+    span_by_key.setdefault(function_of_test(t), span_of[t])
 prev_path = os.path.join(PREV, "review.json")
 prev = json.load(open(prev_path, encoding="utf-8")) if os.path.exists(prev_path) else None
 prev_overlap = {c["test"]: c["hash"] for c in prev["candidates"]["overlap"]} if prev else {}
@@ -210,12 +199,12 @@ for k in cand_keys:
 
 instances = collections.defaultdict(set)
 for t in set(covering) | judge:
-    instances[key_of(t)].add(t)
+    instances[function_of_test(t)].add(t)
 
 
 def whole(group):
     """全部のパラメータの組が group に入るテスト関数。"""
-    return sorted(k for k in {key_of(t) for t in group} if instances[k] <= group)
+    return sorted(k for k in {function_of_test(t) for t in group} if instances[k] <= group)
 
 
 finders = collections.Counter(m for t in found for m in found[t])
@@ -228,7 +217,7 @@ effect = [{"mutant": k, "file": m["file"], "line": m["location"]["start"]["line"
            "status": m["status"], "static": bool(m.get("static")), "breaks": ""}
           for k, m in sorted(mutants.items(), key=lambda x: (x[1]["file"], x[1]["location"]["start"]["line"], x[0]))
           if m["status"] in ("Survived", "NoCoverage")]
-isolation = [{"test": k} for k in sorted({key_of(t) for t in baseline_failed})]
+isolation = [{"test": k} for k in sorted({function_of_test(t) for t in baseline_failed})]
 
 measured = report.get("config", {}).get("revision", "")
 counts = collections.Counter(m["status"] for m in mutants.values())
@@ -237,10 +226,6 @@ review = {"measured": measured, "previous": prev["measured"] if prev else None, 
           "candidates": {"effect": effect, "overlap": overlap, "isolation": isolation, "writing": writing},
           "kept_reasons": dict(collections.Counter(why_kept.values()))}
 json.dump(review, open(os.path.join(OUT, "review.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-
-
-def cell(s):
-    return str(s).replace("|", "\\|").replace("\n", " ")
 
 
 def wilson(k, n):
@@ -268,18 +253,18 @@ for m in mutants.values():
 md = [f"## テストの見直し（測った版 `{measured[:9]}`、前回 `{(prev['measured'] if prev else '無し')[:9]}`）", "",
       "### 効き: 層ごとの変異スコア", "",
       "| 層 | 回した変異 | 落ちた | 集める時点で落ちた | 時間切れ | テスト全体で落ちた | 生き残り | ほか | スコア | 95%の幅 |"
-      " テストの当たらない変異 | 回し終えていない |", "|---|" + "---:|" * 11]
+      " テストの当たらない変異 | 回し終えていない | 外した（Ignored） |", "|---|" + "---:|" * 12]
 for name in sorted(by, key=lambda x: (x == "全体", x)):
     c = by[name]
     det = c["killed"] + c["collect"] + c["Timeout"] + c["full"]
     n = det + c["Survived"] + c["RuntimeError"]
     lo, hi = wilson(det, n)
     md.append(f"| {name} | {n} | {c['killed']} | {c['collect']} | {c['Timeout']} | {c['full']} | {c['Survived']} | "
-              f"{c['RuntimeError']} | {det / n if n else 0:.1%} | {lo:.1%}〜{hi:.1%} | {c['NoCoverage']} | {c['Pending']} |")
+              f"{c['RuntimeError']} | {det / n if n else 0:.1%} | {lo:.1%}〜{hi:.1%} | {c['NoCoverage']} | {c['Pending']} | {c['Ignored']} |")
 
 
 def total_lines(group):
-    return sum(source_of(k)[1] for k in {key_of(t) for t in group})
+    return sum(source_of(k)[1] for k in {function_of_test(t) for t in group})
 
 
 all_tests = set(name_of.values())
@@ -303,7 +288,7 @@ groups = [("全体（収集した）", all_tests), ("どの変異も通らない
           ("見つけたものが全部ほかでも見つかる", set(found) - unique), ("ほかに無い発見を持つ", unique),
           ("全部の発見を保つ最小の組（貪欲法）", chosen), ("100本以上が一緒に落ちる書き換えだけで落ちた", broad_only)]
 md += ["", "### テストの区分", "", "| 区分 | テスト | テスト関数 | 行数 |", "|---|---:|---:|---:|"]
-md += [f"| {name} | {len(s)} | {len({key_of(t) for t in s})} | {total_lines(s)} |" for name, s in groups]
+md += [f"| {name} | {len(s)} | {len({function_of_test(t) for t in s})} | {total_lines(s)} |" for name, s in groups]
 both = [c for c in overlap if c["previous"]]
 md += ["", "### 候補（1件ずつ「落ちると利用者に何が壊れるか」を書いてから決める。成果物の candidates.md）", "",
        "| 観点 | 件数 | テスト関数の行数 |", "|---|---:|---:|",

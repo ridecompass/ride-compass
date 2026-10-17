@@ -49,6 +49,16 @@ def test_joins_a_response_that_arrives_in_pieces(tmp_path, distributor):
     assert (tmp_path / "honhyo_2024.csv").read_bytes() == whole
 
 
+def test_fetches_the_rest_after_one_is_not_readable(tmp_path, distributor):
+    """1つ読めなくても残りを取りに行き、そのうえで失敗を返す。止めると、直したあとの実行で残りを初めて取ることになる。"""
+    distributor.get(fetch_accident_csv.HONHYO_URL_TEMPLATE.format(year=2023)).respond(content=b"<html></html>")
+    distributor.get(URL_2024).respond(content=_honhyo_bytes())
+
+    assert not fetch_accident_csv.fetch([2023, 2024])
+
+    assert (tmp_path / "honhyo_2024.csv").read_bytes() == _honhyo_bytes()
+
+
 def test_keeps_existing_csv_untouched(tmp_path, distributor):
     destination = tmp_path / "honhyo_2024.csv"
     destination.write_bytes(_honhyo_bytes())

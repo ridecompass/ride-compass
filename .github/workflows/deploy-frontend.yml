@@ -7,7 +7,8 @@
 name: Deploy Frontend to Render
 
 on:
-  # ci.ymlが、masterへのpushでCIの全ジョブが通ったあとに呼ぶ（どれかが赤なら呼ばれない）。
+  # ci.ymlが、masterへのpushで、changesがfrontendを出すと決め、ci-okが通ったときだけ呼ぶ（changesが要らないと
+  # 決めて飛ばしたジョブは ci-ok を止めない。走らせたジョブのどれかが赤なら呼ばれない）。
   # 呼ばれたときの`github.sha`は、CIを通ったそのコミット。
   workflow_call:
   # 手動のデプロイ。CIを待たず、選んだrefの先端から像を作ってそのまま出す。
@@ -23,10 +24,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     # 判定・デプロイ・反映の待ちを1つのジョブにし、まとめて1本ずつ走らせる。Renderは最後に頼まれたデプロイを
-    # 出すので、反映を待たずに次の判定へ進むと、後から終わった古いCIの実行が新しいコミットを上書きしうる。
+    # 出すので、反映を待たずに次の判定へ進むと、後から終わった古いCIの実行が新しいコミットを上書きしうる。どの ref から起こしても
+    # 本番（公開先）は1つなので、レーンの鍵は master に決めてある（レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
     concurrency:
-      group: deploy-frontend
-      cancel-in-progress: false
+      group: master-lane-4
+      queue: max
     env:
       # Renderのサービスに設定した像のURLと、タグ以外が同じでなければならない（フックが断る）。
       IMAGE: ghcr.io/${{ github.repository_owner }}/ride-compass-frontend

@@ -26,8 +26,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays, MaterialColumn
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments
-from app.domain.graph import LeanEdge, edge_key, node_key, parse_edge_feature_key
-from app.domain.hard_filters import HARD_FILTER_VALUE_SQL, hard_filter_columns
+from app.domain.geo import bearing_sql, midpoint_sql
+from app.domain.graph import LeanEdge, edge_feature_key_sql, edge_key, node_key, parse_edge_feature_key
+from app.domain.hard_filters import ROUTE_FLAG_VALUE_SQL, route_flag_columns
 from app.domain.landcover import LandcoverPercentages, landcover_key
 from app.domain.material_catalog import (
     MATERIAL_CATALOG,
@@ -36,6 +37,7 @@ from app.domain.material_catalog import (
     segment_material_ids,
 )
 from app.domain.region import BoundingBox
+from app.domain.route_points import RoutePointHit
 from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.orm_base import declared_metadata
@@ -46,6 +48,7 @@ from app.infrastructure.road_tile_sql import (
     FEATURE_SEGMENTS_IN_TILE_SQL,
     ROAD_SURFACE_TILE_MVT_SQL,
 )
+from app.infrastructure.route_side_points import ROUTE_SIDE_POINTS_SQL, SIDE_POINT_PROPERTIES
 from app.infrastructure.source_models import (
     COVERAGE_SQL,
     INGESTED_BBOX_SQL,
@@ -92,7 +95,7 @@ async def create_tables(engine: AsyncEngine) -> None:
 # --- way粒度の材料 -----------------------------------------------------------
 #
 # 材料の式は区間向けの別名を前提にする。**way1本を指すときも同じ式を使う**——wayの行から
-# 同じ名前の別名を組み立てるだけで、式を2組持たない（区間インスペクタ・軸スタジオ）。
+# 同じ名前の別名を組み立てるだけで、式を2組持たない（軸スタジオ）。
 # way粒度では区間そのものの長さが無いため、`re`はwayの長さを返す1行にする。
 
 _WAY_RE_CLAUSE = ("CROSS JOIN LATERAL (SELECT ST_Length(w.geom::geography) AS distance_m,"
@@ -116,13 +119,6 @@ _WAY_MATERIAL_COLUMN_PREFIX = "m_"
 
 _WAY_MATERIAL_SELECT_SQL = ", ".join(
     f"({expr}) AS {_WAY_MATERIAL_COLUMN_PREFIX}{name}" for name, expr in sorted(material_value_sql().items())
-)
-
-
-_WAY_MATERIAL_VALUES_SQL = text(
-    f"SELECT {_WAY_MATERIAL_SELECT_SQL}"
-    + way_from_clause(list(material_value_sql().values()),
-                       source=ways_lookup_sql(":osm_way_id"))
 )
 
 
@@ -159,6 +155,24 @@ _FEATURE_LANDCOVER_SQL = text(
 )
 
 
+#: 道のフィーチャーのうち地点に最も近いものの鍵と、その上で地点に最も近い点。フィーチャーは区間で焼くズームのタイルと
+#: 同じ単位——区間を1本も持たない道は道丸ごと。
+_NEAREST_WAY_SEGMENT_SQL = text(f"""
+    WITH pt AS (SELECT ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326) AS geom)
+    SELECT f.feature_key, ST_Y(ST_ClosestPoint(f.geom, pt.geom)) AS latitude,
+           ST_X(ST_ClosestPoint(f.geom, pt.geom)) AS longitude
+    FROM (
+        SELECT {edge_feature_key_sql("re.osm_way_id", "re.segment_index")} AS feature_key, re.geom
+        FROM road_edges re WHERE re.osm_way_id = :osm_way_id
+        UNION ALL
+        SELECT w.osm_way_id::text, w.geom FROM {ways_lookup_sql(":osm_way_key")} w
+        WHERE NOT EXISTS (SELECT 1 FROM road_edges re2 WHERE re2.osm_way_id = :osm_way_id)
+    ) f CROSS JOIN pt
+    ORDER BY ST_Distance(f.geom::geography, pt.geom::geography)
+    LIMIT 1
+""")
+
+
 def _material_values_from_row(row: Row) -> dict[str, object]:
     """way向けクエリの1行から材料id→値の辞書を作る。列別名は`m_<材料id>`で付けるため、
     材料の一覧をここへ書かない。"""
@@ -171,20 +185,19 @@ def _material_values_from_row(row: Row) -> dict[str, object]:
 
 # --- 区間粒度の材料 -----------------------------------------------------------
 
-_HARD_FILTER_COLUMN_PREFIX = "hf_"
+_ROUTE_FLAG_COLUMN_PREFIX = "hf_"
 
 #: 材料ではないが、材料と同じ1回のクエリで求まるため一緒に受け取る列。
 _EXTRA_MATERIAL_ARRAY_COLUMNS: dict[str, str] = {
-    # 0次ハードフィルタはレジストリから列を作る。個別に書き足さない——フィルタを1つ
-    # 増やしたときここが取り残されると、そのフィルタは常に「該当しない」になって黙って
-    # 素通りする。
-    **{f"{_HARD_FILTER_COLUMN_PREFIX}{name}": expr for name, expr in HARD_FILTER_VALUE_SQL.items()},
+    # 探索の旗（0次ハードフィルタと避け方の行）は宣言から列を作る。個別に書き足さない——旗を1つ
+    # 増やしたときここが取り残されると、その旗は常に「該当しない」になって黙って素通りする。
+    **{f"{_ROUTE_FLAG_COLUMN_PREFIX}{name}": expr for name, expr in ROUTE_FLAG_VALUE_SQL.items()},
     "distance_m": "re.distance_m",
     # 逆向きの方位は+180°ではない。両向きぶんを列で持つ（`road_edges`）。
     "bearing_deg": "CASE WHEN ids.forward THEN re.bearing_deg ELSE re.reverse_bearing_deg END",
-    "mid_lat": "(ST_Y(nf.geom) + ST_Y(nt.geom)) / 2",
-    "mid_lon": "(ST_X(nf.geom) + ST_X(nt.geom)) / 2",
-    "elevation_present": "em.start_elevation_m IS NOT NULL",
+    **dict(zip(("mid_lat", "mid_lon"), midpoint_sql("nf.geom", "nt.geom"), strict=True)),
+    "start_elevation_m": "em.start_elevation_m",
+    "end_elevation_m": "em.end_elevation_m",
     "elevation_gain_m": "em.elevation_gain_m",
     "elevation_loss_m": "em.elevation_loss_m",
 }
@@ -211,7 +224,7 @@ MATERIAL_ARRAY_COLUMN_ORDER: tuple[str, ...] = tuple(_EDGE_MATERIAL_ARRAY_EXPRES
 _EDGE_MATERIAL_ARRAYS_SQL = text(
     "SELECT "
     + ", ".join(
-        f"array_agg(({expr}) ORDER BY ids.ord) AS c_{name}" for name, expr in _EDGE_MATERIAL_ARRAY_EXPRESSIONS.items()
+        f'array_agg(({expr}) ORDER BY ids.ord) AS "c_{name}"' for name, expr in _EDGE_MATERIAL_ARRAY_EXPRESSIONS.items()
     )
     + _EDGE_MATERIAL_ARRAYS_FROM
 )
@@ -223,13 +236,28 @@ _EDGE_MATERIAL_ARRAYS_SQL = text(
 # （`infrastructure/road_network_store.py`）に作る。道の通行方向（`way_directions.direction`）が逆向きの枝を
 # 作ってよいかを決める。
 
+#: 交差点での曲がりを測る向きを取る、区間の端からの道のりの長さ（m）。点を出てすぐ・入る直前の向きを取る長さで、
+#: 区間がこれより短ければ端から端を見る。
+_NEAR_NODE_BEARING_DISTANCE_M = 20.0
+_NEAR_START = (
+    f"ST_LineInterpolatePoint(re.geom, LEAST(1.0, {_NEAR_NODE_BEARING_DISTANCE_M} / NULLIF(re.distance_m, 0)))"
+)
+_NEAR_END = (
+    f"ST_LineInterpolatePoint(re.geom, GREATEST(0.0, 1.0 - {_NEAR_NODE_BEARING_DISTANCE_M} / NULLIF(re.distance_m, 0)))"
+)
+
 #: 取込範囲全体の区間（向きを持たない1行）。どの道も通行方向の行を持つ（通行方向の段が数を比べて守る）ので、
-#: どの区間も通行方向を持つ。並びは`domain/road_network.py`の行順の前提。
+#: どの区間も通行方向を持つ。並びは`domain/road_network.py`の行順の前提。端のそばの向きは、
+#: 折れ線の向き（始点→終点）に進むときと逆に進むときの両方を持つ。
 _NETWORK_EDGES_SQL = text(f"""
 SELECT re.osm_way_id, re.segment_index, re.from_node_id, re.to_node_id,
        w.highway, wm.direction,
        ST_XMin(re.geom) AS min_lon, ST_YMin(re.geom) AS min_lat,
-       ST_XMax(re.geom) AS max_lon, ST_YMax(re.geom) AS max_lat
+       ST_XMax(re.geom) AS max_lon, ST_YMax(re.geom) AS max_lat,
+       {bearing_sql("ST_StartPoint(re.geom)", _NEAR_START)} AS start_bearing_deg,
+       {bearing_sql(_NEAR_END, "ST_EndPoint(re.geom)")} AS end_bearing_deg,
+       {bearing_sql("ST_EndPoint(re.geom)", _NEAR_END)} AS reverse_start_bearing_deg,
+       {bearing_sql(_NEAR_START, "ST_StartPoint(re.geom)")} AS reverse_end_bearing_deg
 FROM road_edges re
 JOIN LATERAL {ways_lookup_sql("re.osm_way_id")} w ON true
 {material_from_clause(["wm.direction"], "re.osm_way_id")}
@@ -411,6 +439,23 @@ class RoadGraphRepository:
             result.update(await asyncio.to_thread(_rows_to_directed_edges, rows, wanted))
         return result
 
+    async def get_route_side_points(self, edges: Sequence[LeanEdge]) -> dict[tuple[int, int], list[RoutePointHit]]:
+        """区間（`(osm_way_id, segment_index)`）ごとの、近くの点。向きは問わず、位置は区間の形の向きで測る。"""
+        keys = sorted({(edge.osm_way_id, edge.segment_index) for edge in edges})
+        result: dict[tuple[int, int], list[RoutePointHit]] = {}
+        for chunk in batched(keys, ID_CHUNK_SIZE):
+            rows = (await self._session.execute(ROUTE_SIDE_POINTS_SQL, {
+                "way_ids": [k[0] for k in chunk],
+                "segment_indexes": [k[1] for k in chunk],
+            })).mappings().all()
+            for row in rows:
+                result.setdefault((row["osm_way_id"], row["segment_index"]), []).append(RoutePointHit(
+                    layer=row["layer"], point_key=row["point_key"], merge_group=row["merge_group"],
+                    properties={name: row[name] for name in SIDE_POINT_PROPERTIES if row[name] is not None},
+                    fraction=row["fraction"], distance_m=row["distance_m"],
+                ))
+        return result
+
     # --- 材料 ----------------------------------------------------------------
 
     async def get_edge_material_arrays(
@@ -435,10 +480,10 @@ class RoadGraphRepository:
             for name in raw:
                 raw[name].extend(getattr(row, f"c_{name}") or [])
 
-        hard_filter_ids = hard_filter_columns()
-        hard_filter_flags = np.empty((n, len(hard_filter_ids)), dtype=bool)
-        for i, name in enumerate(hard_filter_ids):
-            hard_filter_flags[:, i] = np.array(raw[f"{_HARD_FILTER_COLUMN_PREFIX}{name}"], dtype=bool)
+        route_flag_ids = route_flag_columns()
+        route_flags = np.empty((n, len(route_flag_ids)), dtype=bool)
+        for i, name in enumerate(route_flag_ids):
+            route_flags[:, i] = np.array(raw[f"{_ROUTE_FLAG_COLUMN_PREFIX}{name}"], dtype=bool)
 
         numeric_values = np.empty((n, len(numeric_ids)), dtype=np.float64)
         for i, material_id in enumerate(numeric_ids):
@@ -448,29 +493,16 @@ class RoadGraphRepository:
             numeric_ids=numeric_ids, numeric_values=numeric_values,
             categorical_ids=categorical_ids,
             categorical_columns=tuple(CategoricalColumn.encode(raw[material_id]) for material_id in categorical_ids),
-            hard_filter_ids=hard_filter_ids, hard_filter_flags=hard_filter_flags,
+            route_flag_ids=route_flag_ids, route_flags=route_flags,
             distance_m=_float_array(raw["distance_m"]),
             bearing_deg=_float_array(raw["bearing_deg"]),
             mid_lat=_float_array(raw["mid_lat"]),
             mid_lon=_float_array(raw["mid_lon"]),
-            elevation_present=np.array(raw["elevation_present"], dtype=bool),
+            start_elevation_m=_float_array(raw["start_elevation_m"]),
+            end_elevation_m=_float_array(raw["end_elevation_m"]),
             elevation_gain_m=_float_array(raw["elevation_gain_m"]),
             elevation_loss_m=_float_array(raw["elevation_loss_m"]),
         )
-
-    async def get_way_material_values(
-        self, osm_way_id: int, accident_years_covered: int
-    ) -> dict[str, object] | None:
-        """way1本ぶんの材料値（材料id→スカラー）。行が無ければNone。
-
-        区間インスペクタが使う。式は区間の評価と同じもので、way粒度の別名を
-        `way_from_clause`が用意する。
-        """
-        rows = await self._session.execute(_WAY_MATERIAL_VALUES_SQL, {
-            # 鍵はtextで渡す（`ways_lookup_sql`が主キーで引くため）。
-            "osm_way_id": str(osm_way_id), "accident_years": accident_years_covered})
-        row = rows.first()
-        return None if row is None else _material_values_from_row(row)
 
     async def sample_way_material_values(
         self,
@@ -511,6 +543,17 @@ class RoadGraphRepository:
         if row is None:
             return None
         return (row.highway, row.tags)
+
+    async def get_nearest_way_segment(
+        self, osm_way_id: int, latitude: float, longitude: float
+    ) -> tuple[str, float, float] | None:
+        """道のうち地点に最も近い区間の、区間で焼くタイルのフィーチャーの鍵と、その区間の上で地点に最も近い点
+        `(緯度, 経度)`。区間を1本も持たない道は道丸ごとの鍵。道が無ければNone。"""
+        row = (await self._session.execute(_NEAREST_WAY_SEGMENT_SQL, {
+            # 道の生データは鍵をtextで渡す（`ways_lookup_sql`が主キーで引くため）。
+            "osm_way_id": osm_way_id, "osm_way_key": str(osm_way_id), "latitude": latitude, "longitude": longitude,
+        })).first()
+        return None if row is None else (row.feature_key, row.latitude, row.longitude)
 
     async def get_feature_landcover(
         self, osm_way_id: int, feature_key: str | None

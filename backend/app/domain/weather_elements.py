@@ -28,6 +28,10 @@ _TILE_KINDS: frozenset[str] = frozenset({"rasterTile", "vectorTile"})
 #:   その幅の間だけ描く（予報の意味そのものが「今後N時間」のもの）。
 FrameRuleKind = Literal["nearest", "latestObservation", "current"]
 
+#: 自前のMSM格子の予報を、現在時刻から何時間先まで読むか（`config.py: Settings.msm_forecast_hours`の既定）。runごとの予報時間
+#: （39時間、00/12UTCのrunは78時間）を超える分は配信元のデータ終端で打ち切られる。
+MSM_FORECAST_HOURS = 48
+
 #: 自前のMSM格子から描く要素が読む値。
 GridValue = Literal["precipitation", "wind"]
 
@@ -85,10 +89,13 @@ class WeatherElement(NamedTuple):
     #: 地図がこの要素を塗る段。災害のチップは、同じ段で塗る要素の名前を見出しにして段を凡例に並べる。
     #: 段を持たない要素（記号・格子の塗り・輪郭線）と、凡例を別に持つ降水の要素はNone。
     level_scale: LevelScale | None = None
-    #: ▶パネルの要素の行の（i）から開く説明。行を出す要素（災害のチップ）だけが持ち、同じ名前付きソースの
-    #: 要素は同じ説明を持つ。
+    #: 要素を利用者に言う文。災害のチップは▶パネルの要素の行の（i）から開き、降水のチップは凡例の行に出す。
+    #: 同じ名前付きソースの要素は同じ説明を持つ。
     description: str | None = None
 
+
+#: 線状降水帯予測を重ねる幅（分）。「今後3時間以内に大雨のおそれ」という予報なので、現在から3時間先の間だけ重ねる。
+_LINEAR_RAINBAND_WINDOW_MINUTES = 3 * 60
 
 #: 並びが同じ段（面・線・記号）の中の重なり順になる。災害は面を下に、見落としやすい線（洪水）・
 #: 点（落雷）を上に置き、大雨は土砂・浸水を統合した指標なので個別の2つより下に置く。
@@ -97,26 +104,38 @@ WEATHER_ELEMENTS: tuple[WeatherElement, ...] = (
     # それ以降は自前の格子を塗る。どれが届くかは選んだ時刻で決まる。
     WeatherElement("precipitationNowcast", "main", "rasterTile", ("hrpns", "rasrf"), "降水", _NEAREST),
     WeatherElement("precipitationNowcast", "main", "gridFill", (), "降水", _NEAREST, "precipitation"),
-    # 「今後3時間以内に大雨のおそれ」という予報なので、現在から3時間先の間だけ重ねる。
+    # 矩形に見えることも説明に書く（細かい雨域と重なると描画の不具合に見える）。
     WeatherElement(
         "precipitationNowcast",
         "linearRainband",
         "rasterTile",
         ("sjfcstmap",),
         "線状降水帯予測",
-        FrameRule("current", 3 * 60),
+        FrameRule("current", _LINEAR_RAINBAND_WINDOW_MINUTES),
+        description=(
+            f"今後{reach_text(_LINEAR_RAINBAND_WINDOW_MINUTES)}以内に大雨のおそれ"
+            f"[矩形の予測領域。現在〜{reach_text(_LINEAR_RAINBAND_WINDOW_MINUTES)}先のみ]"
+        ),
     ),
     # 今まさに追跡中の線状降水帯の雨域（実況と予測）。公式の既定の表示と同じく2つを同じ見た目で重ねる。
-    WeatherElement(
-        "precipitationNowcast", "linearRainbandArea", "outline", ("slmcs_unify",), "線状降水帯の雨域", _NEAREST
-    ),
-    WeatherElement(
-        "precipitationNowcast",
-        "linearRainbandAreaForecast",
-        "outline",
-        ("slmcs_unifyfcst",),
-        "線状降水帯の雨域",
-        _NEAREST,
+    # 説明の文言は配信元の公式の画面の凡例に合わせる。
+    *(
+        WeatherElement(
+            "precipitationNowcast",
+            source,
+            "outline",
+            (element_id,),
+            "線状降水帯の雨域",
+            _NEAREST,
+            description=(
+                "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域"
+                f"[赤い輪郭線。実況〜{forecast_reach('slmcs_unifyfcst')}先のみ]"
+            ),
+        )
+        for source, element_id in (
+            ("linearRainbandArea", "slmcs_unify"),
+            ("linearRainbandAreaForecast", "slmcs_unifyfcst"),
+        )
     ),
     WeatherElement("windVector", "arrow", "gridMark", (), "風", _NEAREST, "wind"),
     # キキクルは「現在の危険度」だけを配るので、選んだ時刻によらず描く。

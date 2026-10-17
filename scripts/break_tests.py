@@ -23,7 +23,7 @@ testing-review.md「消す・まとめる前に、残す側が落ちるかを見
   （前の版が落ちて今のテストが通れば、まとめた先が見ていない）。書き出したものは終わるときに消す。その版に無いテストの
   ファイル（新しく足したもの）は書き出さず、件ごとにその版に無いと出す（前の版はその壊れ方で何も落ちない）。
 - 件ごとに落ちたテストの名前を出し、最後に今のテストが1本も落ちなかった件を並べる。そうした件があれば終了コード 1、断ったら 2。
-- テストの結果は標準出力から拾わず、作業ツリーの外の一時のファイルへ書かせて読む（vitest の JSON・pytest の JUnit XML）。
+- テストの結果は標準出力から拾わず、作業ツリーの外の一時のファイルへ書かせて読む（vitest の JSON・pytest は `scripts/pytest_report.py`）。
   frontend の vitest の設定は JSON の報告を作業ツリーの中へ書くので、標準出力には出ない。
 """
 
@@ -34,13 +34,13 @@ import re
 import subprocess
 import sys
 import tempfile
-import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
 import repo_git
+from pytest_report import junit_args, read_cases
 
 REPO = Path(__file__).resolve().parents[1]
 _KEYS = ("name", "file", "before", "after", "tests")
@@ -153,24 +153,6 @@ def vitest_failures(report: dict, frontend: Path) -> list[tuple[str, str]]:
     return failures
 
 
-def pytest_failures(report: ET.Element) -> list[tuple[str, str]]:
-    """pytest の JUnit XML（xunit1）から、落ちた（テストのファイル, テストの名前）。集められなかったファイルも含める。"""
-    failures = []
-    for case in report.iter("testcase"):
-        if case.find("failure") is None and case.find("error") is None:
-            continue
-        file = case.get("file")
-        if file is None:  # 集められなかったファイルは、名前にモジュール名だけを持つ
-            failures.append((f"backend/{case.get('name', '').replace('.', '/')}.py", "（集められない）"))
-            continue
-        file = file.replace("\\", "/")
-        module = file.removesuffix(".py").replace("/", ".")
-        classname = case.get("classname", "")
-        prefix = classname[len(module) + 1:] + "::" if classname.startswith(module + ".") else ""
-        failures.append((f"backend/{file}", f"{prefix}{case.get('name')}"))
-    return failures
-
-
 def run_tests(repo: Path, tests: list[str], out: Path) -> list[tuple[str, str]]:
     """テストのファイル（同じ側）を回し、落ちた（テストのファイル, テストの名前）を返す。"""
     side = _side(tests[0])
@@ -182,8 +164,7 @@ def run_tests(repo: Path, tests: list[str], out: Path) -> list[tuple[str, str]]:
                    "--reporter=json", f"--outputFile={report}"]
     else:
         report = out / "pytest.xml"
-        command = [sys.executable, "-m", "pytest", *relative, "-q", "-p", "no:cacheprovider",
-                   f"--junitxml={report}", "-o", "junit_family=xunit1"]
+        command = [sys.executable, "-m", "pytest", *relative, "-q", "-p", "no:cacheprovider", *junit_args(report)]
     report.unlink(missing_ok=True)
     # 毎回空のバイトコードの置き場を渡す。置き換えが同じ長さで同じ秒のうちなら、`.pyc` は更新時刻と大きさで
     # 古いと見分けられず、壊す前のバイトコードが使われて壊れ方が効かない。
@@ -194,7 +175,8 @@ def run_tests(repo: Path, tests: list[str], out: Path) -> list[tuple[str, str]]:
         raise Stopped(side, f"{result.stdout}\n{result.stderr}")
     if side == "frontend":
         return vitest_failures(json.loads(report.read_text(encoding="utf-8")), cwd)
-    return pytest_failures(ET.parse(report).getroot())
+    return [(f"backend/{case.file}", case.name or "（集められない）") for case in read_cases(report)
+            if case.outcome == "failed"]
 
 
 def _by_side(tests: list[str]) -> list[list[str]]:

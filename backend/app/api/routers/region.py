@@ -4,8 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import model_validator
 
 from app.api.dependencies import (
+    LandcoverTileReader,
     get_axis_inspector_service,
     get_dedicated_way_value_service,
+    get_landcover_tile_reader,
     get_region_service,
 )
 from app.api.rate_limit import enforce_rate_limit
@@ -18,9 +20,9 @@ from app.domain.geo import BearingDeg
 from app.domain.route_request import AssumedSpeedKmh
 from app.domain.landcover import LandcoverTileZoom
 from app.domain.region import RoadTileZoom, TileIndex, check_tile_index
+from app.domain.route import Coordinates
 from app.infrastructure.media_types import PNG_CONTENT_TYPE
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
-from app.services.landcover_tile_service import get_landcover_tile
 from app.services.dedicated_way_values import AxisWayValueLens
 from app.services.region_service import AxisInspectorService, RegionService
 from app.domain.strict_model import StrictModel
@@ -99,7 +101,13 @@ async def region_point_tile(
 
 
 @router.get("/api/region/landcover-tiles/{z}/{x}/{y}.png")
-async def region_landcover_tile(z: LandcoverTileZoom, x: TileIndex, y: TileIndex, request: Request) -> Response:
+async def region_landcover_tile(
+    z: LandcoverTileZoom,
+    x: TileIndex,
+    y: TileIndex,
+    request: Request,
+    read_tile: LandcoverTileReader = Depends(get_landcover_tile_reader),
+) -> Response:
     """土地被覆ラスタ（Esri×Impact Observatory 10m LULC）をそのまま面で塗ったラスタタイル。
 
     DBを読まないため`_region_tile_semaphore`（DB接続プールの取り合いを抑えるもの）には
@@ -108,7 +116,7 @@ async def region_landcover_tile(z: LandcoverTileZoom, x: TileIndex, y: TileIndex
     _check_tile_rate_limit(request, "landcover-tile")
     validate_tile_coords(z, x, y)
     async with _landcover_tile_semaphore:
-        tile = await get_landcover_tile(z, x, y)
+        tile = await read_tile(z, x, y)
     if tile is None:
         raise HTTPException(status_code=503, detail="土地被覆データが利用できません")
     return tile_response(tile, PNG_CONTENT_TYPE)
@@ -163,11 +171,10 @@ async def region_dedicated_way_values(
 
 class AxisInspectorRequest(StrictModel):
     osm_way_id: int
-    # クリックされたフィーチャーの識別子（路面タイルが焼く`feature_key`）。区間単位の
-    # ズームでは区間のid、way単位のズームではosm_way_idの文字列になる。**どちらでも
-    # そのまま送ってよい**——後者は`road_edges`に一致せず、way単位の読み出しへ落ちる。
-    # 省略すると区間が特定できず、地図が区間単位で塗っていても内訳はway単位になる。
-    feature_key: str | None = None
+    # クリックされたフィーチャーの識別子（路面タイルが焼く`feature_key`）。区間で焼くズームでは押した区間を指す。
+    feature_key: str
+    # クリックした地点。道1本で焼くズームで押したときに、その道のうち地点に最も近い区間を選ぶ。
+    point: Coordinates
     # 進行方向に依存する材料（勾配・風）を出すのに要るもの。**1本の道は往復2方向で値が
     # 違う**ため、方向が決まらないと算出できない。地図が指定している値をそのまま送る
     # （`/dynamic-way-values`へ送っているものと同じ）。時刻・速度を省くと、それを要る材料の軸は「データなし」。
@@ -194,19 +201,17 @@ async def region_axis_inspector(
     http_request: Request,
     axis_inspector: AxisInspectorService = Depends(get_axis_inspector_service),
 ) -> AxisInspectorResult | None:
-    """区間インスペクタ。クリックされた道路（osm_way_id）について、
-    一次属性（highway/tags）→二次軸スコア（取得可能な軸のみ）→
-    合成コスト（取得可能な軸だけの参考値。重みは送られた`route_preference`、省略時は既定）を返す。
-    POST+JSONボディ・osm_way_id完全一致で引く理由はRegionService.get_axis_inspectorの
-    docstring参照（交差点付近での取り違え対策）。進行方向に依存する軸（勾配・風）は、
-    地図が指定している走行方位・時刻・想定速度から算出する。時刻・速度を送らなければ、
-    それを要る軸はavailable=falseで返る。
+    """区間インスペクタ。クリックされた道路（osm_way_id）について、一次属性（highway/tags）と、押した区間・その区間を
+    含む道1本それぞれの軸の得点（地図がそれぞれを塗る値と同じ評価）・合成（取得可能な軸だけの参考値。重みは送られた
+    `route_preference`、省略時は既定）を返す。道はosm_way_idの完全一致で引く（交差点付近での取り違え対策）。
+    進行方向に依存する軸（勾配・風）は、地図が指定している走行方位・時刻・想定速度から算出する。時刻・速度を
+    送らなければ、それを要る軸は得点がnullで返る。
     """
-    # 座標なしの単発リクエストのためタイル向け_check_tile_rate_limit
+    # 道を押すたびの単発リクエストのためタイル向け_check_tile_rate_limit
     # （road_tile_rate_limit_per_minuteと結合）を流用せず、専用の設定値を直接使う
     # （config.py: axis_inspector_rate_limit_per_minuteのコメント参照）。
     enforce_rate_limit(http_request, "axis-inspector", settings.axis_inspector_rate_limit_per_minute)
     preference = None if body.route_preference is None else body.route_preference.to_preference()
     return await axis_inspector.inspect(
-        body.osm_way_id, body.feature_key, body.z, body.x, body.y,
-        body.at, body.bearing_deg, body.speed_kmh, preference)
+        body.osm_way_id, body.feature_key, body.z, body.x, body.y, body.point,
+        WayValueQuery(at=body.at, bearing_deg=body.bearing_deg, speed_kmh=body.speed_kmh), preference)

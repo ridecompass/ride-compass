@@ -23,7 +23,7 @@ from shapely.geometry import LineString
 from app.api.dependencies import get_jma_tile_client
 from app.config import settings
 from app.infrastructure import rate_limiter
-from app.infrastructure.jma_tile_client import EmptyTile, JmaTileNotFoundError
+from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from app.infrastructure.jma_tile_index import JmaTileIndex, set_index
 from app.main import app
 
@@ -53,8 +53,6 @@ class FakeJmaTileClient:
 
     async def fetch(self, path):
         self.fetched_paths.append(path)
-        if isinstance(self._fetched, Exception):
-            raise self._fetched
         return self._fetched
 
     async def get(self, path):
@@ -95,11 +93,12 @@ def test_a_cached_tile_is_served_without_asking_upstream(monkeypatch, path, cach
 
 def test_jma_tile_proxy_returns_404_from_cached_empty_tile_without_fetching(monkeypatch):
     # 描くものが無いと確認済みなら、レート制限もfetchも経由せず即座に404を返す。
-    fake = _answer(monkeypatch, cached=EmptyTile())
+    fake = _answer(monkeypatch, cached=UPSTREAM_NOT_FOUND)
 
     response = client.get(TILE)
 
     assert response.status_code == 404
+    assert response.headers["cache-control"] == "public, max-age=600"
     assert fake.fetched_paths == []
 
 
@@ -147,11 +146,12 @@ def test_jma_tile_proxy_forwards_query_string_to_client(monkeypatch):
      {"id": "slmcs_unify"}, "no-store"),
 ])
 def test_a_tile_missing_upstream_is_404_remembered_as_long_as_it_stays_missing(monkeypatch, path, params, cache_control):
-    _answer(monkeypatch, fetched=JmaTileNotFoundError("boom"))
+    _answer(monkeypatch, fetched=UPSTREAM_NOT_FOUND)
 
     response = client.get(f"/api/jma-tile/{path}", params=params)
 
     assert response.status_code == 404
+    assert response.json() == {"detail": "指定されたタイルは存在しません"}
     assert response.headers["cache-control"] == cache_control
 
 
@@ -162,6 +162,7 @@ def test_jma_tile_proxy_does_not_cache_upstream_failures(monkeypatch):
     response = client.get(TILE)
 
     assert response.status_code == 502
+    assert response.json() == {"detail": "気象庁データの取得に失敗しました"}
     assert "cache-control" not in response.headers
 
 

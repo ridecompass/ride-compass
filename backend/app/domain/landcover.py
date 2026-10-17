@@ -124,10 +124,6 @@ def landcover_key(percent_field: str) -> str:
     return percent_field.removesuffix("_percent")
 
 
-def landcover_tile_property(percent_field: str) -> str:
-    """材料の`tile_property`と、路面タイルへ焼き込む列の名前（`crops_pct`）。両者が同じ名前で初めて地図が塗れる。"""
-    return f"{landcover_key(percent_field)}_pct"
-
 #: 材料の割合列（`lc_*`）と1対1のモデル。**クラスの宣言から作る**
 #: ——手で並べると、宣言したクラスに対応する項目が無いまま集計だけが走り、その列の
 #: 割合がどこへも入らない（SQLは列を吐き、読む側はその名前を知らない）。

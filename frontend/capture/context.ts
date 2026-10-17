@@ -38,7 +38,7 @@ export interface CaptureContext {
   fixtures: typeof fixtures;
   /** e2e/states.ts の全状態の走査の段取り（installScanMocks・splice 等）。 */
   states: typeof states;
-  /** src/testing/catalogAxes.ts の軸の雛形（catalogEntry・rampEntry 等）。モックの軸カタログを組むときに fixtures.axisCatalogFixture へ渡す。 */
+  /** src/testing/catalogAxes.ts の軸の雛形（catalogEntry・dedicatedEntry 等）。モックの軸カタログを組むときに fixtures.axisCatalogFixture へ渡す。 */
   catalogAxes: typeof catalogAxes;
   /** アプリを開き、地図の全ソースの読み終わりまで待つ。初回の案内は閉じた状態で開く。 */
   open(options?: OpenOptions): Promise<void>;
@@ -47,8 +47,8 @@ export interface CaptureContext {
    * backend は撮影用の資格情報を通さない）。選べなければ、選べるタブを並べて止まる。
    */
   openAdmin(options?: OpenAdminOptions): Promise<Locator>;
-  /** 地図の色分け（レンズ）を名前で選び、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
-  chooseLens(label: string): Promise<void>;
+  /** 「評価で塗る」の評価軸（レンズ）を名前で選び（null は選んでいない状態へ戻す）、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
+  chooseLens(label: string | null): Promise<void>;
   /**
    * 「表示」の一覧の行の名前で凡例の内訳を開き、その内訳を返す。一覧が閉じていれば開く。`row` を渡せば、その行の説明も開く。
    * 開けなければ、選べる名前を並べて止まる。
@@ -160,8 +160,8 @@ function fileName(name: string): string {
 
 /** 選び損ねた直後に呼ぶので、選択肢が閉じていれば開く。 */
 async function lensLabels(page: Page): Promise<string[]> {
-  const group = page.getByRole("radiogroup", { name: "地図の色分け" });
-  if (!(await group.isVisible())) await page.getByRole("button", { name: /^地図の色分け: / }).click();
+  const group = page.getByRole("radiogroup", { name: "評価で塗る" });
+  if (!(await group.isVisible())) await page.getByRole("button", { name: /^評価で塗る: / }).click();
   const labels = await group.getByRole("radio").allInnerTexts();
   return labels.map((label) => label.replace(/\s+/g, " ").trim());
 }

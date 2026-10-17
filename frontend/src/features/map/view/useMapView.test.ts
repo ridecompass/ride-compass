@@ -11,26 +11,26 @@ import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TILE_VERSIONS_MISSING_NOTICE, TILE_ZOOM_TOO_WIDE_NOTICE } from "@/features/map/layers/mapLayers";
-import { ROAD_OTHER_KEY } from "@/features/map/scene/groups/roadLines";
+import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { onBackend, onSameOrigin } from "@/testing/backendServer";
-import { catalogEntry, catalogResponse, dedicatedEntry, rampEntry } from "@/testing/catalogAxes";
+import { catalogEntry, catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";
 import type { AxisCatalogEntry } from "@/types/route";
 
 import { LEGEND_FILTER_DEBOUNCE_MS, useMapView } from "./useMapView";
 
 const NOW = new Date("2026-10-07T03:00:00Z");
 const TILE_VERSIONS = { accident: "a1", poi: "p1", road_surface: "r1" };
-const RAMP = rampEntry("axis_ramp", [10, 20]);
+const SCORE = dedicatedEntry("axis_score", [10, 20]);
 const DEDICATED = dedicatedEntry("axis_wind", [10, 20], { dynamic_way_value_conditions: ["bearing_deg"] });
 const OTHER_DEDICATED = dedicatedEntry("axis_other", [10, 20]);
 /** 道路タイルのズームの、狭い表示範囲（覆うタイルが少ない）。 */
-const VIEWPORT = { west: 139.7, south: 35.68, east: 139.701, north: 35.681, zoom: 14 };
+const VIEWPORT = { west: 139.7, south: 35.68, east: 139.701, north: 35.681, zoom: 14, bearing: 0 };
 
 type Inputs = Parameters<typeof useMapView>[0];
 
 /** 軸カタログに`catalog`で応え、既定で表示する災害のチップが読む配信元の時刻一覧には空で応える。 */
-function serve(catalog: Response | readonly AxisCatalogEntry[] = [RAMP]) {
+function serve(catalog: Response | readonly AxisCatalogEntry[] = [SCORE]) {
   onBackend("GET", "/api/axis-catalog", () =>
     catalog instanceof Response ? catalog : Response.json(catalogResponse(catalog, { tile_versions: TILE_VERSIONS })),
   );
@@ -44,7 +44,6 @@ function render(inputs: Partial<Inputs> = {}) {
       hasDetail: false,
       ride: { bearingDeg: 90, at: NOW, speedKmh: 20 },
       now: NOW,
-      departureLabel: "12:00",
       routeWeights: {},
       ...inputs,
       ...props,
@@ -62,10 +61,10 @@ afterEach(() => {
 
 describe("useMapView", () => {
   it.each([
-    { name: "軸カタログにあれば、届いてから戻す", entries: [RAMP], lens: "axis_ramp" },
+    { name: "軸カタログにあれば、届いてから戻す", entries: [SCORE], lens: "axis_score" },
     { name: "軸カタログに無ければ、総合難易度のまま", entries: [], lens: "difficulty" },
   ])("保存したレンズは、$name", async ({ entries, lens }) => {
-    window.localStorage.setItem("ridecompass:route-style-mode", "axis_ramp");
+    window.localStorage.setItem("ridecompass:route-style-mode", "axis_score");
     serve(entries);
 
     const { result } = render();
@@ -76,29 +75,30 @@ describe("useMapView", () => {
     expect(result.current.look.lens).toBe(lens);
   });
 
-  it("レンズを選ぶとルートのレイヤーを表示し、ルートの確定後に周りを塗らない設定なら全道路を塗らない", () => {
+  it("レンズを選んでもルートの線の出し入れは変えず、ルートの確定後に周りを塗らない設定なら全道路を塗らない", () => {
     serve();
-    const { result, rerender } = render();
-    act(() => result.current.lensControl.onRouteShownChange(false));
+    const { result, rerender } = render({ hasSelectedRoute: true });
+    act(() => result.current.overlayControls.route.onChange(false));
 
-    act(() => result.current.lensControl.onLensChange("axis_ramp"));
+    act(() => result.current.lensControl.onLensChange("axis_score"));
 
-    expect(result.current.look).toMatchObject({ lens: "axis_ramp", paintedAxisId: "axis_ramp" });
-    expect(result.current.look.layerVisibility.route).toBe(true);
+    expect(result.current.look).toMatchObject({ lens: "axis_score", paintedAxisId: "axis_score" });
+    expect(result.current.look.layerVisibility.route).toBe(false);
+    expect(result.current.lensControl.routeHidden).toBe(true);
     rerender({ hasDetail: true });
     act(() => result.current.lensControl.onKeepAfterRouteChange(false));
     expect(result.current.look.paintedAxisId).toBeNull();
   });
 
-  it("レンズの選択肢は公開軸から作り、塗れない軸と生成に使った重みが0の軸を分ける", async () => {
-    serve([RAMP, catalogEntry({ axis_id: "axis_plain" })]);
+  it("レンズの選択肢は公開軸から作り、生成に使った重みが0の軸を「未使用」に分ける", async () => {
+    serve([SCORE, catalogEntry({ axis_id: "axis_plain" })]);
 
-    const { result } = render({ routeWeights: { axis_ramp: 0.5 } });
+    const { result } = render({ routeWeights: { axis_score: 0.5 } });
 
     await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(2));
     expect(result.current.lensControl.axisOptions).toMatchObject([
-      { id: "axis_ramp", unused: false, routeOnly: false },
-      { id: "axis_plain", unused: true, routeOnly: true },
+      { id: "axis_score", unused: false },
+      { id: "axis_plain", unused: true },
     ]);
   });
 
@@ -107,7 +107,7 @@ describe("useMapView", () => {
     { name: "値が無ければ空", reply: () => Response.json({}), status: "empty" },
     { name: "値があれば何も言わない", reply: () => Response.json({ way_1: 12 }), status: undefined },
   ])(
-    "塗っている専用配信の軸だけ表示範囲の値を取り、走る条件と取得の状態（$name）をレンズに出す",
+    "塗っている専用配信の軸だけ表示範囲の値を取り、塗りに効く走る条件と、取得の状態（$name）をレンズに出す",
     async ({ reply, status }) => {
       serve([DEDICATED, OTHER_DEDICATED]);
       onBackend("GET", "/api/region/dynamic-way-values/axis_wind/:z/:x/:y", reply);
@@ -117,7 +117,7 @@ describe("useMapView", () => {
       act(() => result.current.lensControl.onLensChange("axis_wind"));
       act(() => result.current.look.onViewportChange(VIEWPORT));
 
-      expect(result.current.lensControl.conditions).toBe("東へ走る");
+      expect(result.current.lensConditions).toEqual(["bearing_deg"]);
       // 表示範囲は間引いてから取るので、その軸の結果が出て取り終えるまで待つ。
       await waitFor(() => expect(result.current.look.dedicatedWayValues.get("axis_wind")?.loading).toBe(false), {
         timeout: 3000,
@@ -126,27 +126,32 @@ describe("useMapView", () => {
     },
   );
 
-  it("レンズの凡例で隠した行は、凡例へはすぐ、地図へは間引きの待ちのあとに出て（全段をまとめても隠せる）、すべて解除すると戻る", async () => {
+  it("レンズの凡例で隠した行は、凡例へはすぐ、地図へは間引きの待ちのあとに出て（全段をまとめても隠せる）、「表示」の解除では戻らず、レンズの解除で戻る", async () => {
     serve();
     const { result } = render();
     await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(1));
-    act(() => result.current.lensControl.onLensChange("axis_ramp"));
+    act(() => result.current.lensControl.onLensChange("axis_score"));
     const key = result.current.lensControl.legend[0].key;
     vi.useFakeTimers();
 
     act(() => result.current.lensControl.onToggleLegendKey(key));
 
     expect(result.current.lensControl.hiddenLegendKeys).toEqual([key]);
-    expect(result.current.overlayControls.anyLegendHidden).toBe(true);
+    expect(result.current.overlayControls.anyLegendHidden).toBe(false);
     act(() => vi.advanceTimersByTime(LEGEND_FILTER_DEBOUNCE_MS - 1));
-    expect(result.current.look.hiddenLegendKeys.axis_ramp).toBeUndefined();
+    expect(result.current.look.hiddenLegendKeys.axis_score).toBeUndefined();
     act(() => vi.advanceTimersByTime(1));
-    expect(result.current.look.hiddenLegendKeys.axis_ramp).toEqual([key]);
+    expect(result.current.look.hiddenLegendKeys.axis_score).toEqual([key]);
     const allKeys = result.current.lensControl.legend.map((entry) => entry.key);
     act(() => result.current.lensControl.onSetHiddenLegendKeys(allKeys));
     expect(result.current.lensControl.hiddenLegendKeys).toEqual(allKeys);
 
+    act(() => result.current.overlayControls.onLegendEntryToggle("disaster", "heavyRain"));
     act(() => result.current.overlayControls.onShowAllLegendRows());
+    expect(result.current.overlayControls.anyLegendHidden).toBe(false);
+    expect(result.current.lensControl.hiddenLegendKeys).toEqual(allKeys);
+
+    act(() => result.current.lensControl.onSetHiddenLegendKeys([]));
     act(() => vi.advanceTimersByTime(LEGEND_FILTER_DEBOUNCE_MS));
     expect(result.current.lensControl.hiddenLegendKeys).toEqual([]);
     expect(Object.values(result.current.look.hiddenLegendKeys).flat()).toEqual([]);
@@ -167,7 +172,7 @@ describe("useMapView", () => {
     { layer: "surface", row: "データなし（値の無い道が分からない属性）", key: LEGEND_NO_DATA_KEY },
     { layer: "cycleway", row: "該当なし（タグの不在が当てはまらない属性）", key: ROAD_OTHER_KEY },
   ])(
-    "値の無い道の行を最初は隠す層（$layer）は、$rowを地図でも凡例でも隠して始め、凡例で出すと次に開いたときも出たまま",
+    "値の無い道の行を最初は隠す層（$layer）は、「$row」を地図でも凡例でも隠して始め、凡例で出すと次に開いたときも出たまま",
     async ({ layer, key }) => {
       serve();
       const first = render();
@@ -202,14 +207,14 @@ describe("useMapView", () => {
     const first = render();
     await waitFor(() => expect(first.result.current.lensControl.axisOptions).toHaveLength(1));
     act(() => first.result.current.overlayControls.onToggle("hillshade", true));
-    act(() => first.result.current.lensControl.onLensChange("axis_ramp"));
+    act(() => first.result.current.lensControl.onLensChange("axis_score"));
     act(() => first.result.current.lensControl.onKeepAfterRouteChange(false));
     act(() => first.result.current.overlayControls.onLegendEntryToggle("disaster", "heavyRain"));
     first.unmount();
 
     const { result } = render();
 
-    await waitFor(() => expect(result.current.lensControl.lens).toBe("axis_ramp"));
+    await waitFor(() => expect(result.current.lensControl.lens).toBe("axis_score"));
     expect(result.current.look.layerVisibility.hillshade).toBe(true);
     expect(result.current.lensControl.keepAfterRoute).toBe(false);
     expect(chip(result, "disaster")?.legendDetails?.[0].hiddenKeys).toEqual(["heavyRain"]);
@@ -230,6 +235,18 @@ describe("useMapView", () => {
     expect(result.current.look).toBe(look);
     act(() => result.current.redrawMap());
     expect(result.current.look).toMatchObject({ ...look, refreshToken: 1 });
+  });
+
+  it.each([
+    { case: "地図がまだ範囲を知らせていなければ北が上", reported: null, bearing: 0 },
+    { case: "地図が知らせた向き", reported: 30, bearing: 30 },
+  ])("地図の向きは、地図が知らせた範囲の向きを返す: $case", ({ reported, bearing }) => {
+    serve();
+    const { result } = render();
+
+    if (reported !== null) act(() => result.current.look.onViewportChange({ ...VIEWPORT, bearing: reported }));
+
+    expect(result.current.bearing).toBe(bearing);
   });
 
   it("チップには、地図から上がる取得の状態と気象の取得の状態を合わせ、表示範囲のズームで出ないレイヤーに案内を出す", async () => {
@@ -260,15 +277,16 @@ describe("useMapView", () => {
     },
   );
 
-  it("ルートの出し入れは色分けが持ち、候補を選ぶまで押せない", () => {
+  it("ルートの出し入れは「表示」の一覧が持ち、候補を選ぶまで押せない", () => {
     serve();
     const { result, rerender } = render();
-    expect(result.current.lensControl).toMatchObject({ routeShown: true, routeSelectable: false });
+    expect(result.current.overlayControls.route).toMatchObject({ shown: true, selectable: false });
+    expect(result.current.lensControl.routeHidden).toBe(false);
 
     rerender({ hasSelectedRoute: true });
-    act(() => result.current.lensControl.onRouteShownChange(false));
+    act(() => result.current.overlayControls.route.onChange(false));
 
-    expect(result.current.lensControl).toMatchObject({ routeShown: false, routeSelectable: true });
+    expect(result.current.overlayControls.route).toMatchObject({ shown: false, selectable: true });
     expect(result.current.look.layerVisibility.route).toBe(false);
   });
 });

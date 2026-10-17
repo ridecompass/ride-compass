@@ -16,3 +16,4 @@ export type AmedasObservation = Schemas["AmedasObservation"];
 export type WeatherWarnings = Schemas["WeatherWarnings"];
 export type WbgtStatus = Schemas["WbgtStatus"];
 export type FloodForecasts = Schemas["FloodForecasts"];
+export type ValidArea = Schemas["ValidArea"];

@@ -1,5 +1,5 @@
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any
 
 import numpy as np
@@ -15,16 +15,21 @@ class ElevationAttribute(StrictModel):
     """
 
     edge_id: str
+    # 進む向きに見た始まりと終わりの標高（m）。
+    start_elevation_m: float
+    end_elevation_m: float
     elevation_gain_m: float
     elevation_loss_m: float
     average_grade: float | None
 
     def reversed_as(self, reverse_edge_id: str) -> "ElevationAttribute":
         """同じ地形を逆方向に走った区間（`reverse_edge_id`）の値。標高は進行方向に依存しないため
-        代数的に厳密に決まる: 獲得標高↔喪失標高の入れ替え、平均勾配の符号反転。
+        代数的に厳密に決まる: 始まり↔終わりの標高と獲得標高↔喪失標高の入れ替え、平均勾配の符号反転。
         """
         return ElevationAttribute(
             edge_id=reverse_edge_id,
+            start_elevation_m=self.end_elevation_m,
+            end_elevation_m=self.start_elevation_m,
             elevation_gain_m=self.elevation_loss_m,
             elevation_loss_m=self.elevation_gain_m,
             average_grade=-self.average_grade if self.average_grade is not None else None,
@@ -96,7 +101,7 @@ class EdgeMaterialArrays:
     1.0/0.0/NaNで載る。分け方は`material_catalog.material_array_columns`が唯一の判定）。
     カテゴリは列ごとに語彙が違うため、行列ではなく列ごとの`CategoricalColumn`で持つ。
 
-    0次ハードフィルタの生フラグを同じ1回のクエリで求めてここへ持たせるのは、別に引くと
+    探索の旗（0次ハードフィルタと避け方の行）を同じ1回のクエリで求めてここへ持たせるのは、別に引くと
     区間の束ごとにもう1往復増えるため。
 
     標高の列は**材料ではない表示用の値**で、経路が確定したあとの区間について
@@ -108,16 +113,17 @@ class EdgeMaterialArrays:
     numeric_values: np.ndarray  # shape=(n, len(numeric_ids)), float64, NaN=欠損
     categorical_ids: tuple[str, ...]
     categorical_columns: tuple[CategoricalColumn, ...]  # categorical_idsと同じ並び
-    # 0次ハードフィルタの生フラグ。フィルタ名がそのまま列で、`domain/hard_filters.py:
-    # HARD_FILTER_VALUE_SQL`から生成する。**フィルタごとに専用のフィールドを作らない**。
-    hard_filter_ids: tuple[str, ...]
-    hard_filter_flags: np.ndarray  # shape=(n, len(hard_filter_ids)), bool
+    # 探索の旗。旗の名前がそのまま列で、`domain/hard_filters.py: ROUTE_FLAG_VALUE_SQL`から
+    # 生成する。**旗ごとに専用のフィールドを作らない**。
+    route_flag_ids: tuple[str, ...]
+    route_flags: np.ndarray  # shape=(n, len(route_flag_ids)), bool
     # 区間そのものの値。グラフのオブジェクトから組み直さず、材料と同じクエリで受ける。
     distance_m: np.ndarray  # dtype=float64
     bearing_deg: np.ndarray  # dtype=float64, NaN=方位が決まらない
     mid_lat: np.ndarray  # dtype=float64
     mid_lon: np.ndarray  # dtype=float64
-    elevation_present: np.ndarray  # dtype=bool
+    start_elevation_m: np.ndarray  # dtype=float64, NaN=標高が無い（獲得・損失も無い）
+    end_elevation_m: np.ndarray  # dtype=float64, NaN=標高が無い
     elevation_gain_m: np.ndarray  # dtype=float64, NaN=欠損
     elevation_loss_m: np.ndarray
 
@@ -131,9 +137,16 @@ class EdgeMaterialArrays:
             **dict(zip(self.categorical_ids, self.categorical_columns, strict=True)),
         }
 
-    def hard_filter_columns(self) -> dict[str, np.ndarray]:
-        """0次フィルタ名→該当フラグ。行列の列はビューのためコピーしない。"""
-        return {name: self.hard_filter_flags[:, i] for i, name in enumerate(self.hard_filter_ids)}
+    def route_flag_columns(self) -> dict[str, np.ndarray]:
+        """旗の名前→該当フラグ。行列の列はビューのためコピーしない。"""
+        return {name: self.route_flags[:, i] for i, name in enumerate(self.route_flag_ids)}
+
+
+#: `EdgeMaterialArrays`のうち、区間の行をそのまま並べる配列の欄。区間の束を継ぐ・行を切り出す側はこれを回し、
+#: 欄の名前を並べ直さない。分類の材料は列ごとに語彙が違うので含めない。
+EDGE_ROW_ARRAY_FIELDS: tuple[str, ...] = tuple(
+    field.name for field in fields(EdgeMaterialArrays) if field.type is np.ndarray
+)
 
 
 def elevation_values_sql(vertices: str) -> str:

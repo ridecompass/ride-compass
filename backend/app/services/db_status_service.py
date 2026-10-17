@@ -4,9 +4,9 @@
 """
 
 import logging
-import time
 from datetime import datetime
 
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.db_status import connection_attention, table_attention
 from app.domain.strict_model import StrictModel
 from app.infrastructure.db_status import (
@@ -90,7 +90,7 @@ class DbStatusService:
         self._repository = repository
 
     async def get_status_report(self) -> DbStatusReport:
-        started = time.monotonic()
+        started = start_timer()
         with log_external_call("admin:db-status", operation="fetch_counts") as fields:
             counts = await self._repository.fetch_counts()
             fields["tables"] = len(counts.tables)
@@ -99,6 +99,6 @@ class DbStatusService:
             "db-status 集計完了 tables=%d 要注意=%d elapsed_ms=%d",
             len(report.tables),
             sum(entry.needs_attention for entry in report.tables),
-            round((time.monotonic() - started) * 1000),
+            elapsed_ms(started),
         )
         return report

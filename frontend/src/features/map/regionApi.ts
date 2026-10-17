@@ -4,7 +4,8 @@ import { apiPath } from "@/lib/apiPath";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import { backendApi, requestApi } from "@/lib/apiClient";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
-import { DEFAULT_API_TIMEOUT_MS } from "@/lib/apiTimeouts";
+import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
+import type { PointTileLayer } from "@/lib/mapDisplay/pointLayers";
 
 const ROAD_SURFACE_TILE_PATH = apiPath("/api/region/road-surface-tiles/{z}/{x}/{y}.pbf");
 
@@ -45,9 +46,6 @@ export function roadSurfaceTileUrl(versions: TileVersions): string {
   return `${tileBaseUrl()}${ROAD_SURFACE_TILE_PATH}?v=${tileVersion(versions, "road_surface")}`;
 }
 
-/** 点のレイヤーの名前（生成物の`point_layers`の鍵）。名前が配信のパスとタイルの世代の系統を兼ねる。 */
-export type PointTileLayer = keyof typeof regionTileConfig.point_layers & TileKind;
-
 // 点のレイヤーはどれも同じ1つの配信で、パスのレイヤー名だけが違う。停止要因と補給の点は同じタイルを分け合う（種別の集合で分ける）。
 export function pointTileUrl(versions: TileVersions, layer: PointTileLayer): string {
   const path = apiPath("/api/region/point-tiles/{layer}/{z}/{x}/{y}.pbf", { layer });
@@ -74,20 +72,22 @@ export interface RideConditions {
   speedKmh: number;
 }
 
-/** 上記に、クリックされた点を含む道路タイルを足したもの（レンズが引いたのと同じタイルを
+/** 上記に、クリックされた点と、それを含む道路タイルを足したもの（レンズが引いたのと同じタイルを
  * 指すため、backendは同じキャッシュから値を引ける）。 */
 export interface AxisInspectorConditions extends RideConditions {
   z: number;
   x: number;
   y: number;
+  latitude: number;
+  longitude: number;
 }
 
 export type AxisInspectorResult = components["schemas"]["AxisInspectorResult"];
 
-/** 地図で押した道（`osm_way_id`）の一次属性・全軸・合成を取る。 */
+/** 地図で押した道（`osm_way_id`）の一次属性と、押した区間・その区間を含む道1本の全軸・合成を取る。 */
 export async function fetchAxisInspector(
   osmWayId: number,
-  featureKey: string | null,
+  featureKey: string,
   conditions: AxisInspectorConditions,
   routePreference: RoutePreferenceWeights | null,
 ): Promise<AxisInspectorResult | null> {
@@ -95,8 +95,9 @@ export async function fetchAxisInspector(
     osm_way_id: osmWayId,
     // 合成に使う重み（利用者がいま設定しているもの）。送らなければbackendの既定の重み。
     ...(routePreference != null ? { route_preference: routePreference } : {}),
-    // 押した地物の識別子。区間単位のズームで押した道は内訳も区間単位で計算される（地図の色と数字を揃える）。
-    ...(featureKey != null ? { feature_key: featureKey } : {}),
+    // 押した地物の識別子と押した点。道1本で塗るズームで押した道は、押した点に最も近い区間がbackendで選ばれる。
+    feature_key: featureKey,
+    point: { latitude: conditions.latitude, longitude: conditions.longitude },
     z: conditions.z,
     x: conditions.x,
     y: conditions.y,
@@ -105,11 +106,11 @@ export async function fetchAxisInspector(
     speed_kmh: conditions.speedKmh,
   };
   return requestApi((init) => backendApi.POST("/api/region/axis-inspector", { body, ...init }), {
-    timeoutMs: DEFAULT_API_TIMEOUT_MS,
+    timeoutMs: API_TIMEOUT_MS.default,
     category: "api:axis-inspector",
     messages: { failure: "内訳の取得に失敗しました", parseFailure: "内訳の取得に失敗しました" },
     requestMeta: { body },
-    successMeta: (data) => ({ composite: data?.composite_difficulty }),
+    successMeta: (data) => ({ composite: data?.way.composite_difficulty }),
   });
 }
 
@@ -149,9 +150,9 @@ export async function fetchDynamicWayValues(
     const values = await requestApi(
       (init) => backendApi.GET("/api/region/dynamic-way-values/{axis_id}/{z}/{x}/{y}", { params, ...init }),
       {
-        timeoutMs: DEFAULT_API_TIMEOUT_MS,
+        timeoutMs: API_TIMEOUT_MS.default,
         category: `api:${axisId}-way-values`,
-        messages: { failure: "道路の色分けの取得に失敗しました", parseFailure: "道路の色分けの解析に失敗しました" },
+        messages: { failure: "道路の塗りの値の取得に失敗しました", parseFailure: "道路の塗りの値の解析に失敗しました" },
         successMeta: (data) => ({ wayCount: Object.keys(data).length }),
       },
     );

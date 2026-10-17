@@ -1,8 +1,8 @@
 /** 評価軸で道を塗る線。軸は管理画面で増減するため、**軸ごとの分岐・定数を持たない**。
  *
- * 値の届き方が2通りある。タイルへ焼き込んだ材料から組み立てるものと、配信された値を
- * feature-state で受け取るもの。**feature-state の値は MapLibre の絞り込みから読めない**
- * ため、凡例で隠した段の落とし方だけが変わる（読めるなら絞り込み、読めないなら透明）。
+ * 値は配信された得点を feature-state で受け取る。**feature-state の値は MapLibre の絞り込みからも
+ * `line-dasharray` からも読めない**ため、凡例で隠した段は透明で落とし、値の無い道の破線は、破線だけの
+ * 線を重ねて濃さ（feature-state を読める）で出し入れする。
  *
  * ソースは道路の線と同じ路面タイル。宣言は合成（`composeScene`）が1本へ畳む。
  */
@@ -11,39 +11,25 @@ import palette from "@/types/generated/palette.json";
 
 import type { MapSceneFeatureStates, MapSceneFeatureStateValue } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
-import type { RampAxis } from "@/lib/mapDisplay/axisLayers";
-import { noDataDashExpression } from "@/features/map/scene/sceneBuilders";
-import { LEGEND_NO_DATA_KEY, LEGEND_UNDETERMINED_KEY } from "@/lib/mapDisplay/mapColorLegend";
+import { LEGEND_NO_DATA_KEY, NO_DATA_LEGEND_BAND, UNDETERMINED_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
+import { ROAD_TRACKS } from "@/lib/mapDisplay/roadTracks";
+import { bandCondition, type ValueBand } from "@/lib/mapDisplay/valueScale";
 
-import { ROAD_LINE_SOURCE_ID, ROAD_TRACKS } from "./roadLines";
+import { ROAD_LINE_SOURCE_ID } from "./roadLines";
 
 /** 材料が同時に出ているときの下敷き。**材料の線が全部出たときの帯幅**から決まるので、
  * トラックが増えれば自動で広がる（直書きすると追従しない）。 */
 const UNDERLAY_WIDTH_PX = (ROAD_TRACKS.length - 1) * mapDisplay.road.trackOffsetStepPx + mapDisplay.road.lineWidthPx;
-/** 点数を難易度の桁へ丸めるときに掛ける数。 */
-const DIFFICULTY_SCALE = 10 ** mapDisplay.valueScale.difficultyDecimals;
-/** 段1つぶん。境界は下限で、判定は`>= 下限`・`< 次の下限`。 */
-export type AxisBand = {
-  readonly key: string;
-  readonly lowerBound: number;
-  readonly color: string;
-};
-
-type AxisValueSource =
-  /** タイルへ焼き込んだ材料から組み立てた値。絞り込みから読める。値の式は欠損を番兵へ
-   * 倒してあるため null にならず、評価できない道は `unknown`（真になる式）が示す。
-   * 不明という状態を持たない軸は null。 */
-  | { readonly kind: "tile"; readonly expression: unknown; readonly unknown: unknown }
-  /** 配信された値。feature-state で載せるため、絞り込みからは読めない。値が無い道は鍵ごと無く、
-   * 走行方位で値が決まらない道は null。 */
-  | { readonly kind: "delivered"; readonly values: ReadonlyMap<string, number | null>; readonly loading: boolean };
-
 export type AxisLineState = {
   readonly axes: readonly {
     readonly axisId: string;
     readonly visible: boolean;
-    readonly bands: readonly AxisBand[];
-    readonly value: AxisValueSource;
+    /** 段の並び（低い段から。`valueScale.ts: valueBands`）。 */
+    readonly bands: readonly ValueBand[];
+    /** 配信された値。値が無い道は鍵ごと無く、走行方位で値が決まらない道は null。 */
+    readonly values: ReadonlyMap<string, number | null>;
+    /** 今の範囲の値を取りに行っている間か。 */
+    readonly loading: boolean;
     /** 凡例で隠した段の鍵。 */
     readonly hiddenBandKeys: readonly string[];
     /** その軸の材料が同時に出ているか（判定は呼び出し側が持つ）。 */
@@ -51,6 +37,8 @@ export type AxisLineState = {
   }[];
   readonly sourceLayer: string | null;
 };
+
+type AxisLine = AxisLineState["axes"][number];
 
 /** feature-state のキー。軸idから機械的に決める（同じソースへ複数の軸が値を載せるため）。 */
 function axisFeatureStateKey(axisId: string): string {
@@ -62,44 +50,46 @@ function axisUndeterminedStateKey(axisId: string): string {
   return `${axisId}Undetermined`;
 }
 
-function valueExpression(axisId: string, value: AxisValueSource): unknown {
-  return value.kind === "tile" ? value.expression : ["feature-state", axisFeatureStateKey(axisId)];
+function undeterminedCondition(axisId: string): unknown {
+  return ["boolean", ["feature-state", axisUndeterminedStateKey(axisId)], false];
 }
 
-/** その道の値が無い（評価できない）ことを示す式。無いという状態を持たない軸は null。
- * 段の大小比較はこれが偽のときにだけ評価させる——欠損と数値の比較は評価時エラーになり、
- * そのレイヤーだけが黙って描かれなくなる。 */
-function missingCondition(axisId: string, value: AxisValueSource): unknown {
-  return value.kind === "tile" ? value.unknown : ["==", valueExpression(axisId, value), null];
+/** その道の値が無いことを示す式。段の大小比較はこれが偽のときにだけ評価させる——欠損と数値の比較は
+ * 評価時エラーになり、そのレイヤーだけが黙って描かれなくなる。向きで決まらない道もこれが真になるので、
+ * 先に向きの判定で外す。 */
+function missingCondition(axisId: string): unknown {
+  return ["==", ["feature-state", axisFeatureStateKey(axisId)], null];
 }
 
-/** 値が無いことを、破線の刻みに渡せる形で。**配信値の軸は null**——配信値はfeature-stateに載り、MapLibreの
- * `line-dasharray`はfeature-stateを読めない（読めない場所の式は検証も通り、どの道も値が無いものとして評価される）。
- * 配信値の軸で値が無い道は、色と濃さだけで示す。 */
-function dashableMissingCondition(value: AxisValueSource): unknown {
-  return value.kind === "tile" ? value.unknown : null;
+/** 値の無い道を破線の線が描くか。下敷きは全体を薄く敷くだけ、取得中は取得中の色を見せる。 */
+function dashesMissing(axis: AxisLine): boolean {
+  return !axis.underlay && !axis.loading && !axis.hiddenBandKeys.includes(LEGEND_NO_DATA_KEY);
 }
 
-/** 段ごとの色。値が無い道と、まだ来ていない道は別の色にする。値が無い道を段の色で
- * 塗らない——欠損を番兵へ倒した値で段を引くと、評価できない道が最良の段の色になる。
- * 凡例で隠した段は、値の届き方によらず透明にして下の路面の線を見せる（配信値はfeature-stateで載り、
- * 絞り込みからは読めないため、隠し方をこれ1つにそろえる）。 */
-function colorExpression(axis: AxisLineState["axes"][number], missing: unknown, loading: boolean): unknown {
-  const value = valueExpression(axis.axisId, axis.value);
+/** 段ごとの色。値が無い道と、まだ来ていない道は別の色にする。凡例で隠した段は透明にして下の路面の線を見せる。 */
+function colorExpression(axis: AxisLine): unknown {
+  const value = ["feature-state", axisFeatureStateKey(axis.axisId)];
   const shown = (key: string, color: string) => (axis.hiddenBandKeys.includes(key) ? palette.semantic.hidden : color);
-  const cases = axis.bands.flatMap((band) => [[">=", value, band.lowerBound], shown(band.key, band.color)]);
-  if (missing === null) return ["case", ...cases, palette.semantic.no_data];
-  const undetermined =
-    axis.value.kind === "delivered"
-      ? [
-          ["boolean", ["feature-state", axisUndeterminedStateKey(axis.axisId)], false],
-          shown(LEGEND_UNDETERMINED_KEY, palette.semantic.undetermined),
-        ]
-      : [];
-  // 取得中の色は「値なし」を隠していても残す——消すと「まだ来ていない」と「隠した」が
-  // 区別できなくなる。
-  const missingColor = loading ? palette.semantic.loading : shown(LEGEND_NO_DATA_KEY, palette.semantic.no_data);
-  return ["case", ...undetermined, missing, missingColor, ...cases, palette.semantic.no_data];
+  const cases = axis.bands.flatMap((band, index) => [
+    bandCondition(axis.bands, index, value),
+    shown(band.key, band.color),
+  ]);
+  // 取得中の色は「値なし」を隠していても残す——消すと「まだ来ていない」と「隠した」が区別できなくなる。
+  // 破線の線が値の無い道を描くときは、実線の側は透明にする（重ねると破線が実線に埋もれる）。
+  const missingColor = axis.loading
+    ? palette.semantic.loading
+    : dashesMissing(axis)
+      ? palette.semantic.hidden
+      : shown(LEGEND_NO_DATA_KEY, NO_DATA_LEGEND_BAND.color);
+  return [
+    "case",
+    undeterminedCondition(axis.axisId),
+    shown(UNDETERMINED_LEGEND_BAND.key, UNDETERMINED_LEGEND_BAND.color),
+    missingCondition(axis.axisId),
+    missingColor,
+    ...cases,
+    NO_DATA_LEGEND_BAND.color,
+  ];
 }
 
 type SplitDelivered = {
@@ -128,8 +118,7 @@ function splitDelivered(delivered: ReadonlyMap<string, number | null>): SplitDel
 function featureStatesFor(state: AxisLineState): MapSceneFeatureStates {
   const states = new Map<string, ReadonlyMap<string, MapSceneFeatureStateValue>>();
   for (const axis of state.axes) {
-    if (axis.value.kind !== "delivered") continue;
-    const { values, undetermined } = splitDelivered(axis.value.values);
+    const { values, undetermined } = splitDelivered(axis.values);
     states.set(axisFeatureStateKey(axis.axisId), values);
     states.set(axisUndeterminedStateKey(axis.axisId), undetermined);
   }
@@ -149,95 +138,43 @@ export const axisLineGroup = declareGroup<AxisLineState>((state) => {
     },
   ];
 
-  const layers: readonly SceneLayerEntry[] = state.axes.map((axis) => {
-    const missing = missingCondition(axis.axisId, axis.value);
-    const dashableMissing = dashableMissingCondition(axis.value);
-    const loading = axis.value.kind === "delivered" && axis.value.loading;
-    return {
-      role: axis.axisId,
-      tier: "lensLine",
-      source: ROAD_LINE_SOURCE_ID,
-      sourceLayer: state.sourceLayer ?? undefined,
-      type: "line",
+  const lineOf = (role: string): Omit<SceneLayerEntry, "paint" | "visible"> => ({
+    role,
+    tier: "lensLine",
+    source: ROAD_LINE_SOURCE_ID,
+    sourceLayer: state.sourceLayer ?? undefined,
+    type: "line",
+  });
+  const layers: readonly SceneLayerEntry[] = state.axes.flatMap((axis) => [
+    {
+      ...lineOf(axis.axisId),
       paint: {
-        "line-color": colorExpression(axis, missing, loading),
+        "line-color": colorExpression(axis),
         "line-width": axis.underlay ? UNDERLAY_WIDTH_PX : mapDisplay.road.lineWidthPx,
         // 取得中は薄くしない——薄くすると「まだ来ていない」と「対象外」が区別できない。
-        "line-opacity": axis.underlay
-          ? mapDisplay.road.underlayOpacity
-          : loading || missing === null
-            ? mapDisplay.road.knownOpacity
-            : ["case", missing, mapDisplay.road.unknownOpacity, mapDisplay.road.knownOpacity],
-        // 下敷きは全体を薄く敷くだけ。
-        ...(axis.underlay || dashableMissing === null
-          ? {}
-          : { "line-dasharray": noDataDashExpression(dashableMissing) }),
+        "line-opacity": axis.underlay ? mapDisplay.road.underlayOpacity : mapDisplay.road.knownOpacity,
       },
       visible: axis.visible,
-    };
-  });
+    },
+    // 値の無い道だけを、薄い破線で描く。
+    {
+      ...lineOf(`${axis.axisId}-no-data`),
+      paint: {
+        "line-color": NO_DATA_LEGEND_BAND.color,
+        "line-width": mapDisplay.road.lineWidthPx,
+        "line-opacity": [
+          "case",
+          undeterminedCondition(axis.axisId),
+          0,
+          missingCondition(axis.axisId),
+          mapDisplay.road.unknownOpacity,
+          0,
+        ],
+        "line-dasharray": ["literal", [...mapDisplay.noDataDash]],
+      },
+      visible: axis.visible && dashesMissing(axis),
+    },
+  ]);
 
   return { sources, layers };
 });
-
-/** hasUnknownFallbackの入力について、その道の値を「不明」とすべきかを返す式。該当する
- * 入力を持たない軸はnull（不明という状態を持たない）。換算の係数が届いていない入力
- * （`scaleMissing`）は、どの道でも不明にする。
- *
- * 分類材料（N値文字列、例: highway）は、プロパティの欠損に加えて**値はあるが分類表に
- * 無い**ときも不明に含める。評価は未登録値を評価不能として扱うため、地図だけ「寄与0（最良側）」で
- * 塗ると評価と食い違う。真偽値材料には「未登録値」という状態が無いので欠損だけで判定する。
- *
- * 欠損は`null`のままにせず、同じ型の番兵へ倒してから式へ入れる（文字列なら
- * `"__unknown__"`、数値なら0）。**出力の型が混ざる`case`/`match`を作らない**ための流儀で、
- * 式の評価が落ちてもMapLibreは例外を投げずそのレイヤーだけ黙って描かれなくなる。 */
-export function buildAxisRampUnknownExpression(axis: RampAxis): unknown[] | true | null {
-  const checks = axis.tileInputs
-    .filter((input) => input.hasUnknownFallback || input.scaleMissing)
-    .map((input) => {
-      if (input.scaleMissing) return true;
-      if (input.categories) {
-        const knownValuePairs = Object.keys(input.categories).flatMap((key) => [key, false]);
-        return ["match", ["coalesce", ["get", input.property], "__unknown__"], ...knownValuePairs, true];
-      }
-      return ["!", ["has", input.property]];
-    });
-  if (checks.length === 0) return null;
-  return checks.length === 1 ? checks[0] : ["any", ...checks];
-}
-
-/** ramp軸の値を組み立てるMapLibre expression。この式と`buildAxisRampUnknownExpression`が形ごとに評価と
- * 同じ値・同じ「不明」を出すことは、backendが出す表（生成物`axis-ramp-expectations.json`）をテストが通して確かめる。
- *
- * 数値材料はΣ property×weight。重みは軸定義が持ちカタログ経由で届く（フロントに係数を書かない）。
- * プロパティの欠損はタイル側が「0をNULLIFでキー省略」した結果なので0へ倒す。
- * 真偽値材料はMVTの真偽値を比較でしか読めず重み付き和が成り立たないため、
- * ["case", 真偽比較, trueValue, falseValue]で寄与値を直接置く。N値文字列材料・自己変換材料は
- * それぞれ["match", ...]・["interpolate", ...]で寄与値を作る。 */
-export function buildAxisRampValueExpression(axis: RampAxis): unknown[] {
-  const terms = axis.tileInputs.map((input) => {
-    if (input.boolean) {
-      const comparison = ["==", ["get", input.property], true];
-      return ["case", comparison, input.trueValue ?? 0, input.falseValue ?? 0];
-    }
-    if (input.categories) {
-      return [
-        "match",
-        ["coalesce", ["get", input.property], "__unknown__"],
-        ...Object.entries(input.categories).flatMap(([key, score]) => [key, score * input.weight]),
-        0,
-      ];
-    }
-    if (input.breakpoints) {
-      // 欠損は寄与0にする。coalesceで端へ倒すとinterpolateが端の値（例: -1）を返し、寄与0にならない。
-      // 点数は難易度の桁へ丸める（ちょうど半分の丸めの向きは、2進の値で丸める評価と違いうる）。
-      const interpolated = ["interpolate", ["linear"], ["get", input.property], ...input.breakpoints.flat()];
-      const score = ["/", ["round", ["*", interpolated, DIFFICULTY_SCALE]], DIFFICULTY_SCALE];
-      const value = input.weight === 1 ? score : ["*", score, input.weight];
-      return ["case", ["!", ["has", input.property]], 0, value];
-    }
-    return ["*", ["coalesce", ["get", input.property], 0], input.weight];
-  });
-  if (terms.length === 1) return terms[0];
-  return ["+", ...terms];
-}

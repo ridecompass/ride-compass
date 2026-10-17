@@ -21,8 +21,8 @@
 
 import asyncio
 import logging
-import time
 
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.jma_tile_specs import (
     JMA_TILE_MIN_ZOOM,
     JmaFrame,
@@ -44,7 +44,8 @@ from app.domain.weather_elements import (
     weather_element_deliveries,
     weather_element_tile,
 )
-from app.infrastructure.jma_tile_client import EmptyTile, JmaTileClient, get_target_times
+from app.infrastructure.http_client import UpstreamNotFound
+from app.infrastructure.jma_tile_client import JmaTileClient, get_target_times
 from app.infrastructure.jma_tile_content import is_empty_tile
 from app.infrastructure.jma_tile_index import JmaTileIndex, JmaTileIndexCoverage, JmaTileIndexElement, set_index
 
@@ -141,7 +142,7 @@ async def prewarm_jma_tiles(client: JmaTileClient, area: BoundingBox) -> None:
     Redisへの書き込みは`get()`の副作用で起きる。プリウォーム専用の書き込み経路は持たない
     ——持つと、通常の取得経路とキャッシュの形が分かれる。
     """
-    started = time.monotonic()
+    started = start_timer()
     target_times_cache: dict[str, list[TargetTimesRow] | None] = {}
     all_tiles: list[JmaTile] = []
     skipped_labels: list[str] = []
@@ -183,7 +184,7 @@ async def prewarm_jma_tiles(client: JmaTileClient, area: BoundingBox) -> None:
         if result is None:
             errors += 1
             return
-        if isinstance(result, EmptyTile):
+        if isinstance(result, UpstreamNotFound):
             # 描くものが無いと確認済み（上流の404、または前回の取得で空と分かってフラグで
             # 保持されているもの）。平常時はこれが大半のため、失敗として数えない。
             empty += 1
@@ -199,7 +200,6 @@ async def prewarm_jma_tiles(client: JmaTileClient, area: BoundingBox) -> None:
     await asyncio.gather(*(_fetch_one(tile) for tile in all_tiles))
     await _store_index(area, layer_frames, present)
 
-    elapsed_ms = round((time.monotonic() - started) * 1000)
     non_empty = sum(len(coords) for zooms in present.values() for coords in zooms.values())
     logger.info(
         "jma tile prewarm 完了 tiles=%d fetched=%d empty=%d errors=%d non_empty=%d total_bytes=%d elapsed_ms=%d",
@@ -209,5 +209,5 @@ async def prewarm_jma_tiles(client: JmaTileClient, area: BoundingBox) -> None:
         errors,
         non_empty,
         total_bytes,
-        elapsed_ms,
+        elapsed_ms(started),
     )

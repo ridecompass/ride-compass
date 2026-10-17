@@ -27,6 +27,7 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
     splicedRoute: null,
     tileVersions: READY_TILE_VERSIONS,
     inspectedWayId: null,
+    travelledKm: null,
     ...rest,
     look: {
       dynamicWeather: {},
@@ -38,7 +39,6 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
       layerVisibility: (look.layerVisibility ?? {}) as MapLayerVisibility,
     },
     catalog: {
-      rampAxes: [],
       dedicatedAxes: [],
       routeStyleModes: ROUTE_STYLE_MODES_WITHOUT_AXES,
       ...catalog,

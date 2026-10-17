@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { PointAxis } from "@/features/map/scene/groups/points";
+import type { PointAxis } from "@/lib/mapDisplay/pointLayers";
 
 import { buildPointPopupContent } from "./pointPopup";
 

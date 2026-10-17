@@ -9,7 +9,7 @@
 
 from collections.abc import Mapping
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, model_validator
 
 from app.api.admin_auth import require_admin_basic_auth
 from app.api.dependencies import get_axis_preview_service, get_axis_registry_admin_service
@@ -20,14 +20,11 @@ from app.domain.axis_definitions import (
     AxisDefinition,
     AxisShape,
     BreakpointLinearShape,
-    PriorityCondition,
     ScorePoint,
     check_axis_definition,
     first_term_points,
     weight_share_when_published,
 )
-from app.domain.axis_display import axis_display_for, bands_the_map_keeps, thresholds_the_map_drops
-from app.domain.registry import AxisDisplaySpec
 from app.services.axis_registry_service import AxisRegistryAdminService
 from app.domain.strict_model import StrictModel
 
@@ -72,16 +69,8 @@ class AxisDefinitionPayload(AxisDefinition):
 class AxisDefinitionResponse(AxisDefinition):
     """一覧・単体取得のレスポンスボディ。DB由来の既存データをそのまま返すため、
     `AxisDefinitionPayload`の検証（`check_axis_definition`）は継承せず`AxisDefinition`から派生する
-    ——通らなくなった行も見せて直させる。
+    ——通らなくなった行も見せて直させる。"""
 
-    `display`: `domain/axis_display.py: axis_display_for()`の計算結果
-    （`GET /api/axis-catalog`と同じ関数）。軸スタジオの編集画面が
-    「自動導出が失敗している（kind="none"）ので、この軸の材料には地図表示用のデータ取得
-    経路がまだ用意されていない」という注記を出すために必要——下書き軸（is_published=False）
-    は`GET /api/axis-catalog`に現れないため、編集中に自己診断できる経路がこの管理APIの
-    レスポンスにしか無い。"""
-
-    display: AxisDisplaySpec
     #: この軸を（保存した既定の重みで）公開したとき、公開軸の既定の重みの合計に占める割合（0〜1）。公開済みの軸は
     #: 今の割合。合計が0ならNone。総合難易度が重みの合計で割るのと同じ分母（`difficulty.weight_share`）で、
     #: 画面は計算し直さない。
@@ -89,11 +78,10 @@ class AxisDefinitionResponse(AxisDefinition):
 
 
 def _to_response(definition: AxisDefinition, definitions: Mapping[str, AxisDefinition]) -> AxisDefinitionResponse:
-    """`AxisDefinitionResponse`は`AxisDefinition`へ`display`と`weight_share_when_published`を足すだけなので、
+    """`AxisDefinitionResponse`は`AxisDefinition`へ`weight_share_when_published`を足すだけなので、
     フィールドを手書き列挙せずmodel_dump()経由で展開する。`definitions`は割合の分母を作る全軸。"""
     return AxisDefinitionResponse(
         **definition.model_dump(),
-        display=axis_display_for(definition),
         weight_share_when_published=weight_share_when_published(definition, definitions),
     )
 
@@ -225,39 +213,4 @@ async def preview_scores(payload: ScoresPreviewRequest) -> ScoresPreviewResponse
     return ScoresPreviewResponse(
         scores=payload.shape.scores_at(payload.xs),
         material_points=first_term_points(payload.shape, payload.material_values),
-    )
-
-
-class DisplayThresholdsPreviewRequest(StrictModel):
-    """段の境界の下書きの問い合わせ。段を決めるのに要る入力だけを受け取る
-    （`domain/axis_display.py: bands_the_map_keeps`）。"""
-
-    axis_id: str = Field(min_length=1)
-    shape: AxisShape
-    priority_overrides: list[PriorityCondition] = Field(default_factory=list)
-    thresholds: list[float] = Field(min_length=1)
-
-    @field_validator("thresholds")
-    @classmethod
-    def _thresholds_must_be_strictly_ascending(cls, value: list[float]) -> list[float]:
-        return AxisDefinition.check_display_thresholds_ascending(value)
-
-
-class DisplayThresholdsPreviewResponse(StrictModel):
-    #: 入力のうち、地図が段として作らない境界（入力の並び順）。
-    dropped_on_map: list[float]
-    #: 地図の各段が入力のどの段に当たるか（入力の段の番号、下から0始まり。地図の段の並び順）。
-    #: 体感ラベルはこの番号で引く。
-    bands_on_map: list[int]
-
-
-@router.post("/preview-display-thresholds")
-async def preview_display_thresholds(payload: DisplayThresholdsPreviewRequest) -> DisplayThresholdsPreviewResponse:
-    """編集中の軸で、人が刻んだ段の境界のうち地図では効かないものと、地図に残る段を返す。
-
-    判定は保存後に地図が段を作るのと同じ関数で行い、軸スタジオは結果を印として出すだけにする。
-    """
-    bands = bands_the_map_keeps(payload.axis_id, payload.shape, payload.priority_overrides, payload.thresholds)
-    return DisplayThresholdsPreviewResponse(
-        dropped_on_map=thresholds_the_map_drops(payload.thresholds, bands), bands_on_map=bands
     )

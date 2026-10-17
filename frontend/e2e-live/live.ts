@@ -3,8 +3,8 @@ import { VectorTile } from "@mapbox/vector-tile";
 import { PbfReader } from "pbf";
 import { featureFilter } from "@maplibre/maplibre-gl-style-spec";
 import type { AxisCatalogResponse } from "@/types/route";
-import { FIXED_LENS_LABELS } from "@/lib/mapDisplay/routeStyleModes";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
+import { lonLatToTileIndex } from "@/features/map/layers/webMercatorTile";
 import { ROUTE_HIT_TARGET_SEGMENT } from "@/features/map/scene/groups/routes";
 import { INTRO_CLOSED, MOBILE_VIEWPORT, installMapFinder, seedStoredState } from "../e2e/fixtures";
 import { installPageHelpers } from "../e2e/states";
@@ -28,10 +28,7 @@ export async function fetchCatalog(): Promise<AxisCatalogResponse> {
 }
 
 export function tileOf(z: number, { latitude, longitude }: { latitude: number; longitude: number }) {
-  const n = 2 ** z;
-  const x = Math.floor(((longitude + 180) / 360) * n);
-  const rad = (latitude * Math.PI) / 180;
-  const y = Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n);
+  const [x, y] = lonLatToTileIndex(longitude, latitude, z);
   return { z, x, y };
 }
 
@@ -237,26 +234,34 @@ export function expectNoOwnFailures(watch: Watch): void {
     .toEqual([]);
 }
 
-/** レンズを選ぶ（ピルを押して選択肢を押す。選ぶとポップオーバーは閉じる）。選択肢の名前には「ルート後のみ」等の印が空白を挟んで続くので、
- *  名前の頭で当てる。選び済みの選択肢を押しても閉じないので、ピルが既にそのレンズを出していれば押さない（選んだレンズは localStorage に残り、
- *  開き直しても選ばれたまま）。ピルの名前には印や条件が続くので、名前ではなくラベルの要素で当てる。 */
-export async function chooseLens(page: Page, label: string): Promise<void> {
-  const pill = page.getByRole("button", { name: /^地図の色分け: / });
-  if (await pill.getByText(label, { exact: true }).isVisible()) return;
-  await pill.click();
-  const group = page.getByRole("radiogroup", { name: "地図の色分け" });
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  await group.getByRole("radio", { name: new RegExp(`^${escaped}(\\s|$)`) }).click();
+/** 「評価で塗る」のピル（押すと評価軸の一覧を開く）。 */
+function lensPill(page: Page) {
+  return page.getByRole("button", { name: /^評価で塗る: / });
+}
+
+/** 評価軸を名前で選ぶ（null は評価軸を選んでいない状態へ戻す）。一覧は選んでも閉じず、選んでいる行をもう一度押すと外れるので、
+ *  選び済みなら押さず、Escape で閉じる。行の名前には走る条件・「未使用」の印が続くので、名前の要素で当てる。 */
+export async function chooseLens(page: Page, label: string | null): Promise<void> {
+  await lensPill(page).click();
+  const group = page.getByRole("radiogroup", { name: "評価で塗る" });
+  await expect(group).toBeVisible();
+  if (label === null) {
+    const clear = page.getByRole("button", { name: "選択を外す" });
+    if (await clear.isEnabled()) await clear.click();
+  } else {
+    const row = group.getByRole("radio").filter({ has: page.getByText(label, { exact: true }) });
+    if ((await row.getAttribute("aria-checked")) !== "true") await row.click();
+  }
+  await page.keyboard.press("Escape");
   await expect(group).toBeHidden();
 }
 
-/** 今のレンズの名前。ピルの名前は印や走る条件を「・」でつないで続けるので切り出さず、選びうる名前のどれをラベルの要素が出しているかで当てる。 */
-export async function currentLensLabel(page: Page, catalog: AxisCatalogResponse): Promise<string> {
-  const pill = page.getByRole("button", { name: /^地図の色分け: / });
-  for (const label of [...Object.values(FIXED_LENS_LABELS), ...catalog.axes.map((axis) => axis.label)]) {
-    if (await pill.getByText(label, { exact: true }).isVisible()) return label;
+/** 今の評価軸の名前。ピルがどの軸の名前も出していなければ、評価軸を選んでいない（null）。 */
+export async function currentLensLabel(page: Page, catalog: AxisCatalogResponse): Promise<string | null> {
+  for (const { label } of catalog.axes) {
+    if (await lensPill(page).getByText(label, { exact: true }).isVisible()) return label;
   }
-  throw new Error(`今のレンズが選びうる名前のどれでもない: ${await pill.getAttribute("aria-label")}`);
+  return null;
 }
 
 /**

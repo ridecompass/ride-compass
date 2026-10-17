@@ -26,6 +26,7 @@ from app.domain.traffic import POI_CLUSTER_EPS_M, STOP_POI_KINDS, stop_kind_sql
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.source_models import COVERAGE_SQL
 from app.infrastructure.source_models import NODES_SOURCE_SQL, accidents_within_sql
+from app.infrastructure.vector_tile import TILE_BUFFER
 
 
 @dataclass(frozen=True)
@@ -65,7 +66,7 @@ _POI_TILE_MVT_SQL = text(
                 SELECT
                     ST_AsMVTGeom(
                         ST_Transform(grouped.geom, 3857),
-                        ST_TileEnvelope(:z, :x, :y), :extent, 256, true
+                        ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true
                     ) AS geom,
                     grouped.kind AS kind,
                     grouped.name AS name
@@ -128,7 +129,7 @@ _ACCIDENT_TILE_MVT_SQL = text(
             SELECT ST_AsMVT(mvt.*, :layer_name, :extent, 'geom') FROM (
                 SELECT
                     ST_AsMVTGeom(
-                        ST_Transform(a.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, 256, true
+                        ST_Transform(a.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true
                     ) AS geom,
                     {BICYCLE_SQL} AS involves_bicycle,
                     {FATAL_SQL} AS fatal,
@@ -142,14 +143,14 @@ _ACCIDENT_TILE_MVT_SQL = text(
 
 # 立ち寄り先。群へ入れ、近くの同じ店をまとめた後の表（`batch/derive_stop_places.py`）をそのまま出す。
 _STOP_PLACE_TILE_MVT_SQL = text(
-    """
+    f"""
     SELECT
         true AS covered,
         (
             SELECT ST_AsMVT(mvt.*, :layer_name, :extent, 'geom') FROM (
                 SELECT
                     ST_AsMVTGeom(
-                        ST_Transform(s.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, 256, true
+                        ST_Transform(s.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true
                     ) AS geom,
                     s.place_group AS "group",
                     s.confidence,

@@ -2,12 +2,12 @@
 import { describe, expect, it } from "vitest";
 
 import { mapCatalogOf } from "@/testing/mapAxisCatalog";
-import { catalogEntry, dedicatedEntry, rampEntry } from "@/testing/catalogAxes";
+import { catalogEntry, dedicatedEntry } from "@/testing/catalogAxes";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 
 import weatherScales from "@/types/generated/weather-scales.json";
 
-import { LANDCOVER_PAINTED_CLASSES } from "./landcoverClasses";
+import { LANDCOVER_PAINTED_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import {
   buildMapLayers,
   deriveFetchLayerStatus,
@@ -21,7 +21,7 @@ import {
   type MapLayerDescriptor,
 } from "./mapLayers";
 
-const catalog = mapCatalogOf([rampEntry("ramp_a", [10, 20]), dedicatedEntry("dedicated_b", [1, 2])]);
+const catalog = mapCatalogOf([dedicatedEntry("axis_a", [10, 20]), dedicatedEntry("axis_b", [1, 2])]);
 const withAxes = buildMapLayers({ ...catalog, accidentYears: [2021, 2019, 2020] });
 const withoutAxes = buildMapLayers(mapCatalogOf([]));
 const withYears = (accidentYears: number[]) => buildMapLayers({ ...mapCatalogOf([]), accidentYears });
@@ -30,11 +30,11 @@ const layer = (layers: readonly MapLayerDescriptor[], id: string) =>
 const staticLayerIds: readonly string[] = mapDisplay.layers.map((entry) => entry.id);
 
 describe("buildMapLayers（レイヤーの一覧）", () => {
-  it("軸を渡すと、ramp軸と専用配信軸のレイヤーが軸ごとに別の名前で加わる（どちらも軸スタジオ由来）", () => {
+  it("軸を渡すと、軸ごとに別の名前のレイヤーが軸スタジオ由来として加わる", () => {
     const added = withAxes.filter((entry) => !staticLayerIds.includes(entry.id));
     expect(added.map((entry) => [entry.id, isAxisStudioLayer(entry)])).toEqual([
-      ["axis:ramp_a", true],
-      ["dedicated_bAxis", true],
+      ["axis_aAxis", true],
+      ["axis_bAxis", true],
     ]);
   });
 
@@ -98,9 +98,9 @@ describe("地図上チップのグループ", () => {
 });
 
 describe("出せない理由の案内", () => {
-  it("タイル世代が届くまで描けないのは、世代を持つ配信を読むレイヤー（ramp軸を含む）", () => {
-    const gated = tileVersionGatedLayerIds(catalog.rampAxes);
-    expect(gated).toContain("axis:ramp_a");
+  it("タイル世代が届くまで描けないのは、世代を持つ配信を読むレイヤー", () => {
+    const gated = tileVersionGatedLayerIds();
+    expect(gated).toContain("accident_point");
     expect(gated).not.toContain("elevation");
   });
 

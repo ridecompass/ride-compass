@@ -2,12 +2,12 @@
 
 履歴は一時的なgitリポジトリで作る。
 
-ここで見ないもの: `docs`の検知そのものはCI（Docs Consistency）が本物のリポジトリへ毎回流す。ここでは、まだ`git add`していない
+ここで見ないもの: `docs`の検知そのものはCI（`ci.yml`の`docs-consistency`）が本物のリポジトリへ毎回流す。ここでは、まだ`git add`していない
 ファイルを実在に数えることだけを通す（名指しの検査と食い違うと、同じファイルを片方だけが無いと言う）。`trigger`の中身と、`size`の表・発火は
 周期レビューで人が読む出力で、ここでは通さない。`trigger`が発火したときだけ出す形は、誰も読まないセッションの始まりの
 フックが使うので通す。`size`の「閾値の見直し」と、種類ごとの上限に当たるファイルへ置いた
 ファイルごとの閾値を無視することは、緩んだ閾値に誰も気づかなくなるので通す。`friction`の gh で置き場を読む部分は
-本物の置き場でしか通らないので、ここではコメントから行を拾う判断だけを通す。
+本物の置き場でしか通らないので、ここではコメントから行を拾う判断と、前のコメントを読みに行くかの判断だけを通す。
 """
 
 import argparse
@@ -217,3 +217,37 @@ def test_friction_picks_the_lines_written_after_the_review_including_quoted_and_
         "#805 > - 流れの摩擦: 引用の箇条書き",
         "#805 - 流れの摩擦: 箇条書き",
     ]
+
+
+def _page(stamps: list[str], cursor: str | None) -> dict:
+    return {"pageInfo": {"hasPreviousPage": cursor is not None, "startCursor": cursor},
+            "nodes": [{"createdAt": s, "body": s} for s in stamps]}
+
+
+@pytest.mark.parametrize(
+    ("first", "earlier", "want", "reads"),
+    [
+        # 前のページが無い。
+        (_page(["2026-10-08T00:00:00Z"], None), {}, ["2026-10-08T00:00:00Z"], 0),
+        # 前のページはあるが、読んだ中で一番古いものがレビューより前なので、前は読まない。
+        (_page(["2026-10-06T00:00:00Z", "2026-10-08T00:00:00Z"], "c1"), {}, ["2026-10-06T00:00:00Z", "2026-10-08T00:00:00Z"], 0),
+        # 一番古いものがレビューより後なので、前へ送り、古いページがレビューより前に届いたら止まる。
+        (
+            _page(["2026-10-08T00:00:00Z"], "c1"),
+            {"c1": _page(["2026-10-07T12:00:00Z"], "c2"), "c2": _page(["2026-10-01T00:00:00Z"], "c3")},
+            ["2026-10-01T00:00:00Z", "2026-10-07T12:00:00Z", "2026-10-08T00:00:00Z"],
+            2,
+        ),
+    ],
+)
+def test_friction_reads_earlier_comments_only_while_they_can_be_after_the_review(first, earlier, want, reads):
+    """前のコメントを読む1回ずつが置き場への要求になる（GitHub の要求の上限に効く）ので、要るときだけ読む。"""
+    since = rc.dt.datetime(2026, 10, 7, tzinfo=rc.dt.timezone.utc)
+    asked = []
+
+    def read_earlier(cursor):
+        asked.append(cursor)
+        return earlier[cursor]
+
+    assert [c["createdAt"] for c in rc.comments_since(first, since, read_earlier)] == want
+    assert len(asked) == reads

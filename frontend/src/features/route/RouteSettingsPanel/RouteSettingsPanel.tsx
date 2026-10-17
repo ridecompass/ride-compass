@@ -3,13 +3,7 @@
 import { useRef, useState } from "react";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
-import {
-  ENABLED_AXIS_WEIGHT,
-  MAX_AXIS_SHARE,
-  WEIGHT_STEP,
-  clampBoundaryDrag,
-  totalWeight,
-} from "@/features/route/routeWeightShare";
+import { ENABLED_AXIS_WEIGHT, WEIGHT_STEP, clampBoundaryDrag, totalWeight } from "@/features/route/routeWeightShare";
 import { axisCatalogFetchFailure, retryAxisCatalogFetch, useAxisCatalog } from "@/hooks/useAxisCatalog";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import type { RoutePreferenceWeights } from "@/types/route";
@@ -106,7 +100,7 @@ export default function RouteSettingsPanel({
     let applied: { weightA: number; weightB: number } | null = null;
     const handleWindowPointerMove = (moveEvent: PointerEvent) => {
       const rawDelta = (moveEvent.clientX - startClientX) / pixelsPerUnit;
-      const next = clampBoundaryDrag(startWeightA, startWeightB, rawDelta, total);
+      const next = clampBoundaryDrag(startWeightA, startWeightB, rawDelta);
       // 刻みに届かない動き・端で止まっている間は、保存と描き直しを繰り返さない。最初の動きは値が変わらなくても通す
       // （動かした2軸の今の値を、有効に戻すときの値として覚える）。
       if (applied !== null && next.weightA === applied.weightA && next.weightB === applied.weightB) return;
@@ -135,7 +129,7 @@ export default function RouteSettingsPanel({
     else if (e.key === "ArrowRight" || e.key === "ArrowUp") rawDelta = WEIGHT_STEP;
     else return;
     e.preventDefault();
-    const next = clampBoundaryDrag(weightA, weightB, rawDelta, total);
+    const next = clampBoundaryDrag(weightA, weightB, rawDelta);
     if (next.weightA === weightA && next.weightB === weightB) return;
     handlePairWeightChange(axisIdA, next.weightA, axisIdB, next.weightB);
   }
@@ -242,8 +236,7 @@ export default function RouteSettingsPanel({
           })}
         </div>
         <InfoPopover triggerAriaLabel="重みの配分の説明">
-          帯の境目を動かして、評価軸ごとの重みの割合を変えます。1つの評価軸に置ける重みは
-          {Math.round(MAX_AXIS_SHARE * 100)}%までで、境目はそこで止まります。
+          帯の境目を動かして、評価軸ごとの重みの割合を変えます。境目は、どの評価軸も重みが0（無効）になる手前で止まります。
         </InfoPopover>
       </div>
 

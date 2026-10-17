@@ -1,5 +1,7 @@
 "use client";
 
+import { cn } from "@/lib/cn";
+import { LENS_LINK_CLASS, LENS_LINK_DESCRIPTION } from "@/features/conditions/lensLink";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
 import WindBearingSlider from "@/features/conditions/WindBearingSlider/WindBearingSlider";
 import { WindDirectionArrowIcon } from "@/components/ui/icons/icons";
@@ -11,6 +13,8 @@ import { axisNamesUsing } from "@/lib/catalogAxis";
 interface TravelBearingControlProps {
   value: number;
   onChange: (bearingDeg: number) => void;
+  /** いまの「評価で塗る」の周りの道の塗りが、この走行方位で決まっている。 */
+  linked: boolean;
 }
 
 // 向きで値の変わる評価が共有する走行方位（`features/conditions/useRideConditions.ts: bearingDeg`）を設定する唯一の入り口。
@@ -25,11 +29,11 @@ interface TravelBearingControlProps {
 // この矢印は実機の向き（ジャイロ/磁気センサー）とは一切連動しない、ユーザーがドラッグして
 // 手動設定する値の表示専用。誤解防止のための説明文言は添えない——操作を妨げないことを
 // 優先する。
-export default function TravelBearingControl({ value, onChange }: TravelBearingControlProps) {
+export default function TravelBearingControl({ value, onChange, linked }: TravelBearingControlProps) {
   // 向きで値の変わる評価の名前は軸カタログから引く。無ければ評価に触れる文を出さない。
   const bearingAxes = axisNamesUsing(useAxisCatalog().axes, "bearing_deg");
   const evaluationUsage = bearingAxes
-    ? `${bearingAxes}で周りの道を色分けするときと、道の評価を見るときの走る向きを決めます。ルートの評価は、ルートを実際に走る向きで決まります。`
+    ? `${bearingAxes}で周りの道を塗るときと、道の評価を見るときの走る向きを決めます。ルートの評価は、ルートを実際に走る向きで決まります。`
     : "";
   return (
     <Popover>
@@ -37,7 +41,11 @@ export default function TravelBearingControl({ value, onChange }: TravelBearingC
         <Button
           variant="mapCtrl"
           size="mapCtrl"
-          className="absolute top-[var(--map-ctrl-stack-top)] right-[var(--map-ctrl-margin)] z-[var(--z-map-control)]"
+          className={cn(
+            "absolute top-[var(--map-ctrl-stack-top)] right-[var(--map-ctrl-margin)] z-[var(--z-map-control)]",
+            linked && LENS_LINK_CLASS,
+          )}
+          aria-description={linked ? LENS_LINK_DESCRIPTION : undefined}
           aria-label="走行方位を設定"
           usage={`${evaluationUsage}地図や端末の向きとは連動しません。`}
           {...mapOverlayEdge("right")}

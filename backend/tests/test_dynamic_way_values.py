@@ -39,7 +39,7 @@ def _material(material_id, dtype="numeric", unit="", value_sql=None, additive=Fa
         dtype=dtype,
         unit=unit,
         tile_property=None,
-        value_sql=value_sql,
+        value_sql=value_sql or f"w.{material_id}",
         additive=additive,
         coverage=CoverageExcluded(reason="架空", missing_semantics="definite"),
     )
@@ -101,25 +101,26 @@ def _arrays() -> EdgeMaterialArrays:
     return EdgeMaterialArrays(
         numeric_ids=("num_a", "num_b", "bool_a"), numeric_values=np.column_stack([NUM_A, NUM_B, BOOL_A]),
         categorical_ids=("cat_a",), categorical_columns=(CategoricalColumn.encode(CAT_A),),
-        hard_filter_ids=(), hard_filter_flags=np.empty((n, 0), dtype=bool),
+        route_flag_ids=(), route_flags=np.empty((n, 0), dtype=bool),
         distance_m=np.full(n, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
-        elevation_present=np.zeros(n, dtype=bool), elevation_gain_m=nan, elevation_loss_m=nan,
+        start_elevation_m=nan, end_elevation_m=nan, elevation_gain_m=nan, elevation_loss_m=nan,
     )
 
 
 # 地図の色と、探索が同じ道に付ける得点が、同じ材料なら同じになる。食い違うと、地図で良く見えた道を探索が避ける。
-# 符号付き材料を塗る軸は、得点ではなく材料の値（符号つき）を塗る。
+# 符号付き材料を塗る軸は、得点ではなく材料の値（符号つき）を塗る。得点で求めると（区間インスペクタ）、どの軸も探索の得点。
+@pytest.mark.parametrize("as_difficulty", [False, True])
 @pytest.mark.parametrize("axis_id", [axis_id for axis_id, axis in AXES.items() if axis.is_published])
-def test_the_map_paints_the_same_value_the_search_scores(axis_id):
+def test_the_map_paints_the_same_value_the_search_scores(axis_id, as_difficulty):
     arrays = _arrays()
     keys = [f"feature-{row}" for row in range(len(arrays))]
     with replaced_axis_definitions(AXES):
         matrix = build_static_edge_score_matrix(arrays, {})
 
-    painted = paint_feature_values(axis_id, AXES, keys, arrays.columns(), {})
+    painted = paint_feature_values(axis_id, AXES, keys, arrays.columns(), {}, as_difficulty=as_difficulty)
 
     paint = map_paint.map_paint(AXES[axis_id]).value
-    if isinstance(paint, SignedMaterialMapValue):
+    if isinstance(paint, SignedMaterialMapValue) and not as_difficulty:
         expected = arrays.columns()[paint.material]
     else:
         expected = matrix.axis_scores[:, matrix.axis_ids.index(axis_id)]
@@ -135,7 +136,8 @@ def test_values_from_a_service_replace_the_material_of_the_tile():
     tile = {"num_a": np.array([1.0, 1.0, 1.0])}
 
     painted = paint_feature_values(
-        "axis_signed", AXES, keys, tile, {"num_b": {"feature-0": -4.0, "feature-1": None, "elsewhere": 9.0}}
+        "axis_signed", AXES, keys, tile, {"num_b": {"feature-0": -4.0, "feature-1": None, "elsewhere": 9.0}},
+        as_difficulty=False,
     )
 
     assert painted == {"feature-0": -4.0, "feature-1": None}
@@ -194,9 +196,9 @@ def _route_values(segments: FeatureSegments, grade: np.ndarray) -> dict[str, dic
         numeric_ids=("seg_cover", "seg_grade", "seg_count", "way_num"),
         numeric_values=np.column_stack([segments.columns["seg_cover"], grade, segments.columns["seg_count"],
                                         [WAY_NUM[owner] for owner in owners]]),
-        categorical_ids=(), categorical_columns=(), hard_filter_ids=(), hard_filter_flags=np.empty((n, 0), dtype=bool),
+        categorical_ids=(), categorical_columns=(), route_flag_ids=(), route_flags=np.empty((n, 0), dtype=bool),
         distance_m=segments.distance_m, bearing_deg=nan, mid_lat=nan, mid_lon=nan,
-        elevation_present=np.zeros(n, dtype=bool), elevation_gain_m=nan, elevation_loss_m=nan,
+        start_elevation_m=nan, end_elevation_m=nan, elevation_gain_m=nan, elevation_loss_m=nan,
     )
     with replaced_axis_definitions(FOLDED_AXES):
         matrix = build_static_edge_score_matrix(arrays, {})
@@ -205,8 +207,8 @@ def _route_values(segments: FeatureSegments, grade: np.ndarray) -> dict[str, dic
         distance_km = float(segments.distance_m[row]) / 1000
         details.setdefault(owner, []).append(RouteSegmentDetail(
             start_latitude=0.0, start_longitude=0.0, end_latitude=0.0, end_longitude=0.0,
-            cumulative_distance_km=0.0, distance_km=distance_km,
-            axis_difficulties={axis_id: float(score) for axis_id, score
+            cumulative_distance_km=0.0, distance_km=distance_km, elevations=[],
+            road_classes={}, axis_difficulties={axis_id: float(score) for axis_id, score
                                in zip(matrix.axis_ids, matrix.axis_scores[row]) if not np.isnan(score)},
         ).with_density_inputs({
             axis_id: DensityScoreInput(value=float(column.inputs[row]), distance_km=distance_km, weight_share=None,
@@ -218,14 +220,17 @@ def _route_values(segments: FeatureSegments, grade: np.ndarray) -> dict[str, dic
 
 # 引いた地図の道の色が、その道をルートとして走ったときのルートの値と同じ決まりで出る。食い違うと、地図で良く見えた道を
 # 走ったルートが悪い値になる（区間ごとに値の違う割合・勾配と、それを読む軸を参照する軸と、密度の軸）。値の無い道は、
-# ルートの値にも無く、塗らない。
-@pytest.mark.parametrize("axis_id", [axis_id for axis_id, axis in FOLDED_AXES.items()
-                                     if axis.is_published and axis_id != "axis_grade"])
-def test_a_way_is_painted_with_the_value_of_a_route_along_its_segments(axis_id):
+# ルートの値にも無く、塗らない。符号付き材料を塗る軸（勾配）も、得点で求めれば（区間インスペクタ）ルートの値そのもの。
+@pytest.mark.parametrize(("axis_id", "as_difficulty"), [
+    *((axis_id, False) for axis_id, axis in FOLDED_AXES.items() if axis.is_published and axis_id != "axis_grade"),
+    ("axis_grade", True),
+])
+def test_a_way_is_painted_with_the_value_of_a_route_along_its_segments(axis_id, as_difficulty):
     keys, materials, served, segments, served_segments = _segment_tile()
     expected = _route_values(segments, served_segments["seg_grade"])
 
-    painted = paint_folded_feature_values(axis_id, FOLDED_AXES, keys, materials, served, segments, served_segments)
+    painted = paint_folded_feature_values(axis_id, FOLDED_AXES, keys, materials, served, segments, served_segments,
+                                          as_difficulty=as_difficulty)
 
     assert painted == {key: values[axis_id] for key, values in expected.items() if axis_id in values}
 
@@ -237,7 +242,8 @@ def test_a_way_painted_with_a_signed_material_keeps_the_band_of_the_route_and_th
     expected = _route_values(segments, served_segments["seg_grade"])
     shape = FOLDED_AXES["axis_grade"].shape
 
-    painted = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments)
+    painted = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments,
+                                          as_difficulty=False)
 
     assert {key: shape.score_at(abs(value)) for key, value in painted.items()} == {
         key: expected[key]["axis_grade"] for key in keys}
@@ -246,34 +252,44 @@ def test_a_way_painted_with_a_signed_material_keeps_the_band_of_the_route_and_th
 
 
 def test_a_way_undetermined_by_bearing_stays_so_and_a_way_without_segments_keeps_its_own_value():
-    """向きで決まらない道は「向きで決まらない」のまま、区間の無い道（区間を作れない道）は道1本の値で塗り、その後ろの道も
-    塗る。"""
+    """向きで決まらない道は「向きで決まらない」のまま、区間の無い道（区間を作れない道）は道1本の値で塗り（得点で求める
+    ときは得点）、その後ろの道も塗る。"""
     keys, materials, served, segments, served_segments = _segment_tile()
-    served = {"seg_grade": {**served["seg_grade"], "way-1": None}}
-    without = paint_folded_feature_values("axis_cover", FOLDED_AXES, keys, materials, served, segments, served_segments)
+    served = {"seg_grade": {**served["seg_grade"], "way-1": None, "way-4": -6.0}}
+    without = paint_folded_feature_values("axis_cover", FOLDED_AXES, keys, materials, served, segments, served_segments,
+                                          as_difficulty=False)
     keys = ["way-4", *keys]
     materials = {material_id: np.insert(column, 0, 7.0) for material_id, column in materials.items()}
 
-    painted = paint_folded_feature_values("axis_cover", FOLDED_AXES, keys, materials, served, segments, served_segments)
-    graded = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments)
+    painted = paint_folded_feature_values("axis_cover", FOLDED_AXES, keys, materials, served, segments, served_segments,
+                                          as_difficulty=False)
+    graded = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments,
+                                         as_difficulty=False)
+    scored = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments,
+                                         as_difficulty=True)
 
     assert painted == {**without, "way-4": paint_feature_values("axis_cover", FOLDED_AXES, ["way-4"], {
-        material_id: column[:1] for material_id, column in materials.items()}, {})["way-4"]}
+        material_id: column[:1] for material_id, column in materials.items()}, {}, as_difficulty=False)["way-4"]}
     assert graded["way-1"] is None
+    assert set(graded) == set(keys)
+    assert (graded["way-4"], scored["way-4"]) == (-6.0, paint_feature_values("axis_grade", FOLDED_AXES, ["way-4"], {
+        material_id: column[:1] for material_id, column in materials.items()}, {"seg_grade": {"way-4": -6.0}},
+        as_difficulty=True)["way-4"])
 
 
 def test_segments_of_a_way_the_tile_does_not_paint_change_no_other_way():
     """配信が値を返さなかった道（勾配の地図で向きの定まらない道等）は、区間があっても塗る道に入らず、ほかの道の値を
     変えない。"""
     keys, materials, served, segments, served_segments = _segment_tile()
-    whole = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments)
+    whole = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments,
+                                        as_difficulty=False)
     kept = [row for row, key in enumerate(keys) if key != "way-2"]
 
     painted = paint_folded_feature_values(
         "axis_grade", FOLDED_AXES, [keys[row] for row in kept],
         {material_id: column[kept] for material_id, column in materials.items()},
         {"seg_grade": {key: value for key, value in served["seg_grade"].items() if key != "way-2"}},
-        segments, served_segments)
+        segments, served_segments, as_difficulty=False)
 
     assert painted == {key: value for key, value in whole.items() if key != "way-2"}
 
@@ -285,6 +301,7 @@ def test_a_tile_without_ways_paints_nothing():
                                columns={"seg_cover": empty, "seg_count": empty})
     materials = {"seg_cover": empty, "seg_count": empty, "way_num": empty}
 
-    painted = paint_folded_feature_values("axis_cover", FOLDED_AXES, [], materials, {}, segments, {"seg_grade": empty})
+    painted = paint_folded_feature_values("axis_cover", FOLDED_AXES, [], materials, {}, segments, {"seg_grade": empty},
+                                          as_difficulty=False)
 
     assert painted == {}

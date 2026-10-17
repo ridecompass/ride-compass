@@ -7,7 +7,8 @@
 name: Deploy Backend to Oracle VM
 
 on:
-  # ci.ymlが、masterへのpushでCIの全ジョブが通ったあとに呼ぶ（どれかが赤なら呼ばれない）。
+  # ci.ymlが、masterへのpushで、changesがbackendを出すと決め、ci-okが通ったときだけ呼ぶ（changesが要らないと
+  # 決めて飛ばしたジョブは ci-ok を止めない。走らせたジョブのどれかが赤なら呼ばれない）。
   # 呼ばれたときの`github.sha`は、CIを通ったそのコミット。
   workflow_call:
   # 手動のデプロイ。CIを待たず、選んだrefの先端をそのまま出す。
@@ -17,10 +18,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     # 判定とデプロイを1つのジョブにし、まとめて1本ずつ走らせる。判定だけ先に済ませると、
-    # 後から終わった古いCIの実行が、その間に出た新しいコミットを上書きしうる。
+    # 後から終わった古いCIの実行が、その間に出た新しいコミットを上書きしうる。どの ref から起こしても本番（公開先）は1つなので、
+    # レーンの鍵は master に決めてある（レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
     concurrency:
-      group: deploy-backend
-      cancel-in-progress: false
+      group: master-lane-5
+      queue: max
     steps:
       - uses: actions/checkout@v5
         with:
@@ -205,10 +207,15 @@ jobs:
       # 出したbackendで、利用者と同じ操作（ルートを作ってレンズを替える）が壊れていないかを外から見る。
       # 落ちたらジョブが失敗し、GitHub Actionsの失敗の知らせが届く（出したものは戻さない）。
       # 何を見るか・上限の根拠は docs/architecture/tech-stack.md「本番でルートを作る確かめ」。
+      # 生成の既定の条件と、レンズが区間のどの値を塗るかは、backendの宣言から読む。
+      - if: steps.gate.outputs.deploy == 'true'
+        uses: ./.github/actions/python
+        with:
+          requirements: requirements.txt
       - name: 本番でルートを作って区間の値を見る
         if: steps.gate.outputs.deploy == 'true'
         timeout-minutes: 3
-        run: python3 backend/scripts/prod_route_check.py
+        run: python backend/scripts/prod_route_check.py
       # 本番のスキーマと、今出したコードのORMの宣言の差を測る。差が1件でもあれば終了コード1で
       # ジョブを失敗させる（差の行はログに出る）。差は人が本番で埋めるもので、
       # 出す前に埋めるもの（新しいコードが書く列を足す）と、出した後に埋めるもの（古いコードが

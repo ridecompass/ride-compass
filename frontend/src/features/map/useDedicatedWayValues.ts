@@ -1,6 +1,6 @@
 "use client";
 
-// 専用way値配信軸（`dedicated_way_value_layer=true`の軸）のフィーチャー→値フェッチ・状態管理。
+// 地図が塗る軸の、フィーチャー→値フェッチ・状態管理。
 // viewportをデバウンスしてから、表示中のタイル範囲ぶんをまとめて取る——パン・ズームのたびに個別way_idを
 // 都度問い合わせない。取得対象の軸が0件の間はfetchせず、結果も空へ戻す。
 //
@@ -100,7 +100,8 @@ async function fetchAllAxes(
  * 返す。取り直している軸は前の値を残したまま`loading`を立てる。
  *
  * `at`（時刻）・`bearingDeg`（向き）・`speedKmh`（想定速度）は全軸で共有の入力で、実際に
- * リクエストへ載るのはそれを必要とすると宣言した軸（`needsTime`/`needsBearing`/`needsSpeed`）だけ。
+ * リクエストへ載るのはそれを必要とすると宣言した軸（`wayValueConditions`）だけ——載せない入力はキーからも外れるため、
+ * 時刻を動かしても時刻で変わらない軸は取り直さない。
  * 向きと想定速度はviewportと同様デバウンス後の値を使う。 */
 export function useDedicatedWayValues(
   axes: readonly DedicatedWayValueAxis[],
@@ -126,9 +127,9 @@ export function useDedicatedWayValues(
       : axes.map((axis) => {
           const request = {
             axisId: axis.axisId,
-            at: axis.needsTime ? at : undefined,
-            bearingDeg: axis.needsBearing ? debouncedBearingDeg : undefined,
-            speedKmh: axis.needsSpeed ? debouncedSpeedKmh : undefined,
+            at: axis.wayValueConditions.includes("at") ? at : undefined,
+            bearingDeg: axis.wayValueConditions.includes("bearing_deg") ? debouncedBearingDeg : undefined,
+            speedKmh: axis.wayValueConditions.includes("speed_kmh") ? debouncedSpeedKmh : undefined,
             tiles,
           };
           return { ...request, key: requestKey(request) };

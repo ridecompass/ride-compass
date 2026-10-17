@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.admin_db_errors import install_admin_db_unavailable_handler
-from app.api.cache_policy import CachePolicyMiddleware
+from app.api.cache_policy import TILE_PATH_PREFIXES, CachePolicyMiddleware
 from app.api.dependencies import get_amedas_service, get_jma_tile_client, open_region_service
 from app.api.finite_json_body import reject_non_finite_json_body
 from app.api.routers import api_router
@@ -202,7 +202,7 @@ app.add_middleware(CachePolicyMiddleware)
 
 # 後から登録したミドルウェアが外側になる(アクセスログはCORS処理も含めた全体を計測・記録したい
 # ため、CORSより外側に置く。リクエストIDはアクセスログの行にも載るよう、さらにその外側に置く)。
-app.middleware("http")(request_log_middleware)
+app.middleware("http")(request_log_middleware(TILE_PATH_PREFIXES))
 app.add_middleware(CorrelationIdMiddleware)
 # 未処理例外(500)発生時もX-Request-IDヘッダを付ける。
 app.add_exception_handler(Exception, unhandled_exception_handler)

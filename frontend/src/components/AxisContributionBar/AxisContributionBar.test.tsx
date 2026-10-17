@@ -1,6 +1,6 @@
 /**
  * `components/AxisContributionBar/AxisContributionBar.tsx`——重み付きの寄与の内訳（積み上げの帯1本と凡例）と、
- * 寄与があるかの判定（`hasContribution`）。
+ * 帯に出す軸のどれかに寄与があるかの判定（`hasAnyContribution`。空のときの案内を出す側が読む）。
  *
  * 見るもの: 寄与のある軸だけを`axes`の順に帯へ積むこと、帯の長さと添える値（0〜100へ寄せる）、軸の色と
  * 色の無い軸の色、凡例に並ぶ軸（既定・`legendAxes`・`renderDetail`がnullを返した軸）とチップに出す値、
@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 
 import { catalogAxisFromEntry } from "@/lib/catalogAxis";
 import { catalogEntry } from "@/testing/catalogAxes";
-import AxisContributionBar, { hasContribution } from "./AxisContributionBar";
+import AxisContributionBar, { hasAnyContribution } from "./AxisContributionBar";
 
 const A = catalogAxisFromEntry(catalogEntry({ axis_id: "axis_a", label: "軸A" }));
 const B = catalogAxisFromEntry(catalogEntry({ axis_id: "axis_b", label: "軸B" }));
@@ -55,13 +55,14 @@ function chipColor(chip: HTMLElement): string {
   return icon.style.color;
 }
 
-describe("hasContribution", () => {
+describe("hasAnyContribution", () => {
   it.each([
     ["キーが無い", {}, false],
     ["0", { axis_a: 0 }, false],
     ["0でない値", { axis_a: 0.4 }, true],
+    ["渡した軸に無い軸にだけ0でない値", { axis_a: 0, retired_axis: 0.4 }, false],
   ])("寄与が%sなら%s", (_, contributions, expected) => {
-    expect(hasContribution(contributions, "axis_a")).toBe(expected);
+    expect(hasAnyContribution([A, B], contributions)).toBe(expected);
   });
 });
 

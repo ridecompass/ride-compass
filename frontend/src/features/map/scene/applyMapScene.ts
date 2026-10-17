@@ -7,6 +7,7 @@ import {
   type MapScene,
   type MapSceneFeatureStateValue,
   type MapSceneFeatureStates,
+  type MapSceneImageOptions,
   type MapSceneLayer,
   type MapSceneSource,
 } from "./mapScene";
@@ -23,14 +24,16 @@ export type MapSceneTarget = {
   setLayoutProperty(layerId: string, name: string, value: unknown): unknown;
   setFeatureState(target: FeatureIdentifier, state: Record<string, MapSceneFeatureStateValue>): unknown;
   removeFeatureState(target: FeatureIdentifier, key?: string): unknown;
+  hasImage(id: string): boolean;
+  addImage(id: string, image: ImageData, options: MapSceneImageOptions): unknown;
 };
 
 type ApplyMapSceneOptions = {
   /** いま載っているべき宣言。 */
   readonly scene: MapScene;
   /**
-   * 前回この関数が当てた宣言。**この関数は地図を読み返さず、これを地図の状態そのものとして
-   * 扱う**。スタイルを差し替えたら `EMPTY_MAP_SCENE` を渡す。
+   * 前回この関数が当てた宣言。**ソース・レイヤーは地図を読み返さず、これを地図の状態そのものとして
+   * 扱う**（絵だけは地図に有るかで足す）。スタイルを差し替えたら `EMPTY_MAP_SCENE` を渡す。
    */
   readonly previous: MapScene;
   /**
@@ -77,6 +80,14 @@ export function applyMapScene(map: MapSceneTarget, options: ApplyMapSceneOptions
   for (const id of previousSources.keys()) {
     if (nextSourceIds.has(id) && !recreated.has(id)) continue;
     map.removeSource(id);
+  }
+
+  // 絵は前回の宣言ではなく地図に有るかで足す。スタイルを差分で差し替えても地図に残り、同じ id を足し直すと
+  // 地図が誤りを出す。記号のレイヤーより先に足す。
+  for (const image of scene.images) {
+    if (map.hasImage(image.id)) continue;
+    const { data, options } = image.draw();
+    map.addImage(image.id, data, options);
   }
 
   for (const source of scene.sources) {

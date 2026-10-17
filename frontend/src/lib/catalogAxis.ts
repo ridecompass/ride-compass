@@ -1,5 +1,5 @@
 // 軸カタログ（`GET /api/axis-catalog`）の1行を、画面が読む形へ移す。**行から移すのはここの1か所だけ**——
-// 重みを付けられる軸の一覧・ramp軸・専用配信の軸は、どれもこの形に自分の用途の項目を足した型で、
+// 重みを付けられる軸の一覧・地図が塗る軸は、どれもこの形に自分の用途の項目を足した型で、
 // 共通の項目（名前・アイコン・説明・単位・内訳）を自前で写さない。写すと、同じ行の欠けた項目の補い方が型ごとに食い違う。
 import type { MapValueKind } from "@/lib/mapDisplay/valueScale";
 import type { AxisCatalogEntry } from "@/types/route";
@@ -38,9 +38,11 @@ export interface CatalogAxis {
   weatherLayerGroups: readonly string[];
   /** 道の値を求めるのに要る走る条件（走行方位・想定速度・出発時刻）。条件で値の変わる軸だけが持ち、ほかは空。 */
   wayValueConditions: readonly WayValueCondition[];
+  /** 重みが効く時間帯。`always`以外の軸は、その時間帯に通る区間でだけ効く。 */
+  timeScope: AxisCatalogEntry["time_scope"];
 }
 
-type WayValueCondition = AxisCatalogEntry["dynamic_way_value_conditions"][number];
+export type WayValueCondition = AxisCatalogEntry["dynamic_way_value_conditions"][number];
 
 /** 走る条件の1つで値の変わる軸の名前を、文へ差し込む形（「A」「B」）で並べる。無ければ空文字で、呼ぶ側は評価に触れる句を出さない。 */
 export function axisNamesUsing(axes: readonly CatalogAxis[], condition: WayValueCondition): string {
@@ -73,5 +75,6 @@ export function catalogAxisFromEntry(axis: AxisCatalogEntry): CatalogAxis {
     primaryAttributeIds: axis.primary_attribute_ids,
     weatherLayerGroups: axis.weather_layer_groups,
     wayValueConditions: axis.dynamic_way_value_conditions,
+    timeScope: axis.time_scope,
   };
 }

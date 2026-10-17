@@ -13,6 +13,7 @@ from app.infrastructure import jma_amedas_client
 from app.infrastructure.jma_amedas_client import new_latest_time_cache, new_station_table_cache
 from app.infrastructure.jma_tile_client import JmaTileClient, JmaTileSharedState
 from app.services.jma_amedas_service import JmaAmedasService
+from app.services.nearest_point_areas import new_cells_cache
 from tests.fake_http import client_for
 
 
@@ -34,5 +35,6 @@ async def observe(stations: dict, rain_mm: dict[str, float | None]) -> None:
         JmaTileClient(client, JmaTileSharedState()),
         station_table_cache=new_station_table_cache(),
         latest_time_cache=new_latest_time_cache(),
+        cells_cache=new_cells_cache(),
     )
     await service.refresh_all_stations()

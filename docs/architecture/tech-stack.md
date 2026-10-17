@@ -75,9 +75,25 @@
 Dependabotは、masterが同じ版になってもPull Requestを閉じないことがあり、閉じる条件は公式の文書に無い。依存の版上げを
 取り込むタスクは、同じ版を出しているDependabotのPull Requestをissueの本文に番号で名指し、完了の条件に
 「dependabot の #<番号> が閉じている」を書く（判定役は、issueが名指したDependabotのPull Requestだけを担当が閉じてよいものと
-読む。`.github/claude-task/settings.json`の`autoMode`）。閉じるのは作る担当で、マージのあとの残りとして済ませる:
+読む。`.github/claude-task/settings.json`の`autoMode`）。閉じるのは実装担当で、マージのあとの残りとして済ませる:
 `gh pr view <番号> -R ridecompass/ride-compass --json state`が`OPEN`なら
 `gh pr close <番号> -R ridecompass/ride-compass --comment "<取り込んだ Pull Request> で同じ版を取り込んだ"`で閉じる。
+
+## 走行モードが頼るブラウザの制約
+
+走行モード（画面の作りは[page-composition.md](../modules/frontend/page-composition.md)「走行モード」）は、自転車に固定した
+スマホのブラウザで、画面を点けたまま使う前提で作る。前提を決めているのは次のブラウザの決まり。
+
+- **位置は見えている文書にだけ届く**: `watchPosition`は、文書が見えていない間の位置の変化を届けず、見えたあとも溜めておいた分を
+  届けない（[W3C Geolocation](https://www.w3.org/TR/geolocation/)「Request a position」）。画面が消えると走った道のりが途切れる。
+- **画面を点けたままにする頼み（Screen Wake Lock）は、文書が隠れると外れる**: 隠れた文書は頼めず、見えたときに頼み直す必要がある
+  （[W3C Screen Wake Lock](https://www.w3.org/TR/screen-wake-lock/)「Handling document loss of visibility」）。
+- **向きを読む許しは、利用者の操作の中でしか求められない**: `DeviceOrientationEvent.requestPermission()`は、許しがまだ決まって
+  いない間は利用者の操作の中で呼ばないと断られる（[W3C Device Orientation](https://www.w3.org/TR/orientation-event/)
+  「requestPermission()」）。この口を持つのはiPhoneのSafariで、ほかのブラウザは許しを求めずに向きを届ける。
+- **裏に回したタブは捨てられることがある**: スマホのブラウザはメモリが足りないと、裏のタブを捨て、戻ったときに読み込み直す
+  （Chromeは[Page Lifecycle API](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)の`discarded`）。画面の中の
+  状態だけに持った値は消えるので、走行中のルートは端末へ一時保存する。
 
 ## Windows: `uvicorn --reload`の多重プロセス
 
@@ -96,7 +112,7 @@ Windowsでは`uvicorn --reload`がリローダー親プロセスとワーカー�
 **本番の宛先は、リポジトリの根の`production-origins.json`だけが持つ。** ワークフロー（像のビルド・デプロイ・デプロイのあとの
 確かめ）と道具（例: `axis_apply.py`）はそこから読む。値を書くしかない所（下の表・担当の設定の説明の文等）は、
 `backend/tests/structure/test_single_owner_values.py`が持ち主と照らし、違えば全部の Pull Request の CI
-（`docs-consistency.yml`）が落ちる。宛先が変わったら、このファイルと照らしで落ちた所を同じ Pull Request で直す。マージすると、
+（`ci.yml`の`doc-reading-tests`）が落ちる。宛先が変わったら、このファイルと照らしで落ちた所を同じ Pull Request で直す。マージすると、
 `ci.yml: changes`がこのファイルの変更をbackendとfrontendの両方の変更に数えるので、frontendの像が新しい宛先で作られて出て、
 backendのデプロイがCORSの許可へ新しいfrontendの宛先を足す。
 
@@ -133,8 +149,8 @@ Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で�
 `git rev-parse HEAD`と突き合わせる。frontendの版は、画面のメニューの「バージョン表示」でも見られる（`commit`の頭8文字）。
 
 **backendのデプロイは、masterのCIが通ったコミットを、本番プロセスに届く変更があるときだけ
-出す。** `ci.yml`の`deploy-backend`が、masterへのpushでbackend・api-contract・frontend・e2eの
-ジョブが通ったときだけ`deploy-backend.yml`を呼ぶ——どれかが赤ならデプロイは起動しない（flow-gate・文書の検査は待たない）。呼ばれた側は、本番で
+出す。** `ci.yml`の`deploy-backend`が、masterへのpushで`ci-ok`（このワークフローの検査の全部の結論）が
+通ったときだけ`deploy-backend.yml`を呼ぶ——どれかが赤ならデプロイは起動しない。呼ばれた側は、本番で
 動いているコミット（コンテナの`GIT_COMMIT`）からCIを通ったコミットまでの差分を
 `backend/scripts/deploy_gate.py`で見て、出すかを決める。
 
@@ -246,8 +262,8 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
   後のコミットは前の変更を全部含み、古いコミットの実行はデプロイにもマージの判断にも使わないため。Pull Requestは
   新しいpushで走っている実行も打ち切り、masterは走っている実行を最後まで走らせる（デプロイが同じ実行の中で走るので、
   途中で切らない）。打ち切った・待ちから外した実行のコミットにはCIの結論が残らないので、結論は最新のコミットで読む
-  （.claude/skills/run-checks/SKILL.md「CIの結論を読む」）。数十秒で終わる`docs-consistency.yml`・`claude-gate.yml`には置かない
-  （待ちが積もらない）。
+  （.claude/skills/run-checks/SKILL.md「CIの結論を読む」）。ゲートの公開（`deploy-gate`）も同じ実行の中で走るので、masterの
+  前の実行が終わるまで待つ。
 - ジョブの分け方・キャッシュは、所要時間と同時実行の枠で決める（理由は各ワークフローのコメント）。
 - **`ci.yml`は検査を2段に並べ、落ちた版の残りを走らせない。** 軽い検査（静的検査・単体のテスト・像の確かめ）を段1で
   並べて走らせ、重い検査（e2e・全状態の走査）は段1のどれも落ちず・取り消されずに終わったときだけ始める。段に分けたぶん通る版の
@@ -259,24 +275,48 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
   持ち、`ci.yml: changes`は変わったファイルの頭からどの置き場が変わったかだけを見て（本番の宛先の`production-origins.json`は、
   両方の像が読むのでbackendとfrontendの両方に数える）、その置き場の検査（backendならテスト・api-contract・
   像の確かめ、frontendならテスト・e2e・全状態の走査・api-contract・像の確かめ、`scripts/`なら道具のテスト）とデプロイを走らせる。
-  それ以外の変更（文書・タスク管理・ほかのワークフロー）では何も走らせない。`ci.yml`と`.github/actions/`を変えたら、その定義で
-  全部を走らせて確かめる。置き場をまたいで読むものは数えず、テストを読む側の置き場へ置く（backendのための道具は`backend/scripts/`）。
+  それ以外の変更（文書・タスク管理・ほかのワークフロー）では、置き場に依らないジョブ（文書の整合・ゲートの検査等）だけを走らせる。`ci.yml`と`.github/actions/`を変えたら、
+  定義が変わったジョブ（使う`.github/actions/`の手順が変わったジョブと、それらが出力を読むジョブを含む）だけを足して走らせ、ほかのジョブは
+  置き場で決める。手順の変わっていないジョブのテストを回しても定義の確かめにはならず、ジョブどうしのつながりはいつも走る`doc-reading-tests`の
+  ワークフローを読むテストが見る。ジョブの外（`on`・`concurrency`等）が変わったときは、全部を走らせる。
+  YAMLとして読んだ中身で比べ、コメントだけの変更は定義の変更に数えない（`run`のシェルの中のコメントは中身なので数える）。置き場をまたいで読むものは数えず、テストを読む側の置き場へ置く（backendのための道具は`backend/scripts/`）。
   走らせるジョブの組は`changes`の段だけが持ち、ジョブの`if`と`ci-ok`が読む。
 - **masterのpushの`changes`は、pushの実行が成功した一番近い祖先と比べる。** 直前のコミット
   （`github.event.before`）と比べると、直前の実行が失敗で終わったか待ちのまま取り消された（上の`concurrency`）とき、その変更が
   検査もデプロイもされないまま、次の文書だけの変更の実行がそれを飛ばして成功で終わる。デプロイだけが落ちた実行のあとは、
   確かめ済みのテストも走り直すが、余分に走るだけで抜けはしない。
+- **masterのpushは、取り込んだPull RequestのCIが同じ中身を検査済みなら、検査を回し直さない。** Pull RequestのCIは先頭へ
+  その時のmasterを合わせた版を検査するので、比べる相手が親（親の実行が成功している）で、先頭が親を含み、先頭とマージのコミットの
+  木が同じで、その先頭のCIが成功していれば、同じ中身を検査済みとみなし、frontendの像・デプロイ・ゲートの公開と、
+  いつも走るジョブ（下の`docs-consistency`等）だけを走らせる。CIの定義を変えたときと、確かめられないときは、置き場のとおり回す。
+- **Pull Requestの`changes`は、検査するマージのコミットの基の側の親と比べる。** `pull_request`の出来事の`base.sha`は
+  Pull Requestへpushしたあとに基の先端が進んでも新しくならず、そのまま比べるとその間に基へ入った変更が差に混ざる
+  （`.github/actions/pr-base`）。
 - **タスク管理は製品のCIと分ける。** タスク管理の置き場（`.github/taskflow-paths`。ゲートの`tools/flow-gate/`と
-  担当のワークフロー）の検査とゲートの公開は`claude-gate.yml`が持ち、`ci.yml`はその置き場を読まない。そのため
-  `ci.yml: changes`はその置き場だけの変更でどのジョブも走らせず、backend・frontendのデプロイも起動しない。
+  担当のワークフロー）の検査とゲートの公開は`ci.yml`の`flow-gate`・`deploy-gate`が持ち、置き場に依らずいつも走る。
+  `ci.yml: changes`はその置き場だけの変更で製品のジョブを走らせず、backend・frontendのデプロイも起動しない。
   置き場の定義は、総量の計測（`scripts/review_checks.py: TASKFLOW_PREFIXES`）が読む。
 - **ワークフローは`paths`で飛ばさず、いつも起こす。** コードのリポジトリは、master へ入れる前に必須チェック
-  （`ci.yml`の`ci-ok`・`docs-consistency.yml`のジョブ・`claude-gate.yml`の`flow-gate`）が通ることを求める。ワークフローごと飛ばすと必須チェックが Pending のまま残り、
+  （`ci.yml`の`ci-ok`。このワークフローの検査の全部の結論）が通ることを求める。ワークフローごと飛ばすと必須チェックが Pending のまま残り、
   Pull Request がマージできない（公式の「Troubleshooting required status checks」）。ジョブを飛ばすのは
   `changes`ジョブが決め、ジョブの`if`で飛ばしたものはスキップとして必須チェックを通る。
-- **文書の整合は`ci.yml`と分けたワークフローに置く。** 文書の整合の検査（`scripts/review_checks.py docs`）は
-  文書だけの変更こそが対象なので、`changes`が文書だけの変更でジョブを飛ばす`ci.yml`に置かず、常に走る`docs-consistency.yml`に置く。
-  backendの外のPythonとshの静的検査も、置き場を問わず同じワークフローが常に走らせる。
+- **文書の整合は、置き場に依らずいつも走るジョブに置く。** 文書の整合の検査（`scripts/review_checks.py docs`）は
+  文書だけの変更こそが対象なので、`changes`の決める組に入れず、常に走る`ci.yml`の`docs-consistency`に置く。
+  全ての文書とワークフローを読むテスト（`doc-reading-tests`）と、backendの外のPythonとshの静的検査（`repo-wide`）も同じく常に走らせる。
+- **1つの持ち主（タスクの issue・master）が同時に動かせるジョブは、レーンの数までにする。** 同時に動くジョブの上限は
+  組織全体で1つで、GitHub の標準の道具には持ち主ごとの取り分が無い（`strategy.max-parallel` は1回の実行の中だけ、
+  `concurrency` は同じ group を1本ずつにするだけ）。そこで、ランナーを取るジョブはどれも、ジョブの `concurrency` の group を
+  「<鍵>-lane-<レーン>」にし、`queue: max` で待たせる。group はワークフローをまたいでリポジトリで1つなので、同じ鍵のジョブは
+  レーンの数より多くは動かず、多い分は取り消されずに順に待つ。持ち主の数×レーンの数が組織の上限を超えた分は、ふつうの順番待ちになる。
+  - 鍵は、Pull Request なら元のブランチ（タスクの作業ブランチ `orch/tasks-<番号>`）、push・定時・手の起こしなら ref の名前。
+    担当（`claude-task.yml`）と変異テストの全部の測り（`mutation.yml`）は、起こすときの入力の issue から作業ブランチの名を組む。
+    本番へ出す・公開するジョブは、どの ref から起こしても行き先が1つなので、鍵を master に決めてある。
+  - レーンは決め打ちで、ジョブごと（matrix なら行ごと）にどのレーンかを書く。式に余りの演算が無く、空いたレーンを取り合う形は
+    書けない。担当は持ち時間いっぱいまで動くので、レーン0を担当だけに与え、ほかのジョブはレーン1以降に置く（同じレーンに置くと、
+    担当が終わるまで待つ）。同じ実行の中で並んで始まるジョブは別のレーンへ、長いジョブ（変異テストの全部の測り）は始まりの
+    短いジョブとだけ同じレーンへ置き、Pull Request の CI の通しの長さを延ばさない。
+  - レーンの数と、どのジョブもレーンを持つことは `backend/tests/structure/test_workflow_lanes.py: LANES` のテストが持ち、
+    ワークフローを足す・ジョブを足すときに書き漏れると落ちる。
 
 **privateにしたら、この節の前提が崩れる。** 公式の同じページによれば、Freeプランのprivate
 リポジトリは標準ランナーで月2,000分までで、支払い方法が未登録なら使い切った時点で実行が止まる
@@ -297,7 +337,7 @@ CIだけに置いているため、CIの分数が尽きると検査そのもの�
 | ridecompass/ride-compassのActionsの秘密の値 | `CODE_TOKEN` | hidakagitが作ったfine-grained。Resource ownerはridecompassで、届くのはridecompass/ride-compassだけ。Actions・Contents・Issues・Pull requests・Variables・Workflowsは読み書き（Workflowsは2026-10-09に足した。担当が`.github/workflows/`を自分でpushする）、Commit statusesは読むだけ。期限は未記録 | `claude-task.yml`（checkout・Claudeの連携・ghの既定） |
 | 同 | `FLOW_BOT_TOKEN` | hidakagit-botが作ったfine-grained。届くのはridecompass/ride-compass-tasksだけ。Contentsは読み書き（担当の手番の記録をリリースへ置く）。期限2027-09-29 | 担当と流れの道具が置き場へ書く。開発機ではユーザー環境変数の同じ名前 |
 | 同 | `CLAUDE_CODE_OAUTH_TOKEN` | Claudeの契約のトークン（GitHubのトークンではない） | `claude-task.yml` |
-| 同 | `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID` | Cloudflare | ゲートと回答フォームの公開（`claude-gate.yml`） |
+| 同 | `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID` | Cloudflare | ゲートと回答フォームの公開（`ci.yml`の`deploy-gate`） |
 | 同 | `MAPILLARY_TOKEN` | hidakagitがMapillaryの開発者の画面で登録したアプリのClient Token（読むだけ。GitHubのトークンではない）。期限は未記録 | `claude-task.yml`（担当の環境変数。Mapillaryの街灯の点の付き方の測定） |
 | 同 | `ORACLE_VM_HOST`・`ORACLE_VM_SSH_KEY` | 本番のVM | backendのデプロイ |
 | 同 | `RENDER_FRONTEND_DEPLOY_HOOK_URL` | Render | frontendのデプロイ |
@@ -411,13 +451,13 @@ frontendはRender、PostgreSQLとRedisはVMへネイティブに置く。
   後のコミットは前の変更を全部含み、古いコミットの実行はデプロイにもマージの判断にも使わないため。Pull Requestは
   新しいpushで走っている実行も打ち切り、masterは走っている実行を最後まで走らせる（デプロイが同じ実行の中で走るので、
   途中で切らない）。打ち切った・待ちから外した実行のコミットにはCIの結論が残らないので、結論は最新のコミットで読む
-  （.claude/skills/run-checks/SKILL.md「CIの結論を読む」）。数十秒で終わる`docs-consistency.yml`・`claude-gate.yml`には置かない
-  （待ちが積もらない）。
+  （.claude/skills/run-checks/SKILL.md「CIの結論を読む」）。ゲートの公開（`deploy-gate`）も同じ実行の中で走るので、masterの
+  前の実行が終わるまで待つ。
 
 - **飛ばす範囲は、その検査が読む対象から導く。** 飛ばしてよいのは、`ci.yml`のどの検査も読まないパスだけ。
   文書を読むテストを足したら、読む範囲がディレクトリに限られるなら`changes`の`case`でそこを先に当てて入れ直し、
-  全ての文書を読むなら常に走る`docs-consistency.yml`でも走らせる。飛ばす運用の道具（`scripts/`の一部）を
-  テストやデプロイが読むようにしたら、`case`からその行を外す。飛ばす道具の静的検査は`docs-consistency.yml`が
+  全ての文書を読むなら常に走る`ci.yml`の`doc-reading-tests`でも走らせる。飛ばす運用の道具（`scripts/`の一部）を
+  テストやデプロイが読むようにしたら、`case`からその行を外す。飛ばす道具の静的検査は`ci.yml`の`repo-wide`が
   常に走らせる。
 
 #### 秘密の値とトークン

@@ -1539,51 +1539,6 @@
         ]
       }
     },
-    "/api/admin/axis-definitions/preview-display-thresholds": {
-      "post": {
-        "tags": [
-          "axis-admin"
-        ],
-        "operationId": "preview_display_thresholds_api_admin_axis_definitions_preview_display_thresholds_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DisplayThresholdsPreviewRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DisplayThresholdsPreviewResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
-      }
-    },
     "/api/admin/tuning": {
       "get": {
         "tags": [
@@ -2164,6 +2119,16 @@
               }
             ],
             "title": "Weather Code"
+          },
+          "valid_area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -2177,7 +2142,8 @@
           "wind_direction",
           "precipitation_10min_mm",
           "twilight",
-          "weather_code"
+          "weather_code",
+          "valid_area"
         ],
         "title": "AmedasObservation"
       },
@@ -2233,10 +2199,6 @@
             "type": "array",
             "title": "Weather Layer Groups"
           },
-          "dedicated_way_value_layer": {
-            "type": "boolean",
-            "title": "Dedicated Way Value Layer"
-          },
           "map_paint": {
             "$ref": "#/components/schemas/MapPaint"
           },
@@ -2265,6 +2227,14 @@
           "dynamic_way_value_undetermined_by_bearing": {
             "type": "boolean",
             "title": "Dynamic Way Value Undetermined By Bearing"
+          },
+          "time_scope": {
+            "type": "string",
+            "enum": [
+              "always",
+              "night_only"
+            ],
+            "title": "Time Scope"
           }
         },
         "additionalProperties": false,
@@ -2278,12 +2248,12 @@
           "icon_id",
           "primary_attribute_ids",
           "weather_layer_groups",
-          "dedicated_way_value_layer",
           "map_paint",
           "raw_value_units",
           "material_breakdown",
           "dynamic_way_value_conditions",
-          "dynamic_way_value_undetermined_by_bearing"
+          "dynamic_way_value_undetermined_by_bearing",
+          "time_scope"
         ],
         "title": "AxisCatalogEntry"
       },
@@ -2296,44 +2266,32 @@
             "type": "array",
             "title": "Axes"
           },
-          "tile_runtime_scales": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Tile Runtime Scales",
-            "default": {}
-          },
           "client_tuning": {
             "additionalProperties": {
               "type": "number"
             },
             "type": "object",
-            "title": "Client Tuning",
-            "default": {}
+            "title": "Client Tuning"
           },
           "tile_versions": {
             "additionalProperties": {
               "type": "string"
             },
             "type": "object",
-            "title": "Tile Versions",
-            "default": {}
+            "title": "Tile Versions"
           },
           "accident_years": {
             "items": {
               "type": "integer"
             },
             "type": "array",
-            "title": "Accident Years",
-            "default": []
+            "title": "Accident Years"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "axes",
-          "tile_runtime_scales",
           "client_tuning",
           "tile_versions",
           "accident_years"
@@ -2443,11 +2401,6 @@
               }
             ],
             "title": "Display Band Labels Override"
-          },
-          "dedicated_way_value_layer": {
-            "type": "boolean",
-            "title": "Dedicated Way Value Layer",
-            "default": false
           }
         },
         "additionalProperties": false,
@@ -2564,14 +2517,6 @@
             ],
             "title": "Display Band Labels Override"
           },
-          "dedicated_way_value_layer": {
-            "type": "boolean",
-            "title": "Dedicated Way Value Layer",
-            "default": false
-          },
-          "display": {
-            "$ref": "#/components/schemas/AxisDisplaySpec"
-          },
           "weight_share_when_published": {
             "anyOf": [
               {
@@ -2599,45 +2544,9 @@
           "time_scope",
           "display_thresholds_override",
           "display_band_labels_override",
-          "dedicated_way_value_layer",
-          "display",
           "weight_share_when_published"
         ],
         "title": "AxisDefinitionResponse"
-      },
-      "AxisDisplaySpec": {
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "ramp",
-              "none"
-            ],
-            "title": "Kind"
-          },
-          "tile_inputs": {
-            "items": {
-              "$ref": "#/components/schemas/TileInputSpec"
-            },
-            "type": "array",
-            "title": "Tile Inputs"
-          },
-          "thresholds": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Thresholds"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "kind",
-          "tile_inputs",
-          "thresholds"
-        ],
-        "title": "AxisDisplaySpec"
       },
       "AxisInspectorAxis": {
         "properties": {
@@ -2684,15 +2593,11 @@
             "title": "Osm Way Id"
           },
           "feature_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Feature Key"
+          },
+          "point": {
+            "$ref": "#/components/schemas/Coordinates"
           },
           "z": {
             "type": "integer",
@@ -2756,6 +2661,8 @@
         "type": "object",
         "required": [
           "osm_way_id",
+          "feature_key",
+          "point",
           "z",
           "x",
           "y",
@@ -2776,32 +2683,11 @@
             "type": "object",
             "title": "Tags"
           },
-          "axes": {
-            "items": {
-              "$ref": "#/components/schemas/AxisInspectorAxis"
-            },
-            "type": "array",
-            "title": "Axes"
+          "segment": {
+            "$ref": "#/components/schemas/InspectorValues"
           },
-          "composite_difficulty": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/InspectorComposite"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "landcover": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LandcoverPercentages"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "way": {
+            "$ref": "#/components/schemas/InspectorValues"
           }
         },
         "additionalProperties": false,
@@ -2809,9 +2695,8 @@
         "required": [
           "highway",
           "tags",
-          "axes",
-          "composite_difficulty",
-          "landcover"
+          "segment",
+          "way"
         ],
         "title": "AxisInspectorResult"
       },
@@ -2847,8 +2732,7 @@
               "type": "string"
             },
             "type": "object",
-            "title": "Value Labels",
-            "default": {}
+            "title": "Value Labels"
           }
         },
         "additionalProperties": false,
@@ -3335,73 +3219,43 @@
         ],
         "title": "DifficultyMapValue"
       },
-      "DisplayThresholdsPreviewRequest": {
+      "ElevationStretch": {
         "properties": {
-          "axis_id": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Axis Id"
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
           },
-          "shape": {
-            "oneOf": [
+          "start_elevation_m": {
+            "anyOf": [
               {
-                "$ref": "#/components/schemas/BreakpointLinearShape-Input"
+                "type": "number"
               },
               {
-                "$ref": "#/components/schemas/CategoricalShape-Input"
+                "type": "null"
               }
             ],
-            "title": "Shape"
+            "title": "Start Elevation M"
           },
-          "priority_overrides": {
-            "items": {
-              "$ref": "#/components/schemas/PriorityCondition"
-            },
-            "type": "array",
-            "title": "Priority Overrides"
-          },
-          "thresholds": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "minItems": 1,
-            "title": "Thresholds"
+          "end_elevation_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Elevation M"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "axis_id",
-          "shape",
-          "thresholds"
+          "distance_km",
+          "start_elevation_m",
+          "end_elevation_m"
         ],
-        "title": "DisplayThresholdsPreviewRequest"
-      },
-      "DisplayThresholdsPreviewResponse": {
-        "properties": {
-          "dropped_on_map": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Dropped On Map"
-          },
-          "bands_on_map": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Bands On Map"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "dropped_on_map",
-          "bands_on_map"
-        ],
-        "title": "DisplayThresholdsPreviewResponse"
+        "title": "ElevationStretch"
       },
       "ExternalCallStats": {
         "properties": {
@@ -3471,12 +3325,23 @@
             },
             "type": "array",
             "title": "Forecasts"
+          },
+          "valid_area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "forecasts"
+          "forecasts",
+          "valid_area"
         ],
         "title": "FloodForecasts"
       },
@@ -3525,6 +3390,9 @@
           },
           "hard_filters": {
             "$ref": "#/components/schemas/HardFilterOverride"
+          },
+          "road_avoidance": {
+            "$ref": "#/components/schemas/RoadAvoidanceOverride"
           },
           "max_routes": {
             "type": "integer",
@@ -3589,6 +3457,7 @@
           "penalty_strength",
           "max_average_grade_percent",
           "hard_filters",
+          "road_avoidance",
           "max_routes",
           "start_time",
           "assumed_speed_kmh",
@@ -3676,6 +3545,45 @@
           "covered_weight_fraction"
         ],
         "title": "InspectorComposite"
+      },
+      "InspectorValues": {
+        "properties": {
+          "axes": {
+            "items": {
+              "$ref": "#/components/schemas/AxisInspectorAxis"
+            },
+            "type": "array",
+            "title": "Axes"
+          },
+          "composite_difficulty": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InspectorComposite"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "landcover": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LandcoverPercentages"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "axes",
+          "composite_difficulty",
+          "landcover"
+        ],
+        "title": "InspectorValues"
       },
       "JmaTileIndexAvailable": {
         "properties": {
@@ -3987,9 +3895,6 @@
           "legend": {
             "$ref": "#/components/schemas/MapLegendScale"
           },
-          "tiles": {
-            "$ref": "#/components/schemas/AxisDisplaySpec"
-          },
           "band_labels": {
             "anyOf": [
               {
@@ -4012,7 +3917,6 @@
           "unit",
           "thresholds",
           "legend",
-          "tiles",
           "band_labels"
         ],
         "title": "MapPaint"
@@ -4504,6 +4408,47 @@
         ],
         "title": "RawValueUnits"
       },
+      "RoadAvoidanceOverride": {
+        "additionalProperties": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "avoid",
+            "exclude"
+          ]
+        },
+        "type": "object",
+        "title": "RoadAvoidanceOverride"
+      },
+      "RoadClassStretch": {
+        "properties": {
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "distance_km",
+          "value"
+        ],
+        "title": "RoadClassStretch"
+      },
       "RouteCandidate": {
         "properties": {
           "direction_label": {
@@ -4555,16 +4500,6 @@
             "type": "array",
             "title": "Segments"
           },
-          "overall_difficulty": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OverallDifficulty"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "estimated_duration_seconds": {
             "anyOf": [
               {
@@ -4578,8 +4513,7 @@
           },
           "wind_unavailable": {
             "type": "boolean",
-            "title": "Wind Unavailable",
-            "default": false
+            "title": "Wind Unavailable"
           },
           "missing_travel_data_share": {
             "anyOf": [
@@ -4592,33 +4526,12 @@
             ],
             "title": "Missing Travel Data Share"
           },
-          "axis_difficulties": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Axis Difficulties"
-          },
-          "axis_contributions": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Axis Contributions"
-          },
           "axis_raw_values": {
             "additionalProperties": {
               "type": "number"
             },
             "type": "object",
             "title": "Axis Raw Values"
-          },
-          "material_values": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Material Values"
           },
           "material_category_shares": {
             "additionalProperties": {
@@ -4651,6 +4564,58 @@
             "type": "array",
             "title": "Node Ids"
           },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/RouteTurn"
+            },
+            "type": "array",
+            "title": "Turns"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/RoutePoint"
+            },
+            "type": "array",
+            "title": "Points"
+          },
+          "waypoint_distances_km": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Waypoint Distances Km"
+          },
+          "overall_difficulty": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverallDifficulty"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "axis_difficulties": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Axis Difficulties"
+          },
+          "axis_contributions": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Axis Contributions"
+          },
+          "material_values": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Material Values"
+          },
           "id": {
             "type": "string",
             "title": "Id"
@@ -4681,18 +4646,21 @@
           "geometry",
           "elevation_gain_m",
           "segments",
-          "overall_difficulty",
           "estimated_duration_seconds",
           "wind_unavailable",
           "missing_travel_data_share",
-          "axis_difficulties",
-          "axis_contributions",
           "axis_raw_values",
-          "material_values",
           "material_category_shares",
           "edge_ids",
           "edge_point_offsets",
           "node_ids",
+          "turns",
+          "points",
+          "waypoint_distances_km",
+          "overall_difficulty",
+          "axis_difficulties",
+          "axis_contributions",
+          "material_values",
           "id",
           "kind",
           "is_fastest",
@@ -4843,6 +4811,9 @@
           "hard_filters": {
             "$ref": "#/components/schemas/HardFilterOverride"
           },
+          "road_avoidance": {
+            "$ref": "#/components/schemas/RoadAvoidanceOverride"
+          },
           "max_routes": {
             "type": "integer",
             "maximum": 15.0,
@@ -4909,6 +4880,7 @@
           "longitude",
           "distance_tolerance_km",
           "hard_filters",
+          "road_avoidance",
           "max_routes",
           "assumed_speed_kmh",
           "start_time"
@@ -4947,6 +4919,46 @@
           "no_candidates_reason"
         ],
         "title": "RouteGenerateResponse"
+      },
+      "RoutePoint": {
+        "properties": {
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
+          },
+          "layer": {
+            "type": "string",
+            "title": "Layer"
+          },
+          "properties": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Properties"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "distance_km",
+          "layer",
+          "properties"
+        ],
+        "title": "RoutePoint"
       },
       "RoutePreferenceWeights": {
         "additionalProperties": {
@@ -5011,6 +5023,13 @@
             "type": "number",
             "title": "Distance Km"
           },
+          "elevations": {
+            "items": {
+              "$ref": "#/components/schemas/ElevationStretch"
+            },
+            "type": "array",
+            "title": "Elevations"
+          },
           "estimated_arrival_time": {
             "anyOf": [
               {
@@ -5063,6 +5082,16 @@
                 "type": "null"
               }
             ]
+          },
+          "road_classes": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/RoadClassStretch"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Road Classes"
           }
         },
         "additionalProperties": false,
@@ -5075,14 +5104,50 @@
           "end_longitude",
           "cumulative_distance_km",
           "distance_km",
+          "elevations",
           "estimated_arrival_time",
           "axis_difficulties",
           "axis_contributions",
           "material_values",
           "difficulty",
-          "wind"
+          "wind",
+          "road_classes"
         ],
         "title": "RouteSegmentDetail"
+      },
+      "RouteTurn": {
+        "properties": {
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right",
+              "uturn"
+            ],
+            "title": "Direction"
+          },
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "distance_km",
+          "direction",
+          "latitude",
+          "longitude"
+        ],
+        "title": "RouteTurn"
       },
       "ScorePoint": {
         "properties": {
@@ -5302,97 +5367,6 @@
         ],
         "title": "TemperatureRange"
       },
-      "TileInputSpec": {
-        "properties": {
-          "property": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Property"
-          },
-          "weight": {
-            "type": "number",
-            "title": "Weight",
-            "default": 1.0
-          },
-          "boolean": {
-            "type": "boolean",
-            "title": "Boolean",
-            "default": false
-          },
-          "true_value": {
-            "type": "number",
-            "title": "True Value",
-            "default": 0.0
-          },
-          "false_value": {
-            "type": "number",
-            "title": "False Value",
-            "default": 0.0
-          },
-          "has_unknown_fallback": {
-            "type": "boolean",
-            "title": "Has Unknown Fallback",
-            "default": false
-          },
-          "categories": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "type": "number"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Categories"
-          },
-          "breakpoints": {
-            "anyOf": [
-              {
-                "items": {
-                  "prefixItems": [
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "type": "number"
-                    }
-                  ],
-                  "type": "array",
-                  "maxItems": 2,
-                  "minItems": 2
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Breakpoints"
-          },
-          "needs_runtime_scale": {
-            "type": "boolean",
-            "title": "Needs Runtime Scale",
-            "default": false
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "property",
-          "weight",
-          "boolean",
-          "true_value",
-          "false_value",
-          "has_unknown_fallback",
-          "categories",
-          "breakpoints",
-          "needs_runtime_scale"
-        ],
-        "title": "TileInputSpec"
-      },
       "TuningParameterView": {
         "properties": {
           "id": {
@@ -5496,6 +5470,38 @@
           "sunset"
         ],
         "title": "Twilight"
+      },
+      "ValidArea": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "MultiPolygon",
+            "title": "Type"
+          },
+          "coordinates": {
+            "items": {
+              "items": {
+                "items": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Coordinates"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "ValidArea"
       },
       "ValidationError": {
         "properties": {
@@ -5619,12 +5625,23 @@
                 "type": "null"
               }
             ]
+          },
+          "valid_area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "reading"
+          "reading",
+          "valid_area"
         ],
         "title": "WbgtStatus"
       },
@@ -5754,12 +5771,23 @@
             },
             "type": "array",
             "title": "Warnings"
+          },
+          "valid_area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "warnings"
+          "warnings",
+          "valid_area"
         ],
         "title": "WeatherWarnings"
       },

@@ -13,10 +13,11 @@
 """
 
 from dataclasses import dataclass, fields
+from typing import Any
 
 import numpy as np
 
-from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays, ElevationAttribute
+from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, CategoricalColumn, EdgeMaterialArrays, ElevationAttribute
 from app.domain.material_catalog import GRADIENT_PERCENT
 
 
@@ -45,6 +46,9 @@ class RoadNetwork:
     edge_min_lat: np.ndarray
     edge_max_lon: np.ndarray
     edge_max_lat: np.ndarray
+    # 点を出てすぐの向きと、点へ入る直前の向き（度）。交差点での曲がりを測る。NaN=方位が決まらない。
+    edge_start_bearing_deg: np.ndarray  # float64
+    edge_end_bearing_deg: np.ndarray  # float64
 
     # 材料（`EdgeMaterialArrays`と同じ列。区間と同じ行順）。
     numeric_ids: tuple[str, ...]
@@ -52,13 +56,14 @@ class RoadNetwork:
     categorical_ids: tuple[str, ...]
     categorical_codes: np.ndarray  # (区間, 列) int16。0は値なし
     categorical_vocab: tuple[tuple[str | None, ...], ...]  # 列ごとの語彙。先頭は必ずNone
-    hard_filter_ids: tuple[str, ...]
-    hard_filter_flags: np.ndarray  # (区間, 列) bool
+    route_flag_ids: tuple[str, ...]
+    route_flags: np.ndarray  # (区間, 列) bool
     distance_m: np.ndarray  # float64
     bearing_deg: np.ndarray  # float64, NaN=方位が決まらない
     mid_lat: np.ndarray
     mid_lon: np.ndarray
-    elevation_present: np.ndarray  # bool
+    start_elevation_m: np.ndarray  # float64, NaN=標高が無い（獲得・損失も無い）
+    end_elevation_m: np.ndarray  # float64, NaN=標高が無い
     elevation_gain_m: np.ndarray  # float64, NaN=欠損
     elevation_loss_m: np.ndarray
 
@@ -80,7 +85,7 @@ class RoadNetwork:
             for name, matrix, ids in (
                 ("numeric_values", self.numeric_values, self.numeric_ids),
                 ("categorical_codes", self.categorical_codes, self.categorical_ids),
-                ("hard_filter_flags", self.hard_filter_flags, self.hard_filter_ids),
+                ("route_flags", self.route_flags, self.route_flag_ids),
             )
             if matrix.shape[1] != len(ids)
         }
@@ -153,32 +158,29 @@ def material_arrays_of(road: RoadSlice) -> EdgeMaterialArrays:
     # 分類の材料は(区間, 列)の行列なので、行を1回だけ引いてから列へ分ける。
     codes = np.asarray(network.categorical_codes[rows])
 
-    def take(values: np.ndarray) -> np.ndarray:
-        return np.asarray(values[rows])
-
+    row_arrays: dict[str, Any] = {name: np.asarray(getattr(network, name)[rows]) for name in EDGE_ROW_ARRAY_FIELDS}
     return EdgeMaterialArrays(
-        numeric_ids=network.numeric_ids, numeric_values=take(network.numeric_values),
+        numeric_ids=network.numeric_ids,
         categorical_ids=network.categorical_ids,
         categorical_columns=tuple(
             CategoricalColumn(np.ascontiguousarray(codes[:, column]), vocab)
             for column, vocab in enumerate(network.categorical_vocab)
         ),
-        hard_filter_ids=network.hard_filter_ids, hard_filter_flags=take(network.hard_filter_flags),
-        distance_m=take(network.distance_m), bearing_deg=take(network.bearing_deg),
-        mid_lat=take(network.mid_lat), mid_lon=take(network.mid_lon),
-        elevation_present=take(network.elevation_present),
-        elevation_gain_m=take(network.elevation_gain_m), elevation_loss_m=take(network.elevation_loss_m),
+        route_flag_ids=network.route_flag_ids,
+        **row_arrays,
     )
 
 
 def elevation_attribute(network: RoadNetwork, row: int, edge_id: str) -> ElevationAttribute | None:
     """全体の行`row`の区間の標高属性。標高が無ければNone。平均勾配は材料`gradient_percent`の値
     （表示用の標高列と重複して持たないため、勾配だけは材料の列から読む）。"""
-    if not network.elevation_present[row]:
+    if np.isnan(network.start_elevation_m[row]):
         return None
     grade_column = network.numeric_ids.index(GRADIENT_PERCENT)
     return ElevationAttribute(
         edge_id=edge_id,
+        start_elevation_m=float(network.start_elevation_m[row]),
+        end_elevation_m=float(network.end_elevation_m[row]),
         elevation_gain_m=float(network.elevation_gain_m[row]),
         elevation_loss_m=float(network.elevation_loss_m[row]),
         average_grade=None if np.isnan(grade := network.numeric_values[row, grade_column]) else float(grade),

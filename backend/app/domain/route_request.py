@@ -4,13 +4,16 @@
 止める上限（生成物`route-generate-config.json`）の両方がここから読む。
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, TypeGuard
 
 from pydantic import Field
 from pydantic_core import PydanticCustomError
 
+from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.route import Coordinates
+from app.domain.route_preference import RoutePreference
 
 # ルート生成距離の上限（km）。上限が無いと探索の範囲が際限なく広がり、道路網の読み込みが
 # 長時間止まりうる。30km規模までの検証実績に余裕を見た値。経由地・目的地は出発地からこの
@@ -93,9 +96,15 @@ class NoDistanceTarget:
     points: FixedPoints
 
 
+def spliceable(destination: Coordinates | None) -> TypeGuard[Coordinates]:
+    """目的地`destination`へ向かう候補が、走る途中で別の候補の区間へ乗り換えられるか。目的地を持つ候補だけが乗り換えられる。"""
+    # 周回は起点へ戻る制約があり、途中で別候補へ乗り換えると戻れる保証が無くなる。
+    return destination is not None
+
+
 @dataclass(frozen=True)
 class SplicedTarget:
-    """区間を差し替えて組み立てた経路を、探索せずに評価する。目的地ルートだけが対象。"""
+    """区間を差し替えて組み立てた経路を、探索せずに評価する。乗り換えられる候補（`spliceable`）だけが対象。"""
 
     destination: Coordinates
     edge_ids: tuple[str, *tuple[str, ...]]
@@ -104,3 +113,17 @@ class SplicedTarget:
 # 検証を通った要求が何を生成するか。距離の有無（仕上げの戦略）は要求の検証がここで1回だけ選び、生成は型だけを見る。
 # 距離はどの型でも全長の目標で、置いた点の有無で意味を変えない。
 RouteTarget = DistanceTarget | NoDistanceTarget | SplicedTarget
+
+
+@dataclass(frozen=True)
+class RequestedConditions:
+    """要求が指定した評価条件。Noneは省略で、既定はエンジンを組む側（`services/route_generation_setup.py:
+    assemble_route_generation_setup`）が決める。"""
+
+    preference_override: RoutePreference | None
+    penalty_strength: float | None
+    max_average_grade_percent: float | None
+    hard_filters: frozenset[str]
+    # 道のレイヤの行→避け方の段（鍵は`domain/road_avoidance.py: AVOIDABLE_ROWS`と同じ集合）。
+    road_avoidance: Mapping[str, AvoidanceLevel]
+    assumed_speed_kmh: float

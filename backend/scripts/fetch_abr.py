@@ -4,7 +4,7 @@ r"""アドレス・ベース・レジストリ（都道府県・市区町村・�
 取込はローカルのファイルを読むだけにする（`source_adapters/abr.py`）。
 
 取るのは全国の1ファイルずつ（都道府県・市区町村・町字のテキストと、都道府県・市区町村の代表点）と、町字の代表点と
-住居表示の街区のテキストと代表点のうち取込の範囲（`target.bbox`）に掛かる都道府県のもの（`source_adapters/abr.py: prefectures_in_range`。市区町村の代表点から
+住居表示の街区のテキストと代表点のうち取込の範囲（`target.bbox`）に掛かる都道府県のもの（`source_adapters/abr.py: range_prefectures`。市区町村の代表点から
 決めるので、市区町村の代表点を先に取る）。取得の手順（読めるものは落とし直さない・一時ファイル経由・落とし終えたら
 開いてみる）は`app.batch.common.fetch_verified`が持つ。
 
@@ -22,7 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified
+from app.batch.common import fetch_verified, fetched_all
 from app.batch.fetch_cli import run_profile_fetch_cli
 from app.batch.source_adapters.abr import (
     ENCODING,
@@ -30,11 +30,10 @@ from app.batch.source_adapters.abr import (
     archive_path,
     archive_url,
     prefecture_stems,
-    prefectures_in_range,
-    read_rows,
+    range_prefectures,
 )
 from app.batch.source_adapters.zip_csv import zip_csv_readable
-from app.batch.source_profile import SourceProfile, SourceSpec
+from app.batch.source_profile import SourceProfile, SourceSpec, Target
 
 logger = logging.getLogger("ridecompass.fetch_abr")
 
@@ -51,17 +50,17 @@ def _fetch(snapshot: str, stem: str) -> bool:
                           read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
 
 
-def fetch(snapshot: str, bbox: tuple[float, float, float, float]) -> bool:
-    if not all([_fetch(snapshot, stem) for stem in NATIONWIDE_ARCHIVES]):
+def fetch(snapshot: str, target: Target) -> bool:
+    if not fetched_all(_fetch(snapshot, stem) for stem in NATIONWIDE_ARCHIVES):
         return False
-    prefectures = prefectures_in_range(read_rows(archive_path(snapshot, "mt_city_pos_all")), bbox)
+    prefectures = range_prefectures(snapshot, target)
     logger.info("範囲に掛かる都道府県: %s", ", ".join(prefectures))
-    return all([_fetch(snapshot, stem) for code in prefectures for stem in prefecture_stems(code)])
+    return fetched_all(_fetch(snapshot, stem) for code in prefectures for stem in prefecture_stems(code))
 
 
 def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
     snapshots = sorted({spec.rows.snapshot for spec in specs})
-    return all([fetch(snapshot, profile.target.bbox) for snapshot in snapshots])
+    return fetched_all(fetch(snapshot, profile.target) for snapshot in snapshots)
 
 
 def main() -> int:

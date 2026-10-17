@@ -1,11 +1,6 @@
 /** 軸カタログの応答（`GET /api/axis-catalog`）のうち、地図だけが読むものを導く。機能をまたいで読む形は
  * `lib/axisCatalog.ts`が同じ応答から導き、取得は両者で1つを共有する（`useMapAxisCatalog.ts`）。 */
-import {
-  dedicatedWayValueAxesFromCatalogAxes,
-  rampAxesFromCatalogAxes,
-  type DedicatedWayValueAxis,
-  type RampAxis,
-} from "@/lib/mapDisplay/axisLayers";
+import { dedicatedWayValueAxesFromCatalogAxes, type DedicatedWayValueAxis } from "@/lib/mapDisplay/axisLayers";
 import {
   ROUTE_STYLE_MODES_WITHOUT_AXES,
   routeStyleModesFromCatalogAxes,
@@ -19,9 +14,7 @@ import type { AxisCatalogResponse } from "@/types/route";
 export interface MapAxisCatalog {
   /** 公開中の軸（共有の軸カタログと同じ導出）。地図の説明文が評価の名前を差し込み、レンズが選択肢を作る。 */
   axes: readonly CatalogAxis[];
-  /** 地図のramp表示を持つ軸。 */
-  rampAxes: readonly RampAxis[];
-  /** 専用のフィーチャー→値配信レイヤーを持つ軸。レイヤー登録・カタログ・可視性・フェッチの
+  /** 道ごとの得点で地図を塗る軸。レイヤー登録・カタログ・可視性・フェッチの
    * 全てがこの一覧から導出される。 */
   dedicatedAxes: readonly DedicatedWayValueAxis[];
   /** ルート地図の色分けモード一覧。公開軸を無条件で含む。取得できるまでは軸に依らない
@@ -47,7 +40,6 @@ export const EMPTY_MAP_AXIS_CATALOG: MapAxisCatalog = {
 export function mapAxisCatalogFromResponse(response: AxisCatalogResponse): MapAxisCatalog {
   const layerAxes = {
     axes: response.axes.map(catalogAxisFromEntry),
-    rampAxes: rampAxesFromCatalogAxes(response.axes, response.tile_runtime_scales),
     dedicatedAxes: dedicatedWayValueAxesFromCatalogAxes(response.axes),
     accidentYears: response.accident_years,
   };

@@ -12,7 +12,6 @@ import asyncio
 import json
 import logging
 import threading
-import time
 from pathlib import Path
 
 import httpx
@@ -20,6 +19,7 @@ import shapely
 from cachetools import LRUCache, TTLCache, cached
 from shapely.geometry.base import BaseGeometry
 
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.jma_area import NEAREST_LIMIT_DEG, ResolvedArea, resolve_area
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.debug_log import log_throttled_warning
@@ -36,10 +36,17 @@ BOUNDARY_PATH = DATA_DIR / "jma_area" / (SOURCE_URL.rsplit("/", 1)[1].removesuff
 class AreaBoundaries:
     def __init__(self, codes: list[str], geometries: list[BaseGeometry]):
         self._codes = codes
+        self._geometries = geometries
+        self._index = {code: index for index, code in enumerate(codes)}
         self._tree = shapely.STRtree(geometries)
 
     def __len__(self) -> int:
         return len(self._codes)
+
+    def shape(self, code: str) -> BaseGeometry | None:
+        """区域のコードの境界。無いコードならNone。"""
+        index = self._index.get(code)
+        return None if index is None else self._geometries[index]
 
     def find(self, lat: float, lon: float) -> str | None:
         """地点を含む区域のコード。含む区域が無ければ`NEAREST_LIMIT_DEG`以内で最も近い区域。"""
@@ -64,12 +71,12 @@ def write_boundaries(path: Path, areas: dict[str, BaseGeometry]) -> None:
 
 @cached(cache=LRUCache(maxsize=1), lock=threading.Lock())
 def load_boundaries(path: Path) -> AreaBoundaries:
-    started = time.perf_counter()
+    started = start_timer()
     payload: dict[str, str] = json.loads(path.read_text(encoding="utf-8"))
     boundaries = AreaBoundaries(list(payload), list(shapely.from_wkb(list(payload.values()))))
     logger.info(
-        "区域の境界を読み込んだ path=%s areas=%d ms=%.0f",
-        path.name, len(boundaries), (time.perf_counter() - started) * 1000,
+        "区域の境界を読み込んだ path=%s areas=%d ms=%d",
+        path.name, len(boundaries), elapsed_ms(started),
     )
     return boundaries
 
@@ -95,6 +102,12 @@ async def find_class20_code(lat: float, lon: float) -> str | None:
         )
         raise AreaBoundariesUnavailableError from exc
     return boundaries.find(lat, lon)
+
+
+async def area_shape(class20_code: str) -> BaseGeometry | None:
+    """区域（area.jsonのclass20）の境界。無いコードならNone。境界は`find_class20_code`が読み込んだあとに呼ぶ。"""
+    boundaries = await asyncio.to_thread(load_boundaries, BOUNDARY_PATH)
+    return boundaries.shape(class20_code)
 
 
 class OutsideAreas:

@@ -5,7 +5,6 @@
 - カタログから導く一覧: `material_dtype`・`material_array_columns`（`material_value_sql`を通る）・
   `material_coverage_specs`・`material_coverage_exclusions`
 - `display_axis_missing_semantics`: 地図の表示の軸の値が欠けたときの意味
-- `tile_runtime_scales`: タイルの生値に掛ける、実行時に決まる係数
 
 カタログの中身は架空の材料（`num_a` 等）へ差し替えて与える。後ろの2節だけは本番の宣言（材料のカタログと
 `domain/primary_attributes.py`の一次属性の表示の行）そのものを読み、型でも導出でも保証されない不変条件を確かめる。
@@ -60,13 +59,8 @@ def catalog(monkeypatch):
         spec("bool_definite", "boolean", WAY_DEFINITE, tile_property="bool_tile", primary_attribute=ATTR_A),
         spec("bool_unknown", "boolean", WAY_UNKNOWN),
         spec("cat_a", "categorical", WAY_DEFINITE, tile_property="cat_tile", primary_attribute=ATTR_B),
-        spec("dynamic_a", value_sql=None, coverage=EXCLUDED),
-        spec(
-            "per_year_a",
-            tile_property="per_year_tile",
-            tile_property_runtime_scale="per_accident_year",
-            coverage=EXCLUDED,
-        ),
+        spec("dynamic_a", source="request", value_sql=None, coverage=EXCLUDED),
+        spec("per_year_a", coverage=EXCLUDED),
     ]
     monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", {s.material_id: s for s in specs})
 
@@ -81,6 +75,19 @@ def catalog(monkeypatch):
 )
 def test_a_declaration_that_does_not_fit_its_dtype_is_refused(fields):
     fields.setdefault("dtype", "numeric")
+    with pytest.raises(ValidationError):
+        spec("x", **fields)
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"value_sql": None},  # DBが値を求めない静的材料は、全区間で値が欠ける
+        {"source": "request", "coverage": EXCLUDED},  # DBの列にも載り、要求の値と2つの出どころを持つ
+        {"source": "observation", "value_sql": None},  # DBに無い値の欠損率を数える
+    ],
+)
+def test_a_declaration_that_does_not_fit_its_source_is_refused(fields):
     with pytest.raises(ValidationError):
         spec("x", **fields)
 
@@ -129,14 +136,6 @@ def test_a_display_axis_without_its_material_has_no_missing_semantics(catalog):
     assert material_catalog.display_axis_missing_semantics(ATTR_A, "nothing") is None
 
 
-@pytest.mark.parametrize(
-    ("years", "expected"),
-    [([2021, 2022, 2023, 2024], {"per_year_tile": 0.25}), ([], {})],  # 収録年が無ければ係数も無い
-)
-def test_accident_counts_are_scaled_by_the_number_of_years(catalog, years, expected):
-    assert material_catalog.tile_runtime_scales(years) == expected
-
-
 # --- 本番のカタログ -------------------------------------------------------------
 
 
@@ -149,14 +148,6 @@ def test_no_two_materials_share_a_tile_property():
     """同じ列に2つの材料が焼かれると、地図はどちらか一方の値で塗る。"""
     properties = [m.tile_property for m in material_catalog.MATERIAL_CATALOG.values() if m.tile_property]
     assert len(properties) == len(set(properties))
-
-
-def test_a_material_whose_value_depends_on_the_direction_is_not_baked_into_tiles():
-    """タイルの線は向きを持たないので、往復で値の違う材料を1つの列に焼くと片方の向きの値が消える。"""
-    directed = [m for m in material_catalog.MATERIAL_CATALOG.values() if m.tile_property_direction_dependent]
-
-    assert directed
-    assert all(material.tile_property is None for material in directed)
 
 
 def test_every_population_and_missing_semantics_has_a_heading():

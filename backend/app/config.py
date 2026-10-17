@@ -4,6 +4,7 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.domain.place_search import PLACE_PREDICTION_DELAY_SECONDS
+from app.domain.weather_elements import MSM_FORECAST_HOURS
 
 # 相対パス".env"はプロセスのカレントディレクトリ基準になるため、backend/をcwdにしない
 # 起動方法では読み込まれない。このファイルの位置から解決してcwdへの依存を無くす。
@@ -66,7 +67,7 @@ class Settings(BaseSettings):
     # 共有し、それがこのプール上限に収まるようにする（ルート生成は別エンジン・別プールで取り合わない）。
     road_tile_rate_limit_per_minute: int = 120
     road_tile_max_concurrent: int = 6
-    # 区間インスペクタは座標を持たない単発リクエストで、パン/ズームのたびに多数のz/x/y
+    # 区間インスペクタは道を押すたびの単発リクエストで、パン/ズームのたびに多数のz/x/y
     # タイルを連続要求するroad_tileとは負荷特性が異なるため別の上限を持つ。
     axis_inspector_rate_limit_per_minute: int = 120
     # 土地被覆ラスタタイルはDBを読まず、GeoTIFFの読み取り・再投影（GDAL）をスレッドプールで
@@ -90,9 +91,7 @@ class Settings(BaseSettings):
     # 配信元のrun更新は3時間ごとだが公開はrun初期時刻から数時間遅れるため、更新の有無を
     # これより短い間隔で確認する（内容が変わっていなければETagの条件付きGETで転送は起きない）。
     msm_sync_interval_minutes: int = 30
-    # 要求する予報の長さ。runごとの予報時間（39時間、00/12UTCのrunは78時間）を超える分は
-    # 配信元のデータ終端で打ち切られる。
-    msm_forecast_hours: int = 48
+    msm_forecast_hours: int = MSM_FORECAST_HOURS
 
     # 管理画面・管理APIのHTTP Basic認証（空文字のときの扱いはapi/admin_auth.py）。
     # frontend側も同じ資格情報を別の環境変数として持ち、同じ値を設定して運用する。

@@ -46,7 +46,7 @@ docs/conventions/ にある（.claude/rules/・.claude/skills/ のものはパ�
 | 作業 | 読む節 |
 |---|---|
 | 開発機の対話のセッションでタスクを進める（裏の作業役に任せるときも） | .claude/skills/dev-session/SKILL.md: 開発機の対話のセッション／.claude/commands/review.md: 回すとき |
-| タスクに着手する | flow.md: 1つのタスクを触るのは1者だけ／.claude/skills/task-work/SKILL.md: 作る担当（1〜3）／.claude/skills/file-issue/SKILL.md: 前後関係と組（探す）・issue の形（1つの Pull Request に収まらない・方針を選ぶタスクは最初に背景・方針を書く） |
+| タスクに着手する | flow.md: 1つのタスクを触るのは1者だけ／.claude/skills/task-work/SKILL.md: 実装担当（1〜3）／.claude/skills/file-issue/SKILL.md: 前後関係と組（探す）・issue の形（1つの Pull Request に収まらない・方針を選ぶタスクは最初に背景・方針を書く） |
 | 新しい仕組みを作る・設計を判断する | docs/architecture/design-principles.md（全文）／.claude/commands/review.md: 判断原則 |
 | backend・frontend のコードを足す・変える | docs/modules/README.md: 着手の前に読む（と対象の docs/modules/*.md）／.claude/rules/comments.md: ルール・判定基準（新しくコメントを書く/既存コメントを見直す/コードを撤去するとき）・残すと決めたものの行き先／.claude/rules/logging.md: 基本原則・使う仕組み（新規実装はこれらを使うこと） |
 | APIルーター・Pydanticモデル・レジストリ・domain定数・MVT焼き込み値を変える | .claude/rules/deployment-sync.md: コミットと同時に揃えるもの |
@@ -55,25 +55,28 @@ docs/conventions/ にある（.claude/rules/・.claude/skills/ のものはパ�
 | 外部データソースを使う・使い方を変える | docs/architecture/data-sources.md: 使い方 |
 | 評価軸を足す・消す・調整する | .claude/rules/deployment-sync.md: コミットと同時に揃えるもの／.claude/skills/production-data/SKILL.md: 本番へ効かせたい軸定義の変更は、本番の管理APIへ入れる |
 | 指摘・不具合を直す | .claude/rules/fixing.md（全文） |
-| テストを書く | .claude/rules/testing.md: 確かめる高さ・単体で確かめるかを、コードの種類で先に決める・そのテストは要るか（3問を順に）・挙動を変えるなら、テストを先に書く（書く場所・足場に固有の決まりは、その場所の `.claude/rules/testing-*.md` が `paths` で読まれる） |
+| テストを書く | .claude/rules/testing.md: 確かめる高さ・単体で確かめるかを、コードの種類で先に決める・そのテストは要るか（3問を順に）・挙動を変えたら、入口で確かめる（書く場所・足場に固有の決まりは、その場所の `.claude/rules/testing-*.md` が `paths` で読まれる） |
 | テストを消す・まとめる・変異テストで見直す | .claude/rules/testing-review.md（全文）／全部の測りで見直す1回は .claude/skills/test-review/SKILL.md（全文） |
 | テストを実装から起こし直す | .claude/rules/testing-rewrite.md（全文） |
 | テストや検査を回す | .claude/skills/run-checks/SKILL.md: 手元の検査の回し方・検査の置き場（手元・作業ブランチのCI・masterのCI）・開発機でのbackendテストの回し方／.claude/rules/testing.md: テストが落ちたときの直し方（①〜⑥）・警告は既定でエラー |
-| 画面を撮る | .claude/skills/task-work/SKILL.md: 作る担当（5 の画面に届く変更のキャプチャ） |
+| 画面を撮る | .claude/skills/task-work/SKILL.md: 実装担当（5 の画面に届く変更のキャプチャ） |
 | コミットする | flow.md: コミット／.github/pull_request_template.md（増減）／.claude/rules/deployment-sync.md: コミットと同時に揃えるもの |
-| PR を出す | .claude/skills/task-work/SKILL.md: 作る担当（4〜6） |
-| PR を確かめてマージする | .claude/skills/task-work/SKILL.md: 確かめる担当・競合を解く |
+| PR を出す | .claude/skills/task-work/SKILL.md: 実装担当（4〜6） |
+| PR を確かめてマージする | .claude/skills/task-work/SKILL.md: 検証担当・競合を解く |
 | 本番へ書く | flow.md: 自動で進めないもの／.claude/skills/dev-session/SKILL.md: 本番へ書く／.claude/skills/production-data/SKILL.md: 本番へ効かせたい軸定義の変更は、本番の管理APIへ入れる・派生データの作り直し |
 | 本番を読む | docs/modules/backend/cross-cutting-infrastructure.md の `run_probe.py` の行／docs/architecture/tech-stack.md: 本番の宛先／docs/architecture/setup.md: 開発機の本体のチェックアウトの遅れ |
 | 起票する・流れ（手順・道具・ゲート・検査）で困った | .claude/skills/file-issue/SKILL.md: 流れの摩擦を記録する・起票する・issue の形・ラベルと種類と欄（規模の札・優先度の見積もり）・前後関係と組 |
 | 問う・保留する | .claude/skills/ask/SKILL.md: 問い・答え・保留と棚卸 |
 | 文書を書く | 上の「ドキュメント階層」／.claude/rules/documentation.md（全文）／.claude/rules/comments.md: 残すと決めたものの行き先 |
-| 流れの道具（`tools/flow-gate`・担当のワークフロー）を変える | flow.md: ゲートを変える・公開する・担当の権限・担当が書けないファイル／.claude/skills/task-work/SKILL.md: 確かめる担当（1） |
+| 流れの道具（`tools/flow-gate`・担当のワークフロー）を変える | flow.md: ゲートを変える・公開する・担当の権限・担当が書けないファイル／.claude/skills/task-work/SKILL.md: 検証担当（1） |
 | 作業ツリーを作る・依存を入れる | docs/architecture/setup.md: 作業ツリーどうしで node_modules を共有しない |
 | 周期レビューをする | .claude/commands/review.md（全文） |
 
 ## 作業の進め方（必読）
 
+- **外部の API への要求は、回数を最小にする**: API の実行には資源と費用がかかる。仕組み・道具・スクリプトの全部で、1回の要求にまとめられる
+  読み書きはまとめ、確かめのための読み直しや打ち直しの繰り返しをしない。値を取っておいて使い回すのは、使う間に変わらないことが確定している
+  もの（失効の時刻が決まった鍵等）だけで、変わりうるものは使うたびに読む。
 - **数分以上かかる処理は、始める前に計画と見込みを伝える**: 何を・どの順で・どれくらいかかるか（未計測ならそう言う）を
   伝え、裏で流して区切りごとに知らせる。実行中の重い処理を中断・やり直すかは、独断せずユーザーに問う。これは開発機の
   対話のセッションの決まりで、Actions の担当は裏の道具を持たず、終わるまで前に出したまま待つ（flow.md「担当」の3）。

@@ -4,10 +4,8 @@
 `CategoricalShape.material`）が参照する材料idの単一ソース（詳細は
 docs/modules/backend/evaluation-scoring.md「材料カタログ」参照）。
 
-**材料の「登録」と「評価軸での利用」は独立している**: MVTタイル
-（`road_tile_sql.py: ROAD_SURFACE_TILE_MVT_SQL`）には、既存の軸が実際に使う
-材料以外にも多くの生データ（highway・surface・smoothness等）が既に焼き込まれている。
-設計の一貫性のため、これらも「評価や地図描画に使えそうな生データ」として本カタログへ
+**材料の「登録」と「評価軸での利用」は独立している**: 既存の軸が使わない生データ
+（highway・surface・smoothness等）も、「評価や地図描画に使えそうな生データ」として本カタログへ
 網羅的に登録する。登録済みでも対応する軸が無ければ評価には使われない（軸スタジオの
 材料選択肢には現れる）。
 
@@ -16,14 +14,11 @@ docs/modules/backend/evaluation-scoring.md「材料カタログ」参照）。
 新しい材料を増やすときはこのファイルへ1件追加して生成物を書き出し直すだけで、フロントのコード
 変更なしに軸コンポーザーの選択肢へ現れる。
 
-`tile_property`はMVTタイル（`road_tile_sql.py:
-ROAD_SURFACE_TILE_MVT_SQL`）に既に焼き込まれているプロパティ名（無ければ材料が
-タイル非依存＝地図レイヤーのramp自動生成が不可能なことを表す）。
+`tile_property`はMVTタイル（`road_tile_sql.py: ROAD_SURFACE_TILE_MVT_SQL`）へ焼き込む
+プロパティ名（Noneなら材料がタイルに載らない）。
 """
 
-from collections.abc import Sequence
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
 from itertools import groupby
 
 from typing import Literal, NamedTuple
@@ -35,9 +30,8 @@ from app.domain.landcover import (
     LANDCOVER_RING_OUTER_M,
     LandcoverClass,
     landcover_key,
-    landcover_tile_property,
 )
-from app.domain.divided_carriageway import oneway_material_sql
+from app.domain.divided_carriageway import DIVIDED_ROAD_NOTE, oneway_material_sql
 from app.domain.registry import PrimaryAttributeSpec
 from app.domain.primary_attributes import (
     PRIMARY_ATTRIBUTES,
@@ -60,9 +54,16 @@ from app.domain.primary_attributes import (
 
 from app.domain.material_sql import (
     BICYCLE_NORMALIZED_SQL,
+    BRIDGE_STRUCTURE_VALUES,
     CYCLEWAY_CLASS_SQL,
     CYCLEWAY_CLASSES,
+    CYCLEWAY_HIGHWAY,
+    CYCLEWAY_LANE_VALUES,
+    CYCLEWAY_SHARED_VALUES,
+    CYCLEWAY_TRACK_VALUES,
+    SHARED_PEDESTRIAN_PATH_NOTE,
     SHARED_PEDESTRIAN_PATH_SQL,
+    TUNNEL_STRUCTURE_VALUES,
     LANES_COUNT_CASE_SQL,
     MAXSPEED_KMH_CASE_SQL,
     SMOOTHNESS_NORMALIZED_SQL,
@@ -85,6 +86,7 @@ from app.domain.material_sql import (
     TUNNEL_NORMALIZED_SQL,
     tag_is_value_sql,
     tag_absent_is_false_sql,
+    tag_note,
 )
 from app.domain.traffic import (
     INTERSECTION_DEGREE_THRESHOLD,
@@ -166,7 +168,7 @@ class CoverageExcluded:
     「どちらの一覧にも載っていない材料」は型として作れない。
 
     測らない材料も`missing_semantics`は持つ。**欠損率を測るかと、値が無いときにどう
-    扱うかは別の問い**で、後者は地図の表示（`display_axis_missing_semantics`・`axis_display.py`）が全材料について読む
+    扱うかは別の問い**で、後者は地図の表示（`display_axis_missing_semantics`）が全材料について読む
     ——3つの型のうち1つだけがこの宣言を欠くと、そこだけ答えを作り出すことになる。"""
 
     reason: str
@@ -195,6 +197,9 @@ _CYCLEWAY_TAGS_COVERAGE = WayMaterialCoverageSpec(
     missing_semantics="definite",
 )
 #: 生データの道は親の表のCHECK（`infrastructure/source_models.py: source_features_way_has_kind`）でhighwayを必ず持つ。
+#: 街灯・自動車の通行止めを判定するタグと値。判定の式と説明の文が同じ組を引く。
+_LIT_YES = ("lit", "yes")
+_MOTOR_VEHICLE_NO = ("motor_vehicle", "no")
 _HIGHWAY_ALWAYS_PRESENT = "生データの道はDBの制約でhighwayタグを必ず持ち、欠損が無い"
 _EDGE_COUNTS_COVERAGE = EdgeMaterialCoverageSpec(
     present_condition="em.intersection_count IS NOT NULL",
@@ -205,32 +210,11 @@ _EDGE_COUNTS_COVERAGE = EdgeMaterialCoverageSpec(
 
 MaterialDType = Literal["numeric", "boolean", "categorical"]
 
-#: タイルの生値を材料の値へ換算する、実行時にしか決まらない係数の源。
-#: `per_accident_year`は事故の収録年数の逆数（タイルは収録した全年分の件数を持ち、収録年数は
-#: 取り込むたびに増える）。源を足すときは`tile_runtime_scales`にその値の求め方を足す。
-TileRuntimeScale = Literal["per_accident_year"]
+#: 材料の値の出どころ。`db`はDBの値式（`MaterialSpec.value_sql`）で求める。`request`はリクエストの条件（風・
+#: 想定速度）から都度求め、`domain/dynamic_materials.py: DYNAMIC_MATERIAL_EVALUATORS`が評価する。`observation`は
+#: 観測から都度引き、静的スコア行列の組み立てへ観測の列として渡す（`evaluation.py: build_static_edge_score_matrix`）。
+MaterialSource = Literal["db", "request", "observation"]
 
-#: 係数の源→その係数で割る値式が読むSQLの引数。タイルは係数を掛ける前の生値を焼くので、焼く文では
-#: この引数を1で束ねる（`tile_unscaled_sql_params`）。
-TILE_RUNTIME_SCALE_SQL_PARAMS: dict[TileRuntimeScale, str] = {"per_accident_year": "accident_years"}
-
-
-class TileEncoding(StrictModel):
-    """数値の材料をタイルの列へ載せる形。値は値式（`MaterialSpec.value_sql`）のまま変えず、載せ方だけを決める。"""
-
-    model_config = ConfigDict(frozen=True)
-
-    #: 丸める小数の桁。Noneは丸めない。丸めた値は倍精度で載せる——ST_AsMVTはnumeric型を認識せず
-    #: 文字列へ落とす。
-    round_digits: int | None = None
-    #: 0を載せずにキーごと省く。大多数の道が0の量（密度）でタイルを軽くする。地図は欠損を0として読む。
-    omit_zero: bool = False
-    #: 倍精度で載せる。単精度の列はそのままだと単精度の値として載る。
-    double: bool = False
-
-
-#: 件数をkm正規化した密度の載せ方。
-_DENSITY_TILE_ENCODING = TileEncoding(round_digits=1, omit_zero=True)
 
 
 class MaterialReferencePoint(StrictModel):
@@ -254,8 +238,6 @@ class MaterialSpec(StrictModel):
     material_id: str
     label: str
     # 生成物`material-catalog.json`へ含め、材料を選ぶ人へ見せる説明文として配る。
-    # `value_sql`を持たない材料は、選んでも評価軸としては機能しない
-    # 旨をここに明記する（配線状況が変わったら追従が必要）。
     # 空を許すと、軸スタジオのⓘが何も出さない材料を登録できてしまう。
     description: str = Field(min_length=1)
     dtype: MaterialDType
@@ -275,21 +257,9 @@ class MaterialSpec(StrictModel):
     # 単位が「◯◯/km」であることだけを条件にすると、この区別が付かない。
     total_unit: str | None = None
     # MVTタイルへ既に焼き込み済みのプロパティ名。Noneは「タイル非依存」（GSI標高の都度取得、
-    # 気象の動的取得、レシピ合成値等）で、地図レイヤーのramp自動生成対象になりえない。
-    # タイルの列は、この名前と`value_sql`・`tile_encoding`から組み立てる（`tile_column_sql`）。
+    # 気象の動的取得、レシピ合成値等）。
+    # タイルの列は、この名前と`value_sql`から組み立てる（`tile_column_sql`）。
     tile_property: str | None
-    # 数値の材料をタイルへ載せる形（丸め・0の省略・倍精度）。
-    tile_encoding: TileEncoding = TileEncoding()
-    # tile_propertyの生値を材料の値へ換算する係数が実行時にしか決まらないとき、その係数の源
-    # （`TileRuntimeScale`）。Noneは生値がそのまま材料の値。係数は`tile_runtime_scales`が
-    # この宣言から導き、地図の式がタイルの生値へ掛ける。
-    tile_property_runtime_scale: TileRuntimeScale | None = None
-    # 材料の値が進行方向によって変わる（有向）場合True。地図のrampレイヤーは
-    # 1本の線を単色で塗る前提のため、方向依存材料は単純な重み付き和で表現できない
-    # （時間依存の風レイヤー・降水ナウキャストと同じく、矢印等の専用表示が別途必要）。
-    # 方向で値が変わる材料は方向を持たないMVTプロパティへ焼き込めないため、
-    # `tile_property=None`と両輪で「この材料はramp化しない」を宣言する。
-    tile_property_direction_dependent: bool = False
     # この材料の由来となる一次属性。`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`の要素そのものを、表の中で付けた名前で指す
     # （表の外の宣言は`_check_primary_attribute_is_declared`が断る）。
     # 材料id（例: highway_is_cycleway・maxspeed_kmh・intersection_count_per_km）と一次属性id
@@ -302,9 +272,12 @@ class MaterialSpec(StrictModel):
     # この材料が読む自前のMSM格子の値（`weather_elements.py: GridValue`）。一次属性を持たない動的な材料の
     # 元データを、同じ格子の値を描く気象のチップ（`WeatherElement.grid_value`）が地図に見せる。
     weather_grid_value: GridValue | None = None
+    # 値の出どころ（`MaterialSource`）。リクエストごとに決まる材料の集合・観測の列として受ける材料の集合は
+    # ここから導く（`materials_of_source`）。値式・欠損率の測り方との揃いは`_check_fields_match_the_source`が見る。
+    source: MaterialSource = "db"
     # この材料の値をDBから求めるSQL式。読み出し側がFROM句で固定の別名（`material_sql.py`の
-    # モジュールの説明の表）を用意し、この式をそのまま並べる。Noneは「SQLでは求められない」——リクエスト時に決まる風、
-    # 評価へ配線していないDEFER材料。**材料の値の求め方をここ以外へ書かない**
+    # モジュールの説明の表）を用意し、この式をそのまま並べる。出どころが`db`の材料だけが持つ。
+    # **材料の値の求め方をここ以外へ書かない**
     # （設計原則 構造仕様8。別の辞書へ分けると、材料を増やしたとき片方が取り残される）。
     value_sql: str | None = None
     # 欠損率の測り方（`/admin`の材料タブ）。`CoverageExcluded`を含む3択で、**どれかを必ず
@@ -365,6 +338,17 @@ class MaterialSpec(StrictModel):
             # タイルの列は値式から組む（`tile_column_sql`）。式を持たない材料の列は手で書くしかなく、
             # 地図と評価が別々の求め方になる。
             raise ValueError(f"{self.material_id}: タイルへ焼く材料は値式（value_sql）を持つ")
+        return self
+
+    @model_validator(mode="after")
+    def _check_fields_match_the_source(self) -> "MaterialSpec":
+        """出どころと噛み合わない宣言を登録時に落とす。値式を持つのにDB以外とした材料は値式が行列へ載って
+        都度の値と二重になり、値式を持たないのにDBとした材料は行列に列が無く、どの軸でも黙って欠損になる。"""
+        if (self.source == "db") != (self.value_sql is not None):
+            raise ValueError(f"{self.material_id}: 値式（value_sql）は出どころがdbの材料だけが持つ")
+        if self.source != "db" and not isinstance(self.coverage, CoverageExcluded):
+            # 欠損率はDBの値を数えるので、DBに値を持たない材料には数える相手が無い。
+            raise ValueError(f"{self.material_id}: 出どころがdbでない材料は欠損率を測らない（CoverageExcluded）")
         return self
 
 
@@ -462,8 +446,8 @@ _LANES_COUNT_REFERENCE_POINTS = [
 _HIGHWAY_VALUE_LABELS: dict[str, str] = {
     "motorway": "高速道路",
     "motorway_link": "高速道路の連絡路",
-    "trunk": "幹線道路",
-    "trunk_link": "幹線道路の連絡路",
+    "trunk": "国道",
+    "trunk_link": "国道の連絡路",
     "primary": "主要幹線道路",
     "primary_link": "主要幹線道路の連絡路",
     "secondary": "地方主要道",
@@ -525,7 +509,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         # 持ちうる。方向を持たないMVTプロパティ1個には焼き込めないので、地図へは
         # `services/gradient_way_service.py`のフィーチャー→値配信で乗せる。
         tile_property=None,
-        tile_property_direction_dependent=True,
         primary_attribute=ATTR_ELEVATION,
         reference_points=_GRADIENT_PERCENT_REFERENCE_POINTS,
         value_sql="em.average_grade",
@@ -552,8 +535,8 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         # wind_drag_ratio_array`がリクエスト時に計算する）。対応する一次属性も持たない
         # （動的気象は`PRIMARY_ATTRIBUTES`の対象外）。
         tile_property=None,
-        tile_property_direction_dependent=True,
         weather_grid_value="wind",
+        source="request",
         reference_points=[
             MaterialReferencePoint(label=f"{_WIND_REFERENCE_SPEED_LABEL}・{situation}", value=ratio)
             for situation, ratio in _WIND_DRAG_RATIO_BY_SITUATION.items()
@@ -577,6 +560,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
             dtype="numeric",
             unit="mm",
             tile_property=None,
+            source="observation",
             coverage=_RAIN_COVERAGE,
         )
         for hours in RAIN_WINDOW_HOURS
@@ -593,6 +577,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         dtype="numeric",
         unit="時間",
         tile_property=None,
+        source="observation",
         coverage=_RAIN_COVERAGE,
     ),
     # --- 土地被覆のクラス別の割合。`domain/landcover.py: LANDCOVER_CLASSES`から生成する ---
@@ -603,8 +588,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
             description=_landcover_description(cls),
             dtype="numeric",
             unit="%",
-            tile_property=landcover_tile_property(cls.percent_field),
-            tile_encoding=TileEncoding(double=True),
+            tile_property=None,
             primary_attribute=ATTR_LANDCOVER,
             value_sql=landcover_value_sql(landcover_key(cls.percent_field)),
             coverage=_landcover_coverage(landcover_key(cls.percent_field)),
@@ -619,8 +603,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         unit="回/km",
         additive=True,
         total_unit="回",
-        tile_property="intersection_per_km",
-        tile_encoding=_DENSITY_TILE_ENCODING,
+        tile_property=None,
         primary_attribute=ATTR_INTERSECTION,
         reference_points=_INTERSECTION_COUNT_PER_KM_REFERENCE_POINTS,
         value_sql=per_km_value_sql("em.intersection_count"),
@@ -633,10 +616,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         dtype="numeric",
         unit="件/(km・年)",
         additive=True,
-        # タイル側は年正規化前の"accident_per_km"（収録全年分の重み付き件数/km）。
-        tile_property="accident_per_km",
-        tile_property_runtime_scale="per_accident_year",
-        tile_encoding=TileEncoding(round_digits=2, omit_zero=True),
+        tile_property=None,
         primary_attribute=ATTR_ACCIDENT_POINT,
         reference_points=_ACCIDENT_COUNT_PER_KM_YEAR_REFERENCE_POINTS,
         value_sql=f"CASE WHEN :accident_years > 0 THEN {per_km_value_sql('em.accident_count')} / :accident_years END",
@@ -645,11 +625,11 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "lit": MaterialSpec(
         material_id="lit",
         label="街灯あり",
-        description="OSMの街灯タグ(lit=yes)に該当する区間はtrue。タグ不在はfalse（街灯なし扱い）。",
+        description=f"OSMの街灯タグ({tag_note(*_LIT_YES)})に該当する区間はtrue。タグ不在はfalse（街灯なし扱い）。",
         dtype="boolean",
-        tile_property="lit",
+        tile_property=None,
         primary_attribute=ATTR_LIT,
-        value_sql=tag_is_value_sql("lit", "yes"),
+        value_sql=tag_is_value_sql(*_LIT_YES),
         coverage=WayMaterialCoverageSpec(
                 missing_condition=f"{LIT_NORMALIZED_SQL} IS NULL",
                 source="OSM wayのタグ lit（タグ不在は街灯なし扱い）",
@@ -659,7 +639,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "has_tunnel": MaterialSpec(
         material_id="has_tunnel",
         label="トンネル",
-        description="OSMのトンネルタグが地中を通るもの(tunnel=yes・覆道)に該当する区間はtrue。",
+        description=f"OSMのトンネルタグが地中を通るもの({tag_note('tunnel', *TUNNEL_STRUCTURE_VALUES)})に該当する区間はtrue。",
         dtype="boolean",
         tile_property="tunnel",
         primary_attribute=ATTR_TUNNEL,
@@ -674,7 +654,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "bridge": MaterialSpec(
         material_id="bridge",
         label="橋・高架",
-        description="OSMの橋・高架タグが地面から浮いたもの(bridge=yes・高架橋等)に該当する区間はtrue。",
+        description=f"OSMの橋・高架タグが地面から浮いたもの({tag_note('bridge', *BRIDGE_STRUCTURE_VALUES)})に該当する区間はtrue。",
         dtype="boolean",
         tile_property="bridge",
         value_sql=IS_BRIDGE_SQL,
@@ -687,14 +667,14 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "motor_vehicle_no": MaterialSpec(
         material_id="motor_vehicle_no",
         label="自動車通行不可",
-        description="OSMのタグ(motor_vehicle=no)から判定した、自動車が通行できない区間かどうか。",
+        description=f"OSMのタグ({tag_note(*_MOTOR_VEHICLE_NO)})から判定した、自動車が通行できない区間かどうか。",
         dtype="boolean",
         # OSMのmotor_vehicleタグがnoの区間（内部軸
         # [domain/axis_definitions.py]でも参照される材料だが、軸合成前の生の真偽値自体は
         # 独立して材料登録していなかった）。
-        tile_property="motor_vehicle_no",
+        tile_property=None,
         primary_attribute=ATTR_MOTOR_VEHICLE_ACCESS,
-        value_sql=tag_is_value_sql("motor_vehicle", "no"),
+        value_sql=tag_is_value_sql(*_MOTOR_VEHICLE_NO),
         coverage=WayMaterialCoverageSpec(
                 missing_condition=f"{MOTOR_VEHICLE_NORMALIZED_SQL} IS NULL",
                 source="OSM wayのタグ motor_vehicle（タグ不在は通行可扱い）",
@@ -704,7 +684,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "oneway": MaterialSpec(
         material_id="oneway",
         label="一方通行",
-        description="OSMのタグから判定した一方通行の区間かどうか。上下線が分かれた道の片側（逆方向が隣を並走する）は一方通行に数えない。",
+        description=f"OSMのタグから判定した一方通行の区間かどうか。{DIVIDED_ROAD_NOTE}の片側は一方通行に数えない。",
         dtype="boolean",
         tile_property="oneway",
         primary_attribute=ATTR_ONEWAY,
@@ -720,7 +700,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         description="OSMの制限速度タグ(maxspeed)から解析した制限速度（km/h）。",
         dtype="numeric",
         unit="km/h",
-        tile_property="maxspeed_kmh",
+        tile_property=None,
         primary_attribute=ATTR_MAXSPEED,
         reference_points=_MAXSPEED_KMH_REFERENCE_POINTS,
         value_sql=MAXSPEED_KMH_CASE_SQL,
@@ -735,7 +715,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         label="車線数",
         description="OSMの車線数タグ(lanes)から解析した車線数。",
         dtype="numeric",
-        tile_property="lanes_count",
+        tile_property=None,
         primary_attribute=ATTR_LANES,
         reference_points=_LANES_COUNT_REFERENCE_POINTS,
         value_sql=LANES_COUNT_CASE_SQL,
@@ -766,7 +746,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         description="OSMの路面種別タグ(surface)の生値（例: asphalt/gravel等）。区分（路面の区分）より細かく、タグの値ごとにスコアを設定したい場合に使います。",
         dtype="categorical",
         # 区分へ束ねる前のタグの値そのもの（正規化: lower/btrim）。束ねた値は材料surface_class。
-        tile_property="surface",
+        tile_property=None,
         primary_attribute=ATTR_SURFACE,
         value_labels={tag: label for c in SURFACE_CLASSES for tag, label in c.tags.items()},
         value_sql=SURFACE_NORMALIZED_SQL,
@@ -806,7 +786,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
             "農道・林道とそれ以外の道を分けます。走行モデルの転がり抵抗もこの値から決まります。"
         ),
         dtype="categorical",
-        tile_property=SURFACE_ESTIMATE,
+        tile_property=None,
         primary_attribute=ATTR_SURFACE,
         value_labels={estimate.key: estimate.label for estimate in SURFACE_ESTIMATES},
         value_sql=SURFACE_ESTIMATE_SQL,
@@ -822,57 +802,63 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     # 持ち、MVTタイルへ焼き込む。
     "highway_is_cycleway": MaterialSpec(
         material_id="highway_is_cycleway",
-        label="道路種別が自転車道",
-        description="道路種別(highway)自体が自転車道(cycleway)かどうか。",
+        label="道路種別が自転車専用道",
+        description=f"道路種別(highway)自体が自転車専用道({tag_note('highway', CYCLEWAY_HIGHWAY)})かどうか。",
         dtype="boolean",
-        tile_property="highway_is_cycleway",
+        tile_property=None,
         # 判定式はhighway生タグを見るが、意味的にはこの群の他の材料と同じ「自転車走行環境の
         # 分類」という1つのまとまりのため、cycleway_has_track等と同じ一次属性へ寄せる。
         primary_attribute=ATTR_CYCLEWAY,
-        value_sql=f"{HIGHWAY_SQL} = 'cycleway'",
+        value_sql=f"{HIGHWAY_SQL} = '{CYCLEWAY_HIGHWAY}'",
         coverage=CoverageExcluded(reason=_HIGHWAY_ALWAYS_PRESENT, missing_semantics="definite"),
     ),
     "cycleway_has_track": MaterialSpec(
         material_id="cycleway_has_track",
         label="自転車道(track)を併設",
-        description="車道と分離された自転車道(cycleway=track)を併設しているかどうか。",
+        description=f"車道と分離された自転車道({tag_note('cycleway', *CYCLEWAY_TRACK_VALUES)})を併設しているかどうか。",
         dtype="boolean",
-        tile_property="cycleway_has_track",
+        tile_property=None,
         primary_attribute=ATTR_CYCLEWAY,
-        value_sql=cycleway_has_value_sql("track"),
+        value_sql=cycleway_has_value_sql(*CYCLEWAY_TRACK_VALUES),
         coverage=_CYCLEWAY_TAGS_COVERAGE,
     ),
     "cycleway_has_lane": MaterialSpec(
         material_id="cycleway_has_lane",
         label="自転車レーン(lane)を併設",
-        description="車道上に線で区切られた自転車レーン(cycleway=lane)を併設しているかどうか。",
+        description=f"車道上に線で区切られた自転車レーン({tag_note('cycleway', *CYCLEWAY_LANE_VALUES)})を併設しているかどうか。",
         dtype="boolean",
-        tile_property="cycleway_has_lane",
+        tile_property=None,
         primary_attribute=ATTR_CYCLEWAY,
-        value_sql=cycleway_has_value_sql("lane"),
+        value_sql=cycleway_has_value_sql(*CYCLEWAY_LANE_VALUES),
         coverage=_CYCLEWAY_TAGS_COVERAGE,
     ),
     "cycleway_has_shared": MaterialSpec(
         material_id="cycleway_has_shared",
         label="バス共用等の自転車レーンを併設",
-        description="バス専用レーン共用など、簡易な自転車レーン(cycleway=share_busway/shared_lane)を併設しているかどうか。",
+        description=(
+            "バス専用レーン共用など、簡易な自転車レーン"
+            f"({tag_note('cycleway', *CYCLEWAY_SHARED_VALUES)})を併設しているかどうか。"
+        ),
         dtype="boolean",
-        tile_property="cycleway_has_shared",
+        tile_property=None,
         primary_attribute=ATTR_CYCLEWAY,
-        value_sql=cycleway_has_value_sql("share_busway", "shared_lane"),
+        value_sql=cycleway_has_value_sql(*CYCLEWAY_SHARED_VALUES),
         coverage=_CYCLEWAY_TAGS_COVERAGE,
     ),
     "shared_pedestrian_path": MaterialSpec(
         material_id="shared_pedestrian_path",
         label="歩行者自転車共用道",
-        description="車道と分離された歩行者道のうち、自転車の通行が認められている区間（河川敷サイクリングロード等、highway=footway/pathかつbicycle=yes/designated）かどうか。",
+        description=(
+            "車道と分離された歩行者道のうち、自転車の通行が認められている区間"
+            f"（河川敷サイクリングロード等、{SHARED_PEDESTRIAN_PATH_NOTE}）かどうか。"
+        ),
         dtype="boolean",
-        tile_property="shared_pedestrian_path",
+        tile_property=None,
         primary_attribute=ATTR_CYCLEWAY,
         value_sql=tag_absent_is_false_sql(SHARED_PEDESTRIAN_PATH_SQL),
         coverage=WayMaterialCoverageSpec(
                 missing_condition=f"{BICYCLE_NORMALIZED_SQL} IS NULL",
-                source="OSM wayのタグ bicycle（highway=footway/pathとの組み合わせで判定、タグ不在は非該当扱い）",
+                source=f"OSM wayのタグ bicycle（{SHARED_PEDESTRIAN_PATH_NOTE}で判定、タグ不在は非該当扱い）",
                 missing_semantics="definite",
             ),
     ),
@@ -897,10 +883,12 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "smoothness": MaterialSpec(
         material_id="smoothness",
         label="路面の状態",
-        description="OSMの路面状態タグ(smoothness)の生値（excellent〜impassable）。同じ路面種別(surface)でも実際の荒れ具合を区別したい場合に使います。",
+        description=(
+            f"OSMの路面状態タグ(smoothness)の生値（{next(iter(_SMOOTHNESS_VALUE_LABELS))}〜"
+            f"{next(reversed(_SMOOTHNESS_VALUE_LABELS))}）。同じ路面種別(surface)でも実際の荒れ具合を区別したい場合に使います。"
+        ),
         dtype="categorical",
-        # OSMのsmoothnessタグ生値（excellent/good/intermediate/bad/very_bad/horrible/
-        # very_horrible/impassable、正規化: lower/btrim）。surfaceが路面「種別」なのに
+        # 値の表は良い順に並べる（説明の範囲が表の最初と最後から組まれる）。surfaceが路面「種別」なのに
         # 対し、smoothnessは実際の走行感（同じasphaltでも荒れ具合が違う等）。
         tile_property="smoothness",
         value_labels=_SMOOTHNESS_VALUE_LABELS,
@@ -932,7 +920,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     ),
     # --- 停止要因POIの種別別密度。`domain/traffic.py: POI_COUNT_KINDS`から生成する ---
     # 材料を1件ずつ手書きせず一覧から作るため、キーを増やすときに触るのはその一覧だけで済む。
-    # タイル側のプロパティ名は材料idと同じにし、地図のramp自動導出がそのまま効く。
     **{
         poi_density_material_id(kind): MaterialSpec(
             material_id=poi_density_material_id(kind),
@@ -942,8 +929,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
             unit="回/km",
             additive=True,
             total_unit="回",
-            tile_property=poi_density_material_id(kind),
-            tile_encoding=_DENSITY_TILE_ENCODING,
+            tile_property=None,
             value_sql=poi_density_value_sql(kind),
             # 行があれば載っていないキーは0件と確定できる（欠損は行そのものの不在だけ）。
             coverage=_EDGE_COUNTS_COVERAGE,
@@ -982,6 +968,11 @@ def material_array_columns() -> tuple[tuple[str, ...], tuple[str, ...]]:
     )
 
 
+def materials_of_source(source: MaterialSource) -> frozenset[str]:
+    """出どころが`source`の材料id。"""
+    return frozenset(material_id for material_id, spec in MATERIAL_CATALOG.items() if spec.source == source)
+
+
 def material_value_sql() -> dict[str, str]:
     """材料id→値を求めるSQL式。カタログから導く（別の辞書を持たない）。"""
     return {
@@ -1014,69 +1005,31 @@ def material_coverage_exclusions() -> dict[str, str]:
     }
 
 
+def display_axis_material(attr: PrimaryAttributeSpec, tile_property: str) -> MaterialSpec | None:
+    """一次属性の表示の軸（タイルのプロパティ`tile_property`）の値をタイルへ載せる材料。無ければNone。"""
+    for spec in MATERIAL_CATALOG.values():
+        if spec.primary_attribute is attr and spec.tile_property == tile_property:
+            return spec
+    return None
+
+
 def display_axis_missing_semantics(attr: PrimaryAttributeSpec, tile_property: str) -> MissingSemantics | None:
     """一次属性の表示の軸（タイルのプロパティ`tile_property`）の値が欠けたときの意味。その値をタイルへ載せる材料の
     宣言から引く——`unknown`なら値の無い道がタイルに現れうる（地図は「不明」として破線で出す）、`definite`なら
     タグの不在も確定した値として載る。載せる材料が無ければNone。"""
-    for spec in MATERIAL_CATALOG.values():
-        if spec.primary_attribute is attr and spec.tile_property == tile_property:
-            return spec.coverage.missing_semantics
-    return None
-
-
-def tile_runtime_scales(accident_years: Sequence[int]) -> dict[str, float]:
-    """タイルのプロパティ名→そのタイルの生値を材料の値へ換算する係数。係数の源
-    （`MaterialSpec.tile_property_runtime_scale`）を宣言した材料ごとに1件。
-
-    源の値が決まらない材料（事故の収録年が0件）は含めない——地図は係数の無い材料を使う軸を
-    どの道でも「データなし」として塗る（寄与0にすると、値が無いのに最良側の色になる）。
-    """
-    values: dict[TileRuntimeScale, float] = {}
-    if accident_years:
-        values["per_accident_year"] = 1 / len(accident_years)
-    return {
-        spec.tile_property: values[spec.tile_property_runtime_scale]
-        for spec in MATERIAL_CATALOG.values()
-        if spec.tile_property is not None
-        and spec.tile_property_runtime_scale is not None
-        and spec.tile_property_runtime_scale in values
-    }
+    spec = display_axis_material(attr, tile_property)
+    return None if spec is None else spec.coverage.missing_semantics
 
 
 def tile_column_sql(spec: MaterialSpec) -> str:
     """材料をタイルの列へ焼く式。値式を包むだけで、値の求め方を書かない——地図と評価が同じ式を読む。
 
     真偽は該当だけを`true`で載せ、非該当はNULLにしてフィーチャーからキーを省く（タイルが軽くなる）。
-    分類は値をそのまま、数値は`tile_encoding`の形で載せる。
+    それ以外は値をそのまま載せる。
     """
     value = f"({spec.value_sql})"
     if spec.dtype == "boolean":
         return f"CASE WHEN {value} THEN true END"
-    encoding = spec.tile_encoding
-    if encoding.round_digits is not None:
-        value = f"round({value}::numeric, {encoding.round_digits})"
-    if encoding.omit_zero:
-        value = f"NULLIF({value}, 0)"
-    if encoding.round_digits is not None or encoding.double:
-        value = f"({value})::double precision"
-    return value
-
-
-def tile_property_value(spec: MaterialSpec, value: object) -> object:
-    """材料の値`value`を`tile_column_sql`が焼いたときにタイルへ載る値。Noneはキーごと載らない。
-
-    丸めはPostgreSQLの`round(numeric)`に合わせる: 倍精度を有効数字15桁でnumericへ移し、0から遠い側へ丸める
-    （Pythonの`round`は偶数の側へ丸め、2進の誤差も拾うので、1.25が1.2になる）。
-    """
-    if value is None:
-        return None
-    if spec.dtype == "boolean":
-        return True if value else None
-    encoding = spec.tile_encoding
-    if encoding.round_digits is not None:
-        value = float(Decimal(f"{value:.15g}").quantize(Decimal(1).scaleb(-encoding.round_digits), ROUND_HALF_UP))
-    if encoding.omit_zero and value == 0:
-        return None
     return value
 
 
@@ -1088,12 +1041,3 @@ def material_tile_columns() -> dict[str, str]:
         if spec.tile_property is not None
     }
 
-
-def tile_unscaled_sql_params() -> dict[str, int]:
-    """タイルを焼く文で束ねる引数。タイルは実行時の係数（`tile_property_runtime_scale`）を掛ける前の生値を
-    焼くので、係数で割る値式の引数を1にする。"""
-    return {
-        TILE_RUNTIME_SCALE_SQL_PARAMS[spec.tile_property_runtime_scale]: 1
-        for spec in MATERIAL_CATALOG.values()
-        if spec.tile_property is not None and spec.tile_property_runtime_scale is not None
-    }

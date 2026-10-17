@@ -16,7 +16,6 @@ import {
 } from "@/features/route/savedConditions";
 import SavedList from "@/features/route/SavedList/SavedList";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
-import { cn } from "@/lib/cn";
 
 interface SaveConditionsButtonProps {
   /** 保存した設定（同じ名前があれば上書きと出す）。 */
@@ -33,6 +32,7 @@ interface SaveConditionsButtonProps {
 }
 
 interface SavedConditionsPanelProps {
+  /** 保存した設定。 */
   saved: SavedCondition[];
   onRecall: (entry: SavedCondition) => void;
   onRemove: (name: string) => void;
@@ -51,9 +51,8 @@ function DescriptionRows({ rows }: { rows: [term: string, detail: React.ReactNod
   );
 }
 
-// 「ルート設定」の見出しの、いまの設定を保存するアイコン。押すと窓で、残るもの（条件・出発地の扱い・重みの割合・除外）だけを
-// 並べてから名前を付けて保存する（残らないものや重みを変えたかは書かない）。保存は設定を組んだその場で、呼び出しは
-// 「保存」タブの「設定」で行う（地点の保存が地点の詳しくの星で、一覧が「保存」タブの「地点」なのと同じ分け方）。
+// 「条件」タブの、いまの設定を保存するアイコン。押すと窓で、残るもの（条件・出発地の扱い・重みの割合・除外）だけを
+// 並べてから名前を付けて保存する（残らないものや重みを変えたかは書かない）。
 export function SaveConditionsButton({
   saved,
   current,
@@ -72,7 +71,7 @@ export function SaveConditionsButton({
   const fixOrigin = originKnown && (fixOriginDraft ?? originManual);
   // 窓を開いているか。保存すると閉じる。
   const [saving, setSaving] = useState(false);
-  // 窓を開くまで読まないが、見出しの行はページと一緒に描き直されるので、条件が変わったときだけ組む。
+  // 窓を開くまで読まないが、パネルはページと一緒に描き直されるので、条件が変わったときだけ組む。
   const currentDescription = useMemo(() => describeConditions(current, catalog), [current, catalog]);
 
   return (
@@ -82,7 +81,7 @@ export function SaveConditionsButton({
         aria-label="いまの設定を保存"
         aria-haspopup="dialog"
         aria-expanded={saving}
-        usage="いまの設定（条件・出発地・重み・除外）を開いて確かめ、名前を付けてこの端末に保存します。保存した設定は「保存」タブの「設定」から呼び出せます。"
+        usage="いまの設定（条件・出発地・重み・除外）を開いて確かめ、名前を付けてこの端末に保存します。保存した設定は、「保存」タブの「設定」から呼び出せます。"
         onClick={() => setSaving(true)}
       >
         <SaveConditionsIcon size={18} />
@@ -150,7 +149,7 @@ export function SaveConditionsButton({
   );
 }
 
-// 「ルート設定」区分の「保存」タブの「設定」。保存した設定の一覧と、呼び出す・消すだけを置く（保存は見出しのアイコン）。
+// 「ルート設定」区分の「保存」タブの「設定」。保存した設定の一覧（呼び出す・消す）を置く（保存は「条件」タブ）。
 // 一覧の行は名前とアイコンの操作だけで、呼び出すと窓で中身を見せ、「反映する」で各タブの値と地図のピンが入れ替わる。
 // 生成はいつもの「ルート生成」で行う（入れ替えたあとに値を確かめたり少し変えたりできる）。
 export default function SavedConditionsPanel({ saved, onRecall, onRemove }: SavedConditionsPanelProps) {
@@ -162,8 +161,8 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
 
   return (
     <div className="flex flex-col gap-3">
-      {/* 知らせの行は読み上げが変化を拾えるよう常に置き、空の間は上の隙間ごと畳む。 */}
-      <p role="status" className={cn(textVariants({ variant: "hint" }), "empty:-mt-3")}>
+      {/* 知らせの行は読み上げが変化を拾えるよう常に置く。 */}
+      <p role="status" className={textVariants({ variant: "hint" })}>
         {recalled !== null && saved.some((entry) => entry.name === recalled.name)
           ? `「${recalled.name}」を反映しました。`
           : ""}
@@ -172,7 +171,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
       <SavedList
         items={saved}
         noun="設定"
-        howToSave="「ルート設定」の見出しの「いまの設定を保存」で、いまの設定に名前を付けて保存します。保存した設定はここから呼び出せます。"
+        howToSave="条件タブの「いまの設定を保存」で、いまの設定（条件・出発地・重み・除外）に名前を付けて保存します。保存した設定は、ここで行の「呼び出す」を押すと各タブへ戻せます。"
         renderMain={(entry) => <span className="min-w-0 flex-auto truncate font-semibold">{entry.name}</span>}
         renderActions={(entry) => (
           <Button

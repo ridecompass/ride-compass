@@ -47,7 +47,7 @@ afterEach(() => {
 const fetched = () => vi.waitFor(() => expect(getQueryClient().isFetching()).toBe(0));
 
 function render(location = TOKYO, ready = true) {
-  return renderHook(({ location, ready }) => useWeatherConditions(location, ready), {
+  return renderHook(({ location, ready }) => useWeatherConditions(location, ready, null), {
     initialProps: { location, ready },
   });
 }
@@ -117,6 +117,109 @@ describe("useWeatherConditions 取得の時機", () => {
     rerender({ location: YOKOHAMA, ready: true });
     await vi.waitFor(() => expect(result.current.weatherLoading).toBe(true));
     expect(result.current.weather).toEqual({ precipitation_mm: 20 });
+  });
+});
+
+describe("useWeatherConditions 走行中", () => {
+  // 東京を囲む範囲（経度・緯度で±0.05度）。走行中、今の位置がこの中にある間は取り直さない。
+  const AROUND_TOKYO = {
+    type: "MultiPolygon",
+    coordinates: [
+      [
+        [
+          [TOKYO.longitude - 0.05, TOKYO.latitude - 0.05],
+          [TOKYO.longitude + 0.05, TOKYO.latitude - 0.05],
+          [TOKYO.longitude + 0.05, TOKYO.latitude + 0.05],
+          [TOKYO.longitude - 0.05, TOKYO.latitude + 0.05],
+          [TOKYO.longitude - 0.05, TOKYO.latitude - 0.05],
+        ],
+      ],
+    ],
+  };
+  // 東京と横浜を囲む範囲（経度・緯度で±0.5度）。
+  const AROUND_KANTO = {
+    type: "MultiPolygon",
+    coordinates: [
+      [
+        [
+          [TOKYO.longitude - 0.5, TOKYO.latitude - 0.5],
+          [TOKYO.longitude + 0.5, TOKYO.latitude - 0.5],
+          [TOKYO.longitude + 0.5, TOKYO.latitude + 0.5],
+          [TOKYO.longitude - 0.5, TOKYO.latitude + 0.5],
+          [TOKYO.longitude - 0.5, TOKYO.latitude - 0.5],
+        ],
+      ],
+    ],
+  };
+  const NEAR_TOKYO = { latitude: TOKYO.latitude + 0.01, longitude: TOKYO.longitude + 0.01 };
+
+  function renderRiding(position: typeof TOKYO) {
+    return renderHook(({ position }) => useWeatherConditions(YOKOHAMA, true, position), {
+      initialProps: { position },
+    });
+  }
+
+  it("出発地ではなく今の位置で取り、範囲の中を動く間は取り直さず、範囲を出たらその種類だけ今の位置で取り直す", async () => {
+    observations = onBackend("GET", AMEDAS, ({ query }) =>
+      Response.json({ place: `${query.latitude},${query.longitude}`, valid_area: AROUND_TOKYO }),
+    );
+    // 予報は範囲を持たず、警報は東京の範囲を広く持つ（横浜も含む）。どちらも観測の範囲を出たことでは取り直さない。
+    const forecasts = onBackend("GET", WEATHER, ({ query }) =>
+      Response.json({ place: `${query.latitude},${query.longitude}` }),
+    );
+    const warnings = onBackend("GET", WARNINGS, json({ ...NO_WARNINGS, valid_area: AROUND_KANTO }));
+    const { result, rerender } = renderRiding(TOKYO);
+    await vi.waitFor(() =>
+      expect(result.current.amedas).toMatchObject({ place: `${TOKYO.latitude},${TOKYO.longitude}` }),
+    );
+
+    rerender({ position: NEAR_TOKYO });
+    await fetched();
+    expect(observations).toHaveLength(1);
+
+    rerender({ position: YOKOHAMA });
+    await vi.waitFor(() =>
+      expect(result.current.amedas).toMatchObject({ place: `${YOKOHAMA.latitude},${YOKOHAMA.longitude}` }),
+    );
+    await fetched();
+    expect(result.current.weather).toEqual({ place: `${TOKYO.latitude},${TOKYO.longitude}` });
+    expect(forecasts).toHaveLength(1);
+    expect(warnings).toHaveLength(1);
+  });
+
+  it("範囲の中にいても、範囲の無い予報も、取り直しの間隔が来たら今の位置で取り直す", async () => {
+    observations = onBackend("GET", AMEDAS, ({ query }) =>
+      Response.json({ place: `${query.latitude},${query.longitude}`, valid_area: AROUND_TOKYO }),
+    );
+    onBackend("GET", WEATHER, ({ query }) => Response.json({ place: `${query.latitude},${query.longitude}` }));
+    const { result, rerender } = renderRiding(TOKYO);
+    await fetched();
+    rerender({ position: NEAR_TOKYO });
+    await fetched();
+
+    act(() => vi.advanceTimersByTime(10 * 60 * 1000));
+    const near = `${NEAR_TOKYO.latitude},${NEAR_TOKYO.longitude}`;
+    await vi.waitFor(() => {
+      expect(result.current.amedas).toMatchObject({ place: near });
+      expect(result.current.weather).toEqual({ place: near });
+    });
+    expect(observations).toHaveLength(2);
+  });
+
+  it("範囲を出て取り直している間に位置が届いても、取り直しは増やさない", async () => {
+    onBackend("GET", AMEDAS, json({ valid_area: AROUND_TOKYO }));
+    const { rerender } = renderRiding(TOKYO);
+    await fetched();
+    const held = heldReplies();
+    onBackend("GET", AMEDAS, held.reply);
+    rerender({ position: YOKOHAMA });
+    await vi.waitFor(() => expect(held.arrived()).toBe(1));
+
+    // 取り直している間は前の値（東京の範囲）が残る。次の位置もその外だが、新しい値が届くまでは動かさない。
+    rerender({ position: { latitude: YOKOHAMA.latitude + 0.01, longitude: YOKOHAMA.longitude } });
+    await held.answer(0, Response.json({ temperature_c: 22 }));
+    await fetched();
+    expect(held.arrived()).toBe(1);
   });
 });
 

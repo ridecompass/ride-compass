@@ -50,7 +50,6 @@ from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.axis_templates import evaluate_breakpoint_linear, evaluate_categorical
 from app.domain.difficulty import round_difficulty_array, weight_share
 from app.domain import material_catalog
-from app.domain.material_catalog import WIND_DRAG_RATIO
 from app.domain.strict_model import StrictModel
 from app.domain.weather_elements import WEATHER_ELEMENTS
 
@@ -187,6 +186,7 @@ AxisShape = Annotated[
 
 
 AxisCategory = Literal["観測", "推定", "動的"]
+TimeScope = Literal["always", "night_only"]
 
 
 class PriorityCondition(StrictModel):
@@ -315,38 +315,26 @@ class AxisDefinition(StrictModel):
     icon_id: str | None = None
     """ルート設定・ルート結果の評価の内訳で軸の名前に添えるアイコンのid。画面が持つ固定のパレットから選び、
     画面の知らないid・未設定は汎用のアイコンで出る。パレットへ形を足すには画面のコード変更が要る。"""
-    time_scope: Literal["always", "night_only"] = "always"
+    time_scope: TimeScope = "always"
     """この軸の重みが常に有効か、特定の時間帯でのみ有効かの宣言。
     「`time_scope != "always"`な軸の重みを、その時間帯に区間を通るときだけ残し、ほかは0倍にする」
     という汎用ロジック（`domain/axis_definitions.py: time_scoped_weights`参照）が、このフィールドだけを
     見て判定する。別の時間帯を足すときもこのLiteralへ値を1つ増やすだけで、エンジン側の
     コード変更は要らない。"""
     display_thresholds_override: list[float] | None = Field(default=None, min_length=1)
-    """地図の色分けしきい値だけを差し替える軽量な上書き。未設定なら`breakpoints`のX軸の
-    値がそのまま段の境界になる。
+    """地図の色分けしきい値だけを差し替える軽量な上書き。未設定なら軸の形から段の境界を導く
+    （`domain/map_paint.py: map_paint`）。
 
-    材料をどう合成して1つの表示用の値にするかは厳密に導けるが、段の刻み方は
-    `breakpoints`のX軸を流用するため粗くなりがちで、見やすさのために細かく刻みたいという
+    形から導く段は`breakpoints`の節を流用するため粗くなりがちで、見やすさのために細かく刻みたいという
     正当なニーズがある。導出能力ではなく好みの問題なので、しきい値だけを独立させてある。
 
-    値は`breakpoints`のX軸と同じ材料スケール（実行時スケール変換が要る材料を含む軸でも
-    変換後のスケールなので、係数が変わっても書き直さなくてよい）。地図表示そのものを
-    導けない軸には効果が無い。"""
+    値は地図が塗る値の目盛り——得点（0〜100）、符号付きの材料を塗る軸はその材料の値。"""
     display_band_labels_override: list[str] | None = None
     """地図の色分け段階に添える体感ラベル。未設定は
     段階の数値レンジ表記（例:「2〜6」）のみを凡例に出す。
 
     `display_thresholds_override`と対になる概念（どちらも「地図の色分け段階の見せ方」の
-    軸ごとの好み）で、dedicated_way_value_layer軸だけでなく、通常のramp軸の凡例にも
-    同じ仕組みで使える。"""
-    dedicated_way_value_layer: bool = False
-    """**ルート未確定時**の地図が、この軸を配信（`/api/region/dynamic-way-values`、`services/dedicated_way_values.py`）の
-    値で塗るかの宣言。配信はどの公開軸の値も返すので、この印は塗り方を選ぶだけで、配信できるかを表さない。
-    `axis_id`の文字列比較によるハードコード分岐ではなく、性質ベースの宣言的フィールドとして持たせ、軸スタジオの
-    編集画面（管理API）からも設定できるようにする。
-
-    **ルート確定後**の地図色分け（ルート結果の`axis_difficulties[axis_id]`でルート線を段に塗る。公開軸なら自動的に
-    対象になりこのフィールドとは無関係）とは別の概念であることに注意。"""
+    軸ごとの好み）。"""
 
     @field_validator("display_thresholds_override")
     @classmethod
@@ -864,13 +852,11 @@ def check_axis_set(definitions: dict[str, AxisDefinition]) -> None:
     topological_axis_order(definitions)
 
 
-# リクエストごとに値が変わりうる材料id（風向・風速・走行速度由来）。`MATERIAL_CATALOG`の
-# `value_sql=None`は「SQLでは求められない」という別の意味も持つ（動的データ以外に、
-# 評価へ配線していない材料もNoneになる）ため流用せず、ここに正準定義を置く。
+# リクエストごとに値が変わりうる材料id（風向・風速・走行速度由来）。
 # `dynamic_axis_topological_order`がこの集合を起点に、依存する軸を機械的に導出する
 # （軸id・材料idのハードコードを個別の軸ぶん増やさない汎用設計）。各材料の評価関数は
 # `domain/dynamic_materials.py: DYNAMIC_MATERIAL_EVALUATORS`に1対1で登録する。
-REQUEST_DYNAMIC_MATERIAL_IDS = frozenset({WIND_DRAG_RATIO})
+REQUEST_DYNAMIC_MATERIAL_IDS = material_catalog.materials_of_source("request")
 
 
 def _axes_depending_on_materials(
@@ -907,6 +893,13 @@ def dynamic_axis_topological_order(definitions: dict[str, AxisDefinition]) -> li
     """
     dynamic_ids = _axes_depending_on_materials(REQUEST_DYNAMIC_MATERIAL_IDS, definitions)
     return [axis_id for axis_id in topological_axis_order(definitions) if axis_id in dynamic_ids]
+
+
+def published_axis_order(definitions: dict[str, AxisDefinition]) -> list[str]:
+    """公開軸のidを依存順（`topological_axis_order`）に。静的スコア行列の列と、軸ごとの値を並べる所はこの並びで持つ。
+
+    宣言の順（`published_axis_definitions`）とは違いうる——公開軸が別の公開軸を材料に読むと、読まれる側が先に来る。"""
+    return [axis_id for axis_id in topological_axis_order(definitions) if definitions[axis_id].is_published]
 
 
 def published_axis_definitions(definitions: Mapping[str, AxisDefinition] | None = None) -> list[AxisDefinition]:
@@ -1024,17 +1017,13 @@ def evaluate_axis_values(
 
 
 def evaluate_axes_values(materials: Mapping[str, Sequence[object]], length: int) -> dict[str, list[float | None]]:
-    """`evaluate_axis_values`の全軸版。公開軸だけを依存順（`topological_axis_order`）に返す。
+    """`evaluate_axis_values`の全軸版。公開軸だけを依存順（`published_axis_order`）に返す。
 
     評価できなかった公開軸も、キーを残して値をNoneにする（区間インスペクタの`available=False`・
     合成の分母からの除外がこれを前提にする）。
     """
     evaluated = evaluate_axes_array(_axes_python_value_columns(materials, length), AXIS_DEFINITIONS)
-    return {
-        axis_id: _scores_or_none(evaluated[axis_id])
-        for axis_id in topological_axis_order(AXIS_DEFINITIONS)
-        if AXIS_DEFINITIONS[axis_id].is_published
-    }
+    return {axis_id: _scores_or_none(evaluated[axis_id]) for axis_id in published_axis_order(AXIS_DEFINITIONS)}
 
 
 def evaluate_axes_inputs(materials: Mapping[str, Sequence[object]], length: int) -> dict[str, list[object]]:
@@ -1046,11 +1035,8 @@ def evaluate_axes_inputs(materials: Mapping[str, Sequence[object]], length: int)
     columns = _axes_python_value_columns(materials, length)
     with_axes: dict[str, MaterialColumn] = {**columns, **evaluate_axes_array(columns, AXIS_DEFINITIONS)}
     inputs: dict[str, list[object]] = {}
-    for axis_id in topological_axis_order(AXIS_DEFINITIONS):
-        definition = AXIS_DEFINITIONS[axis_id]
-        if not definition.is_published:
-            continue
-        shape = definition.shape
+    for axis_id in published_axis_order(AXIS_DEFINITIONS):
+        shape = AXIS_DEFINITIONS[axis_id].shape
         if isinstance(shape, BreakpointLinearShape):
             inputs[axis_id] = list(_scores_or_none(_breakpoint_raw_value_array(shape, with_axes)))
         else:

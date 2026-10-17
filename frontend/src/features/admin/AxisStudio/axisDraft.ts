@@ -74,7 +74,6 @@ const PASSTHROUGH_PAYLOAD_KEYS = [
   "category",
   "priority_overrides",
   "time_scope",
-  "dedicated_way_value_layer",
 ] as const satisfies readonly (keyof AxisDefinitionPayload)[];
 
 type PassthroughPayloadKey = (typeof PASSTHROUGH_PAYLOAD_KEYS)[number];
@@ -319,19 +318,6 @@ export function parseThresholdList(text: string): { values: number[]; error: str
 /** 解釈済みのしきい値を、まとめ入力欄へ表示する文字列へ戻す。 */
 export function formatThresholdList(values: readonly number[]): string {
   return values.join(", ");
-}
-
-/** 上書きしたしきい値のうち、地図が段として作るもの。どれが落ちるかの判定はbackend
- * （`domain/axis_display.py: thresholds_the_map_drops`）が持ち、ここはその結果を除くだけ。 */
-export function thresholdsKeptOnMap(thresholds: readonly number[], droppedOnMap: readonly number[]): number[] {
-  return thresholds.filter((threshold) => !droppedOnMap.includes(threshold));
-}
-
-/** 入力の段ごとの体感ラベルを、地図の段の並びで引き直す。地図のどの段が入力のどの段に当たるかは
- * backend（`domain/axis_display.py: bands_the_map_keeps`）が決め、ここはその番号で引くだけ。
- * 判定が無い間（`bandsOnMap`がnull）は入力どおりの段で出す。 */
-export function bandLabelsOnMap(labels: readonly string[], bandsOnMap: readonly number[] | null): readonly string[] {
-  return bandsOnMap === null ? labels : bandsOnMap.map((band) => labels[band] ?? "");
 }
 
 /** 段階ラベルを段階数（しきい値の件数+1）へ合わせる。増えた分は空欄、減った分は末尾から

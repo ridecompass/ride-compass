@@ -32,9 +32,11 @@ describe("TodayOutlook 取得の状態", () => {
     expect(await screen.findByText("取得に失敗しました: 混雑しています")).toBeInTheDocument();
   });
 
-  it("見通しがあれば、直近の取り直しが失敗していても見通しを出す", () => {
+  it("見通しがあれば、直近の取り直しが失敗していても見通しの入口を出す。入口は文字の無いアイコン", () => {
     render(<TodayOutlook weather={weather({ wind_speed_max_ms: 5 })} loading={false} error="混雑しています" />);
-    expect(screen.getByRole("button", { name: "今日のモデルの計算値を表示" })).toBeInTheDocument();
+    const entry = screen.getByRole("button", { name: "今日のモデルの計算値を表示" });
+    expect(entry).toHaveTextContent(/^$/);
+    expect(entry.querySelector("svg")).not.toBeNull();
   });
 
   it("読み込み中・見通しが無い・出せる値が1つも無い間は、入口を出さない", () => {

@@ -7,17 +7,20 @@ import GenerationNotice from "@/features/route/GenerationNotice/GenerationNotice
 import { Button } from "@/components/ui/Button/Button";
 import { ConfirmDialog } from "@/components/ui/Dialog/Dialog";
 import { cn } from "@/lib/cn";
-import MapView from "@/features/map/MapView/MapView";
-import { mapOverlayEdge, type RouteFitObscuredPx } from "@/lib/mapOverlayEdges";
+import MapView, { type MapTapMode } from "@/features/map/MapView/MapView";
+import SegmentDetail from "@/features/route/SegmentDetail/SegmentDetail";
+import { pointNames } from "@/features/route/pointNames";
+import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
 import MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayControls";
 import {
   ClearRoutesIcon,
   GenerateRoutesIcon,
   LocateIcon,
+  RideModeIcon,
   RouteIcon,
   RouteSettingsIcon,
 } from "@/components/ui/icons/icons";
-import BottomSheet, { clampSheetHeightVh, DEFAULT_SHEET_HEIGHT_VH } from "@/components/BottomSheet/BottomSheet";
+import BottomSheet, { useChosenSheetHeight } from "@/components/BottomSheet/BottomSheet";
 import LensControl from "@/features/map/LensControl/LensControl";
 import RouteForm, { type SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import RouteSettingsPanel from "@/features/route/RouteSettingsPanel/RouteSettingsPanel";
@@ -29,35 +32,44 @@ import { useSavedPlaces } from "@/features/route/useSavedPlaces";
 import type { RouteOutcomeKind } from "@/features/route/useRouteGeneration";
 import type { Coordinates, PinRole, PlaceCandidate } from "@/types/route";
 import { useRoutePlanner } from "@/features/route/useRoutePlanner";
+import RouteCandidateActions from "@/features/route/RouteCandidateActions/RouteCandidateActions";
 import RouteOutcome from "@/features/route/RouteOutcome/RouteOutcome";
 import WeatherPanel from "@/features/conditions/WeatherPanel/WeatherPanel";
 import TodayOutlook from "@/features/conditions/TodayOutlook/TodayOutlook";
 import WarningBadgeList from "@/features/conditions/WarningBadge/WarningBadge";
 import HeaderMenu from "@/components/HeaderMenu/HeaderMenu";
 import UsageGuide from "@/components/UsageGuide/UsageGuide";
+import UsageTooltip from "@/components/UsageGuide/UsageTooltip";
 import FirstVisitIntro from "@/components/FirstVisitIntro/FirstVisitIntro";
 import RideConditionBar from "@/features/conditions/RideConditionBar/RideConditionBar";
 import TravelBearingControl from "@/features/conditions/TravelBearingControl/TravelBearingControl";
 import { useWeatherConditions } from "@/features/conditions/useWeatherConditions";
 import { axisCatalogFetchFailure, useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
 import DebugConsole from "@/components/DebugConsole/DebugConsole";
 import { useDebugEnabled } from "@/hooks/useDebugLog";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useLocation } from "@/hooks/useLocation";
-import { useStoredState, useStoredBooleanState } from "@/hooks/useStoredState";
+import { useStoredBooleanState } from "@/hooks/useStoredState";
 import { useRideConditions } from "@/features/conditions/useRideConditions";
-import { formatDepartureLabel } from "@/features/conditions/rideConditions";
+import RideBar from "@/features/ride/RideBar/RideBar";
+import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
+import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
+import { useProfileLayers } from "@/features/route/RouteProfile/useProfileLayers";
+import { useRideMode } from "@/features/ride/useRideMode";
+import { rideRemaining } from "@/features/ride/rideRemaining";
+import { nextTurn } from "@/features/ride/nextTurn";
+import TurnCard from "@/features/ride/TurnCard/TurnCard";
+import { useRideProgress } from "@/features/ride/useRideProgress";
+import { useRideWayConditions } from "@/features/ride/useRideWayConditions";
 import { useMapView } from "@/features/map/view/useMapView";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cardVariants } from "@/components/ui/Card/Card";
 import { dotVariants } from "@/components/ui/Dot/Dot";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
-import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 const GENERATE_OPEN_STORAGE_KEY = "ridecompass:generate-open";
 const OUTCOME_OPEN_STORAGE_KEY = "ridecompass:outcome-open";
-// モバイルの下部シートの高さ。シートは1つずつしか開かないため、1つの値を共有する。
-const MOBILE_SHEET_HEIGHT_STORAGE_KEY = "ridecompass:mobile-sheet-height-vh";
 // 区分の見出しのDOM id（デスクトップの区分・モバイルのシート）。
 const GENERATE_SECTION_TITLE_ID = "generate-section-title";
 const OUTCOME_SECTION_TITLE_ID = "outcome-section-title";
@@ -65,6 +77,20 @@ const ROUTE_SETTINGS_SHEET_TITLE_ID = "route-settings-sheet-title";
 const ROUTE_OUTCOME_SHEET_TITLE_ID = "route-outcome-sheet-title";
 
 type MobileSheet = "routeSettings" | "routeOutcome" | null;
+/** パネルの区分（モバイルはシート、デスクトップは左のパネルの区分）。 */
+type Panel = Exclude<MobileSheet, null>;
+
+/**
+ * 地図を押したときの意味を、効いているパネルから決める（地図を触った副作用で、いま見ていない面の状態が変わらない）。
+ * 「ルート設定」の条件タブは地点、「ルート結果」はルートと区間、編集中は乗り換える区間、効いているパネルが無ければ見るだけ
+ * （走行中は何も開かず、地図は現在地を追うことに専念する）。走行中に開いたパネルの中は、走っていないときと同じに決める。
+ */
+function mapTapModeOf(panel: Panel | null, settingsTab: SettingsTab, editing: boolean, riding: boolean): MapTapMode {
+  if (editing) return "splice";
+  if (panel === "routeSettings") return settingsTab === "generate" ? "points" : "look";
+  if (panel === "routeOutcome") return "routes";
+  return riding ? "ride" : "look";
+}
 
 /** モバイルの下部タブ（シートと同じ並び）。 */
 const MOBILE_TABS = [
@@ -96,46 +122,64 @@ const CONDITIONS_DIRTY_SIGNAL: OutcomeTabSignal = { tone: "warning", label: "生
 
 /** 「ルート設定」のタブ（中身は `RouteForm` が描く）。 */
 const SETTINGS_TABS: readonly { value: SettingsTab; label: string; usage: string }[] = [
-  { value: "generate", label: "条件", usage: "地点・全長の目標・候補の数を決めます。" },
+  {
+    value: "generate",
+    label: "条件",
+    usage: "地点・全長の目標・候補の数を決め、いまの設定や地点に名前を付けて保存します。",
+  },
   { value: "weights", label: "重み", usage: "道を選ぶときに、どの評価軸をどれだけ重く見るかを決めます。" },
-  { value: "exclusions", label: "除外", usage: "ルートに使わない道路の種類を選びます。" },
-  { value: "saved", label: "保存", usage: "名前を付けて保存した地点と設定を並べます。" },
+  { value: "exclusions", label: "除外", usage: "ルートに使わない道路の種類と、道ごとの避け方を選びます。" },
+  { value: "saved", label: "保存", usage: "名前を付けて保存した地点と設定を並べ、呼び出します。" },
 ];
 
 export default function Home() {
+  const axisCatalog = useAxisCatalog();
+  // 走行モード（現在地を追い続けて地図を動かす）。走りとしてありえる速さの上限は、走行モデルの下りの最高速度。
+  const riding = useRideMode(clientTuningValue(axisCatalog, CLIENT_TUNING_IDS.maxDescentKmh));
+  // 走行モードの間は、地図と予定ルートのプロファイルに集中する配置にする（地図の上の操作を出さず、パネルは帯の「ルート」で開く）。
+  const navigating = riding.status !== "off";
+  const ridePosition = riding.map?.position ?? null;
   const {
     location,
     locationSource,
     locationKnown,
     locationFailure,
+    here,
+    originAtHere,
     locating,
     locateError,
-    handleLocateMe,
+    locateMe,
+    resetOriginToCurrent,
     setManualLocation,
-  } = useLocation();
+  } = useLocation(ridePosition);
   const originManual = locationSource === "manual";
 
-  const axisCatalog = useAxisCatalog();
+  // 道のりのグラフに重ねるレイヤは、結果のパネルと走行中の図が同時に出ても1つの選択を共有する。
+  const profileLayers = useProfileLayers();
 
   // 生成の結果が出て、まだ「ルート結果」を開いていない（モバイルのタブの合図）。失敗と候補0件は形を変えて見分けられるようにする。
   const [unseenOutcome, setUnseenOutcome] = useState<RouteOutcomeKind | null>(null);
 
   // 生成の条件（「ルート設定」の入力）と走行条件。
   const conditions = useGenerationConditions({ onOriginPlace: setManualLocation });
-  // 住所の検索で置いた地点。置くたびに地図をそこへ寄せる（ピンを直すのは地図の上なので）。
-  const [foundPoint, setFoundPoint] = useState<Coordinates | null>(null);
+  // 出発地が、探して置いたときの位置のままなら、その候補（名前を出す）。
+  const originFound = originManual ? conditions.foundAt(location) : null;
+  // 地図を寄せる地点（住所の検索で置いた地点・取り直した現在地）。住所の検索で置くたびにそこへ寄せる（ピンを直すのは
+  // 地図の上なので）。
+  const [focusPoint, setFocusPoint] = useState<Coordinates | null>(null);
   function placeFound(role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) {
     conditions.placeFound(role, candidate, waypointIndex);
-    setFoundPoint({ latitude: candidate.latitude, longitude: candidate.longitude });
+    setFocusPoint({ latitude: candidate.latitude, longitude: candidate.longitude });
   }
   const ride = useRideConditions();
-  // 名前を付けて保存した生成の条件（「保存」タブ）。
+  const wayConditions = useRideWayConditions(riding.map, ride.ride);
+  // 名前を付けて保存した生成の条件（保存は「条件」タブ、呼び出しは「保存」タブ）。
   const savedConditions = useSavedConditions({
     conditions,
     origin: locationKnown ? location : null,
     originManual,
     onOriginPlace: setManualLocation,
-    onOriginFollowCurrent: handleLocateMe,
+    onOriginFollowCurrent: resetOriginToCurrent,
   });
   // 名前を付けて保存した地点（地点の詳しくで保存し、打つ欄の候補に出す）。
   const savedPlaces = useSavedPlaces();
@@ -144,23 +188,24 @@ export default function Home() {
   const [generateOpen, setGenerateOpen] = useStoredBooleanState(GENERATE_OPEN_STORAGE_KEY, true);
   const [outcomeOpen, setOutcomeOpen] = useStoredBooleanState(OUTCOME_OPEN_STORAGE_KEY, true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // デスクトップで2つの区分を開いているとき、地図で効く区分（最後に触った区分。結果が届いたら「ルート結果」）。
+  const [lastTouchedPanel, setLastTouchedPanel] = useState<Panel>("routeSettings");
   // モバイルで開いている下部シート（1つだけ。無ければ地図だけ）。
   const [mobileSheet, setMobileSheet] = useState<MobileSheet>(null);
-  // シートの高さは、利用者がドラッグで確定した値だけを保存する。保存値があることが「決めた」印で、決めた後は
-  // 中身に合わせた自動調整をやめる。ドラッグ中と自動調整の値は保存しない（毎フレーム書き込まない）。
-  const [chosenSheetHeightVh, setChosenSheetHeightVh] = useStoredState<number | null>(
-    MOBILE_SHEET_HEIGHT_STORAGE_KEY,
-    null,
-    {
-      serialize: JSON.stringify,
-      deserialize: (raw) => {
-        const parsed: unknown = JSON.parse(raw);
-        return typeof parsed === "number" && Number.isFinite(parsed) ? clampSheetHeightVh(parsed) : null;
-      },
-    },
-  );
-  const [workingSheetHeightVh, setWorkingSheetHeightVh] = useState<number | null>(null);
-  const mobileSheetHeightVh = workingSheetHeightVh ?? chosenSheetHeightVh ?? DEFAULT_SHEET_HEIGHT_VH;
+  const [chosenSheetHeightVh, chooseSheetHeight] = useChosenSheetHeight();
+  // 走行中に帯の「ルート」でパネルを出しているか（デスクトップ。モバイルはシートを開いていること）。
+  const [ridePanelOpen, setRidePanelOpen] = useState(false);
+  // 走り始めたときの作業台（モバイルで開いていたシート）。走り始めたらシートを閉じて覚え、止めたら（どの止まり方でも）戻す。
+  const [workbenchBeforeRide, setWorkbenchBeforeRide] = useState<{ sheet: MobileSheet } | null>(null);
+  if (navigating && workbenchBeforeRide === null) {
+    setWorkbenchBeforeRide({ sheet: mobileSheet });
+    setMobileSheet(null);
+    setRidePanelOpen(false);
+  } else if (!navigating && workbenchBeforeRide !== null) {
+    setMobileSheet(workbenchBeforeRide.sheet);
+    setWorkbenchBeforeRide(null);
+    setRidePanelOpen(false);
+  }
 
   const debugEnabled = useDebugEnabled();
   const [debugConsoleOpen, setDebugConsoleOpen] = useState(false);
@@ -179,6 +224,7 @@ export default function Home() {
   const notifyRouteOutcome = useCallback(
     (outcome: RouteOutcomeKind) => {
       setOutcomeOpen(true);
+      setLastTouchedPanel("routeOutcome");
       if (outcome === "fresh" && mobileSheetRef.current === "routeSettings") {
         setMobileSheet("routeOutcome");
         setUnseenOutcome(null);
@@ -199,6 +245,20 @@ export default function Home() {
     onOutcome: notifyRouteOutcome,
   });
   const { results, generation, splice } = route;
+
+  // 走行中のルートを端末に一時保存し、読み込み直されたら同じ候補を出して走行モードを始め直す（休んでいたら休んだまま戻す）。
+  const progress = useRideProgress({
+    route: results.selectedCandidate,
+    riding: navigating,
+    resting: riding.status === "resting",
+    position: ridePosition,
+    accuracyM: riding.accuracyM,
+    onRestore: (session) => {
+      results.replaceWithGenerated([session.route], null);
+      if (session.resting) riding.rest();
+      else riding.press();
+    },
+  });
   const editingRoute = splice.editingRoute;
   // 「候補を全消去」を押したか。確認の窓で「消す」を押すまで消さない。
   const [confirmingClear, setConfirmingClear] = useState(false);
@@ -206,35 +266,50 @@ export default function Home() {
   const mapView = useMapView({
     hasSelectedRoute: results.selectedCandidate !== null,
     hasDetail: results.hasDetail,
-    ride: ride.ride,
+    ride: wayConditions,
     now: ride.departure.now,
-    departureLabel: formatDepartureLabel(ride.departure.at, ride.departure.now),
     routeWeights: route.routeWeights,
   });
+
+  // 走行モードの間、現在地を選んだ候補の上の距離へ当てる。プロファイルの印と、地図とプロファイルの薄めに使う。
+  const ridingRoute = navigating ? results.selectedCandidate : null;
+  // 次に曲がる所。ルートを外れている間は計画どおりに走っていないので出さない。
+  const upcomingTurn = progress.offRoute ? null : nextTurn(ridingRoute?.turns ?? [], progress.km);
+  const progressKm = progress.km;
+  // 残りと到着予想。到着予想は、最後に位置を受けた時刻へ選んだ候補の計画の残り時間を足す。
+  const remaining = rideRemaining(ridingRoute, progressKm, riding.fixedAtMs);
 
   const isMobile = useIsMobile();
 
   // 「ルート設定」のタブ。タブ列は見出し行、中身は本文に描くため、両方を囲むここで持つ。
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("generate");
 
-  // 地図でできることは、いま見ているパネルが持つ操作だけにする（地図を触った副作用で地点が変わらない）。
-  // 「ルート設定」の条件タブ＝地点を置く・動かす・消す、「ルート結果」＝区間の詳細、
-  // 編集中＝乗り換え先の選択だけ。モバイルはシート、デスクトップはパネルを畳んでおらず区分が開いていることが
-  // 「見ているか」に当たる（畳むと区分の開閉は保ったまま中身が見えなくなる）。
-  const routeSettingsActive = isMobile ? mobileSheet === "routeSettings" : !sidebarCollapsed && generateOpen;
-  const routeOutcomeActive = isMobile ? mobileSheet === "routeOutcome" : !sidebarCollapsed && outcomeOpen;
-  const pointEditingEnabled = routeSettingsActive && settingsTab === "generate" && editingRoute === null;
-  const routeInspectionEnabled = routeOutcomeActive && editingRoute === null;
-  const pinPlacementArmedRole = pointEditingEnabled ? conditions.armedPinRole : null;
-
-  // 地図はモバイルの下部タブバー・シートの下にも描かれるため、ルートを収めるときに覆われた高さを測って渡す
-  // （そのままだとシートの裏へ収まって1本も見えない）。
-  const mobileTabBarRef = useRef<HTMLElement>(null);
-  const measureRouteFitObscuredPx = (): RouteFitObscuredPx | undefined => {
-    if (!isMobile) return undefined;
-    const sheetPx = mobileSheet ? (window.innerHeight * mobileSheetHeightVh) / 100 : 0;
-    return { bottom: (mobileTabBarRef.current?.getBoundingClientRect().height ?? 0) + sheetPx };
-  };
+  // パネルを出しているか。走行モードの間は、帯の「ルート」で開いている間だけ（モバイルはシートを開いている間）。
+  const panelsShown = !navigating || (isMobile ? mobileSheet !== null : ridePanelOpen);
+  // 地図で効いているパネル（いつも1つ）。モバイルは開いているシート。デスクトップは出していて畳んでいない左のパネルの、
+  // 開いている区分で、2つとも開いていれば最後に触った区分（畳むと区分の開閉は保ったまま中身が見えなくなる）。走行中に
+  // 帯の「ルート」で出したパネルは畳めない。
+  const desktopPanels = !isMobile && panelsShown && (navigating || !sidebarCollapsed);
+  const activePanel: Panel | null = isMobile
+    ? mobileSheet
+    : !desktopPanels
+      ? null
+      : generateOpen && outcomeOpen
+        ? lastTouchedPanel
+        : generateOpen
+          ? "routeSettings"
+          : outcomeOpen
+            ? "routeOutcome"
+            : null;
+  const tapMode = mapTapModeOf(activePanel, settingsTab, editingRoute !== null, navigating);
+  // 区分の中を押す・中へ移ると、その区分が地図で効く。効いているかは包む要素の印で見せ、区分のクラスは変えない（変えると中の
+  // 部品の見た目の見分けが、押すたびに変わる）。
+  const touchPanel = (panel: Panel) => ({
+    className: "group/panel",
+    "data-active": activePanel === panel,
+    onPointerDownCapture: () => setLastTouchedPanel(panel),
+    onFocusCapture: () => setLastTouchedPanel(panel),
+  });
 
   // モバイルのタブ。同じタブをもう一度押したら閉じる。
   const handleMobileTabClick = (sheet: Exclude<MobileSheet, null>) => {
@@ -243,16 +318,26 @@ export default function Home() {
     if (sheet === "routeOutcome") setUnseenOutcome(null);
   };
 
+  // 走りの帯の「ルート」。走行モードのまま、モバイルは「ルート結果」のシート（タブで「ルート設定」へ移れる）、デスクトップは
+  // 左のパネルを出し入れする。
+  const toggleRidePanel = () => {
+    if (!isMobile) {
+      setRidePanelOpen((open) => !open);
+      return;
+    }
+    if (mobileSheet !== null) {
+      setMobileSheet(null);
+      return;
+    }
+    setMobileSheet("routeOutcome");
+    setUnseenOutcome(null);
+  };
+
   // 2枚のシートが共有する開閉と高さ。
   const sharedSheetProps = {
     onClose: () => setMobileSheet(null),
-    heightVh: mobileSheetHeightVh,
-    onHeightChange: setWorkingSheetHeightVh,
-    onHeightCommit: (vh: number) => {
-      setChosenSheetHeightVh(vh);
-      setWorkingSheetHeightVh(null);
-    },
-    autoFitHeight: chosenSheetHeightVh === null,
+    chosenHeightVh: chosenSheetHeightVh,
+    onHeightChoose: chooseSheetHeight,
   };
 
   const handleSettingsTabChange = (value: string) => setSettingsTab(value as SettingsTab);
@@ -267,7 +352,7 @@ export default function Home() {
     amedasError,
     warningBadgeItems,
     warningFetchFailures,
-  } = useWeatherConditions(location, locationKnown);
+  } = useWeatherConditions(location, locationKnown, navigating ? (riding.map?.position ?? null) : null);
   const axisCatalogFailure = axisCatalogFetchFailure(axisCatalog);
   const headerFetchFailures = useMemo(
     () => [
@@ -284,7 +369,7 @@ export default function Home() {
       ? CONDITIONS_DIRTY_SIGNAL
       : null;
 
-  // 「ルート設定」のタブ列は見出し行に置き（本文の縦を空ける）、「いまの設定を保存」「ルート生成」は同じ行の右端に離して置く
+  // 「ルート設定」のタブ列は見出し行に置き（本文の縦を空ける）、「ルート生成」は同じ行の右端に離して置く
   // （どのタブを見ていても押せる）。タブの間と左右の余白・操作の間を詰めているのは、スマホの幅で見出しの題・タブ・操作（条件の
   // 変更の印も）を1行に切らずに収めるため。
   function renderSettingsTabs() {
@@ -311,14 +396,6 @@ export default function Home() {
             生成条件が変更されています。表示中の候補は変更前の条件で作ったものです。
           </InfoPopover>
         )}
-        <SaveConditionsButton
-          saved={savedConditions.saved}
-          current={savedConditions.current}
-          suggestedName={savedConditions.suggestedName}
-          originManual={originManual}
-          originKnown={locationKnown}
-          onSave={savedConditions.save}
-        />
         <Button
           variant="primary"
           size="panelIcon"
@@ -342,12 +419,15 @@ export default function Home() {
         origin={location}
         originManual={originManual}
         originLocated={locationKnown}
-        onOriginReset={handleLocateMe}
-        originFound={originManual ? conditions.foundAt(location) : null}
+        originAtHere={originAtHere}
+        onOriginReset={resetOriginToCurrent}
+        originFound={originFound}
         // 地図は出発地を真ん中にして開くので、地図が範囲を知らせる前は出発地が真ん中。
         mapCenter={mapView.center ?? location}
         onPlaceFound={placeFound}
         savedPlaces={savedPlaces}
+        onPointsShow={() => setSettingsTab("generate")}
+        placing={tapMode === "points"}
         weightsPanel={
           <RouteSettingsPanel
             routePreference={conditions.routePreference}
@@ -357,7 +437,22 @@ export default function Home() {
           />
         }
         exclusionsPanel={
-          <HardFilterPanel hardFilters={conditions.hardFilters} onHardFiltersChange={conditions.setHardFilters} />
+          <HardFilterPanel
+            hardFilters={conditions.hardFilters}
+            onHardFiltersChange={conditions.setHardFilters}
+            roadAvoidance={conditions.roadAvoidance}
+            onRoadAvoidanceChange={conditions.setRoadAvoidance}
+          />
+        }
+        saveConditionsButton={
+          <SaveConditionsButton
+            saved={savedConditions.saved}
+            current={savedConditions.current}
+            suggestedName={savedConditions.suggestedName}
+            originManual={originManual}
+            originKnown={locationKnown}
+            onSave={savedConditions.save}
+          />
         }
         savedConditionsPanel={
           <SavedConditionsPanel
@@ -372,14 +467,40 @@ export default function Home() {
 
   // 「ルート結果」の中身（デスクトップの区分・モバイルのシートの両方）。
   function renderRouteOutcome() {
-    return <RouteOutcome results={results} generation={generation} splice={splice} routeWeights={route.routeWeights} />;
+    return (
+      <RouteOutcome
+        results={results}
+        generation={generation}
+        splice={splice}
+        routeWeights={route.routeWeights}
+        profileLayers={profileLayers}
+      />
+    );
   }
 
-  // 「ルート結果」の見出しの操作。候補すべてに効く操作だけを置き、候補1本への操作はその候補のタブの中に置く
-  // （見出しに並べると、どれが選んでいる1本だけに効くのか見分けられない）。候補がある間だけ呼ばれる。
+  // 「ルート結果」の見出しの操作。選んでいる候補1本への操作（走る・合成・GPX）を、候補すべてに効く全消去の手前に並べる
+  // （中身の中に置くと、狭い高さで候補の切り替えとグラフの場所を取る）。候補1本への操作は、編集の間は出さない（中身が編集面に
+  // なり、相手の候補が選べない）。「このルートで走る」は、その候補を選んで走行モードを始める（走り始めると作業台のシートは
+  // 閉じる）。もう走っている間は出さない（選び直すと走行モードはそのまま新しい候補を追う）。候補がある間だけ呼ばれる。
   function renderRouteResultHeaderActions() {
+    const target = results.selectedCandidate ?? results.routes[0];
     return (
       <>
+        {!splice.panel && target && (
+          <RouteCandidateActions
+            route={target}
+            splice={splice}
+            onClearSegment={() => results.selectSegment(null)}
+            onRide={
+              navigating
+                ? undefined
+                : (routeId) => {
+                    results.selectTab(routeId);
+                    riding.press();
+                  }
+            }
+          />
+        )}
         <Button
           size="panelIcon"
           onClick={() => setConfirmingClear(true)}
@@ -406,84 +527,206 @@ export default function Home() {
     );
   }
 
+  // 走行モードの間、地図の下に選んだ候補の道のりに沿った難易度を見るだけで出し（候補が無ければ出さない。区間の中身を出す
+  // 所は走行中に開いていないので選ばせない）、そのすぐ上に続きから走るための操作を1か所で出す: 休んでいる間は
+  // 「続きから走る」、地図を指で動かして追うのを休んでいる間は「現在地へ戻る」、追っている間にルートを外れたら、
+  // 戻れば続きから案内すること。
+  function renderRideBottom() {
+    const selected = results.selectedCandidate;
+    const profile = selected !== null && selected.segments.length > 0 ? selected : null;
+    const awayNotice = riding.status === "following" && progress.offRoute;
+    const resumable = riding.status === "paused" || riding.status === "resting";
+    if (profile === null && !resumable && !awayNotice) return null;
+    return (
+      <div
+        {...mapOverlayEdge("bottom")}
+        className="pointer-events-none absolute inset-x-2 bottom-2 z-[var(--z-map-control)] flex flex-col items-center gap-2"
+      >
+        {riding.status === "resting" && (
+          <Button
+            variant="primary"
+            size="md"
+            className="pointer-events-auto gap-1.5 shadow-md"
+            onClick={riding.resume}
+            usage="休んでいる間は、現在地を受けず、画面も点けたままにしません。押すと現在地を受け直し、休む前の進み具合から案内を続けます。"
+          >
+            <RideModeIcon />
+            続きから走る
+          </Button>
+        )}
+        {riding.status === "paused" && (
+          <Button
+            variant="primary"
+            size="md"
+            className="pointer-events-auto gap-1.5 shadow-md"
+            onClick={riding.resume}
+            usage="地図を指で動かしている間は、現在地を追いません。押すと地図を現在地へ戻し、続きを追います。"
+          >
+            <LocateIcon />
+            現在地へ戻る
+          </Button>
+        )}
+        {awayNotice && (
+          <p
+            className={cn(
+              cardVariants({ variant: "float" }),
+              textVariants({ variant: "hint" }),
+              "pointer-events-auto rounded-md px-2.5 py-1.5",
+            )}
+          >
+            ルートを外れています。ルートへ戻ると続きから案内します。
+          </p>
+        )}
+        {profile !== null && (
+          <section
+            aria-label="予定ルートのプロファイル"
+            className={cn(cardVariants({ variant: "float" }), "pointer-events-auto w-full rounded-md px-2 py-1.5")}
+          >
+            <RouteProfile
+              segments={profile.segments}
+              points={profile.points}
+              overallDifficulty={profile.overall_difficulty?.average ?? null}
+              axes={axisCatalog.axes}
+              axisColors={axisCatalog.axisColors}
+              scaleKm={profile.distance_km}
+              progressKm={progressKm}
+              waypointKms={profile.waypoint_distances_km}
+              selected={null}
+              layers={profileLayers}
+              riding
+            />
+          </section>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-dvh flex-col">
       <header className="flex flex-shrink-0 flex-nowrap items-center gap-2 overflow-x-auto border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {/* 風と「今日」のパネルは左端に固定して常に見せる。入り切らないときに隠れるのは警報の側。 */}
-        <div className="left-0 flex flex-shrink-0 items-center gap-2 sticky z-1 bg-[var(--color-surface)]">
-          <WeatherPanel amedas={amedas} loading={amedasLoading} error={amedasError} />
-          <TodayOutlook weather={weather} loading={weatherLoading} error={weatherError} />
-        </div>
-        <div className="ml-auto flex flex-shrink-0 items-center gap-2">
-          <WarningBadgeList items={warningBadgeItems} failures={headerFetchFailures} />
-          <div className="right-0 flex items-center sticky z-1 bg-[var(--color-surface)]">
-            <HeaderMenu
-              debugEnabled={debugEnabled}
-              debugConsoleOpen={debugConsoleOpen}
-              onToggleDebugConsole={() => setDebugConsoleOpen((v) => !v)}
-              onStartUsageGuide={() => setUsageGuideActive(true)}
-              onRedrawMap={mapView.redrawMap}
-            />
+        {navigating ? (
+          <RideBar
+            remaining={remaining}
+            offRoute={progress.offRoute}
+            mapBearingDeg={mapView.bearing}
+            speedKmh={riding.speedKmh}
+            wind={
+              amedas?.wind_speed_ms != null && amedas.wind_direction !== null
+                ? {
+                    directionDeg: amedas.wind_direction.deg,
+                    directionLabel: amedas.wind_direction.label,
+                    speedMs: amedas.wind_speed_ms,
+                  }
+                : null
+            }
+          />
+        ) : null}
+        {navigating ? (
+          <div className="ml-auto flex flex-shrink-0 items-center gap-2">
+            <WarningBadgeList items={warningBadgeItems} failures={headerFetchFailures} />
+            <Button
+              size="panelIcon"
+              onClick={toggleRidePanel}
+              aria-label="ルート"
+              aria-expanded={panelsShown}
+              usage="走行モードのまま「ルート設定」と「ルート結果」を開きます。候補を選び直す・作り直すと、走行モードはその候補を追います。もう一度押すと閉じます。"
+            >
+              <RouteIcon size={18} />
+            </Button>
           </div>
-        </div>
+        ) : (
+          <>
+            {/* 風と「今日」のパネルは左端に固定して常に見せる。入り切らないときに隠れるのは警報の側。 */}
+            <div className="left-0 flex flex-shrink-0 items-center gap-2 sticky z-1 bg-[var(--color-surface)]">
+              <WeatherPanel
+                amedas={amedas}
+                loading={amedasLoading}
+                error={amedasError}
+                mapBearingDeg={mapView.bearing}
+              />
+              <TodayOutlook weather={weather} loading={weatherLoading} error={weatherError} />
+            </div>
+            <div className="ml-auto flex flex-shrink-0 items-center gap-2">
+              <WarningBadgeList items={warningBadgeItems} failures={headerFetchFailures} />
+              <div className="right-0 flex items-center sticky z-1 bg-[var(--color-surface)]">
+                <HeaderMenu
+                  debugEnabled={debugEnabled}
+                  debugConsoleOpen={debugConsoleOpen}
+                  onToggleDebugConsole={() => setDebugConsoleOpen((v) => !v)}
+                  onStartUsageGuide={() => setUsageGuideActive(true)}
+                  onRedrawMap={mapView.redrawMap}
+                />
+              </div>
+            </div>
+          </>
+        )}
       </header>
       <DebugConsole open={debugConsoleOpen} onClose={() => setDebugConsoleOpen(false)} />
 
       <div className="app-shell">
-        {!isMobile && (
-          <aside className={`app-sidebar${sidebarCollapsed ? " is-collapsed" : ""}`}>
-            <Button
-              size="sm"
-              onClick={() => setSidebarCollapsed((v) => !v)}
-              aria-label={sidebarCollapsed ? "パネルを開く" : "パネルを閉じる"}
-              className="self-start"
-              usage="左のパネルを畳んで地図を広く見ます。もう一度押すと開きます。"
-            >
-              {sidebarCollapsed ? "☰" : "✕"}
-            </Button>
+        {!isMobile && panelsShown && (
+          <aside className={`app-sidebar${!desktopPanels ? " is-collapsed" : ""}`}>
+            {/* 走行中に出したパネルは、帯の「ルート」で閉じる（畳むボタンを並べない）。 */}
+            {!navigating && (
+              <Button
+                size="sm"
+                onClick={() => setSidebarCollapsed((v) => !v)}
+                aria-label={sidebarCollapsed ? "パネルを開く" : "パネルを閉じる"}
+                className="self-start"
+                usage="左のパネルを畳んで地図を広く見ます。もう一度押すと開きます。"
+              >
+                {sidebarCollapsed ? "☰" : "✕"}
+              </Button>
+            )}
 
-            {!sidebarCollapsed && (
+            {desktopPanels && (
               <>
                 {/* モバイルの下部タブと同じ区分・同じ順序。タブ列（見出し行）とタブの中身（本文）の両方を囲む。 */}
-                <Tabs value={settingsTab} onValueChange={handleSettingsTabChange}>
-                  <SectionDisclosure
-                    id={GENERATE_SECTION_TITLE_ID}
-                    title="ルート設定"
-                    trailing={
-                      <div className="flex min-w-0 flex-auto items-center justify-between gap-2">
-                        {renderSettingsTabs()}
-                        {renderRouteSectionHeaderActions()}
-                      </div>
-                    }
-                    open={generateOpen}
-                    onOpenChange={setGenerateOpen}
-                    usage="押すと開き・畳みます。ルートを作る条件をここで決め、右の「ルート生成」で作ります。"
-                  >
-                    {renderRouteSectionBody()}
-                  </SectionDisclosure>
-                </Tabs>
+                <div {...touchPanel("routeSettings")}>
+                  <Tabs value={settingsTab} onValueChange={handleSettingsTabChange}>
+                    <SectionDisclosure
+                      id={GENERATE_SECTION_TITLE_ID}
+                      title="ルート設定"
+                      active={activePanel === "routeSettings"}
+                      trailing={
+                        <div className="flex min-w-0 flex-auto items-center justify-between gap-2">
+                          {renderSettingsTabs()}
+                          {renderRouteSectionHeaderActions()}
+                        </div>
+                      }
+                      open={generateOpen}
+                      onOpenChange={setGenerateOpen}
+                      usage="押すと開き・畳みます。ルートを作る条件をここで決め、右の「ルート生成」で作ります。"
+                    >
+                      {renderRouteSectionBody()}
+                    </SectionDisclosure>
+                  </Tabs>
+                </div>
 
-                <SectionDisclosure
-                  id={OUTCOME_SECTION_TITLE_ID}
-                  title="ルート結果"
-                  trailing={
-                    results.routes.length > 0 ? (
-                      <div className="flex flex-shrink-0 items-center gap-2">{renderRouteResultHeaderActions()}</div>
-                    ) : undefined
-                  }
-                  open={outcomeOpen}
-                  onOpenChange={setOutcomeOpen}
-                  usage="押すと開き・畳みます。作った候補と、その難易度の内訳がここに並びます。"
-                >
-                  {renderRouteOutcome()}
-                </SectionDisclosure>
+                <div {...touchPanel("routeOutcome")}>
+                  <SectionDisclosure
+                    id={OUTCOME_SECTION_TITLE_ID}
+                    title="ルート結果"
+                    active={activePanel === "routeOutcome"}
+                    trailing={
+                      results.routes.length > 0 ? (
+                        <div className="flex flex-shrink-0 items-center gap-2">{renderRouteResultHeaderActions()}</div>
+                      ) : undefined
+                    }
+                    open={outcomeOpen}
+                    onOpenChange={setOutcomeOpen}
+                    usage="押すと開き・畳みます。作った候補と、その難易度の内訳がここに並びます。"
+                  >
+                    {renderRouteOutcome()}
+                  </SectionDisclosure>
+                </div>
               </>
             )}
           </aside>
         )}
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="app-map-pane relative min-h-0 flex-1">
+          <div className="app-map-pane @container/map relative min-h-0 flex-1">
             <MapView
               routes={route.mapRoutes}
               {...splice.map}
@@ -491,96 +734,145 @@ export default function Home() {
               location={location}
               locationSource={locationSource}
               look={mapView.look}
-              rideConditions={ride.ride}
+              rideConditions={wayConditions}
               routePreference={conditions.routePreferenceToSend}
               selectedRouteSegment={results.selectedRouteSegment}
-              onRouteSegmentSelect={(selection) => {
-                if (!routeInspectionEnabled) return;
-                results.selectSegment(selection);
-              }}
+              onRouteSegmentSelect={results.selectSegment}
+              segmentDetail={
+                tapMode === "look" && results.selectedRouteSegment !== null ? (
+                  <SegmentDetail selection={results.selectedRouteSegment} />
+                ) : null
+              }
+              onRouteSelect={results.selectTab}
               waypoints={conditions.waypoints}
-              onWaypointRemove={conditions.removeWaypoint}
-              onWaypointMove={conditions.moveWaypoint}
               destination={conditions.destination}
-              onDestinationClear={conditions.clearDestination}
-              armedPinRole={pinPlacementArmedRole}
-              pointEditingEnabled={pointEditingEnabled}
-              onPinPlace={conditions.placePin}
-              onSpotPlace={(role, spot) => placeFound(role, spot, null)}
-              waypointsFull={conditions.waypoints.length >= routeGenerateConfig.max_waypoints}
-              focusPoint={foundPoint}
-              measureRouteFitObscuredPx={measureRouteFitObscuredPx}
+              pinNames={pointNames({
+                waypoints: conditions.waypoints,
+                destination: conditions.destination,
+                foundAt: conditions.foundAt,
+                originFound,
+                originManual,
+                originLocated: locationKnown,
+              })}
+              tapMode={tapMode}
+              onPointPlace={conditions.placeAtSelected}
+              onPointSelect={conditions.selectPoint}
+              onOriginMove={setManualLocation}
+              onWaypointMove={conditions.moveWaypoint}
+              onDestinationMove={conditions.setDestination}
+              focusPoint={focusPoint}
+              // 出発地のピンが現在地にあるときは、ピンが現在地を示すので点を重ねない。
+              here={originAtHere ? null : here}
+              ride={riding.map}
+              travelledKm={progressKm}
+              turnPoint={upcomingTurn}
             />
 
-            {/* 地図の左上に「表示」（重ねる情報の一覧）、上の中央に色分けを置く。 */}
+            {/* 地図の左上に「表示」（重ねる情報の一覧）と、走行中は次に曲がる所のカードを縦に積む。どちらも走行中も出す（小さいので
+                走りの邪魔にならず、走りながら重ねる情報を替えられる）。 */}
             <div
               {...mapOverlayEdge("top")}
-              className="pointer-events-none absolute top-3 left-3 z-[var(--z-map-control)] flex"
+              className="pointer-events-none absolute top-3 left-3 z-[var(--z-map-control)] flex flex-col items-start gap-2"
             >
               <MapOverlayControls {...mapView.overlayControls} />
+              {upcomingTurn !== null && (
+                <TurnCard direction={upcomingTurn.direction} distanceM={upcomingTurn.distanceM} />
+              )}
             </div>
-            {/* 左右の余白は、右の縦の列を両側で避ける幅（中央に置くため）。 */}
+            {/* 上の中央に「評価で塗る」を置く。走行中も、ルートの線と道の色が何かを示すため同じ大きさで出す。
+                左右の余白は、右の縦の列を両側で避ける幅（中央に置くため。左上の「表示」は列と同じ幅なので、これで避けられる）。
+                「表示」の横に収まらないほど地図が狭い間は、「表示」の下の段へ下げ、余白は変えずに箱を左へずらして左端を「表示」の左端にそろえる（余白のクラスを上書きしない）。 */}
             <div
               {...mapOverlayEdge("top")}
-              className="pointer-events-none absolute inset-x-0 top-3 z-[var(--z-map-control)] flex justify-center px-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))]"
+              className={cn(
+                "pointer-events-none absolute inset-x-0 top-3 z-[var(--z-map-control)] flex justify-center px-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))]",
+                "@max-[22rem]/map:top-12 @max-[22rem]/map:left-[calc(0.75rem_-_var(--map-ctrl-margin)_-_var(--map-ctrl-column-width)_-_var(--space-2))]",
+              )}
             >
               <LensControl {...mapView.lensControl} />
             </div>
+            {!navigating && <FirstVisitIntro isMobile={isMobile} locationUnknown={locationFailure !== null} />}
 
-            <FirstVisitIntro isMobile={isMobile} locationUnknown={locationFailure !== null} />
+            {usageGuideActive ? <UsageGuide onEnd={() => setUsageGuideActive(false)} /> : <UsageTooltip />}
 
-            {usageGuideActive && <UsageGuide onEnd={() => setUsageGuideActive(false)} />}
-
-            <TravelBearingControl value={ride.bearingDeg} onChange={ride.setBearingDeg} />
+            {!navigating && (
+              <TravelBearingControl
+                value={ride.bearingDeg}
+                onChange={ride.setBearingDeg}
+                linked={mapView.lensConditions.includes("bearing_deg")}
+              />
+            )}
 
             {/* 走行条件（出発時刻・想定速度）は走行方位の直下に積む。出発時刻は気象レイヤーの表示時刻と同じもの。
-              その下へ現在地を続ける。 */}
+              その下へ現在地と走行モードを続ける。 */}
             <div
               {...mapOverlayEdge("right")}
-              className="pointer-events-none absolute top-[calc(var(--map-ctrl-stack-top)+var(--map-ctrl-button-size)+var(--map-ctrl-stack-gap))] right-[var(--map-ctrl-margin)] z-[var(--z-map-control)] flex flex-col gap-[var(--map-ctrl-stack-gap)]"
+              className={cn(
+                "pointer-events-none absolute right-[var(--map-ctrl-margin)] z-[var(--z-map-control)] flex flex-col gap-[var(--map-ctrl-stack-gap)]",
+                // 走行モードの間は走行方位のボタンを出さないので、その段を空けずに積む。
+                navigating
+                  ? "top-[var(--map-ctrl-stack-top)]"
+                  : "top-[calc(var(--map-ctrl-stack-top)+var(--map-ctrl-button-size)+var(--map-ctrl-stack-gap))]",
+              )}
             >
-              <RideConditionBar
-                departureTime={ride.departure.at}
-                onDepartureTimeChange={ride.departure.setAt}
-                onDepartureNow={ride.departure.followNow}
-                speedKmh={ride.speedKmh}
-                onSpeedKmhChange={ride.setSpeedKmh}
-              />
-              <div className="relative flex">
-                <Button
-                  variant="mapCtrl"
-                  size="mapCtrl"
-                  onClick={handleLocateMe}
-                  disabled={locating}
-                  aria-label="現在地に移動"
-                  title="現在地に移動"
-                  usage="現在地を取り直して地図をそこへ動かし、出発地を現在地にします。"
-                  className={cn(locating && "cursor-wait opacity-60")}
-                >
-                  {locating ? "…" : <LocateIcon />}
-                </Button>
-                {locateError && (
-                  <p
-                    className={cn(
-                      cardVariants({ variant: "float" }),
-                      textVariants({ variant: "error" }),
-                      "pointer-events-none absolute top-0 right-full mr-2 w-max max-w-55 border-0 px-2.5 py-1.5",
+              {!navigating && (
+                <>
+                  <RideConditionBar
+                    departureTime={ride.departure.at}
+                    onDepartureTimeChange={ride.departure.setAt}
+                    onDepartureNow={ride.departure.followNow}
+                    speedKmh={ride.speedKmh}
+                    onSpeedKmhChange={ride.setSpeedKmh}
+                    linkedDeparture={mapView.lensConditions.includes("at")}
+                    linkedSpeed={mapView.lensConditions.includes("speed_kmh")}
+                  />
+                  <div className="relative flex">
+                    <Button
+                      variant="mapCtrl"
+                      size="mapCtrl"
+                      onClick={() => locateMe(setFocusPoint)}
+                      disabled={locating}
+                      aria-label="現在地に移動"
+                      title="現在地に移動"
+                      usage="現在地を取り直して、地図をそこへ動かします。出発地は変えません。"
+                      className={cn(locating && "cursor-wait opacity-60")}
+                    >
+                      {locating ? "…" : <LocateIcon />}
+                    </Button>
+                    {locateError && (
+                      <p
+                        className={cn(
+                          cardVariants({ variant: "float" }),
+                          textVariants({ variant: "error" }),
+                          "pointer-events-none absolute top-0 right-full mr-2 w-max max-w-55 border-0 px-2.5 py-1.5",
+                        )}
+                      >
+                        {locateError}
+                      </p>
                     )}
-                  >
-                    {locateError}
-                  </p>
-                )}
-              </div>
+                  </div>
+                </>
+              )}
+              <RideModeButton
+                status={riding.status}
+                error={riding.error}
+                screenWakeLock={riding.screenWakeLock}
+                onPress={riding.press}
+                onRest={riding.rest}
+                onResume={riding.resume}
+              />
             </div>
+            {navigating && renderRideBottom()}
           </div>
         </div>
       </div>
 
-      {/* モバイル: 下部タブと部分シート。シートを開いたままでも地図の上側は見えて動かせる。 */}
-      {isMobile && (
+      {/* モバイル: 下部タブと部分シート。シートを開いたままでも地図の上側は見えて動かせる。走行中は、帯の「ルート」で
+        シートを開いている間だけ出す（タブで2枚のシートを行き来し、閉じると地図に戻る）。 */}
+      {isMobile && panelsShown && (
         <>
           <nav
-            ref={mobileTabBarRef}
+            {...mapOverlayEdge("bottom")}
             className="fixed right-0 bottom-0 left-0 z-[var(--z-bottom-sheet)] flex h-[var(--mobile-tabbar-height)] touch-none border-t border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_-1px_8px_rgba(0,0,0,0.15)]"
             aria-label="パネル切り替え"
           >
@@ -642,19 +934,24 @@ export default function Home() {
 }
 
 // デスクトップのサイドバーの区分（「ルート設定」「ルート結果」）。見出しの見た目と開閉の矢印をここに1つだけ持つ。
+// 地図で効いている区分は、包む要素の印（`touchPanel`）で上の線と題を強調色にし、題の読み上げに添える（2つ開いていても、地図を押した意味が見て分かる）。
 function SectionDisclosure({
   title,
+  active,
   ...props
-}: { title: string } & Omit<
+}: { title: string; active: boolean } & Omit<
   ComponentProps<typeof Disclosure>,
   "className" | "headerClassName" | "triggerClassName" | "bodyClassName" | "summary"
 >) {
   return (
     <Disclosure
       {...props}
-      className="border-t border-[var(--color-border)] pt-2"
+      className="border-t border-[var(--color-border)] pt-2 group-data-[active=true]/panel:border-t-2 group-data-[active=true]/panel:border-[var(--color-accent)]"
       headerClassName="flex items-center justify-between gap-2"
-      triggerClassName={cn(textVariants({ variant: "heading" }), "group flex cursor-pointer items-center gap-1.5")}
+      triggerClassName={cn(
+        textVariants({ variant: "heading" }),
+        "group flex cursor-pointer items-center gap-1.5 group-data-[active=true]/panel:text-[var(--color-accent-strong)]",
+      )}
       bodyClassName="flex flex-col gap-2"
       summary={
         <>
@@ -665,6 +962,7 @@ function SectionDisclosure({
           {title}
         </>
       }
+      description={active ? "地図で操作中" : undefined}
     />
   );
 }

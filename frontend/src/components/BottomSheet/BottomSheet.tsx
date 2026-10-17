@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import { textVariants } from "@/components/ui/Text/Text";
+import { useStoredState } from "@/hooks/useStoredState";
 import { cn } from "@/lib/cn";
+import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
 
 interface BottomSheetProps {
   open: boolean;
@@ -16,14 +18,10 @@ interface BottomSheetProps {
   /** 見出しのすぐ右に置くもの（中身を切り替えるタブ等、右の操作と役割が違うもの）。 */
   headerLead?: React.ReactNode;
   children: React.ReactNode;
-  /** いま出している高さ（vh）。開いたときに中身へ合わせ直すので、利用者の恒久の設定ではない。 */
-  heightVh: number;
-  /** ドラッグやキー操作の途中も呼ばれる（見た目へすぐ反映する）。 */
-  onHeightChange: (vh: number) => void;
-  /** 操作を終えたときだけ呼ばれる（保存用）。 */
-  onHeightCommit: (vh: number) => void;
-  /** 中身に合わせて高さを決めるか。利用者が高さを決めた後はfalseにし、その高さを保つ。 */
-  autoFitHeight: boolean;
+  /** 利用者が決めた高さ（vh）。nullなら開くたびに中身へ合わせる。 */
+  chosenHeightVh: number | null;
+  /** 帯の操作を終えたときだけ呼ばれる（ドラッグの途中の高さはシートの中だけで持つ）。 */
+  onHeightChoose: (vh: number) => void;
   /** 変わったら中身が別物になったとみなして高さを合わせ直す（タブの切り替え等）。 */
   fitKey?: string;
 }
@@ -40,6 +38,21 @@ export function clampSheetHeightVh(vh: number): number {
   return Math.min(MAX_SHEET_HEIGHT_VH, Math.max(MIN_SHEET_HEIGHT_VH, vh));
 }
 
+// シートは1つずつしか開かないため、1つの値を共有する。
+const CHOSEN_HEIGHT_STORAGE_KEY = "ridecompass:mobile-sheet-height-vh";
+
+/** 利用者が帯で決めた高さ（vh。決めていなければnull）と、決める関数。保存値があることが「決めた」印で、決めた後は
+ * 中身に合わせるのをやめる。 */
+export function useChosenSheetHeight(): [number | null, (vh: number) => void] {
+  return useStoredState<number | null>(CHOSEN_HEIGHT_STORAGE_KEY, null, {
+    serialize: JSON.stringify,
+    deserialize: (raw) => {
+      const parsed: unknown = JSON.parse(raw);
+      return typeof parsed === "number" && Number.isFinite(parsed) ? clampSheetHeightVh(parsed) : null;
+    },
+  });
+}
+
 /** 中身がそのまま並んだときの高さ。高さの指定を一時的に外して測る（`scrollHeight`や子の合算は、中身が箱より
  * 低いと箱の高さを返すので縮める判断に使えない）。読み書きは同じレイアウトの中で終わるので途中の高さは描かれない。 */
 function naturalHeightOf(sheet: HTMLElement): number {
@@ -50,54 +63,75 @@ function naturalHeightOf(sheet: HTMLElement): number {
   return natural;
 }
 
+/** シートの中の要素に付けると、開いたときに合わせる高さをその要素の下端までにする印（中身の全部ではなく、狭い高さで
+ * 先に見せたい所までを開く）。中身がそこより短ければ中身の高さに合わせる。 */
+export const SHEET_FIT_END_ATTRIBUTE = "data-sheet-fit-end";
+
+/** 開いたときに合わせる高さ。印の要素があれば、その下端に本文の下の余白を足した高さと中身の高さの低い方。 */
+function fitHeightOf(sheet: HTMLElement, body: HTMLElement): number {
+  const natural = naturalHeightOf(sheet);
+  const end = sheet.querySelector(`[${SHEET_FIT_END_ATTRIBUTE}]`);
+  if (!end) return natural;
+  const toEnd =
+    end.getBoundingClientRect().bottom -
+    sheet.getBoundingClientRect().top +
+    (parseFloat(getComputedStyle(body).paddingBottom) || 0);
+  return Math.min(natural, toEnd);
+}
+
 /** モバイルの下からせり上がるシート。暗幕を敷かず、シートの外を押しても閉じない（開いたまま地図を動かせる）。
  * 閉じるのは✕・下スワイプ・呼ぶ側のタブの押し直し。 */
-export default function BottomSheet({
-  open,
+export default function BottomSheet({ open, ...props }: BottomSheetProps) {
+  // 開くたびに作り直し、前に開いたときの途中の高さを持ち越さない。
+  return open ? <OpenBottomSheet {...props} /> : null;
+}
+
+function OpenBottomSheet({
   onClose,
   title,
   titleId,
   headerAction,
   headerLead,
   children,
-  heightVh,
-  onHeightChange,
-  onHeightCommit,
-  autoFitHeight,
+  chosenHeightVh,
+  onHeightChoose,
   fitKey,
-}: BottomSheetProps) {
+}: Omit<BottomSheetProps, "open">) {
+  // 中身に合わせた高さ・ドラッグの途中の高さ。持ち主へ上げないので、動かす間に持ち主は描き直されない。
+  const [workingHeightVh, setWorkingHeightVh] = useState<number | null>(null);
+  const heightVh = workingHeightVh ?? chosenHeightVh ?? DEFAULT_SHEET_HEIGHT_VH;
+  const autoFitHeight = chosenHeightVh === null;
   const sheetRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
   });
 
-  // 開いたときの中身に合う高さへ合わせる（高すぎると空白で地図を隠す）。開いている間は合わせ直さない（候補や区間を
+  // 開いたときの中身に合う高さ（印があればその下端まで）へ合わせる（高すぎると空白で地図を隠す）。開いている間は合わせ直さない（候補や区間を
   // 押すたびに地図の見える範囲が動かないように）。実寸が取れない環境では何もしない。
   useLayoutEffect(() => {
-    if (!open || !autoFitHeight) return;
+    if (!autoFitHeight) return;
     const sheet = sheetRef.current;
-    if (!sheet) return;
+    const body = bodyRef.current;
+    if (!sheet || !body) return;
     const viewportHeight = window.innerHeight;
-    const needed = naturalHeightOf(sheet);
+    const needed = fitHeightOf(sheet, body);
     if (viewportHeight <= 0 || sheet.clientHeight <= 0 || needed <= 0) return;
-    onHeightChange(clampSheetHeightVh(Math.ceil((needed / viewportHeight) * 100)));
-  }, [open, onHeightChange, autoFitHeight, fitKey]);
+    setWorkingHeightVh(clampSheetHeightVh(Math.ceil((needed / viewportHeight) * 100)));
+  }, [autoFitHeight, fitKey]);
   // つまみのドラッグ。始めた指（pointerId）の動きだけを見る（別の指のmove/upに反応しない）。
   const dragRef = useRef<{ pointerId: number; startClientY: number; startHeightVh: number } | null>(null);
 
   useEffect(() => {
-    if (!open) return;
     function handleKeyDown(e: KeyboardEvent) {
       // シートの中から開いた窓（Radix）は、捕捉の段で受けたEscで自分を閉じて既定の動きを止める。そのEscでシートまで閉じない。
       if (e.key === "Escape" && !e.defaultPrevented) onCloseRef.current();
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open]);
-
-  if (!open) return null;
+  }, []);
 
   function handleTouchStart(e: React.TouchEvent) {
     const touch = e.touches[0];
@@ -126,23 +160,26 @@ export default function BottomSheet({
     const drag = dragRef.current;
     if (!drag || e.pointerId !== drag.pointerId) return;
     const deltaVh = ((drag.startClientY - e.clientY) / window.innerHeight) * 100;
-    onHeightChange(clampSheetHeightVh(drag.startHeightVh + deltaVh));
+    setWorkingHeightVh(clampSheetHeightVh(drag.startHeightVh + deltaVh));
   }
 
   function handleHandlePointerUp(e: React.PointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
     if (!drag || e.pointerId !== drag.pointerId) return;
     dragRef.current = null;
-    onHeightCommit(heightVh);
+    choose(heightVh);
+  }
+
+  function choose(vh: number) {
+    onHeightChoose(vh);
+    setWorkingHeightVh(null);
   }
 
   function handleHandleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     const direction = e.key === "ArrowUp" ? 1 : e.key === "ArrowDown" ? -1 : 0;
     if (direction === 0) return;
     e.preventDefault();
-    const next = clampSheetHeightVh(heightVh + direction * HEIGHT_KEY_STEP_VH);
-    onHeightChange(next);
-    onHeightCommit(next);
+    choose(clampSheetHeightVh(heightVh + direction * HEIGHT_KEY_STEP_VH));
   }
 
   return (
@@ -152,6 +189,7 @@ export default function BottomSheet({
       className="app-bottom-sheet fixed right-0 bottom-[var(--mobile-tabbar-height)] left-0 z-[var(--z-bottom-sheet)] flex flex-col rounded-t-lg bg-[var(--background)] shadow-[0_-2px_16px_rgba(0,0,0,0.3)]"
       role="dialog"
       aria-labelledby={titleId}
+      {...mapOverlayEdge("bottom")}
       style={{ height: `${heightVh}vh` }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
@@ -200,6 +238,7 @@ export default function BottomSheet({
       </div>
       {/* 本文のスクロールが下スワイプの判定まで届かないようにする（届くとスクロールしただけで閉じる）。 */}
       <div
+        ref={bodyRef}
         className="flex flex-col gap-2 overflow-y-auto px-3 pt-2 pb-3"
         onTouchStart={(e) => e.stopPropagation()}
         onTouchEnd={(e) => e.stopPropagation()}

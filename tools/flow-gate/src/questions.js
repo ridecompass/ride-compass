@@ -1,28 +1,31 @@
-// 問いと答えの形（.claude/skills/ask/SKILL.md「問い」）。問いの頭は「## 問い（種類）」で、種類の無い「## 問い」は判断として読む。
-const KINDS = ["採否", "判断", "確かめ", "イレギュラー"];
+// 問いと答えの形（.claude/skills/ask/SKILL.md「問い」）。問いの頭は「## 問い（<ラベル>）」で、ラベルごとの形は tools/flow-gate/question_forms/ のファイルが持つ。
 export const norm = (t) => (t ?? "").replace(/\r\n/g, "\n");
 export const isQuestion = (t) => /^## 問い/.test(norm(t));
-const sections = (text) => [...text.matchAll(/^\*\*([^*]+)\*\*:/gm)].map((m) => m[1]); // 判断材料の節の名前
+// 判断材料の節（行頭の「**<名前>**:」から次の節の前まで）の名前と中身。
+const sectionsOf = (text) => {
+  const heads = [...text.matchAll(/^\*\*([^*]+)\*\*: ?/gm)];
+  return heads.map((m, i) => ({ name: m[1], value: text.slice(m.index + m[0].length, heads[i + 1]?.index ?? text.length).trim() }));
+};
 const BLOCK = /^<!-- flow-gate -->\n([\s\S]*?)<!-- \/flow-gate -->\n*/;
 const BUTTON = /^\[!\[回答する\]\([^)]*\/button\.svg\)\]\([^)]*\/answer\?issue=\d+\)$/;
 
 // 本文の頭の回答のボタン（GitHub の画面にボタンは足せないので、リンク付きの画像。画像とフォームの道は src/index.js が開ける）。
-const answerUrl = (config, number) => `${config.urls.form}/answer?issue=${number}`;
+export const answerUrl = (config, number) => `${config.urls.form}/answer?issue=${number}`;
 // 印の間にゲートの書かない行があれば、黙って消さずに印の外の先頭へ出す。foreign はその行。
 export function splitBody(body) {
   const foreign = (BLOCK.exec(norm(body))?.[1] ?? "").split("\n").filter((l) => l.trim() && !BUTTON.test(l.trim()));
   const rest = norm(body).replace(BLOCK, "");
   return { foreign, rest: foreign.length ? `${foreign.join("\n")}\n\n${rest}` : rest };
 }
-export const bodyRest = (body) => splitBody(body).rest;
+const bodyRest = (body) => splitBody(body).rest;
 export const withButton = (body, config, number) =>
   `<!-- flow-gate -->\n[![回答する](${config.urls.gate}/button.svg)](${answerUrl(config, number)})\n<!-- /flow-gate -->\n\n${bodyRest(body)}`;
 // 完了の条件（.claude/skills/file-issue/SKILL.md「issue の形」）。1つの条件はチェックの行から、それより深く字下げした続きの行まで
-// （Markdown と同じく、続きの間の空行も同じ条件に数える）。続きの行のうち「- 確かめる: 」「- 子: 」「- 見る所と要点: 」で始まる行だけが属性で、ほかは条件の文の続き。
+// （Markdown と同じく、続きの間の空行も同じ条件に数える）。続きの行のうち「- 確かめる: 」「- 見る所と要点: 」で始まる行だけが属性で、ほかは条件の文の続き。
 // 見る所と要点は、ユーザーが確かめる条件の判断に要る中身（見る先へのリンクと、何が作られ・何が分かったか）で、ゲートは読まずに確かめの問いへ写す。
 // 属性を行の外に置くのは、文の中の記号と混ざらないため。index はチェックの行が本文（bodyRest）の何行目か（印はこの行に付ける）。
 const CHECK = /^(\s*)- \[([ x])\] (.+)$/;
-const ATTR = /^- (確かめる|子|見る所と要点): (.+)$/;
+const ATTR = /^- (確かめる|見る所と要点): (.+)$/;
 const indent = (l) => /^\s*/.exec(l)[0].length;
 export function conditions(body) {
   const lines = bodyRest(body).split("\n");
@@ -30,7 +33,7 @@ export function conditions(body) {
   for (let i = 0; i < lines.length; i++) {
     const m = CHECK.exec(lines[i]);
     if (!m) continue;
-    const c = { index: i, text: [m[3].trim()], done: m[2] === "x", verify: "Claude", child: null, look: null };
+    const c = { index: i, text: [m[3].trim()], done: m[2] === "x", verify: "Claude", look: null };
     for (;;) {
       let j = i + 1;
       while (j < lines.length && !lines[j].trim()) j++;
@@ -39,8 +42,7 @@ export function conditions(body) {
       const t = lines[i].trim();
       const a = ATTR.exec(t);
       if (a?.[1] === "確かめる") c.verify = a[2].trim() === "ユーザー" ? "ユーザー" : "Claude";
-      else if (a?.[1] === "見る所と要点") c.look = a[2].trim();
-      else if (a) c.child = Number(/^#(\d+)$/.exec(a[2].trim())?.[1]) || null;
+      else if (a) c.look = a[2].trim();
       else c.text.push(t);
     }
     all.push({ ...c, text: c.text.join(" ") });
@@ -48,16 +50,16 @@ export function conditions(body) {
   return all;
 }
 // 本文の、index の行のチェックに印を付ける（同じ文の条件が2つあっても、指した行にだけ付ける）。
-export function checkLines(body, indexes) {
+// 本文の完了の条件の行に値（チェック）を書いた本文。marks は [条件の行, 済んだか] の並び。本文の頭の回答のボタンは残す。
+export function markLines(body, marks) {
   const lines = bodyRest(body).split("\n");
-  for (const k of indexes) lines[k] = lines[k].replace("- [ ] ", "- [x] ");
-  return lines.join("\n");
+  for (const [k, done] of marks) lines[k] = lines[k].replace(/- \[[ x]\] /, done ? "- [x] " : "- [ ] ");
+  return (splitBody(body).foreign.length ? "" : (BLOCK.exec(norm(body))?.[0] ?? "")) + lines.join("\n");
 }
 export const remaining = (body) => conditions(body).filter((c) => !c.done);
 export const confirmConditions = (body) => remaining(body).filter((c) => c.verify === "ユーザー");
-export const confirmItems = (body) => confirmConditions(body).map((c) => c.text);
 // Claude が条件の文の頭で指した行に印を付けた本文（.claude/skills/task-work/scripts/check.mjs）。指せるのは残りの条件のうちちょうど1つに
-// 当たるものだけで、ユーザーが確かめる行（答えでゲートが付ける）と子が受け持つ行（子が閉じたときにゲートが付ける）は指せない。
+// 当たるものだけで、ユーザーが確かめる行（ユーザーが値を入れる）は指せない。
 // 本文の頭の回答のボタンは残す。合わなければ problems を返し、本文は返さない。
 export function checkByText(body, heads) {
   const left = remaining(body);
@@ -67,131 +69,171 @@ export function checkByText(body, heads) {
     const hit = left.filter((c) => c.text.startsWith(h.trim()));
     if (!h.trim()) problems.push("空の頭では指せない");
     else if (hit.length !== 1) problems.push(`「${h}」に当たる残りの条件が ${hit.length} 個（1個に決まる頭で指す）`);
-    else if (hit[0].verify === "ユーザー") problems.push(`「${h}」はユーザーが確かめる条件（答えでゲートが付ける）`);
-    else if (hit[0].child) problems.push(`「${h}」は子 #${hit[0].child} が受け持つ条件（子が完成で閉じたときにゲートが付ける）`);
+    else if (hit[0].verify === "ユーザー") problems.push(`「${h}」はユーザーが確かめる条件（ユーザーが値を入れる）`);
     else indexes.push(hit[0].index);
   }
-  if (problems.length) return { problems };
-  const head = splitBody(body).foreign.length ? "" : (BLOCK.exec(norm(body))?.[0] ?? "");
-  return { body: head + checkLines(body, indexes) };
+  return problems.length ? { problems } : { body: markLines(body, indexes.map((k) => [k, true])) };
 }
 
-// 問い: 頭の行・問いの文1行・（あれば）「### 案」と1行1案・（あれば）<details> の判断材料。ほかの行があれば null。
+// 問い: 頭の行「## 問い（<ラベル>）」・問いの文1行・（あれば）回答内容の節（SECTIONS のどれか1つを1行1つ。行の下に字下げした属性の行
+// 「- <名前>: <値>」を置ける）・（あれば）<details> の判断材料。読めなければ、読めなかった所を文にした例外を投げる。
+const SECTIONS = ["### 案", "### 確かめること", "### 済ませること"];
+const ATTRIBUTE = /^\s+- ([^:]+): (.+)$/;
 function parseQuestion(text) {
-  const all = norm(text);
+  const all = norm(text).trim();
   const cut = all.indexOf("<details>");
-  const [head, ...lines] = (cut < 0 ? all : all.slice(0, cut)).split("\n");
-  const kind = /^## 問い(?:（(.+)）)?\s*$/.exec(head)?.[1] ?? (/^## 問い\s*$/.test(head) ? "判断" : null);
-  if (!KINDS.includes(kind)) return null;
-  const [question, header, ...plans] = lines.map((l) => l.trim()).filter(Boolean);
-  if (!question || /^(#|- )/.test(question)) return null;
-  if (header !== undefined && (header !== "### 案" || !plans.length || plans.some((l) => !l.startsWith("- ")))) return null;
-  const material = cut < 0 ? "" : /^<details>\s*<summary>[^<]*<\/summary>([\s\S]*?)<\/details>\s*$/.exec(all.slice(cut))?.[1].trim();
-  return material === undefined ? null : { kind, text: question, plans: plans.map((l) => l.slice(2).trim()), material };
+  const [head, question, header, ...lines] = (cut < 0 ? all : all.slice(0, cut)).split("\n").filter((l) => l.trim());
+  const kind = /^## 問い（(.+)）\s*$/.exec(head ?? "")?.[1];
+  if (!kind) throw new Error("頭の行は「## 問い（<ラベル>）」");
+  if (!question || /^\s*(#|- )/.test(question)) throw new Error("頭の行の次に、問いの文を1行で書く");
+  if (header !== undefined && !SECTIONS.includes(header.trim())) throw new Error(`回答内容の節は ${SECTIONS.map((x) => `「${x}」`).join("")} のどれか（「${header.trim()}」）`);
+  const rows = [];
+  for (const line of lines) {
+    const a = ATTRIBUTE.exec(line);
+    if (a && rows.length) rows.at(-1).attrs.push([a[1].trim(), a[2].trim()]);
+    else if (/^- \S/.test(line)) rows.push({ text: line.slice(2).trim(), attrs: [] });
+    else throw new Error(`回答内容の節の行は「- 」で始める（「${line.trim()}」）`);
+  }
+  const material = cut < 0 ? "" : /^<details>\s*<summary>[^<]*<\/summary>([\s\S]*?)<\/details>$/.exec(all.slice(cut))?.[1].trim();
+  if (material === undefined) throw new Error("判断材料は「<details><summary>判断材料</summary>」で始めて「</details>」で閉じ、そのあとに行を書かない");
+  return { kind, text: question.trim(), header: header?.trim() ?? null, rows, material };
 }
 
-// 判断材料が形（question_template.md）の節を、形の順に1つずつ埋めて持つか。合わない所を返す（空なら合う）。
-export function checkQuestion(template, text) {
+// ラベルごとの形（tools/flow-gate/question_forms/ のファイルの中身）をラベルで引けるようにする。「## 問い」の行より前は形の決まり（「出す者: <ゲートか Claude>」）、
+// そこから下が問いの骨組み。骨組みの回答内容の節が、そのラベルで書く節（無ければ書かない）。判断材料の節が、そのラベルの節とその並び。値の全体が
+// 「<…>」の所（問いの文・節の行・判断材料の中身）は書く者が埋め、ほかは決まった値。
+const HOLE = /^<[\s\S]*>$/;
+export function loadForms(texts) {
+  const forms = {};
+  for (const t of texts) {
+    const all = norm(t);
+    const at = all.search(/^## 問い/m);
+    let q;
+    try {
+      q = parseQuestion(at < 0 ? "" : all.slice(at));
+    } catch (e) {
+      throw new Error(`問いの形が読めない（${all.split("\n")[0]}）: ${e.message}`);
+    }
+    forms[q.kind] = { by: /^出す者: (.+)$/m.exec(all.slice(0, at))?.[1].trim() ?? null, header: q.header, text: HOLE.test(q.text) ? null : q.text, sections: sectionsOf(q.material) };
+  }
+  return forms;
+}
+// 問いの頭の行と、問いの組み立て（rows は回答内容の節の行と属性、material は判断材料の節の名前と中身の並び）。
+export const questionHead = (kind) => `## 問い（${kind}）`;
+export const render = (kind, text, header, rows, material) => [`${questionHead(kind)}\n${text}`,
+  header && [header, ...rows.flatMap((r) => [`- ${r.text}`, ...r.attrs.map(([n, v]) => `  - ${n}: ${v}`)])].join("\n"),
+  `<details><summary>判断材料</summary>\n\n${material.map((s) => `**${s.name}**: ${s.value}`).join("\n\n")}\n</details>`].filter(Boolean).join("\n\n");
+
+// 問いの書き手（ゲートか Claude）。ゲートは App の名義で書く（GraphQL は名義を [bot] の付かない形で返す）。
+export const askerOf = (config, login) => (login === config.gateBot.replace(/\[bot\]$/, "") ? "ゲート" : "Claude");
+// 問いが読めるか。読めない所を返す（空なら読める）。読めるのは、頭の行・問いの文・節の形が取れ、ラベルを知っていて、回答内容の節がラベルの書く節
+// だけ（1行1つ以上）で、書き手（by。渡したときだけ）がラベルの出す者のもの。回答内容の節の見出しが、フォームに出すものと答えに書くものを決める。
+// ゲートと回答フォームは読める問いを読み、形の決まりに外れた所は無いものとして扱う（推奨の無い案は印を付けない等）。
+export function readProblems(forms, text, by = null) {
+  let q;
+  try {
+    q = parseQuestion(text);
+  } catch (e) {
+    return [e.message];
+  }
+  const f = forms[q.kind];
+  if (!f) return [`ラベルは ${Object.keys(forms).join("・")} のどれか（「${q.kind}」）`];
+  return [(q.header !== f.header || (f.header && !q.rows.length)) && (f.header ? `${q.kind}は「${f.header}」を1行1つ以上書く` : `${q.kind}は回答内容の節を書かない`),
+    by && f.by !== by && `${q.kind}の問いは${f.by}だけが出す`].filter(Boolean);
+}
+// 問いがラベルの形に合うか。合わない所を返す（空なら合う）。問いを出す前に照らす（.claude/skills/ask/scripts/ask.mjs）。読めるかに加えて照らすのは、
+// 決まった問いの文・判断材料の節の名前と順と、案の決まり（2つ以上。どの案にも「推奨」か「理由」を1つ。推奨はちょうど1つ）。
+export function checkQuestion(forms, text, by = null) {
+  const unread = readProblems(forms, text, by);
+  if (unread.length) return unread;
   const q = parseQuestion(text);
-  if (!q) return ["頭の行・問いの文（1行）・「### 案」と1行1案・<details> の判断材料のほかに行がある"];
-  const want = sections(template);
-  const got = sections(q.material);
-  return JSON.stringify(got) === JSON.stringify(want) ? [] : [`判断材料の節は ${want.join("・")} をこの順に1つずつ`];
+  const f = forms[q.kind];
+  const want = f.sections.map((s) => s.name);
+  const reasons = q.rows.map((r) => r.attrs.filter(([n]) => n === "推奨" || n === "理由"));
+  const plans = q.header === "### 案";
+  return [f.text && q.text !== f.text && `${q.kind}の問いの文は「${f.text}」`,
+    plans && q.rows.length < 2 && "案は2つ以上",
+    plans && reasons.some((r) => r.length !== 1) && "どの案にも「- 推奨:」か「- 理由:」を1つ",
+    plans && reasons.flat().filter(([n]) => n === "推奨").length !== 1 && "推奨はちょうど1つ",
+    JSON.stringify(sectionsOf(q.material).map((s) => s.name)) !== JSON.stringify(want) && `判断材料の節は ${want.join("・")} をこの順に1つずつ`].filter(Boolean);
 }
 
-// 答え: 決定（続ける・保留・見送り・完了）・確かめた項目・書いた文。前の形の「次のステータス:」「- 問題なし:」の行も読む。
-// 書いた文は、決まった形の行のほかの全部（前の形の「補足:」「- 問題あり:」も入る）。ゲートは文の中身を読まず、Claude が読むまで決定を当てない。
-export const DONE = "完了にする";
-export const NOT_DONE = "完了にしない"; // 確かめで、完了にせずに書いた文だけで答えたとき
-export const NONE = "どれでもない（書く欄に書く）"; // 判断で、どの案でもないとき
-export const CHOICES = { 採否: ["着手する", "保留する", "見送る"], イレギュラー: ["やり直す", "保留する", "見送る"] };
-// 答えの入力が問いに足りているか（回答フォームと、チャットの答えの記録 .claude/skills/ask/scripts/answer.mjs が同じに照らす）。足りなければ理由。
-// 確かめには選択肢が無く、完了にするのは確かめだけ（ゲートは最初の「回答:」行を読むので、2行あると取り違える）。
-export function answerProblem(q, { choice, done, text }) {
-  if (q.kind === "確かめ") {
-    if (choice) return "確かめの問いに選択肢はありません（完了にするか、直してほしいことを書いてください）。";
-    return done || text ? null : "完了にするか、直してほしいことを書いてください。";
-  }
-  if (done) return `「${DONE}」は確かめの問いにだけ使えます。`;
-  if (q.kind === "判断") {
-    if (choice && !q.plans.length) return "この問いに案はありません（書く欄に書いてください）。";
-    if (choice && !choice.trim()) return "選んだ案が空です。";
-    if (choice && q.plans.length && ![...q.plans, NONE].includes(choice)) return `案にない答えです（案: ${[...q.plans, NONE].join(" / ")}）。`;
-    return (!choice || choice === NONE) && !text ? "どれでもないときは、書く欄に書いてください。" : null;
-  }
-  return CHOICES[q.kind].includes(choice) ? null : `選べるのは ${CHOICES[q.kind].join("・")} です。`;
+// 答えのない問いのラベルを見せる印（ゲートだけが付け外しする。回答フォームのラベルの欄には出さない）。
+const LABEL = "問い: ";
+export const questionLabel = (kind) => `${LABEL}${kind}`;
+export const isQuestionLabel = (name) => name.startsWith(LABEL);
+
+// 次遷移（回答フォームの「この issue を」のボタンの言葉）。キーは答えの「次遷移:」の行とゲートの決め方の名前。完了は次遷移に無く、約束が全部
+// 果たされたらゲートが事実から決める。
+export const NEXT = { 続ける: "続ける", 保留: "保留する", 見送り: "見送る" };
+const plansOf = (q) => (q.header === "### 案" ? q.rows.map((r) => r.text) : []);
+// YES／NO で答える回答内容の節（既定は NO）。確かめることの値は本文のユーザーが確かめる約束の値で、答えと一緒に本文へ書く（withValues）。
+// 済ませることは約束ではないので、値を答えに書く。
+const valued = (q) => q.header === "### 確かめること" || q.header === "### 済ませること";
+export const withValues = (body, q, yes) => (q.header !== "### 確かめること" ? body
+  : markLines(body, conditions(body).filter((c) => c.verify === "ユーザー" && q.rows.some((r) => r.text === c.text)).map((c) => [c.index, yes.includes(c.text)])));
+// 答えの入力が問いに足りているか（回答フォームと、答えの記録 .claude/skills/ask/scripts/answer.mjs が同じに照らす）。足りなければ理由。
+// 次遷移はいつも要り、案は問いの案のどれかか、選ばない（選ばずに次遷移だけでも受ける）。YES の行は問いの YES／NO で答える行のどれか。
+export function answerProblem(q, { next, plan, yes = [] }) {
+  if (!Object.hasOwn(NEXT, next ?? "")) return `この issue をどうするか（${Object.values(NEXT).join("・")}）を選んでください。`;
+  if (plan && !plansOf(q).includes(plan)) return `案にない答えです（案: ${plansOf(q).join(" / ")}）。`;
+  const rows = valued(q) ? q.rows.map((r) => r.text) : [];
+  return yes.some((c) => !rows.includes(c)) ? `問いにない行です（${rows.join(" / ") || "YES／NO で答える行はありません"}）。` : null;
 }
-// 答えのコメント（.claude/skills/ask/SKILL.md「答え」の形）。書いた文は形を付けずに、決まった形の行の塊のあとの空行の後ろにそのまま置く。
-// 「回答:」の行はいつも置き（選ばずに書いた文だけで答えたときも）、塊が空にならないようにする（書いた文の頭が塊として読まれない）。
-export function answerBody(q, { choice, done, items = [], labels = "", text = "" }) {
-  const lines = ["## 回答", `**${q.text}**`, ""];
-  if (done) lines.push(`回答: ${DONE}`, ...items.map((item) => `- 確かめた: ${item}`));
-  else lines.push(`回答: ${choice || (q.kind === "確かめ" ? NOT_DONE : NONE)}`);
-  if (labels) lines.push(`ラベル: ${labels}`);
-  if (text) lines.push("", text);
-  return lines.join("\n");
+// 答えのコメント（.claude/skills/ask/SKILL.md「答え」の形）。次遷移・選んだ案・コメントの3つの欄を、空でも省かずに置く。済ませることは、行ごとに値を
+// 「- YES: <行>」「- NO: <行>」で並べる。コメントは「コメント:」の行のあとに形を付けずにそのまま置き、ゲートは読まない。
+export function answerBody(q, { next, plan, yes = [], labels = "", text = "" }) {
+  return ["## 回答", `**${q.text}**`, "", `次遷移: ${next}`, `選んだ案: ${plan || (plansOf(q).length ? "選ばなかった" : "なし（問いに案が無い）")}`,
+    ...(q.header === "### 済ませること" ? ["済ませること:", ...q.rows.map((r) => `- ${yes.includes(r.text) ? "YES" : "NO"}: ${r.text}`)] : []), ...(labels ? [`ラベル: ${labels}`] : []), text ? `コメント:\n${text}` : "コメント: なし"].join("\n");
 }
 export const APPLIED = "答えに書いた文を Claude が読んだので、答えを当てました"; // 書いた文のある答えを当てた印（二度は当てない）
 export const isAnswer = (t) => /^## 回答\n/.test(norm(t));
-// 答えのコメントを、決まった形の行と書いた文に分ける。決まった形の行は、頭（「## 回答」と問いの文の太字の行）のあとの最初の塊（次の空行まで）に
-// だけ置かれ（answerBody の形）、そのあとは全部書いた文。塊に決まった形でない行が1つでもあれば、塊は無く全部が書いた文（前の形の答え）。
-// 書いた文の中に決まった形に似た行があっても、決まった形の行としては読まない。
-const FIELD = /^(?:(?:回答|次のステータス): .+|- (?:確かめた|問題なし): .+|ラベル: .*)$/;
-function splitAnswer(text) {
-  const lines = norm(text).split("\n");
-  let k = /^\*\*.+\*\*$/.test(lines[1] ?? "") ? 2 : 1;
-  while (k < lines.length && !lines[k].trim()) k++;
-  let end = k;
-  while (end < lines.length && lines[end].trim()) end++;
-  const block = lines.slice(k, end).map((l) => l.trim());
-  const fixed = block.every((l) => FIELD.test(l)) ? block : [];
-  return { fixed, text: lines.slice(k + fixed.length).join("\n").trim() };
-}
-export const answerText = (text) => splitAnswer(text).text;
+// 答えのコメントを読む: 決定（次遷移）・コメント（回答内容の欄は遷移先が読み、ゲートは読まない）。決まった欄は最初の「コメント:」の行より前にだけあり、そのあとは全部コメント
+// （コメントの中に欄に似た行があっても、欄として読まない）。コメントが無いのは「コメント: なし」の1行のときだけ。次遷移が無いか、決まった値で
+// ない答えは、決定を続けるとし、頭のあとを全部コメントとして Claude へ渡す（黙って捨てない）。
 function parseAnswer(text) {
-  const all = norm(text);
-  if (!isAnswer(all)) return null;
-  const { fixed, text: said } = splitAnswer(all);
-  const picked = (fixed.map((l) => /^(?:回答|次のステータス): (.+)$/.exec(l)?.[1]).find(Boolean) ?? "").trim();
-  const decision = /見送/.test(picked) ? "見送り" : /保留/.test(picked) ? "保留" : picked === DONE ? "完了" : "続ける";
-  const confirmed = fixed.map((l) => /^- (?:確かめた|問題なし): (.+)$/.exec(l)?.[1]?.trim()).filter(Boolean);
-  return { decision, confirmed, text: said };
+  const lines = norm(text).split("\n");
+  if (!isAnswer(text)) return null;
+  const k = lines.findIndex((l) => /^コメント:/.test(l));
+  const fixed = k < 0 ? [] : lines.slice(0, k);
+  const next = fixed.map((l) => /^次遷移: (.+)$/.exec(l)?.[1].trim()).find(Boolean);
+  if (!Object.hasOwn(NEXT, next ?? "")) return { decision: "続ける", text: lines.slice(/^\*\*.+\*\*$/.test(lines[1] ?? "") ? 2 : 1).join("\n").trim() };
+  const said = lines[k] === "コメント: なし" && k === lines.length - 1 ? "" : [lines[k].replace(/^コメント:\s*/, ""), ...lines.slice(k + 1)].join("\n").trim();
+  return { decision: next, text: said };
 }
+export const answerText = (text) => parseAnswer(text)?.text ?? "";
 
-// コメントの並びから今の問いと、その答え（無ければ null）。形（template）に合わない問いは問いとして読まない（残す守り: 問いの形の検査）。
-export function latestQuestion(comments, template) {
+// コメントの並びから今の問いと、その答え（無ければ null）。by は今の問いの書き手（渡したときだけ、ラベルの出す者と照らす）。問いは、ラベルの形と、
+// 回答内容の節の行（rows）を持つ。読めない問いも答えを待つ問いで、読めない所（problems）を持ち、ラベルの形を持たず、回答内容を無いものとする
+// （回答フォームは書く欄と次遷移だけで答えを受け、ゲートはその次遷移で決める）。
+export function latestQuestion(comments, forms, by = null) {
   const i = comments.findLastIndex(isQuestion);
   if (i < 0) return null;
-  const q = !template || !checkQuestion(template, comments[i]).length ? parseQuestion(comments[i]) : null;
-  const a = comments.slice(i + 1).map(parseAnswer).find(Boolean) ?? null;
-  return q && { ...q, answer: a };
+  const problems = readProblems(forms, comments[i], by);
+  const p = problems.length ? looseQuestion(comments[i]) : parseQuestion(comments[i]);
+  return { kind: forms[p.kind] ? p.kind : null, text: p.text, material: p.material, header: p.header, rows: p.rows, form: problems.length ? null : forms[p.kind], problems,
+    answer: comments.slice(i + 1).map(parseAnswer).find(Boolean) ?? null };
 }
 
-// ゲートが出す問い（採否・確かめ・イレギュラー）。判断材料は形（question_template.md）の節を埋める。答えの選び方は回答フォームが種類で出す。
-const ASKS = {
-  採否: ["このタスクに着手しますか？", "Claude が起こした要望です。着手するかはユーザーが決めます。", "決めたことだけを Claude が進める。",
-    "決めないまま進めると、要らないものを作る。", "ユーザーの起票・改善・子・分割元のある切り出し（決めずに進める）。", "着手する: 未着手になり担当が振り出される。保留する: 保留へ。見送る: 閉じる。", "着手するかの判断は本文で決まる。"],
-  確かめ: ["完成にしてよいですか？", "完了の条件のうち、ユーザーが確かめる条件だけが残っています。全部見て、完了にするかを答えてください。直してほしいことは書く欄に書きます。",
-    "完成は、完了の条件が全部満たされたときだけ。", "見ないまま完成にすると、思ったものと違うまま閉じる。", "条件がユーザーの確かめを持たないとき。",
-    "完了にする: 印を付けて完成。書いた文があれば、Claude が読んで直してから完成。完了にしない: 書いたことを Claude が読んで直す。", "本文の完了の条件のうち、「- 確かめる: ユーザー」の付いた条件。"],
-  イレギュラー: ["担当が、問いも Pull Request も出さず、条件も満たさずに終わりました。どうしますか？", "直前の「担当の終わり」のコメントに、実行へのリンクと担当の最後の発言があります。",
-    "落ちた担当を黙って振り出し直さず、ユーザーが次を決める。", "同じ形で何度も落ちる。", "担当が問いか Pull Request を出したとき。",
-    "やり直す: 未着手へ戻し振り出す。保留する: 保留へ。見送る: 閉じる。", "直前の「担当の終わり」のコメント。"],
-};
-const material = (template, facts) => sections(template).map((n, i) => `**${n}**: ${facts[i] ?? "なし"}`).join("\n\n");
-// 確かめは、ユーザーが確かめる条件（confirmConditions）ごとに、条件の文と見る所と要点を「何の話か」に並べる。書かれていない条件も隠さずにそう出す。
+// 読めない問いから読めるだけ読む: 頭の行のラベル・問いの文（頭の次の空でない行）・判断材料。
+function looseQuestion(text) {
+  const all = norm(text).trim();
+  const lines = all.split("\n");
+  return { kind: /^## 問い(?:（(.+)）)?/.exec(lines[0])?.[1] ?? null, text: lines.slice(1).find((l) => l.trim())?.trim() ?? "", header: null, rows: [],
+    material: /<details>\s*<summary>[^<]*<\/summary>([\s\S]*?)<\/details>/.exec(all)?.[1].trim() ?? "" };
+}
+
+// ゲートが出す問い（形の「出す者」がゲートのもの）。形の決まった値をそのまま使い、問いの文は text（続行の相手の番号）、確かめることはユーザーが
+// 確かめる条件（conds。src/questions.js: confirmConditions）の文と見る所と要点（書かれていない条件も隠さずにそう出す）で埋める。
 const NO_LOOK = "書かれていません";
-const listed = (items) => items.map((c) => `\n- ${c.text}\n  - 見る所と要点: ${c.look ?? NO_LOOK}`).join("");
-export function askText(kind, template, items = []) {
-  const [question, about, ...rest] = ASKS[kind];
-  const facts = [kind === "確かめ" && items.length ? `${about}\n${listed(items)}` : about, ...rest];
-  return `## 問い（${kind}）\n${question}\n\n<details><summary>判断材料</summary>\n\n${material(template, facts)}\n</details>`;
-}
+export const askText = (kind, forms, conds = [], text = forms[kind].text) =>
+  render(kind, text, forms[kind].header, conds.map((c) => ({ text: c.text, attrs: [["見る所と要点", c.look ?? NO_LOOK]] })), forms[kind].sections);
 
-// 待つ相手（前提・子）が見送りで閉じたときの判断の問い。問いの文に相手の番号を入れ、同じ文の問いが既にあれば二度は問わない
+// 待つ相手（前提・子）が見送りで閉じたときの続行の問いの文。相手の番号を入れ、同じ文の問いが既にあれば二度は問わない
 // （答えで「続ける」を選んだあとも、相手は見送りのまま残るため）。
 export const droppedQuestion = (numbers) => `待っていた ${numbers.map((n) => `#${n}`).join("・")} が見送りで閉じました。この issue を続けますか？`;
-export const askDropped = (numbers, template) => `## 問い（判断）\n${droppedQuestion(numbers)}\n\n### 案\n- 続ける\n- 保留する\n- 見送る\n\n<details><summary>判断材料</summary>\n\n${material(template, [
-  "この issue が待っていた相手（前提か子）が見送りで閉じ、その結果を当てにしていた作業を続けるかを決める必要があります。", "当てにしていた結果が無いまま、黙って作り進めない。",
-  "前の結果を使う作業を、前が無いまま作る。", "待っていた相手が完成で閉じたとき。",
-  "続ける: 待つ相手を除いて決め直す。保留する: 保留へ。見送る: この issue も閉じる。", "見送りで閉じた相手の issue。"])}\n</details>`;
+// 続行の問いの文から、問うた相手の番号（その問いでなければ null）。
+export function droppedOf(text) {
+  const numbers = /^待っていた (\S+) が/.exec(text)?.[1].split("・").map((n) => Number(n.slice(1)));
+  return numbers && droppedQuestion(numbers) === text ? numbers : null;
+}

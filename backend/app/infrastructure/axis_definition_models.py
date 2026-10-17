@@ -39,5 +39,4 @@ class AxisDefinitionRow(Base):
     time_scope: Mapped[str] = mapped_column(String, nullable=False, server_default="always")
     display_thresholds_override: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     display_band_labels_override: Mapped[list | None] = mapped_column(JSONB, nullable=True)
-    dedicated_way_value_layer: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

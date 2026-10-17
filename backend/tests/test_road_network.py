@@ -75,18 +75,21 @@ def network() -> RoadNetwork:
         edge_min_lat=np.minimum(lat[edge_from], lat[edge_to]),
         edge_max_lon=np.maximum(lon[edge_from], lon[edge_to]),
         edge_max_lat=np.maximum(lat[edge_from], lat[edge_to]),
+        edge_start_bearing_deg=np.array([80.0, 260.0, 100.0, 90.0, NAN]),
+        edge_end_bearing_deg=np.array([100.0, 280.0, 80.0, 90.0, NAN]),
         numeric_ids=("num_a", GRADE),
         numeric_values=np.column_stack([row * 10, [3.0, -3.0, NAN, 1.5, 2.5]]),
         categorical_ids=("cat_a",),
         categorical_codes=np.array([[1], [1], [2], [0], [2]], dtype=np.int16),
         categorical_vocab=((None, "x", "y"),),
-        hard_filter_ids=("filter_a",),
-        hard_filter_flags=np.array([[False], [False], [True], [False], [False]]),
+        route_flag_ids=("filter_a",),
+        route_flags=np.array([[False], [False], [True], [False], [False]]),
         distance_m=row * 100 + 100,
         bearing_deg=np.array([90.0, 270.0, 90.0, 90.0, NAN]),
         mid_lat=lat[edge_from],
         mid_lon=(lon[edge_from] + lon[edge_to]) / 2,
-        elevation_present=np.array([True, True, True, False, True]),
+        start_elevation_m=np.array([10.0, 22.0, 5.0, NAN, 7.0]),
+        end_elevation_m=np.array([22.0, 10.0, 5.0, NAN, 10.0]),
         elevation_gain_m=np.array([12.0, 0.0, 0.0, NAN, 3.0]),
         elevation_loss_m=np.array([0.0, 12.0, 0.0, NAN, 0.0]),
     )
@@ -143,7 +146,7 @@ def test_the_materials_of_a_slice_follow_its_rows():
     columns = materials.columns()
     assert columns["num_a"].tolist() == [20.0, 30.0]
     assert [columns["cat_a"].value_at(i) for i in range(2)] == ["y", None]
-    assert materials.hard_filter_columns()["filter_a"].tolist() == [True, False]
+    assert materials.route_flag_columns()["filter_a"].tolist() == [True, False]
 
 
 def test_the_elevation_attribute_reads_the_average_grade_from_the_material():
@@ -152,6 +155,8 @@ def test_the_elevation_attribute_reads_the_average_grade_from_the_material():
     assert attribute is not None
     assert attribute.model_dump() == {
         "edge_id": "10:0:f",
+        "start_elevation_m": 10.0,
+        "end_elevation_m": 22.0,
         "elevation_gain_m": 12.0,
         "elevation_loss_m": 0.0,
         "average_grade": 3.0,

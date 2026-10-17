@@ -22,7 +22,7 @@ import duckdb
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import place_verified
+from app.batch.common import fetched_all, place_verified
 from app.batch.fetch_cli import run_profile_fetch_cli
 from app.batch.source_adapters.overture_places import places_path
 from app.batch.source_profile import SourceProfile, SourceSpec
@@ -65,7 +65,7 @@ def fetch(release: str, bbox: tuple[float, float, float, float]) -> bool:
 
 def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
     releases = sorted({spec.rows.release for spec in specs})
-    return all([fetch(release, profile.target.bbox) for release in releases])
+    return fetched_all(fetch(release, profile.target.bbox) for release in releases)
 
 
 def main() -> int:

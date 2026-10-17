@@ -24,8 +24,9 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.material_catalog import SURFACE_ESTIMATE
+from app.domain.material_catalog import GRADIENT_PERCENT, SURFACE_ESTIMATE
 from app.domain.road import SURFACE_ESTIMATES
+from app.domain.traffic import stop_count_material_ids
 from app.domain.tuning import tuning_value
 from app.domain.wind import kmh_to_ms
 
@@ -45,9 +46,18 @@ SPEED_SOLVE_ITERATIONS = 12
 #: 画面の所要時間の説明はこの並びを差し込む。方程式に条件を足したら、ここにも足す。
 SEGMENT_SPEED_CONDITIONS: tuple[str, ...] = ("坂", "風", "路面")
 
-# 路面の見込みを持つ材料id。走行モデルはこれを**軸の構成と無関係に**必要とする
-# （`domain/traffic.py: stop_count_material_ids`と同じ理由）。
+# 路面の見込みを持つ材料id。
 ROLLING_RESISTANCE_MATERIAL_ID = SURFACE_ESTIMATE
+
+
+def travel_model_material_ids() -> tuple[str, ...]:
+    """所要時間（走行方程式の勾配・路面と、停止の待ち）が区間ごとに読む材料id。
+
+    静的スコア行列はこれらを**軸の構成と無関係に**列として運び、欠けた行列は組み立てで断る
+    （`evaluation.py: StaticEdgeScoreMatrix`）。軸が分解した材料だけを運ぶ既定に任せると、その軸を
+    非公開にした瞬間に所要時間から坂・路面・停止の待ちが静かに消える。
+    """
+    return (GRADIENT_PERCENT, ROLLING_RESISTANCE_MATERIAL_ID, *stop_count_material_ids())
 
 
 def crr_for_surface(surface_estimate: CategoricalColumn) -> np.ndarray:

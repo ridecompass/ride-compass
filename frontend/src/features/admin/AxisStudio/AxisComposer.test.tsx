@@ -1,7 +1,7 @@
 /**
  * `AxisComposer.tsx`——軸を作る1画面のフォームの状態・保存前の検証・送るpayloadの組み立てと、節の組み立て。
  *
- * 節（点数の決め方・地図表示と公開）と地図の段の判定の取得は本物を通し、backendの応答（網の層）だけを与える。
+ * 節（点数の決め方・地図表示と公開）は本物を通し、backendの応答（網の層）だけを与える。
  * 節へ渡したものは節の表示で、節から受けたものは保存で見る。材料は本物の一覧（生成物）を通す。
  *
  * ここで見ないもの:
@@ -40,7 +40,6 @@ function axis(overrides: Partial<AxisDefinitionResponse> = {}): AxisDefinitionRe
     default_weight: 0.2,
     is_published: false,
     time_scope: "always",
-    dedicated_way_value_layer: false,
     shape: {
       kind: "breakpoint_linear",
       terms: [{ material: NUM.id, weight: 1, required: true }],
@@ -50,7 +49,6 @@ function axis(overrides: Partial<AxisDefinitionResponse> = {}): AxisDefinitionRe
         [10, 100],
       ],
     },
-    display: { kind: "none", tile_inputs: [], thresholds: [] },
     ...overrides,
   };
 }
@@ -86,10 +84,9 @@ function renderComposer(props: ComposerProps = {}) {
 
 const submitButton = () => screen.getByRole("button", { name: /作成する|更新する|保存中/ });
 
-const PREVIEW_DISPLAY_THRESHOLDS = "/admin/api/axis-definitions/preview-display-thresholds";
 const thresholdInput = () => screen.getByRole("textbox", { name: "色分けのしきい値（まとめて入力）" });
 
-/** 点数の節が描くと同時に取る分布・点数と、地図の段の判定（段にならない値なし）に応える。 */
+/** 点数の節が描くと同時に取る分布・点数に応える。 */
 beforeEach(() => {
   onSameOrigin("POST", "/admin/api/axis-definitions/preview-distribution", () =>
     Response.json({ sample_ways: 1, total_km: 1, quantiles: {}, bins: [[0, 2, 1]] }),
@@ -97,10 +94,6 @@ beforeEach(() => {
   onSameOrigin("POST", "/admin/api/axis-definitions/preview-scores", () =>
     Response.json({ scores: [0], material_points: [] }),
   );
-  onSameOrigin("POST", PREVIEW_DISPLAY_THRESHOLDS, ({ body }) => {
-    const { thresholds } = body as { thresholds: number[] };
-    return Response.json({ dropped_on_map: [], bands_on_map: [...thresholds, 0].map((_, i) => i) });
-  });
 });
 
 describe("保存するpayload", () => {
@@ -111,7 +104,6 @@ describe("保存するpayload", () => {
       category: "観測",
       priority_overrides: [{ material: CAT.id, equals: "x", value: 1 }],
       time_scope: "night_only",
-      dedicated_way_value_layer: true,
       icon_id: "icon_a",
       display_thresholds_override: [1, 2],
       display_band_labels_override: ["a", "b", "c"],
@@ -262,10 +254,7 @@ describe("節へ渡すもの", () => {
     ).toEqual([expect.stringContaining("ほかの軸")]);
   });
 
-  it("表示の節へは、編集中の軸・調整中か・段の配色と単位と、編集中のしきい値を問った地図の段の判定を渡す", async () => {
-    onSameOrigin("POST", PREVIEW_DISPLAY_THRESHOLDS, () =>
-      Response.json({ dropped_on_map: [3], bands_on_map: [0, 1] }),
-    );
+  it("表示の節へは、調整中か・段の配色と単位を渡す", () => {
     const mapBandColors = (boundaries: readonly number[]) => [...boundaries, 0].map(() => "rgb(9, 9, 9)");
     renderComposer({
       editing: axis({ display_thresholds_override: [1, 3] }),
@@ -274,13 +263,11 @@ describe("節へ渡すもの", () => {
       mapValueUnit: "km/h",
     });
 
-    expect(screen.getByText(/地図表示用のデータ取得経路が用意されていません/)).toBeInTheDocument();
     expect(screen.getByText(/保存すると公開へ戻ります/)).toBeInTheDocument();
-    expect(await screen.findByText("地図では効かない: 3")).toBeInTheDocument();
-    const preview = screen.getByLabelText("色分けプレビュー（2段階）");
+    const preview = screen.getByLabelText("色分けプレビュー（3段階）");
     expect(preview).toHaveTextContent("km/h");
     const swatches = Array.from(preview.querySelectorAll("li > span[aria-hidden]")) as HTMLElement[];
-    expect(swatches.map((swatch) => swatch.style.background)).toEqual(["rgb(9, 9, 9)", "rgb(9, 9, 9)"]);
+    expect(swatches.map((swatch) => swatch.style.background)).toEqual(["rgb(9, 9, 9)", "rgb(9, 9, 9)", "rgb(9, 9, 9)"]);
   });
 });
 
