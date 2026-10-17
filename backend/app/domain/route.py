@@ -213,6 +213,9 @@ class EvaluatedRoute(StrictModel):
     turns: list[RouteTurn]
     # 経路の近くの点を通る順に（`domain/route_points.py: points_along_route`）。`edge_ids`が空の候補では空のまま。
     points: list[RoutePoint]
+    # 置いた経由地を通る所の始点からの道のり（km）を、置いた順に。区間の始まりの道のりと同じ物差し（`along_route_km`）。
+    # 置いた経由地を知らない経路（区間の乗り換えで組んだもの）では空のまま。
+    waypoint_distances_km: list[float]
 
 
 class RouteDraft(EvaluatedRoute):
