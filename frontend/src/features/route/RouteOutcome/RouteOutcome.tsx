@@ -89,10 +89,21 @@ export default function RouteOutcome({
     );
   }
 
-  // 候補1本への操作（合成・GPX出力）。その候補のタブの中身の先頭に置く。
+  // 候補1本への操作（走る・合成・GPX出力）。その候補のタブの中身の先頭に置く。
   function renderCandidateActions(route: RouteCandidate) {
     return (
       <div className="flex items-center gap-1.5">
+        {onRide && (
+          <Button
+            variant="primary"
+            size="panelIcon"
+            onClick={() => onRide(route.id)}
+            aria-label="このルートで走る"
+            usage="この候補で走行モードを始め、現在地を追って地図を動かし続けます。地図の右の走行モードのボタンでも始められます。"
+          >
+            <RideModeIcon size={18} />
+          </Button>
+        )}
         {/* 合成（区間の乗り換え）の入口。乗り換えできない生成（周回・候補1件）では出さない。 */}
         {splice.canStart && (
           <Button
@@ -245,18 +256,6 @@ export default function RouteOutcome({
           <div className="min-w-0 flex-auto">
             {routes.map((route) => (
               <TabsContent key={route.id} className="flex flex-col gap-2 data-[state=inactive]:hidden" value={route.id}>
-                {onRide && (
-                  <Button
-                    variant="primary"
-                    size="md"
-                    className="w-full justify-center gap-1.5"
-                    onClick={() => onRide(route.id)}
-                    usage="この候補で走行モードを始め、現在地を追って地図を動かし続けます。地図の右の走行モードのボタンでも始められます。"
-                  >
-                    <RideModeIcon size={18} />
-                    このルートで走る
-                  </Button>
-                )}
                 {renderCandidateActions(route)}
                 {renderEditDifference(route, nameOf)}
                 {/* 道のりのグラフ。区間を選んでいる間も残す（動かして地点を選ぶ操作の置き場のため）。 */}
