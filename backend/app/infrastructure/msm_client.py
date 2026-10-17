@@ -294,6 +294,26 @@ async def refresh(client: httpx.AsyncClient) -> int:
     return downloaded
 
 
+def forecast_version() -> tuple:
+    """`read_series`が今返す予報の版。置き場のメタ情報の中身・チャンクのファイルの差し替えと、読み出しの起点の正時で変わる。
+
+    同じ版のあいだは同じ地点に同じ時系列を返すので、読み手は版を鍵に読んだ結果を使い回せる。読む前と読んだ後で版が
+    違えば、その結果は版に結びつけられない。メタ情報は同期のたびに書き直されるので、ファイルの時刻ではなく中身で見る。
+    """
+    try:
+        meta = (MSM_DIR / _META_FILE_NAME).read_bytes()
+    except OSError:
+        meta = None
+    chunks = []
+    for path in sorted(MSM_DIR.glob("*/chunk_*.om")):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        chunks.append((str(path), stat.st_mtime_ns, stat.st_size, stat.st_ino))
+    return int(time.time()) // 3600, meta, tuple(chunks)
+
+
 def _synced_chunk_path(variable: str, chunk_number: int) -> Path:
     path = _chunk_path(variable, chunk_number)
     if not path.exists():
