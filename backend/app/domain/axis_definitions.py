@@ -459,8 +459,6 @@ class AxisPublishedImmutableError(ValueError):
     """
 
     def __init__(self, existing: "AxisDefinition", action: PublishedAxisAction) -> None:
-        self.axis_id = existing.axis_id
-        self.action = action
         name = named_references([existing.axis_id], {existing.axis_id: existing})
         if action == "deleted":
             message = f"{name}は公開中のため削除できません。先に非公開に戻してください。"
@@ -607,8 +605,6 @@ class AxisInternalAxisPublishError(ValueError):
     """
 
     def __init__(self, candidate: "AxisDefinition", referencing: "AxisDefinition") -> None:
-        self.axis_id = candidate.axis_id
-        self.referencing_axis_id = referencing.axis_id
         axes = {candidate.axis_id: candidate, referencing.axis_id: referencing}
         super().__init__(
             f"{named_references([candidate.axis_id], axes)}は{named_references([referencing.axis_id], axes)}が組み合わせに使っている軸なので、"
