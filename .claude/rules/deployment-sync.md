@@ -43,6 +43,7 @@ paths:
 - **既存DBの行データを新しいコードが読めなくなる変更（Pydanticモデルの破壊的変更等）を
   含む`backend/**`の変更は、本番DBのデータ移行を完了させてからmasterへ入れる（マージする）**。
   masterに入ってCI（`.github/workflows/ci.yml`）が通ると、backendは本番へ自動デプロイされ、止める仕組みは無い
+  （新しいコードが本番DBに残る旧い形のデータを読めないと、`refresh_axis_definitions`等の fail-fast で本番の backend が起動に失敗する）
   （コンテナを入れ替えるかの振り分けは`backend/scripts/deploy_gate.py`が正本）。
   対応順序は事前に次のいずれかを選ぶこと: 1) 本番DBのデータ移行を先に完了させてから
   マージ（移行を即座に行えなければ、終わるまでmasterへ入れずに待つ）、2) 新旧両方の形式を一時的に許容する後方互換コードを

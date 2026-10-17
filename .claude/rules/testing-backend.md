@@ -75,6 +75,7 @@ test_routes_generate.py
    依存させる場合は、その自前fixtureにも明示的に`loop_scope="module"`を付ける
    （`@pytest_asyncio.fixture(loop_scope="module")`）。
 3. 素の`@pytest.fixture`でasync fixtureを書かない。`@pytest_asyncio.fixture`を明示的に使う。
+   （2・3を外すと`backend/pytest.ini`の`asyncio_default_fixture_loop_scope`（関数ごとのループ）で動き、モジュールのループの接続に触れた時点で`RuntimeError: ... attached to a different loop`で落ちる）
 4. ファイル単位で共有するのは接続とスキーマまでにする。**テストが書き換える行（生データ・派生の表）は、
    関数スコープのfixtureで各テストの前に作り直す。** 共有した行を書き換えて後片付けで戻す形にしない。
 
