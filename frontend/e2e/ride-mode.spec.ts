@@ -266,7 +266,7 @@ test.describe("タッチ端末", () => {
       { x: center.x + dx + gap / 2, y: center.y },
     ];
 
-    // 指の間を240pxから80pxへ縮める（倍率は log2(3) 段だけ下がる）。先に重心だけを横へ動かし、移動として始まらせる
+    // 指の間を240pxから80pxへ縮める。先に重心だけを横へ動かし、移動として始まらせる
     // （2本の指を揃えて縦に動かすと、地図を傾ける操作になる）。
     const [fromGap, toGap, steps] = [240, 80, 10];
     const gapAt = (step: number) => fromGap + ((toGap - fromGap) * step) / steps;
@@ -279,8 +279,24 @@ test.describe("タッチ端末", () => {
     for (let step = steps / 2 + 1; step <= steps; step += 1) await touch("touchMove", fingers(gapAt(step), 6));
     await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
 
-    const pinchedZoom = followedZoom - Math.log2(fromGap / toGap);
-    await expect.poll(zoom, { timeout: 10_000 }).toBeCloseTo(pinchedZoom, 1);
+    // MapLibre は倍率の差が閾値を超えるまでの分を捨て、指を離したあとも指の速さに応じた慣性で縮め続けるので、つまんだ後の
+    // 倍率は指の間の比からは決まらない。止まって少し置いても変わらない倍率を読み、つまむ前半だけで届く倍率より下がった
+    // （届いた位置で戻されず、つまむ後半まで効いた）ことを見る。
+    let pinchedZoom = NaN;
+    await expect
+      .poll(
+        async () => {
+          const settled = () =>
+            page.evaluate(() => (window.__liveMap().isMoving() ? NaN : window.__liveMap().getZoom()));
+          const first = await settled();
+          await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 500)));
+          pinchedZoom = await settled();
+          return Math.abs(pinchedZoom - first);
+        },
+        { timeout: 10_000 },
+      )
+      .toBeLessThan(1e-6);
+    expect(pinchedZoom).toBeLessThan(followedZoom - Math.log2(fromGap / gapAt(steps / 2)));
     // 休まず、つまむ最中に届いた位置へ寄せ直し、次の位置もつまんだ倍率のまま追う。
     await expectDrawnAt(page, duringPinch, anchor);
     await expect(backToHere).toBeHidden();
