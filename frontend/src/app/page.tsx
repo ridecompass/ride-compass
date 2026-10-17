@@ -547,6 +547,7 @@ export default function Home() {
               axisColors={axisCatalog.axisColors}
               scaleKm={profile.distance_km}
               progressKm={progressKm}
+              waypointKms={profile.waypoint_distances_km}
               selected={null}
               layers={profileLayers}
             />

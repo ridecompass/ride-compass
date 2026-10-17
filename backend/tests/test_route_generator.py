@@ -58,12 +58,13 @@ def _candidate(key: str, difficulty: float | None = 10.0, **fields) -> Evaluated
         "elevation_gain_m": None, "segments": [_segment(difficulty)], "estimated_duration_seconds": None,
         "wind_unavailable": False, "missing_travel_data_share": None, "axis_raw_values": {},
         "material_category_shares": {}, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [], "points": [],
-        **fields,
+        "waypoint_distances_km": [], **fields,
     })
 
 
 def _route(key: str, distance_km: float = 10.0, bearing: int | None = 0) -> TracedLoop:
-    return TracedLoop(bearing=bearing, distance_km=distance_km, data=[key], leg_of_edge=[0], reversible=False)
+    return TracedLoop(bearing=bearing, distance_km=distance_km, data=[key], leg_of_edge=[0], waypoint_offsets=[],
+                      reversible=False)
 
 
 def _turnaround(outcome: TracedLoop | Exception) -> LoopTurnaround:
@@ -143,7 +144,8 @@ class FakeEngine:
         if self.build_error is not None:
             raise self.build_error
         return TracedLoop(
-            bearing=None, distance_km=3.0, data=list(edge_ids), leg_of_edge=[0] * len(edge_ids), reversible=False)
+            bearing=None, distance_km=3.0, data=list(edge_ids), leg_of_edge=[0] * len(edge_ids), waypoint_offsets=[],
+            reversible=False)
 
     @_as_engine
     def repeated_shares(self, context, traced):

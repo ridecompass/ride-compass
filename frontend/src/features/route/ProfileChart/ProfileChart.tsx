@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 
+import { pinMarkName } from "@/components/PinMark/PinMark";
+import PointMark from "@/components/PinMark/PointMark";
 import { columnAtKm } from "@/features/route/DifficultyProfile/profileGeometry";
 import { roundToDigits } from "@/lib/numberFormat";
 import { pointAlongSegment, routeStretches, type RouteStretch } from "@/lib/routeDistance";
@@ -52,6 +54,8 @@ interface ProfileChartProps {
   onSelect?: (selection: SelectedRouteSegment) => void;
   /** 走行中の現在地のルートの上の距離。印を引き、始点からそこまでを走り終えた区間として薄める。 */
   progressKm?: number | null;
+  /** 置いた経由地を通る所のルートの上の距離（置いた順）。縦の線と、地図のピンと同じ番号の印を出す。走り終えた経由地は薄める。 */
+  waypointKms: readonly number[];
   /** 図の中身（`scale.xOf`の横座標と、0〜`PROFILE_VIEW_HEIGHT`の縦座標で描く）。 */
   children: ReactNode;
   /** 図の下の1行。区間を選んでいれば、その地点の距離を受け取る。 */
@@ -71,6 +75,7 @@ export default function ProfileChart({
   selected,
   onSelect,
   progressKm = null,
+  waypointKms,
   children,
   caption,
 }: ProfileChartProps) {
@@ -227,6 +232,21 @@ export default function ProfileChart({
             />
           )}
           {children}
+          {/* 走り終えた区間の幕より下に引き、走り終えた経由地の線も一緒に薄める。 */}
+          {waypointKms.map((km, index) => (
+            <line
+              key={index}
+              data-waypoint={index + 1}
+              x1={xOf(km)}
+              x2={xOf(km)}
+              y1={0}
+              y2={PROFILE_VIEW_HEIGHT}
+              className="stroke-[var(--color-muted-strong)]"
+              strokeWidth={1}
+              strokeDasharray="3 2"
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
           {travelledKm !== null && (
             <>
               {/* 背景の色を重ねて、中身を地図の走り終えた区間の線と同じ濃さまで薄める。 */}
@@ -263,6 +283,20 @@ export default function ProfileChart({
             />
           )}
         </svg>
+        {waypointKms.map((km, index) => (
+          <span
+            key={index}
+            role="img"
+            aria-label={`${pinMarkName("waypoint", String(index + 1))}（${km.toFixed(1)}km地点）`}
+            className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
+            style={{
+              left: `${(xOf(km) / PROFILE_VIEW_WIDTH) * 100}%`,
+              opacity: travelledKm !== null && km <= travelledKm ? mapDisplay.route.opacities.travelled : undefined,
+            }}
+          >
+            <PointMark role="waypoint" label={String(index + 1)} originLocated={false} />
+          </span>
+        ))}
         <div className="pointer-events-none absolute inset-x-1 bottom-0 flex justify-between text-[length:var(--font-size-xs)] text-[var(--color-muted)] tabular-nums">
           <span>0</span>
           <span>{widthKm.toFixed(1)}km</span>
