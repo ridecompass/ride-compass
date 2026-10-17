@@ -4,12 +4,14 @@
 止める上限（生成物`route-generate-config.json`）の両方がここから読む。
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Annotated, TypeGuard
 
 from pydantic import Field
 from pydantic_core import PydanticCustomError
 
+from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.route import Coordinates
 from app.domain.route_preference import RoutePreference
 
@@ -122,4 +124,6 @@ class RequestedConditions:
     penalty_strength: float | None
     max_average_grade_percent: float | None
     hard_filters: frozenset[str]
+    # 道のレイヤの行→避け方の段（鍵は`domain/road_avoidance.py: AVOIDABLE_ROWS`と同じ集合）。
+    road_avoidance: Mapping[str, AvoidanceLevel]
     assumed_speed_kmh: float

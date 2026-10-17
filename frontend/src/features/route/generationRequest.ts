@@ -1,3 +1,4 @@
+import { DEFAULT_ROAD_AVOIDANCE } from "@/features/route/roadAvoidance";
 import type { Coordinates, HardFilterOverride, RouteGenerateRequest, RoutePreferenceWeights } from "@/types/route";
 
 // 生成リクエストのpayloadと、「生成条件が変更されています」（conditionsDirty）の比較キーを
@@ -38,6 +39,8 @@ export function buildGenerateRequest(input: GenerationInput): RouteGenerateReque
     // 合図で、画面から変える手段が無いのに値を載せると、管理画面で調整しても効かなくなる。
     // 画面から変えられるようになるまでは省略する。
     hard_filters: input.hardFilters,
+    // 行ごとの避け方は、画面で選べるようになるまで既定の段を送る。
+    road_avoidance: DEFAULT_ROAD_AVOIDANCE,
     max_routes: input.maxRoutes,
     assumed_speed_kmh: input.assumedSpeedKmh,
     start_time: input.startTime.toISOString(),

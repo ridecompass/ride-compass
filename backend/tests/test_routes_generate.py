@@ -28,6 +28,7 @@ import pytest
 from app.api import dependencies
 from app.config import settings
 from app.domain.hard_filters import DEFAULT_HARD_FILTERS, HARD_FILTER_NAMES
+from app.domain.road_avoidance import DEFAULT_ROAD_AVOIDANCE
 from app.domain.route_request import DEFAULT_DISTANCE_TOLERANCE_KM, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
 from app.domain.tuning import TUNING_VALUES
 from app.domain.route_request import ASSUMED_SPEED_KMH
@@ -60,6 +61,7 @@ JAPANESE = re.compile(r"[぀-ヿ一-鿿]")  # かな・漢字
 ALWAYS_SENT = {
     "distance_tolerance_km": DEFAULT_DISTANCE_TOLERANCE_KM,
     "hard_filters": {name: name in DEFAULT_HARD_FILTERS for name in HARD_FILTER_NAMES},
+    "road_avoidance": DEFAULT_ROAD_AVOIDANCE,
     "max_routes": DEFAULT_MAX_ROUTES,
     "assumed_speed_kmh": ASSUMED_SPEED_KMH,
     "start_time": "2026-09-22T08:00:00+09:00",
@@ -264,15 +266,17 @@ async def test_the_defaults_that_were_applied_are_echoed(client):
 async def test_the_overrides_that_were_sent_are_echoed(client):
     """保存したレスポンスの条件をそのまま送り直せば、同じ条件で生成し直せる。"""
     hard_filters = {name: False for name in HARD_FILTER_NAMES}
+    road_avoidance = {key: "exclude" for key in DEFAULT_ROAD_AVOIDANCE}
     conditions = (await _generate(
         client, route_preference={AVOID_AXIS: 2.0}, penalty_strength=0.5, max_average_grade_percent=8.0,
-        hard_filters=hard_filters, assumed_speed_kmh=25.0, distance_tolerance_km=2.0,
+        hard_filters=hard_filters, road_avoidance=road_avoidance, assumed_speed_kmh=25.0, distance_tolerance_km=2.0,
     ))["result"]["conditions"]
 
     assert conditions["route_preference"] == {AVOID_AXIS: 2.0}
     assert conditions["penalty_strength"] == 0.5
     assert conditions["max_average_grade_percent"] == 8.0
     assert conditions["hard_filters"] == hard_filters
+    assert conditions["road_avoidance"] == road_avoidance
     assert conditions["assumed_speed_kmh"] == 25.0
     assert conditions["distance_tolerance_km"] == 2.0
 
@@ -316,6 +320,7 @@ async def test_a_destination_moved_to_the_nearest_reachable_road_is_echoed(clien
     {"route_preference": {}},                                        # 公開軸を全部書いていない
     {"route_preference": {AVOID_AXIS: -1.0}},                        # 値の検査（`check_axis_weights`）へ寄せている
     {"hard_filters": {}},
+    {"road_avoidance": {}},                                          # 行を全部書いていない
     {"spliced_edge_ids": ["way-100-seg0-fwd"]},                       # 目的地が無い
     {"assumed_speed_kmh": 0},                                        # 想定速度の型（`AssumedSpeedKmh`）
 ])

@@ -1098,6 +1098,7 @@ export interface components {
             /** Max Average Grade Percent */
             max_average_grade_percent: number | null;
             hard_filters: components["schemas"]["HardFilterOverride"];
+            road_avoidance: components["schemas"]["RoadAvoidanceOverride"];
             /** Max Routes */
             max_routes: number;
             /**
@@ -1447,6 +1448,10 @@ export interface components {
             /** Total Unit */
             total_unit: string | null;
         };
+        /** RoadAvoidanceOverride */
+        RoadAvoidanceOverride: {
+            [key: string]: "pass" | "avoid" | "exclude";
+        };
         /** RoadClassStretch */
         RoadClassStretch: {
             /** Distance Km */
@@ -1571,6 +1576,7 @@ export interface components {
             /** Max Average Grade Percent */
             max_average_grade_percent?: number | null;
             hard_filters: components["schemas"]["HardFilterOverride"];
+            road_avoidance: components["schemas"]["RoadAvoidanceOverride"];
             /** Max Routes */
             max_routes: number;
             /** Assumed Speed Kmh */

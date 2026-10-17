@@ -3353,6 +3353,9 @@
           "hard_filters": {
             "$ref": "#/components/schemas/HardFilterOverride"
           },
+          "road_avoidance": {
+            "$ref": "#/components/schemas/RoadAvoidanceOverride"
+          },
           "max_routes": {
             "type": "integer",
             "title": "Max Routes"
@@ -3416,6 +3419,7 @@
           "penalty_strength",
           "max_average_grade_percent",
           "hard_filters",
+          "road_avoidance",
           "max_routes",
           "start_time",
           "assumed_speed_kmh",
@@ -4366,6 +4370,18 @@
         ],
         "title": "RawValueUnits"
       },
+      "RoadAvoidanceOverride": {
+        "additionalProperties": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "avoid",
+            "exclude"
+          ]
+        },
+        "type": "object",
+        "title": "RoadAvoidanceOverride"
+      },
       "RoadClassStretch": {
         "properties": {
           "distance_km": {
@@ -4757,6 +4773,9 @@
           "hard_filters": {
             "$ref": "#/components/schemas/HardFilterOverride"
           },
+          "road_avoidance": {
+            "$ref": "#/components/schemas/RoadAvoidanceOverride"
+          },
           "max_routes": {
             "type": "integer",
             "maximum": 15.0,
@@ -4823,6 +4842,7 @@
           "longitude",
           "distance_tolerance_km",
           "hard_filters",
+          "road_avoidance",
           "max_routes",
           "assumed_speed_kmh",
           "start_time"

@@ -42,16 +42,189 @@
       {
         "key": "no_bicycle",
         "label": "自転車通行禁止"
-      },
-      {
-        "key": "trunk",
-        "label": "国道"
       }
     ],
     "defaults": [
       "motorway",
-      "no_bicycle",
-      "trunk"
+      "no_bicycle"
+    ]
+  },
+  "road_avoidance": {
+    "levels": [
+      {
+        "key": "pass",
+        "label": "通る"
+      },
+      {
+        "key": "avoid",
+        "label": "なるべく避ける"
+      },
+      {
+        "key": "exclude",
+        "label": "通らない"
+      }
+    ],
+    "rows": [
+      {
+        "key": "highway.arterial",
+        "layer": "highway",
+        "layer_label": "道路の種類",
+        "label": "幹線道路",
+        "description": "高速道路・国道・主要な県道など、車が遠くへ行くための太い通り[OSM の highway=motorway・trunk・primary とその連絡路]。",
+        "default": "avoid"
+      },
+      {
+        "key": "highway.secondary",
+        "layer": "highway",
+        "layer_label": "道路の種類",
+        "label": "主要道",
+        "description": "県道・市町村の主な道など、地域の中を結ぶ通り[OSM の highway=secondary・tertiary とその連絡路]。",
+        "default": "pass"
+      },
+      {
+        "key": "highway.local",
+        "layer": "highway",
+        "layer_label": "道路の種類",
+        "label": "生活道路",
+        "description": "住宅街の道・名前の付かない細い道・施設の中の通路など、主に近くへ行くための道[OSM の highway=residential・unclassified・living_street・service・road]。",
+        "default": "pass"
+      },
+      {
+        "key": "highway.cycleway",
+        "layer": "highway",
+        "layer_label": "道路の種類",
+        "label": "自転車・歩行者道",
+        "description": "自転車専用道・歩道・遊歩道・歩行者専用の道・階段など、車が通らない道[OSM の highway=cycleway・path・footway・pedestrian・bridleway・steps]。",
+        "default": "pass"
+      },
+      {
+        "key": "highway.track",
+        "layer": "highway",
+        "layer_label": "道路の種類",
+        "label": "農道・林道",
+        "description": "田畑や山林へ入るための道。舗装も未舗装もある[OSM の highway=track]。",
+        "default": "pass"
+      },
+      {
+        "key": "cycleway.separated",
+        "layer": "cycleway",
+        "layer_label": "自転車インフラ",
+        "label": "自転車道",
+        "description": "車道から分けられた、自転車の通る道[OSM の highway=cycleway・cycleway=track]。",
+        "default": "pass"
+      },
+      {
+        "key": "cycleway.lane",
+        "layer": "cycleway",
+        "layer_label": "自転車インフラ",
+        "label": "自転車レーン",
+        "description": "車道の上に線で区切った、自転車の通る帯[OSM の cycleway=lane]。",
+        "default": "pass"
+      },
+      {
+        "key": "cycleway.shared",
+        "layer": "cycleway",
+        "layer_label": "自転車インフラ",
+        "label": "共用の道",
+        "description": "バス・車と共用の帯か、自転車も通ってよい歩道・遊歩道[OSM の cycleway=share_busway・shared_lane、highway=footway・path かつ bicycle=yes・designated]。",
+        "default": "pass"
+      },
+      {
+        "key": "surface.paved",
+        "layer": "surface",
+        "layer_label": "路面の種類",
+        "label": "舗装",
+        "description": "路面がアスファルト・舗装[種別不明]・チップシール舗装・コンクリート・コンクリート版・コンクリート帯[轍部のみ舗装]・石畳[切石]・レンガ舗装の道[OSM の surface タグ]。",
+        "default": "pass"
+      },
+      {
+        "key": "surface.compacted",
+        "layer": "surface",
+        "layer_label": "路面の種類",
+        "label": "締め固め・細砂利",
+        "description": "路面が締固め砂利・細砂利の道[OSM の surface タグ]。",
+        "default": "pass"
+      },
+      {
+        "key": "surface.gravel",
+        "layer": "surface",
+        "layer_label": "路面の種類",
+        "label": "砂利・未舗装",
+        "description": "路面が砂利・小石敷き・岩盤・未舗装[種別不明]の道[OSM の surface タグ]。",
+        "default": "pass"
+      },
+      {
+        "key": "surface.soil",
+        "layer": "surface",
+        "layer_label": "路面の種類",
+        "label": "土・草・泥・砂",
+        "description": "路面が土・地面[土・砂利混合]・土[地表面]・泥・砂・芝・草地・ウッドチップの道[OSM の surface タグ]。",
+        "default": "pass"
+      },
+      {
+        "key": "surface.cobblestone",
+        "layer": "surface",
+        "layer_label": "路面の種類",
+        "label": "石畳",
+        "description": "路面が石畳[玉石]・玉石舗装・玉石舗装[未加工]の道[OSM の surface タグ]。",
+        "default": "pass"
+      },
+      {
+        "key": "tracktype.grade1",
+        "layer": "tracktype",
+        "layer_label": "農道・林道の等級",
+        "label": "1 舗装・固く締まる",
+        "description": "固い路面の農道・林道。多くは舗装されている[OSM の tracktype=grade1]。",
+        "default": "pass"
+      },
+      {
+        "key": "tracktype.grade2",
+        "layer": "tracktype",
+        "layer_label": "農道・林道の等級",
+        "label": "2 砂利[未舗装]",
+        "description": "おおむね固い未舗装の農道・林道。砂や土の混じった砂利道が多い[OSM の tracktype=grade2]。",
+        "default": "pass"
+      },
+      {
+        "key": "tracktype.grade3",
+        "layer": "tracktype",
+        "layer_label": "農道・林道の等級",
+        "label": "3 砂利と土が半々",
+        "description": "固い部分と柔らかい部分が半々の未舗装の農道・林道[OSM の tracktype=grade3]。",
+        "default": "pass"
+      },
+      {
+        "key": "tracktype.grade4",
+        "layer": "tracktype",
+        "layer_label": "農道・林道の等級",
+        "label": "4 土・草が主",
+        "description": "土・砂・草が主で、固い部分が少し混じる未舗装の農道・林道[OSM の tracktype=grade4]。",
+        "default": "pass"
+      },
+      {
+        "key": "tracktype.grade5",
+        "layer": "tracktype",
+        "layer_label": "農道・林道の等級",
+        "label": "5 土・草・砂",
+        "description": "固い材料が無く、締まっていない土・砂・草の農道・林道[OSM の tracktype=grade5]。",
+        "default": "pass"
+      },
+      {
+        "key": "tunnel.tunnel",
+        "layer": "tunnel",
+        "layer_label": "トンネル",
+        "label": "トンネル",
+        "description": "トンネルの中を通る区間[OSM の tunnel=yes・avalanche_protector]。",
+        "default": "pass"
+      },
+      {
+        "key": "oneway.oneway",
+        "layer": "oneway",
+        "layer_label": "一方通行",
+        "label": "一方通行",
+        "description": "一方向にしか進めない道。環状交差点も含み、自転車だけ両方向に通れる道と上下線が分かれているだけの道[逆向きの一方通行が15m以内、同じ路線番号・名前なら40m以内を並走する道]は含まない[OSM の oneway:bicycle・oneway・junction タグ]。",
+        "default": "pass"
+      }
     ]
   }
 }

@@ -26,12 +26,14 @@ from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm
 from app.domain.cycling_speed import RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.evaluation import DensityAxisColumn, StaticEdgeScoreMatrix
 from app.domain.leg_costs import LegCostComposer
+from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates
 from app.domain.wind import DepartureWind, WindForecastSeries, WindLattice
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 
 START = datetime(2026, 10, 3, 9, 0)
 CRUISE_KMH = 20.0
+AVOID_MULTIPLIER = 3.0
 SURFACE = leg_costs.ROLLING_RESISTANCE_MATERIAL_ID
 GRADIENT = leg_costs.GRADIENT_PERCENT
 WIND_DRAG = next(iter(leg_costs.REQUEST_DYNAMIC_MATERIAL_IDS))
@@ -78,7 +80,7 @@ def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="pa
 
     return StaticEdgeScoreMatrix(
         axis_ids=list(axes), axis_scores=stacked(axes),
-        distance_m=_column(distance, n), bearing_deg=_column(bearing, n), hard_filter_flags={},
+        distance_m=_column(distance, n), bearing_deg=_column(bearing, n), route_flags={},
         mid_lat=np.full(n, 35.0), mid_lon=np.full(n, 139.0),
         raw_axis_ids=list(raw_axes), axis_raw_values=stacked(raw_axes),
         material_ids=list(materials), material_values=stacked(materials),
@@ -102,12 +104,16 @@ def _series(speeds_by_hour: list[float], from_deg: float = NORTH) -> WindForecas
     )
 
 
-def _composer(matrix: StaticEdgeScoreMatrix, *, weights=None, penalty=0.0, excluded=None, departure_wind=None,
-              series=None, lazy=None) -> LegCostComposer:
+def _composer(matrix: StaticEdgeScoreMatrix, *, weights=None, penalty=0.0, excluded=None, avoided=None,
+              departure_wind=None, series=None, lazy=None) -> LegCostComposer:
     n = len(matrix.distance_m)
+    none = np.zeros(n, dtype=bool)
+    masks = RoadAvoidanceMasks(
+        excluded=none if excluded is None else np.asarray(excluded, dtype=bool),
+        avoided=none if avoided is None else np.asarray(avoided, dtype=bool),
+    )
     return LegCostComposer(
-        matrix, weights or {}, penalty,
-        np.zeros(n, dtype=bool) if excluded is None else np.asarray(excluded, dtype=bool),
+        matrix, weights or {}, penalty, masks, AVOID_MULTIPLIER,
         departure_wind, series, START, CRUISE_KMH,
         np.arange(n) if lazy is None else np.asarray(lazy), detour_ratio=1.3, twilight_origin=PLACE,
     )
@@ -167,6 +173,14 @@ def test_an_excluded_segment_cannot_be_passed():
 
     assert np.isinf(leg.travel_seconds_full[0]) and np.isinf(leg.cost_lazy[0])
     assert np.isfinite(leg.cost_lazy[1])
+
+
+def test_a_segment_to_avoid_costs_more_but_takes_the_same_time():
+    """割り増しが所要時間へ混ざると、避けた道を通った候補の所要時間と到着の予想が延びる。"""
+    leg = _snapshot(_matrix(2), avoided=[True, False])
+
+    assert leg.cost_lazy[0] == pytest.approx(AVOID_MULTIPLIER * leg.cost_lazy[1])
+    assert leg.travel_seconds_full[0] == pytest.approx(leg.travel_seconds_full[1])
 
 
 def test_the_wind_at_departure_slows_a_segment_against_it_and_helps_one_with_it():

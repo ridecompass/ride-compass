@@ -41,6 +41,7 @@ from app.domain.evaluation import (
     density_costs,
 )
 from app.domain.material_catalog import GRADIENT_PERCENT
+from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates, SegmentWind
 from app.domain.time_zone import jst_local_text
 from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_seconds
@@ -191,7 +192,8 @@ class LegCostComposer:
         score_matrix: StaticEdgeScoreMatrix,
         weights: dict[str, float],
         penalty_strength: float,
-        hard_filter_excluded: np.ndarray,
+        search_masks: RoadAvoidanceMasks,
+        avoid_cost_multiplier: float,
         departure_wind: DepartureWind | None,
         wind_series: WindForecastSeries | None,
         start: datetime,
@@ -237,7 +239,10 @@ class LegCostComposer:
             {a: c for a, c in score_matrix.density_axes.items() if weights.get(a, 0.0) > 0},
             self._static_axis_scores, score_matrix.distance_m, speed_kmh,
         )
-        self._hard_filter_excluded = hard_filter_excluded
+        # 探索から除く区間（費用を無限大にする）と、費用を割り増す区間。割り増しは探索の費用にだけ掛け、
+        # 所要時間・難易度には掛けない。倍率は1以上で、費用を下げないので探索の下限の見積もりは崩れない。
+        self._excluded = search_masks.excluded
+        self._cost_scale = np.where(search_masks.avoided, avoid_cost_multiplier, 1.0)
         self._departure_wind = departure_wind
         self._wind_series = wind_series
         # 各Edgeの中点に最も近い予報の格子点（切り出した区間の順）。
@@ -295,13 +300,13 @@ class LegCostComposer:
         走行モデル（`domain/cycling_speed.py`）で勾配・風の成分・路面・巡航速度から求めた
         走行時間に、その区間にある停止要因の待ちを足したもの。
         ターンの待ちは遷移ごとに決まるためここには含まない（探索側が足す）。
-        0次フィルタで除外された区間は無限大にする（探索から見た通行可否をコストの下地だけで
+        探索から除く区間は無限大にする（探索から見た通行可否をコストの下地だけで
         表すため）。`rows`を渡すとその行だけ（引数の配列も同じ並び）で求める。
         """
         take = _row_taker(rows)
         model, stops = self._travel_inputs(rows)
         travel = model.travel_seconds(take(self._score_matrix.distance_m), headwind_ms, crosswind_ms)
-        return np.where(take(self._hard_filter_excluded), np.inf, travel + stops)
+        return np.where(take(self._excluded), np.inf, travel + stops)
 
     def compose(
         self,
@@ -601,7 +606,7 @@ class LegCostComposer:
         """指定した通過時刻（`None`は出発時点のスナップショット）で1本ぶん合成する。"""
         evaluated = self._evaluate(passage)
         composed, travel = evaluated.composed, evaluated.travel
-        cost_array = np.where(self._hard_filter_excluded, np.inf, composed.cost(travel))
+        cost_array = np.where(self._excluded, np.inf, self._cost_scale * composed.cost(travel))
         lazy_cost = cost_array[self._lazy_row_index]
         lazy_travel = travel[self._lazy_row_index]
         return LegCostArrays(

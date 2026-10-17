@@ -45,6 +45,7 @@ from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME
 from app.main import app
 from app.domain.hard_filters import DEFAULT_HARD_FILTERS, HARD_FILTER_LABELS, HARD_FILTER_NAMES
+from app.domain.road_avoidance import AVOIDABLE_ROWS, AVOIDANCE_LEVEL_LABELS, AVOIDANCE_LEVELS
 from app.domain.address_area import ADDRESS_AREA_LEVELS
 from app.domain.geo import COMPASS_LABELS, EARTH_RADIUS_KM
 from app.domain.dynamic_way_values import BEARING_BUCKET_DEG
@@ -637,6 +638,18 @@ def main() -> None:
             "hard_filters": {
                 "filters": [{"key": name, "label": HARD_FILTER_LABELS[name]} for name in sorted(HARD_FILTER_NAMES)],
                 "defaults": sorted(DEFAULT_HARD_FILTERS),
+            },
+            # 道のレイヤの凡例の行ごとの避け方の段と、選べる行・既定の段。backendは鍵の集合の完全一致を
+            # 要求する（`RoadAvoidanceOverride`）。行は道のレイヤの凡例の行の宣言から導く。
+            "road_avoidance": {
+                "levels": [{"key": level, "label": AVOIDANCE_LEVEL_LABELS[level]} for level in AVOIDANCE_LEVELS],
+                "rows": [
+                    {
+                        "key": row.key, "layer": row.layer_id, "layer_label": row.layer_label,
+                        "label": row.label, "description": row.description, "default": row.default_level,
+                    }
+                    for row in AVOIDABLE_ROWS.values()
+                ],
             },
         },
     )

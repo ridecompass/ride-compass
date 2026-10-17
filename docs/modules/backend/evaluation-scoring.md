@@ -11,13 +11,13 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `evaluation.py`（Edge Costの算出。探索範囲の静的スコア行列と、コストの合成・逆算）・`hard_filters.py`（0次フィルタ）・`route_preference.py`（重み指定）・`dynamic_materials.py`（風などリクエスト時に決まる材料）・`axis_inspector.py`（区間インスペクタ）・`difficulty.py`（軸の得点の合成と、区間からルートへの集約）・`material_catalog.py`・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`） |
+| domain | `evaluation.py`（Edge Costの算出。探索範囲の静的スコア行列と、コストの合成・逆算）・`hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`route_preference.py`（重み指定）・`dynamic_materials.py`（風などリクエスト時に決まる材料）・`axis_inspector.py`（区間インスペクタ）・`difficulty.py`（軸の得点の合成と、区間からルートへの集約）・`material_catalog.py`・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`） |
 | services | `material_coverage_service.py` |
 | infrastructure | `material_coverage.py`（材料ごとの欠損割合の集計クエリ） |
 | api | `material_catalog.py`（材料カタログ・材料値一覧・欠損割合のエンドポイント） |
 
 domainのファイルは**変更理由で分けてある**。`evaluation.py`が変わるのはコストの
-計算方法を変えるとき、`hard_filters.py`はフィルタを増減するとき、`route_preference.py`は
+計算方法を変えるとき、`hard_filters.py`はフィルタを増減するとき、`road_avoidance.py`は避け方の段や既定を変えるとき、`route_preference.py`は
 APIが受け取る重みの形を変えるとき、`dynamic_materials.py`は動的材料を増やすとき、
 `axis_inspector.py`は区間インスペクタの内訳表示を変えるとき。
 
@@ -47,31 +47,34 @@ APIが受け取る重みの形を変えるとき、`dynamic_materials.py`は動�
 `re`の長さが区間の長さ、way丸ごとのフィーチャーは`em`が道1本の値の同じ名前の列（無い列はNULL）・`re`の長さが
 wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から取る。
 
-## 0次ハードフィルタ（`domain/hard_filters.py`）
+## 0次ハードフィルタと道の行ごとの避け方（`domain/hard_filters.py`・`domain/road_avoidance.py`）
 
-`compute_hard_filter_excluded`が、静的スコア行列（`StaticEdgeScoreMatrix`）のフィルタ名→該当フラグの配列と、
-リクエストが指定した有効なフィルタ名の集合から、Edgeごとの除外を求める。`hard_filters`
-省略時は`DEFAULT_HARD_FILTERS`（宣言されている全フィルタが常時有効）を使う。
+`compute_search_exclusion`が、静的スコア行列（`StaticEdgeScoreMatrix`）の旗の名前→該当フラグの配列と、
+リクエストが指定した有効なフィルタ名の集合・行ごとの避け方の段・勾配の上限から、Edgeごとに「探索から除く」と
+「割り増す」を求める。`hard_filters`省略時は`DEFAULT_HARD_FILTERS`（宣言されている全フィルタが常時有効）を使う。
 
-**受け取るフラグのキー集合は宣言と完全一致でなければ落ちる**——欠けたフィルタは黙って
+**受け取る旗のキー集合は宣言（`domain/hard_filters.py: ROUTE_FLAG_VALUE_SQL`）と完全一致でなければ落ちる**——欠けた旗は黙って
 無効になり、高速道路や`bicycle=no`の道がそのまま候補へ入る。リクエスト側の名前も宣言に
-無いものは要求の検証（`api/routers/routes.py: HardFilterOverride`）が拒む（綴り間違いと「そのフィルタを切った」を
-区別できないため）。
+無いものは要求の検証（`api/routers/routes.py: HardFilterOverride`・`api/routers/routes.py: RoadAvoidanceOverride`）が拒む
+（綴り間違いと「そのフィルタを切った」を区別できないため）。
 
-- highwayタグ由来（`motorway`/`trunk`）・`bicycle=no`タグ（`no_bicycle`）の2系統。
-  **除外の根拠は種類ごとに違う**: `motorway`（motorway/motorway_link）は法的に自転車が
-  通行できない。`trunk`（trunk/trunk_link）は日本の法規上は通行可能な場合が多く、
-  ロードバイクの周回ルートにとって実務上走りにくい・危険という**用途上の判断**で外して
-  いる。trunkは地図表示（幹線道路の把握・回避判断）のために取り込みはする——取込
-  スコープと探索スコープが食い違っているのは意図した役割分担である。
+- 0次フィルタはhighwayタグ由来（`motorway`）・`bicycle=no`タグ（`no_bicycle`）の2系統で、どちらも法的に自転車が
+  通行できない道を外す。走れるが走りにくい道（幹線道路等）は、0次フィルタではなく下の避け方で扱う。
   highway種別のフィルタは`HARD_FILTER_HIGHWAY_TYPES`（フィルタ名→画面に出す名前と対象highway値）が唯一の
-  レジストリで、`compute_hard_filter_excluded`はこの辞書をループする（`compute_hard_filter_excluded`が読むのは行列のフィルタ名→該当フラグ配列の
-  `hard_filter_flags`と材料の列で、フィルタごとの専用引数・専用フィールドは持たない。タグ由来の
+  レジストリで、`compute_search_exclusion`はこの辞書をループする（読むのは行列の旗の名前→該当フラグ配列の
+  `route_flags`と材料の列で、フィルタごとの専用引数・専用フィールドは持たない。タグ由来の
   フィルタは`HARD_FILTER_TAG_PREDICATE_SQL`が名前・画面に出す名前・判定式をまとめて持ち、
   `HARD_FILTER_NAMES`も読み出し用のSQLの列もそこから導く）。
   フィルタを1件増やしても変わるのはこの辞書だけ。
   highwayタグが無い・way_tagsが未取得の場合は除外しない（判断材料が無いEdgeまで一律
   除外すると探索対象が過度に狭まるため、不明な場合は許可しSoft Constraint側へ委ねる）。
+- **道の行ごとの避け方**: 地図の道の線のレイヤの凡例の行（`domain/road_avoidance.py: AVOIDABLE_ROWS`。行の宣言から導き、
+  別の表を持たない。行の外の受け皿の道は選べない）ごとに、「通る」「なるべく避ける」「通らない」を選ぶ。区間が行に
+  当たるかは、地図がそのレイヤを塗るのと同じ材料の値式から求め、0次フィルタと同じ旗の列（鍵`<レイヤ>.<行>`）で受け取る。
+  「通らない」の行に当たる区間は除き、「なるべく避ける」の行に当たる区間は費用に較正値`avoidance.avoid_cost_multiplier`を
+  掛ける（所要時間には掛けない。`domain/leg_costs.py: LegCostComposer`）。1つの区間が複数の行に当たれば強い段が効く。
+  既定は`DEFAULT_ROAD_AVOIDANCE`で、幹線道路（国道等）の行だけ「なるべく避ける」。倍率は本番で前後の幹線の割合・距離を
+  比べて決める。
 - `max_average_grade_percent`（省略時None＝除外なし）が指定され、かつ
   勾配の材料（`GRADIENT_PERCENT`）の列に値がある場合、その絶対値（登り・下りどちらの
   急勾配も対象）がしきい値を超えるEdgeを除外する。
@@ -125,7 +128,7 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
         │  cost = 所要時間 × (1 + P × difficulty′ / 100) + 密度の軸の分
         │  （difficulty′は分子から密度の軸を外した合成。密度の軸の分は回数に比例する秒）
         ▼
-  cost・difficulty配列（0次フィルタの除外は`compute_hard_filter_excluded`が別途判定）
+  cost・difficulty配列（0次フィルタの除外と避け方は`compute_search_exclusion`が別途判定）
 ```
 
 区間インスペクタも同じ評価・合成を通す（得点は地図の配信と同じ値、合成は`difficulty.py: composite_difficulty`を
@@ -142,7 +145,7 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
   `cost >= 所要時間`という不変条件はP>=0の間常に成り立つ。
 - **`build_static_edge_score_matrix`**: `AXIS_DEFINITIONS`を軸ごとに適用して
   difficulty配列を求める（`StaticEdgeScoreMatrix`: 公開軸別配列に加え、0次フィルタ判定用の
-  生フラグ`hard_filter_flags`も持つ——`hard_filters`はリクエストごとに
+  生フラグ`route_flags`も持つ——`hard_filters`はリクエストごとに
   変わりうるため、除外判定そのものはここでは確定させない）。所要時間が読む材料（勾配・路面・停止の密度。
   `domain/cycling_speed.py: travel_model_material_ids`）は軸の構成と無関係にいつも材料の列として持ち、0次フィルタの
   勾配しきい値も同じ勾配の列を読む。その列が欠けた行列は組み立てで断る（`ValueError`）——欠けたまま通すと、
@@ -162,7 +165,7 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
   足した秒を所要時間で割った値として入る——回数 ÷ (所要時間 × 想定速度)の点数で、所要時間が想定速度で走る時間に
   近いほど、範囲の平均の密度に傾きを掛けた点数（頭打ちの無い直線）に近い。停止の待ちや上り坂で所要時間が延びた
   範囲ほど、平均の密度の点数より小さく入る。0次フィルタによる除外
-  （`compute_hard_filter_excluded`が`hard_filters`/`max_average_grade_percent`を反映して
+  （`compute_search_exclusion`が`hard_filters`/`road_avoidance`/`max_average_grade_percent`を反映して
   別途判定）はここには含まれない。重み付き軸がすべて欠損のEdgeはcost算出だけbbox内平均
   difficultyを代入する（表示用の戻り値には影響しない、詳細は後述「探索コストの既定経路」節）。
 
@@ -227,8 +230,8 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
   （`mid_lat`/`mid_lon`、from/toノードの平均）も持つ（キャッシュしない）。
 - リクエスト時（`RoadGraphEngine._build_search_graph`）は、`StaticEdgeScoreMatrix`を
   軸id→配列の辞書へ展開→`evaluate_dynamic_axis_arrays`で動的軸を上書き→
-  `compose_costs_from_axis_matrix`で重み合成→`compute_hard_filter_excluded`で0次
-  フィルタを適用、の順にbbox全体ぶん1回だけ実行してコスト配列を得る。並行Edge
+  `compose_costs_from_axis_matrix`で重み合成→`compute_search_exclusion`で0次
+  フィルタと避け方を適用、の順にbbox全体ぶん1回だけ実行してコスト配列を得る。並行Edge
   （同一Node間の複数Edge）は`domain/routing.py: build_lazy_road_graph`が元の行（切り出した区間の順）の
   最も小さい1本を採る決定的な規則で解消する（コストはリクエストごとに変わるため見ない）。
   時刻ビンごとに合成し直すときの、風に依らない計算の使い回しは[routing-engine.md](routing-engine.md)

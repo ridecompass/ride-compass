@@ -12,6 +12,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildGenerateRequest, generationConditionsKey, type GenerationInput } from "./generationRequest";
+import { DEFAULT_ROAD_AVOIDANCE } from "./roadAvoidance";
 
 const START = new Date("2026-10-04T01:30:00Z");
 
@@ -37,6 +38,7 @@ describe("buildGenerateRequest", () => {
       distance_km: 40,
       distance_tolerance_km: 5,
       hard_filters: { exclude_a: true, exclude_b: false },
+      road_avoidance: DEFAULT_ROAD_AVOIDANCE,
       max_routes: 3,
       assumed_speed_kmh: 22,
       start_time: "2026-10-04T01:30:00.000Z",

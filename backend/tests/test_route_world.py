@@ -56,7 +56,7 @@ def test_the_grid_has_what_its_arguments_declare():
     assert _directions(network, other) == {WAYS[other], WAYS[other][::-1]}
     assert (_values(network, BAD_MATERIAL, BAD), _values(network, BAD_MATERIAL, UNKNOWN),
             _values(network, BAD_MATERIAL, other)) == ({1.0}, {-1.0}, {0.0})
-    motorway = network.hard_filter_flags[:, network.hard_filter_ids.index("motorway")]
+    motorway = network.route_flags[:, network.route_flag_ids.index("motorway")]
     assert set(network.edge_way_id[motorway].tolist()) == {MOTORWAY}
     assert (_values(network, GRADIENT_PERCENT, NO_GRADIENT), _values(network, GRADIENT_PERCENT, other)) == ({-1.0}, {0.0})
     for material in stop_count_material_ids():

@@ -27,6 +27,7 @@ import { makeGenerationConditions, makeRouteCandidate } from "@/testing/routeFix
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { Coordinates, GenerationConditions, RouteCandidate } from "@/types/route";
 
+import { DEFAULT_ROAD_AVOIDANCE } from "./roadAvoidance";
 import { useGenerationConditions } from "./useGenerationConditions";
 import { useRouteGeneration } from "./useRouteGeneration";
 
@@ -118,7 +119,7 @@ afterEach(() => {
 });
 
 describe("送る要求", () => {
-  it("全長の目標を決めていれば、いまの位置・入力した距離と候補数・走行条件・除外と、置いた経由地（置いた順）・目的地をそのまま送り、重みは送らない", async () => {
+  it("全長の目標を決めていれば、いまの位置・入力した距離と候補数・走行条件・除外・道の避け方の既定の段と、置いた経由地（置いた順）・目的地をそのまま送り、重みは送らない", async () => {
     const rendered = renderGeneration();
     const { conditions } = rendered.result.current;
     act(() => conditions.setDistanceInput("42"));
@@ -137,6 +138,7 @@ describe("送る要求", () => {
       distance_km: 42,
       distance_tolerance_km: routeGenerateConfig.default_distance_tolerance_km,
       hard_filters: DEFAULT_HARD_FILTERS,
+      road_avoidance: DEFAULT_ROAD_AVOIDANCE,
       max_routes: 3,
       assumed_speed_kmh: 20,
       start_time: T1.toISOString(),

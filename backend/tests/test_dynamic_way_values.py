@@ -101,7 +101,7 @@ def _arrays() -> EdgeMaterialArrays:
     return EdgeMaterialArrays(
         numeric_ids=("num_a", "num_b", "bool_a"), numeric_values=np.column_stack([NUM_A, NUM_B, BOOL_A]),
         categorical_ids=("cat_a",), categorical_columns=(CategoricalColumn.encode(CAT_A),),
-        hard_filter_ids=(), hard_filter_flags=np.empty((n, 0), dtype=bool),
+        route_flag_ids=(), route_flags=np.empty((n, 0), dtype=bool),
         distance_m=np.full(n, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
         start_elevation_m=nan, end_elevation_m=nan, elevation_gain_m=nan, elevation_loss_m=nan,
     )
@@ -196,7 +196,7 @@ def _route_values(segments: FeatureSegments, grade: np.ndarray) -> dict[str, dic
         numeric_ids=("seg_cover", "seg_grade", "seg_count", "way_num"),
         numeric_values=np.column_stack([segments.columns["seg_cover"], grade, segments.columns["seg_count"],
                                         [WAY_NUM[owner] for owner in owners]]),
-        categorical_ids=(), categorical_columns=(), hard_filter_ids=(), hard_filter_flags=np.empty((n, 0), dtype=bool),
+        categorical_ids=(), categorical_columns=(), route_flag_ids=(), route_flags=np.empty((n, 0), dtype=bool),
         distance_m=segments.distance_m, bearing_deg=nan, mid_lat=nan, mid_lon=nan,
         start_elevation_m=nan, end_elevation_m=nan, elevation_gain_m=nan, elevation_loss_m=nan,
     )

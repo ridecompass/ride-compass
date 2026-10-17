@@ -110,7 +110,7 @@ export function routeGenerateResponseFixture(): DoneJob["result"] {
       distance_km: 20,
       distance_tolerance_km: 5,
       penalty_strength: 1.0,
-      hard_filters: { no_bicycle: true, motorway: true, trunk: true },
+      hard_filters: { no_bicycle: true, motorway: true },
       max_routes: 8,
       assumed_speed_kmh: 20,
       start_time: "2026-09-05T09:30:00+09:00",
