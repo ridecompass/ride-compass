@@ -3,7 +3,7 @@ import { trueHeadingDeg } from "@/lib/magneticDeclination";
 import { moved } from "@/testing/movedPoint";
 import { RIDE_MIN_ZOOM, RIDE_ZOOM_MAX_OUT } from "@/features/map/MapView/rideZoom";
 
-import { INTRO_CLOSED, installApiMocks, installMapFinder, seedStoredState } from "./fixtures";
+import { INTRO_CLOSED, MOBILE_VIEWPORT, installApiMocks, installMapFinder, seedStoredState } from "./fixtures";
 
 // 走行モードで、ブラウザが届ける位置の変化が実際の地図の動き（中心・向き）まで届くこと（パターン4 観点2）。単体テストの地図は
 // 代役で、カメラを動かさない。走行モードの移り変わり（休む・戻す・止める）の判断は useRideMode.test.ts が持ち、ここでは
@@ -228,4 +228,72 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   const after = await screenPointOf(page, lastRidden);
   expect(after).not.toBeNull();
   expect(Math.hypot(after!.x - before.x, after!.y - before.y)).toBeLessThan(1);
+});
+
+// 2本指でつまむ・広げる操作は、MapLibre が先に指の重心のずれを移動として受け、倍率が変わるのはそのあとになりうる。
+// 出来事の並び（移動の始まり→拡大の始まり）は実ブラウザの MapLibre でしか出ないので、ここで指ごとのタッチを送って見る
+// （パターン4 観点2）。
+test.describe("タッチ端末", () => {
+  test.use({ viewport: MOBILE_VIEWPORT, isMobile: true, hasTouch: true });
+
+  test("走行モードで追っている間に2本指でつまむと、休まずにその倍率で追い続け、つまむ最中に位置が届いても倍率を戻さず、1本指で動かすと休む", async ({
+    page,
+    context,
+    browserName,
+  }) => {
+    test.skip(browserName !== "chromium", "指ごとのタッチの列はCDP（Chromiumだけの口）でしか送れない");
+    // 位置の誤差を持たせ、その内の動きで届けて速さを0と読ませる（倍率に速さの引きを混ぜない）。
+    const at = (point: { latitude: number; longitude: number }) => ({ ...point, accuracy: 50 });
+    await installApiMocks(page);
+    await context.setGeolocation(at(START));
+    await seedStoredState(page, INTRO_CLOSED);
+    await page.addInitScript(installMapFinder);
+    await page.goto("/");
+    await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
+    await page.getByRole("button", { name: "走行モード" }).click();
+    const anchor = await settledScreenPoint(page, START);
+    const zoom = () => page.evaluate(() => window.__liveMap().getZoom());
+    const followedZoom = await zoom();
+    const backToHere = page.getByRole("button", { name: "現在地へ戻る" });
+
+    const client = await context.newCDPSession(page);
+    const touch = (type: "touchStart" | "touchMove", points: { x: number; y: number }[]) =>
+      client.send("Input.dispatchTouchEvent", { type, touchPoints: points.map((p, id) => ({ ...p, id })) });
+    const canvas = (await page.locator(".maplibregl-canvas").boundingBox())!;
+    const center = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 };
+    const fingers = (gap: number, dx: number) => [
+      { x: center.x + dx - gap / 2, y: center.y },
+      { x: center.x + dx + gap / 2, y: center.y },
+    ];
+
+    // 指の間を240pxから80pxへ縮める（倍率は log2(3) 段だけ下がる）。先に重心だけを横へ動かし、移動として始まらせる
+    // （2本の指を揃えて縦に動かすと、地図を傾ける操作になる）。
+    const [fromGap, toGap, steps] = [240, 80, 10];
+    const gapAt = (step: number) => fromGap + ((toGap - fromGap) * step) / steps;
+    await touch("touchStart", fingers(fromGap, 0));
+    await touch("touchMove", fingers(fromGap, 6));
+    for (let step = 1; step <= steps / 2; step += 1) await touch("touchMove", fingers(gapAt(step), 6));
+    // つまむ最中に届いた位置で、倍率を元へ戻さず、つまむ操作も止めない。
+    const duringPinch = moved(START, 0, 10);
+    await deliverPosition(page, context, at(duringPinch));
+    for (let step = steps / 2 + 1; step <= steps; step += 1) await touch("touchMove", fingers(gapAt(step), 6));
+    await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+
+    const pinchedZoom = followedZoom - Math.log2(fromGap / toGap);
+    await expect.poll(zoom, { timeout: 10_000 }).toBeCloseTo(pinchedZoom, 1);
+    // 休まず、つまむ最中に届いた位置へ寄せ直し、次の位置もつまんだ倍率のまま追う。
+    await expectDrawnAt(page, duringPinch, anchor);
+    await expect(backToHere).toBeHidden();
+    const next = moved(START, 0, 20);
+    await deliverPosition(page, context, at(next));
+    await expectDrawnAt(page, next, anchor);
+    expect(await zoom()).toBeCloseTo(pinchedZoom, 1);
+    await expect(backToHere).toBeHidden();
+
+    // 1本指で動かすと休む。
+    await touch("touchStart", [center]);
+    for (let step = 1; step <= 10; step += 1) await touch("touchMove", [{ x: center.x - step * 10, y: center.y }]);
+    await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await expect(backToHere).toBeVisible();
+  });
 });
