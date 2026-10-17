@@ -188,11 +188,11 @@ export default function LensControl({
             usage="評価軸を1つ選び、その道を走ったときの点数で、地図の道路（ルートを作った後はルートの線）を塗ります。横の帯は点数の凡例です。"
           >
             <LensSwatch color={pillColor} />
-            <span className="min-w-0 truncate font-semibold">{pillLabel}</span>
+            <span className="flex-shrink-0 font-semibold">{pillLabel}</span>
             {dataStatus && <Dot aria-hidden="true" tone={dataStatus} />}
-            {/* 段の数に依らず固定の幅で等分し、段の多い軸でもピルを横に伸ばさない。 */}
+            {/* 段の数に依らず固定の幅で等分し、段の多い軸でもピルを横に伸ばさない。地図が狭いときは名前より先に縮める。 */}
             {bands.length > 0 && (
-              <span className="flex h-1.5 w-12 flex-shrink-0 overflow-hidden rounded-[1px]" aria-hidden="true">
+              <span className="flex h-1.5 w-12 min-w-0 shrink-[8] overflow-hidden rounded-[1px]" aria-hidden="true">
                 {bands.map((entry) => (
                   <span
                     key={entry.key}
