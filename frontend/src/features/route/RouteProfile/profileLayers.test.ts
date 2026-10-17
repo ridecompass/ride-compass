@@ -1,17 +1,29 @@
 // @vitest-environment node
 /**
- * `features/route/RouteProfile/profileLayers.ts`——道のりのグラフのレイヤの値を、区間の並びから折れ線・最高と最低・地点の値へ引く計算。
+ * `features/route/RouteProfile/profileLayers.ts`——道のりのグラフのレイヤの値を、区間の並びから折れ線・最高と最低・地点の値と、区分の帯・地点の行・凡例の行へ引く計算。
  *
- * ここで見ないもの: 折れ線を描くこと・タブとチップ・選んだものを覚えること → `RouteProfile.test.tsx`。
+ * ここで見ないもの: 折れ線と帯を描くこと・タブとチップ・選んだものを覚えること → `RouteProfile.test.tsx`。
  */
 import { describe, expect, it } from "vitest";
 
 import { routeStretches } from "@/lib/routeDistance";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 
-import { layerLine, layerValueAtKm, PROFILE_LAYERS } from "./profileLayers";
+import {
+  bandLegendRows,
+  bandRowAtKm,
+  layerBand,
+  layerLine,
+  layerValueAtKm,
+  PROFILE_LAYERS,
+  type BandLayer,
+  type LineLayer,
+} from "./profileLayers";
 
-const elevation = PROFILE_LAYERS.find((layer) => layer.id === "elevation")!;
+const elevation = PROFILE_LAYERS.find((layer): layer is LineLayer => layer.id === "elevation")!;
+const band = (id: string) => PROFILE_LAYERS.find((layer): layer is BandLayer => layer.id === id)!;
+const surface = band("surface");
+const row = (layer: BandLayer, key: string) => layer.draw.rows.find((candidate) => candidate.key === key)!;
 
 function stretches(...ends: [number | null, number | null, number][]) {
   return routeStretches(
@@ -52,5 +64,82 @@ describe("layerValueAtKm", () => {
   ])("$why", ({ km, expected }) => {
     const columns = stretches([10, 20, 1], [20, 30, 1], [null, 40, 1], [50, 60, 1]);
     expect(layerValueAtKm(columns, elevation, km)).toBe(expected);
+  });
+});
+
+type Stretch = { distance_km: number; value: string | boolean | null };
+
+function classed(id: string, ...segments: [Stretch[] | undefined, number][]) {
+  return routeStretches(
+    segments.map(([stretches, km]) =>
+      makeRouteSegment({ distance_km: km, road_classes: stretches === undefined ? {} : { [id]: stretches } }),
+    ),
+  );
+}
+
+describe("layerBand", () => {
+  it("区間の中の区分を距離の比で区間の長さへ割り振り、隣どうしで同じ行をつなぎ、長さの無い区間を飛ばし、区分の無い区間は値なしの行で塗る", () => {
+    const pieces = layerBand(
+      classed(
+        "surface",
+        [
+          [
+            { distance_km: 0.1, value: "paved" },
+            { distance_km: 0.3, value: "gravel" },
+          ],
+          2,
+        ],
+        [[{ distance_km: 1, value: "soil" }], 0],
+        [[{ distance_km: 0.5, value: "gravel" }], 1],
+        [undefined, 1],
+      ),
+      surface,
+    );
+    expect(pieces).toEqual([
+      { startKm: 0, endKm: 0.5, row: row(surface, "paved") },
+      { startKm: 0.5, endKm: 3, row: row(surface, "gravel") },
+      { startKm: 3, endKm: 4, row: row(surface, "nodata") },
+    ]);
+  });
+
+  it.each([
+    { id: "surface", value: "unknown_surface", key: "other", why: "分類に無い値はその他" },
+    { id: "tunnel", value: null, key: "other", why: "タグの不在も値として載る属性では、値なしは該当なし" },
+    { id: "landcover", value: "trees_percent", key: "trees_percent", why: "緑と水は最も多いクラスの行" },
+    { id: "landcover", value: null, key: "nodata", why: "緑と水の割合が無ければデータなし" },
+  ])("$why", ({ id, value, key }) => {
+    const layer = band(id);
+    expect(layerBand(classed(id, [[{ distance_km: 1, value }], 1]), layer)).toEqual([
+      { startKm: 0, endKm: 1, row: row(layer, key) },
+    ]);
+  });
+});
+
+describe("bandRowAtKm", () => {
+  const pieces = layerBand(
+    classed("surface", [[{ distance_km: 1, value: "paved" }], 1], [[{ distance_km: 1, value: "gravel" }], 1]),
+    surface,
+  );
+
+  it.each([
+    { km: 0.5, key: "paved", why: "部分の中はその部分の行" },
+    { km: 1, key: "gravel", why: "切れ目ちょうどは後の部分" },
+    { km: 99, key: "gravel", why: "終わりより先は終点の行" },
+  ])("$why", ({ km, key }) => {
+    expect(bandRowAtKm(pieces, km)).toEqual(row(surface, key));
+  });
+
+  it("部分が無ければ行も無い", () => {
+    expect(bandRowAtKm([], 0)).toBeNull();
+  });
+});
+
+describe("bandLegendRows", () => {
+  it("帯に現れた行だけを、宣言の並びで出す", () => {
+    const pieces = layerBand(
+      classed("surface", [[{ distance_km: 1, value: "gravel" }], 1], [[{ distance_km: 1, value: "paved" }], 1]),
+      surface,
+    );
+    expect(bandLegendRows(surface, pieces)).toEqual([row(surface, "paved"), row(surface, "gravel")]);
   });
 });

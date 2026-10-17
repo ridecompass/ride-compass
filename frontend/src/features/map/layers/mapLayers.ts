@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/icons/icons";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { TILE_VERSION_GATED_SOURCES } from "@/lib/mapDisplay/tileVersionGated";
-import { LANDCOVER_PAINTED_CLASSES } from "./landcoverClasses";
+import { LANDCOVER_PAINTED_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { PRECIPITATION_INTENSITY_LEVELS } from "./precipitationNowcast";
 import { WIND_SPEED_LEGEND_LEVELS } from "./windLayer";
 import type { MapAxisCatalog } from "@/features/map/mapAxisCatalog";

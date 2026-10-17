@@ -1,11 +1,12 @@
 /** 地図チップの凡例の行（道の属性・点・災害）を、地図を描いているのと同じ宣言から作る。
  *
- * 分類と色は、道と点はグループ（`groups/*.ts`）の宣言、災害は源泉の気象の段、値が無い行は
+ * 分類と色は、道は`lib/mapDisplay/roadTracks.ts: roadTrackRows`、点はグループ（`groups/*.ts`）の宣言、災害は源泉の気象の段、値が無い行は
  * `NO_DATA_LEGEND_BAND`から引く——凡例が別に色を持つと、地図とチップの色が静かに食い違う。
  * 評価軸の凡例はここではなく`features/map/view/lens.ts`が、地図の線と同じ段の関数から作る。
  */
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
+import { ROAD_OTHER_KEY, ROAD_TRACKS, roadTrackHasMissing, roadTrackRows } from "@/lib/mapDisplay/roadTracks";
 
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
@@ -13,7 +14,6 @@ import weatherScales from "@/types/generated/weather-scales.json";
 
 import { POINT_LAYERS, pointAxisKey, pointCategoryRadiusPx, type PointAxis } from "@/features/map/scene/groups/points";
 import { DISASTER_ELEMENTS, DISASTER_LAYER_ID, type DisasterElement } from "@/features/map/scene/groups/weather";
-import { ROAD_OTHER_KEY, ROAD_TRACKS, roadTrackAxis, roadTrackHasMissing } from "@/features/map/scene/groups/roadLines";
 
 /** 凡例1本ぶん。1つのチップが複数の軸を持つことがある（事故は当事者と重大度）。 */
 type SceneLegendAxis = {
@@ -26,31 +26,13 @@ type SceneLegendAxis = {
   readonly entries: readonly LegendEntry[];
 };
 
-/** 分類に当てはまらない値の道。値はあるので実線で出す。タグの不在も確定した値として載る属性（トンネル等）では、
- * それが「該当しない」ことそのものなので呼び方を変える。 */
-function otherEntry(hasMissing: boolean): LegendEntry {
-  const row = hasMissing ? mapDisplay.legendSharedRows.other : mapDisplay.legendSharedRows.notApplicable;
-  return { key: ROAD_OTHER_KEY, ...row, color: palette.semantic.no_data };
-}
-
 export function roadLegendAxes(): readonly SceneLegendAxis[] {
   return ROAD_TRACKS.map((track) => ({
     layerId: track.attr_id,
     axisId: track.attr_id,
     // 見出しはチップ名で足りる（軸が1本しかない）。名前の正本は源泉。
     label: "",
-    entries: [
-      ...roadTrackAxis(track).categories.map((category) => ({
-        key: category.key,
-        label: category.label,
-        description: category.description,
-        color: category.color,
-        line: true as const,
-      })),
-      { ...otherEntry(roadTrackHasMissing(track)), line: true as const },
-      // タグが無い道の受け皿。**地図も同じ扱い**（消さずに薄い破線で出す）。
-      ...(roadTrackHasMissing(track) ? [{ ...NO_DATA_LEGEND_BAND, line: true as const }] : []),
-    ],
+    entries: roadTrackRows(track).map((row) => ({ ...row, line: true as const })),
   }));
 }
 

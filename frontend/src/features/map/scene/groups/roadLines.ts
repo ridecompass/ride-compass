@@ -1,9 +1,8 @@
 /** 道路そのものの線（路面の種類・道路の種類・トンネル・一方通行）と、詳細を見ている
  * 1本の道の強調。
  *
- * **何を線で描くかはここが宣言する**。描ける属性の一覧は源泉（生成物`primaryAttributes.ts`の
- * `geometry="line"`）が持ち、そのうちどれを出すかは画面の判断——分類と色を宣言したものが
- * 出る。タイルのプロパティ名は属性idと同じ綴りで、対応表を別に持たない。
+ * 何を線で描くかと分類・色は`lib/mapDisplay/roadTracks.ts: ROAD_TRACKS`が持ち、ここはそれを式へ組む。
+ * タイルのプロパティ名は属性idと同じ綴りで、対応表を別に持たない。
  *
  * すべて**同じ路面タイルのソース**を共有する。評価軸の線も同じソースを読むため、
  * ソースの宣言は合成（`composeScene`）が1本へ畳む。
@@ -17,10 +16,9 @@ import palette from "@/types/generated/palette.json";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 import type { FilterSpecification } from "maplibre-gl";
 
-import { primaryAttributes } from "@/types/generated/primaryAttributes";
-
 import { noDataDashExpression, sceneSourceId, valueInExpression } from "@/features/map/scene/sceneBuilders";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
+import { ROAD_OTHER_KEY, ROAD_TRACKS, roadTrackAxis, roadTrackHasMissing, type RoadTrack } from "@/lib/mapDisplay/roadTracks";
 
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 
@@ -34,22 +32,6 @@ export const ROAD_LINE_HIT_TARGET = "road";
  * ——タイルの地物はズームによって道1本にも区間にもなり、この列だけがその単位に追従する）。`way_id`は詳細の強調が
  * 突き合わせる列（道1本の単位）。列名はタイルを焼くbackendが配る。 */
 const { feature_key: FEATURE_KEY_PROPERTY, way_id: WAY_ID_PROPERTY } = regionTileConfig.road_surface.properties;
-
-/** 線で描くもの。**源泉が「線の幾何を持ち、表示の定義がある」と言ったものが出る。**
- * 束ね方・行の名前・並び・色はすべて源泉が決め、ここは受け取って塗るだけ
- * （`backend/app/domain/primary_attributes.py: display_axes`、色は`display_palette.py`）。 */
-export const ROAD_TRACKS = primaryAttributes.filter(
-  (attr): attr is Extract<typeof attr, { geometry: "line"; tile_kind: string }> =>
-    attr.geometry === "line" && attr.display_axes.length > 0,
-);
-
-type RoadTrack = (typeof ROAD_TRACKS)[number];
-
-/** 線は軸を1本しか持たない（プロパティ＝属性そのもの）。**軸を持つものだけを線にする**のは
- * 源泉の側で、そこが保証する（`tests/test_material_catalog.py`）。 */
-export function roadTrackAxis(track: RoadTrack): RoadTrack["display_axes"][number] {
-  return track.display_axes[0];
-}
 
 export type RoadLineState = {
   /** タイルの配信先。**世代が届くまでは null**。 */
@@ -67,20 +49,10 @@ export type RoadLineState = {
   readonly inspectedWayId: number | null;
 };
 
-/** 凡例の「その他」（タグはあるが、どの分類にも当てはまらない値）の鍵。分類の鍵・「不明」の鍵と重ならない
- * （`legends.test.ts`が全属性で確かめる）。 */
-export const ROAD_OTHER_KEY = "other";
-
 /** 値を引く式。プロパティが無い道はどの分類にも当たらない空文字へ倒す
  * （欠落のまま比べると式の評価が落ちる）。 */
 function valueOf(track: RoadTrack): unknown {
   return ["coalesce", ["get", roadTrackAxis(track).property], ""];
-}
-
-/** 値の無い道がタイルに現れうるか。**源泉の宣言が決める**（その値を載せる材料の欠け方`missing_semantics`）
- * ——トンネル・一方通行のように、タグの不在も「該当しない」という確定した値として載る属性がある。 */
-export function roadTrackHasMissing(track: RoadTrack): boolean {
-  return roadTrackAxis(track).missing_semantics === "unknown";
 }
 
 /** タグが無い道（本当に不明）。タグはあるが分類に当てはまらない道（その他）とは分ける——前者は値が無く、

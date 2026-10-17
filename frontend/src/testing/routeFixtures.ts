@@ -126,6 +126,7 @@ export function makeRouteSegment(overrides: Partial<RouteSegmentDetail> = {}): R
     wind: null,
     start_elevation_m: null,
     end_elevation_m: null,
+    road_classes: {},
     ...overrides,
   };
 }
