@@ -14,11 +14,24 @@ import type { CatalogAxis } from "@/lib/catalogAxis";
 import palette from "@/types/generated/palette.json";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 
-import { layerLine, layerValueAtKm, PROFILE_LAYERS } from "./profileLayers";
+import {
+  bandLegendRows,
+  bandRowAtKm,
+  layerBand,
+  layerLine,
+  layerValueAtKm,
+  PROFILE_LAYERS,
+  type BandLayer,
+  type BandPiece,
+  type LineLayer,
+} from "./profileLayers";
 import type { ProfileLayerSelection } from "./useProfileLayers";
 
 /** 折れ線の上下に空ける余白（描画の縦座標）。最高・最低の点が枠に貼り付かないようにする。 */
 const LINE_MARGIN = 8;
+/** 帯1本の高さと、帯どうしの間（描画の縦座標）。帯はグラフの下から積み、折れ線は残りの上の範囲に描く。 */
+const BAND_HEIGHT = 8;
+const BAND_GAP = 2;
 
 interface RouteProfileProps {
   segments: readonly RouteSegmentDetail[];
@@ -38,7 +51,7 @@ interface RouteProfileProps {
   layers: ProfileLayerSelection;
 }
 
-/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「評価で塗る」は区間の難易度を、「表示」は選んだ情報の値（標高等）を、同じ横軸で出す。 */
+/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「評価で塗る」は区間の難易度を、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、同じ横軸で出す。 */
 export default function RouteProfile({
   segments,
   overallDifficulty,
@@ -58,26 +71,51 @@ export default function RouteProfile({
     const { byAxis } = profileBoxes(scale.columns, axisOrder, overallDifficulty);
     return axes.filter((axis) => (byAxis.get(axis.axisId)?.length ?? 0) > 0);
   }, [scale, axes, axisOrder, overallDifficulty]);
-  const shownLayers = useMemo(
-    () =>
-      PROFILE_LAYERS.filter((layer) => layers.ids.includes(layer.id)).map((layer) => {
-        const { runs, range } = layerLine(scale.columns, layer);
-        return { layer, runs, range };
-      }),
-    [scale, layers.ids],
-  );
+  const shownLayers = useMemo(() => {
+    const chosen = PROFILE_LAYERS.filter((layer) => layers.ids.includes(layer.id));
+    return {
+      lines: chosen
+        .filter((layer): layer is LineLayer => layer.draw.kind === "line")
+        .map((layer) => ({ layer, ...layerLine(scale.columns, layer) })),
+      bands: chosen
+        .filter((layer): layer is BandLayer => layer.draw.kind === "band")
+        .map((layer) => ({ layer, pieces: layerBand(scale.columns, layer) })),
+    };
+  }, [scale, layers.ids]);
+  const lineBottom = PROFILE_VIEW_HEIGHT - shownLayers.bands.length * (BAND_HEIGHT + BAND_GAP);
 
   function yOf(value: number, range: { min: number; max: number }): number {
     const span = range.max - range.min;
-    if (span <= 0) return PROFILE_VIEW_HEIGHT / 2;
-    return PROFILE_VIEW_HEIGHT - LINE_MARGIN - ((value - range.min) / span) * (PROFILE_VIEW_HEIGHT - 2 * LINE_MARGIN);
+    if (span <= 0) return lineBottom / 2;
+    return lineBottom - LINE_MARGIN - ((value - range.min) / span) * (lineBottom - 2 * LINE_MARGIN);
+  }
+
+  function bandCaption(layer: BandLayer, pieces: readonly BandPiece[], pointKm: number | null) {
+    if (pieces.length === 0) return <p key={layer.id}>{layer.label}の値がありません。</p>;
+    const atPoint = pointKm === null ? null : bandRowAtKm(pieces, pointKm);
+    return (
+      <div key={layer.id}>
+        <p>
+          {layer.label}
+          {atPoint !== null && `・この地点 ${atPoint.label}`}
+        </p>
+        <ul aria-label={`${layer.label}の凡例`} className="flex flex-wrap gap-x-2">
+          {bandLegendRows(layer, pieces).map((row) => (
+            <li key={row.key} className="flex items-center gap-1">
+              <Dot tone="none" style={{ backgroundColor: row.color }} />
+              <span>{row.label}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
   }
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex flex-col gap-1">
       <div className="flex items-center gap-1">
         <TabsList aria-label="道のりのグラフ" className="flex-1">
-          <TabsTrigger value="layer" usage="選んだ情報（標高等）の値を、道のりに沿って出します。">
+          <TabsTrigger value="layer" usage="選んだ情報（標高・道の区分等）を、道のりに沿って出します。">
             {FACT_DISPLAY_NAME}
           </TabsTrigger>
           <TabsTrigger value="lens" usage="区間ごとの難易度を、評価軸の色で塗って道のりに沿って出します。">
@@ -133,16 +171,16 @@ export default function RouteProfile({
         <ProfileChart
           scale={scale}
           label="道のりに沿った情報"
-          usage="横が道のり、縦が選んだ情報の値です。なぞるか押して離すと、その地点を地図に印で出し、下にその地点の値を出します。"
+          usage="横が道のり、縦が選んだ情報の値、下の帯が選んだ道の区分の色です。なぞるか押して離すと、その地点を地図に印で出し、下にその地点の値を出します。"
           selected={selected}
           onSelect={onSelect}
           progressKm={progressKm}
           caption={(pointKm) => (
             <div className="text-[length:var(--font-size-xs)] text-[var(--color-muted)] tabular-nums">
-              {shownLayers.length === 0 ? (
+              {shownLayers.lines.length + shownLayers.bands.length === 0 ? (
                 <p>出す情報を選んでください。</p>
               ) : (
-                shownLayers.map(({ layer, range }) => {
+                shownLayers.lines.map(({ layer, range }) => {
                   if (range === null) return <p key={layer.id}>{layer.label}の値がありません。</p>;
                   const unit = layer.draw.unit;
                   const atPoint = pointKm === null ? null : layerValueAtKm(scale.columns, layer, pointKm);
@@ -154,10 +192,25 @@ export default function RouteProfile({
                   );
                 })
               )}
+              {shownLayers.bands.map(({ layer, pieces }) => bandCaption(layer, pieces, pointKm))}
             </div>
           )}
         >
-          {shownLayers.flatMap(({ layer, runs, range }) =>
+          {shownLayers.bands.map(({ layer, pieces }, index) => (
+            <g key={layer.id} data-layer={layer.id}>
+              {pieces.map((piece) => (
+                <rect
+                  key={piece.startKm}
+                  x={scale.xOf(piece.startKm)}
+                  y={lineBottom + BAND_GAP + index * (BAND_HEIGHT + BAND_GAP)}
+                  width={scale.xOf(piece.endKm) - scale.xOf(piece.startKm)}
+                  height={BAND_HEIGHT}
+                  fill={piece.row.color}
+                />
+              ))}
+            </g>
+          ))}
+          {shownLayers.lines.flatMap(({ layer, runs, range }) =>
             range === null
               ? []
               : runs.map((run, index) => (

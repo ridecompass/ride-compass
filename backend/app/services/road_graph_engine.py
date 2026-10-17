@@ -58,10 +58,12 @@ from app.domain.graph import LeanEdge, edge_key, node_key, parse_edge_key
 from app.domain.region import BoundingBox, bbox_covering_points
 from app.domain.rain import StationRainMaterials, rain_material_columns
 from app.domain.road_network import RoadSlice, edge_row_of, elevation_attribute, material_arrays_of
+from app.domain.route_road_classes import RoadClassReader
 from app.domain.route import (
     Coordinates,
     DensityScoreInput,
     EvaluatedRoute,
+    RoadClassStretch,
     RouteSegmentDetail,
     RouteTurn,
     DISTANCE_KM_DECIMALS,
@@ -1288,6 +1290,7 @@ class RoadGraphEngine:
         segment_categories: list[dict[str, str]] = []
         segment_raw_values: list[dict[str, float]] = []
         active_material_ids = displayed_material_ids(context.composer.weights)
+        road_classes = RoadClassReader.of(context.road.network)
         timed = _values_at_passages(context, rows, leg_of_edge, passages)
         winds = context.composer.winds_at(
             rows,
@@ -1302,6 +1305,7 @@ class RoadGraphEngine:
             # 2本以上のレグは経路上の行だけをそのビンの時刻で合成し直した値（`LegCostArrays.bin_start_hours`参照）。
             values, value_row = timed.get(index, (leg, row))
             distance_km = edge.distance_m / 1000
+            rounded_km = round(distance_km, DISTANCE_KM_DECIMALS)
             elevation_attr = elevation_by_edge.get(edge.edge_id)
 
             gradient_percent = elevation_attr.average_grade if elevation_attr else None
@@ -1373,7 +1377,7 @@ class RoadGraphEngine:
                     end_latitude=end_lat,
                     end_longitude=end_lon,
                     cumulative_distance_km=along_km[index],
-                    distance_km=round(distance_km, DISTANCE_KM_DECIMALS),
+                    distance_km=rounded_km,
                     # 標高の表は単精度で持つので、表に入れた桁へ丸め直す。
                     start_elevation_m=(
                         round(elevation_attr.start_elevation_m, ELEVATION_M_DECIMALS) if elevation_attr else None
@@ -1387,6 +1391,10 @@ class RoadGraphEngine:
                     material_values=material_values,
                     difficulty=composite_difficulty_value,
                     wind=winds[index],
+                    road_classes={
+                        layer: [RoadClassStretch(distance_km=rounded_km, value=value)]
+                        for layer, value in road_classes.values_at(int(context.road.rows[row])).items()
+                    },
                 ).with_density_inputs(density_inputs)
             )
 

@@ -4366,6 +4366,35 @@
         ],
         "title": "RawValueUnits"
       },
+      "RoadClassStretch": {
+        "properties": {
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "distance_km",
+          "value"
+        ],
+        "title": "RoadClassStretch"
+      },
       "RouteCandidate": {
         "properties": {
           "direction_label": {
@@ -4954,6 +4983,16 @@
                 "type": "null"
               }
             ]
+          },
+          "road_classes": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/RoadClassStretch"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Road Classes"
           }
         },
         "additionalProperties": false,
@@ -4973,7 +5012,8 @@
           "axis_contributions",
           "material_values",
           "difficulty",
-          "wind"
+          "wind",
+          "road_classes"
         ],
         "title": "RouteSegmentDetail"
       },

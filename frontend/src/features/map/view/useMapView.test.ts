@@ -11,7 +11,7 @@ import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TILE_VERSIONS_MISSING_NOTICE, TILE_ZOOM_TOO_WIDE_NOTICE } from "@/features/map/layers/mapLayers";
-import { ROAD_OTHER_KEY } from "@/features/map/scene/groups/roadLines";
+import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { onBackend, onSameOrigin } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";

@@ -86,6 +86,14 @@ class DensityScoreInput:
         return self.shape.score_at(self.value)
 
 
+class RoadClassStretch(StrictModel):
+    """区間の中で、道の区分のレイヤの値が同じまま続く部分。"""
+
+    distance_km: float
+    # 地図がそのレイヤを塗るのと同じ値（`domain/route_road_classes.py: RoadClassReader.values_at`）。値が無ければNone。
+    value: str | bool | None
+
+
 class RouteSegmentDetail(StrictModel):
     """周回ルートの1区間（サンプル点i→i+1）の詳細。地図上の難易度レイヤー描画に使う。
 
@@ -120,6 +128,8 @@ class RouteSegmentDetail(StrictModel):
     difficulty: float | None = None
     # この区間の評価に使った風（到達予想の時刻に通るとして引いた予報）。風を持たない生成ではNone。
     wind: SegmentWind | None = None
+    # 道の区分のレイヤのid→区間の始まりから並べた、値が同じまま続く部分。部分の距離の和は区間の距離と丸めの分だけずれうる。
+    road_classes: dict[str, list[RoadClassStretch]]
     # 密度の軸のid→区間をまたいで平均する値。応答には出さない（ビンと候補の値を作るための内部の値）。
     # 区間はエンジンが載せ（`with_density_inputs`）、ビンは`_merge_segment_bin`が中の区間から作る。
     _density_inputs: dict[str, DensityScoreInput] = PrivateAttr(default_factory=dict)
@@ -473,6 +483,20 @@ def merge_material_category_shares(
     return shares
 
 
+def merge_road_classes(segments: list[RouteSegmentDetail]) -> dict[str, list[RoadClassStretch]]:
+    """区間の並びの道の区分を、レイヤごとにつなぐ。距離0の部分を落とし、隣どうしで値が同じ部分は1つにまとめる。"""
+    merged: dict[str, list[RoadClassStretch]] = {}
+    for layer in segments[0].road_classes:
+        runs: list[tuple[str | bool | None, list[float]]] = []
+        for stretch in (s for segment in segments for s in segment.road_classes[layer] if s.distance_km > 0):
+            if runs and runs[-1][0] == stretch.value:
+                runs[-1][1].append(stretch.distance_km)
+            else:
+                runs.append((stretch.value, [stretch.distance_km]))
+        merged[layer] = [RoadClassStretch(distance_km=_summed_km(distances), value=value) for value, distances in runs]
+    return merged
+
+
 #: ビンと候補へ引き継ぐ辞書フィールドと、その畳み方（キーごとの距離加重平均）。
 BIN_DICT_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], dict[str, float]]] = {
     "axis_difficulties": merge_axis_difficulties,
@@ -496,6 +520,7 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     # 到達予想と同じく、ビンに入った先頭の区間の値（ビンの中で予報の時刻が変わっても、入るときの風を出す）。
     "wind": lambda segments: segments[0].wind,
     "difficulty": merge_difficulty,
+    "road_classes": merge_road_classes,
     **BIN_DICT_FIELD_MERGERS,
 }
 

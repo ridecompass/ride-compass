@@ -88,7 +88,7 @@ def segment_detail(difficulty, distance_km):
     return RouteSegmentDetail(
         start_latitude=35.0, start_longitude=139.0, end_latitude=35.0, end_longitude=139.0,
         cumulative_distance_km=0.0, distance_km=distance_km, start_elevation_m=None, end_elevation_m=None,
-        difficulty=difficulty,
+        road_classes={}, difficulty=difficulty,
     )
 
 

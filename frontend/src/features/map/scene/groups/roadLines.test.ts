@@ -7,7 +7,9 @@ import { describe, expect, it } from "vitest";
 import { evaluateExpression as evaluate } from "@/testing/mapExpressions";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 
-import { ROAD_TRACKS, roadLineGroup, roadTrackAxis, roadTrackHasMissing } from "./roadLines";
+import { ROAD_TRACKS, roadTrackAxis, roadTrackHasMissing } from "@/lib/mapDisplay/roadTracks";
+
+import { roadLineGroup } from "./roadLines";
 
 const SOLID = [1, 0];
 

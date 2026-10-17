@@ -9,7 +9,7 @@ import { isDebugEnabled } from "@/lib/debugLog";
 import { getQueryClient } from "@/lib/queryClient";
 import { fetchAxisInspector, type AxisInspectorConditions, type AxisInspectorResult } from "@/features/map/regionApi";
 import type { RoutePreferenceWeights } from "@/types/route";
-import { LANDCOVER_CLASSES } from "@/features/map/layers/landcoverClasses";
+import { LANDCOVER_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { PRIMARY_ATTRIBUTE_LABELS } from "@/features/map/layers/primaryAttributes";
 import { roadDisplayName, roadFactRows, roadFeatureKey, roadWayId, type RoadSurfacePopupProperties } from "./roadFacts";
 import { Button } from "@/components/ui/Button/Button";

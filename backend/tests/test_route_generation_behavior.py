@@ -27,6 +27,7 @@ from app.domain.axis_definitions import AXIS_DEFINITIONS, AxisDefinition, Breakp
 from app.domain.geo import haversine_distance_km
 from app.domain.graph import node_key
 from app.domain.material_catalog import GRADIENT_PERCENT
+from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from app.domain.rain import rain_window_material_id
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
@@ -622,6 +623,32 @@ async def test_each_segment_starts_and_ends_at_the_elevation_of_its_road_in_the_
 
     first, second = fastest_of(candidates).segments
     assert [(s.start_elevation_m, s.end_elevation_m) for s in (first, second)] == [(None, None), (12.0, 10.0)]
+
+
+async def test_each_segment_carries_the_road_class_values_the_map_paints_its_road_with(engine_over):
+    """道のりのグラフは区間の区分の値を、地図のそのレイヤ（id が同じ一次属性）の表示の分類で色と呼び名に引く。値が分類に
+    無いと、地図で塗られる道がグラフでは「その他」になる。緑と水は、区間の最も多いクラスで塗る（同率は宣言の並びの先）。
+    南西→南東の最速は、林と水辺が同じ割合の生活道路の道100と、土地被覆の値の無いトンネルの道101。"""
+    landcover = {100: {"built_percent": 20.0, "trees_percent": 40.0, "water_percent": 40.0}}
+    generator = engine_over(grid_network(tunnel_ways={101}, landcover_of=landcover))
+
+    candidates = await generator.generate_via_waypoints(
+        at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=3, start_time=DEPARTURE)
+
+    fastest = fastest_of(candidates)
+    assert ways_of(fastest) == [100, 101]
+    painted = {
+        attr.attr_id: {value for category in attr.display_axes[0].categories for value in category.values}
+        for attr in PRIMARY_ATTRIBUTES if attr.geometry == "line" and attr.display_axes
+    }
+    for segment in fastest.segments:
+        assert [(s.distance_km, s.value in painted["highway"]) for s in segment.road_classes["highway"]] == [
+            (segment.distance_km, True)]
+    assert [[(s.distance_km, s.value) for s in segment.road_classes["tunnel"]] for segment in fastest.segments] == [
+        [(fastest.segments[0].distance_km, None)], [(fastest.segments[1].distance_km, True)]]
+    assert True in painted["tunnel"]
+    assert [[s.value for s in segment.road_classes["landcover"]] for segment in fastest.segments] == [
+        ["trees_percent"], [None]]
 
 
 def _slope_axis(*, is_published: bool) -> AxisDefinition:

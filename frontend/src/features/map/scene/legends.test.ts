@@ -6,7 +6,9 @@ import { POINT_ICONS, POINT_LAYERS, pointAxisKey, pointGroup } from "@/features/
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { evaluateExpression as evaluate, matchesFilter } from "@/testing/mapExpressions";
 
-import { ROAD_OTHER_KEY, ROAD_TRACKS, roadLineGroup, roadTrackAxis, roadTrackHasMissing } from "./groups/roadLines";
+import { ROAD_OTHER_KEY, ROAD_TRACKS, roadTrackAxis, roadTrackHasMissing } from "@/lib/mapDisplay/roadTracks";
+
+import { roadLineGroup } from "./groups/roadLines";
 import { disasterSourceLegendAxis, pointLegendAxes, roadLegendAxes } from "./legends";
 
 const TILES = {

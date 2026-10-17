@@ -1447,6 +1447,13 @@ export interface components {
             /** Total Unit */
             total_unit: string | null;
         };
+        /** RoadClassStretch */
+        RoadClassStretch: {
+            /** Distance Km */
+            distance_km: number;
+            /** Value */
+            value: string | boolean | null;
+        };
         /** RouteCandidate */
         RouteCandidate: {
             /** Direction Label */
@@ -1628,6 +1635,10 @@ export interface components {
             /** Difficulty */
             difficulty: number | null;
             wind: components["schemas"]["SegmentWind"] | null;
+            /** Road Classes */
+            road_classes: {
+                [key: string]: components["schemas"]["RoadClassStretch"][];
+            };
         };
         /** RouteTurn */
         RouteTurn: {

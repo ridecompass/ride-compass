@@ -12,9 +12,10 @@ import palette from "@/types/generated/palette.json";
 import type { MapSceneFeatureStates, MapSceneFeatureStateValue } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 import { LEGEND_NO_DATA_KEY, NO_DATA_LEGEND_BAND, UNDETERMINED_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
+import { ROAD_TRACKS } from "@/lib/mapDisplay/roadTracks";
 import { bandCondition, type ValueBand } from "@/lib/mapDisplay/valueScale";
 
-import { ROAD_LINE_SOURCE_ID, ROAD_TRACKS } from "./roadLines";
+import { ROAD_LINE_SOURCE_ID } from "./roadLines";
 
 /** 材料が同時に出ているときの下敷き。**材料の線が全部出たときの帯幅**から決まるので、
  * トラックが増えれば自動で広がる（直書きすると追従しない）。 */
