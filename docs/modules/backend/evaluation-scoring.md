@@ -41,17 +41,11 @@ APIが受け取る重みの形を変えるとき、`dynamic_materials.py`は動�
 | 型 | 載せ方 |
 |---|---|
 | 真偽 | `CASE WHEN (value_sql) THEN true END`。「該当しない」をNULLへ畳み、フィーチャーからキーを省いてタイルを軽くする。タグの不在を「不明」とする真偽の材料（`coverage.missing_semantics`が`"unknown"`）はこの載せ方の対象外で、タイルへ焼くなら「不明」を値として持つ分類の材料にする（例: 路面の見込み） |
-| 分類 | 値式をそのまま |
-| 数値 | `MaterialSpec.tile_encoding`の形（丸めの桁・0の省略・倍精度）で包む。例: 密度は小数1桁へ丸め、0を省く |
-
-材料の値1つがタイルにどう載るかを、`tile_property_value`がPythonの値で返す（画面へ配る期待値の表がタイルのプロパティを作るのに読む）。
-SQLの式と値の関数が同じ値を出すことは、`tests/test_material_values.py`が同じあるべき値を両方へ当てて見る。
+| 真偽でないもの | 値式をそのまま |
 
 タイルの文は、値式が読む別名をフィーチャーの単位で与える。区間単位のフィーチャーは`em`が区間の値・
 `re`の長さが区間の長さ、way丸ごとのフィーチャーは`em`が道1本の値の同じ名前の列（無い列はNULL）・`re`の長さが
-wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から取る。実行時の係数で割る材料
-（`tile_property_runtime_scale`）は割る前の値を焼き、係数の源が値式で読むSQLの引数
-（`TILE_RUNTIME_SCALE_SQL_PARAMS`）をタイルの文では1で束ねる（`tile_unscaled_sql_params`）。
+wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から取る。
 
 ## 0次ハードフィルタ（`domain/hard_filters.py`）
 
@@ -355,9 +349,6 @@ MaterialSpec]`が単一ソース。
 | `additive` | 同じ単位の他の材料と**足し合わせて意味を持つ量**か（示量／示強の区別）。個数と、それを同じ距離で割った密度はTrue。%・km/h・倍率のような割合・率はFalse。`raw_value_unit`が2項以上の和を見せてよいかの判定に使う |
 | `total_unit` | 生値へ走行距離を掛けた**総量**を出すときの単位（出す意味が無ければ`None`）。`additive`とは別の問い——事故密度（件/[km・年]）は足せるが、総量に比べる尺度が無い。|
 | `tile_property` | MVTタイルへ既に焼き込み済みのプロパティ名。`None`はタイルに載らない材料。列は`value_sql`から組む（上の「タイルへ焼く列」） |
-| `tile_encoding` | 数値の材料をタイルへ載せる形（`TileEncoding`: 丸めの桁・0の省略・倍精度）。ST_AsMVTはnumeric型を文字列で載せるため、丸めた値は倍精度へ戻す |
-| `tile_property_runtime_scale` | タイル側の生値を材料の値へ換算する係数が実行時にしか決まらないときの、係数の源（例: 事故の収録年数の逆数）。タイルは係数を掛ける前の生値を焼く（`domain/material_catalog.py: tile_unscaled_sql_params`が値式の係数の引数を1にする） |
-| `tile_property_direction_dependent` | 値が進行方向によって変わる（有向）か。方向を持たないタイルへは焼けないので、Trueの材料は`tile_property`を持たない |
 | `primary_attribute` | 対応する一次属性（`PRIMARY_ATTRIBUTES`の宣言そのもの。idの文字列では指さない。[軸スタジオ](axis-studio.md)「一次属性の語彙」節）。材料idと一次属性id（frontendの`primaryAttributes.ts`が使う名前空間）は名前が異なるため明示的に対応させる |
 | `weather_grid_value` | 材料が読む自前のMSM格子の値（例: 風）。一次属性を持たない動的な材料の元データを、同じ格子の値を描く気象のチップ（`domain/weather_elements.py: WeatherElement.grid_value`）が地図に見せる。`GET /api/axis-catalog`はこれを軸ごとに`weather_layer_groups`へ解決し、地図の説明文がその評価の名前を差し込む |
 | `source` | 値の出どころ（`"db"`・`"request"`・`"observation"`）。DB（`value_sql`で求める）・要求の向きや時刻で決まる値（風）・生成の時点の外部の観測（雨）。動的材料の集合（`REQUEST_DYNAMIC_MATERIAL_IDS`）や観測の材料の集合は、この欄から`domain/material_catalog.py: materials_of_source`で導く |
@@ -389,11 +380,10 @@ MaterialSpec]`が単一ソース。
 - 土地被覆の割合材料は`edge_landcover.lc_*`／`way_landcover.lc_*`（区間単位・way単位、
   [静的道路属性・タイル配信](static-road-attributes.md)）が持つクラス別の割合で、
   **どのクラスが割合列を持つかは`landcover.py: LANDCOVER_CLASSES`が単一の正本**で、
-  列指向テーブル・集計SQL・読み出し・タイルの焼き込み列は、そこからクラス値の昇順で
+  列指向テーブル・集計SQL・読み出しは、そこからクラス値の昇順で
   導いた`PERCENT_CLASSES`を読む。材料もクラスの宣言から1クラス1材料で生成する（材料idは割合列の名前、
-  表示名はクラスの表示名から作る）ため、クラスを足せば材料も揃って増える。列・焼き込みの名前の規則
-  （`lc_<鍵>`・材料の`tile_property`＝焼き込み列の名前）は`landcover.py: landcover_key`・
-  `landcover.py: landcover_tile_property`だけが持つ——材料の`tile_property`と焼き込み列の名前がずれると、地図は黙って塗らない。
+  表示名はクラスの表示名から作る）ため、クラスを足せば材料も揃って増える。列の名前の規則
+  （`lc_<鍵>`）は`landcover.py: landcover_key`だけが持つ。
   **材料の値式は`em.lc_*`だけを読み、区間の値が無いときに道1本の値へ落とさない**——区間の値は全区間ぶん
   計算されており、落とす先は同じ道の平均でしかない。道1本を単位に値を求める文脈
   （`material_joins.py: material_from_clause`が`em`を道1本の行へ読み替える）では道の値になる。

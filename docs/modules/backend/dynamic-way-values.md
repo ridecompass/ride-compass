@@ -220,8 +220,7 @@ axis_id → get_dedicated_way_value_service(axis_id) が今の軸の集合の写
 
 - フィーチャーの並びと材料の表の結び方は路面タイルと同じ（区間単位のズームは区間の値、way単位のズームと区間を
   持たない道は道1本の行の値。密度の分母の長さもフィーチャーと同じ側から取る）。
-- 値は探索と同じ値式で求め、タイルへ焼くときの丸め・係数（`tile_column_sql`・`tile_unscaled_sql_params`）を通さない。
-  事故の密度は今の収録年数（`RoadGraphRepository.get_accident_years_covered`）で割る。区間単位のズームで、
+- 値は探索と同じ値式で求める。事故の密度は今の収録年数（`RoadGraphRepository.get_accident_years_covered`）で割る。区間単位のズームで、
   探索が同じ区間に読む材料と同じ値になる（`tests/test_feature_materials_in_tile.py`）。
 - 取込範囲外・DB障害・フィーチャーの無いタイルは値なし（地図の配信は`{}`）。
 - 道1本のズームの**区間の材料**（`FeatureMaterialService.segments`、`infrastructure/road_tile_sql.py: FEATURE_SEGMENTS_IN_TILE_SQL`）は、
