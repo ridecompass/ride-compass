@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover
 import { NotFetchedIcon, RaindropIcon, ThermometerIcon, WindDirectionArrowIcon } from "@/components/ui/icons/icons";
 import { Button } from "@/components/ui/Button/Button";
 import { formatJstHourMinute } from "@/lib/time";
-import { downwindDeg } from "@/lib/cardinalLabel";
+import { downwindOnMapDeg } from "@/lib/cardinalLabel";
 import { cn } from "@/lib/cn";
 import type { AmedasObservation } from "@/types/weather";
 import { getAmedasWeatherDisplay } from "./amedasWeatherIcon";
@@ -15,6 +15,8 @@ interface WeatherPanelProps {
   amedas: AmedasObservation | null;
   loading: boolean;
   error: string | null;
+  /** 地図の向き（地図の上が真北から時計回りに何度か）。風の矢印をこの分だけ戻し、地図の上の向きに合わせる。 */
+  mapBearingDeg: number;
 }
 
 // 常設ヘッダーは数値予報モデルの計算値ではなく最寄りアメダス観測所の実測値のみで構成する。
@@ -62,7 +64,7 @@ function Divider() {
   return <span className="w-px flex-shrink-0 self-stretch bg-[var(--color-border)]" aria-hidden="true" />;
 }
 
-export default function WeatherPanel({ amedas, loading, error }: WeatherPanelProps) {
+export default function WeatherPanel({ amedas, loading, error, mapBearingDeg }: WeatherPanelProps) {
   // 手元に観測値があるなら、直近の取り直しが失敗していてもそちらを出す（失敗の文言で
   // 値を置き換えない）。取得は一定間隔で続くため、回復すれば表示も戻る。
   if (!amedas) {
@@ -114,7 +116,7 @@ export default function WeatherPanel({ amedas, loading, error }: WeatherPanelPro
               <>
                 <span
                   className="inline-flex transition-transform duration-200"
-                  style={{ transform: `rotate(${downwindDeg(wind.direction.deg)}deg)` }}
+                  style={{ transform: `rotate(${downwindOnMapDeg(wind.direction.deg, mapBearingDeg)}deg)` }}
                 >
                   <WindDirectionArrowIcon size={16} />
                 </span>

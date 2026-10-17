@@ -18,6 +18,12 @@ export function downwindDeg(windFromDeg: number): number {
   return normalizeDeg(windFromDeg + 180);
 }
 
+/** 気象の風向を、`mapBearingDeg`（地図の上が真北から時計回りに何度か）だけ回った地図の上で風が吹いていく向き
+ * （画面の上=0・時計回り）へ。画面に置く風の矢印（走りの帯・天気欄）は、地図の上の風の矢印と同じくこの基準で向ける。 */
+export function downwindOnMapDeg(windFromDeg: number, mapBearingDeg: number): number {
+  return normalizeDeg(downwindDeg(windFromDeg) - mapBearingDeg);
+}
+
 /** 角度を、北を中心にした`count`等分の区分の番号（0〜count-1）へ丸める。境界は上の区分へ倒す。 */
 export function bearingSector(bearingDeg: number, count: number): number {
   return Math.round(normalizeDeg(bearingDeg) / (360 / count)) % count;

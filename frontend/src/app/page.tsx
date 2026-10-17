@@ -638,7 +638,12 @@ export default function Home() {
           <>
             {/* 風と「今日」のパネルは左端に固定して常に見せる。入り切らないときに隠れるのは警報の側。 */}
             <div className="left-0 flex flex-shrink-0 items-center gap-2 sticky z-1 bg-[var(--color-surface)]">
-              <WeatherPanel amedas={amedas} loading={amedasLoading} error={amedasError} />
+              <WeatherPanel
+                amedas={amedas}
+                loading={amedasLoading}
+                error={amedasError}
+                mapBearingDeg={mapView.bearing}
+              />
               <TodayOutlook weather={weather} loading={weatherLoading} error={weatherError} />
             </div>
             <div className="ml-auto flex flex-shrink-0 items-center gap-2">
