@@ -15,6 +15,7 @@ import {
   bandLegendRows,
   bandRowAtKm,
   layerBand,
+  layerGradeAtKm,
   layerLine,
   layerMarks,
   layerValueAtKm,
@@ -32,20 +33,49 @@ const surface = band("surface");
 const pointLayer = (id: string) => PROFILE_LAYERS.find((layer): layer is PointLayer => layer.id === id)!;
 const row = (layer: BandLayer, key: string) => layer.draw.rows.find((candidate) => candidate.key === key)!;
 
-function stretches(...ends: [number | null, number | null, number][]) {
+type Road = [number | null, number | null, number];
+
+/** 区間ごとに、中の道の並び（始まりと終わりの標高・道の距離）と区間の距離。 */
+function stretches(...segments: [Road[], number][]) {
   return routeStretches(
-    ends.map(([start, end, km]) =>
-      makeRouteSegment({ start_elevation_m: start, end_elevation_m: end, distance_km: km }),
+    segments.map(([roads, km]) =>
+      makeRouteSegment({
+        distance_km: km,
+        elevations: roads.map(([start, end, roadKm]) => ({
+          distance_km: roadKm,
+          start_elevation_m: start,
+          end_elevation_m: end,
+        })),
+      }),
     ),
   );
 }
 
 describe("layerLine", () => {
-  it("両端の値がある区間を距離に沿ってつなぎ、値の無い区間で線を切り、長さの無い区間では切らない", () => {
-    const line = layerLine(stretches([10, 20, 1], [20, 30, 0], [20, 15, 1], [null, 40, 1], [50, 60, 2]), elevation);
+  it("区間の中の道を距離の比で区間の長さへ割り振って道ごとの両端をつなぎ、値の無い道・道の無い区間で線を切り、長さの無い区間では切らない", () => {
+    const line = layerLine(
+      stretches(
+        [
+          [
+            [10, 25, 0.2],
+            [25, 20, 0.2],
+          ],
+          1,
+        ],
+        [[[20, 30, 0.1]], 0],
+        [[[20, 15, 1]], 1],
+        [[[null, 40, 0.5]], 1],
+        [[[50, 60, 1]], 2],
+        [[], 1],
+        [[[5, 5, 1]], 1],
+      ),
+      elevation,
+    );
     expect(line.runs).toEqual([
       [
         { km: 0, value: 10 },
+        { km: 0.5, value: 25 },
+        { km: 0.5, value: 25 },
         { km: 1, value: 20 },
         { km: 1, value: 20 },
         { km: 2, value: 15 },
@@ -54,23 +84,48 @@ describe("layerLine", () => {
         { km: 3, value: 50 },
         { km: 5, value: 60 },
       ],
+      [
+        { km: 6, value: 5 },
+        { km: 7, value: 5 },
+      ],
     ]);
-    expect(line.range).toEqual({ min: 10, max: 60 });
+    expect(line.range).toEqual({ min: 5, max: 60 });
   });
 
   it("値が1つも無ければ、線も最高・最低も無い", () => {
-    expect(layerLine(stretches([null, null, 1], [5, null, 1]), elevation)).toEqual({ runs: [], range: null });
+    expect(layerLine(stretches([[[null, null, 1]], 1], [[[5, null, 1]], 1]), elevation)).toEqual({
+      runs: [],
+      range: null,
+    });
   });
 });
 
-describe("layerValueAtKm", () => {
+describe("layerValueAtKm・layerGradeAtKm", () => {
   it.each([
-    { km: 1.5, expected: 25, why: "区間の中は両端の間を距離で割り振る" },
-    { km: 2.5, expected: null, why: "値の無い区間" },
-    { km: 99, expected: 60, why: "終わりより先は終点の値" },
-  ])("$why", ({ km, expected }) => {
-    const columns = stretches([10, 20, 1], [20, 30, 1], [null, 40, 1], [50, 60, 1]);
-    expect(layerValueAtKm(columns, elevation, km)).toBe(expected);
+    {
+      km: 0.75,
+      value: 30,
+      grade: 4,
+      why: "区間の中は、その地点の道の両端の間を距離で割り振り、勾配はその道の両端の差を道の長さで割る",
+    },
+    { km: 1.5, value: null, grade: null, why: "道の並びの無い区間" },
+    { km: 2.5, value: null, grade: null, why: "値の無い道" },
+    { km: 99, value: 60, grade: 1, why: "終わりより先は終点の道" },
+  ])("$why", ({ km, value, grade }) => {
+    const columns = stretches(
+      [
+        [
+          [10, 20, 0.5],
+          [20, 40, 0.5],
+        ],
+        1,
+      ],
+      [[], 1],
+      [[[null, 40, 1]], 1],
+      [[[50, 60, 1]], 1],
+    );
+    expect(layerValueAtKm(columns, elevation, km)).toBe(value);
+    expect(layerGradeAtKm(columns, elevation, km)).toBe(grade);
   });
 });
 

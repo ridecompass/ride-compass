@@ -94,6 +94,14 @@ class RoadClassStretch(StrictModel):
     value: str | bool | None
 
 
+class ElevationStretch(StrictModel):
+    """区間の中の道（Edge）1本の、走る向きの始まりと終わりの標高（m）。その道に標高が無ければどちらもNone。"""
+
+    distance_km: float
+    start_elevation_m: float | None
+    end_elevation_m: float | None
+
+
 class RouteSegmentDetail(StrictModel):
     """周回ルートの1区間（サンプル点i→i+1）の詳細。地図上の難易度レイヤー描画に使う。
 
@@ -112,9 +120,8 @@ class RouteSegmentDetail(StrictModel):
     end_longitude: float
     cumulative_distance_km: float
     distance_km: float
-    # 区間の始まりと終わりの標高（m）。その地点の道に標高が無ければNone。
-    start_elevation_m: float | None
-    end_elevation_m: float | None
+    # 区間の中の道ごとの両端の標高を、通る順に。道の距離の和は区間の距離と丸めの分だけずれうる。
+    elevations: list[ElevationStretch]
     estimated_arrival_time: str | None = None
     # axis_id→difficulty(0-100)。以降の辞書フィールドはすべて「データ無しはキーを
     # 持たない」規約で、評価できなかった軸・値の無い材料はキー自体を含めない。
@@ -531,8 +538,7 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "end_longitude": lambda segments: segments[-1].end_longitude,
     "cumulative_distance_km": lambda segments: segments[0].cumulative_distance_km,
     "distance_km": lambda segments: _summed_km(s.distance_km for s in segments),
-    "start_elevation_m": lambda segments: segments[0].start_elevation_m,
-    "end_elevation_m": lambda segments: segments[-1].end_elevation_m,
+    "elevations": lambda segments: [stretch for segment in segments for stretch in segment.elevations],
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
     # 到達予想と同じく、ビンに入った先頭の区間の値（ビンの中で予報の時刻が変わっても、入るときの風を出す）。
     "wind": lambda segments: segments[0].wind,

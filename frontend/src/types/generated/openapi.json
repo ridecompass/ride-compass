@@ -3219,6 +3219,44 @@
         ],
         "title": "DifficultyMapValue"
       },
+      "ElevationStretch": {
+        "properties": {
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
+          },
+          "start_elevation_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Elevation M"
+          },
+          "end_elevation_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Elevation M"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "distance_km",
+          "start_elevation_m",
+          "end_elevation_m"
+        ],
+        "title": "ElevationStretch"
+      },
       "ExternalCallStats": {
         "properties": {
           "calls": {
@@ -4965,27 +5003,12 @@
             "type": "number",
             "title": "Distance Km"
           },
-          "start_elevation_m": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Start Elevation M"
-          },
-          "end_elevation_m": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "End Elevation M"
+          "elevations": {
+            "items": {
+              "$ref": "#/components/schemas/ElevationStretch"
+            },
+            "type": "array",
+            "title": "Elevations"
           },
           "estimated_arrival_time": {
             "anyOf": [
@@ -5061,8 +5084,7 @@
           "end_longitude",
           "cumulative_distance_km",
           "distance_km",
-          "start_elevation_m",
-          "end_elevation_m",
+          "elevations",
           "estimated_arrival_time",
           "axis_difficulties",
           "axis_contributions",

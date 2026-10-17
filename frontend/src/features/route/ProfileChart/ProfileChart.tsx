@@ -14,6 +14,7 @@ import {
 import { pinMarkName } from "@/components/PinMark/PinMark";
 import PointMark from "@/components/PinMark/PointMark";
 import { columnAtKm } from "@/features/route/DifficultyProfile/profileGeometry";
+import { cn } from "@/lib/cn";
 import { roundToDigits } from "@/lib/numberFormat";
 import { pointAlongSegment, routeStretches, type RouteStretch } from "@/lib/routeDistance";
 import { mapDisplay } from "@/types/generated/mapDisplay";
@@ -25,6 +26,10 @@ const PROFILE_VIEW_WIDTH = 1000;
 export const PROFILE_VIEW_HEIGHT = 100;
 /** 矢印キー1回で動く距離（全長に対する割合）。 */
 const KEY_STEP_RATIO = 0.01;
+/** 図の目盛りと図の下の文字の大きさ。走行中は走りながら読めるよう、結果の図より大きくする。 */
+export function profileTextClass(riding: boolean): string {
+  return riding ? "text-base" : "text-[length:var(--font-size-xs)]";
+}
 
 export type ProfileScale = {
   readonly columns: readonly RouteStretch<RouteSegmentDetail>[];
@@ -71,6 +76,10 @@ interface ProfileChartProps {
   children: ReactNode;
   /** 図の下の1行。区間を選んでいれば、その地点の距離を受け取る。 */
   caption?: (pointKm: number | null) => ReactNode;
+  /** 縦の値の目盛り（0〜`PROFILE_VIEW_HEIGHT`の縦の位置と文字）。図の左の端に重ねる。 */
+  valueTicks?: readonly { readonly y: number; readonly label: string }[];
+  /** 走行中の地図の下の図。目盛りの文字を大きくする。 */
+  riding?: boolean;
 }
 
 /** 道のりに沿った図の枠。横が距離で、選んだ区間の帯・走行中の現在地・動かした地点の線を中身の上に引き、下に距離の目盛りを
@@ -90,6 +99,8 @@ export default function ProfileChart({
   waypointKms,
   children,
   caption,
+  valueTicks = [],
+  riding = false,
 }: ProfileChartProps) {
   const [scrubKm, setScrubKm] = useState<number | null>(null);
   const clipId = `profile${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
@@ -338,9 +349,21 @@ export default function ProfileChart({
             }}
           />
         )}
-        <div className="pointer-events-none absolute inset-x-1 bottom-0 flex justify-between text-[length:var(--font-size-xs)] text-[var(--color-muted)] tabular-nums">
-          <span>0</span>
-          <span>{widthKm.toFixed(1)}km</span>
+        {valueTicks.map((tick) => (
+          <span
+            key={tick.label}
+            className={cn(
+              "pointer-events-none absolute left-1 -translate-y-1/2 rounded-sm bg-[color-mix(in_srgb,var(--color-surface-2)_75%,transparent)] px-0.5 text-[var(--foreground)] tabular-nums",
+              profileTextClass(riding),
+            )}
+            style={{ top: `${(tick.y / PROFILE_VIEW_HEIGHT) * 100}%` }}
+          >
+            {tick.label}
+          </span>
+        ))}
+        <div className="pointer-events-none absolute inset-x-1 bottom-0 flex justify-between text-[var(--color-muted)] tabular-nums">
+          <span className={profileTextClass(riding)}>0</span>
+          <span className={profileTextClass(riding)}>{widthKm.toFixed(1)}km</span>
         </div>
       </div>
       {caption?.(selectedColumn === undefined ? null : positionKm)}
