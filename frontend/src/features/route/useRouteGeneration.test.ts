@@ -27,7 +27,7 @@ import { makeGenerationConditions, makeRouteCandidate } from "@/testing/routeFix
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { Coordinates, GenerationConditions, RouteCandidate } from "@/types/route";
 
-import { DEFAULT_ROAD_AVOIDANCE } from "./roadAvoidance";
+import { AVOIDABLE_ROWS, AVOIDANCE_LEVELS, DEFAULT_ROAD_AVOIDANCE } from "./roadAvoidance";
 import { useGenerationConditions } from "./useGenerationConditions";
 import { useRouteGeneration } from "./useRouteGeneration";
 
@@ -119,7 +119,7 @@ afterEach(() => {
 });
 
 describe("送る要求", () => {
-  it("全長の目標を決めていれば、いまの位置・入力した距離と候補数・走行条件・除外・道の避け方の既定の段と、置いた経由地（置いた順）・目的地をそのまま送り、重みは送らない", async () => {
+  it("全長の目標を決めていれば、いまの位置・入力した距離と候補数・走行条件・除外・選んだ道の避け方と、置いた経由地（置いた順）・目的地をそのまま送り、重みは送らない", async () => {
     const rendered = renderGeneration();
     const { conditions } = rendered.result.current;
     act(() => conditions.setDistanceInput("42"));
@@ -128,6 +128,12 @@ describe("送る要求", () => {
     act(() => rendered.result.current.conditions.selectPoint({ role: "waypoint", index: null }));
     act(() => rendered.result.current.conditions.placeAtSelected(B, null));
     act(() => rendered.result.current.conditions.placeAtSelected(A, null));
+    const [{ key: rowKey }] = AVOIDABLE_ROWS;
+    const avoidance = {
+      ...DEFAULT_ROAD_AVOIDANCE,
+      [rowKey]: AVOIDANCE_LEVELS.find(({ key }) => key !== DEFAULT_ROAD_AVOIDANCE[rowKey])!.key,
+    };
+    act(() => rendered.result.current.conditions.setRoadAvoidance(avoidance));
     respond([route("r1")]);
 
     await submit(rendered);
@@ -138,7 +144,7 @@ describe("送る要求", () => {
       distance_km: 42,
       distance_tolerance_km: routeGenerateConfig.default_distance_tolerance_km,
       hard_filters: DEFAULT_HARD_FILTERS,
-      road_avoidance: DEFAULT_ROAD_AVOIDANCE,
+      road_avoidance: avoidance,
       max_routes: 3,
       assumed_speed_kmh: 20,
       start_time: T1.toISOString(),

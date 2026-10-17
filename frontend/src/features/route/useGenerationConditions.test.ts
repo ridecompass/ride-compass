@@ -20,6 +20,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_HARD_FILTERS } from "@/features/route/RouteSettingsPanel/HardFilterPanel";
+import { AVOIDABLE_ROWS, AVOIDANCE_LEVELS, DEFAULT_ROAD_AVOIDANCE } from "@/features/route/roadAvoidance";
 import { heldReplies, onBackend, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse, TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
@@ -304,5 +305,34 @@ describe("除外", () => {
 
     window.localStorage.setItem("ridecompass:hard-filters", "{broken");
     expect(renderConditions().result.current.hardFilters).toEqual(DEFAULT_HARD_FILTERS);
+  });
+});
+
+describe("道ごとの避け方", () => {
+  const [{ key: rowKey }] = AVOIDABLE_ROWS;
+  const otherLevel = AVOIDANCE_LEVELS.find(({ key }) => key !== DEFAULT_ROAD_AVOIDANCE[rowKey])!.key;
+
+  it("変えた避け方は開き直しても残る", () => {
+    const first = renderConditions();
+    const changed = { ...DEFAULT_ROAD_AVOIDANCE, [rowKey]: otherLevel };
+
+    act(() => first.result.current.setRoadAvoidance(changed));
+
+    expect(reopen(first).result.current.roadAvoidance).toEqual(changed);
+  });
+
+  it("保存値は今の行へ揃え（今は無い行を落とし、無い行・読めない段は既定）、読めない保存値は既定に戻す", () => {
+    const [, { key: unreadableKey }] = AVOIDABLE_ROWS;
+    window.localStorage.setItem(
+      "ridecompass:road-avoidance",
+      JSON.stringify({ [rowKey]: otherLevel, [unreadableKey]: "retired_level", "retired.row": "exclude" }),
+    );
+    expect(renderConditions().result.current.roadAvoidance).toEqual({
+      ...DEFAULT_ROAD_AVOIDANCE,
+      [rowKey]: otherLevel,
+    });
+
+    window.localStorage.setItem("ridecompass:road-avoidance", "{broken");
+    expect(renderConditions().result.current.roadAvoidance).toEqual(DEFAULT_ROAD_AVOIDANCE);
   });
 });

@@ -74,7 +74,8 @@ export function useRouteGeneration({
   const [generatedConditions, setGeneratedConditions] = useState<GeneratedConditions | null>(null);
 
   const { routePreferenceToSend } = conditions;
-  const { distanceTargeted, distance, waypoints, destination, maxRoutes, hardFilters } = conditions.snapshot;
+  const { distanceTargeted, distance, waypoints, destination, maxRoutes, hardFilters, roadAvoidance } =
+    conditions.snapshot;
   // いまの条件から生成の入力を組み立てる。`destinationOverride`はbackendが補正した目的地。
   const buildCurrentGenerationInput = (destinationOverride?: Coordinates): GenerationInput => ({
     origin,
@@ -85,6 +86,7 @@ export function useRouteGeneration({
     startTime: departure.at,
     startTimePinned: departure.pinned,
     hardFilters,
+    roadAvoidance,
     routePreference: routePreferenceToSend,
     waypoints,
     destination: destinationOverride ?? destination,
