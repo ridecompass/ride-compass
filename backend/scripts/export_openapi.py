@@ -156,7 +156,7 @@ from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from app.domain.region import MAX_MERCATOR_LATITUDE, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
 from app.domain.leg_costs import MAX_TIME_BINS, MISSING_TRAVEL_DATA_WORDING, TIME_BIN_HOURS
 from app.config import Settings
-from app.domain.route_preference import ENABLED_AXIS_WEIGHT, MAX_AXIS_SHARE
+from app.domain.route_preference import ENABLED_AXIS_WEIGHT
 from app.domain.tuning import client_tuning_values
 from app.domain.weather import PRECIPITATION_MIN_MM
 from app.infrastructure.msm_client import DEFAULT_UPDATE_INTERVAL_SECONDS as MSM_UPDATE_INTERVAL_SECONDS
@@ -608,7 +608,6 @@ def main() -> None:
             # 住所の検索の欄が打ちかけで引き始める長さと、打つのが止まってから引くまでの間。口の回数制限はこの間から導く。
             "place_prediction_min_length": PLACE_PREDICTION_MIN_LENGTH,
             "place_prediction_delay_seconds": PLACE_PREDICTION_DELAY_SECONDS,
-            "max_axis_share": MAX_AXIS_SHARE,
             "enabled_axis_weight": ENABLED_AXIS_WEIGHT,
             "min_assumed_speed_kmh": MIN_ASSUMED_SPEED_KMH,
             "max_assumed_speed_kmh": MAX_ASSUMED_SPEED_KMH,
