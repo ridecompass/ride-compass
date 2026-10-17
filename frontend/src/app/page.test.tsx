@@ -319,7 +319,8 @@ describe("ルートを作る", () => {
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
 
-    fireEvent.change(screen.getByLabelText("全長の目標"), { target: { value: "50" } });
+    act(() => screen.getByRole("slider", { name: "全長の目標" }).focus());
+    await user.keyboard("{ArrowRight}");
     await user.click(changedMark()!);
     expect(screen.getByRole("dialog")).toHaveTextContent("生成条件が変更されています");
     await user.keyboard("{Escape}");
@@ -1134,7 +1135,8 @@ describe("画面の枠", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
 
     await user.click(settingsTab());
-    fireEvent.change(screen.getByLabelText("全長の目標"), { target: { value: "50" } });
+    act(() => screen.getByRole("slider", { name: "全長の目標" }).focus());
+    await user.keyboard("{ArrowRight}");
     expect(outcomeTab).toHaveAccessibleDescription("生成条件が変更されています");
     jobs.respond([], LOOP_CONDITIONS, "起点の近くに道路データがありません");
     await generate(user);

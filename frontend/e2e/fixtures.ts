@@ -329,8 +329,17 @@ export async function openMobileSheet(page: Page, name: MobileSheetName) {
  */
 export async function generateRoutes(page: Page, { distanceKm = 20 }: { distanceKm?: number } = {}) {
   const sheet = await openMobileSheet(page, "ルート設定");
-  await sheet.getByLabel("全長の目標", { exact: true }).fill(String(distanceKm));
+  await setDistance(sheet, distanceKm);
   return generateInMobileSheet(page, sheet);
+}
+
+/** 開いている「ルート設定」シートの全長の目標のルーラーを、キー操作で`distanceKm`（5km刻み）のコマへ合わせる。 */
+export async function setDistance(sheet: Locator, distanceKm: number) {
+  const ruler = sheet.getByRole("slider", { name: "全長の目標", exact: true });
+  await ruler.focus();
+  await ruler.press("Home");
+  for (let km = 5; km < distanceKm; km += 5) await ruler.press("ArrowRight");
+  await expect(ruler).toHaveAttribute("aria-valuetext", `${distanceKm}km`);
 }
 
 /** 開いている「ルート設定」シートで「ルート生成」を押し、候補が出て「ルート結果」シートへ移るまで待って、そのシートを返す。

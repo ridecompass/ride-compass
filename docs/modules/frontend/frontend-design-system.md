@@ -11,7 +11,7 @@ Tailwindのユーティリティで書く。CSS Modulesは使わない（CSSの�
 
 | レイヤー | ファイル |
 |---|---|
-| components/ui（部品） | `Button/Button.tsx`（押すと1回動く。`variant`が役割、`size`が大きさ。`type`未指定時は`"button"`）・`Toggle/Toggle.tsx`（押して切り替える。押下状態は呼び出し側が持つ）・`ToggleGroup/ToggleGroup.tsx`（並んだ選択肢から1つを選ぶ。選んでいるものは外れない）・`Tabs/Tabs.tsx`（タブの列とタブの見た目。Root・ContentはRadixのものを出す）・`Popover/Popover.tsx`（押すと開く浮きパネル。中身はdocument.body直下へ描く。開くボタン`PopoverTrigger`は印`data-usage-opens`を付け、説明を見る状態がその説明に「中を見る」を出す。中身は、説明を見る状態の案内・説明の面を押すこと・そこへフォーカスが移ることでは閉じない。画面の端へ寄せて開くものが端と空ける幅は`POPOVER_COLLISION_PADDING_PX`）・`Input/Input.tsx`（1行・複数行・選択の入力欄。3つとも同じ枠）・`NumberInput/NumberInput.tsx`（入力途中の文字を部品が持つ数値欄。打つたびに渡すか、欄を離れたとき・Enterで渡すかを選ぶ）・`Text/Text.tsx`（文字の役割ごとの大きさ・太さ・色）・`Table/Table.tsx`（一覧表）・`Card/Card.tsx`（ひとまとまりの面）・`Callout/Callout.tsx`（本文の中の注意の1かたまり）・`Badge/Badge.tsx`（名前の横に添える札）・`GuideText/GuideText.tsx`（案内の文。アイコンだけの操作の名前をアイコンにして描く。5-1）・`Dot/Dot.tsx`（状態の小さな丸）・`LogLine/LogLine.tsx`（ログの1行）・`Dialog/Dialog.tsx`（`title`必須でアクセシブル名を型で強制。消す前の確認の窓`ConfirmDialog`も持つ）・`Checkbox/Checkbox.tsx`・`AxisLegend/axisLegend.ts`（軸の帯グラフと軸チップの形。重み配分の設定とルート結果の内訳が共有する） |
+| components/ui（部品） | `Button/Button.tsx`（押すと1回動く。`variant`が役割、`size`が大きさ。`type`未指定時は`"button"`）・`Toggle/Toggle.tsx`（押して切り替える。押下状態は呼び出し側が持つ）・`ToggleGroup/ToggleGroup.tsx`（並んだ選択肢から1つを選ぶ。選んでいるものは外れない）・`Tabs/Tabs.tsx`（タブの列とタブの見た目。Root・ContentはRadixのものを出す）・`Popover/Popover.tsx`（押すと開く浮きパネル。中身はdocument.body直下へ描く。開くボタン`PopoverTrigger`は印`data-usage-opens`を付け、説明を見る状態がその説明に「中を見る」を出す。中身は、説明を見る状態の案内・説明の面を押すこと・そこへフォーカスが移ることでは閉じない。画面の端へ寄せて開くものが端と空ける幅は`POPOVER_COLLISION_PADDING_PX`）・`Input/Input.tsx`（1行・複数行・選択の入力欄。3つとも同じ枠）・`NumberInput/NumberInput.tsx`（入力途中の文字を部品が持つ数値欄。打つたびに渡すか、欄を離れたとき・Enterで渡すかを選ぶ）・`Text/Text.tsx`（文字の役割ごとの大きさ・太さ・色）・`Table/Table.tsx`（一覧表）・`Card/Card.tsx`（ひとまとまりの面）・`Callout/Callout.tsx`（本文の中の注意の1かたまり）・`Badge/Badge.tsx`（名前の横に添える札）・`GuideText/GuideText.tsx`（案内の文。アイコンだけの操作の名前をアイコンにして描く。5-1）・`Dot/Dot.tsx`（状態の小さな丸）・`LogLine/LogLine.tsx`（ログの1行）・`Dialog/Dialog.tsx`（`title`必須でアクセシブル名を型で強制。消す前の確認の窓`ConfirmDialog`も持つ）・`Checkbox/Checkbox.tsx`・`Ruler/Ruler.tsx`（目盛りを横に滑らせ、左端の目印に合わせたコマを選ぶ。目印より右だけを見せ、残りは滑らせて出す。ドラッグ・ホイール・吸着はEmbla、キー操作と`role="slider"`の読み上げは部品が持つ）・`AxisLegend/axisLegend.ts`（軸の帯グラフと軸チップの形。重み配分の設定とルート結果の内訳が共有する） |
 | lib | `cn.ts`（`clsx`で条件付きclassNameをまとめ、`tailwind-merge`で同じプロパティを指すクラスの後勝ちを解決する）・`paletteCssVariables.ts`（backendが配る色のうちCSSから参照するものを、CSS変数として流す） |
 | app | `globals.css`（デザイントークン・`@theme`登録・リセット・レスポンシブレイアウト・MapLibreのDOM上書き。下記8節） |
 
@@ -242,7 +242,7 @@ styleでは`@media`が書けないための必然）・サードパーティ（M
 にする。ただし**どの押す所も24px四方を下回らない**（WCAG 2.2 達成基準 2.5.8）。押す部品の土台
 （`Button`・`ToggleGroup`の選択肢の`min-h-6 min-w-6`、`Checkbox`の`size-6`、`Disclosure`の見出しの`min-h-6`）が持ち、
 見た目が小さい部品（(i)・チェックボックスの四角）は24pxの箱の中に小さく描く。土台の外で押す所を作るもの
-（シートの高さを変える帯・距離や速度のスライダー）は自分のクラスで24px以上を持つ。
+（シートの高さを変える帯・速度のスライダー・距離や時刻のルーラー）は自分のクラスで24px以上を持つ。
 画面の全状態の走査（`frontend/e2e/scans.ts: scanLayout`）が、24px四方に満たない押す所を落とす。**新しく「主要な導線」を追加する際は、globals.cssへブランケットルールを足すのでは
 なく、そのコンポーネント自身のクラス（Tailwindの`min-h-11`等。狭い幅だけなら`max-mobile:`）で
 明示すること**。

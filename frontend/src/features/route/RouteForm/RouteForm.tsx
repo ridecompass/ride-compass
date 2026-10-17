@@ -1,6 +1,5 @@
 "use client";
 
-import { useId } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import type { Coordinates, PinRole, PlaceCandidate } from "@/types/route";
 import { waypointsFull, type GenerationConditionsState } from "@/features/route/useGenerationConditions";
@@ -12,6 +11,7 @@ import RoutePoints from "./RoutePoints";
 import { Button } from "@/components/ui/Button/Button";
 import { DistanceTargetIcon } from "@/components/ui/icons/icons";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
+import Ruler, { type RulerFrame } from "@/components/ui/Ruler/Ruler";
 import { textVariants } from "@/components/ui/Text/Text";
 import { panelIconToggleClass, Toggle } from "@/components/ui/Toggle/Toggle";
 import { cn } from "@/lib/cn";
@@ -76,11 +76,12 @@ interface RouteFormProps {
 
 const MAX_DISTANCE_KM = routeGenerateConfig.max_distance_km;
 const DISTANCE_TOLERANCE_KM = routeGenerateConfig.default_distance_tolerance_km;
-/** スライダーの目盛。止まる刻みごとに付ける（下限は1刻み分）。 */
-const DISTANCE_MARKS_KM = Array.from(
-  { length: Math.floor(MAX_DISTANCE_KM / DISTANCE_STEP_KM) },
-  (_, i) => (i + 1) * DISTANCE_STEP_KM,
-);
+/** 全長の目標のルーラーのコマ。止まる刻みごとに1コマで（下限は1刻み分）、10kmごとに太い目盛りと数を付ける。 */
+const DISTANCE_FRAMES: RulerFrame[] = Array.from({ length: Math.floor(MAX_DISTANCE_KM / DISTANCE_STEP_KM) }, (_, i) => {
+  const km = (i + 1) * DISTANCE_STEP_KM;
+  const major = km % 10 === 0;
+  return { label: `${km}km`, major, tickLabel: major ? String(km) : undefined };
+});
 const MIN_ROUTES = routeGenerateConfig.min_routes;
 const MAX_ROUTES = routeGenerateConfig.max_routes;
 
@@ -116,7 +117,6 @@ export default function RouteForm({
   const { distanceTargeted, setDistanceTargeted, distanceInput, setDistanceInput, maxRoutesInput, setMaxRoutesInput } =
     conditions;
   const distanceToggleName = distanceTargeted ? "全長の目標をやめる" : "全長の目標を決める";
-  const distanceMarksId = useId();
 
   // 保存した地点を呼び出したら「条件」タブへ移り、置いた地点を選んで詳しくを出す（足した経由地は`onPlaceFound`が選ぶ）。
   function recallSavedPlace(role: PinRole, place: PlaceCandidate) {
@@ -133,10 +133,11 @@ export default function RouteForm({
   return (
     <div>
       <KeptTabContent value="generate">
-        {/* 全長の目標と候補数を1行に並べ、パネルの縦幅を詰める。スライダーが刻みを指で選べる最小の幅を割る狭い幅では、候補数を下の行へ
-            回す。全長の目標を外している間もスライダーと値は出したまま薄くする（入れ直すと前の値に戻ることが見える）。 */}
-        <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
-          <div className="flex flex-1 items-center gap-2">
+        {/* 全長の目標と候補数を1行に並べ、パネルの縦幅を詰める。ルーラーは残りの幅を取り、狭い幅では長い距離の側を
+            見えない所へ置く（滑らせると出る）。全長の目標を外している間もルーラーと値は出したまま薄くする（入れ直すと
+            前の値に戻ることが見える）。 */}
+        <div className="mb-2 flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <Toggle
               variant="plain"
               className={cn(panelIconToggleClass, "flex-none")}
@@ -147,26 +148,17 @@ export default function RouteForm({
             >
               <DistanceTargetIcon />
             </Toggle>
-            <input
-              aria-label="全長の目標"
-              type="range"
-              min={DISTANCE_STEP_KM}
-              max={MAX_DISTANCE_KM}
-              step={DISTANCE_STEP_KM}
-              list={distanceMarksId}
-              value={distanceInput}
+            <Ruler
+              frames={DISTANCE_FRAMES}
+              index={Number(distanceInput) / DISTANCE_STEP_KM - 1}
+              onIndexChange={(i) => setDistanceInput(String((i + 1) * DISTANCE_STEP_KM))}
+              ariaLabel="全長の目標"
               disabled={!distanceTargeted}
-              onChange={(e) => setDistanceInput(e.target.value)}
-              className="h-6 w-48 min-w-48 flex-1 disabled:opacity-40"
-              data-usage="ルート全体の長さの目標を決めます。"
+              className="min-w-0 flex-1 touch-pan-y"
+              usage="ルート全体の長さの目標を、目盛りを横に滑らせて決めます。"
             />
-            <datalist id={distanceMarksId}>
-              {DISTANCE_MARKS_KM.map((km) => (
-                <option key={km} value={km} />
-              ))}
-            </datalist>
             <span
-              className={cn("min-w-[3.5em] flex-shrink-0 text-right tabular-nums", !distanceTargeted && "opacity-40")}
+              className={cn("min-w-[3.25em] flex-shrink-0 text-right tabular-nums", !distanceTargeted && "opacity-40")}
             >
               {distanceInput}km
             </span>
@@ -174,9 +166,9 @@ export default function RouteForm({
               {`ルート全体の長さの目標です。作る候補は、この長さの±${DISTANCE_TOLERANCE_KM}kmに入るものだけです。外すと長さを決めず、目的地（無ければ出発地）へ良い道で向かいます。`}
             </InfoPopover>
           </div>
-          <div className="flex flex-none items-center gap-2">
+          <div className="flex flex-none items-center gap-1">
             <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>候補数</span>
-            <div className="inline-flex items-center gap-2">
+            <div className="inline-flex items-center">
               <Button
                 variant="stepper"
                 size="sm"
@@ -187,7 +179,7 @@ export default function RouteForm({
               >
                 ‹
               </Button>
-              <span className="min-w-[2.5em] text-center tabular-nums">{`${maxRoutesInput}件`}</span>
+              <span className="min-w-[2.25em] text-center tabular-nums">{`${maxRoutesInput}件`}</span>
               <Button
                 variant="stepper"
                 size="sm"

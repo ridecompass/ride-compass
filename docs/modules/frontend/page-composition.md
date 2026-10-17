@@ -29,7 +29,7 @@
 | features/conditions/TravelBearingControl | `TravelBearingControl.tsx`（地図右上の走行方位のアイコンボタン。押すと`WindBearingSlider`のダイヤルをPopoverで開く。説明の文は、向きで値の変わる評価の名前を軸カタログ（`dynamic_way_value_conditions`）から差し込み、無ければ評価に触れない。詳しくは[ルート設定・結果パネル](route-settings-and-results.md)） |
 | features/ride | `useRideMode.ts`（走行モードの状態と、地図へ渡す値。下記「走行モード」）・`travelBearing.ts`（受け取った位置から進む向きを決める）・`routeProgress.ts`（現在地をルートの上のどこと見るか）・`useRouteProgress.ts`（走行モードの間、届いた位置を選んだ候補の上の距離へ当て続ける）・`useRideProgress.ts`（ルートの上の位置と一時保存を組にし、読み込み直したら前に当てた位置から続ける）・`useRideWayConditions.ts`（地図の道の値を取る向き・速さ。走行中は実際の進む向きと速さ）・`rideRemaining.ts`（ルートの残りと、選んだ候補の計画から出す到着予想）・`useScreenWakeLock.ts`（位置を受けている間、画面が自動で消えないよう端末に頼む）・`useDeviceHeading.ts`（位置を受けている間、スマホが向いている方角を端末のコンパスから読む）・`RideModeButton/RideModeButton.tsx`（地図の右の列の末尾の走行モードのボタン。走行モードの間は、休む（休んでいれば続きから走る）か案内を終えるかを選ばせる）・`RideBar/RideBar.tsx`（走行モードの間、画面の上の1行に出す走りの数字）・`rideSession.ts`（走行中のルートの一時保存の書き方・読み方・期限）・`useRideSession.ts`（一時保存を書き、開いたときに復元を知らせる）・`nextTurn.ts`（ルートの曲がる所の並びから、現在地より先でいちばん近いものを選ぶ）・`TurnCard/TurnCard.tsx`（次に曲がる所の向きと距離のカード） |
 | features/map/MapView（走行モード） | `useRideFollow.ts`（走行モードの値を受けて、現在地の点・追うカメラ・指で動かしたら休む知らせ・方位のボタンの切り替えを地図へ当てる）・`rideZoom.ts`（走る速さから、追っている間の倍率をどれだけ引くかを決める）・`useTurnMark.tsx`（走行中に次に曲がる所の地点に、曲がる向きの矢印の札を出す） |
-| features/conditions/DynamicLayerTimeSlider | `DynamicLayerTimeSlider.tsx`（ドラッグ/横スクロールで時刻を選ぶ汎用タイムラインUI。`RideConditionBar`が出発時刻ピッカーとして使う唯一の呼び出し元） |
+| features/conditions/DynamicLayerTimeSlider | `DynamicLayerTimeSlider.tsx`（時刻のルーラー（`components/ui/Ruler/Ruler.tsx`）に、選んだ時刻の文・1コマ送り・現在へ戻すボタンを添えたタイムラインUI。`RideConditionBar`が出発時刻ピッカーとして使う唯一の呼び出し元） |
 
 `apiBaseUrl.ts`/`backendInternalUrl.ts`はブラウザからのfetch先（`NEXT_PUBLIC_API_URL`）と
 Next.js route handlerからのサーバー間fetch先を区別する（後者はコンテナ内部
