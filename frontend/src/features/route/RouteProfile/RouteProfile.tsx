@@ -130,9 +130,11 @@ export default function RouteProfile({
   const marksOf = new Map(shownLayers.marks.map(({ layer, marks }) => [layer.id, { layer, marks }]));
 
   return (
-    <Tabs value={tab} onValueChange={setTab} className="flex flex-col gap-1">
-      <div className="flex items-center gap-1">
-        <TabsList aria-label="道のりのグラフ" className="flex-1">
+    <Tabs value={tab} onValueChange={setTab} className="relative flex flex-col gap-1">
+      {/* 切り替えと見方・出す情報のボタンは図の上の角に重ね、図の上に段を取らない（スマホのシートの低い高さで図を大きく
+          見せる）。重ねた部品の外では、図をなぞって地点を選べる。 */}
+      <div className="pointer-events-none absolute inset-x-1 top-1 z-10 flex items-start justify-between gap-1 [&>*]:pointer-events-auto">
+        <TabsList aria-label="道のりのグラフ" variant="overlay">
           <TabsTrigger value="layer" usage="選んだ情報（標高・道の区分等）を、道のりに沿って出します。">
             {FACT_DISPLAY_NAME}
           </TabsTrigger>
@@ -141,7 +143,10 @@ export default function RouteProfile({
           </TabsTrigger>
         </TabsList>
         {tab === "lens" && (
-          <InfoPopover triggerAriaLabel="難易度のグラフの見方">
+          <InfoPopover
+            triggerAriaLabel="難易度のグラフの見方"
+            triggerClassName="rounded-full bg-[color-mix(in_srgb,var(--background)_85%,transparent)]"
+          >
             <ul className="flex flex-col gap-0.5">
               {paintedAxes.map((axis) => (
                 <li key={axis.axisId} className="flex items-center gap-1.5">
