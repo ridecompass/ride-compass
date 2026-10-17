@@ -12,7 +12,8 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import weatherScales from "@/types/generated/weather-scales.json";
 
-import { POINT_LAYERS, pointAxisKey, pointCategoryRadiusPx, type PointAxis } from "@/features/map/scene/groups/points";
+import { pointAxisKey } from "@/features/map/scene/groups/points";
+import { POINT_LAYERS, pointCategoryRadiusPx, type PointAxis } from "@/lib/mapDisplay/pointLayers";
 import { DISASTER_ELEMENTS, DISASTER_LAYER_ID, type DisasterElement } from "@/features/map/scene/groups/weather";
 
 /** 凡例1本ぶん。1つのチップが複数の軸を持つことがある（事故は当事者と重大度）。 */

@@ -24,7 +24,7 @@ docs/modules/backend/routing-engine.mdが持つ。ここには、このファイ
 import asyncio
 import logging
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from functools import cached_property
@@ -58,6 +58,7 @@ from app.domain.graph import LeanEdge, edge_key, node_key, parse_edge_key
 from app.domain.region import BoundingBox, bbox_covering_points
 from app.domain.rain import StationRainMaterials, rain_material_columns
 from app.domain.road_network import RoadSlice, edge_row_of, elevation_attribute, material_arrays_of
+from app.domain.route_points import RoutePointHit, points_along_route
 from app.domain.route_road_classes import RoadClassReader
 from app.domain.route import (
     Coordinates,
@@ -1148,20 +1149,27 @@ class RoadGraphEngine:
             for index in dict.fromkeys(index for t in traced for index in t.data)
         }
         hydrated = await self._graph_service.get_edges_with_geometry(list(topology.values()))
+        # 1つのセッションは並行に問い合わせられないので、形を引いてから順に引く。
+        side_points = await self._graph_service.get_route_side_points(list(topology.values()))
         edges_by_candidate: list[list[LeanEdge]] = [
             [hydrated[topology[index].edge_id] for index in t.data] for t in traced
         ]
         return list(
             await asyncio.gather(
                 *(
-                    self._build_best_candidate(context, t, edges_in_path, start_time)
+                    self._build_best_candidate(context, t, edges_in_path, side_points, start_time)
                     for t, edges_in_path in zip(traced, edges_by_candidate)
                 )
             )
         )
 
     async def _build_best_candidate(
-        self, context: _RoadGraphContext, traced: TracedLoop, edges_in_path: list[LeanEdge], start_time: datetime
+        self,
+        context: _RoadGraphContext,
+        traced: TracedLoop,
+        edges_in_path: list[LeanEdge],
+        side_points: Mapping[tuple[int, int], Sequence[RoutePointHit]],
+        start_time: datetime,
     ) -> EvaluatedRoute:
         """1候補ぶんの周回を組み立てる。
 
@@ -1175,7 +1183,7 @@ class RoadGraphEngine:
         elevation_by_edge = self._elevation_by_edge(context, edges_in_path, path)
         leg_of_edge = traced.leg_of_edge
         forward_candidate = self._build_candidate(
-            context, traced, edges_in_path, path, elevation_by_edge, start_time, leg_of_edge
+            context, traced, edges_in_path, path, elevation_by_edge, side_points, start_time, leg_of_edge
         )
 
         if not traced.reversible:
@@ -1187,7 +1195,7 @@ class RoadGraphEngine:
         reverse_edges, reverse_path = reversed_path
         reverse_elevation = reverse_elevation_by_edge(edges_in_path, reverse_edges, elevation_by_edge)
         reverse_candidate = self._build_candidate(
-            context, traced, reverse_edges, reverse_path, reverse_elevation, start_time,
+            context, traced, reverse_edges, reverse_path, reverse_elevation, side_points, start_time,
             reverse_leg_assignment(leg_of_edge),
         )
         return pick_better_candidate(forward_candidate, reverse_candidate)
@@ -1214,6 +1222,7 @@ class RoadGraphEngine:
         edges_in_path: list[LeanEdge],
         path: list[int],
         elevation_by_edge: dict[str, ElevationAttribute],
+        side_points: Mapping[tuple[int, int], Sequence[RoutePointHit]],
         start_time: datetime,
         leg_of_edge: list[int],
     ) -> EvaluatedRoute:
@@ -1254,6 +1263,7 @@ class RoadGraphEngine:
                 if edges_in_path else []
             ),
             turns=turns,
+            points=points_along_route(edges_in_path, along_km, side_points),
             segments=segments,
             material_category_shares=material_category_shares,
             axis_raw_values=axis_raw_values,

@@ -8,6 +8,7 @@ from app.domain.graph import LeanEdge
 from app.domain.region import BoundingBox, tiles_covering_bbox
 from app.domain.road_network import RoadSlice, slice_network
 from app.domain.route_search import DETOUR_RATIO_SHARING_ZOOM
+from app.domain.route_points import RoutePointHit
 from app.infrastructure import container_memory, road_network_store
 from app.infrastructure.detour_ratio_cache import TileSet
 from app.infrastructure.road_graph_repository import RoadGraphRepository
@@ -82,3 +83,7 @@ class GraphService:
     async def get_edges_with_geometry(self, edges: list[LeanEdge]) -> dict[str, LeanEdge]:
         """探索用グラフは形を持たない。確定した経路の区間へ実体を後付けする。"""
         return await self._repository.get_edges_with_geometry(edges)
+
+    async def get_route_side_points(self, edges: list[LeanEdge]) -> dict[tuple[int, int], list[RoutePointHit]]:
+        """確定した経路の区間ごとの、近くの点（停止要因・補給・立ち寄り先・事故）。"""
+        return await self._repository.get_route_side_points(edges)

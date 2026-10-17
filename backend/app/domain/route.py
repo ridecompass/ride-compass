@@ -156,6 +156,18 @@ class RouteTurn(StrictModel):
     longitude: float
 
 
+class RoutePoint(StrictModel):
+    """経路の近くの点（停止要因・補給・立ち寄り先・事故）を、経路が通る所に置いたもの。画面が道のりのグラフに印を出す。
+
+    `distance_km`は始点から通る所までの道のりで、区間の`distance_km`を始点から足した値と同じ物差し（`along_route_km`）。
+    `layer`は点の一次属性のid、`properties`はその点の表示軸・名前・事実の値（地図の点の地物と同じ鍵。値の無いものは持たない）。
+    """
+
+    distance_km: float
+    layer: str
+    properties: dict[str, str | int | float | bool]
+
+
 class EvaluatedRoute(StrictModel):
     """エンジンが評価した1本の経路。区間から候補単位への集約の前で、集約を足すと`RouteDraft`になる。"""
 
@@ -199,6 +211,8 @@ class EvaluatedRoute(StrictModel):
     # 経路が分かれ道で曲がる所（左折・右折・Uターン）を経路の順に。分かれ道の無い点の曲がりは入れない
     # （`domain/routing.py: turns_along`）。`edge_ids`が空の候補では空のまま。
     turns: list[RouteTurn]
+    # 経路の近くの点を通る順に（`domain/route_points.py: points_along_route`）。`edge_ids`が空の候補では空のまま。
+    points: list[RoutePoint]
 
 
 class RouteDraft(EvaluatedRoute):

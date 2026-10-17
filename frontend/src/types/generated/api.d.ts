@@ -1494,6 +1494,8 @@ export interface components {
             node_ids: string[];
             /** Turns */
             turns: components["schemas"]["RouteTurn"][];
+            /** Points */
+            points: components["schemas"]["RoutePoint"][];
             overall_difficulty: components["schemas"]["OverallDifficulty"] | null;
             /** Axis Difficulties */
             axis_difficulties: {
@@ -1589,6 +1591,17 @@ export interface components {
             conditions: components["schemas"]["GenerationConditions"];
             /** No Candidates Reason */
             no_candidates_reason: string | null;
+        };
+        /** RoutePoint */
+        RoutePoint: {
+            /** Distance Km */
+            distance_km: number;
+            /** Layer */
+            layer: string;
+            /** Properties */
+            properties: {
+                [key: string]: string | number | boolean;
+            };
         };
         /** RoutePreferenceWeights */
         RoutePreferenceWeights: {

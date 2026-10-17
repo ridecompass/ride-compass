@@ -531,6 +531,7 @@ export default function Home() {
           >
             <RouteProfile
               segments={profile.segments}
+              points={profile.points}
               overallDifficulty={profile.overall_difficulty?.average ?? null}
               axes={axisCatalog.axes}
               axisColors={axisCatalog.axisColors}

@@ -5,6 +5,7 @@ import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import { backendApi, requestApi } from "@/lib/apiClient";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
+import type { PointTileLayer } from "@/lib/mapDisplay/pointLayers";
 
 const ROAD_SURFACE_TILE_PATH = apiPath("/api/region/road-surface-tiles/{z}/{x}/{y}.pbf");
 
@@ -44,9 +45,6 @@ function tileVersion(versions: TileVersions, kind: TileKind): string {
 export function roadSurfaceTileUrl(versions: TileVersions): string {
   return `${tileBaseUrl()}${ROAD_SURFACE_TILE_PATH}?v=${tileVersion(versions, "road_surface")}`;
 }
-
-/** 点のレイヤーの名前（生成物の`point_layers`の鍵）。名前が配信のパスとタイルの世代の系統を兼ねる。 */
-export type PointTileLayer = keyof typeof regionTileConfig.point_layers & TileKind;
 
 // 点のレイヤーはどれも同じ1つの配信で、パスのレイヤー名だけが違う。停止要因と補給の点は同じタイルを分け合う（種別の集合で分ける）。
 export function pointTileUrl(versions: TileVersions, layer: PointTileLayer): string {
