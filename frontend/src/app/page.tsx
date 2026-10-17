@@ -736,7 +736,7 @@ export default function Home() {
               className={cn(
                 "pointer-events-none absolute inset-x-0 top-3 z-[var(--z-map-control)] flex justify-center px-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))]",
                 mapControlsShown &&
-                  "@max-[22rem]/map:top-12 @max-[22rem]/map:left-[calc(var(--spacing)*3_-_var(--map-ctrl-margin)_-_var(--map-ctrl-column-width)_-_var(--space-2))]",
+                  "@max-[22rem]/map:top-12 @max-[22rem]/map:left-[calc(0.75rem_-_var(--map-ctrl-margin)_-_var(--map-ctrl-column-width)_-_var(--space-2))]",
               )}
             >
               <LensControl {...mapView.lensControl} compact={!mapControlsShown} />
