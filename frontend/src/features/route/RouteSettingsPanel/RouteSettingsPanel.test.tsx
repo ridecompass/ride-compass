@@ -10,7 +10,7 @@
  * 受け取る重みを公開軸へ揃えること → `features/route/routePreferenceSync.test.ts`（このパネルは揃った値を受け取る）。
  * 再試行で取れたかどうか → `hooks/useAxisCatalog.test.ts`。無効な軸のチップを薄くすること（クラスで付ける見た目）。
  * 軸カタログの値をそのまま渡すもの（チップの印と帯の区間の色・(i)の奥の軸の説明）、割合に%を付けて渡す区間の幅、
- * 書いた定数を差し込むだけのもの（帯の(i)の奥の上限・区切りの値の範囲）。
+ * 書いた定数を差し込むだけのもの（区切りの値の範囲）。
  *
  * 差し替えたもの: 軸カタログの応答（網の層）はテストが決め、軸は架空のもの
  * （`testing/catalogAxes.ts`）。帯の実寸はテスト環境に無いので、ドラッグのテストだけ帯の`getBoundingClientRect`を決める。
@@ -256,20 +256,6 @@ describe("RouteSettingsPanel 配分の帯", () => {
     expect(onRoutePreferenceChange).not.toHaveBeenCalled();
   });
 
-  it("合計が1でない配分でも、区切りは割合の上限（説明の文の%）で止まる", async () => {
-    serveCatalog();
-    // 合計 0.38 で、道幅は 0.22（58%）。もう1刻み足すと 0.23（61%）で上限を越える。
-    const { onRoutePreferenceChange } = renderPanel({ width: 0.22, traffic: 0.08, slope: 0.08, light: 0 });
-    await chipsShown();
-
-    boundary("道幅と交通の配分").focus();
-    await userEvent.keyboard("{ArrowRight}");
-    await userEvent.click(screen.getByRole("button", { name: "重みの配分の説明を表示" }));
-
-    expect(onRoutePreferenceChange).not.toHaveBeenCalled();
-    expect(await screen.findByText(/1つの評価軸に置ける重みは60%まで/)).toBeInTheDocument();
-  });
-
   /** 帯の幅を決めて、区切りを押してから画面の上で指を動かす。 */
   async function startDrag(name: string, barWidthPx: number, startX: number) {
     const handle = boundary(name);
@@ -300,4 +286,24 @@ describe("RouteSettingsPanel 配分の帯", () => {
       ]);
     },
   );
+
+  it("2軸だけでも、区切りは片方の重みが刻み1つになるまで寄せられ、説明の文はそこで止まると書く", async () => {
+    serveCatalog();
+    const { onRoutePreferenceChange } = renderPanel({ width: 0.15, traffic: 0.15, slope: 0, light: 0 });
+    await chipsShown();
+
+    // 帯200pxが重みの合計0.3なので、帯の右端の先まで動かすと交通は刻み1つで止まる（道幅は97%）。
+    const moveTo = await startDrag("道幅と交通の配分", 200, 100);
+    moveTo(400);
+    act(() => void window.dispatchEvent(new PointerEvent("pointerup")));
+    await userEvent.click(screen.getByRole("button", { name: "重みの配分の説明を表示" }));
+
+    expect(onRoutePreferenceChange.mock.lastCall![0]).toEqual({
+      width: 0.29,
+      traffic: WEIGHT_STEP,
+      slope: 0,
+      light: 0,
+    });
+    expect(await screen.findByText(/どの評価軸も重みが0（無効）になる手前で止まります/)).toBeInTheDocument();
+  });
 });
