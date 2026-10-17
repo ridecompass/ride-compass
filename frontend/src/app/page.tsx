@@ -563,6 +563,7 @@ export default function Home() {
               waypointKms={profile.waypoint_distances_km}
               selected={null}
               layers={profileLayers}
+              riding
             />
           </section>
         )}

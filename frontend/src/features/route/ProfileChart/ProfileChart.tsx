@@ -1,6 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
 
 import { pinMarkName } from "@/components/PinMark/PinMark";
 import PointMark from "@/components/PinMark/PointMark";
@@ -54,6 +63,8 @@ interface ProfileChartProps {
   onSelect?: (selection: SelectedRouteSegment) => void;
   /** 走行中の現在地のルートの上の距離。印を引き、始点からそこまでを走り終えた区間として薄める。 */
   progressKm?: number | null;
+  /** 現在地の印の縦の位置（0〜`PROFILE_VIEW_HEIGHT`）。無ければ図の中ほどに置く。 */
+  progressMarkY?: number | null;
   /** 置いた経由地を通る所のルートの上の距離（置いた順）。縦の線と、地図のピンと同じ番号の印を出す。走り終えた経由地は薄める。 */
   waypointKms: readonly number[];
   /** 図の中身（`scale.xOf`の横座標と、0〜`PROFILE_VIEW_HEIGHT`の縦座標で描く）。 */
@@ -67,7 +78,7 @@ interface ProfileChartProps {
  * **押しただけでは選ばず、途中で2本目の指が触れた操作は選択にしない**——図の上で始めたピンチ（拡大しようとした操作）で
  * 区間が選ばれ、表示が区間の詳細へ切り替わらないようにする。**縦に動き出した操作も選択にしない**——縦のなぞりは、図を
  * 載せたシート・パネルのスクロールとしてブラウザに渡す（図の上に指を置いても下へ送れる）。高さは置き場が CSS の変数
- * `--profile-chart-height` で決める（無ければ走行中の地図の下に出す低い図の高さ）。 */
+ * `--profile-chart-height` で決める（無ければ走行中の地図の下に出す図の高さ）。 */
 export default function ProfileChart({
   scale,
   label,
@@ -75,11 +86,13 @@ export default function ProfileChart({
   selected,
   onSelect,
   progressKm = null,
+  progressMarkY = null,
   waypointKms,
   children,
   caption,
 }: ProfileChartProps) {
   const [scrubKm, setScrubKm] = useState<number | null>(null);
+  const clipId = `profile${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   // 図に触れている指（ポインター）と、いまの操作に2本目が加わったか、操作の始まりの点と、動き出した向き（横は地点を選び、
   // 縦はスクロールに渡す。まだ動いていなければnull）。
   const gesture = useRef<{
@@ -182,7 +195,7 @@ export default function ProfileChart({
           preserveAspectRatio="none"
           // 押せる図は縦のなぞりだけをブラウザ（シート・パネルのスクロール）へ渡し、横の動きは地点を選ぶ操作に使う。見るだけの図は
           // どの動きもブラウザへ渡さない。
-          className="h-[var(--profile-chart-height,3.5rem)] w-full touch-none rounded-sm data-[pickable=true]:touch-pan-y bg-[var(--color-surface-2)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] data-[pickable=true]:cursor-crosshair"
+          className="h-[var(--profile-chart-height,7rem)] w-full touch-none rounded-sm data-[pickable=true]:touch-pan-y bg-[var(--color-surface-2)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] data-[pickable=true]:cursor-crosshair"
           data-pickable={onSelect !== undefined}
           {...(onSelect === undefined
             ? { role: "img", "aria-label": label }
@@ -231,8 +244,35 @@ export default function ProfileChart({
               opacity={0.25}
             />
           )}
-          {children}
-          {/* 走り終えた区間の幕より下に引き、走り終えた経由地の線も一緒に薄める。 */}
+          {travelledKm === null ? (
+            children
+          ) : (
+            <>
+              <defs>
+                <clipPath id={`${clipId}-travelled`}>
+                  <rect x={0} y={0} width={xOf(travelledKm)} height={PROFILE_VIEW_HEIGHT} />
+                </clipPath>
+                <clipPath id={`${clipId}-ahead`}>
+                  <rect x={xOf(travelledKm)} y={0} width={PROFILE_VIEW_WIDTH} height={PROFILE_VIEW_HEIGHT} />
+                </clipPath>
+                <filter id={`${clipId}-gray`}>
+                  <feColorMatrix type="saturate" values="0" />
+                </filter>
+              </defs>
+              {/* 走り終えた所は色を抜いて薄め、残りは元の色のまま描く。 */}
+              <g
+                data-progress="travelled"
+                clipPath={`url(#${clipId}-travelled)`}
+                filter={`url(#${clipId}-gray)`}
+                opacity={mapDisplay.route.opacities.travelled}
+              >
+                {children}
+              </g>
+              <g data-progress="ahead" clipPath={`url(#${clipId}-ahead)`}>
+                {children}
+              </g>
+            </>
+          )}
           {waypointKms.map((km, index) => (
             <line
               key={index}
@@ -245,31 +285,20 @@ export default function ProfileChart({
               strokeWidth={1}
               strokeDasharray="3 2"
               vectorEffect="non-scaling-stroke"
+              opacity={travelledKm !== null && km <= travelledKm ? mapDisplay.route.opacities.travelled : undefined}
             />
           ))}
           {travelledKm !== null && (
-            <>
-              {/* 背景の色を重ねて、中身を地図の走り終えた区間の線と同じ濃さまで薄める。 */}
-              <rect
-                data-progress="travelled"
-                x={0}
-                y={0}
-                width={xOf(travelledKm)}
-                height={PROFILE_VIEW_HEIGHT}
-                className="fill-[var(--color-surface-2)]"
-                opacity={1 - mapDisplay.route.opacities.travelled}
-              />
-              <line
-                data-progress="position"
-                x1={xOf(travelledKm)}
-                x2={xOf(travelledKm)}
-                y1={0}
-                y2={PROFILE_VIEW_HEIGHT}
-                className="stroke-[var(--color-accent)]"
-                strokeWidth={3}
-                vectorEffect="non-scaling-stroke"
-              />
-            </>
+            <line
+              data-progress="position"
+              x1={xOf(travelledKm)}
+              x2={xOf(travelledKm)}
+              y1={0}
+              y2={PROFILE_VIEW_HEIGHT}
+              className="stroke-[var(--color-accent)]"
+              strokeWidth={2}
+              vectorEffect="non-scaling-stroke"
+            />
           )}
           {cursorKm !== null && (
             <line
@@ -297,6 +326,18 @@ export default function ProfileChart({
             <PointMark role="waypoint" label={String(index + 1)} originLocated={false} />
           </span>
         ))}
+        {travelledKm !== null && (
+          <span
+            role="img"
+            aria-label="現在地"
+            data-progress="mark"
+            className="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white bg-[var(--color-accent)] shadow"
+            style={{
+              left: `${(xOf(travelledKm) / PROFILE_VIEW_WIDTH) * 100}%`,
+              top: `${((progressMarkY ?? PROFILE_VIEW_HEIGHT / 2) / PROFILE_VIEW_HEIGHT) * 100}%`,
+            }}
+          />
+        )}
         <div className="pointer-events-none absolute inset-x-1 bottom-0 flex justify-between text-[length:var(--font-size-xs)] text-[var(--color-muted)] tabular-nums">
           <span>0</span>
           <span>{widthKm.toFixed(1)}km</span>
