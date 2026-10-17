@@ -6,7 +6,7 @@ import ProfileChart, { PROFILE_VIEW_HEIGHT, useProfileScale } from "@/features/r
 import palette from "@/types/generated/palette.json";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 
-import { profileBoxes, type ProfileBox } from "./profileGeometry";
+import { columnAtKm, profileBoxes, type ProfileBox } from "./profileGeometry";
 
 interface DifficultyProfileProps {
   segments: readonly RouteSegmentDetail[];
@@ -57,8 +57,15 @@ export default function DifficultyProfile({
         const boxes = byAxis.get(axisId) ?? [];
         return boxes.length === 0 ? [] : [{ axisId, d: boxesPath(boxes, scale.xOf) }];
       }),
+      boxes: [...missing, ...[...byAxis.values()].flat()],
     };
   }, [scale, axisOrder, overallDifficulty]);
+  // 現在地の印は、その距離の柱の上端に置く。
+  const progressColumn = progressKm === null ? null : columnAtKm(scale.columns, progressKm);
+  const progressTops = paths.boxes
+    .filter((box) => box.startKm === progressColumn?.column.startKm)
+    .map((box) => box.top);
+  const progressMarkY = progressTops.length === 0 ? null : PROFILE_VIEW_HEIGHT - Math.max(...progressTops);
 
   return (
     <ProfileChart
@@ -68,6 +75,7 @@ export default function DifficultyProfile({
       selected={selected}
       onSelect={onSelect}
       progressKm={progressKm}
+      progressMarkY={progressMarkY}
       waypointKms={waypointKms}
     >
       {paths.missing !== null && <path d={paths.missing} fill={palette.semantic.no_data} opacity={0.6} />}

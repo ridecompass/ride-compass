@@ -177,6 +177,27 @@ test("モバイル: 生成したルートを地図へ収めると、開いた「
   expect(onScreen.filter(({ x, y }) => x < 0 || x > MOBILE_VIEWPORT.width || y < 0 || y > sheetTop)).toEqual([]);
 });
 
+// 観点1（収まる）: 走行中の地図の下の道のりのグラフは、切り替えとボタンの行を図の上に出して図に重ねず、結果のシートの図より
+// 高く描いて画面に収める。結果のシートの図は切り替えを図に重ねたまま。重なりと高さは実寸でしか決まらない。
+test("モバイル: 走行中の道のりのグラフは、切り替えの行を図の上に出し、結果の図より高く画面に収まる", async ({
+  page,
+}) => {
+  await openMobileApp(page);
+  const sheet = await generateRoutes(page);
+  const resultGraph = (await sheet.getByRole("slider", { name: /^道のりに沿った難易度/ }).boundingBox())!;
+  const resultTabs = (await sheet.getByRole("tablist", { name: "道のりのグラフ" }).boundingBox())!;
+  expect(resultTabs.y).toBeGreaterThanOrEqual(resultGraph.y);
+  expect(resultTabs.y + resultTabs.height).toBeLessThanOrEqual(resultGraph.y + resultGraph.height);
+
+  await sheet.getByRole("button", { name: /このルートで走る/ }).click();
+  const ride = page.getByRole("region", { name: "予定ルートのプロファイル" });
+  const rideGraph = (await ride.getByRole("img", { name: "道のりに沿った難易度" }).boundingBox())!;
+  const rideTabs = (await ride.getByRole("tablist", { name: "道のりのグラフ" }).boundingBox())!;
+  expect(rideTabs.y + rideTabs.height).toBeLessThanOrEqual(rideGraph.y);
+  expect(rideGraph.height).toBeGreaterThan(resultGraph.height);
+  expect(rideGraph.y + rideGraph.height).toBeLessThanOrEqual(MOBILE_VIEWPORT.height);
+});
+
 // 「ルート結果」のシート。高さを決めていなければ、開いたときに候補と道のりのグラフの下端までが入る高さに合わせ、グラフは
 // シートの幅いっぱいに描く（パターン4 観点1）。グラフの上から縦になぞるとシートの本文が動き、横になぞると地点を選ぶ（観点2）。
 // touch-actionはタッチの始点の要素と祖先で決まり、計算後のCSSの値を読むだけでは効いているかが分からないので、
