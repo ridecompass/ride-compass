@@ -6,7 +6,7 @@
  *   開くこと、候補が「ルート結果」と地図の両方へ出て、選んだ候補が地図でも選ばれ、区間を持つかで周りの塗りが決まること、
  *   全消去は確認の窓で「消す」を押してから両方から消えること、候補がある間だけ条件のずれの印が点き全消去で消えること、走行条件の想定速度・出発時刻が
  *   生成と地図の道の詳細へ同じ値で渡ること、「評価で塗る」の未使用を分ける重み（生成の前はいまの重み・後は使われた重み）、
- *   保存した条件が地図で置いた出発地を持ち、呼び出すとその出発地から生成すること、前に保存した条件が「保存」の「設定」に出ること
+ *   「条件」タブで保存した条件が地図で置いた出発地を持ち、呼び出すとその出発地から生成すること、前に保存した条件が「保存」の「設定」に出ること
  * - 地図で扱えること: 地図を押したときの意味は効いているパネルで決まり（「ルート設定」の条件タブは選んでいる地点を置く、
  *   「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
  *   2つの区分を開いていれば最後に触った区分が効いてその題に添えること、ピンを押しても消えずルート設定ではその地点を選ぶこと、
@@ -362,14 +362,13 @@ describe("ルートを作る", () => {
   it("保存した条件は地図で置いた出発地を持ち、呼び出すとその出発地から生成する", async () => {
     const PLACED: Coordinates = { latitude: 35.65, longitude: 139.75 };
     const { user } = renderHome();
-    // 保存も呼び出しも「保存」の「設定」で行う（見出しの行にも保存のボタンがあれば、ボタンが2つに当たって落ちる）。
-    const openSavedConditions = async () => {
-      await user.click(screen.getByRole("tab", { name: "保存" }));
-      await user.click(screen.getByRole("tab", { name: "設定" }));
-    };
+    // 保存は「条件」タブ、呼び出しは「保存」の「設定」で行う（隠れたタブの中身も描いてあるので、ほかのタブにも保存のボタンが
+    // あれば、ボタンが2つに当たって落ちる）。
     const saveAs = async (name: string) => {
-      await openSavedConditions();
-      await user.click(screen.getByRole("button", { name: "いまの設定を保存" }));
+      await user.click(screen.getByRole("tab", { name: "条件" }));
+      const saveButton = screen.getByRole("button", { name: "いまの設定を保存" });
+      expect(screen.getByRole("tabpanel", { name: "条件" })).toContainElement(saveButton);
+      await user.click(saveButton);
       const dialog = screen.getByRole("dialog", { name: "いまの設定を保存" });
       const nameInput = within(dialog).getByRole("textbox", { name: "保存する名前" });
       await user.clear(nameInput);
@@ -377,7 +376,8 @@ describe("ルートを作る", () => {
       await user.click(within(dialog).getByRole("button", { name: "保存" }));
     };
     const recall = async (name: string) => {
-      await openSavedConditions();
+      await user.click(screen.getByRole("tab", { name: "保存" }));
+      await user.click(screen.getByRole("tab", { name: "設定" }));
       await user.click(screen.getByRole("button", { name: `「${name}」を呼び出す` }));
       await user.click(
         within(screen.getByRole("dialog", { name: `「${name}」を反映します` })).getByRole("button", {
@@ -389,7 +389,6 @@ describe("ルートを作る", () => {
 
     clickMap(PLACED);
     await saveAs("置いた所");
-    await user.click(screen.getByRole("tab", { name: "条件" }));
     await user.click(screen.getByRole("button", { name: "出発地を現在地に戻す" }));
 
     jobs.respond([FIRST], LOOP_CONDITIONS);

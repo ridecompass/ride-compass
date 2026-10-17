@@ -70,7 +70,9 @@ interface RouteFormProps {
   weightsPanel: React.ReactNode;
   /** 「除外」タブの中身。 */
   exclusionsPanel: React.ReactNode;
-  /** 「保存」タブの「設定」の中身（いまの設定の保存と、保存した設定の一覧）。 */
+  /** 「条件」タブの、いまの設定を保存するアイコン（保存するものは各タブに及ぶが、条件を詰める所で保存する）。 */
+  saveConditionsButton: React.ReactNode;
+  /** 「保存」タブの「設定」の中身（保存した設定の一覧）。 */
   savedConditionsPanel: React.ReactNode;
 }
 
@@ -112,6 +114,7 @@ export default function RouteForm({
   placing,
   weightsPanel,
   exclusionsPanel,
+  saveConditionsButton,
   savedConditionsPanel,
 }: RouteFormProps) {
   const { distanceTargeted, setDistanceTargeted, distanceInput, setDistanceInput, maxRoutesInput, setMaxRoutesInput } =
@@ -133,7 +136,7 @@ export default function RouteForm({
   return (
     <div>
       <KeptTabContent value="generate">
-        {/* 全長の目標と候補数を1行に並べ、パネルの縦幅を詰める。ルーラーは残りの幅を取り、狭い幅では長い距離の側を
+        {/* 全長の目標と候補数といまの設定の保存を1行に並べ、パネルの縦幅を詰める。ルーラーは残りの幅を取り、狭い幅では長い距離の側を
             見えない所へ置く（滑らせると出る）。全長の目標を外している間もルーラーと値は出したまま薄くする（入れ直すと
             前の値に戻ることが見える）。 */}
         <div className="mb-2 flex items-center gap-2">
@@ -192,6 +195,7 @@ export default function RouteForm({
               </Button>
             </div>
           </div>
+          <div className="flex-none">{saveConditionsButton}</div>
         </div>
 
         <RoutePoints
@@ -219,13 +223,13 @@ export default function RouteForm({
           <TabsList className="mb-2" aria-label="保存するもの">
             <TabsTrigger
               value="places"
-              usage="名前を付けて保存した地点の一覧です。呼び出すと、出発地・経由地・目的地に置きます。"
+              usage="条件タブで名前を付けて保存した地点の一覧です。呼び出すと、出発地・経由地・目的地に置きます。"
             >
               地点
             </TabsTrigger>
             <TabsTrigger
               value="conditions"
-              usage="いまの設定に名前を付けて保存し、保存した設定の一覧から呼び出します。呼び出すと、各タブの値を入れ替えます。"
+              usage="条件タブで名前を付けて保存した設定の一覧です。呼び出すと、各タブの値を入れ替えます。"
             >
               設定
             </TabsTrigger>

@@ -63,6 +63,7 @@ const BASE = {
   mapCenter: { latitude: 35.681, longitude: 139.767 },
   weightsPanel: null,
   exclusionsPanel: null,
+  saveConditionsButton: null,
   savedConditionsPanel: null,
   savedPlaces: { places: [], save: () => {}, remove: () => {} },
 } satisfies Options;
@@ -122,6 +123,7 @@ function renderForm(options: Options = {}, tab: SettingsTab = "generate") {
       onPointsShow,
       weightsPanel,
       exclusionsPanel,
+      saveConditionsButton,
       savedConditionsPanel,
       savedPlaces,
       placing,
@@ -153,6 +155,7 @@ function renderForm(options: Options = {}, tab: SettingsTab = "generate") {
               placing={placing}
               weightsPanel={weightsPanel}
               exclusionsPanel={exclusionsPanel}
+              saveConditionsButton={saveConditionsButton}
               savedConditionsPanel={savedConditionsPanel}
             />
           </Tabs>
