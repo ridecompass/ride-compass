@@ -73,6 +73,6 @@
     "frontend/src/features/route/useSpliceSession.test.ts": "共通の組み立て（renderSplice・startEditing・tapStretch）を testing/spliceSession.ts へ出し、差分を見る場面を useSpliceSession.diff.test.ts へ、作成の場面を useSpliceSession.create.test.ts へ分ける",
     "frontend/src/structure/scaffoldCopies.test.ts": "検査の本体のうち写しを見つける部分（copiedDefinitions・bypassedBuilders）を structure/scaffoldCopies.ts へ、差し替えを見つける部分（viMocks・bypassedStandIns・scaffoldViolations）を structure/scaffoldMocks.ts へ出し、元には規約の説明とテストの表だけを残す",
     "frontend/src/structure/vacuousLoops.test.ts": "検査の本体のうち名前で束ねた絞り込みを辿る部分（filteredNames・assertsNonEmpty）を structure/vacuousLoopNames.ts へ、それ以外の判定（findVacuousLoops・findInTree）を structure/vacuousLoops.ts へ出し、元には規約の説明とテストの表だけを残す",
-    "frontend/src/testing/maplibre.ts": "イベントの受け口と地図に載せる小物の代役（Evented・Marker・Popup・LngLatBounds・NavigationControl）を testing/maplibreEvented.ts へ出す"
+    "frontend/src/testing/maplibre.ts": "イベントの受け口と地図に載せる小物の代役（Evented・Marker・Popup・LngLatBounds）を testing/maplibreEvented.ts へ出す"
   }
 }

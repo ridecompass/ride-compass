@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TILE_VERSIONS_MISSING_NOTICE, TILE_ZOOM_TOO_WIDE_NOTICE } from "@/features/map/layers/mapLayers";
 import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
+import { MAP_FETCH_DEBOUNCE_MS } from "@/hooks/useDebouncedValue";
 import { onBackend, onSameOrigin } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";
 import type { AxisCatalogEntry } from "@/types/route";
@@ -42,7 +43,8 @@ function render(inputs: Partial<Inputs> = {}) {
     useMapView({
       hasSelectedRoute: false,
       hasDetail: false,
-      ride: { bearingDeg: 90, at: NOW, speedKmh: 20 },
+      ride: { at: NOW, speedKmh: 20 },
+      riding: null,
       now: NOW,
       routeWeights: {},
       ...inputs,
@@ -125,6 +127,32 @@ describe("useMapView", () => {
       expect(result.current.lensControl.dataStatus).toBe(status);
     },
   );
+
+  it("向きで値の変わる軸は、地図の上の向きを8方位に丸めた向きで取り、丸めた向きが変わらない回転では取り直さない。走行中は実際に走る向きで取る", async () => {
+    serve([DEDICATED]);
+    // 返す値に、受けた向きを載せる（どの向きで取った値が塗りに届いたかを読む）。
+    const sent = onBackend("GET", "/api/region/dynamic-way-values/axis_wind/:z/:x/:y", ({ query }) =>
+      Response.json({ way_1: Number(query.bearing_deg) }),
+    );
+    const { result, rerender } = render();
+    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(1));
+    act(() => result.current.lensControl.onLensChange("axis_wind"));
+    const paintedBearing = () => result.current.look.dedicatedWayValues.get("axis_wind")?.values.get("way_1");
+
+    act(() => result.current.look.onViewportChange({ ...VIEWPORT, bearing: 30 }));
+    await waitFor(() => expect(paintedBearing()).toBe(45), { timeout: 3000 });
+    const fetched = sent.length;
+
+    act(() => result.current.look.onViewportChange({ ...VIEWPORT, bearing: 40 }));
+    // 間引きの待ちを越えてから、要求が増えていないことを見る。
+    await new Promise((resolve) => setTimeout(resolve, MAP_FETCH_DEBOUNCE_MS + 100));
+    expect(sent).toHaveLength(fetched);
+    act(() => result.current.look.onViewportChange({ ...VIEWPORT, bearing: 80 }));
+    await waitFor(() => expect(paintedBearing()).toBe(90), { timeout: 3000 });
+
+    rerender({ riding: { bearingDeg: 180, speedKmh: 15 } });
+    await waitFor(() => expect(paintedBearing()).toBe(180), { timeout: 3000 });
+  });
 
   it("レンズの凡例で隠した行は、凡例へはすぐ、地図へは間引きの待ちのあとに出て（全段をまとめても隠せる）、「表示」の解除では戻らず、レンズの解除で戻る", async () => {
     serve();

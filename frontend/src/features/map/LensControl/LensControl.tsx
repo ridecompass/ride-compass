@@ -24,8 +24,8 @@ import {
   ClearAllFiltersIcon,
   ClearAllLayersIcon,
   ClockIcon,
+  CompassNeedleIcon,
   SpeedGaugeIcon,
-  WindDirectionArrowIcon,
 } from "@/components/ui/icons/icons";
 import { cn } from "@/lib/cn";
 import { EVALUATION_PAINT_NAME } from "@/lib/screenNames";
@@ -40,13 +40,13 @@ export interface LensOption {
   description: string;
   /** 軸のアイコン（重みのタブと同じ）。未設定は汎用のアイコン。 */
   iconId?: string;
-  /** 値が変わる走る条件（夜だけ効く軸は出発時刻）。地図の右の列の走る条件のボタンと同じアイコンを名前に添える。 */
+  /** 値が変わる走る条件（夜だけ効く軸は出発時刻）。地図の右の列のボタンと同じアイコンを名前に添える。 */
   conditions: readonly WayValueCondition[];
 }
 
 /** 走る条件ごとの、地図の右の列のボタンと同じアイコンと名前。 */
 const CONDITION_MARKS: Record<WayValueCondition, { Icon: (props: { size?: number }) => ReactElement; name: string }> = {
-  bearing_deg: { Icon: WindDirectionArrowIcon, name: "走行方位" },
+  bearing_deg: { Icon: CompassNeedleIcon, name: "地図の向き" },
   speed_kmh: { Icon: SpeedGaugeIcon, name: "想定速度" },
   at: { Icon: ClockIcon, name: "出発時刻" },
 };

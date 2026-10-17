@@ -25,8 +25,7 @@
 | `features/route/useSavedConditions.ts` | 保存した条件の一覧（この端末の`localStorage`）と、いまの条件（`useGenerationConditions.ts: snapshot`）の保存（出発地を固定するかを受け取る）・呼び出し・削除。呼び出すと`useGenerationConditions.ts: restore`で条件を入れ替え、出発地は位置の持ち主（`hooks/useLocation.ts`）へ渡す |
 | `features/route/savedConditions.ts` | 生成の条件の形（`GenerationConditionsSnapshot`。いまの条件・保存・呼び出しが同じ形を使い、保存の1件はそれに名前と出発地を足す）と、保存値の読み方（項目ごとの読み方の表で読み、今の画面が受け付けない件だけを捨てる）・仮の名前・何が保存されるかの説明（`describeConditions`。重みは軸ごとの割合）・同じ名前の上書き。距離・候補数として受け付ける範囲（`acceptedDistanceInput`・`acceptedMaxRoutesInput`）もここが持ち、`useGenerationConditions.ts`の保存値の読み直しと共有する。距離の刻み（`DISTANCE_STEP_KM`。5km刻みで、下限も1刻み分）は画面だけの値で、`RouteForm`のルーラーのコマも読み、保存値は刻みの近い方へ寄せて読む。候補数の下限・上限は生成物`route-generate-config.json`から読む |
 | `features/route/routeWeightShare.ts` | 重み配分の純関数（帯グラフの境界ドラッグ`clampBoundaryDrag`・刻みと上下限） |
-| `features/conditions/WindBearingSlider/WindBearingSlider.tsx` | 走行方位の指定コンパスダイヤル（`TravelBearingControl`から使われる。単体としての設置場所は[ページ全体構成・状態管理](page-composition.md)参照） |
-| `lib/cardinalLabel.ts` | 角度を方位の呼び名へ（走行方位のダイヤルと区間の風の両方が使う）と、気象の風向（吹いてくる向き）を矢印が指す吹いていく向きへ（`downwindDeg`。地図の風の矢印が使う）と、それを回った地図の上の向きへ（`downwindOnMapDeg`。走りの帯と天気欄の矢印が使う）。呼び名の並びはbackend（`domain/geo.py: COMPASS_LABELS`）が配り、丸めは画面が持つ。区分の境界を含む角度でbackendと同じ呼び名になることは、backendが出す表（生成物`geo-expectations.json`）をテストが通して確かめる |
+| `lib/cardinalLabel.ts` | 角度を方位の呼び名へ（区間の風・天気欄等が使う）と、気象の風向（吹いてくる向き）を矢印が指す吹いていく向きへ（`downwindDeg`。地図の風の矢印が使う）と、それを回った地図の上の向きへ（`downwindOnMapDeg`。走りの帯と天気欄の矢印が使う）。呼び名の並びはbackend（`domain/geo.py: COMPASS_LABELS`）が配り、丸めは画面が持つ。区分の境界を含む角度でbackendと同じ呼び名になることは、backendが出す表（生成物`geo-expectations.json`）をテストが通して確かめる |
 | `features/route/RouteAxisProfile/RouteAxisProfile.tsx` | 候補ごとのタブの中身（公開軸すべての軸別難易度一覧＋「重み付き寄与度」内訳）。地図の色分けを選ぶ操作はここには無い（`LensControl`）。候補一覧のタブ自体は`RouteOutcome.tsx`が組み立てる |
 | `features/route/routeTabLabel.ts` | 候補タブの時間の列の基準線と差を組み立てる純関数（`durationBaseline`・`durationDifferenceLabel`）、生成した候補の並び（最速の印の1本が先頭、残りは所要時間の短い順、`orderGenerated`）、一覧の並び・群・名前（`routeListEntries`。最速ルート・生成した候補・合成ルートの分け方は[ページ全体構成・状態管理](page-composition.md)「ルート結果の中身」）。種類と最速の印はbackendが付ける値（`route_generator.py: _label`）を読むだけで、idの文字列や要求の形から決め直さない。タブ列自体は`RouteOutcome.tsx`が組み立てる |
 | `features/route/routeEditDiff.ts` | 編集で作ったルートの元との差（距離・所要・総合難易度・負荷と、変えた区間の元の位置・長さの差）と、差の表記（`formatDelta`）。指標は1つの表から作り（`metricDifferences`。名前・桁・単位と元・編集後・差）、編集面（`RouteSplicePanel`）と「元との違い」（`EditDifference`）が同じ表を読む——別々に持つと、片方だけ指標や桁が変わる。変えた区間は適用した乗り換えの手順からではなく、できた2本のEdge id列の差（`routeSplice.ts: pairedStretches`）から求める——乗り換えの範囲は適用した時点の経路に対する位置で、元の位置へ戻すには手順の全部が要る。区間の位置と長さは、道のりのグラフと同じ物差し（`lib/routeDistance.ts: routeEdgeKms`）で読む |
@@ -124,10 +123,8 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
   軸の説明は画面へ書かずこの(i)の奥に置く（設計原則「冗長なものは削る」）。`route_preference`の
   重みを切り替えるだけで、地図の色分けとは無関係（地図の色分け（レンズ）はこのパネルには
   なく、地図上の`LensControl`だけが持つ）。
-- 向きコンパス（`WindBearingSlider`）はこのパネルには存在しない。風・勾配の走行方位は
-  走行条件の単一共有state（`features/conditions/useRideConditions.ts: bearingDeg`）を地図上の`TravelBearingControl`
-  1箇所からのみ設定する（[ページ全体構成・状態管理](page-composition.md)「動的材料
-  （風・勾配）の状態別表現契約」参照）。
+- 向きを選ぶ操作はこのパネルには存在しない。風・勾配で周りの道を塗るときの走る向きは地図の上の向きで決まる
+  （[ページ全体構成・状態管理](page-composition.md)「動的材料（風・勾配）の状態別表現契約」の「地図の向き」）。
 - パネルが受け取る重みは、`useGenerationConditions.ts`がカタログのキー集合へ揃えた値（`routePreferenceSync.ts: alignRoutePreference`。
   軸の追加/unpublishに追従。backendは「上書きするなら既知の全axis_idキー一致」を要求するため、ズレるとルート生成が
   422になる）。パネル自身は揃えない——送る値・道の評価と同じ1つの揃えた値を表示し、それを元に編集する。
@@ -171,36 +168,12 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
 （`useRouteGeneration.ts: weightsNotApplied`）。上書きしていない生成には出さない——元から既定の配分で、
 反映できなかったものが無い。生成そのものは断らない——既定の配分のルートでも走るには使える。
 
-## WindBearingSlider.tsx（走行方位ダイヤル）／TravelBearingControl.tsx（地図上の入口）
-
-外部ライブラリを使わない自前実装のコンパス型UI。中心から伸びる矢印
-（`components/ui/icons/icons.tsx: WindDirectionArrowIcon`）を直接つかんで回すダイヤルで、矢印自体が
-指す向きがそのまま値になる。`value`/`onChange`/`ariaLabel`のみを扱う汎用コンポーネントで、
-時刻には一切関与しない（時刻は条件バー`RideConditionBar`の出発時刻が担当）。
-
-`WindBearingSlider`自体は本コンポーネント表に無い`features/conditions/TravelBearingControl/
-TravelBearingControl.tsx`（`page.tsx`から直接importされ地図上に置かれるアイコンボタン）
-1箇所だけからマウントされる。走行条件の単一共有state（`useRideConditions.ts: bearingDeg`。風・勾配で
-共有、[ページ全体構成・状態管理](page-composition.md)「動的材料（風・勾配）の状態別
-表現契約」参照）を`TravelBearingControl`が受け取り、地図右上（MapLibreのズーム+/−・
-回転コントロールの直下）のアイコンボタンをトリガーにしたRadix Popoverの中で
-`WindBearingSlider`を開閉する。出発時刻・想定速度と同じ走行条件の一部として常時表示する
-（風・勾配の表示状態に依存しない）。
+## cardinalLabel.ts（角度→方位の呼び名）
 
 `cardinalLabel(bearingDeg)`（角度→方位の日本語ラベル）は、呼び名の並びを生成物
 （`mapDisplay.compassLabels`、源泉は`backend/app/domain/geo.py: COMPASS_LABELS`）から読み、区分の幅は
 その数から決める。丸め方だけを画面側に持ち、区分の境界ではbackendと同じく次の区分へ倒す（違うと境界の角度で
 食い違う）。同じ呼び名になることは、backendが入力と答えを出す表（生成物`geo-expectations.json`）をテストが全行通して確かめる。
-
-角度計算・ドラッグ処理は`RouteSettingsPanel.tsx: startBoundaryDrag`（帯グラフの境界
-ドラッグ）と同じ「pointerdown起点でwindowへ直接pointermove/upを登録する」パターンを
-踏襲する（pointer captureが環境によって確実に効くとは限らないため使わない、という同じ
-理由）。ダイヤル自体（矢印の余白を含む円全体）が当たり判定になり、円のどこを触っても
-ドラッグを開始できる——特定の小さなノブや細いリングを狙う必要が無い。矢印のタップ位置を
-即座に値へ反映する（tap-to-set）ため、ドラッグ開始の初動から値が動く。矢印キー
-（`KEY_STEP_DEG`単位）でのキーボード操作にも対応する。`WindBearingSlider.test.tsx`がキーボード操作・
-読み上げと、押した点・ドラッグから角度への換算を見る（happy-domは実寸を返さないので、ダイヤルの
-`getBoundingClientRect()`だけを差し替える）。
 
 ## RouteAxisProfile.tsx（候補ごとタブの中身: 総合難易度＋軸別内訳）
 
