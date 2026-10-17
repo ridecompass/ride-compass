@@ -68,14 +68,34 @@ export default function HardFilterPanel({
 
   return (
     <div className="flex flex-col gap-3">
+      {/* 通らない種類はほぼ触らないので、見出しとチップを1行に詰めて高さを取らない。 */}
       <div className="flex items-center gap-2">
-        <span className={textVariants({ variant: "label" })}>通らない</span>
+        <span className={cn(textVariants({ variant: "label" }), "flex-shrink-0")}>通らない</span>
         <InfoPopover triggerAriaLabel="通らない道路の説明">
           ONにした種類は経路から完全に外れます[重みづけと違い、多少難易度が高くても通る、ということが無くなります]。
         </InfoPopover>
+        <ul className={cn(legendChipsClass, "min-w-0 flex-1")}>
+          {HARD_FILTER_CHIPS.map(({ key, label }) => (
+            <li key={key} className={legendChipClass} data-checked={hardFilters[key]}>
+              <Toggle
+                variant="plain"
+                className={cn(legendChipBodyClass, "cursor-pointer")}
+                pressed={hardFilters[key]}
+                aria-label={`${label}を除外`}
+                usage="ONにした種類の道路を通らないルートを作ります。"
+                onClick={() => onHardFiltersChange({ ...hardFilters, [key]: !hardFilters[key] })}
+              >
+                <span aria-hidden="true" className={legendIconClass}>
+                  <ExcludedRoadIcon />
+                </span>
+                <span>{label}</span>
+              </Toggle>
+            </li>
+          ))}
+        </ul>
         <Button
           size="panelIcon"
-          className="ml-auto"
+          className="flex-shrink-0"
           aria-label="除外を既定値に戻す"
           disabled={!customized}
           onClick={() => {
@@ -87,25 +107,6 @@ export default function HardFilterPanel({
           <ResetDefaultsIcon />
         </Button>
       </div>
-      <ul className={legendChipsClass}>
-        {HARD_FILTER_CHIPS.map(({ key, label }) => (
-          <li key={key} className={legendChipClass} data-checked={hardFilters[key]}>
-            <Toggle
-              variant="plain"
-              className={cn(legendChipBodyClass, "cursor-pointer")}
-              pressed={hardFilters[key]}
-              aria-label={`${label}を除外`}
-              usage="ONにした種類の道路を通らないルートを作ります。"
-              onClick={() => onHardFiltersChange({ ...hardFilters, [key]: !hardFilters[key] })}
-            >
-              <span aria-hidden="true" className={legendIconClass}>
-                <ExcludedRoadIcon />
-              </span>
-              <span>{label}</span>
-            </Toggle>
-          </li>
-        ))}
-      </ul>
       <div className="flex items-center gap-2">
         <span className={textVariants({ variant: "label" })}>道ごとの避け方</span>
         <InfoPopover triggerAriaLabel="道ごとの避け方の説明">

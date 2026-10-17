@@ -16,6 +16,49 @@ export function mapOverlayEdge(edge: Edge): { [MAP_OVERLAY_EDGE_ATTRIBUTE]: Edge
 }
 
 /** 印の付いた部品が、地図の各辺から内側へどこまで覆っているか(px)。大きさの無い（隠れている）部品は数えない。 */
+/** 印の付いた部品が現れる・消える・大きさを変えるたびに、次の描画の前に`onChange`を呼ぶ（同じ描画の間の変化は1回にまとめる）。
+ * 戻り値を呼ぶと見るのをやめる。 */
+export function watchMapOverlayEdges(onChange: () => void): () => void {
+  let frame = 0;
+  const schedule = () => {
+    if (frame === 0)
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        onChange();
+      });
+  };
+  const resize = new ResizeObserver(schedule);
+  const observed = new Set<Element>();
+  const collect = () => {
+    for (const element of document.querySelectorAll(`[${MAP_OVERLAY_EDGE_ATTRIBUTE}]`)) {
+      if (observed.has(element)) continue;
+      observed.add(element);
+      resize.observe(element);
+    }
+    for (const element of observed) {
+      if (element.isConnected) continue;
+      observed.delete(element);
+      resize.unobserve(element);
+    }
+  };
+  const mutation = new MutationObserver(() => {
+    collect();
+    schedule();
+  });
+  collect();
+  mutation.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: [MAP_OVERLAY_EDGE_ATTRIBUTE],
+  });
+  return () => {
+    mutation.disconnect();
+    resize.disconnect();
+    cancelAnimationFrame(frame);
+  };
+}
+
 export function measureMapOverlayEdges(canvas: DOMRect): RouteFitObscuredPx {
   const obscured: RouteFitObscuredPx = {};
   for (const element of document.querySelectorAll(`[${MAP_OVERLAY_EDGE_ATTRIBUTE}]`)) {

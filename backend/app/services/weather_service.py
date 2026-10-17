@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import numpy as np
+from cachetools import LRUCache
 
 from app.domain.rain import StationRainMaterials
 from app.domain.msm import wind_speed_and_direction
@@ -21,16 +22,30 @@ from app.infrastructure.msm_client import MsmSeries, MsmUnavailableError
 from app.services.jma_amedas_service import load_station_rain_materials, new_rain_materials_cache
 
 
+# 同時に「今日」のパネルを開いている地点の数より大きければよい。1件は数KB。
+_CONDITIONS_CACHE_SIZE = 1024
+# 粗い格子の全点と、詳細格子の数画面ぶん（1画面の上限は`domain/wind_grid.py: WIND_GRID_DETAIL_MAX_POINTS`）を持てる数。
+# 1点が予報の時間ぶんの3系列を持つので、件数が持つメモリの大きさを決める（docs/modules/backend/weather-dynamic-layers.md）。
+_GRID_POINT_CACHE_SIZE = 5000
+
+
 class WeatherService:
     """地点の天候・予報を気象庁MSMから読み、雨の観測の材料をアメダスの履歴から読む。
 
     現在値として扱うのは常に時系列の先頭（現在時刻の正時）で、任意の時刻は指定できない。
     日の出・日没は外部に問い合わせず`domain/twilight.py`で計算する。
-    雨の材料は実体の中にしばらく持つため、組み立てる側（`api/dependencies.py`）が実体をプロセスに1つ持つ。
+    雨の材料と、予報から組み立てた応答（「今日」のパネル・風の格子の点）は実体の中に持つため、組み立てる側
+    （`api/dependencies.py`）が実体をプロセスに1つ持つ。組み立てた応答は予報の版（`msm_client.py: forecast_version`）を
+    鍵に持ち、同じ版のあいだは予報のファイルを読み直さない。
     """
 
     def __init__(self) -> None:
         self._rain_materials_cache = new_rain_materials_cache()
+        # 利用者の現在地ごとに1件。版が変わると古い版の鍵は引かれなくなり、件数の上限で追い出される。
+        self._conditions_cache: LRUCache = LRUCache(maxsize=_CONDITIONS_CACHE_SIZE)
+        # 鍵は(版, 緯度, 経度)。粗い格子と各間隔の詳細格子が同じ点を共有する（どの格子も緯度・経度0度から数えた点に乗る）。
+        self._grid_point_cache: LRUCache = LRUCache(maxsize=_GRID_POINT_CACHE_SIZE)
+        self._grid_times: tuple[tuple, list[datetime]] | None = None
 
     async def get_station_rain_materials(self, now: datetime) -> StationRainMaterials | None:
         """観測所ごとの雨の材料（`jma_amedas_service.py: load_station_rain_materials`）。地図の雨とルートの雨が同じ値を読む。"""
@@ -48,10 +63,18 @@ class WeatherService:
         return await self._read(np.array([point.latitude], dtype=float), np.array([point.longitude], dtype=float))
 
     async def get_conditions(self, point: Coordinates) -> WeatherConditions | None:
+        version = msm_client.forecast_version()
+        key = (version, point.latitude, point.longitude)
+        cached = self._conditions_cache.get(key)
+        if cached is not None:
+            return cached
         series = await self._read_point(point)
         if series is None:
             return None
-        return self._conditions_from_series(point, series)
+        conditions = self._conditions_from_series(point, series)
+        if msm_client.forecast_version() == version:
+            self._conditions_cache[key] = conditions
+        return conditions
 
     async def get_departure_wind(self, point: Coordinates) -> DepartureWind | None:
         """地点の時系列の先頭（現在時刻の正時）の風。`RoadGraphEngine`が時別の系列の代わりに使う。読めなければNone。"""
@@ -89,10 +112,41 @@ class WeatherService:
         """複数地点の時間別風向・風速・降水量をまとめて取得する。特定時刻1点へ収束させず、
         予報期間ぶんの時系列をそのまま返す。
 
-        MSMは全地点を1回で読むため、読めないときは地点ごとではなく格子ごと読めない（None）。
+        同じ版で組み立てた点は使い回し、無い点だけを1回で読む。MSMは全地点を1回で読むため、読めないときは地点ごとでは
+        なく格子ごと読めない（None）。
         """
         if not points:
             return WindGridResponse(times=[], points=[])
+        version = msm_client.forecast_version()
+        if self._grid_times is not None and self._grid_times[0] == version:
+            cached = [self._grid_point_cache.get((version, point.latitude, point.longitude)) for point in points]
+            missing = [point for point, found in zip(points, cached) if found is None]
+            if not missing:
+                return WindGridResponse(times=self._grid_times[1], points=cached)
+        else:
+            cached = [None] * len(points)
+            missing = points
+
+        built = await self._build_wind_grid(missing)
+        if built is None:
+            return None
+        times, fresh = built
+        if msm_client.forecast_version() != version:
+            # 読む間に版が変わった。読んだ点はどの版のものか決まらないので残さず、残っていた点とも混ぜない。
+            if len(missing) < len(points):
+                built = await self._build_wind_grid(points)
+                if built is None:
+                    return None
+                times, fresh = built
+            return WindGridResponse(times=times, points=fresh)
+        self._grid_times = (version, times)
+        for grid_point in fresh:
+            self._grid_point_cache[(version, grid_point.latitude, grid_point.longitude)] = grid_point
+        fresh_points = iter(fresh)
+        results = [found if found is not None else next(fresh_points) for found in cached]
+        return WindGridResponse(times=times, points=results)
+
+    async def _build_wind_grid(self, points: list[Coordinates]) -> tuple[list[datetime], list[WindGridPoint]] | None:
         series = await self._read(
             np.array([point.latitude for point in points], dtype=float),
             np.array([point.longitude for point in points], dtype=float),
@@ -106,7 +160,7 @@ class WeatherService:
         speeds = rounded_rows(speed, WIND_SPEED_MS_DECIMALS)
         directions = rounded_rows(direction, WIND_DIRECTION_DEG_DECIMALS)
         precipitations = rounded_rows(series.precipitation_mm, PRECIPITATION_MM_DECIMALS)
-        results = [
+        return series.times, [
             WindGridPoint(
                 latitude=point.latitude,
                 longitude=point.longitude,
@@ -116,7 +170,6 @@ class WeatherService:
             )
             for index, point in enumerate(points)
         ]
-        return WindGridResponse(times=series.times, points=results)
 
     def _conditions_from_series(self, point: Coordinates, series: MsmSeries) -> WeatherConditions:
         """MSMの時系列（1地点ぶん）から「今日」のパネル向けの値を組み立てる。時系列の先頭（現在時刻の

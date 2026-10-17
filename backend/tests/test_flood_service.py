@@ -8,6 +8,7 @@
 - 地点から区域を引くこと → `test_jma_area_boundaries.py`
 """
 
+import asyncio
 import logging
 
 import pytest
@@ -16,6 +17,7 @@ from shapely.geometry import Point, shape
 from app.infrastructure.flood_client import new_flood_cache
 from app.infrastructure.jma_warning_client import new_area_data_cache
 from app.services.flood_service import FloodService
+from tests.fake_http import client_for
 from tests.jma_area_fixtures import CHIYODA_POINT, CLASS10_CODE, CLASS20_CODE, OFFSHORE_POINT, area_lookup_upstream
 
 
@@ -26,7 +28,7 @@ def _holds(area, point) -> bool:
 
 def _service(boundary_path, **kwargs) -> FloodService:
     return FloodService(
-        area_lookup_upstream(boundary_path, **kwargs),
+        client_for(area_lookup_upstream(boundary_path, **kwargs)),
         area_data_cache=new_area_data_cache(),
         flood_cache=new_flood_cache(),
     )
@@ -107,3 +109,14 @@ async def test_get_forecasts_collects_every_active_forecast_and_leaves_out_the_r
         ("830304004400", "severe_warning", "神田川氾濫危険警報"),
         ("830304004900", "advisory", "善福寺川氾濫注意報"),
     ]
+
+
+async def test_points_asked_at_once_fetch_each_document_once(boundary_path):
+    """同時に開いた画面の問い合わせは、地域マスタと洪水予報を気象庁へ1回ずつだけ取りに行く。"""
+    upstream = area_lookup_upstream(boundary_path, flood_documents=[])
+    service = FloodService(client_for(upstream), area_data_cache=new_area_data_cache(), flood_cache=new_flood_cache())
+
+    await asyncio.gather(service.get_forecasts(CHIYODA_POINT), service.get_forecasts(CHIYODA_POINT))
+
+    urls = [str(call.request.url) for call in upstream.calls]
+    assert sorted(urls) == sorted(set(urls)) and len(urls) == 2

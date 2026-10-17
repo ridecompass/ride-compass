@@ -232,3 +232,91 @@ async def test_get_wind_forecast_lattice_returns_none_when_msm_unavailable(monke
     _patch_unavailable(monkeypatch)
 
     assert await WeatherService().get_wind_forecast_lattice(ROUTE_BBOX) is None
+
+
+class _Forecast:
+    """置き場の予報。`sync`で中身を入れ替え、置き場のチャンクを書き直す（同期と同じく版が変わる）。
+
+    読み出しは`read_series`の代役で、その時点の中身（東西の風`u`）を全地点へ返す。`sync`せずに`u`だけを変えると、
+    置き場は同じまま読み出しの結果だけが変わる——2回目の要求が読み直していれば、変えた値が応答に出る。
+    """
+
+    def __init__(self, monkeypatch, tmp_path):
+        self.directory = tmp_path / "msm"
+        monkeypatch.setattr(msm_client, "MSM_DIR", self.directory)
+        monkeypatch.setattr(msm_client, "read_series", self._read_series)
+        self.u = 1.0
+        self.during_read = None
+        self._syncs = 0
+        self.sync(1.0)
+
+    def sync(self, u: float) -> None:
+        self.u = u
+        self._syncs += 1
+        chunk = self.directory / "wind_u_component_10m" / "chunk_1.om"
+        chunk.parent.mkdir(parents=True, exist_ok=True)
+        replacement = chunk.with_suffix(".tmp")
+        replacement.write_bytes(b"x" * self._syncs)
+        replacement.replace(chunk)
+
+    async def _read_series(self, latitudes, longitudes):
+        series = _series(times=["2026-01-01T09:00"], u=[self.u], count=len(latitudes))
+        if self.during_read is not None:
+            self.during_read()
+        return series
+
+
+def _speeds(grid):
+    return [point.wind_speed_ms[0] for point in grid.points]
+
+
+async def test_the_panel_is_built_once_per_synced_forecast(monkeypatch, tmp_path, clock):
+    """同じ予報のあいだの2回目は読み直さず、同期で予報が変わると作り直す。"""
+    forecast = _Forecast(monkeypatch, tmp_path)
+    service = WeatherService()
+    first = await service.get_conditions(POINT)
+
+    forecast.u = 5.0
+    assert await service.get_conditions(POINT) == first
+
+    forecast.sync(5.0)
+    assert (await service.get_conditions(POINT)).wind_speed_max_ms == 5.0
+
+
+async def test_grid_points_are_built_once_per_synced_forecast_and_shared_between_grids(monkeypatch, tmp_path, clock):
+    """同じ予報のあいだ、組み立てた点は粗い格子・詳細格子をまたいで使い回し、無い点だけを読む。"""
+    forecast = _Forecast(monkeypatch, tmp_path)
+    service = WeatherService()
+    assert _speeds(await service.get_wind_grid([POINT, OTHER_POINT])) == [1.0, 1.0]
+
+    forecast.u = 5.0
+    third = Coordinates(latitude=35.2, longitude=139.2)
+    assert _speeds(await service.get_wind_grid([OTHER_POINT, third])) == [1.0, 5.0]
+
+    forecast.sync(7.0)
+    assert _speeds(await service.get_wind_grid([POINT, OTHER_POINT, third])) == [7.0, 7.0, 7.0]
+
+
+async def test_the_grid_is_rebuilt_when_the_hour_turns(monkeypatch, tmp_path, clock):
+    """予報は今の正時から読むので、正時をまたぐと先頭の時刻が変わる。前の正時の応答を返し続けると、過ぎた時刻から始まる。"""
+    forecast = _Forecast(monkeypatch, tmp_path)
+    service = WeatherService()
+    await service.get_wind_grid([POINT])
+
+    forecast.u = 5.0
+    clock.tick(3600)
+    assert _speeds(await service.get_wind_grid([POINT])) == [5.0]
+
+
+async def test_points_read_while_the_forecast_is_synced_are_not_kept(monkeypatch, tmp_path, clock):
+    """読む間に同期が入った点は、どちらの予報の値か決まらない。残すと、次の同期まで混ざった値を配り続ける。"""
+    forecast = _Forecast(monkeypatch, tmp_path)
+    service = WeatherService()
+    await service.get_wind_grid([POINT])
+    forecast.during_read = lambda: forecast.sync(7.0)
+
+    assert _speeds(await service.get_wind_grid([POINT, OTHER_POINT])) == [7.0, 7.0]
+
+    forecast.during_read = None
+    forecast.u = 9.0
+    assert _speeds(await service.get_wind_grid([POINT, OTHER_POINT])) == [9.0, 9.0]

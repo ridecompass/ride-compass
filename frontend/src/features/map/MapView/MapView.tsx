@@ -66,7 +66,7 @@ import MapNavigationControl from "@/features/map/MapNavigationControl/MapNavigat
 import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
 import { registerJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
 import { debugLog } from "@/lib/debugLog";
-import { measureMapOverlayEdges, type RouteFitObscuredPx } from "@/lib/mapOverlayEdges";
+import { measureMapOverlayEdges, watchMapOverlayEdges, type RouteFitObscuredPx } from "@/lib/mapOverlayEdges";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
@@ -165,16 +165,31 @@ function visiblePadding(map: MapLibreMap) {
   );
 }
 
-function fitBoundsToRoutes(map: MapLibreMap, routes: RouteCandidate[]) {
-  if (routes.length === 0) return;
+// 利用者が地図や画面に触れたとみなす入力。ここから先は、利用者が見たい所を自分で決めている。
+const USER_INPUT_EVENTS = ["pointerdown", "wheel", "keydown"] as const;
 
+/** ルートを今の空きに収め、利用者が地図や画面に触れるまでは、地図に重なる部品が変わるたびに今の空きで収め直す（候補が出た
+ * 瞬間に下にあるのは生成を押したシートで、候補を見るシートが開いて高さが決まるのは収めたあと）。戻り値を呼ぶと収め直しをやめる。 */
+function keepRoutesFitted(map: MapLibreMap, routes: RouteCandidate[]): () => void {
   const bounds = computeRouteBounds(routes);
-
-  runWhenStyleReady(map, () => {
-    const padding = visiblePadding(map);
-    debugLog("map:viewport", "ルートを収める", { padding });
-    map.fitBounds(bounds, { padding });
-  });
+  let lastPadding = "";
+  const fit = () =>
+    runWhenStyleReady(map, () => {
+      const padding = visiblePadding(map);
+      const key = JSON.stringify(padding);
+      if (key === lastPadding) return;
+      lastPadding = key;
+      debugLog("map:viewport", "ルートを収める", { padding });
+      map.fitBounds(bounds, { padding });
+    });
+  fit();
+  const stopWatching = watchMapOverlayEdges(fit);
+  const stop = () => {
+    stopWatching();
+    for (const type of USER_INPUT_EVENTS) window.removeEventListener(type, stop, true);
+  };
+  for (const type of USER_INPUT_EVENTS) window.addEventListener(type, stop, true);
+  return stop;
 }
 
 // 区間の小窓を、押した区間の印（下端を地点に置いた絵）の上へ出すずれ。
@@ -775,9 +790,8 @@ export default function MapView({
   // ルートを収めるのは候補の一覧が変わったときだけ（選び直すたびに収めると、利用者が動かした地図を打ち消す）。
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-
-    fitBoundsToRoutes(map, routes);
+    if (!map || routes.length === 0) return;
+    return keepRoutesFitted(map, routes);
   }, [routes]);
 
   // 「地図の表示を再描画」: スタイルを取り直し、消えたレイヤーをいまの宣言から当て直す（押した人の地図だけ）。
