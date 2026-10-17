@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
-import { ENABLED_AXIS_WEIGHT, WEIGHT_STEP, clampBoundaryDrag, totalWeight } from "@/features/route/routeWeightShare";
+import { ENABLED_AXIS_WEIGHT, clampBoundaryDrag, totalWeight, weightStep } from "@/features/route/routeWeightShare";
 import { axisCatalogFetchFailure, retryAxisCatalogFetch, useAxisCatalog } from "@/hooks/useAxisCatalog";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import type { RoutePreferenceWeights } from "@/types/route";
@@ -100,7 +100,7 @@ export default function RouteSettingsPanel({
     let applied: { weightA: number; weightB: number } | null = null;
     const handleWindowPointerMove = (moveEvent: PointerEvent) => {
       const rawDelta = (moveEvent.clientX - startClientX) / pixelsPerUnit;
-      const next = clampBoundaryDrag(startWeightA, startWeightB, rawDelta);
+      const next = clampBoundaryDrag(startWeightA, startWeightB, rawDelta, total);
       // 刻みに届かない動き・端で止まっている間は、保存と描き直しを繰り返さない。最初の動きは値が変わらなくても通す
       // （動かした2軸の今の値を、有効に戻すときの値として覚える）。
       if (applied !== null && next.weightA === applied.weightA && next.weightB === applied.weightB) return;
@@ -125,11 +125,11 @@ export default function RouteSettingsPanel({
     weightB: number,
   ) {
     let rawDelta = 0;
-    if (e.key === "ArrowLeft" || e.key === "ArrowDown") rawDelta = -WEIGHT_STEP;
-    else if (e.key === "ArrowRight" || e.key === "ArrowUp") rawDelta = WEIGHT_STEP;
+    if (e.key === "ArrowLeft" || e.key === "ArrowDown") rawDelta = -weightStep(total);
+    else if (e.key === "ArrowRight" || e.key === "ArrowUp") rawDelta = weightStep(total);
     else return;
     e.preventDefault();
-    const next = clampBoundaryDrag(weightA, weightB, rawDelta);
+    const next = clampBoundaryDrag(weightA, weightB, rawDelta, total);
     if (next.weightA === weightA && next.weightB === weightB) return;
     handlePairWeightChange(axisIdA, next.weightA, axisIdB, next.weightB);
   }

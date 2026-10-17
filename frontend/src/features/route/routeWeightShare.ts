@@ -2,18 +2,19 @@ import { roundToDigits } from "@/lib/numberFormat";
 import type { RoutePreferenceWeights } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-// 重み配分の調整量の刻みと、1軸が取りうる重みの下限。下限は0ではない——0まで下げると
-// その軸は「チェックOFF」（weight>0が有効の判定基準）に化けるため、配分の調整操作で
-// 軸の有効/無効を兼ねさせない。
-export const WEIGHT_STEP = 0.01;
-const MIN_AXIS_WEIGHT = WEIGHT_STEP;
+// 重み配分の調整量の刻みは、有効な軸の重みの合計に対する割合で決める。帯とチップは重みを合計に対する%で出すので、
+// 重みの値で刻むと、合計しだいで1刻みが何%にもなる。1軸の重みの下限も1刻みで、0ではない——0まで下げるとその軸は
+// 「チェックOFF」（weight>0が有効の判定基準）に化けるため、配分の調整操作で軸の有効/無効を兼ねさせない。
+const STEP_SHARE = 0.01;
 // 境界を刻みの数へ直すときの浮動小数点の誤差の許し（0.29 / 0.01 = 28.999…を29と読む）。
 const STEP_EPSILON = 1e-9;
+// 動かした後の重みを丸める桁。合計が小さく1刻みが細かくても、刻みの倍数を崩さない桁にする。
+const WEIGHT_DIGITS = 6;
 /** 既定の重みが0の軸を入れたときの重み（backendの宣言）。 */
 export const ENABLED_AXIS_WEIGHT = routeGenerateConfig.enabled_axis_weight;
 
 function roundToStep(value: number): number {
-  return roundToDigits(value, 2);
+  return roundToDigits(value, WEIGHT_DIGITS);
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -24,9 +25,14 @@ export function totalWeight(weights: RoutePreferenceWeights): number {
   return Object.values(weights).reduce((sum, w) => sum + (w > 0 ? w : 0), 0);
 }
 
+/** 区切りを動かす1刻み（重みの単位）。有効な軸の重みの合計の1%で、帯とチップの%がいつも1ずつ動く。 */
+export function weightStep(total: number): number {
+  return total * STEP_SHARE;
+}
+
 /** 帯グラフの境界（隣り合う2軸の重み合計を変えずに一方から他方へ移す）ドラッグで、
- * 生の移動量（重み単位）を、両軸が下限MIN_AXIS_WEIGHT以上に収まるようクランプし、WEIGHT_STEP単位へ
- * 丸めた最終的な2軸ぶんの新しい重みを返す。
+ * 生の移動量（重み単位）を、両軸が下限（1刻み）以上に収まるようクランプし、1刻み（`weightStep(total)`。
+ * `total`は有効な軸の重みの合計）の倍数へ丸めた最終的な2軸ぶんの新しい重みを返す。
  * 丸めは範囲の内側の刻みへ寄せる（近い刻みへ丸めると下限をわずかに割る）。
  * 合計（weightA+weightB）は常に変わらない——丸め後もdeltaを共有するため浮動小数点誤差で
  * ずれない。 */
@@ -34,11 +40,13 @@ export function clampBoundaryDrag(
   weightA: number,
   weightB: number,
   rawDelta: number,
+  total: number,
 ): { weightA: number; weightB: number } {
-  const minSteps = Math.ceil((MIN_AXIS_WEIGHT - weightA) / WEIGHT_STEP - STEP_EPSILON);
-  const maxSteps = Math.floor((weightB - MIN_AXIS_WEIGHT) / WEIGHT_STEP + STEP_EPSILON);
-  const steps = clamp(Math.round(rawDelta / WEIGHT_STEP), minSteps, maxSteps);
-  const steppedDelta = steps * WEIGHT_STEP;
+  const step = weightStep(total);
+  const minSteps = Math.ceil((step - weightA) / step - STEP_EPSILON);
+  const maxSteps = Math.floor((weightB - step) / step + STEP_EPSILON);
+  const steps = clamp(Math.round(rawDelta / step), minSteps, maxSteps);
+  const steppedDelta = steps * step;
   return {
     weightA: roundToStep(weightA + steppedDelta),
     weightB: roundToStep(weightB - steppedDelta),

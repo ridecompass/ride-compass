@@ -24,7 +24,7 @@
 | `features/route/SavedConditionsPanel/SavedConditionsPanel.tsx` | 「条件」タブの1行目に置くアイコンの「いまの設定を保存」（`SaveConditionsButton`。窓に保存する条件・出発地の扱いの切り替え・重み・除外と、名前の欄・保存のボタン）と、「保存」タブの「設定」の中身の保存した設定の一覧（行は名前と、アイコンの「呼び出す」「消す」。呼び出すは窓で中身を見せて「反映する」で呼び出し、消すは確認の窓で「消す」を押すと消す。無ければ無いと出し、保存の仕方は(i)の奥。下記「保存した条件」） |
 | `features/route/useSavedConditions.ts` | 保存した条件の一覧（この端末の`localStorage`）と、いまの条件（`useGenerationConditions.ts: snapshot`）の保存（出発地を固定するかを受け取る）・呼び出し・削除。呼び出すと`useGenerationConditions.ts: restore`で条件を入れ替え、出発地は位置の持ち主（`hooks/useLocation.ts`）へ渡す |
 | `features/route/savedConditions.ts` | 生成の条件の形（`GenerationConditionsSnapshot`。いまの条件・保存・呼び出しが同じ形を使い、保存の1件はそれに名前と出発地を足す）と、保存値の読み方（項目ごとの読み方の表で読み、今の画面が受け付けない件だけを捨てる）・仮の名前・何が保存されるかの説明（`describeConditions`。重みは軸ごとの割合）・同じ名前の上書き。距離・候補数として受け付ける範囲（`acceptedDistanceInput`・`acceptedMaxRoutesInput`）もここが持ち、`useGenerationConditions.ts`の保存値の読み直しと共有する。距離の刻み（`DISTANCE_STEP_KM`。5km刻みで、下限も1刻み分）は画面だけの値で、`RouteForm`のルーラーのコマも読み、保存値は刻みの近い方へ寄せて読む。候補数の下限・上限は生成物`route-generate-config.json`から読む |
-| `features/route/routeWeightShare.ts` | 重み配分の純関数（帯グラフの境界ドラッグ`clampBoundaryDrag`・刻みと上下限） |
+| `features/route/routeWeightShare.ts` | 重み配分の純関数（帯グラフの境界ドラッグ`clampBoundaryDrag`・合計の1%の刻み`weightStep`と下限） |
 | `features/conditions/WindBearingSlider/WindBearingSlider.tsx` | 走行方位の指定コンパスダイヤル（`TravelBearingControl`から使われる。単体としての設置場所は[ページ全体構成・状態管理](page-composition.md)参照） |
 | `lib/cardinalLabel.ts` | 角度を方位の呼び名へ（走行方位のダイヤルと区間の風の両方が使う）と、気象の風向（吹いてくる向き）を矢印が指す吹いていく向きへ（`downwindDeg`。地図の風の矢印が使う）と、それを回った地図の上の向きへ（`downwindOnMapDeg`。走りの帯と天気欄の矢印が使う）。呼び名の並びはbackend（`domain/geo.py: COMPASS_LABELS`）が配り、丸めは画面が持つ。区分の境界を含む角度でbackendと同じ呼び名になることは、backendが出す表（生成物`geo-expectations.json`）をテストが通して確かめる |
 | `features/route/RouteAxisProfile/RouteAxisProfile.tsx` | 候補ごとのタブの中身（公開軸すべての軸別難易度一覧＋「重み付き寄与度」内訳）。地図の色分けを選ぶ操作はここには無い（`LensControl`）。候補一覧のタブ自体は`RouteOutcome.tsx`が組み立てる |
@@ -106,8 +106,9 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
 - 重み配分バー（帯グラフ）は表示専用ではなく、
   隣り合う2区間の境界（`role="slider"`のハンドル、幅16px）をポインタドラッグまたは
   矢印キーで操作すると、その両隣の2軸間でだけ重みが移動する（他の軸・2軸の合計は
-  変わらない、`clampBoundaryDrag`が重み`WEIGHT_STEP`以上へクランプする。1軸へ寄せられる割合に上限は無く、
-  引かれる側が0（無効）になる手前で止まる）。
+  変わらない）。動く量は1刻み（`weightStep`。有効な軸の重みの合計の1%）の倍数で、矢印キーの1押しが1刻み。帯とチップは
+  重みを合計に対する%で出すので、合計がいくつでも%が1ずつ動く。`clampBoundaryDrag`が重みを1刻み以上へクランプする
+  （1軸へ寄せられる割合に上限は無く、引かれる側が0（無効）になる手前の1%で止まる）。
   ハンドル自身だけに`touch-action: none`を絞ってあり、帯グラフの他の部分（セグメント
   本体）はスクロールジェスチャーを妨げない。**重みの調整手段はこの帯グラフの
   ドラッグ・矢印キー操作のみ**。ドラッグ中の値は帯の区間とチップの%がその場で動いて
