@@ -119,7 +119,11 @@ function OpenBottomSheet({
     const viewportHeight = window.innerHeight;
     const needed = fitHeightOf(sheet, body);
     if (viewportHeight <= 0 || sheet.clientHeight <= 0 || needed <= 0) return;
-    setWorkingHeightVh(clampSheetHeightVh(Math.ceil((needed / viewportHeight) * 100)));
+    const fittedVh = clampSheetHeightVh(Math.ceil((needed / viewportHeight) * 100));
+    // 描き直しを待たずに書く。同じ描画で開いた他の部品の effect（地図がルートを空きへ収める等）は、描き直しの前に流れて
+    // シートの高さを読む。
+    sheet.style.height = `${fittedVh}vh`;
+    setWorkingHeightVh(fittedVh);
   }, [autoFitHeight, fitKey]);
   // つまみのドラッグ。始めた指（pointerId）の動きだけを見る（別の指のmove/upに反応しない）。
   const dragRef = useRef<{ pointerId: number; startClientY: number; startHeightVh: number } | null>(null);
