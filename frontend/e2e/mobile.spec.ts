@@ -178,8 +178,7 @@ test("モバイル: 生成したルートを地図へ収めると、開いた「
   }, NORTH_SOUTH_ROUTE);
   const sheetTop = sheetBox?.y ?? 0;
   expect(onScreen.filter(({ x, y }) => x < 0 || x > MOBILE_VIEWPORT.width || y < 0 || y > sheetTop)).toEqual([]);
-  // 収めるのは生成を押した「ルート設定」のシートが「ルート結果」へ切り替わる前なので、落ち着いたあとの空きで収め直して
-  // いなければ、ルートは空きの上の方に小さく残る。空きは上の部品の下端からシートの上端まで。
+  // 空き（上の部品の下端からシートの上端まで）を埋めていること。中身へ合わせる前のシートの高さで収めると、空きの上の方に小さく残る。
   const freeTop = await page.evaluate(() =>
     Math.max(
       0,

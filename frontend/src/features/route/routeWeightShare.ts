@@ -6,16 +6,12 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 // 重みの値で刻むと、合計しだいで1刻みが何%にもなる。1軸の重みの下限も1刻みで、0ではない——0まで下げるとその軸は
 // 「チェックOFF」（weight>0が有効の判定基準）に化けるため、配分の調整操作で軸の有効/無効を兼ねさせない。
 const STEP_SHARE = 0.01;
-// 境界を刻みの数へ直すときの浮動小数点の誤差の許し（0.29 / 0.01 = 28.999…を29と読む）。
+// 境界を刻みの数へ直すときの浮動小数点の誤差の許し（28.999…を29と読む）。
 const STEP_EPSILON = 1e-9;
-// 動かした後の重みを丸める桁。合計が小さく1刻みが細かくても、刻みの倍数を崩さない桁にする。
+// 動かした後の重みを丸める桁（浮動小数点の端数を落とす）。合計が小さく1刻みが細かくても、動かした量を崩さない桁にする。
 const WEIGHT_DIGITS = 6;
 /** 既定の重みが0の軸を入れたときの重み（backendの宣言）。 */
 export const ENABLED_AXIS_WEIGHT = routeGenerateConfig.enabled_axis_weight;
-
-function roundToStep(value: number): number {
-  return roundToDigits(value, WEIGHT_DIGITS);
-}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -25,7 +21,7 @@ export function totalWeight(weights: RoutePreferenceWeights): number {
   return Object.values(weights).reduce((sum, w) => sum + (w > 0 ? w : 0), 0);
 }
 
-/** 区切りを動かす1刻み（重みの単位）。有効な軸の重みの合計の1%で、帯とチップの%がいつも1ずつ動く。 */
+/** 区切りを動かす1刻み（重みの単位）。 */
 export function weightStep(total: number): number {
   return total * STEP_SHARE;
 }
@@ -48,7 +44,7 @@ export function clampBoundaryDrag(
   const steps = clamp(Math.round(rawDelta / step), minSteps, maxSteps);
   const steppedDelta = steps * step;
   return {
-    weightA: roundToStep(weightA + steppedDelta),
-    weightB: roundToStep(weightB - steppedDelta),
+    weightA: roundToDigits(weightA + steppedDelta, WEIGHT_DIGITS),
+    weightB: roundToDigits(weightB - steppedDelta, WEIGHT_DIGITS),
   };
 }
