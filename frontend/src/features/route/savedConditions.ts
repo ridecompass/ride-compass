@@ -30,15 +30,19 @@ export interface SavedCondition extends GenerationConditionsSnapshot {
   origin: Coordinates | null;
 }
 
-/** 距離の入力の下限（km）。backendは0より大きい距離を受け付け、画面は1km刻みで選ばせるので、その最小の値。 */
-export const MIN_DISTANCE_KM = 1;
+/** 距離の刻み（km）。backendは0より大きい距離を受け付けるが、画面は狙った値へ合わせやすいよう、この刻みで選ばせる。 */
+export const DISTANCE_STEP_KM = 5;
 
-/** 距離の入力として受け付ける値か（画面の範囲内の数値）。範囲が縮んだ後でも、範囲外の距離が復元されて送られない。 */
+/** 距離の入力の下限（km）。刻みの最小の値。 */
+export const MIN_DISTANCE_KM = DISTANCE_STEP_KM;
+
+/** 距離の入力として受け付ける値か。0より大きく上限以下の数なら、画面の刻みの近い方へ寄せて受け付ける（1km刻みだった頃の
+ * 保存値も読める）。範囲が縮んだ後でも、範囲外の距離が復元されて送られない。 */
 export function acceptedDistanceInput(raw: string): string | null {
   const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed >= MIN_DISTANCE_KM && parsed <= routeGenerateConfig.max_distance_km
-    ? raw
-    : null;
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > routeGenerateConfig.max_distance_km) return null;
+  const snapped = Math.round(parsed / DISTANCE_STEP_KM) * DISTANCE_STEP_KM;
+  return String(Math.min(Math.max(snapped, MIN_DISTANCE_KM), routeGenerateConfig.max_distance_km));
 }
 
 /** 候補数の入力として受け付ける値か。 */

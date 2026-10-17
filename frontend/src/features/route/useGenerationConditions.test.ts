@@ -215,15 +215,22 @@ describe("距離と候補数", () => {
   });
 
   it.each([
-    { label: "1kmちょうど", saved: "1", accepted: true },
-    { label: "上限ちょうど", saved: String(routeGenerateConfig.max_distance_km), accepted: true },
-    { label: "1kmより短い", saved: "0.9", accepted: false },
-    { label: "上限より長い", saved: String(routeGenerateConfig.max_distance_km + 1), accepted: false },
-    { label: "数でない", saved: "abc", accepted: false },
-  ])("距離の保存値は範囲の中だけを受け入れる（$label）", ({ saved, accepted }) => {
+    { label: "5km刻みの値", saved: "45", read: "45" },
+    {
+      label: "上限ちょうど",
+      saved: String(routeGenerateConfig.max_distance_km),
+      read: String(routeGenerateConfig.max_distance_km),
+    },
+    { label: "1km刻みだった頃の値は近い方の刻みへ（下へ）", saved: "37", read: "35" },
+    { label: "1km刻みだった頃の値は近い方の刻みへ（上へ）", saved: "38", read: "40" },
+    { label: "最初の刻みより短い", saved: "1", read: "5" },
+    { label: "0km", saved: "0", read: "30" },
+    { label: "上限より長い", saved: String(routeGenerateConfig.max_distance_km + 1), read: "30" },
+    { label: "数でない", saved: "abc", read: "30" },
+  ])("距離の保存値は、範囲の中なら5km刻みへ寄せて受け入れ、外なら既定の30kmにする（$label）", ({ saved, read }) => {
     window.localStorage.setItem("ridecompass:distance-km", saved);
 
-    expect(renderConditions().result.current.distanceInput).toBe(accepted ? saved : "30");
+    expect(renderConditions().result.current.distanceInput).toBe(read);
   });
 
   it.each([

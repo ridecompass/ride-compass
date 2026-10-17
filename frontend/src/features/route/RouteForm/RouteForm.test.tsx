@@ -232,6 +232,19 @@ describe("RouteForm 全長の目標", () => {
     },
   );
 
+  it("スライダーは5kmから上限まで5km刻みで止まり、刻みごとに目盛を付ける", () => {
+    renderForm();
+
+    const slider = screen.getByRole("slider", { name: "全長の目標" });
+    expect(slider).toHaveAttribute("min", "5");
+    expect(slider).toHaveAttribute("max", String(routeGenerateConfig.max_distance_km));
+    expect(slider).toHaveAttribute("step", "5");
+    const marks = [...document.querySelectorAll(`datalist#${CSS.escape(slider.getAttribute("list") ?? "")} option`)];
+    expect(marks.map((mark) => Number(mark.getAttribute("value")))).toEqual(
+      Array.from({ length: routeGenerateConfig.max_distance_km / 5 }, (_, i) => (i + 1) * 5),
+    );
+  });
+
   it("スライダーを動かすと、選んだ値を文字列のまま上げる", () => {
     const { setDistanceInput } = renderForm({ distanceInput: "30" });
 

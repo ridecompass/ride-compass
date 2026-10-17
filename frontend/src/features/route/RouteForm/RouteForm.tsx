@@ -1,10 +1,11 @@
 "use client";
 
+import { useId } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import type { Coordinates, PinRole, PlaceCandidate } from "@/types/route";
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import { MIN_DISTANCE_KM } from "@/features/route/savedConditions";
+import { DISTANCE_STEP_KM, MIN_DISTANCE_KM } from "@/features/route/savedConditions";
 import SavedPlacesPanel from "@/features/route/SavedPlacesPanel/SavedPlacesPanel";
 import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
 import RoutePoints from "./RoutePoints";
@@ -73,6 +74,11 @@ interface RouteFormProps {
 
 const MAX_DISTANCE_KM = routeGenerateConfig.max_distance_km;
 const DISTANCE_TOLERANCE_KM = routeGenerateConfig.default_distance_tolerance_km;
+/** スライダーの目盛。止まる刻みごとに付ける。 */
+const DISTANCE_MARKS_KM = Array.from(
+  { length: Math.floor((MAX_DISTANCE_KM - MIN_DISTANCE_KM) / DISTANCE_STEP_KM) + 1 },
+  (_, i) => MIN_DISTANCE_KM + i * DISTANCE_STEP_KM,
+);
 const MIN_ROUTES = routeGenerateConfig.min_routes;
 const MAX_ROUTES = routeGenerateConfig.max_routes;
 
@@ -107,6 +113,7 @@ export default function RouteForm({
   const { distanceTargeted, setDistanceTargeted, distanceInput, setDistanceInput, maxRoutesInput, setMaxRoutesInput } =
     conditions;
   const distanceToggleName = distanceTargeted ? "全長の目標をやめる" : "全長の目標を決める";
+  const distanceMarksId = useId();
 
   // 範囲の端ではボタンを押せなくするので、足した値は範囲を出ない。
   function stepMaxRoutes(delta: number) {
@@ -116,7 +123,7 @@ export default function RouteForm({
   return (
     <div>
       <KeptTabContent value="generate">
-        {/* 全長の目標と候補数を1行に並べ、パネルの縦幅を詰める。スライダーが最小の幅を割る狭い幅では、候補数を下の行へ
+        {/* 全長の目標と候補数を1行に並べ、パネルの縦幅を詰める。スライダーが刻みを指で選べる最小の幅を割る狭い幅では、候補数を下の行へ
             回す。全長の目標を外している間もスライダーと値は出したまま薄くする（入れ直すと前の値に戻ることが見える）。 */}
         <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
           <div className="flex flex-1 items-center gap-2">
@@ -136,13 +143,19 @@ export default function RouteForm({
               type="range"
               min={MIN_DISTANCE_KM}
               max={MAX_DISTANCE_KM}
-              step={1}
+              step={DISTANCE_STEP_KM}
+              list={distanceMarksId}
               value={distanceInput}
               disabled={!distanceTargeted}
               onChange={(e) => setDistanceInput(e.target.value)}
-              className="h-6 w-12 min-w-12 flex-1 disabled:opacity-40"
+              className="h-6 w-48 min-w-48 flex-1 disabled:opacity-40"
               data-usage="ルート全体の長さの目標を決めます。"
             />
+            <datalist id={distanceMarksId}>
+              {DISTANCE_MARKS_KM.map((km) => (
+                <option key={km} value={km} />
+              ))}
+            </datalist>
             <span
               className={cn("min-w-[3.5em] flex-shrink-0 text-right tabular-nums", !distanceTargeted && "opacity-40")}
             >
