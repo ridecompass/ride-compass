@@ -9,6 +9,8 @@ import { catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";
 import { jst } from "@/testing/jst";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
+import { LENS_LINK_DESCRIPTION } from "@/features/conditions/lensLink";
+
 import RideConditionBar from "./RideConditionBar";
 
 // 時刻のルーラーのドラッグはEmbla（ライブラリ）の持ち物。ここでは位置合わせを受けるだけの代役にする。
@@ -44,6 +46,8 @@ function renderBar(overrides: Partial<Props> = {}) {
     onDepartureNow: vi.fn(),
     speedKmh: 20,
     onSpeedKmhChange: vi.fn(),
+    linkedDeparture: false,
+    linkedSpeed: false,
     ...overrides,
   };
   render(<RideConditionBar {...props} />);
@@ -188,5 +192,19 @@ describe("RideConditionBar 想定速度", () => {
     // 軸カタログが届いてから確かめる（届く前も文を出さないので、届く前に見ると引けたかを見分けない）。
     await waitFor(() => expect(getQueryClient().isFetching()).toBe(0));
     expect(screen.queryByText(/標準値で計算します/)).not.toBeInTheDocument();
+  });
+});
+
+describe("RideConditionBar 地図の塗りとの結び", () => {
+  it.each([
+    [{ linkedDeparture: true, linkedSpeed: false }, [LENS_LINK_DESCRIPTION, null]],
+    [{ linkedDeparture: false, linkedSpeed: true }, [null, LENS_LINK_DESCRIPTION]],
+  ])("いまの地図の塗りが決まっている条件（%j）のボタンにだけ、そう添える", (linked, descriptions) => {
+    renderBar(linked);
+    const buttons = [
+      screen.getByRole("button", { name: /^出発時刻:/ }),
+      screen.getByRole("button", { name: /^想定速度:/ }),
+    ];
+    expect(buttons.map((button) => button.getAttribute("aria-description"))).toEqual(descriptions);
   });
 });

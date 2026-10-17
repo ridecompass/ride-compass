@@ -5,7 +5,7 @@ import { mapCatalogOf } from "@/testing/mapAxisCatalog";
 import { LEGEND_NO_DATA_KEY, LEGEND_UNDETERMINED_KEY } from "@/lib/mapDisplay/mapColorLegend";
 
 import { catalogEntry, dedicatedEntry } from "@/testing/catalogAxes";
-import { isRouteStyleModeId, lensConditionsLabel, lensLegend, lensOptions, lensPremises, paintedAxisId } from "./lens";
+import { isRouteStyleModeId, lensLegend, lensOptions, lensPremises, paintedAxisId } from "./lens";
 
 const catalog = mapCatalogOf([dedicatedEntry("score", [10, 20])]);
 
@@ -18,13 +18,6 @@ describe("paintedAxisId（全道路を塗る軸）", () => {
 });
 
 describe("lensLegend（レンズの凡例）", () => {
-  it("密度の軸は、ルートの前は線を塗らないので段を持たない", () => {
-    const density = mapCatalogOf([
-      dedicatedEntry("density", [10], { density_terms: [{ material_id: "m", label: "m", weight: 1 }] }),
-    ]);
-    expect(lensLegend("density", false, density)).toEqual([]);
-  });
-
   it("ルート確定後は、ルート線の色分けモードの凡例。塗る軸でない・無いモードは空", () => {
     const mode = catalog.routeStyleModes.find((entry) => entry.legend.length > 0)!;
     expect(lensLegend(mode.id, true, catalog)).toBe(mode.legend);
@@ -68,55 +61,42 @@ describe("走行方位で値が決まらない道の行", () => {
   });
 });
 
-describe("lensConditionsLabel（周りの道の色が拠る走る条件）", () => {
-  const conditional = mapCatalogOf([
-    dedicatedEntry("bearing_only", [1], { dynamic_way_value_conditions: ["bearing_deg"] }),
-    dedicatedEntry("all", [1], { dynamic_way_value_conditions: ["at", "bearing_deg", "speed_kmh"] }),
-    dedicatedEntry("none", [1]),
-  ]).dedicatedAxes;
-  const ride = { bearingDeg: 90, speedKmh: 22 };
-
-  it.each([
-    ["bearing_only", "東へ走る"],
-    ["all", "東へ走る・時速22km・19:30出発"],
-    ["none", null],
-    [null, null],
-  ])("塗っている軸（%s）が使う条件だけを並べ、使わなければnull", (axisId, expected) => {
-    expect(lensConditionsLabel(axisId, conditional, ride, "19:30")).toBe(expected);
-  });
-});
-
 describe("lensPremises（凡例に書く、周りの道の色の前提）", () => {
   const { axes } = mapCatalogOf([
-    dedicatedEntry("wind", [1], { dynamic_way_value_conditions: ["bearing_deg"] }),
     dedicatedEntry("night", [1], { time_scope: "night_only" }),
     dedicatedEntry("always", [1]),
   ]);
 
   it.each([
-    ["wind", "東へ走る", ["周りの道は「東へ走る」の条件で塗っています。"]],
-    ["night", null, [expect.stringContaining("夜に通る区間でだけ効き")]],
-    ["always", null, []],
-    [null, null, []],
-  ])("塗っている軸（%s）の走る条件と時間帯の印から、前提の文を並べる", (axisId, conditions, expected) => {
-    expect(lensPremises(axisId, axes, conditions)).toEqual(expected);
+    ["night", [expect.stringContaining("夜に通る区間でだけ効き")]],
+    ["always", []],
+    [null, []],
+  ])("塗っている軸（%s）の時間帯の印から、前提の文を並べる", (axisId, expected) => {
+    expect(lensPremises(axisId, axes)).toEqual(expected);
   });
 });
 
 describe("lensOptions（レンズの選択肢）", () => {
   const { axes } = mapCatalogOf([dedicatedEntry("painted", [1]), catalogEntry({ axis_id: "plain" })]);
 
-  it("どの軸もルートの前から周りの道を塗れる選択肢で、識別色が無ければ中立色", () => {
+  it("軸の名前と識別色を持ち、識別色が無ければ中立色", () => {
     const [painted, plain] = lensOptions(axes, { painted: 1, plain: 1 }, { painted: "#123456" });
     expect(painted).toMatchObject({
       id: "painted",
       label: "painted",
       color: "#123456",
-      routeOnly: false,
       unused: false,
     });
-    expect(plain.routeOnly).toBe(false);
     expect(plain.color).not.toBe("#123456");
+  });
+
+  it.each([
+    [{ dynamic_way_value_conditions: ["bearing_deg" as const] }, ["bearing_deg"]],
+    [{ time_scope: "night_only" as const }, ["at"]],
+    [{ time_scope: "night_only" as const, dynamic_way_value_conditions: ["at" as const] }, ["at"]],
+  ])("値が変わる走る条件を持ち、夜だけ効く軸は出発時刻で変わる軸として並べる（%j）", (overrides, conditions) => {
+    const [option] = lensOptions(mapCatalogOf([dedicatedEntry("a", [1], overrides)]).axes, {}, {});
+    expect(option.conditions).toEqual(conditions);
   });
 
   it("「未使用」は、渡した重みが0以下か、重みを持たない軸", () => {

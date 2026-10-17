@@ -239,18 +239,3 @@ def test_get_axis_catalog_includes_material_breakdown(client, catalog_axes):
     assert (signal["share"], signal["unit"]) == (0.6667, MATERIAL_CATALOG["poi_signal_per_km"].unit)
     assert mixed[SURFACE_ESTIMATE]["share"] == 0.3333
     assert mixed[SURFACE_ESTIMATE]["value_labels"] == MATERIAL_CATALOG[SURFACE_ESTIMATE].value_labels
-
-
-def test_get_axis_catalog_marks_density_axes_with_their_terms(client, catalog_axes):
-    """地図は密度の軸だけを、線ではなく材料の点と項の重みで見せる。印が無いと線で塗り、重みが無いと凡例が点の数え方を言えない。"""
-    entries = _entries(client)
-    # 重み0の項も並べる——地図に出る点（横断歩道）が数えられていないことを凡例で言うため。
-    assert [(term["material_id"], term["weight"]) for term in entries["axis_optional_terms"]["density_terms"]] == [
-        ("poi_signal_per_km", 1.0),
-        ("poi_level_crossing_per_km", 1.5),
-        ("poi_stop_per_km", 0.3),
-        ("poi_crossing_per_km", 0.0),
-    ]
-    assert entries["axis_optional_terms"]["density_terms"][0]["label"] == MATERIAL_CATALOG["poi_signal_per_km"].label
-    # 足せない材料の軸は密度の軸ではない。
-    assert entries["axis_boolean_terms"]["density_terms"] is None

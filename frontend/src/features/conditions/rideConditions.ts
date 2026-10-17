@@ -21,8 +21,3 @@ export function departureLabelParts(time: Date, now: Date): string[] {
   const hm = `${hour}:${formatJstMinute(time)}`;
   return isSameJstDay(time, now) ? [hm] : [`${month}/${day}`, hm];
 }
-
-/** 出発時刻の表示ラベル。`now`と同じ日（日本時間）は「9:30」、別日は「9/6 9:30」。 */
-export function formatDepartureLabel(time: Date, now: Date): string {
-  return departureLabelParts(time, now).join(" ");
-}

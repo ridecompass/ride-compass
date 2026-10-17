@@ -33,7 +33,7 @@ import { WIND_SPEED_LEGEND_LEVELS } from "./windLayer";
 import type { MapAxisCatalog } from "@/features/map/mapAxisCatalog";
 import { axisNamesInText, type CatalogAxis } from "@/lib/catalogAxis";
 import { DISASTER_ELEMENTS } from "@/features/map/scene/groups/weather";
-import { FIXED_LENS_LABELS, LENS_DIFFICULTY_ID } from "@/lib/mapDisplay/routeStyleModes";
+import { DIFFICULTY_LENS_LABEL } from "@/lib/mapDisplay/routeStyleModes";
 
 /** 源泉が宣言する、地図に載るものの名前。 */
 type StaticMapLayerId = (typeof mapDisplay.layers)[number]["id"];
@@ -294,7 +294,7 @@ export function buildMapLayers({ axes, dedicatedAxes, accidentYears }: LayerCata
   // 取れていないときは年に触れない（既定の年を出すと、それが正しいように見える）。
   const accidentCoverage = coverageYearsLabel(accidentYears);
   // 並びはレンズの選択肢と同じ（公開中の評価と総合難易度）。
-  const routeLenses = [...axes.map((axis) => axis.label), FIXED_LENS_LABELS[LENS_DIFFICULTY_ID]].join("・");
+  const routeLenses = [...axes.map((axis) => axis.label), DIFFICULTY_LENS_LABEL].join("・");
   const staticLayers = mapDisplay.layers.map((layer): ChipLayerDescriptor => {
     const slots = { axes: axisNamesReading(axes, layer.id), accidentYears: accidentCoverage, routeLenses };
     return {
