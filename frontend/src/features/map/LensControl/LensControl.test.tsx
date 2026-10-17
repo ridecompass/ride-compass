@@ -102,10 +102,11 @@ describe("LensControl", () => {
   it.each([
     ["used", false],
     [LENS_DIFFICULTY_ID, true],
-  ])("「選択を外す」は評価軸を選んでいる（%s）間だけ押せる", async (lens, disabled) => {
+  ])("「選択を外す」は文字の無いアイコンで、評価軸を選んでいる（%s）間だけ押せる", async (lens, disabled) => {
     const { onLensChange } = renderLens({ lens });
     await open();
     const clear = screen.getByRole("button", { name: "選択を外す" });
+    expect(clear).toHaveTextContent(/^$/);
     if (disabled) {
       expect(clear).toBeDisabled();
       return;

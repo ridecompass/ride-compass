@@ -248,26 +248,24 @@ export default function LensControl({
             />
             ルート後も周囲の道路を薄く塗る
           </label>
-          <div className="mt-1.5 flex flex-col border-t border-[var(--color-border)] pt-1">
+          <div className="mt-1.5 flex justify-end gap-1 border-t border-[var(--color-border)] pt-1.5">
             <Button
-              variant="menu"
-              size="sm"
+              size="panelIcon"
+              aria-label="選択を外す"
               onClick={() => onLensChange(LENS_DIFFICULTY_ID)}
               disabled={unselected}
               usage="選んでいる評価軸を外します。外すと、ルートの前は道路を塗らず、ルートの後は総合難易度で塗ります。"
             >
-              <ClearAllLayersIcon size={15} />
-              選択を外す
+              <ClearAllLayersIcon />
             </Button>
             <Button
-              variant="menu"
-              size="sm"
+              size="panelIcon"
+              aria-label="絞り込みをすべて解除"
               onClick={() => onSetHiddenLegendKeys([])}
               disabled={hiddenLegendKeys.length === 0}
               usage="凡例のチェックを外して隠した段階を、まとめて地図に戻します。"
             >
-              <ClearAllFiltersIcon size={15} />
-              絞り込みをすべて解除
+              <ClearAllFiltersIcon />
             </Button>
           </div>
         </PopoverContent>

@@ -52,8 +52,6 @@ export default function RideModeButton({ status, error, screenWakeLock, onPress,
             aria-haspopup={status === "off" ? undefined : "dialog"}
             aria-expanded={status === "off" ? undefined : choosing}
             aria-description={wakeLockUnavailable ? WAKE_LOCK_UNAVAILABLE : undefined}
-            // 押したときに何が起きるか。名前（`aria-label`）は「走行モード」のまま、入切は`aria-pressed`で示す。
-            title={status === "off" ? "走行モードを始める" : "案内を終えるか休むかを選ぶ"}
             usage="押すと走行モードを始め、現在地を追って地図を動かし続けます（画面も点けたままにします）。走行モードの間に押すと、案内を終えるか休むかを選べます。休む・地図を指で動かすと追うのを休み、ルートと進み具合を残したまま地図を自由に動かせます。地図の下の「現在地へ戻る」で続きから追い直します。走行モードの間は、方位のボタンで北が上と進む向きが上を切り替えます。"
             data-ride={status}
             className={cn(

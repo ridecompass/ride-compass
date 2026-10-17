@@ -135,7 +135,9 @@ describe("RoadInspectorPopup", () => {
     renderPopup({ ...SURFACED_ROAD, name: "明治通り" });
 
     expect(screen.getByText("明治通り")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
+    const inspect = screen.getByRole("button", { name: "この道の評価を見る" });
+    expect(inspect).toHaveTextContent(/^$/);
+    expect(inspect.querySelector("svg")).not.toBeNull();
   });
 
   it("評価はルート結果と同じ寄与度で出し、算出できない軸は並べない", async () => {

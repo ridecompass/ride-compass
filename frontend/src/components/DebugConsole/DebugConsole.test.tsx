@@ -115,10 +115,7 @@ describe("DebugConsole", () => {
     await userEvent.click(screen.getByRole("button", { name: "表示中のログをコピー" }));
 
     expect(await navigator.clipboard.readText()).toBe(`${TIME} [api] 応答が遅い\n${TIME} [api] 生成に失敗`);
-    expect(await screen.findByRole("button", { name: "表示中のログをコピーしました" })).toHaveAttribute(
-      "title",
-      "コピーしました",
-    );
+    expect(await screen.findByRole("button", { name: "表示中のログをコピーしました" })).toBeInTheDocument();
   });
 
   it("コピーの詳細は中身をJSONで渡す", async () => {

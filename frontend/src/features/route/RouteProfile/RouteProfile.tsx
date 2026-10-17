@@ -190,7 +190,6 @@ export default function RouteProfile({
                 size="iconRound"
                 className="relative shadow-none"
                 aria-label="グラフに出す情報"
-                title={`グラフに出す情報[${layers.ids.length}件を表示中]`}
                 usage="グラフに重ねる情報（標高・道の区分等）を選ぶ一覧を開きます。数字は今重ねている数です。"
               >
                 <DisplayItemsIcon size={16} />

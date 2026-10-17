@@ -6,9 +6,11 @@ import type { ReactElement } from "react";
 import {
   ArrowUp,
   Bike,
+  CalendarDays,
   CircleQuestionMark,
   Clock,
   Cloud,
+  CloudOff,
   Copy,
   CornerUpLeft,
   CornerUpRight,
@@ -17,6 +19,7 @@ import {
   EllipsisVertical,
   Gauge,
   GitCommitHorizontal,
+  History,
   Import,
   Info,
   Layers,
@@ -31,6 +34,7 @@ import {
   RotateCw,
   Ruler,
   Save,
+  Search,
   Shield,
   SlidersHorizontal,
   Snowflake,
@@ -566,6 +570,14 @@ export const RemovePointIcon = fromLucide(Trash);
 export const ResetDefaultsIcon = fromLucide(RotateCcw);
 /** 取れなかったものを取り直す。 */
 export const RetryIcon = fromLucide(RotateCw);
+/** 取れていない情報がある印。警報の色と取り違えないよう、三角の形を使わない。 */
+export const NotFetchedIcon = fromLucide(CloudOff);
+/** 今日1日の見通し。 */
+export const TodayOutlookIcon = fromLucide(CalendarDays);
+/** 時刻を送った重ねを、いまの時刻に戻す。 */
+export const BackToNowIcon = fromLucide(History);
+/** 地図で選んだ道の評価を調べる。 */
+export const InspectRoadIcon = fromLucide(Search);
 /** 編集で作ったルートの元にしたルートを見る。 */
 export const ShowOriginIcon = fromLucide(CornerUpLeft);
 /** 走行中の曲がる所の案内: 左折。 */

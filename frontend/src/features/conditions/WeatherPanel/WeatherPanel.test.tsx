@@ -34,14 +34,16 @@ afterEach(() => {
 });
 
 describe("WeatherPanel 取得の状態", () => {
-  it("観測値が無く取得中なら、取得中と出す", () => {
-    render(<WeatherPanel amedas={null} loading error={null} />);
-    expect(screen.getByText("天候取得中...")).toBeInTheDocument();
+  it("観測値が無く取得中なら、何も出さない", () => {
+    const { container } = render(<WeatherPanel amedas={null} loading error="混雑しています" />);
+    expect(container).toBeEmptyDOMElement();
   });
 
-  it("観測値が無く失敗したら、取得できないとだけ出し、理由は補足に回す", () => {
+  it("観測値が無く失敗したら、取得できないことを文字の無い印で出し、理由は使い方の文に回す", () => {
     render(<WeatherPanel amedas={null} loading={false} error="混雑しています" />);
-    expect(screen.getByText("観測値を取得できません")).toHaveAttribute("title", "混雑しています");
+    const mark = screen.getByRole("img", { name: "観測値を取得できません" });
+    expect(mark).toHaveTextContent(/^$/);
+    expect(mark).toHaveAttribute("data-usage", expect.stringContaining("混雑しています"));
   });
 
   it("観測値があれば、取り直し中・直近の失敗でも観測値を出す", () => {
