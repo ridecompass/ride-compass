@@ -31,6 +31,7 @@ import { useSavedPlaces } from "@/features/route/useSavedPlaces";
 import type { RouteOutcomeKind } from "@/features/route/useRouteGeneration";
 import type { Coordinates, PinRole, PlaceCandidate } from "@/types/route";
 import { useRoutePlanner } from "@/features/route/useRoutePlanner";
+import RouteCandidateActions from "@/features/route/RouteCandidateActions/RouteCandidateActions";
 import RouteOutcome from "@/features/route/RouteOutcome/RouteOutcome";
 import WeatherPanel from "@/features/conditions/WeatherPanel/WeatherPanel";
 import TodayOutlook from "@/features/conditions/TodayOutlook/TodayOutlook";
@@ -448,8 +449,7 @@ export default function Home() {
     );
   }
 
-  // 「ルート結果」の中身（デスクトップの区分・モバイルのシートの両方）。「このルートで走る」は、その候補を選んで走行モードを
-  // 始める（走り始めると作業台のシートは閉じる）。もう走っている間は出さない（選び直すと走行モードはそのまま新しい候補を追う）。
+  // 「ルート結果」の中身（デスクトップの区分・モバイルのシートの両方）。
   function renderRouteOutcome() {
     return (
       <RouteOutcome
@@ -458,23 +458,33 @@ export default function Home() {
         splice={splice}
         routeWeights={route.routeWeights}
         profileLayers={profileLayers}
-        onRide={
-          navigating
-            ? undefined
-            : (routeId) => {
-                results.selectTab(routeId);
-                riding.press();
-              }
-        }
       />
     );
   }
 
-  // 「ルート結果」の見出しの操作。候補すべてに効く操作だけを置き、候補1本への操作はその候補のタブの中に置く
-  // （見出しに並べると、どれが選んでいる1本だけに効くのか見分けられない）。候補がある間だけ呼ばれる。
+  // 「ルート結果」の見出しの操作。選んでいる候補1本への操作（走る・合成・GPX）を、候補すべてに効く全消去の手前に並べる
+  // （中身の中に置くと、狭い高さで候補の切り替えとグラフの場所を取る）。候補1本への操作は、編集の間は出さない（中身が編集面に
+  // なり、相手の候補が選べない）。「このルートで走る」は、その候補を選んで走行モードを始める（走り始めると作業台のシートは
+  // 閉じる）。もう走っている間は出さない（選び直すと走行モードはそのまま新しい候補を追う）。候補がある間だけ呼ばれる。
   function renderRouteResultHeaderActions() {
+    const target = results.selectedCandidate ?? results.routes[0];
     return (
       <>
+        {!splice.panel && target && (
+          <RouteCandidateActions
+            route={target}
+            splice={splice}
+            onClearSegment={() => results.selectSegment(null)}
+            onRide={
+              navigating
+                ? undefined
+                : (routeId) => {
+                    results.selectTab(routeId);
+                    riding.press();
+                  }
+            }
+          />
+        )}
         <Button
           size="panelIcon"
           onClick={() => setConfirmingClear(true)}

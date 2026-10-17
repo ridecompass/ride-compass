@@ -4,8 +4,8 @@
  * 見るもの: 長さのある区間が無ければ何も描かないこと、横軸の右端（候補の距離と渡された物差しの長い方）と目盛り、
  * 軸ごとの塗り（`axisOrder`の順に下から積む・軸の色と色の無い軸の色）、値の無い区間の灰色の塗り（総合難易度の高さ。
  * 総合難易度が無ければ塗らない）、選ばれた区間の帯とスライダーとしての値、キーボード（矢印・Home・End）と
- * 1本の指（マウス）でなぞる・押して離す操作で選ぶ区間と地点、押しただけ・ボタンを押していない動き・2本目の指が
- * 加わった操作では選ばないこと、自分で動かした地点の線（選ばれた区間の中にあるときだけ）、走行中の現在地の印と、
+ * 1本の指（マウス）で横になぞる・押して離す操作で選ぶ区間と地点、押しただけ・ボタンを押していない動き・縦に動き出した操作・
+ * 2本目の指が加わった操作では選ばないこと、自分で動かした地点の線（選ばれた区間の中にあるときだけ）、走行中の現在地の印と、
  * 始点からそこまでの薄め（候補の終わりより先は終わりに寄せる）、選ぶ受け口が無ければ見るだけの図にすること。
  *
  * ここで見ないもの: 区間の柱と積み上げの長方形の組み方（総合難易度が0なら値の無い区間を塗らないことを含む） →
@@ -228,17 +228,32 @@ describe("DifficultyProfile", () => {
     expect(within(container).getByRole("img", { name: "道のりに沿った難易度" })).not.toHaveAttribute("tabindex");
   });
 
-  it("押したまま動かすとその地点を選び、離した地点も選ぶ", () => {
+  it("押したまま横へ動かすとその地点を選び、離した地点も選ぶ", () => {
     const { slider, onSelect } = renderProfile();
     layOut(slider!);
-    fireEvent.pointerDown(slider!, { pointerId: 1, clientX: 150, buttons: 1 });
-    fireEvent.pointerMove(slider!, { pointerId: 1, clientX: 150, buttons: 1 });
+    fireEvent.pointerDown(slider!, { pointerId: 1, clientX: 140, clientY: 10, buttons: 1 });
+    fireEvent.pointerMove(slider!, { pointerId: 1, clientX: 150, clientY: 12, buttons: 1 });
     expect(lastSelection(onSelect).segment).toBe(FIRST);
     expect(lastSelection(onSelect).longitude).toBeCloseTo(139.005, 9);
 
     fireEvent.pointerUp(slider!, { pointerId: 1, clientX: 250 });
     expect(lastSelection(onSelect).segment).toBe(MISSING);
     expect(lastSelection(onSelect).longitude).toBeCloseTo(139.015, 9);
+  });
+
+  it("縦に動き出した操作（シートのスクロール）は、そのあと横へ動かしても離しても選ばない", () => {
+    const { slider, onSelect } = renderProfile();
+    layOut(slider!);
+    fireEvent.pointerDown(slider!, { pointerId: 1, clientX: 150, clientY: 10, buttons: 1 });
+    fireEvent.pointerMove(slider!, { pointerId: 1, clientX: 152, clientY: 30, buttons: 1 });
+    fireEvent.pointerMove(slider!, { pointerId: 1, clientX: 250, clientY: 30, buttons: 1 });
+    fireEvent.pointerUp(slider!, { pointerId: 1, clientX: 250, clientY: 30 });
+    expect(onSelect).not.toHaveBeenCalled();
+
+    // 指が離れたあとの操作は、また向きを決め直す。
+    fireEvent.pointerDown(slider!, { pointerId: 2, clientX: 150, clientY: 10, buttons: 1 });
+    fireEvent.pointerUp(slider!, { pointerId: 2, clientX: 150, clientY: 10 });
+    expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
   it("ボタンを押していない動きでは選ばない", () => {

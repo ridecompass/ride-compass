@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * `lib/mapDisplay/valueScale.ts`——地図が軸を塗る段の並び（下限・鍵・範囲の文字・体感ラベル・色）と、値の種類ごとの配色。
- * 入口は`bandColorsFor`・`valueBands`・`bandCondition`で、確かめるのは戻り値（段の式はMapLibreと同じ評価器で値へ当てる）。配色の中継点は
+ * 入口は`bandColorsFor`・`valueBands`・`bandCondition`・`bandAt`で、確かめるのは戻り値（段の式はMapLibreと同じ評価器で値へ当てる）。配色の中継点は
  * 生成物の`palette.json`から引く（色の値はbackendの宣言が持ち、ここは並べ方を見る）。
  *
  * ここで見ないもの:
@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import { evaluateExpression } from "@/testing/mapExpressions";
 import palette from "@/types/generated/palette.json";
 
-import { bandColorsFor, bandCondition, valueBands } from "./valueScale";
+import { bandAt, bandColorsFor, bandCondition, valueBands } from "./valueScale";
 
 const {
   evaluation_good: GOOD,
@@ -103,9 +103,13 @@ describe("bandCondition", () => {
     [30, 1],
     [69.99, 1],
     [70, 2],
-  ])("値%sはちょうど1つの段%sに入り、境界ちょうどの値は上の段に入る", (value, band) => {
-    expect(bandsOf(value)).toEqual([band]);
-  });
+  ])(
+    "値%sはちょうど1つの段%sに入り、境界ちょうどの値は上の段に入る。数の値から引く段（bandAt）も同じ段",
+    (value, band) => {
+      expect(bandsOf(value)).toEqual([band]);
+      expect(bandAt(bands, value)).toBe(bands[band]);
+    },
+  );
 
   it("段が1つなら、どの値もその段に入る", () => {
     const single = valueBands({ kind: "difficulty", boundaries: [], legend: { boundaries: [], unit: null } });

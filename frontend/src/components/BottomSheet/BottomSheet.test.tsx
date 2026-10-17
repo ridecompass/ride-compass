@@ -4,7 +4,7 @@
  *
  * 見るもの: 開いている間だけ見出しを名前に持つダイアログとして出すこと、閉じ方
  * （✕・Esc・下スワイプ）と閉じない操作（シートの外を押す・閉じないスワイプ・シートの中から開いた窓の上のEsc）、高さを変える帯（いまの高さの表示・ドラッグ・矢印キー）で
- * 変わる高さと確定として上げる高さ、開いたときに中身へ高さを合わせること（合わせ直す時機・決めた高さがあるとき・実寸が取れないとき）、
+ * 変わる高さと確定として上げる高さ、開いたときに中身へ高さを合わせること（下端の印の要素があるとき・合わせ直す時機・決めた高さがあるとき・実寸が取れないとき）、
  * 決めた高さを覚えて次に開いたときに使うこと（保存値の読み方・動かしている途中は覚えないこと・動かす間に持ち主を描き直さないこと）。
  *
  * ここで見ないもの: 2枚のシートで高さを分け合うこと → `app/page.tsx`。シートの中身・見出しの脇の差し込み——受け取ったものを
@@ -20,7 +20,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ConfirmDialog } from "@/components/ui/Dialog/Dialog";
-import BottomSheet, { clampSheetHeightVh, DEFAULT_SHEET_HEIGHT_VH, useChosenSheetHeight } from "./BottomSheet";
+import BottomSheet, {
+  clampSheetHeightVh,
+  DEFAULT_SHEET_HEIGHT_VH,
+  SHEET_FIT_END_ATTRIBUTE,
+  useChosenSheetHeight,
+} from "./BottomSheet";
 
 type Props = React.ComponentProps<typeof BottomSheet>;
 
@@ -324,6 +329,35 @@ describe("BottomSheet", () => {
       expect(screen.getByRole("dialog").style.height).toBe("34vh");
       expect(handle()).toHaveAttribute("aria-valuenow", "34");
       expect(onHeightChoose).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["印の下端が中身の終わりより上なら、印の下端まで", 0.6, 0.3, "30"],
+      ["印の下端が中身の終わりより下なら、中身の高さ", 0.25, 0.4, "25"],
+    ])("中身に下端の印の要素があれば、開いたときに合わせる高さは%s", (_, naturalShare, endShare, expected) => {
+      const naturalPx = window.innerHeight * naturalShare;
+      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+        if (this.hasAttribute(SHEET_FIT_END_ATTRIBUTE)) return new DOMRect(0, 0, 300, window.innerHeight * endShare);
+        return new DOMRect(0, 0, 300, this.style.height === "auto" ? naturalPx : 300);
+      });
+      vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(300);
+
+      render(
+        <BottomSheet
+          open
+          title="ルート結果"
+          titleId="sheet-title"
+          headerAction={null}
+          onClose={() => {}}
+          chosenHeightVh={null}
+          onHeightChoose={() => {}}
+        >
+          <div {...{ [SHEET_FIT_END_ATTRIBUTE]: "" }}>グラフ</div>
+          <p>内訳</p>
+        </BottomSheet>,
+      );
+
+      expect(handle()).toHaveAttribute("aria-valuenow", expected);
     });
 
     it("中身が高いときも、範囲の中に留める", () => {

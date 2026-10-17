@@ -63,6 +63,22 @@ function naturalHeightOf(sheet: HTMLElement): number {
   return natural;
 }
 
+/** シートの中の要素に付けると、開いたときに合わせる高さをその要素の下端までにする印（中身の全部ではなく、狭い高さで
+ * 先に見せたい所までを開く）。中身がそこより短ければ中身の高さに合わせる。 */
+export const SHEET_FIT_END_ATTRIBUTE = "data-sheet-fit-end";
+
+/** 開いたときに合わせる高さ。印の要素があれば、その下端に本文の下の余白を足した高さと中身の高さの低い方。 */
+function fitHeightOf(sheet: HTMLElement, body: HTMLElement): number {
+  const natural = naturalHeightOf(sheet);
+  const end = sheet.querySelector(`[${SHEET_FIT_END_ATTRIBUTE}]`);
+  if (!end) return natural;
+  const toEnd =
+    end.getBoundingClientRect().bottom -
+    sheet.getBoundingClientRect().top +
+    (parseFloat(getComputedStyle(body).paddingBottom) || 0);
+  return Math.min(natural, toEnd);
+}
+
 /** モバイルの下からせり上がるシート。暗幕を敷かず、シートの外を押しても閉じない（開いたまま地図を動かせる）。
  * 閉じるのは✕・下スワイプ・呼ぶ側のタブの押し直し。 */
 export default function BottomSheet({ open, ...props }: BottomSheetProps) {
@@ -86,20 +102,22 @@ function OpenBottomSheet({
   const heightVh = workingHeightVh ?? chosenHeightVh ?? DEFAULT_SHEET_HEIGHT_VH;
   const autoFitHeight = chosenHeightVh === null;
   const sheetRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
   });
 
-  // 開いたときの中身に合う高さへ合わせる（高すぎると空白で地図を隠す）。開いている間は合わせ直さない（候補や区間を
+  // 開いたときの中身に合う高さ（印があればその下端まで）へ合わせる（高すぎると空白で地図を隠す）。開いている間は合わせ直さない（候補や区間を
   // 押すたびに地図の見える範囲が動かないように）。実寸が取れない環境では何もしない。
   useLayoutEffect(() => {
     if (!autoFitHeight) return;
     const sheet = sheetRef.current;
-    if (!sheet) return;
+    const body = bodyRef.current;
+    if (!sheet || !body) return;
     const viewportHeight = window.innerHeight;
-    const needed = naturalHeightOf(sheet);
+    const needed = fitHeightOf(sheet, body);
     if (viewportHeight <= 0 || sheet.clientHeight <= 0 || needed <= 0) return;
     setWorkingHeightVh(clampSheetHeightVh(Math.ceil((needed / viewportHeight) * 100)));
   }, [autoFitHeight, fitKey]);
@@ -220,6 +238,7 @@ function OpenBottomSheet({
       </div>
       {/* 本文のスクロールが下スワイプの判定まで届かないようにする（届くとスクロールしただけで閉じる）。 */}
       <div
+        ref={bodyRef}
         className="flex flex-col gap-2 overflow-y-auto px-3 pt-2 pb-3"
         onTouchStart={(e) => e.stopPropagation()}
         onTouchEnd={(e) => e.stopPropagation()}
