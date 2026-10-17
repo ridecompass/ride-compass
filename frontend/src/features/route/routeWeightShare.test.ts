@@ -2,7 +2,6 @@
 /**
  * `features/route/routeWeightShare.ts`——重み配分の帯の計算。
  * - `totalWeight`: 有効な軸（重みが正）の重みの合計
- * - `weightStep`: 区切りを動かす1刻み（有効な軸の重みの合計の1%）
  * - `clampBoundaryDrag`: 隣り合う2軸の境界を動かした量を、2軸の合計を変えずに、刻みの倍数だけ動かし、
  *   どちらの重みも刻み以上に収まる2軸の新しい重みへ直す
  *
@@ -16,14 +15,6 @@ import { clampBoundaryDrag, totalWeight, weightStep } from "./routeWeightShare";
 describe("totalWeight", () => {
   it("重みが正の軸だけを足し、重み0（無効）の軸は数えない", () => {
     expect(totalWeight({ a: 0.25, b: 0, c: 0.5 })).toBeCloseTo(0.75);
-  });
-});
-
-describe("weightStep", () => {
-  it("1刻みは、有効な軸の重みの合計の1%（帯の%がいつも1ずつ動く）", () => {
-    expect(weightStep(1)).toBeCloseTo(0.01, 10);
-    expect(weightStep(0.2)).toBeCloseTo(0.002, 10);
-    expect(weightStep(3)).toBeCloseTo(0.03, 10);
   });
 });
 

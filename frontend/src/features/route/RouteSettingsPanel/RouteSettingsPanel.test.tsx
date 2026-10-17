@@ -220,9 +220,9 @@ describe("RouteSettingsPanel 配分の帯", () => {
     expect(screen.queryByTitle(/^交通/)).not.toBeInTheDocument();
   });
 
-  it("区切りで右・上の矢印は右の軸から左の軸へ1刻み（重みの合計の1%）移し、左・下の矢印は戻す。ほかの軸は変えず、上書きの状態にする", async () => {
+  it("区切りで右・上の矢印は右の軸から左の軸へ1刻み移し、左・下の矢印は戻す。ほかの軸は変えず、上書きの状態にする", async () => {
     serveCatalog();
-    // 軸を入れたときの重みの2軸で合計0.2なので、1刻みは0.002（%が1ずつ動く）。
+    // 2軸で合計0.2なので、1刻みは0.002。
     const { onRoutePreferenceChange, onOverrideEnabledChange } = renderPanel(
       { width: 0.1, traffic: 0.1, slope: 0, light: 0 },
       false,
