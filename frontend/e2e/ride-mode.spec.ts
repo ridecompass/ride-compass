@@ -218,6 +218,7 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   await page.getByRole("button", { name: /^進む向きを上にする/ }).click();
   await expect.poll(() => mapBearing(page), { timeout: 10_000 }).toBeCloseTo(90, 0);
   await rideButton.click();
+  await page.getByRole("button", { name: "案内を終える" }).click();
   await expect(rideButton).toHaveAttribute("aria-pressed", "false");
   await expect.poll(() => mapBearing(page), { timeout: 10_000 }).toBeCloseTo(0, 0);
   await expect(dot).toBeHidden();

@@ -12,7 +12,7 @@ import { nextTravelBearing, type TravelBearing } from "./travelBearing";
 import { useDeviceHeading } from "./useDeviceHeading";
 import { useScreenWakeLock, type ScreenWakeLockStatus } from "./useScreenWakeLock";
 
-/** 走行モードの様子。`waiting`は始めて最初の位置を待つ間、`paused`は地図を指で動かして追うのを休んでいる間。 */
+/** 走行モードの様子。`waiting`は始めて最初の位置を待つ間、`paused`は追うのを休んでいる間（休むを選んだ・地図を指で動かした）。 */
 export type RideStatus = "off" | "waiting" | "following" | "paused";
 
 /** 地図へ渡す走行モードの値。地図はこれで現在地の点を出し、追っている間は中心と向きを動かす。 */
@@ -47,6 +47,8 @@ interface UseRideModeResult {
   screenWakeLock: ScreenWakeLockStatus;
   /** 止まっていれば始め、走行モードの間（休んでいても）は止める。 */
   press: () => void;
+  /** 走行モードの間、追うのを休む。位置は受け続ける。 */
+  rest: () => void;
   /** 休んでいれば追い直す。 */
   resume: () => void;
   /** 走行モードの間だけ値がある。 */
@@ -217,7 +219,8 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
   // 画面を離れたら受け取りをやめる。
   useEffect(() => stopWatching, [stopWatching]);
 
-  const pause = useCallback(() => setStatus((current) => (current === "following" ? "paused" : current)), []);
+  // 最初の位置を待つ間に休んでも、届いた位置は受けて点を動かし、追い直すまで地図は動かさない。
+  const pause = useCallback(() => setStatus((current) => (current === "off" ? current : "paused")), []);
   const toggleHeadingUp = useCallback(() => setHeadingUp((current) => !current), []);
 
   const speedKmh = fix?.speedMs != null ? fix.speedMs * 3.6 : null;
@@ -250,6 +253,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     accuracyM: fix?.accuracyM ?? null,
     screenWakeLock,
     press,
+    rest: pause,
     resume,
     map,
   };
