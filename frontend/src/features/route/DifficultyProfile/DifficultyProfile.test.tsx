@@ -5,8 +5,8 @@
  * 軸ごとの塗り（`axisOrder`の順に下から積む・軸の色と色の無い軸の色）、値の無い区間の灰色の塗り（総合難易度の高さ。
  * 総合難易度が無ければ塗らない）、選ばれた区間の帯とスライダーとしての値、キーボード（矢印・Home・End）と
  * 1本の指（マウス）で横になぞる・押して離す操作で選ぶ区間と地点、押しただけ・ボタンを押していない動き・縦に動き出した操作・
- * 2本目の指が加わった操作では選ばないこと、自分で動かした地点の線（選ばれた区間の中にあるときだけ）、走行中の現在地の印と、
- * 始点からそこまでの薄め（候補の終わりより先は終わりに寄せる）、選ぶ受け口が無ければ見るだけの図にすること。
+ * 2本目の指が加わった操作では選ばないこと、自分で動かした地点の線（選ばれた区間の中にあるときだけ）、走行中の現在地の印（その距離の柱の上端）と、
+ * 始点からそこまでの色を抜いた薄め（候補の終わりより先は終わりに寄せる）、選ぶ受け口が無ければ見るだけの図にすること。
  *
  * ここで見ないもの: 区間の柱と積み上げの長方形の組み方（総合難易度が0なら値の無い区間を塗らないことを含む） →
  * `features/route/DifficultyProfile/profileGeometry.ts`。区間の中の割合から地点を引く計算（道なりの形の上） →
@@ -134,22 +134,48 @@ describe("DifficultyProfile", () => {
     expect(missingPath(renderProfile({ overallDifficulty: null }).container)).toBeUndefined();
   });
 
-  it("現在地の距離に印を引き、始点からそこまでを薄める。候補の終わりより先は終わりに寄せ、無ければ描かない", () => {
+  it("現在地の距離に印を、その距離の柱の上端に置き、始点からそこまでは色を抜いて薄め、残りは元の色で描く。候補の終わりより先は終わりに寄せ、無ければ描かない", () => {
     const { container, rerender } = renderProfile({ scaleKm: 4, progressKm: 0.5 });
-    const marks = () => ({
-      travelled: container.querySelector('[data-progress="travelled"]'),
-      position: container.querySelector('[data-progress="position"]'),
+    const progress = () => {
+      const travelled = container.querySelector('[data-progress="travelled"]');
+      const ahead = container.querySelector('[data-progress="ahead"]');
+      const clipWidth = (group: Element | null) => {
+        const id = group?.getAttribute("clip-path")?.match(/#([^)]+)/)?.[1];
+        return id === undefined ? null : container.querySelector(`[id="${id}"] rect`)?.getAttribute("width");
+      };
+      const filterId = travelled?.getAttribute("filter")?.match(/#([^)]+)/)?.[1];
+      const mark = screen.queryByRole("img", { name: "現在地" });
+      return {
+        travelledWidth: clipWidth(travelled),
+        travelledOpacity: travelled?.getAttribute("opacity") ?? null,
+        travelledSaturate:
+          filterId === undefined
+            ? null
+            : (container.querySelector(`[id="${filterId}"] feColorMatrix`)?.getAttribute("values") ?? null),
+        travelledPaths: travelled?.querySelectorAll("path").length ?? 0,
+        aheadPaths: ahead?.querySelectorAll("path").length ?? 0,
+        aheadFilter: ahead?.getAttribute("filter") ?? null,
+        mark: mark === null ? null : { left: mark.style.left, top: mark.style.top },
+      };
+    };
+    const drawnPaths = 3;
+    expect(progress()).toEqual({
+      travelledWidth: "125",
+      travelledOpacity: String(mapDisplay.route.opacities.travelled),
+      travelledSaturate: "0",
+      travelledPaths: drawnPaths,
+      aheadPaths: drawnPaths,
+      aheadFilter: null,
+      // 0.5kmの柱は2軸を積んだ難易度60まで、値の無い区間の柱は総合難易度30まで。
+      mark: { left: "12.5%", top: "40%" },
     });
-    expect(marks().travelled).toHaveAttribute("width", "125");
-    expect(marks().travelled).toHaveAttribute("opacity", String(1 - mapDisplay.route.opacities.travelled));
-    expect(marks().position).toHaveAttribute("x1", "125");
 
     rerender(<DifficultyProfile {...profileProps({ scaleKm: 4, progressKm: 3 })} />);
-    expect(marks().travelled).toHaveAttribute("width", "500");
-    expect(marks().position).toHaveAttribute("x1", "500");
+    expect(progress()).toMatchObject({ travelledWidth: "500", mark: { left: "50%", top: "70%" } });
 
     rerender(<DifficultyProfile {...profileProps({ scaleKm: 4, progressKm: null })} />);
-    expect(marks()).toEqual({ travelled: null, position: null });
+    expect(progress()).toMatchObject({ travelledWidth: null, aheadPaths: 0, mark: null });
+    expect(container.querySelectorAll("path")).toHaveLength(drawnPaths);
   });
 
   it("スライダーの値は、選ばれた区間の始まりの距離（選ばれていなければ0）", () => {

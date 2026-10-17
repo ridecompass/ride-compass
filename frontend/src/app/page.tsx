@@ -549,6 +549,7 @@ export default function Home() {
               progressKm={progressKm}
               selected={null}
               layers={profileLayers}
+              riding
             />
           </section>
         )}

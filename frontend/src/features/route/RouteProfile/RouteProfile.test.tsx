@@ -3,7 +3,7 @@
  *
  * 見るもの: 既定で「評価で塗る」（難易度のグラフ）を出すこと、その (i) が塗った軸の色と名前・値の無い区間の色・意味の文を出すこと
  * （塗る区間の無い軸は出さない）、「表示」のタブのチップが選んだ情報を重ね・外す知らせを上げること、標高の折れ線と最高・最低、
- * 選んだ地点の標高、出す情報が無いときと値が無いときの文、道の区分のレイヤの帯をレイヤごとに地図と同じ色で出し、その凡例と
+ * 選んだ地点の標高、走行中の現在地の印を最初の折れ線のその地点の高さに置くこと（値が無ければ中ほど）、出す情報が無いときと値が無いときの文、道の区分のレイヤの帯をレイヤごとに地図と同じ色で出し、その凡例と
  * 選んだ地点の区分の呼び名を出すこと、点のレイヤはルートの近くの点を通る距離に地図と同じ色の印で並べ、選んだ地点の点の区分と名前と、
  * 現れた区分の凡例を出すこと。
  *
@@ -118,6 +118,29 @@ describe("RouteProfile", () => {
     expect(elevation).toBeChecked();
     await userEvent.click(elevation);
     expect(toggle).toHaveBeenCalledWith("elevation");
+  });
+
+  it("「表示」のタブの現在地の印は、最初の折れ線のその地点の値の高さに置き、その地点に値が無ければ図の中ほどに置く", async () => {
+    const { rerender } = renderProfile({ scaleKm: 2, progressKm: 0.25 });
+    await openLayers();
+    const mark = () => screen.getByRole("img", { name: "現在地" });
+    // 標高12〜31.6mの1/4の高さ（上下の余白8を除いた84の1/4だけ下端から上がる）。
+    expect(mark().style).toMatchObject({ left: "12.5%", top: "71%" });
+
+    rerender(
+      <RouteProfile
+        segments={[CLIMB, UNKNOWN]}
+        overallDifficulty={20}
+        axes={CATALOG.axes}
+        axisColors={CATALOG.axisColors}
+        scaleKm={2}
+        selected={null}
+        layers={{ ids: ["elevation"], toggle: vi.fn() }}
+        points={[]}
+        progressKm={1.5}
+      />,
+    );
+    expect(mark().style).toMatchObject({ left: "75%", top: "50%" });
   });
 
   it("道の区分のレイヤは、レイヤごとに地図と同じ色の帯を出し、選んだ地点の区分の呼び名をグラフの下に、帯に現れた区分の凡例を「グラフに出す情報」の一覧の行に出す", async () => {
