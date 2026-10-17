@@ -4524,6 +4524,13 @@
             "type": "array",
             "title": "Points"
           },
+          "waypoint_distances_km": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Waypoint Distances Km"
+          },
           "overall_difficulty": {
             "anyOf": [
               {
@@ -4595,6 +4602,7 @@
           "node_ids",
           "turns",
           "points",
+          "waypoint_distances_km",
           "overall_difficulty",
           "axis_difficulties",
           "axis_contributions",

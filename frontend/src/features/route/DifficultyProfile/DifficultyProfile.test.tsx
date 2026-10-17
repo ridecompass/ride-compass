@@ -54,6 +54,7 @@ function profileProps(props: Partial<Props> = {}): Props {
     scaleKm: 2,
     selected: null,
     onSelect: vi.fn(),
+    waypointKms: [],
     ...props,
   };
 }

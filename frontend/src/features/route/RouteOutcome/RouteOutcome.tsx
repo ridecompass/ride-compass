@@ -225,6 +225,7 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
                     axes={axisCatalog.axes}
                     axisColors={axisCatalog.axisColors}
                     scaleKm={longestDistanceKm}
+                    waypointKms={route.waypoint_distances_km}
                     selected={selectedRouteSegment}
                     onSelect={results.selectSegment}
                     layers={profileLayers}

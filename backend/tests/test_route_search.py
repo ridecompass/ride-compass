@@ -98,6 +98,7 @@ def route_candidate(name, segments=()):
         direction_label=name, distance_km=1.0, geometry={}, elevation_gain_m=None, segments=list(segments),
         estimated_duration_seconds=None, wind_unavailable=False, missing_travel_data_share=None, axis_raw_values={},
         material_category_shares={}, edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[], points=[],
+        waypoint_distances_km=[],
     )
 
 
