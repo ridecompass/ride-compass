@@ -38,6 +38,7 @@
  * どれもテスト環境に無いものか、その手前の境界。地図は `@/testing/maplibre` の代役が受けたものを記録し、地図の操作
  * （押す・押した所に描かれている地物）はテストが代役から起こす。
  */
+import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -790,8 +791,8 @@ describe("画面の枠", () => {
     expect(screen.getByRole("group", { name: "走りの数字" })).toBeInTheDocument();
     expect(shownWhileIdle()).toEqual([null, null, null, null]);
     expect(within(rideProfile()!).getByRole("img", { name: "道のりに沿った難易度" })).toBeInTheDocument();
-    // 重ねるレイヤは、ページが持つ1つの選択（はじめは標高）を走行中の図にも渡す。
-    await user.click(within(rideProfile()!).getByRole("tab", { name: "レイヤ" }));
+    // グラフに出す情報は、ページが持つ1つの選択（はじめは標高）を走行中の図にも渡す。
+    await user.click(within(rideProfile()!).getByRole("tab", { name: FACT_DISPLAY_NAME }));
     expect(within(rideProfile()!).getByRole("button", { name: "標高" })).toHaveAttribute("aria-pressed", "true");
 
     await user.click(screen.getByRole("button", { name: "走行モード" }));

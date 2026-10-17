@@ -33,6 +33,7 @@ import {
 import { Button } from "@/components/ui/Button/Button";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { cn } from "@/lib/cn";
+import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { readStoredList } from "@/lib/storedList";
 import { Dot } from "@/components/ui/Dot/Dot";
 import { cardVariants } from "@/components/ui/Card/Card";
@@ -565,7 +566,7 @@ export default function MapOverlayControls({
           usage="地図に重ねる情報（路面・雨雲・補給の店など）の一覧を開きます。数字は今地図に出している件数です。"
         >
           <DisplayItemsIcon size={16} />
-          <span className="font-semibold">表示</span>
+          <span className="font-semibold">{FACT_DISPLAY_NAME}</span>
           {shownCount > 0 && (
             <span
               aria-hidden="true"

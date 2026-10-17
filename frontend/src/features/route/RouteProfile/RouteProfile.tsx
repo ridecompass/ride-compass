@@ -1,5 +1,6 @@
 "use client";
 
+import { EVALUATION_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { useMemo, useState } from "react";
 
 import { Dot } from "@/components/ui/Dot/Dot";
@@ -33,11 +34,11 @@ interface RouteProfileProps {
   onSelect?: (selection: SelectedRouteSegment) => void;
   /** 走行中の現在地のルートの上の距離。 */
   progressKm?: number | null;
-  /** 重ねるレイヤの選択（結果と走行中の図で1つを共有する）。 */
+  /** グラフに出す情報の選択（結果と走行中の図で1つを共有する）。 */
   layers: ProfileLayerSelection;
 }
 
-/** 道のりのグラフ。「レンズ」は区間の難易度を、「レイヤ」は選んだレイヤの値（標高等）を、同じ横軸で出す。 */
+/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「評価で塗る」は区間の難易度を、「表示」は選んだ情報の値（標高等）を、同じ横軸で出す。 */
 export default function RouteProfile({
   segments,
   overallDifficulty,
@@ -76,11 +77,11 @@ export default function RouteProfile({
     <Tabs value={tab} onValueChange={setTab} className="flex flex-col gap-1">
       <div className="flex items-center gap-1">
         <TabsList aria-label="道のりのグラフ" className="flex-1">
-          <TabsTrigger value="layer" usage="選んだレイヤ（標高等）の値を、道のりに沿って出します。">
-            レイヤ
+          <TabsTrigger value="layer" usage="選んだ情報（標高等）の値を、道のりに沿って出します。">
+            {FACT_DISPLAY_NAME}
           </TabsTrigger>
-          <TabsTrigger value="lens" usage="区間ごとの難易度を、道のりに沿って出します。">
-            レンズ
+          <TabsTrigger value="lens" usage="区間ごとの難易度を、評価軸の色で塗って道のりに沿って出します。">
+            {EVALUATION_PAINT_NAME}
           </TabsTrigger>
         </TabsList>
         {tab === "lens" && (
@@ -116,7 +117,7 @@ export default function RouteProfile({
         />
       </TabsContent>
       <TabsContent value="layer" className="flex flex-col gap-1">
-        <div role="group" aria-label="グラフに重ねるレイヤ" className="flex flex-wrap gap-1">
+        <div role="group" aria-label="グラフに出す情報" className="flex flex-wrap gap-1">
           {PROFILE_LAYERS.map((layer) => (
             <Toggle
               key={layer.id}
@@ -131,15 +132,15 @@ export default function RouteProfile({
         </div>
         <ProfileChart
           scale={scale}
-          label="道のりに沿ったレイヤ"
-          usage="横が道のり、縦が選んだレイヤの値です。なぞるか押して離すと、その地点を地図に印で出し、下にその地点の値を出します。"
+          label="道のりに沿った情報"
+          usage="横が道のり、縦が選んだ情報の値です。なぞるか押して離すと、その地点を地図に印で出し、下にその地点の値を出します。"
           selected={selected}
           onSelect={onSelect}
           progressKm={progressKm}
           caption={(pointKm) => (
             <div className="text-[length:var(--font-size-xs)] text-[var(--color-muted)] tabular-nums">
               {shownLayers.length === 0 ? (
-                <p>重ねるレイヤを選んでください。</p>
+                <p>出す情報を選んでください。</p>
               ) : (
                 shownLayers.map(({ layer, range }) => {
                   if (range === null) return <p key={layer.id}>{layer.label}の値がありません。</p>;

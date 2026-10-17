@@ -28,6 +28,7 @@ import {
   WindDirectionArrowIcon,
 } from "@/components/ui/icons/icons";
 import { cn } from "@/lib/cn";
+import { EVALUATION_PAINT_NAME } from "@/lib/screenNames";
 
 export interface LensOption {
   id: LensId;
@@ -77,7 +78,7 @@ interface LensControlProps {
 }
 
 /** 画面の名前。コードの「レンズ」は画面には出さない（利用者が見る名前はこれだけ）。 */
-const LENS_SCREEN_NAME = "評価で塗る";
+const LENS_SCREEN_NAME = EVALUATION_PAINT_NAME;
 
 /** 評価軸を選んでいないルートの前のピルの名前（道路は塗らない）。 */
 const UNSELECTED_LABEL = "評価軸を選ぶ";
