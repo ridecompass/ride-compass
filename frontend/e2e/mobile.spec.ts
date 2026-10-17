@@ -176,3 +176,59 @@ test("モバイル: 生成したルートを地図へ収めると、開いた「
   const sheetTop = sheetBox?.y ?? 0;
   expect(onScreen.filter(({ x, y }) => x < 0 || x > MOBILE_VIEWPORT.width || y < 0 || y > sheetTop)).toEqual([]);
 });
+
+// 「ルート結果」のシート。高さを決めていなければ、開いたときに候補と道のりのグラフの下端までが入る高さに合わせ、グラフは
+// シートの幅いっぱいに描く（パターン4 観点1）。グラフの上から縦になぞるとシートの本文が動き、横になぞると地点を選ぶ（観点2）。
+// touch-actionはタッチの始点の要素と祖先で決まり、計算後のCSSの値を読むだけでは効いているかが分からないので、
+// 実際に1本指のタッチを送って見る。
+test.describe("タッチ端末", () => {
+  test.use({ viewport: MOBILE_VIEWPORT, isMobile: true, hasTouch: true });
+
+  test("モバイル: 「ルート結果」のシートは開くとグラフの下端までが入り、グラフの上の縦のなぞりで本文が動き、横のなぞりで地点を選ぶ", async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(browserName !== "chromium", "1本指のタッチの列はCDP（Chromiumだけの口）でしか送れない");
+    await openMobileApp(page);
+    const sheet = await generateRoutes(page);
+    const graph = sheet.getByRole("slider", { name: /^道のりに沿った難易度/ });
+    const sheetBox = (await sheet.boundingBox())!;
+    const graphBox = (await graph.boundingBox())!;
+    const sheetBottom = sheetBox.y + sheetBox.height;
+    const graphBottom = graphBox.y + graphBox.height;
+    // グラフの下には距離の目盛りの1行と本文の下の余白だけが残る。
+    expect(graphBottom).toBeLessThanOrEqual(sheetBottom);
+    expect(sheetBottom - graphBottom).toBeLessThan(48);
+    // 本文の左右の余白を除いた幅いっぱい。
+    expect(graphBox.width).toBeGreaterThan(sheetBox.width - 48);
+
+    const scrollTopOfBody = () =>
+      sheet.evaluate((root) => {
+        const body = Array.from(root.querySelectorAll<HTMLElement>("*")).find(
+          (el) => getComputedStyle(el).overflowY === "auto",
+        );
+        return body?.scrollTop ?? -1;
+      });
+    expect(await scrollTopOfBody()).toBe(0);
+
+    const client = await page.context().newCDPSession(page);
+    const drag = async (from: { x: number; y: number }, to: { x: number; y: number }) => {
+      await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...from, id: 1 }] });
+      for (let step = 1; step <= 10; step += 1) {
+        const point = { x: from.x + ((to.x - from.x) * step) / 10, y: from.y + ((to.y - from.y) * step) / 10 };
+        await client.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ ...point, id: 1 }] });
+      }
+      await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    };
+    const center = { x: graphBox.x + graphBox.width / 2, y: graphBox.y + graphBox.height / 2 };
+
+    await drag(center, { x: center.x, y: center.y - 120 });
+    await expect.poll(scrollTopOfBody).toBeGreaterThan(0);
+    await expect(sheet.getByRole("button", { name: "区間の選択を解除" })).toHaveCount(0);
+
+    const moved = (await graph.boundingBox())!;
+    const row = moved.y + moved.height / 2;
+    await drag({ x: moved.x + moved.width * 0.2, y: row }, { x: moved.x + moved.width * 0.6, y: row });
+    await expect(sheet.getByRole("button", { name: "区間の選択を解除" })).toBeVisible();
+  });
+});

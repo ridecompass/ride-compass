@@ -209,6 +209,13 @@ export function valueBands(paint: MapPaintDeclaration): ValueBand[] {
   }));
 }
 
+/** 数の値が入る段。地図の外（画面の部品）で段の色を引く口で、判定は下の`bandCondition`と同じ`>= 下限`・`< 次の下限`。 */
+export function bandAt(bands: readonly ValueBand[], value: number): ValueBand {
+  let found = bands[0];
+  for (const band of bands) if (value >= band.lowerBound) found = band;
+  return found;
+}
+
 /** 値（MapLibreの式）が段`index`に入るときに真になる式。地図の線・ルートの線の色と凡例の絞り込みはどれもこれで段を
  * 引くので、境界ちょうどの値もどこでも同じ段に入る。値が無い場合は呼ぶ側が先に分ける。 */
 export function bandCondition(bands: readonly ValueBand[], index: number, value: unknown): unknown[] {

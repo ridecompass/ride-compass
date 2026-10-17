@@ -59,9 +59,11 @@ interface ProfileChartProps {
 }
 
 /** 道のりに沿った図の枠。横が距離で、選んだ区間の帯・走行中の現在地・動かした地点の線を中身の上に引き、下に距離の目盛りを
- * 出す。1本の指（マウス）でなぞるか押して離すと、その距離の地点を選ぶ（地図に印が出て、下にその区間の詳細が出る）。
+ * 出す。1本の指（マウス）で横になぞるか押して離すと、その距離の地点を選ぶ（地図に印が出て、下にその区間の詳細が出る）。
  * **押しただけでは選ばず、途中で2本目の指が触れた操作は選択にしない**——図の上で始めたピンチ（拡大しようとした操作）で
- * 区間が選ばれ、表示が区間の詳細へ切り替わらないようにする。 */
+ * 区間が選ばれ、表示が区間の詳細へ切り替わらないようにする。**縦に動き出した操作も選択にしない**——縦のなぞりは、図を
+ * 載せたシート・パネルのスクロールとしてブラウザに渡す（図の上に指を置いても下へ送れる）。高さは置き場が CSS の変数
+ * `--profile-chart-height` で決める（無ければ走行中の地図の下に出す低い図の高さ）。 */
 export default function ProfileChart({
   scale,
   label,
@@ -73,8 +75,14 @@ export default function ProfileChart({
   caption,
 }: ProfileChartProps) {
   const [scrubKm, setScrubKm] = useState<number | null>(null);
-  // 図に触れている指（ポインター）と、いまの操作に2本目が加わったか。
-  const gesture = useRef<{ pointers: Set<number>; multi: boolean }>({ pointers: new Set(), multi: false });
+  // 図に触れている指（ポインター）と、いまの操作に2本目が加わったか、操作の始まりの点と、動き出した向き（横は地点を選び、
+  // 縦はスクロールに渡す。まだ動いていなければnull）。
+  const gesture = useRef<{
+    pointers: Set<number>;
+    multi: boolean;
+    start: { x: number; y: number };
+    axis: "x" | "y" | null;
+  }>({ pointers: new Set(), multi: false, start: { x: 0, y: 0 }, axis: null });
   // 画面のどこかに触れている指。2本目は図の外に触れることがあり、図のポインターだけでは数えられない
   // （タッチイベントの指の数は、図のpointermoveより後に届くので間に合わない）。
   const screenPointers = useRef<Set<number>>(new Set());
@@ -143,7 +151,21 @@ export default function ProfileChart({
 
   function releasePointer(pointerId: number) {
     gesture.current.pointers.delete(pointerId);
-    if (gesture.current.pointers.size === 0) gesture.current.multi = false;
+    if (gesture.current.pointers.size === 0) {
+      gesture.current.multi = false;
+      gesture.current.axis = null;
+    }
+  }
+
+  // 動き出した向きを、始まりの点から横と縦のどちらへ多く動いたかで1度だけ決める（同じだけなら、まだ決めない）。
+  // 縦に決まった操作は、ブラウザがスクロールに取って取り消す（pointercancel）。
+  function axisOf(event: PointerEvent<SVGSVGElement>): "x" | "y" | null {
+    if (gesture.current.axis === null) {
+      const dx = Math.abs(event.clientX - gesture.current.start.x);
+      const dy = Math.abs(event.clientY - gesture.current.start.y);
+      if (dx !== dy) gesture.current.axis = dx > dy ? "x" : "y";
+    }
+    return gesture.current.axis;
   }
 
   return (
@@ -151,8 +173,9 @@ export default function ProfileChart({
       <svg
         viewBox={`0 0 ${PROFILE_VIEW_WIDTH} ${PROFILE_VIEW_HEIGHT}`}
         preserveAspectRatio="none"
-        // 押したまま横へ動かす操作をシートのスクロール・スワイプへ渡さない。
-        className="h-14 w-full touch-none rounded-sm bg-[var(--color-surface-2)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] data-[pickable=true]:cursor-crosshair"
+        // 押せる図は縦のなぞりだけをブラウザ（シート・パネルのスクロール）へ渡し、横の動きは地点を選ぶ操作に使う。見るだけの図は
+        // どの動きもブラウザへ渡さない。
+        className="h-[var(--profile-chart-height,3.5rem)] w-full touch-none rounded-sm data-[pickable=true]:touch-pan-y bg-[var(--color-surface-2)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] data-[pickable=true]:cursor-crosshair"
         data-pickable={onSelect !== undefined}
         {...(onSelect === undefined
           ? { role: "img", "aria-label": label }
@@ -167,6 +190,7 @@ export default function ProfileChart({
               "aria-valuetext": `${positionKm.toFixed(1)} km地点`,
               onPointerDown: (event: PointerEvent<SVGSVGElement>) => {
                 event.currentTarget.setPointerCapture?.(event.pointerId);
+                if (gesture.current.pointers.size === 0) gesture.current.start = { x: event.clientX, y: event.clientY };
                 gesture.current.pointers.add(event.pointerId);
                 // 画面全体の指は窓の捕捉の段で先に数えてあるので、図の上の指もそこに含まれる。
                 if (screenPointers.current.size > 1) gesture.current.multi = true;
@@ -174,10 +198,14 @@ export default function ProfileChart({
               onPointerMove: (event: PointerEvent<SVGSVGElement>) => {
                 if (event.buttons === 0 || gesture.current.multi || !gesture.current.pointers.has(event.pointerId))
                   return;
-                selectAt(kmAtPointer(event));
+                if (axisOf(event) === "x") selectAt(kmAtPointer(event));
               },
               onPointerUp: (event: PointerEvent<SVGSVGElement>) => {
-                if (!gesture.current.multi && gesture.current.pointers.has(event.pointerId))
+                if (
+                  !gesture.current.multi &&
+                  gesture.current.pointers.has(event.pointerId) &&
+                  gesture.current.axis !== "y"
+                )
                   selectAt(kmAtPointer(event));
                 releasePointer(event.pointerId);
               },

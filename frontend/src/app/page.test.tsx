@@ -12,7 +12,7 @@
  *   2つの区分を開いていれば最後に触った区分が効いてその題に添えること、ピンを押しても消えずルート設定ではその地点を選ぶこと、
  *   目的地の行で探して置いた地点と、名前のある点を押して置いた地点が地図に立ち、行にその名前が出ること、
  *   名前を付けて保存した地点を打つ欄から選び直せ、「保存」の「地点」に並ぶこと、編集の間は地図で地点も区間も扱わず全部の候補を重ね、
- *   作り直すと編集が終わること、作ると直前の作り直しの失敗の文言を消し、合成ルートを選んでいる間は元のルートだけを重ねること、
+ *   「ルート結果」の見出しに候補1本への操作を出さず、作り直すと編集が終わること、作ると直前の作り直しの失敗の文言を消し、合成ルートを選んでいる間は元のルートだけを重ねること、
  *   地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）
  * - 画面の枠: スマホの下部タブとシート（1枚ずつ開く・地点を扱える間・結果の合図・候補が届いた時点で「ルート設定」を開いて
  *   いれば「ルート結果」へ移ってそこから全消去でき、ほかのときは移らず合図を出すこと・候補を出せなかった理由の1行・
@@ -657,10 +657,11 @@ describe("地図で扱えること", () => {
       await waitFor(() => expect(mapOnScreen().sourceFeatures("route-splice-bands").length).toBeGreaterThan(0));
     }
 
-    it("編集している間は地図で地点も区間も扱わず、全部の候補を重ねる。作り直すと編集が終わる", async () => {
+    it("編集している間は地図で地点も区間も扱わず、全部の候補を重ね、見出しに候補1本への操作を出さない。作り直すと編集が終わる", async () => {
       const { user } = renderHome();
       await generateTwo(user);
       await startEditing(user);
+      expect(screen.queryByRole("button", { name: "GPX出力" })).toBeNull();
       expect(routeLinesOnMap()).toHaveLength(2);
       expect(routeLinesOnMap()).toEqual(
         expect.arrayContaining([BASE.geometry.coordinates, OTHER.geometry.coordinates]),
