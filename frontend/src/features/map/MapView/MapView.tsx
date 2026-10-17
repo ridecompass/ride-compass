@@ -60,7 +60,7 @@ import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { useLayerDataStatus, type LayerDataSourceEntry } from "@/features/map/MapView/useLayerDataStatus";
 import { ORIGIN_ZOOM, useMapMarkers } from "@/features/map/MapView/useMapMarkers";
 import { pinMarkName } from "@/components/PinMark/PinMark";
-import { useTurnMark } from "@/features/map/MapView/useTurnMark";
+import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
 import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
 import { registerJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
@@ -298,8 +298,8 @@ interface MapViewProps {
   ride: RideFollow | null;
   /** 選んだ候補の上で走り終えた距離（km）。そこまでのルートの線を薄める。走っていなければnull。 */
   travelledKm: number | null;
-  /** 走行中に次に曲がる所の地点。印を出す。無ければnull。 */
-  turnPoint: Coordinates | null;
+  /** 走行中に次に曲がる所の地点と向き。印を出す。無ければnull。 */
+  turnPoint: TurnMarkPoint | null;
 }
 
 export default function MapView({
@@ -726,7 +726,7 @@ export default function MapView({
   });
 
   useRideFollow(mapRef, ride, here, visibleCenterOffset);
-  useTurnMark(mapRef, turnPoint);
+  const turnMarkContent = useTurnMark(mapRef, turnPoint);
 
   // 見るだけの間に押した区間の中身を、押した区間の印の上の小窓に出す。閉じると区間の選択を外す。
   const segmentPopupAt = segmentDetail !== null ? selectedRouteSegment : null;
@@ -870,6 +870,7 @@ export default function MapView({
         )}
       {segmentDetail !== null && segmentPopupContainer !== null && createPortal(segmentDetail, segmentPopupContainer)}
       {markerContents}
+      {turnMarkContent}
     </div>
   );
 }
