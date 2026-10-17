@@ -19,7 +19,7 @@
  *   決めた高さを2枚のシートで分け合うこと）、区分の開閉の保存、
  *   ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、「現在地に移動」が出発地を変えずに地図を寄せて現在地に点を
  *   出すこと、メニューから入る使い方の説明とデバッグログ、
- *   走行モードの間の配置（プロファイルは見るだけ・休んでいる間だけ「現在地へ戻る」・「表示」と「評価で塗る」は走っていないときと
+ *   走行モードの間の配置（プロファイルは見るだけ・地図を指で動かした間だけ「現在地へ戻る」・休んでいる間は「続きから走る」・「表示」と「評価で塗る」は走っていないときと
  *   同じに出し、走行中に効かない操作は出さないこと）と、届いた現在地がプロファイルの印と
  *   地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、到着予想が位置を受けた時刻と選んだ候補の計画から出ること、
  *   走行中に帯の「ルート」で開いたパネルで選び直す・作り直すと走行モードが新しい候補を追い、パネルを出していない間は地図で
@@ -937,41 +937,55 @@ describe("画面の枠", () => {
     expect(screen.queryByRole("navigation", { name: "パネル切り替え" })).toBeNull();
   });
 
-  it("走行モードのボタンで休むか地図を指で動かすと、ルートと進み具合を残して地図の下に「現在地へ戻る」を出し、押すと休む前の進み具合から続ける。ボタンで案内を終えると止める", async () => {
+  it("走行モードのボタンで休むと、位置を受けるのをやめてルートと進み具合を残し、読み込み直しても休んだまま戻り、地図の下の「続きから走る」で休む前の進み具合から続ける。地図を指で動かすと「現在地へ戻る」を出し、ボタンで案内を終えると止める", async () => {
     const geolocation = installGeolocation(HERE);
-    const { user } = renderHome();
+    const first = renderHome();
     jobs.respond([RIDDEN], LOOP_CONDITIONS);
-    await generate(user);
+    await generate(first.user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
     const backToHere = () => screen.queryByRole("button", { name: "現在地へ戻る" });
     const moveMapByHand = () =>
       act(() => mapOnScreen().emit("movestart", { originalEvent: new MouseEvent("mousedown") }));
     const rideButton = () => screen.getByRole("button", { name: "走行モード" });
-    await user.click(rideButton());
+    await first.user.click(rideButton());
     geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
-    const rideBar = screen.getByRole("group", { name: "走りの数字" });
-    expect(rideBar).toHaveTextContent("残り: 0.5km");
+    expect(screen.getByRole("group", { name: "走りの数字" })).toHaveTextContent("残り: 0.5km");
     expect(backToHere()).toBeNull();
 
-    // ボタンを押すと選ぶ所を出し、休むを選ぶと走行モードのまま（ルートと進み具合を残して）休む。
-    await user.click(rideButton());
-    await user.click(screen.getByRole("button", { name: "休む" }));
-    expect(rideButton()).toHaveAttribute("data-ride", "paused");
+    // ボタンを押すと選ぶ所を出し、休むを選ぶと位置を受けるのをやめ、走行モードのまま（ルートと進み具合を残して）休む。
+    // 休む長さは分からないので、到着予想は出さない。
+    await first.user.click(rideButton());
+    await first.user.click(screen.getByRole("button", { name: "休む" }));
+    expect(rideButton()).toHaveAttribute("data-ride", "resting");
+    expect(geolocation.watching()).toBe(0);
+    expect(screen.getByRole("group", { name: "走りの数字" })).toHaveTextContent("残り: 0.5km");
+    expect(screen.getByRole("group", { name: "走りの数字" })).toHaveTextContent("到着予想: —");
+    first.unmount();
+
+    // 読み込み直しても、休んだまま戻る。
+    const { user } = renderHome();
+    const rideBar = await screen.findByRole("group", { name: "走りの数字" });
+    expect(rideButton()).toHaveAttribute("data-ride", "resting");
+    expect(geolocation.watching()).toBe(0);
     expect(rideBar).toHaveTextContent("残り: 0.5km");
-    // 休んでいる間も位置を受けて進み具合を当てるので、再開すると休む前の続きから進む。
+
+    // 続きから走ると位置を受け直し、休む前の進み具合から続ける。
+    await user.click(screen.getByRole("button", { name: "続きから走る" }));
+    expect(geolocation.watching()).toBe(1);
     geolocation.deliver({ latitude: 35.7, longitude: 139.708, accuracy: 20 });
+    expect(rideButton()).toHaveAttribute("data-ride", "following");
     expect(rideBar).toHaveTextContent("残り: 0.2km");
+    expect(screen.queryByRole("button", { name: "続きから走る" })).toBeNull();
+
+    moveMapByHand();
     await user.click(backToHere()!);
     expect(backToHere()).toBeNull();
     expect(rideButton()).toHaveAttribute("data-ride", "following");
-    expect(rideBar).toHaveTextContent("残り: 0.2km");
 
-    moveMapByHand();
-    expect(backToHere()).not.toBeNull();
     await user.click(rideButton());
     await user.click(screen.getByRole("button", { name: "案内を終える" }));
     expect(screen.queryByRole("group", { name: "走りの数字" })).toBeNull();
-    expect(backToHere()).toBeNull();
+    expect(geolocation.watching()).toBe(0);
   });
 
   it("走行モードのまま帯の「ルート」で左のパネルを出し、候補を選び直す・作り直すと、走行モードはその候補を追い続ける", async () => {

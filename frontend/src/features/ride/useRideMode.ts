@@ -12,8 +12,11 @@ import { nextTravelBearing, type TravelBearing } from "./travelBearing";
 import { useDeviceHeading } from "./useDeviceHeading";
 import { useScreenWakeLock, type ScreenWakeLockStatus } from "./useScreenWakeLock";
 
-/** 走行モードの様子。`waiting`は始めて最初の位置を待つ間、`paused`は追うのを休んでいる間（休むを選んだ・地図を指で動かした）。 */
-export type RideStatus = "off" | "waiting" | "following" | "paused";
+/**
+ * 走行モードの様子。`waiting`は始めて最初の位置を待つ間、`paused`は地図を指で動かして追うのを休んでいる間（位置は受け続ける）、
+ * `resting`は休むを選んで位置を受けるのも画面を点けたままにするのもやめている間（走行モードのまま、続きから走れる）。
+ */
+export type RideStatus = "off" | "waiting" | "following" | "paused" | "resting";
 
 /** 地図へ渡す走行モードの値。地図はこれで現在地の点を出し、追っている間は中心と向きを動かす。 */
 interface RideOnMap {
@@ -43,13 +46,13 @@ interface UseRideModeResult {
   fixedAtMs: number | null;
   /** 最後に受けた位置の誤差（m、端末が返す95%の信頼の半径）。位置をまだ受けていない・走行モードでない間はnull。 */
   accuracyM: number | null;
-  /** 走行モードの間、画面が自動で消えないよう頼めているか（画面が消えると位置も届かなくなる）。 */
+  /** 位置を受けている間、画面が自動で消えないよう頼めているか（画面が消えると位置も届かなくなる）。 */
   screenWakeLock: ScreenWakeLockStatus;
   /** 止まっていれば始め、走行モードの間（休んでいても）は止める。 */
   press: () => void;
-  /** 走行モードの間、追うのを休む。位置は受け続ける。 */
+  /** 走行モードのまま休む: 位置を受けるのと画面を点けたままにする頼みをやめ、受けた位置を捨てる。止まっていても休める（読み込み直す前に休んでいた走行を戻す）。 */
   rest: () => void;
-  /** 休んでいれば追い直す。 */
+  /** 地図を指で動かして休んでいれば追い直し、休むを選んでいれば位置を受け直す。 */
   resume: () => void;
   /** 走行モードの間だけ値がある。 */
   map: RideOnMap | null;
@@ -119,7 +122,7 @@ function nextMotion(
 }
 
 /**
- * 走行モード: 現在地を受け取り続け、地図に追わせる。`plausibleMaxKmh`は走りとしてありえる速さの上限（時速km）で、受けた位置から
+ * 走行モード: 休んでいる間を除いて現在地を受け取り続け、地図に追わせる。`plausibleMaxKmh`は走りとしてありえる速さの上限（時速km）で、受けた位置から
  * 出した速さがこれを超えたら、出どころを添えた警告をデバッグログに出す（デバッグログを警告で絞れば、外れた速さの行だけが残る）。
  * 分からなければ警告を出さない。
  */
@@ -136,7 +139,9 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
   useEffect(() => {
     plausibleMax.current = plausibleMaxKmh;
   }, [plausibleMaxKmh]);
-  const device = useDeviceHeading(status !== "off");
+  // 位置を受けている間だけ、向きを読み、画面を点けたままにする。
+  const receiving = status !== "off" && status !== "resting";
+  const device = useDeviceHeading(receiving);
   const requestHeading = device.request;
 
   const stopWatching = useCallback(() => {
@@ -145,14 +150,22 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     watchId.current = null;
   }, []);
 
-  // 受け取りをやめ、受けた位置を捨て、次に始めるときは北を上から始める。
+  // 受け取りをやめて受けた位置を捨てる。休んだあとに受け直す位置は、休む前の位置からの速さ・向きに使わない。
+  const leave = useCallback(
+    (next: "off" | "resting") => {
+      stopWatching();
+      setStatus(next);
+      setFix(null);
+      motion.current = null;
+    },
+    [stopWatching],
+  );
+
+  // 次に始めるときは北を上から始める。
   const stop = useCallback(() => {
-    stopWatching();
-    setStatus("off");
-    setFix(null);
-    motion.current = null;
+    leave("off");
     setHeadingUp(false);
-  }, [stopWatching]);
+  }, [leave]);
 
   const start = useCallback(() => {
     if (!navigator.geolocation) {
@@ -214,13 +227,23 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
       debugLog("ride:mode", "止めた");
     }
   }, [status, start, stop]);
-  const resume = useCallback(() => setStatus((current) => (current === "paused" ? "following" : current)), []);
+  const rest = useCallback(() => {
+    leave("resting");
+    debugLog("ride:mode", "休んだ");
+  }, [leave]);
+  const resume = useCallback(() => {
+    if (status === "resting") start();
+    else setStatus((current) => (current === "paused" ? "following" : current));
+  }, [status, start]);
 
   // 画面を離れたら受け取りをやめる。
   useEffect(() => stopWatching, [stopWatching]);
 
-  // 最初の位置を待つ間に休んでも、届いた位置は受けて点を動かし、追い直すまで地図は動かさない。
-  const pause = useCallback(() => setStatus((current) => (current === "off" ? current : "paused")), []);
+  // 最初の位置を待つ間に地図を動かしても、届いた位置は受けて点を動かし、追い直すまで地図は動かさない。
+  const pause = useCallback(
+    () => setStatus((current) => (current === "off" || current === "resting" ? current : "paused")),
+    [],
+  );
   const toggleHeadingUp = useCallback(() => setHeadingUp((current) => !current), []);
 
   const speedKmh = fix?.speedMs != null ? fix.speedMs * 3.6 : null;
@@ -243,7 +266,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     [status, position, travel, device.heading, speedKmh, headingUp, pause, toggleHeadingUp],
   );
 
-  const screenWakeLock = useScreenWakeLock(status !== "off");
+  const screenWakeLock = useScreenWakeLock(receiving);
 
   return {
     status,
@@ -253,7 +276,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     accuracyM: fix?.accuracyM ?? null,
     screenWakeLock,
     press,
-    rest: pause,
+    rest,
     resume,
     map,
   };

@@ -24,20 +24,30 @@ interface RideModeButtonProps {
   screenWakeLock: ScreenWakeLockStatus;
   /** 止まっていれば始め、走行モードの間は案内を終える。 */
   onPress: () => void;
-  /** 追うのを休む（ルートと進み具合は残す）。 */
+  /** 休む（位置を受けるのをやめ、ルートと進み具合は残す）。 */
   onRest: () => void;
+  /** 休んでいれば、続きから走る。 */
+  onResume: () => void;
 }
 
-/** 地図の右の列の走行モードのボタン。走行モードの間に押すと、案内を終えるか休むかを選ばせる。始められなかった理由と、
+/** 地図の右の列の走行モードのボタン。走行モードの間に押すと、案内を終えるか、休む（休んでいれば続きから走る）かを選ばせる。始められなかった理由と、
  * 画面を点けたままにできない端末であることを、ボタンの横に出す。後者は走っている間ずっと地図を覆わないよう閉じられ、
  * 閉じたあとはボタンの角の印と読み上げの説明に残す。 */
-export default function RideModeButton({ status, error, screenWakeLock, onPress, onRest }: RideModeButtonProps) {
+export default function RideModeButton({
+  status,
+  error,
+  screenWakeLock,
+  onPress,
+  onRest,
+  onResume,
+}: RideModeButtonProps) {
   const [wakeNoticeClosed, setWakeNoticeClosed] = useState(false);
   const [choosing, setChoosing] = useState(false);
   // 止めたら、次に始めたときにまた知らせる。
   if (status === "off" && wakeNoticeClosed) setWakeNoticeClosed(false);
   if (status === "off" && choosing) setChoosing(false);
   const wakeLockUnavailable = screenWakeLock === "unavailable";
+  const resting = status === "resting";
 
   return (
     <div className="relative flex">
@@ -52,13 +62,14 @@ export default function RideModeButton({ status, error, screenWakeLock, onPress,
             aria-haspopup={status === "off" ? undefined : "dialog"}
             aria-expanded={status === "off" ? undefined : choosing}
             aria-description={wakeLockUnavailable ? WAKE_LOCK_UNAVAILABLE : undefined}
-            usage="押すと走行モードを始め、現在地を追って地図を動かし続けます（画面も点けたままにします）。走行モードの間に押すと、案内を終えるか休むかを選べます。休む・地図を指で動かすと追うのを休み、ルートと進み具合を残したまま地図を自由に動かせます。地図の下の「現在地へ戻る」で続きから追い直します。走行モードの間は、方位のボタンで北が上と進む向きが上を切り替えます。"
+            usage="押すと走行モードを始め、現在地を追って地図を動かし続けます（画面も点けたままにします）。走行モードの間に押すと、案内を終えるか休むかを選べます。休むと現在地を受けるのも画面を点けたままにするのもやめ、ルートと進み具合を残します。地図の下の「続きから走る」で、休む前の進み具合から続けます。地図を指で動かすと追うのだけを休み、地図の下の「現在地へ戻る」で追い直します。走行モードの間は、方位のボタンで北が上と進む向きが上を切り替えます。"
             data-ride={status}
             className={cn(
               "relative",
               "data-[ride=following]:bg-[var(--color-accent)] data-[ride=following]:text-white",
               "data-[ride=waiting]:animate-pulse data-[ride=waiting]:bg-[var(--color-accent)] data-[ride=waiting]:text-white motion-reduce:animate-none",
               "data-[ride=paused]:text-[var(--color-accent)] data-[ride=paused]:shadow-[0_0_0_2px_var(--color-accent)]",
+              "data-[ride=resting]:text-[var(--color-accent)] data-[ride=resting]:shadow-[0_0_0_2px_var(--color-accent)]",
             )}
           >
             <RideModeIcon />
@@ -67,18 +78,32 @@ export default function RideModeButton({ status, error, screenWakeLock, onPress,
             )}
           </Button>
         </PopoverAnchor>
-        <PopoverContent side="left" align="end" aria-label="走行モードを止める" className="flex flex-col gap-1.5">
-          <Button
-            variant="primary"
-            size="md"
-            onClick={() => {
-              setChoosing(false);
-              onRest();
-            }}
-            usage="現在地を追うのを休み、地図を自由に動かせるようにします。ルートと進み具合は残り、地図の下の「現在地へ戻る」で続きから走れます。"
-          >
-            {status === "paused" ? "休みを続ける" : "休む"}
-          </Button>
+        <PopoverContent side="left" align="end" aria-label="走行モードの続け方" className="flex flex-col gap-1.5">
+          {resting ? (
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() => {
+                setChoosing(false);
+                onResume();
+              }}
+              usage="現在地を受け直し、休む前の進み具合から案内を続けます。"
+            >
+              続きから走る
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() => {
+                setChoosing(false);
+                onRest();
+              }}
+              usage="現在地を受けるのと画面を点けたままにするのをやめ、電池を守ります。ルートと進み具合は残り、読み込み直しても休んだまま戻ります。地図の下の「続きから走る」で続きから走れます。"
+            >
+              休む
+            </Button>
+          )}
           <Button
             size="md"
             onClick={() => {

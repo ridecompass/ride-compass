@@ -16,6 +16,8 @@ export interface RideSession {
   route: RouteCandidate;
   /** 前に当てたルートの上の距離（km）。読み込み直したら、ここから続く側を選ぶ。まだ当てていなければnull。 */
   km: number | null;
+  /** 休んでいたか。読み込み直したら、休んだまま戻す。 */
+  resting: boolean;
 }
 
 // 保存した版のルート候補の型の印。画面が更新されて型が変わったら、前の版の候補を今の型として読まない。
@@ -36,9 +38,10 @@ export function readRideSession(raw: string | null, now: number): RideSession | 
     return null;
   }
   if (typeof parsed !== "object" || parsed === null) return null;
-  const { route, km, savedAt, shape } = parsed as Record<string, unknown>;
+  const { route, km, resting, savedAt, shape } = parsed as Record<string, unknown>;
   if (shape !== ROUTE_CANDIDATE_SHAPE) return null;
   if (typeof savedAt !== "number" || now - savedAt > RIDE_SESSION_TTL_MS) return null;
   if (km !== null && typeof km !== "number") return null;
-  return { route: route as RouteCandidate, km };
+  if (typeof resting !== "boolean") return null;
+  return { route: route as RouteCandidate, km, resting };
 }
