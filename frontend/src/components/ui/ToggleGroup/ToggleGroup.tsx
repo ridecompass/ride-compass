@@ -46,10 +46,21 @@ interface ToggleGroupProps extends VariantProps<typeof groupVariants> {
   className?: string;
   /** 使い方の文（`Button`の`usage`と同じ）。文を持たない選択肢を押したときも、これを出す。 */
   usage?: string;
+  /** 選んでいる項目をもう一度押すと外せる（`onValueChange`へ空文字を渡す）。無ければ外せない。 */
+  deselectable?: boolean;
   children: React.ReactNode;
 }
 
-export function ToggleGroup({ variant, value, onValueChange, className, usage, children, ...props }: ToggleGroupProps) {
+export function ToggleGroup({
+  variant,
+  value,
+  onValueChange,
+  className,
+  usage,
+  deselectable,
+  children,
+  ...props
+}: ToggleGroupProps) {
   const v = variant ?? "segmented";
   return (
     <VariantContext.Provider value={v}>
@@ -57,7 +68,7 @@ export function ToggleGroup({ variant, value, onValueChange, className, usage, c
         type="single"
         value={value}
         onValueChange={(next) => {
-          if (next === "") return;
+          if (next === "" && !deselectable) return;
           onValueChange(next);
         }}
         className={cn(groupVariants({ variant: v }), className)}

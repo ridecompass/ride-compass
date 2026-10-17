@@ -1,5 +1,5 @@
 /**
- * `MapOverlayControls.tsx`——「表示」のボタンが開く一覧が、レイヤーを群（源泉の並び）へ束ね、行のチェックでON/OFFし、
+ * `MapOverlayControls.tsx`——「表示」のボタンが開く一覧が、先頭のルートの行で選んだ候補の線を出し入れし、レイヤーを群（源泉の並び）へ束ね、行のチェックでON/OFFし、
  * ⓘ・▶を行のすぐ下に開いて説明・内訳・案内・取得状態を読ませ、内訳から凡例を絞り込めること。群はたため、群ごとに
  * 一覧に並べる項目を選べ、どちらも次の訪問でも保つこと。「表示する項目を選ぶ」の「すべて」で、群の項目をまとめて選べること。末尾のまとめての操作が、押せるときだけ押せること。
  *
@@ -51,9 +51,15 @@ function legend(axisId: string | undefined, keys: string[], hiddenKeys: string[]
   };
 }
 
-function propsOf(layers: OverlayLayerChip[], overrides: { anyLegendHidden?: boolean } = {}) {
+type Overrides = { anyLegendHidden?: boolean; route?: { shown: boolean; selectable: boolean } };
+
+function propsOf(
+  layers: OverlayLayerChip[],
+  { route = { shown: true, selectable: true }, ...overrides }: Overrides = {},
+) {
   return {
     layers,
+    route: { ...route, onChange: vi.fn() },
     onToggle: vi.fn(),
     onLegendEntryToggle: vi.fn(),
     onLegendAxisSetHidden: vi.fn(),
@@ -65,7 +71,7 @@ function propsOf(layers: OverlayLayerChip[], overrides: { anyLegendHidden?: bool
 }
 
 /** 描いて「表示」のボタンを押し、一覧を開く。 */
-async function setup(layers: OverlayLayerChip[], overrides: { anyLegendHidden?: boolean } = {}) {
+async function setup(layers: OverlayLayerChip[], overrides: Overrides = {}) {
   const props = propsOf(layers, overrides);
   const user = userEvent.setup();
   const view = render(<MapOverlayControls {...props} />);
@@ -73,11 +79,15 @@ async function setup(layers: OverlayLayerChip[], overrides: { anyLegendHidden?: 
   return { user, props, list: screen.getByRole("dialog", { name: LIST_NAME }), ...view };
 }
 
-/** 一覧に並んでいる行の名前（行のチェックボックスの名前）。 */
+/** 群の外の先頭にある、ルートの行のチェックボックスの名前。 */
+const ROUTE_ROW = "ルート";
+
+/** 群に並んでいるレイヤーの行の名前（行のチェックボックスの名前）。 */
 const rowNames = (list: HTMLElement) =>
   within(list)
     .queryAllByRole("checkbox")
-    .map((box) => box.getAttribute("aria-label"));
+    .map((box) => box.getAttribute("aria-label"))
+    .filter((name) => name !== ROUTE_ROW);
 
 /** 行のtitle（行の名前のチェックボックスを包むラベルが持つ）。 */
 const rowTitle = (name: string) => screen.getByRole("checkbox", { name }).closest("label")?.getAttribute("title");
@@ -291,6 +301,23 @@ describe("群", () => {
     await user.click(chooser());
     expect(rowNames(list)).toEqual([]);
     expect(props.onToggle.mock.calls).toEqual([["shown", false]]);
+  });
+});
+
+describe("ルートの行", () => {
+  it("候補を選んでいれば、出し入れを反転した値で知らせる", async () => {
+    const { user, props, list } = await setup([], { route: { shown: true, selectable: true } });
+    const route = within(list).getByRole("checkbox", { name: ROUTE_ROW });
+    expect(route).toBeChecked();
+    await user.click(route);
+    expect(props.route.onChange).toHaveBeenCalledWith(false);
+  });
+
+  it("候補を選ぶまでは押せず、ONに見えない", async () => {
+    const { list } = await setup([], { route: { shown: true, selectable: false } });
+    const route = within(list).getByRole("checkbox", { name: ROUTE_ROW });
+    expect(route).toBeDisabled();
+    expect(route).not.toBeChecked();
   });
 });
 

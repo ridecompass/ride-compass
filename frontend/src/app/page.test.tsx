@@ -2,10 +2,10 @@
  * `app/page.tsx`——トップページ。機能（地図・ルートの設定と結果・走行条件・天候）を1つの画面に束ね、機能の間の値を受け渡す。
  *
  * 見ること（利用者の操作の流れで、ある機能の変化が別の機能の振る舞いを変える受け渡し）:
- * - ルートを作る: 「ルート生成」が地図の色分けを添えて送ること、結果が出たら閉じていた「ルート結果」を
+ * - ルートを作る: 「ルート生成」が地図の塗りを添えて送ること、結果が出たら閉じていた「ルート結果」を
  *   開くこと、候補が「ルート結果」と地図の両方へ出て、選んだ候補が地図でも選ばれ、区間を持つかで周りの塗りが決まること、
  *   全消去は確認の窓で「消す」を押してから両方から消えること、候補がある間だけ条件のずれの印が点き全消去で消えること、走行条件の想定速度・出発時刻が
- *   生成と地図の道の詳細へ同じ値で渡ること、「地図の色分け」の未使用を分ける重み（生成の前はいまの重み・後は使われた重み）、
+ *   生成と地図の道の詳細へ同じ値で渡ること、「評価で塗る」の未使用を分ける重み（生成の前はいまの重み・後は使われた重み）、
  *   保存した条件が地図で置いた出発地を持ち、呼び出すとその出発地から生成すること、前に保存した条件が「保存」の「設定」に出ること
  * - 地図で扱えること: 地図を押したときの意味は効いているパネルで決まり（「ルート設定」の条件タブは選んでいる地点を置く、
  *   「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
@@ -19,8 +19,8 @@
  *   決めた高さを2枚のシートで分け合うこと）、区分の開閉の保存、
  *   ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、「現在地に移動」が出発地を変えずに地図を寄せて現在地に点を
  *   出すこと、メニューから入る使い方の説明とデバッグログ、
- *   走行モードの間の配置（プロファイルは見るだけ・休んでいる間だけ「現在地へ戻る」・帯の「地図の表示」で「表示」と色分けを
- *   出し入れし、隠している間も色分けのピルから凡例を開け、走り始めるたびに隠すこと）と、届いた現在地がプロファイルの印と
+ *   走行モードの間の配置（プロファイルは見るだけ・休んでいる間だけ「現在地へ戻る」・帯の「地図の表示」で「表示」と「評価で塗る」を
+ *   出し入れし、隠している間も「評価で塗る」のピルから一覧を開け、走り始めるたびに隠すこと）と、届いた現在地がプロファイルの印と
  *   地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、到着予想が位置を受けた時刻と選んだ候補の計画から出ること、
  *   走行中に帯の「ルート」で開いたパネルで選び直す・作り直すと走行モードが新しい候補を追い、パネルを出していない間は地図で
  *   何も変えも開きもしないこと、「このルートで走る」でその候補で走り始めてシートを閉じ、止めると走る前のシートへ戻ること
@@ -270,10 +270,9 @@ describe("ルートを作る", () => {
     await user.click(section("ルート結果"));
     expect(section("ルート結果")).toHaveAttribute("aria-expanded", "false");
 
-    await user.click(screen.getByRole("button", { name: /^地図の色分け: / }));
+    await user.click(screen.getByRole("button", { name: /^評価で塗る: / }));
     await user.click(await screen.findByRole("radio", { name: /軸A/ }));
-    await user.click(screen.getByRole("button", { name: /^地図の色分け: / }));
-    await user.click(await screen.findByRole("checkbox", { name: "ルート後も周囲の道路を薄く塗る" }));
+    await user.click(screen.getByRole("checkbox", { name: "ルート後も周囲の道路を薄く塗る" }));
     await user.keyboard("{Escape}");
     expect(paints("axis_a")).toBe(true);
 
@@ -407,7 +406,7 @@ describe("ルートを作る", () => {
     expect(screen.getByRole("button", { name: "「いつもの周回」を呼び出す" })).toBeInTheDocument();
   });
 
-  it("「地図の色分け」で未使用に分ける軸は、生成の前はいまの重み、生成の後は生成に使われた重みで決まる", async () => {
+  it("「評価で塗る」で未使用に分ける軸は、生成の前はいまの重み、生成の後は生成に使われた重みで決まる", async () => {
     serveAxisCatalog(
       catalogResponse([
         catalogEntry({ axis_id: "axis_a", label: "軸A", default_weight: 1 }),
@@ -415,11 +414,15 @@ describe("ルートを作る", () => {
       ]),
     );
     const { user } = renderHome();
-    /** 「未使用」の見出しより後に並ぶ選択肢の文字。 */
+    /** 「未使用」を添えた選択肢の文字。 */
     const unusedAxes = async () => {
-      await user.click(screen.getByRole("button", { name: /^地図の色分け: / }));
-      const options = await screen.findByRole("radiogroup", { name: "地図の色分け" });
-      const unused = options.textContent?.split("未使用")[1] ?? "";
+      await user.click(screen.getByRole("button", { name: /^評価で塗る: / }));
+      const options = await screen.findByRole("radiogroup", { name: "評価で塗る" });
+      const unused = within(options)
+        .getAllByRole("radio")
+        .map((row) => row.textContent ?? "")
+        .filter((text) => text.endsWith("未使用"))
+        .join(" ");
       await user.keyboard("{Escape}");
       return unused;
     };
@@ -723,7 +726,7 @@ describe("地図で扱えること", () => {
     });
   });
 
-  it("地図の表示をまとめて戻す: 「表示」の一覧で行を全部消すとルートのほかの地図のレイヤーが消え、絞り込みを解くのは色分けの凡例を含めて凡例で隠している間だけ押せる。右上のメニューの再描画は地図の描き直しを求める", async () => {
+  it("地図の表示をまとめて戻す: 「表示」の一覧で行を全部消すとルートのほかの地図のレイヤーが消え、その一覧の絞り込みの解除は「評価で塗る」の凡例を数えず、そちらは「評価で塗る」の解除で戻す。右上のメニューの再描画は地図の描き直しを求める", async () => {
     const { user } = renderHome();
     const fromList = async <T,>(name: string, inspect: (button: HTMLButtonElement) => Promise<T> | T) => {
       await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
@@ -733,7 +736,7 @@ describe("地図で扱えること", () => {
     };
     const canRun = (name: string) => fromList(name, (button) => !button.disabled);
     const run = (name: string) => fromList(name, (button) => user.click(button));
-    // ルートの出し入れは色分けが持ち、一覧の操作では消さない。
+    // ルートの線は一覧の先頭の行が出し入れし、まとめて消す操作では消さない。
     const nonRouteLayers = () =>
       mapOnScreen()
         .visibleLayerIds()
@@ -748,15 +751,16 @@ describe("地図で扱えること", () => {
     expect(mapOnScreen().visibleLayerIds()).toEqual(routeLayers);
 
     expect(await canRun("絞り込みをすべて解除")).toBe(false);
-    jobs.respond([FIRST], LOOP_CONDITIONS);
-    await generate(user);
-    await user.click(await screen.findByRole("button", { name: /^地図の色分け: / }));
-    const legendAll = await screen.findByRole("checkbox", { name: "凡例の全段階をまとめて表示/非表示" });
-    await user.click(legendAll);
+    await user.click(screen.getByRole("button", { name: /^評価で塗る: / }));
+    await user.click(await screen.findByRole("radio", { name: /軸A/ }));
+    await user.click(screen.getByRole("button", { name: "軸Aの凡例" }));
+    await user.click(await screen.findByRole("checkbox", { name: "凡例の全段階をまとめて表示/非表示" }));
     await user.keyboard("{Escape}");
-    expect(await canRun("絞り込みをすべて解除")).toBe(true);
-    await run("絞り込みをすべて解除");
     expect(await canRun("絞り込みをすべて解除")).toBe(false);
+    await user.click(screen.getByRole("button", { name: /^評価で塗る: / }));
+    await user.click(screen.getByRole("button", { name: "絞り込みをすべて解除" }));
+    expect(screen.getByRole("button", { name: "絞り込みをすべて解除" })).toBeDisabled();
+    await user.keyboard("{Escape}");
 
     const before = mapOnScreen().styles.length;
     await user.click(screen.getByRole("button", { name: "メニュー" }));
@@ -793,13 +797,13 @@ describe("画面の枠", () => {
     expect(rideProfile()).toBeNull();
   });
 
-  it("走行中は帯の「地図の表示」で「表示」と色分けを出し入れでき、隠している間も色分けのピルは出て押すと凡例を開き、出している間も現在地を追い、走行方位・走行条件・「現在地に移動」は出さない。止めて走り直すと隠した配置から始まる", async () => {
+  it("走行中は帯の「地図の表示」で「表示」と「評価で塗る」を出し入れでき、隠している間も「評価で塗る」のピルは出て押すと一覧を開き、出している間も現在地を追い、走行方位・走行条件・「現在地に移動」は出さない。止めて走り直すと隠した配置から始まる", async () => {
     const geolocation = installGeolocation(HERE);
     const { user } = renderHome();
     jobs.respond([FIRST], LOOP_CONDITIONS);
     await generate(user);
     const overlayControls = () => screen.queryByRole("button", { name: "地図に出す情報" });
-    const lensPill = () => screen.getByRole("button", { name: /^地図の色分け: / });
+    const lensPill = () => screen.getByRole("button", { name: /^評価で塗る: / });
     const ridingOnlyHidden = () => [
       screen.queryByRole("button", { name: "走行方位を設定" }),
       screen.queryByRole("group", { name: "走行条件" }),
@@ -815,7 +819,7 @@ describe("画面の枠", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(overlayControls()).toBeNull();
     await user.click(lensPill());
-    expect(await screen.findByRole("group", { name: "凡例" })).toBeInTheDocument();
+    expect(await screen.findByRole("radiogroup", { name: "評価で塗る" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
 
     await user.click(toggle);

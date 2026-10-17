@@ -17,7 +17,7 @@ import {
   type LayerDataStatusByLayer,
   type MapLayerVisibility,
 } from "@/features/map/layers/mapLayers";
-import type { LensId } from "@/lib/mapDisplay/routeStyleModes";
+import { LENS_DIFFICULTY_ID, type LensId } from "@/lib/mapDisplay/routeStyleModes";
 import type { MapViewport } from "@/features/map/layers/windLayer";
 import type MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayControls";
 import { isLegendFiltered } from "@/features/map/MapOverlayControls/MapOverlayControls";
@@ -28,6 +28,7 @@ import { useDedicatedWayValues } from "@/features/map/useDedicatedWayValues";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
 import { useStoredBooleanState, useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates } from "@/types/route";
+import type { WayValueCondition } from "@/lib/catalogAxis";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
 
@@ -41,7 +42,6 @@ import {
 import {
   DEFAULT_ROUTE_STYLE_MODE_ID,
   isRouteStyleModeId,
-  lensConditionsLabel,
   lensPremises,
   lensLegend,
   lensOptions,
@@ -68,8 +68,6 @@ interface MapViewInputs {
   ride: { bearingDeg: number; at: Date; speedKmh: number };
   /** 刻みへ丸めた現在時刻（`useDepartureTime`）。 */
   now: Date;
-  /** 出発時刻の表示（走行条件の欄と同じ文字）。周りの道の色が拠る条件の文に使う。 */
-  departureLabel: string;
   /** レンズの選択肢を「未使用」と分ける重み。 */
   routeWeights: Readonly<Record<string, number>>;
 }
@@ -78,6 +76,8 @@ interface MapViewState {
   look: MapLook;
   lensControl: Omit<ComponentProps<typeof LensControl>, "compact">;
   overlayControls: ComponentProps<typeof MapOverlayControls>;
+  /** 周りの道を塗っている軸が使う走る条件（向き・速さ・出発時刻）。地図の右の列の、その条件のボタンに印を付ける。 */
+  lensConditions: readonly WayValueCondition[];
   /** 押した人の地図だけを、スタイルから取り直して組み直す。 */
   redrawMap: () => void;
   /** 地図の見えている範囲の真ん中。地図がまだ範囲を知らせていなければnull。 */
@@ -86,14 +86,7 @@ interface MapViewState {
   bearing: number;
 }
 
-export function useMapView({
-  hasSelectedRoute,
-  hasDetail,
-  ride,
-  now,
-  departureLabel,
-  routeWeights,
-}: MapViewInputs): MapViewState {
+export function useMapView({ hasSelectedRoute, hasDetail, ride, now, routeWeights }: MapViewInputs): MapViewState {
   const catalog = useAxisCatalog();
   const mapCatalog = useMapAxisCatalog();
   const [layerVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
@@ -138,9 +131,8 @@ export function useMapView({
   });
   const painted = paintedAxisId(lens, hasDetail, keepAfterRoute);
   // 道ごとの値は、全道路を塗っている軸の分だけ取る（塗っていない軸の値は地図に出ない。表示中のものだけ叩く）。
-  // 密度の軸は線を塗らないので取らない。
   const fetchAxes = useMemo(
-    () => mapCatalog.dedicatedAxes.filter((axis) => axis.axisId === painted && axis.densityTerms === null),
+    () => mapCatalog.dedicatedAxes.filter((axis) => axis.axisId === painted),
     [mapCatalog.dedicatedAxes, painted],
   );
   const dedicatedWayValues = useDedicatedWayValues(fetchAxes, viewport, ride.bearingDeg, ride.at, ride.speedKmh);
@@ -163,7 +155,6 @@ export function useMapView({
   );
 
   const legend = lensLegend(lens, hasDetail, mapCatalog);
-  const conditions = lensConditionsLabel(painted, mapCatalog.dedicatedAxes, ride, departureLabel);
   const lensHidden = presentHiddenKeys(legend, hiddenKeysOf(hidden, lens));
   const lensFetch = dedicatedWayValues.get(lens);
   const chips = overlayChips({
@@ -180,15 +171,14 @@ export function useMapView({
     setHidden((prev) => withHiddenKeys(prev, axisId, keys));
   const toggleHiddenFor = (axisId: string, key: string) => setHidden((prev) => toggleHiddenKey(prev, axisId, key));
 
+  // 色分けの凡例が隠した段の保存先の鍵（色分けの選択肢）。「表示」の絞り込みの解除は、これ以外の鍵だけを戻す。
+  const lensKeys = new Set<string>([...catalog.axes.map((axis) => axis.axisId), LENS_DIFFICULTY_ID]);
+
   return {
     look,
     lensControl: {
       lens,
-      // 選んだ色分けが見えるように、ルートのレイヤーがOFFならONにする。
-      onLensChange: (id) => {
-        setLens(id);
-        setRouteShown(true);
-      },
+      onLensChange: setLens,
       axisOptions: lensOptions(catalog.axes, routeWeights, catalog.axisColors),
       legend,
       hiddenLegendKeys: lensHidden,
@@ -197,12 +187,8 @@ export function useMapView({
       keepAfterRoute,
       onKeepAfterRouteChange: setKeepAfterRoute,
       hasDetail,
-      routeShown: layerVisibility[ROUTE_LAYER_ID] === true,
-      routeSelectable: hasSelectedRoute,
-      onRouteShownChange: setRouteShown,
-      conditions,
-      premises: lensPremises(painted, catalog.axes, conditions),
-      densityTerms: catalog.axes.find((axis) => axis.axisId === lens)?.densityTerms ?? null,
+      routeHidden: hasSelectedRoute && layerVisibility[ROUTE_LAYER_ID] !== true,
+      premises: lensPremises(painted, catalog.axes),
       dataStatus: lensFetch
         ? deriveFetchLayerStatus(
             lensFetch.loading,
@@ -214,20 +200,29 @@ export function useMapView({
     },
     overlayControls: {
       layers: chips,
+      route: {
+        shown: layerVisibility[ROUTE_LAYER_ID] === true,
+        selectable: hasSelectedRoute,
+        onChange: setRouteShown,
+      },
       onToggle: (id, on) => setLayerVisibility((prev) => ({ ...prev, [id]: on })),
       onLegendEntryToggle: toggleHiddenFor,
       onLegendAxisSetHidden: setHiddenFor,
-      // 消すのは一覧に並ぶものだけ（ルートの出し入れは色分けが持つ）。
       onHideAllLayers: () =>
         setLayerVisibility((prev) => ({
           ...prev,
           ...Object.fromEntries(chips.map((chip) => [chip.id, false])),
         })),
-      // 数えるのは地図に出ているもの（色分けと、出しているレイヤー）だけ。出していないレイヤーの最初に隠す行
-      // （路面のデータなし等）まで数えると、地図に何も欠けていないのに最初から押せる。
-      anyLegendHidden: lensHidden.length > 0 || chips.some(isLegendFiltered),
-      onShowAllLegendRows: () => setHidden(NONE_HIDDEN),
+      // 「表示」の絞り込みだけを数え、戻す（色分けの凡例は色分けの中で戻す）。
+      anyLegendHidden: chips.some(isLegendFiltered),
+      onShowAllLegendRows: () =>
+        setHidden((prev) =>
+          Object.fromEntries(
+            Object.entries({ ...NONE_HIDDEN, ...prev }).map(([key, keys]) => [key, lensKeys.has(key) ? keys : []]),
+          ),
+        ),
     },
+    lensConditions: catalog.axes.find((axis) => axis.axisId === painted)?.wayValueConditions ?? [],
     redrawMap: () => setRefreshToken((token) => token + 1),
     center,
     bearing: viewport?.bearing ?? 0,
