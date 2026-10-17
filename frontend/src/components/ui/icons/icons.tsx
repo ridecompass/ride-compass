@@ -5,6 +5,7 @@
 import type { ReactElement } from "react";
 import {
   ArrowUp,
+  Ban,
   Bike,
   CalendarDays,
   CircleQuestionMark,
@@ -566,6 +567,8 @@ export const ClearPointsIcon = fromLucide(MapPinX);
 export const DistanceTargetIcon = fromLucide(Ruler);
 /** 置いた地点を1つ消す。保存したものを消す`DeleteSavedIcon`と同じく、消す操作はごみ箱の形にそろえる。 */
 export const RemovePointIcon = fromLucide(Trash);
+/** 通らない道（除外する道路の種類）。 */
+export const ExcludedRoadIcon = fromLucide(Ban);
 /** 変えた値を既定値に戻す。 */
 export const ResetDefaultsIcon = fromLucide(RotateCcw);
 /** 取れなかったものを取り直す。 */

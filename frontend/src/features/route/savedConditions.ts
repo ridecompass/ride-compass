@@ -1,10 +1,11 @@
 import { DEFAULT_HARD_FILTERS } from "@/features/route/RouteSettingsPanel/HardFilterPanel";
 import { syncHardFilterKeys } from "@/features/route/hardFilterSync";
+import { AVOIDABLE_ROWS, AVOIDANCE_LEVELS, syncRoadAvoidance } from "@/features/route/roadAvoidance";
 import { alignRoutePreference } from "@/features/route/routePreferenceSync";
 import { totalWeight } from "@/features/route/routeWeightShare";
 import type { AxisCatalog } from "@/lib/axisCatalog";
 import { isCoordinates, readStoredList, withEntryFirst } from "@/lib/storedList";
-import type { Coordinates, HardFilterOverride, RoutePreferenceWeights } from "@/types/route";
+import type { Coordinates, HardFilterOverride, RoadAvoidanceOverride, RoutePreferenceWeights } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 /** 生成の条件（「ルート設定」の入力）。いまの条件・保存・呼び出しが同じこの形を使う。出発地は位置の持ち主が持つので含まず、
@@ -21,6 +22,8 @@ export interface GenerationConditionsSnapshot {
   /** 上書きした重み。nullは上書きしない（backendの既定の配分）。 */
   routePreference: RoutePreferenceWeights | null;
   hardFilters: HardFilterOverride;
+  /** 道のレイヤの凡例の行ごとの避け方。 */
+  roadAvoidance: RoadAvoidanceOverride;
 }
 
 /** 名前を付けて保存した生成の条件。 */
@@ -103,6 +106,8 @@ const SAVED_FIELD_READERS: {
     typeof value === "object" && value !== null
       ? syncHardFilterKeys(value as HardFilterOverride, DEFAULT_HARD_FILTERS)
       : undefined,
+  // 避け方を持たない件は、行ごとに選べるようになる前に保存した件で、既定の段で読む。
+  roadAvoidance: syncRoadAvoidance,
 };
 
 // 1件を今の画面が受け付ける形で読む。読めない件はnull（ほかの件は残す）。
@@ -146,7 +151,7 @@ interface ConditionsDescription {
   route: string;
   /** 使う軸ごとの割合（重みの合計に占める%。「重み」タブのチップと同じ数）。 */
   weights: string;
-  /** 除外する道路の名前。 */
+  /** 通らない道（除外する道路の種類と、「通らない」を選んだ行）と、なるべく避ける行の名前。 */
   exclusions: string;
 }
 
@@ -174,11 +179,19 @@ function weightsDescription(routePreference: RoutePreferenceWeights | null, cata
   return shares.length === 0 ? "—" : shares.map(({ label, pct }) => `${label} ${pct}%`).join("・");
 }
 
-function exclusionsDescription(hardFilters: HardFilterOverride): string {
-  const labels = routeGenerateConfig.hard_filters.filters
+// 段ごとに「段の名前 行の名前・…」を、強い段から並べる。除外する道路の種類は「通らない」に入れる。
+function exclusionsDescription(hardFilters: HardFilterOverride, roadAvoidance: RoadAvoidanceOverride): string {
+  const excluded = routeGenerateConfig.hard_filters.filters
     .filter(({ key }) => hardFilters[key])
     .map(({ label }) => label);
-  return labels.length === 0 ? "なし" : labels.join("・");
+  const parts = AVOIDANCE_LEVELS.toReversed().flatMap(({ key: level, label: levelLabel }) => {
+    const labels = [
+      ...(level === "exclude" ? excluded : []),
+      ...AVOIDABLE_ROWS.filter(({ key }) => level !== "pass" && roadAvoidance[key] === level).map(({ label }) => label),
+    ];
+    return labels.length === 0 ? [] : [`${levelLabel} ${labels.join("・")}`];
+  });
+  return parts.length === 0 ? "なし" : parts.join("／");
 }
 
 export function describeConditions(
@@ -188,7 +201,7 @@ export function describeConditions(
   return {
     route: routeDescription(conditions),
     weights: weightsDescription(conditions.routePreference, catalog),
-    exclusions: exclusionsDescription(conditions.hardFilters),
+    exclusions: exclusionsDescription(conditions.hardFilters, conditions.roadAvoidance),
   };
 }
 

@@ -6,6 +6,7 @@ import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useStoredBooleanState, useStoredJsonState, useStoredState } from "@/hooks/useStoredState";
 import { DEFAULT_HARD_FILTERS } from "@/features/route/RouteSettingsPanel/HardFilterPanel";
 import { syncHardFilterKeys } from "@/features/route/hardFilterSync";
+import { DEFAULT_ROAD_AVOIDANCE, syncRoadAvoidance } from "@/features/route/roadAvoidance";
 import { alignRoutePreference, routePreferenceToSend } from "@/features/route/routePreferenceSync";
 import {
   acceptedDistanceInput,
@@ -18,6 +19,7 @@ import type {
   PinRole,
   PlaceCandidate,
   PointTarget,
+  RoadAvoidanceOverride,
   RoutePreferenceWeights,
 } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
@@ -25,6 +27,7 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 const WEIGHT_OVERRIDE_ENABLED_STORAGE_KEY = "ridecompass:weight-override-enabled";
 const ROUTE_PREFERENCE_STORAGE_KEY = "ridecompass:route-preference";
 const HARD_FILTERS_STORAGE_KEY = "ridecompass:hard-filters";
+const ROAD_AVOIDANCE_STORAGE_KEY = "ridecompass:road-avoidance";
 
 /** 経由地を、生成が受け付ける数まで置いてあるか（置いてあれば、もう足さない）。 */
 export function waypointsFull(waypoints: readonly Coordinates[]): boolean {
@@ -47,7 +50,7 @@ interface GenerationConditionsInputs {
 }
 
 /**
- * 生成の条件（「ルート設定」の入力）: 全長の目標を決めるか・距離・候補数・地点（出発地以外）・重み・除外と、地図のタップで
+ * 生成の条件（「ルート設定」の入力）: 全長の目標を決めるか・距離・候補数・地点（出発地以外）・重み・除外・避け方と、地図のタップで
  * 置く地点の選びと、保存した条件での入れ替え。保存する値は、読むときに今の画面が受け付ける範囲・今の項目へ揃える。
  */
 export function useGenerationConditions({ onOriginPlace }: GenerationConditionsInputs) {
@@ -177,6 +180,15 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
       deserialize: (raw) => syncHardFilterKeys(JSON.parse(raw) as HardFilterOverride, DEFAULT_HARD_FILTERS),
     },
   );
+  // 道の凡例の行ごとの避け方。常に送る。読むときに今の行へ揃える。
+  const [roadAvoidance, setRoadAvoidance] = useStoredState<RoadAvoidanceOverride>(
+    ROAD_AVOIDANCE_STORAGE_KEY,
+    DEFAULT_ROAD_AVOIDANCE,
+    {
+      serialize: JSON.stringify,
+      deserialize: (raw) => syncRoadAvoidance(JSON.parse(raw)),
+    },
+  );
 
   // いまの条件を、保存・呼び出しと同じ形1つで返す（保存・生成の入力・保存の説明はこれを読む）。
   const snapshot: GenerationConditionsSnapshot = useMemo(
@@ -188,6 +200,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
       destination,
       routePreference: weightOverrideEnabled ? routePreference : null,
       hardFilters,
+      roadAvoidance,
     }),
     [
       distanceTargeted,
@@ -198,6 +211,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
       weightOverrideEnabled,
       routePreference,
       hardFilters,
+      roadAvoidance,
     ],
   );
 
@@ -217,6 +231,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
             setWeightOverrideEnabled(weights !== null);
           },
           hardFilters: setHardFilters,
+          roadAvoidance: setRoadAvoidance,
         },
         saved,
       );
@@ -229,6 +244,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
       setRoutePreference,
       setWeightOverrideEnabled,
       setHardFilters,
+      setRoadAvoidance,
     ],
   );
 
@@ -261,6 +277,8 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     routePreferenceToSend: routePreferenceToSend(routePreference, axisCatalog.loaded, weightOverrideEnabled),
     hardFilters,
     setHardFilters,
+    roadAvoidance,
+    setRoadAvoidance,
   };
 }
 

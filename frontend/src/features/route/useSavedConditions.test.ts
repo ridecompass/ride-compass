@@ -14,6 +14,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_HARD_FILTERS } from "@/features/route/RouteSettingsPanel/HardFilterPanel";
+import { AVOIDABLE_ROWS, AVOIDANCE_LEVELS, DEFAULT_ROAD_AVOIDANCE } from "@/features/route/roadAvoidance";
 import { serveAxisCatalog } from "@/testing/backendServer";
 import { TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
 import type { Coordinates } from "@/types/route";
@@ -57,6 +58,8 @@ describe("保存して呼び出す", () => {
     const { result } = renderSaved();
     await waitFor(() => expect(result.current.conditions.routePreference).toEqual({ axis_a: 0.4, axis_b: 0.6 }));
     const [filterKey] = Object.keys(DEFAULT_HARD_FILTERS);
+    const [{ key: rowKey }] = AVOIDABLE_ROWS;
+    const otherLevel = AVOIDANCE_LEVELS.find(({ key }) => key !== DEFAULT_ROAD_AVOIDANCE[rowKey])!.key;
     act(() => result.current.conditions.selectPoint({ role: "waypoint", index: null }));
     act(() => {
       result.current.conditions.setDistanceTargeted(false);
@@ -69,6 +72,7 @@ describe("保存して呼び出す", () => {
         ...DEFAULT_HARD_FILTERS,
         [filterKey]: !DEFAULT_HARD_FILTERS[filterKey],
       });
+      result.current.conditions.setRoadAvoidance({ ...DEFAULT_ROAD_AVOIDANCE, [rowKey]: otherLevel });
     });
     act(() => result.current.saved.save("荒川へ", false));
 
@@ -80,6 +84,7 @@ describe("保存して呼び出す", () => {
       result.current.conditions.clearDestination();
       result.current.conditions.setWeightOverrideEnabled(false);
       result.current.conditions.setHardFilters(DEFAULT_HARD_FILTERS);
+      result.current.conditions.setRoadAvoidance(DEFAULT_ROAD_AVOIDANCE);
     });
     act(() => result.current.saved.recall(result.current.saved.saved[0]));
 
@@ -92,6 +97,7 @@ describe("保存して呼び出す", () => {
     expect(conditions.selectedPoint).toEqual({ role: "origin" });
     expect(conditions.routePreferenceToSend).toEqual({ axis_a: 0.7, axis_b: 0.3 });
     expect(conditions.hardFilters[filterKey]).toBe(!DEFAULT_HARD_FILTERS[filterKey]);
+    expect(conditions.roadAvoidance).toEqual({ ...DEFAULT_ROAD_AVOIDANCE, [rowKey]: otherLevel });
   });
 
   it("重みを上書きせずに保存した条件は、呼び出すと上書きをやめ、重みのタブは送らない間に効く既定の重みを出す", async () => {
