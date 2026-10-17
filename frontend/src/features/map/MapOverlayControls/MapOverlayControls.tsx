@@ -75,6 +75,8 @@ export interface OverlayLayerChip {
 
 interface MapOverlayControlsProps {
   layers: readonly OverlayLayerChip[];
+  /** 選んだ候補のルートの線の出し入れ（作った結果なので、群の外の先頭に置く）。 */
+  route: { shown: boolean; selectable: boolean; onChange: (shown: boolean) => void };
   onToggle: (id: MapLayerId, on: boolean) => void;
   /** ▶の中の1行の表示/非表示を切り替える（`axisId`を持つ軸だけ）。保存先はレンズの凡例と同じ。 */
   onLegendEntryToggle: (axisId: string, key: string) => void;
@@ -433,6 +435,7 @@ function ItemChooser({
 // レイヤーが増えてもここは変わらない（群の分け方と並びはレイヤーカタログから導く）。置き場は呼び出し側が決める。
 export default function MapOverlayControls({
   layers,
+  route,
   onToggle,
   onLegendEntryToggle,
   onLegendAxisSetHidden,
@@ -552,7 +555,9 @@ export default function MapOverlayControls({
         <Button
           variant="float"
           size="bare"
-          className="pointer-events-auto relative size-10 flex-none flex-col gap-0.5 rounded-md text-center leading-none"
+          shape="pill"
+          // 「評価で塗る」のピルと同じ高さの1行（アイコン・名前・件数）にそろえる。
+          className="pointer-events-auto flex-none flex-row items-center gap-1.5 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap"
           aria-label={LIST_SCREEN_NAME}
           title={[`${LIST_SCREEN_NAME}[${shownCount}件を表示中]`, anyFiltered ? FILTERED_LABEL : undefined]
             .filter(Boolean)
@@ -560,16 +565,16 @@ export default function MapOverlayControls({
           usage="地図に重ねる情報（路面・雨雲・補給の店など）の一覧を開きます。数字は今地図に出している件数です。"
         >
           <DisplayItemsIcon size={16} />
-          <span className="text-[0.6rem]">表示</span>
+          <span className="font-semibold">表示</span>
           {shownCount > 0 && (
             <span
               aria-hidden="true"
-              className="absolute top-0.5 right-0.5 h-3.5 min-w-3.5 rounded-full bg-[var(--color-accent)] px-0.5 text-[0.55rem] leading-3.5 text-white"
+              className="h-3.5 min-w-3.5 rounded-full bg-[var(--color-accent)] px-1 text-center text-[0.6rem] leading-3.5 text-white"
             >
               {shownCount}
             </span>
           )}
-          {anyFiltered && <FilteredMark className="absolute top-1 left-1" />}
+          {anyFiltered && <FilteredMark />}
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -580,6 +585,21 @@ export default function MapOverlayControls({
         className={cn(FLOATING_PANEL_CLASS, "max-h-[var(--radix-popover-content-available-height)] w-72")}
       >
         <p className="m-0 font-semibold">{LIST_SCREEN_NAME}</p>
+        <label
+          className={cn(
+            "mt-1 flex items-center gap-1.5 border-b border-[var(--color-border)] pb-1.5",
+            route.selectable ? "cursor-pointer" : "text-[var(--color-neutral)]",
+          )}
+          data-usage="選んだ候補のルートの線を、地図に出し入れします。線の色は「評価で塗る」で選んだ評価軸の点数です。"
+        >
+          <Checkbox
+            checked={route.shown && route.selectable}
+            disabled={!route.selectable}
+            onCheckedChange={() => route.onChange(!route.shown)}
+            aria-label="ルート"
+          />
+          {route.selectable ? "ルート（選んだ候補の線）" : "ルート（候補を選ぶと出せます）"}
+        </label>
         {groups}
         <div className="mt-1.5 flex flex-col border-t border-[var(--color-border)] pt-1">
           <Button
@@ -587,7 +607,7 @@ export default function MapOverlayControls({
             size="sm"
             onClick={onHideAllLayers}
             disabled={shownCount === 0}
-            usage="この一覧でONにした情報を、まとめてOFFにします。"
+            usage="この一覧でONにした情報を、まとめてOFFにします（ルートの線は残します）。"
           >
             <ClearAllLayersIcon size={15} />
             表示中のレイヤーをすべて非表示
@@ -597,7 +617,7 @@ export default function MapOverlayControls({
             size="sm"
             onClick={onShowAllLegendRows}
             disabled={!anyLegendHidden}
-            usage="凡例のチェックを外して隠した段階を、まとめて地図に戻します（地図の色分けの凡例も）。"
+            usage="この一覧の凡例のチェックを外して隠した段階を、まとめて地図に戻します。"
           >
             <ClearAllFiltersIcon size={15} />
             絞り込みをすべて解除

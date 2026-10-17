@@ -59,7 +59,6 @@ import { nextTurn } from "@/features/ride/nextTurn";
 import TurnCard from "@/features/ride/TurnCard/TurnCard";
 import { useRideProgress } from "@/features/ride/useRideProgress";
 import { useRideWayConditions } from "@/features/ride/useRideWayConditions";
-import { formatDepartureLabel } from "@/features/conditions/rideConditions";
 import { useMapView } from "@/features/map/view/useMapView";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cardVariants } from "@/components/ui/Card/Card";
@@ -263,7 +262,6 @@ export default function Home() {
     hasDetail: results.hasDetail,
     ride: wayConditions,
     now: ride.departure.now,
-    departureLabel: formatDepartureLabel(ride.departure.at, ride.departure.now),
     routeWeights: route.routeWeights,
   });
 
@@ -580,7 +578,7 @@ export default function Home() {
               onClick={() => setRideMapControlsShown((shown) => !shown)}
               aria-label="地図の表示"
               aria-expanded={rideMapControlsShown}
-              usage="走行モードのまま、地図の「表示」と色分け（凡例つき）を出します。変えた表示は走っていないときと同じ設定に残ります。もう一度押すと隠します。"
+              usage="走行モードのまま、地図の「表示」と「評価で塗る」（凡例つき）を出します。変えた表示は走っていないときと同じ設定に残ります。もう一度押すと隠します。"
             >
               <MapControlsIcon size={18} />
             </Button>
@@ -747,7 +745,13 @@ export default function Home() {
 
             {usageGuideActive && <UsageGuide onEnd={() => setUsageGuideActive(false)} />}
 
-            {!navigating && <TravelBearingControl value={ride.bearingDeg} onChange={ride.setBearingDeg} />}
+            {!navigating && (
+              <TravelBearingControl
+                value={ride.bearingDeg}
+                onChange={ride.setBearingDeg}
+                linked={mapView.lensConditions.includes("bearing_deg")}
+              />
+            )}
 
             {/* 走行条件（出発時刻・想定速度）は走行方位の直下に積む。出発時刻は気象レイヤーの表示時刻と同じもの。
               その下へ現在地と走行モードを続ける。 */}
@@ -769,6 +773,8 @@ export default function Home() {
                     onDepartureNow={ride.departure.followNow}
                     speedKmh={ride.speedKmh}
                     onSpeedKmhChange={ride.setSpeedKmh}
+                    linkedDeparture={mapView.lensConditions.includes("at")}
+                    linkedSpeed={mapView.lensConditions.includes("speed_kmh")}
                   />
                   <div className="relative flex">
                     <Button

@@ -176,7 +176,7 @@ _MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS, 
 
 #: 説明の文の差し込み口の名前。どれも軸カタログ（実行時の応答）から来る値で、画面が埋める。
 #: `axes`はそのレイヤーの元データを材料に持つ公開中の評価の名前、`accidentYears`は事故の収録年、
-#: `routeLenses`はルートの色分けで選べるもの（公開中の評価と総合難易度）。
+#: `routeLenses`はルートの線を塗れるもの（公開中の評価と総合難易度）。
 LayerTextSlotName = Literal["axes", "accidentYears", "routeLenses"]
 
 
@@ -316,7 +316,7 @@ _DISASTER_FRAME_RULE_WORDING: dict[FrameRuleKind, tuple[str, str]] = {
     "latestObservation": ("直近の観測", "は観測だけのため、最新の観測より先の時刻には出ません。"),
     "current": (
         "現在の危険度のみ",
-        "は色分けした現在の危険度で、「現在の危険度」単一値のみの配信のため時刻スライダーには連動しません。",
+        "は色で示した現在の危険度で、「現在の危険度」単一値のみの配信のため時刻スライダーには連動しません。",
     ),
 }
 
@@ -373,7 +373,7 @@ def msm_layer_specs(forecast_hours: int) -> dict[str, MapLayerSpec]:
                 "部分・線状降水帯予測マップ・線状降水帯の雨域は、取得に失敗することがあります。",
             ),
         ),
-        # 道路の色分け（向かい風・追い風）と見分けられる名前にする。
+        # 「評価で塗る」の道路の塗り（向かい風・追い風）と見分けられる名前にする。
         "windVector": MapLayerSpec(
             "ownFetch",
             "weather",
@@ -388,7 +388,7 @@ def msm_layer_specs(forecast_hours: int) -> dict[str, MapLayerSpec]:
                 f"[先まで見られる範囲は配信中の計算値の長さによって変わり、長くて{reach}先までです]。",
                 LayerTextSlot(
                     "axes",
-                    "走行方位に対する向かい風/追い風の強さは、道路の色分けで評価軸",
+                    "走行方位に対する向かい風/追い風の強さは、「評価で塗る」で評価軸",
                     "を選ぶと別途確認できます。",
                 ),
             ),
@@ -433,7 +433,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         "roadCondition",
         description=(f"道路の種類を色で表示[{ordered_ends_text(_first_axis('highway'))}]",),
         panel_hint=(
-            "OSMのhighwayタグを区分にまとめて色分けしています。"
+            "OSMのhighwayタグを区分にまとめて塗り分けています。"
             f"「{_first_axis('highway').categories[0].label}」が最も濃く、下位の道ほど明るい色です。"
             "ほかの道路のレイヤーと一緒に表示すると、同じ道に線を横へ並べて描きます。",
         ),
@@ -443,7 +443,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         "roadCondition",
         description=("路面の材質を色で表示[舗装・砂利・土など]",),
         panel_hint=(
-            "OSMのsurfaceタグ[路面の材質]を区分にまとめて色分けしています。"
+            "OSMのsurfaceタグ[路面の材質]を区分にまとめて塗り分けています。"
             f"区分に当てはまらない値の道は「{LEGEND_SHARED_ROWS["other"].label}」で出します。"
             f"タグの無い道[{LEGEND_SHARED_ROWS["noData"].label}]は郊外ではほとんどの道に当たり、値のある道を埋もれさせるため、"
             "最初は隠してあり、凡例のチェックで出せます"
@@ -456,7 +456,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         "roadCondition",
         description=(f"農道・林道の路面の等級を色で表示[{ordered_ends_text(_first_axis('tracktype'))}]",),
         panel_hint=(
-            "OSMのtracktypeタグ[農道・林道の路面の固さの等級]を色分けしています。路面の材質[surfaceタグ]とは別のタグで、"
+            "OSMのtracktypeタグ[農道・林道の路面の固さの等級]を塗り分けています。路面の材質[surfaceタグ]とは別のタグで、"
             "材質のタグが無い農道・林道にも付いていることがあります。"
             f"タグの無い道は「{LEGEND_SHARED_ROWS["noData"].label}」です。",
         ),
@@ -464,13 +464,13 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
     "tunnel": _tile_layer(
         "tunnel",
         "roadCondition",
-        description=("トンネル区間[OSMのtunnelタグ]を色分け表示",),
+        description=("トンネル区間[OSMのtunnelタグ]を表示",),
         panel_hint=("OSMのtunnelタグが該当する区間です。", LayerTextSlot("axes", "評価軸", "の材料の1つです。")),
     ),
     "oneway": _tile_layer(
         "oneway",
         "roadCondition",
-        description=("来た道を戻れない区間を色分け表示",),
+        description=("来た道を戻れない区間を表示",),
         panel_hint=(
             f"その向きにしか通れない区間です。{DIVIDED_ROAD_NOTE}は除いてあります。"
             "ルート探索は一方通行の向きを守っています[逆走する経路は作りません]。",
@@ -484,7 +484,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         label="自転車レーン",
         description=(f"自転車の走る場所を色で表示[{'・'.join(c.label for c in _first_axis('cycleway').categories)}]",),
         panel_hint=(
-            "OSMの自転車のためのタグから、自転車の走る場所を区分にまとめて色分けしています。"
+            "OSMの自転車のためのタグから、自転車の走る場所を区分にまとめて塗り分けています。"
             "1本の道が複数に当たれば、車道から分けられた方で出します。当てはまらない道は最初は隠してあり、凡例のチェックで出せます。",
             LayerTextSlot("axes", "評価軸", "の材料の1つです。"),
         ),
@@ -493,17 +493,17 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
     "stop_poi": _tile_layer(
         "stop_poi",
         "trafficSafety",
-        description=(f"{_point_kind_list('stop_poi')}の位置を種別ごとに色分け表示",),
+        description=(f"{_point_kind_list('stop_poi')}の位置を種別ごとに表示",),
         panel_hint=(
             f"{_point_kind_list('stop_poi')}の位置です。",
-            LayerTextSlot("axes", "評価軸", "が近傍のこれらを数えて算出しているものを、種別ごとの色分けで直接確認できます。"),
+            LayerTextSlot("axes", "評価軸", "が近傍のこれらを数えて算出しているものを、種別ごとに直接確認できます。"),
         ),
     ),
     # 種別ごとの鮮度の差を書く根拠は docs/modules/frontend/static-map-layers.md「点で示すもの」。
     "supply_poi": _tile_layer(
         "supply_poi",
         "amenity",
-        description=(f"{_point_kind_list('supply_poi')}の位置を種別ごとに色分け表示",),
+        description=(f"{_point_kind_list('supply_poi')}の位置を種別ごとに表示",),
         panel_hint=(
             f"{_point_kind_list('supply_poi')}の位置です。自販機は飲み物が買えると分かって"
             f"いるものだけを「{_row_label('supply_poi', 'vending_drinks')}」として出し、売っているものが分からないものは"
@@ -515,7 +515,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
     "stop_place": _tile_layer(
         "stop_place",
         "amenity",
-        description=(f"{_point_kind_list('stop_place')}の位置を群ごとに色分け表示",),
+        description=(f"{_point_kind_list('stop_place')}の位置を群ごとに表示",),
         panel_hint=(
             f"{_point_kind_list('stop_place')}の位置です。寺社は国の文化財の建造物を持つものを、ほかはOverture Mapsの地点を出します。"
             "閉店にデータが追いついていないことがあります。現地の状況と異なる場合があることをご留意ください。",
@@ -565,7 +565,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         kind="dynamic",
         default_on=True,
         label="ルート",
-        description=("選択中ルート沿いの情報", LayerTextSlot("routeLenses", "[", "]"), "を色分け表示"),
+        description=("選択中ルート沿いの情報", LayerTextSlot("routeLenses", "[", "]"), "で塗って表示"),
     ),
 }
 

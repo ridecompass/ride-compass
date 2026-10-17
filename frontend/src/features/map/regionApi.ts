@@ -154,7 +154,7 @@ export async function fetchDynamicWayValues(
       {
         timeoutMs: API_TIMEOUT_MS.default,
         category: `api:${axisId}-way-values`,
-        messages: { failure: "道路の色分けの取得に失敗しました", parseFailure: "道路の色分けの解析に失敗しました" },
+        messages: { failure: "道路の塗りの値の取得に失敗しました", parseFailure: "道路の塗りの値の解析に失敗しました" },
         successMeta: (data) => ({ wayCount: Object.keys(data).length }),
       },
     );
