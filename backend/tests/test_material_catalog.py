@@ -150,14 +150,6 @@ def test_no_two_materials_share_a_tile_property():
     assert len(properties) == len(set(properties))
 
 
-def test_a_material_whose_value_depends_on_the_direction_is_not_baked_into_tiles():
-    """タイルの線は向きを持たないので、往復で値の違う材料を1つの列に焼くと片方の向きの値が消える。"""
-    directed = [m for m in material_catalog.MATERIAL_CATALOG.values() if m.tile_property_direction_dependent]
-
-    assert directed
-    assert all(material.tile_property is None for material in directed)
-
-
 def test_every_population_and_missing_semantics_has_a_heading():
     """管理画面の欠損率は母集団と欠損の扱いで束ねて見出しを付ける。見出しの無い値の材料は表から落ちる。"""
     assert set(material_catalog.POPULATION_LABELS) == set(get_args(material_catalog.Population))

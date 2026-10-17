@@ -24,7 +24,7 @@
   "on_fire": {
     "backend/app/domain/axis_definitions.py": "評価の計算（evaluate_*・生値・_python_value_columns）を domain/axis_evaluation.py へ出す",
     "backend/app/domain/evaluation.py": "経路へ運ぶ材料の選び（has_route_facing_raw_value〜displayed_material_ids）を別モジュールへ出す",
-    "backend/app/domain/material_catalog.py": "タイルへ焼く式と係数（tile_unscaled_sql_params・tile_column_sql・tile_property_value・material_tile_columns）を domain/material_tiles.py へ、材料の目安の値と値の日本語ラベル（_*_REFERENCE_POINTS・_HIGHWAY_VALUE_LABELS）を domain/material_value_labels.py へ出す",
+    "backend/app/domain/material_catalog.py": "タイルへ焼く式（tile_column_sql・material_tile_columns）を domain/material_tiles.py へ、材料の目安の値と値の日本語ラベル（_*_REFERENCE_POINTS・_HIGHWAY_VALUE_LABELS）を domain/material_value_labels.py へ出す",
     "backend/app/domain/routing.py": "最寄りノードの空間索引（NodeSpatialIndex〜find_nearest_node_indexed）を domain/node_index.py へ出す",
     "backend/app/services/road_graph_engine.py": "周回の折り返し点と目的地の中継点の選定（select_loop_turnarounds・_compose_inbound・select_via_nodes）を services/road_graph_selection.py へ、候補の組み立てと区間の内訳（evaluate_loops・_build_best_candidate・_build_candidate・_build_segment_details）を services/route_candidate_builder.py へ出す",
     "backend/tests/test_routing.py": "探索のテスト（build_turn_expanded_tree・経路の復元・combine_forward_backward_at_nodes・時刻ビンの契約・turn_expanded_shortest_path）を tests/test_routing_search.py へ分け、両方が使うグラフの組み立て（make_graph・build_all・make_grid）を tests/routing_graphs.py へ出す",
