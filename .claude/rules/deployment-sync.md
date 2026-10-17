@@ -10,7 +10,7 @@ paths:
 コード変更と本番環境（DB・デプロイ）の同期について、「作業として何を完了条件に含めるか」の運用ルールだけを書く。
 個々のモジュールの設計・実装事実は`docs/modules/*.md`が持つ。
 
-本番DBを失ったときの作り直しは`.claude/skills/production-data/SKILL.md`の付録の「本番DBを失ったとき」（その材料は同じ付録の「管理データのバックアップ」）、
+本番DBを失ったときの作り直しは`.claude/skills/production-data/SKILL.md`の付録の「本番DBを失ったとき」（その材料は同じ付録の「DBのバックアップ」）、
 派生データの作り直しは`.claude/skills/production-data/SKILL.md`の「派生データの作り直し」。
 
 ## コミットと同時に揃えるもの
@@ -37,12 +37,13 @@ paths:
   本番の既存の表は`create_tables()`が宣言の変更に追従しないので、差は人が本番で埋める（デプロイが入れ替えの後に
   測る。docs/architecture/tech-stack.md「デプロイの反映確認（backend/frontendで注入元が異なる）」の`schema_gap.py`）。
   ビルド時の生成物（`frontend/src/types/generated/`）はコードの宣言から決め、DBを読まない。
-  取り直せない管理データのバックアップは`.claude/skills/production-data/SKILL.md`の付録の「管理データのバックアップ」。
+  DBのバックアップは`.claude/skills/production-data/SKILL.md`の付録の「DBのバックアップ」。
   完了扱いにする条件は`.claude/skills/production-data/SKILL.md`の「本番へ効かせたい軸定義の変更は、本番の管理APIへ入れる」
   （開発DBのみの反映で完了扱いにしない）。
 - **既存DBの行データを新しいコードが読めなくなる変更（Pydanticモデルの破壊的変更等）を
   含む`backend/**`の変更は、本番DBのデータ移行を完了させてからmasterへ入れる（マージする）**。
   masterに入ってCI（`.github/workflows/ci.yml`）が通ると、backendは本番へ自動デプロイされ、止める仕組みは無い
+  （新しいコードが本番DBに残る旧い形のデータを読めないと、`refresh_axis_definitions`等の fail-fast で本番の backend が起動に失敗する）
   （コンテナを入れ替えるかの振り分けは`backend/scripts/deploy_gate.py`が正本）。
   対応順序は事前に次のいずれかを選ぶこと: 1) 本番DBのデータ移行を先に完了させてから
   マージ（移行を即座に行えなければ、終わるまでmasterへ入れずに待つ）、2) 新旧両方の形式を一時的に許容する後方互換コードを

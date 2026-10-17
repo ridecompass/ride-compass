@@ -21,7 +21,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ENABLED_AXIS_WEIGHT, WEIGHT_STEP } from "@/features/route/routeWeightShare";
+import { ENABLED_AXIS_WEIGHT } from "@/features/route/routeWeightShare";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { inTurn, onBackend, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
@@ -220,10 +220,11 @@ describe("RouteSettingsPanel 配分の帯", () => {
     expect(screen.queryByTitle(/^交通/)).not.toBeInTheDocument();
   });
 
-  it("区切りで右・上の矢印は右の軸から左の軸へ1刻み移し、左・下の矢印は戻す。ほかの軸は変えず、上書きの状態にする", async () => {
+  it("区切りで右・上の矢印は右の軸から左の軸へ1刻み（重みの合計の1%）移し、左・下の矢印は戻す。ほかの軸は変えず、上書きの状態にする", async () => {
     serveCatalog();
+    // 軸を入れたときの重みの2軸で合計0.2なので、1刻みは0.002（%が1ずつ動く）。
     const { onRoutePreferenceChange, onOverrideEnabledChange } = renderPanel(
-      { width: 0.4, traffic: 0.3, slope: 0.3, light: 0 },
+      { width: 0.1, traffic: 0.1, slope: 0, light: 0 },
       false,
     );
     await chipsShown();
@@ -236,18 +237,19 @@ describe("RouteSettingsPanel 配分の帯", () => {
 
     expect(onRoutePreferenceChange).toHaveBeenCalledTimes(4);
     expect(forward).toEqual({
-      width: expect.closeTo(0.4 + 2 * WEIGHT_STEP, 5),
-      traffic: expect.closeTo(0.3 - 2 * WEIGHT_STEP, 5),
-      slope: 0.3,
+      width: expect.closeTo(0.104, 6),
+      traffic: expect.closeTo(0.096, 6),
+      slope: 0,
       light: 0,
     });
-    expect(back).toEqual({ width: 0.4, traffic: 0.3, slope: 0.3, light: 0 });
+    expect(back).toEqual({ width: 0.1, traffic: 0.1, slope: 0, light: 0 });
     expect(onOverrideEnabledChange).toHaveBeenCalledExactlyOnceWith(true);
   });
 
   it("矢印以外のキーと、もう動かせない向きの矢印では何も上げない", async () => {
     serveCatalog();
-    const { onRoutePreferenceChange } = renderPanel({ width: WEIGHT_STEP, traffic: 0.3, slope: 0.3, light: 0 });
+    // 道幅は合計1の1%で、もう減らせない。
+    const { onRoutePreferenceChange } = renderPanel({ width: 0.01, traffic: 0.49, slope: 0.5, light: 0 });
     await chipsShown();
 
     boundary("道幅と交通の配分").focus();
@@ -292,15 +294,15 @@ describe("RouteSettingsPanel 配分の帯", () => {
     const { onRoutePreferenceChange } = renderPanel({ width: 0.15, traffic: 0.15, slope: 0, light: 0 });
     await chipsShown();
 
-    // 帯200pxが重みの合計0.3なので、帯の右端の先まで動かすと交通は刻み1つで止まる（道幅は97%）。
+    // 帯200pxが重みの合計0.3なので、帯の右端の先まで動かすと交通は刻み1つ（合計の1%）で止まる（道幅は99%）。
     const moveTo = await startDrag("道幅と交通の配分", 200, 100);
     moveTo(400);
     act(() => void window.dispatchEvent(new PointerEvent("pointerup")));
     await userEvent.click(screen.getByRole("button", { name: "重みの配分の説明を表示" }));
 
     expect(onRoutePreferenceChange.mock.lastCall![0]).toEqual({
-      width: 0.29,
-      traffic: WEIGHT_STEP,
+      width: 0.297,
+      traffic: 0.003,
       slope: 0,
       light: 0,
     });

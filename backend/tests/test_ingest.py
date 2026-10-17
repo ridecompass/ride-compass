@@ -125,7 +125,7 @@ async def test_ingesting_inside_a_transaction_is_refused(conn, monkeypatch):
 
 async def test_a_rebuild_is_refused_while_an_import_runs(conn, monkeypatch):
     async def rebuild_meanwhile(spec, profile, inputs, origin):
-        with pytest.raises(RuntimeError, match="取込が走っている"):
+        with pytest.raises(RuntimeError, match="取込かDBのバックアップが走っている"):
             await derive_cli.run(postgis_database_url())
         yield SourceRecord(natural_key="new", geom_wkb=POINT_WKB, attrs={})
 
