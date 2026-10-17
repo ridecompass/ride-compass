@@ -266,7 +266,7 @@ test.describe("タッチ端末", () => {
       { x: center.x + dx + gap / 2, y: center.y },
     ];
 
-    // 指の間を240pxから80pxへ縮める（倍率は log2(3) 段だけ下がる）。先に重心だけを横へ動かし、移動として始まらせる
+    // 指の間を240pxから80pxへ縮める（倍率はおよそ log2(3) 段下がる）。先に重心だけを横へ動かし、移動として始まらせる
     // （2本の指を揃えて縦に動かすと、地図を傾ける操作になる）。
     const [fromGap, toGap, steps] = [240, 80, 10];
     const gapAt = (step: number) => fromGap + ((toGap - fromGap) * step) / steps;
@@ -277,10 +277,13 @@ test.describe("タッチ端末", () => {
     const duringPinch = moved(START, 0, 10);
     await deliverPosition(page, context, at(duringPinch));
     for (let step = steps / 2 + 1; step <= steps; step += 1) await touch("touchMove", fingers(gapAt(step), 6));
+    // 指を止めてから離す。MapLibre は離す前の160ms の動きから慣性の拡大・縮小を足し、その量はタッチを送る間隔で揺れる。
+    await page.waitForTimeout(200);
     await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
 
-    const pinchedZoom = followedZoom - Math.log2(fromGap / toGap);
-    await expect.poll(zoom, { timeout: 10_000 }).toBeCloseTo(pinchedZoom, 1);
+    // MapLibre は閾値に届かない最初の1歩を倍率に数えないので、下がる段は log2(3) より少し小さい。戻っていれば log2(3) 段ずれる。
+    await expect.poll(zoom, { timeout: 10_000 }).toBeCloseTo(followedZoom - Math.log2(fromGap / toGap), 0);
+    const pinchedZoom = await zoom();
     // 休まず、つまむ最中に届いた位置へ寄せ直し、次の位置もつまんだ倍率のまま追う。
     await expectDrawnAt(page, duringPinch, anchor);
     await expect(backToHere).toBeHidden();
