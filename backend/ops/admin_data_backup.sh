@@ -82,8 +82,9 @@ name="db/$(date -u +%Y%m%dT%H%M%SZ).dump"
 oci os object put --namespace "$OCI_NAMESPACE" --bucket-name "$BACKUP_BUCKET" \
   --name "$name" --file /backup/latest.dump --no-multipart --force > /dev/null
 
-# 置けた時刻を、backendのコンテナが`data/`として見るディレクトリへ書く。止まっても知らせが来ないため、
-# `/health`が経過時間を返し、それを読んで気づく（名前は`app/infrastructure/admin_data_backup.py: MARKER_PATH`と揃える）。
+# 置けた時刻を、backendのコンテナが`data/`として見るディレクトリへ書く。`/health`が経過時間を返し、
+# 定時のActionsがそれを読んで止まりを知らせる（名前は`app/infrastructure/admin_data_backup.py: MARKER_PATH`と揃える）。
+# 途中で落ちた回は書かないので、ここより前に置かない。
 marker=/home/ubuntu/ridecompass-cache-data/admin_data_backup_at
 date -u +%Y-%m-%dT%H:%M:%S+00:00 > "$marker.tmp"
 mv "$marker.tmp" "$marker"
