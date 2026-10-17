@@ -108,6 +108,14 @@ describe("readSavedConditions", () => {
     expect(read.roadAvoidance[missing.key]).toBe(DEFAULT_ROAD_AVOIDANCE[missing.key]);
     expect(older.roadAvoidance).toEqual(DEFAULT_ROAD_AVOIDANCE);
   });
+
+  it("分ける前の行の鍵で保存した避け方は、分けてできた行へ引き継ぐ", () => {
+    const [read] = readSavedConditions(
+      JSON.stringify([{ ...ENTRY, roadAvoidance: { "highway.arterial": "exclude" } }]),
+    )!;
+
+    expect(read.roadAvoidance).toMatchObject({ "highway.trunk": "exclude", "highway.primary": "exclude" });
+  });
 });
 
 // 名前と説明が分ける形: 目的地の有無（無ければ出発地へ戻る周回）・全長の目標の有無・経由地の有無。

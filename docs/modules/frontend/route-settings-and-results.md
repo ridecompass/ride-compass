@@ -16,7 +16,7 @@
 | `features/route/RouteForm/useRouteFormSubmit.ts` | 上記の検証（`{error, check}`。`check`は通ったかを返す）。「ルート生成」ボタン自体は`RouteForm`の外（`page.tsx`の見出し行）にあるため分離している（下記参照） |
 | `features/route/RouteSettingsPanel/RouteSettingsPanel.tsx` | 一般向け軸重み設定（「重み」タブの中身。地図の色分けはここになく`LensControl`のみが持つ、下記参照） |
 | `features/route/RouteSettingsPanel/HardFilterPanel.tsx` | 「除外」タブの中身。上の段は0次ハードフィルタ（通らない道路の種類）、下の段は地図の道のレイヤの凡例の行ごとの避け方（下記「除外」）。種類・行のキー・画面に出す名前・既定値はすべて生成物`route-generate-config.json`（backend `domain/hard_filters.py`・`domain/road_avoidance.py`）が正で、名前をフロントに持たない——キーと名前を別々に持つと、足したフィルタ・行に名前が無く内部名が出る |
-| `features/route/roadAvoidance.ts` | 道の行ごとの避け方の段・行・既定を生成物から受け取り（`AVOIDANCE_LEVELS`・`AVOIDABLE_ROWS`・`DEFAULT_ROAD_AVOIDANCE`）、保存した避け方を今の行へ揃える（`syncRoadAvoidance`。今の行に無い鍵は落とし、保存に無い行・今は無い段の行は既定の段にする）。backendは行の鍵の完全一致を要求するため、デプロイで行が増減しても保存値をまたいで送信が成立する |
+| `features/route/roadAvoidance.ts` | 道の行ごとの避け方の段・行・既定を生成物から受け取り（`AVOIDANCE_LEVELS`・`AVOIDABLE_ROWS`・`DEFAULT_ROAD_AVOIDANCE`）、保存した避け方を今の行へ揃える（`syncRoadAvoidance`。今の行に無い鍵は落とし、1つの行を分けてできた行は分ける前の行の鍵（生成物の`former_key`）で保存した段を引き継ぎ、どちらも無い行・今は無い段の行は既定の段にする）。backendは行の鍵の完全一致を要求するため、デプロイで行が増減しても保存値をまたいで送信が成立する |
 | `features/route/SavedPlacesPanel/SavedPlacesPanel.tsx` | 「保存済み」タブの「地点」の中身: 保存した地点の一覧（行は名前・辺りと、アイコンの「呼び出す」「消す」。呼び出すはメニューで出発地・経由地・目的地のどれに置くかを選び、消すは確認の窓で「消す」を押すと消す）。無ければ無いと出し、保存の仕方は(i)の奥（下記「保存した地点」） |
 | `features/route/SavedList/SavedList.tsx` | 「保存済み」タブの一覧（地点・プリセット）の形: 空の案内と保存の仕方の(i)・行の枠・消す操作と確認の窓。行の名前の欄と行ごとの操作（「呼び出す」）は使う側が渡す |
 | `features/route/useSavedPlaces.ts` | 保存した地点の一覧（この端末の`localStorage`）と、保存・削除 |
@@ -347,7 +347,7 @@ non-nullの間、「ルート結果」タブはルート全体の内訳の代わ
   合わせて開くシートが一覧まで短く収まるように、保存の中身を窓へ出す。保存しないものや、重みを変えたかどうかは書かない（スマホでは
   パネルの高さが限られ、残る中身が埋もれる）。重みは使う軸ごとの割合（重みの合計に占める%。
   「重み」タブのチップと同じ数）を割合の大きい順に出す。上書きしていない重みは、軸カタログが配る既定の配分を
-  出す（生成のときもbackendの既定で探すため）。除外は段ごとに、強い段から「通らない 高速道路・…／なるべく避ける 幹線道路」の形で
+  出す（生成のときもbackendの既定で探すため）。除外は段ごとに、強い段から「通らない 高速道路・…／なるべく避ける 国道・…」の形で
   名前を並べ（除外する道路の種類は「通らない」に入れる）、どれも無ければ「なし」と出す。一覧は見出しを持たず、行は名前と、アイコンだけの「呼び出す」「消す」（[デザイン基盤](frontend-design-system.md)
   「5-1. パネルの操作ボタンの形」）だけを出す——条件・出発地・重み・除外は呼び出しの窓で読む（ブックマークのように見渡せる簡素な一覧にし、
   名前と同じことを言い換える行を置かない）。
