@@ -33,6 +33,7 @@ import {
 import { Button } from "@/components/ui/Button/Button";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { cn } from "@/lib/cn";
+import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { readStoredList } from "@/lib/storedList";
 import { Dot } from "@/components/ui/Dot/Dot";
 import { cardVariants } from "@/components/ui/Card/Card";
@@ -556,25 +557,29 @@ export default function MapOverlayControls({
           variant="float"
           size="bare"
           shape="pill"
-          // 「評価で塗る」のピルと同じ高さの1行（アイコン・名前・件数）にそろえる。
-          className="pointer-events-auto min-w-[var(--map-overlay-button-width)] flex-none flex-row items-center justify-center gap-1.5 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap"
+          // アイコンだけの、右の縦の列と同じ幅で「評価で塗る」のピルと同じ高さ（文字1行＋上下の余白）のボタン。件数と絞り込みの印は角に置く。
+          className="pointer-events-auto relative w-[var(--map-ctrl-column-width)] flex-none justify-center border-0 py-1 text-[length:var(--font-size-sm)]"
           aria-label={LIST_SCREEN_NAME}
-          title={[`${LIST_SCREEN_NAME}[${shownCount}件を表示中]`, anyFiltered ? FILTERED_LABEL : undefined]
+          title={[
+            `${FACT_DISPLAY_NAME}（${LIST_SCREEN_NAME}）[${shownCount}件を表示中]`,
+            anyFiltered ? FILTERED_LABEL : undefined,
+          ]
             .filter(Boolean)
             .join("・")}
           usage="地図に重ねる情報（路面・雨雲・補給の店など）の一覧を開きます。数字は今地図に出している件数です。"
         >
-          <DisplayItemsIcon size={16} />
-          <span className="font-semibold">表示</span>
+          <span className="inline-flex h-[1lh] items-center">
+            <DisplayItemsIcon size={16} />
+          </span>
           {shownCount > 0 && (
             <span
               aria-hidden="true"
-              className="h-3.5 min-w-3.5 rounded-full bg-[var(--color-accent)] px-1 text-center text-[0.6rem] leading-3.5 text-white"
+              className="absolute top-0 right-0.5 h-3.5 min-w-3.5 rounded-full bg-[var(--color-accent)] px-0.5 text-center text-[0.55rem] leading-3.5 text-white"
             >
               {shownCount}
             </span>
           )}
-          {anyFiltered && <FilteredMark />}
+          {anyFiltered && <FilteredMark className="absolute top-0.5 left-1" />}
         </Button>
       </PopoverTrigger>
       <PopoverContent
