@@ -165,12 +165,12 @@ def test_a_line_axis_of_flags_splits_between_the_sums_it_can_take():
         _line(
             MaterialTerm(material="flag", weight=10.0),
             MaterialTerm(material="flag", weight=20.0),
-            breakpoints=[(0.0, 0.0), (25.0, 100.0)],
+            breakpoints=[(0.0, 0.0), (12.0, 50.0), (25.0, 100.0)],
         )
     )
 
     # 取りうる和は 0・10・20・30（右端25で止まる）。境界 5・15・22.5 を得点へ写す。
-    assert map_paint(definition).thresholds == [20.0, 60.0, 90.0]
+    assert map_paint(definition).thresholds == definition.shape.scores_at([5.0, 15.0, 22.5])
 
 
 def test_a_line_axis_of_up_to_twelve_flags_is_split_between_its_sums_and_more_is_not():
@@ -202,14 +202,26 @@ def test_bands_cut_at_the_knots_rise_above_the_lowest_score_one_after_another(li
         assert all(lower < upper for lower, upper in zip([lowest, *thresholds], thresholds))
 
 
+def test_a_knot_whose_score_does_not_rise_is_dropped_and_the_later_knots_still_cut():
+    """得点が上がらない節で段を切るのをやめても、その先で得点が上がる節は段を切る。"""
+    line = _line("num_a", breakpoints=[(0.0, 0.0), (2.0, 50.0), (4.0, 50.0), (6.0, 100.0)])
+
+    assert map_paint(shaped_axis(line)).thresholds == [50.0, 100.0]
+
+
 # --- 凡例の目盛り ---
 
 RAIN_LINE = ((0.0, 0.0), (5.0, 30.0), (20.0, 70.0), (50.0, 100.0))
 
 
-def test_an_axis_scoring_a_quantity_is_cut_at_its_knots_and_written_in_that_quantity():
+@pytest.mark.parametrize(
+    "breakpoints",
+    [RAIN_LINE, ((1.0, 10.0), (5.0, 30.0), (20.0, 70.0), (50.0, 100.0))],
+    ids=["0から始まる折れ線", "量も得点も0より上から始まる折れ線"],
+)
+def test_an_axis_scoring_a_quantity_is_cut_at_its_knots_and_written_in_that_quantity(breakpoints):
     """雨のように単位のある量1つから得点を作る軸は、軸が効きの変わり目とした節で段を切り、凡例はその量で書く。"""
-    paint = map_paint(shaped_axis(_line("rain_live", breakpoints=RAIN_LINE)))
+    paint = map_paint(shaped_axis(_line("rain_live", breakpoints=breakpoints)))
 
     assert paint.thresholds == [30.0, 70.0, 100.0]
     assert paint.legend == MapLegendScale(boundaries=[5.0, 20.0, 50.0], unit="mm")
@@ -222,6 +234,10 @@ def test_an_axis_scoring_a_quantity_is_cut_at_its_knots_and_written_in_that_quan
         # 丸めた得点73.1から折れ線を逆に辿ると7.0026。同じ得点へ戻る、桁の最も少ない量で書く。
         (((0.0, 0.0), (9.58, 100.0)), [73.1], [7.0]),
         (RAIN_LINE, [40.0], [8.75]),
+        # 折れ線のいちばん上の得点で刻んだ境界も、量で書く。
+        (RAIN_LINE, [100.0], [50.0]),
+        # 同じ得点へ戻る量が小数6桁まで要る。
+        (((0.0, 0.0), (0.001, 100.0)), [73.1], [0.000731]),
     ],
 )
 def test_score_boundaries_of_an_axis_scoring_a_quantity_are_written_in_that_quantity(breakpoints, scores, quantities):
@@ -268,8 +284,15 @@ LABELLED = shaped_axis(
 )
 
 
-def test_band_labels_are_the_overriding_labels():
-    assert map_paint(LABELLED).band_labels == ["a", "b", "c"]
+LABELLED_AXES = {
+    "難易度を塗る軸": LABELLED,
+    "符号付きの材料を塗る軸": SIGNED.model_copy(update={"display_band_labels_override": list("abcde")}),
+}
+
+
+@pytest.mark.parametrize("definition", LABELLED_AXES.values(), ids=LABELLED_AXES.keys())
+def test_band_labels_are_the_overriding_labels(definition):
+    assert map_paint(definition).band_labels == definition.display_band_labels_override
 
 
 def test_a_paint_whose_band_labels_miss_a_band_is_refused():
