@@ -13,7 +13,8 @@
  *   目的地の行で探して置いた地点と、名前のある点を押して置いた地点が地図に立ち、行にその名前が出ること、
  *   名前を付けて保存した地点を打つ欄から選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置くこと、編集の間は地図で地点も区間も扱わず全部の候補を重ね、
  *   「ルート結果」の見出しに候補1本への操作を出さず、作り直すと編集が終わること、作ると直前の作り直しの失敗の文言を消し、合成ルートを選んでいる間は元のルートだけを重ねること、
- *   地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）
+ *   地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）、右上の方位磁針（地図の北を指し、開いたダイヤルで
+ *   地図を回して北へ戻す。走行中は北が上と進む向きが上を切り替える）と拡大・縮小
  * - 画面の枠: スマホの下部タブとシート（1枚ずつ開く・地点を扱える間・結果の合図・候補が届いた時点で「ルート設定」を開いて
  *   いれば「ルート結果」へ移ってそこから全消去でき、ほかのときは移らず合図を出すこと・候補を出せなかった理由の1行・
  *   決めた高さを2枚のシートで分け合うこと）、区分の開閉の保存、
@@ -785,6 +786,45 @@ describe("地図で扱えること", () => {
     await user.click(screen.getByRole("button", { name: "地図の表示を再描画" }));
     expect(mapOnScreen().styles).toHaveLength(before + 1);
   });
+
+  it("右上の方位磁針は地図の北を指し、押すと開くダイヤルの輪をなぞる・矢印のキーで地図が回り、真ん中の針で北が上に戻る。ダイヤルの文は方位と度だけ。＋・－で拡大・縮小し、長押しで1本指の拡大・縮小の案内が出る", async () => {
+    const { user } = renderHome();
+    const compass = screen.getByRole("button", { name: "地図の向き" });
+    const needleTurn = () => compass.querySelector<HTMLElement>("[style]")?.style.transform;
+
+    act(() => mapOnScreen().rotateByHand(90));
+    expect(needleTurn()).toBe("rotate(-90deg)");
+
+    await user.click(compass);
+    const dial = await screen.findByRole("slider", { name: "地図の向き" });
+    expect(dial).toHaveAttribute("aria-valuetext", "E 90°");
+    expect(screen.getByRole("dialog").textContent).toMatch(/^[A-Z0-9° ]+$/);
+    dial.focus();
+    await user.keyboard("{ArrowLeft}");
+    expect(mapOnScreen().bearing()).toBe(85);
+    // 輪の中心の真上から真右へ、時計回りに4分の1なぞると、指の下の方位が付いてくるよう地図は反時計回りに回る。
+    const center = dial.getBoundingClientRect();
+    const cx = center.left + center.width / 2;
+    const cy = center.top + center.height / 2;
+    fireEvent.pointerDown(dial, { clientX: cx, clientY: cy - 50 });
+    fireEvent.pointerMove(window, { clientX: cx + 50, clientY: cy });
+    fireEvent.pointerUp(window);
+    expect(mapOnScreen().bearing()).toBe(355);
+    expect(needleTurn()).toBe("rotate(-355deg)");
+    await user.click(screen.getByRole("button", { name: "北を上にする" }));
+    expect(mapOnScreen().bearing()).toBe(0);
+    await user.keyboard("{Escape}");
+
+    const zoom = mapOnScreen().zoom();
+    await user.click(screen.getByRole("button", { name: "拡大" }));
+    expect(mapOnScreen().zoom()).toBe(zoom + 1);
+    await user.click(screen.getByRole("button", { name: "縮小" }));
+    expect(mapOnScreen().zoom()).toBe(zoom);
+    fireEvent.pointerDown(screen.getByRole("button", { name: "拡大" }), { pointerType: "touch", button: 0 });
+    expect(await screen.findByRole("tooltip", {}, { timeout: 2000 })).toHaveTextContent(
+      /続けて触れたまま上下に滑らせても拡大・縮小できます/,
+    );
+  });
 });
 
 describe("画面の枠", () => {
@@ -820,7 +860,7 @@ describe("画面の枠", () => {
     expect(rideProfile()).toBeNull();
   });
 
-  it("走行中も「表示」と「評価で塗る」を出してピルから一覧を開け、出したまま現在地を追い、走行方位・走行条件・「現在地に移動」は出さない", async () => {
+  it("走行中も「表示」と「評価で塗る」を出してピルから一覧を開け、出したまま現在地を追い、方位磁針で北が上と進む向きが上を切り替え、走行条件・「現在地に移動」は出さない", async () => {
     const geolocation = installGeolocation(HERE);
     const { user } = renderHome();
     jobs.respond([FIRST], LOOP_CONDITIONS);
@@ -833,11 +873,12 @@ describe("画面の枠", () => {
     await user.click(screen.getByRole("button", { name: /^評価で塗る: / }));
     expect(await screen.findByRole("radiogroup", { name: "評価で塗る" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "進む向きを上にする（いまは北が上）" }));
+    expect(screen.getByRole("button", { name: "北を上にする（いまは進む向きが上）" })).toBeInTheDocument();
     expect([
-      screen.queryByRole("button", { name: "走行方位を設定" }),
       screen.queryByRole("group", { name: "走行条件" }),
       screen.queryByRole("button", { name: "現在地に移動" }),
-    ]).toEqual([null, null, null]);
+    ]).toEqual([null, null]);
     geolocation.deliver(RIDDEN_MIDDLE);
     expect(screen.queryByRole("button", { name: "現在地へ戻る" })).toBeNull();
   });
