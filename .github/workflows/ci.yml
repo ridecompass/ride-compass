@@ -145,11 +145,32 @@ jobs:
               backend=$(area '^(backend/|production-origins\.json$)'); frontend=$(area '^(frontend/|production-origins\.json$)'); scripts=$(area '^scripts/')
             fi
           fi
+          # 取り込んだ Pull Request の CI がこのコミットと同じ中身を検査済みなら、検査を回し直さず、像を作って出し直すだけにする。
+          # Pull Request の CI は先頭へその時の master を合わせた版を検査する。先頭が直前の master（このコミットの親）を含み、
+          # 先頭とこのコミットの木（ファイルの中身）が同じなら、合わせた版はこのコミットと同じ中身になる。CI の定義を変えたとき
+          # （defined）と、確かめられないとき（Pull Request が見つからない・取れない）は、すべて回す。作業ブランチはマージで
+          # 消えるので、先頭は Pull Request の ref から取る。
+          tested=false
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" && ! defined > /dev/null; then
+            pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[] | select(.merged_at != null)][0] // empty | "\(.number) \(.head.sha)"') || pr=""
+            num=${pr%% *}; head=${pr#* }
+            if [ -n "$pr" ] && git fetch --quiet --no-tags origin "refs/pull/$num/head" \
+              && [ "$(git rev-parse FETCH_HEAD)" = "$head" ] \
+              && git merge-base --is-ancestor "$GITHUB_SHA^" "$head" \
+              && [ "$(git rev-parse "$head^{tree}")" = "$(git rev-parse "$GITHUB_SHA^{tree}")" ] \
+              && [ "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$head&event=pull_request&status=success&per_page=1" --jq .total_count)" != 0 ]; then
+              tested=true
+            fi
+            echo "取り込んだ Pull Request: ${num:-無し}・その CI で検査済みの中身: $tested"
+          fi
           push=$([ "$GITHUB_EVENT_NAME" = push ] && echo true || echo false)
-          run=$(jq -nc --argjson b "$backend" --argjson f "$frontend" --argjson s "$scripts" --argjson push "$push" \
-            '{backend: $b, "api-contract": ($b or $f), "backend-image": $b, frontend: $f, e2e: $f, "frontend-image": $f,
-              scripts: $s, "deploy-backend": ($b and $push), "deploy-frontend": ($f and $push),
-              "docs-consistency": true, "doc-reading-tests": true, "repo-wide": true, "flow-gate": true}')
+          # 検査済みのときも、frontend の像（出し直す像を置き場へ置く）・出し直し・ゲートの公開（flow-gate の後に走る）は走らせる。
+          run=$(jq -nc --argjson b "$backend" --argjson f "$frontend" --argjson s "$scripts" --argjson push "$push" --argjson t "$tested" \
+            '($t | not) as $check
+              | {backend: ($b and $check), "api-contract": (($b or $f) and $check), "backend-image": ($b and $check),
+                frontend: ($f and $check), e2e: ($f and $check), "frontend-image": $f, scripts: ($s and $check),
+                "deploy-backend": ($b and $push), "deploy-frontend": ($f and $push),
+                "docs-consistency": $check, "doc-reading-tests": $check, "repo-wide": $check, "flow-gate": true}')
           echo "$run"
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
