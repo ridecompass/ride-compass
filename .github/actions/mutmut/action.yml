@@ -1,6 +1,6 @@
 # backend の変異テストの準備。mutmut を依存に足さずに入れ（測るときだけ）、変異を作って関数ごとに通るテストを記録し（gen.py）、
 # 回す変異の一覧を書く（plan.py）。版と準備の手順は、backend の変異テストを回すワークフローはどこもここから取る
-# （.github/workflows/mutation.yml・mutation-pr.yml）。台本の口と書くものは backend/scripts/mutation/ の各台本の先頭。
+# （.github/workflows/mutation.yml）。台本の口と書くものは backend/scripts/mutation/ の各台本の先頭。
 # テストDB（.github/actions/postgis）は呼ぶ側が先に作る（gen.py の記録がテストを回す）。
 name: mutmut の準備
 description: backend の依存と mutmut を入れ、変異を作って記録し、回す変異の一覧を MUT_OUT へ書く

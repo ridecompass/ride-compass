@@ -83,8 +83,6 @@ backend は `backend/scripts/mutation/setup.cfg`、frontend は `frontend/script
 落ちるテストを足す。言えない（振る舞いが変わらない・丸めの桁のように外へ効かない）なら足さない。
 
 - 全部を回す測りでは、生き残りが効きの候補に出る。言えたものを足す候補にしてユーザーに問う。
-- Pull Request ごとの測りがある層（`.github/workflows/mutation-pr.yml`）では、変えた関数の変異と基準だけが回り、生き残りが変えた行への
-  注記に出る。言えないものは、本文の検証にその理由を1行で書く。読み方と書き方は [task-work/SKILL.md](../skills/task-work/SKILL.md)「実装担当」の5。
 
 ### 重なり: ほかと重なったテストを消す
 

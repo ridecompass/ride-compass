@@ -39,12 +39,6 @@ def fn_of(mutant):
     return mutant.partition("__mutmut_")[0]
 
 
-def mangled_name(module, function, cls=None):
-    """mutmut の関数の名前（`app.x.x_f`・`app.x.xǁClsǁmethod`）。mutmut が変異を作るのは、モジュールの直下の関数と、
-    モジュールの直下のクラスのメソッドだけ。"""
-    return f"{module}.xǁ{cls}ǁ{function}" if cls else f"{module}.x_{function}"
-
-
 def split_name(name):
     """mutmut の関数か変異の名前から（モジュール, クラスか None, 関数）。"""
     module, _, short = fn_of(name).rpartition(".")
