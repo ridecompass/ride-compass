@@ -47,6 +47,7 @@ from app.main import app
 from app.domain.hard_filters import DEFAULT_HARD_FILTERS, HARD_FILTER_LABELS, HARD_FILTER_NAMES
 from app.domain.address_area import ADDRESS_AREA_LEVELS
 from app.domain.geo import COMPASS_LABELS, EARTH_RADIUS_KM
+from app.domain.dynamic_way_values import BEARING_BUCKET_DEG
 from app.domain.value_distribution import QUANTILE_TARGETS
 from app.domain.place_search import (
     PLACE_KIND_LABELS,
@@ -57,6 +58,7 @@ from app.domain.place_search import (
     PlaceMatchLevel,
 )
 from cross_language_expectations import EXPECTATIONS
+from schema_shape import schema_shape_mark
 from app.domain.weather_elements import (
     WEATHER_ELEMENTS,
     WEATHER_LAYER_GROUPS,
@@ -152,7 +154,7 @@ from app.domain.material_catalog import (
 )
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from app.domain.region import MAX_MERCATOR_LATITUDE, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
-from app.domain.leg_costs import MAX_TIME_BINS, TIME_BIN_HOURS
+from app.domain.leg_costs import MAX_TIME_BINS, MISSING_TRAVEL_DATA_WORDING, TIME_BIN_HOURS
 from app.config import Settings
 from app.domain.route_preference import ENABLED_AXIS_WEIGHT, MAX_AXIS_SHARE
 from app.domain.tuning import client_tuning_values
@@ -281,7 +283,8 @@ def _weather_element_entry(element: WeatherElement) -> dict:
 
 def main() -> None:
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
-    _write_json(OUTPUT_PATH, _strip_prose(app.openapi()))  # type: ignore[arg-type]
+    openapi = _strip_prose(app.openapi())
+    _write_json(OUTPUT_PATH, openapi)  # type: ignore[arg-type]
     # 地域タイルのレイヤー名・ズーム範囲等。画面はこのJSONを読み、値を手で写さない
     # （生成物と宣言のずれはCIのapi-contractジョブが検知する）。
     _write_json(
@@ -307,6 +310,8 @@ def main() -> None:
             # backendだけ広げてもfrontendが要求せずレイヤーが黙って消える。
             "road_tile_min_zoom": ROAD_TILE_MIN_ZOOM,
             "road_tile_max_zoom": ROAD_TILE_MAX_ZOOM,
+            # 向きに依る道の値を、backend が同じ値で代える向きの幅（度）。画面は走行中の向きをこの幅で丸めて送る。
+            "way_value_bearing_bucket_deg": BEARING_BUCKET_DEG,
             # 画面が点からタイル座標を求めるときに緯度を挟む限界（`domain/region.py`と同じ式を使う）。
             "max_mercator_latitude": MAX_MERCATOR_LATITUDE,
             # 国土地理院タイル（色別標高図・標高）。配信元が実データを持つ範囲・画面が
@@ -610,6 +615,8 @@ def main() -> None:
             # フロントのポーリングの打ち切り。backendが結果を持つ時間より長く待つと、
             # 掃除済みのjob_idを引いて「ジョブが見つかりません」になる。
             "job_result_ttl_seconds": JOB_TTL_SECONDS,
+            # ルート候補の型の契約の印。画面は端末に置いた候補にこの印を添え、印が違う候補は今の型で読めないとして使わない。
+            "route_candidate_shape": schema_shape_mark(openapi, "RouteCandidate"),  # type: ignore[arg-type]
             # 風の予報を追う長さ（レグごと、時刻ビンの本数×幅）。区間の詳細の説明が、この先は最後に追った時刻の予報を
             # そのまま使うことを数字で示す。
             "wind_forecast_hours_per_leg": MAX_TIME_BINS * TIME_BIN_HOURS,
@@ -619,6 +626,8 @@ def main() -> None:
             "segment_speed_conditions": list(SEGMENT_SPEED_CONDITIONS),
             # ルート全体の難易度（平均・総量）の数え方の文。結果の難易度の説明が差し込む。
             "overall_difficulty_wording": OVERALL_DIFFICULTY_WORDING,
+            # 所要時間の計算が値の無い区間をどう数えるかの文。結果の「データの無い区間」の注記が差し込む。
+            "missing_travel_data_wording": MISSING_TRAVEL_DATA_WORDING,
             # フロントが使う較正値の**既定**（`domain/tuning.py`の宣言そのまま）。フロントはidの型にだけ使い、
             # 値は読まない——効いている値はGET /api/axis-catalogが返し、取れるまではその値を使う機能を出さない。
             "client_tuning": client_tuning_values(),

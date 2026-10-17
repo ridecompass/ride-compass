@@ -93,6 +93,20 @@ CATALOG_AXES: dict[str, AxisDefinition] = {
         label="軸ナ",
         is_published=True,
     ),
+    # 分類の軸と単位のある材料を合成する軸（内訳に対訳・単位・割り切れない割合が出る）。
+    "axis_mixed_terms": AxisDefinition(
+        axis_id="axis_mixed_terms",
+        shape=BreakpointLinearShape(
+            terms=[
+                MaterialTerm(material="axis_categorical", weight=1.0),
+                MaterialTerm(material="poi_signal_per_km", weight=2.0),
+            ],
+            breakpoints=[(0.0, 0.0), (100.0, 100.0)],
+        ),
+        default_weight=0.0,
+        label="軸ミ",
+        is_published=True,
+    ),
 }
 
 
@@ -219,8 +233,12 @@ def test_get_axis_catalog_includes_material_breakdown(client, catalog_axes):
     assert entries["axis_way_value_signed"]["material_breakdown"] == []
     night = entries["axis_boolean_terms"]["material_breakdown"]
     assert [(entry["material_id"], entry["share"]) for entry in night] == [("lit", 0.5), ("has_tunnel", 0.5)]
-    # 真偽値材料に対訳は要らない（走行中に見る画面へ不要なデータを載せない）。
-    assert night[0]["value_labels"] == {}
+    # 割合は画面に出す桁へ丸めて配り、分類の材料はルート結果が値ごとの割合を日本語にする対訳を、数値の材料は単位を運ぶ。
+    mixed = {entry["material_id"]: entry for entry in entries["axis_mixed_terms"]["material_breakdown"]}
+    signal = mixed["poi_signal_per_km"]
+    assert (signal["share"], signal["unit"]) == (0.6667, MATERIAL_CATALOG["poi_signal_per_km"].unit)
+    assert mixed[SURFACE_ESTIMATE]["share"] == 0.3333
+    assert mixed[SURFACE_ESTIMATE]["value_labels"] == MATERIAL_CATALOG[SURFACE_ESTIMATE].value_labels
 
 
 def test_get_axis_catalog_marks_density_axes_with_their_terms(client, catalog_axes):

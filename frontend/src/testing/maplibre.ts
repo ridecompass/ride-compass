@@ -105,6 +105,14 @@ export class Marker extends Evented {
     return this.lngLat;
   }
 
+  getElement() {
+    return this.element;
+  }
+
+  setRotation() {
+    return this;
+  }
+
   setDraggable(draggable: boolean) {
     this.draggable = draggable;
     return this;
@@ -159,6 +167,7 @@ const STYLE_OPERATIONS = [
   "getLayer",
   "getSource",
   "hasImage",
+  "addImage",
   "addSource",
   "removeSource",
   "addLayer",
@@ -175,7 +184,6 @@ const drawn: StandInMap[] = [];
 
 class StandInMap extends Evented {
   readonly markers = new Set<Marker>();
-  readonly fits: unknown[] = [];
   readonly styles: string[];
   readonly content: RecordingMap;
   private readonly container: HTMLElement;
@@ -229,8 +237,19 @@ class StandInMap extends Evented {
     return this;
   }
 
-  fitBounds(_bounds: LngLatBounds, options: unknown) {
-    this.fits.push(options);
+  easeTo() {
+    return this;
+  }
+
+  getBearing() {
+    return 0;
+  }
+
+  isZooming() {
+    return false;
+  }
+
+  fitBounds() {
     return this;
   }
 
@@ -255,12 +274,13 @@ class StandInMap extends Evented {
   }
 
   remove() {
-    drawn.splice(drawn.indexOf(this), 1);
+    const index = drawn.indexOf(this);
+    if (index !== -1) drawn.splice(index, 1);
   }
 
-  /** テストが起こす出来事。 */
-  emit(type: string) {
-    this.fire(type);
+  /** テストが起こす出来事。`event` は出来事の中身（利用者の操作なら `originalEvent` を持たせる）。 */
+  emit(type: string, event: Record<string, unknown> = {}) {
+    this.fire(type, event);
   }
 
   /** `lngLat` を押す。`features` はそこに描かれている地物で、無い・隠したレイヤーのものは渡せない（MapLibre は返さない）。 */
@@ -295,8 +315,8 @@ export function setWorkerUrl() {}
 
 /** いま描かれている地図。 */
 export interface MapOnScreen {
-  /** 出来事を起こす（"load"・"style.load" 等）。 */
-  emit(type: string): void;
+  /** 出来事を起こす（"load"・"style.load" 等）。`event` は出来事の中身。 */
+  emit(type: string, event?: Record<string, unknown>): void;
   /** スタイルを読み込んだ状態にする（`layers` はスタイルが最初から持つレイヤー。undefined なら読み込み中）。 */
   loadStyle(layers: readonly StyleLayer[] | undefined): void;
   /** `lngLat` を押す。`features` はそこに描かれている地物。 */
@@ -307,8 +327,6 @@ export interface MapOnScreen {
   sourceFeatures(sourceId: string): GeoJSON.Feature[];
   /** 地図に置いた印。 */
   markers(): { coordinates: Coordinates; draggable: boolean; element: HTMLElement }[];
-  /** 範囲を収めたときの指定（余白等。古い順）。 */
-  readonly fits: readonly unknown[];
   /** 求めたスタイル（最初の1つと、取り直しの分）。 */
   readonly styles: readonly string[];
 }
@@ -317,7 +335,7 @@ export function mapOnScreen(): MapOnScreen {
   const map = drawn.at(-1);
   if (map === undefined) throw new Error("地図が描かれていない");
   return {
-    emit: (type) => map.emit(type),
+    emit: (type, event) => map.emit(type, event),
     loadStyle: (layers) => map.content.loadStyle(layers),
     click: (lngLat, features = []) => map.click(lngLat, features),
     visibleLayerIds: () => map.content.layerOrder().filter((id) => map.content.layer(id)?.visibility !== "none"),
@@ -329,7 +347,6 @@ export function mapOnScreen(): MapOnScreen {
         draggable: marker.draggable,
         element: marker.element,
       })),
-    fits: map.fits,
     styles: map.styles,
   };
 }

@@ -25,6 +25,7 @@ import numpy as np
 import pytest
 import respx
 from PIL import Image
+from shapely.geometry import Point, shape
 
 from app.domain.jma_amedas import apparent_temperature_from_amedas
 from app.domain.rain import HOURS_SINCE_RAIN, RAIN_HISTORY_HOURS, RAIN_HISTORY_MAX_AGE, rain_window_material_id
@@ -35,6 +36,7 @@ from app.infrastructure.debug_log import get_stats
 from app.infrastructure.jma_amedas_client import new_latest_time_cache, new_station_table_cache
 from app.infrastructure.jma_tile_client import JmaTileClient, JmaTileSharedState
 from app.services.jma_amedas_service import JmaAmedasService, load_station_rain_materials, new_rain_materials_cache
+from app.services.nearest_point_areas import new_cells_cache
 from tests.fake_http import client_for
 
 POINT = Coordinates(latitude=35.68, longitude=139.76)
@@ -144,6 +146,7 @@ def _service(http_client: httpx.AsyncClient) -> JmaAmedasService:
         JmaTileClient(http_client, JmaTileSharedState()),
         station_table_cache=new_station_table_cache(),
         latest_time_cache=new_latest_time_cache(),
+        cells_cache=new_cells_cache(),
     )
 
 
@@ -193,6 +196,11 @@ async def test_get_nearest_observation_reads_from_redis_without_fetching():
     assert result.precipitation_10min_mm == 0.0
     # 日の出・日没はRedisには無く、クエリ地点に対してその場で計算される。
     assert result.twilight is not None
+    # 同じ観測所の観測が当たる範囲（東京が最寄りである範囲）は、地点と東京を含み、遠い観測所を含まない。
+    area = shape(result.valid_area.model_dump())
+    assert area.contains(Point(POINT.longitude, POINT.latitude))
+    assert area.contains(Point(139 + 45.6 / 60, 35 + 41.4 / 60))
+    assert not area.contains(Point(0.0, 0.0))
 
 
 async def test_observation_reads_and_writes_are_counted_in_the_stats():

@@ -18,7 +18,6 @@ import {
   type MapLayerVisibility,
 } from "@/features/map/layers/mapLayers";
 import type { LensId } from "@/lib/mapDisplay/routeStyleModes";
-import { primaryAttributeIdsToLayerIds } from "@/features/map/layers/primaryAttributes";
 import type { MapViewport } from "@/features/map/layers/windLayer";
 import type MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayControls";
 import { isLegendFiltered } from "@/features/map/MapOverlayControls/MapOverlayControls";
@@ -77,12 +76,14 @@ interface MapViewInputs {
 
 interface MapViewState {
   look: MapLook;
-  lensControl: ComponentProps<typeof LensControl>;
+  lensControl: Omit<ComponentProps<typeof LensControl>, "compact">;
   overlayControls: ComponentProps<typeof MapOverlayControls>;
   /** 押した人の地図だけを、スタイルから取り直して組み直す。 */
   redrawMap: () => void;
   /** 地図の見えている範囲の真ん中。地図がまだ範囲を知らせていなければnull。 */
   center: Coordinates | null;
+  /** 地図が今当てている向き（北から時計回りの度）。地図がまだ範囲を知らせていなければ0（北が上）。 */
+  bearing: number;
 }
 
 export function useMapView({
@@ -183,16 +184,10 @@ export function useMapView({
     look,
     lensControl: {
       lens,
-      // 選んだ色分けが見えるように、ルートのレイヤーがOFFならONにする。密度の軸は線を塗らないので、数える材料の点も出す。
+      // 選んだ色分けが見えるように、ルートのレイヤーがOFFならONにする。
       onLensChange: (id) => {
         setLens(id);
-        const axis = catalog.axes.find((entry) => entry.axisId === id);
-        const pointIds = axis?.densityTerms ? primaryAttributeIdsToLayerIds(axis.primaryAttributeIds) : [];
-        setLayerVisibility((prev) => ({
-          ...prev,
-          [ROUTE_LAYER_ID]: true,
-          ...Object.fromEntries(pointIds.map((layerId) => [layerId, true])),
-        }));
+        setRouteShown(true);
       },
       axisOptions: lensOptions(catalog.axes, routeWeights, catalog.axisColors),
       legend,
@@ -235,5 +230,6 @@ export function useMapView({
     },
     redrawMap: () => setRefreshToken((token) => token + 1),
     center,
+    bearing: viewport?.bearing ?? 0,
   };
 }

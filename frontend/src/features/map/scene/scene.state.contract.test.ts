@@ -8,7 +8,7 @@ import { latest, validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
-import { matchesFilter } from "@/testing/mapExpressions";
+import { evaluateExpression, matchesFilter } from "@/testing/mapExpressions";
 import { createRecordingMap, type StyleLayer } from "@/testing/mapTrace/recordingMap";
 import { catalogEntry, dedicatedEntry } from "@/testing/catalogAxes";
 import { dedicatedWayValueAxesFromCatalogAxes } from "@/lib/mapDisplay/axisLayers";
@@ -17,7 +17,7 @@ import { POINT_LAYERS, POINT_TILE_SOURCES, pointAxisKey } from "@/features/map/s
 import { ROAD_LINE_SOURCE_ID, ROAD_TRACKS } from "@/features/map/scene/groups/roadLines";
 import { pointLegendAxes, roadLegendAxes } from "@/features/map/scene/legends";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
-import { dedicatedAxisBands } from "@/lib/mapDisplay/valueScale";
+import { valueBands } from "@/lib/mapDisplay/valueScale";
 import { applyScene, sceneInputsFrom } from "@/features/map/scene/applyToMap";
 import { sceneState, type SceneState, type SceneStateOverrides } from "@/testing/sceneState";
 import { buildMapScene } from "@/features/map/scene/buildScene";
@@ -246,6 +246,98 @@ describe("状態を地図へ伝えた結果", () => {
 
       expect(handle.layer(roadLayerId("density"))?.visibility).toBe("none");
     });
+
+    describe("密度の軸を選んでいる間は、数えている点を描く", () => {
+      const dedicatedAxes = dedicatedWayValueAxesFromCatalogAxes([
+        dedicatedEntry("density", [50], {
+          primary_attribute_ids: ["accident_point"],
+          density_terms: [{ material_id: "m", label: "m", weight: 1 }],
+        }),
+        dedicatedEntry("plain", [50], { primary_attribute_ids: ["accident_point"] }),
+      ]);
+      const accident = pointLayerId("accident_point");
+
+      it.each([
+        { lens: "density", layerOn: false, visibility: "visible" },
+        { lens: "plain", layerOn: false, visibility: "none" },
+        { lens: "density", layerOn: true, visibility: "visible" },
+      ])("色分け $lens、レイヤの入切 $layerOn → 点は $visibility", ({ lens, layerOn, visibility }) => {
+        const { map, handle } = createRecordingMap();
+
+        rebuild(
+          map,
+          sceneState({ catalog: { dedicatedAxes }, look: { lens, layerVisibility: { accident_point: layerOn } } }),
+        );
+
+        expect(handle.layer(accident)?.visibility).toBe(visibility);
+        // 色分けとレイヤの一覧の両方が同じ点を出しても、その点を描くレイヤは1つだけ。
+        const sourceLayer = handle.layer(accident)?.sourceLayer;
+        const drawing = handle
+          .layerOrder()
+          .filter((id) => handle.layer(id)?.sourceLayer === sourceLayer && handle.layer(id)?.visibility === "visible");
+        expect(drawing).toHaveLength(visibility === "visible" ? 1 : 0);
+      });
+    });
+  });
+
+  describe("ルート", () => {
+    // 北緯35.6度の上を東へ進む、長さ1kmの区間を2つつないだルート。
+    const segment = (from: number, to: number) => ({
+      distance_km: 1,
+      start_longitude: from,
+      start_latitude: 35.6,
+      end_longitude: to,
+      end_latitude: 35.6,
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [from, 35.6],
+          [to, 35.6],
+        ],
+      },
+    });
+    const route = {
+      id: "a",
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [139.7, 35.6],
+          [139.72, 35.6],
+        ],
+      },
+      segments: [segment(139.7, 139.71), segment(139.71, 139.72)],
+    };
+
+    it("走り終えた距離までの区間の線と縁取りを薄め、途中の区間はその地点で分ける", () => {
+      const { map, handle } = createRecordingMap();
+      rebuild(
+        map,
+        sceneState({
+          look: { layerVisibility: { route: true } },
+          routes: [route] as never,
+          selectedRouteId: "a",
+          travelledKm: 1.5,
+        }),
+      );
+
+      for (const role of ["detailLine", "detailCasing"]) {
+        const layerId = handle.layerOrder().find((id) => id.endsWith(`-${role}`))!;
+        const layer = handle.layer(layerId)!;
+        const { features } = handle.sourceContent(layer.source!)!.data as {
+          features: { geometry: { coordinates: number[][] }; properties: Record<string, unknown> }[];
+        };
+        const drawn = features.map(({ geometry, properties }) => [
+          geometry.coordinates.map(([lng]) => Number(lng.toFixed(4))),
+          evaluateExpression(layer.paint["line-opacity"] ?? 1, properties),
+        ]);
+        const travelled = mapDisplay.route.opacities.travelled;
+        expect(drawn, role).toEqual([
+          [[139.7, 139.71], travelled],
+          [[139.71, 139.715], travelled],
+          [[139.715, 139.72], 1],
+        ]);
+      }
+    });
   });
 });
 
@@ -309,7 +401,7 @@ describe("レイヤーを横断する要求", () => {
           ...firstKeyHidden(roadLegendAxes()),
           ...firstKeyHidden(pointLegendAxes()),
           ...Object.fromEntries(
-            DEDICATED_AXES.map((axis) => [axis.axisId, firstBandAndNoData(dedicatedAxisBands(axis.display))]),
+            DEDICATED_AXES.map((axis) => [axis.axisId, firstBandAndNoData(valueBands(axis.display))]),
           ),
         },
         dynamicWeather: everyWeatherGroupState() as never,

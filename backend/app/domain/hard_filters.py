@@ -6,10 +6,12 @@
 増やしても判定側は無変更で反映される。
 """
 
-from typing import Mapping, NamedTuple
+from typing import NamedTuple
 
 import numpy as np
 
+from app.domain.evaluation import StaticEdgeScoreMatrix
+from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.material_sql import BICYCLE_NORMALIZED_SQL, HIGHWAY_SQL, sql_literals
 
 
@@ -33,7 +35,7 @@ class TagHardFilter(NamedTuple):
 # 周回ルートにとって「実質的に走りにくい・危険」という実務判断で除外対象に含める。
 HARD_FILTER_HIGHWAY_TYPES: dict[str, HighwayHardFilter] = {
     "motorway": HighwayHardFilter("高速道路", frozenset({"motorway", "motorway_link"})),
-    "trunk": HighwayHardFilter("幹線道路", frozenset({"trunk", "trunk_link"})),
+    "trunk": HighwayHardFilter("国道", frozenset({"trunk", "trunk_link"})),
 }
 
 # highwayでは決まらない、タグ由来のフィルタ。足すならここへ1エントリ書くだけでよい。
@@ -97,24 +99,24 @@ def compute_routable_nodes(
 
 
 def compute_hard_filter_excluded(
-    hard_filter_flags: Mapping[str, np.ndarray],
-    gradient_percent: np.ndarray,
+    score_matrix: StaticEdgeScoreMatrix,
     hard_filters: frozenset[str],
     max_average_grade_percent: float | None,
 ) -> np.ndarray:
-    """静的スコア行列が持つ生フラグから、リクエスト時点の`hard_filters`/
+    """静的スコア行列が持つ生フラグと勾配の列から、リクエスト時点の`hard_filters`/
     `max_average_grade_percent`を反映した0次フィルタ除外の真偽値配列を求める。
 
-    `hard_filter_flags`は`HARD_FILTER_NAMES`のフィルタ名→該当フラグ配列で、**キー集合の
+    `score_matrix.hard_filter_flags`は`HARD_FILTER_NAMES`のフィルタ名→該当フラグ配列で、**キー集合の
     完全一致を要求する**——欠けたフィルタは黙って無効になり、高速道路や`bicycle=no`の道が
     そのまま候補へ入る。フィルタを1つ増やしてもこの関数は変わらない。
     """
+    hard_filter_flags = score_matrix.hard_filter_flags
     if set(hard_filter_flags) != HARD_FILTER_NAMES:
         raise ValueError(
             f"0次フィルタの列が宣言と違います 不足={sorted(HARD_FILTER_NAMES - set(hard_filter_flags))} "
             f"未知={sorted(set(hard_filter_flags) - HARD_FILTER_NAMES)}"
         )
-    excluded = np.zeros(len(gradient_percent), dtype=bool)
+    excluded = np.zeros(len(score_matrix.distance_m), dtype=bool)
     for filter_name, flags in hard_filter_flags.items():
         if filter_name in hard_filters:
             excluded |= flags
@@ -122,5 +124,5 @@ def compute_hard_filter_excluded(
     # 適用されない）。
     if max_average_grade_percent is not None:
         with np.errstate(invalid="ignore"):
-            excluded |= np.abs(gradient_percent) > max_average_grade_percent
+            excluded |= np.abs(score_matrix.material_column(GRADIENT_PERCENT)) > max_average_grade_percent
     return excluded

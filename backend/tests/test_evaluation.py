@@ -1,4 +1,4 @@
-"""`domain/evaluation.py`——静的スコア行列を組む間の軸定義の読み方と、葉の材料の列の分け方。
+"""`domain/evaluation.py`——静的スコア行列を組む間の軸定義の読み方と、葉の材料の列の分け方と、観測として受ける材料。
 
 ここで見ないもの:
 - どの軸を密度の軸とするか → `test_axis_definitions.py`
@@ -8,6 +8,7 @@
 from collections.abc import Iterator, Mapping
 
 import numpy as np
+import pytest
 
 from app.domain.attributes import EdgeMaterialArrays
 from app.domain.axis_definitions import (
@@ -18,7 +19,7 @@ from app.domain.axis_definitions import (
     replace_axis_definitions,
 )
 from app.domain.evaluation import build_static_edge_score_matrix
-from app.domain.material_catalog import GRADIENT_PERCENT, WIND_DRAG_RATIO
+from app.domain.material_catalog import ACCIDENT_COUNT_PER_KM_YEAR, GRADIENT_PERCENT, WIND_DRAG_RATIO
 from tests.axis_system_fixture import replaced_axis_definitions
 
 
@@ -98,3 +99,32 @@ def test_leaf_materials_go_to_the_column_of_their_kind_and_wind_stays_out():
     assert "highway" in matrix.categorical_material_ids
     assert GRADIENT_PERCENT in matrix.material_ids
     assert not {"highway", WIND_DRAG_RATIO} & set(matrix.material_ids)
+
+
+def test_internal_axes_no_published_axis_reads_stay_out_of_the_matrix():
+    """どの公開軸にも読まれない内部軸は、得点・生値・内訳の材料のどの列にも載らない。
+
+    載ると、利用者が重みを付けられない軸がルートの点数と内訳に出る。
+    """
+    def axis(axis_id: str, *materials: str, published: bool) -> AxisDefinition:
+        terms = [MaterialTerm(material=material) for material in materials]
+        return AxisDefinition(
+            axis_id=axis_id, label="軸", default_weight=1.0, is_published=published,
+            shape=BreakpointLinearShape(terms=terms, breakpoints=[(0.0, 0.0), (1.0, 100.0)]),
+        )
+
+    shown = axis("shown", GRADIENT_PERCENT, published=True)
+    unread = axis("unread", "maxspeed_kmh", published=False)
+    unread_pair = axis("unread_pair", "intersection_count_per_km", ACCIDENT_COUNT_PER_KM_YEAR, published=False)
+
+    with replaced_axis_definitions({"shown": shown, "unread": unread, "unread_pair": unread_pair}):
+        matrix = build_static_edge_score_matrix(no_materials(2), {})
+
+    assert matrix.axis_ids == ["shown"]
+    assert matrix.raw_axis_ids == ["shown"]
+    assert not {"intersection_count_per_km", ACCIDENT_COUNT_PER_KM_YEAR} & set(matrix.material_ids)
+
+
+def test_a_material_not_sourced_from_observation_is_refused_as_an_observed_column():
+    with pytest.raises(ValueError, match=GRADIENT_PERCENT):
+        build_static_edge_score_matrix(no_materials(2), {GRADIENT_PERCENT: np.zeros(2)})

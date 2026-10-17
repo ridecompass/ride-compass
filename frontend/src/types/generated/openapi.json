@@ -2119,6 +2119,16 @@
               }
             ],
             "title": "Weather Code"
+          },
+          "valid_area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -2132,7 +2142,8 @@
           "wind_direction",
           "precipitation_10min_mm",
           "twilight",
-          "weather_code"
+          "weather_code",
+          "valid_area"
         ],
         "title": "AmedasObservation"
       },
@@ -2187,10 +2198,6 @@
             },
             "type": "array",
             "title": "Weather Layer Groups"
-          },
-          "dedicated_way_value_layer": {
-            "type": "boolean",
-            "title": "Dedicated Way Value Layer"
           },
           "map_paint": {
             "$ref": "#/components/schemas/MapPaint"
@@ -2255,7 +2262,6 @@
           "icon_id",
           "primary_attribute_ids",
           "weather_layer_groups",
-          "dedicated_way_value_layer",
           "map_paint",
           "raw_value_units",
           "material_breakdown",
@@ -2280,24 +2286,21 @@
               "type": "number"
             },
             "type": "object",
-            "title": "Client Tuning",
-            "default": {}
+            "title": "Client Tuning"
           },
           "tile_versions": {
             "additionalProperties": {
               "type": "string"
             },
             "type": "object",
-            "title": "Tile Versions",
-            "default": {}
+            "title": "Tile Versions"
           },
           "accident_years": {
             "items": {
               "type": "integer"
             },
             "type": "array",
-            "title": "Accident Years",
-            "default": []
+            "title": "Accident Years"
           }
         },
         "additionalProperties": false,
@@ -2413,11 +2416,6 @@
               }
             ],
             "title": "Display Band Labels Override"
-          },
-          "dedicated_way_value_layer": {
-            "type": "boolean",
-            "title": "Dedicated Way Value Layer",
-            "default": false
           }
         },
         "additionalProperties": false,
@@ -2534,11 +2532,6 @@
             ],
             "title": "Display Band Labels Override"
           },
-          "dedicated_way_value_layer": {
-            "type": "boolean",
-            "title": "Dedicated Way Value Layer",
-            "default": false
-          },
           "weight_share_when_published": {
             "anyOf": [
               {
@@ -2566,7 +2559,6 @@
           "time_scope",
           "display_thresholds_override",
           "display_band_labels_override",
-          "dedicated_way_value_layer",
           "weight_share_when_published"
         ],
         "title": "AxisDefinitionResponse"
@@ -2779,8 +2771,7 @@
               "type": "string"
             },
             "type": "object",
-            "title": "Value Labels",
-            "default": {}
+            "title": "Value Labels"
           }
         },
         "additionalProperties": false,
@@ -3335,12 +3326,23 @@
             },
             "type": "array",
             "title": "Forecasts"
+          },
+          "valid_area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "forecasts"
+          "forecasts",
+          "valid_area"
         ],
         "title": "FloodForecasts"
       },
@@ -4454,16 +4456,6 @@
             "type": "array",
             "title": "Segments"
           },
-          "overall_difficulty": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OverallDifficulty"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "estimated_duration_seconds": {
             "anyOf": [
               {
@@ -4477,8 +4469,7 @@
           },
           "wind_unavailable": {
             "type": "boolean",
-            "title": "Wind Unavailable",
-            "default": false
+            "title": "Wind Unavailable"
           },
           "missing_travel_data_share": {
             "anyOf": [
@@ -4491,33 +4482,12 @@
             ],
             "title": "Missing Travel Data Share"
           },
-          "axis_difficulties": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Axis Difficulties"
-          },
-          "axis_contributions": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Axis Contributions"
-          },
           "axis_raw_values": {
             "additionalProperties": {
               "type": "number"
             },
             "type": "object",
             "title": "Axis Raw Values"
-          },
-          "material_values": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Material Values"
           },
           "material_category_shares": {
             "additionalProperties": {
@@ -4550,6 +4520,44 @@
             "type": "array",
             "title": "Node Ids"
           },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/RouteTurn"
+            },
+            "type": "array",
+            "title": "Turns"
+          },
+          "overall_difficulty": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverallDifficulty"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "axis_difficulties": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Axis Difficulties"
+          },
+          "axis_contributions": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Axis Contributions"
+          },
+          "material_values": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Material Values"
+          },
           "id": {
             "type": "string",
             "title": "Id"
@@ -4580,18 +4588,19 @@
           "geometry",
           "elevation_gain_m",
           "segments",
-          "overall_difficulty",
           "estimated_duration_seconds",
           "wind_unavailable",
           "missing_travel_data_share",
-          "axis_difficulties",
-          "axis_contributions",
           "axis_raw_values",
-          "material_values",
           "material_category_shares",
           "edge_ids",
           "edge_point_offsets",
           "node_ids",
+          "turns",
+          "overall_difficulty",
+          "axis_difficulties",
+          "axis_contributions",
+          "material_values",
           "id",
           "kind",
           "is_fastest",
@@ -4983,6 +4992,40 @@
         ],
         "title": "RouteSegmentDetail"
       },
+      "RouteTurn": {
+        "properties": {
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right",
+              "uturn"
+            ],
+            "title": "Direction"
+          },
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "distance_km",
+          "direction",
+          "latitude",
+          "longitude"
+        ],
+        "title": "RouteTurn"
+      },
       "ScorePoint": {
         "properties": {
           "x": {
@@ -5305,6 +5348,38 @@
         ],
         "title": "Twilight"
       },
+      "ValidArea": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "MultiPolygon",
+            "title": "Type"
+          },
+          "coordinates": {
+            "items": {
+              "items": {
+                "items": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Coordinates"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "ValidArea"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -5427,12 +5502,23 @@
                 "type": "null"
               }
             ]
+          },
+          "valid_area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "reading"
+          "reading",
+          "valid_area"
         ],
         "title": "WbgtStatus"
       },
@@ -5562,12 +5648,23 @@
             },
             "type": "array",
             "title": "Warnings"
+          },
+          "valid_area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "warnings"
+          "warnings",
+          "valid_area"
         ],
         "title": "WeatherWarnings"
       },

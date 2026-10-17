@@ -1,11 +1,5 @@
 import { adminApiClient, backendApi, getOptions, requestApi } from "@/lib/apiClient";
-import {
-  CATALOG_API_TIMEOUT_MS,
-  DEFAULT_API_TIMEOUT_MS,
-  DISTRIBUTION_API_TIMEOUT_MS,
-  HEAVY_ADMIN_API_TIMEOUT_MS,
-  STATUS_API_TIMEOUT_MS,
-} from "@/lib/apiTimeouts";
+import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
 import type { components, paths } from "@/types/generated/api";
 import type { AxisDefinitionPayload, AxisShape } from "@/types/route";
 
@@ -15,7 +9,7 @@ type Schemas = components["schemas"];
  * 本文を送る呼び出しは`body`を渡すと開始のログに載る。 */
 function adminOptions(
   label: string,
-  { timeoutMs = DEFAULT_API_TIMEOUT_MS, body }: { timeoutMs?: number; body?: unknown } = {},
+  { timeoutMs = API_TIMEOUT_MS.default, body }: { timeoutMs?: number; body?: unknown } = {},
 ) {
   return {
     timeoutMs,
@@ -72,7 +66,7 @@ export function fetchAxisValueDistribution(shape: AxisShape) {
   const body = { shape };
   return requestApi(
     (init) => adminApiClient.POST("/axis-definitions/preview-distribution", { body, ...init }),
-    adminOptions("分布の取得", { timeoutMs: DISTRIBUTION_API_TIMEOUT_MS, body }),
+    adminOptions("分布の取得", { timeoutMs: API_TIMEOUT_MS.distribution, body }),
   );
 }
 
@@ -99,7 +93,7 @@ export function fetchMaterialDistribution(materialId: string) {
         params: { path: { material_id: materialId } },
         ...init,
       }),
-    adminOptions("分布の取得", { timeoutMs: DISTRIBUTION_API_TIMEOUT_MS }),
+    adminOptions("分布の取得", { timeoutMs: API_TIMEOUT_MS.distribution }),
   );
 }
 
@@ -111,14 +105,14 @@ export function getMaterialValues(materialId: string) {
         params: { path: { material_id: materialId } },
         ...init,
       }),
-    adminOptions("材料の値一覧の取得", { timeoutMs: CATALOG_API_TIMEOUT_MS }),
+    adminOptions("材料の値一覧の取得", { timeoutMs: API_TIMEOUT_MS.catalog }),
   );
 }
 
 export function getMaterialCoverage() {
   return requestApi(
     (init) => adminApiClient.GET("/material-catalog/coverage", init),
-    adminOptions("材料の欠損割合の取得", { timeoutMs: HEAVY_ADMIN_API_TIMEOUT_MS }),
+    adminOptions("材料の欠損割合の取得", { timeoutMs: API_TIMEOUT_MS.heavyAdmin }),
   );
 }
 
@@ -127,14 +121,14 @@ export function getMaterialCoverage() {
 export function getDerivedDataFreshness() {
   return requestApi(
     (init) => adminApiClient.GET("/derived-data/freshness", init),
-    adminOptions("派生データ鮮度台帳の取得", { timeoutMs: HEAVY_ADMIN_API_TIMEOUT_MS }),
+    adminOptions("派生データ鮮度台帳の取得", { timeoutMs: API_TIMEOUT_MS.heavyAdmin }),
   );
 }
 
 export function getDbStatus() {
   return requestApi(
     (init) => adminApiClient.GET("/db-status", init),
-    adminOptions("DB状態の取得", { timeoutMs: HEAVY_ADMIN_API_TIMEOUT_MS }),
+    adminOptions("DB状態の取得", { timeoutMs: API_TIMEOUT_MS.heavyAdmin }),
   );
 }
 
@@ -180,7 +174,7 @@ export function getRecentLogs(query: LogsQuery) {
 export function getDebugStats() {
   return requestApi(
     (init) => backendApi.GET("/api/debug/stats", init),
-    getOptions({ timeoutMs: STATUS_API_TIMEOUT_MS, category: "api:debug-stats", errorLabel: "システム状況" }),
+    getOptions({ timeoutMs: API_TIMEOUT_MS.status, category: "api:debug-stats", errorLabel: "システム状況" }),
   );
 }
 
@@ -190,7 +184,7 @@ export async function checkBackendHealth(): Promise<boolean> {
   const failure = "バックエンドへの疎通確認に失敗しました";
   try {
     const data = await requestApi((init) => backendApi.GET("/health", init), {
-      timeoutMs: STATUS_API_TIMEOUT_MS,
+      timeoutMs: API_TIMEOUT_MS.status,
       category: "api:health",
       messages: { failure, parseFailure: failure },
     });

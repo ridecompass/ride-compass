@@ -140,7 +140,9 @@ SEMANTIC_COLORS: dict[str, str] = {
     "inspected": "#f59e0b",
     # 「値が無い」と「この軸の対象外」を見分けるため、no_dataより青寄りにする。
     "neutral": "#94a3b8",
-    # 地点のピン。出発地の台はテーマに従う面の色で、frontendのCSSのトークンが持つ。
+    # 地点のピン。台（丸）はどの役割も同じ色で、地図はダークの表示でも明るいので、テーマによらず白にする。
+    # 役割は台の上の記号の色で見分ける。
+    "pin_face": "#ffffff",
     "pin_origin": "#e11d48",
     "pin_origin_unresolved": "#9ca3af",
     "pin_waypoint": "#2563eb",

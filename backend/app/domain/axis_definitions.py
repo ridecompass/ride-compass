@@ -50,7 +50,6 @@ from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.axis_templates import evaluate_breakpoint_linear, evaluate_categorical
 from app.domain.difficulty import round_difficulty_array, weight_share
 from app.domain import material_catalog
-from app.domain.material_catalog import WIND_DRAG_RATIO
 from app.domain.strict_model import StrictModel
 from app.domain.weather_elements import WEATHER_ELEMENTS
 
@@ -336,14 +335,6 @@ class AxisDefinition(StrictModel):
 
     `display_thresholds_override`と対になる概念（どちらも「地図の色分け段階の見せ方」の
     軸ごとの好み）。"""
-    dedicated_way_value_layer: bool = False
-    """**ルート未確定時**の地図が、この軸を配信（`/api/region/dynamic-way-values`、`services/dedicated_way_values.py`）の
-    値で塗るかの宣言。配信はどの公開軸の値も返すので、この印は塗り方を選ぶだけで、配信できるかを表さない。
-    `axis_id`の文字列比較によるハードコード分岐ではなく、性質ベースの宣言的フィールドとして持たせ、軸スタジオの
-    編集画面（管理API）からも設定できるようにする。
-
-    **ルート確定後**の地図色分け（ルート結果の`axis_difficulties[axis_id]`でルート線を段に塗る。公開軸なら自動的に
-    対象になりこのフィールドとは無関係）とは別の概念であることに注意。"""
 
     @field_validator("display_thresholds_override")
     @classmethod
@@ -861,13 +852,11 @@ def check_axis_set(definitions: dict[str, AxisDefinition]) -> None:
     topological_axis_order(definitions)
 
 
-# リクエストごとに値が変わりうる材料id（風向・風速・走行速度由来）。`MATERIAL_CATALOG`の
-# `value_sql=None`は「SQLでは求められない」という別の意味も持つ（動的データ以外に、
-# 評価へ配線していない材料もNoneになる）ため流用せず、ここに正準定義を置く。
+# リクエストごとに値が変わりうる材料id（風向・風速・走行速度由来）。
 # `dynamic_axis_topological_order`がこの集合を起点に、依存する軸を機械的に導出する
 # （軸id・材料idのハードコードを個別の軸ぶん増やさない汎用設計）。各材料の評価関数は
 # `domain/dynamic_materials.py: DYNAMIC_MATERIAL_EVALUATORS`に1対1で登録する。
-REQUEST_DYNAMIC_MATERIAL_IDS = frozenset({WIND_DRAG_RATIO})
+REQUEST_DYNAMIC_MATERIAL_IDS = material_catalog.materials_of_source("request")
 
 
 def _axes_depending_on_materials(
@@ -904,6 +893,13 @@ def dynamic_axis_topological_order(definitions: dict[str, AxisDefinition]) -> li
     """
     dynamic_ids = _axes_depending_on_materials(REQUEST_DYNAMIC_MATERIAL_IDS, definitions)
     return [axis_id for axis_id in topological_axis_order(definitions) if axis_id in dynamic_ids]
+
+
+def published_axis_order(definitions: dict[str, AxisDefinition]) -> list[str]:
+    """公開軸のidを依存順（`topological_axis_order`）に。静的スコア行列の列と、軸ごとの値を並べる所はこの並びで持つ。
+
+    宣言の順（`published_axis_definitions`）とは違いうる——公開軸が別の公開軸を材料に読むと、読まれる側が先に来る。"""
+    return [axis_id for axis_id in topological_axis_order(definitions) if definitions[axis_id].is_published]
 
 
 def published_axis_definitions(definitions: Mapping[str, AxisDefinition] | None = None) -> list[AxisDefinition]:
@@ -1021,17 +1017,13 @@ def evaluate_axis_values(
 
 
 def evaluate_axes_values(materials: Mapping[str, Sequence[object]], length: int) -> dict[str, list[float | None]]:
-    """`evaluate_axis_values`の全軸版。公開軸だけを依存順（`topological_axis_order`）に返す。
+    """`evaluate_axis_values`の全軸版。公開軸だけを依存順（`published_axis_order`）に返す。
 
     評価できなかった公開軸も、キーを残して値をNoneにする（区間インスペクタの`available=False`・
     合成の分母からの除外がこれを前提にする）。
     """
     evaluated = evaluate_axes_array(_axes_python_value_columns(materials, length), AXIS_DEFINITIONS)
-    return {
-        axis_id: _scores_or_none(evaluated[axis_id])
-        for axis_id in topological_axis_order(AXIS_DEFINITIONS)
-        if AXIS_DEFINITIONS[axis_id].is_published
-    }
+    return {axis_id: _scores_or_none(evaluated[axis_id]) for axis_id in published_axis_order(AXIS_DEFINITIONS)}
 
 
 def evaluate_axes_inputs(materials: Mapping[str, Sequence[object]], length: int) -> dict[str, list[object]]:
@@ -1043,11 +1035,8 @@ def evaluate_axes_inputs(materials: Mapping[str, Sequence[object]], length: int)
     columns = _axes_python_value_columns(materials, length)
     with_axes: dict[str, MaterialColumn] = {**columns, **evaluate_axes_array(columns, AXIS_DEFINITIONS)}
     inputs: dict[str, list[object]] = {}
-    for axis_id in topological_axis_order(AXIS_DEFINITIONS):
-        definition = AXIS_DEFINITIONS[axis_id]
-        if not definition.is_published:
-            continue
-        shape = definition.shape
+    for axis_id in published_axis_order(AXIS_DEFINITIONS):
+        shape = AXIS_DEFINITIONS[axis_id].shape
         if isinstance(shape, BreakpointLinearShape):
             inputs[axis_id] = list(_scores_or_none(_breakpoint_raw_value_array(shape, with_axes)))
         else:

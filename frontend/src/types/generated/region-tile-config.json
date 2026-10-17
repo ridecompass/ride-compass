@@ -21,6 +21,7 @@
   },
   "road_tile_min_zoom": 12,
   "road_tile_max_zoom": 15,
+  "way_value_bearing_bucket_deg": 5,
   "max_mercator_latitude": 85.05112878,
   "gsi": {
     "relief": {

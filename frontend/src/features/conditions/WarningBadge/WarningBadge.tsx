@@ -34,6 +34,8 @@ export interface WarningBadgeItem {
 interface WarningBadgeListProps {
   items: WarningBadgeItem[];
   failures: readonly FetchFailure[];
+  /** 文字を出さず、最も重い段階の色のアイコンだけにする（走りの帯のように幅の狭い所）。 */
+  compact?: boolean;
 }
 
 // 段階の並び（軽い→重い）と、出所ごとの呼び名・色は、backendの宣言（domain/warning_display.py）が配る。
@@ -64,10 +66,10 @@ function highestLevelItem(items: readonly WarningBadgeItem[]): WarningBadgeItem 
 // 方針自体は変えず（警報の存在に気づけないことを避ける）、ボタンの文言・色だけで
 // 「今の最高警戒度」が常に分かり、内訳は開かないと見えないぶん、常時全件表示より
 // 一歩踏み込む操作が要るという妥当なトレードオフ。
-export default function WarningBadgeList({ items, failures }: WarningBadgeListProps) {
+export default function WarningBadgeList({ items, failures, compact = false }: WarningBadgeListProps) {
   return (
     <>
-      {items.length > 0 && <WarningSummary items={items} />}
+      {items.length > 0 && <WarningSummary items={items} compact={compact} />}
       {failures.length > 0 && <WarningFetchFailureMark failures={failures} />}
     </>
   );
@@ -124,23 +126,36 @@ function WarningFetchFailureMark({ failures }: { failures: readonly FetchFailure
   );
 }
 
-function WarningSummary({ items }: { items: WarningBadgeItem[] }) {
+function WarningSummary({ items, compact }: { items: WarningBadgeItem[]; compact: boolean }) {
   const top = levelDisplay(highestLevelItem(items));
   const summaryLabel = items.length > 1 ? `${top.label}${items.length}件` : top.label;
 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button
-          size="xs"
-          shape="pill"
-          className="border-0 font-bold text-white data-[state=open]:text-white"
-          style={{ backgroundColor: top.color }}
-          aria-label={`気象警報・注意報あり: ${summaryLabel}。押すと詳細を表示`}
-          usage="いまいる場所に出ている気象警報・注意報の詳細を開きます。"
-        >
-          {summaryLabel}
-        </Button>
+        {compact ? (
+          <Button
+            variant="ghost"
+            size="bare"
+            className="h-7 w-7 justify-center border-0"
+            style={{ color: top.color }}
+            aria-label={`気象警報・注意報あり: ${summaryLabel}。押すと詳細を表示`}
+            usage="いまいる場所に出ている気象警報・注意報の詳細を開きます。"
+          >
+            <WarningTriangleIcon size={18} />
+          </Button>
+        ) : (
+          <Button
+            size="xs"
+            shape="pill"
+            className="border-0 font-bold text-white data-[state=open]:text-white"
+            style={{ backgroundColor: top.color }}
+            aria-label={`気象警報・注意報あり: ${summaryLabel}。押すと詳細を表示`}
+            usage="いまいる場所に出ている気象警報・注意報の詳細を開きます。"
+          >
+            {summaryLabel}
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent {...DETAIL_PANEL_PROPS}>
         <div role="list" aria-label="気象警報・注意報の詳細" className="flex flex-col gap-2">

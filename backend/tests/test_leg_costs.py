@@ -13,6 +13,7 @@
 - 合成した配列で探索し、経路の区間を組み立てること → `test_route_generation_behavior.py`
 """
 
+import dataclasses
 import logging
 from datetime import datetime, timedelta
 
@@ -22,6 +23,7 @@ import pytest
 from app.domain import leg_costs
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm
+from app.domain.cycling_speed import RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.evaluation import DensityAxisColumn, StaticEdgeScoreMatrix
 from app.domain.leg_costs import LegCostComposer
 from app.domain.route import Coordinates
@@ -31,6 +33,7 @@ from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 START = datetime(2026, 10, 3, 9, 0)
 CRUISE_KMH = 20.0
 SURFACE = leg_costs.ROLLING_RESISTANCE_MATERIAL_ID
+GRADIENT = leg_costs.GRADIENT_PERCENT
 WIND_DRAG = next(iter(leg_costs.REQUEST_DYNAMIC_MATERIAL_IDS))
 STOP_DENSITY = dict(zip(leg_costs.POI_COUNT_KINDS, leg_costs.stop_count_material_ids(), strict=True))
 WIND_AXIS = "axis_wind"
@@ -57,10 +60,11 @@ def _column(values, n: int) -> np.ndarray:
 def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="paved",
             axes: dict | None = None, raw_axes: dict | None = None, materials: dict | None = None,
             categories: dict | None = None, signals_per_km=None) -> StaticEdgeScoreMatrix:
-    """`n`区間の静的スコア行列。引数は全区間に同じ値か、区間ごとの並び。
+    """`n`区間の静的スコア行列。引数は全区間に同じ値か、区間ごとの並び。停止の密度は`materials`で渡さなければ0。
 
     `signals_per_km`を渡すと、その信号の密度で待ちが入り、密度の軸`STOP_AXIS`（折れ線は`STOP_LINE`）が点数を持つ。"""
-    axes, raw_axes, materials = dict(axes or {}), raw_axes or {}, dict(materials or {})
+    axes, raw_axes = dict(axes or {}), raw_axes or {}
+    materials = {GRADIENT: gradient, **dict.fromkeys(STOP_DENSITY.values(), 0.0), **(materials or {})}
     density_axes = {}
     if signals_per_km is not None:
         signals = _column(signals_per_km, n)
@@ -75,7 +79,7 @@ def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="pa
     return StaticEdgeScoreMatrix(
         axis_ids=list(axes), axis_scores=stacked(axes),
         distance_m=_column(distance, n), bearing_deg=_column(bearing, n), hard_filter_flags={},
-        gradient_percent=_column(gradient, n), mid_lat=np.full(n, 35.0), mid_lon=np.full(n, 139.0),
+        mid_lat=np.full(n, 35.0), mid_lon=np.full(n, 139.0),
         raw_axis_ids=list(raw_axes), axis_raw_values=stacked(raw_axes),
         material_ids=list(materials), material_values=stacked(materials),
         categorical_material_ids=list(categories),
@@ -123,12 +127,13 @@ def test_a_flat_paved_segment_without_wind_or_stops_is_ridden_at_the_cruise_spee
 
 
 def test_the_gradient_in_percent_slows_the_rider_as_that_grade_and_a_missing_one_counts_as_flat():
-    """勾配の材料は%で、走行モデルは割合で読む。20km/hの人は5%の登りで時速10km前後になり、平地の倍ほどかかる
-    （500%として読めば押して歩く速度で4倍超、0.05%として読めば平地とほぼ同じ）。"""
+    """勾配の材料は%で、走行モデルは割合で読む。読み違えると、坂の所要時間が別の勾配の坂のものになる。"""
     leg = _snapshot(_matrix(3, gradient=[5.0, np.nan, 0.0]))
     climb, missing, flat = leg.travel_seconds_full
+    five_percent = SegmentSpeedModel(
+        RiderProfile(cruise_speed_kmh=CRUISE_KMH), np.array([0.05]), crr_for_surface(CategoricalColumn.encode(["paved"])))
 
-    assert 1.5 * flat < climb < 3.0 * flat
+    assert climb == pytest.approx(five_percent.travel_seconds(np.array([1000.0]), np.zeros(1), np.zeros(1))[0])
     assert missing == flat
 
 
@@ -144,6 +149,17 @@ def test_each_stop_on_a_segment_adds_its_wait():
 
     assert leg.travel_seconds_full[0] - leg.travel_seconds_full[1] == pytest.approx(leg_costs.stop_seconds("signal"))
     assert leg.travel_seconds_full[2] == leg.travel_seconds_full[1]
+
+
+def test_a_matrix_without_a_column_the_travel_time_reads_is_refused():
+    """所要時間が読む材料の列が無い行列を通すと、その材料が足す時間（停止の待ち等）が全区間で黙って0秒になる。"""
+    matrix = _matrix(2)
+    kept = [i for i, material_id in enumerate(matrix.material_ids) if material_id != STOP_DENSITY["signal"]]
+
+    with pytest.raises(ValueError, match=STOP_DENSITY["signal"]):
+        dataclasses.replace(
+            matrix, material_ids=[matrix.material_ids[i] for i in kept], material_values=matrix.material_values[:, kept],
+        )
 
 
 def test_an_excluded_segment_cannot_be_passed():

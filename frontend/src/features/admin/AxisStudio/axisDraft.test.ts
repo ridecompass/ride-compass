@@ -54,7 +54,6 @@ function axis(overrides: Partial<AxisDefinitionResponse> = {}): AxisDefinitionRe
     default_weight: 0,
     is_published: false,
     time_scope: "always",
-    dedicated_way_value_layer: false,
     shape: { kind: "breakpoint_linear", terms: [], preprocess: "identity", breakpoints: [] },
     ...overrides,
   };

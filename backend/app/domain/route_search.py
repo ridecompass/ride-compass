@@ -17,7 +17,7 @@ from app.domain.geo import (
     km_per_degree_longitude,
 )
 from app.domain.leg_costs import LegCostArrays
-from app.domain.route import RouteDraft, merge_difficulty
+from app.domain.route import EvaluatedRoute, RouteDraft, merge_difficulty
 from app.domain.routing import TurnExpandedStructure, pareto_layer_index, time_bin_of
 from app.domain.wind import cruise_hours, kmh_to_ms
 
@@ -338,16 +338,8 @@ class EdgePassage:
 
 
 def turn_waits_along(structure: TurnExpandedStructure, path: Sequence[int]) -> list[float]:
-    """経路に沿った遷移ごとのターンの待ち（秒、区間の数−1個）。区間の番号がそのまま探索の状態。"""
-    waits: list[float] = []
-    for previous, following in zip(path, path[1:]):
-        wait = 0.0
-        for entry in range(structure.indptr[previous], structure.indptr[previous + 1]):
-            if structure.target_state[entry] == following:
-                wait = float(structure.turn_seconds[entry])
-                break
-        waits.append(wait)
-    return waits
+    """経路に沿った遷移ごとのターンの待ち（秒、区間の数−1個）。区間の番号がそのまま探索の状態。遷移が無ければ待ち0。"""
+    return [0.0 if entry is None else float(structure.turn_seconds[entry]) for entry in structure.entries_along(path)]
 
 
 def route_passages(
@@ -402,7 +394,7 @@ def best_first(ranked: list[int], best: int) -> list[int]:
     return [best, *(node for node in ranked if node != best)]
 
 
-def pick_better_candidate(forward: RouteDraft, reverse: RouteDraft) -> RouteDraft:
+def pick_better_candidate(forward: EvaluatedRoute, reverse: EvaluatedRoute) -> EvaluatedRoute:
     """順方向・逆回り候補のうち、区間の合成difficultyの距離加重平均（`merge_difficulty`）が小さい
     （走りやすい）方を採用する。逆回り側が算出不能（segments欠損等）なら順方向を採用する
     （比較不能を「逆回りの方が良い」とは解釈しない、安全側）。

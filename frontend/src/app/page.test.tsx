@@ -7,16 +7,23 @@
  *   全消去は確認の窓で「消す」を押してから両方から消えること、候補がある間だけ条件のずれの印が点き全消去で消えること、走行条件の想定速度・出発時刻が
  *   生成と地図の道の詳細へ同じ値で渡ること、「地図の色分け」の未使用を分ける重み（生成の前はいまの重み・後は使われた重み）、
  *   保存した条件が地図で置いた出発地を持ち、呼び出すとその出発地から生成すること、前に保存した条件が「保存」の「設定」に出ること
- * - 地図で扱えること: 地点を置けるのは「ルート設定」の条件タブを見ている間だけで、目的地の行で探して置いた地点と、
- *   名前のある点の小窓から置いた地点が地図に立ち、行にその名前が出ること、
- *   名前を付けて保存した地点を打つ欄から選び直せ、「保存」の「地点」に並ぶこと、
- *   区間を押して詳細を出せるのは「ルート結果」を見ている間だけのこと、編集の間は地図で地点も区間も扱わず全部の候補を重ね、
+ * - 地図で扱えること: 地図を押したときの意味は効いているパネルで決まり（「ルート設定」の条件タブは選んでいる地点を置く、
+ *   「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
+ *   2つの区分を開いていれば最後に触った区分が効いてその題に添えること、ピンを押しても消えずルート設定ではその地点を選ぶこと、
+ *   目的地の行で探して置いた地点と、名前のある点を押して置いた地点が地図に立ち、行にその名前が出ること、
+ *   名前を付けて保存した地点を打つ欄から選び直せ、「保存」の「地点」に並ぶこと、編集の間は地図で地点も区間も扱わず全部の候補を重ね、
  *   作り直すと編集が終わること、作ると直前の作り直しの失敗の文言を消し、合成ルートを選んでいる間は元のルートだけを重ねること、
  *   地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）
  * - 画面の枠: スマホの下部タブとシート（1枚ずつ開く・地点を扱える間・結果の合図・候補が届いた時点で「ルート設定」を開いて
  *   いれば「ルート結果」へ移ってそこから全消去でき、ほかのときは移らず合図を出すこと・候補を出せなかった理由の1行・
- *   ルートを収めるときに避けるシートの高さ・高さの保存と保存値の検査）、区分の開閉の保存、
- *   ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、メニューから入る使い方の説明とデバッグログ
+ *   決めた高さを2枚のシートで分け合うこと）、区分の開閉の保存、
+ *   ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、「現在地に移動」が出発地を変えずに地図を寄せて現在地に点を
+ *   出すこと、メニューから入る使い方の説明とデバッグログ、
+ *   走行モードの間の配置（プロファイルは見るだけ・休んでいる間だけ「現在地へ戻る」・帯の「地図の表示」で「表示」と色分けを
+ *   出し入れし、隠している間も色分けのピルから凡例を開け、走り始めるたびに隠すこと）と、届いた現在地がプロファイルの印と
+ *   地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、到着予想が位置を受けた時刻と選んだ候補の計画から出ること、
+ *   走行中に帯の「ルート」で開いたパネルで選び直す・作り直すと走行モードが新しい候補を追い、パネルを出していない間は地図で
+ *   何も変えも開きもしないこと、「このルートで走る」でその候補で走り始めてシートを閉じ、止めると走る前のシートへ戻ること
  *
  * ここで見ないもの: 子の部品は本物を描き、子が値をどう描くか（一覧の書式・印の色・天候の値）は各部品のテストが見る。
  * 地図の見え方の中身（どのレイヤーをどの色・重なりで描くか・レンズの選択肢・凡例）は地図の側（`features/map/scene/`）の
@@ -24,8 +31,8 @@
  * 機能の状態の移り変わり（生成の検証と要求の形・候補の並び・地点の置き方・レイヤーと凡例の状態）は各フックのテストが
  * 見る。子へ渡す受け口へフックの関数や値をそのまま渡す所（重み・除外の入力・経由地を地図で動かす・消す・「現在地に戻す」・
  * 保存した条件を呼び出して現在地へ戻す・実行中の「ルート生成」・取り直している間の「現在地に移動」・まとめてレイヤーを消す
- * 操作を押せるか）は1行の委譲なので見ない。中身に合わせたシートの高さは、レイアウトの実寸が要るので見ない
- * （テスト環境は実寸を0で返し、シートは合わせない）。
+ * 操作を押せるか）は1行の委譲なので見ない。シートの高さの決め方・覚え方は`components/BottomSheet/BottomSheet.test.tsx`、
+ * ルートを収めるときにシートを避けることは実寸が要るので`e2e/mobile.spec.ts`が見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得（`navigator.geolocation`）、地図の描画（`maplibre-gl`）。
  * どれもテスト環境に無いものか、その手前の境界。地図は `@/testing/maplibre` の代役が受けたものを記録し、地図の操作
@@ -35,16 +42,24 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clampSheetHeightVh, DEFAULT_SHEET_HEIGHT_VH } from "@/components/BottomSheet/BottomSheet";
 import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
 import { setDebugEnabled } from "@/lib/debugLog";
+import { MINUTE_MS } from "@/lib/duration";
+import { formatJstHourMinute } from "@/lib/time";
 import { heldReplies, onBackend, onSameOrigin, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
+import { installGeolocation } from "@/testing/geolocation";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
-import { makeGenerationConditions, makeRouteCandidate, makeRouteSegment } from "@/testing/routeFixtures";
+import {
+  makeGenerationConditions,
+  makeRouteCandidate,
+  makeRouteSegment,
+  routeThrough,
+  type Places,
+} from "@/testing/routeFixtures";
 import type { Coordinates, RouteCandidate } from "@/types/route";
 import type { AxisInspectorResult } from "@/features/map/regionApi";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
@@ -84,18 +99,10 @@ const OBSERVATION: AmedasObservation = {
   precipitation_10min_mm: null,
   twilight: null,
   weather_code: null,
+  valid_area: null,
 };
 
 let jobs: ReturnType<typeof serveGenerationJobs>;
-
-/** 位置情報の取得。`point`が無ければ断る。 */
-function installGeolocation(point: Coordinates | null) {
-  const getCurrentPosition = (onSuccess: PositionCallback, onError: PositionErrorCallback) => {
-    if (point) onSuccess({ coords: point } as GeolocationPosition);
-    else onError({ code: 1 } as GeolocationPositionError);
-  };
-  Object.defineProperty(navigator, "geolocation", { value: { getCurrentPosition }, configurable: true });
-}
 
 function useMobileLayout() {
   document.documentElement.style.setProperty("--is-mobile", "1");
@@ -149,6 +156,23 @@ const SECOND = route("second", {
 });
 
 /** 道の評価の応答（ここでは中身を見ない）。 */
+// 東へ1km進む区間1つで、計画では4分かかるルート。走行モードのテストで、現在地をその真ん中（東経139.705度）に置く。
+const RIDDEN = route("ridden", {
+  segments: [
+    makeRouteSegment({
+      start_latitude: 35.7,
+      start_longitude: 139.7,
+      end_latitude: 35.7,
+      end_longitude: 139.71,
+      distance_km: 1,
+      estimated_arrival_time: "2026-10-13T09:00:00+09:00",
+    }),
+  ],
+  distance_km: 1,
+  estimated_duration_seconds: 4 * 60,
+});
+const RIDDEN_MIDDLE: Coordinates = { latitude: 35.7, longitude: 139.705 };
+
 const INSPECTED_ROAD: AxisInspectorResult = {
   highway: "residential",
   tags: {},
@@ -183,10 +207,9 @@ function marksAt(point: Coordinates) {
     .filter((mark) => mark.coordinates.latitude === point.latitude && mark.coordinates.longitude === point.longitude);
 }
 
-/** 地点の並びで目的地を押し、地図で選ぶ状態にする（押さなければ地図のタップは地点を置かない）。 */
-async function armDestination(user: User) {
+/** 地点の並びで目的地を押して選ぶ（「ルート設定」が効いている間、地図を押すと選んでいる地点を置く。何も押していなければ出発地）。 */
+async function selectDestination(user: User) {
   await user.click(screen.getByRole("button", { name: "目的地: 未設定" }));
-  await user.click(screen.getByRole("button", { name: "目的地を地図で選ぶ" }));
 }
 
 /** 地図を押す。`features`はそこに描かれている地物。 */
@@ -319,11 +342,13 @@ describe("ルートを作る", () => {
     // 出発日時の入力は日本時間で読む。
     fireEvent.change(await screen.findByLabelText("出発日時を直接指定"), { target: { value: "2026-10-05T09:00" } });
 
-    // 道を押せるのは、道路のレイヤーを出している間。
+    // 道を押せるのは、道路のレイヤーを出していて、パネルを閉じて見るだけの間。
     await showRoadSurface(user);
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     clickMap(HERE, [{ layer: "road-tiles-surface", properties: { osm_way_id: 1, feature_key: "1" } }]);
     await user.click(screen.getByRole("button", { name: "この道の評価を見る" }));
     expect(await screen.findByText(/この道全体で見た難易度/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "パネルを開く" }));
     jobs.respond([FIRST], LOOP_CONDITIONS);
     expect(await generate(user)).toMatchObject({ assumed_speed_kmh: 25, start_time: departure.toISOString() });
   });
@@ -352,7 +377,6 @@ describe("ルートを作る", () => {
     };
     const origin = (body: Record<string, unknown>) => ({ latitude: body.latitude, longitude: body.longitude });
 
-    await user.click(screen.getByRole("button", { name: "出発地を地図で選ぶ" }));
     clickMap(PLACED);
     await saveAs("置いた所");
     await user.click(screen.getByRole("button", { name: "出発地を現在地に戻す" }));
@@ -413,9 +437,9 @@ describe("ルートを作る", () => {
 });
 
 describe("地図で扱えること", () => {
-  it("地点を置けるのは「ルート設定」の条件タブを見ている間だけ（パネルを畳むと区分ごと隠れる）", async () => {
+  it("地図を押したときの意味は効いているパネルで決まる: 「ルート設定」の条件タブは選んでいる地点を置き、ほかのタブ・閉じている間は置かない", async () => {
     const { user } = renderHome();
-    await armDestination(user);
+    await selectDestination(user);
     clickMap(DESTINATION);
     expect(marksAt(DESTINATION)).toEqual([expect.objectContaining({ draggable: true })]);
     expect(screen.getByRole("button", { name: "目的地を消す" })).toBeInTheDocument();
@@ -436,9 +460,57 @@ describe("地図で扱えること", () => {
     await user.click(screen.getByRole("button", { name: "パネルを開く" }));
     clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([expect.objectContaining({ draggable: true })]);
+    expect(screen.getByRole("button", { name: "経由地1: 地図で選んだ地点" })).toBeInTheDocument();
   });
 
-  it("名前のある点の小窓から、経由地に足す・目的地にすると地図と地点の並びにその名前で出し、条件タブを見ていない間は置く操作を出さない", async () => {
+  it("PC で2つの区分を開いているときは最後に触った区分が効いてその題に添え、「ルート結果」では候補の線を押すとそのルートを選ぶ", async () => {
+    const { user } = renderHome();
+    expect(section("ルート設定")).toHaveAccessibleDescription("地図で操作中");
+    expect(section("ルート結果")).not.toHaveAccessibleDescription();
+
+    jobs.respond([FIRST, SECOND], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(2));
+    // 結果が届いたら「ルート結果」が効く。
+    expect(section("ルート結果")).toHaveAccessibleDescription("地図で操作中");
+    expect(section("ルート設定")).not.toHaveAccessibleDescription();
+    const [secondLine] = mapOnScreen()
+      .sourceFeatures("route-candidates")
+      .filter((line) => line.properties?.routeId === SECOND.id);
+    clickMap(ELSEWHERE, [
+      {
+        layer: "route-candidates-candidateHit",
+        properties: secondLine.properties ?? {},
+        geometry: secondLine.geometry,
+      },
+    ]);
+    expect(linesOn("route-selected")).toEqual([SECOND.geometry.coordinates]);
+    expect(marksAt(ELSEWHERE)).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: "出発地: 現在地" }));
+    expect(section("ルート設定")).toHaveAccessibleDescription("地図で操作中");
+    clickMap(ELSEWHERE);
+    expect(marksAt(ELSEWHERE)).toHaveLength(1);
+  });
+
+  it("ピンを押しただけでは消えず、ルート設定ではその地点を選んで詳しくを出し、閉じている間は呼び名と名前を小窓に出す", async () => {
+    const { user } = renderHome();
+    await selectDestination(user);
+    clickMap(DESTINATION);
+    await user.click(screen.getByRole("button", { name: "出発地: 現在地" }));
+
+    const [destinationPin] = marksAt(DESTINATION);
+    await user.click(destinationPin.element);
+    expect(marksAt(DESTINATION)).toHaveLength(1);
+    expect(screen.getByRole("region", { name: "目的地" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
+    await user.click(destinationPin.element);
+    expect(marksAt(DESTINATION)).toHaveLength(1);
+    expect(screen.getByText("目的地: 地図で選んだ地点")).toBeInTheDocument();
+  });
+
+  it("名前のある点を押すと、選んでいる地点をその点へその名前で置き、地図と地点の並びに出す。閉じている間は置かない", async () => {
     const shop: Coordinates = { latitude: 35.71, longitude: 139.71 };
     const pointed = [
       {
@@ -452,19 +524,29 @@ describe("地図で扱えること", () => {
     await user.click(screen.getByRole("checkbox", { name: "補給・休憩ポイント" }));
     await user.keyboard("{Escape}");
 
-    clickMap(shop, pointed);
-    await user.click(screen.getByRole("button", { name: "経由地に足す" }));
+    await user.click(screen.getByRole("button", { name: "経由地を足す" }));
+    // 押した所は絵の端でも、点そのものの位置へ置く。
+    clickMap(ELSEWHERE, pointed);
     expect(marksAt(shop)).toHaveLength(1);
     expect(screen.getByRole("button", { name: "経由地1: 角の店" })).toBeInTheDocument();
 
+    await selectDestination(user);
     clickMap(shop, pointed);
-    await user.click(screen.getByRole("button", { name: "目的地にする" }));
     expect(marksAt(shop)).toHaveLength(2);
     expect(screen.getByRole("button", { name: "目的地: 角の店" })).toBeInTheDocument();
+    // 地図の印は役割の名前で見分けられ、地点の並びの印と同じ記号を描く。
+    const [waypointMark, destinationMark] = marksAt(shop).map(({ element }) => element);
+    expect(waypointMark).toHaveAccessibleName("経由地 1");
+    expect(destinationMark).toHaveAccessibleName("目的地");
+    expect(screen.getByRole("img", { name: "出発地" })).toBeInTheDocument();
+    const listedDestination = screen.getByRole("button", { name: "目的地: 角の店" }).querySelector("svg");
+    // 大きさは置き場ごとに違うので、記号の中身で比べる。
+    expect(listedDestination?.innerHTML).toBeTruthy();
+    expect(destinationMark.querySelector("svg")?.innerHTML).toBe(listedDestination?.innerHTML);
 
-    await user.click(screen.getByRole("tab", { name: "重み" }));
-    clickMap(shop, pointed);
-    expect(screen.queryByRole("button", { name: "経由地に足す" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
+    clickMap(ELSEWHERE, pointed);
+    expect(marksAt(shop)).toHaveLength(2);
   });
 
   it("目的地を探して選んだ地点は地図に目的地として立ち、地点の並びにその名前が出る", async () => {
@@ -490,7 +572,7 @@ describe("地図で扱えること", () => {
 
   it("名前を付けて保存した地点は、目的地を消したあとも打つ欄を押して選び直せ、「保存」の「地点」に並ぶ", async () => {
     const { user } = renderHome();
-    await armDestination(user);
+    await selectDestination(user);
     clickMap(DESTINATION);
     await user.click(screen.getByRole("button", { name: "地点を保存" }));
     const dialog = screen.getByRole("dialog", { name: "地点を保存" });
@@ -512,52 +594,45 @@ describe("地図で扱えること", () => {
     expect(screen.getByRole("button", { name: "「いつものカフェ」を消す" })).toBeInTheDocument();
   });
 
-  it("地図で区間を押して詳細を出せるのは「ルート結果」を見ている間だけ", async () => {
+  it("区間を押すと、「ルート結果」が効いている間はその中に、閉じている間は地図の小窓に中身を出し、「ルート設定」が効いている間は出さない", async () => {
     const { user } = renderHome();
     jobs.respond([FIRST], LOOP_CONDITIONS);
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
     const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
 
-    await user.click(section("ルート結果"));
     clickSegment(drawnSegment, HERE);
-    await user.click(section("ルート結果"));
-    expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "区間の選択を解除" }));
 
+    await user.click(screen.getByRole("button", { name: "出発地: 現在地" }));
     clickSegment(drawnSegment, HERE);
-    expect(screen.getByRole("button", { name: "区間の選択を解除" })).toBeInTheDocument();
+    expect(screen.queryByText(/km地点/)).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
+    clickSegment(drawnSegment, HERE);
+    expect(screen.getByText(/km地点/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
   });
 
   describe("区間の乗り換え", () => {
     // 地点（[経度, 緯度]）。元の候補は P0→P1→P2→P3→P4 を進み、もう1本は P1 と P2 の間を Q、P3 と P4 の間を R を通って進む
     // （片方の分かれ道だけを乗り換えると、どちらの候補とも違う道になる）。
-    const P0 = [139.7, 35.6];
-    const P1 = [139.71, 35.6];
-    const P2 = [139.72, 35.6];
-    const P3 = [139.73, 35.6];
-    const P4 = [139.74, 35.6];
-    const Q = [139.715, 35.61];
-    const R = [139.735, 35.61];
+    const PLACES: Places = {
+      P0: [139.7, 35.6],
+      P1: [139.71, 35.6],
+      P2: [139.72, 35.6],
+      P3: [139.73, 35.6],
+      P4: [139.74, 35.6],
+      Q: [139.715, 35.61],
+      R: [139.735, 35.61],
+    };
 
-    function through(id: string, edgeIds: string[], points: number[][], overrides: Partial<RouteCandidate> = {}) {
-      return route(id, {
-        kind: "destination",
-        spliceable: true,
-        edge_ids: edgeIds,
-        node_ids: points.map((point) => point.join(",")),
-        edge_point_offsets: points.map((_, index) => index),
-        geometry: { type: "LineString", coordinates: points },
-        ...overrides,
-      });
+    function through(id: string, names: string[], overrides: Partial<RouteCandidate> = {}) {
+      return route(id, { kind: "destination", spliceable: true, ...routeThrough(PLACES, names), ...overrides });
     }
 
-    const BASE = through("base", ["e1", "e2", "e3", "e4"], [P0, P1, P2, P3, P4], {
-      estimated_duration_seconds: 1800,
-      segments: [SEGMENT],
-    });
-    const OTHER = through("other", ["e1", "q1", "q2", "e3", "r1", "r2"], [P0, P1, Q, P2, P3, R, P4], {
-      estimated_duration_seconds: 2400,
-    });
+    const BASE = through("base", ["P0", "P1", "P2", "P3", "P4"], { estimated_duration_seconds: 1800 });
+    const OTHER = through("other", ["P0", "P1", "Q", "P2", "P3", "R", "P4"], { estimated_duration_seconds: 2400 });
     const DESTINATION_CONDITIONS = makeGenerationConditions({
       latitude: HERE.latitude,
       longitude: HERE.longitude,
@@ -566,7 +641,7 @@ describe("地図で扱えること", () => {
 
     /** 目的地を置いて2本の候補を作る。 */
     async function generateTwo(user: User) {
-      await armDestination(user);
+      await selectDestination(user);
       clickMap(DESTINATION);
       jobs.respond([BASE, OTHER], DESTINATION_CONDITIONS);
       await generate(user);
@@ -600,6 +675,26 @@ describe("地図で扱えること", () => {
       await waitFor(() => expect(mapOnScreen().sourceFeatures("route-splice-bands")).toEqual([]));
     });
 
+    it("乗り換えの帯が区間と道に重なった所を押すと、帯の乗り換えだけを選び、区間も道も開かない", async () => {
+      const { user } = renderHome();
+      await showRoadSurface(user);
+      await generateTwo(user);
+      await startEditing(user);
+      const [band] = mapOnScreen().sourceFeatures("route-splice-bands");
+      const [segment] = mapOnScreen().sourceFeatures("route-segments");
+      // 一番上に描かれた地物から並べる（帯は区間の上に重ねて描く）。
+      clickMap(HERE, [
+        { layer: "route-splice-bands-spliceBandHit", properties: band.properties ?? {}, geometry: band.geometry },
+        { layer: "route-segments-detailHit", properties: segment.properties ?? {}, geometry: segment.geometry },
+        { layer: "road-tiles-surface", properties: { osm_way_id: 1, feature_key: "1" } },
+      ]);
+
+      expect(await screen.findByRole("button", { name: "1つ戻す" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "この道の評価を見る" })).toBeNull();
+      await user.click(screen.getByRole("button", { name: "編集をやめて候補へ戻る" }));
+      expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
+    });
+
     it("作り直しの失敗は前の候補を残して窓で知らせ、作った合成ルートを選んでいる間は、地図に元のルートだけを重ねる", async () => {
       const { user } = renderHome();
       await generateTwo(user);
@@ -614,7 +709,10 @@ describe("地図で扱えること", () => {
       clickMap(HERE, [
         { layer: "route-splice-bands-spliceBandHit", properties: band.properties ?? {}, geometry: band.geometry },
       ]);
-      jobs.respond([route("evaluated", { edge_ids: ["e1", "q1", "q2", "e3", "e4"] })], DESTINATION_CONDITIONS);
+      jobs.respond(
+        [route("evaluated", { edge_ids: ["P0-P1", "P1-Q", "Q-P2", "P2-P3", "P3-P4"] })],
+        DESTINATION_CONDITIONS,
+      );
       await user.click(await screen.findByRole("button", { name: "新しいルートを作成" }));
 
       await waitFor(() => expect(routeLinesOnMap()).toHaveLength(2));
@@ -668,6 +766,297 @@ describe("地図で扱えること", () => {
 });
 
 describe("画面の枠", () => {
+  it("走行モードの間は、上の帯を走りの数字に替え、パネルと地図の上の操作を隠し、選んだ候補のプロファイルを見るだけで地図の下に出す。止めると元に戻る", async () => {
+    const { user } = renderHome();
+    jobs.respond([FIRST], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    const rideProfile = () => screen.queryByRole("region", { name: "予定ルートのプロファイル" });
+    const shownWhileIdle = () => [
+      screen.queryByText(/^気温:/),
+      screen.queryByRole("button", { name: "地図に出す情報" }),
+      screen.queryByRole("button", { name: "ルート設定" }),
+      screen.queryByRole("button", { name: "現在地に移動" }),
+    ];
+    await screen.findByText(/^気温:/);
+    expect(shownWhileIdle().every((element) => element !== null)).toBe(true);
+    expect(rideProfile()).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    expect(screen.getByRole("group", { name: "走りの数字" })).toBeInTheDocument();
+    expect(shownWhileIdle()).toEqual([null, null, null, null]);
+    expect(within(rideProfile()!).getByRole("img", { name: "道のりに沿った難易度" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    expect(screen.queryByRole("group", { name: "走りの数字" })).toBeNull();
+    expect(shownWhileIdle().every((element) => element !== null)).toBe(true);
+    expect(rideProfile()).toBeNull();
+  });
+
+  it("走行中は帯の「地図の表示」で「表示」と色分けを出し入れでき、隠している間も色分けのピルは出て押すと凡例を開き、出している間も現在地を追い、走行方位・走行条件・「現在地に移動」は出さない。止めて走り直すと隠した配置から始まる", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    jobs.respond([FIRST], LOOP_CONDITIONS);
+    await generate(user);
+    const overlayControls = () => screen.queryByRole("button", { name: "地図に出す情報" });
+    const lensPill = () => screen.getByRole("button", { name: /^地図の色分け: / });
+    const ridingOnlyHidden = () => [
+      screen.queryByRole("button", { name: "走行方位を設定" }),
+      screen.queryByRole("group", { name: "走行条件" }),
+      screen.queryByRole("button", { name: "現在地に移動" }),
+    ];
+    const startRide = async () => {
+      await user.click(screen.getByRole("button", { name: "走行モード" }));
+      geolocation.deliver(RIDDEN_MIDDLE);
+      return screen.getByRole("button", { name: "地図の表示" });
+    };
+
+    let toggle = await startRide();
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(overlayControls()).toBeNull();
+    await user.click(lensPill());
+    expect(await screen.findByRole("group", { name: "凡例" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(overlayControls()).not.toBeNull();
+    expect(lensPill()).toBeInTheDocument();
+    expect(ridingOnlyHidden()).toEqual([null, null, null]);
+    geolocation.deliver(RIDDEN_MIDDLE);
+    expect(screen.queryByRole("button", { name: "現在地へ戻る" })).toBeNull();
+
+    await user.click(toggle);
+    expect(overlayControls()).toBeNull();
+    await user.click(toggle);
+
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    expect(screen.queryByRole("button", { name: "地図の表示" })).toBeNull();
+    toggle = await startRide();
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(overlayControls()).toBeNull();
+  });
+
+  it("走行モードで届いた現在地を選んだ候補の上の距離へ当て、プロファイルに印を出し、地図のルート線のそこまでを薄め、走りの帯に残りと到着予想を出す", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    jobs.respond([RIDDEN], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    const fixedAt = Date.parse("2026-10-13T05:00:00Z");
+    geolocation.deliver({ ...RIDDEN_MIDDLE, timestamp: fixedAt });
+
+    // 残りの0.5kmは、計画では2分。計画の時刻（出発）ではなく、位置を受けた時刻から数える。
+    const arrival = new Date(fixedAt + 2 * MINUTE_MS);
+    const rideBar = screen.getByRole("group", { name: "走りの数字" });
+    expect(rideBar).toHaveTextContent("残り: 0.5km");
+    expect(rideBar).toHaveTextContent(`到着予想: ${formatJstHourMinute(arrival)}`);
+    const profile = screen.getByRole("region", { name: "予定ルートのプロファイル" });
+    expect(profile.querySelector('[data-progress="position"]')).not.toBeNull();
+    const drawn = mapOnScreen().sourceFeatures("route-segments");
+    expect(drawn.map((feature) => feature.properties?.travelled ?? false)).toEqual([true, false]);
+  });
+
+  it("走行中は、現在地より先でいちばん近い曲がる所の向きと距離を地図の上のカードに出し、その地点に印を出す", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    const turnPoint = { latitude: 35.7, longitude: 139.708 };
+    jobs.respond([{ ...RIDDEN, turns: [{ distance_km: 0.8, direction: "right", ...turnPoint }] }], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+
+    geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
+    expect(screen.getByRole("status", { name: "300m先で右折" })).toBeInTheDocument();
+    expect(marksAt(turnPoint).map((mark) => mark.element.getAttribute("aria-label"))).toEqual(["曲がる所"]);
+
+    // 曲がる所を過ぎたら出さない。
+    geolocation.deliver({ latitude: 35.7, longitude: 139.709, accuracy: 20 });
+    expect(screen.queryByRole("status", { name: /先で右折$/ })).toBeNull();
+    expect(marksAt(turnPoint)).toEqual([]);
+  });
+
+  it("走行中にルートを外れたら、走りの帯に外れたと出して残りを外れた点のまま止め、ルートへ戻ったら戻った点から続ける", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    jobs.respond([RIDDEN], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    const rideBar = screen.getByRole("group", { name: "走りの数字" });
+
+    geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
+    expect(rideBar).toHaveTextContent("残り: 0.5km");
+    // 0.8km の所の北へ約220m（位置の誤差 20m を超えて）離れた。
+    geolocation.deliver({ latitude: 35.702, longitude: 139.708, accuracy: 20 });
+    expect(screen.getByRole("status", { name: "ルートを外れています" })).toBeInTheDocument();
+    expect(rideBar).toHaveTextContent("残り: 0.5km");
+    // 回り道して、0.8km の所でルートへ戻った。
+    geolocation.deliver({ latitude: 35.7, longitude: 139.708, accuracy: 20 });
+    expect(screen.queryByRole("status", { name: "ルートを外れています" })).toBeNull();
+    expect(rideBar).toHaveTextContent("残り: 0.2km");
+  });
+
+  it("走行中に画面を読み込み直しても、同じ候補を出して走行モードを続け、到着予想はその候補の計画から出す", async () => {
+    const geolocation = installGeolocation(HERE);
+    const first = renderHome();
+    jobs.respond([RIDDEN], LOOP_CONDITIONS);
+    await generate(first.user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    await first.user.click(screen.getByRole("button", { name: "走行モード" }));
+    first.unmount();
+
+    renderHome();
+    const rideBar = await screen.findByRole("group", { name: "走りの数字" });
+    expect(screen.getByRole("region", { name: "予定ルートのプロファイル" })).toBeInTheDocument();
+    const fixedAt = Date.parse("2026-10-13T05:00:00Z");
+    geolocation.deliver({ ...RIDDEN_MIDDLE, timestamp: fixedAt });
+    const arrival = new Date(fixedAt + 2 * MINUTE_MS);
+    expect(rideBar).toHaveTextContent(`到着予想: ${formatJstHourMinute(arrival)}`);
+  });
+
+  it("スマホでは、走行モードの間は下部タブも隠す", async () => {
+    useMobileLayout();
+    const { user } = renderHome();
+    expect(screen.getByRole("navigation", { name: "パネル切り替え" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    expect(screen.queryByRole("navigation", { name: "パネル切り替え" })).toBeNull();
+  });
+
+  it("地図を指で動かして休んでいる間だけ地図の下に「現在地へ戻る」を出し、押すと追い直す。走行モードのボタンは休んでいても止める", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    const backToHere = () => screen.queryByRole("button", { name: "現在地へ戻る" });
+    const moveMapByHand = () =>
+      act(() => mapOnScreen().emit("movestart", { originalEvent: new MouseEvent("mousedown") }));
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    geolocation.deliver(RIDDEN_MIDDLE);
+    expect(backToHere()).toBeNull();
+
+    moveMapByHand();
+    await user.click(backToHere()!);
+    expect(backToHere()).toBeNull();
+
+    moveMapByHand();
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    expect(screen.queryByRole("group", { name: "走りの数字" })).toBeNull();
+    expect(backToHere()).toBeNull();
+  });
+
+  it("走行モードのまま帯の「ルート」で左のパネルを出し、候補を選び直す・作り直すと、走行モードはその候補を追い続ける", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    // 東へ2km進む区間1つのルート。現在地（東経139.705度）はその4分の1の所。
+    const longer = route("longer", {
+      segments: [
+        makeRouteSegment({
+          start_latitude: 35.7,
+          start_longitude: 139.7,
+          end_latitude: 35.7,
+          end_longitude: 139.72,
+          distance_km: 2,
+        }),
+      ],
+      distance_km: 2,
+    });
+    jobs.respond([RIDDEN, longer], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(2));
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
+    const rideBar = screen.getByRole("group", { name: "走りの数字" });
+    expect(rideBar).toHaveTextContent("残り: 0.5km");
+    expect(screen.queryByRole("button", { name: "ルート結果" })).toBeNull();
+
+    const routePanel = screen.getByRole("button", { name: "ルート" });
+    await user.click(routePanel);
+    expect(routePanel).toHaveAttribute("aria-expanded", "true");
+    await user.click(candidateTabs()[1]);
+    geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
+    expect(rideBar).toHaveTextContent("残り: 1.5km");
+
+    jobs.respond([RIDDEN], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
+    expect(screen.getByRole("group", { name: "走りの数字" })).toHaveTextContent("残り: 0.5km");
+
+    await user.click(routePanel);
+    expect(screen.queryByRole("button", { name: "ルート結果" })).toBeNull();
+  });
+
+  it("スマホでは、走行中に帯の「ルート」で「ルート結果」のシートを開き、下部タブで「ルート設定」へ移れ、閉じると地図だけに戻る", async () => {
+    useMobileLayout();
+    const { user } = renderHome();
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    const routePanel = screen.getByRole("button", { name: "ルート" });
+
+    await user.click(routePanel);
+    expect(screen.getByRole("dialog", { name: "ルート結果" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ルート設定" }));
+    expect(screen.getByRole("dialog", { name: "ルート設定" })).toBeInTheDocument();
+
+    await user.click(routePanel);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "パネル切り替え" })).toBeNull();
+    expect(screen.getByRole("group", { name: "走りの数字" })).toBeInTheDocument();
+  });
+
+  it("走行中は、帯の「ルート」で開いたパネルの中を除き、地図を押しても地点を置かず、線・区間・ピンを押しても選ばず中身も出さない", async () => {
+    const { user } = renderHome();
+    jobs.respond([FIRST, SECOND], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(2));
+    const [secondLine] = mapOnScreen()
+      .sourceFeatures("route-candidates")
+      .filter((line) => line.properties?.routeId === SECOND.id);
+    const clickSecondLine = () =>
+      clickMap(ELSEWHERE, [
+        {
+          layer: "route-candidates-candidateHit",
+          properties: secondLine.properties ?? {},
+          geometry: secondLine.geometry,
+        },
+      ]);
+    const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+
+    clickMap(ELSEWHERE);
+    expect(marksAt(ELSEWHERE)).toEqual([]);
+    clickSecondLine();
+    expect(linesOn("route-selected")).toEqual([FIRST.geometry.coordinates]);
+    clickSegment(drawnSegment, HERE);
+    expect(screen.queryByText(/km地点/)).toBeNull();
+    const [originPin] = marksAt(HERE);
+    expect(originPin.draggable).toBe(false);
+    await user.click(originPin.element);
+    expect(screen.queryByText(/^出発地: /)).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "ルート" }));
+    clickSecondLine();
+    expect(linesOn("route-selected")).toEqual([SECOND.geometry.coordinates]);
+  });
+
+  it("「このルートで走る」を押すと、その候補を選んで走行モードを始め、スマホはシートを閉じる。止めると走る前のシートへ戻る", async () => {
+    useMobileLayout();
+    const { user } = renderHome();
+    jobs.respond([FIRST, SECOND], LOOP_CONDITIONS);
+    await user.click(screen.getByRole("button", { name: "ルート設定" }));
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(2));
+    await user.click(candidateTabs()[1]);
+
+    await user.click(screen.getByRole("button", { name: "このルートで走る" }));
+    expect(screen.getByRole("group", { name: "走りの数字" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(linesOn("route-selected")).toEqual([SECOND.geometry.coordinates]);
+
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    expect(screen.getByRole("dialog", { name: "ルート結果" })).toBeInTheDocument();
+  });
+
   it("スマホでは下部タブでシートを1枚ずつ開き、地図で地点を扱えるのは「ルート設定」の条件タブを開いている間だけ。結果の合図は「ルート結果」を開くまで残り、押した結果が候補を出せなかった理由（候補0件の理由・入力の誤り）はシートでなく窓で出し、閉じると消える。候補0件の合図は成功と見分ける", async () => {
     installGeolocation(null);
     useMobileLayout();
@@ -689,7 +1078,6 @@ describe("画面の枠", () => {
     await user.click(within(notice).getByRole("button", { name: "閉じる" }));
     expect(screen.queryByRole("dialog", { name: "ルートを作れませんでした" })).toBeNull();
 
-    await user.click(within(settingsSheet).getByRole("button", { name: "出発地を地図で選ぶ" }));
     expect(originMark().draggable).toBe(true);
     await user.click(within(settingsSheet).getByRole("tab", { name: "重み" }));
     expect(originMark().draggable).toBe(false);
@@ -698,9 +1086,6 @@ describe("画面の枠", () => {
     jobs.respond([FIRST], LOOP_CONDITIONS);
     expect(await generate(user)).toMatchObject({ latitude: HERE.latitude, longitude: HERE.longitude });
     const outcomeSheet = await screen.findByRole("dialog", { name: "ルート結果" });
-    // ルートは、開いているシートが覆う高さ（画面の半分）を避けて収める。
-    const { padding } = mapOnScreen().fits.at(-1) as { padding: { top: number; bottom: number } };
-    expect(padding.bottom - padding.top).toBe(window.innerHeight * 0.5);
     await user.click(within(outcomeSheet).getByRole("button", { name: "閉じる" }));
     expect(screen.queryByRole("dialog")).toBeNull();
 
@@ -772,39 +1157,6 @@ describe("画面の枠", () => {
     expect(screen.getByRole("separator", { name: "パネルの高さを変更" })).toHaveAttribute("aria-valuenow", "55");
   });
 
-  it("スマホのシートをつまみで動かしている間の高さは、すぐ使うが保存しない", async () => {
-    useMobileLayout();
-    const { user, unmount } = renderHome();
-    await user.click(screen.getByRole("button", { name: "ルート設定" }));
-    const handle = screen.getByRole("separator", { name: "パネルの高さを変更" });
-    fireEvent.pointerDown(handle, { pointerId: 1, clientY: window.innerHeight * 0.5 });
-    fireEvent.pointerMove(handle, { pointerId: 1, clientY: window.innerHeight * 0.3 });
-    expect(handle).toHaveAttribute("aria-valuenow", "70");
-    unmount();
-
-    renderHome();
-    await user.click(screen.getByRole("button", { name: "ルート設定" }));
-    expect(screen.getByRole("separator", { name: "パネルの高さを変更" })).toHaveAttribute(
-      "aria-valuenow",
-      String(DEFAULT_SHEET_HEIGHT_VH),
-    );
-  });
-
-  it.each([
-    ["数として読めない", "高い", DEFAULT_SHEET_HEIGHT_VH],
-    ["数でない値", '"70"', DEFAULT_SHEET_HEIGHT_VH],
-    ["シートの範囲の外", "500", clampSheetHeightVh(500)],
-  ])("保存されたシートの高さが%sなら、%sから%d%%で開く", async (_, stored, expected) => {
-    window.localStorage.setItem("ridecompass:mobile-sheet-height-vh", stored);
-    useMobileLayout();
-    const { user } = renderHome();
-    await user.click(screen.getByRole("button", { name: "ルート設定" }));
-    expect(screen.getByRole("separator", { name: "パネルの高さを変更" })).toHaveAttribute(
-      "aria-valuenow",
-      String(Math.round(expected)),
-    );
-  });
-
   it("区分の開閉は、次に開いたときも同じになる", async () => {
     const { user, unmount } = renderHome();
     await user.click(section("ルート設定"));
@@ -827,10 +1179,21 @@ describe("画面の枠", () => {
     await user.click(screen.getByRole("button", { name: "現在地に移動" }));
     expect(screen.getByText(/現在地を取得できませんでした/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "出発地を地図で選ぶ" }));
     clickMap(HERE);
     await waitFor(() => expect(missing()).toHaveAccessibleName(/警報/));
     expect(missing()).not.toHaveAccessibleName(/現在地/);
+  });
+
+  it("「現在地に移動」は現在地を取り直して地図を寄せ、出発地は変えずに現在地に点を出す", async () => {
+    const { user } = renderHome();
+    clickMap(ELSEWHERE);
+    expect(marksAt(ELSEWHERE)).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: "現在地に移動" }));
+
+    expect(marksAt(ELSEWHERE)).toHaveLength(1);
+    expect(screen.getByRole("img", { name: "現在地" })).toBeInTheDocument();
+    expect(marksAt(HERE).map(({ element }) => element.getAttribute("aria-label"))).toEqual(["現在地"]);
   });
 
   it("メニューから使い方の説明に入って「やめる」で抜け、デバッグログをメニューから開いてログの側から閉じられる", async () => {

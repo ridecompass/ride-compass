@@ -24,13 +24,15 @@ const author = (i, k) => i.by[k] ?? (i.comments[k].startsWith("## 回答") ? con
 // その完了の条件を写す（無ければ写さない）。
 const END = (start, kind = "実装", before = "") =>
   [`${endHead(kind)}\n\n要約（担当の最後の発言）:\n\n> 読んだ\n\n${readFromLine(T(start - 0.5))}`, ...(before ? ["", startBlock(before)] : [])].join("\n");
-// 検査の実行（check suite）。置いたときの値（SUCCESS・FAILURE・PENDING）を、GitHub の status と conclusion の形にする。running は、ほかに走っている実行、
-// at は検査が始まった時刻。
-// コミットに付いたワークフローの実行。tasks は、そのコミットの上で動いた担当のワークフローの実行の結論（本番の担当は master の先頭で動く）。
-const suites = (state, running = false, at = T(-1), tasks = []) => ({ nodes: [...[...(state ? [state === "PENDING" ? { status: "IN_PROGRESS", conclusion: null } : { status: "COMPLETED", conclusion: state }] : []),
-  ...(running ? [{ status: "IN_PROGRESS", conclusion: null }] : [])].map((s) => ({ ...s, file: ".github/workflows/ci.yml" })),
-  ...tasks.map((conclusion) => ({ status: "COMPLETED", conclusion, file: `.github/workflows/${config.workflow}` }))]
-  .map(({ file, ...s }, k) => ({ ...s, createdAt: at, workflowRun: { databaseId: k + 1, file: { path: file } } })) });
+// コミットに付いたワークフローの実行（check suite）。置いたときの値（SUCCESS・FAILURE・CANCELLED・PENDING）を、GitHub の status と conclusion の形にする
+// （PENDING は走っている）。state は検査のワークフロー（config.checks.workflow）の最も新しい実行（at に始まった）、before はそれより前に同じコミットで始まった検査の実行
+// （古い順。説明文を書き直して打ち直したもの等）、others はほかのワークフローの実行、tasks は担当のワークフローの実行（本番の担当は master の先頭で動く）。
+const outcome = (s) => (s === "PENDING" ? { status: "IN_PROGRESS", conclusion: null } : { status: "COMPLETED", conclusion: s });
+const suite = (file, s, at) => ({ ...outcome(s), createdAt: at, workflowRun: { file: { path: `.github/workflows/${file}` } } });
+const suites = (state, { at = T(-1), before = [], others = [], tasks = [] } = {}) => ({ nodes: [
+  ...before.map((s, k) => suite(config.checks.workflow, s, new Date(Date.parse(at) - (before.length - k) * 1000).toISOString())),
+  ...(state ? [suite(config.checks.workflow, state, at)] : []),
+  ...others.map((s) => suite("mutation-pr.yml", s, at)), ...tasks.map((s) => suite(config.workflow, s, at))] });
 const TYPES = ["保守", "不具合", "要望", "調査", config.dialogType];
 const LOGIN = Object.fromEntries(Object.entries(config.ids).map(([login, id]) => [id, login]));
 
@@ -43,7 +45,9 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
   const f = config.fields;
   const fields = (i) => ({ nodes: [[f.status, i.status], [f.run, i.run], [f.priority, i.priority], [f.start, i.start]].filter(([, v]) => v)
     .map(([field, v]) => ({ ...(field.id && !field.options ? { value: v } : { name: v }), field: { name: field.name } })) });
-  const near = (n) => ({ number: n, state: w.at(n).state, stateReason: w.at(n).reason });
+  // 前提の最後に動いた時刻は、置いたときに決めた時刻（i.updated）が無ければ今。
+  const near = (n) => ({ number: n, state: w.at(n).state, stateReason: w.at(n).reason, issueType: w.at(n).type && { name: w.at(n).type },
+    updatedAt: w.at(n).updated ?? new Date().toISOString() });
   const blocked = (i) => ({ nodes: i.blockedBy.map(near) });
   const children = (i) => ({ nodes: [...w.issues.values()].filter((k) => k.parent === i.n).map((k) => near(k.n)) });
   // 矢印1本でつながる issue（src/facts.js: relationsOf の形）。
@@ -52,9 +56,9 @@ function world(list, { workflow = "active", last = [], steps = [] } = {}) {
     return { blockedBy: blocked(i), subIssues: children(i), parent: p && { ...near(p.n), body: p.body, labels: names(p.labels), issueFieldValues: fields(p) } };
   };
   // PR は、置いたときに決めた時刻（p.created・p.mergedAt）が無ければ、どのコメントより前に作られた。
-  const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, merged: Boolean(p.merged), createdAt: p.created ?? T(-1), mergedAt: p.mergedAt ?? null,
-    mergeCommit: { oid: p.sha ?? `m${i.n}`, checkSuites: suites(p.mergeChecks, p.mergeRunning, T(-1), p.mergeTasks) },
-    commits: { nodes: [{ commit: { oid: `c${i.n}`, committedDate: "2026-10-11T00:00:00Z", checkSuites: suites(p.checks, false, p.checksAt ?? p.created) } }] },
+  const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, mergeable: p.mergeable ?? "MERGEABLE", merged: Boolean(p.merged), createdAt: p.created ?? T(-1), mergedAt: p.mergedAt ?? null,
+    mergeCommit: { oid: p.sha ?? `m${i.n}`, checkSuites: suites(p.mergeChecks, { others: p.mergeOthers, tasks: p.mergeTasks }) },
+    commits: { nodes: [{ commit: { oid: `c${i.n}`, committedDate: "2026-10-11T00:00:00Z", checkSuites: suites(p.checks, { at: p.checksAt ?? p.created, before: p.checksBefore }) } }] },
     timelineItems: { nodes: p.drafted ? [{ createdAt: "2026-10-11T01:00:00Z" }] : [] } });
   const issueOf = (id) => w.at(Number(id.slice(1)));
   // 置き場のラベル: 決まったもの（急ぎ・開発機で作業中・問いのラベル）と、issue に付いたもの。
@@ -238,6 +242,8 @@ test("R3・決め1・決め7・#760: 担当の実行が終わったら、表の�
     ["R3b 下書きの PR の検査が終わっていない", {}, { pr: { draft: true, checks: "PENDING" } }, "検査", 1, null],
     ["実装担当が、検査の出ない PR を出して手放した（検査の持ち主がいない）→ イレギュラー", {}, { pr: { draft: true } }, "回答", 1, "## 問い（イレギュラー）"],
     ["R3c 下書きでない PR の検査が通った → 検証 → 検証担当", {}, { pr: { draft: false, checks: "SUCCESS" } }, "検証", 2, null],
+    ["R3c 説明文を書き直して同じコミットで検査を打ち直した → 最も新しい実行の結論で決める", {}, { pr: { draft: false, checks: "SUCCESS", checksBefore: ["CANCELLED"] } }, "検証", 2, null],
+    ["R3b 前の検査の実行が通っても、打ち直した実行が走っている間は検査", {}, { pr: { draft: true, checks: "PENDING", checksBefore: ["SUCCESS"] } }, "検査", 1, null],
     ["R3d 検証担当が下書きへ戻した（差し戻し）→ 実装担当", verify, { pr: { draft: true, checks: "SUCCESS", drafted: true } }, "実装", 2, null],
     ["検証担当が、マージも差し戻しも問いもせずに手放した → イレギュラー", verify, {}, "回答", 1, "## 問い（イレギュラー）"],
     ["R3e 条件が全部済んだ → 完成で閉じる", {}, { body: "- [x] 作る\n" }, "完了", 1, null],
@@ -256,8 +262,9 @@ test("R3・決め1・決め7・#760: 担当の実行が終わったら、表の�
     ["マージのコミットの検査が取り消された（合格でない）→ 実装担当", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "CANCELLED" } }, "実装", 2, null],
     ["マージのコミットの上で担当の実行が取り消されても、担当の実行は検査に数えない → 確かめの問い", verify,
       { body: CONFIRM, pr: { ...merged, mergeChecks: "SUCCESS", mergeTasks: ["CANCELLED", "SUCCESS"] } }, "回答", 1, "## 問い（確かめ）"],
-    ["実装担当が、落ちたマージのコミットの検査を打ち直しも直しもせずに手放した → イレギュラー", { body: CONFIRM }, { pr: { ...merged, mergeChecks: "FAILURE" } }, "回答", 1, "## 問い（イレギュラー）"],
-    ["検査の1つが落ちても、ほかが走っている間は終わっていない → 検査", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE", mergeRunning: true } }, "検査", 1, null],
+    ["実装担当が、落ちたマージのコミットの検査を打ち直しも直しもせずに手放した → イレギュラー", { body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, { pr: { ...merged, mergeChecks: "FAILURE" } }, "回答", 1, "## 問い（イレギュラー）"],
+    ["必須でない検査（検査のワークフローの外）が落ちても走っていても、検査のワークフローが通れば合格 → 確かめの問い", verify,
+      { body: CONFIRM, pr: { ...merged, mergeChecks: "SUCCESS", mergeOthers: ["FAILURE", "PENDING"] } }, "回答", 1, "## 問い（確かめ）"],
   ];
   for (const [name, start, { made = [], ...facts }, status, runs, comment] of rows) {
     const w = world([{ n: 1, status: "実装", ...start }, { n: 9, status: "保留" }]);
@@ -273,7 +280,7 @@ test("R3・決め1・決め7・#760: 担当の実行が終わったら、表の�
     await w.send(ev.run(run, "completed"));
     assert.deepEqual([w.at(1).status, w.runs.length, said(w.at(1))], [status, runs, comment], name);
     if (status === "回答") assert.deepEqual([w.at(1).assignees, w.at(1).body.startsWith("<!-- flow-gate -->")], [[config.user], true], `${name}: ユーザーの番で、本文の頭に回答のボタン`);
-    if (status === "検査") assert.equal(w.at(1).run, "in_progress", `${name}: 欄「実行の status」は、終わりから最も遠い検査の実行の status`);
+    if (status === "検査") assert.equal(w.at(1).run, "in_progress", `${name}: 欄「実行の status」は、検査のワークフローの最も新しい実行の status`);
   }
 });
 
@@ -290,8 +297,12 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め5・�
       { state: "OPEN", status: "実装", runs: ["#1 実装"] }],
     ["決め6 前からある Claude の割り当ては外し、保留ではユーザーだけ", { status: "保留", assignees: [config.claude] }, null, ev.comment(1), { assignees: [config.user] }],
     ["R6 見送り（Close as not planned）で閉じたものは閉じたまま", { status: "完了", state: "CLOSED", reason: "NOT_PLANNED" }, null, ev.issue(1, "closed"), { state: "CLOSED" }],
-    ["A 対話作業も、ステータスは事実どおり（検査の間は検査）。振り出さず、ラベル「開発機で作業中」が無い間はユーザーの番", { status: "実装", type: config.dialogType, pr: { draft: true, checks: "PENDING" } }, null,
-      ev.comment(1), { status: "検査", assignees: [config.user], runs: [] }],
+    ["A 対話作業も、ステータスは事実どおり（検査の間は検査）。検査・待機は事実が動くのを待つので Claude の番", { status: "実装", type: config.dialogType, pr: { draft: true, checks: "PENDING" } }, null,
+      ev.comment(1), { status: "検査", assignees: [config.claude], runs: [] }],
+    ["対話作業の前提が開いている → 待機で Claude の番（ユーザーの番にしない）", { status: "実装", type: config.dialogType, blockedBy: [4] }, null, ev.comment(1),
+      { status: "待機", assignees: [config.claude], runs: [] }],
+    ["対話作業で開発機のセッションが作業する番（実装）、ラベル「開発機で作業中」が無い間はユーザーの番（振り出さない）", { status: "実装", type: config.dialogType }, null, ev.comment(1),
+      { status: "実装", assignees: [config.user], runs: [] }],
     ["開発機のセッションが触っている間（ラベル「開発機で作業中」）は振り出さず、担当者は Claude", { status: "実装", labels: [config.devLabel] }, null, ev.comment(1),
       { status: "実装", assignees: [config.claude], runs: [] }],
     ["開発機のセッションが触っている対話作業は、担当者が Claude", { status: "実装", type: config.dialogType, labels: [config.devLabel] }, null, ev.comment(1), { assignees: [config.claude] }],
@@ -898,11 +909,12 @@ test("読むのに要求の要る事実は、決め方が使うときだけ読�
   const w = world([{ n: 1, author: config.claude, type: "要望", status: "実装", comments: [ASKED("採否"), REPLY(ASKED("採否"), "続ける"), ...notes] }]);
   await w.send(ev.schedule());
   const run = w.run(1);
+  const before = w.olderReads; // 振り出す前の決め直しは、担当がまだいないので読む
   await w.send(ev.run(run, "requested"));
-  assert.equal(w.olderReads, 0, "担当が動いている間は、採否を問うたかを読まない");
+  assert.equal(w.olderReads, before, "担当が動いている間は、採否を問うたかを読まない");
   w.at(1).comments.push(END(w.at(1).comments.length));
   await w.send(ev.run(run, "completed"));
-  assert.deepEqual([w.olderReads, w.at(1).comments.filter((c) => c.startsWith("## 問い（採否）")).length], [1, 1], "担当が終わって採否を問うかを決めるときに1回だけさかのぼり、問い直さない");
+  assert.deepEqual([w.olderReads - before, w.at(1).comments.filter((c) => c.startsWith("## 問い（採否）")).length], [1, 1], "担当が終わって採否を問うかを決めるときに1回だけさかのぼり、問い直さない");
 });
 
 test("tasks#788 定時は、ユーザーの番でない開いた issue を決め直して、ボードと事実の食い違いを直す。ユーザーの番の issue は、ユーザーの出来事で決め直す", async () => {
@@ -917,4 +929,33 @@ test("採否を問う issue（Claude が起こした要望）でも、ゲート�
   await w.send(ev.merge(1));
   await w.send(ev.comment(1, config.claude));
   assert.deepEqual([w.at(1).status, w.at(1).comments.filter((c) => c.startsWith("## 問い（確かめ）")).length], ["回答", 1]);
+});
+
+test("tasks#938 master とぶつかった PR は、検査が通っていても実装（取り込むのは実装担当）。計算中（UNKNOWN）はぶつかりに数えない", async () => {
+  for (const [mergeable, status, title] of [["CONFLICTING", "実装", "#1 実装"], ["UNKNOWN", "検証", "#1 検証"]]) {
+    const w = world([{ n: 1, status: "検査", pr: { draft: false, checks: "SUCCESS", mergeable } }]);
+    await w.send(ev.ci(`${config.branchPrefix}1`));
+    assert.deepEqual([w.at(1).status, w.titles()], [status, [title]], mergeable);
+  }
+});
+
+test("tasks#938 振り出す前に、今の事実で決め直す（保存したステータスが古いまま担当を起こさない）", async () => {
+  // 検証と決めたあとに、出来事の届かない所で事実が動いた: master が進んで PR がぶつかった・担当が問いを出して終えた。
+  const w = world([{ n: 1, status: "検証", pr: { draft: false, checks: "SUCCESS", mergeable: "CONFLICTING" } }, { n: 2, status: "実装", comments: [QUESTION] }]);
+  await w.send(ev.schedule());
+  assert.deepEqual([w.at(1).status, w.at(2).status, w.titles()], ["実装", "回答", ["#1 実装"]], "ぶつかった PR に検証担当を、答えを待つ問いに実装担当を起こさない");
+});
+
+test("tasks#938 前提の対話作業が config.dialogIdleHours より長く動いていなければ、待っているタスクにユーザーへの知らせを一度だけ出す", async () => {
+  const old = new Date(Date.now() - (config.dialogIdleHours * 3600e3 + 60e3)).toISOString();
+  const fresh = new Date(Date.now() - (config.dialogIdleHours * 3600e3 - 60e3)).toISOString();
+  const notices = (i) => i.comments.filter((c) => c.includes(`@${config.user}`));
+  for (const [name, blocker, count] of [["動いていない対話作業", { type: config.dialogType, updated: old }, 1], ["まだ動いている対話作業", { type: config.dialogType, updated: fresh }, 0],
+    ["対話作業でない前提", { type: "保守", updated: old }, 0]]) {
+    const w = world([{ n: 1, status: "実装", blockedBy: [9] }, { n: 9, status: "実装", ...blocker }]);
+    await w.send(ev.schedule());
+    await w.send(ev.schedule());
+    assert.deepEqual([w.at(1).status, notices(w.at(1)).length], ["待機", count], name);
+    if (count) assert.match(notices(w.at(1))[0], /#9/, `${name}: どの前提かを書く`);
+  }
 });

@@ -48,8 +48,7 @@ DBから取り出す`infrastructure/road_graph_repository.py: get_feature_gradie
 配信するのは`AXIS_DEFINITIONS`（[軸スタジオ](axis-studio.md)のDB管理データ）の公開軸すべてで、レンズを組む都度
 `AXIS_DEFINITIONS`の写しを取る（`services/dedicated_way_values.py: axis_way_value_lens`）。軸スタジオでの登録・公開は
 次の要求から効く。公開していない軸（内部軸・下書き）と未知の`axis_id`は404を返す（500にするとフロントの
-「データなし」フォールバックが効かない）。軸の`dedicated_way_value_layer`は、地図がその軸を配信の値で塗るかを
-受け取る側へ伝える印で、配信できるかには関わらない。
+「データなし」フォールバックが効かない）。
 
 値は、軸とそれが読む内部軸だけを探索と同じ評価（`domain/axis_definitions.py: evaluate_axes_array`）へ通して求める
 （`domain/dynamic_way_values.py: paint_feature_values`）。評価へ渡す材料の列は2つの出どころを合わせる:
@@ -130,7 +129,7 @@ frontendはどのクエリパラメータをどの軸のリクエストへ載せ
   下る道も坂のきつさの色になり、上りと下りが釣り合う道はどちらかの色に寄る。
 - 区間の無い道（長さ0の区間しか作れない道等）は、道1本の材料で評価する。走行方位で決まらない道は`null`のまま。
   区間の材料が読めないタイル（取込範囲外・DB障害）は値なし（`{}`）。
-- 区間の材料を読むのは道1本のズームで畳む軸を要求されたときだけで、読み直しは重い（2026-10-10 の本番の実測で、
+- 区間の材料を読むのは道1本のズームで畳む軸を要求されたときだけで、読み直しは重い（本番の実測で、
   都心 z12 の初回が約4秒）ので、タイルの材料と同じキャッシュに持つ（下の「キャッシュ」）。
 
 ## 区間インスペクタの値（`services/region_service.py: AxisInspectorService`）
@@ -246,7 +245,7 @@ axis_id → get_dedicated_way_value_service(axis_id) が今の軸の集合の写
 - 取込範囲外・空のタイル・DB障害は持たない（次の要求で読み直す）。
 - Redisに置かないのは、失っても自前のPostGISから読み直せるため（[.claude/rules/caching-retention.md](../../../.claude/rules/caching-retention.md)
   「Redisへ置くもの・置かないもの」）。読み直しの重さは、本番でタイルを焼く文と同じ結び方で全材料を読んで都心 z12 で
-  0.65秒・z14 で0.08秒（2026-10-10 の実測）。1エントリの大きさ（材料の列×フィーチャー数）は未計測。
+  0.65秒・z14 で0.08秒。1エントリの大きさ（材料の列×フィーチャー数）は未計測。
 - hit/missは`FeatureMaterialService`の`log_external_call`（`region:feature-materials`・`region:feature-segments`）の`fields["cache"]`に書く。
 
 ### 配信サービスの値（`infrastructure/dynamic_way_value_cache.py`）
@@ -293,8 +292,7 @@ TTLで失効し、書き込みのたびに`diskcache`が失効したものを消
 
 ### `WindWayService`（`wind_way_service.py`）
 
-走行方位（`bearing_deg`）は**ユーザーがコンパススライダーで指定した単一の値**（全道路
-共通）を使う。道路自身のOSM格納方向は使わない——ルートを出す前は、その道をどちら向きに走るかが
+走行方位（`bearing_deg`）は**要求が運ぶ単一の値**（全道路共通）を使う。道路自身のOSM格納方向は使わない——ルートを出す前は、その道をどちら向きに走るかが
 決まっていない。
 
 **予報の地点と時刻の選び方はルート確定後の区間と同じ**（同じ事実を1か所で持つ。

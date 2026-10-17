@@ -120,7 +120,6 @@
 | `time_scope` | "always"\|"night_only" | 特定時間帯のみ重みを持つか |
 | `display_thresholds_override` | list[float]\|None | 色分けしきい値の上書き |
 | `display_band_labels_override` | list[str]\|None | 段階ごとの体感ラベルの上書き（例:「強い向かい風」）。設定する場合は`display_thresholds_override`も設定済みで要素数が段階数（しきい値数+1）と一致すること |
-| `dedicated_way_value_layer` | bool | ルート未確定時の地図がこの軸を配信の値で塗るか（配信はどの公開軸の値も返す。[dynamic-way-values.md](dynamic-way-values.md)） |
 
 **表示に関するフィールドは、軸idの分岐をコードへ持たないための宣言**である。
 
@@ -208,6 +207,9 @@ Pythonの値、ルート選びと地図の配信は材料の型ごとの配列�
 `replace_axis_definitions`が
 同一dictオブジェクトのまま中身だけを差し替えるため、オブジェクトidベースの
 キーは使えない）。循環参照は`AxisDependencyCycleError`を送出しキャッシュしない。
+
+公開軸だけを依存順に並べる選び方は`domain/axis_definitions.py: published_axis_order`が持ち、公開軸の得点・生値・
+内訳の材料・区間インスペクタの値を出す所はどれもこれを読む（内部軸を混ぜると、重みを付けられない軸が点数と内訳に出る）。
 
 ## ライフサイクル
 
@@ -339,7 +341,7 @@ DB側の値が変わっても追従しない。軸の中身が主題でないテ
 [評価・スコアリング](evaluation-scoring.md)「ルート単位の集約」節を参照。
 
 `GET /api/axis-catalog`が`material_breakdown`として、材料id・表示名・型・単位・
-正規化重みの並びで配信する（フロントは材料の対応表も並べ替えも持たない）。
+正規化重みの並び（`axis_raw_value.py: axis_material_breakdown`が分解の結果へ材料カタログの宣言を添える）で配信する（フロントは材料の対応表も並べ替えも持たない）。
 
 ## 一次属性の語彙（`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`、別系統）
 

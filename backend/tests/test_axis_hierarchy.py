@@ -38,13 +38,15 @@ DYNAMIC = next(iter(axis_definitions.REQUEST_DYNAMIC_MATERIAL_IDS))
 pytestmark = pytest.mark.usefixtures("catalog")
 
 
-def material(material_id: str, dtype="numeric", primary_attribute=None) -> material_catalog.MaterialSpec:
+def material(material_id: str, dtype="numeric", primary_attribute=None, source="db") -> material_catalog.MaterialSpec:
     return material_catalog.MaterialSpec(
         material_id=material_id,
         label=material_id,
         description=material_id,
         dtype=dtype,
         tile_property=None,
+        source=source,
+        value_sql=f"w.{material_id}" if source == "db" else None,
         coverage=material_catalog.CoverageExcluded(reason="テスト用", missing_semantics="unknown"),
         primary_attribute=primary_attribute,
     )
@@ -58,7 +60,7 @@ def catalog(monkeypatch):
         "num_c": material("num_c", primary_attribute=ATTR_X),
         "num_plain": material("num_plain"),
         "cat": material("cat", dtype="categorical"),
-        DYNAMIC: material(DYNAMIC),
+        DYNAMIC: material(DYNAMIC, source="request"),
     }
     monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", specs)
     return specs
@@ -117,6 +119,13 @@ class TestTopologicalOrder:
         definitions.update(axes(axis("a"), axis("b", "a")))
 
         assert axis_definitions.topological_axis_order(definitions) == ["a", "b"]
+
+    def test_published_axes_come_in_dependency_order_without_the_internal_axes(self):
+        definitions = axes(
+            axis("outer", "plain", "inner", published=True), axis("plain", "num_b", published=True), axis("inner", "num_a")
+        )
+
+        assert axis_definitions.published_axis_order(definitions) == ["plain", "outer"]
 
 
 class TestDynamicOrder:

@@ -111,6 +111,7 @@ def _observation_from_fields(fields: dict[str, str]) -> AmedasObservation:
         precipitation_10min_mm=_optional_float(fields.get("precipitation_10min_mm")),
         twilight=None,
         weather_code=None,
+        valid_area=None,
     )
 
 

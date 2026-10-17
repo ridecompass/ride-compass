@@ -88,7 +88,7 @@ describe("RouteAxisProfile", () => {
   it.each([
     [null, null],
     [0.004, null],
-    [0.012, "データの無い区間が1%[坂・信号の無い道として所要時間を出しています]"],
+    [0.012, "データの無い区間が1%[坂の無い平地で、止まる所も無い道として所要時間を出しています]"],
   ])("値の無い区間の割合が%sなら、注記は%s（百分率へ丸めて1以上のときだけ出す）", (share, expected) => {
     renderProfile({ missingTravelDataShare: share });
     if (expected === null) expect(screen.queryByText(/データの無い区間が/)).not.toBeInTheDocument();

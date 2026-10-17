@@ -9,10 +9,10 @@ from cachetools import TTLCache
 from app.config import settings
 from app.domain.jma_tile_specs import JmaFrame, TargetTimesRow
 from app.infrastructure import jma_tile_redis_cache
-from app.infrastructure.debug_log import log_external_call, mark_failed, mark_status_error
+from app.infrastructure.debug_log import log_external_call
+from app.infrastructure.http_client import UPSTREAM_NOT_FOUND, UpstreamNotFound, fetch_upstream
 from app.infrastructure.jma_tile_paths import is_final_absence
 from app.infrastructure.jma_tile_recolor import recolored
-from app.infrastructure.jma_tile_redis_cache import EmptyTile
 
 # JMA bosai のタイル/時刻一覧API（降水ナウキャスト・キキクル等）を透過的にプロキシする。
 # targetTimes.json（同じURLのまま更新される時刻一覧）とタイル本体（basetime/validtimeが
@@ -20,11 +20,6 @@ from app.infrastructure.jma_tile_redis_cache import EmptyTile
 # （詳細はdocs/modules/backend/weather-dynamic-layers.md）。
 UPSTREAM_HOST = "https://www.jma.go.jp"
 
-
-class JmaTileNotFoundError(Exception):
-    """指定パスが上流（JMA）に存在しない（404）。降水・浸水想定区域等の疎な格子状タイルは
-    ズームレベル・場所によって存在しないz/x/yが珍しくないため、タイムアウトや5xx等の
-    他の失敗と区別し、`jma_tile.py`が502ではなく404を返す判断材料にする。"""
 
 # targetTimes*.jsonは5〜10分おきに更新される。TTLは更新間隔より十分短く、かつ同一TTL窓内の
 # 多数ユーザーがキャッシュを共有できる程度の長さにする。
@@ -83,9 +78,9 @@ class JmaTileClient:
         self._http_client = http_client
         self._shared = shared
 
-    async def get_cached(self, path: str) -> tuple[bytes, str] | EmptyTile | None:
+    async def get_cached(self, path: str) -> tuple[bytes, str] | UpstreamNotFound | None:
         """キャッシュのみを参照する（外部フェッチはしない）。
-        ヒットしたものは呼び出し側の歯止め（レート制限）を経由せずに返してよい。`EmptyTile`
+        ヒットしたものは呼び出し側の歯止め（レート制限）を経由せずに返してよい。`UPSTREAM_NOT_FOUND`
         （描くものが無いと確認済み）が返ることもあり、そのとき上流へ問い合わせる必要は無い。"""
         is_target_times = is_target_times_path(path)
         with log_external_call("weather:jma-tile", path=path) as fields:
@@ -97,7 +92,7 @@ class JmaTileClient:
             fields["cache"] = "hit" if cached is not None else "miss"
             return cached
 
-    async def fetch(self, path: str) -> tuple[bytes, str] | None:
+    async def fetch(self, path: str) -> tuple[bytes, str] | UpstreamNotFound | None:
         """キャッシュを一切参照せず外部フェッチのみ行い、結果をキャッシュへ書き戻す。
         呼び出し側の歯止め（レート制限）は、ここを呼ぶ前に済んでいる前提。
         実際にJMAへ問い合わせる直前で`JmaTileSharedState.wait_for_upstream_rate_limit`を待つ（プリウォーム
@@ -106,43 +101,26 @@ class JmaTileClient:
         ではないため、`log_external_call`の計測（elapsed_ms）に含めないよう、
         `with`ブロックへ入る前に済ませる。
 
-        上流の404は`JmaTileNotFoundError`を送出する（疎な格子状タイルでは珍しくない正常系、配信前の
-        地物では毎回の配信の間に必ず起きる正常系のため、`result="ok"`のまま記録しWARNINGを出さない。
-        他の失敗はNoneを返す）。
+        上流の404は`UPSTREAM_NOT_FOUND`を返す（疎な格子状タイルでは珍しくない正常系、配信前の
+        地物では毎回の配信の間に必ず起きる正常系のため、WARNINGを出さない）。他の失敗はNoneを返す。
         """
         await self._shared.wait_for_upstream_rate_limit()
-        is_target_times = is_target_times_path(path)
-        # not_found/resultは`with`ブロックの中で確定させ、実際のreturn/raiseは抜けた後で行う
-        # （`log_external_call`はブロックを例外無しで抜けたときだけfields["result"]で
-        # 成功/失敗を判定するため、404を非エラー扱いにするにはブロック内で例外を送出しない
-        # 必要がある）。
-        not_found = False
-        result: tuple[bytes, str] | None = None
         with log_external_call("weather:jma-tile", path=path, cache="miss") as fields:
-            try:
-                response = await self._http_client.get(f"{UPSTREAM_HOST}/{path}")
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                if mark_status_error(fields, exc):
-                    not_found = True
-                    # 確定した404だけを覚え、次回以降は上流へ問い合わせずJmaTileNotFoundErrorで即座に済ませる。
-                    # 配信前の地物の404を覚えると、配信された後もその間は「無い」を返し続ける。
-                    if is_target_times:
-                        self._shared.target_times[path] = jma_tile_redis_cache.EMPTY_TILE
-                    elif is_final_absence(path):
-                        await jma_tile_redis_cache.set_empty(path)
-            except httpx.HTTPError as exc:
-                mark_failed(fields, exc)
-            else:
-                fields["result"] = "ok"
-                fields["status"] = response.status_code
-                content_type = response.headers.get("content-type", "application/octet-stream")
-                content = recolored(path, response.content)
-                result = (content, content_type)
-                await self.store(path, content, content_type)
-        if not_found:
-            raise JmaTileNotFoundError(path)
-        return result
+            response = await fetch_upstream(self._http_client, f"{UPSTREAM_HOST}/{path}", fields)
+            if response is None:
+                return None
+            if isinstance(response, UpstreamNotFound):
+                # 確定した404だけを覚え、次回以降は上流へ問い合わせず即座に済ませる。
+                # 配信前の地物の404を覚えると、配信された後もその間は「無い」を返し続ける。
+                if is_target_times_path(path):
+                    self._shared.target_times[path] = UPSTREAM_NOT_FOUND
+                elif is_final_absence(path):
+                    await jma_tile_redis_cache.set_empty(path)
+                return response
+            content_type = response.headers.get("content-type", "application/octet-stream")
+            content = recolored(path, response.content)
+            await self.store(path, content, content_type)
+            return content, content_type
 
     async def store(self, path: str, content: bytes, content_type: str) -> None:
         """上流フェッチを伴わずに生成したタイルをキャッシュへ書き戻す。
@@ -156,21 +134,18 @@ class JmaTileClient:
         else:
             await jma_tile_redis_cache.set(path, content, content_type)
 
-    async def get(self, path: str) -> tuple[bytes, str] | EmptyTile | None:
+    async def get(self, path: str) -> tuple[bytes, str] | UpstreamNotFound | None:
         """キャッシュ参照→ミスなら外部フェッチ、という一括呼び出し。
         レート制限の適用順序を気にしない呼び出し元（プリウォームバッチ・テスト等）向け。
 
-        戻り値は3通り: 中身のあるタイル・`EMPTY_TILE`（描くものが無い）・None（取得失敗）。
+        戻り値は3通り: 中身のあるタイル・`UPSTREAM_NOT_FOUND`（描くものが無い）・None（取得失敗）。
         **空と失敗を混ぜない**——プリウォームは空タイルを正常な結果として数える
         （平常時は取得のほとんどが空のため、失敗として数えるとエラー件数が常に大きくなり
         本物の障害が埋もれる）。"""
         cached = await self.get_cached(path)
         if cached is not None:
             return cached
-        try:
-            return await self.fetch(path)
-        except JmaTileNotFoundError:
-            return jma_tile_redis_cache.EMPTY_TILE
+        return await self.fetch(path)
 
 
 async def get_target_times(client: JmaTileClient, path: str) -> list[TargetTimesRow] | None:
@@ -179,7 +154,7 @@ async def get_target_times(client: JmaTileClient, path: str) -> list[TargetTimes
 
     画面へは同じ時刻一覧を中継するだけで、解くのはbackendがコマを選ぶ（プリウォーム）ときだけ。"""
     raw = await client.get(path)
-    if raw is None or isinstance(raw, EmptyTile):
+    if raw is None or isinstance(raw, UpstreamNotFound):
         return None
     content, _content_type = raw
     try:

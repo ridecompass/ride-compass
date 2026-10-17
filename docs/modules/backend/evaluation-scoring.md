@@ -55,7 +55,7 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 
 ## 0次ハードフィルタ（`domain/hard_filters.py`）
 
-`compute_hard_filter_excluded`が、材料の表から読んだフィルタ名→該当フラグの配列と、
+`compute_hard_filter_excluded`が、静的スコア行列（`StaticEdgeScoreMatrix`）のフィルタ名→該当フラグの配列と、
 リクエストが指定した有効なフィルタ名の集合から、Edgeごとの除外を求める。`hard_filters`
 省略時は`DEFAULT_HARD_FILTERS`（宣言されている全フィルタが常時有効）を使う。
 
@@ -71,15 +71,15 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   いる。trunkは地図表示（幹線道路の把握・回避判断）のために取り込みはする——取込
   スコープと探索スコープが食い違っているのは意図した役割分担である。
   highway種別のフィルタは`HARD_FILTER_HIGHWAY_TYPES`（フィルタ名→画面に出す名前と対象highway値）が唯一の
-  レジストリで、`compute_hard_filter_excluded`はこの辞書をループする（`compute_hard_filter_excluded`が受け取るのはフィルタ名→該当フラグ配列の
-  `hard_filter_flags`で、フィルタごとの専用引数・専用フィールドは持たない。タグ由来の
+  レジストリで、`compute_hard_filter_excluded`はこの辞書をループする（`compute_hard_filter_excluded`が読むのは行列のフィルタ名→該当フラグ配列の
+  `hard_filter_flags`と材料の列で、フィルタごとの専用引数・専用フィールドは持たない。タグ由来の
   フィルタは`HARD_FILTER_TAG_PREDICATE_SQL`が名前・画面に出す名前・判定式をまとめて持ち、
   `HARD_FILTER_NAMES`も読み出し用のSQLの列もそこから導く）。
   フィルタを1件増やしても変わるのはこの辞書だけ。
   highwayタグが無い・way_tagsが未取得の場合は除外しない（判断材料が無いEdgeまで一律
   除外すると探索対象が過度に狭まるため、不明な場合は許可しSoft Constraint側へ委ねる）。
 - `max_average_grade_percent`（省略時None＝除外なし）が指定され、かつ
-  `elevation_attribute.average_grade`が取得済みの場合、その絶対値（登り・下りどちらの
+  勾配の材料（`GRADIENT_PERCENT`）の列に値がある場合、その絶対値（登り・下りどちらの
   急勾配も対象）がしきい値を超えるEdgeを除外する。
 - `motor_vehicle=no`（自転車可の車両通行禁止）はここでは扱わない。自転車は法的に通行
   可能なため0次のハード除外対象にはせず、軸の側（材料`motor_vehicle_no`）で扱う。
@@ -148,10 +148,15 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
   `cost >= 所要時間`という不変条件はP>=0の間常に成り立つ。
 - **`build_static_edge_score_matrix`**: `AXIS_DEFINITIONS`を軸ごとに適用して
   difficulty配列を求める（`StaticEdgeScoreMatrix`: 公開軸別配列に加え、0次フィルタ判定用の
-  生フラグ`hard_filter_flags`/`gradient_percent`も持つ——`hard_filters`はリクエストごとに
-  変わりうるため、除外判定そのものはここでは確定させない）。動的材料
-  （`REQUEST_DYNAMIC_MATERIAL_IDS`、風）の列はNaNのままで、それに依存する軸の列も自然に
-  NaNへ伝播する（動的軸の特別扱いが不要）。観測を引く材料（雨、`observed_materials`）はDBの材料と
+  生フラグ`hard_filter_flags`も持つ——`hard_filters`はリクエストごとに
+  変わりうるため、除外判定そのものはここでは確定させない）。所要時間が読む材料（勾配・路面・停止の密度。
+  `domain/cycling_speed.py: travel_model_material_ids`）は軸の構成と無関係にいつも材料の列として持ち、0次フィルタの
+  勾配しきい値も同じ勾配の列を読む。その列が欠けた行列は組み立てで断る（`ValueError`）——欠けたまま通すと、
+  欠けた材料の待ち・坂が全区間で黙って0秒になる。区間ごとの値の欠け（NaN）は平地・待ち無しとして
+  扱い、`missing_travel_data_share`で数える。動的材料
+  （出どころが要求の材料、`REQUEST_DYNAMIC_MATERIAL_IDS`、風）の列はNaNのままで、それに依存する軸の列も自然に
+  NaNへ伝播する（動的軸の特別扱いが不要）。観測を引く材料（雨、`observed_materials`。鍵は出どころが観測の材料に
+  限り、それ以外は断る）はDBの材料と
   同じ列として重ねる——向きにも通過の時刻にも依らず、生成1回につき1つの値で済むため、軸の得点・
   生値（mm）・内訳にDBの材料と同じ経路で載り、道の材料と1つの軸で組み合わせることもできる（動的材料は
   静的材料と同じ軸に置けない。`axis_definitions.py: _check_dynamic_and_static_materials_are_not_mixed`）。
@@ -178,7 +183,7 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
 （`evaluate_axis_array`）も同じ`round_difficulty_array`で丸める。
 
 **暗黙の前提**: 軸が読む材料の配列は`MATERIAL_CATALOG`の全材料ぶん確保する
-（`value_sql`を持たない材料も既定値[NaN/False/値なし]で確保）。確保しないと、値式が無い材料を
+（出どころがDBでない材料も既定値[NaN/False/値なし]で確保）。確保しないと、値式が無い材料を
 軸スタジオでGUI作成した軸を評価した際に`evaluate_axis_array`が`KeyError`で
 `/api/routes/generate`自体を落とす（Pythonの値の入口`evaluate_axes_values`は、無い材料を
 全要素欠損の列として埋めてから配列へ通す）。
@@ -205,14 +210,14 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
   風などの動的材料（`REQUEST_DYNAMIC_MATERIAL_IDS`）を実際の値へ差し替える。
   `DYNAMIC_MATERIAL_EVALUATORS`は材料id→evaluator関数（Edgeの幾何配列＋動的contextを
   受け取りその材料の配列を返す統一シグネチャ）の登録制ディスパッチで、
-  `REQUEST_DYNAMIC_MATERIAL_IDS`と1対1に揃える（現状は`wind_drag_ratio`の1件。式の実体は
+  `REQUEST_DYNAMIC_MATERIAL_IDS`（出どころ`MaterialSpec.source`が`"request"`の材料から導く）と1対1に揃える（式の実体は
   `domain/wind.py`にあり、ここは配線のみ）——
   `REQUEST_DYNAMIC_MATERIAL_IDS`自体が材料id集合として宣言されているため軸id単位では
   なく材料id単位で登録する（`dynamic_axis_topological_order`・`evaluate_axis_array`
   という既存の汎用トポロジカル合成が「動的材料さえ埋まればどんな軸[軸スタジオが
   動的材料を直接参照して作ったカスタム軸を含む]でも正しく合成する」ため、
-  軸名のハードコードは呼び出し側に一切現れない）。動的材料が増えたら
-  `REQUEST_DYNAMIC_MATERIAL_IDS`とこの辞書へ1エントリずつ追加するだけでよい（
+  軸名のハードコードは呼び出し側に一切現れない）。動的材料を足すときは、材料の宣言に
+  出どころ`"request"`を書き、この辞書へ1エントリ足す（
   [設計原則](../../architecture/design-principles.md)構造仕様8、軸カタログから軸を列挙して塗るのと同種の汎用ディスパッチ）。
   `evaluate_dynamic_material_arrays`が全動的材料を評価する唯一の経路で、静的行列への
   動的軸合成（`evaluate_dynamic_axis_arrays`）もここを通るため、式が乖離しない。
@@ -355,7 +360,8 @@ MaterialSpec]`が単一ソース。
 | `tile_property_direction_dependent` | 値が進行方向によって変わる（有向）か。方向を持たないタイルへは焼けないので、Trueの材料は`tile_property`を持たない |
 | `primary_attribute` | 対応する一次属性（`PRIMARY_ATTRIBUTES`の宣言そのもの。idの文字列では指さない。[軸スタジオ](axis-studio.md)「一次属性の語彙」節）。材料idと一次属性id（frontendの`primaryAttributes.ts`が使う名前空間）は名前が異なるため明示的に対応させる |
 | `weather_grid_value` | 材料が読む自前のMSM格子の値（例: 風）。一次属性を持たない動的な材料の元データを、同じ格子の値を描く気象のチップ（`domain/weather_elements.py: WeatherElement.grid_value`）が地図に見せる。`GET /api/axis-catalog`はこれを軸ごとに`weather_layer_groups`へ解決し、地図の説明文がその評価の名前を差し込む |
-| `value_sql` | その材料の値をDBから求めるSQL式。`None`は「SQLでは求められない」（リクエスト時に決まる風、評価へ配線していないトリガー付きDEFER）。タイルへ焼く材料は必ず持つ |
+| `source` | 値の出どころ（`"db"`・`"request"`・`"observation"`）。DB（`value_sql`で求める）・要求の向きや時刻で決まる値（風）・生成の時点の外部の観測（雨）。動的材料の集合（`REQUEST_DYNAMIC_MATERIAL_IDS`）や観測の材料の集合は、この欄から`domain/material_catalog.py: materials_of_source`で導く |
+| `value_sql` | その材料の値をDBから求めるSQL式。出どころが`"db"`の材料だけが持ち、それ以外は`None`（出どころがDBでない材料は欠損率も測らず、`coverage`は対象外）。揃わない宣言は登録時に断る。タイルへ焼く材料は必ず持つ |
 | `coverage` | 欠損率の測り方。way単位・区間単位・対象外の3択で、**どれかを必ず持つ**（どちらの一覧にも載っていない材料を型として作れなくする） |
 | `value_labels` | categorical材料の値ごとの日本語ラベル対訳表（生成物`material-catalog.json`と`GET /api/admin/material-catalog/{id}/values`が届ける） |
 | `reference_points` | 軸スタジオの折れ点編集を助ける「値の目安」一覧（`MaterialReferencePoint`のlabel/value）。値域が直感的でない材料（風等）ほど有用で、真偽値・categorical材料や単純な材料は空リストのままでよい。換算式はbackendだけが持ち、値はここで計算済みのものを持たせる |

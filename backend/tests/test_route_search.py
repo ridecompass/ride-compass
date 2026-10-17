@@ -15,13 +15,13 @@
 - 起点・終点の状態の引き方（CSR／遷移構造からの索引）→ 周回・目的地の経路が起点に戻る・目的地へ着くことで
   `test_route_generation_behavior.py`が通す。
 - 標高属性の逆向き（`ElevationAttribute.reversed_as`）→ `test_attributes.py`。候補の難易度の距離加重平均
-  （`distance_weighted_difficulty`）→ `test_difficulty.py`。
+  （`domain/difficulty.py: weighted_mean_by_distance`）→ `test_difficulty.py`。
 - レグごとのコスト配列の合成（`domain/leg_costs.py`）→ `test_leg_costs.py`。
 - 探索カーネル（`domain/routing.py`）・評価軸（`domain/evaluation.py`）・走行モデル
   （`domain/cycling_speed.py`）・風（`domain/wind.py`）・0次フィルタ（`domain/hard_filters.py`）
   → それぞれの持ち主のテストが持つ。
 
-このファイルが組み立てて渡し、読むデータ型（探索構造・`RouteDraft`等）は本物で作る——代役にしても
+このファイルが組み立てて渡し、読むデータ型（探索構造・`EvaluatedRoute`等）は本物で作る——代役にしても
 何も切り離せず、本物が変わったときに黙ってずれるだけになる。
 """
 
@@ -32,7 +32,7 @@ import pytest
 from app.domain.attributes import ElevationAttribute
 from app.domain.graph import LeanEdge
 from app.domain.route import (
-    RouteDraft,
+    EvaluatedRoute,
     RouteSegmentDetail,
     concat_edge_geometries,
     reverse_elevation_by_edge,
@@ -93,7 +93,11 @@ def segment_detail(difficulty, distance_km):
 
 def route_candidate(name, segments=()):
     """`name`は候補を見分けるためだけの名前。"""
-    return RouteDraft(direction_label=name, distance_km=1.0, geometry={}, segments=list(segments))
+    return EvaluatedRoute(
+        direction_label=name, distance_km=1.0, geometry={}, elevation_gain_m=None, segments=list(segments),
+        estimated_duration_seconds=None, wind_unavailable=False, missing_travel_data_share=None, axis_raw_values={},
+        material_category_shares={}, edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[],
+    )
 
 
 # --------------------------------------------------------------------------------------

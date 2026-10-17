@@ -12,6 +12,7 @@ from pydantic import Field, model_validator
 from app.domain.axis_definitions import AxisDefinition, BreakpointLinearShape, CategoricalShape
 from app.domain.axis_raw_value import raw_value_unit
 from app.domain.material_catalog import MATERIAL_CATALOG
+from app.domain.route import RouteSegmentDetail
 from app.domain.strict_model import StrictModel
 
 #: 難易度（0〜100）の段の境界。軸の形から段を導けないときに使う。**値ではなく等分の規則**
@@ -32,6 +33,10 @@ class DifficultyMapValue(StrictModel):
 
     kind: Literal["difficulty"] = "difficulty"
 
+    def segment_value(self, axis_id: str, segment: RouteSegmentDetail) -> float | None:
+        """ルートの区間をこの軸のレンズで塗る値。値が無ければNone。"""
+        return segment.axis_difficulties.get(axis_id)
+
 
 class SignedMaterialMapValue(StrictModel):
     """地図が材料1つの符号付きの生値を塗る。単一材料の絶対値を評価する軸（勾配のように
@@ -40,6 +45,10 @@ class SignedMaterialMapValue(StrictModel):
     kind: Literal["signed_material"] = "signed_material"
     #: 生値を塗る材料のid。画面は軸の形から読み直さない。
     material: str
+
+    def segment_value(self, axis_id: str, segment: RouteSegmentDetail) -> float | None:
+        """ルートの区間をこの軸のレンズで塗る値。値が無ければNone。"""
+        return segment.material_values.get(self.material)
 
 
 # 塗る値の種類と、種類によって決まる項目を1つにまとめたもの。材料は`signed_material`のときだけ在る。

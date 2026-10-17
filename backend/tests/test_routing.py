@@ -38,6 +38,7 @@ from tests.route_world import (
     BASE_LON,
     CENTER,
     NORTH_EAST,
+    NO_POINTS,
     SOUTH_WEST,
     at,
     avoid_axis_declared,
@@ -156,6 +157,16 @@ def build_all(graph, spec=FLAT_SPEC, edge_rank=None, node_has_signal=None, node_
 
 def state_index(lazy):
     return {edge_id: i for i, edge_id in enumerate(lazy.edge_ids)}
+
+
+def transition_kinds(lazy, structure):
+    """`(遷移元edge_id, 遷移先edge_id) -> 曲がりの種類`。"""
+    out = {}
+    for source in range(structure.state_count):
+        for entry in range(int(structure.indptr[source]), int(structure.indptr[source + 1])):
+            target = int(structure.target_state[entry])
+            out[(lazy.edge_ids[source], lazy.edge_ids[target])] = routing.TurnKind(int(structure.turn_kind[entry]))
+    return out
 
 
 def transition_seconds(lazy, structure):
@@ -483,20 +494,24 @@ SNAP_GRAPH = make_graph(
 )
 
 
+#: 索引の範囲より広い上限。これを渡す呼び出しでは、寄せるかを索引の範囲だけが決める。
+WIDER_THAN_THE_AREA_KM = 1000.0
+
+
 def node_index_of(net):
     return routing.build_node_spatial_index(net.latitude, net.longitude, None)
 
 
-def nearest(net, index, point, allowed_names=None, **kwargs):
+def nearest(net, index, point, allowed_names=None, *, max_distance_km):
     """最寄りノードの名前（無ければNone）。`allowed_names`は候補にしてよいノード名の集合。"""
     allowed = None if allowed_names is None else np.array([node_id in allowed_names for node_id in net.node_ids])
-    found = routing.find_nearest_node_indexed(index, point, allowed, **kwargs)
+    found = routing.find_nearest_node_indexed(index, point, allowed, max_distance_km=max_distance_km)
     return None if found is None else net.node_ids[found]
 
 
 def test_nearest_node_is_none_when_the_index_has_no_nodes():
     index = node_index_of(make_graph({}, {}))
-    assert routing.find_nearest_node_indexed(index, coords(35.0, 139.0)) is None
+    assert routing.find_nearest_node_indexed(index, coords(35.0, 139.0), max_distance_km=WIDER_THAN_THE_AREA_KM) is None
 
 
 @pytest.mark.parametrize(
@@ -515,19 +530,19 @@ def test_nearest_node_is_none_far_outside_the_indexed_area(point):
     指した覚えのない場所を通るルートになる。
     """
     index = node_index_of(SNAP_GRAPH)
-    assert routing.find_nearest_node_indexed(index, point) is None
+    assert routing.find_nearest_node_indexed(index, point, max_distance_km=WIDER_THAN_THE_AREA_KM) is None
 
 
 def test_nearest_node_tolerates_a_point_just_outside_the_indexed_area():
     """範囲の縁を1セルだけ外した点は、すぐ隣の道へ寄せる（地図の端をクリックした場合）。"""
     index = node_index_of(SNAP_GRAPH)
-    assert nearest(SNAP_GRAPH, index, coords(35.0550, 139.0000)) == "far"
+    assert nearest(SNAP_GRAPH, index, coords(35.0550, 139.0000), max_distance_km=WIDER_THAN_THE_AREA_KM) == "far"
 
 
 def test_nearest_node_is_none_when_no_node_is_allowed():
     """1件も真にならないときも索引の範囲を出た時点で止まる（走査が終わる）。"""
     index = node_index_of(SNAP_GRAPH)
-    assert nearest(SNAP_GRAPH, index, coords(35.0050, 139.0050), set()) is None
+    assert nearest(SNAP_GRAPH, index, coords(35.0050, 139.0050), set(), max_distance_km=WIDER_THAN_THE_AREA_KM) is None
 
 
 def test_nearest_node_respects_max_distance_km():
@@ -559,7 +574,9 @@ def test_nearest_node_is_the_closest_candidate_by_great_circle_distance(span_deg
         distances = haversine_distance_km_array(latitude, longitude, point)
         for mask in (candidates, candidates & allowed):
             expected = int(np.flatnonzero(mask)[np.argmin(distances[mask])])
-            assert routing.find_nearest_node_indexed(index, point, None if mask is candidates else allowed) == expected
+            found = routing.find_nearest_node_indexed(
+                index, point, None if mask is candidates else allowed, max_distance_km=WIDER_THAN_THE_AREA_KM)
+            assert found == expected
 
 
 # --- largest_strongly_connected_nodes ---
@@ -628,6 +645,47 @@ def test_turn_transitions_lead_to_every_outgoing_edge_and_classify_the_turn():
         "CS": TURN_SPEC.right_seconds,
         "CW": TURN_SPEC.uturn_seconds,
     })
+    kinds = {target: kind for (source, target), kind in transition_kinds(lazy, structure).items() if source == "WC"}
+    assert kinds == {
+        "CE": routing.TurnKind.STRAIGHT,
+        "CN": routing.TurnKind.LEFT,
+        "CS": routing.TurnKind.RIGHT,
+        "CW": routing.TurnKind.UTURN,
+    }
+
+
+# 角 A-B-C で B が直角に曲がる（B に分かれ道は無い）。
+BEND_NODES = {"A": (35.0, 138.99), "B": (35.0, 139.0), "C": (35.01, 139.0)}
+BEND_EDGES = {
+    "AB": ("A", "B", 100.0, 90.0),
+    "BA": ("B", "A", 100.0, 270.0),
+    "BC": ("B", "C", 100.0, 0.0),
+    "CB": ("C", "B", 100.0, 180.0),
+}
+
+
+@pytest.mark.parametrize(
+    ("nodes", "edges", "route", "expected"),
+    [
+        # 十字路で左折・右折・Uターン・直進。直進は案内しない。
+        (PLUS_NODES, PLUS_EDGES, ["WC", "CN"], [(1, routing.TurnKind.LEFT)]),
+        (PLUS_NODES, PLUS_EDGES, ["WC", "CS"], [(1, routing.TurnKind.RIGHT)]),
+        (PLUS_NODES, PLUS_EDGES, ["WC", "CW"], [(1, routing.TurnKind.UTURN)]),
+        (PLUS_NODES, PLUS_EDGES, ["WC", "CE"], []),
+        # 分かれ道の無い角では、道なりに曲がるだけなので案内しない。
+        (BEND_NODES, BEND_EDGES, ["AB", "BC"], []),
+    ],
+)
+def test_turns_along_a_path_are_the_turns_at_a_branch(nodes, edges, route, expected):
+    """案内する曲がりは、来た道へ戻る遷移を除いて2本以上の道へ進める点（分かれ道）での、直進でない遷移だけ。
+    分かれ道の無い角で案内すると、道なりに進むだけの所で「曲がる」と言ってしまう。"""
+    graph = make_graph(nodes, edges)
+    lazy, _, structure = build_all(graph, spec=TURN_SPEC)
+    index = state_index(lazy)
+
+    turns = routing.turns_along(structure, [index[edge_id] for edge_id in route])
+
+    assert [(turn.index, turn.kind) for turn in turns] == expected
 
 
 # 「そもそも待ちの要る階級か」の境目（`domain/traffic.py`が決める）。
@@ -1267,7 +1325,8 @@ async def test_route_generation_calls_from_python_only_the_jit_that_the_image_ba
     with avoid_axis_declared():
         generator = generator_for(monkeypatch, grid_network(), 0.0, wind)
         departure = datetime(2026, 9, 22, 8, tzinfo=timezone(timedelta(hours=9)))
-        assert await generator.generate_loops(at(CENTER), 4.0, 1.5, max_routes=3, start_time=departure)
+        assert await generator.generate_loops(
+                at(CENTER), 4.0, 1.5, points=NO_POINTS, max_routes=3, start_time=departure)
         assert await generator.generate_via_waypoints(
             at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=3, start_time=departure)
 

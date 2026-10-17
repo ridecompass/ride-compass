@@ -59,7 +59,7 @@ def catalog(monkeypatch):
         spec("bool_definite", "boolean", WAY_DEFINITE, tile_property="bool_tile", primary_attribute=ATTR_A),
         spec("bool_unknown", "boolean", WAY_UNKNOWN),
         spec("cat_a", "categorical", WAY_DEFINITE, tile_property="cat_tile", primary_attribute=ATTR_B),
-        spec("dynamic_a", value_sql=None, coverage=EXCLUDED),
+        spec("dynamic_a", source="request", value_sql=None, coverage=EXCLUDED),
         spec("per_year_a", coverage=EXCLUDED),
     ]
     monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", {s.material_id: s for s in specs})
@@ -75,6 +75,19 @@ def catalog(monkeypatch):
 )
 def test_a_declaration_that_does_not_fit_its_dtype_is_refused(fields):
     fields.setdefault("dtype", "numeric")
+    with pytest.raises(ValidationError):
+        spec("x", **fields)
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"value_sql": None},  # DBが値を求めない静的材料は、全区間で値が欠ける
+        {"source": "request", "coverage": EXCLUDED},  # DBの列にも載り、要求の値と2つの出どころを持つ
+        {"source": "observation", "value_sql": None},  # DBに無い値の欠損率を数える
+    ],
+)
+def test_a_declaration_that_does_not_fit_its_source_is_refused(fields):
     with pytest.raises(ValidationError):
         spec("x", **fields)
 

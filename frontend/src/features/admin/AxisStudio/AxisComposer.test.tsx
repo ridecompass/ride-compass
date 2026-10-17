@@ -40,7 +40,6 @@ function axis(overrides: Partial<AxisDefinitionResponse> = {}): AxisDefinitionRe
     default_weight: 0.2,
     is_published: false,
     time_scope: "always",
-    dedicated_way_value_layer: false,
     shape: {
       kind: "breakpoint_linear",
       terms: [{ material: NUM.id, weight: 1, required: true }],
@@ -105,7 +104,6 @@ describe("保存するpayload", () => {
       category: "観測",
       priority_overrides: [{ material: CAT.id, equals: "x", value: 1 }],
       time_scope: "night_only",
-      dedicated_way_value_layer: true,
       icon_id: "icon_a",
       display_thresholds_override: [1, 2],
       display_band_labels_override: ["a", "b", "c"],

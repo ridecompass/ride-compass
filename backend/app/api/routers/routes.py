@@ -32,6 +32,7 @@ from app.domain.route_request import (
     SplicedTarget,
     check_points_within_reach,
     check_spliced_edge_count,
+    spliceable,
     check_waypoint_count,
     nothing_to_generate_error,
 )
@@ -183,9 +184,7 @@ class RouteGenerateRequest(StrictModel):
             origin = Coordinates(latitude=self.latitude, longitude=self.longitude)
             check_points_within_reach(max(haversine_distance_km(origin, point) for point in points))
         if self.spliced_edge_ids:
-            # 合成の対象は目的地ルートだけ（周回は起点へ戻る制約があり、途中で別候補へ
-            # 乗り換えると戻れる保証が無くなる）。
-            if self.destination is None:
+            if not spliceable(self.destination):
                 raise ValueError("spliced_edge_ids requires destination")
             first, *rest = self.spliced_edge_ids
             self._target = SplicedTarget(destination=self.destination, edge_ids=(first, *rest))
@@ -237,7 +236,7 @@ class GenerationConditions(StrictModel):
     # `destination`の一番近いNodeから出て戻れない（メインの道路網から孤立した歩道橋・私有地内通路、
     # 一方通行の袋等）ため、出て戻れる最寄りNodeへ寄せ直して探索した場合の座標。寄せ直さなかった
     # （`destination`をそのまま使えた）場合はNone。
-    corrected_destination: Coordinates | None = None
+    corrected_destination: Coordinates | None
     # ISO8601（JST）。周回の風評価は生成時刻に依存するため、厳密な再現はできない点に注意
     generated_at: str
 
@@ -249,7 +248,7 @@ class RouteGenerateResponse(StrictModel):
     # route_generator.pyのlogger.warning行と同じ情報源）。ユーザーが原因を推測できず
     # SSHでサーバーログを見る以外に切り分け手段が無い状態を避けるための情報。
     # routesが1件以上あるときは常にNone。
-    no_candidates_reason: str | None = None
+    no_candidates_reason: str | None
 
 
 class RouteGenerateJobCreatedResponse(StrictModel):

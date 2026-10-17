@@ -34,9 +34,8 @@ type RouteFormConditions = Pick<
   | "destination"
   | "clearDestination"
   | "clearPoints"
-  | "armedPinRole"
-  | "waypointToReplace"
-  | "armPinRole"
+  | "selectedPoint"
+  | "selectPoint"
   | "foundAt"
 >;
 
@@ -50,6 +49,8 @@ interface RouteFormProps {
   /** 出発地が実際の位置か（現在地を取れたか、地図で置いたか）。falseの間は地図のピンと同じく印を灰色にし、
    * 名前も「現在地」と出さない（位置が仮の地点のままであることを、パネルと地図で示す）。 */
   originLocated: boolean;
+  /** 出発地が、最後に取れた現在地にあるか（真なら「出発地を現在地に戻す」を押せなくする）。 */
+  originAtHere: boolean;
   /** 出発地を現在地へ戻す（現在地の取得もこの操作が兼ねる）。 */
   onOriginReset: () => void;
   /** 出発地が、探して置いたときの位置のままなら、その候補（名前を出す）。 */
@@ -60,6 +61,8 @@ interface RouteFormProps {
   onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
   /** 保存した地点（地点の詳しくで保存して打つ欄の候補に出し、「保存」タブの「地点」に並べる）。 */
   savedPlaces: SavedPlacesState;
+  /** 地図をタップすると選んでいる地点を置くか（ルート設定が地図で効いている間）。 */
+  placing: boolean;
   /** 「重み」タブの中身。タブの列と「ルート生成」ボタンは見出しの行（page.tsx）、検証は`useRouteFormSubmit`が持つ。 */
   weightsPanel: React.ReactNode;
   /** 「除外」タブの中身。 */
@@ -90,11 +93,13 @@ export default function RouteForm({
   origin,
   originManual,
   originLocated,
+  originAtHere,
   onOriginReset,
   originFound,
   mapCenter,
   onPlaceFound,
   savedPlaces,
+  placing,
   weightsPanel,
   exclusionsPanel,
   savedConditionsPanel,
@@ -180,11 +185,13 @@ export default function RouteForm({
           origin={origin}
           originManual={originManual}
           originLocated={originLocated}
+          originAtHere={originAtHere}
           onOriginReset={onOriginReset}
           originFound={originFound}
           mapCenter={mapCenter}
           onPlaceFound={onPlaceFound}
           savedPlaces={savedPlaces}
+          placing={placing}
         />
       </KeptTabContent>
 

@@ -11,7 +11,7 @@
 - 前の生成の理由・目的地の補正を持ち越さないこと → 本番は生成ごとに`RouteGenerator`を作るので、持ち越す状態が起こらない
 
 エンジンの代役は、各メソッドを`RoadGraphEngine`の同名メソッドの署名へ当ててから呼ぶ（`bound`）。応答を返すだけで、呼ばれ方を記録しない。
-代役が返す探索結果・経路は本物の型（`TracedLoop`・`LoopTurnaround`・`RouteDraft`・`FixedLegs`）で作る。
+代役が返す探索結果・経路は本物の型（`TracedLoop`・`LoopTurnaround`・`EvaluatedRoute`・`FixedLegs`）で作る。
 探索の文脈（`context`）は戦略層にとって中身を読まない値で、読むのは`destination_correction`の
 1属性だけのため、その属性だけを持つ器で渡す。
 """
@@ -25,13 +25,14 @@ import pytest
 from app.domain.difficulty import OverallDifficulty
 from app.domain.errors import RoutingError, SearchAreaTooLargeError
 from app.domain.loop_routing import LoopTurnaround, TracedLoop
-from app.domain.route import Coordinates, RouteCandidate, RouteDraft, RouteSegmentDetail
+from app.domain.route import Coordinates, EvaluatedRoute, RouteCandidate, RouteSegmentDetail
 from app.domain.route_request import DEFAULT_MAX_ROUTES, MAX_ROUTES, FixedPoints
 from app.domain.time_zone import JST
 from app.services import route_generator
 from app.services.road_graph_engine import FixedLegs, RoadGraphEngine
 from app.services.route_generator import RouteGenerator
 from tests.bound_fake import bound
+from tests.route_world import NO_POINTS
 
 ORIGIN = Coordinates(latitude=35.6789, longitude=139.7712)
 WAYPOINT = Coordinates(latitude=35.69, longitude=139.78)
@@ -49,13 +50,15 @@ def _segment(difficulty: float | None, **fields) -> RouteSegmentDetail:
     )
 
 
-def _candidate(key: str, difficulty: float | None = 10.0, **fields) -> RouteDraft:
+def _candidate(key: str, difficulty: float | None = 10.0, **fields) -> EvaluatedRoute:
     """区間1本（1km・難易度`difficulty`）を持つ経路。戦略層は名前を付け替えうるので、どの候補かは`edge_ids`で見分ける。"""
-    fields.setdefault("segments", [_segment(difficulty)])
-    return RouteDraft(
-        direction_label=f"方位-{key}", distance_km=1.0,
-        geometry={"type": "LineString", "coordinates": []}, edge_ids=[key], **fields,
-    )
+    return EvaluatedRoute(**{
+        "direction_label": f"方位-{key}", "distance_km": 1.0, "geometry": {"type": "LineString", "coordinates": []},
+        "elevation_gain_m": None, "segments": [_segment(difficulty)], "estimated_duration_seconds": None,
+        "wind_unavailable": False, "missing_travel_data_share": None, "axis_raw_values": {},
+        "material_category_shares": {}, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [],
+        **fields,
+    })
 
 
 def _route(key: str, distance_km: float = 10.0, bearing: int | None = 0) -> TracedLoop:
@@ -151,7 +154,7 @@ class FakeEngine:
 
 
 async def _loops(
-    engine: FakeEngine | RouteGenerator, max_routes: int = DEFAULT_MAX_ROUTES, points: FixedPoints | None = None,
+    engine: FakeEngine | RouteGenerator, max_routes: int = DEFAULT_MAX_ROUTES, points: FixedPoints = NO_POINTS,
 ) -> list[RouteCandidate]:
     """目標10km±1kmの距離ありの生成（`points`を省けば周回）。理由を読むテストは、作った`RouteGenerator`を渡す。"""
     generator = engine if isinstance(engine, RouteGenerator) else RouteGenerator(engine)
@@ -164,7 +167,7 @@ async def _no_distance(engine: FakeEngine | RouteGenerator, waypoints, destinati
 
 
 ENTRANCES = {
-    "loops": lambda generator: generator.generate_loops(ORIGIN, 10.0, 1.0, DEFAULT_MAX_ROUTES, START),
+    "loops": lambda generator: generator.generate_loops(ORIGIN, 10.0, 1.0, DEFAULT_MAX_ROUTES, START, NO_POINTS),
     "waypoints": lambda generator: generator.generate_via_waypoints(ORIGIN, [WAYPOINT], None, 1, START),
     "destination": lambda generator: generator.generate_via_waypoints(ORIGIN, [], DESTINATION, 1, START),
     "spliced": lambda generator: generator.generate_spliced_route(ORIGIN, DESTINATION, ("e1",), START),
@@ -211,31 +214,22 @@ async def test_a_search_area_that_cannot_be_used_gives_no_candidates_and_says_wh
     assert any(logged in r.getMessage() for r in caplog.records)
 
 
-@pytest.mark.parametrize(
-    ("segments", "expected"),
-    [
-        ([_segment(10.0), _segment(30.0)], OverallDifficulty(average=20.0, load=40.0)),  # 総量は平均20 × 2km
-        ([], OverallDifficulty(average=99.0, load=99.0)),  # 区間が無ければ、エンジンの値のまま
-    ],
-)
-async def test_route_values_are_rebuilt_from_its_segments(segments, expected):
-    evaluated = _candidate("w", segments=segments, overall_difficulty=OverallDifficulty(average=99.0, load=99.0))
+async def test_route_values_are_built_from_its_segments():
+    evaluated = _candidate("w", segments=[_segment(10.0), _segment(30.0)])
     engine = FakeEngine(via=[_route("w", bearing=None)], routes={"w": evaluated})
 
     (candidate,) = await _no_distance(engine, [WAYPOINT], None)
 
-    assert candidate.overall_difficulty == expected
+    assert candidate.overall_difficulty == OverallDifficulty(average=20.0, load=40.0)  # 総量は平均20 × 2km
 
 
-async def test_per_axis_values_are_rebuilt_but_category_shares_and_raw_values_are_kept():
+async def test_per_axis_values_are_built_from_segments_but_category_shares_and_raw_values_are_kept():
     """延長割合と軸の生の値は、エンジンが区間を約500mへ畳む前の値から作ったもので、区間からは作れない。"""
-    stale = {"x": 99.0}
     segments = [
         _segment(10.0, axis_difficulties={"a": 10.0}, axis_contributions={"a": 10.0}, material_values={"a": 10.0}),
         _segment(30.0, axis_difficulties={"a": 30.0}, axis_contributions={"a": 30.0}, material_values={"a": 30.0}),
     ]
-    evaluated = _candidate("e1", segments=segments, axis_difficulties=stale, axis_contributions=stale,
-                           axis_raw_values={"a": 5.0}, material_values=stale,
+    evaluated = _candidate("e1", segments=segments, axis_raw_values={"a": 5.0},
                            material_category_shares={"surface": {"asphalt": 1.0}})
 
     (candidate,) = await ENTRANCES["spliced"](RouteGenerator(FakeEngine(routes={"e1": evaluated})))
@@ -267,9 +261,10 @@ async def test_loops_without_turnarounds_say_how_far_out_was_searched(caplog):
     generator = RouteGenerator(FakeEngine())
 
     with caplog.at_level(logging.WARNING, logger=route_generator.logger.name):
-        assert await _loops(generator) == []
+        # 片道が数十kmになる距離にする（数kmでは、小数1桁へ丸めると m から km への換算の誤りが消える）。
+        assert await generator.generate_loops(ORIGIN, 200.0, 20.0, DEFAULT_MAX_ROUTES, START, NO_POINTS) == []
 
-    assert generator.last_no_candidates_reason == f"起点から片道5.0km前後で到達できる折返し地点が見つかりませんでした。{RETRY}"
+    assert generator.last_no_candidates_reason == f"起点から片道90.0〜95.7kmで到達できる折返し地点が見つかりませんでした。{RETRY}"
     assert _warned(caplog)
 
 

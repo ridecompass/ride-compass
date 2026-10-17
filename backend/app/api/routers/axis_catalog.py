@@ -34,8 +34,13 @@ from app.domain.axis_definitions import (
     published_axis_definitions,
     weather_layer_groups_for,
 )
-from app.domain.material_catalog import MATERIAL_CATALOG, MaterialDType
-from app.domain.axis_raw_value import RawValueUnits, axis_material_shares, raw_value_units
+from app.domain.material_catalog import MATERIAL_CATALOG
+from app.domain.axis_raw_value import (
+    AxisMaterialBreakdownEntry,
+    RawValueUnits,
+    axis_material_breakdown,
+    raw_value_units,
+)
 from app.domain.dynamic_way_values import WayValueConditionName
 from app.domain.map_paint import MapPaint, map_paint
 from app.domain.tuning import client_tuning_values
@@ -44,32 +49,6 @@ from app.services.region_service import RegionService
 from app.domain.strict_model import StrictModel
 
 router = APIRouter()
-
-
-def _material_breakdown(definition: AxisDefinition) -> list["AxisMaterialBreakdownEntry"]:
-    """軸の内訳（材料まで分解した絶対量の並び）。カタログに無い材料は落とす。
-
-    categorical材料（`highway`等）も含めて返す——値ごとの延長割合を運ぶ器はまだ無いが、
-    内訳の並び自体は軸定義から決まるため、運搬側の都合で並びを変えると軸定義との
-    対応が読めなくなる。値が来ない材料を
-    フロントが飛ばす形にする。
-    """
-    entries = []
-    for share in axis_material_shares(definition, AXIS_DEFINITIONS):
-        spec = MATERIAL_CATALOG.get(share.material_id)
-        if spec is None:
-            continue
-        entries.append(
-            AxisMaterialBreakdownEntry(
-                material_id=share.material_id,
-                label=spec.label,
-                dtype=spec.dtype,
-                unit=spec.unit or "",
-                share=round(share.share, 4),
-                value_labels=dict(spec.value_labels) if spec.dtype == "categorical" else {},
-            )
-        )
-    return entries
 
 
 def _density_terms(definition: AxisDefinition) -> list["AxisDensityTerm"] | None:
@@ -94,25 +73,6 @@ class AxisDensityTerm(StrictModel):
     weight: float
 
 
-class AxisMaterialBreakdownEntry(StrictModel):
-    """合成軸の内訳1件（材料と、その材料が軸の生値に占める割合）。"""
-
-    material_id: str
-    #: 材料の表示名（`MaterialSpec.label`）。フロントは対応表を持たない。
-    label: str
-    #: 値の型。`numeric`＝距離加重平均＋単位、`boolean`＝該当区間の延長割合、`categorical`＝値ごとの延長割合。
-    dtype: MaterialDType
-    #: numeric材料の単位。真偽値材料は空文字。
-    unit: str
-    #: 各階層で正規化した重みの積（0〜1）。並び順の根拠を画面側でも示せるよう返す。
-    share: float
-    #: categorical材料の「タグ生値→論理名」対訳（`MaterialSpec.value_labels`）。
-    #: ルート結果は`material_category_shares`の値をこれで日本語にする。他の型では空。
-    #: 軸スタジオが使う`value_label()`の「論理名 - 物理名」形式にしないのは、走行中に見る
-    #: 画面へ物理名を並べても読み手の判断が増えないため。
-    value_labels: dict[str, str] = {}
-
-
 class AxisCatalogEntry(StrictModel):
     axis_id: str
     label: str
@@ -130,10 +90,6 @@ class AxisCatalogEntry(StrictModel):
     # この軸の材料の元データを描く気象のチップ（`domain/axis_definitions.py: weather_layer_groups_for`）。
     # 一次属性を持たない動的な材料（風等）は`primary_attribute_ids`に現れないため、こちらが運ぶ。
     weather_layer_groups: list[str]
-    # ルート未確定時の地図がこの軸を配信の値で塗るかの宣言（domain/axis_definitions.py:
-    # AxisDefinition.dedicated_way_value_layerのdocstring参照）。
-    # 受け取る側が、axis_idの文字列比較ではなくこのフィールドで地図レイヤー・取得の対象を決めるための宣言。
-    dedicated_way_value_layer: bool
     # 地図がこの軸について塗るもの——塗る値・単位・段の境界・凡例の目盛り・タイルの塗り・段の体感ラベル
     # （domain/map_paint.py: map_paint）。ルート確定前の塗り・ルート確定後のルート線色分け・凡例のどれもこれに従う。
     map_paint: MapPaint
@@ -141,7 +97,7 @@ class AxisCatalogEntry(StrictModel):
     # この単位で生値を出す。**総量を出しても読み手の判断が変わらない軸は総量の単位がnull**
     # （「約3322度曲がる」には比べる尺度が無い）。フロントは単位の綴りから総量の可否を判断しない。
     raw_value_units: RawValueUnits
-    # 生値の単位が定まらない軸の内訳（`domain/axis_raw_value.py: axis_material_shares`）。
+    # 生値の単位が定まらない軸の内訳（`domain/axis_raw_value.py: axis_material_breakdown`）。
     # 得点だけでは軸単体で経路を判断できないため、材料まで分解して較正に依存しない
     # 絶対の事実を出す。
     # 並びは正規化重みの降順で、フロントは先頭から順に出す（並べ替えを持たない）。
@@ -169,15 +125,15 @@ class AxisCatalogResponse(StrictModel):
     # フロントが使う較正値（id → いま効いている値、`domain/tuning.py`が宣言）。管理画面から
     # 変えた値を**再デプロイなしに**画面へ届けるため、起動時に1回取るこのカタログへ相乗り
     # させる（ビルド時生成物のroute-generate-config.jsonが持つ既定値は、画面がidの型にだけ使い、値は読まない）。
-    client_tuning: dict[str, float] = {}
+    client_tuning: dict[str, float]
     # 配信するタイルの世代（系統名 → `<派生の世代>.<生データの世代>-<形の署名>`、`services/
     # tile_version_service.py`）。フロントはこれをタイルURLのクエリへ入れてブラウザの
     # キャッシュを分ける。**ビルド時生成物では配れない**——バッチが中身を作り直しても
     # デプロイは起きないため、次のデプロイまで古い値を配り続ける。
-    tile_versions: dict[str, str] = {}
+    tile_versions: dict[str, str]
     # 事故データの収録年（今の事故の数を数えた取込の宣言そのもの）。地図の説明文が範囲を書くために
     # 使う。**表示側に持たせない**——文字列で持つと取り込み直したときに黙って食い違う。
-    accident_years: list[int] = []
+    accident_years: list[int]
 
 
 @router.get("/api/axis-catalog", response_model=AxisCatalogResponse)
@@ -205,10 +161,9 @@ async def get_axis_catalog(region_service: RegionService = Depends(get_region_se
                 icon_id=definition.icon_id,
                 primary_attribute_ids=primary_attribute_ids_for(definition),
                 weather_layer_groups=weather_layer_groups_for(definition),
-                dedicated_way_value_layer=definition.dedicated_way_value_layer,
                 map_paint=map_paint(definition),
                 raw_value_units=raw_value_units(definition),
-                material_breakdown=_material_breakdown(definition),
+                material_breakdown=axis_material_breakdown(definition, AXIS_DEFINITIONS),
                 density_terms=_density_terms(definition),
                 dynamic_way_value_conditions=way_value_layers[definition.axis_id].conditions,
                 dynamic_way_value_undetermined_by_bearing=way_value_layers[definition.axis_id].undetermined_by_bearing,

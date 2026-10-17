@@ -4,7 +4,6 @@ import { buttonVariants } from "../Button/Button";
 import {
   DistanceTargetIcon,
   GenerateRoutesIcon,
-  PlaceOnMapIcon,
   RouteDiffIcon,
   SaveConditionsIcon,
   SavePlaceIcon,
@@ -19,7 +18,6 @@ const BUTTON_MARKS = new Map<string, { Icon: MapIconComponent; variant: "primary
   ["差分を見る", { Icon: RouteDiffIcon, variant: "secondary" }],
   ["地点を保存", { Icon: SavePlaceIcon, variant: "secondary" }],
   ["いまの設定を保存", { Icon: SaveConditionsIcon, variant: "secondary" }],
-  ["出発地を地図で選ぶ", { Icon: PlaceOnMapIcon, variant: "secondary" }],
   ["全長の目標を決める", { Icon: DistanceTargetIcon, variant: "secondary" }],
 ]);
 

@@ -12,6 +12,7 @@
 import logging
 
 import pytest
+from shapely.geometry import Point, shape
 
 from app.infrastructure.jma_warning_client import new_area_data_cache, new_warning_cache
 from app.services.warning_service import WarningService
@@ -22,6 +23,11 @@ from tests.jma_area_fixtures import (
     OFFSHORE_POINT,
     area_lookup_upstream,
 )
+
+
+def _holds(area, point) -> bool:
+    """範囲が地点を含むか（画面が「まだこの中にいる」と読むのと同じ問い）。"""
+    return shape(area.model_dump()).contains(Point(point.longitude, point.latitude))
 
 
 def _service(boundary_path, **kwargs) -> WarningService:
@@ -36,6 +42,16 @@ async def test_get_warnings_returns_empty_when_the_point_is_in_no_area(boundary_
     result = await _service(boundary_path).get_warnings(OFFSHORE_POINT)
     assert result is not None
     assert result.warnings == []
+    assert result.valid_area is None
+
+
+async def test_get_warnings_carries_the_area_the_same_warnings_hold_for(boundary_path):
+    """同じ警報が当たる範囲（地点を含む区域）を添える。画面は今の地点がこの中にある間は取り直さない。"""
+    result = await _service(boundary_path, warning_documents=[]).get_warnings(CHIYODA_POINT)
+
+    assert result is not None and result.valid_area is not None
+    assert _holds(result.valid_area, CHIYODA_POINT)
+    assert not _holds(result.valid_area, OFFSHORE_POINT)
 
 
 @pytest.mark.parametrize("failure", [
