@@ -34,7 +34,6 @@ from app.api.dependencies import get_region_service
 from app.domain.axis_definitions import (
     AXIS_DEFINITIONS,
     AxisCategory,
-    AxisDefinition,
     TimeScope,
     primary_attribute_ids_for,
     published_axis_definitions,
