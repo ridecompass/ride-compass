@@ -1,5 +1,5 @@
 /**
- * 走行モードのボタン（`features/ride/RideModeButton/RideModeButton.tsx`）——入切と次に押したときの動きを示し、走行モードの間に
+ * 走行モードのボタン（`features/ride/RideModeButton/RideModeButton.tsx`）——入切を示し、走行モードの間に
  * 押すと案内を終えるか、休む（休んでいれば続きから走る）かを選ばせ、始められなかった理由と、画面を点けたままにできない端末であることを横に出す。
  *
  * ここで見ないもの: 押したあとの走行モードの移り変わり → `useRideMode.test.ts`
@@ -27,7 +27,6 @@ describe("RideModeButton", () => {
     );
     const button = screen.getByRole("button", { name: "走行モード" });
     expect(button).toHaveAttribute("aria-pressed", "false");
-    expect(button).toHaveAttribute("title", "走行モードを始める");
     // 面の塗りは様子の印（data-ride）に当てる。塗りが効いて見分けられるかは e2e/ride-mode.spec.ts が計算後の色で見る。
     expect(button).toHaveAttribute("data-ride", "off");
 

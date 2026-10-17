@@ -96,9 +96,12 @@ describe("DynamicLayerTimeSlider 操作", () => {
     expect(onIndexChange).not.toHaveBeenCalled();
   });
 
-  it("「現在」は、今のコマを見ていない間だけ押せ、押すと親へ知らせる", async () => {
+  it("「現在に戻す」は文字の無いアイコンで、今のコマを見ていない間だけ押せ、押すと親へ知らせる", async () => {
     const away = renderSlider(2, 0);
-    await userEvent.click(screen.getByRole("button", { name: "出発時刻を現在に戻す" }));
+    const backToNow = screen.getByRole("button", { name: "出発時刻を現在に戻す" });
+    expect(backToNow).toHaveTextContent(/^$/);
+    expect(backToNow.querySelector("svg")).not.toBeNull();
+    await userEvent.click(backToNow);
     expect(away.onNow).toHaveBeenCalled();
     away.unmount();
 

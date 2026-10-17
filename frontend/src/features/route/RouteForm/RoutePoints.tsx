@@ -4,10 +4,9 @@ import { useLayoutEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
 import { ClearPointsIcon, LocateIcon, RemovePointIcon } from "@/components/ui/icons/icons";
-import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
+import { waypointsFull, type GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
 import { cn } from "@/lib/cn";
-import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { Coordinates, PinRole, PlaceCandidate, PointTarget } from "@/types/route";
 
 import { MAP_PLACED, pointNames } from "@/features/route/pointNames";
@@ -52,7 +51,6 @@ interface RoutePointsProps {
   placing: boolean;
 }
 
-const MAX_WAYPOINTS = routeGenerateConfig.max_waypoints;
 /** 札の印と名前の間（札の`gap-1`）。 */
 const NAME_GAP_PX = 4;
 
@@ -81,6 +79,7 @@ export default function RoutePoints({
   const { waypoints, removeWaypoint, destination, clearDestination, clearPoints, selectedPoint, selectPoint, foundAt } =
     conditions;
   const waypointCount = waypoints.length;
+  const full = waypointsFull(waypoints);
 
   // 選んでいる地点の詳しくを出す（地図のタップもこの地点を置く）。
   const target = selectedPoint;
@@ -192,7 +191,7 @@ export default function RoutePoints({
           placed={false}
           placingHint={waypointCount > 0 ? `地図をタップ[${waypointCount}地点]` : "地図をタップ"}
           chooseResult="経由地に足します"
-          full={waypointCount >= MAX_WAYPOINTS}
+          full={full}
           placing={placing}
           onChoose={(candidate) => onPlaceFound("waypoint", candidate, null)}
         />
@@ -291,8 +290,8 @@ export default function RoutePoints({
                 "ml-0.5 border-dashed px-1.5 py-0.5 text-[length:var(--font-size-sm)] text-[var(--color-accent-strong)]",
               )}
               aria-pressed={isShown({ role: "waypoint", index: null })}
-              aria-label={waypointCount >= MAX_WAYPOINTS ? "経由地は上限まで置いてあります" : "経由地を足す"}
-              disabled={waypointCount >= MAX_WAYPOINTS}
+              aria-label={full ? "経由地は上限まで置いてあります" : "経由地を足す"}
+              disabled={full}
               onClick={() => selectPoint({ role: "waypoint", index: null })}
               usage="経由地を足します。地図をタップするか、住所・施設で探して置きます。"
             >

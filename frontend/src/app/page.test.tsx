@@ -11,7 +11,7 @@
  *   「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
  *   2つの区分を開いていれば最後に触った区分が効いてその題に添えること、ピンを押しても消えずルート設定ではその地点を選ぶこと、
  *   目的地の行で探して置いた地点と、名前のある点を押して置いた地点が地図に立ち、行にその名前が出ること、
- *   名前を付けて保存した地点を打つ欄から選び直せ、「保存」の「地点」に並ぶこと、編集の間は地図で地点も区間も扱わず全部の候補を重ね、
+ *   名前を付けて保存した地点を打つ欄から選び直せ、「保存」の「地点」から呼び出すと条件タブへ移って置くこと、編集の間は地図で地点も区間も扱わず全部の候補を重ね、
  *   「ルート結果」の見出しに候補1本への操作を出さず、作り直すと編集が終わること、作ると直前の作り直しの失敗の文言を消し、合成ルートを選んでいる間は元のルートだけを重ねること、
  *   地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）
  * - 画面の枠: スマホの下部タブとシート（1枚ずつ開く・地点を扱える間・結果の合図・候補が届いた時点で「ルート設定」を開いて
@@ -361,8 +361,13 @@ describe("ルートを作る", () => {
   it("保存した条件は地図で置いた出発地を持ち、呼び出すとその出発地から生成する", async () => {
     const PLACED: Coordinates = { latitude: 35.65, longitude: 139.75 };
     const { user } = renderHome();
-    // 保存は見出しのアイコンで、どのタブを見ていてもできる。
+    // 保存も呼び出しも「保存」の「設定」で行う（見出しの行にも保存のボタンがあれば、ボタンが2つに当たって落ちる）。
+    const openSavedConditions = async () => {
+      await user.click(screen.getByRole("tab", { name: "保存" }));
+      await user.click(screen.getByRole("tab", { name: "設定" }));
+    };
     const saveAs = async (name: string) => {
+      await openSavedConditions();
       await user.click(screen.getByRole("button", { name: "いまの設定を保存" }));
       const dialog = screen.getByRole("dialog", { name: "いまの設定を保存" });
       const nameInput = within(dialog).getByRole("textbox", { name: "保存する名前" });
@@ -371,8 +376,7 @@ describe("ルートを作る", () => {
       await user.click(within(dialog).getByRole("button", { name: "保存" }));
     };
     const recall = async (name: string) => {
-      await user.click(screen.getByRole("tab", { name: "保存" }));
-      await user.click(screen.getByRole("tab", { name: "設定" }));
+      await openSavedConditions();
       await user.click(screen.getByRole("button", { name: `「${name}」を呼び出す` }));
       await user.click(
         within(screen.getByRole("dialog", { name: `「${name}」を反映します` })).getByRole("button", {
@@ -384,6 +388,7 @@ describe("ルートを作る", () => {
 
     clickMap(PLACED);
     await saveAs("置いた所");
+    await user.click(screen.getByRole("tab", { name: "条件" }));
     await user.click(screen.getByRole("button", { name: "出発地を現在地に戻す" }));
 
     jobs.respond([FIRST], LOOP_CONDITIONS);
@@ -579,7 +584,7 @@ describe("地図で扱えること", () => {
     expect(screen.getByRole("button", { name: `目的地: ${candidate.name}` })).toBeInTheDocument();
   });
 
-  it("名前を付けて保存した地点は、目的地を消したあとも打つ欄を押して選び直せ、「保存」の「地点」に並ぶ", async () => {
+  it("名前を付けて保存した地点は、目的地を消したあとも打つ欄を押して選び直せ、「保存」の「地点」から呼び出すと条件タブへ移って置く", async () => {
     const { user } = renderHome();
     await selectDestination(user);
     clickMap(DESTINATION);
@@ -600,7 +605,13 @@ describe("地図で扱えること", () => {
     expect(screen.getByRole("button", { name: "目的地: いつものカフェ" })).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "保存" }));
     await user.click(screen.getByRole("tab", { name: "地点" }));
-    expect(screen.getByRole("button", { name: "「いつものカフェ」を消す" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "「いつものカフェ」を呼び出す" }));
+    const menu = screen.getByRole("dialog", { name: "「いつものカフェ」をどこに置くか" });
+    await user.click(within(menu).getByRole("button", { name: "経由地に足す" }));
+
+    expect(screen.getByRole("tab", { name: "条件" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("region", { name: "経由地1" })).toHaveTextContent("いつものカフェ");
+    expect(marksAt(DESTINATION)).toHaveLength(2);
   });
 
   it("区間を押すと、「ルート結果」が効いている間はその中に、閉じている間は地図の小窓に中身を出し、「ルート設定」が効いている間は出さない", async () => {

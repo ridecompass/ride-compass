@@ -24,31 +24,20 @@ describe("WarningBadgeList", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("1件なら、その段階の出所の呼び名を1つのボタンにする", () => {
-    render(<WarningBadgeList items={[item("a", "wbgt", "warning")]} failures={[]} />);
-    const expected = display("wbgt", "warning");
-    const button = screen.getByRole("button", { name: `気象警報・注意報あり: ${expected.label}。押すと詳細を表示` });
-    expect(button).toHaveTextContent(expected.label);
-  });
-
-  it("小さく出すときは文字を出さず、最も重い段階の色のアイコンだけにする（読み上げの名前は同じ）", () => {
-    render(<WarningBadgeList items={[item("a", "wbgt", "warning")]} failures={[]} compact />);
-    const expected = display("wbgt", "warning");
-    const button = screen.getByRole("button", { name: `気象警報・注意報あり: ${expected.label}。押すと詳細を表示` });
-    expect(button).toHaveTextContent("");
-    expect(button).toHaveStyle({ color: expected.color });
-  });
-
-  it("複数なら、最も重い段階の呼び名に件数を添える（同じ重さなら先の方）", () => {
-    render(
-      <WarningBadgeList
-        items={[item("a", "jma", "advisory"), item("b", "flood", "warning"), item("c", "jma", "warning")]}
-        failures={[]}
-      />,
-    );
-    expect(screen.getByRole("button", { name: /^気象警報・注意報あり/ })).toHaveTextContent(
+  it.each([
+    ["1件なら、その段階の出所の呼び名", [item("a", "wbgt", "warning")], `${display("wbgt", "warning").label}`, "wbgt"],
+    [
+      "複数なら、最も重い段階の呼び名に件数を添える（同じ重さなら先の方）",
+      [item("a", "jma", "advisory"), item("b", "flood", "warning"), item("c", "jma", "warning")],
       `${display("flood", "warning").label}3件`,
-    );
+      "flood",
+    ],
+  ] as const)("文字を出さず最も重い段階の色のアイコン1つにし、名前に出す: %s", (_, items, summary, topSource) => {
+    render(<WarningBadgeList items={[...items]} failures={[]} />);
+    const button = screen.getByRole("button", { name: `気象警報・注意報あり: ${summary}。押すと詳細を表示` });
+    expect(button).toHaveTextContent(/^$/);
+    expect(button.querySelector("svg")).not.toBeNull();
+    expect(button).toHaveStyle({ color: display(topSource, "warning").color });
   });
 
   it("押すと全件を、補足と一緒に出す", async () => {
@@ -64,7 +53,7 @@ describe("WarningBadgeList", () => {
     expect(entries.map((entry) => entry.textContent)).toEqual(["aの名前付随事項: 土砂災害", "bの名前"]);
   });
 
-  it("取得に失敗した出所があれば「未取得」の印を出し、押すと出所ごとの理由を出す（警告なしと読ませない）", async () => {
+  it("取得に失敗した出所があれば、文字の無い「未取得」の印を出し、押すと出所ごとの理由を出す（警告なしと読ませない）", async () => {
     render(
       <WarningBadgeList
         items={[]}
@@ -77,7 +66,8 @@ describe("WarningBadgeList", () => {
     const mark = screen.getByRole("button", {
       name: "警報・注意報・河川氾濫予報を取得できていません。押すと詳細を表示",
     });
-    expect(mark).toHaveTextContent("未取得");
+    expect(mark).toHaveTextContent(/^$/);
+    expect(mark.querySelector("svg")).not.toBeNull();
     await userEvent.click(mark);
     expect(await screen.findByText("警報・注意報・河川氾濫予報を取得できていません")).toBeInTheDocument();
     expect(screen.getByText("警報・注意報: [通信エラー]")).toBeInTheDocument();

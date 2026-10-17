@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
-import { ClockIcon, RaindropIcon, ThermometerIcon, WindIcon } from "@/components/ui/icons/icons";
+import { ClockIcon, RaindropIcon, ThermometerIcon, TodayOutlookIcon, WindIcon } from "@/components/ui/icons/icons";
 import { formatJstHourMinute } from "@/lib/time";
 import type { WeatherConditions, WeatherPeriodOutlook } from "@/types/weather";
 import { mapDisplay } from "@/types/generated/mapDisplay";
@@ -115,14 +115,8 @@ export default function TodayOutlook({ weather, loading, error }: TodayOutlookPr
     return (
       <Popover>
         <PopoverTrigger asChild>
-          <Button
-            variant="danger"
-            size="xs"
-            shape="pill"
-            className="font-semibold"
-            aria-label="今日のモデルの計算値の取得に失敗しました"
-          >
-            今日
+          <Button variant="danger" size="headerIcon" aria-label="今日のモデルの計算値の取得に失敗しました">
+            <TodayOutlookIcon size={18} />
           </Button>
         </PopoverTrigger>
         <PopoverContent {...PANEL_PROPS}>
@@ -172,13 +166,12 @@ export default function TodayOutlook({ weather, loading, error }: TodayOutlookPr
     <Popover>
       <PopoverTrigger asChild>
         <Button
-          size="xs"
-          shape="pill"
-          className="bg-transparent font-semibold"
+          variant="ghost"
+          size="headerIcon"
           aria-label="今日のモデルの計算値を表示"
           usage="今日の天気の見込み（気温・雨・風・日の出と日の入り）を開きます。"
         >
-          今日
+          <TodayOutlookIcon size={18} />
         </Button>
       </PopoverTrigger>
       <PopoverContent {...PANEL_PROPS}>

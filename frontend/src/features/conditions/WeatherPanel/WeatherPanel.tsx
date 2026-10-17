@@ -2,7 +2,7 @@
 
 import { Fragment, type ReactNode } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
-import { RaindropIcon, ThermometerIcon, WindDirectionArrowIcon } from "@/components/ui/icons/icons";
+import { NotFetchedIcon, RaindropIcon, ThermometerIcon, WindDirectionArrowIcon } from "@/components/ui/icons/icons";
 import { Button } from "@/components/ui/Button/Button";
 import { formatJstHourMinute } from "@/lib/time";
 import { downwindDeg } from "@/lib/cardinalLabel";
@@ -66,14 +66,19 @@ export default function WeatherPanel({ amedas, loading, error }: WeatherPanelPro
   // 手元に観測値があるなら、直近の取り直しが失敗していてもそちらを出す（失敗の文言で
   // 値を置き換えない）。取得は一定間隔で続くため、回復すれば表示も戻る。
   if (!amedas) {
-    if (loading) return <p className={textVariants({ variant: "hint" })}>天候取得中...</p>;
+    // 読み込み中は、何も出さずに値を待つ（上部の帯には値とアイコンだけを置く）。
     // backendは観測所の解決失敗・欠測・上流の取得失敗を区別せず502にするため、「無い」と
-    // 断定せず取得できなかったことだけを出す。原因の詳細（混雑・HTTPステータス等）はtitleへ回す。
-    if (error)
+    // 断定せず取得できなかったことだけを印で出す。原因の詳細（混雑・HTTPステータス等）は使い方の文へ回す。
+    if (!loading && error)
       return (
-        <p className={textVariants({ variant: "error" })} title={error}>
-          観測値を取得できません
-        </p>
+        <span
+          role="img"
+          aria-label="観測値を取得できません"
+          data-usage={`いまいる場所の観測値を取れていません（${error}）。取り直しは続いていて、取れればここに値が出ます。`}
+          className="inline-flex size-7 items-center justify-center text-[var(--color-danger)]"
+        >
+          <NotFetchedIcon size={18} />
+        </span>
       );
     return null;
   }

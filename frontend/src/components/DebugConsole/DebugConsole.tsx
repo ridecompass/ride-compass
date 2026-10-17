@@ -78,7 +78,6 @@ export default function DebugConsole({ open, onClose }: DebugConsoleProps) {
             onClick={() => copy(visibleEntries.map(entryText).join("\n"))}
             disabled={visibleEntries.length === 0}
             aria-label={copied ? "表示中のログをコピーしました" : "表示中のログをコピー"}
-            title={copied ? "コピーしました" : "表示中のログをコピー"}
           >
             <CopyIcon size={14} />
           </Button>
