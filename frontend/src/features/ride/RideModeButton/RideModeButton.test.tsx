@@ -54,6 +54,7 @@ describe("RideModeButton", () => {
       await userEvent.click(screen.getByRole("button", { name: choice }));
       expect(handlers[chosen]).toHaveBeenCalledTimes(1);
       const others = (["onPress", "onRest", "onResume"] as const).filter((name) => name !== chosen);
+      expect(others).toHaveLength(2);
       for (const name of others) expect(handlers[name]).not.toHaveBeenCalled();
       expect(screen.queryByRole("button", { name: "案内を終える" })).toBeNull();
 
