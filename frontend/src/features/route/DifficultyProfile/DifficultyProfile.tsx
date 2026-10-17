@@ -24,6 +24,8 @@ interface DifficultyProfileProps {
   progressKm?: number | null;
   /** 置いた経由地を通る所のルートの上の距離（置いた順）。 */
   waypointKms: readonly number[];
+  /** 走行中の地図の下の図。目盛りの文字を大きくする。 */
+  riding?: boolean;
 }
 
 function boxesPath(boxes: readonly ProfileBox[], xOf: (km: number) => number): string {
@@ -46,6 +48,7 @@ export default function DifficultyProfile({
   onSelect,
   progressKm = null,
   waypointKms,
+  riding = false,
 }: DifficultyProfileProps) {
   const scale = useProfileScale(segments, scaleKm);
   // 塗る形はルートと横軸が変わったときだけ組む（なぞる間に動くのは、カーソルの線と選んだ区間の帯だけ）。
@@ -77,6 +80,7 @@ export default function DifficultyProfile({
       progressKm={progressKm}
       progressMarkY={progressMarkY}
       waypointKms={waypointKms}
+      riding={riding}
     >
       {paths.missing !== null && <path d={paths.missing} fill={palette.semantic.no_data} opacity={0.6} />}
       {paths.byAxis.map(({ axisId, d }) => (

@@ -674,7 +674,9 @@ async def test_each_segment_starts_and_ends_at_the_elevation_of_its_road_in_the_
         at(SOUTH_EAST), [], destination=at(SOUTH_WEST), max_routes=3, start_time=DEPARTURE)
 
     first, second = fastest_of(candidates).segments
-    assert [(s.start_elevation_m, s.end_elevation_m) for s in (first, second)] == [(None, None), (12.0, 10.0)]
+    assert [[(e.start_elevation_m, e.end_elevation_m) for e in s.elevations] for s in (first, second)] == [
+        [(None, None)], [(12.0, 10.0)],
+    ]
 
 
 async def test_each_segment_carries_the_road_class_values_the_map_paints_its_road_with(engine_over):

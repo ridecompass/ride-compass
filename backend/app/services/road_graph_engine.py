@@ -64,6 +64,7 @@ from app.domain.route_road_classes import RoadClassReader
 from app.domain.route import (
     Coordinates,
     DensityScoreInput,
+    ElevationStretch,
     EvaluatedRoute,
     RoadClassStretch,
     RouteSegmentDetail,
@@ -1408,12 +1409,19 @@ class RoadGraphEngine:
                     cumulative_distance_km=along_km[index],
                     distance_km=rounded_km,
                     # 標高の表は単精度で持つので、表に入れた桁へ丸め直す。
-                    start_elevation_m=(
-                        round(elevation_attr.start_elevation_m, ELEVATION_M_DECIMALS) if elevation_attr else None
-                    ),
-                    end_elevation_m=(
-                        round(elevation_attr.end_elevation_m, ELEVATION_M_DECIMALS) if elevation_attr else None
-                    ),
+                    elevations=[
+                        ElevationStretch(
+                            distance_km=rounded_km,
+                            start_elevation_m=(
+                                round(elevation_attr.start_elevation_m, ELEVATION_M_DECIMALS)
+                                if elevation_attr
+                                else None
+                            ),
+                            end_elevation_m=(
+                                round(elevation_attr.end_elevation_m, ELEVATION_M_DECIMALS) if elevation_attr else None
+                            ),
+                        )
+                    ],
                     estimated_arrival_time=arrival_time.isoformat(),
                     axis_difficulties=axis_scores,
                     axis_contributions=axis_contributions,

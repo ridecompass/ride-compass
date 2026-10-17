@@ -1058,6 +1058,15 @@ export interface components {
              */
             kind: "difficulty";
         };
+        /** ElevationStretch */
+        ElevationStretch: {
+            /** Distance Km */
+            distance_km: number;
+            /** Start Elevation M */
+            start_elevation_m: number | null;
+            /** End Elevation M */
+            end_elevation_m: number | null;
+        };
         /** ExternalCallStats */
         ExternalCallStats: {
             /** Calls */
@@ -1629,10 +1638,8 @@ export interface components {
             cumulative_distance_km: number;
             /** Distance Km */
             distance_km: number;
-            /** Start Elevation M */
-            start_elevation_m: number | null;
-            /** End Elevation M */
-            end_elevation_m: number | null;
+            /** Elevations */
+            elevations: components["schemas"]["ElevationStretch"][];
             /** Estimated Arrival Time */
             estimated_arrival_time: string | null;
             /** Axis Difficulties */

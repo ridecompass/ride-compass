@@ -1,6 +1,6 @@
 // 道のりのグラフに重ねるレイヤ。各レイヤの描き方と、応答の区間から値を引く所をここで宣言する。地図の「表示」とは別に選ぶ。
 //
-// 描き方は3つ。折れ線は区間の両端の値を距離に沿ってつなぎ、値の無い区間で線を切る。帯は区間の中の区分の並び
+// 描き方は3つ。折れ線は区間の中の道ごとの両端の値（応答の`elevations`）を距離に沿ってつなぎ、値の無い道で線を切る。帯は区間の中の区分の並び
 // （応答の`road_classes`）を距離に沿って色で塗る。点はルートの近くの点（応答の`points`）を通る距離に印で並べる。
 // 帯と点のレイヤと名前・行（色と呼び名）は地図の「表示」と同じ宣言から引く。
 
@@ -22,10 +22,10 @@ import {
   type PointLayer as PointDeclaration,
 } from "@/lib/mapDisplay/pointLayers";
 
-import { columnAtKm } from "@/features/route/DifficultyProfile/profileGeometry";
-
-type LayerSegment = Pick<RouteSegmentDetail, "start_elevation_m" | "end_elevation_m" | "road_classes">;
+type LayerSegment = Pick<RouteSegmentDetail, "elevations" | "road_classes">;
 type RoadClassValue = RouteSegmentDetail["road_classes"][string][number]["value"];
+
+type LineStretch = { readonly distance_km: number; readonly start: number | null; readonly end: number | null };
 
 export type LineLayer = {
   readonly id: string;
@@ -33,8 +33,8 @@ export type LineLayer = {
   readonly draw: {
     readonly kind: "line";
     readonly unit: string;
-    /** 区間の始まりと終わりの値。無ければnull。 */
-    readonly ends: (segment: LayerSegment) => readonly [number | null, number | null];
+    /** 区間の中の道ごとの、道の距離と始まり・終わりの値（無ければnull）を通る順に。 */
+    readonly stretches: (segment: LayerSegment) => readonly LineStretch[];
   };
 };
 
@@ -93,7 +93,16 @@ export const PROFILE_LAYERS: readonly ProfileLayer[] = [
   {
     id: "elevation",
     label: "標高",
-    draw: { kind: "line", unit: "m", ends: (segment) => [segment.start_elevation_m, segment.end_elevation_m] },
+    draw: {
+      kind: "line",
+      unit: "m",
+      stretches: (segment) =>
+        segment.elevations.map((stretch) => ({
+          distance_km: stretch.distance_km,
+          start: stretch.start_elevation_m,
+          end: stretch.end_elevation_m,
+        })),
+    },
   },
   // 並びと名前は地図の「表示」のレイヤのまま。
   ...mapDisplay.layers.flatMap((layer): (BandLayer | PointLayer)[] => {
@@ -108,6 +117,39 @@ export const PROFILE_LAYERS: readonly ProfileLayer[] = [
 
 export type LinePoint = { readonly km: number; readonly value: number };
 
+type Spread<T> = { readonly startKm: number; readonly endKm: number; readonly stretch: T };
+
+/** 区間の中の並びを、並びの距離の比で区間の長さへ割り振る。長さの無い区間・並びの距離の和が0の区間は何も返さない。 */
+function spread<T extends { readonly distance_km: number }>(
+  startKm: number,
+  endKm: number,
+  stretches: readonly T[],
+): Spread<T>[] {
+  const kept = stretches.filter((stretch) => stretch.distance_km > 0);
+  const total = kept.reduce((sum, stretch) => sum + stretch.distance_km, 0);
+  if (endKm <= startKm || total <= 0) return [];
+  let km = startKm;
+  let covered = 0;
+  return kept.map((stretch) => {
+    covered += stretch.distance_km;
+    const next = startKm + ((endKm - startKm) * covered) / total;
+    const piece = { startKm: km, endKm: next, stretch };
+    km = next;
+    return piece;
+  });
+}
+
+/** 折れ線の道ごとの部分。道の並びを持たない区間は、値の無い1つの部分にする（線を切る）。 */
+function linePieces(columns: readonly RouteStretch<LayerSegment>[], layer: LineLayer): Spread<LineStretch>[] {
+  return columns.flatMap(({ segment, startKm, endKm }) => {
+    if (endKm <= startKm) return [];
+    const pieces = spread(startKm, endKm, layer.draw.stretches(segment));
+    return pieces.length > 0
+      ? pieces
+      : [{ startKm, endKm, stretch: { distance_km: endKm - startKm, start: null, end: null } }];
+  });
+}
+
 /** 折れ線の切れ目の無い連なりと、値の最低・最高。値が1つも無ければ`range`はnull。 */
 export function layerLine(
   columns: readonly RouteStretch<LayerSegment>[],
@@ -115,31 +157,50 @@ export function layerLine(
 ): { runs: LinePoint[][]; range: { min: number; max: number } | null } {
   const runs: LinePoint[][] = [];
   let run: LinePoint[] = [];
-  for (const { segment, startKm, endKm } of columns) {
-    if (endKm <= startKm) continue;
-    const [start, end] = layer.draw.ends(segment);
-    if (start === null || end === null) {
+  for (const { startKm, endKm, stretch } of linePieces(columns, layer)) {
+    if (stretch.start === null || stretch.end === null) {
       if (run.length > 0) runs.push(run);
       run = [];
       continue;
     }
-    run.push({ km: startKm, value: start }, { km: endKm, value: end });
+    run.push({ km: startKm, value: stretch.start }, { km: endKm, value: stretch.end });
   }
   if (run.length > 0) runs.push(run);
   const values = runs.flat().map((point) => point.value);
   return { runs, range: values.length === 0 ? null : { min: Math.min(...values), max: Math.max(...values) } };
 }
 
-/** 距離`km`の地点の値。区間の中は両端の間を距離で割り振り、範囲の外は端の区間へ寄せる。値の無い区間ではnull。 */
+/** 距離`km`の地点を通る道の部分と、その中の位置（0〜1）。範囲の外は端の部分へ寄せる。 */
+function linePieceAtKm(columns: readonly RouteStretch<LayerSegment>[], layer: LineLayer, km: number) {
+  const pieces = linePieces(columns, layer);
+  if (pieces.length === 0) return null;
+  const piece = pieces.find((candidate) => km < candidate.endKm) ?? pieces[pieces.length - 1];
+  const fraction = Math.min(1, Math.max(0, (km - piece.startKm) / (piece.endKm - piece.startKm)));
+  return { stretch: piece.stretch, fraction };
+}
+
+/** 距離`km`の地点の値。道の中は両端の間を距離で割り振り、範囲の外は端の道へ寄せる。値の無い道ではnull。 */
 export function layerValueAtKm(
   columns: readonly RouteStretch<LayerSegment>[],
   layer: LineLayer,
   km: number,
 ): number | null {
-  const hit = columnAtKm(columns, km);
+  const hit = linePieceAtKm(columns, layer, km);
   if (hit === null) return null;
-  const [start, end] = layer.draw.ends(hit.column.segment);
+  const { start, end } = hit.stretch;
   return start === null || end === null ? null : start + (end - start) * hit.fraction;
+}
+
+/** 距離`km`の地点を通る道の勾配（%）。道の両端の値の差（m）を道の長さで割る。値の無い道ではnull。 */
+export function layerGradeAtKm(
+  columns: readonly RouteStretch<LayerSegment>[],
+  layer: LineLayer,
+  km: number,
+): number | null {
+  const hit = linePieceAtKm(columns, layer, km);
+  if (hit === null) return null;
+  const { start, end, distance_km } = hit.stretch;
+  return start === null || end === null ? null : ((end - start) / (distance_km * 1000)) * 100;
 }
 
 export type BandPiece = { readonly startKm: number; readonly endKm: number; readonly row: RoadTrackRow };
@@ -155,20 +216,9 @@ export function layerBand(columns: readonly RouteStretch<LayerSegment>[], layer:
   };
   for (const { segment, startKm, endKm } of columns) {
     if (endKm <= startKm) continue;
-    const stretches = (segment.road_classes[layer.id] ?? []).filter((stretch) => stretch.distance_km > 0);
-    const total = stretches.reduce((sum, stretch) => sum + stretch.distance_km, 0);
-    if (total <= 0) {
-      push(startKm, endKm, layer.draw.rowOf(null));
-      continue;
-    }
-    let km = startKm;
-    let covered = 0;
-    for (const stretch of stretches) {
-      covered += stretch.distance_km;
-      const next = startKm + ((endKm - startKm) * covered) / total;
-      push(km, next, layer.draw.rowOf(stretch.value));
-      km = next;
-    }
+    const spreadPieces = spread(startKm, endKm, segment.road_classes[layer.id] ?? []);
+    if (spreadPieces.length === 0) push(startKm, endKm, layer.draw.rowOf(null));
+    for (const piece of spreadPieces) push(piece.startKm, piece.endKm, layer.draw.rowOf(piece.stretch.value));
   }
   return pieces;
 }

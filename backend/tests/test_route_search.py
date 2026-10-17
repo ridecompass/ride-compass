@@ -87,7 +87,7 @@ def turn_tree(state_count, *, node_cost, node_length_m, node_seconds, node_best_
 def segment_detail(difficulty, distance_km):
     return RouteSegmentDetail(
         start_latitude=35.0, start_longitude=139.0, end_latitude=35.0, end_longitude=139.0,
-        cumulative_distance_km=0.0, distance_km=distance_km, start_elevation_m=None, end_elevation_m=None,
+        cumulative_distance_km=0.0, distance_km=distance_km, elevations=[],
         road_classes={}, difficulty=difficulty,
     )
 
