@@ -56,15 +56,13 @@ description: "タスクを実装担当・検証担当として進める手順（
 5. マージの前に済ませる本番への書き込みが要るなら、出さずに `docs/conventions/flow.md`「担当」の「自動で進めないもの」のとおり返す。
    **下書きの** Pull Request を出す（`gh pr create --draft --base master --head orch/tasks-<番号> --title <題名> --body-file <本文>`。gh の既定の
    名義のまま）。前の Pull Request が開いていれば、新しく出さずに push する。**CI は待たずに手放す**（ゲートが検査にし、合格すれば
-   レビュー可能にして検証担当へ渡し、落ちたら実装担当へ戻す。変異テストの生き残りが扱われていなければ、検証担当が下書きへ戻す）。
+   レビュー可能にして検証担当へ渡し、落ちたら実装担当へ戻す）。
    ただし手放す前に、CI が始まったこと（push した版の検査が GitHub に出たこと）を `gh pr checks <番号> -R ridecompass/ride-compass` で確かめる
    （CI が始まる形で push するのは実装担当の責務。検査が1つも無いまま手放すと、ゲートがイレギュラーを問う）。行が出るまで打ち直し、2分出なければ
    `gh pr view <番号> -R ridecompass/ride-compass --json mergeable` で master とぶつかっていないかを見て、ぶつかっていれば作業ブランチへ
    `git merge origin/master` で取り込み（「競合を解く」）、push し直す。それでも出なければ、出ないことを報告して終える。CI の結果は待たない。
-   戻ってきたら、落ちた検査（`gh pr checks <番号> -R ridecompass/ride-compass`）か、変異テストの注記（Mutation PR の実行の ANNOTATIONS）と
-   Pull Request のコメントを読んで直す。
-   直し方は .claude/rules/testing.md「テストが落ちたときの直し方」。生き残りは、利用者や運用に見える振る舞いが変わるものだけテストを足し、
-   ほかは本文の検証に1件1行で理由を書く。
+   戻ってきたら、落ちた検査（`gh pr checks <番号> -R ridecompass/ride-compass`）と Pull Request のコメントを読んで直す。
+   直し方は .claude/rules/testing.md「テストが落ちたときの直し方」。
    - **本文**: 題名と本文はそのまま master のコミットになる（`docs/conventions/flow.md`「コミット」）。`.github/pull_request_template.md` を
      作業ツリーの外へ写して `<…>` を埋め、`node scripts/pr-body.js <本文>` で形を照らしてから渡す。直すときは
      `gh issue edit <番号> -R ridecompass/ride-compass --body-file <本文>`。本番の宛先の値は書かず、tech-stack.md「本番の宛先」の名で書く。
@@ -84,9 +82,6 @@ description: "タスクを実装担当・検証担当として進める手順（
    issue の完了の条件・変更が届く範囲を、実装担当の報告を写さずに自分で見る。完了の条件と、利用者に見える結果（画面・API の応答・
    テストが見る振る舞い）を先に見る。画面は実装担当と同じ道具・脚本で後を撮り、前は貼られた画像（コメントの添付の URL を
    `curl -sSL -o <作業ツリーの外> <URL>` で取って Read で見る）と比べる。`lost_constraints.py` も回し、「消えた」制約に本文の処置が無ければ満たしていない。
-   変異テストの生き残り（Pull Request の先頭のコミットの Mutation PR の実行。`gh run list -R ridecompass/ride-compass --workflow mutation-pr.yml --commit <SHA>`
-   の実行を `gh run view <id> -R ridecompass/ride-compass` で開いた ANNOTATIONS の、変えた行への注記）も1件ずつ見て、その書き換えに
-   気づくテストを足したか、本文の検証に理由があるかを確かめる。どちらも無い生き残りが1件でもあれば満たしていない。
    ゲート（`tools/flow-gate/`）の変更は、事実を `tools/flow-gate/src/decide.js: decide` へ渡して出る値で見る（本物の GitHub へは書かない）。
 2. 結果を、満たしていてもいなくても issue にコメントで書く（見出し「確かめた結果」。条件ごとに、何をどう見て何が出たか）。
 3. 利用者から見える振る舞い・モジュールの設計が変わるなら、完了の条件（子の作業なら親の完了の条件。ユーザーが確かめるのは要望の結果なので）に `- 確かめる: ユーザー` と `- 見る所と要点:` を付けた条件を足して理由を書く（マージは待たない。テスト・CI で合否が決まることは足さない。
@@ -94,7 +89,7 @@ description: "タスクを実装担当・検証担当として進める手順（
    issue の答えがマージの前のユーザーの確認を求めていて答えがまだなら、マージせずに問う。実装担当の着手より後に届いた依頼
    （コメント）と、範囲の中で master に残る直し漏れは、完了の条件にチェックの無い行として足す（戻す理由にしない。マージのあとの残りになる）。
    開発機にしか無いもので確かめる行だけが残るなら、マージの前に対話作業の issue を起こして前提に張る（.claude/skills/file-issue/SKILL.md「分ける」）。
-4. 満たしていなければ（1 の扱われていない生き残りを含む）、足りないこと（生き残りなら注記の位置と書き換え）を Pull Request のコメントに書き、下書きへ戻す（`gh pr ready <番号> -R ridecompass/ride-compass --undo`。
+4. 満たしていなければ、足りないことを Pull Request のコメントに書き、下書きへ戻す（`gh pr ready <番号> -R ridecompass/ride-compass --undo`。
    `gh pr view --json isDraft` が `true` になるまで打ち直す）。ゲートが実装担当へ戻す。
 5. 満たしていれば、完了の条件に本番での前後の比べがあり、今の本番の前の値が issue に無ければ、本番を読むだけの口
    （`backend/scripts/prod_route_check.py` と同じ口）で取って書いてからマージする。読むだけの口で取れないなら、4 のとおり戻し、前の値を取る

@@ -202,9 +202,6 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
     基準で落ちるテストは、テストどうしの依存や揺れで落ちていて、変異の回で落ちても見つけたとは言えない。全部の測りでは
     基準を変異と一緒に回す（`plan.py` の `MUT_WITH_BASELINE`）ので、手で置くのは基準だけを回したいときだけ。
   - どれも master へ入れない（入った Pull Request は `backend/tests/structure/test_mutation_lists_absent.py` が CI で落とす）。
-- **Pull Request ごと**: `backend/app` を変えた Pull Request では `.github/workflows/mutation-pr.yml` が自動で走り、変えた関数の変異と
-  その基準だけを回して、生き残りを変えた行への注記と実行の要約に出す（`diff_scope.py`・`pr_plan.py`・`report_pr.py`）。必須の
-  チェックではない。読み方は .claude/skills/task-work/SKILL.md「実装担当」の5と「検証担当」の1。
 - **結果は成果物**: 見直しの `mutation-review`（90日。`summary.md`・`candidates.md`・`review.json`・`report.json`。読み方は test-review スキルの3）と、
   元の記録の `mutation-<番号>`・`recheck-<番号>`（14日）。元の記録から表と候補を出し直すときは、`gh run download <実行の id> -R ridecompass/ride-compass -D <場所>` で取り、
   測った版のチェックアウトの `backend/` で `python scripts/mutation/report.py <場所> <当て直しの成果物の場所> <表のファイル>` と

@@ -1,6 +1,6 @@
 """`backend/scripts/mutation/_shared.py`の、変異の結果の判断と mutmut の名前の読み書きのテスト。
 
-全部の測りの表（`report.py`）と Pull Request の知らせ（`report_pr.py`）は、どちらもこの判断で生き残りを数える。外れると、
+全部の測りの表（`report.py`）は、この判断で生き残りを数える。外れると、
 基準でも落ちるテストしか落ちなかった変異を気づいたに数え、テストの穴を知らせない。
 
 ここで見ないもの: 記録のファイルの置き場と並べ方（台本ごとの読み方）、mutmut 自身が付ける名前（測りの記録で見る）。
@@ -46,8 +46,11 @@ def test_baseline_failures_spread_file_records_and_include_a_function_with_only_
     }
 
 
-@pytest.mark.parametrize(("module", "cls", "function"), [("app.domain.x", None, "f_g"), ("app.services.y", "Cls", "run")])
-def test_a_mangled_name_reads_back_with_or_without_the_mutant_suffix(module, cls, function):
-    name = shared.mangled_name(module, function, cls)
-
-    assert shared.split_name(name) == shared.split_name(f"{name}__mutmut_12") == (module, cls, function)
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [("app.domain.x.x_f_g", ("app.domain.x", None, "f_g")), ("app.services.y.xǁClsǁrun", ("app.services.y", "Cls", "run"))],
+    ids=["モジュールの直下の関数", "クラスのメソッド"],
+)
+def test_a_mutmut_name_is_read_with_or_without_the_mutant_suffix(name, expected):
+    """mutmut が付ける関数の名前（`app.x.x_f`・`app.x.xǁClsǁmethod`）を、変異の番号が付いても同じに読む。"""
+    assert shared.split_name(name) == shared.split_name(f"{name}__mutmut_12") == expected
