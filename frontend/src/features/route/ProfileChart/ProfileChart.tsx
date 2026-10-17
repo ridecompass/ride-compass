@@ -170,99 +170,103 @@ export default function ProfileChart({
 
   return (
     <div className="flex flex-col gap-0.5">
-      <svg
-        viewBox={`0 0 ${PROFILE_VIEW_WIDTH} ${PROFILE_VIEW_HEIGHT}`}
-        preserveAspectRatio="none"
-        // 押せる図は縦のなぞりだけをブラウザ（シート・パネルのスクロール）へ渡し、横の動きは地点を選ぶ操作に使う。見るだけの図は
-        // どの動きもブラウザへ渡さない。
-        className="h-[var(--profile-chart-height,3.5rem)] w-full touch-none rounded-sm data-[pickable=true]:touch-pan-y bg-[var(--color-surface-2)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] data-[pickable=true]:cursor-crosshair"
-        data-pickable={onSelect !== undefined}
-        {...(onSelect === undefined
-          ? { role: "img", "aria-label": label }
-          : {
-              role: "slider",
-              tabIndex: 0,
-              "aria-label": `${label}（動かすと、その地点を地図に出す）`,
-              "data-usage": usage,
-              "aria-valuemin": 0,
-              "aria-valuemax": roundToDigits(routeKm, 1),
-              "aria-valuenow": roundToDigits(positionKm, 1),
-              "aria-valuetext": `${positionKm.toFixed(1)} km地点`,
-              onPointerDown: (event: PointerEvent<SVGSVGElement>) => {
-                event.currentTarget.setPointerCapture?.(event.pointerId);
-                if (gesture.current.pointers.size === 0) gesture.current.start = { x: event.clientX, y: event.clientY };
-                gesture.current.pointers.add(event.pointerId);
-                // 画面全体の指は窓の捕捉の段で先に数えてあるので、図の上の指もそこに含まれる。
-                if (screenPointers.current.size > 1) gesture.current.multi = true;
-              },
-              onPointerMove: (event: PointerEvent<SVGSVGElement>) => {
-                if (event.buttons === 0 || gesture.current.multi || !gesture.current.pointers.has(event.pointerId))
-                  return;
-                if (axisOf(event) === "x") selectAt(kmAtPointer(event));
-              },
-              onPointerUp: (event: PointerEvent<SVGSVGElement>) => {
-                if (
-                  !gesture.current.multi &&
-                  gesture.current.pointers.has(event.pointerId) &&
-                  gesture.current.axis !== "y"
-                )
-                  selectAt(kmAtPointer(event));
-                releasePointer(event.pointerId);
-              },
-              onPointerCancel: (event: PointerEvent<SVGSVGElement>) => releasePointer(event.pointerId),
-              onKeyDown: handleKeyDown,
-            })}
-      >
-        {selectedColumn !== undefined && (
-          <rect
-            x={xOf(selectedColumn.startKm)}
-            y={0}
-            width={Math.max(xOf(selectedColumn.endKm) - xOf(selectedColumn.startKm), 2)}
-            height={PROFILE_VIEW_HEIGHT}
-            fill={palette.semantic.inspected}
-            opacity={0.25}
-          />
-        )}
-        {children}
-        {travelledKm !== null && (
-          <>
-            {/* 背景の色を重ねて、中身を地図の走り終えた区間の線と同じ濃さまで薄める。 */}
+      {/* 距離の目盛りは図の中の下の角に重ね、図の下に段を取らない（スマホのシートの低い高さで図を大きく見せる）。 */}
+      <div className="relative">
+        <svg
+          viewBox={`0 0 ${PROFILE_VIEW_WIDTH} ${PROFILE_VIEW_HEIGHT}`}
+          preserveAspectRatio="none"
+          // 押せる図は縦のなぞりだけをブラウザ（シート・パネルのスクロール）へ渡し、横の動きは地点を選ぶ操作に使う。見るだけの図は
+          // どの動きもブラウザへ渡さない。
+          className="h-[var(--profile-chart-height,3.5rem)] w-full touch-none rounded-sm data-[pickable=true]:touch-pan-y bg-[var(--color-surface-2)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] data-[pickable=true]:cursor-crosshair"
+          data-pickable={onSelect !== undefined}
+          {...(onSelect === undefined
+            ? { role: "img", "aria-label": label }
+            : {
+                role: "slider",
+                tabIndex: 0,
+                "aria-label": `${label}（動かすと、その地点を地図に出す）`,
+                "data-usage": usage,
+                "aria-valuemin": 0,
+                "aria-valuemax": roundToDigits(routeKm, 1),
+                "aria-valuenow": roundToDigits(positionKm, 1),
+                "aria-valuetext": `${positionKm.toFixed(1)} km地点`,
+                onPointerDown: (event: PointerEvent<SVGSVGElement>) => {
+                  event.currentTarget.setPointerCapture?.(event.pointerId);
+                  if (gesture.current.pointers.size === 0)
+                    gesture.current.start = { x: event.clientX, y: event.clientY };
+                  gesture.current.pointers.add(event.pointerId);
+                  // 画面全体の指は窓の捕捉の段で先に数えてあるので、図の上の指もそこに含まれる。
+                  if (screenPointers.current.size > 1) gesture.current.multi = true;
+                },
+                onPointerMove: (event: PointerEvent<SVGSVGElement>) => {
+                  if (event.buttons === 0 || gesture.current.multi || !gesture.current.pointers.has(event.pointerId))
+                    return;
+                  if (axisOf(event) === "x") selectAt(kmAtPointer(event));
+                },
+                onPointerUp: (event: PointerEvent<SVGSVGElement>) => {
+                  if (
+                    !gesture.current.multi &&
+                    gesture.current.pointers.has(event.pointerId) &&
+                    gesture.current.axis !== "y"
+                  )
+                    selectAt(kmAtPointer(event));
+                  releasePointer(event.pointerId);
+                },
+                onPointerCancel: (event: PointerEvent<SVGSVGElement>) => releasePointer(event.pointerId),
+                onKeyDown: handleKeyDown,
+              })}
+        >
+          {selectedColumn !== undefined && (
             <rect
-              data-progress="travelled"
-              x={0}
+              x={xOf(selectedColumn.startKm)}
               y={0}
-              width={xOf(travelledKm)}
+              width={Math.max(xOf(selectedColumn.endKm) - xOf(selectedColumn.startKm), 2)}
               height={PROFILE_VIEW_HEIGHT}
-              className="fill-[var(--color-surface-2)]"
-              opacity={1 - mapDisplay.route.opacities.travelled}
+              fill={palette.semantic.inspected}
+              opacity={0.25}
             />
+          )}
+          {children}
+          {travelledKm !== null && (
+            <>
+              {/* 背景の色を重ねて、中身を地図の走り終えた区間の線と同じ濃さまで薄める。 */}
+              <rect
+                data-progress="travelled"
+                x={0}
+                y={0}
+                width={xOf(travelledKm)}
+                height={PROFILE_VIEW_HEIGHT}
+                className="fill-[var(--color-surface-2)]"
+                opacity={1 - mapDisplay.route.opacities.travelled}
+              />
+              <line
+                data-progress="position"
+                x1={xOf(travelledKm)}
+                x2={xOf(travelledKm)}
+                y1={0}
+                y2={PROFILE_VIEW_HEIGHT}
+                className="stroke-[var(--color-accent)]"
+                strokeWidth={3}
+                vectorEffect="non-scaling-stroke"
+              />
+            </>
+          )}
+          {cursorKm !== null && (
             <line
-              data-progress="position"
-              x1={xOf(travelledKm)}
-              x2={xOf(travelledKm)}
+              x1={xOf(cursorKm)}
+              x2={xOf(cursorKm)}
               y1={0}
               y2={PROFILE_VIEW_HEIGHT}
-              className="stroke-[var(--color-accent)]"
-              strokeWidth={3}
+              stroke={palette.semantic.inspected}
+              strokeWidth={2}
               vectorEffect="non-scaling-stroke"
             />
-          </>
-        )}
-        {cursorKm !== null && (
-          <line
-            x1={xOf(cursorKm)}
-            x2={xOf(cursorKm)}
-            y1={0}
-            y2={PROFILE_VIEW_HEIGHT}
-            stroke={palette.semantic.inspected}
-            strokeWidth={2}
-            vectorEffect="non-scaling-stroke"
-          />
-        )}
-      </svg>
-      <div className="flex justify-between text-[length:var(--font-size-xs)] text-[var(--color-muted)] tabular-nums">
-        <span>0</span>
-        <span>{widthKm.toFixed(1)}km</span>
+          )}
+        </svg>
+        <div className="pointer-events-none absolute inset-x-1 bottom-0 flex justify-between text-[length:var(--font-size-xs)] text-[var(--color-muted)] tabular-nums">
+          <span>0</span>
+          <span>{widthKm.toFixed(1)}km</span>
+        </div>
       </div>
       {caption?.(selectedColumn === undefined ? null : positionKm)}
     </div>

@@ -22,6 +22,9 @@ const listVariants = cva("flex", {
        * 薄めた幅と同じで、送り切ると最後のカードが薄まらずに見える。 */
       cards:
         "gap-1.5 overflow-x-auto pr-6 [mask-image:linear-gradient(to_right,black_calc(100%_-_1.5rem),transparent)] [scrollbar-width:none]",
+      /** 図の上の角に重ねる小さな切り替え（道のりのグラフ）。下の図が透けすぎないよう、地を少しだけ透かす。 */
+      overlay:
+        "overflow-hidden rounded-full border border-[var(--color-border)] bg-[color-mix(in_srgb,var(--background)_85%,transparent)]",
     },
   },
   defaultVariants: { variant: "underline" },
@@ -37,6 +40,9 @@ const triggerVariants = cva(
         // 選んだカードは枠の代わりに内側の線と地の色で示す（枠の太さを変えると、選ぶたびに中身が動く）。
         cards:
           "w-[4.875rem] flex-none flex-col items-stretch overflow-hidden rounded-sm border border-[var(--color-border)] px-1.5 pt-1 text-left tabular-nums data-[state=active]:border-transparent data-[state=active]:bg-[var(--color-accent-bg)] data-[state=active]:shadow-[inset_0_0_0_2px_var(--color-accent-strong)]",
+        // 1つを選ぶ切り替え（`ToggleGroup`の`segmented`）と同じく、選んだ方を地の色で示す。
+        overlay:
+          "min-h-6 flex-none px-2 py-0.5 font-normal text-[length:var(--font-size-xs)] text-[var(--foreground)] data-[state=active]:bg-[var(--color-accent)] data-[state=active]:text-white",
       },
     },
     defaultVariants: { variant: "underline" },
