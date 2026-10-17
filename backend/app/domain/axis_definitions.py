@@ -8,7 +8,7 @@
 - 既存テンプレート＋既存材料の組み合わせで表現できる新しい軸は、`AXIS_DEFINITIONS`へ
   1エントリ追加するだけで、区間インスペクタ・地図の値配信・ルート選び
   （`build_static_edge_score_matrix`）のすべてへ同時に反映される。評価は
-  `evaluate_axis_array`1本で、Pythonの値で持つ入口（`evaluate_axis_values`）も配列にして通す。
+  `evaluate_axis_array`1本で、Pythonの値で持つ入口（`evaluate_axes_values`等）も配列にして通す。
 - 材料（material）はOSM生タグそのものではなく「評価直前まで解決済みの値」
   （勾配%・風ペナルティm/s・路面の見込み・km正規化済み密度・レシピ計算済みレベル・
   タグ由来フラグ）。材料の解決（抽出）は呼び出し元の責務で、材料idごとの意味は
@@ -997,26 +997,12 @@ def _scores_or_none(scores: np.ndarray) -> list[float | None]:
     return [None if math.isnan(score) else score for score in scores.tolist()]
 
 
-def evaluate_axis_values(
-    definition: AxisDefinition, materials: Mapping[str, Sequence[object]], length: int
-) -> list[float | None]:
-    """材料id→Pythonの値の並び（長さ`length`、欠損=None）から、要素ごとの軸の得点を求める
-    （評価できない要素はNone）。評価は配列へ並べ替えて`evaluate_axis_array`が行う——入口ごとに
-    評価を書くと、区間を押して見える得点とルート選びが使う得点が同じ道で食い違う。
-
-    定義が参照しない材料が含まれていてもよく、参照する材料が無ければ全要素欠損として扱う。
-    """
-    columns = _python_value_columns(
-        materials, definition.materials, _term_material_ids([definition]), length
-    )
-    return _scores_or_none(evaluate_axis_array(definition, columns))
-
-
 def evaluate_axes_values(materials: Mapping[str, Sequence[object]], length: int) -> dict[str, list[float | None]]:
-    """`evaluate_axis_values`の全軸版。公開軸だけを依存順（`published_axis_order`）に返す。
+    """材料id→Pythonの値の並び（長さ`length`、欠損=None）から、公開軸ごとの要素の得点を求める
+    （評価できない要素はNone）。評価は配列へ並べ替えて`evaluate_axes_array`が行う。
+    公開軸だけを依存順（`published_axis_order`）に返す。
 
-    評価できなかった公開軸も、キーを残して値をNoneにする（区間インスペクタの`available=False`・
-    合成の分母からの除外がこれを前提にする）。
+    評価できなかった公開軸も、キーを残して値をNoneにする。
     """
     evaluated = evaluate_axes_array(_axes_python_value_columns(materials, length), AXIS_DEFINITIONS)
     return {axis_id: _scores_or_none(evaluated[axis_id]) for axis_id in published_axis_order(AXIS_DEFINITIONS)}
@@ -1147,7 +1133,7 @@ def first_term_points(shape: BreakpointLinearShape, values: Sequence[float]) -> 
 
 
 def raw_values(shape: "AxisShape", materials: Mapping[str, Sequence[object]], length: int) -> list[float | None]:
-    """`axis_raw_value_array`をPythonの値の並び（`evaluate_axis_values`と同じ形）から求める。
+    """`axis_raw_value_array`をPythonの値の並び（`evaluate_axes_values`と同じ形）から求める。
     保存前の`shape`も渡せるよう軸の定義ではなく形を受け取る。`CategoricalShape`は全要素None。"""
     if not isinstance(shape, BreakpointLinearShape):
         return [None] * length
