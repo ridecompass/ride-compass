@@ -11,7 +11,9 @@ import { describe, expect, it } from "vitest";
 
 import { evaluateExpression as evaluate } from "@/testing/mapExpressions";
 
-import { POINT_LAYERS, pointGroup } from "./points";
+import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
+
+import { pointGroup } from "./points";
 
 const TILES = {
   urls: {

@@ -15,6 +15,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { onBackend } from "@/testing/backendServer";
+import type { PointTileLayer } from "@/lib/mapDisplay/pointLayers";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 
 vi.mock("@/lib/tileBaseUrl", () => ({ tileBaseUrl: () => "https://tiles.example" }));
@@ -47,7 +48,7 @@ describe("タイルの世代とURL", () => {
 
   it("点のタイルは、1つの配信のパスにレイヤー名を持ち、そのレイヤーの世代を持つ", () => {
     const versions = api.completeTileVersions(allVersions())!;
-    const [layer] = Object.keys(regionTileConfig.point_layers) as api.PointTileLayer[];
+    const [layer] = Object.keys(regionTileConfig.point_layers) as PointTileLayer[];
 
     expect(api.pointTileUrl(versions, layer)).toBe(
       `https://tiles.example/api/region/point-tiles/${layer}/{z}/{x}/{y}.pbf?v=${layer}-v1`,

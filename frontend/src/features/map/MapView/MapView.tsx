@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { buildPointPopupContent, pointPlaceName } from "@/features/map/MapView/pointPopup";
+import { buildPointPopupContent } from "@/features/map/MapView/pointPopup";
+import { pointPlaceName } from "@/lib/mapDisplay/pointLayers";
 import RoadInspectorPopup from "@/features/map/MapView/RoadInspectorPopup";
 import { roadWayId, type RoadSurfacePopupProperties } from "@/features/map/MapView/roadFacts";
 import * as maplibregl from "maplibre-gl";

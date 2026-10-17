@@ -4517,6 +4517,13 @@
             "type": "array",
             "title": "Turns"
           },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/RoutePoint"
+            },
+            "type": "array",
+            "title": "Points"
+          },
           "overall_difficulty": {
             "anyOf": [
               {
@@ -4587,6 +4594,7 @@
           "edge_point_offsets",
           "node_ids",
           "turns",
+          "points",
           "overall_difficulty",
           "axis_difficulties",
           "axis_contributions",
@@ -4845,6 +4853,46 @@
           "no_candidates_reason"
         ],
         "title": "RouteGenerateResponse"
+      },
+      "RoutePoint": {
+        "properties": {
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
+          },
+          "layer": {
+            "type": "string",
+            "title": "Layer"
+          },
+          "properties": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Properties"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "distance_km",
+          "layer",
+          "properties"
+        ],
+        "title": "RoutePoint"
       },
       "RoutePreferenceWeights": {
         "additionalProperties": {

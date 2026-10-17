@@ -15,18 +15,23 @@ import { profileBoxes } from "@/features/route/DifficultyProfile/profileGeometry
 import ProfileChart, { PROFILE_VIEW_HEIGHT, useProfileScale } from "@/features/route/ProfileChart/ProfileChart";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import palette from "@/types/generated/palette.json";
-import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
+import type { RoutePoint, RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 
 import {
   bandLegendRows,
   bandRowAtKm,
   layerBand,
   layerLine,
+  layerMarks,
   layerValueAtKm,
+  markLegendRows,
+  markNearKm,
   PROFILE_LAYERS,
   type BandLayer,
   type BandPiece,
   type LineLayer,
+  type PointLayer,
+  type PointMark,
 } from "./profileLayers";
 import type { ProfileLayerSelection } from "./useProfileLayers";
 
@@ -35,9 +40,13 @@ const LINE_MARGIN = 8;
 /** 帯1本の高さと、帯どうしの間（描画の縦座標）。帯はグラフの下から積み、折れ線は残りの上の範囲に描く。 */
 const BAND_HEIGHT = 8;
 const BAND_GAP = 2;
+/** 選んだ地点の点とみなす、地点からの道のりの幅（横軸の全幅に対する割合）。指でなぞる細かさに合わせる。 */
+const MARK_PICK_WIDTH_RATIO = 0.02;
 
 interface RouteProfileProps {
   segments: readonly RouteSegmentDetail[];
+  /** ルートの近くの点（通る道のりの順）。 */
+  points: readonly RoutePoint[];
   /** ルートの総合難易度。値の無い区間をこの高さで描く。 */
   overallDifficulty: number | null;
   /** 難易度を下から積む軸の並び（カタログの順）と色。 */
@@ -57,6 +66,7 @@ interface RouteProfileProps {
 /** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「評価で塗る」は区間の難易度を、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、同じ横軸で出す。 */
 export default function RouteProfile({
   segments,
+  points,
   overallDifficulty,
   axes,
   axisColors,
@@ -83,9 +93,15 @@ export default function RouteProfile({
       bands: chosen
         .filter((layer): layer is BandLayer => layer.draw.kind === "band")
         .map((layer) => ({ layer, pieces: layerBand(scale.columns, layer) })),
+      marks: chosen
+        .filter((layer): layer is PointLayer => layer.draw.kind === "points")
+        .map((layer) => ({ layer, marks: layerMarks(points, layer) })),
     };
-  }, [scale, layers.ids]);
-  const lineBottom = PROFILE_VIEW_HEIGHT - shownLayers.bands.length * (BAND_HEIGHT + BAND_GAP);
+  }, [scale, layers.ids, points]);
+  // 点の印の行は帯の上に積む。
+  const rowCount = shownLayers.bands.length + shownLayers.marks.length;
+  const lineBottom = PROFILE_VIEW_HEIGHT - rowCount * (BAND_HEIGHT + BAND_GAP);
+  const rowTop = (row: number) => lineBottom + BAND_GAP + row * (BAND_HEIGHT + BAND_GAP);
 
   function yOf(value: number, range: { min: number; max: number }): number {
     const span = range.max - range.min;
@@ -100,6 +116,18 @@ export default function RouteProfile({
     return atPoint === null ? null : <p key={layer.id}>{`${layer.label}・この地点 ${atPoint.label}`}</p>;
   }
   const bandPiecesOf = new Map(shownLayers.bands.map(({ layer, pieces }) => [layer.id, { layer, pieces }]));
+
+  function markCaption(layer: PointLayer, marks: readonly PointMark[], pointKm: number | null) {
+    if (marks.length === 0) return <p key={layer.id}>{layer.label}はルートの近くにありません。</p>;
+    const atPoint = pointKm === null ? null : markNearKm(marks, pointKm, scale.widthKm * MARK_PICK_WIDTH_RATIO);
+    if (atPoint === null) return null;
+    return (
+      <p
+        key={layer.id}
+      >{`${layer.label}・この地点 ${atPoint.kinds}${atPoint.name === null ? "" : ` ${atPoint.name}`}`}</p>
+    );
+  }
+  const marksOf = new Map(shownLayers.marks.map(({ layer, marks }) => [layer.id, { layer, marks }]));
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex flex-col gap-1">
@@ -163,6 +191,7 @@ export default function RouteProfile({
               <ul className="flex flex-col gap-1 text-[length:var(--font-size-sm)]">
                 {PROFILE_LAYERS.map((layer) => {
                   const band = bandPiecesOf.get(layer.id);
+                  const marked = marksOf.get(layer.id);
                   return (
                     <li key={layer.id}>
                       <label className="flex cursor-pointer items-center gap-1.5">
@@ -179,6 +208,19 @@ export default function RouteProfile({
                           className="ml-6 flex flex-wrap gap-x-2 text-[length:var(--font-size-xs)] text-[var(--color-muted)]"
                         >
                           {bandLegendRows(band.layer, band.pieces).map((row) => (
+                            <li key={row.key} className="flex items-center gap-1">
+                              <Dot tone="none" style={{ backgroundColor: row.color }} />
+                              <span>{row.label}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {marked !== undefined && marked.marks.length > 0 && (
+                        <ul
+                          aria-label={`${layer.label}の凡例`}
+                          className="ml-6 flex flex-wrap gap-x-2 text-[length:var(--font-size-xs)] text-[var(--color-muted)]"
+                        >
+                          {markLegendRows(marked.layer, marked.marks).map((row) => (
                             <li key={row.key} className="flex items-center gap-1">
                               <Dot tone="none" style={{ backgroundColor: row.color }} />
                               <span>{row.label}</span>
@@ -216,7 +258,7 @@ export default function RouteProfile({
           progressKm={progressKm}
           caption={(pointKm) => (
             <div className="text-[length:var(--font-size-xs)] text-[var(--color-muted)] tabular-nums">
-              {shownLayers.lines.length + shownLayers.bands.length === 0 ? (
+              {shownLayers.lines.length + rowCount === 0 ? (
                 <p>出す情報を選んでください。</p>
               ) : (
                 shownLayers.lines.map(({ layer, range }) => {
@@ -232,6 +274,7 @@ export default function RouteProfile({
                 })
               )}
               {shownLayers.bands.map(({ layer, pieces }) => bandCaption(layer, pieces, pointKm))}
+              {shownLayers.marks.map(({ layer, marks }) => markCaption(layer, marks, pointKm))}
             </div>
           )}
         >
@@ -241,7 +284,7 @@ export default function RouteProfile({
                 <rect
                   key={piece.startKm}
                   x={scale.xOf(piece.startKm)}
-                  y={lineBottom + BAND_GAP + index * (BAND_HEIGHT + BAND_GAP)}
+                  y={rowTop(index)}
                   width={scale.xOf(piece.endKm) - scale.xOf(piece.startKm)}
                   height={BAND_HEIGHT}
                   fill={piece.row.color}
@@ -249,6 +292,27 @@ export default function RouteProfile({
               ))}
             </g>
           ))}
+          {shownLayers.marks.map(({ layer, marks }, index) => {
+            const y = rowTop(shownLayers.bands.length + index) + BAND_HEIGHT / 2;
+            // 伸び縮みする描画の中で印の形を保つため、長さの無い線を伸びない太さの端の形で描く。
+            return (
+              <g key={layer.id} data-layer={layer.id}>
+                {marks.map((mark, markIndex) => (
+                  <line
+                    key={markIndex}
+                    x1={scale.xOf(mark.km)}
+                    x2={scale.xOf(mark.km)}
+                    y1={y}
+                    y2={y}
+                    stroke={mark.color}
+                    strokeWidth={mark.radiusPx * 2}
+                    strokeLinecap={mark.glyph === null ? "round" : "square"}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+              </g>
+            );
+          })}
           {shownLayers.lines.flatMap(({ layer, runs, range }) =>
             range === null
               ? []
