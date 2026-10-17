@@ -108,11 +108,11 @@ def map_paint(definition: AxisDefinition) -> MapPaint:
         legend = MapLegendScale(boundaries=thresholds, unit=unit)
         return MapPaint(value=value, unit=unit, thresholds=thresholds, legend=legend, band_labels=band_labels)
     thresholds, quantities = _difficulty_thresholds(definition)
-    unit = raw_value_unit(definition)
-    if quantities is None or unit is None:
+    quantity_unit = raw_value_unit(definition)
+    if quantities is None or quantity_unit is None:
         legend = MapLegendScale(boundaries=thresholds, unit=None)
     else:
-        legend = MapLegendScale(boundaries=quantities, unit=unit)
+        legend = MapLegendScale(boundaries=quantities, unit=quantity_unit)
     return MapPaint(value=value, unit="", thresholds=thresholds, legend=legend, band_labels=band_labels)
 
 
