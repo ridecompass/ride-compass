@@ -557,7 +557,7 @@ export default function MapOverlayControls({
           size="bare"
           shape="pill"
           // 「評価で塗る」のピルと同じ高さの1行（アイコン・名前・件数）にそろえる。
-          className="pointer-events-auto flex-none flex-row items-center gap-1.5 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap"
+          className="pointer-events-auto min-w-[var(--map-overlay-button-width)] flex-none flex-row items-center justify-center gap-1.5 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap"
           aria-label={LIST_SCREEN_NAME}
           title={[`${LIST_SCREEN_NAME}[${shownCount}件を表示中]`, anyFiltered ? FILTERED_LABEL : undefined]
             .filter(Boolean)
