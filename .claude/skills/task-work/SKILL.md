@@ -13,12 +13,18 @@ description: "タスクを実装担当・検証担当として進める手順（
 - **範囲の外の気づき**（今のタスクの外の製品の誤りや残骸と、範囲の外として入れなかった案。`/simplify` 等が見送った設計の手直しも）: 今の差分で直せるものは直す。ほかは1件ずつ、直す場所が同じ開いた issue へ
   コメントで寄せるか（探し方は .claude/skills/file-issue/SKILL.md「前後関係と組」）、無ければ起票するか、直さない理由を書き、どれをしたかを
   Pull Request の本文の「課題」（無ければ報告）に書く。「周期レビューの材料」「要るなら別に起こす」は行き先に数えない。
+  寄せたあと、寄せ先がまだ開いているかを `--json state` で見て、閉じていれば起票する（探してから書くまでに閉じると、コメントは誰にも読まれない）。
 - **作業ブランチ**: `git fetch origin`。作業ブランチ `orch/tasks-<番号>` が GitHub にあれば `git checkout -B orch/tasks-<番号> origin/orch/tasks-<番号>` のあと
   `git merge origin/master`（競合したら「競合を解く」）。無ければ `git checkout -B orch/tasks-<番号> origin/master`。前の担当の残り
   （`wip/tasks-<番号>-*` の枝）があれば要るものを取り込み、枝を消す。
 - **依存**: 依存とテスト用の DB は担当のワークフローが master の版で入れてある。`git diff --name-only origin/master -- backend/requirements*.txt frontend/package-lock.json`
   で違いが出たら、backend は `python -m pip install -q -r backend/requirements-batch.txt -r backend/requirements-dev.txt`、frontend は
-  `npm ci --prefix frontend` と `npx --prefix frontend playwright install chromium` で入れ直す。
+  `npm ci --prefix frontend` と `npx --prefix frontend playwright install chromium` で入れ直す（Chromium は `@playwright/test` の版ごとに別のものが要る。
+  作業の途中で依存のファイルを変えたときも同じ）。
+- **GitHub の側の失敗**（push・gh の書き込みが `Internal Server Error`・`Something went wrong while executing your query` 等の 5xx で落ちた）: 2分おいて
+  同じコマンドを1つで打ち直す（`sleep 120; <落ちたコマンド>`。Bash の `timeout` は 600000）。gh の書き込みは、打ち直す前に書けていないかを読む
+  （落ちたと出ても書けていることがあり、打ち直すと二重になる）。打ち直しは10回まで（間を含めて20分強）で、使い切ったらpush していない変更とコミットの ID・落ちたコマンドと最後の文言を
+  報告に書いて終える（push していない変更は後始末が `wip/` の枝へ残す）。GitHub の公式の文書は打ち直しの間と回数を決めていないので、この手順が持つ。
 - **置き場の issue**（`ridecompass/ride-compass-tasks`）を gh で読む・書くときは `GH_TOKEN=$FLOW_BOT_TOKEN` を付ける（担当の既定の鍵は置き場を読めず、`gh issue view` が「見つからない」と返す）。
 - **完了の条件のチェック**は `node .claude/skills/task-work/scripts/check.mjs <番号> <条件の文の頭> [...]` で付ける（本文を手で書き換えない）。
 
@@ -97,26 +103,16 @@ description: "タスクを実装担当・検証担当として進める手順（
    `gh pr merge <番号> -R ridecompass/ride-compass --squash` でマージし、`MERGED` になるまで打ち直す。マージのコミットの
    master の CI が始まったことを `gh run list -R ridecompass/ride-compass --commit <マージのコミット>` で確かめる（行が1つ以上出るまで打ち直す。
    2分出なければ、出ないことを報告する。検査が1つも無ければ合格していないので、ゲートが実装担当へ渡す）。CI の結果は待たない。
+   マージのあとの残り（マージのあとの条件・ユーザーの確かめ）で issue が開いたまま残るなら、この issue を前提にしている後の issue
+   （`--json blocking`）を1件ずつ見て、後が依っていた中身（後に書かれた張った理由）がこの Pull Request で master に入り、残りに依らなければ
+   前提を外し（`GH_TOKEN=$FLOW_BOT_TOKEN gh issue edit <後> -R ridecompass/ride-compass-tasks --remove-blocked-by <番号>`）、外した理由を後の issue に書く
+   （外さないと、後は残りが済んで閉じるまで待機のまま）。
    最後に、確かめた条件に `check.mjs`（冒頭の「完了の条件のチェック」）でチェックを付けて終える（確かめの行・マージのあとの条件・3 で足した行は
    付けない。子の作業も同じく、子の本文の行に付ける）。ゲートは条件が全部済むとその場で issue を閉じて動いている実行を取り消すので、
    チェックはマージのあとの最後の手にする（先に付けると、マージの前に取り消されうる）。
-6. master と競合してマージできなければ、`git -c merge.conflictStyle=diff3 merge origin/master` で取り込み、塊ごとに、合流点の行を片側だけが
+6. master と競合してマージできなければ、`git fetch origin` で今の master を取ってから（1 で取った master の上では競合しないことがある）
+   `git -c merge.conflictStyle=diff3 merge origin/master` で取り込み、塊ごとに、合流点の行を片側だけが
    変えていれば変えた側を採り、両側が別の行を変えただけなら両方をそのまま残す。合流点の同じ行を両側が変えた塊が1つでもあれば
    `git merge --abort` で戻し、重なった所を書いて 4 のとおり戻す。解けたら push して終える（ゲートが CI を待ってまた渡す）。
 
-**競合を解く**: `<<<<<<<`・`|||||||`・`=======`・`>>>>>>>` の印と残さない行を編集で消し、`git add <ファイル>` と `git commit --no-edit`。`--ours`・`--theirs` は使わない。
-
-## 厳選まで仮置き
-
-原則の見直しで消えた記載を、厳選まで元の節ごとに仮に置く。**今の決まりと食い違えば今の決まりを取る。**
-
-### 元: .github の pull_request_template.md
-
-#### （冒頭）
-
-背景: <なぜ必要だったか。何が起きていたか>
-課題: <何を直す・作るか。範囲をどう決めたか。約束の差分（足した約束・消した約束・変えた約束を1行ずつ。約束は利用者や運用から見た振る舞いで、issue の要約・完了の条件・設計書の決まりの言葉で書く）。約束が増えない変更で実装かテストの行が増えたら、増えた行ごとの理由>
-成果: <何が変わったか。挙動・画面・運用の差>
-検証: <実行したコマンドと観測値。backend/scripts/lost_constraints.py が出した「消えた」制約の1件ずつの処置（移した先・意図して外した理由）。消した・まとめたテストがあれば、.claude/rules/testing-review.md「消す・まとめる前に、残す側が落ちるかを見る」の4>
-増減: <python scripts/review_checks.py change の出力の「増減:」の行の続き>
-残り: <このタスクに残るもの。無ければ「なし」>
+**競合を解く**: `<<<<<<<`・`|||||||`・`=======`・`>>>>>>>` の印と残さない行を編集で消し、`git add <ファイル>` と `git commit --no-edit`。`--ours`・`--theirs` は使わない（判定役に断られる）。
