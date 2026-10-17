@@ -43,7 +43,11 @@
 | `lib/axisCatalog.ts` | 上記フックが返すカタログを、応答から導く純関数（`axisCatalogFromResponse`）と、画面が読む較正値（`CLIENT_TUNING_IDS`・`clientTuningValue`。並べるidは生成物`route-generate-config.json`に在るものだけを型が通す）。フックが持つのは「いつ取りに行き、誰と共有するか」だけ |
 | `services/axisCatalogApi.ts` | 上記フックが叩くbackend APIの薄いラッパー |
 | `lib/catalogAxis.ts` | 軸カタログの1行を画面が読む形へ移す型（`CatalogAxis`）と唯一の変換（`catalogAxisFromEntry`）。重み一覧の1行はこの型そのもので、地図が塗る軸・地図のチップの軸はこれに用途の項目を足した型。文へ評価の名前を差し込む形（「A」「B」。`axisNamesInText`・走る条件で値の変わる軸に絞る`axisNamesUsing`）もここが持つ |
-| `features/route/DifficultyProfile/DifficultyProfile.tsx`・`profileGeometry.ts` | 候補の中身の先頭に出す、道のりに沿った難易度のグラフ。横が始点からの距離、縦が区間ごとの難易度で、区間ごとの階段を軸の寄与で色分けして下から積む。区間はbackendがEdgeを約500mのビンへ畳んだもの（`aggregate_segments_into_bins`）で、Edge 1本ずつではない。**塗った面積がルートの負荷にほぼ一致する**——値の無い区間はルートの総合難易度の高さで灰色に描く（負荷は「値のある区間の距離加重平均×全長」で、値の無い区間を平均として数えるため）。ほぼなのは、ビンの中で値の無いEdgeがそのビンの平均で数えられるためと、1kmあたりの回数で測る評価軸はルート全体の回数の平均から点数にし直すため（backend: `domain/route.py: merge_difficulty`）。横軸の右端は**一覧の中で最も長い候補の距離**で、候補どうしで面積を見比べられる。押したまま動かす（キーボードは矢印・Home・End）と、その距離の区間と、区間の道なりの形の上で距離の割合ぶん進んだ地点を選ぶ——選択は地図で区間を押したときと同じ`selectedRouteSegment`で、地図に印が出て下に区間の詳細が出る。グラフ自体は区間を選んでいる間も残る。選ぶ受け口を渡さなければ、押せない見るだけの図になる（走行中の地図の下）。走行モードでは現在地の距離を受け取り、そこに縦の線を出してそこまでを薄める（距離の決め方はpage-composition.md「走行モード」） |
+| `features/route/RouteProfile/RouteProfile.tsx` | 候補の中身の先頭と走行中の地図の下に出す道のりのグラフ。「評価で塗る」（既定）と「表示」のタブを持つ（名前は地図の2つの入口と同じ`lib/screenNames.ts`から引く）。「評価で塗る」は難易度のグラフ（`DifficultyProfile`）で、(i) はこのルートで塗った区間のある軸の色と名前・値の無い区間の色・グラフの意味を出す。「表示」は、チップで選んだ情報（地図の「表示」とは別の選択）を同じ横軸に重ね、各情報の最高・最低と、地点を選んでいればその地点の値を1行で出す。地点の選び方は「評価で塗る」と同じ |
+| `features/route/RouteProfile/profileLayers.ts` | 道のりのグラフに重ねられるレイヤの宣言（`PROFILE_LAYERS`）。レイヤごとに名前・描き方・区間の応答から値を引く所を1か所に持ち、レイヤを足すときはここへ1行足す。区間の両端の値を距離に沿ってつなぎ、値の無い区間で線を切る |
+| `features/route/RouteProfile/useProfileLayers.ts` | グラフに出す情報（コードの名前はレイヤ）の選択。端末に覚え（既定は標高）、宣言から消えたレイヤは読むときに捨てる。ページが1つ持ち、結果と走行中の図が同じ選択を読む |
+| `features/route/ProfileChart/ProfileChart.tsx` | 道のりのグラフの枠（横軸の尺・なぞる・押して地点を選ぶ・走行中の現在地の線）。難易度のグラフとレイヤのグラフが中身だけを差し込む |
+| `features/route/DifficultyProfile/DifficultyProfile.tsx`・`profileGeometry.ts` | 道のりのグラフの「評価で塗る」に出す、道のりに沿った難易度のグラフ。横が始点からの距離、縦が区間ごとの難易度で、区間ごとの階段を軸の寄与で色分けして下から積む。区間はbackendがEdgeを約500mのビンへ畳んだもの（`aggregate_segments_into_bins`）で、Edge 1本ずつではない。**塗った面積がルートの負荷にほぼ一致する**——値の無い区間はルートの総合難易度の高さで灰色に描く（負荷は「値のある区間の距離加重平均×全長」で、値の無い区間を平均として数えるため）。ほぼなのは、ビンの中で値の無いEdgeがそのビンの平均で数えられるためと、1kmあたりの回数で測る評価軸はルート全体の回数の平均から点数にし直すため（backend: `domain/route.py: merge_difficulty`）。横軸の右端は**一覧の中で最も長い候補の距離**で、候補どうしで面積を見比べられる。押したまま動かす（キーボードは矢印・Home・End）と、その距離の区間と、区間の道なりの形の上で距離の割合ぶん進んだ地点を選ぶ——選択は地図で区間を押したときと同じ`selectedRouteSegment`で、地図に印が出て下に区間の詳細が出る。グラフ自体は区間を選んでいる間も残る。選ぶ受け口を渡さなければ、押せない見るだけの図になる（走行中の地図の下）。走行モードでは現在地の距離を受け取り、そこに縦の線を出してそこまでを薄める（距離の決め方はpage-composition.md「走行モード」） |
 | `features/route/ErrorText/ErrorText.tsx` | 操作した箇所の直下に出すエラー文言（`role=alert`）。ルート結果と区間の乗り換えの面が使う |
 | `features/route/WarningText/WarningText.tsx` | 表示中の結果について注意を促す1行（条件のずれ・目的地の補正・所要時間の前提の崩れ）。ルート結果と候補の中身が使う |
 | `features/route/GenerationNotice/GenerationNotice.tsx` | 押した「生成」が候補を出せなかった理由（入力の誤りか失敗・候補0件の理由）を知らせる窓。`app/page.tsx`がデスクトップとモバイルの両方に1つ置き、閉じると案内を消す |
@@ -245,7 +249,7 @@ TravelBearingControl.tsx`（`page.tsx`から直接importされ地図上に置か
   総合難易度が距離で正規化された平均であるのに対しこちらは総量で、
   「難所を通っても短いルート」と「遠回りで易しいルート」を見比べるための値
   （[評価・スコアリング](../backend/evaluation-scoring.md)「ルート単位の集約」節参照）。
-  候補の並び順には影響しない。**数値と併せて、上の道のりのグラフ（`DifficultyProfile`）が面積で同じことを表す**
+  候補の並び順には影響しない。**数値と併せて、上の道のりのグラフの「評価で塗る」（`DifficultyProfile`）が面積で同じことを表す**
   ——負荷は総合難易度に距離を掛けただけの派生量のため、独立した数値として並べるだけでは平均と総量の関係が読めない。
 - **所要時間の説明**: (i)は、区間ごとに速度を変える条件の名前を走行モデルの宣言（`domain/cycling_speed.py: SEGMENT_SPEED_CONDITIONS`。
   生成物`route-generate-config.json`の`segment_speed_conditions`）から差し込む。想定速度の(i)（`RideConditionBar`）も同じ並びを使う。

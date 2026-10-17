@@ -73,7 +73,8 @@ def arrays() -> EdgeMaterialArrays:
         bearing_deg=nan,
         mid_lat=nan,
         mid_lon=nan,
-        elevation_present=np.zeros(n, dtype=bool),
+        start_elevation_m=nan,
+        end_elevation_m=nan,
         elevation_gain_m=nan,
         elevation_loss_m=nan,
     )
@@ -98,6 +99,8 @@ def test_each_hard_filter_is_found_by_its_name():
 def climb() -> ElevationAttribute:
     return ElevationAttribute(
         edge_id="1:0:f",
+        start_elevation_m=100.0,
+        end_elevation_m=120.0,
         elevation_gain_m=25.0,
         elevation_loss_m=5.0,
         average_grade=4.0,
@@ -109,6 +112,8 @@ def test_the_reverse_turns_climbs_into_descents():
 
     assert reverse.model_dump() == {
         "edge_id": "1:0:r",
+        "start_elevation_m": 120.0,
+        "end_elevation_m": 100.0,
         "elevation_gain_m": 5.0,
         "elevation_loss_m": 25.0,
         "average_grade": -4.0,

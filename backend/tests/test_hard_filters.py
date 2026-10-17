@@ -24,7 +24,7 @@ def graded(gradient_percent: float) -> EdgeMaterialArrays:
         categorical_ids=(), categorical_columns=(),
         hard_filter_ids=hard_filter_ids, hard_filter_flags=np.zeros((1, len(hard_filter_ids)), dtype=bool),
         distance_m=np.full(1, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
-        elevation_present=np.zeros(1, dtype=bool),
+        start_elevation_m=nan, end_elevation_m=nan,
         elevation_gain_m=nan, elevation_loss_m=nan,
     )
 

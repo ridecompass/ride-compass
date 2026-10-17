@@ -65,6 +65,7 @@ from app.domain.route import (
     RouteSegmentDetail,
     RouteTurn,
     DISTANCE_KM_DECIMALS,
+    ELEVATION_M_DECIMALS,
     aggregate_segments_into_bins,
     along_route_km,
     concat_edge_geometries,
@@ -1373,6 +1374,13 @@ class RoadGraphEngine:
                     end_longitude=end_lon,
                     cumulative_distance_km=along_km[index],
                     distance_km=round(distance_km, DISTANCE_KM_DECIMALS),
+                    # 標高の表は単精度で持つので、表に入れた桁へ丸め直す。
+                    start_elevation_m=(
+                        round(elevation_attr.start_elevation_m, ELEVATION_M_DECIMALS) if elevation_attr else None
+                    ),
+                    end_elevation_m=(
+                        round(elevation_attr.end_elevation_m, ELEVATION_M_DECIMALS) if elevation_attr else None
+                    ),
                     estimated_arrival_time=arrival_time.isoformat(),
                     axis_difficulties=axis_scores,
                     axis_contributions=axis_contributions,

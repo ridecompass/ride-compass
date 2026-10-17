@@ -38,7 +38,8 @@ def _segments(distances: list[float], **fields_per_segment) -> list[RouteSegment
             start_latitude=35.0, start_longitude=139.0 + i * 0.01,
             end_latitude=35.0, end_longitude=139.0 + (i + 1) * 0.01,
             cumulative_distance_km=cumulative, distance_km=distance,
-            **{name: values[i] for name, values in fields_per_segment.items()},
+            **({"start_elevation_m": None, "end_elevation_m": None}
+               | {name: values[i] for name, values in fields_per_segment.items()}),
         ))
         cumulative += distance
     return segments
@@ -258,6 +259,15 @@ def test_a_bin_shows_the_arrival_and_the_wind_of_its_first_segment():
     ))
 
     assert (bins[0].estimated_arrival_time, bins[0].wind) == ("09:00", winds[0])
+
+
+def test_a_bin_starts_at_the_elevation_of_its_first_segment_and_ends_at_that_of_its_last():
+    """端の区間の道に標高が無ければ、その端は値を持たない（中の区間の標高で埋めない）。"""
+    bins = route.aggregate_segments_into_bins(_segments(
+        [0.3, 0.3, 0.3], start_elevation_m=[10.0, 20.0, None], end_elevation_m=[20.0, 30.0, None],
+    ))
+
+    assert [(b.start_elevation_m, b.end_elevation_m) for b in bins] == [(10.0, 30.0), (None, None)]
 
 
 def test_category_shares_are_the_share_of_distance_among_segments_that_have_the_material():

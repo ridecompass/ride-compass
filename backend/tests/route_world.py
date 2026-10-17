@@ -63,7 +63,7 @@ def _coordinates(osm_node_id: int) -> tuple[float, float]:
 
 def grid_network(
     *, bad_ways=(), unknown_ways=(), oneway_ways=(), motorway_ways=(), island=False, no_gradient_ways=(), no_stop_count_ways=(),
-    stop_density_of=None, gradient_of=None,
+    stop_density_of=None, gradient_of=None, elevation_of=None,
 ) -> RoadNetwork:
     """3×3の格子。`island`で格子とつながらない道を足す。ほかの引数は`road_network`と同じ。"""
     ways = dict(WAYS)
@@ -72,7 +72,7 @@ def grid_network(
     return road_network(
         ways, {**COORDINATES, **ISLAND_NODES}, bad_ways=bad_ways, unknown_ways=unknown_ways, oneway_ways=oneway_ways,
         motorway_ways=motorway_ways, no_gradient_ways=no_gradient_ways, no_stop_count_ways=no_stop_count_ways,
-        stop_density_of=stop_density_of, gradient_of=gradient_of,
+        stop_density_of=stop_density_of, gradient_of=gradient_of, elevation_of=elevation_of,
     )
 
 
@@ -106,7 +106,7 @@ def lattice_network(size: int, **attributes) -> RoadNetwork:
 def road_network(
     ways: dict[int, tuple[int, int]], coordinates: dict[int, tuple[float, float]],
     *, bad_ways=(), bad_forward_ways=(), unknown_ways=(), oneway_ways=(), motorway_ways=(), no_gradient_ways=(),
-    no_stop_count_ways=(), stop_density_of=None, gradient_of=None,
+    no_stop_count_ways=(), stop_density_of=None, gradient_of=None, elevation_of=None,
 ) -> RoadNetwork:
     """道（1本1区間、道→(始点, 終点)）とノードの地点（osm_node_id→(緯度, 経度)）から道路網を組む。
 
@@ -114,7 +114,8 @@ def road_network(
     `unknown_ways`はその材料のデータが無い、`oneway_ways`は始点→終点だけ走れる、`motorway_ways`は高速道路。
     勾配はどの道も平ら（0%）で、`gradient_of`（道→始点から終点へ登る%）の道だけその勾配（逆向きは下り）を持ち、`no_gradient_ways`だけ値が無い。停止要因（信号・一時停止等）はどの道にも無い（0件）で、`no_stop_count_ways`だけ件数の値が無い。
     `stop_density_of`（道→1kmあたりの回数）の道だけ、どの種類の停止要因もその密度で持つ。
-    路面はどの道も、路面のタグの無い一般の道（取込んだ道の大半がこれ）。"""
+    路面はどの道も、路面のタグの無い一般の道（取込んだ道の大半がこれ）。
+    標高はどの道にも無く、`elevation_of`（道→(始点, 終点)の標高m）の道だけ持つ（獲得・損失は両端の差）。"""
     node_ids = np.array(sorted({osm for pair in ways.values() for osm in pair}), dtype=np.int64)
     rows: list[tuple[int, bool, int, int]] = []
     for way, (start, end) in sorted(ways.items()):
@@ -135,7 +136,6 @@ def road_network(
     flags = np.zeros((n, len(hard_filter_ids)), dtype=bool)
     if "motorway" in hard_filter_ids:
         flags[:, hard_filter_ids.index("motorway")] = np.isin(way_of_row, list(motorway_ways))
-    nan = np.full(n, np.nan)
     bad = (np.isin(way_of_row, list(bad_ways)) | (np.isin(way_of_row, list(bad_forward_ways)) & forward)).astype(float)
     bad[np.isin(way_of_row, list(unknown_ways))] = np.nan
     gradient = np.where(np.isin(way_of_row, list(no_gradient_ways)), np.nan, 0.0)
@@ -144,6 +144,12 @@ def road_network(
     stop_count = np.where(np.isin(way_of_row, list(no_stop_count_ways)), np.nan, 0.0)
     for way, density in (stop_density_of or {}).items():
         stop_count[way_of_row == way] = density
+    start_elevation = np.full(n, np.nan)
+    end_elevation = np.full(n, np.nan)
+    for way, (start_m, end_m) in (elevation_of or {}).items():
+        start_elevation[way_of_row == way] = np.where(forward[way_of_row == way], start_m, end_m)
+        end_elevation[way_of_row == way] = np.where(forward[way_of_row == way], end_m, start_m)
+    climb = end_elevation - start_elevation
     return RoadNetwork(
         revision=1,
         node_osm_id=node_ids, node_lat=lat, node_lon=lon,
@@ -162,8 +168,8 @@ def road_network(
         distance_m=np.array([haversine_distance_km(a, b) * 1000 for a, b in points]),
         bearing_deg=np.array([bearing_between(a, b) for a, b in points]),
         mid_lat=(lat[tail] + lat[head]) / 2, mid_lon=(lon[tail] + lon[head]) / 2,
-        elevation_present=np.zeros(n, dtype=bool),
-        elevation_gain_m=nan, elevation_loss_m=nan,
+        start_elevation_m=start_elevation, end_elevation_m=end_elevation,
+        elevation_gain_m=np.maximum(climb, 0.0), elevation_loss_m=np.maximum(-climb, 0.0),
     )
 
 

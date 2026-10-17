@@ -103,7 +103,7 @@ def _arrays() -> EdgeMaterialArrays:
         categorical_ids=("cat_a",), categorical_columns=(CategoricalColumn.encode(CAT_A),),
         hard_filter_ids=(), hard_filter_flags=np.empty((n, 0), dtype=bool),
         distance_m=np.full(n, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
-        elevation_present=np.zeros(n, dtype=bool), elevation_gain_m=nan, elevation_loss_m=nan,
+        start_elevation_m=nan, end_elevation_m=nan, elevation_gain_m=nan, elevation_loss_m=nan,
     )
 
 
@@ -198,7 +198,7 @@ def _route_values(segments: FeatureSegments, grade: np.ndarray) -> dict[str, dic
                                         [WAY_NUM[owner] for owner in owners]]),
         categorical_ids=(), categorical_columns=(), hard_filter_ids=(), hard_filter_flags=np.empty((n, 0), dtype=bool),
         distance_m=segments.distance_m, bearing_deg=nan, mid_lat=nan, mid_lon=nan,
-        elevation_present=np.zeros(n, dtype=bool), elevation_gain_m=nan, elevation_loss_m=nan,
+        start_elevation_m=nan, end_elevation_m=nan, elevation_gain_m=nan, elevation_loss_m=nan,
     )
     with replaced_axis_definitions(FOLDED_AXES):
         matrix = build_static_edge_score_matrix(arrays, {})
@@ -207,7 +207,7 @@ def _route_values(segments: FeatureSegments, grade: np.ndarray) -> dict[str, dic
         distance_km = float(segments.distance_m[row]) / 1000
         details.setdefault(owner, []).append(RouteSegmentDetail(
             start_latitude=0.0, start_longitude=0.0, end_latitude=0.0, end_longitude=0.0,
-            cumulative_distance_km=0.0, distance_km=distance_km,
+            cumulative_distance_km=0.0, distance_km=distance_km, start_elevation_m=None, end_elevation_m=None,
             axis_difficulties={axis_id: float(score) for axis_id, score
                                in zip(matrix.axis_ids, matrix.axis_scores[row]) if not np.isnan(score)},
         ).with_density_inputs({

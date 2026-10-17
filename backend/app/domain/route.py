@@ -22,8 +22,8 @@ if TYPE_CHECKING:
 
 #: 応答の距離（km）の桁。区間・ビン・候補の距離をこの桁へ丸める。
 DISTANCE_KM_DECIMALS = 2
-#: 応答の獲得標高（m）の桁。
-ELEVATION_GAIN_DECIMALS = 1
+#: 応答の標高（m。獲得標高・区間の端の標高）の桁。
+ELEVATION_M_DECIMALS = 1
 
 
 # GeoJSONのLineString（座標は[経度, 緯度]）。契約には形を載せるが、検証はしない——数千点の座標を
@@ -104,6 +104,9 @@ class RouteSegmentDetail(StrictModel):
     end_longitude: float
     cumulative_distance_km: float
     distance_km: float
+    # 区間の始まりと終わりの標高（m）。その地点の道に標高が無ければNone。
+    start_elevation_m: float | None
+    end_elevation_m: float | None
     estimated_arrival_time: str | None = None
     # axis_id→difficulty(0-100)。以降の辞書フィールドはすべて「データ無しはキーを
     # 持たない」規約で、評価できなかった軸・値の無い材料はキー自体を含めない。
@@ -487,6 +490,8 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "end_longitude": lambda segments: segments[-1].end_longitude,
     "cumulative_distance_km": lambda segments: segments[0].cumulative_distance_km,
     "distance_km": lambda segments: _summed_km(s.distance_km for s in segments),
+    "start_elevation_m": lambda segments: segments[0].start_elevation_m,
+    "end_elevation_m": lambda segments: segments[-1].end_elevation_m,
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
     # 到達予想と同じく、ビンに入った先頭の区間の値（ビンの中で予報の時刻が変わっても、入るときの風を出す）。
     "wind": lambda segments: segments[0].wind,
@@ -552,10 +557,10 @@ def reverse_elevation_by_edge(
 
 
 def route_elevation_gain(edges: list[LeanEdge], elevation_by_edge: dict) -> float | None:
-    """経路の獲得標高（m、`ELEVATION_GAIN_DECIMALS`の桁）。値が1つも無ければNone（0mと「標高が取れなかった」を分ける）。"""
+    """経路の獲得標高（m、`ELEVATION_M_DECIMALS`の桁）。値が1つも無ければNone（0mと「標高が取れなかった」を分ける）。"""
     gains = [
         attribute.elevation_gain_m
         for edge in edges
         if (attribute := elevation_by_edge.get(edge.edge_id)) is not None
     ]
-    return round(sum(gains), ELEVATION_GAIN_DECIMALS) if gains else None
+    return round(sum(gains), ELEVATION_M_DECIMALS) if gains else None

@@ -1,0 +1,242 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+
+import { columnAtKm } from "@/features/route/DifficultyProfile/profileGeometry";
+import { roundToDigits } from "@/lib/numberFormat";
+import { pointAlongSegment, routeStretches, type RouteStretch } from "@/lib/routeDistance";
+import { mapDisplay } from "@/types/generated/mapDisplay";
+import palette from "@/types/generated/palette.json";
+import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
+
+/** 描画の座標。横は距離を`PROFILE_VIEW_WIDTH`へ、縦は`PROFILE_VIEW_HEIGHT`の中へ描き、枠いっぱいへ伸ばす。 */
+const PROFILE_VIEW_WIDTH = 1000;
+export const PROFILE_VIEW_HEIGHT = 100;
+/** 矢印キー1回で動く距離（全長に対する割合）。 */
+const KEY_STEP_RATIO = 0.01;
+
+export type ProfileScale = {
+  readonly columns: readonly RouteStretch<RouteSegmentDetail>[];
+  /** ルートの長さ。 */
+  readonly routeKm: number;
+  /** 横軸の右端の距離。 */
+  readonly widthKm: number;
+  /** 距離を描画の横座標へ。 */
+  readonly xOf: (km: number) => number;
+};
+
+/** 区間の並びと横軸。横軸の右端は`scaleKm`とルートの長さの長い方。 */
+export function useProfileScale(segments: readonly RouteSegmentDetail[], scaleKm: number): ProfileScale {
+  const columns = useMemo(() => routeStretches(segments), [segments]);
+  const routeKm = columns.length === 0 ? 0 : columns[columns.length - 1].endKm;
+  const widthKm = Math.max(scaleKm, routeKm);
+  return useMemo(
+    () => ({
+      columns,
+      routeKm,
+      widthKm,
+      xOf: (km: number) => (widthKm > 0 ? roundToDigits((km / widthKm) * PROFILE_VIEW_WIDTH, 2) : 0),
+    }),
+    [columns, routeKm, widthKm],
+  );
+}
+
+interface ProfileChartProps {
+  scale: ProfileScale;
+  /** 図の名前。押せる図では、動かすとその地点を地図に出すことを添える。 */
+  label: string;
+  /** 押せる図の使い方の文。 */
+  usage: string;
+  selected: SelectedRouteSegment | null;
+  /** なぞる・押して離すと、その地点の区間を選ぶ。無ければ押せない見るだけの図にする（走行中は地図を追うことに専念する）。 */
+  onSelect?: (selection: SelectedRouteSegment) => void;
+  /** 走行中の現在地のルートの上の距離。印を引き、始点からそこまでを走り終えた区間として薄める。 */
+  progressKm?: number | null;
+  /** 図の中身（`scale.xOf`の横座標と、0〜`PROFILE_VIEW_HEIGHT`の縦座標で描く）。 */
+  children: ReactNode;
+  /** 図の下の1行。区間を選んでいれば、その地点の距離を受け取る。 */
+  caption?: (pointKm: number | null) => ReactNode;
+}
+
+/** 道のりに沿った図の枠。横が距離で、選んだ区間の帯・走行中の現在地・動かした地点の線を中身の上に引き、下に距離の目盛りを
+ * 出す。1本の指（マウス）でなぞるか押して離すと、その距離の地点を選ぶ（地図に印が出て、下にその区間の詳細が出る）。
+ * **押しただけでは選ばず、途中で2本目の指が触れた操作は選択にしない**——図の上で始めたピンチ（拡大しようとした操作）で
+ * 区間が選ばれ、表示が区間の詳細へ切り替わらないようにする。 */
+export default function ProfileChart({
+  scale,
+  label,
+  usage,
+  selected,
+  onSelect,
+  progressKm = null,
+  children,
+  caption,
+}: ProfileChartProps) {
+  const [scrubKm, setScrubKm] = useState<number | null>(null);
+  // 図に触れている指（ポインター）と、いまの操作に2本目が加わったか。
+  const gesture = useRef<{ pointers: Set<number>; multi: boolean }>({ pointers: new Set(), multi: false });
+  // 画面のどこかに触れている指。2本目は図の外に触れることがあり、図のポインターだけでは数えられない
+  // （タッチイベントの指の数は、図のpointermoveより後に届くので間に合わない）。
+  const screenPointers = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    const pointers = screenPointers.current;
+    const down = (event: globalThis.PointerEvent) => {
+      pointers.add(event.pointerId);
+      if (pointers.size > 1 && gesture.current.pointers.size > 0) gesture.current.multi = true;
+    };
+    const up = (event: globalThis.PointerEvent) => pointers.delete(event.pointerId);
+    window.addEventListener("pointerdown", down, true);
+    window.addEventListener("pointerup", up, true);
+    window.addEventListener("pointercancel", up, true);
+    return () => {
+      window.removeEventListener("pointerdown", down, true);
+      window.removeEventListener("pointerup", up, true);
+      window.removeEventListener("pointercancel", up, true);
+    };
+  }, []);
+  const { columns, routeKm, widthKm, xOf } = scale;
+  if (routeKm <= 0) return null;
+
+  const selectedColumn = selected === null ? undefined : columns.find((column) => column.segment === selected.segment);
+  // 自分で動かした地点がいま選ばれている区間の中にあるときだけ線を引く（地図で区間を押したときは区間の帯だけ）。
+  const cursorKm =
+    selectedColumn !== undefined &&
+    scrubKm !== null &&
+    scrubKm >= selectedColumn.startKm &&
+    scrubKm <= selectedColumn.endKm
+      ? scrubKm
+      : null;
+  const positionKm = cursorKm ?? selectedColumn?.startKm ?? 0;
+  const travelledKm = progressKm === null ? null : Math.min(routeKm, Math.max(0, progressKm));
+
+  function selectAt(km: number) {
+    // 横軸が候補より長いとき、候補の終わりより右は終点として選び、線も終点に引く。
+    const clamped = Math.min(routeKm, Math.max(0, km));
+    const hit = columnAtKm(columns, clamped);
+    if (hit === null) return;
+    const [longitude, latitude] = pointAlongSegment(hit.column.segment, hit.fraction);
+    setScrubKm(clamped);
+    onSelect?.({ segment: hit.column.segment, latitude, longitude });
+  }
+
+  function kmAtPointer(event: PointerEvent<SVGSVGElement>): number {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return rect.width > 0 ? ((event.clientX - rect.left) / rect.width) * widthKm : 0;
+  }
+
+  function handleKeyDown(event: KeyboardEvent<SVGSVGElement>) {
+    const step = routeKm * KEY_STEP_RATIO;
+    const next =
+      event.key === "ArrowRight"
+        ? positionKm + step
+        : event.key === "ArrowLeft"
+          ? positionKm - step
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? routeKm
+              : null;
+    if (next === null) return;
+    event.preventDefault();
+    selectAt(next);
+  }
+
+  function releasePointer(pointerId: number) {
+    gesture.current.pointers.delete(pointerId);
+    if (gesture.current.pointers.size === 0) gesture.current.multi = false;
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <svg
+        viewBox={`0 0 ${PROFILE_VIEW_WIDTH} ${PROFILE_VIEW_HEIGHT}`}
+        preserveAspectRatio="none"
+        // 押したまま横へ動かす操作をシートのスクロール・スワイプへ渡さない。
+        className="h-14 w-full touch-none rounded-sm bg-[var(--color-surface-2)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] data-[pickable=true]:cursor-crosshair"
+        data-pickable={onSelect !== undefined}
+        {...(onSelect === undefined
+          ? { role: "img", "aria-label": label }
+          : {
+              role: "slider",
+              tabIndex: 0,
+              "aria-label": `${label}（動かすと、その地点を地図に出す）`,
+              "data-usage": usage,
+              "aria-valuemin": 0,
+              "aria-valuemax": roundToDigits(routeKm, 1),
+              "aria-valuenow": roundToDigits(positionKm, 1),
+              "aria-valuetext": `${positionKm.toFixed(1)} km地点`,
+              onPointerDown: (event: PointerEvent<SVGSVGElement>) => {
+                event.currentTarget.setPointerCapture?.(event.pointerId);
+                gesture.current.pointers.add(event.pointerId);
+                // 画面全体の指は窓の捕捉の段で先に数えてあるので、図の上の指もそこに含まれる。
+                if (screenPointers.current.size > 1) gesture.current.multi = true;
+              },
+              onPointerMove: (event: PointerEvent<SVGSVGElement>) => {
+                if (event.buttons === 0 || gesture.current.multi || !gesture.current.pointers.has(event.pointerId))
+                  return;
+                selectAt(kmAtPointer(event));
+              },
+              onPointerUp: (event: PointerEvent<SVGSVGElement>) => {
+                if (!gesture.current.multi && gesture.current.pointers.has(event.pointerId))
+                  selectAt(kmAtPointer(event));
+                releasePointer(event.pointerId);
+              },
+              onPointerCancel: (event: PointerEvent<SVGSVGElement>) => releasePointer(event.pointerId),
+              onKeyDown: handleKeyDown,
+            })}
+      >
+        {selectedColumn !== undefined && (
+          <rect
+            x={xOf(selectedColumn.startKm)}
+            y={0}
+            width={Math.max(xOf(selectedColumn.endKm) - xOf(selectedColumn.startKm), 2)}
+            height={PROFILE_VIEW_HEIGHT}
+            fill={palette.semantic.inspected}
+            opacity={0.25}
+          />
+        )}
+        {children}
+        {travelledKm !== null && (
+          <>
+            {/* 背景の色を重ねて、中身を地図の走り終えた区間の線と同じ濃さまで薄める。 */}
+            <rect
+              data-progress="travelled"
+              x={0}
+              y={0}
+              width={xOf(travelledKm)}
+              height={PROFILE_VIEW_HEIGHT}
+              className="fill-[var(--color-surface-2)]"
+              opacity={1 - mapDisplay.route.opacities.travelled}
+            />
+            <line
+              data-progress="position"
+              x1={xOf(travelledKm)}
+              x2={xOf(travelledKm)}
+              y1={0}
+              y2={PROFILE_VIEW_HEIGHT}
+              className="stroke-[var(--color-accent)]"
+              strokeWidth={3}
+              vectorEffect="non-scaling-stroke"
+            />
+          </>
+        )}
+        {cursorKm !== null && (
+          <line
+            x1={xOf(cursorKm)}
+            x2={xOf(cursorKm)}
+            y1={0}
+            y2={PROFILE_VIEW_HEIGHT}
+            stroke={palette.semantic.inspected}
+            strokeWidth={2}
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
+      </svg>
+      <div className="flex justify-between text-[length:var(--font-size-xs)] text-[var(--color-muted)] tabular-nums">
+        <span>0</span>
+        <span>{widthKm.toFixed(1)}km</span>
+      </div>
+      {caption?.(selectedColumn === undefined ? null : positionKm)}
+    </div>
+  );
+}

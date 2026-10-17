@@ -4880,6 +4880,28 @@
             "type": "number",
             "title": "Distance Km"
           },
+          "start_elevation_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Elevation M"
+          },
+          "end_elevation_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Elevation M"
+          },
           "estimated_arrival_time": {
             "anyOf": [
               {
@@ -4944,6 +4966,8 @@
           "end_longitude",
           "cumulative_distance_km",
           "distance_km",
+          "start_elevation_m",
+          "end_elevation_m",
           "estimated_arrival_time",
           "axis_difficulties",
           "axis_contributions",

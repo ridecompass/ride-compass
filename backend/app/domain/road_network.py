@@ -59,7 +59,8 @@ class RoadNetwork:
     bearing_deg: np.ndarray  # float64, NaN=方位が決まらない
     mid_lat: np.ndarray
     mid_lon: np.ndarray
-    elevation_present: np.ndarray  # bool
+    start_elevation_m: np.ndarray  # float64, NaN=標高が無い（獲得・損失も無い）
+    end_elevation_m: np.ndarray  # float64, NaN=標高が無い
     elevation_gain_m: np.ndarray  # float64, NaN=欠損
     elevation_loss_m: np.ndarray
 
@@ -170,11 +171,13 @@ def material_arrays_of(road: RoadSlice) -> EdgeMaterialArrays:
 def elevation_attribute(network: RoadNetwork, row: int, edge_id: str) -> ElevationAttribute | None:
     """全体の行`row`の区間の標高属性。標高が無ければNone。平均勾配は材料`gradient_percent`の値
     （表示用の標高列と重複して持たないため、勾配だけは材料の列から読む）。"""
-    if not network.elevation_present[row]:
+    if np.isnan(network.start_elevation_m[row]):
         return None
     grade_column = network.numeric_ids.index(GRADIENT_PERCENT)
     return ElevationAttribute(
         edge_id=edge_id,
+        start_elevation_m=float(network.start_elevation_m[row]),
+        end_elevation_m=float(network.end_elevation_m[row]),
         elevation_gain_m=float(network.elevation_gain_m[row]),
         elevation_loss_m=float(network.elevation_loss_m[row]),
         average_grade=None if np.isnan(grade := network.numeric_values[row, grade_column]) else float(grade),

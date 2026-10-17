@@ -66,8 +66,8 @@ def lean_edge(edge_id, from_node_id="n0", to_node_id="n1", *, distance_m=100.0, 
 
 
 def elevation(edge_id, **fields):
-    """テストが名指さない欄は、獲得・喪失標高は0m、勾配は値が取れなかった（None）として埋める。"""
-    ends = {"elevation_gain_m": 0.0, "elevation_loss_m": 0.0}
+    """テストが名指さない欄は、端の標高と獲得・喪失標高は0m、勾配は値が取れなかった（None）として埋める。"""
+    ends = {"start_elevation_m": 0.0, "end_elevation_m": 0.0, "elevation_gain_m": 0.0, "elevation_loss_m": 0.0}
     grades = dict.fromkeys(ElevationAttribute.model_fields.keys() - {"edge_id"} - ends.keys())
     return ElevationAttribute(edge_id=edge_id, **{**ends, **grades, **fields})
 
@@ -87,7 +87,8 @@ def turn_tree(state_count, *, node_cost, node_length_m, node_seconds, node_best_
 def segment_detail(difficulty, distance_km):
     return RouteSegmentDetail(
         start_latitude=35.0, start_longitude=139.0, end_latitude=35.0, end_longitude=139.0,
-        cumulative_distance_km=0.0, distance_km=distance_km, difficulty=difficulty,
+        cumulative_distance_km=0.0, distance_km=distance_km, start_elevation_m=None, end_elevation_m=None,
+        difficulty=difficulty,
     )
 
 

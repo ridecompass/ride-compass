@@ -43,7 +43,7 @@ def no_materials(n: int) -> EdgeMaterialArrays:
         categorical_ids=(), categorical_columns=(),
         hard_filter_ids=(), hard_filter_flags=np.empty((n, 0), dtype=bool),
         distance_m=np.full(n, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
-        elevation_present=np.zeros(n, dtype=bool),
+        start_elevation_m=nan, end_elevation_m=nan,
         elevation_gain_m=nan, elevation_loss_m=nan,
     )
 
