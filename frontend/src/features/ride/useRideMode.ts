@@ -84,24 +84,44 @@ interface MotionFix extends MotionAnchor {
   speedMs: number | null;
 }
 
+/** 速さをどう出したか（ありえない速さの警告に添え、端末の値か、位置の飛びかを見分ける）。 */
+type SpeedSource =
+  | { from: "端末" }
+  | { from: "距離と時刻"; movedM: number; elapsedS: number; anchorAccuracyM: number | null }
+  | { from: "止まっている" | "出せない" };
+
 /**
  * 新しい位置を受けたときの速さ（秒速m）と、次の測り始めの位置。位置が速さを持てばそれを使う。持たなければ、測り始めの
  * 位置から2つの位置の誤差の和を超えて動いたときだけ、その間の距離と時刻の差から出す。誤差の内の動きは位置の揺れと
  * 見分けられないので止まっている（0）と読み、測り始めの位置を動かさない（直前の位置から測ると、細かく届く位置の間の
  * 動きはいつも誤差の内に収まり、走っていても0になる）。
  */
-function nextMotion(anchor: MotionAnchor | null, fix: MotionFix): { speedMs: number | null; anchor: MotionAnchor } {
+function nextMotion(
+  anchor: MotionAnchor | null,
+  fix: MotionFix,
+): { speedMs: number | null; anchor: MotionAnchor; source: SpeedSource } {
   const here = { at: fix.at, timestamp: fix.timestamp, accuracyM: fix.accuracyM };
-  if (fix.speedMs !== null) return { speedMs: fix.speedMs, anchor: here };
-  if (anchor === null) return { speedMs: null, anchor: here };
+  if (fix.speedMs !== null) return { speedMs: fix.speedMs, anchor: here, source: { from: "端末" } };
+  if (anchor === null) return { speedMs: null, anchor: here, source: { from: "出せない" } };
   const movedM = haversineKm(anchor.at, fix.at) * 1000;
-  if (movedM <= (anchor.accuracyM ?? 0) + (fix.accuracyM ?? 0)) return { speedMs: 0, anchor };
+  if (movedM <= (anchor.accuracyM ?? 0) + (fix.accuracyM ?? 0)) {
+    return { speedMs: 0, anchor, source: { from: "止まっている" } };
+  }
   const elapsedS = (fix.timestamp - anchor.timestamp) / 1000;
-  return { speedMs: elapsedS > 0 ? movedM / elapsedS : null, anchor: here };
+  if (elapsedS <= 0) return { speedMs: null, anchor: here, source: { from: "出せない" } };
+  return {
+    speedMs: movedM / elapsedS,
+    anchor: here,
+    source: { from: "距離と時刻", movedM, elapsedS, anchorAccuracyM: anchor.accuracyM },
+  };
 }
 
-/** 走行モード: 現在地を受け取り続け、地図に追わせる。 */
-export function useRideMode(): UseRideModeResult {
+/**
+ * 走行モード: 現在地を受け取り続け、地図に追わせる。`plausibleMaxKmh`は走りとしてありえる速さの上限（時速km）で、受けた位置から
+ * 出した速さがこれを超えたら、出どころを添えた警告をデバッグログに出す（デバッグログを警告で絞れば、外れた速さの行だけが残る）。
+ * 分からなければ警告を出さない。
+ */
+export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeResult {
   const [status, setStatus] = useState<RideStatus>("off");
   const [error, setError] = useState<string | null>(null);
   const [fix, setFix] = useState<Fix | null>(null);
@@ -109,6 +129,11 @@ export function useRideMode(): UseRideModeResult {
   const watchId = useRef<number | null>(null);
   // 位置が速さを持たないときに、距離と時刻の差から速さを出す測り始めの位置（`nextMotion`）。
   const motion = useRef<MotionAnchor | null>(null);
+  // 位置を受ける口は始めたときに1度だけ渡すので、上限は描くたびに移して最新を読む。
+  const plausibleMax = useRef(plausibleMaxKmh);
+  useEffect(() => {
+    plausibleMax.current = plausibleMaxKmh;
+  }, [plausibleMaxKmh]);
   const device = useDeviceHeading(status !== "off");
   const requestHeading = device.request;
 
@@ -150,6 +175,16 @@ export function useRideMode(): UseRideModeResult {
         });
         motion.current = next.anchor;
         debugLog("ride:position", "受け取った", { speed, accuracy, speedMs: next.speedMs });
+        const speedKmh = next.speedMs === null ? null : next.speedMs * 3.6;
+        const limit = plausibleMax.current;
+        if (speedKmh !== null && limit !== undefined && speedKmh > limit) {
+          debugLog(
+            "ride:speed",
+            `走りとしてありえない速さ（${Math.round(speedKmh)}km/h。上限${limit}km/h）`,
+            { ...next.source, accuracyM },
+            "warn",
+          );
+        }
         setFix((current) => ({
           position: here,
           speedMs: next.speedMs,
