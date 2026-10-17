@@ -5,9 +5,10 @@
  * 代役は MapLibre の振る舞いを真似ず、受けたものを記録して返すだけにする:
  * - ソース・レイヤー・地物の状態は `mapTrace/recordingMap.ts` へ記録し、`MapOnScreen` から読む。
  * - 印（`Marker`）とポップアップ（`Popup`）は、渡された要素を地図の器へ置く（画面の問い合わせで引ける）。
- * - カメラの操作（`fitBounds`）とスタイルの取り直し（`setStyle`）は、引数を残す。
+ * - カメラの操作（`fitBounds`）とスタイルの取り直し（`setStyle`）は、引数を残す。向き（`setBearing`・`easeTo` の `bearing`）と
+ *   倍率（`zoomIn`・`zoomOut`）は、受けた値をそのまま今の値にする（動きの途中は無い）。向きが変わったら "rotate" だけを出す。
  * - `addProtocol` で登録された受け手は、`protocolHandler` で引ける（テストが要求を渡して呼ぶ）。
- * - 出来事（"load"・"click" 等）は自分では起こさず、テストが `MapOnScreen` で起こす。押した所に描かれている地物も、
+ * - 出来事（"load"・"click" 等）は、上の "rotate" のほかは自分では起こさず、テストが `MapOnScreen` で起こす。押した所に描かれている地物も、
  *   テストが渡したものを返す。
  *
  * `vi.mock` は import より先へ巻き上げられるため、`vi.mock("maplibre-gl", () => import("@/testing/maplibre"))` の形で置く。
@@ -81,8 +82,6 @@ export class LngLatBounds {
     return this;
   }
 }
-
-export class NavigationControl {}
 
 export class Marker extends Evented {
   readonly element: HTMLElement;
@@ -188,7 +187,8 @@ class StandInMap extends Evented {
   readonly content: RecordingMap;
   private readonly container: HTMLElement;
   private readonly canvas: HTMLCanvasElement;
-  private readonly zoom: number;
+  private zoom: number;
+  private bearing = 0;
   private pointed: readonly PointedFeature[] = [];
 
   constructor(options: { container: HTMLElement; style: string; zoom: number }) {
@@ -221,6 +221,16 @@ class StandInMap extends Evented {
     return this.zoom;
   }
 
+  zoomIn() {
+    this.zoom += 1;
+    return this;
+  }
+
+  zoomOut() {
+    this.zoom -= 1;
+    return this;
+  }
+
   getBounds() {
     return null;
   }
@@ -237,12 +247,25 @@ class StandInMap extends Evented {
     return this;
   }
 
-  easeTo() {
+  easeTo(options: { bearing?: number } = {}) {
+    if (options.bearing !== undefined) this.turn(options.bearing, {});
     return this;
   }
 
+  setBearing(bearing: number) {
+    this.turn(bearing, {});
+    return this;
+  }
+
+  /** 向きを変え、変わったら MapLibre と同じく "rotate" を出す。`event` は出来事の中身。 */
+  turn(bearing: number, event: Record<string, unknown>) {
+    if (bearing === this.bearing) return;
+    this.bearing = bearing;
+    this.fire("rotate", event);
+  }
+
   getBearing() {
-    return 0;
+    return this.bearing;
   }
 
   isZooming() {
@@ -329,6 +352,12 @@ export interface MapOnScreen {
   markers(): { coordinates: Coordinates; draggable: boolean; element: HTMLElement }[];
   /** 求めたスタイル（最初の1つと、取り直しの分）。 */
   readonly styles: readonly string[];
+  /** いまの倍率。 */
+  zoom(): number;
+  /** いまの向き（真北0・時計回りの度）。 */
+  bearing(): number;
+  /** 利用者が地図を指で回す（向きを変えて "rotate" を出す）。 */
+  rotateByHand(bearing: number): void;
 }
 
 export function mapOnScreen(): MapOnScreen {
@@ -348,5 +377,10 @@ export function mapOnScreen(): MapOnScreen {
         element: marker.element,
       })),
     styles: map.styles,
+    zoom: () => map.getZoom(),
+    bearing: () => map.getBearing(),
+    rotateByHand: (bearing) => {
+      map.turn(bearing, { originalEvent: new Event("touchmove") });
+    },
   };
 }

@@ -18,7 +18,7 @@
 | `features/map/layers/webMercatorTile.ts` | Web MercatorのXYZタイルと緯度経度の行き来（点のタイル座標・点を含むタイル（世界の端はタイルの番号の範囲へ寄せる）・タイルが覆う範囲）。backendと同じ式で、一致は表の組`region`で照らす。道路タイルの値を引くタイルと、気象庁のタイルの在否の判定（`jmaTileIndex.ts`）が同じ式を通る |
 | `lib/mapDisplay/mapColorLegend.ts` | 地図上の色分け凡例（`MapColorLegendBand`型・`buildRangeLegendBands`・`rangeStepLabel`）の共通ロジックと、値が無い行（`NO_DATA_LEGEND_BAND`）。凡例を作る関数（`features/map/view/lens.ts`）・道の属性の凡例（`features/map/scene/legends.ts`）と管理画面が使う |
 | `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「評価で塗る」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上のピルが、道のりのグラフの「評価で塗る」の切り替えと同じ筆の絵（`EvaluationPaintIcon`）と、選んでいる評価軸の名前と凡例の色の帯（段の数に依らない固定の幅）を示し、タップで縦の一覧（評価に使用中の軸を先、未使用の軸を後。各行に軸のアイコン・値が変わる走る条件のアイコン・「未使用」・(i) の説明）を開く。一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——選んでも閉じず、選んでいる行をもう一度押すと外れ、選んでいる行の ▶ で凡例と色の前提（`view/lens.ts: lensPremises`）を開き、下に「ルート後も周囲の道路を薄く塗る」と「選択を外す」「絞り込みをすべて解除」（この一覧の凡例だけを戻す）を置く（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`page.tsx`はそのまま渡す）。走行中も同じ大きさで出す |
-| `features/conditions/lensLink.ts` | 走る条件のボタン（走行方位・出発時刻・想定速度）に付ける、いまの周りの道の塗りがその条件で決まっている印（輪と読み上げ）。下記「周りの道の色が拠る走る条件」 |
+| `lib/lensLink.ts` | 走る条件のボタン（地図の向きの方位磁針・出発時刻・想定速度）に付ける、いまの周りの道の塗りがその条件で決まっている印（輪と読み上げ）。下記「周りの道の色が拠る走る条件」 |
 | `features/map/layers/mapLayers.ts` | `isAxisStudioLayer`（記述子の印で判定。地図上チップの一覧`overlayChips`が除くのに使う）・軸のレイヤーIDの導出（`dedicatedWayValueMapLayerId`） |
 | `features/map/MapView/MapView.tsx`（専用way値配信軸・ルート線の区間クリックの箇所のみ） | 画面の状態を宣言の入力へ渡すだけの配線（下記「MapView.tsx側の配線」）。軸ごとの処理は持たない |
 | `features/map/scene/groups/routes.ts` | 色分け線そのものを引く側。レンズの配色式・凡例フィルタを受け取ってMapLibreの線レイヤーへ流す |
@@ -74,8 +74,8 @@ backend（`domain/map_paint.py: map_paint`）が軸の折れ線で写してか�
 総合難易度で塗る（ピルは総合難易度の名前）。塗らない選択肢は持たない——評価軸を選ばないことで表せ、ルートの線は「表示」で消せる。
 
 **周りの道の色が拠る走る条件は、その条件を決めるボタンに印を付けて見せる**（`features/map/view/useMapView.ts: lensConditions`を
-`page.tsx`が地図の右の列の走行方位・出発時刻・想定速度のボタンへ渡し、ボタンは`features/conditions/lensLink.ts`の輪と読み上げを付ける）。
-周りの道を塗っている間、その軸が載せる条件（軸の`wayValueConditions`）のボタンにだけ付ける。走行方位は右上の別の操作で決め、
+`page.tsx`が地図の右の列の方位磁針・出発時刻・想定速度のボタンへ渡し、ボタンは`lib/lensLink.ts`の輪と読み上げを付ける）。
+周りの道を塗っている間、その軸が載せる条件（軸の`wayValueConditions`）のボタンにだけ付ける。走る向きは地図の向きで決まり、
 保存されない——印が無いと、見えない条件で同じ道の色が変わる。一覧の各行には、値が変わる走る条件を同じアイコンで添える
 （夜だけ効く軸は出発時刻。`view/lens.ts: lensOptions`）。
 
@@ -280,9 +280,9 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
 
 viewportをデバウンス（500ms）してから、表示中のタイル範囲ぶんをまとめて1回の
 リクエストで取得する（パン・ズームのたびに個別の道路を都度問い合わせない）。
-**`bearingDeg`（走行方位）もviewportと同じ500msでデバウンスする**——コンパススライダー
-（`WindBearingSlider`）はドラッグ中`onChange`を連続発火するため、素の値を依存配列に
-入れるとドラッグ1回で「可視タイル数×連続イベント数」ぶんのfetchが発生してしまうため。
+**`bearingDeg`（走る向き）もviewportと同じ500msでデバウンスする**——走行中の進む向きは区分が変わるたびに、
+地図の向きは8方位の区分を跨ぐたびに変わり、素の値を依存配列に入れると、続けて回したときに区分ごとに
+「可視タイル数」ぶんのfetchが発生してしまうため。
 `speedKmh`（想定速度、入力欄）も同じ理由でデバウンスする。
 
 **取得対象の軸は配列で受け取り、1つのフックが全軸ぶんを賄う**。Reactのフック規則により

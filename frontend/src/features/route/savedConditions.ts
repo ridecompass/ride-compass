@@ -9,7 +9,7 @@ import type { Coordinates, HardFilterOverride, RoadAvoidanceOverride, RoutePrefe
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 /** 生成の条件（「ルート設定」の入力）。いまの条件・保存・呼び出しが同じこの形を使う。出発地は位置の持ち主が持つので含まず、
- * その日の走行条件（出発時刻・想定速度・走行方位）と、生成した候補も持たない。 */
+ * その日の走行条件（出発時刻・想定速度）と、生成した候補も持たない。 */
 export interface GenerationConditionsSnapshot {
   /** 全長の目標を決めるか。外している間も距離の入力は残す（入れ直すと前の値に戻る）。 */
   distanceTargeted: boolean;

@@ -28,10 +28,12 @@ import {
   // 組み込みの`Map`と名前が重ならないよう、別名で読み込む。
   MapPin,
   MapPinX,
+  Minus,
   Moon,
   Navigation,
   Paintbrush,
   Play,
+  Plus,
   RotateCcw,
   RotateCw,
   Ruler,
@@ -504,6 +506,16 @@ export function LocateIcon({ size = 16 }: IconProps) {
   );
 }
 
+/** 方位磁針の針: 赤い先が北（上）、灰色の先が南。地図の向きのぶん回して使う。 */
+export function CompassNeedleIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps} stroke="none">
+      <path d="M10 2 13 10H7Z" fill="var(--color-danger)" />
+      <path d="M10 18 7 10h6Z" fill="var(--color-muted)" />
+    </svg>
+  );
+}
+
 // --- 汎用の形（lucide-react） ---
 
 /** lucideの形を、このファイルの他のアイコンと同じ呼び方（`size`だけを受け、既定16px）と
@@ -517,7 +529,7 @@ function fromLucide(Icon: LucideIcon, defaultSize = 16): MapIconComponent {
 export const WarningTriangleIcon = fromLucide(TriangleAlert);
 export const WindIcon = fromLucide(Wind);
 export const BicycleIcon = fromLucide(Bike);
-/** 呼び出し側が風向・走行方位のぶん回転させて使うため、上向きのまっすぐな矢印にしてある。 */
+/** 呼び出し側が風向のぶん回転させて使うため、上向きのまっすぐな矢印にしてある。 */
 export const WindDirectionArrowIcon = fromLucide(ArrowUp);
 export const ThermometerIcon = fromLucide(Thermometer);
 /** 走行モード（現在地を追い続けて地図を動かす）。 */
@@ -543,6 +555,8 @@ export function SavedPlaceIcon({ size = 16 }: IconProps) {
   return <Star size={size} strokeWidth={LUCIDE_STROKE_WIDTH} fill="currentColor" />;
 }
 export const InfoIcon = fromLucide(Info, 14);
+export const ZoomInIcon = fromLucide(Plus);
+export const ZoomOutIcon = fromLucide(Minus);
 export const CopyIcon = fromLucide(Copy);
 export const RedrawMapIcon = fromLucide(RotateCw);
 /** 群の中で一覧に並べる項目を選ぶ。 */

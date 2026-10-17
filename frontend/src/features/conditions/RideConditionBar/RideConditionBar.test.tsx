@@ -9,7 +9,7 @@ import { catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";
 import { jst } from "@/testing/jst";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-import { LENS_LINK_DESCRIPTION } from "@/features/conditions/lensLink";
+import { LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
 
 import RideConditionBar from "./RideConditionBar";
 

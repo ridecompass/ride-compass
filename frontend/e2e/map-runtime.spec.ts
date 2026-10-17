@@ -349,7 +349,7 @@ test("ルートを収めるとき、地図の上の操作部品が覆う所へ�
     return boxes.filter((box) => box !== null);
   };
   const depths = {
-    right: (await covers(/^(拡大|縮小|走行方位を設定|現在地に移動)$/)).map((box) => canvas.x + canvas.width - box.x),
+    right: (await covers(/^(拡大|縮小|地図の向き|現在地に移動)$/)).map((box) => canvas.x + canvas.width - box.x),
     top: (await covers(/^(評価で塗る:|地図に出す情報$)/)).map((box) => box.y + box.height - canvas.y),
   };
   for (const [edge, values] of Object.entries(depths) as [keyof typeof depths, number[]][]) {

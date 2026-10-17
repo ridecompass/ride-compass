@@ -5,7 +5,7 @@
 - 密度の軸の見分け（`averages_density`）
 - 軸の外に照らす検査（`check_axis_definition`）・軸の集合の検査（`check_axis_set`）と書き込みのガード
   （`check_publish_immutability`・`check_material_exclusivity`・`check_internal_axis_not_published`）
-- 軸1本の評価（`evaluate_axis_array`・`evaluate_axis_values`）と生値（`axis_raw_value_array`・`raw_values`・
+- 軸1本の評価（`evaluate_axis_array`）と生値（`axis_raw_value_array`・`raw_values`・
   `first_term_points`・`BreakpointLinearShape.score_at`）と、点数から値の大きさへの戻し（`BreakpointLinearShape.smallest_magnitude_at`）
 
 ここで見ないもの:
@@ -317,8 +317,7 @@ class TestPublishImmutability:
         with pytest.raises(axis_definitions.AxisPublishedImmutableError) as caught:
             axis_definitions.check_publish_immutability(axis(is_published=True), "deleted")
 
-        assert (caught.value.axis_id, caught.value.action) == ("axis_a", "deleted")
-        assert "削除できません" in str(caught.value)
+        assert "「軸」は公開中のため削除できません" in str(caught.value)
 
     def test_a_published_axis_is_not_updated_without_knowing_the_new_contents(self):
         with pytest.raises(axis_definitions.AxisPublishedImmutableError) as caught:
@@ -433,8 +432,7 @@ class TestInternalAxisPublish:
                 axis("inner", is_published=True), {**self.EXISTING, **previous}
             )
 
-        assert (caught.value.axis_id, caught.value.referencing_axis_id) == ("inner", "outer")
-        assert "「外の軸」" in str(caught.value)
+        assert "「軸」は「外の軸」が組み合わせに使っている軸" in str(caught.value)
 
     def test_an_axis_another_axis_reads_that_is_already_published_may_stay_published(self):
         # 時刻で変わる軸が組み合わせる公開軸の、表示だけの直し。公開へ切り替える書き込みではない。
@@ -492,18 +490,6 @@ class TestBreakpointScores:
 
         assert scores(result) == [50.0, 0.0]
 
-    def test_python_values_score_the_same_way_with_none_as_missing(self):
-        definition = axis(shape=A2_B1)
-
-        result = axis_definitions.evaluate_axis_values(
-            definition, {"a": [2.0, None, 1.0], "b": [1.0, 1.0, True], "unrelated": ["x", "y", "z"]}, 3
-        )
-
-        assert result == [50.0, None, 30.0]
-
-    def test_python_values_without_a_material_leave_every_road_unscored(self):
-        assert axis_definitions.evaluate_axis_values(axis(shape=A2_B1), {"a": [1.0, 2.0]}, 2) == [None, None]
-
     @given(st.floats(min_value=0.0, max_value=100.0))
     @example(0.15)
     @example(0.25)
@@ -529,7 +515,9 @@ class TestBreakpointScores:
     def test_abs_scores_both_directions_of_a_signed_material_alike(self, x):
         shape = linear(MaterialTerm(material="a"), breakpoints=((0.0, 0.0), (500.0, 100.0)), preprocess="abs")
 
-        assert axis_definitions.evaluate_axis_values(axis(shape=shape), {"a": [x, -x]}, 2) == [shape.score_at(abs(x))] * 2
+        result = axis_definitions.evaluate_axis_array(axis(shape=shape), {"a": np.array([x, -x])})
+
+        assert scores(result) == [shape.score_at(abs(x))] * 2
 
 
     @given(
@@ -574,10 +562,12 @@ def on_the_line(points: list[tuple[float, float]], x: float) -> float:
 
 
 class TestMappingScores:
-    def test_python_values_score_only_registered_values(self):
+    def test_only_registered_values_are_scored(self):
         definition = axis(shape=CategoricalShape(material="cat", mapping={"x": 10.0, "y": 20.0}))
 
-        assert axis_definitions.evaluate_axis_values(definition, {"cat": ["y", None, "z"]}, 3) == [20.0, None, None]
+        result = axis_definitions.evaluate_axis_array(definition, {"cat": CategoricalColumn.encode(["y", None, "z"])})
+
+        assert scores(result) == [20.0, None, None]
 
 
 class TestPriorityConditions:
@@ -598,11 +588,12 @@ class TestPriorityConditions:
             ]
         )
 
-        result = axis_definitions.evaluate_axis_values(
-            definition, {"num_a": [0.0, 0.0, 0.0], "flag": [True, False, None], "cat": ["x", "x", "y"]}, 3
+        result = axis_definitions.evaluate_axis_array(
+            definition,
+            {"num_a": np.zeros(3), "flag": np.array([1.0, 0.0, NAN]), "cat": CategoricalColumn.encode(["x", "x", "y"])},
         )
 
-        assert result == [1.0, 2.0, 0.0]
+        assert scores(result) == [1.0, 2.0, 0.0]
 
     def test_an_unknown_flag_matches_neither_true_nor_false(self):
         definition = axis(

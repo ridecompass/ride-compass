@@ -73,9 +73,8 @@
 全延長のうち最多の1つの値が占める割合も軸ごとに出す。上端・下端の基準は端に寄った塊しか拾わないので、
 中ほどの1つの値に大半が集まった軸（どの道も同じ難易度で重みが効かない）はこの列で見る。
 
-軸の難易度は`domain/axis_definitions.py: evaluate_axes_values`で標本の全wayぶんをまとめて得る。個々の軸へ
-`evaluate_axis_values`を直接当てると、他の軸を材料にする合成軸が
-「材料が欠損」として現れてしまう。
+軸の難易度は`domain/axis_definitions.py: evaluate_axes_values`で標本の全wayぶんをまとめて得る。軸を1本ずつ
+評価すると、他の軸を材料にする合成軸が「材料が欠損」として現れてしまう。
 
 **分布は地域で大きく変わる**。全域の抽選標本では市街地の偏りが平均に埋もれるため、
 `--bbox`（`min_lat,min_lon,max_lat,max_lon`）でその地域だけを母集団にできる。bbox指定時は
@@ -191,7 +190,6 @@ Pythonの値、ルート選びと地図の配信は材料の型ごとの配列�
 
 | 関数 | 用途 |
 |---|---|
-| `evaluate_axis_values(definition, materials, length)` | 材料id→Pythonの値の並びから要素ごとの得点。欠損はNone。配列へ並べ替えて`evaluate_axis_array`を通す |
 | `evaluate_axis_array(definition, materials)` | 軸の評価の本体（numpy配列、欠損はNaN）。どの入口もここを通る |
 | `evaluate_axes_array(materials, definitions)` | `definitions`の全軸を依存順（`topological_axis_order`、内部軸→公開軸）で評価し、軸id→得点の辞書を返す（評価した軸の得点は後の軸の材料として読まれる） |
 | `evaluate_axes_values(materials, length)` | `evaluate_axes_array`をPythonの値の並びから通し、公開軸だけの得点を返す（評価できない公開軸もキーを残してNone） |

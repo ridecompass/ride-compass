@@ -1,21 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { useStoredState } from "@/hooks/useStoredState";
 import { useDepartureTime } from "@/features/conditions/useDepartureTime";
 import { clampSpeedKmh } from "@/lib/assumedSpeed";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-// 走行条件のうち想定速度だけを保つ（出発時刻・走行方位は行くたびに変わる）。
+// 走行条件のうち想定速度だけを保つ（出発時刻は行くたびに変わる）。
 const ASSUMED_SPEED_STORAGE_KEY = "ridecompass:assumed-speed-kmh";
 
 /**
- * 走行条件（走行方位・出発時刻・想定速度）。地図の見え方・生成リクエスト・道の詳細が同じ値を読む。
+ * 走行条件（出発時刻・想定速度）。地図の見え方・生成リクエスト・道の詳細が同じ値を読む。
  * 想定速度は区間の通過予定時刻・到達予想時刻の基準になるため、どのモードの生成でも送る。
  */
 export function useRideConditions() {
-  const [bearingDeg, setBearingDeg] = useState(0);
   const departure = useDepartureTime();
   const [speedKmh, setSpeedKmh] = useStoredState<number>(
     ASSUMED_SPEED_STORAGE_KEY,
@@ -29,6 +28,6 @@ export function useRideConditions() {
       },
     },
   );
-  const ride = useMemo(() => ({ bearingDeg, at: departure.at, speedKmh }), [bearingDeg, departure.at, speedKmh]);
-  return { bearingDeg, setBearingDeg, departure, speedKmh, setSpeedKmh, ride };
+  const ride = useMemo(() => ({ at: departure.at, speedKmh }), [departure.at, speedKmh]);
+  return { departure, speedKmh, setSpeedKmh, ride };
 }

@@ -12,8 +12,4 @@ export type WindGridResponse = Schemas["WindGridResponse"];
 export type WindGridPoint = Schemas["WindGridPoint"] & { times: WindGridResponse["times"] };
 // 最寄りのアメダス観測所の実測値。
 export type AmedasObservation = Schemas["AmedasObservation"];
-// 警報・注意報、暑さ指数、河川氾濫予報。空の中身は「出ていない」を表す。
-export type WeatherWarnings = Schemas["WeatherWarnings"];
-export type WbgtStatus = Schemas["WbgtStatus"];
-export type FloodForecasts = Schemas["FloodForecasts"];
 export type ValidArea = Schemas["ValidArea"];
