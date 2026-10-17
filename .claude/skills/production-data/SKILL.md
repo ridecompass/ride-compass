@@ -58,6 +58,11 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
   本番の写しとして直し続けない（次に変えるときは本番の今の定義から新しいJSONを作る）。
 - 完了の条件: 道具が「反映を確かめました」を出したこと（管理APIと公開の軸カタログの両方で見ている）。
   画面で変えたときは、本番の`GET /api/axis-catalog`で変えた軸を確かめる。
+- 軸の評価の式（`backend/app/domain/`の軸の評価）だけを変えた変更は、本番に出たあとに全部の軸の張り付きを本番で1回測る
+  （`backend`で`python scripts/run_probe.py scripts/measure_axis_saturation.py`。読むだけ）。落ちた絞り込み・二重に数えた値は
+  エラーにもテストの失敗にもならず値の偏りとしてだけ現れ、式だけの変更は派生の表も変えない。本番を読めるのは開発機なので、
+  起票のときにマージのあとの残りの1行として書き、開発機の対話のセッションが打って出力をタスクの issue に書く。張り付いた軸があれば、その変更を疑う
+  （見方は[axis-studio.md](../../../docs/modules/backend/axis-studio.md)「飽和の計測（`scripts/measure_axis_saturation.py`）」）。
 
 ## 付録
 
