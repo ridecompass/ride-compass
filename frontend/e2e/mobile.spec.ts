@@ -9,6 +9,7 @@ import {
   openMobileApp,
   openMobileSheet,
   routeGenerateResponseFixture,
+  setDistance,
 } from "./fixtures";
 
 // モバイル（390px）で、要素が幅に収まり押せること（パターン4 観点1）。要素は画面外へ
@@ -114,7 +115,7 @@ test("モバイル: 候補0件の理由の窓が、開いている「ルート�
       ),
   });
   const sheet = await openMobileSheet(page, "ルート設定");
-  await sheet.getByLabel("全長の目標", { exact: true }).fill("20");
+  await setDistance(sheet, 20);
   await sheet.getByRole("button", { name: "ルート生成" }).click();
   const notice = page.getByRole("dialog", { name: "候補が見つかりませんでした" });
   const reason = notice.getByText(LONG_NO_CANDIDATES_REASON);

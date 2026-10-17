@@ -3,13 +3,13 @@
  * 描き、「重み」「除外」タブと「保存」タブの「設定」には受け取った中身を置き、「保存」タブの「地点」には保存した地点を並べる。
  *
  * 見るもの: 候補数のステッパー（今の件数・1件ずつの増減・端で押せない）、全長の目標の入り切り（押して上がる値・
- * 外している間はスライダーを押せない）とスライダーで上がる値、
+ * 外している間はルーラーを動かせない）とルーラーのコマ（5km刻みの範囲・今の値）と動かして上がる値、
  * 地点の並び（出発地・経由地の番号の丸・目的地）と押した地点の詳しく（呼び名・出どころ・名前・その位置から引いた辺り）、出発地の印の色、
  * 押した地点を選んで上げること・地図で置ける間の打つ欄の誘い・消す/戻す操作、名前を打って選んだ候補をその地点として上げること、
  * 「保存」タブの「地点」から呼び出した地点をその役割で上げて「条件」タブへ移ること、タブを切り替えても各タブの中身を外さないこと。
  *
  * ここで見ないもの: タブの列と選んだタブ、どのタブの中身が見えるか（スタイルで隠す）→ `app/page.tsx`。
- * 書いた定数や受け取った値をそのまま渡すもの（スライダーの範囲・刻み・今の値と km の表記・候補の距離の幅、印の
+ * 書いた定数や受け取った値をそのまま渡すもの（今の値と km の表記・候補の距離の幅、印の
  * 役割ごとの背景色、(i)の奥の文）。
  * 選んでいる地点をどう決めるか（何も選んでいない・選んだ経由地が消えた・探して足した経由地を選ぶ） → `features/route/useGenerationConditions.test.ts`。
  * 打ちかけで引く間・変換中に引かないこと・候補の行の中身（辺り・距離・札）・引けない／当たらないときの文、探して置いた
@@ -18,11 +18,13 @@
  * 並びに入りきらないときに両端の札を印だけにすること（テスト環境はレイアウトの実寸を持たない）→ `e2e/all-states.spec.ts`の
  * 省略の検査（名前を途中で切っていないこと）。
  *
+ * ルーラーのドラッグ・横スクロール・押せない間の止め方 → `components/ui/Ruler/Ruler.test.tsx`。
+ *
  * 差し替えたもの: 検索の口と辺りの口の応答（網の層）。辺りの口は、テストが応答を渡さなければ辺り無しと答える。
  *
  * タブの中身を描くには`Tabs`の中に置く必要があるので、テストが`page.tsx`の代わりに`Tabs`で包む。
  */
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -172,6 +174,11 @@ function button(name: string) {
   return screen.getByRole("button", { name });
 }
 
+/** 全長の目標のルーラー。 */
+function distanceRuler() {
+  return screen.getByRole("slider", { name: "全長の目標" });
+}
+
 /** 押した地点の詳しく（呼び名・出どころ・名前・打つ欄・操作）。 */
 function detail(title: string) {
   return screen.getByRole("region", { name: title });
@@ -223,37 +230,32 @@ describe("RouteForm 全長の目標", () => {
     [true, "全長の目標をやめる", "true", false],
     [false, "全長の目標を決める", "false", true],
   ] as const)(
-    "決めているか（%s）で入り切りの操作を「%s」とし、外している間はスライダーを押せなくして、押すと反対を上げる",
+    "決めているか（%s）で入り切りの操作を「%s」とし、外している間はルーラーを動かせなくして、押すと反対を上げる",
     async (distanceTargeted, name, pressed, raised) => {
       const { setDistanceTargeted } = renderForm({ distanceTargeted });
 
       expect(button(name)).toHaveAttribute("aria-pressed", pressed);
-      expect(screen.getByRole("slider", { name: "全長の目標" })).toHaveProperty("disabled", !distanceTargeted);
+      expect(distanceRuler()).toHaveAttribute("tabindex", distanceTargeted ? "0" : "-1");
       await userEvent.click(button(name));
 
       expect(setDistanceTargeted).toHaveBeenCalledExactlyOnceWith(raised);
     },
   );
 
-  it("スライダーは5kmから上限まで5km刻みで止まり、刻みごとに目盛を付ける", () => {
-    renderForm();
+  it("ルーラーは5kmから上限まで5km刻みのコマを持ち、今の値のコマを選んでいる", () => {
+    renderForm({ distanceInput: "30" });
 
-    const slider = screen.getByRole("slider", { name: "全長の目標" });
-    expect(slider).toHaveAttribute("min", "5");
-    expect(slider).toHaveAttribute("max", String(routeGenerateConfig.max_distance_km));
-    expect(slider).toHaveAttribute("step", "5");
-    const marks = [...document.querySelectorAll(`datalist#${CSS.escape(slider.getAttribute("list") ?? "")} option`)];
-    expect(marks.map((mark) => Number(mark.getAttribute("value")))).toEqual(
-      Array.from({ length: routeGenerateConfig.max_distance_km / 5 }, (_, i) => (i + 1) * 5),
-    );
+    expect(distanceRuler()).toHaveAttribute("aria-valuetext", "30km");
+    expect(distanceRuler()).toHaveAttribute("aria-valuemax", String(routeGenerateConfig.max_distance_km / 5 - 1));
   });
 
-  it("スライダーを動かすと、選んだ値を文字列のまま上げる", () => {
+  it("ルーラーを1コマ動かすと、隣の値を文字列のまま上げる", async () => {
     const { setDistanceInput } = renderForm({ distanceInput: "30" });
 
-    fireEvent.change(screen.getByRole("slider", { name: "全長の目標" }), { target: { value: "55" } });
+    act(() => distanceRuler().focus());
+    await userEvent.keyboard("{ArrowRight}");
 
-    expect(setDistanceInput).toHaveBeenCalledExactlyOnceWith("55");
+    expect(setDistanceInput).toHaveBeenCalledExactlyOnceWith("35");
   });
 });
 

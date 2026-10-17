@@ -9,7 +9,7 @@
 
 | ファイル | 責務 |
 |---|---|
-| `features/route/RouteForm/RouteForm.tsx` | 全長の目標（入り切りとスライダー）と候補数ステッパーを並べた1行・地点（出発地・経由地・目的地）の置き場。「ルート設定」区分の各タブの中身を`Tabs.Content`として並べる（タブ列と選択状態は`page.tsx`、下記参照） |
+| `features/route/RouteForm/RouteForm.tsx` | 全長の目標（入り切りとルーラー）と候補数ステッパーを並べた1行（どの幅でも折り返さない）・地点（出発地・経由地・目的地）の置き場。「ルート設定」区分の各タブの中身を`Tabs.Content`として並べる（タブ列と選択状態は`page.tsx`、下記参照） |
 | `features/route/RouteForm/RoutePoints.tsx` | 地点の並び（出発地 › 経由地の番号の丸・足す › 目的地）と、その右の経由地と目的地を全部消す操作、押した地点の選び。並びに名前が入りきるかを測って両端の札の名前を出し分ける（下記「地点の指定」） |
 | `features/route/RouteForm/PointDetail.tsx` | 押した地点の詳しく: 呼び名・名前・出どころ・辺りと、住所や施設の名前を打つ欄（候補は欄の下。狭い画面では欄を押してから選ぶ・閉じるまで、欄と候補を画面の上側に出す。欄を押すと保存した地点も出す）・地図で置く操作・消す／現在地に戻す・置いた地点の保存（どれもアイコンだけの形。下記「地点の指定」「保存した地点」） |
 | `components/PinMark/PointMark.tsx` | 並びの札・詳しく・地図の点の小窓の置く操作に出す、地図のピンと同じ図形の丸（`components/PinMark/PinMark.tsx`の中身に背景色を付けたもの。ルートの機能と地図の機能の両方が描くので共有の層に置く） |
@@ -22,7 +22,7 @@
 | `features/route/savedPlaces.ts` | 保存した地点の形（探した候補と同じ形）と、保存値の読み方（今の画面が受け付けない件だけを捨てる）・同じ名前と同じ位置の置き換え・打った文字での絞り込み |
 | `features/route/SavedConditionsPanel/SavedConditionsPanel.tsx` | 「保存」タブの「設定」の中身: 一覧の上に置くアイコンの「いまの設定を保存」（窓に保存する条件・出発地の扱いの切り替え・重み・除外と、名前の欄・保存のボタン）と、保存した設定の一覧（行は名前と、アイコンの「呼び出す」「消す」。呼び出すは窓で中身を見せて「反映する」で呼び出し、消すは確認の窓で「消す」を押すと消す。無ければ無いと出し、保存の仕方は(i)の奥。下記「保存した条件」） |
 | `features/route/useSavedConditions.ts` | 保存した条件の一覧（この端末の`localStorage`）と、いまの条件（`useGenerationConditions.ts: snapshot`）の保存（出発地を固定するかを受け取る）・呼び出し・削除。呼び出すと`useGenerationConditions.ts: restore`で条件を入れ替え、出発地は位置の持ち主（`hooks/useLocation.ts`）へ渡す |
-| `features/route/savedConditions.ts` | 生成の条件の形（`GenerationConditionsSnapshot`。いまの条件・保存・呼び出しが同じ形を使い、保存の1件はそれに名前と出発地を足す）と、保存値の読み方（項目ごとの読み方の表で読み、今の画面が受け付けない件だけを捨てる）・仮の名前・何が保存されるかの説明（`describeConditions`。重みは軸ごとの割合）・同じ名前の上書き。距離・候補数として受け付ける範囲（`acceptedDistanceInput`・`acceptedMaxRoutesInput`）もここが持ち、`useGenerationConditions.ts`の保存値の読み直しと共有する。距離の刻み（`DISTANCE_STEP_KM`。5km刻みで、下限も1刻み分）は画面だけの値で、`RouteForm`のスライダーと目盛も読み、保存値は刻みの近い方へ寄せて読む。候補数の下限・上限は生成物`route-generate-config.json`から読む |
+| `features/route/savedConditions.ts` | 生成の条件の形（`GenerationConditionsSnapshot`。いまの条件・保存・呼び出しが同じ形を使い、保存の1件はそれに名前と出発地を足す）と、保存値の読み方（項目ごとの読み方の表で読み、今の画面が受け付けない件だけを捨てる）・仮の名前・何が保存されるかの説明（`describeConditions`。重みは軸ごとの割合）・同じ名前の上書き。距離・候補数として受け付ける範囲（`acceptedDistanceInput`・`acceptedMaxRoutesInput`）もここが持ち、`useGenerationConditions.ts`の保存値の読み直しと共有する。距離の刻み（`DISTANCE_STEP_KM`。5km刻みで、下限も1刻み分）は画面だけの値で、`RouteForm`のルーラーのコマも読み、保存値は刻みの近い方へ寄せて読む。候補数の下限・上限は生成物`route-generate-config.json`から読む |
 | `features/route/routeWeightShare.ts` | 重み配分の純関数（帯グラフの境界ドラッグ`clampBoundaryDrag`・刻みと上下限） |
 | `features/conditions/WindBearingSlider/WindBearingSlider.tsx` | 走行方位の指定コンパスダイヤル（`TravelBearingControl`から使われる。単体としての設置場所は[ページ全体構成・状態管理](page-composition.md)参照） |
 | `lib/cardinalLabel.ts` | 角度を方位の呼び名へ（走行方位のダイヤルと区間の風の両方が使う）と、気象の風向（吹いてくる向き）を矢印が指す吹いていく向きへ（`downwindDeg`。地図の風の矢印と天気のパネルが使う）。呼び名の並びはbackend（`domain/geo.py: COMPASS_LABELS`）が配り、丸めは画面が持つ。区分の境界を含む角度でbackendと同じ呼び名になることは、backendが出す表（生成物`geo-expectations.json`）をテストが通して確かめる |
@@ -452,18 +452,19 @@ DBの`ROUTE_GENERATION_COMMAND_TIMEOUT_SECONDS`はクエリ1本ごとの上限�
 `page.tsx`はヘッダーのボタンからその送信を呼ぶ（地図のレンズは要求に載らず、生成のフックは地図の見え方を読まない）。候補数の指定は
 全長の目標の有無・置いた地点に依らず同じに効く。
 
-全長の目標は`<input type="range">`のスライダー、候補数は「‹ 8 › 件」のステッパー
-（-/+ボタン、`DynamicLayerTimeSlider`の1コマ送りボタンと同じ役割分担）にし、
+全長の目標は目盛りを横に滑らせるルーラー（`components/ui/Ruler/Ruler.tsx`。出発時刻と同じ部品で、左端の目印に合わせたコマを選ぶ）、
+候補数は「‹ 8 › 件」のステッパー（-/+ボタン、`DynamicLayerTimeSlider`の1コマ送りボタンと同じ役割分担）にし、
 数値の直接入力欄は持たない（原則としてユーザーに数字を直接入力させない方針）。
 distance・maxRoutesはいずれもstring stateのまま`useGenerationConditions.ts`が持ち、数値への変換は送るときに行う。
-**距離・候補数は検証しない**——スライダー・ステッパーはmin/maxで値域を強制するため空文字・範囲外を作れず、
+**距離・候補数は検証しない**——ルーラーはコマの並び、ステッパーはmin/maxで値域を強制するため空文字・範囲外を作れず、
 保存値も読むときに範囲の外を捨てる（`useGenerationConditions.ts: useStoredState`の`deserialize`）。`useRouteFormSubmit`が
 確かめるのは、出発地が分からないこと（下記）と、全長の目標を外して経由地も目的地も無く作るものが無いことだけ（文はその入り切りの
 アイコンで「全長の目標を決める」を指す）。
 
-**全長の目標は、アイコンの入り切り・スライダー・値・(i)の1行**にする。入り切りはパネルの他の押して切り替える操作と同じアイコンだけの
+**全長の目標は、アイコンの入り切り・ルーラー・値・(i)の1行**にし、候補数のステッパーも同じ行の右に置く。ルーラーは
+目印より右の数コマだけを見せ、長い距離は滑らせると出る（短い距離をよく使うので、狭い幅でも1行に収めることを全区間の見通しより先に取る）。入り切りはパネルの他の押して切り替える操作と同じアイコンだけの
 形（[デザイン基盤](frontend-design-system.md)「5-1」）で、押している間はアクセント色で塗り、名前は「全長の目標を決める」／「全長の目標を
-やめる」。外している間もスライダーと値は出したまま薄くし、スライダーは押せなくする（入れ直すと前の値に戻ることが見え、行の高さも
+やめる」。外している間もルーラーと値は出したまま薄くし、ルーラーは動かせなくする（入れ直すと前の値に戻ることが見え、行の高さも
 変わらない。「5-2」）。目標から許す幅と、外したときに何を作るかは(i)の奥に置き、画面へ書かない（設計原則「冗長なものは削る」）。
 開いたときは入れた形で（出発地と距離だけで周回を作る形を、開いてすぐ使える）、入り切りは利用者が決めた値として保存する。
 

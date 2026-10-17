@@ -38,7 +38,7 @@ describe("buildDepartureTimeline（出発時刻を選ぶ目盛り）", () => {
 describe("buildDepartureFrames（目盛りの表記）", () => {
   it("正時には印を付け、日本時間の偶数時だけ時刻を書く。正時でない目盛りは分だけ", () => {
     const frames = buildDepartureFrames([jst("2026-09-24T09:55"), jst("2026-09-24T10:00"), jst("2026-09-24T11:00")]);
-    expect(frames.map((f) => f.hourMark)).toEqual([false, true, true]);
+    expect(frames.map((f) => f.major)).toEqual([false, true, true]);
     expect(frames.map((f) => f.tickLabel)).toEqual(["55", "10:00", undefined]);
   });
 });
