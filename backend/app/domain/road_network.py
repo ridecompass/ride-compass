@@ -46,6 +46,9 @@ class RoadNetwork:
     edge_min_lat: np.ndarray
     edge_max_lon: np.ndarray
     edge_max_lat: np.ndarray
+    # 点を出てすぐの向きと、点へ入る直前の向き（度）。交差点での曲がりを測る。NaN=方位が決まらない。
+    edge_start_bearing_deg: np.ndarray  # float64
+    edge_end_bearing_deg: np.ndarray  # float64
 
     # 材料（`EdgeMaterialArrays`と同じ列。区間と同じ行順）。
     numeric_ids: tuple[str, ...]

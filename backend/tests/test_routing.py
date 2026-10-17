@@ -67,16 +67,20 @@ class Net:
     edge_from: np.ndarray
     edge_to: np.ndarray
     distance_m: np.ndarray
-    # 方位を持たない区間はNaN。
-    bearing_deg: np.ndarray
+    # 始点のそば・終点のそばの方位。方位を持たない区間はNaN。
+    start_bearing_deg: np.ndarray
+    end_bearing_deg: np.ndarray
 
 
 def make_graph(nodes, edges):
-    """`nodes`は`{node_id: (緯度, 経度)}`、`edges`は`{edge_id: (始点, 終点[, 距離m[, 方位]])}`。"""
+    """`nodes`は`{node_id: (緯度, 経度)}`、`edges`は`{edge_id: (始点, 終点[, 距離m[, 方位]])}`。
+
+    方位は1つの値（まっすぐな区間）か、`(始点のそばの方位, 終点のそばの方位)`の組（途中で向きが変わる区間）。
+    """
     node_ids = list(nodes)
     index = {node_id: i for i, node_id in enumerate(node_ids)}
     specs = {edge_id: _edge(*spec) for edge_id, spec in edges.items()}
-    bearings = [spec[3] if len(spec) > 3 and spec[3] is not None else math.nan for spec in edges.values()]
+    ends = [_bearing_ends(spec[3]) for spec in specs.values()]
     return Net(
         node_ids=node_ids,
         node_id_to_index=index,
@@ -87,12 +91,21 @@ def make_graph(nodes, edges):
         edge_from=np.array([index[spec[0]] for spec in specs.values()], dtype=np.int64),
         edge_to=np.array([index[spec[1]] for spec in specs.values()], dtype=np.int64),
         distance_m=np.array([spec[2] for spec in specs.values()], dtype=float),
-        bearing_deg=np.array(bearings, dtype=float),
+        start_bearing_deg=np.array([start for start, _ in ends], dtype=float),
+        end_bearing_deg=np.array([end for _, end in ends], dtype=float),
     )
 
 
 def _edge(from_node_id, to_node_id, distance_m=100.0, bearing_deg=None):
     return (from_node_id, to_node_id, distance_m, bearing_deg)
+
+
+def _bearing_ends(bearing_deg):
+    if bearing_deg is None:
+        return (math.nan, math.nan)
+    if isinstance(bearing_deg, tuple):
+        return bearing_deg
+    return (bearing_deg, bearing_deg)
 
 
 @dataclasses.dataclass
@@ -143,10 +156,13 @@ def build_all(graph, spec=FLAT_SPEC, edge_rank=None, node_has_signal=None, node_
     """
     lazy = lazy_of(graph)
     statics = routing.build_search_graph_statics(lazy.graph, graph.distance_m)
-    bearings = routing.edge_bearings(lazy.graph, graph.bearing_deg, graph.latitude, graph.longitude)
+    start_bearings, end_bearings = (
+        routing.edge_bearings(lazy.graph, bearing_deg, graph.latitude, graph.longitude)
+        for bearing_deg in (graph.start_bearing_deg, graph.end_bearing_deg)
+    )
     node_count = lazy.node_count
     structure = routing.build_turn_expanded_structure(
-        statics.csr, lazy.graph, bearings,
+        statics.csr, lazy.graph, start_bearings, end_bearings,
         np.zeros(len(lazy.edge_ids), dtype=np.int64) if edge_rank is None else edge_rank,
         spec,
         np.zeros(node_count, dtype=bool) if node_has_signal is None else node_has_signal,
@@ -618,7 +634,7 @@ def test_edge_bearings_prefer_the_stored_value_and_fall_back_to_the_node_pair():
     )
     lazy = lazy_of(graph)
     bearings = dict(
-        zip(lazy.edge_ids, routing.edge_bearings(lazy.graph, graph.bearing_deg, graph.latitude, graph.longitude))
+        zip(lazy.edge_ids, routing.edge_bearings(lazy.graph, graph.start_bearing_deg, graph.latitude, graph.longitude))
     )
     assert bearings["stored"] == pytest.approx(123.0)
     assert bearings["derived"] == pytest.approx(270.0, abs=1.0)
@@ -627,13 +643,23 @@ def test_edge_bearings_prefer_the_stored_value_and_fall_back_to_the_node_pair():
 # --- build_turn_expanded_structure ---
 
 
-def test_turn_transitions_lead_to_every_outgoing_edge_and_classify_the_turn():
+# 十字路の各区間を、Cから離れた側で60度向きを変える折れ線にしたもの。Cのそばの向きは`PLUS_EDGES`と同じ。
+CURVED_PLUS_EDGES = {
+    edge_id: (tail, head, distance_m, (bearing + 60.0, bearing) if head == "C" else (bearing, bearing - 60.0))
+    for edge_id, (tail, head, distance_m, bearing) in PLUS_EDGES.items()
+}
+
+
+@pytest.mark.parametrize("edges", [PLUS_EDGES, CURVED_PLUS_EDGES])
+def test_turn_transitions_lead_to_every_outgoing_edge_and_classify_the_turn(edges):
     """状態eの遷移先は「eの終点Nodeから出る全区間」。Uターンも禁止せず遷移として持つ
     （袋小路からの折り返しに要る）。
 
-    方位差の符号で左右を分け、直進とみなす幅の内側は0秒、始点へ戻る遷移はUターン。
+    方位差の符号で左右を分け、直進とみなす幅の内側は0秒、始点へ戻る遷移はUターン。向きは交差点の
+    そばで測るので、区間が交差点から離れた所で曲がっていても分け方は変わらない（区間の端から端の向きで
+    測ると、交差点の直進が曲がりに・曲がりが直進に見える）。
     """
-    graph = make_graph(PLUS_NODES, PLUS_EDGES)
+    graph = make_graph(PLUS_NODES, edges)
     lazy, _, structure = build_all(graph, spec=TURN_SPEC)
     from_west = {
         target: seconds for (source, target), seconds in transition_seconds(lazy, structure).items()
@@ -664,6 +690,22 @@ BEND_EDGES = {
 }
 
 
+# Y字。南から北向き（方位0）でYへ入り、左の枝と右の枝がどちらも直進とみなす幅の内側で分かれる。
+Y_NODES = {"S": (34.99, 139.0), "Y": (35.0, 139.0), "L": (35.01, 138.998), "R": (35.01, 139.002)}
+
+
+def y_fork_edges(left_deg, right_deg):
+    """左の枝を方位`left_deg`、右の枝を方位`right_deg`でYから出すY字の区間。"""
+    return {
+        "SY": ("S", "Y", 100.0, 0.0),
+        "YS": ("Y", "S", 100.0, 180.0),
+        "YL": ("Y", "L", 100.0, left_deg),
+        "LY": ("L", "Y", 100.0, (left_deg + 180.0) % 360.0),
+        "YR": ("Y", "R", 100.0, right_deg),
+        "RY": ("R", "Y", 100.0, (right_deg + 180.0) % 360.0),
+    }
+
+
 @pytest.mark.parametrize(
     ("nodes", "edges", "route", "expected"),
     [
@@ -672,13 +714,20 @@ BEND_EDGES = {
         (PLUS_NODES, PLUS_EDGES, ["WC", "CS"], [(1, routing.TurnKind.RIGHT)]),
         (PLUS_NODES, PLUS_EDGES, ["WC", "CW"], [(1, routing.TurnKind.UTURN)]),
         (PLUS_NODES, PLUS_EDGES, ["WC", "CE"], []),
+        # 交差点から離れた所で曲がる区間でも、交差点のそばの向きで案内する。
+        (PLUS_NODES, CURVED_PLUS_EDGES, ["WC", "CS"], [(1, routing.TurnKind.RIGHT)]),
         # 分かれ道の無い角では、道なりに曲がるだけなので案内しない。
         (BEND_NODES, BEND_EDGES, ["AB", "BC"], []),
+        # 浅いY字では、よりまっすぐに近い枝が別にある方へ進むときだけ、その向きで案内する。
+        (Y_NODES, y_fork_edges(340.0, 10.0), ["SY", "YL"], [(1, routing.TurnKind.LEFT)]),
+        (Y_NODES, y_fork_edges(340.0, 10.0), ["SY", "YR"], []),
+        (Y_NODES, y_fork_edges(350.0, 20.0), ["SY", "YR"], [(1, routing.TurnKind.RIGHT)]),
     ],
 )
 def test_turns_along_a_path_are_the_turns_at_a_branch(nodes, edges, route, expected):
-    """案内する曲がりは、来た道へ戻る遷移を除いて2本以上の道へ進める点（分かれ道）での、直進でない遷移だけ。
-    分かれ道の無い角で案内すると、道なりに進むだけの所で「曲がる」と言ってしまう。"""
+    """案内する曲がりは、来た道へ戻る遷移を除いて2本以上の道へ進める点（分かれ道）での、直進でない遷移と、
+    よりまっすぐに近い道を外れて進む遷移。分かれ道の無い角で案内すると、道なりに進むだけの所で「曲がる」と
+    言ってしまい、浅いY字で道なりでない方へ入る所で案内しないと、道なりの方へ進んでしまう。"""
     graph = make_graph(nodes, edges)
     lazy, _, structure = build_all(graph, spec=TURN_SPEC)
     index = state_index(lazy)
@@ -690,6 +739,27 @@ def test_turns_along_a_path_are_the_turns_at_a_branch(nodes, edges, route, expec
 
 # 「そもそも待ちの要る階級か」の境目（`domain/traffic.py`が決める）。
 MAJOR = routing.MAJOR_CROSSING_MIN_RANK
+
+
+def test_a_shallow_fork_guided_off_the_straighter_branch_adds_no_turn_wait():
+    """浅いY字で道なりでない方へ入る所は案内するが、待ちは向きの差で決めたまま（直進とみなす幅の内側は0秒）。"""
+    graph = make_graph(Y_NODES, y_fork_edges(340.0, 10.0))
+    lazy, _, structure = build_all(graph, spec=TURN_SPEC)
+    assert transition_seconds(lazy, structure)[("SY", "YL")] == pytest.approx(0.0)
+
+
+def test_a_bend_without_a_branch_adds_no_wait_even_beside_a_higher_ranked_road():
+    """分かれ道の無い点（道のデータの継ぎ目）では道を選ばないので、曲がりの待ちも上位の道の待ちも足さない。
+    足すと、同じカーブでも区間の継ぎ目の位置しだいで経路と所要が変わる。来た道へ戻るUターンの待ちは足す。"""
+    graph = make_graph(BEND_NODES, BEND_EDGES)
+    lazy = lazy_of(graph)
+    ranks = rank_array(lazy, {edge_id: (MAJOR if edge_id in {"BC", "CB"} else MAJOR - 1) for edge_id in BEND_EDGES})
+    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=ranks)
+    from_a = {
+        target: seconds for (source, target), seconds in transition_seconds(lazy, structure).items()
+        if source == "AB"
+    }
+    assert from_a == pytest.approx({"BC": 0.0, "BA": TURN_SPEC.uturn_seconds})
 
 
 def _plus_ranks(lazy, crossing_rank, entering_rank):
@@ -1131,11 +1201,14 @@ def test_shortest_path_is_none_when_the_goal_cannot_be_reached():
     assert path is None
 
 
+# AからCへ、北のBを回る道と南のDを回る道。BとDには、まっすぐ抜ける行き止まりの道（E・F）が分かれる。
 FORK_NODES = {
     "A": (35.00, 139.00),
     "B": (35.01, 139.01),
     "D": (34.99, 139.01),
     "C": (35.00, 139.02),
+    "E": (35.02, 139.02),
+    "F": (34.98, 139.02),
 }
 FORK_EDGES = {
     "AB": ("A", "B", 100.0, 45.0),
@@ -1146,6 +1219,10 @@ FORK_EDGES = {
     "DA": ("D", "A", 100.0, 315.0),
     "DC": ("D", "C", 100.0, 45.0),
     "CD": ("C", "D", 100.0, 225.0),
+    "BE": ("B", "E", 100.0, 45.0),
+    "EB": ("E", "B", 100.0, 225.0),
+    "DF": ("D", "F", 100.0, 135.0),
+    "FD": ("F", "D", 100.0, 315.0),
 }
 
 

@@ -174,6 +174,7 @@ def road_network(
         edge_highway=np.zeros(n, dtype=np.int16), highway_vocab=("residential",),
         edge_min_lon=np.minimum(lon[tail], lon[head]), edge_min_lat=np.minimum(lat[tail], lat[head]),
         edge_max_lon=np.maximum(lon[tail], lon[head]), edge_max_lat=np.maximum(lat[tail], lat[head]),
+        edge_start_bearing_deg=np.full(n, np.nan), edge_end_bearing_deg=np.full(n, np.nan),
         numeric_ids=(BAD_MATERIAL, GRADIENT_PERCENT, *stop_count_material_ids(), *ROAD_CLASS_NUMERIC_IDS),
         numeric_values=np.column_stack([
             bad, gradient, *(stop_count for _ in stop_count_material_ids()),

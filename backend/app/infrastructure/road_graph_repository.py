@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays, MaterialColumn
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments
-from app.domain.geo import midpoint_sql
+from app.domain.geo import bearing_sql, midpoint_sql
 from app.domain.graph import LeanEdge, edge_feature_key_sql, edge_key, node_key, parse_edge_feature_key
 from app.domain.hard_filters import HARD_FILTER_VALUE_SQL, hard_filter_columns
 from app.domain.landcover import LandcoverPercentages, landcover_key
@@ -237,13 +237,28 @@ _EDGE_MATERIAL_ARRAYS_SQL = text(
 # （`infrastructure/road_network_store.py`）に作る。道の通行方向（`way_directions.direction`）が逆向きの枝を
 # 作ってよいかを決める。
 
+#: 交差点での曲がりを測る向きを取る、区間の端からの道のりの長さ（m）。点を出てすぐ・入る直前の向きを取る長さで、
+#: 区間がこれより短ければ端から端を見る。
+_NEAR_NODE_BEARING_DISTANCE_M = 20.0
+_NEAR_START = (
+    f"ST_LineInterpolatePoint(re.geom, LEAST(1.0, {_NEAR_NODE_BEARING_DISTANCE_M} / NULLIF(re.distance_m, 0)))"
+)
+_NEAR_END = (
+    f"ST_LineInterpolatePoint(re.geom, GREATEST(0.0, 1.0 - {_NEAR_NODE_BEARING_DISTANCE_M} / NULLIF(re.distance_m, 0)))"
+)
+
 #: 取込範囲全体の区間（向きを持たない1行）。どの道も通行方向の行を持つ（通行方向の段が数を比べて守る）ので、
-#: どの区間も通行方向を持つ。並びは`domain/road_network.py`の行順の前提。
+#: どの区間も通行方向を持つ。並びは`domain/road_network.py`の行順の前提。端のそばの向きは、
+#: 折れ線の向き（始点→終点）に進むときと逆に進むときの両方を持つ。
 _NETWORK_EDGES_SQL = text(f"""
 SELECT re.osm_way_id, re.segment_index, re.from_node_id, re.to_node_id,
        w.highway, wm.direction,
        ST_XMin(re.geom) AS min_lon, ST_YMin(re.geom) AS min_lat,
-       ST_XMax(re.geom) AS max_lon, ST_YMax(re.geom) AS max_lat
+       ST_XMax(re.geom) AS max_lon, ST_YMax(re.geom) AS max_lat,
+       {bearing_sql("ST_StartPoint(re.geom)", _NEAR_START)} AS start_bearing_deg,
+       {bearing_sql(_NEAR_END, "ST_EndPoint(re.geom)")} AS end_bearing_deg,
+       {bearing_sql("ST_EndPoint(re.geom)", _NEAR_END)} AS reverse_start_bearing_deg,
+       {bearing_sql(_NEAR_START, "ST_StartPoint(re.geom)")} AS reverse_end_bearing_deg
 FROM road_edges re
 JOIN LATERAL {ways_lookup_sql("re.osm_way_id")} w ON true
 {material_from_clause(["wm.direction"], "re.osm_way_id")}

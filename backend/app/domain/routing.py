@@ -709,7 +709,7 @@ class TurnExpandedStructure:
     target_state: np.ndarray
     # 遷移ごとのターンの時間損失（秒）。
     turn_seconds: np.ndarray
-    # 遷移ごとの曲がりの種類（`TurnKind`の値）。時間損失も経路の曲がる所の案内もこの分け方を読む。
+    # 遷移ごとの、案内する曲がりの種類（`TurnKind`の値）。案内しない遷移は直進。
     turn_kind: np.ndarray
     # 状態（有向Edge）の始点・終点Node index。
     edge_from: np.ndarray
@@ -771,11 +771,12 @@ class TurnKind(IntEnum):
     UTURN = 3
 
 
-def _turn_kinds(delta: np.ndarray, is_uturn: np.ndarray, spec: TurnCostSpec) -> np.ndarray:
-    """遷移ごとの曲がりの種類。方位差`delta`が直進とみなす幅の内なら直進、外なら符号で左右を分ける
-    （負＝反時計回り＝左折）。始点へ戻る遷移はUターン。"""
+def _turn_kinds(delta: np.ndarray, is_uturn: np.ndarray, branch: np.ndarray, spec: TurnCostSpec) -> np.ndarray:
+    """遷移ごとの曲がりの種類（待ちの分け方）。分かれ道でない点を通る遷移は直進。分かれ道では、方位差`delta`が
+    直進とみなす幅の内なら直進、外なら符号で左右を分ける（負＝反時計回り＝左折）。始点へ戻る遷移はUターン。"""
     turning = np.where(delta < 0, TurnKind.LEFT, TurnKind.RIGHT)
     kinds = np.where(np.abs(delta) <= spec.straight_max_deg, TurnKind.STRAIGHT, turning)
+    kinds = np.where(branch, kinds, TurnKind.STRAIGHT)
     return np.where(is_uturn, TurnKind.UTURN, kinds).astype(np.int8)
 
 
@@ -788,7 +789,8 @@ def _turn_seconds_for(kinds: np.ndarray, spec: TurnCostSpec) -> np.ndarray:
 def build_turn_expanded_structure(
     csr: CsrGraphStructure,
     lazy_graph: LazyRoadGraph,
-    bearing_deg: np.ndarray,
+    start_bearing_deg: np.ndarray,
+    end_bearing_deg: np.ndarray,
     edge_rank: np.ndarray,
     spec: TurnCostSpec,
     node_has_signal: np.ndarray,
@@ -799,6 +801,11 @@ def build_turn_expanded_structure(
     状態`e`の遷移先は「`e`の終点Nodeから出る有向Edge」で、遷移の数は
     Σ(入次数×出次数)。`e`の始点へ戻る遷移はUターンとして扱う（禁止はしない——袋小路からの
     折り返しに必要なため、費用で抑える）。
+
+    曲がりは、入る区間の終点のそばの向き`end_bearing_deg`と出る区間の始点のそばの向き`start_bearing_deg`
+    （どちらも区間の番号順）の差で測る。区間の端から端の向きで測ると、交差点から離れた所のカーブが
+    交差点の曲がりに混ざる。曲がりの待ちと上位の道の待ちは、来た道へ戻る遷移を除いて2本以上の道へ
+    進める点（分かれ道）でだけ足す——分かれ道でない点は道のデータの継ぎ目で、道を選ばない。
 
     ターンの費用に要る入力はすべて引数で受け取り、**`None`を受け取らない**。既定を持たせても
     実行時に`None`を許しても、渡し忘れた呼び出しが「上位の道の横断に待ちが付かない」構造を
@@ -821,10 +828,12 @@ def build_turn_expanded_structure(
     )
     target_state = csr.entry_edge_index[entry_index].astype(np.int64)
     is_uturn = csr.indices[entry_index].astype(np.int64) == edge_from[source]
-    delta = (bearing_deg[target_state] - bearing_deg[source] + 180.0) % 360.0 - 180.0
-    turn_kind = _turn_kinds(delta, is_uturn, spec)
-    straight = turn_kind == TurnKind.STRAIGHT
-    turn_seconds = _turn_seconds_for(turn_kind, spec)
+    delta = (start_bearing_deg[target_state] - end_bearing_deg[source] + 180.0) % 360.0 - 180.0
+    branch_of_state = np.bincount(source, weights=~is_uturn, minlength=state_count) >= 2
+    branch = branch_of_state[source]
+    wait_kind = _turn_kinds(delta, is_uturn, branch, spec)
+    straight = wait_kind == TurnKind.STRAIGHT
+    turn_seconds = _turn_seconds_for(wait_kind, spec)
 
     # ノードの階級は、読み込んだ部分グラフに現れる道から導く。DB側の事前集計値
     # （`node_turns.max_highway_rank`）があれば大きい方を採る——bboxの外へはみ出した
@@ -846,15 +855,30 @@ def build_turn_expanded_structure(
         & ~node_has_signal[via_node]
     )
     turn_seconds = turn_seconds + np.where(
-        crosses_major & ~is_uturn,
+        crosses_major & ~is_uturn & branch,
         np.where(straight, spec.major_crossing_seconds, spec.major_turn_seconds),
         0.0,
     )
 
     return TurnExpandedStructure(
         state_count=state_count, indptr=new_indptr, target_state=target_state,
-        turn_seconds=turn_seconds, turn_kind=turn_kind, edge_from=edge_from, edge_to=edge_to,
+        turn_seconds=turn_seconds, turn_kind=_guided_turn_kinds(wait_kind, delta, is_uturn, branch, source, state_count),
+        edge_from=edge_from, edge_to=edge_to,
     )
+
+
+def _guided_turn_kinds(
+    wait_kind: np.ndarray, delta: np.ndarray, is_uturn: np.ndarray, branch: np.ndarray, source: np.ndarray,
+    state_count: int,
+) -> np.ndarray:
+    """遷移ごとの、案内する曲がりの種類。待ちの分け方に加え、分かれ道で直進とみなす幅の内側でも、同じ所から
+    よりまっすぐに近い道へ進める遷移（浅いY字で道なりでない方へ入る所）は、方位差の符号で左右を出す。"""
+    straightest = np.full(state_count, np.inf)
+    np.minimum.at(straightest, source[~is_uturn], np.abs(delta[~is_uturn]))
+    off_straightest = branch & (wait_kind == TurnKind.STRAIGHT) & (np.abs(delta) > straightest[source])
+    return np.where(
+        off_straightest, np.where(delta < 0, TurnKind.LEFT, TurnKind.RIGHT), wait_kind
+    ).astype(np.int8)
 
 
 @dataclass(frozen=True)
@@ -866,21 +890,14 @@ class PathTurn:
 
 
 def turns_along(structure: TurnExpandedStructure, path: Sequence[int]) -> list[PathTurn]:
-    """経路が分かれ道で曲がる所（左折・右折・Uターン）を、経路の順に。
-
-    分かれ道は、来た道へ戻る遷移を除いて2本以上の道へ進める点。分かれ道の無い点の曲がり（道なりのカーブ・
-    データの上で道が途中で切れている点）は、道なりに進むだけなので案内しない。曲がりの種類は時間損失と同じ分け方
-    （`turn_kind`）を読む。
-    """
+    """経路の案内する曲がり（左折・右折・Uターン。`turn_kind`が直進でない遷移）を、経路の順に。"""
     turns: list[PathTurn] = []
-    for index, (previous, entry) in enumerate(zip(path, structure.entries_along(path)), start=1):
+    for index, entry in enumerate(structure.entries_along(path), start=1):
         if entry is None:
             continue
         kind = TurnKind(int(structure.turn_kind[entry]))
-        kinds = structure.turn_kind[int(structure.indptr[previous]):int(structure.indptr[previous + 1])]
-        if kind == TurnKind.STRAIGHT or int(np.count_nonzero(kinds != TurnKind.UTURN)) < 2:
-            continue
-        turns.append(PathTurn(index=index, kind=kind))
+        if kind != TurnKind.STRAIGHT:
+            turns.append(PathTurn(index=index, kind=kind))
     return turns
 
 
@@ -1481,7 +1498,7 @@ def compile_search_kernels() -> None:
     statics = build_search_graph_statics(lazy_graph, np.ones(2))
     largest_strongly_connected_nodes(statics.csr, np.ones(2, dtype=bool))
     structure = build_turn_expanded_structure(
-        statics.csr, lazy_graph, np.zeros(2), np.zeros(2, dtype=np.int64), current_turn_cost(),
+        statics.csr, lazy_graph, np.zeros(2), np.zeros(2), np.zeros(2, dtype=np.int64), current_turn_cost(),
         np.zeros(2, dtype=bool), np.zeros(2, dtype=np.int64),
     )
     cost = np.ones((1, 2))

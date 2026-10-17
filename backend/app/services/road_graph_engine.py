@@ -458,10 +458,11 @@ class RoadGraphEngine:
         network = road.network
         rank_of_code = np.array([highway_rank(highway) for highway in network.highway_vocab], dtype=np.int64)
         edge_rank = rank_of_code[network.edge_highway[road.rows[lazy_graph.edge_rows]]]
+        start_bearings, end_bearings = (
+            edge_bearings(lazy_graph, bearing_deg[road.rows], search.node_lat, search.node_lon)
+            for bearing_deg in (network.edge_start_bearing_deg, network.edge_end_bearing_deg))
         return build_turn_expanded_structure(
-            statics.csr, lazy_graph,
-            edge_bearings(lazy_graph, search.composer.bearing_deg, search.node_lat, search.node_lon),
-            edge_rank, self._turn_cost,
+            statics.csr, lazy_graph, start_bearings, end_bearings, edge_rank, self._turn_cost,
             np.asarray(network.node_has_signals[road.nodes], dtype=bool),
             np.asarray(network.node_max_rank[road.nodes], dtype=np.int64),
         )
