@@ -48,7 +48,6 @@ function renderLens(props: Partial<Parameters<typeof LensControl>[0]> = {}) {
       hasDetail={false}
       routeHidden={false}
       premises={[]}
-      compact={false}
       {...handlers}
       {...props}
     />,

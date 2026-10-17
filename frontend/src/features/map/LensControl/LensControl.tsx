@@ -73,8 +73,6 @@ interface LensControlProps {
   premises: readonly string[];
   /** 今のレンズの取得の状態（専用配信の軸のときだけ）。塗りは失敗でもデータ無しでも同じ無彩色なので、印で見分ける。 */
   dataStatus?: LayerDataStatus;
-  /** ピルを小さく出す（走行中に地図の操作を隠している間）。 */
-  compact: boolean;
 }
 
 /** 画面の名前。コードの「レンズ」は画面には出さない（利用者が見る名前はこれだけ）。 */
@@ -121,7 +119,6 @@ export default function LensControl({
   routeHidden,
   premises,
   dataStatus,
-  compact,
 }: LensControlProps) {
   const [open, setOpen] = useState(false);
   const statusLabel = dataStatus ? LAYER_DATA_STATUS_LABELS[dataStatus] : undefined;
@@ -179,10 +176,7 @@ export default function LensControl({
             variant="float"
             size="bare"
             shape="pill"
-            className={cn(
-              "max-w-full flex-row items-center gap-1.5 border-0 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]",
-              compact ? "px-2 py-0.5 text-[0.7rem]" : "px-2.5 py-1 text-[length:var(--font-size-sm)]",
-            )}
+            className="max-w-full flex-row items-center gap-1.5 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
             aria-label={`${LENS_SCREEN_NAME}: ${pillLabel}（タップで変更）`}
             title={statusLabel}
             usage="評価軸を1つ選び、その道を走ったときの点数で、地図の道路（ルートを作った後はルートの線）を塗ります。横の帯は点数の凡例です。"
