@@ -11,11 +11,15 @@
  * テストが位置か失敗を届け、やめた受け取りには届けない。
  */
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { clearDebugLog, getDebugLogEntries, setDebugEnabled } from "@/lib/debugLog";
 import { installGeolocation, removeGeolocation } from "@/testing/geolocation";
 
 import { useRideMode } from "./useRideMode";
+
+/** 走りとしてありえる速さの上限（時速km）。これを超えた速さを警告のログに出す。 */
+const PLAUSIBLE_MAX_KMH = 60;
 
 let geolocation: ReturnType<typeof installGeolocation>;
 
@@ -31,7 +35,7 @@ afterEach(() => {
 
 describe("useRideMode", () => {
   it("押すと受け取りを始め、届いた位置を地図に追わせ続け、動かすと休み、戻すと追い直し、休んでいても押すと受け取りをやめる", () => {
-    const { result } = renderHook(() => useRideMode());
+    const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
     expect(result.current.status).toBe("off");
     expect(result.current.map).toBeNull();
 
@@ -65,7 +69,7 @@ describe("useRideMode", () => {
   });
 
   it("北が上と進む向きが上を切り替え、進む向きは届いた位置から出す。止めて始め直すと北が上から始まる", () => {
-    const { result } = renderHook(() => useRideMode());
+    const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
     act(() => result.current.press());
     geolocation.deliver({ latitude: 35.68, longitude: 139.76, heading: 120 });
     expect(result.current.map).toMatchObject({ headingUp: false, bearing: 120 });
@@ -82,7 +86,7 @@ describe("useRideMode", () => {
   });
 
   it("位置の利用を断られたら走行モードを止め、受け取りをやめて理由を出す。次に始めると理由を消す", () => {
-    const { result } = renderHook(() => useRideMode());
+    const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
     act(() => result.current.press());
     geolocation.fail(1);
     expect(result.current.status).toBe("off");
@@ -94,7 +98,7 @@ describe("useRideMode", () => {
   });
 
   it("一時に取れないだけなら、受け取りを続ける", () => {
-    const { result } = renderHook(() => useRideMode());
+    const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
     act(() => result.current.press());
     geolocation.fail(2);
     expect(result.current.status).toBe("waiting");
@@ -104,7 +108,7 @@ describe("useRideMode", () => {
 
   it("位置の口が無い端末では始めず、理由を出す", () => {
     removeGeolocation();
-    const { result } = renderHook(() => useRideMode());
+    const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
     act(() => result.current.press());
     expect(result.current.status).toBe("off");
     expect(result.current.error).toMatch(/位置情報/);
@@ -120,7 +124,7 @@ describe("useRideMode", () => {
       },
     };
     try {
-      const { result } = renderHook(() => useRideMode());
+      const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
       await act(async () => result.current.press());
       expect(asked).toBe(1);
       // 国土地理院の偏角の計算例の地点（東京。約7°36.5′の西偏）。
@@ -139,7 +143,7 @@ describe("useRideMode", () => {
   });
 
   it("今の速さは、位置が持つ速さ（秒速）を時速にして出し、持たなければ出さない。止めると消える", () => {
-    const { result } = renderHook(() => useRideMode());
+    const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
     act(() => result.current.press());
     expect(result.current.speedKmh).toBeNull();
     geolocation.deliver({ latitude: 35.68, longitude: 139.76, speed: 5 });
@@ -152,7 +156,7 @@ describe("useRideMode", () => {
   });
 
   it("最後に受けた位置の誤差を出し、止めると捨てる", () => {
-    const { result } = renderHook(() => useRideMode());
+    const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
     act(() => result.current.press());
     expect(result.current.accuracyM).toBeNull();
     geolocation.deliver({ latitude: 35.68, longitude: 139.76, accuracy: 12 });
@@ -162,7 +166,7 @@ describe("useRideMode", () => {
   });
 
   it("最後に受けた位置を測った時刻を出し、止めると捨てる", () => {
-    const { result } = renderHook(() => useRideMode());
+    const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
     act(() => result.current.press());
     expect(result.current.fixedAtMs).toBeNull();
     geolocation.deliver({ latitude: 35.68, longitude: 139.76, timestamp: 1_000 });
@@ -173,7 +177,7 @@ describe("useRideMode", () => {
   });
 
   it("位置が速さを持たなければ、続けて受けた2つの位置の距離と時刻の差から出す", () => {
-    const { result } = renderHook(() => useRideMode());
+    const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
     act(() => result.current.press());
     geolocation.deliver({ latitude: 35.68, longitude: 139.76 });
     expect(result.current.speedKmh).toBeNull();
@@ -186,7 +190,7 @@ describe("useRideMode", () => {
   });
 
   it("位置が速さを持たず、2つの位置の誤差の内でしか動かない間は止まっていると読んで0を出し、地図へも0を渡す", () => {
-    const { result } = renderHook(() => useRideMode());
+    const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
     act(() => result.current.press());
     geolocation.deliver({ latitude: 35.68, longitude: 139.76, accuracy: 10, timestamp: 0 });
     // 約5.6mと約4.4m。どちらも2つの誤差の和（20m）の内で、そのまま割れば10km/h前後になる揺れ。
@@ -198,7 +202,7 @@ describe("useRideMode", () => {
   });
 
   it("誤差を超えて動いたら、止まっていると読んだ間の初めの位置からの距離と時刻の差で速さを出す", () => {
-    const { result } = renderHook(() => useRideMode());
+    const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
     act(() => result.current.press());
     geolocation.deliver({ latitude: 35.68, longitude: 139.76, accuracy: 10, timestamp: 0 });
     geolocation.deliver({ latitude: 35.68005, longitude: 139.76, accuracy: 10, timestamp: 4_000 });
@@ -211,8 +215,45 @@ describe("useRideMode", () => {
     expect(result.current.speedKmh).toBeCloseTo(10, 0);
   });
 
+  it.each([
+    {
+      name: "位置が飛んで距離と時刻の差から出した速さ",
+      fixes: [
+        { latitude: 35.68, longitude: 139.76, accuracy: 10, timestamp: 0 },
+        // 緯度0.01度（約1.1km）を40秒: 約100km/h。
+        { latitude: 35.69, longitude: 139.76, accuracy: 10, timestamp: 40_000 },
+      ],
+      warned: [{ from: "距離と時刻", accuracyM: 10 }],
+    },
+    {
+      name: "端末が返した速さ",
+      fixes: [{ latitude: 35.68, longitude: 139.76, accuracy: 5, speed: 30 }],
+      warned: [{ from: "端末", accuracyM: 5 }],
+    },
+    {
+      name: "上限の内の速さ",
+      fixes: [{ latitude: 35.68, longitude: 139.76, accuracy: 5, speed: 10 }],
+      warned: [],
+    },
+  ])("速さが上限を超えたときだけ、出どころを添えた警告をデバッグログに出す（$name）", ({ fixes, warned }) => {
+    // 警告のログはコンソールにも出るので止め、ログの中身で確かめる。
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    setDebugEnabled(true);
+    clearDebugLog();
+    try {
+      const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
+      act(() => result.current.press());
+      for (const fix of fixes) geolocation.deliver(fix);
+      const warnings = getDebugLogEntries().filter((entry) => entry.level === "warn");
+      expect(warnings.map((entry) => entry.detail)).toEqual(warned.map((detail) => expect.objectContaining(detail)));
+    } finally {
+      setDebugEnabled(false);
+      clearDebugLog();
+    }
+  });
+
   it("画面を離れたら受け取りをやめる", () => {
-    const { result, unmount } = renderHook(() => useRideMode());
+    const { result, unmount } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
     act(() => result.current.press());
     unmount();
     expect(geolocation.watching()).toBe(0);

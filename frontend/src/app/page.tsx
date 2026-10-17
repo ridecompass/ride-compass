@@ -43,6 +43,7 @@ import RideConditionBar from "@/features/conditions/RideConditionBar/RideConditi
 import TravelBearingControl from "@/features/conditions/TravelBearingControl/TravelBearingControl";
 import { useWeatherConditions } from "@/features/conditions/useWeatherConditions";
 import { axisCatalogFetchFailure, useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
 import DebugConsole from "@/components/DebugConsole/DebugConsole";
 import { useDebugEnabled } from "@/hooks/useDebugLog";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -126,8 +127,9 @@ const SETTINGS_TABS: readonly { value: SettingsTab; label: string; usage: string
 ];
 
 export default function Home() {
-  // 走行モード（現在地を追い続けて地図を動かす）。
-  const riding = useRideMode();
+  const axisCatalog = useAxisCatalog();
+  // 走行モード（現在地を追い続けて地図を動かす）。走りとしてありえる速さの上限は、走行モデルの下りの最高速度。
+  const riding = useRideMode(clientTuningValue(axisCatalog, CLIENT_TUNING_IDS.maxDescentKmh));
   // 走行モードの間は、地図と予定ルートのプロファイルに集中する配置にする（地図の上の操作を出さず、パネルは帯の「ルート」で開く）。
   const navigating = riding.status !== "off";
   const ridePosition = riding.map?.position ?? null;
@@ -146,7 +148,6 @@ export default function Home() {
   } = useLocation(ridePosition);
   const originManual = locationSource === "manual";
 
-  const axisCatalog = useAxisCatalog();
   // 道のりのグラフに重ねるレイヤは、結果のパネルと走行中の図が同時に出ても1つの選択を共有する。
   const profileLayers = useProfileLayers();
 
