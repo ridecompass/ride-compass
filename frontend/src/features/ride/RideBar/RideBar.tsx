@@ -9,7 +9,7 @@ import {
   OffRouteIcon,
   WindDirectionArrowIcon,
 } from "@/components/ui/icons/icons";
-import { downwindDeg, normalizeDeg } from "@/lib/cardinalLabel";
+import { downwindOnMapDeg } from "@/lib/cardinalLabel";
 import { formatJstHourMinute } from "@/lib/time";
 
 import type { RideRemaining } from "../rideRemaining";
@@ -90,7 +90,7 @@ export default function RideBar({ remaining, offRoute, mapBearingDeg, speedKmh, 
           <span
             data-wind-arrow=""
             className="inline-flex"
-            style={{ transform: `rotate(${normalizeDeg(downwindDeg(wind.directionDeg) - mapBearingDeg)}deg)` }}
+            style={{ transform: `rotate(${downwindOnMapDeg(wind.directionDeg, mapBearingDeg)}deg)` }}
           >
             <WindDirectionArrowIcon size={16} />
           </span>
