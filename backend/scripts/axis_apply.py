@@ -81,7 +81,7 @@ def read_current(client: httpx.Client, axis_id: str) -> Definition | None:
     response = _request(client, "GET", f"{ADMIN_PATH}/{axis_id}")
     if response.status_code == 404:
         return None
-    # 応答は定義に算出項目（地図表示・重みの割合）を足したもの。
+    # 応答は定義に算出項目（重みの割合）を足したもの。
     body = response.json()
     return _canonical({key: body[key] for key in AxisDefinition.model_fields if key in body})
 

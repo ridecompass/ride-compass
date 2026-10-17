@@ -1539,51 +1539,6 @@
         ]
       }
     },
-    "/api/admin/axis-definitions/preview-display-thresholds": {
-      "post": {
-        "tags": [
-          "axis-admin"
-        ],
-        "operationId": "preview_display_thresholds_api_admin_axis_definitions_preview_display_thresholds_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DisplayThresholdsPreviewRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DisplayThresholdsPreviewResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
-      }
-    },
     "/api/admin/tuning": {
       "get": {
         "tags": [
@@ -2311,13 +2266,6 @@
             "type": "array",
             "title": "Axes"
           },
-          "tile_runtime_scales": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Tile Runtime Scales"
-          },
           "client_tuning": {
             "additionalProperties": {
               "type": "number"
@@ -2344,7 +2292,6 @@
         "type": "object",
         "required": [
           "axes",
-          "tile_runtime_scales",
           "client_tuning",
           "tile_versions",
           "accident_years"
@@ -2570,9 +2517,6 @@
             ],
             "title": "Display Band Labels Override"
           },
-          "display": {
-            "$ref": "#/components/schemas/AxisDisplaySpec"
-          },
           "weight_share_when_published": {
             "anyOf": [
               {
@@ -2600,44 +2544,9 @@
           "time_scope",
           "display_thresholds_override",
           "display_band_labels_override",
-          "display",
           "weight_share_when_published"
         ],
         "title": "AxisDefinitionResponse"
-      },
-      "AxisDisplaySpec": {
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "ramp",
-              "none"
-            ],
-            "title": "Kind"
-          },
-          "tile_inputs": {
-            "items": {
-              "$ref": "#/components/schemas/TileInputSpec"
-            },
-            "type": "array",
-            "title": "Tile Inputs"
-          },
-          "thresholds": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Thresholds"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "kind",
-          "tile_inputs",
-          "thresholds"
-        ],
-        "title": "AxisDisplaySpec"
       },
       "AxisInspectorAxis": {
         "properties": {
@@ -3310,74 +3219,6 @@
         ],
         "title": "DifficultyMapValue"
       },
-      "DisplayThresholdsPreviewRequest": {
-        "properties": {
-          "axis_id": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Axis Id"
-          },
-          "shape": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/BreakpointLinearShape-Input"
-              },
-              {
-                "$ref": "#/components/schemas/CategoricalShape-Input"
-              }
-            ],
-            "title": "Shape"
-          },
-          "priority_overrides": {
-            "items": {
-              "$ref": "#/components/schemas/PriorityCondition"
-            },
-            "type": "array",
-            "title": "Priority Overrides"
-          },
-          "thresholds": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "minItems": 1,
-            "title": "Thresholds"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "axis_id",
-          "shape",
-          "thresholds"
-        ],
-        "title": "DisplayThresholdsPreviewRequest"
-      },
-      "DisplayThresholdsPreviewResponse": {
-        "properties": {
-          "dropped_on_map": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Dropped On Map"
-          },
-          "bands_on_map": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Bands On Map"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "dropped_on_map",
-          "bands_on_map"
-        ],
-        "title": "DisplayThresholdsPreviewResponse"
-      },
       "ExternalCallStats": {
         "properties": {
           "calls": {
@@ -4012,9 +3853,6 @@
           "legend": {
             "$ref": "#/components/schemas/MapLegendScale"
           },
-          "tiles": {
-            "$ref": "#/components/schemas/AxisDisplaySpec"
-          },
           "band_labels": {
             "anyOf": [
               {
@@ -4037,7 +3875,6 @@
           "unit",
           "thresholds",
           "legend",
-          "tiles",
           "band_labels"
         ],
         "title": "MapPaint"
@@ -5367,97 +5204,6 @@
           "max_c"
         ],
         "title": "TemperatureRange"
-      },
-      "TileInputSpec": {
-        "properties": {
-          "property": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Property"
-          },
-          "weight": {
-            "type": "number",
-            "title": "Weight",
-            "default": 1.0
-          },
-          "boolean": {
-            "type": "boolean",
-            "title": "Boolean",
-            "default": false
-          },
-          "true_value": {
-            "type": "number",
-            "title": "True Value",
-            "default": 0.0
-          },
-          "false_value": {
-            "type": "number",
-            "title": "False Value",
-            "default": 0.0
-          },
-          "has_unknown_fallback": {
-            "type": "boolean",
-            "title": "Has Unknown Fallback",
-            "default": false
-          },
-          "categories": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "type": "number"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Categories"
-          },
-          "breakpoints": {
-            "anyOf": [
-              {
-                "items": {
-                  "prefixItems": [
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "type": "number"
-                    }
-                  ],
-                  "type": "array",
-                  "maxItems": 2,
-                  "minItems": 2
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Breakpoints"
-          },
-          "needs_runtime_scale": {
-            "type": "boolean",
-            "title": "Needs Runtime Scale",
-            "default": false
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "property",
-          "weight",
-          "boolean",
-          "true_value",
-          "false_value",
-          "has_unknown_fallback",
-          "categories",
-          "breakpoints",
-          "needs_runtime_scale"
-        ],
-        "title": "TileInputSpec"
       },
       "TuningParameterView": {
         "properties": {

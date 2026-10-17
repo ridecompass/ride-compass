@@ -5,7 +5,6 @@
 - カタログから導く一覧: `material_dtype`・`material_array_columns`（`material_value_sql`を通る）・
   `material_coverage_specs`・`material_coverage_exclusions`
 - `display_axis_missing_semantics`: 地図の表示の軸の値が欠けたときの意味
-- `tile_runtime_scales`: タイルの生値に掛ける、実行時に決まる係数
 
 カタログの中身は架空の材料（`num_a` 等）へ差し替えて与える。後ろの2節だけは本番の宣言（材料のカタログと
 `domain/primary_attributes.py`の一次属性の表示の行）そのものを読み、型でも導出でも保証されない不変条件を確かめる。
@@ -61,12 +60,7 @@ def catalog(monkeypatch):
         spec("bool_unknown", "boolean", WAY_UNKNOWN),
         spec("cat_a", "categorical", WAY_DEFINITE, tile_property="cat_tile", primary_attribute=ATTR_B),
         spec("dynamic_a", source="request", value_sql=None, coverage=EXCLUDED),
-        spec(
-            "per_year_a",
-            tile_property="per_year_tile",
-            tile_property_runtime_scale="per_accident_year",
-            coverage=EXCLUDED,
-        ),
+        spec("per_year_a", coverage=EXCLUDED),
     ]
     monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", {s.material_id: s for s in specs})
 
@@ -140,14 +134,6 @@ def test_a_display_axis_takes_the_missing_semantics_of_the_material_on_its_tile_
 def test_a_display_axis_without_its_material_has_no_missing_semantics(catalog):
     assert material_catalog.display_axis_missing_semantics(ATTR_B, "num_b_tile") is None  # 別の属性の材料
     assert material_catalog.display_axis_missing_semantics(ATTR_A, "nothing") is None
-
-
-@pytest.mark.parametrize(
-    ("years", "expected"),
-    [([2021, 2022, 2023, 2024], {"per_year_tile": 0.25}), ([], {})],  # 収録年が無ければ係数も無い
-)
-def test_accident_counts_are_scaled_by_the_number_of_years(catalog, years, expected):
-    assert material_catalog.tile_runtime_scales(years) == expected
 
 
 # --- 本番のカタログ -------------------------------------------------------------

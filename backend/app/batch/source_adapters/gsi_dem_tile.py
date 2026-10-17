@@ -109,7 +109,7 @@ def _product_tiles(product: str, zoom: int, profile: SourceProfile) -> ProductTi
     return ProductTiles(product=product, zoom=zoom, covering=len(covering), stored=tuple(stored), absent=absent)
 
 
-def gsi_dem_tile_inputs(spec: SourceSpec, profile: SourceProfile) -> DemInputs:
+def gsi_dem_adapter_inputs(spec: SourceSpec, profile: SourceProfile) -> DemInputs:
     root = dem_tile_store.TILE_ROOT
     products = tuple(_product_tiles(str(product), int(zoom), profile) for product, zoom in spec.grid.products.items())
     return DemInputs(files=tuple(dem_tile_store.tile_path(root, tiles.product, tiles.zoom, x, y)
@@ -117,7 +117,7 @@ def gsi_dem_tile_inputs(spec: SourceSpec, profile: SourceProfile) -> DemInputs:
                      products=products)
 
 
-@register_adapter("gsi_dem_tile", grid=DemGrid, required=(SourceFeatureRow.rast,), inputs=gsi_dem_tile_inputs)
+@register_adapter("gsi_dem_tile", grid=DemGrid, required=(SourceFeatureRow.rast,), inputs=gsi_dem_adapter_inputs)
 async def read_gsi_dem_tiles(spec: SourceSpec, profile: SourceProfile, inputs: DemInputs,
                              origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     # タイルは`fetch_dem_tiles.py`が先に写している。取込が読むのはその置き場。

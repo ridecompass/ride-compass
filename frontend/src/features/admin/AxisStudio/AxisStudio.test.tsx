@@ -35,7 +35,6 @@ function axis(overrides: Partial<AxisDefinitionResponse> = {}): AxisDefinitionRe
     is_published: false,
     time_scope: "always",
     shape: { kind: "breakpoint_linear", terms: [], preprocess: "identity", breakpoints: [] },
-    display: { kind: "none", tile_inputs: [], thresholds: [] },
     ...overrides,
   };
 }
@@ -93,14 +92,11 @@ let catalogAxes: AxisCatalogEntry[] = [];
 beforeEach(() => {
   writes = serveAxisDefinitions([DRAFT, PUBLISHED, PUBLISHED_2]);
   catalogAxes = [];
-  // フォームの点数の節が描くと同時に取る分布・点数と、地図の段の判定（段にならない値なし）。
+  // フォームの点数の節が描くと同時に取る分布・点数。
   onSameOrigin("POST", `${DEFINITIONS}/preview-distribution`, () =>
     Response.json({ sample_ways: 1, total_km: 1, quantiles: {}, bins: [[0, 2, 1]] }),
   );
   onSameOrigin("POST", `${DEFINITIONS}/preview-scores`, () => Response.json({ scores: [0], material_points: [] }));
-  onSameOrigin("POST", `${DEFINITIONS}/preview-display-thresholds`, () =>
-    Response.json({ dropped_on_map: [], bands_on_map: [0, 1] }),
-  );
 });
 
 /** 描いて、既定の一覧が届くまで待つ（`loaded: false`なら待たない。一覧を差し替えたテスト用）。 */

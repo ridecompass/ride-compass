@@ -70,25 +70,6 @@ export function fetchAxisValueDistribution(shape: AxisShape) {
   );
 }
 
-export type DisplayThresholdsPreviewRequest = Schemas["DisplayThresholdsPreviewRequest"];
-
-/** 人が刻んだ段の境界が地図でどうなるか。`bandsOnMap`は地図の各段が入力のどの段に当たるか
- * （入力の段の番号、下から0始まり）で、nullは判定が無い（入力どおりの段で出す）。 */
-export interface MapBandsOfThresholds {
-  droppedOnMap: readonly number[];
-  bandsOnMap: readonly number[] | null;
-}
-
-/** 編集中の軸で、人が刻んだ段の境界のうち地図では段にならないものと、地図に残る段。判定はbackendが地図の段を
- * 作るのと同じ関数で行う。 */
-export async function fetchMapBandsOfThresholds(body: DisplayThresholdsPreviewRequest): Promise<MapBandsOfThresholds> {
-  const response = await requestApi(
-    (init) => adminApiClient.POST("/axis-definitions/preview-display-thresholds", { body, ...init }),
-    adminOptions("しきい値の確認", { body }),
-  );
-  return { droppedOnMap: response.dropped_on_map, bandsOnMap: response.bands_on_map };
-}
-
 export type ScoresPreviewRequest = Schemas["ScoresPreviewRequest"];
 export type ScoresPreview = Schemas["ScoresPreviewResponse"];
 

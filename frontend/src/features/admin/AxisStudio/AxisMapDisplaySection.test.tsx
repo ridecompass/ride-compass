@@ -1,11 +1,11 @@
 /**
  * `AxisMapDisplaySection.tsx`——「地図表示・公開」の節: 色分けしきい値のまとめ入力（読めたときだけ下書きへ入れ、
- * 読めない間は親の検証へ伝える）・地図で段にならない値の名指し・段階プレビュー・体感ラベル・チップの表示要素・公開。
+ * 読めない間は親の検証へ伝える）・段階プレビュー・体感ラベル・チップの表示要素・公開。
  *
- * 地図で段になるか（`mapBands`）と段の配色（`mapBandColors`）は親が渡すものを与える。
+ * 段の配色（`mapBandColors`）は親が渡すものを与える。
  *
  * ここで見ないもの:
- * - まとめ入力の読み方・段数合わせ・地図の段への引き直し → `axisDraft.test.ts`
+ * - まとめ入力の読み方・段数合わせ → `axisDraft.test.ts`
  * - 凡例の段のレンジ表記 → `lib/mapDisplay/mapColorLegend`
  * - 保存前の検証（読めない入力で止めること） → `AxisComposer.test.tsx`
  */
@@ -14,9 +14,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { MapBandsJudgement } from "@/features/admin/useMapBandsOfThresholds";
 import { AXIS_ICON_PALETTE } from "@/components/ui/icons/axisIconPalette";
-import type { AxisDefinitionResponse } from "@/types/route";
 
 import { AxisMapDisplaySection } from "./AxisMapDisplaySection";
 import { emptyDraft, type Draft } from "./axisDraft";
@@ -25,21 +23,12 @@ const onThresholdErrorChange = vi.fn();
 
 interface HarnessProps {
   initial: Draft;
-  editing?: AxisDefinitionResponse | null;
   restrictedDisplayOnly?: boolean;
   republishing?: boolean;
   mapBandColors?: (boundaries: readonly number[]) => readonly string[];
-  mapBands?: MapBandsJudgement;
 }
 
-function Harness({
-  initial,
-  editing = null,
-  restrictedDisplayOnly = false,
-  republishing = false,
-  mapBandColors,
-  mapBands = { droppedOnMap: [], bandsOnMap: null, failed: false },
-}: HarnessProps) {
+function Harness({ initial, restrictedDisplayOnly = false, republishing = false, mapBandColors }: HarnessProps) {
   const [draft, setDraft] = useState(initial);
   const [thresholdError, setThresholdError] = useState<string | null>(null);
   return (
@@ -48,12 +37,10 @@ function Harness({
       <AxisMapDisplaySection
         draft={draft}
         setDraft={setDraft}
-        editing={editing}
         restrictedDisplayOnly={restrictedDisplayOnly}
         republishing={republishing}
         mapBandColors={mapBandColors}
         mapValueUnit=""
-        mapBands={mapBands}
         thresholdError={thresholdError}
         setThresholdError={(error) => {
           setThresholdError(error);
@@ -82,43 +69,8 @@ async function typeThresholds(user: ReturnType<typeof userEvent.setup>, text: st
   await user.type(thresholdInput(), text);
 }
 
-function editingAxis(kind: "ramp" | "none"): AxisDefinitionResponse {
-  return {
-    axis_id: "axis_x",
-    label: "",
-    description: "",
-    weight_share_when_published: null,
-    priority_overrides: [],
-    icon_id: null,
-    display_thresholds_override: null,
-    display_band_labels_override: null,
-    category: "推定",
-    default_weight: 0,
-    is_published: false,
-    time_scope: "always",
-    shape: { kind: "breakpoint_linear", terms: [], preprocess: "identity", breakpoints: [] },
-    display: { kind, tile_inputs: [], thresholds: [] },
-  };
-}
-
 beforeEach(() => {
   onThresholdErrorChange.mockReset();
-});
-
-describe("地図表示ができない軸の注記", () => {
-  it("編集中の軸の地図表示が無いときだけ出し、新規作成中・地図表示のある軸には出さない", () => {
-    const note = /地図表示用のデータ取得経路が用意されていません/;
-    const { unmount } = render(<Harness initial={draftWith()} editing={editingAxis("none")} />);
-    expect(screen.getByText(note)).toBeInTheDocument();
-    unmount();
-
-    const second = render(<Harness initial={draftWith()} editing={editingAxis("ramp")} />);
-    expect(screen.queryByText(note)).not.toBeInTheDocument();
-    second.unmount();
-
-    render(<Harness initial={draftWith()} editing={null} />);
-    expect(screen.queryByText(note)).not.toBeInTheDocument();
-  });
 });
 
 describe("色分けしきい値", () => {
@@ -170,15 +122,6 @@ describe("色分けしきい値", () => {
     expect(onThresholdErrorChange).toHaveBeenLastCalledWith(null);
     expect(screen.getByRole("button", { name: "+ しきい値を自分で設定する" })).toBeInTheDocument();
   });
-
-  it("地図で段にならない値があれば、入力欄の下で名指しする。入力が読めない間は出さない", async () => {
-    const mapBands = { droppedOnMap: [2], bandsOnMap: [0, 2], failed: false };
-    const user = renderSection({ initial: draftWith({ displayThresholdsOverride: [1, 2, 3] }), mapBands });
-    expect(screen.getByText("地図では効かない: 2")).toBeInTheDocument();
-
-    await user.type(thresholdInput(), "x");
-    expect(screen.queryByText(/地図では効かない/)).not.toBeInTheDocument();
-  });
 });
 
 describe("段階プレビュー", () => {
@@ -189,13 +132,12 @@ describe("段階プレビュー", () => {
     expect(screen.queryByLabelText(/色分けプレビュー/)).not.toBeInTheDocument();
   });
 
-  it("段の数は、地図で段にならない値を除いた境界で数え、配色も残った境界で決める", () => {
+  it("段の数は入力した境界で数え、配色もその境界で決める", () => {
     const mapBandColors = vi.fn((boundaries: readonly number[]) =>
       Array.from({ length: boundaries.length + 1 }, (_, i) => `rgb(${i}, 0, 0)`),
     );
     renderSection({
-      initial: draftWith({ displayThresholdsOverride: [1, 2, 3] }),
-      mapBands: { droppedOnMap: [2], bandsOnMap: [0, 2, 3], failed: false },
+      initial: draftWith({ displayThresholdsOverride: [1, 3] }),
       mapBandColors,
     });
 
@@ -212,30 +154,16 @@ describe("段階プレビュー", () => {
     expect(screen.getByText(/配色はまだ決まっていません/)).toBeInTheDocument();
   });
 
-  it("体感ラベルは、地図の各段に当たる入力の段のラベルを添える", () => {
+  it("体感ラベルは、各段にその段のラベルを添える", () => {
     renderSection({
       initial: draftWith({ displayThresholdsOverride: [1, 2], displayBandLabelsOverride: ["低", "中", "高"] }),
-      mapBands: { droppedOnMap: [2], bandsOnMap: [0, 2], failed: false },
     });
     const items = within(preview()).getAllByRole("listitem");
-    expect(items).toHaveLength(2);
-    expect(items[0]).toHaveTextContent("低");
-    expect(items[1]).toHaveTextContent("高");
-    expect(preview()).not.toHaveTextContent("中");
-  });
-
-  it("地図での段の判定を取れなかったときだけ、入力どおりの段で出していると添える", () => {
-    const note = /段の判定を取得できなかった/;
-    const initial = draftWith({ displayThresholdsOverride: [1, 2] });
-    const { unmount } = render(
-      <Harness initial={initial} mapBands={{ droppedOnMap: [], bandsOnMap: null, failed: true }} />,
-    );
-    expect(preview()).toHaveTextContent("3段階になります");
-    expect(within(preview()).getByText(note)).toBeInTheDocument();
-    unmount();
-
-    render(<Harness initial={initial} />);
-    expect(screen.queryByText(note)).not.toBeInTheDocument();
+    expect(items.map((item) => item.textContent)).toEqual([
+      expect.stringContaining("低"),
+      expect.stringContaining("中"),
+      expect.stringContaining("高"),
+    ]);
   });
 });
 
@@ -256,23 +184,6 @@ describe("体感ラベル", () => {
     await user.click(screen.getByRole("button", { name: "体感ラベルの設定をやめる" }));
     expect(draft().displayBandLabelsOverride).toBeNull();
     expect(draft().displayThresholdsOverride).toEqual([1, 2]);
-  });
-
-  it("地図の段に当たらない入力の段のラベル欄には、地図には出ないと印を付ける。判定が無ければ付けない", () => {
-    const initial = draftWith({ displayThresholdsOverride: [1, 2], displayBandLabelsOverride: ["低", "中", "高"] });
-    const { unmount } = render(
-      <Harness initial={initial} mapBands={{ droppedOnMap: [2], bandsOnMap: [0, 2], failed: false }} />,
-    );
-    const marked = [1, 2, 3].map(
-      (n) =>
-        within(screen.getByRole("textbox", { name: `体感ラベル${n}` }).parentElement!).queryByText("地図には出ない") !==
-        null,
-    );
-    expect(marked).toEqual([false, true, false]);
-    unmount();
-
-    render(<Harness initial={initial} />);
-    expect(screen.queryByText("地図には出ない")).not.toBeInTheDocument();
   });
 });
 

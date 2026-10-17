@@ -38,7 +38,6 @@ export function catalogEntry(overrides: EntryOverrides = {}): AxisCatalogEntry {
       legend: { boundaries: thresholds, unit: null },
       band_labels: null,
       ...mapPaint,
-      tiles: { kind: "none", tile_inputs: [], thresholds: [] },
     },
     raw_value_units: { unit: null, total_unit: null, ...rawValueUnits },
     material_breakdown: [],
@@ -65,7 +64,6 @@ export function catalogResponse(
 ): AxisCatalogResponse {
   return {
     axes: [...entries],
-    tile_runtime_scales: {},
     client_tuning: {},
     tile_versions: {},
     accident_years: [],

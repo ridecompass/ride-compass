@@ -17,15 +17,7 @@
 
 **`map_paint`フィールド**: `domain/map_paint.py: map_paint()`
 （プロセス内メモリのみを見る純粋関数、DB/IO無し）を軸ごとに呼んで含める。これにより、
-軸スタジオでの公開操作（is_publishedの切替）が、地図レイヤーのramp表示へ**再デプロイ
-なしに即座に**反映される（docs/records/decisions/t308-axis-map-display-auto-derivation.md参照）。
-
-**`tile_runtime_scales`**: 地図表示の導出は、タイルの生値を材料の値へ換算する係数が実行時に
-しか決まらない材料（`MaterialSpec.tile_property_runtime_scale`）も対象に含めるが、係数の源
-（事故の収録年）はDBにしか無いため、`domain/axis_display.py`の純粋関数では求められない。
-本エンドポイントがリクエスト毎に1回だけ地域サービス（`services/region_service.py`）から収録年を読み、係数は
-`domain/material_catalog.py: tile_runtime_scales`が材料の宣言から導く。フロントのJS式ビルダーが
-これを取得しタイル生値に掛け合わせる。
+軸スタジオでの公開操作（is_publishedの切替）が、地図の塗りへ**再デプロイなしに即座に**反映される。
 """
 
 from fastapi import APIRouter, Depends
@@ -39,7 +31,6 @@ from app.domain.axis_definitions import (
     published_axis_definitions,
     weather_layer_groups_for,
 )
-from app.domain.material_catalog import tile_runtime_scales
 from app.domain.axis_raw_value import (
     AxisMaterialBreakdownEntry,
     RawValueUnits,
@@ -102,10 +93,6 @@ class AxisCatalogEntry(StrictModel):
 
 class AxisCatalogResponse(StrictModel):
     axes: list[AxisCatalogEntry]
-    # タイルのプロパティ名→実行時にしか決まらない換算係数（タイル生値に掛けると材料の値になる倍率、
-    # `domain/material_catalog.py: tile_runtime_scales`）。`TileInputSpec.needs_runtime_scale=True`な
-    # tile_inputのタイル生値へ、受け取る側が`property`で引いて掛ける。
-    tile_runtime_scales: dict[str, float]
     # フロントが使う較正値（id → いま効いている値、`domain/tuning.py`が宣言）。管理画面から
     # 変えた値を**再デプロイなしに**画面へ届けるため、起動時に1回取るこのカタログへ相乗り
     # させる（ビルド時生成物のroute-generate-config.jsonが持つ既定値は、画面がidの型にだけ使い、値は読まない）。
@@ -126,7 +113,7 @@ async def get_axis_catalog(region_service: RegionService = Depends(get_region_se
     # services/axis_registry_service.py参照）のため、DBへは触れずプロセス内の値を
     # そのまま返す（評価ホットパスと同じ同期アクセス方式）。map_paint()・
     # primary_attribute_ids_for()も同様にプロセス内メモリだけを見る純粋関数のため、
-    # リクエスト毎に呼んでもコストは無視できる。事故の収録年と、それから導く換算係数・タイルの世代だけがDBを見る。
+    # リクエスト毎に呼んでもコストは無視できる。事故の収録年とタイルの世代だけがDBを見る。
     accident_years = await region_service.get_accident_years()
     tile_versions = await region_service.tile_versions()
     way_value_layers = dedicated_way_value_layers()
@@ -154,5 +141,4 @@ async def get_axis_catalog(region_service: RegionService = Depends(get_region_se
             )
             for definition in published_axis_definitions()
         ],
-        tile_runtime_scales=tile_runtime_scales(accident_years),
     )
