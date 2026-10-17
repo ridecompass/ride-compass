@@ -70,9 +70,7 @@ import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 
 const GENERATE_OPEN_STORAGE_KEY = "ridecompass:generate-open";
 const OUTCOME_OPEN_STORAGE_KEY = "ridecompass:outcome-open";
-// 区分の見出しのDOM id（デスクトップの区分・モバイルのシート）。
-const GENERATE_SECTION_TITLE_ID = "generate-section-title";
-const OUTCOME_SECTION_TITLE_ID = "outcome-section-title";
+// 区分の見出しのDOM id（モバイルのシート）。
 const ROUTE_SETTINGS_SHEET_TITLE_ID = "route-settings-sheet-title";
 const ROUTE_OUTCOME_SHEET_TITLE_ID = "route-outcome-sheet-title";
 
@@ -685,7 +683,6 @@ export default function Home() {
                 <div {...touchPanel("routeSettings")}>
                   <Tabs value={settingsTab} onValueChange={handleSettingsTabChange}>
                     <SectionDisclosure
-                      id={GENERATE_SECTION_TITLE_ID}
                       title="ルート設定"
                       active={activePanel === "routeSettings"}
                       trailing={
@@ -705,7 +702,6 @@ export default function Home() {
 
                 <div {...touchPanel("routeOutcome")}>
                   <SectionDisclosure
-                    id={OUTCOME_SECTION_TITLE_ID}
                     title="ルート結果"
                     active={activePanel === "routeOutcome"}
                     trailing={

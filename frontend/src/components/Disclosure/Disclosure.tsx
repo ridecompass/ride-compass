@@ -7,8 +7,6 @@ import { cn } from "@/lib/cn";
 // 1つだけ開閉する見出しと本文（1項目だけのRadix Accordion）。各セクションは互いに独立して開閉する。項目の層は
 // display:contentsで透過させ、呼ぶ側のレイアウトに影響させない。
 interface DisclosureProps {
-  /** 全体を包む要素のid（トリガーではなく領域全体に付く）。 */
-  id?: string;
   className?: string;
   /** 見出しの行のクラス。 */
   headerClassName?: string;
@@ -33,7 +31,6 @@ interface DisclosureProps {
 const ITEM_VALUE = "content";
 
 export default function Disclosure({
-  id,
   className,
   headerClassName,
   triggerClassName,
@@ -62,7 +59,6 @@ export default function Disclosure({
 
   return (
     <Accordion.Root
-      id={id}
       type="single"
       collapsible
       className={className}

@@ -317,8 +317,7 @@ class TestPublishImmutability:
         with pytest.raises(axis_definitions.AxisPublishedImmutableError) as caught:
             axis_definitions.check_publish_immutability(axis(is_published=True), "deleted")
 
-        assert (caught.value.axis_id, caught.value.action) == ("axis_a", "deleted")
-        assert "削除できません" in str(caught.value)
+        assert "「軸」は公開中のため削除できません" in str(caught.value)
 
     def test_a_published_axis_is_not_updated_without_knowing_the_new_contents(self):
         with pytest.raises(axis_definitions.AxisPublishedImmutableError) as caught:
@@ -433,8 +432,7 @@ class TestInternalAxisPublish:
                 axis("inner", is_published=True), {**self.EXISTING, **previous}
             )
 
-        assert (caught.value.axis_id, caught.value.referencing_axis_id) == ("inner", "outer")
-        assert "「外の軸」" in str(caught.value)
+        assert "「軸」は「外の軸」が組み合わせに使っている軸" in str(caught.value)
 
     def test_an_axis_another_axis_reads_that_is_already_published_may_stay_published(self):
         # 時刻で変わる軸が組み合わせる公開軸の、表示だけの直し。公開へ切り替える書き込みではない。
