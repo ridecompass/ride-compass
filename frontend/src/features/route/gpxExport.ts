@@ -8,7 +8,7 @@ import type { RouteCandidate } from "@/types/route";
 export const MAX_GPX_TRACK_POINTS = 1000;
 
 // 間引きで元の折れ線からずれてよい距離（m）。読み込んだ側のナビが描く線として、この程度の
-// ずれは道の形として見分けられない。上限点数に収まらない場合はこの値を倍にして再試行する。
+// ずれは道の形として見分けられない。上限点数に収まらない場合はこの値を倍にして数え直す。
 const SIMPLIFY_TOLERANCE_M = 3;
 
 /** 緯度経度を、座標列の中央緯度を基準にした局所平面（m）へ落とす。緯度経度のまま測ると、東西の曲がりだけが残りやすくなる。 */
@@ -20,36 +20,42 @@ function toLocalPlane(coordinates: readonly GeoJSON.Position[]): PlanePoint[] {
   }));
 }
 
-/** 点`p`と線分`a`-`b`の距離（m）。`a`と`b`が同じ点なら点どうしの距離。 */
-function distanceToSegment(p: PlanePoint, a: PlanePoint, b: PlanePoint): number {
+/** 点`p`と線分`a`-`b`の距離の二乗（m²）。`a`と`b`が同じ点なら点どうしの距離の二乗。区間の点ごとに呼ぶので、重い
+ * `Math.hypot`を通さず二乗で比べる。 */
+function squaredDistanceToSegment(p: PlanePoint, a: PlanePoint, b: PlanePoint): number {
   const closest = closestPointOnSegment(p, a, b);
-  return Math.hypot(p.x - closest.x, p.y - closest.y);
+  const dx = p.x - closest.x;
+  const dy = p.y - closest.y;
+  return dx * dx + dy * dy;
 }
 
-/** Ramer–Douglas–Peucker。両端を結んだ線分から`toleranceM`より離れる点を残し、その点で
- * 区間を割って同じ判定を繰り返す。残った点だけを結べば元の折れ線との差は`toleranceM`以内に
- * 収まる。深い再帰を避けるため明示的なスタックで回す。 */
-function markKeptPoints(points: readonly PlanePoint[], toleranceM: number): boolean[] {
-  const kept = new Array<boolean>(points.length).fill(false);
-  kept[0] = true;
-  kept[points.length - 1] = true;
-  const pending: Array<[number, number]> = [[0, points.length - 1]];
+/** Ramer–Douglas–Peucker。両端を結んだ線分から最も離れる点で区間を割り、同じ判定を繰り返す。点ごとに、許容するずれが
+ * いくつ未満ならその点が残るか（m）を返す: 割った点は自分のずれと、自分を割り出した点の値の小さいほう、両端は`Infinity`、
+ * `minToleranceM`以下のずれしか無い区間の中の点は0。区間を割る点は許容によらず、許容は割るかどうかだけを決めるので、
+ * 許容`t`（`minToleranceM`以上）のRDPが残す点は、この値が`t`より大きい点に一致し、それらを結べば元の折れ線との差は
+ * `t`以内に収まる。許容ごとに割り直すと、細かく揺れる区間では1回ごとに点数の2乗の距離計算になるため、1回だけ割る。
+ * 深い再帰を避けるため明示的なスタックで回す。 */
+function toleranceKeepingEachPoint(points: readonly PlanePoint[], minToleranceM: number): number[] {
+  const keptBelow = new Array<number>(points.length).fill(0);
+  keptBelow[0] = Infinity;
+  keptBelow[points.length - 1] = Infinity;
+  const pending: Array<[number, number, number]> = [[0, points.length - 1, Infinity]];
   while (pending.length > 0) {
-    const [first, last] = pending.pop()!;
+    const [first, last, parentKeptBelow] = pending.pop()!;
     let farthest = -1;
-    let maxDistance = toleranceM;
+    let maxSquared = minToleranceM * minToleranceM;
     for (let i = first + 1; i < last; i += 1) {
-      const distance = distanceToSegment(points[i], points[first], points[last]);
-      if (distance > maxDistance) {
-        maxDistance = distance;
+      const squared = squaredDistanceToSegment(points[i], points[first], points[last]);
+      if (squared > maxSquared) {
+        maxSquared = squared;
         farthest = i;
       }
     }
     if (farthest < 0) continue;
-    kept[farthest] = true;
-    pending.push([first, farthest], [farthest, last]);
+    keptBelow[farthest] = Math.min(Math.sqrt(maxSquared), parentKeptBelow);
+    pending.push([first, farthest, keptBelow[farthest]], [farthest, last, keptBelow[farthest]]);
   }
-  return kept;
+  return keptBelow;
 }
 
 /** 座標列を`MAX_GPX_TRACK_POINTS`以下へ間引く。残す点は折れ線の形から選ぶ（両端を結んだ線分からのずれが
@@ -57,11 +63,12 @@ function markKeptPoints(points: readonly PlanePoint[], toleranceM: number): bool
  * `MAX_GPX_TRACK_POINTS`以下ならそのまま返す。 */
 function simplifyCoordinates(coordinates: readonly GeoJSON.Position[]): GeoJSON.Position[] {
   if (coordinates.length <= MAX_GPX_TRACK_POINTS) return [...coordinates];
-  const points = toLocalPlane(coordinates);
+  const keptBelow = toleranceKeepingEachPoint(toLocalPlane(coordinates), SIMPLIFY_TOLERANCE_M);
   // 両端は常に残るため、許容するずれを増やし続ければ2点まで減らせる（＝必ず収まる）。
   for (let tolerance = SIMPLIFY_TOLERANCE_M; ; tolerance *= 2) {
-    const kept = markKeptPoints(points, tolerance);
-    if (kept.filter(Boolean).length <= MAX_GPX_TRACK_POINTS) return coordinates.filter((_, index) => kept[index]);
+    if (keptBelow.filter((value) => value > tolerance).length <= MAX_GPX_TRACK_POINTS) {
+      return coordinates.filter((_, index) => keptBelow[index] > tolerance);
+    }
   }
 }
 
