@@ -274,6 +274,16 @@ describe("RouteProfile", () => {
     },
   );
 
+  it("走行中の「表示」の図は、現在地の縦線を標高の折れ線と違う色で引く", async () => {
+    const { container } = renderProfile({ riding: true, progressKm: 0.25 });
+    await openLayers();
+    const position = container.querySelector('[data-progress="position"]');
+    const elevation = container.querySelector('[data-progress="ahead"] polyline');
+    expect(position?.getAttribute("class")).toMatch(/stroke-/);
+    expect(elevation?.getAttribute("class")).toMatch(/stroke-/);
+    expect(position?.getAttribute("class")).not.toBe(elevation?.getAttribute("class"));
+  });
+
   it("走行中の「表示」の図は、最初の折れ線の最高と最低の高さに単位つきの標高の目盛りを出す（結果の図には出さない）", async () => {
     const { rerender } = renderProfile({ riding: true, progressKm: 0.25 });
     await openLayers();
