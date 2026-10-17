@@ -13,7 +13,8 @@ import { createRecordingMap, type StyleLayer } from "@/testing/mapTrace/recordin
 import { catalogEntry, dedicatedEntry } from "@/testing/catalogAxes";
 import { dedicatedWayValueAxesFromCatalogAxes } from "@/lib/mapDisplay/axisLayers";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
-import { POINT_LAYERS, POINT_TILE_SOURCES, pointAxisKey } from "@/features/map/scene/groups/points";
+import { POINT_TILE_SOURCES, pointAxisKey } from "@/features/map/scene/groups/points";
+import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
 import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 import { ROAD_TRACKS } from "@/lib/mapDisplay/roadTracks";
 import { pointLegendAxes, roadLegendAxes } from "@/features/map/scene/legends";

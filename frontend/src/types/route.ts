@@ -23,6 +23,7 @@ export type RouteSegmentDetail = Schemas["RouteSegmentDetail"];
 
 export type RouteCandidate = Schemas["RouteCandidate"];
 export type RouteTurn = Schemas["RouteTurn"];
+export type RoutePoint = Schemas["RoutePoint"];
 /** 住所の検索で当たった地点の候補。 */
 export type PlaceCandidate = Schemas["PlaceCandidate"];
 export type OverallDifficulty = Schemas["OverallDifficulty"];

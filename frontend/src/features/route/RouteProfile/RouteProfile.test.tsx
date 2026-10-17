@@ -4,11 +4,13 @@
  * 見るもの: 既定で「評価で塗る」（難易度のグラフ）を出すこと、その (i) が塗った軸の色と名前・値の無い区間の色・意味の文を出すこと
  * （塗る区間の無い軸は出さない）、「表示」のタブのチップが選んだ情報を重ね・外す知らせを上げること、標高の折れ線と最高・最低、
  * 選んだ地点の標高、出す情報が無いときと値が無いときの文、道の区分のレイヤの帯をレイヤごとに地図と同じ色で出し、その凡例と
- * 選んだ地点の区分の呼び名を出すこと。
+ * 選んだ地点の区分の呼び名を出すこと、点のレイヤはルートの近くの点を通る距離に地図と同じ色の印で並べ、選んだ地点の点の区分と名前と、
+ * 現れた区分の凡例を出すこと。
  *
  * ここで見ないもの: 難易度の塗り・なぞって地点を選ぶ操作 → `DifficultyProfile.test.tsx`。折れ線の点・帯の切れ目と地点の値・行の計算 →
- * `profileLayers.test.ts`。選んだレイヤを覚えること → `useProfileLayers.test.ts`。
+ * `profileLayers.test.ts`（点の印の色・区分の名前・地点の印の選び方も）。選んだレイヤを覚えること → `useProfileLayers.test.ts`。
  */
+import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
 import { roadTrackRows, ROAD_TRACKS } from "@/lib/mapDisplay/roadTracks";
 import { EVALUATION_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { render, screen, within } from "@testing-library/react";
@@ -59,6 +61,7 @@ function renderProfile(props: Partial<Props> = {}) {
       scaleKm={2}
       selected={null}
       layers={{ ids: ["elevation"], toggle }}
+      points={[]}
       {...props}
     />,
   );
@@ -105,6 +108,7 @@ describe("RouteProfile", () => {
         scaleKm={2}
         selected={{ segment: CLIMB, latitude: 35, longitude: 139 }}
         layers={{ ids: ["elevation"], toggle }}
+        points={[]}
       />,
     );
     expect(screen.getByText("標高 最高 32m・最低 12m・この地点 12m")).toBeInTheDocument();
@@ -151,9 +155,42 @@ describe("RouteProfile", () => {
     ).toEqual(["舗装", "砂利・未舗装"]);
   });
 
+  it("点のレイヤは、ルートの近くの点を通る距離に地図と同じ色の印で並べ、選んだ地点の点の区分と名前をグラフの下に、現れた区分の凡例を一覧の行に出す", async () => {
+    const supply = POINT_LAYERS.find((layer) => layer.attr_id === "supply_poi")!;
+    const color = (key: string) => supply.display_axes[0].categories.find((category) => category.key === key)!.color;
+    renderProfile({
+      selected: { segment: CLIMB, latitude: 35, longitude: 139 },
+      layers: { ids: ["supply_poi"], toggle: vi.fn() },
+      points: [
+        { distance_km: 0.01, layer: "supply_poi", properties: { kind: "convenience", name: "ローソン 渋谷店" } },
+        { distance_km: 0.8, layer: "stop_poi", properties: { kind: "stop" } },
+        { distance_km: 1.5, layer: "supply_poi", properties: { kind: "toilets" } },
+      ],
+    });
+    await openLayers();
+    const chart = screen.getByRole("img", { name: "道のりに沿った情報" });
+    const marks = [...chart.querySelectorAll('[data-layer="supply_poi"] line')];
+    expect(marks.map((mark) => mark.getAttribute("stroke"))).toEqual([color("convenience"), color("toilets")]);
+    expect(chart.querySelector('[data-layer="stop_poi"]')).toBeNull();
+
+    expect(screen.getByText("補給・休憩ポイント・この地点 コンビニ ローソン 渋谷店")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "グラフに出す情報" }));
+    expect(
+      within(screen.getByRole("list", { name: "補給・休憩ポイントの凡例" }))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["コンビニ", "トイレ"]);
+  });
+
   it.each<{ why: string; ids: string[]; segments: RouteSegmentDetail[]; text: string }>([
     { why: "出す情報を選んでいない", ids: [], segments: [CLIMB], text: "出す情報を選んでください。" },
     { why: "選んだ情報の値が無い", ids: ["elevation"], segments: [UNKNOWN], text: "標高の値がありません。" },
+    {
+      why: "選んだ点がルートの近くに無い",
+      ids: ["supply_poi"],
+      segments: [CLIMB],
+      text: "補給・休憩ポイントはルートの近くにありません。",
+    },
   ])("$why ときは、折れ線の代わりに文で知らせる", async ({ ids, segments, text }) => {
     renderProfile({ segments, layers: { ids, toggle: vi.fn() } });
     await openLayers();

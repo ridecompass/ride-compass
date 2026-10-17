@@ -262,6 +262,7 @@ export default function RouteOutcome({
                 {route.segments.length > 0 && (
                   <RouteProfile
                     segments={route.segments}
+                    points={route.points}
                     overallDifficulty={route.overall_difficulty?.average ?? null}
                     axes={axisCatalog.axes}
                     axisColors={axisCatalog.axisColors}

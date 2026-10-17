@@ -41,9 +41,9 @@ import {
   landcoverTileUrl,
   pointTileUrl,
   roadSurfaceTileUrl,
-  type PointTileLayer,
   type TileVersions,
 } from "@/features/map/regionApi";
+import type { PointTileLayer } from "@/lib/mapDisplay/pointLayers";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 
 import { applyMapScene } from "./applyMapScene";

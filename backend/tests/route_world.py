@@ -25,6 +25,7 @@ from app.domain.route_road_classes import LINE_LAYER_MATERIALS
 from app.domain.traffic import stop_count_material_ids
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
+from app.domain.route_points import RoutePointHit
 from app.domain.route_preference import RoutePreference
 from app.domain.route_request import FixedPoints, RequestedConditions
 from app.domain.wind import WindForecastSeries
@@ -201,13 +202,16 @@ def road_network(
 
 
 class NetworkRepository:
-    """DBの代役。道路網はどこでも取込範囲の中で、区間の形は両端のノードを結ぶ直線。"""
+    """DBの代役。道路網はどこでも取込範囲の中で、区間の形は両端のノードを結ぶ直線。近くの点は`side_points`
+    （区間の(way, segment)ごとの当たり。無ければどの区間にも無い）。"""
 
-    def __init__(self, network: RoadNetwork):
+    def __init__(self, network: RoadNetwork,
+                 side_points: dict[tuple[int, int], list[RoutePointHit]] | None = None):
         self._coordinates = {
             node_key(int(osm)): [float(lat), float(lon)]
             for osm, lat, lon in zip(network.node_osm_id, network.node_lat, network.node_lon, strict=True)
         }
+        self._side_points = side_points or {}
 
     async def is_covered(self, bbox):
         return True
@@ -217,6 +221,10 @@ class NetworkRepository:
             edge.edge_id: replace(edge, geometry=[self._coordinates[edge.from_node_id], self._coordinates[edge.to_node_id]])
             for edge in edges
         }
+
+    async def get_route_side_points(self, edges):
+        keys = {(edge.osm_way_id, edge.segment_index) for edge in edges}
+        return {key: hits for key, hits in self._side_points.items() if key in keys}
 
 
 class Weather:
@@ -245,11 +253,12 @@ def serve_road_network(monkeypatch, current: Callable[[], RoadNetwork]) -> None:
 def generator_for(
     monkeypatch, network: RoadNetwork, avoid_weight: float, wind: WindForecastSeries | None,
     max_average_grade_percent: float | None = None,
+    side_points: dict[tuple[int, int], list[RoutePointHit]] | None = None,
 ):
     """道路網を全体の配列として読ませ、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""
     serve_road_network(monkeypatch, lambda: network)
     return assemble_route_generation_setup(
-        GraphService(NetworkRepository(network)), Weather(wind),
+        GraphService(NetworkRepository(network, side_points)), Weather(wind),
         RequestedConditions(
             preference_override=RoutePreference(weights={AVOID_AXIS: avoid_weight}),
             penalty_strength=1.0, max_average_grade_percent=max_average_grade_percent, hard_filters=DEFAULT_HARD_FILTERS,
