@@ -208,6 +208,11 @@ function marksAt(point: Coordinates) {
     .filter((mark) => mark.coordinates.latitude === point.latitude && mark.coordinates.longitude === point.longitude);
 }
 
+/** 要素の中に描いた矢印の線。 */
+function arrowPaths(element: HTMLElement) {
+  return [...element.querySelectorAll("path")].map((path) => path.getAttribute("d"));
+}
+
 /** 地点の並びで目的地を押して選ぶ（「ルート設定」が効いている間、地図を押すと選んでいる地点を置く。何も押していなければ出発地）。 */
 async function selectDestination(user: User) {
   await user.click(screen.getByRole("button", { name: "目的地: 未設定" }));
@@ -848,7 +853,7 @@ describe("画面の枠", () => {
     expect(drawn.map((feature) => feature.properties?.travelled ?? false)).toEqual([true, false]);
   });
 
-  it("走行中は、現在地より先でいちばん近い曲がる所の向きと距離を地図の上のカードに出し、その地点に印を出す", async () => {
+  it("走行中は、現在地より先でいちばん近い曲がる所の向きと距離を地図の上のカードに出し、その地点にカードと同じ矢印の札を出す", async () => {
     const geolocation = installGeolocation(HERE);
     const { user } = renderHome();
     const turnPoint = { latitude: 35.7, longitude: 139.708 };
@@ -858,8 +863,13 @@ describe("画面の枠", () => {
     await user.click(screen.getByRole("button", { name: "走行モード" }));
 
     geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
-    expect(screen.getByRole("status", { name: "300m先で右折" })).toBeInTheDocument();
-    expect(marksAt(turnPoint).map((mark) => mark.element.getAttribute("aria-label"))).toEqual(["曲がる所"]);
+    const card = screen.getByRole("status", { name: "300m先で右折" });
+    const [mark] = marksAt(turnPoint).map((mark) => mark.element);
+    expect(mark).toHaveAccessibleName("曲がる所: 右折");
+    expect(arrowPaths(mark)).toEqual(arrowPaths(card));
+    // 現在地の印（強調色の丸）と取り違えないよう、丸でも強調色でもない。
+    expect(mark.style.borderRadius).not.toBe("50%");
+    expect(mark.style.background).not.toContain("--color-accent");
 
     // 曲がる所を過ぎたら出さない。
     geolocation.deliver({ latitude: 35.7, longitude: 139.709, accuracy: 20 });
