@@ -17,14 +17,6 @@ export interface AxisMaterialBreakdown {
   valueLabels?: Readonly<Record<string, string>>;
 }
 
-/** 密度の軸の項1件。軸の生値は、項の材料（1kmあたりの回数・件数）に重みを掛けて足したもの。 */
-export interface DensityTerm {
-  materialId: string;
-  label: string;
-  /** 軸定義に書いた重みのまま。0の項は、材料の点が地図に出ても数に入らない。 */
-  weight: number;
-}
-
 export interface CatalogAxis {
   /** 軸id。重みの辞書（`route_preference`）のキーでもある。 */
   axisId: string;
@@ -40,8 +32,6 @@ export interface CatalogAxis {
   /** 生値へ距離を掛けた総量の単位。総量を出しても判断が変わらない軸はnull。 */
   rawValueTotalUnit: string | null;
   materialBreakdown: readonly AxisMaterialBreakdown[];
-  /** 密度の軸の項（軸定義の並び）。密度の軸でなければnullで、地図はこれを持つ軸を線ではなく材料の点で見せる。 */
-  densityTerms: readonly DensityTerm[] | null;
   /** 軸が読む材料の一次属性id（地図のレイヤーを持つものは、レイヤーの名前と同じ）。 */
   primaryAttributeIds: readonly string[];
   /** 軸の材料の元データを描く気象のチップ（一次属性を持たない動的な材料の分）。 */
@@ -52,7 +42,7 @@ export interface CatalogAxis {
   timeScope: AxisCatalogEntry["time_scope"];
 }
 
-type WayValueCondition = AxisCatalogEntry["dynamic_way_value_conditions"][number];
+export type WayValueCondition = AxisCatalogEntry["dynamic_way_value_conditions"][number];
 
 /** 走る条件の1つで値の変わる軸の名前を、文へ差し込む形（「A」「B」）で並べる。無ければ空文字で、呼ぶ側は評価に触れる句を出さない。 */
 export function axisNamesUsing(axes: readonly CatalogAxis[], condition: WayValueCondition): string {
@@ -82,9 +72,6 @@ export function catalogAxisFromEntry(axis: AxisCatalogEntry): CatalogAxis {
       share: entry.share,
       valueLabels: entry.value_labels,
     })),
-    densityTerms:
-      axis.density_terms?.map((term) => ({ materialId: term.material_id, label: term.label, weight: term.weight })) ??
-      null,
     primaryAttributeIds: axis.primary_attribute_ids,
     weatherLayerGroups: axis.weather_layer_groups,
     wayValueConditions: axis.dynamic_way_value_conditions,

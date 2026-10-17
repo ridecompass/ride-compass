@@ -17,7 +17,8 @@
 | `features/map/layers/dynamicWayValues.ts` | 値を引く道路タイルの選び方（地図のズームをタイルのある範囲へ丸め、画面を覆うタイルを並べる）・複数タイル応答の統合（材料非依存の共通部分） |
 | `features/map/layers/webMercatorTile.ts` | Web MercatorのXYZタイルと緯度経度の行き来（点のタイル座標・点を含むタイル（世界の端はタイルの番号の範囲へ寄せる）・タイルが覆う範囲）。backendと同じ式で、一致は表の組`region`で照らす。道路タイルの値を引くタイルと、気象庁のタイルの在否の判定（`jmaTileIndex.ts`）が同じ式を通る |
 | `lib/mapDisplay/mapColorLegend.ts` | 地図上の色分け凡例（`MapColorLegendBand`型・`buildRangeLegendBands`・`rangeStepLabel`）の共通ロジックと、値が無い行（`NO_DATA_LEGEND_BAND`）。凡例を作る関数（`features/map/view/lens.ts`）・道の属性の凡例（`features/map/scene/legends.ts`）と管理画面が使う |
-| `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「地図の色分け」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上の中央のピルが現在のレンズと凡例を示し、タップで単一選択の札の並び（なし／総合難易度／評価に使用中の軸／未使用の軸。スマホの幅でも地図の塗りが窓の外に見えるよう、札と凡例を横へ流して窓を低く保つ）と「ルートを地図に出す」（ルートの線の出し入れ。候補を選ぶまで押せない）・「ルート後も周囲の道路を薄く塗る」トグルを開く（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`page.tsx`はそのまま渡す）。周りの道を走る条件で塗っている間は、その条件の文（`view/lens.ts: lensConditionsLabel`）をピルに出し、色の前提（`view/lens.ts: lensPremises`）を開いた先の凡例に出す。密度の軸では、開いた先に材料ごとの1件あたりの重みを並べる。走行中に地図の操作を隠している間は、ピルを名前・札・色の帯だけに詰めて小さく出す（`compact`。条件の文は出さない） |
+| `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「評価で塗る」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上のピルが選んでいる評価軸の名前と凡例の色の帯（段の数に依らない固定の幅）を示し、タップで縦の一覧（評価に使用中の軸を先、未使用の軸を後。各行に軸のアイコン・値が変わる走る条件のアイコン・「未使用」・(i) の説明）を開く。一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——選んでも閉じず、選んでいる行をもう一度押すと外れ、選んでいる行の ▶ で凡例と色の前提（`view/lens.ts: lensPremises`）を開き、下に「ルート後も周囲の道路を薄く塗る」と「選択を外す」「絞り込みをすべて解除」（この一覧の凡例だけを戻す）を置く（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`page.tsx`はそのまま渡す）。走行中に地図の操作を隠している間は、ピルを小さく出す（`compact`） |
+| `features/conditions/lensLink.ts` | 走る条件のボタン（走行方位・出発時刻・想定速度）に付ける、いまの周りの道の塗りがその条件で決まっている印（輪と読み上げ）。下記「周りの道の色が拠る走る条件」 |
 | `features/map/layers/mapLayers.ts` | `isAxisStudioLayer`（記述子の印で判定。地図上チップの一覧`overlayChips`が除くのに使う）・軸のレイヤーIDの導出（`dedicatedWayValueMapLayerId`） |
 | `features/map/MapView/MapView.tsx`（専用way値配信軸・ルート線の区間クリックの箇所のみ） | 画面の状態を宣言の入力へ渡すだけの配線（下記「MapView.tsx側の配線」）。軸ごとの処理は持たない |
 | `features/map/scene/groups/routes.ts` | 色分け線そのものを引く側。レンズの配色式・凡例フィルタを受け取ってMapLibreの線レイヤーへ流す |
@@ -66,44 +67,34 @@ backend（`domain/map_paint.py: map_paint`）が軸の折れ線で写してか�
 | 凡例の段の範囲を何で書くか | `AxisCatalogEntry.map_paint`の`legend`（`thresholds`と同じ件数の境界と単位。単位がnullなら得点。backend `domain/map_paint.py: map_paint`） | `valueScale.ts: mapPaintDeclarationOf`が塗る宣言の`legend`へ載せ、ルート前（`axisLayers.ts`の軸の`display`）もルート後（`routeStyleModes.ts`）も同じ関数で作る。どれも`valueScale.ts: valueBands`へ渡す |
 
 公開軸は無条件でレンズの選択肢になる（`routeStyleModes.ts: routeStyleModesFromCatalogAxes`が
-公開軸すべて＋`difficulty`（総合難易度）＋`none`（塗らない）をマップする）。重み0の軸も
-選べ、重みが0の軸は`LensControl`が「未使用」の見出しの下へ並べる（項目ごとの札は付けない——見出しと札の
-二重になる）。分ける重みは、生成後は生成に使われた重み、生成前は今の設定の重み（重みタブが薄く出す軸と
-同じ。`features/map/view/lens.ts: lensOptions`）——重みを変えずに生成すれば、前後で並びが変わらない。どの軸もルート前から周りの道を塗れる。総合難易度
-（ルートの線にだけ色を付ける）は「ルート後のみ」バッジ付きで選べるが、ルート前は何も塗らない。
-ルート前は、選んでいるレンズがそれならピルにも同じバッジを付ける（既定のレンズは総合難易度で、初めて開いた人には道に
-色が無い）。
+公開軸すべて＋`difficulty`（総合難易度）をマップする）。重み0の軸も選べ、`LensControl`は重みのある軸を先に並べ、
+重みが0の軸に「未使用」を添える。分ける重みは、生成後は生成に使われた重み、生成前は今の設定の重み（重みタブが薄く出す軸と
+同じ。`features/map/view/lens.ts: lensOptions`）——重みを変えずに生成すれば、前後で並びが変わらない。どの軸もルート前から周りの道を塗れる。
+**評価軸を選んでいない状態は`difficulty`で表す**: ルート前は道を塗らず（ピルは「評価軸を選ぶ」）、ルート後はルートの線を
+総合難易度で塗る（ピルは総合難易度の名前）。塗らない選択肢は持たない——評価軸を選ばないことで表せ、ルートの線は「表示」で消せる。
 
-**周りの道の色が拠る走る条件は、画面に出す**（`view/lens.ts: lensConditionsLabel`。例:「北へ走る・時速20km・19:30出発」）。
-周りの道を塗っている間、その軸が載せる条件（軸の`wayValueConditions`）だけを並べ、
-`LensControl`がピルに出す。走行方位は右上の別の操作で決め、保存されない——出さないと、見えない条件で
-同じ道の色が変わる。
+**周りの道の色が拠る走る条件は、その条件を決めるボタンに印を付けて見せる**（`features/map/view/useMapView.ts: lensConditions`を
+`page.tsx`が地図の右の列の走行方位・出発時刻・想定速度のボタンへ渡し、ボタンは`features/conditions/lensLink.ts`の輪と読み上げを付ける）。
+周りの道を塗っている間、その軸が載せる条件（軸の`wayValueConditions`）のボタンにだけ付ける。走行方位は右上の別の操作で決め、
+保存されない——印が無いと、見えない条件で同じ道の色が変わる。一覧の各行には、値が変わる走る条件を同じアイコンで添える
+（夜だけ効く軸は出発時刻。`view/lens.ts: lensOptions`）。
 
-**周りの道の色の前提は、開いた先の凡例に1行ずつ書く**（`view/lens.ts: lensPremises`）。周りの道はルートを作るまで決まらない
-入力（走る向き・速度・通過する時刻）を仮に置いて塗るので、塗っている軸がどの入力に依るかを、軸idで分けずに軸カタログの宣言から決める。
-
-| 前提 | 決める宣言 | 凡例の行 |
-|---|---|---|
-| 走る条件（向き・速度・出発時刻） | `AxisCatalogEntry.dynamic_way_value_conditions`（`lensConditionsLabel`の文） | 「周りの道は「◯◯」の条件で塗っています。」 |
-| 時間帯（通過する時刻で効くか） | `AxisCatalogEntry.time_scope`（`"always"`以外） | 通過する時刻を置かずに塗っていること・その時間帯に通る区間でだけ効き、ルートを作ると区間ごとに決まること |
+**周りの道の色の前提は、選んでいる行の ▶ の凡例の下に1行ずつ書く**（`view/lens.ts: lensPremises`）。周りの道は通過する時刻を
+持たないので、時間帯で効く軸（軸カタログの`time_scope`が`"always"`以外）には、通過する時刻を置かずに塗っていることと、
+その時間帯に通る区間でだけ効き、ルートを作ると区間ごとに決まることを書く。軸idで分けず、軸カタログの宣言から決める。
 
 ルートの線は実際に走る向き・時刻で決まるので、周りの道を塗っていない間（ルート後に周りを塗らない設定）は前提を出さない。
 
-**レンズ状態は1つ**（`features/map/view/useMapView.ts: lens`、`"none" | "difficulty" | axis_id`。
-localStorageキーは`ridecompass:route-style-mode`）。ルート前は全道路、ルート後はルート線を
+**レンズ状態は1つ**（`features/map/view/useMapView.ts: lens`、`"difficulty" | axis_id`。
+localStorageキーは`ridecompass:route-style-mode`。今のカタログに無い値は総合難易度へ戻す）。ルート前は全道路、ルート後はルート線を
 この1つの値から導く——地図へは「全道路を塗っている軸」（`paintedAxisId`）1つを渡し、どの軸の線を出すかは
 地図側（`scene/applyToMap.ts`）が導く（軸ごとの値を持たない）。道ごとの得点は塗っている軸の分だけ取り
 （`useMapView`）、塗っていない軸の値は取らない。ルート後も全道路の塗りを残すかは「ルート後も周囲を塗る」（既定ON）。
-**レンズを選ぶと、ルートのレイヤーがOFFならONにする**——選んだ色分けがルート線に出ないまま、
-理由が画面のどこにも無い状態を作らない。レンズは生成リクエストに載らず、切り替えてもルートを作り直さない。
-**密度の軸（軸カタログの`density_terms`がnullでない軸）は、ルートの前に道の線を塗らず、数える材料の点で見せる。**
-密度は近くの点の件数を区間の長さで割った値で、線の色だけでは、どの点を数えて濃くなったかが読めない。レンズでその軸を
-選んでいる間は、`primary_attribute_ids`のうち地図のレイヤーに当たるもの（点のレイヤー）を、その点のレイヤーと同じ宣言で
-描き（`scene/applyToMap.ts`が点の家族へ渡す入切に足す。「表示」の一覧で同じ点を入れていても描くレイヤーは1つ）、
-**「表示」の一覧のレイヤーの入切は変えない**——レンズとレイヤーは別の道具で、片方を選んだ副作用でもう片方の状態を
-残さない。道の線は塗っている軸でも出さず（`scene/applyToMap.ts`）、凡例の段も出さない（`view/lens.ts: lensLegend`）。点の数え方は、
-レンズの開いた先に材料の名前と1件あたりの重みを並べて読ませる（`density_terms`の`label`と`weight`）。ルートの後は
-ほかの軸と同じくルート線を塗る。
+**ルートの線の出し入れは「表示」の一覧の先頭の行が持ち、レンズを選んでも変えない**——候補を選んでいるのに線を出していない間は、
+`LensControl`の開いた先でルートの線を塗っていないことを伝える（`routeHidden`）。レンズは生成リクエストに載らず、切り替えてもルートを作り直さない。
+**レンズは評価軸の点数で塗り、場所の事実（点・面）は「表示」の一覧が出す。** 密度の軸もほかの軸と同じく道の線を塗り、
+数える点は「表示」の一覧の点のレイヤーで出す（レンズは「表示」の一覧のレイヤーの入切を変えない——片方を選んだ副作用で
+もう片方の状態を残さない）。
 ルート線をどのレンズでも塗れるよう、backendは重み0の軸でも区間に値を載せる——軸の難易度（`axis_difficulties`）は
 どの軸も、`signed_material`種の軸の材料は`material_values`へいつも載せる（backend側は
 `evaluation.py: displayed_material_ids`、[routing-engine.md](../backend/routing-engine.md)参照）。

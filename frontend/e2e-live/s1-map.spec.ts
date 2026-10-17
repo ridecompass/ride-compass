@@ -51,14 +51,12 @@ test("S1 地図の描画（生成前）", async ({ page }) => {
         await settleMap(page);
         const drawn = await renderedRoads(page, source);
         expect.soft(drawn.length, `「${axis.label}」: 道が描かれていない`).toBeGreaterThan(0);
-        // 密度の軸は線を塗らないので、道ごとの値を取らない。ほかの軸は値を受け取り、それが描かれている道を指すこと。
-        if (axis.density_terms === null) {
-          const received = watch.wayValues.slice(valuesBefore).filter((entry) => entry.axisId === axis.axis_id);
-          const wayIds = new Set(received.flatMap((entry) => Object.keys(entry.values)));
-          expect.soft(wayIds.size, `「${axis.label}」: 道ごとの値を1件も受け取っていない`).toBeGreaterThan(0);
-          const drawnWithValue = drawn.filter((road) => wayIds.has(String(road.osm_way_id))).length;
-          expect.soft(drawnWithValue, `「${axis.label}」: 値を受け取った道が1本も描かれていない`).toBeGreaterThan(0);
-        }
+        // 道ごとの値を受け取り、それが描かれている道を指すこと。
+        const received = watch.wayValues.slice(valuesBefore).filter((entry) => entry.axisId === axis.axis_id);
+        const wayIds = new Set(received.flatMap((entry) => Object.keys(entry.values)));
+        expect.soft(wayIds.size, `「${axis.label}」: 道ごとの値を1件も受け取っていない`).toBeGreaterThan(0);
+        const drawnWithValue = drawn.filter((road) => wayIds.has(String(road.osm_way_id))).length;
+        expect.soft(drawnWithValue, `「${axis.label}」: 値を受け取った道が1本も描かれていない`).toBeGreaterThan(0);
         expect.soft(watch.mapErrors.slice(errorsBefore), `「${axis.label}」を選んだあとの[map:error]`).toEqual([]);
       },
       () => chooseLens(page, originalLens),

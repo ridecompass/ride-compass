@@ -58,7 +58,6 @@ import { nextTurn } from "@/features/ride/nextTurn";
 import TurnCard from "@/features/ride/TurnCard/TurnCard";
 import { useRideProgress } from "@/features/ride/useRideProgress";
 import { useRideWayConditions } from "@/features/ride/useRideWayConditions";
-import { formatDepartureLabel } from "@/features/conditions/rideConditions";
 import { useMapView } from "@/features/map/view/useMapView";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cardVariants } from "@/components/ui/Card/Card";
@@ -260,7 +259,6 @@ export default function Home() {
     hasDetail: results.hasDetail,
     ride: wayConditions,
     now: ride.departure.now,
-    departureLabel: formatDepartureLabel(ride.departure.at, ride.departure.now),
     routeWeights: route.routeWeights,
   });
 
@@ -575,7 +573,7 @@ export default function Home() {
               onClick={() => setRideMapControlsShown((shown) => !shown)}
               aria-label="地図の表示"
               aria-expanded={rideMapControlsShown}
-              usage="走行モードのまま、地図の「表示」と色分け（凡例つき）を出します。変えた表示は走っていないときと同じ設定に残ります。もう一度押すと隠します。"
+              usage="走行モードのまま、地図の「表示」と「評価で塗る」（凡例つき）を出します。変えた表示は走っていないときと同じ設定に残ります。もう一度押すと隠します。"
             >
               <MapControlsIcon size={18} />
             </Button>
@@ -676,7 +674,7 @@ export default function Home() {
         )}
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="app-map-pane relative min-h-0 flex-1">
+          <div className="app-map-pane @container/map relative min-h-0 flex-1">
             <MapView
               routes={route.mapRoutes}
               {...splice.map}
@@ -730,11 +728,16 @@ export default function Home() {
                 )}
               </div>
             )}
-            {/* 上の中央に色分けを置く。地図の操作を隠している走行中も、ルートの線と道の色が何かを示すため小さく出す。
-                左右の余白は、右の縦の列を両側で避ける幅（中央に置くため）。 */}
+            {/* 上の中央に「評価で塗る」を置く。地図の操作を隠している走行中も、ルートの線と道の色が何かを示すため小さく出す。
+                左右の余白は、右の縦の列を両側で避ける幅（中央に置くため。左上の「表示」は列と同じ幅なので、これで避けられる）。
+                「表示」の横に収まらないほど地図が狭い間は、「表示」の下の段へ下げ、余白は変えずに箱を左へずらして左端を「表示」の左端にそろえる（余白のクラスを上書きしない）。 */}
             <div
               {...mapOverlayEdge("top")}
-              className="pointer-events-none absolute inset-x-0 top-3 z-[var(--z-map-control)] flex justify-center px-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))]"
+              className={cn(
+                "pointer-events-none absolute inset-x-0 top-3 z-[var(--z-map-control)] flex justify-center px-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))]",
+                mapControlsShown &&
+                  "@max-[22rem]/map:top-12 @max-[22rem]/map:left-[calc(0.75rem_-_var(--map-ctrl-margin)_-_var(--map-ctrl-column-width)_-_var(--space-2))]",
+              )}
             >
               <LensControl {...mapView.lensControl} compact={!mapControlsShown} />
             </div>
@@ -742,7 +745,13 @@ export default function Home() {
 
             {usageGuideActive && <UsageGuide onEnd={() => setUsageGuideActive(false)} />}
 
-            {!navigating && <TravelBearingControl value={ride.bearingDeg} onChange={ride.setBearingDeg} />}
+            {!navigating && (
+              <TravelBearingControl
+                value={ride.bearingDeg}
+                onChange={ride.setBearingDeg}
+                linked={mapView.lensConditions.includes("bearing_deg")}
+              />
+            )}
 
             {/* 走行条件（出発時刻・想定速度）は走行方位の直下に積む。出発時刻は気象レイヤーの表示時刻と同じもの。
               その下へ現在地と走行モードを続ける。 */}
@@ -764,6 +773,8 @@ export default function Home() {
                     onDepartureNow={ride.departure.followNow}
                     speedKmh={ride.speedKmh}
                     onSpeedKmhChange={ride.setSpeedKmh}
+                    linkedDeparture={mapView.lensConditions.includes("at")}
+                    linkedSpeed={mapView.lensConditions.includes("speed_kmh")}
                   />
                   <div className="relative flex">
                     <Button
