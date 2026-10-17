@@ -730,12 +730,13 @@ export default function Home() {
             )}
             {/* 上の中央に「評価で塗る」を置く。地図の操作を隠している走行中も、ルートの線と道の色が何かを示すため小さく出す。
                 左右の余白は、右の縦の列を両側で避ける幅（中央に置くため。左上の「表示」は列と同じ幅なので、これで避けられる）。
-                「表示」の横に収まらないほど地図が狭い間は、「表示」の下の段へ下げ、左の余白を「表示」の左端にそろえる。 */}
+                「表示」の横に収まらないほど地図が狭い間は、「表示」の下の段へ下げ、余白は変えずに箱を左へずらして左端を「表示」の左端にそろえる（余白のクラスを上書きしない）。 */}
             <div
               {...mapOverlayEdge("top")}
               className={cn(
                 "pointer-events-none absolute inset-x-0 top-3 z-[var(--z-map-control)] flex justify-center px-[calc(var(--map-ctrl-margin)_+_var(--map-ctrl-column-width)_+_var(--space-2))]",
-                mapControlsShown && "@max-[22rem]/map:top-12 @max-[22rem]/map:pl-3",
+                mapControlsShown &&
+                  "@max-[22rem]/map:top-12 @max-[22rem]/map:left-[calc(var(--spacing)*3_-_var(--map-ctrl-margin)_-_var(--map-ctrl-column-width)_-_var(--space-2))]",
               )}
             >
               <LensControl {...mapView.lensControl} compact={!mapControlsShown} />
