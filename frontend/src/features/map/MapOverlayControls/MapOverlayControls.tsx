@@ -516,7 +516,6 @@ export default function MapOverlayControls({
             size="bare"
             aria-pressed={choosing}
             aria-label={`${label}の表示項目を選ぶ`}
-            title="表示する項目を選ぶ"
             onClick={() => setChoosingGroup(choosing ? null : group)}
             usage="この群の一覧に並べる項目を選びます。"
           >
@@ -560,7 +559,7 @@ export default function MapOverlayControls({
           // アイコンだけの、右の縦の列と同じ幅で「評価で塗る」のピルと同じ高さ（文字1行＋上下の余白）のボタン。件数と絞り込みの印は角に置く。
           className="pointer-events-auto relative w-[var(--map-ctrl-column-width)] flex-none justify-center border-0 py-1 text-[length:var(--font-size-sm)]"
           aria-label={LIST_SCREEN_NAME}
-          title={[
+          aria-description={[
             `${FACT_DISPLAY_NAME}（${LIST_SCREEN_NAME}）[${shownCount}件を表示中]`,
             anyFiltered ? FILTERED_LABEL : undefined,
           ]
@@ -606,26 +605,24 @@ export default function MapOverlayControls({
           {route.selectable ? "ルート（選んだ候補の線）" : "ルート（候補を選ぶと出せます）"}
         </label>
         {groups}
-        <div className="mt-1.5 flex flex-col border-t border-[var(--color-border)] pt-1">
+        <div className="mt-1.5 flex justify-end gap-1 border-t border-[var(--color-border)] pt-1.5">
           <Button
-            variant="menu"
-            size="sm"
+            size="panelIcon"
+            aria-label="表示中のレイヤーをすべて非表示"
             onClick={onHideAllLayers}
             disabled={shownCount === 0}
             usage="この一覧でONにした情報を、まとめてOFFにします（ルートの線は残します）。"
           >
-            <ClearAllLayersIcon size={15} />
-            表示中のレイヤーをすべて非表示
+            <ClearAllLayersIcon />
           </Button>
           <Button
-            variant="menu"
-            size="sm"
+            size="panelIcon"
+            aria-label="絞り込みをすべて解除"
             onClick={onShowAllLegendRows}
             disabled={!anyLegendHidden}
             usage="この一覧の凡例のチェックを外して隠した段階を、まとめて地図に戻します。"
           >
-            <ClearAllFiltersIcon size={15} />
-            絞り込みをすべて解除
+            <ClearAllFiltersIcon />
           </Button>
         </div>
       </PopoverContent>

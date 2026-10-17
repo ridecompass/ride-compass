@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useRef } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { WheelGesturesPlugin } from "embla-carousel-wheel-gestures";
 import { Button } from "@/components/ui/Button/Button";
+import { BackToNowIcon } from "@/components/ui/icons/icons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { cardVariants } from "@/components/ui/Card/Card";
@@ -185,9 +186,9 @@ export default function DynamicLayerTimeSlider({
             onClick={onNow}
             disabled={index === currentIndex}
             aria-label={`${ariaLabel}を現在に戻す`}
-            title="現在に戻す"
+            usage="送った時刻を、いまの時刻に戻します。"
           >
-            現在
+            <BackToNowIcon />
           </Button>
         </div>
       </div>

@@ -210,18 +210,16 @@ describe("行の印", () => {
     expect(rowTitle("unfiltered")).toBeNull();
   });
 
-  it("「表示」のボタンは、地図に出している件数と、どれかの行が凡例を絞り込んでいれば「絞り込み中」をtitleに添える", () => {
+  it("「表示」のボタンは、地図に出している件数と、どれかの行が凡例を絞り込んでいれば「絞り込み中」を説明に添える", () => {
     const { rerender } = render(<MapOverlayControls {...propsOf([chip("on", { on: true }), chip("off")])} />);
-    expect(screen.getByRole("button", { name: LIST_NAME })).toHaveAttribute(
-      "title",
+    expect(screen.getByRole("button", { name: LIST_NAME })).toHaveAccessibleDescription(
       `${FACT_DISPLAY_NAME}（${LIST_NAME}）[1件を表示中]`,
     );
 
     rerender(
       <MapOverlayControls {...propsOf([chip("filtered", { on: true, legendDetails: [legend("a", ["1"], ["1"])] })])} />,
     );
-    expect(screen.getByRole("button", { name: LIST_NAME })).toHaveAttribute(
-      "title",
+    expect(screen.getByRole("button", { name: LIST_NAME })).toHaveAccessibleDescription(
       `${FACT_DISPLAY_NAME}（${LIST_NAME}）[1件を表示中]・絞り込み中`,
     );
   });
@@ -326,8 +324,11 @@ describe("ルートの行", () => {
 });
 
 describe("まとめての操作", () => {
-  it("「表示中のレイヤーをすべて非表示」は出している行があるときだけ、「絞り込みをすべて解除」は凡例で隠している間だけ押せる", async () => {
+  it("「表示中のレイヤーをすべて非表示」は出している行があるときだけ、「絞り込みをすべて解除」は凡例で隠している間だけ押せる。どちらも文字の無いアイコン", async () => {
     const shown = await setup([chip("on", { on: true })], { anyLegendHidden: false });
+    for (const name of ["表示中のレイヤーをすべて非表示", "絞り込みをすべて解除"]) {
+      expect(screen.getByRole("button", { name })).toHaveTextContent(/^$/);
+    }
     expect(screen.getByRole("button", { name: "絞り込みをすべて解除" })).toBeDisabled();
     await shown.user.click(screen.getByRole("button", { name: "表示中のレイヤーをすべて非表示" }));
     expect(shown.props.onHideAllLayers).toHaveBeenCalledOnce();

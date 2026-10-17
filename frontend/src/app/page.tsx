@@ -38,6 +38,7 @@ import TodayOutlook from "@/features/conditions/TodayOutlook/TodayOutlook";
 import WarningBadgeList from "@/features/conditions/WarningBadge/WarningBadge";
 import HeaderMenu from "@/components/HeaderMenu/HeaderMenu";
 import UsageGuide from "@/components/UsageGuide/UsageGuide";
+import UsageTooltip from "@/components/UsageGuide/UsageTooltip";
 import FirstVisitIntro from "@/components/FirstVisitIntro/FirstVisitIntro";
 import RideConditionBar from "@/features/conditions/RideConditionBar/RideConditionBar";
 import TravelBearingControl from "@/features/conditions/TravelBearingControl/TravelBearingControl";
@@ -593,7 +594,7 @@ export default function Home() {
         ) : null}
         {navigating ? (
           <div className="ml-auto flex flex-shrink-0 items-center gap-2">
-            <WarningBadgeList items={warningBadgeItems} failures={headerFetchFailures} compact />
+            <WarningBadgeList items={warningBadgeItems} failures={headerFetchFailures} />
             <Button
               size="panelIcon"
               onClick={toggleRidePanel}
@@ -758,7 +759,7 @@ export default function Home() {
             </div>
             {!navigating && <FirstVisitIntro isMobile={isMobile} locationUnknown={locationFailure !== null} />}
 
-            {usageGuideActive && <UsageGuide onEnd={() => setUsageGuideActive(false)} />}
+            {usageGuideActive ? <UsageGuide onEnd={() => setUsageGuideActive(false)} /> : <UsageTooltip />}
 
             {!navigating && (
               <TravelBearingControl

@@ -132,7 +132,6 @@ export default function RouteForm({
               className={cn(panelIconToggleClass, "flex-none")}
               pressed={distanceTargeted}
               aria-label={distanceToggleName}
-              title={distanceToggleName}
               onClick={() => setDistanceTargeted(!distanceTargeted)}
               usage="押している間は、ルート全体の長さを目標に合わせます。"
             >
