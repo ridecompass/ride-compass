@@ -167,8 +167,17 @@ export const primaryAttributes = [
             "values": [
               "paved"
             ],
-            "description": "路面がアスファルト・舗装[種別不明]・チップシール舗装・コンクリート・コンクリート版・コンクリート帯[轍部のみ舗装]・石畳[切石]・レンガ舗装の道[OSM の surface タグ]。",
+            "description": "路面がアスファルト・舗装[種別不明]・チップシール舗装・コンクリート・コンクリート版・コンクリート帯[轍部のみ舗装]の道[OSM の surface タグ]。",
             "color": "#48886f"
+          },
+          {
+            "key": "paving_stones",
+            "label": "敷石・レンガ",
+            "values": [
+              "paving_stones"
+            ],
+            "description": "路面が石畳[切石]・レンガ舗装の道[OSM の surface タグ]。",
+            "color": "#25879d"
           },
           {
             "key": "compacted",
@@ -177,7 +186,7 @@ export const primaryAttributes = [
               "compacted"
             ],
             "description": "路面が締固め砂利・細砂利の道[OSM の surface タグ]。",
-            "color": "#3085a4"
+            "color": "#6d7aaa"
           },
           {
             "key": "gravel",
@@ -186,7 +195,7 @@ export const primaryAttributes = [
               "gravel"
             ],
             "description": "路面が砂利・小石敷き・岩盤・未舗装[種別不明]の道[OSM の surface タグ]。",
-            "color": "#8873a1"
+            "color": "#a36b89"
           },
           {
             "key": "soil",
@@ -195,7 +204,7 @@ export const primaryAttributes = [
               "soil"
             ],
             "description": "路面が土・地面[土・砂利混合]・土[地表面]・泥・砂・芝・草地・ウッドチップの道[OSM の surface タグ]。",
-            "color": "#ab6a6c"
+            "color": "#a66e5b"
           },
           {
             "key": "cobblestone",
@@ -204,7 +213,7 @@ export const primaryAttributes = [
               "cobblestone"
             ],
             "description": "路面が石畳[玉石]・玉石舗装・玉石舗装[未加工]の道[OSM の surface タグ]。",
-            "color": "#8a7b4c"
+            "color": "#807e4d"
           }
         ],
         "missing_semantics": "unknown"

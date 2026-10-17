@@ -485,6 +485,7 @@
     "reference_points": [],
     "value_labels": {
       "paved": "舗装",
+      "paving_stones": "敷石・レンガ",
       "compacted": "締め固め・細砂利",
       "gravel": "砂利・未舗装",
       "soil": "土・草・泥・砂",
@@ -503,6 +504,7 @@
     "reference_points": [],
     "value_labels": {
       "paved": "舗装",
+      "paving_stones": "敷石・レンガ",
       "compacted": "締め固め・細砂利",
       "gravel": "砂利・未舗装",
       "soil": "土・草・泥・砂",
