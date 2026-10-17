@@ -1,6 +1,7 @@
 import { expect, test, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { trueHeadingDeg } from "@/lib/magneticDeclination";
 import { moved } from "@/testing/movedPoint";
+import { RIDE_MIN_ZOOM, RIDE_ZOOM_MAX_OUT } from "@/features/map/MapView/rideZoom";
 
 import { INTRO_CLOSED, installApiMocks, installMapFinder, seedStoredState } from "./fixtures";
 
@@ -172,11 +173,13 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   const east = moved(START, 0, 200);
   await context.setGeolocation(east);
   await expectDrawnAt(page, east, anchor);
-  // 200m を数秒で動いた（とても速い）ので、追い始めの倍率（15）からいちばん引いた所（2段）まで引く。WebKit では見ない:
+  // 200m を数秒で動いた（とても速い）ので、追い始めの倍率からいちばん引いた所まで引く。WebKit では見ない:
   // Playwright が差し替えの位置の時刻をミリ秒で渡し、WebKit がそれを秒として受けて1000倍にする（WebCore の
   // `Geolocation.cpp` の `convertSecondsToEpochTimeStamp`）ため、2つの位置の間が1000倍長く見え、速さがほぼ0になる。
   if (browserName !== "webkit") {
-    await expect.poll(() => page.evaluate(() => window.__liveMap().getZoom()), { timeout: 10_000 }).toBeCloseTo(13, 1);
+    await expect
+      .poll(() => page.evaluate(() => window.__liveMap().getZoom()), { timeout: 10_000 })
+      .toBeCloseTo(RIDE_MIN_ZOOM - RIDE_ZOOM_MAX_OUT, 1);
   }
 
   // 進む向きを上にすると、地図は動いた向き（東）を上に回す。北を上に戻すと向きも戻る。
