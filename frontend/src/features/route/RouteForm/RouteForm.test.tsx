@@ -6,7 +6,7 @@
  * 外している間はスライダーを押せない）とスライダーで上がる値、
  * 地点の並び（出発地・経由地の番号の丸・目的地）と押した地点の詳しく（呼び名・出どころ・名前・その位置から引いた辺り）、出発地の印の色、
  * 押した地点を選んで上げること・地図で置ける間の打つ欄の誘い・消す/戻す操作、名前を打って選んだ候補をその地点として上げること、
- * タブを切り替えても各タブの中身を外さないこと。
+ * 「保存」タブの「地点」から呼び出した地点をその役割で上げて「条件」タブへ移ること、タブを切り替えても各タブの中身を外さないこと。
  *
  * ここで見ないもの: タブの列と選んだタブ、どのタブの中身が見えるか（スタイルで隠す）→ `app/page.tsx`。
  * 書いた定数や受け取った値をそのまま渡すもの（スライダーの範囲・刻み・今の値と km の表記・候補の距離の幅、印の
@@ -105,6 +105,7 @@ function renderForm(options: Options = {}, tab: SettingsTab = "generate") {
     onOriginReset: vi.fn(),
     selectPoint: vi.fn(),
     onPlaceFound: vi.fn(),
+    onPointsShow: vi.fn(),
   };
   const element = (nextTab: SettingsTab, changed: Options = {}) => {
     const {
@@ -116,6 +117,7 @@ function renderForm(options: Options = {}, tab: SettingsTab = "generate") {
       originFound,
       mapCenter,
       onPlaceFound,
+      onPointsShow,
       weightsPanel,
       exclusionsPanel,
       savedConditionsPanel,
@@ -144,6 +146,7 @@ function renderForm(options: Options = {}, tab: SettingsTab = "generate") {
               originFound={originFound}
               mapCenter={mapCenter}
               onPlaceFound={onPlaceFound}
+              onPointsShow={onPointsShow}
               savedPlaces={savedPlaces}
               placing={placing}
               weightsPanel={weightsPanel}
@@ -492,6 +495,38 @@ describe("RouteForm 探して置く", () => {
     expect(screen.queryByRole("list", { name: "地点の候補" })).toBeNull();
     expect(pointBox("目的地")).toHaveValue("");
     expect(onPlaceFound).not.toHaveBeenCalled();
+  });
+});
+
+describe("RouteForm 保存した地点を呼び出す", () => {
+  /** 「保存」タブの「地点」で、保存した地点の「呼び出す」のメニューを開いて返す。 */
+  async function openRecallMenu() {
+    await userEvent.click(screen.getByRole("button", { name: `「${FACILITY.name}」を呼び出す` }));
+    return screen.getByRole("dialog", { name: `「${FACILITY.name}」をどこに置くか` });
+  }
+  const savedPlaces = { places: [FACILITY], save: () => {}, remove: () => {} };
+
+  it.each([
+    ["出発地にする", "origin", [{ role: "origin" }]],
+    ["経由地に足す", "waypoint", []],
+    ["目的地にする", "destination", [{ role: "destination" }]],
+  ] as const)(
+    "「%s」を押すと、その地点をその役割で上げ、出発地・目的地はその地点を選んで「条件」タブへ移る",
+    async (label, role, selected) => {
+      const { onPlaceFound, selectPoint, onPointsShow } = renderForm({ savedPlaces }, "saved");
+
+      await userEvent.click(within(await openRecallMenu()).getByRole("button", { name: label }));
+
+      expect(onPlaceFound).toHaveBeenCalledExactlyOnceWith(role, FACILITY, null);
+      expect(selectPoint.mock.calls.map(([target]) => target)).toEqual(selected);
+      expect(onPointsShow).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("経由地を上限まで置いてあれば「経由地に足す」を押せない", async () => {
+    renderForm({ savedPlaces, waypoints: waypointsOf(routeGenerateConfig.max_waypoints) }, "saved");
+
+    expect(within(await openRecallMenu()).getByRole("button", { name: "経由地に足す" })).toBeDisabled();
   });
 });
 

@@ -25,6 +25,11 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 const WEIGHT_OVERRIDE_ENABLED_STORAGE_KEY = "ridecompass:weight-override-enabled";
 const ROUTE_PREFERENCE_STORAGE_KEY = "ridecompass:route-preference";
 const HARD_FILTERS_STORAGE_KEY = "ridecompass:hard-filters";
+
+/** 経由地を、生成が受け付ける数まで置いてあるか（置いてあれば、もう足さない）。 */
+export function waypointsFull(waypoints: readonly Coordinates[]): boolean {
+  return waypoints.length >= routeGenerateConfig.max_waypoints;
+}
 // 「条件」タブの入力値。場所（目的地・経由地のピン）は持たない——行くたびに変わるうえ、
 // 古いピンが残っていると気づかないまま生成してしまう。
 const DISTANCE_TARGETED_STORAGE_KEY = "ridecompass:distance-targeted";
@@ -90,11 +95,11 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
       if (selectedPoint.role === "origin") onOriginPlace(point);
       else if (selectedPoint.role === "destination") setDestination(point);
       else if (selectedPoint.index !== null) moveWaypoint(selectedPoint.index, point);
-      else if (waypoints.length < routeGenerateConfig.max_waypoints) addWaypoint(point);
+      else if (!waypointsFull(waypoints)) addWaypoint(point);
       else return;
       if (spot !== null) setFound((prev) => [...prev, spot]);
     },
-    [selectedPoint, onOriginPlace, moveWaypoint, addWaypoint, waypoints.length],
+    [selectedPoint, onOriginPlace, moveWaypoint, addWaypoint, waypoints],
   );
   // 探して選んだ地点を置く（経由地は`waypointIndex`番目を置き直し、無ければ足して、足した経由地を選ぶ——どこに置いたかを
   // 詳しくで確かめられる）。

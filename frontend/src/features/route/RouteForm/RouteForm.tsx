@@ -3,7 +3,7 @@
 import { useId } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import type { Coordinates, PinRole, PlaceCandidate } from "@/types/route";
-import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
+import { waypointsFull, type GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import { DISTANCE_STEP_KM } from "@/features/route/savedConditions";
 import SavedPlacesPanel from "@/features/route/SavedPlacesPanel/SavedPlacesPanel";
@@ -60,15 +60,17 @@ interface RouteFormProps {
   mapCenter: Coordinates;
   /** 探して選んだ候補を、その役割の地点として置く（経由地は`waypointIndex`番目を置き直し、無ければ足す）。 */
   onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
-  /** 保存した地点（地点の詳しくで保存して打つ欄の候補に出し、「保存」タブの「地点」に並べる）。 */
+  /** 保存した地点（地点の詳しくで保存して打つ欄の候補に出し、「保存」タブの「地点」に並べて呼び出す）。 */
   savedPlaces: SavedPlacesState;
+  /** 「条件」タブへ移る（「保存」タブの「地点」から呼び出した地点を見せる）。 */
+  onPointsShow: () => void;
   /** 地図をタップすると選んでいる地点を置くか（ルート設定が地図で効いている間）。 */
   placing: boolean;
   /** 「重み」タブの中身。タブの列と「ルート生成」ボタンは見出しの行（page.tsx）、検証は`useRouteFormSubmit`が持つ。 */
   weightsPanel: React.ReactNode;
   /** 「除外」タブの中身。 */
   exclusionsPanel: React.ReactNode;
-  /** 「保存」タブの「設定」の中身（保存した条件の一覧と保存）。 */
+  /** 「保存」タブの「設定」の中身（いまの設定の保存と、保存した設定の一覧）。 */
   savedConditionsPanel: React.ReactNode;
 }
 
@@ -105,6 +107,7 @@ export default function RouteForm({
   mapCenter,
   onPlaceFound,
   savedPlaces,
+  onPointsShow,
   placing,
   weightsPanel,
   exclusionsPanel,
@@ -114,6 +117,13 @@ export default function RouteForm({
     conditions;
   const distanceToggleName = distanceTargeted ? "全長の目標をやめる" : "全長の目標を決める";
   const distanceMarksId = useId();
+
+  // 保存した地点を呼び出したら「条件」タブへ移り、置いた地点を選んで詳しくを出す（足した経由地は`onPlaceFound`が選ぶ）。
+  function recallSavedPlace(role: PinRole, place: PlaceCandidate) {
+    onPlaceFound(role, place, null);
+    if (role !== "waypoint") conditions.selectPoint({ role });
+    onPointsShow();
+  }
 
   // 範囲の端ではボタンを押せなくするので、足した値は範囲を出ない。
   function stepMaxRoutes(delta: number) {
@@ -213,21 +223,29 @@ export default function RouteForm({
       <KeptTabContent value="exclusions">{exclusionsPanel}</KeptTabContent>
 
       <KeptTabContent value="saved">
-        {/* 保存するものは地点と設定の2つで、呼び出し方が違う（地点は打つ欄から1地点へ置き、設定は各タブの値を入れ替える）。 */}
+        {/* 保存するものは地点と設定の2つで、呼び出すと変わるものが違う（地点は選んだ1地点を置き、設定は各タブの値を入れ替える）。 */}
         <Tabs defaultValue="places">
           <TabsList className="mb-2" aria-label="保存するもの">
-            <TabsTrigger value="places" usage="名前を付けて保存した地点の一覧です。">
+            <TabsTrigger
+              value="places"
+              usage="名前を付けて保存した地点の一覧です。呼び出すと、出発地・経由地・目的地に置きます。"
+            >
               地点
             </TabsTrigger>
             <TabsTrigger
               value="conditions"
-              usage="名前を付けて保存した設定の一覧です。呼び出すと、各タブの値を入れ替えます。"
+              usage="いまの設定に名前を付けて保存し、保存した設定の一覧から呼び出します。呼び出すと、各タブの値を入れ替えます。"
             >
               設定
             </TabsTrigger>
           </TabsList>
           <KeptTabContent value="places">
-            <SavedPlacesPanel places={savedPlaces.places} onRemove={savedPlaces.remove} />
+            <SavedPlacesPanel
+              places={savedPlaces.places}
+              waypointsFull={waypointsFull(conditions.waypoints)}
+              onRecall={recallSavedPlace}
+              onRemove={savedPlaces.remove}
+            />
           </KeptTabContent>
           <KeptTabContent value="conditions">{savedConditionsPanel}</KeptTabContent>
         </Tabs>
