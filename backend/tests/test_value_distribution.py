@@ -1,5 +1,5 @@
 """`domain/value_distribution.py`——延長で重み付けた分布（`weighted_distribution`）・分位点（`weighted_quantiles`）・
-分位点とゼロの割合（`weighted_spread`）と、軸の下書きの形で道の標本から求める生値の分布（`raw_value_distribution`）。
+分位点とゼロの割合（`weighted_spread`）・値ごとの延長の割合（`weighted_value_shares`）と、軸の下書きの形で道の標本から求める生値の分布（`raw_value_distribution`）。
 
 ここで見ないもの:
 - 軸の生値（重み付き和・欠損・前処理・対応表の軸に生値が無いこと） → `test_axis_definitions.py`
@@ -15,6 +15,7 @@ from app.domain.value_distribution import (
     weighted_distribution,
     weighted_quantiles,
     weighted_spread,
+    weighted_value_shares,
 )
 
 
@@ -84,3 +85,22 @@ def test_the_draft_shape_gives_raw_values_before_its_breakpoints_and_skips_ways_
     result = raw_value_distribution(shape, sample)
 
     assert (result.sample_ways, result.total_km, result.quantiles["p50"]) == (1, 1.0, 6.0)
+
+
+class TestValueShares:
+    def test_shares_weight_by_length_and_are_listed_largest_first(self):
+        pairs = [(100.0, "asphalt"), (300.0, "gravel"), (100.0, "asphalt"), (500.0, "gravel")]
+
+        result = weighted_value_shares(pairs)
+
+        assert [(s.value, s.share) for s in result.shares] == [("gravel", 0.8), ("asphalt", 0.2)]
+        assert (result.sample_ways, result.total_km) == (4, 1.0)
+
+    def test_yes_no_values_are_named_as_the_mapping_keys(self):
+        # 対応表のキーはJSONで"true"/"false"と書かれる。綴りが違うと、画面が点数の行と割合を突き合わせられない。
+        result = weighted_value_shares([(100.0, True), (100.0, False)])
+
+        assert {s.value for s in result.shares} == {"true", "false"}
+
+    def test_no_pairs_give_no_shares(self):
+        assert weighted_value_shares([]).shares == []

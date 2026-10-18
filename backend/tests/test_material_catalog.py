@@ -105,6 +105,12 @@ def test_a_value_is_shown_with_its_label_when_the_table_has_one():
     assert material.value_label("new_value") == "new_value"
 
 
+def test_a_yes_no_value_is_shown_as_yes_or_no():
+    material = spec("flag_a", "boolean")
+
+    assert [material.value_label(v) for v in ("true", "false")] == ["はい - true", "いいえ - false"]
+
+
 def test_materials_are_known_by_their_id(catalog):
     assert material_catalog.material_dtype("cat_a") == "categorical"
     assert material_catalog.material_dtype("nothing") is None

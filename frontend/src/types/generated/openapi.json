@@ -1878,6 +1878,49 @@
         }
       }
     },
+    "/api/admin/material-catalog/{material_id}/value-shares": {
+      "get": {
+        "operationId": "get_material_value_shares_api_admin_material_catalog__material_id__value_shares_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "material_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Material Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialValueSharesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/material-catalog/{material_id}/values": {
       "get": {
         "operationId": "get_material_values_api_admin_material_catalog__material_id__values_get",
@@ -5041,6 +5084,62 @@
           "label"
         ],
         "title": "MaterialValueEntry"
+      },
+      "MaterialValueShareEntry": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "share": {
+            "type": "number",
+            "title": "Share"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "value",
+          "label",
+          "share"
+        ],
+        "title": "MaterialValueShareEntry"
+      },
+      "MaterialValueSharesResponse": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "sample_ways": {
+            "type": "integer",
+            "title": "Sample Ways"
+          },
+          "total_km": {
+            "type": "number",
+            "title": "Total Km"
+          },
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialValueShareEntry"
+            },
+            "type": "array",
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "available",
+          "sample_ways",
+          "total_km",
+          "values"
+        ],
+        "title": "MaterialValueSharesResponse"
       },
       "MaterialValuesResponse": {
         "properties": {

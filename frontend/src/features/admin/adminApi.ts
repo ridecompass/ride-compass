@@ -108,6 +108,20 @@ export function fetchMaterialDistribution(materialId: string) {
   );
 }
 
+export type MaterialValueShares = Schemas["MaterialValueSharesResponse"];
+
+/** 種類・はい/いいえの材料の値ごとに、その値を持つ道の延長の割合。 */
+export function fetchMaterialValueShares(materialId: string) {
+  return requestApi(
+    (init) =>
+      adminApiClient.GET("/material-catalog/{material_id}/value-shares", {
+        params: { path: { material_id: materialId } },
+        ...init,
+      }),
+    adminOptions("値ごとの延長の取得", { timeoutMs: API_TIMEOUT_MS.distribution }),
+  );
+}
+
 /** categoricalの材料が実データで取る値の一覧。 */
 export function getMaterialValues(materialId: string) {
   return requestApi(
