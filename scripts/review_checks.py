@@ -285,6 +285,11 @@ def cmd_size(args: argparse.Namespace) -> int:
     reached = {f for f, limit in kind_limits.items() if counts[f] >= limit}
     watched = sorted(top | large | reached | (set(thresholds) - set(kind_limits)), key=lambda f: -counts.get(f, 0))
 
+    def over_limit(f: str) -> bool:
+        th = thresholds.get(f)
+        # コードの上限は外の道具の最大の行数なので、道具と同じく超えたときだけ発火する。
+        return bool(th) and (counts[f] > th if f in code_limits else counts[f] >= th)
+
     tags = review_tags()
     base_tag, base_sha, base_date = tags[0] if tags else (None, None, None)
     prev = line_counts(watched, base_sha) if base_sha else {}
@@ -309,8 +314,7 @@ def cmd_size(args: argparse.Namespace) -> int:
             reasons.append(f"+{(cur - p) / p * 100:.0f}%")
         if th is None and cur >= LARGE_FILE_LINES:
             reasons.append(f"{LARGE_FILE_LINES:,}行以上・閾値未設定")
-        # コードの上限は外の道具の最大の行数なので、道具と同じく超えたときだけ発火する。
-        if th and (cur > th if f in code_limits else cur >= th):
+        if over_limit(f):
             reasons.append(f"閾値{th:,}超過")
         if reasons:
             fired.append(f)
@@ -326,9 +330,13 @@ def cmd_size(args: argparse.Namespace) -> int:
         if f in on_fire:
             print(f"  - {f} の既定の対応: {on_fire[f]}")
     # コードの上限を超えたら分けるしかないので、分け方の既定が無いものを出す。
-    undecided = sorted(f for f, limit in code_limits.items() if counts[f] > limit and f not in on_fire)
+    undecided = sorted(f for f in code_limits if over_limit(f) and f not in on_fire)
     print(f"既定の対応（on_fire）の無いコードの上限超え {len(undecided)}件: "
           + (", ".join(undecided) if undecided else "なし"))
+    # 分け終えたファイルの既定は分ける前の形を指すので、次に発火したとき古い分け方を出さないよう外す候補に出す。
+    settled = sorted(f for f in on_fire if f not in counts or not over_limit(f))
+    print(f"上限の内に戻った・削除済みの既定の対応（on_fire） {len(settled)}件: "
+          + (", ".join(settled) if settled else "なし"))
     print(f"閾値の見直し（今の行数+{GROWTH_PERCENT}%を{THRESHOLD_STEP_LINES}行に切り上げた値より緩い・削除済み） "
           f"{len(slack)}件: "
           + (", ".join(slack) if slack else "なし"))
