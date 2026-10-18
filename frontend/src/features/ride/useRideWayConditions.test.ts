@@ -3,18 +3,16 @@
  * 実際の進む向きと速さを使い、向きの区分が変わるまでは同じ条件を返す。
  *
  * ここで見ないもの:
- * - 角度を区分へ丸める答え（区分の境界の向き） → `lib/cardinalLabel.test.ts`（backend が出す表）
+ * - 角度を区分へ丸める答え（区分の境界の向き） → `lib/cardinalLabel.test.ts`（呼び名の区分の、backend が出す表）
  * - 条件で道の値を取ること → `features/map/useDedicatedWayValues.test.ts`
  */
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import regionTileConfig from "@/types/generated/region-tile-config.json";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-import { useRideWayConditions } from "./useRideWayConditions";
+import { BEARING_STEP_DEG as BUCKET, useRideWayConditions } from "./useRideWayConditions";
 
-const BUCKET = regionTileConfig.way_value_bearing_bucket_deg;
 const PLANNED_SPEED_KMH = 20;
 
 type Riding = { bearing: number | null; speedKmh: number | null } | null;

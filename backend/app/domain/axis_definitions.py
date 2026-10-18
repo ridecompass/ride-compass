@@ -943,7 +943,7 @@ def time_scoped_weights(
     return scoped
 
 
-def _priority_override_mask(values: MaterialColumn, equals: str) -> np.ndarray:
+def priority_override_mask(values: MaterialColumn, equals: str) -> np.ndarray:
     """0次条件が材料の値のどの要素に当たるか。**一致の判定はここだけが持つ**。
 
     `equals`は`CategoricalShape.mapping`のキーと同じ読み方をする（"true"/"false"だけを真偽へ読み、
@@ -1165,6 +1165,6 @@ def evaluate_axis_array(definition: AxisDefinition, materials: Mapping[str, Mate
         # キーをfloatへ変えない。
         result = evaluate_categorical(materials[shape.material], shape.mapping)
     for override in reversed(definition.priority_overrides):
-        mask = _priority_override_mask(materials[override.material], override.equals)
+        mask = priority_override_mask(materials[override.material], override.equals)
         result = np.where(mask, override.value, result)
     return result

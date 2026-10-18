@@ -2,7 +2,7 @@
 
 入口は`wind_components`・`wind_drag_ratio_array`（スカラー版`wind_drag_ratio`・成分から求める
 `wind_drag_ratio_from_components`）・`grid_index_at_or_below`・`WindLattice`・`WindForecastSeries`・
-`estimate_passage_hours`。
+`estimate_passage_hours`と、地図へ配る木`WIND_DRAG_RATIO_WAY_FORMULA`。
 
 ここで見ないもの:
 - 風の材料を道・区間へ配る評価器（`domain/dynamic_materials.py`） → `test_wind_way_service.py`・`test_leg_costs.py`
@@ -20,8 +20,12 @@ from hypothesis import example, given
 from hypothesis import strategies as st
 
 from app.domain.route import Coordinates
+from app.domain.way_value_formula import way_values_from_formula
 from app.domain.wind import (
+    WIND_DIRECTION_LEAF,
+    WIND_DRAG_RATIO_WAY_FORMULA,
     WIND_DRAG_REFERENCE_SPEED_MS,
+    WIND_SPEED_LEAF,
     WIND_FORECAST_LAT_STEP_DEG,
     WIND_FORECAST_LON_STEP_DEG,
     WindForecastSeries,
@@ -98,6 +102,16 @@ def test_with_a_headwind_a_faster_rider_pays_more(headwind, crosswind, speed_a, 
 def test_a_pure_crosswind_adds_a_little_drag(speed, travel_speed):
     """真横の風も相対風速を増やすので、負荷は正になる。"""
     assert wind_drag_ratio(speed, 90.0, 0.0, travel_speed) > 0.0
+
+
+@given(WIND_SPEEDS, BEARINGS, BEARINGS, st.floats(5.0, 60.0))
+def test_the_map_formula_gives_the_drag_the_route_uses(speed, direction, bearing, speed_kmh):
+    """地図の道の色（配る木を道ごとの風と要求の走行方位・想定速度で評価した値）が、ルートの区間の負荷と食い違わない。"""
+    values = way_values_from_formula(
+        WIND_DRAG_RATIO_WAY_FORMULA, ["way"], {WIND_SPEED_LEAF: [speed], WIND_DIRECTION_LEAF: [direction]},
+        {"bearing_deg": bearing, "speed_kmh": speed_kmh})
+
+    assert values == {"way": round(wind_drag_ratio(speed, direction, bearing, kmh_to_ms(speed_kmh)), 3)}
 
 
 def test_the_array_form_evaluates_each_element():

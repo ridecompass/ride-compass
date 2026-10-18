@@ -170,7 +170,7 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
   その軸の材料が同時に出ているときは、破線にせず全体を下敷きとして薄く敷く（材料の線を隠さない）。
 - **走行方位で値が決まらない道（配信の値が`null`）は、「データなし」と別の色で実線で塗る**（`palette.semantic.undetermined`）。
   方位を1つ指定すると、勾配の軸では**その向きに対して直角に近く値を示せない道**（backend
-  `domain/gradient.py: effective_gradient`がNoneを返す）が街区の半分近くを占めうる。
+  `domain/gradient.py: travel_direction_formula`の`undetermined`が真）が街区の半分近くを占めうる。
   feature-stateは値と別のキー（`axisLines.ts: axisUndeterminedStateKey`）に載せる——値と同じキーへ番兵の文字列で
   載せると、段の大小比較に文字列が混ざる。凡例の行は`mapColorLegend.ts: UNDETERMINED_LEGEND_BAND`（鍵
   `LEGEND_UNDETERMINED_KEY`）で、軸カタログの`dynamic_way_value_undetermined_by_bearing`がtrueの軸の、ルート前の

@@ -21,6 +21,7 @@ from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import BreakpointLinearShape, CategoricalShape, MaterialTerm, copy_axis_definitions
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments, WayValueQuery
 from app.domain.geo import LatLonPoint
+from app.domain.gradient import ROAD_BEARING_LEAF
 from app.domain.landcover import LandcoverPercentages
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, tile_bounds_lonlat
 from app.domain.route_preference import RoutePreference
@@ -29,7 +30,6 @@ from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, encode_empty_tile
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services.dedicated_way_values import AxisWayValueLens
-from app.services.gradient_way_service import GradientConditions
 from app.services import region_service
 from app.services.region_service import AxisInspectorService, RegionService
 from tests.axis_system_fixture import replaced_axis_definitions, shaped_axis
@@ -187,18 +187,21 @@ class _TileMaterials:
                                ) if self._readable else None
 
 
+#: 押した道は、走行方位（`QUERY`の北）と逆向きの道。ほかは走行方位に沿う。
+ROAD_BEARINGS = {WAY: 180.0}
+
+
 class _Gradients:
-    """勾配の配信の代役。条件の型は本物のサービスのもの（要求から何を組み立てるかは本物を通す）。"""
+    """勾配の配信の代役。配る材料の木と受け取る条件の型は、登録された本物のサービスのものが使われる。区間の向きは、
+    区間が属する道の向き。"""
 
-    material_id = "gradient_percent"
-    conditions_type = GradientConditions
+    async def get_way_materials(self, z, x, y, at):
+        gradients = {"other": 9.0, WAY: 1.0} if (z, x, y) == WAY_TILE else {"other": 9.0, SEGMENT: 6.0}
+        return {"gradient_percent": gradients, ROAD_BEARING_LEAF: {key: ROAD_BEARINGS.get(key, 0.0) for key in gradients}}
 
-    async def get_way_values(self, z, x, y, conditions):
-        return {"other": 9.0, WAY: -1.0} if (z, x, y) == WAY_TILE else {"other": 9.0, SEGMENT: 6.0}
-
-    def segment_values(self, segments, conditions):
-        """区間の勾配は、走る向きで符号が変わる（ここでは区間の材料と逆向きに走る）。"""
-        return -np.asarray(segments.columns["gradient_percent"], dtype=float)
+    def segment_materials(self, segments):
+        return {"gradient_percent": np.asarray(segments.columns["gradient_percent"], dtype=float),
+                ROAD_BEARING_LEAF: np.array([ROAD_BEARINGS.get(key, 0.0) for key in segments.feature_keys])}
 
 
 def _inspector(readable: bool = True, unavailable: bool = False) -> AxisInspectorService:

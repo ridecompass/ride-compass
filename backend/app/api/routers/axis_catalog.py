@@ -40,6 +40,7 @@ from app.domain.axis_raw_value import (
 from app.domain.dynamic_way_values import WayValueConditionName
 from app.domain.map_paint import MapPaint, map_paint
 from app.domain.tuning import client_tuning_values
+from app.domain.way_value_formula import WayValueFormula
 from app.services.dedicated_way_values import dedicated_way_value_layers
 from app.services.region_service import RegionService
 from app.domain.strict_model import StrictModel
@@ -85,6 +86,10 @@ class AxisCatalogEntry(StrictModel):
     # （`services/dedicated_way_values.py: DedicatedWayValueLayer`）。trueの軸だけ、
     # 地図の凡例が「向きで決まらない」の行を持つ（返さない軸に出すと、どの道も入らない行になる）。
     dynamic_way_value_undetermined_by_bearing: bool
+    # 地図がこの軸について塗る値を、道ごとの材料（`GET /api/region/way-materials/{axis_id}`）と要求の条件
+    # （`bearing_deg`・`speed_kmh`）から求める式の木（`services/dedicated_way_values.py: DedicatedWayValueLayer`）。
+    # 値は配信（`GET /api/region/dynamic-way-values/{axis_id}`）と同じになる。木にできない軸はnullで、配信を使う。
+    way_value_formula: WayValueFormula | None
     # 重みが効く時間帯（`domain/axis_definitions.py: AxisDefinition`の`time_scope`）。"always"以外の軸は、
     # その時間帯に通る区間でだけ効く。周りの道は通過する時刻を持たないので、受け取る側が地図の色の前提を
     # axis_idで分岐せずここから決めるために配る。
@@ -137,6 +142,7 @@ async def get_axis_catalog(region_service: RegionService = Depends(get_region_se
                 material_breakdown=axis_material_breakdown(definition, AXIS_DEFINITIONS),
                 dynamic_way_value_conditions=way_value_layers[definition.axis_id].conditions,
                 dynamic_way_value_undetermined_by_bearing=way_value_layers[definition.axis_id].undetermined_by_bearing,
+                way_value_formula=way_value_layers[definition.axis_id].formula,
                 time_scope=definition.time_scope,
             )
             for definition in published_axis_definitions()

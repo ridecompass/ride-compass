@@ -25,6 +25,7 @@ from app.domain.axis_definitions import (
 )
 from app.domain.axis_raw_value import RawValueUnits
 from app.domain.material_catalog import MATERIAL_CATALOG, SURFACE_ESTIMATE
+from app.domain.way_value_formula import WayValueFormula, condition_names
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.main import app
 from app.services.region_service import RegionService
@@ -209,6 +210,9 @@ def test_get_axis_catalog_names_what_the_map_sends_and_shows_for_an_axis(client,
     (entry,) = response.json()["axes"]
     assert set(entry["dynamic_way_value_conditions"]) == conditions
     assert entry["dynamic_way_value_undetermined_by_bearing"] is undetermined
+    # 地図は道ごとの材料をこの木で評価する。木が読む条件は、地図が送る条件のうち時刻を除いたもの（時刻は材料が持つ）。
+    formula = WayValueFormula.model_validate(entry["way_value_formula"])
+    assert condition_names(formula.value) | condition_names(formula.undetermined) == conditions - {"at"}
 
 
 def test_get_axis_catalog_includes_raw_value_unit(client, catalog_axes):
