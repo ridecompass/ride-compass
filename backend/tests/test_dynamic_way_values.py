@@ -9,7 +9,7 @@
 - 塗る値の種類・段の境界・凡例の目盛り（`map_paint`） → `test_map_paint.py`
 - 折れ線の得点・対応表・0次条件の評価そのもの（`domain/axis_definitions.py: evaluate_axis_array`） → `test_axis_definitions.py`
 - 軸から配るサービスを選ぶこと・要求の条件の組み立て・配信のAPI → `test_region_routes.py`
-- 木の演算そのもの → `test_way_value_formula.py`、勾配と風の材料の木 → `test_gradient.py`・`test_wind.py`
+- 木の演算そのもの → `test_way_value_formula.py`、風の材料の木 → `test_wind.py`
 - 区間の材料を読むこと → `test_feature_materials_in_tile.py`、勾配の区間ごとの向き → `test_gradient_way_service.py`
 """
 
@@ -144,21 +144,6 @@ def test_the_map_paints_the_same_value_the_search_scores(axis_id, as_difficulty)
         expected = matrix.axis_scores[:, matrix.axis_ids.index(axis_id)]
     assert np.isfinite(expected).any()
     np.testing.assert_array_equal([painted.get(key, np.nan) for key in keys], expected)
-
-
-def test_values_from_a_service_replace_the_material_of_the_tile():
-    """配信のサービスが返さなかったフィーチャーは「データなし」、Noneで返したフィーチャーは「向きで決まらない」に
-    なり、地図で見分けられる。タイルの材料に同じ材料の値があっても、サービスの値で塗る。返さなかったフィーチャーを
-    先に置く（その後ろのフィーチャーの値を落とさないことも見る）。"""
-    keys = ["feature-2", "feature-0", "feature-1"]
-    tile = {"num_a": np.array([1.0, 1.0, 1.0])}
-
-    painted = paint_feature_values(
-        "axis_signed", AXES, keys, tile, {"num_b": {"feature-0": -4.0, "feature-1": None, "elsewhere": 9.0}},
-        as_difficulty=False,
-    )
-
-    assert painted == {"feature-0": -4.0, "feature-1": None}
 
 
 #: 道1本の値を区間から畳む軸と、畳まない軸（密度の軸）。

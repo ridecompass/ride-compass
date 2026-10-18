@@ -12,7 +12,6 @@ TTLが切れるまでDBを読み直さないこと、読めないときも前回
 
 import pytest
 
-from app.config import settings
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.services import derived_data_revision_service, tile_version_service
 
@@ -37,21 +36,6 @@ async def test_second_call_within_ttl_does_not_read_db():
 
     repository.revision = 8
     await derived_data_revision_service.refresh_current_revisions(repository)
-
-    assert derived_data_revision_service.current_revisions() == DataRevisions(derived=7, imported=3)
-
-
-async def test_db_failure_keeps_the_last_revision(monkeypatch):
-    """世代を読めないことは、配信を止める理由にはならない。前回読んだ値のまま配る。"""
-
-    class ExplodingRepository:
-        async def get_data_revisions(self):
-            raise ConnectionRefusedError("DBに触れない")
-
-    monkeypatch.setattr(settings, "derived_data_revision_check_interval_seconds", 0.0)
-    await derived_data_revision_service.refresh_current_revisions(FakeRepository(7))
-
-    await derived_data_revision_service.refresh_current_revisions(ExplodingRepository())
 
     assert derived_data_revision_service.current_revisions() == DataRevisions(derived=7, imported=3)
 

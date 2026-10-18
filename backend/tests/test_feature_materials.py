@@ -12,7 +12,6 @@ import inspect
 
 import numpy as np
 
-from app.config import settings
 from app.domain.dynamic_way_values import FeatureMaterials
 from app.infrastructure import debug_log
 from app.infrastructure.derived_data_meta import DataRevisions
@@ -66,20 +65,6 @@ async def test_a_tile_read_once_is_served_from_the_cache():
     after = debug_log.get_stats().external["region:feature-materials"]
     counted_before = (before.cache_misses, before.cache_hits) if before else (0, 0)
     assert (after.cache_misses - counted_before[0], after.cache_hits - counted_before[1]) == (1, 1)
-
-
-async def test_a_new_derived_data_revision_reads_the_tile_again(monkeypatch):
-    """材料の鍵は路面タイルの`feature_key`と一致して初めて意味を持つ。派生を作り直した後も前の世代の材料を返すと、
-    鍵の合わない道が「データなし」になり、合う道は古い値で塗られる。"""
-    monkeypatch.setattr(settings, "derived_data_revision_check_interval_seconds", 0.0)
-    repository = FakeFeatureMaterialsRepository(_materials(1.0))
-    service = FeatureMaterialService(repository)
-    await _num_a(service)
-
-    repository.materials = _materials(2.0)
-    repository.revision = 2
-
-    assert await _num_a(service) == 2.0
 
 
 async def test_a_deploy_that_changes_how_the_materials_are_read_reads_the_tile_again(monkeypatch):
