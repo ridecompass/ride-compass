@@ -16,7 +16,7 @@ import numpy as np
 from app.services.route_generation_setup import assemble_route_generation_setup
 from app.domain.geo import bearing_between, haversine_distance_km
 from app.domain.graph import node_key
-from app.domain.hard_filters import DEFAULT_HARD_FILTERS, route_flag_columns
+from app.domain.hard_filters import route_flag_columns
 from app.domain.road_avoidance import DEFAULT_ROAD_AVOIDANCE
 from app.domain.cycling_speed import ROLLING_RESISTANCE_MATERIAL_ID
 from app.domain.material_catalog import GRADIENT_PERCENT
@@ -263,7 +263,7 @@ def generator_for(
         GraphService(NetworkRepository(network, side_points)), Weather(wind),
         RequestedConditions(
             preference_override=RoutePreference(weights={AVOID_AXIS: avoid_weight}),
-            penalty_strength=1.0, max_average_grade_percent=max_average_grade_percent, hard_filters=DEFAULT_HARD_FILTERS,
+            penalty_strength=1.0, max_average_grade_percent=max_average_grade_percent,
             road_avoidance=DEFAULT_ROAD_AVOIDANCE, assumed_speed_kmh=20.0,
         ),
     ).generator

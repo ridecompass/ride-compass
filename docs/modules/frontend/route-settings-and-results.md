@@ -15,7 +15,7 @@
 | `components/PinMark/PointMark.tsx` | 並びの札・詳しく・地図の点の小窓の置く操作に出す、地図のピンと同じ図形の丸（`components/PinMark/PinMark.tsx`の中身に背景色を付けたもの。ルートの機能と地図の機能の両方が描くので共有の層に置く） |
 | `features/route/RouteForm/useRouteFormSubmit.ts` | 上記の検証（`{error, check}`。`check`は通ったかを返す）。「ルート生成」ボタン自体は`RouteForm`の外（`page.tsx`の見出し行）にあるため分離している（下記参照） |
 | `features/route/RouteSettingsPanel/RouteSettingsPanel.tsx` | 一般向け軸重み設定（「重み」タブの中身。地図の色分けはここになく`LensControl`のみが持つ、下記参照） |
-| `features/route/RouteSettingsPanel/HardFilterPanel.tsx` | 「除外」タブの中身。上の段は0次ハードフィルタ（通らない道路の種類）、下の段は地図の道のレイヤの凡例の行ごとの避け方（下記「除外」）。種類・行のキー・画面に出す名前・既定値はすべて生成物`route-generate-config.json`（backend `domain/hard_filters.py`・`domain/road_avoidance.py`）が正で、名前をフロントに持たない——キーと名前を別々に持つと、足したフィルタ・行に名前が無く内部名が出る |
+| `features/route/RouteSettingsPanel/HardFilterPanel.tsx` | 「除外」タブの中身。地図の道のレイヤの凡例の行ごとの避け方を1つの並びに出し、自転車が通れない道の行は「通らない」に固定して鍵を付ける（下記「除外」）。行のキー・画面に出す名前・既定値はすべて生成物`route-generate-config.json`の`road_avoidance`（backend `domain/road_avoidance.py`）が正で、名前をフロントに持たない——キーと名前を別々に持つと、足した行に名前が無く内部名が出る |
 | `features/route/roadAvoidance.ts` | 道の行ごとの避け方の段・行・既定を生成物から受け取り（`AVOIDANCE_LEVELS`・`AVOIDABLE_ROWS`・`DEFAULT_ROAD_AVOIDANCE`）、保存した避け方を今の行へ揃える（`syncRoadAvoidance`。今の行に無い鍵は落とし、1つの行を分けてできた行は分ける前の行の鍵（生成物の`former_key`）で保存した段を引き継ぎ、どちらも無い行・今は無い段の行は既定の段にする）。backendは行の鍵の完全一致を要求するため、デプロイで行が増減しても保存値をまたいで送信が成立する |
 | `features/route/SavedPlacesPanel/SavedPlacesPanel.tsx` | 「保存済み」タブの「地点」の中身: 保存した地点の一覧（行は名前・辺りと、アイコンの「呼び出す」「消す」。呼び出すはメニューで出発地・経由地・目的地のどれに置くかを選び、消すは確認の窓で「消す」を押すと消す）。無ければ無いと出し、保存の仕方は(i)の奥（下記「保存した地点」） |
 | `features/route/SavedList/SavedList.tsx` | 「保存済み」タブの一覧（地点・プリセット）の形: 空の案内と保存の仕方の(i)・行の枠・消す操作と確認の窓。行の名前の欄と行ごとの操作（「呼び出す」）は使う側が渡す |
@@ -52,7 +52,6 @@
 | `features/route/WarningText/WarningText.tsx` | 表示中の結果について注意を促す1行（条件のずれ・目的地の補正・所要時間の前提の崩れ）。ルート結果と候補の中身が使う |
 | `features/route/GenerationNotice/GenerationNotice.tsx` | 押した「生成」が候補を出せなかった理由（入力の誤りか失敗・候補0件の理由）を知らせる窓。`app/page.tsx`がデスクトップとモバイルの両方に1つ置き、閉じると案内を消す |
 | `features/route/routePreferenceSync.ts` | 重みのキー集合を軸カタログの公開軸へ揃える関数（`useGenerationConditions.ts`が読むときに1回だけ通す）と、生成リクエストへ重みを載せるかの判定 |
-| `features/route/hardFilterSync.ts` | 保存された`hard_filters`のキー集合を正本（`routeGenerateConfig.hard_filters`）へ整合させる。backendはキー集合の完全一致を要求するため、デプロイでフィルタが増減しても保存値をまたいで送信が成立するようにする |
 | `components/ui/FieldLabel/FieldLabel.tsx` | 情報アイコン付きラベルの共有UI部品（値を変えたら上書きをONにする包みは`RouteSettingsPanel.tsx`が持つ） |
 | `features/route/SegmentDetail/SegmentDetail.tsx` | 押した区間の中身（地点・到達予想・風・総合難易度・軸ごとの内訳）。「ルート結果」の候補の中身と、パネルを閉じているときの地図の小窓が同じこの部品で出す（下記「区間クリック詳細」） |
 | `features/route/pointNames.ts` | 地点の名前（探して置いた候補の名前・「地図で選んだ地点」・「現在地」・「未設定」）。地点の並びと、地図のピンを押したときの小窓が同じ名前を出す（下記「地点の指定」） |
@@ -129,15 +128,15 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
 - パネルが受け取る重みは、`useGenerationConditions.ts`がカタログのキー集合へ揃えた値（`routePreferenceSync.ts: alignRoutePreference`。
   軸の追加/unpublishに追従。backendは「上書きするなら既知の全axis_idキー一致」を要求するため、ズレるとルート生成が
   422になる）。パネル自身は揃えない——送る値・道の評価と同じ1つの揃えた値を表示し、それを元に編集する。
-- 除外は独立したタブ（`HardFilterPanel`）に置き、2段に分ける。重みづけと違い「通らない」「なるべく避ける」指定であることを
-  それぞれの見出しの(i)の奥で明示し、将来の除外条件もこのタブへ足す。
-  - **通らない**（0次フィルタ）: 種類ごとの切り替えを、重みのタブの軸のチップと同じ形（`components/ui/AxisLegend/axisLegend.ts`の
-    チップのクラス。切っている間は薄く出す）で並べる。ほぼ触らない設定なので、チップは見出しと同じ行に並べて高さを取らない。
-  - **道ごとの避け方**: 地図の道のレイヤの凡例の行を、生成物の行のままレイヤごとに畳んで並べ、行ごとに「通る・なるべく避ける・通らない」を
+- 除外は独立したタブ（`HardFilterPanel`）に置き、道ごとの避け方を1つの並びにする。重みづけと違い「通らない」「なるべく避ける」指定であることを
+  見出しの(i)の奥で明示し、将来の除外条件もこのタブへ足す。
+  - **固定の行**: 自転車が通れない道（生成物の`road_avoidance.fixed_rows`）は、並びの先頭に畳まずに置き、選ぶ口の代わりに鍵と「通らない」を出す。
+    backendはこの道をいつも除き、要求でも変えられない。
+  - **選べる行**: 地図の道のレイヤの凡例の行を、生成物の行のままレイヤごとに畳んで並べ、行ごとに「通る・なるべく避ける・通らない」を
     選ぶ。行は20近くあり全部を開くとスマホで長くなるので、レイヤは畳んで始め、畳んだ見出しに既定から変えた行の数と、「通る」以外を
     選んだ行の数を段ごとに出す（開かずに何を避けているかが分かる）。行の説明は行の名前の(i)の奥に置く。
-  - 「通らない」の見出しの行の右端に、アイコンだけの「除外を既定値に戻す」を置き、押すと2段の両方を既定へ戻す（2段のどちらかが
-    既定と違う間だけ押せ、既定値のままの間も押せない状態で残す。[デザイン基盤](frontend-design-system.md)「5-2」）。
+  - 見出しの行の右端に、アイコンだけの「除外を既定値に戻す」を置き、押すと選べる行を既定へ戻す（既定と違う間だけ押せ、
+    既定値のままの間も押せない状態で残す。[デザイン基盤](frontend-design-system.md)「5-2」）。
 - 重みを既定値へ戻す操作はこのタブに持たない。重みを含む条件の切り替えは、名前を付けて保存した条件を「保存済み」タブで
   呼び出して行う（下記「保存した条件」。重みを上書きせずに保存した条件を呼び出すと、上書きをやめて既定の配分に戻る）。
 
