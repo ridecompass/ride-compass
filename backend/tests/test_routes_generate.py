@@ -27,6 +27,7 @@ import pytest
 
 from app.api import dependencies
 from app.config import settings
+from app.domain.hard_filters import HARD_FILTERS
 from app.domain.road_avoidance import DEFAULT_ROAD_AVOIDANCE
 from app.domain.route_request import DEFAULT_DISTANCE_TOLERANCE_KM, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
 from app.domain.tuning import TUNING_VALUES
@@ -310,6 +311,20 @@ async def test_a_destination_moved_to_the_nearest_reachable_road_is_echoed(clien
 
 
 # --- 要求の検証 ---
+
+
+@pytest.mark.parametrize("body", [
+    {"route_preference": {}},                                        # 公開軸を全部書いていない
+    {"route_preference": {AVOID_AXIS: -1.0}},                        # 値の検査（`check_axis_weights`）へ寄せている
+    {"hard_filters": {name: False for name in HARD_FILTERS}},           # いつも除く道は切れない
+    {"road_avoidance": {}},                                          # 行を全部書いていない
+    {"spliced_edge_ids": ["way-100-seg0-fwd"]},                       # 目的地が無い
+    {"assumed_speed_kmh": 0},                                        # 想定速度の型（`AssumedSpeedKmh`）
+])
+async def test_a_request_outside_what_can_be_generated_is_refused_before_any_job(client, body):
+    response = await _post(client, **body)
+
+    assert response.status_code == 422
 
 
 @pytest.mark.parametrize("body", [

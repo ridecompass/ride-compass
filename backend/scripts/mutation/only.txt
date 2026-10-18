@@ -1,9 +1,4 @@
-app.api.routers._tile_http.x_tile_response__mutmut_10
-app.api.routers._tile_http.x_validate_tile_coords__mutmut_3
-app.api.routers.routes.xǁRoutePreferenceWeightsǁto_preference__mutmut_1
-app.batch.source_adapters.abr.x__abr_sources__mutmut_1
 app.domain.difficulty.x_weighted_mean_by_distance__mutmut_6
-app.domain.region.x_check_tile_index__mutmut_3
 app.domain.road_avoidance.x_road_avoidance_masks__mutmut_12
 app.domain.road_network.x_elevation_attribute__mutmut_1
 app.domain.route.x__append_continuing__mutmut_3
@@ -19,7 +14,6 @@ app.domain.route.x_merge_material_category_shares__mutmut_15
 app.domain.route.x_merge_material_values__mutmut_3
 app.domain.route.x_merge_overall_difficulty__mutmut_10
 app.domain.route.x_merge_overall_difficulty__mutmut_3
-app.domain.route_preference.x_check_axis_weights__mutmut_14
 app.domain.route_search.x_fits_loop_distance__mutmut_7
 app.domain.route_search.x_keep_routes_with_baseline__mutmut_26
 app.domain.route_search.x_order_by_bearing_spread__mutmut_10
@@ -37,6 +31,5 @@ app.infrastructure.simple_api_client.x_cached_fetch__mutmut_22
 app.infrastructure.simple_api_client.x_cached_fetch__mutmut_6
 app.infrastructure.tile_cache.x_close__mutmut_2
 app.services.dedicated_way_values.x_tile_axis_way_materials__mutmut_16
-app.services.jma_amedas_service.x_new_rain_materials_cache__mutmut_3
 app.services.route_generator.xǁ_DistanceFinishǁ_arrange__mutmut_7
 app.services.route_generator.xǁ_NoDistanceFinishǁselect__mutmut_79
