@@ -49,7 +49,13 @@ export function catalogEntry(overrides: EntryOverrides = {}): AxisCatalogEntry {
   };
 }
 
-/** 段の境界を持つ軸（地図は全軸を配信された値で塗る）。 */
+/** 地図が道を塗れる最小の式の木: 道ごとの材料 `value` をそのまま道の値にし、向きで決まらない道を持たない。 */
+export const MATERIAL_VALUE_FORMULA: NonNullable<AxisCatalogEntry["way_value_formula"]> = {
+  value: { op: "feature", name: "value" },
+  undetermined: { op: "const", value: 0 },
+};
+
+/** 段の境界を持つ軸。周りの道を塗るには、式の木（`way_value_formula`）を呼び出し側が渡す。 */
 export function dedicatedEntry(axisId: string, thresholds: number[], overrides: EntryOverrides = {}) {
   return catalogEntry({
     axis_id: axisId,

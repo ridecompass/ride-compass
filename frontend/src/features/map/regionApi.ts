@@ -114,51 +114,45 @@ export async function fetchAxisInspector(
   });
 }
 
-// 専用配信の軸の、タイルの中のway_idごとの値。パスは軸idで決まり、軸ごとの関数を持たない。世代のクエリを持たない
+// 軸の、タイルの中の道ごとの材料。パスは軸idで決まり、軸ごとの関数を持たない。世代のクエリを持たない
 // （ブラウザのキャッシュに載せない軽いJSONで、新しさはbackendが持つ）。
 
-interface DynamicWayValuesResult {
-  /** feature_key→値。nullは、その走行方位では値が決まらない道（値の無い道は鍵ごと無い）。 */
-  values: Record<string, number | null>;
+interface WayMaterialsResult {
+  /** feature_key→材料の名前→値（値の無い材料は鍵ごと無い）。 */
+  materials: Record<string, Record<string, number>>;
   /** 通信失敗（HTTPエラー・ネットワークエラー・タイムアウト）ならtrue。backendが正常応答で
-   * 空オブジェクトを返した場合（対象範囲に本当にway_idが無い）はfalseのまま——呼び出し側が
+   * 空オブジェクトを返した場合（対象範囲に本当に道が無い）はfalseのまま——呼び出し側が
    * 「取得失敗」と「本当に空」を区別できるようにする。 */
   error: boolean;
 }
 
-/** 路面タイルと同じz/x/yの中のway_idごとの値。失敗しても例外にせず`error: true`を返す（色分けは補助の機能なので、
- * 道路や他のレイヤーを巻き込んで止めない。失敗したことは利用者へ示せるよう返す）。走行方位・時刻・速度は、その軸が
- * 要るものだけを呼ぶ側が渡す。 */
-export async function fetchDynamicWayValues(
+/** 路面タイルと同じz/x/yの中の道ごとの材料。失敗しても例外にせず`error: true`を返す（色分けは補助の機能なので、
+ * 道路や他のレイヤーを巻き込んで止めない。失敗したことは利用者へ示せるよう返す）。時刻は、時刻に依る材料を持つ軸
+ * だけを呼ぶ側が渡す。走行方位・想定速度は材料に効かないので送らない。 */
+export async function fetchWayMaterials(
   axisId: string,
   z: number,
   x: number,
   y: number,
-  bearingDeg: number | undefined,
   at: Date | undefined,
-  speedKmh: number | undefined,
-): Promise<DynamicWayValuesResult> {
-  const params = {
-    path: { axis_id: axisId, z, x, y },
-    query: {
-      bearing_deg: bearingDeg,
-      at: at?.toISOString(),
-      speed_kmh: speedKmh !== undefined && Number.isFinite(speedKmh) ? speedKmh : undefined,
-    },
-  };
+): Promise<WayMaterialsResult> {
+  const params = { path: { axis_id: axisId, z, x, y }, query: { at: at?.toISOString() } };
   try {
-    const values = await requestApi(
-      (init) => backendApi.GET("/api/region/dynamic-way-values/{axis_id}/{z}/{x}/{y}", { params, ...init }),
+    const materials = await requestApi(
+      (init) => backendApi.GET("/api/region/way-materials/{axis_id}/{z}/{x}/{y}", { params, ...init }),
       {
         timeoutMs: API_TIMEOUT_MS.default,
-        category: `api:${axisId}-way-values`,
-        messages: { failure: "道路の塗りの値の取得に失敗しました", parseFailure: "道路の塗りの値の解析に失敗しました" },
+        category: `api:${axisId}-way-materials`,
+        messages: {
+          failure: "道路の塗りの材料の取得に失敗しました",
+          parseFailure: "道路の塗りの材料の解析に失敗しました",
+        },
         successMeta: (data) => ({ wayCount: Object.keys(data).length }),
       },
     );
-    return { values, error: false };
+    return { materials, error: false };
   } catch {
     // 失敗の内訳は`requestApi`が記録済み。
-    return { values: {}, error: true };
+    return { materials: {}, error: true };
   }
 }

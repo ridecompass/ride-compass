@@ -252,7 +252,7 @@ class WayValuesPreviewRequest(StrictModel):
     z: RoadTileZoom
     x: TileIndex
     y: TileIndex
-    #: 条件で変わる材料を読む軸の条件。意味・要る欄・省いたときは地図の配信（`/api/region/dynamic-way-values`）と同じ。
+    #: 条件で変わる材料を読む軸の条件。要る欄は、軸の葉の材料を配るサービスが受け取る条件の型が決める（省くと422）。
     bearing_deg: BearingDeg | None = None
     at: datetime | None = None
     speed_kmh: AssumedSpeedKmh | None = None
@@ -272,8 +272,9 @@ async def preview_way_values(
     """編集中の折れ点で、タイルのフィーチャーごとに地図が塗る値を返す。保存していない下書きの`shape`で、軸スタジオの
     較正の地図が塗る。
 
-    鍵と値の意味は地図の配信（`/api/region/dynamic-way-values`）と同じで、同じ材料・同じ評価から`shape`だけを差し替えて
-    求める（`services/dedicated_way_values.py: draft_axis_way_value_lens`）。保存されている折れ点を渡せば、配信と同じ値になる。
+    鍵と値の意味は、地図が道ごとの材料（`/api/region/way-materials`）を軸の木（`way_value_formula`）で評価した値と同じで、
+    同じ材料・同じ評価から`shape`だけを差し替えて求める（`services/dedicated_way_values.py: draft_axis_way_value_lens`）。
+    保存されている折れ点を渡せば、地図が塗る値と同じになる。
     下書きの値は持たず、配信の値・材料のキャッシュは変わらない。公開していない軸も求める。
 
     条件で変わる材料（向きで符号の変わる勾配・風・雨）を読む軸も扱い、条件の欄（`bearing_deg`・`at`・`speed_kmh`）は

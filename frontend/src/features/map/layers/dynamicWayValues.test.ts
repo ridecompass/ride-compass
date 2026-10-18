@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import regionExpectations from "@/types/generated/region-expectations.json";
 
-import { mergeDynamicWayValues, tileContainingLonLat, tilesCoveringViewport } from "./dynamicWayValues";
+import { mergeTileValues, tileContainingLonLat, tilesCoveringViewport } from "./dynamicWayValues";
 
 describe("tileContainingLonLat（1点を含む道路タイル）", () => {
   it("地図のズームを切り捨て、タイルがあるズームの範囲へ収めてから引く", () => {
@@ -62,9 +62,9 @@ describe("tilesCoveringViewport（画面を覆う道路タイル）", () => {
   });
 });
 
-describe("mergeDynamicWayValues（複数タイルの値を1つへ）", () => {
+describe("mergeTileValues（複数タイルの値を1つへ）", () => {
   it("鍵は文字列のまま（edge_idは数値ではない）、同じ鍵は後の応答で上書きする", () => {
-    const merged = mergeDynamicWayValues([{ "123": 1, "e:4-5": 2 }, { "123": 3 }]);
+    const merged = mergeTileValues([{ "123": 1, "e:4-5": 2 }, { "123": 3 }]);
     expect([...merged]).toEqual([
       ["123", 3],
       ["e:4-5", 2],

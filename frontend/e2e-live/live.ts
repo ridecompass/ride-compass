@@ -49,13 +49,13 @@ export interface Watch {
   /** backendが上流（外部の配信元・キャッシュ）の失敗として返した502・503・504（HTTPの定義で上流の失敗を表す）。合否に入れない。 */
   gatewayFailures: string[];
   roadTiles: Map<string, Record<string, unknown>[]>;
-  wayValues: { axisId: string; url: string; values: Record<string, number> }[];
+  wayMaterials: { axisId: string; url: string; materials: Record<string, Record<string, number>> }[];
   jmaTiles: { url: string; body: Buffer }[];
   generated: { routes: unknown[]; no_candidates_reason: string | null }[];
 }
 
 const ROAD_TILE = /\/api\/region\/road-surface-tiles\/(\d+)\/(\d+)\/(\d+)\.pbf/;
-const WAY_VALUES = /\/api\/region\/dynamic-way-values\/([^/]+)\//;
+const WAY_MATERIALS = /\/api\/region\/way-materials\/([^/]+)\//;
 
 async function record(watch: Watch, response: Response): Promise<void> {
   const url = response.url();
@@ -65,10 +65,10 @@ async function record(watch: Watch, response: Response): Promise<void> {
   else if (isBackend && (status >= 500 || status === 429)) watch.backendFailures.push(`${status} ${url}`);
   if (!response.ok()) return;
   const road = ROAD_TILE.exec(url);
-  const wayValues = WAY_VALUES.exec(url);
+  const wayMaterials = WAY_MATERIALS.exec(url);
   const isJmaTile = url.includes("/api/jma-tile/") && url.endsWith(".png");
   const isGeneration = url.includes("/api/routes/generate/");
-  if (!road && !wayValues && !isJmaTile && !isGeneration) return;
+  if (!road && !wayMaterials && !isJmaTile && !isGeneration) return;
   let body: Buffer;
   try {
     body = await response.body();
@@ -78,7 +78,8 @@ async function record(watch: Watch, response: Response): Promise<void> {
   }
   try {
     if (road) watch.roadTiles.set(`${road[1]}/${road[2]}/${road[3]}`, decodeRoadTile(body));
-    else if (wayValues) watch.wayValues.push({ axisId: wayValues[1], url, values: JSON.parse(body.toString("utf-8")) });
+    else if (wayMaterials)
+      watch.wayMaterials.push({ axisId: wayMaterials[1], url, materials: JSON.parse(body.toString("utf-8")) });
     else if (isJmaTile) watch.jmaTiles.push({ url, body });
     else {
       const job = JSON.parse(body.toString("utf-8"));
@@ -107,7 +108,7 @@ export async function openLive(
     backendFailures: [],
     gatewayFailures: [],
     roadTiles: new Map(),
-    wayValues: [],
+    wayMaterials: [],
     jmaTiles: [],
     generated: [],
   };

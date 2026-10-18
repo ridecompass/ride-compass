@@ -85,7 +85,9 @@ function bySource(tiles: Watch["jmaTiles"]): Map<string, { even: Buffer[]; odd: 
 
 test("S3 時刻で変わる入力", async ({ page }) => {
   const catalog = await fetchCatalog();
-  const timed = catalog.axes.filter((axis) => axis.dynamic_way_value_conditions.includes("at"));
+  const timed = catalog.axes.filter(
+    (axis) => axis.dynamic_way_value_conditions.includes("at") && axis.way_value_formula !== null,
+  );
   const statsBefore = await externalErrors();
   const watch = await openLive(page, { storedState: allLayersOn() });
   // 地図のタイルをブラウザのキャッシュから出さず、ズームごとに取り直させる（取り直した応答の中身を見る）。
@@ -112,13 +114,13 @@ test("S3 時刻で変わる入力", async ({ page }) => {
             notApplicable(`「${axis.label}」${name}`, "backendの予報（MSM）が古い");
             return;
           }
-          const before = watch.wayValues.length;
+          const before = watch.wayMaterials.length;
           await setDeparture(page, tomorrowJst(hour));
           await settleMap(page);
-          const received = () => watch.wayValues.slice(before).filter((entry) => entry.axisId === axis.axis_id);
+          const received = () => watch.wayMaterials.slice(before).filter((entry) => entry.axisId === axis.axis_id);
           await expect.poll(() => received().length, { timeout: 15_000 }).toBeGreaterThan(0);
-          const values = received().flatMap((entry) => Object.keys(entry.values));
-          expect.soft(values.length, `「${axis.label}」${name}: 道ごとの値を1件も受け取っていない`).toBeGreaterThan(0);
+          const ways = received().flatMap((entry) => Object.keys(entry.materials));
+          expect.soft(ways.length, `「${axis.label}」${name}: 道ごとの材料を1件も受け取っていない`).toBeGreaterThan(0);
         },
         () => setDeparture(page, original),
       );
