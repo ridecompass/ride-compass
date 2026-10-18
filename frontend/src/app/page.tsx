@@ -217,6 +217,14 @@ export default function Home() {
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("generate");
 
   const tapMode = mapTapModeOf(panels.activePanel, settingsTab, editingRoute !== null, navigating);
+  // 地図に出した一時の選択（選んだ区間・小窓）の持ち主。地図を押した意味は効いているパネルで決まるので、前に効いていたのと別の
+  // パネルが効いたら（閉じてから別のパネルを開いたときも）、前のパネルで出した選択を外す。閉じるだけなら外さない（地図だけを
+  // 見て、選んだ区間を小窓で読む）。
+  const [mapSelectionOwner, setMapSelectionOwner] = useState(panels.activePanel);
+  if (panels.activePanel !== null && panels.activePanel !== mapSelectionOwner) {
+    setMapSelectionOwner(panels.activePanel);
+    if (mapSelectionOwner !== null) results.selectSegment(null);
+  }
 
   const handleSettingsTabChange = (value: string) => setSettingsTab(value as SettingsTab);
 
@@ -632,6 +640,7 @@ export default function Home() {
                 originLocated: locationKnown,
               })}
               tapMode={tapMode}
+              selectionOwner={mapSelectionOwner}
               onPointPlace={conditions.placeAtSelected}
               onPointSelect={conditions.selectPoint}
               onOriginMove={setManualLocation}
