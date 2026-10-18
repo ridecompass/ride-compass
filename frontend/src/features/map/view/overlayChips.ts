@@ -14,7 +14,8 @@ import {
   type MapLayerId,
   type MapLayerVisibility,
 } from "@/features/map/layers/mapLayers";
-import type { LegendFilterSummaryAxis, OverlayLayerChip } from "@/features/map/MapOverlayControls/MapOverlayControls";
+import type { LegendFilterSummaryAxis } from "@/features/map/MapOverlayControls/LegendDetails";
+import type { OverlayLayerChip } from "@/features/map/MapOverlayControls/OverlayLayerRow";
 import { disasterSourceLegendAxis, pointLegendAxes, roadLegendAxes } from "@/features/map/scene/legends";
 
 import { hiddenKeysOf, presentHiddenKeys } from "./legendFilters";

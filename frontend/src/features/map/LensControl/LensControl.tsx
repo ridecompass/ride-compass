@@ -274,7 +274,7 @@ export default function LensControl({
   );
 }
 
-/** 選択肢の1行。「表示」の一覧の行（`MapOverlayControls.tsx: LayerRow`）と同じ形で、チェックの代わりに1つだけ選ぶ印を出す。
+/** 選択肢の1行。「表示」の一覧の行（`OverlayLayerRow.tsx: OverlayLayerRow`）と同じ形で、チェックの代わりに1つだけ選ぶ印を出す。
  * (i) は説明を、▶（選んでいる行だけ）は凡例を、行のすぐ下に開く。 */
 function LensRow({ option, panel, filtered }: { option: LensOption; panel: ReactElement | null; filtered: boolean }) {
   const [hintOpen, setHintOpen] = useState(false);
