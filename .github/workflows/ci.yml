@@ -356,7 +356,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       # Playwright を動かすのに node_modules が要る。試すアプリはここではビルドしない。
       - run: npm ci
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: frontend-app
       - run: tar -xzf frontend-app.tar.gz
