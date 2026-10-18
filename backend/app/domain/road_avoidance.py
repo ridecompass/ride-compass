@@ -24,7 +24,22 @@ AVOIDANCE_LEVELS: tuple[AvoidanceLevel, ...] = get_args(AvoidanceLevel)
 AVOIDANCE_LEVEL_LABELS: dict[AvoidanceLevel, str] = {"pass": "通る", "avoid": "なるべく避ける", "exclude": "通らない"}
 
 #: 既定で「通る」でない行（レイヤのid, 行の鍵）→段。行の宣言に無い組はimport時に落ちる。
-_DEFAULT_LEVELS: dict[tuple[str, str], AvoidanceLevel] = {(ATTR_HIGHWAY.attr_id, "arterial"): "avoid"}
+_DEFAULT_LEVELS: dict[tuple[str, str], AvoidanceLevel] = {
+    (ATTR_HIGHWAY.attr_id, "motorway"): "avoid",
+    (ATTR_HIGHWAY.attr_id, "trunk"): "avoid",
+    (ATTR_HIGHWAY.attr_id, "primary"): "avoid",
+}
+
+#: 1つの行を分けてできた行（レイヤのid, 行の鍵）→分ける前の行の鍵。前の鍵で選んだ段を、分けたどの行にも引き継がせる。
+#: 前の鍵をそのまま持ち続ける行は書かない。今の行の宣言に無い組はimport時に落ちる。
+_FORMER_ROW_KEYS: dict[tuple[str, str], str] = {
+    (ATTR_HIGHWAY.attr_id, "motorway"): "arterial",
+    (ATTR_HIGHWAY.attr_id, "trunk"): "arterial",
+    (ATTR_HIGHWAY.attr_id, "primary"): "arterial",
+    (ATTR_HIGHWAY.attr_id, "unclassified"): "local",
+    (ATTR_HIGHWAY.attr_id, "residential"): "local",
+    (ATTR_HIGHWAY.attr_id, "footway"): "cycleway",
+}
 
 
 @dataclass(frozen=True)
@@ -38,6 +53,8 @@ class AvoidableRow:
     label: str
     description: str
     default_level: AvoidanceLevel
+    #: 分ける前の行のAPIの鍵（`<レイヤのid>.<前の行の鍵>`）。分けてできた行でなければNone。
+    former_key: str | None
     #: 区間がこの行に当たるか（真偽、値が無ければfalse）を求めるSQL式。
     match_sql: str
 
@@ -62,11 +79,17 @@ def _avoidable_rows() -> dict[str, AvoidableRow]:
                 label=category.label,
                 description=category.description,
                 default_level=_DEFAULT_LEVELS.get((attr.attr_id, category.key), "pass"),
+                former_key=(
+                    f"{attr.attr_id}.{former}" if (former := _FORMER_ROW_KEYS.get((attr.attr_id, category.key))) else None
+                ),
                 match_sql=f"COALESCE(({material.value_sql}) IN ({values}), false)",
             )
     unknown = sorted(f"{layer}.{row}" for layer, row in _DEFAULT_LEVELS if f"{layer}.{row}" not in rows)
     if unknown:
         raise ValueError(f"既定の段を置いた行が凡例の行の宣言に無い: {unknown}")
+    split_unknown = sorted(f"{layer}.{row}" for layer, row in _FORMER_ROW_KEYS if f"{layer}.{row}" not in rows)
+    if split_unknown:
+        raise ValueError(f"前の鍵を置いた行が凡例の行の宣言に無い: {split_unknown}")
     return rows
 
 
