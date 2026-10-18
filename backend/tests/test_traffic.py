@@ -9,7 +9,31 @@
 - 停止要因の種別を地図の凡例の行へ写すこと → `test_material_catalog.py`
 """
 
+import pytest
+
 from app.domain import traffic
+
+
+def test_a_kind_that_is_not_counted_fails_instead_of_waiting_zero_seconds():
+    with pytest.raises(KeyError):
+        traffic.stop_seconds("traffic_signals")
+
+
+# OSMの道路の格（Key:highway）の上から順。リンク（`*_link`）は本線と同じ格に並ぶ。
+_OSM_MAIN_ROADS = ["motorway", "trunk", "primary", "secondary", "tertiary"]
+
+
+def test_the_rank_follows_the_osm_road_hierarchy():
+    ranks = [traffic.highway_rank(highway) for highway in _OSM_MAIN_ROADS]
+
+    assert ranks == sorted(ranks, reverse=True)
+    assert len(set(ranks)) == len(ranks)
+
+
+@pytest.mark.parametrize("highway", _OSM_MAIN_ROADS)
+def test_a_link_road_has_the_rank_of_its_main_road(highway):
+    """ランプを本線より下に置くと、本線とランプが合流する所で「上位の道と交わる」待ちが付く。"""
+    assert traffic.highway_rank(f"{highway}_link") == traffic.highway_rank(highway)
 
 
 def test_minor_roads_share_one_rank_below_tertiary_and_above_paths():
@@ -17,3 +41,10 @@ def test_minor_roads_share_one_rank_below_tertiary_and_above_paths():
 
     assert len(minor) == 1
     assert traffic.highway_rank("cycleway") < minor.pop() < traffic.highway_rank("tertiary")
+
+
+def test_only_roads_from_tertiary_up_need_a_wait_to_cross():
+    """生活道路・サービス道路を横切るのに待ちは要らない。自転車道（階級0）からサービス道路へ出るだけで
+    「上位の道を渡る」と数えないこと。"""
+    assert traffic.highway_rank("tertiary") >= traffic.MAJOR_CROSSING_MIN_RANK
+    assert traffic.highway_rank("service") < traffic.MAJOR_CROSSING_MIN_RANK
