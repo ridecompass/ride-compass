@@ -46,9 +46,12 @@
 | `features/map/regionApi.ts`（`roadSurfaceTileUrl`/`pointTileUrl`とタイル世代の判定） | ベクタタイルのURLテンプレート（`fetchDynamicWayValues`は[地図: 軸・ルート色分け](map-axis-coloring.md)の管轄）。点のレイヤーはどれも1つの配信（backend `GET /api/region/point-tiles/{layer}/...`）で、URLはレイヤー名（生成物`region-tile-config.json`の`point_layers`の鍵。タイルの世代の系統の名前でもある）で組み、source-layer名も同じ一覧から読む。世代はbackendから実行時に届き、**全系統が揃ったもの（`completeTileVersions`だけが作る`TileVersions`）でしかURLを組み立てない** |
 | `features/map/mapAxisCatalog.ts`・`useMapAxisCatalog.ts` | 軸カタログの応答のうち、地図が読むもの（公開中の軸・地図が塗る軸・推定指標のチップ・ルートの色分けモード・事故の収録年・タイルの世代と、それらから組んだレイヤーの一覧`layers`。一覧を組むのは応答1つにつき1回で、地図と`useMapView`は同じものを読む）を導く純関数と、共有の軸カタログと同じ取得（`hooks/useAxisCatalog.ts: useAxisCatalogSelect`）から引くフック。地図がソースを作れるかの判定と、チップの縮退表示は、どちらもここのタイルの世代1つを見る |
 | `lib/tileBaseUrl.ts` | タイル配信元オリジンの決定（既定はフロント自身のオリジン＝rewrites経由、`NEXT_PUBLIC_TILE_BASE_URL`設定時はbackend直接）。路面/POI/事故タイル・基礎地図スタイル（`MapView.tsx: mapStyleUrl`）・国土地理院色別標高図・JMA動的タイル（[動的気象レイヤー](dynamic-weather-layers.md)）が共通に使う |
+| `features/map/MapOverlayControls/MapOverlayControls.tsx` | 地図の左上の「表示」のボタンと、押すと開く地図に出す情報の一覧（下記「最上位グルーピング」）。群への束ね方と並びはレイヤーカタログ（`mapOverlayGroupFor`・`MAP_OVERLAY_GROUP_ORDER`）から導く。群の見出しで中身をたため、群ごとに一覧に並べる項目を選べる。末尾にまとめて戻す操作（下記「まとめて戻す操作」）を並べる |
+| `features/map/MapOverlayControls/OverlayLayerRow.tsx` | 一覧の1行（`OverlayLayerChip`）。行のチェックでON/OFFし、ⓘで説明を、▶で凡例の内訳か案内・取得状態を行のすぐ下に開く。絞り込みの合図（漏斗の印と`isLegendFiltered`）も持つ |
+| `features/map/MapOverlayControls/LegendDetails.tsx` | ▶の中の凡例の内訳（`LegendFilterSummaryAxis`）と、地図と同じ形の色見本。`axisId`を持つ軸はその場で絞り込める |
+| `features/map/MapOverlayControls/ItemChooser.tsx`・`useOverlayGroupChoices.ts` | 群ごとに一覧へ並べる項目を選ぶ一覧と、群のたたみ・外した項目の保存（下記「最上位グルーピング」の保存の鍵） |
 | `lib/backendRewrites.ts` | rewritesの向け先の組み立て（タイル類と地図の下地は`BACKEND_INTERNAL_URL`へ）と、開発機の画面を本番のデータで開く切り替えの判断（切り替えが入った開発サーバーのときだけ、タイルとAPIの`/prod/…`を本番のbackendへ向ける）・同じ Wi-Fi の端末から開くときの開発機の LAN の住所 |
 | `next.config.ts`（`frontend/`直下） | フロント自身のオリジンへ来たタイル類（基礎地図・路面・POI・事故等）の要求をbackendへ転送するrewrites（向け先は`lib/backendRewrites.ts`）と、その転送を打ち切るまでの時間（`experimental.proxyTimeout`）。開発機の画面を本番のデータで開く切り替え（[setup.md](../../architecture/setup.md)「開発機の画面を本番のデータで開く」）も読む。e2eのビルドで型の検査を外す設定（`typescript`）も持つ（[run-checks/SKILL.md](../../../.claude/skills/run-checks/SKILL.md)「E2E・画面の撮影の走らせ方」） |
-| `features/map/MapOverlayControls/` | 地図の左上の「表示」のボタンと、押すと開く地図に出す情報の一覧（下記「最上位グルーピング」）。群への束ね方と並びはレイヤーカタログ（`mapOverlayGroupFor`・`MAP_OVERLAY_GROUP_ORDER`）から導く。行のチェックでON/OFFし、ⓘで説明を、▶で凡例の内訳を行のすぐ下に開く。群の見出しで中身をたため、群ごとに一覧に並べる項目を選べる。末尾にまとめて戻す操作（下記「まとめて戻す操作」）を並べる |
 | `components/ui/InfoPopover/InfoPopover.tsx` | 見出し脇の(i)アイコン→ポップオーバーという外枠の共通部品（開閉state・開閉に追随するアクセシブル名「◯◯を表示/隠す」・任意の見出し文言を含む）。中身はchildrenで呼び出し側が渡す。(i)→Popoverを出す箇所（例: `RouteSettingsPanel`・`ui/FieldLabel/FieldLabel.tsx: FieldLabel`・軸スタジオの材料説明）はこれを使い、組み立てを自前で持たない |
 | `features/map/LegendCheckboxList/LegendCheckboxList.tsx` | 凡例のチェックボックス一覧（チェックボックス+色スウォッチ+ラベル）の共通部品。リスト/行の見た目（class名）は呼び出し側が指定する（`LensControl`・`MapOverlayControls`の▶の内訳で共用） |
 | `features/map/LegendCheckboxList/LegendRow.tsx` | 凡例の1行と、行の右端の（i）から行のすぐ下に開く説明（`LegendEntry.description`）。絞り込める凡例（`LegendCheckboxList`）と表示専用の凡例（▶の内訳）が同じ部品を通る。浮きパネルにしないのは、凡例が浮きパネル（「表示」の一覧・「評価で塗る」の一覧）の中にあるため |
@@ -545,7 +548,7 @@ backendが200で応答する窓では、カタログは取得済みなのに世�
 群の見出しを押すと中身をたため、見出しの脇の「表示する項目を選ぶ」で、その群の一覧に並べる項目を選べる（外した項目は
 たたみを開いても並べず、地図に出していればOFFにする。並べ直してもONにはしない）。項目の先頭の「すべて」で、群の項目を
 まとめて選ぶ（全部並んでいれば全部外し、1つでも外れていれば全部並べる。凡例の軸の見出しのチェックと同じ）。たたんだ群と外した項目は次の訪問でも保つ
-（`MapOverlayControls.tsx`の保存の鍵。外した項目は`<群>:<レイヤーid>`の並び）。ⓘ・▶の開閉は一時の確かめなので保たない。
+（`useOverlayGroupChoices.ts`の保存の鍵。外した項目は`<群>:<レイヤーid>`の並び）。ⓘ・▶の開閉は一時の確かめなので保たない。
 
 軸スタジオ由来のレイヤー（`isAxisStudioLayer`、評価軸の線）は一覧に
 現れず、`layerVisibility`の対象外——表示ON/OFFはレンズ（`LensControl`）が
@@ -555,7 +558,7 @@ backendが200で応答する窓では、カタログは取得済みなのに世�
 
 ## 凡例カテゴリの絞り込み（サイドバーと地図上チップで同じ状態を共有）
 
-`LegendFilterSummaryAxis.axisId`（`features/map/MapOverlayControls/MapOverlayControls.tsx`）を持つ軸だけがユーザー操作で
+`LegendFilterSummaryAxis.axisId`（`features/map/MapOverlayControls/LegendDetails.tsx`）を持つ軸だけがユーザー操作で
 絞り込める。`axisId`は隠した行の保存先（`features/map/view/useMapView.ts`が持つ1つの表）の
 鍵を指す。書き換える場所は▶パネル（`MapOverlayControls`）だけではない——レンズの凡例
 （`LensControl`）も同じキーの状態を書き換える（保存先が1つなので、片方で隠した段は
@@ -627,7 +630,7 @@ backendが200で応答する窓では、カタログは取得済みなのに世�
 （緑・アンバー・オレンジ・赤の系統）を使うと、地図の上で「観測された事実」と「推定された
 評価」が混同される。順序を持つ分類（道路種別の幹線→細街路）は、明度で順序を示し、色相も並びに沿って
 動かす（明度だけの濃淡は、下の明度の上限の中では隣どうしが近く、どれも暗い灰に見える）。色相は評価配色の
-系統を避けた範囲（紫→水色）に限る。
+系統を避けた範囲（赤紫→水色）に限る。
 
 **1次に評価配色を使う例外は無い。** その分類が評価へ寄与していても（事故の当事者区分は
 事故密度の材料になる）、寄与するかどうかと重みは軸定義が持ち運用で入れ替わる。色に

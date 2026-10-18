@@ -10,7 +10,6 @@ from collections.abc import Callable
 
 from datetime import UTC, datetime
 
-from app.domain.dynamic_way_values import BEARING_BUCKET_DEG, bearing_bucket
 from app.domain.geo import COMPASS_LABELS, LatLonPoint, compass_label, haversine_distance_km
 from app.domain.jma_tile_specs import (
     JMA_ELEMENTS,
@@ -45,9 +44,10 @@ _DISTANCE_PAIRS: list[tuple[LatLonPoint, LatLonPoint]] = [
 ]
 
 
-def _bearings(width: float = 360 / len(COMPASS_LABELS)) -> list[float]:
-    """幅`width`の区分（北が中心）の境界ちょうどとその少し手前、負の角度・一周を超える角度。"""
-    count = round(360 / width)
+def _bearings() -> list[float]:
+    """方位の区分（北が中心）の境界ちょうどとその少し手前、負の角度・一周を超える角度。"""
+    count = len(COMPASS_LABELS)
+    width = 360 / count
     boundaries = [i * width + width / 2 for i in range(count)]
     edges = [angle for boundary in boundaries for angle in (boundary, boundary - _JUST_BEFORE_DEG)]
     return [0.0, *edges, -width, -width / 2, 360.0, 360.0 + width / 2, 720.0 + width]
@@ -57,9 +57,6 @@ def geo_expectations() -> dict[str, list[dict]]:
     return {
         "compass_label": [
             {"bearing_deg": bearing, "label": compass_label(bearing)} for bearing in _bearings()
-        ],
-        "way_value_bearing_bucket": [
-            {"bearing_deg": bearing, "bucket": bearing_bucket(bearing)} for bearing in _bearings(BEARING_BUCKET_DEG)
         ],
         "distance_km": [
             {

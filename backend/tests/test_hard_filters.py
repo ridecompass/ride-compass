@@ -15,7 +15,7 @@ from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_avoidance import DEFAULT_ROAD_AVOIDANCE
 
 LIMIT = 8.0
-ARTERIAL = "highway.arterial"
+NATIONAL_ROAD = "highway.trunk"
 
 
 def edge(gradient_percent: float = 0.0, flags: frozenset[str] = frozenset()) -> EdgeMaterialArrays:
@@ -56,10 +56,10 @@ def test_a_segment_steeper_than_the_requested_limit_is_excluded(gradient_percent
     [("pass", False, False), ("avoid", False, True), ("exclude", True, False)],
 )
 def test_the_level_chosen_for_a_row_decides_whether_its_segments_are_excluded_or_surcharged(level, excluded, avoided):
-    """「通らない」を選んでも幹線を通る・「通る」を選んでも幹線を避けると、選んだ避け方が探索に効かない。"""
-    matrix = build_static_edge_score_matrix(edge(flags=frozenset({ARTERIAL})), {})
+    """「通らない」を選んでも国道を通る・「通る」を選んでも国道を避けると、選んだ避け方が探索に効かない。"""
+    matrix = build_static_edge_score_matrix(edge(flags=frozenset({NATIONAL_ROAD})), {})
 
-    masks = compute_search_exclusion(matrix, frozenset(), {**DEFAULT_ROAD_AVOIDANCE, ARTERIAL: level}, None)
+    masks = compute_search_exclusion(matrix, frozenset(), {**DEFAULT_ROAD_AVOIDANCE, NATIONAL_ROAD: level}, None)
 
     assert (masks.excluded.tolist(), masks.avoided.tolist()) == ([excluded], [avoided])
 

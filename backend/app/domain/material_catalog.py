@@ -423,9 +423,9 @@ _ACCIDENT_COUNT_PER_KM_YEAR_REFERENCE_POINTS = [
 ]
 
 _MAXSPEED_KMH_REFERENCE_POINTS = [
-    MaterialReferencePoint(label="生活道路", value=20.0),
+    MaterialReferencePoint(label="住宅街の道", value=20.0),
     MaterialReferencePoint(label="一般道", value=40.0),
-    MaterialReferencePoint(label="幹線道路", value=60.0),
+    MaterialReferencePoint(label="国道", value=60.0),
     MaterialReferencePoint(label="高規格道路", value=80.0),
 ]
 
@@ -448,15 +448,15 @@ _HIGHWAY_VALUE_LABELS: dict[str, str] = {
     "motorway_link": "高速道路の連絡路",
     "trunk": "国道",
     "trunk_link": "国道の連絡路",
-    "primary": "主要幹線道路",
-    "primary_link": "主要幹線道路の連絡路",
-    "secondary": "地方主要道",
-    "secondary_link": "地方主要道の連絡路",
-    "tertiary": "地方道",
-    "tertiary_link": "地方道の連絡路",
+    "primary": "主要地方道",
+    "primary_link": "主要地方道の連絡路",
+    "secondary": "一般県道",
+    "secondary_link": "一般県道の連絡路",
+    "tertiary": "2車線の道",
+    "tertiary_link": "2車線の道の連絡路",
     "unclassified": "未区分の道路",
     "residential": "住宅街の道路",
-    "living_street": "生活道路[歩車共存]",
+    "living_street": "住宅街の道[歩車共存]",
     "service": "施設内通路",
     "road": "種別不明の道路",
     "cycleway": "自転車専用道",
