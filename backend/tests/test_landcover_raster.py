@@ -148,6 +148,16 @@ def test_the_empty_tile_is_a_fully_clear_image_of_tile_size():
     assert (image[:, :, 3] == 0).all()
 
 
+def test_once_a_raster_is_open_the_set_of_rasters_stays_until_restart(tmp_path, configure):
+    first = over_tile(tmp_path / "first.tif", stripes(2), *TOKYO)
+    configure(first)
+    assert landcover_raster.opened_raster_paths() == [first]
+
+    configure(first, over_tile(tmp_path / "second.tif", stripes(5), *TOKYO))
+
+    assert landcover_raster.opened_raster_paths() == [first]
+
+
 def test_a_raster_that_appears_after_start_is_picked_up_after_the_retry_interval(tmp_path, configure, clock, caplog):
     """デプロイはラスタの取得とコンテナの入れ替えを別に行うので、起動時に無くても後から現れる。"""
     path = tmp_path / "late.tif"

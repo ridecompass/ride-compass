@@ -177,6 +177,14 @@ def test_a_segment_to_avoid_costs_more_but_takes_the_same_time():
     assert leg.travel_seconds_full[0] == pytest.approx(leg.travel_seconds_full[1])
 
 
+@pytest.mark.parametrize(
+    ("departure_wind", "series", "unavailable"),
+    [(None, None, True), (_departure_wind(0.0), None, False), (None, _series([0.0, 0.0]), False)],
+)
+def test_the_travel_time_is_marked_when_no_wind_was_available(departure_wind, series, unavailable):
+    assert _composer(_matrix(1), departure_wind=departure_wind, series=series).wind_unavailable is unavailable
+
+
 # --- コストと表示の値 ---------------------------------------------------------
 
 
