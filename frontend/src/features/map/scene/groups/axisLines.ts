@@ -1,64 +1,73 @@
 /** 評価軸で道を塗る線。軸は管理画面で増減するため、**軸ごとの分岐・定数を持たない**。
  *
- * 値は配信された得点を feature-state で受け取る。**feature-state の値は MapLibre の絞り込みからも
- * `line-dasharray` からも読めない**ため、凡例で隠した段は透明で落とし、値の無い道の破線は、破線だけの
- * 線を重ねて濃さ（feature-state を読める）で出し入れする。
+ * 道の値は、backend が配る式の木（軸カタログの `way_value_formula`）を地図の式へ置き換えて、地図が道ごとに求める。
+ * 木へ入れる道ごとの材料は feature-state で、走る条件（向き・想定速度）は地図全体の global-state で受け取る——向き・
+ * 速度を変えても材料は取り直さず、global-state を置き直すだけで色が変わる。**feature-state の値は MapLibre の絞り込み
+ * からも `line-dasharray` からも読めない**ため、凡例で隠した段は透明で落とし、値の無い道の破線は、破線だけの線を
+ * 重ねて濃さ（feature-state を読める）で出し入れする。
  *
  * ソースは道路の線と同じ路面タイル。宣言は合成（`composeScene`）が1本へ畳む。
  */
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 
-import type { MapSceneFeatureStates, MapSceneFeatureStateValue } from "@/features/map/scene/mapScene";
+import type { MapSceneFeatureStates, MapSceneGlobalState } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
+import { missingExpression, wayValueExpressions, type WayValueFormula } from "@/features/map/scene/wayValueFormula";
 import { LEGEND_NO_DATA_KEY, NO_DATA_LEGEND_BAND, UNDETERMINED_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_TRACKS } from "@/lib/mapDisplay/roadTracks";
-import { bandCondition, type ValueBand } from "@/lib/mapDisplay/valueScale";
+import { bandStep, type ValueBand } from "@/lib/mapDisplay/valueScale";
 
 import { ROAD_LINE_SOURCE_ID } from "./roadLines";
 
 /** 材料が同時に出ているときの下敷き。**材料の線が全部出たときの帯幅**から決まるので、
  * トラックが増えれば自動で広がる（直書きすると追従しない）。 */
 const UNDERLAY_WIDTH_PX = (ROAD_TRACKS.length - 1) * mapDisplay.road.trackOffsetStepPx + mapDisplay.road.lineWidthPx;
+
+/** 道ごとの材料。feature_key → 材料の名前 → 値（値の無い材料は鍵ごと無い）。 */
+export type WayMaterials = ReadonlyMap<string, Readonly<Record<string, number>>>;
+
+/** 式の木が読む走る条件。名前は木の `condition` の名前で、値の無い条件は鍵ごと無い。 */
+export type WayConditions = MapSceneGlobalState;
+
 export type AxisLineState = {
   readonly axes: readonly {
     readonly axisId: string;
     readonly visible: boolean;
     /** 段の並び（低い段から。`valueScale.ts: valueBands`）。 */
     readonly bands: readonly ValueBand[];
-    /** 配信された値。値が無い道は鍵ごと無く、走行方位で値が決まらない道は null。 */
-    readonly values: ReadonlyMap<string, number | null>;
-    /** 今の範囲の値を取りに行っている間か。 */
+    /** 道の値を求める式の木。 */
+    readonly formula: WayValueFormula;
+    /** 今の範囲の材料。 */
+    readonly materials: WayMaterials;
+    /** 今の範囲の材料を取りに行っている間か。 */
     readonly loading: boolean;
     /** 凡例で隠した段の鍵。 */
     readonly hiddenBandKeys: readonly string[];
     /** その軸の材料が同時に出ているか（判定は呼び出し側が持つ）。 */
     readonly underlay: boolean;
   }[];
+  readonly conditions: WayConditions;
   readonly sourceLayer: string | null;
 };
 
 type AxisLine = AxisLineState["axes"][number];
 
-/** feature-state のキー。軸idから機械的に決める（同じソースへ複数の軸が値を載せるため）。 */
-function axisFeatureStateKey(axisId: string): string {
-  return `${axisId}Value`;
+/** 材料の feature-state のキー。同じソースへ複数の軸が材料を載せ、軸ごとに同じ名前の材料が違う値を持ちうるので、
+ * 軸idを前に付ける。 */
+function materialStateKey(axisId: string, name: string): string {
+  return `${axisId}:${name}`;
 }
 
-/** 走行方位で値が決まらない道の feature-state のキー。値と同じキーへ番兵で載せると、段の大小比較に文字列が混ざる。 */
-function axisUndeterminedStateKey(axisId: string): string {
-  return `${axisId}Undetermined`;
-}
+/** 走る条件は地図全体で1つなので、木の条件の名前をそのまま global-state の名前にする。 */
+const conditionStateKey = (name: string): string => name;
 
-function undeterminedCondition(axisId: string): unknown {
-  return ["boolean", ["feature-state", axisUndeterminedStateKey(axisId)], false];
-}
-
-/** その道の値が無いことを示す式。段の大小比較はこれが偽のときにだけ評価させる——欠損と数値の比較は
- * 評価時エラーになり、そのレイヤーだけが黙って描かれなくなる。向きで決まらない道もこれが真になるので、
- * 先に向きの判定で外す。 */
-function missingCondition(axisId: string): unknown {
-  return ["==", ["feature-state", axisFeatureStateKey(axisId)], null];
+/** 軸の木を置き換えた式。`value` が NaN の道は値が無い。 */
+function expressionsOf(axis: AxisLine) {
+  return wayValueExpressions(axis.formula, {
+    featureStateKey: (name) => materialStateKey(axis.axisId, name),
+    globalStateKey: conditionStateKey,
+  });
 }
 
 /** 値の無い道を破線の線が描くか。下敷きは全体を薄く敷くだけ、取得中は取得中の色を見せる。 */
@@ -66,14 +75,26 @@ function dashesMissing(axis: AxisLine): boolean {
   return !axis.underlay && !axis.loading && !axis.hiddenBandKeys.includes(LEGEND_NO_DATA_KEY);
 }
 
+/** 道の値を `let` で束ね、向きで決まらない道・値の無い道・それ以外の順に場合分けする。値の無い道を先に分けるので、
+ * それ以外の枝（段の選び方）は値のある道だけを受ける。 */
+function byWayValue(
+  axis: AxisLine,
+  cases: (value: unknown) => { undetermined: unknown; missing: unknown; otherwise: unknown },
+): unknown {
+  const { value, undetermined } = expressionsOf(axis);
+  const ref = ["var", "wayValue"];
+  const branches = cases(ref);
+  return [
+    "let",
+    "wayValue",
+    value,
+    ["case", undetermined, branches.undetermined, missingExpression(ref), branches.missing, branches.otherwise],
+  ];
+}
+
 /** 段ごとの色。値が無い道と、まだ来ていない道は別の色にする。凡例で隠した段は透明にして下の路面の線を見せる。 */
 function colorExpression(axis: AxisLine): unknown {
-  const value = ["feature-state", axisFeatureStateKey(axis.axisId)];
   const shown = (key: string, color: string) => (axis.hiddenBandKeys.includes(key) ? palette.semantic.hidden : color);
-  const cases = axis.bands.flatMap((band, index) => [
-    bandCondition(axis.bands, index, value),
-    shown(band.key, band.color),
-  ]);
   // 取得中の色は「値なし」を隠していても残す——消すと「まだ来ていない」と「隠した」が区別できなくなる。
   // 破線の線が値の無い道を描くときは、実線の側は透明にする（重ねると破線が実線に埋もれる）。
   const missingColor = axis.loading
@@ -81,46 +102,46 @@ function colorExpression(axis: AxisLine): unknown {
     : dashesMissing(axis)
       ? palette.semantic.hidden
       : shown(LEGEND_NO_DATA_KEY, NO_DATA_LEGEND_BAND.color);
-  return [
-    "case",
-    undeterminedCondition(axis.axisId),
-    shown(UNDETERMINED_LEGEND_BAND.key, UNDETERMINED_LEGEND_BAND.color),
-    missingCondition(axis.axisId),
-    missingColor,
-    ...cases,
-    NO_DATA_LEGEND_BAND.color,
-  ];
+  return byWayValue(axis, (value) => ({
+    undetermined: shown(UNDETERMINED_LEGEND_BAND.key, UNDETERMINED_LEGEND_BAND.color),
+    missing: missingColor,
+    otherwise: bandStep(axis.bands, value, (band) => shown(band.key, band.color)),
+  }));
 }
 
-type SplitDelivered = {
-  readonly values: ReadonlyMap<string, number>;
-  readonly undetermined: ReadonlyMap<string, true>;
-};
+/** 値の無い道だけを見せる濃さ。 */
+function noDataOpacityExpression(axis: AxisLine): unknown {
+  return byWayValue(axis, () => ({
+    undetermined: 0,
+    missing: mapDisplay.road.unknownOpacity,
+    otherwise: 0,
+  }));
+}
 
-const splitByDelivered = new WeakMap<ReadonlyMap<string, number | null>, SplitDelivered>();
+const statesByMaterials = new WeakMap<WayMaterials, Map<string, Map<string, number>>>();
 
-/** 配信の値を、値のある道と向きで決まらない道へ分ける。同じ配信の結果からは同じ参照を返す——当てる側は
+/** 道ごとの材料を、材料の名前ごとの feature-state へ移す。同じ材料の結果からは同じ参照を返す——当てる側は
  * 参照が同じなら道ごとに比べ直さない。 */
-function splitDelivered(delivered: ReadonlyMap<string, number | null>): SplitDelivered {
-  const cached = splitByDelivered.get(delivered);
+function materialStates(axisId: string, materials: WayMaterials): ReadonlyMap<string, ReadonlyMap<string, number>> {
+  const cached = statesByMaterials.get(materials);
   if (cached !== undefined) return cached;
-  const values = new Map<string, number>();
-  const undetermined = new Map<string, true>();
-  for (const [featureId, value] of delivered) {
-    if (value === null) undetermined.set(featureId, true);
-    else values.set(featureId, value);
+  const states = new Map<string, Map<string, number>>();
+  for (const [featureId, values] of materials) {
+    for (const [name, value] of Object.entries(values)) {
+      const key = materialStateKey(axisId, name);
+      let byFeature = states.get(key);
+      if (byFeature === undefined) states.set(key, (byFeature = new Map()));
+      byFeature.set(featureId, value);
+    }
   }
-  const split = { values, undetermined };
-  splitByDelivered.set(delivered, split);
-  return split;
+  statesByMaterials.set(materials, states);
+  return states;
 }
 
 function featureStatesFor(state: AxisLineState): MapSceneFeatureStates {
-  const states = new Map<string, ReadonlyMap<string, MapSceneFeatureStateValue>>();
+  const states = new Map<string, ReadonlyMap<string, number>>();
   for (const axis of state.axes) {
-    const { values, undetermined } = splitDelivered(axis.values);
-    states.set(axisFeatureStateKey(axis.axisId), values);
-    states.set(axisUndeterminedStateKey(axis.axisId), undetermined);
+    for (const [key, values] of materialStates(axis.axisId, axis.materials)) states.set(key, values);
   }
   return states;
 }
@@ -129,7 +150,7 @@ export const axisLineGroup = declareGroup<AxisLineState>((state) => {
   if (state.sourceLayer === null) return { sources: [], layers: [] };
 
   const sources: readonly SceneSourceEntry[] = [
-    // 宣言そのものは道路の線が持つ。ここは値だけを同じソースへ載せる。
+    // 宣言そのものは道路の線が持つ。ここは材料だけを同じソースへ載せる。
     {
       id: ROAD_LINE_SOURCE_ID,
       spec: { type: "vector" },
@@ -162,19 +183,12 @@ export const axisLineGroup = declareGroup<AxisLineState>((state) => {
       paint: {
         "line-color": NO_DATA_LEGEND_BAND.color,
         "line-width": mapDisplay.road.lineWidthPx,
-        "line-opacity": [
-          "case",
-          undeterminedCondition(axis.axisId),
-          0,
-          missingCondition(axis.axisId),
-          mapDisplay.road.unknownOpacity,
-          0,
-        ],
+        "line-opacity": noDataOpacityExpression(axis),
         "line-dasharray": ["literal", [...mapDisplay.noDataDash]],
       },
       visible: axis.visible && dashesMissing(axis),
     },
   ]);
 
-  return { sources, layers };
+  return { sources, layers, globalState: state.conditions };
 });

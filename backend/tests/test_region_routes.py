@@ -1,11 +1,10 @@
-"""`api/routers/region.py`——地域の配信（路面・点・土地被覆のタイル、動的材料の値、区間インスペクタ）のHTTPの入口。
+"""`api/routers/region.py`——地域の配信（路面・点・土地被覆のタイル、道ごとの材料、区間インスペクタ）のHTTPの入口。
 
 確かめるのは、経路ごとの受け渡し（要求のどの値がサービスへ渡り、サービスの結果が応答のどこへ出るか）と、この口が
 使う判断: 量ごとの値の範囲（タイル座標・走行方位・想定速度。範囲そのものは domain の型と`domain/region.py:
 check_tile_index`が持ち、ここでは入口ごとにそれを使っていることを見る。土地被覆は自分のズーム範囲）、一時的に取れなかった
 タイルをキャッシュさせないこと（`_tile_http.py: tile_response`）、宣言に無い点のレイヤー・公開していない軸と木の無い軸の404、
-地図のレンズが印の無い軸もタイルの材料から塗ること、軸の葉の材料を配るサービスの条件の欠けの422
-（`domain/dynamic_way_values.py: assemble_conditions`）、土地被覆のラスタが無いときの503、
+地図のレンズが印の無い軸もタイルの材料から塗ること、土地被覆のラスタが無いときの503、
 種類ごとに別に数えるレート制限。
 
 差し替えるのは、注入されるサービス（`RegionService`・配信サービス・タイルの材料の読み出し・区間インスペクタ。地図のレンズは
@@ -56,20 +55,14 @@ from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.region_tile_cache import TileResponse
 from app.domain.dynamic_way_values import (
     FeatureMaterials,
-    FeatureSegments,
     WayValueQuery,
-    paint_feature_values,
-    paint_folded_feature_values,
 )
 from app.domain.geo import LatLon
 from app.domain.route_preference import RoutePreference
 from app.domain.gradient import ROAD_BEARING_LEAF
 from app.domain.way_value_formula import way_values_from_formula
-from app.domain.wind import WIND_DIRECTION_LEAF, WIND_SPEED_LEAF
-from app.services.dedicated_way_values import AxisWayValueLens
-from app.services.gradient_way_service import GradientWayService
+from app.services.dedicated_way_values import AxisWayValueLens, dedicated_way_value_layers
 from app.services.weather_service import WeatherService
-from app.services.wind_way_service import WindWayService
 from app.main import app
 from app.domain.landcover import LANDCOVER_TILE_MAX_ZOOM, LANDCOVER_TILE_MIN_ZOOM
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
@@ -155,11 +148,8 @@ def test_region_tiles_hand_the_services_mvt_over(path, cacheable, requested, cac
         (f"/api/region/point-tiles/{POINT_LAYER}/{ROAD_TILE_MIN_ZOOM - 1}/0/0.pbf", None),
         (f"/api/region/point-tiles/{POINT_LAYER}/14/{2**14}/6447.pbf", None),
         (f"/api/region/landcover-tiles/10/{2**10}/403.png", None),
-        (f"/api/region/dynamic-way-values/axis_way_value_signed/{ROAD_TILE_MIN_ZOOM - 1}/0/0?bearing_deg=0", None),
-        (f"/api/region/dynamic-way-values/axis_way_value_signed/14/{2**14}/6447?bearing_deg=0", None),
-        ("/api/region/dynamic-way-values/axis_way_value_signed/14/14551/6447?bearing_deg=nan", None),
-        ("/api/region/dynamic-way-values/axis_way_value_scored/14/14551/6447?bearing_deg=0&speed_kmh=0", None),
-        ("/api/region/dynamic-way-values/axis_way_value_scored/14/14551/6447?bearing_deg=0&speed_kmh=nan", None),
+        (f"/api/region/way-materials/axis_way_value_signed/{ROAD_TILE_MIN_ZOOM - 1}/0/0", None),
+        (f"/api/region/way-materials/axis_way_value_signed/14/{2**14}/6447", None),
         ("/api/region/axis-inspector", {"z": ROAD_TILE_MAX_ZOOM + 1}),
         ("/api/region/axis-inspector", {"x": 2**14}),
         ("/api/region/axis-inspector", {"bearing_deg": 360.0}),
@@ -192,7 +182,7 @@ def test_region_point_tile_rejects_an_undeclared_layer():
 
 @pytest.mark.usefixtures("dedicated_axes")
 def test_each_kind_of_region_request_is_counted_on_its_own():
-    """路面・点のレイヤーごと・動的材料・区間インスペクタは、それぞれ別の回数で上限に当たる。
+    """路面・点のレイヤーごと・道ごとの材料・区間インスペクタは、それぞれ別の回数で上限に当たる。
 
     回数を分け合うと、1つの種類の取得だけでほかの種類の上限を先に使い切り、地図の別のレイヤーが描かれなくなる。
     """
@@ -212,11 +202,7 @@ def test_each_kind_of_region_request_is_counted_on_its_own():
         exhausted_point = point.format(exhausted_layer)
         exhausted = [client.get(path).status_code for path in (road, road, exhausted_point, exhausted_point)]
         others = [client.get(point.format(layer)).status_code for layer in other_layers]
-        others.append(
-            client.get(
-                "/api/region/dynamic-way-values/axis_way_value_signed/14/14551/6447", params={"bearing_deg": 0}
-            ).status_code
-        )
+        others.append(client.get("/api/region/way-materials/axis_way_value_signed/14/14551/6447").status_code)
         others.append(client.post("/api/region/axis-inspector", json=INSPECTED).status_code)
     finally:
         app.dependency_overrides.clear()
@@ -260,53 +246,41 @@ def test_region_axis_inspector_hands_the_pressed_feature_and_the_maps_conditions
 class FakeDynamicWayValueService:
     """DBを読む配信サービスの代役。配る材料の木と受け取る条件の型は、登録された本物のサービスのものが使われる。"""
 
-    def __init__(self, materials=None, segment_materials=None):
+    def __init__(self, materials=None):
         self._materials = materials if materials is not None else {}
-        self._segment_materials = segment_materials
         self.last_request = None
 
     async def get_way_materials(self, z, x, y, at):
         self.last_request = (z, x, y, at)
         return self._materials
 
-    def segment_materials(self, segments):
-        return self._segment_materials
-
-
-def _served_values(service_type, material_id: str, materials: dict[str, dict], conditions: dict) -> dict:
-    """配信のサービスの材料の値（本物の木を、フェイクが配る道ごとの材料と条件で評価した値）。"""
-    keys = list(dict.fromkeys(key for values in materials.values() for key in values))
-    leaves = {name: [values.get(key, np.nan) for key in keys] for name, values in materials.items()}
-    return way_values_from_formula(service_type.material_formula(material_id).formula, keys, leaves, conditions)
-
 
 class FakeFeatureMaterials:
     """タイルの材料を読む口（`services/feature_materials.py: FeatureMaterialService`）の代役。"""
 
-    def __init__(self, materials: FeatureMaterials | None = None, segments: FeatureSegments | None = None):
+    def __init__(self, materials: FeatureMaterials | None = None):
         self._materials = materials
-        self._segments = segments
 
     async def materials(self, z, x, y):
         return self._materials
 
     async def segments(self, z, x, y):
-        return self._segments
+        return None
 
 
 def _lens(
-    axis_id: str, services=None, materials: FeatureMaterials | None = None, segments: FeatureSegments | None = None
+    axis_id: str, services=None, materials: FeatureMaterials | None = None
 ) -> AxisWayValueLens:
     """軸の集合は今の`AXIS_DEFINITIONS`。`services`は材料id→配信サービスの代役。"""
     services = services if services is not None else {"gradient_percent": FakeDynamicWayValueService()}
     return AxisWayValueLens(
-        axis_id, copy_axis_definitions(), FakeFeatureMaterials(materials, segments), services.__getitem__
+        axis_id, copy_axis_definitions(), FakeFeatureMaterials(materials), services.__getitem__
     )
 
 
 SIGNED = "axis_way_value_signed"
 
-#: 地図が配信の値で塗る印を持つ軸。時刻・方位・速度を要るもの（得点を塗る）と、方位だけを要るもの
+#: 地図が式の木と道ごとの材料で塗る軸。時刻・方位・速度を要るもの（得点を塗る）と、方位だけを要るもの
 #: （符号付きの生値を塗る）の2本。
 DEDICATED_AXES = {
     "axis_way_value_scored": AxisDefinition(
@@ -335,78 +309,6 @@ DEDICATED_AXES = {
 def dedicated_axes():
     with replaced_axis_definitions(DEDICATED_AXES):
         yield
-
-
-# 応答はサービスの道ごとの材料ではなく**地図が塗る値**（domain/dynamic_way_values.py: paint_feature_values）。写し方の
-# 検証はtest_dynamic_way_values.pyが持つため、ここでは軸の折れ点を写経せず、材料の値を同じ関数へ通した結果と突き合わせる
-# ——見たいのは「エンドポイントがこの写しを通すか」。要るクエリは軸の葉の材料を配るサービスが受け取る条件の型が決め、
-# 型に無いもの（勾配の時刻・速度）は省いても配る。
-@pytest.mark.usefixtures("dedicated_axes")
-@pytest.mark.parametrize(
-    ("axis_id", "material_id", "service_type", "materials", "params", "conditions"),
-    [
-        (
-            "axis_way_value_scored",
-            "wind_drag_ratio",
-            WindWayService,
-            {WIND_SPEED_LEAF: {"1": 6.0, "2": 3.0}, WIND_DIRECTION_LEAF: {"1": 90.0, "2": 270.0}},
-            {"bearing_deg": 90, "speed_kmh": 20.0, "at": "2026-08-30T09:00:00"},
-            {"bearing_deg": 90.0, "speed_kmh": 20.0},
-        ),
-        (
-            "axis_way_value_signed",
-            "gradient_percent",
-            GradientWayService,
-            {"gradient_percent": {"1": 2.0, "2": -1.5}, ROAD_BEARING_LEAF: {"1": 90.0, "2": 270.0}},
-            {"bearing_deg": 90},
-            {"bearing_deg": 90.0},
-        ),
-    ],
-)
-def test_region_dedicated_way_values_returns_map_values_json(
-    axis_id, material_id, service_type, materials, params, conditions
-):
-    raw = _served_values(service_type, material_id, materials, conditions)
-    expected = paint_feature_values(axis_id, AXIS_DEFINITIONS, list(raw), {}, {material_id: raw}, as_difficulty=False)
-    fake = FakeDynamicWayValueService(materials=materials)
-    app.dependency_overrides[get_dedicated_way_value_service] = lambda: _lens(axis_id, {material_id: fake})
-
-    try:
-        response = client.get(f"/api/region/dynamic-way-values/{axis_id}/14/14551/6447", params=params)
-    finally:
-        app.dependency_overrides.clear()
-
-    assert response.status_code == 200
-    assert response.json() == expected
-    at = datetime.fromisoformat(params["at"]) if "at" in params else None
-    assert fake.last_request == (14, 14551, 6447, at)
-
-
-# 引いた地図（道1本で塗るズーム）では、区間から畳む軸の値を、フィーチャーごとの区間の材料と配信のサービスが配る
-# 区間の材料から畳んで返す。畳み方はtest_dynamic_way_values.pyが持つため、同じ関数へ通した結果と突き合わせる。
-@pytest.mark.usefixtures("dedicated_axes")
-def test_region_dedicated_way_values_folds_the_segments_of_a_way_on_the_zoomed_out_map():
-    grades = np.array([8.0, -8.0])
-    segments = FeatureSegments(feature_keys=("1", "1"), distance_m=np.full(2, 100.0), feature_bearing_deg=np.zeros(2),
-                               columns={"gradient_percent": grades})
-    raw = {"1": 0.0}
-    expected = paint_folded_feature_values(
-        SIGNED, AXIS_DEFINITIONS, list(raw), {}, {"gradient_percent": raw}, segments, {"gradient_percent": grades},
-        as_difficulty=False)
-    fake = FakeDynamicWayValueService(
-        materials={"gradient_percent": raw, ROAD_BEARING_LEAF: {"1": 0.0}},
-        segment_materials={"gradient_percent": grades, ROAD_BEARING_LEAF: np.zeros(2)})
-    app.dependency_overrides[get_dedicated_way_value_service] = lambda: _lens(
-        SIGNED, {"gradient_percent": fake}, segments=segments)
-
-    try:
-        response = client.get(
-            f"/api/region/dynamic-way-values/{SIGNED}/{EDGE_UNIT_MIN_ZOOM - 1}/7275/3225", params={"bearing_deg": 0})
-    finally:
-        app.dependency_overrides.clear()
-
-    assert response.status_code == 200
-    assert response.json() == expected != raw
 
 
 #: 区間から畳み、走行方位だけでは選べない材料（風）も読む軸。地図へ木を配れない。
@@ -455,7 +357,7 @@ def test_region_way_materials_are_the_same_whatever_heading_and_speed_the_map_ha
     ids=["木の無い軸", "公開していない軸"],
 )
 def test_region_way_materials_are_not_found_for_an_axis_the_map_cannot_compute(axes, axis_id, detail):
-    """木の無い軸の材料を配っても、地図はそこから値を求められない（その軸は配信の値で塗る）。"""
+    """木の無い軸の材料を配っても、地図はそこから値を求められない（その軸はルートの無い間の周りの道を塗らない）。"""
     services = {"gradient_percent": FakeDynamicWayValueService(), "wind_drag_ratio": FakeDynamicWayValueService()}
     with replaced_axis_definitions(axes):
         app.dependency_overrides[get_dedicated_way_value_service] = (
@@ -469,7 +371,7 @@ def test_region_way_materials_are_not_found_for_an_axis_the_map_cannot_compute(a
     assert detail in response.json()["detail"]
 
 
-#: 地図を配信で塗る印の無い軸。タグから引く分類の材料を読む軸と、それを内部軸として読む軸。
+#: 走る条件で値の変わらない軸。タグから引く分類の材料を読む軸と、それを内部軸として読む軸。
 TAG_AXES = {
     "axis_tag_internal": AxisDefinition(
         axis_id="axis_tag_internal",
@@ -489,11 +391,12 @@ TAG_AXES = {
 }
 
 
-# 配信は印の無い軸にも、タイルの材料から探索と同じ評価で値を返す。返さないと、画面がその軸を配信で塗る形へ
-# 切り替えたとき、タイルから式を組んで塗っていた道がすべて「データなし」になる。道のタグだけで決まる軸は、引いた地図
-# （道1本で塗るズーム）でも区間を読まずに塗る（区間を読む口は、ここでは取込範囲外を答える）。
+# 材料の口は印の無い軸にも、タイルの材料から、軸カタログの木で探索と同じ評価の値になる材料を返す。返さないと、その軸を
+# 塗る地図の道がすべて「データなし」になる。道のタグだけで決まる軸は、引いた地図（道1本で塗るズーム）でも区間を読まずに
+# 配る（区間を読む口は、ここでは取込範囲外を答える）。木の評価の写し方は test_dynamic_way_values.py が持つため、ここでは
+# 応答を軸カタログの木へ通した値を見る。
 @pytest.mark.parametrize("z", [EDGE_UNIT_MIN_ZOOM, EDGE_UNIT_MIN_ZOOM - 1])
-def test_region_dedicated_way_values_paints_an_axis_from_the_materials_of_the_tile(z):
+def test_region_way_materials_paint_an_axis_from_the_materials_of_the_tile(z):
     materials = FeatureMaterials(
         feature_keys=("1", "2", "3"),
         columns={"surface_class": CategoricalColumn.encode(["paved", "unpaved", None])},
@@ -501,30 +404,18 @@ def test_region_dedicated_way_values_paints_an_axis_from_the_materials_of_the_ti
     with replaced_axis_definitions(TAG_AXES):
         app.dependency_overrides[get_dedicated_way_value_service] = lambda: _lens("axis_tag_reference", {}, materials)
         try:
-            response = client.get(f"/api/region/dynamic-way-values/axis_tag_reference/{z}/7275/3225")
+            response = client.get(f"/api/region/way-materials/axis_tag_reference/{z}/7275/3225")
+            formula = dedicated_way_value_layers()["axis_tag_reference"].formula
         finally:
             app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert response.json() == {"1": 10.0, "2": 90.0}
-
-
-@pytest.mark.usefixtures("dedicated_axes")
-def test_region_dedicated_way_values_names_the_missing_condition():
-    fake = FakeDynamicWayValueService()
-    app.dependency_overrides[get_dedicated_way_value_service] = lambda: _lens(
-        "axis_way_value_scored", {"wind_drag_ratio": fake}
-    )
-
-    try:
-        response = client.get(
-            "/api/region/dynamic-way-values/axis_way_value_scored/14/14551/6447", params={"speed_kmh": 20.0}
-        )
-    finally:
-        app.dependency_overrides.clear()
-
-    assert response.status_code == 422
-    assert "bearing_deg" in response.json()["detail"]
+    by_way = response.json()
+    names = {name for materials in by_way.values() for name in materials}
+    keys = list(by_way)
+    leaves = {name: [by_way[key].get(name, np.nan) for key in keys] for name in names}
+    assert formula is not None
+    assert way_values_from_formula(formula, keys, leaves, {}) == {"1": 10.0, "2": 90.0}
 
 
 class UncoveredRepository:
@@ -554,7 +445,7 @@ class NoRainHistoryWeather:
 
 
 # 実際のget_dedicated_way_value_serviceを通し、初めて見る名前の公開軸が、配信のサービスの材料（勾配、要求の気象サービスを
-# 読む雨）でもタイルの材料（制限速度）でも配信されること・公開していない軸と無い軸は404になることを見る（Noneは軸を置かない）。
+# 読む雨）でもタイルの材料（制限速度）でも材料を配られること・公開していない軸と無い軸は404になることを見る（Noneは軸を置かない）。
 @pytest.mark.parametrize(
     ("material", "published", "status"),
     [
@@ -565,7 +456,7 @@ class NoRainHistoryWeather:
         (None, True, 404),
     ],
 )
-def test_region_dedicated_way_values_serves_every_published_axis(monkeypatch, material, published, status):
+def test_region_way_materials_serve_every_published_axis(monkeypatch, material, published, status):
     if material is not None:
         axis = axis_definition("axis_new_name", material=material, is_published=published)
         monkeypatch.setitem(AXIS_DEFINITIONS, "axis_new_name", axis)
@@ -573,7 +464,7 @@ def test_region_dedicated_way_values_serves_every_published_axis(monkeypatch, ma
     app.dependency_overrides[get_weather_service] = NoRainHistoryWeather
 
     try:
-        response = client.get("/api/region/dynamic-way-values/axis_new_name/14/14551/6447", params={"bearing_deg": 0})
+        response = client.get("/api/region/way-materials/axis_new_name/14/14551/6447")
     finally:
         app.dependency_overrides.clear()
 

@@ -1,0 +1,1142 @@
+{
+  "way_value_formula": [
+    {
+      "scene": "丸め1桁（2進で中点ちょうど・中点のすぐ上下・負）",
+      "formula": {
+        "value": {
+          "op": "round",
+          "arg": {
+            "op": "feature",
+            "name": "x"
+          },
+          "decimals": 1
+        },
+        "undetermined": {
+          "op": "const",
+          "value": 0.0
+        }
+      },
+      "rows": [
+        {
+          "features": {
+            "x": 0.25
+          },
+          "conditions": {},
+          "value": 0.2,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 0.35
+          },
+          "conditions": {},
+          "value": 0.3,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 0.45
+          },
+          "conditions": {},
+          "value": 0.5,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 1.15
+          },
+          "conditions": {},
+          "value": 1.1,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 1.25
+          },
+          "conditions": {},
+          "value": 1.2,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 1.35
+          },
+          "conditions": {},
+          "value": 1.4,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 11.55
+          },
+          "conditions": {},
+          "value": 11.6,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": -0.25
+          },
+          "conditions": {},
+          "value": -0.2,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": -0.35
+          },
+          "conditions": {},
+          "value": -0.3,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": -1.25
+          },
+          "conditions": {},
+          "value": -1.2,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 0.04
+          },
+          "conditions": {},
+          "value": 0.0,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 99.95
+          },
+          "conditions": {},
+          "value": 100.0,
+          "undetermined": false
+        },
+        {
+          "features": {},
+          "conditions": {},
+          "value": null,
+          "undetermined": false
+        }
+      ]
+    },
+    {
+      "scene": "丸め3桁と0桁",
+      "formula": {
+        "value": {
+          "op": "add",
+          "left": {
+            "op": "round",
+            "arg": {
+              "op": "feature",
+              "name": "x"
+            },
+            "decimals": 3
+          },
+          "right": {
+            "op": "round",
+            "arg": {
+              "op": "feature",
+              "name": "y"
+            },
+            "decimals": 0
+          }
+        },
+        "undetermined": {
+          "op": "const",
+          "value": 0.0
+        }
+      },
+      "rows": [
+        {
+          "features": {
+            "x": 2.675,
+            "y": 0.5
+          },
+          "conditions": {},
+          "value": 2.675,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 0.0005,
+            "y": 1.5
+          },
+          "conditions": {},
+          "value": 2.001,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": -0.0015,
+            "y": 2.5
+          },
+          "conditions": {},
+          "value": 1.998,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 1.0005,
+            "y": -0.5
+          },
+          "conditions": {},
+          "value": 1.0,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 0.1235,
+            "y": 3.49
+          },
+          "conditions": {},
+          "value": 3.123,
+          "undetermined": false
+        }
+      ]
+    },
+    {
+      "scene": "勾配の割合を足した折れ線（中点に乗る和・両端の外・値の無い材料）",
+      "formula": {
+        "value": {
+          "op": "round",
+          "arg": {
+            "op": "interpolate",
+            "input": {
+              "op": "add",
+              "left": {
+                "op": "feature",
+                "name": "x"
+              },
+              "right": {
+                "op": "feature",
+                "name": "y"
+              }
+            },
+            "stops": [
+              [
+                0.0,
+                0.0
+              ],
+              [
+                4.0,
+                30.0
+              ],
+              [
+                10.0,
+                100.0
+              ]
+            ]
+          },
+          "decimals": 1
+        },
+        "undetermined": {
+          "op": "const",
+          "value": 0.0
+        }
+      },
+      "rows": [
+        {
+          "features": {
+            "x": 1.0,
+            "y": 0.1
+          },
+          "conditions": {},
+          "value": 8.2,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 2.3,
+            "y": 0.0
+          },
+          "conditions": {},
+          "value": 17.2,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 0.7,
+            "y": 0.33
+          },
+          "conditions": {},
+          "value": 7.7,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": -1.0,
+            "y": 0.0
+          },
+          "conditions": {},
+          "value": 0.0,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 11.0,
+            "y": 2.0
+          },
+          "conditions": {},
+          "value": 100.0,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 4.0,
+            "y": 0.0
+          },
+          "conditions": {},
+          "value": 30.0,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 1.0
+          },
+          "conditions": {},
+          "value": null,
+          "undetermined": false
+        }
+      ]
+    },
+    {
+      "scene": "折れ点1つ",
+      "formula": {
+        "value": {
+          "op": "interpolate",
+          "input": {
+            "op": "feature",
+            "name": "x"
+          },
+          "stops": [
+            [
+              3.0,
+              7.0
+            ]
+          ]
+        },
+        "undetermined": {
+          "op": "const",
+          "value": 0.0
+        }
+      },
+      "rows": [
+        {
+          "features": {
+            "x": -5.0
+          },
+          "conditions": {},
+          "value": 7.0,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 3.0
+          },
+          "conditions": {},
+          "value": 7.0,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 8.0
+          },
+          "conditions": {},
+          "value": 7.0,
+          "undetermined": false
+        },
+        {
+          "features": {},
+          "conditions": {},
+          "value": null,
+          "undetermined": false
+        }
+      ]
+    },
+    {
+      "scene": "剰余・比べ・論理・否定・欠け",
+      "formula": {
+        "value": {
+          "op": "case",
+          "when": {
+            "op": "and",
+            "left": {
+              "op": "not",
+              "arg": {
+                "op": "is_missing",
+                "arg": {
+                  "op": "feature",
+                  "name": "x"
+                }
+              }
+            },
+            "right": {
+              "op": "or",
+              "left": {
+                "op": "lt",
+                "left": {
+                  "op": "feature",
+                  "name": "y"
+                },
+                "right": {
+                  "op": "const",
+                  "value": 0.0
+                }
+              },
+              "right": {
+                "op": "ge",
+                "left": {
+                  "op": "feature",
+                  "name": "y"
+                },
+                "right": {
+                  "op": "const",
+                  "value": 10.0
+                }
+              }
+            }
+          },
+          "then": {
+            "op": "mod",
+            "left": {
+              "op": "feature",
+              "name": "x"
+            },
+            "right": {
+              "op": "const",
+              "value": 3.0
+            }
+          },
+          "otherwise": {
+            "op": "case",
+            "when": {
+              "op": "le",
+              "left": {
+                "op": "feature",
+                "name": "x"
+              },
+              "right": {
+                "op": "feature",
+                "name": "y"
+              }
+            },
+            "then": {
+              "op": "abs",
+              "arg": {
+                "op": "feature",
+                "name": "y"
+              }
+            },
+            "otherwise": {
+              "op": "missing"
+            }
+          }
+        },
+        "undetermined": {
+          "op": "const",
+          "value": 0.0
+        }
+      },
+      "rows": [
+        {
+          "features": {
+            "x": -7.0,
+            "y": -1.0
+          },
+          "conditions": {},
+          "value": -1.0,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 7.5,
+            "y": 12.0
+          },
+          "conditions": {},
+          "value": 1.5,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 2.0,
+            "y": 5.0
+          },
+          "conditions": {},
+          "value": 5.0,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 6.0,
+            "y": 5.0
+          },
+          "conditions": {},
+          "value": null,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "y": -1.0
+          },
+          "conditions": {},
+          "value": null,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 1.0
+          },
+          "conditions": {},
+          "value": null,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 0.0,
+            "y": 0.0
+          },
+          "conditions": {},
+          "value": 0.0,
+          "undetermined": false
+        }
+      ]
+    },
+    {
+      "scene": "平方根・符号・割り算",
+      "formula": {
+        "value": {
+          "op": "div",
+          "left": {
+            "op": "sqrt",
+            "arg": {
+              "op": "feature",
+              "name": "x"
+            }
+          },
+          "right": {
+            "op": "neg",
+            "arg": {
+              "op": "feature",
+              "name": "y"
+            }
+          }
+        },
+        "undetermined": {
+          "op": "const",
+          "value": 0.0
+        }
+      },
+      "rows": [
+        {
+          "features": {
+            "x": 2.0,
+            "y": 4.0
+          },
+          "conditions": {},
+          "value": -0.3535533905932738,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": -1.0,
+            "y": 1.0
+          },
+          "conditions": {},
+          "value": null,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "x": 9.0,
+            "y": -3.0
+          },
+          "conditions": {},
+          "value": 1.0,
+          "undetermined": false
+        }
+      ]
+    },
+    {
+      "scene": "走る向きで選ぶ勾配（道の向き寄り・逆向き寄り・直角の付近・向きの無い道）",
+      "formula": {
+        "value": {
+          "op": "case",
+          "when": {
+            "op": "ge",
+            "left": {
+              "op": "cos",
+              "arg": {
+                "op": "mul",
+                "left": {
+                  "op": "sub",
+                  "left": {
+                    "op": "feature",
+                    "name": "road_bearing_deg"
+                  },
+                  "right": {
+                    "op": "condition",
+                    "name": "bearing_deg"
+                  }
+                },
+                "right": {
+                  "op": "const",
+                  "value": 0.017453292519943295
+                }
+              }
+            },
+            "right": {
+              "op": "const",
+              "value": 0.0
+            }
+          },
+          "then": {
+            "op": "feature",
+            "name": "forward"
+          },
+          "otherwise": {
+            "op": "feature",
+            "name": "backward"
+          }
+        },
+        "undetermined": {
+          "op": "and",
+          "left": {
+            "op": "not",
+            "arg": {
+              "op": "is_missing",
+              "arg": {
+                "op": "feature",
+                "name": "road_bearing_deg"
+              }
+            }
+          },
+          "right": {
+            "op": "le",
+            "left": {
+              "op": "abs",
+              "arg": {
+                "op": "sub",
+                "left": {
+                  "op": "case",
+                  "when": {
+                    "op": "lt",
+                    "left": {
+                      "op": "mod",
+                      "left": {
+                        "op": "sub",
+                        "left": {
+                          "op": "feature",
+                          "name": "road_bearing_deg"
+                        },
+                        "right": {
+                          "op": "condition",
+                          "name": "bearing_deg"
+                        }
+                      },
+                      "right": {
+                        "op": "const",
+                        "value": 180.0
+                      }
+                    },
+                    "right": {
+                      "op": "const",
+                      "value": 0.0
+                    }
+                  },
+                  "then": {
+                    "op": "add",
+                    "left": {
+                      "op": "mod",
+                      "left": {
+                        "op": "sub",
+                        "left": {
+                          "op": "feature",
+                          "name": "road_bearing_deg"
+                        },
+                        "right": {
+                          "op": "condition",
+                          "name": "bearing_deg"
+                        }
+                      },
+                      "right": {
+                        "op": "const",
+                        "value": 180.0
+                      }
+                    },
+                    "right": {
+                      "op": "const",
+                      "value": 180.0
+                    }
+                  },
+                  "otherwise": {
+                    "op": "mod",
+                    "left": {
+                      "op": "sub",
+                      "left": {
+                        "op": "feature",
+                        "name": "road_bearing_deg"
+                      },
+                      "right": {
+                        "op": "condition",
+                        "name": "bearing_deg"
+                      }
+                    },
+                    "right": {
+                      "op": "const",
+                      "value": 180.0
+                    }
+                  }
+                },
+                "right": {
+                  "op": "const",
+                  "value": 90.0
+                }
+              }
+            },
+            "right": {
+              "op": "const",
+              "value": 15.0
+            }
+          }
+        }
+      },
+      "rows": [
+        {
+          "features": {
+            "road_bearing_deg": 10.0,
+            "forward": 3.0,
+            "backward": -3.0
+          },
+          "conditions": {
+            "bearing_deg": 0.0
+          },
+          "value": 3.0,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "road_bearing_deg": 10.0,
+            "forward": 3.0,
+            "backward": -3.0
+          },
+          "conditions": {
+            "bearing_deg": 200.0
+          },
+          "value": -3.0,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "road_bearing_deg": 350.0,
+            "forward": 3.0,
+            "backward": -3.0
+          },
+          "conditions": {
+            "bearing_deg": 5.0
+          },
+          "value": 3.0,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "road_bearing_deg": 0.0,
+            "forward": 3.0,
+            "backward": -3.0
+          },
+          "conditions": {
+            "bearing_deg": 104.0
+          },
+          "value": -3.0,
+          "undetermined": true
+        },
+        {
+          "features": {
+            "road_bearing_deg": 0.0,
+            "forward": 3.0,
+            "backward": -3.0
+          },
+          "conditions": {
+            "bearing_deg": 105.0
+          },
+          "value": -3.0,
+          "undetermined": true
+        },
+        {
+          "features": {
+            "road_bearing_deg": 0.0,
+            "forward": 3.0,
+            "backward": -3.0
+          },
+          "conditions": {
+            "bearing_deg": 106.0
+          },
+          "value": -3.0,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "road_bearing_deg": 0.0,
+            "forward": 3.0,
+            "backward": -3.0
+          },
+          "conditions": {
+            "bearing_deg": 255.5
+          },
+          "value": -3.0,
+          "undetermined": true
+        },
+        {
+          "features": {
+            "road_bearing_deg": 180.0,
+            "forward": 3.0,
+            "backward": -3.0
+          },
+          "conditions": {
+            "bearing_deg": 359.75
+          },
+          "value": -3.0,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "forward": 3.0,
+            "backward": -3.0
+          },
+          "conditions": {
+            "bearing_deg": 90.0
+          },
+          "value": -3.0,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "road_bearing_deg": 0.0
+          },
+          "conditions": {
+            "bearing_deg": 0.0
+          },
+          "value": null,
+          "undetermined": false
+        }
+      ]
+    },
+    {
+      "scene": "風の追加負荷（向かい風・追い風・横風・風の無い道）",
+      "formula": {
+        "value": {
+          "op": "round",
+          "arg": {
+            "op": "div",
+            "left": {
+              "op": "sub",
+              "left": {
+                "op": "mul",
+                "left": {
+                  "op": "sqrt",
+                  "arg": {
+                    "op": "add",
+                    "left": {
+                      "op": "mul",
+                      "left": {
+                        "op": "add",
+                        "left": {
+                          "op": "div",
+                          "left": {
+                            "op": "condition",
+                            "name": "speed_kmh"
+                          },
+                          "right": {
+                            "op": "const",
+                            "value": 3.6
+                          }
+                        },
+                        "right": {
+                          "op": "mul",
+                          "left": {
+                            "op": "feature",
+                            "name": "wind_speed_ms"
+                          },
+                          "right": {
+                            "op": "cos",
+                            "arg": {
+                              "op": "mul",
+                              "left": {
+                                "op": "sub",
+                                "left": {
+                                  "op": "feature",
+                                  "name": "wind_direction_deg"
+                                },
+                                "right": {
+                                  "op": "condition",
+                                  "name": "bearing_deg"
+                                }
+                              },
+                              "right": {
+                                "op": "const",
+                                "value": 0.017453292519943295
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "right": {
+                        "op": "add",
+                        "left": {
+                          "op": "div",
+                          "left": {
+                            "op": "condition",
+                            "name": "speed_kmh"
+                          },
+                          "right": {
+                            "op": "const",
+                            "value": 3.6
+                          }
+                        },
+                        "right": {
+                          "op": "mul",
+                          "left": {
+                            "op": "feature",
+                            "name": "wind_speed_ms"
+                          },
+                          "right": {
+                            "op": "cos",
+                            "arg": {
+                              "op": "mul",
+                              "left": {
+                                "op": "sub",
+                                "left": {
+                                  "op": "feature",
+                                  "name": "wind_direction_deg"
+                                },
+                                "right": {
+                                  "op": "condition",
+                                  "name": "bearing_deg"
+                                }
+                              },
+                              "right": {
+                                "op": "const",
+                                "value": 0.017453292519943295
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "right": {
+                      "op": "mul",
+                      "left": {
+                        "op": "mul",
+                        "left": {
+                          "op": "feature",
+                          "name": "wind_speed_ms"
+                        },
+                        "right": {
+                          "op": "sin",
+                          "arg": {
+                            "op": "mul",
+                            "left": {
+                              "op": "sub",
+                              "left": {
+                                "op": "feature",
+                                "name": "wind_direction_deg"
+                              },
+                              "right": {
+                                "op": "condition",
+                                "name": "bearing_deg"
+                              }
+                            },
+                            "right": {
+                              "op": "const",
+                              "value": 0.017453292519943295
+                            }
+                          }
+                        }
+                      },
+                      "right": {
+                        "op": "mul",
+                        "left": {
+                          "op": "feature",
+                          "name": "wind_speed_ms"
+                        },
+                        "right": {
+                          "op": "sin",
+                          "arg": {
+                            "op": "mul",
+                            "left": {
+                              "op": "sub",
+                              "left": {
+                                "op": "feature",
+                                "name": "wind_direction_deg"
+                              },
+                              "right": {
+                                "op": "condition",
+                                "name": "bearing_deg"
+                              }
+                            },
+                            "right": {
+                              "op": "const",
+                              "value": 0.017453292519943295
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "right": {
+                  "op": "add",
+                  "left": {
+                    "op": "div",
+                    "left": {
+                      "op": "condition",
+                      "name": "speed_kmh"
+                    },
+                    "right": {
+                      "op": "const",
+                      "value": 3.6
+                    }
+                  },
+                  "right": {
+                    "op": "mul",
+                    "left": {
+                      "op": "feature",
+                      "name": "wind_speed_ms"
+                    },
+                    "right": {
+                      "op": "cos",
+                      "arg": {
+                        "op": "mul",
+                        "left": {
+                          "op": "sub",
+                          "left": {
+                            "op": "feature",
+                            "name": "wind_direction_deg"
+                          },
+                          "right": {
+                            "op": "condition",
+                            "name": "bearing_deg"
+                          }
+                        },
+                        "right": {
+                          "op": "const",
+                          "value": 0.017453292519943295
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "right": {
+                "op": "mul",
+                "left": {
+                  "op": "div",
+                  "left": {
+                    "op": "condition",
+                    "name": "speed_kmh"
+                  },
+                  "right": {
+                    "op": "const",
+                    "value": 3.6
+                  }
+                },
+                "right": {
+                  "op": "div",
+                  "left": {
+                    "op": "condition",
+                    "name": "speed_kmh"
+                  },
+                  "right": {
+                    "op": "const",
+                    "value": 3.6
+                  }
+                }
+              }
+            },
+            "right": {
+              "op": "const",
+              "value": 30.864197530864196
+            }
+          },
+          "decimals": 3
+        },
+        "undetermined": {
+          "op": "const",
+          "value": 0.0
+        }
+      },
+      "rows": [
+        {
+          "features": {
+            "wind_speed_ms": 5.0,
+            "wind_direction_deg": 0.0
+          },
+          "conditions": {
+            "bearing_deg": 0.0,
+            "speed_kmh": 20.0
+          },
+          "value": 2.61,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "wind_speed_ms": 5.0,
+            "wind_direction_deg": 180.0
+          },
+          "conditions": {
+            "bearing_deg": 0.0,
+            "speed_kmh": 20.0
+          },
+          "value": -0.99,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "wind_speed_ms": 8.0,
+            "wind_direction_deg": 90.0
+          },
+          "conditions": {
+            "bearing_deg": 0.0,
+            "speed_kmh": 25.0
+          },
+          "value": 0.821,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "wind_speed_ms": 3.2,
+            "wind_direction_deg": 47.0
+          },
+          "conditions": {
+            "bearing_deg": 312.5,
+            "speed_kmh": 18.0
+          },
+          "value": 0.07,
+          "undetermined": false
+        },
+        {
+          "features": {
+            "wind_speed_ms": 12.0,
+            "wind_direction_deg": 200.0
+          },
+          "conditions": {
+            "bearing_deg": 20.0,
+            "speed_kmh": 40.0
+          },
+          "value": -4.026,
+          "undetermined": false
+        },
+        {
+          "features": {},
+          "conditions": {
+            "bearing_deg": 0.0,
+            "speed_kmh": 20.0
+          },
+          "value": null,
+          "undetermined": false
+        }
+      ]
+    }
+  ]
+}

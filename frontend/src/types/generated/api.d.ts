@@ -260,22 +260,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/region/dynamic-way-values/{axis_id}/{z}/{x}/{y}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["region_dedicated_way_values_api_region_dynamic_way_values__axis_id___z___x___y__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/region/way-materials/{axis_id}/{z}/{x}/{y}": {
         parameters: {
             query?: never;
@@ -2675,46 +2659,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    region_dedicated_way_values_api_region_dynamic_way_values__axis_id___z___x___y__get: {
-        parameters: {
-            query?: {
-                bearing_deg?: number | null;
-                at?: string | null;
-                speed_kmh?: number | null;
-            };
-            header?: never;
-            path: {
-                axis_id: string;
-                z: number;
-                x: number;
-                y: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: number | null;
-                    };
                 };
             };
             /** @description Validation Error */
