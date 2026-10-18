@@ -20,6 +20,7 @@ import {
   layerMarks,
   layerValueAtKm,
   markLegendRows,
+  markNearKm,
   PROFILE_LAYERS,
   type BandLayer,
   type LineLayer,
@@ -265,6 +266,23 @@ describe("layerMarks", () => {
   it("宣言に無い値の点は、値の無い色と「不明」で出す", () => {
     const [mark] = layerMarks([{ distance_km: 1, layer: "supply_poi", properties: { kind: "vanished" } }], supply);
     expect(mark).toEqual(expect.objectContaining({ color: palette.semantic.no_data, glyph: null, kinds: "不明" }));
+  });
+});
+
+describe("markNearKm", () => {
+  const marks = layerMarks(
+    [
+      { distance_km: 1, layer: "supply_poi", properties: { kind: "toilets" } },
+      { distance_km: 1.3, layer: "supply_poi", properties: { kind: "convenience" } },
+    ],
+    pointLayer("supply_poi"),
+  );
+
+  it.each([
+    { km: 1.2, kinds: "コンビニ", why: "許す幅の内では、いちばん近い印" },
+    { km: 1.6, kinds: null, why: "許す幅の外なら印は無い" },
+  ])("$why", ({ km, kinds }) => {
+    expect(markNearKm(marks, km, 0.2)?.kinds ?? null).toBe(kinds);
   });
 });
 

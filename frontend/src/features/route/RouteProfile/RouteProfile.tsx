@@ -30,6 +30,7 @@ import {
   layerMarks,
   layerValueAtKm,
   markLegendRows,
+  markNearKm,
   PROFILE_LAYERS,
   type BandLayer,
   type BandPiece,
@@ -45,6 +46,8 @@ const LINE_MARGIN = 8;
 /** 帯1本の高さと、帯どうしの間（描画の縦座標）。帯はグラフの下から積み、折れ線は残りの上の範囲に描く。 */
 const BAND_HEIGHT = 8;
 const BAND_GAP = 2;
+/** 選んだ地点の点とみなす、地点からの道のりの幅（横軸の全幅に対する割合）。指でなぞる細かさに合わせる。 */
+const MARK_PICK_WIDTH_RATIO = 0.02;
 
 interface RouteProfileProps {
   segments: readonly RouteSegmentDetail[];
@@ -119,8 +122,8 @@ export default function RouteProfile({
     return lineBottom - LINE_MARGIN - ((value - range.min) / span) * (lineBottom - 2 * LINE_MARGIN);
   }
 
-  // 地点を選んでいない間、グラフの下には値の1行だけを出す（凡例は「グラフに出す情報」の一覧の行に出し、グラフの場所を取らない）。
-  // 帯と点は値が無いときだけ文で言う。
+  // グラフの下の要約は、情報ごとに値の1行だけにする（凡例は「グラフに出す情報」の一覧の行に出し、グラフの場所を取らない）。
+  // 帯と点は値が無いときだけ文で言う（その地点の区分と点は、地点の詳しくのチップが出す）。
   function bandCaption(layer: BandLayer, pieces: readonly BandPiece[]) {
     return pieces.length === 0 ? <p key={layer.id}>{layer.label}の値がありません。</p> : null;
   }
@@ -154,10 +157,18 @@ export default function RouteProfile({
   // （図は区間を同じものかで探す）ので、区間の値だけを出す。
   function pointDetail(pointKm: number | null) {
     if (selected === null) return null;
+    // グラフに出している点のレイヤーのうち、選んだ地点の近くにある点（その地点で立ち寄れるもの）をチップに出す。
+    const marksAtPoint =
+      pointKm === null
+        ? []
+        : shownLayers.marks.flatMap(({ layer, marks }) => {
+            const mark = markNearKm(marks, pointKm, scale.widthKm * MARK_PICK_WIDTH_RATIO);
+            return mark === null ? [] : [{ layer, mark }];
+          });
     const detail = (
       <ProfilePointDetail
         selection={selected}
-        point={pointKm === null ? null : { columns: scale.columns, km: pointKm }}
+        point={pointKm === null ? null : { columns: scale.columns, km: pointKm, marks: marksAtPoint }}
         axes={axes}
         axisColors={axisColors}
         onClear={onSelect === undefined ? undefined : () => onSelect(null)}
@@ -307,10 +318,10 @@ export default function RouteProfile({
           valueTicks={valueTicks}
           riding={riding}
           waypointKms={waypointKms}
-          caption={(pointKm) =>
-            selected !== null ? (
-              pointDetail(pointKm)
-            ) : (
+          caption={(pointKm) => {
+            // 出している情報の全体の要約（最高・最低、値が無い・近くに無い）。走行中は図の中の目盛りが最高・最低を持つので、
+            // 地点を選んでいる間は詳しくだけを出す。結果では、地点を選んでいる間も要約を詳しくの上に残す。
+            const summary = (
               <div className={cn(profileTextClass(riding), "text-[var(--color-muted)] tabular-nums")}>
                 {shownLayers.lines.length + rowCount === 0 ? (
                   <p>出す情報を選んでください。</p>
@@ -328,8 +339,16 @@ export default function RouteProfile({
                 {shownLayers.bands.map(({ layer, pieces }) => bandCaption(layer, pieces))}
                 {shownLayers.marks.map(({ layer, marks }) => markCaption(layer, marks))}
               </div>
-            )
-          }
+            );
+            if (selected === null) return summary;
+            if (riding) return pointDetail(pointKm);
+            return (
+              <div className="flex flex-col gap-1.5">
+                {summary}
+                {pointDetail(pointKm)}
+              </div>
+            );
+          }}
         >
           {shownLayers.bands.map(({ layer, pieces }, index) => (
             <g key={layer.id} data-layer={layer.id}>

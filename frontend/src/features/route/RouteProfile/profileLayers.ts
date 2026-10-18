@@ -283,6 +283,16 @@ export function layerMarks(points: readonly RoutePoint[], layer: PointLayer): Po
     });
 }
 
+/** 距離`km`から`toleranceKm`以内でいちばん近い印。無ければnull。 */
+export function markNearKm(marks: readonly PointMark[], km: number, toleranceKm: number): PointMark | null {
+  let nearest: PointMark | null = null;
+  for (const mark of marks) {
+    const gap = Math.abs(mark.km - km);
+    if (gap <= toleranceKm && (nearest === null || gap < Math.abs(nearest.km - km))) nearest = mark;
+  }
+  return nearest;
+}
+
 export type MarkLegendRow = { readonly key: string; readonly label: string; readonly color: string };
 
 /** 凡例に出す行。印に現れた先頭の軸の区分だけを宣言の並びで、宣言に無い値の印があれば最後に「不明」を。 */

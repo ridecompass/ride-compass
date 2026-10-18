@@ -187,11 +187,13 @@ describe("RouteProfile", () => {
     ).toEqual(["舗装", "砂利・未舗装"]);
   });
 
-  it("点のレイヤは、ルートの近くの点を通る距離に地図と同じ色の印で並べ、現れた区分の凡例を一覧の行に出す", async () => {
+  it("点のレイヤは、ルートの近くの点を通る距離に地図と同じ色の印で並べ、選んだ地点の近くの点の区分と名前を詳しくのチップに、現れた区分の凡例を一覧の行に出す", async () => {
     const supply = POINT_LAYERS.find((layer) => layer.attr_id === "supply_poi")!;
     const color = (key: string) => supply.display_axes[0].categories.find((category) => category.key === key)!.color;
     renderProfile({
-      layers: { ids: ["supply_poi"], toggle: vi.fn() },
+      segments: [PAVED, UNKNOWN],
+      selected: { segment: PAVED, latitude: 35, longitude: 139 },
+      layers: { ids: ["elevation", "supply_poi"], toggle: vi.fn() },
       points: [
         { distance_km: 0.01, layer: "supply_poi", properties: { kind: "convenience", name: "ローソン 渋谷店" } },
         { distance_km: 0.8, layer: "stop_poi", properties: { kind: "stop" } },
@@ -203,6 +205,15 @@ describe("RouteProfile", () => {
     const marks = [...chart.querySelectorAll('[data-layer="supply_poi"] line')];
     expect(marks.map((mark) => mark.getAttribute("stroke"))).toEqual([color("convenience"), color("toilets")]);
     expect(chart.querySelector('[data-layer="stop_poi"]')).toBeNull();
+
+    // 地点（区間の始まり）の近くの点だけをチップに出し、結果の図では地点を選んでいる間も標高の最高・最低の要約を残す。
+    const supplyChip = within(detail())
+      .getByText(/コンビニ ローソン 渋谷店/)
+      .closest("li")!;
+    expect(supplyChip).toHaveTextContent("補給・休憩ポイント コンビニ ローソン 渋谷店");
+    expect(supplyChip.querySelector("span[style]")).toHaveStyle({ backgroundColor: color("convenience") });
+    expect(within(detail()).queryByText(/トイレ/)).toBeNull();
+    expect(screen.getByText(/^標高 最高 \d+m・最低 \d+m$/)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "グラフに出す情報" }));
     expect(

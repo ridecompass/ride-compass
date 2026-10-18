@@ -25,6 +25,8 @@ import {
   PROFILE_LAYERS,
   type BandLayer,
   type LineLayer,
+  type PointLayer,
+  type PointMark,
 } from "./profileLayers";
 
 /** 2行目のチップ1つ。風のチップ（押すと説明が開く）と同じ形にするので、押す所の下限（24px）の高さを持つ。 */
@@ -35,8 +37,13 @@ const hintRowClass = cn(textVariants({ variant: "hint" }), "inline-flex items-ce
 
 interface ProfilePointDetailProps {
   selection: SelectedRouteSegment;
-  /** 選んだ地点のルートの上の距離と区間の並び。図の上の地点が分からない選択（地図で押した区間）ではnullで、標高と区分のチップを出さない。 */
-  point: { readonly columns: readonly RouteStretch<RouteSegmentDetail>[]; readonly km: number } | null;
+  /** 選んだ地点のルートの上の距離と区間の並びと、その地点の近くにある点（グラフに出している点のレイヤーのもの）。図の上の地点が
+   * 分からない選択（地図で押した区間）ではnullで、標高と区分と点のチップを出さない。 */
+  point: {
+    readonly columns: readonly RouteStretch<RouteSegmentDetail>[];
+    readonly km: number;
+    readonly marks: readonly { readonly layer: PointLayer; readonly mark: PointMark }[];
+  } | null;
   axes: readonly CatalogAxis[];
   axisColors: Readonly<Record<string, string>>;
   /** 閉じると選んだ地点を外す。無ければ閉じる操作を出さない。 */
@@ -44,7 +51,8 @@ interface ProfilePointDetailProps {
 }
 
 /** 道のりのグラフで選んだ地点の詳しく。1行目に折れ線の値とその道の勾配・何km地点・到達予想・閉じる、2行目にその地点で当たる
- * 道の区分（グラフに出す情報の選択によらず、どの分類にも入らない行を除く）と風のチップ、3行目に区間の総合難易度と軸ごとの寄与を出す。 */
+ * 道の区分（グラフに出す情報の選択によらず、どの分類にも入らない行を除く）と、グラフに出している点のレイヤーのその地点の近くの点と、
+ * 風のチップ、3行目に区間の総合難易度と軸ごとの寄与を出す。 */
 export default function ProfilePointDetail({ selection, point, axes, axisColors, onClear }: ProfilePointDetailProps) {
   const { segment } = selection;
   const lines =
@@ -61,6 +69,7 @@ export default function ProfilePointDetail({ selection, point, axes, axisColors,
           const row = bandRowAtKm(layerBand(point.columns, layer), point.km);
           return row === null || isUnclassifiedRow(row) ? [] : [{ layer, row }];
         });
+  const marks = point?.marks ?? [];
 
   return (
     <div role="group" aria-label="選んだ地点の詳しく" className="flex flex-col gap-1.5 tabular-nums">
@@ -102,7 +111,7 @@ export default function ProfilePointDetail({ selection, point, axes, axisColors,
           </Button>
         )}
       </div>
-      {(bands.length > 0 || segment.wind != null) && (
+      {(bands.length > 0 || marks.length > 0 || segment.wind != null) && (
         <ul aria-label="この地点の道と風" className="m-0 flex list-none flex-wrap gap-1 p-0">
           {bands.map(({ layer, row }) => (
             <li key={layer.id} className={CHIP_CLASS}>
@@ -113,6 +122,15 @@ export default function ProfilePointDetail({ selection, point, axes, axisColors,
               <span>
                 <span className="sr-only">{layer.label} </span>
                 {row.label}
+              </span>
+            </li>
+          ))}
+          {marks.map(({ layer, mark }) => (
+            <li key={layer.id} className={CHIP_CLASS}>
+              <Dot tone="none" style={{ backgroundColor: mark.color }} />
+              <span>
+                <span className="sr-only">{layer.label} </span>
+                {mark.name === null ? mark.kinds : `${mark.kinds} ${mark.name}`}
               </span>
             </li>
           ))}
