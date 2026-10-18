@@ -24,6 +24,7 @@ import re
 from collections.abc import Iterable, Sequence
 from typing import NamedTuple
 
+from app.domain.attributes import AVERAGE_GRADE_DECIMALS, MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT
 from app.domain.road import (
     SURFACE_CLASSES,
     SURFACE_OTHER_KEY,
@@ -124,8 +125,8 @@ def tag_note(tag: str, *values: str) -> str:
 
 
 # 橋・トンネルとみなすのは、道が地面から浮いているか地中にある値だけ（値の意味は OSM wiki の
-# Key:bridge・Key:tunnel）。地図の「橋・高架」「トンネル」と、勾配で地表を拾わない区間
-# （`attributes.py: elevation_values_sql` の on_structure）が同じ道を指すよう、両方がここを読む。
+# Key:bridge・Key:tunnel）。地図の「橋・高架」「トンネル」と、上り下りで地表を拾わない区間
+# （`ELEVATION_VALUE_SQL`）が同じ道を指すよう、両方がここを読む。
 # 建物の下の通路（building_passage）・道の下の水路（culvert）・水面すれすれの低い橋
 # （low_water_crossing）は道が地表にあり、載っていない値も普通の道として扱う——知らない値を
 # 構造物に入れると、地図に誤った橋・トンネルが出る。
@@ -133,6 +134,30 @@ BRIDGE_STRUCTURE_VALUES = ("yes", "viaduct", "cantilever", "covered", "suspensio
 TUNNEL_STRUCTURE_VALUES = ("yes", "avalanche_protector")
 IS_BRIDGE_SQL = tag_absent_is_false_sql(f"{BRIDGE_NORMALIZED_SQL} IN ({sql_literals(BRIDGE_STRUCTURE_VALUES)})")
 IS_TUNNEL_SQL = tag_absent_is_false_sql(f"{TUNNEL_NORMALIZED_SQL} IN ({sql_literals(TUNNEL_STRUCTURE_VALUES)})")
+
+#: 進む向きの平均勾配（%）。区間の両端の頂点の地表の標高（`edge_ground_elevation`）の差を区間の長さで割る。
+#: 両端のどちらかに標高が無ければ、差は区間の一部の差なので値を持たない。逆向きは両端が入れ替わって符号が返る。
+GROUND_GRADE_SQL = (
+    f"CASE WHEN em.ground_at_ends AND re.distance_m > 0"
+    f" AND abs(em.end_ground_m - em.start_ground_m) <= re.distance_m * {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT / 100}"
+    f" THEN round(((em.end_ground_m - em.start_ground_m) / re.distance_m * 100)::numeric,"
+    f" {AVERAGE_GRADE_DECIMALS})::real END")
+
+#: 区間の進む向きの標高（m）。名前→値式。橋・高架・トンネルの上り下りは**両端の差だけ**にする——配信元のDEMは
+#: 地表面の値で構造物の高さを反映せず（https://maps.gsi.go.jp/development/hyokochi.html に明記）、中間の点は
+#: 桁や坑道ではなく下の地形を指すので、谷を渡る平らな橋で谷底の起伏が獲得標高へ積まれる。橋台・坑口は道が
+#: 地面と接する位置なので、両端の標高は使える。
+_ON_STRUCTURE_SQL = f"({IS_TUNNEL_SQL} OR {IS_BRIDGE_SQL})"
+ELEVATION_VALUE_SQL: dict[str, str] = {
+    "start_elevation_m": "round(em.start_ground_m::numeric, 1)::real",
+    "end_elevation_m": "round(em.end_ground_m::numeric, 1)::real",
+    "elevation_gain_m": (f"CASE WHEN {_ON_STRUCTURE_SQL}"
+                         " THEN round(greatest(em.end_ground_m - em.start_ground_m, 0)::numeric, 1)::real"
+                         " ELSE em.ground_gain_m END"),
+    "elevation_loss_m": (f"CASE WHEN {_ON_STRUCTURE_SQL}"
+                         " THEN round(greatest(em.start_ground_m - em.end_ground_m, 0)::numeric, 1)::real"
+                         " ELSE em.ground_loss_m END"),
+}
 
 
 def _cycleway_tags_include_sql(*values: str) -> str:

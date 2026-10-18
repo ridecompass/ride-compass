@@ -19,7 +19,7 @@
 | infrastructure | `dynamic_way_value_cache.py`（配信サービスの値は勾配のみ。ディスク経由）・`feature_material_cache.py`（タイルのフィーチャーごとの材料と区間の材料。ディスク経由）・`tile_persistent_cache.py`（呼び出し元が設計したタプルの鍵でPythonオブジェクトを置く汎用のディスクキャッシュ。`diskcache`の包み） |
 | api | `region.py`（`GET /api/region/way-materials/{axis_id}/...`）・`dependencies.py`（`get_dedicated_way_value_service`・`get_axis_inspector_service`） |
 
-勾配材料の入力（`edge_elevation.average_grade`とフィーチャーの方位）・中ほど・フィーチャーごとの材料を
+勾配材料の入力（材料`gradient_percent`の値とフィーチャーの方位）・中ほど・フィーチャーごとの材料を
 DBから取り出す`infrastructure/road_graph_repository.py: get_feature_gradient_inputs_in_tile`・`get_feature_midpoints_in_tile`・
 `get_feature_materials_in_tile`・`get_feature_segments_in_tile`と、そのSQL（`infrastructure/road_tile_sql.py`）は
 [routing-engine.md](routing-engine.md)が主管するファイルに属する。
@@ -349,7 +349,7 @@ get_way_materials(z, x, y, at)
 向きで値が決まる）。
 
 入力は`RoadGraphRepository.get_feature_gradient_inputs_in_tile`が返す`(gradient_percent,
-road_bearing_deg)`のフィーチャー単位dict（勾配は属する区間の`edge_elevation.average_grade`から、
+road_bearing_deg)`のフィーチャー単位dict（勾配は属する区間の材料`gradient_percent`の値から、
 方位はフィーチャーのジオメトリの両端を結ぶ方位）。区間単位のズームではその区間の実際の勾配が
 そのまま返り、way単位のズームでは**区間を長さで重み付けて平均した値**が代表になる（上の「API」の勾配の節）。
 
@@ -357,7 +357,7 @@ way単位のズームで区間から畳むときの区間ごとの材料（`segm
 （道1本の材料と同じ向き。区間の方位で符号を付けるとつづら折りの区間の符号が反転する）。道が走行方位に直角に
 近ければ、その道の区間は値を決めない。
 
-**暗黙の前提（モジュール間の隠れた依存）**: この入力のSQLは`em.average_grade IS NOT NULL`を
+**暗黙の前提（モジュール間の隠れた依存）**: この入力のSQLは勾配の材料が値を持つことを
 要求するため、[elevation.md](elevation.md)の
 派生（`derive_elevation.py`）が該当区間の勾配を出していない（または勾配を出さないと
 決めた区間）の場合、その鍵は勾配タイルの結果から静かに除外される——エラーには

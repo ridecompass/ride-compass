@@ -96,17 +96,16 @@ async def _derive_edges(conn: asyncpg.Connection, previous: str | None) -> None:
 # --- 道への集約 -------------------------------------------------------------
 
 
-#: 道の値は区間から導く。長さで重み付けた平均にするのは、どちらも割合のため。割合を持つ区間が1本も無い道は
-#: 集約に出ず、行を持たない。倍精度で平均してからREALの列へ入れる——REALのまま足すと丸めで100をわずかに
-#: 超え、表の制約に断られる。
+#: 道の値は区間から導く。区間の有効画素の数で重み付けた平均——道の帯で数えた画素のうちの割合になり、道の長さを
+#: 読まない。割合を持つ区間が1本も無い道は集約に出ず、行を持たない。倍精度で平均してからREALの列へ入れる——REALのまま
+#: 足すと丸めで100をわずかに超え、表の制約に断られる。
 _WAY_ROLLUP = f"""
 INSERT INTO way_landcover (osm_way_id, {", ".join(_VALUE_COLUMNS)})
-SELECT m.osm_way_id, sum(m.lc_valid_pixels), {", ".join(
-    f"sum(m.{c}::double precision * e.distance_m) / sum(e.distance_m::double precision) AS {c}"
+SELECT osm_way_id, sum(lc_valid_pixels), {", ".join(
+    f"sum({c}::double precision * lc_valid_pixels) / sum(lc_valid_pixels::double precision) AS {c}"
     for _, c in _LANDCOVER_COLUMNS)}
-FROM edge_landcover m JOIN road_edges e
-  ON e.osm_way_id = m.osm_way_id AND e.segment_index = m.segment_index
-GROUP BY m.osm_way_id
+FROM edge_landcover
+GROUP BY osm_way_id
 """
 
 

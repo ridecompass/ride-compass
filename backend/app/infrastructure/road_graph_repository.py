@@ -30,6 +30,7 @@ from app.domain.geo import bearing_sql, midpoint_sql
 from app.domain.graph import LeanEdge, edge_feature_key_sql, edge_key, node_key, parse_edge_feature_key
 from app.domain.hard_filters import ROUTE_FLAG_VALUE_SQL, route_flag_columns
 from app.domain.landcover import LandcoverPercentages, landcover_key
+from app.domain.material_sql import ELEVATION_VALUE_SQL
 from app.domain.material_catalog import (
     material_array_columns,
     material_value_sql,
@@ -195,10 +196,7 @@ _EXTRA_MATERIAL_ARRAY_COLUMNS: dict[str, str] = {
     # 逆向きの方位は+180°ではない。両向きぶんを列で持つ（`road_edges`）。
     "bearing_deg": "CASE WHEN ids.forward THEN re.bearing_deg ELSE re.reverse_bearing_deg END",
     **dict(zip(("mid_lat", "mid_lon"), midpoint_sql("nf.geom", "nt.geom"), strict=True)),
-    "start_elevation_m": "em.start_elevation_m",
-    "end_elevation_m": "em.end_elevation_m",
-    "elevation_gain_m": "em.elevation_gain_m",
-    "elevation_loss_m": "em.elevation_loss_m",
+    **ELEVATION_VALUE_SQL,
 }
 
 #: 列の並びは渡した3つ組の位置で固定する。**road_edgesへLEFT JOINする**——行が無い区間で
@@ -406,13 +404,21 @@ class RoadGraphRepository:
         """道路網全体の配列の読み出し（`NETWORK_SQL_SOURCES`）が読む表の名前。
 
         文を書き写して読まず、PostgreSQLの計画（`EXPLAIN`）が走査する表から読む——結び方を変えても漏れず、ソースの
-        パーティションは読むものだけが出る。パラメータはNULLで渡す（走査する表は値で変わらない）。
+        パーティションは読むものだけが出る。計画はパラメータを値に畳まない一般の計画にする——値を渡すと、値で消える式
+        （収録年が0なら事故の密度）だけが読む表を計画が結ばず、その表が漏れる。
         """
         relations: set[str] = set()
-        for statement in NETWORK_SQL_SOURCES:
-            plan: object = (await self._session.execute(text(f"EXPLAIN (FORMAT JSON) {statement.text}"),
-                                                dict.fromkeys(statement.compile().params))).scalar_one()
+        await self._session.execute(text("SET LOCAL plan_cache_mode = force_generic_plan"))
+        for index, statement in enumerate(NETWORK_SQL_SOURCES):
+            compiled = statement.compile(dialect=self._session.get_bind().dialect)
+            name = f"_network_relations_{index}"
+            await self._session.execute(text(f"PREPARE {name} AS {compiled}"))
+            arguments = f"({', '.join(['NULL'] * len(compiled.params))})" if compiled.params else ""
+            plan: object = (await self._session.execute(
+                text(f"EXPLAIN (FORMAT JSON) EXECUTE {name}{arguments}"))).scalar_one()
+            await self._session.execute(text(f"DEALLOCATE {name}"))
             relations |= _scanned_relations(json.loads(plan) if isinstance(plan, str) else plan)
+        await self._session.execute(text("RESET plan_cache_mode"))
         return relations
 
     async def get_edges_with_geometry(self, edges: list[LeanEdge]) -> dict[str, LeanEdge]:

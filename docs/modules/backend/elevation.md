@@ -9,7 +9,7 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `attributes.py`（`elevation_values_sql`。区間の頂点列から標高・勾配を出すSQLを組み立てる） |
+| domain | `attributes.py`（`ground_elevation_values_sql`。区間の頂点列から地表の標高の値を出すSQLを組み立てる）・`material_sql.py`（`GROUND_GRADE_SQL`・`ELEVATION_VALUE_SQL`。地表の標高を区間の長さと道のタグと合わせて読み、勾配と上り下りにする式） |
 | batch | `source_adapters/gsi_dem_tile.py`（取込。手元へ写したタイルを製品ごとに読み、int32へ詰める。配信元は叩かない）・`dem_tile_store.py`（写したタイルの置き場と、配信元のURL・画素の値を採る製品の順・その製品に無いことの印）・`scripts/fetch_dem_tiles.py`（取得。プロファイルが挙げた製品ごとに、手元に無い分だけ取りに行く。取込と分けてあるので、失敗しても欠けた分だけ取り直せる）・`source_adapters/raster_wkb.py`（画素の並びをPostGISの`raster`へ包む）・`derive_elevation.py`（派生） |
 
 ## 3段に分かれている
@@ -19,24 +19,27 @@
    │ source_adapters/gsi_dem_tile.py: 製品ごとにint32へ詰めて、製品×タイル1枚=1行
    ▼
 source_features(source='dem')          ← 生データ。取り直さない限り変わらない
-   │ derive_elevation.py: 区間の形状点で、画素ごとに製品を選んで標高を読み、勾配を出す
+   │ derive_elevation.py: 区間の形状点で、画素ごとに製品を選んで標高を読む
    ▼
-edge_elevation（start/end・gain/loss・average・橋かトンネルか）
+edge_ground_elevation（両端の地表の標高・地表の上り下り・両端の頂点に標高があるか）
+   │ 読み出しの式（material_sql.py）が区間の長さ・道のタグと合わせて勾配と上り下りにし、
    │ 探索フェーズが材料として読む（road_graph_repository.py）
    ▼
 経路の集計（domain/route.py: route_elevation_gain）
 ```
 
-値の出し方そのものは`domain/attributes.py: elevation_values_sql`が持つ。派生バッチは
-頂点ごとの画素を読む関係を渡して実行するだけで、上限も欠測の扱いもそこには無い。
+地表の値の出し方は`domain/attributes.py: ground_elevation_values_sql`が持つ。派生バッチは
+頂点ごとの画素を読む関係を渡して実行するだけで、欠測の扱いはそこには無い。表は標高のタイルと頂点の座標だけから作り、
+道のタグも区間の長さも読まない（[データソース](../../architecture/data-sources.md)「OSM から作った値と独自の層」）。
+勾配と橋・トンネルの扱いは、読み出すときの式（`domain/material_sql.py: GROUND_GRADE_SQL`・`domain/material_sql.py: ELEVATION_VALUE_SQL`）が持つ。
 
 ## 勾配を出さない区間
 
-`average_grade`がNULLなのは、標高を出せなかった区間だけではない。**舗装公道としてありえない
-急勾配**（`MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT`）は、計算したうえで**値を持たせない**と決めた
-区間である。道の起伏ではなくDEMの読み違いで、丸めても上限で切っても直らない。
+勾配が値を持たないのは、標高を出せなかった区間だけではない。**区間の端の頂点に標高が無い**区間は、両端の差が区間の一部の
+差なので、区間の長さで割らない。**舗装公道としてありえない急勾配**（`MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT`）は、計算したうえで
+**値を持たせない**と決めた区間である。道の起伏ではなくDEMの読み違いで、丸めても上限で切っても直らない。
 
-標高そのもの（start/end・gain/loss）は残す。0次ハードフィルタは値の無い区間を
+標高そのもの（両端・上り下り）は残す。0次ハードフィルタは値の無い区間を
 除外しない（`domain/hard_filters.py`）ため、誤った値で黙って経路から外すより安全側になる。
 
 ## 橋・高架・トンネル
@@ -44,7 +47,8 @@ edge_elevation（start/end・gain/loss・average・橋かトンネルか）
 DEMが返すのは地表面の標高で、桁や坑道の高さではない——谷を渡る橋なら谷底の起伏を、山を
 抜けるトンネルなら山の起伏を、そのまま道の勾配として受け取る。**測り間違いではなく別のものを
 測っている**ため、値の側では直せない。そこで橋・トンネルの区間は、道が地面と接する両端の
-標高だけで上り下りと勾配を出す（`elevation_values_sql`の`on_structure`）。
+標高だけで上り下りを出す（`domain/material_sql.py: ELEVATION_VALUE_SQL`）。勾配はどの区間も両端の差から出す。
+橋かトンネルかは道のタグなので、地表の標高の表には入れず、読み出すときに決める。
 
 橋・トンネルとみなす道は、地図の「橋・高架」「トンネル」（材料`bridge`・`has_tunnel`）と同じで、
 判定は`domain/material_sql.py`の`IS_BRIDGE_SQL`・`IS_TUNNEL_SQL`の1か所にある。道が地面から

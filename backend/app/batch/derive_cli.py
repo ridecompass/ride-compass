@@ -18,8 +18,7 @@
 
 **区間の値がその区間の形と前の段の外の入力だけで決まる段（`DeriveStage.per_edge`）は、区間ごとに前回の値を写す。**
 前の段が区間を作り直して段が流れても、前の段を除いた入力の指紋が前回と同じなら、段へ前回の表のスキーマ（`public`。
-入れ替えまで前回の表が残っている）を渡し、形の同じ区間は前回の値を写させて、残りの区間だけを計算させる。段が区間ごとに
-読んだ値を表に残して前回と比べるソース（`DeriveStage.compared`）は、この指紋に入れない。
+入れ替えまで前回の表が残っている）を渡し、形の同じ区間は前回の値を写させて、残りの区間だけを計算させる。
 
 段が何を読むかは`STAGES`の宣言が持ち、宣言の漏れは段が読んだ表の数で見張る（`tests/test_derive_skip.py: test_each_stage_declares_what_it_reads_and_writes`）。
 前の段（`after`）には、読む表を書く段と、自分が書く表の行を入れる・消す段を挙げる（区間を切る段は、区間・道・頂点を
@@ -56,6 +55,7 @@ import asyncpg
 
 from app.batch import (
     derive_addresses,
+    derive_accidents,
     derive_counts,
     derive_elevation,
     derive_landcover,
@@ -100,8 +100,6 @@ class DeriveStage:
     #: 区間の値が、その区間の形と前の段の外の入力だけで決まり、ほかの区間を読まない。`derive`は引数`previous`に
     #: 前回の表のスキーマ（写せないならNone）を受け、形の同じ区間へ前回の値を写す。
     per_edge: bool = False
-    #: 区間ごとに写す段が、区間ごとに読んだ値を自分の表に残して前回と比べるソース。前の段の外の入力の指紋に入れない。
-    compared: frozenset[Source] = frozenset()
 
     async def run(self, conn: asyncpg.Connection, tuning: Mapping[str, float], previous: str | None) -> None:
         arguments: dict[str, object] = {argument: tuning[param] for argument, param in self.tuning.items()}
@@ -122,11 +120,12 @@ STAGES: tuple[DeriveStage, ...] = (
     DeriveStage("topology", derive_topology, frozenset({Source.OSM_WAY}), (), ("road_edges", "road_ways", "road_nodes")),
     DeriveStage("nodes", derive_nodes, frozenset({Source.OSM_NODE, Source.OSM_WAY}), ("topology",),
                 ("node_kinds", "node_turns"), {"signal_radius_m": "signal.match_radius_m"}),
-    DeriveStage("counts", derive_counts, frozenset({Source.OSM_NODE, Source.OSM_WAY, Source.ACCIDENT}),
+    DeriveStage("counts", derive_counts, frozenset({Source.OSM_NODE, Source.OSM_WAY}),
                 ("topology", "nodes"), ("edge_counts", "way_counts")),
-    # 標高の段は、道から区間が橋かトンネルかだけを読み、その値を区間ごとに表へ残す。
-    DeriveStage("elevation", derive_elevation, frozenset({Source.OSM_WAY, Source.DEM}), ("topology",), ("edge_elevation",),
-                per_edge=True, compared=frozenset({Source.OSM_WAY})),
+    DeriveStage("accidents", derive_accidents, frozenset({Source.ACCIDENT}), ("topology",),
+                ("edge_accidents", "way_accidents")),
+    DeriveStage("elevation", derive_elevation, frozenset({Source.DEM}), ("topology",), ("edge_ground_elevation",),
+                per_edge=True),
     DeriveStage("landcover", derive_landcover, frozenset({Source.LULC}), ("topology",), ("edge_landcover", "way_landcover"),
                 per_edge=True),
     DeriveStage("directions", derive_way_directions, frozenset({Source.OSM_WAY}), ("topology",), ("way_directions",)),
@@ -156,9 +155,7 @@ def stage_fingerprints(runs: Mapping[str, int], tuning: Mapping[str, float],
             "runtime": runtime,
         }
         if stage.per_edge:
-            outside = {key: value for key, value in inputs.items() if key != "after"}
-            outside["sources"] = {source: runs.get(source) for source in sorted(stage.sources - stage.compared)}
-            fingerprints[_outside_key(stage)] = _digest(outside)
+            fingerprints[_outside_key(stage)] = _digest({key: value for key, value in inputs.items() if key != "after"})
         fingerprints[stage.name] = _digest(inputs)
     return fingerprints
 

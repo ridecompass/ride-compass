@@ -24,9 +24,8 @@ z15のタイルTを4つの区画に分け、製品ごとに値のある区画を
 いつ時点までの更新を含むかを読み違える。
 
 ここで見ないもの:
-- 橋・トンネルとみなすタグの値の一つずつ——値の並びは`domain/material_sql.py`が持ち、ここは橋と
-  トンネルの1つずつだけを通す
-- 橋・トンネルの区間の勾配の出し方 → `test_elevation_values.py`
+- 頂点の標高から区間の値を出すこと → `test_elevation_values.py`
+- 地表の標高から勾配と、橋・トンネルの上り下りを読む式 → `test_material_values.py`
 """
 
 from dataclasses import replace
@@ -118,10 +117,10 @@ async def _ingest_dem(conn: asyncpg.Connection, tile_root, without: str | None =
         await ingest_source(conn, _profile(without), "dem")
 
 
-def _way(way_id: int, pixels, tags: dict[str, str] | None = None):
+def _way(way_id: int, pixels):
     """Tの画素`pixels`の中心を頂点に通る道。"""
     return way_record(way_id, [_pixel_center(r, c) for r, c in pixels],
-                      [way_id * 10 + i for i in range(len(pixels))], tags)
+                      [way_id * 10 + i for i in range(len(pixels))])
 
 
 @pytest.fixture(scope="module")
@@ -150,9 +149,9 @@ async def elevation_conn(derive_conn, tile_root):
 
 async def test_each_pixel_takes_the_most_accurate_product_that_has_a_value(elevation_conn):
     rows = await elevation_conn.fetch(
-        "SELECT osm_way_id, start_elevation_m, end_elevation_m"
-        " FROM road_edges LEFT JOIN edge_elevation USING (osm_way_id, segment_index) ORDER BY osm_way_id")
-    got = {r["osm_way_id"]: (r["start_elevation_m"], r["end_elevation_m"]) for r in rows}
+        "SELECT osm_way_id, start_ground_m, end_ground_m"
+        " FROM road_edges LEFT JOIN edge_ground_elevation USING (osm_way_id, segment_index) ORDER BY osm_way_id")
+    got = {r["osm_way_id"]: (r["start_ground_m"], r["end_ground_m"]) for r in rows}
     assert got == {way_id: (expected, expected) for way_id, _pixels, expected in CASES}
 
 
@@ -169,10 +168,9 @@ async def test_rerun_without_a_product_keeps_no_value_only_that_product_gave(ele
     conn = elevation_conn
 
     async def elevations() -> dict[int, float | None]:
-        rows = await conn.fetch("SELECT osm_way_id, start_elevation_m, average_grade"
-                                " FROM road_edges LEFT JOIN edge_elevation USING (osm_way_id, segment_index)")
-        assert all(r["average_grade"] is None for r in rows if r["start_elevation_m"] is None)
-        return {r["osm_way_id"]: r["start_elevation_m"] for r in rows}
+        rows = await conn.fetch("SELECT osm_way_id, start_ground_m"
+                                " FROM road_edges LEFT JOIN edge_ground_elevation USING (osm_way_id, segment_index)")
+        return {r["osm_way_id"]: r["start_ground_m"] for r in rows}
 
     async def rerun() -> dict[int, float | None]:
         await derive_elevation.derive(conn, previous=None)
@@ -187,28 +185,3 @@ async def test_rerun_without_a_product_keeps_no_value_only_that_product_gave(ele
                            for way_id, _pixels, expected in CASES}
     assert without_any == dict.fromkeys(without_dem)
 
-
-#: 谷を渡る形の頂点列。左上（10m）→右上（20m）→左上（10m）で、地表は上って下る。
-VALLEY_PIXELS = ((40, 40), (40, 200), (40, 44))
-
-
-@pytest.mark.parametrize(("structure", "climb"), [
-    ({"bridge": "viaduct"}, (0.0, 0.0)),
-    ({"tunnel": "yes"}, (0.0, 0.0)),
-])
-async def test_a_bridge_or_tunnel_does_not_climb_the_terrain_under_it(elevation_conn, structure, climb):
-    """浮いた橋・地中のトンネルの区間は、下の地表の起伏を上り下りに数えない。同じ形のタグの無い道は数える。
-    どちらの区間も、橋かトンネルだったかを値と一緒に持つ（前回の値を使い回してよいかを、形と並べて見分けるため）。"""
-    conn = elevation_conn
-    await ingest_records("osm_way", [
-        *(_way(way_id, pixels) for way_id, pixels, _ in CASES),
-        _way(11, VALLEY_PIXELS), _way(12, VALLEY_PIXELS, structure)], conn=conn)
-    async with conn.transaction():
-        await derive_topology.derive(conn)
-        await derive_elevation.derive(conn, previous=None)
-
-    rows = await conn.fetch(
-        "SELECT osm_way_id, elevation_gain_m, elevation_loss_m, on_structure FROM edge_elevation"
-        " WHERE osm_way_id IN (11, 12)")
-    assert {r["osm_way_id"]: (r["elevation_gain_m"], r["elevation_loss_m"], r["on_structure"]) for r in rows} == {
-        11: (10.0, 10.0, False), 12: (*climb, True)}

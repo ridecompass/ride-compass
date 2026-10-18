@@ -33,7 +33,7 @@ from app.domain.hard_filters import route_flag_columns
 from app.domain.landcover import LandcoverPercentages, landcover_key
 from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns
 from app.domain.region import BoundingBox
-from app.infrastructure.derived_models import EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow, WayCountsRow
+from app.infrastructure.derived_models import EdgeCountsRow, EdgeGroundElevationRow, EdgeLandcoverRow, WayCountsRow
 from app.domain.graph import edge_key, node_key
 from app.services.axis_preview_service import SAMPLE_LIMIT, SAMPLE_PERCENT
 from app.infrastructure.material_joins import material_from_clause, reversed_material_expression
@@ -107,27 +107,22 @@ def _repo(*results) -> tuple[RoadGraphRepository, _FakeSession]:
 
 @pytest.mark.parametrize(("name", "expression"), [
     ("start_a", "m.end_a"),
-    # 勾配は符号を返す
-    ("a_grade", "-m.a_grade"),
     # 向きで変わらない列
     ("a_count", None),
 ])
-def test_reversed_expression_swaps_paired_tokens_and_flips_grades(name, expression):
+def test_reversed_expression_swaps_paired_tokens(name, expression):
     assert reversed_material_expression(name) == expression
 
 
 def test_reversing_twice_returns_to_the_original_column():
     """対が壊れると、逆向きの枝の標高が別の列から来る。列の一覧は宣言から導く。"""
     reversed_columns = {column.name: expression
-                        for row in (EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow) for column in row.__table__.columns
+                        for row in (EdgeCountsRow, EdgeGroundElevationRow, EdgeLandcoverRow)
+                        for column in row.__table__.columns
                         if (expression := reversed_material_expression(column.name)) is not None}
     assert reversed_columns, "向きで変わる列が1つも無い"
     for name, expression in reversed_columns.items():
-        partner = expression.lstrip("-").removeprefix("m.")
-        back = reversed_material_expression(partner)
-        assert back is not None
-        assert back.lstrip("-").removeprefix("m.") == name
-        assert back.startswith("-") == expression.startswith("-")
+        assert reversed_material_expression(expression.removeprefix("m.")) == f"m.{name}"
 
 
 # --- 材料の列 -----------------------------------------------------------------
@@ -145,7 +140,7 @@ def test_material_tables_are_joined_only_for_the_columns_the_expressions_read():
 
     assert "JOIN" not in way_from_clause(["w.tags"], WAYS_SOURCE_SQL)
     assert EdgeCountsRow.__tablename__ in clause
-    assert EdgeElevationRow.__tablename__ not in clause
+    assert EdgeGroundElevationRow.__tablename__ not in clause
     assert WayCountsRow.__tablename__ not in clause
 
 

@@ -253,9 +253,9 @@ class Change:
     rebuilds_network: bool
 
 
-ROAD_STAGES = ("topology", "nodes", "counts", "elevation", "landcover", "directions")
+ROAD_STAGES = ("topology", "nodes", "counts", "accidents", "elevation", "landcover", "directions")
 CHANGES = [
-    Change("事故を取り直した", _reingest(_ingest_accidents), ("counts",), True),
+    Change("事故を取り直した", _reingest(_ingest_accidents), ("accidents",), True),
     Change("ノードを取り直した", _reingest(_ingest_nodes), ("nodes", "counts"), True),
     Change("標高を取り直した", _reingest(_ingest_elevations), ("elevation",), True),
     Change("土地被覆を取り直した", _reingest(_ingest_landcover), ("landcover",), True),
@@ -394,6 +394,12 @@ async def test_each_stage_declares_what_it_reads_and_writes(world, monkeypatch):
 
     assert await derive_cli.run(postgis_database_url()) == 0
 
+    # OSM 以外の値を書く段は OSM のタグを読まず、OSM から作った表は場所を引く区間の形と鍵（道の表は外部キーの照合が読む）しか
+    # 読まない——ほかを読むと、OSM の版を入れ替えるたびにその値が変わり、OSM から作った値と分けて配れなくなる。
+    osm = {Source.OSM_WAY, Source.OSM_NODE}
+    outside = [stage for stage in derive_cli.STAGES if not stage.sources & osm]
+    assert {stage.name: (touched[stage.name].sources, touched[stage.name].read - set(stage.tables) <= {"road_edges", "road_ways"})
+            for stage in outside} == {stage.name: (set(stage.sources), True) for stage in outside}
     assert {name: touched[name].sources for name in STAGE_NAMES} == {
         stage.name: set(stage.sources) - ({Source.OSM_WAY} if stage.name == "addresses" else set())
         for stage in derive_cli.STAGES}
@@ -469,7 +475,7 @@ class EdgeChange:
 #: 区間ごとに写す段が、写した区間と計算する区間の本数を出すログ。
 EDGE_COUNT_LOGS = {
     "土地被覆: 形の変わらない区間 %d本へ前回の値を写し、%d本を数える": "landcover",
-    "標高: 形と橋・トンネルの変わらない区間 %d本へ前回の値を写し、%d本を計算する": "elevation",
+    "標高: 形の変わらない区間 %d本へ前回の値を写し、%d本を計算する": "elevation",
 }
 
 
@@ -482,9 +488,9 @@ EDGE_CHANGES = [
     EdgeChange("道を同じ形で取り直した", _reingest(_ingest_ways), {"landcover": (2, 0), "elevation": (2, 0)}),
     EdgeChange("道の形を一部変え、道を足した", _reingest(lambda conn: _ingest_ways(conn, RESHAPED_WAYS)),
                {"landcover": (1, 2), "elevation": (1, 2)}),
-    # 橋かトンネルかは標高の値だけが読む。
+    # 橋かトンネルかは標高を読み出すときに道のタグから決まり、区間ごとに写す段はどれも読まない。
     EdgeChange("道を同じ形で取り直し、道を1本橋にした", _reingest(lambda conn: _ingest_ways(conn, bridges=frozenset({200}))),
-               {"landcover": (2, 0), "elevation": (1, 1)}),
+               {"landcover": (2, 0), "elevation": (2, 0)}),
     EdgeChange("道と土地被覆を取り直し、標高の段のコードを変えた",
                _together(_reingest(_ingest_ways), _reingest(_ingest_landcover), _edit_stage_code("elevation")),
                {"landcover": (0, 2), "elevation": (0, 2)}),
@@ -505,8 +511,8 @@ async def built_from_ways(world):
 @pytest.mark.parametrize("change", EDGE_CHANGES, ids=[change.name for change in EDGE_CHANGES])
 async def test_per_edge_stages_compute_only_edges_whose_inputs_changed_and_match_a_full_rebuild(
         built_from_ways, caplog, monkeypatch, tmp_path, change):
-    """区間ごとに写す段（土地被覆・標高）は、段の取込とコードが前回と同じなら、形の同じ区間（標高は橋かトンネルかも同じ
-    区間）は前回の値を写し、残りの区間だけを計算する。取込かコードが変われば全区間を計算する。区間と道の値は、同じ入力で
+    """区間ごとに写す段（土地被覆・標高）は、段の取込とコードが前回と同じなら、形の同じ区間は前回の値を写し、
+    残りの区間だけを計算する。取込かコードが変われば全区間を計算する。区間と道の値は、同じ入力で
     全区間を計算した作り直しと同じ。"""
     conn = built_from_ways
     caplog.set_level(logging.INFO, logger="ridecompass")

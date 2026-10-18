@@ -217,7 +217,7 @@ async def test_the_accident_density_is_divided_by_the_years_of_the_import_that_w
     async def observe():
         seen_while_rebuilding.append(await accident_years())
 
-    _observe_after("counts", monkeypatch, observe)
+    _observe_after("accidents", monkeypatch, observe)
     years_before_rebuild = await accident_years()
 
     assert await derive_cli.run(postgis_database_url()) == 0

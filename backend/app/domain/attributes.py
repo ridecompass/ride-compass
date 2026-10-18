@@ -11,7 +11,7 @@ class ElevationAttribute(StrictModel):
     """Edgeへ紐付ける標高属性。Edge本体（domain/graph.py）とは独立して保持する。
 
     average_gradeは符号付き（登り=正、下り=負）で、値が取れなかった区間はNone。
-    獲得・喪失標高は揃って入る（区間の標高の表`edge_elevation`は4列とも空を許さない）。
+    獲得・喪失標高は揃って入る（区間の地表の標高の表`edge_ground_elevation`は4列とも空を許さない）。
     """
 
     edge_id: str
@@ -149,65 +149,44 @@ EDGE_ROW_ARRAY_FIELDS: tuple[str, ...] = tuple(
 )
 
 
-def elevation_values_sql(vertices: str) -> str:
-    """区間の頂点列から、標高と勾配の値を出すSQL。
+def ground_elevation_values_sql(vertices: str) -> str:
+    """区間の頂点列から、頂点の下の地表の標高の値を出すSQL（列は`edge_ground_elevation`の列）。
 
-    `vertices`は`(osm_way_id, segment_index, ord, lon, lat, elev, on_structure)`を返す関係。
-    `elev`がNULLの頂点は評価から外す。**外した後に隣り合う2点でも、元の点列では間に欠損を
-    挟んでいることがある**——そのまま隣接扱いすると、欠損区間の起伏が均された差として
-    混入する。距離（両端の座標は常に既知）と、獲得/消失（欠損を挟むと信頼できない）を
-    分け、元の点列でも真に隣接していたペアだけを後者へ寄与させる。
+    `vertices`は`(osm_way_id, segment_index, ord, elev)`を返す関係で、`ord`は区間の頂点の並び（1から）。
+    `elev`がNULLの頂点は外す。**外した後に隣り合う2点でも、元の点列では間に欠損を挟んでいることがある**——
+    そのまま隣接扱いすると、欠損区間の起伏が均された差として混入する。上り・下りの和には、元の点列でも
+    真に隣接していたペアだけを寄与させる。
 
-    `on_structure`（橋・高架・トンネル）は**両端だけ**を使う。配信元のDEMは地表面の値で
-    構造物の高さを反映しないため（https://maps.gsi.go.jp/development/hyokochi.html に明記）、
-    中間の点は桁や坑道ではなく下の地形を指す。谷を渡る平らな橋で、谷底の起伏がそのまま
-    獲得標高へ積まれてしまう。橋台・坑口は道が地面と接する位置なので、両端の標高は使える。
-
-    値が出せない区間（有効な標高が2点未満）は返らない。値と一緒に、値が依った`on_structure`も返す。
+    値が出せない区間（有効な標高が2点未満）は返らない。
     """
     return f"""
 WITH v AS ({vertices}),
+span AS (
+    SELECT osm_way_id, segment_index, min(ord) AS first_ord, max(ord) AS last_ord
+    FROM v GROUP BY osm_way_id, segment_index),
 known AS (SELECT * FROM v WHERE elev IS NOT NULL),
 ends AS (
-    SELECT osm_way_id, segment_index, bool_or(on_structure) AS on_structure,
-           count(*) AS n,
+    SELECT osm_way_id, segment_index, count(*) AS n,
+           min(ord) AS first_known, max(ord) AS last_known,
            (array_agg(elev ORDER BY ord))[1] AS start_e,
            (array_agg(elev ORDER BY ord DESC))[1] AS end_e
     FROM known GROUP BY osm_way_id, segment_index),
-stepped AS (
-    SELECT osm_way_id, segment_index, ord, elev,
-           lag(ord)  OVER w AS prev_ord,
-           lag(elev) OVER w AS prev_elev,
-           lag(lon)  OVER w AS prev_lon,
-           lag(lat)  OVER w AS prev_lat,
-           lon, lat
-    FROM known WINDOW w AS (PARTITION BY osm_way_id, segment_index ORDER BY ord)),
 pairs AS (
-    SELECT osm_way_id, segment_index, elev - prev_elev AS diff,
-           ord - prev_ord = 1 AS adjacent,
-           ST_Distance(ST_MakePoint(prev_lon, prev_lat)::geography,
-                       ST_MakePoint(lon, lat)::geography) AS d
-    FROM stepped WHERE prev_ord IS NOT NULL),
+    SELECT osm_way_id, segment_index,
+           elev - lag(elev) OVER w AS diff,
+           ord - lag(ord) OVER w = 1 AS adjacent
+    FROM known WINDOW w AS (PARTITION BY osm_way_id, segment_index ORDER BY ord)),
 agg AS (
-    SELECT osm_way_id, segment_index, sum(d) AS total_d,
+    SELECT osm_way_id, segment_index,
            coalesce(sum(greatest(diff, 0))  FILTER (WHERE adjacent), 0) AS gain,
            coalesce(sum(greatest(-diff, 0)) FILTER (WHERE adjacent), 0) AS loss
-    FROM pairs GROUP BY osm_way_id, segment_index),
-raw AS (
-    SELECT e.osm_way_id, e.segment_index, e.on_structure, e.start_e, e.end_e,
-           a.gain, a.loss,
-           CASE WHEN abs(s.g) <= {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT} THEN s.g END AS avg_g
-    FROM ends e JOIN agg a USING (osm_way_id, segment_index),
-         LATERAL (SELECT CASE WHEN a.total_d > 0 THEN (e.end_e - e.start_e) / a.total_d * 100 END AS g) s
-    WHERE e.n >= 2)
-SELECT osm_way_id, segment_index,
-       round(start_e::numeric, 1) AS start_elevation_m,
-       round(end_e::numeric, 1)   AS end_elevation_m,
-       round((CASE WHEN on_structure THEN greatest(end_e - start_e, 0)
-                   ELSE gain END)::numeric, 1)  AS elevation_gain_m,
-       round((CASE WHEN on_structure THEN greatest(start_e - end_e, 0)
-                   ELSE loss END)::numeric, 1)  AS elevation_loss_m,
-       round(avg_g::numeric, {AVERAGE_GRADE_DECIMALS}) AS average_grade,
-       on_structure
-FROM raw
+    FROM pairs GROUP BY osm_way_id, segment_index)
+SELECT e.osm_way_id, e.segment_index,
+       e.start_e AS start_ground_m,
+       e.end_e   AS end_ground_m,
+       round(a.gain::numeric, 1) AS ground_gain_m,
+       round(a.loss::numeric, 1) AS ground_loss_m,
+       e.first_known = s.first_ord AND e.last_known = s.last_ord AS ground_at_ends
+FROM ends e JOIN agg a USING (osm_way_id, segment_index) JOIN span s USING (osm_way_id, segment_index)
+WHERE e.n >= 2
 """

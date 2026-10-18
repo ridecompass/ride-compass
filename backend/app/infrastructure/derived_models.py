@@ -27,6 +27,7 @@ from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     Boolean,
+    Double,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -49,8 +50,10 @@ from app.domain.traffic import DIRECTIONS, NODE_KINDS, POI_COUNT_KINDS, poi_coun
 
 #: 数えた値は負にならない。0は数えた結果の「1つも無い」。
 #: 件数は小数を持つ——区間の端に乗るものは前後の区間が0.5ずつ持つ（`batch/derive_counts.py`）。
-_COUNT_COLUMNS = ("accident_count", "intersection_count") + tuple(
+_COUNT_COLUMNS = ("intersection_count",) + tuple(
     poi_count_column(kind) for kind in sorted(POI_COUNT_KINDS))
+#: 事故の件数は、死亡事故の重みで小数を持つ（`batch/derive_accidents.py`）。
+_ACCIDENT_COLUMNS = ("accident_count",)
 
 #: 土地被覆の割合の列。クラスが1つ増えてもここは変わらない。
 _LANDCOVER_COLUMNS = tuple(
@@ -61,10 +64,10 @@ _LANDCOVER_COLUMNS = tuple(
 _PERCENT_SUM_TOLERANCE = 0.1
 
 
-def count_checks(table: str) -> tuple[CheckConstraint, ...]:
+def count_checks(table: str, columns: tuple[str, ...] = _COUNT_COLUMNS) -> tuple[CheckConstraint, ...]:
     """数の表（区間・道）の「値が不整合になりえない」制約。読み出し側が毎回この条件を書かずに済むように、入れられない側で止める。"""
     return tuple(CheckConstraint(f"{column} >= 0", name=f"{table}_{column}_not_negative")
-                 for column in _COUNT_COLUMNS)
+                 for column in columns)
 
 
 def landcover_checks(table: str) -> tuple[CheckConstraint, ...]:
@@ -101,13 +104,16 @@ class _WayKey:
 
 
 class _Counts:
-    accident_count: Mapped[float] = mapped_column(REAL, nullable=False)
     intersection_count: Mapped[float] = mapped_column(REAL, nullable=False)
     poi_signal: Mapped[float] = mapped_column(REAL, nullable=False)
     poi_crossing: Mapped[float] = mapped_column(REAL, nullable=False)
     poi_stop: Mapped[float] = mapped_column(REAL, nullable=False)
     poi_level_crossing: Mapped[float] = mapped_column(REAL, nullable=False)
     poi_barrier: Mapped[float] = mapped_column(REAL, nullable=False)
+
+
+class _Accidents:
+    accident_count: Mapped[float] = mapped_column(REAL, nullable=False)
 
 
 class _Landcover:
@@ -192,26 +198,24 @@ class RoadNodeRow(Base):
     branch_count: Mapped[int] = mapped_column(SmallInteger, nullable=False)
 
 
-class EdgeElevationRow(_EdgeKey, Base):
-    """区間の標高と勾配。値の出た区間だけが行を持つ。
+class EdgeGroundElevationRow(_EdgeKey, Base):
+    """区間の頂点の下の地表の標高（標高のタイルだけから出す）。標高のある頂点が2つ以上の区間だけが行を持つ。
 
-    標高は順方向の値だけ持つ。逆向きは読み出し時に入れ替えと符号反転で導く
-    （始点↔終点、上り↔下り、平均勾配は符号反転）。
+    標高は順方向の値だけ持つ。逆向きは読み出し時に始まり↔終わり、上り↔下りを入れ替えて導く。
+    勾配と、橋・トンネルの上り下りは、道の長さとタグと合わせて読むときに出す（`domain/material_sql.py: GROUND_GRADE_SQL`・`domain/material_sql.py: ELEVATION_VALUE_SQL`）。
     """
 
-    __tablename__ = "edge_elevation"
-    __table_args__ = (_edge_key("edge_elevation"), {"info": DERIVED})
+    __tablename__ = "edge_ground_elevation"
+    __table_args__ = (_edge_key("edge_ground_elevation"), {"info": DERIVED})
 
-    start_elevation_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    end_elevation_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    elevation_gain_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    elevation_loss_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    # 標高が付いた区間でも、両端の差が道としてありえない勾配になる区間は平均勾配を持たない
-    # （`domain/attributes.py: elevation_values_sql`）。
-    average_grade: Mapped[float | None] = mapped_column(REAL, nullable=True)
-    #: 作り直しの時点の道のタグで、区間が橋かトンネルだったか。値はこれに依る（両端だけを使う）ので、形が同じでも
-    #: これが変われば前回の値を使い回せない。
-    on_structure: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    #: 標高のある最初と最後の頂点の標高（m）。勾配を読むときに丸めの誤差を積まないよう、丸めずに持つ。
+    start_ground_m: Mapped[float] = mapped_column(Double, nullable=False)
+    end_ground_m: Mapped[float] = mapped_column(Double, nullable=False)
+    #: 隣り合う頂点の組の上り・下りの和（m）。間に標高の無い頂点を挟む組は数えない。
+    ground_gain_m: Mapped[float] = mapped_column(REAL, nullable=False)
+    ground_loss_m: Mapped[float] = mapped_column(REAL, nullable=False)
+    #: 区間の最初と最後の頂点の両方に標高があるか。偽なら両端の標高の差は区間の一部の差で、区間の長さで割れない。
+    ground_at_ends: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
 
 class EdgeLandcoverRow(_EdgeKey, _Landcover, Base):
@@ -222,10 +226,18 @@ class EdgeLandcoverRow(_EdgeKey, _Landcover, Base):
 
 
 class EdgeCountsRow(_EdgeKey, _Counts, Base):
-    """区間に付く数（事故・交差点・停止要因）。全区間が行を持つ。"""
+    """区間に付く数（交差点・停止要因）。全区間が行を持つ。"""
 
     __tablename__ = "edge_counts"
     __table_args__ = (_edge_key("edge_counts"), *count_checks("edge_counts"), {"info": DERIVED})
+
+
+class EdgeAccidentsRow(_EdgeKey, _Accidents, Base):
+    """区間に付く自転車の事故の数（事故の生データだけから出す）。全区間が行を持つ。"""
+
+    __tablename__ = "edge_accidents"
+    __table_args__ = (_edge_key("edge_accidents"), *count_checks("edge_accidents", _ACCIDENT_COLUMNS),
+                      {"info": DERIVED})
 
 
 class WayDirectionRow(_WayKey, Base):
@@ -244,7 +256,7 @@ class WayDirectionRow(_WayKey, Base):
 
 
 class WayLandcoverRow(_WayKey, _Landcover, Base):
-    """道1本の土地被覆の割合（区間の値の長さで重み付けた平均）。割合を持つ区間がある道だけが行を持つ。
+    """道1本の土地被覆の割合（区間の値の、有効画素の数で重み付けた平均）。割合を持つ区間がある道だけが行を持つ。
 
     区間の値を道にも持つのは、低ズームのタイルが道1本を1フィーチャーとして塗るため（数も同じ）。区間から集約して作ると
     都心のz12で実測1.2秒かかり、タイル生成が倍になる。
@@ -259,6 +271,13 @@ class WayCountsRow(_WayKey, _Counts, Base):
 
     __tablename__ = "way_counts"
     __table_args__ = (*count_checks("way_counts"), {"info": DERIVED})
+
+
+class WayAccidentsRow(_WayKey, _Accidents, Base):
+    """道1本の自転車の事故の数（区間の和）。全部の道が行を持つ。"""
+
+    __tablename__ = "way_accidents"
+    __table_args__ = (*count_checks("way_accidents", _ACCIDENT_COLUMNS), {"info": DERIVED})
 
 
 class NodeKindRow(Base):

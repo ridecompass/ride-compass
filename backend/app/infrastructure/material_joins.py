@@ -48,8 +48,8 @@ _REVERSING_TOKEN_PAIRS = (("start_", "end_"), ("_gain_", "_loss_"))
 def reversed_material_expression(name: str) -> str | None:
     """逆向きの枝でこの列へ入る式（入れ替える相手の列を別名`m`で読む）。向きで変わらない列はNone。
 
-    対になる語を入れ替え、`_grade`で終わる量は符号を返す。標高は地形の物理量で進行方向に依存しないため、
-    この変換は厳密に正しい（形状点列を逆順に辿ると各区間の差分の符号がすべて反転する）。
+    対になる語を入れ替える。標高は地形の物理量で進行方向に依存しないため、この変換は厳密に正しい
+    （形状点列を逆順に辿ると各区間の差分の符号がすべて反転する）。
     """
     swapped = name
     for first, second in _REVERSING_TOKEN_PAIRS:
@@ -59,21 +59,20 @@ def reversed_material_expression(name: str) -> str | None:
         if second in swapped:
             swapped = swapped.replace(second, first, 1)
             break
-    negated = name.endswith("_grade")
-    if swapped == name and not negated:
+    if swapped == name:
         return None
-    return ("-" if negated else "") + "m." + swapped
+    return "m." + swapped
 
 
-#: 区間の列→逆向きで読む相手の列と、符号を返すか。
-_REVERSED_EDGE_COLUMNS: dict[str, tuple[str, bool]] = {
-    name: (expression.lstrip("-").removeprefix("m."), expression.startswith("-"))
+#: 区間の列→逆向きで読む相手の列。
+_REVERSED_EDGE_COLUMNS: dict[str, str] = {
+    name: expression.removeprefix("m.")
     for name in _EDGE_MATERIAL_COLUMNS
     if (expression := reversed_material_expression(name)) is not None
 }
 
 #: 入れ替え先の列が無ければSQLは実行時に落ちる。import時に気づけるようにする。
-_missing_partners = sorted(partner for partner, _ in _REVERSED_EDGE_COLUMNS.values()
+_missing_partners = sorted(partner for partner in _REVERSED_EDGE_COLUMNS.values()
                            if partner not in _EDGE_MATERIAL_COLUMNS)
 if _missing_partners:
     raise RuntimeError(f"逆向きの列が存在しない: {_missing_partners}")
@@ -116,8 +115,7 @@ def material_from_clause(
         value = read(_EDGE_MATERIAL_COLUMNS[name], edge_rows)
         if forward is None or name not in _REVERSED_EDGE_COLUMNS:
             return value
-        partner, negated = _REVERSED_EDGE_COLUMNS[name]
-        reverse = ("-" if negated else "") + read(_EDGE_MATERIAL_COLUMNS[partner], edge_rows)
+        reverse = read(_EDGE_MATERIAL_COLUMNS[_REVERSED_EDGE_COLUMNS[name]], edge_rows)
         return f"CASE WHEN {forward} THEN {value} ELSE {reverse} END"
 
     def way_value(name: str, rows: str | None = None) -> str | None:

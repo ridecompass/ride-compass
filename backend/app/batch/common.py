@@ -69,21 +69,19 @@ def affected_rows(status: str) -> int:
     return int(status.split()[-1])
 
 
-def reused_edges_sql(previous: str | None, source: str = "road_edges", condition: str = "") -> str:
+def reused_edges_sql(previous: str | None) -> str:
     """区間ごとに写す段が、前回の値を写す区間を一時の表`_reused`に置く。
 
     同じ形とみなすのは、鍵が同じで座標とその並びも同じ区間だけ（`=`。`ST_Equals`のように形を幾何として
-    比べる計算をしない）。`source`は今回の区間（別名`s`。`geom`を持つ）、`condition`は段が足す
-    結合と条件。`previous`がNone（写せない）なら空の表を置く。
+    比べる計算をしない）。`previous`がNone（写せない）なら空の表を置く。
     """
     if previous is None:
-        return f"CREATE TEMP TABLE _reused ON COMMIT DROP AS SELECT osm_way_id, segment_index FROM {source} WHERE false"
+        return "CREATE TEMP TABLE _reused ON COMMIT DROP AS SELECT osm_way_id, segment_index FROM road_edges WHERE false"
     return f"""
 CREATE TEMP TABLE _reused ON COMMIT DROP AS
 SELECT s.osm_way_id, s.segment_index
-FROM {source} s JOIN {previous}.road_edges p
+FROM road_edges s JOIN {previous}.road_edges p
   ON p.osm_way_id = s.osm_way_id AND p.segment_index = s.segment_index AND p.geom = s.geom
-{condition}
 """
 
 

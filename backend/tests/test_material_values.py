@@ -29,6 +29,7 @@ import pytest
 from sqlalchemy import text
 
 from app.domain import material_sql
+from app.domain.attributes import MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT
 from app.domain.material_catalog import (
     ACCIDENT_COUNT_PER_KM_YEAR,
     CoverageExcluded,
@@ -60,14 +61,19 @@ async def _way_values(session, expression: str, tags_by_way: dict[int, dict[str,
 
 
 async def _edge_value(session, expression: str, *, distance_m: float, accident_years: int = 1,
-                      **edge_values: float | None) -> object:
-    """区間の長さと区間の値を与えて、式を1区間ぶん評価する。"""
+                      way_tags: dict[str, str] | None = None, **edge_values: float | bool | None) -> object:
+    """区間の長さと区間の値を与えて、式を1区間ぶん評価する。`way_tags`を与えると、そのタグの道を取り込んで`w`に置く。"""
+    way = ""
+    if way_tags is not None:
+        await _ingest_ways({1: way_tags})
+        way = f" CROSS JOIN (SELECT * FROM {WAYS_SOURCE_SQL} w0 WHERE w0.osm_way_id = 1) w"
     row = await session.execute(
         text(f"SELECT ({expression})"
              " FROM json_populate_record(NULL::road_edges, CAST(:re AS json)) re,"
              " (SELECT * FROM json_populate_record(NULL::edge_counts, CAST(:em AS json)) c,"
-             "  json_populate_record(NULL::edge_elevation, CAST(:em AS json)) e,"
-             "  json_populate_record(NULL::edge_landcover, CAST(:em AS json)) l) em"),
+             "  json_populate_record(NULL::edge_accidents, CAST(:em AS json)) a,"
+             "  json_populate_record(NULL::edge_ground_elevation, CAST(:em AS json)) e,"
+             f"  json_populate_record(NULL::edge_landcover, CAST(:em AS json)) l) em{way}"),
         {"re": json.dumps({"distance_m": distance_m}), "em": json.dumps(edge_values),
          "accident_years": accident_years})
     return row.scalar_one()
@@ -179,6 +185,41 @@ async def test_a_poi_density_is_per_km_and_missing_until_counted(road_graph_sess
                               distance_m=distance_m, **{f"poi_{_POI_KIND}": count})
 
     assert value == (None if expected is None else pytest.approx(expected))
+
+
+_LIMIT = MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT / 100
+
+
+@pytest.mark.parametrize(("start", "end", "at_ends", "distance_m", "expected"), [
+    (100.0, 103.0, True, 100.0, 3.0),
+    (103.0, 100.0, True, 100.0, -3.0),
+    (100.0, 100.0 + 3 / 0.9, True, 300.0, 1.11),  # 小数2桁へ丸める
+    (100.0, 103.0, False, 100.0, None),  # 端の頂点に標高が無い
+    (100.0, 100.0 + 100.0 * _LIMIT, True, 100.0, MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT),
+    (100.0, 100.0 + 100.0 * _LIMIT + 0.01, True, 100.0, None),  # 公道としてありえない
+    (100.0, 100.0, True, 0.0, None),  # 同じ場所の頂点だけの区間
+])
+async def test_the_grade_is_the_rise_between_the_ends_over_the_length(road_graph_session, start, end, at_ends,
+                                                                      distance_m, expected):
+    value = await _edge_value(road_graph_session, material_sql.GROUND_GRADE_SQL, distance_m=distance_m,
+                              start_ground_m=start, end_ground_m=end, ground_at_ends=at_ends)
+
+    assert value == (None if expected is None else pytest.approx(expected, abs=0.005))
+
+
+@pytest.mark.parametrize(("tags", "expected"), [
+    ({}, [6.0, 2.0]),
+    ({"bridge": "yes"}, [4.0, 0.0]),  # 途中の頂点は橋の下の谷を指す
+    ({"tunnel": "yes"}, [4.0, 0.0]),
+])
+async def test_a_structure_climbs_only_between_its_ends(road_graph_session, tags, expected):
+    column = material_sql.ELEVATION_VALUE_SQL
+    value = await _edge_value(road_graph_session,
+                              f"ARRAY[{column['elevation_gain_m']}, {column['elevation_loss_m']}]",
+                              distance_m=100.0, way_tags=tags, start_ground_m=100.0, end_ground_m=104.0,
+                              ground_gain_m=6.0, ground_loss_m=2.0)
+
+    assert value == expected
 
 
 # --- カタログに直に書かれた式（domain/material_catalog.py） -----------------------------

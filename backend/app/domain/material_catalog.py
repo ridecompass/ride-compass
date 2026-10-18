@@ -51,6 +51,7 @@ from app.domain.primary_attributes import (
 )
 
 from app.domain.material_sql import (
+    GROUND_GRADE_SQL,
     BICYCLE_NORMALIZED_SQL,
     BRIDGE_STRUCTURE_VALUES,
     CYCLEWAY_CLASS_SQL,
@@ -448,10 +449,10 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         # `services/gradient_way_service.py`のフィーチャー→値配信で乗せる。
         tile_property=None,
         primary_attribute=ATTR_ELEVATION,
-        value_sql="em.average_grade",
+        value_sql=GROUND_GRADE_SQL,
         coverage=EdgeMaterialCoverageSpec(
-                present_condition="em.average_grade IS NOT NULL",
-                source="edge_elevation.average_grade の有無",
+                present_condition="em.ground_at_ends",
+                source="edge_ground_elevation.ground_at_ends（区間の両端の頂点に標高があるか）",
                 missing_semantics="unknown",
             ),
     ),
@@ -551,7 +552,11 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         tile_property=None,
         primary_attribute=ATTR_ACCIDENT_POINT,
         value_sql=f"CASE WHEN :accident_years > 0 THEN {per_km_value_sql('em.accident_count')} / :accident_years END",
-        coverage=_EDGE_COUNTS_COVERAGE,
+        coverage=EdgeMaterialCoverageSpec(
+            present_condition="em.accident_count IS NOT NULL",
+            source="区間の事故の表（edge_accidents）に行があるか",
+            missing_semantics="unknown",
+        ),
     ),
     "lit": MaterialSpec(
         material_id="lit",
