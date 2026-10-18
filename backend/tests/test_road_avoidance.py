@@ -16,8 +16,6 @@ from app.domain.road_avoidance import AVOIDABLE_ROWS, road_avoidance_masks
 from app.infrastructure.source_models import WAYS_SOURCE_SQL
 from tests.source_ingest import ingest_records, way_record
 
-ARTERIAL = "highway.arterial"
-
 
 def test_a_segment_on_rows_to_avoid_and_to_exclude_is_excluded():
     """弱い段を取ると、「通らない」を選んだ行の道を、別の行で「なるべく避ける」にしただけで通ってしまう。"""
@@ -29,13 +27,17 @@ def test_a_segment_on_rows_to_avoid_and_to_exclude_is_excluded():
 
 
 @pytest.mark.asyncio(loop_scope="module")
-@pytest.mark.parametrize(("highway", "matches"), [("trunk", True), ("primary", True), ("secondary", False)],
-                         ids=["国道", "主要地方道", "一般の県道"])
-async def test_the_arterial_row_matches_national_and_major_roads_only(road_graph_session, highway, matches):
-    """国道を除いたつもりで国道を通る、または県道まで除いて経路が遠回りになる。"""
+@pytest.mark.parametrize(("highway", "row"), [
+    ("motorway", "highway.motorway"), ("trunk", "highway.trunk"), ("primary", "highway.primary"),
+    ("secondary", "highway.secondary"), ("unclassified", "highway.unclassified"), ("residential", "highway.residential"),
+    ("cycleway", "highway.cycleway"), ("path", "highway.footway"),
+], ids=["高速道路", "国道", "主要地方道", "一般県道", "1車線の一般道", "住宅街の道", "自転車専用道", "山の小道"])
+async def test_a_road_matches_only_the_row_of_its_kind(road_graph_session, highway, row):
+    """国道を除いたつもりで国道を通る、県道まで除いて経路が遠回りになる、または歩道を除くと自転車専用道まで除かれる。"""
     await ingest_records("osm_way", [way_record(1, [(139.70, 35.68), (139.701, 35.68)], [10, 11], {"highway": highway})])
+    keys = [key for key in AVOIDABLE_ROWS if key.startswith("highway.")]
+    columns = ", ".join(f"({AVOIDABLE_ROWS[key].match_sql})" for key in keys)
 
-    rows = await road_graph_session.execute(
-        text(f"SELECT ({AVOIDABLE_ROWS[ARTERIAL].match_sql}) FROM {WAYS_SOURCE_SQL} w"))
+    matched = (await road_graph_session.execute(text(f"SELECT {columns} FROM {WAYS_SOURCE_SQL} w"))).one()
 
-    assert rows.scalars().all() == [matches]
+    assert [key for key, hit in zip(keys, matched, strict=True) if hit] == [row]
