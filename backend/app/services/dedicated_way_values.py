@@ -16,7 +16,7 @@ from typing import Callable, Iterable, Mapping, Protocol, Sequence, cast
 
 import numpy as np
 
-from app.domain.axis_definitions import AxisDefinition, copy_axis_definitions
+from app.domain.axis_definitions import AxisDefinition, BreakpointLinearShape, copy_axis_definitions
 from app.domain.dynamic_way_values import (
     FeatureMaterials,
     FeatureSegments,
@@ -37,6 +37,7 @@ from app.domain.material_catalog import MATERIAL_CATALOG, segment_material_ids
 from app.domain.region import EDGE_UNIT_MIN_ZOOM
 from app.domain.way_value_formula import FALSE, WayValueFormula, feature_names
 from app.infrastructure.road_graph_repository import RoadGraphRepository
+from app.services.axis_registry_service import check_loadable_after_write
 from app.services.gradient_way_service import GradientWayService
 from app.services.rain_way_service import RainWayService
 from app.services.weather_service import WeatherService
@@ -353,6 +354,30 @@ def axis_way_value_lens(
     definition = definitions.get(axis_id)
     if definition is None or not definition.is_published:
         return None
+    return AxisWayValueLens(axis_id, definitions, feature_materials, build_service)
+
+
+#: 軸id・下書きの形→`draft_axis_way_value_lens`のレンズ。
+DraftWayValueLensBuilder = Callable[[str, BreakpointLinearShape], AxisWayValueLens | None]
+
+
+def draft_axis_way_value_lens(
+    axis_id: str, shape: BreakpointLinearShape, feature_materials: FeatureMaterialSource,
+    build_service: MaterialServiceBuilder,
+) -> AxisWayValueLens | None:
+    """軸の`shape`だけを`shape`へ差し替えた軸の集合で、軸の値を求めるレンズ（軸スタジオの較正の地図）。公開していない軸も
+    組み立てる。軸が無ければNone。
+
+    差し替えは組み立てた写しの中だけで、`AXIS_DEFINITIONS`と、ほかの要求のレンズの値は変わらない。差し替えた集合が
+    保存の判定（`services/axis_registry_service.py: check_loadable_after_write`）を通らなければ、その文の`ValueError`
+    ——保存できない下書きは、評価の途中で落ちる（参照先の無い材料・輪になる組み合わせ）。
+    """
+    definitions = copy_axis_definitions()
+    definition = definitions.get(axis_id)
+    if definition is None:
+        return None
+    definitions[axis_id] = definition.model_copy(update={"shape": shape})
+    check_loadable_after_write(definitions, axis_id)
     return AxisWayValueLens(axis_id, definitions, feature_materials, build_service)
 
 

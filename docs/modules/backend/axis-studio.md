@@ -382,6 +382,7 @@ idの文字列ではなく宣言そのもので指す。材料が指す要素に
 | `POST /api/admin/axis-definitions/{axis_id}/unpublish` | Basic認証必須 | 公開済み軸を下書きへ戻す（`is_published`以外は変更しない） |
 | `POST /api/admin/axis-definitions/preview-scores` | Basic認証必須 | 編集中の折れ点で、横軸の値の並び（分布の階級の代表値）と1つ目の項の材料の値の並び（参考点）がそれぞれ何点になるか。参考点は横軸の値も返す。どちらも評価と同じ配列の計算（`domain/axis_definitions.py: BreakpointLinearShape.scores_at`・`first_term_points`）で出し、参考点は「ほかの項の材料が無い道」として評価する——ほかの項に必須の材料があれば評価と同じく欠損（null）になる（DBを読まない） |
 | `POST /api/admin/axis-definitions/preview-calibration` | Basic認証必須 | 送られた定義（保存前の下書きでよい）で地図が塗る段（`map_paint`。境界の上書きが無ければ形から導いたもの）と、密度の軸か（`averages_density`。真なら折れ点は0から伸びる2点の直線に限る）を返す。定義の検証は保存と同じで、通らなければ保存と同じ誤りの文を返す（DBを読まない） |
+| `POST /api/admin/axis-definitions/preview-way-values` | Basic認証必須 | 編集中の折れ点（`shape`）で、タイル（z・x・y）のフィーチャーごとに地図が塗る値（較正の地図）。鍵と値の意味は地図の配信（`/api/region/dynamic-way-values`）と同じで、同じ材料・同じ評価から、軸の集合の写しの中で`shape`だけを差し替えて求める（`services/dedicated_way_values.py: draft_axis_way_value_lens`）——保存されている折れ点を渡せば配信と同じ値になり、`AXIS_DEFINITIONS`と配信の値は変わらない。公開していない軸も求める。条件で変わる材料を読む軸は、配信と同じ条件の欄（走行方位・時刻・想定速度）を受け、要る欄が欠ければ422。無い軸は404、保存の判定（`services/axis_registry_service.py: check_loadable_after_write`）が断る下書きはその文で422。レート制限の上限とDB接続プールのsemaphoreは配信と同じもの（`api/routers/_tile_http.py: region_tile_semaphore`）を使う |
 | `GET /api/axis-catalog` | 不要（公開） | `is_published=True`の軸のみ返す。画面が読む項目（名前・説明・重みの既定・チップ・地図が塗るもの・生値の単位と内訳等）だけを返し、`shape`・しきい値の上書きの生の値は返さない（地図の段は`map_paint`が配る） |
 
 管理API（`/api/admin/axis-definitions`）のBasic認証はルーターの`dependencies`で1か所に宣言し、
@@ -458,7 +459,7 @@ idのまま出す。書き込み時のガード・削除の断り（下の「書
 
 - 軸idが材料idと重ならない——軸の評価結果は材料と同じ辞書へ書き戻されるため、重なると同名の材料の値を黙って上書きする。
 - 1つの材料を2つの軸で数えない（`check_material_exclusivity`）。重なりは後に並ぶ軸の誤りとして名指す（作成・更新の書き込みは
-  書いた軸を最後に並べて渡す（`services/axis_registry_service.py: _check_loadable_after_write`）ので、断りの文が書いた軸の側から読める）。
+  書いた軸を最後に並べて渡す（`services/axis_registry_service.py: check_loadable_after_write`）ので、断りの文が書いた軸の側から読める）。
 - 組み合わせが輪にならない（`topological_axis_order`）。
 
 書き込みの断りは例外の文（表示名で名指す）のまま返し、起動時の読み込みの失敗は例外が持つid（重なった2軸・輪の並び）で
