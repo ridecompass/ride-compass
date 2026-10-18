@@ -102,15 +102,15 @@ _WAY_RE_CLAUSE = ("CROSS JOIN LATERAL (SELECT ST_Length(w.geom::geography) AS di
 _READS_RE = re.compile(r"(?<![\w.])re\.")
 
 
-def way_from_clause(expressions: list[str], source: str | None = None) -> str:
-    """式が参照する別名だけを含むFROM句。使わないJOINを足すと、材料1件のDISTINCTを引く
-    だけの軸スタジオの値列挙まで重くなる。
+def way_from_clause(expressions: list[str], source: str) -> str:
+    """式が参照する別名だけを含むFROM句。使わないJOINを足すと、読む材料の少ない問い合わせまで
+    道の全件と材料の表の結合へ広がる。
 
     `source`は`w`をどう引くか（全件の走査・抽選付きの走査・主キーでの1件）。呼び出し側が
     決める——1件を引くのに走査を使うと、道の全件に対する総当たりになる。
     """
     reads_re = any(_READS_RE.search(expression) for expression in expressions)
-    return (f"\nFROM {source or ways_source_sql()} w\n{_WAY_RE_CLAUSE if reads_re else ''}"
+    return (f"\nFROM {source} w\n{_WAY_RE_CLAUSE if reads_re else ''}"
             + material_from_clause(expressions, "w.osm_way_id"))
 
 

@@ -44,6 +44,7 @@ from app.infrastructure.road_graph_repository import (
     RoadGraphRepository,
     way_from_clause,
 )
+from app.infrastructure.source_models import WAYS_SOURCE_SQL
 
 BBOX = BoundingBox(min_latitude=35.0, min_longitude=139.0,
                    max_latitude=35.1, max_longitude=139.1)
@@ -139,11 +140,11 @@ def test_material_array_columns_are_all_distinct():
 
 
 def test_material_tables_are_joined_only_for_the_columns_the_expressions_read():
-    """使わないJOINを足すと、材料1件を引くだけの値列挙まで道の全件へ広がる。"""
+    """使わないJOINを足すと、読む材料の少ない問い合わせまで道の全件と材料の表の結合へ広がる。"""
     edge_column = next(column for column in EdgeCountsRow.__table__.columns if not column.primary_key)
     clause = material_from_clause([f"em.{edge_column.name}"], "k.osm_way_id", "k.segment_index")
 
-    assert "JOIN" not in way_from_clause(["w.tags"])
+    assert "JOIN" not in way_from_clause(["w.tags"], WAYS_SOURCE_SQL)
     assert EdgeCountsRow.__tablename__ in clause
     assert EdgeElevationRow.__tablename__ not in clause
     assert WayCountsRow.__tablename__ not in clause
