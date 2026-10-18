@@ -5,8 +5,8 @@
 引数: 表のファイル 前回の見直しの場所（review.json がある所。無ければ空のディレクトリ） 書き出す場所
 書くもの（書き出す場所）:
 - review.json: 測った版・前回の版・回し終えたか・変異の数・候補（観点ごと）・判断できずに残したテストの理由
-- candidates.md: 候補を観点ごとに1件1行で並べた表。「落ちると利用者に何が壊れるか」の欄を空けて出す。候補は消す一覧ではなく、
-  人が1件ずつその欄を書いてから、消す・足す・直すを決める
+- candidates.md: 候補を観点ごとに1件1行で並べた表。「落ちると利用者に何が壊れるか」の欄を空けて出す。重なりの候補は基準で消し
+  （消す前に1本ずつ読んで、判断できないものは残す）、ほかの候補は人が1件ずつその欄を書いてから、足す・直すを決める
 - summary.md: 実行の要約に出す表（層ごとの変異スコア・テストの区分・観点ごとの候補の数）
 
 候補（隔離のほかは、1件ごとに空の breaks の欄を持つ。隔離は汚した側を探して直すもので、壊れるものでは決めない）:
@@ -19,8 +19,9 @@
 重なりの選び方（testing-review.md の重なりの 1〜3）:
 - テストの高さは、通る変異のファイルの層（表の config.layers。上から並び、| でつないだものは同じ高さ）の一番上。200本以上のテストが通る変異（足場）と、読み込みの
   ときに呼ばれうる変異（static）は数えない。数える変異が無いテストは判断できないので残す。
-- 判断できないものは残す: static の変異を見つけるテスト・基準で落ちたテスト（隔離の候補）。変異を1つも見つけないテストは
-  比べようがないので候補にしない（書き方の候補に出す）。
+- 判断できないものは残す: static の変異を見つけるテスト・基準で落ちたテスト（隔離の候補）・100本以上のテストが一緒に落ちる
+  書き換えしか見つけないテスト（見つけたのは足場・後始末・応答の中継ぎで、テストが見ている所は測りの外にある見込みが高い。
+  書き方の候補「広くしか落ちない」に出る）。変異を1つも見つけないテストは比べようがないので候補にしない（書き方の候補に出す）。
 - API の経路（app/api/routers の関数）ごとに、それを通るテストを1本は残す。表は関数の名前を持たないので、経路のファイルの変異を
   通るテストの組ごとに数える（同じ関数の変異は、同じテストの組に通られる）。
 - 低い高さから順に、同じ高さ以下の残すテストで見つからない変異を多く見つける順に残し、何も足さないものを候補にする。
@@ -88,6 +89,9 @@ for k, m in mutants.items():
 heights = {t: max(heights_of[t]) if heights_of[t] else None for t in found}
 height_of = {t: h for t, h in heights.items() if h is not None}  # 高さの決まるテストだけ
 
+finders = collections.Counter(m for t in found for m in found[t])
+broad = {m for m, n in finders.items() if n >= BROAD_TESTS}
+
 judge = set(found)
 why_kept = {}
 for t in judge:
@@ -95,6 +99,8 @@ for t in judge:
         why_kept[t] = "読み込みのときに呼ばれうる関数の変異を見つける"
     elif t in baseline_failed:
         why_kept[t] = "基準で落ちた（隔離）"
+    elif found[t] <= broad:
+        why_kept[t] = "100本以上が一緒に落ちる書き換えしか見つけない"
     elif heights[t] is None:
         why_kept[t] = "高さを決める関数が無い"
 by_key = collections.defaultdict(set)
@@ -207,10 +213,9 @@ def whole(group):
     return sorted(k for k in {function_of_test(t) for t in group} if instances[k] <= group)
 
 
-finders = collections.Counter(m for t in found for m in found[t])
 covered_ran = {t for t, ms in covering.items() if ms & ran}
 zero = {t for t in covered_ran if not found.get(t)}
-broad_only = {t for t in found if all(finders[m] >= BROAD_TESTS for m in found[t])}
+broad_only = {t for t in found if found[t] <= broad}
 writing = [{"test": k, "lines": source_of(k)[1], "form": form, "breaks": ""}
            for form, group in (("通るのに何も見つけない", zero), ("広くしか落ちない", broad_only)) for k in whole(group)]
 effect = [{"mutant": k, "file": m["file"], "line": m["location"]["start"]["line"], "change": m.get("description", ""),
@@ -290,7 +295,7 @@ groups = [("全体（収集した）", all_tests), ("どの変異も通らない
 md += ["", "### テストの区分", "", "| 区分 | テスト | テスト関数 | 行数 |", "|---|---:|---:|---:|"]
 md += [f"| {name} | {len(s)} | {len({function_of_test(t) for t in s})} | {total_lines(s)} |" for name, s in groups]
 both = [c for c in overlap if c["previous"]]
-md += ["", "### 候補（1件ずつ「落ちると利用者に何が壊れるか」を書いてから決める。成果物の candidates.md）", "",
+md += ["", "### 候補（重なりは基準で消す。ほかは1件ずつ「落ちると利用者に何が壊れるか」を書いてから決める。成果物の candidates.md）", "",
        "| 観点 | 件数 | テスト関数の行数 |", "|---|---:|---:|",
        f"| 効き: 生き残り・どのテストも通らない変異 | {len(effect)} | |",
        f"| 重なり: 今回の候補 | {len(overlap)} | {sum(c['lines'] for c in overlap)} |",
@@ -327,7 +332,7 @@ open(os.path.join(OUT, "summary.md"), "w", encoding="utf-8").write("\n".join(md)
 
 BREAKS = "落ちると利用者に何が壊れるか"
 cand = [f"# テストの見直しの候補（測った版 `{measured[:9]}`）", "",
-        f"候補は消す一覧ではない。1件ずつ「{BREAKS}」を書いてから、消す・足す・直すを決める"
+        f"重なりの候補は基準で消す（消す前に1本ずつ読んで、判断できないものは残す）。ほかの候補は1件ずつ「{BREAKS}」を書いてから、足す・直すを決める"
         "（.claude/rules/testing-review.md「テストを変異テストで見直す」）。", "",
         "## 重なり（前回も候補で中身が同じものを先に）", "",
         f"| テスト関数 | 前回も | 行数 | 高さ | 見つける変異の1つ | それを見つける残すテスト | {BREAKS} |", "|---|---|---:|---:|---|---|---|"]
