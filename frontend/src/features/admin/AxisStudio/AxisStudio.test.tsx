@@ -4,7 +4,7 @@
  * 管理APIは網の層で応える。材料は本物の一覧（生成物）を通す。
  *
  * ここで見ないもの:
- * - 較正の画面 → `AxisCalibration.test.tsx`
+ * - 較正の画面 → `AxisCalibration.test.tsx`（下書きの点数の地図は`app/admin/page.calibration.test.tsx`）
  */
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -64,7 +64,7 @@ beforeEach(() => {
 /** 描いて、既定の一覧が届くまで待つ（`loaded: false`なら待たない。一覧を差し替えたテスト用）。 */
 async function renderStudio({ loaded = true } = {}) {
   const user = userEvent.setup();
-  render(<AxisStudio />);
+  render(<AxisStudio calibrationMap={() => null} />);
   if (loaded) await screen.findByRole("tab", { name: "公開済み（2）" });
   return user;
 }

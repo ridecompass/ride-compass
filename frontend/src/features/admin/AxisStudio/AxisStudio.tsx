@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/T
 import { materialCatalogLabel } from "@/lib/axisMaterialsCatalog";
 import { listAxisDefinitions } from "@/features/admin/adminApi";
 import type { AxisDefinitionResponse, AxisShape } from "@/types/route";
-import { AxisCalibration } from "./AxisCalibration";
+import { AxisCalibration, type CalibrationMapSlot } from "./AxisCalibration";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { cardVariants } from "@/components/ui/Card/Card";
@@ -27,7 +27,7 @@ function labelForMaterialOrAxis(id: string, definitions: readonly AxisDefinition
 
 // 軸スタジオのトップレベルコンポーネント。軸の一覧と較正の画面を並べる。軸を足す・材料や表示名を直す・
 // 公開を取り消す・消すのは定義ファイル（backend/scripts/axis_apply.py）から入れ、この画面は持たない。
-export default function AxisStudio() {
+export default function AxisStudio({ calibrationMap }: { calibrationMap: CalibrationMapSlot }) {
   const definitionsQuery = useQuery({ queryKey: ["axis-definitions"], queryFn: listAxisDefinitions }, getQueryClient());
   const definitions = definitionsQuery.data ?? null;
   const listError = definitionsQuery.error?.message ?? null;
@@ -79,7 +79,7 @@ export default function AxisStudio() {
         </TabsContent>
       </Tabs>
 
-      <AxisCalibration definitions={definitions ?? []} onSaved={reload} />
+      <AxisCalibration definitions={definitions ?? []} onSaved={reload} calibrationMap={calibrationMap} />
     </div>
   );
 }

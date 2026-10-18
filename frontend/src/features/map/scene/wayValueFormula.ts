@@ -184,3 +184,9 @@ export function wayValueExpressions(
   const conversion = new Conversion(inputs);
   return { value: conversion.number(formula.value), undetermined: conversion.truth(formula.undetermined) };
 }
+
+/** 道ごとの材料 `name` をそのまま道の値にし、向きで決まらない道を持たない木。backend が求め終えた値を、材料として載せて
+ * 塗るときに使う。 */
+export function featureValueFormula(name: string): WayValueFormula {
+  return { value: { op: "feature", name }, undetermined: { op: "const", value: 0 } };
+}

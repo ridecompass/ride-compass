@@ -10,6 +10,7 @@
  * - 3つの入力から作る折れ点 → `breakpointTools.test.ts`（期待値は`generateBreakpoints`から引く）
  * - 地図の段の求め方 → backendの`test_axis_admin_routes.py`
  * - 種類ごとの延長の集め方 → backendの`test_value_distribution.py`
+ * - 下書きの点数の地図（別の機能の部品で、組み立てるページが渡す） → `app/admin/page.calibration.test.tsx`
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -119,10 +120,12 @@ beforeEach(() => {
   });
 });
 
+const NO_MAP = () => null;
+
 async function openAxis(def: AxisDefinitionResponse, definitions = [SLOPE, DENSITY, HAND_EDITED, SIGNED]) {
   const user = userEvent.setup();
   const onSaved = vi.fn(async () => {});
-  render(<AxisCalibration definitions={definitions} onSaved={onSaved} />);
+  render(<AxisCalibration definitions={definitions} onSaved={onSaved} calibrationMap={NO_MAP} />);
   await user.selectOptions(screen.getByRole("combobox", { name: "較正する軸" }), def.axis_id);
   await screen.findByRole("img");
   return { user, onSaved };
@@ -138,7 +141,11 @@ async function savedPayload(): Promise<AxisDefinitionPayload> {
 describe("軸を選ぶ", () => {
   it("数値の軸も対応表の軸も、公開中か下書きかを添えて並べる", () => {
     render(
-      <AxisCalibration definitions={[SLOPE, { ...DENSITY, is_published: false }, CATEGORICAL]} onSaved={vi.fn()} />,
+      <AxisCalibration
+        definitions={[SLOPE, { ...DENSITY, is_published: false }, CATEGORICAL]}
+        onSaved={vi.fn()}
+        calibrationMap={NO_MAP}
+      />,
     );
     const options = within(screen.getByRole("combobox", { name: "較正する軸" })).getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual([
@@ -305,7 +312,7 @@ describe("対応表の軸", () => {
   async function openCategorical() {
     const user = userEvent.setup();
     const onSaved = vi.fn(async () => {});
-    render(<AxisCalibration definitions={[SLOPE, CATEGORICAL]} onSaved={onSaved} />);
+    render(<AxisCalibration definitions={[SLOPE, CATEGORICAL]} onSaved={onSaved} calibrationMap={NO_MAP} />);
     await user.selectOptions(screen.getByRole("combobox", { name: "較正する軸" }), CATEGORICAL.axis_id);
     const rows = await screen.findByRole("region", { name: "種類ごとの点数" });
     return { user, onSaved, rows };
