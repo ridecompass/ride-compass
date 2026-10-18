@@ -640,13 +640,15 @@ def main() -> None:
                 "defaults": sorted(DEFAULT_HARD_FILTERS),
             },
             # 道のレイヤの凡例の行ごとの避け方の段と、選べる行・既定の段。backendは鍵の集合の完全一致を
-            # 要求する（`RoadAvoidanceOverride`）。行は道のレイヤの凡例の行の宣言から導く。
+            # 要求する（`RoadAvoidanceOverride`）。行は道のレイヤの凡例の行の宣言から導く。`former_key`は分ける前の
+            # 行の鍵で、その鍵で受け取っていた段をこの行へ読み替えられるように配る。
             "road_avoidance": {
                 "levels": [{"key": level, "label": AVOIDANCE_LEVEL_LABELS[level]} for level in AVOIDANCE_LEVELS],
                 "rows": [
                     {
                         "key": row.key, "layer": row.layer_id, "layer_label": row.layer_label,
                         "label": row.label, "description": row.description, "default": row.default_level,
+                        "former_key": row.former_key,
                     }
                     for row in AVOIDABLE_ROWS.values()
                 ],

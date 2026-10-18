@@ -335,4 +335,37 @@ describe("道ごとの避け方", () => {
     window.localStorage.setItem("ridecompass:road-avoidance", "{broken");
     expect(renderConditions().result.current.roadAvoidance).toEqual(DEFAULT_ROAD_AVOIDANCE);
   });
+  it("保存が無ければ、高速道路・国道・主要地方道をなるべく避け、ほかの道は通る", () => {
+    const avoided = ["highway.motorway", "highway.trunk", "highway.primary"];
+
+    expect(renderConditions().result.current.roadAvoidance).toEqual(
+      Object.fromEntries(AVOIDABLE_ROWS.map(({ key }) => [key, avoided.includes(key) ? "avoid" : "pass"])),
+    );
+  });
+
+  it("分ける前の行の鍵で保存した段は、分けてできたどの行にも引き継ぎ、分けたあとの鍵で保存した段を先に読む", () => {
+    window.localStorage.setItem(
+      "ridecompass:road-avoidance",
+      JSON.stringify({ "highway.arterial": "exclude", "highway.local": "avoid", "highway.cycleway": "exclude" }),
+    );
+    expect(renderConditions().result.current.roadAvoidance).toEqual({
+      ...DEFAULT_ROAD_AVOIDANCE,
+      "highway.motorway": "exclude",
+      "highway.trunk": "exclude",
+      "highway.primary": "exclude",
+      "highway.unclassified": "avoid",
+      "highway.residential": "avoid",
+      "highway.cycleway": "exclude",
+      "highway.footway": "exclude",
+    });
+
+    window.localStorage.setItem(
+      "ridecompass:road-avoidance",
+      JSON.stringify({ "highway.cycleway": "exclude", "highway.footway": "pass" }),
+    );
+    expect(renderConditions().result.current.roadAvoidance).toMatchObject({
+      "highway.cycleway": "exclude",
+      "highway.footway": "pass",
+    });
+  });
 });
