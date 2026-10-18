@@ -49,6 +49,11 @@ function otherRow(track: RoadTrack): RoadTrackRow {
   return { key: ROAD_OTHER_KEY, ...row, color: palette.semantic.no_data };
 }
 
+/** どの分類にも入らない行（その他・該当なし・データなし）か。 */
+export function isUnclassifiedRow(row: RoadTrackRow): boolean {
+  return row.key === ROAD_OTHER_KEY || row.isFallback === true;
+}
+
 /** 凡例の行の並び。分類、その他（該当なし）、タグが無い道が現れうる属性ではデータなし。 */
 export function roadTrackRows(track: RoadTrack): readonly RoadTrackRow[] {
   return [

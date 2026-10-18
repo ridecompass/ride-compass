@@ -25,13 +25,11 @@ import type { RoutePoint, RouteSegmentDetail, SelectedRouteSegment } from "@/typ
 
 import {
   bandLegendRows,
-  bandRowAtKm,
   layerBand,
   layerLine,
   layerMarks,
   layerValueAtKm,
   markLegendRows,
-  markNearKm,
   PROFILE_LAYERS,
   type BandLayer,
   type BandPiece,
@@ -39,7 +37,7 @@ import {
   type PointLayer,
   type PointMark,
 } from "./profileLayers";
-import RidingPointDetail from "./RidingPointDetail";
+import ProfilePointDetail from "./ProfilePointDetail";
 import type { ProfileLayerSelection } from "./useProfileLayers";
 
 /** 折れ線の上下に空ける余白（描画の縦座標）。最高・最低の点が枠に貼り付かないようにする。 */
@@ -47,8 +45,6 @@ const LINE_MARGIN = 8;
 /** 帯1本の高さと、帯どうしの間（描画の縦座標）。帯はグラフの下から積み、折れ線は残りの上の範囲に描く。 */
 const BAND_HEIGHT = 8;
 const BAND_GAP = 2;
-/** 選んだ地点の点とみなす、地点からの道のりの幅（横軸の全幅に対する割合）。指でなぞる細かさに合わせる。 */
-const MARK_PICK_WIDTH_RATIO = 0.02;
 
 interface RouteProfileProps {
   segments: readonly RouteSegmentDetail[];
@@ -62,7 +58,7 @@ interface RouteProfileProps {
   /** 横軸の右端の距離。 */
   scaleKm: number;
   selected: SelectedRouteSegment | null;
-  /** なぞる・押して離すと、その地点の区間を選ぶ。走行中は詳しくを閉じると null で外す。無ければ見るだけの図にする。 */
+  /** なぞる・押して離すと、その地点の区間を選ぶ。地点の詳しくを閉じると null で外す。無ければ見るだけの図にする。 */
   onSelect?: (selection: SelectedRouteSegment | null) => void;
   /** 走行中の現在地のルートの上の距離。 */
   progressKm?: number | null;
@@ -70,11 +66,12 @@ interface RouteProfileProps {
   waypointKms: readonly number[];
   /** グラフに出す情報の選択（結果と走行中の図で1つを共有する）。 */
   layers: ProfileLayerSelection;
-  /** 走行中の地図の下の図。切り替えと見方・出す情報のボタンを図に重ねず、図の上の行に出し、選んだ地点の詳しくを図の下に出す。 */
+  /** 走行中の地図の下の図。目盛り・図の下の文字を大きくし、「表示」の図に値の目盛りを出す。 */
   riding?: boolean;
 }
 
-/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「評価で塗る」は区間の難易度を、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、同じ横軸で出す。 */
+/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「評価で塗る」は区間の難易度を、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、
+ * 同じ横軸で出す。地点を選んでいる間は、その地点の詳しくを図の下に出す。 */
 export default function RouteProfile({
   segments,
   points,
@@ -122,23 +119,15 @@ export default function RouteProfile({
     return lineBottom - LINE_MARGIN - ((value - range.min) / span) * (lineBottom - 2 * LINE_MARGIN);
   }
 
-  // グラフの下には値の1行だけを出す（凡例は「グラフに出す情報」の一覧の行に出し、グラフの場所を取らない）。帯は地点を選んだときだけ。
-  function bandCaption(layer: BandLayer, pieces: readonly BandPiece[], pointKm: number | null) {
-    if (pieces.length === 0) return <p key={layer.id}>{layer.label}の値がありません。</p>;
-    const atPoint = pointKm === null ? null : bandRowAtKm(pieces, pointKm);
-    return atPoint === null ? null : <p key={layer.id}>{`${layer.label}・この地点 ${atPoint.label}`}</p>;
+  // 地点を選んでいない間、グラフの下には値の1行だけを出す（凡例は「グラフに出す情報」の一覧の行に出し、グラフの場所を取らない）。
+  // 帯と点は値が無いときだけ文で言う。
+  function bandCaption(layer: BandLayer, pieces: readonly BandPiece[]) {
+    return pieces.length === 0 ? <p key={layer.id}>{layer.label}の値がありません。</p> : null;
   }
   const bandPiecesOf = new Map(shownLayers.bands.map(({ layer, pieces }) => [layer.id, { layer, pieces }]));
 
-  function markCaption(layer: PointLayer, marks: readonly PointMark[], pointKm: number | null) {
-    if (marks.length === 0) return <p key={layer.id}>{layer.label}はルートの近くにありません。</p>;
-    const atPoint = pointKm === null ? null : markNearKm(marks, pointKm, scale.widthKm * MARK_PICK_WIDTH_RATIO);
-    if (atPoint === null) return null;
-    return (
-      <p
-        key={layer.id}
-      >{`${layer.label}・この地点 ${atPoint.kinds}${atPoint.name === null ? "" : ` ${atPoint.name}`}`}</p>
-    );
+  function markCaption(layer: PointLayer, marks: readonly PointMark[]) {
+    return marks.length === 0 ? <p key={layer.id}>{layer.label}はルートの近くにありません。</p> : null;
   }
   const marksOf = new Map(shownLayers.marks.map(({ layer, marks }) => [layer.id, { layer, marks }]));
 
@@ -161,46 +150,36 @@ export default function RouteProfile({
             label: `${Math.round(firstLine.range.min)}${firstLine.layer.draw.unit}`,
           },
         ];
-  // 走行中は、なぞって選んだ地点の詳しく（標高・勾配・道の区分・区間の詳細）を図の下に出す（結果では区間の詳細を図の外に出す）。
-  function ridingPointDetail(pointKm: number | null) {
-    if (!riding || pointKm === null) return null;
-    return (
-      <div className="max-h-[40dvh] overflow-y-auto">
-        <RidingPointDetail columns={scale.columns} pointKm={pointKm} onClear={() => onSelect?.(null)} />
-      </div>
+  // 地点を選んでいる間は、その地点の詳しくを図の下に出す（結果と走行中で同じ形）。地図で押した区間は図の上の地点が分からない
+  // （図は区間を同じものかで探す）ので、区間の値だけを出す。
+  function pointDetail(pointKm: number | null) {
+    if (selected === null) return null;
+    const detail = (
+      <ProfilePointDetail
+        selection={selected}
+        point={pointKm === null ? null : { columns: scale.columns, km: pointKm }}
+        axes={axes}
+        axisColors={axisColors}
+        onClear={onSelect === undefined ? undefined : () => onSelect(null)}
+      />
     );
+    return riding ? <div className="max-h-[40dvh] overflow-y-auto">{detail}</div> : detail;
   }
-  // 切り替えは地図の「表示」のボタンと「評価で塗る」のピルと同じ絵で出す。走行中は文字を出さず、絵を大きくする。
-  const triggerClass = riding ? "min-h-8 px-3" : "gap-1";
-  const triggerIconSize = riding ? 20 : 14;
-  const triggerLabelClass = riding ? "sr-only" : undefined;
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="relative flex flex-col gap-1">
-      {/* 結果では、切り替えと見方・出す情報のボタンは図の上の角に重ね、図の上に段を取らない（スマホのシートの低い高さで図を
-          大きく見せる）。重ねた部品の外では、図をなぞって地点を選べる。 */}
-      <div
-        className={cn(
-          "flex items-start justify-between gap-1",
-          !riding && "pointer-events-none absolute inset-x-1 top-1 z-10 [&>*]:pointer-events-auto",
-        )}
-      >
+      {/* 切り替えと見方・出す情報のボタンは、結果も走行中も図の右上に重ね、図の上に段を取らない（スマホの低い高さで図を大きく
+          見せる）。図の左上は値の目盛りに空けておく。重ねた部品の外では、図をなぞって地点を選べる。切り替えは地図の「表示」の
+          ボタンと「評価で塗る」のピルと同じ絵だけで出し、名前は読み上げに残す。 */}
+      <div className="pointer-events-none absolute top-1 right-1 z-10 flex items-start gap-1 [&>*]:pointer-events-auto">
         <TabsList aria-label="道のりのグラフ" variant="overlay">
-          <TabsTrigger
-            value="layer"
-            className={triggerClass}
-            usage="選んだ情報（標高・道の区分等）を、道のりに沿って出します。"
-          >
-            <DisplayItemsIcon size={triggerIconSize} />
-            <span className={triggerLabelClass}>{FACT_DISPLAY_NAME}</span>
+          <TabsTrigger value="layer" usage="選んだ情報（標高・道の区分等）を、道のりに沿って出します。">
+            <DisplayItemsIcon size={14} />
+            <span className="sr-only">{FACT_DISPLAY_NAME}</span>
           </TabsTrigger>
-          <TabsTrigger
-            value="lens"
-            className={triggerClass}
-            usage="区間ごとの難易度を、評価軸の色で塗って道のりに沿って出します。"
-          >
-            <EvaluationPaintIcon size={triggerIconSize} />
-            <span className={triggerLabelClass}>{EVALUATION_PAINT_NAME}</span>
+          <TabsTrigger value="lens" usage="区間ごとの難易度を、評価軸の色で塗って道のりに沿って出します。">
+            <EvaluationPaintIcon size={14} />
+            <span className="sr-only">{EVALUATION_PAINT_NAME}</span>
           </TabsTrigger>
         </TabsList>
         {tab === "lens" && (
@@ -313,14 +292,14 @@ export default function RouteProfile({
           progressKm={progressKm}
           waypointKms={waypointKms}
           riding={riding}
-          caption={ridingPointDetail}
+          caption={pointDetail}
         />
       </TabsContent>
       <TabsContent value="layer" className="flex flex-col gap-1">
         <ProfileChart
           scale={scale}
           label="道のりに沿った情報"
-          usage="横が道のり、縦が選んだ情報の値、下の帯が選んだ道の区分の色です。なぞるか押して離すと、その地点を地図に印で出し、下にその地点の値を出します。"
+          usage="横が道のり、縦が選んだ情報の値、下の帯が選んだ道の区分の色です。なぞるか押して離すと、その地点を地図に印で出し、下にその地点の詳しくを出します。"
           selected={selected}
           onSelect={onSelect}
           progressKm={progressKm}
@@ -329,8 +308,8 @@ export default function RouteProfile({
           riding={riding}
           waypointKms={waypointKms}
           caption={(pointKm) =>
-            riding && pointKm !== null ? (
-              ridingPointDetail(pointKm)
+            selected !== null ? (
+              pointDetail(pointKm)
             ) : (
               <div className={cn(profileTextClass(riding), "text-[var(--color-muted)] tabular-nums")}>
                 {shownLayers.lines.length + rowCount === 0 ? (
@@ -339,17 +318,15 @@ export default function RouteProfile({
                   shownLayers.lines.map(({ layer, range }) => {
                     if (range === null) return <p key={layer.id}>{layer.label}の値がありません。</p>;
                     const unit = layer.draw.unit;
-                    const atPoint = pointKm === null ? null : layerValueAtKm(scale.columns, layer, pointKm);
                     return (
                       <p key={layer.id}>
                         {`${layer.label} 最高 ${Math.round(range.max)}${unit}・最低 ${Math.round(range.min)}${unit}`}
-                        {atPoint !== null && `・この地点 ${Math.round(atPoint)}${unit}`}
                       </p>
                     );
                   })
                 )}
-                {shownLayers.bands.map(({ layer, pieces }) => bandCaption(layer, pieces, pointKm))}
-                {shownLayers.marks.map(({ layer, marks }) => markCaption(layer, marks, pointKm))}
+                {shownLayers.bands.map(({ layer, pieces }) => bandCaption(layer, pieces))}
+                {shownLayers.marks.map(({ layer, marks }) => markCaption(layer, marks))}
               </div>
             )
           }
