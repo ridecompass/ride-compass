@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * `features/route/savedConditions.ts`——保存した生成の条件の一覧を読む・名前の案・何が保存されるかの説明・一覧への入れ方。
- * 読むときは、今の画面が受け付けない件だけを捨ててほかの件を残し、除外・避け方は今の項目へ揃え、前に周回・目的地のモードで
+ * 読むときは、今の画面が受け付けない件だけを捨ててほかの件を残し、避け方は今の行へ揃え、前に持っていた除外の切り替えは落とし、前に周回・目的地のモードで
  * 保存した件は全長の目標の有無へ読み替える。重みの説明は、上書きしない
  * 重みなら既定の配分を、上書きした重みなら公開軸へ揃えた配分を、軸ごとの割合で出す。同じ名前で保存すると上書きする。
  *
@@ -12,7 +12,6 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_HARD_FILTERS } from "@/features/route/RouteSettingsPanel/HardFilterPanel";
 import { AVOIDABLE_ROWS, AVOIDANCE_LEVELS, DEFAULT_ROAD_AVOIDANCE } from "@/features/route/roadAvoidance";
 import { EMPTY_CATALOG } from "@/lib/axisCatalog";
 import { catalogEntry, catalogOf } from "@/testing/catalogAxes";
@@ -37,7 +36,6 @@ const ENTRY: SavedCondition = {
   waypoints: [POINT],
   destination: POINT,
   routePreference: { axis_a: 0.7 },
-  hardFilters: DEFAULT_HARD_FILTERS,
   roadAvoidance: DEFAULT_ROAD_AVOIDANCE,
 };
 
@@ -58,7 +56,6 @@ describe("readSavedConditions", () => {
     ["上限を超える経由地", { waypoints: Array(routeGenerateConfig.max_waypoints + 1).fill(POINT) }],
     ["数でない重み", { routePreference: { axis_a: "0.7" } }],
     ["負の重み", { routePreference: { axis_a: -0.1 } }],
-    ["除外が無い", { hardFilters: null }],
   ])("%sの件だけを捨て、ほかの件は残す", (_, broken) => {
     const other = { ...ENTRY, name: "別の件" };
 
@@ -80,16 +77,10 @@ describe("readSavedConditions", () => {
     },
   );
 
-  it("除外は今の項目へ揃える（無い項目は既定値、今は無い項目は落とす）", () => {
-    const [key, ...rest] = Object.keys(DEFAULT_HARD_FILTERS);
-    const stored = { [key]: !DEFAULT_HARD_FILTERS[key], retired_filter: true };
+  it("前に除外の切り替えを持っていた件は、切った種類があっても切り替えを落として読む（その道はいつも通らない）", () => {
+    const stored = { ...ENTRY, hardFilters: { motorway: false, no_bicycle: false } };
 
-    const [read] = readSavedConditions(JSON.stringify([{ ...ENTRY, hardFilters: stored }]))!;
-
-    expect(read.hardFilters).toEqual({
-      ...Object.fromEntries(rest.map((k) => [k, DEFAULT_HARD_FILTERS[k]])),
-      [key]: !DEFAULT_HARD_FILTERS[key],
-    });
+    expect(readSavedConditions(JSON.stringify([stored]))).toEqual([ENTRY]);
   });
 
   it("避け方は今の行へ揃える（避け方を持たない件・無い行・今は無い段は既定の段、今は無い行は落とす）", () => {
@@ -169,9 +160,7 @@ describe("describeConditions", () => {
     expect(describeConditions({ ...ENTRY, routePreference }, catalog).weights).toBe(expected);
   });
 
-  it("除外は、通らない道（除外する道路と「通らない」の行）・なるべく避ける行の順に名前を並べ、無ければ無いと出す", () => {
-    const [first, second] = routeGenerateConfig.hard_filters.filters;
-    const noFilters = Object.fromEntries(Object.keys(DEFAULT_HARD_FILTERS).map((key) => [key, false]));
+  it("除外は、「通らない」の行・なるべく避ける行の順に名前を並べ、無ければ無いと出す", () => {
     const allPass = Object.fromEntries(AVOIDABLE_ROWS.map(({ key }) => [key, "pass" as const]));
     const [excludedRow, avoidedRow] = AVOIDABLE_ROWS;
     const levelLabel = (level: string) => AVOIDANCE_LEVELS.find(({ key }) => key === level)!.label;
@@ -180,17 +169,12 @@ describe("describeConditions", () => {
       describeConditions(
         {
           ...ENTRY,
-          hardFilters: { ...noFilters, [first.key]: true, [second.key]: true },
           roadAvoidance: { ...allPass, [excludedRow.key]: "exclude", [avoidedRow.key]: "avoid" },
         },
         CATALOG,
       ).exclusions,
-    ).toBe(
-      `${levelLabel("exclude")} ${first.label}・${second.label}・${excludedRow.label}／${levelLabel("avoid")} ${avoidedRow.label}`,
-    );
-    expect(describeConditions({ ...ENTRY, hardFilters: noFilters, roadAvoidance: allPass }, CATALOG).exclusions).toBe(
-      "なし",
-    );
+    ).toBe(`${levelLabel("exclude")} ${excludedRow.label}／${levelLabel("avoid")} ${avoidedRow.label}`);
+    expect(describeConditions({ ...ENTRY, roadAvoidance: allPass }, CATALOG).exclusions).toBe("なし");
   });
 });
 

@@ -1198,7 +1198,6 @@ export interface components {
             penalty_strength: number;
             /** Max Average Grade Percent */
             max_average_grade_percent: number | null;
-            hard_filters: components["schemas"]["HardFilterOverride"];
             road_avoidance: components["schemas"]["RoadAvoidanceOverride"];
             /** Max Routes */
             max_routes: number;
@@ -1220,10 +1219,6 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
-        };
-        /** HardFilterOverride */
-        HardFilterOverride: {
-            [key: string]: boolean;
         };
         /** ImportRunEntry */
         ImportRunEntry: {
@@ -1711,7 +1706,6 @@ export interface components {
             penalty_strength?: number | null;
             /** Max Average Grade Percent */
             max_average_grade_percent?: number | null;
-            hard_filters: components["schemas"]["HardFilterOverride"];
             road_avoidance: components["schemas"]["RoadAvoidanceOverride"];
             /** Max Routes */
             max_routes: number;

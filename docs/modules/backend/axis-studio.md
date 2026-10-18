@@ -167,7 +167,7 @@
 ### `PriorityCondition`（0次条件）
 
 `material`の値が`equals`と一致する場合、shape評価をスキップし`value`をそのまま返す
-（探索除外のハードフィルタ`domain/hard_filters.py: DEFAULT_HARD_FILTERS`とは別の仕組み）。
+（探索除外のハードフィルタ`domain/hard_filters.py: HARD_FILTERS`とは別の仕組み）。
 
 **一致の判定は1本**（`_priority_override_mask`）で、Pythonの値で持つ入口（区間の内訳）も
 材料の値を配列にして同じ関数を通す。材料の値は入口ごとに別の形で届く——区間の内訳は

@@ -1,7 +1,7 @@
 import { expect, test, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { trueHeadingDeg } from "@/lib/magneticDeclination";
 import { moved } from "@/testing/movedPoint";
-import { RIDE_MIN_ZOOM, RIDE_ZOOM_MAX_OUT } from "@/features/map/MapView/rideZoom";
+import { RIDE_ZOOM_MAX_OUT, RIDE_ZOOM_STEPS } from "@/features/map/MapView/rideZoom";
 
 import { INTRO_CLOSED, MOBILE_VIEWPORT, installApiMocks, installMapFinder, seedStoredState } from "./fixtures";
 
@@ -198,7 +198,7 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   if (browserName !== "webkit") {
     await expect
       .poll(() => page.evaluate(() => window.__liveMap().getZoom()), { timeout: 10_000 })
-      .toBeCloseTo(RIDE_MIN_ZOOM - RIDE_ZOOM_MAX_OUT, 1);
+      .toBeCloseTo(RIDE_ZOOM_STEPS[0].zoom - RIDE_ZOOM_MAX_OUT, 1);
   }
 
   // 進む向きを上にすると、地図は動いた向き（東）を上に回す。北を上に戻すと向きも戻る。
@@ -250,13 +250,13 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   expect(Math.hypot(after!.x - before.x, after!.y - before.y)).toBeLessThan(1);
 });
 
-// 2本指でつまむ・広げる操作は、MapLibre が先に指の重心のずれを移動として受け、倍率が変わるのはそのあとになりうる。
-// 出来事の並び（移動の始まり→拡大の始まり）は実ブラウザの MapLibre でしか出ないので、ここで指ごとのタッチを送って見る
-// （パターン4 観点2）。
+// 2本指でつまむ・広げる操作は、MapLibre が先に指の重心のずれを移動として受け、倍率が変わるのはそのあとになり、指がひねれば
+// 回し始める。出来事の並び（移動の始まり→拡大の始まり）と回すかどうかは実ブラウザの MapLibre でしか出ないので、ここで
+// 指ごとのタッチを送って見る（パターン4 観点2）。倍率のボタンが地図の倍率まで届くことも、速さを0にできるここで見る。
 test.describe("タッチ端末", () => {
   test.use({ viewport: MOBILE_VIEWPORT, isMobile: true, hasTouch: true });
 
-  test("走行モードで追っている間に2本指でつまむと、休まずにその倍率で追い続け、つまむ最中に位置が届いても倍率を戻さず、1本指で動かすと休む", async ({
+  test("走行モードで追っている間、倍率のボタンで基準の倍率が段を回り、2本指でひねりながらつまんでも地図は回らず、休まずにその倍率で追い続け、つまむ最中に位置が届いても倍率を戻さず、1本指で動かすと休む", async ({
     page,
     context,
     browserName,
@@ -273,30 +273,49 @@ test.describe("タッチ端末", () => {
     await page.getByRole("button", { name: "走行モード" }).click();
     const anchor = await settledScreenPoint(page, START);
     const zoom = () => page.evaluate(() => window.__liveMap().getZoom());
-    const followedZoom = await zoom();
     const backToHere = page.getByRole("button", { name: "現在地へ戻る" });
+
+    // 走っている間は拡大・縮小の代わりに倍率のボタンを出し、押すたびに中→遠→近→中と基準の倍率を替える（速さ0なので引かない）。
+    await expect(page.getByRole("button", { name: "拡大" })).toBeHidden();
+    await expect(page.getByRole("button", { name: "縮小" })).toBeHidden();
+    const zoomButton = page.getByRole("button", { name: /^倍率/ });
+    expect(await settledZoom(page)).toBeCloseTo(17, 2);
+    for (const expected of [15, 18, 17]) {
+      await zoomButton.click();
+      expect(await settledZoom(page)).toBeCloseTo(expected, 2);
+    }
+    await expectDrawnAt(page, START, anchor);
+    await expect(backToHere).toBeHidden();
+    const followedZoom = await zoom();
 
     const client = await context.newCDPSession(page);
     const touch = (type: "touchStart" | "touchMove", points: { x: number; y: number }[]) =>
       client.send("Input.dispatchTouchEvent", { type, touchPoints: points.map((p, id) => ({ ...p, id })) });
     const canvas = (await page.locator(".maplibregl-canvas").boundingBox())!;
     const center = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 };
-    const fingers = (gap: number, dx: number) => [
-      { x: center.x + dx - gap / 2, y: center.y },
-      { x: center.x + dx + gap / 2, y: center.y },
-    ];
+    const fingers = (gap: number, dx: number, turnDeg: number) => {
+      const [x, y] = [Math.cos((turnDeg * Math.PI) / 180) * (gap / 2), Math.sin((turnDeg * Math.PI) / 180) * (gap / 2)];
+      return [
+        { x: center.x + dx - x, y: center.y - y },
+        { x: center.x + dx + x, y: center.y + y },
+      ];
+    };
 
-    // 指の間を240pxから80pxへ縮める。先に重心だけを横へ動かし、移動として始まらせる
-    // （2本の指を揃えて縦に動かすと、地図を傾ける操作になる）。
-    const [fromGap, toGap, steps] = [240, 80, 10];
+    // 指の間を240pxから80pxへ縮めながら、指の並びを45度ひねる（MapLibre が回し始める、指の間の弧で25pxを超える）。
+    // 先に重心だけを横へ動かし、移動として始まらせる（2本の指を揃えて縦に動かすと、地図を傾ける操作になる）。
+    const [fromGap, toGap, turnDeg, steps] = [240, 80, 45, 10];
     const gapAt = (step: number) => fromGap + ((toGap - fromGap) * step) / steps;
-    await touch("touchStart", fingers(fromGap, 0));
-    await touch("touchMove", fingers(fromGap, 6));
-    for (let step = 1; step <= steps / 2; step += 1) await touch("touchMove", fingers(gapAt(step), 6));
+    const turnAt = (step: number) => (turnDeg * step) / steps;
+    await touch("touchStart", fingers(fromGap, 0, 0));
+    await touch("touchMove", fingers(fromGap, 6, 0));
+    for (let step = 1; step <= steps / 2; step += 1) await touch("touchMove", fingers(gapAt(step), 6, turnAt(step)));
     // つまむ最中に届いた位置で、倍率を元へ戻さず、つまむ操作も止めない。
     const duringPinch = moved(START, 0, 10);
     await deliverPosition(page, context, at(duringPinch));
-    for (let step = steps / 2 + 1; step <= steps; step += 1) await touch("touchMove", fingers(gapAt(step), 6));
+    for (let step = steps / 2 + 1; step <= steps; step += 1)
+      await touch("touchMove", fingers(gapAt(step), 6, turnAt(step)));
+    // 指を離すと北が上へ寄せ直すので、回っていないことは指を置いたまま見る。
+    expect(await page.evaluate(() => window.__liveMap().getBearing())).toBeCloseTo(0, 1);
     await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
 
     // 指を離したあとの慣性で倍率がどれだけ進むかは指の動きの速さで変わるので、落ち着いた倍率を読む。つまむ前の倍率へ
@@ -310,6 +329,16 @@ test.describe("タッチ端末", () => {
     await deliverPosition(page, context, at(next));
     await expectDrawnAt(page, next, anchor);
     expect(await zoom()).toBeCloseTo(pinchedZoom, 2);
+    await expect(backToHere).toBeHidden();
+
+    // 1本指でたたいてから触れたまま滑らせる拡大・縮小でも休まない。
+    const beforeTapDrag = await zoom();
+    await touch("touchStart", [center]);
+    await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await touch("touchStart", [center]);
+    for (let step = 1; step <= 10; step += 1) await touch("touchMove", [{ x: center.x, y: center.y + step * 10 }]);
+    await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    expect(Math.abs((await settledZoom(page)) - beforeTapDrag)).toBeGreaterThan(0.5);
     await expect(backToHere).toBeHidden();
 
     // 1本指で動かすと休む。

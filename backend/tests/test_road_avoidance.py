@@ -4,7 +4,7 @@
 読み手と同じ副問い合わせ`infrastructure/source_models.py: WAYS_SOURCE_SQL`で読む）。
 
 ここで見ないもの:
-- 段の結果が除外・勾配の上限と合わさって探索から除く区間になること → `test_hard_filters.py`
+- 段の結果が除外・勾配の上限と合わさって探索から除く区間になること、選べない行の道（高速道路）を除くこと → `test_hard_filters.py`
 - 割り増しが区間の費用に掛かること → `test_leg_costs.py`
 """
 
@@ -28,10 +28,10 @@ def test_a_segment_on_rows_to_avoid_and_to_exclude_is_excluded():
 
 @pytest.mark.asyncio(loop_scope="module")
 @pytest.mark.parametrize(("highway", "row"), [
-    ("motorway", "highway.motorway"), ("trunk", "highway.trunk"), ("primary", "highway.primary"),
+    ("trunk", "highway.trunk"), ("primary", "highway.primary"),
     ("secondary", "highway.secondary"), ("unclassified", "highway.unclassified"), ("residential", "highway.residential"),
     ("cycleway", "highway.cycleway"), ("path", "highway.footway"),
-], ids=["高速道路", "国道", "主要地方道", "一般県道", "1車線の一般道", "住宅街の道", "自転車専用道", "山の小道"])
+], ids=["国道", "主要地方道", "一般県道", "1車線の一般道", "住宅街の道", "自転車専用道", "山の小道"])
 async def test_a_road_matches_only_the_row_of_its_kind(road_graph_session, highway, row):
     """国道を除いたつもりで国道を通る、県道まで除いて経路が遠回りになる、または歩道を除くと自転車専用道まで除かれる。"""
     await ingest_records("osm_way", [way_record(1, [(139.70, 35.68), (139.701, 35.68)], [10, 11], {"highway": highway})])

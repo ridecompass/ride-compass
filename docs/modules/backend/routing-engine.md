@@ -1073,7 +1073,7 @@ backendは置き場を読むだけで、読むのは`current()`の1か所であ�
   どれもここを通り、省略された評価条件（重み・換算レート・0次フィルタ）の既定もここで1度だけ決める。
   エンジンは既定を持たず、解決済みの値だけを受け取る——既定を2か所で持つと、経路ごとに
   違う条件で探すことになり、しかもどちらも正常に見える。
-- **`RoutePreferenceWeights`/`HardFilterOverride`は「上書きするなら全項目を明示する」
+- **`RoutePreferenceWeights`/`RoadAvoidanceOverride`は「上書きするなら全項目を明示する」
   方針**（`model_validator`でキー集合の完全一致を強制）。`RoutePreferenceWeights`の
   対象は`AXIS_DEFINITIONS`の公開軸のみ（内部軸は含まない）。
 - **画面の操作で届く上限の外れは、日本語の文で断る**（`domain/route_request.py: request_error`）。

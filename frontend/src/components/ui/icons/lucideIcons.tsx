@@ -1,7 +1,6 @@
 // 意味の決まった汎用の形（lucide-react）を、自前の形と同じ呼び方と線の太さへ包んで書き出す。
 import {
   ArrowUp,
-  Ban,
   Bike,
   CalendarDays,
   CircleQuestionMark,
@@ -21,6 +20,7 @@ import {
   Info,
   Layers,
   ListChecks,
+  Lock,
   MapPin,
   MapPinX,
   Minus,
@@ -112,8 +112,8 @@ export const ClearPointsIcon = fromLucide(MapPinX);
 export const DistanceTargetIcon = fromLucide(Ruler);
 /** 置いた地点を1つ消す。保存したものを消す`DeleteSavedIcon`と同じく、消す操作はごみ箱の形にそろえる。 */
 export const RemovePointIcon = fromLucide(Trash);
-/** 通らない道（除外する道路の種類）。 */
-export const ExcludedRoadIcon = fromLucide(Ban);
+/** 利用者が変えられない選び方（いつも決まった値の行）。 */
+export const LockedIcon = fromLucide(Lock);
 /** 変えた値を既定値に戻す。 */
 export const ResetDefaultsIcon = fromLucide(RotateCcw);
 /** 取れなかったものを取り直す。 */
