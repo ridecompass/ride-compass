@@ -21,10 +21,12 @@ from app.api import dependencies
 from app.api.admin_db_errors import ADMIN_PATH_PREFIX, install_admin_db_unavailable_handler
 from app.domain.axis_definitions import REQUEST_DYNAMIC_MATERIAL_IDS
 from app.domain.material_catalog import MATERIAL_CATALOG
+from app.domain.region import EDGE_UNIT_MIN_ZOOM
 from app.domain.tuning import TUNING_PARAMETERS
 from app.main import app
 from app.services.axis_preview_service import new_sample_cache
 from tests.admin_auth import AUTH_HEADERS
+from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 
 UNREACHABLE_DATABASE_URL = "postgresql+asyncpg://ridecompass:ridecompass@127.0.0.1:1/ridecompass"
 
@@ -43,6 +45,10 @@ CATEGORICAL = _stored_material("categorical")
 AXIS = "/api/admin/axis-definitions"
 SHAPE = {"kind": "breakpoint_linear", "terms": [{"material": NUMERIC}], "breakpoints": [[0, 0], [10, 100]]}
 AXIS_BODY = {"axis_id": "a", "label": "軸A", "default_weight": 1.0, "shape": SHAPE}
+WAY_VALUES_BODY = {
+    "axis_id": "a", "shape": SHAPE, "z": EDGE_UNIT_MIN_ZOOM, "x": 7275, "y": 3225,
+    "bearing_deg": 0, "at": "2026-10-18T09:00:00+09:00", "speed_kmh": 20,
+}
 
 # 口ごとの(パスの引数を埋めたURL, 本文, DBが落ちたときの状態コード)。母集団はアプリのルートから取るので、
 # 管理APIの口を足してここへ足し忘れるとKeyErrorで落ちる。DBを読まない口とDBの失敗を自分で空へ倒す口は200。
@@ -55,6 +61,8 @@ ROUTE_CASES = {
     ("POST", AXIS + "/{axis_id}/unpublish"): (AXIS + "/a/unpublish", None, 503),
     ("POST", AXIS + "/preview-distribution"): (AXIS + "/preview-distribution", {"shape": SHAPE}, 503),
     ("POST", AXIS + "/preview-scores"): (AXIS + "/preview-scores", {"shape": SHAPE, "xs": [0.5]}, 200),
+    # タイルの材料はDBの失敗を空へ倒し、地図の配信と同じく塗る道の無いタイルとして返す。
+    ("POST", AXIS + "/preview-way-values"): (AXIS + "/preview-way-values", WAY_VALUES_BODY, 200),
     ("GET", "/api/admin/tuning"): ("/api/admin/tuning", None, 503),
     ("PUT", "/api/admin/tuning/{param_id}"): (f"/api/admin/tuning/{TUNING_PARAMETERS[0].id}", {"value": None}, 503),
     ("GET", "/api/admin/material-catalog/{material_id}/distribution"): (
@@ -90,6 +98,9 @@ def database_down(monkeypatch):
         monkeypatch.setattr(dependencies, name, lambda: async_sessionmaker(engine))
     # 分布の標本は一度読むとプロセスに持つため、読んでいない状態から始める。
     monkeypatch.setitem(app.dependency_overrides, dependencies.get_axis_preview_sample_cache, new_sample_cache)
+    # 軸の集合は起動時にDBから読んでプロセスに持つので、DBが落ちても軸`a`は引ける。
+    with replaced_axis_definitions({"a": axis_definition("a", material=NUMERIC)}):
+        yield
 
 
 # debug_modeの切替の口も本物で叩くため、切り替えた状態を後のテストへ残さない。
