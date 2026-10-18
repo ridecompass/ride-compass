@@ -2,17 +2,10 @@
 
 import Disclosure from "@/components/Disclosure/Disclosure";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
-import {
-  legendChipBodyClass,
-  legendChipClass,
-  legendChipsClass,
-  legendIconClass,
-} from "@/components/ui/AxisLegend/axisLegend";
 import { Badge } from "@/components/ui/Badge/Badge";
 import { Button } from "@/components/ui/Button/Button";
-import { ExcludedRoadIcon, ResetDefaultsIcon } from "@/components/ui/icons/icons";
+import { LockedIcon, ResetDefaultsIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
-import { Toggle } from "@/components/ui/Toggle/Toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import {
   AVOIDABLE_ROWS,
@@ -21,21 +14,16 @@ import {
   type AvoidanceLevel,
 } from "@/features/route/roadAvoidance";
 import { cn } from "@/lib/cn";
-import type { HardFilterOverride, RoadAvoidanceOverride } from "@/types/route";
+import type { RoadAvoidanceOverride } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-// 「ルート設定」区分の「除外」タブ。上の段は走ってはいけない道の種類（ONにすると探索グラフから外れる）、下の段は
-// 地図の道のレイヤの凡例の行ごとに「通る・なるべく避ける・通らない」を選ぶ。
+// 「ルート設定」区分の「除外」タブ。地図の道のレイヤの凡例の行ごとに「通る・なるべく避ける・通らない」を選び、
+// 自転車が通れない道の行は「通らない」に固定して同じ並びの先頭に出す。
 
-// 0次ハードフィルタ。**キー・画面に出す名前・既定値はbackendが正**で、生成物
-// （route-generate-config.json、domain/hard_filters.py由来）から受け取る——backendは
-// キー集合の完全一致を要求するため、手書きで複製すると1つ足した瞬間にすべての
-// ルート生成が422になる。名前もキーと同じ行で届くので、名前の無いキーは無い。
-const HARD_FILTER_CHIPS: readonly { key: string; label: string }[] = routeGenerateConfig.hard_filters.filters;
-
-export const DEFAULT_HARD_FILTERS: HardFilterOverride = Object.fromEntries(
-  HARD_FILTER_CHIPS.map(({ key }) => [key, routeGenerateConfig.hard_filters.defaults.includes(key)]),
-);
+// 固定の行。backendがいつも経路から外す道で、名前と説明は生成物（route-generate-config.json）から受け取る。
+const FIXED_ROWS: readonly { key: string; label: string; description: string }[] =
+  routeGenerateConfig.road_avoidance.fixed_rows;
+const EXCLUDE_LABEL = AVOIDANCE_LEVELS.find(({ key }) => key === "exclude")!.label;
 
 // 行を地図のレイヤごとにまとめる（並びは生成物の行の並び）。
 const AVOIDABLE_LAYERS = AVOIDABLE_ROWS.reduce<
@@ -48,72 +36,55 @@ const AVOIDABLE_LAYERS = AVOIDABLE_ROWS.reduce<
 }, []);
 
 interface HardFilterPanelProps {
-  /** 今の項目を全部持つ値（保存値は`features/route/useGenerationConditions.ts`が読むときに今の項目へ揃える）。 */
-  hardFilters: HardFilterOverride;
-  onHardFiltersChange: (next: HardFilterOverride) => void;
-  /** 今の行を全部持つ避け方（同上）。 */
+  /** 今の行を全部持つ避け方（保存値は`features/route/useGenerationConditions.ts`が読むときに今の行へ揃える）。 */
   roadAvoidance: RoadAvoidanceOverride;
   onRoadAvoidanceChange: (next: RoadAvoidanceOverride) => void;
 }
 
-export default function HardFilterPanel({
-  hardFilters,
-  onHardFiltersChange,
-  roadAvoidance,
-  onRoadAvoidanceChange,
-}: HardFilterPanelProps) {
-  const customized =
-    HARD_FILTER_CHIPS.some(({ key }) => hardFilters[key] !== DEFAULT_HARD_FILTERS[key]) ||
-    AVOIDABLE_ROWS.some(({ key }) => roadAvoidance[key] !== DEFAULT_ROAD_AVOIDANCE[key]);
+export default function HardFilterPanel({ roadAvoidance, onRoadAvoidanceChange }: HardFilterPanelProps) {
+  const customized = AVOIDABLE_ROWS.some(({ key }) => roadAvoidance[key] !== DEFAULT_ROAD_AVOIDANCE[key]);
 
   return (
     <div className="flex flex-col gap-3">
-      {/* 通らない種類はほぼ触らないので、見出しとチップを1行に詰めて高さを取らない。 */}
       <div className="flex items-center gap-2">
-        <span className={cn(textVariants({ variant: "label" }), "flex-shrink-0")}>通らない</span>
-        <InfoPopover triggerAriaLabel="通らない道路の説明">
-          ONにした種類は経路から完全に外れます[重みづけと違い、多少難易度が高くても通る、ということが無くなります]。
+        <span className={textVariants({ variant: "label" })}>道ごとの避け方</span>
+        <InfoPopover triggerAriaLabel="道ごとの避け方の説明">
+          地図の道のレイヤの凡例の行ごとに選びます。「なるべく避ける」は遠回りが小さければ別の道を通り、「通らない」は経路から完全に外れます。いくつもの行に当たる道は、強い方の選び方が効きます。鍵の付いた行は自転車が通れない道で、いつも通りません。
         </InfoPopover>
-        <ul className={cn(legendChipsClass, "min-w-0 flex-1")}>
-          {HARD_FILTER_CHIPS.map(({ key, label }) => (
-            <li key={key} className={legendChipClass} data-checked={hardFilters[key]}>
-              <Toggle
-                variant="plain"
-                className={cn(legendChipBodyClass, "cursor-pointer")}
-                pressed={hardFilters[key]}
-                aria-label={`${label}を除外`}
-                usage="ONにした種類の道路を通らないルートを作ります。"
-                onClick={() => onHardFiltersChange({ ...hardFilters, [key]: !hardFilters[key] })}
-              >
-                <span aria-hidden="true" className={legendIconClass}>
-                  <ExcludedRoadIcon />
-                </span>
-                <span>{label}</span>
-              </Toggle>
-            </li>
-          ))}
-        </ul>
         <Button
           size="panelIcon"
-          className="flex-shrink-0"
+          className="ml-auto flex-shrink-0"
           aria-label="除外を既定値に戻す"
           disabled={!customized}
-          onClick={() => {
-            onHardFiltersChange(DEFAULT_HARD_FILTERS);
-            onRoadAvoidanceChange(DEFAULT_ROAD_AVOIDANCE);
-          }}
-          usage="通らない道路の種類と、道ごとの避け方を既定に戻します。"
+          onClick={() => onRoadAvoidanceChange(DEFAULT_ROAD_AVOIDANCE)}
+          usage="道ごとの避け方を既定に戻します。"
         >
           <ResetDefaultsIcon />
         </Button>
       </div>
-      <div className="flex items-center gap-2">
-        <span className={textVariants({ variant: "label" })}>道ごとの避け方</span>
-        <InfoPopover triggerAriaLabel="道ごとの避け方の説明">
-          地図の道のレイヤの凡例の行ごとに選びます。「なるべく避ける」は遠回りが小さければ別の道を通り、「通らない」は経路から完全に外れます。いくつもの行に当たる道は、強い方の選び方が効きます。
-        </InfoPopover>
-      </div>
       <div className="flex flex-col">
+        {FIXED_ROWS.map(({ key, label, description }) => (
+          <div
+            key={key}
+            className="flex items-center justify-between gap-2 border-t border-[var(--color-border-muted)] py-1.5"
+          >
+            <InfoPopover
+              label={label}
+              labelClassName="text-[length:var(--font-size-sm)] font-semibold"
+              triggerAriaLabel={`${label}の説明`}
+            >
+              {description}
+            </InfoPopover>
+            <span
+              role="img"
+              aria-label={`${label}はいつも${EXCLUDE_LABEL}（変えられません）`}
+              className="flex flex-shrink-0 items-center gap-1 text-[length:var(--font-size-xs)] text-[var(--color-muted)]"
+            >
+              <LockedIcon size={14} />
+              <span aria-hidden="true">{EXCLUDE_LABEL}</span>
+            </span>
+          </div>
+        ))}
         {AVOIDABLE_LAYERS.map(({ layer, label, rows }) => {
           const changed = rows.filter(({ key }) => roadAvoidance[key] !== DEFAULT_ROAD_AVOIDANCE[key]).length;
           return (

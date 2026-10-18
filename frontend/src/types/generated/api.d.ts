@@ -260,14 +260,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/region/dynamic-way-values/{axis_id}/{z}/{x}/{y}": {
+    "/api/region/way-materials/{axis_id}/{z}/{x}/{y}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["region_dedicated_way_values_api_region_dynamic_way_values__axis_id___z___x___y__get"];
+        get: operations["region_way_materials_api_region_way_materials__axis_id___z___x___y__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -468,6 +468,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/axis-definitions/preview-calibration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["preview_calibration_api_admin_axis_definitions_preview_calibration_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/axis-definitions/preview-way-values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["preview_way_values_api_admin_axis_definitions_preview_way_values_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/tuning": {
         parameters: {
             query?: never;
@@ -516,30 +548,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/material-catalog/{material_id}/distribution": {
+    "/api/admin/material-catalog/{material_id}/value-shares": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["get_material_distribution_api_admin_material_catalog__material_id__distribution_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/material-catalog/{material_id}/values": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_material_values_api_admin_material_catalog__material_id__values_get"];
+        get: operations["get_material_value_shares_api_admin_material_catalog__material_id__value_shares_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -712,6 +728,7 @@ export interface components {
             dynamic_way_value_conditions: ("at" | "bearing_deg" | "speed_kmh")[];
             /** Dynamic Way Value Undetermined By Bearing */
             dynamic_way_value_undetermined_by_bearing: boolean;
+            way_value_formula: components["schemas"]["WayValueFormula"] | null;
             /**
              * Time Scope
              * @enum {string}
@@ -732,6 +749,47 @@ export interface components {
             };
             /** Accident Years */
             accident_years: number[];
+        };
+        /** AxisDefinition */
+        AxisDefinition: {
+            /** Axis Id */
+            axis_id: string;
+            /** Shape */
+            shape: components["schemas"]["BreakpointLinearShape-Input"] | components["schemas"]["CategoricalShape-Input"];
+            /** Default Weight */
+            default_weight: number;
+            /** Label */
+            label: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Category
+             * @default 推定
+             * @enum {string}
+             */
+            category: "観測" | "推定" | "動的";
+            /**
+             * Is Published
+             * @default false
+             */
+            is_published: boolean;
+            /** Priority Overrides */
+            priority_overrides?: components["schemas"]["PriorityCondition"][];
+            /** Icon Id */
+            icon_id?: string | null;
+            /**
+             * Time Scope
+             * @default always
+             * @enum {string}
+             */
+            time_scope: "always" | "night_only";
+            /** Display Thresholds Override */
+            display_thresholds_override?: number[] | null;
+            /** Display Band Labels Override */
+            display_band_labels_override?: string[] | null;
         };
         /** AxisDefinitionPayload */
         AxisDefinitionPayload: {
@@ -883,6 +941,18 @@ export interface components {
             /** Shape */
             shape: components["schemas"]["BreakpointLinearShape-Input"] | components["schemas"]["CategoricalShape-Input"];
         };
+        /** Binary */
+        Binary: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "add" | "and" | "div" | "ge" | "gt" | "le" | "lt" | "mod" | "mul" | "or" | "sub";
+            /** Left */
+            left: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+            /** Right */
+            right: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+        };
         /** BreakpointLinearShape */
         "BreakpointLinearShape-Input": {
             /**
@@ -926,6 +996,30 @@ export interface components {
                 number,
                 number
             ][];
+        };
+        /** CalibrationPreviewRequest */
+        CalibrationPreviewRequest: {
+            definition: components["schemas"]["AxisDefinition"];
+        };
+        /** CalibrationPreviewResponse */
+        CalibrationPreviewResponse: {
+            map_paint: components["schemas"]["MapPaint"];
+            /** Averages Density */
+            averages_density: boolean;
+        };
+        /** Case */
+        Case: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "case";
+            /** When */
+            when: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+            /** Then */
+            then: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+            /** Otherwise */
+            otherwise: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
         };
         /** CategoricalShape */
         "CategoricalShape-Input": {
@@ -971,6 +1065,19 @@ export interface components {
             /** Removed */
             removed: string[];
         };
+        /** Condition */
+        Condition: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "condition";
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "bearing_deg" | "speed_kmh";
+        };
         /** ConnectionEntry */
         ConnectionEntry: {
             /** Total */
@@ -987,6 +1094,16 @@ export interface components {
             needs_attention: boolean;
             /** Note */
             note: string;
+        };
+        /** Constant */
+        Constant: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "const";
+            /** Value */
+            value: number;
         };
         /** Coordinates */
         Coordinates: {
@@ -1085,6 +1202,16 @@ export interface components {
             };
             last_error: components["schemas"]["LastError"] | null;
         };
+        /** FeatureValue */
+        FeatureValue: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "feature";
+            /** Name */
+            name: string;
+        };
         /** FloodForecasts */
         FloodForecasts: {
             /** Forecasts */
@@ -1106,7 +1233,6 @@ export interface components {
             penalty_strength: number;
             /** Max Average Grade Percent */
             max_average_grade_percent: number | null;
-            hard_filters: components["schemas"]["HardFilterOverride"];
             road_avoidance: components["schemas"]["RoadAvoidanceOverride"];
             /** Max Routes */
             max_routes: number;
@@ -1128,10 +1254,6 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
-        };
-        /** HardFilterOverride */
-        HardFilterOverride: {
-            [key: string]: boolean;
         };
         /** ImportRunEntry */
         ImportRunEntry: {
@@ -1157,6 +1279,21 @@ export interface components {
             axes: components["schemas"]["AxisInspectorAxis"][];
             composite_difficulty: components["schemas"]["InspectorComposite"] | null;
             landcover: components["schemas"]["LandcoverPercentages"] | null;
+        };
+        /** Interpolate */
+        Interpolate: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "interpolate";
+            /** Input */
+            input: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+            /** Stops */
+            stops: [
+                number,
+                number
+            ][];
         };
         /** JmaTileIndexAvailable */
         JmaTileIndexAvailable: {
@@ -1334,17 +1471,6 @@ export interface components {
             /** Materials */
             materials: (components["schemas"]["MaterialCoverageCounted"] | components["schemas"]["MaterialCoverageExcluded"])[];
         };
-        /** MaterialDistributionResponse */
-        MaterialDistributionResponse: {
-            /** Quantiles */
-            quantiles: {
-                [key: string]: number;
-            };
-            /** Zero Share */
-            zero_share: number;
-            /** Available */
-            available: boolean;
-        };
         /** MaterialTerm */
         "MaterialTerm-Input": {
             /** Material */
@@ -1375,22 +1501,33 @@ export interface components {
              */
             required: boolean;
         };
-        /** MaterialValueEntry */
-        MaterialValueEntry: {
+        /** MaterialValueShareEntry */
+        MaterialValueShareEntry: {
             /** Value */
             value: string;
             /** Label */
             label: string;
+            /** Share */
+            share: number;
         };
-        /** MaterialValuesResponse */
-        MaterialValuesResponse: {
-            /**
-             * Available
-             * @default true
-             */
+        /** MaterialValueSharesResponse */
+        MaterialValueSharesResponse: {
+            /** Available */
             available: boolean;
+            /** Sample Ways */
+            sample_ways: number;
+            /** Total Km */
+            total_km: number;
             /** Values */
-            values: components["schemas"]["MaterialValueEntry"][];
+            values: components["schemas"]["MaterialValueShareEntry"][];
+        };
+        /** Missing */
+        Missing: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "missing";
         };
         /** MsmFreshnessResponse */
         MsmFreshnessResponse: {
@@ -1467,6 +1604,18 @@ export interface components {
             distance_km: number;
             /** Value */
             value: string | boolean | null;
+        };
+        /** Round */
+        Round: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "round";
+            /** Arg */
+            arg: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+            /** Decimals */
+            decimals: number;
         };
         /** RouteCandidate */
         RouteCandidate: {
@@ -1584,7 +1733,6 @@ export interface components {
             penalty_strength?: number | null;
             /** Max Average Grade Percent */
             max_average_grade_percent?: number | null;
-            hard_filters: components["schemas"]["HardFilterOverride"];
             road_avoidance: components["schemas"]["RoadAvoidanceOverride"];
             /** Max Routes */
             max_routes: number;
@@ -1682,27 +1830,16 @@ export interface components {
             /** Longitude */
             longitude: number;
         };
-        /** ScorePoint */
-        ScorePoint: {
-            /** X */
-            x: number;
-            /** Score */
-            score: number;
-        };
         /** ScoresPreviewRequest */
         ScoresPreviewRequest: {
             shape: components["schemas"]["BreakpointLinearShape-Input"];
             /** Xs */
             xs?: number[];
-            /** Material Values */
-            material_values?: number[];
         };
         /** ScoresPreviewResponse */
         ScoresPreviewResponse: {
             /** Scores */
             scores: number[];
-            /** Material Points */
-            material_points: (components["schemas"]["ScorePoint"] | null)[];
         };
         /** SegmentWind */
         SegmentWind: {
@@ -1793,6 +1930,16 @@ export interface components {
             /** Sunset */
             sunset: string;
         };
+        /** Unary */
+        Unary: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "abs" | "cos" | "is_missing" | "neg" | "not" | "sin" | "sqrt";
+            /** Arg */
+            arg: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+        };
         /** ValidArea */
         ValidArea: {
             /**
@@ -1828,6 +1975,31 @@ export interface components {
                 number,
                 number
             ][];
+        };
+        /** WayValueFormula */
+        WayValueFormula: {
+            /** Value */
+            value: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+            /** Undetermined */
+            undetermined: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+        };
+        /** WayValuesPreviewRequest */
+        WayValuesPreviewRequest: {
+            /** Axis Id */
+            axis_id: string;
+            shape: components["schemas"]["BreakpointLinearShape-Input"];
+            /** Z */
+            z: number;
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+            /** Bearing Deg */
+            bearing_deg?: number | null;
+            /** At */
+            at?: string | null;
+            /** Speed Kmh */
+            speed_kmh?: number | null;
         };
         /** WbgtReading */
         WbgtReading: {
@@ -2429,12 +2601,10 @@ export interface operations {
             };
         };
     };
-    region_dedicated_way_values_api_region_dynamic_way_values__axis_id___z___x___y__get: {
+    region_way_materials_api_region_way_materials__axis_id___z___x___y__get: {
         parameters: {
             query?: {
-                bearing_deg?: number | null;
                 at?: string | null;
-                speed_kmh?: number | null;
             };
             header?: never;
             path: {
@@ -2454,7 +2624,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        [key: string]: number | null;
+                        [key: string]: {
+                            [key: string]: number;
+                        };
                     };
                 };
             };
@@ -2915,6 +3087,74 @@ export interface operations {
             };
         };
     };
+    preview_calibration_api_admin_axis_definitions_preview_calibration_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalibrationPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_way_values_api_admin_axis_definitions_preview_way_values_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WayValuesPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number | null;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_tuning_parameters_api_admin_tuning_get: {
         parameters: {
             query?: never;
@@ -2990,7 +3230,7 @@ export interface operations {
             };
         };
     };
-    get_material_distribution_api_admin_material_catalog__material_id__distribution_get: {
+    get_material_value_shares_api_admin_material_catalog__material_id__value_shares_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -3007,38 +3247,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MaterialDistributionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_material_values_api_admin_material_catalog__material_id__values_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                material_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MaterialValuesResponse"];
+                    "application/json": components["schemas"]["MaterialValueSharesResponse"];
                 };
             };
             /** @description Validation Error */

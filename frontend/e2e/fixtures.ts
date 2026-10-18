@@ -104,7 +104,6 @@ export function routeGenerateResponseFixture(): DoneJob["result"] {
       distance_km: 20,
       distance_tolerance_km: 5,
       penalty_strength: 1.0,
-      hard_filters: { no_bicycle: true, motorway: true },
       max_routes: 8,
       assumed_speed_kmh: 20,
       start_time: "2026-09-05T09:30:00+09:00",
@@ -145,7 +144,7 @@ function amedasObservationFixture(): AmedasObservation {
   };
 }
 
-// 基礎地図スタイル（MapView.tsx: mapStyleUrl）の応答。sources/layersを空にして
+// 基礎地図スタイル（features/map/regionApi.ts: mapStyleUrl）の応答。sources/layersを空にして
 // 外部タイル・グリフ・スプライトへの追加リクエストが発生しない自己完結スタイルにする
 // （地図の見た目は検証対象外、UI操作の疎通のみが目的）。
 function emptyMapStyleFixture() {
@@ -209,8 +208,8 @@ export async function installApiMocks(page: Page): Promise<void> {
   await page.route(`${API_BASE}/api/routes/generate/*`, (route) => route.fulfill({ json: doneJobFixture() }));
 
   await page.route(`${API_BASE}/api/axis-catalog*`, (route) => route.fulfill({ json: defaultAxisCatalogFixture() }));
-  // 軸のレンズで塗る道ごとの値。値を持つ道が無い形で答える。
-  await page.route(`${API_BASE}/api/region/dynamic-way-values/**`, (route) => route.fulfill({ json: {} }));
+  // 軸のレンズで塗る道ごとの材料。材料を持つ道が無い形で答える。
+  await page.route(`${API_BASE}/api/region/way-materials/**`, (route) => route.fulfill({ json: {} }));
 
   // 地点の詳しくが、置いた位置の辺りを引く。辺り無し（境界の外）で答える。
   await page.route(`${API_BASE}/api/place-area*`, (route) => route.fulfill({ json: { area: null } }));

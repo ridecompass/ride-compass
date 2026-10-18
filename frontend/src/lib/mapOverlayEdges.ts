@@ -8,7 +8,7 @@ export interface RouteFitObscuredPx {
 
 type Edge = keyof RouteFitObscuredPx;
 
-export const MAP_OVERLAY_EDGE_ATTRIBUTE = "data-map-overlay-edge";
+const MAP_OVERLAY_EDGE_ATTRIBUTE = "data-map-overlay-edge";
 
 /** 地図の上に重ねる部品へ付ける印。ルートを地図へ収めるとき・地点へ寄せるとき、この部品が`edge`の辺から覆う幅を避ける。 */
 export function mapOverlayEdge(edge: Edge): { [MAP_OVERLAY_EDGE_ATTRIBUTE]: Edge } {

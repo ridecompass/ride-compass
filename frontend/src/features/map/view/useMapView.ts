@@ -20,14 +20,16 @@ import {
 import { LENS_DIFFICULTY_ID, type LensId } from "@/lib/mapDisplay/routeStyleModes";
 import type { MapViewport } from "@/features/map/layers/windLayer";
 import type MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayControls";
-import { isLegendFiltered } from "@/features/map/MapOverlayControls/MapOverlayControls";
+import { isLegendFiltered } from "@/features/map/MapOverlayControls/OverlayLayerRow";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import { useDedicatedWayValues } from "@/features/map/useDedicatedWayValues";
+import { useWayMaterials } from "@/features/map/useWayMaterials";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
 import { useStoredBooleanState, useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates } from "@/types/route";
+import type { RideConditions } from "@/features/map/regionApi";
+import { normalizeDeg } from "@/lib/cardinalLabel";
 import type { WayValueCondition } from "@/lib/catalogAxis";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
@@ -64,8 +66,10 @@ interface MapViewInputs {
   hasSelectedRoute: boolean;
   /** 選択中の候補の区間まで確定しているか（ルート確定後）。 */
   hasDetail: boolean;
-  /** 走行条件。専用配信軸の値と気象レイヤーの表示時刻がこれに従う。 */
-  ride: { bearingDeg: number; at: Date; speedKmh: number };
+  /** 出発時刻と想定速度。専用配信軸の値と気象レイヤーの表示時刻がこれに従う。 */
+  ride: { at: Date; speedKmh: number };
+  /** 走行中に、地図の向きと想定速度の代わりに使う向きと速さ。走っていなければnull。 */
+  riding: { bearingDeg: number; speedKmh: number } | null;
   /** 刻みへ丸めた現在時刻（`useDepartureTime`）。 */
   now: Date;
   /** レンズの選択肢を「未使用」と分ける重み。 */
@@ -84,9 +88,18 @@ interface MapViewState {
   center: Coordinates | null;
   /** 地図が今当てている向き（北から時計回りの度）。地図がまだ範囲を知らせていなければ0（北が上）。 */
   bearing: number;
+  /** 地図の道の値を取る走る条件。道を押したときの内訳にも同じ値を使う。 */
+  wayConditions: RideConditions;
 }
 
-export function useMapView({ hasSelectedRoute, hasDetail, ride, now, routeWeights }: MapViewInputs): MapViewState {
+export function useMapView({
+  hasSelectedRoute,
+  hasDetail,
+  ride,
+  riding,
+  now,
+  routeWeights,
+}: MapViewInputs): MapViewState {
   const catalog = useAxisCatalog();
   const mapCatalog = useMapAxisCatalog();
   const [layerVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
@@ -130,12 +143,22 @@ export function useMapView({ hasSelectedRoute, hasDetail, ride, now, routeWeight
     now,
   });
   const painted = paintedAxisId(lens, hasDetail, keepAfterRoute);
-  // 道ごとの値は、全道路を塗っている軸の分だけ取る（塗っていない軸の値は地図に出ない。表示中のものだけ叩く）。
+  // 道ごとの材料は、全道路を塗っている軸の分だけ取る（塗っていない軸の値は地図に出ない。表示中のものだけ叩く）。
+  // 式の木の無い軸は周りの道を塗らないので取らない。
   const fetchAxes = useMemo(
-    () => mapCatalog.dedicatedAxes.filter((axis) => axis.axisId === painted),
+    () => mapCatalog.dedicatedAxes.filter((axis) => axis.axisId === painted && axis.paintsSurroundingRoads),
     [mapCatalog.dedicatedAxes, painted],
   );
-  const dedicatedWayValues = useDedicatedWayValues(fetchAxes, viewport, ride.bearingDeg, ride.at, ride.speedKmh);
+  // 走っていない間の走る向きは、地図の上の向きそのもの（向きを変えても材料は取り直さず、地図が色を求め直す）。
+  const bearingDeg = riding?.bearingDeg ?? normalizeDeg(viewport?.bearing ?? 0);
+  const speedKmh = riding?.speedKmh ?? ride.speedKmh;
+  const wayConditions = useMemo(() => ({ bearingDeg, at: ride.at, speedKmh }), [bearingDeg, ride.at, speedKmh]);
+  const wayMaterials = useWayMaterials(fetchAxes, viewport, ride.at);
+  // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。速度が数でない間は値の無いことにする。
+  const formulaConditions = useMemo(
+    () => ({ bearing_deg: bearingDeg, ...(Number.isFinite(speedKmh) ? { speed_kmh: speedKmh } : {}) }),
+    [bearingDeg, speedKmh],
+  );
   const debouncedHidden = useDebouncedValue(hidden, LEGEND_FILTER_DEBOUNCE_MS);
 
   // MapViewはこの参照が変わるたびに地図の中身を組み直すため、中身が変わったときだけ作る。
@@ -145,18 +168,28 @@ export function useMapView({ hasSelectedRoute, hasDetail, ride, now, routeWeight
       dynamicWeather: weather.dynamicWeather,
       lens,
       paintedAxisId: painted,
-      dedicatedWayValues,
+      wayMaterials,
+      wayConditions: formulaConditions,
       hiddenLegendKeys: debouncedHidden,
       refreshToken,
       onViewportChange: setViewport,
       onLayerDataStatusChange: setMapLayerStatus,
     }),
-    [layerVisibility, weather.dynamicWeather, lens, painted, dedicatedWayValues, debouncedHidden, refreshToken],
+    [
+      layerVisibility,
+      weather.dynamicWeather,
+      lens,
+      painted,
+      wayMaterials,
+      formulaConditions,
+      debouncedHidden,
+      refreshToken,
+    ],
   );
 
   const legend = lensLegend(lens, hasDetail, mapCatalog);
   const lensHidden = presentHiddenKeys(legend, hiddenKeysOf(hidden, lens));
-  const lensFetch = dedicatedWayValues.get(lens);
+  const lensFetch = wayMaterials.get(lens);
   const chips = overlayChips({
     layers: mapCatalog.layers,
     visibility: layerVisibility,
@@ -193,7 +226,7 @@ export function useMapView({ hasSelectedRoute, hasDetail, ride, now, routeWeight
         ? deriveFetchLayerStatus(
             lensFetch.loading,
             lensFetch.error ? "fetch-failed" : null,
-            lensFetch.values.size > 0,
+            lensFetch.materials.size > 0,
             lensFetch.hasFetched,
           )
         : undefined,
@@ -226,5 +259,6 @@ export function useMapView({ hasSelectedRoute, hasDetail, ride, now, routeWeight
     redrawMap: () => setRefreshToken((token) => token + 1),
     center,
     bearing: viewport?.bearing ?? 0,
+    wayConditions,
   };
 }

@@ -8,7 +8,7 @@
 - 既存テンプレート＋既存材料の組み合わせで表現できる新しい軸は、`AXIS_DEFINITIONS`へ
   1エントリ追加するだけで、区間インスペクタ・地図の値配信・ルート選び
   （`build_static_edge_score_matrix`）のすべてへ同時に反映される。評価は
-  `evaluate_axis_array`1本で、Pythonの値で持つ入口（`evaluate_axis_values`）も配列にして通す。
+  `evaluate_axis_array`1本で、Pythonの値で持つ入口（`evaluate_axes_values`等）も配列にして通す。
 - 材料（material）はOSM生タグそのものではなく「評価直前まで解決済みの値」
   （勾配%・風ペナルティm/s・路面の見込み・km正規化済み密度・レシピ計算済みレベル・
   タグ由来フラグ）。材料の解決（抽出）は呼び出し元の責務で、材料idごとの意味は
@@ -135,6 +135,13 @@ _FLAG_KEYS = {"true": True, "false": False}
 def flag_or_value_name(key: object) -> object:
     """材料の値を書いた文字列の読み方。対応表のキーと0次条件の`equals`が同じ読み方をする。"""
     return _FLAG_KEYS.get(key, key) if isinstance(key, str) else key
+
+
+def mapping_key_of(value: object) -> str:
+    """材料の値を、対応表のキーがJSONで書かれる綴りにする（`flag_or_value_name`の逆）。"""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 class CategoricalShape(StrictModel):
@@ -449,13 +456,12 @@ class AxisPublishedImmutableError(ValueError):
 
     一般ユーザーの保存設定（RouteSettingsPanelのプリセット・重み）はaxis_idキーで
     再現されるため、公開後の破壊的変更・削除は他ユーザーの設定を黙って壊す。
-    改良したい場合は複製（新しいaxis_idの下書き軸として作成）してから公開する導線を
-    UI側に用意する（この関数は変更を一切拒否するのみで、複製自体は関与しない）。
+    改良したい場合は、新しいaxis_idの下書き軸として作ってから公開する（この関数は変更を拒否するだけ）。
 
-    ただし更新（`action="updated"`）については、`_COSMETIC_ONLY_FIELDS`のみの差分
-    （評価ロジック・重みに一切影響しない見た目専用の変更）なら例外的に許可する
-    （`check_publish_immutability`の`candidate`引数参照）。評価結果に影響しうる
-    変更・削除は不変という原則自体は変えない。
+    ただし更新（`action="updated"`）については、`axis_id`も読む材料も変えない差分
+    （`is_update_allowed_while_published`）なら例外的に許可する（`check_publish_immutability`の
+    `candidate`引数参照）。利用者の保存した重みは`axis_id`で残るので、点数の付け方の目盛りを
+    差し替えても壊れない。
     """
 
     def __init__(self, existing: "AxisDefinition", action: PublishedAxisAction) -> None:
@@ -464,16 +470,15 @@ class AxisPublishedImmutableError(ValueError):
             message = f"{name}は公開中のため削除できません。先に非公開に戻してください。"
         else:
             message = (
-                f"{name}は公開中のため、表示以外は変えられません。非公開に戻してから変えるか、"
-                "複製して新しい軸として作ってください。"
+                f"{name}は公開中のため、表示と折れ点以外は変えられません。非公開に戻してから変えるか、"
+                "新しいaxis_idの軸として作ってください。"
             )
         super().__init__(message)
 
 
 # 評価ロジック（shape・default_weight・priority_overrides等）に一切影響しない
-# 表示専用フィールドのみ、公開済み軸でも直接更新を許可する（unpublish→update→republishの
-# 手順を経由しなくてよい）。値を変えてもaxis_idキーで再現される他ユーザーの保存重み設定・
-# ルート計算結果は変わらないため、公開後の破壊的変更を防ぐという目的を損なわない。
+# 表示専用フィールド。値を変えてもaxis_idキーで再現される他ユーザーの保存重み設定・
+# ルート計算結果は変わらない。
 # display_band_labels_overrideもdisplay_thresholds_overrideと同じ「地図の色分け段階の
 # 見せ方」の表示専用フィールドのためここへ加える。
 _COSMETIC_ONLY_FIELDS = frozenset(
@@ -485,12 +490,16 @@ _COSMETIC_ONLY_FIELDS = frozenset(
 )
 
 
-def is_cosmetic_only_update(existing: AxisDefinition, candidate: AxisDefinition) -> bool:
-    """`existing`から`candidate`への差分が`_COSMETIC_ONLY_FIELDS`だけかどうかを判定する。
-    `existing`へ`candidate`側の表示専用フィールドだけを重ねた結果が
-    `candidate`と完全一致すれば、それ以外のフィールドは変わっていないと分かる。"""
-    patched = existing.model_copy(update={field: getattr(candidate, field) for field in _COSMETIC_ONLY_FIELDS})
-    return patched == candidate
+def is_update_allowed_while_published(existing: AxisDefinition, candidate: AxisDefinition) -> bool:
+    """`existing`から`candidate`への差分が、公開したまま書いてよいものだけかどうか。
+
+    許すのは表示専用フィールド（`_COSMETIC_ONLY_FIELDS`）と、折れ線の形の`breakpoints`。どちらも`axis_id`・
+    読む材料・項・前処理・重み・形の種類を変えないので、利用者の保存した重みはそのまま効く。`existing`へ
+    `candidate`側の許す値だけを重ねた結果が`candidate`と完全一致すれば、それ以外は変わっていないと分かる。"""
+    update: dict[str, object] = {field: getattr(candidate, field) for field in _COSMETIC_ONLY_FIELDS}
+    if isinstance(existing.shape, BreakpointLinearShape) and isinstance(candidate.shape, BreakpointLinearShape):
+        update["shape"] = existing.shape.model_copy(update={"breakpoints": candidate.shape.breakpoints})
+    return existing.model_copy(update=update) == candidate
 
 
 def check_publish_immutability(
@@ -499,10 +508,10 @@ def check_publish_immutability(
     """`existing`が公開済みなら`AxisPublishedImmutableError`を送出する（更新・削除の
     どちらの直前でも呼べる汎用関数、`action`は断りの文を選ぶ）。
 
-    `candidate`（更新後の内容）が渡され、かつその差分が表示専用
-    フィールドのみ（`is_cosmetic_only_update`）の場合は例外的に許可する。`delete()`のように
+    `candidate`（更新後の内容）が渡され、かつその差分が公開したまま書いてよいものだけ
+    （`is_update_allowed_while_published`）の場合は例外的に許可する。`delete()`のように
     `candidate`が無い呼び出しは一律拒否のまま。"""
-    if existing.is_published and not (candidate is not None and is_cosmetic_only_update(existing, candidate)):
+    if existing.is_published and not (candidate is not None and is_update_allowed_while_published(existing, candidate)):
         raise AxisPublishedImmutableError(existing, action)
 
 
@@ -619,7 +628,7 @@ def check_internal_axis_not_published(candidate: AxisDefinition, existing: dict[
 
     断るのは公開へ切り替える書き込みだけで、`existing`にある書く前の版が既に公開中なら許可する。
     時刻で変わる軸が公開軸を組み合わせる形（`check_axis_set`のdocstring参照）では、組み合わせに
-    使われる軸が公開中のまま残り、その表示だけの直し（`check_publish_immutability`が許す差分）も保存する。
+    使われる軸が公開中のまま残り、その表示と折れ点の直し（`check_publish_immutability`が許す差分）も保存する。
     """
     previous = existing.get(candidate.axis_id)
     if not candidate.is_published or (previous is not None and previous.is_published):
@@ -943,7 +952,7 @@ def time_scoped_weights(
     return scoped
 
 
-def _priority_override_mask(values: MaterialColumn, equals: str) -> np.ndarray:
+def priority_override_mask(values: MaterialColumn, equals: str) -> np.ndarray:
     """0次条件が材料の値のどの要素に当たるか。**一致の判定はここだけが持つ**。
 
     `equals`は`CategoricalShape.mapping`のキーと同じ読み方をする（"true"/"false"だけを真偽へ読み、
@@ -997,26 +1006,12 @@ def _scores_or_none(scores: np.ndarray) -> list[float | None]:
     return [None if math.isnan(score) else score for score in scores.tolist()]
 
 
-def evaluate_axis_values(
-    definition: AxisDefinition, materials: Mapping[str, Sequence[object]], length: int
-) -> list[float | None]:
-    """材料id→Pythonの値の並び（長さ`length`、欠損=None）から、要素ごとの軸の得点を求める
-    （評価できない要素はNone）。評価は配列へ並べ替えて`evaluate_axis_array`が行う——入口ごとに
-    評価を書くと、区間を押して見える得点とルート選びが使う得点が同じ道で食い違う。
-
-    定義が参照しない材料が含まれていてもよく、参照する材料が無ければ全要素欠損として扱う。
-    """
-    columns = _python_value_columns(
-        materials, definition.materials, _term_material_ids([definition]), length
-    )
-    return _scores_or_none(evaluate_axis_array(definition, columns))
-
-
 def evaluate_axes_values(materials: Mapping[str, Sequence[object]], length: int) -> dict[str, list[float | None]]:
-    """`evaluate_axis_values`の全軸版。公開軸だけを依存順（`published_axis_order`）に返す。
+    """材料id→Pythonの値の並び（長さ`length`、欠損=None）から、公開軸ごとの要素の得点を求める
+    （評価できない要素はNone）。評価は配列へ並べ替えて`evaluate_axes_array`が行う。
+    公開軸だけを依存順（`published_axis_order`）に返す。
 
-    評価できなかった公開軸も、キーを残して値をNoneにする（区間インスペクタの`available=False`・
-    合成の分母からの除外がこれを前提にする）。
+    評価できなかった公開軸も、キーを残して値をNoneにする。
     """
     evaluated = evaluate_axes_array(_axes_python_value_columns(materials, length), AXIS_DEFINITIONS)
     return {axis_id: _scores_or_none(evaluated[axis_id]) for axis_id in published_axis_order(AXIS_DEFINITIONS)}
@@ -1123,31 +1118,8 @@ def _breakpoint_score_array(shape: BreakpointLinearShape, total: np.ndarray, all
     return np.where(all_missing, np.nan, round_difficulty_array(evaluate_breakpoint_linear(total, shape.breakpoints)))
 
 
-class ScorePoint(StrictModel):
-    """材料の値が、折れ点の横軸でどこに当たり何点になるか。"""
-
-    x: float
-    score: float
-
-
-def first_term_points(shape: BreakpointLinearShape, values: Sequence[float]) -> list[ScorePoint | None]:
-    """1つ目の項の材料がそれぞれの値を持ち、ほかの項の材料が無い道の、横軸の値と得点。
-
-    評価と同じ計算（項の合成・欠損の扱い・前処理・折れ線・丸め）で出す。ほかの項に必須の材料が
-    あると、評価はその道を欠損にするため、ここもNoneを返す。
-    """
-    term_ids = [term.material for term in shape.terms]
-    columns = _python_value_columns({shape.terms[0].material: values}, term_ids, term_ids, len(values))
-    total, all_missing = _breakpoint_raw_total_array(shape, columns)
-    xs = _scores_or_none(np.where(all_missing, np.nan, total))
-    scores = _scores_or_none(_breakpoint_score_array(shape, total, all_missing))
-    return [
-        None if x is None or score is None else ScorePoint(x=x, score=score) for x, score in zip(xs, scores)
-    ]
-
-
 def raw_values(shape: "AxisShape", materials: Mapping[str, Sequence[object]], length: int) -> list[float | None]:
-    """`axis_raw_value_array`をPythonの値の並び（`evaluate_axis_values`と同じ形）から求める。
+    """`axis_raw_value_array`をPythonの値の並び（`evaluate_axes_values`と同じ形）から求める。
     保存前の`shape`も渡せるよう軸の定義ではなく形を受け取る。`CategoricalShape`は全要素None。"""
     if not isinstance(shape, BreakpointLinearShape):
         return [None] * length
@@ -1179,6 +1151,6 @@ def evaluate_axis_array(definition: AxisDefinition, materials: Mapping[str, Mate
         # キーをfloatへ変えない。
         result = evaluate_categorical(materials[shape.material], shape.mapping)
     for override in reversed(definition.priority_overrides):
-        mask = _priority_override_mask(materials[override.material], override.equals)
+        mask = priority_override_mask(materials[override.material], override.equals)
         result = np.where(mask, override.value, result)
     return result

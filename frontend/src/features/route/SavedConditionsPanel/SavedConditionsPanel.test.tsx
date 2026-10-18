@@ -17,7 +17,6 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_HARD_FILTERS } from "@/features/route/RouteSettingsPanel/HardFilterPanel";
 import { DEFAULT_ROAD_AVOIDANCE } from "@/features/route/roadAvoidance";
 import type { GenerationConditionsSnapshot, SavedCondition } from "@/features/route/savedConditions";
 import { serveAxisCatalog } from "@/testing/backendServer";
@@ -32,7 +31,6 @@ const CURRENT: GenerationConditionsSnapshot = {
   waypoints: [],
   destination: null,
   routePreference: null,
-  hardFilters: DEFAULT_HARD_FILTERS,
   roadAvoidance: DEFAULT_ROAD_AVOIDANCE,
 };
 const LOOP: SavedCondition = { ...CURRENT, name: "朝の荒川", origin: null };

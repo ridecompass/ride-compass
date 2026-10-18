@@ -111,10 +111,14 @@ export type MapScene = {
   readonly layers: readonly MapSceneLayer[];
   /** id はそれぞれ一意。外したものも地図に残す（絵は描くだけで、表示を持たない）。 */
   readonly images: readonly MapSceneImage[];
+  /** 地図全体の状態（式が `global-state` で読む値）。名前を外すと、地図の上でも値の無いことになる。 */
+  readonly globalState: MapSceneGlobalState;
 };
 
+export type MapSceneGlobalState = Readonly<Record<string, number>>;
+
 /** スタイルを差し替えた直後に「前回」として渡すと、scene 全体が作り直される。 */
-export const EMPTY_MAP_SCENE: MapScene = { sources: [], layers: [], images: [] };
+export const EMPTY_MAP_SCENE: MapScene = { sources: [], layers: [], images: [], globalState: {} };
 
 /** 段の順に並べ替えたレイヤー。同じ段の中は scene が並べた順を保つ。 */
 export function orderedSceneLayers(scene: MapScene): readonly MapSceneLayer[] {

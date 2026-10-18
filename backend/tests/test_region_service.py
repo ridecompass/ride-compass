@@ -1,8 +1,8 @@
 """`services/region_service.py`——地域のレイヤー（路面・点のタイル）の配信と、区間インスペクタ・事故の収録年。
 
 確かめるのは、焼けなかったタイル（範囲外・DB障害）の空タイルとブラウザに持たせてよいか、焼いたタイルを世代付きの鍵で
-ディスクへ残すか、区間インスペクタ（`AxisInspectorService`）が押した区間と道1本の値を地図の配信と同じ値で出し、渡された
-重みで合成すること、DB障害の倒し方。差し替えるのはDBの口と、インスペクタが読むタイルの材料・配信のサービスと、
+ディスクへ残すか、区間インスペクタ（`AxisInspectorService`）が押した区間と道1本の値を地図が塗る値と同じ値で出し、渡された
+重みで合成すること、DB障害の倒し方。差し替えるのはDBの口と、インスペクタが読むタイルの材料・材料のサービスと、
 失敗の記録（`log_external_call`）だけ。
 
 ここで見ないもの:
@@ -10,7 +10,7 @@
 - 世代の文字列の組み立て → `test_cache_identity.py`。世代をTTLで読み直すこと → `test_derived_data_revision_service.py`
 - 焼き込むSQLが出す点 → `test_point_tiles.py`
 - HTTPの受け渡し → `test_region_routes.py`
-- 地図の配信が塗る値の求め方 → `test_dynamic_way_values.py`
+- 地図が塗る値の求め方（式の木と道ごとの材料） → `test_dynamic_way_values.py`
 """
 
 import numpy as np
@@ -21,15 +21,16 @@ from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import BreakpointLinearShape, CategoricalShape, MaterialTerm, copy_axis_definitions
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments, WayValueQuery
 from app.domain.geo import LatLonPoint
+from app.domain.gradient import ROAD_BEARING_LEAF
 from app.domain.landcover import LandcoverPercentages
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, tile_bounds_lonlat
 from app.domain.route_preference import RoutePreference
+from app.domain.way_value_formula import way_values_from_formula
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, encode_empty_tile
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.services.dedicated_way_values import AxisWayValueLens
-from app.services.gradient_way_service import GradientConditions
+from app.services.dedicated_way_values import AxisWayValueLens, dedicated_way_value_layers
 from app.services import region_service
 from app.services.region_service import AxisInspectorService, RegionService
 from tests.axis_system_fixture import replaced_axis_definitions, shaped_axis
@@ -187,18 +188,21 @@ class _TileMaterials:
                                ) if self._readable else None
 
 
+#: 押した道は、走行方位（`QUERY`の北）と逆向きの道。ほかは走行方位に沿う。
+ROAD_BEARINGS = {WAY: 180.0}
+
+
 class _Gradients:
-    """勾配の配信の代役。条件の型は本物のサービスのもの（要求から何を組み立てるかは本物を通す）。"""
+    """勾配の配信の代役。配る材料の木と受け取る条件の型は、登録された本物のサービスのものが使われる。区間の向きは、
+    区間が属する道の向き。"""
 
-    material_id = "gradient_percent"
-    conditions_type = GradientConditions
+    async def get_way_materials(self, z, x, y, at):
+        gradients = {"other": 9.0, WAY: 1.0} if (z, x, y) == WAY_TILE else {"other": 9.0, SEGMENT: 6.0}
+        return {"gradient_percent": gradients, ROAD_BEARING_LEAF: {key: ROAD_BEARINGS.get(key, 0.0) for key in gradients}}
 
-    async def get_way_values(self, z, x, y, conditions):
-        return {"other": 9.0, WAY: -1.0} if (z, x, y) == WAY_TILE else {"other": 9.0, SEGMENT: 6.0}
-
-    def segment_values(self, segments, conditions):
-        """区間の勾配は、走る向きで符号が変わる（ここでは区間の材料と逆向きに走る）。"""
-        return -np.asarray(segments.columns["gradient_percent"], dtype=float)
+    def segment_materials(self, segments):
+        return {"gradient_percent": np.asarray(segments.columns["gradient_percent"], dtype=float),
+                ROAD_BEARING_LEAF: np.array([ROAD_BEARINGS.get(key, 0.0) for key in segments.feature_keys])}
 
 
 def _inspector(readable: bool = True, unavailable: bool = False) -> AxisInspectorService:
@@ -218,6 +222,18 @@ def _difficulty(axis_id: str, painted: float) -> float:
     return INSPECTED_AXES[SIGNED].shape.score_at(abs(painted)) if axis_id == SIGNED else painted
 
 
+async def _map_values(axis_id: str, tile: tuple[int, int, int]) -> dict[str, float | None]:
+    """地図が塗る値: 軸カタログの式の木へ、地図が受け取る道ごとの材料と`QUERY`の走る向きを入れたもの。"""
+    lens = AxisWayValueLens(axis_id, copy_axis_definitions(), _TileMaterials(), {"gradient_percent": _Gradients()}.__getitem__)
+    by_way = await lens.way_materials(*tile, QUERY.at)
+    formula = dedicated_way_value_layers()[axis_id].formula
+    assert by_way is not None and formula is not None
+    keys = list(by_way)
+    names = {name for materials in by_way.values() for name in materials}
+    leaves = {name: [by_way[key].get(name, np.nan) for key in keys] for name in names}
+    return way_values_from_formula(formula, keys, leaves, {"bearing_deg": QUERY.bearing_deg})
+
+
 @pytest.mark.parametrize(("pressed", "feature_key"), [(EDGE_TILE, SEGMENT), (WAY_TILE, WAY)],
                          ids=["区間で塗る倍率", "道1本で塗る倍率"])
 async def test_the_inspector_gives_the_values_the_map_paints_for_the_segment_and_for_its_way(pressed, feature_key):
@@ -233,12 +249,7 @@ async def test_the_inspector_gives_the_values_the_map_paints_for_the_segment_and
                                                  breakpoints=[(0.0, 0.0), (10.0, 100.0)]), axis_id="axis_internal")
     with replaced_axis_definitions({**axes, internal.axis_id: internal}):
         result = await _inspector().inspect(int(WAY), feature_key, *pressed, PRESSED, QUERY, None)
-        painted = {
-            tile: {axis_id: await AxisWayValueLens(axis_id, copy_axis_definitions(), _TileMaterials(),
-                                                   {"gradient_percent": _Gradients()}.__getitem__).values(*tile, QUERY)
-                   for axis_id in axes}
-            for tile in (EDGE_TILE, WAY_TILE)
-        }
+        painted = {tile: {axis_id: await _map_values(axis_id, tile) for axis_id in axes} for tile in (EDGE_TILE, WAY_TILE)}
 
     assert _scores(result.segment) == {
         axis_id: _difficulty(axis_id, values[SEGMENT]) for axis_id, values in painted[EDGE_TILE].items()}
@@ -264,7 +275,7 @@ async def test_what_the_map_does_not_paint_is_no_data_in_the_inspector(readable,
 
 
 async def test_an_axis_whose_conditions_are_missing_has_no_value_and_the_others_combine_without_it():
-    """地図の配信なら断る条件の欠け（勾配の走行方位）は、内訳ではその軸だけを「データなし」にし、合成はほかの軸で出す。"""
+    """条件の欠け（勾配の走行方位）は、内訳ではその軸だけを「データなし」にし、合成はほかの軸で出す。"""
     with replaced_axis_definitions(INSPECTED_AXES):
         result = await _inspector().inspect(
             int(WAY), SEGMENT, *EDGE_TILE, PRESSED, WayValueQuery(at=None, bearing_deg=None, speed_kmh=None),

@@ -8,7 +8,7 @@ import RoadInspectorPopup from "@/features/map/MapView/RoadInspectorPopup";
 import { roadWayId, type RoadSurfacePopupProperties } from "@/features/map/MapView/roadFacts";
 import * as maplibregl from "maplibre-gl";
 
-import { configureMaplibreWorker } from "@/features/map/maplibreWorker";
+import { createBaseMap } from "@/features/map/baseMap";
 import type {
   ErrorEvent as MapLibreErrorEvent,
   Map as MapLibreMap,
@@ -26,7 +26,7 @@ import type {
   RouteSegmentDetail,
   SelectedRouteSegment,
 } from "@/types/route";
-import { ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM } from "@/features/map/regionApi";
+import { mapStyleUrl, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM } from "@/features/map/regionApi";
 import type { RideConditions } from "@/features/map/regionApi";
 import { tileContainingLonLat, type TileXY } from "@/features/map/layers/dynamicWayValues";
 import {
@@ -34,8 +34,6 @@ import {
   type MapLayerDescriptor,
   type LayerDataStatusByLayer,
 } from "@/features/map/layers/mapLayers";
-import { apiPath } from "@/lib/apiPath";
-import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import { isStyleReady, reloadStyle, runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
 import {
   applyScene,
@@ -53,7 +51,6 @@ import { buildMapScene, type SceneInputs } from "@/features/map/scene/buildScene
 import { POINT_HIT_TARGET, POINT_TILE_SOURCES, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
 import { ROAD_LINE_HIT_TARGET, ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
-import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { MapLook } from "@/features/map/view/mapLook";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
@@ -62,21 +59,16 @@ import { ORIGIN_ZOOM, useMapMarkers } from "@/features/map/MapView/useMapMarkers
 import { pinMarkName } from "@/components/PinMark/PinMark";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
+import { rideZoomBase } from "@/features/map/MapView/rideZoom";
+import MapNavigationControl from "@/features/map/MapNavigationControl/MapNavigationControl";
 import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
 import { registerJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
 import { debugLog } from "@/lib/debugLog";
-import { MAP_OVERLAY_EDGE_ATTRIBUTE, measureMapOverlayEdges, type RouteFitObscuredPx } from "@/lib/mapOverlayEdges";
+import { computeRouteBounds, visibleCenterOffset, visiblePadding } from "@/lib/routeFit";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
 import { roundToDigits } from "@/lib/numberFormat";
-
-// 基礎地図のスタイルJSON。中のタイル・スプライト・グリフのURLはbackendがBASEMAP_PUBLIC_BASE_URLで
-// 組み立てるため、`tileBaseUrl()`と同じオリジンを指すよう揃える。
-const MAP_STYLE_PATH = apiPath("/api/basemap/{path}", { path: "styles/liberty" });
-function mapStyleUrl(): string {
-  return `${tileBaseUrl()}${MAP_STYLE_PATH}`;
-}
 
 // 初期表示の覆い（「地図を読み込み中…」）を出しておく上限。覆いは基礎地図が描けた時点（"load"）で外すので、
 // これは基礎地図のタイルが止まって"load"が来ないときの保険。
@@ -104,76 +96,12 @@ function buildLayerDataSources(layers: readonly MapLayerDescriptor[]): readonly 
   );
 }
 
-function computeRouteBounds(routes: RouteCandidate[]): maplibregl.LngLatBounds {
-  const bounds = new maplibregl.LngLatBounds();
-  for (const route of routes) {
-    for (const [lng, lat] of route.geometry.coordinates) {
-      bounds.extend([lng, lat]);
-    }
-  }
-  return bounds;
-}
-
-const MAP_UI_LOCALE: Record<string, string> = {
-  "Map.Title": "地図",
-  "NavigationControl.ZoomIn": "拡大",
-  "NavigationControl.ZoomOut": "縮小",
-  "NavigationControl.ResetBearing": "ドラッグで地図を回転、押すと北を上に戻す",
-  "AttributionControl.ToggleAttribution": "出典の表示を切り替える",
-  "AttributionControl.MapFeedback": "地図の誤りを報告する",
-  "Popup.Close": "閉じる",
-};
-
-// ルート全体を収めるときの基本余白（全辺）。
-const ROUTE_FIT_BASE_PADDING_PX = 40;
-// フィット後に必ず残す可視領域の幅・高さ。覆うUIが大きいと、余白同士が地図を食い尽くしてズームが破綻する。
-const ROUTE_FIT_MIN_VISIBLE_PX = 80;
-
-/** 覆われている高さを基本余白へ足したフィット用paddingを返す。対向する2辺の合計が
- * 地図の幅・高さを食い尽くす場合は、可視領域がROUTE_FIT_MIN_VISIBLE_PX残るところまで
- * その2辺を同じ比率で縮める。 */
-function computeRouteFitPadding(
-  obscured: Required<RouteFitObscuredPx>,
-  canvas: { width: number; height: number },
-): Required<RouteFitObscuredPx> {
-  const base = ROUTE_FIT_BASE_PADDING_PX;
-  const padding = {
-    top: base + obscured.top,
-    bottom: base + obscured.bottom,
-    left: base + obscured.left,
-    right: base + obscured.right,
-  };
-
-  const shrink = (a: number, b: number, size: number): [number, number] => {
-    const available = Math.max(0, size - ROUTE_FIT_MIN_VISIBLE_PX);
-    const total = a + b;
-    if (total <= available) return [a, b];
-    const ratio = total > 0 ? available / total : 0;
-    return [a * ratio, b * ratio];
-  };
-
-  [padding.top, padding.bottom] = shrink(padding.top, padding.bottom, canvas.height);
-  [padding.left, padding.right] = shrink(padding.left, padding.right, canvas.width);
-  return padding;
-}
-
-/** 地図の上に重なる印の付いた部品（`mapOverlayEdge`）を避けた、見えている所までの辺ごとの余白。 */
-function visiblePadding(map: MapLibreMap) {
-  const canvas = map.getCanvas();
-  const { top = 0, bottom = 0, left = 0, right = 0 } = measureMapOverlayEdges(canvas.getBoundingClientRect());
-  return computeRouteFitPadding(
-    { top, bottom, left, right },
-    { width: canvas.clientWidth, height: canvas.clientHeight },
-  );
-}
-
 function fitBoundsToRoutes(map: MapLibreMap, routes: RouteCandidate[]) {
-  if (routes.length === 0) return;
-
   const bounds = computeRouteBounds(routes);
+  if (bounds === null) return;
 
   runWhenStyleReady(map, () => {
-    const padding = visiblePadding(map);
+    const padding = visiblePadding(map.getCanvas());
     debugLog("map:viewport", "ルートを収める", { padding });
     map.fitBounds(bounds, { padding });
   });
@@ -191,15 +119,13 @@ function flyToVisible(map: MapLibreMap, point: Coordinates) {
     map.flyTo({
       center: [point.longitude, point.latitude],
       zoom: FOCUS_ZOOM,
-      offset: visibleCenterOffset(map),
+      offset: mapVisibleCenterOffset(map),
     });
   });
 }
 
-/** 地図の中心から、見えている所の中ほどへのずれ（px）。寄せるときの`offset`に渡す。 */
-function visibleCenterOffset(map: MapLibreMap): [number, number] {
-  const padding = visiblePadding(map);
-  return [(padding.left - padding.right) / 2, (padding.top - padding.bottom) / 2];
+function mapVisibleCenterOffset(map: MapLibreMap): [number, number] {
+  return visibleCenterOffset(map.getCanvas());
 }
 
 // 区間の当たり判定は見た目の線より広いため、押した地点の印を区間の線上の最寄りの点へ寄せる。区間の距離なら
@@ -276,6 +202,8 @@ interface MapViewProps {
   pinNames: PinNames;
   /** 地図を押したときの意味（効いているパネルが決める）。 */
   tapMode: MapTapMode;
+  /** 地図に出した一時の選択の持ち主。変わると、開いている地点・道の小窓を閉じる。 */
+  selectionOwner: string | null;
   /** 地点の意味の間に押した所（名前のある点の上なら、その点の位置と候補）を、選んでいる地点として置く。 */
   onPointPlace: (coordinates: Coordinates, spot: PlaceCandidate | null) => void;
   /** 地点の意味の間にピンを押したとき（その地点を選ぶ）。 */
@@ -300,6 +228,8 @@ interface MapViewProps {
   travelledKm: number | null;
   /** 走行中に次に曲がる所の地点と向き。印を出す。無ければnull。 */
   turnPoint: TurnMarkPoint | null;
+  /** いまの「評価で塗る」の周りの道の塗りが地図の向きで決まる（方位磁針のボタンに印を付ける）。 */
+  compassLinked: boolean;
 }
 
 export default function MapView({
@@ -319,6 +249,7 @@ export default function MapView({
   destination,
   pinNames,
   tapMode,
+  selectionOwner,
   onPointPlace,
   onPointSelect,
   onOriginMove,
@@ -331,10 +262,13 @@ export default function MapView({
   ride,
   travelledKm,
   turnPoint,
+  compassLinked,
 }: MapViewProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
+  // 方位磁針の針とダイヤルが指す地図の向き。
+  const [mapBearing, setMapBearing] = useState(0);
   // 道を押したときの詳細はReactで描き、MapLibreのPopupへportalで差し込む。
   const [roadPopup, setRoadPopup] = useState<{
     lngLat: [number, number];
@@ -404,6 +338,18 @@ export default function MapView({
     popupRef.current = new maplibregl.Popup({ closeButton: true }).setLngLat(lngLat).setDOMContent(content).addTo(map);
   }, []);
 
+  // 選択の持ち主が変わったら、開いている小窓を閉じる（道の小窓は状態なので描く間に外し、点の小窓はDOMに載せているので
+  // effect で外す）。
+  const [popupOwner, setPopupOwner] = useState(selectionOwner);
+  if (popupOwner !== selectionOwner) {
+    setPopupOwner(selectionOwner);
+    setRoadPopup(null);
+  }
+  useEffect(() => {
+    popupRef.current?.remove();
+    popupRef.current = null;
+  }, [selectionOwner]);
+
   // スタイルを差し替えた後、いまの宣言を空から当て直す。
   const redrawFromCurrentProps = useCallback((map: MapLibreMap) => {
     applyScene(map, latest.current.scene, { reset: true });
@@ -434,40 +380,19 @@ export default function MapView({
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    // どちらもMapを作る前に要る（Mapの生成がWorkerを起こし、スタイルの適用でタイル要求が始まる）。
-    configureMaplibreWorker();
+    // Mapを作る前に要る（スタイルの適用でタイル要求が始まる）。
     registerJmaTileProtocol();
 
     // 片付けた後に"idle"が届いても状態を書かない。
     let cancelled = false;
 
-    const map = new maplibregl.Map({
+    const map = createBaseMap({
       container: mapContainerRef.current,
-      style: mapStyleUrl(),
       center: [location.longitude, location.latitude],
       zoom: ORIGIN_ZOOM,
-      // 常に使うデータの出典は、どのレイヤーを出しているかと関係なく出す（宣言はbackend）。
-      attributionControl: { compact: true, customAttribution: [...mapDisplay.alwaysShownAttributions] },
-      // デバッグモードの間、MapLibreが出す要求を種別ごとにログする（無効の間debugLogは何もしない）。
-      transformRequest: (url, resourceType) => {
-        debugLog("map:request", `${resourceType ?? "unknown"} ${url}`);
-        return { url };
-      },
-      locale: MAP_UI_LOCALE,
     });
-    map.addControl(new maplibregl.NavigationControl(), "top-right");
-    map.getContainer().querySelector(".maplibregl-ctrl-top-right")?.setAttribute(MAP_OVERLAY_EDGE_ATTRIBUTE, "right");
     mapRef.current = map;
     debugLog("map:lifecycle", "初期化", { center: [location.longitude, location.latitude], zoom: ORIGIN_ZOOM });
-
-    // 出典の表示は、データが載った時点でMapLibreが開いた状態（全文）にし、地図を一度ドラッグするまで閉じない。
-    // その間ほかのUIと重なるため、同じイベントのたびに畳む。
-    const attribEl = mapContainerRef.current.querySelector(".maplibregl-ctrl-attrib");
-    function collapseAttribution() {
-      attribEl?.classList.remove("maplibregl-compact-show");
-    }
-    map.on("styledata", collapseAttribution);
-    map.on("sourcedata", collapseAttribution);
 
     // MapLibreの内蔵の追従は、デバッグログの流入とレイアウトの変化が重なると通知を取りこぼし、地図が幅の一部に
     // しか描かれなくなる。コンテナの大きさが変わったら明示的にresizeする。
@@ -654,6 +579,9 @@ export default function MapView({
     function handleIdleRecompute() {
       recomputeLayerDataStatus();
     }
+    function handleRotate() {
+      setMapBearing(map.getBearing());
+    }
 
     map.on("click", handleClick);
     map.on("mousemove", handleMouseMove);
@@ -665,6 +593,7 @@ export default function MapView({
     map.on("sourcedataloading", handleTrackedSourceDataLoading);
     map.on("sourcedata", handleTrackedSourceData);
     map.on("idle", handleIdleRecompute);
+    map.on("rotate", handleRotate);
     map.once("idle", handleFirstIdle);
     const initialOverlayTimer = window.setTimeout(() => {
       if (!cancelled) setInitialTilesLoading(false);
@@ -674,8 +603,6 @@ export default function MapView({
       cancelled = true;
       window.clearTimeout(initialOverlayTimer);
       resizeObserver.disconnect();
-      map.off("styledata", collapseAttribution);
-      map.off("sourcedata", collapseAttribution);
       map.off("click", handleClick);
       map.off("mousemove", handleMouseMove);
       map.off("load", handleLoad);
@@ -686,6 +613,7 @@ export default function MapView({
       map.off("sourcedataloading", handleTrackedSourceDataLoading);
       map.off("sourcedata", handleTrackedSourceData);
       map.off("idle", handleIdleRecompute);
+      map.off("rotate", handleRotate);
       map.remove();
       mapRef.current = null;
       popupRef.current = null;
@@ -725,7 +653,7 @@ export default function MapView({
     onRouteSegmentSelect,
   });
 
-  useRideFollow(mapRef, ride, here, visibleCenterOffset);
+  const onNextRideZoom = useRideFollow(mapRef, ride, here, mapVisibleCenterOffset);
   const turnMarkContent = useTurnMark(mapRef, turnPoint);
 
   // 見るだけの間に押した区間の中身を、押した区間の印の上の小窓に出す。閉じると区間の選択を外す。
@@ -817,6 +745,22 @@ export default function MapView({
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <div ref={mapContainerRef} style={{ width: "100%", height: "100%" }} />
+      <MapNavigationControl
+        bearing={mapBearing}
+        onZoomIn={() => mapRef.current?.zoomIn()}
+        onZoomOut={() => mapRef.current?.zoomOut()}
+        onBearingChange={(bearing) => mapRef.current?.setBearing(bearing)}
+        onResetNorth={() => mapRef.current?.easeTo({ bearing: 0 })}
+        linked={compassLinked}
+        ride={
+          ride && {
+            headingUp: ride.headingUp,
+            onToggleHeadingUp: ride.onToggleHeadingUp,
+            zoomBase: rideZoomBase(ride.zoomBase),
+            onNextZoom: onNextRideZoom,
+          }
+        }
+      />
       {initialTilesLoading && (
         <div
           className="pointer-events-none absolute inset-0 z-5 flex flex-col items-center justify-center gap-2.5 bg-[var(--color-surface-2)]"

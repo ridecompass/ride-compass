@@ -15,7 +15,9 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
-import MapOverlayControls, { type LegendFilterSummaryAxis, type OverlayLayerChip } from "./MapOverlayControls";
+import MapOverlayControls from "./MapOverlayControls";
+import type { LegendFilterSummaryAxis } from "./LegendDetails";
+import type { OverlayLayerChip } from "./OverlayLayerRow";
 import {
   LAYER_DATA_STATUS_LABELS,
   MAP_LAYER_CATEGORY_ORDER,

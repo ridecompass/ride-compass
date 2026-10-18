@@ -14,7 +14,6 @@ from app.api.dependencies import (
 )
 from app.api.rate_limit import client_id, enforce_rate_limit
 from app.config import settings
-from app.domain.hard_filters import HARD_FILTER_NAMES
 from app.domain.road_avoidance import AVOIDABLE_ROWS, AvoidanceLevel
 from app.domain.route_preference import RoutePreference, check_axis_weights, published_axis_ids
 from app.domain.route_request import (
@@ -80,37 +79,6 @@ class RoutePreferenceWeights(RootModel[dict[str, float]]):
         return RoutePreference(weights=dict(self.root))
 
 
-class HardFilterOverride(RootModel[dict[str, bool]]):
-    """0次ハードフィルタ（候補にすら入れない道路種別）の個別ON/OFF上書き。
-    キーはdomain/hard_filters.py: HARD_FILTER_NAMESと同じ。RoutePreferenceWeightsと同じ
-    「全フィールド必須」方針（上書きするなら全項目を明示する）。値がTrueのフィルタだけが
-    有効（該当道路を探索対象から除外する）。
-    """
-
-    @model_validator(mode="after")
-    def _check_filter_keys(self) -> "HardFilterOverride":
-        actual = self.root.keys()
-        if actual != HARD_FILTER_NAMES:
-            missing = sorted(HARD_FILTER_NAMES - actual)
-            extra = sorted(actual - HARD_FILTER_NAMES)
-            detail_parts = []
-            if missing:
-                detail_parts.append(f"missing={missing}")
-            if extra:
-                detail_parts.append(f"unknown={extra}")
-            raise ValueError(
-                f"hard_filters must specify exactly the {len(HARD_FILTER_NAMES)} known filter names ({', '.join(detail_parts)})"
-            )
-        return self
-
-    def to_frozenset(self) -> frozenset[str]:
-        return frozenset(name for name, enabled in self.root.items() if enabled)
-
-    @classmethod
-    def from_frozenset(cls, active: frozenset[str]) -> "HardFilterOverride":
-        return cls({name: name in active for name in sorted(HARD_FILTER_NAMES)})
-
-
 class RoadAvoidanceOverride(RootModel[dict[str, AvoidanceLevel]]):
     """道のレイヤの凡例の行ごとの避け方（通る・なるべく避ける・通らない）。
     鍵は`domain/road_avoidance.py: AVOIDABLE_ROWS`と同じ集合で、全部を明示する（省いた行に既定が
@@ -148,8 +116,6 @@ class RouteGenerateRequest(StrictModel):
     # 0次ハードフィルタの勾配しきい値（%、絶対値。省略時は除外なし。
     # `domain/hard_filters.py: compute_search_exclusion`参照）。
     max_average_grade_percent: float | None = Field(ge=0, default=None)
-    # 0次ハードフィルタ名の個別ON/OFF。
-    hard_filters: HardFilterOverride
     # 道のレイヤの凡例の行ごとの避け方。
     road_avoidance: RoadAvoidanceOverride
     # 返す候補の上限件数。距離があれば距離フィルタ合格・overall_difficulty昇順の上位この件数、距離が無ければ
@@ -243,8 +209,6 @@ class GenerationConditions(StrictModel):
     penalty_strength: float
     # 0次ハードフィルタの勾配しきい値（%、Noneは除外なし）。
     max_average_grade_percent: float | None
-    # 0次ハードフィルタの個別ON/OFF上書き（実際に適用された値）。
-    hard_filters: HardFilterOverride
     # 道のレイヤの凡例の行ごとの避け方（実際に適用された値）。
     road_avoidance: RoadAvoidanceOverride
     # 候補数の上限。
@@ -383,7 +347,6 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
                     preference_override=preference_override,
                     penalty_strength=request.penalty_strength,
                     max_average_grade_percent=request.max_average_grade_percent,
-                    hard_filters=request.hard_filters.to_frozenset(),
                     road_avoidance=dict(request.road_avoidance.root),
                     assumed_speed_kmh=request.assumed_speed_kmh,
                 ),
@@ -406,7 +369,6 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
                 route_preference=RoutePreferenceWeights(applied.route_preference.weights),
                 penalty_strength=applied.penalty_strength,
                 max_average_grade_percent=applied.max_average_grade_percent,
-                hard_filters=HardFilterOverride.from_frozenset(applied.hard_filters),
                 road_avoidance=RoadAvoidanceOverride(dict(applied.road_avoidance)),
                 max_routes=generated.max_routes,
                 start_time=request.start_time,

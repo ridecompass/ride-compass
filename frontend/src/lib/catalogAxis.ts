@@ -40,6 +40,8 @@ export interface CatalogAxis {
   wayValueConditions: readonly WayValueCondition[];
   /** 重みが効く時間帯。`always`以外の軸は、その時間帯に通る区間でだけ効く。 */
   timeScope: AxisCatalogEntry["time_scope"];
+  /** ルートの無い間の周りの道を塗れるか（軸カタログが道の値の式の木を配る軸だけ）。塗れない軸もルートの線は塗る。 */
+  paintsSurroundingRoads: boolean;
 }
 
 export type WayValueCondition = AxisCatalogEntry["dynamic_way_value_conditions"][number];
@@ -76,5 +78,6 @@ export function catalogAxisFromEntry(axis: AxisCatalogEntry): CatalogAxis {
     weatherLayerGroups: axis.weather_layer_groups,
     wayValueConditions: axis.dynamic_way_value_conditions,
     timeScope: axis.time_scope,
+    paintsSurroundingRoads: axis.way_value_formula !== null,
   };
 }

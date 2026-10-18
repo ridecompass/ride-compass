@@ -5,8 +5,8 @@
 - 密度の軸の見分け（`averages_density`）
 - 軸の外に照らす検査（`check_axis_definition`）・軸の集合の検査（`check_axis_set`）と書き込みのガード
   （`check_publish_immutability`・`check_material_exclusivity`・`check_internal_axis_not_published`）
-- 軸1本の評価（`evaluate_axis_array`・`evaluate_axis_values`）と生値（`axis_raw_value_array`・`raw_values`・
-  `first_term_points`・`BreakpointLinearShape.score_at`）と、点数から値の大きさへの戻し（`BreakpointLinearShape.smallest_magnitude_at`）
+- 軸1本の評価（`evaluate_axis_array`）と生値（`axis_raw_value_array`・`raw_values`・
+  `BreakpointLinearShape.score_at`）と、点数から値の大きさへの戻し（`BreakpointLinearShape.smallest_magnitude_at`）
 
 ここで見ないもの:
 - 軸が軸を参照するときの並べ替え・軸の集合の評価・既定の重みと時間帯 → `test_axis_hierarchy.py`
@@ -309,6 +309,9 @@ def test_only_axes_reading_counts_per_km_as_they_are_are_density_axes(definition
     assert axis_definitions.averages_density(definition) is averaged
 
 
+NEW_BREAKPOINTS = ((0.0, 0.0), (5.0, 100.0))
+
+
 class TestPublishImmutability:
     def test_a_draft_may_be_deleted(self):
         axis_definitions.check_publish_immutability(axis(), "deleted")
@@ -323,12 +326,14 @@ class TestPublishImmutability:
         with pytest.raises(axis_definitions.AxisPublishedImmutableError) as caught:
             axis_definitions.check_publish_immutability(axis(is_published=True), "updated")
 
-        assert "表示以外は変えられません" in str(caught.value)
+        assert "表示と折れ点以外は変えられません" in str(caught.value)
 
-    def test_a_published_axis_may_change_how_it_is_shown(self):
+    def test_a_published_axis_may_change_how_it_is_shown_and_its_breakpoints(self):
+        # 公開したまま書けないと、下書きへ戻す間だけ一般の画面から軸が消え、利用者の重みが既定へ戻る。
         published = axis(is_published=True)
         shown_differently = published.model_copy(
             update={
+                "shape": linear(MaterialTerm(material="num_a"), breakpoints=((0.0, 0.0), (5.0, 60.0), (20.0, 100.0))),
                 "icon_id": "icon",
                 "display_thresholds_override": [1.0],
                 "display_band_labels_override": ["弱", "強"],
@@ -337,11 +342,24 @@ class TestPublishImmutability:
 
         axis_definitions.check_publish_immutability(published, "updated", shown_differently)
 
-    def test_a_published_axis_may_not_change_anything_else(self):
+    @pytest.mark.parametrize(
+        "changed",
+        [
+            {"default_weight": 2.0, "shape": linear(MaterialTerm(material="num_a"), breakpoints=NEW_BREAKPOINTS)},
+            {"shape": linear(MaterialTerm(material="num_b"), breakpoints=NEW_BREAKPOINTS)},
+            {"shape": linear(MaterialTerm(material="num_a", weight=2.0), breakpoints=NEW_BREAKPOINTS)},
+            {"shape": linear(MaterialTerm(material="num_a"), breakpoints=NEW_BREAKPOINTS, preprocess="abs")},
+            {"shape": CategoricalShape(material="num_a", mapping={"x": 50.0})},
+            {"is_published": False, "shape": linear(MaterialTerm(material="num_a"), breakpoints=NEW_BREAKPOINTS)},
+        ],
+        ids=["重み", "材料", "項", "前処理", "形の種類", "公開"],
+    )
+    def test_a_published_axis_may_not_change_anything_else(self, changed):
+        # 折れ点は、ほかを変えない差し替えのときだけ公開したまま書ける。
         published = axis(is_published=True)
 
         with pytest.raises(axis_definitions.AxisPublishedImmutableError):
-            axis_definitions.check_publish_immutability(published, "updated", published.model_copy(update={"default_weight": 2.0}))
+            axis_definitions.check_publish_immutability(published, "updated", published.model_copy(update=changed))
 
 
 @pytest.mark.usefixtures("catalog")
@@ -490,18 +508,6 @@ class TestBreakpointScores:
 
         assert scores(result) == [50.0, 0.0]
 
-    def test_python_values_score_the_same_way_with_none_as_missing(self):
-        definition = axis(shape=A2_B1)
-
-        result = axis_definitions.evaluate_axis_values(
-            definition, {"a": [2.0, None, 1.0], "b": [1.0, 1.0, True], "unrelated": ["x", "y", "z"]}, 3
-        )
-
-        assert result == [50.0, None, 30.0]
-
-    def test_python_values_without_a_material_leave_every_road_unscored(self):
-        assert axis_definitions.evaluate_axis_values(axis(shape=A2_B1), {"a": [1.0, 2.0]}, 2) == [None, None]
-
     @given(st.floats(min_value=0.0, max_value=100.0))
     @example(0.15)
     @example(0.25)
@@ -527,7 +533,9 @@ class TestBreakpointScores:
     def test_abs_scores_both_directions_of_a_signed_material_alike(self, x):
         shape = linear(MaterialTerm(material="a"), breakpoints=((0.0, 0.0), (500.0, 100.0)), preprocess="abs")
 
-        assert axis_definitions.evaluate_axis_values(axis(shape=shape), {"a": [x, -x]}, 2) == [shape.score_at(abs(x))] * 2
+        result = axis_definitions.evaluate_axis_array(axis(shape=shape), {"a": np.array([x, -x])})
+
+        assert scores(result) == [shape.score_at(abs(x))] * 2
 
 
     @given(
@@ -572,10 +580,12 @@ def on_the_line(points: list[tuple[float, float]], x: float) -> float:
 
 
 class TestMappingScores:
-    def test_python_values_score_only_registered_values(self):
+    def test_only_registered_values_are_scored(self):
         definition = axis(shape=CategoricalShape(material="cat", mapping={"x": 10.0, "y": 20.0}))
 
-        assert axis_definitions.evaluate_axis_values(definition, {"cat": ["y", None, "z"]}, 3) == [20.0, None, None]
+        result = axis_definitions.evaluate_axis_array(definition, {"cat": CategoricalColumn.encode(["y", None, "z"])})
+
+        assert scores(result) == [20.0, None, None]
 
 
 class TestPriorityConditions:
@@ -596,11 +606,12 @@ class TestPriorityConditions:
             ]
         )
 
-        result = axis_definitions.evaluate_axis_values(
-            definition, {"num_a": [0.0, 0.0, 0.0], "flag": [True, False, None], "cat": ["x", "x", "y"]}, 3
+        result = axis_definitions.evaluate_axis_array(
+            definition,
+            {"num_a": np.zeros(3), "flag": np.array([1.0, 0.0, NAN]), "cat": CategoricalColumn.encode(["x", "x", "y"])},
         )
 
-        assert result == [1.0, 2.0, 0.0]
+        assert scores(result) == [1.0, 2.0, 0.0]
 
     def test_an_unknown_flag_matches_neither_true_nor_false(self):
         definition = axis(
@@ -642,13 +653,3 @@ class TestRawValues:
 
         assert axis_definitions.axis_raw_value_array(axis(shape=shape), {"cat": np.array(["x"], dtype=object)}) is None
         assert axis_definitions.raw_values(shape, {"cat": ["x", "y"]}, 2) == [None, None]
-
-    def test_points_of_the_first_material_score_as_roads_without_the_others(self):
-        shape = linear(MaterialTerm(material="a", weight=-2.0), MaterialTerm(material="b", required=False), preprocess="abs")
-
-        points = axis_definitions.first_term_points(shape, [1.0, 10.0])
-
-        assert [(p.x, p.score) for p in points] == [(2.0, 20.0), (20.0, 100.0)]
-
-    def test_points_are_absent_when_another_material_is_required(self):
-        assert axis_definitions.first_term_points(A2_B1, [1.0, 2.0]) == [None, None]

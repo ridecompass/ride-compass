@@ -2,7 +2,12 @@
 
 import { Fragment, type ReactNode } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
-import { NotFetchedIcon, RaindropIcon, ThermometerIcon, WindDirectionArrowIcon } from "@/components/ui/icons/icons";
+import {
+  NotFetchedIcon,
+  RaindropIcon,
+  ThermometerIcon,
+  WindDirectionArrowIcon,
+} from "@/components/ui/icons/lucideIcons";
 import { Button } from "@/components/ui/Button/Button";
 import { formatJstHourMinute } from "@/lib/time";
 import { downwindOnMapDeg } from "@/lib/cardinalLabel";

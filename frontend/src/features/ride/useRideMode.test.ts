@@ -120,6 +120,21 @@ describe("useRideMode", () => {
     expect(result.current.map?.headingUp).toBe(false);
   });
 
+  it("選んだ基準の倍率は休んでも続き、止めて始め直すと選んでいない所から始まる", () => {
+    const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
+    act(() => result.current.press());
+    expect(result.current.map?.zoomBase).toBeNull();
+
+    act(() => result.current.map?.onZoomBaseChange(15));
+    act(() => result.current.rest());
+    act(() => result.current.resume());
+    expect(result.current.map?.zoomBase).toBe(15);
+
+    act(() => result.current.press());
+    act(() => result.current.press());
+    expect(result.current.map?.zoomBase).toBeNull();
+  });
+
   it("位置の利用を断られたら走行モードを止め、受け取りをやめて理由を出す。次に始めると理由を消す", () => {
     const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
     act(() => result.current.press());

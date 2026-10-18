@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { MoonIcon, RaindropIcon, SunIcon } from "@/components/ui/icons/icons";
+import { MoonIcon, RaindropIcon, SunIcon } from "@/components/ui/icons/lucideIcons";
 import { vocabulary } from "@/types/generated/vocabulary";
 
 import { getAmedasWeatherDisplay } from "./amedasWeatherIcon";

@@ -8,24 +8,38 @@
 - 分布の計算 → `test_value_distribution.py`
 - 認可（どの口もBasic認証の依存を持つこと・その依存が拒むこと） → `test_admin_route_authorization.py`
 - DBの失敗の503 → `test_admin_db_unavailable.py`
+- 道の点数の評価そのもの（材料の値から地図が塗る値への写し・条件の欠けの判定・区間から畳むこと） → `test_dynamic_way_values.py`・
+  `test_region_routes.py`
 
 ここで見るのは、口ごとの受け渡し（無い軸・断られた書き込みを状態コードへ変えること）と、ルーターが自分で持つ
-検証（URLと本文の軸の一致）。
+検証（URLと本文の軸の一致）。下書きの道の点数は、同じ材料で組んだ配信のレンズの値と突き合わせる。
 
 **ルーターが名前空間に持つ外向きの参照は差し替える**——軸の集合。注入するサービス（軸の書き込み・
-分布の計算（DB））は依存の差し替えで与える。どれも読むだけなので、応答を差し替えるだけで呼ばれ方は見ない。
+分布の計算（DB）・下書きのレンズが読むタイルの材料）は依存の差し替えで与える。どれも読むだけなので、応答を差し替えるだけで呼ばれ方は見ない。
 材料カタログは本物を通し、材料は性質ごとに本物のカタログから選ぶ。
 """
 
+import asyncio
+
+import numpy as np
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.routers import axis_admin
-from app.domain.axis_definitions import REQUEST_DYNAMIC_MATERIAL_IDS
+from app.domain.axis_definitions import AXIS_DEFINITIONS, REQUEST_DYNAMIC_MATERIAL_IDS, copy_axis_definitions
+from app.domain.dynamic_way_values import FeatureMaterials, WayValueQuery
 from app.domain.material_catalog import MATERIAL_CATALOG
+from app.domain.region import EDGE_UNIT_MIN_ZOOM
 from app.domain.value_distribution import ValueDistribution
+from app.services.dedicated_way_values import (
+    DEDICATED_WAY_VALUE_SERVICES,
+    AxisWayValueLens,
+    draft_axis_way_value_lens,
+    services_by_material,
+)
 from tests.admin_auth import AUTH_HEADERS
+from tests.axis_system_fixture import replaced_axis_definitions
 
 
 def _static_materials(dtype: str) -> list[str]:
@@ -253,21 +267,98 @@ class TestPreviews:
             "bins": [[0.0, 4.0, 1.0]],
         }
 
-    def test_scores_of_a_draft_with_two_terms(self, client):
-        """1つ目の項の材料の値ごとの点数は、ほかの項の材料が無い道を評価したときの点数である。"""
-        shape = {
-            "kind": "breakpoint_linear",
-            "terms": [{"material": NUM_A, "weight": 2.0}, {"material": NUM_B, "required": False}],
-            "preprocess": "abs",
-            "breakpoints": [[0, 0], [10, 100]],
-        }
+    def test_scores_of_a_draft(self, client):
+        shape = {**linear_shape(NUM_A), "breakpoints": [[0, 0], [10, 100]]}
 
-        body = client.post(
-            BASE + "/preview-scores",
-            json={"shape": shape, "xs": [2.5, 20.0], "material_values": [-3.0, 1.0, 7.0]},
-        ).json()
+        body = client.post(BASE + "/preview-scores", json={"shape": shape, "xs": [2.5, 20.0]}).json()
 
-        assert body == {
-            "scores": [25.0, 100.0],
-            "material_points": [{"x": 6.0, "score": 60.0}, {"x": 2.0, "score": 20.0}, {"x": 14.0, "score": 100.0}],
-        }
+        assert body == {"scores": [25.0, 100.0]}
+
+    def test_calibration_of_a_draft_answers_its_map_bands_and_whether_it_averages_density(self, client):
+        """段の境界は下書きの折れ点から導いたもの。密度の軸の画面は、0点の端を動かさない。"""
+        additive = next(m for m in _static_materials("numeric") if MATERIAL_CATALOG[m].additive)
+        definition = payload(shape={**linear_shape(additive), "breakpoints": [[0, 0], [8, 100]]})
+
+        body = client.post(BASE + "/preview-calibration", json={"definition": definition}).json()
+
+        assert body["averages_density"] is True
+        assert body["map_paint"]["thresholds"] == [100.0]
+
+
+class FakeFeatureMaterials:
+    """タイルの材料を読む口（`services/feature_materials.py: FeatureMaterialService`）の代役。"""
+
+    def __init__(self, materials: FeatureMaterials):
+        self._materials = materials
+
+    async def materials(self, z, x, y):
+        return self._materials
+
+    async def segments(self, z, x, y):
+        return None
+
+
+#: タイルの材料から読む数値の材料（配信のサービスが配る材料を除く）。
+TILE_A, TILE_B = [m for m in _static_materials("numeric") if m not in services_by_material(DEDICATED_WAY_VALUE_SERVICES)][:2]
+TILE = {"z": EDGE_UNIT_MIN_ZOOM, "x": 7275, "y": 3225}
+#: 軸`a`が読む材料の、タイルの道ごとの値。
+TILE_MATERIALS = FeatureMaterials(feature_keys=("1", "2"), columns={TILE_A: np.array([2.0, 5.0])})
+
+
+@pytest.fixture
+def way_axes(app):
+    """軸`a`（`TILE_A`を読む）と`b`（`TILE_B`を読む）の集合。下書きの値と、同じ材料で組んだ配信の値を比べる。"""
+    axes = {"a": stored("a", shape=linear_shape(TILE_A), is_published=True), "b": stored("b", shape=linear_shape(TILE_B))}
+    materials = FakeFeatureMaterials(TILE_MATERIALS)
+    app.dependency_overrides[axis_admin.get_draft_way_value_lens_builder] = lambda: (
+        lambda axis_id, shape: draft_axis_way_value_lens(axis_id, shape, materials, {}.__getitem__))
+    with replaced_axis_definitions(axes):
+        yield lambda: asyncio.run(
+            AxisWayValueLens("a", copy_axis_definitions(), materials, {}.__getitem__).values(
+                TILE["z"], TILE["x"], TILE["y"], WayValueQuery(at=None, bearing_deg=None, speed_kmh=None)))
+
+
+def preview_body(shape, axis_id="a", **fields):
+    return {"axis_id": axis_id, "shape": shape, **TILE, **fields}
+
+
+# 較正の地図は、保存されている折れ点では地図の配信と同じ色で塗り、下書きを動かすとその折れ点の色へ変わる。下書きを
+# 問い合わせても、公開中の軸で塗る利用者の地図は変わらない。
+@pytest.mark.usefixtures("seams")
+class TestWayValuesPreview:
+    def test_published_breakpoints_answer_what_the_map_serves(self, client, way_axes):
+        served = way_axes()
+
+        response = client.post(BASE + "/preview-way-values", json=preview_body(linear_shape(TILE_A)))
+
+        assert response.status_code == 200
+        assert response.json() == served == {"1": 20.0, "2": 50.0}
+
+    def test_draft_breakpoints_change_only_the_answer(self, client, way_axes):
+        draft = {**linear_shape(TILE_A), "breakpoints": [[0, 100], [10, 0]]}
+        served = way_axes()
+        published = dict(AXIS_DEFINITIONS)
+
+        response = client.post(BASE + "/preview-way-values", json=preview_body(draft))
+
+        assert response.json() == {"1": 80.0, "2": 50.0}
+        assert way_axes() == served
+        assert AXIS_DEFINITIONS == published
+
+    @pytest.mark.usefixtures("way_axes")
+    @pytest.mark.parametrize(
+        ("body", "status_code", "detail"),
+        [
+            (preview_body(linear_shape(TILE_A), axis_id="missing"), 404, None),
+            # 保存の判定が断る下書き（ほかの軸の材料を読む）は、その理由の文で断る。
+            (preview_body(linear_shape(TILE_B)), 422, "使っています"),
+            # 向きで符号の変わる材料は、配信と同じく走行方位が無ければ求めない。
+            (preview_body(linear_shape("gradient_percent")), 422, "bearing_deg"),
+        ],
+    )
+    def test_refused_previews(self, client, body, status_code, detail):
+        response = client.post(BASE + "/preview-way-values", json=body)
+
+        assert response.status_code == status_code
+        if detail is not None:
+            assert detail in response.json()["detail"]

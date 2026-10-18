@@ -20,13 +20,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/Toggle
 import { Dot } from "@/components/ui/Dot/Dot";
 import { textVariants } from "@/components/ui/Text/Text";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
-import {
-  ClearAllFiltersIcon,
-  ClearAllLayersIcon,
-  ClockIcon,
-  SpeedGaugeIcon,
-  WindDirectionArrowIcon,
-} from "@/components/ui/icons/icons";
+import { ClearAllFiltersIcon, ClearAllLayersIcon, CompassNeedleIcon } from "@/components/ui/icons/icons";
+import { ClockIcon, EvaluationPaintIcon, SpeedGaugeIcon } from "@/components/ui/icons/lucideIcons";
 import { cn } from "@/lib/cn";
 import { EVALUATION_PAINT_NAME } from "@/lib/screenNames";
 
@@ -40,13 +35,15 @@ export interface LensOption {
   description: string;
   /** 軸のアイコン（重みのタブと同じ）。未設定は汎用のアイコン。 */
   iconId?: string;
-  /** 値が変わる走る条件（夜だけ効く軸は出発時刻）。地図の右の列の走る条件のボタンと同じアイコンを名前に添える。 */
+  /** 値が変わる走る条件（夜だけ効く軸は出発時刻）。地図の右の列のボタンと同じアイコンを名前に添える。 */
   conditions: readonly WayValueCondition[];
+  /** ルートの無い間の周りの道を塗れるか。塗れない軸は「ルートの線だけ」を添える。 */
+  paintsSurroundingRoads: boolean;
 }
 
 /** 走る条件ごとの、地図の右の列のボタンと同じアイコンと名前。 */
 const CONDITION_MARKS: Record<WayValueCondition, { Icon: (props: { size?: number }) => ReactElement; name: string }> = {
-  bearing_deg: { Icon: WindDirectionArrowIcon, name: "走行方位" },
+  bearing_deg: { Icon: CompassNeedleIcon, name: "地図の向き" },
   speed_kmh: { Icon: SpeedGaugeIcon, name: "想定速度" },
   at: { Icon: ClockIcon, name: "出発時刻" },
 };
@@ -82,7 +79,7 @@ const LENS_SCREEN_NAME = EVALUATION_PAINT_NAME;
 const UNSELECTED_LABEL = "評価軸を選ぶ";
 
 /** 凡例の段の見本（開いた先の凡例の行）。 */
-const LEGEND_SWATCH_CLASS = "inline-block h-1.5 w-2.5 flex-shrink-0 rounded-[1px]";
+export const LEGEND_SWATCH_CLASS = "inline-block h-1.5 w-2.5 flex-shrink-0 rounded-[1px]";
 
 // 部品は軸カタログのアイコンの固定の辞書から引くので描くたびに作られないが、`const Icon = …; <Icon />`の形は
 // react-hooks/static-componentsが描くたびに作る形と読むため、createElementで描く。
@@ -181,6 +178,8 @@ export default function LensControl({
             title={statusLabel}
             usage="評価軸を1つ選び、その道を走ったときの点数で、地図の道路（ルートを作った後はルートの線）を塗ります。横の帯は点数の凡例です。"
           >
+            {/* 道のりのグラフの「評価で塗る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
+            <EvaluationPaintIcon size={14} />
             <LensSwatch color={pillColor} />
             <span className="flex-shrink-0 font-semibold">{pillLabel}</span>
             {dataStatus && <Dot aria-hidden="true" tone={dataStatus} />}
@@ -274,7 +273,7 @@ export default function LensControl({
   );
 }
 
-/** 選択肢の1行。「表示」の一覧の行（`MapOverlayControls.tsx: LayerRow`）と同じ形で、チェックの代わりに1つだけ選ぶ印を出す。
+/** 選択肢の1行。「表示」の一覧の行（`OverlayLayerRow.tsx: OverlayLayerRow`）と同じ形で、チェックの代わりに1つだけ選ぶ印を出す。
  * (i) は説明を、▶（選んでいる行だけ）は凡例を、行のすぐ下に開く。 */
 function LensRow({ option, panel, filtered }: { option: LensOption; panel: ReactElement | null; filtered: boolean }) {
   const [hintOpen, setHintOpen] = useState(false);
@@ -309,6 +308,7 @@ function LensRow({ option, panel, filtered }: { option: LensOption; panel: React
               </span>
             );
           })}
+          {!option.paintsSurroundingRoads && <span className={textVariants({ variant: "note" })}>ルートの線だけ</span>}
           {option.unused && <span className={textVariants({ variant: "note" })}>未使用</span>}
           {filtered && <span className={textVariants({ variant: "note" })}>絞り込み中</span>}
         </ToggleGroupItem>

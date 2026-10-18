@@ -85,7 +85,7 @@
     "frontend/src/features/route/useSpliceSession.ts": "乗り換え先の組み立て（shapeOfRoute・candidateShapes・splicedShape・minStretchKm・spliceOptions・spliceStretchFeatures）を useSpliceOptions.ts へ出す",
     "frontend/src/structure/scaffoldCopies.test.ts": "検査の本体のうち写しを見つける部分（copiedDefinitions・bypassedBuilders）を structure/scaffoldCopies.ts へ、差し替えを見つける部分（viMocks・bypassedStandIns・scaffoldViolations）を structure/scaffoldMocks.ts へ出し、元には規約の説明とテストの表だけを残す",
     "frontend/src/structure/vacuousLoops.test.ts": "検査の本体のうち名前で束ねた絞り込みを辿る部分（filteredNames・assertsNonEmpty）を structure/vacuousLoopNames.ts へ、それ以外の判定（findVacuousLoops・findInTree）を structure/vacuousLoops.ts へ出し、元には規約の説明とテストの表だけを残す",
-    "frontend/src/testing/maplibre.ts": "イベントの受け口と地図に載せる小物の代役（Evented・Marker・Popup・LngLatBounds・NavigationControl）を testing/maplibreEvented.ts へ出す",
+    "frontend/src/testing/maplibre.ts": "イベントの受け口と地図に載せる小物の代役（Evented・Marker・Popup・LngLatBounds）を testing/maplibreEvented.ts へ出す",
     "tools/flow-gate/test/gate.test.js": "偽の世界（world・ev・suites・T・END と問いと答えの組み立て QUESTION・REPLY・ANSWER・ASKED・CONFIRMED・said・asked、回答フォームへのつなぎ connect・open・answer）を test/world.js へ出し、待つ相手と完了の場面（tasks#824 の親子・記法・tasks#878・原則7・tasks#868・tasks#877・前提の対話作業の知らせ）を gate.family.test.js へ、問いと回答フォームの場面（答えの当て直し・書いた文・回答フォーム・ラベルごとの形・続ける・操作・問いのラベル・tasks#307）を gate.answer.test.js へ分ける"
   }
 }

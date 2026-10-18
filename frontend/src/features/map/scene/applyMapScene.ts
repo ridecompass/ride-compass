@@ -7,6 +7,7 @@ import {
   type MapScene,
   type MapSceneFeatureStateValue,
   type MapSceneFeatureStates,
+  type MapSceneGlobalState,
   type MapSceneImageOptions,
   type MapSceneLayer,
   type MapSceneSource,
@@ -24,6 +25,7 @@ export type MapSceneTarget = {
   setLayoutProperty(layerId: string, name: string, value: unknown): unknown;
   setFeatureState(target: FeatureIdentifier, state: Record<string, MapSceneFeatureStateValue>): unknown;
   removeFeatureState(target: FeatureIdentifier, key?: string): unknown;
+  setGlobalStateProperty(name: string, value: number | null): unknown;
   hasImage(id: string): boolean;
   addImage(id: string, image: ImageData, options: MapSceneImageOptions): unknown;
 };
@@ -66,6 +68,10 @@ export function applyMapScene(map: MapSceneTarget, options: ApplyMapSceneOptions
       })
       .map((source) => source.id),
   );
+
+  // 地図全体の状態は、それを読むレイヤーより先に置く（置く前に載ったレイヤーは、値の無い状態で一度描かれる）。
+  // スタイルを差し替えると地図全体の状態も消えるので、前回の宣言との差分で当て直す。
+  applyGlobalState(map, previous.globalState, scene.globalState);
 
   const ordered = orderedSceneLayers(scene);
   const keptIds = new Set(ordered.map((layer) => layer.spec.id));
@@ -161,6 +167,15 @@ function updateLayer(map: MapSceneTarget, layer: MapSceneLayer, before: MapScene
   }
   if (!isSameValue(before.filter, layer.filter)) {
     map.setFilter(id, layer.filter ?? null);
+  }
+}
+
+function applyGlobalState(map: MapSceneTarget, before: MapSceneGlobalState, after: MapSceneGlobalState): void {
+  for (const [name, value] of Object.entries(after)) {
+    if (!Object.is(before[name], value)) map.setGlobalStateProperty(name, value);
+  }
+  for (const name of Object.keys(before)) {
+    if (!(name in after)) map.setGlobalStateProperty(name, null);
   }
 }
 

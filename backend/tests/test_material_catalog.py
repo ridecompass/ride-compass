@@ -26,7 +26,6 @@ from app.domain import material_catalog
 from app.domain.material_catalog import (
     CoverageExcluded,
     EdgeMaterialCoverageSpec,
-    MaterialReferencePoint,
     MaterialSpec,
     WayMaterialCoverageSpec,
 )
@@ -70,7 +69,6 @@ def catalog(monkeypatch):
     [
         {"total_unit": "回"},  # 掛ける相手の単位が無い
         {"value_labels": {"a": "あ"}},  # 対訳は分類の値にだけ付く
-        {"reference_points": [MaterialReferencePoint(label="目安", value=1.0)], "dtype": "boolean"},
     ],
 )
 def test_a_declaration_that_does_not_fit_its_dtype_is_refused(fields):
@@ -103,6 +101,12 @@ def test_a_value_is_shown_with_its_label_when_the_table_has_one():
 
     assert material.value_label("paved") == "舗装 - paved"
     assert material.value_label("new_value") == "new_value"
+
+
+def test_a_yes_no_value_is_shown_as_yes_or_no():
+    material = spec("flag_a", "boolean")
+
+    assert [material.value_label(v) for v in ("true", "false")] == ["はい - true", "いいえ - false"]
 
 
 def test_materials_are_known_by_their_id(catalog):
@@ -181,6 +185,11 @@ def test_a_value_belongs_to_one_row_only(attr):
     for spec in attr.display_axes:
         values = [value for category in spec.categories for value in category.values]
         assert len(values) == len(set(values)), spec.key
+
+
+def test_every_named_road_kind_is_on_a_legend_row():
+    """どの行にも入らない道は、地図で「その他」に塗られ、除外タブのどの行を選んでも避けられない。"""
+    assert row_values("highway") == set(material_catalog.MATERIAL_CATALOG["highway"].value_labels)
 
 
 @pytest.mark.parametrize("attr", DISPLAYED, ids=lambda attr: attr.attr_id)

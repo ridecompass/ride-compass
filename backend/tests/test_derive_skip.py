@@ -409,13 +409,14 @@ async def test_each_stage_declares_what_it_reads_and_writes(world, monkeypatch):
     assert missing == {}
 
 
-@pytest.mark.parametrize("table", [table for stage in derive_cli.STAGES for table in stage.tables])
-async def test_every_table_a_stage_writes_has_statistics_after_the_rebuild(world, table):
+async def test_every_table_a_stage_writes_has_statistics_after_the_rebuild(world):
     """段が書いた表は、作り直しの後に統計（`pg_stats`）を持つ——無いまま配信と後ろの段が読むと、実行計画が桁で外れる。
     表は段の宣言から取るので、足した段の表も宣言するだけでここに入る。統計を書くのは`ANALYZE`だけで、表を作り直すたびに
-    消える（作業用のスキーマに新しく作る）。"""
-    assert await world.fetchval(
+    消える（作業用のスキーマに新しく作る）。表ごとにテストを分けないのは、テストごとに`world`を作り直すため。"""
+    tables = [table for stage in derive_cli.STAGES for table in stage.tables]
+    assert {table: await world.fetchval(
         "SELECT count(*) > 0 FROM pg_stats WHERE schemaname = 'public' AND tablename = $1", table)
+        for table in tables} == dict.fromkeys(tables, True)
 
 
 async def test_the_network_inputs_refuse_a_table_no_stage_writes():

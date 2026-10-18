@@ -2,7 +2,7 @@
 
 import type { components } from "@/types/generated/api";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
-import { NotFetchedIcon, RetryIcon, WarningTriangleIcon } from "@/components/ui/icons/icons";
+import { NotFetchedIcon, RetryIcon, WarningTriangleIcon } from "@/components/ui/icons/lucideIcons";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { vocabulary } from "@/types/generated/vocabulary";
