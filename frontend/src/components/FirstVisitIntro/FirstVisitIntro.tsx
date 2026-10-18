@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { cardVariants } from "@/components/ui/Card/Card";
 import { textVariants } from "@/components/ui/Text/Text";
-import { MenuIcon } from "@/components/ui/icons/icons";
+import { MenuIcon } from "@/components/ui/icons/lucideIcons";
 import { ORIGIN_MARK_FALLBACK_COLOR, PIN_MARK_BACKGROUND, PinMark } from "@/components/PinMark/PinMark";
 import { useStoredBooleanState } from "@/hooks/useStoredState";
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect";

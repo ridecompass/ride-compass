@@ -123,7 +123,6 @@ class RequestedConditions:
     preference_override: RoutePreference | None
     penalty_strength: float | None
     max_average_grade_percent: float | None
-    hard_filters: frozenset[str]
     # 道のレイヤの行→避け方の段（鍵は`domain/road_avoidance.py: AVOIDABLE_ROWS`と同じ集合）。
     road_avoidance: Mapping[str, AvoidanceLevel]
     assumed_speed_kmh: float

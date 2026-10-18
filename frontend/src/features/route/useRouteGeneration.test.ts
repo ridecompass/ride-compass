@@ -19,7 +19,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_HARD_FILTERS } from "@/features/route/RouteSettingsPanel/HardFilterPanel";
 import { heldReplies, onBackend } from "@/testing/backendServer";
 import { TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
@@ -79,7 +78,6 @@ function used(overrides: Partial<GenerationConditions> = {}): GenerationConditio
     distance_tolerance_km: routeGenerateConfig.default_distance_tolerance_km,
     route_preference: { axis_a: 0.5, axis_b: 0.5 },
     penalty_strength: 1,
-    hard_filters: DEFAULT_HARD_FILTERS,
     max_routes: routeGenerateConfig.default_max_routes,
     start_time: T1.toISOString(),
     assumed_speed_kmh: 20,
@@ -143,7 +141,6 @@ describe("送る要求", () => {
       longitude: ORIGIN.longitude,
       distance_km: 42,
       distance_tolerance_km: routeGenerateConfig.default_distance_tolerance_km,
-      hard_filters: DEFAULT_HARD_FILTERS,
       road_avoidance: avoidance,
       max_routes: 3,
       assumed_speed_kmh: 20,

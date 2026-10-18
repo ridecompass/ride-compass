@@ -179,16 +179,20 @@ async def test_update_rejects_publishing_axis_another_axis_reads(road_graph_sess
     assert AXIS_DEFINITIONS["base_axis"].is_published is False
 
 
-async def test_update_accepts_cosmetic_edit_of_published_axis_another_axis_reads(road_graph_session):
-    # 公開の不変性・内部軸の公開・書いた後の読み込みの3つのガードを、表示だけの直しがどれも通る。
+async def test_update_keeps_published_axis_another_axis_reads_published_with_new_breakpoints(road_graph_session):
+    # 公開の不変性・内部軸の公開・書いた後の読み込みの3つのガードを、表示と折れ点の直しがどれも通り、軸は公開のまま
+    # 差し替わる（下書きへ戻すと、その間だけ一般の画面から軸が消え、利用者の重みが既定へ戻る）。
     repository = AxisDefinitionRepository(road_graph_session)
     service = AxisRegistryAdminService(repository)
     await service.create(axis_definition("base_axis", material="oneway", is_published=True))
     await service.create(axis_definition("dependent_axis", material="base_axis"))
+    adjusted = axis_definition("base_axis", material="oneway", is_published=True, icon_id="基")
+    adjusted = adjusted.model_copy(update={"shape": adjusted.shape.model_copy(update={"breakpoints": [(0.0, 0.0), (1.0, 60.0)]})})
 
-    await service.update("base_axis", axis_definition("base_axis", material="oneway", is_published=True, icon_id="基"))
+    await service.update("base_axis", adjusted)
 
-    assert AXIS_DEFINITIONS["base_axis"].icon_id == "基"
+    assert AXIS_DEFINITIONS["base_axis"] == adjusted
+    assert (await repository.list_all())["base_axis"] == adjusted
 
 
 async def test_update_rejects_cycle_between_two_axes(road_graph_session):
@@ -226,7 +230,7 @@ async def test_update_rejects_published_axis(road_graph_session):
     service = AxisRegistryAdminService(repository)
     await service.create(axis_definition("test_axis", default_weight=0.1, is_published=True, material=CATALOG_MATERIAL))
 
-    with pytest.raises(AxisPublishedImmutableError, match="表示以外は変えられません"):
+    with pytest.raises(AxisPublishedImmutableError, match="表示と折れ点以外は変えられません"):
         await service.update(
             "test_axis", axis_definition("test_axis", default_weight=0.9, is_published=False, material=CATALOG_MATERIAL)
         )

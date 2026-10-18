@@ -8,7 +8,7 @@
 - 読めないファイルで本番の今の定義を読みに行かないこと——読む軸の id がファイルから来るので、読めないうちは読みに行けない
   （構造が守る）。壊れた JSON は、定義として読めない JSON と同じ断り（`load_definition`の1つの except）の同じ側
 
-**本番の管理APIと軸カタログは代役にする**（網の境界）。代役は、公開済みの軸の更新・削除を409で拒み、
+**本番の管理APIと軸カタログは代役にする**（網の境界）。代役は、公開済みの軸の削除と、公開したまま書けない差の更新を409で拒み、
 単体取得の応答に算出項目を足し、軸カタログは公開の軸だけを、体感ラベルを地図の段へ引き直した`map_paint`へ移して返す——道具が前提にする管理APIの約束だけを持つ。
 """
 
@@ -22,6 +22,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import axis_apply
+from app.domain.axis_definitions import AxisDefinition, is_update_allowed_while_published
 
 ADMIN = "/api/admin/axis-definitions"
 
@@ -80,7 +81,7 @@ class AdminApi:
         if path.endswith("/unpublish"):
             current["is_published"] = False
             return httpx.Response(200, json=current)
-        if current.get("is_published"):
+        if current.get("is_published") and not (method == "PUT" and _allowed_while_published(current, body)):
             return httpx.Response(409, json={"detail": "公開中の軸です"})
         if method == "PUT":
             self.axes[axis_id] = self.stored_as(body)
@@ -96,6 +97,10 @@ class AdminApi:
         entry = {key: value for key, value in axis.items() if key != "display_band_labels_override"}
         paint = {"band_labels": None if labels is None else labels[:1]}
         return {**entry, "map_paint": paint, "raw_value_units": {"unit": None}, **self.catalog_overrides.get(axis["axis_id"], {})}
+
+
+def _allowed_while_published(current: dict, body: dict) -> bool:
+    return is_update_allowed_while_published(AxisDefinition.model_validate(current), AxisDefinition.model_validate(body))
 
 
 @pytest.fixture
@@ -193,6 +198,19 @@ class TestWriting:
         assert api.writes == writes
         assert api.axes["axis_a"]["default_weight"] == 2.0
         assert api.axes["axis_a"]["is_published"] is True
+
+    def test_only_new_breakpoints_are_written_without_unpublishing(self, run):
+        # 公開を取り消すと、その間だけ軸カタログから軸が消え、利用者の画面がその軸の重みを既定へ戻す。
+        api = AdminApi(definition(is_published=True))
+        shape = {**definition()["shape"], "breakpoints": [[0.0, 0.0], [2.0, 100.0]]}
+        desired = definition(is_published=True, shape=shape, display_thresholds_override=[0.5], display_band_labels_override=["弱", "強"])
+
+        code, out, _ = apply(run, api, desired=desired)
+
+        assert code == 0
+        assert "書きました" in out
+        assert api.writes == [("PUT", f"{ADMIN}/axis_a")]
+        assert api.axes["axis_a"]["shape"]["breakpoints"] == [[0.0, 0.0], [2.0, 100.0]]
 
     @pytest.mark.parametrize(
         ("current", "writes"),

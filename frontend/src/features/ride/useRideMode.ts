@@ -34,6 +34,10 @@ interface RideOnMap {
   onPause: () => void;
   /** 北が上と進む向きが上を切り替える。 */
   onToggleHeadingUp: () => void;
+  /** 追っている間の基準の倍率（速さで引く前）。この走行でまだ選んでいなければnull（地図が最初の段を使う）。 */
+  zoomBase: number | null;
+  /** 利用者が基準の倍率を選んだ（倍率のボタン・つまむ）。 */
+  onZoomBaseChange: (zoom: number) => void;
 }
 
 interface UseRideModeResult {
@@ -131,6 +135,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
   const [error, setError] = useState<string | null>(null);
   const [fix, setFix] = useState<Fix | null>(null);
   const [headingUp, setHeadingUp] = useState(false);
+  const [zoomBase, setZoomBase] = useState<number | null>(null);
   const watchId = useRef<number | null>(null);
   // 位置が速さを持たないときに、距離と時刻の差から速さを出す測り始めの位置（`nextMotion`）。
   const motion = useRef<MotionAnchor | null>(null);
@@ -161,10 +166,11 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     [stopWatching],
   );
 
-  // 次に始めるときは北を上から始める。
+  // 次に始めるときは北を上・地図の最初の倍率から始める。
   const stop = useCallback(() => {
     leave("off");
     setHeadingUp(false);
+    setZoomBase(null);
   }, [leave]);
 
   const start = useCallback(() => {
@@ -262,8 +268,10 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
             headingUp,
             onPause: pause,
             onToggleHeadingUp: toggleHeadingUp,
+            zoomBase,
+            onZoomBaseChange: setZoomBase,
           },
-    [status, position, travel, device.heading, speedKmh, headingUp, pause, toggleHeadingUp],
+    [status, position, travel, device.heading, speedKmh, headingUp, pause, toggleHeadingUp, zoomBase],
   );
 
   const screenWakeLock = useScreenWakeLock(receiving);

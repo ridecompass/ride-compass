@@ -7,6 +7,7 @@ import DebugPanel from "@/features/admin/DebugPanel/DebugPanel";
 import BackendLogsPanel from "@/features/admin/BackendLogsPanel/BackendLogsPanel";
 import SystemStatusPanel from "@/features/admin/SystemStatusPanel/SystemStatusPanel";
 import AxisStudio from "@/features/admin/AxisStudio/AxisStudio";
+import DraftWayValuesMap from "@/features/map/DraftWayValuesMap/DraftWayValuesMap";
 import MaterialCoveragePanel from "@/features/admin/AxisStudio/MaterialCoveragePanel";
 import DerivedDataFreshnessPanel from "@/features/admin/AxisStudio/DerivedDataFreshnessPanel";
 import DbStatusPanel from "@/features/admin/AxisStudio/DbStatusPanel";
@@ -43,7 +44,7 @@ export default function AdminPage() {
         </TabsList>
 
         <TabsContent className={TAB_PANEL_CLASS} value="axisStudio">
-          <AxisStudio />
+          <AxisStudio calibrationMap={(props) => <DraftWayValuesMap {...props} />} />
         </TabsContent>
 
         <TabsContent className={TAB_PANEL_CLASS} value="materials">

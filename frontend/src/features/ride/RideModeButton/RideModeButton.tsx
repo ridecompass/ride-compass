@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button/Button";
 import { cardVariants } from "@/components/ui/Card/Card";
 import { dotVariants } from "@/components/ui/Dot/Dot";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/Popover/Popover";
-import { RideModeIcon } from "@/components/ui/icons/icons";
+import { RideModeIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 

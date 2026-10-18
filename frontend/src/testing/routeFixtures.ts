@@ -98,7 +98,6 @@ export function makeGenerationConditions(overrides: Partial<GenerationConditions
     route_preference: {},
     penalty_strength: 0,
     max_average_grade_percent: null,
-    hard_filters: {},
     road_avoidance: {},
     max_routes: 0,
     start_time: "",

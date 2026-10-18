@@ -112,7 +112,7 @@ TILE_ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     # **開いているラスタの構成は環境変数で決まりURLに現れない**（landcover_tile_service.py）。
     # 同じURLの内容が変わりうるため`immutable`は付けられない。
     ("/api/region/landcover-tiles/", BATCH_TILE),
-    ("/api/region/dynamic-way-values/", SHORT),
+    ("/api/region/way-materials/", SHORT),
 )
 #: 地図タイル系の経路の接頭辞。アクセスログの高さを分ける（`infrastructure/request_log.py: access_level`）。
 TILE_PATH_PREFIXES: Final[tuple[str, ...]] = tuple(prefix for prefix, _ in TILE_ROUTE_POLICIES)

@@ -13,17 +13,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TILE_VERSIONS_MISSING_NOTICE, TILE_ZOOM_TOO_WIDE_NOTICE } from "@/features/map/layers/mapLayers";
 import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
+import { MAP_FETCH_DEBOUNCE_MS } from "@/hooks/useDebouncedValue";
 import { onBackend, onSameOrigin } from "@/testing/backendServer";
-import { catalogEntry, catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";
+import { catalogEntry, catalogResponse, dedicatedEntry, MATERIAL_VALUE_FORMULA } from "@/testing/catalogAxes";
 import type { AxisCatalogEntry } from "@/types/route";
 
 import { LEGEND_FILTER_DEBOUNCE_MS, useMapView } from "./useMapView";
 
 const NOW = new Date("2026-10-07T03:00:00Z");
 const TILE_VERSIONS = { accident: "a1", poi: "p1", road_surface: "r1" };
-const SCORE = dedicatedEntry("axis_score", [10, 20]);
-const DEDICATED = dedicatedEntry("axis_wind", [10, 20], { dynamic_way_value_conditions: ["bearing_deg"] });
-const OTHER_DEDICATED = dedicatedEntry("axis_other", [10, 20]);
+const SCORE = dedicatedEntry("axis_score", [10, 20], { way_value_formula: MATERIAL_VALUE_FORMULA });
+const DEDICATED = dedicatedEntry("axis_wind", [10, 20], {
+  dynamic_way_value_conditions: ["bearing_deg"],
+  way_value_formula: MATERIAL_VALUE_FORMULA,
+});
+const OTHER_DEDICATED = dedicatedEntry("axis_other", [10, 20], { way_value_formula: MATERIAL_VALUE_FORMULA });
 /** 道路タイルのズームの、狭い表示範囲（覆うタイルが少ない）。 */
 const VIEWPORT = { west: 139.7, south: 35.68, east: 139.701, north: 35.681, zoom: 14, bearing: 0 };
 
@@ -42,7 +46,8 @@ function render(inputs: Partial<Inputs> = {}) {
     useMapView({
       hasSelectedRoute: false,
       hasDetail: false,
-      ride: { bearingDeg: 90, at: NOW, speedKmh: 20 },
+      ride: { at: NOW, speedKmh: 20 },
+      riding: null,
       now: NOW,
       routeWeights: {},
       ...inputs,
@@ -105,12 +110,12 @@ describe("useMapView", () => {
   it.each([
     { name: "取れなければ失敗", reply: () => new HttpResponse(null, { status: 500 }), status: "error" },
     { name: "値が無ければ空", reply: () => Response.json({}), status: "empty" },
-    { name: "値があれば何も言わない", reply: () => Response.json({ way_1: 12 }), status: undefined },
+    { name: "材料があれば何も言わない", reply: () => Response.json({ way_1: { value: 12 } }), status: undefined },
   ])(
-    "塗っている専用配信の軸だけ表示範囲の値を取り、塗りに効く走る条件と、取得の状態（$name）をレンズに出す",
+    "塗っている軸だけ表示範囲の材料を取り、塗りに効く走る条件と、取得の状態（$name）をレンズに出す",
     async ({ reply, status }) => {
       serve([DEDICATED, OTHER_DEDICATED]);
-      onBackend("GET", "/api/region/dynamic-way-values/axis_wind/:z/:x/:y", reply);
+      onBackend("GET", "/api/region/way-materials/axis_wind/:z/:x/:y", reply);
       const { result } = render();
       await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(2));
 
@@ -119,12 +124,38 @@ describe("useMapView", () => {
 
       expect(result.current.lensConditions).toEqual(["bearing_deg"]);
       // 表示範囲は間引いてから取るので、その軸の結果が出て取り終えるまで待つ。
-      await waitFor(() => expect(result.current.look.dedicatedWayValues.get("axis_wind")?.loading).toBe(false), {
+      await waitFor(() => expect(result.current.look.wayMaterials.get("axis_wind")?.loading).toBe(false), {
         timeout: 3000,
       });
       expect(result.current.lensControl.dataStatus).toBe(status);
     },
   );
+
+  it("走る向きは地図の上の向きを丸めずに [0, 360) で地図へ渡し、向きを変えても材料を取り直さない。走行中は実際に走る向きと速度を渡す", async () => {
+    serve([DEDICATED]);
+    const sent = onBackend("GET", "/api/region/way-materials/axis_wind/:z/:x/:y", () =>
+      Response.json({ way_1: { value: 12 } }),
+    );
+    const { result, rerender } = render();
+    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(1));
+    act(() => result.current.lensControl.onLensChange("axis_wind"));
+
+    act(() => result.current.look.onViewportChange({ ...VIEWPORT, bearing: 30 }));
+    await waitFor(() => expect(result.current.look.wayMaterials.get("axis_wind")?.materials.size).toBe(1), {
+      timeout: 3000,
+    });
+    expect(result.current.look.wayConditions).toEqual({ bearing_deg: 30, speed_kmh: 20 });
+    const fetched = sent.length;
+
+    act(() => result.current.look.onViewportChange({ ...VIEWPORT, bearing: -42.5 }));
+    expect(result.current.look.wayConditions).toEqual({ bearing_deg: 317.5, speed_kmh: 20 });
+    // 間引きの待ちを越えてから、要求が増えていないことを見る。
+    await new Promise((resolve) => setTimeout(resolve, MAP_FETCH_DEBOUNCE_MS + 100));
+    expect(sent).toHaveLength(fetched);
+
+    rerender({ riding: { bearingDeg: 180, speedKmh: 15 } });
+    expect(result.current.look.wayConditions).toEqual({ bearing_deg: 180, speed_kmh: 15 });
+  });
 
   it("レンズの凡例で隠した行は、凡例へはすぐ、地図へは間引きの待ちのあとに出て（全段をまとめても隠せる）、「表示」の解除では戻らず、レンズの解除で戻る", async () => {
     serve();

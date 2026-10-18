@@ -5,26 +5,22 @@
 
 import weatherScales from "@/types/generated/weather-scales.json";
 import { mapDisplay } from "@/types/generated/mapDisplay";
+import { RouteIcon, type MapIconComponent } from "@/components/ui/icons/icons";
 import {
   AccidentIcon,
-  BicycleIcon,
   ElevationIcon,
   HillshadeIcon,
   LandcoverIcon,
   OnewayIcon,
-  RaindropIcon,
   RoadIcon,
   RoadSurfaceIcon,
-  RouteIcon,
-  ShieldIcon,
   StopPlaceIcon,
   StopPoiIcon,
   SupplyPoiIcon,
   TrackGradeIcon,
   TunnelIcon,
-  WindIcon,
-  type MapIconComponent,
-} from "@/components/ui/icons/icons";
+} from "@/components/ui/icons/layerIcons";
+import { BicycleIcon, RaindropIcon, ShieldIcon, WindIcon } from "@/components/ui/icons/lucideIcons";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { TILE_VERSION_GATED_SOURCES } from "@/lib/mapDisplay/tileVersionGated";
 import { LANDCOVER_PAINTED_CLASSES } from "@/lib/mapDisplay/landcoverClasses";

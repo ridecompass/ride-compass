@@ -3,7 +3,8 @@
 import { useLayoutEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
-import { ClearPointsIcon, LocateIcon, RemovePointIcon } from "@/components/ui/icons/icons";
+import { LocateIcon } from "@/components/ui/icons/icons";
+import { ClearPointsIcon, RemovePointIcon } from "@/components/ui/icons/lucideIcons";
 import { waypointsFull, type GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
 import { cn } from "@/lib/cn";

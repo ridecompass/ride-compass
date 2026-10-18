@@ -15,57 +15,89 @@ export const primaryAttributes = [
         "property": "highway",
         "categories": [
           {
-            "key": "arterial",
-            "label": "幹線道路",
+            "key": "motorway",
+            "label": "高速道路",
             "values": [
               "motorway",
-              "motorway_link",
+              "motorway_link"
+            ],
+            "description": "自動車専用の道。高速道路・有料道路と、自動車専用のバイパス[OSM の highway=motorway とその連絡路]。",
+            "color": "#74154b"
+          },
+          {
+            "key": "trunk",
+            "label": "国道",
+            "values": [
               "trunk",
-              "trunk_link",
+              "trunk_link"
+            ],
+            "description": "国道の標識が立つ一般国道（自動車専用の区間を除く）[OSM の highway=trunk とその連絡路]。",
+            "color": "#712a68"
+          },
+          {
+            "key": "primary",
+            "label": "主要地方道",
+            "values": [
               "primary",
               "primary_link"
             ],
-            "description": "高速道路・国道・主要な県道など、車が遠くへ行くための太い通り[OSM の highway=motorway・trunk・primary とその連絡路]。",
-            "color": "#433176"
+            "description": "番号が2桁以下の県道・市道など、地方の主な道[OSM の highway=primary とその連絡路]。",
+            "color": "#653d83"
           },
           {
             "key": "secondary",
-            "label": "主要道",
+            "label": "一般県道・2車線の道",
             "values": [
               "secondary",
               "secondary_link",
               "tertiary",
               "tertiary_link"
             ],
-            "description": "県道・市町村の主な道など、地域の中を結ぶ通り[OSM の highway=secondary・tertiary とその連絡路]。",
-            "color": "#064f94"
+            "description": "主要地方道でない県道と、センターラインのある市町村道・農道など2車線以上の道[OSM の highway=secondary・tertiary とその連絡路]。",
+            "color": "#4d5099"
           },
           {
-            "key": "local",
-            "label": "生活道路",
+            "key": "unclassified",
+            "label": "1車線の一般道",
+            "values": [
+              "unclassified"
+            ],
+            "description": "住宅街の外にある、2車線に満たない一般の道。舗装した林道も入る[OSM の highway=unclassified]。",
+            "color": "#1c62aa"
+          },
+          {
+            "key": "residential",
+            "label": "住宅街・施設の中の道",
             "values": [
               "residential",
-              "unclassified",
               "living_street",
               "service",
               "road"
             ],
-            "description": "住宅街の道・名前の付かない細い道・施設の中の通路など、主に近くへ行くための道[OSM の highway=residential・unclassified・living_street・service・road]。",
-            "color": "#036793"
+            "description": "住宅街の中の道・駐車場や施設の中の通路など、主に近くへ行くための道[OSM の highway=residential・living_street・service・road]。",
+            "color": "#0770a4"
           },
           {
             "key": "cycleway",
-            "label": "自転車・歩行者道",
+            "label": "自転車専用道",
             "values": [
-              "cycleway",
-              "path",
+              "cycleway"
+            ],
+            "description": "自転車専用の標識が立つ道[OSM の highway=cycleway]。",
+            "color": "#0f7ca0"
+          },
+          {
+            "key": "footway",
+            "label": "歩道・小道",
+            "values": [
               "footway",
               "pedestrian",
-              "bridleway",
-              "steps"
+              "steps",
+              "path",
+              "bridleway"
             ],
-            "description": "自転車専用道・歩道・遊歩道・歩行者専用の道・階段など、車が通らない道[OSM の highway=cycleway・path・footway・pedestrian・bridleway・steps]。",
-            "color": "#0e7e98"
+            "description": "歩道・歩行者専用の道・階段と、山や野原の小道など、車が通らない道[OSM の highway=footway・pedestrian・steps・path・bridleway]。",
+            "color": "#10899f"
           },
           {
             "key": "track",
@@ -241,7 +273,7 @@ export const primaryAttributes = [
               "grade1"
             ],
             "description": "固い路面の農道・林道。多くは舗装されている[OSM の tracktype=grade1]。",
-            "color": "#433176"
+            "color": "#74154b"
           },
           {
             "key": "grade2",
@@ -250,7 +282,7 @@ export const primaryAttributes = [
               "grade2"
             ],
             "description": "おおむね固い未舗装の農道・林道。砂や土の混じった砂利道が多い[OSM の tracktype=grade2]。",
-            "color": "#064f94"
+            "color": "#653d83"
           },
           {
             "key": "grade3",
@@ -259,7 +291,7 @@ export const primaryAttributes = [
               "grade3"
             ],
             "description": "固い部分と柔らかい部分が半々の未舗装の農道・林道[OSM の tracktype=grade3]。",
-            "color": "#036793"
+            "color": "#1c62aa"
           },
           {
             "key": "grade4",
@@ -268,7 +300,7 @@ export const primaryAttributes = [
               "grade4"
             ],
             "description": "土・砂・草が主で、固い部分が少し混じる未舗装の農道・林道[OSM の tracktype=grade4]。",
-            "color": "#0e7e98"
+            "color": "#0f7ca0"
           },
           {
             "key": "grade5",

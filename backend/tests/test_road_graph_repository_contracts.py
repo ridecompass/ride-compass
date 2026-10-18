@@ -21,7 +21,6 @@
 選ぶ（idを名指ししない）。
 """
 
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -34,7 +33,6 @@ from app.domain.hard_filters import route_flag_columns
 from app.domain.landcover import LandcoverPercentages, landcover_key
 from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns, tile_column_sql
 from app.domain.region import BoundingBox
-from app.infrastructure import road_graph_repository
 from app.infrastructure.road_tile_sql import ROAD_SURFACE_TILE_MVT_SQL
 from app.infrastructure.derived_models import EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow, WayCountsRow
 from app.domain.graph import edge_key, node_key
@@ -46,6 +44,7 @@ from app.infrastructure.road_graph_repository import (
     RoadGraphRepository,
     way_from_clause,
 )
+from app.infrastructure.source_models import WAYS_SOURCE_SQL
 
 BBOX = BoundingBox(min_latitude=35.0, min_longitude=139.0,
                    max_latitude=35.1, max_longitude=139.1)
@@ -141,11 +140,11 @@ def test_material_array_columns_are_all_distinct():
 
 
 def test_material_tables_are_joined_only_for_the_columns_the_expressions_read():
-    """使わないJOINを足すと、材料1件を引くだけの値列挙まで道の全件へ広がる。"""
+    """使わないJOINを足すと、読む材料の少ない問い合わせまで道の全件と材料の表の結合へ広がる。"""
     edge_column = next(column for column in EdgeCountsRow.__table__.columns if not column.primary_key)
     clause = material_from_clause([f"em.{edge_column.name}"], "k.osm_way_id", "k.segment_index")
 
-    assert "JOIN" not in way_from_clause(["w.tags"])
+    assert "JOIN" not in way_from_clause(["w.tags"], WAYS_SOURCE_SQL)
     assert EdgeCountsRow.__tablename__ in clause
     assert EdgeElevationRow.__tablename__ not in clause
     assert WayCountsRow.__tablename__ not in clause
@@ -305,21 +304,6 @@ async def test_sampled_way_without_length_is_dropped():
     samples = await repo.sample_way_material_values(1, SAMPLE_PERCENT, SAMPLE_LIMIT, None)
 
     assert samples == [(10.0, {"material_a": 2.0})]
-
-
-async def test_distinct_values_are_listed_only_for_categorical_materials(monkeypatch):
-    """取りうる値の一覧に意味があるのは分類の材料だけ。値の求め方はカタログの宣言が唯一持つ。"""
-    monkeypatch.setattr(road_graph_repository, "MATERIAL_CATALOG", {
-        "material_a": SimpleNamespace(value_sql="w.tags->>'tag_a'", dtype="categorical"),
-        "material_b": SimpleNamespace(value_sql="w.tags->>'tag_b'", dtype="numeric"),
-        "material_c": SimpleNamespace(value_sql=None, dtype="categorical"),
-    })
-    repo, _ = _repo([_Row(value="value_a"), _Row(value="value_b")])
-
-    assert await repo.get_distinct_material_values("material_a") == ["value_a", "value_b"]
-    assert await repo.get_distinct_material_values("material_b") == []
-    assert await repo.get_distinct_material_values("material_c") == []
-    assert await repo.get_distinct_material_values("material_unknown") == []
 
 
 # --- 事故の収録年 -------------------------------------------------------------

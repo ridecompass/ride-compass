@@ -21,6 +21,8 @@ export const AVOIDABLE_ROWS = routeGenerateConfig.road_avoidance.rows as readonl
   label: string;
   description: string;
   default: AvoidanceLevel;
+  /** 分ける前の行の鍵。前の鍵で保存した段を、分けてできた行へ引き継ぐ。 */
+  former_key: string | null;
 }[];
 
 export const DEFAULT_ROAD_AVOIDANCE: RoadAvoidanceOverride = Object.fromEntries(
@@ -31,10 +33,14 @@ function isAvoidanceLevel(value: unknown): value is AvoidanceLevel {
   return AVOIDANCE_LEVELS.some(({ key }) => key === value);
 }
 
-/** 保存した避け方を今の行へ揃える。今の行に無い鍵は落とし、保存に無い行・今は無い段の行は既定の段にする。 */
+/** 保存した避け方を今の行へ揃える。今の行に無い鍵は落とし、分けてできた行は分ける前の行の段を引き継ぎ、
+ * どちらも無い行・今は無い段の行は既定の段にする。 */
 export function syncRoadAvoidance(stored: unknown): RoadAvoidanceOverride {
   const levels = typeof stored === "object" && stored !== null ? (stored as Record<string, unknown>) : {};
   return Object.fromEntries(
-    AVOIDABLE_ROWS.map(({ key, default: level }) => [key, isAvoidanceLevel(levels[key]) ? levels[key] : level]),
+    AVOIDABLE_ROWS.map(({ key, default: level, former_key: formerKey }) => {
+      const kept = [levels[key], formerKey === null ? undefined : levels[formerKey]].find(isAvoidanceLevel);
+      return [key, kept ?? level];
+    }),
   );
 }

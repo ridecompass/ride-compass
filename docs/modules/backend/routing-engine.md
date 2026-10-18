@@ -990,13 +990,6 @@ ST_AsMVT丸ごと生成。列は材料の値式から組む。[評価・スコ�
 フィーチャーを引く**——別々に組み立てると、代表の選び方がタイルとずれた瞬間に鍵が噛み合わず
 色が一切付かない。詳細は[dynamic-way-values.md](dynamic-way-values.md)参照。
 
-**material_catalogの動的値列挙**（`get_distinct_material_values`）: 軸スタジオ
-（AxisComposer.tsx）がhighway/surface/smoothnessのような開放的な多値材料の候補一覧を
-動的取得するための経路。値式（`MaterialSpec.value_sql`）は`domain/material_sql.py`の共有断片を
-`ROAD_SURFACE_TILE_MVT_SQL`・`material_coverage.py`
-（[evaluation-scoring.md](evaluation-scoring.md)）と共通で参照する。詳細は
-[axis-studio.md](axis-studio.md)参照。
-
 ### 道路網全体の配列（`road_network_store.py`）
 
 取込範囲全体の道路網（有向の区間とノード、区間ごとの材料）を列の配列として1つ持ち、ディスクの
@@ -1073,7 +1066,7 @@ backendは置き場を読むだけで、読むのは`current()`の1か所であ�
   どれもここを通り、省略された評価条件（重み・換算レート・0次フィルタ）の既定もここで1度だけ決める。
   エンジンは既定を持たず、解決済みの値だけを受け取る——既定を2か所で持つと、経路ごとに
   違う条件で探すことになり、しかもどちらも正常に見える。
-- **`RoutePreferenceWeights`/`HardFilterOverride`は「上書きするなら全項目を明示する」
+- **`RoutePreferenceWeights`/`RoadAvoidanceOverride`は「上書きするなら全項目を明示する」
   方針**（`model_validator`でキー集合の完全一致を強制）。`RoutePreferenceWeights`の
   対象は`AXIS_DEFINITIONS`の公開軸のみ（内部軸は含まない）。
 - **画面の操作で届く上限の外れは、日本語の文で断る**（`domain/route_request.py: request_error`）。

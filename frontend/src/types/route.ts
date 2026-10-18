@@ -40,8 +40,6 @@ export type RouteGenerateRequest = Schemas["RouteGenerateRequest"];
 export type RouteGenerateJobStatusResponse = GetJson<"/api/routes/generate/{job_id}">;
 
 export type RoutePreferenceWeights = Schemas["RoutePreferenceWeights"];
-// 0次ハードフィルタの個別のON/OFFの上書き。
-export type HardFilterOverride = Schemas["HardFilterOverride"];
 export type RoadAvoidanceOverride = Schemas["RoadAvoidanceOverride"];
 
 // 実際に適用された条件のエコー。
@@ -57,9 +55,6 @@ export type AxisDefinitionResponse = Schemas["AxisDefinitionResponse"];
 export type AxisShape = AxisDefinitionPayload["shape"];
 
 export type JmaTileIndexResponse = GetJson<"/api/jma-tile-index">;
-
-// 材料の実データ値の1件。GET /api/admin/material-catalog/{material_id}/valuesの応答の要素。
-export type MaterialValueEntry = Schemas["MaterialValueEntry"];
 
 // 材料ごとの欠損割合。GET /api/admin/material-catalog/coverageの応答。
 export type MaterialCoverageResponse = Schemas["MaterialCoverageReport"];

@@ -5,9 +5,10 @@
  * 代役は MapLibre の振る舞いを真似ず、受けたものを記録して返すだけにする:
  * - ソース・レイヤー・地物の状態は `mapTrace/recordingMap.ts` へ記録し、`MapOnScreen` から読む。
  * - 印（`Marker`）とポップアップ（`Popup`）は、渡された要素を地図の器へ置く（画面の問い合わせで引ける）。
- * - カメラの操作（`fitBounds`）とスタイルの取り直し（`setStyle`）は、引数を残す。
+ * - カメラの操作（`fitBounds`）とスタイルの取り直し（`setStyle`）は、引数を残す。向き（`setBearing`・`easeTo` の `bearing`）と
+ *   倍率（`zoomIn`・`zoomOut`）は、受けた値をそのまま今の値にする（動きの途中は無い）。向きが変わったら "rotate" だけを出す。
  * - `addProtocol` で登録された受け手は、`protocolHandler` で引ける（テストが要求を渡して呼ぶ）。
- * - 出来事（"load"・"click" 等）は自分では起こさず、テストが `MapOnScreen` で起こす。押した所に描かれている地物も、
+ * - 出来事（"load"・"click" 等）は、上の "rotate" のほかは自分では起こさず、テストが `MapOnScreen` で起こす。押した所に描かれている地物も、
  *   テストが渡したものを返す。
  *
  * `vi.mock` は import より先へ巻き上げられるため、`vi.mock("maplibre-gl", () => import("@/testing/maplibre"))` の形で置く。
@@ -19,6 +20,14 @@ import { createRecordingMap, type RecordingMap, type StyleLayer } from "./mapTra
 type Handler = (event: Record<string, unknown>) => void;
 type Listener = { readonly type: string; readonly layerId?: string; readonly handler: Handler; readonly once: boolean };
 type LngLat = { lng: number; lat: number };
+
+/** 見えている範囲（経度・緯度）。 */
+export interface ViewBounds {
+  readonly west: number;
+  readonly south: number;
+  readonly east: number;
+  readonly north: number;
+}
 
 /** 押した所に描かれている地物。`layer` は描いているレイヤーの id。 */
 export interface PointedFeature {
@@ -81,8 +90,6 @@ export class LngLatBounds {
     return this;
   }
 }
-
-export class NavigationControl {}
 
 export class Marker extends Evented {
   readonly element: HTMLElement;
@@ -178,6 +185,7 @@ const STYLE_OPERATIONS = [
   "setFilter",
   "setFeatureState",
   "removeFeatureState",
+  "setGlobalStateProperty",
 ] as const;
 
 const drawn: StandInMap[] = [];
@@ -188,8 +196,13 @@ class StandInMap extends Evented {
   readonly content: RecordingMap;
   private readonly container: HTMLElement;
   private readonly canvas: HTMLCanvasElement;
-  private readonly zoom: number;
+  private zoom: number;
+  private bearing = 0;
+  private bounds: ViewBounds | null = null;
   private pointed: readonly PointedFeature[] = [];
+  // 手ぶりの入切は、代役では指の操作が無いので受けるだけにする。
+  readonly touchZoomRotate = { disableRotation() {}, enableRotation() {} };
+  readonly touchPitch = { disable() {}, enable() {} };
 
   constructor(options: { container: HTMLElement; style: string; zoom: number }) {
     super();
@@ -221,8 +234,33 @@ class StandInMap extends Evented {
     return this.zoom;
   }
 
+  zoomIn() {
+    this.zoom += 1;
+    return this;
+  }
+
+  zoomOut() {
+    this.zoom -= 1;
+    return this;
+  }
+
+  /** テストが範囲を置くまでは、範囲の無い地図（MapLibre が範囲を求められないとき）として null を返す。 */
   getBounds() {
-    return null;
+    const bounds = this.bounds;
+    if (bounds === null) return null;
+    return {
+      getWest: () => bounds.west,
+      getSouth: () => bounds.south,
+      getEast: () => bounds.east,
+      getNorth: () => bounds.north,
+    };
+  }
+
+  /** 範囲と倍率を置き、動き終わった（"moveend"）ことを出す。 */
+  moveTo(bounds: ViewBounds, zoom: number) {
+    this.bounds = bounds;
+    this.zoom = zoom;
+    this.fire("moveend", {});
   }
 
   addControl() {
@@ -237,12 +275,25 @@ class StandInMap extends Evented {
     return this;
   }
 
-  easeTo() {
+  easeTo(options: { bearing?: number } = {}) {
+    if (options.bearing !== undefined) this.turn(options.bearing, {});
     return this;
   }
 
+  setBearing(bearing: number) {
+    this.turn(bearing, {});
+    return this;
+  }
+
+  /** 向きを変え、変わったら MapLibre と同じく "rotate" を出す。`event` は出来事の中身。 */
+  turn(bearing: number, event: Record<string, unknown>) {
+    if (bearing === this.bearing) return;
+    this.bearing = bearing;
+    this.fire("rotate", event);
+  }
+
   getBearing() {
-    return 0;
+    return this.bearing;
   }
 
   isZooming() {
@@ -329,6 +380,18 @@ export interface MapOnScreen {
   markers(): { coordinates: Coordinates; draggable: boolean; element: HTMLElement }[];
   /** 求めたスタイル（最初の1つと、取り直しの分）。 */
   readonly styles: readonly string[];
+  /** いまの倍率。 */
+  zoom(): number;
+  /** いまの向き（真北0・時計回りの度）。 */
+  bearing(): number;
+  /** 利用者が地図を指で回す（向きを変えて "rotate" を出す）。 */
+  rotateByHand(bearing: number): void;
+  /** 利用者が地図を動かす（範囲と倍率を置いて "moveend" を出す）。 */
+  moveTo(bounds: ViewBounds, zoom: number): void;
+  /** 地物の状態（`setFeatureState` で載せたもの）。 */
+  featureState(sourceId: string, featureId: string): Record<string, unknown> | undefined;
+  /** レイヤーの今の塗りの宣言。無いレイヤーは undefined。 */
+  layerPaint(layerId: string): Record<string, unknown> | undefined;
 }
 
 export function mapOnScreen(): MapOnScreen {
@@ -348,5 +411,13 @@ export function mapOnScreen(): MapOnScreen {
         element: marker.element,
       })),
     styles: map.styles,
+    zoom: () => map.getZoom(),
+    bearing: () => map.getBearing(),
+    rotateByHand: (bearing) => {
+      map.turn(bearing, { originalEvent: new Event("touchmove") });
+    },
+    moveTo: (bounds, zoom) => map.moveTo(bounds, zoom),
+    featureState: (sourceId, featureId) => map.content.featureState(sourceId, featureId),
+    layerPaint: (layerId) => map.content.layer(layerId)?.paint,
   };
 }

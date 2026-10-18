@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/cn";
-import { LENS_LINK_CLASS, LENS_LINK_DESCRIPTION } from "@/features/conditions/lensLink";
+import { LENS_LINK_CLASS, LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { useState, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
@@ -10,7 +10,7 @@ import { clampSpeedKmh, MAX_SPEED_KMH, MIN_SPEED_KMH } from "@/lib/assumedSpeed"
 
 import DynamicLayerTimeSlider from "@/features/conditions/DynamicLayerTimeSlider/DynamicLayerTimeSlider";
 import { nearestTimeIndex, parseJstLocalValue, toJstLocalValue } from "@/lib/time";
-import { ClockIcon, SpeedGaugeIcon } from "@/components/ui/icons/icons";
+import { ClockIcon, SpeedGaugeIcon } from "@/components/ui/icons/lucideIcons";
 import { buildDepartureFrames, buildDepartureTimeline } from "./departureTimeline";
 import { Button } from "@/components/ui/Button/Button";
 import { NumberInput } from "@/components/ui/NumberInput/NumberInput";
@@ -110,8 +110,8 @@ function DepartureRuler({
 
 // 地図右上の走行条件アイコン列。走行条件（出発時刻・想定速度）は時刻・速さで値の変わる評価と
 // 気象レイヤーの表示時刻の両方が参照する共有stateのため、ルート設定フォームでは
-// なく地図上に常時置き、アイコンをタップしてその場で変えられるようにする。TravelBearingControl
-// と同じ列の幅のアイコンボタンに揃える（page.tsxがTravelBearingControlの直下へ積む）。
+// なく地図上に常時置き、アイコンをタップしてその場で変えられるようにする。地図の右上の
+// 拡大・縮小と方位磁針と同じ列の幅のアイコンボタンに揃える（page.tsxがその列の直下へ積む）。
 export default function RideConditionBar({
   departureTime,
   onDepartureTimeChange,

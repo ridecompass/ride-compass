@@ -99,6 +99,7 @@ TUNNEL_NORMALIZED_SQL = normalized_tag_sql("tunnel")
 BRIDGE_NORMALIZED_SQL = normalized_tag_sql("bridge")
 MOTOR_VEHICLE_NORMALIZED_SQL = normalized_tag_sql("motor_vehicle")
 BICYCLE_NORMALIZED_SQL = normalized_tag_sql("bicycle")
+MOTORROAD_NORMALIZED_SQL = normalized_tag_sql("motorroad")
 
 # 自転車インフラ系材料（highway_is_cycleway以外）が参照するcyclewayタグの完全な集合。
 CYCLEWAY_TAG_NAMES = ("cycleway", "cycleway:left", "cycleway:right", "cycleway:both")

@@ -1,10 +1,10 @@
 // @vitest-environment node
 /**
- * `breakpointTools.ts`——折れ点の自動生成とその逆、折れ点の追加位置、ドラッグの刻み。
+ * `breakpointTools.ts`——折れ点の自動生成とその逆、ドラッグの刻み。
  *
  * ここで見ないもの:
  * - 折れ点での点数の計算 → backend（`BreakpointLinearShape.score_at`）
- * - 生成を画面のどこで使うか → `AxisScoringSection.test.tsx`
+ * - 生成を画面のどこで使うか → `AxisCalibration.test.tsx`
  */
 import { describe, expect, it } from "vitest";
 
@@ -12,7 +12,6 @@ import {
   BREAKPOINT_SHAPE_OPTIONS,
   generateBreakpoints,
   generatorSettingsFrom,
-  insertBreakpointAtLargestGap,
   niceStep,
   snapToStep,
 } from "./breakpointTools";
@@ -101,42 +100,6 @@ describe("generatorSettingsFrom", () => {
 
   it("点が2つ未満なら、端点は0と10・効き方は一定にする", () => {
     expect(generatorSettingsFrom([[5, 50]])).toEqual({ zeroValue: 0, hundredValue: 10, shape: "flat" });
-  });
-});
-
-describe("insertBreakpointAtLargestGap", () => {
-  it("隣どうしのxの間隔が最も広い区間の中点へ、xは小数2桁・点数は整数で挿す", () => {
-    const next = insertBreakpointAtLargestGap([
-      [0, 0],
-      [1, 10],
-      [4.02, 55],
-      [5, 100],
-    ]);
-    expect(next).toEqual([
-      [0, 0],
-      [1, 10],
-      [2.51, 33],
-      [4.02, 55],
-      [5, 100],
-    ]);
-  });
-
-  it("並びが崩れていても、足した後の並びはxの昇順", () => {
-    const next = insertBreakpointAtLargestGap([
-      [10, 100],
-      [0, 0],
-      [2, 20],
-    ]);
-    expect(next.map(([x]) => x)).toEqual([0, 2, 6, 10]);
-  });
-
-  it("最も広い間隔が複数あれば、xの小さい側に挿す", () => {
-    const next = insertBreakpointAtLargestGap([
-      [0, 0],
-      [2, 20],
-      [4, 40],
-    ]);
-    expect(next.map(([x]) => x)).toEqual([0, 1, 2, 4]);
   });
 });
 

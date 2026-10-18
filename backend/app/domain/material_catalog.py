@@ -6,13 +6,11 @@ docs/modules/backend/evaluation-scoring.md「材料カタログ」参照）。
 
 **材料の「登録」と「評価軸での利用」は独立している**: 既存の軸が使わない生データ
 （highway・surface・smoothness等）も、「評価や地図描画に使えそうな生データ」として本カタログへ
-網羅的に登録する。登録済みでも対応する軸が無ければ評価には使われない（軸スタジオの
-材料選択肢には現れる）。
+網羅的に登録する。登録済みでも対応する軸が無ければ評価には使われない（軸の定義ファイルから
+使える）。
 
 材料自体はGUIから追加・編集・削除できない（コード変更＋デプロイが前提）。frontendは本カタログを
 ビルド時の生成物（`scripts/export_openapi.py`が書き出す`material-catalog.json`）だけから知る。
-新しい材料を増やすときはこのファイルへ1件追加して生成物を書き出し直すだけで、フロントのコード
-変更なしに軸コンポーザーの選択肢へ現れる。
 
 `tile_property`はMVTタイル（`road_tile_sql.py: ROAD_SURFACE_TILE_MVT_SQL`）へ焼き込む
 プロパティ名（Noneなら材料がタイルに載らない）。
@@ -210,6 +208,9 @@ _EDGE_COUNTS_COVERAGE = EdgeMaterialCoverageSpec(
 
 MaterialDType = Literal["numeric", "boolean", "categorical"]
 
+#: はい/いいえの材料の値の論理名（対応表のキーの綴り→論理名）。
+_BOOLEAN_VALUE_LABELS = {"true": "はい", "false": "いいえ"}
+
 #: 材料の値の出どころ。`db`はDBの値式（`MaterialSpec.value_sql`）で求める。`request`はリクエストの条件（風・
 #: 想定速度）から都度求め、`domain/dynamic_materials.py: DYNAMIC_MATERIAL_EVALUATORS`が評価する。`observation`は
 #: 観測から都度引き、静的スコア行列の組み立てへ観測の列として渡す（`evaluation.py: build_static_edge_score_matrix`）。
@@ -217,28 +218,12 @@ MaterialSource = Literal["db", "request", "observation"]
 
 
 
-class MaterialReferencePoint(StrictModel):
-    """軸スタジオの折れ点編集を助ける「値の目安」1点。材料の値域が
-    直感的でない場合（風の材料等）に、換算式を知らなくても代表的な状況がどの値になるかを
-    示す。換算式自体はbackendだけが持ち、値はここで計算済みのものを持たせる
-    （design-principles.md構造仕様1、
-    frontendはこの一覧をそのまま表示するのみ）。"""
-
-    #: 値は有限（`allow_inf_nan=False`）。NaN・infが混ざると軸スタジオの入力欄がその1件で
-    #: 壊れ、空ラベルは並んでいても意味を持たない。
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    label: str = Field(min_length=1)
-    value: float
-
-
 class MaterialSpec(StrictModel):
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
     material_id: str
     label: str
-    # 生成物`material-catalog.json`へ含め、材料を選ぶ人へ見せる説明文として配る。
-    # 空を許すと、軸スタジオのⓘが何も出さない材料を登録できてしまう。
+    # 材料が何の値かの説明。軸の定義ファイルを書く人が材料を選ぶときに読む。
     description: str = Field(min_length=1)
     dtype: MaterialDType
     # 値の単位（凡例・数値表示用の表記、無次元・真偽値・カテゴリ値は空文字）。地図の凡例が
@@ -266,7 +251,7 @@ class MaterialSpec(StrictModel):
     # （例: cycleway・maxspeed・intersection）は名前が異なる別の名前空間のため、対応が
     # 自明でない材料には明示的にここへ書く。Noneは「対応する一次属性が無い」（動的データ
     # 由来のwind_drag_ratio、一次属性未登録のbridge/smoothness等）。GET /api/axis-catalogが
-    # 軸ごとにこれを解決して返すことで、画面の軸と一次属性レイヤーの連動が、軸スタジオで作った
+    # 軸ごとにこれを解決して返すことで、画面の軸と一次属性レイヤーの連動が、管理APIから入れた
     # 軸にも同じ仕組みで効く。
     primary_attribute: PrimaryAttributeSpec | None = None
     # この材料が読む自前のMSM格子の値（`weather_elements.py: GridValue`）。一次属性を持たない動的な材料の
@@ -287,30 +272,26 @@ class MaterialSpec(StrictModel):
     coverage: MaterialCoverage
     # 材料の値（OSMタグ生値）ごとの日本語ラベル対訳表（タグ値→ラベル）。
     # highway/surface/smoothnessのようなオープンエンドな多値材料だけが持つ（他は空dict）。
-    # 軸スタジオの「値の候補」セレクトが`GET /api/admin/material-catalog/{material_id}/values`
-    # 経由で表示するラベルの単一ソース。値の意味は材料そのものの
+    # 地図のポップアップと軸スタジオの値ごとの延長が表示するラベルの単一ソース。値の意味は材料そのものの
     # 定義に属するドメイン知識のため、他のフィールドと同じくここ（MaterialSpec自体）へ
     # 一元化する（material_id文字列をキーにした別の並列辞書にすると、材料の追加・削除の
     # たびに2箇所を同期する必要が生じるリスクを持ち込むため避ける）。
     value_labels: dict[str, str] = {}
-    # 軸スタジオの折れ点編集を助ける「値の目安」一覧（`MaterialReferencePoint`）。
-    # 値域が直感的でない材料（風等）ほど有用なため全材料必須ではなく、真偽値・categorical
-    # 材料や単純な材料は空のままでよい。
-    reference_points: list[MaterialReferencePoint] = []
 
     def value_label(self, value: str) -> str:
         """タグ生値から「論理名 - 物理名」形式の表示用ラベルを組み立てる
         （例: "自転車専用道 - cycleway"）。対訳表に無い値は物理名のみ返す
         （フォールバック、新しいOSMタグ値がDBに現れてもAPIが失敗しないようにするため。
-        この場合論理名が無いため" - "を付けない）。"""
-        label = self.value_labels.get(value)
+        この場合論理名が無いため" - "を付けない）。はい/いいえの材料の値は対応表のキーの綴り（"true"/"false"）で受ける。"""
+        labels = _BOOLEAN_VALUE_LABELS if self.dtype == "boolean" else self.value_labels
+        label = labels.get(value)
         if label is None:
             return value
         return f"{label} - {value}"
 
     def full_label(self) -> str:
         """材料名を「論理名 - 物理名」形式の表示用ラベルにする（例: "道路種別 - highway"、
-        value_labelと同じ理由で軸スタジオの材料選択肢に物理名[material_id]を併記する）。"""
+        value_labelと同じ理由で軸スタジオの一覧に物理名[material_id]を併記する）。"""
         return f"{self.label} - {self.material_id}"
 
     @field_validator("primary_attribute")
@@ -325,15 +306,13 @@ class MaterialSpec(StrictModel):
     @model_validator(mode="after")
     def _check_fields_match_the_dtype(self) -> "MaterialSpec":
         """dtypeと噛み合わない宣言を登録時に落とす。通すと、その材料を選んだ画面だけが
-        黙って何も出さない（値の目安が空の折れ点編集、対訳の効かない値の候補）。"""
+        黙って何も出さない（対訳の効かない値）。"""
         if self.total_unit is not None and not self.unit:
             # 総量は生値へ距離を掛けた量で、単位の無い材料には掛ける相手が無い
             # （`axis_raw_value.py: raw_value_units`は`unit`が空の軸の総量を先に落とす）。
             raise ValueError(f"{self.material_id}: total_unitはunitを持つ材料にだけ置ける")
         if self.value_labels and self.dtype != "categorical":
             raise ValueError(f"{self.material_id}: value_labelsはcategorical材料の値にだけ付く")
-        if self.reference_points and self.dtype != "numeric":
-            raise ValueError(f"{self.material_id}: reference_pointsは数値材料の折れ点編集にだけ効く")
         if self.tile_property is not None and self.value_sql is None:
             # タイルの列は値式から組む（`tile_column_sql`）。式を持たない材料の列は手で書くしかなく、
             # 地図と評価が別々の求め方になる。
@@ -395,47 +374,6 @@ _RAIN_COVERAGE = CoverageExcluded(
 )
 
 
-_GRADIENT_PERCENT_REFERENCE_POINTS = [
-    MaterialReferencePoint(label="平坦", value=0.0),
-    MaterialReferencePoint(label="緩い坂", value=3.0),
-    MaterialReferencePoint(label="きつい坂", value=9.0),
-    MaterialReferencePoint(label="激坂", value=15.0),
-]
-
-_POI_COUNT_PER_KM_REFERENCE_POINTS = [
-    MaterialReferencePoint(label="少ない", value=0.5),
-    MaterialReferencePoint(label="普通", value=2.0),
-    MaterialReferencePoint(label="多い", value=5.0),
-]
-
-# 目安の値（軸スタジオの材料選択で「この材料はどのくらいの値を取るか」を示す代表点）。
-
-_INTERSECTION_COUNT_PER_KM_REFERENCE_POINTS = [
-    MaterialReferencePoint(label="少ない", value=1.0),
-    MaterialReferencePoint(label="普通", value=3.0),
-    MaterialReferencePoint(label="多い", value=8.0),
-]
-
-_ACCIDENT_COUNT_PER_KM_YEAR_REFERENCE_POINTS = [
-    MaterialReferencePoint(label="少ない", value=0.02),
-    MaterialReferencePoint(label="普通", value=0.1),
-    MaterialReferencePoint(label="多い", value=0.3),
-]
-
-_MAXSPEED_KMH_REFERENCE_POINTS = [
-    MaterialReferencePoint(label="生活道路", value=20.0),
-    MaterialReferencePoint(label="一般道", value=40.0),
-    MaterialReferencePoint(label="幹線道路", value=60.0),
-    MaterialReferencePoint(label="高規格道路", value=80.0),
-]
-
-_LANES_COUNT_REFERENCE_POINTS = [
-    MaterialReferencePoint(label="1車線", value=1.0),
-    MaterialReferencePoint(label="2車線", value=2.0),
-    MaterialReferencePoint(label="4車線以上", value=4.0),
-]
-
-
 # 材料の値（OSMタグ生値）ごとの日本語ラベル対訳表。
 # MaterialSpec.value_labelsのdocstring参照——「地図表示と評価は別」という方針に基づき、
 # 地図の表示分類（一次属性`highway`の`display_axes`が持つ`DisplayCategorySpec`、
@@ -448,15 +386,15 @@ _HIGHWAY_VALUE_LABELS: dict[str, str] = {
     "motorway_link": "高速道路の連絡路",
     "trunk": "国道",
     "trunk_link": "国道の連絡路",
-    "primary": "主要幹線道路",
-    "primary_link": "主要幹線道路の連絡路",
-    "secondary": "地方主要道",
-    "secondary_link": "地方主要道の連絡路",
-    "tertiary": "地方道",
-    "tertiary_link": "地方道の連絡路",
+    "primary": "主要地方道",
+    "primary_link": "主要地方道の連絡路",
+    "secondary": "一般県道",
+    "secondary_link": "一般県道の連絡路",
+    "tertiary": "2車線の道",
+    "tertiary_link": "2車線の道の連絡路",
     "unclassified": "未区分の道路",
     "residential": "住宅街の道路",
-    "living_street": "生活道路[歩車共存]",
+    "living_street": "住宅街の道[歩車共存]",
     "service": "施設内通路",
     "road": "種別不明の道路",
     "cycleway": "自転車専用道",
@@ -510,7 +448,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         # `services/gradient_way_service.py`のフィーチャー→値配信で乗せる。
         tile_property=None,
         primary_attribute=ATTR_ELEVATION,
-        reference_points=_GRADIENT_PERCENT_REFERENCE_POINTS,
         value_sql="em.average_grade",
         coverage=EdgeMaterialCoverageSpec(
                 present_condition="em.average_grade IS NOT NULL",
@@ -537,10 +474,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         tile_property=None,
         weather_grid_value="wind",
         source="request",
-        reference_points=[
-            MaterialReferencePoint(label=f"{_WIND_REFERENCE_SPEED_LABEL}・{situation}", value=ratio)
-            for situation, ratio in _WIND_DRAG_RATIO_BY_SITUATION.items()
-        ],
         coverage=CoverageExcluded(
             reason="時刻ごとの風の予報（数値予報モデルの計算値）・想定速度から都度計算する動的材料で、DBに静的な値を持たない",
             missing_semantics="unknown",
@@ -605,7 +538,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         total_unit="回",
         tile_property=None,
         primary_attribute=ATTR_INTERSECTION,
-        reference_points=_INTERSECTION_COUNT_PER_KM_REFERENCE_POINTS,
         value_sql=per_km_value_sql("em.intersection_count"),
         coverage=_EDGE_COUNTS_COVERAGE,
     ),
@@ -618,7 +550,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         additive=True,
         tile_property=None,
         primary_attribute=ATTR_ACCIDENT_POINT,
-        reference_points=_ACCIDENT_COUNT_PER_KM_YEAR_REFERENCE_POINTS,
         value_sql=f"CASE WHEN :accident_years > 0 THEN {per_km_value_sql('em.accident_count')} / :accident_years END",
         coverage=_EDGE_COUNTS_COVERAGE,
     ),
@@ -702,7 +633,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         unit="km/h",
         tile_property=None,
         primary_attribute=ATTR_MAXSPEED,
-        reference_points=_MAXSPEED_KMH_REFERENCE_POINTS,
         value_sql=MAXSPEED_KMH_CASE_SQL,
         coverage=WayMaterialCoverageSpec(
                 missing_condition=f"({MAXSPEED_KMH_CASE_SQL}) IS NULL",
@@ -717,7 +647,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         dtype="numeric",
         tile_property=None,
         primary_attribute=ATTR_LANES,
-        reference_points=_LANES_COUNT_REFERENCE_POINTS,
         value_sql=LANES_COUNT_CASE_SQL,
         coverage=WayMaterialCoverageSpec(
                 missing_condition=f"({LANES_COUNT_CASE_SQL}) IS NULL",
@@ -934,7 +863,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
             # 行があれば載っていないキーは0件と確定できる（欠損は行そのものの不在だけ）。
             coverage=_EDGE_COUNTS_COVERAGE,
             primary_attribute=ATTR_STOP_POI,
-            reference_points=_POI_COUNT_PER_KM_REFERENCE_POINTS,
         )
         for kind, label in POI_COUNT_KINDS.items()
     },

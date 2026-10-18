@@ -31,8 +31,8 @@ paths:
 - **MVT焼き込み値（CASE式・材料タグ・domain純関数）を変更したら**、生成物
   （region-tile-config.json）を同一コミットで再生成する（タイル世代は手で上げない。`app/infrastructure/cache_identity.py`参照）。
 - **評価軸（`axis_definitions`テーブル）の新規追加・削除・既存軸の`shape_params`調整は、
-  すべて`axis_admin`のAPI（軸スタジオのGUI、または直接API呼び出し。新規追加=POST、
-  削除=unpublish→DELETE、公開軸の調整=unpublish→PUT→republish）経由で行う。**
+  すべて`axis_admin`のAPI（軸の定義ファイルを入れる`backend/scripts/axis_apply.py`。折れ点・段の境界だけなら軸スタジオの較正の画面でもよい。新規追加=POST、
+  削除=unpublish→DELETE、公開軸の折れ点・表示だけの調整=PUT、それ以外の公開軸の調整=unpublish→PUT→republish）経由で行う。**
   **正本は本番DBだけ**で、リポジトリは軸の写しを持たない。
   本番の既存の表は`create_tables()`が宣言の変更に追従しないので、差は人が本番で埋める（デプロイが入れ替えの後に
   測る。docs/architecture/tech-stack.md「デプロイの反映確認（backend/frontendで注入元が異なる）」の`schema_gap.py`）。

@@ -25,13 +25,6 @@ export function listAxisDefinitions() {
   return requestApi((init) => adminApiClient.GET("/axis-definitions", init), adminOptions("軸の一覧の取得"));
 }
 
-export function createAxisDefinition(payload: AxisDefinitionPayload) {
-  return requestApi(
-    (init) => adminApiClient.POST("/axis-definitions", { body: payload, ...init }),
-    adminOptions("軸の保存", { body: payload }),
-  );
-}
-
 export function updateAxisDefinition(axisId: string, payload: AxisDefinitionPayload) {
   return requestApi(
     (init) =>
@@ -44,22 +37,7 @@ export function updateAxisDefinition(axisId: string, payload: AxisDefinitionPayl
   );
 }
 
-export async function deleteAxisDefinition(axisId: string): Promise<void> {
-  await requestApi(
-    (init) => adminApiClient.DELETE("/axis-definitions/{axis_id}", { params: { path: { axis_id: axisId } }, ...init }),
-    adminOptions("軸の削除"),
-  );
-}
-
-export function unpublishAxisDefinition(axisId: string) {
-  return requestApi(
-    (init) =>
-      adminApiClient.POST("/axis-definitions/{axis_id}/unpublish", { params: { path: { axis_id: axisId } }, ...init }),
-    adminOptions("軸の非公開化"),
-  );
-}
-
-// 軸の編集中のプレビュー。分布は初回にWayの抽選と材料の組み立てを伴う。しきい値と点数はDBを読まない。
+// 軸の編集中のプレビュー。分布は初回にWayの抽選と材料の組み立てを伴う。点数と地図の段はDBを読まない。
 
 /** 編集中のshapeで、折れ点を通す前の生値がどう分布するか。 */
 export function fetchAxisValueDistribution(shape: AxisShape) {
@@ -81,31 +59,42 @@ export function fetchScoresPreview(body: ScoresPreviewRequest) {
   );
 }
 
-// 材料
+export type CalibrationPreviewRequest = Schemas["CalibrationPreviewRequest"];
+export type CalibrationPreview = Schemas["CalibrationPreviewResponse"];
 
-export type MaterialDistribution = Schemas["MaterialDistributionResponse"];
-
-/** 1材料の値が実データでどの範囲に散らばっているか。 */
-export function fetchMaterialDistribution(materialId: string) {
+/** 較正の画面の下書きの定義で、地図の段（境界は上書きが無ければ折れ点から導いたもの）と、密度の軸か。 */
+export function fetchCalibrationPreview(body: CalibrationPreviewRequest) {
   return requestApi(
-    (init) =>
-      adminApiClient.GET("/material-catalog/{material_id}/distribution", {
-        params: { path: { material_id: materialId } },
-        ...init,
-      }),
-    adminOptions("分布の取得", { timeoutMs: API_TIMEOUT_MS.distribution }),
+    (init) => adminApiClient.POST("/axis-definitions/preview-calibration", { body, ...init }),
+    adminOptions("地図の段の確認", { body }),
   );
 }
 
-/** categoricalの材料が実データで取る値の一覧。 */
-export function getMaterialValues(materialId: string) {
+export type WayValuesPreviewRequest = Schemas["WayValuesPreviewRequest"];
+/** 道の点数を求める下書き（軸と点のつけ方）。 */
+export type WayValuesDraft = Pick<WayValuesPreviewRequest, "axis_id" | "shape">;
+
+/** 編集中の折れ点で、1枚のタイルの道（feature_key）それぞれが何点になるか。値は公開中の軸の道の点数の配信と同じ計算で出す。 */
+export function fetchWayValuesPreview(body: WayValuesPreviewRequest) {
+  return requestApi(
+    (init) => adminApiClient.POST("/axis-definitions/preview-way-values", { body, ...init }),
+    adminOptions("道の点数の確認", { body }),
+  );
+}
+
+// 材料
+
+export type MaterialValueShares = Schemas["MaterialValueSharesResponse"];
+
+/** 種類・はい/いいえの材料の値ごとに、その値を持つ道の延長の割合。 */
+export function fetchMaterialValueShares(materialId: string) {
   return requestApi(
     (init) =>
-      adminApiClient.GET("/material-catalog/{material_id}/values", {
+      adminApiClient.GET("/material-catalog/{material_id}/value-shares", {
         params: { path: { material_id: materialId } },
         ...init,
       }),
-    adminOptions("材料の値一覧の取得", { timeoutMs: API_TIMEOUT_MS.catalog }),
+    adminOptions("値ごとの延長の取得", { timeoutMs: API_TIMEOUT_MS.distribution }),
   );
 }
 

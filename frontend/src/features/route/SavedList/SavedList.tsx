@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import { ConfirmDialog } from "@/components/ui/Dialog/Dialog";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
-import { DeleteSavedIcon } from "@/components/ui/icons/icons";
+import { DeleteSavedIcon } from "@/components/ui/icons/lucideIcons";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { textVariants } from "@/components/ui/Text/Text";
 

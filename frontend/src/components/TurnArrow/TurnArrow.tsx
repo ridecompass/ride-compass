@@ -1,4 +1,5 @@
-import { TurnLeftIcon, TurnRightIcon, UTurnIcon } from "@/components/ui/icons/icons";
+import { UTurnIcon } from "@/components/ui/icons/icons";
+import { TurnLeftIcon, TurnRightIcon } from "@/components/ui/icons/lucideIcons";
 import type { RouteTurn } from "@/types/route";
 
 // 走行中の曲がる所の向きの矢印。**曲がる所のカードと地図の曲がる所の札は同じ絵**を出し、どちらを見ても同じ向きに読めるようにする。

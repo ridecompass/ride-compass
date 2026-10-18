@@ -2,7 +2,7 @@
 
 材料idが材料カタログの既知材料であること、組み立てたサービスがその材料の値を返すこと、受け取る条件を
 要求から組み立てられること、1つの材料を2つのサービスが担当していないこと、区間ごとに値が違いうる材料のサービスが
-区間の値を配れることを見る。
+区間の材料を配れること、サービスが配る道ごとの材料の名前が別の材料と重ならないことを見る。
 
 ここで見ないもの:
 - 軸の葉の材料から配るサービスを選ぶこと → `test_region_routes.py`、区間インスペクタが引く値 → `test_region_service.py`
@@ -15,7 +15,10 @@ from typing import get_args
 
 import pytest
 
-from app.domain.dynamic_way_values import WayValueConditionName, WayValueQuery
+from app.domain.dynamic_way_values import ServedMaterialFormula, WayValueConditionName, WayValueQuery
+from app.domain.material_catalog import WIND_DRAG_RATIO
+from app.domain.rain import HOURS_SINCE_RAIN, rain_window_material_id
+from app.domain.way_value_formula import FALSE, WayValueFormula, feature
 from app.services.dedicated_way_values import DEDICATED_WAY_VALUE_SERVICES, services_by_material
 from app.domain.material_catalog import is_known_material
 from app.services.weather_service import WeatherService
@@ -56,11 +59,36 @@ def test_two_services_for_one_material_fail_at_registration():
         services_by_material((First, Second))
 
 
-def test_a_service_for_a_material_that_varies_by_segment_needs_segment_values():
-    """区間ごとに値が違いうる材料（勾配）の区間の値を配れないと、引いた地図でその材料を読む軸の配信が要求のたびに落ちる。
+def test_a_service_for_a_material_that_varies_by_segment_needs_segment_materials():
+    """区間ごとに値が違いうる材料（勾配）の区間の材料を配れないと、引いた地図でその材料を読む軸の配信が要求のたびに落ちる。
     登録の時点（起動時）に落とす。"""
     class WithoutSegments:
         material_ids = ("gradient_percent",)
 
-    with pytest.raises(RuntimeError, match="segment_values"):
+    with pytest.raises(RuntimeError, match="segment_materials"):
         services_by_material((WithoutSegments,))
+
+
+def _service_reading(material_id: str, leaf: str) -> type:
+    class Service:
+        material_ids = (material_id,)
+
+        @classmethod
+        def material_formula(cls, material_id: str) -> ServedMaterialFormula:
+            return ServedMaterialFormula(WayValueFormula(value=feature(leaf), undetermined=FALSE))
+
+    return Service
+
+
+@pytest.mark.parametrize(
+    "services",
+    [
+        (_service_reading(HOURS_SINCE_RAIN, "shared"), _service_reading(rain_window_material_id(1), "shared")),
+        (_service_reading(HOURS_SINCE_RAIN, WIND_DRAG_RATIO),),
+    ],
+    ids=["2つのサービスが同じ名前の材料を配る", "材料の名前が自分のでない材料id"],
+)
+def test_way_materials_whose_names_collide_fail_at_registration(services):
+    """地図は道ごとの材料を名前で1つの列に集めて木を評価する。名前が重なると、軸が別の材料の値で塗られる。"""
+    with pytest.raises(RuntimeError, match="collides"):
+        services_by_material(services)

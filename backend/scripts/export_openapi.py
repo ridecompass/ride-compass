@@ -38,17 +38,15 @@ from app.domain.route_request import (
     MIN_ASSUMED_SPEED_KMH,
     MIN_ROUTES,
 )
-from app.api.routers.axis_admin import AxisDefinitionPayload
 from app.api.routers.debug_admin import LogLevelName
 from app.infrastructure.source_models import SOURCE_RUN_STATUS_LABELS
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME
 from app.main import app
-from app.domain.hard_filters import DEFAULT_HARD_FILTERS, HARD_FILTER_LABELS, HARD_FILTER_NAMES
+from app.domain.hard_filters import HARD_FILTERS
 from app.domain.road_avoidance import AVOIDABLE_ROWS, AVOIDANCE_LEVEL_LABELS, AVOIDANCE_LEVELS
 from app.domain.address_area import ADDRESS_AREA_LEVELS
 from app.domain.geo import COMPASS_LABELS, EARTH_RADIUS_KM
-from app.domain.dynamic_way_values import BEARING_BUCKET_DEG
 from app.domain.value_distribution import QUANTILE_TARGETS
 from app.domain.place_search import (
     PLACE_KIND_LABELS,
@@ -173,7 +171,6 @@ PRIMARY_ATTRIBUTES_PATH = GENERATED_DIR / "primaryAttributes.ts"
 WIND_GRID_CONFIG_PATH = GENERATED_DIR / "wind-grid-config.json"
 ROUTE_GENERATE_CONFIG_PATH = GENERATED_DIR / "route-generate-config.json"
 REFRESH_INTERVALS_PATH = GENERATED_DIR / "refresh-intervals.json"
-AXIS_PAYLOAD_CONFIG_PATH = GENERATED_DIR / "axis-payload-config.json"
 MATERIAL_CATALOG_PATH = GENERATED_DIR / "material-catalog.json"
 LANDCOVER_CLASSES_PATH = GENERATED_DIR / "landcover-classes.json"
 PALETTE_PATH = GENERATED_DIR / "palette.json"
@@ -311,8 +308,6 @@ def main() -> None:
             # backendだけ広げてもfrontendが要求せずレイヤーが黙って消える。
             "road_tile_min_zoom": ROAD_TILE_MIN_ZOOM,
             "road_tile_max_zoom": ROAD_TILE_MAX_ZOOM,
-            # 向きに依る道の値を、backend が同じ値で代える向きの幅（度）。画面は走行中の向きをこの幅で丸めて送る。
-            "way_value_bearing_bucket_deg": BEARING_BUCKET_DEG,
             # 画面が点からタイル座標を求めるときに緯度を挟む限界（`domain/region.py`と同じ式を使う）。
             "max_mercator_latitude": MAX_MERCATOR_LATITUDE,
             # 国土地理院タイル（色別標高図・標高）。配信元が実データを持つ範囲・画面が
@@ -533,10 +528,6 @@ def main() -> None:
                 # idから組み立て直さない——組み立て方の正本は`MaterialSpec.full_label`。
                 "label": spec.full_label(),
                 "name": spec.label,
-                "description": spec.description,
-                "dtype": spec.dtype,
-                "unit": spec.unit,
-                "reference_points": [{"label": p.label, "value": p.value} for p in spec.reference_points],
                 "value_labels": dict(spec.value_labels) if spec.value_labels else None,
                 # 路面タイルがこの材料を載せる属性の名前（載せない材料はnull）。
                 "tile_property": spec.tile_property,
@@ -581,18 +572,6 @@ def main() -> None:
             "detail_max_points": WIND_GRID_DETAIL_MAX_POINTS,
         },
     )
-    # 軸スタジオが送る軸の既定値。画面は編集欄を持たない項目を新規の軸で
-    # この既定値のまま送る（写しを持つと、backendの既定を変えたとき新規の軸だけ古い値で作られる）。
-    _write_json(
-        AXIS_PAYLOAD_CONFIG_PATH,
-        {
-            "defaults": {
-                name: field.get_default(call_default_factory=True)
-                for name, field in AxisDefinitionPayload.model_fields.items()
-                if not field.is_required()
-            },
-        },
-    )
     # ルート生成の上限・既定値。frontendが独立にハードコードすると、backendだけ変えた
     # ときに入力の上限と受理される値がずれる。
     _write_json(
@@ -631,22 +610,21 @@ def main() -> None:
             # フロントが使う較正値の**既定**（`domain/tuning.py`の宣言そのまま）。フロントはidの型にだけ使い、
             # 値は読まない——効いている値はGET /api/axis-catalogが返し、取れるまではその値を使う機能を出さない。
             "client_tuning": client_tuning_values(),
-            # 0次ハードフィルタのキー一覧・画面に出す名前・既定値。backendは`_check_filter_keys`で
-            # **キー集合の完全一致**を要求するため、frontendが手書きで持っていると
-            # キーを1つ足した瞬間にすべてのルート生成が422になる。名前も同じ行で配る——
-            # 別に持つと、足したフィルタの名前が無く画面に内部名が出る。
-            "hard_filters": {
-                "filters": [{"key": name, "label": HARD_FILTER_LABELS[name]} for name in sorted(HARD_FILTER_NAMES)],
-                "defaults": sorted(DEFAULT_HARD_FILTERS),
-            },
             # 道のレイヤの凡例の行ごとの避け方の段と、選べる行・既定の段。backendは鍵の集合の完全一致を
-            # 要求する（`RoadAvoidanceOverride`）。行は道のレイヤの凡例の行の宣言から導く。
+            # 要求する（`RoadAvoidanceOverride`）。行は道のレイヤの凡例の行の宣言から導く。`former_key`は分ける前の
+            # 行の鍵で、その鍵で受け取っていた段をこの行へ読み替えられるように配る。`fixed_rows`は0次ハードフィルタで、
+            # いつも「通らない」の行として見せる（要求では受けない）。
             "road_avoidance": {
+                "fixed_rows": [
+                    {"key": name, "label": spec.label, "description": spec.description}
+                    for name, spec in HARD_FILTERS.items()
+                ],
                 "levels": [{"key": level, "label": AVOIDANCE_LEVEL_LABELS[level]} for level in AVOIDANCE_LEVELS],
                 "rows": [
                     {
                         "key": row.key, "layer": row.layer_id, "layer_label": row.layer_label,
                         "label": row.label, "description": row.description, "default": row.default_level,
+                        "former_key": row.former_key,
                     }
                     for row in AVOIDABLE_ROWS.values()
                 ],

@@ -27,7 +27,7 @@ APIが受け取る重みの形を変えるとき、`dynamic_materials.py`は動�
 一方だけ変わったときに気付けない。
 
 **材料の導出は`MaterialSpec.value_sql`1本**。評価・地図タイル配信・欠損率の集計・
-軸スタジオの値列挙は、すべて同じ式を読む。入力に対するあるべき値は
+軸スタジオの分布プレビューは、すべて同じ式を読む。入力に対するあるべき値は
 `tests/test_material_values.py`が期待値の表で固定する。式が実在の列と、読み出しの経路ごとのFROM句に
 ある別名だけを読むことも同じファイルが見る——値の表は別名を値で与えるため、綴りの合わない列や、
 経路に無い別名（路面タイルの`re`等）を読む式は、値の表だけでは見つからない。
@@ -50,22 +50,24 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 ## 0次ハードフィルタと道の行ごとの避け方（`domain/hard_filters.py`・`domain/road_avoidance.py`）
 
 `compute_search_exclusion`が、静的スコア行列（`StaticEdgeScoreMatrix`）の旗の名前→該当フラグの配列と、
-リクエストが指定した有効なフィルタ名の集合・行ごとの避け方の段・勾配の上限から、Edgeごとに「探索から除く」と
-「割り増す」を求める。`hard_filters`省略時は`DEFAULT_HARD_FILTERS`（宣言されている全フィルタが常時有効）を使う。
+リクエストが指定した行ごとの避け方の段・勾配の上限から、Edgeごとに「探索から除く」と「割り増す」を求める。
+0次フィルタは宣言されたものがいつも全部効き、リクエストでは切れない（要求の欄も持たない）。
 
 **受け取る旗のキー集合は宣言（`domain/hard_filters.py: ROUTE_FLAG_VALUE_SQL`）と完全一致でなければ落ちる**——欠けた旗は黙って
-無効になり、高速道路や`bicycle=no`の道がそのまま候補へ入る。リクエスト側の名前も宣言に
-無いものは要求の検証（`api/routers/routes.py: HardFilterOverride`・`api/routers/routes.py: RoadAvoidanceOverride`）が拒む
-（綴り間違いと「そのフィルタを切った」を区別できないため）。
+無効になり、高速道路や`bicycle=no`の道がそのまま候補へ入る。リクエスト側の行の名前も宣言に
+無いものは要求の検証（`api/routers/routes.py: RoadAvoidanceOverride`）が拒む
+（綴り間違いと「その行を選ばなかった」を区別できないため）。
 
-- 0次フィルタはhighwayタグ由来（`motorway`）・`bicycle=no`タグ（`no_bicycle`）の2系統で、どちらも法的に自転車が
-  通行できない道を外す。走れるが走りにくい道（幹線道路等）は、0次フィルタではなく下の避け方で扱う。
-  highway種別のフィルタは`HARD_FILTER_HIGHWAY_TYPES`（フィルタ名→画面に出す名前と対象highway値）が唯一の
-  レジストリで、`compute_search_exclusion`はこの辞書をループする（読むのは行列の旗の名前→該当フラグ配列の
-  `route_flags`と材料の列で、フィルタごとの専用引数・専用フィールドは持たない。タグ由来の
-  フィルタは`HARD_FILTER_TAG_PREDICATE_SQL`が名前・画面に出す名前・判定式をまとめて持ち、
-  `HARD_FILTER_NAMES`も読み出し用のSQLの列もそこから導く）。
-  フィルタを1件増やしても変わるのはこの辞書だけ。
+- 0次フィルタは法的に自転車が通行できない道を外す（高速道路・自動車専用道路と、`bicycle=no`の道）。
+  走れるが走りにくい道（国道等）は、0次フィルタではなく下の避け方で扱う。
+  `domain/hard_filters.py: HARD_FILTERS`が名前・画面に出す名前と説明・判定式をまとめて持つ唯一のレジストリで、
+  読み出し用のSQLの列もそこから導き、`compute_search_exclusion`はこの辞書をループする（読むのは行列の旗の名前→該当フラグ配列の
+  `route_flags`と材料の列で、フィルタごとの専用引数・専用フィールドは持たない）。
+  フィルタを足しても変わるのはこの辞書だけ。
+- 高速道路は地図の道のレイヤの凡例にも行がある。その行は避け方を選べる行から外し（`domain/road_avoidance.py: _FIXED_ROWS`）、
+  行の判定式（`domain/road_avoidance.py: FIXED_ROW_MATCH_SQL`）を0次フィルタが受け取って`motorroad=yes`の道と合わせて除く——
+  選べる行に残すと、選んでもいつも除かれる行が画面に並ぶ。名前と説明は生成物`route-generate-config.json`の
+  `road_avoidance.fixed_rows`で配り、画面は避け方の行と同じ並びに「通らない」で固定して出す。
   highwayタグが無い・way_tagsが未取得の場合は除外しない（判断材料が無いEdgeまで一律
   除外すると探索対象が過度に狭まるため、不明な場合は許可しSoft Constraint側へ委ねる）。
 - **道の行ごとの避け方**: 地図の道の線のレイヤの凡例の行（`domain/road_avoidance.py: AVOIDABLE_ROWS`。行の宣言から導き、
@@ -73,7 +75,8 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   当たるかは、地図がそのレイヤを塗るのと同じ材料の値式から求め、0次フィルタと同じ旗の列（鍵`<レイヤ>.<行>`）で受け取る。
   「通らない」の行に当たる区間は除き、「なるべく避ける」の行に当たる区間は費用に較正値`avoidance.avoid_cost_multiplier`を
   掛ける（所要時間には掛けない。`domain/leg_costs.py: LegCostComposer`）。1つの区間が複数の行に当たれば強い段が効く。
-  既定は`DEFAULT_ROAD_AVOIDANCE`で、幹線道路（国道等）の行だけ「なるべく避ける」。倍率は本番で前後の幹線の割合・距離を
+  既定は`DEFAULT_ROAD_AVOIDANCE`（`domain/road_avoidance.py: _DEFAULT_LEVELS`から導く）で、車の多い国道等の行を「なるべく避ける」にする。1つの行を分けたときは、分けてできた行が分ける前の行の鍵を
+  `AvoidableRow.former_key`で持ち、生成物で配る（前の鍵で選んだ段を、受け取る側が分けたどの行へも引き継げる）。倍率は本番で前後の幹線の割合・距離を
   比べて決める。
 - `max_average_grade_percent`（省略時None＝除外なし）が指定され、かつ
   勾配の材料（`GRADIENT_PERCENT`）の列に値がある場合、その絶対値（登り・下りどちらの
@@ -145,7 +148,7 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
   `cost >= 所要時間`という不変条件はP>=0の間常に成り立つ。
 - **`build_static_edge_score_matrix`**: `AXIS_DEFINITIONS`を軸ごとに適用して
   difficulty配列を求める（`StaticEdgeScoreMatrix`: 公開軸別配列に加え、0次フィルタ判定用の
-  生フラグ`route_flags`も持つ——`hard_filters`はリクエストごとに
+  生フラグ`route_flags`も持つ——避け方と勾配の上限はリクエストごとに
   変わりうるため、除外判定そのものはここでは確定させない）。所要時間が読む材料（勾配・路面・停止の密度。
   `domain/cycling_speed.py: travel_model_material_ids`）は軸の構成と無関係にいつも材料の列として持ち、0次フィルタの
   勾配しきい値も同じ勾配の列を読む。その列が欠けた行列は組み立てで断る（`ValueError`）——欠けたまま通すと、
@@ -165,7 +168,7 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
   足した秒を所要時間で割った値として入る——回数 ÷ (所要時間 × 想定速度)の点数で、所要時間が想定速度で走る時間に
   近いほど、範囲の平均の密度に傾きを掛けた点数（頭打ちの無い直線）に近い。停止の待ちや上り坂で所要時間が延びた
   範囲ほど、平均の密度の点数より小さく入る。0次フィルタによる除外
-  （`compute_search_exclusion`が`hard_filters`/`road_avoidance`/`max_average_grade_percent`を反映して
+  （`compute_search_exclusion`が0次フィルタ・`road_avoidance`・`max_average_grade_percent`を反映して
   別途判定）はここには含まれない。重み付き軸がすべて欠損のEdgeはcost算出だけbbox内平均
   difficultyを代入する（表示用の戻り値には影響しない、詳細は後述「探索コストの既定経路」節）。
 
@@ -357,8 +360,7 @@ MaterialSpec]`が単一ソース。
 | `source` | 値の出どころ（`"db"`・`"request"`・`"observation"`）。DB（`value_sql`で求める）・要求の向きや時刻で決まる値（風）・生成の時点の外部の観測（雨）。動的材料の集合（`REQUEST_DYNAMIC_MATERIAL_IDS`）や観測の材料の集合は、この欄から`domain/material_catalog.py: materials_of_source`で導く |
 | `value_sql` | その材料の値をDBから求めるSQL式。出どころが`"db"`の材料だけが持ち、それ以外は`None`（出どころがDBでない材料は欠損率も測らず、`coverage`は対象外）。揃わない宣言は登録時に断る。タイルへ焼く材料は必ず持つ |
 | `coverage` | 欠損率の測り方。way単位・区間単位・対象外の3択で、**どれかを必ず持つ**（どちらの一覧にも載っていない材料を型として作れなくする） |
-| `value_labels` | categorical材料の値ごとの日本語ラベル対訳表（生成物`material-catalog.json`と`GET /api/admin/material-catalog/{id}/values`が届ける） |
-| `reference_points` | 軸スタジオの折れ点編集を助ける「値の目安」一覧（`MaterialReferencePoint`のlabel/value）。値域が直感的でない材料（風等）ほど有用で、真偽値・categorical材料や単純な材料は空リストのままでよい。換算式はbackendだけが持ち、値はここで計算済みのものを持たせる |
+| `value_labels` | categorical材料の値ごとの日本語ラベル対訳表（生成物`material-catalog.json`が届ける） |
 
 - **評価軸が参照する材料は、正規化された生データ（数値・boolean・単純categorical）に
   統一する。** 地図表示・API応答向けの人間可読な分類ラベル（「この道は自転車レーンあり」
@@ -446,7 +448,7 @@ way粒度で引くときは、同じ式のまま`w`の行から同じ名前の�
 
 | エンドポイント | 認可 | 内容 |
 |---|---|---|
-| `GET /api/admin/material-catalog/{material_id}/values` | HTTP Basic | categorical材料の実データ値一覧（`services/axis_preview_service.py: AxisPreviewService`経由、未知idは404・値一覧を持たない材料は空リスト・DB障害やタイムアウトは`available=false`）。索引の効かない`SELECT DISTINCT`をルート生成用の長い`command_timeout`のセッションで実行する。繰り返し呼ばれるだけで接続を占有できるため、`coverage`と同じく認可を課す |
+| `GET /api/admin/material-catalog/{material_id}/value-shares` | Basic認証 | 値ごとの道の延長の割合（[軸スタジオ](axis-studio.md)の分布プレビューと同じ抽選の道から集める） |
 | `GET /api/admin/material-catalog/coverage` | Basic認証必須 | 材料ごとの欠損割合（下記）。全表走査を伴うため認可なしには公開しない |
 
 ## 材料の欠損割合（`infrastructure/material_coverage.py`・`services/material_coverage_service.py`）

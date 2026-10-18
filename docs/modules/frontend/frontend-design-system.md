@@ -184,7 +184,8 @@ backendのdomainの宣言が持つ名前（ハードフィルタ・凡例の行�
 | 地図に点で出す場所（停止要因・補給・事故） | スポット | POI |
 | 利用者が変えていないときに使う値 | 既定（既定の配分・既定値） | デフォルト・サーバー既定 |
 | ルートを作り、データを配る側 | アプリ（主語に要るときだけ） | サーバー・ジョブ |
-| 車が遠くへ行くための太い通りをまとめたもの（高速道路・国道・主要な県道） | 幹線道路 | 国道だけの意味では使わない |
+| OSM の highway=primary とその連絡路の道（番号が2桁以下の県道・市道） | 主要地方道 | 主要道・主要幹線道路 |
+| OSM の highway=secondary・tertiary とその連絡路の道（主要地方道でない県道と、2車線以上の道） | 一般県道・2車線の道 | 主要道・地方主要道 |
 | OSM の highway=trunk の道（一般国道） | 国道 | 幹線道路 |
 | 車道から分けられた、自転車の通る道（専用の道も、車道に併設された道も） | 自転車道 | 専用の道だけの意味では使わない |
 | 道路種別そのものが自転車用の道（OSM の highway=cycleway） | 自転車専用道 | 自転車道 |
@@ -198,7 +199,7 @@ backendのdomainの宣言が持つ名前（ハードフィルタ・凡例の行�
 
 ## 6. テストパターン
 
-`components/ui/FieldLabel/FieldLabel.test.tsx`（`FieldLabel`、Radix Popoverラッパー）を参照実装と
+`components/ui/InfoPopover/InfoPopover.test.tsx`（`InfoPopover`、Radix Popoverラッパー）を参照実装と
 する。vitest + `@testing-library/react`で`render`/`screen`、`getByRole`/`aria-*`属性ベースの
 アサーションに統一し、Radix内部のDOM構造には依存しない。`components/ui/*/*.test.tsx`も同じ方針。
 

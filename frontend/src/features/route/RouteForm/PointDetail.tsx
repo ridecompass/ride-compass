@@ -6,7 +6,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge/Badge";
 import { Button } from "@/components/ui/Button/Button";
 import { DialogContent, DialogRoot } from "@/components/ui/Dialog/Dialog";
-import { SavedPlaceIcon, SavePlaceIcon } from "@/components/ui/icons/icons";
+import { SavedPlaceIcon, SavePlaceIcon } from "@/components/ui/icons/lucideIcons";
 import { Input } from "@/components/ui/Input/Input";
 import { textVariants } from "@/components/ui/Text/Text";
 import PlaceCandidates, { isRepresentative } from "@/features/route/PlaceSearch/PlaceCandidates";

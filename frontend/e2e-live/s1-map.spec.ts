@@ -18,7 +18,7 @@ import materialCatalog from "@/types/generated/material-catalog.json";
 /** 道の詳細が必ず持つ行（路面の区分）の項目名。名前は材料カタログが持つ。 */
 const SURFACE_ROW_LABEL = materialCatalog.find((material) => material.material_id === "surface_class")!.name;
 
-// S1 地図の描画（生成前）。実データが式・部品へ入って初めて壊れるもの（公開軸の道ごとの値が届かず地図に出ない・
+// S1 地図の描画（生成前）。実データが式・部品へ入って初めて壊れるもの（公開軸の道ごとの材料が届かず地図に出ない・
 // 巻き添えで消える、取得の失敗が空で返る、道を押すと例外で開かない）を見る。
 // 幹: 起点を現在地として与え、全レイヤーONで開く。枝: 下のC〜G。
 
@@ -38,7 +38,8 @@ test("S1 地図の描画（生成前）", async ({ page }) => {
   const tileRoads = [...watch.roadTiles.values()].flat();
   expect(tileRoads.length, "取得した路面タイルに道が無い").toBeGreaterThan(0);
 
-  // E→F: 公開軸のレンズを1つずつ選ぶ → その軸の値を持つ道が描かれている。
+  // E→F: 公開軸のレンズを1つずつ選ぶ → その軸の材料を持つ道が描かれている（式の木の無い軸は周りの道を塗らないので、
+  // 材料は見ない）。
   const originalLens = await currentLensLabel(page, catalog);
   for (const axis of axes) {
     await branch(
@@ -46,17 +47,21 @@ test("S1 地図の描画（生成前）", async ({ page }) => {
       `レンズ「${axis.label}」`,
       async () => {
         const errorsBefore = watch.mapErrors.length;
-        const valuesBefore = watch.wayValues.length;
+        const materialsBefore = watch.wayMaterials.length;
         await chooseLens(page, axis.label);
         await settleMap(page);
         const drawn = await renderedRoads(page, source);
         expect.soft(drawn.length, `「${axis.label}」: 道が描かれていない`).toBeGreaterThan(0);
-        // 道ごとの値を受け取り、それが描かれている道を指すこと。
-        const received = watch.wayValues.slice(valuesBefore).filter((entry) => entry.axisId === axis.axis_id);
-        const wayIds = new Set(received.flatMap((entry) => Object.keys(entry.values)));
-        expect.soft(wayIds.size, `「${axis.label}」: 道ごとの値を1件も受け取っていない`).toBeGreaterThan(0);
-        const drawnWithValue = drawn.filter((road) => wayIds.has(String(road.osm_way_id))).length;
-        expect.soft(drawnWithValue, `「${axis.label}」: 値を受け取った道が1本も描かれていない`).toBeGreaterThan(0);
+        if (axis.way_value_formula !== null) {
+          // 道ごとの材料を受け取り、それが描かれている道を指すこと。
+          const received = watch.wayMaterials.slice(materialsBefore).filter((entry) => entry.axisId === axis.axis_id);
+          const wayIds = new Set(received.flatMap((entry) => Object.keys(entry.materials)));
+          expect.soft(wayIds.size, `「${axis.label}」: 道ごとの材料を1件も受け取っていない`).toBeGreaterThan(0);
+          const drawnWithMaterials = drawn.filter((road) => wayIds.has(String(road.osm_way_id))).length;
+          expect
+            .soft(drawnWithMaterials, `「${axis.label}」: 材料を受け取った道が1本も描かれていない`)
+            .toBeGreaterThan(0);
+        }
         expect.soft(watch.mapErrors.slice(errorsBefore), `「${axis.label}」を選んだあとの[map:error]`).toEqual([]);
       },
       () => chooseLens(page, originalLens),

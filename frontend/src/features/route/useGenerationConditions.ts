@@ -4,8 +4,6 @@ import { useCallback, useMemo, useState } from "react";
 
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useStoredBooleanState, useStoredJsonState, useStoredState } from "@/hooks/useStoredState";
-import { DEFAULT_HARD_FILTERS } from "@/features/route/RouteSettingsPanel/HardFilterPanel";
-import { syncHardFilterKeys } from "@/features/route/hardFilterSync";
 import { DEFAULT_ROAD_AVOIDANCE, syncRoadAvoidance } from "@/features/route/roadAvoidance";
 import { alignRoutePreference, routePreferenceToSend } from "@/features/route/routePreferenceSync";
 import {
@@ -15,7 +13,6 @@ import {
 } from "@/features/route/savedConditions";
 import type {
   Coordinates,
-  HardFilterOverride,
   PinRole,
   PlaceCandidate,
   PointTarget,
@@ -26,7 +23,6 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 const WEIGHT_OVERRIDE_ENABLED_STORAGE_KEY = "ridecompass:weight-override-enabled";
 const ROUTE_PREFERENCE_STORAGE_KEY = "ridecompass:route-preference";
-const HARD_FILTERS_STORAGE_KEY = "ridecompass:hard-filters";
 const ROAD_AVOIDANCE_STORAGE_KEY = "ridecompass:road-avoidance";
 
 /** 経由地を、生成が受け付ける数まで置いてあるか（置いてあれば、もう足さない）。 */
@@ -171,15 +167,6 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     () => alignRoutePreference(weightOverrideEnabled ? storedRoutePreference : {}, axisCatalog),
     [weightOverrideEnabled, storedRoutePreference, axisCatalog],
   );
-  // 除外の設定。常に送る。保存値に今は無い項目が混じっていても、読むときに今の項目へ揃える。
-  const [hardFilters, setHardFilters] = useStoredState<HardFilterOverride>(
-    HARD_FILTERS_STORAGE_KEY,
-    DEFAULT_HARD_FILTERS,
-    {
-      serialize: JSON.stringify,
-      deserialize: (raw) => syncHardFilterKeys(JSON.parse(raw) as HardFilterOverride, DEFAULT_HARD_FILTERS),
-    },
-  );
   // 道の凡例の行ごとの避け方。常に送る。読むときに今の行へ揃える。
   const [roadAvoidance, setRoadAvoidance] = useStoredState<RoadAvoidanceOverride>(
     ROAD_AVOIDANCE_STORAGE_KEY,
@@ -199,7 +186,6 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
       waypoints,
       destination,
       routePreference: weightOverrideEnabled ? routePreference : null,
-      hardFilters,
       roadAvoidance,
     }),
     [
@@ -210,7 +196,6 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
       destination,
       weightOverrideEnabled,
       routePreference,
-      hardFilters,
       roadAvoidance,
     ],
   );
@@ -230,7 +215,6 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
             if (weights !== null) setRoutePreference(weights);
             setWeightOverrideEnabled(weights !== null);
           },
-          hardFilters: setHardFilters,
           roadAvoidance: setRoadAvoidance,
         },
         saved,
@@ -243,7 +227,6 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
       setMaxRoutesInput,
       setRoutePreference,
       setWeightOverrideEnabled,
-      setHardFilters,
       setRoadAvoidance,
     ],
   );
@@ -275,8 +258,6 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     setRoutePreference,
     /** 生成リクエストと道の評価へ載せる重み（上書きしていない間・軸カタログが無い間はnull）。 */
     routePreferenceToSend: routePreferenceToSend(routePreference, axisCatalog.loaded, weightOverrideEnabled),
-    hardFilters,
-    setHardFilters,
     roadAvoidance,
     setRoadAvoidance,
   };

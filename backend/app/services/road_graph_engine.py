@@ -315,7 +315,6 @@ class RoadGraphEngine:
         route_preference: RoutePreference,
         penalty_strength: float,
         max_average_grade_percent: float | None,
-        hard_filters: frozenset[str],
         road_avoidance: Mapping[str, AvoidanceLevel],
         assumed_speed_kmh: float,
     ):
@@ -330,8 +329,6 @@ class RoadGraphEngine:
         # 0次ハードフィルタの勾配しきい値（%、None＝除外しない）。
         # `domain/hard_filters.py: compute_search_exclusion`参照。
         self._max_average_grade_percent = max_average_grade_percent
-        # 有効にする0次ハードフィルタ名の集合。
-        self._hard_filters = hard_filters
         # 道のレイヤの行→避け方の段。
         self._road_avoidance = road_avoidance
         # 「なるべく避ける」区間の費用の倍率。較正値のため、組み立てた時点の値で1回の生成を通す。
@@ -381,7 +378,7 @@ class RoadGraphEngine:
         # --- bbox全体ぶんのコスト配列の合成（レグごと。まず起点から離れる往路レグ） ---
         cost_started = start_timer()
         search_masks = compute_search_exclusion(
-            score_matrix, self._hard_filters, self._road_avoidance, self._max_average_grade_percent,
+            score_matrix, self._road_avoidance, self._max_average_grade_percent,
         )
 
         graph_started = start_timer()

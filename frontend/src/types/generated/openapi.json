@@ -799,9 +799,9 @@
         }
       }
     },
-    "/api/region/dynamic-way-values/{axis_id}/{z}/{x}/{y}": {
+    "/api/region/way-materials/{axis_id}/{z}/{x}/{y}": {
       "get": {
-        "operationId": "region_dedicated_way_values_api_region_dynamic_way_values__axis_id___z___x___y__get",
+        "operationId": "region_way_materials_api_region_way_materials__axis_id___z___x___y__get",
         "parameters": [
           {
             "name": "axis_id",
@@ -844,24 +844,6 @@
             }
           },
           {
-            "name": "bearing_deg",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "number",
-                  "minimum": 0,
-                  "exclusiveMaximum": 360
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bearing Deg"
-            }
-          },
-          {
             "name": "at",
             "in": "query",
             "required": false,
@@ -877,24 +859,6 @@
               ],
               "title": "At"
             }
-          },
-          {
-            "name": "speed_kmh",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "number",
-                  "maximum": 60.0,
-                  "minimum": 5.0
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Speed Kmh"
-            }
           }
         ],
         "responses": {
@@ -905,16 +869,12 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
                   },
-                  "title": "Response Region Dedicated Way Values Api Region Dynamic Way Values  Axis Id   Z   X   Y  Get"
+                  "title": "Response Region Way Materials Api Region Way Materials  Axis Id   Z   X   Y  Get"
                 }
               }
             }
@@ -1539,6 +1499,107 @@
         ]
       }
     },
+    "/api/admin/axis-definitions/preview-calibration": {
+      "post": {
+        "tags": [
+          "axis-admin"
+        ],
+        "operationId": "preview_calibration_api_admin_axis_definitions_preview_calibration_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalibrationPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalibrationPreviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/api/admin/axis-definitions/preview-way-values": {
+      "post": {
+        "tags": [
+          "axis-admin"
+        ],
+        "operationId": "preview_way_values_api_admin_axis_definitions_preview_way_values_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WayValuesPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "object",
+                  "title": "Response Preview Way Values Api Admin Axis Definitions Preview Way Values Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
     "/api/admin/tuning": {
       "get": {
         "tags": [
@@ -1641,9 +1702,9 @@
         }
       }
     },
-    "/api/admin/material-catalog/{material_id}/distribution": {
+    "/api/admin/material-catalog/{material_id}/value-shares": {
       "get": {
-        "operationId": "get_material_distribution_api_admin_material_catalog__material_id__distribution_get",
+        "operationId": "get_material_value_shares_api_admin_material_catalog__material_id__value_shares_get",
         "security": [
           {
             "HTTPBasic": []
@@ -1666,50 +1727,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MaterialDistributionResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin/material-catalog/{material_id}/values": {
-      "get": {
-        "operationId": "get_material_values_api_admin_material_catalog__material_id__values_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "material_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Material Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MaterialValuesResponse"
+                  "$ref": "#/components/schemas/MaterialValueSharesResponse"
                 }
               }
             }
@@ -2228,6 +2246,16 @@
             "type": "boolean",
             "title": "Dynamic Way Value Undetermined By Bearing"
           },
+          "way_value_formula": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WayValueFormula"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "time_scope": {
             "type": "string",
             "enum": [
@@ -2253,6 +2281,7 @@
           "material_breakdown",
           "dynamic_way_value_conditions",
           "dynamic_way_value_undetermined_by_bearing",
+          "way_value_formula",
           "time_scope"
         ],
         "title": "AxisCatalogEntry"
@@ -2297,6 +2326,121 @@
           "accident_years"
         ],
         "title": "AxisCatalogResponse"
+      },
+      "AxisDefinition": {
+        "properties": {
+          "axis_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Axis Id"
+          },
+          "shape": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BreakpointLinearShape-Input"
+              },
+              {
+                "$ref": "#/components/schemas/CategoricalShape-Input"
+              }
+            ],
+            "title": "Shape"
+          },
+          "default_weight": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Default Weight"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "観測",
+              "推定",
+              "動的"
+            ],
+            "title": "Category",
+            "default": "推定"
+          },
+          "is_published": {
+            "type": "boolean",
+            "title": "Is Published",
+            "default": false
+          },
+          "priority_overrides": {
+            "items": {
+              "$ref": "#/components/schemas/PriorityCondition"
+            },
+            "type": "array",
+            "title": "Priority Overrides"
+          },
+          "icon_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Id"
+          },
+          "time_scope": {
+            "type": "string",
+            "enum": [
+              "always",
+              "night_only"
+            ],
+            "title": "Time Scope",
+            "default": "always"
+          },
+          "display_thresholds_override": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array",
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Thresholds Override"
+          },
+          "display_band_labels_override": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Band Labels Override"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "axis_id",
+          "shape",
+          "default_weight",
+          "label"
+        ],
+        "title": "AxisDefinition"
       },
       "AxisDefinitionPayload": {
         "properties": {
@@ -2768,6 +2912,159 @@
         ],
         "title": "AxisPreviewRequest"
       },
+      "Binary": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "enum": [
+              "add",
+              "sub",
+              "mul",
+              "div",
+              "mod",
+              "lt",
+              "le",
+              "gt",
+              "ge",
+              "and",
+              "or"
+            ],
+            "title": "Op"
+          },
+          "left": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Left",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          },
+          "right": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Right",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "left",
+          "right"
+        ],
+        "title": "Binary"
+      },
       "BreakpointLinearShape-Input": {
         "properties": {
           "kind": {
@@ -2874,6 +3171,242 @@
         ],
         "title": "BreakpointLinearShape"
       },
+      "CalibrationPreviewRequest": {
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/AxisDefinition"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "definition"
+        ],
+        "title": "CalibrationPreviewRequest"
+      },
+      "CalibrationPreviewResponse": {
+        "properties": {
+          "map_paint": {
+            "$ref": "#/components/schemas/MapPaint"
+          },
+          "averages_density": {
+            "type": "boolean",
+            "title": "Averages Density"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "map_paint",
+          "averages_density"
+        ],
+        "title": "CalibrationPreviewResponse"
+      },
+      "Case": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "const": "case",
+            "title": "Op",
+            "default": "case"
+          },
+          "when": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "When",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Then",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          },
+          "otherwise": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Otherwise",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "when",
+          "then",
+          "otherwise"
+        ],
+        "title": "Case"
+      },
       "CategoricalShape-Input": {
         "properties": {
           "kind": {
@@ -2979,6 +3512,31 @@
         ],
         "title": "ColumnsChange"
       },
+      "Condition": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "const": "condition",
+            "title": "Op",
+            "default": "condition"
+          },
+          "name": {
+            "type": "string",
+            "enum": [
+              "bearing_deg",
+              "speed_kmh"
+            ],
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "name"
+        ],
+        "title": "Condition"
+      },
       "ConnectionEntry": {
         "properties": {
           "total": {
@@ -3022,6 +3580,27 @@
           "note"
         ],
         "title": "ConnectionEntry"
+      },
+      "Constant": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "const": "const",
+            "title": "Op",
+            "default": "const"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "value"
+        ],
+        "title": "Constant"
       },
       "Coordinates": {
         "properties": {
@@ -3317,6 +3896,28 @@
         ],
         "title": "ExternalCallStats"
       },
+      "FeatureValue": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "const": "feature",
+            "title": "Op",
+            "default": "feature"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "name"
+        ],
+        "title": "FeatureValue"
+      },
       "FloodForecasts": {
         "properties": {
           "forecasts": {
@@ -3388,9 +3989,6 @@
             ],
             "title": "Max Average Grade Percent"
           },
-          "hard_filters": {
-            "$ref": "#/components/schemas/HardFilterOverride"
-          },
           "road_avoidance": {
             "$ref": "#/components/schemas/RoadAvoidanceOverride"
           },
@@ -3456,7 +4054,6 @@
           "route_preference",
           "penalty_strength",
           "max_average_grade_percent",
-          "hard_filters",
           "road_avoidance",
           "max_routes",
           "start_time",
@@ -3480,13 +4077,6 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
-      },
-      "HardFilterOverride": {
-        "additionalProperties": {
-          "type": "boolean"
-        },
-        "type": "object",
-        "title": "HardFilterOverride"
       },
       "ImportRunEntry": {
         "properties": {
@@ -3584,6 +4174,104 @@
           "landcover"
         ],
         "title": "InspectorValues"
+      },
+      "Interpolate": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "const": "interpolate",
+            "title": "Op",
+            "default": "interpolate"
+          },
+          "input": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Input",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          },
+          "stops": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Stops"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "input",
+          "stops"
+        ],
+        "title": "Interpolate"
       },
       "JmaTileIndexAvailable": {
         "properties": {
@@ -4080,33 +4768,6 @@
         ],
         "title": "MaterialCoverageReport"
       },
-      "MaterialDistributionResponse": {
-        "properties": {
-          "quantiles": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Quantiles"
-          },
-          "zero_share": {
-            "type": "number",
-            "title": "Zero Share"
-          },
-          "available": {
-            "type": "boolean",
-            "title": "Available"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "quantiles",
-          "zero_share",
-          "available"
-        ],
-        "title": "MaterialDistributionResponse"
-      },
       "MaterialTerm-Input": {
         "properties": {
           "material": {
@@ -4159,7 +4820,7 @@
         ],
         "title": "MaterialTerm"
       },
-      "MaterialValueEntry": {
+      "MaterialValueShareEntry": {
         "properties": {
           "value": {
             "type": "string",
@@ -4168,26 +4829,38 @@
           "label": {
             "type": "string",
             "title": "Label"
+          },
+          "share": {
+            "type": "number",
+            "title": "Share"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "value",
-          "label"
+          "label",
+          "share"
         ],
-        "title": "MaterialValueEntry"
+        "title": "MaterialValueShareEntry"
       },
-      "MaterialValuesResponse": {
+      "MaterialValueSharesResponse": {
         "properties": {
           "available": {
             "type": "boolean",
-            "title": "Available",
-            "default": true
+            "title": "Available"
+          },
+          "sample_ways": {
+            "type": "integer",
+            "title": "Sample Ways"
+          },
+          "total_km": {
+            "type": "number",
+            "title": "Total Km"
           },
           "values": {
             "items": {
-              "$ref": "#/components/schemas/MaterialValueEntry"
+              "$ref": "#/components/schemas/MaterialValueShareEntry"
             },
             "type": "array",
             "title": "Values"
@@ -4197,9 +4870,27 @@
         "type": "object",
         "required": [
           "available",
+          "sample_ways",
+          "total_km",
           "values"
         ],
-        "title": "MaterialValuesResponse"
+        "title": "MaterialValueSharesResponse"
+      },
+      "Missing": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "const": "missing",
+            "title": "Op",
+            "default": "missing"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op"
+        ],
+        "title": "Missing"
       },
       "MsmFreshnessResponse": {
         "properties": {
@@ -4448,6 +5139,91 @@
           "value"
         ],
         "title": "RoadClassStretch"
+      },
+      "Round": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "const": "round",
+            "title": "Op",
+            "default": "round"
+          },
+          "arg": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Arg",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          },
+          "decimals": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Decimals"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "arg",
+          "decimals"
+        ],
+        "title": "Round"
       },
       "RouteCandidate": {
         "properties": {
@@ -4808,9 +5584,6 @@
             ],
             "title": "Max Average Grade Percent"
           },
-          "hard_filters": {
-            "$ref": "#/components/schemas/HardFilterOverride"
-          },
           "road_avoidance": {
             "$ref": "#/components/schemas/RoadAvoidanceOverride"
           },
@@ -4879,7 +5652,6 @@
           "latitude",
           "longitude",
           "distance_tolerance_km",
-          "hard_filters",
           "road_avoidance",
           "max_routes",
           "assumed_speed_kmh",
@@ -5149,25 +5921,6 @@
         ],
         "title": "RouteTurn"
       },
-      "ScorePoint": {
-        "properties": {
-          "x": {
-            "type": "number",
-            "title": "X"
-          },
-          "score": {
-            "type": "number",
-            "title": "Score"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "x",
-          "score"
-        ],
-        "title": "ScorePoint"
-      },
       "ScoresPreviewRequest": {
         "properties": {
           "shape": {
@@ -5179,13 +5932,6 @@
             },
             "type": "array",
             "title": "Xs"
-          },
-          "material_values": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Material Values"
           }
         },
         "additionalProperties": false,
@@ -5203,27 +5949,12 @@
             },
             "type": "array",
             "title": "Scores"
-          },
-          "material_points": {
-            "items": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/ScorePoint"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Material Points"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "scores",
-          "material_points"
+          "scores"
         ],
         "title": "ScoresPreviewResponse"
       },
@@ -5471,6 +6202,92 @@
         ],
         "title": "Twilight"
       },
+      "Unary": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "enum": [
+              "neg",
+              "abs",
+              "sin",
+              "cos",
+              "sqrt",
+              "not",
+              "is_missing"
+            ],
+            "title": "Op"
+          },
+          "arg": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Arg",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "arg"
+        ],
+        "title": "Unary"
+      },
       "ValidArea": {
         "properties": {
           "type": {
@@ -5583,6 +6400,216 @@
           "bins"
         ],
         "title": "ValueDistribution"
+      },
+      "WayValueFormula": {
+        "properties": {
+          "value": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Value",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          },
+          "undetermined": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Undetermined",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "value",
+          "undetermined"
+        ],
+        "title": "WayValueFormula"
+      },
+      "WayValuesPreviewRequest": {
+        "properties": {
+          "axis_id": {
+            "type": "string",
+            "title": "Axis Id"
+          },
+          "shape": {
+            "$ref": "#/components/schemas/BreakpointLinearShape-Input"
+          },
+          "z": {
+            "type": "integer",
+            "maximum": 15.0,
+            "minimum": 12.0,
+            "title": "Z"
+          },
+          "x": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "X"
+          },
+          "y": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Y"
+          },
+          "bearing_deg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 360.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bearing Deg"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "speed_kmh": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 60.0,
+                "minimum": 5.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed Kmh"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "axis_id",
+          "shape",
+          "z",
+          "x",
+          "y"
+        ],
+        "title": "WayValuesPreviewRequest"
       },
       "WbgtReading": {
         "properties": {
