@@ -92,6 +92,22 @@ export function fetchCalibrationPreview(body: CalibrationPreviewRequest) {
   );
 }
 
+type WayValuesPreviewRequest = Schemas["WayValuesPreviewRequest"];
+/** 道の点数を求める下書き（軸と点のつけ方）。 */
+export type WayValuesDraft = Pick<WayValuesPreviewRequest, "axis_id" | "shape">;
+
+/** 編集中の折れ点で、1枚のタイルの道（feature_key）それぞれが何点になるか。値は公開中の軸の道の点数の配信と同じ計算で出す。 */
+export function fetchWayValuesPreview(
+  draft: WayValuesDraft,
+  tile: Omit<WayValuesPreviewRequest, keyof WayValuesDraft>,
+) {
+  const body = { ...draft, ...tile };
+  return requestApi(
+    (init) => adminApiClient.POST("/axis-definitions/preview-way-values", { body, ...init }),
+    adminOptions("道の点数の確認", { body }),
+  );
+}
+
 // 材料
 
 export type MaterialDistribution = Schemas["MaterialDistributionResponse"];

@@ -144,7 +144,7 @@ function amedasObservationFixture(): AmedasObservation {
   };
 }
 
-// 基礎地図スタイル（MapView.tsx: mapStyleUrl）の応答。sources/layersを空にして
+// 基礎地図スタイル（features/map/regionApi.ts: mapStyleUrl）の応答。sources/layersを空にして
 // 外部タイル・グリフ・スプライトへの追加リクエストが発生しない自己完結スタイルにする
 // （地図の見た目は検証対象外、UI操作の疎通のみが目的）。
 function emptyMapStyleFixture() {

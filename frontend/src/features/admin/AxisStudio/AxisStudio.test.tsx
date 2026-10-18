@@ -8,6 +8,7 @@
  * ここで見ないもの:
  * - フォームの中身・検証・payloadの組み立て → `AxisComposer.test.tsx`
  * - 段の配色そのもの → `lib/mapDisplay`（期待値はそこの関数から引く）
+ * - 較正の画面 → `AxisCalibration.test.tsx`（下書きの点数の地図は`app/admin/page.calibration.test.tsx`）
  */
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -103,7 +104,7 @@ beforeEach(() => {
 async function renderStudio({ loaded = true } = {}) {
   serveAxisCatalog(catalogResponse(catalogAxes));
   const user = userEvent.setup();
-  render(<AxisStudio />);
+  render(<AxisStudio calibrationMap={() => null} />);
   if (loaded) await screen.findByRole("tab", { name: "公開済み（2）" });
   return user;
 }

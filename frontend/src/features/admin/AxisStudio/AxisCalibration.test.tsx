@@ -9,6 +9,7 @@
  * - グラフの座標の換算・ドラッグの丸め → `BreakpointCurveEditor.test.tsx`
  * - 3つの入力から作る折れ点 → `breakpointTools.test.ts`（期待値は`generateBreakpoints`から引く）
  * - 地図の段の求め方 → backendの`test_axis_admin_routes.py`
+ * - 下書きの点数の地図（別の機能の部品で、組み立てるページが渡す） → `app/admin/page.calibration.test.tsx`
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -108,10 +109,12 @@ beforeEach(() => {
   });
 });
 
+const NO_MAP = () => null;
+
 async function openAxis(def: AxisDefinitionResponse, definitions = [SLOPE, DENSITY, HAND_EDITED, SIGNED]) {
   const user = userEvent.setup();
   const onSaved = vi.fn(async () => {});
-  render(<AxisCalibration definitions={definitions} onSaved={onSaved} />);
+  render(<AxisCalibration definitions={definitions} onSaved={onSaved} calibrationMap={NO_MAP} />);
   await user.selectOptions(screen.getByRole("combobox", { name: "較正する軸" }), def.axis_id);
   await screen.findByRole("img");
   return { user, onSaved };
@@ -127,7 +130,11 @@ async function savedPayload(): Promise<AxisDefinitionPayload> {
 describe("軸を選ぶ", () => {
   it("数値の軸だけを、公開中か下書きかを添えて並べる", () => {
     render(
-      <AxisCalibration definitions={[SLOPE, { ...DENSITY, is_published: false }, CATEGORICAL]} onSaved={vi.fn()} />,
+      <AxisCalibration
+        definitions={[SLOPE, { ...DENSITY, is_published: false }, CATEGORICAL]}
+        onSaved={vi.fn()}
+        calibrationMap={NO_MAP}
+      />,
     );
     const options = within(screen.getByRole("combobox", { name: "較正する軸" })).getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual(["軸を選ぶ", "急さ（公開中）", "信号の多さ（下書き）"]);

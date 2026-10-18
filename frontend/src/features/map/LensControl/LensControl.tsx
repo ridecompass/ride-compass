@@ -77,7 +77,7 @@ const LENS_SCREEN_NAME = EVALUATION_PAINT_NAME;
 const UNSELECTED_LABEL = "評価軸を選ぶ";
 
 /** 凡例の段の見本（開いた先の凡例の行）。 */
-const LEGEND_SWATCH_CLASS = "inline-block h-1.5 w-2.5 flex-shrink-0 rounded-[1px]";
+export const LEGEND_SWATCH_CLASS = "inline-block h-1.5 w-2.5 flex-shrink-0 rounded-[1px]";
 
 // 部品は軸カタログのアイコンの固定の辞書から引くので描くたびに作られないが、`const Icon = …; <Icon />`の形は
 // react-hooks/static-componentsが描くたびに作る形と読むため、createElementで描く。

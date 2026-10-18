@@ -21,6 +21,14 @@ type Handler = (event: Record<string, unknown>) => void;
 type Listener = { readonly type: string; readonly layerId?: string; readonly handler: Handler; readonly once: boolean };
 type LngLat = { lng: number; lat: number };
 
+/** 見えている範囲（経度・緯度）。 */
+export interface ViewBounds {
+  readonly west: number;
+  readonly south: number;
+  readonly east: number;
+  readonly north: number;
+}
+
 /** 押した所に描かれている地物。`layer` は描いているレイヤーの id。 */
 export interface PointedFeature {
   readonly layer: string;
@@ -189,6 +197,7 @@ class StandInMap extends Evented {
   private readonly canvas: HTMLCanvasElement;
   private zoom: number;
   private bearing = 0;
+  private bounds: ViewBounds | null = null;
   private pointed: readonly PointedFeature[] = [];
   // 手ぶりの入切は、代役では指の操作が無いので受けるだけにする。
   readonly touchZoomRotate = { disableRotation() {}, enableRotation() {} };
@@ -234,8 +243,23 @@ class StandInMap extends Evented {
     return this;
   }
 
+  /** テストが範囲を置くまでは、範囲の無い地図（MapLibre が範囲を求められないとき）として null を返す。 */
   getBounds() {
-    return null;
+    const bounds = this.bounds;
+    if (bounds === null) return null;
+    return {
+      getWest: () => bounds.west,
+      getSouth: () => bounds.south,
+      getEast: () => bounds.east,
+      getNorth: () => bounds.north,
+    };
+  }
+
+  /** 範囲と倍率を置き、動き終わった（"moveend"）ことを出す。 */
+  moveTo(bounds: ViewBounds, zoom: number) {
+    this.bounds = bounds;
+    this.zoom = zoom;
+    this.fire("moveend", {});
   }
 
   addControl() {
@@ -361,6 +385,12 @@ export interface MapOnScreen {
   bearing(): number;
   /** 利用者が地図を指で回す（向きを変えて "rotate" を出す）。 */
   rotateByHand(bearing: number): void;
+  /** 利用者が地図を動かす（範囲と倍率を置いて "moveend" を出す）。 */
+  moveTo(bounds: ViewBounds, zoom: number): void;
+  /** 地物の状態（`setFeatureState` で載せたもの）。 */
+  featureState(sourceId: string, featureId: string): Record<string, unknown> | undefined;
+  /** レイヤーの今の塗りの宣言。無いレイヤーは undefined。 */
+  layerPaint(layerId: string): Record<string, unknown> | undefined;
 }
 
 export function mapOnScreen(): MapOnScreen {
@@ -385,5 +415,8 @@ export function mapOnScreen(): MapOnScreen {
     rotateByHand: (bearing) => {
       map.turn(bearing, { originalEvent: new Event("touchmove") });
     },
+    moveTo: (bounds, zoom) => map.moveTo(bounds, zoom),
+    featureState: (sourceId, featureId) => map.content.featureState(sourceId, featureId),
+    layerPaint: (layerId) => map.content.layer(layerId)?.paint,
   };
 }

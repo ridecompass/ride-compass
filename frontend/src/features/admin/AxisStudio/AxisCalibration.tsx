@@ -4,7 +4,7 @@
 // 動かして、段ごとの延長が保存済みの線からどう変わるかを見比べてから保存する。線は「0点にする値・100点にする値・
 // 効き方」の3つだけで決め（密度の軸は100点にする値だけ）、折れ点を1つずつ動かす口は編集のフォーム（NumericScoring.tsx）にだけ置く。
 
-import { useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
 import { Callout } from "@/components/ui/Callout/Callout";
@@ -16,13 +16,21 @@ import { useScoresPreview } from "@/features/admin/useScoresPreview";
 import { useSettledDraftQuery } from "@/features/admin/useSettledDraftQuery";
 import {
   fetchCalibrationPreview,
+  fetchWayValuesPreview,
   updateAxisDefinition,
   type CalibrationPreview,
   type ScoresPreviewRequest,
+  type WayValuesDraft,
 } from "@/features/admin/adminApi";
 import { errorMessage } from "@/lib/apiError";
 import { cn } from "@/lib/cn";
-import { bandColorsFor, mapPaintDeclarationOf, valueBands, type ValueBand } from "@/lib/mapDisplay/valueScale";
+import {
+  bandColorsFor,
+  mapPaintDeclarationOf,
+  valueBands,
+  type MapPaintDeclaration,
+  type ValueBand,
+} from "@/lib/mapDisplay/valueScale";
 import type { AxisDefinitionPayload, AxisDefinitionResponse } from "@/types/route";
 import { formatThresholdList, parseThresholdList, resizeBandLabels } from "./axisDraft";
 import { BreakpointCurveEditor, type CurveHandle } from "./BreakpointCurveEditor";
@@ -31,6 +39,7 @@ import { ScoreTargetFields, type GeneratorSettings } from "./NumericScoring";
 import { binMidpoints, mapBandShares, type ValueDistribution } from "./scoreDistribution";
 
 type Breakpoints = [number, number][];
+type MapPaint = CalibrationPreview["map_paint"];
 type NumericDefinition = AxisDefinitionResponse & { shape: { kind: "breakpoint_linear" } };
 
 function isNumeric(def: AxisDefinitionResponse): def is NumericDefinition {
@@ -43,12 +52,24 @@ function payloadOf({ weight_share_when_published: _share, ...payload }: AxisDefi
   return payload;
 }
 
+/** 下書きの点数の地図を描く。地図は別の機能が持つので、組み立てるページが渡す。 */
+export type CalibrationMapSlot = (props: {
+  axisId: string;
+  label: string;
+  /** 線が無効な間はnull。 */
+  draft: WayValuesDraft | null;
+  fetchTile: typeof fetchWayValuesPreview;
+  paint: MapPaintDeclaration;
+}) => ReactNode;
+
 export function AxisCalibration({
   definitions,
   onSaved,
+  calibrationMap,
 }: {
   definitions: readonly AxisDefinitionResponse[];
   onSaved: () => Promise<void>;
+  calibrationMap: CalibrationMapSlot;
 }) {
   const [axisId, setAxisId] = useState("");
   const numericDefs = definitions.filter(isNumeric);
@@ -69,12 +90,27 @@ export function AxisCalibration({
         ))}
       </Select>
       {/* 保存し直した定義が届いたら作り直し、下書きを保存済みの値から始め直す。 */}
-      {selected && <CalibrationBody key={JSON.stringify(selected)} saved={selected} onSaved={onSaved} />}
+      {selected && (
+        <CalibrationBody
+          key={JSON.stringify(selected)}
+          saved={selected}
+          onSaved={onSaved}
+          calibrationMap={calibrationMap}
+        />
+      )}
     </section>
   );
 }
 
-function CalibrationBody({ saved, onSaved }: { saved: NumericDefinition; onSaved: () => Promise<void> }) {
+function CalibrationBody({
+  saved,
+  onSaved,
+  calibrationMap,
+}: {
+  saved: NumericDefinition;
+  onSaved: () => Promise<void>;
+  calibrationMap: CalibrationMapSlot;
+}) {
   const savedBreakpoints = saved.shape.breakpoints as Breakpoints;
   const savedThresholds = saved.display_thresholds_override ?? null;
   const [initialGenerator] = useState(() => generatorSettingsFrom(savedBreakpoints));
@@ -103,10 +139,11 @@ function CalibrationBody({ saved, onSaved }: { saved: NumericDefinition; onSaved
         [generator.hundredValue, 100],
       ]
     : generateBreakpoints(generator.zeroValue, generator.hundredValue, generator.shape);
-  const bandLabels =
-    thresholds === null || !saved.display_band_labels_override
-      ? null
-      : resizeBandLabels(saved.display_band_labels_override, thresholds.length + 1);
+  const labelOverride = saved.display_band_labels_override;
+  const bandLabels = useMemo(
+    () => (thresholds === null || !labelOverride ? null : resizeBandLabels(labelOverride, thresholds.length + 1)),
+    [thresholds, labelOverride],
+  );
   const draftPayload: AxisDefinitionPayload = {
     ...payloadOf(saved),
     shape: { ...saved.shape, breakpoints: draftBreakpoints },
@@ -129,6 +166,16 @@ function CalibrationBody({ saved, onSaved }: { saved: NumericDefinition; onSaved
   const generatorChanged = JSON.stringify(generator) !== JSON.stringify(initialGenerator);
   const lineChanged = !savedReproducible || generatorChanged;
   const changed = lineChanged || JSON.stringify(thresholds) !== JSON.stringify(savedThresholds);
+
+  // 下書きの段の応答は入力が落ち着くまで消えるので、地図は最後に届いた段を土台に塗る。
+  const [lastDraftPaint, setLastDraftPaint] = useState<MapPaint | null>(null);
+  const draftPaint = draftPreview.data?.map_paint ?? null;
+  if (draftPaint !== null && draftPaint !== lastDraftPaint) setLastDraftPaint(draftPaint);
+  const receivedPaint = draftPaint ?? lastDraftPaint ?? savedPreview.data?.map_paint ?? null;
+  const mapPaint = useMemo(
+    () => receivedPaint && calibrationMapPaint(receivedPaint, thresholds, bandLabels),
+    [receivedPaint, thresholds, bandLabels],
+  );
 
   const kind = savedPreview.data?.map_paint.value.kind;
   const shownThresholds = thresholds ?? draftPreview.data?.map_paint.thresholds ?? null;
@@ -260,6 +307,19 @@ function CalibrationBody({ saved, onSaved }: { saved: NumericDefinition; onSaved
           この下書きの地図の段を求められませんでした。境界が小さい順に並んでいるか確かめてください。
         </p>
       )}
+      {mapPaint &&
+        calibrationMap({
+          axisId: saved.axis_id,
+          label: saved.label,
+          draft: lineValid
+            ? {
+                axis_id: saved.axis_id,
+                shape: { ...saved.shape, breakpoints: draftBreakpoints } as WayValuesDraft["shape"],
+              }
+            : null,
+          fetchTile: fetchWayValuesPreview,
+          paint: mapPaint,
+        })}
       {kind === "difficulty" && distribution && (
         <BandShareComparison
           distribution={distribution}
@@ -280,6 +340,24 @@ function CalibrationBody({ saved, onSaved }: { saved: NumericDefinition; onSaved
       </div>
     </div>
   );
+}
+
+/** 較正の地図を塗る段。境界は画面で動かしている値（自動の間は応答の境界）で、応答がその境界に対するものなら応答の
+ * 凡例（量で書けるものは量）を使う。境界だけを動かして応答が届く前は、境界をそのまま書いた凡例で塗り直す。 */
+function calibrationMapPaint(
+  received: MapPaint,
+  thresholds: number[] | null,
+  bandLabels: readonly string[] | null,
+): MapPaintDeclaration {
+  const declared = mapPaintDeclarationOf(received);
+  if (thresholds === null || JSON.stringify(received.thresholds) === JSON.stringify(thresholds)) return declared;
+  return {
+    kind: declared.kind,
+    boundaries: thresholds,
+    // 難易度の軸の境界は得点の目盛り、符号付きの材料の軸の境界は材料の値。
+    legend: { boundaries: thresholds, unit: declared.kind === "difficulty" ? null : declared.legend.unit },
+    bandLabels,
+  };
 }
 
 /** 保存済みの線が、効き方「一定」の2点の直線か（3つの入力の作る6点の直線と同じ線になる）。 */
