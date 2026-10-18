@@ -24,6 +24,27 @@ PostGIS統合テスト（`road_graph_session`フィクスチャを使うもの�
 落ちる（スキップにはしない。`backend/tests/conftest.py`）。DBの無い環境では
 `-m "not postgis"`で除外して回す。
 
+## 開発機の画面を本番のデータで開く
+
+開発用のDBは道のデータが一部だけで、今のコードに追いついていないことがある。画面を試すときは、開発機のfrontendを
+本番のbackendのデータ（APIとタイル）で開く。読むだけで、本番のデータは書き換えない（ルートの生成も、本番でふつうの
+利用者と同じに作られる）。
+
+1. 起こす設定（`.claude/launch.json`）の`backend-prod-data`と`frontend-prod-data`を起こす（手で起こすなら、根で
+   `backend/.venv/Scripts/python.exe backend/scripts/dev_prod_data_backend.py`と`npm run dev:prod-data --prefix frontend`）。
+2. この PC では`http://localhost:3000`を開く。同じ Wi-Fi のスマホでは、backend が起動の最初の行に出す
+   `http://<開発機の LAN の住所>:3000`を開く。
+   - 外へ出る口が複数あって違う住所が出たら、`RC_LAN_HOST`に正しい住所を入れて backend を起こし直す。
+   - スマホから開けないときは、Windows のファイアウォールで、開発機の node（3000番）への受信をプライベートのネットワークで許す
+     （許すのはユーザーが行う）。
+   - 現在地は`https`か`localhost`でしか取れないので、スマホの`http://<LAN の住所>`では現在地が出ない。出発地は地図で置く。
+
+取り次ぎの向け先は`frontend/src/lib/backendRewrites.ts`が決める: APIの呼び出し（`/prod/…`）とタイルは本番のbackend
+（宛先は`production-origins.json`）へ、地図の下地だけは開発機のbackendへ向ける（本番の下地のスタイルは本番のbackendの
+住所を中に持ち、画面から直接は読めない）。開発機のbackendは、下地のスタイルが中に持つ住所と許す相手に、開発機の
+LANの住所を入れて起きる（`backend/scripts/dev_prod_data_backend.py`）。管理画面（`/admin`）は、本番を読み書きしないよう
+いつも開発機のbackendへ転送する。
+
 ## 開発機の本体のチェックアウトの遅れ
 
 担当は GitHub Actions のランナーで動くので、開発機の本体のチェックアウトを早送りする人はいない。遅れた
