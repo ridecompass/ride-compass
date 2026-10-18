@@ -8,7 +8,7 @@ import { expect, onTestFinished } from "vitest";
 import Home from "@/app/page";
 import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
 import { onBackend, onSameOrigin, serveAxisCatalog } from "@/testing/backendServer";
-import { catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";
+import { catalogResponse, dedicatedEntry, MATERIAL_VALUE_FORMULA } from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { installGeolocation } from "@/testing/geolocation";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
@@ -22,10 +22,19 @@ export const DESTINATION: Coordinates = { latitude: 35.6, longitude: 139.73 };
 export const ELSEWHERE: Coordinates = { latitude: 35.65, longitude: 139.72 };
 
 // 地図が道路のタイルを載せる（軸で塗れる）のは、タイルの世代が全部の系統で揃ってから。
-const CATALOG = catalogResponse([dedicatedEntry("axis_a", [25, 50, 75], { label: "軸A", default_weight: 1 })], {
-  client_tuning: { [CLIENT_TUNING_IDS.minStretchKm]: 0.1 },
-  tile_versions: Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "1-test"])),
-});
+const CATALOG = catalogResponse(
+  [
+    dedicatedEntry("axis_a", [25, 50, 75], {
+      label: "軸A",
+      default_weight: 1,
+      way_value_formula: MATERIAL_VALUE_FORMULA,
+    }),
+  ],
+  {
+    client_tuning: { [CLIENT_TUNING_IDS.minStretchKm]: 0.1 },
+    tile_versions: Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "1-test"])),
+  },
+);
 
 // 予報と実測（ここでは中身を見ない）。
 const FORECAST: WeatherConditions = {

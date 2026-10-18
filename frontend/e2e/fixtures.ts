@@ -209,8 +209,8 @@ export async function installApiMocks(page: Page): Promise<void> {
   await page.route(`${API_BASE}/api/routes/generate/*`, (route) => route.fulfill({ json: doneJobFixture() }));
 
   await page.route(`${API_BASE}/api/axis-catalog*`, (route) => route.fulfill({ json: defaultAxisCatalogFixture() }));
-  // 軸のレンズで塗る道ごとの値。値を持つ道が無い形で答える。
-  await page.route(`${API_BASE}/api/region/dynamic-way-values/**`, (route) => route.fulfill({ json: {} }));
+  // 軸のレンズで塗る道ごとの材料。材料を持つ道が無い形で答える。
+  await page.route(`${API_BASE}/api/region/way-materials/**`, (route) => route.fulfill({ json: {} }));
 
   // 地点の詳しくが、置いた位置の辺りを引く。辺り無し（境界の外）で答える。
   await page.route(`${API_BASE}/api/place-area*`, (route) => route.fulfill({ json: { area: null } }));

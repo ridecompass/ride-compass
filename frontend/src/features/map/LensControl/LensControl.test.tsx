@@ -1,6 +1,6 @@
 /**
  * `LensControl.tsx`——「評価で塗る」のピルが今の評価軸を示し、開いた一覧で評価軸を1つ選び・外し、選んでいる行の ▶ で
- * 凡例を絞り込み、行の印（走る条件・未使用・絞り込み中）と前提の文を読ませること。
+ * 凡例を絞り込み、行の印（走る条件・ルートの線だけ・未使用・絞り込み中）と前提の文を読ませること。
  *
  * ここで見ないもの:
  * - 選択肢・凡例・前提の文の中身を軸カタログから組むこと → `features/map/view/lens.test.ts`
@@ -23,9 +23,14 @@ const option = (id: string, overrides: Partial<LensOption> = {}): LensOption => 
   unused: false,
   description: `${id}の説明`,
   conditions: [],
+  paintsSurroundingRoads: true,
   ...overrides,
 });
-const OPTIONS = [option("idle", { unused: true }), option("used", { conditions: ["bearing_deg", "at"] })];
+const OPTIONS = [
+  option("idle", { unused: true }),
+  option("used", { conditions: ["bearing_deg", "at"] }),
+  option("lined", { paintsSurroundingRoads: false }),
+];
 const LEGEND = [
   { key: "step-0", label: "低い", color: "#00ff00", filter: [] },
   { key: "step-1", label: "高い", color: "#ff0000", filter: [] },
@@ -78,14 +83,14 @@ describe("LensControl", () => {
     expect(screen.getByRole("status")).toHaveTextContent(LAYER_DATA_STATUS_LABELS.error);
   });
 
-  it("一覧は重みのある軸を先に並べ、値が変わる走る条件と「未使用」を名前に添える", async () => {
+  it("一覧は重みのある軸を先に並べ、値が変わる走る条件・「ルートの線だけ」・「未使用」を名前に添える", async () => {
     renderLens();
     await open();
     expect(
       within(list())
         .getAllByRole("radio")
         .map((row) => row.textContent),
-    ).toEqual(["usedの軸（地図の向きで変わる）（出発時刻で変わる）", "idleの軸未使用"]);
+    ).toEqual(["usedの軸（地図の向きで変わる）（出発時刻で変わる）", "linedの軸ルートの線だけ", "idleの軸未使用"]);
   });
 
   it("行を押すとその評価軸を選び、一覧は閉じない。選んでいる行をもう一度押すと外す", async () => {

@@ -1,4 +1,4 @@
-"""地図の配信: 公開軸の値を、タイルのフィーチャーごとに探索と同じ評価から配る。
+"""地図の配信: 公開軸の値を、タイルのフィーチャーごとに探索と同じ評価から求める材料を配る。
 
 値はタイルの材料（`services/feature_materials.py: FeatureMaterialService`）と、軸の葉の材料のうちタイルへ焼けない材料
 （時々刻々変わる・向きに依る）を配るサービスの道ごとの材料から、`domain/dynamic_way_values.py: axis_way_values`で求める。
@@ -315,9 +315,9 @@ async def tile_axis_way_materials(
 
 
 class AxisWayValueLens:
-    """地図のレンズが塗る、1つの軸の値（フィーチャーの鍵→値）と、その値を求める道ごとの材料。
+    """地図のレンズが塗る1つの軸の、値を求める道ごとの材料。
 
-    材料もサービスの道ごとの材料も軸に依らずに引き（キャッシュも材料のまま持つ）、地図が塗る値へは軸定義から都度求めるため、
+    材料もサービスの道ごとの材料も軸に依らずに引き（キャッシュも材料のまま持つ）、道ごとの材料へは軸定義から都度求めるため、
     軸スタジオで折れ点を変えてもキャッシュを捨てずに即座に効く。
     """
 
@@ -332,12 +332,6 @@ class AxisWayValueLens:
         self._definitions = definitions
         self._feature_materials = feature_materials
         self._build_service = build_service
-
-    async def values(self, z: int, x: int, y: int, query: WayValueQuery) -> dict[str, float | None] | MissingConditions:
-        """要る条件が欠けていれば、何も読まずに欠けた条件を返す（`tile_axis_values`）。"""
-        values = await tile_axis_values(
-            [self._axis_id], self._definitions, self._feature_materials, self._build_service, z, x, y, query)
-        return values[self._axis_id]
 
     async def way_materials(self, z: int, x: int, y: int, at: datetime | None) -> TileAxisWayMaterials | None:
         """`tile_axis_way_materials`。"""
@@ -358,20 +352,19 @@ def axis_way_value_lens(
 
 @dataclass(frozen=True)
 class DedicatedWayValueLayer:
-    """地図が軸の配信を要求するときに要るもの。"""
+    """地図が軸の道ごとの材料を要求し、値を求めるときに要るもの。"""
 
-    #: 要求へ載せる条件の名前（クエリパラメータの名前と同じ）。載せるのは、軸の葉の材料を配るサービスが受け取る条件の
-    #: 型の欄すべて——既定値のある欄（風の時刻）も載せる。省略できるのは配信が既定値で補えるというだけで、地図が
-    #: 利用者の選んだ値を持っているならそれで求めた値を塗る。葉の材料にサービスの材料が無ければ空。
+    #: 値に効く条件の名前。軸の葉の材料を配るサービスが受け取る条件の型の欄すべて——既定値のある欄（風の時刻）も含む。
+    #: 時刻は道ごとの材料の要求へ載せ、走行方位・想定速度は木（`formula`）へ入れる。葉の材料にサービスの材料が無ければ空。
     conditions: list[WayValueConditionName]
     #: 地図が塗る値を、道ごとの材料（`tile_axis_way_materials`）と要求の条件から求める木。木にできない軸はNone。
     formula: WayValueFormula | None
-    #: 配信が、走行方位しだいで値の決まらない道を返しうるか。
+    #: 走行方位しだいで値の決まらない道がありうるか（木の`undetermined`が恒に偽でない）。
     undetermined_by_bearing: bool
 
 
 def dedicated_way_value_layers() -> dict[str, DedicatedWayValueLayer]:
-    """軸id → 地図が配信を要求するときに要るもの。今の`AXIS_DEFINITIONS`の全軸を持つ。"""
+    """軸id → 地図が道ごとの材料を要求し、値を求めるときに要るもの。今の`AXIS_DEFINITIONS`の全軸を持つ。"""
     definitions = copy_axis_definitions()
     out: dict[str, DedicatedWayValueLayer] = {}
     for axis_id in definitions:

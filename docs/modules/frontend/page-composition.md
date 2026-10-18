@@ -109,7 +109,7 @@ HTTPステータスが`message`に入るのは、応答に`detail`が無い（JS
   渡さない（`query-core/src/queriesObserver.ts: #findMatchingObservers`）。取り損ねた地点を前の格子で補う取得は、同じ
   種類のキーのうち最後に届いた値を引き（`features/map/useWeatherGrid.ts`）、件数が実行時に変わる取得で取り直しの間に
   前の値を残すものは、全体を1つのキーで取ってその中で要素ごとの答えを`fetchQuery`で引く
-  （`features/map/useDedicatedWayValues.ts`）。
+  （`features/map/useWayMaterials.ts`）。
 - テストでは、取得の結果は区切り（`setTimeout(0)`、`query-core/src/notifyManager.ts`）ごとに購読者へ届く。応答を
   返した直後に同期で確かめず、`waitFor`か区切りを待つ（偽の時計で`setTimeout`まで止めると届かない）。
 - 取得の関数の中身（通信・ログ・文言）は`apiClient.ts`・`services/*Api.ts`のまま。キャッシュは呼び出し口の
@@ -165,7 +165,7 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 4. **原因の粒度は、利用者の次の行動が変わる単位まで。** 混雑（429）と通信エラーはどちらも
    「待って再試行」だが、backendの`detail`と`[通信エラー]`で区別されて届くため、`Error`を
    そのまま出す経路ではそのまま見せる。**地図タイル（MapLibreの`error`イベント）とレンズ
-   （`regionApi.ts: fetchDynamicWayValues`）は原因を落とし、汎用の「取得に失敗しました。
+   （`regionApi.ts: fetchWayMaterials`）は原因を落とし、汎用の「取得に失敗しました。
    しばらくしてから再読み込みしてください」に揃える**。タイルの`error`イベントが運ぶ
    MapLibreの`AJAXError`はHTTPステータスを持つが本文（`detail`）は`Blob`で同期的に読めない。
    どちらの経路も原因に関わらず利用者の行動（待つ）は同じで、状態は次の取得サイクルで
@@ -328,7 +328,7 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 時刻依存）が、「向き」は1つの値（走る向き）を風・勾配の両方が使う:
 
 ```
-走る向き（地図の上の向きを8方位に丸めた値。走行中は実際に走る向き。`features/map/view/useMapView.ts: wayConditions`）。出発時刻は`features/conditions/useDepartureTime.ts: at`、想定速度は`useRideConditions.ts: speedKmh`（いずれも地図右上の条件アイコン列`features/conditions/RideConditionBar/RideConditionBar.tsx`で操作し、生成リクエストの`start_time`/`assumed_speed_kmh`とレンズの`speed_kmh`へ同じ値が乗る）
+走る向き（地図の上の向きを丸めずに[0, 360)へ寄せた値。走行中は実際に走る向き。`features/map/view/useMapView.ts: wayConditions`）。出発時刻は`features/conditions/useDepartureTime.ts: at`、想定速度は`useRideConditions.ts: speedKmh`（いずれも地図右上の条件アイコン列`features/conditions/RideConditionBar/RideConditionBar.tsx`で操作し、生成リクエストの`start_time`/`assumed_speed_kmh`と地図の式の条件`speed_kmh`へ同じ値が乗る）
   │
   ├─→ 風:   [時刻]出発時刻（useDepartureTime由来）
   │           │
@@ -341,8 +341,9 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 
   評価軸（線）の共通経路（軸ごとの分岐を持たない）:
     塗っている軸 paintedAxisId = lens（ルート確定後は周囲も塗る設定の間だけ。それ以外はnull）
-    useDedicatedWayValues([塗っている専用way値配信軸], 表示範囲, 走行方位, 出発時刻, 想定速度)
-      （useMapViewの中。時刻・向き・想定速度は、軸カタログのdynamic_way_value_conditionsがその名前を含む軸のリクエストにだけ載る）
+    useWayMaterials([塗っている軸のうち周りの道を塗れる軸], 表示範囲, 出発時刻)
+      （useMapViewの中。時刻は、軸カタログのdynamic_way_value_conditionsがatを含む軸のリクエストにだけ載る）
+    走る条件 {bearing_deg: 走行方位, speed_kmh: 想定速度} → 地図全体のglobal-state（変えても材料を取り直さない）
     軸のレイヤーを出すか = 軸id === paintedAxisId（地図側のsceneが導く）
 ```
 
@@ -352,8 +353,9 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 選択が担う。
 
 **地図の向き**: 地図の上の向きが、向きで値の変わる評価（風・勾配）で周りの道を塗るときと、道の評価を見るときの走る向きになる。
-走る向きは地図の上の向きを8方位に丸めた値で（`features/map/mapHeading.ts: travelBearingOf`）、丸めた向きが変わらない回転では
-道の値を取り直さない。走行中は地図の向きではなく、実際に走る向き（下の「走行モード」の`useRideWayConditions.ts`）で取る。
+走る向きは地図の上の向きを丸めずに[0, 360)へ寄せた値で、向きを変えても道ごとの材料は取り直さず、地図が式で値を求め直す
+（[地図: 軸・ルート色分け](map-axis-coloring.md)「評価軸の線」）。走行中は地図の向きではなく、実際に走る向き（下の「走行モード」の
+`useRideWayConditions.ts`）で塗る。
 地図右上の方位磁針（`MapNavigationControl`）は針が地図の北を指し、押すと地図を回すダイヤルを開く。ダイヤルの輪は地図と一緒に回り、
 なぞると地図が回り、真ん中の針を押すと北が上に戻る。ダイヤルの中には方位の呼び名と度だけを出し、説明の文は(i)の奥に置く。
 拡大・縮小の長押しの説明は、1本指の拡大・縮小（地図を1回たたいてから触れたまま上下に滑らせる）を添える。
@@ -368,12 +370,12 @@ MapLibreが自分の部品（出典の開閉、ポップアップの閉じる、
 既定が英語のため、地図を作るときの`locale`でこの地図が使う部品の分を日本語へ上書きする（`MapView.tsx: MAP_UI_LOCALE`）。
 MapLibreの部品を新しく足すときは、その部品の文言のキー（`maplibre-gl/src/ui/default_locale.ts`）も足す。
 
-**暗黙の前提**: way_id単位の実データ本体と取得中かは、軸id→取得結果の1つの`Map`として
-見え方の値（`MapLook.dedicatedWayValues`）に載る（design-principles.md構造仕様3「軸ごとに
+**暗黙の前提**: 道ごとの材料と取得中かは、軸id→取得結果の1つの`Map`として
+見え方の値（`MapLook.wayMaterials`）に載る（design-principles.md構造仕様3「軸ごとに
 propを新設しない」）。表示宣言（種類・単位・しきい値・段階ラベル）は軸そのもの（軸カタログの
 `dedicatedAxes`の各要素の`display`）が持ち、別の値では渡さない——軸と表示宣言を別々に配ると、
 片方にだけ在る軸が生まれ、それを既定値で埋める経路が要る。地図は軸カタログを共有ストアから
-自分で読むため、配信の値で塗る軸が増えてもどの受け口も変わらない。
+自分で読むため、道ごとの値で塗る軸が増えてもどの受け口も変わらない。
 
 ## 走行モード（`features/ride/`）
 
@@ -449,7 +451,7 @@ MapLibreの`GeolocateControl`を使わないのは、地図を進む向きへ回
   その時の今の位置で取り直す（範囲の無い予報はこれだけで動く）。警報・注意報等は、出ているときだけ走りの帯に最も重い段の色のアイコンを出し、押すと中身を開く
   （常設ヘッダーと同じ`WarningBadgeList`）。帯の風の矢印は、地図が今当てている向き（地図が範囲と倍率と一緒に知らせる`MapViewport`の`bearing`）の分だけ戻して回す——進む向きを上にしていなくても、指で回した地図の向きに合う（常設ヘッダーの天気欄の矢印も同じ基準。`lib/cardinalLabel.ts: downwindOnMapDeg`）。
 - **走行中の道の色**: 向き・速さで変わる道の値（勾配・風等）は、走行中は手で決めた走行方位と想定速度でなく、実際の進む向きと速さで取る
-  （`features/ride/useRideWayConditions.ts`。今は実）。向きはフックが持つ幅（`BEARING_STEP_DEG`）の区分の中心へ丸め、速さは向きの区分が変わったときのものを使うので、位置が届くたびには取り直さない。
+  （`features/ride/useRideWayConditions.ts`。今は実）。向きは丸めずに使い、位置が届くたびに道ごとの材料は取り直さず、地図の式の条件だけを置き直す。
   止まっている間の速さは想定速度の範囲の下限へ寄せる。地図の道を押したときの窓も同じ条件で取る。
 - **残りと到着予想**: 残りは、ルートの上の現在地から終わりまでの道のり。到着予想は、最後に位置を受けた時刻へ、選んだ候補の
   計画の残り時間を足す（`rideRemaining.ts`）。計画の残り時間は、区間の到達予想（区間へ入る時刻）と所要時間を、ルートの上の距離で読んだ

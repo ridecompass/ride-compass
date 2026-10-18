@@ -14,7 +14,7 @@ from app.api.rate_limit import enforce_rate_limit
 from app.api.routers._tile_http import tile_response, validate_tile_coords
 from app.api.routers.routes import RoutePreferenceWeights
 from app.config import settings
-from app.domain.dynamic_way_values import MissingConditions, WayValueQuery
+from app.domain.dynamic_way_values import WayValueQuery
 from app.domain.axis_inspector import AxisInspectorResult
 from app.domain.geo import BearingDeg
 from app.domain.route_request import AssumedSpeedKmh
@@ -122,54 +122,6 @@ async def region_landcover_tile(
     return tile_response(tile, PNG_CONTENT_TYPE)
 
 
-@router.get("/api/region/dynamic-way-values/{axis_id}/{z}/{x}/{y}")
-async def region_dedicated_way_values(
-    axis_id: str,
-    z: RoadTileZoom,
-    x: TileIndex,
-    y: TileIndex,
-    request: Request,
-    bearing_deg: BearingDeg | None = None,
-    at: datetime | None = None,
-    speed_kmh: AssumedSpeedKmh | None = None,
-    lens: AxisWayValueLens | None = Depends(get_dedicated_way_value_service),
-) -> dict[str, float | None]:
-    """ルート未確定時の地図が塗る、公開軸の値。指定タイル内のフィーチャーごとに、地図が塗る値（`domain/map_paint.py:
-    map_paint`の塗る値が難易度なら得点、符号付き材料ならその材料の値）をまとめて返す軽量なJSONエンドポイント。
-
-    値はタイルの材料と、軸の葉の材料のうちタイルへ焼けない材料（風・向きで符号の変わる勾配・最寄りの雨量計の雨）から、
-    探索と同じ評価で求める（`services/dedicated_way_values.py: AxisWayValueLens`）。値がnullの道は、その走行方位では
-    値が決まらない道（勾配の直角付近）で、値の無い道（鍵ごと無い）とは別に塗る。このエンドポイントはルート未確定時
-    （視界内の全道路への一律適用）専用——ルート確定後はルート自身の実進行方向・実到達時刻/実値から計算済みの
-    `axis_difficulties`（`RouteSegmentDetail`）を使うため、フロントはこのエンドポイントを呼ばない。
-
-    パスパラメータは**軸id**（`axis_definitions.axis_id`）で、材料id（`wind_drag_ratio`等）とは別の名前空間である。
-    公開軸でないaxis_idは404。クエリパラメータ（`bearing_deg`・`at`・`speed_kmh`）のうち何が要るかは、軸の葉の
-    材料を配るサービスが受け取る条件の型が決め（`domain/dynamic_way_values.py: assemble_conditions`）、要るものを
-    省略すると422。要らないものは渡しても無視される（例: 勾配は時刻と速度に依らない。風は時刻を省略すると
-    現在時刻[Asia/Tokyo]を使う）。
-
-    静的な路面タイル（`/api/region/road-surface-tiles`、MVT）とは別経路——受け取る側は同じz/x/yについて両方を取り、
-    フィーチャーの鍵で突き合わせて重ねる。タイルの材料と勾配の道ごとの材料はタイル単位でディスクへ持つため、パン・
-    ズームで同じタイルが再び視界に入っても、向き・速度を変えても、DBへの再問い合わせは発生しない（風は計算が軽いため
-    持たない）。値は、材料の口（`/api/region/way-materials`）の道ごとの材料を、軸カタログの木（`way_value_formula`）で
-    評価した値と同じ。
-
-    路面・点のタイルと同じレート制限・座標検証・DB接続プールのsemaphoreを共有する
-    （本ファイルの`_region_tile_semaphore`のコメント参照——MVTエンコードは
-    伴わないが同じPostGISコネクションプールを取り合うため）。
-    """
-    if lens is None:
-        raise HTTPException(status_code=404, detail="公開している軸ではありません。")
-    _check_tile_rate_limit(request, f"{axis_id}-way-values")
-    validate_tile_coords(z, x, y)
-    async with _region_tile_semaphore:
-        values = await lens.values(z, x, y, WayValueQuery(at=at, bearing_deg=bearing_deg, speed_kmh=speed_kmh))
-    if isinstance(values, MissingConditions):
-        raise HTTPException(status_code=422, detail=f"この軸には{'・'.join(values.names)}が必須です。")
-    return values
-
-
 @router.get("/api/region/way-materials/{axis_id}/{z}/{x}/{y}")
 async def region_way_materials(
     axis_id: str,
@@ -181,13 +133,20 @@ async def region_way_materials(
     lens: AxisWayValueLens | None = Depends(get_dedicated_way_value_service),
 ) -> dict[str, dict[str, float]]:
     """ルート未確定時の地図が、公開軸の値を走行方位・想定速度から自分で求めるための、指定タイル内のフィーチャーごとの
-    道ごとの材料（材料の名前→値。値の無い材料は載せない）。値は軸カタログの木（`way_value_formula`）へ、要求の条件
-    （`bearing_deg`・`speed_kmh`）とともに入れると、配信（`/api/region/dynamic-way-values`）と同じ値になる
-    （`services/dedicated_way_values.py: tile_axis_way_materials`）。
+    道ごとの材料（材料の名前→値。値の無い材料は載せない）。値は軸カタログの木（`way_value_formula`）へ、走る条件
+    （`bearing_deg`・`speed_kmh`）とともに入れると、探索と同じ評価の値（区間インスペクタの得点と同じ値）になる
+    （`services/dedicated_way_values.py: tile_axis_way_materials`）。ルート確定後はルート自身の`axis_difficulties`
+    （`RouteSegmentDetail`）で塗るため、この口を呼ばない。
 
+    パスパラメータは**軸id**（`axis_definitions.axis_id`）で、材料id（`wind_drag_ratio`等）とは別の名前空間である。
     応答は走行方位・想定速度に依らず、受け取らない。時刻（`at`）は時刻に依る材料（風）の時刻で、省略すると現在時刻
-    [Asia/Tokyo]。公開軸でないaxis_idと、木の無い軸（軸カタログの`way_value_formula`がnull）は404。レート制限・
-    座標検証・semaphoreは配信と同じものを共有する。
+    [Asia/Tokyo]。公開軸でないaxis_idと、木の無い軸（軸カタログの`way_value_formula`がnull）は404。
+
+    静的な路面タイル（`/api/region/road-surface-tiles`、MVT）とは別経路——受け取る側は同じz/x/yについて両方を取り、
+    フィーチャーの鍵で突き合わせて重ねる。タイルの材料と勾配の道ごとの材料はタイル単位でディスクへ持つため、パン・
+    ズームで同じタイルが再び視界に入っても、DBへの再問い合わせは発生しない（風は計算が軽いため持たない）。
+    路面・点のタイルと同じレート制限・座標検証・DB接続プールのsemaphoreを共有する（MVTエンコードは伴わないが、
+    同じPostGISコネクションプールを取り合うため）。
     """
     if lens is None:
         raise HTTPException(status_code=404, detail="公開している軸ではありません。")
@@ -208,7 +167,7 @@ class AxisInspectorRequest(StrictModel):
     point: Coordinates
     # 進行方向に依存する材料（勾配・風）を出すのに要るもの。**1本の道は往復2方向で値が
     # 違う**ため、方向が決まらないと算出できない。地図が指定している値をそのまま送る
-    # （`/dynamic-way-values`へ送っているものと同じ）。時刻・速度を省くと、それを要る材料の軸は「データなし」。
+    # （地図が式の木へ入れている向き・速度と同じ）。時刻・速度を省くと、それを要る材料の軸は「データなし」。
     # `z`/`x`/`y`はクリックしたタイル——地図は既に知っており、way idから逆算するより
     # 確かで、同じタイルの値がキャッシュに載っていれば追加のDBアクセスも要らない。
     z: RoadTileZoom

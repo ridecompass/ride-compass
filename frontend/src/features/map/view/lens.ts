@@ -32,10 +32,17 @@ const TIME_SCOPE_PREMISE: Record<CatalogAxis["timeScope"], string | null> = {
     "周りの道は通過する時刻を置かずに塗っています。この評価は夜に通る区間でだけ効き、ルートを作ると区間ごとに決まります。",
 };
 
-/** 凡例に書く、周りの道の色の前提（時間帯）。どの入力に依るかは軸カタログの時間帯の印から決め、軸idで分けない。
+/** 周りの道を塗れない軸の前提。凡例を出さない（地図のどこにも色が無い）ので、凡例の代わりにこの文で知らせる。 */
+const NO_SURROUNDING_PAINT_PREMISE =
+  "この評価では周りの道を塗れません。ルートを作ると、ルートの線をこの評価で塗ります。";
+
+/** 凡例に書く、周りの道の色の前提（周りの道を塗れるか・時間帯）。どの入力に依るかは軸カタログの印から決め、軸idで分けない。
  * 前提の無い軸は空。走る条件（向き・速さ・出発時刻）は文にせず、地図の右の列のボタンに印を付けて見せる。 */
 export function lensPremises(paintedAxis: LensId | null, axes: readonly CatalogAxis[]): string[] {
-  const premise = TIME_SCOPE_PREMISE[axes.find((axis) => axis.axisId === paintedAxis)?.timeScope ?? "always"];
+  const axis = axes.find((candidate) => candidate.axisId === paintedAxis);
+  if (axis === undefined) return [];
+  if (!axis.paintsSurroundingRoads) return [NO_SURROUNDING_PAINT_PREMISE];
+  const premise = TIME_SCOPE_PREMISE[axis.timeScope];
   return premise === null ? [] : [premise];
 }
 
@@ -51,7 +58,7 @@ export function lensLegend(
 ): readonly LegendEntry[] {
   if (hasDetail) return catalog.routeStyleModes.find((mode) => mode.id === lens)?.legend ?? [];
   const axis = catalog.dedicatedAxes.find((candidate) => candidate.axisId === lens);
-  return axis !== undefined ? dedicatedWayValueLegend(axis) : [];
+  return axis !== undefined && axis.paintsSurroundingRoads ? dedicatedWayValueLegend(axis) : [];
 }
 
 /** レンズの選択肢（公開軸、カタログの並び順）。「なし」「総合難易度」は`LensControl`が足す。
@@ -75,6 +82,7 @@ export function lensOptions(
       axis.timeScope === "night_only" && !axis.wayValueConditions.includes("at")
         ? [...axis.wayValueConditions, "at"]
         : axis.wayValueConditions,
+    paintsSurroundingRoads: axis.paintsSurroundingRoads,
   }));
 }
 
