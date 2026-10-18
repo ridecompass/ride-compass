@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import ProfileChart, { PROFILE_VIEW_HEIGHT, useProfileScale } from "@/features/route/ProfileChart/ProfileChart";
 import palette from "@/types/generated/palette.json";
@@ -18,7 +18,7 @@ interface DifficultyProfileProps {
   /** 横軸の右端の距離。一覧の中で最も長い候補の距離にすると、候補どうしで面積（負荷）を見比べられる。 */
   scaleKm: number;
   selected: SelectedRouteSegment | null;
-  /** なぞる・押して離すと、その地点の区間を選ぶ。無ければ押せない見るだけの図にする（走行中は地図を追うことに専念する）。 */
+  /** なぞる・押して離すと、その地点の区間を選ぶ。無ければ押せない見るだけの図にする。 */
   onSelect?: (selection: SelectedRouteSegment) => void;
   /** 走行中の現在地のルートの上の距離。印を引き、始点からそこまでを走り終えた区間として薄める。 */
   progressKm?: number | null;
@@ -26,6 +26,8 @@ interface DifficultyProfileProps {
   waypointKms: readonly number[];
   /** 走行中の地図の下の図。目盛りの文字を大きくする。 */
   riding?: boolean;
+  /** 図の下の1行。区間を選んでいれば、その地点の距離を受け取る。 */
+  caption?: (pointKm: number | null) => ReactNode;
 }
 
 function boxesPath(boxes: readonly ProfileBox[], xOf: (km: number) => number): string {
@@ -49,6 +51,7 @@ export default function DifficultyProfile({
   progressKm = null,
   waypointKms,
   riding = false,
+  caption,
 }: DifficultyProfileProps) {
   const scale = useProfileScale(segments, scaleKm);
   // 塗る形はルートと横軸が変わったときだけ組む（なぞる間に動くのは、カーソルの線と選んだ区間の帯だけ）。
@@ -81,6 +84,7 @@ export default function DifficultyProfile({
       progressMarkY={progressMarkY}
       waypointKms={waypointKms}
       riding={riding}
+      caption={caption}
     >
       {paths.missing !== null && <path d={paths.missing} fill={palette.semantic.no_data} opacity={0.6} />}
       {paths.byAxis.map(({ axisId, d }) => (

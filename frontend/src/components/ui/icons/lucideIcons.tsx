@@ -26,6 +26,7 @@ import {
   Minus,
   Moon,
   Navigation,
+  Paintbrush,
   Play,
   Plus,
   RotateCcw,
@@ -91,6 +92,8 @@ export const CopyIcon = fromLucide(Copy);
 export const RedrawMapIcon = fromLucide(RotateCw);
 /** 群の中で一覧に並べる項目を選ぶ。 */
 export const ChooseItemsIcon = fromLucide(ListChecks);
+/** 評価軸の点数で道を塗る（「評価で塗る」の入口）。 */
+export const EvaluationPaintIcon = fromLucide(Paintbrush);
 export const RouteSettingsIcon = fromLucide(SlidersHorizontal);
 export const ShieldIcon = fromLucide(Shield);
 export const TargetIcon = fromLucide(Target);
