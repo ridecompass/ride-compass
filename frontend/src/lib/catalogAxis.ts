@@ -4,7 +4,7 @@
 import type { MapValueKind } from "@/lib/mapDisplay/valueScale";
 import type { AxisCatalogEntry } from "@/types/route";
 
-/** 生値の単位が定まらない軸の内訳1件（材料と、軸の生値に占める割合。正規化重みの降順）。 */
+/** 生値の単位が定まらない軸の内訳1件（材料。並びは軸の生値に占める割合の降順）。 */
 export interface AxisMaterialBreakdown {
   materialId: string;
   label: string;
@@ -12,7 +12,6 @@ export interface AxisMaterialBreakdown {
   dtype: AxisCatalogEntry["material_breakdown"][number]["dtype"];
   /** numeric材料の単位。真偽値材料は空文字。 */
   unit: string;
-  share: number;
   /** categorical材料の「タグ生値→論理名」対訳（他の型では空）。フロントは対応表を持たない。 */
   valueLabels?: Readonly<Record<string, string>>;
 }
@@ -71,7 +70,6 @@ export function catalogAxisFromEntry(axis: AxisCatalogEntry): CatalogAxis {
       label: entry.label,
       dtype: entry.dtype,
       unit: entry.unit,
-      share: entry.share,
       valueLabels: entry.value_labels,
     })),
     primaryAttributeIds: axis.primary_attribute_ids,

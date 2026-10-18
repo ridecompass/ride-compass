@@ -228,21 +228,21 @@ class TestCheckAxisDefinition:
 
     @pytest.mark.parametrize(
         "breakpoints",
-        [[(0.0, 0.0), (1.5, 40.0), (12.0, 100.0)], [(1.0, 0.0), (10.0, 100.0)]],
+        [[(0.0, 0.0), (2.0, 35.0), (10.0, 100.0)], [(1.0, 0.0), (10.0, 100.0)]],
         ids=["上に凸の折れ線", "0で0点から始まらない直線"],
     )
     def test_an_axis_summing_only_counts_per_km_must_score_in_proportion_to_the_count(self, breakpoints):
         """探索の費用は回数×傾きで足すので、傾きが1つに決まらない折れ線では、探索とルートの値が食い違い、点数の和が道の
         切り方で変わる。"""
-        shape = linear(MaterialTerm(material="count_a"), MaterialTerm(material="count_b", weight=1.5), breakpoints=breakpoints)
+        shape = linear(MaterialTerm(material="count_a"), MaterialTerm(material="count_b", weight=2.5), breakpoints=breakpoints)
 
         refused_by_check(axis(shape=shape), "「0のとき0点」ともう1点")
 
     @pytest.mark.parametrize(
         ("terms", "breakpoints"),
         [
-            ([MaterialTerm(material="count_a")], [(0.0, 0.0), (9.58, 100.0)]),
-            ([MaterialTerm(material="count_a"), MaterialTerm(material="num_a")], [(0.0, 0.0), (1.5, 40.0), (12.0, 100.0)]),
+            ([MaterialTerm(material="count_a")], [(0.0, 0.0), (8.0, 100.0)]),
+            ([MaterialTerm(material="count_a"), MaterialTerm(material="num_a")], [(0.0, 0.0), (2.0, 35.0), (10.0, 100.0)]),
         ],
         ids=["回数だけの軸の0からの直線", "回数でない材料も読む軸の折れ線"],
     )
@@ -254,8 +254,8 @@ class TestCheckAxisDefinition:
 @pytest.mark.parametrize(
     ("definition", "averaged"),
     [
-        # 本番の停止密度の軸の形（重みが1でない項を持つ）。
-        (axis(shape=linear(MaterialTerm(material="count_a"), MaterialTerm(material="count_b", weight=1.5))), True),
+        # 重みが1でない項を持つ。
+        (axis(shape=linear(MaterialTerm(material="count_a"), MaterialTerm(material="count_b", weight=2.5))), True),
         # 重み0の項は読まない。
         (axis(shape=linear(MaterialTerm(material="count_a"), MaterialTerm(material="num_a", weight=0.0))), True),
         # 密度でない材料（勾配の%等）を読む。
