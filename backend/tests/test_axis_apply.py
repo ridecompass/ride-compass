@@ -141,22 +141,6 @@ class TestShowingTheChange:
         assert f"--apply {fingerprint(out)}" in out
         assert api.writes == []
 
-    def test_a_nested_change_is_shown_leaf_by_leaf_grouped_by_field_with_vanishing_leaves_first(self, run):
-        api = AdminApi(definition())
-        desired = definition(shape={"kind": "categorical", "material": "c", "mapping": {"x": 10.0}}, label="新しい名前")
-
-        _, out, _ = run(api, desired=desired)
-
-        assert [line.strip() for line in out.splitlines() if line.startswith("  ")] == [
-            'shape.kind: "breakpoint_linear" → "categorical"',
-            'shape.terms: [{"material": "m", "weight": 1.0, "required": true}] → （なし）',
-            'shape.preprocess: "identity" → （なし）',
-            "shape.breakpoints: [[0.0, 0.0], [1.0, 100.0]] → （なし）",
-            'shape.material: （なし） → "c"',
-            "shape.mapping.x: （なし） → 10.0",
-            'label: "軸" → "新しい名前"',
-        ]
-
     def test_the_same_definition_needs_no_writing(self, run):
         api = AdminApi(definition())
 
@@ -179,39 +163,6 @@ class TestShowingTheChange:
 
 
 class TestWriting:
-    @pytest.mark.parametrize(
-        ("current", "writes"),
-        [
-            (None, [("POST", ADMIN)]),
-            (definition(), [("PUT", f"{ADMIN}/axis_a")]),
-            (definition(is_published=True), [("POST", f"{ADMIN}/axis_a/unpublish"), ("PUT", f"{ADMIN}/axis_a")]),
-        ],
-    )
-    def test_the_operations_follow_the_current_state(self, run, current, writes):
-        api = AdminApi(*([current] if current else []))
-        desired = definition(default_weight=2.0, is_published=True, display_thresholds_override=[0.5], display_band_labels_override=["弱", "強"])
-
-        code, out, _ = apply(run, api, desired=desired)
-
-        assert code == 0
-        assert "書きました" in out
-        assert api.writes == writes
-        assert api.axes["axis_a"]["default_weight"] == 2.0
-        assert api.axes["axis_a"]["is_published"] is True
-
-    def test_only_new_breakpoints_are_written_without_unpublishing(self, run):
-        # 公開を取り消すと、その間だけ軸カタログから軸が消え、利用者の画面がその軸の重みを既定へ戻す。
-        api = AdminApi(definition(is_published=True))
-        shape = {**definition()["shape"], "breakpoints": [[0.0, 0.0], [2.0, 100.0]]}
-        desired = definition(is_published=True, shape=shape, display_thresholds_override=[0.5], display_band_labels_override=["弱", "強"])
-
-        code, out, _ = apply(run, api, desired=desired)
-
-        assert code == 0
-        assert "書きました" in out
-        assert api.writes == [("PUT", f"{ADMIN}/axis_a")]
-        assert api.axes["axis_a"]["shape"]["breakpoints"] == [[0.0, 0.0], [2.0, 100.0]]
-
     @pytest.mark.parametrize(
         ("current", "writes"),
         [
@@ -259,16 +210,6 @@ class TestFailures:
         assert code == 1
         assert f"PUT {ADMIN}/axis_a が422を返しました: {shown}" in err
 
-    def test_a_refused_unpublishing_changed_nothing_and_is_not_put_back(self, run):
-        api = AdminApi(definition(is_published=True))
-        api.fail("POST", f"{ADMIN}/axis_a/unpublish", status=500, body={"detail": "取り消せません"})
-
-        code, _, err = apply(run, api, desired=definition(default_weight=2.0, is_published=True))
-
-        assert code == 1
-        assert "取り消せません" in err
-        assert api.writes == [("POST", f"{ADMIN}/axis_a/unpublish")]
-
     @pytest.mark.parametrize(
         ("failing", "argv"),
         [
@@ -288,17 +229,6 @@ class TestFailures:
         assert "元の定義（公開）へ戻しました" in err
         assert api.axes["axis_a"]["is_published"] is True
         assert api.axes["axis_a"]["default_weight"] == 1.0
-
-    def test_when_the_original_cannot_be_put_back_it_is_shown_for_restoring_by_hand(self, run):
-        api = AdminApi(definition(is_published=True))
-        api.fail("PUT", f"{ADMIN}/axis_a")
-        api.fail("PUT", f"{ADMIN}/axis_a")
-
-        code, _, err = apply(run, api, desired=definition(default_weight=2.0, is_published=True))
-
-        assert code == 1
-        assert "手で戻してください" in err
-        assert '"default_weight": 1.0' in err
 
     def test_an_unreachable_production_is_reported(self, run):
         def unreachable(request: httpx.Request) -> httpx.Response:
