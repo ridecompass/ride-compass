@@ -309,6 +309,9 @@ def test_only_axes_reading_counts_per_km_as_they_are_are_density_axes(definition
     assert axis_definitions.averages_density(definition) is averaged
 
 
+NEW_BREAKPOINTS = ((0.0, 0.0), (5.0, 100.0))
+
+
 class TestPublishImmutability:
     def test_a_draft_may_be_deleted(self):
         axis_definitions.check_publish_immutability(axis(), "deleted")
@@ -323,12 +326,14 @@ class TestPublishImmutability:
         with pytest.raises(axis_definitions.AxisPublishedImmutableError) as caught:
             axis_definitions.check_publish_immutability(axis(is_published=True), "updated")
 
-        assert "表示以外は変えられません" in str(caught.value)
+        assert "表示と折れ点以外は変えられません" in str(caught.value)
 
-    def test_a_published_axis_may_change_how_it_is_shown(self):
+    def test_a_published_axis_may_change_how_it_is_shown_and_its_breakpoints(self):
+        # 公開したまま書けないと、下書きへ戻す間だけ一般の画面から軸が消え、利用者の重みが既定へ戻る。
         published = axis(is_published=True)
         shown_differently = published.model_copy(
             update={
+                "shape": linear(MaterialTerm(material="num_a"), breakpoints=((0.0, 0.0), (5.0, 60.0), (20.0, 100.0))),
                 "icon_id": "icon",
                 "display_thresholds_override": [1.0],
                 "display_band_labels_override": ["弱", "強"],
@@ -337,11 +342,24 @@ class TestPublishImmutability:
 
         axis_definitions.check_publish_immutability(published, "updated", shown_differently)
 
-    def test_a_published_axis_may_not_change_anything_else(self):
+    @pytest.mark.parametrize(
+        "changed",
+        [
+            {"default_weight": 2.0, "shape": linear(MaterialTerm(material="num_a"), breakpoints=NEW_BREAKPOINTS)},
+            {"shape": linear(MaterialTerm(material="num_b"), breakpoints=NEW_BREAKPOINTS)},
+            {"shape": linear(MaterialTerm(material="num_a", weight=2.0), breakpoints=NEW_BREAKPOINTS)},
+            {"shape": linear(MaterialTerm(material="num_a"), breakpoints=NEW_BREAKPOINTS, preprocess="abs")},
+            {"shape": CategoricalShape(material="num_a", mapping={"x": 50.0})},
+            {"is_published": False, "shape": linear(MaterialTerm(material="num_a"), breakpoints=NEW_BREAKPOINTS)},
+        ],
+        ids=["重み", "材料", "項", "前処理", "形の種類", "公開"],
+    )
+    def test_a_published_axis_may_not_change_anything_else(self, changed):
+        # 折れ点は、ほかを変えない差し替えのときだけ公開したまま書ける。
         published = axis(is_published=True)
 
         with pytest.raises(axis_definitions.AxisPublishedImmutableError):
-            axis_definitions.check_publish_immutability(published, "updated", published.model_copy(update={"default_weight": 2.0}))
+            axis_definitions.check_publish_immutability(published, "updated", published.model_copy(update=changed))
 
 
 @pytest.mark.usefixtures("catalog")

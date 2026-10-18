@@ -229,7 +229,7 @@ export function AxisMapDisplaySection({
 
       {/* 制限モード（公開済み軸を表示専用フィールドだけ編集）では
           is_publishedを変更させない（変更するとcheck_publish_immutability/
-          is_cosmetic_only_updateの表示専用フィールドのみという前提から外れ、backend側で
+          is_update_allowed_while_publishedの公開したまま書ける差分という前提から外れ、backend側で
           拒否される）。公開状態の切り替えは「非公開に戻す」専用ボタン（AxisStudio.tsx）
           に導線を一本化済み。 */}
       {/* 「調整する」の最中は、保存が必ず公開へ戻す。切り替えを出すと、チェックを外して

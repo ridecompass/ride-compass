@@ -62,7 +62,7 @@ class AxisDefinitionPayload(AxisDefinition):
 
     def to_definition(self) -> AxisDefinition:
         """派生クラスのまま先へ渡すと、Pydanticの等価判定がクラスまで見るため
-        `is_cosmetic_only_update`の突き合わせが常に不一致になる。基底の型へ戻す。"""
+        `is_update_allowed_while_published`の突き合わせが常に不一致になる。基底の型へ戻す。"""
         return AxisDefinition(**self.model_dump())
 
 
