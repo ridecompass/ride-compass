@@ -676,7 +676,10 @@ export default function Home() {
               その下へ現在地と走行モードを続ける。 */}
             <div
               {...mapOverlayEdge("right")}
-              className="pointer-events-none absolute top-[var(--map-ctrl-stack-top)] right-[var(--map-ctrl-margin)] z-[var(--z-map-control)] flex flex-col gap-[var(--map-ctrl-stack-gap)]"
+              className={cn(
+                "pointer-events-none absolute right-[var(--map-ctrl-margin)] z-[var(--z-map-control)] flex flex-col gap-[var(--map-ctrl-stack-gap)]",
+                navigating ? "top-[var(--map-ctrl-ride-stack-top)]" : "top-[var(--map-ctrl-stack-top)]",
+              )}
             >
               {!navigating && (
                 <>

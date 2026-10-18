@@ -4,7 +4,7 @@ import { useRef } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
-import { CompassNeedleIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/icons/icons";
+import { CompassNeedleIcon, RideZoomIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/icons/icons";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { axisNamesUsing } from "@/lib/catalogAxis";
 import { normalizeDeg } from "@/lib/cardinalLabel";
@@ -13,6 +13,7 @@ import { LENS_LINK_CLASS, LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
 
 import { HEADING_LABELS, headingOf } from "../mapHeading";
+import { nearestRideZoomStep } from "../MapView/rideZoom";
 
 interface MapNavigationControlProps {
   /** 地図の向き（地図の上が真北から時計回りに何度か）。 */
@@ -25,8 +26,8 @@ interface MapNavigationControlProps {
   onResetNorth: () => void;
   /** いまの「評価で塗る」の周りの道の塗りが、地図の向きで決まっている。 */
   linked: boolean;
-  /** 走行モードの間だけ渡る。方位磁針はダイヤルを開かず、北が上と進む向きが上を切り替える。 */
-  ride: { headingUp: boolean; onToggleHeadingUp: () => void } | null;
+  /** 走行モードの間だけ渡る。拡大・縮小の代わりに倍率のボタンを出し、方位磁針はダイヤルを開かず、北が上と進む向きが上を切り替える。 */
+  ride: { headingUp: boolean; onToggleHeadingUp: () => void; zoomBase: number; onNextZoom: () => void } | null;
 }
 
 const DIAL_SIZE_PX = 176;
@@ -43,7 +44,8 @@ function pointAt(deg: number, r: number): [number, number] {
   return [r * Math.sin(rad), -r * Math.cos(rad)];
 }
 
-/** 地図の右上の列: 拡大・縮小と、地図の北を指す方位磁針。方位磁針を押すと、地図の向きを回すダイヤルが開く。 */
+/** 地図の右上の列: 拡大・縮小（走行モードの間は倍率のボタン）と、地図の北を指す方位磁針。方位磁針を押すと、地図の向きを回す
+ * ダイヤルが開く。 */
 export default function MapNavigationControl({
   bearing,
   onZoomIn,
@@ -54,10 +56,11 @@ export default function MapNavigationControl({
   ride,
 }: MapNavigationControlProps) {
   const heading = headingOf(bearing);
-  const rotated = heading.degrees !== 0;
+  // 北が上でないことを縁で示す（走行モードの間は、進む向きが上の間）。
+  const turned = ride !== null ? ride.headingUp : heading.degrees !== 0;
   const compassClassName = cn(
     "rounded-t-none border-t border-[var(--color-border)] shadow-none",
-    rotated && "shadow-[inset_0_0_0_2px_var(--color-accent)]",
+    turned && "shadow-[inset_0_0_0_2px_var(--color-accent)]",
     linked && LENS_LINK_CLASS,
   );
   const needle = (
@@ -70,26 +73,32 @@ export default function MapNavigationControl({
       className="absolute top-[var(--map-ctrl-margin)] right-[var(--map-ctrl-margin)] z-[var(--z-map-control)] flex flex-col rounded-[4px] shadow-[0_0_0_2px_rgba(0,0,0,0.1)]"
       {...mapOverlayEdge("right")}
     >
-      <Button
-        variant="mapCtrl"
-        size="mapCtrl"
-        className="rounded-b-none shadow-none"
-        aria-label="拡大"
-        usage={`地図を拡大します。${ZOOM_GESTURE_USAGE}`}
-        onClick={onZoomIn}
-      >
-        <ZoomInIcon />
-      </Button>
-      <Button
-        variant="mapCtrl"
-        size="mapCtrl"
-        className="rounded-none border-t border-[var(--color-border)] shadow-none"
-        aria-label="縮小"
-        usage={`地図を縮小します。${ZOOM_GESTURE_USAGE}`}
-        onClick={onZoomOut}
-      >
-        <ZoomOutIcon />
-      </Button>
+      {ride !== null ? (
+        <RideZoomButton zoomBase={ride.zoomBase} onNextZoom={ride.onNextZoom} />
+      ) : (
+        <>
+          <Button
+            variant="mapCtrl"
+            size="mapCtrl"
+            className="rounded-b-none shadow-none"
+            aria-label="拡大"
+            usage={`地図を拡大します。${ZOOM_GESTURE_USAGE}`}
+            onClick={onZoomIn}
+          >
+            <ZoomInIcon />
+          </Button>
+          <Button
+            variant="mapCtrl"
+            size="mapCtrl"
+            className="rounded-none border-t border-[var(--color-border)] shadow-none"
+            aria-label="縮小"
+            usage={`地図を縮小します。${ZOOM_GESTURE_USAGE}`}
+            onClick={onZoomOut}
+          >
+            <ZoomOutIcon />
+          </Button>
+        </>
+      )}
       {ride !== null ? (
         <Button
           variant="mapCtrl"
@@ -127,6 +136,23 @@ export default function MapNavigationControl({
         </Popover>
       )}
     </div>
+  );
+}
+
+/** 走行モードの倍率のボタン: 押すたびに基準の倍率を中→遠→近と回す。絵は基準の倍率にいちばん近い段。 */
+function RideZoomButton({ zoomBase, onNextZoom }: { zoomBase: number; onNextZoom: () => void }) {
+  const step = nearestRideZoomStep(zoomBase);
+  return (
+    <Button
+      variant="mapCtrl"
+      size="mapCtrl"
+      className="rounded-b-none shadow-none"
+      aria-label={`倍率（いまは${step.label}）`}
+      usage="押すたびに、追う地図の倍率を中・遠・近の順に切り替えます。2本指でつまんでも変えられます。速く走るほど、その倍率から引いて先を見せます。"
+      onClick={onNextZoom}
+    >
+      <RideZoomIcon reach={step.reach} />
+    </Button>
   );
 }
 
