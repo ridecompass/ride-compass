@@ -33,23 +33,19 @@
     "speed.walking_kmh": 4.5,
     "splice.min_stretch_km": 0.2
   },
-  "hard_filters": {
-    "filters": [
+  "road_avoidance": {
+    "fixed_rows": [
       {
         "key": "motorway",
-        "label": "高速道路"
+        "label": "高速道路・自動車専用道路",
+        "description": "高速道路と、自動車専用の標識のある一般道（バイパス等）。自転車は通れないので、いつも経路から外します。"
       },
       {
         "key": "no_bicycle",
-        "label": "自転車通行禁止"
+        "label": "自転車通行禁止",
+        "description": "自転車の通行が禁止された道。いつも経路から外します。"
       }
     ],
-    "defaults": [
-      "motorway",
-      "no_bicycle"
-    ]
-  },
-  "road_avoidance": {
     "levels": [
       {
         "key": "pass",
@@ -65,15 +61,6 @@
       }
     ],
     "rows": [
-      {
-        "key": "highway.motorway",
-        "layer": "highway",
-        "layer_label": "道路の種類",
-        "label": "高速道路",
-        "description": "自動車専用の道。高速道路・有料道路と、自動車専用のバイパス[OSM の highway=motorway とその連絡路]。",
-        "default": "avoid",
-        "former_key": "highway.arterial"
-      },
       {
         "key": "highway.trunk",
         "layer": "highway",

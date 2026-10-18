@@ -34,8 +34,6 @@ class AppliedConditions:
     assumed_speed_kmh: float
     # 0次ハードフィルタの勾配しきい値（%、Noneは無効）。
     max_average_grade_percent: float | None
-    # 0次ハードフィルタ名の個別ON/OFF上書き。常に解決済み（Noneではなく実際に適用された集合）。
-    hard_filters: frozenset[str]
     # 道のレイヤの行→避け方の段。
     road_avoidance: Mapping[str, AvoidanceLevel]
 
@@ -63,7 +61,6 @@ def assemble_route_generation_setup(
         penalty_strength=resolve_penalty_strength(requested.penalty_strength),
         assumed_speed_kmh=requested.assumed_speed_kmh,
         max_average_grade_percent=requested.max_average_grade_percent,
-        hard_filters=requested.hard_filters,
         road_avoidance=requested.road_avoidance,
     )
     engine = RoadGraphEngine(
@@ -72,7 +69,6 @@ def assemble_route_generation_setup(
         route_preference=applied.route_preference,
         penalty_strength=applied.penalty_strength,
         max_average_grade_percent=applied.max_average_grade_percent,
-        hard_filters=applied.hard_filters,
         road_avoidance=applied.road_avoidance,
         assumed_speed_kmh=applied.assumed_speed_kmh,
     )

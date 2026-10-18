@@ -44,7 +44,7 @@ from app.infrastructure.source_models import SOURCE_RUN_STATUS_LABELS
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME
 from app.main import app
-from app.domain.hard_filters import DEFAULT_HARD_FILTERS, HARD_FILTER_LABELS, HARD_FILTER_NAMES
+from app.domain.hard_filters import HARD_FILTERS
 from app.domain.road_avoidance import AVOIDABLE_ROWS, AVOIDANCE_LEVEL_LABELS, AVOIDANCE_LEVELS
 from app.domain.address_area import ADDRESS_AREA_LEVELS
 from app.domain.geo import COMPASS_LABELS, EARTH_RADIUS_KM
@@ -631,18 +631,15 @@ def main() -> None:
             # フロントが使う較正値の**既定**（`domain/tuning.py`の宣言そのまま）。フロントはidの型にだけ使い、
             # 値は読まない——効いている値はGET /api/axis-catalogが返し、取れるまではその値を使う機能を出さない。
             "client_tuning": client_tuning_values(),
-            # 0次ハードフィルタのキー一覧・画面に出す名前・既定値。backendは`_check_filter_keys`で
-            # **キー集合の完全一致**を要求するため、frontendが手書きで持っていると
-            # キーを1つ足した瞬間にすべてのルート生成が422になる。名前も同じ行で配る——
-            # 別に持つと、足したフィルタの名前が無く画面に内部名が出る。
-            "hard_filters": {
-                "filters": [{"key": name, "label": HARD_FILTER_LABELS[name]} for name in sorted(HARD_FILTER_NAMES)],
-                "defaults": sorted(DEFAULT_HARD_FILTERS),
-            },
             # 道のレイヤの凡例の行ごとの避け方の段と、選べる行・既定の段。backendは鍵の集合の完全一致を
             # 要求する（`RoadAvoidanceOverride`）。行は道のレイヤの凡例の行の宣言から導く。`former_key`は分ける前の
-            # 行の鍵で、その鍵で受け取っていた段をこの行へ読み替えられるように配る。
+            # 行の鍵で、その鍵で受け取っていた段をこの行へ読み替えられるように配る。`fixed_rows`は0次ハードフィルタで、
+            # いつも「通らない」の行として見せる（要求では受けない）。
             "road_avoidance": {
+                "fixed_rows": [
+                    {"key": name, "label": spec.label, "description": spec.description}
+                    for name, spec in HARD_FILTERS.items()
+                ],
                 "levels": [{"key": level, "label": AVOIDANCE_LEVEL_LABELS[level]} for level in AVOIDANCE_LEVELS],
                 "rows": [
                     {

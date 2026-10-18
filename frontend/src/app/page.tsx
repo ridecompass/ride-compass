@@ -316,8 +316,6 @@ export default function Home() {
         }
         exclusionsPanel={
           <HardFilterPanel
-            hardFilters={conditions.hardFilters}
-            onHardFiltersChange={conditions.setHardFilters}
             roadAvoidance={conditions.roadAvoidance}
             onRoadAvoidanceChange={conditions.setRoadAvoidance}
           />

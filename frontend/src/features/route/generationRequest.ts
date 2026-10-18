@@ -1,10 +1,4 @@
-import type {
-  Coordinates,
-  HardFilterOverride,
-  RoadAvoidanceOverride,
-  RouteGenerateRequest,
-  RoutePreferenceWeights,
-} from "@/types/route";
+import type { Coordinates, RoadAvoidanceOverride, RouteGenerateRequest, RoutePreferenceWeights } from "@/types/route";
 
 // 生成リクエストのpayloadと、「生成条件が変更されています」（conditionsDirty）の比較キーを
 // **同じ入力から**組み立てる。
@@ -22,7 +16,6 @@ export interface GenerationInput {
   maxRoutes: number;
   assumedSpeedKmh: number;
   startTime: Date;
-  hardFilters: HardFilterOverride;
   /** 道のレイヤの凡例の行ごとの避け方（今の行を全部持つ）。 */
   roadAvoidance: RoadAvoidanceOverride;
   /** 重み上書きが有効なときのみ（無効ならbackendの既定値に委ねる）。 */
@@ -45,7 +38,6 @@ export function buildGenerateRequest(input: GenerationInput): RouteGenerateReque
     // 主観と時間の換算レート（P）は**送らない**。このAPIでは省略が「較正値から読む」の
     // 合図で、画面から変える手段が無いのに値を載せると、管理画面で調整しても効かなくなる。
     // 画面から変えられるようになるまでは省略する。
-    hard_filters: input.hardFilters,
     road_avoidance: input.roadAvoidance,
     max_routes: input.maxRoutes,
     assumed_speed_kmh: input.assumedSpeedKmh,
@@ -56,7 +48,7 @@ export function buildGenerateRequest(input: GenerationInput): RouteGenerateReque
   };
 }
 
-/** キー順に依存しないJSON化。`hard_filters`・`road_avoidance`・`route_preference`のように、同じ内容でも
+/** キー順に依存しないJSON化。`road_avoidance`・`route_preference`のように、同じ内容でも
  * 組み立て方（保存値からの復元・キー整合による補完）でプロパティの並びが変わりうる
  * オブジェクトを、並びの違いだけで「条件が変わった」と誤判定しないため。配列
  * （`waypoints`）は順序自体に意味があるのでそのまま保つ。 */
