@@ -10,7 +10,7 @@ import { clampSpeedKmh, MAX_SPEED_KMH, MIN_SPEED_KMH } from "@/lib/assumedSpeed"
 
 import DynamicLayerTimeSlider from "@/features/conditions/DynamicLayerTimeSlider/DynamicLayerTimeSlider";
 import { nearestTimeIndex, parseJstLocalValue, toJstLocalValue } from "@/lib/time";
-import { ClockIcon, SpeedGaugeIcon } from "@/components/ui/icons/icons";
+import { ClockIcon, SpeedGaugeIcon } from "@/components/ui/icons/lucideIcons";
 import { buildDepartureFrames, buildDepartureTimeline } from "./departureTimeline";
 import { Button } from "@/components/ui/Button/Button";
 import { NumberInput } from "@/components/ui/NumberInput/NumberInput";

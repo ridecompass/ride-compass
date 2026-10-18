@@ -4,7 +4,7 @@ import Disclosure from "@/components/Disclosure/Disclosure";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Badge } from "@/components/ui/Badge/Badge";
 import { Button } from "@/components/ui/Button/Button";
-import { LockedIcon, ResetDefaultsIcon } from "@/components/ui/icons/icons";
+import { LockedIcon, ResetDefaultsIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import {

@@ -12,14 +12,13 @@ import SegmentDetail from "@/features/route/SegmentDetail/SegmentDetail";
 import { pointNames } from "@/features/route/pointNames";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
 import MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayControls";
+import { LocateIcon, RouteIcon } from "@/components/ui/icons/icons";
 import {
   ClearRoutesIcon,
   GenerateRoutesIcon,
-  LocateIcon,
   RideModeIcon,
-  RouteIcon,
   RouteSettingsIcon,
-} from "@/components/ui/icons/icons";
+} from "@/components/ui/icons/lucideIcons";
 import BottomSheet from "@/components/BottomSheet/BottomSheet";
 import LensControl from "@/features/map/LensControl/LensControl";
 import RouteForm, { type SettingsTab } from "@/features/route/RouteForm/RouteForm";

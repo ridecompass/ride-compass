@@ -1,7 +1,8 @@
 "use client";
 
 import { Button } from "@/components/ui/Button/Button";
-import { DownloadIcon, RideModeIcon, RouteSpliceIcon } from "@/components/ui/icons/icons";
+import { RouteSpliceIcon } from "@/components/ui/icons/icons";
+import { DownloadIcon, RideModeIcon } from "@/components/ui/icons/lucideIcons";
 import { downloadGpx, MAX_GPX_TRACK_POINTS } from "@/features/route/gpxExport";
 import type { SpliceSessionView } from "@/features/route/useSpliceSession";
 import type { RouteCandidate } from "@/types/route";

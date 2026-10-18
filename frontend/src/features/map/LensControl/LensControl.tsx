@@ -20,13 +20,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/Toggle
 import { Dot } from "@/components/ui/Dot/Dot";
 import { textVariants } from "@/components/ui/Text/Text";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
-import {
-  ClearAllFiltersIcon,
-  ClearAllLayersIcon,
-  ClockIcon,
-  CompassNeedleIcon,
-  SpeedGaugeIcon,
-} from "@/components/ui/icons/icons";
+import { ClearAllFiltersIcon, ClearAllLayersIcon, CompassNeedleIcon } from "@/components/ui/icons/icons";
+import { ClockIcon, SpeedGaugeIcon } from "@/components/ui/icons/lucideIcons";
 import { cn } from "@/lib/cn";
 import { EVALUATION_PAINT_NAME } from "@/lib/screenNames";
 
@@ -274,7 +269,7 @@ export default function LensControl({
   );
 }
 
-/** 選択肢の1行。「表示」の一覧の行（`MapOverlayControls.tsx: LayerRow`）と同じ形で、チェックの代わりに1つだけ選ぶ印を出す。
+/** 選択肢の1行。「表示」の一覧の行（`OverlayLayerRow.tsx: OverlayLayerRow`）と同じ形で、チェックの代わりに1つだけ選ぶ印を出す。
  * (i) は説明を、▶（選んでいる行だけ）は凡例を、行のすぐ下に開く。 */
 function LensRow({ option, panel, filtered }: { option: LensOption; panel: ReactElement | null; filtered: boolean }) {
   const [hintOpen, setHintOpen] = useState(false);

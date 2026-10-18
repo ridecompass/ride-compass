@@ -276,6 +276,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/region/way-materials/{axis_id}/{z}/{x}/{y}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["region_way_materials_api_region_way_materials__axis_id___z___x___y__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/region/axis-inspector": {
         parameters: {
             query?: never;
@@ -712,6 +728,7 @@ export interface components {
             dynamic_way_value_conditions: ("at" | "bearing_deg" | "speed_kmh")[];
             /** Dynamic Way Value Undetermined By Bearing */
             dynamic_way_value_undetermined_by_bearing: boolean;
+            way_value_formula: components["schemas"]["WayValueFormula"] | null;
             /**
              * Time Scope
              * @enum {string}
@@ -883,6 +900,18 @@ export interface components {
             /** Shape */
             shape: components["schemas"]["BreakpointLinearShape-Input"] | components["schemas"]["CategoricalShape-Input"];
         };
+        /** Binary */
+        Binary: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "add" | "and" | "div" | "ge" | "gt" | "le" | "lt" | "mod" | "mul" | "or" | "sub";
+            /** Left */
+            left: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+            /** Right */
+            right: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+        };
         /** BreakpointLinearShape */
         "BreakpointLinearShape-Input": {
             /**
@@ -926,6 +955,20 @@ export interface components {
                 number,
                 number
             ][];
+        };
+        /** Case */
+        Case: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "case";
+            /** When */
+            when: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+            /** Then */
+            then: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+            /** Otherwise */
+            otherwise: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
         };
         /** CategoricalShape */
         "CategoricalShape-Input": {
@@ -971,6 +1014,19 @@ export interface components {
             /** Removed */
             removed: string[];
         };
+        /** Condition */
+        Condition: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "condition";
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "bearing_deg" | "speed_kmh";
+        };
         /** ConnectionEntry */
         ConnectionEntry: {
             /** Total */
@@ -987,6 +1043,16 @@ export interface components {
             needs_attention: boolean;
             /** Note */
             note: string;
+        };
+        /** Constant */
+        Constant: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "const";
+            /** Value */
+            value: number;
         };
         /** Coordinates */
         Coordinates: {
@@ -1085,6 +1151,16 @@ export interface components {
             };
             last_error: components["schemas"]["LastError"] | null;
         };
+        /** FeatureValue */
+        FeatureValue: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "feature";
+            /** Name */
+            name: string;
+        };
         /** FloodForecasts */
         FloodForecasts: {
             /** Forecasts */
@@ -1152,6 +1228,21 @@ export interface components {
             axes: components["schemas"]["AxisInspectorAxis"][];
             composite_difficulty: components["schemas"]["InspectorComposite"] | null;
             landcover: components["schemas"]["LandcoverPercentages"] | null;
+        };
+        /** Interpolate */
+        Interpolate: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "interpolate";
+            /** Input */
+            input: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+            /** Stops */
+            stops: [
+                number,
+                number
+            ][];
         };
         /** JmaTileIndexAvailable */
         JmaTileIndexAvailable: {
@@ -1387,6 +1478,14 @@ export interface components {
             /** Values */
             values: components["schemas"]["MaterialValueEntry"][];
         };
+        /** Missing */
+        Missing: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "missing";
+        };
         /** MsmFreshnessResponse */
         MsmFreshnessResponse: {
             /** Last Run At */
@@ -1462,6 +1561,18 @@ export interface components {
             distance_km: number;
             /** Value */
             value: string | boolean | null;
+        };
+        /** Round */
+        Round: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "round";
+            /** Arg */
+            arg: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+            /** Decimals */
+            decimals: number;
         };
         /** RouteCandidate */
         RouteCandidate: {
@@ -1787,6 +1898,16 @@ export interface components {
             /** Sunset */
             sunset: string;
         };
+        /** Unary */
+        Unary: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "abs" | "cos" | "is_missing" | "neg" | "not" | "sin" | "sqrt";
+            /** Arg */
+            arg: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+        };
         /** ValidArea */
         ValidArea: {
             /**
@@ -1822,6 +1943,13 @@ export interface components {
                 number,
                 number
             ][];
+        };
+        /** WayValueFormula */
+        WayValueFormula: {
+            /** Value */
+            value: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+            /** Undetermined */
+            undetermined: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
         };
         /** WbgtReading */
         WbgtReading: {
@@ -2449,6 +2577,46 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: number | null;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    region_way_materials_api_region_way_materials__axis_id___z___x___y__get: {
+        parameters: {
+            query?: {
+                at?: string | null;
+            };
+            header?: never;
+            path: {
+                axis_id: string;
+                z: number;
+                x: number;
+                y: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: {
+                            [key: string]: number;
+                        };
                     };
                 };
             };

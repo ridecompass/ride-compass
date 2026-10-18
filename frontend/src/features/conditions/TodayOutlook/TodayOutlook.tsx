@@ -2,7 +2,13 @@
 
 import type { ReactNode } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
-import { ClockIcon, RaindropIcon, ThermometerIcon, TodayOutlookIcon, WindIcon } from "@/components/ui/icons/icons";
+import {
+  ClockIcon,
+  RaindropIcon,
+  ThermometerIcon,
+  TodayOutlookIcon,
+  WindIcon,
+} from "@/components/ui/icons/lucideIcons";
 import { formatJstHourMinute } from "@/lib/time";
 import type { WeatherConditions, WeatherPeriodOutlook } from "@/types/weather";
 import { mapDisplay } from "@/types/generated/mapDisplay";

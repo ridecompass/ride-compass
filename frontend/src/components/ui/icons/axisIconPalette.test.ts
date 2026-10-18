@@ -4,7 +4,7 @@
  *
  * 見るもの: パレットにある`icon_id`はその形を、無い・未設定の`icon_id`は汎用のアイコンを返すこと。
  *
- * ここで見ないもの: アイコンの絵そのもの → `components/ui/icons/icons.tsx`。パレットから形を選ぶ画面 →
+ * ここで見ないもの: アイコンの絵そのもの → `components/ui/icons/layerIcons.tsx`・`components/ui/icons/lucideIcons.tsx`。パレットから形を選ぶ画面 →
  * `features/admin/AxisStudio/AxisMapDisplaySection.tsx`。
  */
 import { describe, expect, it } from "vitest";

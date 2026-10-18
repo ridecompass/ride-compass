@@ -13,7 +13,7 @@ import { LANDCOVER_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { PRIMARY_ATTRIBUTE_LABELS } from "@/features/map/layers/primaryAttributes";
 import { roadDisplayName, roadFactRows, roadFeatureKey, roadWayId, type RoadSurfacePopupProperties } from "./roadFacts";
 import { Button } from "@/components/ui/Button/Button";
-import { InspectRoadIcon } from "@/components/ui/icons/icons";
+import { InspectRoadIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { formatDifficultyOutOfScale } from "@/lib/mapDisplay/valueScale";
