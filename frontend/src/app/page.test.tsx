@@ -287,7 +287,7 @@ describe("ルートを作る", () => {
 });
 
 describe("走行モード", () => {
-  it("走行モードの間は、上の帯を走りの数字に替え、パネルと「現在地に移動」を隠し、選んだ候補のプロファイルを見るだけで地図の下に出す。止めると元に戻る", async () => {
+  it("走行モードの間は、上の帯を走りの数字に替え、パネルと「現在地に移動」を隠し、選んだ候補のプロファイルを地図の下に出す（結果の図と同じくなぞると地図に地点の印が出て、図の下に地点の詳しくが出る）。止めると元に戻る", async () => {
     const { user } = renderHome();
     jobs.respond([FIRST], LOOP_CONDITIONS);
     await generate(user);
@@ -305,7 +305,16 @@ describe("走行モード", () => {
     await user.click(screen.getByRole("button", { name: "走行モード" }));
     expect(screen.getByRole("group", { name: "走りの数字" })).toBeInTheDocument();
     expect(shownWhileIdle()).toEqual([null, null, null]);
-    expect(within(rideProfile()!).getByRole("img", { name: "道のりに沿った難易度" })).toBeInTheDocument();
+    const chart = within(rideProfile()!).getByRole("slider", { name: /^道のりに沿った難易度/ });
+    const selectedMarks = () =>
+      mapOnScreen()
+        .markers()
+        .filter((mark) => mark.element.getAttribute("aria-label") === "選択中の区間");
+    expect(selectedMarks()).toHaveLength(0);
+    fireEvent.keyDown(chart, { key: "Home" });
+    expect(selectedMarks()).toHaveLength(1);
+    await user.click(within(rideProfile()!).getByRole("button", { name: "区間の選択を解除" }));
+    expect(selectedMarks()).toHaveLength(0);
     // グラフに出す情報は、ページが持つ1つの選択（はじめは標高）を走行中の図にも渡す。
     await user.click(within(rideProfile()!).getByRole("tab", { name: FACT_DISPLAY_NAME }));
     await user.click(within(rideProfile()!).getByRole("button", { name: "グラフに出す情報" }));

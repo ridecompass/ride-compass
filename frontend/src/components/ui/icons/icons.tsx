@@ -237,6 +237,24 @@ export function LocateIcon({ size = 16 }: IconProps) {
   );
 }
 
+// 走行モードの倍率の段ごとの、ファインダーの角の中心からの距離。
+const FINDER_HALF_SIZE = { near: 4, middle: 6, far: 8.5 } as const;
+const FINDER_ARM = 2.5;
+
+/** 走行モードの倍率の段: 現在地の点を囲むファインダーの角。角が外ほど遠くまで見える。 */
+export function RideZoomIcon({ size = 16, reach }: IconProps & { reach: keyof typeof FINDER_HALF_SIZE }) {
+  const h = FINDER_HALF_SIZE[reach];
+  const [lo, hi] = [10 - h, 10 + h];
+  return (
+    <svg width={size} height={size} {...svgProps} strokeLinejoin="round">
+      <path
+        d={`M${lo} ${lo + FINDER_ARM}V${lo}h${FINDER_ARM}M${hi - FINDER_ARM} ${lo}H${hi}v${FINDER_ARM}M${hi} ${hi - FINDER_ARM}V${hi}h${-FINDER_ARM}M${lo + FINDER_ARM} ${hi}H${lo}v${-FINDER_ARM}`}
+      />
+      <circle cx="10" cy="10" r="1.6" fill="var(--color-accent)" stroke="none" />
+    </svg>
+  );
+}
+
 /** 方位磁針の針: 赤い先が北（上）、灰色の先が南。地図の向きのぶん回して使う。 */
 export function CompassNeedleIcon({ size = 16 }: IconProps) {
   return (

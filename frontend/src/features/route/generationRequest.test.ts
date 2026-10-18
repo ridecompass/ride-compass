@@ -22,7 +22,6 @@ const LOOP: GenerationInput = {
   maxRoutes: 3,
   assumedSpeedKmh: 22,
   startTime: START,
-  hardFilters: { exclude_a: true, exclude_b: false },
   roadAvoidance: { "layer.row_a": "avoid", "layer.row_b": "pass" },
   routePreference: null,
   waypoints: [],
@@ -31,13 +30,12 @@ const LOOP: GenerationInput = {
 };
 
 describe("buildGenerateRequest", () => {
-  it("地点を置かなければ、出発地・目標距離・幅・除外・避け方・候補数・速度・出発時刻を送り、値の無い項目は載せない", () => {
+  it("地点を置かなければ、出発地・目標距離・幅・避け方・候補数・速度・出発時刻を送り、値の無い項目は載せない", () => {
     expect(buildGenerateRequest(LOOP)).toEqual({
       latitude: 35.68,
       longitude: 139.77,
       distance_km: 40,
       distance_tolerance_km: 5,
-      hard_filters: { exclude_a: true, exclude_b: false },
       road_avoidance: { "layer.row_a": "avoid", "layer.row_b": "pass" },
       max_routes: 3,
       assumed_speed_kmh: 22,
@@ -70,11 +68,8 @@ describe("buildGenerateRequest", () => {
 describe("generationConditionsKey", () => {
   const key = (overrides: Partial<GenerationInput>) => generationConditionsKey({ ...LOOP, ...overrides });
 
-  it.each<[string, Partial<GenerationInput>]>([
-    ["除外", { hardFilters: { exclude_a: false, exclude_b: false } }],
-    ["避け方", { roadAvoidance: { "layer.row_a": "exclude", "layer.row_b": "pass" } }],
-  ])("送る値（%s）が変われば、キーが変わる", (_, changed) => {
-    expect(key(changed)).not.toBe(key({}));
+  it("送る値（避け方）が変われば、キーが変わる", () => {
+    expect(key({ roadAvoidance: { "layer.row_a": "exclude", "layer.row_b": "pass" } })).not.toBe(key({}));
   });
 
   it("出発時刻は、利用者が選んだときだけ比べる", () => {
@@ -83,9 +78,12 @@ describe("generationConditionsKey", () => {
     expect(key({ startTime: later, startTimePinned: true })).not.toBe(key({ startTimePinned: true }));
   });
 
-  it("除外・重みの項目の並びが違うだけなら、キーは変わらない", () => {
+  it("避け方・重みの項目の並びが違うだけなら、キーは変わらない", () => {
     expect(
-      key({ hardFilters: { exclude_b: false, exclude_a: true }, routePreference: { slope: 0.6, wind: 0.4 } }),
+      key({
+        roadAvoidance: { "layer.row_b": "pass", "layer.row_a": "avoid" },
+        routePreference: { slope: 0.6, wind: 0.4 },
+      }),
     ).toBe(key({ routePreference: { wind: 0.4, slope: 0.6 } }));
   });
 

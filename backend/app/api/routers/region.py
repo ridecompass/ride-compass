@@ -11,7 +11,7 @@ from app.api.dependencies import (
     get_region_service,
 )
 from app.api.rate_limit import enforce_rate_limit
-from app.api.routers._tile_http import tile_response, validate_tile_coords
+from app.api.routers._tile_http import check_tile_rate_limit, region_tile_semaphore, tile_response, validate_tile_coords
 from app.api.routers.routes import RoutePreferenceWeights
 from app.config import settings
 from app.domain.dynamic_way_values import WayValueQuery
@@ -29,34 +29,11 @@ from app.domain.strict_model import StrictModel
 
 router = APIRouter()
 
-# 地域タイル（路面・点）の同時実行上限
-# （settings.road_tile_max_concurrent、値の根拠はconfig.py参照）。
-#
-# 上限超過分は即座に429を返すルート生成とは異なり、こちらは「待たせて全件処理する」
-# （semaphoreの取得をブロックさせる）方式にしている。MapLibreは失敗したタイル要求を
-# 自動再試行しないため、429にすると1画面に収まる範囲で上限を超えるタイル（皇居周辺のような
-# 広い範囲では珍しくない）が永久に空白のまま描画されなくなる（詳細は
-# docs/modules/backend/static-road-attributes.md参照）。/healthはこのsemaphoreを
-# 経由しない別の同期ハンドラのため、待機中のタイル要求に巻き込まれず応答し続けられる。
-#
-# 点のタイルも同じDB接続プールを取り合うため、専用semaphoreを新設せずこれを
-# 共有する（プール上限15接続に対し、独立semaphoreを追加すると種類ごとのタイルの同時実行数の
-# 合計がプール上限を超えうる）。
-_region_tile_semaphore = asyncio.Semaphore(settings.road_tile_max_concurrent)
-
 # 土地被覆タイルの同時実行上限。DBではなくGeoTIFFの読み取り・再投影（GDAL、スレッドプール）を
-# 使うため、上のDB向けsemaphoreとは別に持つ。上限を設けないと、1画面ぶんのタイル要求が
+# 使うため、DB向けの`_tile_http.py: region_tile_semaphore`とは別に持つ。上限を設けないと、1画面ぶんのタイル要求が
 # `asyncio.to_thread`の既定スレッドプールを占有し、同じプールを使う他のディスクI/O
 # （タイルキャッシュの読み書き）まで待たされる。
 _landcover_tile_semaphore = asyncio.Semaphore(settings.landcover_tile_max_concurrent)
-
-
-def _check_tile_rate_limit(request: Request, prefix: str) -> None:
-    """地域タイル向けの`enforce_rate_limit`の薄いラッパー。どれも「パン/ズームのたびに
-    1画面ぶんが飛ぶ」同じ負荷の形のため同じ上限値（settings.road_tile_rate_limit_per_minute）
-    を使うが、キー・記録先の`prefix`は種別ごとに分ける。
-    """
-    enforce_rate_limit(request, prefix, settings.road_tile_rate_limit_per_minute)
 
 
 @router.get("/api/region/road-surface-tiles/{z}/{x}/{y}.pbf")
@@ -67,13 +44,13 @@ async def region_road_surface_tile(
     request: Request,
     region_service: RegionService = Depends(get_region_service),
 ) -> Response:
-    _check_tile_rate_limit(request, "road-tile")
+    check_tile_rate_limit(request, "road-tile")
     validate_tile_coords(z, x, y)
-    # 同時実行数の上限（_region_tile_semaphoreのコメント参照）は、超過分を待たせて
+    # 同時実行数の上限（`_tile_http.py: region_tile_semaphore`のコメント参照）は、超過分を待たせて
     # 全件処理する（即座に429で拒否しない）。キャッシュヒットは軽量（実測数ms）なので
     # すぐ解放され、実質的に重い（PostGIS問い合わせを伴う）リクエストだけが待ち行列の
     # 原因になる。
-    async with _region_tile_semaphore:
+    async with region_tile_semaphore:
         tile = await region_service.get_road_surface_tile(z, x, y)
     return tile_response(tile)
 
@@ -93,9 +70,9 @@ async def region_point_tile(
     point_layer = POINT_TILE_LAYERS.get(layer)
     if point_layer is None:
         raise HTTPException(status_code=404, detail="未知の点のレイヤーです。")
-    _check_tile_rate_limit(request, f"{layer}-tile")
+    check_tile_rate_limit(request, f"{layer}-tile")
     validate_tile_coords(z, x, y)
-    async with _region_tile_semaphore:
+    async with region_tile_semaphore:
         tile = await region_service.get_point_tile(point_layer, z, x, y)
     return tile_response(tile)
 
@@ -110,10 +87,10 @@ async def region_landcover_tile(
 ) -> Response:
     """土地被覆ラスタ（Esri×Impact Observatory 10m LULC）をそのまま面で塗ったラスタタイル。
 
-    DBを読まないため`_region_tile_semaphore`（DB接続プールの取り合いを抑えるもの）には
+    DBを読まないため`region_tile_semaphore`（DB接続プールの取り合いを抑えるもの）には
     乗せず、CPU/ディスクI/Oの上限は`landcover_tile_max_concurrent`の専用semaphoreで持つ。
     """
-    _check_tile_rate_limit(request, "landcover-tile")
+    check_tile_rate_limit(request, "landcover-tile")
     validate_tile_coords(z, x, y)
     async with _landcover_tile_semaphore:
         tile = await read_tile(z, x, y)
@@ -150,9 +127,9 @@ async def region_way_materials(
     """
     if lens is None:
         raise HTTPException(status_code=404, detail="公開している軸ではありません。")
-    _check_tile_rate_limit(request, f"{axis_id}-way-materials")
+    check_tile_rate_limit(request, f"{axis_id}-way-materials")
     validate_tile_coords(z, x, y)
-    async with _region_tile_semaphore:
+    async with region_tile_semaphore:
         materials = await lens.way_materials(z, x, y, at)
     if materials is None:
         raise HTTPException(status_code=404, detail="この軸は道ごとの材料を配りません。")
@@ -197,7 +174,7 @@ async def region_axis_inspector(
     進行方向に依存する軸（勾配・風）は、地図が指定している走行方位・時刻・想定速度から算出する。時刻・速度を
     送らなければ、それを要る軸は得点がnullで返る。
     """
-    # 道を押すたびの単発リクエストのためタイル向け_check_tile_rate_limit
+    # 道を押すたびの単発リクエストのためタイル向けcheck_tile_rate_limit
     # （road_tile_rate_limit_per_minuteと結合）を流用せず、専用の設定値を直接使う
     # （config.py: axis_inspector_rate_limit_per_minuteのコメント参照）。
     enforce_rate_limit(http_request, "axis-inspector", settings.axis_inspector_rate_limit_per_minute)

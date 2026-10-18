@@ -16,6 +16,7 @@ import { bandColorsFor } from "@/lib/mapDisplay/valueScale";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import type { AxisDefinitionPayload, AxisDefinitionResponse, AxisShape } from "@/types/route";
 import AxisComposer from "./AxisComposer";
+import { AxisCalibration } from "./AxisCalibration";
 import { Button } from "@/components/ui/Button/Button";
 import { textVariants } from "@/components/ui/Text/Text";
 import { calloutVariants } from "@/components/ui/Callout/Callout";
@@ -302,6 +303,8 @@ export default function AxisStudio() {
       <Button size="sm" className="self-start font-bold" onClick={() => setForm({ kind: "new" })}>
         + 新しい軸を作る
       </Button>
+
+      <AxisCalibration definitions={definitions ?? []} onSaved={reload} />
 
       <DialogRoot
         open={composerKey !== null}

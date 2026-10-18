@@ -50,22 +50,24 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 ## 0次ハードフィルタと道の行ごとの避け方（`domain/hard_filters.py`・`domain/road_avoidance.py`）
 
 `compute_search_exclusion`が、静的スコア行列（`StaticEdgeScoreMatrix`）の旗の名前→該当フラグの配列と、
-リクエストが指定した有効なフィルタ名の集合・行ごとの避け方の段・勾配の上限から、Edgeごとに「探索から除く」と
-「割り増す」を求める。`hard_filters`省略時は`DEFAULT_HARD_FILTERS`（宣言されている全フィルタが常時有効）を使う。
+リクエストが指定した行ごとの避け方の段・勾配の上限から、Edgeごとに「探索から除く」と「割り増す」を求める。
+0次フィルタは宣言されたものがいつも全部効き、リクエストでは切れない（要求の欄も持たない）。
 
 **受け取る旗のキー集合は宣言（`domain/hard_filters.py: ROUTE_FLAG_VALUE_SQL`）と完全一致でなければ落ちる**——欠けた旗は黙って
-無効になり、高速道路や`bicycle=no`の道がそのまま候補へ入る。リクエスト側の名前も宣言に
-無いものは要求の検証（`api/routers/routes.py: HardFilterOverride`・`api/routers/routes.py: RoadAvoidanceOverride`）が拒む
-（綴り間違いと「そのフィルタを切った」を区別できないため）。
+無効になり、高速道路や`bicycle=no`の道がそのまま候補へ入る。リクエスト側の行の名前も宣言に
+無いものは要求の検証（`api/routers/routes.py: RoadAvoidanceOverride`）が拒む
+（綴り間違いと「その行を選ばなかった」を区別できないため）。
 
-- 0次フィルタはhighwayタグ由来（`motorway`）・`bicycle=no`タグ（`no_bicycle`）の2系統で、どちらも法的に自転車が
-  通行できない道を外す。走れるが走りにくい道（国道等）は、0次フィルタではなく下の避け方で扱う。
-  highway種別のフィルタは`HARD_FILTER_HIGHWAY_TYPES`（フィルタ名→画面に出す名前と対象highway値）が唯一の
-  レジストリで、`compute_search_exclusion`はこの辞書をループする（読むのは行列の旗の名前→該当フラグ配列の
-  `route_flags`と材料の列で、フィルタごとの専用引数・専用フィールドは持たない。タグ由来の
-  フィルタは`HARD_FILTER_TAG_PREDICATE_SQL`が名前・画面に出す名前・判定式をまとめて持ち、
-  `HARD_FILTER_NAMES`も読み出し用のSQLの列もそこから導く）。
-  フィルタを1件増やしても変わるのはこの辞書だけ。
+- 0次フィルタは法的に自転車が通行できない道を外す（高速道路・自動車専用道路と、`bicycle=no`の道）。
+  走れるが走りにくい道（国道等）は、0次フィルタではなく下の避け方で扱う。
+  `domain/hard_filters.py: HARD_FILTERS`が名前・画面に出す名前と説明・判定式をまとめて持つ唯一のレジストリで、
+  読み出し用のSQLの列もそこから導き、`compute_search_exclusion`はこの辞書をループする（読むのは行列の旗の名前→該当フラグ配列の
+  `route_flags`と材料の列で、フィルタごとの専用引数・専用フィールドは持たない）。
+  フィルタを足しても変わるのはこの辞書だけ。
+- 高速道路は地図の道のレイヤの凡例にも行がある。その行は避け方を選べる行から外し（`domain/road_avoidance.py: _FIXED_ROWS`）、
+  行の判定式（`domain/road_avoidance.py: FIXED_ROW_MATCH_SQL`）を0次フィルタが受け取って`motorroad=yes`の道と合わせて除く——
+  選べる行に残すと、選んでもいつも除かれる行が画面に並ぶ。名前と説明は生成物`route-generate-config.json`の
+  `road_avoidance.fixed_rows`で配り、画面は避け方の行と同じ並びに「通らない」で固定して出す。
   highwayタグが無い・way_tagsが未取得の場合は除外しない（判断材料が無いEdgeまで一律
   除外すると探索対象が過度に狭まるため、不明な場合は許可しSoft Constraint側へ委ねる）。
 - **道の行ごとの避け方**: 地図の道の線のレイヤの凡例の行（`domain/road_avoidance.py: AVOIDABLE_ROWS`。行の宣言から導き、
@@ -146,7 +148,7 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
   `cost >= 所要時間`という不変条件はP>=0の間常に成り立つ。
 - **`build_static_edge_score_matrix`**: `AXIS_DEFINITIONS`を軸ごとに適用して
   difficulty配列を求める（`StaticEdgeScoreMatrix`: 公開軸別配列に加え、0次フィルタ判定用の
-  生フラグ`route_flags`も持つ——`hard_filters`はリクエストごとに
+  生フラグ`route_flags`も持つ——避け方と勾配の上限はリクエストごとに
   変わりうるため、除外判定そのものはここでは確定させない）。所要時間が読む材料（勾配・路面・停止の密度。
   `domain/cycling_speed.py: travel_model_material_ids`）は軸の構成と無関係にいつも材料の列として持ち、0次フィルタの
   勾配しきい値も同じ勾配の列を読む。その列が欠けた行列は組み立てで断る（`ValueError`）——欠けたまま通すと、
@@ -166,7 +168,7 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
   足した秒を所要時間で割った値として入る——回数 ÷ (所要時間 × 想定速度)の点数で、所要時間が想定速度で走る時間に
   近いほど、範囲の平均の密度に傾きを掛けた点数（頭打ちの無い直線）に近い。停止の待ちや上り坂で所要時間が延びた
   範囲ほど、平均の密度の点数より小さく入る。0次フィルタによる除外
-  （`compute_search_exclusion`が`hard_filters`/`road_avoidance`/`max_average_grade_percent`を反映して
+  （`compute_search_exclusion`が0次フィルタ・`road_avoidance`・`max_average_grade_percent`を反映して
   別途判定）はここには含まれない。重み付き軸がすべて欠損のEdgeはcost算出だけbbox内平均
   difficultyを代入する（表示用の戻り値には影響しない、詳細は後述「探索コストの既定経路」節）。
 

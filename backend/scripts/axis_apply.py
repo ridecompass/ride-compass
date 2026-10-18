@@ -6,7 +6,7 @@ r"""軸の定義1本を、本番の今の定義との差を見てから管理API
 
 定義のJSONは管理APIの単体取得（`GET /api/admin/axis-definitions/{axis_id}`）と同じ項目の軸1本で、
 `is_published`が書いた後の公開の状態になる。書く操作は今の状態から決まる: 無ければ追加、下書きなら更新（1回）、
-公開済みなら公開の取り消し→更新、削除は（公開済みなら取り消し→）削除。
+公開済みなら公開の取り消し→更新（公開したまま書ける差だけなら更新1回）、削除は（公開済みなら取り消し→）削除。
 
 **書くのは、差を出したときの指紋を`--apply`に渡したときだけ**。指紋は今の定義と書く定義から作るので、
 差を見てから書くまでに本番が変わっていれば一致せず、何も書かずに止まる。公開の取り消しの後の段で失敗したら
@@ -30,7 +30,7 @@ from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.domain.axis_definitions import AxisDefinition
+from app.domain.axis_definitions import AxisDefinition, is_update_allowed_while_published
 
 ADMIN_PATH = "/api/admin/axis-definitions"
 CATALOG_PATH = "/api/axis-catalog"
@@ -99,7 +99,11 @@ def plan(axis_id: str, current: Definition | None, desired: Definition | None) -
     if current == desired:
         return []
     update = Step("PUT", f"{ADMIN_PATH}/{axis_id}", desired, "定義を書き換える" + ("（公開にする）" if desired["is_published"] else ""))
-    return [unpublish, update] if current["is_published"] else [update]
+    if current["is_published"] and not is_update_allowed_while_published(
+        AxisDefinition.model_validate(current), AxisDefinition.model_validate(desired)
+    ):
+        return [unpublish, update]
+    return [update]
 
 
 def fingerprint(current: Definition | None, desired: Definition | None) -> str:

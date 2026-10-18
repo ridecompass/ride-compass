@@ -93,7 +93,8 @@
 - **既定は差の表示だけ**。今の定義は管理APIの単体取得から読む——公開の軸カタログは下書きの軸・0次条件・時間帯を持たず、
   体感ラベルも地図の段へ引き直した値なので、差の「前」には使えない。差は入れ子（`shape`等）の葉の項目ごとに「前 → 後」で出す。
 - 書く操作は今の状態から決まる（無ければ追加、下書きなら更新1回、公開済みなら公開の取り消し→更新。削除は公開済みなら
-  取り消してから）。公開済みの軸は更新も削除も拒まれる（上の「書き込み時のガード」）ため、取り消しを挟む。
+  取り消してから）。公開済みの軸は更新も削除も拒まれる（下の「書き込み時のガード」）ため、取り消しを挟む。ただし公開したまま
+  書ける差分（同じガードが許す、表示と折れ点だけの差）なら、取り消さずに更新1回で書く。
 - **書くのは差を出したときの指紋を渡したときだけ**。指紋は今の定義と書く定義から作るので、差を見てから書くまでに本番が
   変わっていれば一致せず、何も書かない。
 - 取り消しの後の段で失敗したら、元の定義へ戻す（戻せなければ元の定義を出して止まる）。書いた後は、管理APIの単体取得が
@@ -167,7 +168,7 @@
 ### `PriorityCondition`（0次条件）
 
 `material`の値が`equals`と一致する場合、shape評価をスキップし`value`をそのまま返す
-（探索除外のハードフィルタ`domain/hard_filters.py: DEFAULT_HARD_FILTERS`とは別の仕組み）。
+（探索除外のハードフィルタ`domain/hard_filters.py: HARD_FILTERS`とは別の仕組み）。
 
 **一致の判定は1本**（`_priority_override_mask`）で、Pythonの値で持つ入口（区間の内訳）も
 材料の値を配列にして同じ関数を通す。材料の値は入口ごとに別の形で届く——区間の内訳は
@@ -243,7 +244,12 @@ Pythonの値、ルート選びと地図の配信は材料の型ごとの配列�
 - **公開済み軸を不変にしているのは、一般ユーザーの保存設定が`axis_id`キーで再現される
   ため**（ルート設定パネルのプリセット・重みは`localStorage`に`axis_id`で残る）。公開後に
   破壊的な変更・削除を許すと、他の利用者の設定を黙って壊す。改良したいときは複製して
-  新しい`axis_id`の下書きを作り、そちらを検証して公開する。
+  新しい`axis_id`の下書きを作り、そちらを検証して公開する。折れ点と段の境界だけの差し替えは`axis_id`も読む材料も
+  変えないので、公開したまま書ける（下の「書き込み時のガード」）——下書きへ戻すと、その間だけ軸カタログから軸が消え、
+  利用者の画面がその軸の重みを既定へ戻す。
+  差し替えた折れ点は次の要求から効く: 軸を読む側（地図の配信・ルートの評価・軸カタログ）は要求ごとに`AXIS_DEFINITIONS`を
+  読むか写しを取り、サーバーのキャッシュは軸に依らない材料の値だけを持つ（[動的way値](dynamic-way-values.md)）。
+  ブラウザが応答を持つ間（`api/cache_policy.py`の対応表）だけ遅れる。
 
 ### まっさらなDBに軸の行は入らない
 
@@ -371,10 +377,12 @@ idの文字列ではなく宣言そのもので指す。材料が指す要素に
 |---|---|---|
 | `GET /api/admin/axis-definitions`・`/{axis_id}` | Basic認証必須 | 一覧・単体取得。レスポンスは`weight_share_when_published`（保存した既定の重みで公開したとき、公開軸の重みの合計に占める割合。総合難易度と同じ分母、`difficulty.weight_share`）も含み、作成・更新・非公開化の応答も同じ値を返す |
 | `POST /api/admin/axis-definitions` | Basic認証必須 | 作成 |
-| `PUT /api/admin/axis-definitions/{axis_id}` | Basic認証必須 | 更新（公開済みは原則拒否。ただし表示専用フィールド[`icon_id`/`display_thresholds_override`/`display_band_labels_override`]のみの差分は例外的に許可） |
+| `PUT /api/admin/axis-definitions/{axis_id}` | Basic認証必須 | 更新（公開済みは原則拒否。ただし表示専用フィールドと折れ点だけの差分は公開したまま許可。下の「書き込み時のガード」） |
 | `DELETE /api/admin/axis-definitions/{axis_id}` | Basic認証必須 | 削除 |
 | `POST /api/admin/axis-definitions/{axis_id}/unpublish` | Basic認証必須 | 公開済み軸を下書きへ戻す（`is_published`以外は変更しない） |
 | `POST /api/admin/axis-definitions/preview-scores` | Basic認証必須 | 編集中の折れ点で、横軸の値の並び（分布の階級の代表値）と1つ目の項の材料の値の並び（参考点）がそれぞれ何点になるか。参考点は横軸の値も返す。どちらも評価と同じ配列の計算（`domain/axis_definitions.py: BreakpointLinearShape.scores_at`・`first_term_points`）で出し、参考点は「ほかの項の材料が無い道」として評価する——ほかの項に必須の材料があれば評価と同じく欠損（null）になる（DBを読まない） |
+| `POST /api/admin/axis-definitions/preview-calibration` | Basic認証必須 | 送られた定義（保存前の下書きでよい）で地図が塗る段（`map_paint`。境界の上書きが無ければ形から導いたもの）と、密度の軸か（`averages_density`。真なら折れ点は0から伸びる2点の直線に限る）を返す。定義の検証は保存と同じで、通らなければ保存と同じ誤りの文を返す（DBを読まない） |
+| `POST /api/admin/axis-definitions/preview-way-values` | Basic認証必須 | 編集中の折れ点（`shape`）で、タイル（z・x・y）のフィーチャーごとに地図が塗る値（較正の地図）。鍵と値の意味は、地図が道ごとの材料（`/api/region/way-materials`）を軸の木（`way_value_formula`）で評価した値と同じで、同じ材料・同じ評価から、軸の集合の写しの中で`shape`だけを差し替えて求める（`services/dedicated_way_values.py: draft_axis_way_value_lens`）——保存されている折れ点を渡せば地図が塗る値と同じになり、`AXIS_DEFINITIONS`と配信の材料は変わらない。公開していない軸も求める。条件で変わる材料を読む軸は、条件の欄（走行方位・時刻・想定速度）を受け、要る欄が欠ければ422。無い軸は404、保存の判定（`services/axis_registry_service.py: check_loadable_after_write`）が断る下書きはその文で422。レート制限の上限とDB接続プールのsemaphoreは配信と同じもの（`api/routers/_tile_http.py: region_tile_semaphore`）を使う |
 | `GET /api/axis-catalog` | 不要（公開） | `is_published=True`の軸のみ返す。画面が読む項目（名前・説明・重みの既定・チップ・地図が塗るもの・生値の単位と内訳等）だけを返し、`shape`・しきい値の上書きの生の値は返さない（地図の段は`map_paint`が配る） |
 
 管理API（`/api/admin/axis-definitions`）のBasic認証はルーターの`dependencies`で1か所に宣言し、
@@ -451,7 +459,7 @@ idのまま出す。書き込み時のガード・削除の断り（下の「書
 
 - 軸idが材料idと重ならない——軸の評価結果は材料と同じ辞書へ書き戻されるため、重なると同名の材料の値を黙って上書きする。
 - 1つの材料を2つの軸で数えない（`check_material_exclusivity`）。重なりは後に並ぶ軸の誤りとして名指す（作成・更新の書き込みは
-  書いた軸を最後に並べて渡す（`services/axis_registry_service.py: _check_loadable_after_write`）ので、断りの文が書いた軸の側から読める）。
+  書いた軸を最後に並べて渡す（`services/axis_registry_service.py: check_loadable_after_write`）ので、断りの文が書いた軸の側から読める）。
 - 組み合わせが輪にならない（`topological_axis_order`）。
 
 書き込みの断りは例外の文（表示名で名指す）のまま返し、起動時の読み込みの失敗は例外が持つid（重なった2軸・輪の並び）で
@@ -465,9 +473,9 @@ idのまま出す。書き込み時のガード・削除の断り（下の「書
 | 操作 | ガード |
 |---|---|
 | create | axis_idの重複。内部軸の誤公開防止 |
-| update | 公開済みは原則拒否（`check_publish_immutability`）。ただし`candidate`引数を渡すと、表示専用フィールドのみの差分（`is_cosmetic_only_update`）なら公開済みでも許可する。内部軸の誤公開防止は下書きから公開へ切り替える書き込みにだけ当て、既に公開中で組み合わせに使われる軸の表示だけの直しは通す |
+| update | 公開済みは原則拒否（`check_publish_immutability`）。ただし`candidate`引数を渡すと、表示専用フィールドと折れ線の`breakpoints`だけの差分（`is_update_allowed_while_published`）なら公開したまま許可する。材料・項・前処理・重み・形の種類が変わる更新は断る。内部軸の誤公開防止は下書きから公開へ切り替える書き込みにだけ当て、既に公開中で組み合わせに使われる軸の表示・折れ点の直しは通す |
 | delete | 公開済みは拒否 |
-| unpublish | `is_published`のみを変更する専用操作（`update()`は使えない、公開済みは拒否されるため） |
+| unpublish | `is_published`のみを変更する専用操作（`update()`は公開したまま書けない差を断るため、その差を書く前に通す） |
 
 create/update/deleteは、確定する前に**書いた後の全軸**を起動時の読み込みと同じ判定
 （0行と、`check_axis_definition`に通らない軸（`services/axis_registry_service.py: _rejected_axes`）と、下の軸の集合の検査）へ通し、通らなければ確定しない。

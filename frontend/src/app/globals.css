@@ -97,8 +97,10 @@
   --map-ctrl-column-width: 40px;
   --map-ctrl-icon-size: 18px;
   /* 走行条件のボタンを積み始める位置。拡大・縮小・方位磁針の3つを1まとまりに縦へ並べた
-   * （features/map/MapNavigationControl/MapNavigationControl.tsx）下端から、同じ間隔で続ける。 */
+   * （features/map/MapNavigationControl/MapNavigationControl.tsx）下端から、同じ間隔で続ける。走行モードの間は、
+   * 拡大・縮小の代わりの倍率のボタンと方位磁針の2つの下端から続ける。 */
   --map-ctrl-stack-top: calc(var(--map-ctrl-margin) + 3 * var(--map-ctrl-button-size) + var(--map-ctrl-stack-gap));
+  --map-ctrl-ride-stack-top: calc(var(--map-ctrl-margin) + 2 * var(--map-ctrl-button-size) + var(--map-ctrl-stack-gap));
 
   /* スマホ幅かどうか。**幅の分岐を書けるのはメディアクエリだけ**なので、
    * この判定はCSSが持ち、JS（hooks/useIsMobile.ts）はこの旗を読むだけにする。

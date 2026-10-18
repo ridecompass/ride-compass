@@ -1,11 +1,11 @@
 /**
- * 生成の条件（`useGenerationConditions.ts`）——全長の目標を決めるか・距離・候補数・地点（出発地以外）・重み・除外と、地図の
+ * 生成の条件（`useGenerationConditions.ts`）——全長の目標を決めるか・距離・候補数・地点（出発地以外）・重み・道ごとの避け方と、地図の
  * タップで置く地点の選び（経由地は足すか、何番目を置き直すか）と、検索・名前のある点で置いた地点の候補（その位置のままの間だけ）を返す。保存する値（地点以外）は開き直しても残り、読むときに今の画面が受け付ける範囲・
  * 今の項目へ揃える。重みは軸カタログの公開軸へ揃えた値を返し、送るのは上書きを有効にしてカタログが届いた後だけ。
  *
  * ここで見ないもの:
- * - 重み・除外の揃え方の細部（増えた軸を既定の重みで補う・消えた軸を外す・取得が決まるまで揃えない） →
- *   `routePreferenceSync.test.ts`・`hardFilterSync.test.ts`。ここでは揃えた値を返すことを1件ずつ見る
+ * - 重みの揃え方の細部（増えた軸を既定の重みで補う・消えた軸を外す・取得が決まるまで揃えない） →
+ *   `routePreferenceSync.test.ts`。ここでは揃えた値を返すことを1件ずつ見る
  * - 重みを送るかの判断（上書きしていない・カタログが届かない間は送らない） → `routePreferenceSync.test.ts`。
  *   ここでは開き直した後に送る重みを1件見る
  * - 保存の読み書きそのもの（読めない・書けない端末で既定値になる） → `hooks/useStoredState.test.ts`
@@ -19,7 +19,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_HARD_FILTERS } from "@/features/route/RouteSettingsPanel/HardFilterPanel";
 import { AVOIDABLE_ROWS, AVOIDANCE_LEVELS, DEFAULT_ROAD_AVOIDANCE } from "@/features/route/roadAvoidance";
 import { heldReplies, onBackend, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse, TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
@@ -281,33 +280,6 @@ describe("重み", () => {
   });
 });
 
-describe("除外", () => {
-  it("変えた除外は開き直しても残る", () => {
-    const first = renderConditions();
-    const [key] = Object.keys(DEFAULT_HARD_FILTERS);
-    const changed = { ...DEFAULT_HARD_FILTERS, [key]: !DEFAULT_HARD_FILTERS[key] };
-
-    act(() => first.result.current.setHardFilters(changed));
-
-    expect(reopen(first).result.current.hardFilters).toEqual(changed);
-  });
-
-  it("保存値に今は無い項目があっても今の項目へ揃え、読めない保存値は既定に戻す", () => {
-    const [key] = Object.keys(DEFAULT_HARD_FILTERS);
-    window.localStorage.setItem(
-      "ridecompass:hard-filters",
-      JSON.stringify({ [key]: !DEFAULT_HARD_FILTERS[key], retired_filter: true }),
-    );
-    expect(renderConditions().result.current.hardFilters).toEqual({
-      ...DEFAULT_HARD_FILTERS,
-      [key]: !DEFAULT_HARD_FILTERS[key],
-    });
-
-    window.localStorage.setItem("ridecompass:hard-filters", "{broken");
-    expect(renderConditions().result.current.hardFilters).toEqual(DEFAULT_HARD_FILTERS);
-  });
-});
-
 describe("道ごとの避け方", () => {
   const [{ key: rowKey }] = AVOIDABLE_ROWS;
   const otherLevel = AVOIDANCE_LEVELS.find(({ key }) => key !== DEFAULT_ROAD_AVOIDANCE[rowKey])!.key;
@@ -335,8 +307,8 @@ describe("道ごとの避け方", () => {
     window.localStorage.setItem("ridecompass:road-avoidance", "{broken");
     expect(renderConditions().result.current.roadAvoidance).toEqual(DEFAULT_ROAD_AVOIDANCE);
   });
-  it("保存が無ければ、高速道路・国道・主要地方道をなるべく避け、ほかの道は通る", () => {
-    const avoided = ["highway.motorway", "highway.trunk", "highway.primary"];
+  it("保存が無ければ、国道・主要地方道をなるべく避け、ほかの道は通る", () => {
+    const avoided = ["highway.trunk", "highway.primary"];
 
     expect(renderConditions().result.current.roadAvoidance).toEqual(
       Object.fromEntries(AVOIDABLE_ROWS.map(({ key }) => [key, avoided.includes(key) ? "avoid" : "pass"])),
@@ -350,7 +322,6 @@ describe("道ごとの避け方", () => {
     );
     expect(renderConditions().result.current.roadAvoidance).toEqual({
       ...DEFAULT_ROAD_AVOIDANCE,
-      "highway.motorway": "exclude",
       "highway.trunk": "exclude",
       "highway.primary": "exclude",
       "highway.unclassified": "avoid",

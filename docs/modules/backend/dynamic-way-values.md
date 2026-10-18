@@ -233,7 +233,8 @@ axis_id → get_dedicated_way_value_service(axis_id) が今の軸の集合の写
   同じz/x/yに対して両方を取得し、MapLibreの`setFeatureState`で合成する
   （[map-axis-coloring.md](../frontend/map-axis-coloring.md)参照）。
 - 路面・点のタイルと同じレート制限・座標検証・DB接続プールのsemaphore
-  （`_region_tile_semaphore`、`config.py: road_tile_max_concurrent`）を共有する。
+  （`api/routers/_tile_http.py: region_tile_semaphore`、`config.py: road_tile_max_concurrent`）を共有する。
+- 軸スタジオの較正の地図は、同じレンズを下書きの`shape`で組んで値を求める（[axis-studio.md](axis-studio.md)「API」）。
 
 ## タイルの材料（`services/feature_materials.py`）
 

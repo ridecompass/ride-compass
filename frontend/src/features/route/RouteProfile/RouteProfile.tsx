@@ -1,7 +1,7 @@
 "use client";
 
 import { EVALUATION_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
 import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { cn } from "@/lib/cn";
 import { DisplayItemsIcon } from "@/components/ui/icons/icons";
+import { ChooseItemsIcon, EvaluationPaintIcon } from "@/components/ui/icons/lucideIcons";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { profileBoxes } from "@/features/route/DifficultyProfile/profileGeometry";
 import ProfileChart, {
@@ -61,15 +62,15 @@ interface RouteProfileProps {
   /** 横軸の右端の距離。 */
   scaleKm: number;
   selected: SelectedRouteSegment | null;
-  /** なぞる・押して離すと、その地点の区間を選ぶ。無ければ見るだけの図にする。 */
-  onSelect?: (selection: SelectedRouteSegment) => void;
+  /** なぞる・押して離すと、その地点の区間を選ぶ。走行中は詳しくを閉じると null で外す。無ければ見るだけの図にする。 */
+  onSelect?: (selection: SelectedRouteSegment | null) => void;
   /** 走行中の現在地のルートの上の距離。 */
   progressKm?: number | null;
   /** 置いた経由地を通る所のルートの上の距離（置いた順）。 */
   waypointKms: readonly number[];
   /** グラフに出す情報の選択（結果と走行中の図で1つを共有する）。 */
   layers: ProfileLayerSelection;
-  /** 走行中の地図の下の図。切り替えと見方・出す情報のボタンを図に重ねず、図の上の行に出す（高くした図の線と印を覆わない）。 */
+  /** 走行中の地図の下の図。切り替えと見方・出す情報のボタンを図に重ねず、図の上の行に出し、選んだ地点の詳しくを図の下に出す。 */
   riding?: boolean;
 }
 
@@ -160,28 +161,19 @@ export default function RouteProfile({
             label: `${Math.round(firstLine.range.min)}${firstLine.layer.draw.unit}`,
           },
         ];
-  const triggerClass = riding ? "min-h-8 px-3 text-base" : undefined;
-
-  // 走行中の図は地点を選ばない見るだけの図なので、押すと今の地点の詳しくを出す。
-  function withPointDetail(chart: ReactNode) {
-    if (!riding || progressKm === null) return chart;
+  // 走行中は、なぞって選んだ地点の詳しく（標高・勾配・道の区分・区間の詳細）を図の下に出す（結果では区間の詳細を図の外に出す）。
+  function ridingPointDetail(pointKm: number | null) {
+    if (!riding || pointKm === null) return null;
     return (
-      <Popover>
-        <PopoverTrigger asChild>
-          <button type="button" aria-label="今の地点の詳しく" className="block w-full text-left">
-            {chart}
-          </button>
-        </PopoverTrigger>
-        <PopoverContent
-          side="top"
-          collisionPadding={POPOVER_COLLISION_PADDING_PX}
-          className="max-h-[var(--radix-popover-content-available-height)] w-80 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-sm px-3 py-2.5"
-        >
-          <RidingPointDetail columns={scale.columns} progressKm={progressKm} />
-        </PopoverContent>
-      </Popover>
+      <div className="max-h-[40dvh] overflow-y-auto">
+        <RidingPointDetail columns={scale.columns} pointKm={pointKm} onClear={() => onSelect?.(null)} />
+      </div>
     );
   }
+  // 切り替えは地図の「表示」のボタンと「評価で塗る」のピルと同じ絵で出す。走行中は文字を出さず、絵を大きくする。
+  const triggerClass = riding ? "min-h-8 px-3" : "gap-1";
+  const triggerIconSize = riding ? 20 : 14;
+  const triggerLabelClass = riding ? "sr-only" : undefined;
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="relative flex flex-col gap-1">
@@ -199,14 +191,16 @@ export default function RouteProfile({
             className={triggerClass}
             usage="選んだ情報（標高・道の区分等）を、道のりに沿って出します。"
           >
-            {FACT_DISPLAY_NAME}
+            <DisplayItemsIcon size={triggerIconSize} />
+            <span className={triggerLabelClass}>{FACT_DISPLAY_NAME}</span>
           </TabsTrigger>
           <TabsTrigger
             value="lens"
             className={triggerClass}
             usage="区間ごとの難易度を、評価軸の色で塗って道のりに沿って出します。"
           >
-            {EVALUATION_PAINT_NAME}
+            <EvaluationPaintIcon size={triggerIconSize} />
+            <span className={triggerLabelClass}>{EVALUATION_PAINT_NAME}</span>
           </TabsTrigger>
         </TabsList>
         {tab === "lens" && (
@@ -241,7 +235,7 @@ export default function RouteProfile({
                 aria-label="グラフに出す情報"
                 usage="グラフに重ねる情報（標高・道の区分等）を選ぶ一覧を開きます。数字は今重ねている数です。"
               >
-                <DisplayItemsIcon size={16} />
+                <ChooseItemsIcon size={16} />
                 {layers.ids.length > 0 && (
                   <span
                     aria-hidden="true"
@@ -308,35 +302,36 @@ export default function RouteProfile({
         )}
       </div>
       <TabsContent value="lens">
-        {withPointDetail(
-          <DifficultyProfile
-            segments={segments}
-            overallDifficulty={overallDifficulty}
-            axisOrder={axisOrder}
-            axisColors={axisColors}
-            scaleKm={scaleKm}
-            selected={selected}
-            onSelect={onSelect}
-            progressKm={progressKm}
-            waypointKms={waypointKms}
-            riding={riding}
-          />,
-        )}
+        <DifficultyProfile
+          segments={segments}
+          overallDifficulty={overallDifficulty}
+          axisOrder={axisOrder}
+          axisColors={axisColors}
+          scaleKm={scaleKm}
+          selected={selected}
+          onSelect={onSelect}
+          progressKm={progressKm}
+          waypointKms={waypointKms}
+          riding={riding}
+          caption={ridingPointDetail}
+        />
       </TabsContent>
       <TabsContent value="layer" className="flex flex-col gap-1">
-        {withPointDetail(
-          <ProfileChart
-            scale={scale}
-            label="道のりに沿った情報"
-            usage="横が道のり、縦が選んだ情報の値、下の帯が選んだ道の区分の色です。なぞるか押して離すと、その地点を地図に印で出し、下にその地点の値を出します。"
-            selected={selected}
-            onSelect={onSelect}
-            progressKm={progressKm}
-            progressMarkY={progressMarkY}
-            valueTicks={valueTicks}
-            riding={riding}
-            waypointKms={waypointKms}
-            caption={(pointKm) => (
+        <ProfileChart
+          scale={scale}
+          label="道のりに沿った情報"
+          usage="横が道のり、縦が選んだ情報の値、下の帯が選んだ道の区分の色です。なぞるか押して離すと、その地点を地図に印で出し、下にその地点の値を出します。"
+          selected={selected}
+          onSelect={onSelect}
+          progressKm={progressKm}
+          progressMarkY={progressMarkY}
+          valueTicks={valueTicks}
+          riding={riding}
+          waypointKms={waypointKms}
+          caption={(pointKm) =>
+            riding && pointKm !== null ? (
+              ridingPointDetail(pointKm)
+            ) : (
               <div className={cn(profileTextClass(riding), "text-[var(--color-muted)] tabular-nums")}>
                 {shownLayers.lines.length + rowCount === 0 ? (
                   <p>出す情報を選んでください。</p>
@@ -356,59 +351,59 @@ export default function RouteProfile({
                 {shownLayers.bands.map(({ layer, pieces }) => bandCaption(layer, pieces, pointKm))}
                 {shownLayers.marks.map(({ layer, marks }) => markCaption(layer, marks, pointKm))}
               </div>
-            )}
-          >
-            {shownLayers.bands.map(({ layer, pieces }, index) => (
+            )
+          }
+        >
+          {shownLayers.bands.map(({ layer, pieces }, index) => (
+            <g key={layer.id} data-layer={layer.id}>
+              {pieces.map((piece) => (
+                <rect
+                  key={piece.startKm}
+                  x={scale.xOf(piece.startKm)}
+                  y={rowTop(index)}
+                  width={scale.xOf(piece.endKm) - scale.xOf(piece.startKm)}
+                  height={BAND_HEIGHT}
+                  fill={piece.row.color}
+                />
+              ))}
+            </g>
+          ))}
+          {shownLayers.marks.map(({ layer, marks }, index) => {
+            const y = rowTop(shownLayers.bands.length + index) + BAND_HEIGHT / 2;
+            // 伸び縮みする描画の中で印の形を保つため、長さの無い線を伸びない太さの端の形で描く。
+            return (
               <g key={layer.id} data-layer={layer.id}>
-                {pieces.map((piece) => (
-                  <rect
-                    key={piece.startKm}
-                    x={scale.xOf(piece.startKm)}
-                    y={rowTop(index)}
-                    width={scale.xOf(piece.endKm) - scale.xOf(piece.startKm)}
-                    height={BAND_HEIGHT}
-                    fill={piece.row.color}
+                {marks.map((mark, markIndex) => (
+                  <line
+                    key={markIndex}
+                    x1={scale.xOf(mark.km)}
+                    x2={scale.xOf(mark.km)}
+                    y1={y}
+                    y2={y}
+                    stroke={mark.color}
+                    strokeWidth={mark.radiusPx * 2}
+                    strokeLinecap={mark.glyph === null ? "round" : "square"}
+                    vectorEffect="non-scaling-stroke"
                   />
                 ))}
               </g>
-            ))}
-            {shownLayers.marks.map(({ layer, marks }, index) => {
-              const y = rowTop(shownLayers.bands.length + index) + BAND_HEIGHT / 2;
-              // 伸び縮みする描画の中で印の形を保つため、長さの無い線を伸びない太さの端の形で描く。
-              return (
-                <g key={layer.id} data-layer={layer.id}>
-                  {marks.map((mark, markIndex) => (
-                    <line
-                      key={markIndex}
-                      x1={scale.xOf(mark.km)}
-                      x2={scale.xOf(mark.km)}
-                      y1={y}
-                      y2={y}
-                      stroke={mark.color}
-                      strokeWidth={mark.radiusPx * 2}
-                      strokeLinecap={mark.glyph === null ? "round" : "square"}
-                      vectorEffect="non-scaling-stroke"
-                    />
-                  ))}
-                </g>
-              );
-            })}
-            {shownLayers.lines.flatMap(({ layer, runs, range }) =>
-              range === null
-                ? []
-                : runs.map((run, index) => (
-                    <polyline
-                      key={`${layer.id}-${index}`}
-                      points={run.map((point) => `${scale.xOf(point.km)},${yOf(point.value, range)}`).join(" ")}
-                      fill="none"
-                      className="stroke-[var(--color-accent-strong)]"
-                      strokeWidth={2}
-                      vectorEffect="non-scaling-stroke"
-                    />
-                  )),
-            )}
-          </ProfileChart>,
-        )}
+            );
+          })}
+          {shownLayers.lines.flatMap(({ layer, runs, range }) =>
+            range === null
+              ? []
+              : runs.map((run, index) => (
+                  <polyline
+                    key={`${layer.id}-${index}`}
+                    points={run.map((point) => `${scale.xOf(point.km)},${yOf(point.value, range)}`).join(" ")}
+                    fill="none"
+                    className="stroke-[var(--color-accent-strong)]"
+                    strokeWidth={2}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                )),
+          )}
+        </ProfileChart>
       </TabsContent>
     </Tabs>
   );
