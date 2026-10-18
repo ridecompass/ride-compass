@@ -218,7 +218,7 @@ class AxisRegistryAdminService:
         await refresh_axis_definitions(self._repository)
 
     async def unpublish(self, axis_id: str) -> dict[str, AxisDefinition]:
-        """公開済み軸を下書きへ戻し、戻した後の全軸を返す。`update()`が公開済み軸を一律拒否するための逃げ道。
+        """公開済み軸を下書きへ戻し、戻した後の全軸を返す。`update()`が公開したまま書けない差（材料・重み等）を変える前に通す。
 
         **フロント側が公開軸集合の変化に合わせてroutePreferenceのキーを自己修復すること**が
         前提。それが無いと、旧設定を保持したブラウザは次のルート生成で
