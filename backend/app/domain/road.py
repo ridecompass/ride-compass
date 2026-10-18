@@ -25,7 +25,6 @@ class SurfaceClass(NamedTuple):
 
 #: 並びが地図の凡例の並び。
 SURFACE_CLASSES: tuple[SurfaceClass, ...] = (
-    # 切石・レンガの敷石はロードバイクで普通に走れる平滑な舗装として扱う。
     SurfaceClass(
         "paved",
         "舗装",
@@ -36,10 +35,16 @@ SURFACE_CLASSES: tuple[SurfaceClass, ...] = (
             "concrete": "コンクリート",
             "concrete:plates": "コンクリート版",
             "concrete:lanes": "コンクリート帯[轍部のみ舗装]",
-            "paving_stones": "石畳[切石]",
-            "bricks": "レンガ舗装",
         },
         "speed.crr",
+    ),
+    # 切石・レンガの敷石は玉石より平滑だが目地があり、玉石の区分へ混ぜると玉石を避けたい人が歩道の
+    # ブロック敷きまで避けるので、舗装とも玉石とも別の区分にする。
+    SurfaceClass(
+        "paving_stones",
+        "敷石・レンガ",
+        {"paving_stones": "石畳[切石]", "bricks": "レンガ舗装"},
+        "speed.crr_paving_stones",
     ),
     SurfaceClass(
         "compacted",
