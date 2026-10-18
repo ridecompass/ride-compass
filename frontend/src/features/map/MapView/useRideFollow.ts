@@ -22,14 +22,12 @@ export interface RideFollow {
   headingUp: boolean;
   /** 利用者が地図を指で動かした・回した。 */
   onPause: () => void;
-  /** 走行モードの間に方位のボタン（コンパス）を押した。 */
+  /** 走行モードの間に方位磁針を押した。 */
   onToggleHeadingUp: () => void;
 }
 
 // 速さは位置ごとに揺れるので、新しい値をこの割合だけ混ぜてから倍率に使う（倍率がちらつかないように）。
 const SPEED_SMOOTHING = 0.3;
-
-const COMPASS_SELECTOR = ".maplibregl-ctrl-compass";
 
 const FACING_CONE_ATTRIBUTE = "data-facing-cone";
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -66,8 +64,7 @@ function isTwoFingerTouch(input: unknown): boolean {
 }
 
 /** 走行モードの間、現在地の点を出し、追っている間は地図の中心（と向き）を現在地へ動かし続ける。利用者が地図を指で
- * 動かすか回すと追うのを休むよう知らせ、方位のボタンは北を上に戻す代わりに向きの切り替えを知らせる。止めたら地図の向きを
- * 走る前に戻す。走っていない間は、`here`（取り直した現在地）に同じ点を出す。
+ * 動かすか回すと追うのを休むよう知らせる。止めたら地図の向きを走る前に戻す。走っていない間は、`here`（取り直した現在地）に同じ点を出す。
  * `visibleOffset`は、地図に重なる部品を避けて見えている所の中ほどへ寄せるための、中心からのずれ（px）。 */
 export function useRideFollow(
   mapRef: RefObject<MapLibreMap | null>,
@@ -118,28 +115,17 @@ export function useRideFollow(
       if (ended.zoomed) followCamera.current?.();
       else latest.current.onPause();
     }
-    // 方位のボタンは押すと自分で北へ戻すので、走行モードの間は、ボタンへ届く前（捕捉の段）で止めて切り替えに替える。
-    function toggleOnCompass(event: MouseEvent) {
-      const ride = latest.current;
-      if (ride === null || !(event.target instanceof Element) || event.target.closest(COMPASS_SELECTOR) === null)
-        return;
-      event.stopPropagation();
-      event.preventDefault();
-      ride.onToggleHeadingUp();
-    }
     // 追っている間に利用者が拡大・縮小したら、その倍率を基準にし直す（速さの分の引きはその上に重ねる）。
     function rebaseOnUserZoom(event: { originalEvent?: unknown }) {
       if (event.originalEvent === undefined || !latest.current?.following || baseZoom.current === null) return;
       baseZoom.current = shown.getZoom() + appliedZoomOut.current;
     }
-    const container = map.getContainer();
     map.on("movestart", onUserMoveStart);
     map.on("zoomstart", noteZoom);
     map.on("rotatestart", pauseOnTwoFingerTurn);
     map.on("pitchstart", pauseOnTwoFingerTurn);
     map.on("zoomend", rebaseOnUserZoom);
     map.on("moveend", onUserMoveEnd);
-    container.addEventListener("click", toggleOnCompass, true);
     return () => {
       map.off("movestart", onUserMoveStart);
       map.off("zoomstart", noteZoom);
@@ -147,7 +133,6 @@ export function useRideFollow(
       map.off("pitchstart", pauseOnTwoFingerTurn);
       map.off("zoomend", rebaseOnUserZoom);
       map.off("moveend", onUserMoveEnd);
-      container.removeEventListener("click", toggleOnCompass, true);
     };
   }, [mapRef]);
 
@@ -165,21 +150,6 @@ export function useRideFollow(
       bearingBeforeRide.current = null;
     }
   }, [mapRef, riding]);
-
-  // 走行モードの間、方位のボタンの名前を、押したときの動き（向きの切り替え）にする。終えたら元の名前へ戻す。
-  const headingUp = ride?.headingUp ?? false;
-  useEffect(() => {
-    const compass = mapRef.current?.getContainer().querySelector(COMPASS_SELECTOR);
-    if (!riding || !compass) return;
-    const original = { title: compass.getAttribute("title"), label: compass.getAttribute("aria-label") };
-    const name = headingUp ? "北を上にする（いまは進む向きが上）" : "進む向きを上にする（いまは北が上）";
-    compass.setAttribute("title", name);
-    compass.setAttribute("aria-label", name);
-    return () => {
-      if (original.title !== null) compass.setAttribute("title", original.title);
-      if (original.label !== null) compass.setAttribute("aria-label", original.label);
-    };
-  }, [mapRef, riding, headingUp]);
 
   // 現在地の点と、スマホが向いている方角の扇形。扇形は北を上にした絵で、印を地図に沿わせて回す（地図を回しても方角を指す）。
   const dotRef = useRef<Marker | null>(null);
@@ -219,6 +189,7 @@ export function useRideFollow(
   // 追っている間、届いた位置へ中心を、進む向きが上なら向きも動かす（向きがまだ分からなければ今の向きのまま）。
   // 倍率は基準から速さの分だけ引く（速いほど先が見える）。
   const following = ride?.following ?? false;
+  const headingUp = ride?.headingUp ?? false;
   const bearing = ride?.bearing ?? null;
   const speedKmh = ride?.speedKmh ?? null;
   const wasFollowing = useRef(false);

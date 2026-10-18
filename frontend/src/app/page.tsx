@@ -42,7 +42,6 @@ import UsageGuide from "@/components/UsageGuide/UsageGuide";
 import UsageTooltip from "@/components/UsageGuide/UsageTooltip";
 import FirstVisitIntro from "@/components/FirstVisitIntro/FirstVisitIntro";
 import RideConditionBar from "@/features/conditions/RideConditionBar/RideConditionBar";
-import TravelBearingControl from "@/features/conditions/TravelBearingControl/TravelBearingControl";
 import { useWeatherConditions } from "@/features/conditions/useWeatherConditions";
 import { axisCatalogFetchFailure, useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
@@ -170,7 +169,7 @@ export default function Home() {
     setFocusPoint({ latitude: candidate.latitude, longitude: candidate.longitude });
   }
   const ride = useRideConditions();
-  const wayConditions = useRideWayConditions(riding.map, ride.ride);
+  const ridingWayConditions = useRideWayConditions(riding.map, ride.speedKmh);
   // 名前を付けて保存した生成の条件（保存は「条件」タブ、呼び出しは「保存済み」タブ）。
   const savedConditions = useSavedConditions({
     conditions,
@@ -264,7 +263,8 @@ export default function Home() {
   const mapView = useMapView({
     hasSelectedRoute: results.selectedCandidate !== null,
     hasDetail: results.hasDetail,
-    ride: wayConditions,
+    ride: ride.ride,
+    riding: ridingWayConditions,
     now: ride.departure.now,
     routeWeights: route.routeWeights,
   });
@@ -730,7 +730,8 @@ export default function Home() {
               location={location}
               locationSource={locationSource}
               look={mapView.look}
-              rideConditions={wayConditions}
+              rideConditions={mapView.wayConditions}
+              compassLinked={mapView.lensConditions.includes("bearing_deg")}
               routePreference={conditions.routePreferenceToSend}
               selectedRouteSegment={results.selectedRouteSegment}
               onRouteSegmentSelect={results.selectSegment}
@@ -791,25 +792,11 @@ export default function Home() {
 
             {usageGuideActive ? <UsageGuide onEnd={() => setUsageGuideActive(false)} /> : <UsageTooltip />}
 
-            {!navigating && (
-              <TravelBearingControl
-                value={ride.bearingDeg}
-                onChange={ride.setBearingDeg}
-                linked={mapView.lensConditions.includes("bearing_deg")}
-              />
-            )}
-
-            {/* 走行条件（出発時刻・想定速度）は走行方位の直下に積む。出発時刻は気象レイヤーの表示時刻と同じもの。
+            {/* 走行条件（出発時刻・想定速度）は地図の拡大・縮小と方位磁針の列の直下に積む。出発時刻は気象レイヤーの表示時刻と同じもの。
               その下へ現在地と走行モードを続ける。 */}
             <div
               {...mapOverlayEdge("right")}
-              className={cn(
-                "pointer-events-none absolute right-[var(--map-ctrl-margin)] z-[var(--z-map-control)] flex flex-col gap-[var(--map-ctrl-stack-gap)]",
-                // 走行モードの間は走行方位のボタンを出さないので、その段を空けずに積む。
-                navigating
-                  ? "top-[var(--map-ctrl-stack-top)]"
-                  : "top-[calc(var(--map-ctrl-stack-top)+var(--map-ctrl-button-size)+var(--map-ctrl-stack-gap))]",
-              )}
+              className="pointer-events-none absolute top-[var(--map-ctrl-stack-top)] right-[var(--map-ctrl-margin)] z-[var(--z-map-control)] flex flex-col gap-[var(--map-ctrl-stack-gap)]"
             >
               {!navigating && (
                 <>

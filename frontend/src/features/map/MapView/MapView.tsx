@@ -62,10 +62,11 @@ import { ORIGIN_ZOOM, useMapMarkers } from "@/features/map/MapView/useMapMarkers
 import { pinMarkName } from "@/components/PinMark/PinMark";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
+import MapNavigationControl from "@/features/map/MapNavigationControl/MapNavigationControl";
 import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
 import { registerJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
 import { debugLog } from "@/lib/debugLog";
-import { MAP_OVERLAY_EDGE_ATTRIBUTE, measureMapOverlayEdges, type RouteFitObscuredPx } from "@/lib/mapOverlayEdges";
+import { measureMapOverlayEdges, type RouteFitObscuredPx } from "@/lib/mapOverlayEdges";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
@@ -116,9 +117,6 @@ function computeRouteBounds(routes: RouteCandidate[]): maplibregl.LngLatBounds {
 
 const MAP_UI_LOCALE: Record<string, string> = {
   "Map.Title": "地図",
-  "NavigationControl.ZoomIn": "拡大",
-  "NavigationControl.ZoomOut": "縮小",
-  "NavigationControl.ResetBearing": "ドラッグで地図を回転、押すと北を上に戻す",
   "AttributionControl.ToggleAttribution": "出典の表示を切り替える",
   "AttributionControl.MapFeedback": "地図の誤りを報告する",
   "Popup.Close": "閉じる",
@@ -300,6 +298,8 @@ interface MapViewProps {
   travelledKm: number | null;
   /** 走行中に次に曲がる所の地点と向き。印を出す。無ければnull。 */
   turnPoint: TurnMarkPoint | null;
+  /** いまの「評価で塗る」の周りの道の塗りが地図の向きで決まる（方位磁針のボタンに印を付ける）。 */
+  compassLinked: boolean;
 }
 
 export default function MapView({
@@ -331,10 +331,13 @@ export default function MapView({
   ride,
   travelledKm,
   turnPoint,
+  compassLinked,
 }: MapViewProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
+  // 方位磁針の針とダイヤルが指す地図の向き。
+  const [mapBearing, setMapBearing] = useState(0);
   // 道を押したときの詳細はReactで描き、MapLibreのPopupへportalで差し込む。
   const [roadPopup, setRoadPopup] = useState<{
     lngLat: [number, number];
@@ -455,8 +458,6 @@ export default function MapView({
       },
       locale: MAP_UI_LOCALE,
     });
-    map.addControl(new maplibregl.NavigationControl(), "top-right");
-    map.getContainer().querySelector(".maplibregl-ctrl-top-right")?.setAttribute(MAP_OVERLAY_EDGE_ATTRIBUTE, "right");
     mapRef.current = map;
     debugLog("map:lifecycle", "初期化", { center: [location.longitude, location.latitude], zoom: ORIGIN_ZOOM });
 
@@ -654,6 +655,9 @@ export default function MapView({
     function handleIdleRecompute() {
       recomputeLayerDataStatus();
     }
+    function handleRotate() {
+      setMapBearing(map.getBearing());
+    }
 
     map.on("click", handleClick);
     map.on("mousemove", handleMouseMove);
@@ -665,6 +669,7 @@ export default function MapView({
     map.on("sourcedataloading", handleTrackedSourceDataLoading);
     map.on("sourcedata", handleTrackedSourceData);
     map.on("idle", handleIdleRecompute);
+    map.on("rotate", handleRotate);
     map.once("idle", handleFirstIdle);
     const initialOverlayTimer = window.setTimeout(() => {
       if (!cancelled) setInitialTilesLoading(false);
@@ -686,6 +691,7 @@ export default function MapView({
       map.off("sourcedataloading", handleTrackedSourceDataLoading);
       map.off("sourcedata", handleTrackedSourceData);
       map.off("idle", handleIdleRecompute);
+      map.off("rotate", handleRotate);
       map.remove();
       mapRef.current = null;
       popupRef.current = null;
@@ -817,6 +823,15 @@ export default function MapView({
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <div ref={mapContainerRef} style={{ width: "100%", height: "100%" }} />
+      <MapNavigationControl
+        bearing={mapBearing}
+        onZoomIn={() => mapRef.current?.zoomIn()}
+        onZoomOut={() => mapRef.current?.zoomOut()}
+        onBearingChange={(bearing) => mapRef.current?.setBearing(bearing)}
+        onResetNorth={() => mapRef.current?.easeTo({ bearing: 0 })}
+        linked={compassLinked}
+        ride={ride && { headingUp: ride.headingUp, onToggleHeadingUp: ride.onToggleHeadingUp }}
+      />
       {initialTilesLoading && (
         <div
           className="pointer-events-none absolute inset-0 z-5 flex flex-col items-center justify-center gap-2.5 bg-[var(--color-surface-2)]"

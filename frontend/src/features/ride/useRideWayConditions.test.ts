@@ -1,6 +1,6 @@
 /**
- * `features/ride/useRideWayConditions.ts: useRideWayConditions`——地図の道の値を取る条件（向き・時刻・速さ）を決める。
- * 走行中は実際の進む向きと速さを使い、向きの区分が変わるまでは同じ条件を返す。
+ * `features/ride/useRideWayConditions.ts: useRideWayConditions`——走行中に地図の道の値を取る向きと速さを決める。
+ * 実際の進む向きと速さを使い、向きの区分が変わるまでは同じ条件を返す。
  *
  * ここで見ないもの:
  * - 角度を区分へ丸める答え（区分の境界の向き） → `lib/cardinalLabel.test.ts`（backend が出す表）
@@ -15,25 +15,25 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import { useRideWayConditions } from "./useRideWayConditions";
 
 const BUCKET = regionTileConfig.way_value_bearing_bucket_deg;
-const PLANNED = { bearingDeg: 90, at: new Date("2026-10-14T09:00:00+09:00"), speedKmh: 20 };
+const PLANNED_SPEED_KMH = 20;
 
 type Riding = { bearing: number | null; speedKmh: number | null } | null;
 
 function render(riding: Riding) {
-  return renderHook(({ riding }) => useRideWayConditions(riding, PLANNED), { initialProps: { riding } });
+  return renderHook(({ riding }) => useRideWayConditions(riding, PLANNED_SPEED_KMH), { initialProps: { riding } });
 }
 
 describe("useRideWayConditions", () => {
   it.each([
     { case: "走っていない", riding: null },
     { case: "走行中でも進む向きがまだ分からない", riding: { bearing: null, speedKmh: 18 } },
-  ])("$case間は、手で決めた向きと想定速度のまま", ({ riding }) => {
-    expect(render(riding).result.current).toEqual(PLANNED);
+  ])("$case間は、代わりの値を出さない（地図の向きと想定速度で取る）", ({ riding }) => {
+    expect(render(riding).result.current).toBeNull();
   });
 
-  it("走行中は、実際の進む向きを区分の中心へ丸め、実際の速さを使う（時刻は手で決めたまま）", () => {
+  it("走行中は、実際の進む向きを区分の中心へ丸め、実際の速さを使う", () => {
     const { result } = render({ bearing: BUCKET * 3 + 1, speedKmh: 17.6 });
-    expect(result.current).toEqual({ bearingDeg: BUCKET * 3, at: PLANNED.at, speedKmh: 18 });
+    expect(result.current).toEqual({ bearingDeg: BUCKET * 3, speedKmh: 18 });
   });
 
   it("同じ区分の中で向きと速さが変わっても条件は変えず、区分が変わったらその時の速さで取り直す", () => {
@@ -48,8 +48,8 @@ describe("useRideWayConditions", () => {
   it.each([
     // 止まっている間の速さは、地図の配信が受ける想定速度の範囲の外。
     { case: "止まっている", speedKmh: 0, expected: routeGenerateConfig.min_assumed_speed_kmh },
-    { case: "速さが分からない", speedKmh: null, expected: PLANNED.speedKmh },
+    { case: "速さが分からない", speedKmh: null, expected: PLANNED_SPEED_KMH },
   ])("$case ときの速さ", ({ speedKmh, expected }) => {
-    expect(render({ bearing: 0, speedKmh }).result.current.speedKmh).toBe(expected);
+    expect(render({ bearing: 0, speedKmh }).result.current?.speedKmh).toBe(expected);
   });
 });
