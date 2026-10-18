@@ -17,7 +17,7 @@ APIを呼ぶ）・「データ保守」タブ（派生データ鮮度台帳の�
 | ファイル | 責務 |
 |---|---|
 | `features/admin/AxisStudio/AxisStudio.tsx` | トップレベル。一覧取得・作成/更新/削除/複製/非公開化の状態管理。開いているフォーム（新規・編集・複製・表示だけ編集）は1つの状態で持ち、2つのフォームが同時に開かない |
-| `features/admin/AxisStudio/AxisCalibration.tsx` | 一覧の下の「較正」のカード。軸を1つ選び、数値の軸は0点・100点にする値（密度の軸は100点にする値だけ）を実データの分布を重ねた大きなグラフか数の入力で決め、対応表の軸は`CategoricalCalibration.tsx`へ渡す |
+| `features/admin/AxisStudio/AxisCalibration.tsx` | 一覧の下の「較正」のカード。軸を1つ選び、数値の軸は0点・100点にする値（密度の軸は100点にする値だけ）を実データの分布を重ねた大きなグラフか数の入力で決め、対応表の軸は`CategoricalCalibration.tsx`へ渡す。数値の軸は下書きの点数で塗った地図を見ながら決める。地図は地図の機能の部品（`features/map/DraftWayValuesMap/DraftWayValuesMap.tsx`）で、機能どうしは互いを読まないため、組み立てるページ（`app/admin/page.tsx`）が`AxisStudio`へ差し込む（`AxisStudio/AxisCalibration.tsx: CalibrationMapSlot`） |
 | `features/admin/AxisStudio/CategoricalCalibration.tsx` | 較正の画面の対応表の軸。種類ごとに点数の入力とその種類の道の延長の割合を並べ、点数を数で直す |
 | `features/admin/AxisStudio/calibrationParts.tsx` | 較正の画面で数値の軸と対応表の軸が共に使う部品。地図の段の境界の下書きと入力欄、段ごとの延長の下書きと保存済みの比べ、公開の状態のまま差し替える保存 |
 | `features/admin/AxisStudio/AxisComposer.tsx` | 1画面フォームの本体。draftの状態・保存前の検証・保存と、節の組み立てだけを持つ |
@@ -164,6 +164,11 @@ listAxisDefinitions() ──→ definitions（全軸）
   昇順で重ならない境界だけを受け付ける）。入力欄を空にすると上書きを外す。
 - 段ごとの延長は、分布の階級の代表値の点数（`preview-scores`）を地図と同じ段の判定（`lib/mapDisplay/valueScale.ts: bandAt`）で
   まとめ、下書きと保存済みを、それぞれの段で並べる（境界を変えると段の数も変わりうる）。
+- 地図は大きく置き、見ている範囲の道を、下書きの線で求めた道の点数（`preview-way-values`。保存済みの線を渡せば配信と同じ値）と、
+  画面で動かしている段の境界で塗る。道の線の塗り・段の色・凡例は一般の地図と同じもの（場面の組み立て）を通し、公開していない軸も
+  塗れる。点数は、線か見ている範囲が落ち着いてから取り直し（タイルごとに1回）、取り直す間は前の点数で塗る。取得の鍵に段の境界を
+  含めないので、境界だけを動かしたときは点数を取り直さずに色だけを塗り直す。向きで変わる軸は北へ走る向き、時刻で変わる軸は画面を
+  開いた時刻、速さで変わる軸は既定の速さで求める。求められなければbackendの文を出す。
 - 保存は`PUT`で、公開の状態を変えない（公開中の軸は、折れ点と表示の項目だけの差分を公開したまま保存できる）。
   断られたらbackendの文をそのまま出す。保存できたら一覧を取り直し、取り直した定義で下書きを作り直す。
 

@@ -16,7 +16,7 @@ import { bandColorsFor } from "@/lib/mapDisplay/valueScale";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import type { AxisDefinitionPayload, AxisDefinitionResponse, AxisShape } from "@/types/route";
 import AxisComposer from "./AxisComposer";
-import { AxisCalibration } from "./AxisCalibration";
+import { AxisCalibration, type CalibrationMapSlot } from "./AxisCalibration";
 import { Button } from "@/components/ui/Button/Button";
 import { textVariants } from "@/components/ui/Text/Text";
 import { calloutVariants } from "@/components/ui/Callout/Callout";
@@ -65,7 +65,7 @@ function composerTitleOf(editing: AxisDefinitionResponse | null, duplicateFrom: 
 // 軸スタジオのトップレベルコンポーネント。一覧取得・作成・更新・削除の状態管理をここに
 // 集約し、フォーム自体はAxisComposerへ委ねる。認証・route handler経由の詳細は
 // docs/modules/frontend/axis-studio.md「AxisStudio.tsx（一覧・状態管理）」節参照。
-export default function AxisStudio() {
+export default function AxisStudio({ calibrationMap }: { calibrationMap: CalibrationMapSlot }) {
   const definitionsQuery = useQuery({ queryKey: ["axis-definitions"], queryFn: listAxisDefinitions }, getQueryClient());
   const definitions = definitionsQuery.data ?? null;
   // 作成・更新以外の操作（下書きへ戻す・削除）の失敗。一覧を読み直すと消える。
@@ -304,7 +304,7 @@ export default function AxisStudio() {
         + 新しい軸を作る
       </Button>
 
-      <AxisCalibration definitions={definitions ?? []} onSaved={reload} />
+      <AxisCalibration definitions={definitions ?? []} onSaved={reload} calibrationMap={calibrationMap} />
 
       <DialogRoot
         open={composerKey !== null}

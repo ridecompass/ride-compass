@@ -8,7 +8,7 @@ import RoadInspectorPopup from "@/features/map/MapView/RoadInspectorPopup";
 import { roadWayId, type RoadSurfacePopupProperties } from "@/features/map/MapView/roadFacts";
 import * as maplibregl from "maplibre-gl";
 
-import { configureMaplibreWorker } from "@/features/map/maplibreWorker";
+import { createBaseMap } from "@/features/map/baseMap";
 import type {
   ErrorEvent as MapLibreErrorEvent,
   Map as MapLibreMap,
@@ -26,7 +26,7 @@ import type {
   RouteSegmentDetail,
   SelectedRouteSegment,
 } from "@/types/route";
-import { ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM } from "@/features/map/regionApi";
+import { mapStyleUrl, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM } from "@/features/map/regionApi";
 import type { RideConditions } from "@/features/map/regionApi";
 import { tileContainingLonLat, type TileXY } from "@/features/map/layers/dynamicWayValues";
 import {
@@ -34,8 +34,6 @@ import {
   type MapLayerDescriptor,
   type LayerDataStatusByLayer,
 } from "@/features/map/layers/mapLayers";
-import { apiPath } from "@/lib/apiPath";
-import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import { isStyleReady, reloadStyle, runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
 import {
   applyScene,
@@ -53,7 +51,6 @@ import { buildMapScene, type SceneInputs } from "@/features/map/scene/buildScene
 import { POINT_HIT_TARGET, POINT_TILE_SOURCES, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
 import { ROAD_LINE_HIT_TARGET, ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
-import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { MapLook } from "@/features/map/view/mapLook";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
@@ -72,13 +69,6 @@ import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
 import { roundToDigits } from "@/lib/numberFormat";
-
-// 基礎地図のスタイルJSON。中のタイル・スプライト・グリフのURLはbackendがBASEMAP_PUBLIC_BASE_URLで
-// 組み立てるため、`tileBaseUrl()`と同じオリジンを指すよう揃える。
-const MAP_STYLE_PATH = apiPath("/api/basemap/{path}", { path: "styles/liberty" });
-function mapStyleUrl(): string {
-  return `${tileBaseUrl()}${MAP_STYLE_PATH}`;
-}
 
 // 初期表示の覆い（「地図を読み込み中…」）を出しておく上限。覆いは基礎地図が描けた時点（"load"）で外すので、
 // これは基礎地図のタイルが止まって"load"が来ないときの保険。
@@ -105,13 +95,6 @@ function buildLayerDataSources(layers: readonly MapLayerDescriptor[]): readonly 
     layer.dataSource === "ownFetch" ? [] : [{ key: layer.id, ...TILE_SOURCE_BY_DATA_SOURCE[layer.dataSource] }],
   );
 }
-
-const MAP_UI_LOCALE: Record<string, string> = {
-  "Map.Title": "地図",
-  "AttributionControl.ToggleAttribution": "出典の表示を切り替える",
-  "AttributionControl.MapFeedback": "地図の誤りを報告する",
-  "Popup.Close": "閉じる",
-};
 
 function fitBoundsToRoutes(map: MapLibreMap, routes: RouteCandidate[]) {
   const bounds = computeRouteBounds(routes);
@@ -397,38 +380,19 @@ export default function MapView({
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    // どちらもMapを作る前に要る（Mapの生成がWorkerを起こし、スタイルの適用でタイル要求が始まる）。
-    configureMaplibreWorker();
+    // Mapを作る前に要る（スタイルの適用でタイル要求が始まる）。
     registerJmaTileProtocol();
 
     // 片付けた後に"idle"が届いても状態を書かない。
     let cancelled = false;
 
-    const map = new maplibregl.Map({
+    const map = createBaseMap({
       container: mapContainerRef.current,
-      style: mapStyleUrl(),
       center: [location.longitude, location.latitude],
       zoom: ORIGIN_ZOOM,
-      // 常に使うデータの出典は、どのレイヤーを出しているかと関係なく出す（宣言はbackend）。
-      attributionControl: { compact: true, customAttribution: [...mapDisplay.alwaysShownAttributions] },
-      // デバッグモードの間、MapLibreが出す要求を種別ごとにログする（無効の間debugLogは何もしない）。
-      transformRequest: (url, resourceType) => {
-        debugLog("map:request", `${resourceType ?? "unknown"} ${url}`);
-        return { url };
-      },
-      locale: MAP_UI_LOCALE,
     });
     mapRef.current = map;
     debugLog("map:lifecycle", "初期化", { center: [location.longitude, location.latitude], zoom: ORIGIN_ZOOM });
-
-    // 出典の表示は、データが載った時点でMapLibreが開いた状態（全文）にし、地図を一度ドラッグするまで閉じない。
-    // その間ほかのUIと重なるため、同じイベントのたびに畳む。
-    const attribEl = mapContainerRef.current.querySelector(".maplibregl-ctrl-attrib");
-    function collapseAttribution() {
-      attribEl?.classList.remove("maplibregl-compact-show");
-    }
-    map.on("styledata", collapseAttribution);
-    map.on("sourcedata", collapseAttribution);
 
     // MapLibreの内蔵の追従は、デバッグログの流入とレイアウトの変化が重なると通知を取りこぼし、地図が幅の一部に
     // しか描かれなくなる。コンテナの大きさが変わったら明示的にresizeする。
@@ -639,8 +603,6 @@ export default function MapView({
       cancelled = true;
       window.clearTimeout(initialOverlayTimer);
       resizeObserver.disconnect();
-      map.off("styledata", collapseAttribution);
-      map.off("sourcedata", collapseAttribution);
       map.off("click", handleClick);
       map.off("mousemove", handleMouseMove);
       map.off("load", handleLoad);

@@ -2,7 +2,7 @@
 
 // 較正の画面で、数値の軸と対応表の軸が共に使う部品（地図の段の境界の下書き・保存・段ごとの延長の比べ）。
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
 import { textVariants } from "@/components/ui/Text/Text";
@@ -42,10 +42,12 @@ export function useBoundaryDraft(saved: AxisDefinitionResponse) {
     if (parsed.error === null) setThresholds(parsed.values.length === 0 ? null : parsed.values);
   }
 
-  const bandLabels =
-    thresholds === null || !saved.display_band_labels_override
-      ? null
-      : resizeBandLabels(saved.display_band_labels_override, thresholds.length + 1);
+  const labelOverride = saved.display_band_labels_override;
+  // 地図の段（AxisStudio/AxisCalibration.tsx: calibrationMapPaint）がこの値で作り直すかを決めるので、境界が変わるまで同じ配列を返す。
+  const bandLabels = useMemo(
+    () => (thresholds === null || !labelOverride ? null : resizeBandLabels(labelOverride, thresholds.length + 1)),
+    [thresholds, labelOverride],
+  );
 
   return {
     thresholds,
@@ -53,6 +55,7 @@ export function useBoundaryDraft(saved: AxisDefinitionResponse) {
     error,
     changed: JSON.stringify(thresholds) !== JSON.stringify(savedThresholds),
     /** 下書きの本文へ重ねる表示の欄。段の名前の上書きは、境界の数に合わせて詰める。 */
+    bandLabels,
     overrides: { display_thresholds_override: thresholds, display_band_labels_override: bandLabels },
     setList,
     editText,
