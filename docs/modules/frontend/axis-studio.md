@@ -18,8 +18,8 @@ APIを呼ぶ）・「データ保守」タブ（派生データ鮮度台帳の�
 
 | ファイル | 責務 |
 |---|---|
-| `features/admin/AxisStudio/AxisStudio.tsx` | トップレベル。軸の一覧（下書き・公開済みのタブ）を取り、一覧の下に較正のカードを置く |
-| `features/admin/AxisStudio/AxisCalibration.tsx` | 一覧の下の「較正」のカード。軸を1つ選び、数値の軸は0点・100点にする値（密度の軸は100点にする値だけ）を実データの分布を重ねた大きなグラフか数の入力で決め、対応表の軸は`CategoricalCalibration.tsx`へ渡す。数値の軸は下書きの点数で塗った地図を見ながら決める。地図は地図の機能の部品（`features/map/DraftWayValuesMap/DraftWayValuesMap.tsx`）で、機能どうしは互いを読まないため、組み立てるページ（`app/admin/page.tsx`）が`AxisStudio`へ差し込む（`AxisStudio/AxisCalibration.tsx: CalibrationMapSlot`） |
+| `features/admin/AxisStudio/AxisStudio.tsx` | トップレベル。軸の一覧（下書き・公開済みのタブ）を取り、押した行の下にその軸の較正を開く。開くのは1つだけで、閉じた軸の較正は描かず、分布・地図の段・地図を取りに行かない |
+| `features/admin/AxisStudio/AxisCalibration.tsx` | 1つの軸の較正（一覧の行を開いたところに出る）。数値の軸は0点・100点にする値（密度の軸は100点にする値だけ）を実データの分布を重ねた大きなグラフか数の入力で決め、対応表の軸は`CategoricalCalibration.tsx`へ渡す。数値の軸は下書きの点数で塗った地図を見ながら決める。地図は地図の機能の部品（`features/map/DraftWayValuesMap/DraftWayValuesMap.tsx`）で、機能どうしは互いを読まないため、組み立てるページ（`app/admin/page.tsx`）が`AxisStudio`へ差し込む（`AxisStudio/AxisCalibration.tsx: CalibrationMapSlot`） |
 | `features/admin/AxisStudio/CategoricalCalibration.tsx` | 較正の画面の対応表の軸。種類ごとに点数の入力とその種類の道の延長の割合を並べ、点数を数で直す |
 | `features/admin/AxisStudio/calibrationParts.tsx` | 較正の画面で数値の軸と対応表の軸が共に使う部品。地図の段の境界の下書きと入力欄、段ごとの延長の下書きと保存済みの比べ、公開の状態のまま差し替える保存 |
 | `features/admin/AxisStudio/BreakpointCurveEditor.tsx` | 較正の画面の折れ点のSVGの曲線。動かせるのは0点・100点の端だけで、横（入力値）にだけ動く。背景へ実データの分布、前へ保存済みの線と動かせる段の境界を重ねる |

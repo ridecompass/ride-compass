@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ComponentProps } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
-import Disclosure from "@/components/Disclosure/Disclosure";
+import Disclosure, { DisclosureChevron } from "@/components/Disclosure/Disclosure";
 import GenerationNotice from "@/features/route/GenerationNotice/GenerationNotice";
 import { Button } from "@/components/ui/Button/Button";
 import { ConfirmDialog } from "@/components/ui/Dialog/Dialog";
@@ -828,10 +828,7 @@ function SectionDisclosure({
       bodyClassName="flex flex-col gap-2"
       summary={
         <>
-          <span
-            aria-hidden="true"
-            className="size-2 flex-shrink-0 -rotate-45 border-r-2 border-b-2 border-[var(--color-neutral)] transition-transform duration-150 group-data-[state=open]:rotate-45"
-          />
+          <DisclosureChevron />
           {title}
         </>
       }
