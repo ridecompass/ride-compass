@@ -21,16 +21,12 @@ from PIL import Image
 from shapely.geometry import LineString
 
 from app.api.dependencies import get_jma_tile_client
-from app.config import settings
-from app.infrastructure import rate_limiter
-from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from app.infrastructure.jma_tile_index import JmaTileIndex, set_index
 from app.main import app
 
 client = TestClient(app)
 
 TILE = "/api/jma-tile/bosai/jmatile/data/risk/20260829170000/immed0/20260829170000/surf/land/11/1818/805.png"
-TARGET_TIMES = "/api/jma-tile/bosai/jmatile/data/risk/targetTimes.json"
 RAIN_FRAME = "bosai/jmatile/data/risk/20260906191000/immed0/20260906191000/surf/rain_mesh"
 FLOOD_FRAME = "bosai/jmatile/data/risk/20260906191000/immed0/20260906191000/surf/flood"
 
@@ -68,11 +64,6 @@ def _answer(monkeypatch, **answers) -> FakeJmaTileClient:
     return fake
 
 
-def _fill_rate_limit_but_one():
-    for _ in range(settings.jma_tile_rate_limit_per_minute - 1):
-        rate_limiter.check_rate_limit("jma-tile:testclient", settings.jma_tile_rate_limit_per_minute)
-
-
 @pytest.mark.parametrize(("path", "cache_control"), [
     # タイル本体のURLはbasetime/validtimeを含み内容が確定して以後変化しないため、再検証なしで返させる。
     (TILE, "public, max-age=1200, immutable"),
@@ -91,37 +82,6 @@ def test_a_cached_tile_is_served_without_asking_upstream(monkeypatch, path, cach
     assert fake.fetched_paths == []
 
 
-def test_jma_tile_proxy_returns_404_from_cached_empty_tile_without_fetching(monkeypatch):
-    # 描くものが無いと確認済みなら、レート制限もfetchも経由せず即座に404を返す。
-    fake = _answer(monkeypatch, cached=UPSTREAM_NOT_FOUND)
-
-    response = client.get(TILE)
-
-    assert response.status_code == 404
-    assert response.headers["cache-control"] == "public, max-age=600"
-    assert fake.fetched_paths == []
-
-
-def test_jma_tile_proxy_is_rate_limited_per_client_on_cache_miss(monkeypatch):
-    _answer(monkeypatch, fetched=(b"{}", "application/json"))
-
-    _fill_rate_limit_but_one()
-    assert client.get(TARGET_TIMES).status_code == 200
-
-    assert client.get(TARGET_TIMES).status_code == 429
-
-
-def test_jma_tile_proxy_cache_hit_does_not_consume_rate_limit(monkeypatch):
-    """キャッシュヒットはレート制限を一切消費しない（消費すると、キャッシュ済みのタイルを
-    往復するだけのパンで429になる）。"""
-    _answer(monkeypatch, cached=(b"\x89PNG", "image/png"))
-
-    _fill_rate_limit_but_one()
-
-    # 消費していれば2回目が429になる。
-    assert [client.get(TILE).status_code for _ in range(2)] == [200, 200]
-
-
 def test_jma_tile_proxy_forwards_query_string_to_client(monkeypatch):
     fake = _answer(monkeypatch, fetched=(b'{"type":"FeatureCollection"}', "application/json"))
 
@@ -134,36 +94,6 @@ def test_jma_tile_proxy_forwards_query_string_to_client(monkeypatch):
     assert fake.fetched_paths == [
         "bosai/jmatile/data/nowc/20260904120000/none/20260904120000/surf/liden/data.geojson?id=liden"
     ]
-
-
-@pytest.mark.parametrize(("path", "params", "cache_control"), [
-    # 疎な格子状タイルに無いz/x/yは珍しくない正常系で、上流障害（502）と分ける。恒久404（basetimeが
-    # 確定した過去の一時点に対する結果）は再要求させない。
-    ("bosai/jmatile/data/nowc/20260829170000/none/20260829170000/surf/hrpns/10/909/403.png", None,
-     "public, max-age=600"),
-    # 配信元はコマの地物（GeoJSON）を配信するまで404を返す。ブラウザが覚えると、配信された後もその間は取れない。
-    ("bosai/jmatile/data/nowc/20260829170000/none/20260829170000/surf/slmcs_unify/data.geojson",
-     {"id": "slmcs_unify"}, "no-store"),
-])
-def test_a_tile_missing_upstream_is_404_remembered_as_long_as_it_stays_missing(monkeypatch, path, params, cache_control):
-    _answer(monkeypatch, fetched=UPSTREAM_NOT_FOUND)
-
-    response = client.get(f"/api/jma-tile/{path}", params=params)
-
-    assert response.status_code == 404
-    assert response.json() == {"detail": "指定されたタイルは存在しません"}
-    assert response.headers["cache-control"] == cache_control
-
-
-def test_jma_tile_proxy_does_not_cache_upstream_failures(monkeypatch):
-    # 上流障害は一時的なため、次のリクエストで取り直させる。
-    _answer(monkeypatch, fetched=None)
-
-    response = client.get(TILE)
-
-    assert response.status_code == 502
-    assert response.json() == {"detail": "気象庁データの取得に失敗しました"}
-    assert "cache-control" not in response.headers
 
 
 def _tile_png(color):

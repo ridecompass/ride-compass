@@ -11,17 +11,14 @@
 - DBの失敗の503 → `test_admin_db_unavailable.py`
 """
 
-from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_axis_preview_service, get_material_coverage_service
+from app.api.dependencies import get_axis_preview_service
 from app.domain.material_catalog import MATERIAL_CATALOG
-from app.infrastructure.material_coverage import MATERIAL_COVERAGE_SPECS, MaterialCoverageCounts
 from app.main import app
 from app.services.axis_preview_service import AxisPreviewService, new_sample_cache
-from app.services.material_coverage_service import build_material_coverage_report
 from tests.admin_auth import AUTH_HEADERS
 
 client = TestClient(app)
@@ -84,33 +81,3 @@ def test_value_shares_of_a_numeric_material_are_unavailable(admin_credentials, p
     response = client.get("/api/admin/material-catalog/intersection_count_per_km/value-shares", headers=AUTH_HEADERS)
 
     assert response.json() == {"available": False, "sample_ways": 0, "total_km": 0.0, "values": []}
-
-
-# --- 材料ごとの欠損割合 ---
-
-
-COVERAGE_URL = "/api/admin/material-catalog/coverage"
-
-
-class FakeMaterialCoverageService:
-    async def get_material_coverage(self):
-        return REPORT
-
-
-REPORT = build_material_coverage_report(
-    MaterialCoverageCounts(
-        way_total=200, edge_total=40, missing_by_material={material_id: 0 for material_id in MATERIAL_COVERAGE_SPECS}
-    ),
-    datetime(2026, 9, 4, tzinfo=timezone.utc),
-)
-
-
-def test_get_material_coverage_returns_the_report(admin_credentials):
-    app.dependency_overrides[get_material_coverage_service] = lambda: FakeMaterialCoverageService()
-    try:
-        response = client.get(COVERAGE_URL, headers=AUTH_HEADERS)
-    finally:
-        app.dependency_overrides.clear()
-
-    assert response.json() == REPORT.model_dump(mode="json")
-

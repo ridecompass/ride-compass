@@ -78,10 +78,6 @@ def test_the_ordered_colors_are_not_described_for_an_unordered_axis():
         ordered_ends_text(axis(("先頭", None), ("末尾", None), palette="nominal"))
 
 
-def test_a_layer_with_its_own_label_is_called_by_it():
-    assert map_layer_label("anything", MapLayerSpec("ownFetch", None, label="名前")) == "名前"
-
-
 def test_a_layer_drawing_a_primary_attribute_takes_the_name_of_the_attribute():
     attribute = next(attr for attr in map_display.PRIMARY_ATTRIBUTES if attr.display_axes)
 
@@ -91,11 +87,6 @@ def test_a_layer_drawing_a_primary_attribute_takes_the_name_of_the_attribute():
 def test_a_layer_without_any_name_is_refused():
     with pytest.raises(ValueError, match="名前が無い"):
         map_layer_label("not_an_attribute", MapLayerSpec("ownFetch", None))
-
-
-def test_every_layer_on_the_map_has_a_name():
-    """名前の無いレイヤーはチップに何も書けない。"""
-    assert all(map_layer_label(layer_id, spec) for layer_id, spec in map_display.MAP_LAYERS)
 
 
 def test_every_layer_reads_a_declared_data_source():

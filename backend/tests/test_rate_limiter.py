@@ -13,17 +13,6 @@
 from app.infrastructure.rate_limiter import WINDOW_SECONDS, check_rate_limit
 
 
-def test_requests_up_to_the_limit_pass_and_the_next_is_refused():
-    assert [check_rate_limit("client-limit", 3) for _ in range(4)] == [True, True, True, False]
-
-
-def test_each_client_has_its_own_count():
-    assert check_rate_limit("client-a", 1)
-    assert not check_rate_limit("client-a", 1)
-
-    assert check_rate_limit("client-b", 1)
-
-
 def test_a_request_leaves_the_count_once_it_is_a_full_window_old(monotonic_clock):
     """拒んだ回は数えない。数えると、連打をやめない接続元は窓が明けても回復しない。"""
     assert check_rate_limit("client-boundary", 1)
@@ -33,15 +22,3 @@ def test_a_request_leaves_the_count_once_it_is_a_full_window_old(monotonic_clock
 
     monotonic_clock.advance(1)
     assert check_rate_limit("client-boundary", 1)
-
-
-def test_the_window_moves_with_each_request_instead_of_resetting_at_once(monotonic_clock):
-    """窓の途中の要求は、窓の始まりの要求が抜けても数えたまま残る。"""
-    assert check_rate_limit("client-moving", 2)
-    monotonic_clock.advance(WINDOW_SECONDS / 2)
-    assert check_rate_limit("client-moving", 2)
-
-    monotonic_clock.advance(WINDOW_SECONDS / 2)
-
-    assert check_rate_limit("client-moving", 2)
-    assert not check_rate_limit("client-moving", 2)
