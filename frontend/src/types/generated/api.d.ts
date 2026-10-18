@@ -929,8 +929,6 @@ export interface components {
             dtype: "numeric" | "boolean" | "categorical";
             /** Unit */
             unit: string;
-            /** Share */
-            share: number;
             /** Value Labels */
             value_labels: {
                 [key: string]: string;

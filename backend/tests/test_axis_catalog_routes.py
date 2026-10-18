@@ -70,8 +70,8 @@ CATALOG_AXES: dict[str, AxisDefinition] = {
         shape=BreakpointLinearShape(
             terms=[
                 MaterialTerm(material="poi_signal_per_km", weight=1.0, required=False),
-                MaterialTerm(material="poi_level_crossing_per_km", weight=1.5, required=False),
-                MaterialTerm(material="poi_stop_per_km", weight=0.3, required=False),
+                MaterialTerm(material="poi_level_crossing_per_km", weight=2.5, required=False),
+                MaterialTerm(material="poi_stop_per_km", weight=0.4, required=False),
                 MaterialTerm(material="poi_crossing_per_km", weight=0.0, required=False),
             ],
             breakpoints=[(0.0, 0.0), (1.0, 50.0), (4.0, 100.0)],
@@ -80,21 +80,21 @@ CATALOG_AXES: dict[str, AxisDefinition] = {
         label="軸オ",
         is_published=True,
     ),
-    # 真偽の材料を符号の違う重みで合成する軸（材料まで分解した内訳を持つ）。
+    # 真偽の材料を符号の違う重みで合成する軸（材料まで分解した内訳を持つ）。重みと割合は応答の他の数と重ならない値にする。
     "axis_boolean_terms": AxisDefinition(
         axis_id="axis_boolean_terms",
         shape=BreakpointLinearShape(
             terms=[
-                MaterialTerm(material="lit", weight=-50.0),
-                MaterialTerm(material="has_tunnel", weight=50.0),
+                MaterialTerm(material="lit", weight=-0.29),
+                MaterialTerm(material="has_tunnel", weight=0.37),
             ],
-            breakpoints=[(-50.0, 0.0), (50.0, 100.0)],
+            breakpoints=[(-1.0, 0.0), (1.0, 100.0)],
         ),
         default_weight=0.0,
         label="軸ナ",
         is_published=True,
     ),
-    # 分類の軸と単位のある材料を合成する軸（内訳に対訳・単位・割り切れない割合が出る）。
+    # 分類の軸と単位のある材料を合成する軸（内訳に対訳・単位が出る）。
     "axis_mixed_terms": AxisDefinition(
         axis_id="axis_mixed_terms",
         shape=BreakpointLinearShape(
@@ -236,10 +236,32 @@ def test_get_axis_catalog_includes_material_breakdown(client, catalog_axes):
     # 単位が定まる軸は分解しない（軸単位の生値で足りる）。
     assert entries["axis_way_value_signed"]["material_breakdown"] == []
     night = entries["axis_boolean_terms"]["material_breakdown"]
-    assert [(entry["material_id"], entry["share"]) for entry in night] == [("lit", 0.5), ("has_tunnel", 0.5)]
-    # 割合は画面に出す桁へ丸めて配り、分類の材料はルート結果が値ごとの割合を日本語にする対訳を、数値の材料は単位を運ぶ。
-    mixed = {entry["material_id"]: entry for entry in entries["axis_mixed_terms"]["material_breakdown"]}
-    signal = mixed["poi_signal_per_km"]
-    assert (signal["share"], signal["unit"]) == (0.6667, MATERIAL_CATALOG["poi_signal_per_km"].unit)
-    assert mixed[SURFACE_ESTIMATE]["share"] == 0.3333
-    assert mixed[SURFACE_ESTIMATE]["value_labels"] == MATERIAL_CATALOG[SURFACE_ESTIMATE].value_labels
+    assert [entry["material_id"] for entry in night] == ["has_tunnel", "lit"]
+    # 分類の材料はルート結果が値ごとの割合を日本語にする対訳を、数値の材料は単位を運ぶ。
+    mixed = entries["axis_mixed_terms"]["material_breakdown"]
+    assert [entry["material_id"] for entry in mixed] == ["poi_signal_per_km", SURFACE_ESTIMATE]
+    assert mixed[0]["unit"] == MATERIAL_CATALOG["poi_signal_per_km"].unit
+    assert mixed[1]["value_labels"] == MATERIAL_CATALOG[SURFACE_ESTIMATE].value_labels
+
+
+def _numbers(value) -> set[float]:
+    if isinstance(value, bool):
+        return set()
+    if isinstance(value, (int, float)):
+        return {round(float(value), 4)}
+    if isinstance(value, dict):
+        return set().union(*map(_numbers, value.values()))
+    if isinstance(value, list):
+        return set().union(*map(_numbers, value))
+    return set()
+
+
+def test_get_axis_catalog_does_not_serve_the_material_weights(client, catalog_axes):
+    """材料の重みは較正の値で、このカタログは認証なしで誰でも読める（`docs/architecture/data-sources.md`「OSM から作った値と独自の層」）。
+
+    重みも、そこから出る正規化の割合も、応答のどこかに数として出れば読み取れる。
+    """
+    weights = {-0.29, 0.29, 0.37}
+    shares = {round(0.37 / 0.66, 4), round(0.29 / 0.66, 4)}
+
+    assert _numbers(client.get("/api/axis-catalog").json()) & (weights | shares) == set()

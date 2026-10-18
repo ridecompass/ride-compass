@@ -155,33 +155,33 @@ def test_a_knot_whose_score_does_not_rise_is_dropped_and_the_later_knots_still_c
 
 # --- 凡例の目盛り ---
 
-RAIN_LINE = ((0.0, 0.0), (5.0, 30.0), (20.0, 70.0), (50.0, 100.0))
+RAIN_LINE = ((0.0, 0.0), (4.0, 25.0), (16.0, 60.0), (40.0, 100.0))
 
 
 @pytest.mark.parametrize(
     "breakpoints",
-    [RAIN_LINE, ((1.0, 10.0), (5.0, 30.0), (20.0, 70.0), (50.0, 100.0))],
+    [RAIN_LINE, ((1.0, 10.0), (4.0, 25.0), (16.0, 60.0), (40.0, 100.0))],
     ids=["0から始まる折れ線", "量も得点も0より上から始まる折れ線"],
 )
 def test_an_axis_scoring_a_quantity_is_cut_at_its_knots_and_written_in_that_quantity(breakpoints):
     """雨のように単位のある量1つから得点を作る軸は、軸が効きの変わり目とした節で段を切り、凡例はその量で書く。"""
     paint = map_paint(shaped_axis(_line("rain_live", breakpoints=breakpoints)))
 
-    assert paint.thresholds == [30.0, 70.0, 100.0]
-    assert paint.legend == MapLegendScale(boundaries=[5.0, 20.0, 50.0], unit="mm")
+    assert paint.thresholds == [25.0, 60.0, 100.0]
+    assert paint.legend == MapLegendScale(boundaries=[4.0, 16.0, 40.0], unit="mm")
 
 
 @pytest.mark.parametrize(
     ("breakpoints", "scores", "quantities"),
     [
         (((0.0, 0.0), (4.0, 20.0), (10.0, 80.0)), [10.0, 50.0], [2.0, 7.0]),
-        # 丸めた得点73.1から折れ線を逆に辿ると7.0026。同じ得点へ戻る、桁の最も少ない量で書く。
-        (((0.0, 0.0), (9.58, 100.0)), [73.1], [7.0]),
-        (RAIN_LINE, [40.0], [8.75]),
+        # 丸めた得点48.7から折れ線を逆に辿ると3.9983。同じ得点へ戻る、桁の最も少ない量で書く。
+        (((0.0, 0.0), (8.21, 100.0)), [48.7], [4.0]),
+        (RAIN_LINE, [46.0], [11.2]),
         # 折れ線のいちばん上の得点で刻んだ境界も、量で書く。
-        (RAIN_LINE, [100.0], [50.0]),
+        (RAIN_LINE, [100.0], [40.0]),
         # 同じ得点へ戻る量が小数6桁まで要る。
-        (((0.0, 0.0), (0.001, 100.0)), [73.1], [0.000731]),
+        (((0.0, 0.0), (0.001, 100.0)), [48.7], [0.000487]),
     ],
 )
 def test_score_boundaries_of_an_axis_scoring_a_quantity_are_written_in_that_quantity(breakpoints, scores, quantities):
@@ -194,7 +194,7 @@ def test_score_boundaries_of_an_axis_scoring_a_quantity_are_written_in_that_quan
 SCORE_LEGEND_AXES = {
     "量に単位が無い": shaped_axis(_line("num_live", "num_other")),
     "得点が量について増えない区間がある": shaped_axis(
-        _line("rain_live", breakpoints=((0.0, 0.0), (5.0, 50.0), (20.0, 50.0), (50.0, 100.0)))
+        _line("rain_live", breakpoints=((0.0, 0.0), (4.0, 50.0), (16.0, 50.0), (40.0, 100.0)))
     ),
     "評価の丸めでは取らない得点の上書き": shaped_axis(
         _line("rain_live", breakpoints=RAIN_LINE), display_thresholds_override=[40.05]

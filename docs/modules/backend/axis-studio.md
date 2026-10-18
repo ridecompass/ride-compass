@@ -85,6 +85,7 @@
 ## 軸の定義をファイルから本番へ入れる（`scripts/axis_apply.py`）
 
 軸スタジオの画面を通さずに、軸1本の定義のJSON（管理APIの単体取得と同じ項目）を本番の管理APIへ入れる手元の道具。
+JSONはリポジトリの外に置き、コミットしない（定義は較正の値を持つ。[データソース](../../architecture/data-sources.md)「OSM から作った値と独自の層」）。
 書く口は管理APIだけで、DBへ直接は書かない（書き込みのガードと`AXIS_DEFINITIONS`の差し替えを画面と同じく通す）。
 
 - **既定は差の表示だけ**。今の定義は管理APIの単体取得から読む——公開の軸カタログは下書きの軸・0次条件・時間帯を持たず、
@@ -341,8 +342,9 @@ DB側の値が変わっても追従しない。軸の中身が主題でないテ
 うえ、`shape.preprocess`が材料単位では効かない）。導出の根拠と、値の運搬・表示の詳細は
 [評価・スコアリング](evaluation-scoring.md)「ルート単位の集約」節を参照。
 
-`GET /api/axis-catalog`が`material_breakdown`として、材料id・表示名・型・単位・
-正規化重みの並び（`axis_raw_value.py: axis_material_breakdown`が分解の結果へ材料カタログの宣言を添える）で配信する（フロントは材料の対応表も並べ替えも持たない）。
+`GET /api/axis-catalog`が`material_breakdown`として、材料id・表示名・型・単位の並び
+（`axis_raw_value.py: axis_material_breakdown`が分解の結果へ材料カタログの宣言を添える）で配信する（フロントは材料の対応表も並べ替えも持たない）。
+並びだけを配り、割合は配らない——材料の重みは較正の値で、この軸カタログは認証なしで読める。
 
 ## 一次属性の語彙（`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`、別系統）
 
