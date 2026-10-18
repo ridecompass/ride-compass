@@ -1632,6 +1632,62 @@
         ]
       }
     },
+    "/api/admin/axis-definitions/preview-way-values": {
+      "post": {
+        "tags": [
+          "axis-admin"
+        ],
+        "operationId": "preview_way_values_api_admin_axis_definitions_preview_way_values_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WayValuesPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "object",
+                  "title": "Response Preview Way Values Api Admin Axis Definitions Preview Way Values Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
     "/api/admin/tuning": {
       "get": {
         "tags": [
@@ -6533,6 +6589,81 @@
           "undetermined"
         ],
         "title": "WayValueFormula"
+      },
+      "WayValuesPreviewRequest": {
+        "properties": {
+          "axis_id": {
+            "type": "string",
+            "title": "Axis Id"
+          },
+          "shape": {
+            "$ref": "#/components/schemas/BreakpointLinearShape-Input"
+          },
+          "z": {
+            "type": "integer",
+            "maximum": 15.0,
+            "minimum": 12.0,
+            "title": "Z"
+          },
+          "x": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "X"
+          },
+          "y": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Y"
+          },
+          "bearing_deg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 360.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bearing Deg"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "speed_kmh": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 60.0,
+                "minimum": 5.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed Kmh"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "axis_id",
+          "shape",
+          "z",
+          "x",
+          "y"
+        ],
+        "title": "WayValuesPreviewRequest"
       },
       "WbgtReading": {
         "properties": {
