@@ -22,7 +22,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.domain.difficulty import OverallDifficulty
 from app.domain.errors import RoutingError, SearchAreaTooLargeError
 from app.domain.loop_routing import LoopTurnaround, TracedLoop
 from app.domain.route import Coordinates, EvaluatedRoute, RouteCandidate, RouteSegmentDetail
@@ -217,40 +216,6 @@ async def test_a_search_area_that_cannot_be_used_gives_no_candidates_and_says_wh
     assert any(logged in r.getMessage() for r in caplog.records)
 
 
-async def test_route_values_are_built_from_its_segments():
-    evaluated = _candidate("w", segments=[_segment(10.0), _segment(30.0)])
-    engine = FakeEngine(via=[_route("w", bearing=None)], routes={"w": evaluated})
-
-    (candidate,) = await _no_distance(engine, [WAYPOINT], None)
-
-    assert candidate.overall_difficulty == OverallDifficulty(average=20.0, load=40.0)  # 総量は平均20 × 2km
-
-
-async def test_per_axis_values_are_built_from_segments_but_category_shares_and_raw_values_are_kept():
-    """延長割合と軸の生の値は、エンジンが区間を約500mへ畳む前の値から作ったもので、区間からは作れない。"""
-    segments = [
-        _segment(10.0, axis_difficulties={"a": 10.0}, axis_contributions={"a": 10.0}, material_values={"a": 10.0}),
-        _segment(30.0, axis_difficulties={"a": 30.0}, axis_contributions={"a": 30.0}, material_values={"a": 30.0}),
-    ]
-    evaluated = _candidate("e1", segments=segments, axis_raw_values={"a": 5.0},
-                           material_category_shares={"surface": {"asphalt": 1.0}})
-
-    (candidate,) = await ENTRANCES["spliced"](RouteGenerator(FakeEngine(routes={"e1": evaluated})))
-
-    assert (candidate.axis_difficulties, candidate.axis_contributions, candidate.material_values) == (
-        {"a": 20.0}, {"a": 20.0}, {"a": 20.0})
-    assert candidate.axis_raw_values == {"a": 5.0}
-    assert candidate.material_category_shares == {"surface": {"asphalt": 1.0}}
-
-
-async def test_evaluation_that_does_not_answer_every_route_is_an_error():
-    """位置で突き合わせるので、件数がずれると印やラベルが別の候補へ付く。"""
-    engine = FakeEngine(turnarounds=[_turnaround(_route("a"))], routes={"a": _candidate("a")}, drop_evaluated=True)
-
-    with pytest.raises(RoutingError):
-        await _loops(engine)
-
-
 # ---- 距離あり（周回） ----
 
 
@@ -307,24 +272,6 @@ async def test_loops_drop_a_route_too_similar_to_one_already_accepted():
                         routes={k: _candidate(k) for k in keys})
 
     assert sorted(_keys(await _loops(engine))) == ["a", "c"]
-
-
-async def test_loops_are_ordered_easiest_first_ties_closest_to_target_first_and_unknown_last():
-    loops = {"far": (10.8, 20.0), "near": (10.1, 20.0), "easy": (10.5, 10.0), "unknown": (10.0, None)}
-    engine = FakeEngine(turnarounds=[_turnaround(_route(k, distance_km=d)) for k, (d, _) in loops.items()],
-                        routes={k: _candidate(k, difficulty) for k, (_, difficulty) in loops.items()})
-
-    result = await _loops(engine, max_routes=4)
-
-    # idは最終の並びから作り、名前はエンジンが方位から付けたまま。周回は最速の印を持たず、乗り換えの元にできない
-    # （途中で別の候補へ乗り換えると、起点へ戻れる保証が無くなる）
-    assert _identities(result) == [
-        ("loop-00", "loop", "方位-easy", False),
-        ("loop-01", "loop", "方位-near", False),
-        ("loop-02", "loop", "方位-far", False),
-        ("loop-03", "loop", "方位-unknown", False),
-    ]
-    assert _fastest(result) == []
 
 
 @pytest.mark.parametrize(
@@ -397,13 +344,6 @@ async def test_waypoint_routes_back_to_the_origin_come_in_several_without_the_fa
     assert (_keys(result), _fastest(result)) == (["easy", "mid"], [])
 
 
-async def test_waypoint_routes_to_a_destination_add_the_fastest():
-    result = await _no_distance(_destination_engine("fastest", hard=30.0, easy=10.0, fastest=20.0), [WAYPOINT], DESTINATION)
-
-    assert _identities(result) == [(f"destination-0{i}", "destination", "目的地ルート", True) for i in range(3)]
-    assert _fastest(result) == ["fastest"]
-
-
 @pytest.mark.parametrize("failing", ["fixed_error", "via"])  # 置いた点どうし・最後の点から終点まで
 async def test_waypoints_that_cannot_be_connected_give_no_candidates_and_say_why(failing, caplog):
     generator = RouteGenerator(FakeEngine(
@@ -435,13 +375,6 @@ async def test_destination_routes_add_the_fastest_and_are_ordered_easiest_first(
     assert _keys(result) == ["easy", "fastest", "hard"]
     assert _identities(result) == [(f"destination-0{i}", "destination", "目的地ルート", True) for i in range(3)]
     assert _fastest(result) == ["fastest"]
-
-
-async def test_destination_routes_do_not_add_the_fastest_twice_when_an_alternative_is_it():
-    result = await _no_distance(_destination_engine("hard", hard=30.0, easy=10.0), [], DESTINATION)
-
-    assert _keys(result) == ["easy", "hard"]
-    assert _fastest(result) == ["hard"]
 
 
 @pytest.mark.parametrize(

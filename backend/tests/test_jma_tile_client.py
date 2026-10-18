@@ -2,11 +2,11 @@
 
 入口は`JmaTileClient`の`get_cached`・`fetch`・`store`・`get`と、`is_target_times_path`・`get_target_times`。
 上流はrespxの経路、Redisはfakeredis、時計はfreezegunで与え、待ちは時計を進める代役で受ける。
+どのパスが「配信前に404が返る地物」か（`infrastructure/jma_tile_paths.py: is_final_absence`）も、ここで404を覚えるか
+どうかで見る。入力には宣言にある地物（落雷）とタイル（土砂キキクル）のパスを1つずつ使う。
 
 ここで見ないもの:
 - 中身が空のタイルをフラグで持つこと・Redisの値の形 → `test_jma_tile_redis_cache.py`
-- どのパスが「配信前に404が返る地物」か（`infrastructure/jma_tile_paths.py: is_final_absence`） → `test_jma_tile_paths.py`。
-  ここでは宣言にある地物（落雷）とタイル（土砂キキクル）のパスを1つずつ入力に使う
 - 降水のタイルの色の塗り替え → `test_jma_tile_recolor.py`。ここでは取得したタイルに塗り替えが当たることだけを見る
 - 404・502・`Cache-Control`への振り分け、レート制限を当てる順序 → `test_jma_tile_routes.py`
 - 解いた行をコマにする読み方 → `test_jma_tile_specs.py`

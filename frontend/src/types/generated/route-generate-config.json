@@ -165,7 +165,16 @@
         "layer": "surface",
         "layer_label": "路面の種類",
         "label": "舗装",
-        "description": "路面がアスファルト・舗装[種別不明]・チップシール舗装・コンクリート・コンクリート版・コンクリート帯[轍部のみ舗装]・石畳[切石]・レンガ舗装の道[OSM の surface タグ]。",
+        "description": "路面がアスファルト・舗装[種別不明]・チップシール舗装・コンクリート・コンクリート版・コンクリート帯[轍部のみ舗装]の道[OSM の surface タグ]。",
+        "default": "pass",
+        "former_key": null
+      },
+      {
+        "key": "surface.paving_stones",
+        "layer": "surface",
+        "layer_label": "路面の種類",
+        "label": "敷石・レンガ",
+        "description": "路面が石畳[切石]・レンガ舗装の道[OSM の surface タグ]。",
         "default": "pass",
         "former_key": null
       },

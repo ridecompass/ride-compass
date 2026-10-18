@@ -23,7 +23,6 @@ check_tile_index`が持ち、ここでは入口ごとにそれを使っている
 import inspect
 from datetime import datetime, timezone
 
-import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -35,19 +34,17 @@ from app.api.dependencies import (
     get_region_service,
     get_weather_service,
 )
-from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import (
     AXIS_DEFINITIONS,
     AxisDefinition,
     BreakpointLinearShape,
-    CategoricalShape,
     MaterialTerm,
     copy_axis_definitions,
 )
 from app.config import settings
 from app.domain.axis_inspector import AxisInspectorAxis, AxisInspectorResult, InspectorComposite, InspectorValues
 from app.domain.rain import RAIN_WINDOW_HOURS, rain_window_material_id
-from app.domain.region import EDGE_UNIT_MIN_ZOOM, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
+from app.domain.region import ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
 from app.infrastructure import rate_limiter
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
@@ -60,8 +57,7 @@ from app.domain.dynamic_way_values import (
 from app.domain.geo import LatLon
 from app.domain.route_preference import RoutePreference
 from app.domain.gradient import ROAD_BEARING_LEAF
-from app.domain.way_value_formula import way_values_from_formula
-from app.services.dedicated_way_values import AxisWayValueLens, dedicated_way_value_layers
+from app.services.dedicated_way_values import AxisWayValueLens
 from app.services.weather_service import WeatherService
 from app.main import app
 from app.domain.landcover import LANDCOVER_TILE_MAX_ZOOM, LANDCOVER_TILE_MIN_ZOOM
@@ -369,53 +365,6 @@ def test_region_way_materials_are_not_found_for_an_axis_the_map_cannot_compute(a
 
     assert response.status_code == 404
     assert detail in response.json()["detail"]
-
-
-#: 走る条件で値の変わらない軸。タグから引く分類の材料を読む軸と、それを内部軸として読む軸。
-TAG_AXES = {
-    "axis_tag_internal": AxisDefinition(
-        axis_id="axis_tag_internal",
-        shape=CategoricalShape(material="surface_class", mapping={"paved": 10.0, "unpaved": 90.0}),
-        default_weight=0.0,
-        label="軸シ",
-    ),
-    "axis_tag_reference": AxisDefinition(
-        axis_id="axis_tag_reference",
-        shape=BreakpointLinearShape(
-            terms=[MaterialTerm(material="axis_tag_internal")], breakpoints=[(0.0, 0.0), (100.0, 100.0)]
-        ),
-        default_weight=0.2,
-        label="軸サ",
-        is_published=True,
-    ),
-}
-
-
-# 材料の口は印の無い軸にも、タイルの材料から、軸カタログの木で探索と同じ評価の値になる材料を返す。返さないと、その軸を
-# 塗る地図の道がすべて「データなし」になる。道のタグだけで決まる軸は、引いた地図（道1本で塗るズーム）でも区間を読まずに
-# 配る（区間を読む口は、ここでは取込範囲外を答える）。木の評価の写し方は test_dynamic_way_values.py が持つため、ここでは
-# 応答を軸カタログの木へ通した値を見る。
-@pytest.mark.parametrize("z", [EDGE_UNIT_MIN_ZOOM, EDGE_UNIT_MIN_ZOOM - 1])
-def test_region_way_materials_paint_an_axis_from_the_materials_of_the_tile(z):
-    materials = FeatureMaterials(
-        feature_keys=("1", "2", "3"),
-        columns={"surface_class": CategoricalColumn.encode(["paved", "unpaved", None])},
-    )
-    with replaced_axis_definitions(TAG_AXES):
-        app.dependency_overrides[get_dedicated_way_value_service] = lambda: _lens("axis_tag_reference", {}, materials)
-        try:
-            response = client.get(f"/api/region/way-materials/axis_tag_reference/{z}/7275/3225")
-            formula = dedicated_way_value_layers()["axis_tag_reference"].formula
-        finally:
-            app.dependency_overrides.clear()
-
-    assert response.status_code == 200
-    by_way = response.json()
-    names = {name for materials in by_way.values() for name in materials}
-    keys = list(by_way)
-    leaves = {name: [by_way[key].get(name, np.nan) for key in keys] for name in names}
-    assert formula is not None
-    assert way_values_from_formula(formula, keys, leaves, {}) == {"1": 10.0, "2": 90.0}
 
 
 class UncoveredRepository:

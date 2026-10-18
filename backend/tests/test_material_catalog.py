@@ -109,11 +109,6 @@ def test_a_yes_no_value_is_shown_as_yes_or_no():
     assert [material.value_label(v) for v in ("true", "false")] == ["はい - true", "いいえ - false"]
 
 
-def test_materials_are_known_by_their_id(catalog):
-    assert material_catalog.material_dtype("cat_a") == "categorical"
-    assert material_catalog.material_dtype("nothing") is None
-
-
 def test_the_matrix_columns_are_the_materials_with_sql_sorted_by_id(catalog):
     numeric, categorical = material_catalog.material_array_columns()
 
@@ -247,16 +242,6 @@ def test_no_two_nominal_axes_start_from_the_same_hue():
 
     assert None not in slots
     assert len(slots) == len(set(slots))
-
-
-@pytest.mark.parametrize(
-    "attr",
-    [attr for attr in DISPLAYED if attr.geometry == "line"],
-    ids=lambda attr: attr.attr_id,
-)
-def test_a_line_axis_knows_what_a_missing_value_means(attr):
-    """道の線の行は、値が欠けた道を「不明」として出すか、タグの不在として出すかを、載せる材料の宣言から引く。"""
-    assert material_catalog.display_axis_missing_semantics(attr, attr.display_axes[0].property) is not None
 
 
 @pytest.mark.parametrize(

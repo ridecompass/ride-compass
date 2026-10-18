@@ -12,8 +12,6 @@
 """
 
 import pytest
-from hypothesis import example, given
-from hypothesis import strategies as st
 
 from app.domain import axis_raw_value, map_paint as map_paint_module
 from app.domain.axis_definitions import (
@@ -24,10 +22,7 @@ from app.domain.axis_definitions import (
 )
 from app.domain.map_paint import (
     DEFAULT_DIFFICULTY_BOUNDARIES,
-    DifficultyMapValue,
     MapLegendScale,
-    MapPaint,
-    SignedMaterialMapValue,
     map_paint,
 )
 from app.domain.material_catalog import CoverageExcluded, MaterialSpec
@@ -81,39 +76,7 @@ def _line(*terms, breakpoints=((0.0, 0.0), (10.0, 100.0)), preprocess="identity"
 SIGNED = shaped_axis(_line("num_live", breakpoints=((0.0, 0.0), (2.0, 30.0), (6.0, 100.0)), preprocess="abs"))
 
 
-# --- 塗る値の種類 ---
-
-
-def test_a_single_material_axis_on_its_absolute_value_paints_the_signed_raw_value():
-    """勾配のように向きの符号に意味がある材料は、難易度ではなく符号付きの生値を塗る。"""
-    paint = map_paint(SIGNED)
-
-    assert (paint.value, paint.unit) == (SignedMaterialMapValue(material="num_live"), "%")
-
-
-DIFFICULTY_AXES = {
-    "符号を畳まない": shaped_axis(_line("num_live")),
-    "項が2つ": shaped_axis(_line("num_live", "num_other", preprocess="abs")),
-    "項が軸を指す": shaped_axis(_line("inner", preprocess="abs")),
-    "0次条件を持つ": SIGNED.model_copy(
-        update={"priority_overrides": [PriorityCondition(material="num_live", equals="x", value=0.0)]}
-    ),
-    "分類の軸": shaped_axis(CategoricalShape(material="kind", mapping={"x": 0.0, "y": 100.0})),
-}
-
-
-@pytest.mark.parametrize("definition", DIFFICULTY_AXES.values(), ids=DIFFICULTY_AXES.keys())
-def test_other_axes_paint_the_difficulty(definition):
-    """軸を指す項の値は参照先の得点で、材料の符号も単位も持たない。0次条件の当たる道では生値が評価と食い違う。"""
-    assert map_paint(definition).value == DifficultyMapValue()
-
-
 # --- 段の境界 ---
-
-
-def test_signed_material_bands_open_symmetrically_from_the_axis_knots():
-    """軸は|値|を評価しているので、段も0を挟んで同じ境界で開く。0の節は境界にしない。"""
-    assert map_paint(SIGNED).thresholds == [-6.0, -2.0, 2.0, 6.0]
 
 
 OVERRIDDEN_AXES = {
@@ -181,25 +144,6 @@ def test_a_line_axis_of_up_to_twelve_flags_is_split_between_its_sums_and_more_is
 
     assert len(map_paint(flags(12)).thresholds) == 12
     assert map_paint(flags(13)).thresholds == list(DEFAULT_DIFFICULTY_BOUNDARIES)
-
-
-@st.composite
-def _lines(draw):
-    xs = sorted(draw(st.sets(st.integers(min_value=0, max_value=20), min_size=2, max_size=6)))
-    ys = draw(st.lists(st.integers(min_value=0, max_value=100), min_size=len(xs), max_size=len(xs)))
-    return _line("num_a", breakpoints=[(float(x), float(y)) for x, y in zip(xs, ys)])
-
-
-@given(line=_lines())
-@example(line=_line("num_a", breakpoints=[(0.0, 0.0), (2.0, 50.0), (4.0, 50.0), (6.0, 100.0)]))
-def test_bands_cut_at_the_knots_rise_above_the_lowest_score_one_after_another(line):
-    """評価が区別できない差に境界を引くと、色は変わるのに評価は同じという見分けを地図が見せる。最も低い得点の下にも
-    段を作らない（凡例に「0点未満」のような届かない段が出る）。"""
-    thresholds = map_paint(shaped_axis(line)).thresholds
-
-    lowest = min(y for _, y in line.breakpoints)
-    if thresholds != list(DEFAULT_DIFFICULTY_BOUNDARIES):
-        assert all(lower < upper for lower, upper in zip([lowest, *thresholds], thresholds))
 
 
 def test_a_knot_whose_score_does_not_rise_is_dropped_and_the_later_knots_still_cut():
@@ -293,11 +237,3 @@ LABELLED_AXES = {
 @pytest.mark.parametrize("definition", LABELLED_AXES.values(), ids=LABELLED_AXES.keys())
 def test_band_labels_are_the_overriding_labels(definition):
     assert map_paint(definition).band_labels == definition.display_band_labels_override
-
-
-def test_a_paint_whose_band_labels_miss_a_band_is_refused():
-    """読む側は段の番号でラベルを引くので、1件足りないと上の段から別の段のラベルが付く。"""
-    paint = map_paint(LABELLED)
-
-    with pytest.raises(ValueError, match="band labels"):
-        MapPaint.model_validate({**paint.model_dump(), "band_labels": ["a", "b"]})

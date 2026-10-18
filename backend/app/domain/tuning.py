@@ -194,6 +194,11 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     ),
     # 路面の区分ごとの転がり抵抗。どの区分がどの値を使うかは`domain/road.py`の路面の見込みの宣言が持つ。
     TuningParameter(
+        "speed.crr_paving_stones",
+        "転がり抵抗", "", 0.0065, 0.001, 0.1, TuningEffect.IMMEDIATE,
+        f"切石・レンガの敷石の計測値が見当たらないため、舗装（{_CRR_ID}）と石畳（speed.crr_cobblestone）の間に置く。",
+    ),
+    TuningParameter(
         "speed.crr_compacted",
         "転がり抵抗", "", 0.010, 0.001, 0.1, TuningEffect.IMMEDIATE,
         f"締め固めた路面の計測値が見当たらないため、舗装（{_CRR_ID}）と砂利（{_CRR_GRAVEL_ID}）の中間に置く。",

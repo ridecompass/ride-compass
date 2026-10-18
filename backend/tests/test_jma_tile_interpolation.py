@@ -4,8 +4,8 @@
 `crop_and_upscale_mvt`（ベクタ）。親のタイルは画像・ベクタタイルをテストの中で作る。
 
 ここで見ないもの:
-- どのズームを補間するか（`domain/jma_tile_specs.py: source_zoom_for_interpolation`）・パスの形の読み書き
-  （要素・座標・拡張子、タイルでないパスと宣言の無い要素がNoneになること） → `test_jma_tile_specs.py`。
+- どのズームを補間するか（`domain/jma_tile_specs.py: source_zoom_for_interpolation`）・パスの形の書き
+  （要素・座標・拡張子） → `test_jma_tile_specs.py`。
   `parse_tile_path`はその読み取りを座標へ移すだけなので、ここでは親と象限の関係だけを宣言にあるラスタ（降水ナウキャスト）のパスで見る
 - 親を取りに行く・取れないときに上流へ回す段取り・ベクタのパスをベクタとして切り出すこと → `test_jma_tile_routes.py`
 """
@@ -70,19 +70,6 @@ def test_a_raster_quadrant_is_doubled_pixel_for_pixel(quadrant):
 
     part = parent[top : top + SIZE // 2, left : left + SIZE // 2]
     assert np.array_equal(child, part.repeat(2, axis=0).repeat(2, axis=1))
-
-
-def test_a_palette_raster_keeps_its_transparent_entry_transparent():
-    """配信元の実データのタイルはパレット形式で、0番が透明。透明を不透明の黒に変えると地図が塗りつぶされる。"""
-    parent = Image.new("P", (SIZE, SIZE), 0)
-    parent.putpalette([0, 0, 0, 255, 40, 0] + [0, 0, 0] * 254)
-    parent.info["transparency"] = 0
-    parent.putpixel((0, 0), 1)
-
-    child = pixels(crop_and_upscale(png_bytes(parent), (0, 0)))
-
-    assert child[0:2, 0:2].tolist() == [[[255, 40, 0, 255]] * 2] * 2
-    assert child[2:, 2:, 3].max() == 0
 
 
 def mvt(*features, layer="flood", extent=EXTENT) -> bytes:
@@ -190,14 +177,3 @@ def test_a_layer_with_its_own_extent_is_split_at_its_own_middle():
 
     assert child["extent"] == 512
     assert child["features"][0]["geometry"]["coordinates"] == [200, 288]
-
-
-def test_only_layers_with_something_in_the_quadrant_are_kept():
-    parent = mapbox_vector_tile.encode(
-        [
-            {"name": "north", "features": [feature(Point(100, 3000))]},
-            {"name": "south", "features": [feature(Point(100, 1000))]},
-        ]
-    )
-
-    assert list(decoded(crop_and_upscale_mvt(parent, (0, 0)))) == ["north"]

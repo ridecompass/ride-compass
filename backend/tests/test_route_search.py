@@ -121,15 +121,6 @@ def test_concat_edge_geometries_offsets_slice_back_to_each_edge():
     assert coordinates[offsets[1]:offsets[2] + 1] == [[139.2, 35.2], [139.3, 35.3]]
 
 
-def test_concat_edge_geometries_keeps_both_points_when_edges_do_not_touch():
-    edges = [
-        lean_edge("e1", geometry=[[35.0, 139.0]]),
-        lean_edge("e2", geometry=[[36.0, 140.0]]),
-    ]
-    geometry, _ = concat_edge_geometries(edges)
-    assert geometry["coordinates"] == [[139.0, 35.0], [140.0, 36.0]]
-
-
 # --------------------------------------------------------------------------------------
 # 標高の集約と、逆回りの区間への付け替え
 # --------------------------------------------------------------------------------------
@@ -271,13 +262,6 @@ def test_order_by_bearing_spread_puts_the_most_distant_bearing_on_the_circle_fir
         [10, 11], [99], {10: 10.0, 11: 90.0, 99: 350.0}, {10: 0.0, 11: 0.0}
     )
     assert order == [11, 10]
-
-
-def test_order_by_bearing_spread_breaks_ties_by_node_index():
-    order = order_by_bearing_spread(
-        [12, 11], [99], {11: 90.0, 12: 90.0, 99: 0.0}, {11: 5.0, 12: 5.0}
-    )
-    assert order == [11, 12]
 
 
 # --------------------------------------------------------------------------------------

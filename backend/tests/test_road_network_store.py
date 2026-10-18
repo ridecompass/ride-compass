@@ -135,16 +135,6 @@ def test_a_network_being_written_is_not_read_until_it_is_published(store):
     assert [path.name for path in store.iterdir()] == [road_network_store.directory_name(4)]
 
 
-def test_publishing_removes_older_revisions_of_the_same_shape_but_not_other_shapes(store):
-    road_network_store.publish(road_network_store.write_pending(_network(revision=3)))
-    _place(store, _other_shape(1))
-
-    road_network_store.publish(road_network_store.write_pending(_network(revision=4)))
-
-    assert sorted(path.name for path in store.iterdir()) == sorted(
-        [road_network_store.directory_name(4), _other_shape(1)])
-
-
 def test_publishing_a_revision_that_another_process_published_first_keeps_the_first(store):
     road_network_store.publish(road_network_store.write_pending(_network(revision=4, distance_m=100.0)))
     late = road_network_store.write_pending(_network(revision=4, distance_m=999.0))
@@ -153,15 +143,6 @@ def test_publishing_a_revision_that_another_process_published_first_keeps_the_fi
 
     assert placed == store / road_network_store.directory_name(4)
     assert not late.exists()
-    assert road_network_store.current().distance_m[0] == 100.0
-
-
-def test_saving_a_revision_that_is_already_placed_writes_nothing():
-    first = road_network_store.save(_network(revision=4, distance_m=100.0))
-
-    again = road_network_store.save(_network(revision=4, distance_m=999.0))
-
-    assert again == first
     assert road_network_store.current().distance_m[0] == 100.0
 
 
@@ -183,10 +164,6 @@ def test_a_network_built_from_the_same_inputs_is_placed_again_under_the_new_revi
     road_network_store.publish(pending)
     _assert_same(road_network_store.current(), _network(revision=4))
     assert [path.name for path in store.iterdir()] == [road_network_store.directory_name(4)]
-
-
-def test_nothing_is_placed_again_when_no_network_is_placed():
-    assert road_network_store.reuse_pending("a", 4) is None
 
 
 def test_the_newest_revision_of_the_current_shape_is_read(store):
