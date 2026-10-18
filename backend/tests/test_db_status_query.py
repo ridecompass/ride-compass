@@ -1,6 +1,6 @@
 """`infrastructure/db_status.py`の数の読み出し——表ごとの行数をテスト用DBで数える。
 
-ここで見ないもの: 注意が要るかの判断 → `test_db_status_service.py`
+ここで見ないもの: 注意が要るかの判断 → `test_db_status_service.py`、応答への受け渡し → `test_db_status_routes.py`
 """
 
 import pytest

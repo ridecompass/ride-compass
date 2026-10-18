@@ -48,6 +48,17 @@ def test_the_power_of_a_rider_cruising_at_20kmh_is_that_of_an_easy_ride():
     assert cycling_speed.wheel_power_w(profile) == pytest.approx(55.4, abs=0.5)
 
 
+def test_the_standard_values_follow_the_values_changed_from_the_admin_screen(monkeypatch):
+    """標準値は作るたびに読む。管理画面から変えた値が、プロセスを入れ替えずに次の生成から効く。"""
+    monkeypatch.setitem(TUNING_VALUES, "speed.cda_m2", 0.5)
+    monkeypatch.setitem(TUNING_VALUES, "speed.crr", 0.02)
+    monkeypatch.setitem(TUNING_VALUES, "speed.mass_kg", 100.0)
+
+    profile = RiderProfile(cruise_speed_kmh=20.0)
+
+    assert (profile.cda_m2, profile.crr, profile.mass_kg) == (0.5, 0.02, 100.0)
+
+
 profiles = st.builds(
     _rider,
     # ルート生成の要求が受け付ける巡航速度の全範囲（下りの上限より速い巡航を含む）。
@@ -132,6 +143,15 @@ def test_arrays_of_different_lengths_are_refused_instead_of_spread_over_every_se
     """長さ1の配列はnumpyが全区間へ黙って広げる。1区間の値が全区間に効く前に断る。"""
     with pytest.raises(ValueError):
         call()
+
+
+def test_the_rolling_resistance_of_a_surface_follows_the_value_changed_from_the_admin_screen(monkeypatch):
+    estimate = cycling_speed.SURFACE_ESTIMATES[0]
+    monkeypatch.setitem(TUNING_VALUES, estimate.rolling_resistance, 0.0421)
+
+    crr = cycling_speed.crr_for_surface(CategoricalColumn.encode([estimate.key, estimate.key]))
+
+    assert crr.tolist() == [0.0421, 0.0421]
 
 
 @pytest.mark.parametrize("value", ["no_such_surface", None])
