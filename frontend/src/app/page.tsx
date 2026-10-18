@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { useMemo, useState, type ComponentProps } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import Disclosure from "@/components/Disclosure/Disclosure";
 import GenerationNotice from "@/features/route/GenerationNotice/GenerationNotice";
 import { Button } from "@/components/ui/Button/Button";
 import { ConfirmDialog } from "@/components/ui/Dialog/Dialog";
 import { cn } from "@/lib/cn";
-import MapView, { type MapTapMode } from "@/features/map/MapView/MapView";
+import MapView from "@/features/map/MapView/MapView";
 import SegmentDetail from "@/features/route/SegmentDetail/SegmentDetail";
 import { pointNames } from "@/features/route/pointNames";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
@@ -19,7 +19,7 @@ import {
   RideModeIcon,
   RouteSettingsIcon,
 } from "@/components/ui/icons/lucideIcons";
-import BottomSheet, { useChosenSheetHeight } from "@/components/BottomSheet/BottomSheet";
+import BottomSheet from "@/components/BottomSheet/BottomSheet";
 import LensControl from "@/features/map/LensControl/LensControl";
 import RouteForm, { type SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import RouteSettingsPanel from "@/features/route/RouteSettingsPanel/RouteSettingsPanel";
@@ -48,7 +48,6 @@ import DebugConsole from "@/components/DebugConsole/DebugConsole";
 import { useDebugEnabled } from "@/hooks/useDebugLog";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useLocation } from "@/hooks/useLocation";
-import { useStoredBooleanState } from "@/hooks/useStoredState";
 import { useRideConditions } from "@/features/conditions/useRideConditions";
 import RideBar from "@/features/ride/RideBar/RideBar";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
@@ -65,28 +64,11 @@ import { textVariants } from "@/components/ui/Text/Text";
 import { cardVariants } from "@/components/ui/Card/Card";
 import { dotVariants } from "@/components/ui/Dot/Dot";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
+import { mapTapModeOf, usePagePanels } from "./usePagePanels";
 
-const GENERATE_OPEN_STORAGE_KEY = "ridecompass:generate-open";
-const OUTCOME_OPEN_STORAGE_KEY = "ridecompass:outcome-open";
 // 区分の見出しのDOM id（モバイルのシート）。
 const ROUTE_SETTINGS_SHEET_TITLE_ID = "route-settings-sheet-title";
 const ROUTE_OUTCOME_SHEET_TITLE_ID = "route-outcome-sheet-title";
-
-type MobileSheet = "routeSettings" | "routeOutcome" | null;
-/** パネルの区分（モバイルはシート、デスクトップは左のパネルの区分）。 */
-type Panel = Exclude<MobileSheet, null>;
-
-/**
- * 地図を押したときの意味を、効いているパネルから決める（地図を触った副作用で、いま見ていない面の状態が変わらない）。
- * 「ルート設定」の条件タブは地点、「ルート結果」はルートと区間、編集中は乗り換える区間、効いているパネルが無ければ見るだけ
- * （走行中は何も開かず、地図は現在地を追うことに専念する）。走行中に開いたパネルの中は、走っていないときと同じに決める。
- */
-function mapTapModeOf(panel: Panel | null, settingsTab: SettingsTab, editing: boolean, riding: boolean): MapTapMode {
-  if (editing) return "splice";
-  if (panel === "routeSettings") return settingsTab === "generate" ? "points" : "look";
-  if (panel === "routeOutcome") return "routes";
-  return riding ? "ride" : "look";
-}
 
 /** モバイルの下部タブ（シートと同じ並び）。 */
 const MOBILE_TABS = [
@@ -153,9 +135,6 @@ export default function Home() {
   // 道のりのグラフに重ねるレイヤは、結果のパネルと走行中の図が同時に出ても1つの選択を共有する。
   const profileLayers = useProfileLayers();
 
-  // 生成の結果が出て、まだ「ルート結果」を開いていない（モバイルのタブの合図）。失敗と候補0件は形を変えて見分けられるようにする。
-  const [unseenOutcome, setUnseenOutcome] = useState<RouteOutcomeKind | null>(null);
-
   // 生成の条件（「ルート設定」の入力）と走行条件。
   const conditions = useGenerationConditions({ onOriginPlace: setManualLocation });
   // 出発地が、探して置いたときの位置のままなら、その候補（名前を出す）。
@@ -180,56 +159,13 @@ export default function Home() {
   // 名前を付けて保存した地点（地点の詳しくで保存し、打つ欄の候補に出す）。
   const savedPlaces = useSavedPlaces();
 
-  // デスクトップの区分の開閉（モバイルはシートの開閉がこれに当たる）。
-  const [generateOpen, setGenerateOpen] = useStoredBooleanState(GENERATE_OPEN_STORAGE_KEY, true);
-  const [outcomeOpen, setOutcomeOpen] = useStoredBooleanState(OUTCOME_OPEN_STORAGE_KEY, true);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  // デスクトップで2つの区分を開いているとき、地図で効く区分（最後に触った区分。結果が届いたら「ルート結果」）。
-  const [lastTouchedPanel, setLastTouchedPanel] = useState<Panel>("routeSettings");
-  // モバイルで開いている下部シート（1つだけ。無ければ地図だけ）。
-  const [mobileSheet, setMobileSheet] = useState<MobileSheet>(null);
-  const [chosenSheetHeightVh, chooseSheetHeight] = useChosenSheetHeight();
-  // 走行中に帯の「ルート」でパネルを出しているか（デスクトップ。モバイルはシートを開いていること）。
-  const [ridePanelOpen, setRidePanelOpen] = useState(false);
-  // 走り始めたときの作業台（モバイルで開いていたシート）。走り始めたらシートを閉じて覚え、止めたら（どの止まり方でも）戻す。
-  const [workbenchBeforeRide, setWorkbenchBeforeRide] = useState<{ sheet: MobileSheet } | null>(null);
-  if (navigating && workbenchBeforeRide === null) {
-    setWorkbenchBeforeRide({ sheet: mobileSheet });
-    setMobileSheet(null);
-    setRidePanelOpen(false);
-  } else if (!navigating && workbenchBeforeRide !== null) {
-    setMobileSheet(workbenchBeforeRide.sheet);
-    setWorkbenchBeforeRide(null);
-    setRidePanelOpen(false);
-  }
-
   const debugEnabled = useDebugEnabled();
   const [debugConsoleOpen, setDebugConsoleOpen] = useState(false);
   // 説明を見る状態（ヘッダーのメニューの「使い方を見る」で入る）。
   const [usageGuideActive, setUsageGuideActive] = useState(false);
 
-  // 結果は生成を待つ間にシートを閉じ・切り替えたあとで届くので、どのシートから移るかは届いた時点の値で決める。
-  const mobileSheetRef = useRef(mobileSheet);
-  useEffect(() => {
-    mobileSheetRef.current = mobileSheet;
-  }, [mobileSheet]);
-
-  // 生成と乗り換えの結果（候補も失敗も）は「ルート結果」でしか中身が見えないので知らせる。デスクトップは区分を開き、
-  // モバイルはタブのドットで知らせる。ただしモバイルで「ルート設定」のシートを開いたまま候補が出たら、候補と全消去を
-  // 並べた「ルート結果」のシートへ移る（開いて見せたので点は点けない）。候補0件と失敗は窓で知らせるので、シートは移らない。
-  const notifyRouteOutcome = useCallback(
-    (outcome: RouteOutcomeKind) => {
-      setOutcomeOpen(true);
-      setLastTouchedPanel("routeOutcome");
-      if (outcome === "fresh" && mobileSheetRef.current === "routeSettings") {
-        setMobileSheet("routeOutcome");
-        setUnseenOutcome(null);
-        return;
-      }
-      setUnseenOutcome(outcome);
-    },
-    [setOutcomeOpen],
-  );
+  const isMobile = useIsMobile();
+  const panels = usePagePanels({ navigating, isMobile });
 
   // ルートを作る機能（結果・生成・区間の乗り換え）。
   const route = useRoutePlanner({
@@ -238,7 +174,7 @@ export default function Home() {
     originKnown: locationKnown,
     departure: ride.departure,
     assumedSpeedKmh: ride.speedKmh,
-    onOutcome: notifyRouteOutcome,
+    onOutcome: panels.notifyRouteOutcome,
   });
   const { results, generation, splice } = route;
 
@@ -276,66 +212,10 @@ export default function Home() {
   // 残りと到着予想。到着予想は、最後に位置を受けた時刻へ選んだ候補の計画の残り時間を足す。
   const remaining = rideRemaining(ridingRoute, progressKm, riding.fixedAtMs);
 
-  const isMobile = useIsMobile();
-
   // 「ルート設定」のタブ。タブ列は見出し行、中身は本文に描くため、両方を囲むここで持つ。
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("generate");
 
-  // パネルを出しているか。走行モードの間は、帯の「ルート」で開いている間だけ（モバイルはシートを開いている間）。
-  const panelsShown = !navigating || (isMobile ? mobileSheet !== null : ridePanelOpen);
-  // 地図で効いているパネル（いつも1つ）。モバイルは開いているシート。デスクトップは出していて畳んでいない左のパネルの、
-  // 開いている区分で、2つとも開いていれば最後に触った区分（畳むと区分の開閉は保ったまま中身が見えなくなる）。走行中に
-  // 帯の「ルート」で出したパネルは畳めない。
-  const desktopPanels = !isMobile && panelsShown && (navigating || !sidebarCollapsed);
-  const activePanel: Panel | null = isMobile
-    ? mobileSheet
-    : !desktopPanels
-      ? null
-      : generateOpen && outcomeOpen
-        ? lastTouchedPanel
-        : generateOpen
-          ? "routeSettings"
-          : outcomeOpen
-            ? "routeOutcome"
-            : null;
-  const tapMode = mapTapModeOf(activePanel, settingsTab, editingRoute !== null, navigating);
-  // 区分の中を押す・中へ移ると、その区分が地図で効く。効いているかは包む要素の印で見せ、区分のクラスは変えない（変えると中の
-  // 部品の見た目の見分けが、押すたびに変わる）。
-  const touchPanel = (panel: Panel) => ({
-    className: "group/panel",
-    "data-active": activePanel === panel,
-    onPointerDownCapture: () => setLastTouchedPanel(panel),
-    onFocusCapture: () => setLastTouchedPanel(panel),
-  });
-
-  // モバイルのタブ。同じタブをもう一度押したら閉じる。
-  const handleMobileTabClick = (sheet: Exclude<MobileSheet, null>) => {
-    setMobileSheet((prev) => (prev === sheet ? null : sheet));
-    // 「ルート結果」タブを開いたら、新着結果の合図は役目を終える。
-    if (sheet === "routeOutcome") setUnseenOutcome(null);
-  };
-
-  // 走りの帯の「ルート」。走行モードのまま、モバイルは「ルート結果」のシート（タブで「ルート設定」へ移れる）、デスクトップは
-  // 左のパネルを出し入れする。
-  const toggleRidePanel = () => {
-    if (!isMobile) {
-      setRidePanelOpen((open) => !open);
-      return;
-    }
-    if (mobileSheet !== null) {
-      setMobileSheet(null);
-      return;
-    }
-    setMobileSheet("routeOutcome");
-    setUnseenOutcome(null);
-  };
-
-  // 2枚のシートが共有する開閉と高さ。
-  const sharedSheetProps = {
-    onClose: () => setMobileSheet(null),
-    chosenHeightVh: chosenSheetHeightVh,
-    onHeightChoose: chooseSheetHeight,
-  };
+  const tapMode = mapTapModeOf(panels.activePanel, settingsTab, editingRoute !== null, navigating);
 
   const handleSettingsTabChange = (value: string) => setSettingsTab(value as SettingsTab);
 
@@ -360,8 +240,8 @@ export default function Home() {
     [locationFailure, warningFetchFailures, axisCatalogFailure],
   );
 
-  const outcomeTabSignal: OutcomeTabSignal | null = unseenOutcome
-    ? UNSEEN_OUTCOME_SIGNALS[unseenOutcome]
+  const outcomeTabSignal: OutcomeTabSignal | null = panels.unseenOutcome
+    ? UNSEEN_OUTCOME_SIGNALS[panels.unseenOutcome]
     : generation.conditionsDirty
       ? CONDITIONS_DIRTY_SIGNAL
       : null;
@@ -623,9 +503,9 @@ export default function Home() {
             <WarningBadgeList items={warningBadgeItems} failures={headerFetchFailures} />
             <Button
               size="panelIcon"
-              onClick={toggleRidePanel}
+              onClick={panels.toggleRidePanel}
               aria-label="ルート"
-              aria-expanded={panelsShown}
+              aria-expanded={panels.panelsShown}
               usage="走行モードのまま「ルート設定」と「ルート結果」を開きます。候補を選び直す・作り直すと、走行モードはその候補を追います。もう一度押すと閉じます。"
             >
               <RouteIcon size={18} />
@@ -661,37 +541,37 @@ export default function Home() {
       <DebugConsole open={debugConsoleOpen} onClose={() => setDebugConsoleOpen(false)} />
 
       <div className="app-shell">
-        {!isMobile && panelsShown && (
-          <aside className={`app-sidebar${!desktopPanels ? " is-collapsed" : ""}`}>
+        {!isMobile && panels.panelsShown && (
+          <aside className={`app-sidebar${!panels.desktopPanels ? " is-collapsed" : ""}`}>
             {/* 走行中に出したパネルは、帯の「ルート」で閉じる（畳むボタンを並べない）。 */}
             {!navigating && (
               <Button
                 size="sm"
-                onClick={() => setSidebarCollapsed((v) => !v)}
-                aria-label={sidebarCollapsed ? "パネルを開く" : "パネルを閉じる"}
+                onClick={panels.toggleSidebar}
+                aria-label={panels.sidebarCollapsed ? "パネルを開く" : "パネルを閉じる"}
                 className="self-start"
                 usage="左のパネルを畳んで地図を広く見ます。もう一度押すと開きます。"
               >
-                {sidebarCollapsed ? "☰" : "✕"}
+                {panels.sidebarCollapsed ? "☰" : "✕"}
               </Button>
             )}
 
-            {desktopPanels && (
+            {panels.desktopPanels && (
               <>
                 {/* モバイルの下部タブと同じ区分・同じ順序。タブ列（見出し行）とタブの中身（本文）の両方を囲む。 */}
-                <div {...touchPanel("routeSettings")}>
+                <div {...panels.touchPanel("routeSettings")}>
                   <Tabs value={settingsTab} onValueChange={handleSettingsTabChange}>
                     <SectionDisclosure
                       title="ルート設定"
-                      active={activePanel === "routeSettings"}
+                      active={panels.activePanel === "routeSettings"}
                       trailing={
                         <div className="flex min-w-0 flex-auto items-center justify-between gap-2">
                           {renderSettingsTabs()}
                           {renderRouteSectionHeaderActions()}
                         </div>
                       }
-                      open={generateOpen}
-                      onOpenChange={setGenerateOpen}
+                      open={panels.generateOpen}
+                      onOpenChange={panels.setGenerateOpen}
                       usage="押すと開き・畳みます。ルートを作る条件をここで決め、右の「ルート生成」で作ります。"
                     >
                       {renderRouteSectionBody()}
@@ -699,17 +579,17 @@ export default function Home() {
                   </Tabs>
                 </div>
 
-                <div {...touchPanel("routeOutcome")}>
+                <div {...panels.touchPanel("routeOutcome")}>
                   <SectionDisclosure
                     title="ルート結果"
-                    active={activePanel === "routeOutcome"}
+                    active={panels.activePanel === "routeOutcome"}
                     trailing={
                       results.routes.length > 0 ? (
                         <div className="flex flex-shrink-0 items-center gap-2">{renderRouteResultHeaderActions()}</div>
                       ) : undefined
                     }
-                    open={outcomeOpen}
-                    onOpenChange={setOutcomeOpen}
+                    open={panels.outcomeOpen}
+                    onOpenChange={panels.setOutcomeOpen}
                     usage="押すと開き・畳みます。作った候補と、その難易度の内訳がここに並びます。"
                   >
                     {renderRouteOutcome()}
@@ -851,7 +731,7 @@ export default function Home() {
 
       {/* モバイル: 下部タブと部分シート。シートを開いたままでも地図の上側は見えて動かせる。走行中は、帯の「ルート」で
         シートを開いている間だけ出す（タブで2枚のシートを行き来し、閉じると地図に戻る）。 */}
-      {isMobile && panelsShown && (
+      {isMobile && panels.panelsShown && (
         <>
           <nav
             {...mapOverlayEdge("bottom")}
@@ -864,10 +744,10 @@ export default function Home() {
                 variant="ghost"
                 size="bare"
                 className="relative min-h-11 flex-1 touch-none flex-col gap-0.5 rounded-none border-0 text-[var(--foreground)] aria-expanded:bg-[var(--color-accent-bg)] aria-expanded:font-bold aria-expanded:text-[var(--color-accent-strong)]"
-                aria-expanded={mobileSheet === sheet}
+                aria-expanded={panels.mobileSheet === sheet}
                 aria-description={sheet === "routeOutcome" ? outcomeTabSignal?.label : undefined}
                 usage={usage}
-                onClick={() => handleMobileTabClick(sheet)}
+                onClick={() => panels.toggleMobileSheet(sheet)}
               >
                 <Icon />
                 <span className="text-[0.62rem] leading-none whitespace-nowrap">{label}</span>
@@ -883,8 +763,8 @@ export default function Home() {
 
           <Tabs value={settingsTab} onValueChange={handleSettingsTabChange}>
             <BottomSheet
-              {...sharedSheetProps}
-              open={mobileSheet === "routeSettings"}
+              {...panels.sharedSheetProps}
+              open={panels.mobileSheet === "routeSettings"}
               title="ルート設定"
               titleId={ROUTE_SETTINGS_SHEET_TITLE_ID}
               headerLead={renderSettingsTabs()}
@@ -896,8 +776,8 @@ export default function Home() {
           </Tabs>
 
           <BottomSheet
-            {...sharedSheetProps}
-            open={mobileSheet === "routeOutcome"}
+            {...panels.sharedSheetProps}
+            open={panels.mobileSheet === "routeOutcome"}
             title="ルート結果"
             titleId={ROUTE_OUTCOME_SHEET_TITLE_ID}
             headerAction={results.routes.length > 0 ? renderRouteResultHeaderActions() : undefined}
@@ -916,7 +796,7 @@ export default function Home() {
 }
 
 // デスクトップのサイドバーの区分（「ルート設定」「ルート結果」）。見出しの見た目と開閉の矢印をここに1つだけ持つ。
-// 地図で効いている区分は、包む要素の印（`touchPanel`）で上の線と題を強調色にし、題の読み上げに添える（2つ開いていても、地図を押した意味が見て分かる）。
+// 地図で効いている区分は、包む要素の印（`panels.touchPanel`）で上の線と題を強調色にし、題の読み上げに添える（2つ開いていても、地図を押した意味が見て分かる）。
 function SectionDisclosure({
   title,
   active,

@@ -129,7 +129,7 @@ backendのデプロイがCORSの許可へ新しいfrontendの宛先を足す。
 転送（`/admin/api/…`→backendの`/api/admin/…`、Basic認証をサーバー側で付ける）だけ。** それ以外のAPI
 （例: `/api/axis-catalog`・`/api/region/dynamic-way-values/…`・`/health`）をfrontendのオリジンへ投げると、
 Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で叩くとき・道具から引くときは、backendの
-宛先へ直接投げる。frontend自身の口（`/api/version`）はfrontendのオリジンにだけある。
+宛先へ直接投げる。frontend自身の口（`/api/version`）はfrontendのオリジンにだけある。開発機で画面を本番のデータで開くときだけ、APIも`/prod/…`で本番のbackendへ転送する（[setup.md](setup.md)「開発機の画面を本番のデータで開く」）。
 
 ## デプロイの反映確認（backend/frontendで注入元が異なる）
 
