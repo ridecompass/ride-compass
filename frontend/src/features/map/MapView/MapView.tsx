@@ -394,15 +394,6 @@ export default function MapView({
     mapRef.current = map;
     debugLog("map:lifecycle", "初期化", { center: [location.longitude, location.latitude], zoom: ORIGIN_ZOOM });
 
-    // 出典の表示は、データが載った時点でMapLibreが開いた状態（全文）にし、地図を一度ドラッグするまで閉じない。
-    // その間ほかのUIと重なるため、同じイベントのたびに畳む。
-    const attribEl = mapContainerRef.current.querySelector(".maplibregl-ctrl-attrib");
-    function collapseAttribution() {
-      attribEl?.classList.remove("maplibregl-compact-show");
-    }
-    map.on("styledata", collapseAttribution);
-    map.on("sourcedata", collapseAttribution);
-
     // MapLibreの内蔵の追従は、デバッグログの流入とレイアウトの変化が重なると通知を取りこぼし、地図が幅の一部に
     // しか描かれなくなる。コンテナの大きさが変わったら明示的にresizeする。
     const resizeObserver = new ResizeObserver(() => {
@@ -612,8 +603,6 @@ export default function MapView({
       cancelled = true;
       window.clearTimeout(initialOverlayTimer);
       resizeObserver.disconnect();
-      map.off("styledata", collapseAttribution);
-      map.off("sourcedata", collapseAttribution);
       map.off("click", handleClick);
       map.off("mousemove", handleMouseMove);
       map.off("load", handleLoad);

@@ -284,7 +284,7 @@ DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの�
 MapLibreはソースへ渡した`attribution`を**そのソースが地図に載っている間だけ**出す。評価軸・
 ルートの計算・常設の表示（ヘッダーの天気・警戒度バッジ）へ常時使っているデータ（道路網・標高・事故・土地被覆・
 気象庁の観測と警報・風のMSM・暑さ指数・地点の検索で引く住所の区画等）の出典をソース側へ付けると、
-そのレイヤーを消した瞬間に出典も消える。常時使うデータの出典はbackendが一覧として宣言し（生成物`mapDisplay.ts: alwaysShownAttributions`）、`MapView`が
+そのレイヤーを消した瞬間に出典も消える。常時使うデータの出典はbackendが一覧として宣言し（生成物`mapDisplay.ts: alwaysShownAttributions`）、`features/map/baseMap.ts: createBaseMap`が
 AttributionControlの`customAttribution`へ渡して、どのレイヤーを出しているかと関係なく出す。データ源を足す人は
 backendの同じ場所で出典も足す。ソース側の`attribution`に
 残すのは、そのレイヤーを表示している間だけ関係する外部データ（色別標高図等）。気象レイヤーはソース側に出典を
@@ -305,7 +305,7 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 持っており、MapLibreが同じ場所へ出す。書くと同じ出典が2回並ぶ。
 
 表記は既定で折り畳まれている（ⓘのみ）。展開の状態は`styledata`/`sourcedata`のたびに畳み直す
-（下記「表示層の実装」と同じ`MapView.tsx`の地図生成箇所）。展開している間だけ、右下の出典の置き場を地図の下端の操作（元に戻すボタンの列・現在地ボタン）より
+（`features/map/baseMap.ts: createBaseMap`。一般の地図と下書きの点数の地図の両方）。展開している間だけ、右下の出典の置き場を地図の下端の操作（元に戻すボタンの列・現在地ボタン）より
 前に出す（`globals.css`）——出典は数行に折り返し、そのままでは操作の下に隠れて読めない。
 
 ## 面の濃さ（`scene/groups/areaRasters.ts: AREA_OPACITY`）

@@ -25,7 +25,7 @@ export function createBaseMap({
 }): MapLibreMap {
   // Mapの生成がWorkerを起こすため、作る前に要る。
   configureMaplibreWorker();
-  return new maplibregl.Map({
+  const map = new maplibregl.Map({
     container,
     style: mapStyleUrl(),
     center,
@@ -39,4 +39,13 @@ export function createBaseMap({
     },
     locale: MAP_UI_LOCALE,
   });
+  // 出典の表示は、データが載った時点でMapLibreが開いた状態（全文）にし、地図を一度ドラッグするまで閉じない。
+  // その間地図とほかのUIを覆うため、同じイベントのたびに畳む。
+  const attribution = container.querySelector(".maplibregl-ctrl-attrib");
+  function collapseAttribution() {
+    attribution?.classList.remove("maplibregl-compact-show");
+  }
+  map.on("styledata", collapseAttribution);
+  map.on("sourcedata", collapseAttribution);
+  return map;
 }
