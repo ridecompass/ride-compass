@@ -2867,10 +2867,6 @@
             "type": "string",
             "title": "Unit"
           },
-          "share": {
-            "type": "number",
-            "title": "Share"
-          },
           "value_labels": {
             "additionalProperties": {
               "type": "string"
@@ -2886,7 +2882,6 @@
           "label",
           "dtype",
           "unit",
-          "share",
           "value_labels"
         ],
         "title": "AxisMaterialBreakdownEntry"

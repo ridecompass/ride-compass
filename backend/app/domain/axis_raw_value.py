@@ -151,7 +151,11 @@ def axis_material_shares(
 
 
 class AxisMaterialBreakdownEntry(StrictModel):
-    """合成軸の内訳1件（材料と、その材料が軸の生値に占める割合）。"""
+    """合成軸の内訳1件（材料。並びは軸の生値に占める割合の降順）。
+
+    割合そのものは載せない——材料の重みは較正の値で、認証の無い軸カタログに載るため
+    （`docs/architecture/data-sources.md`「OSM から作った値と独自の層」）。
+    """
 
     material_id: str
     #: 材料の表示名（`MaterialSpec.label`）。フロントは対応表を持たない。
@@ -160,8 +164,6 @@ class AxisMaterialBreakdownEntry(StrictModel):
     dtype: MaterialDType
     #: numeric材料の単位。真偽値材料は空文字。
     unit: str
-    #: 各階層で正規化した重みの積（0〜1）。並び順の根拠を画面側でも示せるよう返す。
-    share: float
     #: categorical材料の「タグ生値→論理名」対訳（`MaterialSpec.value_labels`）。
     #: ルート結果は`material_category_shares`の値をこれで日本語にする。他の型では空。
     #: 軸スタジオが使う`value_label()`の「論理名 - 物理名」形式にしないのは、走行中に見る
@@ -191,7 +193,6 @@ def axis_material_breakdown(
                 label=spec.label,
                 dtype=spec.dtype,
                 unit=spec.unit,
-                share=round(share.share, 4),
                 value_labels=dict(spec.value_labels),
             )
         )
