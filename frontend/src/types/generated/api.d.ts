@@ -484,6 +484,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/axis-definitions/preview-calibration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["preview_calibration_api_admin_axis_definitions_preview_calibration_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/axis-definitions/preview-way-values": {
         parameters: {
             query?: never;
@@ -766,6 +782,47 @@ export interface components {
             /** Accident Years */
             accident_years: number[];
         };
+        /** AxisDefinition */
+        AxisDefinition: {
+            /** Axis Id */
+            axis_id: string;
+            /** Shape */
+            shape: components["schemas"]["BreakpointLinearShape-Input"] | components["schemas"]["CategoricalShape-Input"];
+            /** Default Weight */
+            default_weight: number;
+            /** Label */
+            label: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Category
+             * @default 推定
+             * @enum {string}
+             */
+            category: "観測" | "推定" | "動的";
+            /**
+             * Is Published
+             * @default false
+             */
+            is_published: boolean;
+            /** Priority Overrides */
+            priority_overrides?: components["schemas"]["PriorityCondition"][];
+            /** Icon Id */
+            icon_id?: string | null;
+            /**
+             * Time Scope
+             * @default always
+             * @enum {string}
+             */
+            time_scope: "always" | "night_only";
+            /** Display Thresholds Override */
+            display_thresholds_override?: number[] | null;
+            /** Display Band Labels Override */
+            display_band_labels_override?: string[] | null;
+        };
         /** AxisDefinitionPayload */
         AxisDefinitionPayload: {
             /** Axis Id */
@@ -971,6 +1028,16 @@ export interface components {
                 number,
                 number
             ][];
+        };
+        /** CalibrationPreviewRequest */
+        CalibrationPreviewRequest: {
+            definition: components["schemas"]["AxisDefinition"];
+        };
+        /** CalibrationPreviewResponse */
+        CalibrationPreviewResponse: {
+            map_paint: components["schemas"]["MapPaint"];
+            /** Averages Density */
+            averages_density: boolean;
         };
         /** Case */
         Case: {
@@ -3098,6 +3165,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScoresPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_calibration_api_admin_axis_definitions_preview_calibration_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalibrationPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationPreviewResponse"];
                 };
             };
             /** @description Validation Error */

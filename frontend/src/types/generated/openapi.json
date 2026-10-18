@@ -1632,6 +1632,51 @@
         ]
       }
     },
+    "/api/admin/axis-definitions/preview-calibration": {
+      "post": {
+        "tags": [
+          "axis-admin"
+        ],
+        "operationId": "preview_calibration_api_admin_axis_definitions_preview_calibration_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalibrationPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalibrationPreviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
     "/api/admin/axis-definitions/preview-way-values": {
       "post": {
         "tags": [
@@ -2458,6 +2503,121 @@
         ],
         "title": "AxisCatalogResponse"
       },
+      "AxisDefinition": {
+        "properties": {
+          "axis_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Axis Id"
+          },
+          "shape": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BreakpointLinearShape-Input"
+              },
+              {
+                "$ref": "#/components/schemas/CategoricalShape-Input"
+              }
+            ],
+            "title": "Shape"
+          },
+          "default_weight": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Default Weight"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "観測",
+              "推定",
+              "動的"
+            ],
+            "title": "Category",
+            "default": "推定"
+          },
+          "is_published": {
+            "type": "boolean",
+            "title": "Is Published",
+            "default": false
+          },
+          "priority_overrides": {
+            "items": {
+              "$ref": "#/components/schemas/PriorityCondition"
+            },
+            "type": "array",
+            "title": "Priority Overrides"
+          },
+          "icon_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Id"
+          },
+          "time_scope": {
+            "type": "string",
+            "enum": [
+              "always",
+              "night_only"
+            ],
+            "title": "Time Scope",
+            "default": "always"
+          },
+          "display_thresholds_override": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array",
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Thresholds Override"
+          },
+          "display_band_labels_override": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Band Labels Override"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "axis_id",
+          "shape",
+          "default_weight",
+          "label"
+        ],
+        "title": "AxisDefinition"
+      },
       "AxisDefinitionPayload": {
         "properties": {
           "axis_id": {
@@ -3186,6 +3346,37 @@
           "breakpoints"
         ],
         "title": "BreakpointLinearShape"
+      },
+      "CalibrationPreviewRequest": {
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/AxisDefinition"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "definition"
+        ],
+        "title": "CalibrationPreviewRequest"
+      },
+      "CalibrationPreviewResponse": {
+        "properties": {
+          "map_paint": {
+            "$ref": "#/components/schemas/MapPaint"
+          },
+          "averages_density": {
+            "type": "boolean",
+            "title": "Averages Density"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "map_paint",
+          "averages_density"
+        ],
+        "title": "CalibrationPreviewResponse"
       },
       "Case": {
         "properties": {

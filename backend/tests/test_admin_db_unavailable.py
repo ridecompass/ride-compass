@@ -61,6 +61,7 @@ ROUTE_CASES = {
     ("POST", AXIS + "/{axis_id}/unpublish"): (AXIS + "/a/unpublish", None, 503),
     ("POST", AXIS + "/preview-distribution"): (AXIS + "/preview-distribution", {"shape": SHAPE}, 503),
     ("POST", AXIS + "/preview-scores"): (AXIS + "/preview-scores", {"shape": SHAPE, "xs": [0.5]}, 200),
+    ("POST", AXIS + "/preview-calibration"): (AXIS + "/preview-calibration", {"definition": AXIS_BODY}, 200),
     # タイルの材料はDBの失敗を空へ倒し、地図の配信と同じく塗る道の無いタイルとして返す。
     ("POST", AXIS + "/preview-way-values"): (AXIS + "/preview-way-values", WAY_VALUES_BODY, 200),
     ("GET", "/api/admin/tuning"): ("/api/admin/tuning", None, 503),

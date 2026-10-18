@@ -59,7 +59,7 @@ export function unpublishAxisDefinition(axisId: string) {
   );
 }
 
-// 軸の編集中のプレビュー。分布は初回にWayの抽選と材料の組み立てを伴う。しきい値と点数はDBを読まない。
+// 軸の編集中のプレビュー。分布は初回にWayの抽選と材料の組み立てを伴う。点数と地図の段はDBを読まない。
 
 /** 編集中のshapeで、折れ点を通す前の生値がどう分布するか。 */
 export function fetchAxisValueDistribution(shape: AxisShape) {
@@ -78,6 +78,17 @@ export function fetchScoresPreview(body: ScoresPreviewRequest) {
   return requestApi(
     (init) => adminApiClient.POST("/axis-definitions/preview-scores", { body, ...init }),
     adminOptions("点数の確認", { body }),
+  );
+}
+
+export type CalibrationPreviewRequest = Schemas["CalibrationPreviewRequest"];
+export type CalibrationPreview = Schemas["CalibrationPreviewResponse"];
+
+/** 較正の画面の下書きの定義で、地図の段（境界は上書きが無ければ折れ点から導いたもの）と、密度の軸か。 */
+export function fetchCalibrationPreview(body: CalibrationPreviewRequest) {
+  return requestApi(
+    (init) => adminApiClient.POST("/axis-definitions/preview-calibration", { body, ...init }),
+    adminOptions("地図の段の確認", { body }),
   );
 }
 

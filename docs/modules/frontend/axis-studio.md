@@ -17,6 +17,7 @@ APIを呼ぶ）・「データ保守」タブ（派生データ鮮度台帳の�
 | ファイル | 責務 |
 |---|---|
 | `features/admin/AxisStudio/AxisStudio.tsx` | トップレベル。一覧取得・作成/更新/削除/複製/非公開化の状態管理。開いているフォーム（新規・編集・複製・表示だけ編集）は1つの状態で持ち、2つのフォームが同時に開かない |
+| `features/admin/AxisStudio/AxisCalibration.tsx` | 一覧の下の「較正」のカード。数値の軸を1つ選び、0点・100点にする値（密度の軸は100点にする値だけ）と地図の段の境界を、実データの分布を重ねた大きなグラフか数の入力で決め、段ごとの延長を下書きと保存済みで並べて、公開の状態のまま保存する |
 | `features/admin/AxisStudio/AxisComposer.tsx` | 1画面フォームの本体。draftの状態・保存前の検証・保存と、節の組み立てだけを持つ |
 | `features/admin/AxisStudio/AxisScoringSection.tsx` | 「点数の決め方」の節。材料の選択と必須の印を持ち、点数の入力はその材料の型に応じた部品へ振り分ける（他軸の係数はこのファイルが`ScoringTerms`を描く） |
 | `features/admin/AxisStudio/NumericScoring.tsx` | 値の材料・はい/いいえの材料の点数入力（0点/100点・効き方、はい/いいえ）。折れ点の直接編集は畳んだ詳細設定の中 |
@@ -25,9 +26,9 @@ APIを呼ぶ）・「データ保守」タブ（派生データ鮮度台帳の�
 | `features/admin/AxisStudio/AxisMapDisplaySection.tsx` | 「地図表示・公開」の節。色分けしきい値のまとめ入力と段階プレビュー・アイコン・公開チェック |
 | `features/admin/AxisStudio/AxisFormFields.tsx` | 上記2節とAxisComposerが共有する入力部品（`InfoPopoverButton`・`MaterialInfoButton`・`RequiredCheckbox`・`SectionLabel`・`SliderNumberField`） |
 | `features/admin/AxisStudio/axisDraft.ts` | Draft（フォームの内部状態）とbackendのpayloadの相互変換。`buildShape`・`draftFromExisting`・`pickPassthroughFields`・`PASSTHROUGH_PAYLOAD_KEYS`。変更理由はbackendのpayloadスキーマで、フォームUIの増減とは独立している |
-| `features/admin/AxisStudio/BreakpointCurveEditor.tsx` | 折れ点をドラッグ・矢印キーで調整できるSVGの曲線エディタ。背景へ実データの分布を重ねる |
+| `features/admin/AxisStudio/BreakpointCurveEditor.tsx` | 折れ点をドラッグ・矢印キーで調整できるSVGの曲線エディタ。背景へ実データの分布を重ねる。較正の画面では、動かせる点を端に絞り（横にだけ動く）、比べる線と動かせる段の境界を重ねる |
 | `features/admin/AxisStudio/curveDistributionOverlay.ts` | 曲線エディタの背景へ分布を重ねるための純粋関数（DOM非依存。階級のクリップ・按分、分位線、表示範囲外の割合） |
-| `features/admin/AxisStudio/scoreDistribution.ts` | 生値の分布へ折れ点を当てはめ、得点帯ごとの延長割合と警告を求める純粋関数（DOM非依存、`DistributionPreview.tsx`が使う） |
+| `features/admin/AxisStudio/scoreDistribution.ts` | 生値の分布へ折れ点を当てはめ、得点帯ごとの延長割合と警告を求める純粋関数（DOM非依存、`DistributionPreview.tsx`が使う）。地図の段ごとの延長割合（`mapBandShares`、較正の画面が使う）も持つ |
 | `features/admin/AxisStudio/DistributionPreview.tsx` | 折れ点の下に「この折れ点での得点分布」を出すパネル。満点への張り付き・0点への偏りを警告する |
 | `features/admin/AxisStudio/MaterialRangeHint.tsx` | 材料選択行の下に、その材料が実データで取る値の分位（p50/p75/p90）を出す1行表示 |
 | `features/admin/adminApi.ts` | 管理画面のAPIクライアントをまとめたもの。管理API（backend `/api/admin/**`）は`lib/apiClient.ts: adminApiClient`で同一オリジンの口`/admin/api/**`へ投げ、backendのパスの`/api/admin`より後をそのまま使う（例: backend `GET /api/admin/db-status`は`/admin/api/db-status`）。パス・本文・応答の型は管理APIの宣言から決まり、宣言に無いパスは型検査で落ちる（[ページ全体構成](page-composition.md)）。待ち時間は呼び出しごとに決める（全表走査の集計は`lib/apiTimeouts.ts: API_TIMEOUT_MS`の`heavyAdmin`、分布は`lib/apiTimeouts.ts: API_TIMEOUT_MS`の`distribution`）。稼働状況の口（`/health`・`/api/debug/stats`）も同じファイルに置く（フロント自身の版の口`/api/version`は、一般の画面のメニューも読むので`services/versionApi.ts`） |
@@ -145,6 +146,23 @@ listAxisDefinitions() ──→ definitions（全軸）
   `lib/adminBasicAuth.ts`が1箇所で持ち、`proxy.ts`（画面の保護）と転送の口の双方が同じ結果を見る。
   **口はbackendの管理APIごとに作らない**——backendのパスの`/api/admin`を`/admin/api`へ読み替えるだけなので、
   管理APIを1つ足してもfrontendの口は増えない。
+
+### 較正の画面（`AxisCalibration.tsx`）
+
+数値の軸の線は「0点にする値・100点にする値・効き方」の3つだけで決める（編集のフォームの「何点にするか」と同じ部品）。
+**密度の軸**（backendの`preview-calibration`が`averages_density`で返す）は、0のとき0点の直線に限られる（backendが
+保存で断る）ため、100点にする値だけを出し、グラフで動かせるのも100点の端だけにする。折れ点を1つずつ動かす・足す口は
+この画面に置かない——3つの入力で作れない線は、実データを見ても何を直せばよいか読めない。
+
+- 保存済みの線が3つの入力で作れない形（折れ点を手で動かした線）なら、灰色の破線で重ね、保存すると作った線に
+  置き換わることを注意の色で出す。効き方「一定」の2点の直線は、作った6点の直線と同じ線として扱う。
+- 段の境界は、上書きがあればそれ、無ければbackendが下書きから導いた境界を出す。グラフに重ねるのは得点で塗る軸だけで、
+  材料の値で塗る軸（符号付きの材料）は目盛りが違うので重ねず、そう断る。動かした境界は隣の境界の内側に収める（backendは
+  昇順で重ならない境界だけを受け付ける）。入力欄を空にすると上書きを外す。
+- 段ごとの延長は、分布の階級の代表値の点数（`preview-scores`）を地図と同じ段の判定（`lib/mapDisplay/valueScale.ts: bandAt`）で
+  まとめ、下書きと保存済みを、それぞれの段で並べる（境界を変えると段の数も変わりうる）。
+- 保存は`PUT`で、公開の状態を変えない（公開中の軸は、折れ点と表示の項目だけの差分を公開したまま保存できる）。
+  断られたらbackendの文をそのまま出す。保存できたら一覧を取り直し、取り直した定義で下書きを作り直す。
 
 ## AxisComposer.tsx（1画面のフォーム）
 

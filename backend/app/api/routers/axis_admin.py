@@ -33,10 +33,12 @@ from app.domain.axis_definitions import (
     AxisShape,
     BreakpointLinearShape,
     ScorePoint,
+    averages_density,
     check_axis_definition,
     first_term_points,
     weight_share_when_published,
 )
+from app.domain.map_paint import MapPaint, map_paint
 from app.services.axis_registry_service import AxisRegistryAdminService
 from app.domain.strict_model import StrictModel
 
@@ -226,6 +228,29 @@ async def preview_scores(payload: ScoresPreviewRequest) -> ScoresPreviewResponse
         scores=payload.shape.scores_at(payload.xs),
         material_points=first_term_points(payload.shape, payload.material_values),
     )
+
+
+class CalibrationPreviewRequest(StrictModel):
+    """較正の画面で動かしている下書きの定義。保存の前なので、ほかの軸に照らす検証（`check_axis_definition`）は通さない。"""
+
+    definition: AxisDefinition
+
+
+class CalibrationPreviewResponse(StrictModel):
+    #: 下書きの定義で地図が塗るもの。段の境界は、上書きが無ければ下書きの形から導いたもの。
+    map_paint: MapPaint
+    #: 密度の軸か（`averages_density`）。密度の軸の折れ線は(0, 0)ともう1点に限るので、決められるのはもう1点だけ。
+    averages_density: bool
+
+
+@router.post("/preview-calibration")
+async def preview_calibration(payload: CalibrationPreviewRequest) -> CalibrationPreviewResponse:
+    """下書きの定義で、地図の段と密度の軸かを返す。DBを読まない。
+
+    段の境界は上書きが無ければ折れ線から導くので、折れ点を動かすと変わる。画面で導き直すと地図と食い違う。
+    """
+    definition = payload.definition
+    return CalibrationPreviewResponse(map_paint=map_paint(definition), averages_density=averages_density(definition))
 
 
 class WayValuesPreviewRequest(StrictModel):
