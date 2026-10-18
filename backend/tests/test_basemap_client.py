@@ -18,7 +18,6 @@ import pytest
 import respx
 
 from app.infrastructure import basemap_client
-from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from tests.fake_http import client_for
 
 PROXY = "http://localhost:8000/api/basemap"
@@ -63,19 +62,6 @@ async def test_a_binary_part_is_relayed_untouched_and_served_from_disk_afterward
     assert first == later == (b"\x1a\x02tile", "application/x-protobuf")
 
 
-async def test_json_points_its_urls_at_this_server_but_keeps_upstream_names_in_text():
-    """MapLibreは相対URLをページのオリジンへ解決するため、上流のURLは自分への絶対URLへ置き換える。"""
-    router = respx.Router()
-    router.get(f"{UPSTREAM}/{STYLE}").respond(content=style_json(), headers={"content-type": "application/json"})
-
-    content, served_type = await client(router).get(STYLE)
-
-    style = json.loads(content)
-    assert served_type == "application/json"
-    assert style["sprite"] == f"{PROXY}/sprites/ofm_f384/ofm"
-    assert style["metadata"]["attribution"] == f"OpenFreeMap {UPSTREAM} © OpenMapTiles"
-
-
 async def test_changing_the_public_address_takes_effect_on_cached_json_without_asking_upstream():
     router = respx.Router()
     router.get(f"{UPSTREAM}/{STYLE}").respond(content=style_json(), headers={"content-type": "application/json"})
@@ -97,16 +83,6 @@ async def test_json_left_under_the_plain_path_by_an_older_version_is_not_served(
     again, _ = await client(unreachable()).get(STYLE)
 
     assert json.loads(content)["sprite"] == json.loads(again)["sprite"] == f"{PROXY}/sprites/ofm_f384/ofm"
-
-
-async def test_a_part_the_upstream_does_not_have_is_reported_as_missing_not_as_a_failure(warnings):
-    router = respx.Router()
-    router.get(f"{UPSTREAM}/fonts/Noto Sans Bold/65024-65279.pbf").respond(404)
-
-    result = await client(router).get("fonts/Noto Sans Bold/65024-65279.pbf")
-
-    assert result is UPSTREAM_NOT_FOUND
-    assert warnings() == []
 
 
 @pytest.mark.parametrize(

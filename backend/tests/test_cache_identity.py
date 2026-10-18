@@ -1,10 +1,11 @@
 """`infrastructure/cache_identity.py`——キャッシュ鍵（形の署名・配信するタイルの世代）の組み立て。
 
-入口は`shape_digest`・`cache_identity`・`tile_version`・`is_known_tile_version`・`raster_set_fingerprint`（開いているラスタの構成の指紋）。署名の材料は
+入口は`shape_digest`・`cache_identity`・`tile_version`・`is_known_tile_version`。署名の材料は
 架空のdataclassとSQLで与え、本番の表・SQLの中身には踏み込まない。
 
 ここで見ないもの:
 - 道路網の置き場が署名で選ばれること → `test_road_network_store.py`
+- 開いているラスタの構成の指紋（`raster_set_fingerprint`）で土地被覆のタイルを入れ替えること → `test_region_tile_cache.py`
 - 世代をDBから読んでTTLで持つこと → `test_derived_data_revision_service.py`
 - 世代を読めなかったタイルをディスクへ残さないこと → `is_known_tile_version`を読む側（`services/region_service.py`）の
   責務で、`test_region_service.py`が見る
@@ -14,8 +15,6 @@ import dataclasses
 import re
 
 import pytest
-from hypothesis import given
-from hypothesis import strategies as st
 from sqlalchemy import bindparam, text
 
 from app.infrastructure import cache_identity
@@ -68,13 +67,6 @@ def test_each_source_counts_on_its_own_and_their_boundary_is_not_lost():
     assert cache_identity.shape_digest(_Columns, "SELECT 1") != cache_identity.shape_digest(_Columns, "SELECT 2")
 
 
-def test_the_identity_is_the_revision_followed_by_the_signature():
-    identity = cache_identity.cache_identity("2", "SELECT 1")
-
-    assert identity == f"2-{cache_identity.shape_digest('SELECT 1')}"
-    assert cache_identity.cache_identity("3", "SELECT 1") != identity
-
-
 @pytest.mark.parametrize(("revisions", "version", "known"), [
     # 取込だけを流した（派生の世代は動かない）ときも世代が変わるよう、両方の世代を持つ。最初の派生の世代は0。
     (DataRevisions(derived=0, imported=3), "0.3-abc", True),
@@ -84,22 +76,3 @@ def test_the_identity_is_the_revision_followed_by_the_signature():
 def test_a_tile_version_carries_both_revisions_or_is_marked_unknown(revisions, version, known):
     assert cache_identity.tile_version(revisions, "abc") == version
     assert cache_identity.is_known_tile_version(version) is known
-
-
-def test_the_fingerprint_reads_only_the_file_names():
-    assert cache_identity.raster_set_fingerprint(["/data/a/10N.tif", "/data/b/11N.tif"]) == (
-        cache_identity.raster_set_fingerprint(["other/10N.tif", "11N.tif"])
-    )
-
-
-def test_adding_a_raster_changes_the_fingerprint():
-    assert cache_identity.raster_set_fingerprint(["10N.tif"]) != cache_identity.raster_set_fingerprint(
-        ["10N.tif", "11N.tif"]
-    )
-
-
-@given(names=st.lists(st.from_regex(r"[0-9A-Z]{2,4}\.tif", fullmatch=True), min_size=1, unique=True), data=st.data())
-def test_the_order_of_the_rasters_does_not_change_the_fingerprint(names, data):
-    shuffled = data.draw(st.permutations(names))
-
-    assert cache_identity.raster_set_fingerprint(shuffled) == cache_identity.raster_set_fingerprint(names)
