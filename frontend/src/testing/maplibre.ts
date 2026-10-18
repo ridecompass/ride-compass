@@ -190,6 +190,9 @@ class StandInMap extends Evented {
   private zoom: number;
   private bearing = 0;
   private pointed: readonly PointedFeature[] = [];
+  // 手ぶりの入切は、代役では指の操作が無いので受けるだけにする。
+  readonly touchZoomRotate = { disableRotation() {}, enableRotation() {} };
+  readonly touchPitch = { disable() {}, enable() {} };
 
   constructor(options: { container: HTMLElement; style: string; zoom: number }) {
     super();
