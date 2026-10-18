@@ -3918,9 +3918,6 @@
             ],
             "title": "Max Average Grade Percent"
           },
-          "hard_filters": {
-            "$ref": "#/components/schemas/HardFilterOverride"
-          },
           "road_avoidance": {
             "$ref": "#/components/schemas/RoadAvoidanceOverride"
           },
@@ -3986,7 +3983,6 @@
           "route_preference",
           "penalty_strength",
           "max_average_grade_percent",
-          "hard_filters",
           "road_avoidance",
           "max_routes",
           "start_time",
@@ -4010,13 +4006,6 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
-      },
-      "HardFilterOverride": {
-        "additionalProperties": {
-          "type": "boolean"
-        },
-        "type": "object",
-        "title": "HardFilterOverride"
       },
       "ImportRunEntry": {
         "properties": {
@@ -5537,9 +5526,6 @@
             ],
             "title": "Max Average Grade Percent"
           },
-          "hard_filters": {
-            "$ref": "#/components/schemas/HardFilterOverride"
-          },
           "road_avoidance": {
             "$ref": "#/components/schemas/RoadAvoidanceOverride"
           },
@@ -5608,7 +5594,6 @@
           "latitude",
           "longitude",
           "distance_tolerance_km",
-          "hard_filters",
           "road_avoidance",
           "max_routes",
           "assumed_speed_kmh",
