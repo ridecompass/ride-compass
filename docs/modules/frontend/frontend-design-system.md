@@ -199,7 +199,7 @@ backendのdomainの宣言が持つ名前（ハードフィルタ・凡例の行�
 
 ## 6. テストパターン
 
-`components/ui/FieldLabel/FieldLabel.test.tsx`（`FieldLabel`、Radix Popoverラッパー）を参照実装と
+`components/ui/InfoPopover/InfoPopover.test.tsx`（`InfoPopover`、Radix Popoverラッパー）を参照実装と
 する。vitest + `@testing-library/react`で`render`/`screen`、`getByRole`/`aria-*`属性ベースの
 アサーションに統一し、Radix内部のDOM構造には依存しない。`components/ui/*/*.test.tsx`も同じ方針。
 

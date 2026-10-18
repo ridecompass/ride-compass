@@ -267,24 +267,12 @@ class TestPreviews:
             "bins": [[0.0, 4.0, 1.0]],
         }
 
-    def test_scores_of_a_draft_with_two_terms(self, client):
-        """1つ目の項の材料の値ごとの点数は、ほかの項の材料が無い道を評価したときの点数である。"""
-        shape = {
-            "kind": "breakpoint_linear",
-            "terms": [{"material": NUM_A, "weight": 2.0}, {"material": NUM_B, "required": False}],
-            "preprocess": "abs",
-            "breakpoints": [[0, 0], [10, 100]],
-        }
+    def test_scores_of_a_draft(self, client):
+        shape = {**linear_shape(NUM_A), "breakpoints": [[0, 0], [10, 100]]}
 
-        body = client.post(
-            BASE + "/preview-scores",
-            json={"shape": shape, "xs": [2.5, 20.0], "material_values": [-3.0, 1.0, 7.0]},
-        ).json()
+        body = client.post(BASE + "/preview-scores", json={"shape": shape, "xs": [2.5, 20.0]}).json()
 
-        assert body == {
-            "scores": [25.0, 100.0],
-            "material_points": [{"x": 6.0, "score": 60.0}, {"x": 2.0, "score": 20.0}, {"x": 14.0, "score": 100.0}],
-        }
+        assert body == {"scores": [25.0, 100.0]}
 
     def test_calibration_of_a_draft_answers_its_map_bands_and_whether_it_averages_density(self, client):
         """段の境界は下書きの折れ点から導いたもの。密度の軸の画面は、0点の端を動かさない。"""

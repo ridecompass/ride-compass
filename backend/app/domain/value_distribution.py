@@ -1,5 +1,5 @@
-"""延長で重み付けた値の分布（分位点とヒストグラム）と、値の範囲の手がかり（分位点とゼロの割合）と、種類の材料の
-値ごとの延長の割合。軸スタジオの分布の口・材料の分布の口の応答の型を兼ねる。
+"""延長で重み付けた値の分布（分位点とヒストグラム）と、種類の材料の値ごとの延長の割合。軸スタジオの分布の口の
+応答の型を兼ねる。
 
 本数ではなく**延長で重み付ける**。本数で数えると短い道が多数を占めて実際に走る距離の感覚と合わない。
 """
@@ -28,16 +28,6 @@ class ValueDistribution(StrictModel):
 
 
 EMPTY_DISTRIBUTION = ValueDistribution(sample_ways=0, total_km=0.0, quantiles={}, bins=[])
-
-
-class ValueSpread(StrictModel):
-    """延長で重み付けた分位点と、値がちょうど0である延長の割合（負の値は含まない）。"""
-
-    quantiles: dict[str, float]
-    zero_share: float
-
-
-EMPTY_SPREAD = ValueSpread(quantiles={}, zero_share=0.0)
 
 
 class ValueShare(StrictModel):
@@ -107,19 +97,6 @@ def weighted_distribution(pairs: list[tuple[float, float]]) -> ValueDistribution
         total_km=round(total_m / 1000, 1),
         quantiles=quantiles,
         bins=bins,
-    )
-
-
-def weighted_spread(pairs: list[tuple[float, float]]) -> ValueSpread:
-    """`(長さm, 値)`から延長で重み付けた分位点とゼロの割合を求める。"""
-    if not pairs:
-        return EMPTY_SPREAD
-    lengths, values = np.asarray(pairs, dtype=float).T
-    # 「ゼロ」は値がちょうど0であること。`v <= 0`にすると負の値を持つ材料で
-    # 「下り勾配の道」まで0として数えられ、表示（「ゼロX%」）が意味と食い違う。
-    zero_share = float(lengths[values == 0].sum()) / float(lengths.sum())
-    return ValueSpread(
-        quantiles=weighted_quantiles(pairs, QUANTILE_TARGETS, digits=3), zero_share=round(zero_share, 5)
     )
 
 

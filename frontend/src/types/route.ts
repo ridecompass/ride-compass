@@ -56,9 +56,6 @@ export type AxisShape = AxisDefinitionPayload["shape"];
 
 export type JmaTileIndexResponse = GetJson<"/api/jma-tile-index">;
 
-// 材料の実データ値の1件。GET /api/admin/material-catalog/{material_id}/valuesの応答の要素。
-export type MaterialValueEntry = Schemas["MaterialValueEntry"];
-
 // 材料ごとの欠損割合。GET /api/admin/material-catalog/coverageの応答。
 export type MaterialCoverageResponse = Schemas["MaterialCoverageReport"];
 export type MaterialCoverageEntry = MaterialCoverageResponse["materials"][number];

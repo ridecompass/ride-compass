@@ -19,9 +19,9 @@
 | api | `axis_admin.py`・`axis_catalog.py` |
 | scripts | `measure_axis_saturation.py`・`axis_apply.py` |
 
-## 分布プレビュー・材料の値の一覧（`services/axis_preview_service.py`・`domain/value_distribution.py`）
+## 分布プレビュー・材料の値ごとの割合（`services/axis_preview_service.py`・`domain/value_distribution.py`）
 
-軸スタジオが折れ点を編集している最中に、**その設定で実データがどう分布するか**を返す。
+軸スタジオの較正の画面が折れ点を直している最中に、**その設定で実データがどう分布するか**を返す。
 
 - 母集団はWay単位（生データのページ単位抽選、`TABLESAMPLE SYSTEM`）で、**延長で
   重み付ける**。本数で数えると短い道が多数を占めて実際に走る距離の感覚と合わない。
@@ -35,19 +35,15 @@
   そのため、母集団の値はルート評価が実際に読むEdge単位の値と粒度が一致しない場合がある。
 - 抽選したサンプルは`cachetools.TTLCache`で保持する（初回1秒前後、2回目以降は即座）。
 - 返すのは**折れ点を通す前の生値**の分位とヒストグラムで、折れ点の当てはめはfrontendが行う
-  （[軸スタジオ管理画面](../frontend/axis-studio.md)「折れ点の効き方を実データで見せる」参照）。
+  （[軸スタジオ管理画面](../frontend/axis-studio.md)「分布と点数の取り方」参照）。
 - **ヒストグラムの階級はデータの値域から決める**（0は常に範囲へ含める）。下限を0に固定すると
   生値が負になる軸——`terms`の重みがすべて負の軸（`bicycle_infra_quality`・`night`等）
   ——で全サンプルが階級0へ潰れ、分位が負を示しているのにヒストグラムは正の範囲しか持たない、
   という同一レスポンス内で矛盾した分布になる。
-- 材料の分布は、階級を持たず分位と`zero_share`だけを返す（材料選択行の1行表示が読むのはこの2つだけ）。`zero_share`は
-  値が**ちょうど0**の延長の割合で、負の値は含まない（含めると「下り勾配の道」まで「ゼロ」として数えられる）。
 
 | エンドポイント | 認可 | 内容 |
 |---|---|---|
 | `POST /api/admin/axis-definitions/preview-distribution` | Basic認証 | 編集中の`shape`の生値の分布 |
-| `GET /api/admin/material-catalog/{material_id}/distribution` | Basic認証 | 材料1件の値の分位と`zero_share`（数値材料のみ、それ以外は`available=false`） |
-| `GET /api/admin/material-catalog/{material_id}/values` | Basic認証 | 材料1件のDBに実際にある値の一覧（`AxisPreviewService.material_values`。[評価・スコアリング](evaluation-scoring.md)の材料カタログのAPI） |
 | `GET /api/admin/material-catalog/{material_id}/value-shares` | Basic認証 | 種類・はい/いいえの材料1件の、値ごとの道の延長の割合（`AxisPreviewService.material_value_shares`。抽選した道のうち値を持つ道の延長で割る。数値材料は`available=false`） |
 
 どれも実データを全体から読むため、`AxisPreviewService`はルート生成用の長い`command_timeout`の
@@ -244,8 +240,8 @@ Pythonの値、ルート選びと地図の配信は材料の型ごとの配列�
   スキーマは`axis_definition_models.py`のORM宣言から`create_tables()`が作る。
 - **公開済み軸を不変にしているのは、一般ユーザーの保存設定が`axis_id`キーで再現される
   ため**（ルート設定パネルのプリセット・重みは`localStorage`に`axis_id`で残る）。公開後に
-  破壊的な変更・削除を許すと、他の利用者の設定を黙って壊す。改良したいときは複製して
-  新しい`axis_id`の下書きを作り、そちらを検証して公開する。折れ点と段の境界だけの差し替えは`axis_id`も読む材料も
+  破壊的な変更・削除を許すと、他の利用者の設定を黙って壊す。改良したいときは
+  新しい`axis_id`の下書きとして軸の定義ファイルから入れ、そちらを検証して公開する。折れ点と段の境界だけの差し替えは`axis_id`も読む材料も
   変えないので、公開したまま書ける（下の「書き込み時のガード」）——下書きへ戻すと、その間だけ軸カタログから軸が消え、
   利用者の画面がその軸の重みを既定へ戻す。
   差し替えた折れ点は次の要求から効く: 軸を読む側（地図の配信・ルートの評価・軸カタログ）は要求ごとに`AXIS_DEFINITIONS`を
@@ -381,7 +377,7 @@ idの文字列ではなく宣言そのもので指す。材料が指す要素に
 | `PUT /api/admin/axis-definitions/{axis_id}` | Basic認証必須 | 更新（公開済みは原則拒否。ただし表示専用フィールドと折れ点だけの差分は公開したまま許可。下の「書き込み時のガード」） |
 | `DELETE /api/admin/axis-definitions/{axis_id}` | Basic認証必須 | 削除 |
 | `POST /api/admin/axis-definitions/{axis_id}/unpublish` | Basic認証必須 | 公開済み軸を下書きへ戻す（`is_published`以外は変更しない） |
-| `POST /api/admin/axis-definitions/preview-scores` | Basic認証必須 | 編集中の折れ点で、横軸の値の並び（分布の階級の代表値）と1つ目の項の材料の値の並び（参考点）がそれぞれ何点になるか。参考点は横軸の値も返す。どちらも評価と同じ配列の計算（`domain/axis_definitions.py: BreakpointLinearShape.scores_at`・`first_term_points`）で出し、参考点は「ほかの項の材料が無い道」として評価する——ほかの項に必須の材料があれば評価と同じく欠損（null）になる（DBを読まない） |
+| `POST /api/admin/axis-definitions/preview-scores` | Basic認証必須 | 編集中の折れ点で、横軸の値の並び（分布の階級の代表値）がそれぞれ何点になるか。評価と同じ配列の計算（`domain/axis_definitions.py: BreakpointLinearShape.scores_at`）で出す（DBを読まない） |
 | `POST /api/admin/axis-definitions/preview-calibration` | Basic認証必須 | 送られた定義（保存前の下書きでよい）で地図が塗る段（`map_paint`。境界の上書きが無ければ形から導いたもの）と、密度の軸か（`averages_density`。真なら折れ点は0から伸びる2点の直線に限る）を返す。定義の検証は保存と同じで、通らなければ保存と同じ誤りの文を返す（DBを読まない） |
 | `POST /api/admin/axis-definitions/preview-way-values` | Basic認証必須 | 編集中の折れ点（`shape`）で、タイル（z・x・y）のフィーチャーごとに地図が塗る値（較正の地図）。鍵と値の意味は、地図が道ごとの材料（`/api/region/way-materials`）を軸の木（`way_value_formula`）で評価した値と同じで、同じ材料・同じ評価から、軸の集合の写しの中で`shape`だけを差し替えて求める（`services/dedicated_way_values.py: draft_axis_way_value_lens`）——保存されている折れ点を渡せば地図が塗る値と同じになり、`AXIS_DEFINITIONS`と配信の材料は変わらない。公開していない軸も求める。条件で変わる材料を読む軸は、条件の欄（走行方位・時刻・想定速度）を受け、要る欄が欠ければ422。無い軸は404、保存の判定（`services/axis_registry_service.py: check_loadable_after_write`）が断る下書きはその文で422。レート制限の上限とDB接続プールのsemaphoreは配信と同じもの（`api/routers/_tile_http.py: region_tile_semaphore`）を使う |
 | `GET /api/axis-catalog` | 不要（公開） | `is_published=True`の軸のみ返す。画面が読む項目（名前・説明・重みの既定・チップ・地図が塗るもの・生値の単位と内訳等）だけを返し、`shape`・しきい値の上書きの生の値は返さない（地図の段は`map_paint`が配る） |

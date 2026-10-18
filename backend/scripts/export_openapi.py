@@ -38,7 +38,6 @@ from app.domain.route_request import (
     MIN_ASSUMED_SPEED_KMH,
     MIN_ROUTES,
 )
-from app.api.routers.axis_admin import AxisDefinitionPayload
 from app.api.routers.debug_admin import LogLevelName
 from app.infrastructure.source_models import SOURCE_RUN_STATUS_LABELS
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
@@ -172,7 +171,6 @@ PRIMARY_ATTRIBUTES_PATH = GENERATED_DIR / "primaryAttributes.ts"
 WIND_GRID_CONFIG_PATH = GENERATED_DIR / "wind-grid-config.json"
 ROUTE_GENERATE_CONFIG_PATH = GENERATED_DIR / "route-generate-config.json"
 REFRESH_INTERVALS_PATH = GENERATED_DIR / "refresh-intervals.json"
-AXIS_PAYLOAD_CONFIG_PATH = GENERATED_DIR / "axis-payload-config.json"
 MATERIAL_CATALOG_PATH = GENERATED_DIR / "material-catalog.json"
 LANDCOVER_CLASSES_PATH = GENERATED_DIR / "landcover-classes.json"
 PALETTE_PATH = GENERATED_DIR / "palette.json"
@@ -530,10 +528,6 @@ def main() -> None:
                 # idから組み立て直さない——組み立て方の正本は`MaterialSpec.full_label`。
                 "label": spec.full_label(),
                 "name": spec.label,
-                "description": spec.description,
-                "dtype": spec.dtype,
-                "unit": spec.unit,
-                "reference_points": [{"label": p.label, "value": p.value} for p in spec.reference_points],
                 "value_labels": dict(spec.value_labels) if spec.value_labels else None,
                 # 路面タイルがこの材料を載せる属性の名前（載せない材料はnull）。
                 "tile_property": spec.tile_property,
@@ -576,18 +570,6 @@ def main() -> None:
             "spacing_deg": WIND_GRID_SPACING_DEG,
             "detail_min_spacing_deg": WIND_GRID_DETAIL_MIN_SPACING_DEG,
             "detail_max_points": WIND_GRID_DETAIL_MAX_POINTS,
-        },
-    )
-    # 軸スタジオが送る軸の既定値。画面は編集欄を持たない項目を新規の軸で
-    # この既定値のまま送る（写しを持つと、backendの既定を変えたとき新規の軸だけ古い値で作られる）。
-    _write_json(
-        AXIS_PAYLOAD_CONFIG_PATH,
-        {
-            "defaults": {
-                name: field.get_default(call_default_factory=True)
-                for name, field in AxisDefinitionPayload.model_fields.items()
-                if not field.is_required()
-            },
         },
     )
     # ルート生成の上限・既定値。frontendが独立にハードコードすると、backendだけ変えた

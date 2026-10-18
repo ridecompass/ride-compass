@@ -37,7 +37,7 @@ DBから取り出す`infrastructure/road_graph_repository.py: get_feature_gradie
 **実装は軸idを持たない。** 軸とサービスは、軸定義が内部軸まで辿って読む材料（葉の材料、
 `domain/dynamic_way_values.py: leaf_materials`）とサービスの`material_id`の突き合わせで結ばれる。材料はコードが正本（GUIから増減しない）なので、
 実装が材料の名前を知るのは、DBの行で増減する軸の名前を知るのとは違う。公開済みの軸は直さずに
-複製して改良するため、軸の名前で結ぶと複製した軸が配信されない。
+新しい軸として作り直して改良するため、軸の名前で結ぶと作り直した軸が配信されない。
 
 `tests/test_dedicated_way_values.py`が、担当する材料で組み立てたサービスの`material_id`が
 その材料であること・材料カタログの既知材料であること・1つの材料を2つのサービスが担当すると

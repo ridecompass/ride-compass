@@ -26,7 +26,6 @@ from app.domain import material_catalog
 from app.domain.material_catalog import (
     CoverageExcluded,
     EdgeMaterialCoverageSpec,
-    MaterialReferencePoint,
     MaterialSpec,
     WayMaterialCoverageSpec,
 )
@@ -70,7 +69,6 @@ def catalog(monkeypatch):
     [
         {"total_unit": "回"},  # 掛ける相手の単位が無い
         {"value_labels": {"a": "あ"}},  # 対訳は分類の値にだけ付く
-        {"reference_points": [MaterialReferencePoint(label="目安", value=1.0)], "dtype": "boolean"},
     ],
 )
 def test_a_declaration_that_does_not_fit_its_dtype_is_refused(fields):

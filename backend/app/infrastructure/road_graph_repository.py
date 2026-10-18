@@ -31,7 +31,6 @@ from app.domain.graph import LeanEdge, edge_feature_key_sql, edge_key, node_key,
 from app.domain.hard_filters import ROUTE_FLAG_VALUE_SQL, route_flag_columns
 from app.domain.landcover import LandcoverPercentages, landcover_key
 from app.domain.material_catalog import (
-    MATERIAL_CATALOG,
     material_array_columns,
     material_value_sql,
     segment_material_ids,
@@ -103,15 +102,15 @@ _WAY_RE_CLAUSE = ("CROSS JOIN LATERAL (SELECT ST_Length(w.geom::geography) AS di
 _READS_RE = re.compile(r"(?<![\w.])re\.")
 
 
-def way_from_clause(expressions: list[str], source: str | None = None) -> str:
-    """式が参照する別名だけを含むFROM句。使わないJOINを足すと、材料1件のDISTINCTを引く
-    だけの軸スタジオの値列挙まで重くなる。
+def way_from_clause(expressions: list[str], source: str) -> str:
+    """式が参照する別名だけを含むFROM句。使わないJOINを足すと、読む材料の少ない問い合わせまで
+    道の全件と材料の表の結合へ広がる。
 
     `source`は`w`をどう引くか（全件の走査・抽選付きの走査・主キーでの1件）。呼び出し側が
     決める——1件を引くのに走査を使うと、道の全件に対する総当たりになる。
     """
     reads_re = any(_READS_RE.search(expression) for expression in expressions)
-    return (f"\nFROM {source or ways_source_sql()} w\n{_WAY_RE_CLAUSE if reads_re else ''}"
+    return (f"\nFROM {source} w\n{_WAY_RE_CLAUSE if reads_re else ''}"
             + material_from_clause(expressions, "w.osm_way_id"))
 
 
@@ -574,26 +573,6 @@ class RoadGraphRepository:
             return None
         return LandcoverPercentages(**{field: getattr(row, f"lc_{landcover_key(field)}")
                                        for field in LandcoverPercentages.model_fields})
-
-    async def get_distinct_material_values(self, material_id: str) -> list[str]:
-        """軸スタジオの値入力UX向け。highway/surface/smoothnessのようなオープンエンドな
-        多値材料は事前に全量を静的に列挙できないため、実際にDBへ取り込まれている値を
-        ここで動的取得する。未対応の`material_id`は空リスト（routerが404を判断する）。
-        """
-        spec = MATERIAL_CATALOG.get(material_id)
-        # 値の求め方は`MaterialSpec.value_sql`が唯一持つ。ここへ式を書かない。
-        # カテゴリ以外（真偽・数値）は「取りうる値の一覧」に意味が無いため対象外。
-        if spec is None or spec.value_sql is None or spec.dtype != "categorical":
-            return []
-        column_expr = spec.value_sql
-        result = await self._session.execute(
-            text(
-                f"SELECT DISTINCT {column_expr} AS value"  # カタログの宣言のみ
-                + way_from_clause([column_expr])
-                + f" WHERE {column_expr} IS NOT NULL ORDER BY value"
-            )
-        )
-        return [row.value for row in result]
 
     # --- タイル --------------------------------------------------------------
 

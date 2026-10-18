@@ -1,4 +1,4 @@
-"""軸スタジオが実データを見て設定を決めるための読み出し（分布プレビュー・材料の値の一覧）。
+"""軸スタジオが実データを見て設定を決めるための読み出し（分布プレビュー・材料の値ごとの延長）。
 
 折れ点や重みを編集している最中に、**その設定で実データがどう分布するか**を返す。
 軸スタジオは数値の入力欄を並べるだけでは折れ点の妥当性を判断できず、公開して地図と
@@ -13,7 +13,6 @@
 """
 
 import logging
-from typing import SupportsFloat, cast
 
 from cachetools import TTLCache
 
@@ -23,13 +22,9 @@ from app.domain.region import BoundingBox
 from app.domain.value_distribution import (
     ValueDistribution,
     ValueShares,
-    ValueSpread,
     raw_value_distribution,
-    weighted_spread,
     weighted_value_shares,
 )
-from app.infrastructure.database import DB_UNAVAILABLE_ERRORS
-from app.infrastructure.debug_log import log_external_call, mark_failed
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 
 logger = logging.getLogger("ridecompass.axis_preview")
@@ -81,7 +76,7 @@ class AxisPreviewService:
     """軸スタジオが設定を決めるための実データの読み出し。
 
     `repository`はルート生成用の長い`command_timeout`のセッションで渡す（`api/dependencies.py:
-    get_axis_preview_service`）——標本の抽選も値の一覧も全表走査寄りで、タイル配信の短い方だと最後まで走らない。
+    get_axis_preview_service`）——標本の抽選は全表走査寄りで、タイル配信の短い方だと最後まで走らない。
     """
 
     def __init__(self, repository: RoadGraphRepository, sample_cache: TTLCache):
@@ -92,18 +87,6 @@ class AxisPreviewService:
         """候補の`shape`の生値（折れ点を通す前）の分布。"""
         return raw_value_distribution(shape, await _load_sample(self._repository, self._sample_cache))
 
-    async def material_value_distribution(self, material_id: str) -> ValueSpread | None:
-        """1材料の値の分位点とゼロの割合。数値材料のみ（真偽・カテゴリは分位に意味が無いためNone）。"""
-        if material_dtype(material_id) != "numeric":
-            return None
-        sample = await _load_sample(self._repository, self._sample_cache)
-        pairs = [
-            (length_m, float(cast(SupportsFloat, materials[material_id])))
-            for length_m, materials in sample
-            if materials.get(material_id) is not None
-        ]
-        return weighted_spread(pairs)
-
     async def material_value_shares(self, material_id: str) -> ValueShares | None:
         """種類・はい/いいえの材料の値ごとの延長の割合。数値材料はNone（値ごとに数えても意味が無い）。"""
         if material_dtype(material_id) == "numeric":
@@ -112,21 +95,3 @@ class AxisPreviewService:
         return weighted_value_shares(
             [(length_m, materials[material_id]) for length_m, materials in sample if materials.get(material_id) is not None]
         )
-
-    async def material_values(self, material_id: str) -> list[str] | None:
-        """指定した材料についてDBへ実際に取り込まれている値の一覧。軸スタジオの値入力が使う。
-
-        索引の効かない`SELECT DISTINCT`（実質全表走査）。
-
-        **取得できなかったとき（DB例外・タイムアウト）はNone**、取得できて値が無いときは空リスト。
-        両方を空リストへ倒すと、画面は「候補が無い」と「候補を出せなかった」を区別できず、
-        DBのタイムアウトが「この材料には値が無い」として静かに表示される。
-        """
-        with log_external_call("axis-preview:material-values", material_id=material_id) as fields:
-            try:
-                values = await self._repository.get_distinct_material_values(material_id)
-            except DB_UNAVAILABLE_ERRORS as exc:
-                mark_failed(fields, exc)
-                return None
-            fields["value_count"] = len(values)
-            return values

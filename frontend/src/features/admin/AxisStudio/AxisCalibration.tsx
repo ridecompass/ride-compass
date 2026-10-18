@@ -2,14 +2,16 @@
 
 // 軸の較正。地図の段の境界と、段ごとの延長が保存済みの定義からどう変わるかを見比べてから、公開の状態のまま保存する。
 // 数値の軸（breakpoint_linear）は実データの分布の上に今の線を大きく描き、0点・100点の端を動かす。線は「0点にする値・
-// 100点にする値・効き方」の3つだけで決め（密度の軸は100点にする値だけ）、折れ点を1つずつ動かす口は編集のフォーム
-// （NumericScoring.tsx）にだけ置く。対応表の軸（categorical）は種類ごとの点数を数で直す（CategoricalCalibration.tsx）。
+// 100点にする値・効き方」の3つだけで決める（密度の軸は100点にする値だけ）。対応表の軸（categorical）は種類ごとの点数を
+// 数で直す（CategoricalCalibration.tsx）。
 
 import { useMemo, useState, type ReactNode } from "react";
 
 import { Callout } from "@/components/ui/Callout/Callout";
 import { cardVariants } from "@/components/ui/Card/Card";
+import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Select } from "@/components/ui/Input/Input";
+import { NumberInput } from "@/components/ui/NumberInput/NumberInput";
 import { textVariants } from "@/components/ui/Text/Text";
 import { useAxisValueDistribution } from "@/features/admin/useAxisValueDistribution";
 import { useScoresPreview } from "@/features/admin/useScoresPreview";
@@ -31,7 +33,12 @@ import {
 } from "@/lib/mapDisplay/valueScale";
 import type { AxisDefinitionPayload, AxisDefinitionResponse } from "@/types/route";
 import { BreakpointCurveEditor, type CurveHandle } from "./BreakpointCurveEditor";
-import { generateBreakpoints, generatorSettingsFrom } from "./breakpointTools";
+import {
+  BREAKPOINT_SHAPE_OPTIONS,
+  generateBreakpoints,
+  generatorSettingsFrom,
+  type BreakpointShape,
+} from "./breakpointTools";
 import {
   AutoBoundaryButton,
   BandShareComparison,
@@ -41,10 +48,10 @@ import {
   useBoundaryDraft,
 } from "./calibrationParts";
 import { CategoricalCalibrationBody, type CategoricalDefinition } from "./CategoricalCalibration";
-import { ScoreTargetFields, type GeneratorSettings } from "./NumericScoring";
 import { binMidpoints, mapBandShares, type ValueDistribution } from "./scoreDistribution";
 
 type Breakpoints = [number, number][];
+type GeneratorSettings = ReturnType<typeof generatorSettingsFrom>;
 type MapPaint = CalibrationPreview["map_paint"];
 type NumericDefinition = AxisDefinitionResponse & { shape: { kind: "breakpoint_linear" } };
 
@@ -196,8 +203,7 @@ function NumericCalibrationBody({
     setGenerator((current) => ({ ...current, ...patch }));
   }
 
-  function moveHandle(index: number, pos: 0 | 1, value: number) {
-    if (pos !== 0) return;
+  function moveHandle(index: number, value: number) {
     updateGenerator(draftBreakpoints[index][1] === 0 ? { zeroValue: value } : { hundredValue: value });
   }
 
@@ -223,14 +229,7 @@ function NumericCalibrationBody({
 
   return (
     <div className="flex flex-col gap-2">
-      <ScoreTargetFields
-        generator={generator}
-        onChange={updateGenerator}
-        hasReferencePoints={false}
-        referencePoints={[]}
-        unit=""
-        densityLine={densityLine}
-      />
+      <ScoreTargetFields generator={generator} onChange={updateGenerator} densityLine={densityLine} />
       {!lineValid && (
         <p className={textVariants({ variant: "error" })}>
           {densityLine
@@ -244,12 +243,11 @@ function NumericCalibrationBody({
         </Callout>
       )}
       <BreakpointCurveEditor
-        size="large"
         breakpoints={draftBreakpoints}
-        onChangePoint={moveHandle}
-        referenceRange={referenceRangeOf(savedBreakpoints, distribution)}
-        distribution={distribution}
         handles={handles}
+        onChangeHandle={moveHandle}
+        xRange={xRangeOf(savedBreakpoints, distribution)}
+        distribution={distribution}
         referenceLine={lineChanged ? savedBreakpoints : null}
         boundaries={boundaries}
         onChangeBoundary={moveBoundary}
@@ -327,7 +325,7 @@ function isStraightLine(breakpoints: Breakpoints, settings: GeneratorSettings): 
 }
 
 /** 横軸の範囲。保存済みの線と、実データの大半（最初の階級から99%点まで）が入るようにし、端を動かしても目盛りが動かない。 */
-function referenceRangeOf(saved: Breakpoints, distribution: ValueDistribution | null): { min: number; max: number } {
+function xRangeOf(saved: Breakpoints, distribution: ValueDistribution | null): { min: number; max: number } {
   const xs = saved.map(([x]) => x);
   const bins = distribution?.bins ?? [];
   if (bins.length > 0) {
@@ -354,13 +352,11 @@ function NumericBandShares({
     draftBreakpoints && {
       shape: { ...saved.shape, breakpoints: draftBreakpoints } as ScoresPreviewRequest["shape"],
       xs,
-      material_values: [],
     },
   );
   const savedScores = useScoresPreview({
     shape: saved.shape as ScoresPreviewRequest["shape"],
     xs,
-    material_values: [],
   });
   const draftBands = draftPreview && valueBands(mapPaintDeclarationOf(draftPreview.map_paint));
   const savedBands = valueBands(mapPaintDeclarationOf(savedPreview.map_paint));
@@ -378,5 +374,88 @@ function NumericBandShares({
       }}
       savedTitle={saved.is_published ? "公開中" : "保存済み"}
     />
+  );
+}
+
+/** 見出しと、詳しい説明を畳んだ(ⓘ)。 */
+function SectionLabel({ label, description }: { label: string; description: string }) {
+  return (
+    <div className="flex items-center gap-1">
+      <p className={textVariants({ variant: "label" })}>{label}</p>
+      <InfoPopover triggerAriaLabel={`${label}の説明`}>{description}</InfoPopover>
+    </div>
+  );
+}
+
+function ScoreTargetFields({
+  generator,
+  onChange,
+  densityLine,
+}: {
+  generator: GeneratorSettings;
+  onChange: (patch: Partial<GeneratorSettings>) => void;
+  /** 密度の軸（backendの`averages_density`）。0点は値0・効き方は直線に決まっているので、100点にする値だけを出す。 */
+  densityLine: boolean;
+}) {
+  if (densityLine) {
+    return (
+      <>
+        <SectionLabel
+          label="何点にするか"
+          description="1kmあたりの回数・件数の軸は、0のとき0点から回数に比例して点数が上がります。何回/kmで100点にするかを決めます（それより先は100点のまま）。"
+        />
+        <span className="inline-flex items-center gap-2 [&_input[type=number]]:w-18">
+          <span className={cn(textVariants({ variant: "hint" }), "whitespace-nowrap")}>100点</span>
+          <NumberInput
+            commitOn="input"
+            step="any"
+            value={generator.hundredValue}
+            aria-label="100点にする値"
+            onValueChange={(next) => onChange({ hundredValue: next })}
+          />
+        </span>
+      </>
+    );
+  }
+  return (
+    <>
+      <SectionLabel
+        label="何点にするか"
+        description={
+          "この2つの値と効き方から、材料の値→スコアの変換を作ります。値の大小はどちら向きでも構いません" +
+          "（0点にする値の方が大きくてもよい）。"
+        }
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        {(
+          [
+            ["0点", "zeroValue"],
+            ["100点", "hundredValue"],
+          ] as const
+        ).map(([caption, key]) => (
+          <span key={key} className="inline-flex items-center gap-2 [&_input[type=number]]:w-18">
+            <span className={cn(textVariants({ variant: "hint" }), "whitespace-nowrap")}>{caption}</span>
+            <NumberInput
+              commitOn="input"
+              step="any"
+              value={generator[key]}
+              aria-label={`${caption}にする値`}
+              onValueChange={(next) => onChange({ [key]: next })}
+            />
+          </span>
+        ))}
+        <Select
+          aria-label="効き方"
+          value={generator.shape}
+          onChange={(e) => onChange({ shape: e.target.value as BreakpointShape })}
+        >
+          {BREAKPOINT_SHAPE_OPTIONS.map((opt) => (
+            <option key={opt.id} value={opt.id}>
+              {opt.label}
+            </option>
+          ))}
+        </Select>
+      </div>
+    </>
   );
 }

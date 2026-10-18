@@ -1,11 +1,11 @@
-"""`api/routers/material_catalog.py`——材料の実データの値・分布・欠損割合（軸スタジオの管理API）。
+"""`api/routers/material_catalog.py`——材料の値ごとの延長の割合・欠損割合（軸スタジオの管理API）。
 
-ここで見るもの: 未知の材料を404で断ること、値と分布を出せなかったことを`available`で伝えること、
-値・値ごとの延長の割合に表示名を添えること、欠損割合の集計の結果をそのまま返すこと。
+ここで見るもの: 未知の材料を404で断ること、値ごとの延長の割合を出せない材料を`available`で伝えること、
+値ごとの延長の割合に表示名を添えること、欠損割合の集計の結果をそのまま返すこと。
 
 ここで見ないもの:
 - 値の表示名の形（「論理名 - 物理名」・対訳の無い値） → `test_material_catalog.py`
-- 分布・値ごとの延長の割合の計算 → `test_value_distribution.py`
+- 値ごとの延長の割合の計算 → `test_value_distribution.py`
 - 欠損割合の組み立て（並び・割合・集計の対象外） → `test_material_coverage.py`
 - 認可 → `test_admin_route_authorization.py`
 - DBの失敗の503 → `test_admin_db_unavailable.py`
@@ -20,7 +20,6 @@ from app.api.dependencies import get_axis_preview_service, get_material_coverage
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.infrastructure.material_coverage import MATERIAL_COVERAGE_SPECS, MaterialCoverageCounts
 from app.main import app
-from app.domain.value_distribution import EMPTY_SPREAD, ValueSpread
 from app.services.axis_preview_service import AxisPreviewService, new_sample_cache
 from app.services.material_coverage_service import build_material_coverage_report
 from tests.admin_auth import AUTH_HEADERS
@@ -39,77 +38,10 @@ def preview():
     app.dependency_overrides.clear()
 
 
-@pytest.mark.parametrize("kind", ["values", "distribution", "value-shares"])
-def test_an_unknown_material_is_404(admin_credentials, kind):
-    response = client.get(f"/api/admin/material-catalog/not_a_real_material/{kind}", headers=AUTH_HEADERS)
+def test_an_unknown_material_is_404(admin_credentials):
+    response = client.get("/api/admin/material-catalog/not_a_real_material/value-shares", headers=AUTH_HEADERS)
 
     assert response.status_code == 404
-
-
-# --- 材料の実データ値一覧 ---
-
-
-class FakeRepositoryForMaterialValues:
-    """DBの代役。材料の値の一覧（`SELECT DISTINCT`）だけを答え、`error`を渡すとDB障害として送出する。"""
-
-    def __init__(self, values: list[str] | None = None, error: Exception | None = None):
-        self._values = values or []
-        self._error = error
-
-    async def get_distinct_material_values(self, material_id: str) -> list[str]:
-        if self._error is not None:
-            raise self._error
-        return self._values
-
-
-def values_url(material_id: str) -> str:
-    return f"/api/admin/material-catalog/{material_id}/values"
-
-
-def test_get_material_values_returns_each_value_with_its_label(admin_credentials, preview):
-    preview(AxisPreviewService(FakeRepositoryForMaterialValues(values=["cycleway"]), new_sample_cache()))
-
-    response = client.get(values_url("highway"), headers=AUTH_HEADERS)
-
-    assert response.json() == {
-        "available": True,
-        "values": [{"value": "cycleway", "label": MATERIAL_CATALOG["highway"].value_label("cycleway")}],
-    }
-
-
-def test_get_material_values_the_db_could_not_read_is_unavailable(admin_credentials, preview):
-    preview(AxisPreviewService(FakeRepositoryForMaterialValues(error=ConnectionRefusedError("db down")), new_sample_cache()))
-
-    response = client.get(values_url("smoothness"), headers=AUTH_HEADERS)
-
-    assert response.status_code == 200
-    # 出せなかったのは「候補を出せなかった」——「値が無い」と同じ形にしない。
-    assert response.json() == {"available": False, "values": []}
-
-
-# --- 材料の値の分布 ---
-
-
-@pytest.mark.parametrize(
-    ("result", "available"),
-    [
-        (ValueSpread(quantiles={"p50": 10.0}, zero_share=0.25), True),
-        (None, False),
-    ],
-    ids=["分布がある", "数値の材料でない"],
-)
-def test_material_distribution_answers_the_distribution_or_that_there_is_none(
-    admin_credentials, preview, result, available
-):
-    class FakePreview:
-        async def material_value_distribution(self, material_id):
-            return result
-
-    preview(FakePreview())
-
-    response = client.get("/api/admin/material-catalog/surface/distribution", headers=AUTH_HEADERS)
-
-    assert response.json() == {"available": available, **(result or EMPTY_SPREAD).model_dump(mode="json")}
 
 
 # --- 値ごとの延長の割合 ---
