@@ -274,6 +274,8 @@ interface MapViewProps {
   pinNames: PinNames;
   /** 地図を押したときの意味（効いているパネルが決める）。 */
   tapMode: MapTapMode;
+  /** 地図に出した一時の選択の持ち主。変わると、開いている地点・道の小窓を閉じる。 */
+  selectionOwner: string | null;
   /** 地点の意味の間に押した所（名前のある点の上なら、その点の位置と候補）を、選んでいる地点として置く。 */
   onPointPlace: (coordinates: Coordinates, spot: PlaceCandidate | null) => void;
   /** 地点の意味の間にピンを押したとき（その地点を選ぶ）。 */
@@ -319,6 +321,7 @@ export default function MapView({
   destination,
   pinNames,
   tapMode,
+  selectionOwner,
   onPointPlace,
   onPointSelect,
   onOriginMove,
@@ -406,6 +409,18 @@ export default function MapView({
     setRoadPopup(null);
     popupRef.current = new maplibregl.Popup({ closeButton: true }).setLngLat(lngLat).setDOMContent(content).addTo(map);
   }, []);
+
+  // 選択の持ち主が変わったら、開いている小窓を閉じる（道の小窓は状態なので描く間に外し、点の小窓はDOMに載せているので
+  // effect で外す）。
+  const [popupOwner, setPopupOwner] = useState(selectionOwner);
+  if (popupOwner !== selectionOwner) {
+    setPopupOwner(selectionOwner);
+    setRoadPopup(null);
+  }
+  useEffect(() => {
+    popupRef.current?.remove();
+    popupRef.current = null;
+  }, [selectionOwner]);
 
   // スタイルを差し替えた後、いまの宣言を空から当て直す。
   const redrawFromCurrentProps = useCallback((map: MapLibreMap) => {

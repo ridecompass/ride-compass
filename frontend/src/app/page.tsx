@@ -300,6 +300,14 @@ export default function Home() {
             ? "routeOutcome"
             : null;
   const tapMode = mapTapModeOf(activePanel, settingsTab, editingRoute !== null, navigating);
+  // 地図に出した一時の選択（選んだ区間・小窓）の持ち主。地図を押した意味は効いているパネルで決まるので、前に効いていたのと別の
+  // パネルが効いたら（閉じてから別のパネルを開いたときも）、前のパネルで出した選択を外す。閉じるだけなら外さない（地図だけを
+  // 見て、選んだ区間を小窓で読む）。
+  const [mapSelectionOwner, setMapSelectionOwner] = useState<Panel | null>(activePanel);
+  if (activePanel !== null && activePanel !== mapSelectionOwner) {
+    setMapSelectionOwner(activePanel);
+    if (mapSelectionOwner !== null) results.selectSegment(null);
+  }
   // 区分の中を押す・中へ移ると、その区分が地図で効く。効いているかは包む要素の印で見せ、区分のクラスは変えない（変えると中の
   // 部品の見た目の見分けが、押すたびに変わる）。
   const touchPanel = (panel: Panel) => ({
@@ -752,6 +760,7 @@ export default function Home() {
                 originLocated: locationKnown,
               })}
               tapMode={tapMode}
+              selectionOwner={mapSelectionOwner}
               onPointPlace={conditions.placeAtSelected}
               onPointSelect={conditions.selectPoint}
               onOriginMove={setManualLocation}
