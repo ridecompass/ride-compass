@@ -40,7 +40,7 @@ const NO_LAYERS = Object.fromEntries(
 const EMPTY_VALUES: ReadonlyMap<string, number | null> = new Map();
 
 /** 1枚のタイルの道の点数を求めるときに、地図が決める欄（タイルと走る条件）。値が条件で変わらない軸へ送っても、backendは読まずに捨てる。 */
-export interface DraftTileRequest extends TileXY {
+interface DraftTileRequest extends TileXY {
   readonly bearing_deg: number;
   readonly at: string;
   readonly speed_kmh: number;
