@@ -397,9 +397,9 @@ async def test_each_stage_declares_what_it_reads_and_writes(world, monkeypatch):
     # OSM 以外の値を書く段は OSM のタグを読まず、OSM から作った表は場所を引く区間の形と鍵（道の表は外部キーの照合が読む）しか
     # 読まない——ほかを読むと、OSM の版を入れ替えるたびにその値が変わり、OSM から作った値と分けて配れなくなる。
     osm = {Source.OSM_WAY, Source.OSM_NODE}
-    outside = [stage for stage in derive_cli.STAGES if not stage.sources & osm]
-    assert {stage.name: (touched[stage.name].sources, touched[stage.name].read - set(stage.tables) <= {"road_edges", "road_ways"})
-            for stage in outside} == {stage.name: (set(stage.sources), True) for stage in outside}
+    outside = [stage for stage in derive_cli.STAGES if stage.sources - osm]
+    assert {stage.name: (touched[stage.name].sources & osm, touched[stage.name].read - set(stage.tables) <= {"road_edges", "road_ways"})
+            for stage in outside} == {stage.name: (set(), True) for stage in outside}
     assert {name: touched[name].sources for name in STAGE_NAMES} == {
         stage.name: set(stage.sources) - ({Source.OSM_WAY} if stage.name == "addresses" else set())
         for stage in derive_cli.STAGES}
