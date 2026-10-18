@@ -4,13 +4,15 @@ import { createExpression, featureFilter, type FilterSpecification } from "@mapl
 
 const GLOBALS = { zoom: 14 } as never;
 
-/** 式を、地物のプロパティ（と feature-state）へ当てた値。式として読めなければ、評価器の指摘を並べて投げる。 */
+/** 式を、地物のプロパティ（と feature-state・地図全体の global-state）へ当てた値。式として読めなければ、評価器の指摘を
+ * 並べて投げる。 */
 export function evaluateExpression(
   expression: unknown,
   properties: Record<string, unknown>,
   state: Record<string, unknown> = {},
+  globalState: Record<string, unknown> = {},
 ): unknown {
-  const compiled = createExpression(expression, "paint");
+  const compiled = createExpression(expression, "paint", null, globalState);
   if (compiled.result !== "success") {
     throw new Error(compiled.value.map((error) => `${error.key}: ${error.message}`).join("; "));
   }

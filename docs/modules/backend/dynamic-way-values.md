@@ -17,7 +17,7 @@
 | domain | `wind.py`・`wind_grid.py`・`gradient.py`・`rain.py`（雨の材料の宣言——窓の長さの一覧——と、1時間雨量の履歴から材料の値を求める計算・配ってよい履歴の古さ）・`dynamic_way_values.py`（要求の条件の組み立てと、フィーチャーの材料から地図が塗る値への写しと、地図へ配る軸の式の木と道ごとの材料）・`way_value_formula.py`（中立の式の木の型と、numpyでの評価） |
 | services | `wind_way_service.py`・`gradient_way_service.py`・`rain_way_service.py`・`feature_midpoints.py`（配信サービスが、タイル内のフィーチャーの値をDBから引き、DB障害・取込範囲外・空のタイルを同じ形でログの欄へ記録する口と、地点の値を引く配信サービスが中ほどを鍵と緯度・経度の配列で引く口）・`feature_materials.py`（タイルのフィーチャーごとの材料と、道1本のフィーチャーごとの区間の材料を読み、ディスクへ持つ）・`dedicated_way_values.py`（材料→配信の実装の表、軸の葉の材料から実装を選ぶこと、タイルの材料とサービスの値を1回ずつ引いて軸ごとの値を求める口——地図のレンズと区間インスペクタが使う——、地図のレンズ） |
 | infrastructure | `dynamic_way_value_cache.py`（配信サービスの値は勾配のみ。ディスク経由）・`feature_material_cache.py`（タイルのフィーチャーごとの材料と区間の材料。ディスク経由）・`tile_persistent_cache.py`（呼び出し元が設計したタプルの鍵でPythonオブジェクトを置く汎用のディスクキャッシュ。`diskcache`の包み） |
-| api | `region.py`（`GET /api/region/dynamic-way-values/{axis_id}/...`・`GET /api/region/way-materials/{axis_id}/...`）・`dependencies.py`（`get_dedicated_way_value_service`・`get_axis_inspector_service`） |
+| api | `region.py`（`GET /api/region/way-materials/{axis_id}/...`）・`dependencies.py`（`get_dedicated_way_value_service`・`get_axis_inspector_service`） |
 
 勾配材料の入力（`edge_elevation.average_grade`とフィーチャーの方位）・中ほど・フィーチャーごとの材料を
 DBから取り出す`infrastructure/road_graph_repository.py: get_feature_gradient_inputs_in_tile`・`get_feature_midpoints_in_tile`・
@@ -127,10 +127,9 @@ frontendはどのクエリパラメータをどの軸のリクエストへ載せ
   前もって求める（`axis_way_materials`）。条件で変わる材料を読まない軸は値そのものが材料になり、向きだけで決まる材料
   （勾配）だけを読む軸は順向き・逆向きに辿った値が材料になる（区間から畳む軸もこの形で配れる）。ほかは軸の評価のうち
   条件で変わる材料に届く項を木へ開く。木にできない軸（区間から畳み、向きだけでは選べない材料を読む軸・条件で変わる材料に
-  届く分類の形・0次条件）は`null`で、地図はその軸を配信の値で塗る。
-- **値は配信と区間インスペクタと同じ**: `GET /api/region/dynamic-way-values/{axis_id}/...`と区間インスペクタも、木のある軸は
-  同じ材料を同じ木で評価して値を出す（`axis_way_values`）。木の値が配信の値と食い違うと、向きを変えた地図と区間インスペクタが
-  同じ道に違う値を出す（`tests/test_dynamic_way_values.py`）。
+  届く分類の形・0次条件）は`null`で、地図はルートの無い間その軸で周りの道を塗らない（ルートの線は`axis_difficulties`で塗る）。
+- **値は区間インスペクタと同じ**: 区間インスペクタも、木のある軸は同じ材料を同じ木で評価して値を出す（`axis_way_values`）。
+  木の値が区間インスペクタの値と食い違うと、地図と区間インスペクタが同じ道に違う値を出す（`tests/test_dynamic_way_values.py`）。
 
 ## 引いた地図の道1本の値（`domain/dynamic_way_values.py: paint_folded_feature_values`）
 
@@ -175,25 +174,25 @@ tile_axis_values`）を、押したフィーチャーだけについて求めた
 
 ## API（`api/routers/region.py`）
 
-`GET /api/region/dynamic-way-values/{axis_id}/{z}/{x}/{y}?bearing_deg=&at=&speed_kmh=`
+`GET /api/region/way-materials/{axis_id}/{z}/{x}/{y}?at=`
 
 ```
 axis_id → get_dedicated_way_value_service(axis_id) が今の軸の集合の写しで軸のレンズ（AxisWayValueLens）を組む
           （公開していない軸・未知の軸はNone→404）
-        → lens.values(z, x, y, WayValueQuery(at, bearing_deg, speed_kmh))
+        → lens.way_materials(z, x, y, at)
+            軸の木（axis_way_value_formula）が無ければNone→404
             軸と内部軸の葉の材料のうち、配るサービスのある材料ごとに
-              assemble_conditions(service.conditions_type, 要求)
-                （要る条件が1つでも欠けていれば何も読まずに欠けた名前を返す→422。要らない条件は無視）
-              → service.get_way_materials(z, x, y, at)   … 道ごとの材料（勾配はキャッシュ対象）
+              service.get_way_materials(z, x, y, at)   … 道ごとの材料（勾配はキャッシュ対象）
             葉の材料にサービスの無い材料があれば FeatureMaterialService.materials(z, x, y)
               … タイルのフィーチャーごとの材料（キャッシュ対象。取込範囲外・DB障害は{}を返す）
-            → axis_way_values(axis_id, 軸の集合, 材料の木, タイルの材料と道ごとの材料, 走行方位・想定速度)
-              （木のある軸は軸の木を道ごとの材料で評価し、ほかは材料の値を求めてから paint_feature_values）
-        → {フィーチャーの鍵: 地図表示値} の辞書（JSON。鍵はタイルが焼いた`feature_key`と
-          同じもので、ズームによって区間・wayのどちらかになる）
+            → axis_way_materials(axis_id, 軸の集合, 材料の木, タイルの材料と道ごとの材料)
+              （軸の木が読む材料の名前ごとの列）
+        → {フィーチャーの鍵: {材料の名前: 値}} の辞書（JSON。値の無い材料は載せない。鍵はタイルが焼いた
+          `feature_key`と同じもので、ズームによって区間・wayのどちらかになる）
 ```
 
-- 応答は材料の生値ではなく**地図が塗る値**。`map_paint`の塗る値が難易度の軸
+- 走行方位・想定速度は受け取らず、応答もキャッシュの鍵も向きと速度で変わらない。時刻は時刻に依る材料（風）の時刻。
+- 応答を軸カタログの`way_value_formula`へ走る条件とともに入れた値が、**地図が塗る値**。`map_paint`の塗る値が難易度の軸
   （風等）は軸定義（breakpoints・priority_overrides・参照する内部軸）で評価した難易度0〜100、
   符号付き材料の軸（勾配: 単一材料・`preprocess="abs"`）は符号付き材料生値のまま。
   ルート確定後のルート線色分け（`axis_difficulties`／符号付き材料の直読み）と同じ
@@ -225,14 +224,9 @@ axis_id → get_dedicated_way_value_service(axis_id) が今の軸の集合の写
   どの材料として評価するかに使う。勾配は`gradient_percent`固定、風は`wind_drag_ratio`固定
   （走行速度依存、`speed_kmh`必須）。
   キャッシュはタイルの材料もサービスの道ごとの材料も軸に依らない値のまま持つため、軸スタジオでbreakpointsを変えても
-  キャッシュを捨てずに次の応答から反映される。評価できない値（軸が他の材料も必須にしている等）はその道路を
-  結果から除く（地図上は「データなし」）。`null`（走行方位で決まらない）は`null`のまま返す。
+  キャッシュを捨てずに次の応答から反映される。値の無い材料は応答に載せず、木はその道の値をNaN（地図上は「データなし」）にする。
 - `GET /api/axis-catalog`は同じ値を`map_paint`として公開し、frontendは色式と凡例の段の範囲の文字をそこから
   組み立てる（ルート確定の前後とも。[地図: 軸・ルート色分け](../frontend/map-axis-coloring.md)参照）。
-
-`GET /api/region/way-materials/{axis_id}/{z}/{x}/{y}?at=`は、同じ軸のレンズで、軸の木（`GET /api/axis-catalog`の
-`way_value_formula`）が読む道ごとの材料を`{フィーチャーの鍵: {材料の名前: 値}}`で返す（値の無い材料は載せない）。走行方位・
-想定速度は受け取らず、応答もキャッシュの鍵も向きと速度で変わらない。時刻は時刻に依る材料（風）の時刻。木の無い軸は404。
 
 - ルート確定後は呼ばれない専用エンドポイント（フロントは`axis_difficulties`を使う）。
 - 静的な路面タイル（`/api/region/road-surface-tiles`、MVT）とは別経路——フロントは

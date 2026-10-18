@@ -216,6 +216,20 @@ export function bandAt(bands: readonly ValueBand[], value: number): ValueBand {
   return found;
 }
 
+/** 値（MapLibreの式）が入る段の`output`を選ぶ式。道の値の式は大きく、MapLibre は式を読む所ごとに写して運ぶので、
+ * 値を1回だけ読む`step`で選ぶ（段ごとの`bandCondition`は値を段の数の倍読む）。判定は`bandAt`と同じ`>= 下限`で、後ろの段ほど
+ * 先に当たる。`step`は下限が狭義の昇順でないと式として組めないので、後ろの段に覆われて選ばれない段を除いてから並べる。
+ * 値が無い場合は呼ぶ側が先に分ける（`step`は NaN を受けると評価が止まる）。 */
+export function bandStep(bands: readonly ValueBand[], value: unknown, output: (band: ValueBand) => unknown): unknown {
+  const reachable: ValueBand[] = [];
+  for (const band of [...bands].reverse()) {
+    if (reachable.length === 0 || band.lowerBound < reachable[0].lowerBound) reachable.unshift(band);
+  }
+  const [lowest, ...rest] = reachable;
+  if (rest.length === 0) return output(lowest);
+  return ["step", value, output(lowest), ...rest.flatMap((band) => [band.lowerBound, output(band)])];
+}
+
 /** 値（MapLibreの式）が段`index`に入るときに真になる式。地図の線・ルートの線の色と凡例の絞り込みはどれもこれで段を
  * 引くので、境界ちょうどの値もどこでも同じ段に入る。値が無い場合は呼ぶ側が先に分ける。 */
 export function bandCondition(bands: readonly ValueBand[], index: number, value: unknown): unknown[] {

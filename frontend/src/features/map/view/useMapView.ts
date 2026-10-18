@@ -24,12 +24,12 @@ import { isLegendFiltered } from "@/features/map/MapOverlayControls/OverlayLayer
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import { useDedicatedWayValues } from "@/features/map/useDedicatedWayValues";
+import { useWayMaterials } from "@/features/map/useWayMaterials";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
 import { useStoredBooleanState, useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates } from "@/types/route";
 import type { RideConditions } from "@/features/map/regionApi";
-import { travelBearingOf } from "@/features/map/mapHeading";
+import { normalizeDeg } from "@/lib/cardinalLabel";
 import type { WayValueCondition } from "@/lib/catalogAxis";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
@@ -143,16 +143,22 @@ export function useMapView({
     now,
   });
   const painted = paintedAxisId(lens, hasDetail, keepAfterRoute);
-  // 道ごとの値は、全道路を塗っている軸の分だけ取る（塗っていない軸の値は地図に出ない。表示中のものだけ叩く）。
+  // 道ごとの材料は、全道路を塗っている軸の分だけ取る（塗っていない軸の値は地図に出ない。表示中のものだけ叩く）。
+  // 式の木の無い軸は周りの道を塗らないので取らない。
   const fetchAxes = useMemo(
-    () => mapCatalog.dedicatedAxes.filter((axis) => axis.axisId === painted),
+    () => mapCatalog.dedicatedAxes.filter((axis) => axis.axisId === painted && axis.paintsSurroundingRoads),
     [mapCatalog.dedicatedAxes, painted],
   );
-  // 走っていない間の走る向きは、地図の上の向きを丸めたもの（丸めた向きが変わらない回転では道の値を取り直さない）。
-  const bearingDeg = riding?.bearingDeg ?? travelBearingOf(viewport?.bearing ?? 0);
+  // 走っていない間の走る向きは、地図の上の向きそのもの（向きを変えても材料は取り直さず、地図が色を求め直す）。
+  const bearingDeg = riding?.bearingDeg ?? normalizeDeg(viewport?.bearing ?? 0);
   const speedKmh = riding?.speedKmh ?? ride.speedKmh;
   const wayConditions = useMemo(() => ({ bearingDeg, at: ride.at, speedKmh }), [bearingDeg, ride.at, speedKmh]);
-  const dedicatedWayValues = useDedicatedWayValues(fetchAxes, viewport, bearingDeg, ride.at, speedKmh);
+  const wayMaterials = useWayMaterials(fetchAxes, viewport, ride.at);
+  // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。速度が数でない間は値の無いことにする。
+  const formulaConditions = useMemo(
+    () => ({ bearing_deg: bearingDeg, ...(Number.isFinite(speedKmh) ? { speed_kmh: speedKmh } : {}) }),
+    [bearingDeg, speedKmh],
+  );
   const debouncedHidden = useDebouncedValue(hidden, LEGEND_FILTER_DEBOUNCE_MS);
 
   // MapViewはこの参照が変わるたびに地図の中身を組み直すため、中身が変わったときだけ作る。
@@ -162,18 +168,28 @@ export function useMapView({
       dynamicWeather: weather.dynamicWeather,
       lens,
       paintedAxisId: painted,
-      dedicatedWayValues,
+      wayMaterials,
+      wayConditions: formulaConditions,
       hiddenLegendKeys: debouncedHidden,
       refreshToken,
       onViewportChange: setViewport,
       onLayerDataStatusChange: setMapLayerStatus,
     }),
-    [layerVisibility, weather.dynamicWeather, lens, painted, dedicatedWayValues, debouncedHidden, refreshToken],
+    [
+      layerVisibility,
+      weather.dynamicWeather,
+      lens,
+      painted,
+      wayMaterials,
+      formulaConditions,
+      debouncedHidden,
+      refreshToken,
+    ],
   );
 
   const legend = lensLegend(lens, hasDetail, mapCatalog);
   const lensHidden = presentHiddenKeys(legend, hiddenKeysOf(hidden, lens));
-  const lensFetch = dedicatedWayValues.get(lens);
+  const lensFetch = wayMaterials.get(lens);
   const chips = overlayChips({
     layers: mapCatalog.layers,
     visibility: layerVisibility,
@@ -210,7 +226,7 @@ export function useMapView({
         ? deriveFetchLayerStatus(
             lensFetch.loading,
             lensFetch.error ? "fetch-failed" : null,
-            lensFetch.values.size > 0,
+            lensFetch.materials.size > 0,
             lensFetch.hasFetched,
           )
         : undefined,

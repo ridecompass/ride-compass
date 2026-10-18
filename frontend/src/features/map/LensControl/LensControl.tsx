@@ -37,6 +37,8 @@ export interface LensOption {
   iconId?: string;
   /** 値が変わる走る条件（夜だけ効く軸は出発時刻）。地図の右の列のボタンと同じアイコンを名前に添える。 */
   conditions: readonly WayValueCondition[];
+  /** ルートの無い間の周りの道を塗れるか。塗れない軸は「ルートの線だけ」を添える。 */
+  paintsSurroundingRoads: boolean;
 }
 
 /** 走る条件ごとの、地図の右の列のボタンと同じアイコンと名前。 */
@@ -306,6 +308,7 @@ function LensRow({ option, panel, filtered }: { option: LensOption; panel: React
               </span>
             );
           })}
+          {!option.paintsSurroundingRoads && <span className={textVariants({ variant: "note" })}>ルートの線だけ</span>}
           {option.unused && <span className={textVariants({ variant: "note" })}>未使用</span>}
           {filtered && <span className={textVariants({ variant: "note" })}>絞り込み中</span>}
         </ToggleGroupItem>

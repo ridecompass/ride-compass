@@ -1,12 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { clampSpeedKmh } from "@/lib/assumedSpeed";
-import { bearingSector } from "@/lib/cardinalLabel";
-/** 走行中の向きを丸める幅（度）。幅の中で向きが揺れても、道の値を取り直さない。360を割り切る値にする。 */
-export const BEARING_STEP_DEG = 5;
-const BUCKETS = 360 / BEARING_STEP_DEG;
 
-/** 走行中に、地図の道の値を取る条件の向きと速さの代わりに使う値。 */
+/** 走行中に、地図の道の値を求める条件の向きと速さの代わりに使う値。 */
 export interface RidingWayConditions {
   bearingDeg: number;
   speedKmh: number;
@@ -21,21 +17,11 @@ interface Riding {
 }
 
 /**
- * 走行中に地図の道の値を取る条件の向きと速さ: 地図の向きと想定速度の代わりに、実際の進む向きと速さを使う。向きは
- * `BEARING_STEP_DEG`の区分の中心へ丸め、速さは向きの区分が変わったときのものを使う——位置が届くたびに条件を変えると、そのたびに道の値を取り直す。走っていないか、進む向きが
- * まだ分からなければnull。
+ * 走行中に地図の道の値を求める条件の向きと速さ: 地図の向きと想定速度の代わりに、実際の進む向きと速さを使う。
+ * 走っていないか、進む向きがまだ分からなければnull。
  */
 export function useRideWayConditions(riding: Riding | null, plannedSpeedKmh: number): RidingWayConditions | null {
-  const bucket = riding?.bearing != null ? bearingSector(riding.bearing, BUCKETS) : null;
-  // 区分が変わったときに取った速さ。区分の中で速さが変わっても取り直さない。
-  const [sampled, setSampled] = useState<{ bucket: number; speedKmh: number } | null>(null);
-  const speedNow = riding?.speedKmh != null ? clampSpeedKmh(riding.speedKmh) : plannedSpeedKmh;
-  const current = bucket === null ? null : sampled?.bucket === bucket ? sampled : { bucket, speedKmh: speedNow };
-  if (current !== sampled) setSampled(current);
-  const bearingDeg = current === null ? null : current.bucket * BEARING_STEP_DEG;
-  const speedKmh = current === null ? null : current.speedKmh;
-  return useMemo(
-    () => (bearingDeg === null || speedKmh === null ? null : { bearingDeg, speedKmh }),
-    [bearingDeg, speedKmh],
-  );
+  const bearingDeg = riding?.bearing ?? null;
+  const speedKmh = riding?.speedKmh != null ? clampSpeedKmh(riding.speedKmh) : plannedSpeedKmh;
+  return useMemo(() => (bearingDeg === null ? null : { bearingDeg, speedKmh }), [bearingDeg, speedKmh]);
 }

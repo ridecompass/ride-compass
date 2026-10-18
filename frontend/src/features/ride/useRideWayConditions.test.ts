@@ -1,17 +1,16 @@
 /**
- * `features/ride/useRideWayConditions.ts: useRideWayConditions`——走行中に地図の道の値を取る向きと速さを決める。
- * 実際の進む向きと速さを使い、向きの区分が変わるまでは同じ条件を返す。
+ * `features/ride/useRideWayConditions.ts: useRideWayConditions`——走行中に地図の道の値を求める向きと速さを決める。
+ * 実際の進む向きと速さを使う。
  *
  * ここで見ないもの:
- * - 角度を区分へ丸める答え（区分の境界の向き） → `lib/cardinalLabel.test.ts`（呼び名の区分の、backend が出す表）
- * - 条件で道の値を取ること → `features/map/useDedicatedWayValues.test.ts`
+ * - 条件を地図へ渡し、取り直さずに色を求め直すこと → `features/map/view/useMapView.test.ts`
  */
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-import { BEARING_STEP_DEG as BUCKET, useRideWayConditions } from "./useRideWayConditions";
+import { useRideWayConditions } from "./useRideWayConditions";
 
 const PLANNED_SPEED_KMH = 20;
 
@@ -29,18 +28,12 @@ describe("useRideWayConditions", () => {
     expect(render(riding).result.current).toBeNull();
   });
 
-  it("走行中は、実際の進む向きを区分の中心へ丸め、実際の速さを使う", () => {
-    const { result } = render({ bearing: BUCKET * 3 + 1, speedKmh: 17.6 });
-    expect(result.current).toEqual({ bearingDeg: BUCKET * 3, speedKmh: 18 });
-  });
+  it("走行中は、実際の進む向きを丸めずに使い、実際の速さを整数へ丸めて使う", () => {
+    const { result, rerender } = render({ bearing: 16, speedKmh: 17.6 });
+    expect(result.current).toEqual({ bearingDeg: 16, speedKmh: 18 });
 
-  it("同じ区分の中で向きと速さが変わっても条件は変えず、区分が変わったらその時の速さで取り直す", () => {
-    const { result, rerender } = render({ bearing: BUCKET * 3, speedKmh: 18 });
-    rerender({ riding: { bearing: BUCKET * 3 + 1, speedKmh: 25 } });
-    expect(result.current).toMatchObject({ bearingDeg: BUCKET * 3, speedKmh: 18 });
-
-    rerender({ riding: { bearing: BUCKET * 4, speedKmh: 25 } });
-    expect(result.current).toMatchObject({ bearingDeg: BUCKET * 4, speedKmh: 25 });
+    rerender({ riding: { bearing: 17, speedKmh: 25 } });
+    expect(result.current).toEqual({ bearingDeg: 17, speedKmh: 25 });
   });
 
   it.each([
