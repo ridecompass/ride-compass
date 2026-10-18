@@ -3,6 +3,8 @@
 // 下書きの点数の地図。保存前の下書きで求めた道の点数を、下書きの段で塗る（管理画面の較正の画面が置く）。地図へ載せるものは一般の地図と同じ場面の組み立て
 // （`scene/applyToMap.ts: sceneInputsFrom`→`buildMapScene`→`applyScene`）を通し、道の線の塗りと凡例も一般の地図のものを使う。
 // 点数の取得の鍵は軸・下書き・範囲だけで、段の境界を含めない——境界だけを動かしたときは、手元の点数のまま塗り直す。
+// 点数は backend が下書きと走る条件で求め終えた値なので、道ごとの材料1つとして載せ、それをそのまま道の値にする木で塗る
+// （公開中の軸の木は公開中の材料を読むので、下書きの点数には使えない）。
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { Map as MapLibreMap } from "maplibre-gl";
@@ -10,7 +12,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { createBaseMap } from "@/features/map/baseMap";
-import { mergeDynamicWayValues, tilesCoveringViewport, type TileXY } from "@/features/map/layers/dynamicWayValues";
+import { mergeTileValues, tilesCoveringViewport, type TileXY } from "@/features/map/layers/dynamicWayValues";
 import { buildDefaultLayerVisibility, type MapLayerVisibility } from "@/features/map/layers/mapLayers";
 import type { MapViewport } from "@/features/map/layers/windLayer";
 import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckboxList";
@@ -19,6 +21,8 @@ import { ORIGIN_ZOOM } from "@/features/map/MapView/useMapMarkers";
 import { ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM } from "@/features/map/regionApi";
 import { applyScene, sceneInputsFrom, type HiddenLegendKeys } from "@/features/map/scene/applyToMap";
 import { buildMapScene } from "@/features/map/scene/buildScene";
+import type { WayMaterials } from "@/features/map/scene/groups/axisLines";
+import { featureValueFormula } from "@/features/map/scene/wayValueFormula";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { hiddenKeysOf, toggleHiddenKey } from "@/features/map/view/legendFilters";
 import { lensLegend } from "@/features/map/view/lens";
@@ -37,7 +41,29 @@ const NO_LAYERS = Object.fromEntries(
   Object.keys(buildDefaultLayerVisibility()).map((id) => [id, false]),
 ) as MapLayerVisibility;
 
-const EMPTY_VALUES: ReadonlyMap<string, number | null> = new Map();
+const EMPTY_MATERIALS: WayMaterials = new Map();
+
+/** 木が条件を読まないので、地図に走る条件を置かない。 */
+const NO_CONDITIONS = {};
+
+/** 下書きの点数を載せる材料の名前。 */
+const DRAFT_VALUE = "draft_value";
+
+/** 軸の行のうち、下書きの点数で塗るために差し替える欄。点数は走る条件を入れて求め終えているので、向きで決まらない道は無い。 */
+const DRAFT_PAINTING = {
+  wayValueFormula: featureValueFormula(DRAFT_VALUE),
+  paintsSurroundingRoads: true,
+  undeterminedByBearing: false,
+} satisfies Partial<DedicatedWayValueAxis>;
+
+/** タイルごとの点数を、道ごとの材料へ移す。値の無い道は材料を載せない（木が値の無い道として塗る）。 */
+function draftMaterialsOf(responses: readonly Record<string, number | null>[]): WayMaterials {
+  const materials = new Map<string, Readonly<Record<string, number>>>();
+  for (const [featureKey, value] of mergeTileValues(responses)) {
+    materials.set(featureKey, value === null ? {} : { [DRAFT_VALUE]: value });
+  }
+  return materials;
+}
 
 /** 1枚のタイルの道の点数を求めるときに、地図が決める欄（タイルと走る条件）。値が条件で変わらない軸へ送っても、backendは読まずに捨てる。 */
 interface DraftTileRequest extends TileXY {
@@ -76,7 +102,7 @@ function useDraftWayValues<Draft>(
         const responses = await Promise.all(
           request.tiles.map((tile) => fetchTile(request.draft, { ...tile, ...condition })),
         );
-        return mergeDynamicWayValues(responses);
+        return draftMaterialsOf(responses);
       },
       enabled: debouncedKey !== "",
       placeholderData: keepPreviousData,
@@ -84,7 +110,7 @@ function useDraftWayValues<Draft>(
     getQueryClient(),
   );
   return {
-    values: data ?? EMPTY_VALUES,
+    materials: data ?? EMPTY_MATERIALS,
     loading: isFetching || key !== debouncedKey,
     error: error === null ? null : errorMessage(error),
   };
@@ -105,8 +131,8 @@ function unpublishedAxis(axisId: string, label: string, paint: MapPaintDeclarati
     weatherLayerGroups: [],
     wayValueConditions: [],
     timeScope: "always",
-    undeterminedByBearing: false,
     display: paint,
+    ...DRAFT_PAINTING,
   };
 }
 
@@ -130,11 +156,11 @@ export default function DraftWayValuesMap<Draft>({
   const [viewport, setViewport] = useState<MapViewport | null>(null);
   const [hiddenLegendKeys, setHiddenLegendKeys] = useState<HiddenLegendKeys>({});
   const mapCatalog = useMapAxisCatalog();
-  const { values, loading, error } = useDraftWayValues(axisId, draft, fetchTile, viewport);
+  const { materials, loading, error } = useDraftWayValues(axisId, draft, fetchTile, viewport);
 
   const published = mapCatalog.dedicatedAxes.find((axis) => axis.axisId === axisId);
   const axis = useMemo(
-    () => (published ? { ...published, display: paint } : unpublishedAxis(axisId, label, paint)),
+    () => (published ? { ...published, ...DRAFT_PAINTING, display: paint } : unpublishedAxis(axisId, label, paint)),
     [published, axisId, label, paint],
   );
   const legend = lensLegend(axisId, false, { routeStyleModes: [], dedicatedAxes: [axis] });
@@ -147,7 +173,8 @@ export default function DraftWayValuesMap<Draft>({
             dynamicWeather: {},
             lens: LENS_DIFFICULTY_ID,
             paintedAxisId: axisId,
-            dedicatedWayValues: new Map([[axisId, { values, loading }]]),
+            wayMaterials: new Map([[axisId, { materials, loading }]]),
+            wayConditions: NO_CONDITIONS,
             hiddenLegendKeys,
           },
           catalog: { dedicatedAxes: [axis], routeStyleModes: mapCatalog.routeStyleModes },
@@ -160,7 +187,7 @@ export default function DraftWayValuesMap<Draft>({
           travelledKm: null,
         }),
       ),
-    [axisId, axis, values, loading, hiddenLegendKeys, mapCatalog.routeStyleModes, mapCatalog.tileVersions],
+    [axisId, axis, materials, loading, hiddenLegendKeys, mapCatalog.routeStyleModes, mapCatalog.tileVersions],
   );
 
   useEffect(() => {
