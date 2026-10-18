@@ -92,16 +92,12 @@ export function fetchCalibrationPreview(body: CalibrationPreviewRequest) {
   );
 }
 
-type WayValuesPreviewRequest = Schemas["WayValuesPreviewRequest"];
+export type WayValuesPreviewRequest = Schemas["WayValuesPreviewRequest"];
 /** 道の点数を求める下書き（軸と点のつけ方）。 */
 export type WayValuesDraft = Pick<WayValuesPreviewRequest, "axis_id" | "shape">;
 
 /** 編集中の折れ点で、1枚のタイルの道（feature_key）それぞれが何点になるか。値は公開中の軸の道の点数の配信と同じ計算で出す。 */
-export function fetchWayValuesPreview(
-  draft: WayValuesDraft,
-  tile: Omit<WayValuesPreviewRequest, keyof WayValuesDraft>,
-) {
-  const body = { ...draft, ...tile };
+export function fetchWayValuesPreview(body: WayValuesPreviewRequest) {
   return requestApi(
     (init) => adminApiClient.POST("/axis-definitions/preview-way-values", { body, ...init }),
     adminOptions("道の点数の確認", { body }),
@@ -121,6 +117,20 @@ export function fetchMaterialDistribution(materialId: string) {
         ...init,
       }),
     adminOptions("分布の取得", { timeoutMs: API_TIMEOUT_MS.distribution }),
+  );
+}
+
+export type MaterialValueShares = Schemas["MaterialValueSharesResponse"];
+
+/** 種類・はい/いいえの材料の値ごとに、その値を持つ道の延長の割合。 */
+export function fetchMaterialValueShares(materialId: string) {
+  return requestApi(
+    (init) =>
+      adminApiClient.GET("/material-catalog/{material_id}/value-shares", {
+        params: { path: { material_id: materialId } },
+        ...init,
+      }),
+    adminOptions("値ごとの延長の取得", { timeoutMs: API_TIMEOUT_MS.distribution }),
   );
 }
 

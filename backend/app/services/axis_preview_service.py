@@ -20,7 +20,14 @@ from cachetools import TTLCache
 from app.domain.axis_definitions import AxisShape
 from app.domain.material_catalog import material_dtype
 from app.domain.region import BoundingBox
-from app.domain.value_distribution import ValueDistribution, ValueSpread, raw_value_distribution, weighted_spread
+from app.domain.value_distribution import (
+    ValueDistribution,
+    ValueShares,
+    ValueSpread,
+    raw_value_distribution,
+    weighted_spread,
+    weighted_value_shares,
+)
 from app.infrastructure.database import DB_UNAVAILABLE_ERRORS
 from app.infrastructure.debug_log import log_external_call, mark_failed
 from app.infrastructure.road_graph_repository import RoadGraphRepository
@@ -96,6 +103,15 @@ class AxisPreviewService:
             if materials.get(material_id) is not None
         ]
         return weighted_spread(pairs)
+
+    async def material_value_shares(self, material_id: str) -> ValueShares | None:
+        """種類・はい/いいえの材料の値ごとの延長の割合。数値材料はNone（値ごとに数えても意味が無い）。"""
+        if material_dtype(material_id) == "numeric":
+            return None
+        sample = await _load_sample(self._repository, self._sample_cache)
+        return weighted_value_shares(
+            [(length_m, materials[material_id]) for length_m, materials in sample if materials.get(material_id) is not None]
+        )
 
     async def material_values(self, material_id: str) -> list[str] | None:
         """指定した材料についてDBへ実際に取り込まれている値の一覧。軸スタジオの値入力が使う。

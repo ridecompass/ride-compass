@@ -580,6 +580,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/material-catalog/{material_id}/value-shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_material_value_shares_api_admin_material_catalog__material_id__value_shares_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/material-catalog/{material_id}/values": {
         parameters: {
             query?: never;
@@ -1550,6 +1566,26 @@ export interface components {
             value: string;
             /** Label */
             label: string;
+        };
+        /** MaterialValueShareEntry */
+        MaterialValueShareEntry: {
+            /** Value */
+            value: string;
+            /** Label */
+            label: string;
+            /** Share */
+            share: number;
+        };
+        /** MaterialValueSharesResponse */
+        MaterialValueSharesResponse: {
+            /** Available */
+            available: boolean;
+            /** Sample Ways */
+            sample_ways: number;
+            /** Total Km */
+            total_km: number;
+            /** Values */
+            values: components["schemas"]["MaterialValueShareEntry"][];
         };
         /** MaterialValuesResponse */
         MaterialValuesResponse: {
@@ -3339,6 +3375,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MaterialDistributionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_material_value_shares_api_admin_material_catalog__material_id__value_shares_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialValueSharesResponse"];
                 };
             };
             /** @description Validation Error */
