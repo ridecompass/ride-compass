@@ -1,10 +1,10 @@
 """`domain/value_distribution.py`——延長で重み付けた分布（`weighted_distribution`）・分位点（`weighted_quantiles`）・
-分位点とゼロの割合（`weighted_spread`）・値ごとの延長の割合（`weighted_value_shares`）と、軸の下書きの形で道の標本から求める生値の分布（`raw_value_distribution`）。
+値ごとの延長の割合（`weighted_value_shares`）と、軸の下書きの形で道の標本から求める生値の分布（`raw_value_distribution`）。
 
 ここで見ないもの:
 - 軸の生値（重み付き和・欠損・前処理・対応表の軸に生値が無いこと） → `test_axis_definitions.py`
 - 標本をDBから引いて持っておくこと（`load_way_sample`・期限付きの置き場） → 読むだけの結線
-- 分布を管理APIの応答へ出すこと → `test_axis_admin_routes.py`（軸の下書き）・`test_material_catalog_routes.py`（材料）
+- 分布を管理APIの応答へ出すこと → `test_axis_admin_routes.py`（軸の下書き）・`test_material_catalog_routes.py`（値ごとの延長）
 """
 
 import pytest
@@ -14,7 +14,6 @@ from app.domain.value_distribution import (
     raw_value_distribution,
     weighted_distribution,
     weighted_quantiles,
-    weighted_spread,
     weighted_value_shares,
 )
 
@@ -30,10 +29,9 @@ def test_quantiles_weight_by_length_not_by_way_count():
     assert weighted_quantiles(pairs, [("p50", 0.5)], digits=1) == {"p50": 100.0}
 
 
-@pytest.mark.parametrize("build", [weighted_distribution, weighted_spread])
-def test_distribution_and_spread_report_quantiles_rounded_to_three_digits(build):
+def test_the_distribution_reports_quantiles_rounded_to_three_digits():
     pairs = [(100.0, 1 / 3)]
-    assert build(pairs).quantiles["p50"] == 0.333
+    assert weighted_distribution(pairs).quantiles["p50"] == 0.333
 
 
 class TestDistribution:
@@ -64,17 +62,6 @@ class TestDistribution:
         result = weighted_distribution([(100.0, 0.0), (100.0, 0.0)])
         assert result.total_km == pytest.approx(0.2)
         assert result.bins[0][2] == pytest.approx(1.0)
-
-
-class TestSpread:
-    def test_zero_share_counts_only_exact_zero(self):
-        # 「ゼロ」は値がちょうど0のこと。負の値を混ぜても割合は変わらない。
-        pairs = [(100.0, 0.0), (100.0, -5.0), (100.0, 3.0), (100.0, 0.0)]
-        assert weighted_spread(pairs).zero_share == pytest.approx(0.5)
-
-    def test_no_values_give_no_quantiles_and_no_zero_share(self):
-        result = weighted_spread([])
-        assert (result.quantiles, result.zero_share) == ({}, 0.0)
 
 
 def test_the_draft_shape_gives_raw_values_before_its_breakpoints_and_skips_ways_without_them():

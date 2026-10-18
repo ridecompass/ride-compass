@@ -100,7 +100,7 @@ beforeEach(() => {
   onSameOrigin("POST", "/admin/api/axis-definitions/preview-scores", ({ body }) => {
     const { shape } = body as { shape: { breakpoints: Breakpoints } };
     const saved = SAVED_LINES.includes(JSON.stringify(shape.breakpoints));
-    return Response.json({ scores: saved ? SAVED_SCORES : DRAFT_SCORES, material_points: [] });
+    return Response.json({ scores: saved ? SAVED_SCORES : DRAFT_SCORES });
   });
   onSameOrigin("POST", "/admin/api/axis-definitions/preview-calibration", ({ body }) => {
     const { definition } = body as { definition: AxisDefinitionPayload };

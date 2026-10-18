@@ -1835,49 +1835,6 @@
         }
       }
     },
-    "/api/admin/material-catalog/{material_id}/distribution": {
-      "get": {
-        "operationId": "get_material_distribution_api_admin_material_catalog__material_id__distribution_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "material_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Material Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MaterialDistributionResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/admin/material-catalog/{material_id}/value-shares": {
       "get": {
         "operationId": "get_material_value_shares_api_admin_material_catalog__material_id__value_shares_get",
@@ -1904,49 +1861,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MaterialValueSharesResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin/material-catalog/{material_id}/values": {
-      "get": {
-        "operationId": "get_material_values_api_admin_material_catalog__material_id__values_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "material_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Material Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MaterialValuesResponse"
                 }
               }
             }
@@ -4987,33 +4901,6 @@
         ],
         "title": "MaterialCoverageReport"
       },
-      "MaterialDistributionResponse": {
-        "properties": {
-          "quantiles": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Quantiles"
-          },
-          "zero_share": {
-            "type": "number",
-            "title": "Zero Share"
-          },
-          "available": {
-            "type": "boolean",
-            "title": "Available"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "quantiles",
-          "zero_share",
-          "available"
-        ],
-        "title": "MaterialDistributionResponse"
-      },
       "MaterialTerm-Input": {
         "properties": {
           "material": {
@@ -5065,25 +4952,6 @@
           "required"
         ],
         "title": "MaterialTerm"
-      },
-      "MaterialValueEntry": {
-        "properties": {
-          "value": {
-            "type": "string",
-            "title": "Value"
-          },
-          "label": {
-            "type": "string",
-            "title": "Label"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "value",
-          "label"
-        ],
-        "title": "MaterialValueEntry"
       },
       "MaterialValueShareEntry": {
         "properties": {
@@ -5140,29 +5008,6 @@
           "values"
         ],
         "title": "MaterialValueSharesResponse"
-      },
-      "MaterialValuesResponse": {
-        "properties": {
-          "available": {
-            "type": "boolean",
-            "title": "Available",
-            "default": true
-          },
-          "values": {
-            "items": {
-              "$ref": "#/components/schemas/MaterialValueEntry"
-            },
-            "type": "array",
-            "title": "Values"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "available",
-          "values"
-        ],
-        "title": "MaterialValuesResponse"
       },
       "Missing": {
         "properties": {
@@ -6209,25 +6054,6 @@
         ],
         "title": "RouteTurn"
       },
-      "ScorePoint": {
-        "properties": {
-          "x": {
-            "type": "number",
-            "title": "X"
-          },
-          "score": {
-            "type": "number",
-            "title": "Score"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "x",
-          "score"
-        ],
-        "title": "ScorePoint"
-      },
       "ScoresPreviewRequest": {
         "properties": {
           "shape": {
@@ -6239,13 +6065,6 @@
             },
             "type": "array",
             "title": "Xs"
-          },
-          "material_values": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Material Values"
           }
         },
         "additionalProperties": false,
@@ -6263,27 +6082,12 @@
             },
             "type": "array",
             "title": "Scores"
-          },
-          "material_points": {
-            "items": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/ScorePoint"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Material Points"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "scores",
-          "material_points"
+          "scores"
         ],
         "title": "ScoresPreviewResponse"
       },

@@ -564,22 +564,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/material-catalog/{material_id}/distribution": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_material_distribution_api_admin_material_catalog__material_id__distribution_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/admin/material-catalog/{material_id}/value-shares": {
         parameters: {
             query?: never;
@@ -588,22 +572,6 @@ export interface paths {
             cookie?: never;
         };
         get: operations["get_material_value_shares_api_admin_material_catalog__material_id__value_shares_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/material-catalog/{material_id}/values": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_material_values_api_admin_material_catalog__material_id__values_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1519,17 +1487,6 @@ export interface components {
             /** Materials */
             materials: (components["schemas"]["MaterialCoverageCounted"] | components["schemas"]["MaterialCoverageExcluded"])[];
         };
-        /** MaterialDistributionResponse */
-        MaterialDistributionResponse: {
-            /** Quantiles */
-            quantiles: {
-                [key: string]: number;
-            };
-            /** Zero Share */
-            zero_share: number;
-            /** Available */
-            available: boolean;
-        };
         /** MaterialTerm */
         "MaterialTerm-Input": {
             /** Material */
@@ -1560,13 +1517,6 @@ export interface components {
              */
             required: boolean;
         };
-        /** MaterialValueEntry */
-        MaterialValueEntry: {
-            /** Value */
-            value: string;
-            /** Label */
-            label: string;
-        };
         /** MaterialValueShareEntry */
         MaterialValueShareEntry: {
             /** Value */
@@ -1586,16 +1536,6 @@ export interface components {
             total_km: number;
             /** Values */
             values: components["schemas"]["MaterialValueShareEntry"][];
-        };
-        /** MaterialValuesResponse */
-        MaterialValuesResponse: {
-            /**
-             * Available
-             * @default true
-             */
-            available: boolean;
-            /** Values */
-            values: components["schemas"]["MaterialValueEntry"][];
         };
         /** Missing */
         Missing: {
@@ -1906,27 +1846,16 @@ export interface components {
             /** Longitude */
             longitude: number;
         };
-        /** ScorePoint */
-        ScorePoint: {
-            /** X */
-            x: number;
-            /** Score */
-            score: number;
-        };
         /** ScoresPreviewRequest */
         ScoresPreviewRequest: {
             shape: components["schemas"]["BreakpointLinearShape-Input"];
             /** Xs */
             xs?: number[];
-            /** Material Values */
-            material_values?: number[];
         };
         /** ScoresPreviewResponse */
         ScoresPreviewResponse: {
             /** Scores */
             scores: number[];
-            /** Material Points */
-            material_points: (components["schemas"]["ScorePoint"] | null)[];
         };
         /** SegmentWind */
         SegmentWind: {
@@ -3357,37 +3286,6 @@ export interface operations {
             };
         };
     };
-    get_material_distribution_api_admin_material_catalog__material_id__distribution_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                material_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MaterialDistributionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_material_value_shares_api_admin_material_catalog__material_id__value_shares_get: {
         parameters: {
             query?: never;
@@ -3406,37 +3304,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MaterialValueSharesResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_material_values_api_admin_material_catalog__material_id__values_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                material_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MaterialValuesResponse"];
                 };
             };
             /** @description Validation Error */

@@ -6,7 +6,7 @@
 - 軸の外に照らす検査（`check_axis_definition`）・軸の集合の検査（`check_axis_set`）と書き込みのガード
   （`check_publish_immutability`・`check_material_exclusivity`・`check_internal_axis_not_published`）
 - 軸1本の評価（`evaluate_axis_array`）と生値（`axis_raw_value_array`・`raw_values`・
-  `first_term_points`・`BreakpointLinearShape.score_at`）と、点数から値の大きさへの戻し（`BreakpointLinearShape.smallest_magnitude_at`）
+  `BreakpointLinearShape.score_at`）と、点数から値の大きさへの戻し（`BreakpointLinearShape.smallest_magnitude_at`）
 
 ここで見ないもの:
 - 軸が軸を参照するときの並べ替え・軸の集合の評価・既定の重みと時間帯 → `test_axis_hierarchy.py`
@@ -653,13 +653,3 @@ class TestRawValues:
 
         assert axis_definitions.axis_raw_value_array(axis(shape=shape), {"cat": np.array(["x"], dtype=object)}) is None
         assert axis_definitions.raw_values(shape, {"cat": ["x", "y"]}, 2) == [None, None]
-
-    def test_points_of_the_first_material_score_as_roads_without_the_others(self):
-        shape = linear(MaterialTerm(material="a", weight=-2.0), MaterialTerm(material="b", required=False), preprocess="abs")
-
-        points = axis_definitions.first_term_points(shape, [1.0, 10.0])
-
-        assert [(p.x, p.score) for p in points] == [(2.0, 20.0), (20.0, 100.0)]
-
-    def test_points_are_absent_when_another_material_is_required(self):
-        assert axis_definitions.first_term_points(A2_B1, [1.0, 2.0]) == [None, None]

@@ -66,20 +66,10 @@ ROUTE_CASES = {
     ("POST", AXIS + "/preview-way-values"): (AXIS + "/preview-way-values", WAY_VALUES_BODY, 200),
     ("GET", "/api/admin/tuning"): ("/api/admin/tuning", None, 503),
     ("PUT", "/api/admin/tuning/{param_id}"): (f"/api/admin/tuning/{TUNING_PARAMETERS[0].id}", {"value": None}, 503),
-    ("GET", "/api/admin/material-catalog/{material_id}/distribution"): (
-        f"/api/admin/material-catalog/{NUMERIC}/distribution",
-        None,
-        503,
-    ),
     ("GET", "/api/admin/material-catalog/{material_id}/value-shares"): (
         f"/api/admin/material-catalog/{CATEGORICAL}/value-shares",
         None,
         503,
-    ),
-    ("GET", "/api/admin/material-catalog/{material_id}/values"): (
-        f"/api/admin/material-catalog/{CATEGORICAL}/values",
-        None,
-        200,
     ),
     ("GET", "/api/admin/material-catalog/coverage"): ("/api/admin/material-catalog/coverage", None, 503),
     ("GET", "/api/admin/derived-data/freshness"): ("/api/admin/derived-data/freshness", None, 503),

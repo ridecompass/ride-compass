@@ -990,13 +990,6 @@ ST_AsMVT丸ごと生成。列は材料の値式から組む。[評価・スコ�
 フィーチャーを引く**——別々に組み立てると、代表の選び方がタイルとずれた瞬間に鍵が噛み合わず
 色が一切付かない。詳細は[dynamic-way-values.md](dynamic-way-values.md)参照。
 
-**material_catalogの動的値列挙**（`get_distinct_material_values`）: 軸スタジオ
-（AxisComposer.tsx）がhighway/surface/smoothnessのような開放的な多値材料の候補一覧を
-動的取得するための経路。値式（`MaterialSpec.value_sql`）は`domain/material_sql.py`の共有断片を
-`ROAD_SURFACE_TILE_MVT_SQL`・`material_coverage.py`
-（[evaluation-scoring.md](evaluation-scoring.md)）と共通で参照する。詳細は
-[axis-studio.md](axis-studio.md)参照。
-
 ### 道路網全体の配列（`road_network_store.py`）
 
 取込範囲全体の道路網（有向の区間とノード、区間ごとの材料）を列の配列として1つ持ち、ディスクの

@@ -11,7 +11,7 @@ import { errorMessage } from "@/lib/apiError";
 import { cn } from "@/lib/cn";
 import type { ValueBand } from "@/lib/mapDisplay/valueScale";
 import type { AxisDefinitionPayload, AxisDefinitionResponse } from "@/types/route";
-import { formatThresholdList, parseThresholdList, resizeBandLabels } from "./axisDraft";
+import { formatThresholdList, parseThresholdList, resizeBandLabels } from "./thresholdList";
 
 /** 保存し直す本文。応答だけが持つ欄（公開中の重みの割合）を外す。 */
 export function payloadOf({

@@ -25,13 +25,6 @@ export function listAxisDefinitions() {
   return requestApi((init) => adminApiClient.GET("/axis-definitions", init), adminOptions("軸の一覧の取得"));
 }
 
-export function createAxisDefinition(payload: AxisDefinitionPayload) {
-  return requestApi(
-    (init) => adminApiClient.POST("/axis-definitions", { body: payload, ...init }),
-    adminOptions("軸の保存", { body: payload }),
-  );
-}
-
 export function updateAxisDefinition(axisId: string, payload: AxisDefinitionPayload) {
   return requestApi(
     (init) =>
@@ -41,21 +34,6 @@ export function updateAxisDefinition(axisId: string, payload: AxisDefinitionPayl
         ...init,
       }),
     adminOptions("軸の保存", { body: payload }),
-  );
-}
-
-export async function deleteAxisDefinition(axisId: string): Promise<void> {
-  await requestApi(
-    (init) => adminApiClient.DELETE("/axis-definitions/{axis_id}", { params: { path: { axis_id: axisId } }, ...init }),
-    adminOptions("軸の削除"),
-  );
-}
-
-export function unpublishAxisDefinition(axisId: string) {
-  return requestApi(
-    (init) =>
-      adminApiClient.POST("/axis-definitions/{axis_id}/unpublish", { params: { path: { axis_id: axisId } }, ...init }),
-    adminOptions("軸の非公開化"),
   );
 }
 
@@ -94,20 +72,6 @@ export function fetchCalibrationPreview(body: CalibrationPreviewRequest) {
 
 // 材料
 
-export type MaterialDistribution = Schemas["MaterialDistributionResponse"];
-
-/** 1材料の値が実データでどの範囲に散らばっているか。 */
-export function fetchMaterialDistribution(materialId: string) {
-  return requestApi(
-    (init) =>
-      adminApiClient.GET("/material-catalog/{material_id}/distribution", {
-        params: { path: { material_id: materialId } },
-        ...init,
-      }),
-    adminOptions("分布の取得", { timeoutMs: API_TIMEOUT_MS.distribution }),
-  );
-}
-
 export type MaterialValueShares = Schemas["MaterialValueSharesResponse"];
 
 /** 種類・はい/いいえの材料の値ごとに、その値を持つ道の延長の割合。 */
@@ -119,18 +83,6 @@ export function fetchMaterialValueShares(materialId: string) {
         ...init,
       }),
     adminOptions("値ごとの延長の取得", { timeoutMs: API_TIMEOUT_MS.distribution }),
-  );
-}
-
-/** categoricalの材料が実データで取る値の一覧。 */
-export function getMaterialValues(materialId: string) {
-  return requestApi(
-    (init) =>
-      adminApiClient.GET("/material-catalog/{material_id}/values", {
-        params: { path: { material_id: materialId } },
-        ...init,
-      }),
-    adminOptions("材料の値一覧の取得", { timeoutMs: API_TIMEOUT_MS.catalog }),
   );
 }
 

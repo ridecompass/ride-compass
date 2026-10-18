@@ -360,8 +360,7 @@ MaterialSpec]`が単一ソース。
 | `source` | 値の出どころ（`"db"`・`"request"`・`"observation"`）。DB（`value_sql`で求める）・要求の向きや時刻で決まる値（風）・生成の時点の外部の観測（雨）。動的材料の集合（`REQUEST_DYNAMIC_MATERIAL_IDS`）や観測の材料の集合は、この欄から`domain/material_catalog.py: materials_of_source`で導く |
 | `value_sql` | その材料の値をDBから求めるSQL式。出どころが`"db"`の材料だけが持ち、それ以外は`None`（出どころがDBでない材料は欠損率も測らず、`coverage`は対象外）。揃わない宣言は登録時に断る。タイルへ焼く材料は必ず持つ |
 | `coverage` | 欠損率の測り方。way単位・区間単位・対象外の3択で、**どれかを必ず持つ**（どちらの一覧にも載っていない材料を型として作れなくする） |
-| `value_labels` | categorical材料の値ごとの日本語ラベル対訳表（生成物`material-catalog.json`と`GET /api/admin/material-catalog/{id}/values`が届ける） |
-| `reference_points` | 軸スタジオの折れ点編集を助ける「値の目安」一覧（`MaterialReferencePoint`のlabel/value）。値域が直感的でない材料（風等）ほど有用で、真偽値・categorical材料や単純な材料は空リストのままでよい。換算式はbackendだけが持ち、値はここで計算済みのものを持たせる |
+| `value_labels` | categorical材料の値ごとの日本語ラベル対訳表（生成物`material-catalog.json`が届ける） |
 
 - **評価軸が参照する材料は、正規化された生データ（数値・boolean・単純categorical）に
   統一する。** 地図表示・API応答向けの人間可読な分類ラベル（「この道は自転車レーンあり」
@@ -449,7 +448,6 @@ way粒度で引くときは、同じ式のまま`w`の行から同じ名前の�
 
 | エンドポイント | 認可 | 内容 |
 |---|---|---|
-| `GET /api/admin/material-catalog/{material_id}/values` | HTTP Basic | categorical材料の実データ値一覧（`services/axis_preview_service.py: AxisPreviewService`経由、未知idは404・値一覧を持たない材料は空リスト・DB障害やタイムアウトは`available=false`）。索引の効かない`SELECT DISTINCT`をルート生成用の長い`command_timeout`のセッションで実行する。繰り返し呼ばれるだけで接続を占有できるため、`coverage`と同じく認可を課す |
 | `GET /api/admin/material-catalog/{material_id}/value-shares` | Basic認証 | 値ごとの道の延長の割合（[軸スタジオ](axis-studio.md)の分布プレビューと同じ抽選の道から集める） |
 | `GET /api/admin/material-catalog/coverage` | Basic認証必須 | 材料ごとの欠損割合（下記）。全表走査を伴うため認可なしには公開しない |
 

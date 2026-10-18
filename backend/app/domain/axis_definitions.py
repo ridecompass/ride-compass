@@ -456,8 +456,7 @@ class AxisPublishedImmutableError(ValueError):
 
     一般ユーザーの保存設定（RouteSettingsPanelのプリセット・重み）はaxis_idキーで
     再現されるため、公開後の破壊的変更・削除は他ユーザーの設定を黙って壊す。
-    改良したい場合は複製（新しいaxis_idの下書き軸として作成）してから公開する導線を
-    UI側に用意する（この関数は変更を一切拒否するのみで、複製自体は関与しない）。
+    改良したい場合は、新しいaxis_idの下書き軸として作ってから公開する（この関数は変更を拒否するだけ）。
 
     ただし更新（`action="updated"`）については、`axis_id`も読む材料も変えない差分
     （`is_update_allowed_while_published`）なら例外的に許可する（`check_publish_immutability`の
@@ -472,7 +471,7 @@ class AxisPublishedImmutableError(ValueError):
         else:
             message = (
                 f"{name}は公開中のため、表示と折れ点以外は変えられません。非公開に戻してから変えるか、"
-                "複製して新しい軸として作ってください。"
+                "新しいaxis_idの軸として作ってください。"
             )
         super().__init__(message)
 
@@ -1117,29 +1116,6 @@ def _breakpoint_raw_value_array(shape: BreakpointLinearShape, materials: Mapping
 def _breakpoint_score_array(shape: BreakpointLinearShape, total: np.ndarray, all_missing: np.ndarray) -> np.ndarray:
     """折れ点の横軸の値（`_breakpoint_raw_total_array`）から得点（小数1桁、`all_missing`の要素はNaN）。"""
     return np.where(all_missing, np.nan, round_difficulty_array(evaluate_breakpoint_linear(total, shape.breakpoints)))
-
-
-class ScorePoint(StrictModel):
-    """材料の値が、折れ点の横軸でどこに当たり何点になるか。"""
-
-    x: float
-    score: float
-
-
-def first_term_points(shape: BreakpointLinearShape, values: Sequence[float]) -> list[ScorePoint | None]:
-    """1つ目の項の材料がそれぞれの値を持ち、ほかの項の材料が無い道の、横軸の値と得点。
-
-    評価と同じ計算（項の合成・欠損の扱い・前処理・折れ線・丸め）で出す。ほかの項に必須の材料が
-    あると、評価はその道を欠損にするため、ここもNoneを返す。
-    """
-    term_ids = [term.material for term in shape.terms]
-    columns = _python_value_columns({shape.terms[0].material: values}, term_ids, term_ids, len(values))
-    total, all_missing = _breakpoint_raw_total_array(shape, columns)
-    xs = _scores_or_none(np.where(all_missing, np.nan, total))
-    scores = _scores_or_none(_breakpoint_score_array(shape, total, all_missing))
-    return [
-        None if x is None or score is None else ScorePoint(x=x, score=score) for x, score in zip(xs, scores)
-    ]
 
 
 def raw_values(shape: "AxisShape", materials: Mapping[str, Sequence[object]], length: int) -> list[float | None]:

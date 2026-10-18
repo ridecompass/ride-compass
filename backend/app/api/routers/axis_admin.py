@@ -2,9 +2,8 @@
 
 `domain/axis_definitions.py: AXIS_DEFINITIONS`をDBの内容と同期させる書き込み口。
 ルート生成の振る舞いを直接変えられるため、他のエンドポイントと異なり認可を要求する
-（require_admin_basic_auth）。GUI編集画面（軸スタジオ、frontend `/admin`）はこのAPIの
-上に構築されており、軸の追加・更新・公開/非公開・削除はすべてこのAPIを通る
-（docs/modules/frontend/axis-studio.md参照）。
+（require_admin_basic_auth）。軸の定義ファイルを入れる`backend/scripts/axis_apply.py`と、軸スタジオの較正の画面
+（frontend `/admin`）は、このAPIを通して軸を足す・直す・公開/非公開を変える・消す。
 """
 
 from collections.abc import Mapping
@@ -32,10 +31,8 @@ from app.domain.axis_definitions import (
     AxisDefinition,
     AxisShape,
     BreakpointLinearShape,
-    ScorePoint,
     averages_density,
     check_axis_definition,
-    first_term_points,
     weight_share_when_published,
 )
 from app.domain.map_paint import MapPaint, map_paint
@@ -206,28 +203,21 @@ class ScoresPreviewRequest(StrictModel):
     shape: BreakpointLinearShape
     #: 折れ点の横軸の値（項の合成・前処理の後）。分布の階級の代表値など。
     xs: list[float] = Field(default_factory=list)
-    #: 1つ目の項の材料の値（材料の参考点の効き目）。ほかの項の材料は無い道として、評価と同じ計算で点数にする。
-    material_values: list[float] = Field(default_factory=list)
 
 
 class ScoresPreviewResponse(StrictModel):
     #: `xs`の順の点数。
     scores: list[float]
-    #: `material_values`の順の、横軸の値と点数。評価がその道を欠損にする値（ほかの項に必須の材料がある）はnull。
-    material_points: list[ScorePoint | None]
 
 
 @router.post("/preview-scores")
 async def preview_scores(payload: ScoresPreviewRequest) -> ScoresPreviewResponse:
     """編集中の折れ点で、値がそれぞれ何点になるかを返す。DBを読まない。
 
-    軸スタジオは折れ点を動かすたびにこれを問い合わせ、分布の帯の割合と効き目の表を出す。点数の計算を
+    軸スタジオは折れ点を動かすたびにこれを問い合わせ、分布の段の割合を出す。点数の計算を
     画面で作り直すと、評価と画面で同じ折れ点に別の点数が付きうる（同じxの点が並ぶところ等）。
     """
-    return ScoresPreviewResponse(
-        scores=payload.shape.scores_at(payload.xs),
-        material_points=first_term_points(payload.shape, payload.material_values),
-    )
+    return ScoresPreviewResponse(scores=payload.shape.scores_at(payload.xs))
 
 
 class CalibrationPreviewRequest(StrictModel):

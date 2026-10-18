@@ -31,7 +31,6 @@ from app.domain.graph import LeanEdge, edge_feature_key_sql, edge_key, node_key,
 from app.domain.hard_filters import ROUTE_FLAG_VALUE_SQL, route_flag_columns
 from app.domain.landcover import LandcoverPercentages, landcover_key
 from app.domain.material_catalog import (
-    MATERIAL_CATALOG,
     material_array_columns,
     material_value_sql,
     segment_material_ids,
@@ -574,26 +573,6 @@ class RoadGraphRepository:
             return None
         return LandcoverPercentages(**{field: getattr(row, f"lc_{landcover_key(field)}")
                                        for field in LandcoverPercentages.model_fields})
-
-    async def get_distinct_material_values(self, material_id: str) -> list[str]:
-        """軸スタジオの値入力UX向け。highway/surface/smoothnessのようなオープンエンドな
-        多値材料は事前に全量を静的に列挙できないため、実際にDBへ取り込まれている値を
-        ここで動的取得する。未対応の`material_id`は空リスト（routerが404を判断する）。
-        """
-        spec = MATERIAL_CATALOG.get(material_id)
-        # 値の求め方は`MaterialSpec.value_sql`が唯一持つ。ここへ式を書かない。
-        # カテゴリ以外（真偽・数値）は「取りうる値の一覧」に意味が無いため対象外。
-        if spec is None or spec.value_sql is None or spec.dtype != "categorical":
-            return []
-        column_expr = spec.value_sql
-        result = await self._session.execute(
-            text(
-                f"SELECT DISTINCT {column_expr} AS value"  # カタログの宣言のみ
-                + way_from_clause([column_expr])
-                + f" WHERE {column_expr} IS NOT NULL ORDER BY value"
-            )
-        )
-        return [row.value for row in result]
 
     # --- タイル --------------------------------------------------------------
 
