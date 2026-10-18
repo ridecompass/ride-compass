@@ -1,6 +1,6 @@
 "use client";
 
-import Disclosure from "@/components/Disclosure/Disclosure";
+import Disclosure, { DisclosureChevron } from "@/components/Disclosure/Disclosure";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Badge } from "@/components/ui/Badge/Badge";
 import { Button } from "@/components/ui/Button/Button";
@@ -96,10 +96,7 @@ export default function HardFilterPanel({ roadAvoidance, onRoadAvoidanceChange }
               usage="このレイヤの凡例の行ごとの避け方を開きます。"
               summary={
                 <>
-                  <span
-                    aria-hidden="true"
-                    className="size-2 flex-shrink-0 -rotate-45 border-r-2 border-b-2 border-[var(--color-neutral)] transition-transform duration-150 group-data-[state=open]:rotate-45"
-                  />
+                  <DisclosureChevron />
                   <span>{label}</span>
                   {changed > 0 && <Badge variant="outline">{`既定から${changed}件変更`}</Badge>}
                   <span className="ml-auto truncate font-normal text-[var(--color-muted)]">

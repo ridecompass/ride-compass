@@ -1,6 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import Disclosure, { DisclosureChevron } from "@/components/Disclosure/Disclosure";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { materialCatalogLabel } from "@/lib/axisMaterialsCatalog";
 import { listAxisDefinitions } from "@/features/admin/adminApi";
@@ -25,12 +27,14 @@ function labelForMaterialOrAxis(id: string, definitions: readonly AxisDefinition
   return definitions.find((d) => d.axis_id === id)?.label ?? materialCatalogLabel(id);
 }
 
-// 軸スタジオのトップレベルコンポーネント。軸の一覧と較正の画面を並べる。軸を足す・材料や表示名を直す・
-// 公開を取り消す・消すのは定義ファイル（backend/scripts/axis_apply.py）から入れ、この画面は持たない。
+// 軸スタジオのトップレベルコンポーネント。軸の一覧の行を開くと、その行の下にその軸の較正を出す（開くのは1つだけで、
+// 閉じた軸の較正は分布・地図を取りに行かない）。軸を足す・材料や表示名を直す・公開を取り消す・消すのは定義ファイル
+// （backend/scripts/axis_apply.py）から入れ、この画面は持たない。
 export default function AxisStudio({ calibrationMap }: { calibrationMap: CalibrationMapSlot }) {
   const definitionsQuery = useQuery({ queryKey: ["axis-definitions"], queryFn: listAxisDefinitions }, getQueryClient());
   const definitions = definitionsQuery.data ?? null;
   const listError = definitionsQuery.error?.message ?? null;
+  const [openAxisId, setOpenAxisId] = useState<string | null>(null);
 
   async function reload() {
     await definitionsQuery.refetch();
@@ -43,15 +47,29 @@ export default function AxisStudio({ calibrationMap }: { calibrationMap: Calibra
     return (
       <div
         key={def.axis_id}
-        className="flex min-w-0 flex-col border-b border-[var(--color-border)] pb-2 last:border-b-0 last:pb-0"
+        className="flex min-w-0 flex-col gap-2 border-b border-[var(--color-border)] pb-2 last:border-b-0 last:pb-0"
       >
-        <span className={textVariants({ variant: "heading" })}>{def.label}</span>
-        <span className={cn(textVariants({ variant: "hint" }), "[overflow-wrap:anywhere]")}>
-          {def.axis_id} ・ {def.category} ・ 重み{def.default_weight.toFixed(2)} ・{" "}
-          {materialIdsOf(def.shape)
-            .map((id) => labelForMaterialOrAxis(id, definitions ?? []))
-            .join("・")}
-        </span>
+        <Disclosure
+          open={openAxisId === def.axis_id}
+          onOpenChange={(open) => setOpenAxisId(open ? def.axis_id : null)}
+          triggerClassName="group flex min-w-0 flex-col"
+          summary={
+            <>
+              <span className={cn(textVariants({ variant: "heading" }), "flex items-center gap-1.5")}>
+                <DisclosureChevron />
+                {def.label}
+              </span>
+              <span className={cn(textVariants({ variant: "hint" }), "[overflow-wrap:anywhere]")}>
+                {def.axis_id} ・ {def.category} ・ 重み{def.default_weight.toFixed(2)} ・{" "}
+                {materialIdsOf(def.shape)
+                  .map((id) => labelForMaterialOrAxis(id, definitions ?? []))
+                  .join("・")}
+              </span>
+            </>
+          }
+        >
+          <AxisCalibration definition={def} onSaved={reload} calibrationMap={calibrationMap} />
+        </Disclosure>
       </div>
     );
   }
@@ -59,6 +77,9 @@ export default function AxisStudio({ calibrationMap }: { calibrationMap: Calibra
   return (
     <div className="flex flex-col gap-3">
       {listError && <p className={textVariants({ variant: "error" })}>{listError}</p>}
+      <p className={textVariants({ variant: "hint" })}>
+        軸を押すと、点のつけ方と地図の段の境界を、実データの分布と地図を見ながら決める較正を開きます。公開中の軸は公開したまま保存されます。
+      </p>
 
       <Tabs className="flex flex-col gap-2" defaultValue="draft">
         <TabsList>
@@ -78,8 +99,6 @@ export default function AxisStudio({ calibrationMap }: { calibrationMap: Calibra
           {publishedDefs.map(renderRow)}
         </TabsContent>
       </Tabs>
-
-      <AxisCalibration definitions={definitions ?? []} onSaved={reload} calibrationMap={calibrationMap} />
     </div>
   );
 }

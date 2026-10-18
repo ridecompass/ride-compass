@@ -30,6 +30,16 @@ interface DisclosureProps {
 
 const ITEM_VALUE = "content";
 
+/** 見出しの頭に置く開閉の向きの印。トリガーに`group`を付けると、開いている間は下を向く。 */
+export function DisclosureChevron() {
+  return (
+    <span
+      aria-hidden="true"
+      className="size-2 flex-shrink-0 -rotate-45 border-r-2 border-b-2 border-[var(--color-neutral)] transition-transform duration-150 group-data-[state=open]:rotate-45"
+    />
+  );
+}
+
 export default function Disclosure({
   className,
   headerClassName,
