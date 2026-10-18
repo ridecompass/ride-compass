@@ -4,6 +4,8 @@
 // （応答の`road_classes`）を距離に沿って色で塗る。点はルートの近くの点（応答の`points`）を通る距離に印で並べる。
 // 帯と点のレイヤと名前・行（色と呼び名）は地図の「表示」と同じ宣言から引く。
 
+import type { MapIconComponent } from "@/components/ui/icons/icons";
+import { MAP_LAYER_ICONS } from "@/components/ui/icons/mapLayerIcons";
 import { LANDCOVER_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_TRACKS, roadTrackRowOf, roadTrackRows, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
@@ -42,6 +44,8 @@ export type BandLayer = {
   /** 地図のレイヤのid。区間の`road_classes`の鍵でもある。 */
   readonly id: string;
   readonly label: string;
+  /** 地図の「表示」の一覧と同じアイコン。 */
+  readonly icon: MapIconComponent;
   readonly draw: {
     readonly kind: "band";
     /** 凡例の行の並び。 */
@@ -107,7 +111,14 @@ export const PROFILE_LAYERS: readonly ProfileLayer[] = [
   // 並びと名前は地図の「表示」のレイヤのまま。
   ...mapDisplay.layers.flatMap((layer): (BandLayer | PointLayer)[] => {
     if (layer.id in BAND_ROWS)
-      return [{ id: layer.id, label: layer.label, draw: { kind: "band", ...BAND_ROWS[layer.id] } }];
+      return [
+        {
+          id: layer.id,
+          label: layer.label,
+          icon: MAP_LAYER_ICONS[layer.id],
+          draw: { kind: "band", ...BAND_ROWS[layer.id] },
+        },
+      ];
     const declaration = POINT_LAYERS.find((point) => point.attr_id === layer.id);
     return declaration === undefined
       ? []
@@ -270,16 +281,6 @@ export function layerMarks(points: readonly RoutePoint[], layer: PointLayer): Po
         name: pointPlaceName(declaration, point.properties),
       };
     });
-}
-
-/** 距離`km`から`toleranceKm`以内でいちばん近い印。無ければnull。 */
-export function markNearKm(marks: readonly PointMark[], km: number, toleranceKm: number): PointMark | null {
-  let nearest: PointMark | null = null;
-  for (const mark of marks) {
-    const gap = Math.abs(mark.km - km);
-    if (gap <= toleranceKm && (nearest === null || gap < Math.abs(nearest.km - km))) nearest = mark;
-  }
-  return nearest;
 }
 
 export type MarkLegendRow = { readonly key: string; readonly label: string; readonly color: string };

@@ -5,22 +5,8 @@
 
 import weatherScales from "@/types/generated/weather-scales.json";
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import { RouteIcon, type MapIconComponent } from "@/components/ui/icons/icons";
-import {
-  AccidentIcon,
-  ElevationIcon,
-  HillshadeIcon,
-  LandcoverIcon,
-  OnewayIcon,
-  RoadIcon,
-  RoadSurfaceIcon,
-  StopPlaceIcon,
-  StopPoiIcon,
-  SupplyPoiIcon,
-  TrackGradeIcon,
-  TunnelIcon,
-} from "@/components/ui/icons/layerIcons";
-import { BicycleIcon, RaindropIcon, ShieldIcon, WindIcon } from "@/components/ui/icons/lucideIcons";
+import type { MapIconComponent } from "@/components/ui/icons/icons";
+import { MAP_LAYER_ICONS, type StaticMapLayerId } from "@/components/ui/icons/mapLayerIcons";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { TILE_VERSION_GATED_SOURCES } from "@/lib/mapDisplay/tileVersionGated";
 import { LANDCOVER_PAINTED_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
@@ -30,9 +16,6 @@ import type { MapAxisCatalog } from "@/features/map/mapAxisCatalog";
 import { axisNamesInText, type CatalogAxis } from "@/lib/catalogAxis";
 import { DISASTER_ELEMENTS } from "@/features/map/scene/groups/weather";
 import { DIFFICULTY_LENS_LABEL } from "@/lib/mapDisplay/routeStyleModes";
-
-/** 源泉が宣言する、地図に載るものの名前。 */
-type StaticMapLayerId = (typeof mapDisplay.layers)[number]["id"];
 
 /** 地図に載るものの名前。静的な一覧は源泉が持ち、軸スタジオ由来のものは実行時に決まる。 */
 export type MapLayerId = StaticMapLayerId | DedicatedWayValueMapLayerId;
@@ -83,28 +66,6 @@ function disasterLegendBlocks(): ReadOnlyLegendBlock[] {
     legend: weatherScales[scale],
   }));
 }
-
-/** 源泉が宣言するレイヤーのアイコン。省略できない（描く側の対応表で引く形だと、書き忘れても汎用のアイコンで
- * 見分けの付かないまま出続ける）。 */
-const STATIC_LAYER_ICONS: Record<StaticMapLayerId, MapIconComponent> = {
-  elevation: ElevationIcon,
-  hillshade: HillshadeIcon,
-  landcover: LandcoverIcon,
-  highway: RoadIcon,
-  surface: RoadSurfaceIcon,
-  tracktype: TrackGradeIcon,
-  tunnel: TunnelIcon,
-  oneway: OnewayIcon,
-  cycleway: BicycleIcon,
-  stop_poi: StopPoiIcon,
-  supply_poi: SupplyPoiIcon,
-  stop_place: StopPlaceIcon,
-  accident_point: AccidentIcon,
-  precipitationNowcast: RaindropIcon,
-  windVector: WindIcon,
-  disaster: ShieldIcon,
-  route: RouteIcon,
-};
 
 const READ_ONLY_LEGENDS: Partial<Record<StaticMapLayerId, readonly ReadOnlyLegendBlock[]>> = {
   landcover: [
@@ -297,7 +258,7 @@ export function buildMapLayers({ axes, dedicatedAxes, accidentYears }: LayerCata
       id: layer.id,
       label: layer.label,
       ...declaredLayer(layer),
-      icon: STATIC_LAYER_ICONS[layer.id],
+      icon: MAP_LAYER_ICONS[layer.id],
       readOnlyLegend: READ_ONLY_LEGENDS[layer.id],
       description: fillLayerText(layer.description, slots),
       panelHint: layer.panelHint ? fillLayerText(layer.panelHint, slots) : undefined,
