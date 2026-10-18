@@ -5,6 +5,10 @@
  * 真偽として読むときは NaN でも0でもない値を真とする。剰余は割られる数の符号に従う（JavaScript の `%` と同じ）。
  * 丸めは Python の `round` と、折れ線は numpy の `np.interp` と同じ値を出す——どちらも段の境界で色が分かれるので、
  * 最下位の桁のずれが、backend の値と違う色になる。
+ *
+ * MapLibre は `let` で束ねた式を、`var` で読む所ごとに評価し直し、地図の描画の裏の処理へ運ぶときも読む所ごとに写す
+ * （束ねても評価と大きさは1回分にならない）。節が引数を読む回数（場合分けのどの枝で読むものも数える）は、入れ子の深さだけ
+ * 掛け合わさって式の大きさになり、大きすぎる式は運ぶ間に画面を止めるので、どの節も引数を読む回数を少なく保つ。
  */
 import type { components } from "@/types/generated/api";
 
@@ -41,7 +45,7 @@ class Conversion {
 
   constructor(readonly inputs: FormulaInputs) {}
 
-  /** 同じ値を何度も読む式は、`let` で1回だけ評価させる（式の大きさが読む回数の冪で増えない）。 */
+  /** 同じ値を何度も読む式は、`let` で束ねる（組んだ式の木は読む回数の冪で増えない。評価と運ぶ大きさは減らない）。 */
   bind(value: unknown, body: (ref: unknown) => unknown): unknown {
     const name = `f${this.count++}`;
     return ["let", name, value, body(["var", name])];
@@ -54,13 +58,18 @@ class Conversion {
 
   truth(node: FormulaNode): unknown {
     const converted = this.convert(node);
-    if (converted.kind === "flag") return converted.expr;
-    return this.bind(converted.expr, (value) => ["all", ["==", value, value], ["!=", value, 0]]);
+    // `to-boolean` は NaN と0を偽にする。
+    return converted.kind === "flag" ? converted.expr : ["to-boolean", converted.expr];
   }
 
   private convert(node: FormulaNode): Converted {
     return (CONVERTERS[node.op] as (node: FormulaNode, conversion: Conversion) => Converted)(node, this);
   }
+}
+
+/** 値（数の式）が無いときに真になる式。NaN だけが `>=` を偽にするので、値を1回だけ読む（無限大は値に数える）。 */
+export function missingExpression(value: unknown): unknown {
+  return ["!", [">=", ["abs", value], 0]];
 }
 
 const numberOf = (expr: unknown): Converted => ({ kind: "number", expr });
@@ -86,7 +95,8 @@ function logic(operator: "all" | "any") {
 }
 
 /** 折れ線。MapLibre の `interpolate` は NaN を受けると評価が止まり、補間の計算の順も numpy と違うため使わず、
- * `np.interp` と同じ計算（区間の傾き×左端からの差＋左端の値、外は端の値）を区間ごとの場合分けで書く。 */
+ * `np.interp` と同じ計算（区間の傾き×左端からの差＋左端の値、外は端の値）を区間ごとの場合分けで書く。NaN はどの比べも
+ * 偽にするので、最後の場合まで落ちて NaN になる（先に NaN を分けると、どの道でも入力を2回多く読む）。 */
 function interpolate(node: NodeOf<"interpolate">, c: Conversion): Converted {
   const stops = node.stops;
   return numberOf(
@@ -98,63 +108,43 @@ function interpolate(node: NodeOf<"interpolate">, c: Conversion): Converted {
           ["+", ["*", (y1 - y0) / (x1 - x0), ["-", x, x0]], y0],
         ];
       });
-      return ["case", ["!=", x, x], NAN, ["<", x, stops[0][0]], stops[0][1], ...segments, stops[stops.length - 1][1]];
+      const [lastX, lastY] = stops[stops.length - 1];
+      return ["case", ["<", x, stops[0][0]], stops[0][1], ...segments, [">=", x, lastX], lastY, NAN];
     }),
   );
 }
 
-/** Dekker の分割の係数（2^27+1）。倍精度の数を、積が丸めなしで表せる上下の半分へ分ける。 */
-const SPLITTER = 134217729;
-
-function splitOf(value: number): readonly [number, number] {
-  const scaled = SPLITTER * value;
-  const high = scaled - (scaled - value);
-  return [high, value - high];
-}
-
-/** 小数 `decimals` 桁への丸め。×10^桁 が中点（.5）でなければ近い側へ。中点に乗ったときは、掛け算で丸められた誤差
- * （Dekker の積で正確に求める）の符号で真の積が中点のどちら側かを決め、真の積も中点ちょうどなら偶数の側へ倒す。
- * MapLibre の `round` は中点を0から遠い側へ倒すので使わない。 */
+/** 小数 `decimals` 桁への丸め。×10^桁 の積 P が中点（.5）でなければ近い側へ（MapLibre の `round`）。中点に乗ったときは、
+ * 掛け算で丸められる前の真の積が P のどちら側かで決め、真の積も中点ちょうどなら偶数の側へ倒す（MapLibre の `round` は
+ * 中点を0から遠い側へ倒す）。真の積の2倍は x×2^(桁+1)（2の冪を掛けるので正確）の 5^桁 倍なので、2P をそれで割った剰余
+ * （剰余は丸めなしで求まる）が0なら中点ちょうど、小さければ真の積が P より0に近く、割る数の半分を越えれば0から遠い。
+ * 真の積が中点でないのに掛け算で中点の側へ越えることは無い（丸めは単調で、中点は倍精度で表せる）ので、中点でない積は
+ * そのまま丸めてよい。剰余で側を分けられるのは 5^桁 が 2^51 より小さい（桁が21まで）間で、10^桁 が正確なのも22桁まで。 */
 function round(node: NodeOf<"round">, c: Conversion): Converted {
   const scale = 10 ** node.decimals;
-  const [scaleHigh, scaleLow] = splitOf(scale);
   return numberOf(
     c.bind(c.number(node.arg), (x) =>
-      c.bind(["*", x, scale], (product) =>
-        c.bind(["floor", product], (lower) =>
-          c.bind(["-", product, lower], (fraction) =>
-            c.bind(["*", SPLITTER, x], (scaled) =>
-              c.bind(["-", scaled, ["-", scaled, x]], (high) =>
-                c.bind(["-", x, high], (low) =>
-                  c.bind(
-                    [
-                      "+",
-                      [
-                        "+",
-                        ["+", ["-", ["*", high, scaleHigh], product], ["*", high, scaleLow]],
-                        ["*", low, scaleHigh],
-                      ],
-                      ["*", low, scaleLow],
-                    ],
-                    (error) => [
-                      "case",
-                      [">", fraction, 0.5],
-                      ["/", ["+", lower, 1], scale],
-                      ["<", fraction, 0.5],
-                      ["/", lower, scale],
-                      ["any", [">", error, 0], ["all", ["==", error, 0], ["!=", ["%", lower, 2], 0]]],
-                      ["/", ["+", lower, 1], scale],
-                      ["/", lower, scale],
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+      c.bind(["*", x, scale], (product) => [
+        "case",
+        ["!=", ["abs", ["%", product, 1]], 0.5],
+        ["/", ["round", product], scale],
+        ["/", midpointRound(x, product, node.decimals, c), scale],
+      ]),
     ),
   );
+}
+
+/** 積 `product`（= `x`×10^`decimals` を倍精度へ丸めたもの）が中点に乗ったときの、丸めた積。 */
+function midpointRound(x: unknown, product: unknown, decimals: number, c: Conversion): unknown {
+  return c.bind(["*", x, 2 ** (decimals + 1)], (divisor) => [
+    "step",
+    ["/", ["%", ["*", 2, product], divisor], divisor],
+    ["*", 2, ["round", ["/", product, 2]]],
+    Number.MIN_VALUE,
+    ["-", product, ["%", product, 1]],
+    0.5,
+    ["round", product],
+  ]);
 }
 
 /** 節の種類ごとの置き換え。種類が増えると、ここに無い種類として型検査が落ちる。 */
@@ -169,7 +159,7 @@ const CONVERTERS: { readonly [Op in FormulaOp]: (node: NodeOf<Op>, conversion: C
   cos: unary("cos"),
   sqrt: unary("sqrt"),
   not: (node, c) => flagOf(["!", c.truth(node.arg)]),
-  is_missing: (node, c) => flagOf(c.bind(c.number(node.arg), (value) => ["!=", value, value])),
+  is_missing: (node, c) => flagOf(missingExpression(c.number(node.arg))),
   add: arithmetic("+"),
   sub: arithmetic("-"),
   mul: arithmetic("*"),

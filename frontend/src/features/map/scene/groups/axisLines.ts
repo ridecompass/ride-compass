@@ -13,10 +13,10 @@ import palette from "@/types/generated/palette.json";
 
 import type { MapSceneFeatureStates, MapSceneGlobalState } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
-import { wayValueExpressions, type WayValueFormula } from "@/features/map/scene/wayValueFormula";
+import { missingExpression, wayValueExpressions, type WayValueFormula } from "@/features/map/scene/wayValueFormula";
 import { LEGEND_NO_DATA_KEY, NO_DATA_LEGEND_BAND, UNDETERMINED_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_TRACKS } from "@/lib/mapDisplay/roadTracks";
-import { bandCondition, type ValueBand } from "@/lib/mapDisplay/valueScale";
+import { bandStep, type ValueBand } from "@/lib/mapDisplay/valueScale";
 
 import { ROAD_LINE_SOURCE_ID } from "./roadLines";
 
@@ -75,11 +75,11 @@ function dashesMissing(axis: AxisLine): boolean {
   return !axis.underlay && !axis.loading && !axis.hiddenBandKeys.includes(LEGEND_NO_DATA_KEY);
 }
 
-/** 道の値を `let` で1回だけ求め、向きで決まらない道・値の無い道・段の順に場合分けする。段の大小比較は値が
- * あるときにだけ評価させる。 */
+/** 道の値を `let` で束ね、向きで決まらない道・値の無い道・それ以外の順に場合分けする。値の無い道を先に分けるので、
+ * それ以外の枝（段の選び方）は値のある道だけを受ける。 */
 function byWayValue(
   axis: AxisLine,
-  cases: (value: unknown) => { undetermined: unknown; missing: unknown; bands: readonly unknown[]; otherwise: unknown },
+  cases: (value: unknown) => { undetermined: unknown; missing: unknown; otherwise: unknown },
 ): unknown {
   const { value, undetermined } = expressionsOf(axis);
   const ref = ["var", "wayValue"];
@@ -88,15 +88,7 @@ function byWayValue(
     "let",
     "wayValue",
     value,
-    [
-      "case",
-      undetermined,
-      branches.undetermined,
-      ["!=", ref, ref],
-      branches.missing,
-      ...branches.bands,
-      branches.otherwise,
-    ],
+    ["case", undetermined, branches.undetermined, missingExpression(ref), branches.missing, branches.otherwise],
   ];
 }
 
@@ -113,8 +105,7 @@ function colorExpression(axis: AxisLine): unknown {
   return byWayValue(axis, (value) => ({
     undetermined: shown(UNDETERMINED_LEGEND_BAND.key, UNDETERMINED_LEGEND_BAND.color),
     missing: missingColor,
-    bands: axis.bands.flatMap((band, index) => [bandCondition(axis.bands, index, value), shown(band.key, band.color)]),
-    otherwise: NO_DATA_LEGEND_BAND.color,
+    otherwise: bandStep(axis.bands, value, (band) => shown(band.key, band.color)),
   }));
 }
 
@@ -123,7 +114,6 @@ function noDataOpacityExpression(axis: AxisLine): unknown {
   return byWayValue(axis, () => ({
     undetermined: 0,
     missing: mapDisplay.road.unknownOpacity,
-    bands: [],
     otherwise: 0,
   }));
 }

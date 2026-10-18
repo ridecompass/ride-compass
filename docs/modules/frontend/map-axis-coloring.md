@@ -14,7 +14,7 @@
 | ファイル | 責務 |
 |---|---|
 | `lib/mapDisplay/routeStyleModes.ts` | ルート確定後の色分けモード一覧・色式 |
-| `lib/mapDisplay/valueScale.ts` | 地図表示値の種類（`MapValueKind`: 難易度／符号付き材料）ごとの既定しきい値・配色（HSL補間）と、地図が値を塗る宣言（`MapPaintDeclaration`）・段の並び（`valueBands`）・値が段に入るかの式（`bandCondition`）。ルート前の道の線・ルート後の色分け・凡例・管理画面のプレビューが共有する（下記「valueScale.ts」）。画面に出す難易度と負荷の数字の桁（`DIFFICULTY_DECIMALS`・`formatDifficulty`と、目盛りの上端「/100」を添える`DIFFICULTY_SCALE_SUFFIX`・`formatDifficultyOutOfScale`。桁はbackendの`DIFFICULTY_DECIMALS`を生成物`mapDisplay.valueScale.difficultyDecimals`で読む。負荷は`LOAD_DECIMALS`・`formatLoad`で整数）も持ち、難易度の数字を出す画面はどれもここを通す（[ルート設定・結果パネル](route-settings-and-results.md)「難易度の数字の桁」） |
+| `lib/mapDisplay/valueScale.ts` | 地図表示値の種類（`MapValueKind`: 難易度／符号付き材料）ごとの既定しきい値・配色（HSL補間）と、地図が値を塗る宣言（`MapPaintDeclaration`）・段の並び（`valueBands`）・値が段に入るかの式（`bandCondition`・`bandStep`）。ルート前の道の線・ルート後の色分け・凡例・管理画面のプレビューが共有する（下記「valueScale.ts」）。画面に出す難易度と負荷の数字の桁（`DIFFICULTY_DECIMALS`・`formatDifficulty`と、目盛りの上端「/100」を添える`DIFFICULTY_SCALE_SUFFIX`・`formatDifficultyOutOfScale`。桁はbackendの`DIFFICULTY_DECIMALS`を生成物`mapDisplay.valueScale.difficultyDecimals`で読む。負荷は`LOAD_DECIMALS`・`formatLoad`で整数）も持ち、難易度の数字を出す画面はどれもここを通す（[ルート設定・結果パネル](route-settings-and-results.md)「難易度の数字の桁」） |
 | `features/map/scene/groups/axisLines.ts` | ルート確定前に評価軸の値で道を塗る線の宣言。道ごとの材料のfeature-stateと走る条件のglobal-state、段の色、値が無い道・取得中の道の色と濃さ、値が無い道の破線、凡例で隠した段の落とし方（下記「評価軸の線」） |
 | `features/map/scene/wayValueFormula.ts` | 式の木をMapLibreの式へ置き換える唯一の所（下記「評価軸の線」）。木の中身は持たず、節の種類ごとの置き換え方だけを持つ |
 | `features/map/layers/dynamicWayValues.ts` | 材料を引く道路タイルの選び方（地図のズームをタイルのある範囲へ丸め、画面を覆うタイルを並べる）・複数タイル応答の統合（材料非依存の共通部分） |
@@ -137,8 +137,10 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
   同じ段はどこでも同じ鍵・色になる。管理画面のしきい値プレビューは
   下書きの境界を塗るため、同じ`bandColorsFor`を直接通す（[軸スタジオ](axis-studio.md)）。
 - `bandCondition(bands, index, value)`: 値（MapLibreの式）が段に入るときに真になる式（`>= 下限`・`< 次の下限`）。
-  ルート前の道の線の色・ルート後のルート線の色・ルート後の凡例の絞り込みがどれもこれで段を引くので、**境界ちょうどの値は
-  どこでも上の段に入る**。値が無い場合は呼ぶ側が先に分ける（欠損との大小比較は評価時エラーになる）。
+  ルート後のルート線の色・ルート後の凡例の絞り込みはこれで段を引き、ルート前の道の線の色は下の`bandStep`で引く。どれも
+  `>= 下限`で分けるので、**境界ちょうどの値はどこでも上の段に入る**。値が無い場合は呼ぶ側が先に分ける（欠損との大小比較は評価時エラーになる）。
+- `bandStep(bands, value, output)`: 値が入る段の出力を、値を1回だけ読む`step`で選ぶ式。ルート前の道の値の式は木を
+  置き換えた大きな式で、MapLibre は式を読む所ごとに写して運ぶため、段ごとに値を読む`bandCondition`を使わない。
 - `bandAt(bands, value)`: 数の値が入る段。地図の外の部品（「ルート結果」の候補のカードの帯）が地図と同じ段の色を引く口で、
   判定は`bandCondition`と同じ`>= 下限`・`< 次の下限`。
 - `bandColorsFor(kind, boundaries)`: 段階ごとの色。中継点を並べた配色の上をHSL色空間で段の数だけ均等に
@@ -172,6 +174,9 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
   NaNで評価が止まり計算の順もnumpyと違う。段の境界で色が分かれるので、最下位の桁のずれがbackendと違う色になる。
   backendと同じ値になることは、backendが出す表（`types/generated/way-value-expectations.json`）を
   `scene/wayValueFormula.test.ts`が通して確かめる。
+- **置き換えた式は、材料を読む所を少なく保つ。** MapLibreは`let`で束ねた式を、`var`で読む所ごとに評価し、描画の裏の処理へ
+  運ぶときも読む所ごとに写す。節が引数を読む所の数（場合分けのどの枝も含む）は入れ子の深さだけ掛け合わさるので、
+  大きな木（風）で読む所が多いと、式を運ぶ間に画面が止まりページが落ちる。節の種類ごとの上限は`scene/wayValueFormula.test.ts`が見る。
 - **値が無い道は段の色で塗らない。** 式の値がNaN（読む材料が欠ける）の道が該当する。値が無い道は「データなし」の色の
   破線（`mapDisplay.noDataDash`）で、**取得中**（まだ一度も値を受け取っていない間）は取得中の色の実線で塗る
   （取得中は値が無いと決まっていない）。
