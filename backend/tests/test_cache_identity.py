@@ -67,6 +67,13 @@ def test_each_source_counts_on_its_own_and_their_boundary_is_not_lost():
     assert cache_identity.shape_digest(_Columns, "SELECT 1") != cache_identity.shape_digest(_Columns, "SELECT 2")
 
 
+def test_the_identity_is_the_revision_followed_by_the_signature():
+    identity = cache_identity.cache_identity("2", "SELECT 1")
+
+    assert identity == f"2-{cache_identity.shape_digest('SELECT 1')}"
+    assert cache_identity.cache_identity("3", "SELECT 1") != identity
+
+
 @pytest.mark.parametrize(("revisions", "version", "known"), [
     # 取込だけを流した（派生の世代は動かない）ときも世代が変わるよう、両方の世代を持つ。最初の派生の世代は0。
     (DataRevisions(derived=0, imported=3), "0.3-abc", True),

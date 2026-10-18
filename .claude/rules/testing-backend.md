@@ -60,7 +60,8 @@ def test_xxx_is_rate_limited_per_client():
 回数の記録（`rate_limiter`の内部）は消し込まない・差し替えない。窓の境界を確かめるテストは`monotonic_clock`を引数に取って進める
 （`test_rate_limiter.py`）。
 
-実例: test_region_routes.py, test_weather_route.py, test_routes_generate.py
+実例: test_region_routes.py, test_weather_route.py, test_basemap_routes.py,
+test_routes_generate.py
 
 ## パターン2: PostGIS統合テスト（road_graph_session）→ ファイル単位でエンジン・イベントループを共有
 

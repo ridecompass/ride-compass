@@ -11,10 +11,11 @@
 - 道の点数の評価そのもの（材料の値から地図が塗る値への写し・条件の欠けの判定・区間から畳むこと） → `test_dynamic_way_values.py`・
   `test_region_routes.py`
 
-ここで見るのは、口ごとの受け渡し（無い軸・断られた書き込みを状態コードへ変えること）。下書きの道の点数は、同じ材料で組んだ配信のレンズの値と突き合わせる。
+ここで見るのは、口ごとの受け渡し（無い軸・断られた書き込みを状態コードへ変えること）と、ルーターが自分で持つ
+検証（URLと本文の軸の一致）。下書きの道の点数は、同じ材料で組んだ配信のレンズの値と突き合わせる。
 
 **ルーターが名前空間に持つ外向きの参照は差し替える**——軸の集合。注入するサービス（軸の書き込み・
-下書きのレンズが読むタイルの材料）は依存の差し替えで与える。どれも読むだけなので、応答を差し替えるだけで呼ばれ方は見ない。
+分布の計算（DB）・下書きのレンズが読むタイルの材料）は依存の差し替えで与える。どれも読むだけなので、応答を差し替えるだけで呼ばれ方は見ない。
 材料カタログは本物を通し、材料は性質ごとに本物のカタログから選ぶ。
 """
 
@@ -30,6 +31,7 @@ from app.domain.axis_definitions import AXIS_DEFINITIONS, REQUEST_DYNAMIC_MATERI
 from app.domain.dynamic_way_values import FeatureMaterials, WayValueQuery
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.region import EDGE_UNIT_MIN_ZOOM
+from app.domain.value_distribution import ValueDistribution
 from app.services.dedicated_way_values import (
     DEDICATED_WAY_VALUE_SERVICES,
     AxisWayValueLens,
@@ -80,6 +82,15 @@ class FakeAxisRegistry:
         if name in self.errors:
             raise self.errors[name]
 
+    @property
+    def writes(self) -> list[tuple]:
+        """受けた呼び出しのうち書き込み（応答に重みの割合を添えるための一覧の読み取りを除く）。"""
+        return [call for call in self.calls if call[0] != "list_all"]
+
+    async def list_all(self):
+        self._record("list_all")
+        return dict(self.axes)
+
     async def create(self, definition):
         self._record("create", definition)
         self.axes[definition.axis_id] = definition
@@ -87,14 +98,36 @@ class FakeAxisRegistry:
 
     async def update(self, axis_id, definition):
         self._record("update", axis_id, definition)
+        if axis_id not in self.axes:
+            raise KeyError(axis_id)
+        self.axes[axis_id] = definition
+        return dict(self.axes)
 
     async def delete(self, axis_id):
         self._record("delete", axis_id)
+        self.axes.pop(axis_id)
+
+    async def unpublish(self, axis_id):
+        self._record("unpublish", axis_id)
+        self.axes[axis_id] = self.axes[axis_id].model_copy(update={"is_published": False})
+        return dict(self.axes)
 
 
 @pytest.fixture
 def registry():
     return FakeAxisRegistry()
+
+
+class FakePreview:
+    """分布の計算（`AxisPreviewService`）の代役。"""
+
+    async def raw_value_distribution(self, shape):
+        return ValueDistribution(sample_ways=3, total_km=1.5, quantiles={"p50": 2.0}, bins=[(0.0, 4.0, 1.0)])
+
+
+@pytest.fixture
+def preview():
+    return FakePreview()
 
 
 @pytest.fixture
@@ -103,16 +136,37 @@ def seams(monkeypatch):
 
 
 @pytest.fixture
-def app(registry, seams):
+def app(registry, preview, seams):
     app = FastAPI()
     app.include_router(axis_admin.router)
     app.dependency_overrides[axis_admin.get_axis_registry_admin_service] = lambda: registry
+    app.dependency_overrides[axis_admin.get_axis_preview_service] = lambda: preview
     return app
 
 
 @pytest.fixture
 def client(app, admin_credentials):
     return TestClient(app, headers=AUTH_HEADERS)
+
+
+class TestRead:
+    def test_list_returns_every_axis(self, client, registry):
+        registry.axes = {"a": stored("a"), "b": stored("b", label="軸B")}
+
+        body = client.get(BASE).json()
+
+        assert [(item["axis_id"], item["label"]) for item in body] == [("a", "軸A"), ("b", "軸B")]
+
+    def test_get_returns_the_axis(self, client, registry):
+        registry.axes["a"] = stored()
+
+        assert client.get(BASE + "/a").json()["axis_id"] == "a"
+
+    def test_an_axis_whose_material_left_the_catalog_can_still_be_read(self, client, registry):
+        """読み出しは保存済みの内容を返すだけで、書き込み時の検証をやり直さない。"""
+        registry.axes["a"] = stored(shape=linear_shape("retired"))
+
+        assert client.get(BASE + "/a").status_code == 200
 
 
 class TestWrite:
@@ -123,8 +177,40 @@ class TestWrite:
 
         assert response.status_code == 201
         assert response.json()["axis_id"] == "a"
-        ((name, definition),) = registry.calls
+        ((name, definition),) = registry.writes
         assert (name, type(definition)) == ("create", axis_admin.AxisDefinition)
+
+    def test_update_stores_a_plain_axis_definition_under_the_axis_id(self, client, registry):
+        registry.axes["a"] = stored()
+
+        response = client.put(BASE + "/a", json=payload(default_weight=2.0))
+
+        assert response.status_code == 200
+        ((name, axis_id, definition),) = registry.writes
+        assert (name, axis_id, type(definition), definition.default_weight) == (
+            "update",
+            "a",
+            axis_admin.AxisDefinition,
+            2.0,
+        )
+
+    def test_update_whose_body_names_another_axis_is_a_400(self, client, registry):
+        response = client.put(BASE + "/a", json=payload("b"))
+
+        assert response.status_code == 400
+        assert registry.calls == []
+
+    @pytest.mark.parametrize(
+        ("method", "path", "body"),
+        [
+            ("GET", BASE + "/a", None),
+            ("PUT", BASE + "/a", payload()),
+            ("DELETE", BASE + "/a", None),
+            ("POST", BASE + "/a/unpublish", None),
+        ],
+    )
+    def test_an_operation_on_an_unknown_axis_is_a_404(self, client, method, path, body):
+        assert client.request(method, path, json=body).status_code == 404
 
     @pytest.mark.parametrize(
         ("method", "path", "body", "operation"),
@@ -135,11 +221,68 @@ class TestWrite:
         ],
     )
     def test_an_operation_refused_by_the_registry_is_a_409(self, client, registry, method, path, body, operation):
+        registry.axes["a"] = stored()
         registry.errors[operation] = ValueError("公開済みの軸は変更できない")
 
         response = client.request(method, path, json=body)
 
         assert (response.status_code, response.json()["detail"]) == (409, "公開済みの軸は変更できない")
+
+    def test_delete_is_a_204(self, client, registry):
+        registry.axes["a"] = stored()
+
+        assert client.delete(BASE + "/a").status_code == 204
+        assert "a" not in registry.axes
+
+    def test_unpublish_returns_the_axis_as_stored_afterwards(self, client, registry):
+        registry.axes["a"] = stored(is_published=True)
+
+        body = client.post(BASE + "/a/unpublish").json()
+
+        assert (body["axis_id"], body["is_published"]) == ("a", False)
+
+
+class TestPayloadValidation:
+    """本文の検証。拒否は422で、レジストリへは届かない。値の不変条件は`check_axis_definition`へ渡す。"""
+
+    def test_rejected(self, client, registry):
+        response = client.post(BASE, json=payload(shape=linear_shape("ghost")))
+
+        assert response.status_code == 422
+        assert "存在しない材料・軸を指しています（ghost）" in response.json()["detail"][0]["msg"]
+        assert registry.calls == []
+
+    def test_accepted(self, client):
+        assert client.post(BASE, json=payload(shape=linear_shape(REFERENCED_AXIS))).status_code == 201
+
+
+class TestPreviews:
+    def test_distribution_answers_what_was_computed_for_the_draft_shape(self, client):
+        body = client.post(BASE + "/preview-distribution", json={"shape": linear_shape(NUM_A)}).json()
+
+        assert body == {
+            "sample_ways": 3,
+            "total_km": 1.5,
+            "quantiles": {"p50": 2.0},
+            "bins": [[0.0, 4.0, 1.0]],
+        }
+
+    def test_scores_of_a_draft(self, client):
+        shape = {**linear_shape(NUM_A), "breakpoints": [[0, 0], [10, 100]]}
+
+        body = client.post(BASE + "/preview-scores", json={"shape": shape, "xs": [2.5, 20.0]}).json()
+
+        assert body == {"scores": [25.0, 100.0]}
+
+    def test_calibration_of_a_draft_answers_its_map_bands_and_whether_it_averages_density(self, client):
+        """段の境界は下書きの折れ点から導いたもの。密度の軸の画面は、0点の端を動かさない。"""
+        additive = next(m for m in _static_materials("numeric") if MATERIAL_CATALOG[m].additive)
+        definition = payload(shape={**linear_shape(additive), "breakpoints": [[0, 0], [8, 100]]})
+
+        body = client.post(BASE + "/preview-calibration", json={"definition": definition}).json()
+
+        assert body["averages_density"] is True
+        assert body["map_paint"]["thresholds"] == [100.0]
 
 
 class FakeFeatureMaterials:
