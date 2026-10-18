@@ -150,9 +150,10 @@ async def region_dedicated_way_values(
     現在時刻[Asia/Tokyo]を使う）。
 
     静的な路面タイル（`/api/region/road-surface-tiles`、MVT）とは別経路——受け取る側は同じz/x/yについて両方を取り、
-    フィーチャーの鍵で突き合わせて重ねる。タイルの材料と勾配はタイル単位でディスクへ持つため、パン・ズームで同じ
-    タイルが再び視界に入ってもDBへの再問い合わせは発生しない（勾配は同じ向きバケットの範囲内で。風は計算が軽いため
-    持たない）。
+    フィーチャーの鍵で突き合わせて重ねる。タイルの材料と勾配の道ごとの材料はタイル単位でディスクへ持つため、パン・
+    ズームで同じタイルが再び視界に入っても、向き・速度を変えても、DBへの再問い合わせは発生しない（風は計算が軽いため
+    持たない）。値は、材料の口（`/api/region/way-materials`）の道ごとの材料を、軸カタログの木（`way_value_formula`）で
+    評価した値と同じ。
 
     路面・点のタイルと同じレート制限・座標検証・DB接続プールのsemaphoreを共有する
     （本ファイルの`_region_tile_semaphore`のコメント参照——MVTエンコードは
@@ -167,6 +168,36 @@ async def region_dedicated_way_values(
     if isinstance(values, MissingConditions):
         raise HTTPException(status_code=422, detail=f"この軸には{'・'.join(values.names)}が必須です。")
     return values
+
+
+@router.get("/api/region/way-materials/{axis_id}/{z}/{x}/{y}")
+async def region_way_materials(
+    axis_id: str,
+    z: RoadTileZoom,
+    x: TileIndex,
+    y: TileIndex,
+    request: Request,
+    at: datetime | None = None,
+    lens: AxisWayValueLens | None = Depends(get_dedicated_way_value_service),
+) -> dict[str, dict[str, float]]:
+    """ルート未確定時の地図が、公開軸の値を走行方位・想定速度から自分で求めるための、指定タイル内のフィーチャーごとの
+    道ごとの材料（材料の名前→値。値の無い材料は載せない）。値は軸カタログの木（`way_value_formula`）へ、要求の条件
+    （`bearing_deg`・`speed_kmh`）とともに入れると、配信（`/api/region/dynamic-way-values`）と同じ値になる
+    （`services/dedicated_way_values.py: tile_axis_way_materials`）。
+
+    応答は走行方位・想定速度に依らず、受け取らない。時刻（`at`）は時刻に依る材料（風）の時刻で、省略すると現在時刻
+    [Asia/Tokyo]。公開軸でないaxis_idと、木の無い軸（軸カタログの`way_value_formula`がnull）は404。レート制限・
+    座標検証・semaphoreは配信と同じものを共有する。
+    """
+    if lens is None:
+        raise HTTPException(status_code=404, detail="公開している軸ではありません。")
+    _check_tile_rate_limit(request, f"{axis_id}-way-materials")
+    validate_tile_coords(z, x, y)
+    async with _region_tile_semaphore:
+        materials = await lens.way_materials(z, x, y, at)
+    if materials is None:
+        raise HTTPException(status_code=404, detail="この軸は道ごとの材料を配りません。")
+    return materials
 
 
 class AxisInspectorRequest(StrictModel):

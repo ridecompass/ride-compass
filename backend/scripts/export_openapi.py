@@ -48,7 +48,6 @@ from app.domain.hard_filters import DEFAULT_HARD_FILTERS, HARD_FILTER_LABELS, HA
 from app.domain.road_avoidance import AVOIDABLE_ROWS, AVOIDANCE_LEVEL_LABELS, AVOIDANCE_LEVELS
 from app.domain.address_area import ADDRESS_AREA_LEVELS
 from app.domain.geo import COMPASS_LABELS, EARTH_RADIUS_KM
-from app.domain.dynamic_way_values import BEARING_BUCKET_DEG
 from app.domain.value_distribution import QUANTILE_TARGETS
 from app.domain.place_search import (
     PLACE_KIND_LABELS,
@@ -311,8 +310,6 @@ def main() -> None:
             # backendだけ広げてもfrontendが要求せずレイヤーが黙って消える。
             "road_tile_min_zoom": ROAD_TILE_MIN_ZOOM,
             "road_tile_max_zoom": ROAD_TILE_MAX_ZOOM,
-            # 向きに依る道の値を、backend が同じ値で代える向きの幅（度）。画面は走行中の向きをこの幅で丸めて送る。
-            "way_value_bearing_bucket_deg": BEARING_BUCKET_DEG,
             # 画面が点からタイル座標を求めるときに緯度を挟む限界（`domain/region.py`と同じ式を使う）。
             "max_mercator_latitude": MAX_MERCATOR_LATITUDE,
             # 国土地理院タイル（色別標高図・標高）。配信元が実データを持つ範囲・画面が
