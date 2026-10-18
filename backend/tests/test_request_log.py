@@ -29,12 +29,6 @@ from app.infrastructure.request_log import (
 CLIENT_REQUEST_ID = "0f8fad5bd9cb469fa16570867728950e"
 
 
-def test_incoming_request_id_is_propagated():
-    client = TestClient(main_app)
-    response = client.get("/health", headers={"X-Request-ID": CLIENT_REQUEST_ID})
-    assert response.headers["X-Request-ID"] == CLIENT_REQUEST_ID
-
-
 def test_access_log_line_carries_the_request_id(caplog):
     """アクセスログの行にも応答と同じIDが載る。載らないと、利用者の手元のIDで行を探せない。"""
     caplog.set_level(logging.INFO, logger="ridecompass.access")

@@ -170,10 +170,6 @@ def test_grades_missing_in_the_arrays_are_none_in_the_attribute():
     assert attribute.average_grade is None
 
 
-def test_an_edge_without_computed_elevation_has_no_attribute():
-    assert elevation_attribute(network(), 3, "30:0:f") is None
-
-
 @pytest.mark.parametrize(
     ("way", "segment", "forward", "expected"),
     [

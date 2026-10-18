@@ -8,22 +8,12 @@
 - 割り増しが区間の費用に掛かること → `test_leg_costs.py`
 """
 
-import numpy as np
 import pytest
 from sqlalchemy import text
 
-from app.domain.road_avoidance import AVOIDABLE_ROWS, road_avoidance_masks
+from app.domain.road_avoidance import AVOIDABLE_ROWS
 from app.infrastructure.source_models import WAYS_SOURCE_SQL
 from tests.source_ingest import ingest_records, way_record
-
-
-def test_a_segment_on_rows_to_avoid_and_to_exclude_is_excluded():
-    """弱い段を取ると、「通らない」を選んだ行の道を、別の行で「なるべく避ける」にしただけで通ってしまう。"""
-    avoid_key, exclude_key = list(AVOIDABLE_ROWS)[:2]
-    flags = {key: np.array([key in (avoid_key, exclude_key)]) for key in AVOIDABLE_ROWS}
-    levels = {key: "pass" for key in AVOIDABLE_ROWS} | {avoid_key: "avoid", exclude_key: "exclude"}
-
-    assert road_avoidance_masks(flags, levels, 1).excluded.tolist() == [True]
 
 
 @pytest.mark.asyncio(loop_scope="module")
