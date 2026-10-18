@@ -34,6 +34,7 @@ import {
   serveHome,
 } from "@/testing/homePage";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
+import { makeGenerationConditions } from "@/testing/routeFixtures";
 import type { Coordinates } from "@/types/route";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
@@ -226,5 +227,37 @@ describe("地図で扱えること", () => {
     clickSegment(drawnSegment, HERE);
     expect(screen.getByText(/km地点/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
+  });
+
+  it("効いているパネルが別のパネルへ移ると、前のパネルで地図に出した選択（選んだ区間・小窓）を外し、閉じるだけなら外さない", async () => {
+    const { user } = renderHome();
+    await selectDestination(user);
+    clickMap(DESTINATION);
+    jobs.respond(
+      [FIRST],
+      makeGenerationConditions({ latitude: HERE.latitude, longitude: HERE.longitude, destination: DESTINATION }),
+    );
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
+
+    // 「ルート結果」で選んだ区間は、「ルート設定」の見るだけのタブへ移ると小窓に出ず、戻っても選ばれていない。
+    clickSegment(drawnSegment, HERE);
+    await user.click(screen.getByRole("tab", { name: "重み" }));
+    expect(screen.queryByText(/km地点/)).toBeNull();
+    await user.click(candidateTabs()[0]);
+    expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
+
+    // 見るだけのタブで開いた地点の小窓は、「ルート結果」へ移ると消える。
+    await user.click(screen.getByRole("tab", { name: "重み" }));
+    await user.click(marksAt(DESTINATION)[0].element);
+    expect(screen.getByText("目的地: 地図で選んだ地点")).toBeInTheDocument();
+    await user.click(candidateTabs()[0]);
+    expect(screen.queryByText("目的地: 地図で選んだ地点")).toBeNull();
+
+    // 閉じるだけなら、「ルート結果」で選んだ区間を地図の小窓で読める。
+    clickSegment(drawnSegment, HERE);
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
+    expect(screen.getByText(/km地点/)).toBeInTheDocument();
   });
 });
