@@ -7,13 +7,7 @@ import {
   makeRouteCandidate as makeCandidate,
   makeRouteSegment,
 } from "@/testing/routeFixtures";
-import type {
-  AmedasObservation,
-  FloodForecasts,
-  WbgtStatus,
-  WeatherConditions,
-  WeatherWarnings,
-} from "@/types/weather";
+import type { AmedasObservation, WeatherConditions } from "@/types/weather";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import nextConfig from "../next.config";
@@ -198,9 +192,9 @@ export async function installApiMocks(page: Page): Promise<void> {
   // マッチ判定される）で/api/weather/amedasだけこちらを優先させる。
   await page.route(`${API_BASE}/api/weather/amedas*`, (route) => route.fulfill({ json: amedasObservationFixture() }));
   // 警告バッジ3種は「警告なし」の成功応答にする。応答しないと取得失敗の印がヘッダーに出る。
-  const noWarnings: WeatherWarnings = { warnings: [], valid_area: null };
-  const noWbgt: WbgtStatus = { reading: null, valid_area: null };
-  const noFlood: FloodForecasts = { forecasts: [], valid_area: null };
+  const noWarnings: components["schemas"]["WeatherWarnings"] = { warnings: [], valid_area: null };
+  const noWbgt: components["schemas"]["WbgtStatus"] = { reading: null, valid_area: null };
+  const noFlood: components["schemas"]["FloodForecasts"] = { forecasts: [], valid_area: null };
   await page.route(`${API_BASE}/api/weather/warnings*`, (route) => route.fulfill({ json: noWarnings }));
   await page.route(`${API_BASE}/api/weather/wbgt*`, (route) => route.fulfill({ json: noWbgt }));
   await page.route(`${API_BASE}/api/weather/flood-forecast*`, (route) => route.fulfill({ json: noFlood }));

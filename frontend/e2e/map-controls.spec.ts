@@ -5,10 +5,10 @@ import { WIDTHS } from "./states";
 // 地図の右の列（拡大・縮小から、走行モードまで）のボタンが、ほかの部品の下に潜らず押せ、継ぎ目の間隔が揃うこと（パターン4 観点1）。
 // 押す所の大きさ（24px四方）は全状態の走査が両方の幅で見るので、ここでは重なりと間隔だけを見る。どちらも実寸と重なりの順番で
 // 決まり、単体テストでは見えない。押す点（中心）のヒットテストがボタン自身か子孫を返せば、上に何も重なっていない。
-// 間隔は、方位のボタンから下の継ぎ目が全部 `--map-ctrl-stack-gap` であること（拡大・縮小・方位は MapLibre の1つの枠に
+// 間隔は、方位磁針から下の継ぎ目が全部 `--map-ctrl-stack-gap` であること（拡大・縮小・方位磁針は1つの枠に
 // 隙間なく並ぶので見ない）。ボタンを包む要素が行の箱の分だけ高くなると、その継ぎ目だけ広がる。
 
-const RIGHT_COLUMN = /^(拡大|縮小|ドラッグで地図を回転|走行方位を設定|出発時刻|想定速度|現在地に移動|走行モード)/;
+const RIGHT_COLUMN = /^(拡大|縮小|地図の向き|出発時刻|想定速度|現在地に移動|走行モード)/;
 
 type ColumnButton = { name: string; onTop: boolean; top: number; bottom: number };
 
@@ -36,7 +36,7 @@ async function expectColumnSound(page: Page) {
   const column = await rightColumnButtons(page);
   // 走行モードが列の末尾まで並んでいること（見つからない名前を素通りさせない）。
   expect(column.map(({ name }) => name)).toEqual(
-    expect.arrayContaining(["拡大", "縮小", "走行方位を設定", "現在地に移動", "走行モード"]),
+    expect.arrayContaining(["拡大", "縮小", "地図の向き", "現在地に移動", "走行モード"]),
   );
   expect(column.at(-1)?.name).toBe("走行モード");
   expect(column.filter(({ onTop }) => !onTop)).toEqual([]);
@@ -45,7 +45,7 @@ async function expectColumnSound(page: Page) {
     parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--map-ctrl-stack-gap")),
   );
   expect(stackGap).toBeGreaterThan(0);
-  const fromCompass = column.slice(column.findIndex(({ name }) => name.startsWith("ドラッグで地図を回転")));
+  const fromCompass = column.slice(column.findIndex(({ name }) => name === "地図の向き"));
   expect(fromCompass.length).toBeGreaterThan(4);
   const seams = fromCompass.slice(1).map((button, i) => ({
     seam: `${fromCompass[i].name} → ${button.name}`,

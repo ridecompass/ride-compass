@@ -52,6 +52,7 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | scripts | `run_probe.py` | 調査用のスクリプトを本番DBに対して走らせる（手元のPythonから本番DBを引くか、本番のbackendコンテナの中で走らせる）。手元実行では接続文字列をSQLAlchemy用と素のasyncpg用の両方の形で環境変数へ渡す。プローブの後ろに書いた引数はそのままプローブへ渡す |
 | scripts | `_prod_env.py` | 本番へつなぐ道具（`run_probe.py`・`axis_apply.py`等）が共有する、手元の接続情報（`backend/.env.oracle.local`）の読み方。worktreeから打ったときは本体のチェックアウト側のファイルを読む（gitignore対象のファイルはworktreeへ写らない）。接続情報を渡す前に、このチェックアウトがorigin/masterより遅れていれば止まる（[setup.md](../../architecture/setup.md)「開発機の本体のチェックアウトの遅れ」） |
 | scripts | `_probe_env.py` | 調査のスクリプト（`schema_gap.py`・`measure_axis_saturation.py`等）が接続先を決める口。引数で渡された接続先、無ければ`run_probe.py`が環境変数で渡した本番の接続先、無ければ設定値を使う。DBへ書くバッチはこれを読まない——調査のつもりの環境から本番へ書かないため。本番のコンテナの中でも読めるよう、`.env.oracle.local`もリポジトリの根の`scripts/`も読まない |
+| scripts | `prod_backup_check.py` | 本番の`/health`からDBのバックアップの経過時間を読み、止まっていれば失敗で終わる。下の「本番DBのバックアップ」 |
 | scripts | `_production_origins.py` | 本番の宛先（リポジトリの根の`production-origins.json`）の読み方。標準ライブラリだけで読むので、依存を入れないランナー（`prod-route-check.yml`）からも打てる |
 | scripts | `drop_orphan_test_databases.py` | 作業ツリーごとに作られるPostGIS統合テストのDBのうち、作業ツリーが無くなったものを出し、`--drop`で落とす。どの作業ツリーのものかはDB自身のコメントから読む（名前から推測しない） |
 | scripts | `serve_e2e_live.py` | e2e-live（`frontend/e2e-live/`）のために、この作業ツリーのbackendを開発DBへ向けて空いたポートで起動し、路面タイルに道が出る起点を開発DBの区間から選んで、ビルドと実行のコマンドを出す（手順の正本は[run-checks/SKILL.md](../../../.claude/skills/run-checks/SKILL.md)「E2E・画面の撮影の走らせ方」） |
@@ -461,6 +462,13 @@ systemdのtimerが毎日、DBの全体を`pg_dump`（custom形式・圧縮あり
 - **止まりは`/health`で外へ出す**。置けたらその時刻を、ホストの`/home/ubuntu/ridecompass-cache-data`（コンテナの`data/`）の
   `admin_data_backup_at`へ書き、`infrastructure/admin_data_backup.py`が経過時間を出す。DBに表を足さないのは、本番のスキーマを
   人が埋める手間（docs/architecture/tech-stack.md「デプロイの反映確認」）を、1行の時刻のために増やさないため。
+  スクリプトは途中のどこで落ちても（`set -e`）時刻を書かないので、置けなかった日は経過時間が伸びる。
+- **止まりの見張りは定時のActions**。`prod-route-check.yml`が毎日06:23（日本時間）に`scripts/prod_backup_check.py`で
+  `/health`を外から読み、経過時間が`prod_backup_check.py: MAX_AGE_HOURS`（25）を超えたか、値が無いか、`/health`が読めなければ
+  落とし、GitHub Actionsの失敗の知らせが届く。上限は、timerの間隔（24時間）に、1回の所要（本番で書き出し約28分・送り約2分半）と
+  取込・作り直しの鍵の待ちの分を足したもの。03:17に始まった回が置けていれば06:23の経過時間は3時間ほどで、置けなかった日は
+  前の日の回が05:23までに置けていれば26時間を超えてその日に落ちる。それより遅く置けた日の翌日に止まると、知らせは1日遅れる。
+  Actionsの起動の遅れは経過時間を伸ばす向きにしか効かず、置けた日を落とさない。
 - **書き出しの時点では中身を検算しない**。戻したDBの軸・較正値は、backendの起動時の読み込み（`services/axis_registry_service.py:
   refresh_axis_definitions`・`infrastructure/tuning_overrides.py: load_tuning_values`）が管理APIの本文と同じ
   検査に通し、通らなければ起動しない。残るのは1個なので、前の日のものへは戻れない。

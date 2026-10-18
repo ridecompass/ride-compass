@@ -28,6 +28,8 @@ import { useDedicatedWayValues } from "@/features/map/useDedicatedWayValues";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
 import { useStoredBooleanState, useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates } from "@/types/route";
+import type { RideConditions } from "@/features/map/regionApi";
+import { travelBearingOf } from "@/features/map/mapHeading";
 import type { WayValueCondition } from "@/lib/catalogAxis";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
@@ -64,8 +66,10 @@ interface MapViewInputs {
   hasSelectedRoute: boolean;
   /** 選択中の候補の区間まで確定しているか（ルート確定後）。 */
   hasDetail: boolean;
-  /** 走行条件。専用配信軸の値と気象レイヤーの表示時刻がこれに従う。 */
-  ride: { bearingDeg: number; at: Date; speedKmh: number };
+  /** 出発時刻と想定速度。専用配信軸の値と気象レイヤーの表示時刻がこれに従う。 */
+  ride: { at: Date; speedKmh: number };
+  /** 走行中に、地図の向きと想定速度の代わりに使う向きと速さ。走っていなければnull。 */
+  riding: { bearingDeg: number; speedKmh: number } | null;
   /** 刻みへ丸めた現在時刻（`useDepartureTime`）。 */
   now: Date;
   /** レンズの選択肢を「未使用」と分ける重み。 */
@@ -84,9 +88,18 @@ interface MapViewState {
   center: Coordinates | null;
   /** 地図が今当てている向き（北から時計回りの度）。地図がまだ範囲を知らせていなければ0（北が上）。 */
   bearing: number;
+  /** 地図の道の値を取る走る条件。道を押したときの内訳にも同じ値を使う。 */
+  wayConditions: RideConditions;
 }
 
-export function useMapView({ hasSelectedRoute, hasDetail, ride, now, routeWeights }: MapViewInputs): MapViewState {
+export function useMapView({
+  hasSelectedRoute,
+  hasDetail,
+  ride,
+  riding,
+  now,
+  routeWeights,
+}: MapViewInputs): MapViewState {
   const catalog = useAxisCatalog();
   const mapCatalog = useMapAxisCatalog();
   const [layerVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
@@ -135,7 +148,11 @@ export function useMapView({ hasSelectedRoute, hasDetail, ride, now, routeWeight
     () => mapCatalog.dedicatedAxes.filter((axis) => axis.axisId === painted),
     [mapCatalog.dedicatedAxes, painted],
   );
-  const dedicatedWayValues = useDedicatedWayValues(fetchAxes, viewport, ride.bearingDeg, ride.at, ride.speedKmh);
+  // 走っていない間の走る向きは、地図の上の向きを丸めたもの（丸めた向きが変わらない回転では道の値を取り直さない）。
+  const bearingDeg = riding?.bearingDeg ?? travelBearingOf(viewport?.bearing ?? 0);
+  const speedKmh = riding?.speedKmh ?? ride.speedKmh;
+  const wayConditions = useMemo(() => ({ bearingDeg, at: ride.at, speedKmh }), [bearingDeg, ride.at, speedKmh]);
+  const dedicatedWayValues = useDedicatedWayValues(fetchAxes, viewport, bearingDeg, ride.at, speedKmh);
   const debouncedHidden = useDebouncedValue(hidden, LEGEND_FILTER_DEBOUNCE_MS);
 
   // MapViewはこの参照が変わるたびに地図の中身を組み直すため、中身が変わったときだけ作る。
@@ -226,5 +243,6 @@ export function useMapView({ hasSelectedRoute, hasDetail, ride, now, routeWeight
     redrawMap: () => setRefreshToken((token) => token + 1),
     center,
     bearing: viewport?.bearing ?? 0,
+    wayConditions,
   };
 }

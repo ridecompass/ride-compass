@@ -85,7 +85,7 @@ describe("LensControl", () => {
       within(list())
         .getAllByRole("radio")
         .map((row) => row.textContent),
-    ).toEqual(["usedの軸（走行方位で変わる）（出発時刻で変わる）", "idleの軸未使用"]);
+    ).toEqual(["usedの軸（地図の向きで変わる）（出発時刻で変わる）", "idleの軸未使用"]);
   });
 
   it("行を押すとその評価軸を選び、一覧は閉じない。選んでいる行をもう一度押すと外す", async () => {
