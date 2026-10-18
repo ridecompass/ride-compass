@@ -20,7 +20,7 @@ import {
 import { LENS_DIFFICULTY_ID, type LensId } from "@/lib/mapDisplay/routeStyleModes";
 import type { MapViewport } from "@/features/map/layers/windLayer";
 import type MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayControls";
-import { isLegendFiltered } from "@/features/map/MapOverlayControls/MapOverlayControls";
+import { isLegendFiltered } from "@/features/map/MapOverlayControls/OverlayLayerRow";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
