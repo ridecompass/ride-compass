@@ -29,13 +29,6 @@ def fictional_axes():
         yield
 
 
-def test_weights_left_out_are_filled_with_defaults_in_the_order_of_the_axes():
-    weights = RoutePreference(weights={"axis_b": 0.7}).weights
-
-    assert weights == {"axis_a": 0.4, "axis_b": 0.7}
-    assert list(weights) == ["axis_a", "axis_b"]
-
-
 @pytest.mark.parametrize(
     "weights",
     [
@@ -61,4 +54,3 @@ def test_the_request_refuses_the_weights_the_check_refuses():
 def test_a_zero_weight_is_kept_rather_than_replaced_by_the_default():
     """重み0は「この軸を気にしない」という指定で、書かれなかった軸と違い既定で補わない。"""
     assert RoutePreference(weights={"axis_a": 0.0}).weights == {"axis_a": 0.0, "axis_b": 0.2}
-

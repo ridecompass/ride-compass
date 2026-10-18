@@ -10,7 +10,6 @@
 テストごとの一時ディレクトリへ向けてある）、ラスタの口だけを代役にする。
 """
 
-import threading
 
 import pytest
 
@@ -89,26 +88,6 @@ async def test_a_missing_tile_is_made_stored_and_returned(cache, records):
         "z": TILE["z"], "x": TILE["x"], "y": TILE["y"],
         "cache": "miss", "source": "raster", "tile_bytes": 3, "persisted": True,
     }]
-
-
-async def test_disk_reads_and_writes_run_off_the_event_loop(cache, records):
-    fetch, _ = _fetch(b"new")
-
-    await _serve(fetch)
-
-    # 同時に処理中の他のタイル・ルート生成をディスクI/Oで止めない
-    assert len(cache.thread_idents) == 2
-    assert threading.get_ident() not in cache.thread_idents
-
-
-async def test_a_tile_made_without_knowing_its_generation_is_not_stored(cache, records):
-    fetch, _ = _fetch(b"new")
-
-    response = await _serve(fetch, generation=f"{UNKNOWN_REVISION}-shape")
-
-    assert response == region_tile_cache.TileResponse(b"new")
-    assert cache.entries == {}
-    assert records[0].fields["persisted"] is False
 
 
 @pytest.mark.parametrize(

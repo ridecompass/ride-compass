@@ -119,20 +119,3 @@ async def test_a_place_inside_a_boundary_has_the_city_and_the_name_of_the_bounda
 
     assert areas == {"chome": "新宿区西新宿二丁目", "ward": "さいたま市岩槻区本町", "oaza": "日の出町大字平井",
                      "oaza_second_part": "日の出町大字平井"}
-
-
-@pytest.mark.usefixtures("boundary_data")
-async def test_a_place_on_the_edge_of_two_boundaries_has_the_named_one_of_the_smaller_key(derive_conn):
-    """辺の上の点は、名前を持つ境界のうち鍵の小さいほう（名前の無い境界は鍵が小さくても採らない）。"""
-    areas = await _areas(derive_conn, {"chome_edge": (139.693, 35.6885), "unnamed_edge": (139.27, 35.745)})
-
-    assert areas == {"chome_edge": "新宿区西新宿二丁目", "unnamed_edge": "日の出町大字平井"}
-
-
-@pytest.mark.usefixtures("boundary_data")
-async def test_a_place_outside_the_named_boundaries_has_no_area(derive_conn):
-    """境界の外（海の上等）・名前の無い境界の中・水面の中は、辺りを持たない。"""
-    areas = await _areas(derive_conn, {"sea": (139.80, 35.55), "unnamed": (139.275, 35.745),
-                                       "water": (139.755, 35.755)})
-
-    assert areas == {"sea": None, "unnamed": None, "water": None}

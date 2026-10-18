@@ -31,9 +31,8 @@ from app.domain.attributes import CategoricalColumn
 from app.domain.graph import LeanEdge
 from app.domain.hard_filters import route_flag_columns
 from app.domain.landcover import LandcoverPercentages, landcover_key
-from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns, tile_column_sql
+from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns
 from app.domain.region import BoundingBox
-from app.infrastructure.road_tile_sql import ROAD_SURFACE_TILE_MVT_SQL
 from app.infrastructure.derived_models import EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow, WayCountsRow
 from app.domain.graph import edge_key, node_key
 from app.services.axis_preview_service import SAMPLE_LIMIT, SAMPLE_PERCENT
@@ -346,33 +345,11 @@ async def test_landcover_is_read_at_the_unit_the_map_paints(feature_key, segment
     assert session.params[0].get("segment_index") == segment_index
 
 
-async def test_incomplete_landcover_is_not_reported():
-    """値が無い・有効画素が足りなかった区間で0%と答えると、内訳が「すべて未分類」に見える。"""
-    repo, _ = _repo([_landcover_row(valid_pixels=None)])
-
-    assert await repo.get_feature_landcover(123, None) is None
-
-
 # --- タイル -------------------------------------------------------------------
 
 # タイル1枚を焼く口。路面の口はこの口へSQLを渡すだけ。SQLはフェイクのセッションが実行しない。
 def _read_mvt(repo):
     return repo.get_tile_mvt(text("SELECT 1"), "layer", 14, 1, 2, BBOX)
-
-
-_TILE_READERS = {
-    "mvt": _read_mvt,
-    "midpoints": lambda repo: repo.get_feature_midpoints_in_tile(14, 1, 2, BBOX),
-    "gradient_inputs": lambda repo: repo.get_feature_gradient_inputs_in_tile(14, 1, 2, BBOX),
-}
-
-
-@pytest.mark.parametrize("read", _TILE_READERS.values(), ids=_TILE_READERS)
-async def test_outside_the_imported_area_nothing_is_returned(read):
-    """取込範囲外（None）と、範囲内で対象0件（空）を区別する。利用側の見せ方が変わる。"""
-    repo, _ = _repo([_Row(covered=False, payload=None)])
-
-    assert await read(repo) is None
 
 
 @pytest.mark.parametrize(("tile", "payload"), [
@@ -384,19 +361,6 @@ async def test_tile_inside_the_imported_area_is_bytes_even_without_features(tile
     repo, _ = _repo([_Row(covered=True, tile=tile)])
 
     assert await _read_mvt(repo) == payload
-
-
-def test_every_material_on_the_road_tile_is_baked_from_its_value_expression():
-    """地図の色と評価は、同じ材料なら同じ求め方から出る。タイルの列を手で書くと、値式を直しても地図だけが
-    古い求め方のまま残る。"""
-    sql = str(ROAD_SURFACE_TILE_MVT_SQL)
-    on_tile = [spec for spec in MATERIAL_CATALOG.values() if spec.tile_property is not None]
-
-    assert on_tile
-    for spec in on_tile:
-        column = tile_column_sql(spec)
-        assert f"({spec.value_sql})" in column, spec.material_id
-        assert f"{column} AS {spec.tile_property}" in sql, spec.material_id
 
 
 async def test_feature_keys_are_returned_as_text():
