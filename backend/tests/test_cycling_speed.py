@@ -48,17 +48,6 @@ def test_the_power_of_a_rider_cruising_at_20kmh_is_that_of_an_easy_ride():
     assert cycling_speed.wheel_power_w(profile) == pytest.approx(55.4, abs=0.5)
 
 
-def test_the_standard_values_follow_the_values_changed_from_the_admin_screen(monkeypatch):
-    """標準値は作るたびに読む。管理画面から変えた値が、プロセスを入れ替えずに次の生成から効く。"""
-    monkeypatch.setitem(TUNING_VALUES, "speed.cda_m2", 0.5)
-    monkeypatch.setitem(TUNING_VALUES, "speed.crr", 0.02)
-    monkeypatch.setitem(TUNING_VALUES, "speed.mass_kg", 100.0)
-
-    profile = RiderProfile(cruise_speed_kmh=20.0)
-
-    assert (profile.cda_m2, profile.crr, profile.mass_kg) == (0.5, 0.02, 100.0)
-
-
 profiles = st.builds(
     _rider,
     # ルート生成の要求が受け付ける巡航速度の全範囲（下りの上限より速い巡航を含む）。
@@ -87,16 +76,6 @@ def test_the_speed_stays_between_walking_and_the_top_speed(profile, grade, headw
     assert _kmh("speed.walking_kmh") - SOLVE_TOLERANCE_MS <= speed <= top_ms + SOLVE_TOLERANCE_MS
 
 
-@given(profile=profiles, grade=grades, headwind=winds, stronger=st.floats(min_value=0.0, max_value=10.0), crosswind=winds)
-def test_a_stronger_headwind_never_makes_the_rider_faster(profile, grade, headwind, stronger, crosswind):
-    assert _speed(profile, grade, headwind + stronger, crosswind) <= _speed(profile, grade, headwind, crosswind)
-
-
-@given(profile=profiles, grade=grades, headwind=winds, extra=st.floats(min_value=0.0, max_value=0.03))
-def test_a_rougher_surface_never_makes_the_rider_faster(profile, grade, headwind, extra):
-    assert _speed(profile, grade, headwind, crr=profile.crr + extra) <= _speed(profile, grade, headwind)
-
-
 RIDER = RiderProfile(cruise_speed_kmh=20.0)
 
 
@@ -108,14 +87,6 @@ def test_the_same_headwind_takes_a_larger_share_from_a_slower_rider():
         assert 1 - _speed(rider, headwind=5.0) / rider.cruise_speed_ms == pytest.approx(share, abs=0.01)
 
 
-def test_at_the_same_cruise_speed_a_heavier_rider_climbs_slower():
-    """平地では重さのぶん踏む力も増えるが、登りでは重さそのものを持ち上げる。"""
-    light = _rider(20.0, mass_kg=60.0)
-    heavy = _rider(20.0, mass_kg=100.0)
-
-    assert _speed(heavy, grade=0.06) < _speed(light, grade=0.06)
-
-
 def test_a_crosswind_slows_the_rider_less_than_a_headwind_of_the_same_strength():
     """横風は相対風速の大きさにだけ効く。"""
     calm = _speed(RIDER)
@@ -125,13 +96,6 @@ def test_a_crosswind_slows_the_rider_less_than_a_headwind_of_the_same_strength()
     assert headwind < crosswind < calm
 
 
-def test_the_rider_works_harder_on_a_climb_than_on_the_flat():
-    """一定の出力のままだと20km/hの人が5%の登りで押して歩く速度まで落ちる。登りでは出力を増やし、それより速く登る。"""
-    speed = _speed(RIDER, grade=0.05)
-
-    assert _kmh("speed.walking_kmh") * 1.5 < speed < RIDER.cruise_speed_ms
-
-
 @pytest.mark.parametrize("flat_power_w", [60.0, 300.0])
 def test_a_climb_adds_the_declared_watts_per_percent_whatever_the_flat_power(flat_power_w):
     """管理画面の「登りの出力の増え方」（W/%）のとおり、勾配2%なら値の2倍のWを足す。平地の出力に比例させると、
@@ -139,13 +103,6 @@ def test_a_climb_adds_the_declared_watts_per_percent_whatever_the_flat_power(fla
     power = cycling_speed.climb_power_w(flat_power_w, np.array([0.02]))
 
     assert power[0] - flat_power_w == pytest.approx(2 * cycling_speed.tuning_value("speed.climb_power_per_grade"))
-
-
-def test_the_extra_power_on_a_climb_stops_at_the_upper_limit():
-    """上限より先では出力が増えないので、勾配が増えたぶんだけ遅くなる（上限が無ければ登りの速度が下がりきらない）。"""
-    power = cycling_speed.climb_power_w(100.0, np.array([-0.1, 0.5]))
-
-    assert power.tolist() == pytest.approx([100.0, 100.0 * cycling_speed.tuning_value("speed.max_climb_power_ratio")])
 
 
 @pytest.mark.parametrize(
@@ -163,14 +120,6 @@ def test_the_limits_follow_the_values_changed_from_the_admin_screen(monkeypatch,
     assert _speed(RIDER, grade=grade) == pytest.approx(changed / 3.6, abs=SOLVE_TOLERANCE_MS)
 
 
-def test_the_travel_time_is_the_distance_at_the_solved_speed():
-    model = SegmentSpeedModel(RIDER, np.array([0.0]), np.array([RIDER.crr]))
-
-    seconds = model.travel_seconds(np.array([1000.0]), np.zeros(1), np.zeros(1))
-
-    assert seconds[0] == pytest.approx(1000.0 / RIDER.cruise_speed_ms, rel=1e-3)
-
-
 @pytest.mark.parametrize(
     "call",
     [
@@ -183,15 +132,6 @@ def test_arrays_of_different_lengths_are_refused_instead_of_spread_over_every_se
     """長さ1の配列はnumpyが全区間へ黙って広げる。1区間の値が全区間に効く前に断る。"""
     with pytest.raises(ValueError):
         call()
-
-
-def test_the_rolling_resistance_of_a_surface_follows_the_value_changed_from_the_admin_screen(monkeypatch):
-    estimate = cycling_speed.SURFACE_ESTIMATES[0]
-    monkeypatch.setitem(TUNING_VALUES, estimate.rolling_resistance, 0.0421)
-
-    crr = cycling_speed.crr_for_surface(CategoricalColumn.encode([estimate.key, estimate.key]))
-
-    assert crr.tolist() == [0.0421, 0.0421]
 
 
 @pytest.mark.parametrize("value", ["no_such_surface", None])

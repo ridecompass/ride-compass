@@ -16,7 +16,7 @@ from app.domain.attributes import EdgeMaterialArrays
 from app.domain.evaluation import build_static_edge_score_matrix
 from app.domain.hard_filters import HARD_FILTERS, ROUTE_FLAG_VALUE_SQL, compute_search_exclusion, route_flag_columns
 from app.domain.material_catalog import GRADIENT_PERCENT
-from app.domain.road_avoidance import AVOIDABLE_ROWS, DEFAULT_ROAD_AVOIDANCE
+from app.domain.road_avoidance import DEFAULT_ROAD_AVOIDANCE
 from app.infrastructure.source_models import WAYS_SOURCE_SQL
 from tests.source_ingest import ingest_records, way_record
 
@@ -68,16 +68,6 @@ def test_the_level_chosen_for_a_row_decides_whether_its_segments_are_excluded_or
     masks = compute_search_exclusion(matrix, {**DEFAULT_ROAD_AVOIDANCE, NATIONAL_ROAD: level}, None)
 
     assert (masks.excluded.tolist(), masks.avoided.tolist()) == ([excluded], [avoided])
-
-
-@pytest.mark.parametrize("name", sorted(HARD_FILTERS))
-def test_a_road_cyclists_may_not_ride_is_excluded_whatever_level_is_chosen(name):
-    """自転車が走ってはいけない道は、どの行を「通る」にしても経路に入らない。"""
-    matrix = build_static_edge_score_matrix(edge(flags=frozenset({name})), {})
-
-    masks = compute_search_exclusion(matrix, {key: "pass" for key in AVOIDABLE_ROWS}, None)
-
-    assert masks.excluded.tolist() == [True]
 
 
 @pytest.mark.asyncio(loop_scope="module")

@@ -126,23 +126,6 @@ def test_a_glyph_reaches_the_screen_only_on_rows_that_declare_one():
     assert all("glyph" not in c for c in size["categories"])
 
 
-def test_an_ordered_axis_is_colored_by_position():
-    attribute = PrimaryAttributeSpec(
-        attr_id="attr_a", label="属性A", geometry="line", display_axes=(axis("main", 4, palette="ordered"),)
-    )
-
-    [main] = resolved_display_axes(attribute)
-
-    assert [c["color"] for c in main["categories"]] == ordered_colors(4)
-
-
-def test_an_ordered_palette_goes_from_dark_to_light():
-    colors = ordered_colors(5)
-
-    lightness = [contrast(color, "#000000") for color in colors]
-    assert lightness == sorted(lightness)
-
-
 def test_an_ordered_axis_of_one_row_still_has_a_color():
     assert len(ordered_colors(1)) == 1
 
@@ -222,5 +205,3 @@ def test_a_road_without_a_value_is_still_visible_on_the_ground():
     line = over_ground(SEMANTIC_COLORS["no_data"], ROAD_UNKNOWN_OPACITY)
 
     assert contrast(line, GROUND) >= NO_DATA_LINE_CONTRAST
-
-

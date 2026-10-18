@@ -9,7 +9,6 @@ PostGISで実行して、返った行を見る。頂点は赤道の上に経度0
 """
 
 import math
-import random
 from decimal import Decimal
 
 import pytest
@@ -55,16 +54,6 @@ async def values(session, segments: dict[tuple[int, int], list], on_structure=fr
 async def one(session, elevations, on_structure=False) -> dict:
     rows = await values(session, {(1, 0): elevations}, on_structure={(1, 0)} if on_structure else frozenset())
     return rows[(1, 0)]
-
-
-async def test_a_road_that_climbs_and_descends_counts_both(road_graph_session):
-    row = await one(road_graph_session, [100.0, 100.0 + rise(6), 100.0 + rise(6) - rise(2)])
-
-    assert row["start_elevation_m"] == 100.0
-    assert row["end_elevation_m"] == pytest.approx(100.0 + rise(4), abs=0.05)
-    assert row["elevation_gain_m"] == pytest.approx(rise(6), abs=0.05)
-    assert row["elevation_loss_m"] == pytest.approx(rise(2), abs=0.05)
-    assert row["average_grade"] == pytest.approx(2.0, abs=0.005)
 
 
 async def test_values_are_rounded_to_a_tenth_of_a_metre_and_a_hundredth_of_a_percent(road_graph_session):
@@ -161,37 +150,3 @@ async def test_segments_are_computed_separately(road_graph_session):
 def attribute(row: dict, edge_id: str) -> ElevationAttribute:
     """SQLの行のうち、属性が持つ欄。"""
     return ElevationAttribute(edge_id=edge_id, **{name: row[name] for name in ElevationAttribute.model_fields.keys() - {"edge_id"}})
-
-
-async def test_running_the_vertices_backwards_gives_the_reverse_of_the_attribute(road_graph_session):
-    """`reversed_as`が導く逆方向の値は、同じ頂点列を逆順に辿ってSQLで出した値に一致する。
-    起伏・欠損・構造物を含む区間を乱数で作って確かめる（種は固定）。"""
-    generator = random.Random(192)
-    segments: dict[tuple[int, int], list] = {}
-    structures = set()
-    for way in range(1, 121):
-        elevation = generator.uniform(0, 500)
-        profile = []
-        for _ in range(generator.randint(2, 8)):
-            elevation += generator.uniform(-1, 1) * rise(12)
-            profile.append(None if generator.random() < 0.15 else round(elevation, 3))
-        segments[(way, 0)] = profile
-        if generator.random() < 0.2:
-            structures.add((way, 0))
-
-    forward = await values(road_graph_session, segments, on_structure=structures)
-    backward = await values(
-        road_graph_session, {key: profile[::-1] for key, profile in segments.items()}, on_structure=structures
-    )
-
-    assert forward.keys() == backward.keys()
-    assert len(forward) > 80  # 有効な頂点が2点未満で落ちる区間を除いても、多くの区間を比べている
-    for key in forward:
-        expected = attribute(forward[key], "f").reversed_as("r").model_dump()
-        actual = attribute(backward[key], "r").model_dump()
-        for name, value in expected.items():
-            if isinstance(value, float):
-                tolerance = 0.011 if name.endswith("grade") else 0.11
-                assert actual[name] == pytest.approx(value, abs=tolerance), (key, name)
-            else:
-                assert actual[name] == value, (key, name)

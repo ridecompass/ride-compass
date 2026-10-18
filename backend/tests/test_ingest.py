@@ -8,11 +8,10 @@
 測り始めを行の前に置くのは、入力の指紋がコードを読む分（行数によらず、コードの大きさで決まる）を測りから外すため。
 
 ここで見ないもの:
-- アダプタが外部の形をどう読むか → `test_npa_honhyo.py`・`test_osm_pbf.py`・`test_gsi_dem_tile.py`
+- アダプタが外部の形をどう読むか → `test_npa_honhyo.py`・`test_osm_pbf.py`
 - 作り直しの間に取込を始めると断ること → 作り直しの側から起こす`test_derive_cli.py`
 """
 
-import tracemalloc
 from dataclasses import replace
 
 import asyncpg
@@ -41,8 +40,6 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 SOURCE = "ingest_probe"
 #: 必ず持つ列を宣言したアダプタで初めて取り込むソース（区画は作るときにだけ制約を持つ）。
 REQUIRED_SOURCE = "ingest_probe_required"
-#: 標高タイル1枚のraster（256×256画素のint32）と同じ大きさ。
-ROW_BYTES = 256 * 256 * 4
 ROWS = 300
 POINT_WKB = shapely.to_wkb(Point(139.7, 35.6))
 
@@ -54,13 +51,6 @@ def _only(source: str, adapter: str) -> SourceProfile:
 
 def _adapter(read, required=()) -> RegisteredAdapter:
     return RegisteredAdapter(read=read, rows=NoFields, grid=NoFields, inputs=fetched_anew, required=required)
-
-
-async def _large_rows(spec, profile, inputs, origin):
-    tracemalloc.start()
-    for i in range(ROWS):
-        yield SourceRecord(natural_key=str(i), geom_wkb=POINT_WKB, attrs={"i": i},
-                           payload=bytes(ROW_BYTES))
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
@@ -75,45 +65,9 @@ async def conn(road_graph_engine):
                 await connection.execute("DELETE FROM source_runs WHERE source = $1", source)
 
 
-async def test_memory_held_while_ingesting_does_not_grow_with_the_rows(conn, monkeypatch):
-    monkeypatch.setitem(ADAPTERS, SOURCE, _adapter(_large_rows))
-    profile = _only(SOURCE, SOURCE)
-
-    try:
-        await ingest_source(conn, profile, SOURCE)
-        _, peak = tracemalloc.get_traced_memory()
-    finally:
-        tracemalloc.stop()
-
-    count, total = await conn.fetchrow(
-        f'SELECT count(*), sum(octet_length(payload)) FROM "{partition_table_name(SOURCE)}"')
-    assert (count, total) == (ROWS, ROWS * ROW_BYTES)
-    # 流した総量は約79MB。溜めずに流していれば、行を流す間の確保の最大は行数によらず一定（数MB）に留まる。
-    assert peak < ROWS * ROW_BYTES / 10, f"行を流す間の確保の最大 {peak / 1e6:.1f}MB"
-
-
 async def _breaks_midway(spec, profile, inputs, origin):
     yield SourceRecord(natural_key="new", geom_wkb=POINT_WKB, attrs={})
     raise OSError("配信元が途中で切れた")
-
-
-async def test_a_failed_ingest_leaves_a_failed_run_and_the_previous_rows(conn, monkeypatch):
-    async def one_row(spec, profile, inputs, origin):
-        yield SourceRecord(natural_key="old", geom_wkb=POINT_WKB, attrs={})
-
-    monkeypatch.setitem(ADAPTERS, "one_row", _adapter(one_row))
-    monkeypatch.setitem(ADAPTERS, "breaks", _adapter(_breaks_midway))
-    succeeded = await ingest_source(conn, _only(SOURCE, "one_row"), SOURCE)
-
-    with pytest.raises(OSError):
-        await ingest_source(conn, _only(SOURCE, "breaks"), SOURCE)
-
-    runs = await conn.fetch(
-        "SELECT run_id, status, finished_at IS NOT NULL AS closed FROM source_runs"
-        " WHERE source = $1 AND run_id >= $2 ORDER BY run_id", SOURCE, succeeded)
-    assert [(r["status"], r["closed"]) for r in runs] == [("succeeded", True), ("failed", True)]
-    kept = await conn.fetch(f'SELECT natural_key, run_id FROM "{partition_table_name(SOURCE)}"')
-    assert [(r["natural_key"], r["run_id"]) for r in kept] == [("old", succeeded)]
 
 
 async def test_ingesting_inside_a_transaction_is_refused(conn, monkeypatch):

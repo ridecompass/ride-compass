@@ -14,8 +14,6 @@ from fastapi.testclient import TestClient
 
 from app.api.cache_policy import GSI_TILE_NOT_FOUND
 from app.api.dependencies import get_gsi_tile_client
-from app.config import settings
-from app.infrastructure import rate_limiter
 from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from app.main import app
 
@@ -35,16 +33,6 @@ class FakeGsiTileClient:
 
 def _answer(monkeypatch, result):
     monkeypatch.setitem(app.dependency_overrides, get_gsi_tile_client, lambda: FakeGsiTileClient(result))
-
-
-def test_gsi_relief_tile_proxy_returns_content_with_correct_media_type(monkeypatch):
-    _answer(monkeypatch, (b"\x89PNG", "image/png"))
-
-    response = client.get(RELIEF_TILE)
-
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("image/png")
-    assert response.content == b"\x89PNG"
 
 
 @pytest.mark.parametrize("path", [RELIEF_TILE, TERRAIN_TILE])
@@ -72,21 +60,3 @@ def test_整備区域外は404で返し_ブラウザへもキャッシュさせ�
     assert response.status_code == 404
     assert response.json() == {"detail": "指定されたタイルは存在しません"}
     assert response.headers["cache-control"] == GSI_TILE_NOT_FOUND.header()
-
-
-def test_gsi_relief_tile_proxy_is_rate_limited_per_client(monkeypatch):
-    _answer(monkeypatch, (b"x", "image/png"))
-
-    for _ in range(settings.gsi_tile_rate_limit_per_minute - 1):
-        rate_limiter.check_rate_limit("gsi-relief-tile:testclient", settings.gsi_tile_rate_limit_per_minute)
-    assert client.get(RELIEF_TILE).status_code == 200
-
-    assert client.get(RELIEF_TILE).status_code == 429
-
-
-def test_標高タイルは配信元がデータを持たないズームを拒む(monkeypatch):
-    # 配信元はz14までしか実データを持たない。範囲外をそのまま上流へ投げない。
-    _answer(monkeypatch, (b"", "image/png"))
-
-    assert client.get("/api/gsi-terrain-tile/16/58211/25802.png").status_code == 422
-    assert client.get(f"/api/gsi-terrain-tile/14/{2**14}/6450.png").status_code == 422

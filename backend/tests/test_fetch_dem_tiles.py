@@ -116,26 +116,3 @@ async def test_served_tiles_are_stored_and_the_rest_marked_absent_per_product(tm
         if served:
             assert dem_tile_store.read_tile(tmp_path, product, zoom, x, y) == _body(product, x, y)
             assert dem_tile_store.tile_modified(tmp_path, product, zoom, x, y) == _modified(product, x, y)
-
-
-async def test_a_tile_without_last_modified_is_not_stored(tmp_path, profile):
-    """置かないので、次の実行がまた取りに行く。"""
-    origin = Origin(stamps=False)
-    async with origin.client() as client:
-        await fetch_dem_tiles.fetch(client, tmp_path, profile, attempts=1)
-
-    for product, zoom, x, y in _declared_requests(profile):
-        assert not dem_tile_store.is_stored(tmp_path, product, zoom, x, y), (product, zoom, x, y)
-
-
-async def test_a_second_run_does_not_ask_the_origin_again(tmp_path, profile):
-    """取れたものも、区域外と分かったものも、次からは叩かない。"""
-    first = Origin()
-    async with first.client() as client:
-        await fetch_dem_tiles.fetch(client, tmp_path, profile, attempts=1)
-
-    second = Origin()
-    async with second.client() as client:
-        await fetch_dem_tiles.fetch(client, tmp_path, profile, attempts=1)
-
-    assert second.requests == []

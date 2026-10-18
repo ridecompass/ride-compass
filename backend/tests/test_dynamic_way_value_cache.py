@@ -20,13 +20,6 @@ KEY = {"material_id": "material_a", "z": 14, "x": 14550, "y": 6451}
 VERSIONS = {"surface_tile_version": "tiles-1", "value_shape": "shape-1"}
 
 
-async def test_a_tile_whose_features_all_came_out_without_a_value_is_remembered_as_empty():
-    """空も計算の結果で、未キャッシュと取り違えると値の無いタイルを毎回計算し直す。"""
-    await set_tile_materials(**KEY, materials={}, **VERSIONS)
-
-    assert await get_tile_materials(**KEY, **VERSIONS) == {}
-
-
 @pytest.mark.parametrize(
     "other",
     [

@@ -4,7 +4,7 @@
 （丸め）で、地図の側は同じ決まりで木を自分の式へ置き換える。
 
 ここで見ないもの:
-- 有効勾配の木 → `test_gradient.py`、風の抵抗の比の木 → `test_wind.py`
+- 有効勾配の木 → `test_dynamic_way_values.py`、風の抵抗の比の木 → `test_wind.py`
 - 軸の木が地図の配信の値と合うこと・欠けた値の真偽 → `test_dynamic_way_values.py`
 """
 
