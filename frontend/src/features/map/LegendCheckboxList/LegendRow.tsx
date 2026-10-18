@@ -3,7 +3,7 @@
 import { useId, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
-import { InfoIcon } from "@/components/ui/icons/icons";
+import { InfoIcon } from "@/components/ui/icons/lucideIcons";
 import { cn } from "@/lib/cn";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 

@@ -4,7 +4,8 @@ import { Fragment, useLayoutEffect, useRef, type CSSProperties } from "react";
 
 import { SHEET_FIT_END_ATTRIBUTE } from "@/components/BottomSheet/BottomSheet";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
-import { FastestRouteIcon, RouteSpliceIcon } from "@/components/ui/icons/icons";
+import { RouteSpliceIcon } from "@/components/ui/icons/icons";
+import { FastestRouteIcon } from "@/components/ui/icons/lucideIcons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { textVariants } from "@/components/ui/Text/Text";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";

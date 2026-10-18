@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
 import { DialogContent, DialogRoot } from "@/components/ui/Dialog/Dialog";
-import { RecallSavedIcon, SaveConditionsIcon } from "@/components/ui/icons/icons";
+import { RecallSavedIcon, SaveConditionsIcon } from "@/components/ui/icons/lucideIcons";
 import { Input } from "@/components/ui/Input/Input";
 import { textVariants } from "@/components/ui/Text/Text";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";

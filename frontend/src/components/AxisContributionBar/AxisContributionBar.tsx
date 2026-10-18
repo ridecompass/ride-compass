@@ -5,7 +5,7 @@ import type React from "react";
 import type { ReactNode } from "react";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
-import { InfoIcon } from "@/components/ui/icons/icons";
+import { InfoIcon } from "@/components/ui/icons/lucideIcons";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import { formatDifficulty } from "@/lib/mapDisplay/valueScale";
 import {
