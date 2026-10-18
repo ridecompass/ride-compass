@@ -199,9 +199,16 @@ async def test_a_waypoint_route_returns_to_the_origin_with_up_to_the_requested_c
     assert all(_ends(route) == (_node(SOUTH_WEST), _node(SOUTH_WEST)) for route in result["routes"])
 
 
-async def test_a_spliced_route_is_evaluated_as_sent(client):
-    """区間を差し替えた経路は探索し直さず、そのまま1件として評価して返す。"""
-    body = {**_point(SOUTH_WEST), "destination": _point(NORTH_EAST), "distance_km": None}
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param({**_point(SOUTH_WEST), "destination": _point(NORTH_EAST), "distance_km": None}, id="目的地ルート"),
+        pytest.param({}, id="周回（目的地なし）"),
+    ],
+)
+async def test_a_spliced_route_is_evaluated_as_sent(client, body):
+    """区間を差し替えた経路は探索し直さず、そのまま1件として評価して返す。周回の候補も乗り換えの元にでき、
+    目的地を送らなければ出発地へ戻る経路として受け付ける。"""
     (route, *_) = (await _generate(client, **body, max_routes=1))["result"]["routes"]
 
     spliced = (await _generate(client, **body, spliced_edge_ids=route["edge_ids"]))["result"]
@@ -318,7 +325,6 @@ async def test_a_destination_moved_to_the_nearest_reachable_road_is_echoed(clien
     {"route_preference": {AVOID_AXIS: -1.0}},                        # 値の検査（`check_axis_weights`）へ寄せている
     {"hard_filters": {name: False for name in HARD_FILTERS}},           # いつも除く道は切れない
     {"road_avoidance": {}},                                          # 行を全部書いていない
-    {"spliced_edge_ids": ["way-100-seg0-fwd"]},                       # 目的地が無い
     {"assumed_speed_kmh": 0},                                        # 想定速度の型（`AssumedSpeedKmh`）
 ])
 async def test_a_request_outside_what_can_be_generated_is_refused_before_any_job(client, body):

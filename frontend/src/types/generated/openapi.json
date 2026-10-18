@@ -5403,10 +5403,6 @@
           "is_fastest": {
             "type": "boolean",
             "title": "Is Fastest"
-          },
-          "spliceable": {
-            "type": "boolean",
-            "title": "Spliceable"
           }
         },
         "additionalProperties": false,
@@ -5434,8 +5430,7 @@
           "material_values",
           "id",
           "kind",
-          "is_fastest",
-          "spliceable"
+          "is_fastest"
         ],
         "title": "RouteCandidate"
       },

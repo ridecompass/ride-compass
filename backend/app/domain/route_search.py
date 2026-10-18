@@ -58,7 +58,7 @@ RING_CENTER_RATIO = (LOOP_TO_OUTBOUND_RATIO_MIN + LOOP_TO_OUTBOUND_RATIO_MAX) / 
 # 粗すぎると候補が減りすぎる。
 PARETO_DISTANCE_QUANTUM_M = 200.0
 
-# --- 目的地ルート（via-node方式、経由地無し）の代替経路選定 ---
+# --- 距離なしの仕上げ（via-node方式。最後の固定点から終点まで）の代替経路選定 ---
 # via-node候補（前向き木＋後ろ向き木の合成経路）の長さが、最も合成コストの低い経路の
 # 長さの何倍までを候補にするか。
 ALTERNATIVE_MAX_STRETCH = 1.3

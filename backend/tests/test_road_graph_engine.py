@@ -5,13 +5,17 @@
 - 探索アルゴリズムそのもの → `test_routing.py`
 """
 
+from app.domain.route import Coordinates
 from app.services.road_graph_engine import FixedLegs
 
 
 def test_the_finishing_legs_follow_the_placed_legs_in_order():
     """区間ごとのレグの添字で、区間の表示値と通過時刻を読むレグが決まる。経由地のあとの帰りが前の区間のレグを
     指すと、帰りの区間を出発時刻の値で見せる。"""
-    fixed = FixedLegs(segments=[[10, 11], [12]], nodes=[0, 1, 2], length_m=3000.0)
+    fixed = FixedLegs(
+        segments=[[10, 11], [12]], nodes=[0, 1, 2], length_m=3000.0,
+        end_node=0, end_point=Coordinates(latitude=35.0, longitude=139.0),
+    )
 
     path, leg_of_edge = fixed.joined([20, 21], [30])
 

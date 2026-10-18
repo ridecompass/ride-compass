@@ -160,7 +160,7 @@ export type User = ReturnType<typeof userEvent.setup>;
 
 /** 地点の並びで目的地を押して選ぶ（「ルート設定」が効いている間、地図を押すと選んでいる地点を置く。何も押していなければ出発地）。 */
 export async function selectDestination(user: User) {
-  await user.click(screen.getByRole("button", { name: "目的地: 未設定" }));
+  await user.click(screen.getByRole("button", { name: "目的地: 出発地[周回]" }));
 }
 
 /** 「地図に出す情報」の一覧で道路のレイヤー（路面の種類）を出す。 */
