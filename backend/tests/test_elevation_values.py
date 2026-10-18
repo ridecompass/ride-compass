@@ -56,6 +56,16 @@ async def one(session, elevations, on_structure=False) -> dict:
     return rows[(1, 0)]
 
 
+async def test_a_road_that_climbs_and_descends_counts_both(road_graph_session):
+    row = await one(road_graph_session, [100.0, 100.0 + rise(6), 100.0 + rise(6) - rise(2)])
+
+    assert row["start_elevation_m"] == 100.0
+    assert row["end_elevation_m"] == pytest.approx(100.0 + rise(4), abs=0.05)
+    assert row["elevation_gain_m"] == pytest.approx(rise(6), abs=0.05)
+    assert row["elevation_loss_m"] == pytest.approx(rise(2), abs=0.05)
+    assert row["average_grade"] == pytest.approx(2.0, abs=0.005)
+
+
 async def test_values_are_rounded_to_a_tenth_of_a_metre_and_a_hundredth_of_a_percent(road_graph_session):
     row = await one(road_graph_session, [100.04, 100.04 + rise(3.333)])
 

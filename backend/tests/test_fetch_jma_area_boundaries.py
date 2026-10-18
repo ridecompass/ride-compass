@@ -14,6 +14,7 @@
 import io
 import zipfile
 
+import pytest
 import shapefile
 import shapely
 
@@ -64,6 +65,42 @@ async def test_fetches_and_places_the_boundaries_of_each_area(boundary_path, res
     assert await jma_area_boundaries.find_class20_code(35.05, 139.55) == "0000020"
     assert await jma_area_boundaries.find_class20_code(35.05, 140.05) == "0000020"
     assert await jma_area_boundaries.find_class20_code(43.05, 145.05) is None
+
+
+def test_other_versions_and_the_archive_are_removed_after_placing(boundary_path, respx_mock):
+    respx_mock.get(jma_area_boundaries.SOURCE_URL).respond(content=_archive(DISTRIBUTED))
+    boundary_path.parent.mkdir(parents=True)
+    (boundary_path.parent / "older.json").write_text("{}", encoding="utf-8")
+
+    fetch_jma_area_boundaries.main()
+
+    assert list(boundary_path.parent.iterdir()) == [boundary_path]
+
+
+def test_present_version_is_not_fetched_again_but_other_versions_are_removed(boundary_path, respx_mock):
+    """置き場に今の版があれば配布元へ問い合わせない（代役に経路が無いので、問い合わせれば落ちる）。"""
+    boundary_path.parent.mkdir(parents=True)
+    boundary_path.write_text("{}", encoding="utf-8")
+    (boundary_path.parent / "older.json").write_text("{}", encoding="utf-8")
+
+    assert fetch_jma_area_boundaries.main() == 0
+
+    assert list(boundary_path.parent.iterdir()) == [boundary_path]
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        pytest.param({"status_code": 503}, id="配布元の失敗"),
+        pytest.param({"content": b"<html>maintenance</html>"}, id="zipでない"),
+    ],
+)
+def test_failed_fetch_places_nothing(boundary_path, respx_mock, response):
+    respx_mock.get(jma_area_boundaries.SOURCE_URL).respond(**response)
+
+    assert fetch_jma_area_boundaries.main() == 1
+
+    assert not boundary_path.exists()
 
 
 def test_boundaries_are_simplified_within_the_tolerance(tmp_path):
