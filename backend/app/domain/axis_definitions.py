@@ -137,6 +137,13 @@ def flag_or_value_name(key: object) -> object:
     return _FLAG_KEYS.get(key, key) if isinstance(key, str) else key
 
 
+def mapping_key_of(value: object) -> str:
+    """材料の値を、対応表のキーがJSONで書かれる綴りにする（`flag_or_value_name`の逆）。"""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
 class CategoricalShape(StrictModel):
     """カテゴリ値→定数のマッピング（丸めなし。mappingの値がそのままスコアになる）。
 

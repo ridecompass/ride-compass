@@ -17,7 +17,9 @@ APIを呼ぶ）・「データ保守」タブ（派生データ鮮度台帳の�
 | ファイル | 責務 |
 |---|---|
 | `features/admin/AxisStudio/AxisStudio.tsx` | トップレベル。一覧取得・作成/更新/削除/複製/非公開化の状態管理。開いているフォーム（新規・編集・複製・表示だけ編集）は1つの状態で持ち、2つのフォームが同時に開かない |
-| `features/admin/AxisStudio/AxisCalibration.tsx` | 一覧の下の「較正」のカード。数値の軸を1つ選び、0点・100点にする値（密度の軸は100点にする値だけ）と地図の段の境界を、実データの分布を重ねた大きなグラフか数の入力で決め、段ごとの延長を下書きと保存済みで並べて、公開の状態のまま保存する |
+| `features/admin/AxisStudio/AxisCalibration.tsx` | 一覧の下の「較正」のカード。軸を1つ選び、数値の軸は0点・100点にする値（密度の軸は100点にする値だけ）を実データの分布を重ねた大きなグラフか数の入力で決め、対応表の軸は`CategoricalCalibration.tsx`へ渡す |
+| `features/admin/AxisStudio/CategoricalCalibration.tsx` | 較正の画面の対応表の軸。種類ごとに点数の入力とその種類の道の延長の割合を並べ、点数を数で直す |
+| `features/admin/AxisStudio/calibrationParts.tsx` | 較正の画面で数値の軸と対応表の軸が共に使う部品。地図の段の境界の下書きと入力欄、段ごとの延長の下書きと保存済みの比べ、公開の状態のまま差し替える保存 |
 | `features/admin/AxisStudio/AxisComposer.tsx` | 1画面フォームの本体。draftの状態・保存前の検証・保存と、節の組み立てだけを持つ |
 | `features/admin/AxisStudio/AxisScoringSection.tsx` | 「点数の決め方」の節。材料の選択と必須の印を持ち、点数の入力はその材料の型に応じた部品へ振り分ける（他軸の係数はこのファイルが`ScoringTerms`を描く） |
 | `features/admin/AxisStudio/NumericScoring.tsx` | 値の材料・はい/いいえの材料の点数入力（0点/100点・効き方、はい/いいえ）。折れ点の直接編集は畳んだ詳細設定の中 |
@@ -28,7 +30,7 @@ APIを呼ぶ）・「データ保守」タブ（派生データ鮮度台帳の�
 | `features/admin/AxisStudio/axisDraft.ts` | Draft（フォームの内部状態）とbackendのpayloadの相互変換。`buildShape`・`draftFromExisting`・`pickPassthroughFields`・`PASSTHROUGH_PAYLOAD_KEYS`。変更理由はbackendのpayloadスキーマで、フォームUIの増減とは独立している |
 | `features/admin/AxisStudio/BreakpointCurveEditor.tsx` | 折れ点をドラッグ・矢印キーで調整できるSVGの曲線エディタ。背景へ実データの分布を重ねる。較正の画面では、動かせる点を端に絞り（横にだけ動く）、比べる線と動かせる段の境界を重ねる |
 | `features/admin/AxisStudio/curveDistributionOverlay.ts` | 曲線エディタの背景へ分布を重ねるための純粋関数（DOM非依存。階級のクリップ・按分、分位線、表示範囲外の割合） |
-| `features/admin/AxisStudio/scoreDistribution.ts` | 生値の分布へ折れ点を当てはめ、得点帯ごとの延長割合と警告を求める純粋関数（DOM非依存、`DistributionPreview.tsx`が使う）。地図の段ごとの延長割合（`mapBandShares`、較正の画面が使う）も持つ |
+| `features/admin/AxisStudio/scoreDistribution.ts` | 生値の分布へ折れ点を当てはめ、得点帯ごとの延長割合と警告を求める純粋関数（DOM非依存、`DistributionPreview.tsx`が使う）。地図の段ごとの延長割合（数値の軸は`mapBandShares`、対応表の軸は`categoryBandShares`。較正の画面が使う）も持つ |
 | `features/admin/AxisStudio/DistributionPreview.tsx` | 折れ点の下に「この折れ点での得点分布」を出すパネル。満点への張り付き・0点への偏りを警告する |
 | `features/admin/AxisStudio/MaterialRangeHint.tsx` | 材料選択行の下に、その材料が実データで取る値の分位（p50/p75/p90）を出す1行表示 |
 | `features/admin/adminApi.ts` | 管理画面のAPIクライアントをまとめたもの。管理API（backend `/api/admin/**`）は`lib/apiClient.ts: adminApiClient`で同一オリジンの口`/admin/api/**`へ投げ、backendのパスの`/api/admin`より後をそのまま使う（例: backend `GET /api/admin/db-status`は`/admin/api/db-status`）。パス・本文・応答の型は管理APIの宣言から決まり、宣言に無いパスは型検査で落ちる（[ページ全体構成](page-composition.md)）。待ち時間は呼び出しごとに決める（全表走査の集計は`lib/apiTimeouts.ts: API_TIMEOUT_MS`の`heavyAdmin`、分布は`lib/apiTimeouts.ts: API_TIMEOUT_MS`の`distribution`）。稼働状況の口（`/health`・`/api/debug/stats`）も同じファイルに置く（フロント自身の版の口`/api/version`は、一般の画面のメニューも読むので`services/versionApi.ts`） |
@@ -39,6 +41,7 @@ APIを呼ぶ）・「データ保守」タブ（派生データ鮮度台帳の�
 | `features/admin/useScoresPreview.ts` | 下書きの折れ点で、分布の階級の代表値と材料の参考点がそれぞれ何点になるか（参考点は折れ点の横軸の値も）を取得する（下書きが落ち着いてから問い合わせる。入力を変えた直後・失敗時は点数なしで、失敗したことも返す） |
 | `features/admin/useAxisValueDistribution.ts` | 編集中のshapeの生値分布を取得。取得キーに折れ点を含めないため、折れ点のドラッグ中は通信しない。取り直している間は前の分布を出したまま読み込み中にする |
 | `features/admin/useMaterialDistribution.ts` | 材料1件の値の分布を取得。同じ材料を複数行が選んでも、画面を開いている間に取りに行くのは1回（取れなかったことも覚える） |
+| `features/admin/useMaterialValueShares.ts` | 種類・はい/いいえの材料1件の、値ごとの道の延長の割合を取得（較正の画面）。画面を開いている間に取りに行くのは1回で、失敗したことも返す |
 | `features/admin/AxisStudio/breakpointTools.ts` | 折れ点の自動生成・区分線形補間・追加位置決定・ドラッグスナップ刻み幅算出（DOM非依存の純粋関数、`NumericScoring.tsx`が使う） |
 | `features/admin/AxisStudio/MaterialCoveragePanel.tsx` | 「材料」タブ本体。材料ごとの欠損割合を「欠損時の扱い」でグループに分けた表（各グループ内は欠損割合降順）と集計対象外材料の理由一覧。グループの見出し・説明と母集団の名前はbackendの宣言（`domain/material_catalog.py: MISSING_SEMANTICS_DISPLAY`・`domain/material_catalog.py: POPULATION_LABELS`）が生成物`vocabulary.ts`で配る |
 | `features/admin/AxisStudio/DerivedDataFreshnessPanel.tsx` | 「データ保守」タブ本体。ソースごとの鮮度（成功した最新の取込と作り直しに使った取込）と、派生テーブルごとの列の比較（作ったときの列と今の宣言の列。値の列ごとの値なしの件数は参考）を、それぞれ1行へまとめて表示。対象の表・列はbackendが宣言から導く（表の印を持つ表が派生データ）。作り直しが要るかもbackendが決め（`needs_rebuild`）、画面は理由を問わずそれで数える |
@@ -163,6 +166,13 @@ listAxisDefinitions() ──→ definitions（全軸）
   まとめ、下書きと保存済みを、それぞれの段で並べる（境界を変えると段の数も変わりうる）。
 - 保存は`PUT`で、公開の状態を変えない（公開中の軸は、折れ点と表示の項目だけの差分を公開したまま保存できる）。
   断られたらbackendの文をそのまま出す。保存できたら一覧を取り直し、取り直した定義で下書きを作り直す。
+
+**対応表の軸**は、対応表に載っている種類ごとに点数を数で直す（どの種類に点数を付けるかは編集のフォームが持つ）。
+各行の割合は、抽選した道のうち材料の値を持つ道の延長に占める、その種類の道の延長（backendの`value-shares`）で、
+対応表に無い値の道の割合も1行で出す。段の境界の入力と保存は数値の軸と同じ部品を使う。
+
+- 段ごとの延長は、種類の点数を地図と同じ`bandAt`で段へ振り分け、**点数の付く道の延長**で割る（対応表に無い値の道は
+  評価が欠損にし、地図に塗られない）。
 
 ## AxisComposer.tsx（1画面のフォーム）
 

@@ -71,6 +71,11 @@ ROUTE_CASES = {
         None,
         503,
     ),
+    ("GET", "/api/admin/material-catalog/{material_id}/value-shares"): (
+        f"/api/admin/material-catalog/{CATEGORICAL}/value-shares",
+        None,
+        503,
+    ),
     ("GET", "/api/admin/material-catalog/{material_id}/values"): (
         f"/api/admin/material-catalog/{CATEGORICAL}/values",
         None,

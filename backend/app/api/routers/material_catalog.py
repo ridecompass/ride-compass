@@ -17,6 +17,9 @@ highway/surface/smoothnessのようなOSMタグの生値でオープンエンド
 返す——論理名だけではどのOSMタグ値に対応するか分からず、軸定義
 （`AxisDefinitionResponse`）や外部ドキュメント上で物理名を探す必要があるため。
 
+`GET /api/admin/material-catalog/{material_id}/value-shares`は、種類・はい/いいえの材料の値ごとの道の延長の割合を、
+軸スタジオの分布と同じ道の標本から返す（較正の画面が対応表の軸の点数を延長を見ながら決める）。
+
 `GET /api/admin/material-catalog/coverage`（Basic認証必須）は、材料ごとの欠損割合
 （元データ[タグ・派生テーブル行]が無いWay/Edgeの割合）を全材料ぶん返す管理画面向けの
 集計API（`services/material_coverage_service.py`・`infrastructure/material_coverage.py`）。
@@ -60,6 +63,23 @@ class MaterialDistributionResponse(ValueSpread):
     available: bool
 
 
+class MaterialValueShareEntry(StrictModel):
+    #: 対応表（`CategoricalShape.mapping`）のキーと同じ綴り（真偽の材料は"true"/"false"）。
+    value: str
+    #: 「論理名 - 物理名」形式（`MaterialSpec.value_label`）。
+    label: str
+    share: float
+
+
+class MaterialValueSharesResponse(StrictModel):
+    """値ごとの延長の割合（割合の大きい順）。`available=false`は数値材料で、値を並べない。"""
+
+    available: bool
+    sample_ways: int
+    total_km: float
+    values: list[MaterialValueShareEntry]
+
+
 def _require_known_material(material_id: str) -> None:
     if not is_known_material(material_id):
         raise HTTPException(status_code=404, detail=f"unknown material '{material_id}'")
@@ -81,6 +101,31 @@ async def get_material_distribution(
     if distribution is None:
         return MaterialDistributionResponse(available=False, **EMPTY_SPREAD.model_dump())
     return MaterialDistributionResponse(available=True, **distribution.model_dump())
+
+
+@router.get("/api/admin/material-catalog/{material_id}/value-shares")
+async def get_material_value_shares(
+    material_id: str,
+    preview: AxisPreviewService = Depends(get_axis_preview_service),
+) -> MaterialValueSharesResponse:
+    """種類・はい/いいえの材料の値ごとに、その値を持つ道の延長の割合を返す（軸スタジオの較正の画面）。
+
+    対応表の軸の点数は、値ごとにどれだけの道が当たるかを知らないと、地図とルートへの効き方を決められない。
+    """
+    _require_known_material(material_id)
+    shares = await preview.material_value_shares(material_id)
+    if shares is None:
+        return MaterialValueSharesResponse(available=False, sample_ways=0, total_km=0.0, values=[])
+    spec = MATERIAL_CATALOG[material_id]
+    return MaterialValueSharesResponse(
+        available=True,
+        sample_ways=shares.sample_ways,
+        total_km=shares.total_km,
+        values=[
+            MaterialValueShareEntry(value=s.value, label=spec.value_label(s.value), share=s.share)
+            for s in shares.shares
+        ],
+    )
 
 
 @router.get("/api/admin/material-catalog/{material_id}/values", response_model=MaterialValuesResponse)

@@ -1,14 +1,15 @@
 /**
- * `AxisCalibration.tsx`——較正の画面: 数値の軸を選び、0点・100点の端（密度の軸は100点の端だけ）と地図の段の境界を
- * グラフの操作か数の入力で動かし、段ごとの延長を下書きと保存済みで見比べて、公開の状態のまま保存する。
+ * `AxisCalibration.tsx`——較正の画面: 軸を選び、数値の軸は0点・100点の端（密度の軸は100点の端だけ）を、対応表の軸は
+ * 種類ごとの点数を、地図の段の境界と合わせて動かし、段ごとの延長を下書きと保存済みで見比べて、公開の状態のまま保存する。
  *
  * 管理APIは網の層で応える。点数は折れ点ごとに決めた値を返す代役で（計算はbackendの`score_at`が持つ）、地図の段は
- * 送られた境界の上書きを返し、無ければ既定の境界を返す代役にする。
+ * 送られた境界の上書きを返し、無ければ既定の境界を返す代役にする。種類ごとの延長は決めた割合を返す代役にする。
  *
  * ここで見ないもの:
  * - グラフの座標の換算・ドラッグの丸め → `BreakpointCurveEditor.test.tsx`
  * - 3つの入力から作る折れ点 → `breakpointTools.test.ts`（期待値は`generateBreakpoints`から引く）
  * - 地図の段の求め方 → backendの`test_axis_admin_routes.py`
+ * - 種類ごとの延長の集め方 → backendの`test_value_distribution.py`
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -66,9 +67,16 @@ const HAND_EDITED_LINE: Breakpoints = [
 ];
 const HAND_EDITED = axis("hand_edited", "手で動かした軸", HAND_EDITED_LINE);
 const SIGNED = axis("gradient", "勾配", SLOPE_LINE);
+const SURFACE_MAPPING = { asphalt: 10, gravel: 50 };
 const CATEGORICAL = axis("surface", "路面", [], {
-  shape: { kind: "categorical", material: "surface", mapping: {} },
+  shape: { kind: "categorical", material: "surface", mapping: SURFACE_MAPPING },
 });
+/** 値を持つ道の延長のうち、対応表に無い値（未舗装）が2割を占める。 */
+const SURFACE_SHARES = [
+  { value: "asphalt", label: "舗装", share: 0.5 },
+  { value: "gravel", label: "砂利", share: 0.3 },
+  { value: "unpaved", label: "未舗装", share: 0.2 },
+];
 
 /** 分布の2つの階級（代表値1と3）に、保存済みの線は10点・50点を、ほかの線は50点・90点を付ける代役。 */
 const BINS: [number, number, number][] = [
@@ -83,6 +91,9 @@ const SAVED_LINES = [SLOPE_LINE, DENSITY_LINE, HAND_EDITED_LINE].map((line) => J
 
 beforeEach(() => {
   updated = onSameOrigin("PUT", "/admin/api/axis-definitions/:axisId", ({ body }) => Response.json(body));
+  onSameOrigin("GET", "/admin/api/material-catalog/:materialId/value-shares", () =>
+    Response.json({ available: true, sample_ways: 10, total_km: 5, values: SURFACE_SHARES }),
+  );
   onSameOrigin("POST", "/admin/api/axis-definitions/preview-distribution", () =>
     Response.json({ sample_ways: 2, total_km: 2, quantiles: {}, bins: BINS }),
   );
@@ -125,12 +136,17 @@ async function savedPayload(): Promise<AxisDefinitionPayload> {
 }
 
 describe("軸を選ぶ", () => {
-  it("数値の軸だけを、公開中か下書きかを添えて並べる", () => {
+  it("数値の軸も対応表の軸も、公開中か下書きかを添えて並べる", () => {
     render(
       <AxisCalibration definitions={[SLOPE, { ...DENSITY, is_published: false }, CATEGORICAL]} onSaved={vi.fn()} />,
     );
     const options = within(screen.getByRole("combobox", { name: "較正する軸" })).getAllByRole("option");
-    expect(options.map((option) => option.textContent)).toEqual(["軸を選ぶ", "急さ（公開中）", "信号の多さ（下書き）"]);
+    expect(options.map((option) => option.textContent)).toEqual([
+      "軸を選ぶ",
+      "急さ（公開中）",
+      "信号の多さ（下書き）",
+      "路面（公開中）",
+    ]);
   });
 });
 
@@ -282,5 +298,62 @@ describe("段ごとの延長", () => {
     // 保存済みは10点・50点、下書きは50点・90点で、既定の境界の段（低・中・高）へ半分ずつ入る。
     await waitFor(() => expect(shares("下書き")).toEqual(["0.0%", "50.0%", "50.0%"]));
     await waitFor(() => expect(shares("公開中")).toEqual(["50.0%", "50.0%", "0.0%"]));
+  });
+});
+
+describe("対応表の軸", () => {
+  async function openCategorical() {
+    const user = userEvent.setup();
+    const onSaved = vi.fn(async () => {});
+    render(<AxisCalibration definitions={[SLOPE, CATEGORICAL]} onSaved={onSaved} />);
+    await user.selectOptions(screen.getByRole("combobox", { name: "較正する軸" }), CATEGORICAL.axis_id);
+    const rows = await screen.findByRole("region", { name: "種類ごとの点数" });
+    return { user, onSaved, rows };
+  }
+  const percents = (container: HTMLElement) =>
+    within(container)
+      .getAllByText(/%$/)
+      .map((cell) => cell.textContent);
+  const bandShares = (title: string) => percents(screen.getByRole("group", { name: title }));
+
+  it("種類ごとに点数と延長の割合を並べ、対応表に無い値の道の割合も1行で出す", async () => {
+    const { rows } = await openCategorical();
+    expect(within(rows).getByRole("spinbutton", { name: "舗装の点数" })).toHaveValue(10);
+    expect(within(rows).getByRole("spinbutton", { name: "砂利の点数" })).toHaveValue(50);
+    await waitFor(() => expect(percents(rows)).toEqual(["50.0%", "30.0%", "20.0%"]));
+    expect(within(rows).getByText("対応表に無い値（評価しない）")).toBeInTheDocument();
+  });
+
+  it("点数を変えると、点数の付く道の延長で割った段ごとの延長を下書きと公開中で並べ、点数と境界を保存する", async () => {
+    const { user, onSaved } = await openCategorical();
+    // 公開中は舗装10点・砂利50点で低い段と中の段へ、下書きは舗装を90点にして高い段へ移る（未舗装の2割は数えない）。
+    await waitFor(() => expect(bandShares("公開中")).toEqual(["62.5%", "37.5%", "0.0%"]));
+    const asphalt = screen.getByRole("spinbutton", { name: "舗装の点数" });
+    await user.clear(asphalt);
+    await user.type(asphalt, "90");
+    await waitFor(() => expect(bandShares("下書き")).toEqual(["0.0%", "37.5%", "62.5%"]));
+
+    await user.type(screen.getByRole("textbox", { name: "段の境界" }), "20, 70");
+    await user.click(saveButton());
+    const payload = await savedPayload();
+    expect(payload.shape).toEqual({ kind: "categorical", material: "surface", mapping: { asphalt: 90, gravel: 50 } });
+    expect(payload.display_thresholds_override).toEqual([20, 70]);
+    expect(payload).not.toHaveProperty("weight_share_when_published");
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  it("元に戻すと、点数も境界も保存済みへ戻り、保存できなくなる", async () => {
+    const { user } = await openCategorical();
+    const asphalt = screen.getByRole("spinbutton", { name: "舗装の点数" });
+    await user.clear(asphalt);
+    await user.type(asphalt, "90");
+    const field = screen.getByRole("textbox", { name: "段の境界" });
+    await user.type(field, "20, 70");
+    expect(saveButton()).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "元に戻す" }));
+    expect(asphalt).toHaveValue(10);
+    expect(field).toHaveValue("");
+    expect(saveButton()).toBeDisabled();
   });
 });

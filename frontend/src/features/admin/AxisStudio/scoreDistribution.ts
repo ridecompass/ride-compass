@@ -83,6 +83,23 @@ export function mapBandShares(
   return shares;
 }
 
+/** 種類の材料の値ごとの延長の割合を、対応表の点数で地図の段（低い段から）ごとの延長割合へまとめる。対応表に無い値の道は
+ * 評価されず地図に塗られないので数えず、点数の付く道の延長で割る。点数の付く道が無ければ全段0。 */
+export function categoryBandShares(
+  valueShares: readonly { value: string; share: number }[],
+  mapping: Readonly<Record<string, number>>,
+  bands: readonly ValueBand[],
+): number[] {
+  const shares = bands.map(() => 0);
+  let scored = 0;
+  for (const { value, share } of valueShares) {
+    if (!Object.hasOwn(mapping, value)) continue;
+    shares[bands.indexOf(bandAt(bands, mapping[value]))] += share;
+    scored += share;
+  }
+  return scored > 0 ? shares.map((share) => share / scored) : shares;
+}
+
 /** 折れ点が実データに対して極端すぎないかの警告（`scoreBands`の帯を受ける）。無ければ空配列。 */
 export function distributionWarnings(bands: readonly ScoreBand[]): string[] {
   const warnings: string[] = [];

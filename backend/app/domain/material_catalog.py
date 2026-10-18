@@ -210,6 +210,9 @@ _EDGE_COUNTS_COVERAGE = EdgeMaterialCoverageSpec(
 
 MaterialDType = Literal["numeric", "boolean", "categorical"]
 
+#: はい/いいえの材料の値の論理名（対応表のキーの綴り→論理名）。
+_BOOLEAN_VALUE_LABELS = {"true": "はい", "false": "いいえ"}
+
 #: 材料の値の出どころ。`db`はDBの値式（`MaterialSpec.value_sql`）で求める。`request`はリクエストの条件（風・
 #: 想定速度）から都度求め、`domain/dynamic_materials.py: DYNAMIC_MATERIAL_EVALUATORS`が評価する。`observation`は
 #: 観測から都度引き、静的スコア行列の組み立てへ観測の列として渡す（`evaluation.py: build_static_edge_score_matrix`）。
@@ -302,8 +305,9 @@ class MaterialSpec(StrictModel):
         """タグ生値から「論理名 - 物理名」形式の表示用ラベルを組み立てる
         （例: "自転車専用道 - cycleway"）。対訳表に無い値は物理名のみ返す
         （フォールバック、新しいOSMタグ値がDBに現れてもAPIが失敗しないようにするため。
-        この場合論理名が無いため" - "を付けない）。"""
-        label = self.value_labels.get(value)
+        この場合論理名が無いため" - "を付けない）。はい/いいえの材料の値は対応表のキーの綴り（"true"/"false"）で受ける。"""
+        labels = _BOOLEAN_VALUE_LABELS if self.dtype == "boolean" else self.value_labels
+        label = labels.get(value)
         if label is None:
             return value
         return f"{label} - {value}"
