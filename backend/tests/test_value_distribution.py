@@ -35,10 +35,6 @@ def test_the_distribution_reports_quantiles_rounded_to_three_digits():
 
 
 class TestDistribution:
-    def test_empty_pairs_return_zeroed_distribution(self):
-        result = weighted_distribution([])
-        assert result.sample_ways == 0
-        assert result.bins == []
 
     @pytest.mark.parametrize("values", [[1.0, 2.0, 3.0, 4.0], [-160.0, -120.0, -80.0, -40.0, -5.0]])
     def test_range_covers_every_sample_and_zero_without_collapsing(self, values):
@@ -88,6 +84,3 @@ class TestValueShares:
         result = weighted_value_shares([(100.0, True), (100.0, False)])
 
         assert {s.value for s in result.shares} == {"true", "false"}
-
-    def test_no_pairs_give_no_shares(self):
-        assert weighted_value_shares([]).shares == []

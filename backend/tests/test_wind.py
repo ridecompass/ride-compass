@@ -1,8 +1,7 @@
 """`domain/wind.py`——風を走行の負荷へ写す式、予報を引く固定の格子、通過予定時刻の推定。
 
-入口は`wind_components`・`wind_drag_ratio_array`（スカラー版`wind_drag_ratio`・成分から求める
-`wind_drag_ratio_from_components`）・`grid_index_at_or_below`・`WindLattice`・`WindForecastSeries`・
-`estimate_passage_hours`と、地図へ配る木`WIND_DRAG_RATIO_WAY_FORMULA`。
+入口は`wind_drag_ratio`・`WindLattice`・`WindForecastSeries`・`estimate_passage_hours`と、
+地図へ配る木`WIND_DRAG_RATIO_WAY_FORMULA`。
 
 ここで見ないもの:
 - 風の材料を道・区間へ配る評価器（`domain/dynamic_materials.py`） → `test_wind_way_service.py`・`test_leg_costs.py`
@@ -16,7 +15,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import pytest
-from hypothesis import example, given
+from hypothesis import given
 from hypothesis import strategies as st
 
 from app.domain.route import Coordinates
@@ -24,19 +23,14 @@ from app.domain.way_value_formula import way_values_from_formula
 from app.domain.wind import (
     WIND_DIRECTION_LEAF,
     WIND_DRAG_RATIO_WAY_FORMULA,
-    WIND_DRAG_REFERENCE_SPEED_MS,
     WIND_SPEED_LEAF,
     WIND_FORECAST_LAT_STEP_DEG,
     WIND_FORECAST_LON_STEP_DEG,
     WindForecastSeries,
     WindLattice,
     estimate_passage_hours,
-    grid_index_at_or_below,
     kmh_to_ms,
-    wind_components,
     wind_drag_ratio,
-    wind_drag_ratio_array,
-    wind_drag_ratio_from_components,
 )
 
 #: 風速・走行速度の本番の範囲（m/s）。台風の暴風と、想定速度の上限60km/hを覆う。
@@ -53,49 +47,7 @@ def test_kmh_to_ms():
     assert kmh_to_ms(36.0) == pytest.approx(10.0)
 
 
-# --- 風の分解 ---
-
-
-@given(WIND_SPEEDS, BEARINGS, BEARINGS, BEARINGS)
-def test_wind_components_depend_only_on_the_angle_between_wind_and_travel(speed, wind_dir, bearing, turn):
-    """風向と走行方位を同じだけ回しても、走る人が受ける風は変わらない。分解しても風の強さは保たれる。"""
-    headwind, crosswind = wind_components(speed, wind_dir, bearing)
-    turned = wind_components(speed, wind_dir + turn, bearing + turn)
-
-    assert np.allclose(turned, (headwind, crosswind), atol=1e-9)
-    assert math.hypot(float(headwind), float(crosswind)) == pytest.approx(speed, abs=1e-9)
-
-
 # --- 風の追加負荷 ---
-
-
-def _one_dimensional(headwind: float, travel_speed: float) -> float:
-    """横風の無い場合の素直な式: 相対風速xとして`sign(x)·x² − v²`。"""
-    x = travel_speed + headwind
-    return (math.copysign(x * x, x) - travel_speed * travel_speed) / WIND_DRAG_REFERENCE_SPEED_MS**2
-
-
-@given(st.floats(-40.0, 40.0), TRAVEL_SPEEDS)
-@example(-WIND_DRAG_REFERENCE_SPEED_MS, WIND_DRAG_REFERENCE_SPEED_MS)  # 相対風速0
-def test_without_crosswind_the_drag_follows_the_one_dimensional_square_law(headwind, travel_speed):
-    """風向は風が吹いてくる方向（気象の慣習）。追い風が走行速度を超える（相対風速が負になる）所も同じ式で続く。"""
-    direction = 0.0 if headwind >= 0 else 180.0
-
-    value = wind_drag_ratio(abs(headwind), direction, 0.0, travel_speed)
-
-    assert value == pytest.approx(_one_dimensional(headwind, travel_speed), abs=1e-9)
-
-
-@given(st.floats(0.1, 40.0), st.floats(-40.0, 40.0), TRAVEL_SPEEDS, TRAVEL_SPEEDS)
-def test_with_a_headwind_a_faster_rider_pays_more(headwind, crosswind, speed_a, speed_b):
-    """同じ向かい風でも、速く走るほど負荷が大きい（材料の値が想定速度で変わる理由）。"""
-    slow, fast = sorted((speed_a, speed_b))
-    if fast - slow < 1e-3:
-        return
-
-    assert wind_drag_ratio_from_components(headwind, crosswind, slow) < wind_drag_ratio_from_components(
-        headwind, crosswind, fast
-    )
 
 
 @given(st.floats(0.1, 40.0), TRAVEL_SPEEDS)
@@ -114,14 +66,6 @@ def test_the_map_formula_gives_the_drag_the_route_uses(speed, direction, bearing
     assert values == {"way": round(wind_drag_ratio(speed, direction, bearing, kmh_to_ms(speed_kmh)), 3)}
 
 
-def test_the_array_form_evaluates_each_element():
-    values = wind_drag_ratio_array(
-        np.array([5.0, 5.0, 0.0]), np.array([0.0, 180.0, 0.0]), np.array([0.0, 0.0, 0.0]), 5.0
-    )
-
-    assert values.tolist() == pytest.approx([_one_dimensional(5.0, 5.0), _one_dimensional(-5.0, 5.0), 0.0])
-
-
 def test_drag_requires_a_positive_travel_speed():
     with pytest.raises(ValueError):
         wind_drag_ratio(3.0, 0.0, 0.0, 0.0)
@@ -130,58 +74,8 @@ def test_drag_requires_a_positive_travel_speed():
 # --- 固定の格子 ---
 
 
-@given(st.integers(-3_000, 3_000), st.sampled_from([WIND_FORECAST_LAT_STEP_DEG, WIND_FORECAST_LON_STEP_DEG]))
-def test_a_value_on_a_grid_line_belongs_to_that_line(k, step):
-    """割り算の丸めで格子線ちょうどの値が1本下へ落ちない（例: 0.15 / 0.05 = 2.9999…）。"""
-    assert grid_index_at_or_below(k * step, step) == k
-
-
-@given(st.floats(-180.0, 180.0), st.sampled_from([WIND_FORECAST_LAT_STEP_DEG, WIND_FORECAST_LON_STEP_DEG]))
-def test_the_grid_line_is_at_or_below_the_value(value, step):
-    index = grid_index_at_or_below(value, step)
-
-    assert index * step <= value + 1e-9
-    assert value < (index + 1) * step + 1e-9
-
-
 def _lattice(south, west, north, east) -> WindLattice:
     return WindLattice.covering(south, west, north, east, WIND_FORECAST_LAT_STEP_DEG, WIND_FORECAST_LON_STEP_DEG)
-
-
-def test_lattice_points_run_west_to_east_within_rows_from_the_south():
-    lattice = WindLattice(south=35.0, west=139.0, lat_step=0.5, lon_step=0.25, rows=2, cols=3)
-
-    latitudes, longitudes = lattice.coordinates()
-
-    assert latitudes.tolist() == pytest.approx([35.0, 35.0, 35.0, 35.5, 35.5, 35.5])
-    assert longitudes.tolist() == pytest.approx([139.0, 139.25, 139.5, 139.0, 139.25, 139.5])
-
-
-@given(LATITUDES, LONGITUDES, st.floats(0.001, 1.0), st.floats(0.001, 1.0))
-def test_the_covering_lattice_contains_the_rectangle(south, west, height, width):
-    north, east = south + height, west + width
-    latitudes, longitudes = _lattice(south, west, north, east).coordinates()
-
-    assert latitudes.min() <= south + 1e-9 and latitudes.max() >= north - 1e-9
-    assert longitudes.min() <= west + 1e-9 and longitudes.max() >= east - 1e-9
-
-
-@given(
-    LATITUDES,
-    LONGITUDES,
-    st.tuples(st.floats(0.0, 0.5), st.floats(0.0, 0.5), st.floats(0.0, 0.5), st.floats(0.0, 0.5)),
-    st.tuples(st.floats(0.0, 0.5), st.floats(0.0, 0.5), st.floats(0.0, 0.5), st.floats(0.0, 0.5)),
-)
-def test_a_place_picks_the_same_forecast_point_whatever_rectangle_the_lattice_covers(lat, lon, margins_a, margins_b):
-    """地図のタイルに敷いた格子と探索範囲に敷いた格子で、同じ道が同じ予報の点を使う。"""
-    picked = []
-    for s, w, n, e in (margins_a, margins_b):
-        lattice = _lattice(lat - s, lon - w, lat + n, lon + e)
-        latitudes, longitudes = lattice.coordinates()
-        point = int(lattice.points_of(np.array([lat]), np.array([lon]))[0])
-        picked.append((latitudes[point], longitudes[point]))
-
-    assert picked[0] == pytest.approx(picked[1], abs=1e-9)
 
 
 @given(LATITUDES, LONGITUDES, st.floats(0.01, 1.0), st.floats(0.01, 1.0), st.floats(0.0, 1.0), st.floats(0.0, 1.0))

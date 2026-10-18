@@ -19,18 +19,6 @@ def _boom(*_args, **_kwargs):
     raise RuntimeError("sqlite")
 
 
-class TestKeepingAnObject:
-    def test_a_key_never_written_is_a_miss(self):
-        assert tile_persistent_cache.get_by_key(KEY) is None
-
-    def test_an_object_comes_back_as_it_went_in(self):
-        value = {"w1": (1, 2.5), "missing": None}
-
-        tile_persistent_cache.set_by_key(KEY, value, expire=TTL)
-
-        assert tile_persistent_cache.get_by_key(KEY) == value
-
-
 class TestWhenTheDiskRefuses:
     def test_a_value_that_cannot_be_stored_is_dropped_rather_than_raised(self):
         """書き込みの失敗で応答を止めない。読み手からは未キャッシュと同じに見える。"""

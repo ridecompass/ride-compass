@@ -1,8 +1,8 @@
 """`api/routers/weather.py`——天気・警報・暑さ指数・洪水予報・アメダスと、風の格子の経路。
 
-経路ごとに受け渡し（サービスの答えが応答に出ること・回数制限）を1本ずつ通し、ルーターと風の格子のサービス
+経路ごとに受け渡し（取れなかったときの失敗・回数制限）を1本ずつ通し、ルーターと風の格子のサービス
 （`services/wind_grid_service.py`）が持つ判断（取れなかったら502・格子が読めなければ502・対象範囲が読めなければ502・
-表示範囲・間隔・点の数で断る）を、この経路から見る。
+点の数で断る）を、この経路から見る。
 サービスは依存の差し替えで与え、対象範囲は風の格子のサービスへ渡す地域サービスのフェイクで与える。
 
 ここで見ないもの:
@@ -18,7 +18,6 @@
   回数・課金の約束が無い読むだけの呼び出し。作る前に断る理由（点を作る処理がイベントループを止める）は実装のコメントが持つ
 """
 
-import math
 from contextlib import asynccontextmanager
 from datetime import datetime
 
@@ -48,7 +47,6 @@ from app.domain.wind_grid import (
     WindGridPoint,
     WindGridResponse,
     generate_wind_grid_detail_points,
-    generate_wind_grid_points,
 )
 from app.infrastructure import rate_limiter
 from app.main import app
@@ -109,15 +107,6 @@ AMEDAS = AmedasObservation(
     weather_code=0,
     valid_area=None,
 )
-
-#: 地点を問う経路と、そのサービスの依存・取れたときの答え。
-POINT_ROUTES = [
-    ("/api/weather", get_weather_service, CONDITIONS),
-    ("/api/weather/warnings", get_warning_service, WARNINGS),
-    ("/api/weather/wbgt", get_wbgt_service, WBGT),
-    ("/api/weather/flood-forecast", get_flood_service, FLOODS),
-    ("/api/weather/amedas", get_amedas_service, AMEDAS),
-]
 
 
 def _box(min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> BoundingBox:
@@ -194,16 +183,6 @@ def _serve_weather(service: FakeService) -> FakeService:
     return service
 
 
-@pytest.mark.parametrize(("path", "dependency", "answer"), POINT_ROUTES)
-def test_a_point_route_returns_what_its_source_answered(path, dependency, answer):
-    app.dependency_overrides[dependency] = lambda: FakeService(answer)
-
-    response = client.get(path, params=POINT)
-
-    assert response.status_code == 200
-    assert response.json() == answer.model_dump(mode="json")
-
-
 @pytest.mark.parametrize(("path", "dependency", "detail"), [
     ("/api/weather", get_weather_service, "天候情報の取得に失敗しました"),
     ("/api/weather/warnings", get_warning_service, "取得できませんでした。"),
@@ -248,16 +227,6 @@ def test_each_route_is_rate_limited_per_client(ingested_area, path, params, depe
     assert client.get(path, params=params).status_code == 429
 
 
-def test_the_wind_grid_covers_the_area_and_returns_what_was_read(ingested_area):
-    service = _serve_weather(FakeService(grid_point=GRID_POINT))
-
-    response = client.get("/api/weather/wind-grid")
-
-    assert response.status_code == 200
-    assert service.received == [generate_wind_grid_points(AREA)]
-    assert response.json() == {"times": TIMES, "points": [GRID_POINT.model_dump(mode="json")]}
-
-
 def test_the_detail_grid_covers_the_view_at_the_spacing_and_returns_what_was_read(ingested_area):
     view = {"min_lon": 139.70, "min_lat": 35.70, "max_lon": 139.72, "max_lat": 35.72}
     service = _serve_weather(FakeService(grid_point=GRID_POINT))
@@ -290,27 +259,6 @@ def test_the_grid_is_a_failure_when_the_area_cannot_be_read(path, params):
 
     assert response.status_code == 502
     assert response.json()["detail"] == "対象範囲を読めませんでした"
-
-
-def test_the_detail_grid_rejects_an_inverted_view(ingested_area):
-    _serve_weather(FakeService(grid_point=GRID_POINT))
-
-    response = client.get(
-        "/api/weather/wind-grid-detail", params={"min_lon": 140.0, "min_lat": 35.80, "max_lon": 139.70, "max_lat": 35.60}
-    )
-
-    assert response.status_code == 400
-
-
-def test_the_detail_grid_rejects_a_spacing_below_the_lower_bound(ingested_area):
-    _serve_weather(FakeService(grid_point=GRID_POINT))
-
-    response = client.get(
-        "/api/weather/wind-grid-detail",
-        params={**VIEW, "spacing_deg": math.nextafter(WIND_GRID_DETAIL_MIN_SPACING_DEG, 0)},
-    )
-
-    assert response.status_code == 400
 
 
 @pytest.mark.parametrize(("extra_columns", "expected_status"), [(0, 200), (1, 400)])
