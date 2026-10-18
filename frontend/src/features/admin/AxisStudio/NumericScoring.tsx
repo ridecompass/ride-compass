@@ -29,7 +29,7 @@ import { Select } from "@/components/ui/Input/Input";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 
-type GeneratorSettings = ReturnType<typeof generatorSettingsFrom>;
+export type GeneratorSettings = ReturnType<typeof generatorSettingsFrom>;
 
 interface ReferencePoint {
   label: string;
@@ -149,12 +149,13 @@ export function NumericScoring({ draft, setDraft, materialOptions, axisTermOptio
   );
 }
 
-function ScoreTargetFields({
+export function ScoreTargetFields({
   generator,
   onChange,
   hasReferencePoints,
   referencePoints,
   unit,
+  densityLine = false,
 }: {
   generator: GeneratorSettings;
   onChange: (patch: Partial<GeneratorSettings>) => void;
@@ -162,7 +163,29 @@ function ScoreTargetFields({
   hasReferencePoints: boolean;
   referencePoints: readonly ReferencePoint[];
   unit: string;
+  /** 密度の軸（backendの`averages_density`）。0点は値0・効き方は直線に決まっているので、100点にする値だけを出す。 */
+  densityLine?: boolean;
 }) {
+  if (densityLine) {
+    return (
+      <>
+        <SectionLabel
+          label="何点にするか"
+          description="1kmあたりの回数・件数の軸は、0のとき0点から回数に比例して点数が上がります。何回/kmで100点にするかを決めます（それより先は100点のまま）。"
+        />
+        <span className="inline-flex items-center gap-2 [&_input[type=number]]:w-18">
+          <span className={cn(textVariants({ variant: "hint" }), "whitespace-nowrap")}>100点</span>
+          <NumberInput
+            commitOn="input"
+            step="any"
+            value={generator.hundredValue}
+            aria-label="100点にする値"
+            onValueChange={(next) => onChange({ hundredValue: next })}
+          />
+        </span>
+      </>
+    );
+  }
   return (
     <>
       <SectionLabel

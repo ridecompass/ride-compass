@@ -271,3 +271,13 @@ class TestPreviews:
             "scores": [25.0, 100.0],
             "material_points": [{"x": 6.0, "score": 60.0}, {"x": 2.0, "score": 20.0}, {"x": 14.0, "score": 100.0}],
         }
+
+    def test_calibration_of_a_draft_answers_its_map_bands_and_whether_it_averages_density(self, client):
+        """段の境界は下書きの折れ点から導いたもの。密度の軸の画面は、0点の端を動かさない。"""
+        additive = next(m for m in _static_materials("numeric") if MATERIAL_CATALOG[m].additive)
+        definition = payload(shape={**linear_shape(additive), "breakpoints": [[0, 0], [8, 100]]})
+
+        body = client.post(BASE + "/preview-calibration", json={"definition": definition}).json()
+
+        assert body["averages_density"] is True
+        assert body["map_paint"]["thresholds"] == [100.0]

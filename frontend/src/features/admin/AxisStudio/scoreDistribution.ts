@@ -8,6 +8,7 @@
  *
  * backendの`ValueDistribution`をそのまま使う（手書きで写すと、フィールドを足した
  * ときに片側だけ古くなる。`bins`は[階級の下限, 上限, その階級が占める延長の割合]）。 */
+import { bandAt, type ValueBand } from "@/lib/mapDisplay/valueScale";
 import type { components } from "@/types/generated/api";
 import { vocabulary } from "@/types/generated/vocabulary";
 
@@ -65,6 +66,21 @@ export function scoreBands(
     bands[index].share += share;
   }
   return bands;
+}
+
+/** 分布の階級ごとの点数（`binMidpoints`の順）を、地図の段（低い段から）ごとの延長割合へまとめる。段への振り分けは地図と
+ * 同じ`bandAt`。点数が届いていない・階級と数が合わない間はnull（前の折れ点の点数を今の分布へ当てない）。 */
+export function mapBandShares(
+  distribution: ValueDistribution,
+  binScores: readonly number[] | null,
+  bands: readonly ValueBand[],
+): number[] | null {
+  if (binScores === null || binScores.length !== distribution.bins.length) return null;
+  const shares = bands.map(() => 0);
+  for (const [i, [, , share]] of distribution.bins.entries()) {
+    shares[bands.indexOf(bandAt(bands, binScores[i]))] += share;
+  }
+  return shares;
 }
 
 /** 折れ点が実データに対して極端すぎないかの警告（`scoreBands`の帯を受ける）。無ければ空配列。 */
