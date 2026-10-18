@@ -48,6 +48,7 @@
 | `POST /api/admin/axis-definitions/preview-distribution` | Basic認証 | 編集中の`shape`の生値の分布 |
 | `GET /api/admin/material-catalog/{material_id}/distribution` | Basic認証 | 材料1件の値の分位と`zero_share`（数値材料のみ、それ以外は`available=false`） |
 | `GET /api/admin/material-catalog/{material_id}/values` | Basic認証 | 材料1件のDBに実際にある値の一覧（`AxisPreviewService.material_values`。[評価・スコアリング](evaluation-scoring.md)の材料カタログのAPI） |
+| `GET /api/admin/material-catalog/{material_id}/value-shares` | Basic認証 | 種類・はい/いいえの材料1件の、値ごとの道の延長の割合（`AxisPreviewService.material_value_shares`。抽選した道のうち値を持つ道の延長で割る。数値材料は`available=false`） |
 
 どれも実データを全体から読むため、`AxisPreviewService`はルート生成用の長い`command_timeout`の
 セッションで組む（`api/dependencies.py: get_axis_preview_service`）。値の一覧は索引の効かない
