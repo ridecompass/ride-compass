@@ -484,6 +484,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/axis-definitions/preview-way-values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["preview_way_values_api_admin_axis_definitions_preview_way_values_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/tuning": {
         parameters: {
             query?: never;
@@ -1951,6 +1967,24 @@ export interface components {
             /** Undetermined */
             undetermined: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
         };
+        /** WayValuesPreviewRequest */
+        WayValuesPreviewRequest: {
+            /** Axis Id */
+            axis_id: string;
+            shape: components["schemas"]["BreakpointLinearShape-Input"];
+            /** Z */
+            z: number;
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+            /** Bearing Deg */
+            bearing_deg?: number | null;
+            /** At */
+            at?: string | null;
+            /** Speed Kmh */
+            speed_kmh?: number | null;
+        };
         /** WbgtReading */
         WbgtReading: {
             /**
@@ -3064,6 +3098,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScoresPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_way_values_api_admin_axis_definitions_preview_way_values_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WayValuesPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number | null;
+                    };
                 };
             };
             /** @description Validation Error */

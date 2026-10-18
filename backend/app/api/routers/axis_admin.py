@@ -8,13 +8,25 @@
 """
 
 from collections.abc import Mapping
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import Field, model_validator
 
 from app.api.admin_auth import require_admin_basic_auth
-from app.api.dependencies import get_axis_preview_service, get_axis_registry_admin_service
+from app.api.dependencies import (
+    get_axis_preview_service,
+    get_axis_registry_admin_service,
+    get_draft_way_value_lens_builder,
+)
+from app.api.routers._tile_http import check_tile_rate_limit, region_tile_semaphore
 from app.domain.value_distribution import ValueDistribution
 from app.services.axis_preview_service import AxisPreviewService
+from app.services.dedicated_way_values import DraftWayValueLensBuilder
+from app.domain.dynamic_way_values import MissingConditions, WayValueQuery
+from app.domain.geo import BearingDeg
+from app.domain.region import RoadTileZoom, TileIndex, check_tile_index
+from app.domain.route_request import AssumedSpeedKmh
 from app.domain.axis_definitions import (
     AXIS_DEFINITIONS,
     AxisDefinition,
@@ -214,3 +226,57 @@ async def preview_scores(payload: ScoresPreviewRequest) -> ScoresPreviewResponse
         scores=payload.shape.scores_at(payload.xs),
         material_points=first_term_points(payload.shape, payload.material_values),
     )
+
+
+class WayValuesPreviewRequest(StrictModel):
+    """折れ点の下書きで、タイルの道がそれぞれ何点になるかの問い合わせ。"""
+
+    axis_id: str
+    #: `axis_id`の軸の`shape`をこれへ差し替えて評価する。ほかの欄は保存されている軸のまま。
+    shape: BreakpointLinearShape
+    z: RoadTileZoom
+    x: TileIndex
+    y: TileIndex
+    #: 条件で変わる材料を読む軸の条件。意味・要る欄・省いたときは地図の配信（`/api/region/dynamic-way-values`）と同じ。
+    bearing_deg: BearingDeg | None = None
+    at: datetime | None = None
+    speed_kmh: AssumedSpeedKmh | None = None
+
+    @model_validator(mode="after")
+    def _check_tile_index(self) -> "WayValuesPreviewRequest":
+        check_tile_index(self.z, self.x, self.y)
+        return self
+
+
+@router.post("/preview-way-values")
+async def preview_way_values(
+    payload: WayValuesPreviewRequest,
+    request: Request,
+    build_lens: DraftWayValueLensBuilder = Depends(get_draft_way_value_lens_builder),
+) -> dict[str, float | None]:
+    """編集中の折れ点で、タイルのフィーチャーごとに地図が塗る値を返す。保存していない下書きの`shape`で、軸スタジオの
+    較正の地図が塗る。
+
+    鍵と値の意味は地図の配信（`/api/region/dynamic-way-values`）と同じで、同じ材料・同じ評価から`shape`だけを差し替えて
+    求める（`services/dedicated_way_values.py: draft_axis_way_value_lens`）。保存されている折れ点を渡せば、配信と同じ値になる。
+    下書きの値は持たず、配信の値・材料のキャッシュは変わらない。公開していない軸も求める。
+
+    条件で変わる材料（向きで符号の変わる勾配・風・雨）を読む軸も扱い、条件の欄（`bearing_deg`・`at`・`speed_kmh`）は
+    配信と同じ型の検証・要る欄の判定（欠けると422）・省いたときの扱いに従う。無い軸は404、保存できない下書き
+    （参照先の無い材料・輪になる組み合わせ等）はその理由の文で422。レート制限の上限・座標の検証・DB接続プールの
+    semaphore（`_tile_http.py: region_tile_semaphore`）は配信と同じものを使う。
+    """
+    try:
+        lens = build_lens(payload.axis_id, payload.shape)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    if lens is None:
+        raise _axis_not_found()
+    check_tile_rate_limit(request, "axis-preview-way-values")
+    query = WayValueQuery(at=payload.at, bearing_deg=payload.bearing_deg, speed_kmh=payload.speed_kmh)
+    async with region_tile_semaphore:
+        values = await lens.values(payload.z, payload.x, payload.y, query)
+    if isinstance(values, MissingConditions):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"この軸には{'・'.join(values.names)}が必須です。")
+    return values

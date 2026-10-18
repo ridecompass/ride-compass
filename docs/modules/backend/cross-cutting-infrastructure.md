@@ -231,8 +231,8 @@ None）へ倒す箇所は、`except Exception`ではなくこのタプルだけ�
 
 `check_rate_limit`→超過時の記録→`HTTPException(429)`という一連の処理を
 `enforce_rate_limit(request, prefix, limit_per_minute)`へ集約している。routerはこれを直接呼び
-（`weather.py`・`routes.py`等）、`region.py`は路面・点のタイル・専用way値配信で同じ上限を共有するため
-`_check_tile_rate_limit`という薄いラッパー経由で呼ぶ。DI工場ではなく、ルーターが要求ごとに`prefix`と上限を
+（`weather.py`・`routes.py`等）、地域のタイル（路面・点のタイル・専用way値配信・軸スタジオの下書きの道の点数）は同じ上限を
+共有するため`api/routers/_tile_http.py: check_tile_rate_limit`という薄いラッパー経由で呼ぶ。DI工場ではなく、ルーターが要求ごとに`prefix`と上限を
 変えて普通に呼ぶ関数なので、`dependencies.py`（公開関数は注入の口だけ）と分けて置く。`prefix`はレート制限キー・
 rejection集計カテゴリの両方を兼ねる。
 

@@ -37,7 +37,12 @@ from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_
 from app.services.axis_preview_service import AxisPreviewService, new_sample_cache
 from app.services.axis_registry_service import AxisRegistryAdminService
 from app.services.db_status_service import DbStatusService
-from app.services.dedicated_way_values import axis_way_value_lens, material_service_builder
+from app.services.dedicated_way_values import (
+    DraftWayValueLensBuilder,
+    axis_way_value_lens,
+    draft_axis_way_value_lens,
+    material_service_builder,
+)
 from app.services.derived_data_freshness_service import DerivedDataFreshnessService
 from app.services.feature_materials import FeatureMaterialService
 from app.services.flood_service import FloodService
@@ -194,6 +199,18 @@ async def get_dedicated_way_value_service(
         yield axis_way_value_lens(
             axis_id, FeatureMaterialService(repository), material_service_builder(repository, weather_service)
         )
+
+
+async def get_draft_way_value_lens_builder(
+    weather_service: WeatherService = Depends(get_weather_service),
+) -> AsyncIterator[DraftWayValueLensBuilder]:
+    """軸スタジオの較正の地図が、下書きの形で軸の値を求めるレンズの組み立て。地図のレンズと同じく、タイルの材料と
+    配信のサービスを1セッションで引く。軸は本文にあるため、組み立ては呼び出し元がする。"""
+    async with get_session_factory()() as session:
+        repository = RoadGraphRepository(session)
+        feature_materials = FeatureMaterialService(repository)
+        build_service = material_service_builder(repository, weather_service)
+        yield lambda axis_id, shape: draft_axis_way_value_lens(axis_id, shape, feature_materials, build_service)
 
 
 async def get_axis_inspector_service(weather_service: WeatherService = Depends(get_weather_service)):
