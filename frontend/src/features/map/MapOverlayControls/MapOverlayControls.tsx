@@ -21,15 +21,15 @@ import { PointIconSwatch } from "@/features/map/layers/pointIcon";
 import { hiddenAfterToggleAll } from "@/features/map/view/legendFilters";
 import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import {
-  ChooseItemsIcon,
   ClearAllFiltersIcon,
   ClearAllLayersIcon,
   EnvironmentDataIcon,
   DisplayItemsIcon,
-  RoadIcon,
   SpotDataIcon,
   type MapIconComponent,
 } from "@/components/ui/icons/icons";
+import { RoadIcon } from "@/components/ui/icons/layerIcons";
+import { ChooseItemsIcon } from "@/components/ui/icons/lucideIcons";
 import { Button } from "@/components/ui/Button/Button";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { cn } from "@/lib/cn";

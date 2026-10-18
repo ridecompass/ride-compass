@@ -1,12 +1,6 @@
 import { vocabulary } from "@/types/generated/vocabulary";
-import {
-  CloudIcon,
-  MoonIcon,
-  RaindropIcon,
-  SnowflakeIcon,
-  SunIcon,
-  type MapIconComponent,
-} from "@/components/ui/icons/icons";
+import type { MapIconComponent } from "@/components/ui/icons/icons";
+import { CloudIcon, MoonIcon, RaindropIcon, SnowflakeIcon, SunIcon } from "@/components/ui/icons/lucideIcons";
 
 // WMO天気コード（weather_code。backendがアメダスと推計気象分布の観測から導く）の分類と名前は、backendの宣言
 // （domain/weather_display.py: WEATHER_CATEGORIES）が配る。画面が持つのは分類ごとのアイコンだけ。

@@ -9,7 +9,7 @@ import SavedPlacesPanel from "@/features/route/SavedPlacesPanel/SavedPlacesPanel
 import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
 import RoutePoints from "./RoutePoints";
 import { Button } from "@/components/ui/Button/Button";
-import { DistanceTargetIcon } from "@/components/ui/icons/icons";
+import { DistanceTargetIcon } from "@/components/ui/icons/lucideIcons";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import Ruler, { type RulerFrame } from "@/components/ui/Ruler/Ruler";
 import { textVariants } from "@/components/ui/Text/Text";

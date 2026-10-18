@@ -36,7 +36,7 @@
 | `features/map/scene/applyMapScene.ts` | 宣言を地図へ当てる唯一の実装（`addImage`/`addSource`/`addLayer`/`setPaintProperty`/`setFilter`/`setFeatureState`）。前回の宣言との差分だけを当て、段の順に差し込む |
 | `features/map/MapView/MapView.tsx`（静的レイヤーの箇所のみ） | 画面の状態をsceneの入力へ渡す配線・押した所で一番上の地物を、そのレイヤーが宣言した当たり判定の対象（`hitTargets`）で開く手続きへ振り分けること・ポップアップ・レイヤーのデータ取得状態の算出元（`buildLayerDataSources`）。レイヤーの描画コードは持たない |
 | `features/map/layers/mapStyleOps.ts` | 地図インスタンスへの低水準操作（スタイル読み込み後の実行・面レイヤーと文字に場所を譲る点の差し込み位置・ズーム依存のicon-size式）。このアプリのどのレイヤーかを知らないものだけを置く |
-| `features/map/layers/routeArrowIcon.ts`・`icons.tsx` | ルート矢印・アイコン集（下記「本モジュールとの関係」参照） |
+| `features/map/layers/routeArrowIcon.ts`・`components/ui/icons/icons.tsx`・`components/ui/icons/layerIcons.tsx`・`components/ui/icons/lucideIcons.tsx` | ルート矢印・アイコン集（下記「本モジュールとの関係」参照）。`icons.tsx`はアイコンの土台（大きさの受け口・線の様式）と、操作・地点の自前の形、`layerIcons.tsx`は地図のレイヤーと評価軸の自前の形、`lucideIcons.tsx`はlucideの形の包み |
 | `features/map/layers/sdfIcon.ts` | 地図の記号に使う単色シルエット（例: 風の矢印・ルート矢印）の描画の土台。白で塗った絵を`sdf: true`で登録し、色はicon-colorで付ける。canvasの2D描画が使えなければ投げる——空の絵を黙って返すと記号が地図から消えるだけで誰も気づけない。**単体テストは持たない**（テスト環境のcanvasは2D描画を実装しない。絵の中身は座標の宣言そのもので、写してもなにも守らない） |
 | `features/map/MapView/pointPopup.ts` | 点データ（事故・POI・立ち寄り先）をクリックしたときのポップアップ本文。「点の名前: 区分の名前」を、凡例と同じ点の宣言（`POINT_LAYERS`の`display_axes`）から組み、続けて宣言（`point_facts`）が点に添える事実（事故の発生年等）を値のあるものだけ並べる。宣言（`point_name_property`）が名前のプロパティを持ち、その点に名前があれば（立ち寄り先と補給のコンビニ）、先頭に名前を出し、末尾に名前と位置で外の地図（Google マップの検索）を別の画面で開く導線を置く——閉店にデータが追いついていないことがあるので、営業を外で確かめられるようにする。名前は`pointPlaceName`が引き、名前のある点の小窓に`MapView`が足す、経由地・目的地として置く操作（[ルート設定・結果パネル](route-settings-and-results.md)「地図の点の小窓から置く」）も同じ名前を使う。値をテキストノードで入れたDOMを組み、`Popup.setDOMContent()`へ渡す（下記「ポップアップへOSMタグの生値を出すときはHTMLとして解釈させない」） |
 | `features/map/MapView/RoadInspectorPopup.tsx` | 道をクリックしたときの詳細（**Reactで描き、MapLibreのPopupへportalで差し込む**）。開いたときに見せるのは名前と評価だけで、属性（タイルの事実と、評価を取ったときに届くタグ。**同じ項目は1度だけ**）と周囲の土地被覆は畳む——地図の上の小さな枠に収めるため。中身の高さには上限を付けて中でスクロールさせ、中身が伸び縮みしたら置く向きを決め直す（MapLibreのPopupは地図が動いたときにしか決め直さず、開いた後に伸びた中身が画面の外へはみ出す）。評価は押したときだけ取りに行き（backend `POST /api/region/axis-inspector`、[静的道路属性・タイル配信](../backend/static-road-attributes.md)参照。押した地物の鍵と押した点を送る）、応答の押した区間と道1本の値を、「押した区間」「この道全体」の見出しの下にそれぞれの軸ごとの効き方・合成・周囲の土地被覆として並べ（区間の値は寄せた地図の色、道1本の値は引いた地図の色と同じ値で、どちらの値かを取り違えると地図の色と窓の値が食い違って見える）、**利用者がいま設定している重み**（ルート生成へ送るのと同じ`routePreferenceToSend`の値）で計算させる——既定の重みで見せると、重みを0にした軸まで効いて見える。重みを変えたら、前の重みの評価を見せずに取り直しへ戻す。走行の条件は押したときのものに留める——出発時刻は「今」へ
@@ -854,7 +854,7 @@ HTMLでもよい。第三者が書ける値——`?? 生値`の
   テキストポップアップを持たない。押された区間から読み戻す`feature.properties`は、軸別内訳等の
   入れ子のオブジェクトもオブジェクトのまま届く（MapLibre v6は内部表現へ移すときに印付きのJSON文字列へ
   直し、読み戻すときに自分で戻す。`maplibre-gl/src/util/vectortile_to_geojson.ts`）ので、読む側で戻さない。
-- `icons.tsx`はこのモジュール（`MapOverlayControls`のアイコン辞書）専用ではなく、
+- アイコン集（`components/ui/icons/`）はこのモジュール（`MapOverlayControls`のアイコン辞書）専用ではなく、
   [動的気象レイヤー](dynamic-weather-layers.md)の`WeatherPanel`/`TodayOutlook`からも
   使われる、地図関連UI全体で共有するアイコン集である。天気・警告・操作のような意味の決まった
   汎用の形はlucide-reactの形を同じ呼び方（`size`だけ・既定16px）と同じ線の太さの比へ包んで書き出し、
