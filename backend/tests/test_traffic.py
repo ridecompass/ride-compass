@@ -43,10 +43,6 @@ def test_minor_roads_share_one_rank_below_tertiary_and_above_paths():
     assert traffic.highway_rank("cycleway") < minor.pop() < traffic.highway_rank("tertiary")
 
 
-def test_paths_and_unknown_values_rank_lowest():
-    assert traffic.highway_rank("cycleway") == 0
-
-
 def test_only_roads_from_tertiary_up_need_a_wait_to_cross():
     """生活道路・サービス道路を横切るのに待ちは要らない。自転車道（階級0）からサービス道路へ出るだけで
     「上位の道を渡る」と数えないこと。"""

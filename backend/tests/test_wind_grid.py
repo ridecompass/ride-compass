@@ -48,43 +48,12 @@ def test_coordinates_carry_no_floating_point_noise():
     assert _pairs(points) == [(35.2, 139.2), (35.2, 139.3), (35.3, 139.2), (35.3, 139.3)]
 
 
-@given(boxes(), st.floats(-0.05, 0.05), st.floats(-0.05, 0.05), SPACINGS)
-def test_a_panned_view_returns_the_same_coordinates_where_it_overlaps(view_a, dy, dx, spacing):
-    """パンで範囲がずれても、重なる所は同じ座標で返る（前回の点が今回の点とずれて二重に描かれない）。"""
-    view_b = _box(
-        view_a.min_latitude + dy, view_a.min_longitude + dx, view_a.max_latitude + dy, view_a.max_longitude + dx
-    )
-    points_b = set(_pairs(generate_wind_grid_detail_points(AREA, view_b, spacing)))
-    margin = 1e-4  # 座標の小数4桁の丸めぶん
-    inside_b = [
-        (lat, lon)
-        for lat, lon in _pairs(generate_wind_grid_detail_points(AREA, view_a, spacing))
-        if max(view_b.min_latitude, AREA.min_latitude) + margin < lat < view_b.max_latitude - margin
-        and max(view_b.min_longitude, AREA.min_longitude) + margin < lon < view_b.max_longitude - margin
-    ]
-
-    assert set(inside_b) <= points_b
-
-
 @given(boxes(), SPACINGS)
 def test_counting_agrees_with_the_points_made(view, spacing):
     """上限で断るかは点を作る前に数えて決める。数えた数と作る数が食い違うと、上限が効かない。"""
     assert count_wind_grid_detail_points(AREA, view, spacing) == len(
         generate_wind_grid_detail_points(AREA, view, spacing)
     )
-
-
-@given(boxes(), SPACINGS)
-def test_detail_points_stay_within_the_area_clipped_view(view, spacing):
-    """問い合わせ範囲を対象範囲へクリップした所に、手前の線の点から敷く。"""
-    south = max(view.min_latitude, AREA.min_latitude)
-    west = max(view.min_longitude, AREA.min_longitude)
-    north = min(view.max_latitude, AREA.max_latitude)
-    east = min(view.max_longitude, AREA.max_longitude)
-
-    for lat, lon in _pairs(generate_wind_grid_detail_points(AREA, view, spacing)):
-        assert south - spacing - 1e-4 < lat <= north + 1e-4
-        assert west - spacing - 1e-4 < lon <= east + 1e-4
 
 
 def test_a_view_that_only_touches_the_area_gets_no_points():

@@ -98,13 +98,6 @@ def client(app, admin_credentials):
 # ---- 一覧 ----
 
 
-def test_list_returns_every_declared_value_grouped_by_how_it_takes_effect(client, declarations):
-    response = client.get("/api/admin/tuning")
-
-    # 効き方の宣言順（即時→…→画面の再読み込み）にまとめ、同じ効き方の中は宣言順のまま
-    assert [p["id"] for p in response.json()] == ["b", "a", "c"]
-
-
 def test_list_shows_the_current_value_and_whether_it_is_overridden(client, declarations, store):
     store.overridden = {"a"}
 

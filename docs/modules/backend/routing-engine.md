@@ -315,7 +315,7 @@ dataclassのフィールド既定値に置く）と、実行時に変えた値�
 処理時の解決へ倒す（`domain/evaluation.py: resolve_penalty_strength`）。
 
 この前提を守るのは「書いた値がプロセス内の`TUNING_VALUES`まで届く」テストで、母集団は
-宣言から導く（`tests/test_tuning_overrides.py`。行が1つも無い状態で全パラメータが宣言の
+宣言から導く（`tests/test_tuning_overrides.py`。上書きしていない全パラメータが宣言の
 既定どおりになることを、宣言を走査して確かめる）。値をそのまま読み返せないもの
 ——上下限として効く値——は、頭打ちになる入力を1つ通して観測する
 （`tests/test_cycling_speed.py`）。**フロント側が値を送ってしまうと、この解決そのものが

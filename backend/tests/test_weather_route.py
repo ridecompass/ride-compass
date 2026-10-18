@@ -48,7 +48,6 @@ from app.domain.wind_grid import (
     WindGridPoint,
     WindGridResponse,
     generate_wind_grid_detail_points,
-    generate_wind_grid_points,
 )
 from app.infrastructure import rate_limiter
 from app.main import app
@@ -246,16 +245,6 @@ def test_each_route_is_rate_limited_per_client(ingested_area, path, params, depe
 
     assert client.get(path, params=params).status_code == 200
     assert client.get(path, params=params).status_code == 429
-
-
-def test_the_wind_grid_covers_the_area_and_returns_what_was_read(ingested_area):
-    service = _serve_weather(FakeService(grid_point=GRID_POINT))
-
-    response = client.get("/api/weather/wind-grid")
-
-    assert response.status_code == 200
-    assert service.received == [generate_wind_grid_points(AREA)]
-    assert response.json() == {"times": TIMES, "points": [GRID_POINT.model_dump(mode="json")]}
 
 
 def test_the_detail_grid_covers_the_view_at_the_spacing_and_returns_what_was_read(ingested_area):

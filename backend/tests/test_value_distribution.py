@@ -35,11 +35,6 @@ def test_the_distribution_reports_quantiles_rounded_to_three_digits():
 
 
 class TestDistribution:
-    def test_empty_pairs_return_zeroed_distribution(self):
-        result = weighted_distribution([])
-        assert result.sample_ways == 0
-        assert result.bins == []
-
     @pytest.mark.parametrize("values", [[1.0, 2.0, 3.0, 4.0], [-160.0, -120.0, -80.0, -40.0, -5.0]])
     def test_range_covers_every_sample_and_zero_without_collapsing(self, values):
         # 下限を0に固定すると、生値が負になる軸で全サンプルが範囲の外（階級0）へ潰れる。

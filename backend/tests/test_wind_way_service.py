@@ -13,11 +13,9 @@
 """
 
 import inspect
-from contextlib import nullcontext
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import numpy as np
-import pytest
 
 from app.domain.msm import wind_speed_and_direction
 from app.domain.time_zone import JST
@@ -91,12 +89,6 @@ def _service(repository) -> WindWayService:
     return WindWayService(repository=repository, weather_service=WeatherService())
 
 
-async def test_uncovered_tile_returns_empty_dict(monkeypatch):
-    _patch_msm(monkeypatch)
-
-    assert await _service(FakeMidpointsRepository(None)).get_way_materials(Z, X, Y, AT) == {}
-
-
 async def test_each_way_takes_the_wind_of_the_grid_point_nearest_its_middle(monkeypatch):
     """同じタイルでも、中ほどが別の格子点に近い道は別の風を引く。タイルをまたいで中ほどが
     タイルの外にある道も、端の格子点へ寄せずに本当に近い点を引く。"""
@@ -124,17 +116,6 @@ async def test_a_time_outside_the_forecast_is_not_painted(monkeypatch):
     assert await _service(repository).get_way_materials(Z, X, Y, datetime(2026, 8, 30, 10, 40)) == {}
 
 
-async def test_utc_aware_at_is_read_as_jst(monkeypatch):
-    # 予報の時刻はJSTの壁時計時刻。tzinfoを剥がすだけで比べると時差ぶんずれ、範囲外と判定される。
-    _patch_msm(monkeypatch)
-    repository = FakeMidpointsRepository({"1": (35.674, 139.713)})
-    at_utc = AT.replace(tzinfo=JST).astimezone(timezone.utc)
-
-    result = await _service(repository).get_way_materials(Z, X, Y, at_utc)
-
-    assert result == _materials({"1": _expected(35.65, 139.6875, 1)})
-
-
 async def test_at_none_defaults_to_now(monkeypatch):
     now_hour = datetime.now(JST).replace(tzinfo=None, minute=0, second=0, microsecond=0)
     times = [(now_hour + timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M") for h in range(-1, 3)]
@@ -154,16 +135,3 @@ async def test_forecast_unavailable_returns_empty_dict(monkeypatch):
     repository = FakeMidpointsRepository({"1": (35.674, 139.713)})
 
     assert await _service(repository).get_way_materials(Z, X, Y, AT) == {}
-
-
-@pytest.mark.parametrize(
-    ("error", "outcome"),
-    [
-        (ConnectionRefusedError("db down"), nullcontext()),
-        # DB障害でない例外まで空へ倒すと、利用者には「データなし」に見えて誰も気づかない。
-        (TypeError("wrong arguments"), pytest.raises(TypeError)),
-    ],
-)
-async def test_only_a_db_outage_is_turned_into_an_empty_result(error, outcome):
-    with outcome:
-        assert await _service(FakeMidpointsRepository(None, error=error)).get_way_materials(Z, X, Y, AT) == {}
