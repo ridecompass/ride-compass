@@ -11,14 +11,14 @@ import {
 } from "@/features/map/layers/mapLayers";
 import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import {
-  ChooseItemsIcon,
   ClearAllFiltersIcon,
   ClearAllLayersIcon,
   EnvironmentDataIcon,
   DisplayItemsIcon,
-  RoadIcon,
   SpotDataIcon,
 } from "@/components/ui/icons/icons";
+import { RoadIcon } from "@/components/ui/icons/layerIcons";
+import { ChooseItemsIcon } from "@/components/ui/icons/lucideIcons";
 import { Button } from "@/components/ui/Button/Button";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { cn } from "@/lib/cn";

@@ -7,7 +7,7 @@ import type { Map as MapLibreMap, Marker } from "maplibre-gl";
 
 import type { Coordinates, LocationSource, PinRole, PointTarget, SelectedRouteSegment } from "@/types/route";
 import { originMarkColor, PIN_MARK_BACKGROUND, PinMark, pinMarkName } from "@/components/PinMark/PinMark";
-import { SelectedSpotIcon } from "@/components/ui/icons/icons";
+import { SelectedSpotIcon } from "@/components/ui/icons/lucideIcons";
 import palette from "@/types/generated/palette.json";
 import { runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
 

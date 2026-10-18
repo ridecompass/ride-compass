@@ -4,7 +4,7 @@ import { Fragment, useMemo } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
 import { cardVariants } from "@/components/ui/Card/Card";
-import { ShowOriginIcon } from "@/components/ui/icons/icons";
+import { ShowOriginIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { DELTA_TONE_CLASS, deltaTone, editDifference, formatDelta } from "@/features/route/routeEditDiff";
 import { cn } from "@/lib/cn";

@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
-import { RecallSavedIcon } from "@/components/ui/icons/icons";
+import { RecallSavedIcon } from "@/components/ui/icons/lucideIcons";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";

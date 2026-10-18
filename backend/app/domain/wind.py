@@ -6,6 +6,21 @@ import numpy as np
 
 from app.domain.geo import haversine_distance_km, haversine_distance_km_array
 from app.domain.route import Coordinates
+from app.domain.way_value_formula import (
+    FALSE,
+    FormulaNode,
+    Round,
+    Unary,
+    WayValueFormula,
+    add,
+    condition,
+    const,
+    div,
+    evaluate_formula,
+    feature,
+    mul,
+    sub,
+)
 
 #: 出発時の風（`DepartureWind`）の風速・風向を応答に載せる桁。
 DEPARTURE_WIND_DECIMALS = 1
@@ -17,8 +32,12 @@ WIND_DRAG_RATIO_DECIMALS = 3
 # よる推定誤差は同じビンへ収まる程度で足りる。
 ROUTE_DETOUR_RATIO = 1.3
 
+#: 時速（km/h）を秒速（m/s）へ直す割る数。
+KMH_PER_MS = 3.6
+
+
 def kmh_to_ms(speed_kmh: float) -> float:
-    return speed_kmh / 3.6
+    return speed_kmh / KMH_PER_MS
 
 
 def detour_ratio_or_default(learned: float | None) -> float:
@@ -38,24 +57,20 @@ WIND_DRAG_REFERENCE_SPEED_KMH = 20.0
 WIND_DRAG_REFERENCE_SPEED_MS = kmh_to_ms(WIND_DRAG_REFERENCE_SPEED_KMH)
 
 
-def _wind_relative_angle_rad(wind_direction_deg, travel_bearing_deg) -> np.ndarray:
+def wind_component_formulas(
+    wind_speed_ms: FormulaNode, wind_direction_deg: FormulaNode, travel_bearing_deg: FormulaNode
+) -> tuple[FormulaNode, FormulaNode]:
+    """風を進行方向の成分（正が向かい風）と横成分へ分解する木（m/s）。"""
     # wind_direction_degは気象学の慣習で「風が吹いてくる方向」。走行方位との差が0で
     # 正面からの向かい風、180で背後からの追い風。
-    return np.radians(np.asarray(wind_direction_deg, dtype=float) - np.asarray(travel_bearing_deg, dtype=float))
+    angle = mul(sub(wind_direction_deg, travel_bearing_deg), const(math.pi / 180))
+    return mul(wind_speed_ms, Unary(op="cos", arg=angle)), mul(wind_speed_ms, Unary(op="sin", arg=angle))
 
 
-def wind_components(wind_speed_ms, wind_direction_deg, travel_bearing_deg) -> tuple[np.ndarray, np.ndarray]:
-    """風を進行方向の成分（正が向かい風）と横成分へ分解する（m/s）。走行モデル
-    （`domain/cycling_speed.py`）が空気抵抗を求めるのに使う。"""
-    angle = _wind_relative_angle_rad(wind_direction_deg, travel_bearing_deg)
-    speed = np.asarray(wind_speed_ms, dtype=float)
-    return speed * np.cos(angle), speed * np.sin(angle)
-
-
-def wind_drag_ratio_array(wind_speed_ms, wind_direction_deg, travel_bearing_deg, travel_speed_ms: float) -> np.ndarray:
-    """風の追加負荷（材料`wind_drag_ratio`、無次元）。相対風速ベクトルの二乗則で、無風時に
-    対する進行方向の空気抵抗の増分を`WIND_DRAG_REFERENCE_SPEED_MS`での無風時の抵抗を1と
-    する倍率にしたもの。走行速度v・風速w・風向と走行方位の差dとして:
+def wind_drag_ratio_formula(headwind_ms: FormulaNode, crosswind_ms: FormulaNode, travel_speed_ms: FormulaNode) -> FormulaNode:
+    """風の追加負荷（材料`wind_drag_ratio`、無次元）を、風を分解した成分（`wind_component_formulas`）から求める木。
+    相対風速ベクトルの二乗則で、無風時に対する進行方向の空気抵抗の増分を`WIND_DRAG_REFERENCE_SPEED_MS`での無風時の
+    抵抗を1とする倍率にしたもの。走行速度v・風速w・風向と走行方位の差dとして:
 
         x  = v + w·cos(d)              # 進行方向の相対風速（正=向かい風的）
         Vr = sqrt(x² + (w·sin(d))²)    # 相対風速の大きさ
@@ -64,22 +79,58 @@ def wind_drag_ratio_array(wind_speed_ms, wind_direction_deg, travel_bearing_deg,
     横風0のとき`sign(x)·x² − v²`の1次元式と一致し、追い風が走行速度を超える領域も連続。
     符号はxの符号で自然に決まる（正=向かい風で重くなる、負=追い風で楽になる、純横風は
     相対風速が増えるぶんだけ小さな正の値）。走行速度が大きいほど同じ風でも値が大きくなる。
-    `wind_speed_ms`/`wind_direction_deg`/`travel_bearing_deg`はスカラーまたは同じ長さの配列、
-    `travel_speed_ms`はリクエスト単位のスカラー（m/s、正）。
     """
+    along = add(travel_speed_ms, headwind_ms)
+    relative_speed = Unary(op="sqrt", arg=add(mul(along, along), mul(crosswind_ms, crosswind_ms)))
+    return div(sub(mul(relative_speed, along), mul(travel_speed_ms, travel_speed_ms)),
+               const(WIND_DRAG_REFERENCE_SPEED_MS**2))
+
+
+#: 道ごとの材料の名前: その道の風速（m/s）と風向（度、風が吹いてくる方向）。
+WIND_SPEED_LEAF = "wind_speed_ms"
+WIND_DIRECTION_LEAF = "wind_direction_deg"
+
+
+def _wind_drag_ratio_way_formula() -> WayValueFormula:
+    headwind, crosswind = wind_component_formulas(
+        feature(WIND_SPEED_LEAF), feature(WIND_DIRECTION_LEAF), condition("bearing_deg"))
+    travel_speed = div(condition("speed_kmh"), const(KMH_PER_MS))
+    return WayValueFormula(
+        value=Round(arg=wind_drag_ratio_formula(headwind, crosswind, travel_speed), decimals=WIND_DRAG_RATIO_DECIMALS),
+        undetermined=FALSE,
+    )
+
+
+#: 地図へ配る風の材料の値（`WIND_DRAG_RATIO_DECIMALS`桁）。道ごとの風（`WIND_SPEED_LEAF`・`WIND_DIRECTION_LEAF`）と、
+#: 要求の走行方位・想定速度から求める。走行方位で値の決まらない道は無い。
+WIND_DRAG_RATIO_WAY_FORMULA = _wind_drag_ratio_way_formula()
+
+_HEADWIND, _CROSSWIND = wind_component_formulas(feature("speed"), feature("direction"), feature("bearing"))
+_WIND_DRAG_RATIO = wind_drag_ratio_formula(feature("headwind"), feature("crosswind"), feature("travel_speed"))
+
+
+def wind_components(wind_speed_ms, wind_direction_deg, travel_bearing_deg) -> tuple[np.ndarray, np.ndarray]:
+    """`wind_component_formulas`を値で評価する（m/s）。走行モデル（`domain/cycling_speed.py`）が空気抵抗を求めるのに
+    使う。引数はスカラーまたはnumpyの規則で揃う配列。"""
+    inputs = {"speed": wind_speed_ms, "direction": wind_direction_deg, "bearing": travel_bearing_deg}
+    return evaluate_formula(_HEADWIND, inputs, {}), evaluate_formula(_CROSSWIND, inputs, {})
+
+
+def wind_drag_ratio_array(wind_speed_ms, wind_direction_deg, travel_bearing_deg, travel_speed_ms: float) -> np.ndarray:
+    """風の追加負荷（`wind_drag_ratio_formula`）。`wind_speed_ms`/`wind_direction_deg`/`travel_bearing_deg`はスカラー
+    または同じ長さの配列、`travel_speed_ms`はリクエスト単位のスカラー（m/s、正）。"""
     return wind_drag_ratio_from_components(
         *wind_components(wind_speed_ms, wind_direction_deg, travel_bearing_deg), travel_speed_ms
     )
 
 
 def wind_drag_ratio_from_components(headwind_ms, crosswind_ms, travel_speed_ms: float) -> np.ndarray:
-    """`wind_drag_ratio_array`を、風を分解した成分（`wind_components`）から求める。走行モデルと同じ成分を
-    使い回せば、風向と方位の差の三角関数を1回で済ませられる。"""
+    """`wind_drag_ratio_formula`を値で評価する。走行モデルと同じ成分を使い回せば、風向と方位の差の三角関数を1回で
+    済ませられる。"""
     if travel_speed_ms <= 0:
         raise ValueError("wind_drag_ratio_array: travel_speed_ms must be positive")
-    along = travel_speed_ms + headwind_ms
-    relative_speed = np.sqrt(along * along + crosswind_ms * crosswind_ms)
-    return (relative_speed * along - travel_speed_ms * travel_speed_ms) / (WIND_DRAG_REFERENCE_SPEED_MS**2)
+    return evaluate_formula(
+        _WIND_DRAG_RATIO, {"headwind": headwind_ms, "crosswind": crosswind_ms, "travel_speed": travel_speed_ms}, {})
 
 
 def wind_drag_ratio(wind_speed_ms: float, wind_direction_deg: float, travel_bearing_deg: float, travel_speed_ms: float) -> float:

@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/Button/Button";
-import { BackToNowIcon } from "@/components/ui/icons/icons";
+import { BackToNowIcon } from "@/components/ui/icons/lucideIcons";
 import Ruler, { type RulerFrame } from "@/components/ui/Ruler/Ruler";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";

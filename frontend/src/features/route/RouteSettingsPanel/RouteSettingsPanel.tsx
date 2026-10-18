@@ -8,7 +8,7 @@ import { axisCatalogFetchFailure, retryAxisCatalogFetch, useAxisCatalog } from "
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import type { RoutePreferenceWeights } from "@/types/route";
 import { Button } from "@/components/ui/Button/Button";
-import { RetryIcon } from "@/components/ui/icons/icons";
+import { RetryIcon } from "@/components/ui/icons/lucideIcons";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
 import { cn } from "@/lib/cn";
 import { legendChipBodyClass, legendChipClass, legendIconClass } from "@/components/ui/AxisLegend/axisLegend";

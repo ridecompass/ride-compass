@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
-import { InfoIcon } from "@/components/ui/icons/icons";
+import { InfoIcon } from "@/components/ui/icons/lucideIcons";
 import { Button } from "@/components/ui/Button/Button";
 
 interface InfoPopoverProps {
