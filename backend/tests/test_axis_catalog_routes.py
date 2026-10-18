@@ -1,6 +1,7 @@
 """`api/routers/axis_catalog.py`——公開軸の一覧（`GET /api/axis-catalog`、認可不要）。
 
-ここで見るもの: domain に低い層のテストが無い導出（気象のチップ・生値の単位・材料の内訳・専用配信の条件・画面へ配る較正値）の結果。
+ここで見るもの: 公開軸だけを配ること、軸ごとの欄へ domain の導出を受け渡すこと、domain に低い層の
+テストが無い導出（気象のチップ・生値の単位・材料の内訳・専用配信の条件・画面へ配る較正値）の結果。
 
 ここで見ないもの:
 - 地図の塗り（値の種類・単位・段・凡例・ラベル） → `test_map_paint.py`、一次属性 → `test_axis_hierarchy.py`
@@ -142,6 +143,26 @@ def client():
 
 def _entries(client) -> dict[str, dict]:
     return {entry["axis_id"]: entry for entry in client.get("/api/axis-catalog").json()["axes"]}
+
+
+def test_only_the_published_axes_are_served_without_auth(client):
+    """下書きの軸が一般の画面へ漏れると、まだ固まっていない軸を利用者が選び、変えも消せもしなくなる。"""
+    draft = axis_definition("draft_axis", is_published=False)
+    with replaced_axis_definitions({**CATALOG_AXES, draft.axis_id: draft}):
+        assert set(_entries(client)) == set(CATALOG_AXES)
+
+
+def test_each_axis_carries_what_the_domain_derives_for_it(client, catalog_axes):
+    """導出の入力違いは domain のテストが持つ。ここは軸ごとの欄へ結果が届くことだけを見る。"""
+    entries = _entries(client)
+
+    categorical = entries["axis_categorical"]
+    assert categorical["primary_attribute_ids"] == ["surface"]
+    signed = entries["axis_way_value_signed"]
+    assert (signed["map_paint"]["value"], signed["map_paint"]["unit"]) == (
+        {"kind": "signed_material", "material": "gradient_percent"},
+        "%",
+    )
 
 
 def test_get_axis_catalog_names_the_weather_chip_that_shows_a_dynamic_material(client, catalog_axes):

@@ -100,6 +100,12 @@ def assert_refused(make, fragment: str) -> None:
 
 
 class TestShapeModels:
+    def test_breakpoints_must_rise_strictly_along_the_value_axis(self):
+        assert_refused(lambda: linear(MaterialTerm(material="m"), breakpoints=[(0.0, 0.0), (0.0, 50.0)]), "小さい順")
+
+    def test_an_empty_mapping_is_refused(self):
+        assert_refused(lambda: CategoricalShape(material="m", mapping={}), "1件")
+
     @pytest.mark.parametrize(
         ("shape", "expected"),
         [
@@ -114,9 +120,20 @@ class TestShapeModels:
 
 
 class TestAxisModel:
+    def test_an_empty_label_is_refused(self):
+        assert_refused(lambda: axis(label=""), "表示名")
+
     @pytest.mark.parametrize(("thresholds", "fragment"), [([], "1件以上"), ([10.0, 10.0], "小さい順")])
     def test_overridden_thresholds_must_be_present_and_rise_strictly(self, thresholds, fragment):
         assert_refused(lambda: axis(display_thresholds_override=thresholds), fragment)
+
+    def test_band_labels_need_overridden_thresholds(self):
+        assert_refused(lambda: axis(display_band_labels_override=["弱", "強"]), "しきい値も上書き")
+
+    def test_band_labels_must_match_the_number_of_bands(self):
+        assert_refused(
+            lambda: axis(display_thresholds_override=[1.0, 2.0], display_band_labels_override=["弱", "強"]), "3件"
+        )
 
     @pytest.mark.parametrize(
         ("shape", "expected"),
