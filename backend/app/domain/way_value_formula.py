@@ -11,7 +11,7 @@
 - 丸め（`Round`）はPythonの`round`と同じ値（2進の値で正確に中点に乗ったときだけ偶数の側）。
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Annotated, Literal, Union
 
 import numpy as np
@@ -220,7 +220,7 @@ def _flag(mask: np.ndarray) -> np.ndarray:
     return mask.astype(float)
 
 
-_UNARY = {
+_UNARY: dict[str, Callable[[np.ndarray], np.ndarray]] = {
     "neg": np.negative,
     "abs": np.abs,
     "sin": np.sin,
@@ -230,7 +230,7 @@ _UNARY = {
     "is_missing": lambda values: _flag(np.isnan(values)),
 }
 
-_BINARY = {
+_BINARY: dict[str, Callable[[np.ndarray, np.ndarray], np.ndarray]] = {
     "add": np.add,
     "sub": np.subtract,
     "mul": np.multiply,
