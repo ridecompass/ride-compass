@@ -3,9 +3,7 @@
 import Disclosure from "@/components/Disclosure/Disclosure";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Badge } from "@/components/ui/Badge/Badge";
-import { Button } from "@/components/ui/Button/Button";
-import { LockedIcon, ResetDefaultsIcon } from "@/components/ui/icons/lucideIcons";
-import { textVariants } from "@/components/ui/Text/Text";
+import { LockedIcon } from "@/components/ui/icons/lucideIcons";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import {
   AVOIDABLE_ROWS,
@@ -42,86 +40,67 @@ interface HardFilterPanelProps {
 }
 
 export default function HardFilterPanel({ roadAvoidance, onRoadAvoidanceChange }: HardFilterPanelProps) {
-  const customized = AVOIDABLE_ROWS.some(({ key }) => roadAvoidance[key] !== DEFAULT_ROAD_AVOIDANCE[key]);
-
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <span className={textVariants({ variant: "label" })}>道ごとの避け方</span>
-        <InfoPopover triggerAriaLabel="道ごとの避け方の説明">
-          地図の道のレイヤの凡例の行ごとに選びます。「なるべく避ける」は遠回りが小さければ別の道を通り、「通らない」は経路から完全に外れます。いくつもの行に当たる道は、強い方の選び方が効きます。鍵の付いた行は自転車が通れない道で、いつも通りません。
-        </InfoPopover>
-        <Button
-          size="panelIcon"
-          className="ml-auto flex-shrink-0"
-          aria-label="除外を既定値に戻す"
-          disabled={!customized}
-          onClick={() => onRoadAvoidanceChange(DEFAULT_ROAD_AVOIDANCE)}
-          usage="道ごとの避け方を既定に戻します。"
+    <div className="flex flex-col">
+      {FIXED_ROWS.map(({ key, label, description }) => (
+        <div
+          key={key}
+          className="flex items-center justify-between gap-2 border-t border-[var(--color-border-muted)] py-1"
         >
-          <ResetDefaultsIcon />
-        </Button>
-      </div>
-      <div className="flex flex-col">
-        {FIXED_ROWS.map(({ key, label, description }) => (
-          <div
-            key={key}
-            className="flex items-center justify-between gap-2 border-t border-[var(--color-border-muted)] py-1.5"
+          <InfoPopover
+            label={label}
+            labelClassName="text-[length:var(--font-size-sm)] font-semibold"
+            triggerAriaLabel={`${label}の説明`}
           >
-            <InfoPopover
-              label={label}
-              labelClassName="text-[length:var(--font-size-sm)] font-semibold"
-              triggerAriaLabel={`${label}の説明`}
-            >
-              {description}
-            </InfoPopover>
-            <span
-              role="img"
-              aria-label={`${label}はいつも${EXCLUDE_LABEL}（変えられません）`}
-              className="flex flex-shrink-0 items-center gap-1 text-[length:var(--font-size-xs)] text-[var(--color-muted)]"
-            >
-              <LockedIcon size={14} />
-              <span aria-hidden="true">{EXCLUDE_LABEL}</span>
-            </span>
-          </div>
-        ))}
-        {AVOIDABLE_LAYERS.map(({ layer, label, rows }) => {
-          const changed = rows.filter(({ key }) => roadAvoidance[key] !== DEFAULT_ROAD_AVOIDANCE[key]).length;
-          return (
-            <Disclosure
-              key={layer}
-              className="border-t border-[var(--color-border-muted)] py-1"
-              triggerClassName="group flex items-center gap-1.5 py-1 text-[length:var(--font-size-sm)] font-semibold"
-              bodyClassName="flex flex-col gap-1.5 pt-1 pb-2"
-              usage="このレイヤの凡例の行ごとの避け方を開きます。"
-              summary={
-                <>
-                  <span
-                    aria-hidden="true"
-                    className="size-2 flex-shrink-0 -rotate-45 border-r-2 border-b-2 border-[var(--color-neutral)] transition-transform duration-150 group-data-[state=open]:rotate-45"
-                  />
-                  <span>{label}</span>
-                  {changed > 0 && <Badge variant="outline">{`既定から${changed}件変更`}</Badge>}
-                  <span className="ml-auto truncate font-normal text-[var(--color-muted)]">
-                    {avoidedSummary(rows, roadAvoidance)}
-                  </span>
-                </>
-              }
-            >
-              {rows.map((row) => (
-                <AvoidanceRow
-                  key={row.key}
-                  label={row.label}
-                  description={row.description}
-                  level={roadAvoidance[row.key]}
-                  customized={roadAvoidance[row.key] !== DEFAULT_ROAD_AVOIDANCE[row.key]}
-                  onLevelChange={(level) => onRoadAvoidanceChange({ ...roadAvoidance, [row.key]: level })}
+            {description}
+          </InfoPopover>
+          <span
+            role="img"
+            aria-label={`${label}はいつも${EXCLUDE_LABEL}（変えられません）`}
+            data-usage="自転車が通れない道で、いつも経路から外れます。変えられません。"
+            className="flex flex-shrink-0 items-center gap-1 text-[length:var(--font-size-xs)] text-[var(--color-muted)]"
+          >
+            <LockedIcon size={14} />
+            <span aria-hidden="true">{EXCLUDE_LABEL}</span>
+          </span>
+        </div>
+      ))}
+      {AVOIDABLE_LAYERS.map(({ layer, label, rows }) => {
+        const changed = rows.filter(({ key }) => roadAvoidance[key] !== DEFAULT_ROAD_AVOIDANCE[key]).length;
+        return (
+          <Disclosure
+            key={layer}
+            className="border-t border-[var(--color-border-muted)] py-0.5"
+            triggerClassName="group flex items-center gap-1.5 py-1 text-[length:var(--font-size-sm)] font-semibold"
+            bodyClassName="flex flex-col gap-1 pb-1.5"
+            usage="このレイヤの凡例の行ごとの避け方を開きます。"
+            summary={
+              <>
+                <span
+                  aria-hidden="true"
+                  className="size-2 flex-shrink-0 -rotate-45 border-r-2 border-b-2 border-[var(--color-neutral)] transition-transform duration-150 group-data-[state=open]:rotate-45"
                 />
-              ))}
-            </Disclosure>
-          );
-        })}
-      </div>
+                <span>{label}</span>
+                {changed > 0 && <Badge variant="outline">{`既定から${changed}件変更`}</Badge>}
+                <span className="ml-auto truncate font-normal text-[var(--color-muted)]">
+                  {avoidedSummary(rows, roadAvoidance)}
+                </span>
+              </>
+            }
+          >
+            {rows.map((row) => (
+              <AvoidanceRow
+                key={row.key}
+                label={row.label}
+                description={row.description}
+                level={roadAvoidance[row.key]}
+                customized={roadAvoidance[row.key] !== DEFAULT_ROAD_AVOIDANCE[row.key]}
+                onLevelChange={(level) => onRoadAvoidanceChange({ ...roadAvoidance, [row.key]: level })}
+              />
+            ))}
+          </Disclosure>
+        );
+      })}
     </div>
   );
 }
@@ -160,7 +139,7 @@ function AvoidanceRow({
       <ToggleGroup
         className="ml-auto"
         aria-label={`${label}の避け方`}
-        usage="この行に当たる道を、通る・なるべく避ける・通らないから選びます。"
+        usage="この行に当たる道を、通る・なるべく避ける・通らないから選びます。「なるべく避ける」は遠回りが小さければ別の道を通り、「通らない」は経路から完全に外れます。いくつもの行に当たる道は、強い方の選び方が効きます。"
         value={level}
         onValueChange={(next) => onLevelChange(next as AvoidanceLevel)}
       >
