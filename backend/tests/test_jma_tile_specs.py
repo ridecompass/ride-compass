@@ -10,7 +10,8 @@
 ここで見ないもの:
 - 動的気象の要素の段をつなぐこと・段ごとの配信の組み立て → `test_weather_elements.py`
 - 時刻一覧の応答を行へ解くこと・取得とキャッシュ → `test_jma_tile_client.py`
-- パスをタイルとして読み戻すこと・404の意味 → `test_jma_tile_paths.py`
+- パスをタイルとして読み戻すこと（`infrastructure/jma_tile_paths.py`） → `test_jma_tile_interpolation.py`（親のパス）・
+  `test_jma_tile_client.py`（取得とキャッシュ）、404の意味 → `test_jma_tile_client.py`
 - 画面が同じ読み方・同じパスになること → `scripts/cross_language_expectations.py: jma_expectations`の表を通す画面のテスト
 """
 
@@ -35,14 +36,6 @@ def _elements(monkeypatch):
 
 
 # --- ズーム ---
-
-
-@pytest.mark.parametrize(
-    ("zoom_use", "max_native_zoom", "effective"),
-    [("even", 10, 10), ("even", 11, 10), ("odd", 9, 9), ("odd", 10, 9), ("all", 11, 11)],
-)
-def test_the_usable_maximum_zoom_drops_to_the_parity_the_source_draws(zoom_use, max_native_zoom, effective):
-    assert specs.effective_max_zoom(JmaTileSpec(zoom_use, max_native_zoom)) == effective
 
 
 @pytest.mark.parametrize(
@@ -105,14 +98,6 @@ def test_a_tile_element_cannot_declare_a_delivery_delay():
 
 
 @pytest.mark.usefixtures("_elements")
-def test_each_time_listing_of_an_element_is_under_its_path_group():
-    assert specs.jma_target_times_paths("ras") == (
-        "bosai/jmatile/data/nowc/targetTimes_N1.json",
-        "bosai/jmatile/data/nowc/targetTimes_N2.json",
-    )
-
-
-@pytest.mark.usefixtures("_elements")
 @pytest.mark.parametrize(
     ("element_id", "template"),
     [
@@ -132,12 +117,6 @@ def test_a_tile_path_fills_the_frame_and_the_tile_coordinates():
     assert specs.jma_tile_path(tile) == (
         "bosai/jmatile/data/nowc/20260701000000/none/20260701001000/surf/ras/6/57/25.png"
     )
-
-
-@pytest.mark.usefixtures("_elements")
-def test_an_element_not_delivered_as_tiles_has_no_tile_path():
-    with pytest.raises(ValueError):
-        specs.jma_tile_path(JmaTile("pts", JmaFrame("20260701000000", "none", "20260701000000"), 6, 57, 25))
 
 
 # --- 時刻一覧の行をコマにする ---

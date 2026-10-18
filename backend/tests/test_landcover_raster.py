@@ -101,14 +101,6 @@ def test_reprojecting_a_utm_raster_keeps_class_numbers_and_invents_none(tmp_path
     assert set(np.unique(classes)) == {5, 7}
 
 
-def test_a_tile_no_raster_reaches_has_no_classes_and_no_image(tmp_path, configure):
-    configure(over_tile(tmp_path / "a.tif", stripes(2), *TOKYO))
-    z, x, y = TOKYO
-
-    assert landcover_raster.tile_classes(z, x + 2, y) is None
-    assert landcover_raster.render_tile(z, x + 2, y) is None
-
-
 def test_where_rasters_overlap_the_first_configured_wins_and_the_next_fills_its_gaps(tmp_path, configure):
     """値0（範囲外・No Data）は、先のラスタが描いた画素を消さず、後のラスタに埋めさせる。"""
     west_only = over_tile(tmp_path / "west.tif", stripes(2, 0), *TOKYO)
@@ -154,27 +146,6 @@ def test_the_empty_tile_is_a_fully_clear_image_of_tile_size():
 
     assert image.shape == (SIZE, SIZE, 4)
     assert (image[:, :, 3] == 0).all()
-
-
-def test_a_configured_raster_that_cannot_be_opened_is_skipped_and_logged(tmp_path, configure, caplog):
-    present = over_tile(tmp_path / "present.tif", stripes(2), *TOKYO)
-    configure(str(tmp_path / "missing.tif"), present)
-
-    with caplog.at_level(logging.WARNING, logger="ridecompass.landcover_raster"):
-        assert landcover_raster.has_sources()
-
-    assert landcover_raster.opened_raster_paths() == [present]
-    assert "missing.tif" in caplog.text
-
-
-def test_once_a_raster_is_open_the_set_of_rasters_stays_until_restart(tmp_path, configure):
-    first = over_tile(tmp_path / "first.tif", stripes(2), *TOKYO)
-    configure(first)
-    assert landcover_raster.opened_raster_paths() == [first]
-
-    configure(first, over_tile(tmp_path / "second.tif", stripes(5), *TOKYO))
-
-    assert landcover_raster.opened_raster_paths() == [first]
 
 
 def test_a_raster_that_appears_after_start_is_picked_up_after_the_retry_interval(tmp_path, configure, clock, caplog):

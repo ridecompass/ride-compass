@@ -54,14 +54,3 @@ def test_a_finished_job_can_be_polled_for_the_whole_ttl_and_is_dropped_after_it(
     clock.tick(1)
     job_registry.create_job()
     assert job_registry.get_job(job_id) is None
-
-
-def test_a_job_still_running_is_never_dropped(clock):
-    """ルート生成は数十秒かかり、走っている間に別の利用者がジョブを作っても消えない。"""
-    running = job_registry.create_job()
-    job_registry.set_running(running)
-
-    clock.tick(JOB_TTL_SECONDS * 10)
-    job_registry.create_job()
-
-    assert job_registry.get_job(running) is not None

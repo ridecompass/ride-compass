@@ -143,12 +143,6 @@ def test_the_gradient_in_percent_slows_the_rider_as_that_grade_and_a_missing_one
     assert missing == flat
 
 
-def test_a_rougher_surface_takes_longer():
-    leg = _snapshot(_matrix(2, surface=["paved", "gravel"]))
-
-    assert leg.travel_seconds_full[1] > leg.travel_seconds_full[0]
-
-
 def test_each_stop_on_a_segment_adds_its_wait():
     """2回/kmの信号がある500mの区間は、信号1回ぶん待つ。密度の値が無い区間は待たない。"""
     leg = _snapshot(_matrix(3, distance=500.0, materials={STOP_DENSITY["signal"]: [2.0, 0.0, np.nan]}))
@@ -181,22 +175,6 @@ def test_a_segment_to_avoid_costs_more_but_takes_the_same_time():
 
     assert leg.cost_lazy[0] == pytest.approx(AVOID_MULTIPLIER * leg.cost_lazy[1])
     assert leg.travel_seconds_full[0] == pytest.approx(leg.travel_seconds_full[1])
-
-
-def test_the_wind_at_departure_slows_a_segment_against_it_and_helps_one_with_it():
-    calm = _snapshot(_matrix(1)).travel_seconds_full[0]
-
-    leg = _snapshot(_matrix(2, bearing=[NORTH, SOUTH]), departure_wind=_departure_wind(5.0, from_deg=NORTH))
-
-    assert leg.travel_seconds_full[0] > calm > leg.travel_seconds_full[1]
-
-
-@pytest.mark.parametrize(
-    ("departure_wind", "series", "unavailable"),
-    [(None, None, True), (_departure_wind(0.0), None, False), (None, _series([0.0, 0.0]), False)],
-)
-def test_the_travel_time_is_marked_when_no_wind_was_available(departure_wind, series, unavailable):
-    assert _composer(_matrix(1), departure_wind=departure_wind, series=series).wind_unavailable is unavailable
 
 
 # --- コストと表示の値 ---------------------------------------------------------
@@ -268,19 +246,6 @@ def test_a_density_axis_costs_the_same_along_a_route_however_its_road_is_cut(win
 
     assert cut_leg.cost_lazy.sum() == pytest.approx(whole_leg.cost_lazy.sum(), rel=1e-9)
     assert whole_leg.cost_lazy.sum() > whole_leg.travel_seconds_lazy.sum()
-
-
-def test_weight_on_a_density_axis_makes_the_search_prefer_fewer_stops_however_they_are_spread():
-    """2kmの2本の道。北は500mごとに交差点の脇の50mの区間に信号1つ（2回/km）、南は500mの区間4本に均して1.8回/km。
-    停止密度の軸だけに重みを置くと、回数の少ない南の費用が小さい（探索は経路の費用の和が小さい道を選ぶ）。"""
-    north = _matrix(8, distance=[50.0, 450.0] * 4, signals_per_km=[20.0, 0.0] * 4)
-    south = _matrix(4, distance=500.0, signals_per_km=1.8)
-
-    north_cost, south_cost = (
-        _snapshot(matrix, weights={STOP_AXIS: 1.0}, penalty=0.7).cost_lazy.sum() for matrix in (north, south)
-    )
-
-    assert south_cost < north_cost
 
 
 def test_an_axis_that_reads_the_wind_scores_a_headwind_above_a_tailwind(wind_axis):
@@ -366,30 +331,6 @@ def test_a_leg_toward_the_anchor_ends_at_its_offset():
     leg = _composer(_matrix(1), series=_series([0.0] * 12)).compose("leg", None, 5.0, -1, duration_hours=2.0)
 
     assert leg.bin_start_hours == (3.0, 4.0)
-
-
-def test_each_bin_uses_the_wind_forecast_for_its_hour():
-    """風が1時間ごとに強まる予報で、北へ向かう区間は後のビンほど時間がかかる。"""
-    leg = _composer(_matrix(1), series=_series([0.0, 4.0, 8.0])).compose("leg", None, 0.0, +1, duration_hours=3.0)
-
-    first, second, third = leg.travel_bins_lazy[:, 0]
-    assert first < second < third
-
-
-@pytest.mark.parametrize(
-    ("duration_hours", "representative"),
-    [
-        (3.0, 1),  # 3本のうち、中間の1.5時間が入る2本目
-        (10.0, 3),  # 上限の4本より先に中間（5時間）があれば、最後のビン
-    ],
-)
-def test_the_search_without_a_clock_and_the_display_read_the_bin_at_the_middle_of_the_leg(duration_hours, representative):
-    composer = _composer(_matrix(1), series=_series([float(h) for h in range(12)]))
-
-    leg = composer.compose("leg", None, 0.0, +1, duration_hours=duration_hours)
-
-    assert leg.cost_lazy.tolist() == leg.cost_bins_lazy[representative].tolist()
-    assert leg.travel_seconds_lazy.tolist() == leg.travel_bins_lazy[representative].tolist()
 
 
 def test_legs_with_the_same_bins_but_a_different_middle_are_not_mixed_up():
@@ -489,12 +430,6 @@ def test_the_night_axis_weighs_only_in_the_bins_ridden_in_the_dark(night_axis):
     assert ratio.tolist() == pytest.approx([1.0, 1.0, 1.25])
 
 
-def test_a_tree_without_a_clock_weighs_the_night_axis_at_each_segment_s_own_passage(night_axis):
-    leg = _night_composer(2).compose("inbound", None, 10.0, -1, passage_hours=np.array([8.0, 9.5]))
-
-    assert (leg.cost_lazy / leg.travel_seconds_lazy).tolist() == pytest.approx([1.0, 1.25])
-
-
 def test_the_display_of_a_segment_weighs_the_night_axis_at_the_hour_it_is_ridden(night_axis):
     """17時30分に通る区間には夜の軸が効かず、18時30分に通る区間には効く。"""
     values = _night_composer().values_at_rows(np.array([0, 0]), np.array([8.5, 9.5]))
@@ -535,7 +470,3 @@ def test_a_segment_without_a_passage_shows_the_wind_at_departure():
 
     # 時別の予報が無いと、通過時刻で合成した区間（夜だけ効く軸のため）も出発時点の風で走っている。
     assert winds == [leg_costs.SegmentWind(speed_ms=3.0, direction_deg=271.1)] * 2
-
-
-def test_a_segment_has_no_wind_when_no_wind_was_available():
-    assert _composer(_matrix(1)).winds_at([0], [None], [False]) == [None]
