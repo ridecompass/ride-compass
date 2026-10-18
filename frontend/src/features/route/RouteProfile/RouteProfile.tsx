@@ -10,7 +10,8 @@ import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { cn } from "@/lib/cn";
-import { ChooseItemsIcon, DisplayItemsIcon, EvaluationPaintIcon } from "@/components/ui/icons/icons";
+import { DisplayItemsIcon } from "@/components/ui/icons/icons";
+import { ChooseItemsIcon, EvaluationPaintIcon } from "@/components/ui/icons/lucideIcons";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { profileBoxes } from "@/features/route/DifficultyProfile/profileGeometry";
 import ProfileChart, {

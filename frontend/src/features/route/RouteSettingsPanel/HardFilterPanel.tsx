@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/AxisLegend/axisLegend";
 import { Badge } from "@/components/ui/Badge/Badge";
 import { Button } from "@/components/ui/Button/Button";
-import { ExcludedRoadIcon, ResetDefaultsIcon } from "@/components/ui/icons/icons";
+import { ExcludedRoadIcon, ResetDefaultsIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";

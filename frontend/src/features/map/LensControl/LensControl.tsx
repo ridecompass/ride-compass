@@ -20,14 +20,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/Toggle
 import { Dot } from "@/components/ui/Dot/Dot";
 import { textVariants } from "@/components/ui/Text/Text";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
-import {
-  ClearAllFiltersIcon,
-  ClearAllLayersIcon,
-  ClockIcon,
-  CompassNeedleIcon,
-  EvaluationPaintIcon,
-  SpeedGaugeIcon,
-} from "@/components/ui/icons/icons";
+import { ClearAllFiltersIcon, ClearAllLayersIcon, CompassNeedleIcon } from "@/components/ui/icons/icons";
+import { ClockIcon, EvaluationPaintIcon, SpeedGaugeIcon } from "@/components/ui/icons/lucideIcons";
 import { cn } from "@/lib/cn";
 import { EVALUATION_PAINT_NAME } from "@/lib/screenNames";
 

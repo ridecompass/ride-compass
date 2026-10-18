@@ -58,9 +58,9 @@ function fillTaperedRibbon(
   ctx.fill();
 }
 
-// 風チップボタン（icons.tsx: WindIcon、渦を巻く3本の曲線）と同じ「曲線=風」という
+// 風チップボタン（lucideIcons.tsx: WindIcon、渦を巻く3本の曲線）と同じ「曲線=風」という
 // 視覚言語を地図上でも踏襲する。道路・POI等の地図上オブジェクトのアイコン
-// （icons.tsx）は直線・単純な多角形が主体のため、曲線を基調にするだけでも見分けがつきやすい。
+// （layerIcons.tsx）は直線・単純な多角形が主体のため、曲線を基調にするだけでも見分けがつきやすい。
 export function createWindArrowIcon(): ImageData {
   // 北（画像上方向）を向くアイコンとして描き、実際の向きはicon-rotate（風向から計算した
   // bearing、windLayer.ts参照）で回転させる。

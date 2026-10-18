@@ -2,22 +2,24 @@
 // （任意のSVGの登録は意匠の揃いと無害化の費用が高く、頭文字の自動生成は形で意味が伝わる性質を失う）。
 // 知らない・未設定の`icon_id`は汎用のアイコンにする。
 
+import type { MapIconComponent } from "@/components/ui/icons/icons";
 import {
   AccidentDensityAxisIcon,
   AxisRampIcon,
-  ClockIcon,
-  WarningTriangleIcon,
   GradientAxisIcon,
-  LayersStackIcon,
   NightAxisIcon,
-  ShieldIcon,
   StopDensityAxisIcon,
   SurfaceQualityAxisIcon,
+} from "@/components/ui/icons/layerIcons";
+import {
+  ClockIcon,
+  WarningTriangleIcon,
+  LayersStackIcon,
+  ShieldIcon,
   TargetIcon,
   ThermometerIcon,
   WindIcon,
-  type MapIconComponent,
-} from "@/components/ui/icons/icons";
+} from "@/components/ui/icons/lucideIcons";
 
 interface AxisIconPaletteEntry {
   /** パレットから形を選ぶ画面（`features/admin/AxisStudio/AxisMapDisplaySection.tsx`）に出す短い名前。 */

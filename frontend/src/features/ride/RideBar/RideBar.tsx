@@ -2,13 +2,8 @@
 
 import type { ReactNode } from "react";
 
-import {
-  BicycleIcon,
-  ClockIcon,
-  GoalFlagIcon,
-  OffRouteIcon,
-  WindDirectionArrowIcon,
-} from "@/components/ui/icons/icons";
+import { GoalFlagIcon, OffRouteIcon } from "@/components/ui/icons/icons";
+import { BicycleIcon, ClockIcon, WindDirectionArrowIcon } from "@/components/ui/icons/lucideIcons";
 import { downwindOnMapDeg } from "@/lib/cardinalLabel";
 import { formatJstHourMinute } from "@/lib/time";
 
