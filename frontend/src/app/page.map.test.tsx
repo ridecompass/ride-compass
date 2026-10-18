@@ -169,7 +169,7 @@ describe("地図で扱えること", () => {
     } as const;
     onBackend("GET", "/api/place-search", () => Response.json({ candidates: [candidate] }));
     const { user } = renderHome();
-    await user.click(screen.getByRole("button", { name: "目的地: 未設定" }));
+    await user.click(screen.getByRole("button", { name: "目的地: 出発地[周回]" }));
     const searchBox = screen.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
 
     await user.type(searchBox, "浅草寺{Enter}");

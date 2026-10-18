@@ -6,7 +6,7 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Annotated, TypeGuard
+from typing import Annotated
 
 from pydantic import Field
 from pydantic_core import PydanticCustomError
@@ -63,9 +63,14 @@ def check_points_within_reach(farthest_km: float) -> None:
         raise request_error(f"経由地・目的地は出発地から{MAX_ROUTE_DISTANCE_KM}km以内に置いてください。")
 
 
+#: 距離も経由地も無く、終点が出発地と同じ要求（目的地を置かない・目的地が出発地へ寄る）を断る文。目的地が出発地へ寄るかは
+#: 道路網に寄せるまで分からないので、要求の検証（`nothing_to_generate_error`）が断れなかった分は生成が同じ文で断る。
+NOTHING_TO_GENERATE = "距離か、経由地・目的地を指定してください。"
+
+
 def nothing_to_generate_error() -> PydanticCustomError:
     """出発地だけで、距離も経由地・目的地も無い要求の誤り。"""
-    return request_error("距離か、経由地・目的地を指定してください。")
+    return request_error(NOTHING_TO_GENERATE)
 
 
 @dataclass(frozen=True)
@@ -96,17 +101,12 @@ class NoDistanceTarget:
     points: FixedPoints
 
 
-def spliceable(destination: Coordinates | None) -> TypeGuard[Coordinates]:
-    """目的地`destination`へ向かう候補が、走る途中で別の候補の区間へ乗り換えられるか。目的地を持つ候補だけが乗り換えられる。"""
-    # 周回は起点へ戻る制約があり、途中で別候補へ乗り換えると戻れる保証が無くなる。
-    return destination is not None
-
-
 @dataclass(frozen=True)
 class SplicedTarget:
-    """区間を差し替えて組み立てた経路を、探索せずに評価する。乗り換えられる候補（`spliceable`）だけが対象。"""
+    """区間を差し替えて組み立てた経路を、探索せずに評価する。経路は出発地から始まり、終点（目的地、無ければ出発地）で
+    終わらなければならない（周回の候補どうしを乗り換えた経路も、出発地へ戻ることを評価の前に確かめる）。"""
 
-    destination: Coordinates
+    destination: Coordinates | None
     edge_ids: tuple[str, *tuple[str, ...]]
 
 

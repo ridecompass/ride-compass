@@ -80,6 +80,7 @@ from app.domain.route import (
     route_axis_raw_values,
     route_elevation_gain,
 )
+from app.domain.route_request import FixedPoints
 from app.domain.route_search import (
     DETOUR_RATIO_MIN_ROAD_M,
     LengthBand,
@@ -246,22 +247,19 @@ class _SearchGraph:
 @dataclass(frozen=True)
 class _TurnaroundData:
     """`LoopTurnaround.data`（本エンジン固有）: 中継点（折返し点）のノード番号と、最後の固定点からの一対全木上の
-    往路（区間の番号列）、向かう終点のノード番号。`trace_loop_from_turnaround`が帰りの探索に使う。"""
+    往路（区間の番号列）。`trace_loop_from_turnaround`が帰りの探索に使う。"""
 
     node: int
     outbound_edge_indices: list[int]
     outbound_length_m: float
-    end_node: int
-    # 終点が出発地か（周回）。周回だけが方位の名前を持つ。
-    closes: bool
-    reversible: bool
 
 
 @dataclass(frozen=True)
 class FixedLegs:
-    """前段（`RoadGraphEngine.trace_fixed_points`）の結果: 出発地から置いた経由地を置いた順に、区間ごとの最短でつないだ道。
+    """前段（`RoadGraphEngine.trace_fixed_points`）の結果: 出発地から置いた経由地を置いた順に、区間ごとの最短でつないだ道と、
+    仕上げが向かう終点。
 
-    仕上げの戦略はここから続ける。戦略層は中身を読まず、受け取ったまま仕上げへ渡す。
+    仕上げの戦略はここから続ける。戦略層は終点が出発地か（`closes`）だけを読み、ほかは受け取ったまま仕上げへ渡す。
     """
 
     # 区間（出発地→1つ目の経由地、…）ごとの、探索用グラフの区間の番号列。添字が`_RoadGraphContext.legs`の添字になる。
@@ -270,10 +268,19 @@ class FixedLegs:
     nodes: list[int]
     # 前段の道の実距離（m）。
     length_m: float
+    # 終点（目的地を寄せたNode。目的地が無ければ出発地のNode）のノード番号と、終点へ向かう帰りのレグの基準点。
+    end_node: int
+    end_point: Coordinates
 
     @property
     def last_node(self) -> int:
         return self.nodes[-1]
+
+    @property
+    def closes(self) -> bool:
+        """終点が出発地か（周回）。目的地を置かない要求と、目的地が出発地と同じNodeへ寄った要求を同じに扱うため、
+        置いた点の有無ではなくNodeで決める。周回だけが、経由地の無いときの近道（リング）・方位の名前・逆回り・種類`loop`を持つ。"""
+        return self.end_node == self.nodes[0]
 
     @cached_property
     def edges(self) -> list[int]:
@@ -299,8 +306,8 @@ class FixedLegs:
 
     @property
     def reversible(self) -> bool:
-        """出発地へ戻る経路を逆に回っても、置いた経由地を置いた順に通るか（経由地が1つ以下）。"""
-        return len(self.segments) <= 1
+        """逆に回った経路も作って比べてよいか: 出発地へ戻り、逆に回っても置いた経由地を置いた順に通る（経由地が1つ以下）。"""
+        return self.closes and len(self.segments) <= 1
 
 
 class RoadGraphEngine:
@@ -538,15 +545,21 @@ class RoadGraphEngine:
             leg.travel_bins_lazy, leg.bin_seconds,
         )
 
-    async def trace_fixed_points(self, context: _RoadGraphContext, waypoints: list[Coordinates]) -> FixedLegs:
-        """前段: 出発地から、置いた経由地を置いた順に区間ごとのA*で結ぶ。経由地が無ければ出発地で止まる（区間は無い）。
+    async def trace_fixed_points(self, context: _RoadGraphContext, points: FixedPoints) -> FixedLegs:
+        """前段: 出発地から、置いた経由地を置いた順に区間ごとのA*で結び、仕上げが向かう終点を決める。経由地が無ければ
+        出発地で止まる（区間は無い）。
 
-        起点は`prepare`がスナップ済みのNodeをそのまま使い、経由地はここで起点と同じく出て戻れるNodeへスナップする。
+        起点は`prepare`がスナップ済みのNodeをそのまま使い、経由地と目的地はここで起点と同じく出て戻れるNodeへスナップする。
+        どれかを寄せられなければ`RoutingError`。
         """
-        if not waypoints:
-            return FixedLegs(segments=[], nodes=[context.origin_node], length_m=0.0)
+        end = _resolve_end(context, points.destination)
+        if end is None:
+            raise RoutingError("could not snap destination to road graph")
+        end_node, end_point = end
+        if not points.waypoints:
+            return FixedLegs(segments=[], nodes=[context.origin_node], length_m=0.0, end_node=end_node, end_point=end_point)
         node_sequence = [context.origin_node]
-        for point in waypoints:
+        for point in points.waypoints:
             snapped = _snap(context, point)
             if snapped is None:
                 raise RoutingError("could not snap waypoints to road graph")
@@ -563,13 +576,14 @@ class RoadGraphEngine:
             segments.append(segment)
             cumulative_m += float(context.statics.edge_length_m[segment].sum())
         logger.info("trace_fixed_points legs=%d wall_ms=%d", len(segments), elapsed_ms(trace_started))
-        return FixedLegs(segments=segments, nodes=node_sequence, length_m=cumulative_m)
+        return FixedLegs(
+            segments=segments, nodes=node_sequence, length_m=cumulative_m, end_node=end_node, end_point=end_point,
+        )
 
     async def select_loop_turnarounds(
         self,
         context: _RoadGraphContext,
         fixed: FixedLegs,
-        destination: Coordinates | None,
         distance_km: float,
         distance_tolerance_km: float,
         pool_size: int,
@@ -597,11 +611,7 @@ class RoadGraphEngine:
         start_node = fixed.last_node
         fixed_m = fixed.length_m
         remaining_km = distance_km - fixed_m / 1000
-        closes = destination is None
-        end = _resolve_end(context, destination)
-        if end is None:
-            return []
-        end_node, end_point = end
+        end_node, end_point = fixed.end_node, fixed.end_point
         # 往路レグを、見込み所要時間（残りの距離の半分÷巡航速度）ぶんの時刻ビンで組み直す。
         # 木は出発からの経過時間を持ち回れるため、風を推定ではなく実際の経過時間で引ける。
         outbound = context.composer.compose(
@@ -613,7 +623,7 @@ class RoadGraphEngine:
         traveled = _traveled_columns(context, fixed.edges)
 
         backward_tree = None
-        if closes and leg_index == 0:
+        if fixed.closes and leg_index == 0:
             # 経由地の無い周回は、出発地からの往路と出発地への帰りの最短が同じ2点を結ぶので、帰りの最短を往路の長さで
             # 代えられる（リング）。逆向きの木を求めない。
             ring_lower_m, ring_upper_m, ring_center_m = turnaround_ring_m(distance_km, distance_tolerance_km)
@@ -737,9 +747,7 @@ class RoadGraphEngine:
                 LoopTurnaround(
                     bearing=bearing,
                     data=_TurnaroundData(
-                        node=node_index, outbound_edge_indices=edges,
-                        outbound_length_m=float(length[node_index]), end_node=end_node,
-                        closes=closes, reversible=closes and fixed.reversible,
+                        node=node_index, outbound_edge_indices=edges, outbound_length_m=float(length[node_index]),
                     ),
                 )
             )
@@ -762,10 +770,8 @@ class RoadGraphEngine:
             duration_hours=leg_duration_hours(remaining_km, context.composer.speed_kmh),
         )
 
-    async def select_via_nodes(
-        self, context: _RoadGraphContext, fixed: FixedLegs, destination: Coordinates | None, max_routes: int
-    ) -> list[TracedLoop]:
-        """距離なしの仕上げ: 最後の固定点（経由地が無ければ起点）から終点（`destination`、Noneなら出発地）までの区間を、
+    async def select_via_nodes(self, context: _RoadGraphContext, fixed: FixedLegs, max_routes: int) -> list[TracedLoop]:
+        """距離なしの仕上げ: 最後の固定点（経由地が無ければ起点）から終点（`fixed.end_node`）までの区間を、
         via-node方式で互いに異なる道に`max_routes`件まで選び、前段の道とつないで返す。代わりの道は最後の区間でだけ探す
         ——置いた点までは全候補で同じで、最後だけが違う（区間ごとに代わりを探すと組み合わせが増える）。
         周回のretraceペナルティ付き復路探索（`trace_loop_from_turnaround`）とは異なり、最後の固定点からの前向き木・
@@ -784,18 +790,13 @@ class RoadGraphEngine:
            Node（行って戻る形になり経路として成立しない）を除外しつつ、採用済み候補との
            重複率（最後の区間どうし）が閾値超のものを飛ばして`max_routes`件採る。
 
-        目的地は起点・経由地と同じく出て戻れるNodeへスナップするので、走り出す点からの前向き木は必ず届く。
-        終点が出発地なら`prepare`がスナップ済みのNodeをそのまま使う（起終点を同じNodeに揃えないと周回が閉じない）。
+        終点は起点・経由地と同じく出て戻れるNodeへスナップしてある（`trace_fixed_points`）ので、走り出す点からの前向き木は必ず届く。
         """
         leg_index = len(fixed.segments)
         start_node = fixed.last_node
         start_point = _leg_anchor(context, leg_index, start_node)
         fixed_hours = cruise_hours(fixed.length_m / 1000, context.composer.speed_kmh)
-        closes = destination is None
-        end = _resolve_end(context, destination)
-        if end is None:
-            return []
-        destination_index, destination = end
+        destination_index, destination = fixed.end_node, fixed.end_point
         traveled = _traveled_columns(context, fixed.edges)
 
         tree_started = start_timer()
@@ -933,7 +934,7 @@ class RoadGraphEngine:
             path, leg_of_edge = fixed.joined(*found)
             traced.append(TracedLoop(
                 bearing=None, distance_km=_path_km(context, path), data=path, leg_of_edge=leg_of_edge,
-                waypoint_offsets=fixed.waypoint_offsets, reversible=closes and fixed.reversible,
+                waypoint_offsets=fixed.waypoint_offsets, reversible=fixed.reversible,
             ))
 
         logger.info(
@@ -944,11 +945,9 @@ class RoadGraphEngine:
         )
         return traced
 
-    async def select_fastest_route(
-        self, context: _RoadGraphContext, fixed: FixedLegs, destination: Coordinates
-    ) -> TracedLoop | None:
+    async def select_fastest_route(self, context: _RoadGraphContext, fixed: FixedLegs) -> TracedLoop | None:
         """所要時間が最短の経路を1本返す（主観的な軸の重みを一切使わない基準線）。出発地から置いた経由地を置いた順に
-        通り、目的地で終わる。
+        通り、終点で終わる。
 
         コスト配列に区間ごとの所要時間（走行モデル＋停止の待ち）を、遷移にはターンの待ちを
         そのまま秒で渡すため、得られるのは**時間最短**の経路になる。利用者の好み（軸の重み）を
@@ -964,10 +963,7 @@ class RoadGraphEngine:
         置いた点どうしの区間は候補と同じレグで測り、最後の区間は経路の所要時間が半分になる位置で前向き・後ろ向きの
         レグへ割る——他の候補と同じく概ね半分ずつ割れ、レグごとに時刻の異なる風の評価が候補間で揃う。
         """
-        snapped = _snap(context, destination)
-        if snapped is None:
-            return None
-        destination_index = snapped[0]
+        destination_index = fixed.end_node
 
         started = start_timer()
         stops = [*fixed.nodes, destination_index]
@@ -1032,7 +1028,7 @@ class RoadGraphEngine:
         cost_bins = inbound_leg.cost_bins_lazy
 
         penalized_columns = _traveled_columns(context, [*fixed.edges, *data.outbound_edge_indices])
-        heuristic = _heuristic_to(context, data.end_node)
+        heuristic = _heuristic_to(context, fixed.end_node)
 
         def search_avoiding_traveled() -> list[int] | None:
             original = cost_bins[:, penalized_columns].copy()
@@ -1041,7 +1037,7 @@ class RoadGraphEngine:
                 return turn_expanded_shortest_path(
                     context.turn_structure, cost_bins, heuristic,
                     _origin_states(context.statics, data.node),
-                    data.end_node,
+                    fixed.end_node,
                     inbound_leg.travel_bins_lazy, inbound_leg.bin_seconds,
                 )
             finally:
@@ -1064,19 +1060,19 @@ class RoadGraphEngine:
             turnaround.bearing, data.outbound_length_m / 1000, distance_km, retrace, trace_wall_ms,
         )
         return TracedLoop(
-            bearing=turnaround.bearing if data.closes else None, distance_km=distance_km, data=path,
-            leg_of_edge=leg_of_edge, waypoint_offsets=fixed.waypoint_offsets, reversible=data.reversible,
+            bearing=turnaround.bearing if fixed.closes else None, distance_km=distance_km, data=path,
+            leg_of_edge=leg_of_edge, waypoint_offsets=fixed.waypoint_offsets, reversible=fixed.reversible,
         )
 
     def build_traced_from_edge_ids(
-        self, context: _RoadGraphContext, edge_ids: tuple[str, *tuple[str, ...]], destination: Coordinates,
+        self, context: _RoadGraphContext, edge_ids: tuple[str, *tuple[str, ...]], destination: Coordinates | None,
     ) -> TracedLoop:
         """クライアントが組み立てたEdge id列を、評価できる経路として検証して`TracedLoop`にする。
 
         区間の乗り換えで使う。フロントは候補の`edge_ids`から
         「Aの前半＋Bの後半」を作って送り返すため、**このグラフに実在し・順につながり・
-        起点から始まり・目的地へ着く**ことをここで確かめる（送られた列をそのまま信じると、
-        評価は成功するのに経路として成立しないルートが候補一覧へ並ぶ）。
+        起点から始まり・終点（目的地、無ければ出発地）へ着く**ことをここで確かめる（送られた列をそのまま信じると、
+        評価は成功するのに経路として成立しないルートが候補一覧へ並ぶ。周回どうしを乗り換えた経路が出発地へ戻ることもここで決まる）。
 
         終点は生成と同じく出て戻れるNodeへ寄せて解くため、比べる相手は元の候補が
         実際に終わったNodeになる——目的地を寄せ直した場合も、
@@ -1104,9 +1100,9 @@ class RoadGraphEngine:
                 _refuse_at_nodes(
                     context, f"経路がつながっていません index={index}", to_node=head, next_from_node=following_tail,
                 )
-        snapped = _snap(context, destination)
+        snapped = (context.origin_node, False) if destination is None else _snap(context, destination)
         if snapped is not None and heads[-1] != snapped[0]:
-            _refuse_at_nodes(context, "経路が目的地に着いていません", expected=snapped[0], actual=heads[-1])
+            _refuse_at_nodes(context, "経路が終点に着いていません", expected=snapped[0], actual=heads[-1])
 
         lengths = context.statics.edge_length_m[path].tolist()
         total_m = sum(lengths)
@@ -1522,13 +1518,15 @@ def _snap_destination(context: _RoadGraphContext, destination: Coordinates) -> i
 
 
 def _resolve_end(context: _RoadGraphContext, destination: Coordinates | None) -> tuple[int, Coordinates] | None:
-    """仕上げの終点のノード番号と基準点。目的地が無ければ出発地、あれば寄せたNodeと寄せたあとの地点。
-    目的地を寄せられなければNone。"""
+    """仕上げの終点のノード番号と基準点。目的地が無いか、目的地が出発地のNodeへ寄ったら出発地（周回。基準点も置いた出発地に
+    揃え、目的地を置かない周回と同じ候補を作る）、ほかは寄せたNodeと寄せたあとの地点。目的地を寄せられなければNone。"""
     if destination is None:
         return context.origin_node, context.origin
     node = _snap_destination(context, destination)
     if node is None:
         return None
+    if node == context.origin_node:
+        return node, context.origin
     return node, context.destination_correction or destination
 
 

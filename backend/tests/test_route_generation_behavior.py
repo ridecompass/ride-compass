@@ -198,6 +198,7 @@ async def test_spliced_route_is_evaluated_as_sent(engine_over):
         (SOUTH_WEST, NORTH_EAST, lambda edge_ids: edge_ids[:1] + edge_ids[2:]),  # 途中で途切れる
         (CENTER, NORTH_EAST, lambda edge_ids: edge_ids),  # 起点が違う
         (SOUTH_WEST, SOUTH_EAST, lambda edge_ids: edge_ids),  # 終点が違う
+        (SOUTH_WEST, None, lambda edge_ids: edge_ids),  # 目的地が無いのに出発地へ戻らない
         (SOUTH_WEST, NORTH_EAST, lambda edge_ids: [*edge_ids, "way-999-seg0-fwd"]),  # 道路網に無い区間を含む
     ],
 )
@@ -210,7 +211,8 @@ async def test_a_spliced_route_the_road_network_cannot_trace_is_refused(
 
     with caplog.at_level(logging.DEBUG):
         assert await generator.generate_spliced_route(
-            at(origin), at(destination), edges(candidate.edge_ids), start_time=DEPARTURE) == []
+            at(origin), None if destination is None else at(destination), edges(candidate.edge_ids),
+            start_time=DEPARTURE) == []
 
     levels = [r.levelno for r in caplog.records if re.search(r"osm-node-|way-\d", r.getMessage())]
     assert levels and set(levels) == {logging.DEBUG}
@@ -421,6 +423,82 @@ async def test_a_loop_is_ridden_the_easier_way_round_only_when_that_keeps_the_pl
         node_point(RING, 1), [node_point(RING, point) for point in waypoints], destination=None, max_routes=1, start_time=DEPARTURE)
 
     assert [candidate.node_ids for candidate in candidates] == [[node_key(n) for n in expected]]
+
+
+def _made_alike(candidates) -> list[tuple]:
+    """候補の作り方・種類・名前・逆回りが見える所（id・種類・名前・最速の印・通るノードの並び）。"""
+    return [(c.id, c.kind, c.direction_label, c.is_fastest, c.node_ids) for c in candidates]
+
+
+@pytest.mark.parametrize(
+    ("network", "origin", "waypoints", "distance"),
+    [
+        pytest.param(grid_network(), CENTER, [], (4.0, 1.5), id="距離あり・経由地なし"),
+        pytest.param(LATTICE, lattice_node(2, 2), [lattice_node(2, 3), lattice_node(3, 3)], (12.0, 2.0),
+                     id="距離あり・経由地を通って"),
+        # 逆に回ったほうが易しい輪（上のテスト）で、逆回りも同じに出ることを見る。
+        pytest.param(RING, 1, [3], None, id="距離なし・経由地を通って"),
+    ],
+)
+async def test_a_destination_on_the_origin_makes_the_same_loops_as_no_destination(
+    engine_over, network, origin, waypoints, distance,
+):
+    """目的地を出発地に置いても、目的地を置かない周回と同じ候補（種類・方位の名前・逆回り・最速の印なし）を作る。
+    違うと、同じ周回を頼んだのに、目的地の置き方で名前・回る向き・候補が変わる。"""
+    generator = engine_over(network, avoid_weight=1.0)
+    start = node_point(network, origin)
+    stops = [node_point(network, point) for point in waypoints]
+
+    async def generate(destination):
+        if distance is None:
+            return await generator.generate_via_waypoints(
+                start, stops, destination=destination, max_routes=3, start_time=DEPARTURE)
+        target, tolerance = distance
+        return await generator.generate_loops(
+            start, target, tolerance, max_routes=3, start_time=DEPARTURE,
+            points=FixedPoints(waypoints=stops, destination=destination))
+
+    without = await generate(None)
+    on_origin = await generate(start)
+
+    assert without and {c.kind for c in without} == {"loop"}
+    assert _made_alike(on_origin) == _made_alike(without)
+
+
+async def test_a_destination_that_snaps_to_the_origin_without_a_distance_or_waypoints_is_refused(engine_over):
+    """出発地のすぐ近く（同じ道路のノードへ寄る所）に置いた目的地へ距離を決めずに向かう要求は、出発地のすぐ隣で折り返す
+    だけの経路や空の経路を出さずに断る（理由の文は`test_route_generator.py`）。"""
+    generator = engine_over(grid_network())
+    near_origin = Coordinates(latitude=at(CENTER).latitude + LAT_STEP / 30, longitude=at(CENTER).longitude)
+
+    assert await generator.generate_via_waypoints(
+        at(CENTER), [], destination=near_origin, max_routes=3, start_time=DEPARTURE) == []
+    assert generator.last_no_candidates_reason is not None
+
+
+def _spliced_at_a_shared_node(candidates) -> list[str]:
+    """候補の1本の前半と、別の1本の後半を、両方が途中で通るノードでつないだ経路（どちらの候補とも違うもの）。"""
+    for first in candidates:
+        for second in candidates:
+            for i, node in enumerate(first.node_ids[1:-1], start=1):
+                for j, other in enumerate(second.node_ids[1:-1], start=1):
+                    edges = [*first.edge_ids[:i], *second.edge_ids[j:]]
+                    if node == other and edges not in ([*c.edge_ids] for c in candidates):
+                        return edges
+    raise AssertionError("途中で同じノードを通る候補の組が無い")
+
+
+async def test_loops_spliced_together_are_evaluated_as_one_route_back_to_the_origin(engine_over):
+    """周回の候補どうしを途中で乗り換えた経路も、出発地から出て出発地へ戻る1本として、送ったとおりに評価する。"""
+    generator = engine_over(grid_network())
+    candidates = await generator.generate_loops(
+        at(CENTER), 4.0, 1.5, max_routes=5, start_time=DEPARTURE, points=NO_POINTS)
+    edges = _spliced_at_a_shared_node(candidates)
+
+    (spliced,) = await generator.generate_spliced_route(at(CENTER), None, tuple(edges), start_time=DEPARTURE)
+
+    assert spliced.edge_ids == edges
+    assert_connected(spliced, CENTER, CENTER)
 
 
 @pytest.mark.parametrize(

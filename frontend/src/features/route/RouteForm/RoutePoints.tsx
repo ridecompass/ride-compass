@@ -10,13 +10,14 @@ import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
 import { cn } from "@/lib/cn";
 import type { Coordinates, PinRole, PlaceCandidate, PointTarget } from "@/types/route";
 
-import { MAP_PLACED, pointNames } from "@/features/route/pointNames";
+import { BACK_TO_ORIGIN, MAP_PLACED, pointNames } from "@/features/route/pointNames";
 
 import PointDetail from "./PointDetail";
 import PointMark from "@/components/PinMark/PointMark";
 
 type RoutePointsConditions = Pick<
   GenerationConditionsState,
+  | "distanceTargeted"
   | "waypoints"
   | "removeWaypoint"
   | "destination"
@@ -63,6 +64,7 @@ function sourceOf(found: PlaceCandidate | null): string {
 /**
  * 出発地・経由地・目的地。「出発地 › ①②③… ＋ › 目的地」を1行に並べ（経由地は地図のピンと同じ番号の丸。
  * 経由地が増えても出発地と目的地が欠けず、スクロールも要らない）、押した地点の詳しくを下に出す。
+ * 全長の目標を決めて目的地を置いていない間は、ルートが出発地へ戻ることを、目的地の行に出発地の印と名前で示す。
  */
 export default function RoutePoints({
   conditions,
@@ -77,8 +79,17 @@ export default function RoutePoints({
   savedPlaces,
   placing,
 }: RoutePointsProps) {
-  const { waypoints, removeWaypoint, destination, clearDestination, clearPoints, selectedPoint, selectPoint, foundAt } =
-    conditions;
+  const {
+    distanceTargeted,
+    waypoints,
+    removeWaypoint,
+    destination,
+    clearDestination,
+    clearPoints,
+    selectedPoint,
+    selectPoint,
+    foundAt,
+  } = conditions;
   const waypointCount = waypoints.length;
   const full = waypointsFull(waypoints);
 
@@ -90,7 +101,8 @@ export default function RoutePoints({
   const names = pointNames({ waypoints, destination, foundAt, originFound, originManual, originLocated });
   const originName = names.origin;
   const destinationFound = foundAt(destination);
-  const destinationName = names.destination;
+  const backToOrigin = distanceTargeted && destination === null;
+  const destinationName = backToOrigin ? BACK_TO_ORIGIN : names.destination;
 
   // 両端の札に名前を出すか。並び全体が1行に入りきるときだけ出し、入らなければ両端とも印だけにする（途中で切った名前は読めない。
   // 名前は押すと詳しくに出る）。出さない間も名前は札の中で幅を測れる形で置いてあり、出したときの幅を足して入りきるかを見る。
@@ -236,7 +248,7 @@ export default function RoutePoints({
       ›
     </span>
   );
-  const endChip = (role: "origin" | "destination", title: string, name: string) => (
+  const endChip = (role: "origin" | "destination", title: string, name: string, markRole: PinRole = role) => (
     <Button
       variant="ghost"
       size="bare"
@@ -246,7 +258,7 @@ export default function RoutePoints({
       aria-label={`${title}: ${name}`}
       onClick={() => selectPoint({ role })}
     >
-      <PointMark role={role} originLocated={originLocated} />
+      <PointMark role={markRole} originLocated={originLocated} />
       <span
         data-chip-name
         className={cn(
@@ -300,7 +312,7 @@ export default function RoutePoints({
             </Button>
           </span>
           {arrow}
-          {endChip("destination", "目的地", destinationName)}
+          {endChip("destination", "目的地", destinationName, backToOrigin ? "origin" : "destination")}
         </div>
         {/* 消すものが無い間も押せない状態で残す（置き場が動くと、並びの名前の出し分けが揺れる）。 */}
         <Button

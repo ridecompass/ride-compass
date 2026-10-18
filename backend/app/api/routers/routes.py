@@ -32,7 +32,6 @@ from app.domain.route_request import (
     SplicedTarget,
     check_points_within_reach,
     check_spliced_edge_count,
-    spliceable,
     check_waypoint_count,
     nothing_to_generate_error,
 )
@@ -130,13 +129,13 @@ class RouteGenerateRequest(StrictModel):
     # 起点から`MAX_ROUTE_DISTANCE_KM`以内という緩いガードのみ課す（詳細な妥当性はルーティング自体の
     # 成否に委ねる）。
     waypoints: list[Coordinates] | None = Field(default=None, max_length=MAX_WAYPOINTS)
-    # 指定時は起点に戻らず目的地で終わる（無ければ起点で終わる周回）。
+    # 指定時は目的地で終わる（無ければ起点で終わる周回。目的地が起点と同じ道路のNodeへ寄るときも周回）。
     destination: Coordinates | None = None
     # 出発時刻。風の時間変化評価（レグごとの通過予測時刻）の起点になる。naive値はJSTとして扱い、JSTの時刻にして持つ。
     start_time: datetime
     # 区間の乗り換え: クライアントが候補の`edge_ids`から区間を差し替えて組み立てた経路。
     # 指定時は探索を行わず、この経路だけを既存候補と同じ経路で評価して1件返す
-    # （`destination`が必須。`waypoints`・`max_routes`は使わない）。
+    # （経路は`destination`、無ければ出発地で終わる。`waypoints`・`max_routes`は使わない）。
     # 生成と同じコスト曲線（`prepare`が支配的）のため、別エンドポイントにせず同じ
     # ジョブ機構へ載せる。
     spliced_edge_ids: list[str] | None = Field(default=None, min_length=1, max_length=MAX_SPLICED_EDGES)
@@ -172,8 +171,6 @@ class RouteGenerateRequest(StrictModel):
             origin = Coordinates(latitude=self.latitude, longitude=self.longitude)
             check_points_within_reach(max(haversine_distance_km(origin, point) for point in points))
         if self.spliced_edge_ids:
-            if not spliceable(self.destination):
-                raise ValueError("spliced_edge_ids requires destination")
             first, *rest = self.spliced_edge_ids
             self._target = SplicedTarget(destination=self.destination, edge_ids=(first, *rest))
             return self
