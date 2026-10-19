@@ -23,6 +23,7 @@ from app.domain.axis_definitions import REQUEST_DYNAMIC_MATERIAL_IDS
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.region import EDGE_UNIT_MIN_ZOOM
 from app.domain.tuning import TUNING_PARAMETERS
+from app.domain.road_classes import EMPTY_ROAD_CLASSES
 from app.main import app
 from app.services.axis_preview_service import new_sample_cache
 from tests.admin_auth import AUTH_HEADERS
@@ -65,6 +66,8 @@ ROUTE_CASES = {
     # タイルの材料はDBの失敗を空へ倒し、地図の配信と同じく塗る道の無いタイルとして返す。
     ("POST", AXIS + "/preview-way-values"): (AXIS + "/preview-way-values", WAY_VALUES_BODY, 200),
     ("GET", "/api/admin/tuning"): ("/api/admin/tuning", None, 503),
+    ("GET", "/api/admin/road-classes"): ("/api/admin/road-classes", None, 503),
+    ("PUT", "/api/admin/road-classes"): ("/api/admin/road-classes", EMPTY_ROAD_CLASSES.model_dump(mode="json"), 503),
     ("PUT", "/api/admin/tuning/{param_id}"): (f"/api/admin/tuning/{TUNING_PARAMETERS[0].id}", {"value": None}, 503),
     ("GET", "/api/admin/material-catalog/{material_id}/value-shares"): (
         f"/api/admin/material-catalog/{CATEGORICAL}/value-shares",

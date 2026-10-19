@@ -6,7 +6,7 @@
 
 from typing import Literal, NamedTuple
 
-from app.domain.display_palette import ORDERED_END_COLOR_NAMES
+from app.domain.display_palette import ordered_ends_phrase
 from app.domain.divided_carriageway import DIVIDED_ROAD_NOTE
 from app.domain.gsi_tiles import TERRAIN_MIN_ZOOM
 from app.domain.landcover import LANDCOVER_CLASSES, LANDCOVER_RING_OUTER_M, LANDCOVER_TILE_MIN_ZOOM
@@ -262,8 +262,8 @@ def ordered_ends_text(axis: DisplayAxisSpec) -> str:
     ので、両端の行の名前と色の呼び名から組む。"""
     if axis.palette != "ordered":
         raise ValueError(f"{axis.key}は順序のある分類ではない")
-    dark, light = ORDERED_END_COLOR_NAMES
-    return f"「{axis.categories[0].label}」ほど{dark}、「{axis.categories[-1].label}」ほど{light}"
+    return ordered_ends_phrase(axis.categories[0].label, axis.categories[-1].label)
+
 
 
 def size_text(attr_id: str) -> str:

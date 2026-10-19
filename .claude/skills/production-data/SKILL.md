@@ -60,6 +60,15 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
   本番の写しとして直し続けない（次に変えるときは本番の今の定義から新しいJSONを作る）。
 - 完了の条件: 道具が「反映を確かめました」を出したこと（管理APIと公開の軸カタログの両方で見ている）。
   画面で変えたときは、本番の`GET /api/axis-catalog`で変えた軸を確かめる。
+- 道の区分（分け方・区分の条件・地図の線の層・転がり抵抗の割り当て・除外タブの設定）も本番の表が正本で、同じ形で
+  `backend/scripts/road_classes_apply.py`で全体を入れ替える（仕組みは[axis-studio.md](../../../docs/modules/backend/axis-studio.md)「道の区分（`domain/road_classes.py`・`scripts/road_classes_apply.py`）」）:
+
+  ```
+  python scripts/road_classes_apply.py <JSONのパス>               # 差を出すだけ
+  python scripts/road_classes_apply.py <JSONのパス> --apply <指紋>  # 書く
+  ```
+
+  打つ人・見せ方・JSONの置き場・完了の条件は軸の道具と同じ。JSONは本番の`GET /api/admin/road-classes`の今の全体から作る。
 - 軸の評価の式（`backend/app/domain/`の軸の評価）だけを変えた変更は、本番に出たあとに全部の軸の張り付きを本番で1回測る
   （`backend`で`python scripts/run_probe.py scripts/measure_axis_saturation.py`。読むだけ）。落ちた絞り込み・二重に数えた値は
   エラーにもテストの失敗にもならず値の偏りとしてだけ現れ、式だけの変更は派生の表も変えない。本番を読めるのは開発機なので、

@@ -16,6 +16,7 @@
 import pytest
 
 from app.domain import map_display
+from app.domain.display_palette import ORDERED_END_COLOR_NAMES
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.map_display import MapLayerSpec, map_layer_label, ordered_ends_text, size_sentence
 from app.domain.registry import DisplayAxisSpec, DisplayCategorySpec
@@ -66,7 +67,7 @@ def test_the_size_sentence_is_refused_when_the_rows_are_not_told_apart_by_size(r
 
 def test_the_ordered_colors_are_described_from_the_first_and_the_last_row():
     """行を足し替えても、説明は濃く塗る先頭の行と明るく塗る末尾の行を名指す。"""
-    dark, light = map_display.ORDERED_END_COLOR_NAMES
+    dark, light = ORDERED_END_COLOR_NAMES
 
     text = ordered_ends_text(axis(("先頭", None), ("中ほど", None), ("末尾", None), palette="ordered"))
 
