@@ -14,6 +14,8 @@ import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import Ruler, { type RulerFrame } from "@/components/ui/Ruler/Ruler";
 import { textVariants } from "@/components/ui/Text/Text";
 import { panelIconToggleClass, Toggle } from "@/components/ui/Toggle/Toggle";
+import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
 import { cn } from "@/lib/cn";
 
 /** 「ルート設定」区分のタブ。タブ列と選択状態はpage.tsxが持ち（見出し行に置くため）、
@@ -79,7 +81,6 @@ interface RouteFormProps {
 }
 
 const MAX_DISTANCE_KM = routeGenerateConfig.max_distance_km;
-const DISTANCE_TOLERANCE_KM = routeGenerateConfig.default_distance_tolerance_km;
 /** 全長の目標のルーラーのコマ。止まる刻みごとに1コマで（下限は1刻み分）、10kmごとに太い目盛りと数を付ける。 */
 const DISTANCE_FRAMES: RulerFrame[] = Array.from({ length: Math.floor(MAX_DISTANCE_KM / DISTANCE_STEP_KM) }, (_, i) => {
   const km = (i + 1) * DISTANCE_STEP_KM;
@@ -122,6 +123,8 @@ export default function RouteForm({
   const { distanceTargeted, setDistanceTargeted, distanceInput, setDistanceInput, maxRoutesInput, setMaxRoutesInput } =
     conditions;
   const distanceToggleName = distanceTargeted ? "全長の目標をやめる" : "全長の目標を決める";
+  // 許容差は管理画面の較正値。引けない間は幅の文を出さない（較正したのとは別の数を出さない）。
+  const distanceToleranceKm = clientTuningValue(useAxisCatalog(), CLIENT_TUNING_IDS.distanceToleranceKm);
 
   // 保存した地点を呼び出したら「条件」タブへ移り、置いた地点を選んで詳しくを出す（足した経由地は`onPlaceFound`が選ぶ）。
   function recallSavedPlace(role: PinRole, place: PlaceCandidate) {
@@ -172,7 +175,13 @@ export default function RouteForm({
               {distanceInput}km
             </span>
             <InfoPopover triggerAriaLabel="全長の目標の説明" triggerClassName="flex-none">
-              {`ルート全体の長さの目標です。作る候補は、この長さの±${DISTANCE_TOLERANCE_KM}kmに入るものだけです。外すと長さを決めず、目的地（周回なら経由地を回って出発地）へ良い道で向かいます。`}
+              {[
+                "ルート全体の長さの目標です。",
+                distanceToleranceKm === undefined
+                  ? ""
+                  : `作る候補は、この長さの±${distanceToleranceKm}kmに入るものだけです。`,
+                "外すと長さを決めず、目的地（周回なら経由地を回って出発地）へ良い道で向かいます。",
+              ].join("")}
             </InfoPopover>
           </div>
           <div className="flex flex-none items-center gap-1">

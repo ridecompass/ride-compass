@@ -30,6 +30,7 @@ from app.domain.errors import RoutingError, SearchAreaTooLargeError
 from app.domain.geo import haversine_distance_km
 from app.domain.loop_routing import TracedLoop
 from app.domain.route_request import NOTHING_TO_GENERATE, FixedPoints
+from app.domain.tuning import tuning_value
 from app.domain.route_search import (
     by_closeness_to_target,
     difficulty_order,
@@ -50,13 +51,6 @@ from app.domain.route import (
 )
 
 logger = logging.getLogger("ridecompass.generate")
-
-# Road Graph取得bboxの半径ヒューリスティック（自由に選ぶ部分の長さに対する比率）。折返し点は往路の
-# 実距離が自由に選ぶ部分の半分付近にあり、直線距離は迂回率のぶんそれより短いため、0.5より小さく取る
-# （比を上げるとbbox面積が二乗で効き、切り出す区間の数に比例するprepareの所要とメモリに響く）。
-# 半径が足りない場合は一対全探索がbboxで自然に切れ、折返し候補が欠けるだけで壊れないため、
-# この値は経験的に調整してよい。
-TURNAROUND_RADIUS_RATIO = 0.4
 
 # 折返し点候補のプール上限: 距離フィルタや復路探索の失敗で落ちる分を見越して
 # max_routesの3倍（下限12・上限40）だけ選定し、合格が`max_routes`件に達した時点で
@@ -173,7 +167,8 @@ class _DistanceFinish:
         # 見積もるので、残りは実際より長く、範囲は広い側に倒れる。経由地が無ければ目標そのもの。
         stops = [origin, *self.points.waypoints]
         fixed_km = sum(haversine_distance_km(a, b) for a, b in zip(stops, stops[1:]))
-        return max(0.0, self.distance_km - fixed_km) * TURNAROUND_RADIUS_RATIO
+        # 半径が足りなければ一対全探索が範囲で切れ、折返し点の候補が欠けるだけで壊れない。
+        return max(0.0, self.distance_km - fixed_km) * tuning_value("search.turnaround_radius_ratio")
 
     @property
     def log_detail(self) -> str:

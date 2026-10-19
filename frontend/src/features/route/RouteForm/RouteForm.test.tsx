@@ -3,7 +3,8 @@
  * 描き、「重み」「除外」タブと「保存済み」タブの「プリセット」には受け取った中身を置き、「保存済み」タブの「地点」には保存した地点を並べる。
  *
  * 見るもの: 候補数のステッパー（今の件数・1件ずつの増減・端で押せない）、全長の目標の入り切り（押して上がる値・
- * 外している間はルーラーを動かせない）とルーラーのコマ（5km刻みの範囲・今の値）と動かして上がる値、
+ * 外している間はルーラーを動かせない）とルーラーのコマ（5km刻みの範囲・今の値）と動かして上がる値、全長の目標の(i)の奥の
+ * 許容差（軸カタログが配る較正値で、引けない間は書かない）、
  * 周回の切り替え（押している状態と、押して上げる値）、地点の並び（出発地・経由地の番号の丸・終点。周回の間の終点は出発地の印と
  * 名前で押せない）と、距離・候補数の値と札の名前の文字の大きさのそろい、
  * 押した地点の詳しく（呼び名・出どころ・名前・その位置から引いた辺り）、出発地の印の色、
@@ -33,7 +34,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ORIGIN_MARK_FALLBACK_COLOR, PIN_MARK_COLOR } from "@/components/PinMark/PinMark";
 import { Tabs } from "@/components/ui/Tabs/Tabs";
-import { onBackend } from "@/testing/backendServer";
+import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
+import { onBackend, serveAxisCatalog } from "@/testing/backendServer";
+import { catalogResponse } from "@/testing/catalogAxes";
 import { AZA_CANDIDATE as AZA, FACILITY_CANDIDATE as FACILITY } from "@/testing/routeFixtures";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { PointTarget } from "@/types/route";
@@ -81,6 +84,7 @@ const DESTINATION = { latitude: 35.1, longitude: 139.1 };
 // 詳しくは置いた地点の辺りを引く。辺りを見ないテストには、辺り無しと答える（見るテストは後から応答を渡す）。
 beforeEach(() => {
   onBackend("GET", "/api/place-area", () => Response.json({ area: null }));
+  serveAxisCatalog(catalogResponse([]));
 });
 
 /** 選んでいる地点を持つ親の代わり（選ぶと上げ、その地点の詳しくを出し直す）。 */
@@ -248,6 +252,20 @@ describe("RouteForm 全長の目標", () => {
       expect(setDistanceTargeted).toHaveBeenCalledExactlyOnceWith(raised);
     },
   );
+
+  it.each([
+    [
+      { [CLIENT_TUNING_IDS.distanceToleranceKm]: 3 },
+      "ルート全体の長さの目標です。作る候補は、この長さの±3kmに入るものだけです。",
+    ],
+    [{}, "ルート全体の長さの目標です。外すと長さを決めず"],
+  ])("(i)の奥に、軸カタログが配る許容差（%o）を書く", async (clientTuning, text) => {
+    serveAxisCatalog(catalogResponse([], { client_tuning: clientTuning }));
+    renderForm();
+    await userEvent.click(button("全長の目標の説明を表示"));
+
+    expect(await screen.findByText(new RegExp(`^${text}`))).toBeInTheDocument();
+  });
 
   it("ルーラーは5kmから上限まで5km刻みのコマを持ち、今の値のコマを選んでいる", () => {
     renderForm({ distanceInput: "30" });

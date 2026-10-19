@@ -34,6 +34,7 @@ from app.domain.route_request import (
     check_spliced_edge_count,
     check_waypoint_count,
     nothing_to_generate_error,
+    resolve_distance_tolerance_km,
 )
 from app.domain.geo import Latitude, Longitude, haversine_distance_km
 from app.domain.route import Coordinates, RouteCandidate
@@ -89,7 +90,9 @@ class RouteGenerateRequest(StrictModel):
     # 全長の目標距離（±`distance_tolerance_km`）。経由地・目的地を置いても同じ意味で、省略すると全長の目標を置かない
     # （置いた点へ良い道で向かう）。
     distance_km: float | None = Field(default=None, gt=0, le=MAX_ROUTE_DISTANCE_KM)
-    distance_tolerance_km: float = Field(gt=0, le=MAX_DISTANCE_TOLERANCE_KM)
+    # 目標距離からの許容差（km）。**省略が既定**で、そのとき使う値はリクエスト処理時に較正値から読む
+    # （`domain/route_request.py: resolve_distance_tolerance_km`）。使った値はconditionsへエコーする。
+    distance_tolerance_km: float | None = Field(default=None, gt=0, le=MAX_DISTANCE_TOLERANCE_KM)
     # 評価重みのリクエスト単位の上書き。省略時はAXIS_DEFINITIONS由来の既定値
     # （`RoutePreference()`）を使う。
     # 実際に適用された値はレスポンスのconditionsへエコーされる。
@@ -186,6 +189,7 @@ class GenerationConditions(StrictModel):
     longitude: float
     # 全長の目標距離（無ければNone）。
     distance_km: float | None
+    # 使った目標距離からの許容差（要求が省略したときは較正値）。
     distance_tolerance_km: float
     route_preference: RoutePreferenceWeights
     # 主観的割増と時間の換算レート（P）。
@@ -323,6 +327,7 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
 
         job_registry.set_running(job_id)
         target = request.target
+        distance_tolerance_km = resolve_distance_tolerance_km(request.distance_tolerance_km)
         generated = await generate_route_candidates(
             partial(
                 open_setup,
@@ -338,7 +343,7 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
             target=target,
             start_time=request.start_time,
             max_routes=request.max_routes,
-            distance_tolerance_km=request.distance_tolerance_km,
+            distance_tolerance_km=distance_tolerance_km,
         )
         applied = generated.conditions
         response = RouteGenerateResponse(
@@ -348,7 +353,7 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
                 latitude=request.latitude,
                 longitude=request.longitude,
                 distance_km=target.distance_km if isinstance(target, DistanceTarget) else None,
-                distance_tolerance_km=request.distance_tolerance_km,
+                distance_tolerance_km=distance_tolerance_km,
                 route_preference=RoutePreferenceWeights(applied.route_preference.weights),
                 penalty_strength=applied.penalty_strength,
                 max_average_grade_percent=applied.max_average_grade_percent,

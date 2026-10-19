@@ -252,10 +252,10 @@ RouteGenerator.generate_loops(origin, distance_km, distance_tolerance_km, max_ro
   RouteCandidate一覧
 ```
 
-- 半径ヒューリスティック: `TURNAROUND_RADIUS_RATIO = 0.4`（自由に選ぶ部分の長さに対する比率。自由に選ぶ部分の長さは、
+- 半径ヒューリスティック: 較正値`search.turnaround_radius_ratio`（自由に選ぶ部分の長さに対する比率。自由に選ぶ部分の長さは、
   目標距離から出発地→経由地を順に結ぶ直線の長さを引いた残りで、経由地が無ければ目標距離そのもの。直線で引くので残りは
   実際より長く、範囲は広い側に倒れる。折返し点は往路の実距離が自由に選ぶ部分の半分付近にあり、直線距離はそれより短い
-  [実道路の迂回率は概ね1.3]ため、0.5ではなく0.4から始める。半径不足時は一対全探索がbboxで自然に切れ
+  [実道路の迂回率は概ね1.3]ため、既定は0.5ではなく0.4にする。半径不足時は一対全探索がbboxで自然に切れ
   リング[折返し候補の集合]が欠けるだけで壊れない）。
 - 候補数: `RouteGenerateRequest.max_routes`（`ge=MIN_ROUTES`[1]・`le=MAX_ROUTES`[15]・
   `default=DEFAULT_MAX_ROUTES`[8]）。経由地・目的地の有無によらず同じに効く。折返し点候補プールのサイズは
@@ -299,7 +299,7 @@ RouteGenerator.generate_loops(origin, distance_km, distance_tolerance_km, max_ro
 ### 較正値（走ってみて決める値）
 
 ターンの秒数・停止要因の待ち・走行モデルの標準値・信号とみなす半径・候補の選び方の値（折返し点・周回の重なりの上限、
-周回の全長の見込み等）は、いずれも実感や少ない実測に合わせて置いた値で、較正されていない。**`domain/tuning.py`が唯一の宣言**で、消費者はそこから読む
+周回の全長の見込み、目標距離からの許容差の既定等）は、いずれも実感や少ない実測に合わせて置いた値で、較正されていない。**`domain/tuning.py`が唯一の宣言**で、消費者はそこから読む
 （定数としても持つと二重になり、片方だけが変わる）。
 
 較正値の宣言は「変えたとき効くまでに何が要るか」（`TuningEffect`）を持つ。これは
@@ -464,8 +464,8 @@ idの文字列や要求の形から決め直さない。
 
 対象bboxは`domain/region.py: bbox_covering_points([origin, *points], radius_km + マージン)`の1通り。`points`は置いた点
 （経由地・目的地）、`radius_km`は仕上げの戦略が自由に選ぶ部分の届く半径（`route_generator.py: _Finish.search_radius_km`）。
-距離ありは自由に選ぶ部分の長さ×`TURNAROUND_RADIUS_RATIO`（上の「半径ヒューリスティック」）、置いた点だけをつなぐ距離なしと
-区間の差し替えは0（マージンの最低値だけ）。経由地も目的地も無い周回は、起点を中心に目標距離×`TURNAROUND_RADIUS_RATIO`の
+距離ありは自由に選ぶ部分の長さ×較正値`search.turnaround_radius_ratio`（上の「半径ヒューリスティック」）、置いた点だけをつなぐ距離なしと
+区間の差し替えは0（マージンの最低値だけ）。経由地も目的地も無い周回は、起点を中心に目標距離×その比の
 円を覆う矩形になる。
 
 `GraphService.get_search_slice`で探索範囲の区間（`domain/road_network.py: RoadSlice`）を受け取り、
@@ -645,7 +645,7 @@ Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を
 3. 全Nodeについて経由路長と合成コストを`combine_forward_backward_at_nodes`で求め
    （そのNodeで曲がる費用を含む）、
    合成コスト最小のNode（＝経由地無しの従来の単一生成が返す経路、"最良路"）の長さの
-   `ALTERNATIVE_MAX_STRETCH`（1.3）倍以内のNodeだけを候補にする。
+   較正値`search.alternative_max_stretch`の倍以内のNodeだけを候補にする。
 4. 経路長と所要時間あたりの平均difficulty`(合成コスト/所要時間-1)/P×100`（`domain/evaluation.py: difficulty_from_cost`）のパレート層の順、層の中は平均difficultyの昇順、同点はNode index順に
    並べる（`rank_by_pareto_layers`。折返し点と違い経路長では同点を割らない）。ただし最良路のNodeは常に
    先頭へ回す——伸び率の許す範囲でより平均difficultyの低い経路が他に存在すれば難易度順
@@ -1089,7 +1089,7 @@ backendは置き場を読むだけで、読むのは`current()`の1か所であ�
   例: 経由地の数・経由地と目的地の遠さ・乗り換えで組んだ経路の長さ。画面は422の文を結果欄へ
   そのまま出すため、組み込みの制約の英語の文（`ValueError`なら「Value error, 」の前置き）が利用者に見える。
   件数の制約は契約（OpenAPI）に載せるため残し、制約より先に動く検証（`mode="before"`）で日本語にする。
-  画面から届かない値（目標距離からの許容差等。画面は既定値をそのまま送る）は組み込みの文のままにする。
+  画面から届かない値（目標距離からの許容差等。画面は送らず、省略は較正値で決まる）は組み込みの文のままにする。
 - ジョブ失敗時、クライアントへは汎用メッセージのみ返す: 例外の生メッセージ
   （PostGIS/内部処理のエラー詳細を含みうる）は`logger.exception`でサーバーログに
   のみ残す。

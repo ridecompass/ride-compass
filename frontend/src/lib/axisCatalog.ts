@@ -50,6 +50,8 @@ export const CLIENT_TUNING_IDS = {
   cdaM2: "speed.cda_m2",
   maxDescentKmh: "speed.max_descent_kmh",
   walkingKmh: "speed.walking_kmh",
+  /** 全長の目標からの許容差（km）。全長の目標の説明文に出す（`features/route/RouteForm`）。 */
+  distanceToleranceKm: "search.distance_tolerance_km",
 } as const satisfies Record<string, ClientTuningId>;
 
 /** 較正値を1つ引く。**引けなければ`undefined`**——ここで既定を作らない。既定を作ると、

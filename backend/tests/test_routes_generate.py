@@ -29,7 +29,7 @@ from app.api import dependencies
 from app.config import settings
 from app.domain.hard_filters import HARD_FILTERS
 from app.domain.road_classes import AvoidanceClassification, AvoidanceSection
-from app.domain.route_request import DEFAULT_DISTANCE_TOLERANCE_KM, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
+from app.domain.route_request import DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
 from app.domain.tuning import TUNING_VALUES
 from app.domain.route_request import ASSUMED_SPEED_KMH
 from app.infrastructure import rate_limiter
@@ -61,7 +61,6 @@ BEYOND_REACH = {"latitude": 37.0, "longitude": 139.8}  # 格子から100km超
 JAPANESE = re.compile(r"[぀-ヿ一-鿿]")  # かな・漢字
 #: 画面がいつも送る欄（値は画面の既定）。
 ALWAYS_SENT = {
-    "distance_tolerance_km": DEFAULT_DISTANCE_TOLERANCE_KM,
     "road_avoidance": {},
     "max_routes": DEFAULT_MAX_ROUTES,
     "assumed_speed_kmh": ASSUMED_SPEED_KMH,
@@ -293,14 +292,20 @@ async def test_the_overrides_that_were_sent_are_echoed(client):
     assert conditions["distance_tolerance_km"] == 2.0
 
 
-async def test_an_omitted_rate_is_the_calibrated_value_at_the_time_of_generation(client, monkeypatch):
+@pytest.mark.parametrize(("field", "tuning_id", "values"), [
+    ("penalty_strength", "evaluation.penalty_strength", (0.37, 0.61)),
+    ("distance_tolerance_km", "search.distance_tolerance_km", (3.0, 4.0)),
+])
+async def test_an_omitted_value_is_the_calibrated_value_at_the_time_of_generation(
+    client, monkeypatch, field, tuning_id, values,
+):
     """管理画面で変えた較正値は、プロセスを入れ替えずに次の生成から効き、使った値として返る。"""
-    monkeypatch.setitem(TUNING_VALUES, "evaluation.penalty_strength", 0.37)
-    first = (await _generate(client))["result"]["conditions"]["penalty_strength"]
-    monkeypatch.setitem(TUNING_VALUES, "evaluation.penalty_strength", 0.61)
-    second = (await _generate(client))["result"]["conditions"]["penalty_strength"]
+    echoed = []
+    for value in values:
+        monkeypatch.setitem(TUNING_VALUES, tuning_id, value)
+        echoed.append((await _generate(client))["result"]["conditions"][field])
 
-    assert (first, second) == (0.37, 0.61)
+    assert tuple(echoed) == values
 
 
 @pytest.mark.parametrize(("sent", "applied"), [
