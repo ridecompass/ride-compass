@@ -17,7 +17,7 @@
 | services | `axis_registry_service.py`・`axis_preview_service.py`・`road_class_service.py` |
 | infrastructure | `axis_definition_models.py`・`axis_definition_repository.py`・`road_class_models.py`・`road_class_repository.py` |
 | api | `axis_admin.py`・`axis_catalog.py`・`road_class_admin.py` |
-| scripts | `measure_axis_saturation.py`・`axis_apply.py`・`road_classes_apply.py`・`_admin_apply.py`（本番の管理APIへ差を見てから書く道具の共有部品。指紋・差の行・宛先と認証情報） |
+| scripts | `measure_axis_saturation.py`・`axis_apply.py` |
 
 ## 分布プレビュー・材料の値ごとの割合（`services/axis_preview_service.py`・`domain/value_distribution.py`）
 
@@ -101,7 +101,7 @@ JSONはリポジトリの外に置き、コミットしない（定義は較正�
 - 宛先はリポジトリの`production-origins.json`（`_production_origins.py`）、認証情報は`backend/.env.oracle.local`の
   `ADMIN_BASIC_AUTH_USERNAME`・`ADMIN_BASIC_AUTH_PASSWORD`（`_prod_env.py`）から読む。引数に取らず、出力にも出さない。
 
-## 道の区分（`domain/road_classes.py`・`scripts/road_classes_apply.py`）
+## 道の区分（`domain/road_classes.py`）
 
 道の分け方と区分（条件）・地図の線の層・転がり抵抗の較正値の割り当て・除外タブの見出しと既定は、管理DBの表
 （`infrastructure/road_class_models.py`）が正本で、コードは写しも既定も持たない。表が空なら区分は0件で、地図・除外タブには何も出ない。
@@ -114,9 +114,7 @@ JSONはリポジトリの外に置き、コミットしない（定義は較正�
   何も変えずに409でDBの断りの文を返す。確定してからプロセス内の全体を差し替え、起動時も表から読む（単一プロセスが前提）。
 - **軸カタログは解決した形で配る**（`road_classes`の欄）。公開した分け方だけを出し、色・タグの注・層の説明のうち区分から
   組む部分と、条件の項のタイルのプロパティ（タイルに載らない事実はnull）をbackendが決める。指紋（`generation`）は全体の中身から作る。
-- **本番へ入れるのは`scripts/road_classes_apply.py`**。全体のJSON（全体の読みと同じ形）と本番の今の全体の差を出し、差を出したときの
-  指紋を`--apply`に渡したときだけ入れ替える。書いた後は、全体の読みと、軸カタログの区分の指紋の両方で反映を確かめる。
-  JSONはリポジトリの外に置き、コミットしない。
+- **本番へは管理APIで全体を入れる**（`PUT /api/admin/road-classes`）。全体のJSONは本番の今の全体（`GET`）から作り、リポジトリの外に置く。
 
 ## データモデル（`domain/axis_definitions.py`）
 
