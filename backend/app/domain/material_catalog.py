@@ -83,6 +83,7 @@ from app.domain.material_sql import (
     MOTOR_VEHICLE_NORMALIZED_SQL,
     TUNNEL_NORMALIZED_SQL,
     tag_is_value_sql,
+    normalized_tag_sql,
     tag_absent_is_false_sql,
     tag_note,
 )
@@ -413,6 +414,68 @@ _SMOOTHNESS_VALUE_LABELS: dict[str, str] = {
     "impassable": "通行不能",
 }
 
+# 道の区分を決める事実（タグの値を束ねずに持つ材料）の対訳。値の意味はOSM wikiのKey:access・Key:cycleway・
+# Key:segregated・Key:motorroadの定義による。
+_ACCESS_VALUE_LABELS: dict[str, str] = {
+    "yes": "通ってよい",
+    "no": "通行禁止",
+    "designated": "通行を指定",
+    "permissive": "所有者の許しで通ってよい",
+    "dismount": "降りて押して通る",
+    "use_sidepath": "並ぶ専用の道を使う",
+    "destination": "目的地へ行くときだけ通ってよい",
+    "private": "関係者だけ",
+}
+_CYCLEWAY_VALUE_LABELS: dict[str, str] = {
+    "track": "自転車道[車道と分離]",
+    "lane": "自転車レーン",
+    "shared_lane": "車と共用の帯",
+    "share_busway": "バスと共用の帯",
+    "opposite_lane": "逆向きの自転車レーン",
+    "opposite": "自転車だけ逆向きに通れる",
+    "separate": "別の道として描いた自転車道",
+    "shoulder": "路肩",
+    "no": "なし",
+}
+#: cyclewayの各タグが道のどちら側を指すか（材料の説明に添える）。タグを足して書き漏らすとimport時に落ちる。
+_CYCLEWAY_SIDE_NOTES: dict[str, str] = {
+    "cycleway": "",
+    "cycleway:left": "のうち、道の形の向きの左側のもの",
+    "cycleway:right": "のうち、道の形の向きの右側のもの",
+    "cycleway:both": "のうち、両側のもの",
+}
+_SEGREGATED_VALUE_LABELS: dict[str, str] = {"yes": "歩行者と分けて通る", "no": "歩行者と混ざって通る"}
+_MOTORROAD_VALUE_LABELS: dict[str, str] = {"yes": "自動車専用道路", "no": "自動車専用でない"}
+
+
+def _tag_fact_material(
+    material_id: str,
+    tag: str,
+    label: str,
+    meaning: str,
+    value_labels: dict[str, str],
+    primary_attribute: PrimaryAttributeSpec,
+    missing_semantics: MissingSemantics,
+) -> MaterialSpec:
+    """道の区分を決める事実として、タグの値を区分へ束ねずに持つ材料。タイルにも道路網にも載せ、
+    束ね方を変えてもタイルと道路網を作り直さずに済むようにする。"""
+    value_sql = normalized_tag_sql(tag)
+    return MaterialSpec(
+        material_id=material_id,
+        label=label,
+        description=f"{meaning}OSMのタグ({tag})の値を、区分へ束ねずに持ちます。",
+        dtype="categorical",
+        tile_property=material_id,
+        primary_attribute=primary_attribute,
+        value_labels=value_labels,
+        value_sql=value_sql,
+        coverage=WayMaterialCoverageSpec(
+            missing_condition=f"{value_sql} IS NULL",
+            source=f"OSM wayのタグ {tag}",
+            missing_semantics=missing_semantics,
+        ),
+    )
+
 
 def _landcover_description(cls: LandcoverClass) -> str:
     """表示名だけでは何を含むか読み取れないので、地図の凡例と同じ分類の説明を添える。"""
@@ -670,7 +733,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         description="OSMの路面種別タグ(surface)の生値（例: asphalt/gravel等）。区分（路面の区分）より細かく、タグの値ごとにスコアを設定したい場合に使います。",
         dtype="categorical",
         # 区分へ束ねる前のタグの値そのもの（正規化: lower/btrim）。束ねた値は材料surface_class。
-        tile_property=None,
+        tile_property="surface",
         primary_attribute=ATTR_SURFACE,
         value_labels={tag: label for c in SURFACE_CLASSES for tag, label in c.tags.items()},
         value_sql=SURFACE_NORMALIZED_SQL,
@@ -804,6 +867,31 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
             missing_semantics="definite",
         ),
     ),
+    # --- 道の区分を決める事実（タグの値を束ねずに持つ）。区分の材料（cycleway_class等）と除外の行はここから作れる ---
+    "bicycle": _tag_fact_material(
+        "bicycle", "bicycle", "自転車の通行", "自転車が通ってよいか（禁止・指定・許可等）。",
+        _ACCESS_VALUE_LABELS, ATTR_CYCLEWAY, "unknown",
+    ),
+    "foot": _tag_fact_material(
+        "foot", "foot", "歩行者の通行", "歩行者が通ってよいか（禁止・指定・許可等）。",
+        _ACCESS_VALUE_LABELS, ATTR_CYCLEWAY, "unknown",
+    ),
+    "segregated": _tag_fact_material(
+        "segregated", "segregated", "歩行者との分離", "自転車と歩行者が通る道で、通る所が分けられているか。",
+        _SEGREGATED_VALUE_LABELS, ATTR_CYCLEWAY, "unknown",
+    ),
+    "motorroad": _tag_fact_material(
+        "motorroad", "motorroad", "自動車専用道路", "高速道路でない道が、自動車専用の標識を持つか。",
+        _MOTORROAD_VALUE_LABELS, ATTR_HIGHWAY, "definite",
+    ),
+    **{
+        tag.replace(":", "_"): _tag_fact_material(
+            tag.replace(":", "_"), tag, f"自転車の通り道[{tag}]",
+            f"道に沿う自転車の通り道（レーン・分離した自転車道・共用の帯等）{_CYCLEWAY_SIDE_NOTES[tag]}。",
+            _CYCLEWAY_VALUE_LABELS, ATTR_CYCLEWAY, "definite",
+        )
+        for tag in CYCLEWAY_TAG_NAMES
+    },
     "smoothness": MaterialSpec(
         material_id="smoothness",
         label="路面の状態",
