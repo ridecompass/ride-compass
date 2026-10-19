@@ -94,6 +94,8 @@ from app.domain.map_display import (
     LIGHTNING_ICON_SCALE,
     TERRAIN_EXAGGERATION,
     WEATHER_MARK_HALO_WIDTH_PX,
+    WIND_FULL_SCALE_MS,
+    WIND_ICON_SCALE_RANGE,
     POINT_OPACITY_BY_ATTR,
     POINT_RADIUS_PX,
     POINT_ICON_SIZE_PX,
@@ -119,6 +121,8 @@ from app.domain.weather_display import (
     RISK_LEVEL_COLORS,
     THUNDER_ACTIVITY_LEVELS,
     TORNADO_POTENTIAL_LEVELS,
+    WIND_CALM_BELOW_MS,
+    WIND_SPEED_COLOR_STOPS,
 )
 from app.domain.display_palette import (
     SEMANTIC_COLORS,
@@ -148,6 +152,8 @@ from app.domain.leg_costs import MAX_TIME_BINS, MISSING_TRAVEL_DATA_WORDING, TIM
 from app.config import Settings
 from app.domain.route_preference import ENABLED_AXIS_WEIGHT
 from app.domain.tuning import client_tuning_values
+from app.domain.weather import PRECIPITATION_MIN_MM
+from app.infrastructure.msm_client import DEFAULT_UPDATE_INTERVAL_SECONDS as MSM_UPDATE_INTERVAL_SECONDS
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
 from app.infrastructure.job_registry import JOB_TTL_SECONDS
 from app.services.tile_version_service import TILE_SHAPES
@@ -238,6 +244,7 @@ def _weather_element_entry(element: WeatherElement) -> dict:
         "kind": element.kind,
         "label": element.label,
         "frameRule": {"kind": element.frame_rule.kind, "windowMinutes": element.frame_rule.window_minutes},
+        "gridValue": element.grid_value,
         "levelScale": element.level_scale,
         "description": element.description,
         # 時刻の段の順（近い時刻から）。画面のデータ層は、時刻一覧をそのパスから取り、行を読み方に従って
@@ -404,6 +411,8 @@ def main() -> None:
             },
             "weather": {
                 "markHaloWidthPx": WEATHER_MARK_HALO_WIDTH_PX,
+                "windIconScaleRange": list(WIND_ICON_SCALE_RANGE),
+                "windFullScaleMs": WIND_FULL_SCALE_MS,
                 "lightningIconScale": LIGHTNING_ICON_SCALE,
                 "markSizeByZoom": [list(pair) for pair in MARK_SIZE_BY_ZOOM],
                 "floodLineWidthByZoom": [list(pair) for pair in FLOOD_LINE_WIDTH_BY_ZOOM],
@@ -461,22 +470,26 @@ def main() -> None:
         WEATHER_SCALES_PATH,
         {
             "precipitation": [s._asdict() for s in PRECIPITATION_COLOR_STOPS],
+            "wind_speed": [s._asdict() for s in WIND_SPEED_COLOR_STOPS],
             "risk_levels": [level._asdict() for level in RISK_LEVEL_COLORS],
             "linear_rainband_color": LINEAR_RAINBAND_COLOR,
             "linear_rainband_outline_color": LINEAR_RAINBAND_OUTLINE_COLOR,
             "linear_rainband_outline_casing_color": LINEAR_RAINBAND_OUTLINE_CASING_COLOR,
             "thunder_activity": [level._asdict() for level in THUNDER_ACTIVITY_LEVELS],
             "tornado_potential": [level._asdict() for level in TORNADO_POTENTIAL_LEVELS],
+            "wind_calm_below_ms": WIND_CALM_BELOW_MS,
+            "precipitation_none_below_mm": PRECIPITATION_MIN_MM,
         },
     )
     # 画面が取り直す間隔。新しい値が出る間隔（配信元の更新・backendの作り直し）そのもので、これより短く
-    # 取り直しても新しい値は無い。実行時に変わりうるもの（プリウォームの間隔は環境変数）も、生成物は宣言の既定値を
-    # 運ぶ——ずれても画面の鮮度が遅れるか取り直しが増えるだけ。
+    # 取り直しても新しい値は無い。実行時に変わりうるもの（プリウォームの間隔は環境変数、MSMのrun更新間隔は
+    # 配信元のメタ情報）も、生成物は宣言の既定値を運ぶ——ずれても画面の鮮度が遅れるか取り直しが増えるだけ。
     _write_json(
         REFRESH_INTERVALS_PATH,
         {
             "amedas_seconds": AMEDAS_REFRESH_INTERVAL_MINUTES * 60,
             "jma_tile_index_seconds": Settings.model_fields["jma_tile_prewarm_interval_minutes"].default * 60,
+            "msm_seconds": MSM_UPDATE_INTERVAL_SECONDS,
             # 基礎地図のタイルをブラウザが持つ時間。管理画面のタイルキャッシュの消去が各利用者の画面へ届くまでの遅れ。
             "basemap_browser_cache_seconds": BASEMAP.max_age_seconds,
         },

@@ -2,23 +2,28 @@ from datetime import datetime
 from typing import TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import ValidationError
 
 from app.api.dependencies import (
     get_amedas_service,
     get_flood_service,
     get_warning_service,
     get_wbgt_service,
+    get_weather_service,
 )
 from app.api.rate_limit import enforce_rate_limit
 from app.config import settings
 from app.domain.geo import Latitude, Longitude
 from app.domain.jma_amedas import AmedasObservation
+from app.domain.msm_grid import MSM_GRID_MAX_AREA_SQ_DEG, MsmGridForecast
+from app.domain.region import BoundingBox
 from app.domain.route import Coordinates
 from app.domain.time_zone import JST
 from app.services.flood_service import FloodForecasts, FloodService
 from app.services.warning_service import WarningService, WeatherWarnings
 from app.services.wbgt_service import WbgtService, WbgtStatus
 from app.services.jma_amedas_service import JmaAmedasService
+from app.services.weather_service import WeatherService
 
 
 router = APIRouter()
@@ -101,3 +106,24 @@ async def get_amedas(
         await amedas_service.get_nearest_observation(Coordinates(latitude=latitude, longitude=longitude)),
         "アメダス観測値の取得に失敗しました",
     )
+
+
+@router.get("/api/weather/msm-grid", response_model=MsmGridForecast)
+async def get_msm_grid(
+    http_request: Request,
+    min_lon: Longitude,
+    min_lat: Latitude,
+    max_lon: Longitude,
+    max_lat: Latitude,
+    weather_service: WeatherService = Depends(get_weather_service),
+) -> MsmGridForecast:
+    """表示範囲の中の、数値予報モデル（MSM）の格子点ごとの時別の風・降水（格子点の値のまま）。格子点が多ければ、格子の原点から
+    数えて同じ間隔おきの格子点だけを返す。範囲が不正か広すぎれば400、MSMを読めなければ502。"""
+    enforce_rate_limit(http_request, "msm-grid", settings.msm_grid_rate_limit_per_minute)
+    try:
+        bbox = BoundingBox(min_latitude=min_lat, min_longitude=min_lon, max_latitude=max_lat, max_longitude=max_lon)
+    except ValidationError:
+        raise HTTPException(status_code=400, detail="表示範囲が不正です。") from None
+    if (max_lat - min_lat) * (max_lon - min_lon) > MSM_GRID_MAX_AREA_SQ_DEG:
+        raise HTTPException(status_code=400, detail="表示範囲が広すぎます。ズームインしてください。")
+    return _or_502(await weather_service.get_msm_grid(bbox), "気象データの取得に失敗しました")

@@ -4,6 +4,16 @@ import numpy as np
 
 from app.domain.rain import StationRainMaterials
 from app.domain.msm import wind_speed_and_direction
+from app.domain.msm_grid import (
+    MSM_GRID_MAX_POINTS,
+    PRECIPITATION_MM_DECIMALS,
+    WIND_DIRECTION_DEG_DECIMALS,
+    WIND_SPEED_MS_DECIMALS,
+    MsmGridForecast,
+    MsmGridPointForecast,
+    rounded_coordinates,
+    rounded_rows,
+)
 from app.domain.route import Coordinates
 from app.domain.region import BoundingBox
 from app.domain.wind import DEPARTURE_WIND_DECIMALS, DepartureWind, WindForecastSeries
@@ -40,6 +50,40 @@ class WeatherService:
         return DepartureWind(
             speed_ms=round(float(speed[0]), DEPARTURE_WIND_DECIMALS),
             direction_deg=round(float(direction[0]), DEPARTURE_WIND_DECIMALS),
+        )
+
+    async def get_msm_grid(self, bbox: BoundingBox) -> MsmGridForecast | None:
+        """`bbox`の中のMSMの格子点（点の数が多ければ間引く）ごとの、時別の風と降水（格子点の値のまま）。読めなければNone。"""
+        try:
+            series = await msm_client.read_weather_grid(
+                bbox.min_latitude, bbox.min_longitude, bbox.max_latitude, bbox.max_longitude, MSM_GRID_MAX_POINTS,
+            )
+        except MsmUnavailableError:
+            return None
+        speed, direction = wind_speed_and_direction(series.wind_u_ms, series.wind_v_ms)
+        latitudes, longitudes = series.points.coordinates()
+        latitude_step, longitude_step = series.points.step_deg
+        return MsmGridForecast(
+            times=series.times,
+            latitude_step_deg=latitude_step,
+            longitude_step_deg=longitude_step,
+            points=[
+                MsmGridPointForecast(
+                    latitude=latitude,
+                    longitude=longitude,
+                    wind_speed_ms=wind_speed,
+                    wind_direction_deg=wind_direction,
+                    precipitation_mm=precipitation,
+                )
+                for latitude, longitude, wind_speed, wind_direction, precipitation in zip(
+                    rounded_coordinates(latitudes),
+                    rounded_coordinates(longitudes),
+                    rounded_rows(speed, WIND_SPEED_MS_DECIMALS),
+                    rounded_rows(direction, WIND_DIRECTION_DEG_DECIMALS),
+                    rounded_rows(series.precipitation_mm, PRECIPITATION_MM_DECIMALS),
+                    strict=True,
+                )
+            ],
         )
 
     async def get_wind_forecast_lattice(self, bbox: BoundingBox) -> WindForecastSeries | None:

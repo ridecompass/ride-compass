@@ -352,6 +352,79 @@
         }
       }
     },
+    "/api/weather/msm-grid": {
+      "get": {
+        "operationId": "get_msm_grid_api_weather_msm_grid_get",
+        "parameters": [
+          {
+            "name": "min_lon",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 180,
+              "minimum": -180,
+              "title": "Min Lon"
+            }
+          },
+          {
+            "name": "min_lat",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 90,
+              "minimum": -90,
+              "title": "Min Lat"
+            }
+          },
+          {
+            "name": "max_lon",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 180,
+              "minimum": -180,
+              "title": "Max Lon"
+            }
+          },
+          {
+            "name": "max_lat",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 90,
+              "minimum": -90,
+              "title": "Max Lat"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MsmGridForecast"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/place-search": {
       "get": {
         "operationId": "search_places_api_place_search_get",
@@ -4756,6 +4829,105 @@
           "healthy"
         ],
         "title": "MsmFreshnessResponse"
+      },
+      "MsmGridForecast": {
+        "properties": {
+          "times": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Times"
+          },
+          "latitude_step_deg": {
+            "type": "number",
+            "title": "Latitude Step Deg"
+          },
+          "longitude_step_deg": {
+            "type": "number",
+            "title": "Longitude Step Deg"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/MsmGridPointForecast"
+            },
+            "type": "array",
+            "title": "Points"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "times",
+          "latitude_step_deg",
+          "longitude_step_deg",
+          "points"
+        ],
+        "title": "MsmGridForecast"
+      },
+      "MsmGridPointForecast": {
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          },
+          "wind_speed_ms": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Wind Speed Ms"
+          },
+          "wind_direction_deg": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Wind Direction Deg"
+          },
+          "precipitation_mm": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Precipitation Mm"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "latitude",
+          "longitude",
+          "wind_speed_ms",
+          "wind_direction_deg",
+          "precipitation_mm"
+        ],
+        "title": "MsmGridPointForecast"
       },
       "OverallDifficulty": {
         "properties": {

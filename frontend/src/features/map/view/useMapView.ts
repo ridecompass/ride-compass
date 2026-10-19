@@ -138,6 +138,7 @@ export function useMapView({
   const weather = useDynamicWeatherLayers({
     visibility: layerVisibility,
     hiddenSources: hiddenWeatherSources,
+    mapViewport: viewport,
     at: ride.at,
     now,
   });
