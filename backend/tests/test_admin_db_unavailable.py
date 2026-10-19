@@ -49,9 +49,6 @@ WAY_VALUES_BODY = {
     "axis_id": "a", "shape": SHAPE, "z": EDGE_UNIT_MIN_ZOOM, "x": 7275, "y": 3225,
     "bearing_deg": 0, "at": "2026-10-18T09:00:00+09:00", "speed_kmh": 20,
 }
-ROAD_CLASSES = "/api/admin/road-classes"
-ROAD_CLASS_BODY = {"group_key": "a", "label": "群A", "palette": "ordered",
-                   "rows": [{"key": "a", "label": "行A", "description": "行A", "match": [{"highway": ["a"]}]}]}
 
 # 口ごとの(パスの引数を埋めたURL, 本文, DBが落ちたときの状態コード)。母集団はアプリのルートから取るので、
 # 管理APIの口を足してここへ足し忘れるとKeyErrorで落ちる。DBを読まない口とDBの失敗を自分で空へ倒す口は200。
@@ -67,9 +64,6 @@ ROUTE_CASES = {
     ("POST", AXIS + "/preview-calibration"): (AXIS + "/preview-calibration", {"definition": AXIS_BODY}, 200),
     # タイルの材料はDBの失敗を空へ倒し、地図の配信と同じく塗る道の無いタイルとして返す。
     ("POST", AXIS + "/preview-way-values"): (AXIS + "/preview-way-values", WAY_VALUES_BODY, 200),
-    ("GET", ROAD_CLASSES): (ROAD_CLASSES, None, 503),
-    ("PUT", ROAD_CLASSES + "/{group_key}"): (ROAD_CLASSES + "/a", ROAD_CLASS_BODY, 503),
-    ("DELETE", ROAD_CLASSES + "/{group_key}"): (ROAD_CLASSES + "/a", None, 503),
     ("GET", "/api/admin/tuning"): ("/api/admin/tuning", None, 503),
     ("PUT", "/api/admin/tuning/{param_id}"): (f"/api/admin/tuning/{TUNING_PARAMETERS[0].id}", {"value": None}, 503),
     ("GET", "/api/admin/material-catalog/{material_id}/value-shares"): (

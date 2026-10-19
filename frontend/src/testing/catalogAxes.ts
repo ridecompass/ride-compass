@@ -64,7 +64,7 @@ export function dedicatedEntry(axisId: string, thresholds: number[], overrides: 
   });
 }
 
-/** 軸だけを持つ応答。軸以外（較正値・タイルの世代・事故の収録年・道の区分の群）は、見たい呼び出し側が上書きする。 */
+/** 軸だけを持つ応答。軸以外（較正値・タイルの世代・事故の収録年）は、見たい呼び出し側が上書きする。 */
 export function catalogResponse(
   entries: readonly AxisCatalogEntry[],
   overrides: Partial<Omit<AxisCatalogResponse, "axes">> = {},
@@ -74,7 +74,6 @@ export function catalogResponse(
     client_tuning: {},
     tile_versions: {},
     accident_years: [],
-    road_classes: [],
     ...overrides,
   };
 }

@@ -9,19 +9,15 @@
 まとめて評価する。[評価・スコアリング](evaluation-scoring.md)参照）。周回ルート生成専用ではない
 （地図表示等、他の消費者からも参照される設計）。
 
-同じく管理DBを正本とする**道の区分の群**（地図の道の線のレイヤと、道の行ごとの避け方の行）も、ここで定義・配信する
-（下の「道の区分の群」）。
-
 **対象ファイル**
 
 | レイヤー | ファイル |
 |---|---|
 | domain | `axis_definitions.py`・`map_paint.py`（地図が軸について塗るもの）・`axis_raw_value.py`・`axis_templates.py`・`registry.py`・`primary_attributes.py`（一次属性の語彙の宣言）・`value_distribution.py`（延長で重み付けた分位点とヒストグラム。分布の口の応答の型） |
-| domain | `road_classes.py`（道の区分の群と行の型・道の事実から行を決める判定・公開した群を守る検査・プロセス内の群） |
-| services | `axis_registry_service.py`・`axis_preview_service.py`・`road_class_service.py` |
-| infrastructure | `axis_definition_models.py`・`axis_definition_repository.py`・`road_class_models.py`・`road_class_repository.py` |
-| api | `axis_admin.py`・`axis_catalog.py`・`road_class_admin.py` |
-| scripts | `measure_axis_saturation.py`・`axis_apply.py`・`road_classes_apply.py`（道の区分の群を本番へ入れる）・`_admin_apply.py`（定義を管理APIへ入れる道具が共に使う要求・差・指紋） |
+| services | `axis_registry_service.py`・`axis_preview_service.py` |
+| infrastructure | `axis_definition_models.py`・`axis_definition_repository.py` |
+| api | `axis_admin.py`・`axis_catalog.py` |
+| scripts | `measure_axis_saturation.py`・`axis_apply.py` |
 
 ## 分布プレビュー・材料の値ごとの割合（`services/axis_preview_service.py`・`domain/value_distribution.py`）
 
@@ -104,39 +100,6 @@ JSONはリポジトリの外に置き、コミットしない（定義は較正�
   軸カタログで確かめられるのは、backendが1プロセスで動き、書いたプロセスが配るから（`single_process.py`）。
 - 宛先はリポジトリの`production-origins.json`（`_production_origins.py`）、認証情報は`backend/.env.oracle.local`の
   `ADMIN_BASIC_AUTH_USERNAME`・`ADMIN_BASIC_AUTH_PASSWORD`（`_prod_env.py`）から読む。引数に取らず、出力にも出さない。
-
-## 道の区分の群（`domain/road_classes.py`）
-
-群は地図の道の線のレイヤ1枚にあたり、行（凡例の1行・避け方を選ぶ1行）を判定の順に持つ。行の条件は**道の事実**で書く。
-道の事実は、材料カタログのうち区分か真偽の材料で、値式とタイルの属性を持つもの（`ROAD_CLASS_FACTS`）——道路網の配列と
-道路のタイルの両方に載るので、探索も地図も同じ条件を同じ値に当てられる。知らない事実・型の違う値で書いた行は、どの道にも
-当たらないので型が断る。
-
-- 道は、群の上から最初に条件の当たった行に入る。行は条件のどれかが当たれば当たり、条件の中は全部の事実が当たること。
-  どの行にも当たらない道は、その群のどの行でもない。
-- **公開した群は、行の鍵を利用者の避け方の設定が持つ**（鍵は群をまたいで`<群の鍵>.<行の鍵>`）。公開した群の今の鍵と前の鍵
-  （行の`former_keys`）は、書き込みの後も公開した群のどれかの行の今の鍵か前の鍵として残らなければならず、引き継ぎ先なしに消す
-  書き込みを断る（`domain/road_classes.py: check_groups_change`）。引き継ぎ先なしに消すと、利用者が選んだ段が黙って既定へ戻る。
-  前の鍵は群をまたいで指せるので、行を分ける・まとめる・改名を重ねる・ほかの群へ移すことができ、鍵を全部ほかの公開した群へ
-  引き継いだ公開の群は消せる（移すときは、移した先を公開してから元の群を消す）。公開した群を下書きへ戻すことは断る。
-- 並びの一意の制約は遅らせられる（`DEFERRABLE INITIALLY IMMEDIATE`）。群・行を並べ替える書き込みは、トランザクションの中で
-  `SET CONSTRAINTS ... DEFERRED`にしてから入れ替える。
-- 正本は管理DBの`road_class_groups`（群。並びが地図の層の並び）と`road_class_rows`（行。群の中の並びが判定の順）。
-  起動時と管理APIの書き込みの直後にプロセス内の群を差し替える（`services/road_class_service.py: refresh_road_class_groups`）。
-  読めない・アプリが受け入れない行があれば起動を止めるが、群が1つも無いことは止めない——表を作ってから群を入れるまでの間も、
-  群を読まない機能は動く。
-- 書き込みは群を丸ごと書く（`PUT /api/admin/road-classes/{group_key}`）。無い群は並びの最後に足す。公開の軸カタログは、
-  公開した群を`road_classes`で配る。
-
-### 道の区分の群をファイルから本番へ入れる（`scripts/road_classes_apply.py`）
-
-軸の定義の道具（上の「軸の定義をファイルから本番へ入れる」）と同じく、差を出すのが既定で、差を出したときの指紋を渡したときだけ
-差のある群を1つずつ書き、書いた後に管理APIの一覧と軸カタログで確かめる。渡していない群は書かず、消さない。
-
-`--current`は、今のコードの宣言から公開した群を組む: 地図の道の線のレイヤの表示の軸の行に、避け方の既定の段・前の鍵・
-選べない行（`domain/road_avoidance.py: AVOIDABLE_ROWS`・`FIXED_ROW_MATCH_SQL`）を添える。区分の材料（路面の区分・自転車の
-通り道の区分）の行の条件は、その材料の値式が読むのと同じ宣言から道の事実で組む。組んだ群が地図の塗る行と同じ道を同じ行へ
-入れることは`tests/test_road_classes_apply.py`が実DBで見る。
 
 ## データモデル（`domain/axis_definitions.py`）
 
@@ -419,12 +382,9 @@ idの文字列ではなく宣言そのもので指す。材料が指す要素に
 | `POST /api/admin/axis-definitions/preview-scores` | Basic認証必須 | 編集中の折れ点で、横軸の値の並び（分布の階級の代表値）がそれぞれ何点になるか。評価と同じ配列の計算（`domain/axis_definitions.py: BreakpointLinearShape.scores_at`）で出す（DBを読まない） |
 | `POST /api/admin/axis-definitions/preview-calibration` | Basic認証必須 | 送られた定義（保存前の下書きでよい）で地図が塗る段（`map_paint`。境界の上書きが無ければ形から導いたもの）と、密度の軸か（`averages_density`。真なら折れ点は0から伸びる2点の直線に限る）を返す。定義の検証は保存と同じで、通らなければ保存と同じ誤りの文を返す（DBを読まない） |
 | `POST /api/admin/axis-definitions/preview-way-values` | Basic認証必須 | 編集中の折れ点（`shape`）で、タイル（z・x・y）のフィーチャーごとに地図が塗る値（較正の地図）。鍵と値の意味は、地図が道ごとの材料（`/api/region/way-materials`）を軸の木（`way_value_formula`）で評価した値と同じで、同じ材料・同じ評価から、軸の集合の写しの中で`shape`だけを差し替えて求める（`services/dedicated_way_values.py: draft_axis_way_value_lens`）——保存されている折れ点を渡せば地図が塗る値と同じになり、`AXIS_DEFINITIONS`と配信の材料は変わらない。公開していない軸も求める。条件で変わる材料を読む軸は、条件の欄（走行方位・時刻・想定速度）を受け、要る欄が欠ければ422。無い軸は404、保存の判定（`services/axis_registry_service.py: check_loadable_after_write`）が断る下書きはその文で422。レート制限の上限とDB接続プールのsemaphoreは配信と同じもの（`api/routers/_tile_http.py: region_tile_semaphore`）を使う |
-| `GET /api/axis-catalog` | 不要（公開） | `is_published=True`の軸と、公開した道の区分の群（`road_classes`）のみ返す。画面が読む項目（名前・説明・重みの既定・チップ・地図が塗るもの・生値の単位と内訳等）だけを返し、`shape`・しきい値の上書きの生の値は返さない（地図の段は`map_paint`が配る） |
-| `GET /api/admin/road-classes` | Basic認証必須 | 道の区分の群の一覧（下書きも含む。地図の層の並び） |
-| `PUT /api/admin/road-classes/{group_key}` | Basic認証必須 | 群を丸ごと書く（無ければ足す）。本文の検査は型が、公開した群を守る検査（上の「道の区分の群」）は409で断る |
-| `DELETE /api/admin/road-classes/{group_key}` | Basic認証必須 | 下書きの群を行ごと消す。公開した群は409 |
+| `GET /api/axis-catalog` | 不要（公開） | `is_published=True`の軸のみ返す。画面が読む項目（名前・説明・重みの既定・チップ・地図が塗るもの・生値の単位と内訳等）だけを返し、`shape`・しきい値の上書きの生の値は返さない（地図の段は`map_paint`が配る） |
 
-管理API（`/api/admin/axis-definitions`・`/api/admin/road-classes`）のBasic認証はルーターの`dependencies`で1か所に宣言し、
+管理API（`/api/admin/axis-definitions`）のBasic認証はルーターの`dependencies`で1か所に宣言し、
 口ごとには付けない——口を足しても認証の付け忘れが起きない。
 
 ### 軸そのものの不変条件（`domain/axis_definitions.py`のモデル）

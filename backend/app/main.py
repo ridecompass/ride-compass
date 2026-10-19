@@ -18,7 +18,6 @@ from app.api.finite_json_body import reject_non_finite_json_body
 from app.api.routers import api_router
 from app.config import settings
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
-from app.infrastructure.road_class_repository import RoadClassRepository
 from app.infrastructure.database import get_session_factory
 from app.infrastructure.debug_control import install_ring_buffer_handler
 from app.infrastructure.http_client import JSON_API_TIMEOUT, TILE_PROXY_TIMEOUT, get_http_client
@@ -35,7 +34,6 @@ from app.infrastructure.response_compression import ContentTypeGZipMiddleware
 from app.infrastructure.single_process import require_single_worker
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
 from app.services.axis_registry_service import refresh_axis_definitions
-from app.services.road_class_service import refresh_road_class_groups
 from app.services.tuning_service import refresh_tuning_values
 from app.services.jma_tile_prewarm_service import prewarm_jma_tiles
 
@@ -136,7 +134,6 @@ async def lifespan(app: FastAPI):
         await refresh_axis_definitions(AxisDefinitionRepository(session))
         # 較正値は行が1つも無ければ宣言どおりの既定値のまま動く（壊れた値の行だけが起動を止める）。
         await refresh_tuning_values(session)
-        await refresh_road_class_groups(RoadClassRepository(session))
 
     # 定期ジョブはアプリの寿命の間だけ動くので、スケジューラもこの寿命の中で作る。
     scheduler = AsyncIOScheduler()

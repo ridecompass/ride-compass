@@ -38,7 +38,6 @@ from app.domain.axis_raw_value import (
 )
 from app.domain.dynamic_way_values import WayValueConditionName
 from app.domain.map_paint import MapPaint, map_paint
-from app.domain.road_classes import RoadClassGroup, published_road_class_groups
 from app.domain.tuning import client_tuning_values
 from app.domain.way_value_formula import WayValueFormula
 from app.services.dedicated_way_values import dedicated_way_value_layers
@@ -110,8 +109,6 @@ class AxisCatalogResponse(StrictModel):
     # 事故データの収録年（今の事故の数を数えた取込の宣言そのもの）。地図の説明文が範囲を書くために
     # 使う。**表示側に持たせない**——文字列で持つと取り込み直したときに黙って食い違う。
     accident_years: list[int]
-    # 公開した道の区分の群（地図の層の並び）。管理APIで書いた群を再デプロイなしに画面へ届けるため、ここへ相乗りする。
-    road_classes: list[RoadClassGroup]
 
 
 @router.get("/api/axis-catalog", response_model=AxisCatalogResponse)
@@ -129,7 +126,6 @@ async def get_axis_catalog(region_service: RegionService = Depends(get_region_se
         client_tuning=client_tuning_values(),
         accident_years=accident_years,
         tile_versions=tile_versions,
-        road_classes=published_road_class_groups(),
         axes=[
             AxisCatalogEntry(
                 axis_id=definition.axis_id,
