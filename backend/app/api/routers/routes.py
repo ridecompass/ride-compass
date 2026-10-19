@@ -34,7 +34,6 @@ from app.domain.route_request import (
     check_spliced_edge_count,
     check_waypoint_count,
     nothing_to_generate_error,
-    resolve_distance_tolerance_km,
 )
 from app.domain.geo import Latitude, Longitude, haversine_distance_km
 from app.domain.route import Coordinates, RouteCandidate
@@ -327,7 +326,6 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
 
         job_registry.set_running(job_id)
         target = request.target
-        distance_tolerance_km = resolve_distance_tolerance_km(request.distance_tolerance_km)
         generated = await generate_route_candidates(
             partial(
                 open_setup,
@@ -343,7 +341,7 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
             target=target,
             start_time=request.start_time,
             max_routes=request.max_routes,
-            distance_tolerance_km=distance_tolerance_km,
+            distance_tolerance_km=request.distance_tolerance_km,
         )
         applied = generated.conditions
         response = RouteGenerateResponse(
@@ -353,7 +351,7 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
                 latitude=request.latitude,
                 longitude=request.longitude,
                 distance_km=target.distance_km if isinstance(target, DistanceTarget) else None,
-                distance_tolerance_km=distance_tolerance_km,
+                distance_tolerance_km=generated.distance_tolerance_km,
                 route_preference=RoutePreferenceWeights(applied.route_preference.weights),
                 penalty_strength=applied.penalty_strength,
                 max_average_grade_percent=applied.max_average_grade_percent,
