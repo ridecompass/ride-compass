@@ -21,7 +21,8 @@
   ときに呼ばれうる変異（static）は数えない。数える変異が無いテストは判断できないので残す。
 - 判断できないものは残す: static の変異を見つけるテスト・基準で落ちたテスト（隔離の候補）・100本以上のテストが一緒に落ちる
   書き換えしか見つけないテスト（見つけたのは足場・後始末・応答の中継ぎで、テストが見ている所は測りの外にある見込みが高い。
-  書き方の候補「広くしか落ちない」に出る）。変異を1つも見つけないテストは比べようがないので候補にしない（書き方の候補に出す）。
+  書き方の候補「広くしか落ちない」に出る）・落としたテストに一覧に無い名前がある変異を通るテスト（本当に落としたテストが
+  分からない）。変異を1つも見つけないテストは比べようがないので候補にしない（書き方の候補に出す）。
 - API の経路（app/api/routers の関数）ごとに、それを通るテストを1本は残す。表は関数の名前を持たないので、経路のファイルの変異を
   通るテストの組ごとに数える（同じ関数の変異は、同じテストの組に通られる）。
 - 低い高さから順に、同じ高さ以下の残すテストで見つからない変異を多く見つける順に残し、何も足さないものを候補にする。
@@ -65,7 +66,8 @@ ran = {k for k, m in mutants.items() if m["status"] not in ("Pending", "NoCovera
 
 
 def tests(m, key):
-    return {name_of[i] for i in m.get(key, ())}
+    """表のテストの一覧にある名前だけ。名前をコードの値から組み立てるテストは、書き換えで名前が変わり、一覧に無い名前で残る。"""
+    return {name_of[i] for i in m.get(key, ()) if i in name_of}
 
 
 # 層の高さ。表の層の並びは上から並ぶので、下ほど低い。
@@ -91,6 +93,8 @@ height_of = {t: h for t, h in heights.items() if h is not None}  # 高さの決�
 
 finders = collections.Counter(m for t in found for m in found[t])
 broad = {m for m, n in finders.items() if n >= BROAD_TESTS}
+# 落としたテストに一覧に無い名前がある変異。本当に落としたテストが分からないので、それを通るテストは消す側に回さない。
+unattributed = {k for k, m in mutants.items() if any(i not in name_of for i in m.get("killedBy", ()))}
 
 judge = set(found)
 why_kept = {}
@@ -101,6 +105,8 @@ for t in judge:
         why_kept[t] = "基準で落ちた（隔離）"
     elif found[t] <= broad:
         why_kept[t] = "100本以上が一緒に落ちる書き換えしか見つけない"
+    elif covering[t] & unattributed:
+        why_kept[t] = "名前が書き換えで変わるテストが見つける変異を通る"
     elif heights[t] is None:
         why_kept[t] = "高さを決める関数が無い"
 by_key = collections.defaultdict(set)
