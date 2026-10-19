@@ -13,7 +13,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { createBaseMap } from "@/features/map/baseMap";
 import { mergeTileValues, tilesCoveringViewport, type TileXY } from "@/features/map/layers/dynamicWayValues";
-import { buildDefaultLayerVisibility, type MapLayerVisibility } from "@/features/map/layers/mapLayers";
+import type { MapLayerVisibility } from "@/features/map/layers/mapLayers";
+import type { RoadMapLayerView } from "@/types/route";
 import type { MapViewport } from "@/features/map/view/mapLook";
 import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckboxList";
 import { LEGEND_SWATCH_CLASS } from "@/features/map/LensControl/LensControl";
@@ -36,10 +37,11 @@ import { getQueryClient } from "@/lib/queryClient";
 import { textVariants } from "@/components/ui/Text/Text";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-// 下書きの点数の地図は道の点数だけを見せるため、チップで出し入れするレイヤーはどれも出さない。
-const NO_LAYERS = Object.fromEntries(
-  Object.keys(buildDefaultLayerVisibility()).map((id) => [id, false]),
-) as MapLayerVisibility;
+// 下書きの点数の地図は道の点数だけを見せるため、チップで出し入れするレイヤーはどれも出さない（どの層も真偽が無いと出ない）。
+const NO_LAYERS: MapLayerVisibility = {};
+
+/** 道の線の層を描かない。 */
+const NO_ROAD_LAYERS: readonly RoadMapLayerView[] = [];
 
 const EMPTY_MATERIALS: WayMaterials = new Map();
 
@@ -129,6 +131,7 @@ function unpublishedAxis(axisId: string, label: string, paint: MapPaintDeclarati
     rawValueTotalUnit: null,
     materialBreakdown: [],
     primaryAttributeIds: [],
+    roadLayerIds: [],
     wayValueConditions: [],
     timeScope: "always",
     display: paint,
@@ -177,7 +180,7 @@ export default function DraftWayValuesMap<Draft>({
             wayConditions: NO_CONDITIONS,
             hiddenLegendKeys,
           },
-          catalog: { dedicatedAxes: [axis], routeStyleModes: mapCatalog.routeStyleModes },
+          catalog: { dedicatedAxes: [axis], routeStyleModes: mapCatalog.routeStyleModes, roadLayers: NO_ROAD_LAYERS },
           routes: [],
           selectedRouteId: null,
           spliceStretches: [],

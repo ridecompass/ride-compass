@@ -21,19 +21,8 @@
 """
 
 import re
-from collections.abc import Iterable, Sequence
-from typing import NamedTuple
+from collections.abc import Iterable
 
-from app.domain.road import (
-    SURFACE_CLASSES,
-    SURFACE_OTHER_KEY,
-    TRACK_GRADES,
-    TRACK_HIGHWAY,
-    UNKNOWN_ROAD_SURFACE,
-    UNKNOWN_TRACK_SURFACE,
-    SurfaceClass,
-    TrackGrade,
-)
 from app.domain.traffic import poi_count_column
 
 
@@ -62,35 +51,6 @@ def sql_literals(values: Iterable[str]) -> str:
     return ", ".join("'" + value.replace("'", "''") + "'" for value in values)
 
 
-def _surface_class_branches(classes: Sequence[SurfaceClass]) -> str:
-    return " ".join(
-        f"WHEN {SURFACE_NORMALIZED_SQL} IN ({sql_literals(c.tags)}) THEN '{c.key}'" for c in classes if c.tags
-    )
-
-
-def surface_class_sql(classes: Sequence[SurfaceClass]) -> str:
-    """surfaceタグの路面区分。タグが無ければNULL、区分に無い値は`SURFACE_OTHER_KEY`。"""
-    return (
-        f"CASE {_surface_class_branches(classes)} "
-        f"WHEN {SURFACE_NORMALIZED_SQL} IS NOT NULL THEN '{SURFACE_OTHER_KEY}' END"
-    )
-
-
-def surface_estimate_sql(classes: Sequence[SurfaceClass], grades: Sequence[TrackGrade]) -> str:
-    """路面の見込み（`domain/road.py: SurfaceEstimate`）。surfaceの区分、無ければ等級から写した区分、
-    どちらも無ければ道路種別で分けた「不明」。どの道も値を持つ。"""
-    grade_branches = " ".join(
-        f"WHEN {TRACKTYPE_NORMALIZED_SQL} = '{g.value}' THEN '{g.surface_class}'" for g in grades
-    )
-    return (
-        f"CASE {_surface_class_branches(classes)} {grade_branches} "
-        f"WHEN {HIGHWAY_SQL} = '{TRACK_HIGHWAY}' THEN '{UNKNOWN_TRACK_SURFACE.key}' "
-        f"ELSE '{UNKNOWN_ROAD_SURFACE.key}' END"
-    )
-
-
-SURFACE_CLASS_SQL = surface_class_sql(SURFACE_CLASSES)
-SURFACE_ESTIMATE_SQL = surface_estimate_sql(SURFACE_CLASSES, TRACK_GRADES)
 SMOOTHNESS_NORMALIZED_SQL = normalized_tag_sql("smoothness")
 MAXSPEED_KMH_CASE_SQL = positive_integer_tag_sql("maxspeed")
 LANES_COUNT_CASE_SQL = positive_integer_tag_sql("lanes")
@@ -158,44 +118,6 @@ SHARED_PEDESTRIAN_PATH_SQL = (
 )
 #: `SHARED_PEDESTRIAN_PATH_SQL`の条件を説明の文で指す書き方。
 SHARED_PEDESTRIAN_PATH_NOTE = f"{tag_note('highway', *_SHARED_PATH_HIGHWAYS)} かつ {tag_note('bicycle', *_SHARED_PATH_BICYCLE)}"
-
-
-class CyclewayClass(NamedTuple):
-    """自転車の走る場所の区分の1つ。`condition`は道がこの区分に当たるかのSQL真偽式。"""
-
-    key: str
-    label: str
-    #: 地図の凡例の行が開く説明。
-    description: str
-    condition: str
-
-
-#: 並びが判定の順（1本の道が複数に当たれば先の区分）で、地図の凡例の並び。車道から分けられた度合いの強い順。
-CYCLEWAY_CLASSES: tuple[CyclewayClass, ...] = (
-    CyclewayClass(
-        "separated",
-        "自転車道",
-        f"車道から分けられた、自転車の通る道[OSM の {tag_note('highway', CYCLEWAY_HIGHWAY)}・"
-        f"{tag_note('cycleway', *CYCLEWAY_TRACK_VALUES)}]。",
-        f"{HIGHWAY_SQL} = '{CYCLEWAY_HIGHWAY}' OR {_cycleway_tags_include_sql(*CYCLEWAY_TRACK_VALUES)}",
-    ),
-    CyclewayClass(
-        "lane",
-        "自転車レーン",
-        f"車道の上に線で区切った、自転車の通る帯[OSM の {tag_note('cycleway', *CYCLEWAY_LANE_VALUES)}]。",
-        _cycleway_tags_include_sql(*CYCLEWAY_LANE_VALUES),
-    ),
-    CyclewayClass(
-        "shared",
-        "共用の道",
-        "バス・車と共用の帯か、自転車も通ってよい歩道・遊歩道"
-        f"[OSM の {tag_note('cycleway', *CYCLEWAY_SHARED_VALUES)}、{SHARED_PEDESTRIAN_PATH_NOTE}]。",
-        f"{_cycleway_tags_include_sql(*CYCLEWAY_SHARED_VALUES)} OR ({SHARED_PEDESTRIAN_PATH_SQL})",
-    ),
-)
-
-#: どの区分にも当たらない道（自転車のための設けが無い道）はNULL。
-CYCLEWAY_CLASS_SQL = "CASE " + " ".join(f"WHEN {c.condition} THEN '{c.key}'" for c in CYCLEWAY_CLASSES) + " END"
 
 
 def per_km_value_sql(count: str) -> str:

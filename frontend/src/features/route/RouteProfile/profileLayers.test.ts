@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 
 import { routeStretches } from "@/lib/routeDistance";
+import { roadClass, roadMapLayer } from "@/testing/catalogAxes";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 import palette from "@/types/generated/palette.json";
 
@@ -21,16 +22,24 @@ import {
   layerValueAtKm,
   markLegendRows,
   markNearKm,
-  PROFILE_LAYERS,
+  profileLayers,
   type BandLayer,
   type LineLayer,
   type PointLayer,
 } from "./profileLayers";
 
-const elevation = PROFILE_LAYERS.find((layer): layer is LineLayer => layer.id === "elevation")!;
-const band = (id: string) => PROFILE_LAYERS.find((layer): layer is BandLayer => layer.id === id)!;
+// 道の線の層は軸カタログが配る（本番の層は管理DBが持つ）ので、テストが組む。
+const LAYERS = profileLayers([
+  roadMapLayer("surface", {
+    no_data_property: "surface",
+    classes: [roadClass("paved"), roadClass("gravel"), roadClass("soil")],
+  }),
+  roadMapLayer("tunnel", { classes: [roadClass("tunnel")] }),
+]);
+const elevation = LAYERS.find((layer): layer is LineLayer => layer.id === "elevation")!;
+const band = (id: string) => LAYERS.find((layer): layer is BandLayer => layer.id === id)!;
 const surface = band("surface");
-const pointLayer = (id: string) => PROFILE_LAYERS.find((layer): layer is PointLayer => layer.id === id)!;
+const pointLayer = (id: string) => LAYERS.find((layer): layer is PointLayer => layer.id === id)!;
 const row = (layer: BandLayer, key: string) => layer.draw.rows.find((candidate) => candidate.key === key)!;
 
 type Road = [number | null, number | null, number];
@@ -129,7 +138,7 @@ describe("layerValueAtKm・layerGradeAtKm", () => {
   });
 });
 
-type Stretch = { distance_km: number; value: string | boolean | null };
+type Stretch = { distance_km: number; value: string | null };
 
 function classed(id: string, ...segments: [Stretch[] | undefined, number][]) {
   return routeStretches(
@@ -140,7 +149,7 @@ function classed(id: string, ...segments: [Stretch[] | undefined, number][]) {
 }
 
 describe("layerBand", () => {
-  it("区間の中の区分を距離の比で区間の長さへ割り振り、隣どうしで同じ行をつなぎ、長さの無い区間を飛ばし、区分の無い区間は値なしの行で塗る", () => {
+  it("区間の中の区分を距離の比で区間の長さへ割り振り、隣どうしで同じ行をつなぎ、長さの無い区間を飛ばし、区分の無い区間は区分の外の行で塗る", () => {
     const pieces = layerBand(
       classed(
         "surface",
@@ -160,13 +169,13 @@ describe("layerBand", () => {
     expect(pieces).toEqual([
       { startKm: 0, endKm: 0.5, row: row(surface, "paved") },
       { startKm: 0.5, endKm: 3, row: row(surface, "gravel") },
-      { startKm: 3, endKm: 4, row: row(surface, "nodata") },
+      { startKm: 3, endKm: 4, row: row(surface, "other") },
     ]);
   });
 
   it.each([
-    { id: "surface", value: "unknown_surface", key: "other", why: "分類に無い値はその他" },
-    { id: "tunnel", value: null, key: "other", why: "タグの不在も値として載る属性では、値なしは該当なし" },
+    { id: "surface", value: "unknown_class", key: "other", why: "層に無い区分の鍵はその他" },
+    { id: "tunnel", value: null, key: "other", why: "どの区分にも入らない道はその他（該当なし）" },
     { id: "landcover", value: "trees_percent", key: "trees_percent", why: "緑と水は最も多いクラスの行" },
     { id: "landcover", value: null, key: "nodata", why: "緑と水の割合が無ければデータなし" },
   ])("$why", ({ id, value, key }) => {

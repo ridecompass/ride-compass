@@ -22,9 +22,9 @@ import {
   layerBand,
   layerGradeAtKm,
   layerValueAtKm,
-  PROFILE_LAYERS,
   type BandLayer,
   type LineLayer,
+  type ProfileLayer,
   type PointLayer,
   type PointMark,
 } from "./profileLayers";
@@ -44,6 +44,8 @@ interface ProfilePointDetailProps {
     readonly km: number;
     readonly marks: readonly { readonly layer: PointLayer; readonly mark: PointMark }[];
   } | null;
+  /** グラフに重ねられるレイヤの全部。 */
+  layers: readonly ProfileLayer[];
   axes: readonly CatalogAxis[];
   axisColors: Readonly<Record<string, string>>;
   /** 閉じると選んだ地点を外す。無ければ閉じる操作を出さない。 */
@@ -53,22 +55,33 @@ interface ProfilePointDetailProps {
 /** 道のりのグラフで選んだ地点の詳しく。1行目に折れ線の値とその道の勾配・何km地点・到達予想・閉じる、2行目にその地点で当たる
  * 道の区分（グラフに出す情報の選択によらず、どの分類にも入らない行を除く）と、グラフに出している点のレイヤーのその地点の近くの点と、
  * 風のチップ、3行目に区間の総合難易度と軸ごとの寄与を出す。 */
-export default function ProfilePointDetail({ selection, point, axes, axisColors, onClear }: ProfilePointDetailProps) {
+export default function ProfilePointDetail({
+  selection,
+  point,
+  layers,
+  axes,
+  axisColors,
+  onClear,
+}: ProfilePointDetailProps) {
   const { segment } = selection;
   const lines =
     point === null
       ? []
-      : PROFILE_LAYERS.filter((layer): layer is LineLayer => layer.draw.kind === "line").flatMap((layer) => {
-          const value = layerValueAtKm(point.columns, layer, point.km);
-          return value === null ? [] : [{ layer, value, grade: layerGradeAtKm(point.columns, layer, point.km) }];
-        });
+      : layers
+          .filter((layer): layer is LineLayer => layer.draw.kind === "line")
+          .flatMap((layer) => {
+            const value = layerValueAtKm(point.columns, layer, point.km);
+            return value === null ? [] : [{ layer, value, grade: layerGradeAtKm(point.columns, layer, point.km) }];
+          });
   const bands =
     point === null
       ? []
-      : PROFILE_LAYERS.filter((layer): layer is BandLayer => layer.draw.kind === "band").flatMap((layer) => {
-          const row = bandRowAtKm(layerBand(point.columns, layer), point.km);
-          return row === null || isUnclassifiedRow(row) ? [] : [{ layer, row }];
-        });
+      : layers
+          .filter((layer): layer is BandLayer => layer.draw.kind === "band")
+          .flatMap((layer) => {
+            const row = bandRowAtKm(layerBand(point.columns, layer), point.km);
+            return row === null || isUnclassifiedRow(row) ? [] : [{ layer, row }];
+          });
   const marks = point?.marks ?? [];
 
   return (

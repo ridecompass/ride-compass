@@ -1,7 +1,15 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import type { components } from "@/types/generated/api";
 import type { RouteCandidate, RouteGenerateJobStatusResponse } from "@/types/route";
-import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
+import {
+  AVOIDANCE_LEVELS,
+  avoidanceRow,
+  catalogEntry,
+  catalogResponse,
+  roadClass,
+  roadClassCatalog,
+  roadMapLayer,
+} from "@/testing/catalogAxes";
 import {
   makeGenerationConditions,
   makeRouteCandidate as makeCandidate,
@@ -155,6 +163,48 @@ function emptyMapStyleFixture() {
   return { version: 8, sources: {}, layers: [] };
 }
 
+/** 項目1つ: 事実`property`の値が`values`のどれかなら当たる。 */
+const isOneOf = (property: string, values: string[]) => ({ property, values, negated: false, matches_absent: false });
+
+/** モックの軸カタログが配る道の線の層。区分は管理DBが持つ任意の値なので、ここで組む。区分は条件を持ち、地図の式の
+ * 組み立て（否定・事実の無い道・区分の重なり・データなし）を実ブラウザのスタイル検証に通す。 */
+export const E2E_ROAD_LAYERS = [
+  roadMapLayer("surface", {
+    label: "路面",
+    category: "roadCondition",
+    icon: "surface",
+    no_data_property: "surface",
+    classes: [
+      roadClass("paved", { label: "舗装", color: "#4a7bd0", conditions: [[isOneOf("surface", ["asphalt", "paved"])]] }),
+      roadClass("unpaved", {
+        label: "未舗装",
+        color: "#b8742a",
+        conditions: [[{ ...isOneOf("surface", ["asphalt", "paved"]), negated: true }]],
+      }),
+    ],
+  }),
+  roadMapLayer("tunnel", {
+    label: "トンネル",
+    category: "roadCondition",
+    icon: "tunnel",
+    classes: [
+      roadClass("tunnel", { label: "トンネル", color: "#555555", conditions: [[isOneOf("tunnel", ["true"])]] }),
+    ],
+  }),
+];
+
+/** モックの軸カタログの道の区分（線の層と、避け方を選べる行）。 */
+const E2E_ROAD_CLASSES = roadClassCatalog({
+  map_layers: E2E_ROAD_LAYERS,
+  avoidance: {
+    levels: AVOIDANCE_LEVELS,
+    sections: [{ key: "surface", label: "路面", description: "" }],
+    rows: [
+      avoidanceRow("unpaved", "surface", { layer: "surface", layer_label: "路面", label: "未舗装", default: "avoid" }),
+    ],
+  },
+});
+
 /** `GET /api/axis-catalog`の応答。世代は本物のbackendと同じく全種類を返し（無いと凡例が配信情報を取得できない表示になる）、
  * 軸と世代以外（尺度・調整値・事故の収録年）は空で返す。型は契約のもので、項目を欠いた応答を作れない（欠けると、
  * 本物のbackendなら必ず来る値が画面で`undefined`になる）。 */
@@ -162,7 +212,7 @@ export function axisCatalogFixture(
   axes: ReturnType<typeof catalogEntry>[],
 ): components["schemas"]["AxisCatalogResponse"] {
   const tile_versions = Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "e2e"]));
-  return catalogResponse(axes, { tile_versions });
+  return catalogResponse(axes, { tile_versions, road_classes: E2E_ROAD_CLASSES });
 }
 
 /** 既定の軸カタログ。アプリが軸一覧を引ける最小の1軸だけを持つ。 */
@@ -270,11 +320,13 @@ export async function seedStoredState(page: Page, entries: Record<string, string
 /** 初回の案内（地図の上に重なる）を閉じた保存状態。 */
 export const INTRO_CLOSED: Record<string, string> = { "ridecompass:first-visit-intro-closed": "true" };
 
-/** 全レイヤーONとデバッグログ（`[map:error]`を読むため）の保存状態。 */
-export function allLayersOn(): Record<string, string> {
+/** 全レイヤーONとデバッグログ（`[map:error]`を読むため）の保存状態。道の線の層は軸カタログが配るので、開く先の軸カタログの
+ * 層を渡す（既定はモックの層）。 */
+export function allLayersOn(roadLayers: readonly { id: string }[] = E2E_ROAD_LAYERS): Record<string, string> {
+  const ids = [...mapDisplay.layers, ...roadLayers].map(({ id }) => id);
   return {
     "ridecompass:debug-enabled": "1",
-    "ridecompass:layer-visibility": JSON.stringify(Object.fromEntries(mapDisplay.layers.map(({ id }) => [id, true]))),
+    "ridecompass:layer-visibility": JSON.stringify(Object.fromEntries(ids.map((id) => [id, true]))),
   };
 }
 

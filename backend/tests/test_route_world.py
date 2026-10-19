@@ -24,6 +24,7 @@ from tests.conftest import postgis_database_url
 from tests.route_world import (
     BAD_MATERIAL,
     COORDINATES,
+    HIGHWAY,
     ISLAND_NODES,
     WAYS,
     NetworkRepository,
@@ -56,8 +57,8 @@ def test_the_grid_has_what_its_arguments_declare():
     assert _directions(network, other) == {WAYS[other], WAYS[other][::-1]}
     assert (_values(network, BAD_MATERIAL, BAD), _values(network, BAD_MATERIAL, UNKNOWN),
             _values(network, BAD_MATERIAL, other)) == ({1.0}, {-1.0}, {0.0})
-    motorway = network.route_flags[:, network.route_flag_ids.index("motorway")]
-    assert set(network.edge_way_id[motorway].tolist()) == {MOTORWAY}
+    highway = network.categorical_codes[:, network.categorical_ids.index(HIGHWAY)]
+    assert set(network.edge_way_id[highway == network.categorical_vocab[0].index("motorway")].tolist()) == {MOTORWAY}
     assert (_values(network, GRADIENT_PERCENT, NO_GRADIENT), _values(network, GRADIENT_PERCENT, other)) == ({-1.0}, {0.0})
     for material in stop_count_material_ids():
         assert (_values(network, material, NO_STOP_COUNT), _values(network, material, other)) == ({-1.0}, {0.0})

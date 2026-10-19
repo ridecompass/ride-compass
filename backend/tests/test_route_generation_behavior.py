@@ -27,7 +27,7 @@ from app.domain.axis_definitions import AXIS_DEFINITIONS, AxisDefinition, Breakp
 from app.domain.geo import haversine_distance_km
 from app.domain.graph import node_key
 from app.domain.material_catalog import GRADIENT_PERCENT
-from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
+from app.domain.road_classes import TRUE_FACT_VALUE
 from app.domain.rain import rain_window_material_id
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
@@ -39,6 +39,7 @@ from app.domain.traffic import stop_count_material_ids
 from app.domain.tuning import TUNING_VALUES
 from tests import rain_history_fake
 from tests.axis_system_fixture import replaced_axis_definitions
+from tests.road_class_fixture import classification, fact_is, replaced_road_classes, road_classes
 from app.domain.route_request import FixedPoints
 from tests.route_world import (
     AVOID_AXIS,
@@ -47,6 +48,7 @@ from tests.route_world import (
     BASE_LON,
     CENTER,
     COORDINATES,
+    HIGHWAY,
     ISLAND_WAY,
     LAT_STEP,
     LON_STEP,
@@ -55,6 +57,7 @@ from tests.route_world import (
     NO_POINTS,
     SOUTH_EAST,
     SOUTH_WEST,
+    TUNNEL,
     WAYS,
     at,
     avoid_axis_declared,
@@ -792,30 +795,33 @@ async def test_each_segment_starts_and_ends_at_the_elevation_of_its_road_in_the_
     ]
 
 
-async def test_each_segment_carries_the_road_class_values_the_map_paints_its_road_with(engine_over):
-    """道のりのグラフは区間の区分の値を、地図のそのレイヤ（id が同じ一次属性）の表示の分類で色と呼び名に引く。値が分類に
-    無いと、地図で塗られる道がグラフでは「その他」になる。緑と水は、区間の最も多いクラスで塗る（同率は宣言の並びの先）。
+async def test_each_segment_carries_its_road_classes(engine_over):
+    """道のりのグラフは区間の区分を、分け方ごとに区分の鍵で受ける（呼び名と色は軸カタログの区分から引く）。どの区分にも入らない
+    道は値なし。緑と水は、区間の最も多いクラスで塗る（同率は宣言の並びの先）。
     南西→南東の最速は、林と水辺が同じ割合の生活道路の道100と、土地被覆の値の無いトンネルの道101。"""
     landcover = {100: {"built_percent": 20.0, "trees_percent": 40.0, "water_percent": 40.0}}
+    definitions = road_classes({
+        "kind": classification({"local": [fact_is(HIGHWAY, "residential")]}),
+        "tunnel": classification({"yes": [fact_is(TUNNEL, TRUE_FACT_VALUE)]}),
+    })
     generator = engine_over(grid_network(tunnel_ways={101}, landcover_of=landcover))
 
-    candidates = await generator.generate_via_waypoints(
-        at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=3, start_time=DEPARTURE)
+    with replaced_road_classes(definitions):
+        candidates = await generator.generate_via_waypoints(
+            at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=3, start_time=DEPARTURE)
 
     fastest = fastest_of(candidates)
     assert ways_of(fastest) == [100, 101]
-    painted = {
-        attr.attr_id: {value for category in attr.display_axes[0].categories for value in category.values}
-        for attr in PRIMARY_ATTRIBUTES if attr.geometry == "line" and attr.display_axes
-    }
-    for segment in fastest.segments:
-        assert [(s.distance_km, s.value in painted["highway"]) for s in segment.road_classes["highway"]] == [
-            (segment.distance_km, True)]
-    assert [[(s.distance_km, s.value) for s in segment.road_classes["tunnel"]] for segment in fastest.segments] == [
-        [(fastest.segments[0].distance_km, None)], [(fastest.segments[1].distance_km, True)]]
-    assert True in painted["tunnel"]
-    assert [[s.value for s in segment.road_classes["landcover"]] for segment in fastest.segments] == [
-        ["trees_percent"], [None]]
+    first, second = fastest.segments
+    assert [
+        {key: [(s.distance_km, s.value) for s in stretches] for key, stretches in segment.road_classes.items()}
+        for segment in fastest.segments
+    ] == [
+        {"kind": [(first.distance_km, "local")], "tunnel": [(first.distance_km, None)],
+         "landcover": [(first.distance_km, "trees_percent")]},
+        {"kind": [(second.distance_km, "local")], "tunnel": [(second.distance_km, "yes")],
+         "landcover": [(second.distance_km, None)]},
+    ]
 
 
 def _slope_axis(*, is_published: bool) -> AxisDefinition:

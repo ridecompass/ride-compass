@@ -1,6 +1,6 @@
 """`domain/map_display.py`——地図に出すものの束ね方（グループ・種別・情報源・レイヤー）の宣言。
 
-入口は`map_layer_label`（レイヤーの名前）・説明の文を宣言から組む`ordered_ends_text`・`size_sentence`と、生成物として
+入口は`map_layer_label`（レイヤーの名前）・説明の文を宣言から組む`size_sentence`と、生成物として
 画面へ配る宣言そのもの。宣言どうしは名前（`key`）で指し合い、型はその名前が実在することを保証しないので、指した先が
 あることを確かめる。描く寸法の値そのものは見ない（宣言の書き写しになる）。レイヤーの説明は、ほかの宣言から差し込む
 部分だけを見る。文を組む関数には架空の行を渡し、宣言を変えると文が追従することを見る。
@@ -16,9 +16,8 @@
 import pytest
 
 from app.domain import map_display
-from app.domain.display_palette import ORDERED_END_COLOR_NAMES
 from app.domain.landcover import LANDCOVER_CLASSES
-from app.domain.map_display import MapLayerSpec, map_layer_label, ordered_ends_text, size_sentence
+from app.domain.map_display import MapLayerSpec, map_layer_label, size_sentence
 from app.domain.registry import DisplayAxisSpec, DisplayCategorySpec
 from app.domain.weather_elements import WEATHER_ELEMENTS
 
@@ -35,12 +34,12 @@ def keys(declarations) -> list[str]:
     return [declaration.key for declaration in declarations]
 
 
-def axis(*rows: tuple[str, int | None], palette=None) -> DisplayAxisSpec:
+def axis(*rows: tuple[str, int | None]) -> DisplayAxisSpec:
     """架空の行（名前・半径）を並べた見方。"""
     return DisplayAxisSpec(
         key="axis",
         property="prop",
-        palette=palette,
+        palette=None,
         categories=tuple(
             DisplayCategorySpec(key=f"k{i}", label=label, values=(f"v{i}",), description="架空の行", radius_px=radius)
             for i, (label, radius) in enumerate(rows)
@@ -63,20 +62,6 @@ def test_the_size_sentence_is_refused_when_the_rows_are_not_told_apart_by_size(r
     """大きさで分けていない見方に「大きく表示」と書かない。"""
     with pytest.raises(ValueError, match="違う半径"):
         size_sentence(axis(*rows))
-
-
-def test_the_ordered_colors_are_described_from_the_first_and_the_last_row():
-    """行を足し替えても、説明は濃く塗る先頭の行と明るく塗る末尾の行を名指す。"""
-    dark, light = ORDERED_END_COLOR_NAMES
-
-    text = ordered_ends_text(axis(("先頭", None), ("中ほど", None), ("末尾", None), palette="ordered"))
-
-    assert text == f"「先頭」ほど{dark}、「末尾」ほど{light}"
-
-
-def test_the_ordered_colors_are_not_described_for_an_unordered_axis():
-    with pytest.raises(ValueError, match="順序のある分類ではない"):
-        ordered_ends_text(axis(("先頭", None), ("末尾", None), palette="nominal"))
 
 
 def test_a_layer_drawing_a_primary_attribute_takes_the_name_of_the_attribute():
@@ -105,11 +90,9 @@ def test_every_layer_belongs_to_a_declared_category_and_every_category_to_a_decl
     assert {category.group for category in map_display.MAP_LAYER_CATEGORIES} <= groups
 
 
-def test_no_chip_is_empty():
-    """グループには種別が、種別にはレイヤーがある。空のチップは押しても何も出ない。"""
-    used_categories = {spec.category for _, spec in map_display.MAP_LAYERS}
-
-    assert set(keys(map_display.MAP_LAYER_CATEGORIES)) <= used_categories
+def test_no_group_chip_is_empty():
+    """グループには種別がある。空のチップは押しても何も出ない。種別のレイヤーには管理DBの道の線の層も入るので、
+    種別が空でないことはコードの宣言だけでは決まらない。"""
     assert set(keys(map_display.MAP_OVERLAY_GROUPS)) <= {c.group for c in map_display.MAP_LAYER_CATEGORIES}
 
 

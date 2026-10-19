@@ -39,7 +39,6 @@ from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME
 from app.main import app
 from app.domain.hard_filters import HARD_FILTERS
-from app.domain.road_avoidance import AVOIDABLE_ROWS, AVOIDANCE_LEVEL_LABELS, AVOIDANCE_LEVELS
 from app.domain.address_area import ADDRESS_AREA_LEVELS
 from app.domain.geo import COMPASS_LABELS, EARTH_RADIUS_KM
 from app.domain.value_distribution import QUANTILE_TARGETS
@@ -594,25 +593,12 @@ def main() -> None:
             # フロントが使う較正値の**既定**（`domain/tuning.py`の宣言そのまま）。フロントはidの型にだけ使い、
             # 値は読まない——効いている値はGET /api/axis-catalogが返し、取れるまではその値を使う機能を出さない。
             "client_tuning": client_tuning_values(),
-            # 道のレイヤの凡例の行ごとの避け方の段と、選べる行・既定の段。backendは鍵の集合の完全一致を
-            # 要求する（`RoadAvoidanceOverride`）。行は道のレイヤの凡例の行の宣言から導く。`former_key`は分ける前の
-            # 行の鍵で、その鍵で受け取っていた段をこの行へ読み替えられるように配る。`fixed_rows`は0次ハードフィルタで、
-            # いつも「通らない」の行として見せる（要求では受けない）。
-            "road_avoidance": {
-                "fixed_rows": [
-                    {"key": name, "label": spec.label, "description": spec.description}
-                    for name, spec in HARD_FILTERS.items()
-                ],
-                "levels": [{"key": level, "label": AVOIDANCE_LEVEL_LABELS[level]} for level in AVOIDANCE_LEVELS],
-                "rows": [
-                    {
-                        "key": row.key, "layer": row.layer_id, "layer_label": row.layer_label,
-                        "label": row.label, "description": row.description, "default": row.default_level,
-                        "former_key": row.former_key,
-                    }
-                    for row in AVOIDABLE_ROWS.values()
-                ],
-            },
+            # 0次ハードフィルタ。除外タブにいつも「通らない」の行として見せる（要求では受けない）。選べる行と段は
+            # 管理DBの道の区分から、GET /api/axis-catalogが配る。
+            "hard_filters": [
+                {"key": name, "label": spec.label, "description": spec.description}
+                for name, spec in HARD_FILTERS.items()
+            ],
         },
     )
 

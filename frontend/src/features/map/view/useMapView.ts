@@ -36,6 +36,7 @@ import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
 
 import {
   deserializeHiddenLegendKeys,
+  hiddenOverInitial,
   hiddenKeysOf,
   presentHiddenKeys,
   toggleHiddenKey,
@@ -59,9 +60,7 @@ export const LEGEND_FILTER_DEBOUNCE_MS = 400;
 const ROUTE_LAYER_ID = "route";
 // 道の値を求める走る向きの刻み。細かくするほど、向きで材料を取り直す軸の取り直しが増える。
 const WAY_BEARING_STEP_DEG = 10;
-const INITIAL_HIDDEN: HiddenLegendKeys = initiallyHiddenLegendKeys();
-/** 凡例のどの行も隠していない状態。最初に隠す行を持つ軸も、空の並びで「出す」と覚える。 */
-const NONE_HIDDEN: HiddenLegendKeys = Object.fromEntries(Object.keys(INITIAL_HIDDEN).map((axisId) => [axisId, []]));
+const NO_STORED_VALUES = {};
 
 interface MapViewInputs {
   /** 候補を選んでいるか。 */
@@ -104,10 +103,15 @@ export function useMapView({
 }: MapViewInputs): MapViewState {
   const catalog = useAxisCatalog();
   const mapCatalog = useMapAxisCatalog();
-  const [layerVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
+  // 保存するのは触った層の真偽だけで、既定は層の一覧（道の線の層は軸カタログが届いてから決まる）から重ねる。
+  const [storedVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
     "ridecompass:layer-visibility",
-    buildDefaultLayerVisibility(),
+    NO_STORED_VALUES,
     { serialize: JSON.stringify, deserialize: deserializeLayerVisibility },
+  );
+  const layerVisibility = useMemo(
+    () => ({ ...buildDefaultLayerVisibility(mapCatalog.layers), ...storedVisibility }),
+    [mapCatalog.layers, storedVisibility],
   );
   // 軸を指す保存値はカタログが届いて初めて読めるため、届いた時点で読み直す。
   const [lens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", DEFAULT_ROUTE_STYLE_MODE_ID, {
@@ -116,10 +120,15 @@ export function useMapView({
     reloadKey: catalog.loaded,
   });
   const [keepAfterRoute, setKeepAfterRoute] = useStoredBooleanState("ridecompass:lens-keep-after-route", true);
-  const [hidden, setHidden] = useStoredState<HiddenLegendKeys>("ridecompass:hidden-legend-keys", INITIAL_HIDDEN, {
-    serialize: JSON.stringify,
-    deserialize: (raw) => deserializeHiddenLegendKeys(raw, INITIAL_HIDDEN),
-  });
+  const [storedHidden, setStoredHidden] = useStoredState<HiddenLegendKeys>(
+    "ridecompass:hidden-legend-keys",
+    NO_STORED_VALUES,
+    { serialize: JSON.stringify, deserialize: deserializeHiddenLegendKeys },
+  );
+  const initialHidden = useMemo(() => initiallyHiddenLegendKeys(mapCatalog.roadLayers), [mapCatalog.roadLayers]);
+  const hidden = useMemo(() => hiddenOverInitial(initialHidden, storedHidden), [initialHidden, storedHidden]);
+  const setHidden = (update: (current: HiddenLegendKeys) => HiddenLegendKeys) =>
+    setStoredHidden((prev) => update(hiddenOverInitial(initialHidden, prev)));
   const [viewport, setViewport] = useState<MapViewport | null>(null);
   const [mapLayerStatus, setMapLayerStatus] = useState<LayerDataStatusByLayer>({});
   const [refreshToken, setRefreshToken] = useState(0);
@@ -195,11 +204,12 @@ export function useMapView({
   const lensFetch = wayMaterials.get(lens);
   const chips = overlayChips({
     layers: mapCatalog.layers,
+    roadLayers: mapCatalog.roadLayers,
     visibility: layerVisibility,
     hidden,
     dataStatus: { ...mapLayerStatus, ...weather.dynamicWeatherDataStatus },
-    zoomTooWideLayerIds: viewport ? tileZoomTooWideLayerIds(viewport.zoom) : [],
-    versionMissingLayerIds: mapCatalog.tileVersions ? [] : tileVersionGatedLayerIds(),
+    zoomTooWideLayerIds: viewport ? tileZoomTooWideLayerIds(mapCatalog.layers, viewport.zoom) : [],
+    versionMissingLayerIds: mapCatalog.tileVersions ? [] : tileVersionGatedLayerIds(mapCatalog.layers),
     catalogSettled: catalog.loaded || catalog.failed,
   });
   const setRouteShown = (on: boolean) => setLayerVisibility((prev) => ({ ...prev, [ROUTE_LAYER_ID]: on }));
@@ -251,11 +261,10 @@ export function useMapView({
         })),
       // 「表示」の絞り込みだけを数え、戻す（色分けの凡例は色分けの中で戻す）。
       anyLegendHidden: chips.some(isLegendFiltered),
+      // 最初に隠す行を持つ軸も、空の並びで「出す」と覚える。
       onShowAllLegendRows: () =>
         setHidden((prev) =>
-          Object.fromEntries(
-            Object.entries({ ...NONE_HIDDEN, ...prev }).map(([key, keys]) => [key, lensKeys.has(key) ? keys : []]),
-          ),
+          Object.fromEntries(Object.entries(prev).map(([key, keys]) => [key, lensKeys.has(key) ? keys : []])),
         ),
     },
     lensConditions: catalog.axes.find((axis) => axis.axisId === painted)?.wayValueConditions ?? [],

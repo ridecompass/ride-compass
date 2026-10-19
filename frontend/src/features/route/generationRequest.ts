@@ -16,7 +16,7 @@ export interface GenerationInput {
   maxRoutes: number;
   assumedSpeedKmh: number;
   startTime: Date;
-  /** 道のレイヤの凡例の行ごとの避け方（今の行を全部持つ）。 */
+  /** 道の区分の行ごとに選んだ避け方（選んでいない行と前の鍵は、backendが今の行へ揃える）。 */
   roadAvoidance: RoadAvoidanceOverride;
   /** 重み上書きが有効なときのみ（無効ならbackendの既定値に委ねる）。 */
   routePreference: RoutePreferenceWeights | null;

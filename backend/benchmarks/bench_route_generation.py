@@ -37,7 +37,6 @@ from app.config import settings
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.infrastructure.database import get_session_factory
 from app.services.axis_registry_service import refresh_axis_definitions
-from app.domain.road_avoidance import DEFAULT_ROAD_AVOIDANCE
 from app.domain.route import Coordinates
 from app.domain.time_zone import JST
 from app.domain.route_request import ASSUMED_SPEED_KMH
@@ -147,7 +146,7 @@ async def main() -> int:
     # 評価条件を省いた生成の要求と、画面の既定の除外・避け方で組む。
     async with get_route_generation_setup_opener()(RequestedConditions(
         preference_override=None, penalty_strength=None, max_average_grade_percent=None,
-        road_avoidance=DEFAULT_ROAD_AVOIDANCE, assumed_speed_kmh=ASSUMED_SPEED_KMH,
+        road_avoidance={}, assumed_speed_kmh=ASSUMED_SPEED_KMH,
     )) as setup:
         generator = setup.generator
         for index in range(runs):

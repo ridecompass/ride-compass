@@ -136,7 +136,7 @@ LANDCOVER = {
 SIGNED = "axis_slope"
 INSPECTED_AXES = {
     "axis_surface": shaped_axis(
-        CategoricalShape(material="surface_class", mapping={"paved": 10.0, "unpaved": 90.0}),
+        CategoricalShape(material="cat_a", mapping={"paved": 10.0, "unpaved": 90.0}),
         axis_id="axis_surface", is_published=True),
     "axis_grade": shaped_axis(
         BreakpointLinearShape(terms=[MaterialTerm(material="gradient_percent")],
@@ -179,7 +179,7 @@ class _TileMaterials:
     async def materials(self, z, x, y):
         key = WAY if (z, x, y) == WAY_TILE else SEGMENT
         return FeatureMaterials(feature_keys=("other", key),
-                                columns={"surface_class": CategoricalColumn.encode(["unpaved", "paved"])}
+                                columns={"cat_a": CategoricalColumn.encode(["unpaved", "paved"])}
                                 ) if self._readable else None
 
     async def segments(self, z, x, y):

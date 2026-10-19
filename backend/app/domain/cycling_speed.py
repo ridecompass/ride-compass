@@ -25,9 +25,9 @@ import numpy as np
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.material_catalog import GRADIENT_PERCENT, SURFACE_ESTIMATE
-from app.domain.road import SURFACE_ESTIMATES
+from app.domain.road_classes import current_road_classes
 from app.domain.traffic import stop_count_material_ids
-from app.domain.tuning import tuning_value
+from app.domain.tuning import TUNING_PARAMETERS_BY_ID, tuning_value
 from app.domain.wind import kmh_to_ms
 
 AIR_DENSITY_KG_M3 = 1.225
@@ -48,6 +48,8 @@ SEGMENT_SPEED_CONDITIONS: tuple[str, ...] = ("坂", "風", "路面")
 
 # 路面の見込みを持つ材料id。
 ROLLING_RESISTANCE_MATERIAL_ID = SURFACE_ESTIMATE
+#: 基準の転がり抵抗の較正値のid。
+BASE_CRR_ID = "speed.crr"
 
 
 def travel_model_material_ids() -> tuple[str, ...]:
@@ -61,17 +63,15 @@ def travel_model_material_ids() -> tuple[str, ...]:
 
 
 def crr_for_surface(surface_estimate: CategoricalColumn) -> np.ndarray:
-    """路面の見込み（`domain/road.py: SurfaceEstimate`の鍵）から、区間ごとの転がり抵抗を返す。
+    """路面の見込み（転がり抵抗の表が指す分け方の区分）から、区間ごとの転がり抵抗を返す。
 
-    宣言に無い値（値なしを含む）は送出する。材料の式はどの道にも見込みを与えるため、来るのは式と
-    宣言が食い違ったときだけで、舗装へ倒すと路面の違いが黙って所要時間から消える。
+    区分の外の道・表に無い区分・宣言に無い較正値のidは、基準の転がり抵抗（`RiderProfile.crr`）にする。
     """
-    table = {estimate.key: tuning_value(estimate.rolling_resistance) for estimate in SURFACE_ESTIMATES}
+    definitions = current_road_classes()
+    ids = definitions.rolling_resistance_classes.get(definitions.rolling_resistance_classification or "", {})
+    table = {key: tuning_value(tuning_id) for key, tuning_id in ids.items() if tuning_id in TUNING_PARAMETERS_BY_ID}
     crr = surface_estimate.lookup(table)
-    unknown = np.flatnonzero(np.isnan(crr))
-    if len(unknown):
-        raise ValueError(f"路面の見込みに宣言に無い値がある: {surface_estimate.value_at(int(unknown[0]))!r}")
-    return crr
+    return np.where(np.isnan(crr), tuning_value(BASE_CRR_ID), crr)
 
 
 @dataclass(frozen=True)
@@ -82,7 +82,7 @@ class RiderProfile:
     # 標準値は宣言（`domain/tuning.py`）が持ち、作り手は渡さない。読むのは**生成のたび**で、
     # import時ではない——import時に束ねると、管理画面から変えた値が効かない。
     cda_m2: float = field(init=False, default_factory=lambda: tuning_value("speed.cda_m2"))
-    crr: float = field(init=False, default_factory=lambda: tuning_value("speed.crr"))
+    crr: float = field(init=False, default_factory=lambda: tuning_value(BASE_CRR_ID))
     mass_kg: float = field(init=False, default_factory=lambda: tuning_value("speed.mass_kg"))
 
     @property

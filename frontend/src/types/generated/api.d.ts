@@ -788,6 +788,8 @@ export interface components {
             icon_id: string | null;
             /** Primary Attribute Ids */
             primary_attribute_ids: string[];
+            /** Road Layer Ids */
+            road_layer_ids: string[];
             map_paint: components["schemas"]["MapPaint"];
             raw_value_units: components["schemas"]["RawValueUnits"];
             /** Material Breakdown */
@@ -1805,7 +1807,7 @@ export interface components {
             /** Distance Km */
             distance_km: number;
             /** Value */
-            value: string | boolean | null;
+            value: string | null;
         };
         /** RoadClassTermView */
         RoadClassTermView: {
@@ -1827,7 +1829,7 @@ export interface components {
             /** Description */
             description: string;
             /** Color */
-            color: string | null;
+            color: string;
             /** Former Keys */
             former_keys: string[];
             /** Conditions */
@@ -1875,11 +1877,6 @@ export interface components {
             id: string;
             /** Label */
             label: string;
-            /**
-             * Data Source
-             * @enum {string}
-             */
-            data_source: "road_surface" | "poi" | "accident" | "stop_place";
             /** Category */
             category: string;
             /** Icon */

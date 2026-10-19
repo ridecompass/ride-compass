@@ -61,7 +61,7 @@ from app.domain.region import BoundingBox, bbox_covering_points
 from app.domain.rain import StationRainMaterials, rain_material_columns
 from app.domain.road_network import RoadSlice, edge_row_of, elevation_attribute, material_arrays_of
 from app.domain.route_points import RoutePointHit, points_along_route
-from app.domain.route_road_classes import RoadClassReader
+from app.domain.route_road_classes import SegmentClassReader
 from app.domain.route import (
     Coordinates,
     DensityScoreInput,
@@ -1318,7 +1318,7 @@ class RoadGraphEngine:
         segment_categories: list[dict[str, str]] = []
         segment_raw_values: list[dict[str, float]] = []
         active_material_ids = displayed_material_ids(context.composer.weights)
-        road_classes = RoadClassReader.of(context.road.network)
+        road_classes = SegmentClassReader.of(context.road)
         timed = _values_at_passages(context, rows, leg_of_edge, passages)
         winds = context.composer.winds_at(
             rows,
@@ -1428,7 +1428,7 @@ class RoadGraphEngine:
                     wind=winds[index],
                     road_classes={
                         layer: [RoadClassStretch(distance_km=rounded_km, value=value)]
-                        for layer, value in road_classes.values_at(int(context.road.rows[row])).items()
+                        for layer, value in road_classes.values_at(row).items()
                     },
                 ).with_density_inputs(density_inputs)
             )

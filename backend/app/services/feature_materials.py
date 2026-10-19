@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments
+from app.domain.road_classes import class_columns, current_road_classes
 from app.domain.region import tile_bounds_lonlat
 from app.infrastructure.cache_identity import cache_identity, is_known_tile_version
 from app.infrastructure.debug_log import log_external_call
@@ -27,11 +28,18 @@ class FeatureMaterialService:
         self._repository = repository
 
     async def materials(self, z: int, x: int, y: int) -> FeatureMaterials | None:
-        """タイル内のフィーチャーごとの材料。取込範囲外・DB障害・フィーチャーの無いタイルはNone。"""
-        return await self._cached(
+        """タイル内のフィーチャーごとの材料。取込範囲外・DB障害・フィーチャーの無いタイルはNone。
+
+        区分の列（`domain/road_classes.py: class_columns`）は、持っておいた事実へ読むたびに当てる。持つものに区分を含めないので、
+        区分を書き換えても持ったものを作り直さずに済む。"""
+        materials = await self._cached(
             "region:feature-materials", z, x, y, FeatureMaterials, FEATURE_MATERIALS_VALUE_SHAPE,
             self._repository.get_feature_materials_in_tile,
         )
+        if materials is None:
+            return None
+        classes = class_columns(current_road_classes(), materials.columns, len(materials))
+        return FeatureMaterials(feature_keys=materials.feature_keys, columns={**materials.columns, **classes})
 
     async def segments(self, z: int, x: int, y: int) -> FeatureSegments | None:
         """道1本を1つのフィーチャーにするズームのタイルの、フィーチャーごとの区間の材料。取込範囲外・DB障害・区間の無い

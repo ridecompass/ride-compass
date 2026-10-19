@@ -258,34 +258,10 @@
     "tile_property": "surface"
   },
   {
-    "material_id": "surface_class",
-    "label": "路面の区分 - surface_class",
-    "name": "路面の区分",
-    "value_labels": {
-      "paved": "舗装",
-      "paving_stones": "敷石・レンガ",
-      "compacted": "締め固め・細砂利",
-      "gravel": "砂利・未舗装",
-      "soil": "土・草・泥・砂",
-      "cobblestone": "石畳",
-      "other": "その他"
-    },
-    "tile_property": "surface_class"
-  },
-  {
     "material_id": "surface_estimate",
     "label": "路面の見込み - surface_estimate",
     "name": "路面の見込み",
-    "value_labels": {
-      "paved": "舗装",
-      "paving_stones": "敷石・レンガ",
-      "compacted": "締め固め・細砂利",
-      "gravel": "砂利・未舗装",
-      "soil": "土・草・泥・砂",
-      "cobblestone": "石畳",
-      "unknown_track": "不明[農道・林道]",
-      "unknown_road": "不明[一般の道]"
-    },
+    "value_labels": null,
     "tile_property": null
   },
   {
@@ -322,17 +298,6 @@
     "name": "歩行者自転車共用道",
     "value_labels": null,
     "tile_property": null
-  },
-  {
-    "material_id": "cycleway_class",
-    "label": "自転車の走る場所 - cycleway_class",
-    "name": "自転車の走る場所",
-    "value_labels": {
-      "separated": "自転車道",
-      "lane": "自転車レーン",
-      "shared": "共用の道"
-    },
-    "tile_property": "cycleway_class"
   },
   {
     "material_id": "bicycle",

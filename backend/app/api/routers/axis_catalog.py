@@ -29,6 +29,7 @@ from app.domain.axis_definitions import (
     TimeScope,
     primary_attribute_ids_for,
     published_axis_definitions,
+    road_layer_ids_for,
 )
 from app.domain.axis_raw_value import (
     AxisMaterialBreakdownEntry,
@@ -63,6 +64,9 @@ class AxisCatalogEntry(StrictModel):
     # 材料[階層構造]は除く）。軸と一次属性レイヤーの対応を、軸idで分岐せずに引けるよう
     # 軸スタジオの公開軸にも同じ形で配る。
     primary_attribute_ids: list[str]
+    # この軸の材料を区分の決め手に読む、地図の道の線の層（`domain/axis_definitions.py: road_layer_ids_for`。
+    # `road_classes`の`map_layers`の`id`）。
+    road_layer_ids: list[str]
     # 地図がこの軸について塗るもの——塗る値・単位・段の境界・凡例の目盛り・タイルの塗り・段の体感ラベル
     # （domain/map_paint.py: map_paint）。ルート確定前の塗り・ルート確定後のルート線色分け・凡例のどれもこれに従う。
     map_paint: MapPaint
@@ -125,12 +129,13 @@ async def get_axis_catalog(region_service: RegionService = Depends(get_region_se
     accident_years = await region_service.get_accident_years()
     tile_versions = await region_service.tile_versions()
     way_value_layers = dedicated_way_value_layers()
+    road_classes = current_road_classes()
 
     return AxisCatalogResponse(
         client_tuning=client_tuning_values(),
         accident_years=accident_years,
         tile_versions=tile_versions,
-        road_classes=road_class_catalog(current_road_classes()),
+        road_classes=road_class_catalog(road_classes),
         axes=[
             AxisCatalogEntry(
                 axis_id=definition.axis_id,
@@ -140,6 +145,7 @@ async def get_axis_catalog(region_service: RegionService = Depends(get_region_se
                 default_weight=definition.default_weight,
                 icon_id=definition.icon_id,
                 primary_attribute_ids=primary_attribute_ids_for(definition),
+                road_layer_ids=road_layer_ids_for(definition, road_classes),
                 map_paint=map_paint(definition),
                 raw_value_units=raw_value_units(definition),
                 material_breakdown=axis_material_breakdown(definition, AXIS_DEFINITIONS),

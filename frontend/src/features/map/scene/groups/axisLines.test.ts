@@ -43,6 +43,7 @@ type AxisLine = AxisLineState["axes"][number];
 function groupFor(
   { materials = MATERIALS, loading = false, hiddenBandKeys = [], underlay = false }: Partial<AxisLine> = {},
   conditions: AxisLineState["conditions"] = { bearing_deg: 0 },
+  roadLayerCount = 2,
 ) {
   return axisLineGroup.build({
     sourceLayer: "road",
@@ -59,6 +60,7 @@ function groupFor(
       },
     ],
     conditions,
+    roadLayerCount,
   });
 }
 
@@ -138,6 +140,14 @@ describe("値の無い道", () => {
 
     expect(lookOf("absent", { underlay: true })).toEqual({ color: palette.semantic.no_data, dashOpacity: null });
     expect(underlay.layers[0].paint["line-opacity"]).toBe(mapDisplay.road.underlayOpacity);
+  });
+
+  it("下敷きは、道の線の層が多いほど広く敷く（全部の層を左右へ並べた幅を覆う）", () => {
+    const widthWith = (roadLayerCount: number) =>
+      groupFor({ underlay: true }, undefined, roadLayerCount).layers[0].paint["line-width"] as number;
+
+    expect(widthWith(1)).toBe(mapDisplay.road.lineWidthPx);
+    expect(widthWith(3) - widthWith(2)).toBe(mapDisplay.road.trackOffsetStepPx);
   });
 });
 

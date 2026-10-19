@@ -14,6 +14,7 @@ from app.domain.axis_definitions import (
     BreakpointLinearShape,
 )
 from app.domain.material_catalog import MATERIAL_CATALOG, MaterialDType
+from app.domain.road_classes import material_with_class_labels
 from app.domain.strict_model import StrictModel
 
 
@@ -186,7 +187,7 @@ def axis_material_breakdown(
     """
     entries = []
     for share in axis_material_shares(definition, definitions):
-        spec = MATERIAL_CATALOG[share.material_id]
+        spec = material_with_class_labels(share.material_id)
         entries.append(
             AxisMaterialBreakdownEntry(
                 material_id=share.material_id,

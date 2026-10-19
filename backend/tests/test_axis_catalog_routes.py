@@ -30,6 +30,7 @@ from app.infrastructure.derived_data_meta import DataRevisions
 from app.main import app
 from app.services.region_service import RegionService
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
+from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 
 #: カタログが配る軸。1本ごとに、カタログの別の出し分けを通す性質を持たせる。
 CATALOG_AXES: dict[str, AxisDefinition] = {
@@ -154,10 +155,17 @@ def test_only_the_published_axes_are_served_without_auth(client):
 
 def test_each_axis_carries_what_the_domain_derives_for_it(client, catalog_axes):
     """導出の入力違いは domain のテストが持つ。ここは軸ごとの欄へ結果が届くことだけを見る。"""
-    entries = _entries(client)
+    rolling = road_classes(
+        {"rolling": classification({"paved": [fact_is("surface", "asphalt")]})},
+        map_layers={"rolling": map_layer()},
+        rolling_resistance_classification="rolling",
+    )
+    with replaced_road_classes(rolling):
+        entries = _entries(client)
 
     categorical = entries["axis_categorical"]
     assert categorical["primary_attribute_ids"] == ["surface"]
+    assert (categorical["road_layer_ids"], entries["axis_way_value_scored"]["road_layer_ids"]) == (["rolling"], [])
     signed = entries["axis_way_value_signed"]
     assert (signed["map_paint"]["value"], signed["map_paint"]["unit"]) == (
         {"kind": "signed_material", "material": "gradient_percent"},

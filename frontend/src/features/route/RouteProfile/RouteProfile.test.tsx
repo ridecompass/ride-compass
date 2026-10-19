@@ -11,21 +11,29 @@
  * （標高・勾配・何km地点・到達予想・閉じる／当たる道の区分と風のチップ／区間の総合難易度と軸ごとの寄与）を出し、当たらない区分
  * （該当なし・データなし）はチップにせず、閉じると選択を外すこと。地図で押した区間（地物から組み直した写し）も、図がその区間と押した所の地点を探して詳しくを出すこと。
  *
- * 差し替えたもの: グラフの実寸（`getBoundingClientRect`。テスト環境は実寸を返さない）。
+ * 差し替えたもの: グラフの実寸（`getBoundingClientRect`。テスト環境は実寸を返さない）。道の区分の層は軸カタログの応答としてテストが組む
+ * （本番の層は管理DBが持つ）。
  *
  * ここで見ないもの: 難易度の塗り・なぞって地点を選ぶ操作 → `DifficultyProfile.test.tsx`。折れ線の点・帯の切れ目と地点の値・行の計算 →
  * `profileLayers.test.ts`（点の印の色・区分の名前も）。選んだレイヤを覚えること → `useProfileLayers.test.ts`。風のチップの方角の呼び名 →
  * `lib/cardinalLabel.test.ts`。
  */
 import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
-import { roadTrackRows, ROAD_TRACKS } from "@/lib/mapDisplay/roadTracks";
 import { EVALUATION_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { catalogEntry, catalogOf } from "@/testing/catalogAxes";
+import { serveAxisCatalog } from "@/testing/backendServer";
+import {
+  catalogEntry,
+  catalogOf,
+  catalogResponse,
+  roadClass,
+  roadClassCatalog,
+  roadMapLayer,
+} from "@/testing/catalogAxes";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
@@ -34,6 +42,19 @@ import RouteProfile from "./RouteProfile";
 
 const ENTRIES = [catalogEntry({ axis_id: "axis_a", label: "坂" }), catalogEntry({ axis_id: "axis_b", label: "路面" })];
 const CATALOG = catalogOf(ENTRIES);
+const SURFACE_CLASSES = [
+  roadClass("paved", { label: "舗装", color: "#111111" }),
+  roadClass("gravel", { label: "砂利・未舗装", color: "#222222" }),
+];
+const ROAD_LAYERS = [
+  roadMapLayer("surface", { label: "路面の種類", no_data_property: "surface", classes: SURFACE_CLASSES }),
+  roadMapLayer("tunnel", { label: "トンネル", classes: [roadClass("tunnel", { label: "トンネル" })] }),
+];
+const surfaceColor = (key: string) => SURFACE_CLASSES.find((roadClass) => roadClass.key === key)!.color;
+
+beforeEach(() => {
+  serveAxisCatalog(catalogResponse(ENTRIES, { road_classes: roadClassCatalog({ map_layers: ROAD_LAYERS }) }));
+});
 // 北緯35度の上を東へ1kmずつ進む2区間。前は坂だけが効き、標高を持つ。後ろは難易度も標高も無い。
 const CLIMB = makeRouteSegment({
   distance_km: 1,
@@ -53,7 +74,7 @@ const UNKNOWN = makeRouteSegment({
   end_latitude: 35,
   end_longitude: 139.02,
 });
-// 地点の詳しくを見る区間。舗装の道でトンネルではなく（「該当なし」）、ほかの区分は値を持たない（「データなし」）。
+// 地点の詳しくを見る区間。舗装の道でトンネルではない（「該当なし」）。
 const PAVED: RouteSegmentDetail = {
   ...CLIMB,
   estimated_arrival_time: "2026-10-04T00:42:00Z",
@@ -61,8 +82,6 @@ const PAVED: RouteSegmentDetail = {
   wind: { speed_ms: 3, direction_deg: 180, forecast_at: "2026-10-04T09:00" },
   road_classes: { surface: [{ distance_km: 1, value: "paved" }], tunnel: [{ distance_km: 1, value: null }] },
 };
-const surfaceColor = (key: string) =>
-  roadTrackRows(ROAD_TRACKS.find((track) => track.attr_id === "surface")!).find((row) => row.key === key)!.color;
 
 type Props = React.ComponentProps<typeof RouteProfile>;
 
@@ -163,7 +182,7 @@ describe("RouteProfile", () => {
   it("道の区分のレイヤは、レイヤごとに地図と同じ色の帯を出し、帯に現れた区分の凡例を「グラフに出す情報」の一覧の行に出す", async () => {
     const paved = {
       ...CLIMB,
-      road_classes: { surface: [{ distance_km: 1, value: "paved" }], tunnel: [{ distance_km: 1, value: true }] },
+      road_classes: { surface: [{ distance_km: 1, value: "paved" }], tunnel: [{ distance_km: 1, value: "tunnel" }] },
     };
     const gravel = {
       ...UNKNOWN,
@@ -172,7 +191,8 @@ describe("RouteProfile", () => {
     renderProfile({ segments: [paved, gravel], layers: { ids: ["surface", "tunnel"], toggle: vi.fn() } });
     await openLayers();
     const chart = screen.getByRole("img", { name: "道のりに沿った情報" });
-    const surfaceBand = chart.querySelector('[data-layer="surface"]')!;
+    // 道の層は軸カタログが届いてから出る。
+    const surfaceBand = await waitFor(() => chart.querySelector('[data-layer="surface"]')!);
     expect([...surfaceBand.querySelectorAll("rect")].map((rect) => rect.getAttribute("fill"))).toEqual([
       surfaceColor("paved"),
       surfaceColor("gravel"),
@@ -361,7 +381,7 @@ describe("RouteProfile", () => {
       // 標高は12mから31.6mへ1kmで上る道の1/4の地点。地点は区間の始まりの道のり、到達予想は日本時間。
       expect(detail()).toHaveTextContent("標高 17m勾配 +2.0%0.0km地点到達予想 09:42");
       // トンネルの「該当なし」と、値の無い区分の「データなし」はチップにしない。区分のチップは行の凡例の色の印を持つ。
-      expect(chipTexts()).toEqual(["路面の種類 舗装", "南 3.0m/s"]);
+      await waitFor(() => expect(chipTexts()).toEqual(["路面の種類 舗装", "南 3.0m/s"]));
       const pavedChip = within(detail()).getByText("舗装").closest("li")!;
       expect(pavedChip.querySelector("span[style]")).toHaveStyle({ backgroundColor: surfaceColor("paved") });
       await userEvent.click(
@@ -380,7 +400,7 @@ describe("RouteProfile", () => {
     },
   );
 
-  it("地図で押した区間（地物から組み直した写し）も、図はその区間の押した所の地点に線を引き、その地点の標高・区分・風・総合難易度を出す", () => {
+  it("地図で押した区間（地物から組み直した写し）も、図はその区間の押した所の地点に線を引き、その地点の標高・区分・風・総合難易度を出す", async () => {
     renderProfile({
       segments: [PAVED, UNKNOWN],
       // 地図は区間を自分の地物から組み直すので、図の区間と同じものではない。押した所は前の区間の始まりから0.3km東。
@@ -390,7 +410,7 @@ describe("RouteProfile", () => {
     expect(screen.getByRole("slider")).toHaveAttribute("aria-valuenow", "0.3");
     // 標高は12mから31.6mへ1kmで上る道の0.3kmの地点。
     expect(detail()).toHaveTextContent("標高 18m勾配 +2.0%");
-    expect(chipTexts()).toEqual(["路面の種類 舗装", "南 3.0m/s"]);
+    await waitFor(() => expect(chipTexts()).toEqual(["路面の種類 舗装", "南 3.0m/s"]));
     expect(within(detail()).getByText("総合難易度").parentElement).toHaveTextContent("総合難易度40.0/100");
   });
 

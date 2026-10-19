@@ -14,7 +14,7 @@ from app.api.dependencies import (
 )
 from app.api.rate_limit import client_id, enforce_rate_limit
 from app.config import settings
-from app.domain.road_avoidance import AVOIDABLE_ROWS, AvoidanceLevel
+from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.route_preference import RoutePreference, check_axis_weights, published_axis_ids
 from app.domain.route_request import (
     MAX_DISTANCE_TOLERANCE_KM,
@@ -79,22 +79,8 @@ class RoutePreferenceWeights(RootModel[dict[str, float]]):
 
 
 class RoadAvoidanceOverride(RootModel[dict[str, AvoidanceLevel]]):
-    """道のレイヤの凡例の行ごとの避け方（通る・なるべく避ける・通らない）。
-    鍵は`domain/road_avoidance.py: AVOIDABLE_ROWS`と同じ集合で、全部を明示する（省いた行に既定が
-    黙って入ると、画面が見せる段と探索が使う段がずれる）。
-    """
-
-    @model_validator(mode="after")
-    def _check_row_keys(self) -> "RoadAvoidanceOverride":
-        actual = self.root.keys()
-        if actual != AVOIDABLE_ROWS.keys():
-            missing = sorted(AVOIDABLE_ROWS.keys() - actual)
-            extra = sorted(actual - AVOIDABLE_ROWS.keys())
-            raise ValueError(
-                f"road_avoidance must specify exactly the {len(AVOIDABLE_ROWS)} known rows "
-                f"(missing={missing}, unknown={extra})"
-            )
-        return self
+    """避け方を選べる行（`<分け方>.<区分>`）→避け方（通る・なるべく避ける・通らない）。要求では行の一部や前の鍵でもよく、
+    応答には今の区分の行を全部エコーする（`domain/road_avoidance.py: resolve_road_avoidance`）。"""
 
 
 class RouteGenerateRequest(StrictModel):
@@ -115,7 +101,7 @@ class RouteGenerateRequest(StrictModel):
     # 0次ハードフィルタの勾配しきい値（%、絶対値。省略時は除外なし。
     # `domain/hard_filters.py: compute_search_exclusion`参照）。
     max_average_grade_percent: float | None = Field(ge=0, default=None)
-    # 道のレイヤの凡例の行ごとの避け方。
+    # 道の区分ごとの避け方。
     road_avoidance: RoadAvoidanceOverride
     # 返す候補の上限件数。距離があれば距離フィルタ合格・overall_difficulty昇順の上位この件数、距離が無ければ
     # 最後の区間の代わりの道をこの件数まで返す。下限・上限と画面の既定値はOpenAPI生成物
@@ -206,7 +192,7 @@ class GenerationConditions(StrictModel):
     penalty_strength: float
     # 0次ハードフィルタの勾配しきい値（%、Noneは除外なし）。
     max_average_grade_percent: float | None
-    # 道のレイヤの凡例の行ごとの避け方（実際に適用された値）。
+    # 道の区分ごとの避け方（実際に適用された値）。
     road_avoidance: RoadAvoidanceOverride
     # 候補数の上限。
     max_routes: int

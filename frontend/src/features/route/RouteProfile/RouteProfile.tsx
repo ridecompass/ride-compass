@@ -19,6 +19,7 @@ import ProfileChart, {
   profileTextClass,
   useProfileScale,
 } from "@/features/route/ProfileChart/ProfileChart";
+import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import palette from "@/types/generated/palette.json";
 import type { RoutePoint, RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
@@ -31,7 +32,7 @@ import {
   layerValueAtKm,
   markLegendRows,
   markNearKm,
-  PROFILE_LAYERS,
+  profileLayers,
   type BandLayer,
   type BandPiece,
   type LineLayer,
@@ -97,8 +98,10 @@ export default function RouteProfile({
     const { byAxis } = profileBoxes(scale.columns, axisOrder, overallDifficulty);
     return axes.filter((axis) => (byAxis.get(axis.axisId)?.length ?? 0) > 0);
   }, [scale, axes, axisOrder, overallDifficulty]);
+  const roadLayers = useAxisCatalog().roadClasses.map_layers;
+  const available = useMemo(() => profileLayers(roadLayers), [roadLayers]);
   const shownLayers = useMemo(() => {
-    const chosen = PROFILE_LAYERS.filter((layer) => layers.ids.includes(layer.id));
+    const chosen = available.filter((layer) => layers.ids.includes(layer.id));
     return {
       lines: chosen
         .filter((layer): layer is LineLayer => layer.draw.kind === "line")
@@ -110,9 +113,11 @@ export default function RouteProfile({
         .filter((layer): layer is PointLayer => layer.draw.kind === "points")
         .map((layer) => ({ layer, marks: layerMarks(points, layer) })),
     };
-  }, [scale, layers.ids, points]);
+  }, [available, scale, layers.ids, points]);
   // 点の印の行は帯の上に積む。
   const rowCount = shownLayers.bands.length + shownLayers.marks.length;
+  // 覚えた選択には今は無いレイヤも残るので、数は今重ねているものだけで数える。
+  const shownCount = shownLayers.lines.length + rowCount;
   const lineBottom = PROFILE_VIEW_HEIGHT - rowCount * (BAND_HEIGHT + BAND_GAP);
   const rowTop = (row: number) => lineBottom + BAND_GAP + row * (BAND_HEIGHT + BAND_GAP);
 
@@ -169,6 +174,7 @@ export default function RouteProfile({
       <ProfilePointDetail
         selection={selected}
         point={pointKm === null ? null : { columns: scale.columns, km: pointKm, marks: marksAtPoint }}
+        layers={available}
         axes={axes}
         axisColors={axisColors}
         onClear={onSelect === undefined ? undefined : () => onSelect(null)}
@@ -226,12 +232,12 @@ export default function RouteProfile({
                 usage="グラフに重ねる情報（標高・道の区分等）を選ぶ一覧を開きます。数字は今重ねている数です。"
               >
                 <ChooseItemsIcon size={16} />
-                {layers.ids.length > 0 && (
+                {shownCount > 0 && (
                   <span
                     aria-hidden="true"
                     className="absolute -top-1 -right-1 h-3.5 min-w-3.5 rounded-full bg-[var(--color-accent)] px-0.5 text-center text-[0.55rem] leading-3.5 text-white"
                   >
-                    {layers.ids.length}
+                    {shownCount}
                   </span>
                 )}
               </Button>
@@ -244,7 +250,7 @@ export default function RouteProfile({
             >
               <p className="mb-1 font-semibold">グラフに出す情報</p>
               <ul className="flex flex-col gap-1 text-[length:var(--font-size-sm)]">
-                {PROFILE_LAYERS.map((layer) => {
+                {available.map((layer) => {
                   const band = bandPiecesOf.get(layer.id);
                   const marked = marksOf.get(layer.id);
                   return (

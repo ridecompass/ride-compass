@@ -3,7 +3,7 @@
 入口は次のとおり。
 - `RoadNetwork`: 組み立てた時点で行数・列数の食い違いを断る
 - `slice_network`: 範囲に掛かる区間と、その両端のノードを取り出す
-- `material_arrays_of`: 切り出した区間の材料
+- `road_class_columns`・`material_arrays_of`: 区分の列と、切り出した区間の材料
 - `elevation_attribute`: 1区間の標高属性
 - `edge_row_of`: `(道, 区間番号, 向き)`から区間の行
 
@@ -23,7 +23,16 @@ from hypothesis import example, given
 from hypothesis import strategies as st
 
 from app.domain import road_network
-from app.domain.road_network import RoadNetwork, edge_row_of, elevation_attribute, material_arrays_of, slice_network
+from app.domain.road_classes import class_material_id
+from app.domain.road_network import (
+    RoadNetwork,
+    edge_row_of,
+    elevation_attribute,
+    material_arrays_of,
+    road_class_columns,
+    slice_network,
+)
+from tests.road_class_fixture import classification, fact_is, road_classes
 
 NAN = float("nan")
 GRADE = road_network.GRADIENT_PERCENT
@@ -82,8 +91,6 @@ def network() -> RoadNetwork:
         categorical_ids=("cat_a",),
         categorical_codes=np.array([[1], [1], [2], [0], [2]], dtype=np.int16),
         categorical_vocab=((None, "x", "y"),),
-        route_flag_ids=("filter_a",),
-        route_flags=np.array([[False], [False], [True], [False], [False]]),
         distance_m=row * 100 + 100,
         bearing_deg=np.array([90.0, 270.0, 90.0, 90.0, NAN]),
         mid_lat=lat[edge_from],
@@ -122,7 +129,7 @@ def test_a_slice_keeps_the_edges_and_their_ends_of_the_whole_network(lon_a, lon_
     min_lon, max_lon = sorted((lon_a, lon_b))
     min_lat, max_lat = sorted((lat_a, lat_b))
 
-    road = slice_network(whole, min_lon, min_lat, max_lon, max_lat)
+    road = slice_network(whole, {}, min_lon, min_lat, max_lon, max_lat)
 
     expected = [
         index
@@ -138,15 +145,17 @@ def test_a_slice_keeps_the_edges_and_their_ends_of_the_whole_network(lon_a, lon_
         assert road.node_lon[road.edge_to[position]] == whole.node_lon[whole.edge_to[global_row]]
 
 
-def test_the_materials_of_a_slice_follow_its_rows():
-    road = slice_network(network(), 139.015, 34.99, 139.11, 35.01)
+def test_the_materials_and_road_classes_of_a_slice_follow_its_rows():
+    """区分は取込範囲全体の事実から決め、切り出した区間の材料へ同じ行で足す。"""
+    whole = network()
+    classes = road_class_columns(whole, road_classes({"k": classification({"is_y": [fact_is("cat_a", "y")]})}))
+    road = slice_network(whole, classes, 139.015, 34.99, 139.11, 35.01)
 
-    materials = material_arrays_of(road)
+    columns = material_arrays_of(road).columns()
 
-    columns = materials.columns()
     assert columns["num_a"].tolist() == [20.0, 30.0]
     assert [columns["cat_a"].value_at(i) for i in range(2)] == ["y", None]
-    assert materials.route_flag_columns()["filter_a"].tolist() == [True, False]
+    assert [columns[class_material_id("k")].value_at(i) for i in range(2)] == ["is_y", None]
 
 
 def test_the_elevation_attribute_reads_the_average_grade_from_the_material():
