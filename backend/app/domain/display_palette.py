@@ -147,6 +147,10 @@ SEMANTIC_COLORS: dict[str, str] = {
     "pin_origin_unresolved": "#9ca3af",
     "pin_waypoint": "#2563eb",
     "pin_destination": "#059669",
+    # 道のりのグラフ・地図で選んだ地点の印と、その地点を含む区間の範囲の縁取り。印は評価の配色・ルートの線の色・
+    # 現在地の青のどれとも重ならない朱色、縁取りはルートの線の下に敷いても線の色（評価・候補・乗り換え）に溶けない紫にする。
+    "selected_point": "#ff4d1a",
+    "selected_section": "#7c3aed",
 }
 
 def resolved_display_axes(attr: PrimaryAttributeSpec) -> list[dict]:

@@ -10,15 +10,18 @@ from app.domain.display_palette import ORDERED_END_COLOR_NAMES
 from app.domain.divided_carriageway import DIVIDED_ROAD_NOTE
 from app.domain.gsi_tiles import TERRAIN_MIN_ZOOM
 from app.domain.landcover import LANDCOVER_CLASSES, LANDCOVER_RING_OUTER_M, LANDCOVER_TILE_MIN_ZOOM
+from app.domain.msm_grid import MSM_GRID_MIN_ZOOM
 from app.domain.place_search import ADDRESS_AREA_ATTRIBUTIONS
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, PRIMARY_ATTRIBUTES_BY_ID
 from app.domain.registry import DisplayAxisSpec
 from app.domain.region import ROAD_TILE_MIN_ZOOM
 from app.domain.weather_elements import (
+    MSM_FORECAST_HOURS,
     WEATHER_ELEMENTS,
     WEATHER_LAYER_GROUPS,
     FrameRuleKind,
     forecast_reach,
+    reach_text,
 )
 
 
@@ -91,11 +94,13 @@ MAP_LAYER_DATA_SOURCES: tuple[MapLayerDataSource, ...] = (
     MapLayerDataSource("gsiTerrain", TERRAIN_MIN_ZOOM),
     MapLayerDataSource("landcoverRaster", LANDCOVER_TILE_MIN_ZOOM),
     MapLayerDataSource("ownFetch"),
+    # MSMの格子点（`GET /api/weather/msm-grid`）。自前で取り、取得状態は取った側が出す。
+    MapLayerDataSource("msmGrid", MSM_GRID_MIN_ZOOM),
 )
 
-#: 数値予報モデルの計算値に添える断りの文。計算値を「予報」と呼ばない
+#: 数値予報モデルの値を画面に出すときに、同じ文として添える断り。大きな誤差を含む可能性と、予報ではないことの両方を言う
 #: （docs/architecture/data-sources.md「気象業務法の予報業務許可」節）。生成物（`mapDisplay.modelValueDisclaimer`）が画面へ届ける。
-MODEL_VALUE_DISCLAIMER = "予報ではなく、誤差を含みえます。"
+MODEL_VALUE_DISCLAIMER = "数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。"
 
 #: 値の性質。生データか、時刻で中身が変わるか。
 MAP_LAYER_DATA_NATURES: tuple[str, ...] = ("raw", "dynamic")
@@ -302,6 +307,8 @@ def _source_jma_elements(source: str) -> tuple[str, ...]:
 #: 降水の段の境目（配信の宣言の、予測が届く先）。降水は近い段から高解像度降水ナウキャスト・降水短時間予報と継ぐ。
 _NOWCAST_REACH, _SHORT_RANGE_REACH = (forecast_reach(e) for e in _source_jma_elements("main"))
 _RAINBAND_AREA_REACH = forecast_reach(*_source_jma_elements("linearRainbandAreaForecast"))
+#: MSMの格子点の値を描く先（読み出しが予報を切る長さ）。
+_MSM_REACH = reach_text(MSM_FORECAST_HOURS * 60)
 
 
 def _label_list(labels: list[str]) -> str:
@@ -481,8 +488,10 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         data_nature="dynamic",
         label="降水ナウキャスト",
         description=(
-            "気象庁の降水ナウキャスト・降水短時間予報・線状降水帯予測マップ・線状降水帯の雨域を重ねて表示"
-            f"[実況〜{_NOWCAST_REACH}先は5分刻み、{_NOWCAST_REACH}〜{_SHORT_RANGE_REACH}先は気象庁の降水短時間予報。"
+            "気象庁の降水ナウキャスト・降水短時間予報・線状降水帯予測マップ・線状降水帯の雨域と、数値予報モデルMSMの格子点の"
+            "降水量を重ねて表示"
+            f"[実況〜{_NOWCAST_REACH}先は5分刻み、{_NOWCAST_REACH}〜{_SHORT_RANGE_REACH}先は気象庁の降水短時間予報、"
+            f"{_SHORT_RANGE_REACH}〜{_MSM_REACH}先はズーム{MSM_GRID_MIN_ZOOM}以上で格子点の値を1時間刻みで。"
             f"線状降水帯予測マップは現在〜{_LINEAR_RAINBAND_HOURS}時間先、線状降水帯の雨域は"
             f"実況〜{_RAINBAND_AREA_REACH}先の間だけ追加で重畳]",
         ),
@@ -491,7 +500,11 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
             f"実況[直近]から{_NOWCAST_REACH}先までの雨雲の分布を切り替えて確認できます。{_NOWCAST_REACH}より先は、"
             f"同じ気象庁の降水短時間予報へ自動的に切り替わり、{_SHORT_RANGE_REACH}先まで"
             "確認できます——こちらは実況の外挿ではなく数値予報モデルによる予測のため、先に"
-            "なるほど不確実性が増します。加えて、"
+            f"なるほど不確実性が増します。{_SHORT_RANGE_REACH}より先は、ズーム{MSM_GRID_MIN_ZOOM}以上まで寄せると、"
+            "気象庁の数値予報モデルMSMの格子点[約5km間隔]の降水量で、格子点を中心にした升目を降水の強さの色で塗り、"
+            f"{_MSM_REACH}先まで1時間刻みで確認できます。升目の中は、どこもその格子点の値です[格子点が多い範囲では、"
+            f"格子点を一定の間隔おきに選び、升目を広げて塗ります]。{MODEL_VALUE_DISCLAIMER}"
+            "加えて、"
             f"現在〜{_LINEAR_RAINBAND_HOURS}時間先の"
             f"間だけ、気象庁の線状降水帯予測マップを重ねて表示します[今後{_LINEAR_RAINBAND_HOURS}時間以内に大雨の"
             "おそれがある領域を赤で示すもので、予測は格子単位のため矩形に見えます。"
@@ -500,6 +513,25 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
             "[気象庁が線状降水帯を解析しているときだけ出ます]。"
             f"非公式の内部APIを利用している実況・{_NOWCAST_REACH}先までの"
             "部分・線状降水帯予測マップ・線状降水帯の雨域は、取得に失敗することがあります。",
+        ),
+    ),
+    # 「評価で塗る」の道路の塗り（向かい風・追い風）と見分けられる名前にする。
+    "windVector": MapLayerSpec(
+        "msmGrid",
+        "weather",
+        data_nature="dynamic",
+        label="風[矢印]",
+        description=(
+            f"気象庁の数値予報モデルMSMの格子点の風向・風速を、格子点の位置に矢印で表示[{_MSM_REACH}先まで。"
+            "予報ではなく誤差を含みうる]",
+        ),
+        panel_hint=(
+            "気象庁MSM[メソ数値予報モデル]の格子点[約5km間隔]の風向・風速を、格子点の位置に矢印で表示します。"
+            "矢印の値は格子点の値そのもので、格子点の間の地点の風ではありません。"
+            f"格子点が多い範囲では、格子点を一定の間隔おきに選んで表示します。{MODEL_VALUE_DISCLAIMER}"
+            "矢印の向きが風の吹いていく向き、長さ・太さ・色の濃淡が風速の強さを表します。ごく弱い風の格子点は"
+            f"矢印を表示しません。ズーム{MSM_GRID_MIN_ZOOM}以上で表示され、ONにすると地図上に時刻スライダーが現れ、"
+            f"1時間刻みで切り替えられます[先まで見られる範囲は配信中の計算値の長さによって変わり、長くて{_MSM_REACH}先までです]。",
         ),
     ),
     # 予兆が出てからONにするのでは手遅れになるため既定ONにする。危険度が出ている間は広い範囲が
@@ -574,6 +606,8 @@ ROUTE_LINE_WIDTHS_PX: dict[str, float] = {
     "splice": 3,
     "composite": 7,
     "detail": 6,
+    # 選んだ区間の範囲の縁取り。選んだ候補の縁取り（`selectedHalo`）の外へはみ出す太さにする。
+    "selectedSection": 18,
 }
 
 #: 縁取りは線の両側へ一定を足す。**個別に書かない**——線の太さを変えたときに縁取りだけ
@@ -591,6 +625,7 @@ ROUTE_LINE_OPACITIES: dict[str, float] = {
     "candidate": 0.65,
     "arrowHalo": 0.95,
     "travelled": 0.35,
+    "selectedSection": 0.45,
 }
 
 #: 破線の刻み。実線との違いが読める最小の組み合わせ。
@@ -622,8 +657,10 @@ HILLSHADE_HIGHLIGHT_COLOR = f"rgba(255, 252, 245, {AREA_OPACITY})"
 #: 上げるほど緩い斜面が読めるが、上げすぎると急斜面との差が潰れる。
 TERRAIN_EXAGGERATION = 5
 
-#: 気象の記号。
+#: 気象の記号。風は速さで大きさを変え、`WIND_FULL_SCALE_MS`で上限に達する。
 WEATHER_MARK_HALO_WIDTH_PX = 1.5
+WIND_ICON_SCALE_RANGE: tuple[float, float] = (0.9, 2.6)
+WIND_FULL_SCALE_MS = 15
 LIGHTNING_ICON_SCALE = 0.8
 #: 記号を拡大する曲線（ズーム→倍率）。**気象の記号はどれも同じ曲線で拡大する**——家族ごとに別の曲線を使うと、
 #: 同じ地図の中で拡大の速さが食い違う。`icon-size`は既定で画面上の固定ピクセルなので、曲線が無いと拡大するほど

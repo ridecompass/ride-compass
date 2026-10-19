@@ -46,7 +46,7 @@ class RiskLevel(NamedTuple):
 
 
 #: 降水の強さ（mm/h）。段の区切りは気象庁の降水のタイルと同じで、中継（`infrastructure/jma_tile_recolor.py`）がその色を
-#: ここの色へ塗り替えるため、気象庁のタイルと凡例が同じ段で読める。背景と同じ色にすると
+#: ここの色へ塗り替えるため、気象庁のタイル・MSMの格子点の升目の塗り・凡例が同じ段で読める。背景と同じ色にすると
 #: 「降っていない」と見分けが付かないため、いちばん弱い段も色を持つ。10mm/h以上の名前は気象庁「雨の強さと降り方」の
 #: 分類、それ未満は公式の区分が無いため自前で名付ける。
 PRECIPITATION_COLOR_STOPS: tuple[ValueColorStop, ...] = ascending_stops(
@@ -59,6 +59,23 @@ PRECIPITATION_COLOR_STOPS: tuple[ValueColorStop, ...] = ascending_stops(
     ValueColorStop(50, "#dc2626", "非常に激しい雨"),
     ValueColorStop(80, "#9333ea", "猛烈な雨"),
 )
+
+#: 風速（m/s）。段の切れ目はビューフォート風力階級の上限で、名前は自転車で走るときの
+#: 感じ方へ寄せてある。走行困難域（Bf7以上）は粒度を粗くする。
+WIND_SPEED_COLOR_STOPS: tuple[ValueColorStop, ...] = ascending_stops(
+    ValueColorStop(0, "#7dd3fc", "微風"),
+    ValueColorStop(1.5, "#38bdf8", "そよ風"),
+    ValueColorStop(3.3, "#22d3ee", "心地よい風"),
+    ValueColorStop(5.4, "#34d399", "やや強い風"),
+    ValueColorStop(7.9, "#a3e635", "強い風・向かい風がこたえ始める"),
+    ValueColorStop(10.7, "#facc15", "かなり強い風"),
+    ValueColorStop(13.8, "#f97316", "ロードバイクでの走行が難しい強風"),
+    ValueColorStop(17.1, "#dc2626", "暴風"),
+    ValueColorStop(24.4, "#7f1d1d", "猛烈な暴風"),
+)
+
+#: これ未満（m/s）は静穏（気象庁風力階級の風力0は0.0〜0.2m/s）。地図は矢印を描かず、凡例は「無風」の行にする。
+WIND_CALM_BELOW_MS = 0.3
 
 #: 線状降水帯予測マップの塗り色。**配信元タイルが実際に塗っている色そのもの**で、
 #: 画面の好みではない。凡例をこれ以外から取ると、地図の塗りと凡例の色が黙ってずれる

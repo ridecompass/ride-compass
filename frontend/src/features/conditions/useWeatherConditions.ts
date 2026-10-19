@@ -5,10 +5,16 @@ import { useMemo, useState } from "react";
 import { getQueryClient } from "@/lib/queryClient";
 import { leftTheArea } from "@/lib/validArea";
 import { SECOND_MS } from "@/lib/duration";
-import { getAmedasObservation, getFloodForecasts, getWbgtStatus, getWeatherWarnings } from "@/services/weatherApi";
+import {
+  getAmedasObservation,
+  getFloodForecasts,
+  getGridPointToday,
+  getWbgtStatus,
+  getWeatherWarnings,
+} from "@/services/weatherApi";
 import refreshIntervals from "@/types/generated/refresh-intervals.json";
 import type { Coordinates } from "@/types/route";
-import type { AmedasObservation, ValidArea } from "@/types/weather";
+import type { AmedasObservation, GridPointToday, ValidArea } from "@/types/weather";
 import type { WarningBadgeItem } from "@/features/conditions/WarningBadge/WarningBadge";
 import type { FetchFailure } from "@/types/fetchFailure";
 
@@ -17,6 +23,9 @@ interface UseWeatherConditionsResult {
   amedas: AmedasObservation | null;
   amedasLoading: boolean;
   amedasError: string | null;
+  /** 最寄りの格子点の今日の値（常設のヘッダーから開くパネル）。取り直しに失敗しても前の値を残す。 */
+  gridPointToday: GridPointToday | null;
+  gridPointTodayError: string | null;
   /** 警報・注意報・暑さ指数・河川氾濫予報のバッジ。 */
   warningBadgeItems: WarningBadgeItem[];
   /** 警告の取得に失敗した出所。 */
@@ -85,6 +94,7 @@ export function useWeatherConditions(
   following: Coordinates | null,
 ): UseWeatherConditionsResult {
   const amedas = useLocationFetch("amedas", getAmedasObservation, location, locationKnown, following, validArea);
+  const gridPointToday = useLocationFetch("gridPointToday", getGridPointToday, location, locationKnown, following);
 
   // 警告は、取れない間その出所のバッジを出さず、失敗した出所を別に渡す（バッジが無いのを「警告なし」と読ませない）。
   // 空の応答は「出ていない」だけを表し、backendが配信元から取れなかったときも失敗（502）で届く。
@@ -145,6 +155,8 @@ export function useWeatherConditions(
     amedas: amedas.data,
     amedasLoading: amedas.loading,
     amedasError: amedas.error,
+    gridPointToday: gridPointToday.data,
+    gridPointTodayError: gridPointToday.error,
     warningBadgeItems,
     warningFetchFailures,
   };

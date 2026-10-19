@@ -2,6 +2,9 @@ import { useMemo } from "react";
 
 import { clampSpeedKmh } from "@/lib/assumedSpeed";
 
+// 走行中の速さの刻み。GPS の速さは毎秒揺れるので、細かくするほど速さで材料を取り直す軸の取り直しが増える。
+const RIDING_SPEED_STEP_KMH = 5;
+
 /** 走行中に、地図の道の値を求める条件の向きと速さの代わりに使う値。 */
 export interface RidingWayConditions {
   bearingDeg: number;
@@ -22,6 +25,9 @@ interface Riding {
  */
 export function useRideWayConditions(riding: Riding | null, plannedSpeedKmh: number): RidingWayConditions | null {
   const bearingDeg = riding?.bearing ?? null;
-  const speedKmh = riding?.speedKmh != null ? clampSpeedKmh(riding.speedKmh) : plannedSpeedKmh;
+  const speedKmh =
+    riding?.speedKmh != null
+      ? clampSpeedKmh(Math.round(riding.speedKmh / RIDING_SPEED_STEP_KMH) * RIDING_SPEED_STEP_KMH)
+      : plannedSpeedKmh;
   return useMemo(() => (bearingDeg === null ? null : { bearingDeg, speedKmh }), [bearingDeg, speedKmh]);
 }

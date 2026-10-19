@@ -76,14 +76,17 @@ DBから取り出す`infrastructure/road_graph_repository.py: get_feature_gradie
 `dynamic_way_value_conditions`は、軸の葉の材料を配るサービスの条件の型の欄の名前を重ねずに並べたもの
 （`services/dedicated_way_values.py: dedicated_way_value_layers`。印に依らず全軸について求める）で、欄の名前
 （`domain/dynamic_way_values.py: WayValueConditionName`）はそのままクエリパラメータの名前になる。
+そのうち道ごとの材料の要求へ載せる名前は`dynamic_way_value_material_conditions`で、軸の木（下の「地図へ配る式の木」）が
+読まない名前（`DedicatedWayValueLayer.material_conditions`）。木が読む名前は要求へ載せず、地図が木へ入れる。
 frontendはどのクエリパラメータをどの軸のリクエストへ載せるかをこれだけから決める（軸idの分岐を
 持たない。[map-axis-coloring.md](../frontend/map-axis-coloring.md)参照）。
 
-- **「要る」と「載せる」は別**: 載せるのは欄すべてで、要るのはそのうち既定値の無い欄。風の時刻は
+- **「要る」と「載せる」は別**: 載せるのは木が読まない欄すべてで、要るのはそのうち既定値の無い欄。風の時刻は
   省略すると今の風になるので要らないが、地図は利用者が選んだ時刻の風を塗るので載せる。
-- 載せない条件は、地図でその入力を変えても再取得しない（勾配は時刻スライダーで取り直さない）。
-- 例: 風は時刻・走行方位・想定速度、勾配は走行方位だけ（標高・道路の向きは時刻で変わらない）、雨は
-  何も載せない（今の観測を示し、出発時刻・方位では変わらない）。タイルの材料だけを読む軸も何も載せない。
+- 載せない条件は、地図でその入力を変えても再取得しない（勾配は時刻スライダーでも向きでも取り直さない）。
+- 例: `dynamic_way_value_conditions`は、風が時刻・走行方位・想定速度、勾配が走行方位だけ（標高・道路の向きは時刻で
+  変わらない）、雨が何もなし（今の観測を示し、出発時刻・方位では変わらない）。材料の要求へ載せるのは、風が3つとも
+  （葉を配らないので木が条件を読まない）、勾配と雨が何もなし。タイルの材料だけを読む軸はどちらも空。
 - 同じ表から`dynamic_way_value_undetermined_by_bearing`と`way_value_formula`（下の「地図へ配る式の木」）も配る。
   前者は、軸の葉の材料の木が走行方位で値の決まらない道（値が`null`）を表しうるか（木の`undetermined`が常に偽でない）
   で、凡例の「向きで決まらない」の行（`domain/map_display.py: LEGEND_SHARED_ROWS`）はtrueの軸にだけ要る。
@@ -111,11 +114,11 @@ frontendはどのクエリパラメータをどの軸のリクエストへ載せ
 2つの材料の木が同じ名前の道ごとの材料を読むとき、材料の木が自分のでない材料idの名前の道ごとの材料を読むときも同じ
 （道ごとの材料は名前で1つの列に集まるので、別の値を読む）。
 
-## 地図へ配る式の木（`domain/way_value_formula.py`・`domain/dynamic_way_values.py: axis_way_value_formula`）
+## 地図へ配る式の木（`domain/way_value_formula.py`・`domain/dynamic_way_values.py: map_way_value_formula`）
 
 地図の値のうち走行方位・想定速度で変わる部分を、地図のライブラリに依らない演算の木（`WayValueFormula`。値の木と、
 値の決まらない道の木の組）で配る。地図は道ごとの材料（`GET /api/region/way-materials/{axis_id}/...`）を向きと速度に依らずに
-1回取り、向きと速度を変えるたびに木で値を求め直せる。木の型はAPIの応答に載り、OpenAPIから画面の生成型へ流れる。
+1回取り、向きと速度を変えるたびに木で値を求め直せる（葉を配らない材料を読む軸は除く。下の「葉を配らない材料」）。木の型はAPIの応答に載り、OpenAPIから画面の生成型へ流れる。
 値の約束（欠けた値・真偽・剰余・丸め）は`domain/way_value_formula.py`のモジュールのdocstringが持つ。
 
 - **材料の木**（`ServedMaterialFormula`）: 配信のサービスごとに、材料の値をそのサービスの道ごとの材料と条件から求める木
@@ -128,6 +131,11 @@ frontendはどのクエリパラメータをどの軸のリクエストへ載せ
   （勾配）だけを読む軸は順向き・逆向きに辿った値が材料になる（区間から畳む軸もこの形で配れる）。ほかは軸の評価のうち
   条件で変わる材料に届く項を木へ開く。木にできない軸（区間から畳み、向きだけでは選べない材料を読む軸・条件で変わる材料に
   届く分類の形・0次条件）は`null`で、地図はルートの無い間その軸で周りの道を塗らない（ルートの線は`axis_difficulties`で塗る）。
+- **葉を配らない材料**（`ServedMaterialFormula.withholds_leaves`）: 道ごとの材料をそのまま外へ出せない材料（風——葉が予報の
+  風速・風向そのもので、道ごとに読める形で出すと地点の予報になる）。これを読む軸の地図の木（`map_way_value_formula`）は、
+  道の値そのもの（`axis:value`）と値の決まらないこと（`axis:undetermined`）を読むだけの木で、材料（`map_way_materials`）は
+  要求の向き・速度のもとで区間インスペクタと同じ評価（`axis_way_values`）で求める。木が条件を読まないので、向き・速度は
+  材料の要求へ載り、変えると材料を取り直す。
 - **値は区間インスペクタと同じ**: 区間インスペクタも、木のある軸は同じ材料を同じ木で評価して値を出す（`axis_way_values`）。
   木の値が区間インスペクタの値と食い違うと、地図と区間インスペクタが同じ道に違う値を出す（`tests/test_dynamic_way_values.py`）。
 
@@ -174,24 +182,26 @@ tile_axis_values`）を、押したフィーチャーだけについて求めた
 
 ## API（`api/routers/region.py`）
 
-`GET /api/region/way-materials/{axis_id}/{z}/{x}/{y}?at=`
+`GET /api/region/way-materials/{axis_id}/{z}/{x}/{y}?at=&bearing_deg=&speed_kmh=`
 
 ```
 axis_id → get_dedicated_way_value_service(axis_id) が今の軸の集合の写しで軸のレンズ（AxisWayValueLens）を組む
           （公開していない軸・未知の軸はNone→404）
-        → lens.way_materials(z, x, y, at)
-            軸の木（axis_way_value_formula）が無ければNone→404
+        → lens.way_materials(z, x, y, WayValueQuery(at, bearing_deg, speed_kmh))
+            地図へ配る木（map_way_value_formula）が無ければNone→404
+            要る条件のうち木が読まないものが欠けていれば MissingConditions→422
             軸と内部軸の葉の材料のうち、配るサービスのある材料ごとに
               service.get_way_materials(z, x, y, at)   … 道ごとの材料（勾配はキャッシュ対象）
             葉の材料にサービスの無い材料があれば FeatureMaterialService.materials(z, x, y)
               … タイルのフィーチャーごとの材料（キャッシュ対象。取込範囲外・DB障害は{}を返す）
-            → axis_way_materials(axis_id, 軸の集合, 材料の木, タイルの材料と道ごとの材料)
-              （軸の木が読む材料の名前ごとの列）
+            → map_way_materials(axis_id, 軸の集合, 材料の木, タイルの材料と道ごとの材料, 走行方位・想定速度)
+              （地図へ配る木が読む材料の名前ごとの列）
         → {フィーチャーの鍵: {材料の名前: 値}} の辞書（JSON。値の無い材料は載せない。鍵はタイルが焼いた
           `feature_key`と同じもので、ズームによって区間・wayのどちらかになる）
 ```
 
-- 走行方位・想定速度は受け取らず、応答もキャッシュの鍵も向きと速度で変わらない。時刻は時刻に依る材料（風）の時刻。
+- 走行方位・想定速度は、葉を配らない材料を読む軸（風）でだけ読み、ほかの軸では応答もキャッシュの鍵も向きと速度で
+  変わらない。時刻は時刻に依る材料（風）の時刻。風の軸の応答は道ごとの抵抗の難易度だけで、風速・風向を含まない。
 - 応答を軸カタログの`way_value_formula`へ走る条件とともに入れた値が、**地図が塗る値**。`map_paint`の塗る値が難易度の軸
   （風等）は軸定義（breakpoints・priority_overrides・参照する内部軸）で評価した難易度0〜100、
   符号付き材料の軸（勾配: 単一材料・`preprocess="abs"`）は符号付き材料生値のまま。
@@ -313,15 +323,15 @@ TTLで失効し、書き込みのたびに`diskcache`が失効したものを消
 
 道ごとの材料は風速（m/s）と風向（度）で、走行方位・想定速度は材料の木（`domain/wind.py: WIND_DRAG_RATIO_WAY_FORMULA`）が
 当てる。走行方位は**要求が運ぶ単一の値**（全道路共通）で、道路自身のOSM格納方向は使わない——ルートを出す前は、その道を
-どちら向きに走るかが決まっていない。抵抗の比を材料にしないのは、比が走行方位と想定速度で変わり、向きを変えるたびに材料を
-取り直すことになるため。
+どちら向きに走るかが決まっていない。風速・風向は気象の予報の値そのもので、道ごとの地点の予報として外へ出せないため、材料の木は
+葉を配らない（`withholds_leaves`）。地図の配信は要求の向き・速度で値まで求めて返し、向きか速度が変わると取り直す。
 
 **予報の地点と時刻の選び方はルート確定後の区間と同じ**（同じ事実を1か所で持つ。
 [設計原則](../../architecture/design-principles.md)構造仕様17）。各フィーチャーは中ほど（両端の平均。
-区間単位のズームでは、ルートの区間の中点と同じ点）に最も近い予報の格子点（`domain/wind.py: WindLattice`）の、
-指定時刻に最も近い時刻の風を引き（`WindForecastSeries`）、抵抗の比はルートと同じ式（`domain/wind.py: wind_drag_ratio_formula`）の
-木で求める。格子は緯度・経度0度から数えた
-固定の線に揃えてあるため、タイルに敷いても探索範囲に敷いても同じ地点は同じ格子点へ寄る。同じタイルでも、
+区間単位のズームでは、ルートの区間の中点と同じ点）に最も近いMSMの格子点（`domain/msm.py: MsmBlock`）の、
+指定時刻に最も近い時刻の風を格子点の値のまま引き（`WindForecastSeries`）、抵抗の比はルートと同じ式（`domain/wind.py: wind_drag_ratio_formula`）の
+木で求める。格子点はMSMの格子そのものから数えるため、タイルから引いても探索範囲から引いても同じ地点は同じ格子点に当たる。
+読む格子点の並びはタイルと中ほどの両方を覆うので、タイルの外に中ほどがある道も端へ寄せずに最寄りの格子点を引く。同じタイルでも、
 中ほどが別の格子点に近い道は別の値になる。
 
 違うのは**予報の範囲の外の時刻**だけで、ルートの区間は予報の端の値で延ばして印を付けるが、地図は塗らない

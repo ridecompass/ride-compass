@@ -20,7 +20,7 @@
 | hooks | `useStoredState.ts`・`useIsMobile.ts`・`useVisualViewport.ts`・`useLocation.ts`・`useDebouncedValue.ts`・`useIsomorphicLayoutEffect.ts` |
 | features/map/view | `useMapView.ts`（地図の見え方の状態と、地図・操作部品へ渡す値）・`mapLook.ts`（地図へ渡す見え方の値の型）・`lens.ts`（レンズから塗る軸・凡例・選択肢を導く）・`overlayChips.ts`（地図上チップの状態とレイヤー表示の保存形式）・`legendFilters.ts`（凡例で隠した行の保存先の読み書き） |
 | features/map/MapView | `useLayerDataStatus.ts`（MapLibreのソースイベントからレイヤーごとの取得状態を算出して渡す） |
-| lib | `apiBaseUrl.ts`・`apiClient.ts`（backendのAPIを呼ぶ口と、全呼び出しが共有する骨格。下記）・`apiPath.ts`（アプリ自身が呼ばないURL［地図ライブラリへ渡すタイル・スタイル］のパスをOpenAPIの宣言と型で照合して作る）・`apiError.ts`・`backendInternalUrl.ts`・`queryClient.ts`（画面のデータ取得が共有するTanStack Queryのキャッシュ。下記「データ取得の骨格」）・`apiTimeouts.ts`（APIリクエストのタイムアウト。呼び出しの性質ごとの名前付き定数）・`safeStorage.ts`（localStorageの読み書きで例外を外へ出さない薄いラッパ）・`paletteCssVariables.ts`（地図に塗る色と同じ色をUIにも出す箇所へ、配信された値をCSS変数として流す。`layout.tsx`がサーバー側で`:root`へ入れる。CSSが値を持つのはライト/ダークで2値を持つものだけ）・`duration.ts`（時間の長さの単位［秒・分・時のミリ秒］と、所要時間・待ち時間を「N分」で書く書き方。1時間を超えても分で書き、候補の一覧・候補の中身・差し替えの比較で同じ単位で見比べる）・`numberFormat.ts`（桁での丸めと、差の前に置く符号）・`urlTemplate.ts`（パスのテンプレートの`{名前}`を埋める。`apiPath.ts`と気象庁の配信のパスが使う）・`geoDistance.ts`（2点間の大円距離。地球の半径はbackendの値を生成物`geo-config.json`で読み、2点の距離がbackendと合うことは、`cardinalLabel`と同じ表をテストが通して確かめる）・`localPlane.ts`（狭い範囲の緯度経度を、経度方向をcos(緯度)で縮めた平面として扱う近似と、緯度1度の長さ・辺の上で地点に最も近い点。地図の上で最も近い点を求める所はどれもこれを通す）・`routeDistance.ts`（ルートの区間を始点からの距離で読む: 区間の道なりの形・形の上で距離の割合ぶん進んだ点とそこで分けた前後・ある点に最も近いルートの上の点・Edgeの境界ごとの距離。区間の`distance_km`を始点から積んだ値を物差しにし、道のりのグラフと地図と走行モードと編集の差が同じ距離で読む）・`storedList.ts`（この端末に保存した一覧の読み方と入れ方。下記「状態の永続化」）・`adminApiPrefix.ts`（管理APIの転送の口と、backendの管理APIのパスの接頭辞）・`mapOverlayEdges.ts`（地図の上に重ねる部品へ付ける「どの辺を覆うか」の印と、印の付いた部品が覆う幅の実測。印を付ける部品は地図の機能の外にもあるので共有の層に置く。下記「`MapView`との境界」）・`routeFit.ts`（ルートを地図へ収める範囲と、地図の上に重ねた部品を避けて収める・寄せるときの余白とずれ。`MapView`が地図を動かす瞬間に呼ぶ）・`validArea.ts`（backend が添える値の範囲が地点を含むか・走行中に取る地点を動かすか）・`assumedSpeed.ts`（想定速度の範囲と丸め。走行条件の入力と、走行中に地図の道の値へ載せる速さが使う）・`magneticDeclination.ts`（日本付近の偏角と、磁北を基準にした方角を真北の基準へ直すこと） |
+| lib | `apiBaseUrl.ts`・`apiClient.ts`（backendのAPIを呼ぶ口と、全呼び出しが共有する骨格。下記）・`apiPath.ts`（アプリ自身が呼ばないURL［地図ライブラリへ渡すタイル・スタイル］のパスをOpenAPIの宣言と型で照合して作る）・`apiError.ts`・`backendInternalUrl.ts`・`queryClient.ts`（画面のデータ取得が共有するTanStack Queryのキャッシュ。下記「データ取得の骨格」）・`apiTimeouts.ts`（APIリクエストのタイムアウト。呼び出しの性質ごとの名前付き定数）・`safeStorage.ts`（localStorageの読み書きで例外を外へ出さない薄いラッパ）・`paletteCssVariables.ts`（地図に塗る色と同じ色をUIにも出す箇所へ、配信された値をCSS変数として流す。`layout.tsx`がサーバー側で`:root`へ入れる。CSSが値を持つのはライト/ダークで2値を持つものだけ）・`duration.ts`（時間の長さの単位［秒・分・時のミリ秒］と、所要時間・待ち時間を「N分」で書く書き方。1時間を超えても分で書き、候補の一覧・候補の中身・差し替えの比較で同じ単位で見比べる）・`numberFormat.ts`（桁での丸めと、差の前に置く符号）・`urlTemplate.ts`（パスのテンプレートの`{名前}`を埋める。`apiPath.ts`と気象庁の配信のパスが使う）・`geoDistance.ts`（2点間の大円距離。地球の半径はbackendの値を生成物`geo-config.json`で読み、2点の距離がbackendと合うことは、`cardinalLabel`と同じ表をテストが通して確かめる）・`localPlane.ts`（狭い範囲の緯度経度を、経度方向をcos(緯度)で縮めた平面として扱う近似と、緯度1度の長さ・辺の上で地点に最も近い点。地図の上で最も近い点を求める所はどれもこれを通す）・`routeDistance.ts`（ルートの区間を始点からの距離で読む: 候補の中の同じ区間・区間の道なりの形・形の上で距離の割合ぶん進んだ点とそこで分けた前後・ある点に最も近いルートの上の点・Edgeの境界ごとの距離。区間の`distance_km`を始点から積んだ値を物差しにし、道のりのグラフと地図と走行モードと編集の差が同じ距離で読む）・`storedList.ts`（この端末に保存した一覧の読み方と入れ方。下記「状態の永続化」）・`adminApiPrefix.ts`（管理APIの転送の口と、backendの管理APIのパスの接頭辞）・`mapOverlayEdges.ts`（地図の上に重ねる部品へ付ける「どの辺を覆うか」の印と、印の付いた部品が覆う幅の実測。印を付ける部品は地図の機能の外にもあるので共有の層に置く。下記「`MapView`との境界」）・`routeFit.ts`（ルートを地図へ収める範囲と、地図の上に重ねた部品を避けて収める・寄せるときの余白とずれ。`MapView`が地図を動かす瞬間に呼ぶ）・`validArea.ts`（backend が添える値の範囲が地点を含むか・走行中に取る地点を動かすか）・`assumedSpeed.ts`（想定速度の範囲と丸め。走行条件の入力と、走行中に地図の道の値へ載せる速さが使う）・`magneticDeclination.ts`（日本付近の偏角と、磁北を基準にした方角を真北の基準へ直すこと） |
 | features/route | `routeApi.ts`（ルート生成API。ジョブを投げ、終わるまで問い合わせる）・`generationRequest.ts`（生成リクエストのpayloadと`conditionsDirty`の比較キーを同じ入力から導出する純関数）・`routeSplice.ts`（候補どうしが別々の道を通る区間を`edge_ids`の集合演算で求め、表示中の側と相手側を対応づけ、選んだ区間を差し替えた経路を組み立て純関数。差し替えた経路の評価はbackendが行うため計算式は持たない。区間を割る下限は持たず呼び出し側から受け取る［backendの較正値で、管理画面から変えられる］） |
 | features/conditions | `useRideConditions.ts`（走行条件: 出発時刻・想定速度。想定速度だけを保存し、保存値は画面の範囲内の整数だけを受け入れる）・`useDepartureTime.ts`（出発時刻。選ぶまでは5分刻みの「今」へ追従し、選んだ時刻は動かさない）・`rideConditions.ts`（走行条件の出発時刻ラベル・出発時刻の刻みと想定速度の丸め。速度の上下限はbackendの`routeGenerateConfig`から読む） |
 | types | `types/route.ts`（`RouteCandidate`等の生成APIレスポンス型）・`types/fetchFailure.ts`（常設ヘッダーの「未取得」の印に並ぶ項目の型。下記「失敗・空・待ちの伝え方」） |
@@ -286,7 +286,7 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 
 | 永続化 | 判断基準 | 代表例 |
 |---|---|---|
-| `localStorage` | 利用者が自分で決めた設定で、次に開いたときも同じであってほしいもの | 評価の設定（`routePreference`・`roadAvoidance`）、生成条件の入力（全長の目標を決めるか・距離・候補数）、走行条件のうち想定速度、レイヤー表示（`layerVisibility`・`lens`）、パネル開閉、下部シートの高さ |
+| `localStorage` | 利用者が自分で決めた設定で、次に開いたときも同じであってほしいもの | 評価の設定（`routePreference`・`roadAvoidance`）、生成条件の入力（周回か・全長の目標を決めるか・距離・候補数）、走行条件のうち想定速度、レイヤー表示（`layerVisibility`・`lens`）、パネル開閉、下部シートの高さ |
 | なし | そのセッション限りの結果・場所の指定・行くたびに変わる走行条件・地図の見え方 | 生成結果（`routes`・`selectedRouteId`）、目的地・経由地のピン、出発時刻・走行方位、地図ビューポート、データ取得状態 |
 | 期限つきの`localStorage` | 走っている途中で読み込み直されても続けたいもの | 走行モードの間の選んだ候補（下記「走行モード」の一時保存） |
 
@@ -325,7 +325,7 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 時刻依存）が、「向き」は1つの値（走る向き）を風・勾配の両方が使う:
 
 ```
-走る向き（地図の上の向きを丸めずに[0, 360)へ寄せた値。走行中は実際に走る向き。`features/map/view/useMapView.ts: wayConditions`）。出発時刻は`features/conditions/useDepartureTime.ts: at`、想定速度は`useRideConditions.ts: speedKmh`（いずれも地図右上の条件アイコン列`features/conditions/RideConditionBar/RideConditionBar.tsx`で操作し、生成リクエストの`start_time`/`assumed_speed_kmh`と地図の式の条件`speed_kmh`へ同じ値が乗る）
+走る向き（地図の上の向きを[0, 360)の段に丸めた値。走行中は実際に走る向き。`features/map/view/useMapView.ts: wayConditions`）。出発時刻は`features/conditions/useDepartureTime.ts: at`、想定速度は`useRideConditions.ts: speedKmh`（いずれも地図右上の条件アイコン列`features/conditions/RideConditionBar/RideConditionBar.tsx`で操作し、生成リクエストの`start_time`/`assumed_speed_kmh`と地図の式の条件`speed_kmh`へ同じ値が乗る）
   │
   ├─→ 風:   [時刻]出発時刻（useDepartureTime由来）
   │           └─→ 評価軸（線）: レンズがその軸を指している間だけ（下記の共通経路）
@@ -335,9 +335,9 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 
   評価軸（線）の共通経路（軸ごとの分岐を持たない）:
     塗っている軸 paintedAxisId = lens（ルート確定後は周囲も塗る設定の間だけ。それ以外はnull）
-    useWayMaterials([塗っている軸のうち周りの道を塗れる軸], 表示範囲, 出発時刻)
-      （useMapViewの中。時刻は、軸カタログのdynamic_way_value_conditionsがatを含む軸のリクエストにだけ載る）
-    走る条件 {bearing_deg: 走行方位, speed_kmh: 想定速度} → 地図全体のglobal-state（変えても材料を取り直さない）
+    useWayMaterials([塗っている軸のうち周りの道を塗れる軸], 表示範囲, 出発時刻と走る条件)
+      （useMapViewの中。走る条件は、軸カタログのdynamic_way_value_material_conditionsにある名前だけがその軸のリクエストに載る）
+    走る条件 {bearing_deg: 走行方位, speed_kmh: 想定速度} → 地図全体のglobal-state（リクエストに載せない軸は、変えても材料を取り直さない）
     軸のレイヤーを出すか = 軸id === paintedAxisId（地図側のsceneが導く）
 ```
 
@@ -347,8 +347,8 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 選択が担う。
 
 **地図の向き**: 地図の上の向きが、向きで値の変わる評価（風・勾配）で周りの道を塗るときと、道の評価を見るときの走る向きになる。
-走る向きは地図の上の向きを丸めずに[0, 360)へ寄せた値で、向きを変えても道ごとの材料は取り直さず、地図が式で値を求め直す
-（[地図: 軸・ルート色分け](map-axis-coloring.md)「評価軸の線」）。走行中は地図の向きではなく、実際に走る向き（下の「走行モード」の
+走る向きは地図の上の向きを[0, 360)の段に丸めた値で、向きを材料の要求へ載せない軸（勾配）は道ごとの材料を取り直さず、地図が式で
+値を求め直す。載せる軸（風）は段が変わったときだけ取り直す（[地図: 軸・ルート色分け](map-axis-coloring.md)「評価軸の線」）。走行中は地図の向きではなく、実際に走る向き（下の「走行モード」の
 `useRideWayConditions.ts`）で塗る。
 地図右上の方位磁針（`MapNavigationControl`）は針が地図の北を指し、押すと地図を回すダイヤルを開く。ダイヤルの輪は地図と一緒に回り、
 なぞると地図が回り、真ん中の針を押すと北が上に戻る。ダイヤルの中には方位の呼び名と度だけを出し、説明の文は(i)の奥に置く。
@@ -422,7 +422,7 @@ MapLibreの`GeolocateControl`を使わないのは、地図を進む向きへ回
   同じ大きさでいつも出す（どちらも小さく、走りながら重ねる情報と塗る評価軸を替えられる。変えた表示は走っていないときと同じ設定に残る）。
   走行条件・「現在地に移動」は走行中に効かないので出さない。選んだ候補があれば、地図の下に
   その道のりのグラフ（ルート結果と同じ`RouteProfile`。「表示」と「評価で塗る」のタブを持ち、グラフに出す情報の選択はページが1つ持って
-  結果と走行中で同じものを読む。経由地の番号の印も出し、走り終えた経由地は走り終えた区間と同じく薄める）を出す（ルート結果と同じくなぞって地点を選び、地図に印を出して、その地点の詳しくをルート結果と同じ3行で図の下に出す）。左のパネル（スマホは下部タブとシート）は、帯の「ルート」で出し入れする: デスクトップは左のパネル、スマホは
+  結果と走行中で同じものを読む。経由地の番号の印も出し、走り終えた経由地は走り終えた区間と同じく薄める）を出す（ルート結果と同じくなぞって地点を選び、地図に地点の印と区間の縁取りを出して、その地点の詳しくをルート結果と同じ3行で図の下に出す）。左のパネル（スマホは下部タブとシート）は、帯の「ルート」で出し入れする: デスクトップは左のパネル、スマホは
   「ルート結果」のシート（下部タブで「ルート設定」へ移れ、シートを閉じると地図だけに戻る）。出している間も地図は現在地を追い続け、
   候補を選び直す・作り直すと走行モードはその候補を追う（作り直しの出発地は変えず、「出発地を現在地に戻す」は走行モードが受けた位置を
   使う。`hooks/useLocation.ts`の`ridingAt`）。止めると元の配置に戻る。地図（`MapView`）はページの中の
@@ -448,7 +448,7 @@ MapLibreの`GeolocateControl`を使わないのは、地図を進む向きへ回
   その時の今の位置で取り直す（範囲の無い予報はこれだけで動く）。警報・注意報等は、出ているときだけ走りの帯に最も重い段の色のアイコンを出し、押すと中身を開く
   （常設ヘッダーと同じ`WarningBadgeList`）。帯の風の矢印は、地図が今当てている向き（地図が範囲と倍率と一緒に知らせる`MapViewport`の`bearing`）の分だけ戻して回す——進む向きを上にしていなくても、指で回した地図の向きに合う（常設ヘッダーの天気欄の矢印も同じ基準。`lib/cardinalLabel.ts: downwindOnMapDeg`）。
 - **走行中の道の色**: 向き・速さで変わる道の値（勾配・風等）は、走行中は手で決めた走行方位と想定速度でなく、実際の進む向きと速さで取る
-  （`features/ride/useRideWayConditions.ts`。今は実）。向きは丸めずに使い、位置が届くたびに道ごとの材料は取り直さず、地図の式の条件だけを置き直す。
+  （`features/ride/useRideWayConditions.ts`。今は実）。向き・速さは段に丸めて使い、位置が届いても段が変わらなければ道ごとの材料は取り直さない。
   止まっている間の速さは想定速度の範囲の下限へ寄せる。地図の道を押したときの窓も同じ条件で取る。
 - **残りと到着予想**: 残りは、ルートの上の現在地から終わりまでの道のり。到着予想は、最後に位置を受けた時刻へ、選んだ候補の
   計画の残り時間を足す（`rideRemaining.ts`）。計画の残り時間は、区間の到達予想（区間へ入る時刻）と所要時間を、ルートの上の距離で読んだ

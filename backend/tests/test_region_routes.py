@@ -3,7 +3,7 @@
 確かめるのは、経路ごとの受け渡し（要求のどの値がサービスへ渡り、サービスの結果が応答のどこへ出るか）と、この口が
 使う判断: 量ごとの値の範囲（タイル座標・走行方位・想定速度。範囲そのものは domain の型と`domain/region.py:
 check_tile_index`が持ち、ここでは入口ごとにそれを使っていることを見る。土地被覆は自分のズーム範囲）、一時的に取れなかった
-タイルをキャッシュさせないこと（`_tile_http.py: tile_response`）、宣言に無い点のレイヤー・公開していない軸と木の無い軸の404、
+タイルをキャッシュさせないこと（`_tile_http.py: tile_response`）、宣言に無い点のレイヤー・公開していない軸の404、
 地図のレンズが印の無い軸もタイルの材料から塗ること、土地被覆のラスタが無いときの503、
 種類ごとに別に数えるレート制限。
 
@@ -57,6 +57,7 @@ from app.domain.dynamic_way_values import (
 from app.domain.geo import LatLon
 from app.domain.route_preference import RoutePreference
 from app.domain.gradient import ROAD_BEARING_LEAF
+from app.domain.wind import WIND_DIRECTION_LEAF, WIND_SPEED_LEAF
 from app.services.dedicated_way_values import AxisWayValueLens
 from app.services.weather_service import WeatherService
 from app.main import app
@@ -274,6 +275,7 @@ def _lens(
     )
 
 
+SCORED = "axis_way_value_scored"
 SIGNED = "axis_way_value_signed"
 
 #: 地図が式の木と道ごとの材料で塗る軸。時刻・方位・速度を要るもの（得点を塗る）と、方位だけを要るもの
@@ -307,18 +309,6 @@ def dedicated_axes():
         yield
 
 
-#: 区間から畳み、走行方位だけでは選べない材料（風）も読む軸。地図へ木を配れない。
-FOLDED_WITH_WIND = AxisDefinition(
-    axis_id="axis_way_value_folded_wind",
-    shape=BreakpointLinearShape(
-        terms=[MaterialTerm(material="gradient_percent"), MaterialTerm(material="wind_drag_ratio")],
-        breakpoints=[(0.0, 0.0), (10.0, 100.0)],
-    ),
-    default_weight=0.2,
-    label="軸カ",
-)
-
-
 @pytest.mark.usefixtures("dedicated_axes")
 def test_region_way_materials_are_the_same_whatever_heading_and_speed_the_map_has():
     """地図は道ごとの材料を走行方位・想定速度に依らずに1回取り、向きと速度を変えるたびに木で値を求め直す。材料が
@@ -344,27 +334,29 @@ def test_region_way_materials_are_the_same_whatever_heading_and_speed_the_map_ha
     assert fake.last_request == (14, 14551, 6447, datetime(2026, 8, 30, 9, 0))
 
 
-@pytest.mark.parametrize(
-    ("axes", "axis_id", "detail"),
-    [
-        ({**DEDICATED_AXES, FOLDED_WITH_WIND.axis_id: FOLDED_WITH_WIND}, FOLDED_WITH_WIND.axis_id, "配りません"),
-        (DEDICATED_AXES, "axis_absent", "公開している軸ではありません"),
-    ],
-    ids=["木の無い軸", "公開していない軸"],
-)
-def test_region_way_materials_are_not_found_for_an_axis_the_map_cannot_compute(axes, axis_id, detail):
-    """木の無い軸の材料を配っても、地図はそこから値を求められない（その軸はルートの無い間の周りの道を塗らない）。"""
-    services = {"gradient_percent": FakeDynamicWayValueService(), "wind_drag_ratio": FakeDynamicWayValueService()}
-    with replaced_axis_definitions(axes):
-        app.dependency_overrides[get_dedicated_way_value_service] = (
-            lambda: _lens(axis_id, services) if axis_id in axes else None)
-        try:
-            response = client.get(f"/api/region/way-materials/{axis_id}/14/14551/6447")
-        finally:
-            app.dependency_overrides.clear()
+@pytest.mark.usefixtures("dedicated_axes")
+def test_region_way_materials_answer_the_wind_axis_with_its_value_under_the_maps_heading_and_speed():
+    """予報の風速・風向は地点の予報として外へ出せないので、風を読む軸は受け取った向き・速さで値まで求めて返し、風の値を
+    載せない。向きを変えると値が変わり、向き・速さが無ければ値を求められずに断る。"""
+    fake = FakeDynamicWayValueService(materials={WIND_SPEED_LEAF: {"1": 8.0}, WIND_DIRECTION_LEAF: {"1": 0.0}})
+    app.dependency_overrides[get_dedicated_way_value_service] = lambda: _lens(SCORED, {"wind_drag_ratio": fake})
+    path = f"/api/region/way-materials/{SCORED}/14/14551/6447"
 
-    assert response.status_code == 404
-    assert detail in response.json()["detail"]
+    try:
+        headwind, tailwind = (
+            client.get(path, params={"at": "2026-08-30T09:00:00", "bearing_deg": bearing, "speed_kmh": 20.0})
+            for bearing in (0, 180))
+        unconditioned = client.get(path, params={"at": "2026-08-30T09:00:00"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert [headwind.status_code, tailwind.status_code] == [200, 200]
+    leaves = {name for body in (headwind.json(), tailwind.json()) for values in body.values() for name in values}
+    assert not leaves & {WIND_SPEED_LEAF, WIND_DIRECTION_LEAF}
+    assert headwind.json() != tailwind.json()
+    assert fake.last_request == (14, 14551, 6447, datetime(2026, 8, 30, 9, 0))
+    assert unconditioned.status_code == 422
+    assert "bearing_deg" in unconditioned.json()["detail"]
 
 
 class UncoveredRepository:

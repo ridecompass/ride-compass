@@ -2,7 +2,7 @@
 /**
  * `features/route/savedConditions.ts`——保存した生成の条件の一覧を読む・名前の案・何が保存されるかの説明・一覧への入れ方。
  * 読むときは、今の画面が受け付けない件だけを捨ててほかの件を残し、避け方は今の行へ揃え、前に持っていた除外の切り替えは落とし、前に周回・目的地のモードで
- * 保存した件は全長の目標の有無へ読み替える。重みの説明は、上書きしない
+ * 保存した件は全長の目標の有無へ、周回かを持たない件は目的地の有無で周回かへ読み替える。重みの説明は、上書きしない
  * 重みなら既定の配分を、上書きした重みなら公開軸へ揃えた配分を、軸ごとの割合で出す。同じ名前で保存すると上書きする。
  *
  * ここで見ないもの:
@@ -29,6 +29,7 @@ const POINT = { latitude: 35.1, longitude: 139.1 };
 
 const ENTRY: SavedCondition = {
   name: "朝の荒川",
+  loop: false,
   distanceTargeted: false,
   distance: "30",
   maxRoutes: "3",
@@ -49,6 +50,7 @@ describe("readSavedConditions", () => {
 
   it.each([
     ["名前が空", { name: " " }],
+    ["周回かが真偽でない", { loop: "yes" }],
     ["全長の目標の有無が真偽でない", { distanceTargeted: "yes" }],
     ["範囲外の距離", { distance: String(routeGenerateConfig.max_distance_km + 1) }],
     ["範囲外の候補数", { maxRoutes: "0" }],
@@ -64,18 +66,29 @@ describe("readSavedConditions", () => {
 
   it.each([
     // 周回は経由地・目的地を置いてあっても隠して使わなかったので、読み替えると外す。
-    { routeMode: "loop", read: { distanceTargeted: true, waypoints: [], destination: null } },
-    { routeMode: "destination", read: { distanceTargeted: false } },
+    { routeMode: "loop", read: { loop: true, distanceTargeted: true, waypoints: [], destination: null } },
+    { routeMode: "destination", read: { loop: false, distanceTargeted: false } },
     { routeMode: "zigzag", read: null },
   ])(
     "前にモードで保存した件は、$routeMode を今の形へ読み替える（読めないモードの件は捨てる）",
     ({ routeMode, read }) => {
-      // 値がundefinedの欄はJSONに書かれない（前の形は全長の目標の有無を持たない）。
-      const before = { ...ENTRY, distanceTargeted: undefined, routeMode };
+      // 値がundefinedの欄はJSONに書かれない（前の形は周回か・全長の目標の有無を持たない）。
+      const before = { ...ENTRY, loop: undefined, distanceTargeted: undefined, routeMode };
 
       expect(readSavedConditions(JSON.stringify([before]))).toEqual(read === null ? [] : [{ ...ENTRY, ...read }]);
     },
   );
+
+  it.each([
+    [null, true],
+    [POINT, false],
+  ])("周回かを持たない件は、目的地（%o）を持たなければ周回（%s）として読む", (destination, loop) => {
+    const before = { ...ENTRY, loop: undefined, distanceTargeted: true, destination };
+
+    expect(readSavedConditions(JSON.stringify([before]))).toEqual([
+      { ...ENTRY, loop, distanceTargeted: true, destination },
+    ]);
+  });
 
   it("前に除外の切り替えを持っていた件は、切った種類があっても切り替えを落として読む（その道はいつも通らない）", () => {
     const stored = { ...ENTRY, hardFilters: { motorway: false, no_bicycle: false } };
@@ -109,18 +122,18 @@ describe("readSavedConditions", () => {
   });
 });
 
-// 名前と説明が分ける形: 目的地の有無（無ければ出発地へ戻る周回）・全長の目標の有無・経由地の有無。
+// 名前と説明が分ける形: 周回か（周回の間に覚えている目的地は出さない）・全長の目標の有無・経由地の有無。
 const SHAPES = {
-  loop: { distanceTargeted: true, waypoints: [], destination: null },
-  loopVia: { distanceTargeted: true, waypoints: [POINT], destination: null },
-  destinationVia: { distanceTargeted: false, waypoints: [POINT, POINT], destination: POINT },
-  destinationOnly: { distanceTargeted: false, waypoints: [], destination: POINT },
-  destinationWithDistance: { distanceTargeted: true, waypoints: [], destination: POINT },
+  loop: { loop: true, distanceTargeted: true, waypoints: [], destination: POINT },
+  loopVia: { loop: true, distanceTargeted: true, waypoints: [POINT], destination: null },
+  destinationVia: { loop: false, distanceTargeted: false, waypoints: [POINT, POINT], destination: POINT },
+  destinationOnly: { loop: false, distanceTargeted: false, waypoints: [], destination: POINT },
+  destinationWithDistance: { loop: false, distanceTargeted: true, waypoints: [], destination: POINT },
 } satisfies Record<string, Partial<SavedCondition>>;
 
 describe("suggestedConditionName", () => {
   it.each([
-    ["戻る周回は距離", SHAPES.loop, "周回 30km"],
+    ["戻る周回は距離（覚えている目的地は出さない）", SHAPES.loop, "周回 30km"],
     ["経由地は地点の数", SHAPES.loopVia, "周回 30km 経由1地点"],
     ["目的地へ経由地を通る", SHAPES.destinationVia, "目的地 経由2地点"],
     ["目的地だけ", SHAPES.destinationOnly, "目的地"],

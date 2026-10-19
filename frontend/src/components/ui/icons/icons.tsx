@@ -226,6 +226,17 @@ export function GoalFlagIcon({ size = 16 }: IconProps) {
   );
 }
 
+/** 周回（終点を出発地にする）: 角の丸い横長の輪と、左下の塗った起点の点・右上の進む向きの矢じり。 */
+export function LoopRouteIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      <path d="M6 6h8a4 4 0 0 1 0 8H6a4 4 0 0 1 0-8Z" />
+      <circle cx="6" cy="14" r="1.8" fill="currentColor" stroke="none" />
+      <path d="M12.5 4 14.5 6 12.5 8" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /** 現在地（現在地へ移動）: 照準の輪と、塗った中心の点。lucideの`LocateFixed`は中心が輪で、
  * 行頭の印の大きさ（13px）では点に見えない。この形だけ24単位の枠で描く。 */
 export function LocateIcon({ size = 16 }: IconProps) {

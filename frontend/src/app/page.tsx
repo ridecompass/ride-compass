@@ -227,11 +227,15 @@ export default function Home() {
   const handleSettingsTabChange = (value: string) => setSettingsTab(value as SettingsTab);
 
   // 最寄りの実測・警報の類（位置が分かってから、位置が変わるたびに取る。仮の地点では取らない）。
-  const { amedas, amedasLoading, amedasError, warningBadgeItems, warningFetchFailures } = useWeatherConditions(
-    location,
-    locationKnown,
-    navigating ? (riding.map?.position ?? null) : null,
-  );
+  const {
+    amedas,
+    amedasLoading,
+    amedasError,
+    gridPointToday,
+    gridPointTodayError,
+    warningBadgeItems,
+    warningFetchFailures,
+  } = useWeatherConditions(location, locationKnown, navigating ? (riding.map?.position ?? null) : null);
   const axisCatalogFailure = axisCatalogFetchFailure(axisCatalog);
   const headerFetchFailures = useMemo(
     () => [
@@ -520,6 +524,8 @@ export default function Home() {
                 amedas={amedas}
                 loading={amedasLoading}
                 error={amedasError}
+                today={gridPointToday}
+                todayError={gridPointTodayError}
                 mapBearingDeg={mapView.bearing}
               />
             </div>

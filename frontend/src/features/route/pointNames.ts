@@ -3,9 +3,6 @@ import type { Coordinates, PlaceCandidate } from "@/types/route";
 /** 地図で置いた地点の名前（探して置いた名前の無い地点）と、その出どころ。 */
 export const MAP_PLACED = "地図で選んだ地点";
 
-/** 全長の目標を決めて目的地を置いていない間の、目的地の行の名前（終点が出発地の周回になる）。 */
-export const BACK_TO_ORIGIN = "出発地[周回]";
-
 interface PointNamesInputs {
   waypoints: readonly Coordinates[];
   destination: Coordinates | null;

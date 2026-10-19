@@ -352,6 +352,130 @@
         }
       }
     },
+    "/api/weather": {
+      "get": {
+        "operationId": "get_weather_api_weather_get",
+        "parameters": [
+          {
+            "name": "latitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 90,
+              "minimum": -90,
+              "title": "Latitude"
+            }
+          },
+          {
+            "name": "longitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 180,
+              "minimum": -180,
+              "title": "Longitude"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GridPointToday"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/weather/msm-grid": {
+      "get": {
+        "operationId": "get_msm_grid_api_weather_msm_grid_get",
+        "parameters": [
+          {
+            "name": "min_lon",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 180,
+              "minimum": -180,
+              "title": "Min Lon"
+            }
+          },
+          {
+            "name": "min_lat",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 90,
+              "minimum": -90,
+              "title": "Min Lat"
+            }
+          },
+          {
+            "name": "max_lon",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 180,
+              "minimum": -180,
+              "title": "Max Lon"
+            }
+          },
+          {
+            "name": "max_lat",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 90,
+              "minimum": -90,
+              "title": "Max Lat"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MsmGridForecast"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/place-search": {
       "get": {
         "operationId": "search_places_api_place_search_get",
@@ -707,6 +831,42 @@
                 }
               ],
               "title": "At"
+            }
+          },
+          {
+            "name": "bearing_deg",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "exclusiveMaximum": 360
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bearing Deg"
+            }
+          },
+          {
+            "name": "speed_kmh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 60.0,
+                  "minimum": 5.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Speed Kmh"
             }
           }
         ],
@@ -2084,6 +2244,18 @@
             "type": "array",
             "title": "Dynamic Way Value Conditions"
           },
+          "dynamic_way_value_material_conditions": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "at",
+                "bearing_deg",
+                "speed_kmh"
+              ]
+            },
+            "type": "array",
+            "title": "Dynamic Way Value Material Conditions"
+          },
           "dynamic_way_value_undetermined_by_bearing": {
             "type": "boolean",
             "title": "Dynamic Way Value Undetermined By Bearing"
@@ -2121,6 +2293,7 @@
           "raw_value_units",
           "material_breakdown",
           "dynamic_way_value_conditions",
+          "dynamic_way_value_material_conditions",
           "dynamic_way_value_undetermined_by_bearing",
           "way_value_formula",
           "time_scope"
@@ -3901,6 +4074,151 @@
         ],
         "title": "GenerationConditions"
       },
+      "GridPointToday": {
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          },
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
+          },
+          "bearing_deg": {
+            "type": "integer",
+            "title": "Bearing Deg"
+          },
+          "times": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Times"
+          },
+          "temperature_c": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Temperature C"
+          },
+          "precipitation_mm": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Precipitation Mm"
+          },
+          "wind_speed_ms": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Wind Speed Ms"
+          },
+          "wind_direction_deg": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Wind Direction Deg"
+          },
+          "highest_hourly_temperature_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highest Hourly Temperature C"
+          },
+          "lowest_hourly_temperature_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lowest Hourly Temperature C"
+          },
+          "highest_hourly_precipitation_mm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highest Hourly Precipitation Mm"
+          },
+          "highest_hourly_wind_speed_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highest Hourly Wind Speed Ms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "latitude",
+          "longitude",
+          "distance_km",
+          "bearing_deg",
+          "times",
+          "temperature_c",
+          "precipitation_mm",
+          "wind_speed_ms",
+          "wind_direction_deg",
+          "highest_hourly_temperature_c",
+          "lowest_hourly_temperature_c",
+          "highest_hourly_precipitation_mm",
+          "highest_hourly_wind_speed_ms"
+        ],
+        "title": "GridPointToday"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -4756,6 +5074,105 @@
           "healthy"
         ],
         "title": "MsmFreshnessResponse"
+      },
+      "MsmGridForecast": {
+        "properties": {
+          "times": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Times"
+          },
+          "latitude_step_deg": {
+            "type": "number",
+            "title": "Latitude Step Deg"
+          },
+          "longitude_step_deg": {
+            "type": "number",
+            "title": "Longitude Step Deg"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/MsmGridPointForecast"
+            },
+            "type": "array",
+            "title": "Points"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "times",
+          "latitude_step_deg",
+          "longitude_step_deg",
+          "points"
+        ],
+        "title": "MsmGridForecast"
+      },
+      "MsmGridPointForecast": {
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          },
+          "wind_speed_ms": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Wind Speed Ms"
+          },
+          "wind_direction_deg": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Wind Direction Deg"
+          },
+          "precipitation_mm": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Precipitation Mm"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "latitude",
+          "longitude",
+          "wind_speed_ms",
+          "wind_direction_deg",
+          "precipitation_mm"
+        ],
+        "title": "MsmGridPointForecast"
       },
       "OverallDifficulty": {
         "properties": {

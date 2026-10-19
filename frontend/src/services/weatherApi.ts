@@ -17,6 +17,13 @@ export const getAmedasObservation = (point: Coordinates) =>
     weatherOptions("api:amedas", "アメダス観測値"),
   );
 
+/** 地点に最も近いMSMの格子点の、今日の1時間ごとの気温・降水量・風（格子点の値のまま）と格子点の位置。 */
+export const getGridPointToday = (point: Coordinates) =>
+  requestApi(
+    (init) => backendApi.GET("/api/weather", { ...atPoint(point), ...init }),
+    weatherOptions("api:gridPointToday", "最寄りの格子点の今日の値"),
+  );
+
 export const getWeatherWarnings = (point: Coordinates) =>
   requestApi(
     (init) => backendApi.GET("/api/weather/warnings", { ...atPoint(point), ...init }),
@@ -33,6 +40,24 @@ export const getFloodForecasts = (point: Coordinates) =>
   requestApi(
     (init) => backendApi.GET("/api/weather/flood-forecast", { ...atPoint(point), ...init }),
     weatherOptions("api:floodForecast", "河川氾濫予報"),
+  );
+
+export interface Bbox {
+  minLon: number;
+  minLat: number;
+  maxLon: number;
+  maxLat: number;
+}
+
+/** 表示範囲の中のMSMの格子点の、時刻ごとの風と降水。格子点が多い範囲ではbackendが格子点を同じ間隔おきに間引く。 */
+export const getMsmGrid = (bbox: Bbox) =>
+  requestApi(
+    (init) =>
+      backendApi.GET("/api/weather/msm-grid", {
+        params: { query: { min_lon: bbox.minLon, min_lat: bbox.minLat, max_lon: bbox.maxLon, max_lat: bbox.maxLat } },
+        ...init,
+      }),
+    { ...weatherOptions("api:msmGrid", "MSMの格子点"), successMeta: (data) => ({ points: data.points.length }) },
   );
 
 /** JMAの動的タイルの在否。取れなくても呼ぶ側は間引きが効かないだけで表示は成り立つ。 */
