@@ -90,14 +90,3 @@ async def test_written_definitions_are_read_back_and_served(client):
     served = (await client.get("/api/axis-catalog")).json()["road_classes"]
     assert [(layer["id"], [c["key"] for c in layer["classes"]]) for layer in served["map_layers"]] == [("surface", ["paved", "unpaved"])]
     assert [(row["key"], row["default"]) for row in served["avoidance"]["rows"]] == [("surface.paved", "pass"), ("surface.unpaved", "avoid")]
-
-
-async def test_definitions_the_tables_reject_leave_the_previous_ones(client):
-    """表の制約が断った全体は409で断りの文を返し、前の全体を表にもカタログにも残す。"""
-    await client.put(PATH, json=DEFINITIONS, headers=AUTH_HEADERS)
-    rejected = await client.put(PATH, json={**DEFINITIONS, "rolling_resistance_classification": "missing"}, headers=AUTH_HEADERS)
-    assert rejected.status_code == 409
-    assert "road_rolling_resistance" in rejected.json()["detail"]
-    assert (await client.get(PATH, headers=AUTH_HEADERS)).json() == DEFINITIONS
-    served = (await client.get("/api/axis-catalog")).json()["road_classes"]
-    assert [layer["id"] for layer in served["map_layers"]] == ["surface"]

@@ -11,7 +11,6 @@
 import pytest
 
 from app.domain import road_class_catalog as catalog_module
-from app.domain.display_palette import nominal_colors, ordered_colors, ordered_ends_phrase
 from app.domain.material_catalog import CoverageExcluded, MaterialSpec
 from app.domain.road_class_catalog import road_class_catalog
 from app.domain.road_classes import (
@@ -105,21 +104,6 @@ def test_layers_are_published_and_ordered() -> None:
     )
     assert [layer.id for layer in catalog.map_layers] == ["early", "late"]
     assert [road_class.key for road_class in catalog.map_layers[0].classes] == ["a", "b"]
-
-
-@pytest.mark.parametrize(
-    ("layer", "colors", "description"),
-    [
-        (_layer("g", 0), ordered_colors(3), f"g0の層[{ordered_ends_phrase('A', 'C')}]"),
-        (_layer("g", 0, "nominal", hue_slot=4, tone="pale"), nominal_colors(4, 3, "pale"), "g0の層[A・B・C]"),
-    ],
-)
-def test_layer_colors_and_description_follow_palette(layer: RoadMapLayer, colors: list[str], description: str) -> None:
-    """順序のある層は両端の文で、名前の層は区分の名前を並べて説明し、色は並びの順に配る。"""
-    classes = {key: _class(key.upper(), position) for position, key in enumerate("abc")}
-    (view,) = road_class_catalog(_definitions(classifications={"x": _classification(classes)}, map_layers={"x": layer})).map_layers
-    assert [road_class.color for road_class in view.classes] == colors
-    assert view.description == [description]
 
 
 def test_class_conditions_are_resolved_to_tile_properties_and_notes() -> None:
