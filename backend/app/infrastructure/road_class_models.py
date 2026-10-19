@@ -7,6 +7,7 @@
 """
 
 from datetime import datetime
+from typing import Literal, TypedDict
 
 from sqlalchemy import (
     BigInteger,
@@ -27,19 +28,26 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.infrastructure.orm_base import Base
 
 _KEY_PATTERN = "^[a-z][a-z0-9_]*$"
-_DEFERRED = {"deferrable": True, "initially": "DEFERRED"}
-_IMMEDIATE = {"deferrable": True, "initially": "IMMEDIATE"}
 
 
-def _classification_fk(**options: object) -> ForeignKey:
-    return ForeignKey("road_classifications.classification_key", **options, **_DEFERRED)
+class _Deferral(TypedDict):
+    deferrable: bool
+    initially: Literal["DEFERRED", "IMMEDIATE"]
 
 
-def _class_fk(**options: object) -> ForeignKeyConstraint:
+_DEFERRED: _Deferral = {"deferrable": True, "initially": "DEFERRED"}
+_IMMEDIATE: _Deferral = {"deferrable": True, "initially": "IMMEDIATE"}
+
+
+def _classification_fk(ondelete: str | None = None) -> ForeignKey:
+    return ForeignKey("road_classifications.classification_key", ondelete=ondelete, **_DEFERRED)
+
+
+def _class_fk(ondelete: str | None = None) -> ForeignKeyConstraint:
     return ForeignKeyConstraint(
         ["classification_key", "class_key"],
         ["road_classes.classification_key", "road_classes.class_key"],
-        **options,
+        ondelete=ondelete,
         **_DEFERRED,
     )
 

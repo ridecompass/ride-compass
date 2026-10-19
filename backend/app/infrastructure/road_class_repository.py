@@ -5,9 +5,11 @@
 """
 
 from collections import defaultdict
+from typing import Any
 
 from sqlalchemy import delete, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
 
 from app.domain.road_classes import (
     AvoidanceClassification,
@@ -50,7 +52,7 @@ _ROW_TYPES = (
 )
 
 
-async def _rows[T](session: AsyncSession, row_type: type[T], *order_by: object) -> list[T]:
+async def _rows[T](session: AsyncSession, row_type: type[T], *order_by: InstrumentedAttribute[Any]) -> list[T]:
     return list((await session.execute(select(row_type).order_by(*order_by))).scalars().all())
 
 
@@ -78,14 +80,16 @@ async def read_road_classes(session: AsyncSession) -> RoadClassDefinitions:
         )
     rolling = await _rows(session, RoadRollingResistanceRow)
     rolling_classes: dict[str, dict[str, str]] = defaultdict(dict)
-    for row in await _rows(
+    for rolling_row in await _rows(
         session, RoadRollingResistanceClassRow, RoadRollingResistanceClassRow.classification_key, RoadRollingResistanceClassRow.class_key
     ):
-        rolling_classes[row.classification_key][row.class_key] = row.tuning_id
+        rolling_classes[rolling_row.classification_key][rolling_row.class_key] = rolling_row.tuning_id
     overrides: dict[str, dict[str, AvoidanceOverride]] = defaultdict(dict)
-    for row in await _rows(session, RoadAvoidanceOverrideRow, RoadAvoidanceOverrideRow.classification_key, RoadAvoidanceOverrideRow.class_key):
-        overrides[row.classification_key][row.class_key] = AvoidanceOverride(
-            section_key=row.section_key, default_level=row.default_level, selectable=row.selectable
+    for override_row in await _rows(
+        session, RoadAvoidanceOverrideRow, RoadAvoidanceOverrideRow.classification_key, RoadAvoidanceOverrideRow.class_key
+    ):
+        overrides[override_row.classification_key][override_row.class_key] = AvoidanceOverride(
+            section_key=override_row.section_key, default_level=override_row.default_level, selectable=override_row.selectable
         )
     return RoadClassDefinitions(
         classifications={
