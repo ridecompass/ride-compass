@@ -16,7 +16,7 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from itertools import batched
 
 import numpy as np
@@ -36,6 +36,7 @@ from app.domain.material_catalog import (
 )
 from app.domain.region import BoundingBox
 from app.domain.route_points import RoutePointHit
+from app.domain.tuning import TUNING_PARAMETERS_BY_ID, TURN_BEARING_DISTANCE_ID
 from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.orm_base import declared_metadata
@@ -229,33 +230,34 @@ _EDGE_MATERIAL_ARRAYS_SQL = text(
 # （`infrastructure/road_network_store.py`）に作る。道の通行方向（`way_directions.direction`）が逆向きの枝を
 # 作ってよいかを決める。
 
-#: 交差点での曲がりを測る向きを取る、区間の端からの道のりの長さ（m）。点を出てすぐ・入る直前の向きを取る長さで、
-#: 区間がこれより短ければ端から端を見る。
-_NEAR_NODE_BEARING_DISTANCE_M = 20.0
-_NEAR_START = (
-    f"ST_LineInterpolatePoint(re.geom, LEAST(1.0, {_NEAR_NODE_BEARING_DISTANCE_M} / NULLIF(re.distance_m, 0)))"
-)
-_NEAR_END = (
-    f"ST_LineInterpolatePoint(re.geom, GREATEST(0.0, 1.0 - {_NEAR_NODE_BEARING_DISTANCE_M} / NULLIF(re.distance_m, 0)))"
-)
-
-#: 取込範囲全体の区間（向きを持たない1行）。どの道も通行方向の行を持つ（通行方向の段が数を比べて守る）ので、
-#: どの区間も通行方向を持つ。並びは`domain/road_network.py`の行順の前提。端のそばの向きは、
-#: 折れ線の向き（始点→終点）に進むときと逆に進むときの両方を持つ。
-_NETWORK_EDGES_SQL = text(f"""
+def _network_edges_sql(bearing_distance_m: float) -> TextClause:
+    """取込範囲全体の区間（向きを持たない1行）。どの道も通行方向の行を持つ（通行方向の段が数を比べて守る）ので、
+    どの区間も通行方向を持つ。並びは`domain/road_network.py`の行順の前提。端のそばの向きは、
+    折れ線の向き（始点→終点）に進むときと逆に進むときの両方を持ち、端から`bearing_distance_m`の道のりの点までで測る
+    （区間がそれより短ければ端から端を見る）。
+    """
+    near_start = f"ST_LineInterpolatePoint(re.geom, LEAST(1.0, {bearing_distance_m!r} / NULLIF(re.distance_m, 0)))"
+    near_end = (
+        f"ST_LineInterpolatePoint(re.geom, GREATEST(0.0, 1.0 - {bearing_distance_m!r} / NULLIF(re.distance_m, 0)))")
+    return text(f"""
 SELECT re.osm_way_id, re.segment_index, re.from_node_id, re.to_node_id,
        w.highway, wm.direction,
        ST_XMin(re.geom) AS min_lon, ST_YMin(re.geom) AS min_lat,
        ST_XMax(re.geom) AS max_lon, ST_YMax(re.geom) AS max_lat,
-       {bearing_sql("ST_StartPoint(re.geom)", _NEAR_START)} AS start_bearing_deg,
-       {bearing_sql(_NEAR_END, "ST_EndPoint(re.geom)")} AS end_bearing_deg,
-       {bearing_sql("ST_EndPoint(re.geom)", _NEAR_END)} AS reverse_start_bearing_deg,
-       {bearing_sql(_NEAR_START, "ST_StartPoint(re.geom)")} AS reverse_end_bearing_deg
+       {bearing_sql("ST_StartPoint(re.geom)", near_start)} AS start_bearing_deg,
+       {bearing_sql(near_end, "ST_EndPoint(re.geom)")} AS end_bearing_deg,
+       {bearing_sql("ST_EndPoint(re.geom)", near_end)} AS reverse_start_bearing_deg,
+       {bearing_sql(near_start, "ST_StartPoint(re.geom)")} AS reverse_end_bearing_deg
 FROM road_edges re
 JOIN LATERAL {ways_lookup_sql("re.osm_way_id")} w ON true
 {material_from_clause(["wm.direction"], "re.osm_way_id")}
 ORDER BY re.osm_way_id, re.segment_index
 """)
+
+
+#: 道路網全体の配列を作る読み出しが読む較正値。値は作り直しに使った値（`derived_data_meta.py: recorded_tuning_sql`）で、
+#: 文へ値で渡り、文が読む表には出ない。
+NETWORK_TUNING = (TURN_BEARING_DISTANCE_ID,)
 
 #: 区間の端点全件（`road_edges`の端点は`road_nodes`に行を持ち、`road_nodes`の全行が`node_turns`に行を持つ）。
 #: 座標はノードの生データから読み、生データが無いノードは現れない。
@@ -268,8 +270,14 @@ ORDER BY nm.osm_node_id
 """)
 
 #: 取込範囲全体の道路網（`infrastructure/road_network_store.py`）を作る読み出し。置き場の
-#: 形の署名はここから導く——材料の式を変えると、作り直すべき置き場が別名になる。
-NETWORK_SQL_SOURCES = (_NETWORK_EDGES_SQL, _NETWORK_NODES_SQL, _EDGE_MATERIAL_ARRAYS_SQL)
+#: 形の署名はここから導く——材料の式を変えると、作り直すべき置き場が別名になる。区間の文は較正値の既定で描く：
+#: 較正値は派生の世代に結ばれ（作り直すと世代が進む）、署名に今の上書きを入れると、上書きを変えてから作り直すまで
+#: 読み手の開ける置き場が無くなる。
+NETWORK_SQL_SOURCES = (
+    _network_edges_sql(TUNING_PARAMETERS_BY_ID[TURN_BEARING_DISTANCE_ID].default),
+    _NETWORK_NODES_SQL,
+    _EDGE_MATERIAL_ARRAYS_SQL,
+)
 
 _EDGE_GEOMETRIES_SQL = text("""
 SELECT re.osm_way_id, re.segment_index, re.from_node_id, re.to_node_id,
@@ -383,9 +391,16 @@ class RoadGraphRepository:
 
     # --- グラフ --------------------------------------------------------------
 
-    def stream_network_edges(self, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
-        """取込範囲全体の区間を`chunk_size`行ずつ流す（`_NETWORK_EDGES_SQL`の並び）。"""
-        return self._stream(_NETWORK_EDGES_SQL, chunk_size)
+    async def get_network_tuning(self) -> dict[str, float]:
+        """道路網全体の配列を作る読み出しが読む較正値（`NETWORK_TUNING`）の、作り直しに使った値。"""
+        row = (await self._session.execute(text(
+            "SELECT " + ", ".join(f'{derived_data_meta.recorded_tuning_sql(param_id)} AS "{param_id}"' for param_id in NETWORK_TUNING)
+        ))).mappings().one()
+        return {param_id: row[param_id] for param_id in NETWORK_TUNING}
+
+    def stream_network_edges(self, chunk_size: int, tuning: Mapping[str, float]) -> AsyncIterator[Sequence[Row]]:
+        """取込範囲全体の区間を`chunk_size`行ずつ流す（`_network_edges_sql`の並び）。`tuning`は`get_network_tuning`の値。"""
+        return self._stream(_network_edges_sql(tuning[TURN_BEARING_DISTANCE_ID]), chunk_size)
 
     def stream_network_nodes(self, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
         """区間の端点になりうるノード全件を`chunk_size`行ずつ流す（`osm_node_id`の昇順）。"""
@@ -444,6 +459,7 @@ class RoadGraphRepository:
             for row in rows:
                 result.setdefault((row["osm_way_id"], row["segment_index"]), []).append(RoutePointHit(
                     layer=row["layer"], point_key=row["point_key"], merge_group=row["merge_group"],
+                    merge_within_m=row["merge_within_m"],
                     properties={name: row[name] for name in SIDE_POINT_PROPERTIES if row[name] is not None},
                     fraction=row["fraction"], distance_m=row["distance_m"],
                 ))

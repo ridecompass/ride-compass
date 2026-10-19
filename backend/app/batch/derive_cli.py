@@ -14,7 +14,8 @@
 作業用のスキーマも道路網の配列も入れ替えも作らずに終える。段は単独の入口を持たない。
 
 **道路網の配列も、入力が前回と同じなら作らない。** 配列の入力は、配列の読み出しが読む表を書く段の指紋・直に読むソースの取込・
-事故の収録年数・配列を組むコードで（`network_inputs`）、前回の置き場の入力と同じなら、その配列を新しい世代の名前で出し直す。
+事故の収録年数・配列が読む較正値・配列を組むコードで（`network_inputs`）、前回の置き場の入力と同じなら、その配列を新しい世代の
+名前で出し直す。どの段も同じでも、配列が読む較正値（`road_graph_repository.py: NETWORK_TUNING`）が記録と違えば配列を作り直す。
 
 **区間の値がその区間の形と前の段の外の入力だけで決まる段（`DeriveStage.per_edge`）は、区間ごとに前回の値を写す。**
 前の段が区間を作り直して段が流れても、前の段を除いた入力の指紋が前回と同じなら、段へ前回の表のスキーマ（`public`。
@@ -34,7 +35,8 @@
 **段が読む較正値は、作り直しを始めるときに1度だけDBの上書きから読み、段の関数へ値で渡す**。
 バッチはwebアプリと別のプロセスで、プロセス内の較正値（`domain/tuning.py: TUNING_VALUES`）へは
 何も読み込まれていない——そこを読むと、管理画面で変えた値ではなく宣言の既定が効く。
-段へ渡るのは`STAGES`が宣言した較正値だけである。
+段へ渡るのは`STAGES`が宣言した較正値だけである。段と道路網の配列が読む較正値は、作り直しに使った値として派生の記録
+（`derived_data_meta.py: DerivedTuningRow`）にも書き、派生の外で同じ値を読む所はそこから読む。
 """
 
 import argparse
@@ -76,7 +78,8 @@ from app.batch.common import (
 from app.infrastructure.tuning_overrides import load_tuning_values
 from app.infrastructure import derived_data_meta, road_network_store
 from app.infrastructure.derived_data_freshness import declared_columns
-from app.infrastructure.road_graph_repository import RoadGraphRepository
+from app.domain.tuning import ACCIDENT_MATCH_DISTANCE_ID, STOP_CLUSTER_DISTANCE_ID
+from app.infrastructure.road_graph_repository import NETWORK_TUNING, RoadGraphRepository
 from app.infrastructure.source_models import LATEST_SUCCEEDED_RUNS_SQL, Source
 
 logger = logging.getLogger("ridecompass.derive_cli")
@@ -123,7 +126,9 @@ STAGES: tuple[DeriveStage, ...] = (
     DeriveStage("nodes", derive_nodes, frozenset({Source.OSM_NODE, Source.OSM_WAY}), ("topology",),
                 ("node_kinds", "node_turns"), {"signal_radius_m": "signal.match_radius_m"}),
     DeriveStage("counts", derive_counts, frozenset({Source.OSM_NODE, Source.OSM_WAY, Source.ACCIDENT}),
-                ("topology", "nodes"), ("edge_counts", "way_counts")),
+                ("topology", "nodes"), ("edge_counts", "way_counts"),
+                {"cluster_distance_m": STOP_CLUSTER_DISTANCE_ID, "accident_fatal_weight": "accident.fatal_weight",
+                 "accident_match_distance_m": ACCIDENT_MATCH_DISTANCE_ID}),
     # 標高の段は、道から区間が橋かトンネルかだけを読み、その値を区間ごとに表へ残す。
     DeriveStage("elevation", derive_elevation, frozenset({Source.OSM_WAY, Source.DEM}), ("topology",), ("edge_elevation",),
                 per_edge=True, compared=frozenset({Source.OSM_WAY})),
@@ -181,6 +186,18 @@ def network_inputs(relations: Iterable[str]) -> tuple[list[DeriveStage], set[Sou
         else:
             raise RuntimeError(f"道路網の配列が、どの段も書かない表を読む: {relation}")
     return [stage for stage in STAGES if stage.name in stages], sources
+
+
+def recorded_tuning(tuning: Mapping[str, float]) -> dict[str, float]:
+    """作り直しに使った較正値として記録する値（段と道路網の配列が読む較正値のid → 値）。"""
+    ids = {*(param for stage in STAGES for param in stage.tuning.values()), *NETWORK_TUNING}
+    return {param: tuning[param] for param in sorted(ids)}
+
+
+async def _network_tuning_changed(conn: asyncpg.Connection, used_tuning: Mapping[str, float]) -> bool:
+    """道路網の配列が読む較正値が、今の`public`の記録と違うか。段が読む較正値は段の指紋が見るので比べない。"""
+    recorded = await derived_data_meta.read_tuning(conn, NETWORK_TUNING)
+    return any(recorded[param] != used_tuning[param] for param in NETWORK_TUNING)
 
 
 def _digest(inputs: Mapping[str, object]) -> str:
@@ -261,8 +278,9 @@ async def _build_road_network(database_url: str, revision: int, fingerprints: Ma
             inputs = _digest({
                 "stages": {stage.name: fingerprints[stage.name] for stage in stages},
                 "sources": {source: runs.get(source) for source in sorted(sources)},
-                # 収録年数は読み出しの文へ値で渡り、文が読む表には出ない。
+                # 収録年数と較正値は読み出しの文へ値で渡り、文が読む表には出ない。
                 "accident_years": await repository.get_accident_years_covered(),
+                "tuning": await repository.get_network_tuning(),
                 "code": code_fingerprint(road_network_store.__name__),
             })
             pending = road_network_store.reuse_pending(inputs, revision)
@@ -321,18 +339,23 @@ async def run(database_url: str) -> int:
         fingerprints = stage_fingerprints(runs, tuning, columns, database)
         recorded = await derived_data_meta.read_stage_fingerprints(conn)
         changed = [stage for stage in STAGES if recorded.get(stage.name) != fingerprints[stage.name]]
-        if not changed:
+        used_tuning = recorded_tuning(tuning)
+        network_tuning_changed = await _network_tuning_changed(conn, used_tuning)
+        if not changed and not network_tuning_changed:
             logger.info("どの段も入力が前回と同じなので、作り直さずに終える（派生の表・世代・道路網の配列は前のまま）")
             return 0
-        # 作った取込・列・段の指紋の記録も作業用のスキーマで書く——事故密度の分母が取込の記録から読まれ、作業用のスキーマから
-        # 作る道路網の配列も数と同じ取込の年で割るため。どの記録も派生の表と一緒に入れ替わる。
+        # 作った取込・列・段の指紋・較正値の記録も作業用のスキーマで書く——事故密度の分母が取込の記録から読まれ、作業用の
+        # スキーマから作る道路網の配列も数と同じ取込の年で割り、記録した較正値で読むため。どの記録も派生の表と一緒に入れ替わる。
         tables = [*(table for stage in changed for table in stage.tables),
                   derived_data_meta.DerivedSourceRunRow.__tablename__, derived_data_meta.DerivedColumnRow.__tablename__,
-                  derived_data_meta.DerivedStageRow.__tablename__]
+                  derived_data_meta.DerivedStageRow.__tablename__, derived_data_meta.DerivedTuningRow.__tablename__]
         await _create_work_tables(conn, tables)
         await derived_data_meta.replace_source_runs(conn, runs)
         await derived_data_meta.replace_columns(conn, columns)
         await derived_data_meta.replace_stage_fingerprints(conn, fingerprints)
+        await derived_data_meta.replace_tuning(conn, used_tuning)
+        if not changed:
+            logger.info("どの段も入力が前回と同じだが、道路網の配列が読む較正値が変わったので、配列を作り直して世代を進める")
         for stage in STAGES:
             if stage not in changed:
                 logger.info("段 %s を飛ばした（入力が前回と同じ）", stage.name)

@@ -17,6 +17,7 @@ from app.batch import derive_cli
 from app.batch.source_adapters.npa_honhyo import HonhyoRows
 from app.domain.accident import PartyType
 from app.domain.material_catalog import ACCIDENT_COUNT_PER_KM_YEAR
+from app.domain.tuning import TUNING_PARAMETERS, TUNING_VALUES, TuningEffect
 from app.infrastructure import road_network_store
 from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.road_graph_repository import RoadGraphRepository
@@ -187,6 +188,13 @@ async def test_the_signal_radius_set_on_the_admin_screen_decides_which_nodes_get
     finally:
         await derived_before.execute("DELETE FROM tuning_overrides WHERE param_id = 'signal.match_radius_m'")
     assert await _nodes_with_signal(derived_before) == {1, 2, 3}
+
+
+async def test_every_value_that_waits_for_a_rebuild_is_read_by_the_rebuild():
+    """管理画面に「派生データを作り直すまで効かない」と出る較正値は、どれも段か道路網の配列が読み、作り直しの記録に残る。
+    読まれない値は変えても何にも効かず、記録に残らない値は、派生の外の読み手が作り直しに使った値ではなく既定で読む。"""
+    assert set(derive_cli.recorded_tuning(TUNING_VALUES)) == {
+        param.id for param in TUNING_PARAMETERS if param.effect is TuningEffect.DERIVE_REBUILD}
 
 
 async def test_the_accident_density_is_divided_by_the_years_of_the_import_that_was_counted(

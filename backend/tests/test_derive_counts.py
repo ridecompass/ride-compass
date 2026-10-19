@@ -13,14 +13,10 @@ import pytest
 import pytest_asyncio
 
 from app.batch import derive_counts, derive_nodes, derive_topology
-from app.domain.accident import (
-    ACCIDENT_FATAL_WEIGHT,
-    ACCIDENT_MATCH_MAX_DISTANCE_M,
-    PartyType,
-)
+from app.domain.accident import PartyType
 from app.domain.geo import KM_PER_DEGREE_LATITUDE, km_per_degree_longitude
 from app.domain.traffic import POI_COUNT_KINDS, poi_count_column
-from app.domain.tuning import TUNING_PARAMETERS_BY_ID
+from app.domain.tuning import ACCIDENT_MATCH_DISTANCE_ID, STOP_CLUSTER_DISTANCE_ID, TUNING_PARAMETERS_BY_ID
 from app.infrastructure.source_models import ACCIDENTS_SOURCE_SQL, PARTY_TYPE_CODES
 from tests.conftest import empty_ingested_tables
 from tests.source_ingest import WAY_ORIGIN, WAY_STEP, ingest_records, point_record, way_record, zigzag_point
@@ -30,7 +26,19 @@ from tests.source_ingest import WAY_ORIGIN, WAY_STEP, ingest_records, point_reco
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 BASE_LON, BASE_LAT = WAY_ORIGIN
+ACCIDENT_MATCH_DISTANCE_M = TUNING_PARAMETERS_BY_ID[ACCIDENT_MATCH_DISTANCE_ID].default
+ACCIDENT_FATAL_WEIGHT = TUNING_PARAMETERS_BY_ID["accident.fatal_weight"].default
 STEP = WAY_STEP
+
+
+async def _derive_counts(conn: asyncpg.Connection, **tuning: float) -> None:
+    """数の段を、較正値の既定（上書きしたものはその値）で流す。"""
+    await derive_counts.derive(conn, **{
+        "cluster_distance_m": TUNING_PARAMETERS_BY_ID[STOP_CLUSTER_DISTANCE_ID].default,
+        "accident_fatal_weight": ACCIDENT_FATAL_WEIGHT,
+        "accident_match_distance_m": ACCIDENT_MATCH_DISTANCE_M,
+        **tuning,
+    })
 
 #: (wayのid, 参照ノードid列)。3本ともノード3で接する。ノード3の上で起きた事故は
 #: 3区間のどれからも距離0になる。
@@ -86,7 +94,7 @@ async def _derive_with_nodes(conn: asyncpg.Connection,
     await ingest_records("osm_node", [
         point_record(node_id, lon, lat, tags) for node_id, ((lon, lat), tags) in nodes.items()], conn=conn)
     await derive_nodes.derive(conn, TUNING_PARAMETERS_BY_ID["signal.match_radius_m"].default)
-    await derive_counts.derive(conn)
+    await _derive_counts(conn)
 
 
 async def _stop_counts(conn: asyncpg.Connection) -> dict[int, dict[str, float]]:
@@ -105,7 +113,7 @@ async def counts_conn(derive_conn):
     await ingest_records("osm_way", [_road(*way) for way in WAYS], conn=conn)
     await _ingest_accidents(conn)
     await derive_topology.derive(conn)
-    await derive_counts.derive(conn)
+    await _derive_counts(conn)
     return conn
 
 
@@ -174,7 +182,7 @@ async def test_an_accident_without_a_bicycle_is_not_counted(counts_conn):
     """自転車の関わらない事故は数えない（自転車の事故はノード3の事故）。"""
     await _ingest_accidents(counts_conn, _accident("car", _north_of_way(5.0), bicycle=False))
 
-    await derive_counts.derive(counts_conn)
+    await _derive_counts(counts_conn)
 
     assert await _accidents(counts_conn) == {(100, 0): 1.0}
 
@@ -182,10 +190,10 @@ async def test_an_accident_without_a_bicycle_is_not_counted(counts_conn):
 async def test_an_accident_farther_than_the_match_distance_is_not_counted(counts_conn):
     """道から帰属の距離より遠い事故は、最も近い道にも付けない。距離の内側の事故は付ける。"""
     await _ingest_accidents(counts_conn,
-                            _accident("near", _north_of_way(ACCIDENT_MATCH_MAX_DISTANCE_M - 10)),
-                            _accident("far", _north_of_way(ACCIDENT_MATCH_MAX_DISTANCE_M + 10)))
+                            _accident("near", _north_of_way(ACCIDENT_MATCH_DISTANCE_M - 10)),
+                            _accident("far", _north_of_way(ACCIDENT_MATCH_DISTANCE_M + 10)))
 
-    await derive_counts.derive(counts_conn)
+    await _derive_counts(counts_conn)
 
     assert await _accidents(counts_conn) == {(100, 0): 1.0, (300, 0): 1.0}
 
@@ -204,7 +212,7 @@ async def test_an_accident_goes_to_the_segment_nearest_on_the_ground(counts_conn
     await _ingest_accidents(counts_conn, _accident("between", (lon, lat)))
 
     await derive_topology.derive(counts_conn)
-    await derive_counts.derive(counts_conn)
+    await _derive_counts(counts_conn)
 
     assert await _accidents(counts_conn) == {(100, 0): 1.0, (400, 0): 1.0}
 
@@ -213,9 +221,20 @@ async def test_only_a_fatal_accident_is_weighted(counts_conn):
     """死亡事故は重みの件数分、死亡以外の事故（ノード3の事故）は1件と数える。"""
     await _ingest_accidents(counts_conn, _accident("fatal", _north_of_way(5.0), fatal=True))
 
-    await derive_counts.derive(counts_conn)
+    await _derive_counts(counts_conn)
 
     assert await _accidents(counts_conn) == {(100, 0): 1.0, (300, 0): ACCIDENT_FATAL_WEIGHT}
+
+
+async def test_the_stage_counts_accidents_with_the_values_it_is_run_with(counts_conn):
+    """付ける距離と死亡の重みは、段へ渡した較正値で効く（管理画面で較正した値が、作り直した事故の数に届く）。"""
+    await _ingest_accidents(counts_conn,
+                            _accident("fatal", _north_of_way(ACCIDENT_MATCH_DISTANCE_M + 10), fatal=True))
+
+    await _derive_counts(counts_conn, accident_match_distance_m=ACCIDENT_MATCH_DISTANCE_M + 20,
+                         accident_fatal_weight=ACCIDENT_FATAL_WEIGHT + 2)
+
+    assert await _accidents(counts_conn) == {(100, 0): 1.0, (300, 0): ACCIDENT_FATAL_WEIGHT + 2}
 
 
 async def test_a_stop_point_on_no_segment_is_not_counted(counts_conn):

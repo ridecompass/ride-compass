@@ -8,17 +8,6 @@ from enum import StrEnum
 
 from app.domain.material_sql import sql_literals
 
-# 事故地点を道路へスナップする際の探索半径。事故点はOSMの要素ではないため、信号・交差点の
-# ように「wayの構成ノードか」で帰属を決められず、距離で最も近い道路を選ぶしかない。
-# 緯度経度は本票の度分秒表記からの変換値でOSM nodeよりジオコーディング精度が粗いため、
-# 半径は大きめに採る。
-ACCIDENT_MATCH_MAX_DISTANCE_M = 30.0
-
-# 死亡事故の重み。件数を単純にCOUNTすると軽傷の物損に近い事故と死亡事故が同じ1件として
-# 扱われ、最も避けたい重大事故のリスクが薄まるため、死亡事故はこの件数分として積算する
-# （「死亡事故は軽傷事故の3件分のリスク」という意味づけの値で、実測から導いたものではない）。
-ACCIDENT_FATAL_WEIGHT = 3.0
-
 
 class PartyType(StrEnum):
     """当事者種別のうち、判定が名指すもの。"""

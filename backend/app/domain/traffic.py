@@ -194,12 +194,6 @@ def stop_count_material_ids() -> tuple[str, ...]:
     return tuple(poi_density_material_id(kind) for kind in POI_COUNT_KINDS)
 
 
-# 同じ場所にある同種の点を1つの停止としてまとめる距離（m）。日本のOSMは1つの信号交差点を
-# 流入路ごとの`highway=traffic_signals`と横断歩道位置の`highway=crossing`＋
-# `crossing=traffic_signals`という複数ノードで描くため、ノードを素直に数えると停止回数を
-# 上回る。集計時にこの距離でまとめてから数える。
-POI_CLUSTER_EPS_M = 40.0
-
 #: 道路網の上の1つの場所（停止要因のまとまり・交差点）を、そこに端を持つ区間1本が持つ割合。
 #: 場所へ入る区間と出る区間が半分ずつ持つので、経路がどう通っても合計1回になる。
 PLACE_SHARE_PER_END = 0.5

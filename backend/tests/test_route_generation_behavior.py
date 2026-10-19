@@ -753,8 +753,8 @@ async def test_a_point_near_the_route_is_listed_at_the_distance_where_the_route_
     """近くの点は、通る区間の始まりの道のりに区間の上の位置を足した距離に、種類と値つきで載る——道のりのグラフの印が
     地図の上の点と同じ所に出る。"""
     start, far, east = (BASE_LAT, BASE_LON), (BASE_LAT + 2 * LAT_STEP, BASE_LON), (BASE_LAT + 2 * LAT_STEP, BASE_LON + LON_STEP)
-    toilets = RoutePointHit(layer="supply_poi", point_key="n1", merge_group=None, properties={"kind": "toilets"},
-                            fraction=0.5, distance_m=10.0)
+    toilets = RoutePointHit(layer="supply_poi", point_key="n1", merge_group=None, merge_within_m=40.0,
+                            properties={"kind": "toilets"}, fraction=0.5, distance_m=10.0)
     generator = engine_over(road_network({1: (1, 2), 2: (2, 3)}, {1: start, 2: far, 3: east}),
                             side_points={(2, 0): [toilets]})
 

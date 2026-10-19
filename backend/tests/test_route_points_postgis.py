@@ -19,7 +19,8 @@ from app.batch import derive_nodes, derive_stop_places, derive_topology
 from app.domain.accident import PartyType
 from app.domain.geo import KM_PER_DEGREE_LATITUDE
 from app.domain.graph import LeanEdge, edge_key
-from app.domain.tuning import TUNING_PARAMETERS_BY_ID
+from app.domain.tuning import ACCIDENT_MATCH_DISTANCE_ID, STOP_CLUSTER_DISTANCE_ID, TUNING_PARAMETERS_BY_ID
+from app.infrastructure import derived_data_meta
 from app.infrastructure.source_models import PARTY_TYPE_CODES
 from tests.conftest import empty_ingested_tables
 from tests.source_ingest import WAY_ORIGIN, WAY_STEP, ingest_records, point_record, way_record
@@ -115,3 +116,18 @@ async def test_a_side_point_carries_its_distance_from_the_road(side_points_world
 
     [toilets] = [hit for hit in found[(10, 0)] if hit.properties.get("kind") == "toilets"]
     assert toilets.distance_m == pytest.approx(55.0, abs=1.0)
+
+
+async def test_side_points_use_the_values_the_derived_tables_were_built_with(side_points_world, road_graph_repository,
+                                                                              derive_conn):
+    """事故を道に付ける距離と点をまとめる距離は、管理画面の今の上書きではなく、派生を作り直したときの値で読む。グラフの事故の
+    印が、事故の材料として数えた事故と食い違わず、停止の印が地図の点と同じようにまとまる。道10から35mの事故は、付ける距離が
+    40mなら道10の点になる。"""
+    await derived_data_meta.replace_tuning(derive_conn, {ACCIDENT_MATCH_DISTANCE_ID: 40.0, STOP_CLUSTER_DISTANCE_ID: 15.0})
+    try:
+        found = await road_graph_repository.get_route_side_points([_edge(10)])
+    finally:
+        await derived_data_meta.replace_tuning(derive_conn, {})
+
+    assert sorted(round(hit.fraction, 2) for hit in found[(10, 0)] if hit.layer == "accident_point") == [0.25, 0.5]
+    assert {hit.merge_within_m for hit in found[(10, 0)]} == {15.0}

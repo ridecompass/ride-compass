@@ -19,7 +19,7 @@ import os
 import re
 import shutil
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import fields
 from pathlib import Path
 from typing import Any
@@ -244,10 +244,11 @@ async def ensure_current(session_factory: async_sessionmaker[AsyncSession]) -> P
 
 
 async def build(repository: RoadGraphRepository, revision: int | None) -> RoadNetwork:
-    """DBから道路網全体を読み、`revision`の世代の`RoadNetwork`を組む。"""
+    """DBから道路網全体を読み、`revision`の世代の`RoadNetwork`を組む。較正値は、読む表を作り直したときに使った値で読む。"""
     started = time.monotonic()
     nodes = await _read_nodes(repository)
-    edges, dropped_without_endpoint = await _read_directed_edges(repository, nodes["node_osm_id"])
+    edges, dropped_without_endpoint = await _read_directed_edges(
+        repository, nodes["node_osm_id"], await repository.get_network_tuning())
     topology_s = time.monotonic() - started
     logger.info(
         "道路網のつながりを読みました ノード=%d 有向の区間=%d 端点のノードが無く落とした有向の区間=%d %.0f秒",
@@ -284,14 +285,14 @@ async def _read_nodes(repository: RoadGraphRepository) -> dict[str, Any]:
 
 
 async def _read_directed_edges(
-    repository: RoadGraphRepository, node_osm_id: np.ndarray
+    repository: RoadGraphRepository, node_osm_id: np.ndarray, tuning: Mapping[str, float]
 ) -> tuple[dict[str, Any], int]:
     """区間を有向の行へ広げ、`RoadNetwork`の区間の欄と、端点のノードが無く落とした有向の行の数を返す。
     一方通行は走れる向きだけを持つ（道の値の行は、区間が持つ外部キーが保証する）。"""
     highway_vocab: dict[str, int] = {}
     dropped_without_endpoint = 0
     parts: dict[str, list[np.ndarray]] = {name: [] for name in _EDGE_DTYPES}
-    async for rows in repository.stream_network_edges(_STREAM_CHUNK):
+    async for rows in repository.stream_network_edges(_STREAM_CHUNK, tuning):
         n = len(rows)
         way = np.fromiter((r.osm_way_id for r in rows), dtype=np.int64, count=n)
         segment = np.fromiter((r.segment_index for r in rows), dtype=np.int32, count=n)
