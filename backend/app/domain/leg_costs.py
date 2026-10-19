@@ -245,10 +245,15 @@ class LegCostComposer:
         self._cost_scale = np.where(search_masks.avoided, avoid_cost_multiplier, 1.0)
         self._departure_wind = departure_wind
         self._wind_series = wind_series
-        # 各Edgeの中点に最も近い予報の格子点（切り出した区間の順）。
+        # 各Edgeの中点に最も近い予報の格子点（切り出した区間の順）と、それが本当に最寄りの格子点か（格子点の並びの外の
+        # 中点は端の格子点へ寄せており、計算には使うが「最寄りの格子点の値」として画面に出せない）。
         self._wind_points = (
             None if wind_series is None
             else wind_series.lattice.points_of(score_matrix.mid_lat, score_matrix.mid_lon)
+        )
+        self._wind_points_are_nearest = (
+            None if wind_series is None
+            else wind_series.lattice.holds_nearest(score_matrix.mid_lat, score_matrix.mid_lon)
         )
         self.start = start
         # 昼夜を決める地点。探索範囲の中の位置の違いで薄明の時刻がずれるのは数分のため、区間ごとには引かない。
@@ -576,11 +581,17 @@ class LegCostComposer:
         self, rows: list[int], passage_hours: list[float | None], beyond_bins: list[bool]
     ) -> list[SegmentWind | None]:
         """区間（切り出した区間の順の行`rows`）ごとの通過時刻（出発からの経過[h]、Noneは出発時点の値を使った区間）で
-        引いた風。`beyond_bins`はレグの時刻ビンの範囲の先で、最後のビンをそのまま使った区間。出発時点の値の区間と、
-        ビンか計算値の期間の先で最後の時刻の値をそのまま使った区間はNone。"""
+        引いた、区間の中点に最寄りのMSMの格子点の、通過時刻に最も近い正時の値（格子点の値のまま）。`beyond_bins`は
+        レグの時刻ビンの範囲の先で、最後のビンをそのまま使った区間。出発時点の値の区間と、ビンか計算値の期間の先で
+        最後の時刻の値をそのまま使った区間と、最寄りの格子点が予報の格子点の並びの外にある区間はNone。"""
         winds: list[SegmentWind | None] = [None] * len(passage_hours)
-        timed = [i for i, passage in enumerate(passage_hours) if passage is not None and not beyond_bins[i]]
-        if self._wind_series is None or self._wind_points is None or not timed:
+        if self._wind_series is None or self._wind_points is None or self._wind_points_are_nearest is None:
+            return winds
+        timed = [
+            i for i, passage in enumerate(passage_hours)
+            if passage is not None and not beyond_bins[i] and self._wind_points_are_nearest[rows[i]]
+        ]
+        if not timed:
             return winds
         timed_hours = np.array([passage_hours[i] for i in timed], dtype=float)
         points = self._wind_points[[rows[i] for i in timed]]

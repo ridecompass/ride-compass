@@ -296,8 +296,8 @@ DI工場（`api/dependencies.py`）がプロセスに1つ持ってクライア�
 
 | メソッド | 用途 | 時刻 |
 |---|---|---|
-| `get_departure_wind(point)` | `RoadGraphEngine`の出発時点の風（時別の系列が無いとき全区間へ一様に使う。`domain/wind.py: DepartureWind`） | 時系列の先頭（現在時刻の正時）。風速・風向を小数1桁に丸める |
-| `get_wind_forecast_lattice(bbox)` | `RoadGraphEngine`の探索前コスト合成（Edgeごとの通過予定時刻・最寄りの格子点の風）と、ルートを出す前の地図の風（`WindWayService`） | 範囲を覆う格子点ごとの時別風向・風速の系列（JST）。格子は緯度・経度0度から数えた固定の線に揃う。MSMから読む |
+| `get_departure_wind(point)` | `RoadGraphEngine`の出発時点の風（時別の系列が無いとき全区間へ一様に使う。`domain/wind.py: DepartureWind`）。画面に値を出さない計算にだけ使う | 時系列の先頭（現在時刻の正時）。出発地へ補間し、風速・風向を小数1桁に丸める |
+| `get_wind_forecast_lattice(bbox)` | `RoadGraphEngine`の探索前コスト合成（Edgeごとの通過予定時刻・最寄りの格子点の風）と、ルートを出す前の地図の風（`WindWayService`） | 範囲を覆うMSMの格子点ごとの時別風向・風速の系列（JST、格子点の値のまま）。格子点はMSMの格子そのもの（`domain/msm.py: MsmGrid.block_covering`）で、どの範囲から引いても同じ地点は同じ格子点に当たる。時刻が2つ未満ならNone |
 | `get_station_rain_materials(now)` | ルートを出す前の地図の雨（`RainWayService`）と`RoadGraphEngine`の気象の段 | 今の観測（アメダスの1時間雨量の履歴。`jma_amedas_service.py: load_station_rain_materials`）。求めた値は実体の中に5分持つので、DI工場（`api/dependencies.py: get_weather_service`）は実体をプロセスに1つ持つ |
 
 ## その他のサービス
@@ -500,7 +500,7 @@ MSM（`.om`形式、CC-BY-4.0）をローカルへ同期して読む。予報を
 |---|---|
 | 配信元 | `settings.msm_base_url`（既定はopenmeteo.s3.amazonaws.comのjma_msm） |
 | 同期対象 | `msm_client.py: FORECAST_VARIABLES`（消費するものだけ。例: 風の東西成分・南北成分）の、現在時刻から`msm_forecast_hours`先までを覆うチャンク |
-| 読み出しの戻り値 | `msm_client.py: MsmSeries`（時刻列（タイムゾーン無しのJSTの`datetime`）と、項目ごとの[地点数, 時刻数]の配列）。配信元の変数名は持たない——変数名と項目の対応は`FORECAST_VARIABLES`だけが持ち、サービスは項目で読む |
+| 読み出しの戻り値 | 補間して地点の値を読む`read_series`は`msm_client.py: MsmSeries`、格子点の値のまま読む`read_grid_points`（地点ごとの最寄りの格子点）・`read_grid_block`（矩形を覆う格子点の全部）は`msm_client.py: MsmGridPointSeries`（読んだ格子点の番号・位置を持つ）。どれも時刻列（タイムゾーン無しのJSTの`datetime`）と、項目ごとの[地点数, 時刻数]の配列を持つ。配信元の変数名は持たない——変数名と項目の対応は`FORECAST_VARIABLES`だけが持ち、サービスは項目で読む |
 | チャンク | 変数ごとに日本全域・`chunk_time_length`時間ぶんを1ファイルにまとめたもの。1ファイル十数MB |
 | 保存先 | `backend/data/msm/`（本番はコンテナへマウントされるホスト側ディレクトリのため、デプロイをまたいで残る） |
 | 更新の検出 | ETagによる条件付きGET。内容が変わっていなければ304で転送自体が起きない |
@@ -529,11 +529,16 @@ MSM（`.om`形式、CC-BY-4.0）をローカルへ同期して読む。予報を
 定数として書き写すと、配信元が格子を変更したときにここだけ古い値が残り、エラーにならない
 まま全地点の値が静かにずれる。チャンクの長さ・予報の終端・run更新間隔も同じメタ情報から取る。
 
-**補間**: アプリ側の格子点（0.1度間隔）はMSMの格子（緯度0.05度・経度0.0625度）と一致しない
-ため、周囲4点からの双一次補間で求める（`domain/msm.py: MsmWindow.interpolate`）。最近傍だと
-アプリ側の格子の方が粗いぶん値が飛び飛びになる。切り出す索引範囲と対象地点は
-`MsmGrid.window()`が1つの`MsmWindow`にまとめて返し、補間もその窓が行う——索引と地点を
-別々の引数として渡せるようにすると、取り違えても例外にならないまま全地点の値がずれる。
+**格子点の値と補間**: 画面と公開の口へ出す値は、MSMの格子点の値を変えずに読む（`read_grid_points`・`read_grid_block`）。
+格子点に無い地点・時刻の値（補間した値）を地点の値として出すと気象業務法の予報業務許可が要る
+（[データソース](../../architecture/data-sources.md)「気象業務法の予報業務許可」節）。格子点は格子の原点から数えた番号で選ぶ
+（`domain/msm.py: MsmGrid.nearest_points`・`MsmGrid.block_covering`）ので、配信元の範囲の原点が刻みの倍数でなくても、
+読む格子点は配信元の格子点そのもの。並びの外の地点を端の格子点へ寄せたか（`MsmBlock.holds_nearest`）は並びが答え、
+ルートの区間はそれを見て、最寄りの格子点の値として示せない区間の風を出さない。
+画面に値を出さない計算（出発時点の風）だけは、周囲4点からの双一次補間で地点の値を求める（`read_series`、`domain/msm.py: MsmWindow.interpolate`）。
+切り出す索引範囲と対象地点は`MsmGrid.window()`が1つの`MsmWindow`にまとめて返し、補間もその窓が行う——索引と地点を
+別々の引数として渡せるようにすると、取り違えても例外にならないまま全地点の値がずれる。格子点の値の読み出しも同じ理由で、
+切り出す範囲と選んだ点を1つの`MsmGridPoints`が持つ。
 風速・風向は東西/南北成分から求め
 （`wind_speed_and_direction`）、風向は「吹いてくる方位」で返す。
 
@@ -541,7 +546,7 @@ MSM（`.om`形式、CC-BY-4.0）をローカルへ同期して読む。予報を
 読めない場合は`MsmUnavailableError`（サービスはこの1つだけを受ける）。ルート評価の風
 （`get_wind_forecast_lattice`）はNoneを返し、呼び出し元は出発時点の値（`get_departure_wind`）へ倒すが、
 そちらも同じMSMを読むため同時に読めず、**所要時間は無風で計算される**。候補はそのことを`wind_unavailable`で持ち、画面が候補の中身で知らせる
-（`domain/leg_costs.py: LegCostComposer.wind_unavailable`。時別の系列も出発時点の値も無いとき）。読めなかった原因は、`read_series`を囲む`log_external_call`
+（`domain/leg_costs.py: LegCostComposer.wind_unavailable`。時別の系列も出発時点の値も無いとき）。読めなかった原因は、読み出しを囲む`log_external_call`
 （カテゴリ`msm:read`）が抑制付きWARNINGで残す。
 
 **予報の長さ**: MSMはrunごとに39時間先（00/12UTCのrunは78時間先）まで持ち、配信は

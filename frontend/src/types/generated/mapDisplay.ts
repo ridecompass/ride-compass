@@ -749,7 +749,7 @@ export const mapDisplay = {
     "西",
     "北西"
   ],
-  "modelValueDisclaimer": "予報ではなく、誤差を含みえます。",
+  "modelValueDisclaimer": "数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。",
   "alwaysShownAttributions": [
     "&copy; <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\" rel=\"noreferrer\">OpenStreetMap contributors</a>",
     "<a href=\"https://maps.gsi.go.jp/development/ichiran.html\" target=\"_blank\" rel=\"noreferrer\">地理院タイル(標高タイル)</a>を加工して作成",

@@ -364,8 +364,12 @@ describe("RouteProfile", () => {
       expect(chipTexts()).toEqual(["路面の種類 舗装", "南 3.0m/s"]);
       const pavedChip = within(detail()).getByText("舗装").closest("li")!;
       expect(pavedChip.querySelector("span[style]")).toHaveStyle({ backgroundColor: surfaceColor("paved") });
-      await userEvent.click(within(detail()).getByRole("button", { name: "区間の風（南 3.0m/s）の説明を表示" }));
-      expect(screen.getByRole("dialog")).toHaveTextContent(/^09:00のモデルの計算値この区間を通る見込みの時刻の/);
+      await userEvent.click(
+        within(detail()).getByRole("button", { name: "区間の風（最寄りの格子点の値 南 3.0m/s）の説明を表示" }),
+      );
+      expect(screen.getByRole("dialog")).toHaveTextContent(
+        /^最寄りの格子点の09:00の計算値この区間を通る見込みの時刻の/,
+      );
       await userEvent.keyboard("{Escape}");
       expect(within(detail()).getByText("総合難易度").parentElement).toHaveTextContent("総合難易度40.0/100");
       expect(within(detail()).getByRole("img", { name: "難易度の内訳" })).toBeInTheDocument();
