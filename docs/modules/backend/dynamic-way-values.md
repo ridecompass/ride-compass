@@ -40,8 +40,8 @@ DBから取り出す`infrastructure/road_graph_repository.py: get_feature_gradie
 新しい軸として作り直して改良するため、軸の名前で結ぶと作り直した軸が配信されない。
 
 `tests/test_dedicated_way_values.py`が、担当する材料で組み立てたサービスの`material_id`が
-その材料であること・材料カタログの既知材料であること・1つの材料を2つのサービスが担当すると
-登録時に落ちることを検査する。
+その材料であることを検査する。材料カタログに無い材料・要求が運ばない条件を読むサービス・1つの材料を
+2つのサービスが担当することは、登録（`services/dedicated_way_values.py: services_by_material`）が断る。
 
 ## 軸登録と要求の条件（`domain/dynamic_way_values.py`・`services/dedicated_way_values.py`）
 

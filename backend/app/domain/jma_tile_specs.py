@@ -85,6 +85,8 @@ class JmaElement:
     forecast_minutes: int | None = None
 
     def __post_init__(self) -> None:
+        if not self.time_files:
+            raise ValueError("時刻一覧のファイルが無いと、その要素のコマを取りに行けない")
         # ずらし方は画面の読み方だけが持ち、プリウォーム（タイルだけを温める）の読み方`read_target_times`は持たない。
         if self.tile is not None and self.data_delay_minutes:
             raise ValueError("タイルで配る要素に配信の遅れを宣言するなら、プリウォームの読み方にも同じずらしが要る")

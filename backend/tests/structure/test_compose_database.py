@@ -3,9 +3,6 @@
 
 composeのファイルはその値をPythonから読めないので、ここで照らす。崩れると、クラウドの開発環境で
 PostGIS統合テスト（`tests/conftest.py`）とcomposeのbackendがDBへつなげない。
-
-ここで見ないもの:
-- テストのDBの選び方 → `tests/test_postgis_database_url.py`
 """
 
 from __future__ import annotations

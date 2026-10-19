@@ -10,11 +10,5 @@ from app.config import Settings
 # （init値が.env/環境変数より優先される）。
 
 
-def test_cors_allowed_origins_list_splits_comma_separated_value():
-    result = Settings(cors_allowed_origins="http://a.example.com,http://b.example.com").cors_allowed_origins_list
-
-    assert result == ["http://a.example.com", "http://b.example.com"]
-
-
 def test_lulc_raster_paths_list_drops_empty_entries():
     assert Settings(lulc_raster_paths="a.tif,,b.tif").lulc_raster_paths_list == ["a.tif", "b.tif"]

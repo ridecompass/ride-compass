@@ -278,5 +278,36 @@ def stage_first_frames(stage_frames: Sequence[Sequence[JmaFrame]]) -> list[JmaFr
     return first_frames
 
 
+def check_weather_elements(elements: Sequence[WeatherElement]) -> None:
+    """要素の並びが画面で1つの意味に読めることを確かめ、読めなければ`ValueError`。
+
+    画面は（チップ, 名前付きソース, 描き方）ごとに1つのレイヤーを作り、名前付きソース1つを1行として呼び、
+    その時刻の段を1本の時系列へつなぎ、配信元から取るものは（チップ, 名前付きソース）から配信要素を引く。"""
+    by_source: dict[tuple[str, str], tuple[str, FrameRule, str | None]] = {}
+    layers: set[tuple[str, str, str]] = set()
+    fetched: set[tuple[str, str]] = set()
+    for element in elements:
+        name = f"{element.group}/{element.source}"
+        key = (element.group, element.source)
+        if (*key, element.kind) in layers:
+            raise ValueError(f"チップ・名前付きソース・描き方の組が重なる: {name} {element.kind}")
+        layers.add((*key, element.kind))
+        shared = (element.label, element.frame_rule, element.description)
+        if by_source.setdefault(key, shared) != shared:
+            raise ValueError(f"同じ名前付きソースの要素で、呼び名・コマの規則・説明が食い違う: {name}")
+        if bool(element.jma_elements) == (element.grid_value is not None):
+            raise ValueError(f"配信元から取る段とMSMの格子点で読む値の、ちょうど一方を持たない: {name}")
+        if element.jma_elements:
+            if key in fetched:
+                raise ValueError(f"配信元から取る要素が、チップと名前付きソースで重なる: {name}")
+            fetched.add(key)
+        weather_element_deliveries(element)
+        tile = weather_element_tile(element)
+        if element.kind == "vectorTile" and (tile is None or tile.vector_layer is None):
+            raise ValueError(f"配信元の地物で描く要素の段に、ベクタのレイヤー名が無い: {name}")
+
+
+check_weather_elements(WEATHER_ELEMENTS)
+
 #: 気象のまとまり（チップ）。要素の宣言から導く——並びは最初に現れた順。
 WEATHER_LAYER_GROUPS: tuple[str, ...] = tuple(dict.fromkeys(element.group for element in WEATHER_ELEMENTS))

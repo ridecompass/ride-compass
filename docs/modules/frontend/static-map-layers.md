@@ -158,8 +158,8 @@ backendから取り、タイル本体はrewrites経由に戻る。
 「データなし」も同じ行なので、レンズの凡例にも（i）が出る。数の範囲の段（降水・風・評価の段）と、名前が説明そのものの
 行（災害の段と、要素の説明を行の名前に出す線状降水帯）は（i）を出さない。説明が空でないことは、道と点の分類の行では源泉の型
 （`DisplayCategorySpec.description`の`min_length=1`）が、受け皿の行では`LEGEND_SHARED_ROWS`の宣言が保証する。
-源泉で説明を省ける災害の要素の行（`WeatherElement.description`は`str | None`）と土地被覆の凡例の全行は、テスト
-（`scene/legends.test.ts`・`layers/mapLayers.test.ts`）が確かめる。
+源泉で説明を省ける災害の要素の行（`WeatherElement.description`は`str | None`）は`domain/map_display.py: _disaster_by_frame_rule`が、
+土地被覆の凡例の全行は`domain/landcover.py: check_landcover_classes`が、読み込みの時点で断る。
 
 ## 表示層の実装（`scene/applyMapScene.ts`）
 
@@ -663,7 +663,7 @@ backendが200で応答する窓では、カタログは取得済みなのに世�
 **色を持つのは先頭の軸だけ。** 事故のように1つの点へ2つの見方があるとき、地図は先頭の軸
 （当事者）で塗り、重大度は点の大きさだけで示す。2本目以降の軸に色を配ると、地図のどこにも
 塗られない色が凡例にだけ並ぶ。点の大きさは、行に半径（`radius_px`）を宣言した軸が決め、半径を宣言できるのは
-点の軸のうち1本だけ（backendの`test_material_catalog.py`が確かめる）。凡例の重大度の行は、色を持たない灰の見本を地図の点と同じ
+点の軸のうち1本だけ（backendの`test_registry.py`が確かめる）。凡例の重大度の行は、色を持たない灰の見本を地図の点と同じ
 大きさで出す（大きさは地図の半径と同じ関数`points.ts: pointCategoryRadiusPx`から取る）。
 
 **凡例の色見本は、パネルへ直に、地図と同じ形で置く**（道の線の行は線、点の行は点、絵記号で描く点の行は同じ絵記号）。線の行は線の形のまま
@@ -745,7 +745,7 @@ E2Eの`e2e/map-runtime.spec.ts`「宣言された地図レイヤーを全部ON�
 のにフロントが古いままだと、その地物は`baseFilter`に弾かれて地図から完全に消える**（凡例にも
 出ないため「データが無い」としか見えない）ため、分ける条件は源泉の表示の行（生成物
 `types/generated/primaryAttributes.ts: display_axes`の値）から導き、行と種別の一覧が一致することはbackendの
-テスト（`test_material_catalog.py`）が全種別で確かめる。凡例の行は種別と1対1ではない——利用者から見て区別する意味の無い種別（車道用の踏切と
+テスト（`test_primary_attributes.py`）が全種別で確かめる。凡例の行は種別と1対1ではない——利用者から見て区別する意味の無い種別（車道用の踏切と
 歩道・自転車道用の踏切）は1行へまとめる。色分け式には各種別がそのまま載るため、地図の
 見た目とポップアップの語彙は種別ごとに正しく出る。
 
@@ -757,7 +757,7 @@ E2Eの`e2e/map-runtime.spec.ts`「宣言された地図レイヤーを全部ON�
 （確からしさ`confidence`）の大きい点を先に残す（`symbol-sort-key`）。自分どうしで省き合うには置いた絵がほかの記号を退ける
 必要がある（`icon-ignore-placement`を付けない）。ほかの記号を退けると基礎地図の文字まで退けてしまうので、このレイヤーは
 基礎地図の文字より下に積み（段`pointUnderLabels`）、文字と重なった絵のほうを省く。絵記号は行の全部に付けるか、どれにも付けない——一部の行だけ形が違うと、形が分類の意味を持って
-しまう（backendの`test_material_catalog.py`が確かめる）。地図が行の値ごとに見本と同じ色・同じ絵記号の絵を引くことは
+しまう（backendの`test_registry.py`が確かめる）。地図が行の値ごとに見本と同じ色・同じ絵記号の絵を引くことは
 `scene/legends.test.ts`が確かめる。
 
 **点の不透明度はレイヤーごとに源泉が宣言する**（一次属性の行の`point_opacity`、無ければ既定。`domain/map_display.py: POINT_OPACITY_BY_ATTR`。生成物`mapDisplay.point.opacityByLayer`）。

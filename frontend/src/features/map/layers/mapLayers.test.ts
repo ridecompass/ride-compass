@@ -100,11 +100,6 @@ describe("buildMapLayers（レイヤーの一覧）", () => {
     expect(block.legend.map((entry) => entry.label)).toEqual(LANDCOVER_PAINTED_CLASSES.map((cls) => cls.label));
   });
 
-  it("土地被覆の凡例の行は、どれも（i）から開く説明を持つ", () => {
-    const [block] = layer(withoutAxes, "landcover").readOnlyLegend ?? [];
-    for (const entry of block.legend) expect(entry.description?.trim()).toBeTruthy();
-  });
-
   it("災害の凡例は、要素が塗る段ごとに1つ並び、見出しにその段で塗る要素の名前が入る", () => {
     const blocks = layer(withoutAxes, "disaster").readOnlyLegend ?? [];
     const scaled = mapDisplay.weatherElements.filter((element) => element.group === "disaster" && element.levelScale);
