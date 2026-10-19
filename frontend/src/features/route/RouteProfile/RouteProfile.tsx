@@ -153,8 +153,8 @@ export default function RouteProfile({
             label: `${Math.round(firstLine.range.min)}${firstLine.layer.draw.unit}`,
           },
         ];
-  // 地点を選んでいる間は、その地点の詳しくを図の下に出す（結果と走行中で同じ形）。地図で押した区間は図の上の地点が分からない
-  // （図は区間を同じものかで探す）ので、区間の値だけを出す。
+  // 地点を選んでいる間は、その地点の詳しくを図の下に出す（結果と走行中で同じ形）。地図で押した区間も、図はその区間と押した
+  // 所の地点を探して出す（`ProfileChart.tsx: columnOfSegment`）。図に無い区間だけは地点が分からないので、区間の値だけを出す。
   function pointDetail(pointKm: number | null) {
     if (selected === null) return null;
     // グラフに出している点のレイヤーのうち、選んだ地点の近くにある点（その地点で立ち寄れるもの）をチップに出す。

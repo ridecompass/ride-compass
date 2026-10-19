@@ -16,7 +16,7 @@ import PointMark from "@/components/PinMark/PointMark";
 import { columnAtKm } from "@/features/route/DifficultyProfile/profileGeometry";
 import { cn } from "@/lib/cn";
 import { roundToDigits } from "@/lib/numberFormat";
-import { pointAlongSegment, routeStretches, type RouteStretch } from "@/lib/routeDistance";
+import { pointAlongSegment, projectOnTrack, routeStretches, routeTrack, type RouteStretch } from "@/lib/routeDistance";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
@@ -82,6 +82,25 @@ interface ProfileChartProps {
   riding?: boolean;
 }
 
+/** 選んだ区間の図の上の位置。図で選んだ区間は同じものを、地図で押した区間（地物から組み直した写し）は区間の始まりの距離
+ * （候補の中で区間ごとに違う）が同じものを探す。 */
+function columnOfSegment(
+  columns: readonly RouteStretch<RouteSegmentDetail>[],
+  segment: RouteSegmentDetail,
+): RouteStretch<RouteSegmentDetail> | undefined {
+  return (
+    columns.find((column) => column.segment === segment) ??
+    columns.find((column) => column.segment.cumulative_distance_km === segment.cumulative_distance_km)
+  );
+}
+
+/** 地図で押した所を区間`column`の道なりの形に当てた、ルートの上の距離。 */
+function kmOfPickedPoint(column: RouteStretch<RouteSegmentDetail>, picked: SelectedRouteSegment): number {
+  const projections = projectOnTrack(routeTrack([column.segment]), picked);
+  const nearest = projections.reduce((best, p) => (p.offsetM < best.offsetM ? p : best), projections[0]);
+  return Math.min(column.endKm, column.startKm + (nearest?.km ?? 0));
+}
+
 /** 道のりに沿った図の枠。横が距離で、選んだ区間の帯・走行中の現在地・動かした地点の線を中身の上に引き、下に距離の目盛りを
  * 出す。1本の指（マウス）で横になぞるか押して離すと、その距離の地点を選ぶ（地図に印が出て、下にその区間の詳細が出る）。
  * **押しただけでは選ばず、途中で2本目の指が触れた操作は選択にしない**——図の上で始めたピンチ（拡大しようとした操作）で
@@ -134,15 +153,17 @@ export default function ProfileChart({
   const { columns, routeKm, widthKm, xOf } = scale;
   if (routeKm <= 0) return null;
 
-  const selectedColumn = selected === null ? undefined : columns.find((column) => column.segment === selected.segment);
-  // 自分で動かした地点がいま選ばれている区間の中にあるときだけ線を引く（地図で区間を押したときは区間の帯だけ）。
+  const selectedColumn = selected === null ? undefined : columnOfSegment(columns, selected.segment);
+  // 線を引く地点。図で選んだ区間は、自分で動かした地点がその区間の中にあるときだけ。地図で押した区間（地図は区間を自分の
+  // 地物から組み直すので、図の区間と同じものではない）は、押した所を区間の道なりの形に当てた地点。
   const cursorKm =
-    selectedColumn !== undefined &&
-    scrubKm !== null &&
-    scrubKm >= selectedColumn.startKm &&
-    scrubKm <= selectedColumn.endKm
-      ? scrubKm
-      : null;
+    selected === null || selectedColumn === undefined
+      ? null
+      : selectedColumn.segment !== selected.segment
+        ? kmOfPickedPoint(selectedColumn, selected)
+        : scrubKm !== null && scrubKm >= selectedColumn.startKm && scrubKm <= selectedColumn.endKm
+          ? scrubKm
+          : null;
   const positionKm = cursorKm ?? selectedColumn?.startKm ?? 0;
   const travelledKm = progressKm === null ? null : Math.min(routeKm, Math.max(0, progressKm));
 
