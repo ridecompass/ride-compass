@@ -1912,6 +1912,22 @@
         ]
       }
     },
+    "/api/derived-database": {
+      "get": {
+        "operationId": "get_derived_database_api_derived_database_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/zip": {}
+            }
+          },
+          "404": {
+            "description": "書き出しがまだ無い"
+          }
+        }
+      }
+    },
     "/api/admin/db-status": {
       "get": {
         "operationId": "get_db_status_api_admin_db_status_get",

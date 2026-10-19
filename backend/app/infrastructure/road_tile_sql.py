@@ -74,6 +74,10 @@ _MATERIAL_TILE_COLUMNS_SQL = ",\n".join(
     for tile_property, expression in material_tile_columns().items()
 )
 
+#: 道路名・路線番号の生値（OSM の`name`・`ref`）。空は値が無いものとして出す。
+_NAME_SQL = "NULLIF(btrim(w.tags->>'name'), '')"
+_REF_SQL = "NULLIF(btrim(w.tags->>'ref'), '')"
+
 def _tile_material_joins(expressions: Iterable[str]) -> str:
     """フィーチャー（別名`src`）が`expressions`の値式を読むためのJOIN。値式が読む別名（`w`・`wm`・`em`・`re`）を
     フィーチャーの単位で与え、区間でもway丸ごとでも同じ値式を使う。`em`は区間単位のフィーチャーなら区間の値、
@@ -122,8 +126,8 @@ ROAD_SURFACE_TILE_MVT_SQL = text(
                     -- 道路名・路線番号（表示専用）。材料の正規化はかけない——利用者へ
                     -- そのまま見せる固有名詞のため。**第三者が編集できる生値で対訳表を
                     -- 持たない**ため、埋め込む側は必ずエスケープする。
-                    NULLIF(btrim(w.tags->>'name'), '') AS {ROAD_FEATURE_PROPERTIES['name']},
-                    NULLIF(btrim(w.tags->>'ref'), '') AS {ROAD_FEATURE_PROPERTIES['ref']},
+                    {_NAME_SQL} AS {ROAD_FEATURE_PROPERTIES['name']},
+                    {_REF_SQL} AS {ROAD_FEATURE_PROPERTIES['ref']},
 {_MATERIAL_TILE_COLUMNS_SQL}
                 FROM ({_TILE_FEATURE_SOURCE_SQL}) src
                 {_tile_material_joins(material_tile_columns().values())}
@@ -278,6 +282,27 @@ FEATURE_SEGMENTS_IN_TILE_SQL = text(
     GROUP BY coverage.covered
     """
 )
+
+
+#: 派生データベースの書き出し（`infrastructure/derived_database_export.py`）の行。取込範囲全体の、区間単位のズームの
+#: タイルと同じフィーチャー（区間と、区間を持たない道）を1行ずつ、地図・探索と同じ値式の材料と形・名前を付けて読む。
+#: 範囲とズームはタイルの読み出しの引数で与え、フィーチャーの選び方を別に書かない。並べない——全件を並べ替えると、DBが
+#: 書き出しと同じ規模の一時ファイルをDBのディスクへ書く。座標の桁はOSMが持つ桁（小数7桁）で、丸めで形を変えない。
+DERIVED_DATABASE_MATERIAL_IDS = tuple(_FEATURE_MATERIAL_EXPRESSIONS)
+DERIVED_DATABASE_ROWS_SQL = text(
+    f"""
+    SELECT
+        src.osm_way_id,
+        src.segment_index,
+        re.distance_m AS length_m,
+        {_NAME_SQL} AS name,
+        {_REF_SQL} AS ref,
+        {", ".join(f"({expression}) AS {material_id}" for material_id, expression in _FEATURE_MATERIAL_EXPRESSIONS.items())},
+        ST_AsText(src.geom, :coordinate_decimals) AS geometry_wkt
+    FROM ({_TILE_FEATURE_SOURCE_SQL}) src
+    {_tile_material_joins(_FEATURE_MATERIAL_EXPRESSIONS.values())}
+    """
+).bindparams(z=EDGE_UNIT_MIN_ZOOM, xmin=-180.0, ymin=-90.0, xmax=180.0, ymax=90.0, coordinate_decimals=7)
 
 
 #: タイルのディスク／Redisキャッシュの鍵に入る**形の署名**。焼き込むSQLから導出するため、

@@ -136,6 +136,10 @@ HILLSHADE_LAYER_ID = "hillshade"
 ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">'
     "OpenStreetMap contributors</a>",
+    # OSM の派生データベースは公に使う間、受け取った人へ渡せるようにする（ODbL 4.6）。リンクは画面と同じオリジンの口で、
+    # 画面の配信元が backend へ取り次ぐ。
+    '道ごとの値の<a href="/api/derived-database" target="_blank" rel="noreferrer">派生データベース</a>'
+    '(<a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noreferrer">ODbL 1.0</a>)',
     '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noreferrer">'
     "地理院タイル(標高タイル)</a>を加工して作成",
     "交通事故統計情報[警察庁]を加工して作成",

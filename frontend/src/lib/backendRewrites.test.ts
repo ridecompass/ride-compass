@@ -12,6 +12,7 @@ import type { NetworkInterfaceInfo } from "node:os";
 import { describe, expect, it } from "vitest";
 
 import { backendRewrites, lanHosts, PROD_DATA_API_PREFIX, prodDataBackend } from "@/lib/backendRewrites";
+import { mapDisplay } from "@/types/generated/mapDisplay";
 
 const PROD = "https://prod.example.com";
 const LOCAL = "http://localhost:8000";
@@ -49,6 +50,13 @@ describe("backendRewrites", () => {
     expect(target(`${PROD_DATA_API_PREFIX}/:path*`)).toBe(`${PROD}/:path*`);
     const toLocal = rewrites.filter((r) => r.destination.startsWith(LOCAL)).map((r) => r.source);
     expect(toLocal).toEqual(["/api/basemap/:path*"]);
+  });
+
+  it("地図の出典表記が同じオリジンの住所でリンクする backend の口は、どれも取り次ぐ（取り次がないと、リンクが画面の 404 になる）", () => {
+    const linked = mapDisplay.alwaysShownAttributions.flatMap((html) => [...html.matchAll(/href="(\/api\/[^"]+)"/g)].map((m) => m[1]));
+    expect(linked).not.toHaveLength(0);
+    const sources = backendRewrites(LOCAL, null).map((r) => r.source);
+    expect(linked.filter((path) => !sources.includes(path))).toEqual([]);
   });
 
   it("どちらでも、取り次ぐ口の並びは同じで、API の口だけが増える", () => {

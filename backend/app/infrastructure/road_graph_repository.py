@@ -41,6 +41,7 @@ from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.orm_base import declared_metadata
 from app.infrastructure.road_tile_sql import (
+    DERIVED_DATABASE_ROWS_SQL,
     FEATURE_GRADIENT_INPUTS_IN_TILE_SQL,
     FEATURE_MATERIALS_IN_TILE_SQL,
     FEATURE_MIDPOINTS_IN_TILE_SQL,
@@ -397,8 +398,14 @@ class RoadGraphRepository:
         """区間の端点になりうるノード全件を`chunk_size`行ずつ流す（`osm_node_id`の昇順）。"""
         return self._stream(_NETWORK_NODES_SQL, chunk_size)
 
-    async def _stream(self, statement: TextClause, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
-        result = await self._session.stream(statement)
+    def stream_derived_database_rows(self, accident_years: int, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
+        """派生データベースの全行を`chunk_size`行ずつ流す（`road_tile_sql.py: DERIVED_DATABASE_ROWS_SQL`の列）。
+        `accident_years`は事故の件数を年あたりにする年数（`get_accident_years_covered`）。"""
+        return self._stream(DERIVED_DATABASE_ROWS_SQL, chunk_size, {"accident_years": accident_years})
+
+    async def _stream(self, statement: TextClause, chunk_size: int,
+                      params: dict[str, object] | None = None) -> AsyncIterator[Sequence[Row]]:
+        result = await self._session.stream(statement, params)
         async for chunk in result.partitions(chunk_size):
             yield chunk
 
