@@ -42,6 +42,7 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
     },
     catalog: {
       dedicatedAxes: [],
+      roadLayers: [],
       routeStyleModes: ROUTE_STYLE_MODES_WITHOUT_AXES,
       ...catalog,
     },

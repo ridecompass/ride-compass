@@ -2,7 +2,7 @@
 
 入口: 依存の解決（`axis_dependencies`・`topological_axis_order`・`dynamic_axis_topological_order`）・全軸の評価
 （`evaluate_axes_array`・`evaluate_axes_values`・`evaluate_axes_inputs`）・葉の材料の一次属性（`primary_attribute_ids_for`）・
-時間帯で効く重み（`time_scoped_weights`）。
+葉の材料で区分の決まる道の線の層（`road_layer_ids_for`）・時間帯で効く重み（`time_scoped_weights`）。
 
 ここで見ないもの:
 - 軸1本の宣言の検証・評価（折れ点・欠損・対応表・0次条件）と書き込みのガード → `test_axis_definitions.py`
@@ -27,8 +27,10 @@ from app.domain.axis_definitions import (
     MaterialTerm,
     PriorityCondition,
 )
+from app.domain.material_catalog import SURFACE_ESTIMATE
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from tests.axis_system_fixture import replaced_axis_definitions
+from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
 
 ATTR_X, ATTR_Y = PRIMARY_ATTRIBUTES[:2]
 DYNAMIC = next(iter(axis_definitions.REQUEST_DYNAMIC_MATERIAL_IDS))
@@ -155,6 +157,27 @@ class TestPrimaryAttributes:
 
         with replaced_axis_definitions(definitions):
             assert axis_definitions.primary_attribute_ids_for(definitions["outer"]) == [ATTR_Y.attr_id, ATTR_X.attr_id]
+
+
+class TestRoadLayers:
+    def test_the_layers_drawn_from_a_published_classification_that_decides_by_a_leaf_material_are_listed(self):
+        """軸のレンズで地図に出す道の層を選ぶ。読む材料と無関係な層を出すと、軸と関係の無い線が重なる。"""
+        definitions = axes(axis("outer", "inner", SURFACE_ESTIMATE), axis("inner", "num_a"))
+        draft = classification({"x": [fact_is("num_a", "v")]}).model_copy(update={"is_published": False})
+        classes = road_classes(
+            {
+                "by_inner_leaf": classification({"x": [fact_is("num_b", "v")], "y": [fact_is("num_a", "v")]}),
+                "by_unread": classification({"x": [fact_is("num_b", "v")]}),
+                "draft": draft,
+                "not_drawn": classification({"x": [fact_is("num_a", "v")]}),
+                "rolling": classification({"x": [fact_is("num_b", "v")]}),
+            },
+            map_layers={key: map_layer(n) for n, key in enumerate(["rolling", "draft", "by_unread", "by_inner_leaf"])},
+            rolling_resistance_classification="rolling",
+        )
+
+        with replaced_axis_definitions(definitions):
+            assert axis_definitions.road_layer_ids_for(definitions["outer"], classes) == ["rolling", "by_inner_leaf"]
 
 
 class TestWeights:

@@ -2481,6 +2481,13 @@
             "type": "array",
             "title": "Primary Attribute Ids"
           },
+          "road_layer_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Road Layer Ids"
+          },
           "map_paint": {
             "$ref": "#/components/schemas/MapPaint"
           },
@@ -2551,6 +2558,7 @@
           "default_weight",
           "icon_id",
           "primary_attribute_ids",
+          "road_layer_ids",
           "map_paint",
           "raw_value_units",
           "material_breakdown",
@@ -5861,9 +5869,6 @@
                 "type": "string"
               },
               {
-                "type": "boolean"
-              },
-              {
                 "type": "null"
               }
             ],
@@ -5932,14 +5937,7 @@
             "title": "Description"
           },
           "color": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Color"
           },
           "former_keys": {
@@ -6094,16 +6092,6 @@
             "type": "string",
             "title": "Label"
           },
-          "data_source": {
-            "type": "string",
-            "enum": [
-              "road_surface",
-              "poi",
-              "accident",
-              "stop_place"
-            ],
-            "title": "Data Source"
-          },
           "category": {
             "type": "string",
             "title": "Category"
@@ -6161,7 +6149,6 @@
         "required": [
           "id",
           "label",
-          "data_source",
           "category",
           "icon",
           "description",

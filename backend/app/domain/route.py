@@ -81,11 +81,11 @@ class DensityScoreInput:
 
 
 class RoadClassStretch(StrictModel):
-    """区間の中で、道の区分のレイヤの値が同じまま続く部分。"""
+    """区間の中で、道の区分が同じまま続く部分。"""
 
     distance_km: float
-    # 地図がそのレイヤを塗るのと同じ値（`domain/route_road_classes.py: RoadClassReader.values_at`）。値が無ければNone。
-    value: str | bool | None
+    # 区分の鍵（`domain/route_road_classes.py: SegmentClassReader.values_at`）。どの区分にも入らない道はNone。
+    value: str | None
 
 
 class ElevationStretch(StrictModel):
@@ -131,7 +131,7 @@ class RouteSegmentDetail(StrictModel):
     # 時刻ビンの本数・計算値の期間）の先や出発時点の値で評価した区間ではNone——これらは評価に使うが、値を出すと予報業務の許可が
     # 要る形になる（docs/architecture/data-sources.md「気象業務法の予報業務許可」節）。
     wind: SegmentWind | None = None
-    # 道の区分のレイヤのid→区間の始まりから並べた、値が同じまま続く部分。部分の距離の和は区間の距離と丸めの分だけずれうる。
+    # 分け方（地図の道の線の層のid）と「緑と水」の層のid→区間の始まりから並べた、区分が同じまま続く部分。部分の距離の和は区間の距離と丸めの分だけずれうる。
     road_classes: dict[str, list[RoadClassStretch]]
     # 密度の軸のid→区間をまたいで平均する値。応答には出さない（ビンと候補の値を作るための内部の値）。
     # 区間はエンジンが載せ（`with_density_inputs`）、ビンは`_merge_segment_bin`が中の区間から作る。
@@ -506,7 +506,7 @@ def merge_road_classes(segments: list[RouteSegmentDetail]) -> dict[str, list[Roa
     """区間の並びの道の区分を、レイヤごとにつなぐ。距離0の部分を落とし、隣どうしで値が同じ部分は1つにまとめる。"""
     merged: dict[str, list[RoadClassStretch]] = {}
     for layer in segments[0].road_classes:
-        runs: list[tuple[str | bool | None, list[float]]] = []
+        runs: list[tuple[str | None, list[float]]] = []
         for stretch in (s for segment in segments for s in segment.road_classes[layer] if s.distance_km > 0):
             if runs and runs[-1][0] == stretch.value:
                 runs[-1][1].append(stretch.distance_km)

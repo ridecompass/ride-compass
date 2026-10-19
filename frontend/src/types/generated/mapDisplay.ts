@@ -154,117 +154,6 @@ export const mapDisplay = {
       "hideMissingRows": false
     },
     {
-      "id": "highway",
-      "label": "道路の種類",
-      "dataSource": "road_surface",
-      "category": "roadCondition",
-      "kind": "static",
-      "dataNature": "raw",
-      "defaultOn": false,
-      "description": [
-        "道路の種類を色で表示[「高速道路」ほど濃い赤紫、「農道・林道」ほど明るい水色]"
-      ],
-      "panelHint": [
-        "OSMのhighwayタグを区分にまとめて塗り分けています。「高速道路」が最も濃く、下位の道ほど明るい色です。ほかの道路のレイヤーと一緒に表示すると、同じ道に線を横へ並べて描きます。"
-      ],
-      "hideMissingRows": false
-    },
-    {
-      "id": "surface",
-      "label": "路面の種類",
-      "dataSource": "road_surface",
-      "category": "roadCondition",
-      "kind": "static",
-      "dataNature": "raw",
-      "defaultOn": false,
-      "description": [
-        "路面の材質を色で表示[舗装・砂利・土など]"
-      ],
-      "panelHint": [
-        "OSMのsurfaceタグ[路面の材質]を区分にまとめて塗り分けています。区分に当てはまらない値の道は「その他」で出します。タグの無い道[データなし]は郊外ではほとんどの道に当たり、値のある道を埋もれさせるため、最初は隠してあり、凡例のチェックで出せます[データなしは未舗装という意味ではありません]。"
-      ],
-      "hideMissingRows": true
-    },
-    {
-      "id": "tracktype",
-      "label": "農道・林道の等級",
-      "dataSource": "road_surface",
-      "category": "roadCondition",
-      "kind": "static",
-      "dataNature": "raw",
-      "defaultOn": false,
-      "description": [
-        "農道・林道の路面の等級を色で表示[「1 舗装・固く締まる」ほど濃い赤紫、「5 土・草・砂」ほど明るい水色]"
-      ],
-      "panelHint": [
-        "OSMのtracktypeタグ[農道・林道の路面の固さの等級]を塗り分けています。路面の材質[surfaceタグ]とは別のタグで、材質のタグが無い農道・林道にも付いていることがあります。タグの無い道は「データなし」です。"
-      ],
-      "hideMissingRows": false
-    },
-    {
-      "id": "tunnel",
-      "label": "トンネル",
-      "dataSource": "road_surface",
-      "category": "roadCondition",
-      "kind": "static",
-      "dataNature": "raw",
-      "defaultOn": false,
-      "description": [
-        "トンネル区間[OSMのtunnelタグ]を表示"
-      ],
-      "panelHint": [
-        "OSMのtunnelタグが該当する区間です。",
-        {
-          "name": "axes",
-          "before": "評価軸",
-          "after": "の材料の1つです。"
-        }
-      ],
-      "hideMissingRows": false
-    },
-    {
-      "id": "oneway",
-      "label": "一方通行",
-      "dataSource": "road_surface",
-      "category": "roadCondition",
-      "kind": "static",
-      "dataNature": "raw",
-      "defaultOn": false,
-      "description": [
-        "来た道を戻れない区間を表示"
-      ],
-      "panelHint": [
-        "その向きにしか通れない区間です。上下線が分かれているだけの道[逆向きの一方通行が15m以内、同じ路線番号・名前なら40m以内を並走する道]は除いてあります。ルート探索は一方通行の向きを守っています[逆走する経路は作りません]。",
-        {
-          "name": "axes",
-          "before": "評価軸",
-          "after": "の材料の1つです。"
-        }
-      ],
-      "hideMissingRows": false
-    },
-    {
-      "id": "cycleway",
-      "label": "自転車レーン",
-      "dataSource": "road_surface",
-      "category": "roadCondition",
-      "kind": "static",
-      "dataNature": "raw",
-      "defaultOn": false,
-      "description": [
-        "自転車の走る場所を色で表示[自転車道・自転車レーン・共用の道]"
-      ],
-      "panelHint": [
-        "OSMの自転車のためのタグから、自転車の走る場所を区分にまとめて塗り分けています。1本の道が複数に当たれば、車道から分けられた方で出します。当てはまらない道は最初は隠してあり、凡例のチェックで出せます。",
-        {
-          "name": "axes",
-          "before": "評価軸",
-          "after": "の材料の1つです。"
-        }
-      ],
-      "hideMissingRows": true
-    },
-    {
       "id": "stop_poi",
       "label": "停止要因",
       "dataSource": "poi",
@@ -420,6 +309,13 @@ export const mapDisplay = {
       "category": null,
       "kind": "static",
       "dataNature": "dynamic",
+      "defaultOn": false
+    },
+    "road": {
+      "dataSource": "road_surface",
+      "category": null,
+      "kind": "static",
+      "dataNature": "raw",
       "defaultOn": false
     }
   },

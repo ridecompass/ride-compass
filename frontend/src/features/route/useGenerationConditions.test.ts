@@ -19,7 +19,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AVOIDABLE_ROWS, AVOIDANCE_LEVELS, DEFAULT_ROAD_AVOIDANCE } from "@/features/route/roadAvoidance";
 import { heldReplies, onBackend, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse, TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
@@ -326,62 +325,25 @@ describe("重み", () => {
 });
 
 describe("道ごとの避け方", () => {
-  const [{ key: rowKey }] = AVOIDABLE_ROWS;
-  const otherLevel = AVOIDANCE_LEVELS.find(({ key }) => key !== DEFAULT_ROAD_AVOIDANCE[rowKey])!.key;
-
   it("変えた避け方は開き直しても残る", () => {
     const first = renderConditions();
-    const changed = { ...DEFAULT_ROAD_AVOIDANCE, [rowKey]: otherLevel };
 
-    act(() => first.result.current.setRoadAvoidance(changed));
+    act(() => first.result.current.setRoadAvoidance({ gravel: "exclude" }));
 
-    expect(reopen(first).result.current.roadAvoidance).toEqual(changed);
+    expect(reopen(first).result.current.roadAvoidance).toEqual({ gravel: "exclude" });
   });
 
-  it("保存値は今の行へ揃え（今は無い行を落とし、無い行・読めない段は既定）、読めない保存値は既定に戻す", () => {
-    const [, { key: unreadableKey }] = AVOIDABLE_ROWS;
+  // 行は軸カタログが届くまで分からず、今の行に無い鍵も前の鍵として読まれうるので、鍵では落とさない（今の行へ揃えるのはbackend）。
+  it("保存値は段として読める鍵だけを残し、保存が無い・読めない保存値なら何も選んでいない", () => {
+    expect(renderConditions().result.current.roadAvoidance).toEqual({});
+
     window.localStorage.setItem(
       "ridecompass:road-avoidance",
-      JSON.stringify({ [rowKey]: otherLevel, [unreadableKey]: "retired_level", "retired.row": "exclude" }),
+      JSON.stringify({ gravel: "exclude", unpaved: "retired_level", "retired.row": "avoid" }),
     );
-    expect(renderConditions().result.current.roadAvoidance).toEqual({
-      ...DEFAULT_ROAD_AVOIDANCE,
-      [rowKey]: otherLevel,
-    });
+    expect(renderConditions().result.current.roadAvoidance).toEqual({ gravel: "exclude", "retired.row": "avoid" });
 
     window.localStorage.setItem("ridecompass:road-avoidance", "{broken");
-    expect(renderConditions().result.current.roadAvoidance).toEqual(DEFAULT_ROAD_AVOIDANCE);
-  });
-  it("保存が無ければ、国道・主要地方道をなるべく避け、ほかの道は通る", () => {
-    const avoided = ["highway.trunk", "highway.primary"];
-
-    expect(renderConditions().result.current.roadAvoidance).toEqual(
-      Object.fromEntries(AVOIDABLE_ROWS.map(({ key }) => [key, avoided.includes(key) ? "avoid" : "pass"])),
-    );
-  });
-
-  it("分ける前の行の鍵で保存した段は、分けてできたどの行にも引き継ぎ、分けたあとの鍵で保存した段を先に読む", () => {
-    window.localStorage.setItem(
-      "ridecompass:road-avoidance",
-      JSON.stringify({ "highway.arterial": "exclude", "highway.local": "avoid", "highway.cycleway": "exclude" }),
-    );
-    expect(renderConditions().result.current.roadAvoidance).toEqual({
-      ...DEFAULT_ROAD_AVOIDANCE,
-      "highway.trunk": "exclude",
-      "highway.primary": "exclude",
-      "highway.unclassified": "avoid",
-      "highway.residential": "avoid",
-      "highway.cycleway": "exclude",
-      "highway.footway": "exclude",
-    });
-
-    window.localStorage.setItem(
-      "ridecompass:road-avoidance",
-      JSON.stringify({ "highway.cycleway": "exclude", "highway.footway": "pass" }),
-    );
-    expect(renderConditions().result.current.roadAvoidance).toMatchObject({
-      "highway.cycleway": "exclude",
-      "highway.footway": "pass",
-    });
+    expect(renderConditions().result.current.roadAvoidance).toEqual({});
   });
 });

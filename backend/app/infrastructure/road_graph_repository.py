@@ -28,7 +28,6 @@ from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays, Materia
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments
 from app.domain.geo import bearing_sql, midpoint_sql
 from app.domain.graph import LeanEdge, edge_feature_key_sql, edge_key, node_key, parse_edge_feature_key
-from app.domain.hard_filters import ROUTE_FLAG_VALUE_SQL, route_flag_columns
 from app.domain.landcover import LandcoverPercentages, landcover_key
 from app.domain.material_catalog import (
     material_array_columns,
@@ -184,13 +183,8 @@ def _material_values_from_row(row: Row) -> dict[str, object]:
 
 # --- 区間粒度の材料 -----------------------------------------------------------
 
-_ROUTE_FLAG_COLUMN_PREFIX = "hf_"
-
 #: 材料ではないが、材料と同じ1回のクエリで求まるため一緒に受け取る列。
 _EXTRA_MATERIAL_ARRAY_COLUMNS: dict[str, str] = {
-    # 探索の旗（0次ハードフィルタと避け方の行）は宣言から列を作る。個別に書き足さない——旗を1つ
-    # 増やしたときここが取り残されると、その旗は常に「該当しない」になって黙って素通りする。
-    **{f"{_ROUTE_FLAG_COLUMN_PREFIX}{name}": expr for name, expr in ROUTE_FLAG_VALUE_SQL.items()},
     "distance_m": "re.distance_m",
     # 逆向きの方位は+180°ではない。両向きぶんを列で持つ（`road_edges`）。
     "bearing_deg": "CASE WHEN ids.forward THEN re.bearing_deg ELSE re.reverse_bearing_deg END",
@@ -479,11 +473,6 @@ class RoadGraphRepository:
             for name in raw:
                 raw[name].extend(getattr(row, f"c_{name}") or [])
 
-        route_flag_ids = route_flag_columns()
-        route_flags = np.empty((n, len(route_flag_ids)), dtype=bool)
-        for i, name in enumerate(route_flag_ids):
-            route_flags[:, i] = np.array(raw[f"{_ROUTE_FLAG_COLUMN_PREFIX}{name}"], dtype=bool)
-
         numeric_values = np.empty((n, len(numeric_ids)), dtype=np.float64)
         for i, material_id in enumerate(numeric_ids):
             numeric_values[:, i] = _float_array(raw[material_id])
@@ -492,7 +481,6 @@ class RoadGraphRepository:
             numeric_ids=numeric_ids, numeric_values=numeric_values,
             categorical_ids=categorical_ids,
             categorical_columns=tuple(CategoricalColumn.encode(raw[material_id]) for material_id in categorical_ids),
-            route_flag_ids=route_flag_ids, route_flags=route_flags,
             distance_m=_float_array(raw["distance_m"]),
             bearing_deg=_float_array(raw["bearing_deg"]),
             mid_lat=_float_array(raw["mid_lat"]),

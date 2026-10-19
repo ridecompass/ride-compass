@@ -17,7 +17,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.admin_auth import require_admin_basic_auth
 from app.api.dependencies import get_axis_preview_service, get_material_coverage_service
-from app.domain.material_catalog import MATERIAL_CATALOG, is_known_material
+from app.domain.material_catalog import is_known_material
+from app.domain.road_classes import material_with_class_labels
 from app.services.axis_preview_service import AxisPreviewService
 from app.services.material_coverage_service import MaterialCoverageReport, MaterialCoverageService
 from app.domain.strict_model import StrictModel
@@ -60,7 +61,7 @@ async def get_material_value_shares(
     shares = await preview.material_value_shares(material_id)
     if shares is None:
         return MaterialValueSharesResponse(available=False, sample_ways=0, total_km=0.0, values=[])
-    spec = MATERIAL_CATALOG[material_id]
+    spec = material_with_class_labels(material_id)
     return MaterialValueSharesResponse(
         available=True,
         sample_ways=shares.sample_ways,

@@ -26,7 +26,6 @@ import { makeGenerationConditions, makeRouteCandidate } from "@/testing/routeFix
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { Coordinates, GenerationConditions, RouteCandidate } from "@/types/route";
 
-import { AVOIDABLE_ROWS, AVOIDANCE_LEVELS, DEFAULT_ROAD_AVOIDANCE } from "./roadAvoidance";
 import { useGenerationConditions } from "./useGenerationConditions";
 import { useRouteGeneration } from "./useRouteGeneration";
 
@@ -132,11 +131,8 @@ describe("送る要求", () => {
     act(() => rendered.result.current.conditions.selectPoint({ role: "waypoint", index: null }));
     act(() => rendered.result.current.conditions.placeAtSelected(B, null));
     act(() => rendered.result.current.conditions.placeAtSelected(A, null));
-    const [{ key: rowKey }] = AVOIDABLE_ROWS;
-    const avoidance = {
-      ...DEFAULT_ROAD_AVOIDANCE,
-      [rowKey]: AVOIDANCE_LEVELS.find(({ key }) => key !== DEFAULT_ROAD_AVOIDANCE[rowKey])!.key,
-    };
+    // 選んでいない行と前の鍵はbackendが今の行へ揃えるので、選んだ段をそのまま送る。
+    const avoidance = { gravel: "exclude", "retired.row": "avoid" } as const;
     act(() => rendered.result.current.conditions.setRoadAvoidance(avoidance));
     respond([route("r1")]);
 

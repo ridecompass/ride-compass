@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useStoredBooleanState, useStoredJsonState, useStoredState } from "@/hooks/useStoredState";
-import { DEFAULT_ROAD_AVOIDANCE, syncRoadAvoidance } from "@/features/route/roadAvoidance";
+import { readRoadAvoidance } from "@/features/route/roadAvoidance";
 import { alignRoutePreference, routePreferenceToSend } from "@/features/route/routePreferenceSync";
 import {
   acceptedDistanceInput,
@@ -25,6 +25,7 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 const WEIGHT_OVERRIDE_ENABLED_STORAGE_KEY = "ridecompass:weight-override-enabled";
 const ROUTE_PREFERENCE_STORAGE_KEY = "ridecompass:route-preference";
 const ROAD_AVOIDANCE_STORAGE_KEY = "ridecompass:road-avoidance";
+const NO_ROAD_AVOIDANCE: RoadAvoidanceOverride = {};
 
 /** 経由地を、生成が受け付ける数まで置いてあるか（置いてあれば、もう足さない）。 */
 export function waypointsFull(waypoints: readonly Coordinates[]): boolean {
@@ -175,13 +176,13 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     () => alignRoutePreference(weightOverrideEnabled ? storedRoutePreference : {}, axisCatalog),
     [weightOverrideEnabled, storedRoutePreference, axisCatalog],
   );
-  // 道の凡例の行ごとの避け方。常に送る。読むときに今の行へ揃える。
+  // 道の区分の行ごとに選んだ避け方。選んだ段だけを覚え、常に送る。
   const [roadAvoidance, setRoadAvoidance] = useStoredState<RoadAvoidanceOverride>(
     ROAD_AVOIDANCE_STORAGE_KEY,
-    DEFAULT_ROAD_AVOIDANCE,
+    NO_ROAD_AVOIDANCE,
     {
       serialize: JSON.stringify,
-      deserialize: (raw) => syncRoadAvoidance(JSON.parse(raw)),
+      deserialize: (raw) => readRoadAvoidance(JSON.parse(raw)),
     },
   );
 

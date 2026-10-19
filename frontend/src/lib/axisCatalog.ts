@@ -4,7 +4,7 @@
  * 誰と共有するか」だけ。同居させると、導出を確かめたい側がストアごと引き回すことになる。
  */
 import { catalogAxisFromEntry, type CatalogAxis } from "@/lib/catalogAxis";
-import type { AxisCatalogResponse, RoutePreferenceWeights } from "@/types/route";
+import type { AxisCatalogResponse, RoadClassCatalog, RoutePreferenceWeights } from "@/types/route";
 
 /** 軸カタログ。`GET /api/axis-catalog`の応答から導いた、機能をまたいで読む形。地図だけが読む形（地図の表示・
  * タイルの世代）は地図の機能が同じ応答から導く。 */
@@ -20,6 +20,8 @@ export interface AxisCatalog {
    * 管理画面から変えた値が再デプロイなしにここへ届く。**取得できるまでは空**——ビルド時生成物の既定で
    * 埋めると、管理画面で較正したのとは別の値で黙って動く。読み手は引けない間その機能を出さない。 */
   clientTuning: Readonly<Record<string, number>>;
+  /** 道の区分（地図の線の層・除外タブの行）。正本は管理DBで、**取得できるまでは層も行も0件**。 */
+  roadClasses: RoadClassCatalog;
   /** GET /api/axis-catalogの取得が成功し、他フィールドが実際のDB由来の値であることを表す。
    * falseの間（未取得・取得失敗）は他フィールドが空のため、「軸スタジオの現在の公開軸集合と
    * 一致している」ことを要求する処理（route_preferenceのキー整合等）は、このフラグで
@@ -62,11 +64,18 @@ function axisColorsOf(axes: readonly CatalogAxis[]): Record<string, string> {
   return Object.fromEntries(axes.map((axis, index) => [axis.axisId, `hsl(${(index * 360) / axes.length}, 62%, 55%)`]));
 }
 
+const EMPTY_ROAD_CLASSES: RoadClassCatalog = {
+  generation: "",
+  map_layers: [],
+  avoidance: { levels: [], sections: [], rows: [] },
+};
+
 // 軸は`GET /api/axis-catalog`が配るものだけを使う。**ビルド時の写しを持たない**——
 // 持つと、APIが失敗したときに古い軸で地図が描かれ、伝播の失敗が見えなくなる。
 // 取得できるまでは軸が1つも無い状態で、呼び出し側は`loaded`で区別する。
 export const EMPTY_CATALOG: AxisCatalog = {
   clientTuning: {},
+  roadClasses: EMPTY_ROAD_CLASSES,
   axes: [],
   defaultWeights: {},
   axisColors: {},
@@ -78,6 +87,7 @@ export function axisCatalogFromResponse(response: AxisCatalogResponse): AxisCata
   const axes = response.axes.map(catalogAxisFromEntry);
   return {
     clientTuning: response.client_tuning,
+    roadClasses: response.road_classes,
     axes,
     defaultWeights: Object.fromEntries(response.axes.map((entry) => [entry.axis_id, entry.default_weight])),
     axisColors: axisColorsOf(axes),

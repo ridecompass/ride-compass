@@ -41,7 +41,6 @@ def no_materials(n: int) -> EdgeMaterialArrays:
     return EdgeMaterialArrays(
         numeric_ids=(), numeric_values=np.empty((n, 0)),
         categorical_ids=(), categorical_columns=(),
-        route_flag_ids=(), route_flags=np.empty((n, 0), dtype=bool),
         distance_m=np.full(n, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
         start_elevation_m=nan, end_elevation_m=nan,
         elevation_gain_m=nan, elevation_loss_m=nan,

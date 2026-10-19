@@ -1,5 +1,5 @@
-// 源泉が宣言する地図のレイヤー（生成物`mapDisplay.layers`）のアイコン。地図の「表示」の一覧と、道のりのグラフの地点の詳しくの
-// チップが同じこの表を引く——別々に持つと、同じレイヤーが画面によって違う形に見える。
+// 地図のレイヤーのアイコン。地図の「表示」の一覧と、道のりのグラフの地点の詳しくのチップが同じこの表を引く——別々に持つと、
+// 同じレイヤーが画面によって違う形に見える。
 
 import { RouteIcon, type MapIconComponent } from "@/components/ui/icons/icons";
 import {
@@ -27,12 +27,6 @@ export const MAP_LAYER_ICONS: Record<StaticMapLayerId, MapIconComponent> = {
   elevation: ElevationIcon,
   hillshade: HillshadeIcon,
   landcover: LandcoverIcon,
-  highway: RoadIcon,
-  surface: RoadSurfaceIcon,
-  tracktype: TrackGradeIcon,
-  tunnel: TunnelIcon,
-  oneway: OnewayIcon,
-  cycleway: BicycleIcon,
   stop_poi: StopPoiIcon,
   supply_poi: SupplyPoiIcon,
   stop_place: StopPlaceIcon,
@@ -42,3 +36,18 @@ export const MAP_LAYER_ICONS: Record<StaticMapLayerId, MapIconComponent> = {
   disaster: ShieldIcon,
   route: RouteIcon,
 };
+
+/** 道の線の層のアイコンの絵。鍵は層のデータ（軸カタログの`road_classes.map_layers`の`icon`）が指す。 */
+const ROAD_LAYER_ICONS: ReadonlyMap<string, MapIconComponent> = new Map([
+  ["highway", RoadIcon],
+  ["surface", RoadSurfaceIcon],
+  ["tracktype", TrackGradeIcon],
+  ["tunnel", TunnelIcon],
+  ["oneway", OnewayIcon],
+  ["cycleway", BicycleIcon],
+]);
+
+/** 道の線の層のアイコン。知らない鍵には道路の絵を出す（層はデータだけで足せるので、絵より先に鍵が届きうる）。 */
+export function roadLayerIcon(iconKey: string): MapIconComponent {
+  return ROAD_LAYER_ICONS.get(iconKey) ?? RoadIcon;
+}

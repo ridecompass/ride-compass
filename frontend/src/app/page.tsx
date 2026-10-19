@@ -321,6 +321,7 @@ export default function Home() {
         }
         exclusionsPanel={
           <HardFilterPanel
+            avoidance={axisCatalog.roadClasses.avoidance}
             roadAvoidance={conditions.roadAvoidance}
             onRoadAvoidanceChange={conditions.setRoadAvoidance}
           />

@@ -10,13 +10,12 @@ import { describe, expect, it } from "vitest";
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
 import { evaluateExpression, matchesFilter } from "@/testing/mapExpressions";
 import { createRecordingMap, type StyleLayer } from "@/testing/mapTrace/recordingMap";
-import { catalogEntry, dedicatedEntry, MATERIAL_VALUE_FORMULA } from "@/testing/catalogAxes";
+import { catalogEntry, dedicatedEntry, MATERIAL_VALUE_FORMULA, roadClass, roadMapLayer } from "@/testing/catalogAxes";
 import { dedicatedWayValueAxesFromCatalogAxes } from "@/lib/mapDisplay/axisLayers";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
 import { POINT_TILE_SOURCES, pointAxisKey } from "@/features/map/scene/groups/points";
 import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
 import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
-import { ROAD_TRACKS } from "@/lib/mapDisplay/roadTracks";
 import { pointLegendAxes, roadLegendAxes } from "@/features/map/scene/legends";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { valueBands } from "@/lib/mapDisplay/valueScale";
@@ -32,7 +31,17 @@ const DEDICATED_AXES = dedicatedWayValueAxesFromCatalogAxes([
   catalogEntry({ axis_id: "unformulated" }),
 ]);
 
-const CATALOG = { dedicatedAxes: DEDICATED_AXES };
+// 道の線の層はテストが組む（本番の区分は管理DBが持つ）。絞り込みの式も検証の対象にするため、どの層も区分の条件を持つ。
+const ROAD_LAYERS = ["surface", "highway"].map((id) =>
+  roadMapLayer(id, {
+    no_data_property: id,
+    classes: [
+      roadClass("first", { conditions: [[{ property: id, values: ["a"], negated: false, matches_absent: false }]] }),
+    ],
+  }),
+);
+
+const CATALOG = { dedicatedAxes: DEDICATED_AXES, roadLayers: ROAD_LAYERS };
 
 /** 表示ONのレイヤーだけを持つ状態。 */
 function shown(layerVisibility: Record<string, boolean>, look: SceneStateOverrides["look"] = {}) {
@@ -82,19 +91,18 @@ describe("状態を地図へ伝えた結果", () => {
 
       rebuild(map, shown({ surface: true, highway: true }));
 
-      const offsets = ROAD_TRACKS.map((track) => handle.layer(roadLayerId(track.attr_id))?.paint["line-offset"]).filter(
+      const offsets = ROAD_LAYERS.map((layer) => handle.layer(roadLayerId(layer.id))?.paint["line-offset"]).filter(
         (value) => value !== undefined,
       );
-      expect(new Set(offsets).size).toBeGreaterThan(1);
-      expect(offsets).toContain(0);
+      expect(offsets).toHaveLength(2);
+      expect(offsets[0]).not.toBe(0);
+      expect(offsets[0]).toBe(-Number(offsets[1]));
     });
 
     it("凡例で隠した分類は、その線から落ちる", () => {
       const { map, handle } = createRecordingMap();
 
-      // 行の鍵は源泉の宣言から取る（書き写すと、行の鍵を変えたときにこの検査だけが黙って何も隠さなくなる）。
-      const firstRow = ROAD_TRACKS.find((track) => track.attr_id === "surface")!.display_axes[0].categories[0].key;
-      rebuild(map, shown({ surface: true }, { hiddenLegendKeys: { surface: [firstRow] } }));
+      rebuild(map, shown({ surface: true }, { hiddenLegendKeys: { surface: [ROAD_LAYERS[0].classes[0].key] } }));
 
       expect(handle.layer(roadLayerId("surface"))?.filter).toBeDefined();
     });
@@ -246,7 +254,7 @@ describe("状態を地図へ伝えた結果", () => {
     it("塗っている軸は、その材料のレイヤーが出ている間だけ下敷きになる", () => {
       const dedicatedAxes = dedicatedWayValueAxesFromCatalogAxes([
         dedicatedEntry("paved", [50], {
-          primary_attribute_ids: ["surface"],
+          road_layer_ids: ["surface"],
           way_value_formula: MATERIAL_VALUE_FORMULA,
         }),
       ]);
@@ -351,7 +359,7 @@ describe("レイヤーを横断する要求", () => {
   /** 出せるものを全部出した状態。チップのidは各グループの宣言から取る。 */
   function everythingVisible(): SceneState {
     const visibility: Record<string, boolean> = {};
-    for (const track of ROAD_TRACKS) visibility[track.attr_id] = true;
+    for (const layer of ROAD_LAYERS) visibility[layer.id] = true;
     for (const layer of POINT_LAYERS) visibility[layer.attr_id] = true;
     for (const role of Object.keys(AREA_SOURCE_ID)) visibility[role] = true;
     visibility.route = true;
@@ -382,7 +390,7 @@ describe("レイヤーを横断する要求", () => {
         paintedAxisId: DEDICATED_AXES[0].axisId,
         lens: "difficulty",
         hiddenLegendKeys: {
-          ...firstKeyHidden(roadLegendAxes()),
+          ...firstKeyHidden(roadLegendAxes(ROAD_LAYERS)),
           ...firstKeyHidden(pointLegendAxes()),
           ...Object.fromEntries(
             DEDICATED_AXES.map((axis) => [axis.axisId, firstBandAndNoData(valueBands(axis.display))]),

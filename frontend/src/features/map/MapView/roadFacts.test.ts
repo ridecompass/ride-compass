@@ -21,15 +21,15 @@ describe("roadDisplayName", () => {
 });
 
 describe("roadFactRows", () => {
-  it("路面の区分は常に出す（不明も含めて、その道の性質として読めるようにする）", () => {
-    const [value, label] = labeledValueOf("surface_class");
-    expect(roadFactRows({ surface_class: value })).toEqual([{ label: labelOf("surface_class"), value: label }]);
-    expect(roadFactRows({})).toEqual([{ label: labelOf("surface_class"), value: "不明" }]);
+  it("路面の種類は常に出す（不明も含めて、その道の性質として読めるようにする）", () => {
+    const [value, label] = labeledValueOf("surface");
+    expect(roadFactRows({ surface: value })).toEqual([{ label: labelOf("surface"), value: label }]);
+    expect(roadFactRows({})).toEqual([{ label: labelOf("surface"), value: "不明" }]);
   });
 
   it("該当しない項目は行ごと出さない（「なし」が並ぶと該当する項目が埋もれる）", () => {
     const labels = roadFactRows({ tunnel: true }).map((row) => row.label);
-    expect(labels).toEqual([labelOf("surface_class"), labelOf("has_tunnel")]);
+    expect(labels).toEqual([labelOf("surface"), labelOf("has_tunnel")]);
   });
 
   it("値は呼び名で出し、対訳の無い値は生値のまま出す", () => {

@@ -8,13 +8,9 @@ from typing import Literal
 
 from app.domain.display_palette import nominal_colors, ordered_colors, ordered_ends_phrase
 from app.domain.material_catalog import MATERIAL_CATALOG
-from app.domain.road_avoidance import AVOIDANCE_LEVEL_LABELS, AVOIDANCE_LEVELS, AvoidanceLevel
-from app.domain.registry import TileKind
+from app.domain.road_avoidance import AVOIDANCE_LEVEL_LABELS, AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows
 from app.domain.road_classes import Condition, RoadClass, RoadClassDefinitions, road_class_generation
 from app.domain.strict_model import StrictModel
-
-#: 道の線の層の絵の出所（`domain/map_display.py: MAP_LAYER_DATA_SOURCES`の`key`）。
-ROAD_LAYER_DATA_SOURCE: TileKind = "road_surface"
 
 
 class RoadClassTermView(StrictModel):
@@ -31,7 +27,7 @@ class RoadClassView(StrictModel):
     label: str
     #: 意味の文に、条件から組んだタグの注を足したもの。
     description: str
-    color: str | None
+    color: str
     former_keys: list[str]
     #: どれかに当たる道が区分に入り、1つの条件の中は項が全部当たる。同じ分け方の2つ以上の区分に当たる道は区分なし。
     conditions: list[list[RoadClassTermView]]
@@ -46,11 +42,10 @@ class LayerTextSlotView(StrictModel):
 
 
 class RoadMapLayerView(StrictModel):
-    """地図の道の線の層1つ。`id`は描く分け方。"""
+    """地図の道の線の層1つ。`id`は描く分け方。層に共通の宣言（情報源・既定の表示）は`domain/map_display.py: AXIS_LAYER_SPECS`の`road`。"""
 
     id: str
     label: str
-    data_source: TileKind
     category: str
     icon: str
     description: list[str]
@@ -154,7 +149,6 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
             RoadMapLayerView(
                 id=key,
                 label=classification.label,
-                data_source=ROAD_LAYER_DATA_SOURCE,
                 category=layer.group_key,
                 icon=layer.icon_key,
                 description=[f"{layer.summary}[{part}]" if part else layer.summary],
@@ -185,27 +179,19 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
                 ],
             )
         )
-    rows = []
-    for key, avoidance in sorted(definitions.avoidance_classifications.items(), key=lambda item: item[1].sort_order):
-        classification = published.get(key)
-        if classification is None:
-            continue
-        for class_key, road_class in _sorted_classes(classification.classes):
-            override = avoidance.overrides.get(class_key)
-            if override is not None and not override.selectable:
-                continue
-            rows.append(
-                AvoidanceRowView(
-                    key=f"{key}.{class_key}",
-                    section=(override and override.section_key) or avoidance.section_key,
-                    layer=key,
-                    layer_label=classification.label,
-                    label=road_class.label,
-                    description=_described(road_class),
-                    default=(override and override.default_level) or "pass",
-                    former_keys=road_class.former_keys,
-                )
-            )
+    rows = [
+        AvoidanceRowView(
+            key=row.key,
+            section=(row.override and row.override.section_key) or row.avoidance.section_key,
+            layer=row.classification_key,
+            layer_label=row.classification.label,
+            label=row.road_class.label,
+            description=_described(row.road_class),
+            default=row.default_level,
+            former_keys=row.road_class.former_keys,
+        )
+        for row in avoidance_rows(definitions)
+    ]
     return RoadClassCatalog(
         generation=road_class_generation(definitions),
         map_layers=layers,

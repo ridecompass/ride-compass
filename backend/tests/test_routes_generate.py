@@ -28,7 +28,7 @@ import pytest
 from app.api import dependencies
 from app.config import settings
 from app.domain.hard_filters import HARD_FILTERS
-from app.domain.road_avoidance import DEFAULT_ROAD_AVOIDANCE
+from app.domain.road_classes import AvoidanceClassification, AvoidanceSection
 from app.domain.route_request import DEFAULT_DISTANCE_TOLERANCE_KM, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
 from app.domain.tuning import TUNING_VALUES
 from app.domain.route_request import ASSUMED_SPEED_KMH
@@ -37,9 +37,11 @@ from app.infrastructure.road_network_store import RoadNetworkUnavailableError
 from app.main import app
 from app.services.graph_service import GraphService
 from app.services.route_generation_setup import assemble_route_generation_setup
+from tests.road_class_fixture import classification, fact_is, replaced_road_classes, road_classes
 from tests.route_world import (
     AVOID_AXIS,
     CENTER,
+    HIGHWAY,
     NORTH_EAST,
     SOUTH_WEST,
     NetworkRepository,
@@ -60,7 +62,7 @@ JAPANESE = re.compile(r"[぀-ヿ一-鿿]")  # かな・漢字
 #: 画面がいつも送る欄（値は画面の既定）。
 ALWAYS_SENT = {
     "distance_tolerance_km": DEFAULT_DISTANCE_TOLERANCE_KM,
-    "road_avoidance": DEFAULT_ROAD_AVOIDANCE,
+    "road_avoidance": {},
     "max_routes": DEFAULT_MAX_ROUTES,
     "assumed_speed_kmh": ASSUMED_SPEED_KMH,
     "start_time": "2026-09-22T08:00:00+09:00",
@@ -270,17 +272,23 @@ async def test_the_defaults_that_were_applied_are_echoed(client):
 
 
 async def test_the_overrides_that_were_sent_are_echoed(client):
-    """保存したレスポンスの条件をそのまま送り直せば、同じ条件で生成し直せる。"""
-    road_avoidance = {key: "exclude" for key in DEFAULT_ROAD_AVOIDANCE}
-    conditions = (await _generate(
-        client, route_preference={AVOID_AXIS: 2.0}, penalty_strength=0.5, max_average_grade_percent=8.0,
-        road_avoidance=road_avoidance, assumed_speed_kmh=25.0, distance_tolerance_km=2.0,
-    ))["result"]["conditions"]
+    """保存したレスポンスの条件をそのまま送り直せば、同じ条件で生成し直せる。避け方は、区分を分け直す前の鍵で送っても
+    今の行の鍵で返る。"""
+    definitions = road_classes(
+        {"kind": classification({"local": [fact_is(HIGHWAY, "residential")]}, former_keys={"local": ["old.local"]})},
+        avoidance_sections={"s": AvoidanceSection(label="見出し", description="", sort_order=0)},
+        avoidance_classifications={"kind": AvoidanceClassification(section_key="s", sort_order=0, overrides={})},
+    )
+    with replaced_road_classes(definitions):
+        conditions = (await _generate(
+            client, route_preference={AVOID_AXIS: 2.0}, penalty_strength=0.5, max_average_grade_percent=8.0,
+            road_avoidance={"old.local": "avoid"}, assumed_speed_kmh=25.0, distance_tolerance_km=2.0,
+        ))["result"]["conditions"]
 
     assert conditions["route_preference"] == {AVOID_AXIS: 2.0}
     assert conditions["penalty_strength"] == 0.5
     assert conditions["max_average_grade_percent"] == 8.0
-    assert conditions["road_avoidance"] == road_avoidance
+    assert conditions["road_avoidance"] == {"kind.local": "avoid"}
     assert conditions["assumed_speed_kmh"] == 25.0
     assert conditions["distance_tolerance_km"] == 2.0
 
@@ -324,7 +332,6 @@ async def test_a_destination_moved_to_the_nearest_reachable_road_is_echoed(clien
     {"route_preference": {}},                                        # 公開軸を全部書いていない
     {"route_preference": {AVOID_AXIS: -1.0}},                        # 値の検査（`check_axis_weights`）へ寄せている
     {"hard_filters": {name: False for name in HARD_FILTERS}},           # いつも除く道は切れない
-    {"road_avoidance": {}},                                          # 行を全部書いていない
     {"assumed_speed_kmh": 0},                                        # 想定速度の型（`AssumedSpeedKmh`）
 ])
 async def test_a_request_outside_what_can_be_generated_is_refused_before_any_job(client, body):

@@ -29,9 +29,9 @@ import {
   prepareBasemap,
   runWhenStyleReady,
 } from "@/features/map/layers/mapStyleOps";
-import { primaryAttributeIdsToLayerIds } from "@/features/map/layers/primaryAttributes";
+import { axisMapLayerIds } from "@/features/map/layers/mapLayers";
 import type { LensId, RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
-import type { RouteCandidate, SelectedRouteSegment } from "@/types/route";
+import type { RoadMapLayerView, RouteCandidate, SelectedRouteSegment } from "@/types/route";
 import { valueBands } from "@/lib/mapDisplay/valueScale";
 import { findSameSegment, routeStretches, segmentPath, splitSegmentAt } from "@/lib/routeDistance";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
@@ -91,6 +91,7 @@ type SceneWiringProps = {
   readonly catalog: {
     readonly dedicatedAxes: readonly DedicatedWayValueAxis[];
     readonly routeStyleModes: readonly RouteStyleMode[];
+    readonly roadLayers: readonly RoadMapLayerView[];
   };
   readonly routes: readonly RouteCandidate[];
   readonly selectedRouteId: string | null;
@@ -168,13 +169,12 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
   };
 }
 
-/** 下敷きで描く軸。その軸の材料（一次属性の表示レイヤー）が1つでも出ている間は、材料の
- * 線を隠さないよう下へ敷く。 */
+/** 下敷きで描く軸。その軸の材料を見せるレイヤーが1つでも出ている間は、材料の線を隠さないよう下へ敷く。 */
 function underlaidAxisIds(props: SceneWiringProps): ReadonlySet<string> {
   const visible = props.look.layerVisibility;
   return new Set(
     props.catalog.dedicatedAxes
-      .filter((axis) => primaryAttributeIdsToLayerIds(axis.primaryAttributeIds).some((id) => visible[id]))
+      .filter((axis) => axisMapLayerIds(axis).some((id) => visible[id]))
       .map((axis) => axis.axisId),
   );
 }
@@ -197,7 +197,7 @@ function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): Axi
       underlay: underlaid.has(axis.axisId),
     };
   });
-  return { axes, conditions: look.wayConditions, sourceLayer };
+  return { axes, conditions: look.wayConditions, sourceLayer, roadLayerCount: props.catalog.roadLayers.length };
 }
 
 /** 届いている中身を、要素の鍵（`groups/weather.ts: weatherElementKey`）で引ける形へ移す。 */
@@ -239,6 +239,7 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
       landcoverTileUrl: landcoverTileUrl(),
     },
     road: {
+      layers: props.catalog.roadLayers,
       tiles: roadTiles,
       visible,
       hiddenKeys,

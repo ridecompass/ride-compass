@@ -7,7 +7,8 @@ from datetime import datetime
 from typing import assert_never
 
 from app.domain.evaluation import resolve_penalty_strength
-from app.domain.road_avoidance import AvoidanceLevel
+from app.domain.road_avoidance import AvoidanceLevel, resolve_road_avoidance
+from app.domain.road_classes import current_road_classes
 from app.domain.route import Coordinates, RouteCandidate
 from app.domain.route_preference import RoutePreference
 from app.domain.route_request import (
@@ -34,7 +35,7 @@ class AppliedConditions:
     assumed_speed_kmh: float
     # 0次ハードフィルタの勾配しきい値（%、Noneは無効）。
     max_average_grade_percent: float | None
-    # 道のレイヤの行→避け方の段。
+    # 避け方を選べる行（`<分け方>.<区分>`）→段。今の区分の行を全部持つ。
     road_avoidance: Mapping[str, AvoidanceLevel]
 
 
@@ -61,7 +62,7 @@ def assemble_route_generation_setup(
         penalty_strength=resolve_penalty_strength(requested.penalty_strength),
         assumed_speed_kmh=requested.assumed_speed_kmh,
         max_average_grade_percent=requested.max_average_grade_percent,
-        road_avoidance=requested.road_avoidance,
+        road_avoidance=resolve_road_avoidance(requested.road_avoidance, current_road_classes()),
     )
     engine = RoadGraphEngine(
         graph_service,

@@ -6,8 +6,6 @@
 
 from typing import Literal, NamedTuple
 
-from app.domain.display_palette import ordered_ends_phrase
-from app.domain.divided_carriageway import DIVIDED_ROAD_NOTE
 from app.domain.gsi_tiles import TERRAIN_MIN_ZOOM
 from app.domain.landcover import LANDCOVER_CLASSES, LANDCOVER_RING_OUTER_M, LANDCOVER_TILE_MIN_ZOOM
 from app.domain.msm_grid import MSM_GRID_MIN_ZOOM
@@ -79,17 +77,20 @@ class MapLayerDataSource(NamedTuple):
     min_zoom: int | None = None
 
 
-#: タイルで配る一次属性の系統（`tile_version_service.py: TILE_SHAPES`の名前）。
+#: タイルで配る一次属性の系統（`tile_version_service.py: TILE_SHAPES`の名前）。道の線の層の系統は区分の配りが持つ。
 #: 情報源の名前にそのまま使う——世代が届くまで要求できないのは、この名前の情報源だけ。
 _TILE_KINDS: tuple[str, ...] = tuple(
     dict.fromkeys(attr.tile_kind for attr in PRIMARY_ATTRIBUTES if attr.tile_kind is not None)
 )
 
+#: 道の線の層（管理DBの区分を描く）の絵の出所。
+ROAD_LAYER_DATA_SOURCE = "road_surface"
+
 #: レイヤーの絵がどこから来るか。取得状態（読み込み中・空・失敗）の判定はここから導く。
 #: 最小ズームは配信の性質なので情報源の側で持つ——レイヤーごとに書くと、同じタイルを
 #: 読むレイヤーの1つだけ書き忘れても型が通り、その行だけ案内が出ない。
 MAP_LAYER_DATA_SOURCES: tuple[MapLayerDataSource, ...] = (
-    *(MapLayerDataSource(kind, ROAD_TILE_MIN_ZOOM) for kind in _TILE_KINDS),
+    *(MapLayerDataSource(kind, ROAD_TILE_MIN_ZOOM) for kind in (ROAD_LAYER_DATA_SOURCE, *_TILE_KINDS)),
     MapLayerDataSource("gsiRelief"),
     MapLayerDataSource("gsiTerrain", TERRAIN_MIN_ZOOM),
     MapLayerDataSource("landcoverRaster", LANDCOVER_TILE_MIN_ZOOM),
@@ -257,15 +258,6 @@ def _row_label(attr_id: str, key: str) -> str:
     return next(category.label for category in _first_axis(attr_id).categories if category.key == key)
 
 
-def ordered_ends_text(axis: DisplayAxisSpec) -> str:
-    """順序のある分類の色の向きの文。並びの先頭の行ほど濃く、末尾の行ほど明るく塗る（`display_palette.py: ordered_colors`）
-    ので、両端の行の名前と色の呼び名から組む。"""
-    if axis.palette != "ordered":
-        raise ValueError(f"{axis.key}は順序のある分類ではない")
-    return ordered_ends_phrase(axis.categories[0].label, axis.categories[-1].label)
-
-
-
 def size_text(attr_id: str) -> str:
     """大きさで示す見方の文。半径を宣言した軸の、半径の最も大きい行の名前から組む。"""
     attribute = PRIMARY_ATTRIBUTES_BY_ID[attr_id]
@@ -374,68 +366,6 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
                 else ""
             ),
         ),
-    ),
-    "highway": _tile_layer(
-        "highway",
-        "roadCondition",
-        description=(f"道路の種類を色で表示[{ordered_ends_text(_first_axis('highway'))}]",),
-        panel_hint=(
-            "OSMのhighwayタグを区分にまとめて塗り分けています。"
-            f"「{_first_axis('highway').categories[0].label}」が最も濃く、下位の道ほど明るい色です。"
-            "ほかの道路のレイヤーと一緒に表示すると、同じ道に線を横へ並べて描きます。",
-        ),
-    ),
-    "surface": _tile_layer(
-        "surface",
-        "roadCondition",
-        description=("路面の材質を色で表示[舗装・砂利・土など]",),
-        panel_hint=(
-            "OSMのsurfaceタグ[路面の材質]を区分にまとめて塗り分けています。"
-            f"区分に当てはまらない値の道は「{LEGEND_SHARED_ROWS["other"].label}」で出します。"
-            f"タグの無い道[{LEGEND_SHARED_ROWS["noData"].label}]は郊外ではほとんどの道に当たり、値のある道を埋もれさせるため、"
-            "最初は隠してあり、凡例のチェックで出せます"
-            f"[{LEGEND_SHARED_ROWS["noData"].label}は未舗装という意味ではありません]。",
-        ),
-        hide_missing_rows=True,
-    ),
-    "tracktype": _tile_layer(
-        "tracktype",
-        "roadCondition",
-        description=(f"農道・林道の路面の等級を色で表示[{ordered_ends_text(_first_axis('tracktype'))}]",),
-        panel_hint=(
-            "OSMのtracktypeタグ[農道・林道の路面の固さの等級]を塗り分けています。路面の材質[surfaceタグ]とは別のタグで、"
-            "材質のタグが無い農道・林道にも付いていることがあります。"
-            f"タグの無い道は「{LEGEND_SHARED_ROWS["noData"].label}」です。",
-        ),
-    ),
-    "tunnel": _tile_layer(
-        "tunnel",
-        "roadCondition",
-        description=("トンネル区間[OSMのtunnelタグ]を表示",),
-        panel_hint=("OSMのtunnelタグが該当する区間です。", LayerTextSlot("axes", "評価軸", "の材料の1つです。")),
-    ),
-    "oneway": _tile_layer(
-        "oneway",
-        "roadCondition",
-        description=("来た道を戻れない区間を表示",),
-        panel_hint=(
-            f"その向きにしか通れない区間です。{DIVIDED_ROAD_NOTE}は除いてあります。"
-            "ルート探索は一方通行の向きを守っています[逆走する経路は作りません]。",
-            LayerTextSlot("axes", "評価軸", "の材料の1つです。"),
-        ),
-    ),
-    # 当てはまらない道（大多数）を描くと地図が灰色の線で覆われるので、最初は隠す。
-    "cycleway": _tile_layer(
-        "cycleway",
-        "roadCondition",
-        label="自転車レーン",
-        description=(f"自転車の走る場所を色で表示[{'・'.join(c.label for c in _first_axis('cycleway').categories)}]",),
-        panel_hint=(
-            "OSMの自転車のためのタグから、自転車の走る場所を区分にまとめて塗り分けています。"
-            "1本の道が複数に当たれば、車道から分けられた方で出します。当てはまらない道は最初は隠してあり、凡例のチェックで出せます。",
-            LayerTextSlot("axes", "評価軸", "の材料の1つです。"),
-        ),
-        hide_missing_rows=True,
     ),
     "stop_poi": _tile_layer(
         "stop_poi",
@@ -592,9 +522,11 @@ def _map_layers() -> tuple[tuple[str, MapLayerSpec], ...]:
 #: 地図に載るものの宣言（`_LAYER_SPECS`の順）。
 MAP_LAYERS: tuple[tuple[str, MapLayerSpec], ...] = _map_layers()
 
-#: 軸スタジオ由来の軸のレイヤー。路面タイルの道へ、道ごとに配る得点の色を塗る（得点は時刻で変わりうる）。
+#: 実行時に決まるレイヤーに共通の宣言。`dedicated`は軸スタジオ由来の軸のレイヤーで、路面タイルの道へ道ごとに配る
+#: 得点の色を塗る（得点は時刻で変わりうる）。`road`は道の線の層で、種別は層ごとに軸カタログの`road_classes`が配る。
 AXIS_LAYER_SPECS: dict[str, MapLayerSpec] = {
-    "dedicated": MapLayerSpec("road_surface", None, data_nature="dynamic"),
+    "dedicated": MapLayerSpec(ROAD_LAYER_DATA_SOURCE, None, data_nature="dynamic"),
+    "road": MapLayerSpec(ROAD_LAYER_DATA_SOURCE, None),
 }
 
 

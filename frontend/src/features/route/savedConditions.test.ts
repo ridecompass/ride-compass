@@ -12,9 +12,8 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { AVOIDABLE_ROWS, AVOIDANCE_LEVELS, DEFAULT_ROAD_AVOIDANCE } from "@/features/route/roadAvoidance";
 import { EMPTY_CATALOG } from "@/lib/axisCatalog";
-import { catalogEntry, catalogOf } from "@/testing/catalogAxes";
+import { AVOIDANCE_LEVELS, avoidanceRow, catalogEntry, catalogOf, roadClassCatalog } from "@/testing/catalogAxes";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 import {
@@ -37,7 +36,7 @@ const ENTRY: SavedCondition = {
   waypoints: [POINT],
   destination: POINT,
   routePreference: { axis_a: 0.7 },
-  roadAvoidance: DEFAULT_ROAD_AVOIDANCE,
+  roadAvoidance: { gravel: "avoid" },
 };
 
 describe("readSavedConditions", () => {
@@ -96,29 +95,17 @@ describe("readSavedConditions", () => {
     expect(readSavedConditions(JSON.stringify([stored]))).toEqual([ENTRY]);
   });
 
-  it("避け方は今の行へ揃える（避け方を持たない件・無い行・今は無い段は既定の段、今は無い行は落とす）", () => {
-    const [changed, unknownLevel, missing] = AVOIDABLE_ROWS;
-    const level = DEFAULT_ROAD_AVOIDANCE[changed.key] === "exclude" ? "pass" : "exclude";
-    const stored = { [changed.key]: level, [unknownLevel.key]: "never", retired_layer: "exclude" };
-
+  // 行は軸カタログが届くまで分からず、今の行に無い鍵も前の鍵として読まれうるので、鍵では落とさない。
+  it("避け方は段として読める鍵だけを残し、避け方を持たない件は何も選んでいない", () => {
     const [read, older] = readSavedConditions(
       JSON.stringify([
-        { ...ENTRY, roadAvoidance: stored },
+        { ...ENTRY, roadAvoidance: { gravel: "exclude", retired_row: "avoid", unpaved: "never" } },
         { ...ENTRY, name: "避け方を持たない件", roadAvoidance: undefined },
       ]),
     )!;
 
-    expect(read.roadAvoidance).toEqual({ ...DEFAULT_ROAD_AVOIDANCE, [changed.key]: level });
-    expect(read.roadAvoidance[missing.key]).toBe(DEFAULT_ROAD_AVOIDANCE[missing.key]);
-    expect(older.roadAvoidance).toEqual(DEFAULT_ROAD_AVOIDANCE);
-  });
-
-  it("分ける前の行の鍵で保存した避け方は、分けてできた行へ引き継ぐ", () => {
-    const [read] = readSavedConditions(
-      JSON.stringify([{ ...ENTRY, roadAvoidance: { "highway.arterial": "exclude" } }]),
-    )!;
-
-    expect(read.roadAvoidance).toMatchObject({ "highway.trunk": "exclude", "highway.primary": "exclude" });
+    expect(read.roadAvoidance).toEqual({ gravel: "exclude", retired_row: "avoid" });
+    expect(older.roadAvoidance).toEqual({});
   });
 });
 
@@ -144,11 +131,25 @@ describe("suggestedConditionName", () => {
 });
 
 describe("describeConditions", () => {
-  const CATALOG = catalogOf([
-    catalogEntry({ axis_id: "axis_a", label: "軸A", default_weight: 0.25 }),
-    catalogEntry({ axis_id: "axis_b", label: "軸B", default_weight: 0.75 }),
-    catalogEntry({ axis_id: "axis_c", label: "軸C", default_weight: 0 }),
-  ]);
+  const CATALOG = catalogOf(
+    [
+      catalogEntry({ axis_id: "axis_a", label: "軸A", default_weight: 0.25 }),
+      catalogEntry({ axis_id: "axis_b", label: "軸B", default_weight: 0.75 }),
+      catalogEntry({ axis_id: "axis_c", label: "軸C", default_weight: 0 }),
+    ],
+    {
+      road_classes: roadClassCatalog({
+        avoidance: {
+          levels: AVOIDANCE_LEVELS,
+          rows: [
+            avoidanceRow("gravel", "surface", { label: "砂利" }),
+            avoidanceRow("unpaved", "surface", { label: "未舗装", default: "avoid", former_keys: ["dirt"] }),
+            avoidanceRow("private", "access", { label: "私道", default: "exclude" }),
+          ],
+        },
+      }),
+    },
+  );
 
   it.each([
     ["戻る周回は距離と候補数", SHAPES.loop, "周回 30km・候補 3本"],
@@ -173,21 +174,22 @@ describe("describeConditions", () => {
     expect(describeConditions({ ...ENTRY, routePreference }, catalog).weights).toBe(expected);
   });
 
-  it("除外は、「通らない」の行・なるべく避ける行の順に名前を並べ、無ければ無いと出す", () => {
-    const allPass = Object.fromEntries(AVOIDABLE_ROWS.map(({ key }) => [key, "pass" as const]));
-    const [excludedRow, avoidedRow] = AVOIDABLE_ROWS;
-    const levelLabel = (level: string) => AVOIDANCE_LEVELS.find(({ key }) => key === level)!.label;
-
-    expect(
-      describeConditions(
-        {
-          ...ENTRY,
-          roadAvoidance: { ...allPass, [excludedRow.key]: "exclude", [avoidedRow.key]: "avoid" },
-        },
-        CATALOG,
-      ).exclusions,
-    ).toBe(`${levelLabel("exclude")} ${excludedRow.label}／${levelLabel("avoid")} ${avoidedRow.label}`);
-    expect(describeConditions({ ...ENTRY, roadAvoidance: allPass }, CATALOG).exclusions).toBe("なし");
+  it.each([
+    [
+      "選んだ段と、選んでいない行の既定の段を、「通らない」の行・なるべく避ける行の順に並べる",
+      { gravel: "exclude", private: "pass" },
+      CATALOG,
+      "通らない 砂利／なるべく避ける 未舗装",
+    ],
+    [
+      "選んでいない行は前の鍵に選んだ段で読み、通る行しか無ければ無いと出す",
+      { dirt: "pass", private: "pass" },
+      CATALOG,
+      "なし",
+    ],
+    ["軸カタログが届く前は、行が分からないので無いと出す", { gravel: "exclude" }, EMPTY_CATALOG, "なし"],
+  ] as const)("除外: %s", (_, roadAvoidance, catalog, expected) => {
+    expect(describeConditions({ ...ENTRY, roadAvoidance }, catalog).exclusions).toBe(expected);
   });
 });
 

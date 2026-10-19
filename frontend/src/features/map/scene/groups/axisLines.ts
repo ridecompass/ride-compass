@@ -15,14 +15,15 @@ import type { MapSceneFeatureStates, MapSceneGlobalState } from "@/features/map/
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 import { missingExpression, wayValueExpressions, type WayValueFormula } from "@/features/map/scene/wayValueFormula";
 import { LEGEND_NO_DATA_KEY, NO_DATA_LEGEND_BAND, UNDETERMINED_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
-import { ROAD_TRACKS } from "@/lib/mapDisplay/roadTracks";
 import { bandStep, type ValueBand } from "@/lib/mapDisplay/valueScale";
 
 import { ROAD_LINE_SOURCE_ID } from "./roadLines";
 
-/** 材料が同時に出ているときの下敷き。**材料の線が全部出たときの帯幅**から決まるので、
- * トラックが増えれば自動で広がる（直書きすると追従しない）。 */
-const UNDERLAY_WIDTH_PX = (ROAD_TRACKS.length - 1) * mapDisplay.road.trackOffsetStepPx + mapDisplay.road.lineWidthPx;
+/** 材料が同時に出ているときの下敷きの幅。**道の線の層が全部出たときの帯幅**から決まるので、
+ * 層が増えれば広がる（直書きすると追従しない）。 */
+function underlayWidthPx(roadLayerCount: number): number {
+  return Math.max(0, roadLayerCount - 1) * mapDisplay.road.trackOffsetStepPx + mapDisplay.road.lineWidthPx;
+}
 
 /** 道ごとの材料。feature_key → 材料の名前 → 値（値の無い材料は鍵ごと無い）。 */
 export type WayMaterials = ReadonlyMap<string, Readonly<Record<string, number>>>;
@@ -49,6 +50,8 @@ export type AxisLineState = {
   }[];
   readonly conditions: WayConditions;
   readonly sourceLayer: string | null;
+  /** 道の線の層の数（下敷きの幅を決める）。 */
+  readonly roadLayerCount: number;
 };
 
 type AxisLine = AxisLineState["axes"][number];
@@ -171,7 +174,7 @@ export const axisLineGroup = declareGroup<AxisLineState>((state) => {
       ...lineOf(axis.axisId),
       paint: {
         "line-color": colorExpression(axis),
-        "line-width": axis.underlay ? UNDERLAY_WIDTH_PX : mapDisplay.road.lineWidthPx,
+        "line-width": axis.underlay ? underlayWidthPx(state.roadLayerCount) : mapDisplay.road.lineWidthPx,
         // 取得中は薄くしない——薄くすると「まだ来ていない」と「対象外」が区別できない。
         "line-opacity": axis.underlay ? mapDisplay.road.underlayOpacity : mapDisplay.road.knownOpacity,
       },

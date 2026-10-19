@@ -1,8 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
+import { mapAxisCatalogFromResponse } from "@/features/map/mapAxisCatalog";
 import { mapCatalogOf } from "@/testing/mapAxisCatalog";
-import { catalogEntry, dedicatedEntry } from "@/testing/catalogAxes";
+import { catalogEntry, catalogResponse, dedicatedEntry, roadClassCatalog, roadMapLayer } from "@/testing/catalogAxes";
+import type { AxisCatalogEntry, RoadMapLayerView } from "@/types/route";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 
 import weatherScales from "@/types/generated/weather-scales.json";
@@ -28,6 +30,14 @@ const withYears = (accidentYears: number[]) => buildMapLayers({ ...mapCatalogOf(
 const layer = (layers: readonly MapLayerDescriptor[], id: string) =>
   layers.find((entry): entry is ChipLayerDescriptor => entry.id === id && !isAxisStudioLayer(entry))!;
 const staticLayerIds: readonly string[] = mapDisplay.layers.map((entry) => entry.id);
+// 道の線の層は軸カタログが配る（本番の層は管理DBが持つ）ので、テストが組む。
+const withRoadLayers = (roadLayers: RoadMapLayerView[], entries: readonly AxisCatalogEntry[] = []) =>
+  buildMapLayers(
+    mapAxisCatalogFromResponse(
+      catalogResponse(entries, { road_classes: roadClassCatalog({ map_layers: roadLayers }) }),
+    ),
+  );
+const ROAD_CATEGORY = mapDisplay.layerCategories[0];
 
 describe("buildMapLayers（レイヤーの一覧）", () => {
   it("軸を渡すと、軸ごとに別の名前のレイヤーが軸スタジオ由来として加わる", () => {
@@ -46,17 +56,36 @@ describe("buildMapLayers（レイヤーの一覧）", () => {
   });
 
   it("説明は、そのレイヤーの元データを材料に持つ公開中の評価軸を名前で挙げ、無ければ評価軸に触れない", () => {
-    const axes = buildMapLayers(
-      mapCatalogOf([
-        catalogEntry({ axis_id: "night", label: "暗さ", primary_attribute_ids: ["lit", "tunnel"] }),
+    const tunnel = roadMapLayer("tunnel", {
+      panel_hint: ["道の区分。", { name: "axes", before: "評価軸", after: "の材料。" }],
+    });
+    const axes = withRoadLayers(
+      [tunnel],
+      [
+        catalogEntry({ axis_id: "night", label: "暗さ", road_layer_ids: ["tunnel"] }),
         catalogEntry({ axis_id: "stops", label: "止まりやすさ", primary_attribute_ids: ["stop_poi"] }),
-      ]),
+      ],
     );
     expect(layer(axes, "tunnel").panelHint).toContain("評価軸「暗さ」");
     expect(layer(axes, "stop_poi").panelHint).toContain("評価軸「止まりやすさ」");
+    const noAxes = withRoadLayers([tunnel]);
     for (const id of ["tunnel", "stop_poi"]) {
-      expect(layer(withoutAxes, id).panelHint).not.toContain("評価");
+      expect(layer(noAxes, id).panelHint).not.toContain("評価");
     }
+  });
+
+  it("道の線の層は配られた分だけチップになり、知らない中分類はどのグループにも入れず、知らないアイコンの鍵には道路の絵を出す", () => {
+    const layers = withRoadLayers([
+      roadMapLayer("known", { category: ROAD_CATEGORY.key, icon: "highway" }),
+      roadMapLayer("unknown", { category: "no_such_category", icon: "no_such_icon" }),
+    ]);
+    expect(layers.filter((entry) => !staticLayerIds.includes(entry.id)).map((entry) => entry.id)).toEqual([
+      "known",
+      "unknown",
+    ]);
+    expect(mapOverlayGroupFor(layer(layers, "known"))).toBe(ROAD_CATEGORY.group);
+    expect(mapOverlayGroupFor(layer(layers, "unknown"))).toBeUndefined();
+    expect(layer(layers, "unknown").icon).toBe(layer(layers, "known").icon);
   });
 
   it("ルートの説明は、レンズで選べる色分け（公開中の評価と総合難易度）を並べる", () => {
@@ -97,7 +126,7 @@ describe("地図上チップのグループ", () => {
 
 describe("出せない理由の案内", () => {
   it("タイル世代が届くまで描けないのは、世代を持つ配信を読むレイヤー", () => {
-    const gated = tileVersionGatedLayerIds();
+    const gated = tileVersionGatedLayerIds(withoutAxes);
     expect(gated).toContain("accident_point");
     expect(gated).not.toContain("elevation");
   });
@@ -106,10 +135,10 @@ describe("出せない理由の案内", () => {
     const tileLayers = withoutAxes.filter((entry) => entry.tileMinZoom !== undefined);
     expect(tileLayers).not.toHaveLength(0);
     const lowest = Math.min(...tileLayers.map((entry) => entry.tileMinZoom!));
-    expect(tileZoomTooWideLayerIds(lowest)).toEqual(
+    expect(tileZoomTooWideLayerIds(withoutAxes, lowest)).toEqual(
       tileLayers.filter((entry) => entry.tileMinZoom! > lowest).map((entry) => entry.id),
     );
-    expect(tileZoomTooWideLayerIds(lowest - 0.1)).toEqual(tileLayers.map((entry) => entry.id));
+    expect(tileZoomTooWideLayerIds(withoutAxes, lowest - 0.1)).toEqual(tileLayers.map((entry) => entry.id));
   });
 });
 

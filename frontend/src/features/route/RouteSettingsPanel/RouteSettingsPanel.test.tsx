@@ -97,7 +97,7 @@ describe("RouteSettingsPanel 評価軸の一覧を取れないとき", () => {
     renderPanel({});
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "評価軸の一覧を取得できませんでした。地図の道路・スポットを表示できません。ルートは重み配分を変えていても反映できず、既定の配分で作ります。ルートの合成も使えません。",
+      "評価軸の一覧を取得できませんでした。地図の道の線・スポットを表示できません。ルートは重み配分を変えていても反映できず、既定の配分で作ります。ルートの合成も使えません。",
     );
 
     await userEvent.click(screen.getByRole("button", { name: "再試行" }));

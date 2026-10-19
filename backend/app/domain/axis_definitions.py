@@ -50,6 +50,7 @@ from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.axis_templates import evaluate_breakpoint_linear, evaluate_categorical
 from app.domain.difficulty import round_difficulty_array, weight_share
 from app.domain import material_catalog
+from app.domain.road_classes import RoadClassDefinitions, classification_materials
 from app.domain.strict_model import StrictModel
 
 
@@ -590,6 +591,18 @@ def primary_attribute_ids_for(definition: AxisDefinition) -> list[str]:
             and spec.primary_attribute is not None
         )
     )
+
+
+def road_layer_ids_for(definition: AxisDefinition, road_classes: RoadClassDefinitions) -> list[str]:
+    """軸が最終的に見ている材料を区分の決め手に読む、地図の道の線の層（公開した分け方の鍵）。"""
+    leaves = set(_leaf_materials(definition))
+    return [
+        key
+        for key in road_classes.map_layers
+        if (classification := road_classes.classifications.get(key)) is not None
+        and classification.is_published
+        and leaves & classification_materials(road_classes, key)
+    ]
 
 
 class AxisInternalAxisPublishError(ValueError):

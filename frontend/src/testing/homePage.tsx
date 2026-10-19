@@ -8,7 +8,14 @@ import { expect, onTestFinished } from "vitest";
 import Home from "@/app/page";
 import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
 import { onBackend, onSameOrigin, serveAxisCatalog } from "@/testing/backendServer";
-import { catalogResponse, dedicatedEntry, MATERIAL_VALUE_FORMULA } from "@/testing/catalogAxes";
+import {
+  catalogResponse,
+  dedicatedEntry,
+  MATERIAL_VALUE_FORMULA,
+  roadClass,
+  roadClassCatalog,
+  roadMapLayer,
+} from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { installGeolocation } from "@/testing/geolocation";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
@@ -33,6 +40,12 @@ const CATALOG = catalogResponse(
   {
     client_tuning: { [CLIENT_TUNING_IDS.minStretchKm]: 0.1 },
     tile_versions: Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "1-test"])),
+    // 道路のレイヤーは軸カタログが配る道の線の層で、一覧から出せる層が1つあればよい。
+    road_classes: roadClassCatalog({
+      map_layers: [
+        roadMapLayer("surface", { label: "路面の種類", category: "roadCondition", classes: [roadClass("paved")] }),
+      ],
+    }),
   },
 );
 

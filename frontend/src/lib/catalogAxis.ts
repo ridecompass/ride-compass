@@ -39,6 +39,8 @@ export interface CatalogAxis {
   timeScope: AxisCatalogEntry["time_scope"];
   /** ルートの無い間の周りの道を塗れるか（軸カタログが道の値の式の木を配る軸だけ）。塗れない軸もルートの線は塗る。 */
   paintsSurroundingRoads: boolean;
+  /** 軸が読む材料で区分の決まる道の層の鍵（軸カタログの`road_classes.map_layers`の`id`）。 */
+  roadLayerIds: readonly string[];
 }
 
 export type WayValueCondition = AxisCatalogEntry["dynamic_way_value_conditions"][number];
@@ -74,5 +76,6 @@ export function catalogAxisFromEntry(axis: AxisCatalogEntry): CatalogAxis {
     wayValueConditions: axis.dynamic_way_value_conditions,
     timeScope: axis.time_scope,
     paintsSurroundingRoads: axis.way_value_formula !== null,
+    roadLayerIds: axis.road_layer_ids,
   };
 }

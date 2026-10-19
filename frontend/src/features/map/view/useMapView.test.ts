@@ -15,19 +15,39 @@ import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { MAP_FETCH_DEBOUNCE_MS } from "@/hooks/useDebouncedValue";
 import { onBackend, onSameOrigin } from "@/testing/backendServer";
-import { catalogEntry, catalogResponse, dedicatedEntry, MATERIAL_VALUE_FORMULA } from "@/testing/catalogAxes";
+import {
+  catalogEntry,
+  catalogResponse,
+  dedicatedEntry,
+  MATERIAL_VALUE_FORMULA,
+  roadClass,
+  roadClassCatalog,
+  roadMapLayer,
+} from "@/testing/catalogAxes";
 import type { AxisCatalogEntry } from "@/types/route";
 
 import { LEGEND_FILTER_DEBOUNCE_MS, useMapView } from "./useMapView";
 
 const NOW = new Date("2026-10-07T03:00:00Z");
-const TILE_VERSIONS = { accident: "a1", poi: "p1", road_surface: "r1" };
+const TILE_VERSIONS = { accident: "a1", poi: "p1", road_surface: "r1", stop_place: "s1" };
 const SCORE = dedicatedEntry("axis_score", [10, 20], { way_value_formula: MATERIAL_VALUE_FORMULA });
 const DEDICATED = dedicatedEntry("axis_wind", [10, 20], {
   dynamic_way_value_conditions: ["bearing_deg"],
   way_value_formula: MATERIAL_VALUE_FORMULA,
 });
 const OTHER_DEDICATED = dedicatedEntry("axis_other", [10, 20], { way_value_formula: MATERIAL_VALUE_FORMULA });
+/** 値の無い道の行を最初は隠す道の層。データなしを分ける層（surface）と、区分の外が全部「該当なし」の層（cycleway）。 */
+const ROAD_LAYERS = [
+  roadMapLayer("surface", {
+    category: "roadCondition",
+    hide_missing_rows: true,
+    no_data_property: "surface",
+    classes: [roadClass("paved")],
+  }),
+  roadMapLayer("cycleway", { category: "roadCondition", hide_missing_rows: true, classes: [roadClass("lane")] }),
+];
+/** 世代が届くまで要求できない、静的に宣言された層。 */
+const GATED_LAYER = "stop_poi";
 /** 道路タイルのズームの、狭い表示範囲（覆うタイルが少ない）。 */
 const VIEWPORT = { west: 139.7, south: 35.68, east: 139.701, north: 35.681, zoom: 14, bearing: 0 };
 
@@ -36,7 +56,14 @@ type Inputs = Parameters<typeof useMapView>[0];
 /** 軸カタログに`catalog`で応え、既定で表示する災害のチップが読む配信元の時刻一覧には空で応える。 */
 function serve(catalog: Response | readonly AxisCatalogEntry[] = [SCORE]) {
   onBackend("GET", "/api/axis-catalog", () =>
-    catalog instanceof Response ? catalog : Response.json(catalogResponse(catalog, { tile_versions: TILE_VERSIONS })),
+    catalog instanceof Response
+      ? catalog
+      : Response.json(
+          catalogResponse(catalog, {
+            tile_versions: TILE_VERSIONS,
+            road_classes: roadClassCatalog({ map_layers: ROAD_LAYERS }),
+          }),
+        ),
   );
   onSameOrigin("GET", "/api/jma-tile/*", () => Response.json([]));
 }
@@ -75,7 +102,7 @@ describe("useMapView", () => {
     const { result } = render();
 
     expect(result.current.lensControl.lens).toBe("difficulty");
-    await waitFor(() => expect(chip(result, "surface")?.dataStatus).not.toBe("loading"));
+    await waitFor(() => expect(chip(result, GATED_LAYER)?.dataStatus).not.toBe("loading"));
     expect(result.current.lensControl.lens).toBe(lens);
     expect(result.current.look.lens).toBe(lens);
   });
@@ -188,9 +215,10 @@ describe("useMapView", () => {
     expect(Object.values(result.current.look.hiddenLegendKeys).flat()).toEqual([]);
   });
 
-  it("「絞り込みをすべて解除」が押せるのは地図に出しているものの凡例で隠している間だけで、出していないレイヤーの最初に隠す行は数えない", () => {
+  it("「絞り込みをすべて解除」が押せるのは地図に出しているものの凡例で隠している間だけで、出していないレイヤーの最初に隠す行は数えない", async () => {
     serve();
     const { result } = render();
+    await waitFor(() => expect(chip(result, "surface")).toBeDefined());
     expect(chip(result, "surface")).toMatchObject({ on: false, legendDetails: [{ hiddenKeys: [LEGEND_NO_DATA_KEY] }] });
     expect(result.current.overlayControls.anyLegendHidden).toBe(false);
 
@@ -211,7 +239,7 @@ describe("useMapView", () => {
         legend: chip(result, layer)?.legendDetails?.[0].hiddenKeys,
         map: result.current.look.hiddenLegendKeys[layer],
       });
-      expect(hiddenOf(first.result)).toEqual({ legend: [key], map: [key] });
+      await waitFor(() => expect(hiddenOf(first.result)).toEqual({ legend: [key], map: [key] }));
 
       act(() => first.result.current.overlayControls.onLegendAxisSetHidden(layer, []));
       first.unmount();
@@ -283,6 +311,7 @@ describe("useMapView", () => {
   it("チップには、地図から上がる取得の状態と気象の取得の状態を合わせ、表示範囲のズームで出ないレイヤーに案内を出す", async () => {
     serve();
     const { result } = render();
+    await waitFor(() => expect(chip(result, "surface")).toBeDefined());
 
     act(() => result.current.look.onLayerDataStatusChange({ surface: "loading" }));
     act(() => result.current.look.onViewportChange({ ...VIEWPORT, zoom: 8 }));
@@ -302,9 +331,9 @@ describe("useMapView", () => {
 
       const { result } = render();
 
-      expect(chip(result, "surface")?.dataStatus).toBe("loading");
-      await waitFor(() => expect(chip(result, "surface")?.dataStatus).toBe("error"));
-      expect(chip(result, "surface")?.notice).toBe(TILE_VERSIONS_MISSING_NOTICE);
+      expect(chip(result, GATED_LAYER)?.dataStatus).toBe("loading");
+      await waitFor(() => expect(chip(result, GATED_LAYER)?.dataStatus).toBe("error"));
+      expect(chip(result, GATED_LAYER)?.notice).toBe(TILE_VERSIONS_MISSING_NOTICE);
     },
   );
 

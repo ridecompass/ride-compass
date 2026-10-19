@@ -1,4 +1,4 @@
-import { AVOIDABLE_ROWS, AVOIDANCE_LEVELS, syncRoadAvoidance } from "@/features/route/roadAvoidance";
+import { avoidanceLevelOf, readRoadAvoidance } from "@/features/route/roadAvoidance";
 import { alignRoutePreference } from "@/features/route/routePreferenceSync";
 import { totalWeight } from "@/features/route/routeWeightShare";
 import type { AxisCatalog } from "@/lib/axisCatalog";
@@ -22,7 +22,7 @@ export interface GenerationConditionsSnapshot {
   destination: Coordinates | null;
   /** 上書きした重み。nullは上書きしない（backendの既定の配分）。 */
   routePreference: RoutePreferenceWeights | null;
-  /** 道のレイヤの凡例の行ごとの避け方。 */
+  /** 道の区分の行ごとに選んだ避け方（選んでいない行は無い）。 */
   roadAvoidance: RoadAvoidanceOverride;
 }
 
@@ -115,8 +115,8 @@ const SAVED_FIELD_READERS: {
     return destination !== undefined && savedMode(entry) === "loop" ? null : destination;
   },
   routePreference: (value) => (value === null || isWeights(value) ? value : undefined),
-  // 避け方を持たない件は、行ごとに選べるようになる前に保存した件で、既定の段で読む。
-  roadAvoidance: syncRoadAvoidance,
+  // 避け方を持たない件は、行ごとに選べるようになる前に保存した件で、どの行も選んでいない（既定の段）として読む。
+  roadAvoidance: readRoadAvoidance,
 };
 
 // 1件を今の画面が受け付ける形で読む。読めない件はnull（ほかの件は残す）。
@@ -188,12 +188,13 @@ function weightsDescription(routePreference: RoutePreferenceWeights | null, cata
   return shares.length === 0 ? "—" : shares.map(({ label, pct }) => `${label} ${pct}%`).join("・");
 }
 
-// 段ごとに「段の名前 行の名前・…」を、強い段から並べる。
-function exclusionsDescription(roadAvoidance: RoadAvoidanceOverride): string {
-  const parts = AVOIDANCE_LEVELS.toReversed().flatMap(({ key: level, label: levelLabel }) => {
-    const labels = AVOIDABLE_ROWS.filter(({ key }) => level !== "pass" && roadAvoidance[key] === level).map(
-      ({ label }) => label,
-    );
+// 段ごとに「段の名前 行の名前・…」を、強い段から並べる。行と段は軸カタログが配るもので、届く前は「なし」になる。
+function exclusionsDescription(roadAvoidance: RoadAvoidanceOverride, catalog: AxisCatalog): string {
+  const { levels, rows } = catalog.roadClasses.avoidance;
+  const parts = levels.toReversed().flatMap(({ key: level, label: levelLabel }) => {
+    const labels = rows
+      .filter((row) => level !== "pass" && avoidanceLevelOf(row, roadAvoidance, levels) === level)
+      .map(({ label }) => label);
     return labels.length === 0 ? [] : [`${levelLabel} ${labels.join("・")}`];
   });
   return parts.length === 0 ? "なし" : parts.join("／");
@@ -206,7 +207,7 @@ export function describeConditions(
   return {
     route: routeDescription(conditions),
     weights: weightsDescription(conditions.routePreference, catalog),
-    exclusions: exclusionsDescription(conditions.roadAvoidance),
+    exclusions: exclusionsDescription(conditions.roadAvoidance, catalog),
   };
 }
 

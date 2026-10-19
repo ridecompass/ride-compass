@@ -196,7 +196,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "転がり抵抗", "", 0.005, 0.001, 0.05, TuningEffect.IMMEDIATE,
         "舗装路の23〜28mmタイヤの標準値。",
     ),
-    # 路面の区分ごとの転がり抵抗。どの区分がどの値を使うかは`domain/road.py`の路面の見込みの宣言が持つ。
+    # 路面の区分ごとの転がり抵抗。どの区分がどの値を使うかは管理DBの道の区分の転がり抵抗の表が持つ。
     TuningParameter(
         "speed.crr_paving_stones",
         "転がり抵抗", "", 0.0065, 0.001, 0.1, TuningEffect.IMMEDIATE,
