@@ -132,6 +132,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/weather": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_weather_api_weather_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/weather/msm-grid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_msm_grid_api_weather_msm_grid_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/place-search": {
         parameters: {
             query?: never;
@@ -1200,6 +1232,35 @@ export interface components {
             /** Generated At */
             generated_at: string;
         };
+        /** GridPointToday */
+        GridPointToday: {
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+            /** Distance Km */
+            distance_km: number;
+            /** Bearing Deg */
+            bearing_deg: number;
+            /** Times */
+            times: string[];
+            /** Temperature C */
+            temperature_c: (number | null)[];
+            /** Precipitation Mm */
+            precipitation_mm: (number | null)[];
+            /** Wind Speed Ms */
+            wind_speed_ms: (number | null)[];
+            /** Wind Direction Deg */
+            wind_direction_deg: (number | null)[];
+            /** Highest Hourly Temperature C */
+            highest_hourly_temperature_c: number | null;
+            /** Lowest Hourly Temperature C */
+            lowest_hourly_temperature_c: number | null;
+            /** Highest Hourly Precipitation Mm */
+            highest_hourly_precipitation_mm: number | null;
+            /** Highest Hourly Wind Speed Ms */
+            highest_hourly_wind_speed_ms: number | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1489,6 +1550,30 @@ export interface components {
             remaining_hours: number;
             /** Healthy */
             healthy: boolean;
+        };
+        /** MsmGridForecast */
+        MsmGridForecast: {
+            /** Times */
+            times: string[];
+            /** Latitude Step Deg */
+            latitude_step_deg: number;
+            /** Longitude Step Deg */
+            longitude_step_deg: number;
+            /** Points */
+            points: components["schemas"]["MsmGridPointForecast"][];
+        };
+        /** MsmGridPointForecast */
+        MsmGridPointForecast: {
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+            /** Wind Speed Ms */
+            wind_speed_ms: (number | null)[];
+            /** Wind Direction Deg */
+            wind_direction_deg: (number | null)[];
+            /** Precipitation Mm */
+            precipitation_mm: (number | null)[];
         };
         /** OverallDifficulty */
         OverallDifficulty: {
@@ -2228,6 +2313,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AmedasObservation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_weather_api_weather_get: {
+        parameters: {
+            query: {
+                latitude: number;
+                longitude: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GridPointToday"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_msm_grid_api_weather_msm_grid_get: {
+        parameters: {
+            query: {
+                min_lon: number;
+                min_lat: number;
+                max_lon: number;
+                max_lat: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MsmGridForecast"];
                 };
             };
             /** @description Validation Error */

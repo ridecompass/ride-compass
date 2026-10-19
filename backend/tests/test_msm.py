@@ -2,8 +2,8 @@
 双一次補間・風の成分から風速と風向。
 
 入口は`MsmGrid.from_bbox_and_shape`・`MsmGrid.window`と、窓の`lat_slice`/`lon_slice`で切り出した
-部分ブロックを渡す`MsmWindow.interpolate`、格子点の並びを作る`MsmGrid.block_covering`・`MsmGrid.nearest_points`と
-その`points_of`・`holds_nearest`・`values`、`wind_speed_and_direction`。格子はMSMの公表値（緯度0.05度・
+部分ブロックを渡す`MsmWindow.interpolate`、格子点の並びを作る`MsmGrid.block_covering`・`MsmGrid.block_overlapping`・`MsmGrid.nearest_points`と
+その`points_of`・`holds_nearest`・`values`・`thinned_points`、`wind_speed_and_direction`。格子はMSMの公表値（緯度0.05度・
 経度0.0625度、北緯22.4〜47.6度・東経120〜150度）で作る。
 
 ここで見ないもの:
@@ -196,3 +196,50 @@ def test_speed_and_the_direction_the_wind_comes_from_are_recovered_from_the_comp
     assert speeds[0] == pytest.approx(speed)
     difference = (directions[0] - direction + 180) % 360 - 180
     assert abs(difference) < 1e-6
+
+
+# --- 地図に描く格子点（間引き） ---
+
+
+def _grid_indices(latitudes, longitudes):
+    return np.rint((latitudes - GRID.lat_min) / GRID.d_lat).astype(int), np.rint((longitudes - GRID.lon_min) / GRID.d_lon).astype(int)
+
+
+@given(
+    _INNER_LATITUDES,
+    _INNER_LONGITUDES,
+    st.floats(min_value=0.0, max_value=3.0),
+    st.floats(min_value=0.0, max_value=3.0),
+    st.integers(min_value=1, max_value=2000),
+)
+def test_thinning_keeps_grid_points_at_a_common_stride_from_the_origin_within_the_limit(lat, lon, height, width, max_points):
+    """残す格子点は格子の原点から数えた同じ間隔おきなので、地図を少し動かしても同じ格子点が残る（矢印が跳ねない）。
+    間隔は上限に収まる最小の2の冪で、それより細かくすれば上限を超える。"""
+    block = GRID.block_covering(lat, lon, min(lat + height, MSM_BBOX[2]), min(lon + width, MSM_BBOX[3]))
+    thinned = block.thinned_points(max_points)
+    stride = thinned.stride
+    rows, cols = _grid_indices(*thinned.coordinates())
+    block_rows = np.arange(block.row0, block.row0 + block.rows)
+    block_cols = np.arange(block.col0, block.col0 + block.cols)
+
+    def kept(step):
+        return np.count_nonzero(block_rows % step == 0) * np.count_nonzero(block_cols % step == 0)
+
+    assert stride & (stride - 1) == 0
+    assert len(rows) == kept(stride) <= max_points
+    if stride > 1:
+        assert kept(stride // 2) > max_points
+    assert np.all(rows % stride == 0) and np.all(cols % stride == 0)
+    assert set(zip(rows.tolist(), cols.tolist())) <= {(r, c) for r in block_rows.tolist() for c in block_cols.tolist()}
+    assert thinned.step_deg == pytest.approx((stride * GRID.d_lat, stride * GRID.d_lon))
+
+
+def test_a_rectangle_partly_outside_the_grid_is_cut_to_the_grid_and_one_wholly_outside_is_refused():
+    """日本の端を表示すると、範囲の一部は格子の外に出る。外へ出た分だけを捨て、格子の中の格子点は描く。"""
+    inside = GRID.block_overlapping(47.0, 149.0, 48.0, 151.0)
+    latitudes, longitudes = inside.coordinates()
+
+    assert latitudes.max() == pytest.approx(MSM_BBOX[2]) and longitudes.max() == pytest.approx(MSM_BBOX[3])
+    assert latitudes.min() <= 47.0 and longitudes.min() <= 149.0
+    with pytest.raises(ValueError):
+        GRID.block_overlapping(48.0, 149.0, 49.0, 151.0)

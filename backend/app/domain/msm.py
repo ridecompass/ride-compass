@@ -76,6 +76,16 @@ class MsmGrid:
         col1 = min(math.ceil(_index_rounded((east - self.lon_min) / self.d_lon)), self.n_lon - 1)
         return MsmBlock(grid=self, row0=row0, col0=col0, rows=row1 - row0 + 1, cols=col1 - col0 + 1)
 
+    def block_overlapping(self, south: float, west: float, north: float, east: float) -> "MsmBlock":
+        """矩形のうち格子の範囲に入る部分を覆う格子点の並び（`block_covering`）。格子の範囲と重ならなければValueError。"""
+        lat_max = float(self.latitude_of(self.n_lat - 1))
+        lon_max = float(self.longitude_of(self.n_lon - 1))
+        south, west = max(south, self.lat_min), max(west, self.lon_min)
+        north, east = min(north, lat_max), min(east, lon_max)
+        if south > north or west > east:
+            raise ValueError("矩形がMSM格子の範囲と重なりません")
+        return self.block_covering(south, west, north, east)
+
     def nearest_points(self, latitudes: np.ndarray, longitudes: np.ndarray) -> "MsmGridPoints":
         """地点ごとの最寄りの格子点。"""
         if not self._contains(latitudes, longitudes):
@@ -184,6 +194,16 @@ class MsmBlock:
         """全格子点の（緯度, 経度）配列（点の番号の順）。"""
         return self.all_points().coordinates()
 
+    def thinned_points(self, max_points: int) -> "MsmThinnedPoints":
+        """格子の原点から数えて`stride`の倍数の行・列にある格子点（点の番号の順）。`stride`は、点の数が`max_points`以下に
+        収まる最小の2の冪。格子の原点から数えるので、矩形を少し動かしても、残る格子点は同じ格子点のままになる。"""
+        stride = 1
+        while _multiples_in(self.row0, self.rows, stride) * _multiples_in(self.col0, self.cols, stride) > max_points:
+            stride *= 2
+        rows = np.arange(-(-self.row0 // stride) * stride, self.row0 + self.rows, stride) - self.row0
+        cols = np.arange(-(-self.col0 // stride) * stride, self.col0 + self.cols, stride) - self.col0
+        return MsmThinnedPoints(block=self, points=(rows[:, None] * self.cols + cols[None, :]).ravel(), stride=stride)
+
     def _nearest_rows_cols(self, latitudes: np.ndarray, longitudes: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         i = np.rint((np.asarray(latitudes, dtype=float) - self.grid.latitude_of(self.row0)) / self.grid.d_lat)
         j = np.rint((np.asarray(longitudes, dtype=float) - self.grid.longitude_of(self.col0)) / self.grid.d_lon)
@@ -235,6 +255,24 @@ class MsmGridPoints:
         """部分ブロック（形状[緯度, 経度, 時刻]、`lat_slice`/`lon_slice`で切り出したもの）から、選んだ格子点ごとの
         時系列を格子点の値のまま取り出す。戻り値の形状は[点の数, 時刻数]。"""
         return block.reshape(self.block.size, block.shape[2])[self.points]
+
+
+def _multiples_in(start: int, count: int, stride: int) -> int:
+    """番号`start`から`count`個の並びの中にある、`stride`の倍数の番号の数。"""
+    return (start + count - 1) // stride - (start - 1) // stride
+
+
+@dataclass(frozen=True)
+class MsmThinnedPoints(MsmGridPoints):
+    """格子の行・列を`stride`おきに残した格子点（`MsmBlock.thinned_points`）。"""
+
+    stride: int
+
+    @property
+    def step_deg(self) -> tuple[float, float]:
+        """残した格子点どうしの（緯度, 経度）の間隔[度]。"""
+        grid = self.block.grid
+        return self.stride * grid.d_lat, self.stride * grid.d_lon
 
 
 def wind_speed_and_direction(u: np.ndarray, v: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

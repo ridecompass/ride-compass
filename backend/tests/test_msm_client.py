@@ -1,6 +1,6 @@
 """`infrastructure/msm_client.py`——気象庁MSMの予報を配信元と同期し、ローカルの`.om`ファイルから読む。
 
-確かめるのは公開の入口（`refresh`・`read_series`・`read_grid_points`・`read_grid_block`・
+確かめるのは公開の入口（`refresh`・`read_series`・`read_grid_points`・`read_grid_block`・`read_weather_grid`・
 `freshness`/`freshness_from_meta`/`warn_if_stale`）から
 見える振る舞いだけ。差し替えるのはプロセス境界だけで、網は本物の`httpx.AsyncClient`へ配信元の代役
 （`MockTransport`）を付け、ディスクは一時ディレクトリ、時計は固定する。何時間先まで同期し・読むかは
@@ -220,7 +220,8 @@ class TestReading:
 
         series = await msm_client.read_grid_points(*_points(SOUTH_WEST, (HALF_NORTH[0] + 0.001, HALF_NORTH[1])))
 
-        assert series.wind_u_ms.tolist() == [[2.0, 3.0], [102.0, 103.0]]
+        for values in (series.wind_u_ms, series.wind_v_ms, series.precipitation_mm, series.temperature_c):
+            assert values.tolist() == [[2.0, 3.0], [102.0, 103.0]]
         latitudes, longitudes = series.points.coordinates()
         assert latitudes.tolist() == pytest.approx([35.0, 35.05])
         assert longitudes.tolist() == pytest.approx([139.0, 139.0])
@@ -236,6 +237,20 @@ class TestReading:
         assert latitudes.tolist() == pytest.approx([35.01, 35.01, 35.06, 35.06])
         assert longitudes.tolist() == pytest.approx([139.01, 139.06, 139.01, 139.06])
         assert series.wind_u_ms[:, 0].tolist() == [2.0, 12.0, 102.0, 112.0]
+
+    async def test_the_map_grid_reads_wind_and_rain_at_every_other_grid_point_counted_from_the_origin(self, tmp_path, msm_dir):
+        """3×3の格子を4点までに間引くと、原点から2つおきの四隅が残る。格子の外へ出た範囲は捨てて読む。値は格子点の値のまま。"""
+        await _synced(tmp_path, msm_dir)
+        msm_dir.forecast_hours(1)
+
+        series = await msm_client.read_weather_grid(35.04, 138.9, 35.2, 139.06, 4)
+
+        latitudes, longitudes = series.points.coordinates()
+        assert latitudes.tolist() == pytest.approx([35.0, 35.0, 35.1, 35.1])
+        assert longitudes.tolist() == pytest.approx([139.0, 139.1, 139.0, 139.1])
+        assert series.points.step_deg == pytest.approx((0.1, 0.1))
+        for values in (series.wind_u_ms, series.wind_v_ms, series.precipitation_mm):
+            assert values.tolist() == [[2.0], [22.0], [202.0], [222.0]]
 
 
 # --- 鮮度 ---

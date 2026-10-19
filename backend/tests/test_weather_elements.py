@@ -147,11 +147,11 @@ def test_配信元から取る段はすべて時刻一覧のファイルを持�
             assert delivery.target_times_paths, f"{element.group}/{element.source} の {delivery.element_id}"
 
 
-def test_どの要素も配信元から取る段を持つ() -> None:
-    """段が無いと画面はその要素のコマを作れない（段の読み方は宣言が持ち、宣言が無ければ上のテストの
-    `weather_element_deliveries`が落ちる）。"""
+def test_どの要素も配信元から取る段かMSMの格子点で読む値のどちらか1つを持つ() -> None:
+    """どちらも無いと画面はその要素のコマを作れず、両方あるとどちらから描くか決まらない（配信元の段の読み方は宣言が持ち、
+    宣言が無ければ上のテストの`weather_element_deliveries`が落ちる）。"""
     for element in WEATHER_ELEMENTS:
-        assert element.jma_elements, f"{element.group}/{element.source} は配信元から取る段を持たない"
+        assert bool(element.jma_elements) != (element.grid_value is not None), f"{element.group}/{element.source}"
 
 
 def test_同じ名前付きソースの気象の要素は同じコマの規則を持つ() -> None:

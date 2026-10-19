@@ -13,7 +13,7 @@
 片方だけを別の文書へ移すと同じ仕組みの説明が二手に分かれる。標高そのものの取得（DEM→
 Edge属性、ルート評価の入力）は[elevation.md](elevation.md)が持つ。
 
-**モデルの計算値と実測の住み分け**: 先の時刻の値（ルート評価と、ルートを出す前の地図の風が使う時刻別の風）は
+**モデルの計算値と実測の住み分け**: 先の時刻の値（ルート評価と、ルートを出す前の地図の風が使う時刻別の風・地図に描く格子点の風と降水）は
 気象庁MSMの前処理済みファイルをローカルへ同期して読む。実測（現在の気温・風速、降水
 ナウキャスト）と防災情報（警報・注意報・洪水・キキクル）は気象庁の公開APIから取る。
 MSMは数値予報モデルの出力で観測値・公式発表の代わりにはならないため、両者は統合しない。
@@ -27,6 +27,7 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 1. **バッジ系**（警報・WBGT・洪水予報・アメダス）: 要求が送った地点1点に対する現在の警戒状態を
    返す。取得に失敗して分からないときは502で、空の応答（警報なし等）とは分ける。
 2. **地図レイヤー系**（JMAタイル系ナウキャスト）: 広域のタイルをまとめて配信する。
+3. **地図の格子点**（MSM）: 表示範囲の中の格子点ごとの時別の風と降水を、格子点の値のまま1回の応答で返す（後述「地図に描く格子点」）。
 
 **対象ファイル**
 
@@ -81,6 +82,8 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 | `GET /api/weather/wbgt` | 環境省WBGT | 502 | 30 |
 | `GET /api/weather/flood-forecast` | 河川洪水予報 | 502 | 30 |
 | `GET /api/weather/amedas` | 気象庁アメダス実測値（Redis読み取り専用）と、天気コードの晴れ・くもりに推計気象分布（天気） | 502 | 30 |
+| `GET /api/weather` | 気象庁MSMの、地点の最寄りの格子点の今日の値（ローカルの同期ファイル） | 502 | 30 |
+| `GET /api/weather/msm-grid` | 気象庁MSMの格子点の風・降水（ローカルの同期ファイル）。範囲は`min_lon`・`min_lat`・`max_lon`・`max_lat` | 502（範囲が不正・広すぎれば400） | 30 |
 
 **警報・WBGT・洪水予報の空の応答は「出ていない」だけを表す**（警報なし・予報なし・暑さ指数の段なし）。
 地点を区域・情報提供地点へ解決できない、配信元から取れない等で出ているかが分からないときは502で返す
@@ -90,7 +93,7 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 警報・予報を持たない・暑さ指数の提供期間の外で今の値が得られない（取得の失敗も含む）・値が「ほぼ安全」の段。
 
 応答の`Cache-Control`は`api/cache_policy.py`の対応表が持つ（このモジュールのルーターは
-ヘッダを書かない）。警報・WBGT・洪水予報・アメダスは`VOLATILE`（2分）。502は2xxでは
+ヘッダを書かない）。警報・WBGT・洪水予報・アメダスは`VOLATILE`（2分）、MSMの格子点は`SHORT`（5分。配信元の更新は数時間おき）。502は2xxでは
 ないためミドルウェアの対象外になる。
 
 ### JMAタイル系の共通プロキシ（`api/routers/jma_tile.py`）
@@ -298,6 +301,8 @@ DI工場（`api/dependencies.py`）がプロセスに1つ持ってクライア�
 |---|---|---|
 | `get_departure_wind(point)` | `RoadGraphEngine`の出発時点の風（時別の系列が無いとき全区間へ一様に使う。`domain/wind.py: DepartureWind`）。画面に値を出さない計算にだけ使う | 時系列の先頭（現在時刻の正時）。出発地へ補間し、風速・風向を小数1桁に丸める |
 | `get_wind_forecast_lattice(bbox)` | `RoadGraphEngine`の探索前コスト合成（Edgeごとの通過予定時刻・最寄りの格子点の風）と、ルートを出す前の地図の風（`WindWayService`） | 範囲を覆うMSMの格子点ごとの時別風向・風速の系列（JST、格子点の値のまま）。格子点はMSMの格子そのもの（`domain/msm.py: MsmGrid.block_covering`）で、どの範囲から引いても同じ地点は同じ格子点に当たる。時刻が2つ未満ならNone |
+| `get_msm_grid(bbox)` | 地図の風の矢印と降水の升目（`GET /api/weather/msm-grid`） | 現在時刻の正時から`msm_forecast_hours`時間ぶん（JST）。範囲の中の格子点を間引き、風速・風向・降水量を格子点の値のまま丸めて返す。格子の欠損はNone。読めなければNone |
+| `get_grid_point_today(point)` | 地点の最寄りの格子点の今日の値（`GET /api/weather`、`domain/weather.py: grid_point_today`） | 現在時刻の正時から、その日（JST）の24時まで。1時間ごとの気温・降水量・風速・風向を格子点の値のまま丸めて返し、格子点の位置と、地点から格子点までの距離（km）・方位を添える。最も高い・低い値は、並べた1時間ごとの値から選んだものとして`highest_hourly_*`・`lowest_hourly_*`の名前で返す（日の最高・最低気温ではない）。格子の欠損はNone。読めなければNone |
 | `get_station_rain_materials(now)` | ルートを出す前の地図の雨（`RainWayService`）と`RoadGraphEngine`の気象の段 | 今の観測（アメダスの1時間雨量の履歴。`jma_amedas_service.py: load_station_rain_materials`）。求めた値は実体の中に5分持つので、DI工場（`api/dependencies.py: get_weather_service`）は実体をプロセスに1つ持つ |
 
 ## その他のサービス
@@ -499,8 +504,8 @@ MSM（`.om`形式、CC-BY-4.0）をローカルへ同期して読む。予報を
 | 項目 | 内容 |
 |---|---|
 | 配信元 | `settings.msm_base_url`（既定はopenmeteo.s3.amazonaws.comのjma_msm） |
-| 同期対象 | `msm_client.py: FORECAST_VARIABLES`（消費するものだけ。例: 風の東西成分・南北成分）の、現在時刻から`msm_forecast_hours`先までを覆うチャンク |
-| 読み出しの戻り値 | 補間して地点の値を読む`read_series`は`msm_client.py: MsmSeries`、格子点の値のまま読む`read_grid_points`（地点ごとの最寄りの格子点）・`read_grid_block`（矩形を覆う格子点の全部）は`msm_client.py: MsmGridPointSeries`（読んだ格子点の番号・位置を持つ）。どれも時刻列（タイムゾーン無しのJSTの`datetime`）と、項目ごとの[地点数, 時刻数]の配列を持つ。配信元の変数名は持たない——変数名と項目の対応は`FORECAST_VARIABLES`だけが持ち、サービスは項目で読む |
+| 同期対象 | `msm_client.py: FORECAST_VARIABLES`（消費するものだけ。例: 風の東西成分・南北成分・1時間降水量・気温）の、現在時刻から`msm_forecast_hours`先までを覆うチャンク |
+| 読み出しの戻り値 | 補間して地点の値を読む`read_series`は`msm_client.py: MsmSeries`、格子点の値のまま読む`read_grid_points`（地点ごとの最寄りの格子点。`FORECAST_VARIABLES`の全部を読む）は`msm_client.py: MsmGridPointWeatherSeries`、`read_grid_block`（矩形を覆う格子点の全部）は`msm_client.py: MsmGridPointSeries`（どちらも読んだ格子点の番号・位置を持つ）、地図に描く格子点を読む`read_weather_grid`は`msm_client.py: MsmWeatherGridSeries`（風に加えて降水量と、間引いた格子点の間隔を持つ）。風だけを使う読み出しは降水量を読まない。どれも時刻列（タイムゾーン無しのJSTの`datetime`）と、項目ごとの[地点数, 時刻数]の配列を持つ。配信元の変数名は持たない——変数名と項目の対応は`FORECAST_VARIABLES`だけが持ち、サービスは項目で読む |
 | チャンク | 変数ごとに日本全域・`chunk_time_length`時間ぶんを1ファイルにまとめたもの。1ファイル十数MB |
 | 保存先 | `backend/data/msm/`（本番はコンテナへマウントされるホスト側ディレクトリのため、デプロイをまたいで残る） |
 | 更新の検出 | ETagによる条件付きGET。内容が変わっていなければ304で転送自体が起きない |
@@ -541,6 +546,17 @@ MSM（`.om`形式、CC-BY-4.0）をローカルへ同期して読む。予報を
 切り出す範囲と選んだ点を1つの`MsmGridPoints`が持つ。
 風速・風向は東西/南北成分から求め
 （`wind_speed_and_direction`）、風向は「吹いてくる方位」で返す。
+
+**地図に描く格子点**（`GET /api/weather/msm-grid`、`domain/msm_grid.py`）: 表示範囲のうち格子の範囲に入る部分を覆う格子点
+（`MsmGrid.block_overlapping`。日本の端を表示すると範囲の一部は格子の外に出るので、外の分だけを捨てる）を、点の数が
+`domain/msm_grid.py: MSM_GRID_MAX_POINTS`以下になるよう間引いて返す。間引きは格子の原点から数えて行・列が同じ間隔の倍数の
+格子点だけを残し（`MsmBlock.thinned_points`）、間隔は上限に収まる最小の2の冪にする。矩形の端から数えると、地図を少し動かす
+だけで残る格子点が入れ替わり、同じ場所の矢印が跳ねる。応答は残した格子点どうしの間隔（`latitude_step_deg`・`longitude_step_deg`）を
+持ち、受け取る側はこれで格子点を中心にした升目を作る。値は間引いても格子点の値のままで、まとめたり平均したりしない。
+時刻は応答の`times`の1本だけで、格子点ごとの配列の並びはこれと揃う。読む量は間引く前の格子点の数に比例するので、
+広すぎる範囲（`MSM_GRID_MAX_AREA_SQ_DEG`を超える面積）は読まずに400で断る。画面がこの口を呼び始めるズームは
+`MSM_GRID_MIN_ZOOM`で、生成物`mapDisplay.ts`の`layerDataSources`の`msmGrid`に載る。どの要素がこの口の値で描くかは
+`domain/weather_elements.py: WeatherElement.grid_value`が宣言する（配信元から取る段を持つ要素は持たない）。
 
 **読めないときの振る舞い**: 同期が済んでいない・配信元の予報終端が現在時刻へ追いついた・置き場のファイルが
 読めない場合は`MsmUnavailableError`（サービスはこの1つだけを受ける）。ルート評価の風

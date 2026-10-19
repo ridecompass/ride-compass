@@ -4,7 +4,8 @@
  * 見ること: 地図を押したときの意味は効いているパネルで決まり（「ルート設定」の条件タブは選んでいる地点を置く、
  * 「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
  * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、ピンを押しても消えずルート設定ではその地点を選ぶこと、
- * 目的地の行で探して置いた地点と、名前のある点を押して置いた地点が地図に立ち、行にその名前が出ること、
+ * 目的地の行で探して置いた地点と、名前のある点を押して置いた地点が地図に立ち、行にその名前が出ること、周回の間は置いた目的地を
+ * 地図にも行にも出さず地図を押しても目的地にしないで、外すと戻すこと、
  * 名前を付けて保存した地点を打つ欄から選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置くこと、区間を選んでいる間は
  * 地図にその区間の範囲の縁取りと選んだ地点の印が出ること。
  *
@@ -174,7 +175,7 @@ describe("地図で扱えること", () => {
     } as const;
     onBackend("GET", "/api/place-search", () => Response.json({ candidates: [candidate] }));
     const { user } = renderHome();
-    await user.click(screen.getByRole("button", { name: "目的地: 出発地[周回]" }));
+    await selectDestination(user);
     const searchBox = screen.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
 
     await user.type(searchBox, "浅草寺{Enter}");
@@ -182,6 +183,23 @@ describe("地図で扱えること", () => {
 
     expect(marksAt(candidate)).toHaveLength(1);
     expect(screen.getByRole("button", { name: `目的地: ${candidate.name}` })).toBeInTheDocument();
+  });
+
+  it("周回にすると置いた目的地を地図にも地点の並びにも出さず、地図を押しても目的地にせず、周回を外すとその目的地が戻る", async () => {
+    const { user } = renderHome();
+    await selectDestination(user);
+    clickMap(DESTINATION);
+
+    await user.click(screen.getByRole("button", { name: "周回", pressed: false }));
+    expect(marksAt(DESTINATION)).toEqual([]);
+    expect(screen.getByText("終点: 現在地[周回]")).toBeInTheDocument();
+    clickMap(ELSEWHERE);
+    expect(screen.getByText("終点: 地図で選んだ地点[周回]")).toBeInTheDocument();
+    expect(marksAt(DESTINATION)).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: "周回", pressed: true }));
+    expect(marksAt(DESTINATION)).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "目的地: 地図で選んだ地点" })).toBeInTheDocument();
   });
 
   it("名前を付けて保存した地点は、目的地を消したあとも打つ欄を押して選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置く", async () => {
