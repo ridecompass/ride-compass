@@ -676,6 +676,8 @@ export interface components {
             material_breakdown: components["schemas"]["AxisMaterialBreakdownEntry"][];
             /** Dynamic Way Value Conditions */
             dynamic_way_value_conditions: ("at" | "bearing_deg" | "speed_kmh")[];
+            /** Dynamic Way Value Material Conditions */
+            dynamic_way_value_material_conditions: ("at" | "bearing_deg" | "speed_kmh")[];
             /** Dynamic Way Value Undetermined By Bearing */
             dynamic_way_value_undetermined_by_bearing: boolean;
             way_value_formula: components["schemas"]["WayValueFormula"] | null;
@@ -2408,6 +2410,8 @@ export interface operations {
         parameters: {
             query?: {
                 at?: string | null;
+                bearing_deg?: number | null;
+                speed_kmh?: number | null;
             };
             header?: never;
             path: {

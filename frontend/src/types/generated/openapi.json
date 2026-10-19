@@ -708,6 +708,42 @@
               ],
               "title": "At"
             }
+          },
+          {
+            "name": "bearing_deg",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "exclusiveMaximum": 360
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bearing Deg"
+            }
+          },
+          {
+            "name": "speed_kmh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 60.0,
+                  "minimum": 5.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Speed Kmh"
+            }
           }
         ],
         "responses": {
@@ -2084,6 +2120,18 @@
             "type": "array",
             "title": "Dynamic Way Value Conditions"
           },
+          "dynamic_way_value_material_conditions": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "at",
+                "bearing_deg",
+                "speed_kmh"
+              ]
+            },
+            "type": "array",
+            "title": "Dynamic Way Value Material Conditions"
+          },
           "dynamic_way_value_undetermined_by_bearing": {
             "type": "boolean",
             "title": "Dynamic Way Value Undetermined By Bearing"
@@ -2121,6 +2169,7 @@
           "raw_value_units",
           "material_breakdown",
           "dynamic_way_value_conditions",
+          "dynamic_way_value_material_conditions",
           "dynamic_way_value_undetermined_by_bearing",
           "way_value_formula",
           "time_scope"

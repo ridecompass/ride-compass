@@ -325,7 +325,7 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 時刻依存）が、「向き」は1つの値（走る向き）を風・勾配の両方が使う:
 
 ```
-走る向き（地図の上の向きを丸めずに[0, 360)へ寄せた値。走行中は実際に走る向き。`features/map/view/useMapView.ts: wayConditions`）。出発時刻は`features/conditions/useDepartureTime.ts: at`、想定速度は`useRideConditions.ts: speedKmh`（いずれも地図右上の条件アイコン列`features/conditions/RideConditionBar/RideConditionBar.tsx`で操作し、生成リクエストの`start_time`/`assumed_speed_kmh`と地図の式の条件`speed_kmh`へ同じ値が乗る）
+走る向き（地図の上の向きを[0, 360)の段に丸めた値。走行中は実際に走る向き。`features/map/view/useMapView.ts: wayConditions`）。出発時刻は`features/conditions/useDepartureTime.ts: at`、想定速度は`useRideConditions.ts: speedKmh`（いずれも地図右上の条件アイコン列`features/conditions/RideConditionBar/RideConditionBar.tsx`で操作し、生成リクエストの`start_time`/`assumed_speed_kmh`と地図の式の条件`speed_kmh`へ同じ値が乗る）
   │
   ├─→ 風:   [時刻]出発時刻（useDepartureTime由来）
   │           └─→ 評価軸（線）: レンズがその軸を指している間だけ（下記の共通経路）
@@ -335,9 +335,9 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 
   評価軸（線）の共通経路（軸ごとの分岐を持たない）:
     塗っている軸 paintedAxisId = lens（ルート確定後は周囲も塗る設定の間だけ。それ以外はnull）
-    useWayMaterials([塗っている軸のうち周りの道を塗れる軸], 表示範囲, 出発時刻)
-      （useMapViewの中。時刻は、軸カタログのdynamic_way_value_conditionsがatを含む軸のリクエストにだけ載る）
-    走る条件 {bearing_deg: 走行方位, speed_kmh: 想定速度} → 地図全体のglobal-state（変えても材料を取り直さない）
+    useWayMaterials([塗っている軸のうち周りの道を塗れる軸], 表示範囲, 出発時刻と走る条件)
+      （useMapViewの中。走る条件は、軸カタログのdynamic_way_value_material_conditionsにある名前だけがその軸のリクエストに載る）
+    走る条件 {bearing_deg: 走行方位, speed_kmh: 想定速度} → 地図全体のglobal-state（リクエストに載せない軸は、変えても材料を取り直さない）
     軸のレイヤーを出すか = 軸id === paintedAxisId（地図側のsceneが導く）
 ```
 
@@ -347,8 +347,8 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 選択が担う。
 
 **地図の向き**: 地図の上の向きが、向きで値の変わる評価（風・勾配）で周りの道を塗るときと、道の評価を見るときの走る向きになる。
-走る向きは地図の上の向きを丸めずに[0, 360)へ寄せた値で、向きを変えても道ごとの材料は取り直さず、地図が式で値を求め直す
-（[地図: 軸・ルート色分け](map-axis-coloring.md)「評価軸の線」）。走行中は地図の向きではなく、実際に走る向き（下の「走行モード」の
+走る向きは地図の上の向きを[0, 360)の段に丸めた値で、向きを材料の要求へ載せない軸（勾配）は道ごとの材料を取り直さず、地図が式で
+値を求め直す。載せる軸（風）は段が変わったときだけ取り直す（[地図: 軸・ルート色分け](map-axis-coloring.md)「評価軸の線」）。走行中は地図の向きではなく、実際に走る向き（下の「走行モード」の
 `useRideWayConditions.ts`）で塗る。
 地図右上の方位磁針（`MapNavigationControl`）は針が地図の北を指し、押すと地図を回すダイヤルを開く。ダイヤルの輪は地図と一緒に回り、
 なぞると地図が回り、真ん中の針を押すと北が上に戻る。ダイヤルの中には方位の呼び名と度だけを出し、説明の文は(i)の奥に置く。
@@ -448,7 +448,7 @@ MapLibreの`GeolocateControl`を使わないのは、地図を進む向きへ回
   その時の今の位置で取り直す（範囲の無い予報はこれだけで動く）。警報・注意報等は、出ているときだけ走りの帯に最も重い段の色のアイコンを出し、押すと中身を開く
   （常設ヘッダーと同じ`WarningBadgeList`）。帯の風の矢印は、地図が今当てている向き（地図が範囲と倍率と一緒に知らせる`MapViewport`の`bearing`）の分だけ戻して回す——進む向きを上にしていなくても、指で回した地図の向きに合う（常設ヘッダーの天気欄の矢印も同じ基準。`lib/cardinalLabel.ts: downwindOnMapDeg`）。
 - **走行中の道の色**: 向き・速さで変わる道の値（勾配・風等）は、走行中は手で決めた走行方位と想定速度でなく、実際の進む向きと速さで取る
-  （`features/ride/useRideWayConditions.ts`。今は実）。向きは丸めずに使い、位置が届くたびに道ごとの材料は取り直さず、地図の式の条件だけを置き直す。
+  （`features/ride/useRideWayConditions.ts`。今は実）。向き・速さは段に丸めて使い、位置が届いても段が変わらなければ道ごとの材料は取り直さない。
   止まっている間の速さは想定速度の範囲の下限へ寄せる。地図の道を押したときの窓も同じ条件で取る。
 - **残りと到着予想**: 残りは、ルートの上の現在地から終わりまでの道のり。到着予想は、最後に位置を受けた時刻へ、選んだ候補の
   計画の残り時間を足す（`rideRemaining.ts`）。計画の残り時間は、区間の到達予想（区間へ入る時刻）と所要時間を、ルートの上の距離で読んだ

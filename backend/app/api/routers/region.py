@@ -14,7 +14,7 @@ from app.api.rate_limit import enforce_rate_limit
 from app.api.routers._tile_http import check_tile_rate_limit, region_tile_semaphore, tile_response, validate_tile_coords
 from app.api.routers.routes import RoutePreferenceWeights
 from app.config import settings
-from app.domain.dynamic_way_values import WayValueQuery
+from app.domain.dynamic_way_values import MissingConditions, WayValueQuery
 from app.domain.axis_inspector import AxisInspectorResult
 from app.domain.geo import BearingDeg
 from app.domain.route_request import AssumedSpeedKmh
@@ -107,17 +107,20 @@ async def region_way_materials(
     y: TileIndex,
     request: Request,
     at: datetime | None = None,
+    bearing_deg: BearingDeg | None = None,
+    speed_kmh: AssumedSpeedKmh | None = None,
     lens: AxisWayValueLens | None = Depends(get_dedicated_way_value_service),
 ) -> dict[str, dict[str, float]]:
-    """ルート未確定時の地図が、公開軸の値を走行方位・想定速度から自分で求めるための、指定タイル内のフィーチャーごとの
-    道ごとの材料（材料の名前→値。値の無い材料は載せない）。値は軸カタログの木（`way_value_formula`）へ、走る条件
-    （`bearing_deg`・`speed_kmh`）とともに入れると、探索と同じ評価の値（区間インスペクタの得点と同じ値）になる
-    （`services/dedicated_way_values.py: tile_axis_way_materials`）。ルート確定後はルート自身の`axis_difficulties`
-    （`RouteSegmentDetail`）で塗るため、この口を呼ばない。
+    """ルート未確定時の地図が公開軸の値を求めるための、指定タイル内のフィーチャーごとの道ごとの材料（材料の名前→値。
+    値の無い材料は載せない）。値は軸カタログの木（`way_value_formula`）へ、木が読む走る条件とともに入れると、探索と同じ
+    評価の値（区間インスペクタの得点と同じ値）になる（`services/dedicated_way_values.py: tile_axis_way_materials`）。
+    ルート確定後はルート自身の`axis_difficulties`（`RouteSegmentDetail`）で塗るため、この口を呼ばない。
 
     パスパラメータは**軸id**（`axis_definitions.axis_id`）で、材料id（`wind_drag_ratio`等）とは別の名前空間である。
-    応答は走行方位・想定速度に依らず、受け取らない。時刻（`at`）は時刻に依る材料（風）の時刻で、省略すると現在時刻
-    [Asia/Tokyo]。公開軸でないaxis_idと、木の無い軸（軸カタログの`way_value_formula`がnull）は404。
+    受け取る条件（`at`・`bearing_deg`・`speed_kmh`）は軸カタログの`dynamic_way_value_material_conditions`の名前だけを
+    読み、ほかは応答に効かない。予報の値そのものを葉に持つ軸（風）は、葉を返さずに受け取った条件で値まで求めて返す
+    ——その軸では向き・速さも要り、欠けると422。時刻を省くと現在時刻[Asia/Tokyo]。公開軸でないaxis_idと、木の無い軸
+    （軸カタログの`way_value_formula`がnull）は404。
 
     静的な路面タイル（`/api/region/road-surface-tiles`、MVT）とは別経路——受け取る側は同じz/x/yについて両方を取り、
     フィーチャーの鍵で突き合わせて重ねる。タイルの材料と勾配の道ごとの材料はタイル単位でディスクへ持つため、パン・
@@ -129,10 +132,13 @@ async def region_way_materials(
         raise HTTPException(status_code=404, detail="公開している軸ではありません。")
     check_tile_rate_limit(request, f"{axis_id}-way-materials")
     validate_tile_coords(z, x, y)
+    query = WayValueQuery(at=at, bearing_deg=bearing_deg, speed_kmh=speed_kmh)
     async with region_tile_semaphore:
-        materials = await lens.way_materials(z, x, y, at)
+        materials = await lens.way_materials(z, x, y, query)
     if materials is None:
         raise HTTPException(status_code=404, detail="この軸は道ごとの材料を配りません。")
+    if isinstance(materials, MissingConditions):
+        raise HTTPException(status_code=422, detail=f"この軸には{'・'.join(materials.names)}が必須です。")
     return materials
 
 

@@ -1,4 +1,4 @@
-import type { components } from "@/types/generated/api";
+import type { components, paths } from "@/types/generated/api";
 import type { RoutePreferenceWeights } from "@/types/route";
 import { apiPath } from "@/lib/apiPath";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
@@ -133,17 +133,22 @@ interface WayMaterialsResult {
   error: boolean;
 }
 
+/** 道ごとの材料の要求へ載せる走る条件（軸カタログの`dynamic_way_value_material_conditions`の名前だけ）。 */
+export type WayMaterialsQuery = NonNullable<
+  paths["/api/region/way-materials/{axis_id}/{z}/{x}/{y}"]["get"]["parameters"]["query"]
+>;
+
 /** 路面タイルと同じz/x/yの中の道ごとの材料。失敗しても例外にせず`error: true`を返す（色分けは補助の機能なので、
- * 道路や他のレイヤーを巻き込んで止めない。失敗したことは利用者へ示せるよう返す）。時刻は、時刻に依る材料を持つ軸
- * だけを呼ぶ側が渡す。走行方位・想定速度は材料に効かないので送らない。 */
+ * 道路や他のレイヤーを巻き込んで止めない。失敗したことは利用者へ示せるよう返す）。`query`は、軸が要求へ載せると
+ * 宣言した条件だけを呼ぶ側が渡す。 */
 export async function fetchWayMaterials(
   axisId: string,
   z: number,
   x: number,
   y: number,
-  at: Date | undefined,
+  query: WayMaterialsQuery,
 ): Promise<WayMaterialsResult> {
-  const params = { path: { axis_id: axisId, z, x, y }, query: { at: at?.toISOString() } };
+  const params = { path: { axis_id: axisId, z, x, y }, query };
   try {
     const materials = await requestApi(
       (init) => backendApi.GET("/api/region/way-materials/{axis_id}/{z}/{x}/{y}", { params, ...init }),

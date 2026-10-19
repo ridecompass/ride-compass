@@ -7,7 +7,7 @@
 // 再デプロイなしに地図のレイヤーとして現れる。
 
 import { mapPaintDeclarationOf, type MapPaintDeclaration } from "./valueScale";
-import { catalogAxisFromEntry, type CatalogAxis } from "@/lib/catalogAxis";
+import { catalogAxisFromEntry, type CatalogAxis, type WayValueCondition } from "@/lib/catalogAxis";
 import type { components } from "@/types/generated/api";
 import type { AxisCatalogEntry } from "@/types/route";
 
@@ -23,6 +23,8 @@ export interface DedicatedWayValueAxis extends CatalogAxis {
   display: MapPaintDeclaration;
   /** 道の値を求める式の木。null の軸は、ルートの無い間の周りの道を塗れない（ルートの線は塗る）。 */
   wayValueFormula: components["schemas"]["WayValueFormula"] | null;
+  /** `wayValueConditions`のうち、道ごとの材料の要求へ載せるもの。ほかは式の木が読む。 */
+  wayMaterialConditions: readonly WayValueCondition[];
 }
 
 export function dedicatedWayValueAxesFromCatalogAxes(axes: readonly AxisCatalogEntry[]): DedicatedWayValueAxis[] {
@@ -33,6 +35,7 @@ export function dedicatedWayValueAxesFromCatalogAxes(axes: readonly AxisCatalogE
       undeterminedByBearing: axis.dynamic_way_value_undetermined_by_bearing,
       display: mapPaintDeclarationOf(axis.map_paint),
       wayValueFormula: axis.way_value_formula,
+      wayMaterialConditions: axis.dynamic_way_value_material_conditions,
     };
   });
 }

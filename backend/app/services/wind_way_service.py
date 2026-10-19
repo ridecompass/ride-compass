@@ -53,7 +53,8 @@ class WindWayService:
 
     @classmethod
     def material_formula(cls, material_id: str) -> ServedMaterialFormula:
-        return ServedMaterialFormula(WIND_DRAG_RATIO_WAY_FORMULA)
+        # 葉は予報の風速・風向そのもので、道ごとの地点の予報として外へ出せない。
+        return ServedMaterialFormula(WIND_DRAG_RATIO_WAY_FORMULA, withholds_leaves=True)
 
     async def get_way_materials(self, z: int, x: int, y: int, at: datetime | None) -> dict[str, dict[str, float]]:
         """指定タイル内のフィーチャーごとの、時刻`at`（省略すると今）の風速（m/s）と風向（度）。
