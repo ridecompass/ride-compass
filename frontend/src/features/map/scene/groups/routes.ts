@@ -1,4 +1,4 @@
-/** ルート（候補の参考線・選択中候補・区間の色分け・乗り換えの帯・合成ルート・
+/** ルート（選んだ区間の範囲の縁取り・候補の参考線・選択中候補・区間の色分け・乗り換えの帯・合成ルート・
  * 進行方向の矢印）。
  *
  * **重なりはこのファイルの宣言の並びだけが決める**（背面→前面）。押したときに拾う対象は
@@ -59,6 +59,8 @@ export type RouteState = {
   readonly hiddenBandFilter?: FilterSpecification;
   readonly spliceBands: readonly Shape[];
   readonly composite: Shape | null;
+  /** 選んだ地点を含む区間の形。選んでいなければnull。 */
+  readonly selectedSection: RoutePath | null;
 };
 
 const SOURCE = {
@@ -67,6 +69,7 @@ const SOURCE = {
   segments: sceneSourceId("route-segments"),
   spliceBands: sceneSourceId("route-splice-bands"),
   composite: sceneSourceId("route-composite"),
+  selectedSection: sceneSourceId("route-selected-section"),
 } as const;
 
 function line(path: RoutePath, properties: Readonly<Record<string, unknown>> = {}): Feature<LineString> {
@@ -148,6 +151,11 @@ export const routeGroup = declareGroup<RouteState>((state) => {
       spec: { type: "geojson" },
       data: collection(state.composite === null ? [] : [line(state.composite.path, state.composite.properties)]),
     },
+    {
+      id: SOURCE.selectedSection,
+      spec: { type: "geojson" },
+      data: collection(state.selectedSection === null ? [] : [line(state.selectedSection)]),
+    },
   ];
 
   const withBandFilter = (entry: SceneLayerEntry): SceneLayerEntry =>
@@ -155,6 +163,21 @@ export const routeGroup = declareGroup<RouteState>((state) => {
 
   // 背面から前面。
   const layers: readonly SceneLayerEntry[] = [
+    // 選んだ区間の範囲は、どのルートの線より後ろに太く敷き、線の外側へはみ出た所で示す——線の上に重ねると、区間の色分けを隠す。
+    {
+      role: "selectedSection",
+      tier: "route",
+      source: SOURCE.selectedSection,
+      type: "line",
+      visible: state.visible && state.selectedSection !== null,
+      layout: ROUND_CAP,
+      paint: {
+        "line-color": palette.semantic.selected_section,
+        "line-width": ROUTE.lineWidthsPx.selectedSection,
+        "line-opacity": ROUTE.opacities.selectedSection,
+        "line-offset": ROUTE_OFFSET_PX,
+      },
+    },
     {
       role: "selectedHalo",
       tier: "route",

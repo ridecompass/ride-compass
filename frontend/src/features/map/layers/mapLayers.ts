@@ -11,6 +11,7 @@ import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { TILE_VERSION_GATED_SOURCES } from "@/lib/mapDisplay/tileVersionGated";
 import { LANDCOVER_PAINTED_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { PRECIPITATION_INTENSITY_LEVELS } from "./precipitationNowcast";
+import { WIND_SPEED_LEGEND_LEVELS } from "./windLayer";
 import type { MapAxisCatalog } from "@/features/map/mapAxisCatalog";
 import { axisNamesInText, type CatalogAxis } from "@/lib/catalogAxis";
 import { DISASTER_ELEMENTS } from "@/features/map/scene/groups/weather";
@@ -104,6 +105,13 @@ const READ_ONLY_LEGENDS: Partial<Record<StaticMapLayerId, readonly ReadOnlyLegen
           color: weatherScales.linear_rainband_outline_color,
         },
       ],
+    },
+  ],
+  // 道路の色分け（向かい風・追い風）と別の配色なので、凡例は「矢印[風速]」と明示する。
+  windVector: [
+    {
+      label: "矢印[風速]",
+      legend: WIND_SPEED_LEGEND_LEVELS,
     },
   ],
   // 配信元が色を焼き込んだ画像なので絞り込めない。

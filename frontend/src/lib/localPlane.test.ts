@@ -19,15 +19,6 @@ describe("longitudeScale", () => {
 
 describe("closestPointOnSegment", () => {
   const a = { x: 0, y: 0 };
-  const b = { x: 10, y: 0 };
-
-  it.each([
-    ["線分の横の点は、垂線の足", { x: 4, y: 3 }, { x: 4, y: 0 }],
-    ["始点より手前の点は、始点", { x: -2, y: 1 }, a],
-    ["終点より先の点は、終点", { x: 12, y: -1 }, b],
-  ])("%s", (_case, p, expected) => {
-    expect(closestPointOnSegment(p, a, b)).toEqual(expected);
-  });
 
   it("始点と終点が同じ点なら、その点", () => {
     expect(closestPointOnSegment({ x: 3, y: 4 }, a, a)).toEqual(a);

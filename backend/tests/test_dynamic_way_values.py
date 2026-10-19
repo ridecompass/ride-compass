@@ -1,6 +1,7 @@
 """`domain/dynamic_way_values.py`——ルートを出す前の地図が塗る値を、フィーチャーの材料と配信のサービスが配る値から
 求めること（`paint_feature_values`）と、道1本のフィーチャーの値を区間から畳むこと（`paint_folded_feature_values`）。
-地図へ配る軸の木（`axis_way_value_formula`）を道ごとの材料（`axis_way_materials`）で評価した値が、その塗りと合うこと。
+地図へ配る軸の木（`axis_way_value_formula`・`map_way_value_formula`）を道ごとの材料（`axis_way_materials`・
+`map_way_materials`）で評価した値が、その塗りと合うこと。
 
 材料カタログは本番の正本を読まず、性質だけを持つ架空の材料を使う（塗る値の種類は`domain/map_paint.py`を、区間ごとに
 値が違いうるか・密度の軸かは`domain/material_catalog.py`を通るので、両方の名前空間を差し替える）。
@@ -36,6 +37,8 @@ from app.domain.dynamic_way_values import (
     axis_with_dependencies,
     by_direction_material,
     leaf_materials,
+    map_way_materials,
+    map_way_value_formula,
     paint_feature_values,
     paint_folded_feature_values,
 )
@@ -360,6 +363,34 @@ def test_the_formula_gives_the_value_the_map_is_served_for_a_way(axis_id, as_dif
                                      as_difficulty=as_difficulty) for conditions in CONDITIONS]
 
     assert _tree_values(axis_id, AXES, served, inputs, as_difficulty) == expected
+
+
+# 葉を配らない材料（風）を読む軸は、地図の要求の条件で値まで求めて配る。地図の色が区間インスペクタ・探索の値と違う段に
+# なると、同じ道・時刻・向き・速さで地図と内訳が食い違う。葉が地図へ出ると、予報の値をそのまま外へ出すことになる。
+@pytest.mark.parametrize("axis_id", [axis_id for axis_id, axis in AXES.items() if axis.is_published])
+def test_an_axis_reading_withheld_leaves_is_served_its_value_under_the_maps_conditions(axis_id):
+    keys = [f"feature-{row}" for row in range(len(NUM_A))]
+    columns = _arrays().columns()
+    served = _served_for(
+        axis_id, AXES, {"num_a": ServedMaterialFormula(WIND_DRAG_RATIO_WAY_FORMULA, withholds_leaves=True), "num_b": GRADE})
+    tile = {material: column for material, column in columns.items() if material not in served}
+    leaves = {
+        WIND_SPEED_LEAF: np.array([4.0, np.nan, 7.5, 2.0, 0.0]),
+        WIND_DIRECTION_LEAF: np.array([0.0, 200.0, 90.0, 315.0, 45.0]),
+        GRADE_LEAF: np.array(NUM_B), ROAD_BEARING_LEAF: np.array([10.0, 300.0, 90.0, 300.0, np.nan]),
+    }
+    inputs = TileWayInputs(feature_keys=keys, materials=tile, leaves=leaves)
+    formula = map_way_value_formula(axis_id, AXES, served)
+    assert formula is not None
+    formula = WayValueFormula.model_validate_json(formula.model_dump_json())
+
+    for conditions in CONDITIONS:
+        served_leaves = map_way_materials(axis_id, AXES, served, inputs, conditions)
+        expected = paint_feature_values(axis_id, AXES, keys, tile, _service_values(served, keys, leaves, conditions),
+                                        as_difficulty=False)
+        assert way_values_from_formula(formula, keys, served_leaves, conditions) == expected
+        if "num_a" in served:
+            assert not set(served_leaves) & {WIND_SPEED_LEAF, WIND_DIRECTION_LEAF}
 
 
 def test_the_formula_tells_a_way_undetermined_by_bearing_from_a_way_without_a_value():

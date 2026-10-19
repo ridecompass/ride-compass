@@ -25,6 +25,7 @@ import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
 import SavedConditionsPanel, { SaveConditionsButton } from "./SavedConditionsPanel";
 
 const CURRENT: GenerationConditionsSnapshot = {
+  loop: true,
   distanceTargeted: true,
   distance: "40",
   maxRoutes: "8",
@@ -38,6 +39,7 @@ const POINT = { latitude: 35.1, longitude: 139.1 };
 const TRIP: SavedCondition = {
   ...LOOP,
   name: "週末",
+  loop: false,
   distanceTargeted: false,
   origin: POINT,
   waypoints: [POINT, POINT],

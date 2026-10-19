@@ -28,6 +28,8 @@ type RouteFormConditions = Pick<
   | "setDistanceInput"
   | "maxRoutesInput"
   | "setMaxRoutesInput"
+  | "loop"
+  | "setLoop"
   | "distanceTargeted"
   | "setDistanceTargeted"
   | "waypoints"
@@ -138,9 +140,9 @@ export default function RouteForm({
       <KeptTabContent value="generate">
         {/* 全長の目標と候補数といまの設定の保存を1行に並べ、パネルの縦幅を詰める。ルーラーは残りの幅を取り、狭い幅では長い距離の側を
             見えない所へ置く（滑らせると出る）。全長の目標を外している間もルーラーと値は出したまま薄くする（入れ直すと
-            前の値に戻ることが見える）。 */}
-        <div className="mb-2 flex items-center gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            前の値に戻ることが見える）。部品の間は詰めて、いちばん狭い幅でもルーラーに押せる幅（24px四方）を残す。 */}
+        <div className="mb-2 flex items-center gap-1.5">
+          <div className="flex min-w-0 flex-1 items-center gap-1">
             <Toggle
               variant="plain"
               className={cn(panelIconToggleClass, "flex-none")}
@@ -161,12 +163,16 @@ export default function RouteForm({
               usage="ルート全体の長さの目標を、目盛りを横に滑らせて決めます。"
             />
             <span
-              className={cn("min-w-[3.25em] flex-shrink-0 text-right tabular-nums", !distanceTargeted && "opacity-40")}
+              className={cn(
+                // 文字の大きさは地点の並びの札の名前とそろえる（`RoutePoints.tsx: chipName`）。
+                "min-w-[3.25em] flex-shrink-0 text-right text-[length:var(--font-size-md)] tabular-nums",
+                !distanceTargeted && "opacity-40",
+              )}
             >
               {distanceInput}km
             </span>
             <InfoPopover triggerAriaLabel="全長の目標の説明" triggerClassName="flex-none">
-              {`ルート全体の長さの目標です。作る候補は、この長さの±${DISTANCE_TOLERANCE_KM}kmに入るものだけです。外すと長さを決めず、目的地（無ければ出発地）へ良い道で向かいます。`}
+              {`ルート全体の長さの目標です。作る候補は、この長さの±${DISTANCE_TOLERANCE_KM}kmに入るものだけです。外すと長さを決めず、目的地（周回なら経由地を回って出発地）へ良い道で向かいます。`}
             </InfoPopover>
           </div>
           <div className="flex flex-none items-center gap-1">
@@ -182,7 +188,7 @@ export default function RouteForm({
               >
                 ‹
               </Button>
-              <span className="min-w-[2.25em] text-center tabular-nums">{`${maxRoutesInput}件`}</span>
+              <span className="min-w-[2.25em] text-center text-[length:var(--font-size-md)] tabular-nums">{`${maxRoutesInput}件`}</span>
               <Button
                 variant="stepper"
                 size="sm"
@@ -238,6 +244,7 @@ export default function RouteForm({
             <SavedPlacesPanel
               places={savedPlaces.places}
               waypointsFull={waypointsFull(conditions.waypoints)}
+              loop={conditions.loop}
               onRecall={recallSavedPlace}
               onRemove={savedPlaces.remove}
             />

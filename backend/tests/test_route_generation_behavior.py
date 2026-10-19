@@ -32,7 +32,8 @@ from app.domain.rain import rain_window_material_id
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
 from app.domain.route_points import RoutePointHit
-from app.domain.wind import WindForecastSeries, WindLattice
+from app.domain.msm import MsmBlock, MsmGrid
+from app.domain.wind import WindForecastSeries
 from app.domain.time_zone import JST
 from app.domain.traffic import stop_count_material_ids
 from tests import rain_history_fake
@@ -899,7 +900,9 @@ async def test_without_an_observation_history_only_the_rain_axis_has_no_data(eng
 
 def _wind(times: list[datetime], speed_by_point: list[float]) -> WindForecastSeries:
     """格子の角4点（南西・南東・北西・北東）に置いた時別の風。風速は時刻によらず点ごとに一定。"""
-    lattice = WindLattice(south=BASE_LAT, west=BASE_LON, lat_step=2 * LAT_STEP, lon_step=2 * LON_STEP, rows=2, cols=2)
+    lattice = MsmBlock(
+            grid=MsmGrid(lat_min=BASE_LAT, lon_min=BASE_LON, d_lat=2 * LAT_STEP, d_lon=2 * LON_STEP, n_lat=2, n_lon=2), row0=0, col0=0, rows=2, cols=2,
+        )
     speed = np.repeat(np.array(speed_by_point, dtype=float)[:, None], len(times), axis=1)
     return WindForecastSeries(times=times, speed_ms=speed, direction_deg=np.zeros_like(speed), lattice=lattice)
 

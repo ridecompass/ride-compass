@@ -16,8 +16,8 @@ from app.domain.jma_tile_specs import (
 )
 
 #: 動的気象の描き方の種類。配信元が描いた画像（`rasterTile`）・配信元の地物（`vectorTile`）・
-#: 地点の記号（`gridMark`）・配信元がGeoJSONで配る領域の輪郭線（`outline`）。
-WeatherRenderKind = Literal["rasterTile", "vectorTile", "gridMark", "outline"]
+#: MSMの格子点を中心にした升目の塗り（`gridFill`）・格子点や地点の記号（`gridMark`）・配信元がGeoJSONで配る領域の輪郭線（`outline`）。
+WeatherRenderKind = Literal["rasterTile", "vectorTile", "gridFill", "gridMark", "outline"]
 _TILE_KINDS: frozenset[str] = frozenset({"rasterTile", "vectorTile"})
 
 #: 選んだ時刻に対してどのコマを描くか。
@@ -31,6 +31,9 @@ FrameRuleKind = Literal["nearest", "latestObservation", "current"]
 #: MSMの予報を、現在時刻から何時間先まで読むか（`config.py: Settings.msm_forecast_hours`の既定）。runごとの予報時間
 #: （39時間、00/12UTCのrunは78時間）を超える分は配信元のデータ終端で打ち切られる。
 MSM_FORECAST_HOURS = 48
+
+#: MSMの格子点から描く要素が読む値（`GET /api/weather/msm-grid`の格子点の欄）。
+GridValue = Literal["precipitation", "wind"]
 
 #: 配信元が値の段ごとに色を焼き込んで配る要素の、その段の宣言（`domain/weather_display.py`。生成物
 #: `weather-scales.json`の同じ名前の鍵）。
@@ -73,6 +76,7 @@ class WeatherElement(NamedTuple):
     #: 気象庁の配信要素id（配信元のパス`.../surf/<id>/`）を、**時刻の段の順**（近い時刻から）に並べる
     #: ——1つの名前付きソースが、選んだ時刻によって別の配信要素から届くことがある。タイルで描くものは
     #: 全段が`JMA_ELEMENTS`にタイルの仕様を持ち、ソースのズーム範囲は1つなので段の間で一致する。
+    #: MSMの格子点から描くものは空。
     jma_elements: tuple[str, ...]
     #: 画面で要素を呼ぶ名前（▶パネルで要素ごとに表示を切り替える行の名前）。同じ名前付き
     #: ソースの要素は同じ名前を持つ。
@@ -80,8 +84,10 @@ class WeatherElement(NamedTuple):
     #: 選んだ時刻に対して描くコマの規則。同じ名前付きソースの要素は同じ規則を持つ
     #: （1つのソースの時刻の段は1本の時系列につながる）。
     frame_rule: FrameRule
+    #: MSMの格子点から描く要素が読む値。配信元から取る要素はNone。
+    grid_value: GridValue | None = None
     #: 地図がこの要素を塗る段。災害のチップは、同じ段で塗る要素の名前を見出しにして段を凡例に並べる。
-    #: 段を持たない要素（記号・輪郭線）と、凡例を別に持つ降水の要素はNone。
+    #: 段を持たない要素（記号・輪郭線・升目の塗り）と、凡例を別に持つ降水の要素はNone。
     level_scale: LevelScale | None = None
     #: 要素を利用者に言う文。災害のチップは▶パネルの要素の行の（i）から開き、降水のチップは凡例の行に出す。
     #: 同じ名前付きソースの要素は同じ説明を持つ。
@@ -94,9 +100,10 @@ _LINEAR_RAINBAND_WINDOW_MINUTES = 3 * 60
 #: 並びが同じ段（面・線・記号）の中の重なり順になる。災害は面を下に、見落としやすい線（洪水）・
 #: 点（落雷）を上に置き、大雨は土砂・浸水を統合した指標なので個別の2つより下に置く。
 WEATHER_ELEMENTS: tuple[WeatherElement, ...] = (
-    # 降水。60分先までは降水ナウキャスト、その先15時間先までは降水短時間予報を配信元のラスタで描く。
-    # どちらが届くかは選んだ時刻で決まる。
+    # 降水。60分先までは降水ナウキャスト、その先15時間先までは降水短時間予報を配信元のラスタで描き、
+    # その先はMSMの格子点の値で升目を塗る。どれが届くかは選んだ時刻で決まる。
     WeatherElement("precipitationNowcast", "main", "rasterTile", ("hrpns", "rasrf"), "降水", _NEAREST),
+    WeatherElement("precipitationNowcast", "main", "gridFill", (), "降水", _NEAREST, grid_value="precipitation"),
     # 矩形に見えることも説明に書く（細かい雨域と重なると描画の不具合に見える）。
     WeatherElement(
         "precipitationNowcast",
@@ -130,6 +137,7 @@ WEATHER_ELEMENTS: tuple[WeatherElement, ...] = (
             ("linearRainbandAreaForecast", "slmcs_unifyfcst"),
         )
     ),
+    WeatherElement("windVector", "arrow", "gridMark", (), "風", _NEAREST, grid_value="wind"),
     # キキクルは「現在の危険度」だけを配るので、選んだ時刻によらず描く。
     WeatherElement(
         "disaster",
@@ -235,7 +243,7 @@ class WeatherDelivery(NamedTuple):
 
 
 def weather_element_deliveries(element: WeatherElement) -> list[WeatherDelivery]:
-    """配信元から取る段（近い時刻から）。
+    """配信元から取る段（近い時刻から）。MSMの格子点から描く要素は空。
 
     宣言の無い配信要素は`KeyError`。"""
     deliveries = []

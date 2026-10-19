@@ -9,6 +9,7 @@ import { alignRoutePreference, routePreferenceToSend } from "@/features/route/ro
 import {
   acceptedDistanceInput,
   acceptedMaxRoutesInput,
+  destinationInUse,
   type GenerationConditionsSnapshot,
 } from "@/features/route/savedConditions";
 import type {
@@ -31,6 +32,7 @@ export function waypointsFull(waypoints: readonly Coordinates[]): boolean {
 }
 // 「条件」タブの入力値。場所（目的地・経由地のピン）は持たない——行くたびに変わるうえ、
 // 古いピンが残っていると気づかないまま生成してしまう。
+const LOOP_STORAGE_KEY = "ridecompass:loop";
 const DISTANCE_TARGETED_STORAGE_KEY = "ridecompass:distance-targeted";
 const DISTANCE_STORAGE_KEY = "ridecompass:distance-km";
 const MAX_ROUTES_STORAGE_KEY = "ridecompass:max-routes";
@@ -46,7 +48,7 @@ interface GenerationConditionsInputs {
 }
 
 /**
- * 生成の条件（「ルート設定」の入力）: 全長の目標を決めるか・距離・候補数・地点（出発地以外）・重み・除外・避け方と、地図のタップで
+ * 生成の条件（「ルート設定」の入力）: 周回か・全長の目標を決めるか・距離・候補数・地点（出発地以外）・重み・除外・避け方と、地図のタップで
  * 置く地点の選びと、保存した条件での入れ替え。保存する値は、読むときに今の画面が受け付ける範囲・今の項目へ揃える。
  */
 export function useGenerationConditions({ onOriginPlace }: GenerationConditionsInputs) {
@@ -64,20 +66,25 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     setWaypoints((prev) => [...prev, point]);
   }, []);
 
-  // 目的地（あれば片道のルート）。
-  const [destination, setDestination] = useState<Coordinates | null>(null);
-  const clearDestination = useCallback(() => setDestination(null), []);
+  // 周回か（終点を出発地にする）。周回の間も置いた目的地は消さずに覚えておき、生成にも画面にも使わない（外すと戻る）。
+  const [loop, setLoop] = useStoredBooleanState(LOOP_STORAGE_KEY, true);
 
-  // 選んでいる地点（地図のタップが置く地点）。何も選んでいない・選んだ経由地が消えた間は出発地——周回を作る人が地図を
-  // 触っても目的地が置かれず、詳しくに出ている地点と置かれる地点がいつも同じになる。
+  // 置いた目的地（周回の間は覚えておくだけ）。生成と画面が読むのは、周回の間を外した`destination`（下の返り値）。
+  const [placedDestination, setDestination] = useState<Coordinates | null>(null);
+  const clearDestination = useCallback(() => setDestination(null), []);
+  const destination = destinationInUse({ loop, destination: placedDestination });
+
+  // 選んでいる地点（地図のタップが置く地点）。何も選んでいない・選んだ経由地が消えた・周回で目的地を使わない間は出発地——
+  // 周回を作る人が地図を触っても目的地が置かれず、詳しくに出ている地点と置かれる地点がいつも同じになる。
   const [chosenPoint, setChosenPoint] = useState<PointTarget | null>(null);
   const selectedPoint = useMemo<PointTarget>(
     () =>
       chosenPoint === null ||
+      (chosenPoint.role === "destination" && loop) ||
       (chosenPoint.role === "waypoint" && chosenPoint.index !== null && chosenPoint.index >= waypoints.length)
         ? { role: "origin" }
         : chosenPoint,
-    [chosenPoint, waypoints.length],
+    [chosenPoint, loop, waypoints.length],
   );
 
   const selectPoint = useCallback((target: PointTarget) => setChosenPoint(target), []);
@@ -125,12 +132,13 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
           null),
     [found],
   );
-  // 経由地と目的地を一度に消す。選んでいる地点も出発地に戻す（消した地点を置き直す途中のまま残さない）。
+  // 並びに出ている経由地と目的地を一度に消す（周回の間に覚えている目的地は消さない）。選んでいる地点も出発地に戻す（消した地点を
+  // 置き直す途中のまま残さない）。
   const clearPoints = useCallback(() => {
     setWaypoints([]);
-    setDestination(null);
+    if (!loop) setDestination(null);
     setChosenPoint(null);
-  }, []);
+  }, [loop]);
 
   // 全長の目標を決めるか。外すと距離を送らず、置いた地点へ良い道で向かう。
   const [distanceTargeted, setDistanceTargeted] = useStoredBooleanState(DISTANCE_TARGETED_STORAGE_KEY, true);
@@ -180,20 +188,22 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
   // いまの条件を、保存・呼び出しと同じ形1つで返す（保存・生成の入力・保存の説明はこれを読む）。
   const snapshot: GenerationConditionsSnapshot = useMemo(
     () => ({
+      loop,
       distanceTargeted,
       distance: distanceInput,
       maxRoutes: maxRoutesInput,
       waypoints,
-      destination,
+      destination: placedDestination,
       routePreference: weightOverrideEnabled ? routePreference : null,
       roadAvoidance,
     }),
     [
+      loop,
       distanceTargeted,
       distanceInput,
       maxRoutesInput,
       waypoints,
-      destination,
+      placedDestination,
       weightOverrideEnabled,
       routePreference,
       roadAvoidance,
@@ -206,6 +216,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     (saved: GenerationConditionsSnapshot) => {
       applyEachField<GenerationConditionsSnapshot>(
         {
+          loop: setLoop,
           distanceTargeted: setDistanceTargeted,
           distance: setDistanceInput,
           maxRoutes: setMaxRoutesInput,
@@ -222,6 +233,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
       setChosenPoint(null);
     },
     [
+      setLoop,
       setDistanceTargeted,
       setDistanceInput,
       setMaxRoutesInput,
@@ -234,6 +246,8 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
   return {
     snapshot,
     restore,
+    loop,
+    setLoop,
     distanceTargeted,
     setDistanceTargeted,
     distanceInput,
@@ -243,6 +257,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     waypoints,
     removeWaypoint,
     moveWaypoint,
+    /** 生成と画面（地点の並び・地図のピン）が使う目的地（周回の間はnull）。 */
     destination,
     setDestination,
     clearDestination,

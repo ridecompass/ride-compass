@@ -28,6 +28,8 @@
     "pin_origin": "#e11d48",
     "pin_origin_unresolved": "#9ca3af",
     "pin_waypoint": "#2563eb",
-    "pin_destination": "#059669"
+    "pin_destination": "#059669",
+    "selected_point": "#ff4d1a",
+    "selected_section": "#7c3aed"
   }
 }

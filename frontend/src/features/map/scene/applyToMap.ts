@@ -31,9 +31,9 @@ import {
 } from "@/features/map/layers/mapStyleOps";
 import { primaryAttributeIdsToLayerIds } from "@/features/map/layers/primaryAttributes";
 import type { LensId, RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
-import type { RouteCandidate } from "@/types/route";
+import type { RouteCandidate, SelectedRouteSegment } from "@/types/route";
 import { valueBands } from "@/lib/mapDisplay/valueScale";
-import { routeStretches, segmentPath, splitSegmentAt } from "@/lib/routeDistance";
+import { findSameSegment, routeStretches, segmentPath, splitSegmentAt } from "@/lib/routeDistance";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import {
   ROAD_TILE_MAX_ZOOM,
@@ -104,6 +104,8 @@ type SceneWiringProps = {
   readonly inspectedWayId: number | null;
   /** 選んだ候補の上で走り終えた距離（km）。走っていなければnull。 */
   readonly travelledKm: number | null;
+  /** 道のりのグラフか地図で選んだ地点と、その地点を含む区間。選んでいなければnull。 */
+  readonly selectedRouteSegment: SelectedRouteSegment | null;
 };
 
 const NO_KEYS: readonly string[] = [];
@@ -122,6 +124,10 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
   const segments = visible ? (selected?.segments ?? []) : [];
   const bands = visible ? props.spliceStretches : [];
   const composite = visible ? props.splicedRoute : null;
+  const picked = visible ? props.selectedRouteSegment : null;
+  // 区間の形は、選んでいる候補の同じ区間から引く（地図で押した区間は形を持たない写し）。
+  const pickedSegment =
+    picked === null ? null : (findSameSegment(segments, picked.segment, (segment) => segment) ?? picked.segment);
   const hiddenBandFilter = buildLegendFilterExpression(
     mode.legend,
     look.hiddenLegendKeys[look.lens] ?? NO_KEYS,
@@ -158,6 +164,7 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
       properties: { index: band.index },
     })),
     composite: composite !== null && composite.length > 1 ? { path: composite } : null,
+    selectedSection: pickedSegment === null ? null : segmentPath(pickedSegment),
   };
 }
 

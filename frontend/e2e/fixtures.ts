@@ -128,6 +128,26 @@ function amedasObservationFixture(): AmedasObservation {
   };
 }
 
+// 最寄りの格子点の今日の値のフィクスチャ。天気のパネルの表が横に並ぶ幅を出すため、0時から23時までの24時間を持つ。
+function gridPointTodayFixture(): components["schemas"]["GridPointToday"] {
+  const hours = Array.from({ length: 24 }, (_, hour) => hour);
+  return {
+    latitude: 35.75,
+    longitude: 139.75,
+    distance_km: 1.1,
+    bearing_deg: 45,
+    times: hours.map((hour) => `2026-01-01T${String(hour).padStart(2, "0")}:00`),
+    temperature_c: hours.map((hour) => 12 + Math.round(6 * Math.sin((Math.PI * (hour - 8)) / 12) * 10) / 10),
+    precipitation_mm: hours.map((hour) => (hour >= 15 && hour <= 17 ? 1.5 : 0)),
+    wind_speed_ms: hours.map((hour) => 2 + (hour % 5)),
+    wind_direction_deg: hours.map((hour) => (hour * 15) % 360),
+    highest_hourly_temperature_c: 18,
+    lowest_hourly_temperature_c: 6,
+    highest_hourly_precipitation_mm: 1.5,
+    highest_hourly_wind_speed_ms: 6,
+  };
+}
+
 // 基礎地図スタイル（features/map/regionApi.ts: mapStyleUrl）の応答。sources/layersを空にして
 // 外部タイル・グリフ・スプライトへの追加リクエストが発生しない自己完結スタイルにする
 // （地図の見た目は検証対象外、UI操作の疎通のみが目的）。
@@ -171,6 +191,8 @@ export async function installApiMocks(page: Page): Promise<void> {
   await page.route(`${API_BASE}/health`, (route) => route.fulfill({ json: { status: "ok" } }));
 
   await page.route(`${API_BASE}/api/weather/amedas*`, (route) => route.fulfill({ json: amedasObservationFixture() }));
+  // `*` は `/` を越えないので、`/api/weather/...` の口には当たらない。
+  await page.route(`${API_BASE}/api/weather?*`, (route) => route.fulfill({ json: gridPointTodayFixture() }));
   // 警告バッジ3種は「警告なし」の成功応答にする。応答しないと取得失敗の印がヘッダーに出る。
   const noWarnings: components["schemas"]["WeatherWarnings"] = { warnings: [], valid_area: null };
   const noWbgt: components["schemas"]["WbgtStatus"] = { reading: null, valid_area: null };

@@ -1,17 +1,18 @@
 """`infrastructure/msm_client.py`——気象庁MSMの予報を配信元と同期し、ローカルの`.om`ファイルから読む。
 
-確かめるのは公開の入口（`refresh`・`read_series`・`freshness`/`freshness_from_meta`/`warn_if_stale`）から
+確かめるのは公開の入口（`refresh`・`read_series`・`read_grid_points`・`read_grid_block`・`read_weather_grid`・
+`freshness`/`freshness_from_meta`/`warn_if_stale`）から
 見える振る舞いだけ。差し替えるのはプロセス境界だけで、網は本物の`httpx.AsyncClient`へ配信元の代役
 （`MockTransport`）を付け、ディスクは一時ディレクトリ、時計は固定する。何時間先まで同期し・読むかは
 設定（`settings.msm_forecast_hours`）をテストごとに与える。
 `.om`ファイルは本物のライブラリ（omfiles）で書く。
 
 ここで見ないもの:
-- 範囲と形状から導いた格子の幾何と、双一次補間そのもの・格子の外の地点を断ること → `test_msm.py`
+- 範囲と形状から導いた格子の幾何と、双一次補間・最寄りの格子点の選び方そのもの・格子の外の地点を断ること → `test_msm.py`
 - 予報を風へ組み立てる側 → `test_weather_service.py`
 
 予報の値は「格子点(i, j)・チャンク内の時刻tで 100i + 10j + t（チャンクごとに1000ずつ足す）」にしてある。
-補間した値の期待値が足し算で書ける。チャンクの番号は配信元の決まり（1970年からの経過時間÷チャンクの長さ）。
+補間した値の期待値が足し算で書け、格子点の値はどの格子点を読んだかが値に出る。チャンクの番号は配信元の決まり（1970年からの経過時間÷チャンクの長さ）。
 """
 
 import logging
@@ -211,6 +212,46 @@ class TestReading:
 
         assert series.times[3:] == [datetime(2026, 9, 22, 8, 0), datetime(2026, 9, 22, 9, 0), datetime(2026, 9, 22, 10, 0)]
         assert series.wind_u_ms[0].tolist() == [2.0, 3.0, 4.0, 5.0, 1000.0, 1001.0]
+
+    async def test_each_point_reads_its_nearest_grid_point_unchanged(self, tmp_path, msm_dir):
+        """中間を少し越えた地点は、補間せずに近い方の格子点の値そのもの（i=1で100）を読む。"""
+        await _synced(tmp_path, msm_dir)
+        msm_dir.forecast_hours(2)
+
+        series = await msm_client.read_grid_points(*_points(SOUTH_WEST, (HALF_NORTH[0] + 0.001, HALF_NORTH[1])))
+
+        for values in (series.wind_u_ms, series.wind_v_ms, series.precipitation_mm, series.temperature_c):
+            assert values.tolist() == [[2.0, 3.0], [102.0, 103.0]]
+        latitudes, longitudes = series.points.coordinates()
+        assert latitudes.tolist() == pytest.approx([35.0, 35.05])
+        assert longitudes.tolist() == pytest.approx([139.0, 139.0])
+
+    async def test_a_rectangle_reads_the_grid_points_of_the_source_wherever_its_grid_starts(self, tmp_path, msm_dir):
+        """配信元の格子の原点が0.05度の倍数でなくても、読む格子点は配信元の格子点そのもの（地図とルートが同じ点を引く）。"""
+        await _synced(tmp_path, msm_dir, _meta(crs_wkt='GEOGCRS["x", BBOX[35.01, 139.01, 35.11, 139.11]]'))
+        msm_dir.forecast_hours(1)
+
+        series = await msm_client.read_grid_block(35.02, 139.02, 35.04, 139.04)
+
+        latitudes, longitudes = series.points.coordinates()
+        assert latitudes.tolist() == pytest.approx([35.01, 35.01, 35.06, 35.06])
+        assert longitudes.tolist() == pytest.approx([139.01, 139.06, 139.01, 139.06])
+        assert series.wind_u_ms[:, 0].tolist() == [2.0, 12.0, 102.0, 112.0]
+
+    async def test_the_map_grid_reads_wind_and_rain_at_every_other_grid_point_counted_from_the_origin(self, tmp_path, msm_dir):
+        """3×3の格子を4点までに間引くと、原点から2つおきの四隅が残る。格子の外へ出た範囲は捨てて読む。値は格子点の値のまま。"""
+        await _synced(tmp_path, msm_dir)
+        msm_dir.forecast_hours(1)
+
+        series = await msm_client.read_weather_grid(35.04, 138.9, 35.2, 139.06, 4)
+
+        latitudes, longitudes = series.points.coordinates()
+        assert latitudes.tolist() == pytest.approx([35.0, 35.0, 35.1, 35.1])
+        assert longitudes.tolist() == pytest.approx([139.0, 139.1, 139.0, 139.1])
+        assert series.points.step_deg == pytest.approx((0.1, 0.1))
+        for values in (series.wind_u_ms, series.wind_v_ms, series.precipitation_mm):
+            assert values.tolist() == [[2.0], [22.0], [202.0], [222.0]]
+
 
 # --- 鮮度 ---
 

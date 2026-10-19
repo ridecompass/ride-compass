@@ -54,6 +54,7 @@ const DRAFT_PAINTING = {
   wayValueFormula: featureValueFormula(DRAFT_VALUE),
   paintsSurroundingRoads: true,
   undeterminedByBearing: false,
+  wayMaterialConditions: [],
 } satisfies Partial<DedicatedWayValueAxis>;
 
 /** タイルごとの点数を、道ごとの材料へ移す。値の無い道は材料を載せない（木が値の無い道として塗る）。 */
@@ -184,6 +185,7 @@ export default function DraftWayValuesMap<Draft>({
           tileVersions: mapCatalog.tileVersions,
           inspectedWayId: null,
           travelledKm: null,
+          selectedRouteSegment: null,
         }),
       ),
     [axisId, axis, materials, loading, hiddenLegendKeys, mapCatalog.routeStyleModes, mapCatalog.tileVersions],

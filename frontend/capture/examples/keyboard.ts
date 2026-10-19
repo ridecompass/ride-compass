@@ -18,7 +18,8 @@ const script: CaptureScript = async ({ page, fixtures, open, settle, shot, shotW
     routes: (p) => p.route("**/api/place-search*", (route) => route.fulfill({ json: { candidates } })),
   });
   const settings = await fixtures.openMobileSheet(page, "ルート設定");
-  await settings.getByRole("button", { name: "目的地: 出発地[周回]", exact: true }).click();
+  await settings.getByRole("button", { name: "周回", pressed: true }).click();
+  await settings.getByRole("button", { name: "目的地: 未設定", exact: true }).click();
   const field = settings.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
   await field.fill("浅草");
   await field.press("Enter");

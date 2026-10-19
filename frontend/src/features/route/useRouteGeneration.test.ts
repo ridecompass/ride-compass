@@ -65,6 +65,12 @@ async function submit({ result }: Rendered) {
   await act(() => result.current.generation.submit());
 }
 
+/** 周回を外して目的地を置く（既定は周回で、周回の間の目的地は送らない）。 */
+function placeDestination({ result }: Rendered, at: Coordinates) {
+  act(() => result.current.conditions.setLoop(false));
+  act(() => result.current.conditions.setDestination(at));
+}
+
 function route(id: string, seconds: number | null = null): RouteCandidate {
   return makeRouteCandidate({ id, estimated_duration_seconds: seconds });
 }
@@ -122,7 +128,7 @@ describe("送る要求", () => {
     const { conditions } = rendered.result.current;
     act(() => conditions.setDistanceInput("42"));
     act(() => rendered.result.current.conditions.setMaxRoutesInput("3"));
-    act(() => rendered.result.current.conditions.setDestination(A));
+    placeDestination(rendered, A);
     act(() => rendered.result.current.conditions.selectPoint({ role: "waypoint", index: null }));
     act(() => rendered.result.current.conditions.placeAtSelected(B, null));
     act(() => rendered.result.current.conditions.placeAtSelected(A, null));
@@ -153,12 +159,27 @@ describe("送る要求", () => {
   it("全長の目標を外すと距離を送らず、置いた地点は同じに送る", async () => {
     const rendered = renderGeneration();
     act(() => rendered.result.current.conditions.setDistanceTargeted(false));
-    act(() => rendered.result.current.conditions.setDestination(A));
+    placeDestination(rendered, A);
     respond([route("r1")]);
 
     await submit(rendered);
 
     expect(sentRequest()).not.toHaveProperty("distance_km");
+    expect(sentRequest()).toMatchObject({ destination: A });
+  });
+
+  it("周回の間は覚えている目的地を送らず、周回を外すとその目的地を送る", async () => {
+    const rendered = renderGeneration();
+    placeDestination(rendered, A);
+    act(() => rendered.result.current.conditions.setLoop(true));
+    respond([route("r1")]);
+
+    await submit(rendered);
+    expect(sentRequest()).not.toHaveProperty("destination");
+
+    act(() => rendered.result.current.conditions.setLoop(false));
+    respond([route("r1")]);
+    await submit(rendered);
     expect(sentRequest()).toMatchObject({ destination: A });
   });
 });
@@ -174,6 +195,19 @@ describe("入力の誤り", () => {
     expect(jobs.submitted).toEqual([]);
     expect(generation.outcome).toEqual({ kind: "failed", message: expect.stringMatching(/^現在地が分かりません/) });
     expect(rendered.onOutcome.mock.calls).toEqual([["failed"], ["failed"]]);
+  });
+
+  it("周回を外して目的地を置いていなければ、全長の目標があっても送らず、理由を案内に出す", async () => {
+    const rendered = renderGeneration();
+    act(() => rendered.result.current.conditions.setLoop(false));
+
+    await submit(rendered);
+
+    expect(jobs.submitted).toEqual([]);
+    expect(rendered.result.current.generation.outcome).toEqual({
+      kind: "failed",
+      message: expect.stringMatching(/^目的地を置いてください/),
+    });
   });
 
   it("入力の誤りは、直前の生成の失敗の文言より先に出す", async () => {
@@ -280,7 +314,7 @@ describe("生成の結果", () => {
 
   it("backendが目的地を補正したら、置いた目的地を補正後の地点へ動かして知らせ、条件が変わったとは扱わない", async () => {
     const rendered = renderGeneration();
-    act(() => rendered.result.current.conditions.setDestination(A));
+    placeDestination(rendered, A);
     respond([route("r1")], used({ destination: A, corrected_destination: B }));
 
     await submit(rendered);
@@ -294,7 +328,7 @@ describe("生成の結果", () => {
 
   it("生成を待つ間に目的地を置き直したら、補正後の地点で置き直した目的地を上書きせず、条件が変わったと返す", async () => {
     const rendered = renderGeneration();
-    act(() => rendered.result.current.conditions.setDestination(A));
+    placeDestination(rendered, A);
     const job = heldReplies();
     jobs.answerWith(job.reply);
     let generating: Promise<void> = Promise.resolve();

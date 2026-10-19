@@ -15,6 +15,8 @@ interface SavedPlacesPanelProps {
   places: SavedPlace[];
   /** 経由地を上限まで置いてあるか（置いてあれば「経由地に足す」を押せない）。 */
   waypointsFull: boolean;
+  /** 周回か（周回の間は目的地を使わないので「目的地にする」を押せない）。 */
+  loop: boolean;
   /** 保存した地点を、選んだ役割の地点として置く（経由地は足す）。 */
   onRecall: (role: PinRole, place: SavedPlace) => void;
   onRemove: (place: SavedPlace) => void;
@@ -28,7 +30,7 @@ const RECALL_ROLES: { role: PinRole; label: string }[] = [
 
 // 「保存済み」タブの「地点」。保存した地点の一覧と、呼び出す・消すを置く（保存は条件タブの地点の詳しくの星）。行の「呼び出す」は
 // 「プリセット」の行と同じアイコンで、押すとどの役割に置くかを選ぶメニューを開く。
-export default function SavedPlacesPanel({ places, waypointsFull, onRecall, onRemove }: SavedPlacesPanelProps) {
+export default function SavedPlacesPanel({ places, waypointsFull, loop, onRecall, onRemove }: SavedPlacesPanelProps) {
   // 「呼び出す」のメニューを開いている地点。
   const [recalling, setRecalling] = useState<string | null>(null);
 
@@ -69,7 +71,7 @@ export default function SavedPlacesPanel({ places, waypointsFull, onRecall, onRe
                   key={role}
                   variant="menu"
                   size="sm"
-                  disabled={role === "waypoint" && waypointsFull}
+                  disabled={(role === "waypoint" && waypointsFull) || (role === "destination" && loop)}
                   onClick={() => {
                     setRecalling(null);
                     onRecall(role, place);
