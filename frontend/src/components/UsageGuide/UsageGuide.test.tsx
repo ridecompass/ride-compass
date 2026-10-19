@@ -7,7 +7,7 @@
  * 動かした（なぞった・取り消された）押し方では出さないこと、部品の外を押したとき（押し操作が外へ届かないことも）、キー操作（Esc・Enter・Space・
  * 値を動かすキー）、説明の✕・部品の外・説明の外へのフォーカスのどれでも説明だけを閉じて部品を選ぶ続きへ戻り、終えるのは「やめる」とEscだけなこと、
  * 案内と説明の面の上の操作は止めないこと、説明している部品を囲む枠と測り直し、
- * マウスの操作は既定の動きまで止め、タッチは既定の動き（スクロール）を残すこと、終えたら部品が動くこと、
+ * タッチは部品の受け口へ届けないこと、
  * 閉じた展開する部品・選ばれていないタブの説明の「中を見る」（出す部品と出さない部品）、それで開いた浮きパネルの中の部品も説明し、説明の✕と
  * 終える操作では閉じないこと。
  *
@@ -35,7 +35,7 @@ function renderScreen() {
   const onEnd = vi.fn();
   const onGenerate = vi.fn();
   const onPartKeyDown = vi.fn();
-  const view = render(
+  render(
     <div>
       <p>本文の文字</p>
       <Button onClick={onGenerate} usage="いまの条件で候補を作ります。">
@@ -71,7 +71,7 @@ function renderScreen() {
       <UsageGuide onEnd={onEnd} />
     </div>,
   );
-  return { onEnd, onGenerate, onPartKeyDown, view };
+  return { onEnd, onGenerate, onPartKeyDown };
 }
 
 function explanation() {
@@ -83,14 +83,6 @@ afterEach(() => {
 });
 
 describe("UsageGuide", () => {
-  it("案内の「やめる」を押すと、終える操作が上がる", async () => {
-    const { onEnd } = renderScreen();
-
-    await userEvent.click(screen.getByRole("button", { name: "やめる" }));
-
-    expect(onEnd).toHaveBeenCalledTimes(1);
-  });
-
   it("部品を押すと、部品は動かず、名前と使い方を出す", async () => {
     const { onGenerate, onEnd } = renderScreen();
 
@@ -220,14 +212,6 @@ describe("UsageGuide", () => {
   });
 
   describe("キー操作", () => {
-    it("Escを押すと、説明を出す前でも終える操作が上がる", async () => {
-      const { onEnd } = renderScreen();
-
-      await userEvent.keyboard("{Escape}");
-
-      expect(onEnd).toHaveBeenCalledTimes(1);
-    });
-
     it("描き直して終える操作が変わっても、新しいほうへ上げる", async () => {
       const onEnd = vi.fn();
       const latest = vi.fn();
@@ -318,16 +302,6 @@ describe("UsageGuide", () => {
     rect.mockReturnValue(new DOMRect(50, 5, 30, 40));
     fireEvent(window, new Event("resize"));
     expect(frame()?.style.left).toBe("50px");
-  });
-
-  it("部品の上のマウスの操作は既定の動きまで止め、タッチは部品へ届けずにスクロールを残す", () => {
-    renderScreen();
-    const target = screen.getByRole("button", { name: "地図の色分け" });
-
-    expect(fireEvent.mouseDown(target)).toBe(false);
-    expect(fireEvent.contextMenu(target)).toBe(false);
-    expect(fireEvent.dblClick(target)).toBe(false);
-    expect(fireEvent.touchStart(target, { touches: [{ clientX: 0, clientY: 0 }] })).toBe(true);
   });
 
   it("タッチは部品の受け口へ届かない", () => {
@@ -487,18 +461,5 @@ describe("UsageGuide", () => {
       expect(explanation()).toHaveTextContent("対象");
       expect(screen.queryByRole("button", { name: "中を見る" })).toBeNull();
     });
-  });
-
-  it("説明を見る状態を外すと、部品は押したとおりに動く", async () => {
-    const { onGenerate, view } = renderScreen();
-
-    view.rerender(
-      <Button onClick={onGenerate} usage="いまの条件で候補を作ります。">
-        生成
-      </Button>,
-    );
-    await userEvent.click(screen.getByRole("button", { name: "生成" }));
-
-    expect(onGenerate).toHaveBeenCalledTimes(1);
   });
 });

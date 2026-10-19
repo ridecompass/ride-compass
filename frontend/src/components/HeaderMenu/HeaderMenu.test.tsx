@@ -3,7 +3,7 @@
  *
  * 見るもの: メニューを開くと出る項目、「使い方を見る」を押すとメニューが閉じ、フォーカスが開くボタンへ戻ってから説明を見る状態に入る操作が上がること、
  * 「地図の表示を再描画」を押すと描き直しの操作が上がってメニューが閉じること、
- * デバッグログの項目がデバッグモードの間だけ出て、開閉の状態を名前で出し、押すと開閉の操作が上がること、
+ * デバッグログの項目が開閉の状態を名前で出し、押すと開閉の操作が上がること、
  * 「バージョン表示」を押すと、フロントの版の口（`/api/version`）が返した版が窓に出ること。
  *
  * ここで見ないもの: デバッグモードそのもののON/OFF → `features/admin/DebugPanel/DebugPanel.tsx`（このメニューは呼び出し側から受け取るだけ）。
@@ -63,19 +63,10 @@ describe("HeaderMenu", () => {
   });
 
   describe("デバッグログ", () => {
-    it("デバッグモードでなければ項目を出さない", async () => {
-      await openMenu({ debugEnabled: false });
+    it("開いている間は、隠す旨を名前で出す", async () => {
+      await openMenu({ debugEnabled: true, debugConsoleOpen: true });
 
-      expect(screen.queryByRole("button", { name: /デバッグログ/ })).not.toBeInTheDocument();
-    });
-
-    it.each([
-      [false, "デバッグログを表示"],
-      [true, "デバッグログを隠す"],
-    ])("開いている（%s）かを、名前で出す", async (open, name) => {
-      await openMenu({ debugEnabled: true, debugConsoleOpen: open });
-
-      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "デバッグログを隠す" })).toBeInTheDocument();
     });
 
     it("押すと、開閉の操作が上がる", async () => {

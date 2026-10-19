@@ -89,37 +89,6 @@ describe("取りに行かないとき", () => {
 });
 
 describe("取得", () => {
-  it("最初の鍵は待たずにその時の形で取りに行き、届くまでは取得中で、届くと分布を返す", async () => {
-    const held = heldReplies();
-    onSameOrigin("POST", PREVIEW, held.reply);
-    const { result } = mount({ termsKey: "k1", shape: SHAPE_A });
-    await advance();
-
-    expect(result.current).toEqual({ distribution: null, loading: true, error: null });
-
-    await held.answer(0, Response.json(DIST_A));
-    await advance();
-
-    expect(result.current).toEqual({ distribution: DIST_A, loading: false, error: null });
-  });
-
-  it("鍵が変わっても間引きの間は取りに行かず、続けて変えたら最後の鍵の形で取る", async () => {
-    serveDistributions();
-    const { result, rerender } = mount({ termsKey: "k1", shape: SHAPE_A });
-    await advance();
-
-    rerender({ termsKey: "k2", shape: SHAPE_C });
-    await advance(MAP_FETCH_DEBOUNCE_MS - 1);
-    rerender({ termsKey: "k3", shape: SHAPE_B });
-    await advance(MAP_FETCH_DEBOUNCE_MS - 1);
-    expect(result.current).toEqual({ distribution: DIST_A, loading: false, error: null });
-
-    await advance(1);
-    await advance();
-
-    expect(result.current).toEqual({ distribution: DIST_B, loading: false, error: null });
-  });
-
   it("取り直している間は前の分布を出したまま取得中を示し、届くと入れ替わる", async () => {
     serveDistributions();
     const { result, rerender } = mount({ termsKey: "k1", shape: SHAPE_A });

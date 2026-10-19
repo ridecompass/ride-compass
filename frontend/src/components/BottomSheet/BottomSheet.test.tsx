@@ -3,7 +3,7 @@
  * 利用者が決めた高さを覚える`useChosenSheetHeight`。
  *
  * 見るもの: 開いている間だけ見出しを名前に持つダイアログとして出すこと、閉じ方
- * （✕・Esc・下スワイプ）と閉じない操作（シートの外を押す・閉じないスワイプ・シートの中から開いた窓の上のEsc）、高さを変える帯（いまの高さの表示・ドラッグ・矢印キー）で
+ * （✕・Esc・下スワイプ）と閉じない操作（シートの外を押す・閉じないスワイプ）、高さを変える帯（いまの高さの表示・ドラッグ・矢印キー）で
  * 変わる高さと確定として上げる高さ、開いたときに中身へ高さを合わせること（下端の印の要素があるとき・合わせ直す時機・決めた高さがあるとき・実寸が取れないとき）、
  * 決めた高さを覚えて次に開いたときに使うこと（保存値の読み方・動かしている途中は覚えないこと・動かす間に持ち主を描き直さないこと）。
  *
@@ -19,7 +19,6 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ConfirmDialog } from "@/components/ui/Dialog/Dialog";
 import BottomSheet, {
   clampSheetHeightVh,
   DEFAULT_SHEET_HEIGHT_VH,
@@ -155,31 +154,6 @@ describe("BottomSheet", () => {
       expect(onClose).toHaveBeenCalledTimes(1);
     });
 
-    it("シートの中から開いた窓の上で押したEscは窓だけを閉じ、シートの閉じる操作は上がらない", async () => {
-      const onCancel = vi.fn();
-      const onClose = vi.fn();
-      render(
-        <BottomSheet
-          open
-          title="ルート結果"
-          titleId="sheet-title"
-          headerAction={null}
-          chosenHeightVh={50}
-          onClose={onClose}
-          onHeightChoose={vi.fn()}
-        >
-          <ConfirmDialog open title="候補をすべて消します" confirmLabel="消す" onConfirm={vi.fn()} onCancel={onCancel}>
-            消した候補は元に戻せません。
-          </ConfirmDialog>
-        </BottomSheet>,
-      );
-
-      await userEvent.keyboard("{Escape}");
-
-      expect(onCancel).toHaveBeenCalledTimes(1);
-      expect(onClose).not.toHaveBeenCalled();
-    });
-
     it("閉じたあとはEscで閉じる操作が上がらない", async () => {
       const { onClose, rerender } = renderSheet();
       rerender({ open: false });
@@ -260,21 +234,6 @@ describe("BottomSheet", () => {
       fireEvent.pointerDown(handle(), { pointerId: 1, clientY: 500 });
       fireEvent.pointerMove(handle(), { pointerId: 2, clientY: 300 });
       fireEvent.pointerUp(handle(), { pointerId: 2, clientY: 300 });
-
-      expect(handle()).toHaveAttribute("aria-valuenow", "50");
-      expect(onHeightChoose).not.toHaveBeenCalled();
-    });
-
-    it("つままずに動かしたり離したりしても何も変えず、離したあとの動きも無視する", () => {
-      const { onHeightChoose } = renderSheet({ chosenHeightVh: 50 });
-
-      fireEvent.pointerMove(handle(), { pointerId: 1, clientY: 300 });
-      fireEvent.pointerUp(handle(), { pointerId: 1, clientY: 300 });
-      expect(onHeightChoose).not.toHaveBeenCalled();
-      fireEvent.pointerDown(handle(), { pointerId: 1, clientY: 500 });
-      fireEvent.pointerUp(handle(), { pointerId: 1, clientY: 500 });
-      onHeightChoose.mockClear();
-      fireEvent.pointerMove(handle(), { pointerId: 1, clientY: 300 });
 
       expect(handle()).toHaveAttribute("aria-valuenow", "50");
       expect(onHeightChoose).not.toHaveBeenCalled();

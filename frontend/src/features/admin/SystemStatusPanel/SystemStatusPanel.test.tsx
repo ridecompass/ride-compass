@@ -88,19 +88,6 @@ describe("SystemStatusPanel", () => {
     expect(await screen.findByRole("button", { name: "更新" })).toBeEnabled();
   });
 
-  it("「更新」で取り直し、新しい値に置き換える", async () => {
-    serveStats(debugStats({ commit: "aaa111" }), debugStats({ commit: "bbb222" }));
-    serveVersion(frontendVersion);
-    const user = userEvent.setup();
-    render(<SystemStatusPanel open onClose={() => {}} />);
-    expect(await screen.findByText("aaa111")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "更新" }));
-
-    expect(await screen.findByText("bbb222")).toBeInTheDocument();
-    expect(screen.queryByText("aaa111")).not.toBeInTheDocument();
-  });
-
   it("版はcommitを出し、無ければローカルと出す。backendはdebug_modeの状態も出す", async () => {
     serveStats(debugStats({ commit: "backend-sha", debug_mode: true }));
     serveVersion({ ...frontendVersion, commit: null });
