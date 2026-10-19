@@ -18,6 +18,11 @@ PrimaryAttributeGeometry = Literal["line", "point", "area"]
 #: ディスクの鍵・点のレイヤーの名前（`infrastructure/point_tile_layers.py`）が、この名前でつながる。
 TileKind = Literal["road_surface", "poi", "accident", "stop_place"]
 
+#: 地図の行の色の作り方（`DisplayAxisSpec.palette`）。
+DisplayPalette = Literal["ordered", "nominal"]
+#: 順序を持たない列挙の明度と彩度の段（`DisplayAxisSpec.tone`）。
+DisplayTone = Literal["dark", "light", "vivid"]
+
 
 class DisplayCategorySpec(StrictModel):
     """地図と凡例に出す1行。**束ね方・行の名前・並び順をここが決める。色は決めない。**
@@ -79,14 +84,14 @@ class DisplayAxisSpec(StrictModel):
     #: `nominal`＝順序を持たない列挙を中立の色相で分ける。**評価配色（緑〜赤）は
     #: 使わない**——観測された事実の分類へ良し悪しの順序を持ち込むと、地図の上で
     #: 事実と評価が混ざる。先頭以外の軸は持たない（`None`）。
-    palette: Literal["ordered", "nominal"] | None = None
+    palette: DisplayPalette | None = None
     #: 順序を持たない列挙の、色相の起点（色相環を12に分けた枠の番号）。軸の行はここから
     #: 色相環を等分して配る。**軸をまたいで重複させない**——同じ起点だと、1行しか持たない
     #: 軸どうし（トンネルと一方通行）が必ず同じ色になる。
     hue_slot: int | None = None
     #: 順序を持たない列挙の明度と彩度の段（`None`は標準）。**同時に出る点のレイヤーどうしは段を変える**
     #: ——色相の起点を変えても、行を色相環へ等分して配る以上、レイヤーをまたいで近い色相が残る。
-    tone: Literal["dark", "light", "vivid"] | None = None
+    tone: DisplayTone | None = None
     categories: tuple[DisplayCategorySpec, ...]
 
 

@@ -148,16 +148,16 @@ CYCLEWAY_HIGHWAY = "cycleway"
 CYCLEWAY_TRACK_VALUES = ("track",)
 CYCLEWAY_LANE_VALUES = ("lane",)
 CYCLEWAY_SHARED_VALUES = ("share_busway", "shared_lane")
-_SHARED_PATH_HIGHWAYS = ("footway", "path")
-_SHARED_PATH_BICYCLE = ("yes", "designated")
+SHARED_PATH_HIGHWAYS = ("footway", "path")
+SHARED_PATH_BICYCLE = ("yes", "designated")
 
 #: 車道と分けられた歩行者道のうち、自転車も通ってよい道（河川敷のサイクリングロード等）。
 SHARED_PEDESTRIAN_PATH_SQL = (
-    f"{HIGHWAY_SQL} IN ({sql_literals(_SHARED_PATH_HIGHWAYS)}) "
-    f"AND {BICYCLE_NORMALIZED_SQL} IN ({sql_literals(_SHARED_PATH_BICYCLE)})"
+    f"{HIGHWAY_SQL} IN ({sql_literals(SHARED_PATH_HIGHWAYS)}) "
+    f"AND {BICYCLE_NORMALIZED_SQL} IN ({sql_literals(SHARED_PATH_BICYCLE)})"
 )
 #: `SHARED_PEDESTRIAN_PATH_SQL`の条件を説明の文で指す書き方。
-SHARED_PEDESTRIAN_PATH_NOTE = f"{tag_note('highway', *_SHARED_PATH_HIGHWAYS)} かつ {tag_note('bicycle', *_SHARED_PATH_BICYCLE)}"
+SHARED_PEDESTRIAN_PATH_NOTE = f"{tag_note('highway', *SHARED_PATH_HIGHWAYS)} かつ {tag_note('bicycle', *SHARED_PATH_BICYCLE)}"
 
 
 class CyclewayClass(NamedTuple):

@@ -31,6 +31,7 @@ from app.infrastructure.jma_warning_client import new_area_data_cache, new_warni
 from app.infrastructure.material_coverage import MaterialCoverageQuery
 from app.infrastructure.place_area_query import PlaceAreaQuery
 from app.infrastructure.region_tile_cache import TileResponse
+from app.infrastructure.road_class_repository import RoadClassRepository
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.stop_place_search import StopPlaceSearchQuery
 from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_cache
@@ -53,6 +54,7 @@ from app.services.material_coverage_service import MaterialCoverageService
 from app.services.nearest_point_areas import new_cells_cache
 from app.services.place_search_service import PlaceSearchReads, PlaceSearchService
 from app.services.region_service import AxisInspectorService, RegionService
+from app.services.road_class_service import RoadClassAdminService
 from app.services.route_generation_setup import (
     RouteGenerationSetup,
     assemble_route_generation_setup,
@@ -242,6 +244,11 @@ def get_gsi_tile_client():
 async def get_axis_registry_admin_service():
     async with get_session_factory()() as session:
         yield AxisRegistryAdminService(AxisDefinitionRepository(session))
+
+
+async def get_road_class_admin_service():
+    async with get_session_factory()() as session:
+        yield RoadClassAdminService(RoadClassRepository(session))
 
 
 async def get_tuning_service():

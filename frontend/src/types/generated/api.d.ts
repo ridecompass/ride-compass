@@ -516,6 +516,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/road-classes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_road_class_groups_api_admin_road_classes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/road-classes/{group_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["put_road_class_group_api_admin_road_classes__group_key__put"];
+        post?: never;
+        delete: operations["delete_road_class_group_api_admin_road_classes__group_key__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/axis-catalog": {
         parameters: {
             query?: never;
@@ -733,6 +765,8 @@ export interface components {
             };
             /** Accident Years */
             accident_years: number[];
+            /** Road Classes */
+            road_classes: components["schemas"]["RoadClassGroup-Output"][];
         };
         /** AxisDefinition */
         AxisDefinition: {
@@ -1632,6 +1666,104 @@ export interface components {
         /** RoadAvoidanceOverride */
         RoadAvoidanceOverride: {
             [key: string]: "pass" | "avoid" | "exclude";
+        };
+        /** RoadClassGroup */
+        "RoadClassGroup-Input": {
+            /** Group Key */
+            group_key: string;
+            /** Label */
+            label: string;
+            /**
+             * Palette
+             * @enum {string}
+             */
+            palette: "ordered" | "nominal";
+            /** Hue Slot */
+            hue_slot?: number | null;
+            /** Tone */
+            tone?: ("dark" | "light" | "vivid") | null;
+            /**
+             * Is Published
+             * @default false
+             */
+            is_published: boolean;
+            /** Rows */
+            rows: components["schemas"]["RoadClassRow-Input"][];
+        };
+        /** RoadClassGroup */
+        "RoadClassGroup-Output": {
+            /** Group Key */
+            group_key: string;
+            /** Label */
+            label: string;
+            /**
+             * Palette
+             * @enum {string}
+             */
+            palette: "ordered" | "nominal";
+            /** Hue Slot */
+            hue_slot: number | null;
+            /** Tone */
+            tone: ("dark" | "light" | "vivid") | null;
+            /**
+             * Is Published
+             * @default false
+             */
+            is_published: boolean;
+            /** Rows */
+            rows: components["schemas"]["RoadClassRow-Output"][];
+        };
+        /** RoadClassRow */
+        "RoadClassRow-Input": {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /**
+             * Default Level
+             * @default pass
+             * @enum {string}
+             */
+            default_level: "pass" | "avoid" | "exclude";
+            /**
+             * Always Excluded
+             * @default false
+             */
+            always_excluded: boolean;
+            /** Former Key */
+            former_key?: string | null;
+            /** Match */
+            match: {
+                [key: string]: (string | boolean)[];
+            }[];
+        };
+        /** RoadClassRow */
+        "RoadClassRow-Output": {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /**
+             * Default Level
+             * @default pass
+             * @enum {string}
+             */
+            default_level: "pass" | "avoid" | "exclude";
+            /**
+             * Always Excluded
+             * @default false
+             */
+            always_excluded: boolean;
+            /** Former Key */
+            former_key: string | null;
+            /** Match */
+            match: {
+                [key: string]: (string | boolean)[];
+            }[];
         };
         /** RoadClassStretch */
         RoadClassStretch: {
@@ -3156,6 +3288,90 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TuningParameterView"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_road_class_groups_api_admin_road_classes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoadClassGroup-Output"][];
+                };
+            };
+        };
+    };
+    put_road_class_group_api_admin_road_classes__group_key__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoadClassGroup-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoadClassGroup-Output"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_road_class_group_api_admin_road_classes__group_key__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -58,6 +58,9 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
   リポジトリの`production-origins.json`から読み、認証情報は`backend/.env.oracle.local`の`ADMIN_BASIC_AUTH_USERNAME`・
   `ADMIN_BASIC_AUTH_PASSWORD`に置く。JSONはリポジトリの外（作業ツリーの外の手元の置き場）に置き、コミットしない——軸の定義は較正の値を持ち、公開のリポジトリへ写さない（[data-sources.md](../../../docs/architecture/data-sources.md)「OSM から作った値と独自の層」）。記録はタスクの issue に書き、そこにも定義の値を写さない。
   本番の写しとして直し続けない（次に変えるときは本番の今の定義から新しいJSONを作る）。
+- 道の区分の群（`road_class_groups`・`road_class_rows`）も同じく管理APIへ入れ、道具は`backend/scripts/road_classes_apply.py`
+  （仕組みは[axis-studio.md](../../../docs/modules/backend/axis-studio.md)「道の区分の群をファイルから本番へ入れる」）。
+  今のコードの宣言から組んだ群は`--current`で、ほかは群のJSONで渡す。打つ人・見せ方・`--apply <指紋>`は軸の道具と同じ。
 - 完了の条件: 道具が「反映を確かめました」を出したこと（管理APIと公開の軸カタログの両方で見ている）。
   画面で変えたときは、本番の`GET /api/axis-catalog`で変えた軸を確かめる。
 - 軸の評価の式（`backend/app/domain/`の軸の評価）だけを変えた変更は、本番に出たあとに全部の軸の張り付きを本番で1回測る

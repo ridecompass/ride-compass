@@ -1,10 +1,11 @@
 """`api/routers/axis_catalog.py`——公開軸の一覧（`GET /api/axis-catalog`、認可不要）。
 
-ここで見るもの: 公開軸だけを配ること、軸ごとの欄へ domain の導出を受け渡すこと、domain に低い層の
+ここで見るもの: 公開軸と公開した道の区分の群だけを配ること、軸ごとの欄へ domain の導出を受け渡すこと、domain に低い層の
 テストが無い導出（気象のチップ・生値の単位・材料の内訳・専用配信の条件・画面へ配る較正値）の結果。
 
 ここで見ないもの:
 - 地図の塗り（値の種類・単位・段・凡例・ラベル） → `test_map_paint.py`、一次属性 → `test_axis_hierarchy.py`
+- 道の区分の群の中身と検査 → `test_road_classes.py`
 - タイルの世代 → `test_derived_data_revision_service.py`・`test_derived_data_meta.py`
 - 軸の項目を応答へそのまま写すこと（表示名・重み・チップの欄等）——書き写しで、判断が無い
 - 画面へ配る較正値の顔ぶれ（`tuning.py: client_tuning_values`）——同じ関数がビルド時生成物の`client_tuning`も書き、
@@ -25,6 +26,7 @@ from app.domain.axis_definitions import (
 )
 from app.domain.axis_raw_value import RawValueUnits
 from app.domain.material_catalog import MATERIAL_CATALOG, SURFACE_ESTIMATE
+from app.domain.road_classes import RoadClassGroup, replace_road_class_groups, road_class_groups
 from app.domain.way_value_formula import WayValueFormula, condition_names
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.main import app
@@ -150,6 +152,23 @@ def test_only_the_published_axes_are_served_without_auth(client):
     draft = axis_definition("draft_axis", is_published=False)
     with replaced_axis_definitions({**CATALOG_AXES, draft.axis_id: draft}):
         assert set(_entries(client)) == set(CATALOG_AXES)
+
+
+def test_only_the_published_road_class_groups_are_served(client):
+    """下書きの群が一般の画面へ漏れると、まだ固まっていない区分で利用者が避け方を選び、その鍵が設定に残る。"""
+    def group(key: str, is_published: bool) -> RoadClassGroup:
+        return RoadClassGroup.model_validate({
+            "group_key": key, "label": key, "palette": "ordered", "is_published": is_published,
+            "rows": [{"key": "a", "label": "a", "description": "a", "match": [{"highway": ["a"]}]}]})
+
+    before = road_class_groups()
+    replace_road_class_groups({"published": group("published", True), "draft": group("draft", False)})
+    try:
+        served = client.get("/api/axis-catalog").json()["road_classes"]
+    finally:
+        replace_road_class_groups(before)
+
+    assert served == [group("published", True).model_dump(mode="json")]
 
 
 def test_each_axis_carries_what_the_domain_derives_for_it(client, catalog_axes):
