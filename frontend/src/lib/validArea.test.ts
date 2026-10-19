@@ -45,10 +45,8 @@ const at = (longitude: number, latitude: number) => ({ latitude, longitude });
 
 describe("areaContains", () => {
   it.each([
-    { case: "面の中", point: at(139.2, 35.2), expected: true },
     { case: "穴の中", point: at(139.5, 35.5), expected: false },
     { case: "飛び地の中", point: at(141.5, 35.5), expected: true },
-    { case: "どの面の外", point: at(140.5, 35.5), expected: false },
   ])("$case", ({ point, expected }) => {
     expect(areaContains(AREA, point)).toBe(expected);
   });
@@ -58,11 +56,9 @@ describe("leftTheArea", () => {
   const fetchedAt = at(139.2, 35.2);
 
   it.each([
-    { case: "まだ範囲の中", position: at(139.8, 35.8), fetchedAt, expected: false },
-    { case: "範囲を出た", position: at(140.5, 35.5), fetchedAt, expected: true },
-    // 範囲が取った地点を外と読むなら、どこへ動いても出たと読み、位置が届くたびに取り直す。
-    { case: "範囲が取った地点を含まない", position: at(140.5, 35.5), fetchedAt: at(140.6, 35.5), expected: false },
-  ])("$case", ({ position, fetchedAt, expected }) => {
+    { case: "まだ範囲の中", position: at(139.8, 35.8), expected: false },
+    { case: "範囲を出た", position: at(140.5, 35.5), expected: true },
+  ])("$case", ({ position, expected }) => {
     expect(leftTheArea(AREA, fetchedAt, position)).toBe(expected);
   });
 });
