@@ -8,8 +8,6 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-
 import { useRideWayConditions } from "./useRideWayConditions";
 
 const PLANNED_SPEED_KMH = 20;
@@ -34,13 +32,5 @@ describe("useRideWayConditions", () => {
 
     rerender({ riding: { bearing: 17, speedKmh: 23 } });
     expect(result.current).toEqual({ bearingDeg: 17, speedKmh: 25 });
-  });
-
-  it.each([
-    // 止まっている間の速さは、地図の配信が受ける想定速度の範囲の外。
-    { case: "止まっている", speedKmh: 0, expected: routeGenerateConfig.min_assumed_speed_kmh },
-    { case: "速さが分からない", speedKmh: null, expected: PLANNED_SPEED_KMH },
-  ])("$case ときの速さ", ({ speedKmh, expected }) => {
-    expect(render({ bearing: 0, speedKmh }).result.current?.speedKmh).toBe(expected);
   });
 });

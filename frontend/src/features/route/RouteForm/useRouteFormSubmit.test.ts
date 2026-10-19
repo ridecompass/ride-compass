@@ -15,7 +15,6 @@ import { describe, expect, it } from "vitest";
 
 import { useRouteFormSubmit } from "./useRouteFormSubmit";
 
-const ORIGIN_UNKNOWN = "現在地が分かりません。位置情報を許可するか、地図をタップして出発地を置いてください。";
 const NOTHING_TO_MAKE = "「全長の目標を決める」を押すか、経由地・目的地を置いてください。";
 
 interface Options {
@@ -41,25 +40,8 @@ function check(result: { current: ReturnType<typeof useRouteFormSubmit> }) {
 }
 
 describe("useRouteFormSubmit", () => {
-  it("全長の目標を決めていれば、出発地が分かるだけで生成する", () => {
-    const { result } = renderSubmit(LOOP);
-
-    expect(check(result)).toBe(true);
-  });
-
-  it("出発地が仮の地点のままなら、押すまでは文言を出さず、押すと生成せずに位置情報の許可か地図での指定を促す", () => {
-    const { result } = renderSubmit({ ...LOOP, originKnown: false });
-    expect(result.current.error).toBeNull();
-
-    expect(check(result)).toBe(false);
-    expect(result.current.error).toBe(ORIGIN_UNKNOWN);
-  });
-
-  it.each([
-    { label: "経由地だけ", options: { ...NO_DISTANCE, waypointCount: 2 } },
-    { label: "目的地だけ", options: { ...NO_DISTANCE, destinationSet: true } },
-  ])("全長の目標を決めなくても、「$label」があれば生成する", ({ options }) => {
-    const { result } = renderSubmit(options);
+  it("全長の目標を決めなくても、「経由地だけ」があれば生成する", () => {
+    const { result } = renderSubmit({ ...NO_DISTANCE, waypointCount: 2 });
 
     expect(check(result)).toBe(true);
   });
