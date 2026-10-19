@@ -28,11 +28,11 @@ describe("useRideWayConditions", () => {
     expect(render(riding).result.current).toBeNull();
   });
 
-  it("走行中は、実際の進む向きを丸めずに使い、実際の速さを整数へ丸めて使う", () => {
+  it("走行中は、実際の進む向きを丸めずに使い、実際の速さを5 km/h 刻みへ丸めて使う", () => {
     const { result, rerender } = render({ bearing: 16, speedKmh: 17.6 });
-    expect(result.current).toEqual({ bearingDeg: 16, speedKmh: 18 });
+    expect(result.current).toEqual({ bearingDeg: 16, speedKmh: 20 });
 
-    rerender({ riding: { bearing: 17, speedKmh: 25 } });
+    rerender({ riding: { bearing: 17, speedKmh: 23 } });
     expect(result.current).toEqual({ bearingDeg: 17, speedKmh: 25 });
   });
 

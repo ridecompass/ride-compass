@@ -131,7 +131,7 @@ describe("useMapView", () => {
     },
   );
 
-  it("走る向きは地図の上の向きを丸めずに [0, 360) で地図へ渡し、向きを変えても材料を取り直さない。走行中は実際に走る向きと速度を渡す", async () => {
+  it("走る向きは地図の上の向きを [0, 360) の10°刻みへ丸めて地図へ渡し、材料の要求へ向きを載せない軸は向きを変えても取り直さない。走行中は実際に走る向きと速度を渡す", async () => {
     serve([DEDICATED]);
     const sent = onBackend("GET", "/api/region/way-materials/axis_wind/:z/:x/:y", () =>
       Response.json({ way_1: { value: 12 } }),
@@ -148,7 +148,7 @@ describe("useMapView", () => {
     const fetched = sent.length;
 
     act(() => result.current.look.onViewportChange({ ...VIEWPORT, bearing: -42.5 }));
-    expect(result.current.look.wayConditions).toEqual({ bearing_deg: 317.5, speed_kmh: 20 });
+    expect(result.current.look.wayConditions).toEqual({ bearing_deg: 320, speed_kmh: 20 });
     // 間引きの待ちを越えてから、要求が増えていないことを見る。
     await new Promise((resolve) => setTimeout(resolve, MAP_FETCH_DEBOUNCE_MS + 100));
     expect(sent).toHaveLength(fetched);

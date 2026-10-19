@@ -74,16 +74,19 @@ class AxisCatalogEntry(StrictModel):
     # 並びは正規化重みの降順で、フロントは先頭から順に出す（並べ替えを持たない）。
     material_breakdown: list[AxisMaterialBreakdownEntry]
     # この軸の値に効く条件の名前（`services/dedicated_way_values.py: DedicatedWayValueLayer`。
-    # 軸の葉の材料を配るサービスが受け取る条件の型から導く）。条件の要らない軸は空。`at`は道ごとの材料
-    # （`GET /api/region/way-materials/{axis_id}`）の要求へ載せる名前で、受け取る側が「どの軸の取得に時刻を
-    # 添えるか・どの軸が向き・想定速度で変わるか」を、axis_idで分岐せずここから決めるために配る。
+    # 軸の葉の材料を配るサービスが受け取る条件の型から導く）。条件の要らない軸は空。受け取る側が「どの軸が
+    # 時刻・向き・想定速度で変わるか」を、axis_idで分岐せずここから決めるために配る。
     dynamic_way_value_conditions: list[WayValueConditionName]
+    # `dynamic_way_value_conditions`のうち、道ごとの材料（`GET /api/region/way-materials/{axis_id}`）の要求へ
+    # 載せる名前（`services/dedicated_way_values.py: DedicatedWayValueLayer`）。ほかは`way_value_formula`が読む。
+    # 載せない名前は応答に効かないので、受け取る側はこの名前の値が変わったときだけ取り直せばよい。
+    dynamic_way_value_material_conditions: list[WayValueConditionName]
     # 走行方位しだいで値の決まらない道（木の`undetermined`が真になる道）がありうるか
     # （`services/dedicated_way_values.py: DedicatedWayValueLayer`）。trueの軸だけ、
     # 地図の凡例が「向きで決まらない」の行を持つ（返さない軸に出すと、どの道も入らない行になる）。
     dynamic_way_value_undetermined_by_bearing: bool
-    # 地図がこの軸について塗る値を、道ごとの材料（`GET /api/region/way-materials/{axis_id}`）と要求の条件
-    # （`bearing_deg`・`speed_kmh`）から求める式の木（`services/dedicated_way_values.py: DedicatedWayValueLayer`）。
+    # 地図がこの軸について塗る値を、道ごとの材料（`GET /api/region/way-materials/{axis_id}`）と、
+    # `dynamic_way_value_material_conditions`に無い要求の条件から求める式の木（`services/dedicated_way_values.py: DedicatedWayValueLayer`）。
     # 値は区間インスペクタの得点と同じ評価になる。木にできない軸はnullで、ルートの無い間の周りの道を塗れない。
     way_value_formula: WayValueFormula | None
     # 重みが効く時間帯（`domain/axis_definitions.py: AxisDefinition`の`time_scope`）。"always"以外の軸は、
@@ -136,6 +139,7 @@ async def get_axis_catalog(region_service: RegionService = Depends(get_region_se
                 raw_value_units=raw_value_units(definition),
                 material_breakdown=axis_material_breakdown(definition, AXIS_DEFINITIONS),
                 dynamic_way_value_conditions=way_value_layers[definition.axis_id].conditions,
+                dynamic_way_value_material_conditions=way_value_layers[definition.axis_id].material_conditions,
                 dynamic_way_value_undetermined_by_bearing=way_value_layers[definition.axis_id].undetermined_by_bearing,
                 way_value_formula=way_value_layers[definition.axis_id].formula,
                 time_scope=definition.time_scope,

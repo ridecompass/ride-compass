@@ -13,6 +13,11 @@ export function normalizeDeg(deg: number): number {
   return ((deg % 360) + 360) % 360;
 }
 
+/** 角度を`stepDeg`刻みの最も近い角度（0以上360未満）へ丸める。 */
+export function snapDeg(deg: number, stepDeg: number): number {
+  return normalizeDeg(Math.round(deg / stepDeg) * stepDeg);
+}
+
 /** 気象の風向（風が吹いてくる向き）を、風が吹いていく向き（矢印の向き。北=0・時計回り）へ。 */
 export function downwindDeg(windFromDeg: number): number {
   return normalizeDeg(windFromDeg + 180);
