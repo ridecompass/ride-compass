@@ -61,6 +61,7 @@ def _harmless_startup(monkeypatch):
     """
     monkeypatch.setattr(main_module, "refresh_axis_definitions", bound(main_module.refresh_axis_definitions, _noop))
     monkeypatch.setattr(main_module, "refresh_tuning_values", bound(main_module.refresh_tuning_values, _noop))
+    monkeypatch.setattr(main_module, "refresh_road_classes", bound(main_module.refresh_road_classes, _noop))
     for name in _startup_job_attribute_names():
         monkeypatch.setattr(main_module, name, bound(getattr(main_module, name), _noop_job))
     monkeypatch.setattr(main_module, "get_http_client", lambda timeout: None)
