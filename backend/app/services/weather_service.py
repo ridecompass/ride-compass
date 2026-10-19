@@ -16,6 +16,7 @@ from app.domain.msm_grid import (
 )
 from app.domain.route import Coordinates
 from app.domain.region import BoundingBox
+from app.domain.weather import GridPointToday, grid_point_today
 from app.domain.wind import DEPARTURE_WIND_DECIMALS, DepartureWind, WindForecastSeries
 from app.infrastructure import msm_client
 from app.infrastructure.msm_client import MsmUnavailableError
@@ -50,6 +51,26 @@ class WeatherService:
         return DepartureWind(
             speed_ms=round(float(speed[0]), DEPARTURE_WIND_DECIMALS),
             direction_deg=round(float(direction[0]), DEPARTURE_WIND_DECIMALS),
+        )
+
+    async def get_grid_point_today(self, point: Coordinates) -> GridPointToday | None:
+        """`point`に最も近いMSMの格子点の、今日の1時間ごとの値（格子点の値のまま）。読めなければNone。"""
+        try:
+            series = await msm_client.read_grid_points(
+                np.array([point.latitude], dtype=float), np.array([point.longitude], dtype=float),
+            )
+        except MsmUnavailableError:
+            return None
+        latitudes, longitudes = series.points.coordinates()
+        return grid_point_today(
+            point,
+            float(latitudes[0]),
+            float(longitudes[0]),
+            series.times,
+            series.temperature_c[0],
+            series.precipitation_mm[0],
+            series.wind_u_ms[0],
+            series.wind_v_ms[0],
         )
 
     async def get_msm_grid(self, bbox: BoundingBox) -> MsmGridForecast | None:

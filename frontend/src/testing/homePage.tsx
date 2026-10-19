@@ -15,7 +15,7 @@ import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { makeGenerationConditions, makeRouteCandidate, makeRouteSegment } from "@/testing/routeFixtures";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 import type { Coordinates, RouteCandidate } from "@/types/route";
-import type { AmedasObservation } from "@/types/weather";
+import type { AmedasObservation, GridPointToday } from "@/types/weather";
 
 export const HERE: Coordinates = { latitude: 35.7, longitude: 139.7 };
 export const DESTINATION: Coordinates = { latitude: 35.6, longitude: 139.73 };
@@ -50,6 +50,22 @@ const OBSERVATION: AmedasObservation = {
   valid_area: null,
 };
 
+const GRID_POINT_TODAY: GridPointToday = {
+  latitude: 35.75,
+  longitude: 139.75,
+  distance_km: 1,
+  bearing_deg: 0,
+  times: [],
+  temperature_c: [],
+  precipitation_mm: [],
+  wind_speed_ms: [],
+  wind_direction_deg: [],
+  highest_hourly_temperature_c: null,
+  lowest_hourly_temperature_c: null,
+  highest_hourly_precipitation_mm: null,
+  highest_hourly_wind_speed_ms: null,
+};
+
 let jobs: ReturnType<typeof serveGenerationJobs>;
 
 /** ページが開いてすぐ読む backend の応答と現在地（`HERE`）を置き、ルート生成のジョブの代役を返す。テストごとに呼ぶ。 */
@@ -61,6 +77,7 @@ export function serveHome() {
   onSameOrigin("GET", "/api/jma-tile/*", () => Response.json([]));
   onBackend("GET", "/api/jma-tile-index", () => Response.json({ available: false, coverage: null, elements: {} }));
   onBackend("GET", "/api/weather/amedas", () => Response.json(OBSERVATION));
+  onBackend("GET", "/api/weather", () => Response.json(GRID_POINT_TODAY));
   onBackend("GET", "/api/weather/warnings", () => Response.json({ warnings: [] }));
   onBackend("GET", "/api/weather/wbgt", () => Response.json({ reading: null }));
   onBackend("GET", "/api/weather/flood-forecast", () => Response.json({ forecasts: [] }));

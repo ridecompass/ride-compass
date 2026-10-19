@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     weather_wbgt_rate_limit_per_minute: int = 30
     weather_flood_forecast_rate_limit_per_minute: int = 30
     weather_amedas_rate_limit_per_minute: int = 30
+    # 今日の最寄りの格子点の値も同じ地点の変化を起点に呼ばれ、ローカルのMSMファイルから読む。
+    weather_rate_limit_per_minute: int = 30
     # 地点の検索は打つのが止まるたびに呼ばれる。止まってから引くまでの間で決まる1分あたりの最大に当たらない値。
     # 1件はDBの住所の区画の表と立ち寄り先の表を索引で引くだけ（時間は docs/modules/backend/place-search.md「引き方」）。
     place_search_rate_limit_per_minute: int = math.ceil(60 / PLACE_PREDICTION_DELAY_SECONDS)

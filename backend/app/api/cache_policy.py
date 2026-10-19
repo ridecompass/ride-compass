@@ -128,6 +128,7 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     # カタログ・設定
     ("/api/axis-catalog", LIVE),
     # 天候（URLに緯度経度を含むため地点ごとに別エントリになる）
+    ("/api/weather", SHORT),
     ("/api/weather/msm-grid", SHORT),
     ("/api/weather/warnings", VOLATILE),
     ("/api/weather/wbgt", VOLATILE),
