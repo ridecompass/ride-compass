@@ -28,7 +28,8 @@ from app.domain.evaluation import DensityAxisColumn, StaticEdgeScoreMatrix
 from app.domain.leg_costs import LegCostComposer
 from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates
-from app.domain.wind import DepartureWind, WindForecastSeries, WindLattice
+from app.domain.msm import MsmBlock, MsmGrid
+from app.domain.wind import DepartureWind, WindForecastSeries
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 
 START = datetime(2026, 10, 3, 9, 0)
@@ -61,7 +62,7 @@ def _column(values, n: int) -> np.ndarray:
 
 def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="paved",
             axes: dict | None = None, raw_axes: dict | None = None, materials: dict | None = None,
-            categories: dict | None = None, signals_per_km=None) -> StaticEdgeScoreMatrix:
+            categories: dict | None = None, signals_per_km=None, mid_lat=35.0) -> StaticEdgeScoreMatrix:
     """`n`区間の静的スコア行列。引数は全区間に同じ値か、区間ごとの並び。停止の密度は`materials`で渡さなければ0。
 
     `signals_per_km`を渡すと、その信号の密度で待ちが入り、密度の軸`STOP_AXIS`（折れ線は`STOP_LINE`）が点数を持つ。"""
@@ -81,7 +82,7 @@ def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="pa
     return StaticEdgeScoreMatrix(
         axis_ids=list(axes), axis_scores=stacked(axes),
         distance_m=_column(distance, n), bearing_deg=_column(bearing, n), route_flags={},
-        mid_lat=np.full(n, 35.0), mid_lon=np.full(n, 139.0),
+        mid_lat=_column(mid_lat, n), mid_lon=np.full(n, 139.0),
         raw_axis_ids=list(raw_axes), axis_raw_values=stacked(raw_axes),
         material_ids=list(materials), material_values=stacked(materials),
         categorical_material_ids=list(categories),
@@ -100,7 +101,9 @@ def _series(speeds_by_hour: list[float], from_deg: float = NORTH) -> WindForecas
         times=[START + timedelta(hours=h) for h in range(len(speeds_by_hour))],
         speed_ms=np.array([speeds_by_hour], dtype=float),
         direction_deg=np.full((1, len(speeds_by_hour)), from_deg),
-        lattice=WindLattice(south=35.0, west=139.0, lat_step=0.05, lon_step=0.0625, rows=1, cols=1),
+        lattice=MsmBlock(
+            grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=0.05, d_lon=0.0625, n_lat=1, n_lon=1), row0=0, col0=0, rows=1, cols=1,
+        ),
     )
 
 
@@ -472,6 +475,16 @@ def test_the_wind_of_a_segment_is_the_forecast_at_its_passage():
         None,
         None,
     ]
+
+
+def test_a_segment_whose_nearest_grid_point_is_outside_the_forecast_shows_no_wind():
+    """予報の格子点の並びの外の区間は端の格子点の風で評価しているので、最寄りの格子点の値として示さない。"""
+    composer = _composer(_matrix(2, mid_lat=[35.0, 35.5]), series=_series([1.0, 2.0]))
+
+    winds = composer.winds_at([0, 1], [0.0, 0.0], [False, False])
+
+    assert winds[0] is not None
+    assert winds[1] is None
 
 
 def test_a_segment_evaluated_with_the_wind_at_departure_shows_no_wind():

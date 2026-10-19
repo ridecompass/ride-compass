@@ -32,7 +32,8 @@ from numba.core.registry import CPUDispatcher
 from app.domain import routing
 from app.domain.geo import haversine_distance_km_array
 from app.domain.route import Coordinates
-from app.domain.wind import WindForecastSeries, WindLattice
+from app.domain.msm import MsmBlock, MsmGrid
+from app.domain.wind import WindForecastSeries
 from tests.route_world import (
     BASE_LAT,
     BASE_LON,
@@ -1397,7 +1398,9 @@ async def test_route_generation_calls_from_python_only_the_jit_that_the_image_ba
     speed = np.full((4, len(times)), 3.0)
     wind = WindForecastSeries(
         times=times, speed_ms=speed, direction_deg=np.zeros_like(speed),
-        lattice=WindLattice(south=BASE_LAT, west=BASE_LON, lat_step=0.018, lon_step=0.022, rows=2, cols=2),
+        lattice=MsmBlock(
+            grid=MsmGrid(lat_min=BASE_LAT, lon_min=BASE_LON, d_lat=0.018, d_lon=0.022, n_lat=2, n_lon=2), row0=0, col0=0, rows=2, cols=2,
+        ),
     )
     with avoid_axis_declared():
         generator = generator_for(monkeypatch, grid_network(), 0.0, wind)

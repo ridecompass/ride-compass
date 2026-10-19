@@ -93,9 +93,9 @@ MAP_LAYER_DATA_SOURCES: tuple[MapLayerDataSource, ...] = (
     MapLayerDataSource("ownFetch"),
 )
 
-#: 数値予報モデルの計算値に添える断りの文。計算値を「予報」と呼ばない
+#: 数値予報モデルの値を画面に出すときに、同じ文として添える断り。大きな誤差を含む可能性と、予報ではないことの両方を言う
 #: （docs/architecture/data-sources.md「気象業務法の予報業務許可」節）。生成物（`mapDisplay.modelValueDisclaimer`）が画面へ届ける。
-MODEL_VALUE_DISCLAIMER = "予報ではなく、誤差を含みえます。"
+MODEL_VALUE_DISCLAIMER = "数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。"
 
 #: 値の性質。生データか、時刻で中身が変わるか。
 MAP_LAYER_DATA_NATURES: tuple[str, ...] = ("raw", "dynamic")

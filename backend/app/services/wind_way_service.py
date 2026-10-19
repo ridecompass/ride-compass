@@ -3,7 +3,7 @@
 道ごとの材料は、その道の中ほどの風速・風向で、走行方位と想定速度には依らない。走行方位・想定速度は**ユーザーが
 指定した単一の値**（全道路共通）で、地図と配信が式の木（`domain/wind.py: WIND_DRAG_RATIO_WAY_FORMULA`）で当てる
 （ルートを出す前は道を走る向きが決まっていない）。予報の地点と時刻の選び方はルートの区間と同じ
-（`domain/wind.py: WindLattice`・`domain/wind.py: WindForecastSeries`）で、値の式もルートの区間と同じ式の木から
+（MSMの格子点、`domain/msm.py: MsmBlock`・`domain/wind.py: WindForecastSeries`）で、値の式もルートの区間と同じ式の木から
 組む（`domain/wind.py: wind_drag_ratio_formula`）。
 
 制御フローの詳細はdocs/modules/backend/dynamic-way-values.md「`WindWayService`」節参照。
@@ -77,14 +77,14 @@ class WindWayService:
                 max_longitude=max(bbox.max_longitude, float(longitudes.max())),
             ))
             if series is None:
-                fields["wind_grid"] = "unavailable"
-                log_throttled_warning(_CATEGORY, "風の評価軸配信の風グリッド取得に失敗 z=%d x=%d y=%d", z, x, y)
+                fields["msm_grid_points"] = "unavailable"
+                log_throttled_warning(_CATEGORY, "風の評価軸配信のMSMの格子点の読み出しに失敗 z=%d x=%d y=%d", z, x, y)
                 return {}
             # ルートの区間は予報の先を端の値で延ばすが、地図では延ばした値を当てにならない色として
             # 見せないよう塗らない。
             if not series.covers(target):
-                fields["wind_grid"] = "out_of_range"
-                log_throttled_warning(_CATEGORY, "風の評価軸配信の時刻が風グリッド範囲外 z=%d x=%d y=%d", z, x, y)
+                fields["msm_grid_points"] = "out_of_range"
+                log_throttled_warning(_CATEGORY, "風の評価軸配信の時刻がMSMの格子点の予報の期間外 z=%d x=%d y=%d", z, x, y)
                 return {}
 
             speed, direction = series.sample(target, np.zeros(len(keys)), series.lattice.points_of(latitudes, longitudes))

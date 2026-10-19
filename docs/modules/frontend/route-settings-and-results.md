@@ -299,11 +299,11 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
 ルート全体の内訳（`RouteAxisProfile`）を出さない。
 
 中身は区間の地点（区間の始まりの道のり）・到達予想時刻・区間の総合難易度（`RouteSegmentDetail.difficulty`。算出できなかった区間は「—」）・
-評価に使った風（数値予報モデルの計算値の時刻・風向風速、追える時刻の先で延ばして使った区間は短い注記、詳しくは(i)。
-「予報」とは呼ばない——[動的気象レイヤー](dynamic-weather-layers.md)「責務」。
+評価に使った風（区間の中ほどに最寄りの格子点の計算値であることとその時刻・風向風速、詳しくは(i)。
+「予報」とは呼ばず、(i)は数値予報モデルの値に添える断りの文（生成物`mapDisplay.modelValueDisclaimer`）を出す——[動的気象レイヤー](dynamic-weather-layers.md)「責務」。
 (i)の説明がレグごとに追う時間を生成物`route-generate-config.json`の`wind_forecast_hours_per_leg`から出す）＋
 `AxisContributionBar`（区間の`axis_contributions`）。道のりのグラフの下では、これに選んだ地点の標高・勾配と、その地点で当たる道の区分の
-チップを足して3行にまとめ（各行の中身は上の表の`ProfilePointDetail.tsx`の行）、風はチップにして、時刻・延長の印・説明はチップを押すと開く。
+チップを足して3行にまとめ（各行の中身は上の表の`ProfilePointDetail.tsx`の行）、風はチップにして、時刻・説明はチップを押すと開く。
 ×ボタン（地図の小窓では小窓を閉じる）で`selectedRouteSegment`をnullへ戻すとルート全体表示に復帰する。`AxisContributionBar`は寄与が1つも
 無いと何も描かないので、寄与が全部0の区間は「どの評価軸も0（易しい）」と文で言う——内訳も数字も出ないと、壊れたのと見分けがつかない。
 内訳のチップを押すと、軸の名前・**その区間の**軸別難易度（`RouteSegmentDetail.axis_difficulties`）・説明が開く（`AxisDetail.tsx`）

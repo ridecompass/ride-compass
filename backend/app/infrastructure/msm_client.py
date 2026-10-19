@@ -16,9 +16,11 @@ import json
 import logging
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Protocol
 
 import httpx
 import numpy as np
@@ -26,7 +28,7 @@ from omfiles import OmFileReader
 
 from app.domain.time_zone import JST, as_series_time
 from app.config import settings
-from app.domain.msm import MsmGrid, MsmWindow
+from app.domain.msm import MsmGrid, MsmGridPoints, MsmWindow
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.debug_log import log_external_call
 
@@ -50,7 +52,18 @@ class MsmSeries:
     wind_v_ms: np.ndarray
 
 
-# 同期・読み出しの対象変数（配信元の変数名 → `MsmSeries`の項目）。増やすと同期量がそのぶん
+@dataclass(frozen=True)
+class MsmGridPointSeries:
+    """格子点ごとの予報の時系列。値は格子点の値のままで、値の配列はどれも[点の数, 時刻数]。"""
+
+    times: list[datetime]
+    #: 値を読んだ格子点（格子の中の番号・位置）。
+    points: MsmGridPoints
+    wind_u_ms: np.ndarray
+    wind_v_ms: np.ndarray
+
+
+# 同期・読み出しの対象変数（配信元の変数名 → `MsmSeries`・`MsmGridPointSeries`の項目）。増やすと同期量がそのぶん
 # 増えるため、実際に消費するものだけを並べる。
 FORECAST_VARIABLES: dict[str, str] = {
     "wind_u_component_10m": "wind_u_ms",
@@ -296,9 +309,19 @@ def _synced_chunk_path(variable: str, chunk_number: int) -> Path:
     return path
 
 
-def _read_block(variable: str, chunk_number: int, window: MsmWindow, t0: int, t1: int) -> np.ndarray:
+class _Selection(Protocol):
+    """全体格子から切り出す範囲。"""
+
+    @property
+    def lat_slice(self) -> slice: ...
+
+    @property
+    def lon_slice(self) -> slice: ...
+
+
+def _read_block(variable: str, chunk_number: int, selection: _Selection, t0: int, t1: int) -> np.ndarray:
     with OmFileReader(str(_synced_chunk_path(variable, chunk_number))) as reader:
-        block = np.asarray(reader[window.lat_slice, window.lon_slice, t0:t1], dtype=np.float64)
+        block = np.asarray(reader[selection.lat_slice, selection.lon_slice, t0:t1], dtype=np.float64)
     return block
 
 
@@ -314,7 +337,11 @@ def _grid_from_meta(meta: dict, n_lat: int, n_lon: int) -> MsmGrid:
     return MsmGrid.from_bbox_and_shape((south, west, north, east), n_lat, n_lon)
 
 
-def _read_series_sync(latitudes: np.ndarray, longitudes: np.ndarray, hours: int, now: int) -> MsmSeries:
+def _read_sync[S: _Selection](
+    select: Callable[[MsmGrid], S], extract: Callable[[S, np.ndarray], np.ndarray], hours: int, now: int,
+) -> tuple[S, list[datetime], dict[str, np.ndarray]]:
+    """現在時刻の正時から`hours`時間ぶんを、格子から`select`で選んだ範囲について読む。`extract`は切り出した
+    部分ブロック（形状[緯度, 経度, 時刻]）から[点の数, 時刻数]の値を取り出す。戻り値の値は`MsmSeries`の項目ごと。"""
     meta = _load_json(MSM_DIR / _META_FILE_NAME)
     if not meta:
         raise MsmUnavailableError("MSMのメタ情報が未同期です")
@@ -330,8 +357,7 @@ def _read_series_sync(latitudes: np.ndarray, longitudes: np.ndarray, hours: int,
     sample_path = _synced_chunk_path(next(iter(FORECAST_VARIABLES)), _chunk_number(start, chunk_hours))
     with OmFileReader(str(sample_path)) as reader:
         n_lat, n_lon = int(reader.shape[0]), int(reader.shape[1])
-    grid = _grid_from_meta(meta, n_lat, n_lon)
-    window = grid.window(latitudes, longitudes)
+    selection = select(_grid_from_meta(meta, n_lat, n_lon))
 
     series: dict[str, list[np.ndarray]] = {variable: [] for variable in FORECAST_VARIABLES}
     times: list[datetime] = []
@@ -342,32 +368,61 @@ def _read_series_sync(latitudes: np.ndarray, longitudes: np.ndarray, hours: int,
         t0 = (cursor - chunk_begin) // 3600
         t1 = min((end - chunk_begin) // 3600, chunk_hours)
         for variable in FORECAST_VARIABLES:
-            block = _read_block(variable, chunk_number, window, t0, t1)
-            series[variable].append(window.interpolate(block))
+            series[variable].append(extract(selection, _read_block(variable, chunk_number, selection, t0, t1)))
         times.extend(
             as_series_time(datetime.fromtimestamp(chunk_begin + hour * 3600, JST)) for hour in range(t0, t1)
         )
         cursor = chunk_begin + t1 * 3600
 
-    return MsmSeries(
-        times=times,
-        **{FORECAST_VARIABLES[variable]: np.concatenate(parts, axis=1) for variable, parts in series.items()},
-    )
+    return selection, times, {
+        FORECAST_VARIABLES[variable]: np.concatenate(parts, axis=1) for variable, parts in series.items()
+    }
+
+
+async def _read[S: _Selection](
+    select: Callable[[MsmGrid], S], extract: Callable[[S, np.ndarray], np.ndarray],
+) -> tuple[S, list[datetime], dict[str, np.ndarray]]:
+    """`_read_sync`を、現在時刻の正時から`settings.msm_forecast_hours`時間ぶんについて別スレッドで回す。
+
+    同期が済んでいない・予報が現在時刻へ追いついていない・置き場のファイルが読めない（壊れたメタ情報・チャンク）・
+    地点が格子の外にある場合は`MsmUnavailableError`。
+    """
+    requested = settings.msm_forecast_hours
+    with log_external_call("msm:read", hours=requested) as fields:
+        fields["cache"] = "hit"
+        try:
+            result = await asyncio.to_thread(_read_sync, select, extract, requested, int(time.time()))
+        except (OSError, ValueError, KeyError) as exc:
+            raise MsmUnavailableError(f"MSMの置き場を読めません: {exc!r}") from exc
+        _, times, values = result
+        fields["result"] = "ok"
+        fields["locations"] = len(next(iter(values.values())))
+        fields["times"] = len(times)
+        return result
 
 
 async def read_series(latitudes: np.ndarray, longitudes: np.ndarray) -> MsmSeries:
-    """地点ごとの時系列（現在時刻の正時から`settings.msm_forecast_hours`時間ぶん）を返す。
+    """地点ごとの時系列（現在時刻の正時から`settings.msm_forecast_hours`時間ぶん）を、周囲の格子点から補間して返す。
+    画面に出さない計算にだけ使う（domain/msm.py のモジュールの説明）。読めなければ`MsmUnavailableError`。"""
+    _, times, values = await _read(
+        lambda grid: grid.window(latitudes, longitudes), MsmWindow.interpolate,
+    )
+    return MsmSeries(times=times, **values)
 
-    同期が済んでいない・予報が現在時刻へ追いついていない・置き場のファイルが読めない（壊れたメタ情報・チャンク）
-    場合は`MsmUnavailableError`。
-    """
-    requested = settings.msm_forecast_hours
-    with log_external_call("msm:read", locations=len(latitudes), hours=requested) as fields:
-        fields["cache"] = "hit"
-        try:
-            result = await asyncio.to_thread(_read_series_sync, latitudes, longitudes, requested, int(time.time()))
-        except (OSError, ValueError, KeyError) as exc:
-            raise MsmUnavailableError(f"MSMの置き場を読めません: {exc!r}") from exc
-        fields["result"] = "ok"
-        fields["times"] = len(result.times)
-        return result
+
+async def read_grid_points(latitudes: np.ndarray, longitudes: np.ndarray) -> MsmGridPointSeries:
+    """地点ごとの最寄りの格子点の時系列（格子点の値のまま、`read_series`と同じ時間ぶん）。読めなければ
+    `MsmUnavailableError`。"""
+    points, times, values = await _read(
+        lambda grid: grid.nearest_points(latitudes, longitudes), MsmGridPoints.values,
+    )
+    return MsmGridPointSeries(times=times, points=points, **values)
+
+
+async def read_grid_block(south: float, west: float, north: float, east: float) -> MsmGridPointSeries:
+    """矩形を覆う格子点（`domain/msm.py: MsmGrid.block_covering`）の全部の時系列（格子点の値のまま、点の番号の順）。
+    読めなければ`MsmUnavailableError`。"""
+    points, times, values = await _read(
+        lambda grid: grid.block_covering(south, west, north, east).all_points(), MsmGridPoints.values,
+    )
+    return MsmGridPointSeries(times=times, points=points, **values)

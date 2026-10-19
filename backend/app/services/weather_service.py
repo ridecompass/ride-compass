@@ -6,12 +6,9 @@ from app.domain.rain import StationRainMaterials
 from app.domain.msm import wind_speed_and_direction
 from app.domain.route import Coordinates
 from app.domain.region import BoundingBox
-from app.domain.wind import (
-    DEPARTURE_WIND_DECIMALS, WIND_FORECAST_LAT_STEP_DEG, WIND_FORECAST_LON_STEP_DEG, DepartureWind, WindForecastSeries,
-    WindLattice,
-)
+from app.domain.wind import DEPARTURE_WIND_DECIMALS, DepartureWind, WindForecastSeries
 from app.infrastructure import msm_client
-from app.infrastructure.msm_client import MsmSeries, MsmUnavailableError
+from app.infrastructure.msm_client import MsmUnavailableError
 from app.services.jma_amedas_service import load_station_rain_materials, new_rain_materials_cache
 
 
@@ -28,21 +25,16 @@ class WeatherService:
         """観測所ごとの雨の材料（`jma_amedas_service.py: load_station_rain_materials`）。地図の雨とルートの雨が同じ値を読む。"""
         return await load_station_rain_materials(now, self._rain_materials_cache)
 
-    async def _read(self, latitudes: np.ndarray, longitudes: np.ndarray) -> MsmSeries | None:
-        """地点ごとのMSMの時系列。読めないか、時刻が1つも無ければNone。"""
+    async def get_departure_wind(self, point: Coordinates) -> DepartureWind | None:
+        """地点へ補間した時系列の先頭（現在時刻の正時）の風。`RoadGraphEngine`が時別の系列の代わりに、画面に出さない
+        計算にだけ使う。読めなければNone。"""
         try:
-            series = await msm_client.read_series(latitudes, longitudes)
+            series = await msm_client.read_series(
+                np.array([point.latitude], dtype=float), np.array([point.longitude], dtype=float),
+            )
         except MsmUnavailableError:
             return None
-        return series if series.times else None
-
-    async def _read_point(self, point: Coordinates) -> MsmSeries | None:
-        return await self._read(np.array([point.latitude], dtype=float), np.array([point.longitude], dtype=float))
-
-    async def get_departure_wind(self, point: Coordinates) -> DepartureWind | None:
-        """地点の時系列の先頭（現在時刻の正時）の風。`RoadGraphEngine`が時別の系列の代わりに使う。読めなければNone。"""
-        series = await self._read_point(point)
-        if series is None:
+        if not series.times:
             return None
         speed, direction = wind_speed_and_direction(series.wind_u_ms[0], series.wind_v_ms[0])
         return DepartureWind(
@@ -51,22 +43,24 @@ class WeatherService:
         )
 
     async def get_wind_forecast_lattice(self, bbox: BoundingBox) -> WindForecastSeries | None:
-        """`bbox`を覆う格子点ごとの時別風向・風速の予報系列（1時間刻み、JSTのローカル時刻）。
+        """`bbox`を覆うMSMの格子点ごとの時別風向・風速の予報系列（1時間刻み、JSTのローカル時刻、格子点の値のまま）。
         読めなければNone。ルートの探索範囲にも、ルートを出す前の地図のタイルにも使う。
 
-        MSMのローカルファイルから読むため外部APIリクエストは発生しない。
+        格子点はMSMの格子そのもの（`domain/msm.py: MsmGrid.block_covering`）なので、ルートの区間と地図の道は、同じ地点で
+        同じ格子点の値を引く。MSMのローカルファイルから読むため外部APIリクエストは発生しない。
         """
-        lattice = WindLattice.covering(
-            bbox.min_latitude, bbox.min_longitude, bbox.max_latitude, bbox.max_longitude,
-            WIND_FORECAST_LAT_STEP_DEG, WIND_FORECAST_LON_STEP_DEG,
-        )
-        series = await self._read(*lattice.coordinates())
-        if series is None:
+        try:
+            series = await msm_client.read_grid_block(
+                bbox.min_latitude, bbox.min_longitude, bbox.max_latitude, bbox.max_longitude,
+            )
+        except MsmUnavailableError:
+            return None
+        if len(series.times) < 2:
             return None
         speed, direction = wind_speed_and_direction(series.wind_u_ms, series.wind_v_ms)
         return WindForecastSeries(
             times=series.times,
             speed_ms=speed,
             direction_deg=direction,
-            lattice=lattice,
+            lattice=series.points.block,
         )

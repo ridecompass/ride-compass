@@ -1,12 +1,14 @@
-"""`domain/msm.py`——MSM格子の幾何（範囲と形状から導く格子・切り出す窓）と双一次補間・風の成分から風速と風向。
+"""`domain/msm.py`——MSM格子の幾何（範囲と形状から導く格子・切り出す窓・格子点の並び）と、格子点の値の取り出し・
+双一次補間・風の成分から風速と風向。
 
 入口は`MsmGrid.from_bbox_and_shape`・`MsmGrid.window`と、窓の`lat_slice`/`lon_slice`で切り出した
-部分ブロックを渡す`MsmWindow.interpolate`、`wind_speed_and_direction`。格子はMSMの公表値（緯度0.05度・
+部分ブロックを渡す`MsmWindow.interpolate`、格子点の並びを作る`MsmGrid.block_covering`・`MsmGrid.nearest_points`と
+その`points_of`・`holds_nearest`・`values`、`wind_speed_and_direction`。格子はMSMの公表値（緯度0.05度・
 経度0.0625度、北緯22.4〜47.6度・東経120〜150度）で作る。
 
 ここで見ないもの:
 - 配信元の同期・メタ情報（範囲の読み取りを含む）と実データの読み出し → `test_msm_client.py`
-- 補間した風をルートの道へ配ること → `test_wind_way_service.py`
+- 格子点の風をタイルの道・ルートの区間へ配ること → `test_wind_way_service.py`・`test_leg_costs.py`
 """
 
 import math
@@ -108,6 +110,76 @@ def test_grid_points_on_the_outer_edges_and_corners_return_the_grid_value():
 def test_a_point_outside_the_grid_is_refused(latitude, longitude):
     with pytest.raises(ValueError):
         GRID.window(np.array([35.0, latitude]), np.array([135.0, longitude]))
+
+
+# --- 格子点の値 ---
+
+#: 格子の外周から0.3度より内側の地点（矩形をその周りに広げても格子に収まる）。
+_INNER_LATITUDES = st.floats(min_value=MSM_BBOX[0] + 0.3, max_value=MSM_BBOX[2] - 0.3)
+_INNER_LONGITUDES = st.floats(min_value=MSM_BBOX[1] + 0.3, max_value=MSM_BBOX[3] - 0.3)
+_MARGINS = st.floats(min_value=0.0, max_value=0.3)
+
+
+def _assert_on_the_grid(latitudes, longitudes):
+    """座標がMSMの格子点そのもの（原点から刻みの整数倍）であること。"""
+    rows = (latitudes - GRID.lat_min) / GRID.d_lat
+    cols = (longitudes - GRID.lon_min) / GRID.d_lon
+    np.testing.assert_allclose(rows, np.rint(rows), atol=1e-9)
+    np.testing.assert_allclose(cols, np.rint(cols), atol=1e-9)
+
+
+@given(_INNER_LATITUDES, _INNER_LONGITUDES, st.tuples(*[_MARGINS] * 8))
+def test_a_place_picks_the_same_nearest_grid_point_from_any_rectangle_around_it(lat, lon, margins):
+    """地図のタイルとルートは別の矩形から格子点の並びを作る。同じ地点が違う格子点を引くと、地図の色とルートの区間の風が
+    食い違い、「最寄りの格子点の値」と示した値が最寄りの格子点の値でなくなる。"""
+    picked = []
+    for s, w, n, e in (margins[:4], margins[4:]):
+        block = GRID.block_covering(lat - s, lon - w, lat + n, lon + e)
+        point = block.points_of(np.array([lat]), np.array([lon]))
+        latitudes, longitudes = block.coordinates()
+        _assert_on_the_grid(latitudes, longitudes)
+        assert block.holds_nearest(np.array([lat]), np.array([lon])).tolist() == [True]
+        picked.append((float(latitudes[point][0]), float(longitudes[point][0])))
+
+    assert picked[0] == pytest.approx(picked[1], abs=1e-9)
+    assert abs(picked[0][0] - lat) <= GRID.d_lat / 2 + 1e-9
+    assert abs(picked[0][1] - lon) <= GRID.d_lon / 2 + 1e-9
+
+
+def test_a_place_outside_the_block_is_moved_to_its_edge_and_is_not_its_nearest_point():
+    """タイルをまたぐ道の中ほどは並びの外にありうる。端の格子点は計算には使えるが、最寄りの格子点の値としては示せない。"""
+    block = GRID.block_covering(35.0, 139.0, 35.05, 139.0625)
+    lat, lon = block.coordinates()
+    beyond = np.array([lat.min() - 1.0, lat.max() + 1.0]), np.array([lon.min() - 1.0, lon.max() + 1.0])
+
+    assert block.points_of(*beyond).tolist() == [0, block.size - 1]
+    assert block.holds_nearest(*beyond).tolist() == [False, False]
+
+
+@given(points=st.one_of(_points, _nearby_points()))
+def test_each_place_reads_the_value_of_its_nearest_grid_point_unchanged(points):
+    """補間した値を地点の値として示すと予報業務の許可が要る。読む値は最寄りの格子点の値そのもの。"""
+    latitudes, longitudes = (np.array(values) for values in zip(*points, strict=True))
+    field = np.random.default_rng(0).normal(size=(GRID.n_lat, GRID.n_lon, 2))
+
+    selected = GRID.nearest_points(latitudes, longitudes)
+    rows = np.rint((latitudes - GRID.lat_min) / GRID.d_lat).astype(int)
+    cols = np.rint((longitudes - GRID.lon_min) / GRID.d_lon).astype(int)
+
+    np.testing.assert_array_equal(selected.values(field[selected.lat_slice, selected.lon_slice]), field[rows, cols])
+    point_latitudes, point_longitudes = selected.coordinates()
+    assert np.all(np.abs(point_latitudes - latitudes) <= GRID.d_lat / 2 + 1e-9)
+    assert np.all(np.abs(point_longitudes - longitudes) <= GRID.d_lon / 2 + 1e-9)
+
+
+@pytest.mark.parametrize(
+    "corners",
+    [(22.39, 135.0, 35.0, 136.0), (35.0, 135.0, 47.61, 136.0), (35.0, 119.99, 36.0, 136.0), (35.0, 135.0, 36.0, 150.01)],
+    ids=["south", "north", "west", "east"],
+)
+def test_a_rectangle_reaching_outside_the_grid_is_refused(corners):
+    with pytest.raises(ValueError):
+        GRID.block_covering(*corners)
 
 
 @given(
