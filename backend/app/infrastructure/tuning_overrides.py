@@ -12,7 +12,8 @@
 
 - 宣言から消えたidの行は**警告して無視する**。パラメータを1つ減らしただけで本番の起動が
   失敗するのは割に合わない（行は残るが何もしない）。
-- 値が宣言の範囲の外・数値でない行は**落とす**。間違った値が静かに効く方が悪い。
+- 値が宣言の範囲の外・数値でない行と、重ねると値どうしの順の約束を破る行は**落とす**。
+  間違った値が静かに効く方が悪い。
 """
 
 import logging
@@ -24,13 +25,13 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.domain.tuning import TUNING_PARAMETERS, TUNING_PARAMETERS_BY_ID
+from app.domain.tuning import TUNING_PARAMETERS, TUNING_PARAMETERS_BY_ID, TuningParameter, misordered_pairs
 from app.infrastructure.orm_base import Base
 
 logger = logging.getLogger("ridecompass.tuning")
 
 class TuningOverrideError(RuntimeError):
-    """上書きの行が読めない（範囲の外・数値でない）。"""
+    """上書きの行が読めない（範囲の外・数値でない・値どうしの順の約束を破る）。"""
 
 
 class TuningOverrideRow(Base):
@@ -44,10 +45,22 @@ class TuningOverrideRow(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
+def _check_in_range(parameter: TuningParameter, value: float) -> None:
+    """1件の値が数値で、宣言の範囲にあるか。外れれば`TuningOverrideError`。"""
+    if not math.isfinite(value):
+        raise TuningOverrideError(f"較正値の上書きが数値でない: {parameter.id}={value!r}")
+    if not parameter.minimum <= value <= parameter.maximum:
+        raise TuningOverrideError(
+            f"較正値の上書きが宣言の範囲の外: {parameter.id}={value} "
+            f"（{parameter.minimum}〜{parameter.maximum}）"
+        )
+
+
 def merge_overrides(overrides: dict[str, float]) -> dict[str, float]:
     """宣言の既定値へ上書きを重ねた、いま効くべき値。
 
-    宣言に無いidは警告して捨てる。範囲の外・数値でない値は`TuningOverrideError`。
+    宣言に無いidは警告して捨てる。範囲の外・数値でない値と、重ねた結果が値どうしの順の約束
+    （`domain/tuning.py: TUNING_ORDERINGS`）を破るものは`TuningOverrideError`。
     """
     merged = {p.id: p.default for p in TUNING_PARAMETERS}
     for param_id, value in sorted(overrides.items()):
@@ -57,14 +70,13 @@ def merge_overrides(overrides: dict[str, float]) -> dict[str, float]:
                 "較正値の上書きに、宣言に無いidの行があります（無視します） param_id=%s", param_id
             )
             continue
-        if not math.isfinite(value):
-            raise TuningOverrideError(f"較正値の上書きが数値でない: {param_id}={value!r}")
-        if not parameter.minimum <= value <= parameter.maximum:
-            raise TuningOverrideError(
-                f"較正値の上書きが宣言の範囲の外: {param_id}={value} "
-                f"（{parameter.minimum}〜{parameter.maximum}）"
-            )
+        _check_in_range(parameter, value)
         merged[param_id] = value
+    misordered = misordered_pairs(merged)
+    if misordered:
+        raise TuningOverrideError("較正値の順の約束を破る: " + "、".join(
+            f"{lower}={merged[lower]} が {upper}={merged[upper]} より大きい" for lower, upper in misordered
+        ))
     return merged
 
 
@@ -82,13 +94,15 @@ async def load_tuning_values(session: AsyncSession) -> dict[str, float]:
 async def set_override(session: AsyncSession, param_id: str, value: float) -> None:
     """1件を上書きする（既定値と同じなら行を消す——差分だけを持つ形を保つ）。
 
-    範囲の検算は`merge_overrides`と同じ規則で、書く前に行う。**宣言に無いidは書く側では
-    エラーにする**——読む側が警告で済ませるのは「宣言から消えた値の行が残っている」場合
-    だけで、これから書く値が宣言に無いのは綴り間違いである。
+    範囲の検算は`merge_overrides`と同じ規則で、書く前に行う。値どうしの順の約束はほかの行と
+    重ねないと決まらないので、ここでは見ない（書いた後に全件を`merge_overrides`へ通す側が見る）。
+    **宣言に無いidは書く側ではエラーにする**——読む側が警告で済ませるのは「宣言から消えた値の行が
+    残っている」場合だけで、これから書く値が宣言に無いのは綴り間違いである。
     """
-    if param_id not in TUNING_PARAMETERS_BY_ID:
+    parameter = TUNING_PARAMETERS_BY_ID.get(param_id)
+    if parameter is None:
         raise TuningOverrideError(f"較正値の宣言に無いid: {param_id}")
-    merge_overrides({param_id: value})
+    _check_in_range(parameter, value)
     if value == TUNING_PARAMETERS_BY_ID[param_id].default:
         await clear_override(session, param_id)
         return
