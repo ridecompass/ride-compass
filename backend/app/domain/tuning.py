@@ -10,7 +10,7 @@
 使う側のモジュールが値と根拠を隣り合わせで持つ——ここへ載せた瞬間に管理画面から変えられる
 ようになり、模型を壊す値や本番を止める値が画面の手に入る。
 
-宣言そのものの矛盾（idの重複・既定が範囲の外・空の見出し）はimport時に落ちる。黙って
+宣言そのものの矛盾（idの重複・既定が範囲の外・既定が順の約束を破る・空の見出し）はimport時に落ちる。黙って
 通すと、後勝ちで消えた1件は画面にも探索にも現れず、範囲外の既定は画面が出した値を
 書き戻せない状態になる。
 """
@@ -117,6 +117,10 @@ _STOP_ID = stop_seconds_parameter_id("stop")
 _SIGNAL_ID = stop_seconds_parameter_id("signal")
 _CRR_ID = "speed.crr"
 _CRR_GRAVEL_ID = "speed.crr_gravel"
+_TURNAROUND_OVERLAP_ID = "search.turnaround_max_overlap_ratio"
+_TURNAROUND_RELAXED_OVERLAP_ID = "search.turnaround_relaxed_overlap_ratio"
+_LOOP_RATIO_MIN_ID = "search.loop_to_outbound_ratio_min"
+_LOOP_RATIO_MAX_ID = "search.loop_to_outbound_ratio_max"
 
 
 TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
@@ -264,6 +268,49 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "道のレイヤの行を「なるべく避ける」にしたとき、その行に当たる区間の探索の費用に掛ける倍率。"
         "2なら、その区間を通るより倍の長さまでの回り道を選ぶ。1は避けない。",
     ),
+    # --- 候補の選び方 ---
+    TuningParameter(
+        _TURNAROUND_OVERLAP_ID,
+        "折返し点の往路の重なりの上限", "", 0.6, 0.0, 1.0, TuningEffect.IMMEDIATE,
+        "採用済みの折返し点と往路が、距離の割合でこれより重なる折返し点は飛ばす。同じ道筋の折返し点が上位を"
+        "占め、往路の大半が同じ周回が並ぶのを防ぐ。距離なしの目的地の代替経路も、経路全体の重なりに同じ値を使う。",
+    ),
+    TuningParameter(
+        _TURNAROUND_RELAXED_OVERLAP_ID,
+        "折返し点の往路の重なりの緩めた上限", "", 0.85, 0.0, 1.0, TuningEffect.IMMEDIATE,
+        f"{_TURNAROUND_OVERLAP_ID}で候補の数が埋まらないとき、この上限まで緩めてやり直す。"
+        f"{_TURNAROUND_OVERLAP_ID}以上にする。",
+    ),
+    TuningParameter(
+        "search.min_turnaround_separation_km",
+        "折返し点どうしの最小の間隔", "km", 1.5, 0.0, 20.0, TuningEffect.IMMEDIATE,
+        "採用済みの折返し点からこれより近い折返し点は飛ばす。近い折返し点は同じ周回の変種にしかならない。",
+    ),
+    TuningParameter(
+        "search.loop_max_overlap_ratio",
+        "周回どうしの重なりの上限", "", 0.7, 0.0, 1.0, TuningEffect.IMMEDIATE,
+        "帰りまで継いだ周回が、採用済みの周回と進む向きによらず距離の割合でこれより重なれば捨てる。"
+        "同じ周回の逆回りや、往路は違うが帰りが同じ裏道へ収まる周回を弾く。"
+        f"往路だけを見る{_TURNAROUND_OVERLAP_ID}より緩い、最後の確かめ。",
+    ),
+    TuningParameter(
+        _LOOP_RATIO_MIN_ID,
+        "周回の全長の見込みの下限", "倍", 2.0, 1.0, 5.0, TuningEffect.IMMEDIATE,
+        "周回の全長が往路の何倍になるかの見込みの下限。帰りは往路を避けて探すため往路と同じかそれより長い。"
+        "全長が目標±許容に入るよう、折返し点を探す往路の長さの範囲をこの見込みで決める。"
+        "置いた点を通る・目的地で終わるときの帰りは、終点までの最短のこの値−1倍以上と見込む。",
+    ),
+    TuningParameter(
+        _LOOP_RATIO_MAX_ID,
+        "周回の全長の見込みの上限", "倍", 2.3, 1.0, 5.0, TuningEffect.IMMEDIATE,
+        f"{_LOOP_RATIO_MIN_ID}の上限側。{_LOOP_RATIO_MIN_ID}以上にする。",
+    ),
+    TuningParameter(
+        "search.retrace_penalty_multiplier",
+        "走った道を帰りで通る罰", "倍", 8.0, 1.0, 100.0, TuningEffect.IMMEDIATE,
+        "帰りを探す間、それまでに走った道（逆向きを含む）の探索の費用に掛ける倍率。1は避けない。"
+        "有限なので、走った道を戻るほかに道が無い所（袋小路等）は通れる。",
+    ),
     # --- 画面が使う値（カタログ取得でフロントへ配る） ---
     TuningParameter(
         "splice.min_stretch_km",
@@ -290,6 +337,23 @@ _DUPLICATE_IDS = sorted(
 )
 if _DUPLICATE_IDS:
     raise ValueError(f"較正値のidが重複している: {', '.join(_DUPLICATE_IDS)}")
+
+#: 値どうしの順の約束（下側のid, 上側のid）。下側は上側以下でなければならない。範囲は1件ずつしか
+#: 見ないので、片方だけを動かして順が逆になる上書きは、全件を重ねたあとにここで断る。
+TUNING_ORDERINGS: tuple[tuple[str, str], ...] = (
+    (_TURNAROUND_OVERLAP_ID, _TURNAROUND_RELAXED_OVERLAP_ID),
+    (_LOOP_RATIO_MIN_ID, _LOOP_RATIO_MAX_ID),
+)
+
+
+def misordered_pairs(values: dict[str, float]) -> list[tuple[str, str]]:
+    """`values`（id → 値。宣言の全idを持つ）のうち、順の約束（`TUNING_ORDERINGS`）を破る組。"""
+    return [(lower, upper) for lower, upper in TUNING_ORDERINGS if values[lower] > values[upper]]
+
+
+_MISORDERED_DEFAULTS = misordered_pairs({p.id: p.default for p in TUNING_PARAMETERS})
+if _MISORDERED_DEFAULTS:
+    raise ValueError(f"較正値の既定が順の約束を破る: {_MISORDERED_DEFAULTS}")
 
 #: いま効いている値（id → 値）。既定で初期化し、DBの上書きを読み込んだときに**中身だけ**を
 #: 差し替える（束縛済みの参照先が古いままにならないよう、`.update()`で更新する。鍵は宣言の全idで

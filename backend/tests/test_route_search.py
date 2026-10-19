@@ -39,6 +39,7 @@ from app.domain.route import (
     route_elevation_gain,
 )
 from app.domain.routing import NodeJunction, TurnExpandedTree, add_terminal_candidate
+from app.domain.tuning import TUNING_VALUES
 from app.domain.route_search import (
     leg_of_edge_by_half,
     order_by_bearing_spread,
@@ -302,6 +303,15 @@ def test_turnaround_ring_center_lies_inside_the_ring(distance_km, tolerance_km):
     許容が狭くリングが戻る場合は、リングだけが広がり中心は動かないので、ここでは戻らない許容で見る。"""
     lower_m, upper_m, center_m = turnaround_ring_m(distance_km, tolerance_km)
     assert lower_m <= center_m <= upper_m
+
+
+def test_turnaround_ring_follows_the_loop_length_estimate_in_effect(monkeypatch):
+    """周回の全長の見込み（較正値）を管理画面で変えると、次に探すリングがその見込みで決まる。見込みを全長÷2.5に
+    揃えると、目標10km±1kmのリングは9km÷2.5〜11km÷2.5で、中心は10km÷2.5。"""
+    monkeypatch.setitem(TUNING_VALUES, "search.loop_to_outbound_ratio_min", 2.5)
+    monkeypatch.setitem(TUNING_VALUES, "search.loop_to_outbound_ratio_max", 2.5)
+
+    assert turnaround_ring_m(10.0, 1.0) == pytest.approx((3600.0, 4400.0, 4000.0))
 
 
 @pytest.mark.parametrize(
