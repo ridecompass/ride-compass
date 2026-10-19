@@ -18,7 +18,7 @@ from collections import Counter
 import math
 import re
 from datetime import datetime, timedelta, timezone
-from itertools import accumulate
+from itertools import accumulate, combinations
 
 import numpy as np
 import pytest
@@ -36,6 +36,7 @@ from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.wind import WindForecastSeries
 from app.domain.time_zone import JST
 from app.domain.traffic import stop_count_material_ids
+from app.domain.tuning import TUNING_VALUES
 from tests import rain_history_fake
 from tests.axis_system_fixture import replaced_axis_definitions
 from app.domain.route_request import FixedPoints
@@ -263,6 +264,39 @@ async def test_loop_candidates_are_never_the_same_loop_twice(engine_over):
 
     loops = [frozenset(ways_of(c)) for c in candidates]
     assert len(loops) == len(set(loops))
+
+
+def _one_loop(loops: list[frozenset[int]]) -> bool:
+    return len(loops) == 1
+
+
+def _no_two_loops_share_a_road(loops: list[frozenset[int]]) -> bool:
+    return all(not first & second for first, second in combinations(loops, 2))
+
+
+@pytest.mark.parametrize(
+    ("changed", "holds"),
+    [
+        # 格子より広い間隔: どの折返し点も採用済みの折返し点に近すぎ、1つしか採れない
+        ({"search.min_turnaround_separation_km": 20.0}, _one_loop),
+        # 重なりを許さない: どの2つの周回も道を共有しない
+        ({"search.loop_max_overlap_ratio": 0.0}, _no_two_loops_share_a_road),
+    ],
+    ids=["turnaround_separation", "loop_overlap"],
+)
+async def test_the_next_loops_follow_the_choice_values_changed_in_the_admin_screen(engine_over, monkeypatch, changed, holds):
+    """管理画面で変えた候補の選び方の値は、組んだ後の生成器の次の生成から効く。効かないと、較正のたびにデプロイが要る。"""
+    generator = engine_over(grid_network())
+
+    async def loops():
+        candidates = await generator.generate_loops(
+            at(CENTER), 4.0, 1.5, max_routes=5, start_time=DEPARTURE, points=NO_POINTS)
+        return [frozenset(ways_of(c)) for c in candidates]
+
+    assert not holds(await loops())
+    for param_id, value in changed.items():
+        monkeypatch.setitem(TUNING_VALUES, param_id, value)
+    assert holds(await loops())
 
 
 async def test_loop_never_drives_against_a_one_way_road(engine_over):

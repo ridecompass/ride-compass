@@ -298,8 +298,8 @@ RouteGenerator.generate_loops(origin, distance_km, distance_tolerance_km, max_ro
 
 ### 較正値（走ってみて決める値）
 
-ターンの秒数・停止要因の待ち・走行モデルの標準値・信号とみなす半径は、いずれも実感に合わせて
-置いた値で、較正されていない。**`domain/tuning.py`が唯一の宣言**で、消費者はそこから読む
+ターンの秒数・停止要因の待ち・走行モデルの標準値・信号とみなす半径・候補の選び方の値（折返し点・周回の重なりの上限、
+周回の全長の見込み等）は、いずれも実感や少ない実測に合わせて置いた値で、較正されていない。**`domain/tuning.py`が唯一の宣言**で、消費者はそこから読む
 （定数としても持つと二重になり、片方だけが変わる）。
 
 較正値の宣言は「変えたとき効くまでに何が要るか」（`TuningEffect`）を持つ。これは
@@ -315,7 +315,7 @@ RouteGenerator.generate_loops(origin, distance_km, distance_tolerance_km, max_ro
 本番を止められる。どちらに置くかを機械的に検出する仕組みは無く、数値を1つ置くときに書き手が
 この線引きで決める。
 
-宣言そのものの矛盾（idの重複・既定が範囲の外・空の見出し）は`TuningParameter`と
+宣言そのものの矛盾（idの重複・既定が範囲の外・既定が順の約束を破る・空の見出し）は`TuningParameter`と
 `TUNING_PARAMETERS_BY_ID`の構築がimport時に落とす。重複を黙って通すと後勝ちで消えた側が
 画面にも探索にも現れず、範囲外の既定は画面が出した値をそのまま書き戻せない状態になる。
 
@@ -346,7 +346,8 @@ import済みの参照が古い辞書を指したままになる）。差し替�
 書き込みごと取り消される。
 
 壊れた行の扱いは2通りに分かれる。宣言から消えたidの行は**警告して無視する**——パラメータを
-1つ減らしただけで本番の起動が失敗するのは割に合わない。値が宣言の範囲の外・数値でない行は
+1つ減らしただけで本番の起動が失敗するのは割に合わない。値が宣言の範囲の外・数値でない行と、
+重ねると値どうしの順の約束（緩めた上限は上限以上等。`domain/tuning.py: TUNING_ORDERINGS`）を破る行は
 **落とす**——間違った値が静かに効く方が悪い。
 
 較正値には**フロントが使うもの**もある（区間を割る下限等）。ビルド時生成物だけで配ると
@@ -361,7 +362,7 @@ import済みの参照が古い辞書を指したままになる）。差し替�
 ——較正値を1つ足しても、APIにも画面にも書き足す場所は無い。名前に添える対象（どの路面の見込み・停止要因の種別の値か）は、
 値を使う側の宣言（`domain/road.py: rolling_resistance_subjects`・`domain/traffic.py: stop_seconds_subjects`）から`domain/tuning_labels.py: tuning_label`が引く——`domain/tuning.py`は
 それらを読めない（循環する）ため、宣言の側に名前を写すと、区分や種別の名前を変えたときに古くなる。書かせるのは種別が較正値の
-ものだけで、範囲の外は422、宣言に無いidは404で断る。応答は各項目の「変えたとき効くまでに
+ものだけで、範囲の外と、書いた後の全件が順の約束を破る値は422、宣言に無いidは404で断る。応答は各項目の「変えたとき効くまでに
 何が要るか」も返し、画面が「変えたのに効かない」を出せるようにする。
 
 ### 地点をNodeへ寄せる範囲（`domain/routing.py: snap_to_accessible_node`）
@@ -600,7 +601,7 @@ Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を
 - **経由地の無い周回**: 木に沿った往路の実距離が目標の半分付近に入るNodeを「リング」にする。出発地からの往路と出発地への
   帰りの最短は同じ2点を結ぶので、帰りの最短を往路の長さで代えられる。
 - **経由地を置いた・目的地で終わる**: 終点からの逆向きの木（前段で走った道に罰）で中継点から終点までの長さを取り、全長の見込み
-  （前段＋往路＋帰りの最短×1.0〜1.3）が目標±許容に入るNodeを帯にする（`domain/route_search.py: relay_band`）。前段の長さが
+  （前段＋往路＋帰りの最短×帰りの比。帰りの比は周回の全長の見込みの較正値から1を引いたもの）が目標±許容に入るNodeを帯にする（`domain/route_search.py: relay_band`）。前段の長さが
   あると、帰りの長さは往路の長さと結びつかない（置いた点の向こうの中継点から戻ると、往路よりずっと長くなりうる）。
 
 層の中の並びは往路の所要時間あたりの平均difficulty（`domain/evaluation.py: difficulty_from_cost`。`overall_difficulty`に近い物差しで、
@@ -615,14 +616,14 @@ Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を
 候補間の順序はこの並べ替えでは変わらない。
 
 `select_diverse_by_overlap`は上位から、既採用候補と往路が重複しすぎるもの・近すぎるものを
-飛ばして`pool_size`件採る（埋まらなければ重複の条件を緩めてやり直す）。しきい値は
-`domain/route_search.py`が持つ。
+飛ばして`pool_size`件採る（埋まらなければ重複の条件を緩めてやり直す）。しきい値は較正値で、
+`domain/route_search.py: corridor_overlap_ratios`・`domain/route_search.py: turnaround_separation`が呼ばれた時点で読む。
 
 ### `trace_loop_from_turnaround`（帰りの探索）
 
 往路は一対全木上の経路そのもの（`turn_expanded_path_edge_indices`で復元、A*での再探索はしない
 ——同じコスト配列でA*をかけ直しても同じ経路になるため）。帰りの探索の間だけ、走った区間（前段＋往路）＋
-同一Node対の逆方向Edgeのコストを共有`cost_lazy`上で`RETRACE_PENALTY_MULTIPLIER`倍（`domain/route_search.py: retrace_penalized`）へ
+同一Node対の逆方向Edgeのコストを共有`cost_lazy`上で較正値の倍率を掛けた値（`domain/route_search.py: retrace_penalized`）へ
 **差し替え**（infにはしない——帰りが走った道を戻る以外に道が無い区間[袋小路等]は通れる必要が
 ある）、A*（向かう先は1回の生成で決まっているため、ヒューリスティック配列は向かう先ごとに1回だけ計算し、
 区間の探索・最速の経路・全候補の帰りの探索で共有する。`road_graph_engine.py: _RoadGraphContext.heuristics`）で探索した後、
@@ -654,8 +655,8 @@ Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を
 5. `domain/routing.py: select_diverse_by_overlap`で、前向き経路・後ろ向き経路が同じ
    物理区間を共有するNode（行って戻る形、`domain/routing.py: lengths_by_physical_segment`で
    進行方向を無視した判定——単純なEdge index集合の比較だと同じ道の逆方向Edgeを
-   見逃す）を除外しつつ、採用済み候補との重複率が`VIA_NODE_MAX_OVERLAP_RATIO`
-   （`TURNAROUND_MAX_OVERLAP_RATIO`と同値の0.6、埋まらなければ0.85へ緩和）を超える
+   見逃す）を除外しつつ、採用済み候補との重複率が重なりの上限（周回の折返し点と同じ較正値、
+   `domain/route_search.py: corridor_overlap_ratios`。埋まらなければ緩めた上限へ）を超える
    ものを飛ばして`max_routes`件採る。
 
 `trace_loop_from_turnaround`と違い、選ばれたNodeの経路（前向き＋後ろ向きの経路復元の
@@ -862,8 +863,8 @@ segments構築はEdge単位の軽量な計算のため並行化してよい。�
   `ValueError`になる。
 - `RoadGraphEngine.is_loop_too_similar`（重複率は`domain/routing.py: lengths_by_physical_segment`・
   `physical_overlap_ratio`）: 距離フィルタ合格後の候補が、既に採用済みの候補と前段のあとの道
-  （`TracedLoop.data`から前段の区間を除いた往路＋帰り。前段は全候補で同じ）で`LOOP_MAX_OVERLAP_RATIO`（0.7、往路のみ
-  比較する`TURNAROUND_MAX_OVERLAP_RATIO`＝0.6より緩め）を超えて重複するか判定する。
+  （`TracedLoop.data`から前段の区間を除いた往路＋帰り。前段は全候補で同じ）で重なりの上限（較正値、
+  `domain/route_search.py: loop_max_overlap_ratio`。往路だけを比べる折返し点の上限より緩い最後の確かめ）を超えて重複するか判定する。
   区間を両端のノード番号のfrozensetへ正規化し進行方向を無視して比較する
   ため、「同じ周回の逆回り」・「往路は違うが復路が同じ裏道へ収束する」周回のどちらも
   同じ判定で弾ける。

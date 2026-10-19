@@ -84,18 +84,15 @@ from app.domain.route_request import FixedPoints
 from app.domain.route_search import (
     DETOUR_RATIO_MIN_ROAD_M,
     LengthBand,
-    LOOP_MAX_OVERLAP_RATIO,
     MAX_SNAP_CORRECTION_KM,
-    TURNAROUND_MAX_OVERLAP_RATIO,
-    TURNAROUND_RELAXED_OVERLAP_RATIO,
-    VIA_NODE_MAX_OVERLAP_RATIO,
-    VIA_NODE_RELAXED_OVERLAP_RATIO,
     EdgePassage,
     alternative_via_nodes,
     best_first,
+    corridor_overlap_ratios,
     heuristic_seconds,
     leg_duration_hours,
     leg_of_edge_by_half,
+    loop_max_overlap_ratio,
     median_detour_ratio,
     order_by_bearing_spread,
     pick_better_candidate,
@@ -599,10 +596,10 @@ class RoadGraphEngine:
            どちらも最短実距離ではなく軸コスト最適経路の実距離で定義する——重みを極端に振った設定ほど往路が遠回りする
            ため、最短実距離基準だと往路だけで目標の半分を超え距離フィルタで全滅する。
         3. 帯の中心からのずれ・往路の難易度のパレート層の順に並べる（`rank_by_pareto_layers`）。
-        4. 上位から順に、既採用候補と往路の重複率が`TURNAROUND_MAX_OVERLAP_RATIO`を
-           超えるもの・`MIN_TURNAROUND_SEPARATION_KM`より近いものを飛ばして`pool_size`件
+        4. 上位から順に、既採用候補と往路の重複率が重なりの上限（`domain/route_search.py: corridor_overlap_ratios`）を
+           超えるもの・最小の間隔（`domain/route_search.py: turnaround_separation`）より近いものを飛ばして`pool_size`件
            採る（同一コリドー上の隣接Nodeが上位を独占し似た周回が並ぶのを防ぐ）。
-           埋まらなければ閾値を`TURNAROUND_RELAXED_OVERLAP_RATIO`へ緩めてやり直す。
+           埋まらなければ閾値を緩めた上限へ上げてやり直す。
 
         `context.legs`は前段のレグのあとに、往路（最後の固定点から離れるレグ）と帰り（終点へ向かうレグ）を置く。
         """
@@ -733,7 +730,7 @@ class RoadGraphEngine:
         # 閾値を昇順に渡すと、埋まらなかったときの緩和までを1回の呼び出しで行う。
         selected = select_diverse_by_overlap(
             [], outbound_edges, statics.edge_length_m,
-            [TURNAROUND_MAX_OVERLAP_RATIO, TURNAROUND_RELAXED_OVERLAP_RATIO], pool_size, far_enough,
+            corridor_overlap_ratios(), pool_size, far_enough,
             tie_groups=tie_groups, prefer=prefer,
         )
 
@@ -923,7 +920,7 @@ class RoadGraphEngine:
 
         selected = select_diverse_by_overlap(
             ranked, full_edges, context.statics.edge_length_m,
-            [VIA_NODE_MAX_OVERLAP_RATIO, VIA_NODE_RELAXED_OVERLAP_RATIO], max_routes,
+            corridor_overlap_ratios(), max_routes,
         )
 
         traced: list[TracedLoop] = []
@@ -1010,7 +1007,7 @@ class RoadGraphEngine:
         走った道を避けた帰り（中継点→終点のA*）を継いで1本にする。
 
         帰りの探索の間だけ、走った区間（前段＋往路）＋同一Node対の逆方向Edgeのコストを
-        `RETRACE_PENALTY_MULTIPLIER`倍へ**差し替え**、探索後に元へ戻す。配列ごとコピーすると
+        走った道を帰りで通る罰（`domain/route_search.py: retrace_penalized`）へ**差し替え**、探索後に元へ戻す。配列ごとコピーすると
         候補の数だけbbox全体ぶんの複製を払うため、触るのは走った区間の列だけにする。時刻ビンを
         張った帰りでは全ビンの同じ列をまとめて差し替える——どの時刻に通っても「走った道を
         なぞる」ことに変わりはない。
@@ -1126,16 +1123,17 @@ class RoadGraphEngine:
         self, context: _RoadGraphContext, fixed: FixedLegs, candidate: TracedLoop, accepted: list[TracedLoop]
     ) -> bool:
         """`candidate`が`accepted`のいずれかと、前段のあとの道（往路＋帰り）で
-        `LOOP_MAX_OVERLAP_RATIO`を超えて重複するか。前段の道は全候補で同じなので比べない。進行方向を無視して
+        重なりの上限（`domain/route_search.py: loop_max_overlap_ratio`）を超えて重複するか。前段の道は全候補で同じなので比べない。進行方向を無視して
         比較するため、「同じ周回の逆回り」（往路と帰りが入れ替わっただけ）や「往路は違うが
         帰りが同じ裏道へ収束する」周回のどちらも同じ判定で弾ける。`TracedLoop.data`は
         区間の番号列（前段＋往路＋帰り、`trace_loop_from_turnaround`参照）。
         """
         fixed_count = len(fixed.edges)
         candidate_lengths = _physical_segments(context, candidate.data[fixed_count:])
+        max_ratio = loop_max_overlap_ratio()
         for other in accepted:
             ratio = physical_overlap_ratio(candidate_lengths, _physical_segments(context, other.data[fixed_count:]))
-            if ratio > LOOP_MAX_OVERLAP_RATIO:
+            if ratio > max_ratio:
                 logger.debug(
                     "loop dedup rejected bearing=%s overlap_ratio=%.2f vs accepted bearing=%s",
                     candidate.bearing, ratio, other.bearing,
