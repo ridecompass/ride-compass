@@ -79,9 +79,8 @@ CATALOG = {spec.material_id: spec for spec in [
 
 @pytest.fixture
 def catalog(monkeypatch):
-    """材料カタログ（架空の材料だけ）。"""
-    monkeypatch.setattr(map_paint, "MATERIAL_CATALOG", CATALOG)
-    monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", CATALOG)
+    """材料カタログ（架空の材料を足したもの。所要時間が読む材料は本物の宣言を残す）。"""
+    monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", {**material_catalog.MATERIAL_CATALOG, **CATALOG})
 
 
 pytestmark = pytest.mark.usefixtures("catalog")
