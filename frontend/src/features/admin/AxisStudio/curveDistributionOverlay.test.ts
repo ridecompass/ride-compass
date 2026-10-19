@@ -47,9 +47,42 @@ describe("visibleBars", () => {
     );
     expect(bars).toEqual([{ from: 20, to: 20, share: 0.3 }]);
   });
+
+  it("分布が無い・範囲が潰れているときは何も載せない", () => {
+    expect(visibleBars(null, 0, 10)).toEqual([]);
+    expect(visibleBars(distribution([[0, 10, 1]]), 5, 5)).toEqual([]);
+  });
 });
 
 describe("offRangeShare", () => {
+  it("範囲の下・上にはみ出した延長を、幅に比例して数える", () => {
+    const off = offRangeShare(
+      distribution([
+        [-10, 10, 0.4],
+        [10, 20, 0.2],
+        [15, 25, 0.4],
+      ]),
+      0,
+      20,
+    );
+    expect(off.below).toBeCloseTo(0.2);
+    expect(off.above).toBeCloseTo(0.2);
+  });
+
+  it("幅0の階級は、範囲より下なら下・上なら上に数え、範囲内なら数えない", () => {
+    expect(
+      offRangeShare(
+        distribution([
+          [-1, -1, 0.3],
+          [5, 5, 0.3],
+          [30, 30, 0.4],
+        ]),
+        0,
+        20,
+      ),
+    ).toEqual({ below: 0.3, above: 0.4 });
+  });
+
   it("範囲が潰れているときは、全量を範囲外として数える（範囲と同じ値は上に数える）", () => {
     const off = offRangeShare(
       distribution([
@@ -70,6 +103,7 @@ describe("offRangeShare", () => {
 
   it.each([
     ["通常の範囲", 0, 20],
+    ["潰れた範囲", 7, 7],
     ["全部より右の範囲", 100, 200],
   ])("%s: 範囲内に載せた割合と範囲外の割合を足すと、分布の全量に戻る", (_case, xMin, xMax) => {
     const bins: [number, number, number][] = [

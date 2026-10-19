@@ -1,6 +1,6 @@
 /**
  * `ReportCard.tsx`——集計のカードが、押したときだけ集計し、集計中は押せず、終わると再集計の口になり、失敗の理由を
- * 出すこと。中身の描き方と、集計の時刻・母数の出し方は各パネルのテスト（`DbStatusPanel.test.tsx`等）が持つ。
+ * 出し、集計の時刻を日本時間で（母数があればその前に）出すこと。中身の描き方は各パネルのテストが持つ。
  */
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -53,5 +53,15 @@ describe("ReportCard", () => {
     await user.click(screen.getByRole("button", { name: "集計する" }));
     await screen.findByRole("button", { name: "再集計する" });
     expect(screen.queryByText(/集計失敗/)).not.toBeInTheDocument();
+  });
+
+  it("集計の時刻を日本時間で出し、母数があればその前に並べる", async () => {
+    const report = { computed_at: "2026-09-24T15:02:03Z", count: 1 };
+    const user = renderCard(
+      async () => report,
+      (r) => `${r.count}件`,
+    );
+    await user.click(screen.getByRole("button", { name: "集計する" }));
+    expect(await screen.findByText("1件 ・ 9/25 00:02")).toBeInTheDocument();
   });
 });

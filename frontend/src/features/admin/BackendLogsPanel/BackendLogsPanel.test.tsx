@@ -41,17 +41,23 @@ describe("BackendLogsPanel", () => {
     expect(await sentQuery()).toEqual({ min_level: "WARNING", limit: "200" });
   });
 
-  it("部分一致は前後の空白を落とし、選んだレベル以上で取る", async () => {
-    const sentQuery = echoQuery();
-    const user = userEvent.setup();
-    render(<BackendLogsPanel />);
+  it.each([
+    ["すべてのレベル", { contains: "jma-tile", limit: "200" }],
+    ["ERROR以上", { contains: "jma-tile", min_level: "ERROR", limit: "200" }],
+  ])(
+    "部分一致は前後の空白を落とし、選んだレベル（%s）以上で取る。すべてのレベルならレベルで絞らない",
+    async (level, query) => {
+      const sentQuery = echoQuery();
+      const user = userEvent.setup();
+      render(<BackendLogsPanel />);
 
-    await user.type(screen.getByPlaceholderText(/絞り込み/), "  jma-tile  ");
-    await user.selectOptions(screen.getByRole("combobox", { name: "最小レベル" }), "ERROR以上");
-    await user.click(screen.getByRole("button", { name: "取得" }));
+      await user.type(screen.getByPlaceholderText(/絞り込み/), "  jma-tile  ");
+      await user.selectOptions(screen.getByRole("combobox", { name: "最小レベル" }), level);
+      await user.click(screen.getByRole("button", { name: "取得" }));
 
-    expect(await sentQuery()).toEqual({ contains: "jma-tile", min_level: "ERROR", limit: "200" });
-  });
+      expect(await sentQuery()).toEqual(query);
+    },
+  );
 
   it("件数が正の数でないときは件数で絞らない", async () => {
     const sentQuery = echoQuery();
