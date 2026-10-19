@@ -39,12 +39,11 @@ class RoadClassAdminService:
         return await read_road_classes(self._session)
 
     async def replace(self, definitions: RoadClassDefinitions) -> RoadClassDefinitions:
-        """全体を入れ替え、入れ替えた後の全体を返す。"""
+        """全体を入れ替え、書いた全体を返す。"""
         session = self._session
         try:
             await acquire_write_lock(session)
             await replace_road_class_rows(session, definitions)
-            after = await read_road_classes(session)
             await session.commit()
         except (IntegrityError, DataError) as error:
             await session.rollback()
@@ -52,5 +51,5 @@ class RoadClassAdminService:
         except Exception:
             await session.rollback()
             raise
-        _apply(after)
-        return after
+        _apply(definitions)
+        return definitions

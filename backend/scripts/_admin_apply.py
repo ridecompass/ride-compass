@@ -21,12 +21,12 @@ class ApplyError(Exception):
 
 
 def request(client: httpx.Client, method: str, path: str, body: Any = None, *, allow_missing: bool = False) -> httpx.Response:
-    """要求を1回送る。届かない・断られたらApplyError。`allow_missing`ならGETの404は応答のまま返す。"""
+    """要求を1回送る。届かない・断られたらApplyError。`allow_missing`なら404は応答のまま返す。"""
     try:
         response = client.request(method, path, json=body)
     except httpx.HTTPError as error:
         raise ApplyError(f"{method} {path} が届きませんでした: {error}") from error
-    if response.is_error and not (allow_missing and method == "GET" and response.status_code == 404):
+    if response.is_error and not (allow_missing and response.status_code == 404):
         try:
             detail = response.json().get("detail", response.text)
         except ValueError:

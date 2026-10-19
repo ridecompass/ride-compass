@@ -11,8 +11,10 @@
 import hashlib
 import json
 from collections.abc import Mapping
+from typing import Annotated
 
 import numpy as np
+from pydantic import Field
 
 from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.strict_model import StrictModel
@@ -95,8 +97,8 @@ class RoadClassDefinitions(StrictModel):
     map_layers: dict[str, RoadMapLayer]
     #: 走行モデルが転がり抵抗に読む分け方。
     rolling_resistance_classification: str | None
-    #: 分け方 → 区分 → 転がり抵抗の較正値のid。
-    rolling_resistance_classes: dict[str, dict[str, str]]
+    #: 分け方 → 区分 → 転がり抵抗の較正値のid。空の分け方は表の行にならず読み戻せないので、型が断る。
+    rolling_resistance_classes: dict[str, Annotated[dict[str, str], Field(min_length=1)]]
     avoidance_sections: dict[str, AvoidanceSection]
     avoidance_classifications: dict[str, AvoidanceClassification]
 
@@ -132,8 +134,8 @@ def road_class_generation(definitions: RoadClassDefinitions) -> str:
 def _term_matches(term: ConditionTerm, column: MaterialColumn | None, n: int) -> np.ndarray:
     """区間ごとに項が当たるか。知らない事実（列が無い）は、どの区間も事実が無いとして当てる。
 
-    分類の事実は値があれば「事実あり」。真偽の事実は真のときだけ`TRUE_FACT_VALUE`の値で「事実あり」で、
-    偽と値なしは「事実なし」。"""
+    分類の事実は値があれば「事実あり」。分類でない列は真偽として読み、1.0のときだけ`TRUE_FACT_VALUE`の値で「事実あり」、
+    ほかの値と値なしは「事実なし」。"""
     if column is None:
         present = np.zeros(n, dtype=bool)
         listed = present

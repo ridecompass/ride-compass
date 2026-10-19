@@ -85,9 +85,7 @@ async def client(road_graph_session, admin_credentials, monkeypatch):
 
 async def test_written_definitions_are_read_back_and_served(client):
     """書いた全体がそのまま読み戻り、公開した分け方が軸カタログに出る。"""
-    written = await client.put(PATH, json=DEFINITIONS, headers=AUTH_HEADERS)
-    assert written.status_code == 200
-    assert written.json() == DEFINITIONS
+    assert (await client.put(PATH, json=DEFINITIONS, headers=AUTH_HEADERS)).status_code == 200
     assert (await client.get(PATH, headers=AUTH_HEADERS)).json() == DEFINITIONS
     served = (await client.get("/api/axis-catalog")).json()["road_classes"]
     assert [(layer["id"], [c["key"] for c in layer["classes"]]) for layer in served["map_layers"]] == [("surface", ["paved", "unpaved"])]

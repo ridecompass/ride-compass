@@ -56,6 +56,9 @@ async def _rows[T](session: AsyncSession, row_type: type[T], *order_by: object) 
 
 async def read_road_classes(session: AsyncSession) -> RoadClassDefinitions:
     """表の全部の行を全体の型へ写す。辞書は鍵の順に並ぶ。"""
+    # 表ごとの読みの間に入れ替えが確定すると、前と後の全体が混ざる（項を読んだ後に条件が作り直されると、条件が項を失う）。
+    # 入れ替えの取引と同じ鍵を共有で取り、読み終えるまで入れ替えを待たせる。
+    await session.execute(text("SELECT pg_advisory_xact_lock_shared(:key)"), {"key": _WRITE_LOCK_KEY})
     terms: dict[int, dict[str, ConditionTerm]] = defaultdict(dict)
     for term in await _rows(session, RoadClassConditionTermRow, RoadClassConditionTermRow.condition_id, RoadClassConditionTermRow.fact_key):
         terms[term.condition_id][term.fact_key] = ConditionTerm(

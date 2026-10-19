@@ -5816,7 +5816,8 @@
               "additionalProperties": {
                 "type": "string"
               },
-              "type": "object"
+              "type": "object",
+              "minProperties": 1
             },
             "type": "object",
             "title": "Rolling Resistance Classes"
