@@ -847,7 +847,8 @@ export const mapDisplay = {
       "selectedHalo": 10,
       "splice": 3,
       "composite": 7,
-      "detail": 6
+      "detail": 6,
+      "selectedSection": 18
     },
     "casingWidthsPx": {
       "composite": 11,
@@ -858,7 +859,8 @@ export const mapDisplay = {
       "splice": 0.75,
       "candidate": 0.65,
       "arrowHalo": 0.95,
-      "travelled": 0.35
+      "travelled": 0.35,
+      "selectedSection": 0.45
     },
     "spliceDash": [
       2,

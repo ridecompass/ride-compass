@@ -574,6 +574,8 @@ ROUTE_LINE_WIDTHS_PX: dict[str, float] = {
     "splice": 3,
     "composite": 7,
     "detail": 6,
+    # 選んだ区間の範囲の縁取り。選んだ候補の縁取り（`selectedHalo`）の外へはみ出す太さにする。
+    "selectedSection": 18,
 }
 
 #: 縁取りは線の両側へ一定を足す。**個別に書かない**——線の太さを変えたときに縁取りだけ
@@ -591,6 +593,7 @@ ROUTE_LINE_OPACITIES: dict[str, float] = {
     "candidate": 0.65,
     "arrowHalo": 0.95,
     "travelled": 0.35,
+    "selectedSection": 0.45,
 }
 
 #: 破線の刻み。実線との違いが読める最小の組み合わせ。

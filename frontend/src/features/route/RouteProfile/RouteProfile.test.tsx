@@ -9,7 +9,7 @@
  * 走り終えた経由地を薄めること。タブは結果も走行中も地図の入口と同じ絵だけで出し（名前は読み上げに残す）、押すと図が替わること。走行中の図は、
  * 目盛り・図の下の文字を結果の図より大きくし、「表示」の図に標高の目盛りを出すこと。地点を選ぶと、結果も走行中も図の下に3行の詳しく
  * （標高・勾配・何km地点・到達予想・閉じる／当たる道の区分と風のチップ／区間の総合難易度と軸ごとの寄与）を出し、当たらない区分
- * （該当なし・データなし）はチップにせず、閉じると選択を外すこと。地図で押した区間（図の上の地点が分からない選択）は、標高と区分を出さないこと。
+ * （該当なし・データなし）はチップにせず、閉じると選択を外すこと。地図で押した区間（地物から組み直した写し）も、図がその区間と押した所の地点を探して詳しくを出すこと。
  *
  * 差し替えたもの: グラフの実寸（`getBoundingClientRect`。テスト環境は実寸を返さない）。
  *
@@ -380,16 +380,17 @@ describe("RouteProfile", () => {
     },
   );
 
-  it("地図で押した区間（図の上の地点が分からない選択）は、標高と区分を出さず、区間の地点・到達予想・風・総合難易度を出す", () => {
+  it("地図で押した区間（地物から組み直した写し）も、図はその区間の押した所の地点に線を引き、その地点の標高・区分・風・総合難易度を出す", () => {
     renderProfile({
       segments: [PAVED, UNKNOWN],
-      // 地図は区間を自分の地物から組み直すので、図の区間と同じものではない。
-      selected: { segment: { ...PAVED }, latitude: 35, longitude: 139 },
+      // 地図は区間を自分の地物から組み直すので、図の区間と同じものではない。押した所は前の区間の始まりから0.3km東。
+      selected: { segment: { ...PAVED, geometry: null }, latitude: 35, longitude: 139.003 },
       onSelect: vi.fn(),
     });
-    expect(detail()).toHaveTextContent("0.0km地点到達予想 09:42");
-    expect(detail()).not.toHaveTextContent("標高");
-    expect(chipTexts()).toEqual(["南 3.0m/s"]);
+    expect(screen.getByRole("slider")).toHaveAttribute("aria-valuenow", "0.3");
+    // 標高は12mから31.6mへ1kmで上る道の0.3kmの地点。
+    expect(detail()).toHaveTextContent("標高 18m勾配 +2.0%");
+    expect(chipTexts()).toEqual(["路面の種類 舗装", "南 3.0m/s"]);
     expect(within(detail()).getByText("総合難易度").parentElement).toHaveTextContent("総合難易度40.0/100");
   });
 

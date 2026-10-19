@@ -120,6 +120,19 @@ export function routeLinesOnMap(): unknown[] {
   );
 }
 
+/** 地図に出ている、選んだ区間の範囲の縁取りの線（出ていなければ空）。 */
+export function selectedSectionOnMap(): unknown[] {
+  const shown = mapOnScreen().visibleLayerIds().includes("route-selected-section-selectedSection");
+  return shown ? linesOn("route-selected-section") : [];
+}
+
+/** 地図に立てた、選んだ地点の印。 */
+export function selectedPointMarks() {
+  return mapOnScreen()
+    .markers()
+    .filter((mark) => mark.element.getAttribute("aria-label") === "選択中の区間");
+}
+
 /** 地図のその地点に置いた印。 */
 export function marksAt(point: Coordinates) {
   return mapOnScreen()

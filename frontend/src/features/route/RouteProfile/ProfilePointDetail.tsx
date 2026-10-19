@@ -38,7 +38,7 @@ const hintRowClass = cn(textVariants({ variant: "hint" }), "inline-flex items-ce
 interface ProfilePointDetailProps {
   selection: SelectedRouteSegment;
   /** 選んだ地点のルートの上の距離と区間の並びと、その地点の近くにある点（グラフに出している点のレイヤーのもの）。図の上の地点が
-   * 分からない選択（地図で押した区間）ではnullで、標高と区分と点のチップを出さない。 */
+   * 分からない選択（図に無い区間）ではnullで、標高と区分と点のチップを出さない。 */
   point: {
     readonly columns: readonly RouteStretch<RouteSegmentDetail>[];
     readonly km: number;
