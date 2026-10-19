@@ -18,7 +18,7 @@ import {
   type MapLayerVisibility,
 } from "@/features/map/layers/mapLayers";
 import { LENS_DIFFICULTY_ID, type LensId } from "@/lib/mapDisplay/routeStyleModes";
-import type { MapViewport } from "@/features/map/layers/windLayer";
+import type { MapViewport } from "@/features/map/view/mapLook";
 import type MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayControls";
 import { isLegendFiltered } from "@/features/map/MapOverlayControls/OverlayLayerRow";
 import { mapDisplay } from "@/types/generated/mapDisplay";
@@ -29,7 +29,7 @@ import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers"
 import { useStoredBooleanState, useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates } from "@/types/route";
 import type { RideConditions } from "@/features/map/regionApi";
-import { normalizeDeg } from "@/lib/cardinalLabel";
+import { snapDeg } from "@/lib/cardinalLabel";
 import type { WayValueCondition } from "@/lib/catalogAxis";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
@@ -57,6 +57,8 @@ import { deserializeLayerVisibility, overlayChips } from "./overlayChips";
 export const LEGEND_FILTER_DEBOUNCE_MS = 400;
 
 const ROUTE_LAYER_ID = "route";
+// 道の値を求める走る向きの刻み。細かくするほど、向きで材料を取り直す軸の取り直しが増える。
+const WAY_BEARING_STEP_DEG = 10;
 const INITIAL_HIDDEN: HiddenLegendKeys = initiallyHiddenLegendKeys();
 /** 凡例のどの行も隠していない状態。最初に隠す行を持つ軸も、空の並びで「出す」と覚える。 */
 const NONE_HIDDEN: HiddenLegendKeys = Object.fromEntries(Object.keys(INITIAL_HIDDEN).map((axisId) => [axisId, []]));
@@ -149,11 +151,12 @@ export function useMapView({
     () => mapCatalog.dedicatedAxes.filter((axis) => axis.axisId === painted && axis.paintsSurroundingRoads),
     [mapCatalog.dedicatedAxes, painted],
   );
-  // 走っていない間の走る向きは、地図の上の向きそのもの（向きを変えても材料は取り直さず、地図が色を求め直す）。
-  const bearingDeg = riding?.bearingDeg ?? normalizeDeg(viewport?.bearing ?? 0);
+  // 走っていない間の走る向きは、地図の上の向きそのもの。向きを段に丸めるのは、向きで材料を取り直す軸が、回転や走行中の
+  // 細かな向きの揺れのたびに取り直さないため。式の木・材料・区間インスペクタは同じ丸めた向きで値を求める。
+  const bearingDeg = snapDeg(riding?.bearingDeg ?? viewport?.bearing ?? 0, WAY_BEARING_STEP_DEG);
   const speedKmh = riding?.speedKmh ?? ride.speedKmh;
   const wayConditions = useMemo(() => ({ bearingDeg, at: ride.at, speedKmh }), [bearingDeg, ride.at, speedKmh]);
-  const wayMaterials = useWayMaterials(fetchAxes, viewport, ride.at);
+  const wayMaterials = useWayMaterials(fetchAxes, viewport, wayConditions);
   // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。速度が数でない間は値の無いことにする。
   const formulaConditions = useMemo(
     () => ({ bearing_deg: bearingDeg, ...(Number.isFinite(speedKmh) ? { speed_kmh: speedKmh } : {}) }),

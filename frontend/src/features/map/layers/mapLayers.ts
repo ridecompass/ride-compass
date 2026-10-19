@@ -242,9 +242,7 @@ export const NO_AXES: LayerCatalog = { axes: [], dedicatedAxes: [], accidentYear
 
 /** そのレイヤーが見せる元データを材料に持つ公開中の評価の名前（「A」「B」）。無ければ空文字で、呼ぶ側は評価に触れる一文を出さない。 */
 function axisNamesReading(axes: readonly CatalogAxis[], layerId: StaticMapLayerId): string {
-  return axisNamesInText(
-    axes.filter((axis) => axis.primaryAttributeIds.includes(layerId) || axis.weatherLayerGroups.includes(layerId)),
-  );
+  return axisNamesInText(axes.filter((axis) => axis.primaryAttributeIds.includes(layerId)));
 }
 
 export function buildMapLayers({ axes, dedicatedAxes, accidentYears }: LayerCatalog): readonly MapLayerDescriptor[] {

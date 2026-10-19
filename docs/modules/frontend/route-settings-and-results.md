@@ -25,7 +25,7 @@
 | `features/route/useSavedConditions.ts` | 保存した条件の一覧（この端末の`localStorage`）と、いまの条件（`useGenerationConditions.ts: snapshot`）の保存（出発地を固定するかを受け取る）・呼び出し・削除。呼び出すと`useGenerationConditions.ts: restore`で条件を入れ替え、出発地は位置の持ち主（`hooks/useLocation.ts`）へ渡す |
 | `features/route/savedConditions.ts` | 生成の条件の形（`GenerationConditionsSnapshot`。いまの条件・保存・呼び出しが同じ形を使い、保存の1件はそれに名前と出発地を足す）と、保存値の読み方（項目ごとの読み方の表で読み、今の画面が受け付けない件だけを捨てる）・仮の名前・何が保存されるかの説明（`describeConditions`。重みは軸ごとの割合）・同じ名前の上書き。距離・候補数として受け付ける範囲（`acceptedDistanceInput`・`acceptedMaxRoutesInput`）もここが持ち、`useGenerationConditions.ts`の保存値の読み直しと共有する。距離の刻み（`DISTANCE_STEP_KM`。5km刻みで、下限も1刻み分）は画面だけの値で、`RouteForm`のルーラーのコマも読み、保存値は刻みの近い方へ寄せて読む。候補数の下限・上限は生成物`route-generate-config.json`から読む |
 | `features/route/routeWeightShare.ts` | 重み配分の純関数（帯グラフの境界ドラッグ`clampBoundaryDrag`・合計の1%の刻み`weightStep`と下限） |
-| `lib/cardinalLabel.ts` | 角度を方位の呼び名へ（区間の風・天気欄等が使う）と、気象の風向（吹いてくる向き）を矢印が指す吹いていく向きへ（`downwindDeg`。地図の風の矢印が使う）と、それを回った地図の上の向きへ（`downwindOnMapDeg`。走りの帯と天気欄の矢印が使う）。呼び名の並びはbackend（`domain/geo.py: COMPASS_LABELS`）が配り、丸めは画面が持つ。区分の境界を含む角度でbackendと同じ呼び名になることは、backendが出す表（生成物`geo-expectations.json`）をテストが通して確かめる |
+| `lib/cardinalLabel.ts` | 角度を方位の呼び名へ（区間の風・天気欄等が使う）と、気象の風向（吹いてくる向き）を矢印が指す吹いていく向きへ（`downwindDeg`。区間の風の矢印が使う）と、それを回った地図の上の向きへ（`downwindOnMapDeg`。走りの帯と天気欄の矢印が使う）。呼び名の並びはbackend（`domain/geo.py: COMPASS_LABELS`）が配り、丸めは画面が持つ。区分の境界を含む角度でbackendと同じ呼び名になることは、backendが出す表（生成物`geo-expectations.json`）をテストが通して確かめる |
 | `features/route/RouteAxisProfile/RouteAxisProfile.tsx` | 候補ごとのタブの中身（公開軸すべての軸別難易度一覧＋「重み付き寄与度」内訳）。地図の色分けを選ぶ操作はここには無い（`LensControl`）。候補一覧のタブ自体は`RouteOutcome.tsx`が組み立てる |
 | `features/route/routeTabLabel.ts` | 候補タブの時間の列の基準線と差を組み立てる純関数（`durationBaseline`・`durationDifferenceLabel`）、生成した候補の並び（最速の印の1本が先頭、残りは所要時間の短い順、`orderGenerated`）、一覧の並び・群・名前（`routeListEntries`。最速ルート・生成した候補・合成ルートの分け方は[ページ全体構成・状態管理](page-composition.md)「ルート結果の中身」）。種類と最速の印はbackendが付ける値（`route_generator.py: _label`）を読むだけで、idの文字列や要求の形から決め直さない。タブ列自体は`RouteOutcome.tsx`が組み立てる |
 | `features/route/routeEditDiff.ts` | 編集で作ったルートの元との差（距離・所要・総合難易度・負荷と、変えた区間の元の位置・長さの差）と、差の表記（`formatDelta`）。指標は1つの表から作り（`metricDifferences`。名前・桁・単位と元・編集後・差）、編集面（`RouteSplicePanel`）と「元との違い」（`EditDifference`）が同じ表を読む——別々に持つと、片方だけ指標や桁が変わる。変えた区間は適用した乗り換えの手順からではなく、できた2本のEdge id列の差（`routeSplice.ts: pairedStretches`）から求める——乗り換えの範囲は適用した時点の経路に対する位置で、元の位置へ戻すには手順の全部が要る。区間の位置と長さは、道のりのグラフと同じ物差し（`lib/routeDistance.ts: routeEdgeKms`）で読む |
@@ -44,11 +44,11 @@
 | `services/axisCatalogApi.ts` | 上記フックが叩くbackend APIの薄いラッパー |
 | `lib/catalogAxis.ts` | 軸カタログの1行を画面が読む形へ移す型（`CatalogAxis`）と唯一の変換（`catalogAxisFromEntry`）。重み一覧の1行はこの型そのもので、地図が塗る軸・地図のチップの軸はこれに用途の項目を足した型。文へ評価の名前を差し込む形（「A」「B」。`axisNamesInText`・走る条件で値の変わる軸に絞る`axisNamesUsing`）もここが持つ |
 | `features/route/RouteProfile/RouteProfile.tsx` | 候補の中身の先頭と走行中の地図の下に出す道のりのグラフ。「評価で塗る」（既定）と「表示」のタブを持つ（名前は地図の2つの入口と同じ`lib/screenNames.ts`から引き、絵も地図の「表示」のボタンと「評価で塗る」のピルと同じ`DisplayItemsIcon`・`EvaluationPaintIcon`を付ける。出す情報のボタンは`ChooseItemsIcon`）。タブの切り替えは、結果も走行中も文字の無い小さい絵だけにし（名前は読み上げに残す）、(i)・出す情報のボタンと並べて図の右上に重ねる。距離の目盛り（0・全長）は図の中の下の角に重ね、図の上下に段を取らない（スマホの低い高さで図を大きく見せる。図の左上は値の目盛りに空けておく）。走りながら遠目に読むので、走行中は距離の目盛り・図の下の文字を結果の図より大きくし（`features/route/ProfileChart/ProfileChart.tsx: profileTextClass`）、「表示」の図には最初の折れ線の最高と最低の高さに単位つきの目盛り（「標高 32m」「12m」）を出す。結果も走行中もなぞって地点を選び（地図に印が出る）、地点を選んでいる間は、その地点の詳しく（`features/route/RouteProfile/ProfilePointDetail.tsx`）を図の下に出す。「評価で塗る」は難易度のグラフ（`DifficultyProfile`）で、(i) はこのルートで塗った区間のある軸の色と名前・値の無い区間の色・グラフの意味を出す。「表示」は、チップで選んだ情報（地図の「表示」とは別の選択）を同じ横軸に重ね、各情報の最高・最低を1行で図の下に出す（結果では地点を選んでいる間も地点の詳しくの上に残す。走行中は図の中の目盛りが最高・最低を持つので、地点を選んでいる間は詳しくだけを出す）。道の区分の情報（道路の種類・路面の種類・トンネル・緑と水等）は折れ線の下に1本ずつ帯で並べ、帯に現れた行の凡例を出す。点の情報（停止要因・補給・立ち寄り先・事故）は帯の上に1本ずつ印の行で並べ、ルートの近くの点（応答の`points`）を通る距離に地図の点と同じ色・大きさの印を置き、現れた区分の凡例を出す。地点の選び方は「評価で塗る」と同じ。どちらのタブも、置いた経由地を通る距離（応答の`waypoint_distances_km`）に縦の線と地図のピンと同じ番号の印を出す |
-| `features/route/RouteProfile/ProfilePointDetail.tsx` | 道のりのグラフで選んだ地点の詳しく。結果も走行中も同じ3行で出す（下記「区間クリック詳細」）。1行目は折れ線の値とその道の勾配・何km地点・到達予想・閉じる（「勾配」「km地点」「到達予想」の語は絵に替え、読み上げに残す）。2行目はチップの列で、その地点で当たる道の区分（グラフに出す情報の選択によらない。どの分類にも入らない行〔`lib/mapDisplay/roadTracks.ts: isUnclassifiedRow`〕は出さない）を、地図の「表示」と同じアイコン・行の凡例の色の印・行の名前で出し、グラフに出している点の情報のうち選んだ地点の近く（指でなぞる細かさの幅の内でいちばん近い点。幅は `RouteProfile.tsx` の定数が持つ）の点を、地図の点と同じ色の印と区分・名前（「コンビニ ローソン 王子店」）で出し、風のチップ（`SegmentWindChip`）を並べる。チップの地は画面の色のままにし、凡例の色は印で示す（凡例の色は明るいものも暗いものもあり、地に塗ると文字の色を色ごとに選ぶことになる）。チップは押せる風のチップに合わせて押す所の下限（24px）の高さを持つ。3行目は区間の総合難易度と、寄与の帯・軸ごとの寄与の小さい並び（`AxisContributionBar`の`inline`。押すと`AxisDetail`）。地図で押した区間は、地図が自分の地物から組み直した区間で図の区間と同じものでないので、図の上の地点が分からず、標高と区分と点のチップを出さない |
+| `features/route/RouteProfile/ProfilePointDetail.tsx` | 道のりのグラフで選んだ地点の詳しく。結果も走行中も同じ3行で出す（下記「区間クリック詳細」）。1行目は折れ線の値とその道の勾配・何km地点・到達予想・閉じる（「勾配」「km地点」「到達予想」の語は絵に替え、読み上げに残す）。2行目はチップの列で、その地点で当たる道の区分（グラフに出す情報の選択によらない。どの分類にも入らない行〔`lib/mapDisplay/roadTracks.ts: isUnclassifiedRow`〕は出さない）を、地図の「表示」と同じアイコン・行の凡例の色の印・行の名前で出し、グラフに出している点の情報のうち選んだ地点の近く（指でなぞる細かさの幅の内でいちばん近い点。幅は `RouteProfile.tsx` の定数が持つ）の点を、地図の点と同じ色の印と区分・名前（「コンビニ ローソン 王子店」）で出し、風のチップ（`SegmentWindChip`）を並べる。チップの地は画面の色のままにし、凡例の色は印で示す（凡例の色は明るいものも暗いものもあり、地に塗ると文字の色を色ごとに選ぶことになる）。チップは押せる風のチップに合わせて押す所の下限（24px）の高さを持つ。3行目は区間の総合難易度と、寄与の帯・軸ごとの寄与の小さい並び（`AxisContributionBar`の`inline`。押すと`AxisDetail`）。地図で押した区間は、地図が自分の地物から組み直した区間で図の区間と同じものでないので、図は区間の始まりの距離で区間を探し（`lib/routeDistance.ts: findSameSegment`）、押した所を区間の道なりの形に当てた地点に線を引いて、その地点の詳しくを出す。図に無い区間の選択だけは、標高と区分と点のチップを出さない |
 | `features/route/RouteProfile/profileLayers.ts` | 道のりのグラフに重ねられるレイヤの宣言（`PROFILE_LAYERS`）。レイヤごとに名前・描き方・区間の応答から値を引く所を1か所に持ち、レイヤを足すときはここへ1行足す。描き方は3つで、折れ線は区間の中の道ごとの両端の値（応答の`elevations`）を、道の距離の比で区間の長さへ割り振ってつなぎ、値の無い道・道の無い区間で線を切る。地点の勾配は、その地点の道の両端の差を道の長さで割る（`features/route/RouteProfile/profileLayers.ts: layerGradeAtKm`）。帯は区間の中の区分の値（応答の`road_classes`）を距離の比で並べ、隣どうしで同じ行になる部分をつなぐ。帯にできるのは地図の道の線のレイヤ（`lib/mapDisplay/roadTracks.ts: ROAD_TRACKS`）と「緑と水」で、行の色・呼び名・「該当なし」「データなし」の分け方は地図の凡例と同じ宣言から引き、アイコンは地図の「表示」の一覧と同じ表（`components/ui/icons/mapLayerIcons.ts: MAP_LAYER_ICONS`）から引く。点は応答の`points`のうちそのレイヤの点を、通る距離に印で並べる。点にできるのは地図の点のレイヤ（`lib/mapDisplay/pointLayers.ts: POINT_LAYERS`）で、印の色・絵記号の有無・半径・区分の名前は地図の点と同じ宣言から引き、宣言に無い値は値の無い色と「不明」にする |
 | `features/route/RouteProfile/useProfileLayers.ts` | グラフに出す情報（コードの名前はレイヤ）の選択。端末に覚え（既定は標高）、宣言から消えたレイヤは読むときに捨てる。ページが1つ持ち、結果と走行中の図が同じ選択を読む |
 | `features/route/ProfileChart/ProfileChart.tsx` | 道のりのグラフの枠（横軸の尺・横になぞる・押して地点を選ぶ・走行中の現在地・経由地の線と番号の印）。難易度のグラフとレイヤのグラフが中身だけを差し込む。押せる図は縦のなぞりをシート・パネルのスクロールへ渡し（`touch-action: pan-y`）、縦に動き出した操作では地点を選ばない。走行中は、現在地の距離に縦の線（折れ線の青と見分ける文字の色）と地図の現在地と同じ青の丸い印（高さは中身が渡す）を出し、走り終えた所は中身の色を抜いて地図の走り終えた線と同じ濃さへ薄め、残りは元の色のまま描く。走り終えた経由地の線と番号の印も同じ濃さまで薄める。中身が渡す値の目盛り（`valueTicks`）を図の左の端に重ねる。高さは置き場が CSS の変数`--profile-chart-height`で決め、無ければ走行中の地図の下に出す図の高さになる |
-| `features/route/DifficultyProfile/DifficultyProfile.tsx`・`profileGeometry.ts` | 道のりのグラフの「評価で塗る」に出す、道のりに沿った難易度のグラフ。横が始点からの距離、縦が区間ごとの難易度で、区間ごとの階段を軸の寄与で色分けして下から積む。区間はbackendがEdgeを約500mのビンへ畳んだもの（`aggregate_segments_into_bins`）で、Edge 1本ずつではない。**塗った面積がルートの負荷にほぼ一致する**——値の無い区間はルートの総合難易度の高さで灰色に描く（負荷は「値のある区間の距離加重平均×全長」で、値の無い区間を平均として数えるため）。ほぼなのは、ビンの中で値の無いEdgeがそのビンの平均で数えられるためと、1kmあたりの回数で測る評価軸はルート全体の回数の平均から点数にし直すため（backend: `domain/route.py: merge_difficulty`）。横軸の右端は**一覧の中で最も長い候補の距離**で、候補どうしで面積を見比べられる。押したまま動かす（キーボードは矢印・Home・End）と、その距離の区間と、区間の道なりの形の上で距離の割合ぶん進んだ地点を選ぶ——選択は地図で区間を押したときと同じ`selectedRouteSegment`で、地図に印が出て下に区間の詳細が出る。グラフ自体は区間を選んでいる間も残る。選ぶ受け口を渡さなければ、押せない見るだけの図になる。走行モードでは現在地の距離を受け取り、枠へ渡す（距離の決め方はpage-composition.md「走行モード」）。現在地の印はその距離の柱の上端に置く |
+| `features/route/DifficultyProfile/DifficultyProfile.tsx`・`profileGeometry.ts` | 道のりのグラフの「評価で塗る」に出す、道のりに沿った難易度のグラフ。横が始点からの距離、縦が区間ごとの難易度で、区間ごとの階段を軸の寄与で色分けして下から積む。区間はbackendがEdgeを約500mのビンへ畳んだもの（`aggregate_segments_into_bins`）で、Edge 1本ずつではない。**塗った面積がルートの負荷にほぼ一致する**——値の無い区間はルートの総合難易度の高さで灰色に描く（負荷は「値のある区間の距離加重平均×全長」で、値の無い区間を平均として数えるため）。ほぼなのは、ビンの中で値の無いEdgeがそのビンの平均で数えられるためと、1kmあたりの回数で測る評価軸はルート全体の回数の平均から点数にし直すため（backend: `domain/route.py: merge_difficulty`）。横軸の右端は**一覧の中で最も長い候補の距離**で、候補どうしで面積を見比べられる。押したまま動かす（キーボードは矢印・Home・End）と、その距離の区間と、区間の道なりの形の上で距離の割合ぶん進んだ地点を選ぶ——選択は地図で区間を押したときと同じ`selectedRouteSegment`で、地図に地点の印と区間の縁取りが出て下に区間の詳細が出る。グラフ自体は区間を選んでいる間も残る。選ぶ受け口を渡さなければ、押せない見るだけの図になる。走行モードでは現在地の距離を受け取り、枠へ渡す（距離の決め方はpage-composition.md「走行モード」）。現在地の印はその距離の柱の上端に置く |
 | `features/route/ErrorText/ErrorText.tsx` | 操作した箇所の直下に出すエラー文言（`role=alert`）。ルート結果と区間の乗り換えの面が使う |
 | `features/route/WarningText/WarningText.tsx` | 表示中の結果について注意を促す1行（条件のずれ・目的地の補正・所要時間の前提の崩れ）。ルート結果と候補の中身が使う |
 | `features/route/GenerationNotice/GenerationNotice.tsx` | 押した「生成」が候補を出せなかった理由（入力の誤りか失敗・候補0件の理由）を知らせる窓。`app/page.tsx`がデスクトップとモバイルの両方に1つ置き、閉じると案内を消す |
@@ -65,7 +65,7 @@
 | `features/route/useRoutePlanner.ts` | ルートを作る機能の入口。結果・生成・区間の乗り換えをつなぐ: 生成と乗り換えが作った候補を結果へ入れ、全消去は結果と生成を一緒に消し（乗り換えの編集は生成に結びつくので一緒に終わる）、乗り換えで作り始めると直前の生成の失敗の文言を消す。生成と乗り換えの結果は1本の`onOutcome`で呼び出し側へ知らせる。軸を「未使用」と分ける重み（`routeWeights`。生成に使われた重み、生成前は今の設定の重み）も1か所でここが決め、地図のレンズの選択肢と候補の中身が同じ値を読む。地図に描くルート（`mapRoutes`。編集で作ったルートを選んでいる間は元と2本だけ）もここが決める |
 | `features/route/useSpliceSession.ts` | 区間の乗り換えの編集1回ぶんの状態（編集の元の候補・適用した乗り換え・評価結果の控え・処理状態）と操作。**抜けると中身ごと消え、次の編集へ持ち込まない**。編集は始めたときの生成に結びつき、作り直す・消すと効かなくなる（候補のidは作り直しでも同じ値が振られうる）。組み合わせた経路は**表示中の候補を作った生成の入力**で評価する——いまのフォームで評価すると、生成後に重みを変えた1本だけが別の条件で並ぶ。評価は組み合わせ（適用した順を含む）ごとに覚え、「差分を見る」と「作成」で投げ直さない（生成APIには回数の上限がある）。評価を待つ間に作り直す・消す・やめる・始め直すと、届いた評価は何も書かない（評価の控え・処理の状態・作った経路の受け渡しのどれも。編集は始めた1回ごとの印で見分ける）。「作成」は連打の2回目を同じタスクの中で止め、作った経路が既にある候補と同じ道ならその候補を選ぶだけにする。差分を見た時点でも、同じ道の候補があればそのidを編集面へ渡す。入口は、表示中の候補が2本以上あれば周回でも目的地ルートでも出す（終点［目的地、無ければ出発地］へ着くかはbackendが確かめる）。区間を割る下限（軸カタログの較正値）を引けない間は乗り換え先を作らず入口も出さない。返すのは地図へ渡す値（乗り換え先の帯・いま作っているルート・帯のタップ）と`RouteSplicePanel`へ渡す値で、作った経路と元を結果へ足すのは呼び出し側（`onApplied`） |
 | `features/map/scene/groups/routes.ts`（乗り換え帯の箇所） | 他の候補が別の道を通る区間を地図へ帯で描き、**タップでその道を選べる**（`onSpliceStretchSelect`。選ぶ操作の中心を地図へ置く——パネルの行だけで選ばせると、どの行がどの帯かを目で対応づける必要がある。帯と当たり判定は役割`spliceBandLine`・`spliceBandHit`として宣言する）。帯はどれも破線で描く。タップして乗り換えた先は帯ではなく、いま作っているルート（太い実線）の一部として描かれる。破線の刻みは配列で持つ（feature式に依存しない） |
-| `features/map/scene/groups/routes.ts` | ルート候補・選択中ルート・区間色分け・乗り換え帯の宣言。状態から載るべきレイヤーの並びを返すだけで、地図を直接は触らない |
+| `features/map/scene/groups/routes.ts` | ルート候補・選択中ルート・区間色分け・乗り換え帯・選んだ区間の範囲の縁取りの宣言。状態から載るべきレイヤーの並びを返すだけで、地図を直接は触らない |
 
 ## RouteSettingsPanel.tsx（一般向けメイン設定面）
 
@@ -293,17 +293,27 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
 地図上でルート線の区間を押すか、道のりのグラフをなぞって地点を選ぶと、`useRouteResults.ts: selectedRouteSegment` state
 （`{ segment: RouteSegmentDetail, latitude, longitude }`。押した所に最も近い区間の上の点）が入る。地図で区間を押して選べるのは、「ルート結果」が
 地図で効いている間と、パネルを閉じて見るだけの間（[ページ全体構成・状態管理](page-composition.md)「地図を押したときの意味」）。地図側は
-その点へ軽量なマーカーを立て、見るだけの間はその上の小窓（`features/route/SegmentDetail/SegmentDetail.tsx`。[地図: 静的レイヤー・道路表示](static-map-layers.md)参照）に、
+その点に選んだ地点の印を立て、その区間の範囲を縁取りで示し（下記）、見るだけの間はその上の小窓（`features/route/SegmentDetail/SegmentDetail.tsx`。[地図: 静的レイヤー・道路表示](static-map-layers.md)参照）に、
 ほかの間は「ルート結果」の道のりのグラフの下（`features/route/RouteProfile/ProfilePointDetail.tsx`）に中身を出す。走行中の地図の下の
 道のりのグラフも、選んだ地点の中身を同じ`ProfilePointDetail`で図の下に出す。`selectedRouteSegment`がnon-nullの間、「ルート結果」タブは
 ルート全体の内訳（`RouteAxisProfile`）を出さない。
 
+地図の印と縁取りは、地図で押してもグラフで選んでも、結果でも走行中でも同じに出し、選択を外すと消す。
+
+- **選んだ地点の印**（`features/map/MapView/useMapMarkers.tsx: SelectedPointPin`）: 白い縁と内の白い丸を持つ塗りのしずく形で、
+  先が地点を指す（Markerの`anchor: "bottom"`）。影を付けてどの配色の上でも浮かせ、色（`palette.semantic.selected_point`）は評価の配色・
+  ルートの線の色・現在地の青のどれとも重ならない朱色にする。押すと選択を外す。読み上げ名は「選択中の区間」。見るだけの間の小窓は
+  印の高さ（`useMapMarkers.tsx: SELECTED_POINT_PIN_HEIGHT_PX`）の上へ出す。
+- **選んだ区間の範囲の縁取り**（`scene/groups/routes.ts`の役割`selectedSection`）: グラフの区間の帯と同じ区間の形を、どのルートの線より
+  後ろに太い半透明の線で敷き、線の外側へはみ出た所で範囲を示す（線の上に重ねると区間の色分けを隠す）。形は選んでいる候補の同じ区間
+  （`lib/routeDistance.ts: findSameSegment`）から引く——地図で押した区間は地物の属性から組み直した写しで、形を持たない。
+
 中身は区間の地点（区間の始まりの道のり）・到達予想時刻・区間の総合難易度（`RouteSegmentDetail.difficulty`。算出できなかった区間は「—」）・
-評価に使った風（数値予報モデルの計算値の時刻・風向風速、追える時刻の先で延ばして使った区間は短い注記、詳しくは(i)。
-「予報」とは呼ばない——[動的気象レイヤー](dynamic-weather-layers.md)「責務」。
+評価に使った風（区間の中ほどに最寄りの格子点の計算値であることとその時刻・風向風速、詳しくは(i)。
+「予報」とは呼ばず、(i)は数値予報モデルの値に添える断りの文（生成物`mapDisplay.modelValueDisclaimer`）を出す——[動的気象レイヤー](dynamic-weather-layers.md)「責務」。
 (i)の説明がレグごとに追う時間を生成物`route-generate-config.json`の`wind_forecast_hours_per_leg`から出す）＋
 `AxisContributionBar`（区間の`axis_contributions`）。道のりのグラフの下では、これに選んだ地点の標高・勾配と、その地点で当たる道の区分の
-チップを足して3行にまとめ（各行の中身は上の表の`ProfilePointDetail.tsx`の行）、風はチップにして、時刻・延長の印・説明はチップを押すと開く。
+チップを足して3行にまとめ（各行の中身は上の表の`ProfilePointDetail.tsx`の行）、風はチップにして、時刻・説明はチップを押すと開く。
 ×ボタン（地図の小窓では小窓を閉じる）で`selectedRouteSegment`をnullへ戻すとルート全体表示に復帰する。`AxisContributionBar`は寄与が1つも
 無いと何も描かないので、寄与が全部0の区間は「どの評価軸も0（易しい）」と文で言う——内訳も数字も出ないと、壊れたのと見分けがつかない。
 内訳のチップを押すと、軸の名前・**その区間の**軸別難易度（`RouteSegmentDetail.axis_difficulties`）・説明が開く（`AxisDetail.tsx`）

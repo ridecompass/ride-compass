@@ -22,11 +22,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.domain.wind_grid import (
-    WIND_GRID_DETAIL_MAX_POINTS,
-    WIND_GRID_DETAIL_MIN_SPACING_DEG,
-    WIND_GRID_SPACING_DEG,
-)
 from app.domain.route_request import (
     ASSUMED_SPEED_KMH,
     DEFAULT_DISTANCE_TOLERANCE_KM,
@@ -168,7 +163,6 @@ OUTPUT_PATH = GENERATED_DIR / "openapi.json"
 REGION_TILE_CONFIG_PATH = GENERATED_DIR / "region-tile-config.json"
 GEO_CONFIG_PATH = GENERATED_DIR / "geo-config.json"
 PRIMARY_ATTRIBUTES_PATH = GENERATED_DIR / "primaryAttributes.ts"
-WIND_GRID_CONFIG_PATH = GENERATED_DIR / "wind-grid-config.json"
 ROUTE_GENERATE_CONFIG_PATH = GENERATED_DIR / "route-generate-config.json"
 REFRESH_INTERVALS_PATH = GENERATED_DIR / "refresh-intervals.json"
 MATERIAL_CATALOG_PATH = GENERATED_DIR / "material-catalog.json"
@@ -561,16 +555,6 @@ def main() -> None:
             }
             for attr in PRIMARY_ATTRIBUTES
         ],
-    )
-    # 風・降水延長予報の粗い格子の間隔と、詳細格子の問い合わせが受け付ける範囲（domain/wind_grid.py）。
-    # APIレスポンスは間隔を含まないため、画面はこのJSONから読む以外に値を知る手段がない。
-    _write_json(
-        WIND_GRID_CONFIG_PATH,
-        {
-            "spacing_deg": WIND_GRID_SPACING_DEG,
-            "detail_min_spacing_deg": WIND_GRID_DETAIL_MIN_SPACING_DEG,
-            "detail_max_points": WIND_GRID_DETAIL_MAX_POINTS,
-        },
     )
     # ルート生成の上限・既定値。frontendが独立にハードコードすると、backendだけ変えた
     # ときに入力の上限と受理される値がずれる。

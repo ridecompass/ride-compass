@@ -51,7 +51,6 @@ from app.domain.axis_templates import evaluate_breakpoint_linear, evaluate_categ
 from app.domain.difficulty import round_difficulty_array, weight_share
 from app.domain import material_catalog
 from app.domain.strict_model import StrictModel
-from app.domain.weather_elements import WEATHER_ELEMENTS
 
 
 #: 軸の宣言に使うモデル共通の設定。`allow_inf_nan=False`は、NaN・無限大の重み・係数が
@@ -591,16 +590,6 @@ def primary_attribute_ids_for(definition: AxisDefinition) -> list[str]:
             and spec.primary_attribute is not None
         )
     )
-
-
-def weather_layer_groups_for(definition: AxisDefinition) -> list[str]:
-    """軸の材料の元データを描く気象のチップ（`WEATHER_LAYER_GROUPS`の名前）。一次属性を持つ材料は現れない。"""
-    grid_values = {
-        spec.weather_grid_value
-        for material_id in _leaf_materials(definition)
-        if (spec := material_catalog.MATERIAL_CATALOG.get(material_id)) is not None and spec.weather_grid_value is not None
-    }
-    return list(dict.fromkeys(element.group for element in WEATHER_ELEMENTS if element.grid_value in grid_values))
 
 
 class AxisInternalAxisPublishError(ValueError):

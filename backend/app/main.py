@@ -88,10 +88,10 @@ async def _prewarm_jma_tile_job() -> None:
 
 
 async def _sync_msm_job() -> None:
-    """気象庁MSM（風・降水の予報）の.omファイルをローカルへ同期する。
+    """気象庁MSM（風の予報）の.omファイルをローカルへ同期する。
 
-    風グリッド・ルート評価はこのローカルファイルだけを読むため、同期が止まるとデータは
-    順次古くなり、予報終端が現在時刻へ追いつくと風グリッドは502を返す。
+    ルート評価と地図の道ごとの風はこのローカルファイルだけを読むため、同期が止まるとデータは
+    順次古くなり、予報終端が現在時刻へ追いつくと風が読めなくなる。
     """
     await refresh_msm(get_http_client(60.0))
 
@@ -154,7 +154,7 @@ async def lifespan(app: FastAPI):
         next_run_time=datetime.now(),
         id="prewarm_jma_tile",
     )
-    # 初回はローカルにファイルが無く、完了するまで風グリッド・ルート評価の風が使えない。
+    # 初回はローカルにファイルが無く、完了するまでルート評価と地図の道ごとの風が使えない。
     scheduler.add_job(
         _sync_msm_job,
         trigger="interval",

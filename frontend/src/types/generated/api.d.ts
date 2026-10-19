@@ -68,22 +68,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/weather": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_weather_api_weather_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/weather/warnings": {
         parameters: {
             query?: never;
@@ -148,30 +132,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/weather/wind-grid": {
+    "/api/weather/msm-grid": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["get_wind_grid_api_weather_wind_grid_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/weather/wind-grid-detail": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_wind_grid_detail_api_weather_wind_grid_detail_get"];
+        get: operations["get_msm_grid_api_weather_msm_grid_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -718,14 +686,14 @@ export interface components {
             icon_id: string | null;
             /** Primary Attribute Ids */
             primary_attribute_ids: string[];
-            /** Weather Layer Groups */
-            weather_layer_groups: string[];
             map_paint: components["schemas"]["MapPaint"];
             raw_value_units: components["schemas"]["RawValueUnits"];
             /** Material Breakdown */
             material_breakdown: components["schemas"]["AxisMaterialBreakdownEntry"][];
             /** Dynamic Way Value Conditions */
             dynamic_way_value_conditions: ("at" | "bearing_deg" | "speed_kmh")[];
+            /** Dynamic Way Value Material Conditions */
+            dynamic_way_value_material_conditions: ("at" | "bearing_deg" | "speed_kmh")[];
             /** Dynamic Way Value Undetermined By Bearing */
             dynamic_way_value_undetermined_by_bearing: boolean;
             way_value_formula: components["schemas"]["WayValueFormula"] | null;
@@ -1538,6 +1506,30 @@ export interface components {
             /** Healthy */
             healthy: boolean;
         };
+        /** MsmGridForecast */
+        MsmGridForecast: {
+            /** Times */
+            times: string[];
+            /** Latitude Step Deg */
+            latitude_step_deg: number;
+            /** Longitude Step Deg */
+            longitude_step_deg: number;
+            /** Points */
+            points: components["schemas"]["MsmGridPointForecast"][];
+        };
+        /** MsmGridPointForecast */
+        MsmGridPointForecast: {
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+            /** Wind Speed Ms */
+            wind_speed_ms: (number | null)[];
+            /** Wind Direction Deg */
+            wind_direction_deg: (number | null)[];
+            /** Precipitation Mm */
+            precipitation_mm: (number | null)[];
+        };
         /** OverallDifficulty */
         OverallDifficulty: {
             /** Average */
@@ -1844,12 +1836,7 @@ export interface components {
             /** Direction Deg */
             direction_deg: number;
             /** Forecast At */
-            forecast_at: string | null;
-            /**
-             * Extended
-             * @default false
-             */
-            extended: boolean;
+            forecast_at: string;
         };
         /** SignedMaterialMapValue */
         SignedMaterialMapValue: {
@@ -1881,13 +1868,6 @@ export interface components {
              * Format: date-time
              */
             finished_at: string;
-        };
-        /** TemperatureRange */
-        TemperatureRange: {
-            /** Min C */
-            min_c: number;
-            /** Max C */
-            max_c: number;
         };
         /** TuningParameterView */
         TuningParameterView: {
@@ -2014,30 +1994,6 @@ export interface components {
             reading: components["schemas"]["WbgtReading"] | null;
             valid_area: components["schemas"]["ValidArea"] | null;
         };
-        /** WeatherConditions */
-        WeatherConditions: {
-            /** Precipitation Mm */
-            precipitation_mm: number | null;
-            twilight: components["schemas"]["Twilight"] | null;
-            /** Precipitation Max Mm */
-            precipitation_max_mm: number | null;
-            /** Wind Speed Max Ms */
-            wind_speed_max_ms: number | null;
-            temperature_range: components["schemas"]["TemperatureRange"] | null;
-            /** Today Periods */
-            today_periods: components["schemas"]["WeatherPeriodOutlook"][];
-            /** Today Period Interval Hours */
-            today_period_interval_hours: number;
-        };
-        /** WeatherPeriodOutlook */
-        WeatherPeriodOutlook: {
-            /** Period */
-            period: string;
-            /** Temperature C */
-            temperature_c: number | null;
-            /** Precipitation Mm */
-            precipitation_mm: number | null;
-        };
         /** WeatherWarnings */
         WeatherWarnings: {
             /** Warnings */
@@ -2050,26 +2006,6 @@ export interface components {
             deg: number;
             /** Label */
             label: string;
-        };
-        /** WindGridPoint */
-        WindGridPoint: {
-            /** Latitude */
-            latitude: number;
-            /** Longitude */
-            longitude: number;
-            /** Wind Speed Ms */
-            wind_speed_ms: (number | null)[];
-            /** Wind Direction Deg */
-            wind_direction_deg: (number | null)[];
-            /** Precipitation Mm */
-            precipitation_mm: (number | null)[];
-        };
-        /** WindGridResponse */
-        WindGridResponse: {
-            /** Times */
-            times: string[];
-            /** Points */
-            points: components["schemas"]["WindGridPoint"][];
         };
         /** TableEntry */
         app__services__db_status_service__TableEntry: {
@@ -2217,38 +2153,6 @@ export interface operations {
             };
         };
     };
-    get_weather_api_weather_get: {
-        parameters: {
-            query: {
-                latitude: number;
-                longitude: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WeatherConditions"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_weather_warnings_api_weather_warnings_get: {
         parameters: {
             query: {
@@ -2377,34 +2281,13 @@ export interface operations {
             };
         };
     };
-    get_wind_grid_api_weather_wind_grid_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WindGridResponse"];
-                };
-            };
-        };
-    };
-    get_wind_grid_detail_api_weather_wind_grid_detail_get: {
+    get_msm_grid_api_weather_msm_grid_get: {
         parameters: {
             query: {
                 min_lon: number;
                 min_lat: number;
                 max_lon: number;
                 max_lat: number;
-                spacing_deg?: number;
             };
             header?: never;
             path?: never;
@@ -2418,7 +2301,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WindGridResponse"];
+                    "application/json": components["schemas"]["MsmGridForecast"];
                 };
             };
             /** @description Validation Error */
@@ -2601,6 +2484,8 @@ export interface operations {
         parameters: {
             query?: {
                 at?: string | null;
+                bearing_deg?: number | null;
+                speed_kmh?: number | null;
             };
             header?: never;
             path: {

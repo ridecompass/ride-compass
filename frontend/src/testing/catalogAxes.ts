@@ -29,7 +29,6 @@ export function catalogEntry(overrides: EntryOverrides = {}): AxisCatalogEntry {
     default_weight: 0,
     icon_id: null,
     primary_attribute_ids: [],
-    weather_layer_groups: [],
     map_paint: {
       value: { kind: "difficulty" },
       unit: "",
@@ -42,6 +41,7 @@ export function catalogEntry(overrides: EntryOverrides = {}): AxisCatalogEntry {
     raw_value_units: { unit: null, total_unit: null, ...rawValueUnits },
     material_breakdown: [],
     dynamic_way_value_conditions: [],
+    dynamic_way_value_material_conditions: [],
     dynamic_way_value_undetermined_by_bearing: false,
     way_value_formula: null,
     time_scope: "always",

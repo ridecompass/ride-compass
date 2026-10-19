@@ -14,7 +14,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createBaseMap } from "@/features/map/baseMap";
 import { mergeTileValues, tilesCoveringViewport, type TileXY } from "@/features/map/layers/dynamicWayValues";
 import { buildDefaultLayerVisibility, type MapLayerVisibility } from "@/features/map/layers/mapLayers";
-import type { MapViewport } from "@/features/map/layers/windLayer";
+import type { MapViewport } from "@/features/map/view/mapLook";
 import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckboxList";
 import { LEGEND_SWATCH_CLASS } from "@/features/map/LensControl/LensControl";
 import { ORIGIN_ZOOM } from "@/features/map/MapView/useMapMarkers";
@@ -54,6 +54,7 @@ const DRAFT_PAINTING = {
   wayValueFormula: featureValueFormula(DRAFT_VALUE),
   paintsSurroundingRoads: true,
   undeterminedByBearing: false,
+  wayMaterialConditions: [],
 } satisfies Partial<DedicatedWayValueAxis>;
 
 /** タイルごとの点数を、道ごとの材料へ移す。値の無い道は材料を載せない（木が値の無い道として塗る）。 */
@@ -128,7 +129,6 @@ function unpublishedAxis(axisId: string, label: string, paint: MapPaintDeclarati
     rawValueTotalUnit: null,
     materialBreakdown: [],
     primaryAttributeIds: [],
-    weatherLayerGroups: [],
     wayValueConditions: [],
     timeScope: "always",
     display: paint,
@@ -185,6 +185,7 @@ export default function DraftWayValuesMap<Draft>({
           tileVersions: mapCatalog.tileVersions,
           inspectedWayId: null,
           travelledKm: null,
+          selectedRouteSegment: null,
         }),
       ),
     [axisId, axis, materials, loading, hiddenLegendKeys, mapCatalog.routeStyleModes, mapCatalog.tileVersions],

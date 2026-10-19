@@ -15,7 +15,7 @@ import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { makeGenerationConditions, makeRouteCandidate, makeRouteSegment } from "@/testing/routeFixtures";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 import type { Coordinates, RouteCandidate } from "@/types/route";
-import type { AmedasObservation, WeatherConditions } from "@/types/weather";
+import type { AmedasObservation } from "@/types/weather";
 
 export const HERE: Coordinates = { latitude: 35.7, longitude: 139.7 };
 export const DESTINATION: Coordinates = { latitude: 35.6, longitude: 139.73 };
@@ -36,16 +36,7 @@ const CATALOG = catalogResponse(
   },
 );
 
-// 予報と実測（ここでは中身を見ない）。
-const FORECAST: WeatherConditions = {
-  precipitation_mm: null,
-  twilight: null,
-  precipitation_max_mm: null,
-  wind_speed_max_ms: null,
-  temperature_range: null,
-  today_periods: [],
-  today_period_interval_hours: 2,
-};
+// 実測（ここでは中身を見ない）。
 const OBSERVATION: AmedasObservation = {
   station_name: "観測所",
   observed_at: "2026-01-01T12:00:00+09:00",
@@ -69,7 +60,6 @@ export function serveHome() {
   serveAxisCatalog(CATALOG);
   onSameOrigin("GET", "/api/jma-tile/*", () => Response.json([]));
   onBackend("GET", "/api/jma-tile-index", () => Response.json({ available: false, coverage: null, elements: {} }));
-  onBackend("GET", "/api/weather", () => Response.json(FORECAST));
   onBackend("GET", "/api/weather/amedas", () => Response.json(OBSERVATION));
   onBackend("GET", "/api/weather/warnings", () => Response.json({ warnings: [] }));
   onBackend("GET", "/api/weather/wbgt", () => Response.json({ reading: null }));
@@ -128,6 +118,19 @@ export function routeLinesOnMap(): unknown[] {
   return lines.filter(
     (line, index) => lines.findIndex((other) => JSON.stringify(other) === JSON.stringify(line)) === index,
   );
+}
+
+/** 地図に出ている、選んだ区間の範囲の縁取りの線（出ていなければ空）。 */
+export function selectedSectionOnMap(): unknown[] {
+  const shown = mapOnScreen().visibleLayerIds().includes("route-selected-section-selectedSection");
+  return shown ? linesOn("route-selected-section") : [];
+}
+
+/** 地図に立てた、選んだ地点の印。 */
+export function selectedPointMarks() {
+  return mapOnScreen()
+    .markers()
+    .filter((mark) => mark.element.getAttribute("aria-label") === "選択中の区間");
 }
 
 /** 地図のその地点に置いた印。 */

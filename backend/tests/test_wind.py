@@ -1,13 +1,13 @@
-"""`domain/wind.py`——風を走行の負荷へ写す式、予報を引く固定の格子、通過予定時刻の推定。
+"""`domain/wind.py`——風を走行の負荷へ写す式、格子点ごとの時別の予報、通過予定時刻の推定。
 
-入口は`wind_drag_ratio`・`WindLattice`・`WindForecastSeries`・`estimate_passage_hours`と、
+入口は`wind_drag_ratio`・`WindForecastSeries`・`estimate_passage_hours`と、
 地図へ配る木`WIND_DRAG_RATIO_WAY_FORMULA`。
 
 ここで見ないもの:
+- 予報を引くMSMの格子点の並び（`MsmBlock`） → `test_msm.py`
 - 風の材料を道・区間へ配る評価器（`domain/dynamic_materials.py`） → `test_wind_way_service.py`・`test_leg_costs.py`
 - タイルの道へ予報を引く配信 → `test_wind_way_service.py`
 - 探索の時刻ビンと区間の風（`SegmentWind`） → `test_leg_costs.py`・`test_route_generation_behavior.py`
-- 地図の風の格子点（`domain/wind_grid.py`） → `test_wind_grid.py`
 """
 
 import math
@@ -18,16 +18,14 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.route import Coordinates
 from app.domain.way_value_formula import way_values_from_formula
 from app.domain.wind import (
     WIND_DIRECTION_LEAF,
     WIND_DRAG_RATIO_WAY_FORMULA,
     WIND_SPEED_LEAF,
-    WIND_FORECAST_LAT_STEP_DEG,
-    WIND_FORECAST_LON_STEP_DEG,
     WindForecastSeries,
-    WindLattice,
     estimate_passage_hours,
     kmh_to_ms,
     wind_drag_ratio,
@@ -37,10 +35,6 @@ from app.domain.wind import (
 WIND_SPEEDS = st.floats(0.0, 40.0)
 TRAVEL_SPEEDS = st.floats(1.0, 17.0)
 BEARINGS = st.floats(0.0, 360.0)
-
-#: 本番で格子を敷く範囲（日本の周り）の緯度・経度。
-LATITUDES = st.floats(20.0, 46.0)
-LONGITUDES = st.floats(122.0, 154.0)
 
 
 def test_kmh_to_ms():
@@ -71,34 +65,6 @@ def test_drag_requires_a_positive_travel_speed():
         wind_drag_ratio(3.0, 0.0, 0.0, 0.0)
 
 
-# --- 固定の格子 ---
-
-
-def _lattice(south, west, north, east) -> WindLattice:
-    return WindLattice.covering(south, west, north, east, WIND_FORECAST_LAT_STEP_DEG, WIND_FORECAST_LON_STEP_DEG)
-
-
-@given(LATITUDES, LONGITUDES, st.floats(0.01, 1.0), st.floats(0.01, 1.0), st.floats(0.0, 1.0), st.floats(0.0, 1.0))
-def test_a_place_inside_the_lattice_picks_the_nearest_point(south, west, height, width, fy, fx):
-    lattice = _lattice(south, west, south + height, west + width)
-    lat, lon = south + fy * height, west + fx * width
-
-    latitudes, longitudes = lattice.coordinates()
-    point = int(lattice.points_of(np.array([lat]), np.array([lon]))[0])
-
-    assert abs(latitudes[point] - lat) <= WIND_FORECAST_LAT_STEP_DEG / 2 + 1e-9
-    assert abs(longitudes[point] - lon) <= WIND_FORECAST_LON_STEP_DEG / 2 + 1e-9
-
-
-def test_a_place_outside_the_lattice_picks_the_nearest_edge_point():
-    """タイルをまたぐ道の中ほどは格子の外にありうる。"""
-    lattice = WindLattice(south=35.0, west=139.0, lat_step=0.5, lon_step=0.5, rows=2, cols=2)
-
-    points = lattice.points_of(np.array([30.0, 40.0]), np.array([130.0, 150.0]))
-
-    assert points.tolist() == [0, 3]
-
-
 # --- 時別の予報 ---
 
 T0 = datetime(2026, 7, 1, 9, 0)
@@ -106,8 +72,10 @@ T0 = datetime(2026, 7, 1, 9, 0)
 
 def _series(hours=3, lattice=None) -> WindForecastSeries:
     """格子点2つ。風速は「点の番号×100＋時刻の番号」、風向は時刻の番号×10。"""
-    lattice = lattice or WindLattice(south=35.0, west=139.0, lat_step=1.0, lon_step=1.0, rows=1, cols=2)
-    points = lattice.rows * lattice.cols
+    lattice = lattice or MsmBlock(
+        grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=1.0, d_lon=1.0, n_lat=2, n_lon=2), row0=0, col0=0, rows=1, cols=2,
+    )
+    points = lattice.size
     speed = np.array([[p * 100.0 + t for t in range(hours)] for p in range(points)])
     direction = np.array([[t * 10.0 for t in range(hours)] for _ in range(points)])
     return WindForecastSeries(

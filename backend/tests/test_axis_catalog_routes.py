@@ -165,14 +165,6 @@ def test_each_axis_carries_what_the_domain_derives_for_it(client, catalog_axes):
     )
 
 
-def test_get_axis_catalog_names_the_weather_chip_that_shows_a_dynamic_material(client, catalog_axes):
-    # 風の材料は一次属性を持たないが、同じ格子の風を描く気象のチップが元データを見せる。
-    entries = _entries(client)
-
-    assert entries["axis_way_value_scored"]["weather_layer_groups"] == ["windVector"]
-    assert entries["axis_categorical"]["weather_layer_groups"] == []
-
-
 def test_get_axis_catalog_carries_the_calibration_values_the_client_needs(client, monkeypatch):
     """フロントが使う較正値は、このカタログが**いま効いている値**で運ぶ。
 
@@ -195,24 +187,27 @@ def _axis_reading(material: str):
 # 地図が配信の要求へ載せるクエリパラメータは、軸の葉の材料を配るサービスが受け取る条件から決まる。
 # 風は時刻を省略できても載せる（利用者が選んだ時刻の風を塗る）。配るサービスの材料を読まない軸には何も載せない。
 @pytest.mark.parametrize(
-    ("material", "conditions", "undetermined"),
+    ("material", "conditions", "requested", "undetermined"),
     [
-        ("wind_drag_ratio", {"at", "bearing_deg", "speed_kmh"}, False),
-        ("gradient_percent", {"bearing_deg"}, True),
-        ("maxspeed_kmh", set(), False),
+        ("wind_drag_ratio", {"at", "bearing_deg", "speed_kmh"}, {"at", "bearing_deg", "speed_kmh"}, False),
+        ("gradient_percent", {"bearing_deg"}, set(), True),
+        ("maxspeed_kmh", set(), set(), False),
     ],
 )
-def test_get_axis_catalog_names_what_the_map_sends_and_shows_for_an_axis(client, material, conditions, undetermined):
+def test_get_axis_catalog_names_what_the_map_sends_and_shows_for_an_axis(
+    client, material, conditions, requested, undetermined,
+):
     """「向きで決まらない」の凡例の行は、配信がその道を返しうる軸だけが持つ（返さない軸に出すと、どの道も入らない行になる）。"""
     with replaced_axis_definitions(_axis_reading(material)):
         response = client.get("/api/axis-catalog")
 
     (entry,) = response.json()["axes"]
     assert set(entry["dynamic_way_value_conditions"]) == conditions
+    assert set(entry["dynamic_way_value_material_conditions"]) == requested
     assert entry["dynamic_way_value_undetermined_by_bearing"] is undetermined
-    # 地図は道ごとの材料をこの木で評価する。木が読む条件は、地図が送る条件のうち時刻を除いたもの（時刻は材料が持つ）。
+    # 地図は道ごとの材料をこの木で評価する。材料の要求へ載せない条件は、木が読まないと色に効かない。
     formula = WayValueFormula.model_validate(entry["way_value_formula"])
-    assert condition_names(formula.value) | condition_names(formula.undetermined) == conditions - {"at"}
+    assert condition_names(formula.value) | condition_names(formula.undetermined) == conditions - requested
 
 
 def test_get_axis_catalog_includes_raw_value_unit(client, catalog_axes):

@@ -29,7 +29,7 @@
 | `features/map/useWayMaterials.ts` | 道ごとの材料のフェッチ・状態管理（viewportデバウンス＋タイル単位取得、全軸を1つのフックで賄う） |
 | `features/map/regionApi.ts`（`fetchWayMaterials`のみ） | backend APIラッパー |
 
-**`MapView.tsx`は路面タイル・動的気象（降水/風の矢印/雷/竜巻）・POI等のロジックも持つ
+**`MapView.tsx`は路面タイル・動的気象（降水/雷/竜巻）・POI等のロジックも持つ
 ファイルで、それらは[地図: 静的レイヤー・道路表示](static-map-layers.md)・
 [地図: 動的気象レイヤー](dynamic-weather-layers.md)の管轄。本ドキュメントは専用way値
 配信軸/ルート確定後の色分け（DETAIL_LAYER_ID）に関わる箇所のみを扱う。**
@@ -65,7 +65,7 @@ backend（`domain/map_paint.py: map_paint`）が軸の折れ線で写してか�
 |---|---|---|
 | 道ごとの値で塗る軸 | 軸カタログの行（公開中の軸すべて） | `axisLayers.ts: dedicatedWayValueAxesFromCatalogAxes`が全行を移し、地図の軸カタログ（`features/map/useMapAxisCatalog.ts`）の`dedicatedAxes`として配る |
 | 地図レイヤーID（表示ON/OFFのキー） | 軸id（文字列合成） | `mapLayers.ts: dedicatedWayValueMapLayerId`（`${axisId}Axis`）。MapLibreのレイヤーidは宣言が役割（軸id）から決める（[静的レイヤー](static-map-layers.md)「ソース名とレイヤーidの決め方」） |
-| 材料の要求に時刻を載せるか | `AxisCatalogEntry.dynamic_way_value_conditions`に`at`があるか（backendが配信サービスの条件の型から導く） | `useWayMaterials`（載せない入力は依存キーからも外れるため、時刻が変わっても再フェッチしない）。向き・想定速度は要求に載せず、式の木へ入れる条件として地図へ渡す |
+| 材料の要求にどの走る条件を載せるか | `AxisCatalogEntry.dynamic_way_value_material_conditions`（backendが、式の木が読まない条件として導く） | `axisLayers.ts`が軸の`wayMaterialConditions`へ移し、`useWayMaterials`が読む（載せない入力は依存キーからも外れるため、変わっても再フェッチしない）。木が読む条件は式の木へ入れる条件として地図へ渡す |
 | ルート確定前に周りの道を塗れるか | `AxisCatalogEntry.way_value_formula`がnullでないか | `lib/catalogAxis.ts: catalogAxisFromEntry`が`paintsSurroundingRoads`へ移す。材料の取得（`useMapView`）・線の宣言（`scene/applyToMap.ts`）・一覧の行と凡例と前提（`view/lens.ts`）が読む |
 | 符号付き材料を直接読むか／難易度を読むか | `AxisCatalogEntry.map_paint`の`value`（backend `domain/map_paint.py: map_paint`が`shape`から導出） | `valueScale.ts: mapPaintDeclarationOf`（`MapPaintDeclaration.kind`）。`routeStyleModes.ts: routeColorableModeFromAxis`は塗る値の式も選ぶ |
 | 凡例の段の範囲を何で書くか | `AxisCatalogEntry.map_paint`の`legend`（`thresholds`と同じ件数の境界と単位。単位がnullなら得点。backend `domain/map_paint.py: map_paint`） | `valueScale.ts: mapPaintDeclarationOf`が塗る宣言の`legend`へ載せ、ルート前（`axisLayers.ts`の軸の`display`）もルート後（`routeStyleModes.ts`）も同じ関数で作る。どれも`valueScale.ts: valueBands`へ渡す |
@@ -116,9 +116,7 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
 
 **材料が実行時の動的値だけの軸は、`primary_attribute_ids`が空になるのが正しい。** 空を
 不備の印として扱わない——軸idの健全性は「カタログに実在するか」で見る（idを間違えても
-例外にならず、材料一覧が空のまま黙って壊れる）。動的な材料の元データを描く気象のチップ（例: 風の材料なら
-風の矢印）は、別の項目`weather_layer_groups`が運ぶ（下敷きの判定には使わない——下敷きは道の線を隠さないための
-もので、気象の記号は道の線を覆わない）。
+例外にならず、材料一覧が空のまま黙って壊れる）。
 
 ## valueScale.ts（ルート前後で共有する葉モジュール）
 
@@ -166,8 +164,11 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
 道ごとの値を求めて、軸ごとに2本の線で描く。実線の線（レイヤーの役割は軸id）が値のある道を段の色で塗り、破線の線
 （役割は`<軸id>-no-data`）が値の無い道だけを描く。
 
-- **向き・想定速度を変えても材料を取り直さない。** 材料は条件に依らず、global-stateを置き直すだけで色が変わる。
-  走る向きは丸めず、地図の上の向き（走行中は実際の進む向き）を[0, 360)へ寄せた値をそのまま置く。
+- **木が読む条件は、変えても材料を取り直さない。** global-stateを置き直すだけで色が変わる。材料の要求へ載せる軸（風。
+  backendが風速・風向を配らず、向き・速度のもとで値まで求めて返す）は、向き・速度が変わると取り直す。
+- **走る条件は段に丸めてから置く。** 走る向きは地図の上の向き（走行中は実際の進む向き）を[0, 360)の
+  `view/useMapView.ts: WAY_BEARING_STEP_DEG`刻みへ、走行中の速さは`features/ride/useRideWayConditions.ts: RIDING_SPEED_STEP_KMH`
+  刻みへ丸める。丸めないと、地図を回すたび・速さが揺れるたびに、条件を材料の要求へ載せる軸が取り直す。
 - **式の木を地図の式へ置き換えるのは`scene/wayValueFormula.ts: wayValueExpressions`だけ。** 値の無いことはNaN
   （`["/", 0, 0]`）で表し、木の値の約束（backend `domain/way_value_formula.py`の先頭）に合わせる。丸め（`round`）と
   折れ線（`interpolate`）は、MapLibreの同名の式を使わずに書く——MapLibreの`round`は中点を0から遠い側へ倒し、`interpolate`は
@@ -250,6 +251,9 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
   衝突判定を無効（`icon-allow-overlap`/`icon-ignore-placement: true`）にしてある——
   MapLibreは上のレイヤーから順にシンボルを配置するため、衝突判定を有効にすると主層の矢印と
   同位置・大きめのハロー層が全て落ち、色分け線が紺系のモードでは同色の矢印が線に沈む。
+- **選んだ区間の範囲の縁取り**（役割`selectedSection`）は、ルートの段のいちばん後ろに置く。選んでいる候補の縁取り
+  （役割`selectedHalo`）より太い半透明の線で、どのルートの線にも隠されない外側へはみ出た所で範囲を示す（中身は
+  [ルート設定・結果パネル](route-settings-and-results.md)「区間クリック詳細（selectedRouteSegment）」）。
 - **走り終えた所は薄める**: 走行モードの間、選択中候補の区間を走り終えた地点で分け、手前の色分け線と縁取りを
   `mapDisplay.route.opacities.travelled`の濃さにする（区間の属性`travelled`で見分ける）。距離の決め方はpage-composition.md「走行モード」。
 
@@ -299,9 +303,9 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
 
 ## useWayMaterials.ts（道ごとの材料のフェッチ・状態管理）
 
-viewportをデバウンス（500ms）してから、表示中のタイル範囲ぶんをまとめて1回の
-リクエストで取得する（パン・ズームのたびに個別の道路を都度問い合わせない）。材料は走る向き・想定速度に依らないので、
-向き・速度は受け取らず、変えても取り直さない（色は地図が式で求め直す）。
+viewportと走る条件（時刻・向き・想定速度）をそれぞれデバウンス（500ms）してから、表示中のタイル範囲ぶんをまとめて1回の
+リクエストで取得する（パン・ズームのたびに個別の道路を都度問い合わせない）。走る条件は、軸が材料の要求へ載せると宣言した
+もの（`wayMaterialConditions`）だけを載せ、ほかを変えても取り直さない（色は地図が式で求め直す）。
 
 **取得対象の軸は配列で受け取り、1つのフックが全軸ぶんを賄う**。Reactのフック規則により
 実行時に増減しうる軸の件数だけフックを呼ぶことはできないため、軸ごとのインスタンス化は
@@ -336,9 +340,9 @@ viewportをデバウンス（500ms）してから、表示中のタイル範囲�
   読み手からは未取得に見える——取得済みのまま残すと、レイヤーを消しただけの状態が
   「取りに行った結果、値が無かった」として扱われる。
 
-**軸ごとの再フェッチ判定**: 軸id・その軸へ載せる時刻（軸の`wayValueConditions`が`at`を持つときだけ）・対象タイル集合から
-リクエストキーを作り、キーが変わっていない軸は再フェッチしない。時刻に依存しない軸（勾配）は時刻スライダーを動かしても
-キーが変わらないため、風だけが再取得される。取得の骨格はTanStack Query（[ページ全体構成](page-composition.md)
+**軸ごとの再フェッチ判定**: 軸id・その軸へ載せる走る条件（軸の`wayMaterialConditions`にある名前だけ）・対象タイル集合から
+リクエストキーを作り、キーが変わっていない軸は再フェッチしない。条件を載せない軸（勾配）は時刻スライダーを動かしても
+向きを変えてもキーが変わらないため、風だけが再取得される。取得の骨格はTanStack Query（[ページ全体構成](page-composition.md)
 「データ取得の骨格」）で、全軸ぶんを1つのキー（軸ごとのリクエストキーの並び）で取り、その中で軸ごとの答えを軸の
 リクエストキーでキャッシュから引く（`fetchQuery`）。軸の件数が実行時に増減するため軸ごとに`useQuery`を呼べず、
 `useQueries`はキーが変わった観測者に前の値を渡さない（取り直しの間に前の値を残せない）ので、この2段にしている。
@@ -353,9 +357,9 @@ viewportをデバウンス（500ms）してから、表示中のタイル範囲�
 ```
 features/map/view/useMapView.ts
   ├─ 取りに行く軸 = [塗っている軸]（paintedAxisId。周りの道を塗れる軸だけ）
-  ├─ useWayMaterials(取りに行く軸, 表示範囲, 出発時刻)
+  ├─ 走る条件 = {bearing_deg: 走行方位（段に丸める）, speed_kmh: 想定速度}
+  ├─ useWayMaterials(取りに行く軸, 表示範囲, 出発時刻と走る条件)
   │     → ReadonlyMap<axisId, {materials, loading, error, hasFetched}>
-  ├─ 走る条件 = {bearing_deg: 走行方位, speed_kmh: 想定速度}
   ▼
 <MapView look={{ …, paintedAxisId, wayMaterials: 上のMapそのもの, wayConditions: 走る条件 }} .../>
   │   （軸の一覧は MapView が軸カタログの共有ストアから読む）
@@ -391,10 +395,8 @@ features/map/view/useMapView.ts
 ## 動的気象レイヤーとの関係
 
 評価軸グループ（道路そのものを線で塗る）は、
-`windVector`（矢印表示、環境グループの探索用表現）とは完全に独立した見せ方であり、
-同じ`[時刻/向き]`入力を共有するだけで、レイヤー・ソース・フェッチ経路はすべて別individual。
 [地図: 動的気象レイヤー](dynamic-weather-layers.md)が扱う動的気象の描き方（`scene/groups/weather.ts`）
-（風の矢印・降水ナウキャスト等）とは異なり、評価軸の線は`mapLayers.ts:
+（降水ナウキャスト等）とは異なり、評価軸の線は`mapLayers.ts:
 isAxisStudioLayer`により地図上チップ（`MapOverlayControls.tsx`）に一切現れない。表示ON/OFFの起動導線は地図上部中央の
 `LensControl`のみが持つ（本ファイル冒頭「対象ファイル」参照）。
 
@@ -409,7 +411,7 @@ isAxisStudioLayer`により地図上チップ（`MapOverlayControls.tsx`）に�
 | `MapLayerId`・`MapLayerDescriptor`（地図UIからの除外を含む） | 地図の軸カタログの`layers`（`buildMapLayers`） |
 | MapLibreの線レイヤー・色式・濃さ・feature-state | `scene/applyToMap.ts: sceneInputsFrom`が`dedicatedAxes`を評価軸の線（`scene/groups/axisLines.ts`）の入力へ移す |
 | 表示ON/OFF（レンズ選択） | 塗っている軸（`useMapView`の`paintedAxisId`）から`scene/applyToMap.ts`が導く |
-| 道ごとの材料のフェッチと時刻の取捨 | `useWayMaterials` + 軸カタログの`dynamic_way_value_conditions`（`lib/catalogAxis.ts`が軸の`wayValueConditions`へ移す） |
+| 道ごとの材料のフェッチと走る条件の取捨 | `useWayMaterials` + 軸カタログの`dynamic_way_value_material_conditions`（`axisLayers.ts`が軸の`wayMaterialConditions`へ移す） |
 | 道の値の式 | 軸カタログの`way_value_formula`（`scene/wayValueFormula.ts`が地図の式へ置き換える） |
 | 表示宣言・凡例 | `dedicatedWayValueAxesFromCatalogAxes`（軸の`display`）/`dedicatedWayValueLegend` |
 

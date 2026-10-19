@@ -29,6 +29,7 @@ const NO_ROUTES: RouteState = {
   segmentColor: "#16a34a",
   spliceBands: [],
   composite: null,
+  selectedSection: null,
 };
 
 const DECLARED_LAYERS = routeGroup.build(NO_ROUTES).layers;

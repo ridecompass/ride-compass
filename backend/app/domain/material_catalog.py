@@ -100,7 +100,6 @@ from app.domain.road import (
 )
 from app.domain.rain import HOURS_SINCE_RAIN, RAIN_HISTORY_HOURS, RAIN_WINDOW_HOURS, rain_window_material_id
 from app.domain.weather import PRECIPITATION_MIN_MM
-from app.domain.weather_elements import GridValue
 from app.domain.wind import WIND_DRAG_REFERENCE_SPEED_KMH, WIND_DRAG_REFERENCE_SPEED_MS, wind_drag_ratio
 from app.domain.strict_model import StrictModel
 
@@ -254,9 +253,6 @@ class MaterialSpec(StrictModel):
     # 軸ごとにこれを解決して返すことで、画面の軸と一次属性レイヤーの連動が、管理APIから入れた
     # 軸にも同じ仕組みで効く。
     primary_attribute: PrimaryAttributeSpec | None = None
-    # この材料が読む自前のMSM格子の値（`weather_elements.py: GridValue`）。一次属性を持たない動的な材料の
-    # 元データを、同じ格子の値を描く気象のチップ（`WeatherElement.grid_value`）が地図に見せる。
-    weather_grid_value: GridValue | None = None
     # 値の出どころ（`MaterialSource`）。リクエストごとに決まる材料の集合・観測の列として受ける材料の集合は
     # ここから導く（`materials_of_source`）。値式・欠損率の測り方との揃いは`_check_fields_match_the_source`が見る。
     source: MaterialSource = "db"
@@ -472,7 +468,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         # wind_drag_ratio_array`がリクエスト時に計算する）。対応する一次属性も持たない
         # （動的気象は`PRIMARY_ATTRIBUTES`の対象外）。
         tile_property=None,
-        weather_grid_value="wind",
         source="request",
         coverage=CoverageExcluded(
             reason="時刻ごとの風の予報（数値予報モデルの計算値）・想定速度から都度計算する動的材料で、DBに静的な値を持たない",

@@ -147,7 +147,7 @@ function segmentPressed(): Pick<RouteResults, "generated" | "selectedRouteSegmen
     cumulative_distance_km: 3.25,
     estimated_arrival_time: "2026-10-04T00:42:00Z",
     axis_contributions: { axis_a: 12 },
-    wind: { speed_ms: 3, direction_deg: 90, forecast_at: null, extended: false },
+    wind: { speed_ms: 3, direction_deg: 90, forecast_at: "2026-10-04T09:00" },
   });
   return {
     generated: [{ ...FAST, segments: [segment] }],

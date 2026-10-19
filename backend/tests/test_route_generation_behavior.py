@@ -32,7 +32,8 @@ from app.domain.rain import rain_window_material_id
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
 from app.domain.route_points import RoutePointHit
-from app.domain.wind import WindForecastSeries, WindLattice
+from app.domain.msm import MsmBlock, MsmGrid
+from app.domain.wind import WindForecastSeries
 from app.domain.time_zone import JST
 from app.domain.traffic import stop_count_material_ids
 from tests import rain_history_fake
@@ -899,7 +900,9 @@ async def test_without_an_observation_history_only_the_rain_axis_has_no_data(eng
 
 def _wind(times: list[datetime], speed_by_point: list[float]) -> WindForecastSeries:
     """格子の角4点（南西・南東・北西・北東）に置いた時別の風。風速は時刻によらず点ごとに一定。"""
-    lattice = WindLattice(south=BASE_LAT, west=BASE_LON, lat_step=2 * LAT_STEP, lon_step=2 * LON_STEP, rows=2, cols=2)
+    lattice = MsmBlock(
+            grid=MsmGrid(lat_min=BASE_LAT, lon_min=BASE_LON, d_lat=2 * LAT_STEP, d_lon=2 * LON_STEP, n_lat=2, n_lon=2), row0=0, col0=0, rows=2, cols=2,
+        )
     speed = np.repeat(np.array(speed_by_point, dtype=float)[:, None], len(times), axis=1)
     return WindForecastSeries(times=times, speed_ms=speed, direction_deg=np.zeros_like(speed), lattice=lattice)
 
@@ -916,16 +919,15 @@ async def test_segment_wind_is_the_forecast_for_the_local_time_of_passing(engine
         start_time=DEPARTURE.astimezone(timezone.utc))
 
     assert {s.wind.forecast_at for s in candidate.segments} == {"2026-09-22T08:00"}
-    assert not any(s.wind.extended for s in candidate.segments)
 
 
-async def test_segment_wind_beyond_the_forecast_is_marked_as_extended(engine_over):
+async def test_segment_wind_beyond_the_forecast_is_not_shown(engine_over):
     generator = engine_over(grid_network(), wind=_wind(HOURS_OF_THE_DAY[5:7], [3.0, 3.0, 3.0, 3.0]))
 
     (candidate, *_) = await generator.generate_via_waypoints(
         at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=1, start_time=DEPARTURE)
 
-    assert all(s.wind.extended for s in candidate.segments)
+    assert all(s.wind is None for s in candidate.segments)
 
 
 async def test_each_segment_takes_the_wind_of_the_grid_point_nearest_to_it(engine_over):

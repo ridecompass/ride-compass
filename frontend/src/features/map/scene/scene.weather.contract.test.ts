@@ -1,7 +1,7 @@
 // @vitest-environment node
-/** 動的気象（降水・風・災害）を地図へ伝えたとき、**最後にどうなっているか**。
+/** 動的気象（降水・災害）を地図へ伝えたとき、**最後にどうなっているか**。
  *
- * 1つのチップが複数の名前付きソースを持ち、ソースごとに描き方（ラスタ／格子の面／格子のマーク／
+ * 1つのチップが複数の名前付きソースを持ち、ソースごとに描き方（ラスタ／マーク／輪郭／
  * ベクタ）が宣言されている。中身は時刻の変化で何度も入れ替わる。
  *
  * どのレイヤーが何を描いているかは、idの綴りではなく、**何も伝えなかったときより増えて見えている
@@ -14,11 +14,8 @@ import { applyScene, sceneInputsFrom } from "@/features/map/scene/applyToMap";
 import { sceneState } from "@/testing/sceneState";
 import { buildMapScene } from "@/features/map/scene/buildScene";
 import type { DynamicWeatherGroupState } from "@/features/map/layers/dynamicWeather";
-import { PRECIPITATION_NONE_THRESHOLD_MM } from "@/features/map/layers/precipitationNowcast";
-import { WIND_CALM_THRESHOLD_MS } from "@/features/map/layers/windLayer";
-import { matchesFilter } from "@/testing/mapExpressions";
 
-type Chip = "precipitationNowcast" | "windVector" | "disaster";
+type Chip = "precipitationNowcast" | "disaster";
 
 function raster(tileUrlTemplate: string) {
   return { visible: true, payload: { kind: "rasterTile" as const, tileUrlTemplate } };
@@ -48,7 +45,6 @@ function shownByWeather(handle: RecordingMap) {
 }
 
 describe("動的気象を地図へ伝えた結果", () => {
-  // 降水の`main`はラスタと格子の面の2つの描き方を宣言している。見えるのは**いま来ている中身の描き方**だけ。
   it("中身が来ていて表示ONなら、その中身の描き方のレイヤーだけが見えている", () => {
     const { map, handle } = createRecordingMap();
 
@@ -105,35 +101,5 @@ describe("動的気象を地図へ伝えた結果", () => {
     apply(map, "precipitationNowcast", { main: raster("https://example.test/b/{z}/{x}/{y}.png") });
 
     expect(handle.sourceContent(sourceId)?.tiles?.[0]).toContain("/b/");
-  });
-
-  // 境ちょうどの雨を塗らないと、いちばん弱い雨が地図から消える。
-  it.each([
-    [PRECIPITATION_NONE_THRESHOLD_MM, true],
-    [PRECIPITATION_NONE_THRESHOLD_MM * (1 - Number.EPSILON), false],
-  ])("1時間 %s mm の降水の格子を塗るか: %s", (mmPerHour, painted) => {
-    const { map, handle } = createRecordingMap();
-    const geojson: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
-
-    apply(map, "precipitationNowcast", { main: { visible: true, payload: { kind: "gridFill", geojson } } });
-
-    const [fill] = shownByWeather(handle);
-    expect(fill.type).toBe("fill");
-    expect(matchesFilter(fill.filter ?? true, { mmPerHour }, 3)).toBe(painted);
-  });
-
-  // 凡例は静穏の境ちょうどから「微風」の段にする。地図がそこで矢印を落とすと、凡例にある風が地図に無い。
-  it.each([
-    ["静穏の境ちょうどの風は矢印を出す", WIND_CALM_THRESHOLD_MS, true],
-    ["静穏の境より弱い風は矢印を出さない", WIND_CALM_THRESHOLD_MS - 0.01, false],
-  ])("%s", (_name, speed, drawn) => {
-    const { map, handle } = createRecordingMap();
-
-    apply(map, "windVector", {
-      arrow: { visible: true, payload: { kind: "gridMark", geojson: { type: "FeatureCollection", features: [] } } },
-    });
-
-    const [arrow] = shownByWeather(handle);
-    expect(matchesFilter(arrow.filter, { speed, bearing: 0 }, 1)).toBe(drawn);
   });
 });
