@@ -9,7 +9,7 @@
 """
 
 import threading
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Annotated
 
 from pydantic import Field, model_validator
@@ -22,6 +22,8 @@ from app.domain.strict_model import StrictModel
 #: 群と行の鍵の形。行は`<群の鍵>.<行の鍵>`の形でAPIの鍵になるので、区切りの`.`を含めない。
 ROAD_CLASS_KEY_PATTERN = r"^[a-z0-9_]+$"
 RoadClassKey = Annotated[str, Field(pattern=ROAD_CLASS_KEY_PATTERN)]
+#: 群をまたいで行を指す鍵（`<群の鍵>.<行の鍵>`）。利用者の避け方の設定もこの鍵で段を持つ。
+RoadClassFullKey = Annotated[str, Field(pattern=r"^[a-z0-9_]+\.[a-z0-9_]+$")]
 
 #: 行の条件に書ける道の事実（材料id→型）。道路網の配列と道路のタイルの両方に載る、分類か真偽の材料。
 ROAD_CLASS_FACTS: dict[str, str] = {
@@ -61,8 +63,9 @@ class RoadClassRow(StrictModel):
     default_level: AvoidanceLevel = "pass"
     #: 当たる道をルートがいつも通らない（避け方を選べない）。
     always_excluded: bool = False
-    #: 1つの行を分けてできた行の、分ける前の行の鍵。前の鍵で選んだ避け方を、分けたどの行にも引き継がせる。
-    former_key: RoadClassKey | None = None
+    #: この行が引き継ぐ、前にあった行の鍵（ほかの群の行も指せる）。前の鍵で選んだ避け方を引き継がせる。分けた行は
+    #: どれも分ける前の鍵を、まとめた行はまとめる前の鍵を全部、改名を重ねた行はそれまでの鍵を全部持つ。
+    former_keys: list[RoadClassFullKey] = []
     #: どれかの条件に当たる道が、この行に当たる。
     match: list[RoadClassCondition] = Field(min_length=1)
 
@@ -71,8 +74,8 @@ class RoadClassRow(StrictModel):
         problems = [problem for condition in self.match for problem in _condition_problems(condition)]
         if self.always_excluded and self.default_level != "exclude":
             problems.append("いつも通らない行の既定の段は exclude です")
-        if self.former_key == self.key:
-            problems.append("前の鍵が自分の鍵と同じです")
+        if len(set(self.former_keys)) != len(self.former_keys):
+            problems.append(f"前の鍵が重なっています {self.former_keys}")
         if problems:
             raise ValueError(f"行 {self.key}: " + "／".join(problems))
         return self
@@ -102,7 +105,15 @@ class RoadClassGroup(StrictModel):
         duplicated = sorted({key for key in keys if keys.count(key) > 1})
         if duplicated:
             raise ValueError(f"群 {self.group_key}: 行の鍵が重なっています {duplicated}")
+        # 前の鍵は今ある別の行も指せる——1つの行を分けて片方が元の鍵を保つと、もう片方の前の鍵は今もある行を指す。
+        own = sorted(key for row, full_key in zip(self.rows, self.full_keys(), strict=True)
+                     for key in row.former_keys if key == full_key)
+        if own:
+            raise ValueError(f"群 {self.group_key}: 前の鍵が自分の鍵と同じです {own}")
         return self
+
+    def full_keys(self) -> list[str]:
+        return [f"{self.group_key}.{row.key}" for row in self.rows]
 
     def row_key_of(self, facts: Mapping[str, FactValue | None]) -> str | None:
         """道の事実→その道が入る行の鍵。どの行にも当たらなければNone。"""
@@ -110,27 +121,32 @@ class RoadClassGroup(StrictModel):
 
 
 class RoadClassPublishedError(ValueError):
-    """公開した群を下書きへ戻す・消す・行の鍵を引き継ぎ先なしに消す書き込みを断る。"""
+    """公開した群を下書きへ戻す・公開していた行の鍵を引き継ぎ先なしに消す書き込みを断る。"""
 
 
-def check_group_change(before: RoadClassGroup | None, after: RoadClassGroup) -> None:
-    """群を`before`から`after`へ書き換えてよいか。公開した群の行の鍵は利用者の避け方の設定に残るので、
-    消す鍵は、残る行のどれかの鍵か前の鍵でなければならない。"""
-    if before is None or not before.is_published:
-        return
-    if not after.is_published:
-        raise RoadClassPublishedError(f"公開した群 {before.group_key} は下書きへ戻せません")
-    kept = {row.key for row in after.rows} | {row.former_key for row in after.rows if row.former_key}
-    lost = [row.key for row in before.rows if row.key not in kept]
+def _published_keys(groups: Iterable[RoadClassGroup]) -> set[str]:
+    """公開した群の今の行の鍵と前の鍵——利用者の避け方の設定に残りうる鍵。"""
+    return {
+        key
+        for group in groups if group.is_published
+        for row, full_key in zip(group.rows, group.full_keys(), strict=True)
+        for key in (full_key, *row.former_keys)
+    }
+
+
+def check_groups_change(before: Mapping[str, RoadClassGroup], after: Mapping[str, RoadClassGroup]) -> None:
+    """群の全体（群の鍵→群）を`before`から`after`へ変えてよいか。公開した群の行の鍵は利用者の避け方の設定に残るので、
+    公開していた鍵は、公開した群のどれかの行の鍵か前の鍵として残らなければならない（鍵を全部ほかの群へ引き継げば、
+    公開した群も消せる）。公開した群を下書きへ戻すことは断る。"""
+    unpublished = sorted(key for key, group in before.items()
+                         if group.is_published and key in after and not after[key].is_published)
+    if unpublished:
+        raise RoadClassPublishedError(f"公開した群 {unpublished} は下書きへ戻せません")
+    lost = sorted(_published_keys(before.values()) - _published_keys(after.values()))
     if lost:
         raise RoadClassPublishedError(
-            f"公開した群 {before.group_key} の行 {lost} を消すには、引き継ぐ行の前の鍵にその鍵を書きます"
+            f"公開していた行の鍵 {lost} を消すには、引き継ぐ公開した群の行の前の鍵（<群の鍵>.<行の鍵>）にその鍵を書きます"
         )
-
-
-def check_group_deletable(group: RoadClassGroup) -> None:
-    if group.is_published:
-        raise RoadClassPublishedError(f"公開した群 {group.group_key} は消せません")
 
 
 _GROUPS: dict[str, RoadClassGroup] = {}

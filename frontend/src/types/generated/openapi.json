@@ -5675,17 +5675,14 @@
             "title": "Always Excluded",
             "default": false
           },
-          "former_key": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^[a-z0-9_]+$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Former Key"
+          "former_keys": {
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$"
+            },
+            "type": "array",
+            "title": "Former Keys",
+            "default": []
           },
           "match": {
             "items": {
@@ -5753,17 +5750,14 @@
             "title": "Always Excluded",
             "default": false
           },
-          "former_key": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^[a-z0-9_]+$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Former Key"
+          "former_keys": {
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$"
+            },
+            "type": "array",
+            "title": "Former Keys",
+            "default": []
           },
           "match": {
             "items": {
@@ -5797,7 +5791,7 @@
           "description",
           "default_level",
           "always_excluded",
-          "former_key",
+          "former_keys",
           "match"
         ],
         "title": "RoadClassRow"

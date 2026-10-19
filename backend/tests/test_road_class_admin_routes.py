@@ -87,7 +87,7 @@ def test_a_group_that_cannot_be_written_is_answered_with_the_reason(client, serv
 @pytest.mark.parametrize(("refusal", "status"), [
     (None, 204),
     (KeyError("group_a"), 404),
-    (RoadClassPublishedError("公開した群 group_a は消せません"), 409),
+    (RoadClassPublishedError("公開していた行の鍵 ['group_a.a'] を消すには、引き継ぐ公開した群の行の前の鍵にその鍵を書きます"), 409),
 ], ids=["deleted", "missing", "refused_by_service"])
 def test_deleting_a_group_answers_whether_it_was_deleted(client, service, refusal, status):
     service.groups = {"group_a": RoadClassGroup.model_validate(body("group_a"))}

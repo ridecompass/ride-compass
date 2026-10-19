@@ -1732,8 +1732,11 @@ export interface components {
              * @default false
              */
             always_excluded: boolean;
-            /** Former Key */
-            former_key?: string | null;
+            /**
+             * Former Keys
+             * @default []
+             */
+            former_keys: string[];
             /** Match */
             match: {
                 [key: string]: (string | boolean)[];
@@ -1758,8 +1761,11 @@ export interface components {
              * @default false
              */
             always_excluded: boolean;
-            /** Former Key */
-            former_key: string | null;
+            /**
+             * Former Keys
+             * @default []
+             */
+            former_keys: string[];
             /** Match */
             match: {
                 [key: string]: (string | boolean)[];

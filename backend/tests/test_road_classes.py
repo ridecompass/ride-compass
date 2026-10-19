@@ -15,8 +15,7 @@ from app.domain.road_classes import (
     ROAD_CLASS_FACTS,
     RoadClassGroup,
     RoadClassPublishedError,
-    check_group_change,
-    check_group_deletable,
+    check_groups_change,
 )
 
 CAT_A, CAT_B = sorted(fact for fact, dtype in ROAD_CLASS_FACTS.items() if dtype == "categorical")[:2]
@@ -27,9 +26,17 @@ def row(key: str, *match: dict, **fields) -> dict:
     return {"key": key, "label": key, "description": f"{key}の道", "match": list(match) or [{CAT_A: [key]}], **fields}
 
 
-def group(*rows: dict, **fields) -> RoadClassGroup:
+def group(*rows: dict, group_key: str = "group_a", **fields) -> RoadClassGroup:
     return RoadClassGroup.model_validate({
-        "group_key": "group_a", "label": "群", "palette": "ordered", "rows": list(rows) or [row("a")], **fields})
+        "group_key": group_key, "label": "群", "palette": "ordered", "rows": list(rows) or [row("a")], **fields})
+
+
+def published(*rows: dict, group_key: str = "group_a") -> RoadClassGroup:
+    return group(*rows, group_key=group_key, is_published=True)
+
+
+def groups(*items: RoadClassGroup) -> dict[str, RoadClassGroup]:
+    return {item.group_key: item for item in items}
 
 
 @pytest.mark.parametrize(("facts", "expected"), [
@@ -56,11 +63,13 @@ def test_a_way_enters_the_first_row_any_of_whose_conditions_holds(facts, expecte
     ({"rows": [row("a", {CAT_A: [True]})]}, f"道の事実 {CAT_A} の値は文字列で書きます"),
     ({"rows": [row("a"), row("a")]}, "行の鍵が重なっています ['a']"),
     ({"rows": [row("a", always_excluded=True)]}, "いつも通らない行の既定の段は exclude です"),
-    ({"rows": [row("a", former_key="a")]}, "前の鍵が自分の鍵と同じです"),
+    ({"rows": [row("a", former_keys=["group_b.x", "group_b.x"])]}, "前の鍵が重なっています"),
+    ({"rows": [row("a", former_keys=["group_a.a"])]}, "前の鍵が自分の鍵と同じです ['group_a.a']"),
     ({"palette": "nominal"}, "色相の起点は nominal の群だけが持ちます"),
     ({"hue_slot": 3}, "色相の起点は nominal の群だけが持ちます"),
 ], ids=["unknown_fact", "boolean_fact_with_text", "categorical_fact_with_boolean", "duplicated_row_key",
-        "always_excluded_row_without_exclude", "former_key_is_own_key", "nominal_without_hue", "ordered_with_hue"])
+        "always_excluded_row_without_exclude", "duplicated_former_key", "former_key_is_own_key",
+        "nominal_without_hue", "ordered_with_hue"])
 def test_a_group_the_tiles_and_the_road_network_cannot_judge_is_refused(fields, named):
     # 道路網とタイルに無い事実・型の違う値で書いた行は、どの道にも当たらず、地図の凡例に誰も入らない行になる。
     with pytest.raises(ValidationError, match=named.replace("[", r"\[").replace("]", r"\]")):
@@ -68,22 +77,26 @@ def test_a_group_the_tiles_and_the_road_network_cannot_judge_is_refused(fields, 
 
 
 @pytest.mark.parametrize(("before", "after", "refused"), [
-    (None, group(row("b"), is_published=True), None),
-    (group(row("a")), group(row("b")), None),
-    (group(row("a"), is_published=True), group(row("a")), "下書きへ戻せません"),
-    (group(row("a"), row("b"), is_published=True), group(row("a"), is_published=True), r"行 \['b'\] を消すには"),
-    (group(row("a"), is_published=True), group(row("a1", former_key="a"), row("a2", former_key="a"), is_published=True), None),
-], ids=["new_group", "draft_group", "published_to_draft", "published_row_lost", "published_row_split"])
-def test_a_published_group_keeps_every_row_key_a_user_may_have_chosen(before, after, refused):
-    # 公開した群の行の鍵は利用者の避け方の設定に残る。引き継ぎ先なしに消すと、選んだ段が黙って既定へ戻る。
+    ({}, groups(published(row("b"))), None),
+    (groups(group(row("a"))), {}, None),
+    (groups(published()), groups(group()), r"公開した群 \['group_a'\] は下書きへ戻せません"),
+    (groups(published(row("a"), row("b"))), groups(published(row("a"))), r"公開していた行の鍵 \['group_a.b'\] を消すには"),
+    (groups(published()), groups(published(row("a1", former_keys=["group_a.a"]), row("a2", former_keys=["group_a.a"]))),
+     None),
+    (groups(published(row("a"), row("b"))), groups(published(row("ab", former_keys=["group_a.a", "group_a.b"]))), None),
+    (groups(published(row("b", former_keys=["group_a.a"]))), groups(published(row("c", former_keys=["group_a.b"]))),
+     r"公開していた行の鍵 \['group_a.a'\]"),
+    (groups(published(), published(row("x", former_keys=["group_a.a"]), group_key="group_b")),
+     groups(published(row("x", former_keys=["group_a.a"]), group_key="group_b")), None),
+    (groups(published(), group(row("x", former_keys=["group_a.a"]), group_key="group_b")),
+     groups(group(row("x", former_keys=["group_a.a"]), group_key="group_b")), r"公開していた行の鍵 \['group_a.a'\]"),
+], ids=["new_group", "deleting_a_draft", "published_to_draft", "published_row_lost", "published_row_split",
+        "published_rows_merged", "renamed_twice_dropping_the_first_key", "published_group_moved_to_another_group",
+        "published_group_moved_to_a_draft"])
+def test_every_key_a_published_group_had_stays_with_a_published_row(before, after, refused):
+    # 公開した群の行の鍵（前の鍵も）は利用者の避け方の設定に残る。引き継ぎ先なしに消すと、選んだ段が黙って既定へ戻る。
     if refused is None:
-        check_group_change(before, after)
+        check_groups_change(before, after)
     else:
         with pytest.raises(RoadClassPublishedError, match=refused):
-            check_group_change(before, after)
-
-
-def test_a_published_group_cannot_be_deleted():
-    check_group_deletable(group())
-    with pytest.raises(RoadClassPublishedError, match="公開した群 group_a は消せません"):
-        check_group_deletable(group(is_published=True))
+            check_groups_change(before, after)

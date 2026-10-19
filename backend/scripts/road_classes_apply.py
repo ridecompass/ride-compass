@@ -99,7 +99,7 @@ def current_road_class_groups() -> list[RoadClassGroup]:
                 "description": category.description,
                 "default_level": "exclude" if key in FIXED_ROW_MATCH_SQL else avoidable.default_level,
                 "always_excluded": key in FIXED_ROW_MATCH_SQL,
-                "former_key": avoidable.former_key.partition(".")[2] if avoidable and avoidable.former_key else None,
+                "former_keys": [avoidable.former_key] if avoidable and avoidable.former_key else [],
                 "match": conditions_of(category) if conditions_of else [{material.material_id: list(category.values)}],
             })
         groups.append(RoadClassGroup(

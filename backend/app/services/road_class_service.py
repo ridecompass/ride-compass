@@ -7,8 +7,7 @@ import logging
 
 from app.domain.road_classes import (
     RoadClassGroup,
-    check_group_change,
-    check_group_deletable,
+    check_groups_change,
     replace_road_class_groups,
 )
 from app.infrastructure.road_class_repository import RoadClassRepository
@@ -49,7 +48,7 @@ class RoadClassAdminService:
         """群を丸ごと書く。無ければ地図の層の並びの最後に足す。"""
         await self._repository.acquire_write_lock()
         existing = await self._repository.list_all()
-        check_group_change(existing.get(group.group_key), group)
+        check_groups_change(existing, {**existing, group.group_key: group})
         sort_order = await self._repository.sort_order_of(group.group_key)
         if sort_order is None:
             sort_order = await self._repository.next_sort_order()
@@ -62,7 +61,7 @@ class RoadClassAdminService:
         existing = await self._repository.list_all()
         if group_key not in existing:
             raise KeyError(group_key)
-        check_group_deletable(existing[group_key])
+        check_groups_change(existing, {key: g for key, g in existing.items() if key != group_key})
         await self._repository.delete(group_key)
         await self._repository.commit()
         await refresh_road_class_groups(self._repository)
