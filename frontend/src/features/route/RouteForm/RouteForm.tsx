@@ -140,9 +140,9 @@ export default function RouteForm({
       <KeptTabContent value="generate">
         {/* 全長の目標と候補数といまの設定の保存を1行に並べ、パネルの縦幅を詰める。ルーラーは残りの幅を取り、狭い幅では長い距離の側を
             見えない所へ置く（滑らせると出る）。全長の目標を外している間もルーラーと値は出したまま薄くする（入れ直すと
-            前の値に戻ることが見える）。 */}
-        <div className="mb-2 flex items-center gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            前の値に戻ることが見える）。部品の間は詰めて、いちばん狭い幅でもルーラーに押せる幅（24px四方）を残す。 */}
+        <div className="mb-2 flex items-center gap-1.5">
+          <div className="flex min-w-0 flex-1 items-center gap-1">
             <Toggle
               variant="plain"
               className={cn(panelIconToggleClass, "flex-none")}

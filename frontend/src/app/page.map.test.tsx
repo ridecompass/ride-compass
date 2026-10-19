@@ -187,9 +187,9 @@ describe("地図で扱えること", () => {
 
     await user.click(screen.getByRole("button", { name: "周回", pressed: false }));
     expect(marksAt(DESTINATION)).toEqual([]);
-    expect(screen.getByRole("img", { name: "終点: 現在地[周回]" })).toBeInTheDocument();
+    expect(screen.getByText("終点: 現在地[周回]")).toBeInTheDocument();
     clickMap(ELSEWHERE);
-    expect(screen.getByRole("img", { name: "終点: 地図で選んだ地点[周回]" })).toBeInTheDocument();
+    expect(screen.getByText("終点: 地図で選んだ地点[周回]")).toBeInTheDocument();
     expect(marksAt(DESTINATION)).toEqual([]);
 
     await user.click(screen.getByRole("button", { name: "周回", pressed: true }));

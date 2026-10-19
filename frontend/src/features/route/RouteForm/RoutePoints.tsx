@@ -277,15 +277,16 @@ export default function RoutePoints({
       {chipName(name)}
     </Button>
   );
-  // 周回の間の終点。出発地なので出発地の印で出し、押せない（点線の枠で、押せる札と見分ける）。
+  // 周回の間の終点。出発地なので出発地の印で出し、押せない（点線の枠で、押せる札と見分ける）。押す物でも絵でもないので役割を持たせず、
+  // 読み上げには名前を出さない間も残る文で渡す（見える名前は幅に入らないと隠れ、読み上げからも消える）。名前は折り返さない——隠した名前を
+  // 札の幅で折り返して測ると短く出て、出す・隠すを行き来し続ける。
   const loopEnd = (
-    <span
-      role="img"
-      aria-label={`終点: ${destinationName}`}
-      className="relative inline-flex flex-none items-center gap-1 overflow-hidden rounded-full border border-dotted border-[var(--color-border-strong)] p-0.5 text-[var(--color-muted)]"
-    >
+    <span className="relative inline-flex flex-none items-center gap-1 overflow-hidden rounded-full border border-dotted border-[var(--color-border-strong)] p-0.5 whitespace-nowrap text-[var(--color-muted)]">
+      <span className="sr-only">{`終点: ${destinationName}`}</span>
       <PointMark role="origin" originLocated={originLocated} />
-      {chipName(destinationName)}
+      <span aria-hidden="true" className="contents">
+        {chipName(destinationName)}
+      </span>
     </span>
   );
 

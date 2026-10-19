@@ -460,8 +460,8 @@ describe("RouteForm 周回", () => {
   it("周回の間は、終点を出発地の印と「出発地の名前[周回]」で出し、押せない（変えられるのは経由地だけ）", () => {
     renderForm({ loop: true, waypoints: waypointsOf(1), distanceTargeted: false });
 
-    const end = screen.getByRole("img", { name: "終点: 現在地[周回]" });
-    expect(end.querySelector("svg")?.parentElement).toHaveStyle({ color: PIN_MARK_COLOR.origin });
+    const end = screen.getByText("終点: 現在地[周回]").parentElement;
+    expect(end?.querySelector("svg")?.parentElement).toHaveStyle({ color: PIN_MARK_COLOR.origin });
     expect(strip()).toEqual(["出発地: 現在地", "経由地1: 地図で選んだ地点", "経由地を足す"]);
   });
 
@@ -473,7 +473,7 @@ describe("RouteForm 周回", () => {
 
     const mark = button(`目的地: ${name}`).querySelector("svg")?.parentElement;
     expect(mark).toHaveStyle({ color: PIN_MARK_COLOR.destination });
-    expect(screen.queryByRole("img", { name: /^終点:/ })).toBeNull();
+    expect(screen.queryByText(/^終点:/)).toBeNull();
   });
 });
 
