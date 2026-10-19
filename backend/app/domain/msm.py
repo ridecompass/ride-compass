@@ -59,10 +59,10 @@ class MsmGrid:
             and np.all(longitudes <= lon_max)
         )
 
-    def latitude_of(self, rows: np.ndarray) -> np.ndarray:
+    def latitude_of(self, rows: np.ndarray | int) -> np.ndarray:
         return self.lat_min + np.asarray(rows) * self.d_lat
 
-    def longitude_of(self, cols: np.ndarray) -> np.ndarray:
+    def longitude_of(self, cols: np.ndarray | int) -> np.ndarray:
         return self.lon_min + np.asarray(cols) * self.d_lon
 
     def block_covering(self, south: float, west: float, north: float, east: float) -> "MsmBlock":
