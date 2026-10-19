@@ -20,9 +20,9 @@ function render(riding: Riding) {
 
 describe("useRideWayConditions", () => {
   it.each([
-    { case: "走っていない", riding: null },
-    { case: "走行中でも進む向きがまだ分からない", riding: { bearing: null, speedKmh: 18 } },
-  ])("$case間は、代わりの値を出さない（地図の向きと想定速度で取る）", ({ riding }) => {
+    { case: "走っていない間", riding: null },
+    { case: "走行中でも進む向きがまだ分からない間", riding: { bearing: null, speedKmh: 18 } },
+  ])("$case は、代わりの値を出さない（地図の向きと想定速度で取る）", ({ riding }) => {
     expect(render(riding).result.current).toBeNull();
   });
 
