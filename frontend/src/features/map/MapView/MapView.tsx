@@ -55,7 +55,7 @@ import type { MapLook } from "@/features/map/view/mapLook";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { useLayerDataStatus, type LayerDataSourceEntry } from "@/features/map/MapView/useLayerDataStatus";
-import { ORIGIN_ZOOM, useMapMarkers } from "@/features/map/MapView/useMapMarkers";
+import { ORIGIN_ZOOM, SELECTED_POINT_PIN_HEIGHT_PX, useMapMarkers } from "@/features/map/MapView/useMapMarkers";
 import { pinMarkName } from "@/components/PinMark/PinMark";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
@@ -108,7 +108,7 @@ function fitBoundsToRoutes(map: MapLibreMap, routes: RouteCandidate[]) {
 }
 
 // 区間の小窓を、押した区間の印（下端を地点に置いた絵）の上へ出すずれ。
-const SEGMENT_POPUP_OFFSET_PX = 28;
+const SEGMENT_POPUP_OFFSET_PX = SELECTED_POINT_PIN_HEIGHT_PX + 2;
 
 // 住所の検索で置いた地点・取り直した現在地へ寄せる倍率。ピンを直せるように、街区が見分けられるまで寄る。
 const FOCUS_ZOOM = 16;
@@ -189,7 +189,7 @@ interface MapViewProps {
   rideConditions: RideConditions;
   /** 利用者がいま設定している重み（ルート生成へ送るのと同じもの）。道の詳細の評価に使う。nullなら既定の重み。 */
   routePreference: RoutePreferenceWeights | null;
-  /** 押して選んでいる区間。地図は押した地点に印を立てるだけで、内訳は下部のシートが出す（地図上の
+  /** 押して選んでいる区間。地図は押した地点に印を立て、その区間の範囲を縁取るだけで、内訳は下部のシートが出す（地図上の
    * ポップアップはモバイルでシートに隠れる）。 */
   selectedRouteSegment: SelectedRouteSegment | null;
   /** ルートの区間を押したとき・印を押して選択を外したとき。 */
@@ -297,8 +297,19 @@ export default function MapView({
         tileVersions: mapCatalog.tileVersions,
         inspectedWayId,
         travelledKm,
+        selectedRouteSegment,
       }),
-    [look, mapCatalog, routes, selectedRouteId, spliceStretches, splicedRoute, inspectedWayId, travelledKm],
+    [
+      look,
+      mapCatalog,
+      routes,
+      selectedRouteId,
+      spliceStretches,
+      splicedRoute,
+      inspectedWayId,
+      travelledKm,
+      selectedRouteSegment,
+    ],
   );
   const scene = useMemo(() => buildMapScene(sceneInputs), [sceneInputs]);
   // 押せるのは scene が当たり判定を宣言したレイヤーだけ。

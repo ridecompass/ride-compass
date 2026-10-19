@@ -184,6 +184,7 @@ export default function DraftWayValuesMap<Draft>({
           tileVersions: mapCatalog.tileVersions,
           inspectedWayId: null,
           travelledKm: null,
+          selectedRouteSegment: null,
         }),
       ),
     [axisId, axis, materials, loading, hiddenLegendKeys, mapCatalog.routeStyleModes, mapCatalog.tileVersions],
