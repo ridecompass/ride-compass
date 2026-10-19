@@ -48,18 +48,13 @@ class MsmSeries:
     times: list[datetime]
     wind_u_ms: np.ndarray
     wind_v_ms: np.ndarray
-    precipitation_mm: np.ndarray
-    temperature_c: np.ndarray
 
 
 # 同期・読み出しの対象変数（配信元の変数名 → `MsmSeries`の項目）。増やすと同期量がそのぶん
-# 増えるため、実際に消費するものだけを並べる。風グリッドは風と降水を、「今日」のパネルは
-# 気温・降水・風を使う。
+# 増えるため、実際に消費するものだけを並べる。
 FORECAST_VARIABLES: dict[str, str] = {
     "wind_u_component_10m": "wind_u_ms",
     "wind_v_component_10m": "wind_v_ms",
-    "precipitation": "precipitation_mm",
-    "temperature_2m": "temperature_c",
 }
 
 
@@ -90,7 +85,7 @@ def _update_interval_seconds_from(meta: dict) -> int:
 # 配信が止まったと見なす境目は「公開の更新を何本連続で落としたか」。間隔そのものは
 # 配信元のメタ情報（update_interval_seconds）から取るため、ここに時間数は書かない。
 _MISSED_PUBLICATIONS_UNTIL_STALE = 2
-# 予報終端が現在時刻へ追いつくと風グリッドが読めなくなる（MsmUnavailableError）。
+# 予報終端が現在時刻へ追いつくとルート評価の風が読めなくなる（MsmUnavailableError）。
 # 実害が出る前に気づけるよう、半日ぶんの余裕を切ったところで発報する。
 _SHORT_HORIZON_THRESHOLD_HOURS = 12
 
@@ -161,7 +156,7 @@ def warn_if_stale(freshness_value: MsmFreshness | None) -> None:
 
     同期そのものは成功しても（配信元が新しいrunを出していなければETagで304になり）
     「更新が来ていない」ことは件数からは分からない。アプリは古い予報を静かに配り続け、
-    予報終端が現在時刻へ追いついた瞬間に初めて風グリッドが失敗する。
+    予報終端が現在時刻へ追いついた瞬間に初めてルート評価の風が読めなくなる。
     """
     if freshness_value is None:
         logger.warning("MSMのメタ情報を読めないため鮮度を判定できません")
@@ -292,26 +287,6 @@ async def refresh(client: httpx.AsyncClient) -> int:
         )
     warn_if_stale(current)
     return downloaded
-
-
-def forecast_version() -> tuple:
-    """`read_series`が今返す予報の版。置き場のメタ情報の中身・チャンクのファイルの差し替えと、読み出しの起点の正時で変わる。
-
-    同じ版のあいだは同じ地点に同じ時系列を返すので、読み手は版を鍵に読んだ結果を使い回せる。読む前と読んだ後で版が
-    違えば、その結果は版に結びつけられない。メタ情報は同期のたびに書き直されるので、ファイルの時刻ではなく中身で見る。
-    """
-    try:
-        meta = (MSM_DIR / _META_FILE_NAME).read_bytes()
-    except OSError:
-        meta = None
-    chunks = []
-    for path in sorted(MSM_DIR.glob("*/chunk_*.om")):
-        try:
-            stat = path.stat()
-        except OSError:
-            continue
-        chunks.append((str(path), stat.st_mtime_ns, stat.st_size, stat.st_ino))
-    return int(time.time()) // 3600, meta, tuple(chunks)
 
 
 def _synced_chunk_path(variable: str, chunk_number: int) -> Path:

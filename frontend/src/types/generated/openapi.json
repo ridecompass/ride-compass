@@ -148,57 +148,6 @@
         }
       }
     },
-    "/api/weather": {
-      "get": {
-        "operationId": "get_weather_api_weather_get",
-        "parameters": [
-          {
-            "name": "latitude",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "number",
-              "maximum": 90,
-              "minimum": -90,
-              "title": "Latitude"
-            }
-          },
-          {
-            "name": "longitude",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "number",
-              "maximum": 180,
-              "minimum": -180,
-              "title": "Longitude"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WeatherConditions"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/weather/warnings": {
       "get": {
         "operationId": "get_weather_warnings_api_weather_warnings_get",
@@ -386,106 +335,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AmedasObservation"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/weather/wind-grid": {
-      "get": {
-        "operationId": "get_wind_grid_api_weather_wind_grid_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WindGridResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/weather/wind-grid-detail": {
-      "get": {
-        "operationId": "get_wind_grid_detail_api_weather_wind_grid_detail_get",
-        "parameters": [
-          {
-            "name": "min_lon",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "number",
-              "maximum": 180,
-              "minimum": -180,
-              "title": "Min Lon"
-            }
-          },
-          {
-            "name": "min_lat",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "number",
-              "maximum": 90,
-              "minimum": -90,
-              "title": "Min Lat"
-            }
-          },
-          {
-            "name": "max_lon",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "number",
-              "maximum": 180,
-              "minimum": -180,
-              "title": "Max Lon"
-            }
-          },
-          {
-            "name": "max_lat",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "number",
-              "maximum": 90,
-              "minimum": -90,
-              "title": "Max Lat"
-            }
-          },
-          {
-            "name": "spacing_deg",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "number",
-              "default": 0.02,
-              "title": "Spacing Deg"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WindGridResponse"
                 }
               }
             }
@@ -2210,13 +2059,6 @@
             "type": "array",
             "title": "Primary Attribute Ids"
           },
-          "weather_layer_groups": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Weather Layer Groups"
-          },
           "map_paint": {
             "$ref": "#/components/schemas/MapPaint"
           },
@@ -2275,7 +2117,6 @@
           "default_weight",
           "icon_id",
           "primary_attribute_ids",
-          "weather_layer_groups",
           "map_paint",
           "raw_value_units",
           "material_breakdown",
@@ -5959,20 +5800,8 @@
             "title": "Direction Deg"
           },
           "forecast_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Forecast At"
-          },
-          "extended": {
-            "type": "boolean",
-            "title": "Extended",
-            "default": false
           }
         },
         "additionalProperties": false,
@@ -5980,8 +5809,7 @@
         "required": [
           "speed_ms",
           "direction_deg",
-          "forecast_at",
-          "extended"
+          "forecast_at"
         ],
         "title": "SegmentWind"
       },
@@ -6068,25 +5896,6 @@
           "finished_at"
         ],
         "title": "SucceededRunCounts"
-      },
-      "TemperatureRange": {
-        "properties": {
-          "min_c": {
-            "type": "number",
-            "title": "Min C"
-          },
-          "max_c": {
-            "type": "number",
-            "title": "Max C"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "min_c",
-          "max_c"
-        ],
-        "title": "TemperatureRange"
       },
       "TuningParameterView": {
         "properties": {
@@ -6662,124 +6471,6 @@
         ],
         "title": "WbgtStatus"
       },
-      "WeatherConditions": {
-        "properties": {
-          "precipitation_mm": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Precipitation Mm"
-          },
-          "twilight": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Twilight"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "precipitation_max_mm": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Precipitation Max Mm"
-          },
-          "wind_speed_max_ms": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Wind Speed Max Ms"
-          },
-          "temperature_range": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TemperatureRange"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "today_periods": {
-            "items": {
-              "$ref": "#/components/schemas/WeatherPeriodOutlook"
-            },
-            "type": "array",
-            "title": "Today Periods"
-          },
-          "today_period_interval_hours": {
-            "type": "integer",
-            "title": "Today Period Interval Hours"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "precipitation_mm",
-          "twilight",
-          "precipitation_max_mm",
-          "wind_speed_max_ms",
-          "temperature_range",
-          "today_periods",
-          "today_period_interval_hours"
-        ],
-        "title": "WeatherConditions"
-      },
-      "WeatherPeriodOutlook": {
-        "properties": {
-          "period": {
-            "type": "string",
-            "title": "Period"
-          },
-          "temperature_c": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Temperature C"
-          },
-          "precipitation_mm": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Precipitation Mm"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "period",
-          "temperature_c",
-          "precipitation_mm"
-        ],
-        "title": "WeatherPeriodOutlook"
-      },
       "WeatherWarnings": {
         "properties": {
           "warnings": {
@@ -6826,95 +6517,6 @@
           "label"
         ],
         "title": "WindDirection"
-      },
-      "WindGridPoint": {
-        "properties": {
-          "latitude": {
-            "type": "number",
-            "title": "Latitude"
-          },
-          "longitude": {
-            "type": "number",
-            "title": "Longitude"
-          },
-          "wind_speed_ms": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Wind Speed Ms"
-          },
-          "wind_direction_deg": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Wind Direction Deg"
-          },
-          "precipitation_mm": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Precipitation Mm"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "latitude",
-          "longitude",
-          "wind_speed_ms",
-          "wind_direction_deg",
-          "precipitation_mm"
-        ],
-        "title": "WindGridPoint"
-      },
-      "WindGridResponse": {
-        "properties": {
-          "times": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Times"
-          },
-          "points": {
-            "items": {
-              "$ref": "#/components/schemas/WindGridPoint"
-            },
-            "type": "array",
-            "title": "Points"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "times",
-          "points"
-        ],
-        "title": "WindGridResponse"
       },
       "app__services__db_status_service__TableEntry": {
         "properties": {

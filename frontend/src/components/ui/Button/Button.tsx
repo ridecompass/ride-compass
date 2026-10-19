@@ -48,7 +48,7 @@ export const buttonVariants = cva(
         /** パネルの操作のボタン。アイコンだけを置き、名前は`aria-label`で渡す（長押し・マウスを重ねると、名前と使い方が
          * `components/UsageGuide/UsageTooltip.tsx`のツールチップに出る）。 */
         panelIcon: "rounded-sm px-1.5 py-1",
-        /** 上部の帯の印（警報・今日の見通し）。値の並びに混ざるので、枠の無い`ghost`と組む。 */
+        /** 上部の帯の印（警報）。値の並びに混ざるので、枠の無い`ghost`と組む。 */
         headerIcon: "size-7 rounded-sm",
         /** 小さい丸のアイコンボタン。 */
         iconRound: "size-6.5 rounded-full",

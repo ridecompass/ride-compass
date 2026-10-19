@@ -13,7 +13,7 @@ import { useMemo } from "react";
 import { mergeTileValues, tilesCoveringViewport, type TileXY } from "@/features/map/layers/dynamicWayValues";
 import type { WayMaterials } from "@/features/map/scene/groups/axisLines";
 import type { DedicatedWayValueAxis } from "@/lib/mapDisplay/axisLayers";
-import type { MapViewport } from "@/features/map/layers/windLayer";
+import type { MapViewport } from "@/features/map/view/mapLook";
 import { fetchWayMaterials, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM } from "@/features/map/regionApi";
 import { MAP_FETCH_DEBOUNCE_MS, useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { getQueryClient } from "@/lib/queryClient";

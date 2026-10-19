@@ -29,7 +29,6 @@ from app.domain.axis_definitions import (
     TimeScope,
     primary_attribute_ids_for,
     published_axis_definitions,
-    weather_layer_groups_for,
 )
 from app.domain.axis_raw_value import (
     AxisMaterialBreakdownEntry,
@@ -62,9 +61,6 @@ class AxisCatalogEntry(StrictModel):
     # 材料[階層構造]は除く）。軸と一次属性レイヤーの対応を、軸idで分岐せずに引けるよう
     # 軸スタジオの公開軸にも同じ形で配る。
     primary_attribute_ids: list[str]
-    # この軸の材料の元データを描く気象のチップ（`domain/axis_definitions.py: weather_layer_groups_for`）。
-    # 一次属性を持たない動的な材料（風等）は`primary_attribute_ids`に現れないため、こちらが運ぶ。
-    weather_layer_groups: list[str]
     # 地図がこの軸について塗るもの——塗る値・単位・段の境界・凡例の目盛り・タイルの塗り・段の体感ラベル
     # （domain/map_paint.py: map_paint）。ルート確定前の塗り・ルート確定後のルート線色分け・凡例のどれもこれに従う。
     map_paint: MapPaint
@@ -136,7 +132,6 @@ async def get_axis_catalog(region_service: RegionService = Depends(get_region_se
                 default_weight=definition.default_weight,
                 icon_id=definition.icon_id,
                 primary_attribute_ids=primary_attribute_ids_for(definition),
-                weather_layer_groups=weather_layer_groups_for(definition),
                 map_paint=map_paint(definition),
                 raw_value_units=raw_value_units(definition),
                 material_breakdown=axis_material_breakdown(definition, AXIS_DEFINITIONS),

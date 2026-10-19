@@ -916,16 +916,15 @@ async def test_segment_wind_is_the_forecast_for_the_local_time_of_passing(engine
         start_time=DEPARTURE.astimezone(timezone.utc))
 
     assert {s.wind.forecast_at for s in candidate.segments} == {"2026-09-22T08:00"}
-    assert not any(s.wind.extended for s in candidate.segments)
 
 
-async def test_segment_wind_beyond_the_forecast_is_marked_as_extended(engine_over):
+async def test_segment_wind_beyond_the_forecast_is_not_shown(engine_over):
     generator = engine_over(grid_network(), wind=_wind(HOURS_OF_THE_DAY[5:7], [3.0, 3.0, 3.0, 3.0]))
 
     (candidate, *_) = await generator.generate_via_waypoints(
         at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=1, start_time=DEPARTURE)
 
-    assert all(s.wind.extended for s in candidate.segments)
+    assert all(s.wind is None for s in candidate.segments)
 
 
 async def test_each_segment_takes_the_wind_of_the_grid_point_nearest_to_it(engine_over):

@@ -350,31 +350,10 @@ export const mapDisplay = {
       "dataNature": "dynamic",
       "defaultOn": false,
       "description": [
-        "気象庁の降水ナウキャスト・降水短時間予報・線状降水帯予測マップ・線状降水帯の雨域と、数値予報モデルが計算した降水量を重ねて表示[実況〜60分先は5分刻み、60分〜15時間先は気象庁の降水短時間予報、15時間〜48時間先は気象庁の数値予報モデルMSMの計算値を1時間刻みで、予報ではなく誤差を含みうる。線状降水帯予測マップは現在〜3時間先、線状降水帯の雨域は実況〜30分先の間だけ追加で重畳]"
+        "気象庁の降水ナウキャスト・降水短時間予報・線状降水帯予測マップ・線状降水帯の雨域を重ねて表示[実況〜60分先は5分刻み、60分〜15時間先は気象庁の降水短時間予報。線状降水帯予測マップは現在〜3時間先、線状降水帯の雨域は実況〜30分先の間だけ追加で重畳]"
       ],
       "panelHint": [
-        "気象庁の高解像度降水ナウキャストです。ONにすると地図上に時刻スライダーが現れ、実況[直近]から60分先までの雨雲の分布を切り替えて確認できます。60分より先は、同じ気象庁の降水短時間予報へ自動的に切り替わり、15時間先まで確認できます——こちらは実況の外挿ではなく数値予報モデルによる予測のため、先になるほど不確実性が増します。15時間より先は、風と同じ仕組み[気象庁の数値予報モデルMSMが格子点ごとに計算した降水量]で、格子を降水強度に応じた色で塗る表示へさらに切り替わり、48時間先まで確認できます[降水短時間予報よりも粗い5kmメッシュのモデルの計算値で、予報ではなく誤差を含みえます]。加えて、現在〜3時間先の間だけ、気象庁の線状降水帯予測マップを重ねて表示します[今後3時間以内に大雨のおそれがある領域を赤で示すもので、予測は格子単位のため矩形に見えます。今まさに発生している線状降水帯の雨域を示すものではありません]。今まさに発生している線状降水帯は、実況から30分先までの間、その雨域を赤い輪郭線で重ねます[気象庁が線状降水帯を解析しているときだけ出ます]。非公式の内部APIを利用している実況・60分先までの部分・線状降水帯予測マップ・線状降水帯の雨域は、取得に失敗することがあります。"
-      ],
-      "hideMissingRows": false
-    },
-    {
-      "id": "windVector",
-      "label": "風[矢印]",
-      "dataSource": "ownFetch",
-      "category": "weather",
-      "kind": "static",
-      "dataNature": "dynamic",
-      "defaultOn": false,
-      "description": [
-        "気象庁の数値予報モデルMSMが計算した風向・風速を矢印で表示[48時間先まで。予報ではなく誤差を含みうる]"
-      ],
-      "panelHint": [
-        "気象庁MSM[メソ数値予報モデル、5kmメッシュ]が計算した風向・風速を格子点で矢印表示します。モデルの計算値で、予報ではなく、誤差を含みえます。矢印の向きが風向、長さ・太さ・色の濃淡が風速の強さを表します。ごく弱い風の地点は矢印を表示しません。ONにすると地図上に時刻スライダーが現れ、1時間刻みで切り替えられます[先まで見られる範囲は配信中の計算値の長さによって変わり、長くて48時間先までです]。",
-        {
-          "name": "axes",
-          "before": "走行方位に対する向かい風/追い風の強さは、「評価で塗る」で評価軸",
-          "after": "を選ぶと別途確認できます。"
-        }
+        "気象庁の高解像度降水ナウキャストです。ONにすると地図上に時刻スライダーが現れ、実況[直近]から60分先までの雨雲の分布を切り替えて確認できます。60分より先は、同じ気象庁の降水短時間予報へ自動的に切り替わり、15時間先まで確認できます——こちらは実況の外挿ではなく数値予報モデルによる予測のため、先になるほど不確実性が増します。加えて、現在〜3時間先の間だけ、気象庁の線状降水帯予測マップを重ねて表示します[今後3時間以内に大雨のおそれがある領域を赤で示すもので、予測は格子単位のため矩形に見えます。今まさに発生している線状降水帯の雨域を示すものではありません]。今まさに発生している線状降水帯は、実況から30分先までの間、その雨域を赤い輪郭線で重ねます[気象庁が線状降水帯を解析しているときだけ出ます]。非公式の内部APIを利用している実況・60分先までの部分・線状降水帯予測マップ・線状降水帯の雨域は、取得に失敗することがあります。"
       ],
       "hideMissingRows": false
     },
@@ -426,7 +405,6 @@ export const mapDisplay = {
   },
   "weatherLayerGroups": [
     "precipitationNowcast",
-    "windVector",
     "disaster"
   ],
   "weatherElements": [
@@ -439,7 +417,6 @@ export const mapDisplay = {
         "kind": "nearest",
         "windowMinutes": null
       },
-      "gridValue": null,
       "levelScale": null,
       "description": null,
       "jmaElements": [
@@ -475,21 +452,6 @@ export const mapDisplay = {
     },
     {
       "group": "precipitationNowcast",
-      "source": "main",
-      "kind": "gridFill",
-      "label": "降水",
-      "frameRule": {
-        "kind": "nearest",
-        "windowMinutes": null
-      },
-      "gridValue": "precipitation",
-      "levelScale": null,
-      "description": null,
-      "jmaElements": [],
-      "tile": null
-    },
-    {
-      "group": "precipitationNowcast",
       "source": "linearRainband",
       "kind": "rasterTile",
       "label": "線状降水帯予測",
@@ -497,7 +459,6 @@ export const mapDisplay = {
         "kind": "current",
         "windowMinutes": 180
       },
-      "gridValue": null,
       "levelScale": null,
       "description": "今後3時間以内に大雨のおそれ[矩形の予測領域。現在〜3時間先のみ]",
       "jmaElements": [
@@ -528,7 +489,6 @@ export const mapDisplay = {
         "kind": "nearest",
         "windowMinutes": null
       },
-      "gridValue": null,
       "levelScale": null,
       "description": "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[赤い輪郭線。実況〜30分先のみ]",
       "jmaElements": [
@@ -555,7 +515,6 @@ export const mapDisplay = {
         "kind": "nearest",
         "windowMinutes": null
       },
-      "gridValue": null,
       "levelScale": null,
       "description": "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[赤い輪郭線。実況〜30分先のみ]",
       "jmaElements": [
@@ -574,21 +533,6 @@ export const mapDisplay = {
       "tile": null
     },
     {
-      "group": "windVector",
-      "source": "arrow",
-      "kind": "gridMark",
-      "label": "風",
-      "frameRule": {
-        "kind": "nearest",
-        "windowMinutes": null
-      },
-      "gridValue": "wind",
-      "levelScale": null,
-      "description": null,
-      "jmaElements": [],
-      "tile": null
-    },
-    {
       "group": "disaster",
       "source": "heavyRain",
       "kind": "rasterTile",
@@ -597,7 +541,6 @@ export const mapDisplay = {
         "kind": "current",
         "windowMinutes": null
       },
-      "gridValue": null,
       "levelScale": "risk_levels",
       "description": "大雨による土砂災害と浸水害の危険度の高まりを、まとめて段階で示す気象庁の情報。",
       "jmaElements": [
@@ -628,7 +571,6 @@ export const mapDisplay = {
         "kind": "current",
         "windowMinutes": null
       },
-      "gridValue": null,
       "levelScale": "risk_levels",
       "description": "大雨による土砂災害（がけ崩れ・土石流など）の危険度の高まりを段階で示す気象庁の情報。",
       "jmaElements": [
@@ -659,7 +601,6 @@ export const mapDisplay = {
         "kind": "current",
         "windowMinutes": null
       },
-      "gridValue": null,
       "levelScale": "risk_levels",
       "description": "短い時間の強い雨で、道路や低い土地が水につかる危険度の高まりを段階で示す気象庁の情報。",
       "jmaElements": [
@@ -690,7 +631,6 @@ export const mapDisplay = {
         "kind": "nearest",
         "windowMinutes": null
       },
-      "gridValue": null,
       "levelScale": "thunder_activity",
       "description": "雷の激しさと雷が起こる可能性を、活動度の段階で示す気象庁の実況と60分先までの予測。",
       "jmaElements": [
@@ -721,7 +661,6 @@ export const mapDisplay = {
         "kind": "nearest",
         "windowMinutes": null
       },
-      "gridValue": null,
       "levelScale": "tornado_potential",
       "description": "竜巻などの激しい突風が起こりやすい所を、確度の段階で示す気象庁の実況と60分先までの予測。",
       "jmaElements": [
@@ -752,7 +691,6 @@ export const mapDisplay = {
         "kind": "current",
         "windowMinutes": null
       },
-      "gridValue": null,
       "levelScale": "risk_levels",
       "description": "大雨で川があふれる危険度の高まりを、川に沿った色で示す気象庁の情報。",
       "jmaElements": [
@@ -783,7 +721,6 @@ export const mapDisplay = {
         "kind": "latestObservation",
         "windowMinutes": 20
       },
-      "gridValue": null,
       "levelScale": null,
       "description": "気象庁の雷の観測が捉えた、直近の雷の発生地点。",
       "jmaElements": [
@@ -861,11 +798,6 @@ export const mapDisplay = {
   },
   "weather": {
     "markHaloWidthPx": 1.5,
-    "windIconScaleRange": [
-      0.9,
-      2.6
-    ],
-    "windFullScaleMs": 15,
     "lightningIconScale": 0.8,
     "markSizeByZoom": [
       [

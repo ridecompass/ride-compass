@@ -18,7 +18,7 @@ import {
   type MapLayerVisibility,
 } from "@/features/map/layers/mapLayers";
 import { LENS_DIFFICULTY_ID, type LensId } from "@/lib/mapDisplay/routeStyleModes";
-import type { MapViewport } from "@/features/map/layers/windLayer";
+import type { MapViewport } from "@/features/map/view/mapLook";
 import type MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayControls";
 import { isLegendFiltered } from "@/features/map/MapOverlayControls/OverlayLayerRow";
 import { mapDisplay } from "@/types/generated/mapDisplay";
@@ -138,7 +138,6 @@ export function useMapView({
   const weather = useDynamicWeatherLayers({
     visibility: layerVisibility,
     hiddenSources: hiddenWeatherSources,
-    mapViewport: viewport,
     at: ride.at,
     now,
   });

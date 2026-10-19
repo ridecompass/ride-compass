@@ -165,14 +165,6 @@ def test_each_axis_carries_what_the_domain_derives_for_it(client, catalog_axes):
     )
 
 
-def test_get_axis_catalog_names_the_weather_chip_that_shows_a_dynamic_material(client, catalog_axes):
-    # 風の材料は一次属性を持たないが、同じ格子の風を描く気象のチップが元データを見せる。
-    entries = _entries(client)
-
-    assert entries["axis_way_value_scored"]["weather_layer_groups"] == ["windVector"]
-    assert entries["axis_categorical"]["weather_layer_groups"] == []
-
-
 def test_get_axis_catalog_carries_the_calibration_values_the_client_needs(client, monkeypatch):
     """フロントが使う較正値は、このカタログが**いま効いている値**で運ぶ。
 

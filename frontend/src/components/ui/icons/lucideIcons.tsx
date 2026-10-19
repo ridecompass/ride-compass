@@ -2,7 +2,6 @@
 import {
   ArrowUp,
   Bike,
-  CalendarDays,
   CircleQuestionMark,
   Clock,
   Cloud,
@@ -120,8 +119,6 @@ export const LockedIcon = fromLucide(Lock);
 export const RetryIcon = fromLucide(RotateCw);
 /** 取れていない情報がある印。警報の色と取り違えないよう、三角の形を使わない。 */
 export const NotFetchedIcon = fromLucide(CloudOff);
-/** 今日1日の見通し。 */
-export const TodayOutlookIcon = fromLucide(CalendarDays);
 /** 時刻を送った重ねを、いまの時刻に戻す。 */
 export const BackToNowIcon = fromLucide(History);
 /** 地図で選んだ道の評価を調べる。 */

@@ -15,12 +15,10 @@ from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, PRIMARY_ATTRIBUTES
 from app.domain.registry import DisplayAxisSpec
 from app.domain.region import ROAD_TILE_MIN_ZOOM
 from app.domain.weather_elements import (
-    MSM_FORECAST_HOURS,
     WEATHER_ELEMENTS,
     WEATHER_LAYER_GROUPS,
     FrameRuleKind,
     forecast_reach,
-    reach_text,
 )
 
 
@@ -338,65 +336,6 @@ def _disaster_by_frame_rule() -> list[tuple[str, str, str]]:
 _DISASTER_BY_FRAME_RULE = _disaster_by_frame_rule()
 
 
-def msm_layer_specs(forecast_hours: int) -> dict[str, MapLayerSpec]:
-    """自前のMSM格子から描くレイヤー。先まで見られる長さは、読み出しが予報を切る長さ（時間）から言う。"""
-    reach = reach_text(forecast_hours * 60)
-    return {
-        # 降水短時間予報より先は数値予報モデル（MSM）の計算値なので「予報」と呼ばない
-        # （docs/architecture/data-sources.md「気象業務法の予報業務許可」節）。
-        "precipitationNowcast": MapLayerSpec(
-            "ownFetch",
-            "weather",
-            data_nature="dynamic",
-            label="降水ナウキャスト",
-            description=(
-                "気象庁の降水ナウキャスト・降水短時間予報・線状降水帯予測マップ・線状降水帯の雨域と、数値予報モデルが計算した降水量を重ねて表示"
-                f"[実況〜{_NOWCAST_REACH}先は5分刻み、{_NOWCAST_REACH}〜{_SHORT_RANGE_REACH}先は気象庁の降水短時間予報、"
-                f"{_SHORT_RANGE_REACH}〜{reach}先は気象庁の数値予報モデルMSMの計算値を1時間刻みで、予報ではなく誤差を含みうる。"
-                f"線状降水帯予測マップは現在〜{_LINEAR_RAINBAND_HOURS}時間先、線状降水帯の雨域は"
-                f"実況〜{_RAINBAND_AREA_REACH}先の間だけ追加で重畳]",
-            ),
-            panel_hint=(
-                "気象庁の高解像度降水ナウキャストです。ONにすると地図上に時刻スライダーが現れ、"
-                f"実況[直近]から{_NOWCAST_REACH}先までの雨雲の分布を切り替えて確認できます。{_NOWCAST_REACH}より先は、"
-                f"同じ気象庁の降水短時間予報へ自動的に切り替わり、{_SHORT_RANGE_REACH}先まで"
-                "確認できます——こちらは実況の外挿ではなく数値予報モデルによる予測のため、先に"
-                f"なるほど不確実性が増します。{_SHORT_RANGE_REACH}より先は、風と同じ仕組み[気象庁の数値予報モデルMSMが"
-                "格子点ごとに計算した降水量]で、格子を降水強度に応じた色で塗る表示へさらに切り替わり、"
-                f"{reach}先まで確認できます[降水短時間予報よりも粗い5kmメッシュのモデルの計算値で、予報ではなく"
-                f"誤差を含みえます]。加えて、現在〜{_LINEAR_RAINBAND_HOURS}時間先の"
-                f"間だけ、気象庁の線状降水帯予測マップを重ねて表示します[今後{_LINEAR_RAINBAND_HOURS}時間以内に大雨の"
-                "おそれがある領域を赤で示すもので、予測は格子単位のため矩形に見えます。"
-                "今まさに発生している線状降水帯の雨域を示すものではありません]。"
-                f"今まさに発生している線状降水帯は、実況から{_RAINBAND_AREA_REACH}先までの間、その雨域を赤い輪郭線で重ねます"
-                "[気象庁が線状降水帯を解析しているときだけ出ます]。"
-                f"非公式の内部APIを利用している実況・{_NOWCAST_REACH}先までの"
-                "部分・線状降水帯予測マップ・線状降水帯の雨域は、取得に失敗することがあります。",
-            ),
-        ),
-        # 「評価で塗る」の道路の塗り（向かい風・追い風）と見分けられる名前にする。
-        "windVector": MapLayerSpec(
-            "ownFetch",
-            "weather",
-            data_nature="dynamic",
-            label="風[矢印]",
-            description=(f"気象庁の数値予報モデルMSMが計算した風向・風速を矢印で表示[{reach}先まで。予報ではなく誤差を含みうる]",),
-            panel_hint=(
-                "気象庁MSM[メソ数値予報モデル、5kmメッシュ]が計算した風向・風速を格子点で矢印表示します。"
-                f"モデルの計算値で、{MODEL_VALUE_DISCLAIMER}"
-                "矢印の向きが風向、長さ・太さ・色の濃淡が風速の強さを表します。ごく弱い風の地点は"
-                "矢印を表示しません。ONにすると地図上に時刻スライダーが現れ、1時間刻みで切り替えられます"
-                f"[先まで見られる範囲は配信中の計算値の長さによって変わり、長くて{reach}先までです]。",
-                LayerTextSlot(
-                    "axes",
-                    "走行方位に対する向かい風/追い風の強さは、「評価で塗る」で評価軸",
-                    "を選ぶと別途確認できます。",
-                ),
-            ),
-        ),
-    }
-
-
 #: `_MAP_LAYER_IDS`の1つずつの宣言。並びが一覧の行の並び（種別の中の順）になる。**過不足は生成の時点で落ちる**（`MAP_LAYERS`）。
 _LAYER_SPECS: dict[str, MapLayerSpec] = {
     "elevation": MapLayerSpec(
@@ -536,7 +475,33 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
             f"]の発生地点です。{size_text('accident_point')}",
         ),
     ),
-    **msm_layer_specs(MSM_FORECAST_HOURS),
+    "precipitationNowcast": MapLayerSpec(
+        "ownFetch",
+        "weather",
+        data_nature="dynamic",
+        label="降水ナウキャスト",
+        description=(
+            "気象庁の降水ナウキャスト・降水短時間予報・線状降水帯予測マップ・線状降水帯の雨域を重ねて表示"
+            f"[実況〜{_NOWCAST_REACH}先は5分刻み、{_NOWCAST_REACH}〜{_SHORT_RANGE_REACH}先は気象庁の降水短時間予報。"
+            f"線状降水帯予測マップは現在〜{_LINEAR_RAINBAND_HOURS}時間先、線状降水帯の雨域は"
+            f"実況〜{_RAINBAND_AREA_REACH}先の間だけ追加で重畳]",
+        ),
+        panel_hint=(
+            "気象庁の高解像度降水ナウキャストです。ONにすると地図上に時刻スライダーが現れ、"
+            f"実況[直近]から{_NOWCAST_REACH}先までの雨雲の分布を切り替えて確認できます。{_NOWCAST_REACH}より先は、"
+            f"同じ気象庁の降水短時間予報へ自動的に切り替わり、{_SHORT_RANGE_REACH}先まで"
+            "確認できます——こちらは実況の外挿ではなく数値予報モデルによる予測のため、先に"
+            "なるほど不確実性が増します。加えて、"
+            f"現在〜{_LINEAR_RAINBAND_HOURS}時間先の"
+            f"間だけ、気象庁の線状降水帯予測マップを重ねて表示します[今後{_LINEAR_RAINBAND_HOURS}時間以内に大雨の"
+            "おそれがある領域を赤で示すもので、予測は格子単位のため矩形に見えます。"
+            "今まさに発生している線状降水帯の雨域を示すものではありません]。"
+            f"今まさに発生している線状降水帯は、実況から{_RAINBAND_AREA_REACH}先までの間、その雨域を赤い輪郭線で重ねます"
+            "[気象庁が線状降水帯を解析しているときだけ出ます]。"
+            f"非公式の内部APIを利用している実況・{_NOWCAST_REACH}先までの"
+            "部分・線状降水帯予測マップ・線状降水帯の雨域は、取得に失敗することがあります。",
+        ),
+    ),
     # 予兆が出てからONにするのでは手遅れになるため既定ONにする。危険度が出ている間は広い範囲が
     # 塗られ、他の面レイヤー（緑と水・標高図）も基礎地図の色も覆われるが、危険度ゼロの領域は
     # 配信元のタイルが透明なので、影響が出るのは警戒度が上がっている間だけ。そのときは防災の
@@ -657,10 +622,8 @@ HILLSHADE_HIGHLIGHT_COLOR = f"rgba(255, 252, 245, {AREA_OPACITY})"
 #: 上げるほど緩い斜面が読めるが、上げすぎると急斜面との差が潰れる。
 TERRAIN_EXAGGERATION = 5
 
-#: 気象の記号。風は速さで大きさを変え、`WIND_FULL_SCALE_MS`で上限に達する。
+#: 気象の記号。
 WEATHER_MARK_HALO_WIDTH_PX = 1.5
-WIND_ICON_SCALE_RANGE: tuple[float, float] = (0.9, 2.6)
-WIND_FULL_SCALE_MS = 15
 LIGHTNING_ICON_SCALE = 0.8
 #: 記号を拡大する曲線（ズーム→倍率）。**気象の記号はどれも同じ曲線で拡大する**——家族ごとに別の曲線を使うと、
 #: 同じ地図の中で拡大の速さが食い違う。`icon-size`は既定で画面上の固定ピクセルなので、曲線が無いと拡大するほど

@@ -72,7 +72,7 @@ describe("WeatherPanel 観測値", () => {
     expect(screen.getByText("降水量:").parentElement).toHaveTextContent("1.3mm");
   });
 
-  // 風の矢印は吹いていく向き（来る向きの反対）を、走りの帯・地図の上の風の矢印と同じく地図の上の基準で指す。
+  // 風の矢印は吹いていく向き（来る向きの反対）を、走りの帯と同じく地図の上の基準で指す。
   it.each([
     { case: "北が上の地図", mapBearingDeg: 0, rotation: "rotate(270deg)" },
     { case: "東が上の地図", mapBearingDeg: 90, rotation: "rotate(180deg)" },
@@ -181,7 +181,22 @@ describe("WeatherPanel 観測の出所", () => {
     expect(panel).toHaveTextContent(`天気${clear.label}`);
   });
 
-  it("体感温度・風・降水量・天気が無ければ、パネルにもその行を出さない", async () => {
+  it("日の出・日没は日本時間で出し、読めない時刻は「--:--」", async () => {
+    render(
+      <WeatherPanel
+        mapBearingDeg={0}
+        amedas={observation({ twilight: { sunrise: "2026-09-23T20:30:00Z", sunset: "壊れた値" } })}
+        loading={false}
+        error={null}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /気温:/ }));
+
+    expect(screen.getByRole("dialog")).toHaveTextContent("日の出・日没05:30〜--:--");
+  });
+
+  it("体感温度・風・降水量・天気・日の出と日没が無ければ、パネルにもその行を出さない", async () => {
     render(
       <WeatherPanel
         mapBearingDeg={0}
@@ -191,6 +206,7 @@ describe("WeatherPanel 観測の出所", () => {
           wind_speed_ms: null,
           precipitation_10min_mm: null,
           weather_code: null,
+          twilight: null,
         })}
         loading={false}
         error={null}
@@ -205,5 +221,6 @@ describe("WeatherPanel 観測の出所", () => {
     expect(panel).not.toHaveTextContent("風");
     expect(panel).not.toHaveTextContent("降水量");
     expect(panel).not.toHaveTextContent("天気");
+    expect(panel).not.toHaveTextContent("日の出");
   });
 });

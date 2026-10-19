@@ -1,6 +1,6 @@
 """`domain/map_display.py`——地図に出すものの束ね方（グループ・種別・情報源・レイヤー）の宣言。
 
-入口は`map_layer_label`（レイヤーの名前）・説明の文を宣言から組む`ordered_ends_text`・`size_sentence`・`msm_layer_specs`と、生成物として
+入口は`map_layer_label`（レイヤーの名前）・説明の文を宣言から組む`ordered_ends_text`・`size_sentence`と、生成物として
 画面へ配る宣言そのもの。宣言どうしは名前（`key`）で指し合い、型はその名前が実在することを保証しないので、指した先が
 あることを確かめる。描く寸法の値そのものは見ない（宣言の書き写しになる）。レイヤーの説明は、ほかの宣言から差し込む
 部分だけを見る。文を組む関数には架空の行を渡し、宣言を変えると文が追従することを見る。
@@ -19,7 +19,7 @@ from app.domain import map_display
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.map_display import MapLayerSpec, map_layer_label, ordered_ends_text, size_sentence
 from app.domain.registry import DisplayAxisSpec, DisplayCategorySpec
-from app.domain.weather_elements import MSM_FORECAST_HOURS, WEATHER_ELEMENTS, reach_text
+from app.domain.weather_elements import WEATHER_ELEMENTS
 
 ALL_SPECS = [spec for _, spec in map_display.MAP_LAYERS] + list(map_display.AXIS_LAYER_SPECS.values())
 LAYERS = dict(map_display.MAP_LAYERS)
@@ -154,18 +154,6 @@ def test_disaster_text_names_every_element_of_the_disaster_chip():
     for element in elements:
         assert element.label in text_of("disaster", "description")
         assert element.label in text_of("disaster", "panel_hint")
-
-
-@pytest.mark.parametrize(
-    ("hours", "layers"),
-    [(MSM_FORECAST_HOURS, LAYERS), (30, map_display.msm_layer_specs(30))],
-    ids=["配る宣言は読み出しの上限から", "別の長さ"],
-)
-@pytest.mark.parametrize("field", ["description", "panel_hint"])
-def test_msm_layers_tell_how_far_ahead_by_the_hours_the_reading_is_cut_at(hours, layers, field):
-    """読み出しが切る長さと違う長さを書くと、利用者は読み出さない先の計算値を地図で探す。"""
-    for layer_id in map_display.msm_layer_specs(hours):
-        assert f"{reach_text(hours * 60)}先" in text_of(layer_id, field, layers)
 
 
 #: ズームから値への曲線（数の組の並び）。名前で拾わず、形で拾う。

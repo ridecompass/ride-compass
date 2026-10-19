@@ -1,6 +1,6 @@
 """`infrastructure/msm_client.py`——気象庁MSMの予報を配信元と同期し、ローカルの`.om`ファイルから読む。
 
-確かめるのは公開の入口（`refresh`・`read_series`・`forecast_version`・`freshness`/`freshness_from_meta`/`warn_if_stale`）から
+確かめるのは公開の入口（`refresh`・`read_series`・`freshness`/`freshness_from_meta`/`warn_if_stale`）から
 見える振る舞いだけ。差し替えるのはプロセス境界だけで、網は本物の`httpx.AsyncClient`へ配信元の代役
 （`MockTransport`）を付け、ディスクは一時ディレクトリ、時計は固定する。何時間先まで同期し・読むかは
 設定（`settings.msm_forecast_hours`）をテストごとに与える。
@@ -8,7 +8,7 @@
 
 ここで見ないもの:
 - 範囲と形状から導いた格子の幾何と、双一次補間そのもの・格子の外の地点を断ること → `test_msm.py`
-- 予報を天候・風へ組み立てる側 → `test_weather_service.py`
+- 予報を風へ組み立てる側 → `test_weather_service.py`
 
 予報の値は「格子点(i, j)・チャンク内の時刻tで 100i + 10j + t（チャンクごとに1000ずつ足す）」にしてある。
 補間した値の期待値が足し算で書ける。チャンクの番号は配信元の決まり（1970年からの経過時間÷チャンクの長さ）。
@@ -147,22 +147,6 @@ class TestSyncing:
         fetched = {r.url.path.rsplit("/", 1)[-1] for r in source.chunk_requests()}
         assert fetched == {f"chunk_{NOW_CHUNK}.om", f"chunk_{NOW_CHUNK + 1}.om"}
 
-    async def test_the_forecast_version_changes_only_when_a_sync_brings_something_new(self, tmp_path, msm_dir):
-        """読み手は版を鍵に組み立てた応答を使い回す。何も届かない同期で版が変わると同じ予報から作り直し、届いた同期で
-        変わらないと前の予報を配り続ける。"""
-        source = Source(tmp_path)
-        async with source.client() as client:
-            msm_dir.forecast_hours(3)
-            await msm_client.refresh(client)
-            synced = msm_client.forecast_version()
-            await msm_client.refresh(client)
-            unchanged = msm_client.forecast_version()
-            source.meta = _meta(last_run_initialisation_time=NOW)
-            await msm_client.refresh(client)
-
-        assert unchanged == synced
-        assert msm_client.forecast_version() != synced
-
     async def test_a_chunk_whose_file_was_lost_is_fetched_again_even_with_a_known_etag(self, tmp_path, msm_dir):
         """「変更なし」を信じて、無いファイルを読みに行かない。"""
         source = Source(tmp_path)
@@ -218,7 +202,7 @@ class TestReading:
         series = await _read(msm_dir, _points(SOUTH_WEST, HALF_NORTH), 2)
 
         # 05:00はチャンクの先頭から2時間目（t=2）。
-        assert series.temperature_c == pytest.approx(np.array([[2.0, 3.0], [52.0, 53.0]]))
+        assert series.wind_u_ms == pytest.approx(np.array([[2.0, 3.0], [52.0, 53.0]]))
 
     async def test_a_series_crossing_into_the_next_chunk_continues_from_it(self, tmp_path, msm_dir):
         await _synced(tmp_path, msm_dir)
@@ -226,7 +210,7 @@ class TestReading:
         series = await _read(msm_dir, _points(SOUTH_WEST), 6)
 
         assert series.times[3:] == [datetime(2026, 9, 22, 8, 0), datetime(2026, 9, 22, 9, 0), datetime(2026, 9, 22, 10, 0)]
-        assert series.precipitation_mm[0].tolist() == [2.0, 3.0, 4.0, 5.0, 1000.0, 1001.0]
+        assert series.wind_u_ms[0].tolist() == [2.0, 3.0, 4.0, 5.0, 1000.0, 1001.0]
 
 # --- 鮮度 ---
 

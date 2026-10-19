@@ -16,7 +16,7 @@ import {
   TrackGradeIcon,
   TunnelIcon,
 } from "@/components/ui/icons/layerIcons";
-import { BicycleIcon, RaindropIcon, ShieldIcon, WindIcon } from "@/components/ui/icons/lucideIcons";
+import { BicycleIcon, RaindropIcon, ShieldIcon } from "@/components/ui/icons/lucideIcons";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 
 /** 源泉が宣言する、地図に載るものの名前。 */
@@ -38,7 +38,6 @@ export const MAP_LAYER_ICONS: Record<StaticMapLayerId, MapIconComponent> = {
   stop_place: StopPlaceIcon,
   accident_point: AccidentIcon,
   precipitationNowcast: RaindropIcon,
-  windVector: WindIcon,
   disaster: ShieldIcon,
   route: RouteIcon,
 };

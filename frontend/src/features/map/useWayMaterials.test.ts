@@ -14,7 +14,7 @@ import { MAP_FETCH_DEBOUNCE_MS } from "@/hooks/useDebouncedValue";
 import { heldReplies, onBackend } from "@/testing/backendServer";
 import { mapCatalogOf } from "@/testing/mapAxisCatalog";
 import { dedicatedEntry } from "@/testing/catalogAxes";
-import type { MapViewport } from "@/features/map/layers/windLayer";
+import type { MapViewport } from "@/features/map/view/mapLook";
 
 import { useWayMaterials } from "./useWayMaterials";
 
