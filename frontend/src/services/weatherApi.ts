@@ -17,6 +17,13 @@ export const getAmedasObservation = (point: Coordinates) =>
     weatherOptions("api:amedas", "アメダス観測値"),
   );
 
+/** 地点に最も近いMSMの格子点の、今日の1時間ごとの気温・降水量・風（格子点の値のまま）と格子点の位置。 */
+export const getGridPointToday = (point: Coordinates) =>
+  requestApi(
+    (init) => backendApi.GET("/api/weather", { ...atPoint(point), ...init }),
+    weatherOptions("api:gridPointToday", "最寄りの格子点の今日の値"),
+  );
+
 export const getWeatherWarnings = (point: Coordinates) =>
   requestApi(
     (init) => backendApi.GET("/api/weather/warnings", { ...atPoint(point), ...init }),

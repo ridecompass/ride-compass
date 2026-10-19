@@ -12,19 +12,24 @@ import { Button } from "@/components/ui/Button/Button";
 import { formatJstHourMinute } from "@/lib/time";
 import { downwindOnMapDeg } from "@/lib/cardinalLabel";
 import { cn } from "@/lib/cn";
-import type { AmedasObservation } from "@/types/weather";
+import type { AmedasObservation, GridPointToday as GridPointTodayValues } from "@/types/weather";
 import { getAmedasWeatherDisplay } from "./amedasWeatherIcon";
+import GridPointToday from "./GridPointToday";
 import { textVariants } from "@/components/ui/Text/Text";
 
 interface WeatherPanelProps {
   amedas: AmedasObservation | null;
   loading: boolean;
   error: string | null;
+  /** 最寄りの格子点の今日の値と、その取得の失敗。押すと開くパネルの中にだけ出す。 */
+  today: GridPointTodayValues | null;
+  todayError: string | null;
   /** 地図の向き（地図の上が真北から時計回りに何度か）。風の矢印をこの分だけ戻し、地図の上の向きに合わせる。 */
   mapBearingDeg: number;
 }
 
-// 常設ヘッダーは数値予報モデルの計算値ではなく最寄りアメダス観測所の実測値のみで構成する。
+// 常設ヘッダーのバーは数値予報モデルの計算値ではなく最寄りアメダス観測所の実測値のみで構成する。モデルの値は、押すと開く
+// パネルの中に最寄りの格子点の値として出す。
 //
 // アメダスは観測専用APIのため、降水確率・天気は含まれない。代わりに:
 // - 降水確率 → 実測の10分間降水量（precipitation_10min_mm）
@@ -74,7 +79,7 @@ function Divider() {
   return <span className="w-px flex-shrink-0 self-stretch bg-[var(--color-border)]" aria-hidden="true" />;
 }
 
-export default function WeatherPanel({ amedas, loading, error, mapBearingDeg }: WeatherPanelProps) {
+export default function WeatherPanel({ amedas, loading, error, today, todayError, mapBearingDeg }: WeatherPanelProps) {
   // 手元に観測値があるなら、直近の取り直しが失敗していてもそちらを出す（失敗の文言で
   // 値を置き換えない）。取得は一定間隔で続くため、回復すれば表示も戻る。
   if (!amedas) {
@@ -189,7 +194,7 @@ export default function WeatherPanel({ amedas, loading, error, mapBearingDeg }: 
           </span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent layer="header" className="w-64 max-w-[calc(100vw-2*var(--space-3))]" side="bottom" align="start">
+      <PopoverContent layer="header" className="w-72 max-w-[calc(100vw-2*var(--space-3))]" side="bottom" align="start">
         <p className={cn(textVariants({ variant: "note" }), "font-bold tracking-wide")}>アメダスの観測</p>
         <p className="text-[length:var(--font-size-md)] font-semibold">
           {amedas.station_name}
@@ -212,6 +217,7 @@ export default function WeatherPanel({ amedas, loading, error, mapBearingDeg }: 
             </dd>
           </dl>
         )}
+        <GridPointToday today={today} error={todayError} mapBearingDeg={mapBearingDeg} />
       </PopoverContent>
     </Popover>
   );

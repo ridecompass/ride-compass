@@ -220,7 +220,8 @@ class TestReading:
 
         series = await msm_client.read_grid_points(*_points(SOUTH_WEST, (HALF_NORTH[0] + 0.001, HALF_NORTH[1])))
 
-        assert series.wind_u_ms.tolist() == [[2.0, 3.0], [102.0, 103.0]]
+        for values in (series.wind_u_ms, series.wind_v_ms, series.precipitation_mm, series.temperature_c):
+            assert values.tolist() == [[2.0, 3.0], [102.0, 103.0]]
         latitudes, longitudes = series.points.coordinates()
         assert latitudes.tolist() == pytest.approx([35.0, 35.05])
         assert longitudes.tolist() == pytest.approx([139.0, 139.0])

@@ -64,6 +64,20 @@ class MsmGridPointSeries:
 
 
 @dataclass(frozen=True)
+class MsmGridPointWeatherSeries:
+    """格子点ごとの風・降水・気温の予報の時系列。値は格子点の値のままで、値の配列はどれも[点の数, 時刻数]。"""
+
+    times: list[datetime]
+    points: MsmGridPoints
+    wind_u_ms: np.ndarray
+    wind_v_ms: np.ndarray
+    #: その時刻までの1時間の降水量[mm]。
+    precipitation_mm: np.ndarray
+    #: 地上2mの気温[℃]。
+    temperature_c: np.ndarray
+
+
+@dataclass(frozen=True)
 class MsmWeatherGridSeries:
     """間引いた格子点ごとの風と降水の予報の時系列。値は格子点の値のままで、値の配列はどれも[点の数, 時刻数]。"""
 
@@ -81,9 +95,12 @@ FORECAST_VARIABLES: dict[str, str] = {
     "wind_u_component_10m": "wind_u_ms",
     "wind_v_component_10m": "wind_v_ms",
     "precipitation": "precipitation_mm",
+    "temperature_2m": "temperature_c",
 }
 # 風だけを使う読み出しが読む変数。
 _WIND_VARIABLES = ("wind_u_component_10m", "wind_v_component_10m")
+# 間引いた格子点の読み出しが読む変数。
+_WIND_AND_PRECIPITATION_VARIABLES = (*_WIND_VARIABLES, "precipitation")
 
 
 class MsmUnavailableError(RuntimeError):
@@ -431,13 +448,13 @@ async def read_series(latitudes: np.ndarray, longitudes: np.ndarray) -> MsmSerie
     return MsmSeries(times=times, **values)
 
 
-async def read_grid_points(latitudes: np.ndarray, longitudes: np.ndarray) -> MsmGridPointSeries:
-    """地点ごとの最寄りの格子点の時系列（格子点の値のまま、`read_series`と同じ時間ぶん）。読めなければ
+async def read_grid_points(latitudes: np.ndarray, longitudes: np.ndarray) -> MsmGridPointWeatherSeries:
+    """地点ごとの最寄りの格子点の風・降水・気温の時系列（格子点の値のまま、`read_series`と同じ時間ぶん）。読めなければ
     `MsmUnavailableError`。"""
     points, times, values = await _read(
-        lambda grid: grid.nearest_points(latitudes, longitudes), MsmGridPoints.values,
+        lambda grid: grid.nearest_points(latitudes, longitudes), MsmGridPoints.values, tuple(FORECAST_VARIABLES),
     )
-    return MsmGridPointSeries(times=times, points=points, **values)
+    return MsmGridPointWeatherSeries(times=times, points=points, **values)
 
 
 async def read_grid_block(south: float, west: float, north: float, east: float) -> MsmGridPointSeries:
@@ -458,6 +475,6 @@ async def read_weather_grid(
     points, times, values = await _read(
         lambda grid: grid.block_overlapping(south, west, north, east).thinned_points(max_points),
         MsmGridPoints.values,
-        tuple(FORECAST_VARIABLES),
+        _WIND_AND_PRECIPITATION_VARIABLES,
     )
     return MsmWeatherGridSeries(times=times, points=points, **values)

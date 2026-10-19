@@ -19,6 +19,7 @@ from app.domain.msm_grid import MSM_GRID_MAX_AREA_SQ_DEG, MsmGridForecast
 from app.domain.region import BoundingBox
 from app.domain.route import Coordinates
 from app.domain.time_zone import JST
+from app.domain.weather import GridPointToday
 from app.services.flood_service import FloodForecasts, FloodService
 from app.services.warning_service import WarningService, WeatherWarnings
 from app.services.wbgt_service import WbgtService, WbgtStatus
@@ -105,6 +106,22 @@ async def get_amedas(
     return _or_502(
         await amedas_service.get_nearest_observation(Coordinates(latitude=latitude, longitude=longitude)),
         "アメダス観測値の取得に失敗しました",
+    )
+
+
+@router.get("/api/weather", response_model=GridPointToday)
+async def get_weather(
+    http_request: Request,
+    latitude: Latitude,
+    longitude: Longitude,
+    weather_service: WeatherService = Depends(get_weather_service),
+) -> GridPointToday:
+    """地点に最も近い数値予報モデル（MSM）の格子点の、今日の1時間ごとの気温・降水量・風（格子点の値のまま）と、その格子点の
+    位置・地点からの距離と方位。MSMを読めないか、地点が格子の外なら502。"""
+    enforce_rate_limit(http_request, "weather", settings.weather_rate_limit_per_minute)
+    return _or_502(
+        await weather_service.get_grid_point_today(Coordinates(latitude=latitude, longitude=longitude)),
+        "気象データの取得に失敗しました",
     )
 
 

@@ -14,6 +14,7 @@ const AMEDAS = "/api/weather/amedas";
 const WARNINGS = "/api/weather/warnings";
 const WBGT = "/api/weather/wbgt";
 const FLOOD = "/api/weather/flood-forecast";
+const GRID_POINT_TODAY = "/api/weather";
 
 const TOKYO = { latitude: 35.68, longitude: 139.76 };
 const YOKOHAMA = { latitude: 35.44, longitude: 139.64 };
@@ -33,6 +34,7 @@ beforeEach(() => {
   onBackend("GET", WARNINGS, json(NO_WARNINGS));
   onBackend("GET", WBGT, json(NO_WBGT));
   onBackend("GET", FLOOD, json(NO_FLOOD));
+  onBackend("GET", GRID_POINT_TODAY, json({ distance_km: 1 }));
 });
 
 afterEach(() => {
@@ -57,10 +59,11 @@ describe("useWeatherConditions 取得の時機", () => {
     expect(result.current).toMatchObject({ amedas: null, warningBadgeItems: [] });
   });
 
-  it("位置が決まったら、実測・警報・暑さ指数・氾濫予報をその位置で取る", async () => {
+  it("位置が決まったら、実測・最寄りの格子点の今日の値・警報・暑さ指数・氾濫予報をその位置で取る", async () => {
     // どの口も、問い合わせた緯度・経度を値に書いて返す。
     const at = ({ query }: { query: Record<string, string> }) => `${query.latitude},${query.longitude}`;
     onBackend("GET", AMEDAS, (request) => Response.json({ place: at(request) }));
+    onBackend("GET", GRID_POINT_TODAY, (request) => Response.json({ place: at(request) }));
     onBackend("GET", WARNINGS, (request) =>
       Response.json({ warnings: [{ code: "03", name: `警報@${at(request)}`, level: "warning", additions: [] }] }),
     );
@@ -76,6 +79,7 @@ describe("useWeatherConditions 取得の時機", () => {
     const tokyo = `${TOKYO.latitude},${TOKYO.longitude}`;
     await vi.waitFor(() => {
       expect(result.current.amedas).toEqual({ place: tokyo });
+      expect(result.current.gridPointToday).toEqual({ place: tokyo });
       expect(result.current.warningBadgeItems.map((item) => item.label)).toEqual([
         `警報@${tokyo}`,
         `暑さ指数@${tokyo}`,
