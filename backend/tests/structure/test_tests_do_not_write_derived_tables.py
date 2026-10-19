@@ -6,7 +6,6 @@
 
 母集団はソースから導く（`backend/tests`配下の全`.py`の文に現れる、派生の表（`derived_tables()`）への
 `INSERT INTO`・`UPDATE`・`DELETE FROM`）。表の名前を文字列の連結や変数で組み立てた文は拾わない。
-直接書いてよいファイルは下に列挙し、**列挙が古くなったらこのテスト自身が落ちる**ようにしてある。
 """
 
 from __future__ import annotations
@@ -17,11 +16,6 @@ from pathlib import Path
 from app.infrastructure.derived_data_freshness import derived_tables
 
 TESTS_ROOT = Path(__file__).resolve().parent.parent
-
-# 派生の表へ直接書いてよいファイルと、その理由。
-ALLOWED = {
-    "test_declared_constraints.py": "段が書かない行を表の制約が断ることを見る（書いた行は巻き戻す）",
-}
 
 
 def _write_pattern() -> re.Pattern[str]:
@@ -36,17 +30,11 @@ def files_writing_derived_tables(root: Path) -> set[str]:
 
 
 def test_tests_do_not_write_derived_tables() -> None:
-    unexpected = sorted(files_writing_derived_tables(TESTS_ROOT) - ALLOWED.keys())
+    unexpected = sorted(files_writing_derived_tables(TESTS_ROOT))
     assert unexpected == [], (
         "派生の表へ行を直接書いているテストがある（生データを取込の入口から入れ、派生の段を通して作ること。"
         "testing-backend.md パターン8）:\n  " + "\n  ".join(unexpected)
     )
-
-
-def test_allowlist_has_no_stale_entries() -> None:
-    """直接書かなくなったファイルが列挙に残り続けないこと。"""
-    stale = sorted(ALLOWED.keys() - files_writing_derived_tables(TESTS_ROOT))
-    assert stale == [], "派生の表へ書いていないのにALLOWEDへ残っている:\n  " + "\n  ".join(stale)
 
 
 def test_detects_a_direct_write(tmp_path: Path) -> None:

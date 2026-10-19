@@ -3,7 +3,7 @@
 入口は次のとおり。
 - `class_percentages_sql`: 区間ごとのクラス別の画素数から割合の行を返すSQL（PostGISで実行して確かめる）
 - `LandcoverPercentages`: その行を受け取るモデル
-- `LANDCOVER_CLASSES`: クラスの宣言（凡例・区間インスペクタ・集計が読む）。型でも導出でも保証できない不変条件だけを見る
+- `check_landcover_classes`: クラスの宣言を、読む所のどこでも1つのクラスに決まらなければ断る（架空の宣言で見る。本番の宣言は読み込みの時点でこれを通る）
 
 ここで見ないもの:
 - 道の周りの帯から画素を数えること → `test_derive_landcover.py`
@@ -95,12 +95,26 @@ async def test_every_class_in_the_declaration_is_counted_and_the_row_fits_the_mo
         assert getattr(percentages_row, cls.percent_field) == pytest.approx(100.0 * counts.get(cls.value, 0) / total)
 
 
-def test_the_class_declaration_can_be_told_apart_everywhere_it_is_read():
-    """画素値が重なると1つの画素が2クラスに数えられ、割合列の名前が重なると材料の列がぶつかる。
-    表示名・色が重なると凡例と区間インスペクタで見分けられない。"""
-    classes = landcover.LANDCOVER_CLASSES
-    for attribute in ("value", "percent_field", "label", "color"):
-        values = [getattr(cls, attribute) for cls in classes]
-        assert len(set(values)) == len(values), attribute
-    assert all(cls.percent_field.endswith("_percent") for cls in classes)
-    assert not {cls.value for cls in classes} & {NO_DATA, CLOUDS}
+def _class(value=1, field="a_percent", label="甲", color="#000001", description="d") -> landcover.LandcoverClass:
+    return landcover.LandcoverClass(value, field, label, color, description)
+
+
+@pytest.mark.parametrize(
+    "classes",
+    [
+        pytest.param((_class(), _class(field="b_percent", label="乙", color="#000002")), id="画素値が重なる"),
+        pytest.param((_class(), _class(value=2, label="乙", color="#000002")), id="割合列が重なる"),
+        pytest.param((_class(), _class(value=2, field="b_percent", color="#000002")), id="表示名が重なる"),
+        pytest.param((_class(), _class(value=2, field="b_percent", label="乙")), id="色が重なる"),
+        pytest.param((_class(field="a"),), id="割合列が接尾辞で終わらない"),
+        pytest.param((_class(value=CLOUDS),), id="どのクラスでもない画素値"),
+        pytest.param((_class(description=" "),), id="説明が空"),
+    ],
+)
+def test_classes_that_cannot_be_told_apart_where_read_are_refused(classes):
+    with pytest.raises(ValueError, match="土地被覆"):
+        landcover.check_landcover_classes(classes)
+
+
+def test_classes_told_apart_where_read_are_accepted():
+    landcover.check_landcover_classes((_class(), _class(value=2, field="b_percent", label="乙", color="#000002")))

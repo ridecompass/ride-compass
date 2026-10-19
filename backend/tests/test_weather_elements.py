@@ -1,9 +1,9 @@
 """`domain/weather_elements.py`——動的気象の要素の、タイルの仕様・配信の段・段をつないだ時系列の最初のコマ。
 
-入口は`weather_element_tile`・`weather_element_deliveries`・`stage_first_frames`・`forecast_reach`。前半は要素を架空のもので作り、
+入口は`weather_element_tile`・`weather_element_deliveries`・`stage_first_frames`・`forecast_reach`・`check_weather_elements`。前半は要素を架空のもので作り、
 配信要素の宣言`JMA_ELEMENTS`（本番の正本を持つ宣言のデータ）へは架空の配信要素を足して与える。
-後半は差し替えず、本番の宣言`WEATHER_ELEMENTS`の全要素が画面で1つの意味に読めることを見る（型では守れない、
-要素どうしの組の不変条件）。
+要素の並びが画面で1つの意味に読めることは`check_weather_elements`へ架空の並びを与えて見る（本番の宣言`WEATHER_ELEMENTS`は
+読み込みの時点でこれを通る）。
 
 ここで見ないもの:
 - 配信要素ごとのズーム・パス・時刻一覧の読み方 → `test_jma_tile_specs.py`
@@ -14,7 +14,6 @@ import pytest
 from app.domain import weather_elements
 from app.domain.jma_tile_specs import JmaElement, JmaFrame, JmaTileSpec
 from app.domain.weather_elements import (
-    WEATHER_ELEMENTS,
     FrameRule,
     WeatherDelivery,
     WeatherElement,
@@ -114,58 +113,33 @@ def test_each_stage_starts_after_the_last_frame_of_the_stages_before(stages, fir
     assert [None if frame is None else frame.validtime for frame in first_frames] == first_validtimes
 
 
-def test_気象の要素はチップ_名前付きソース_描き方の組で一意() -> None:
-    """同じ組が2件あると、画面では同じソース・レイヤーへ畳まれて片方が黙って消える。"""
-    keys = [(element.group, element.source, element.kind) for element in WEATHER_ELEMENTS]
-    assert len(keys) == len(set(keys))
+def _fetched(source, kind="rasterTile", jma=("t_even10",), label="架空", rule=FrameRule("nearest"), grid=None):
+    return WeatherElement("group", source, kind, jma, label, rule, grid_value=grid)
 
 
-def test_同じ名前付きソースの気象の要素は同じ呼び名を持つ() -> None:
-    """画面は名前付きソース1つを1行として呼ぶ。描き方違いの要素で名前が違うと、どちらを出すか決まらない。"""
-    labels: dict[tuple[str, str], str] = {}
-    for element in WEATHER_ELEMENTS:
-        assert labels.setdefault((element.group, element.source), element.label) == element.label, (
-            f"{element.group}/{element.source}"
-        )
+@pytest.mark.parametrize(
+    "elements",
+    [
+        pytest.param((_fetched("a"), _fetched("a")), id="組が重なる"),
+        pytest.param((_fetched("a"), _fetched("a", "gridMark", (), grid="wind", label="別名")), id="呼び名が食い違う"),
+        pytest.param((_fetched("a"), _fetched("a", "gridMark", (), grid="wind", rule=FrameRule("current"))), id="規則が食い違う"),
+        pytest.param((_fetched("a", "gridMark", ()),), id="段も格子点の値も無い"),
+        pytest.param((_fetched("a", "gridMark", grid="wind"),), id="段と格子点の値の両方"),
+        pytest.param((_fetched("a"), _fetched("a", "gridMark", ("t_points",))), id="配信元から取る要素が重なる"),
+        pytest.param((_fetched("a", "vectorTile"),), id="ベクタのレイヤー名が無い"),
+        pytest.param((_fetched("a", "gridMark", ("undeclared",)),), id="宣言の無い配信要素"),
+    ],
+)
+def test_elements_the_screen_cannot_read_one_way_are_refused(_declared, elements):
+    """画面はレイヤー・行・時系列・配信要素を、チップと名前付きソースから1つに決めて引く。"""
+    with pytest.raises((ValueError, KeyError)):
+        weather_elements.check_weather_elements(elements)
 
 
-def test_タイルで描く気象の要素は配信元の仕様を持つ() -> None:
-    """仕様が無いと画面はズーム範囲を知らずにソースを作ることになる。"""
-    tiled = [element for element in WEATHER_ELEMENTS if element.kind in ("rasterTile", "vectorTile")]
-    assert tiled, "タイルで描く気象の要素が1つも無い"
-    for element in tiled:
-        tile = weather_element_tile(element)
-        assert tile is not None, f"{element.group}/{element.source}"
-        if element.kind == "vectorTile":
-            assert tile.vector_layer is not None, f"{element.group}/{element.source} のベクタのレイヤー名が無い"
-
-
-def test_配信元から取る段はすべて時刻一覧のファイルを持つ() -> None:
-    """ファイルが無いと画面は時刻一覧を取りに行けない。"""
-    for element in WEATHER_ELEMENTS:
-        for delivery in weather_element_deliveries(element):
-            assert delivery.target_times_paths, f"{element.group}/{element.source} の {delivery.element_id}"
-
-
-def test_どの要素も配信元から取る段かMSMの格子点で読む値のどちらか1つを持つ() -> None:
-    """どちらも無いと画面はその要素のコマを作れず、両方あるとどちらから描くか決まらない（配信元の段の読み方は宣言が持ち、
-    宣言が無ければ上のテストの`weather_element_deliveries`が落ちる）。"""
-    for element in WEATHER_ELEMENTS:
-        assert bool(element.jma_elements) != (element.grid_value is not None), f"{element.group}/{element.source}"
-
-
-def test_同じ名前付きソースの気象の要素は同じコマの規則を持つ() -> None:
-    """1つのソースの時刻の段は1本の時系列につながる。規則が違うと、どの規則でコマを選ぶか決まらない。"""
-    rules: dict[tuple[str, str], object] = {}
-    for element in WEATHER_ELEMENTS:
-        key = (element.group, element.source)
-        assert rules.setdefault(key, element.frame_rule) == element.frame_rule, f"{element.group}/{element.source}"
-
-
-def test_配信元から取る気象の要素はチップと名前付きソースで一意() -> None:
-    """画面のデータ層は（チップ, 名前付きソース）から配信要素idを引く。2件あるとどちらを取るか決まらない。"""
-    keys = [(element.group, element.source) for element in WEATHER_ELEMENTS if element.jma_elements]
-    assert len(keys) == len(set(keys))
+def test_elements_read_one_way_are_accepted(_declared):
+    weather_elements.check_weather_elements(
+        (_fetched("a"), _fetched("a", "gridMark", (), grid="wind"), _fetched("b", "vectorTile", ("t_vector",)))
+    )
 
 
 @pytest.mark.parametrize(("element_ids", "words"), [(("t_reach45", "t_reach45b"), "45分"), (("t_reach120",), "2時間")])

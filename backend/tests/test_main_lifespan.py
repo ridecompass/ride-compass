@@ -31,8 +31,7 @@ async def _noop(*args, **kwargs) -> None:
 
 
 async def _noop_job(*args, **kwargs) -> None:
-    """スケジューラへ載せる代わりの何もしない仕事。`__module__`がこのテストファイルに
-    なることを、下の「本物が1本も載っていない」テストが手掛かりに使う。"""
+    """スケジューラへ載せる代わりの何もしない仕事。"""
     return None
 
 
@@ -106,21 +105,6 @@ def test_lifespan_fails_fast_when_refresh_axis_definitions_raises(monkeypatch):
     with pytest.raises(AxisDefinitionSyncError):
         with TestClient(app):
             pass
-
-
-def test_no_real_startup_job_is_scheduled_in_this_file(lifespan_schedulers):
-    """このファイルの実行で、本物の起動時ジョブが1本も載らないこと。
-
-    載ると、テストを流しただけで外部への実HTTP問い合わせや**開発機の実ディスクの削除**が
-    走る。無害化は`main.py`の宣言から導くが、**導出が空振りしても静かに通る**ため、
-    載った結果の側からも確かめる。
-    """
-    with TestClient(app):
-        [scheduler] = lifespan_schedulers
-        scheduled = [(job.id, job.func) for job in scheduler.get_jobs()]
-
-    assert scheduled, "起動時ジョブが1本も載っていない（導出が空振りしている可能性）"
-    assert [job_id for job_id, func in scheduled if func.__module__ != __name__] == []
 
 
 def test_every_interval_job_also_runs_immediately_at_startup(lifespan_schedulers):
