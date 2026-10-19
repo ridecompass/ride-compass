@@ -24,8 +24,8 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.material_catalog import GRADIENT_PERCENT, SURFACE_ESTIMATE
-from app.domain.road_classes import current_road_classes
+from app.domain.material_catalog import GRADIENT_PERCENT
+from app.domain.road_classes import class_material_id, current_road_classes
 from app.domain.traffic import stop_count_material_ids
 from app.domain.tuning import TUNING_PARAMETERS_BY_ID, tuning_value
 from app.domain.wind import kmh_to_ms
@@ -46,10 +46,14 @@ SPEED_SOLVE_ITERATIONS = 12
 #: 画面の所要時間の説明はこの並びを差し込む。方程式に条件を足したら、ここにも足す。
 SEGMENT_SPEED_CONDITIONS: tuple[str, ...] = ("坂", "風", "路面")
 
-# 路面の見込みを持つ材料id。
-ROLLING_RESISTANCE_MATERIAL_ID = SURFACE_ESTIMATE
 #: 基準の転がり抵抗の較正値のid。
 BASE_CRR_ID = "speed.crr"
+
+
+def rolling_resistance_material_id() -> str | None:
+    """走行モデルが転がり抵抗に読む区分の列の材料id（転がり抵抗の表が指す分け方。指していなければNone）。"""
+    key = current_road_classes().rolling_resistance_classification
+    return class_material_id(key) if key is not None else None
 
 
 def travel_model_material_ids() -> tuple[str, ...]:
@@ -59,10 +63,11 @@ def travel_model_material_ids() -> tuple[str, ...]:
     （`evaluation.py: StaticEdgeScoreMatrix`）。軸が分解した材料だけを運ぶ既定に任せると、その軸を
     非公開にした瞬間に所要時間から坂・路面・停止の待ちが静かに消える。
     """
-    return (GRADIENT_PERCENT, ROLLING_RESISTANCE_MATERIAL_ID, *stop_count_material_ids())
+    rolling = rolling_resistance_material_id()
+    return (GRADIENT_PERCENT, *((rolling,) if rolling is not None else ()), *stop_count_material_ids())
 
 
-def crr_for_surface(surface_estimate: CategoricalColumn) -> np.ndarray:
+def crr_for_surface(rolling_classes: CategoricalColumn) -> np.ndarray:
     """路面の見込み（転がり抵抗の表が指す分け方の区分）から、区間ごとの転がり抵抗を返す。
 
     区分の外の道・表に無い区分・宣言に無い較正値のidは、基準の転がり抵抗（`RiderProfile.crr`）にする。
@@ -70,7 +75,7 @@ def crr_for_surface(surface_estimate: CategoricalColumn) -> np.ndarray:
     definitions = current_road_classes()
     ids = definitions.rolling_resistance_classes.get(definitions.rolling_resistance_classification or "", {})
     table = {key: tuning_value(tuning_id) for key, tuning_id in ids.items() if tuning_id in TUNING_PARAMETERS_BY_ID}
-    crr = surface_estimate.lookup(table)
+    crr = rolling_classes.lookup(table)
     return np.where(np.isnan(crr), tuning_value(BASE_CRR_ID), crr)
 
 

@@ -11,7 +11,7 @@ from pydantic import Field, model_validator
 
 from app.domain.axis_definitions import AxisDefinition, BreakpointLinearShape, CategoricalShape
 from app.domain.axis_raw_value import raw_value_unit
-from app.domain.material_catalog import MATERIAL_CATALOG
+from app.domain.material_catalog import material_spec
 from app.domain.route import RouteSegmentDetail
 from app.domain.strict_model import StrictModel
 
@@ -104,7 +104,7 @@ def map_paint(definition: AxisDefinition) -> MapPaint:
         line = cast(BreakpointLinearShape, definition.shape)
         override = definition.display_thresholds_override
         thresholds = list(override) if override is not None else _signed_thresholds_from_breakpoints(line)
-        unit = MATERIAL_CATALOG[value.material].unit
+        unit = spec.unit if (spec := material_spec(value.material)) is not None else ""
         legend = MapLegendScale(boundaries=thresholds, unit=unit)
         return MapPaint(value=value, unit=unit, thresholds=thresholds, legend=legend, band_labels=band_labels)
     thresholds, quantities = _difficulty_thresholds(definition)
@@ -127,7 +127,7 @@ def _map_value(definition: AxisDefinition) -> MapValue:
         and isinstance(shape, BreakpointLinearShape)
         and shape.preprocess == "abs"
         and len(shape.terms) == 1
-        and shape.terms[0].material in MATERIAL_CATALOG
+        and material_spec(shape.terms[0].material) is not None
     ):
         return SignedMaterialMapValue(material=shape.terms[0].material)
     return DifficultyMapValue()
@@ -210,7 +210,7 @@ def _breakpoint_quantities(shape: BreakpointLinearShape) -> list[float]:
     """
     if shape.preprocess != "identity":
         return []
-    specs = [MATERIAL_CATALOG.get(term.material) for term in shape.terms]
+    specs = [material_spec(term.material) for term in shape.terms]
     if all(spec is not None and spec.dtype == "boolean" for spec in specs):
         if len(shape.terms) > _MAX_BOOLEAN_TERMS:
             return []

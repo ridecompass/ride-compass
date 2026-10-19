@@ -258,13 +258,6 @@
     "tile_property": "surface"
   },
   {
-    "material_id": "surface_estimate",
-    "label": "路面の見込み - surface_estimate",
-    "name": "路面の見込み",
-    "value_labels": null,
-    "tile_property": null
-  },
-  {
     "material_id": "highway_is_cycleway",
     "label": "道路種別が自転車専用道 - highway_is_cycleway",
     "name": "道路種別が自転車専用道",

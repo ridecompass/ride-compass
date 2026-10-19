@@ -3,8 +3,7 @@
 入口は`map_paint`1本で、塗る値の種類・材料・単位・段の境界・凡例の目盛り・段の体感ラベルを
 1つの値で返す。段の並びの件数が揃うことは、`MapPaint`が値を作るときに確かめる。
 
-材料カタログは本番の正本を読まず、性質だけを持つ架空の材料へ差し替える（`MATERIAL_CATALOG`。量の単位は
-`domain/axis_raw_value.py`を通るので、そちらの名前空間も差し替える）。
+材料カタログは本番の正本を読まず、性質だけを持つ架空の材料へ差し替える（`domain/material_catalog.py: MATERIAL_CATALOG`）。
 
 ここで見ないもの:
 - 折れ線の得点そのもの（`domain/axis_definitions.py: BreakpointLinearShape.score_at`） → `test_axis_definitions.py`
@@ -13,7 +12,7 @@
 
 import pytest
 
-from app.domain import axis_raw_value, map_paint as map_paint_module
+from app.domain import material_catalog
 from app.domain.axis_definitions import (
     BreakpointLinearShape,
     CategoricalShape,
@@ -58,8 +57,7 @@ CATALOG = {
 
 @pytest.fixture
 def catalog(monkeypatch) -> None:
-    for module in (map_paint_module, axis_raw_value):
-        monkeypatch.setattr(module, "MATERIAL_CATALOG", CATALOG)
+    monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", CATALOG)
 
 
 pytestmark = pytest.mark.usefixtures("catalog")

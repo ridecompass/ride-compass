@@ -131,11 +131,12 @@ async def lifespan(app: FastAPI):
     get_http_client(TILE_PROXY_TIMEOUT)
 
     async with get_session_factory()() as session:
+        # 軸は区分から作る材料（`class:<分け方>`）を指せるので、区分を先に読む。
+        await refresh_road_classes(session)
         # 例外をここで捕捉しないため、軸定義を読めない状態では起動自体が失敗する（fail-fast）。
         await refresh_axis_definitions(AxisDefinitionRepository(session))
         # 較正値は行が1つも無ければ宣言どおりの既定値のまま動く（壊れた値の行だけが起動を止める）。
         await refresh_tuning_values(session)
-        await refresh_road_classes(session)
 
     # 定期ジョブはアプリの寿命の間だけ動くので、スケジューラもこの寿命の中で作る。
     scheduler = AsyncIOScheduler()

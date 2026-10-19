@@ -505,7 +505,6 @@ def _landcover_description(cls: LandcoverClass) -> str:
 #: ずれたときに読む側が材料を見つけられず、黙って欠損として扱う。
 GRADIENT_PERCENT = "gradient_percent"
 WIND_DRAG_RATIO = "wind_drag_ratio"
-SURFACE_ESTIMATE = "surface_estimate"
 ACCIDENT_COUNT_PER_KM_YEAR = "accident_count_per_km_year"
 
 
@@ -759,22 +758,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
                 missing_semantics="unknown",
             ),
     ),
-    SURFACE_ESTIMATE: MaterialSpec(
-        material_id=SURFACE_ESTIMATE,
-        label="路面の見込み",
-        description=(
-            "道の区分のうち、走行モデルの転がり抵抗が読む分け方の区分（路面のタグ・農道林道の等級等から振り分けたもの）。"
-            "どの区分にも入らない道は値を持ちません。"
-        ),
-        dtype="categorical",
-        tile_property=None,
-        primary_attribute=ATTR_SURFACE,
-        source="road_class",
-        coverage=CoverageExcluded(
-            reason="道の区分から都度作る値で、DBに静的な値を持たない",
-            missing_semantics="unknown",
-        ),
-    ),
     # 自転車インフラの分類を、評価軸ではなく材料の側で正規化したフラグ群。軸はこれらを
     # 重み付き線形結合するだけで、タグの読み方を知らない。それぞれ専用のtile_propertyを
     # 持ち、MVTタイルへ焼き込む。
@@ -927,14 +910,39 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
 
 
 
+def material_spec(material_id: str) -> MaterialSpec | None:
+    """材料idの宣言。`MATERIAL_CATALOG`の材料と、道の区分から作る材料（`class:<分け方>`、今の区分の分け方ごとに1つ）を引く。
+    無い材料idにはNoneを返す。"""
+    spec = MATERIAL_CATALOG.get(material_id)
+    if spec is not None:
+        return spec
+    from app.domain.road_classes import class_material_spec  # 区分は材料の宣言を読むので、引くときにだけ読む
+
+    return class_material_spec(material_id)
+
+
+def known_material_spec(material_id: str) -> MaterialSpec:
+    """在ると分かっている材料idの宣言（`material_spec`）。無ければKeyError。"""
+    spec = material_spec(material_id)
+    if spec is None:
+        raise KeyError(material_id)
+    return spec
+
+
+def all_material_specs() -> list[MaterialSpec]:
+    """`MATERIAL_CATALOG`の材料と、今の区分から作る材料の全部。"""
+    from app.domain.road_classes import class_material_specs
+
+    return [*MATERIAL_CATALOG.values(), *class_material_specs()]
+
+
 def is_known_material(material_id: str) -> bool:
-    return material_id in MATERIAL_CATALOG
+    return material_spec(material_id) is not None
 
 
 def material_dtype(material_id: str) -> MaterialDType | None:
-    """材料idのdtype（`MaterialDType`）。未知の材料idにはNoneを返す
-    （呼び出し側は`is_known_material`で存在確認済みの前提だが、念のため例外にはしない）。"""
-    spec = MATERIAL_CATALOG.get(material_id)
+    """材料idのdtype（`MaterialDType`）。無い材料idにはNoneを返す。"""
+    spec = material_spec(material_id)
     return spec.dtype if spec is not None else None
 
 

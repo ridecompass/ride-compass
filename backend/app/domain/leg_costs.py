@@ -25,10 +25,10 @@ from app.domain.axis_definitions import (
     time_scoped_weights,
 )
 from app.domain.cycling_speed import (
-    ROLLING_RESISTANCE_MATERIAL_ID,
     RiderProfile,
     SegmentSpeedModel,
     crr_for_surface,
+    rolling_resistance_material_id,
 )
 from app.domain.difficulty import axis_contributions_at_row, axis_weight_shares_at_row, axis_weighted_sums
 from app.domain.dynamic_materials import DynamicAxisRequestContext, evaluate_dynamic_axis_arrays
@@ -286,7 +286,10 @@ class LegCostComposer:
         take = _row_taker(rows)
         distance_m = take(self._score_matrix.distance_m)
         grade = np.nan_to_num(take(self._static_material_arrays[GRADIENT_PERCENT])) / 100.0
-        surface = self._categorical_material_arrays[ROLLING_RESISTANCE_MATERIAL_ID]
+        rolling = rolling_resistance_material_id()
+        surface = self._categorical_material_arrays.get(rolling) if rolling is not None else None
+        if surface is None:  # 転がり抵抗の表が分け方を指していない: どの区間も基準の転がり抵抗
+            surface = CategoricalColumn(np.zeros(len(self._score_matrix.distance_m), dtype=np.int16), (None,))
         crr = crr_for_surface(surface if rows is None else surface.take(rows))
         model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=self.speed_kmh), grade, crr)
         stops = np.zeros(len(distance_m))

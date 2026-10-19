@@ -17,7 +17,7 @@ import numpy as np
 from pydantic import Field
 
 from app.domain.attributes import CategoricalColumn, MaterialColumn
-from app.domain.material_catalog import MATERIAL_CATALOG, SURFACE_ESTIMATE, MaterialSpec
+from app.domain.material_catalog import CoverageExcluded, MaterialSpec
 from app.domain.strict_model import StrictModel
 
 #: 真偽の事実が「ある」ときの値の綴り。
@@ -186,43 +186,51 @@ def condition_facts(definitions: RoadClassDefinitions) -> set[str]:
 
 
 def classification_materials(definitions: RoadClassDefinitions, classification_key: str) -> set[str]:
-    """分け方が区分を決めるのに読む材料のid（条件の事実と、転がり抵抗の表が指す分け方では`surface_estimate`）。"""
+    """分け方が区分を決めるのに読む材料のid（条件の事実）。"""
     classification = definitions.classifications.get(classification_key)
     if classification is None:
         return set()
-    facts = {fact_key for c in classification.classes.values() for condition in c.conditions for fact_key in condition}
-    if classification_key == definitions.rolling_resistance_classification:
-        facts.add(SURFACE_ESTIMATE)
-    return facts
+    return {fact_key for c in classification.classes.values() for condition in c.conditions for fact_key in condition}
 
 
 def class_material_id(classification_key: str) -> str:
-    """分け方の区分の列の材料のid。区分の列は材料の列と同じ経路で運ぶが、軸から選べる材料（`MATERIAL_CATALOG`）にはしない。"""
+    """分け方の区分の列の材料のid。区分の列は材料の列と同じ経路で運び、軸からも材料として選べる（`class_material_spec`）。"""
     return f"{CLASS_MATERIAL_PREFIX}{classification_key}"
 
 
 def class_columns(
     definitions: RoadClassDefinitions, columns: Mapping[str, MaterialColumn], n: int
 ) -> dict[str, CategoricalColumn]:
-    """分け方ごとの区分の列（鍵は`class_material_id`、値は区分の鍵。どの区分にも入らない道は値なし）。
-
-    転がり抵抗の表が指す分け方の列は、材料`surface_estimate`の列としても置く（指す分け方が無ければ置かず、材料は値なしになる）。"""
+    """分け方ごとの区分の列（鍵は`class_material_id`、値は区分の鍵。どの区分にも入らない道は値なし）。"""
     result: dict[str, CategoricalColumn] = {}
     for key, classification in definitions.classifications.items():
         indices = class_indices(classification, columns, n)
         result[class_material_id(key)] = CategoricalColumn((indices + 1).astype(np.int16), (None, *classification.classes))
-    rolling = definitions.rolling_resistance_classification
-    if rolling is not None and (column := result.get(class_material_id(rolling))) is not None:
-        result[SURFACE_ESTIMATE] = column
     return result
 
 
-def material_with_class_labels(material_id: str) -> MaterialSpec:
-    """材料の宣言。`surface_estimate`は、値（転がり抵抗の表が指す分け方の区分の鍵）の呼び名に今の区分の名前を入れて返す。"""
-    spec = MATERIAL_CATALOG[material_id]
-    if material_id != SURFACE_ESTIMATE:
-        return spec
-    definitions = current_road_classes()
-    classification = definitions.classifications.get(definitions.rolling_resistance_classification or "")
-    labels = {key: c.label for key, c in classification.classes.items()} if classification else {}
-    return spec.model_copy(update={"value_labels": labels})
+def _class_material_spec(key: str, classification: RoadClassification) -> MaterialSpec:
+    return MaterialSpec(
+        material_id=class_material_id(key),
+        label=classification.label,
+        description=classification.description or classification.label,
+        dtype="categorical",
+        tile_property=None,
+        source="road_class",
+        coverage=CoverageExcluded(reason="道の区分から都度作る値で、DBに静的な値を持たない", missing_semantics="unknown"),
+        value_labels={class_key: c.label for class_key, c in classification.classes.items()},
+    )
+
+
+def class_material_spec(material_id: str) -> MaterialSpec | None:
+    """区分から作る材料（`class:<分け方>`）の宣言。今の区分にその分け方が無ければNone。"""
+    if not material_id.startswith(CLASS_MATERIAL_PREFIX):
+        return None
+    key = material_id.removeprefix(CLASS_MATERIAL_PREFIX)
+    classification = current_road_classes().classifications.get(key)
+    return _class_material_spec(key, classification) if classification is not None else None
+
+
+def class_material_specs() -> list[MaterialSpec]:
+    """今の区分の分け方ごとの、区分から作る材料の宣言。"""
+    return [_class_material_spec(key, c) for key, c in current_road_classes().classifications.items()]

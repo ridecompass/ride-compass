@@ -35,7 +35,7 @@ from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 START = datetime(2026, 10, 3, 9, 0)
 CRUISE_KMH = 20.0
 AVOID_MULTIPLIER = 3.0
-SURFACE = leg_costs.ROLLING_RESISTANCE_MATERIAL_ID
+SURFACE = "class:rolling"
 GRADIENT = leg_costs.GRADIENT_PERCENT
 WIND_DRAG = next(iter(leg_costs.REQUEST_DYNAMIC_MATERIAL_IDS))
 STOP_DENSITY = dict(zip(leg_costs.POI_COUNT_KINDS, leg_costs.stop_count_material_ids(), strict=True))

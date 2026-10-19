@@ -11,7 +11,7 @@ OSM由来の道路データ（PBF取込）・警察庁事故データ・土地�
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `road.py`・`attributes.py`・`accident.py`・`stop_place.py`（立ち寄り先の群と、地点を群へ入れる語・同じ店をまとめる距離とチェーンの見分け方・言語違いの同じ場所を連絡先で寄せる群と距離・文化財の所有者から寺社を見分ける語）・`traffic.py`（OSMタグの解釈と分類。停止要因・補給POIの種別、通行方向、道の階級）・`landcover.py`（土地被覆クラス別割合の算出と、数える帯の幅。割合の列の名前の規則。評価軸の材料）・`divided_carriageway.py`（上下線が分かれた道の片側かのしきい値と判定のSQL式、一方通行の材料の値式）・`map_display.py`・`display_palette.py`（地図の束ね方・レイヤーごとの種別と情報源と既定表示と名前と説明と最初に凡例で隠す行・常に出す出典・描く寸法と配色。**本番プロセスは読まず**、`scripts/export_openapi.py`の生成物を経由してだけ画面へ届く。読み方は[地図: 静的レイヤー](../frontend/static-map-layers.md)）（[region.py](routing-engine.md)は別モジュール管轄）・`db_status.py`（本番DBの数を「注意が要るか」へ読むしきい値と判定） |
+| domain | `attributes.py`・`accident.py`・`stop_place.py`（立ち寄り先の群と、地点を群へ入れる語・同じ店をまとめる距離とチェーンの見分け方・言語違いの同じ場所を連絡先で寄せる群と距離・文化財の所有者から寺社を見分ける語）・`traffic.py`（OSMタグの解釈と分類。停止要因・補給POIの種別、通行方向、道の階級）・`landcover.py`（土地被覆クラス別割合の算出と、数える帯の幅。割合の列の名前の規則。評価軸の材料）・`divided_carriageway.py`（上下線が分かれた道の片側かのしきい値と判定のSQL式、一方通行の材料の値式）・`map_display.py`・`display_palette.py`（地図の束ね方・レイヤーごとの種別と情報源と既定表示と名前と説明と最初に凡例で隠す行・常に出す出典・描く寸法と配色。**本番プロセスは読まず**、`scripts/export_openapi.py`の生成物を経由してだけ画面へ届く。読み方は[地図: 静的レイヤー](../frontend/static-map-layers.md)）（[region.py](routing-engine.md)は別モジュール管轄）・`db_status.py`（本番DBの数を「注意が要るか」へ読むしきい値と判定） |
 | services | `region_service.py`・`landcover_tile_service.py`（土地被覆ラスタタイルの配信）・`derived_data_freshness_service.py`（派生データ鮮度台帳）・`tile_version_service.py`（配信するタイル世代の組み立て。形の署名とDBの派生データ・生データの世代から作る）・`derived_data_revision_service.py`（DBの派生データ・生データの世代をTTL付きで読み直す。別コンテナのバッチが書き直したことにbackendが気づく唯一の経路で、タイル世代の組み立て等の配信側が読む）・`db_status_service.py`（本番DBの数を読み、domainの`db_status.py`の判定で注意の印を付けたレポートにする。レポートの型は応答の型を兼ねる） |
 | infrastructure | `vector_tile.py`・`tile_cache.py`・`region_tile_cache.py`（地域タイルのディスクの口。鍵・キャッシュ確認→取得→書き戻しの骨格・旧世代の掃除）・`landcover_raster.py`（土地被覆GeoTIFFの読み取り・再投影・着色）・`source_models.py`（外部ソースの生データを、ソースによらない1つの形で持つ。点・線・ラスタのタイルを同じ骨格へ載せ、取込1回ぶんを`source_runs`が記録する。コードが名指すソース名と取込の状態の綴り［`Source`・`SourceRunStatus`］、ソースごとの生データを読む副問い合わせ、ソースの成功した最新の取込を指す副問い合わせ［`latest_succeeded_run_sql`。派生の基準・取込の範囲はここから読む］、全ソースの成功した最新の取込［`LATEST_SUCCEEDED_RUNS_SQL`。派生の作り直しが記録する］、成功した取込の数［`succeeded_run_count`。生データの世代］もここが持つ）・`derived_models.py`（生データから導いたもの。表は「書く段 × 行の母集団」ごとに分け、どの表も書く段は1つ）・`orm_base.py`（ORMの基底。どのモデルからも辿れる位置に置き、モデル同士がimportで絡まないようにする。全表を載せたmetadata［`declared_metadata`。importの有無で表が欠けないよう、全表を見る側はここを通す。importするモジュールの並び`TABLE_MODULES`の足し忘れは構造テストが落とす］と、派生の表の印［`DERIVED`。鮮度台帳が数える表と材料の式が読む列を持つ表はここから導く］もここが持つ）・`point_tile_layers.py`（点のタイルのレイヤーの宣言。名前・source-layer名・焼き込むSQL。配信・世代の表・生成物はここから組み立てる）・`derived_data_freshness.py`（派生データ鮮度台帳）・`db_status.py`（本番DBの状態＝取込runの最終実行・テーブルの実数と容量・統計とVACUUMの鮮度・接続）・`proj_data.py`（rasterioが参照するPROJデータをrasterio同梱のものへ固定する。別インストールの`proj.db`を掴むとEPSG解決が失敗するため、rasterioのimport前に呼ぶ） |
 | api | `region.py`（路面/点/動的材料/土地被覆タイル・区間インスペクタ）・`_tile_http.py`（タイルの口が共有する座標検証・応答組み立て・レート制限と同時実行の上限）・`derived_data_freshness.py`（`GET /api/admin/derived-data/freshness`、Basic認証必須）・`db_status.py`（`GET /api/admin/db-status`、同） |
@@ -129,15 +129,14 @@ OSMは**行だけを絞り、タグは絞らない**。タグは容量の1.9%し
 材料ではなく道の区分（管理DB。`domain/road_classes.py`）で、地図の線・凡例・除外・転がり抵抗はどれも区分から読む。
 束ねた結果を材料に持たない——束ね方を管理DBで直したとき、材料に焼いた束ね方だけが古いまま残る。
 
-**評価と所要時間が読むのは、材料「路面の見込み」（`surface_estimate`）**。中身は、走行モデルの転がり抵抗が読む分け方
-（`domain/road_classes.py: RoadClassDefinitions.rolling_resistance_classification`）の区分で、道の区分の列から都度作る。
-タグの無い道や農道・林道をどの区分に入れるか（タグの付いた同じ種類の道がほぼ舗装か、舗装も未舗装も多いか）は、その分け方の
-条件が決める。どの区分にも入らない道は値を持たない。
-走行モデルの転がり抵抗は見込みから引く
-（`domain/cycling_speed.py: crr_for_surface`。区分ごとの較正値のidは管理DBの転がり抵抗の表が持ち、値は較正値`speed.crr*`。
-表に無い区分と区分の外の道は基準の転がり抵抗）。
+**評価と所要時間は、道の区分の列を、区分から作る材料（`class:<分け方>`。`domain/material_catalog.py: material_spec`）として読む**。
+区分から作る材料は今の区分の分け方ごとに1つあり、値は区分の鍵で、どの区分にも入らない道は値を持たない。軸の定義は、ほかの材料と同じく
+この材料を指せる。そのため起動の時は、区分を読んでから軸の定義を読む。
+走行モデルの転がり抵抗は、転がり抵抗の表が指す分け方（`domain/road_classes.py: RoadClassDefinitions.rolling_resistance_classification`）の
+区分の列から引く（`domain/cycling_speed.py: crr_for_surface`。区分ごとの較正値のidは管理DBの転がり抵抗の表が持ち、値は較正値`speed.crr*`。
+表に無い区分と区分の外の道、表が分け方を指していないときは、基準の転がり抵抗）。
 路面を舗装／未舗装の2値へ束ねた材料は持たない——2値の材料を置くと、軸と所要時間が同じ道を別の見なしで読む余地ができる。
-舗装質の軸がどの見込みにどの点数を付けるかは、軸の定義（本番DB）が持つ。
+舗装質の軸がどの区分にどの点数を付けるかは、軸の定義（本番DB）が持つ。
 
 ### 面のデータもタイル1枚=1行で持つ（`gsi_dem_tile.py`・`io_lulc_tile.py`）
 
@@ -724,7 +723,6 @@ PBF取込時にしか変わらないため、再訪時の同一タイル再取�
 
 | ファイル | 役割 |
 |---|---|
-| `road.py` | 路面を表すタグの読み方の正準定義（surfaceの区分`SURFACE_CLASSES`、tracktypeの等級`TRACK_GRADES`と、2つを合成した路面の見込み`SURFACE_ESTIMATES`）。材料の値式・PostGIS側MVT生成SQL・地図の表示行・値の呼び名・走行モデルの転がり抵抗が共有する単一ソース |
 | `attributes.py` | `ElevationAttribute`（同じ地形を逆方向に走った値も自分で導く`reversed_as`）・探索が読む材料の配列（`EdgeMaterialArrays`）と標高計算のSQL（[elevation.md](elevation.md)が主に扱う） |
 | `stop_place.py` | 立ち寄り先の群（`StopPlaceGroup`。点のタイルの属性`group`の値）・文化財の所有者から寺社を見分ける語と式・寺社をまとめる距離（`TEMPLE_SHRINE_SUFFIXES`・`temple_shrine_owner_sql`・`HERITAGE_MERGE_RADIUS_M`等）・Overtureの分類の語から群への表と式（`OVERTURE_GROUP_WORDS`・`overture_group_sql`。取込が落とす地点を決める`OVERTURE_GROUPED_WORDS`も）・同じ店をまとめる距離とチェーンの見分け方（`MERGE_RADIUS_M`・`CHAIN_WORDS`・`chain_text_sql`・`chain_sql`）・言語違いの同じ場所を連絡先で寄せる群と距離・日本語の名前か・連絡先の比べる形（`CONTACT_MERGE_RADIUS_M`・`japanese_name_sql`・`contacts_sql`）・表へ入れる地点（`kept_sql`）・ATMの地点の名前の直し（`store_name_sql`）・地点の検索で打った語を群として読む語と判断（`PLACE_GROUP_WORDS`・`queried_group`。使い方は[地点の検索](place-search.md)「引き方」）。配布の列の読み替えは`infrastructure/source_models.py: OVERTURE_PLACES_SOURCE_SQL`・`BUNKA_HERITAGES_SOURCE_SQL`が持つ |
 | `accident.py` | 警察庁の事故を道路へ帰属させ数えるときの判断。生データの列から判定を組み立てるSQL断片・自転車とみなす当事者種別・帰属の距離・重み付けの定数（本票の度分秒の読み取りは取込のアダプタ`npa_honhyo.py`が、本票の列名と当事者種別のコードの読み替えは`infrastructure/source_models.py`の事故の副問い合わせ（全件の`infrastructure/source_models.py: ACCIDENTS_SOURCE_SQL`と範囲で絞る`infrastructure/source_models.py: accidents_within_sql`が共有する）が持つ） |

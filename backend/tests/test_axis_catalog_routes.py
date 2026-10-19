@@ -24,13 +24,12 @@ from app.domain.axis_definitions import (
     MaterialTerm,
 )
 from app.domain.axis_raw_value import RawValueUnits
-from app.domain.material_catalog import MATERIAL_CATALOG, SURFACE_ESTIMATE
+from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.way_value_formula import WayValueFormula, condition_names
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.main import app
 from app.services.region_service import RegionService
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
-from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 
 #: カタログが配る軸。1本ごとに、カタログの別の出し分けを通す性質を持たせる。
 CATALOG_AXES: dict[str, AxisDefinition] = {
@@ -60,7 +59,7 @@ CATALOG_AXES: dict[str, AxisDefinition] = {
     # 分類のshape。地図表示を導出できる。
     "axis_categorical": AxisDefinition(
         axis_id="axis_categorical",
-        shape=CategoricalShape(material=SURFACE_ESTIMATE, mapping={"paved": 0.0, "gravel": 80.0}),
+        shape=CategoricalShape(material="highway", mapping={"primary": 0.0, "track": 80.0}),
         default_weight=0.2,
         label="軸カ",
         is_published=True,
@@ -155,17 +154,9 @@ def test_only_the_published_axes_are_served_without_auth(client):
 
 def test_each_axis_carries_what_the_domain_derives_for_it(client, catalog_axes):
     """導出の入力違いは domain のテストが持つ。ここは軸ごとの欄へ結果が届くことだけを見る。"""
-    rolling = road_classes(
-        {"rolling": classification({"paved": [fact_is("surface", "asphalt")]})},
-        map_layers={"rolling": map_layer()},
-        rolling_resistance_classification="rolling",
-    )
-    with replaced_road_classes(rolling):
-        entries = _entries(client)
+    entries = _entries(client)
 
-    categorical = entries["axis_categorical"]
-    assert categorical["primary_attribute_ids"] == ["surface"]
-    assert (categorical["road_layer_ids"], entries["axis_way_value_scored"]["road_layer_ids"]) == (["rolling"], [])
+    assert entries["axis_categorical"]["primary_attribute_ids"] == ["highway"]
     signed = entries["axis_way_value_signed"]
     assert (signed["map_paint"]["value"], signed["map_paint"]["unit"]) == (
         {"kind": "signed_material", "material": "gradient_percent"},
@@ -242,9 +233,9 @@ def test_get_axis_catalog_includes_material_breakdown(client, catalog_axes):
     assert [entry["material_id"] for entry in night] == ["has_tunnel", "lit"]
     # 分類の材料はルート結果が値ごとの割合を日本語にする対訳を、数値の材料は単位を運ぶ。
     mixed = entries["axis_mixed_terms"]["material_breakdown"]
-    assert [entry["material_id"] for entry in mixed] == ["poi_signal_per_km", SURFACE_ESTIMATE]
+    assert [entry["material_id"] for entry in mixed] == ["poi_signal_per_km", "highway"]
     assert mixed[0]["unit"] == MATERIAL_CATALOG["poi_signal_per_km"].unit
-    assert mixed[1]["value_labels"] == MATERIAL_CATALOG[SURFACE_ESTIMATE].value_labels
+    assert mixed[1]["value_labels"] == MATERIAL_CATALOG["highway"].value_labels
 
 
 def _numbers(value) -> set[float]:
