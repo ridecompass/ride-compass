@@ -302,6 +302,20 @@ async def test_the_next_loops_follow_the_choice_values_changed_in_the_admin_scre
     assert holds(await loops())
 
 
+async def test_the_next_loops_search_turnarounds_within_the_radius_changed_in_the_admin_screen(engine_over, monkeypatch):
+    """管理画面で探す半径の比を狭めると、次の生成から遠くの折返し点が範囲の外になり、周回の候補が減る。"""
+    generator = engine_over(LATTICE)
+
+    async def loop_count():
+        candidates = await generator.generate_loops(
+            lattice_at(0, 0), 12.0, 2.0, max_routes=5, start_time=DEPARTURE, points=NO_POINTS)
+        return len(candidates)
+
+    default_count = await loop_count()
+    monkeypatch.setitem(TUNING_VALUES, "search.turnaround_radius_ratio", 0.1)
+    assert 0 < await loop_count() < default_count
+
+
 async def test_loop_never_drives_against_a_one_way_road(engine_over):
     oneway = {101, 103, 105, 202, 205}  # 東側の横の道（西→東だけ）と東の縦の道（南→北だけ）
     generator = engine_over(grid_network(oneway_ways=oneway))

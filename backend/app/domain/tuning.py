@@ -306,10 +306,46 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         f"{_LOOP_RATIO_MIN_ID}の上限側。{_LOOP_RATIO_MIN_ID}以上にする。",
     ),
     TuningParameter(
+        "search.alternative_max_stretch",
+        "目的地への代わりの道の長さの上限", "倍", 1.3, 1.0, 3.0, TuningEffect.IMMEDIATE,
+        "距離なしで目的地へ向かうとき、合成の費用が最も低い道の長さの何倍までの道を代わりの道の候補にするか。"
+        "上げるほど遠回りの候補が並ぶ。",
+    ),
+    TuningParameter(
+        "search.pareto_distance_quantum_m",
+        "候補の距離を同じとみなす粒度", "m", 200.0, 1.0, 5000.0, TuningEffect.IMMEDIATE,
+        "候補（折返し点・目的地への道の経由のNode）を並べるとき、距離の鍵がこの刻みの中で違うだけなら同じ距離とみなす。細かすぎると"
+        "互いに劣らない候補が全件残って間引けず、粗すぎると候補が減りすぎる。",
+    ),
+    TuningParameter(
+        "search.turnaround_radius_ratio",
+        "距離ありの探索範囲の半径の比", "倍", 0.4, 0.1, 1.0, TuningEffect.IMMEDIATE,
+        "距離ありで道路網を切り出す範囲の半径を、自由に選ぶ部分（目標から置いた点の間の長さを引いた残り）の"
+        "何倍にするか。折返し点の往路はその半分付近にあり、直線ではそれより短いので0.5より小さく置く。"
+        "上げると範囲の面積が二乗で増え、生成の準備の時間とメモリが増える。足りなければ折返し点の候補が欠ける。",
+    ),
+    TuningParameter(
+        "search.distance_tolerance_km",
+        "全長の目標の許容", "km", 5.0, 0.1, 50.0, TuningEffect.IMMEDIATE,
+        "距離ありで、全長が目標からこの長さの中に入る候補だけを返す。折返し点を探す往路の長さの範囲もこの幅から"
+        "決める。要求ごとに上書きできるため、ここで決めるのは省略されたときの値。",
+        shown_to_users=True,
+    ),
+    TuningParameter(
         "search.retrace_penalty_multiplier",
         "走った道を帰りで通る罰", "倍", 8.0, 1.0, 100.0, TuningEffect.IMMEDIATE,
         "帰りを探す間、それまでに走った道（逆向きを含む）の探索の費用に掛ける倍率。1は避けない。"
         "有限なので、走った道を戻るほかに道が無い所（袋小路等）は通れる。",
+    ),
+    # --- 地図の評価 ---
+    # 地図は軸カタログの`way_value_formula`の木でこの幅を読むので、カタログを取り直す（画面を読み込み直す）と効く。
+    # 道ごとの材料のキャッシュは道の勾配と向きだけを持ち、幅を抱えない（予報の値まで求めて配る軸だけは、
+    # `/api/region/way-materials`の応答のブラウザのキャッシュが切れてから効く）。
+    TuningParameter(
+        "gradient.perpendicular_band_deg",
+        "勾配を示さない直角からの幅", "度", 15.0, 0.0, 45.0, TuningEffect.CLIENT_RELOAD,
+        "走る向きに対して直角からこの角度以内の道は、どちら向きに辿るか決まらないため、その向きでの勾配を示さない"
+        "（地図では向きで決まらない道として塗る）。広げるほど勾配を示さない道が増える。",
     ),
     # --- 画面が使う値（カタログ取得でフロントへ配る） ---
     TuningParameter(

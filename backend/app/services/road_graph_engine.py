@@ -777,7 +777,7 @@ class RoadGraphEngine:
         両方の木で帰りと同じ罰を置く。
 
         1. 全Nodeについて経由路長`len_f+len_b`・合成コスト`cost_f+cost_b`をベクトル計算し、
-           合成コスト最小のNode（"最良路"）の長さの`ALTERNATIVE_MAX_STRETCH`倍以内の
+           合成コスト最小のNode（"最良路"）の長さの`domain/route_search.py: alternative_max_stretch`倍以内の
            Nodeだけを候補にする。
         2. 平均difficulty`(合成コスト/経由路長-1)/P`昇順に並べる。ただし最良路のNodeは常に
            先頭へ回す——合成コスト最小であっても、伸び率の許す範囲でより平均difficultyの
@@ -873,7 +873,7 @@ class RoadGraphEngine:
         best_index, candidates = alternative_via_nodes(junction.cost, junction.length_m, reachable)
         best_length_m = float(junction.length_m[best_index])
         # 周回の折返し点選定と同じく、経路長・difficultyのパレート非劣解を先に並べる
-        # （目的地ルートは目標距離を持たずALTERNATIVE_MAX_STRETCH倍以内という上限だけが効くぶん、
+        # （目的地ルートは目標距離を持たず代わりの道の長さの上限（較正値）以内という上限だけが効くぶん、
         # 難易度単独で並べると伸び率上限いっぱいの遠回りが上位を占めやすい）。
         ranking = rank_by_pareto_layers(
             candidates, junction.length_m[candidates], junction.cost[candidates], junction.seconds[candidates],

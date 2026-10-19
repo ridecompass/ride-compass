@@ -24,7 +24,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.domain.route_request import (
     ASSUMED_SPEED_KMH,
-    DEFAULT_DISTANCE_TOLERANCE_KM,
     DEFAULT_MAX_ROUTES,
     MAX_ASSUMED_SPEED_KMH,
     MAX_ROUTE_DISTANCE_KM,
@@ -565,7 +564,6 @@ def main() -> None:
             "max_routes": MAX_ROUTES,
             "default_max_routes": DEFAULT_MAX_ROUTES,
             "default_assumed_speed_kmh": ASSUMED_SPEED_KMH,
-            "default_distance_tolerance_km": DEFAULT_DISTANCE_TOLERANCE_KM,
             # 画面は経由地をこの数まで置け、超える点は置かない。
             "max_waypoints": MAX_WAYPOINTS,
             # 住所の検索の欄が打ちかけで引き始める長さと、打つのが止まってから引くまでの間。口の回数制限はこの間から導く。
