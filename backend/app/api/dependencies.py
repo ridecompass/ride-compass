@@ -57,6 +57,7 @@ from app.services.route_generation_setup import (
     RouteGenerationSetup,
     assemble_route_generation_setup,
 )
+from app.services.road_class_service import RoadClassAdminService
 from app.services.tuning_service import TuningService
 from app.services.warning_service import WarningService
 from app.services.wbgt_service import WbgtService
@@ -247,6 +248,11 @@ async def get_axis_registry_admin_service():
 async def get_tuning_service():
     async with get_session_factory()() as session:
         yield TuningService(session)
+
+
+async def get_road_class_admin_service():
+    async with get_session_factory()() as session:
+        yield RoadClassAdminService(session)
 
 
 async def get_material_coverage_service():

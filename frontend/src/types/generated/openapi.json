@@ -1694,6 +1694,74 @@
         }
       }
     },
+    "/api/admin/road-classes": {
+      "get": {
+        "tags": [
+          "road-class-admin"
+        ],
+        "operationId": "read_road_classes_api_admin_road_classes_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoadClassDefinitions"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "road-class-admin"
+        ],
+        "operationId": "replace_road_classes_api_admin_road_classes_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoadClassDefinitions"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoadClassDefinitions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
     "/api/axis-catalog": {
       "get": {
         "operationId": "get_axis_catalog_api_axis_catalog_get",
@@ -2174,6 +2242,200 @@
         ],
         "title": "AmedasObservation"
       },
+      "AvoidanceClassification": {
+        "properties": {
+          "section_key": {
+            "type": "string",
+            "title": "Section Key"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          },
+          "overrides": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AvoidanceOverride"
+            },
+            "type": "object",
+            "title": "Overrides"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "section_key",
+          "sort_order",
+          "overrides"
+        ],
+        "title": "AvoidanceClassification"
+      },
+      "AvoidanceLevelView": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "avoid",
+              "exclude"
+            ],
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "AvoidanceLevelView"
+      },
+      "AvoidanceOverride": {
+        "properties": {
+          "section_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Key"
+          },
+          "default_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Level"
+          },
+          "selectable": {
+            "type": "boolean",
+            "title": "Selectable"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "section_key",
+          "default_level",
+          "selectable"
+        ],
+        "title": "AvoidanceOverride"
+      },
+      "AvoidanceRowView": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "section": {
+            "type": "string",
+            "title": "Section"
+          },
+          "layer": {
+            "type": "string",
+            "title": "Layer"
+          },
+          "layer_label": {
+            "type": "string",
+            "title": "Layer Label"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "default": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "avoid",
+              "exclude"
+            ],
+            "title": "Default"
+          },
+          "former_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Former Keys"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "section",
+          "layer",
+          "layer_label",
+          "label",
+          "description",
+          "default",
+          "former_keys"
+        ],
+        "title": "AvoidanceRowView"
+      },
+      "AvoidanceSection": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "description",
+          "sort_order"
+        ],
+        "title": "AvoidanceSection"
+      },
+      "AvoidanceSectionView": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "description"
+        ],
+        "title": "AvoidanceSectionView"
+      },
       "AxisCatalogEntry": {
         "properties": {
           "axis_id": {
@@ -2329,6 +2591,9 @@
             },
             "type": "array",
             "title": "Accident Years"
+          },
+          "road_classes": {
+            "$ref": "#/components/schemas/RoadClassCatalog"
           }
         },
         "additionalProperties": false,
@@ -2337,7 +2602,8 @@
           "axes",
           "client_tuning",
           "tile_versions",
-          "accident_years"
+          "accident_years",
+          "road_classes"
         ],
         "title": "AxisCatalogResponse"
       },
@@ -3546,6 +3812,33 @@
         ],
         "title": "Condition"
       },
+      "ConditionTerm": {
+        "properties": {
+          "fact_values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fact Values"
+          },
+          "negated": {
+            "type": "boolean",
+            "title": "Negated"
+          },
+          "matches_absent": {
+            "type": "boolean",
+            "title": "Matches Absent"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "fact_values",
+          "negated",
+          "matches_absent"
+        ],
+        "title": "ConditionTerm"
+      },
       "ConnectionEntry": {
         "properties": {
           "total": {
@@ -4674,6 +4967,31 @@
         ],
         "title": "LatestRunCounts"
       },
+      "LayerTextSlotView": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "axes",
+            "title": "Name"
+          },
+          "before": {
+            "type": "string",
+            "title": "Before"
+          },
+          "after": {
+            "type": "string",
+            "title": "After"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "before",
+          "after"
+        ],
+        "title": "LayerTextSlotView"
+      },
       "MapLegendScale": {
         "properties": {
           "boundaries": {
@@ -5364,6 +5682,173 @@
         "type": "object",
         "title": "RoadAvoidanceOverride"
       },
+      "RoadAvoidanceView": {
+        "properties": {
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/AvoidanceLevelView"
+            },
+            "type": "array",
+            "title": "Levels"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/AvoidanceSectionView"
+            },
+            "type": "array",
+            "title": "Sections"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/AvoidanceRowView"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "levels",
+          "sections",
+          "rows"
+        ],
+        "title": "RoadAvoidanceView"
+      },
+      "RoadClass": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          },
+          "former_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Former Keys"
+          },
+          "conditions": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/ConditionTerm"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Conditions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "description",
+          "sort_order",
+          "former_keys",
+          "conditions"
+        ],
+        "title": "RoadClass"
+      },
+      "RoadClassCatalog": {
+        "properties": {
+          "generation": {
+            "type": "string",
+            "title": "Generation"
+          },
+          "map_layers": {
+            "items": {
+              "$ref": "#/components/schemas/RoadMapLayerView"
+            },
+            "type": "array",
+            "title": "Map Layers"
+          },
+          "avoidance": {
+            "$ref": "#/components/schemas/RoadAvoidanceView"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "generation",
+          "map_layers",
+          "avoidance"
+        ],
+        "title": "RoadClassCatalog"
+      },
+      "RoadClassDefinitions": {
+        "properties": {
+          "classifications": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RoadClassification"
+            },
+            "type": "object",
+            "title": "Classifications"
+          },
+          "map_layers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RoadMapLayer"
+            },
+            "type": "object",
+            "title": "Map Layers"
+          },
+          "rolling_resistance_classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rolling Resistance Classification"
+          },
+          "rolling_resistance_classes": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "minProperties": 1
+            },
+            "type": "object",
+            "title": "Rolling Resistance Classes"
+          },
+          "avoidance_sections": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AvoidanceSection"
+            },
+            "type": "object",
+            "title": "Avoidance Sections"
+          },
+          "avoidance_classifications": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AvoidanceClassification"
+            },
+            "type": "object",
+            "title": "Avoidance Classifications"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "classifications",
+          "map_layers",
+          "rolling_resistance_classification",
+          "rolling_resistance_classes",
+          "avoidance_sections",
+          "avoidance_classifications"
+        ],
+        "title": "RoadClassDefinitions"
+      },
       "RoadClassStretch": {
         "properties": {
           "distance_km": {
@@ -5392,6 +5877,300 @@
           "value"
         ],
         "title": "RoadClassStretch"
+      },
+      "RoadClassTermView": {
+        "properties": {
+          "property": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Property"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Values"
+          },
+          "negated": {
+            "type": "boolean",
+            "title": "Negated"
+          },
+          "matches_absent": {
+            "type": "boolean",
+            "title": "Matches Absent"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "property",
+          "values",
+          "negated",
+          "matches_absent"
+        ],
+        "title": "RoadClassTermView"
+      },
+      "RoadClassView": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "former_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Former Keys"
+          },
+          "conditions": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/RoadClassTermView"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Conditions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "description",
+          "color",
+          "former_keys",
+          "conditions"
+        ],
+        "title": "RoadClassView"
+      },
+      "RoadClassification": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "is_published": {
+            "type": "boolean",
+            "title": "Is Published"
+          },
+          "classes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RoadClass"
+            },
+            "type": "object",
+            "title": "Classes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "description",
+          "is_published",
+          "classes"
+        ],
+        "title": "RoadClassification"
+      },
+      "RoadMapLayer": {
+        "properties": {
+          "group_key": {
+            "type": "string",
+            "title": "Group Key"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          },
+          "icon_key": {
+            "type": "string",
+            "title": "Icon Key"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "panel_hint": {
+            "type": "string",
+            "title": "Panel Hint"
+          },
+          "palette": {
+            "type": "string",
+            "title": "Palette"
+          },
+          "hue_slot": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hue Slot"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tone"
+          },
+          "no_data_fact_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Data Fact Key"
+          },
+          "hides_unclassified": {
+            "type": "boolean",
+            "title": "Hides Unclassified"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "group_key",
+          "sort_order",
+          "icon_key",
+          "summary",
+          "panel_hint",
+          "palette",
+          "hue_slot",
+          "tone",
+          "no_data_fact_key",
+          "hides_unclassified"
+        ],
+        "title": "RoadMapLayer"
+      },
+      "RoadMapLayerView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "data_source": {
+            "type": "string",
+            "enum": [
+              "road_surface",
+              "poi",
+              "accident",
+              "stop_place"
+            ],
+            "title": "Data Source"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "icon": {
+            "type": "string",
+            "title": "Icon"
+          },
+          "description": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Description"
+          },
+          "panel_hint": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/LayerTextSlotView"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Panel Hint"
+          },
+          "hide_missing_rows": {
+            "type": "boolean",
+            "title": "Hide Missing Rows"
+          },
+          "no_data_property": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Data Property"
+          },
+          "classes": {
+            "items": {
+              "$ref": "#/components/schemas/RoadClassView"
+            },
+            "type": "array",
+            "title": "Classes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "data_source",
+          "category",
+          "icon",
+          "description",
+          "panel_hint",
+          "hide_missing_rows",
+          "no_data_property",
+          "classes"
+        ],
+        "title": "RoadMapLayerView"
       },
       "Round": {
         "properties": {

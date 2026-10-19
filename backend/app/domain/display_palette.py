@@ -86,13 +86,19 @@ def ordered_colors(count: int) -> list[str]:
     ]
 
 
+def ordered_ends_phrase(first_label: str, last_label: str) -> str:
+    """順序のある分類の、先頭の行と末尾の行の名前から組む色の向きの文。"""
+    dark, light = ORDERED_END_COLOR_NAMES
+    return f"「{first_label}」ほど{dark}、「{last_label}」ほど{light}"
+
+
 def nominal_colors(hue_slot: int, count: int, tone: str | None) -> list[str]:
     """順序を持たない列挙の1軸ぶん。起点から色相環を行数で等分する。**同じ起点・同じ行数・同じ段なら
-    常に同じ色**（行を足すと、その軸の色は配り直される）。"""
+    常に同じ色**（行を足すと、その軸の色は配り直される）。知らない段は標準の段で塗る。"""
     if not 0 <= hue_slot < NOMINAL_HUE_SLOTS:
         raise ValueError(f"色相の起点は0〜{NOMINAL_HUE_SLOTS - 1}: {hue_slot}")
     start = _NOMINAL_START_HUE_DEG + (360.0 / NOMINAL_HUE_SLOTS) * hue_slot
-    lightness, chroma = _NOMINAL_TONES[tone]
+    lightness, chroma = _NOMINAL_TONES.get(tone, _NOMINAL_TONES[None])
     return [_fit_chroma(lightness, chroma, start + 360.0 * i / count) for i in range(count)]
 
 

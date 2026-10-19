@@ -516,6 +516,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/road-classes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["read_road_classes_api_admin_road_classes_get"];
+        put: operations["replace_road_classes_api_admin_road_classes_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/axis-catalog": {
         parameters: {
             query?: never;
@@ -683,6 +699,76 @@ export interface components {
             weather_code: number | null;
             valid_area: components["schemas"]["ValidArea"] | null;
         };
+        /** AvoidanceClassification */
+        AvoidanceClassification: {
+            /** Section Key */
+            section_key: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Overrides */
+            overrides: {
+                [key: string]: components["schemas"]["AvoidanceOverride"];
+            };
+        };
+        /** AvoidanceLevelView */
+        AvoidanceLevelView: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "pass" | "avoid" | "exclude";
+            /** Label */
+            label: string;
+        };
+        /** AvoidanceOverride */
+        AvoidanceOverride: {
+            /** Section Key */
+            section_key: string | null;
+            /** Default Level */
+            default_level: string | null;
+            /** Selectable */
+            selectable: boolean;
+        };
+        /** AvoidanceRowView */
+        AvoidanceRowView: {
+            /** Key */
+            key: string;
+            /** Section */
+            section: string;
+            /** Layer */
+            layer: string;
+            /** Layer Label */
+            layer_label: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /**
+             * Default
+             * @enum {string}
+             */
+            default: "pass" | "avoid" | "exclude";
+            /** Former Keys */
+            former_keys: string[];
+        };
+        /** AvoidanceSection */
+        AvoidanceSection: {
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Sort Order */
+            sort_order: number;
+        };
+        /** AvoidanceSectionView */
+        AvoidanceSectionView: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+        };
         /** AxisCatalogEntry */
         AxisCatalogEntry: {
             /** Axis Id */
@@ -733,6 +819,7 @@ export interface components {
             };
             /** Accident Years */
             accident_years: number[];
+            road_classes: components["schemas"]["RoadClassCatalog"];
         };
         /** AxisDefinition */
         AxisDefinition: {
@@ -1059,6 +1146,15 @@ export interface components {
              * @enum {string}
              */
             name: "bearing_deg" | "speed_kmh";
+        };
+        /** ConditionTerm */
+        ConditionTerm: {
+            /** Fact Values */
+            fact_values: string[];
+            /** Negated */
+            negated: boolean;
+            /** Matches Absent */
+            matches_absent: boolean;
         };
         /** ConnectionEntry */
         ConnectionEntry: {
@@ -1400,6 +1496,18 @@ export interface components {
             /** Item Count */
             item_count: number | null;
         };
+        /** LayerTextSlotView */
+        LayerTextSlotView: {
+            /**
+             * Name
+             * @constant
+             */
+            name: "axes";
+            /** Before */
+            before: string;
+            /** After */
+            after: string;
+        };
         /** MapLegendScale */
         MapLegendScale: {
             /** Boundaries */
@@ -1633,12 +1741,159 @@ export interface components {
         RoadAvoidanceOverride: {
             [key: string]: "pass" | "avoid" | "exclude";
         };
+        /** RoadAvoidanceView */
+        RoadAvoidanceView: {
+            /** Levels */
+            levels: components["schemas"]["AvoidanceLevelView"][];
+            /** Sections */
+            sections: components["schemas"]["AvoidanceSectionView"][];
+            /** Rows */
+            rows: components["schemas"]["AvoidanceRowView"][];
+        };
+        /** RoadClass */
+        RoadClass: {
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Former Keys */
+            former_keys: string[];
+            /** Conditions */
+            conditions: {
+                [key: string]: components["schemas"]["ConditionTerm"];
+            }[];
+        };
+        /** RoadClassCatalog */
+        RoadClassCatalog: {
+            /** Generation */
+            generation: string;
+            /** Map Layers */
+            map_layers: components["schemas"]["RoadMapLayerView"][];
+            avoidance: components["schemas"]["RoadAvoidanceView"];
+        };
+        /** RoadClassDefinitions */
+        RoadClassDefinitions: {
+            /** Classifications */
+            classifications: {
+                [key: string]: components["schemas"]["RoadClassification"];
+            };
+            /** Map Layers */
+            map_layers: {
+                [key: string]: components["schemas"]["RoadMapLayer"];
+            };
+            /** Rolling Resistance Classification */
+            rolling_resistance_classification: string | null;
+            /** Rolling Resistance Classes */
+            rolling_resistance_classes: {
+                [key: string]: {
+                    [key: string]: string;
+                };
+            };
+            /** Avoidance Sections */
+            avoidance_sections: {
+                [key: string]: components["schemas"]["AvoidanceSection"];
+            };
+            /** Avoidance Classifications */
+            avoidance_classifications: {
+                [key: string]: components["schemas"]["AvoidanceClassification"];
+            };
+        };
         /** RoadClassStretch */
         RoadClassStretch: {
             /** Distance Km */
             distance_km: number;
             /** Value */
             value: string | boolean | null;
+        };
+        /** RoadClassTermView */
+        RoadClassTermView: {
+            /** Property */
+            property: string | null;
+            /** Values */
+            values: string[];
+            /** Negated */
+            negated: boolean;
+            /** Matches Absent */
+            matches_absent: boolean;
+        };
+        /** RoadClassView */
+        RoadClassView: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Color */
+            color: string | null;
+            /** Former Keys */
+            former_keys: string[];
+            /** Conditions */
+            conditions: components["schemas"]["RoadClassTermView"][][];
+        };
+        /** RoadClassification */
+        RoadClassification: {
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Is Published */
+            is_published: boolean;
+            /** Classes */
+            classes: {
+                [key: string]: components["schemas"]["RoadClass"];
+            };
+        };
+        /** RoadMapLayer */
+        RoadMapLayer: {
+            /** Group Key */
+            group_key: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Icon Key */
+            icon_key: string;
+            /** Summary */
+            summary: string;
+            /** Panel Hint */
+            panel_hint: string;
+            /** Palette */
+            palette: string;
+            /** Hue Slot */
+            hue_slot: number | null;
+            /** Tone */
+            tone: string | null;
+            /** No Data Fact Key */
+            no_data_fact_key: string | null;
+            /** Hides Unclassified */
+            hides_unclassified: boolean;
+        };
+        /** RoadMapLayerView */
+        RoadMapLayerView: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Data Source
+             * @enum {string}
+             */
+            data_source: "road_surface" | "poi" | "accident" | "stop_place";
+            /** Category */
+            category: string;
+            /** Icon */
+            icon: string;
+            /** Description */
+            description: string[];
+            /** Panel Hint */
+            panel_hint: (string | components["schemas"]["LayerTextSlotView"])[];
+            /** Hide Missing Rows */
+            hide_missing_rows: boolean;
+            /** No Data Property */
+            no_data_property: string | null;
+            /** Classes */
+            classes: components["schemas"]["RoadClassView"][];
         };
         /** Round */
         Round: {
@@ -3155,6 +3410,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TuningParameterView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_road_classes_api_admin_road_classes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoadClassDefinitions"];
+                };
+            };
+        };
+    };
+    replace_road_classes_api_admin_road_classes_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoadClassDefinitions"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoadClassDefinitions"];
                 };
             };
             /** @description Validation Error */

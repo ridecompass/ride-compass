@@ -74,6 +74,7 @@ export function catalogResponse(
     client_tuning: {},
     tile_versions: {},
     accident_years: [],
+    road_classes: { generation: "", map_layers: [], avoidance: { levels: [], sections: [], rows: [] } },
     ...overrides,
   };
 }
