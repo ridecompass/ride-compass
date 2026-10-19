@@ -42,15 +42,15 @@ import RouteProfile from "./RouteProfile";
 
 const ENTRIES = [catalogEntry({ axis_id: "axis_a", label: "坂" }), catalogEntry({ axis_id: "axis_b", label: "路面" })];
 const CATALOG = catalogOf(ENTRIES);
-const SURFACE_CLASSES = [
+const SURFACE_ROAD_CLASSES = [
   roadClass("paved", { label: "舗装", color: "#111111" }),
   roadClass("gravel", { label: "砂利・未舗装", color: "#222222" }),
 ];
 const ROAD_LAYERS = [
-  roadMapLayer("surface", { label: "路面の種類", no_data_property: "surface", classes: SURFACE_CLASSES }),
+  roadMapLayer("surface", { label: "路面の種類", no_data_property: "surface", classes: SURFACE_ROAD_CLASSES }),
   roadMapLayer("tunnel", { label: "トンネル", classes: [roadClass("tunnel", { label: "トンネル" })] }),
 ];
-const surfaceColor = (key: string) => SURFACE_CLASSES.find((roadClass) => roadClass.key === key)!.color;
+const surfaceColor = (key: string) => SURFACE_ROAD_CLASSES.find((roadClass) => roadClass.key === key)!.color;
 
 beforeEach(() => {
   serveAxisCatalog(catalogResponse(ENTRIES, { road_classes: roadClassCatalog({ map_layers: ROAD_LAYERS }) }));
