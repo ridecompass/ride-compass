@@ -25,8 +25,6 @@ interface WeatherPanelProps {
 }
 
 // 常設ヘッダーは数値予報モデルの計算値ではなく最寄りアメダス観測所の実測値のみで構成する。
-// TodayOutlook（「今日」のパネル、MSMの計算値）とは独立にフェッチするため、モデル側の
-// 障害・遅延から表示が影響を受けない。
 //
 // アメダスは観測専用APIのため、降水確率・天気は含まれない。代わりに:
 // - 降水確率 → 実測の10分間降水量（precipitation_10min_mm）
@@ -34,11 +32,18 @@ interface WeatherPanelProps {
 //   導いた天気コード（weather_code）
 // - 突風 → アメダスの速報値レスポンスに突風フィールドが存在しないため非表示
 //
-// 日の出/日没は1日1個の値のため、このバーではなく「今日」パネル（TodayOutlook）が持つ
-// ——バーは走行中に何度も見る瞬間値だけに絞る。
+// 日の出/日没は1日1個の値のため、バーには並べず、押すと開くパネルにだけ出す——バーは走行中に何度も見る瞬間値だけに
+// 絞る。日の出/日没は観測ではなく地点の天文計算の値なので、観測の表とは分けて置く。
 //
 // 観測であること・観測所名・観測の時刻と、数値ごとの意味は、バーを押すと開くパネルに出す。390pxの幅ではヘッダーに
 // 足す余地が無く、バーへ並べると右の警報のバッジが画面の外へ押し出される。
+/** 日の出・日没の時刻（JST）。壊れた値は「--:--」にして行ごと落とさない。 */
+function formatClockTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "--:--";
+  return formatJstHourMinute(date);
+}
+
 function isCurrentlyDay(twilight: AmedasObservation["twilight"]): boolean {
   if (twilight === null) return true;
   const now = Date.now();
@@ -198,9 +203,15 @@ export default function WeatherPanel({ amedas, loading, error, mapBearingDeg }: 
             </div>
           ))}
         </dl>
-        <p className={cn(textVariants({ variant: "note" }), "mt-1")}>
-          最寄りの観測所で測った値です。「今日」はモデルの計算値で、この観測とは別のものです。
-        </p>
+        <p className={cn(textVariants({ variant: "note" }), "mt-1")}>最寄りの観測所で測った値です。</p>
+        {amedas.twilight !== null && (
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 border-t border-[var(--color-border)] pt-2 text-[length:var(--font-size-sm)]">
+            <dt className="text-[var(--color-muted)]">日の出・日没</dt>
+            <dd className="m-0 tabular-nums">
+              {formatClockTime(amedas.twilight.sunrise)}〜{formatClockTime(amedas.twilight.sunset)}
+            </dd>
+          </dl>
+        )}
       </PopoverContent>
     </Popover>
   );

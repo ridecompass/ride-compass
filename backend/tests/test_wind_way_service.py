@@ -60,13 +60,10 @@ def _wind_uv(latitudes, longitudes, hour_index):
 def _patch_msm(monkeypatch, times: list[str] = TIMES) -> None:
     async def read_series(latitudes, longitudes):
         u, v = zip(*(_wind_uv(latitudes, longitudes, h) for h in range(len(times))))
-        count = len(latitudes)
         return MsmSeries(
             times=[datetime.fromisoformat(t) for t in times],
             wind_u_ms=np.stack(u, axis=1),
             wind_v_ms=np.stack(v, axis=1),
-            precipitation_mm=np.zeros((count, len(times))),
-            temperature_c=np.full((count, len(times)), 20.0),
         )
 
     monkeypatch.setattr(msm_client, "read_series", read_series)

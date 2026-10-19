@@ -7,7 +7,6 @@
 - 風の材料を道・区間へ配る評価器（`domain/dynamic_materials.py`） → `test_wind_way_service.py`・`test_leg_costs.py`
 - タイルの道へ予報を引く配信 → `test_wind_way_service.py`
 - 探索の時刻ビンと区間の風（`SegmentWind`） → `test_leg_costs.py`・`test_route_generation_behavior.py`
-- 地図の風の格子点（`domain/wind_grid.py`） → `test_wind_grid.py`
 """
 
 import math

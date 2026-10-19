@@ -138,31 +138,18 @@ export function readJmaTileUrl(url: string): JmaTileRef | null {
   return null;
 }
 
-/** 配信元が地点をGeoJSONで配る段の記号の大きさを決めるプロパティ。配信元は地点ごとの強弱を
- * 持たないため、gridMarkのicon-size式が必須で参照するこのプロパティへ固定値を入れる。描き方の宣言
- * （`features/map/scene/groups/weather.ts`）もこの定数を参照する。 */
-export const JMA_POINT_VALUE_PROPERTY = "value";
-
-/** そのコマの地物（落雷の地点・線状降水帯の雨域等）。どの地物にも記号の大きさを決める値を足す（線・面には効かない）。
- * 失敗（配信元の404を含む）はそのまま投げる——取るコマは配信の遅れのぶん前へずらしてあり（`jmaFramesOf`）、配信済みの
+/** そのコマの地物（落雷の地点・線状降水帯の雨域等）。失敗（配信元の404を含む）はそのまま投げる——取るコマは配信の遅れのぶん前へずらしてあり（`jmaFramesOf`）、配信済みの
  * コマは地物が無くても空の集まりで返るので、404は取れていないことを表す。 */
-export async function fetchJmaGeojson(
+export function fetchJmaGeojson(
   delivery: JmaDelivery,
   frame: JmaFrame,
   label: string,
 ): Promise<GeoJSON.FeatureCollection> {
-  const geojson = await fetchJson<GeoJSON.FeatureCollection>(jmaFrameUrl(delivery, frame), {
+  return fetchJson<GeoJSON.FeatureCollection>(jmaFrameUrl(delivery, frame), {
     timeoutMs: API_TIMEOUT_MS.default,
     category: "api:jma-geojson",
     errorLabel: label,
   });
-  return {
-    ...geojson,
-    features: geojson.features.map((feature) => ({
-      ...feature,
-      properties: { ...feature.properties, [JMA_POINT_VALUE_PROPERTY]: 1 },
-    })),
-  };
 }
 
 /** 時刻一覧の1行。 */

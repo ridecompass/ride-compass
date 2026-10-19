@@ -19,7 +19,7 @@ export function downwindDeg(windFromDeg: number): number {
 }
 
 /** 気象の風向を、`mapBearingDeg`（地図の上が真北から時計回りに何度か）だけ回った地図の上で風が吹いていく向き
- * （画面の上=0・時計回り）へ。画面に置く風の矢印（走りの帯・天気欄）は、地図の上の風の矢印と同じくこの基準で向ける。 */
+ * （画面の上=0・時計回り）へ。画面に置く風の矢印（走りの帯・天気欄）はこの基準で向ける。 */
 export function downwindOnMapDeg(windFromDeg: number, mapBearingDeg: number): number {
   return normalizeDeg(downwindDeg(windFromDeg) - mapBearingDeg);
 }

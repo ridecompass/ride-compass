@@ -29,7 +29,6 @@ export function catalogEntry(overrides: EntryOverrides = {}): AxisCatalogEntry {
     default_weight: 0,
     icon_id: null,
     primary_attribute_ids: [],
-    weather_layer_groups: [],
     map_paint: {
       value: { kind: "difficulty" },
       unit: "",

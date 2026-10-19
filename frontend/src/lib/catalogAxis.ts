@@ -33,8 +33,6 @@ export interface CatalogAxis {
   materialBreakdown: readonly AxisMaterialBreakdown[];
   /** 軸が読む材料の一次属性id（地図のレイヤーを持つものは、レイヤーの名前と同じ）。 */
   primaryAttributeIds: readonly string[];
-  /** 軸の材料の元データを描く気象のチップ（一次属性を持たない動的な材料の分）。 */
-  weatherLayerGroups: readonly string[];
   /** 道の値を求めるのに要る走る条件（走行方位・想定速度・出発時刻）。条件で値の変わる軸だけが持ち、ほかは空。 */
   wayValueConditions: readonly WayValueCondition[];
   /** 重みが効く時間帯。`always`以外の軸は、その時間帯に通る区間でだけ効く。 */
@@ -73,7 +71,6 @@ export function catalogAxisFromEntry(axis: AxisCatalogEntry): CatalogAxis {
       valueLabels: entry.value_labels,
     })),
     primaryAttributeIds: axis.primary_attribute_ids,
-    weatherLayerGroups: axis.weather_layer_groups,
     wayValueConditions: axis.dynamic_way_value_conditions,
     timeScope: axis.time_scope,
     paintsSurroundingRoads: axis.way_value_formula !== null,

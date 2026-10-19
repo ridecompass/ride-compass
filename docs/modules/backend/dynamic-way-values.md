@@ -14,7 +14,7 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `wind.py`・`wind_grid.py`・`gradient.py`・`rain.py`（雨の材料の宣言——窓の長さの一覧——と、1時間雨量の履歴から材料の値を求める計算・配ってよい履歴の古さ）・`dynamic_way_values.py`（要求の条件の組み立てと、フィーチャーの材料から地図が塗る値への写しと、地図へ配る軸の式の木と道ごとの材料）・`way_value_formula.py`（中立の式の木の型と、numpyでの評価） |
+| domain | `wind.py`・`gradient.py`・`rain.py`（雨の材料の宣言——窓の長さの一覧——と、1時間雨量の履歴から材料の値を求める計算・配ってよい履歴の古さ）・`dynamic_way_values.py`（要求の条件の組み立てと、フィーチャーの材料から地図が塗る値への写しと、地図へ配る軸の式の木と道ごとの材料）・`way_value_formula.py`（中立の式の木の型と、numpyでの評価） |
 | services | `wind_way_service.py`・`gradient_way_service.py`・`rain_way_service.py`・`feature_midpoints.py`（配信サービスが、タイル内のフィーチャーの値をDBから引き、DB障害・取込範囲外・空のタイルを同じ形でログの欄へ記録する口と、地点の値を引く配信サービスが中ほどを鍵と緯度・経度の配列で引く口）・`feature_materials.py`（タイルのフィーチャーごとの材料と、道1本のフィーチャーごとの区間の材料を読み、ディスクへ持つ）・`dedicated_way_values.py`（材料→配信の実装の表、軸の葉の材料から実装を選ぶこと、タイルの材料とサービスの値を1回ずつ引いて軸ごとの値を求める口——地図のレンズと区間インスペクタが使う——、地図のレンズ） |
 | infrastructure | `dynamic_way_value_cache.py`（配信サービスの値は勾配のみ。ディスク経由）・`feature_material_cache.py`（タイルのフィーチャーごとの材料と区間の材料。ディスク経由）・`tile_persistent_cache.py`（呼び出し元が設計したタプルの鍵でPythonオブジェクトを置く汎用のディスクキャッシュ。`diskcache`の包み） |
 | api | `region.py`（`GET /api/region/way-materials/{axis_id}/...`）・`dependencies.py`（`get_dedicated_way_value_service`・`get_axis_inspector_service`） |

@@ -106,8 +106,7 @@ HTTPステータスが`message`に入るのは、応答に`detail`が無い（JS
   「まだ取りに行っていない」として見せたい取得（地図のチップの取得状態）は、フックが無効の間だけ未取得を返す。
 - **キーをまたいで前の値を使う取得は、refを持たずキャッシュから引く**。`useQuery`の`placeholderData: keepPreviousData`は
   1つの観測者の前のキーの値を渡すが、`useQueries`は観測者をキーで対応付けるため、キーが変わった観測者に前の値を
-  渡さない（`query-core/src/queriesObserver.ts: #findMatchingObservers`）。取り損ねた地点を前の格子で補う取得は、同じ
-  種類のキーのうち最後に届いた値を引き（`features/map/useWeatherGrid.ts`）、件数が実行時に変わる取得で取り直しの間に
+  渡さない（`query-core/src/queriesObserver.ts: #findMatchingObservers`）。件数が実行時に変わる取得で取り直しの間に
   前の値を残すものは、全体を1つのキーで取ってその中で要素ごとの答えを`fetchQuery`で引く
   （`features/map/useWayMaterials.ts`）。
 - テストでは、取得の結果は区切り（`setTimeout(0)`、`query-core/src/notifyManager.ts`）ごとに購読者へ届く。応答を
@@ -329,9 +328,6 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 走る向き（地図の上の向きを丸めずに[0, 360)へ寄せた値。走行中は実際に走る向き。`features/map/view/useMapView.ts: wayConditions`）。出発時刻は`features/conditions/useDepartureTime.ts: at`、想定速度は`useRideConditions.ts: speedKmh`（いずれも地図右上の条件アイコン列`features/conditions/RideConditionBar/RideConditionBar.tsx`で操作し、生成リクエストの`start_time`/`assumed_speed_kmh`と地図の式の条件`speed_kmh`へ同じ値が乗る）
   │
   ├─→ 風:   [時刻]出発時刻（useDepartureTime由来）
-  │           │
-  │           ├─→ 環境: 矢印のみ（showWindVector = layerVisibility.windVector）。走行方位に
-  │           │     依存する面塗りは持たない（[地図: 動的気象レイヤー](dynamic-weather-layers.md)参照）
   │           └─→ 評価軸（線）: レンズがその軸を指している間だけ（下記の共通経路）
   │
   └─→ 勾配: （時刻非依存）

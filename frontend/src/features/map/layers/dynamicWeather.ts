@@ -1,4 +1,4 @@
-// 動的気象レイヤー（時刻で中身が変わる格子・タイルのレイヤー）のデータ層。共通の契約（格子の共有・表現の種類・
+// 動的気象レイヤー（時刻で中身が変わるタイル・地物のレイヤー）のデータ層。共通の契約（表現の種類・
 // 時刻の1本のスライダー・データの差はデータ層で吸収）と、要素を足す手順は
 // docs/modules/frontend/dynamic-weather-layers.mdが持つ。
 
@@ -22,7 +22,7 @@ type TileRenderPayload = { kind: TileRenderKind; tileUrlTemplate: string };
 /** 1コマの描画内容。表示層はkindだけで描き方を決める（どの配信元由来かはデータ層が吸収済み）。
  * GeoJSONの`outline`は配信元が配る領域の輪郭線で、属性は読まず線として描くだけ。 */
 export type DynamicWeatherRenderPayload =
-  TileRenderPayload | { kind: "gridFill" | "gridMark" | "outline"; geojson: GeoJSON.FeatureCollection };
+  TileRenderPayload | { kind: "gridMark" | "outline"; geojson: GeoJSON.FeatureCollection };
 
 /** 配信元のタイルで描く描き方か。 */
 export function isTileRenderKind(kind: DynamicWeatherRenderPayload["kind"]): kind is TileRenderKind {
@@ -83,36 +83,9 @@ export function observationIndexForTime(
   return frameIndexForTime(frames, target);
 }
 
-/** 格子点のうち値が取れた点だけを地物にする（1点の欠けで全体を落とさない）。 */
-export function gridToFeatureCollection<TPoint, TValue, TGeometry extends GeoJSON.Geometry, TProps>(
-  grid: readonly TPoint[],
-  extract: (point: TPoint) => TValue | null,
-  buildFeature: (point: TPoint, value: TValue) => GeoJSON.Feature<TGeometry, TProps>,
-): GeoJSON.FeatureCollection<TGeometry, TProps> {
-  const features: GeoJSON.Feature<TGeometry, TProps>[] = [];
-  for (const point of grid) {
-    const value = extract(point);
-    if (value == null) continue;
-    features.push(buildFeature(point, value));
-  }
-  return { type: "FeatureCollection", features };
-}
-
-/** 格子点を中心とする1辺`spacingDeg`の正方形（閉じたリング）。 */
-export function gridCellRing(latitude: number, longitude: number, spacingDeg: number): GeoJSON.Position[] {
-  const half = spacingDeg / 2;
-  return [
-    [longitude - half, latitude - half],
-    [longitude + half, latitude - half],
-    [longitude + half, latitude + half],
-    [longitude - half, latitude + half],
-    [longitude - half, latitude - half],
-  ];
-}
-
 /** 描く中身が、配信元のタイルが返らなくなっているコマを指すか。`failures`は配信要素→失敗したコマのテンプレート
- * （`jmaTileProtocol.ts: jmaTileFailures`）。コマが進んで別のテンプレートを指せば当たらない。自前で取る表現は
- * フェッチ自身が状態を持つので対象外。 */
+ * （`jmaTileProtocol.ts: jmaTileFailures`）。コマが進んで別のテンプレートを指せば当たらない。地物（GeoJSON）の表現は
+ * 取得自身が状態を持つので対象外。 */
 export function pointsAtFailedTiles(
   payload: DynamicWeatherRenderPayload | undefined,
   failures: ReadonlyMap<string, string>,

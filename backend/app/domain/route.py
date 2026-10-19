@@ -50,17 +50,11 @@ class Coordinates(StrictModel):
 
 
 class SegmentWind(StrictModel):
-    """区間の評価に使った風。
-
-    `forecast_at`はその予報の時刻（JSTのローカル時刻、分まで）。風の時別予報が無く出発時点の
-    値を使ったときはNone。`extended`は、予報を追える範囲（レグごとの時刻ビンの本数・予報の期間）の
-    先で、最後に追った時刻の予報をそのまま使った区間。
-    """
+    """区間の評価に使った風。`forecast_at`はその計算値の時刻（JSTのローカル時刻、分まで）。"""
 
     speed_ms: float
     direction_deg: float
-    forecast_at: str | None = None
-    extended: bool = False
+    forecast_at: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +127,9 @@ class RouteSegmentDetail(StrictModel):
     # 重み>0の公開軸が参照する材料id→値。評価に使っていない軸の材料は出ない。
     material_values: dict[str, float] = Field(default_factory=dict)
     difficulty: float | None = None
-    # この区間の評価に使った風（到達予想の時刻に通るとして引いた予報）。風を持たない生成ではNone。
+    # この区間の評価に使った風（到達予想の時刻に通るとして引いた計算値）。風を持たない生成と、計算値を追える範囲（レグごとの
+    # 時刻ビンの本数・計算値の期間）の先や出発時点の値で評価した区間ではNone——これらは評価に使うが、値を出すと予報業務の許可が
+    # 要る形になる（docs/architecture/data-sources.md「気象業務法の予報業務許可」節）。
     wind: SegmentWind | None = None
     # 道の区分のレイヤのid→区間の始まりから並べた、値が同じまま続く部分。部分の距離の和は区間の距離と丸めの分だけずれうる。
     road_classes: dict[str, list[RoadClassStretch]]

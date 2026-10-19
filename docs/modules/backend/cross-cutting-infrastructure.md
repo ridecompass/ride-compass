@@ -109,9 +109,9 @@ FastAPI(lifespan=lifespan)
         │       （interval=jma_tile_prewarm_interval_minutes分＋next_run_time=nowで
         │       同様に起動直後にも即時実行、[動的気象レイヤー](weather-dynamic-layers.md)
         │       「定期プリウォーム」節参照）
-        ├─ (5) 同じくAPSchedulerで気象庁MSM（風・降水の予報）の.omファイル定期同期ジョブを
+        ├─ (5) 同じくAPSchedulerで気象庁MSM（風の予報）の.omファイル定期同期ジョブを
         │       登録（interval=msm_sync_interval_minutes分＋next_run_time=now。初回は
-        │       ローカルにファイルが無く、完了するまで風グリッド・ルート評価の風が使えない）
+        │       ローカルにファイルが無く、完了するまでルート評価と地図の道ごとの風が使えない）
         ├─ (6) 同じくAPSchedulerでディスク永続キャッシュの旧世代掃除ジョブを登録
         │       （trigger="date"で起動直後に1回だけ。世代を上げたデプロイの直後がこの
         │       タイミングに当たる、.claude/rules/caching-retention.md「無効化」参照）

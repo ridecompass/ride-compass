@@ -8,7 +8,7 @@
 ここで見ないもの:
 - 勾配・風・路面から速度を解く走行モデルそのもの → `test_cycling_speed.py`
 - 軸の得点の重み付き平均と、データの無い区間の扱い → `test_difficulty.py`・`test_axis_definitions.py`
-- 風を進行方向の成分へ分けることと、予報の格子点の引き当て → `test_wind.py`・`test_wind_grid.py`
+- 風を進行方向の成分へ分けることと、予報の格子点の引き当て → `test_wind.py`
 - ある時刻が夜か（市民薄明の外か） → `test_twilight.py`
 - 合成した配列で探索し、経路の区間を組み立てること → `test_route_generation_behavior.py`
 """
@@ -461,20 +461,23 @@ def test_the_share_of_distance_timed_without_gradient_or_stop_data():
 
 
 def test_the_wind_of_a_segment_is_the_forecast_at_its_passage():
-    composer = _composer(_matrix(3), series=_series([1.04, 2.0, 3.0], from_deg=90.0))
+    composer = _composer(_matrix(4), series=_series([1.04, 2.0, 3.0], from_deg=90.0))
 
-    winds = composer.winds_at([0, 1, 2], [0.2, 1.0, 9.0], [False, True, False])
+    winds = composer.winds_at([0, 1, 2, 3], [0.2, 1.0, 1.0, 9.0], [False, False, True, False])
 
-    assert [(w.speed_ms, w.direction_deg, w.forecast_at) for w in winds] == [
-        (1.0, 90.0, "2026-10-03T09:00"), (2.0, 90.0, "2026-10-03T10:00"), (3.0, 90.0, "2026-10-03T11:00")]
-    # 時刻ビンの範囲の先・予報の期間の先は、最後に追った予報を延ばして使っている。
-    assert [w.extended for w in winds] == [False, True, True]
+    # 時刻ビンの範囲の先・計算値の期間の先は、最後に追った値を延ばして評価しているので、値を出さない。
+    assert winds == [
+        leg_costs.SegmentWind(speed_ms=1.0, direction_deg=90.0, forecast_at="2026-10-03T09:00"),
+        leg_costs.SegmentWind(speed_ms=2.0, direction_deg=90.0, forecast_at="2026-10-03T10:00"),
+        None,
+        None,
+    ]
 
 
-def test_a_segment_without_a_passage_shows_the_wind_at_departure():
+def test_a_segment_evaluated_with_the_wind_at_departure_shows_no_wind():
     composer = _composer(_matrix(2), departure_wind=_departure_wind(3.0, from_deg=271.1))
 
     winds = composer.winds_at([0, 1], [None, 0.5], [False, False])
 
     # 時別の予報が無いと、通過時刻で合成した区間（夜だけ効く軸のため）も出発時点の風で走っている。
-    assert winds == [leg_costs.SegmentWind(speed_ms=3.0, direction_deg=271.1)] * 2
+    assert winds == [None, None]

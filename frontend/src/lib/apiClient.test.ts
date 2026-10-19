@@ -53,7 +53,7 @@ describe("呼び出し口の型はbackendの契約から決まる", () => {
       // @ts-expect-error backendの宣言に無いパス。
       void backendApi.GET("/api/no-such-endpoint");
       // @ts-expect-error 必須の問い合わせの項目（longitude）が欠けている。
-      void backendApi.GET("/api/weather", { params: { query: { latitude: 35 } } });
+      void backendApi.GET("/api/weather/amedas", { params: { query: { latitude: 35 } } });
       // @ts-expect-error 管理APIの口はbackendのパスの`/api/admin`より後で呼ぶ。
       void adminApiClient.GET("/api/admin/db-status");
     };

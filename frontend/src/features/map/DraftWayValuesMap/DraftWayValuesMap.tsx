@@ -14,7 +14,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createBaseMap } from "@/features/map/baseMap";
 import { mergeTileValues, tilesCoveringViewport, type TileXY } from "@/features/map/layers/dynamicWayValues";
 import { buildDefaultLayerVisibility, type MapLayerVisibility } from "@/features/map/layers/mapLayers";
-import type { MapViewport } from "@/features/map/layers/windLayer";
+import type { MapViewport } from "@/features/map/view/mapLook";
 import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckboxList";
 import { LEGEND_SWATCH_CLASS } from "@/features/map/LensControl/LensControl";
 import { ORIGIN_ZOOM } from "@/features/map/MapView/useMapMarkers";
@@ -128,7 +128,6 @@ function unpublishedAxis(axisId: string, label: string, paint: MapPaintDeclarati
     rawValueTotalUnit: null,
     materialBreakdown: [],
     primaryAttributeIds: [],
-    weatherLayerGroups: [],
     wayValueConditions: [],
     timeScope: "always",
     display: paint,

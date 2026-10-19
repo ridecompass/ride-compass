@@ -58,7 +58,7 @@ const PAVED: RouteSegmentDetail = {
   ...CLIMB,
   estimated_arrival_time: "2026-10-04T00:42:00Z",
   axis_difficulties: { axis_a: 72.4 },
-  wind: { speed_ms: 3, direction_deg: 180, forecast_at: null, extended: false },
+  wind: { speed_ms: 3, direction_deg: 180, forecast_at: "2026-10-04T09:00" },
   road_classes: { surface: [{ distance_km: 1, value: "paved" }], tunnel: [{ distance_km: 1, value: null }] },
 };
 const surfaceColor = (key: string) =>
@@ -365,7 +365,7 @@ describe("RouteProfile", () => {
       const pavedChip = within(detail()).getByText("舗装").closest("li")!;
       expect(pavedChip.querySelector("span[style]")).toHaveStyle({ backgroundColor: surfaceColor("paved") });
       await userEvent.click(within(detail()).getByRole("button", { name: "区間の風（南 3.0m/s）の説明を表示" }));
-      expect(screen.getByRole("dialog")).toHaveTextContent(/^出発時点の風この区間を通る見込みの時刻の/);
+      expect(screen.getByRole("dialog")).toHaveTextContent(/^09:00のモデルの計算値この区間を通る見込みの時刻の/);
       await userEvent.keyboard("{Escape}");
       expect(within(detail()).getByText("総合難易度").parentElement).toHaveTextContent("総合難易度40.0/100");
       expect(within(detail()).getByRole("img", { name: "難易度の内訳" })).toBeInTheDocument();

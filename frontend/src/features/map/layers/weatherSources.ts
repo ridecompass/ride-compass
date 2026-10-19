@@ -13,25 +13,14 @@ import {
 } from "@/features/map/layers/dynamicWeather";
 import { parseValidtime, type JmaDelivery, type JmaFrame } from "@/features/map/layers/jmaDelivery";
 import { MINUTE_MS } from "@/lib/duration";
-import { parseJstLocalValue } from "@/lib/time";
-import type { WindGridPoint } from "@/types/weather";
 
 type DeclaredElement = (typeof mapDisplay.weatherElements)[number];
 
 /** 選んだ時刻に対して描くコマの規則（源泉の宣言）。 */
 export type FrameRule = DeclaredElement["frameRule"];
 
-/** 自前のMSM格子から描く段が読む値。 */
-export type GridValue = NonNullable<DeclaredElement["gridValue"]>;
-
-/** 配信元から取る時刻の段。 */
-export type JmaStage = { origin: "jma"; kind: DeclaredElement["kind"]; delivery: JmaDelivery };
-
-/** 自前の格子から描く時刻の段。 */
-export type GridStage = { origin: "grid"; value: GridValue };
-
-/** 時刻の段1つ。 */
-type WeatherStage = JmaStage | GridStage;
+/** 配信元から取る時刻の段1つ。 */
+export type WeatherStage = { kind: DeclaredElement["kind"]; delivery: JmaDelivery };
 
 /** 名前付きソース1つ。同じ名前を名乗る要素の段を、宣言の順（近い時刻から）に持つ。 */
 export interface WeatherSource {
@@ -43,11 +32,7 @@ export interface WeatherSource {
 }
 
 function stagesOf(element: DeclaredElement): WeatherStage[] {
-  if (element.jmaElements.length > 0) {
-    return element.jmaElements.map((delivery) => ({ origin: "jma", kind: element.kind, delivery }));
-  }
-  // 配信元から取らない要素は必ず読む格子の値を持つ（backendのtest_map_display.pyが全要素で確かめる）。
-  return [{ origin: "grid", value: element.gridValue! }];
+  return element.jmaElements.map((delivery) => ({ kind: element.kind, delivery }));
 }
 
 function buildWeatherSources(): readonly WeatherSource[] {
@@ -73,33 +58,12 @@ function buildWeatherSources(): readonly WeatherSource[] {
 /** 名前付きソースの一覧（源泉の宣言の順）。 */
 export const WEATHER_SOURCES: readonly WeatherSource[] = buildWeatherSources();
 
-/** 自前の格子を読む段を持つソースか。 */
-export function readsGrid(source: WeatherSource): boolean {
-  return source.stages.some((stage) => stage.origin === "grid");
-}
-
-/** 段のコマ。段そのものと、配信元の段なら時刻一覧から読んだコマ、格子の段なら格子の時刻の値
- * （描くときの格子はズーム依存の詳細格子になりうるため、コマを作った格子の点そのものは指さない。
- * `windLayer.ts: gridAtTime`）。 */
-export type StageFrameRef = (JmaStage & { frame: JmaFrame }) | (GridStage & { time: string });
+/** 段のコマ。段そのものと、時刻一覧から読んだコマ。 */
+export type StageFrameRef = WeatherStage & { frame: JmaFrame };
 
 /** 配信元の段のコマを、共有タイムラインのコマにする。 */
-export function jmaStageFrames(stage: JmaStage, frames: readonly JmaFrame[]): DynamicWeatherFrame<StageFrameRef>[] {
+export function jmaStageFrames(stage: WeatherStage, frames: readonly JmaFrame[]): DynamicWeatherFrame<StageFrameRef>[] {
   return frames.map((frame) => ({ time: parseValidtime(frame.validtime), ref: { ...stage, frame } }));
-}
-
-/** 格子の段のコマ。1回の取得の時刻の列は全点で共通なので、先頭の点（最後に届いた応答の点）だけを見る。
- * 格子の時刻は日本時間の壁時計の値。`now`が属する1時間より前のコマは出さない（格子は取ってから時間が経つと先頭が
- * 過去になる）。「属する1時間」は最も近い時刻ではなく`now`以下で最も新しい時刻——最も近い時刻だと、正時を少し
- * 過ぎただけで今の1時間が消える。 */
-export function gridStageFrames(
-  stage: GridStage,
-  grid: readonly WindGridPoint[],
-  now: Date,
-): DynamicWeatherFrame<StageFrameRef>[] {
-  const frames = (grid[0]?.times ?? []).map((time) => ({ time: parseJstLocalValue(time), ref: { ...stage, time } }));
-  const current = frames.findLastIndex((frame) => frame.time.getTime() <= now.getTime());
-  return frames.slice(Math.max(current, 0));
 }
 
 /** 段のコマを1本の時系列へつなぐ。各段は前の段の最後のコマより後の時刻だけを継ぐ——近い時刻は
