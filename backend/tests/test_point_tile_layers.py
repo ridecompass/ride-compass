@@ -1,7 +1,7 @@
 """`infrastructure/point_tile_layers.py`——点のレイヤーの宣言と、そこから組み立てるもの。
 
-確かめるのは、地図に点で出す属性がどれも宣言されたレイヤーで配られること、レイヤーの世代が自分のSQLと
-source-layer名だけに従うこと、source-layer名が重ならないこと。
+確かめるのは、点の一次属性を配らない・source-layer名が重なる宣言を断ること（`check_point_tile_layers`へ架空の宣言を渡す。
+本番の宣言は読み込みの時点でこれを通る）と、レイヤーの世代が自分のSQLとsource-layer名だけに従うこと。
 
 ここで見ないもの:
 - 焼き込むSQLが出す点 → `test_point_tiles.py`
@@ -11,19 +11,36 @@ source-layer名だけに従うこと、source-layer名が重ならないこと�
 
 import dataclasses
 
+import pytest
 from sqlalchemy import text
 
-from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
-from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
+from app.domain.registry import PrimaryAttributeSpec
+from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS, PointTileLayer, check_point_tile_layers
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME
 
 
-def test_every_point_attribute_on_the_map_is_served_by_a_declared_layer():
-    """地図に点として出す一次属性が指す系統が宣言に無いと、画面はその点のタイルを要求できない。"""
-    kinds = {attr.tile_kind for attr in PRIMARY_ATTRIBUTES if attr.geometry == "point" and attr.tile_kind is not None}
+def _layer(name="poi", source_layer="points") -> PointTileLayer:
+    return PointTileLayer(name=name, source_layer=source_layer, sql=text("SELECT 1"))
 
-    assert kinds
-    assert kinds <= set(POINT_TILE_LAYERS)
+
+_POINT = PrimaryAttributeSpec(attr_id="p", label="点", geometry="point", tile_kind="poi")
+
+
+@pytest.mark.parametrize(
+    ("layers", "attributes"),
+    [
+        pytest.param({"accident": _layer("accident")}, (_POINT,), id="点の属性が指す系統が無い"),
+        pytest.param({"poi": _layer(source_layer=ROAD_SURFACE_LAYER_NAME)}, (), id="道路のタイルと同じsource-layer名"),
+        pytest.param({"poi": _layer(), "accident": _layer("accident")}, (), id="点のレイヤーどうしで同じsource-layer名"),
+    ],
+)
+def test_layers_that_do_not_serve_points_one_way_are_refused(layers, attributes):
+    with pytest.raises(ValueError):
+        check_point_tile_layers(layers, attributes)
+
+
+def test_layers_serving_points_one_way_are_accepted():
+    check_point_tile_layers({"poi": _layer(), "accident": _layer("accident", "accidents")}, (_POINT,))
 
 
 def test_a_layers_generation_follows_only_its_own_sql_and_source_layer():
@@ -33,10 +50,3 @@ def test_a_layers_generation_follows_only_its_own_sql_and_source_layer():
 
     assert dataclasses.replace(layer, sql=text(f"{layer.sql.text} -- changed")).shape != layer.shape
     assert dataclasses.replace(layer, source_layer=f"{layer.source_layer}_renamed").shape != layer.shape
-
-
-def test_layers_do_not_share_a_source_layer_name():
-    """同じ名前を名乗ると、画面がタイルの中のレイヤーを取り違える。"""
-    names = [ROAD_SURFACE_LAYER_NAME, *(layer.source_layer for layer in POINT_TILE_LAYERS.values())]
-
-    assert len(set(names)) == len(names)

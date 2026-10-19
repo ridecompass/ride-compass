@@ -51,11 +51,6 @@ def test_compass_label_names_the_eight_point_sector(bearing, label):
     assert geo.compass_label(bearing) == label
 
 
-def test_every_sixteen_point_name_is_different():
-    """同じ呼び名が2つあると、違う向きが画面で同じ名前になる（8方位の呼び名はこの1つおき）。"""
-    assert len(set(geo.SIXTEEN_POINT_LABELS)) == len(geo.SIXTEEN_POINT_LABELS)
-
-
 # --- bearing_between ---
 
 

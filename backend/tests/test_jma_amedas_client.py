@@ -8,7 +8,7 @@ None、プロセス内キャッシュで上流を引き直さないこと。
 - キャッシュの骨格（失敗をキャッシュしない・該当なしのNoneもキャッシュする・ログの`fields`）→ `test_simple_api_client.py`
 - 観測値をRedisへ置く・最寄りの観測所を選ぶ・雨の履歴 → `test_jma_amedas_service.py`
 - 体感温度 → `test_jma_amedas.py`
-- 16方位の呼び名の並び（`domain/geo.py: SIXTEEN_POINT_LABELS`） → `test_geo.py`
+- 16方位の呼び名の並び（`domain/geo.py: SIXTEEN_POINT_LABELS`） → 1つおきの8方位は`test_geo.py`、重ならないことは宣言の読み込みの時点の検査
 """
 
 from datetime import datetime, timedelta, timezone
