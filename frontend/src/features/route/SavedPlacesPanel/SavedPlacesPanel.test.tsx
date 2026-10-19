@@ -32,15 +32,15 @@ const HOME: SavedPlace = {
   longitude: 139.73,
 };
 
-function renderPanel({ waypointsFull = false }: { waypointsFull?: boolean } = {}) {
+function renderPanel({ waypointsFull = false, loop = false }: { waypointsFull?: boolean; loop?: boolean } = {}) {
   const handlers = { onRecall: vi.fn(), onRemove: vi.fn() };
-  render(<SavedPlacesPanel places={[CAFE, HOME]} waypointsFull={waypointsFull} {...handlers} />);
+  render(<SavedPlacesPanel places={[CAFE, HOME]} waypointsFull={waypointsFull} loop={loop} {...handlers} />);
   return handlers;
 }
 
 describe("SavedPlacesPanel", () => {
   it("保存した地点を名前と辺りで並べ、無ければ無いと出して保存の仕方を(i)に置く", () => {
-    const props = { waypointsFull: false, onRecall: () => {}, onRemove: () => {} };
+    const props = { waypointsFull: false, loop: false, onRecall: () => {}, onRemove: () => {} };
     const { rerender } = render(<SavedPlacesPanel places={[CAFE, HOME]} {...props} />);
     expect(screen.getAllByRole("listitem").map((row) => row.textContent)).toEqual([
       `${CAFE.name}${CAFE.area}`,
@@ -68,14 +68,21 @@ describe("SavedPlacesPanel", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("経由地が上限まであれば「経由地に足す」だけを押せない", async () => {
-    renderPanel({ waypointsFull: true });
+  it.each([
+    [{ waypointsFull: true }, "経由地が上限まで", "経由地に足す"],
+    [{ loop: true }, "周回", "目的地にする"],
+  ])("%sなら「%s」だけを押せない", async (state, _, disabled) => {
+    renderPanel(state);
 
     await userEvent.click(screen.getByRole("button", { name: "「自宅」を呼び出す" }));
     const menu = screen.getByRole("dialog", { name: "「自宅」をどこに置くか" });
 
-    expect(within(menu).getByRole("button", { name: "経由地に足す" })).toBeDisabled();
-    expect(within(menu).getByRole("button", { name: "出発地にする" })).toBeEnabled();
+    expect(
+      within(menu)
+        .getAllByRole("button")
+        .filter((item) => item.hasAttribute("disabled"))
+        .map((item) => item.textContent),
+    ).toEqual([disabled]);
   });
 
   it("「消す」で、確認の窓の「消す」を押したときだけその地点を消す", async () => {

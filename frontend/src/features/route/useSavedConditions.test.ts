@@ -60,6 +60,7 @@ describe("保存して呼び出す", () => {
     const otherLevel = AVOIDANCE_LEVELS.find(({ key }) => key !== DEFAULT_ROAD_AVOIDANCE[rowKey])!.key;
     act(() => result.current.conditions.selectPoint({ role: "waypoint", index: null }));
     act(() => {
+      result.current.conditions.setLoop(false);
       result.current.conditions.setDistanceTargeted(false);
       result.current.conditions.setMaxRoutesInput("3");
       result.current.conditions.placeAtSelected(A, null);
@@ -71,6 +72,7 @@ describe("保存して呼び出す", () => {
     act(() => result.current.saved.save("荒川へ", false));
 
     act(() => {
+      result.current.conditions.setLoop(true);
       result.current.conditions.setDistanceTargeted(true);
       result.current.conditions.setDistanceInput("80");
       result.current.conditions.setMaxRoutesInput("5");
@@ -82,6 +84,7 @@ describe("保存して呼び出す", () => {
     act(() => result.current.saved.recall(result.current.saved.saved[0]));
 
     const conditions = result.current.conditions;
+    expect(conditions.loop).toBe(false);
     expect(conditions.distanceTargeted).toBe(false);
     expect(conditions.distanceInput).toBe("30");
     expect(conditions.maxRoutesInput).toBe("3");

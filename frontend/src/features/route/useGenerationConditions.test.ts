@@ -1,6 +1,6 @@
 /**
- * 生成の条件（`useGenerationConditions.ts`）——全長の目標を決めるか・距離・候補数・地点（出発地以外）・重み・道ごとの避け方と、地図の
- * タップで置く地点の選び（経由地は足すか、何番目を置き直すか）と、検索・名前のある点で置いた地点の候補（その位置のままの間だけ）を返す。保存する値（地点以外）は開き直しても残り、読むときに今の画面が受け付ける範囲・
+ * 生成の条件（`useGenerationConditions.ts`）——周回か・全長の目標を決めるか・距離・候補数・地点（出発地以外）・重み・道ごとの避け方と、地図の
+ * タップで置く地点の選び（経由地は足すか、何番目を置き直すか）と、周回の間に覚えておく目的地と、検索・名前のある点で置いた地点の候補（その位置のままの間だけ）を返す。保存する値（地点以外）は開き直しても残り、読むときに今の画面が受け付ける範囲・
  * 今の項目へ揃える。重みは軸カタログの公開軸へ揃えた値を返し、送るのは上書きを有効にしてカタログが届いた後だけ。
  *
  * ここで見ないもの:
@@ -69,7 +69,52 @@ describe("全長の目標", () => {
   });
 });
 
+describe("周回", () => {
+  it("既定は周回で、外したことは開き直しても残る", () => {
+    const first = renderConditions();
+    expect(first.result.current.loop).toBe(true);
+
+    act(() => first.result.current.setLoop(false));
+
+    expect(reopen(first).result.current.loop).toBe(false);
+  });
+
+  it("周回にしても置いた目的地を覚えておき、周回の間は返さず選べず（地図で置くと出発地）、外すと戻す", () => {
+    const { result, onOriginPlace } = renderConditions();
+    act(() => result.current.setLoop(false));
+    act(() => result.current.selectPoint({ role: "destination" }));
+    act(() => result.current.placeAtSelected(A, null));
+
+    act(() => result.current.setLoop(true));
+    expect(result.current.destination).toBeNull();
+    expect(result.current.selectedPoint).toEqual({ role: "origin" });
+    act(() => result.current.placeAtSelected(B, null));
+    expect(onOriginPlace).toHaveBeenCalledExactlyOnceWith(B);
+
+    act(() => result.current.setLoop(false));
+    expect(result.current.destination).toEqual(A);
+  });
+
+  it("周回の間に経由地と目的地を一度に消すと、経由地だけを消して覚えている目的地は残す", () => {
+    const { result } = renderConditions();
+    act(() => result.current.setLoop(false));
+    act(() => result.current.setDestination(A));
+    act(() => result.current.setLoop(true));
+    act(() => result.current.selectPoint({ role: "waypoint", index: null }));
+    act(() => result.current.placeAtSelected(B, null));
+
+    act(() => result.current.clearPoints());
+    act(() => result.current.setLoop(false));
+
+    expect(result.current.waypoints).toEqual([]);
+    expect(result.current.destination).toEqual(A);
+  });
+});
+
 describe("地点", () => {
+  // 目的地を置くのは周回を外した間（周回の間の目的地は上の「周回」）。
+  beforeEach(() => window.localStorage.setItem("ridecompass:loop", "false"));
+
   it("何も選んでいなければ出発地を選んでいて、地図で置くと位置の持ち主へ渡す。自分では持たない", () => {
     const { result, onOriginPlace } = renderConditions();
     expect(result.current.selectedPoint).toEqual({ role: "origin" });
