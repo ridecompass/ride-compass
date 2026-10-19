@@ -197,6 +197,11 @@ async def get_dedicated_way_value_service(
         )
 
 
+async def get_feature_material_service():
+    async with get_session_factory()() as session:
+        yield FeatureMaterialService(RoadGraphRepository(session))
+
+
 async def get_draft_way_value_lens_builder(
     weather_service: WeatherService = Depends(get_weather_service),
 ) -> AsyncIterator[DraftWayValueLensBuilder]:

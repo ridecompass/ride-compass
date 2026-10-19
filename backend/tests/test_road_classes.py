@@ -1,14 +1,24 @@
 """区分に道を振り分ける式（`domain/road_classes.py: class_indices`）を見る。
 
-区分の型は表の行の写しで、表の制約が守る形はここで見ない（構造仕様15）。配る形は`test_road_class_catalog.py`、
-表との往復は`test_road_class_admin_routes.py`が持つ。事実の材料のidは性質だけを表す架空の名前を使う。
+地図の線の層の値（`layer_columns`）も見る。区分の型は表の行の写しで、表の制約が守る形はここで見ない（構造仕様15）。
+配る形は`test_road_class_catalog.py`、表との往復は`test_road_class_admin_routes.py`が持つ。事実の材料のidは性質だけを表す架空の名前を使う。
 """
 
 import numpy as np
 import pytest
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.road_classes import Condition, ConditionTerm, RoadClass, RoadClassification, class_indices
+from app.domain.road_classes import (
+    NO_DATA_VALUE,
+    Condition,
+    ConditionTerm,
+    RoadClass,
+    RoadClassification,
+    class_columns,
+    class_indices,
+    layer_columns,
+)
+from tests.road_class_fixture import map_layer, road_classes
 
 # 区間は順に: 分類の値なし・a・b、真偽の真・偽・値なしを、同じ並びで持つ。
 COLUMNS = {
@@ -77,3 +87,14 @@ def test_overlapping_classes_leave_road_unclassified() -> None:
         [{"cat_a": _term([], matches_absent=True)}],
     )
     assert class_indices(classification, COLUMNS, N).tolist() == [2, 0, -1]
+
+
+def test_layer_values_split_roads_outside_classes_by_the_no_data_fact() -> None:
+    """区分の外の道は、層の`no_data_fact_key`の事実が無ければデータなし、あれば値なし（該当なし）。地図の線とルートの帯が読む。"""
+    definitions = road_classes(
+        {"k": _classification([{"cat_a": _term(["a"])}])},
+        map_layers={"k": map_layer().model_copy(update={"no_data_fact_key": "cat_a"})},
+    )
+    columns = {**COLUMNS, **class_columns(definitions, COLUMNS, N)}
+    (column,) = layer_columns(definitions, columns, N).values()
+    assert [column.value_at(i) for i in range(N)] == [NO_DATA_VALUE, "class_0", None]

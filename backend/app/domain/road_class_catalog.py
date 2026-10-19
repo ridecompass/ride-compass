@@ -7,19 +7,10 @@
 from typing import Literal
 
 from app.domain.display_palette import nominal_colors, ordered_colors, ordered_ends_phrase
-from app.domain.material_catalog import MATERIAL_CATALOG
+from app.domain.material_catalog import material_spec
 from app.domain.road_avoidance import AVOIDANCE_LEVEL_LABELS, AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows
 from app.domain.road_classes import Condition, RoadClass, RoadClassDefinitions, by_sort_order, road_class_generation
 from app.domain.strict_model import StrictModel
-
-
-class RoadClassTermView(StrictModel):
-    """条件の項1つ。`property`はタイルのプロパティで、タイルに載らない事実・知らない事実はnull（どの道にも事実が無い）。"""
-
-    property: str | None
-    values: list[str]
-    negated: bool
-    matches_absent: bool
 
 
 class RoadClassView(StrictModel):
@@ -28,8 +19,6 @@ class RoadClassView(StrictModel):
     #: 意味の文に、条件から組んだタグの注を足したもの。
     description: str
     color: str
-    #: どれかに当たる道が区分に入り、1つの条件の中は項が全部当たる。同じ分け方の2つ以上の区分に当たる道は区分なし。
-    conditions: list[list[RoadClassTermView]]
 
 
 class LayerTextSlotView(StrictModel):
@@ -50,8 +39,8 @@ class RoadMapLayerView(StrictModel):
     description: list[str]
     panel_hint: list[str | LayerTextSlotView]
     hide_missing_rows: bool
-    #: このプロパティが無く区分の外の道は「データなし」、ほかの区分の外の道は「該当なし」。nullなら区分の外は全部「該当なし」。
-    no_data_property: str | None
+    #: 区分の外の道を「データなし」（`domain/road_classes.py: NO_DATA_VALUE`）と「該当なし」に分けるか。
+    has_no_data: bool
     classes: list[RoadClassView]
 
 
@@ -93,13 +82,8 @@ class RoadClassCatalog(StrictModel):
 _AXES_SLOT = LayerTextSlotView(name="axes", before="評価軸", after="の材料の1つです。")
 
 
-def _tile_property(fact_key: str) -> str | None:
-    spec = MATERIAL_CATALOG.get(fact_key)
-    return None if spec is None else spec.tile_property
-
-
 def _fact_label(fact_key: str) -> str:
-    spec = MATERIAL_CATALOG.get(fact_key)
+    spec = material_spec(fact_key)
     return fact_key if spec is None else spec.label
 
 
@@ -147,25 +131,13 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
                 description=[f"{layer.summary}[{part}]" if part else layer.summary],
                 panel_hint=[layer.panel_hint, _AXES_SLOT],
                 hide_missing_rows=layer.hides_unclassified,
-                no_data_property=None if layer.no_data_fact_key is None else _tile_property(layer.no_data_fact_key),
+                has_no_data=layer.no_data_fact_key is not None,
                 classes=[
                     RoadClassView(
                         key=class_key,
                         label=road_class.label,
                         description=_described(road_class),
                         color=color,
-                        conditions=[
-                            [
-                                RoadClassTermView(
-                                    property=_tile_property(fact_key),
-                                    values=term.fact_values,
-                                    negated=term.negated,
-                                    matches_absent=term.matches_absent,
-                                )
-                                for fact_key, term in condition.items()
-                            ]
-                            for condition in road_class.conditions
-                        ],
                     )
                     for (class_key, road_class), color in zip(classes, colors, strict=True)
                 ],

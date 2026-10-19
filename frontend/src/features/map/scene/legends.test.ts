@@ -11,41 +11,14 @@ import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
 import { roadClass, roadMapLayer } from "@/testing/catalogAxes";
 import type { RoadMapLayerView } from "@/types/route";
 
-import { roadLineGroup } from "./groups/roadLines";
 import { disasterSourceLegendAxis, initiallyHiddenLegendKeys, pointLegendAxes, roadLegendAxes } from "./legends";
 
 // 道の層はテストが組む（本番の区分は管理DBが持つ）。データなしを分ける層と分けない層を1つずつ持つ。
-const surfaceTerm = (values: string[]) => ({ property: "surface", values, negated: false, matches_absent: false });
 const SURFACE_LAYER = roadMapLayer("surface", {
-  no_data_property: "surface",
-  classes: [
-    roadClass("paved", { conditions: [[surfaceTerm(["asphalt", "concrete"])]] }),
-    roadClass("unpaved", { conditions: [[surfaceTerm(["gravel"])]] }),
-  ],
+  has_no_data: true,
+  classes: [roadClass("paved"), roadClass("unpaved")],
 });
-const TUNNEL_LAYER = roadMapLayer("tunnel", {
-  hide_missing_rows: true,
-  classes: [
-    roadClass("tunnel", {
-      conditions: [[{ property: "tunnel", values: ["true"], negated: false, matches_absent: false }]],
-    }),
-  ],
-});
-const ROAD_LAYERS = [SURFACE_LAYER, TUNNEL_LAYER];
-
-/** 凡例の鍵ごとの、その行に入る道（行が複数の値を束ねていればどの値も）。 */
-const ROAD_SAMPLES: Readonly<Record<string, Map<string, Record<string, unknown>[]>>> = {
-  surface: new Map([
-    ["paved", [{ surface: "asphalt" }, { surface: "concrete" }]],
-    ["unpaved", [{ surface: "gravel" }]],
-    [ROAD_OTHER_KEY, [{ surface: "__outside_every_class__" }]],
-    [LEGEND_NO_DATA_KEY, [{}]],
-  ]),
-  tunnel: new Map([
-    ["tunnel", [{ tunnel: true }]],
-    [ROAD_OTHER_KEY, [{}]],
-  ]),
-};
+const TUNNEL_LAYER = roadMapLayer("tunnel", { hide_missing_rows: true, classes: [roadClass("tunnel")] });
 
 const TILES = {
   urls: {
@@ -130,7 +103,7 @@ describe("点の凡例", () => {
 // 見本は地図と同じ形で見せる（線の行は線、点の行は点）。
 describe("凡例の見本の形", () => {
   it("道の線の凡例の行は、受け皿の行も含めてどれも線の見本にする", () => {
-    const entries = roadLegendAxes(ROAD_LAYERS).flatMap((axis) => axis.entries);
+    const entries = roadLegendAxes([SURFACE_LAYER, TUNNEL_LAYER]).flatMap((axis) => axis.entries);
     expect(entries.length).toBeGreaterThan(0);
     expect(entries.every((entry) => entry.line === true)).toBe(true);
   });
@@ -162,12 +135,6 @@ describe("最初に隠す行", () => {
 
 type LegendAxis = ReturnType<typeof roadLegendAxes>[number];
 
-function roadSamples(axis: LegendAxis): Map<string, Record<string, unknown>[]> {
-  const samples = ROAD_SAMPLES[axis.layerId];
-  if (samples === undefined) throw new Error(`${axis.layerId} の道の見本が無い`);
-  return samples;
-}
-
 function pointSamples(axis: LegendAxis): Map<string, Record<string, unknown>[]> {
   const layer = POINT_LAYERS.find((candidate) => candidate.attr_id === axis.layerId);
   const own = layer?.display_axes.find((candidate) => pointAxisKey(layer, candidate) === axis.axisId);
@@ -182,18 +149,6 @@ function pointSamples(axis: LegendAxis): Map<string, Record<string, unknown>[]> 
   );
 }
 
-function roadFilter(axis: LegendAxis, hidden: readonly string[]): unknown {
-  return roadLineGroup
-    .build({
-      layers: ROAD_LAYERS,
-      tiles: { urls: ["https://example.test/{z}/{x}/{y}"], sourceLayer: "road", minZoom: 10, maxZoom: 14 },
-      visible: { [axis.layerId]: true },
-      hiddenKeys: { [axis.axisId]: hidden },
-      inspectedWayId: null,
-    })
-    .layers.find((layer) => layer.role === axis.layerId)?.filter;
-}
-
 function pointFilter(axis: LegendAxis, hidden: readonly string[]): unknown {
   return pointLayerOf(axis.layerId, { [axis.axisId]: hidden }).filter;
 }
@@ -201,7 +156,6 @@ function pointFilter(axis: LegendAxis, hidden: readonly string[]): unknown {
 // 凡例に出す行はどれも、チェックを外すとその行の地物だけが地図から消える。
 describe("凡例の行ごとの絞り込み", () => {
   const cases = [
-    ...roadLegendAxes(ROAD_LAYERS).map((axis) => ({ axis, samples: roadSamples(axis), filterOf: roadFilter })),
     ...pointLegendAxes().map((axis) => ({ axis, samples: pointSamples(axis), filterOf: pointFilter })),
   ].flatMap(({ axis, samples, filterOf }) =>
     axis.entries.map((entry) => ({

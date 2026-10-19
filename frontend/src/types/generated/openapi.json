@@ -901,6 +901,73 @@
         }
       }
     },
+    "/api/region/road-classes/{z}/{x}/{y}": {
+      "get": {
+        "operationId": "region_road_classes_api_region_road_classes__z___x___y__get",
+        "parameters": [
+          {
+            "name": "z",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 15,
+              "minimum": 12,
+              "title": "Z"
+            }
+          },
+          {
+            "name": "x",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "title": "X"
+            }
+          },
+          {
+            "name": "y",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "title": "Y"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "title": "Response Region Road Classes Api Region Road Classes  Z   X   Y  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/region/axis-inspector": {
       "post": {
         "operationId": "region_axis_inspector_api_region_axis_inspector_post",
@@ -2341,14 +2408,6 @@
             "type": "string",
             "title": "Section"
           },
-          "layer": {
-            "type": "string",
-            "title": "Layer"
-          },
-          "layer_label": {
-            "type": "string",
-            "title": "Layer Label"
-          },
           "label": {
             "type": "string",
             "title": "Label"
@@ -2379,8 +2438,6 @@
         "required": [
           "key",
           "section",
-          "layer",
-          "layer_label",
           "label",
           "description",
           "default",
@@ -5883,45 +5940,6 @@
         ],
         "title": "RoadClassStretch"
       },
-      "RoadClassTermView": {
-        "properties": {
-          "property": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Property"
-          },
-          "values": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Values"
-          },
-          "negated": {
-            "type": "boolean",
-            "title": "Negated"
-          },
-          "matches_absent": {
-            "type": "boolean",
-            "title": "Matches Absent"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "property",
-          "values",
-          "negated",
-          "matches_absent"
-        ],
-        "title": "RoadClassTermView"
-      },
       "RoadClassView": {
         "properties": {
           "key": {
@@ -5939,23 +5957,6 @@
           "color": {
             "type": "string",
             "title": "Color"
-          },
-          "former_keys": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Former Keys"
-          },
-          "conditions": {
-            "items": {
-              "items": {
-                "$ref": "#/components/schemas/RoadClassTermView"
-              },
-              "type": "array"
-            },
-            "type": "array",
-            "title": "Conditions"
           }
         },
         "additionalProperties": false,
@@ -5964,9 +5965,7 @@
           "key",
           "label",
           "description",
-          "color",
-          "former_keys",
-          "conditions"
+          "color"
         ],
         "title": "RoadClassView"
       },
@@ -6125,16 +6124,9 @@
             "type": "boolean",
             "title": "Hide Missing Rows"
           },
-          "no_data_property": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "No Data Property"
+          "has_no_data": {
+            "type": "boolean",
+            "title": "Has No Data"
           },
           "classes": {
             "items": {
@@ -6154,7 +6146,7 @@
           "description",
           "panel_hint",
           "hide_missing_rows",
-          "no_data_property",
+          "has_no_data",
           "classes"
         ],
         "title": "RoadMapLayerView"

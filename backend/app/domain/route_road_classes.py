@@ -1,7 +1,7 @@
 """ルートの区間に載せる道の区分（分け方ごとの区分と「緑と水」）を、切り出した道路網の行から読む。
 
 鍵は分け方（地図の道の線の層のid）と「緑と水」の層のid。呼び名と色は、受け取る側が軸カタログの区分と土地被覆のクラスから引く。
-- 分け方の値は区分の鍵。どの区分にも入らない道は値なし（None）。
+- 分け方の値は地図の線の層の値（`domain/road_classes.py: layer_columns`）。
 - 「緑と水」は、割合が最も多いクラスの割合の材料のid（`domain/landcover.py: LandcoverClass.percent_field`）。
   同率は`domain/landcover.py: LANDCOVER_CLASSES`の並びで先のクラスを取る。
 """
@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from app.domain.attributes import CategoricalColumn
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.primary_attributes import ATTR_LANDCOVER
-from app.domain.road_classes import CLASS_MATERIAL_PREFIX
 from app.domain.road_network import RoadSlice
 
 
@@ -29,10 +28,7 @@ class SegmentClassReader:
         network = road.network
         return cls(
             road=road,
-            classes=tuple(
-                (material_id.removeprefix(CLASS_MATERIAL_PREFIX), column)
-                for material_id, column in road.classes.items()
-            ),
+            classes=tuple(road.layers.items()),
             landcover_columns=tuple(
                 (c.percent_field, network.numeric_ids.index(c.percent_field)) for c in LANDCOVER_CLASSES
             ),

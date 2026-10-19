@@ -47,7 +47,7 @@ const SURFACE_ROAD_CLASSES = [
   roadClass("gravel", { label: "砂利・未舗装", color: "#222222" }),
 ];
 const ROAD_LAYERS = [
-  roadMapLayer("surface", { label: "路面の種類", no_data_property: "surface", classes: SURFACE_ROAD_CLASSES }),
+  roadMapLayer("surface", { label: "路面の種類", has_no_data: true, classes: SURFACE_ROAD_CLASSES }),
   roadMapLayer("tunnel", { label: "トンネル", classes: [roadClass("tunnel", { label: "トンネル" })] }),
 ];
 const surfaceColor = (key: string) => SURFACE_ROAD_CLASSES.find((roadClass) => roadClass.key === key)!.color;

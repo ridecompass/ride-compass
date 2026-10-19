@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
 import { evaluateExpression, matchesFilter } from "@/testing/mapExpressions";
+import palette from "@/types/generated/palette.json";
 import { createRecordingMap, type StyleLayer } from "@/testing/mapTrace/recordingMap";
 import { catalogEntry, dedicatedEntry, MATERIAL_VALUE_FORMULA, roadClass, roadMapLayer } from "@/testing/catalogAxes";
 import { dedicatedWayValueAxesFromCatalogAxes } from "@/lib/mapDisplay/axisLayers";
@@ -34,10 +35,8 @@ const DEDICATED_AXES = dedicatedWayValueAxesFromCatalogAxes([
 // 道の線の層はテストが組む（本番の区分は管理DBが持つ）。絞り込みの式も検証の対象にするため、どの層も区分の条件を持つ。
 const ROAD_LAYERS = ["surface", "highway"].map((id) =>
   roadMapLayer(id, {
-    no_data_property: id,
-    classes: [
-      roadClass("first", { conditions: [[{ property: id, values: ["a"], negated: false, matches_absent: false }]] }),
-    ],
+    has_no_data: true,
+    classes: [roadClass("first")],
   }),
 );
 
@@ -99,12 +98,14 @@ describe("状態を地図へ伝えた結果", () => {
       expect(offsets[0]).toBe(-Number(offsets[1]));
     });
 
-    it("凡例で隠した分類は、その線から落ちる", () => {
+    it("凡例で隠した分類は、その線で透明に描く", () => {
       const { map, handle } = createRecordingMap();
+      const hiddenKey = ROAD_LAYERS[0].classes[0].key;
 
-      rebuild(map, shown({ surface: true }, { hiddenLegendKeys: { surface: [ROAD_LAYERS[0].classes[0].key] } }));
+      rebuild(map, shown({ surface: true }, { hiddenLegendKeys: { surface: [hiddenKey] } }));
 
-      expect(handle.layer(roadLayerId("surface"))?.filter).toBeDefined();
+      const color = handle.layer(roadLayerId("surface"))?.paint["line-color"];
+      expect(evaluateExpression(color, {}, { "road:surface": hiddenKey })).toBe(palette.semantic.hidden);
     });
   });
 

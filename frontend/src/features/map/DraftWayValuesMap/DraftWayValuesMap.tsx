@@ -42,6 +42,7 @@ const NO_LAYERS: MapLayerVisibility = {};
 
 /** 道の線の層を描かない。 */
 const NO_ROAD_LAYERS: readonly RoadMapLayerView[] = [];
+const NO_ROAD_CLASSES = new Map<string, Record<string, string>>();
 
 const EMPTY_MATERIALS: WayMaterials = new Map();
 
@@ -176,6 +177,7 @@ export default function DraftWayValuesMap<Draft>({
             dynamicWeather: {},
             lens: LENS_DIFFICULTY_ID,
             paintedAxisId: axisId,
+            roadClasses: NO_ROAD_CLASSES,
             wayMaterials: new Map([[axisId, { materials, loading }]]),
             wayConditions: NO_CONDITIONS,
             hiddenLegendKeys,

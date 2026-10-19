@@ -129,7 +129,7 @@ def test_a_slice_keeps_the_edges_and_their_ends_of_the_whole_network(lon_a, lon_
     min_lon, max_lon = sorted((lon_a, lon_b))
     min_lat, max_lat = sorted((lat_a, lat_b))
 
-    road = slice_network(whole, {}, min_lon, min_lat, max_lon, max_lat)
+    road = slice_network(whole, ({}, {}), min_lon, min_lat, max_lon, max_lat)
 
     expected = [
         index

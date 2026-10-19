@@ -11,7 +11,7 @@
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from typing import Annotated, Protocol
+from typing import Annotated, Protocol, cast
 
 import numpy as np
 from pydantic import Field
@@ -24,6 +24,8 @@ from app.domain.strict_model import StrictModel
 TRUE_FACT_VALUE = "true"
 #: 区分の列の材料のidの接頭辞。
 CLASS_MATERIAL_PREFIX = "class:"
+#: 地図の線の層の値で「データなし」（区分の外で、層の`no_data_fact_key`の事実も無い道）。区分の鍵の綴り（表の制約）と重ならない。
+NO_DATA_VALUE = "-"
 
 
 class ConditionTerm(StrictModel):
@@ -143,19 +145,20 @@ def road_class_generation(definitions: RoadClassDefinitions) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
-def _term_matches(term: ConditionTerm, column: MaterialColumn | None, n: int) -> np.ndarray:
-    """区間ごとに項が当たるか。知らない事実（列が無い）は、どの区間も事実が無いとして当てる。
-
-    分類の事実は値があれば「事実あり」。分類でない列は真偽として読み、1.0のときだけ`TRUE_FACT_VALUE`の値で「事実あり」、
-    ほかの値と値なしは「事実なし」。"""
+def _present(column: MaterialColumn | None, n: int) -> np.ndarray:
+    """区間ごとに事実があるか。知らない事実（列が無い）は、どの区間にも無い。分類の事実は値があれば「事実あり」。分類でない列は
+    真偽として読み、1.0のときだけ（`TRUE_FACT_VALUE`の値で）「事実あり」、ほかの値と値なしは「事実なし」。"""
     if column is None:
-        present = np.zeros(n, dtype=bool)
-        listed = present
-    elif isinstance(column, CategoricalColumn):
-        present = column.codes != 0
+        return np.zeros(n, dtype=bool)
+    return column.codes != 0 if isinstance(column, CategoricalColumn) else column == 1.0
+
+
+def _term_matches(term: ConditionTerm, column: MaterialColumn | None, n: int) -> np.ndarray:
+    """区間ごとに項が当たるか。"""
+    present = _present(column, n)
+    if isinstance(column, CategoricalColumn):
         listed = np.isin(column.codes, [code for code, value in enumerate(column.vocab) if value in term.fact_values])
     else:
-        present = column == 1.0
         listed = np.full(n, TRUE_FACT_VALUE in term.fact_values)
     return (present & (listed != term.negated)) | (~present & term.matches_absent)
 
@@ -210,6 +213,25 @@ def class_columns(
     for key, classification in definitions.classifications.items():
         indices = class_indices(classification, columns, n)
         result[class_material_id(key)] = CategoricalColumn((indices + 1).astype(np.int16), (None, *classification.classes))
+    return result
+
+
+def layer_columns(
+    definitions: RoadClassDefinitions, columns: Mapping[str, MaterialColumn], n: int
+) -> dict[str, CategoricalColumn]:
+    """公開した分け方の地図の線の層ごとの値（鍵は分け方）。地図の線とルートの区間の帯が読む。値は区分の鍵で、区分の外は値なし、
+    区分の外で層の`no_data_fact_key`の事実も無い道は`NO_DATA_VALUE`。`columns`は事実と区分の列（`class_columns`）を持つ。"""
+    result: dict[str, CategoricalColumn] = {}
+    for key, layer in definitions.map_layers.items():
+        column = cast(CategoricalColumn, columns[class_material_id(key)])
+        if not definitions.classifications[key].is_published:
+            continue
+        if layer.no_data_fact_key is not None:
+            missing = (column.codes == 0) & ~_present(columns.get(layer.no_data_fact_key), n)
+            column = CategoricalColumn(
+                np.where(missing, len(column.vocab), column.codes).astype(np.int16), (*column.vocab, NO_DATA_VALUE)
+            )
+        result[key] = column
     return result
 
 

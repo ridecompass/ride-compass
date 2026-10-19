@@ -39,7 +39,7 @@ from app.domain.traffic import stop_count_material_ids
 from app.domain.tuning import TUNING_VALUES
 from tests import rain_history_fake
 from tests.axis_system_fixture import replaced_axis_definitions
-from tests.road_class_fixture import classification, fact_is, replaced_road_classes, road_classes
+from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 from app.domain.route_request import FixedPoints
 from tests.route_world import (
     AVOID_AXIS,
@@ -796,14 +796,17 @@ async def test_each_segment_starts_and_ends_at_the_elevation_of_its_road_in_the_
 
 
 async def test_each_segment_carries_its_road_classes(engine_over):
-    """道のりのグラフは区間の区分を、分け方ごとに区分の鍵で受ける（呼び名と色は軸カタログの区分から引く）。どの区分にも入らない
+    """道のりのグラフは区間の区分を、地図の線の層ごとに層の値で受ける（呼び名と色は軸カタログの区分から引く）。どの区分にも入らない
     道は値なし。緑と水は、区間の最も多いクラスで塗る（同率は宣言の並びの先）。
     南西→南東の最速は、林と水辺が同じ割合の生活道路の道100と、土地被覆の値の無いトンネルの道101。"""
     landcover = {100: {"built_percent": 20.0, "trees_percent": 40.0, "water_percent": 40.0}}
-    definitions = road_classes({
-        "kind": classification({"local": [fact_is(HIGHWAY, "residential")]}),
-        "tunnel": classification({"yes": [fact_is(TUNNEL, TRUE_FACT_VALUE)]}),
-    })
+    definitions = road_classes(
+        {
+            "kind": classification({"local": [fact_is(HIGHWAY, "residential")]}),
+            "tunnel": classification({"yes": [fact_is(TUNNEL, TRUE_FACT_VALUE)]}),
+        },
+        map_layers={"kind": map_layer(0), "tunnel": map_layer(1)},
+    )
     generator = engine_over(grid_network(tunnel_ways={101}, landcover_of=landcover))
 
     with replaced_road_classes(definitions):

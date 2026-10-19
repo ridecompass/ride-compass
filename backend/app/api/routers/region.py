@@ -7,6 +7,7 @@ from app.api.dependencies import (
     LandcoverTileReader,
     get_axis_inspector_service,
     get_dedicated_way_value_service,
+    get_feature_material_service,
     get_landcover_tile_reader,
     get_region_service,
 )
@@ -24,6 +25,7 @@ from app.domain.route import Coordinates
 from app.infrastructure.media_types import PNG_CONTENT_TYPE
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.services.dedicated_way_values import AxisWayValueLens
+from app.services.feature_materials import FeatureMaterialService
 from app.services.region_service import AxisInspectorService, RegionService
 from app.domain.strict_model import StrictModel
 
@@ -140,6 +142,23 @@ async def region_way_materials(
     if isinstance(materials, MissingConditions):
         raise HTTPException(status_code=422, detail=f"この軸には{'・'.join(materials.names)}が必須です。")
     return materials
+
+
+@router.get("/api/region/road-classes/{z}/{x}/{y}")
+async def region_road_classes(
+    z: RoadTileZoom,
+    x: TileIndex,
+    y: TileIndex,
+    request: Request,
+    service: FeatureMaterialService = Depends(get_feature_material_service),
+) -> dict[str, dict[str, str]]:
+    """地図の道の線を塗る、指定タイル内のフィーチャーごとの層の値（軸カタログの`road_classes.map_layers`の`id`→値）。鍵は路面タイルの
+    `feature_key`。値は区分の鍵か「データなし」（`domain/road_classes.py: NO_DATA_VALUE`）で、区分の外の道の層は載せない。
+    ルートの区間の帯も同じ値を持つ。"""
+    check_tile_rate_limit(request, "road-classes")
+    validate_tile_coords(z, x, y)
+    async with region_tile_semaphore:
+        return await service.road_layer_values(z, x, y)
 
 
 class AxisInspectorRequest(StrictModel):

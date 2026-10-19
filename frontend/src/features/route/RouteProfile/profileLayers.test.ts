@@ -31,7 +31,7 @@ import {
 // 道の線の層は軸カタログが配る（本番の層は管理DBが持つ）ので、テストが組む。
 const LAYERS = profileLayers([
   roadMapLayer("surface", {
-    no_data_property: "surface",
+    has_no_data: true,
     classes: [roadClass("paved"), roadClass("gravel"), roadClass("soil")],
   }),
   roadMapLayer("tunnel", { classes: [roadClass("tunnel")] }),

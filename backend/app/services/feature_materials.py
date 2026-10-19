@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments
-from app.domain.road_classes import class_columns, current_road_classes
+from app.domain.road_classes import class_columns, current_road_classes, layer_columns
 from app.domain.region import tile_bounds_lonlat
 from app.infrastructure.cache_identity import cache_identity, is_known_tile_version
 from app.infrastructure.debug_log import log_external_call
@@ -40,6 +40,18 @@ class FeatureMaterialService:
             return None
         classes = class_columns(current_road_classes(), materials.columns, len(materials))
         return FeatureMaterials(feature_keys=materials.feature_keys, columns={**materials.columns, **classes})
+
+    async def road_layer_values(self, z: int, x: int, y: int) -> dict[str, dict[str, str]]:
+        """タイル内のフィーチャーごとの、地図の線の層の値（`domain/road_classes.py: layer_columns`）。値の無い層は載せない。"""
+        materials = await self.materials(z, x, y)
+        if materials is None:
+            return {}
+        layers = layer_columns(current_road_classes(), materials.columns, len(materials))
+        out: dict[str, dict[str, str]] = {}
+        for row, key in enumerate(materials.feature_keys):
+            if values := {layer: value for layer, column in layers.items() if (value := column.value_at(row)) is not None}:
+                out[key] = values
+        return out
 
     async def segments(self, z: int, x: int, y: int) -> FeatureSegments | None:
         """道1本を1つのフィーチャーにするズームのタイルの、フィーチャーごとの区間の材料。取込範囲外・DB障害・区間の無い

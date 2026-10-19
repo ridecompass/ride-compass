@@ -163,33 +163,23 @@ function emptyMapStyleFixture() {
   return { version: 8, sources: {}, layers: [] };
 }
 
-/** 項目1つ: 事実`property`の値が`values`のどれかなら当たる。 */
-const isOneOf = (property: string, values: string[]) => ({ property, values, negated: false, matches_absent: false });
-
-/** モックの軸カタログが配る道の線の層。区分は管理DBが持つ任意の値なので、ここで組む。区分は条件を持ち、地図の式の
- * 組み立て（否定・事実の無い道・区分の重なり・データなし）を実ブラウザのスタイル検証に通す。 */
+/** モックの軸カタログが配る道の線の層。区分は管理DBが持つ任意の値なので、ここで組む。 */
 export const E2E_ROAD_LAYERS = [
   roadMapLayer("surface", {
     label: "路面",
     category: "roadCondition",
     icon: "surface",
-    no_data_property: "surface",
+    has_no_data: true,
     classes: [
-      roadClass("paved", { label: "舗装", color: "#4a7bd0", conditions: [[isOneOf("surface", ["asphalt", "paved"])]] }),
-      roadClass("unpaved", {
-        label: "未舗装",
-        color: "#b8742a",
-        conditions: [[{ ...isOneOf("surface", ["asphalt", "paved"]), negated: true }]],
-      }),
+      roadClass("paved", { label: "舗装", color: "#4a7bd0" }),
+      roadClass("unpaved", { label: "未舗装", color: "#b8742a" }),
     ],
   }),
   roadMapLayer("tunnel", {
     label: "トンネル",
     category: "roadCondition",
     icon: "tunnel",
-    classes: [
-      roadClass("tunnel", { label: "トンネル", color: "#555555", conditions: [[isOneOf("tunnel", ["true"])]] }),
-    ],
+    classes: [roadClass("tunnel", { label: "トンネル", color: "#555555" })],
   }),
 ];
 
@@ -199,9 +189,7 @@ const E2E_ROAD_CLASSES = roadClassCatalog({
   avoidance: {
     levels: AVOIDANCE_LEVELS,
     sections: [{ key: "surface", label: "路面", description: "" }],
-    rows: [
-      avoidanceRow("unpaved", "surface", { layer: "surface", layer_label: "路面", label: "未舗装", default: "avoid" }),
-    ],
+    rows: [avoidanceRow("unpaved", "surface", { label: "未舗装", default: "avoid" })],
   },
 });
 
@@ -263,6 +251,7 @@ export async function installApiMocks(page: Page): Promise<void> {
   await page.route(`${API_BASE}/api/axis-catalog*`, (route) => route.fulfill({ json: defaultAxisCatalogFixture() }));
   // 軸のレンズで塗る道ごとの材料。材料を持つ道が無い形で答える。
   await page.route(`${API_BASE}/api/region/way-materials/**`, (route) => route.fulfill({ json: {} }));
+  await page.route(`${API_BASE}/api/region/road-classes/**`, (route) => route.fulfill({ json: {} }));
 
   // 地点の詳しくが、置いた位置の辺りを引く。辺り無し（境界の外）で答える。
   await page.route(`${API_BASE}/api/place-area*`, (route) => route.fulfill({ json: { area: null } }));

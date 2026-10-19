@@ -41,7 +41,7 @@ const ROAD_LAYERS = [
   roadMapLayer("surface", {
     category: "roadCondition",
     hide_missing_rows: true,
-    no_data_property: "surface",
+    has_no_data: true,
     classes: [roadClass("paved")],
   }),
   roadMapLayer("cycleway", { category: "roadCondition", hide_missing_rows: true, classes: [roadClass("lane")] }),
