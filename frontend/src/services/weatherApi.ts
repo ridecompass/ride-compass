@@ -35,6 +35,24 @@ export const getFloodForecasts = (point: Coordinates) =>
     weatherOptions("api:floodForecast", "河川氾濫予報"),
   );
 
+export interface Bbox {
+  minLon: number;
+  minLat: number;
+  maxLon: number;
+  maxLat: number;
+}
+
+/** 表示範囲の中のMSMの格子点の、時刻ごとの風と降水。格子点が多い範囲ではbackendが格子点を同じ間隔おきに間引く。 */
+export const getMsmGrid = (bbox: Bbox) =>
+  requestApi(
+    (init) =>
+      backendApi.GET("/api/weather/msm-grid", {
+        params: { query: { min_lon: bbox.minLon, min_lat: bbox.minLat, max_lon: bbox.maxLon, max_lat: bbox.maxLat } },
+        ...init,
+      }),
+    { ...weatherOptions("api:msmGrid", "MSMの格子点"), successMeta: (data) => ({ points: data.points.length }) },
+  );
+
 /** JMAの動的タイルの在否。取れなくても呼ぶ側は間引きが効かないだけで表示は成り立つ。 */
 export const fetchJmaTileIndex = () =>
   requestApi(

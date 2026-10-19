@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { jst } from "@/testing/jst";
 import { jmaDeliveryOf } from "@/testing/jmaDeliveries";
 import jmaExpectations from "@/types/generated/jma-expectations.json";
 
@@ -11,18 +10,24 @@ import {
   sourceTimeline,
   type FrameRule,
   type StageFrameRef,
-  type WeatherStage,
+  type JmaStage,
 } from "./weatherSources";
 
 const frame = (validtime: string) => ({ basetime: validtime, member: "none", validtime });
 
 /** 配信元の段。配信要素のidだけで見分ける（idは架空）。 */
-const jmaStage = (id: string): WeatherStage => ({
+const jmaStage = (id: string): JmaStage => ({
+  origin: "jma",
   kind: "rasterTile",
-  delivery: { ...jmaDeliveryOf("hrpns"), id } as WeatherStage["delivery"],
+  delivery: { ...jmaDeliveryOf("hrpns"), id } as JmaStage["delivery"],
 });
+/** 配信元の段のコマ（このファイルは配信元の段だけをつなぐ）。 */
+const jmaRef = (ref: StageFrameRef) => {
+  if (ref.origin !== "jma") throw new Error("配信元の段のコマではない");
+  return ref;
+};
 /** コマがどの段のものか。 */
-const stageOf = (ref: StageFrameRef) => ref.delivery.id;
+const stageOf = (ref: StageFrameRef) => jmaRef(ref).delivery.id;
 
 describe("sourceTimeline（段を1本の時系列へつなぐ）", () => {
   it("段の順に、前の段の最後より後の時刻だけを継ぐ", () => {
@@ -45,7 +50,8 @@ describe("sourceTimeline（段を1本の時系列へつなぐ）", () => {
     for (const { scene, stages, first_frames } of rows) {
       const timeline = sourceTimeline(stages.map((frames, stage) => jmaStageFrames(jmaStage(`${stage}`), frames)));
       const firsts = stages.map((_, stage) => {
-        return timeline.find((each) => stageOf(each.ref) === `${stage}`)?.ref.frame ?? null;
+        const first = timeline.find((each) => stageOf(each.ref) === `${stage}`);
+        return first === undefined ? null : jmaRef(first.ref).frame;
       });
       expect(firsts, scene).toEqual(first_frames);
     }

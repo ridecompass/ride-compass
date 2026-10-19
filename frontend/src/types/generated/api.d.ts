@@ -132,6 +132,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/weather/msm-grid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_msm_grid_api_weather_msm_grid_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/place-search": {
         parameters: {
             query?: never;
@@ -1490,6 +1506,30 @@ export interface components {
             /** Healthy */
             healthy: boolean;
         };
+        /** MsmGridForecast */
+        MsmGridForecast: {
+            /** Times */
+            times: string[];
+            /** Latitude Step Deg */
+            latitude_step_deg: number;
+            /** Longitude Step Deg */
+            longitude_step_deg: number;
+            /** Points */
+            points: components["schemas"]["MsmGridPointForecast"][];
+        };
+        /** MsmGridPointForecast */
+        MsmGridPointForecast: {
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+            /** Wind Speed Ms */
+            wind_speed_ms: (number | null)[];
+            /** Wind Direction Deg */
+            wind_direction_deg: (number | null)[];
+            /** Precipitation Mm */
+            precipitation_mm: (number | null)[];
+        };
         /** OverallDifficulty */
         OverallDifficulty: {
             /** Average */
@@ -2228,6 +2268,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AmedasObservation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_msm_grid_api_weather_msm_grid_get: {
+        parameters: {
+            query: {
+                min_lon: number;
+                min_lat: number;
+                max_lon: number;
+                max_lat: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MsmGridForecast"];
                 };
             };
             /** @description Validation Error */

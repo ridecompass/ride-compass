@@ -37,6 +37,9 @@ class Settings(BaseSettings):
 
     # --- 認証なしエンドポイントのper-IPレート制限・同時実行上限 ---
     # 環境（本番/ローカル/負荷試験）ごとに調整したい運用値のため.envで上書きできる。
+    # 地図のMSMの格子点は、地図を動かすたびに（間を置いてから）呼ばれる。値はローカルのMSMファイルから読むため外部APIは
+    # 消費しないが、応答の大きさが格子点の数×予報の時間数に比例する。
+    msm_grid_rate_limit_per_minute: int = 30
     # /weather系のバッジ群。いずれも同じ地点変更デバウンスを起点に呼ばれ、
     # 外部への実リクエストは長寿命TTLキャッシュで大半が吸収される。
     weather_warnings_rate_limit_per_minute: int = 30
