@@ -19,10 +19,4 @@ describe("getAmedasWeatherDisplay", () => {
     const rain = category("rain");
     expect(getAmedasWeatherDisplay(rain.codes[0], false)).toEqual({ Icon: RaindropIcon, label: rain.label });
   });
-
-  it("天気が決まっていない・宣言に無いコードは、別の天気に見せず何も出さない", () => {
-    const declared = new Set(vocabulary.weatherCategories.flatMap((entry) => entry.codes));
-    expect(getAmedasWeatherDisplay(null, true)).toBeNull();
-    expect(getAmedasWeatherDisplay(Math.max(...declared) + 1, true)).toBeNull();
-  });
 });

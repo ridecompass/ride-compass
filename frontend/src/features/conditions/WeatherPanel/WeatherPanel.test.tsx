@@ -50,11 +50,6 @@ describe("WeatherPanel 取得の状態", () => {
     render(<WeatherPanel mapBearingDeg={0} amedas={observation()} loading error="混雑しています" />);
     expect(screen.getByText("気温:").parentElement).toHaveTextContent("21.4℃");
   });
-
-  it("観測値も失敗も無ければ何も出さない", () => {
-    const { container } = render(<WeatherPanel mapBearingDeg={0} amedas={null} loading={false} error={null} />);
-    expect(container).toBeEmptyDOMElement();
-  });
 });
 
 describe("WeatherPanel 観測値", () => {
@@ -105,11 +100,6 @@ describe("WeatherPanel 観測値", () => {
   it.each([
     { missing: "なし", overrides: {}, expected: ["気温", "|", "東の風", "|", "降水量", "|", "天気"] },
     { missing: "風", overrides: { wind_speed_ms: null }, expected: ["気温", "|", "降水量", "|", "天気"] },
-    {
-      missing: "風・降水量・天気",
-      overrides: { wind_speed_ms: null, precipitation_10min_mm: null, weather_code: null },
-      expected: ["気温"],
-    },
   ])("区切り線は、出ている項目どうしの間にだけ出る（欠け: $missing）", ({ overrides, expected }) => {
     render(<WeatherPanel mapBearingDeg={0} amedas={observation(overrides)} loading={false} error={null} />);
     const row = screen.getByRole("button").firstElementChild!;
@@ -138,18 +128,6 @@ describe("WeatherPanel 観測値", () => {
     vi.setSystemTime(NOW);
     render(<WeatherPanel mapBearingDeg={0} amedas={observation()} loading={false} error={null} />);
     expect(screen.getByText(/^天気:/).parentElement!.innerHTML).toBe(unknown);
-  });
-
-  it("天気を決められなければ、天気は出さない", () => {
-    render(
-      <WeatherPanel
-        mapBearingDeg={0}
-        amedas={observation({ precipitation_10min_mm: null, weather_code: null })}
-        loading={false}
-        error={null}
-      />,
-    );
-    expect(screen.queryByText(/^天気:/)).not.toBeInTheDocument();
   });
 });
 

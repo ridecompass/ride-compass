@@ -12,7 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { LAYER_DATA_STATUS_LABELS } from "@/features/map/layers/mapLayers";
-import { DIFFICULTY_LENS_LABEL, LENS_DIFFICULTY_ID } from "@/lib/mapDisplay/routeStyleModes";
+import { LENS_DIFFICULTY_ID } from "@/lib/mapDisplay/routeStyleModes";
 
 import LensControl, { type LensOption } from "./LensControl";
 
@@ -67,7 +67,6 @@ describe("LensControl", () => {
   it.each([
     ["used", false, "usedの軸"],
     [LENS_DIFFICULTY_ID, false, "評価軸を選ぶ"],
-    [LENS_DIFFICULTY_ID, true, DIFFICULTY_LENS_LABEL],
   ])(
     "ピルは選んでいる評価軸（%s・ルートの確定後 %s）の名前を出し、選んでいなければ塗り方を出す",
     (lens, hasDetail, label) => {

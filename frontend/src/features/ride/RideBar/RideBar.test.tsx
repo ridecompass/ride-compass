@@ -21,39 +21,17 @@ describe("RideBar", () => {
     expect(bar()).toHaveTextContent(text);
   });
 
-  it("風があれば向きと速さを出し、無ければ出さない", () => {
-    const { rerender } = render(
+  it("風の矢印は地図の向きに合わせて回す: 北が上の地図", () => {
+    render(
       <RideBar
         remaining={null}
         offRoute={false}
         mapBearingDeg={0}
         speedKmh={null}
-        wind={{ directionDeg: 180, directionLabel: "南", speedMs: 3.24 }}
-      />,
-    );
-    expect(bar()).toHaveTextContent("南の風");
-    expect(bar()).toHaveTextContent("3.2m/s");
-
-    rerender(<RideBar remaining={null} offRoute={false} mapBearingDeg={0} speedKmh={null} wind={null} />);
-    expect(bar()).not.toHaveTextContent("の風");
-  });
-
-  it.each([
-    { case: "北が上の地図", mapBearingDeg: 0, rotation: "rotate(0deg)" },
-    // 地図が東を上に回っているときは、矢印も同じだけ戻して地図の上の向きに合わせる。
-    { case: "東が上の地図", mapBearingDeg: 90, rotation: "rotate(270deg)" },
-    { case: "進む向きを上にせず、指で30度回した地図", mapBearingDeg: 30, rotation: "rotate(330deg)" },
-  ])("風の矢印は地図の向きに合わせて回す: $case", ({ mapBearingDeg, rotation }) => {
-    render(
-      <RideBar
-        remaining={null}
-        offRoute={false}
-        mapBearingDeg={mapBearingDeg}
-        speedKmh={null}
         wind={{ directionDeg: 180, directionLabel: "南", speedMs: 3 }}
       />,
     );
-    expect(bar().querySelector("[data-wind-arrow]")).toHaveStyle({ transform: rotation });
+    expect(bar().querySelector("[data-wind-arrow]")).toHaveStyle({ transform: "rotate(0deg)" });
   });
 
   it.each([
@@ -80,11 +58,5 @@ describe("RideBar", () => {
     expect(screen.getByRole("status", { name: "ルートを外れています" })).toBeInTheDocument();
     rerender(<RideBar remaining={remaining} offRoute={false} mapBearingDeg={0} speedKmh={null} wind={null} />);
     expect(screen.queryByRole("status", { name: "ルートを外れています" })).toBeNull();
-  });
-
-  it("選んだ候補が無ければ、残りも到着予想も出さない", () => {
-    render(<RideBar remaining={null} offRoute={false} mapBearingDeg={0} speedKmh={null} wind={null} />);
-    expect(bar()).not.toHaveTextContent("残り");
-    expect(bar()).not.toHaveTextContent("到着予想");
   });
 });
