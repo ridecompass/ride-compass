@@ -50,13 +50,11 @@ describe("buildMapLayers（レイヤーの一覧）", () => {
       mapCatalogOf([
         catalogEntry({ axis_id: "night", label: "暗さ", primary_attribute_ids: ["lit", "tunnel"] }),
         catalogEntry({ axis_id: "stops", label: "止まりやすさ", primary_attribute_ids: ["stop_poi"] }),
-        catalogEntry({ axis_id: "wind", label: "向かい風", weather_layer_groups: ["windVector"] }),
       ]),
     );
     expect(layer(axes, "tunnel").panelHint).toContain("評価軸「暗さ」");
     expect(layer(axes, "stop_poi").panelHint).toContain("評価軸「止まりやすさ」");
-    expect(layer(axes, "windVector").panelHint).toContain("評価軸「向かい風」");
-    for (const id of ["tunnel", "stop_poi", "windVector"]) {
+    for (const id of ["tunnel", "stop_poi"]) {
       expect(layer(withoutAxes, id).panelHint).not.toContain("評価");
     }
   });

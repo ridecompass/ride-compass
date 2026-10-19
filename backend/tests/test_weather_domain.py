@@ -1,7 +1,6 @@
 """`domain/weather.py`——アメダスの実測と推計気象分布の区分から天気コードを導く。
 
-入口は`derive_observed_weather_code`。「今日」のパネルの読み方（今日の範囲・日次の値・コマ）は
-`test_weather_service.py`が入口から見る。
+入口は`derive_observed_weather_code`。
 
 ここで見ないもの:
 - 観測値と推計気象分布の区分がこの規則へ渡り、応答に出ること → `test_jma_amedas_service.py`

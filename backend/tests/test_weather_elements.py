@@ -42,12 +42,12 @@ def _declared(monkeypatch):
         monkeypatch.setitem(weather_elements.JMA_ELEMENTS, element_id, element)
 
 
-def _element(kind, jma_elements, grid_value=None) -> WeatherElement:
-    return WeatherElement("group", "source", kind, tuple(jma_elements), "架空", FrameRule("nearest"), grid_value)
+def _element(kind, jma_elements) -> WeatherElement:
+    return WeatherElement("group", "source", kind, tuple(jma_elements), "架空", FrameRule("nearest"))
 
 
 def test_an_element_not_drawn_from_tiles_has_no_tile_spec():
-    assert weather_element_tile(_element("gridFill", ())) is None
+    assert weather_element_tile(_element("outline", ())) is None
 
 
 @pytest.mark.usefixtures("_declared")
@@ -147,15 +147,11 @@ def test_配信元から取る段はすべて時刻一覧のファイルを持�
             assert delivery.target_times_paths, f"{element.group}/{element.source} の {delivery.element_id}"
 
 
-def test_どの要素も時刻の読み方を持つ() -> None:
-    """配信元から取る段は時刻一覧の読み方を、自前の格子から描く要素は読む値を持つ。無いと画面は
-    その要素のコマを作れない（配信元の段の読み方は宣言が持ち、宣言が無ければ上のテストの`weather_element_deliveries`が落ちる）。"""
+def test_どの要素も配信元から取る段を持つ() -> None:
+    """段が無いと画面はその要素のコマを作れない（段の読み方は宣言が持ち、宣言が無ければ上のテストの
+    `weather_element_deliveries`が落ちる）。"""
     for element in WEATHER_ELEMENTS:
-        name = f"{element.group}/{element.source}"
-        if element.jma_elements:
-            assert element.grid_value is None, f"{name} は配信元から取るのに格子の値を持つ"
-        else:
-            assert element.grid_value is not None, f"{name} は読む格子の値を持たない"
+        assert element.jma_elements, f"{element.group}/{element.source} は配信元から取る段を持たない"
 
 
 def test_同じ名前付きソースの気象の要素は同じコマの規則を持つ() -> None:

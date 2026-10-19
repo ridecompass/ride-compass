@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   frameIndexForTime,
-  gridCellRing,
-  gridToFeatureCollection,
   isWithinFutureWindow,
   observationIndexForTime,
   pointsAtFailedTiles,
@@ -54,46 +52,20 @@ describe("isWithinFutureWindow（単発の予測を出す時間窓）", () => {
   });
 });
 
-describe("gridToFeatureCollection・gridCellRing（格子から地物へ）", () => {
-  it("値の取れた点だけを地物にする（欠損した点は飛ばす）", () => {
-    const grid = [
-      { id: "b", value: null },
-      { id: "d", value: 0 },
-    ];
-    const collection = gridToFeatureCollection(
-      grid,
-      (point) => point.value,
-      (point, value) => ({
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [0, 0] },
-        properties: { id: point.id, value },
-      }),
-    );
-    expect(collection.features.map((feature) => feature.properties)).toEqual([{ id: "d", value: 0 }]);
-  });
-
-  it("格子点を中心とする1辺spacingの閉じた正方形", () => {
-    expect(gridCellRing(35, 139, 0.1)).toEqual([
-      [138.95, 34.95],
-      [139.05, 34.95],
-      [139.05, 35.05],
-      [138.95, 35.05],
-      [138.95, 34.95],
-    ]);
-  });
-});
-
 describe("pointsAtFailedTiles（描く中身が、配信の返らないタイルのコマを指すか）", () => {
   // 記録の値は、失敗したタイルのコマのテンプレート（`jmaTileProtocol.ts`が描画ペイロードと同じ文字列で持つ）。
   const TEMPLATE = "https://example.com/risk/20260924000000/none/20260924010000/inund/{z}/{x}/{y}.png";
   const failures = new Map([["inund", TEMPLATE]]);
-  const grid: DynamicWeatherRenderPayload = { kind: "gridFill", geojson: { type: "FeatureCollection", features: [] } };
+  const features: DynamicWeatherRenderPayload = {
+    kind: "outline",
+    geojson: { type: "FeatureCollection", features: [] },
+  };
   const nextFrame = TEMPLATE.replace("20260924010000", "20260924011000");
 
   it.each([
     ["ベクタタイルが、いま失敗しているコマを指す", { kind: "vectorTile", tileUrlTemplate: TEMPLATE }, true],
     ["ラスタタイルも同じ", { kind: "rasterTile", tileUrlTemplate: TEMPLATE }, true],
-    ["自前で取る表現（格子）は対象外", grid, false],
+    ["地物（GeoJSON）の表現は対象外", features, false],
     ["描く中身がまだ無ければ対象外", undefined, false],
     [
       "コマが進んで別のコマを指していれば、古い失敗は当たらない",

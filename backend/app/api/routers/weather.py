@@ -1,42 +1,24 @@
-from collections.abc import Awaitable
 from datetime import datetime
 from typing import TypeVar
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import ValidationError
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.api.dependencies import (
     get_amedas_service,
     get_flood_service,
     get_warning_service,
     get_wbgt_service,
-    get_weather_service,
-    get_wind_grid_service,
 )
 from app.api.rate_limit import enforce_rate_limit
 from app.config import settings
 from app.domain.geo import Latitude, Longitude
 from app.domain.jma_amedas import AmedasObservation
-from app.domain.region import BoundingBox
 from app.domain.route import Coordinates
 from app.domain.time_zone import JST
-from app.domain.weather import WeatherConditions
-from app.domain.wind_grid import (
-    WIND_GRID_DETAIL_MIN_SPACING_DEG,
-    WIND_GRID_DETAIL_SPACING_DEG,
-    WindGridResponse,
-)
 from app.services.flood_service import FloodForecasts, FloodService
 from app.services.warning_service import WarningService, WeatherWarnings
 from app.services.wbgt_service import WbgtService, WbgtStatus
 from app.services.jma_amedas_service import JmaAmedasService
-from app.services.weather_service import WeatherService
-from app.services.wind_grid_service import (
-    WindGridAreaUnavailable,
-    WindGridService,
-    WindGridTooLarge,
-    WindGridUnavailable,
-)
 
 
 router = APIRouter()
@@ -51,32 +33,6 @@ def _or_502(value: _T | None, detail: str) -> _T:
     if value is None:
         raise HTTPException(status_code=502, detail=detail)
     return value
-
-
-async def _grid_or_502(grid: Awaitable[WindGridResponse]) -> WindGridResponse:
-    try:
-        return await grid
-    except WindGridAreaUnavailable:
-        raise HTTPException(status_code=502, detail="対象範囲を読めませんでした") from None
-    except WindGridUnavailable:
-        raise HTTPException(status_code=502, detail="気象データの取得に失敗しました") from None
-
-
-@router.get("/api/weather", response_model=WeatherConditions)
-async def get_weather(
-    http_request: Request,
-    latitude: Latitude,
-    longitude: Longitude,
-    weather_service: WeatherService = Depends(get_weather_service),
-) -> WeatherConditions:
-    """「今日」のパネル（1日の最大・最小と一定間隔のコマ）向けの、数値予報モデル（MSM）の計算値。
-    常設ヘッダー（現在値の気温・体感温度・風速風向）はアメダス実測を使う
-    `GET /api/weather/amedas`が担う。"""
-    enforce_rate_limit(http_request, "weather", settings.weather_rate_limit_per_minute)
-    return _or_502(
-        await weather_service.get_conditions(Coordinates(latitude=latitude, longitude=longitude)),
-        "天候情報の取得に失敗しました",
-    )
 
 
 @router.get("/api/weather/warnings", response_model=WeatherWarnings)
@@ -145,48 +101,3 @@ async def get_amedas(
         await amedas_service.get_nearest_observation(Coordinates(latitude=latitude, longitude=longitude)),
         "アメダス観測値の取得に失敗しました",
     )
-
-
-@router.get("/api/weather/wind-grid", response_model=WindGridResponse)
-async def get_wind_grid(
-    http_request: Request,
-    wind_grid_service: WindGridService = Depends(get_wind_grid_service),
-) -> WindGridResponse:
-    """風・降水（数値予報モデルの計算値）の格子点マップ。
-    対象範囲（取り込んだ道路の範囲）全体の固定格子点（domain/wind_grid.py: generate_wind_grid_points）
-    ぶんの時間別風向・風速・降水量をまとめて返す。対象範囲か格子を読めなければ502。
-    時刻配列はpoints内の各点からは外し、応答トップレベルに1本だけ持つ
-    （WindGridResponseのdocstring参照）。"""
-    enforce_rate_limit(http_request, "wind-grid", settings.wind_grid_rate_limit_per_minute)
-    return await _grid_or_502(wind_grid_service.get_grid())
-
-
-@router.get("/api/weather/wind-grid-detail", response_model=WindGridResponse)
-async def get_wind_grid_detail(
-    http_request: Request,
-    min_lon: Longitude,
-    min_lat: Latitude,
-    max_lon: Longitude,
-    max_lat: Latitude,
-    # 無限大の間隔は索引0の点の座標をNaNにする（0×inf）。
-    spacing_deg: float = Query(default=WIND_GRID_DETAIL_SPACING_DEG, allow_inf_nan=False),
-    wind_grid_service: WindGridService = Depends(get_wind_grid_service),
-) -> WindGridResponse:
-    """風・降水（数値予報モデルの計算値）の詳細格子（ヒートマップ等の面表現用、spacing_degでズーム依存の間隔を
-    可変化）。呼び出し元（フロント）が渡した表示範囲（bbox）に交差する
-    密格子点（domain/wind_grid.py: generate_wind_grid_detail_points、固定ラティス上の座標）
-    ぶんの時間別風向・風速・降水量を返す。get_wind_gridと同じく時刻配列は応答トップレベルに1本だけ持つ。
-
-    spacing_degはWIND_GRID_DETAIL_MIN_SPACING_DEG以上の有限の値を受け付ける。点が多すぎる範囲は400、
-    対象範囲か格子を読めなければ502。"""
-    enforce_rate_limit(http_request, "wind-grid-detail", settings.wind_grid_detail_rate_limit_per_minute)
-    try:
-        bbox = BoundingBox(min_latitude=min_lat, min_longitude=min_lon, max_latitude=max_lat, max_longitude=max_lon)
-    except ValidationError:
-        raise HTTPException(status_code=400, detail="表示範囲が不正です。") from None
-    if spacing_deg < WIND_GRID_DETAIL_MIN_SPACING_DEG:
-        raise HTTPException(status_code=400, detail="spacing_degの値が不正です。")
-    try:
-        return await _grid_or_502(wind_grid_service.get_detail_grid(bbox, spacing_deg))
-    except WindGridTooLarge:
-        raise HTTPException(status_code=400, detail="表示範囲が広すぎます。ズームインしてください。") from None

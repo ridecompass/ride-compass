@@ -7,7 +7,7 @@ import {
   makeRouteCandidate as makeCandidate,
   makeRouteSegment,
 } from "@/testing/routeFixtures";
-import type { AmedasObservation, WeatherConditions } from "@/types/weather";
+import type { AmedasObservation } from "@/types/weather";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import nextConfig from "../next.config";
@@ -112,23 +112,7 @@ export function routeGenerateResponseFixture(): DoneJob["result"] {
   };
 }
 
-// 戻り値の型をbackendのWeatherConditionsに固定する。backendが欄を足したとき、型が無いと
-// 構造的部分型でtscが通り、欄の欠けたフィクスチャで画面がE2Eの実行中に落ちる。
-function weatherConditionsFixture(): WeatherConditions {
-  return {
-    precipitation_mm: null,
-    twilight: null,
-    precipitation_max_mm: null,
-    wind_speed_max_ms: null,
-    temperature_range: null,
-    today_periods: [],
-    today_period_interval_hours: 2,
-  };
-}
-
-// 最寄りアメダス観測所の実測値フィクスチャ。/api/weather*の汎用ワイルドカード（後述installApiMocks）は
-// WeatherConditionsの形を返すため、形の違うAmedasObservationを使う/api/weather/amedasには専用ルートが
-// 要る——無いと常設ヘッダーが欄の欠けたデータを受け取り、tscでは気づけない。
+// 最寄りアメダス観測所の実測値フィクスチャ。
 function amedasObservationFixture(): AmedasObservation {
   return {
     station_name: "観測所",
@@ -186,9 +170,6 @@ export async function installApiMocks(page: Page): Promise<void> {
 
   await page.route(`${API_BASE}/health`, (route) => route.fulfill({ json: { status: "ok" } }));
 
-  await page.route(`${API_BASE}/api/weather*`, (route) => route.fulfill({ json: weatherConditionsFixture() }));
-  // /api/weather*より後に登録し、Playwrightのルート優先順位（後から登録した方が先に
-  // マッチ判定される）で/api/weather/amedasだけこちらを優先させる。
   await page.route(`${API_BASE}/api/weather/amedas*`, (route) => route.fulfill({ json: amedasObservationFixture() }));
   // 警告バッジ3種は「警告なし」の成功応答にする。応答しないと取得失敗の印がヘッダーに出る。
   const noWarnings: components["schemas"]["WeatherWarnings"] = { warnings: [], valid_area: null };

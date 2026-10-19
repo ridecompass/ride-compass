@@ -5,25 +5,15 @@ import { useMemo, useState } from "react";
 import { getQueryClient } from "@/lib/queryClient";
 import { leftTheArea } from "@/lib/validArea";
 import { SECOND_MS } from "@/lib/duration";
-import {
-  getAmedasObservation,
-  getCurrentWeather,
-  getFloodForecasts,
-  getWbgtStatus,
-  getWeatherWarnings,
-} from "@/services/weatherApi";
+import { getAmedasObservation, getFloodForecasts, getWbgtStatus, getWeatherWarnings } from "@/services/weatherApi";
 import refreshIntervals from "@/types/generated/refresh-intervals.json";
 import type { Coordinates } from "@/types/route";
-import type { AmedasObservation, ValidArea, WeatherConditions } from "@/types/weather";
+import type { AmedasObservation, ValidArea } from "@/types/weather";
 import type { WarningBadgeItem } from "@/features/conditions/WarningBadge/WarningBadge";
 import type { FetchFailure } from "@/types/fetchFailure";
 
 interface UseWeatherConditionsResult {
-  /** 「今日」のパネル（数値予報モデルの計算値）。常設のヘッダーは読まない（ヘッダーは実測）。 */
-  weather: WeatherConditions | null;
-  weatherLoading: boolean;
-  weatherError: string | null;
-  /** 最寄りのアメダスの実測（常設のヘッダー）。モデル側の成否・遅さに引きずられないよう別に取る。 */
+  /** 最寄りのアメダスの実測（常設のヘッダー）。 */
   amedas: AmedasObservation | null;
   amedasLoading: boolean;
   amedasError: string | null;
@@ -94,7 +84,6 @@ export function useWeatherConditions(
   locationKnown: boolean,
   following: Coordinates | null,
 ): UseWeatherConditionsResult {
-  const weather = useLocationFetch("forecast", getCurrentWeather, location, locationKnown, following);
   const amedas = useLocationFetch("amedas", getAmedasObservation, location, locationKnown, following, validArea);
 
   // 警告は、取れない間その出所のバッジを出さず、失敗した出所を別に渡す（バッジが無いのを「警告なし」と読ませない）。
@@ -153,9 +142,6 @@ export function useWeatherConditions(
   );
 
   return {
-    weather: weather.data,
-    weatherLoading: weather.loading,
-    weatherError: weather.error,
     amedas: amedas.data,
     amedasLoading: amedas.loading,
     amedasError: amedas.error,

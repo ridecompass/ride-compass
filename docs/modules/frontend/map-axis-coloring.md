@@ -29,7 +29,7 @@
 | `features/map/useWayMaterials.ts` | 道ごとの材料のフェッチ・状態管理（viewportデバウンス＋タイル単位取得、全軸を1つのフックで賄う） |
 | `features/map/regionApi.ts`（`fetchWayMaterials`のみ） | backend APIラッパー |
 
-**`MapView.tsx`は路面タイル・動的気象（降水/風の矢印/雷/竜巻）・POI等のロジックも持つ
+**`MapView.tsx`は路面タイル・動的気象（降水/雷/竜巻）・POI等のロジックも持つ
 ファイルで、それらは[地図: 静的レイヤー・道路表示](static-map-layers.md)・
 [地図: 動的気象レイヤー](dynamic-weather-layers.md)の管轄。本ドキュメントは専用way値
 配信軸/ルート確定後の色分け（DETAIL_LAYER_ID）に関わる箇所のみを扱う。**
@@ -116,9 +116,7 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
 
 **材料が実行時の動的値だけの軸は、`primary_attribute_ids`が空になるのが正しい。** 空を
 不備の印として扱わない——軸idの健全性は「カタログに実在するか」で見る（idを間違えても
-例外にならず、材料一覧が空のまま黙って壊れる）。動的な材料の元データを描く気象のチップ（例: 風の材料なら
-風の矢印）は、別の項目`weather_layer_groups`が運ぶ（下敷きの判定には使わない——下敷きは道の線を隠さないための
-もので、気象の記号は道の線を覆わない）。
+例外にならず、材料一覧が空のまま黙って壊れる）。
 
 ## valueScale.ts（ルート前後で共有する葉モジュール）
 
@@ -391,10 +389,8 @@ features/map/view/useMapView.ts
 ## 動的気象レイヤーとの関係
 
 評価軸グループ（道路そのものを線で塗る）は、
-`windVector`（矢印表示、環境グループの探索用表現）とは完全に独立した見せ方であり、
-同じ`[時刻/向き]`入力を共有するだけで、レイヤー・ソース・フェッチ経路はすべて別individual。
 [地図: 動的気象レイヤー](dynamic-weather-layers.md)が扱う動的気象の描き方（`scene/groups/weather.ts`）
-（風の矢印・降水ナウキャスト等）とは異なり、評価軸の線は`mapLayers.ts:
+（降水ナウキャスト等）とは異なり、評価軸の線は`mapLayers.ts:
 isAxisStudioLayer`により地図上チップ（`MapOverlayControls.tsx`）に一切現れない。表示ON/OFFの起動導線は地図上部中央の
 `LensControl`のみが持つ（本ファイル冒頭「対象ファイル」参照）。
 
