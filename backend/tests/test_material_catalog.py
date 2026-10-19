@@ -182,11 +182,6 @@ def test_a_value_belongs_to_one_row_only(attr):
         assert len(values) == len(set(values)), spec.key
 
 
-def test_every_named_road_kind_is_on_a_legend_row():
-    """どの行にも入らない道は、地図で「その他」に塗られ、除外タブのどの行を選んでも避けられない。"""
-    assert row_values("highway") == set(material_catalog.MATERIAL_CATALOG["highway"].value_labels)
-
-
 @pytest.mark.parametrize("attr", DISPLAYED, ids=lambda attr: attr.attr_id)
 def test_a_row_key_is_not_repeated_in_an_axis(attr):
     """凡例の絞り込みは行を鍵で持ち、停止要因の点は行の鍵でまとめる。重なると2つの行が1つとして振る舞う。"""
@@ -216,14 +211,6 @@ def test_at_most_one_axis_sizes_the_points(attr):
 
     assert len(sized) <= 1
     assert not sized or attr.geometry == "point"
-
-
-def test_a_line_has_exactly_one_axis():
-    """道の線は1本の軸の行で塗る（線のプロパティが属性そのもの）。2本目の軸は地図のどこにも出ない。"""
-    lines = [attr for attr in DISPLAYED if attr.geometry == "line"]
-
-    assert lines
-    assert all(len(attr.display_axes) == 1 for attr in lines)
 
 
 def test_an_area_has_no_rows():

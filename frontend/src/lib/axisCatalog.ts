@@ -64,15 +64,15 @@ function axisColorsOf(axes: readonly CatalogAxis[]): Record<string, string> {
   return Object.fromEntries(axes.map((axis, index) => [axis.axisId, `hsl(${(index * 360) / axes.length}, 62%, 55%)`]));
 }
 
-// 軸は`GET /api/axis-catalog`が配るものだけを使う。**ビルド時の写しを持たない**——
-// 持つと、APIが失敗したときに古い軸で地図が描かれ、伝播の失敗が見えなくなる。
-// 取得できるまでは軸が1つも無い状態で、呼び出し側は`loaded`で区別する。
-export const EMPTY_ROAD_CLASSES: RoadClassCatalog = {
+const EMPTY_ROAD_CLASSES: RoadClassCatalog = {
   generation: "",
   map_layers: [],
   avoidance: { levels: [], sections: [], rows: [] },
 };
 
+// 軸は`GET /api/axis-catalog`が配るものだけを使う。**ビルド時の写しを持たない**——
+// 持つと、APIが失敗したときに古い軸で地図が描かれ、伝播の失敗が見えなくなる。
+// 取得できるまでは軸が1つも無い状態で、呼び出し側は`loaded`で区別する。
 export const EMPTY_CATALOG: AxisCatalog = {
   clientTuning: {},
   roadClasses: EMPTY_ROAD_CLASSES,
