@@ -37,6 +37,7 @@ describe("RideModeButton", () => {
 
   it.each([
     { status: "following", choice: "休む", chosen: "onRest" },
+    { status: "paused", choice: "休む", chosen: "onRest" },
     { status: "resting", choice: "続きから走る", chosen: "onResume" },
   ] as const)(
     "$status: 押すと「$choice」か案内を終えるかを選ばせ、選んだ方だけを知らせて閉じる",

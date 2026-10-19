@@ -112,6 +112,10 @@ describe("lensOptions（レンズの選択肢）", () => {
     const [option] = lensOptions(mapCatalogOf([dedicatedEntry("a", [1], overrides)]).axes, {}, {});
     expect(option.conditions).toEqual(conditions);
   });
+
+  it("「未使用」は、渡した重みが0以下か、重みを持たない軸", () => {
+    expect(lensOptions(axes, { painted: 0 }, {}).map((option) => option.unused)).toEqual([true, true]);
+  });
 });
 
 describe("isRouteStyleModeId", () => {

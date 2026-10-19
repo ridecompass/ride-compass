@@ -91,4 +91,15 @@ describe("WarningBadgeList", () => {
     await userEvent.click(screen.getByRole("button", { name: "再試行" }));
     expect(retries).toEqual(["catalog"]);
   });
+
+  it("警告と失敗は並べて出す", () => {
+    render(
+      <WarningBadgeList
+        items={[item("a", "jma", "warning")]}
+        failures={[{ id: "wbgt", label: "暑さ指数", detail: "x", effect: "y" }]}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /^気象警報・注意報あり/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^暑さ指数を取得できていません/ })).toBeInTheDocument();
+  });
 });

@@ -130,6 +130,31 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
 });
 
 describe("地図が塗る軸の道ごとの材料（fetchWayMaterials）", () => {
+  it("軸とタイルをパスへ、時刻を問い合わせへ載せ、道ごとの材料を返す", async () => {
+    const sent = onBackend("GET", "/api/region/way-materials/:axisId/:z/:x/:y", () =>
+      Response.json({ "101": { slope: 3.5 }, "102": { slope: -1 } }),
+    );
+
+    const result = await api.fetchWayMaterials("axis_a", 15, 29100, 12900, new Date("2026-10-01T00:00:00Z"));
+
+    expect(result).toEqual({ materials: { "101": { slope: 3.5 }, "102": { slope: -1 } }, error: false });
+    expect(sent.map(({ method, path, query }) => ({ method, path, query }))).toEqual([
+      {
+        method: "GET",
+        path: "/api/region/way-materials/axis_a/15/29100/12900",
+        query: { at: "2026-10-01T00:00:00.000Z" },
+      },
+    ]);
+  });
+
+  it("時刻を渡さなければ問い合わせに載せない", async () => {
+    const sent = onBackend("GET", "/api/region/way-materials/:axisId/:z/:x/:y", () => Response.json({}));
+
+    await api.fetchWayMaterials("axis_a", 15, 1, 2, undefined);
+
+    expect(sent.map(({ query }) => query)).toEqual([{}]);
+  });
+
   it("失敗は投げずに、空の材料と失敗の印で返す（色分けの失敗で道路や他のレイヤーを止めない）", async () => {
     onBackend("GET", "/api/region/way-materials/:axisId/:z/:x/:y", () => new Response(null, { status: 500 }));
 

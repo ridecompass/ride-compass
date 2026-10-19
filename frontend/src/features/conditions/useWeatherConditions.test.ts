@@ -56,6 +56,64 @@ describe("useWeatherConditions 取得の時機", () => {
     await settle();
     expect(result.current).toMatchObject({ amedas: null, warningBadgeItems: [] });
   });
+
+  it("位置が決まったら、実測・警報・暑さ指数・氾濫予報をその位置で取る", async () => {
+    // どの口も、問い合わせた緯度・経度を値に書いて返す。
+    const at = ({ query }: { query: Record<string, string> }) => `${query.latitude},${query.longitude}`;
+    onBackend("GET", AMEDAS, (request) => Response.json({ place: at(request) }));
+    onBackend("GET", WARNINGS, (request) =>
+      Response.json({ warnings: [{ code: "03", name: `警報@${at(request)}`, level: "warning", additions: [] }] }),
+    );
+    onBackend("GET", WBGT, (request) =>
+      Response.json({ reading: { level: "warning", value: 29, label: `@${at(request)}` } }),
+    );
+    onBackend("GET", FLOOD, (request) =>
+      Response.json({
+        forecasts: [{ river_code: "r1", label: `氾濫@${at(request)}`, badge_level: "warning", condition: "" }],
+      }),
+    );
+    const { result } = render();
+    const tokyo = `${TOKYO.latitude},${TOKYO.longitude}`;
+    await vi.waitFor(() => {
+      expect(result.current.amedas).toEqual({ place: tokyo });
+      expect(result.current.warningBadgeItems.map((item) => item.label)).toEqual([
+        `警報@${tokyo}`,
+        `暑さ指数@${tokyo}`,
+        `氾濫@${tokyo}`,
+      ]);
+    });
+  });
+
+  it("位置が変わったら、緯度・経度のどちらだけの違いでも新しい位置で取り直す", async () => {
+    onBackend("GET", AMEDAS, ({ query }) => Response.json({ place: `${query.latitude},${query.longitude}` }));
+    const { result, rerender } = render();
+    await fetched();
+    for (const moved of [
+      { ...TOKYO, longitude: YOKOHAMA.longitude },
+      { latitude: YOKOHAMA.latitude, longitude: YOKOHAMA.longitude },
+    ]) {
+      rerender({ location: moved, ready: true });
+      await vi.waitFor(() => expect(result.current.amedas).toEqual({ place: `${moved.latitude},${moved.longitude}` }));
+    }
+  });
+
+  // 取り直す回数はbackendの回数制限（429）に効くので、届いた要求を数える。
+  it("開いたままでも10分ごとに取り直す", async () => {
+    render();
+    await fetched();
+    expect(observations).toHaveLength(1);
+    act(() => vi.advanceTimersByTime(10 * 60 * 1000));
+    await vi.waitFor(() => expect(observations).toHaveLength(2));
+  });
+
+  it("取り終えたら読み込み中を下ろし、位置を変えて取り直す間は前の位置の値のまま読み込み中にする", async () => {
+    const { result, rerender } = render();
+    await vi.waitFor(() => expect(result.current.amedasLoading).toBe(false));
+    onBackend("GET", AMEDAS, heldReplies().reply);
+    rerender({ location: YOKOHAMA, ready: true });
+    await vi.waitFor(() => expect(result.current.amedasLoading).toBe(true));
+    expect(result.current.amedas).toEqual({ temperature_c: 21 });
+  });
 });
 
 describe("useWeatherConditions 走行中", () => {
@@ -118,6 +176,21 @@ describe("useWeatherConditions 走行中", () => {
     );
     await fetched();
     expect(warnings).toHaveLength(1);
+  });
+
+  it("範囲の中にいても、取り直しの間隔が来たら今の位置で取り直す", async () => {
+    observations = onBackend("GET", AMEDAS, ({ query }) =>
+      Response.json({ place: `${query.latitude},${query.longitude}`, valid_area: AROUND_TOKYO }),
+    );
+    const { result, rerender } = renderRiding(TOKYO);
+    await fetched();
+    rerender({ position: NEAR_TOKYO });
+    await fetched();
+
+    act(() => vi.advanceTimersByTime(10 * 60 * 1000));
+    const near = `${NEAR_TOKYO.latitude},${NEAR_TOKYO.longitude}`;
+    await vi.waitFor(() => expect(result.current.amedas).toMatchObject({ place: near }));
+    expect(observations).toHaveLength(2);
   });
 
   it("範囲を出て取り直している間に位置が届いても、取り直しは増やさない", async () => {

@@ -10,7 +10,9 @@ import weatherScales from "@/types/generated/weather-scales.json";
 import { LANDCOVER_PAINTED_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import {
   buildMapLayers,
+  deriveFetchLayerStatus,
   isAxisStudioLayer,
+  LAYER_DATA_STATUS_LABELS,
   layerDataStatusNotice,
   mapOverlayGroupFor,
   tileVersionGatedLayerIds,
@@ -111,8 +113,22 @@ describe("出せない理由の案内", () => {
   });
 });
 
+describe("deriveFetchLayerStatus（自前で取るレイヤーの取得状態）", () => {
+  it("失敗 > 読み込み中 > 取り終えて値なし の順に1つ決め、まだ取りに行っていない間と値がある間は何も出さない", () => {
+    expect(deriveFetchLayerStatus(true, "失敗", false, true)).toBe("error");
+    expect(deriveFetchLayerStatus(true, null, false, false)).toBe("loading");
+    expect(deriveFetchLayerStatus(false, null, false, true)).toBe("empty");
+    expect(deriveFetchLayerStatus(false, null, false, false)).toBeUndefined();
+    expect(deriveFetchLayerStatus(false, null, true, true)).toBeUndefined();
+  });
+});
+
 describe("layerDataStatusNotice（取得状態を開いた先で読ませる文）", () => {
-  it("状態がloadingならnullを出す（読み込み中は絞り込みのたびに揺れるので出さない）", () => {
-    expect(layerDataStatusNotice("loading")).toBeNull();
+  it.each([
+    [undefined, null],
+    ["loading", null],
+    ["error", LAYER_DATA_STATUS_LABELS.error],
+  ] as const)("状態が%sなら%sを出す（読み込み中は絞り込みのたびに揺れるので出さない）", (status, notice) => {
+    expect(layerDataStatusNotice(status)).toBe(notice);
   });
 });

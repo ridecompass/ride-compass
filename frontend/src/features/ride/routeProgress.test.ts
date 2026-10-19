@@ -101,6 +101,10 @@ describe("locateOnRoute", () => {
     expect(locateOnRoute(apart, moved(QUARTER_WAY, 2 * ROUTE_MATCH_SLACK_M), 0.4)).toBeCloseTo(backQuarterKm);
     expect(locateOnRoute(apart, moved(QUARTER_WAY, ROUTE_MATCH_SLACK_M * 1.25), 0.4)).toBeCloseTo(0.5);
   });
+
+  it("ルートの形が無ければnull", () => {
+    expect(locateOnRoute([], QUARTER_WAY, null)).toBeNull();
+  });
 });
 
 describe("offRoute", () => {

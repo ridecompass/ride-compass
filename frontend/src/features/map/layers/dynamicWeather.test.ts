@@ -18,6 +18,7 @@ const noFrames: typeof frames = [];
 
 describe("frameIndexForTime（共有時刻に対して描くコマ）", () => {
   it.each([
+    ["範囲内なら最も近いコマ", frames, at(6), 1],
     ["最初のコマの前は1秒の揺れまで範囲内", frames, new Date(at(0).getTime() - 1000), 0],
     ["最初のコマより前は描かない（過ぎた時刻に最初のコマを出し続けない）", frames, at(-1), null],
     ["最後のコマの後は1秒の揺れまで範囲内", frames, new Date(at(20).getTime() + 1000), 2],

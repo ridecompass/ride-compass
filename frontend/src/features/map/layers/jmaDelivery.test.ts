@@ -13,6 +13,7 @@ import {
   jmaFramesOf,
   jmaPlaceholderTileUrl,
   jmaTilePayload,
+  parseValidtime,
   readJmaTileUrl,
   type JmaDelivery,
 } from "./jmaDelivery";
@@ -142,5 +143,11 @@ describe("コマのURL", () => {
 
     const geojson = await fetchJmaGeojson(delivery, frame, "地点");
     expect(geojson.features.map((feature) => feature.properties)).toEqual([{ type: 1 }, null]);
+  });
+});
+
+describe("コマの時刻", () => {
+  it("validtimeは協定世界時の YYYYMMDDHHmmss", () => {
+    expect(parseValidtime("20260923153000").toISOString()).toBe("2026-09-23T15:30:00.000Z");
   });
 });

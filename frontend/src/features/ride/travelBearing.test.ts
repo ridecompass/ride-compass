@@ -14,6 +14,12 @@ function fix(at: { latitude: number; longitude: number }, heading: number | null
 describe("nextTravelBearing: 地図を進む向きへ回すときの向き", () => {
   it.each([
     {
+      case: "位置に向きがあれば、それを使う（動いた距離によらない）",
+      fix: fix(ORIGIN, 200),
+      previous: { anchor: ORIGIN, bearing: 10 },
+      bearing: 200,
+    },
+    {
       case: "向きが無くても、前の点から十分に動いたら、その向きを出す（東へ）",
       fix: fix(moved(ORIGIN, 0, MIN_TRAVEL_FOR_BEARING_M + 1)),
       previous: { anchor: ORIGIN, bearing: null },
@@ -30,6 +36,12 @@ describe("nextTravelBearing: 地図を進む向きへ回すときの向き", () 
       fix: fix(moved(ORIGIN, 0, MIN_TRAVEL_FOR_BEARING_M - 1)),
       previous: { anchor: ORIGIN, bearing: 45 },
       bearing: 45,
+    },
+    {
+      case: "最初の位置では、向きはまだ無い",
+      fix: fix(ORIGIN),
+      previous: null,
+      bearing: null,
     },
   ])("$case", ({ fix: current, previous, bearing }) => {
     const next = nextTravelBearing(previous, current);

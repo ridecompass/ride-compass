@@ -15,8 +15,12 @@ const labeledValueOf = (materialId: string): [string, string] =>
   )!;
 
 describe("roadDisplayName", () => {
-  it("nameとrefの両方があれば1つへ畳む", () => {
-    expect(roadDisplayName({ name: "明治通り", ref: "R305" })).toBe("明治通り[R305]");
+  it.each([
+    [{ name: "明治通り", ref: "R305" }, "明治通り[R305]"],
+    [{ name: "明治通り" }, "明治通り"],
+    [{ ref: "R305" }, "R305"],
+  ])("nameとrefの両方があれば1つへ畳み、片方だけでも出す（%o）", (properties, expected) => {
+    expect(roadDisplayName(properties)).toBe(expected);
   });
 });
 
