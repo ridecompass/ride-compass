@@ -599,9 +599,8 @@ def road_layer_ids_for(definition: AxisDefinition, road_classes: RoadClassDefini
     return [
         key
         for key in road_classes.map_layers
-        if (classification := road_classes.classifications.get(key)) is not None
-        and classification.is_published
-        and leaves & classification_materials(road_classes, key)
+        if (classification := road_classes.classifications[key]).is_published
+        and leaves & classification_materials(key, classification)
     ]
 
 

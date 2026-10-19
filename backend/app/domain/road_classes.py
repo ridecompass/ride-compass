@@ -11,7 +11,7 @@
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from typing import Annotated
+from typing import Annotated, Protocol
 
 import numpy as np
 from pydantic import Field
@@ -128,6 +128,15 @@ def replace_road_classes(definitions: RoadClassDefinitions) -> None:
     _current = definitions
 
 
+class _Sorted(Protocol):
+    sort_order: int
+
+
+def by_sort_order[T: _Sorted](items: Mapping[str, T]) -> list[tuple[str, T]]:
+    """鍵と値を`sort_order`の順に。"""
+    return sorted(items.items(), key=lambda item: item[1].sort_order)
+
+
 def road_class_generation(definitions: RoadClassDefinitions) -> str:
     """中身から作る指紋。鍵の順に依らない。"""
     text = json.dumps(definitions.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
@@ -174,23 +183,18 @@ def class_indices(classification: RoadClassification, columns: Mapping[str, Mate
     return indices
 
 
+def _facts(classification: RoadClassification) -> set[str]:
+    return {fact_key for c in classification.classes.values() for condition in c.conditions for fact_key in condition}
+
+
+def classification_materials(key: str, classification: RoadClassification) -> set[str]:
+    """分け方が区分を決めるのに読む材料のid: 条件の事実と、その分け方の区分の列（`class:<分け方>`）。"""
+    return {*_facts(classification), class_material_id(key)}
+
+
 def condition_facts(definitions: RoadClassDefinitions) -> set[str]:
     """区分の条件が読む事実の材料のid。"""
-    return {
-        fact_key
-        for classification in definitions.classifications.values()
-        for road_class in classification.classes.values()
-        for condition in road_class.conditions
-        for fact_key in condition
-    }
-
-
-def classification_materials(definitions: RoadClassDefinitions, classification_key: str) -> set[str]:
-    """分け方が区分を決めるのに読む材料のid（条件の事実）。"""
-    classification = definitions.classifications.get(classification_key)
-    if classification is None:
-        return set()
-    return {fact_key for c in classification.classes.values() for condition in c.conditions for fact_key in condition}
+    return {fact for classification in definitions.classifications.values() for fact in _facts(classification)}
 
 
 def class_material_id(classification_key: str) -> str:

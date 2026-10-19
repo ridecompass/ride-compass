@@ -10,7 +10,7 @@ from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.road_classes import RoadClassDefinitions, replace_road_classes
-from app.infrastructure.road_class_repository import acquire_write_lock, read_road_classes, replace_road_class_rows
+from app.infrastructure.road_class_repository import read_road_classes, replace_road_class_rows
 
 logger = logging.getLogger("ridecompass.road_classes")
 
@@ -42,14 +42,10 @@ class RoadClassAdminService:
         """全体を入れ替え、書いた全体を返す。"""
         session = self._session
         try:
-            await acquire_write_lock(session)
             await replace_road_class_rows(session, definitions)
             await session.commit()
         except (IntegrityError, DataError) as error:
             await session.rollback()
             raise RoadClassRejectedError(str(error.orig)) from error
-        except Exception:
-            await session.rollback()
-            raise
         _apply(definitions)
         return definitions

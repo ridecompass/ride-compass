@@ -161,20 +161,21 @@ class TestPrimaryAttributes:
 class TestRoadLayers:
     def test_the_layers_drawn_from_a_published_classification_that_decides_by_a_leaf_material_are_listed(self):
         """軸のレンズで地図に出す道の層を選ぶ。読む材料と無関係な層を出すと、軸と関係の無い線が重なる。"""
-        definitions = axes(axis("outer", "inner", "num_c"), axis("inner", "num_a"))
+        definitions = axes(axis("outer", "inner", "class:by_its_classes"), axis("inner", "num_a"))
         draft = classification({"x": [fact_is("num_a", "v")]}).model_copy(update={"is_published": False})
         classes = road_classes(
             {
                 "by_inner_leaf": classification({"x": [fact_is("num_b", "v")], "y": [fact_is("num_a", "v")]}),
                 "by_unread": classification({"x": [fact_is("num_b", "v")]}),
+                "by_its_classes": classification({"x": [fact_is("num_b", "v")]}),
                 "draft": draft,
                 "not_drawn": classification({"x": [fact_is("num_a", "v")]}),
             },
-            map_layers={key: map_layer(n) for n, key in enumerate(["draft", "by_unread", "by_inner_leaf"])},
+            map_layers={key: map_layer(n) for n, key in enumerate(["draft", "by_unread", "by_inner_leaf", "by_its_classes"])},
         )
 
         with replaced_axis_definitions(definitions):
-            assert axis_definitions.road_layer_ids_for(definitions["outer"], classes) == ["by_inner_leaf"]
+            assert axis_definitions.road_layer_ids_for(definitions["outer"], classes) == ["by_inner_leaf", "by_its_classes"]
 
 
 class TestWeights:

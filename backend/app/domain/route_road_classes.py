@@ -32,7 +32,6 @@ class SegmentClassReader:
             classes=tuple(
                 (material_id.removeprefix(CLASS_MATERIAL_PREFIX), column)
                 for material_id, column in road.classes.items()
-                if material_id.startswith(CLASS_MATERIAL_PREFIX)
             ),
             landcover_columns=tuple(
                 (c.percent_field, network.numeric_ids.index(c.percent_field)) for c in LANDCOVER_CLASSES
