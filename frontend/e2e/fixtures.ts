@@ -175,12 +175,6 @@ export const E2E_ROAD_LAYERS = [
       roadClass("unpaved", { label: "未舗装", color: "#b8742a" }),
     ],
   }),
-  roadMapLayer("tunnel", {
-    label: "トンネル",
-    category: "roadCondition",
-    icon: "tunnel",
-    classes: [roadClass("tunnel", { label: "トンネル", color: "#555555" })],
-  }),
 ];
 
 /** モックの軸カタログの道の区分（線の層と、避け方を選べる行）。 */

@@ -174,18 +174,6 @@ def conditions_match(conditions: Sequence[Condition], columns: Mapping[str, Mate
     return matched
 
 
-def class_indices(classification: RoadClassification, columns: Mapping[str, MaterialColumn], n: int) -> np.ndarray:
-    """区間ごとに、入る区分の`classification.classes`での位置。どの区分にも当たらない道と、2つ以上の区分に当たる道は-1。"""
-    hits = np.zeros(n, dtype=np.int32)
-    indices = np.full(n, -1, dtype=np.int32)
-    for position, road_class in enumerate(classification.classes.values()):
-        matched = conditions_match(road_class.conditions, columns, n)
-        hits += matched
-        indices[matched] = position
-    indices[hits != 1] = -1
-    return indices
-
-
 def _facts(classification: RoadClassification) -> set[str]:
     return {fact_key for c in classification.classes.values() for condition in c.conditions for fact_key in condition}
 
@@ -208,11 +196,17 @@ def class_material_id(classification_key: str) -> str:
 def class_columns(
     definitions: RoadClassDefinitions, columns: Mapping[str, MaterialColumn], n: int
 ) -> dict[str, CategoricalColumn]:
-    """分け方ごとの区分の列（鍵は`class_material_id`、値は区分の鍵。どの区分にも入らない道は値なし）。"""
+    """分け方ごとの区分の列（鍵は`class_material_id`、値は区分の鍵）。どの区分にも当たらない道と、2つ以上の区分に当たる道は値なし。"""
     result: dict[str, CategoricalColumn] = {}
     for key, classification in definitions.classifications.items():
-        indices = class_indices(classification, columns, n)
-        result[class_material_id(key)] = CategoricalColumn((indices + 1).astype(np.int16), (None, *classification.classes))
+        hits = np.zeros(n, dtype=np.int16)
+        codes = np.zeros(n, dtype=np.int16)
+        for code, road_class in enumerate(classification.classes.values(), start=1):
+            matched = conditions_match(road_class.conditions, columns, n)
+            hits += matched
+            codes[matched] = code
+        codes[hits != 1] = 0
+        result[class_material_id(key)] = CategoricalColumn(codes, (None, *classification.classes))
     return result
 
 
