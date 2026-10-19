@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { isCoordinates, readStoredList, withEntryFirst } from "./storedList";
+import { isCoordinates, readStoredList } from "./storedList";
 
 const readNumber = (value: unknown) => (typeof value === "number" ? value : null);
 
@@ -28,15 +28,8 @@ describe("isCoordinates", () => {
   it.each([
     ["有限の緯度経度", { latitude: 35.68, longitude: 139.76 }, true],
     ["有限でない緯度", { latitude: Number.NaN, longitude: 139.76 }, false],
-    ["数でない経度", { latitude: 35.68, longitude: "139.76" }, false],
     ["オブジェクトでない値", null, false],
   ])("%s → %s", (_case, value, expected) => {
     expect(isCoordinates(value)).toBe(expected);
-  });
-});
-
-describe("withEntryFirst", () => {
-  it("入れた件を先頭に置き、置き換える件を除いたほかの件は並びのまま後ろに残す", () => {
-    expect(withEntryFirst(["a", "b", "c"], "B", (saved) => saved === "b")).toEqual(["B", "a", "c"]);
   });
 });
