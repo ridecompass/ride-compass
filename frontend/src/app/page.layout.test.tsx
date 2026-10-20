@@ -13,7 +13,7 @@
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setDebugEnabled } from "@/lib/debugLog";
@@ -36,6 +36,8 @@ import {
   useMobileLayout,
 } from "@/testing/homePage";
 import { mapOnScreen } from "@/testing/maplibre";
+
+import Home from "./page";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
 
@@ -160,6 +162,8 @@ describe("画面の枠", () => {
     jobs.respond([FIRST], LOOP_CONDITIONS);
     expect(await generate(user)).toMatchObject({ latitude: HERE.latitude, longitude: HERE.longitude });
     const outcomeSheet = await screen.findByRole("dialog", { name: "ルート結果" });
+    clickMap(ELSEWHERE);
+    expect(marksAt(ELSEWHERE)).toEqual([]);
     await user.click(within(outcomeSheet).getByRole("button", { name: "閉じる" }));
     expect(screen.queryByRole("dialog")).toBeNull();
 
@@ -230,6 +234,18 @@ describe("画面の枠", () => {
     renderHome();
     await user.click(screen.getByRole("button", { name: "ルート結果" }));
     expect(screen.getByRole("separator", { name: "パネルの高さを変更" })).toHaveAttribute("aria-valuenow", "55");
+  });
+
+  it("基礎地図が描けず（`load`が来ず）ても、地図を読み込み中の覆いは上限の時間で外れる", () => {
+    vi.useFakeTimers();
+    try {
+      render(<Home />);
+      expect(screen.getByText("地図を読み込み中…")).toBeInTheDocument();
+      act(() => vi.runOnlyPendingTimers());
+      expect(screen.queryByText("地図を読み込み中…")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("区分の開閉は、次に開いたときも同じになる", async () => {

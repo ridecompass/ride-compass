@@ -12,7 +12,7 @@
 
 from dataclasses import dataclass, fields
 from datetime import datetime
-from typing import Callable, Iterable, Mapping, Protocol, Sequence, cast
+from typing import Callable, Iterable, Mapping, Protocol, Sequence, cast, get_args
 
 import numpy as np
 
@@ -104,6 +104,9 @@ def services_by_material(
     by_material: dict[str, DedicatedWayValueServiceType] = {}
     for service in services:
         for material_id in service.material_ids:
+            # 材料カタログに無いid（軸idの取り違え等）は軸の葉の材料と結ばれず、それを読む軸が全道路「データなし」になる。
+            if material_id not in MATERIAL_CATALOG:
+                raise RuntimeError(f"material '{material_id}' is not in the material catalog")
             if material_id in by_material:
                 raise RuntimeError(
                     f"material '{material_id}' is served by more than one dedicated way value service"
@@ -120,6 +123,12 @@ def services_by_material(
         for name in _leaf_names(service.material_formula(material_id)):
             if (name in MATERIAL_CATALOG and name != material_id) or owner.setdefault(name, material_id) != material_id:
                 raise RuntimeError(f"way material '{name}' of '{material_id}' collides with another material")
+    # 条件の欄は要求（`WayValueQuery`）の同じ名前の欄から組み立て、欄の名前は`WayValueConditionName`として地図へ配る。
+    # どちらかに無い名前の欄を持つと、その材料の配信は毎回組み立てで落ちるか、地図がその条件を載せない。
+    carried = set(get_args(WayValueConditionName)) & {field.name for field in fields(WayValueQuery)}
+    for service in set(by_material.values()):
+        if uncarried := {field.name for field in fields(service.conditions_type)} - carried:
+            raise RuntimeError(f"conditions {sorted(uncarried)} of {service} are not carried by the request")
     return by_material
 
 

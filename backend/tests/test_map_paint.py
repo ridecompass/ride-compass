@@ -106,13 +106,6 @@ def test_an_axis_whose_shape_gives_no_bands_is_cut_at_the_default_difficulty_ban
     assert map_paint(definition).thresholds == list(DEFAULT_DIFFICULTY_BOUNDARIES)
 
 
-def test_the_default_difficulty_boundaries_are_strictly_ascending():
-    """地図の式（MapLibreの`step`）は段の境界が厳密に昇順でないと式ごと失敗し、レイヤーが黙って消える。"""
-    boundaries = list(DEFAULT_DIFFICULTY_BOUNDARIES)
-
-    assert boundaries == sorted(set(boundaries))
-
-
 def test_a_categorical_axis_splits_between_its_distinct_scores():
     """分類の軸の値は初めから得点なので、同じ得点を除いた隣り合う得点の間で切る。"""
     definition = shaped_axis(CategoricalShape(material="kind", mapping={"x": 0.0, "y": 40.0, "z": 40.0, "w": 100.0}))

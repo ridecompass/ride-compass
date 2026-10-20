@@ -4,7 +4,9 @@
 軸スタジオ由来の軸はここに載らない（運用で増減し、出すかは軸自身の設定が決める）。
 """
 
-from typing import Literal, NamedTuple
+from collections import Counter
+from collections.abc import Iterable
+from typing import Literal, NamedTuple, get_args
 
 from app.domain.gsi_tiles import TERRAIN_MIN_ZOOM
 from app.domain.landcover import LANDCOVER_CLASSES, LANDCOVER_RING_OUTER_M, LANDCOVER_TILE_MIN_ZOOM
@@ -104,7 +106,8 @@ MAP_LAYER_DATA_SOURCES: tuple[MapLayerDataSource, ...] = (
 MODEL_VALUE_DISCLAIMER = "数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。"
 
 #: 値の性質。生データか、時刻で中身が変わるか。
-MAP_LAYER_DATA_NATURES: tuple[str, ...] = ("raw", "dynamic")
+MapLayerDataNature = Literal["raw", "dynamic"]
+MAP_LAYER_DATA_NATURES: tuple[str, ...] = get_args(MapLayerDataNature)
 
 #: レイヤーの種別と、属するグループ。**種別を1つ足すときは必ず所属も決まる**。
 MAP_LAYER_CATEGORIES: tuple[LayerCategory, ...] = (
@@ -119,7 +122,8 @@ MAP_LAYER_CATEGORIES: tuple[LayerCategory, ...] = (
 
 #: 描き直しの種類。`dynamic`は選択中ルートにひもづくもの、`static`はそれ以外。
 #: **値が時間で変わるかとは別軸**——降水は中身が変わるがルートとは無関係なので`static`。
-MAP_LAYER_KINDS: tuple[str, ...] = ("static", "dynamic")
+MapLayerKind = Literal["static", "dynamic"]
+MAP_LAYER_KINDS: tuple[str, ...] = get_args(MapLayerKind)
 
 #: 利用者が作った線。属性でも配信でもないので、ここだけが名前を持つ。
 ROUTE_LAYER_ID = "route"
@@ -204,8 +208,8 @@ class MapLayerSpec(NamedTuple):
     data_source: str
     #: 種別（`MAP_LAYER_CATEGORIES`の`key`）。どのグループにも属さないもの（ルート）はNone。
     category: str | None
-    kind: str = "static"
-    data_nature: str = "raw"
+    kind: MapLayerKind = "static"
+    data_nature: MapLayerDataNature = "raw"
     #: 利用者の操作を待たずに表示するか。**性質で決める**——明示的にONにして初めて出るのが
     #: 地図レイヤーの原則で、既定ONの根拠になるのは防災級の情報と、探索の結果そのものだけ。
     default_on: bool = False
@@ -321,9 +325,15 @@ _DISASTER_FRAME_RULE_WORDING: dict[FrameRuleKind, tuple[str, str]] = {
 def _disaster_by_frame_rule() -> list[tuple[str, str, str]]:
     """災害の要素の名前を、描くコマの規則ごとにまとめた並び（要素の無い規則は出さない）。長い説明の`{reach}`には、
     その規則の要素の予測が届く先を入れる。"""
+    disaster = [element for element in WEATHER_ELEMENTS if element.group == "disaster"]
+    if unworded := sorted({element.frame_rule.kind for element in disaster} - set(_DISASTER_FRAME_RULE_WORDING)):
+        raise ValueError(f"災害の要素のコマの規則に、説明の語が無い: {unworded}")
+    # 災害の凡例は名前付きソースごとの行が（i）から説明を開く。要素の説明は省ける欄なので、ここで断る。
+    if undescribed := sorted(element.label for element in disaster if not (element.description or "").strip()):
+        raise ValueError(f"災害の要素に、凡例の行が開く説明が無い: {undescribed}")
     rows = []
     for kind, (brief, detail) in _DISASTER_FRAME_RULE_WORDING.items():
-        elements = [element for element in WEATHER_ELEMENTS if element.group == "disaster" and element.frame_rule.kind == kind]
+        elements = [element for element in disaster if element.frame_rule.kind == kind]
         if not elements:
             continue
         if "{reach}" in detail:
@@ -530,6 +540,52 @@ AXIS_LAYER_SPECS: dict[str, MapLayerSpec] = {
 }
 
 
+def check_map_layer_declarations(
+    groups: Iterable[OverlayGroup],
+    categories: Iterable[LayerCategory],
+    sources: Iterable[MapLayerDataSource],
+    specs: Iterable[MapLayerSpec],
+) -> None:
+    """宣言どうしが名前（`key`）で指し合う先が1つに決まることを確かめ、外れれば`ValueError`。
+
+    指した先が無いレイヤーは取得状態（読み込み中・空・失敗）を判定できず、一覧のどの群にも出ない。同じ名前が2つあると、
+    指した側はどちらか一方だけを読む。種別の無いグループのチップは押しても何も出ない。"""
+    groups, categories, sources, specs = tuple(groups), tuple(categories), tuple(sources), tuple(specs)
+    for name, declarations in (("グループ", groups), ("種別", categories), ("情報源", sources)):
+        repeated = sorted(key for key, n in Counter(d.key for d in declarations).items() if n > 1)
+        if repeated:
+            raise ValueError(f"{name}の名前が重なる: {repeated}")
+    group_keys = {group.key for group in groups}
+    category_keys = {category.key for category in categories}
+    source_keys = {source.key for source in sources}
+    if stray := sorted({category.group for category in categories} - group_keys):
+        raise ValueError(f"種別が宣言に無いグループを指す: {stray}")
+    if empty := sorted(group_keys - {category.group for category in categories}):
+        raise ValueError(f"種別の無いグループがある: {empty}")
+    if stray := sorted({spec.category for spec in specs if spec.category is not None} - category_keys):
+        raise ValueError(f"レイヤーが宣言に無い種別を指す: {stray}")
+    if stray := sorted({spec.data_source for spec in specs} - source_keys):
+        raise ValueError(f"レイヤーが宣言に無い情報源を指す: {stray}")
+
+
+check_map_layer_declarations(
+    MAP_OVERLAY_GROUPS,
+    MAP_LAYER_CATEGORIES,
+    MAP_LAYER_DATA_SOURCES,
+    (*_LAYER_SPECS.values(), *AXIS_LAYER_SPECS.values()),
+)
+
+
+def zoom_curve(*stops: tuple[float, float]) -> tuple[tuple[float, float], ...]:
+    """ズームから値への曲線（ズーム, 値）の並びを、そのまま返す。ズームが厳密に昇順でなければ`ValueError`。
+
+    地図の式（MapLibreの`interpolate`・`step`）は入力の段が厳密に昇順でないと式ごと失敗し、レイヤーが黙って消える。"""
+    zooms = [zoom for zoom, _ in stops]
+    if not zooms or zooms != sorted(set(zooms)):
+        raise ValueError(f"ズームが厳密に昇順でない: {zooms}")
+    return stops
+
+
 #: 利用者が作った線の太さ（px）。役割ごとに違うのは、同じ道の上へ重ねたときに
 #: どれが手前かを太さで読ませるため。
 ROUTE_LINE_WIDTHS_PX: dict[str, float] = {
@@ -567,7 +623,7 @@ ROUTE_SPLICE_DASH: tuple[float, ...] = (2, 1.5)
 #: 周囲の道路だけが太くなり矢印が相対的に小さく見える。
 ROUTE_ARROW_SPACING_PX = 80
 ROUTE_ARROW_HALO_SCALE = 1.5
-ROUTE_ARROW_SIZE_BY_ZOOM: tuple[tuple[float, float], ...] = ((10, 0.6), (13, 0.8), (16, 1.2), (19, 1.6))
+ROUTE_ARROW_SIZE_BY_ZOOM = zoom_curve((10, 0.6), (13, 0.8), (16, 1.2), (19, 1.6))
 
 
 #: 面の濃さ。下限は「最も薄い階級が背景に対してΔE（CIE76）15以上」、上限は面の下にある
@@ -597,9 +653,9 @@ LIGHTNING_ICON_SCALE = 0.8
 #: 記号を拡大する曲線（ズーム→倍率）。**気象の記号はどれも同じ曲線で拡大する**——家族ごとに別の曲線を使うと、
 #: 同じ地図の中で拡大の速さが食い違う。`icon-size`は既定で画面上の固定ピクセルなので、曲線が無いと拡大するほど
 #: 周囲の道路・建物だけが大きく描かれ、記号が相対的に小さくなる。初期表示のズーム（13）を倍率1に置く。
-MARK_SIZE_BY_ZOOM: tuple[tuple[float, float], ...] = ((10, 0.75), (13, 1), (16, 1.5), (19, 2))
+MARK_SIZE_BY_ZOOM = zoom_curve((10, 0.75), (13, 1), (16, 1.5), (19, 2))
 #: 洪水の川筋の太さ（ズーム→px）。低いズームで目立たせすぎず、拡大するほど個々の川筋を追えるようにする。
-FLOOD_LINE_WIDTH_BY_ZOOM: tuple[tuple[float, float], ...] = ((6, 1.5), (10, 3), (14, 5))
+FLOOD_LINE_WIDTH_BY_ZOOM = zoom_curve((6, 1.5), (10, 3), (14, 5))
 #: 線状降水帯の雨域の輪郭線の太さ（px）と、下に敷く縁取りの太さ。配信元の公式の画面の描画定義の値
 #: （`strokeWidth`と、縁取りはその+2）で、ズームによらない。
 RAINBAND_OUTLINE_WIDTH_PX = 4

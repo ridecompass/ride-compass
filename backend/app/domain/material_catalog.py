@@ -16,9 +16,10 @@ docs/modules/backend/evaluation-scoring.md「材料カタログ」参照）。
 プロパティ名（Noneなら材料がタイルに載らない）。
 """
 
+from collections import Counter
 from dataclasses import dataclass
 
-from typing import Literal, NamedTuple
+from typing import Literal, NamedTuple, get_args
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
@@ -97,8 +98,19 @@ Population = Literal["way", "edge"]
 # "definite": 欠損は確定値（タグ不在=非該当等）として扱われ、軸は通常どおり評価される。
 MissingSemantics = Literal["unknown", "definite"]
 
+
+
+def labeled_every_value[K: str, V](literal_type: object, labels: dict[K, V]) -> dict[K, V]:
+    """`Literal`の値の全部に見出しを付けた表を、そのまま返す。過不足があれば`ValueError`。
+
+    管理画面の欠損率は母集団と欠損の扱いで束ねて見出しを付けるので、見出しの無い値の材料は表から落ちる。"""
+    if set(labels) != set(get_args(literal_type)):
+        raise ValueError(f"見出しが値と食い違う: {sorted(set(labels) ^ set(get_args(literal_type)))}")
+    return labels
+
+
 #: 母集団の表示名（管理画面の欠損率）。
-POPULATION_LABELS: dict[Population, str] = {"way": "Way", "edge": "Edge"}
+POPULATION_LABELS: dict[Population, str] = labeled_every_value(Population, {"way": "Way", "edge": "Edge"})
 
 class MissingSemanticsDisplay(NamedTuple):
     title: str
@@ -109,14 +121,14 @@ class MissingSemanticsDisplay(NamedTuple):
 
 #: 欠損の扱いの見出しと説明（管理画面の欠損率）。意味が正反対のため、画面は同じ表へ並べず見出しで分ける。
 #: 並びが画面の並び順。
-MISSING_SEMANTICS_DISPLAY: dict[MissingSemantics, MissingSemanticsDisplay] = {
+MISSING_SEMANTICS_DISPLAY: dict[MissingSemantics, MissingSemanticsDisplay] = labeled_every_value(MissingSemantics, {
     "unknown": MissingSemanticsDisplay(
         "評価に影響する欠損", "元データが無い区間では、この材料を使う軸が評価対象外になる。", True
     ),
     "definite": MissingSemanticsDisplay(
         "タグ不在を確定値として評価する材料（参考）", "欠損は「該当なし」を意味し、評価に穴は開かない。", False
     ),
-}
+})
 
 
 @dataclass(frozen=True)
@@ -907,6 +919,23 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         for kind, label in POI_COUNT_KINDS.items()
     },
 }
+
+
+def check_material_catalog(catalog: dict[str, MaterialSpec]) -> None:
+    """カタログが材料を1つの名前・1つのタイルの列で配ることを確かめ、外れれば`ValueError`。
+
+    読む側は鍵で引き、引いた材料の`material_id`を書き出すので、食い違うと別の名前で配られる。同じタイルの列に
+    2つの材料が焼かれると、地図はどちらか一方の値で塗る。"""
+    misfiled = sorted(key for key, material in catalog.items() if key != material.material_id)
+    if misfiled:
+        raise ValueError(f"鍵と材料のidが食い違う: {misfiled}")
+    properties = Counter(material.tile_property for material in catalog.values() if material.tile_property)
+    shared = sorted(prop for prop, n in properties.items() if n > 1)
+    if shared:
+        raise ValueError(f"2つ以上の材料が同じタイルの列に焼かれる: {shared}")
+
+
+check_material_catalog(MATERIAL_CATALOG)
 
 
 

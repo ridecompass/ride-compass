@@ -4,6 +4,7 @@
 """
 
 from collections import Counter
+from collections.abc import Collection
 
 from app.domain.registry import (
     DisplayAxisSpec,
@@ -13,7 +14,7 @@ from app.domain.registry import (
     PrimaryAttributeSpec,
 )
 from app.domain.stop_place import StopPlaceGroup
-from app.domain.traffic import TAG_KIND_RULES, kind_map_sql, kinds_shown_as, stop_kind_sql
+from app.domain.traffic import NODE_KINDS, STOP_POI_KINDS, TAG_KIND_RULES, kind_map_sql, kinds_shown_as, stop_kind_sql
 
 #: 元のタグの値をこの数より多く持つ種別は、説明でタグの名前だけを言う（値を並べると説明が値の一覧になる）。
 _LISTED_TAG_VALUES = 3
@@ -285,11 +286,36 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
         point_name_property="name",
     ),
 )
-# 読む側はidで1件を引く（`PRIMARY_ATTRIBUTES_BY_ID`）ため、同じidを2度宣言すると片方の宣言が黙って消える。
-_REPEATED_ATTR_IDS = sorted(attr_id for attr_id, n in Counter(a.attr_id for a in PRIMARY_ATTRIBUTES).items() if n > 1)
-if _REPEATED_ATTR_IDS:
-    raise ValueError(f"primary attribute declared more than once: {_REPEATED_ATTR_IDS}")
+
+
+def check_primary_attributes(attributes: tuple[PrimaryAttributeSpec, ...]) -> None:
+    """属性をまたいで1つの意味に読めない宣言を`ValueError`で断る。
+
+    読む側はidで1件を引くため、同じidを2度宣言すると片方の宣言が黙って消える。順序を持たない列挙の色相の起点が
+    重なると、1行しか持たない軸どうし（トンネルと一方通行）が必ず同じ色になる。"""
+    repeated = sorted(attr_id for attr_id, n in Counter(a.attr_id for a in attributes).items() if n > 1)
+    if repeated:
+        raise ValueError(f"一次属性が2度宣言されている: {repeated}")
+    slots = [a.display_axes[0].hue_slot for a in attributes if a.display_axes and a.display_axes[0].palette == "nominal"]
+    if len(slots) != len(set(slots)):
+        raise ValueError(f"順序を持たない列挙の色相の起点が属性をまたいで重なる: {slots}")
+
+
+def check_point_rows(attribute: PrimaryAttributeSpec, kinds: Collection[str]) -> None:
+    """点のレイヤーの先頭の軸の行の値が、そのレイヤーが描く種別とちょうど重なることを確かめ、外れれば`ValueError`。
+
+    行に無い種別の点は地図から消え、凡例にも出ない。種別に無い行は何も塗らない。種別の分類は取込が持ち、行の束ね方
+    （利用者から見て同じものを1行にする）は表示が持つので、片方からもう片方を導けない。"""
+    values = {value for category in attribute.display_axes[0].categories for value in category.values}
+    if values != set(kinds):
+        raise ValueError(f"'{attribute.attr_id}'の行の値と描く種別が食い違う: {sorted(map(str, values ^ set(kinds)))}")
+
+
+check_primary_attributes(PRIMARY_ATTRIBUTES)
 PRIMARY_ATTRIBUTES_BY_ID = {attr.attr_id: attr for attr in PRIMARY_ATTRIBUTES}
+check_point_rows(ATTR_STOP_POI, STOP_POI_KINDS)
+# 補給の点のコンビニは、ノードの種別でなく立ち寄り先の群「コンビニ」から、点のタイルの`poi`のレイヤーが足す。
+check_point_rows(PRIMARY_ATTRIBUTES_BY_ID["supply_poi"], NODE_KINDS - STOP_POI_KINDS | {StopPlaceGroup.CONVENIENCE})
 
 
 def stop_poi_map_group_sql(alias: str) -> str:

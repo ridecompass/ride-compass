@@ -73,7 +73,6 @@ const ELSEWHERE = edges("n0", "n1", "nq", "n3");
 const BASIS: GenerationInput = {
   origin: { latitude: 35.6, longitude: 139.7 },
   distanceKm: null,
-  distanceToleranceKm: 5,
   maxRoutes: 4,
   assumedSpeedKmh: 22,
   startTime: new Date("2026-10-04T09:00:00Z"),
@@ -88,7 +87,6 @@ const BASIS: GenerationInput = {
 const CONDITIONS = makeGenerationConditions({
   latitude: BASIS.origin.latitude,
   longitude: BASIS.origin.longitude,
-  distance_tolerance_km: BASIS.distanceToleranceKm,
   route_preference: { axis_a: 1 },
   penalty_strength: 1,
   max_routes: BASIS.maxRoutes,

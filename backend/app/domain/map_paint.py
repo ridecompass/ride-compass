@@ -18,7 +18,7 @@ from app.domain.strict_model import StrictModel
 #: 難易度（0〜100）の段の境界。軸の形から段を導けないときに使う。**値ではなく等分の規則**
 #: ——無次元の得点には目盛りの手掛かりが無いので、3等分する。符号付き材料の段は
 #: 軸の折れ線から導く（`_signed_thresholds_from_breakpoints`）ので、ここには持たない。
-DEFAULT_DIFFICULTY_BOUNDARIES: tuple[float, ...] = (33, 66)
+DEFAULT_DIFFICULTY_BOUNDARIES: tuple[float, ...] = tuple(AxisDefinition.check_display_thresholds_ascending([33, 66]))
 
 #: 真偽値の項の部分和は2^N通りある。GUIは材料の天井で超えないが、APIは直接叩ける。
 _MAX_BOOLEAN_TERMS = 12

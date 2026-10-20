@@ -207,7 +207,7 @@ uvicorn app.main:app --reload
 ```bash
 curl http://localhost:8000/health
 curl -X POST http://localhost:8000/api/routes/generate -H "Content-Type: application/json" \
-  -d '{"latitude":35.7597,"longitude":139.7387,"distance_km":15,"distance_tolerance_km":5,"max_routes":8,"assumed_speed_kmh":20,"start_time":"2026-10-06T09:00:00+09:00","road_avoidance":{}}'
+  -d '{"latitude":35.7597,"longitude":139.7387,"distance_km":15,"max_routes":8,"assumed_speed_kmh":20,"start_time":"2026-10-06T09:00:00+09:00","road_avoidance":{}}'
 ```
 
 対象エリアが取込範囲の外なら候補0件になる。範囲内でも、道路網全体の配列の置き場

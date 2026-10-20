@@ -11,7 +11,7 @@ import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
 import { roadClass, roadMapLayer } from "@/testing/catalogAxes";
 import type { RoadMapLayerView } from "@/types/route";
 
-import { disasterSourceLegendAxis, initiallyHiddenLegendKeys, pointLegendAxes, roadLegendAxes } from "./legends";
+import { initiallyHiddenLegendKeys, pointLegendAxes, roadLegendAxes } from "./legends";
 
 // 道の層はテストが組む（本番の区分は管理DBが持つ）。データなしを分ける層と分けない層を1つずつ持つ。
 const SURFACE_LAYER = roadMapLayer("surface", {
@@ -42,13 +42,6 @@ function pointLayerOf(role: string, hiddenKeys: Readonly<Record<string, readonly
 function valuesIn(expression: unknown): unknown[] {
   return Array.isArray(expression) ? expression.flatMap(valuesIn) : [expression];
 }
-
-// 道と点の分類の説明は源泉の型が空を通さず、受け皿の行の説明は源泉の1か所の定数。災害の要素の説明は源泉で省けるので、ここで見る。
-describe("災害の凡例の行の説明", () => {
-  it.each(disasterSourceLegendAxis().entries)("「$label」は（i）から開く説明を持つ", (entry) => {
-    expect(entry.description?.trim()).toBeTruthy();
-  });
-});
 
 describe("点の凡例", () => {
   const axes = pointLegendAxes();
@@ -90,13 +83,6 @@ describe("点の凡例", () => {
       return images[0]?.id;
     });
     expect(new Set(drawn).size).toBe(drawn.length);
-  });
-
-  it("大きさで示す行は、行ごとに違う大きさを持つ", () => {
-    for (const axis of axes) {
-      const sizes = axis.entries.flatMap((entry) => (entry.diameterPx === undefined ? [] : [entry.diameterPx]));
-      expect(new Set(sizes).size).toBe(sizes.length);
-    }
   });
 });
 

@@ -6551,9 +6551,16 @@
             "title": "Distance Km"
           },
           "distance_tolerance_km": {
-            "type": "number",
-            "maximum": 50.0,
-            "exclusiveMinimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 50.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Distance Tolerance Km"
           },
           "route_preference": {
@@ -6657,7 +6664,6 @@
         "required": [
           "latitude",
           "longitude",
-          "distance_tolerance_km",
           "road_avoidance",
           "max_routes",
           "assumed_speed_kmh",

@@ -46,7 +46,7 @@ function stagesOf(element: DeclaredElement): WeatherStage[] {
   if (element.jmaElements.length > 0) {
     return element.jmaElements.map((delivery) => ({ origin: "jma", kind: element.kind, delivery }));
   }
-  // 配信元から取らない要素は必ず読む格子の値を持つ（backendの`test_weather_elements.py`が全要素で確かめる）。
+  // 配信元から取らない要素は必ず読む格子の値を持つ（`backend/app/domain/weather_elements.py: check_weather_elements`が宣言の読み込みで断る）。
   return [{ origin: "grid", value: element.gridValue! }];
 }
 

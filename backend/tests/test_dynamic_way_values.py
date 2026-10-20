@@ -47,6 +47,7 @@ from app.domain.gradient import ROAD_BEARING_LEAF, gradient_by_direction
 from app.domain.map_paint import SignedMaterialMapValue
 from app.domain.material_catalog import CoverageExcluded, MaterialSpec
 from app.domain.route import DensityScoreInput, RouteSegmentDetail, merge_axis_difficulties
+from app.domain.tuning import TUNING_VALUES
 from app.domain.way_value_formula import WayValueFormula, feature, way_values_from_formula
 from app.domain.wind import WIND_DIRECTION_LEAF, WIND_DRAG_RATIO_WAY_FORMULA, WIND_SPEED_LEAF
 from tests.axis_system_fixture import replaced_axis_definitions, shaped_axis
@@ -402,6 +403,20 @@ def test_the_formula_tells_a_way_undetermined_by_bearing_from_a_way_without_a_va
     assert values["feature-0"] == -4.0
     assert values["feature-2"] is None
     assert "feature-1" not in values
+
+
+@pytest.mark.parametrize(("band_deg", "expected"), [(None, -4.0), (25.0, None)])
+def test_the_band_undetermined_by_bearing_follows_the_calibrated_value(monkeypatch, band_deg, expected):
+    """管理画面で直角からの幅を広げると、次に組む木から、走行方位と70度の道も向きで決まらない道になる。"""
+    if band_deg is not None:
+        monkeypatch.setitem(TUNING_VALUES, "gradient.perpendicular_band_deg", band_deg)
+    keys = [f"feature-{row}" for row in range(len(NUM_A))]
+    leaves = {GRADE_LEAF: np.array(NUM_B), ROAD_BEARING_LEAF: np.full(len(NUM_A), 70.0)}
+    inputs = TileWayInputs(feature_keys=keys, materials={}, leaves=leaves)
+
+    values = _tree_values("axis_signed", AXES, {"num_b": GRADE}, inputs, as_difficulty=False)[0]
+
+    assert values["feature-0"] == expected
 
 
 # 引いた地図では、道1本の値を区間から畳む。勾配の軸は畳んだ順向き・逆向きの値を木が向きで選ぶ。区間も勾配も無い道
