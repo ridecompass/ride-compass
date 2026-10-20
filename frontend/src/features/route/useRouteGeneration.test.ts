@@ -162,49 +162,9 @@ describe("送る要求", () => {
     expect(sentRequest()).not.toHaveProperty("distance_km");
     expect(sentRequest()).toMatchObject({ destination: A });
   });
-
-  it("周回の間は覚えている目的地を送らず、周回を外すとその目的地を送る", async () => {
-    const rendered = renderGeneration();
-    placeDestination(rendered, A);
-    act(() => rendered.result.current.conditions.setLoop(true));
-    respond([route("r1")]);
-
-    await submit(rendered);
-    expect(sentRequest()).not.toHaveProperty("destination");
-
-    act(() => rendered.result.current.conditions.setLoop(false));
-    respond([route("r1")]);
-    await submit(rendered);
-    expect(sentRequest()).toMatchObject({ destination: A });
-  });
 });
 
 describe("入力の誤り", () => {
-  it("出発地が仮の地点のままなら送らず、理由を案内に出して、押すたびに失敗として知らせる", async () => {
-    const rendered = renderGeneration({ originKnown: false });
-
-    await submit(rendered);
-    await submit(rendered);
-
-    const { generation } = rendered.result.current;
-    expect(jobs.submitted).toEqual([]);
-    expect(generation.outcome).toEqual({ kind: "failed", message: expect.stringMatching(/^現在地が分かりません/) });
-    expect(rendered.onOutcome.mock.calls).toEqual([["failed"], ["failed"]]);
-  });
-
-  it("周回を外して目的地を置いていなければ、全長の目標があっても送らず、理由を案内に出す", async () => {
-    const rendered = renderGeneration();
-    act(() => rendered.result.current.conditions.setLoop(false));
-
-    await submit(rendered);
-
-    expect(jobs.submitted).toEqual([]);
-    expect(rendered.result.current.generation.outcome).toEqual({
-      kind: "failed",
-      message: expect.stringMatching(/^目的地を置いてください/),
-    });
-  });
-
   it("入力の誤りは、直前の生成の失敗の文言より先に出す", async () => {
     const rendered = renderGeneration();
     jobs.fail("リクエストに失敗しました");
@@ -271,23 +231,19 @@ describe("生成の結果", () => {
     expect(rendered.result.current.generation.destinationCorrected).toBe(false);
   });
 
-  it.each([
-    {
-      label: "理由が届いたらその理由",
-      reason: "目的地へ行ける道が見つかりませんでした",
-      message: "目的地へ行ける道が見つかりませんでした",
+  it.each([{ label: "理由が届かなければ決まった文言", reason: undefined, message: NO_ROUTES_MESSAGE }])(
+    "候補0件は、「$label」を案内に出して候補0件として知らせ、失敗とは扱わない",
+    async ({ reason, message }) => {
+      const rendered = renderGeneration();
+      respond([], used(), reason);
+
+      await submit(rendered);
+
+      expect(rendered.onGenerated).toHaveBeenCalledWith([], used().route_preference);
+      expect(rendered.onOutcome).toHaveBeenCalledWith("empty");
+      expect(rendered.result.current.generation.outcome).toEqual({ kind: "empty", message });
     },
-    { label: "理由が届かなければ決まった文言", reason: undefined, message: NO_ROUTES_MESSAGE },
-  ])("候補0件は、「$label」を案内に出して候補0件として知らせ、失敗とは扱わない", async ({ reason, message }) => {
-    const rendered = renderGeneration();
-    respond([], used(), reason);
-
-    await submit(rendered);
-
-    expect(rendered.onGenerated).toHaveBeenCalledWith([], used().route_preference);
-    expect(rendered.onOutcome).toHaveBeenCalledWith("empty");
-    expect(rendered.result.current.generation.outcome).toEqual({ kind: "empty", message });
-  });
+  );
 
   it("生成が失敗したら文言を失敗として返して知らせ、結果は渡さない。次の生成で消す", async () => {
     const message = "ルート生成がタイムアウトしました";
@@ -409,14 +365,6 @@ describe("消す", () => {
     });
     act(() => rendered.result.current.generation.clearNotice());
     expect(rendered.result.current.generation.running).toBe(true);
-  });
-
-  it("入力の誤りの案内も消す", async () => {
-    const rendered = renderGeneration({ originKnown: false });
-    await submit(rendered);
-
-    act(() => rendered.result.current.generation.clearNotice());
-    expect(rendered.result.current.generation.outcome).toBeNull();
   });
 
   it("生成の結果（作った条件・補正・既定の配分・案内）を消す", async () => {

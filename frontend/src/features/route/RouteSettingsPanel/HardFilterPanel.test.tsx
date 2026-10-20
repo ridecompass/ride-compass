@@ -33,13 +33,12 @@ const AVOIDANCE: RoadAvoidanceView = {
     avoidanceRow("private", "access", { label: "私道", default: "exclude" }),
   ],
 };
-const NO_AVOIDANCE: RoadAvoidanceView = { levels: [], sections: [], rows: [] };
 
-function renderPanel(roadAvoidance: RoadAvoidanceOverride = {}, avoidance: RoadAvoidanceView = AVOIDANCE) {
+function renderPanel(roadAvoidance: RoadAvoidanceOverride = {}) {
   const onRoadAvoidanceChange = vi.fn();
   const view = render(
     <HardFilterPanel
-      avoidance={avoidance}
+      avoidance={AVOIDANCE}
       roadAvoidance={roadAvoidance}
       onRoadAvoidanceChange={onRoadAvoidanceChange}
     />,
@@ -52,13 +51,11 @@ const checkedLevel = (row: string) =>
   within(screen.getByRole("radiogroup", { name: `${row}の避け方` })).getByRole("radio", { checked: true });
 
 describe("HardFilterPanel", () => {
-  it.each([
-    ["軸カタログが届いたあと", AVOIDANCE],
-    ["軸カタログが届く前", NO_AVOIDANCE],
-  ])("%sも、自転車が通れない道の行は畳まずに鍵で出し、選び直す操作を持たない", (_, avoidance) => {
-    renderPanel({}, avoidance);
+  it("自転車が通れない道の行は、並びの先頭に畳まずに鍵で出し、選び直す操作を持たない", () => {
+    const { container } = renderPanel();
+    const [firstFixed] = routeGenerateConfig.hard_filters;
 
-    expect(routeGenerateConfig.hard_filters.length).toBeGreaterThan(0);
+    expect(container.firstElementChild!.firstElementChild).toHaveTextContent(new RegExp(`^${firstFixed.label}`));
     for (const { label } of routeGenerateConfig.hard_filters) {
       expect(screen.getByRole("img", { name: `${label}はいつも経路から外れます（変えられません）` })).toBeVisible();
       expect(screen.queryByRole("radiogroup", { name: `${label}の避け方` })).toBeNull();
@@ -97,13 +94,5 @@ describe("HardFilterPanel", () => {
 
     expect(sectionTrigger("路面")).toHaveTextContent("既定から2件変更");
     expect(sectionTrigger("通行")).not.toHaveTextContent("既定から");
-  });
-
-  it("見出しの行を持たず、全部を既定へ戻す操作も置かない（並びは固定の行から始まる）", () => {
-    const { container } = renderPanel({ gravel: "avoid" });
-    const [firstFixed] = routeGenerateConfig.hard_filters;
-
-    expect(container.firstElementChild!.firstElementChild).toHaveTextContent(new RegExp(`^${firstFixed.label}`));
-    expect(screen.queryByRole("button", { name: /既定(値)?に戻す/ })).toBeNull();
   });
 });

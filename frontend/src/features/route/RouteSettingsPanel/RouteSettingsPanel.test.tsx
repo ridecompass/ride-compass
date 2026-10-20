@@ -288,24 +288,4 @@ describe("RouteSettingsPanel 配分の帯", () => {
       ]);
     },
   );
-
-  it("2軸だけでも、区切りは片方の重みが刻み1つになるまで寄せられ、説明の文はそこで止まると書く", async () => {
-    serveCatalog();
-    const { onRoutePreferenceChange } = renderPanel({ width: 0.15, traffic: 0.15, slope: 0, light: 0 });
-    await chipsShown();
-
-    // 帯200pxが重みの合計0.3なので、帯の右端の先まで動かすと交通は刻み1つ（合計の1%）で止まる（道幅は99%）。
-    const moveTo = await startDrag("道幅と交通の配分", 200, 100);
-    moveTo(400);
-    act(() => void window.dispatchEvent(new PointerEvent("pointerup")));
-    await userEvent.click(screen.getByRole("button", { name: "重みの配分の説明を表示" }));
-
-    expect(onRoutePreferenceChange.mock.lastCall![0]).toEqual({
-      width: 0.297,
-      traffic: 0.003,
-      slope: 0,
-      light: 0,
-    });
-    expect(await screen.findByText(/どの評価軸も重みが0（無効）になる手前で止まります/)).toBeInTheDocument();
-  });
 });

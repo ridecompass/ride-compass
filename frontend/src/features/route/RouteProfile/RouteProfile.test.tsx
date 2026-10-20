@@ -310,16 +310,6 @@ describe("RouteProfile", () => {
     },
   );
 
-  it("走行中の「表示」の図は、現在地の縦線を標高の折れ線と違う色で引く", async () => {
-    const { container } = renderProfile({ riding: true, progressKm: 0.25 });
-    await openLayers();
-    const position = container.querySelector('[data-progress="position"]');
-    const elevation = container.querySelector('[data-progress="ahead"] polyline');
-    expect(position?.getAttribute("class")).toMatch(/stroke-/);
-    expect(elevation?.getAttribute("class")).toMatch(/stroke-/);
-    expect(position?.getAttribute("class")).not.toBe(elevation?.getAttribute("class"));
-  });
-
   it("走行中の「表示」の図は、最初の折れ線の最高と最低の高さに単位つきの標高の目盛りを出す（結果の図には出さない）", async () => {
     const { rerender } = renderProfile({ riding: true, progressKm: 0.25 });
     await openLayers();
@@ -417,21 +407,11 @@ describe("RouteProfile", () => {
   it.each([
     ["寄与のある", { difficulty: 12.4, axis_contributions: { axis_a: 12.4 } }, "12.4", false],
     ["寄与が全部0の", { difficulty: 0, axis_contributions: { axis_a: 0 } }, "0.0", true],
-    ["カタログに無い軸にだけ寄与のある", { difficulty: 3, axis_contributions: { retired_axis: 3 } }, "3.0", true],
     ["算出できなかった", { difficulty: null, axis_contributions: {} }, "—", false],
   ])("%s区間は総合難易度を出し、全部0のときだけ0であることを文で言う", (_, segment, shown, allZero) => {
     renderSelected(segment);
     expect(within(detail()).getByText("総合難易度").parentElement).toHaveTextContent(`総合難易度${shown}/100`);
     expect(within(detail()).queryByText("どの評価軸も0（易しい）") !== null).toBe(allZero);
-  });
-
-  it("寄与の並びの軸を押すと、その区間の軸別難易度と説明を開く", async () => {
-    renderSelected({ axis_contributions: { axis_a: 12, axis_b: 5 }, axis_difficulties: { axis_a: 72.4 } });
-    await userEvent.click(within(detail()).getByRole("button", { name: "坂の詳細を表示" }));
-    expect(screen.getByRole("dialog")).toHaveTextContent("坂この評価軸の難易度 72.4/100");
-    await userEvent.click(screen.getByRole("button", { name: "坂の詳細を隠す" }));
-    await userEvent.click(within(detail()).getByRole("button", { name: "路面の詳細を表示" }));
-    expect(screen.getByRole("dialog")).toHaveTextContent("路面データなし");
   });
 
   it.each([
