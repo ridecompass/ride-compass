@@ -18,7 +18,9 @@ from app.domain.geo import (
 )
 from app.domain.leg_costs import LegCostArrays
 from app.domain.route import EvaluatedRoute, RouteDraft, merge_difficulty
-from app.domain.routing import TurnExpandedStructure, pareto_layer_index, time_bin_of
+from app.domain.turn_structure import TurnExpandedStructure
+from app.domain.route_diversity import pareto_layer_index
+from app.domain.routing import time_bin_of
 from app.domain.tuning import tuning_value
 from app.domain.wind import cruise_hours, kmh_to_ms
 
@@ -47,6 +49,11 @@ def loop_to_outbound_ratios() -> tuple[float, float]:
     """周回全長／往路実距離の比の見込みの下限・上限。往路は軸コスト最適経路、帰りはその往路を避けて探すため、
     帰りは往路と同程度以上に長くなる。上下限は解析的には決まらず、実分布から置く。"""
     return tuning_value("search.loop_to_outbound_ratio_min"), tuning_value("search.loop_to_outbound_ratio_max")
+
+
+def distance_tolerance_km(distance_km: float) -> float:
+    """全長の目標からの許容（km）。目標の距離に対する割合の較正値から決め、長い目標ほど広くする。"""
+    return distance_km * tuning_value("search.distance_tolerance_ratio")
 
 
 def pareto_distance_quantum_m() -> float:
@@ -97,8 +104,9 @@ class LengthBand:
 def turnaround_ring_m(distance_km: float, tolerance_km: float) -> tuple[float, float, float]:
     """折返し点を探すリング（往路の実距離の範囲）の下限・上限と中心（m）。
 
-    周回全長が目標±許容に収まるよう`[(目標-許容)/MIN, (目標+許容)/MAX]`に置き、許容が狭く
-    範囲が反転する場合は`(目標±許容)/MIN`へ戻す（比の見込みの下限で割り、帰りを往路と同じ長さ以上と見る）。
+    周回全長が目標±許容に収まるよう`[(目標-許容)/MIN, (目標+許容)/MAX]`に置き、許容が見込みの幅より狭く
+    範囲が反転する場合は`(目標±許容)/比の見込みの中央`へ置き直す——下限で割ると往路が見込みの中央より長くなり、
+    継いだ周回のほとんどが目標より長すぎて落ちる。
 
     中心（並べ方の「リング中心に近い順」の基準）は上下限の平均ではなく、目標を比の見込みの中央で割った値にする——
     許容が目標以上のとき下限が0で頭打ちになり、上下限の平均だと中心が0付近まで下がって極端に短い往路が上位に来る。
@@ -107,10 +115,11 @@ def turnaround_ring_m(distance_km: float, tolerance_km: float) -> tuple[float, f
     band = LengthBand.from_km(distance_km, tolerance_km)
     lower_m = max(0.0, band.lower_m / ratio_min)
     upper_m = band.upper_m / ratio_max
+    ratio_mid = (ratio_min + ratio_max) / 2.0
     if lower_m > upper_m:
-        lower_m = max(0.0, band.lower_m / ratio_min)
-        upper_m = band.upper_m / ratio_min
-    return lower_m, upper_m, band.target_m / ((ratio_min + ratio_max) / 2.0)
+        lower_m = max(0.0, band.lower_m / ratio_mid)
+        upper_m = band.upper_m / ratio_mid
+    return lower_m, upper_m, band.target_m / ratio_mid
 
 
 def relay_band(
@@ -121,8 +130,8 @@ def relay_band(
     中継点ごとの全長の見込み（前段`fixed_m`＋往路`outbound_m`＋帰りの最短`return_shortest_m`×帰りの比）が目標±許容に
     収まる中継点を帯に入れる。帰りは走った道を避けて探すので最短より長くなる。帰りの比は周回の比の見込み
     （`loop_to_outbound_ratios`）から1を引いたもので、周回の帰り（≈往路×(比−1)）と同じ見込みを置く（別に持つと、
-    周回と目的地で帰りの見込みが食い違う）。見込みの幅が許容の幅より広い中継点は、帰りを最短の下限倍として見る
-    （`turnaround_ring_m`が範囲の反転で比の見込みの下限へ戻すのと同じ）。届かない（長さが有限でない）中継点は帯に入らない。
+    周回と目的地で帰りの見込みが食い違う）。見込みの幅が許容の幅より広い中継点は、全長を見込みの中央の1点として見る
+    （`turnaround_ring_m`が範囲の反転で比の見込みの中央へ置き直すのと同じ）。届かない（長さが有限でない）中継点は帯に入らない。
     鍵は全長の見込みの中央（帰りの比の下限と上限の平均）と目標のずれ（m）で、周回のリング中心からのずれと同じく
     目標より短すぎる経路も長すぎる経路も対称に扱う。
     """
@@ -133,11 +142,12 @@ def relay_band(
     shortest_m = np.asarray(return_shortest_m, dtype=float)
     low_m = head_m + shortest_m * return_min
     high_m = head_m + shortest_m * return_max
+    center_m = head_m + shortest_m * (return_min + return_max) / 2.0
     too_wide = high_m - low_m > 2.0 * band.tolerance_m
-    high_m = np.where(too_wide, low_m, high_m)
+    low_m = np.where(too_wide, center_m, low_m)
+    high_m = np.where(too_wide, center_m, high_m)
     with np.errstate(invalid="ignore"):
         in_band = (low_m >= band.lower_m) & (high_m <= band.upper_m)
-    center_m = head_m + shortest_m * (return_min + return_max) / 2.0
     return in_band, np.abs(center_m - band.target_m)
 
 

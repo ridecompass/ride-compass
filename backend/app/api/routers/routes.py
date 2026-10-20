@@ -85,7 +85,7 @@ class RoadAvoidanceOverride(RootModel[dict[str, AvoidanceLevel]]):
 class RouteGenerateRequest(StrictModel):
     latitude: Latitude
     longitude: Longitude
-    # 全長の目標距離（±較正値`search.distance_tolerance_km`）。経由地・目的地を置いても同じ意味で、省略すると全長の目標を置かない
+    # 全長の目標距離（±目標に較正値`search.distance_tolerance_ratio`を掛けた長さ）。経由地・目的地を置いても同じ意味で、省略すると全長の目標を置かない
     # （置いた点へ良い道で向かう）。
     distance_km: float | None = Field(default=None, gt=0, le=MAX_ROUTE_DISTANCE_KM)
     # 評価重みのリクエスト単位の上書き。省略時はAXIS_DEFINITIONS由来の既定値
@@ -177,8 +177,8 @@ class GenerationConditions(StrictModel):
     longitude: float
     # 全長の目標距離（無ければNone）。
     distance_km: float | None
-    # 使った目標距離からの許容差（較正値）。
-    distance_tolerance_km: float
+    # 使った目標距離からの許容差（km。目標に対する割合の較正値から決めた長さ）。全長の目標が無ければNone。
+    distance_tolerance_km: float | None
     route_preference: RoutePreferenceWeights
     # 主観的割増と時間の換算レート（P、較正値）。
     penalty_strength: float

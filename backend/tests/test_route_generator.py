@@ -226,7 +226,7 @@ async def test_a_search_area_that_cannot_be_used_gives_no_candidates_and_says_wh
 
 
 def test_turnaround_pool_covers_the_requested_routes_within_what_the_diverse_selection_can_take():
-    """多様な選定（`domain/routing.py: select_diverse_by_overlap`）は採用済みを64bitのマスクで持つため、64件まで。"""
+    """多様な選定（`domain/route_diversity.py: select_diverse_by_overlap`）は採用済みを64bitのマスクで持つため、64件まで。"""
     for max_routes in range(1, MAX_ROUTES + 1):
         assert max_routes <= route_generator.turnaround_pool_size(max_routes) <= 64
 
@@ -236,9 +236,9 @@ async def test_loops_without_turnarounds_say_how_far_out_was_searched(caplog):
 
     with caplog.at_level(logging.WARNING, logger=route_generator.logger.name):
         # 片道が数十kmになる距離にする（数kmでは、小数1桁へ丸めると m から km への換算の誤りが消える）。
-        assert await generator.generate_loops(ORIGIN, 200.0, 20.0, DEFAULT_MAX_ROUTES, START, NO_POINTS) == []
+        assert await generator.generate_loops(ORIGIN, 200.0, 30.0, DEFAULT_MAX_ROUTES, START, NO_POINTS) == []
 
-    assert generator.last_no_candidates_reason == f"起点から片道90.0〜95.7kmで到達できる折返し地点が見つかりませんでした。{RETRY}"
+    assert generator.last_no_candidates_reason == f"起点から片道94.4〜104.5kmで到達できる折返し地点が見つかりませんでした。{RETRY}"
     assert _warned(caplog)
 
 
