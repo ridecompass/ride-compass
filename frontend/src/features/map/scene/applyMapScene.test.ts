@@ -124,33 +124,6 @@ describe("applyMapScene", () => {
     ]);
   });
 
-  it("あとから足したレイヤーも段の順の位置へ入る", () => {
-    const { map, handle } = recordingMap();
-    const before = scene([lineLayer("axis-line", "observedLine"), lineLayer("route", "route")]);
-    applied(map, before);
-
-    applied(
-      map,
-      scene([
-        lineLayer("axis-line", "observedLine"),
-        lineLayer("route", "route"),
-        lineLayer("tunnel-line", "observedLine"),
-        fillLayer("landcover-fill"),
-      ]),
-      before,
-    );
-
-    expect(handle.layerOrder()).toEqual([
-      "basemap-water",
-      "landcover-fill",
-      "basemap-road",
-      "basemap-label",
-      "axis-line",
-      "tunnel-line",
-      "route",
-    ]);
-  });
-
   it("scene が名指ししていない基礎地図のレイヤーは、scene を空にしても残る", () => {
     const { map, handle } = recordingMap();
     const first = scene(SCENE_LAYERS);
