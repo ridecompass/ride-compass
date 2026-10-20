@@ -1,14 +1,14 @@
 "use client";
 
-// 地図の道の線を塗る、道ごとの層の値の取得。viewportをデバウンスしてから、表示中のタイルを1枚ずつ取る——タイルを
-// 問い合わせの鍵にするので、地図を動かしても前に取ったタイルは取り直さず、新しく入ったタイルだけを取る。
-// 道の線の層が1つも出ていない間は取らない。
+// 地図の道の線を塗る、道ごとの層の値の取得。viewportをデバウンスしてから、表示中のタイルを1枚ずつ取る
+// （`tileQueries.ts`）。道の線の層が1つも出ていない間は取らない。
 
-import { queryOptions, useQueries, type QueryObserverResult } from "@tanstack/react-query";
+import { useQueries, type QueryObserverResult } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { mergeTileValues, tilesCoveringViewport } from "@/features/map/layers/dynamicWayValues";
 import { fetchRoadClasses, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM } from "@/features/map/regionApi";
 import type { RoadClassValues } from "@/features/map/scene/groups/roadLines";
+import { tileQueryOptions } from "@/features/map/tileQueries";
 import type { MapViewport } from "@/features/map/view/mapLook";
 import { MAP_FETCH_DEBOUNCE_MS, useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { getQueryClient } from "@/lib/queryClient";
@@ -48,12 +48,13 @@ export function useRoadClasses(
   return useQueries(
     {
       queries: tiles.map((tile) =>
-        queryOptions({
-          queryKey: ["road-classes", generation, tile.z, tile.x, tile.y],
-          queryFn: () => fetchRoadClasses(tile.z, tile.x, tile.y),
-          // 失敗したタイルは取っておかず、次に見えたときに取り直す。
-          staleTime: (query) => (query.state.data?.error ? 0 : Infinity),
-        }),
+        tileQueryOptions(
+          ["road-classes"],
+          generation,
+          tile,
+          () => fetchRoadClasses(tile.z, tile.x, tile.y),
+          (data) => data.error,
+        ),
       ),
       combine,
     },
