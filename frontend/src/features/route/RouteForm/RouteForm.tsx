@@ -167,7 +167,7 @@ export default function RouteForm({
             />
             <span
               className={cn(
-                // 文字の大きさは地点の並びの札の名前とそろえる（`RoutePoints.tsx: chipName`）。
+                // 文字の大きさは地点の並びの札の名前とそろえる（`PointStrip.tsx: chipName`）。
                 "min-w-[3.25em] flex-shrink-0 text-right text-[length:var(--font-size-md)] tabular-nums",
                 !distanceTargeted && "opacity-40",
               )}

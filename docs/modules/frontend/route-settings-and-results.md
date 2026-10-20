@@ -10,8 +10,10 @@
 | ファイル | 責務 |
 |---|---|
 | `features/route/RouteForm/RouteForm.tsx` | 全長の目標（入り切りとルーラー）と候補数ステッパーを並べた1行（どの幅でも折り返さない）・地点（出発地・経由地・目的地）の置き場。「ルート設定」区分の各タブの中身を`Tabs.Content`として並べる（タブ列と選択状態は`page.tsx`、下記参照） |
-| `features/route/RouteForm/RoutePoints.tsx` | 左端の周回の切り替えと、地点の並び（出発地 › 経由地の番号の丸・足す › 終点［周回の間は出発地、外せば目的地］）と、その右の並びに出ている地点を全部消す操作、押した地点の選び。並びに名前が入りきるかを測って両端の札の名前を出し分ける（下記「地点の指定」） |
-| `features/route/RouteForm/PointDetail.tsx` | 押した地点の詳しく: 呼び名・名前・出どころ・辺りと、住所や施設の名前を打つ欄（候補は欄の下。狭い画面では欄を押してから選ぶ・閉じるまで、欄と候補を画面の上側に出す。欄を押すと保存した地点も出す）・地図で置く操作・消す／現在地に戻す・置いた地点の保存（どれもアイコンだけの形。下記「地点の指定」「保存した地点」） |
+| `features/route/RouteForm/RoutePoints.tsx` | 左端の周回の切り替えと、地点の並び（`PointStrip.tsx`）と、その右の並びに出ている地点を全部消す操作。押した地点の詳しく（`PointDetail.tsx`）を地点の役割ごとに組んで下に出す（下記「地点の指定」） |
+| `features/route/RouteForm/PointStrip.tsx` | 地点の並び（出発地 › 経由地の番号の丸・足す › 終点［周回の間は出発地、外せば目的地］）と、押した地点の選び。並びに名前が入りきるかを測って両端の札の名前を出し分ける（下記「地点の指定」） |
+| `features/route/RouteForm/PointDetail.tsx` | 押した地点の詳しく: 呼び名・名前・出どころ・辺りと、住所や施設の名前を打つ欄（`PointSearch.tsx`）・消す／現在地に戻す・置いた地点の保存（どれもアイコンだけの形。下記「地点の指定」「保存した地点」） |
+| `features/route/RouteForm/PointSearch.tsx` | 住所や施設の名前を打つ欄（候補は欄の下。狭い画面では欄を押してから選ぶ・閉じるまで、欄と候補を画面の上側に出す。欄を押すと保存した地点も出す）と、地図で置く間の欄の案内（下記「住所・施設で探す」「保存した地点」） |
 | `components/PinMark/PointMark.tsx` | 並びの札・詳しく・地図の点の小窓の置く操作に出す、地図のピンと同じ図形の丸（`components/PinMark/PinMark.tsx`の中身に背景色を付けたもの。ルートの機能と地図の機能の両方が描くので共有の層に置く） |
 | `features/route/RouteForm/useRouteFormSubmit.ts` | 上記の検証（`{error, check}`。`features/route/RouteForm/useRouteFormSubmit.ts: check`は通ったかを返す）。「ルート生成」ボタン自体は`RouteForm`の外（`page.tsx`の見出し行）にあるため分離している（下記参照） |
 | `features/route/RouteSettingsPanel/RouteSettingsPanel.tsx` | 一般向け軸重み設定（「重み」タブの中身。地図の色分けはここになく`LensControl`のみが持つ、下記参照） |
@@ -36,7 +38,7 @@
 | `components/AxisContributionBar/AxisDetail.tsx` | 内訳のチップを押して開く軸の詳細の形（名前・軸別難易度［値が無ければ「データなし」］・説明）。ルート全体の内訳（`RouteAxisProfile`。生値・材料の内訳を間へ足す）・区間の詳細（`SegmentDetail.tsx`・`ProfilePointDetail.tsx`）・道の詳細（`RoadInspectorPopup.tsx`）が同じこの形で出す |
 | `components/PinMark/PinMark.tsx` | 地点（出発地・経由地・目的地）の印の中身と背景色。行頭の印と地図のピンが共用する（下記「地点の指定」） |
 | `features/map/MapView/useMapMarkers.tsx` | 地図の地点の印（出発地・経由地・目的地）と選んでいる区間の印の作成・位置の更新・ドラッグ・後始末を1か所に持つフック。`MapView`は地図を作ったあとに呼ぶだけ（下記「地点の指定」「区間クリック詳細」） |
-| `features/route/PlaceSearch/usePlaceLookup.ts` | 住所・施設の名前を打つ欄の中身と引き方（打ちかけで間を置いて引く・変換中は引かない・引いたときの地図の真ん中を添える）。地点の詳しく（`RouteForm/PointDetail.tsx`）が使う（下記「住所・施設で探す」） |
+| `features/route/PlaceSearch/usePlaceLookup.ts` | 住所・施設の名前を打つ欄の中身と引き方（打ちかけで間を置いて引く・変換中は引かない・引いたときの地図の真ん中を添える）。地点の打つ欄（`RouteForm/PointSearch.tsx`）が使う（下記「住所・施設で探す」） |
 | `features/route/PlaceSearch/PlaceCandidates.tsx` | 引いた候補の一覧（表示名・施設の辺り・引いたときの地図の真ん中からの直線距離・種類・当たった段）と、引いている間・引けない・当たらないときの文。候補を押したときの形は使う側（地点の詳しく）が持つ。置いた地点が当たった範囲の代表の位置にすぎないか（`features/route/PlaceSearch/PlaceCandidates.tsx: isRepresentative`）もここが決める |
 | `features/route/placeSearchApi.ts` | 地点の検索の口（`GET /api/place-search`）と置いた位置の辺りの口（`GET /api/place-area`）を叩く薄いラッパー（[地点の検索（backend）](../backend/place-search.md)） |
 | `hooks/useAxisCatalog.ts` | `GET /api/axis-catalog`の取得。機能をまたいで読むカタログ（軸一覧・既定重み・軸ラベル・識別色・較正値）を`hooks/useAxisCatalog.ts: useAxisCatalog`が返す。1つの機能だけが読む形は、その機能が同じ取得の応答から`hooks/useAxisCatalog.ts: useAxisCatalogSelect`で導く（地図の表示の軸・タイルの世代は[地図: 静的レイヤー・道路表示](static-map-layers.md)の`features/map/useMapAxisCatalog.ts`）——共有のカタログへ相乗りさせると、読み手が1機能だけの知識を共有の層が運ぶ |
@@ -364,7 +366,7 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
   読み替えの隣に書く。除外は今の項目へ揃え、道の避け方は今の行へ揃える（避け方を持たない件は既定の段で読む）。重みは「重み」へ入れたあと、いつもの保存値と同じく軸カタログの公開軸へ揃える
   （「RouteSettingsPanel.tsx」）。
 
-## 保存した地点（SavedPlacesPanel.tsx・useSavedPlaces.ts・PointDetail.tsx）
+## 保存した地点（SavedPlacesPanel.tsx・useSavedPlaces.ts・PointDetail.tsx・PointSearch.tsx）
 
 よく行く場所に名前を付けてこの端末に保存し、探し直さずに出発地・経由地・目的地に置ける（保存先は保存した条件と同じく
 この端末の`localStorage`だけ）。保存は地点を置く所（条件タブの押した地点の詳しく）で行い、呼び出しは詳しくの打つ欄と、
@@ -499,7 +501,7 @@ page-composition.md「生成に関するフィードバックの置き場」）�
   ルートは出発地へ戻るので、終点の欄が空に見えると終わる所が分からない。周回を外すと終点は目的地の札になり、目的地が無ければ「未設定」
   （生成は断られ、目的地か周回を促す）。
 
-- **両端の札の名前は、入りきるときだけ全部出す**。並び全体が1行に入りきらなければ、両端とも印だけにする（`RoutePoints.tsx: namesShown`。
+- **両端の札の名前は、入りきるときだけ全部出す**。並び全体が1行に入りきらなければ、両端とも印だけにする（`PointStrip.tsx: namesShown`。
   札の幅を測って決め、印だけの間も名前の幅を測って戻せるかを見る）。名前を途中で切ると、切った分は画面のどこにも出ず読めない
   （e2e の全状態の走査が、省略記号で切った文字を落とす）。経由地が増えるほど、両端は先に印だけになる。
 - **押した地点を選び、その詳しくを出す**。地図のタップも、選んでいる地点を置く（下記「地図で置く」）。**何も押していなければ出発地**を
