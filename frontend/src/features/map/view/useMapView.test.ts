@@ -47,6 +47,9 @@ const ROAD_LAYERS = [
 const GATED_LAYER = "stop_poi";
 /** 道路タイルのズームの、狭い表示範囲（覆うタイルが少ない）。 */
 const VIEWPORT = { west: 139.7, south: 35.68, east: 139.701, north: 35.681, zoom: 14, bearing: 0 };
+/** `VIEWPORT`から東へタイル1枚分（z14の幅）動かした範囲。 */
+const NEXT_TILE_VIEWPORT = { ...VIEWPORT, west: VIEWPORT.west + 360 / 2 ** 14, east: VIEWPORT.east + 360 / 2 ** 14 };
+const ROAD_CLASSES = "/api/region/road-classes/:z/:x/:y";
 
 type Inputs = Parameters<typeof useMapView>[0];
 
@@ -265,6 +268,38 @@ describe("useMapView", () => {
     expect(chip(result, "surface")).toMatchObject({ dataStatus: "loading", notice: TILE_ZOOM_TOO_WIDE_NOTICE });
     expect(chip(result, "hillshade")?.notice).toBeNull();
     await waitFor(() => expect(chip(result, "disaster")?.dataStatus).toBe("empty"));
+  });
+
+  it("道の線の層の値が取れなければ、その層のチップに取得の失敗を出す（失敗を空の値に倒すと、どの道も区分の外に読める）", async () => {
+    serve();
+    onBackend("GET", ROAD_CLASSES, () => new HttpResponse(null, { status: 500 }));
+    const { result } = render();
+    await waitFor(() => expect(chip(result, "surface")).toBeDefined());
+    act(() => result.current.overlayControls.onToggle("surface", true));
+
+    act(() => result.current.look.onViewportChange(VIEWPORT));
+
+    await waitFor(() => expect(chip(result, "surface")?.dataStatus).toBe("error"), { timeout: 3000 });
+  });
+
+  // 層の値の要求はタイルごとに backend の回数の制限に数えられ、1枚ごとに秒単位でかかるので、送った数を見る。
+  it("道の線の層の値は、地図を動かしても前に取ったタイルを取り直さず、新しく入ったタイルだけを取る", async () => {
+    serve();
+    const sent = onBackend("GET", ROAD_CLASSES, () => Response.json({ way_1: { surface: "paved" } }));
+    const { result } = render();
+    await waitFor(() => expect(chip(result, "surface")).toBeDefined());
+    act(() => result.current.overlayControls.onToggle("surface", true));
+
+    for (const viewport of [VIEWPORT, NEXT_TILE_VIEWPORT, VIEWPORT]) {
+      act(() => result.current.look.onViewportChange(viewport));
+      await new Promise((resolve) => setTimeout(resolve, MAP_FETCH_DEBOUNCE_MS + 100));
+      await waitFor(() => expect(result.current.look.roadClasses).toMatchObject({ loading: false }));
+    }
+
+    expect(result.current.look.roadClasses.values.get("way_1")).toEqual({ surface: "paved" });
+    const paths = sent.map(({ path }) => path);
+    expect(paths).toHaveLength(2);
+    expect(new Set(paths).size).toBe(2);
   });
 
   it.each([

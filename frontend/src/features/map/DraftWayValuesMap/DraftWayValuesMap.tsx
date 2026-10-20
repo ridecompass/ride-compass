@@ -42,7 +42,7 @@ const NO_LAYERS: MapLayerVisibility = {};
 
 /** 道の線の層を描かない。 */
 const NO_ROAD_LAYERS: readonly RoadMapLayerView[] = [];
-const NO_ROAD_CLASSES = new Map<string, Record<string, string>>();
+const NO_ROAD_CLASSES = { values: new Map<string, Record<string, string>>(), loading: false };
 
 const EMPTY_MATERIALS: WayMaterials = new Map();
 

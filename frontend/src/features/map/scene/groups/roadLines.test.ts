@@ -16,13 +16,14 @@ import { hiddenRoadLineAt, ROAD_LINE_SOURCE_ID, roadLineGroup } from "./roadLine
 
 const LAYER = roadMapLayer("surface", { has_no_data: true, classes: [roadClass("paved", { color: "#123456" })] });
 
-function linesOf(hidden: readonly string[] = []) {
+function linesOf(hidden: readonly string[] = [], loading = false) {
   const built = roadLineGroup.build({
     layers: [LAYER],
     tiles: { urls: ["https://example.test/{z}/{x}/{y}"], sourceLayer: "road", minZoom: 10, maxZoom: 14 },
     visible: { surface: true },
     hiddenKeys: { surface: hidden },
     classes: new Map(),
+    loading,
     inspectedWayId: null,
   }).layers;
   const paint = (role: string) => built.find((layer) => layer.role === role)?.paint ?? {};
@@ -59,6 +60,10 @@ describe("層の値から描く線", () => {
     const road = ROADS.find((candidate) => candidate.row === row);
     expect(drawn(linesOf(), road?.state ?? {})).toEqual({ solid, dashed });
   });
+});
+
+it("値を取っている間は、値の届いていない道を取得中の色で描き、届いて区分の外だった道（取り終えたあとの値の無い道）と分ける", () => {
+  expect(drawn(linesOf([], true), {}).solid?.color).toBe(palette.semantic.loading);
 });
 
 // 凡例に出す行はどれも、チェックを外すとその行の道だけが地図から消える。

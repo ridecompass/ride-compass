@@ -34,7 +34,7 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
       dynamicWeather: {},
       lens: "none",
       paintedAxisId: null,
-      roadClasses: new Map(),
+      roadClasses: { values: new Map(), loading: false },
       wayMaterials: new Map(),
       wayConditions: {},
       hiddenLegendKeys: {},

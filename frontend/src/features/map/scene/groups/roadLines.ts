@@ -2,7 +2,8 @@
  *
  * 道の層の値（区分の鍵か「データなし」）はbackendが決め、地図は道ごとに feature-state で受け取って塗るだけにする——ルートの
  * 区間の帯と同じ値になる。**feature-state の値は MapLibre の絞り込みからも `line-dasharray` からも読めない**ため、凡例で隠した
- * 行は透明で落とし、データなしの道の破線は、破線だけの線を重ねて濃さで出し入れする。値の届いていない道は区分の外に見える。
+ * 行は透明で落とし、データなしの道の破線は、破線だけの線を重ねて濃さで出し入れする。区分の外の道は値を持たないので、値を
+ * 取っている間は、値の無い道をどれも取得中の色で描く（届いていない道と区分の外の道は、取り終えるまで見分けられない）。
  *
  * すべて**同じ路面タイルのソース**を共有する。評価軸の線も同じソースを読むため、
  * ソースの宣言は合成（`composeScene`）が1本へ畳む。
@@ -50,6 +51,8 @@ export type RoadLineState = {
   readonly hiddenKeys: Readonly<Record<string, readonly string[]>>;
   /** 今の範囲の道ごとの層の値。 */
   readonly classes: RoadClassValues;
+  /** 今の範囲の層の値を取っている最中か。 */
+  readonly loading: boolean;
   /** 詳細を見ている道。開いていなければ null。 */
   readonly inspectedWayId: number | null;
 };
@@ -81,14 +84,15 @@ export function hiddenRoadLineAt(
   return (hiddenKeys[layer.id] ?? []).includes(row);
 }
 
-/** 区分ごとの色。凡例で隠した行は透明。データなしの道は破線の線が描くので、実線は透明にする。 */
-function colorExpression(layer: RoadMapLayerView, hiddenKeys: readonly string[]): unknown {
+/** 区分ごとの色。凡例で隠した行は透明。データなしの道は破線の線が描くので、実線は透明にする。取得中の色は「その他」を
+ * 隠していても残す——消すと「まだ来ていない」と「隠した」が区別できなくなる。 */
+function colorExpression(layer: RoadMapLayerView, hiddenKeys: readonly string[], loading: boolean): unknown {
   const shown = (key: string, color: string) => (hiddenKeys.includes(key) ? palette.semantic.hidden : color);
   const pairs = [
     ...layer.classes.flatMap((roadClass) => [roadClass.key, shown(roadClass.key, roadClass.color)]),
     ...(layer.has_no_data ? [NO_DATA_VALUE, palette.semantic.hidden] : []),
   ];
-  const other = shown(ROAD_OTHER_KEY, palette.semantic.no_data);
+  const other = loading ? palette.semantic.loading : shown(ROAD_OTHER_KEY, palette.semantic.no_data);
   return pairs.length === 0 ? other : ["match", valueOf(layer), ...pairs, other];
 }
 
@@ -162,7 +166,7 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
         ...line,
         role: layer.id,
         paint: {
-          "line-color": colorExpression(layer, hiddenKeys),
+          "line-color": colorExpression(layer, hiddenKeys, state.loading),
           "line-width": ROAD.lineWidthPx,
           "line-opacity": opacityExpression(layer),
           "line-offset": offset,
