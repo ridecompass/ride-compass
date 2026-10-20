@@ -157,14 +157,14 @@ python scripts/review_checks.py docs
      拾わない形は道具の外（別の grep・読む）で見る
        - (a) 文字列リテラル∩生成物の識別子（宣言の鍵を名指して1つを選ぶ。例: `windowHoursOf("linearRainband")`）
        - (b) 画面の文∩本番の軸名・現象の語（文の中に宣言の事実を書き写す。例: 「死亡事故は円を大きく表示」）
-       - (c) 重み・閾値の文脈の数値リテラル（関数の中を含む。例: `lastWeights[axisId] || 0.1`）
-       - (d) 宣言の意味の鍵を名指す分岐（例: `axis.key === "severity"`・`values.includes(true)`）
+       - (c) 重み・閾値の文脈の数値リテラル（関数の中を含む。例: `lastWeights[axisId] || 0.1`）と、画面自身の定数（例: `const HORIZON_MS = 48 * HOUR_MS`）
+       - (d) 宣言の意味の鍵を名指す分岐（例: `axis.key === "severity"`・`values.includes(true)`・型が生成物の値の `axis.timeScope === "night_only"`）
 
      偶然の一致と、型で縛られた形の判別（描き方の`kind`の分岐・キー操作）は見送る。
      件数が0の分類は、既知の1件を拾えるかで道具の穴を先に疑う
    - 利用者に見える文が、宣言の事実を宣言から引かずに書いている（(b) の backend の側）。
      `python scripts/prose_copies.py`で、backend の宣言・応答の文∩宣言の名前・色や寸法や時間幅の語・説明∩同じ行の値・
-     較正値の id と、走行モデル・難易度の数え方を述べる文（frontend を含む）を列挙し、(a)〜(d) と同じく全件読んで決める（範囲と
+     較正値の id と、走行モデル・難易度の数え方を述べる文（frontend を含む）と、frontend の文の数と単位（画面自身の定数の値を文に書く形）を列挙し、(a)〜(d) と同じく全件読んで決める（範囲と
      拾わない形の正本は道具の先頭）
    - テストが本番で作れない状態を作る／本番の式・順序を写している
    - 生成物が逆向き（frontend→backend）に流れている

@@ -13,7 +13,7 @@ import { cn } from "@/lib/cn";
 import { LENS_LINK_CLASS, LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
 
-import { HEADING_LABELS, headingOf } from "../mapHeading";
+import { HEADING_LABELS, WAY_BEARING_STEP_DEG, headingOf } from "../mapHeading";
 import { nearestRideZoomStep } from "../MapView/rideZoom";
 
 interface MapNavigationControlProps {
@@ -212,7 +212,7 @@ function HeadingDial({ bearing, heading, onBearingChange, onResetNorth }: Headin
         <InfoPopover triggerAriaLabel="地図の向きの使い方">
           輪をなぞると地図が回り、真ん中の針を押すと北が上に戻ります。
           {bearingAxes &&
-            `${bearingAxes}で周りの道を塗るときと、道の評価を見るときの走る向きは、地図の上の向きを8方位に丸めた向きです。ルートの評価は、ルートを実際に走る向きで決まります。`}
+            `${bearingAxes}で周りの道を塗るときと、道の評価を見るときの走る向きは、地図の上の向きを${WAY_BEARING_STEP_DEG}°刻みに丸めた向きです。ルートの評価は、ルートを実際に走る向きで決まります。`}
         </InfoPopover>
         <span className="tabular-nums">
           <span className="text-[length:var(--font-size-md)] font-semibold text-[var(--color-accent)]">
