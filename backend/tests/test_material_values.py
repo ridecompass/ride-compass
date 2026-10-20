@@ -83,7 +83,7 @@ async def _edge_value(session, expression: str, *, distance_m: float, accident_y
 ])
 async def test_a_number_tag_has_a_value_only_when_it_is_a_positive_number(road_graph_session, tag, expected):
     values = await _way_values(road_graph_session, material_sql.positive_integer_tag_sql("tag_a"),
-                               {1: {} if tag is None else {"tag_a": tag}})
+                               {1: {"tag_a": tag}})
 
     assert values == {1: expected}
 
