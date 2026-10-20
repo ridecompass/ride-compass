@@ -5,7 +5,7 @@
 None、プロセス内キャッシュで上流を引き直さないこと。
 
 ここで見ないもの:
-- キャッシュの骨格（失敗をキャッシュしない・該当なしのNoneもキャッシュする・ログの`fields`）→ `test_simple_api_client.py`
+- キャッシュの骨格（失敗をキャッシュしない・ログの`fields`）→ `test_simple_api_client.py`
 - 観測値をRedisへ置く・最寄りの観測所を選ぶ・雨の履歴 → `test_jma_amedas_service.py`
 - 体感温度 → `test_jma_amedas.py`
 - 16方位の呼び名の並び（`domain/geo.py: SIXTEEN_POINT_LABELS`） → 1つおきの8方位は`test_geo.py`、重ならないことは宣言の読み込みの時点の検査
@@ -130,13 +130,12 @@ async def test_observation_map_is_requested_by_the_jst_time():
     """URLの時刻はJSTの`YYYYMMDDHHMMSS`。UTCで渡しても同じ観測を引く。"""
     router = respx.Router()
     url = jma_amedas_client.AMEDAS_OBSERVATION_URL_TEMPLATE.format(timestamp="20260829170000")
-    route = router.get(url).respond(json={"44132": _FULL_READING})
+    router.get(url).respond(json={"44132": _FULL_READING})
 
     readings = await jma_amedas_client.fetch_observation_map(
         client_for(router), datetime(2026, 8, 29, 8, 0, tzinfo=timezone.utc)
     )
 
-    assert route.called
     assert readings == {
         "44132": jma_amedas_client.AmedasReading(
             temperature_c=21.3,

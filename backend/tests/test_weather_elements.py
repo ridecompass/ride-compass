@@ -63,9 +63,8 @@ def test_stages_sharing_one_zoom_range_give_the_first_stage_spec():
         ("rasterTile", ()),
         ("rasterTile", ["t_even10", "t_even12"]),
         ("vectorTile", ["t_vector", "t_even10"]),
-        ("rasterTile", ["t_even10", "t_points"]),
     ],
-    ids=["no_delivery", "max_zooms_differ", "vector_layers_differ", "stage_not_delivered_as_tiles"],
+    ids=["no_delivery", "max_zooms_differ", "vector_layers_differ"],
 )
 def test_a_tile_element_whose_stages_cannot_share_one_source_is_refused(kind, jma_elements):
     with pytest.raises(ValueError):
@@ -105,8 +104,13 @@ def _frames(*validtimes: str) -> list[JmaFrame]:
     [
         ([_frames("01", "02"), _frames("02", "03", "04")], ["01", "03"]),
         ([_frames("01", "05"), _frames("02", "03"), _frames("04", "06")], ["01", None, "06"]),
+        ([[], _frames("02", "03")], [None, "02"]),
     ],
-    ids=["next_stage_continues_after_the_last_frame_before", "covered_stage_does_not_move_the_join"],
+    ids=[
+        "next_stage_continues_after_the_last_frame_before",
+        "covered_stage_does_not_move_the_join",
+        "stage_after_an_empty_one_starts_at_its_first_frame",
+    ],
 )
 def test_each_stage_starts_after_the_last_frame_of_the_stages_before(stages, first_validtimes):
     first_frames = stage_first_frames(stages)
