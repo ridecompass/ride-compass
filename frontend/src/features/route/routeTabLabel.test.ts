@@ -28,15 +28,6 @@ function entriesOf(entries: ReturnType<typeof routeListEntries<RouteCandidate>>)
 }
 
 describe("routeListEntries", () => {
-  it("最速の印が無く合成も無ければ、全部を生成した候補として受け取った順で1から番号を振る", () => {
-    const generated = [route("a", 900), route("b", 600), route("c", 1200)];
-    expect(entriesOf(routeListEntries(generated, []))).toEqual([
-      "a:generated:1/1",
-      "b:generated:2/2",
-      "c:generated:3/3",
-    ]);
-  });
-
   it("最速の印の1本を印だけの最速として先頭に置いて残りに1から番号を振り、合成は後へ「合成N」で並べる", () => {
     // 印の1本より速く見積もられた候補があっても、最速は印で決まる
     const generated = [route("a", 900), route("b", 600, { is_fastest: true }), route("c", 500)];

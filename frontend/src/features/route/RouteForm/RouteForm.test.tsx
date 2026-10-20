@@ -9,6 +9,7 @@
  *
  * ここで見ないもの: タブの列と選んだタブ、どのタブの中身が見えるか（スタイルで隠す）→ `app/page.tsx`。
  * 書いた定数や受け取った値をそのまま渡すもの（今の値と km の表記・候補の距離の幅、(i)の奥の文）。
+ * 周回の間に呼び出した地点を目的地にできないこと → `SavedPlacesPanel/SavedPlacesPanel.test.tsx`。
  * 周回の切り替えと地点の並び → `RouteForm/RouteForm.points.test.tsx`。押した地点の詳しく → `RouteForm/RouteForm.pointDetail.test.tsx`。
  * ルーラーのドラッグ・横スクロール・押せない間の止め方 → `components/ui/Ruler/Ruler.test.tsx`。
  *
@@ -57,12 +58,6 @@ describe("RouteForm 候補数", () => {
     renderForm({ maxRoutesInput: String(routeGenerateConfig.max_routes) });
 
     expect(screen.getByRole("button", { name: "候補数を増やす" })).toBeDisabled();
-  });
-
-  it("入力の件数を出す", () => {
-    renderForm({ maxRoutesInput: "8" });
-
-    expect(screen.getByText("8件")).toBeInTheDocument();
   });
 });
 
@@ -164,13 +159,10 @@ describe("RouteForm 保存した地点を呼び出す", () => {
     },
   );
 
-  it.each([
-    [{ waypoints: waypointsOf(routeGenerateConfig.max_waypoints) }, "経由地に足す"],
-    [{ loop: true }, "目的地にする"],
-  ])("条件（%o）では「%s」を押せない", async (condition, label) => {
-    renderForm({ savedPlaces, ...condition }, "saved");
+  it("経由地を上限まで置いたあとは「経由地に足す」を押せない", async () => {
+    renderForm({ savedPlaces, waypoints: waypointsOf(routeGenerateConfig.max_waypoints) }, "saved");
 
-    expect(within(await openRecallMenu()).getByRole("button", { name: label })).toBeDisabled();
+    expect(within(await openRecallMenu()).getByRole("button", { name: "経由地に足す" })).toBeDisabled();
   });
 });
 
