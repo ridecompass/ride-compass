@@ -1,15 +1,8 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { buttonVariants } from "../Button/Button";
-import {
-  DistanceTargetIcon,
-  GenerateRoutesIcon,
-  PlaceOnMapIcon,
-  RouteDiffIcon,
-  SaveConditionsIcon,
-  SavePlaceIcon,
-  type MapIconComponent,
-} from "../icons/icons";
+import { RouteDiffIcon, type MapIconComponent } from "../icons/icons";
+import { DistanceTargetIcon, GenerateRoutesIcon, SaveConditionsIcon, SavePlaceIcon } from "../icons/lucideIcons";
 
 // 案内の文の中で、アイコンだけのパネルの操作を「名前」で指した所を、そのボタンと同じ見た目のアイコンにして描く
 // （docs/modules/frontend/frontend-design-system.md 5-1）。名前はボタンの`aria-label`と同じにする——
@@ -19,7 +12,6 @@ const BUTTON_MARKS = new Map<string, { Icon: MapIconComponent; variant: "primary
   ["差分を見る", { Icon: RouteDiffIcon, variant: "secondary" }],
   ["地点を保存", { Icon: SavePlaceIcon, variant: "secondary" }],
   ["いまの設定を保存", { Icon: SaveConditionsIcon, variant: "secondary" }],
-  ["出発地を地図で選ぶ", { Icon: PlaceOnMapIcon, variant: "secondary" }],
   ["全長の目標を決める", { Icon: DistanceTargetIcon, variant: "secondary" }],
 ]);
 

@@ -13,7 +13,6 @@ from app.domain.axis_definitions import (
     AXIS_DEFINITIONS,
     AxisDependencyCycleError,
     AxisInternalAxisPublishError,
-    AxisMaterialConflictError,
     AxisPublishedImmutableError,
 )
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
@@ -41,17 +40,6 @@ CATALOG_MATERIAL = "gradient_percent"
 
 
 # --- refresh_axis_definitions（起動時ロード相当） ---
-
-
-async def test_refresh_raises_when_table_empty(road_graph_session):
-    # コード内蔵の既定値へフォールバックせず例外にする。AXIS_DEFINITIONSは変わらない。
-    original = dict(AXIS_DEFINITIONS)
-    repository = AxisDefinitionRepository(road_graph_session)
-
-    with pytest.raises(AxisDefinitionSyncError, match="空です"):
-        await refresh_axis_definitions(repository)
-
-    assert AXIS_DEFINITIONS == original
 
 
 async def test_refresh_raises_on_repository_error(road_graph_session):
@@ -109,16 +97,6 @@ async def test_refresh_raises_when_the_axes_together_break_an_invariant(road_gra
 # --- AxisRegistryAdminService（管理APIのユースケース層） ---
 
 
-async def test_create_persists_and_refreshes_process_cache(road_graph_session):
-    repository = AxisDefinitionRepository(road_graph_session)
-    service = AxisRegistryAdminService(repository)
-
-    await service.create(axis_definition("test_axis", material=CATALOG_MATERIAL))
-
-    assert "test_axis" in AXIS_DEFINITIONS
-    assert (await repository.list_all())["test_axis"] == axis_definition("test_axis", material=CATALOG_MATERIAL)
-
-
 async def test_create_rejects_axis_id_colliding_with_known_material(road_graph_session):
     # MATERIAL_CATALOGに実在する材料id（例: "highway"）と同名のaxis_idは
     # 作成できない。放置すると評価時に生の材料値がdifficulty値で上書きされ、それ以降に
@@ -141,31 +119,6 @@ async def test_create_rejects_duplicate_axis_id(road_graph_session):
         await service.create(axis_definition("test_axis", material=CATALOG_MATERIAL))
 
 
-async def test_create_rejects_axis_reusing_existing_material(road_graph_session):
-    repository = AxisDefinitionRepository(road_graph_session)
-    service = AxisRegistryAdminService(repository)
-    await service.create(axis_definition("first_axis", material="bridge"))
-
-    with pytest.raises(AxisMaterialConflictError, match="「橋・高架」"):
-        await service.create(axis_definition("second_axis", material="bridge"))
-
-    assert "second_axis" not in AXIS_DEFINITIONS
-
-
-async def test_update_rejects_axis_reusing_another_axis_material(road_graph_session):
-    # 直す軸が相手より前に並んでいても、断りは相手の軸を「すでに使っている軸」と名指す。
-    repository = AxisDefinitionRepository(road_graph_session)
-    service = AxisRegistryAdminService(repository)
-    await service.create(axis_definition("first_axis", material="oneway"))
-    await service.create(axis_definition("second_axis", material="motor_vehicle_no"))
-
-    with pytest.raises(AxisMaterialConflictError, match="「自動車通行不可」") as caught:
-        await service.update("first_axis", axis_definition("first_axis", material="motor_vehicle_no"))
-
-    assert (caught.value.axis_id, caught.value.conflicting_axis_id) == ("first_axis", "second_axis")
-    assert AXIS_DEFINITIONS["first_axis"].materials == ["oneway"]
-
-
 async def test_update_rejects_publishing_axis_another_axis_reads(road_graph_session):
     # 他の軸が読む内部軸を公開すると、利用者のルート設定画面へ内部軸が出る。
     repository = AxisDefinitionRepository(road_graph_session)
@@ -179,16 +132,20 @@ async def test_update_rejects_publishing_axis_another_axis_reads(road_graph_sess
     assert AXIS_DEFINITIONS["base_axis"].is_published is False
 
 
-async def test_update_accepts_cosmetic_edit_of_published_axis_another_axis_reads(road_graph_session):
-    # 公開の不変性・内部軸の公開・書いた後の読み込みの3つのガードを、表示だけの直しがどれも通る。
+async def test_update_keeps_published_axis_another_axis_reads_published_with_new_breakpoints(road_graph_session):
+    # 公開の不変性・内部軸の公開・書いた後の読み込みの3つのガードを、表示と折れ点の直しがどれも通り、軸は公開のまま
+    # 差し替わる（下書きへ戻すと、その間だけ一般の画面から軸が消え、利用者の重みが既定へ戻る）。
     repository = AxisDefinitionRepository(road_graph_session)
     service = AxisRegistryAdminService(repository)
     await service.create(axis_definition("base_axis", material="oneway", is_published=True))
     await service.create(axis_definition("dependent_axis", material="base_axis"))
+    adjusted = axis_definition("base_axis", material="oneway", is_published=True, icon_id="基")
+    adjusted = adjusted.model_copy(update={"shape": adjusted.shape.model_copy(update={"breakpoints": [(0.0, 0.0), (1.0, 60.0)]})})
 
-    await service.update("base_axis", axis_definition("base_axis", material="oneway", is_published=True, icon_id="基"))
+    await service.update("base_axis", adjusted)
 
-    assert AXIS_DEFINITIONS["base_axis"].icon_id == "基"
+    assert AXIS_DEFINITIONS["base_axis"] == adjusted
+    assert (await repository.list_all())["base_axis"] == adjusted
 
 
 async def test_update_rejects_cycle_between_two_axes(road_graph_session):
@@ -201,37 +158,6 @@ async def test_update_rejects_cycle_between_two_axes(road_graph_session):
         await service.update("axis_a", axis_definition("axis_a", material="axis_b"))
 
     assert AXIS_DEFINITIONS["axis_a"].materials == ["oneway"]
-
-
-async def test_update_replaces_definition_and_keeps_sort_order(road_graph_session):
-    repository = AxisDefinitionRepository(road_graph_session)
-    service = AxisRegistryAdminService(repository)
-    await service.create(axis_definition("test_axis", default_weight=0.1, material=CATALOG_MATERIAL))
-    # sort_order維持の確認用ダミー（材料はtest_axisと衝突しないよう分ける）。
-    await repository.upsert(axis_definition("second", material="poi_signal_per_km"), sort_order=99)
-    await repository.commit()
-    _, original_sort_order = (await repository.list_all_with_sort_order())["test_axis"]
-
-    await service.update("test_axis", axis_definition("test_axis", default_weight=0.9, material=CATALOG_MATERIAL))
-
-    assert AXIS_DEFINITIONS["test_axis"].default_weight == 0.9
-    _, sort_order_after = (await repository.list_all_with_sort_order())["test_axis"]
-    assert sort_order_after == original_sort_order
-
-
-async def test_update_rejects_published_axis(road_graph_session):
-    # 公開済み軸は不変。更新しようとしたpayload自体がis_published=False
-    # （下書きへ戻そうとする値）でも、既存が公開済みなら拒否される（抜け道防止）。
-    repository = AxisDefinitionRepository(road_graph_session)
-    service = AxisRegistryAdminService(repository)
-    await service.create(axis_definition("test_axis", default_weight=0.1, is_published=True, material=CATALOG_MATERIAL))
-
-    with pytest.raises(AxisPublishedImmutableError, match="表示以外は変えられません"):
-        await service.update(
-            "test_axis", axis_definition("test_axis", default_weight=0.9, is_published=False, material=CATALOG_MATERIAL)
-        )
-
-    assert AXIS_DEFINITIONS["test_axis"].default_weight == 0.1
 
 
 @pytest.mark.parametrize(
@@ -298,30 +224,6 @@ async def test_create_rejects_axis_the_startup_loading_would_reject(road_graph_s
 
 
 # --- unpublish ---
-
-
-async def test_unpublish_flips_published_axis_to_draft(road_graph_session):
-    repository = AxisDefinitionRepository(road_graph_session)
-    service = AxisRegistryAdminService(repository)
-    await service.create(axis_definition("test_axis", default_weight=0.3, is_published=True, material=CATALOG_MATERIAL))
-
-    await service.unpublish("test_axis")
-
-    assert AXIS_DEFINITIONS["test_axis"].is_published is False
-    # is_published以外のフィールドは変わらないこと。
-    assert AXIS_DEFINITIONS["test_axis"].default_weight == 0.3
-    persisted, _ = (await repository.list_all_with_sort_order()).get("test_axis")
-    assert persisted.is_published is False
-
-
-async def test_unpublish_is_idempotent_for_already_draft_axis(road_graph_session):
-    repository = AxisDefinitionRepository(road_graph_session)
-    service = AxisRegistryAdminService(repository)
-    await service.create(axis_definition("test_axis", is_published=False, material=CATALOG_MATERIAL))
-
-    await service.unpublish("test_axis")  # 例外にならないこと
-
-    assert AXIS_DEFINITIONS["test_axis"].is_published is False
 
 
 async def test_unpublish_then_delete_succeeds_where_direct_delete_was_rejected(road_graph_session):

@@ -13,7 +13,7 @@
 | Frontendスタイリング | Tailwind CSS + Radix UI + `frontend/src/components/ui/`（CSS Modulesは使わない） | 使い分け基準・Design Token・意図的に作らないものは[frontend-design-system.md](../modules/frontend/frontend-design-system.md) |
 | Frontendのデータ取得 | TanStack Query（`@tanstack/react-query`） | 取得の共有・取り直し・状態の骨格。MIT（依存の`@tanstack/query-core`も同じ）で、商用で使える。対応するReactは18・19（パッケージの`peerDependencies`）。使い方は[page-composition.md](../modules/frontend/page-composition.md)「データ取得の骨格」 |
 | FrontendのAPIの呼び出し | openapi-fetch（`openapi-typescript`の生成物からパス・問い合わせ・本文・応答の型を推論する） | MIT（依存の`openapi-typescript-helpers`も同じ）で、商用で使える。版の制約は下記。使い方は[page-composition.md](../modules/frontend/page-composition.md) |
-| Frontendアイコン | lucide-react（汎用の形）＋自前のSVG（このアプリ固有の概念の形） | 振り分けと線の太さのそろえ方は`frontend/src/components/ui/icons/icons.tsx`。lucideはISC（一部のアイコンはFeather由来でMIT）で、商用で使える |
+| Frontendアイコン | lucide-react（汎用の形）＋自前のSVG（このアプリ固有の概念の形） | 振り分けと線の太さのそろえ方は`frontend/src/components/ui/icons/icons.tsx`（土台と自前の形）・`frontend/src/components/ui/icons/lucideIcons.tsx`（lucideの包み）。lucideはISC（一部のアイコンはFeather由来でMIT）で、商用で使える |
 | Backend | Python + FastAPI | バージョンの正本は`backend/requirements.txt` |
 | DB | PostgreSQL + PostGIS | 生データ層・派生層・MVT生成（`ST_AsMVT`）の唯一の系統。**取込範囲外は「データ未整備」として扱い、外部APIへのフォールバックを持たない**。ルート生成には`DATABASE_URL`への実接続が必須 |
 | ルーティング | 自前のRoad Graph単一構成 | 外部ルーティングAPIへの依存は無い。[route-generation.md](route-generation.md) |
@@ -23,7 +23,7 @@
 | 標高 | 国土地理院DEMタイル（APIキー不要、日本国内限定） | 評価の材料（勾配）は取込バッチだけが叩き、**ルート生成・評価が実行時に取りに行く経路は無い**。地図の地形の表示は、backendが実行時に取りに行って中継し、ディスクに持つ |
 | 土地被覆 | Esri × Impact Observatory の10m LULC（GeoTIFF） | リポジトリに持たず、デプロイがVMへ取得して読み取り専用でマウントする |
 | 立ち寄り先の地点 | Overture Maps の places（GeoParquet）を DuckDB（MIT）で取込の範囲だけ切り出す | 取得と取込のバッチだけが使う（`backend/requirements-batch.txt`）。利用条件と版の入れ替えは[data-sources.md](data-sources.md) |
-| 管理データの退避先 | Oracle Cloud Object Storage（非公開のバケット） | 本番VMのtimerが取り直せない管理データを置き、バケットのライフサイクルの規則が古いものを消す。仕組みと登録の手順は[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)付録「管理データのバックアップ」 |
+| 本番DBの退避先 | Oracle Cloud Object Storage（非公開のバケット） | 本番VMのtimerがDBの全体の書き出しを置き、前の1個を消す（無料の枠に1個だけ入る）。仕組みと登録の手順は[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)付録「DBのバックアップ」 |
 | タスクの流れのゲート | Cloudflare Workers（`tools/flow-gate/wrangler.toml`。Webhookを受けるWorkerと、Cloudflare Accessで守る回答フォームのWorker） | アプリの外の運用の道具で、本番の利用者の経路に無い。公開するトークンは下の「秘密の値とトークン」、決まりは[flow.md](../conventions/flow.md) |
 
 ## 地図タイルプロバイダ
@@ -127,9 +127,9 @@ backendのデプロイがCORSの許可へ新しいfrontendの宛先を足す。
 
 **frontendのオリジンからbackendへ届くのは、`frontend/next.config.ts`のrewritesにあるタイル類と、管理画面の
 転送（`/admin/api/…`→backendの`/api/admin/…`、Basic認証をサーバー側で付ける）だけ。** それ以外のAPI
-（例: `/api/axis-catalog`・`/api/region/dynamic-way-values/…`・`/health`）をfrontendのオリジンへ投げると、
+（例: `/api/axis-catalog`・`/api/region/way-materials/…`・`/health`）をfrontendのオリジンへ投げると、
 Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で叩くとき・道具から引くときは、backendの
-宛先へ直接投げる。frontend自身の口（`/api/version`）はfrontendのオリジンにだけある。
+宛先へ直接投げる。frontend自身の口（`/api/version`）はfrontendのオリジンにだけある。開発機で画面を本番のデータで開くときだけ、APIも`/prod/…`で本番のbackendへ転送する（[setup.md](setup.md)「開発機の画面を本番のデータで開く」）。
 
 ## デプロイの反映確認（backend/frontendで注入元が異なる）
 
@@ -276,14 +276,21 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
   持ち、`ci.yml: changes`は変わったファイルの頭からどの置き場が変わったかだけを見て（本番の宛先の`production-origins.json`は、
   両方の像が読むのでbackendとfrontendの両方に数える）、その置き場の検査（backendならテスト・api-contract・
   像の確かめ、frontendならテスト・e2e・全状態の走査・api-contract・像の確かめ、`scripts/`なら道具のテスト）とデプロイを走らせる。
-  それ以外の変更（文書・タスク管理・ほかのワークフロー）では、置き場に依らないジョブ（文書の整合・ゲートの検査等）だけを走らせる。`ci.yml`と`.github/actions/`を変えたら、その定義で
-  全部を走らせて確かめる。YAMLとして読んだ中身で比べ、コメントだけの変更は定義の変更に数えない（`run`のシェルの中のコメントは中身なので数える）。置き場をまたいで読むものは数えず、テストを読む側の置き場へ置く（backendのための道具は`backend/scripts/`）。
+  それ以外の変更（文書・タスク管理・ほかのワークフロー）では、置き場に依らないジョブ（文書の整合・ゲートの検査等）だけを走らせる。`ci.yml`と`.github/actions/`を変えたら、
+  定義が変わったジョブ（使う`.github/actions/`の手順が変わったジョブと、それらが出力を読むジョブを含む）だけを足して走らせ、ほかのジョブは
+  置き場で決める。手順の変わっていないジョブのテストを回しても定義の確かめにはならず、ジョブどうしのつながりはいつも走る`doc-reading-tests`の
+  ワークフローを読むテストが見る。ジョブの外（`on`・`concurrency`等）が変わったときは、全部を走らせる。
+  YAMLとして読んだ中身で比べ、コメントだけの変更は定義の変更に数えない（`run`のシェルの中のコメントは中身なので数える）。置き場をまたいで読むものは数えず、テストを読む側の置き場へ置く（backendのための道具は`backend/scripts/`）。
   走らせるジョブの組は`changes`の段だけが持ち、ジョブの`if`と`ci-ok`が読む。
 - **masterのpushの`changes`は、pushの実行が成功した一番近い祖先と比べる。** 直前のコミット
   （`github.event.before`）と比べると、直前の実行が失敗で終わったか待ちのまま取り消された（上の`concurrency`）とき、その変更が
   検査もデプロイもされないまま、次の文書だけの変更の実行がそれを飛ばして成功で終わる。デプロイだけが落ちた実行のあとは、
   確かめ済みのテストも走り直すが、余分に走るだけで抜けはしない。
-- **Pull Requestの`changes`と変異テストは、検査するマージのコミットの基の側の親と比べる。** `pull_request`の出来事の`base.sha`は
+- **masterのpushは、取り込んだPull RequestのCIが同じ中身を検査済みなら、検査を回し直さない。** Pull RequestのCIは先頭へ
+  その時のmasterを合わせた版を検査するので、比べる相手が親（親の実行が成功している）で、先頭が親を含み、先頭とマージのコミットの
+  木が同じで、その先頭のCIが成功していれば、同じ中身を検査済みとみなし、frontendの像・デプロイ・ゲートの公開と、
+  いつも走るジョブ（下の`docs-consistency`等）だけを走らせる。CIの定義を変えたときと、確かめられないときは、置き場のとおり回す。
+- **Pull Requestの`changes`は、検査するマージのコミットの基の側の親と比べる。** `pull_request`の出来事の`base.sha`は
   Pull Requestへpushしたあとに基の先端が進んでも新しくならず、そのまま比べるとその間に基へ入った変更が差に混ざる
   （`.github/actions/pr-base`）。
 - **タスク管理は製品のCIと分ける。** タスク管理の置き場（`.github/taskflow-paths`。ゲートの`tools/flow-gate/`と
@@ -307,7 +314,7 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
     本番へ出す・公開するジョブは、どの ref から起こしても行き先が1つなので、鍵を master に決めてある。
   - レーンは決め打ちで、ジョブごと（matrix なら行ごと）にどのレーンかを書く。式に余りの演算が無く、空いたレーンを取り合う形は
     書けない。担当は持ち時間いっぱいまで動くので、レーン0を担当だけに与え、ほかのジョブはレーン1以降に置く（同じレーンに置くと、
-    担当が終わるまで待つ）。同じ実行の中で並んで始まるジョブは別のレーンへ、長いジョブ（変更した関数の変異テスト）は始まりの
+    担当が終わるまで待つ）。同じ実行の中で並んで始まるジョブは別のレーンへ、長いジョブ（変異テストの全部の測り）は始まりの
     短いジョブとだけ同じレーンへ置き、Pull Request の CI の通しの長さを延ばさない。
   - レーンの数と、どのジョブもレーンを持つことは `backend/tests/structure/test_workflow_lanes.py: LANES` のテストが持ち、
     ワークフローを足す・ジョブを足すときに書き漏れると落ちる。
@@ -423,52 +430,3 @@ dockerdが行うので通る）。
 
 本番はこの構成をそのまま使わない——backendはOracle Cloud VM上のDockerコンテナ、
 frontendはRender、PostgreSQLとRedisはVMへネイティブに置く。
-
-## 厳選まで仮置き
-
-原則の見直しで消えた記載を、厳選まで元の節ごとに仮に置く。**今の決まりと食い違えば今の決まりを取る。**
-
-### 元: docs/architecture の tech-stack.md
-
-#### 採用しているもの
-
-| 領域 | 採用 | 備考 |
-|---|---|---|
-| 管理データの退避先 | Oracle Cloud Object Storage（非公開のバケット） | 本番VMのtimerが取り直せない管理データを置き、バケットのライフサイクルの規則が古いものを消す。仕組みと登録の手順は[deployment-sync.md](../../.claude/skills/production-data/SKILL.md)付録「管理データのバックアップ」 |
-
-#### 本番の宛先（frontendのオリジンからbackendへ届くのは一部だけ）
-
-道具のコードに宛先を書き込まない——IPが変わったとき、直すのが`production-origins.json`だけで済むようにするため。
-
-#### CIの実行枠（リポジトリがpublicである間の前提）
-
-- どの出来事でCIが走るかは.claude/skills/run-checks/SKILL.md「検査の置き場（手元・作業ブランチのCI・masterのCI）」が持つ。
-  作業ブランチへのpushで走らせないのは、検査はPull Requestの実行で済み、誰も待たないpushの実行で枠を使わないため。
-  backendの本番へのデプロイは、masterへの
-  pushでCIが通ったときだけ`ci.yml`から呼ばれる（上の「デプロイの反映確認」）。
-
-- `ci.yml`は、同じref（master・Pull Requestごと）の実行を1本ずつ動かし、待ちは一番新しい1件だけにする（`concurrency`）。
-  後のコミットは前の変更を全部含み、古いコミットの実行はデプロイにもマージの判断にも使わないため。Pull Requestは
-  新しいpushで走っている実行も打ち切り、masterは走っている実行を最後まで走らせる（デプロイが同じ実行の中で走るので、
-  途中で切らない）。打ち切った・待ちから外した実行のコミットにはCIの結論が残らないので、結論は最新のコミットで読む
-  （.claude/skills/run-checks/SKILL.md「CIの結論を読む」）。ゲートの公開（`deploy-gate`）も同じ実行の中で走るので、masterの
-  前の実行が終わるまで待つ。
-
-- **飛ばす範囲は、その検査が読む対象から導く。** 飛ばしてよいのは、`ci.yml`のどの検査も読まないパスだけ。
-  文書を読むテストを足したら、読む範囲がディレクトリに限られるなら`changes`の`case`でそこを先に当てて入れ直し、
-  全ての文書を読むなら常に走る`ci.yml`の`doc-reading-tests`でも走らせる。飛ばす運用の道具（`scripts/`の一部）を
-  テストやデプロイが読むようにしたら、`case`からその行を外す。飛ばす道具の静的検査は`ci.yml`の`repo-wide`が
-  常に走らせる。
-
-#### 秘密の値とトークン
-
-| 入れた場所 | 名前 | 中身（作った人・Resource owner・届く範囲・権限・期限） | 使う所 |
-|---|---|---|---|
-| 同 | `FLOW_BOT_TOKEN` | hidakagit-botが作ったfine-grained。届くのはridecompass/ride-compass-tasksだけ。Contentsは読み書き（担当の手番の記録をリリースへ置く）。期限2027-09-29 | 担当と流れの道具が置き場へ書く・ゲートの公開のあと`refresh.js`。開発機ではユーザー環境変数の同じ名前 |
-
-#### 本番Redisの設定
-
-Redisは「TTL付きキャッシュ、または実データ源へのフォールバックが必ず効くcache-aside」
-専用の層で、**正本データを持たない**（方針は[caching.md](../../.claude/rules/caching.md)）。
-本番はOracle Cloud VMへネイティブに導入する（backendコンテナが`--network=host`のため
-追加設定なしで到達できる）。ローカル開発は`docker-compose.yml`のredisサービス。

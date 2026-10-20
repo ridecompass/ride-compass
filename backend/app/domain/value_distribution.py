@@ -1,12 +1,12 @@
-"""延長で重み付けた値の分布（分位点とヒストグラム）と、値の範囲の手がかり（分位点とゼロの割合）。
-軸スタジオの分布の口・材料の分布の口の応答の型を兼ねる。
+"""延長で重み付けた値の分布（分位点とヒストグラム）と、種類の材料の値ごとの延長の割合。軸スタジオの分布の口の
+応答の型を兼ねる。
 
 本数ではなく**延長で重み付ける**。本数で数えると短い道が多数を占めて実際に走る距離の感覚と合わない。
 """
 
 import numpy as np
 
-from app.domain.axis_definitions import AxisShape, raw_values, referenced_materials
+from app.domain.axis_definitions import AxisShape, mapping_key_of, raw_values, referenced_materials
 from app.domain.strict_model import StrictModel
 
 # 生値のヒストグラムの階級数。フロントが折れ点を当てはめる粒度で、細かすぎても
@@ -30,14 +30,22 @@ class ValueDistribution(StrictModel):
 EMPTY_DISTRIBUTION = ValueDistribution(sample_ways=0, total_km=0.0, quantiles={}, bins=[])
 
 
-class ValueSpread(StrictModel):
-    """延長で重み付けた分位点と、値がちょうど0である延長の割合（負の値は含まない）。"""
+class ValueShare(StrictModel):
+    #: 対応表（`CategoricalShape.mapping`）のキーと同じ綴りの値の名前。
+    value: str
+    #: その値を持つ道の延長が、値を持つ道の延長の全体に占める割合。
+    share: float
 
-    quantiles: dict[str, float]
-    zero_share: float
+
+class ValueShares(StrictModel):
+    """種類・はい/いいえの材料の値ごとの延長の割合（割合の大きい順）。値を持たない道は数えない。"""
+
+    sample_ways: int
+    total_km: float
+    shares: list[ValueShare]
 
 
-EMPTY_SPREAD = ValueSpread(quantiles={}, zero_share=0.0)
+EMPTY_SHARES = ValueShares(sample_ways=0, total_km=0.0, shares=[])
 
 #: 分位点の名前と比率。名前は応答の`quantiles`の鍵で、生成物（`vocabulary.ts`）がこの並びで画面へ届ける。
 QUANTILE_TARGETS = [("p10", 0.10), ("p25", 0.25), ("p50", 0.50), ("p75", 0.75), ("p90", 0.90), ("p99", 0.99)]
@@ -92,19 +100,6 @@ def weighted_distribution(pairs: list[tuple[float, float]]) -> ValueDistribution
     )
 
 
-def weighted_spread(pairs: list[tuple[float, float]]) -> ValueSpread:
-    """`(長さm, 値)`から延長で重み付けた分位点とゼロの割合を求める。"""
-    if not pairs:
-        return EMPTY_SPREAD
-    lengths, values = np.asarray(pairs, dtype=float).T
-    # 「ゼロ」は値がちょうど0であること。`v <= 0`にすると負の値を持つ材料で
-    # 「下り勾配の道」まで0として数えられ、表示（「ゼロX%」）が意味と食い違う。
-    zero_share = float(lengths[values == 0].sum()) / float(lengths.sum())
-    return ValueSpread(
-        quantiles=weighted_quantiles(pairs, QUANTILE_TARGETS, digits=3), zero_share=round(zero_share, 5)
-    )
-
-
 def raw_value_distribution(shape: AxisShape, sample: list[tuple[float, dict[str, object]]]) -> ValueDistribution:
     """道の標本（`(長さm, 材料id→値)`）から、`shape`の生値の延長で重み付けた分布。生値を出せない道は数えない。"""
     material_ids = referenced_materials(shape, [])
@@ -113,3 +108,22 @@ def raw_value_distribution(shape: AxisShape, sample: list[tuple[float, dict[str,
     )
     pairs = [(length_m, value) for (length_m, _), value in zip(sample, values) if value is not None]
     return weighted_distribution(pairs)
+
+
+def weighted_value_shares(pairs: list[tuple[float, object]]) -> ValueShares:
+    """`(長さm, 値)`から値ごとの延長の割合を求める。値は対応表のキーの綴りで数える（真偽は"true"/"false"）。"""
+    if not pairs:
+        return EMPTY_SHARES
+    lengths: dict[str, float] = {}
+    for length_m, value in pairs:
+        key = mapping_key_of(value)
+        lengths[key] = lengths.get(key, 0.0) + length_m
+    total_m = sum(lengths.values())
+    return ValueShares(
+        sample_ways=len(pairs),
+        total_km=round(total_m / 1000, 1),
+        shares=[
+            ValueShare(value=key, share=round(length_m / total_m, 5))
+            for key, length_m in sorted(lengths.items(), key=lambda item: (-item[1], item[0]))
+        ],
+    )

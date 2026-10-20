@@ -16,7 +16,7 @@ interface OpenOptions {
   point?: { latitude: number; longitude: number };
   /** 開いたあとに寄せる地図の倍率。 */
   zoom?: number;
-  /** ON にするレイヤーの id（mapDisplay.layers）。渡さないレイヤーは既定の表示のまま。 */
+  /** ON にするレイヤーの id（mapDisplay.layers と、軸カタログが配る道の線の層）。渡さないレイヤーは既定の表示のまま。 */
   layers?: string[];
   /** 開く前に入れる保存状態（localStorage）。 */
   storedState?: Record<string, string>;
@@ -47,8 +47,8 @@ export interface CaptureContext {
    * backend は撮影用の資格情報を通さない）。選べなければ、選べるタブを並べて止まる。
    */
   openAdmin(options?: OpenAdminOptions): Promise<Locator>;
-  /** 地図の色分け（レンズ）を名前で選び、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
-  chooseLens(label: string): Promise<void>;
+  /** 「評価で塗る」の評価軸（レンズ）を名前で選び（null は選んでいない状態へ戻す）、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
+  chooseLens(label: string | null): Promise<void>;
   /**
    * 「表示」の一覧の行の名前で凡例の内訳を開き、その内訳を返す。一覧が閉じていれば開く。`row` を渡せば、その行の説明も開く。
    * 開けなければ、選べる名前を並べて止まる。
@@ -160,8 +160,8 @@ function fileName(name: string): string {
 
 /** 選び損ねた直後に呼ぶので、選択肢が閉じていれば開く。 */
 async function lensLabels(page: Page): Promise<string[]> {
-  const group = page.getByRole("radiogroup", { name: "地図の色分け" });
-  if (!(await group.isVisible())) await page.getByRole("button", { name: /^地図の色分け: / }).click();
+  const group = page.getByRole("radiogroup", { name: "評価で塗る" });
+  if (!(await group.isVisible())) await page.getByRole("button", { name: /^評価で塗る: / }).click();
   const labels = await group.getByRole("radio").allInnerTexts();
   return labels.map((label) => label.replace(/\s+/g, " ").trim());
 }
@@ -188,8 +188,9 @@ export function captureContext(page: Page, { out, mocked }: { out: string; mocke
     catalogAxes,
     settle,
     async open({ point, zoom, layers = [], storedState, routes } = {}) {
-      const layerIds: string[] = mapDisplay.layers.map(({ id }) => id);
-      const unknown = layers.filter((id) => !layerIds.includes(id));
+      // 道の線の層は軸カタログが配るので、前もって照らせるのはモックの層だけ（本物の backend の層は開いた画面が決める）。
+      const layerIds: string[] = [...mapDisplay.layers, ...fixtures.E2E_ROAD_LAYERS].map(({ id }) => id);
+      const unknown = mocked ? layers.filter((id) => !layerIds.includes(id)) : [];
       if (unknown.length > 0) {
         throw new Error(`知らないレイヤー: ${unknown.join(" / ")}。選べるレイヤー: ${layerIds.join(" / ")}`);
       }

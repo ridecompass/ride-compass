@@ -273,7 +273,6 @@ def cmd_size(args: argparse.Namespace) -> int:
     exceptions = sorted(f for f in decided.get("thresholds", {}) if f in kind_limits)
     thresholds = dict(decided.get("thresholds", {}))
     thresholds.update(kind_limits)
-    on_fire = decided.get("on_fire", {})
     groups: dict[str, list[str]] = defaultdict(list)
     for f in counts:
         groups["docs" if f.startswith("docs/") else f.split("/")[0]].append(f)
@@ -322,9 +321,6 @@ def cmd_size(args: argparse.Namespace) -> int:
               f"{rate} | {'・'.join(reasons)} |")
     print()
     print(f"発火 {len(fired)}件: " + (", ".join(fired) if fired else "なし"))
-    for f in fired:
-        if f in on_fire:
-            print(f"  - {f} の既定の対応: {on_fire[f]}")
     print(f"閾値の見直し（今の行数+{GROWTH_PERCENT}%を{THRESHOLD_STEP_LINES}行に切り上げた値より緩い・削除済み） "
           f"{len(slack)}件: "
           + (", ".join(slack) if slack else "なし"))

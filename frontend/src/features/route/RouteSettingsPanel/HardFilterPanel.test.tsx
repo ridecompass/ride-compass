@@ -1,51 +1,95 @@
 /**
- * `RouteSettingsPanel/HardFilterPanel.tsx`——「除外」タブ。除外できる道路の種類ごとの切り替えと、既定へ戻す操作。
+ * `RouteSettingsPanel/HardFilterPanel.tsx`——「除外」タブ。道の区分の行ごとの避け方の選びと、自転車が通れない道の固定の行。
  *
- * 見るもの: 種類の切り替えを押すとその種類だけを反転した値を上げること、既定と違う間だけ既定へ戻す操作を押せること。
+ * 見るもの: 固定の行を「通らない」に鍵を付けて並びの先頭に出し、選ぶ操作を持たないこと（軸カタログが届く前も出す）。行の避け方を
+ * 節ごとに畳んで並べ（行の無い節は出さない）、選ぶとその行だけを変えた値を上げ、既定から変えた行の数を畳んだ見出しに出すこと。
+ * 選んでいない行は、前の鍵に選んだ段で出すこと。見出しの行と全部を既定へ戻す操作を持たないこと。
  *
- * ここで見ないもの: 保存値を今の項目へ揃えること → `features/route/useGenerationConditions.test.ts`（このパネルは
- * 全項目の揃った値を受け取る）。生成の要求へ載せること → `features/route/useRouteGeneration.test.ts`。
- * 受け取った値をそのまま渡す切り替えの押下状態と、(i)の奥の文（書いた文を写すだけ）。
+ * ここで見ないもの: 保存値を読むこと → `features/route/useGenerationConditions.test.ts`。生成の要求へ載せること →
+ * `features/route/useRouteGeneration.test.ts`。今の鍵・前の鍵・既定の段のどれを取るか → `features/route/roadAvoidance.test.ts`。
+ * (i)の奥の文（配られた説明を写すだけ）。
  *
- * 種類・名前・既定は生成物（`route-generate-config.json`）から読み、テストに書き写さない。
+ * 固定の行は生成物（`route-generate-config.json`）から読む。行・段・節は軸カタログが配る（本番の値は管理DBが持つ）ので、テストが組む。
  */
-import { cleanup, render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { AVOIDANCE_LEVELS, avoidanceRow } from "@/testing/catalogAxes";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import type { HardFilterOverride } from "@/types/route";
+import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
 
-import HardFilterPanel, { DEFAULT_HARD_FILTERS } from "./HardFilterPanel";
+import HardFilterPanel from "./HardFilterPanel";
 
-const [FIRST] = routeGenerateConfig.hard_filters.filters;
+const AVOIDANCE: RoadAvoidanceView = {
+  levels: AVOIDANCE_LEVELS,
+  sections: [
+    { key: "surface", label: "路面", description: "路面の区分ごとに選びます。" },
+    { key: "empty", label: "行の無い節", description: "" },
+    { key: "access", label: "通行", description: "" },
+  ],
+  rows: [
+    avoidanceRow("gravel", "surface", { label: "砂利" }),
+    avoidanceRow("unpaved", "surface", { label: "未舗装", default: "avoid", former_keys: ["dirt", "mud"] }),
+    avoidanceRow("private", "access", { label: "私道", default: "exclude" }),
+  ],
+};
 
-function renderPanel(hardFilters: HardFilterOverride) {
-  const onHardFiltersChange = vi.fn();
-  render(<HardFilterPanel hardFilters={hardFilters} onHardFiltersChange={onHardFiltersChange} />);
-  return onHardFiltersChange;
+function renderPanel(roadAvoidance: RoadAvoidanceOverride = {}) {
+  const onRoadAvoidanceChange = vi.fn();
+  const view = render(
+    <HardFilterPanel
+      avoidance={AVOIDANCE}
+      roadAvoidance={roadAvoidance}
+      onRoadAvoidanceChange={onRoadAvoidanceChange}
+    />,
+  );
+  return { ...view, onRoadAvoidanceChange };
 }
 
-/** 最初の種類だけを既定から反転した値。 */
-const CUSTOMIZED: HardFilterOverride = { ...DEFAULT_HARD_FILTERS, [FIRST.key]: !DEFAULT_HARD_FILTERS[FIRST.key] };
+const sectionTrigger = (name: string) => screen.getByRole("button", { name: new RegExp(`^${name}`) });
+const checkedLevel = (row: string) =>
+  within(screen.getByRole("radiogroup", { name: `${row}の避け方` })).getByRole("radio", { checked: true });
 
 describe("HardFilterPanel", () => {
-  it("押すとその種類だけを反転した値を上げる", async () => {
-    const onHardFiltersChange = renderPanel(DEFAULT_HARD_FILTERS);
+  it("自転車が通れない道の行は、並びの先頭に畳まずに鍵で出し、選び直す操作を持たない", () => {
+    const { container } = renderPanel();
+    const [firstFixed] = routeGenerateConfig.hard_filters;
 
-    await userEvent.click(screen.getByRole("button", { name: `${FIRST.label}を除外` }));
-
-    expect(onHardFiltersChange).toHaveBeenCalledExactlyOnceWith(CUSTOMIZED);
+    expect(container.firstElementChild!.firstElementChild).toHaveTextContent(new RegExp(`^${firstFixed.label}`));
+    for (const { label } of routeGenerateConfig.hard_filters) {
+      expect(screen.getByRole("img", { name: `${label}はいつも経路から外れます（変えられません）` })).toBeVisible();
+      expect(screen.queryByRole("radiogroup", { name: `${label}の避け方` })).toBeNull();
+    }
   });
 
-  it("既定と違う種類があるときだけ既定へ戻す操作を押せ、押すと既定を上げる", async () => {
-    renderPanel(DEFAULT_HARD_FILTERS);
-    expect(screen.getByRole("button", { name: "除外を既定値に戻す" })).toBeDisabled();
-    cleanup();
+  it("行の避け方は行のある節ごとに畳んで並べ、開いて選ぶとその行だけを変えた値を上げる", async () => {
+    const { onRoadAvoidanceChange } = renderPanel({ private: "avoid" });
+    expect(sectionTrigger("路面")).toHaveAttribute("aria-expanded", "false");
+    expect(sectionTrigger("通行")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: /^行の無い節/ })).toBeNull();
 
-    const onHardFiltersChange = renderPanel(CUSTOMIZED);
-    await userEvent.click(screen.getByRole("button", { name: "除外を既定値に戻す" }));
+    await userEvent.click(sectionTrigger("路面"));
+    expect(screen.getByText("路面の区分ごとに選びます。")).toBeVisible();
+    expect(checkedLevel("砂利")).toHaveTextContent("通る");
+    await userEvent.click(
+      within(screen.getByRole("radiogroup", { name: "砂利の避け方" })).getByRole("radio", { name: "通らない" }),
+    );
 
-    expect(onHardFiltersChange).toHaveBeenCalledExactlyOnceWith(DEFAULT_HARD_FILTERS);
+    expect(onRoadAvoidanceChange).toHaveBeenCalledExactlyOnceWith({ private: "avoid", gravel: "exclude" });
+  });
+
+  it("選んでいない行は、前の鍵に選んだ段のうち強い方を出す", async () => {
+    renderPanel({ dirt: "exclude", mud: "pass" });
+    await userEvent.click(sectionTrigger("路面"));
+
+    expect(checkedLevel("未舗装")).toHaveTextContent("通らない");
+  });
+
+  it("既定から変えた行がある節は、畳んだ見出しに変えた行の数を出す", () => {
+    renderPanel({ gravel: "avoid", dirt: "exclude", private: "exclude" });
+
+    expect(sectionTrigger("路面")).toHaveTextContent("既定から2件変更");
+    expect(sectionTrigger("通行")).not.toHaveTextContent("既定から");
   });
 });

@@ -1,19 +1,21 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import type { components } from "@/types/generated/api";
 import type { RouteCandidate, RouteGenerateJobStatusResponse } from "@/types/route";
-import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
+import {
+  AVOIDANCE_LEVELS,
+  avoidanceRow,
+  catalogEntry,
+  catalogResponse,
+  roadClass,
+  roadClassCatalog,
+  roadMapLayer,
+} from "@/testing/catalogAxes";
 import {
   makeGenerationConditions,
   makeRouteCandidate as makeCandidate,
   makeRouteSegment,
 } from "@/testing/routeFixtures";
-import type {
-  AmedasObservation,
-  FloodForecasts,
-  WbgtStatus,
-  WeatherConditions,
-  WeatherWarnings,
-} from "@/types/weather";
+import type { AmedasObservation } from "@/types/weather";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import nextConfig from "../next.config";
@@ -110,7 +112,6 @@ export function routeGenerateResponseFixture(): DoneJob["result"] {
       distance_km: 20,
       distance_tolerance_km: 5,
       penalty_strength: 1.0,
-      hard_filters: { no_bicycle: true, motorway: true, trunk: true },
       max_routes: 8,
       assumed_speed_kmh: 20,
       start_time: "2026-09-05T09:30:00+09:00",
@@ -119,23 +120,7 @@ export function routeGenerateResponseFixture(): DoneJob["result"] {
   };
 }
 
-// 戻り値の型をbackendのWeatherConditionsに固定する。backendが欄を足したとき、型が無いと
-// 構造的部分型でtscが通り、欄の欠けたフィクスチャで画面がE2Eの実行中に落ちる。
-function weatherConditionsFixture(): WeatherConditions {
-  return {
-    precipitation_mm: null,
-    twilight: null,
-    precipitation_max_mm: null,
-    wind_speed_max_ms: null,
-    temperature_range: null,
-    today_periods: [],
-    today_period_interval_hours: 2,
-  };
-}
-
-// 最寄りアメダス観測所の実測値フィクスチャ。/api/weather*の汎用ワイルドカード（後述installApiMocks）は
-// WeatherConditionsの形を返すため、形の違うAmedasObservationを使う/api/weather/amedasには専用ルートが
-// 要る——無いと常設ヘッダーが欄の欠けたデータを受け取り、tscでは気づけない。
+// 最寄りアメダス観測所の実測値フィクスチャ。
 function amedasObservationFixture(): AmedasObservation {
   return {
     station_name: "観測所",
@@ -151,12 +136,49 @@ function amedasObservationFixture(): AmedasObservation {
   };
 }
 
-// 基礎地図スタイル（MapView.tsx: mapStyleUrl）の応答。sources/layersを空にして
-// 外部タイル・グリフ・スプライトへの追加リクエストが発生しない自己完結スタイルにする
-// （地図の見た目は検証対象外、UI操作の疎通のみが目的）。
-function emptyMapStyleFixture() {
-  return { version: 8, sources: {}, layers: [] };
+// 最寄りの格子点の今日の値のフィクスチャ。天気のパネルの表が横に並ぶ幅を出すため、0時から23時までの24時間を持つ。
+function gridPointTodayFixture(): components["schemas"]["GridPointToday"] {
+  const hours = Array.from({ length: 24 }, (_, hour) => hour);
+  return {
+    latitude: 35.75,
+    longitude: 139.75,
+    distance_km: 1.1,
+    bearing_deg: 45,
+    times: hours.map((hour) => `2026-01-01T${String(hour).padStart(2, "0")}:00`),
+    temperature_c: hours.map((hour) => 12 + Math.round(6 * Math.sin((Math.PI * (hour - 8)) / 12) * 10) / 10),
+    precipitation_mm: hours.map((hour) => (hour >= 15 && hour <= 17 ? 1.5 : 0)),
+    wind_speed_ms: hours.map((hour) => 2 + (hour % 5)),
+    wind_direction_deg: hours.map((hour) => (hour * 15) % 360),
+    highest_hourly_temperature_c: 18,
+    lowest_hourly_temperature_c: 6,
+    highest_hourly_precipitation_mm: 1.5,
+    highest_hourly_wind_speed_ms: 6,
+  };
 }
+
+/** モックの軸カタログが配る道の線の層。区分は管理DBが持つ任意の値なので、ここで組む。 */
+export const E2E_ROAD_LAYERS = [
+  roadMapLayer("surface", {
+    label: "路面",
+    category: "roadCondition",
+    icon: "surface",
+    has_no_data: true,
+    classes: [
+      roadClass("paved", { label: "舗装", color: "#4a7bd0" }),
+      roadClass("unpaved", { label: "未舗装", color: "#b8742a" }),
+    ],
+  }),
+];
+
+/** モックの軸カタログの道の区分（線の層と、避け方を選べる行）。 */
+const E2E_ROAD_CLASSES = roadClassCatalog({
+  map_layers: E2E_ROAD_LAYERS,
+  avoidance: {
+    levels: AVOIDANCE_LEVELS,
+    sections: [{ key: "surface", label: "路面", description: "" }],
+    rows: [avoidanceRow("unpaved", "surface", { label: "未舗装", default: "avoid" })],
+  },
+});
 
 /** `GET /api/axis-catalog`の応答。世代は本物のbackendと同じく全種類を返し（無いと凡例が配信情報を取得できない表示になる）、
  * 軸と世代以外（尺度・調整値・事故の収録年）は空で返す。型は契約のもので、項目を欠いた応答を作れない（欠けると、
@@ -165,7 +187,7 @@ export function axisCatalogFixture(
   axes: ReturnType<typeof catalogEntry>[],
 ): components["schemas"]["AxisCatalogResponse"] {
   const tile_versions = Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "e2e"]));
-  return catalogResponse(axes, { tile_versions });
+  return catalogResponse(axes, { tile_versions, road_classes: E2E_ROAD_CLASSES });
 }
 
 /** 既定の軸カタログ。アプリが軸一覧を引ける最小の1軸だけを持つ。 */
@@ -193,14 +215,13 @@ export async function installApiMocks(page: Page): Promise<void> {
 
   await page.route(`${API_BASE}/health`, (route) => route.fulfill({ json: { status: "ok" } }));
 
-  await page.route(`${API_BASE}/api/weather*`, (route) => route.fulfill({ json: weatherConditionsFixture() }));
-  // /api/weather*より後に登録し、Playwrightのルート優先順位（後から登録した方が先に
-  // マッチ判定される）で/api/weather/amedasだけこちらを優先させる。
   await page.route(`${API_BASE}/api/weather/amedas*`, (route) => route.fulfill({ json: amedasObservationFixture() }));
+  // `*` は `/` を越えないので、`/api/weather/...` の口には当たらない。
+  await page.route(`${API_BASE}/api/weather?*`, (route) => route.fulfill({ json: gridPointTodayFixture() }));
   // 警告バッジ3種は「警告なし」の成功応答にする。応答しないと取得失敗の印がヘッダーに出る。
-  const noWarnings: WeatherWarnings = { warnings: [], valid_area: null };
-  const noWbgt: WbgtStatus = { reading: null, valid_area: null };
-  const noFlood: FloodForecasts = { forecasts: [], valid_area: null };
+  const noWarnings: components["schemas"]["WeatherWarnings"] = { warnings: [], valid_area: null };
+  const noWbgt: components["schemas"]["WbgtStatus"] = { reading: null, valid_area: null };
+  const noFlood: components["schemas"]["FloodForecasts"] = { forecasts: [], valid_area: null };
   await page.route(`${API_BASE}/api/weather/warnings*`, (route) => route.fulfill({ json: noWarnings }));
   await page.route(`${API_BASE}/api/weather/wbgt*`, (route) => route.fulfill({ json: noWbgt }));
   await page.route(`${API_BASE}/api/weather/flood-forecast*`, (route) => route.fulfill({ json: noFlood }));
@@ -215,8 +236,9 @@ export async function installApiMocks(page: Page): Promise<void> {
   await page.route(`${API_BASE}/api/routes/generate/*`, (route) => route.fulfill({ json: doneJobFixture() }));
 
   await page.route(`${API_BASE}/api/axis-catalog*`, (route) => route.fulfill({ json: defaultAxisCatalogFixture() }));
-  // 軸のレンズで塗る道ごとの値。値を持つ道が無い形で答える。
-  await page.route(`${API_BASE}/api/region/dynamic-way-values/**`, (route) => route.fulfill({ json: {} }));
+  // 軸のレンズで塗る道ごとの材料。材料を持つ道が無い形で答える。
+  await page.route(`${API_BASE}/api/region/way-materials/**`, (route) => route.fulfill({ json: {} }));
+  await page.route(`${API_BASE}/api/region/road-classes/**`, (route) => route.fulfill({ json: {} }));
 
   // 地点の詳しくが、置いた位置の辺りを引く。辺り無し（境界の外）で答える。
   await page.route(`${API_BASE}/api/place-area*`, (route) => route.fulfill({ json: { area: null } }));
@@ -230,9 +252,9 @@ export async function installApiMocks(page: Page): Promise<void> {
     );
   }
 
-  // 基礎地図スタイル（/api/basemap/styles/liberty）と、それ以外のbasemap配下
-  // （タイル等、空スタイルなら通常発生しない）をまとめて空スタイルで応答する。
-  await page.route("**/api/basemap/**", (route) => route.fulfill({ json: emptyMapStyleFixture() }));
+  // 基礎地図スタイル（/api/basemap/styles/liberty）と、それ以外のbasemap配下を、sources/layersの空の自己完結スタイルで応答する
+  // （外部タイル・グリフ・スプライトへの追加リクエストが起きない。地図の見た目は検証対象外）。
+  await page.route("**/api/basemap/**", (route) => route.fulfill({ json: { version: 8, sources: {}, layers: [] } }));
 
   // 気象庁の時刻一覧は配列が要る。空の配列（取得できたが時刻が無い）で返す。
   await page.route(
@@ -274,11 +296,13 @@ export async function seedStoredState(page: Page, entries: Record<string, string
 /** 初回の案内（地図の上に重なる）を閉じた保存状態。 */
 export const INTRO_CLOSED: Record<string, string> = { "ridecompass:first-visit-intro-closed": "true" };
 
-/** 全レイヤーONとデバッグログ（`[map:error]`を読むため）の保存状態。 */
-export function allLayersOn(): Record<string, string> {
+/** 全レイヤーONとデバッグログ（`[map:error]`を読むため）の保存状態。道の線の層は軸カタログが配るので、開く先の軸カタログの
+ * 層を渡す（既定はモックの層）。 */
+export function allLayersOn(roadLayers: readonly { id: string }[] = E2E_ROAD_LAYERS): Record<string, string> {
+  const ids = [...mapDisplay.layers, ...roadLayers].map(({ id }) => id);
   return {
     "ridecompass:debug-enabled": "1",
-    "ridecompass:layer-visibility": JSON.stringify(Object.fromEntries(mapDisplay.layers.map(({ id }) => [id, true]))),
+    "ridecompass:layer-visibility": JSON.stringify(Object.fromEntries(ids.map((id) => [id, true]))),
   };
 }
 
@@ -329,8 +353,17 @@ export async function openMobileSheet(page: Page, name: MobileSheetName) {
  */
 export async function generateRoutes(page: Page, { distanceKm = 20 }: { distanceKm?: number } = {}) {
   const sheet = await openMobileSheet(page, "ルート設定");
-  await sheet.getByLabel("全長の目標", { exact: true }).fill(String(distanceKm));
+  await setDistance(sheet, distanceKm);
   return generateInMobileSheet(page, sheet);
+}
+
+/** 開いている「ルート設定」シートの全長の目標のルーラーを、キー操作で`distanceKm`（5km刻み）のコマへ合わせる。 */
+export async function setDistance(sheet: Locator, distanceKm: number) {
+  const ruler = sheet.getByRole("slider", { name: "全長の目標", exact: true });
+  await ruler.focus();
+  await ruler.press("Home");
+  for (let km = 5; km < distanceKm; km += 5) await ruler.press("ArrowRight");
+  await expect(ruler).toHaveAttribute("aria-valuetext", `${distanceKm}km`);
 }
 
 /** 開いている「ルート設定」シートで「ルート生成」を押し、候補が出て「ルート結果」シートへ移るまで待って、そのシートを返す。

@@ -24,6 +24,27 @@ PostGIS統合テスト（`road_graph_session`フィクスチャを使うもの�
 落ちる（スキップにはしない。`backend/tests/conftest.py`）。DBの無い環境では
 `-m "not postgis"`で除外して回す。
 
+## 開発機の画面を本番のデータで開く
+
+開発用のDBは道のデータが一部だけで、今のコードに追いついていないことがある。画面を試すときは、開発機のfrontendを
+本番のbackendのデータ（APIとタイル）で開く。読むだけで、本番のデータは書き換えない（ルートの生成も、本番でふつうの
+利用者と同じに作られる）。
+
+1. 起こす設定（`.claude/launch.json`）の`backend-prod-data`と`frontend-prod-data`を起こす（手で起こすなら、根で
+   `backend/.venv/Scripts/python.exe backend/scripts/dev_prod_data_backend.py`と`npm run dev:prod-data --prefix frontend`）。
+2. この PC では`http://localhost:3000`を開く。同じ Wi-Fi のスマホでは、backend が起動の最初の行に出す
+   `http://<開発機の LAN の住所>:3000`を開く。
+   - 外へ出る口が複数あって違う住所が出たら、`RC_LAN_HOST`に正しい住所を入れて backend を起こし直す。
+   - スマホから開けないときは、Windows のファイアウォールで、開発機の node（3000番）への受信をプライベートのネットワークで許す
+     （許すのはユーザーが行う）。
+   - 現在地は`https`か`localhost`でしか取れないので、スマホの`http://<LAN の住所>`では現在地が出ない。出発地は地図で置く。
+
+取り次ぎの向け先は`frontend/src/lib/backendRewrites.ts`が決める: APIの呼び出し（`/prod/…`）とタイルは本番のbackend
+（宛先は`production-origins.json`）へ、地図の下地だけは開発機のbackendへ向ける（本番の下地のスタイルは本番のbackendの
+住所を中に持ち、画面から直接は読めない）。開発機のbackendは、下地のスタイルが中に持つ住所と許す相手に、開発機の
+LANの住所を入れて起きる（`backend/scripts/dev_prod_data_backend.py`）。管理画面（`/admin`）は、本番を読み書きしないよう
+いつも開発機のbackendへ転送する。
+
 ## 開発機の本体のチェックアウトの遅れ
 
 担当は GitHub Actions のランナーで動くので、開発機の本体のチェックアウトを早送りする人はいない。遅れた
@@ -186,7 +207,7 @@ uvicorn app.main:app --reload
 ```bash
 curl http://localhost:8000/health
 curl -X POST http://localhost:8000/api/routes/generate -H "Content-Type: application/json" \
-  -d '{"latitude":35.7597,"longitude":139.7387,"distance_km":15,"distance_tolerance_km":5,"max_routes":8,"assumed_speed_kmh":20,"start_time":"2026-10-06T09:00:00+09:00","hard_filters":{"motorway":true,"no_bicycle":true,"trunk":true}}'
+  -d '{"latitude":35.7597,"longitude":139.7387,"distance_km":15,"max_routes":8,"assumed_speed_kmh":20,"start_time":"2026-10-06T09:00:00+09:00","road_avoidance":{}}'
 ```
 
 対象エリアが取込範囲の外なら候補0件になる。範囲内でも、道路網全体の配列の置き場
@@ -220,30 +241,3 @@ frontendは`next dev`の既定の3000番で動かす。backendのCORSの許可�
 （使用中なら別の番号へ逃げずに失敗する）。ほかの番号で動かすときは、`backend/.env`に`CORS_ALLOWED_ORIGINS`と
 `BASEMAP_PUBLIC_BASE_URL`をその番号で書く（書いた値は既定を直しても残るので、戻すときは消す）。batはそれで
 その番号へ移る。
-
-## 厳選まで仮置き
-
-原則の見直しで消えた記載を、厳選まで元の節ごとに仮に置く。**今の決まりと食い違えば今の決まりを取る。**
-
-### 元: docs/architecture の setup.md
-
-#### テスト
-
-手元で検査とテストを回すかと、回すときの範囲は[../conventions/testing-operations.md](../../.claude/skills/run-checks/SKILL.md)「手元の検査の回し方」が決める。
-ここには、回すときの開発機での前提と所要を置く。
-
-PostGIS統合テスト（`road_graph_session`フィクスチャを使うもの。`postgis`マーカー付き）は、
-テスト専用DB（既定は作業ツリーごとのDB、`TEST_DATABASE_URL`で上書き可。
-[testing-operations.md](../../.claude/skills/run-checks/SKILL.md)「テストDBは作業ツリーごとに分かれる」）へ接続できないと
-落ちる（スキップにはしない。`backend/tests/conftest.py`）。DBの無い環境では
-`-m "not postgis"`で除外して回す。
-
-#### Docker Composeで起動する
-
-**スキーマを作っても、軸定義が0行のままではbackendは起動しない**（`refresh_axis_definitions`が
-0行を起動失敗にする。[axis-studio.md](../modules/backend/axis-studio.md)「まっさらなDBに軸の行は
-入らない」）。軸を入れる管理APIも起動したbackendにしか無いため、新しい環境へ軸が入るのは管理データの
-バックアップから戻したときだけで、それは本番を作り直すための経路である（[deployment-sync.md](../../.claude/skills/production-data/SKILL.md)
-「本番DBを失ったとき」）——composeのDB・クラウドのセッションは**テストを回す場**であり、アプリを実データで
-確かめるのは本番か手元の開発機で行う（地図に色を出すには軸のほかに取込済みのデータも要る）。
-テスト（`-m postgis`を含む）は軸を要らないので、この状態で回せる。

@@ -19,7 +19,7 @@ import type { FilterSpecification } from "maplibre-gl";
 
 import { isTilePayload, type DynamicWeatherRenderPayload } from "@/features/map/layers/dynamicWeather";
 import { createLidenIcon } from "@/features/map/layers/lidenIcon";
-import { JMA_POINT_VALUE_PROPERTY, jmaPlaceholderTileUrl } from "@/features/map/layers/jmaDelivery";
+import { jmaPlaceholderTileUrl } from "@/features/map/layers/jmaDelivery";
 import { withJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
 import { PRECIPITATION_COLOR_STOPS, PRECIPITATION_NONE_THRESHOLD_MM } from "@/features/map/layers/precipitationNowcast";
 import { createWindArrowIcon } from "@/features/map/layers/windArrowIcon";
@@ -120,16 +120,31 @@ function notBelowFilter(property: string, below: number): FilterSpecification {
   return [">=", ["to-number", ["get", property]], below] as unknown as FilterSpecification;
 }
 
+/** 記号の大きさの倍率。固定の倍率か、地物の値で決まる倍率（値0で`range[0]`、`fullScaleValue`以上で`range[1]`）。 */
+type MarkScale =
+  number | { readonly property: string; readonly range: readonly [number, number]; readonly fullScaleValue: number };
+
+function markScaleExpression(scale: MarkScale): unknown {
+  if (typeof scale === "number") return scale;
+  return [
+    "interpolate",
+    ["linear"],
+    ["to-number", ["get", scale.property]],
+    0,
+    scale.range[0],
+    scale.fullScaleValue,
+    scale.range[1],
+  ];
+}
+
 function markDrawing(options: {
   readonly iconId: string;
   readonly createIcon: () => ImageData;
   readonly color: unknown;
-  readonly valueProperty: string;
+  readonly scale: MarkScale;
+  /** 記号を地図の北から時計回りに回す角度（度）を持つプロパティ。無ければ回さない。 */
   readonly rotateProperty?: string;
-  readonly minScale: number;
-  readonly maxScale: number;
-  readonly fullScaleValue: number;
-  readonly minValueToShow?: number;
+  readonly filter?: FilterSpecification;
 }): Drawing {
   return {
     icon: { id: options.iconId, draw: () => ({ data: options.createIcon(), options: { sdf: true } }) },
@@ -140,18 +155,7 @@ function markDrawing(options: {
       // 記号が密なズームでは間引く（重ねると格子が塗り潰しに見える）。
       "icon-allow-overlap": false,
       "icon-ignore-placement": false,
-      "icon-size": zoomScaleExpression(
-        [
-          "interpolate",
-          ["linear"],
-          ["to-number", ["get", options.valueProperty]],
-          0,
-          options.minScale,
-          options.fullScaleValue,
-          options.maxScale,
-        ],
-        WEATHER.markSizeByZoom,
-      ),
+      "icon-size": zoomScaleExpression(markScaleExpression(options.scale), WEATHER.markSizeByZoom),
     },
     paint: {
       "icon-color": options.color,
@@ -161,9 +165,7 @@ function markDrawing(options: {
       "icon-halo-color": palette.semantic.mark_halo,
       "icon-halo-width": WEATHER.markHaloWidthPx,
     },
-    ...(options.minValueToShow === undefined
-      ? {}
-      : { filter: notBelowFilter(options.valueProperty, options.minValueToShow) }),
+    ...(options.filter === undefined ? {} : { filter: options.filter }),
   };
 }
 
@@ -188,13 +190,10 @@ const DRAWINGS: { readonly [K in DrawnKey]: Drawing } = {
       ["get", "speed"],
       WIND_SPEED_COLOR_STOPS.map((stop) => ({ from: stop.speedMs, color: stop.color })),
     ),
-    valueProperty: "speed",
+    scale: { property: "speed", range: WEATHER.windIconScaleRange, fullScaleValue: WEATHER.windFullScaleMs },
     rotateProperty: "bearing",
-    minScale: WEATHER.windIconScaleRange[0],
-    maxScale: WEATHER.windIconScaleRange[1],
-    fullScaleValue: WEATHER.windFullScaleMs,
     // ほぼ無風の矢印は向きが意味を持たない。
-    minValueToShow: WIND_CALM_THRESHOLD_MS,
+    filter: notBelowFilter("speed", WIND_CALM_THRESHOLD_MS),
   }),
   "disaster/flood/vectorTile": {
     paint: {
@@ -216,10 +215,7 @@ const DRAWINGS: { readonly [K in DrawnKey]: Drawing } = {
     createIcon: createLidenIcon,
     // 落雷の強弱を配信元が持たないため、大きさはズームだけで決まる。
     color: palette.semantic.lightning,
-    valueProperty: JMA_POINT_VALUE_PROPERTY,
-    minScale: WEATHER.lightningIconScale,
-    maxScale: WEATHER.lightningIconScale,
-    fullScaleValue: 1,
+    scale: WEATHER.lightningIconScale,
   }),
 };
 
@@ -294,7 +290,7 @@ const WEATHER_IMAGES: readonly MapSceneImage[] = WEATHER_ELEMENTS.flatMap((eleme
  * 付け直すと、源泉が知っているものに画面だけの語彙が重なる。1要素＝1ソース（要素ごとに
  * 配信先が違うため相乗りできない）。
  * **描き方も名前に含める**——同じ名前付きソースを描き方違いで2要素が名乗る（降水の`main`は
- * 配信元のラスタと自前の格子の面）。描き方を落とすとソースが1本へ畳まれ、後から名乗った側の
+ * 配信元のラスタとMSMの格子点の升目の塗り）。描き方を落とすとソースが1本へ畳まれ、後から名乗った側の
  * レイヤーが種類の合わないソースを指して、そのレイヤーだけが黙って描かれない。 */
 function weatherSourceId(element: Pick<WeatherElement, "group" | "source" | "kind">): SceneSourceId {
   return sceneSourceId(`${element.group}-${element.source}-${element.kind}`);

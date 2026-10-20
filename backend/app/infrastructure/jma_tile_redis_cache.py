@@ -1,12 +1,13 @@
 """JMA動的タイル（ラスタPNG・洪水ベクタPBF）本体のRedis cache-aside。
 
 値はContent-Type・NULバイト・本体をこの順につないだ生のバイト列で1キーに持ち、ヒットのたびにデコードを払わない。
-0バイトの値は「描くものが無い」（`EMPTY_TILE`）を表す——中身が空のタイルは実体を保存しないため、
-本物のタイルと重ならない。
+0バイトの値は「描くものが無い」（`infrastructure/http_client.py: UPSTREAM_NOT_FOUND`）を表す——中身が空のタイルは
+実体を保存しないため、本物のタイルと重ならない。
 """
 
 import hashlib
 
+from app.infrastructure.http_client import UPSTREAM_NOT_FOUND, UpstreamNotFound
 from app.infrastructure.jma_tile_content import is_empty_tile
 from app.infrastructure.jma_tile_recolor import RECOLOR_VERSION
 from app.infrastructure.redis_json_cache import UNAVAILABLE, get_bytes, set_bytes
@@ -19,22 +20,6 @@ _CATEGORY = "cache:jma-tile-redis"
 TTL_SECONDS = 20 * 60
 
 
-class EmptyTile:
-    """このパスには描くものが無いと確認済み、というキャッシュ済みの事実を表すセンチネル。
-
-    上流の返し方には2通りある——404（タイル自体が存在しない）と、200で返るが全画素が
-    透明・0バイト。降水・浸水想定区域等の疎な格子状タイルではどちらも珍しくない正常系で、
-    **利用者から見れば同じ「得るものが無い」**である。そのため区別せずこの1つの事実
-    として持つ。
-
-    配信された一時点に対する結果のため、再フェッチしても変わらない。実際のタイル内容と同じキー・TTLで
-    保持し、次回以降は上流へ問い合わせず即座に返せるようにする。配信前にも返る404（コマごとの地物）は
-    確定しないので、この事実として持たない（`infrastructure/jma_tile_paths.py: is_final_absence`）。"""
-
-
-EMPTY_TILE = EmptyTile()
-
-
 def _extension(path: str) -> str:
     """`.../{z}/{x}/{y}.png`のような配信パスから拡張子だけを取り出す
     （クエリ文字列付きのパスもそのままキーになるため、末尾から素直に切る）。"""
@@ -45,31 +30,31 @@ def _key(path: str) -> str:
     return f"{_KEY_PREFIX}:{hashlib.sha256(path.encode('utf-8')).hexdigest()}"
 
 
-def _decode(raw: bytes) -> tuple[bytes, str] | EmptyTile:
+def _decode(raw: bytes) -> tuple[bytes, str] | UpstreamNotFound:
     if raw == b"":
-        return EMPTY_TILE
+        return UPSTREAM_NOT_FOUND
     content_type, _separator, content = raw.partition(b"\0")
     return content, content_type.decode("latin-1")
 
 
-async def get(path: str) -> tuple[bytes, str] | EmptyTile | None:
-    """Redisキャッシュ済みなら(内容, Content-Type)または`EMPTY_TILE`を返す。
+async def get(path: str) -> tuple[bytes, str] | UpstreamNotFound | None:
+    """Redisキャッシュ済みなら(内容, Content-Type)または`UPSTREAM_NOT_FOUND`を返す。
     未キャッシュ・Redis障害時はNone（呼び出し元は通常のオンデマンドフェッチへ
     フォールバックする）。"""
     cached = await get_bytes(_key(path), decode=_decode, category=_CATEGORY, path=path)
     return None if cached is UNAVAILABLE else cached
 
 
-async def set(path: str, content: bytes, content_type: str) -> tuple[bytes, str] | EmptyTile:
+async def set(path: str, content: bytes, content_type: str) -> tuple[bytes, str] | UpstreamNotFound:
     """取得できたタイルをRedisへ書き戻し、次に`get`が返すのと同じ形で返す（呼び出し元は書いたその場でもこれを返す）。
 
-    中身が空なら実体ではなく`EMPTY_TILE`と同じフラグで持つ。実体を保持しても
+    中身が空なら実体ではなく`UPSTREAM_NOT_FOUND`と同じフラグで持つ。実体を保持しても
     返す先が無い——クライアントは在否インデックス（`jma_tile_index.py`）を見て
     空のタイルを要求しないため、保持した実体が使われるのは索引が届く前だけである。
     """
     if is_empty_tile(content, _extension(path)):
         await set_empty(path)
-        return EMPTY_TILE
+        return UPSTREAM_NOT_FOUND
     value = content_type.encode("latin-1", errors="replace") + b"\0" + content
     await set_bytes(_key(path), value, ttl_seconds=TTL_SECONDS, category=_CATEGORY, path=path)
     return content, content_type

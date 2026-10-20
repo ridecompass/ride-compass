@@ -40,11 +40,6 @@ async def _fail_to_ingest_roads(area: BoundingBox) -> None:
                              bbox=(area.min_latitude, area.min_longitude, area.max_latitude, area.max_longitude))
 
 
-async def test_before_any_road_ingest_there_is_no_area_and_nothing_is_covered(road_graph_repository):
-    assert await road_graph_repository.get_ingested_area() is None
-    assert await road_graph_repository.is_covered(_AREA) is False
-
-
 async def test_the_area_is_the_one_declared_by_the_latest_successful_road_ingest(road_graph_repository):
     await _ingest_roads(_box(30.0, 130.0, 31.0, 131.0))
     await _ingest_roads(_AREA)

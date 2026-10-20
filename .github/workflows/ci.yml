@@ -82,10 +82,11 @@ jobs:
       queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # master の実行の一覧を読む（下の BASE）。
+    # master と Pull Request の実行の一覧と、master のコミットを取り込んだ Pull Request を読む（下の BASE・tested）。
     permissions:
       contents: read
       actions: read
+      pull-requests: read
     outputs:
       run: ${{ steps.diff.outputs.run }}
       playwright: ${{ steps.playwright.outputs.version }}
@@ -103,8 +104,8 @@ jobs:
         uses: ./.github/actions/pr-base
       # 各置き場は自分のテストを自分の中に持ち、置き場が変わったときだけその置き場の検査を走らせる。それ以外の変更
       # （文書・タスク管理・ほかのワークフロー等）では、置き場に依らないジョブ（docs-consistency 等）だけを走らせる。CI の定義（このファイル・.github/actions/）を変えたら、
-      # その定義で全部を走らせて確かめる（コメントだけの変更は数えない。下の defined）。走らせるジョブの組はここだけが持ち
-      # （run）、ジョブの if と ci-ok が読む。
+      # 定義が変わったジョブだけを足して走らせ、ほかは置き場で決める（下の redefined）。ジョブどうしのつながりは、いつも走る
+      # doc-reading-tests のワークフローを読むテストが見る。走らせるジョブの組はここだけが持ち（run）、ジョブの if と ci-ok が読む。
       - id: diff
         env:
           BASE: ${{ steps.base.outputs.sha }}
@@ -120,36 +121,82 @@ jobs:
             echo "比べる相手: ${BASE:-無し}"
           fi
           area() { grep -qE "$1" <<< "$changed" && echo true || echo false; }
-          # CI の定義は YAML として読んだ中身（yq が JSON へ写したもの）で比べ、コメントの行・行末のコメントだけの差は
-          # 数えない。文字列の中の # と run のシェルの中のコメントは中身に残るので、変われば数える。
-          # 片側に無いファイル・読めないファイルは、変えたとして数える。
-          defined() {
-            local f a b
-            for f in $(git diff --name-only --no-renames "$BASE" "$GITHUB_SHA" -- .github/workflows/ci.yml .github/actions/); do
-              a=$(set -o pipefail; git show "$BASE:$f" | yq -o=json -I0 'explode(.)') || return 0
-              b=$(set -o pipefail; git show "$GITHUB_SHA:$f" | yq -o=json -I0 'explode(.)') || return 0
-              [ "$a" = "$b" ] || return 0
-              echo "コメントだけの差: $f"
+          # コミットの CI の定義を、ジョブの名前ごとの中身の JSON で出す。中身は YAML として読んだもの（yq が JSON へ写したもの）
+          # なので、コメントの行・行末のコメントだけの差は数えない。文字列の中の # と run のシェルの中のコメントは中身に残る。
+          # ジョブが使う .github/actions/ の手順（手順が使う手順も）はジョブの中身に入れ、ジョブの外（on・concurrency 等）は名前 "" に置く。
+          # 読めないファイルがあれば失敗で返す。
+          definitions() {
+            local f actions="{}" one
+            for f in $(git ls-tree -r --name-only "$1" -- .github/actions/ | grep -E '/action\.ya?ml$'); do
+              one=$(set -o pipefail; git show "$1:$f" | yq -o=json -I0 'explode(.)') || return 1
+              actions=$(jq -c --arg k "./${f%/*}" --argjson v "$one" '. + {($k): $v}' <<< "$actions")
             done
-            return 1
+            (set -o pipefail; git show "$1:.github/workflows/ci.yml" | yq -o=json -I0 'explode(.)') \
+              | jq -c --argjson actions "$actions" '
+                def used: [.. | objects | .uses? | strings | select(startswith("./.github/actions/"))];
+                def closure: . as $p | ($p + [$p[] | $actions[.] | used[]] | unique) as $q | if $q == $p then $p else $q | closure end;
+                (.jobs | map_values({job: ., actions: (used | unique | closure | map({key: ., value: $actions[.]}) | from_entries)}))
+                  + {"": del(.jobs)}'
           }
+          # 定義が変わったジョブの名前を JSON の配列で出す。変えたジョブが出力（needs.<ジョブ>.outputs）を読むジョブは、
+          # 走らないと変えたジョブが動けないので足す。ジョブの外が変わった・読めないときは失敗で返し、すべて走らせる。
+          redefined() {
+            local a b
+            a=$(definitions "$BASE") && b=$(definitions "$GITHUB_SHA") || return 1
+            jq -ec --argjson a "$a" '. as $b
+              | def feeds: . as $p | ($p + [$p[] | $b[.].job | tostring | scan("needs\\.([A-Za-z0-9_-]+)\\.outputs") | .[0]] | unique) as $q
+                  | if $q == $p then $p else $q | feeds end;
+              [($a + $b | keys[]) | select($a[.] != $b[.])] | if index("") then null else feeds - ["changes"] end' <<< "$b"
+          }
+          all=false; jobs='[]'
           if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}"; then
             # 比べる相手が無い（手での実行・成功した master の実行が見つからない）ときは、すべて走らせる。
-            backend=true; frontend=true; scripts=true
+            all=true
           else
             changed=$(git diff --name-only "$BASE" "$GITHUB_SHA")
-            if defined; then
-              backend=true; frontend=true; scripts=true
-            else
-              # 本番の宛先は、backend の像（CORS の許可）と frontend の像（埋め込む宛先）の両方が読む。
-              backend=$(area '^(backend/|production-origins\.json$)'); frontend=$(area '^(frontend/|production-origins\.json$)'); scripts=$(area '^scripts/')
+            # 本番の宛先は、backend の像（CORS の許可）と frontend の像（埋め込む宛先）の両方が読む。
+            backend=$(area '^(backend/|production-origins\.json$)'); frontend=$(area '^(frontend/|production-origins\.json$)'); scripts=$(area '^scripts/')
+            if grep -qE '^\.github/(workflows/ci\.yml$|actions/)' <<< "$changed"; then
+              jobs=$(redefined) || { all=true; jobs='[]'; }
+              echo "定義が変わったジョブ: $([ "$all" = true ] && echo すべて || echo "$jobs")"
             fi
           fi
+          if [ "$all" = true ]; then
+            backend=true; frontend=true; scripts=true
+          fi
+          # 取り込んだ Pull Request の CI がこのコミットと同じ中身を検査済みなら、検査を回し直さず、像を作って出し直すだけにする。
+          # Pull Request の CI は先頭へその時の master を合わせた版を検査する。先頭が直前の master（このコミットの親）を含み、
+          # 先頭とこのコミットの木（ファイルの中身）が同じなら、合わせた版はこのコミットと同じ中身になる。CI の定義を変えたとき
+          # （redefined）と、確かめられないとき（Pull Request が見つからない・取れない）は、回す。作業ブランチはマージで
+          # 消えるので、先頭は Pull Request の ref から取る。比べる相手（BASE）が親でない（親の実行が成功していない）ときは、
+          # 親までの変更を合わせた master をどの実行も検査し終えていないので、回す。
+          tested=false
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$all" = false ] && [ "$jobs" = '[]' ] \
+            && [ "$BASE" = "$(git rev-parse "$GITHUB_SHA^")" ]; then
+            pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[] | select(.merged_at != null)][0] // empty | "\(.number) \(.head.sha)"') || pr=""
+            num=${pr%% *}; head=${pr#* }
+            if [ -n "$pr" ] && git fetch --quiet --no-tags origin "refs/pull/$num/head" \
+              && [ "$(git rev-parse FETCH_HEAD)" = "$head" ] \
+              && git merge-base --is-ancestor "$GITHUB_SHA^" "$head" \
+              && [ "$(git rev-parse "$head^{tree}")" = "$(git rev-parse "$GITHUB_SHA^{tree}")" ] \
+              && [ "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$head&event=pull_request&status=success&per_page=1" --jq .total_count)" != 0 ]; then
+              tested=true
+            fi
+            echo "取り込んだ Pull Request: ${num:-無し}・その CI で検査済みの中身: $tested"
+          fi
           push=$([ "$GITHUB_EVENT_NAME" = push ] && echo true || echo false)
-          run=$(jq -nc --argjson b "$backend" --argjson f "$frontend" --argjson s "$scripts" --argjson push "$push" \
-            '{backend: $b, "api-contract": ($b or $f), "backend-image": $b, frontend: $f, e2e: $f, "frontend-image": $f,
-              scripts: $s, "deploy-backend": ($b and $push), "deploy-frontend": ($f and $push),
-              "docs-consistency": true, "doc-reading-tests": true, "repo-wide": true, "flow-gate": true}')
+          # 検査済みのときも、frontend の像（出し直す像を置き場へ置く）・出し直し・ゲートの公開（flow-gate の後に走る）は走らせる。
+          # docs-consistency・doc-reading-tests・repo-wide は if を持たずいつも走るので、ci-ok が突き合わせる組でもいつも true にする。
+          # 定義が変わったジョブは、置き場が変わっていなくても走らせる（デプロイは master の push だけ）。
+          run=$(jq -nc --argjson b "$backend" --argjson f "$frontend" --argjson s "$scripts" --argjson push "$push" --argjson t "$tested" \
+            --argjson jobs "$jobs" \
+            '($t | not) as $check
+              | {backend: ($b and $check), "api-contract": (($b or $f) and $check), "backend-image": ($b and $check),
+                frontend: ($f and $check), e2e: ($f and $check), "frontend-image": $f, scripts: ($s and $check),
+                "deploy-backend": ($b and $push), "deploy-frontend": ($f and $push),
+                "docs-consistency": true, "doc-reading-tests": true, "repo-wide": true, "flow-gate": true}
+              | reduce ($jobs[] | select(IN("deploy-backend", "deploy-frontend") | not)) as $j (.; if has($j) then .[$j] = true else . end)
+              | reduce ($jobs[] | select(IN("deploy-backend", "deploy-frontend"))) as $j (.; .[$j] = $push)')
           echo "$run"
           echo "run=$run" >> "$GITHUB_OUTPUT"
 

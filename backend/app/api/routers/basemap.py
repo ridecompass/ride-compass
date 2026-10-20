@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 
 from app.api.admin_auth import require_admin_basic_auth
 from app.api.dependencies import get_basemap_client
 from app.api.rate_limit import enforce_rate_limit
+from app.api.routers._tile_http import BASEMAP_REPLIES
 from app.config import settings
 from app.infrastructure import tile_cache
-from app.infrastructure.basemap_client import BasemapClient, BasemapNotFound
+from app.infrastructure.basemap_client import BasemapClient
 
 router = APIRouter()
 
@@ -18,13 +19,7 @@ async def basemap_proxy(
     # basemapはOpenFreeMapへの中継を伴うため、無制限に叩かれると外部サービス負荷や
     # ディスク消費に繋がる（詳細はrate_limiter.py）。
     enforce_rate_limit(request, "basemap", settings.basemap_rate_limit_per_minute)
-    result = await basemap_client.get(path)
-    if isinstance(result, BasemapNotFound):
-        # 配信元が用意していない部品（書体の一部等）。上流障害ではないので502にしない。
-        raise HTTPException(status_code=404, detail="指定されたリソースは存在しません")
-    if result is None:
-        raise HTTPException(status_code=502, detail="地図タイルの取得に失敗しました")
-    content, content_type = result
+    content, content_type = BASEMAP_REPLIES.found(await basemap_client.get(path))
     return Response(content=content, media_type=content_type)
 
 

@@ -6,7 +6,7 @@ objectの配列）ごとに確かめる——同じ値には形によらず同�
 
 ここで見ないもの:
 - 材料の線形結合・前処理・得点の丸め・0次条件 → `test_axis_definitions.py`
-- 分類の材料の列（`domain/attributes.py: CategoricalColumn`）はその列の引き方へそのまま渡す → `test_attributes.py`
+- 分類の材料の列（`domain/attributes.py: CategoricalColumn`）はその列の引き方へそのまま渡す → `test_axis_definitions.py`
 """
 
 import bisect
@@ -59,16 +59,6 @@ def test_the_score_follows_the_line_between_the_breakpoints_and_stops_at_its_end
     assert scores.tolist() == pytest.approx(expected, rel=1e-9, abs=1e-9, nan_ok=True)
 
 
-ROAD_TYPES = {"primary": 80.0, "residential": 30.0, "track": 50.0}
-# 対応表のどのキーより小さい・大きい値、間に挟まる値、欠損。
-ROAD_VALUES = ["residential", "aaa", "zzz", "secondary", None, "track", "primary"]
-ROAD_SCORES = [30.0, math.nan, math.nan, math.nan, math.nan, 50.0, 80.0]
-
-
-def test_a_value_the_table_does_not_hold_and_a_missing_value_have_no_score():
-    scores = evaluate_categorical(_object_column(ROAD_VALUES), ROAD_TYPES)
-
-    assert scores.tolist() == pytest.approx(ROAD_SCORES, nan_ok=True)
 
 
 FLAG = {True: 10.0, False: 90.0}

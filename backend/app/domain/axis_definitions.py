@@ -8,7 +8,7 @@
 - 既存テンプレート＋既存材料の組み合わせで表現できる新しい軸は、`AXIS_DEFINITIONS`へ
   1エントリ追加するだけで、区間インスペクタ・地図の値配信・ルート選び
   （`build_static_edge_score_matrix`）のすべてへ同時に反映される。評価は
-  `evaluate_axis_array`1本で、Pythonの値で持つ入口（`evaluate_axis_values`）も配列にして通す。
+  `evaluate_axis_array`1本で、Pythonの値で持つ入口（`evaluate_axes_values`等）も配列にして通す。
 - 材料（material）はOSM生タグそのものではなく「評価直前まで解決済みの値」
   （勾配%・風ペナルティm/s・路面の見込み・km正規化済み密度・レシピ計算済みレベル・
   タグ由来フラグ）。材料の解決（抽出）は呼び出し元の責務で、材料idごとの意味は
@@ -50,9 +50,8 @@ from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.axis_templates import evaluate_breakpoint_linear, evaluate_categorical
 from app.domain.difficulty import round_difficulty_array, weight_share
 from app.domain import material_catalog
-from app.domain.material_catalog import WIND_DRAG_RATIO
+from app.domain.road_classes import CLASS_MATERIAL_PREFIX, RoadClassDefinitions, class_material_id, classification_materials
 from app.domain.strict_model import StrictModel
-from app.domain.weather_elements import WEATHER_ELEMENTS
 
 
 #: 軸の宣言に使うモデル共通の設定。`allow_inf_nan=False`は、NaN・無限大の重み・係数が
@@ -136,6 +135,13 @@ _FLAG_KEYS = {"true": True, "false": False}
 def flag_or_value_name(key: object) -> object:
     """材料の値を書いた文字列の読み方。対応表のキーと0次条件の`equals`が同じ読み方をする。"""
     return _FLAG_KEYS.get(key, key) if isinstance(key, str) else key
+
+
+def mapping_key_of(value: object) -> str:
+    """材料の値を、対応表のキーがJSONで書かれる綴りにする（`flag_or_value_name`の逆）。"""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 class CategoricalShape(StrictModel):
@@ -253,7 +259,7 @@ def named_references(refs: Iterable[str], axes: Mapping[str, "AxisDefinition"]) 
     """
 
     def name(ref: str) -> str:
-        spec = material_catalog.MATERIAL_CATALOG.get(ref)
+        spec = material_catalog.material_spec(ref)
         if spec is not None:
             return spec.label
         axis = axes.get(ref)
@@ -323,16 +329,13 @@ class AxisDefinition(StrictModel):
     見て判定する。別の時間帯を足すときもこのLiteralへ値を1つ増やすだけで、エンジン側の
     コード変更は要らない。"""
     display_thresholds_override: list[float] | None = Field(default=None, min_length=1)
-    """地図の色分けしきい値だけを差し替える軽量な上書き。未設定なら`breakpoints`のX軸の
-    値がそのまま段の境界になる。
+    """地図の色分けしきい値だけを差し替える軽量な上書き。未設定なら軸の形から段の境界を導く
+    （`domain/map_paint.py: map_paint`）。
 
-    材料をどう合成して1つの表示用の値にするかは厳密に導けるが、段の刻み方は
-    `breakpoints`のX軸を流用するため粗くなりがちで、見やすさのために細かく刻みたいという
+    形から導く段は`breakpoints`の節を流用するため粗くなりがちで、見やすさのために細かく刻みたいという
     正当なニーズがある。導出能力ではなく好みの問題なので、しきい値だけを独立させてある。
 
-    値は`breakpoints`のX軸と同じ材料スケール（実行時スケール変換が要る材料を含む軸でも
-    変換後のスケールなので、係数が変わっても書き直さなくてよい）。地図表示そのものを
-    導けない軸には効果が無い。"""
+    値は地図が塗る値の目盛り——得点（0〜100）、符号付きの材料を塗る軸はその材料の値。"""
     display_band_labels_override: list[str] | None = None
     """地図の色分け段階に添える体感ラベル。未設定は
     段階の数値レンジ表記（例:「2〜6」）のみを凡例に出す。
@@ -453,33 +456,29 @@ class AxisPublishedImmutableError(ValueError):
 
     一般ユーザーの保存設定（RouteSettingsPanelのプリセット・重み）はaxis_idキーで
     再現されるため、公開後の破壊的変更・削除は他ユーザーの設定を黙って壊す。
-    改良したい場合は複製（新しいaxis_idの下書き軸として作成）してから公開する導線を
-    UI側に用意する（この関数は変更を一切拒否するのみで、複製自体は関与しない）。
+    改良したい場合は、新しいaxis_idの下書き軸として作ってから公開する（この関数は変更を拒否するだけ）。
 
-    ただし更新（`action="updated"`）については、`_COSMETIC_ONLY_FIELDS`のみの差分
-    （評価ロジック・重みに一切影響しない見た目専用の変更）なら例外的に許可する
-    （`check_publish_immutability`の`candidate`引数参照）。評価結果に影響しうる
-    変更・削除は不変という原則自体は変えない。
+    ただし更新（`action="updated"`）については、`axis_id`も読む材料も変えない差分
+    （`is_update_allowed_while_published`）なら例外的に許可する（`check_publish_immutability`の
+    `candidate`引数参照）。利用者の保存した重みは`axis_id`で残るので、点数の付け方の目盛りを
+    差し替えても壊れない。
     """
 
     def __init__(self, existing: "AxisDefinition", action: PublishedAxisAction) -> None:
-        self.axis_id = existing.axis_id
-        self.action = action
         name = named_references([existing.axis_id], {existing.axis_id: existing})
         if action == "deleted":
             message = f"{name}は公開中のため削除できません。先に非公開に戻してください。"
         else:
             message = (
-                f"{name}は公開中のため、表示以外は変えられません。非公開に戻してから変えるか、"
-                "複製して新しい軸として作ってください。"
+                f"{name}は公開中のため、表示と折れ点以外は変えられません。非公開に戻してから変えるか、"
+                "新しいaxis_idの軸として作ってください。"
             )
         super().__init__(message)
 
 
 # 評価ロジック（shape・default_weight・priority_overrides等）に一切影響しない
-# 表示専用フィールドのみ、公開済み軸でも直接更新を許可する（unpublish→update→republishの
-# 手順を経由しなくてよい）。値を変えてもaxis_idキーで再現される他ユーザーの保存重み設定・
-# ルート計算結果は変わらないため、公開後の破壊的変更を防ぐという目的を損なわない。
+# 表示専用フィールド。値を変えてもaxis_idキーで再現される他ユーザーの保存重み設定・
+# ルート計算結果は変わらない。
 # display_band_labels_overrideもdisplay_thresholds_overrideと同じ「地図の色分け段階の
 # 見せ方」の表示専用フィールドのためここへ加える。
 _COSMETIC_ONLY_FIELDS = frozenset(
@@ -491,12 +490,16 @@ _COSMETIC_ONLY_FIELDS = frozenset(
 )
 
 
-def is_cosmetic_only_update(existing: AxisDefinition, candidate: AxisDefinition) -> bool:
-    """`existing`から`candidate`への差分が`_COSMETIC_ONLY_FIELDS`だけかどうかを判定する。
-    `existing`へ`candidate`側の表示専用フィールドだけを重ねた結果が
-    `candidate`と完全一致すれば、それ以外のフィールドは変わっていないと分かる。"""
-    patched = existing.model_copy(update={field: getattr(candidate, field) for field in _COSMETIC_ONLY_FIELDS})
-    return patched == candidate
+def is_update_allowed_while_published(existing: AxisDefinition, candidate: AxisDefinition) -> bool:
+    """`existing`から`candidate`への差分が、公開したまま書いてよいものだけかどうか。
+
+    許すのは表示専用フィールド（`_COSMETIC_ONLY_FIELDS`）と、折れ線の形の`breakpoints`。どちらも`axis_id`・
+    読む材料・項・前処理・重み・形の種類を変えないので、利用者の保存した重みはそのまま効く。`existing`へ
+    `candidate`側の許す値だけを重ねた結果が`candidate`と完全一致すれば、それ以外は変わっていないと分かる。"""
+    update: dict[str, object] = {field: getattr(candidate, field) for field in _COSMETIC_ONLY_FIELDS}
+    if isinstance(existing.shape, BreakpointLinearShape) and isinstance(candidate.shape, BreakpointLinearShape):
+        update["shape"] = existing.shape.model_copy(update={"breakpoints": candidate.shape.breakpoints})
+    return existing.model_copy(update=update) == candidate
 
 
 def check_publish_immutability(
@@ -505,10 +508,10 @@ def check_publish_immutability(
     """`existing`が公開済みなら`AxisPublishedImmutableError`を送出する（更新・削除の
     どちらの直前でも呼べる汎用関数、`action`は断りの文を選ぶ）。
 
-    `candidate`（更新後の内容）が渡され、かつその差分が表示専用
-    フィールドのみ（`is_cosmetic_only_update`）の場合は例外的に許可する。`delete()`のように
+    `candidate`（更新後の内容）が渡され、かつその差分が公開したまま書いてよいものだけ
+    （`is_update_allowed_while_published`）の場合は例外的に許可する。`delete()`のように
     `candidate`が無い呼び出しは一律拒否のまま。"""
-    if existing.is_published and not (candidate is not None and is_cosmetic_only_update(existing, candidate)):
+    if existing.is_published and not (candidate is not None and is_update_allowed_while_published(existing, candidate)):
         raise AxisPublishedImmutableError(existing, action)
 
 
@@ -584,20 +587,35 @@ def primary_attribute_ids_for(definition: AxisDefinition) -> list[str]:
         dict.fromkeys(
             spec.primary_attribute.attr_id
             for material_id in _leaf_materials(definition)
-            if (spec := material_catalog.MATERIAL_CATALOG.get(material_id)) is not None
+            if (spec := material_catalog.material_spec(material_id)) is not None
             and spec.primary_attribute is not None
         )
     )
 
 
-def weather_layer_groups_for(definition: AxisDefinition) -> list[str]:
-    """軸の材料の元データを描く気象のチップ（`WEATHER_LAYER_GROUPS`の名前）。一次属性を持つ材料は現れない。"""
-    grid_values = {
-        spec.weather_grid_value
-        for material_id in _leaf_materials(definition)
-        if (spec := material_catalog.MATERIAL_CATALOG.get(material_id)) is not None and spec.weather_grid_value is not None
-    }
-    return list(dict.fromkeys(element.group for element in WEATHER_ELEMENTS if element.grid_value in grid_values))
+def missing_class_materials(definition: AxisDefinition, road_classes: RoadClassDefinitions) -> list[str]:
+    """軸が直に指す区分から作る材料（`class:<分け方>`）のうち、`road_classes`に分け方が無いもの。
+
+    区分を入れ替えて破れうる起動時の読み込みの判定（`check_axis_definition`）は、この材料の実在だけ——区分から作る材料の型は
+    いつも分類で、判定はその分け方の区分を見ない。
+    """
+    present = {class_material_id(key) for key in road_classes.classifications}
+    return [m for m in dict.fromkeys(definition.materials) if m.startswith(CLASS_MATERIAL_PREFIX) and m not in present]
+
+
+def road_layer_ids_for(definition: AxisDefinition, road_classes: RoadClassDefinitions) -> list[str]:
+    """軸が最終的に見ている材料を区分の決め手に読む、地図の道の線の層（公開した分け方の鍵）。区分の列（`class:<分け方>`）を
+    読む軸は、その分け方が区分を決めるのに読む事実も見ている。"""
+    leaves = set(_leaf_materials(definition))
+    for key, classification in road_classes.classifications.items():
+        if class_material_id(key) in leaves:
+            leaves |= classification_materials(key, classification)
+    return [
+        key
+        for key in road_classes.map_layers
+        if (classification := road_classes.classifications[key]).is_published
+        and leaves & classification_materials(key, classification)
+    ]
 
 
 class AxisInternalAxisPublishError(ValueError):
@@ -611,8 +629,6 @@ class AxisInternalAxisPublishError(ValueError):
     """
 
     def __init__(self, candidate: "AxisDefinition", referencing: "AxisDefinition") -> None:
-        self.axis_id = candidate.axis_id
-        self.referencing_axis_id = referencing.axis_id
         axes = {candidate.axis_id: candidate, referencing.axis_id: referencing}
         super().__init__(
             f"{named_references([candidate.axis_id], axes)}は{named_references([referencing.axis_id], axes)}が組み合わせに使っている軸なので、"
@@ -627,7 +643,7 @@ def check_internal_axis_not_published(candidate: AxisDefinition, existing: dict[
 
     断るのは公開へ切り替える書き込みだけで、`existing`にある書く前の版が既に公開中なら許可する。
     時刻で変わる軸が公開軸を組み合わせる形（`check_axis_set`のdocstring参照）では、組み合わせに
-    使われる軸が公開中のまま残り、その表示だけの直し（`check_publish_immutability`が許す差分）も保存する。
+    使われる軸が公開中のまま残り、その表示と折れ点の直し（`check_publish_immutability`が許す差分）も保存する。
     """
     previous = existing.get(candidate.axis_id)
     if not candidate.is_published or (previous is not None and previous.is_published):
@@ -672,7 +688,7 @@ def averages_density(definition: AxisDefinition) -> bool:
         return False
     terms = [term for term in shape.terms if term.weight != 0]
     return bool(terms) and all(
-        (spec := material_catalog.MATERIAL_CATALOG.get(term.material)) is not None and spec.additive for term in terms
+        (spec := material_catalog.material_spec(term.material)) is not None and spec.additive for term in terms
     )
 
 
@@ -755,7 +771,7 @@ def _check_references(definition: AxisDefinition, axes: Mapping[str, AxisDefinit
             f"材料{named_references(mismatched, axes)}は、この点数の決め方には使えません（使えるのは{kinds}の材料）。"
         )
     if isinstance(shape, CategoricalShape) and material_catalog.is_known_material(shape.material):
-        dtype = material_catalog.MATERIAL_CATALOG[shape.material].dtype
+        dtype = material_catalog.known_material_spec(shape.material).dtype
         key_types = {type(key) for key in shape.mapping}
         expected_key_type = bool if dtype == "boolean" else str
         if key_types and key_types != {expected_key_type}:
@@ -856,13 +872,11 @@ def check_axis_set(definitions: dict[str, AxisDefinition]) -> None:
     topological_axis_order(definitions)
 
 
-# リクエストごとに値が変わりうる材料id（風向・風速・走行速度由来）。`MATERIAL_CATALOG`の
-# `value_sql=None`は「SQLでは求められない」という別の意味も持つ（動的データ以外に、
-# 評価へ配線していない材料もNoneになる）ため流用せず、ここに正準定義を置く。
+# リクエストごとに値が変わりうる材料id（風向・風速・走行速度由来）。
 # `dynamic_axis_topological_order`がこの集合を起点に、依存する軸を機械的に導出する
 # （軸id・材料idのハードコードを個別の軸ぶん増やさない汎用設計）。各材料の評価関数は
 # `domain/dynamic_materials.py: DYNAMIC_MATERIAL_EVALUATORS`に1対1で登録する。
-REQUEST_DYNAMIC_MATERIAL_IDS = frozenset({WIND_DRAG_RATIO})
+REQUEST_DYNAMIC_MATERIAL_IDS = material_catalog.materials_of_source("request")
 
 
 def _axes_depending_on_materials(
@@ -953,7 +967,7 @@ def time_scoped_weights(
     return scoped
 
 
-def _priority_override_mask(values: MaterialColumn, equals: str) -> np.ndarray:
+def priority_override_mask(values: MaterialColumn, equals: str) -> np.ndarray:
     """0次条件が材料の値のどの要素に当たるか。**一致の判定はここだけが持つ**。
 
     `equals`は`CategoricalShape.mapping`のキーと同じ読み方をする（"true"/"false"だけを真偽へ読み、
@@ -1007,26 +1021,12 @@ def _scores_or_none(scores: np.ndarray) -> list[float | None]:
     return [None if math.isnan(score) else score for score in scores.tolist()]
 
 
-def evaluate_axis_values(
-    definition: AxisDefinition, materials: Mapping[str, Sequence[object]], length: int
-) -> list[float | None]:
-    """材料id→Pythonの値の並び（長さ`length`、欠損=None）から、要素ごとの軸の得点を求める
-    （評価できない要素はNone）。評価は配列へ並べ替えて`evaluate_axis_array`が行う——入口ごとに
-    評価を書くと、区間を押して見える得点とルート選びが使う得点が同じ道で食い違う。
-
-    定義が参照しない材料が含まれていてもよく、参照する材料が無ければ全要素欠損として扱う。
-    """
-    columns = _python_value_columns(
-        materials, definition.materials, _term_material_ids([definition]), length
-    )
-    return _scores_or_none(evaluate_axis_array(definition, columns))
-
-
 def evaluate_axes_values(materials: Mapping[str, Sequence[object]], length: int) -> dict[str, list[float | None]]:
-    """`evaluate_axis_values`の全軸版。公開軸だけを依存順（`published_axis_order`）に返す。
+    """材料id→Pythonの値の並び（長さ`length`、欠損=None）から、公開軸ごとの要素の得点を求める
+    （評価できない要素はNone）。評価は配列へ並べ替えて`evaluate_axes_array`が行う。
+    公開軸だけを依存順（`published_axis_order`）に返す。
 
-    評価できなかった公開軸も、キーを残して値をNoneにする（区間インスペクタの`available=False`・
-    合成の分母からの除外がこれを前提にする）。
+    評価できなかった公開軸も、キーを残して値をNoneにする。
     """
     evaluated = evaluate_axes_array(_axes_python_value_columns(materials, length), AXIS_DEFINITIONS)
     return {axis_id: _scores_or_none(evaluated[axis_id]) for axis_id in published_axis_order(AXIS_DEFINITIONS)}
@@ -1133,31 +1133,8 @@ def _breakpoint_score_array(shape: BreakpointLinearShape, total: np.ndarray, all
     return np.where(all_missing, np.nan, round_difficulty_array(evaluate_breakpoint_linear(total, shape.breakpoints)))
 
 
-class ScorePoint(StrictModel):
-    """材料の値が、折れ点の横軸でどこに当たり何点になるか。"""
-
-    x: float
-    score: float
-
-
-def first_term_points(shape: BreakpointLinearShape, values: Sequence[float]) -> list[ScorePoint | None]:
-    """1つ目の項の材料がそれぞれの値を持ち、ほかの項の材料が無い道の、横軸の値と得点。
-
-    評価と同じ計算（項の合成・欠損の扱い・前処理・折れ線・丸め）で出す。ほかの項に必須の材料が
-    あると、評価はその道を欠損にするため、ここもNoneを返す。
-    """
-    term_ids = [term.material for term in shape.terms]
-    columns = _python_value_columns({shape.terms[0].material: values}, term_ids, term_ids, len(values))
-    total, all_missing = _breakpoint_raw_total_array(shape, columns)
-    xs = _scores_or_none(np.where(all_missing, np.nan, total))
-    scores = _scores_or_none(_breakpoint_score_array(shape, total, all_missing))
-    return [
-        None if x is None or score is None else ScorePoint(x=x, score=score) for x, score in zip(xs, scores)
-    ]
-
-
 def raw_values(shape: "AxisShape", materials: Mapping[str, Sequence[object]], length: int) -> list[float | None]:
-    """`axis_raw_value_array`をPythonの値の並び（`evaluate_axis_values`と同じ形）から求める。
+    """`axis_raw_value_array`をPythonの値の並び（`evaluate_axes_values`と同じ形）から求める。
     保存前の`shape`も渡せるよう軸の定義ではなく形を受け取る。`CategoricalShape`は全要素None。"""
     if not isinstance(shape, BreakpointLinearShape):
         return [None] * length
@@ -1189,6 +1166,6 @@ def evaluate_axis_array(definition: AxisDefinition, materials: Mapping[str, Mate
         # キーをfloatへ変えない。
         result = evaluate_categorical(materials[shape.material], shape.mapping)
     for override in reversed(definition.priority_overrides):
-        mask = _priority_override_mask(materials[override.material], override.equals)
+        mask = priority_override_mask(materials[override.material], override.equals)
         result = np.where(mask, override.value, result)
     return result

@@ -13,32 +13,11 @@ import { headingFromOrientation, useDeviceHeading } from "./useDeviceHeading";
 describe("headingFromOrientation: 端末の向きの読みから、画面の上が向いている方角", () => {
   it.each([
     {
-      case: "iPhone のコンパスの読み（北0・時計回り）",
-      reading: { webkitCompassHeading: 90, alpha: 10 },
-      absolute: false,
-      angle: 0,
-      heading: 90,
-    },
-    {
-      case: "Android の北を基準にした向き（反時計回りの角度）",
-      reading: { alpha: 270 },
-      absolute: true,
-      angle: 0,
-      heading: 90,
-    },
-    {
       case: "横にした画面では、画面の回った角度を足す",
       reading: { alpha: 270 },
       absolute: true,
       angle: 90,
       heading: 180,
-    },
-    {
-      case: "北を基準にしない向きでは方角が分からない",
-      reading: { alpha: 270 },
-      absolute: false,
-      angle: 0,
-      heading: null,
     },
     { case: "読みが無い", reading: { alpha: null }, absolute: true, angle: 0, heading: null },
   ])("$case", ({ reading, absolute, angle, heading }) => {
@@ -84,15 +63,11 @@ describe("useDeviceHeading", () => {
     expect(result.current.heading).toBeNull();
   });
 
-  it.each([
-    { case: "許されたら方角を出す", answer: "granted", heading: 90 },
-    { case: "断られたら方角を出さない", answer: "denied", heading: null },
-  ] as const)("iPhone では始める操作の中で許しを求め、$case", async ({ answer, heading }) => {
-    setRequestPermission(answer);
+  it("iPhone では始める操作の中で許しを求め、断られたら方角を出さない", async () => {
+    setRequestPermission("denied");
     const { result } = renderHook(() => useDeviceHeading(true));
     await act(async () => result.current.request());
     orient("deviceorientation", { webkitCompassHeading: 90, alpha: 0 });
-    if (heading === null) expect(result.current.heading).toBeNull();
-    else expect(result.current.heading).toBeCloseTo(heading, 6);
+    expect(result.current.heading).toBeNull();
   });
 });

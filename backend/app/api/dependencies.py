@@ -37,7 +37,12 @@ from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_
 from app.services.axis_preview_service import AxisPreviewService, new_sample_cache
 from app.services.axis_registry_service import AxisRegistryAdminService
 from app.services.db_status_service import DbStatusService
-from app.services.dedicated_way_values import axis_way_value_lens, material_service_builder
+from app.services.dedicated_way_values import (
+    DraftWayValueLensBuilder,
+    axis_way_value_lens,
+    draft_axis_way_value_lens,
+    material_service_builder,
+)
 from app.services.derived_data_freshness_service import DerivedDataFreshnessService
 from app.services.feature_materials import FeatureMaterialService
 from app.services.flood_service import FloodService
@@ -52,11 +57,11 @@ from app.services.route_generation_setup import (
     RouteGenerationSetup,
     assemble_route_generation_setup,
 )
+from app.services.road_class_service import RoadClassAdminService
 from app.services.tuning_service import TuningService
 from app.services.warning_service import WarningService
 from app.services.wbgt_service import WbgtService
 from app.services.weather_service import WeatherService
-from app.services.wind_grid_service import WindGridService
 
 
 #: 気象の取得のプロセス内キャッシュ。サービス・クライアントはリクエストごとに作られるため、プロセスの側で持つ。
@@ -153,7 +158,7 @@ async def get_axis_preview_service(sample_cache: TTLCache = Depends(get_axis_pre
 
 @asynccontextmanager
 async def open_region_service() -> AsyncIterator[RegionService]:
-    """地域サービスの開き方。HTTPの要求の外（定期ジョブ）と、読む間だけセッションを持ちたいサービスが開く。"""
+    """地域サービスの開き方。HTTPの要求の外（定期ジョブ）と、要求の依存が開く。"""
     async with get_session_factory()() as session:
         yield RegionService(repository=RoadGraphRepository(session))
 
@@ -161,10 +166,6 @@ async def open_region_service() -> AsyncIterator[RegionService]:
 async def get_region_service():
     async with open_region_service() as region_service:
         yield region_service
-
-
-def get_wind_grid_service(weather_service: WeatherService = Depends(get_weather_service)):
-    return WindGridService(weather_service, open_region_service)
 
 
 @asynccontextmanager
@@ -194,6 +195,23 @@ async def get_dedicated_way_value_service(
         yield axis_way_value_lens(
             axis_id, FeatureMaterialService(repository), material_service_builder(repository, weather_service)
         )
+
+
+async def get_feature_material_service():
+    async with get_session_factory()() as session:
+        yield FeatureMaterialService(RoadGraphRepository(session))
+
+
+async def get_draft_way_value_lens_builder(
+    weather_service: WeatherService = Depends(get_weather_service),
+) -> AsyncIterator[DraftWayValueLensBuilder]:
+    """軸スタジオの較正の地図が、下書きの形で軸の値を求めるレンズの組み立て。地図のレンズと同じく、タイルの材料と
+    配信のサービスを1セッションで引く。軸は本文にあるため、組み立ては呼び出し元がする。"""
+    async with get_session_factory()() as session:
+        repository = RoadGraphRepository(session)
+        feature_materials = FeatureMaterialService(repository)
+        build_service = material_service_builder(repository, weather_service)
+        yield lambda axis_id, shape: draft_axis_way_value_lens(axis_id, shape, feature_materials, build_service)
 
 
 async def get_axis_inspector_service(weather_service: WeatherService = Depends(get_weather_service)):
@@ -235,6 +253,11 @@ async def get_axis_registry_admin_service():
 async def get_tuning_service():
     async with get_session_factory()() as session:
         yield TuningService(session)
+
+
+async def get_road_class_admin_service():
+    async with get_session_factory()() as session:
+        yield RoadClassAdminService(session, AxisDefinitionRepository(session))
 
 
 async def get_material_coverage_service():

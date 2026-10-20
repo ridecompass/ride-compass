@@ -8,7 +8,7 @@ import type { RouteCandidate } from "@/types/route";
 export const MAX_GPX_TRACK_POINTS = 1000;
 
 // 間引きで元の折れ線からずれてよい距離（m）。読み込んだ側のナビが描く線として、この程度の
-// ずれは道の形として見分けられない。上限点数に収まらない場合はこの値を倍にして再試行する。
+// ずれは道の形として見分けられない。上限点数に収まらない場合はこの値を倍にして数え直す。
 const SIMPLIFY_TOLERANCE_M = 3;
 
 /** 緯度経度を、座標列の中央緯度を基準にした局所平面（m）へ落とす。緯度経度のまま測ると、東西の曲がりだけが残りやすくなる。 */
@@ -20,36 +20,42 @@ function toLocalPlane(coordinates: readonly GeoJSON.Position[]): PlanePoint[] {
   }));
 }
 
-/** 点`p`と線分`a`-`b`の距離（m）。`a`と`b`が同じ点なら点どうしの距離。 */
-function distanceToSegment(p: PlanePoint, a: PlanePoint, b: PlanePoint): number {
+/** 点`p`と線分`a`-`b`の距離の二乗（m²）。`a`と`b`が同じ点なら点どうしの距離の二乗。 */
+function squaredDistanceToSegment(p: PlanePoint, a: PlanePoint, b: PlanePoint): number {
   const closest = closestPointOnSegment(p, a, b);
-  return Math.hypot(p.x - closest.x, p.y - closest.y);
+  const dx = p.x - closest.x;
+  const dy = p.y - closest.y;
+  return dx * dx + dy * dy;
 }
 
-/** Ramer–Douglas–Peucker。両端を結んだ線分から`toleranceM`より離れる点を残し、その点で
- * 区間を割って同じ判定を繰り返す。残った点だけを結べば元の折れ線との差は`toleranceM`以内に
- * 収まる。深い再帰を避けるため明示的なスタックで回す。 */
-function markKeptPoints(points: readonly PlanePoint[], toleranceM: number): boolean[] {
-  const kept = new Array<boolean>(points.length).fill(false);
-  kept[0] = true;
-  kept[points.length - 1] = true;
-  const pending: Array<[number, number]> = [[0, points.length - 1]];
+/** Ramer–Douglas–Peucker。両端を結んだ線分から許容より離れる点を残し、その点で区間を割って同じ判定を
+ * 繰り返す。残った点だけを結べば元の折れ線との差は許容以内に収まる。区間で最も遠い点は許容によらないため、
+ * `minToleranceM`で1回だけ割り、点ごとに「許容がこの値（m）未満なら残る」値を返す（両端は`Infinity`、
+ * `minToleranceM`でも落ちる点は0）。値は自分の距離と、自分の区間を作った点の値の小さいほう（その点が
+ * 落ちる許容では区間ごと割られない）。深い再帰を避けるため明示的なスタックで回す。 */
+function keepingTolerances(points: readonly PlanePoint[], minToleranceM: number): number[] {
+  const tolerances = new Array<number>(points.length).fill(0);
+  tolerances[0] = Infinity;
+  tolerances[points.length - 1] = Infinity;
+  // [区間の始め, 区間の終わり, 区間を作った点の値]
+  const pending: Array<[number, number, number]> = [[0, points.length - 1, Infinity]];
   while (pending.length > 0) {
-    const [first, last] = pending.pop()!;
+    const [first, last, parentTolerance] = pending.pop()!;
     let farthest = -1;
-    let maxDistance = toleranceM;
+    let maxSquaredDistance = minToleranceM * minToleranceM;
     for (let i = first + 1; i < last; i += 1) {
-      const distance = distanceToSegment(points[i], points[first], points[last]);
-      if (distance > maxDistance) {
-        maxDistance = distance;
+      const squaredDistance = squaredDistanceToSegment(points[i], points[first], points[last]);
+      if (squaredDistance > maxSquaredDistance) {
+        maxSquaredDistance = squaredDistance;
         farthest = i;
       }
     }
     if (farthest < 0) continue;
-    kept[farthest] = true;
-    pending.push([first, farthest], [farthest, last]);
+    const tolerance = Math.min(Math.sqrt(maxSquaredDistance), parentTolerance);
+    tolerances[farthest] = tolerance;
+    pending.push([first, farthest, tolerance], [farthest, last, tolerance]);
   }
-  return kept;
+  return tolerances;
 }
 
 /** 座標列を`MAX_GPX_TRACK_POINTS`以下へ間引く。残す点は折れ線の形から選ぶ（両端を結んだ線分からのずれが
@@ -57,10 +63,10 @@ function markKeptPoints(points: readonly PlanePoint[], toleranceM: number): bool
  * `MAX_GPX_TRACK_POINTS`以下ならそのまま返す。 */
 function simplifyCoordinates(coordinates: readonly GeoJSON.Position[]): GeoJSON.Position[] {
   if (coordinates.length <= MAX_GPX_TRACK_POINTS) return [...coordinates];
-  const points = toLocalPlane(coordinates);
+  const tolerances = keepingTolerances(toLocalPlane(coordinates), SIMPLIFY_TOLERANCE_M);
   // 両端は常に残るため、許容するずれを増やし続ければ2点まで減らせる（＝必ず収まる）。
   for (let tolerance = SIMPLIFY_TOLERANCE_M; ; tolerance *= 2) {
-    const kept = markKeptPoints(points, tolerance);
+    const kept = tolerances.map((keptBelow) => keptBelow > tolerance);
     if (kept.filter(Boolean).length <= MAX_GPX_TRACK_POINTS) return coordinates.filter((_, index) => kept[index]);
   }
 }

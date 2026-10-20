@@ -13,15 +13,15 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `axis_definitions.py`・`axis_display.py`・`map_paint.py`（地図が軸について塗るもの）・`axis_raw_value.py`・`axis_templates.py`・`registry.py`・`primary_attributes.py`（一次属性の語彙の宣言）・`value_distribution.py`（延長で重み付けた分位点とヒストグラム。分布の口の応答の型） |
-| services | `axis_registry_service.py`・`axis_preview_service.py` |
-| infrastructure | `axis_definition_models.py`・`axis_definition_repository.py` |
-| api | `axis_admin.py`・`axis_catalog.py` |
+| domain | `axis_definitions.py`・`map_paint.py`（地図が軸について塗るもの）・`axis_raw_value.py`・`axis_templates.py`・`registry.py`・`primary_attributes.py`（一次属性の語彙の宣言）・`value_distribution.py`（延長で重み付けた分位点とヒストグラム。分布の口の応答の型）・`road_classes.py`（道の区分の全体の型と、区分に道を振り分ける式）・`road_class_catalog.py`（道の区分を軸カタログで配る形） |
+| services | `axis_registry_service.py`・`axis_preview_service.py`・`road_class_service.py` |
+| infrastructure | `axis_definition_models.py`・`axis_definition_repository.py`・`road_class_models.py`・`road_class_repository.py` |
+| api | `axis_admin.py`・`axis_catalog.py`・`road_class_admin.py` |
 | scripts | `measure_axis_saturation.py`・`axis_apply.py` |
 
-## 分布プレビュー・材料の値の一覧（`services/axis_preview_service.py`・`domain/value_distribution.py`）
+## 分布プレビュー・材料の値ごとの割合（`services/axis_preview_service.py`・`domain/value_distribution.py`）
 
-軸スタジオが折れ点を編集している最中に、**その設定で実データがどう分布するか**を返す。
+軸スタジオの較正の画面が折れ点を直している最中に、**その設定で実データがどう分布するか**を返す。
 
 - 母集団はWay単位（生データのページ単位抽選、`TABLESAMPLE SYSTEM`）で、**延長で
   重み付ける**。本数で数えると短い道が多数を占めて実際に走る距離の感覚と合わない。
@@ -35,19 +35,16 @@
   そのため、母集団の値はルート評価が実際に読むEdge単位の値と粒度が一致しない場合がある。
 - 抽選したサンプルは`cachetools.TTLCache`で保持する（初回1秒前後、2回目以降は即座）。
 - 返すのは**折れ点を通す前の生値**の分位とヒストグラムで、折れ点の当てはめはfrontendが行う
-  （[軸スタジオ管理画面](../frontend/axis-studio.md)「折れ点の効き方を実データで見せる」参照）。
+  （[軸スタジオ管理画面](../frontend/axis-studio.md)「分布と点数の取り方」参照）。
 - **ヒストグラムの階級はデータの値域から決める**（0は常に範囲へ含める）。下限を0に固定すると
   生値が負になる軸——`terms`の重みがすべて負の軸（`bicycle_infra_quality`・`night`等）
   ——で全サンプルが階級0へ潰れ、分位が負を示しているのにヒストグラムは正の範囲しか持たない、
   という同一レスポンス内で矛盾した分布になる。
-- 材料の分布は、階級を持たず分位と`zero_share`だけを返す（材料選択行の1行表示が読むのはこの2つだけ）。`zero_share`は
-  値が**ちょうど0**の延長の割合で、負の値は含まない（含めると「下り勾配の道」まで「ゼロ」として数えられる）。
 
 | エンドポイント | 認可 | 内容 |
 |---|---|---|
 | `POST /api/admin/axis-definitions/preview-distribution` | Basic認証 | 編集中の`shape`の生値の分布 |
-| `GET /api/admin/material-catalog/{material_id}/distribution` | Basic認証 | 材料1件の値の分位と`zero_share`（数値材料のみ、それ以外は`available=false`） |
-| `GET /api/admin/material-catalog/{material_id}/values` | Basic認証 | 材料1件のDBに実際にある値の一覧（`AxisPreviewService.material_values`。[評価・スコアリング](evaluation-scoring.md)の材料カタログのAPI） |
+| `GET /api/admin/material-catalog/{material_id}/value-shares` | Basic認証 | 種類・はい/いいえの材料1件の、値ごとの道の延長の割合（`AxisPreviewService.material_value_shares`。抽選した道のうち値を持つ道の延長で割る。数値材料は`available=false`） |
 
 どれも実データを全体から読むため、`AxisPreviewService`はルート生成用の長い`command_timeout`の
 セッションで組む（`api/dependencies.py: get_axis_preview_service`）。値の一覧は索引の効かない
@@ -73,9 +70,8 @@
 全延長のうち最多の1つの値が占める割合も軸ごとに出す。上端・下端の基準は端に寄った塊しか拾わないので、
 中ほどの1つの値に大半が集まった軸（どの道も同じ難易度で重みが効かない）はこの列で見る。
 
-軸の難易度は`domain/axis_definitions.py: evaluate_axes_values`で標本の全wayぶんをまとめて得る。個々の軸へ
-`evaluate_axis_values`を直接当てると、他の軸を材料にする合成軸が
-「材料が欠損」として現れてしまう。
+軸の難易度は`domain/axis_definitions.py: evaluate_axes_values`で標本の全wayぶんをまとめて得る。軸を1本ずつ
+評価すると、他の軸を材料にする合成軸が「材料が欠損」として現れてしまう。
 
 **分布は地域で大きく変わる**。全域の抽選標本では市街地の偏りが平均に埋もれるため、
 `--bbox`（`min_lat,min_lon,max_lat,max_lon`）でその地域だけを母集団にできる。bbox指定時は
@@ -89,12 +85,14 @@
 ## 軸の定義をファイルから本番へ入れる（`scripts/axis_apply.py`）
 
 軸スタジオの画面を通さずに、軸1本の定義のJSON（管理APIの単体取得と同じ項目）を本番の管理APIへ入れる手元の道具。
+JSONはリポジトリの外に置き、コミットしない（定義は較正の値を持つ。[データソース](../../architecture/data-sources.md)「OSM から作った値と独自の層」）。
 書く口は管理APIだけで、DBへ直接は書かない（書き込みのガードと`AXIS_DEFINITIONS`の差し替えを画面と同じく通す）。
 
 - **既定は差の表示だけ**。今の定義は管理APIの単体取得から読む——公開の軸カタログは下書きの軸・0次条件・時間帯を持たず、
   体感ラベルも地図の段へ引き直した値なので、差の「前」には使えない。差は入れ子（`shape`等）の葉の項目ごとに「前 → 後」で出す。
 - 書く操作は今の状態から決まる（無ければ追加、下書きなら更新1回、公開済みなら公開の取り消し→更新。削除は公開済みなら
-  取り消してから）。公開済みの軸は更新も削除も拒まれる（上の「書き込み時のガード」）ため、取り消しを挟む。
+  取り消してから）。公開済みの軸は更新も削除も拒まれる（下の「書き込み時のガード」）ため、取り消しを挟む。ただし公開したまま
+  書ける差分（同じガードが許す、表示と折れ点だけの差）なら、取り消さずに更新1回で書く。
 - **書くのは差を出したときの指紋を渡したときだけ**。指紋は今の定義と書く定義から作るので、差を見てから書くまでに本番が
   変わっていれば一致せず、何も書かない。
 - 取り消しの後の段で失敗したら、元の定義へ戻す（戻せなければ元の定義を出して止まる）。書いた後は、管理APIの単体取得が
@@ -102,6 +100,31 @@
   軸カタログで確かめられるのは、backendが1プロセスで動き、書いたプロセスが配るから（`single_process.py`）。
 - 宛先はリポジトリの`production-origins.json`（`_production_origins.py`）、認証情報は`backend/.env.oracle.local`の
   `ADMIN_BASIC_AUTH_USERNAME`・`ADMIN_BASIC_AUTH_PASSWORD`（`_prod_env.py`）から読む。引数に取らず、出力にも出さない。
+
+## 道の区分（`domain/road_classes.py`）
+
+道の分け方と区分（条件）・地図の線の層・転がり抵抗の較正値の割り当て・除外タブの見出しと既定は、管理DBの表
+（`infrastructure/road_class_models.py`）が正本で、コードは写しも既定も持たない。表が空なら区分は0件で、地図・除外タブには何も出ない。
+
+- **形の良し悪しは表の制約だけが決める**（構造仕様15）。鍵の綴り・参照先の実在・並びの重なり等は制約が守り、appは読む前・書く前に
+  確かめ直さない。外部キーは取引の終わりまで遅らせるので、全体を消して入れ直す書き込みは入れ替えた後の形で確かめられる。
+  制約で表せない良し悪し（条件が重なる・条件の値の綴りが事実の語彙に無い）は判定せず、振り分けの式が1つの答えを出す:
+  2つ以上の区分に当たる道は区分なし、知らない事実はどの道にも無い事実として扱う。
+- **コードの宣言と軸を名指す値は、入れ替えるときだけ確かめる**（構造仕様15）。事実・まとめ先・色の段・較正値の名が宣言に無い
+  （`domain/road_classes.py: undeclared_references`）か、軸が材料に読む分け方が消える（`domain/axis_definitions.py: missing_class_materials`）
+  入れ替えは断る。軸の書き込みと同じ鍵で直列にするので、確かめてから確定するまでの間に分け方を読む軸は増えない。
+  起動時の読み込みは名を確かめず、宣言から消えた名を指す行は知らない値として倒す。
+- **管理APIは全体の読みと全体の入れ替えだけ**。入れ替えはadvisory lockで直列にした1つの取引で、表の制約・上の確かめに通らなければ
+  何も変えずに409で断りの文を返す。確定してからプロセス内の全体を差し替え、起動時も表から読む（単一プロセスが前提）。
+- **軸カタログは解決した形で配る**（`road_classes`の欄）。公開した分け方だけを出し、色・タグの注・層の説明のうち区分から
+  組む部分をbackendが決める。指紋（`generation`）は全体の中身から作る。
+- **地図の線の層の値もbackendが決める**（`domain/road_classes.py: layer_columns`）。値は区分の鍵か「データなし」で、地図の線
+  （`/api/region/road-classes`）とルートの区間の帯が同じ値を読む。地図は条件を当てない。
+- **本番へは管理APIで全体を入れる**（`PUT /api/admin/road-classes`）。全体のJSONは本番の今の全体（`GET`）から作り、リポジトリの外に置く。
+- **前の鍵は3か月で外す**: 区分の鍵を改める・分ける・合わせるときは、今の区分に前の鍵（`domain/road_classes.py: RoadClass.former_keys`）を
+  足し、前の鍵で選んだ段を今の行へ引き継ぐ（`domain/road_avoidance.py: resolve_road_avoidance`）。前の鍵は、その全体を本番へ
+  入れてから3か月で外す。入れるときに、外す日を着手可能日時にした対話作業の issue を起こす。外したあと、前の鍵だけを送る要求は
+  その行を既定の段で読む。
 
 ## データモデル（`domain/axis_definitions.py`）
 
@@ -168,18 +191,17 @@
 ### `PriorityCondition`（0次条件）
 
 `material`の値が`equals`と一致する場合、shape評価をスキップし`value`をそのまま返す
-（探索除外のハードフィルタ`domain/hard_filters.py: DEFAULT_HARD_FILTERS`とは別の仕組み）。
+（探索除外のハードフィルタ`domain/hard_filters.py: HARD_FILTERS`とは別の仕組み）。
 
-**一致の判定は1本**（`_priority_override_mask`）で、Pythonの値で持つ入口（区間の内訳）も
+**一致の判定は1本**（`domain/axis_definitions.py: priority_override_mask`）で、Pythonの値で持つ入口（区間の内訳）も
 材料の値を配列にして同じ関数を通す。材料の値は入口ごとに別の形で届く——区間の内訳は
 Pythonの値、ルート選びと地図の配信は材料の型ごとの配列で、分類の材料は語彙への番号の列、「不明」を持つ真偽の材料
 は1.0/0.0/NaNの数値の配列になる。判定を2本持つと、この形の違いで区間の内訳とルート選びが同じ道に違う答えを出す。
 `equals`は`CategoricalShape.mapping`のキーと同じ読み方（`flag_or_value_name`）で、`"true"`/`"false"`だけを
 真偽と読み、それ以外は書いたとおりの値の名前として比べる。欠損（None・NaN）はどの条件にも当たらない。
 
-**タイルの式は0次条件を表せない。** タイルの式（`TileInputSpec`）に条件を載せる形が無いため、0次条件を持つ軸は
-タイルでは塗らない（下の「地図表示ルールの自動導出」）。地図の配信（[dynamic-way-values.md](dynamic-way-values.md)）は
-ルート選びと同じ評価を通すので条件も当てるが、0次条件を持つ軸の符号付き材料の生値は塗らない（下の「地図が塗るもの」）。
+**地図も同じ評価で塗る。** 地図の配信（[dynamic-way-values.md](dynamic-way-values.md)）はルート選びと同じ評価を
+通すので条件も当てるが、0次条件を持つ軸の符号付き材料の生値は塗らない（下の「地図が塗るもの」）。
 条件を落として塗ると、条件の当たる道で地図の色とルート選び・区間の内訳が食い違う。
 
 ### 軸の階層
@@ -192,7 +214,6 @@ Pythonの値、ルート選びと地図の配信は材料の型ごとの配列�
 
 | 関数 | 用途 |
 |---|---|
-| `evaluate_axis_values(definition, materials, length)` | 材料id→Pythonの値の並びから要素ごとの得点。欠損はNone。配列へ並べ替えて`evaluate_axis_array`を通す |
 | `evaluate_axis_array(definition, materials)` | 軸の評価の本体（numpy配列、欠損はNaN）。どの入口もここを通る |
 | `evaluate_axes_array(materials, definitions)` | `definitions`の全軸を依存順（`topological_axis_order`、内部軸→公開軸）で評価し、軸id→得点の辞書を返す（評価した軸の得点は後の軸の材料として読まれる） |
 | `evaluate_axes_values(materials, length)` | `evaluate_axes_array`をPythonの値の並びから通し、公開軸だけの得点を返す（評価できない公開軸もキーを残してNone） |
@@ -245,16 +266,21 @@ Pythonの値、ルート選びと地図の配信は材料の型ごとの配列�
   スキーマは`axis_definition_models.py`のORM宣言から`create_tables()`が作る。
 - **公開済み軸を不変にしているのは、一般ユーザーの保存設定が`axis_id`キーで再現される
   ため**（ルート設定パネルのプリセット・重みは`localStorage`に`axis_id`で残る）。公開後に
-  破壊的な変更・削除を許すと、他の利用者の設定を黙って壊す。改良したいときは複製して
-  新しい`axis_id`の下書きを作り、そちらを検証して公開する。
+  破壊的な変更・削除を許すと、他の利用者の設定を黙って壊す。改良したいときは
+  新しい`axis_id`の下書きとして軸の定義ファイルから入れ、そちらを検証して公開する。折れ点と段の境界だけの差し替えは`axis_id`も読む材料も
+  変えないので、公開したまま書ける（下の「書き込み時のガード」）——下書きへ戻すと、その間だけ軸カタログから軸が消え、
+  利用者の画面がその軸の重みを既定へ戻す。
+  差し替えた折れ点は次の要求から効く: 軸を読む側（地図の配信・ルートの評価・軸カタログ）は要求ごとに`AXIS_DEFINITIONS`を
+  読むか写しを取り、サーバーのキャッシュは軸に依らない材料の値だけを持つ（[動的way値](dynamic-way-values.md)）。
+  ブラウザが応答を持つ間（`api/cache_policy.py`の対応表）だけ遅れる。
 
 ### まっさらなDBに軸の行は入らない
 
 `scripts/bootstrap_database.py`が作るのはスキーマ・取込・派生までで、`axis_definitions`の
 行は作らない。`refresh_axis_definitions`は0行を`AxisDefinitionSyncError`として扱うため、
 **新規環境ではアプリが起動しない**。軸を足す管理APIも起動したbackendにしか無いので、新規環境へ
-軸を入れる経路は、管理データのバックアップからの復元（`pg_restore`、
-[横断基盤](cross-cutting-infrastructure.md)「取り直せない管理データのバックアップ」）だけである。
+軸を入れる経路は、本番DBのバックアップからの復元（`pg_restore`、
+[横断基盤](cross-cutting-infrastructure.md)「本番DBのバックアップ」）だけである。
 新規環境（composeのDB・クラウドのセッション）はテストを回す場と決めており、
 アプリを確かめるのは本番か手元の開発機で行う（[setup.md](../../architecture/setup.md)）。
 
@@ -266,53 +292,10 @@ DB側の値が変わっても追従しない。軸の中身が主題でないテ
 公開・配信の印）だけを引数で書く。既定は型を満たすためだけの値なので、既定に寄りかかった
 主張は書けない。
 
-## 地図表示ルールの自動導出（`domain/axis_display.py`）
+## 地図の色分け
 
-軸が参照する材料が全てMVTタイルへ焼き込み済みであれば、地図ramp表示
-（`registry.py: TileInputSpec`のΣproperty×weight・真偽値のcase分岐）を`axis_display_for()`
-が自動導出する。**安全に自動導出できるケースに限定**し、それ以外は`None`（`kind="none"`、
-地図に出ない）を返す:
-
-| shapeの形 | 自動導出できるか |
-|---|---|
-| `CategoricalShape`（真偽値材料1件、またはstr N値材料1件） | できる（隣接中間点をしきい値に） |
-| `BreakpointLinearShape`で全termがboolean材料 | できる（重みの全部分和集合の隣接中間点。上限12term） |
-| `BreakpointLinearShape`で`preprocess="identity"`（全termがboolean材料の形を除く） | できる（breakpointsのx値をそのまま流用。boolean材料の項は該当時に重み・非該当時に0の2値として足す） |
-| `preprocess="abs"`を含む軸 | **できない**（実装しないと確定済み。方向依存材料[風・勾配]を含む軸は別の制約でも弾かれるため二重に対象外） |
-| タイル非依存材料・方向依存材料（`tile_property_direction_dependent`）を含む軸 | できない |
-| 他の軸を参照する`MaterialTerm`を含む軸 | 参照先の軸を1段だけ解決して畳めれば可（`_resolve_referenced_axis_tile_input`）。2段階以上のネストは非対応 |
-| `priority_overrides`（0次条件）を持つ軸、または畳む参照先の軸が持つ | できない（タイルの式が条件を表せない。上の「`PriorityCondition`」） |
-
-`axis_display_for(definition)`の優先順位: ①自動導出成功＋`display_thresholds_override`
-設定済みなら両方を組み合わせる、②自動導出成功のみなら自動導出のしきい値をそのまま使う、
-③自動導出失敗なら`kind="none"`。しきい値を決めるのは`axis_display_for`1本で、
-ルート線側の境界（`map_paint.py: map_paint`の`thresholds`）もそこから導く。
-
-**折れ線が写した得点（小数1桁に丸めた値）が、直前に残した境界の得点を上回らない境界は落とす。**
-上書きで指定された値も同じ扱いで、軸スタジオで4つ刻んでも折れ線が3つ目で100へ達していれば段は
-3つになる。評価が区別できない差に境界を引くと、色だけが変わって評価は同じという見分けを地図が
-見せることになり、しかもルート線側は難易度を塗るためその段を作れない（前後で段の数が食い違う）。
-得点が下がる境界も同じ理由で落ちる——ルート線の段は難易度の昇順でしか切れないため、材料の値が
-増えるほど得点が下がる折れ線では、最初の境界だけが残る。
-折れ線の最も低い得点は、最初の境界の手前の得点として数える——その得点へ写る境界（折れ線の下端より下に置いた
-境界）は、下の段に得点で入る道が無い（凡例に「0点未満」のような届かない段が出る）ので落ちる。上端の得点へ写る
-境界は落とさない（その段には上端に張り付いた道が入る）。
-
-軸スタジオは刻んでいる最中にこの落ちる値を印として出すため、保存前の下書きで同じ判定を問う
-（`bands_the_map_keeps`、`POST /api/admin/axis-definitions/preview-display-thresholds`）。
-判定は`axis_display_for`と同じ`_map_band_thresholds`を通し、frontendへ規則を写さない。
-入力は段を決めるのに要るもの（`axis_id`・`shape`・`priority_overrides`・しきい値）だけで、
-表示名・重みのような下書きの途中で欠けうる項目を揃えさせない——揃えさせると、書きかけの
-軸では印が出なくなる。保存前の下書きなので自分自身を参照する軸も届く（保存は循環として拒否される）。
-その軸は、保存済みの自分を材料として畳まず、地図に出ない軸として扱う（全段が残る）。
-
-**段が落ちても、体感ラベルは地図の段へ引き直して配る。** 体感ラベルの上書き
-（`display_band_labels_override`）は人が刻んだ境界の段ごとに付くため、境界が落ちると件数が
-地図の段数と合わない。境界が落ちてまとまった段は、その下端で始まる入力の段として扱い、その段の
-ラベルを持つ（`bands_the_map_keeps`が地図の各段に当たる入力の段の番号を返す。下端が同じ値なので、
-地図の凡例のレンジとラベルが食い違わない）。軸カタログは生の上書きではなくこの引き直した値
-（`map_band_labels`）を、地図が塗るものの`band_labels`（下の「地図が塗るもの」）で配る。
-軸スタジオの段階プレビューも同じ番号を問い合わせの応答（`bands_on_map`）で受け取る。
+地図はどの公開軸も、[地図の配信](dynamic-way-values.md)が評価して配る値で塗る。段の境界・凡例・体感ラベルは
+下の`map_paint`が軸定義から決め、軸カタログで配る。
 
 ### 地図が塗るもの（`domain/map_paint.py`）
 
@@ -324,24 +307,29 @@ DB側の値が変わっても追従しない。軸の中身が主題でないテ
 
 | 欄 | 意味 |
 |---|---|
-| `value` | 塗る値の種類（`DifficultyMapValue`・`SignedMaterialMapValue`の判別共用体）。0次条件（`priority_overrides`）を持たず、`BreakpointLinearShape`かつ`preprocess="abs"`かつterms単数で、その項が材料（`MATERIAL_CATALOG`にある）を指すなら符号付き材料（生値を塗る材料を名指す）、それ以外は難易度。項は軸を指すこともあり、その値は参照先の得点で符号にも単位にも材料の意味が無い。0次条件を持つ軸の生値は、条件の当たる道でも生値のままで評価と食い違う。ramp軸は`axis_display_for`が符号を畳む形を外すため、いつも難易度 |
+| `value` | 塗る値の種類（`DifficultyMapValue`・`SignedMaterialMapValue`の判別共用体）。0次条件（`priority_overrides`）を持たず、`BreakpointLinearShape`かつ`preprocess="abs"`かつterms単数で、その項が材料（`MATERIAL_CATALOG`にある）を指すなら符号付き材料（生値を塗る材料を名指す）、それ以外は難易度。項は軸を指すこともあり、その値は参照先の得点で符号にも単位にも材料の意味が無い。0次条件を持つ軸の生値は、条件の当たる道でも生値のままで評価と食い違う |
 | `unit` | 符号付き材料なら材料カタログの`unit`、難易度は空文字 |
 | `thresholds` | `value`のスケールでの段の境界（下記） |
-| `tiles` | ルート確定前に全道路をタイルの値で塗る式と、その値（材料の目盛り）での段の境界（`axis_display_for`の`AxisDisplaySpec`）。タイルで塗れない軸（専用way値配信・地図に出ない軸）は`kind="none"` |
-| `band_labels` | 段ごとの体感ラベル（上の「段が落ちても、体感ラベルは地図の段へ引き直して配る」の`map_band_labels`）。上書きの無い軸はnull |
+| `band_labels` | 段ごとの体感ラベル（`display_band_labels_override`をそのまま）。上書きの無い軸はnull |
 | `legend` | 凡例が段の境界を書く目盛り（`MapLegendScale`: `thresholds`と同じ件数の境界と単位）。符号付き材料は塗る値そのもの（材料の単位）。難易度の軸のうち、得点が単位の定まる生値（`raw_value_unit`）から0次条件なし・符号を畳まずに作られ、その量について狭く増える（折れ線の節の得点が狭く昇順）軸は、境界を量で書く（例: 雨は5・20・50mm）。それ以外は得点（単位null。画面は「影響 33点未満」と書く）。塗るのは得点でも量で書いてよいのは、狭く増える間だけ「得点 f(a)以上 f(b)未満」と「量 a以上 b未満」が同じ道を指すため。量の境界は折れ線の下端より上・上端以下に限る（外では得点が端に張り付く） |
 
-**段の並びの件数は値が揃える。** 読む側は段の番号で境界・凡例・タイルの境界・体感ラベルを引き合わせるので、
-`MapPaint`は作るときに、`thresholds`の件数+1（段の数）と、`legend`の境界の件数+1・`tiles`がrampならその境界の件数+1・
+**段の並びの件数は値が揃える。** 読む側は段の番号で境界・凡例・体感ラベルを引き合わせるので、
+`MapPaint`は作るときに、`thresholds`の件数+1（段の数）と、`legend`の境界の件数+1・
 `band_labels`があればその件数が揃っているかを確かめ、揃わなければ送出する（揃わない値を軸カタログへ出さない）。
 
 段の境界（`thresholds`）:
 
-- **段そのものを決めるのは`axis_display_for`**（ルート確定前の全道路を塗る境界）で、ramp軸ではその値を軸の折れ線で
-  難易度へ写すだけ。写さずに配ると、材料の単位で書かれた境界が0〜100と比べられ、ルート線が全区間ひとつのバンドへ落ちる。
-  分類の軸の値は初めから得点なので写さない。
-- ramp表示を持たない軸（専用way値配信）の上書きは、地図が塗る値そのものに対する境界なのでそのまま返す。符号付き材料の
+- **上書き（`display_thresholds_override`）は、塗る値の目盛りでそのまま使う。** 難易度の軸は得点（0〜100）、
+  符号付き材料の軸はその材料の値で書かれている。体感ラベルも、上書きをそのまま段に添える。凡例を量で書ける軸では、
+  上書きの得点を、評価と同じ丸めでその得点になる量のうち桁の最も少ないもので書く（逆に辿った量は端数を持ち、読めない）。
+- 上書きの無い難易度の軸は、形から段を導く。分類の軸は異なる得点の中点、真偽の材料だけの折れ線は項の重みの部分和の
+  中点（項が多すぎると導かない）、ほかの折れ線は折れ点の量を折れ線で得点へ写した値。0次条件を持つ軸と符号を畳む軸は
+  形から導かない（条件の当たる道は形と別の得点を取り、符号を畳む量の境界は負の側へ折り返る）。符号付き材料の
   軸で上書きが無ければ、折れ線の節を0対称に開いた境界にする（軸は`|値|`を評価している）。
+- **形から導いた境界のうち、折れ線が写した得点が直前に残した境界の得点を上回らないものは落とす。** 評価が区別できない差に
+  境界を引くと、色だけが変わって評価は同じという見分けを地図が見せる。得点が下がる境界も同じ理由で落ちる。折れ線の最も
+  低い得点は、最初の境界の手前の得点として数える——その得点へ写る境界の下の段には、得点で入る道が無い（凡例に
+  「0点未満」のような届かない段が出る）。上書きは人が刻んだ段なので落とさない。
 - **上書きの有無で経路を分けない**——上書きを設定していない軸だけが無しを返して読む側の既定値へ転落すると、その軸だけ
   ルート確定の前後で段の数も意味も食い違う。境界を宣言していない難易度の軸も、既定の境界（`DEFAULT_DIFFICULTY_BOUNDARIES`）を
   ここで解いて返す——読む側に既定を持たせない。ただし凡例を量で書ける軸（上の`legend`）は、折れ線の節（軸が「どの量から
@@ -368,8 +356,7 @@ DB側の値が変わっても追従しない。軸の中身が主題でないテ
 [ルート設定・ルート結果（frontend）](../frontend/route-settings-and-results.md)が
 得点の隣へ生値を添えるのに使う。単位の無い数字は読み手が意味を取れないため出さない。
 地図の凡例も、得点が単位の定まる生値について狭く増える軸では、段を生値の量と単位で書く
-（`map_paint.py: map_paint`の`legend`。上の「地図が塗るもの」）——rampの段の境界は
-折れ点のx値（＝生値の目盛り）で、単位が定まる軸では生値と同じ量を塗っている（`axis_display.py`）。
+（`map_paint.py: map_paint`の`legend`。上の「地図が塗るもの」）。
 
 ### 材料単位への分解（`material_breakdown`）
 
@@ -380,8 +367,9 @@ DB側の値が変わっても追従しない。軸の中身が主題でないテ
 うえ、`shape.preprocess`が材料単位では効かない）。導出の根拠と、値の運搬・表示の詳細は
 [評価・スコアリング](evaluation-scoring.md)「ルート単位の集約」節を参照。
 
-`GET /api/axis-catalog`が`material_breakdown`として、材料id・表示名・型・単位・
-正規化重みの並び（`axis_raw_value.py: axis_material_breakdown`が分解の結果へ材料カタログの宣言を添える）で配信する（フロントは材料の対応表も並べ替えも持たない）。
+`GET /api/axis-catalog`が`material_breakdown`として、材料id・表示名・型・単位の並び
+（`axis_raw_value.py: axis_material_breakdown`が分解の結果へ材料カタログの宣言を添える）で配信する（フロントは材料の対応表も並べ替えも持たない）。
+並びだけを配り、割合は配らない——材料の重みは較正の値で、この軸カタログは認証なしで読める。
 
 ## 一次属性の語彙（`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`、別系統）
 
@@ -411,24 +399,20 @@ idの文字列ではなく宣言そのもので指す。材料が指す要素に
 
 | エンドポイント | 認可 | 内容 |
 |---|---|---|
-| `GET /api/admin/axis-definitions`・`/{axis_id}` | Basic認証必須 | 一覧・単体取得。レスポンスは`display`（`axis_display_for()`の計算結果）も含む——下書き軸の自己診断（地図表示データがまだ用意されていないか）のため。`weight_share_when_published`（保存した既定の重みで公開したとき、公開軸の重みの合計に占める割合。総合難易度と同じ分母、`difficulty.weight_share`）も含み、作成・更新・非公開化の応答も同じ値を返す |
+| `GET /api/admin/axis-definitions`・`/{axis_id}` | Basic認証必須 | 一覧・単体取得。レスポンスは`weight_share_when_published`（保存した既定の重みで公開したとき、公開軸の重みの合計に占める割合。総合難易度と同じ分母、`difficulty.weight_share`）も含み、作成・更新・非公開化の応答も同じ値を返す |
 | `POST /api/admin/axis-definitions` | Basic認証必須 | 作成 |
-| `PUT /api/admin/axis-definitions/{axis_id}` | Basic認証必須 | 更新（公開済みは原則拒否。ただし表示専用フィールド[`icon_id`/`display_thresholds_override`/`display_band_labels_override`]のみの差分は例外的に許可） |
+| `PUT /api/admin/axis-definitions/{axis_id}` | Basic認証必須 | 更新（公開済みは原則拒否。ただし表示専用フィールドと折れ点だけの差分は公開したまま許可。下の「書き込み時のガード」） |
 | `DELETE /api/admin/axis-definitions/{axis_id}` | Basic認証必須 | 削除 |
 | `POST /api/admin/axis-definitions/{axis_id}/unpublish` | Basic認証必須 | 公開済み軸を下書きへ戻す（`is_published`以外は変更しない） |
-| `POST /api/admin/axis-definitions/preview-display-thresholds` | Basic認証必須 | 編集中の軸で、上書きしたしきい値のうち地図が段にしないものと、地図の各段に当たる入力の段（DBを読まない） |
-| `POST /api/admin/axis-definitions/preview-scores` | Basic認証必須 | 編集中の折れ点で、横軸の値の並び（分布の階級の代表値）と1つ目の項の材料の値の並び（参考点）がそれぞれ何点になるか。参考点は横軸の値も返す。どちらも評価と同じ配列の計算（`domain/axis_definitions.py: BreakpointLinearShape.scores_at`・`first_term_points`）で出し、参考点は「ほかの項の材料が無い道」として評価する——ほかの項に必須の材料があれば評価と同じく欠損（null）になる（DBを読まない） |
-| `GET /api/axis-catalog` | 不要（公開） | `is_published=True`の軸のみ返す。画面が読む項目（名前・説明・重みの既定・チップ・地図が塗るもの・生値の単位と内訳等）だけを返し、`shape`・しきい値の上書きの生の値は返さない（地図の段は`map_paint`が軸の折れ線で写して配る） |
+| `POST /api/admin/axis-definitions/preview-scores` | Basic認証必須 | 編集中の折れ点で、横軸の値の並び（分布の階級の代表値）がそれぞれ何点になるか。評価と同じ配列の計算（`domain/axis_definitions.py: BreakpointLinearShape.scores_at`）で出す（DBを読まない） |
+| `POST /api/admin/axis-definitions/preview-calibration` | Basic認証必須 | 送られた定義（保存前の下書きでよい）で地図が塗る段（`map_paint`。境界の上書きが無ければ形から導いたもの）と、密度の軸か（`averages_density`。真なら折れ点は0から伸びる2点の直線に限る）を返す。定義の検証は保存と同じで、通らなければ保存と同じ誤りの文を返す（DBを読まない） |
+| `POST /api/admin/axis-definitions/preview-way-values` | Basic認証必須 | 編集中の折れ点（`shape`）で、タイル（z・x・y）のフィーチャーごとに地図が塗る値（較正の地図）。鍵と値の意味は、地図が道ごとの材料（`/api/region/way-materials`）を軸の木（`way_value_formula`）で評価した値と同じで、同じ材料・同じ評価から、軸の集合の写しの中で`shape`だけを差し替えて求める（`services/dedicated_way_values.py: draft_axis_way_value_lens`）——保存されている折れ点を渡せば地図が塗る値と同じになり、`AXIS_DEFINITIONS`と配信の材料は変わらない。公開していない軸も求める。条件で変わる材料を読む軸は、条件の欄（走行方位・時刻・想定速度）を受け、要る欄が欠ければ422。無い軸は404、保存の判定（`services/axis_registry_service.py: check_loadable_after_write`）が断る下書きはその文で422。レート制限の上限とDB接続プールのsemaphoreは配信と同じもの（`api/routers/_tile_http.py: region_tile_semaphore`）を使う |
+| `GET /api/admin/road-classes` | Basic認証必須 | 道の区分の全体の読み（上の「道の区分」） |
+| `PUT /api/admin/road-classes` | Basic認証必須 | 道の区分の全体の入れ替え。表の制約・コードの宣言・軸が読む分け方に通らなければ409 |
+| `GET /api/axis-catalog` | 不要（公開） | `is_published=True`の軸のみ返す。画面が読む項目（名前・説明・重みの既定・チップ・地図が塗るもの・生値の単位と内訳等）だけを返し、`shape`・しきい値の上書きの生の値は返さない（地図の段は`map_paint`が配る） |
 
 管理API（`/api/admin/axis-definitions`）のBasic認証はルーターの`dependencies`で1か所に宣言し、
 口ごとには付けない——口を足しても認証の付け忘れが起きない。
-
-`GET /api/axis-catalog`の`tile_runtime_scales`（タイルのプロパティ名→実行時にしか決まらない換算係数）
-だけが、リクエストごとにDBを見る（係数の源の事故の収録年）。どの材料に係数が要るかは材料の宣言
-（`MaterialSpec.tile_property_runtime_scale`）だけが持ち、ルーターは材料名を持たない。印を付けた材料が
-増えると、同じ源なら宣言だけでその材料のタイルの値にも係数が届く。新しい源（収録年数以外）を足すときは
-`domain/material_catalog.py: tile_runtime_scales`にその値の求め方を足す——足すまではその材料の係数が
-配られず、地図はその材料を使う軸をどの道も「データなし」で塗る（最良側の色にはならない）。
 
 ### 軸そのものの不変条件（`domain/axis_definitions.py`のモデル）
 
@@ -501,7 +485,7 @@ idのまま出す。書き込み時のガード・削除の断り（下の「書
 
 - 軸idが材料idと重ならない——軸の評価結果は材料と同じ辞書へ書き戻されるため、重なると同名の材料の値を黙って上書きする。
 - 1つの材料を2つの軸で数えない（`check_material_exclusivity`）。重なりは後に並ぶ軸の誤りとして名指す（作成・更新の書き込みは
-  書いた軸を最後に並べて渡す（`services/axis_registry_service.py: _check_loadable_after_write`）ので、断りの文が書いた軸の側から読める）。
+  書いた軸を最後に並べて渡す（`services/axis_registry_service.py: check_loadable_after_write`）ので、断りの文が書いた軸の側から読める）。
 - 組み合わせが輪にならない（`topological_axis_order`）。
 
 書き込みの断りは例外の文（表示名で名指す）のまま返し、起動時の読み込みの失敗は例外が持つid（重なった2軸・輪の並び）で
@@ -515,9 +499,9 @@ idのまま出す。書き込み時のガード・削除の断り（下の「書
 | 操作 | ガード |
 |---|---|
 | create | axis_idの重複。内部軸の誤公開防止 |
-| update | 公開済みは原則拒否（`check_publish_immutability`）。ただし`candidate`引数を渡すと、表示専用フィールドのみの差分（`is_cosmetic_only_update`）なら公開済みでも許可する。内部軸の誤公開防止は下書きから公開へ切り替える書き込みにだけ当て、既に公開中で組み合わせに使われる軸の表示だけの直しは通す |
+| update | 公開済みは原則拒否（`check_publish_immutability`）。ただし`candidate`引数を渡すと、表示専用フィールドと折れ線の`breakpoints`だけの差分（`is_update_allowed_while_published`）なら公開したまま許可する。材料・項・前処理・重み・形の種類が変わる更新は断る。内部軸の誤公開防止は下書きから公開へ切り替える書き込みにだけ当て、既に公開中で組み合わせに使われる軸の表示・折れ点の直しは通す |
 | delete | 公開済みは拒否 |
-| unpublish | `is_published`のみを変更する専用操作（`update()`は使えない、公開済みは拒否されるため） |
+| unpublish | `is_published`のみを変更する専用操作（`update()`は公開したまま書けない差を断るため、その差を書く前に通す） |
 
 create/update/deleteは、確定する前に**書いた後の全軸**を起動時の読み込みと同じ判定
 （0行と、`check_axis_definition`に通らない軸（`services/axis_registry_service.py: _rejected_axes`）と、下の軸の集合の検査）へ通し、通らなければ確定しない。

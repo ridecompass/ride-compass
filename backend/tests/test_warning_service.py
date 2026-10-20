@@ -9,6 +9,7 @@
 - 地点から区域を引くこと → `test_jma_area_boundaries.py`
 """
 
+import asyncio
 import logging
 
 import pytest
@@ -16,6 +17,7 @@ from shapely.geometry import Point, shape
 
 from app.infrastructure.jma_warning_client import new_area_data_cache, new_warning_cache
 from app.services.warning_service import WarningService
+from tests.fake_http import client_for
 from tests.jma_area_fixtures import (
     CHIYODA_POINT,
     CLASS10_CODE,
@@ -32,7 +34,7 @@ def _holds(area, point) -> bool:
 
 def _service(boundary_path, **kwargs) -> WarningService:
     return WarningService(
-        area_lookup_upstream(boundary_path, **kwargs),
+        client_for(area_lookup_upstream(boundary_path, **kwargs)),
         area_data_cache=new_area_data_cache(),
         warning_cache=new_warning_cache(),
     )
@@ -94,11 +96,11 @@ async def test_get_warnings_merges_across_documents_and_dedupes(boundary_path):
             "warning": {"class10Items": [{"areaCode": CLASS10_CODE, "kinds": [{"code": "14", "status": "発表"}]}]},
         },
         {
-            # 対象コードが濃霧（対象外の種別）のみの電文。結果に含まれないこと。
+            # 対象コードが乾燥（対象外の種別）のみの電文。結果に含まれないこと。
             "reportDatetime": "2026-08-22T20:00:00+09:00",
             "warning": {
                 "class20Items": [
-                    {"areaCode": CLASS20_CODE, "kinds": [{"code": "20", "status": "発表"}]},
+                    {"areaCode": CLASS20_CODE, "kinds": [{"code": "21", "status": "発表"}]},
                 ]
             },
         },
@@ -123,3 +125,14 @@ async def test_get_warnings_returns_empty_when_no_active_cycling_relevant_codes(
     result = await _service(boundary_path, warning_documents=documents).get_warnings(CHIYODA_POINT)
 
     assert result.warnings == []
+
+
+async def test_points_asked_at_once_fetch_each_document_once(boundary_path):
+    """同時に開いた画面の問い合わせは、地域マスタと警報の電文を気象庁へ1回ずつだけ取りに行く。"""
+    upstream = area_lookup_upstream(boundary_path, warning_documents=[])
+    service = WarningService(client_for(upstream), area_data_cache=new_area_data_cache(), warning_cache=new_warning_cache())
+
+    await asyncio.gather(service.get_warnings(CHIYODA_POINT), service.get_warnings(CHIYODA_POINT))
+
+    urls = [str(call.request.url) for call in upstream.calls]
+    assert sorted(urls) == sorted(set(urls)) and len(urls) == 2

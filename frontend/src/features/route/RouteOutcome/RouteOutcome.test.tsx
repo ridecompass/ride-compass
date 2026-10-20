@@ -3,43 +3,41 @@
  *
  * 見るもの:
  * - 候補が無い間の案内（生成中の進み方・生成前）と、候補がある間の条件のずれ・既定の配分で作ったこと・目的地の補正の
- *   知らせ、乗り換えで作った経路と同じ道だったので選んだ候補の知らせと、その行を見える位置へ出すこと
- * - 候補の一覧: 一番上の列の見出し、群（最速・生成した候補・合成）の間の区切りの線と名前の列の印（意味を読み上げの
- *   名前に持つ）、行に出す名前・距離・基準線の所要時間・ほかの候補の基準線との差・総合難易度（無ければ「—」）、
- *   選ばれているタブ（選んだ候補・無ければ先頭）と、タブを押したときに上がる操作
- * - 選んだ候補の中身: 合成（始められるときだけ）・GPXの操作、編集で作ったルートの「元との違い」の元と名前、
- *   道のりのグラフ（横軸・押した区間・動かして選ぶこと）、区間を押している間の地点・到達予想・解除・
- *   区間の総合難易度（全部0なら0であることの文）・風・内訳（チップから開く軸の詳細を含む）、
- *   押していない間の内訳、編集中は編集面だけを出し、同じ道の候補を一覧の名前で渡すこと
+ *   知らせ、乗り換えで作った経路と同じ道だったので選んだ候補の知らせと、選んだカードを一覧の横の見える範囲へ送ること
+ * - 候補の一覧: 群（最速・生成した候補・合成）の間の区切りの線と名前の印（意味を読み上げの名前に持つ）、カードに出す
+ *   名前・距離・基準線の所要時間・ほかの候補の基準線との差・総合難易度（無ければ「—」）と、下の帯の色（地図の総合難易度の
+ *   段の色・無ければ値の無い色）、選ばれているタブ（選んだ候補・無ければ先頭）と、タブを押したときに上がる操作
+ * - 選んだ候補の中身: 編集で作ったルートの「元との違い」の元と名前、
+ *   道のりのグラフ（横軸・押した区間・動かして選ぶこと）、区間を押している間は内訳の代わりにグラフの下へ区間の詳しくが出ることと
+ *   その解除、押していない間の内訳、編集中は編集面だけを出し、同じ道の候補を一覧の名前で渡すこと
  *
  * ここで見ないもの: 一覧の並び・群・名前・基準線と差の決め方 → `features/route/routeTabLabel.ts`。
- * 結果の状態の移り変わり → `features/route/useRouteResults.ts`。子の部品（道のりのグラフ・内訳・寄与の帯・
+ * 結果の状態の移り変わり → `features/route/useRouteResults.ts`。区間の詳しくの中身（総合難易度・寄与・風・到達予想の書き方）→
+ * `features/route/RouteProfile/RouteProfile.test.tsx`。子の部品（道のりのグラフ・内訳・寄与の帯・
  * 元との違い・区間の風・編集面）は本物を描き、ここでは受け渡し（親の値が子のどこに出るか・子の操作で親の何が変わるか）
  * だけを見る。子が値をどう描くか（書式・並び・空のときの案内）は各部品のテストが見る。値を子・文へそのまま渡すだけの所
- * （内訳の生値・材料の値・所要の前提の知らせ・内訳に渡す重み・GPXの使い方の点の上限等）は1行の委譲なので見ない。
+ * （内訳の生値・材料の値・所要の前提の知らせ・内訳に渡す重み等）は1行の委譲なので見ない。候補1本への操作（走る・合成・GPX）
+ * → `features/route/RouteCandidateActions/RouteCandidateActions.tsx`（置き場は見出しの行の`RouteOutcomeHeaderActions.tsx`）。値から段を引く判断 →
+ * `lib/mapDisplay/valueScale.ts: bandAt`。シートが開いたときに合わせる高さ → `components/BottomSheet/BottomSheet.tsx`。
  * 道のりのグラフの塗り（積む軸の並び・色・値の無い区間の高さ）は読み上げに出ないので見ない。
  *
- * 差し替えたもの: 軸カタログの応答（網の層）と、GPXのファイルを落とす関数（`features/route/gpxExport.ts: downloadGpx`）。
+ * 差し替えたもの: 軸カタログの応答（網の層）。
  *
  * 軸は架空のもの（`axis_a`等）を`src/testing/catalogAxes.ts`の雛形から作る。
  */
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { downloadGpx } from "@/features/route/gpxExport";
 import type { EditedRoute, RouteResults } from "@/features/route/useRouteResults";
+import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
+import { bandAt, DIFFICULTY_PAINT, valueBands } from "@/lib/mapDisplay/valueScale";
 import { serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogOf, catalogResponse } from "@/testing/catalogAxes";
 import { makeRouteCandidate, makeRouteSegment } from "@/testing/routeFixtures";
-import type { RouteCandidate, RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
+import type { RouteCandidate, RouteSegmentDetail } from "@/types/route";
 import RouteOutcome from "./RouteOutcome";
-
-vi.mock("@/features/route/gpxExport", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/features/route/gpxExport")>()),
-  downloadGpx: vi.fn(),
-}));
 
 const ENTRIES = [
   catalogEntry({ axis_id: "axis_a", label: "軸A" }),
@@ -53,7 +51,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 function route(id: string, overrides: Partial<RouteCandidate> = {}): RouteCandidate {
@@ -116,17 +114,25 @@ type Splice = ComponentProps<typeof RouteOutcome>["splice"];
 function renderOutcome({
   results = resultsOf(),
   generation = generationOf(),
-  splice = { canStart: false, start: vi.fn(), panel: null },
+  splice = { panel: null },
 }: {
   results?: RouteResults;
   generation?: Generation;
   splice?: Splice;
 } = {}) {
-  render(<RouteOutcome results={results} generation={generation} splice={splice} routeWeights={{}} />);
+  render(
+    <RouteOutcome
+      results={results}
+      generation={generation}
+      splice={splice}
+      routeWeights={{}}
+      profileLayers={{ ids: ["elevation"], toggle: vi.fn() }}
+    />,
+  );
   return { results, splice };
 }
 
-/** 一覧の行を、上から行の文で（列の見出しを含み、区切りの線は「―」）。 */
+/** 一覧のカードを、左からカードの文で（区切りの線は「―」）。 */
 function listTexts(): string[] {
   const list = screen.getByRole("tablist", { name: "ルート結果" });
   return Array.from(list.children).map((child) =>
@@ -134,19 +140,18 @@ function listTexts(): string[] {
   );
 }
 
-const HEADER = "km時間難易度";
-
-function segmentSelection(overrides: Partial<RouteSegmentDetail> = {}): SelectedRouteSegment {
+/** 区間を持つ候補と、地図でその候補の区間を押した選択（地図は区間を自分の地物から組み直すので、候補の区間と同じものではない）。 */
+function segmentPressed(): Pick<RouteResults, "generated" | "selectedRouteSegment"> {
+  const segment: RouteSegmentDetail = makeRouteSegment({
+    distance_km: 1,
+    cumulative_distance_km: 3.25,
+    estimated_arrival_time: "2026-10-04T00:42:00Z",
+    axis_contributions: { axis_a: 12 },
+    wind: { speed_ms: 3, direction_deg: 90, forecast_at: "2026-10-04T09:00" },
+  });
   return {
-    segment: makeRouteSegment({
-      cumulative_distance_km: 3.25,
-      estimated_arrival_time: "2026-10-04T00:42:00Z",
-      axis_contributions: { axis_a: 12 },
-      wind: { speed_ms: 3, direction_deg: 90, forecast_at: null, extended: false },
-      ...overrides,
-    }),
-    latitude: 35,
-    longitude: 139,
+    generated: [{ ...FAST, segments: [segment] }],
+    selectedRouteSegment: { segment: { ...segment }, latitude: 35, longitude: 139 },
   };
 }
 
@@ -188,19 +193,24 @@ describe("候補の上の知らせ", () => {
     },
   );
 
-  it("乗り換えで作った経路と同じ道だったので選んだ候補は、一覧の名前で知らせ、その行を見える位置へ出す", () => {
-    const scrolled = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+  it("乗り換えで作った経路と同じ道だったので選んだ候補は、一覧の名前で知らせ、そのカードを一覧の横の見える範囲へ送る", () => {
+    // 一覧は幅300pxで、選んだ2枚目のカードは右へ100pxはみ出している。
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this.getAttribute("role") === "tablist") return new DOMRect(0, 0, 300, 44);
+      if (this.getAttribute("aria-selected") === "true") return new DOMRect(322, 0, 78, 44);
+      return new DOMRect(0, 0, 0, 0);
+    });
     renderOutcome({ results: resultsOf({ generated: [FAST, SLOW], selectedRouteId: "slow", reusedRouteId: "slow" }) });
 
     expect(screen.getByText("作った組み合わせは「2」と同じ道なので、「2」を選びました")).toBeInTheDocument();
-    expect(scrolled.mock.contexts).toEqual([screen.getByRole("tab", { name: /^2 / })]);
+    expect(screen.getByRole("tablist", { name: "ルート結果" }).scrollLeft).toBe(100);
   });
 });
 
 describe("候補の一覧", () => {
   it("最速の印の無い生成は最速を分けず、番号・距離・時間・難易度の列だけで並べ、区切りの線も群の印も出さない", () => {
     renderOutcome({ results: resultsOf({ generated: [FAST, SLOW] }) });
-    expect(listTexts()).toEqual([HEADER, "1 10.0km 30分 難易度41.6", "2 20.0km +12分 難易度—"]);
+    expect(listTexts()).toEqual(["1 10.0km 30分 難易度41.6", "2 20.0km +12分 難易度—"]);
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 
@@ -213,7 +223,6 @@ describe("候補の一覧", () => {
     };
     renderOutcome({ results: resultsOf({ generated: [SLOW, { ...FAST, is_fastest: true }], edits: [edit] }) });
     expect(listTexts()).toEqual([
-      HEADER,
       " 10.0km 30分 難易度41.6",
       "―",
       "1 20.0km +12分 難易度—",
@@ -233,6 +242,13 @@ describe("候補の一覧", () => {
     expect(screen.getByRole("tab", { name })).toHaveAttribute("aria-selected", "true");
   });
 
+  it("カードの下の帯は、総合難易度を地図と同じ段の色で塗り、算出できなかった候補は値の無い色で塗る", () => {
+    renderOutcome({ results: resultsOf({ generated: [FAST, SLOW] }) });
+    const bandOf = (name: RegExp) => screen.getByRole("tab", { name }).querySelector(":scope > span[aria-hidden]");
+    expect(bandOf(/^1 /)).toHaveStyle({ backgroundColor: bandAt(valueBands(DIFFICULTY_PAINT), 41.6).color });
+    expect(bandOf(/^2 /)).toHaveStyle({ backgroundColor: NO_DATA_LEGEND_BAND.color });
+  });
+
   it("タブを押すと、その候補のidでタブの選択を上げる", async () => {
     const { results } = renderOutcome({ results: resultsOf({ generated: [FAST, SLOW] }) });
     await userEvent.click(screen.getByRole("tab", { name: /^2 / }));
@@ -241,27 +257,6 @@ describe("候補の一覧", () => {
 });
 
 describe("選んだ候補の中身", () => {
-  it("合成は始められるときだけ出し、押すとその候補で編集を始めて押していた区間を外す", async () => {
-    const { results, splice } = renderOutcome({
-      results: resultsOf({ generated: [FAST, SLOW] }),
-      splice: { canStart: true, start: vi.fn(), panel: null },
-    });
-    await userEvent.click(screen.getByRole("button", { name: "ルートを合成" }));
-    expect(splice.start).toHaveBeenCalledWith("fast");
-    expect(results.selectSegment).toHaveBeenCalledWith(null);
-  });
-
-  it("編集を始められない生成では合成を出さない", () => {
-    renderOutcome({ results: resultsOf({ generated: [FAST] }) });
-    expect(screen.queryByRole("button", { name: "ルートを合成" })).not.toBeInTheDocument();
-  });
-
-  it("GPX出力はその候補を書き出す", async () => {
-    renderOutcome({ results: resultsOf({ generated: [FAST, SLOW], selectedRouteId: "slow" }) });
-    await userEvent.click(screen.getByRole("button", { name: "GPX出力" }));
-    expect(downloadGpx).toHaveBeenCalledWith(SLOW);
-  });
-
   it("編集で作ったルートには、元とその一覧での名前で「元との違い」を出し、「元を見る」で元のタブを選ぶ", async () => {
     const edited = route("spliced-1", { distance_km: 12 });
     const { results } = renderOutcome({
@@ -314,58 +309,16 @@ describe("選んだ候補の中身", () => {
     expect(screen.queryByRole("button", { name: "区間の選択を解除" })).not.toBeInTheDocument();
   });
 
-  it("区間を押している間は、内訳の代わりに区間の地点・到達予想（日本時間）・風を出す", () => {
-    renderOutcome({ results: resultsOf({ generated: [FAST], selectedRouteSegment: segmentSelection() }) });
-    expect(screen.getByText("3.3 km地点")).toBeInTheDocument();
-    expect(screen.getByText("到達予想 09:42")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "総合難易度の説明" })).not.toBeInTheDocument();
-    expect(screen.getByText(/^出発時点の風: .+ 3\.0m\/s$/)).toBeInTheDocument();
-  });
-
-  it.each([
-    ["寄与のある", { difficulty: 12.4, axis_contributions: { axis_a: 12.4 } }, "12.4", false],
-    ["寄与が全部0の", { difficulty: 0, axis_contributions: { axis_a: 0 } }, "0.0", true],
-    ["カタログに無い軸にだけ寄与のある", { difficulty: 3, axis_contributions: { retired_axis: 3 } }, "3.0", true],
-    ["算出できなかった", { difficulty: null, axis_contributions: {} }, "—", false],
-  ])("%s区間は総合難易度を出し、全部0のときだけ0であることを文で言う", async (_, segment, shown, allZero) => {
-    renderOutcome({ results: resultsOf({ generated: [FAST], selectedRouteSegment: segmentSelection(segment) }) });
-
-    expect(screen.getByText("総合難易度").parentElement).toHaveTextContent(`総合難易度${shown}/100`);
-    // 0かどうかは軸カタログの軸で数えるので、カタログが届くのを待つ。
-    await waitFor(() => expect(screen.queryByText("どの評価軸も0（易しい）") !== null).toBe(allZero));
-  });
-
-  it("区間の内訳のチップから開く詳細は、候補全体ではなくその区間の軸別難易度を出す", async () => {
-    const candidate = route("fast", { axis_difficulties: { axis_a: 20, axis_b: 30 } });
-    const selected = segmentSelection({
-      axis_contributions: { axis_a: 12, axis_b: 5 },
-      axis_difficulties: { axis_a: 72.4 },
-    });
-    renderOutcome({ results: resultsOf({ generated: [candidate], selectedRouteSegment: selected }) });
-    await userEvent.click(await screen.findByRole("button", { name: "軸Aの詳細を表示" }));
-    expect(screen.getByRole("dialog")).toHaveTextContent("軸Aこの評価軸の難易度 72.4/100");
-    await userEvent.click(screen.getByRole("button", { name: "軸Aの詳細を隠す" }));
-    await userEvent.click(screen.getByRole("button", { name: "軸Bの詳細を表示" }));
-    expect(screen.getByRole("dialog")).toHaveTextContent("軸Bデータなし");
-  });
-
-  it.each([
-    ["到達予想が無い", null],
-    ["到達予想が時刻として読めない", "not-a-time"],
-  ])("%s区間は、到達予想を「不明」と出す", (_, arrival) => {
-    renderOutcome({
-      results: resultsOf({
-        generated: [FAST],
-        selectedRouteSegment: segmentSelection({ estimated_arrival_time: arrival }),
-      }),
-    });
-    expect(screen.getByText("到達予想 不明")).toBeInTheDocument();
+  it("区間を押している間は、候補の内訳の代わりに、グラフの下へその区間の詳しくを出す", () => {
+    renderOutcome({ results: resultsOf(segmentPressed()) });
+    const detail = screen.getByRole("group", { name: "選んだ地点の詳しく" });
+    expect(detail).toHaveTextContent("3.3km地点到達予想 09:42");
+    expect(within(detail).getByRole("button", { name: /^区間の風/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "総合難易度の説明を表示" })).not.toBeInTheDocument();
   });
 
   it("区間の選択の解除を押すと、押していた区間を外す", async () => {
-    const { results } = renderOutcome({
-      results: resultsOf({ generated: [FAST], selectedRouteSegment: segmentSelection() }),
-    });
+    const { results } = renderOutcome({ results: resultsOf(segmentPressed()) });
     await userEvent.click(screen.getByRole("button", { name: "区間の選択を解除" }));
     expect(results.selectSegment).toHaveBeenCalledWith(null);
   });
@@ -390,7 +343,7 @@ describe("選んだ候補の中身", () => {
     };
     renderOutcome({
       results: resultsOf({ generated: [FAST, SLOW] }),
-      splice: { canStart: true, start: vi.fn(), panel },
+      splice: { panel },
     });
     expect(screen.getByRole("region", { name: "区間の乗り換え" })).toBeInTheDocument();
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();

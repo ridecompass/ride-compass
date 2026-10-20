@@ -22,14 +22,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.domain.wind_grid import (
-    WIND_GRID_DETAIL_MAX_POINTS,
-    WIND_GRID_DETAIL_MIN_SPACING_DEG,
-    WIND_GRID_SPACING_DEG,
-)
 from app.domain.route_request import (
     ASSUMED_SPEED_KMH,
-    DEFAULT_DISTANCE_TOLERANCE_KM,
     DEFAULT_MAX_ROUTES,
     MAX_ASSUMED_SPEED_KMH,
     MAX_ROUTE_DISTANCE_KM,
@@ -38,13 +32,12 @@ from app.domain.route_request import (
     MIN_ASSUMED_SPEED_KMH,
     MIN_ROUTES,
 )
-from app.api.routers.axis_admin import AxisDefinitionPayload
 from app.api.routers.debug_admin import LogLevelName
 from app.infrastructure.source_models import SOURCE_RUN_STATUS_LABELS
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME
 from app.main import app
-from app.domain.hard_filters import DEFAULT_HARD_FILTERS, HARD_FILTER_LABELS, HARD_FILTER_NAMES
+from app.domain.hard_filters import HARD_FILTERS
 from app.domain.address_area import ADDRESS_AREA_LEVELS
 from app.domain.geo import COMPASS_LABELS, EARTH_RADIUS_KM
 from app.domain.value_distribution import QUANTILE_TARGETS
@@ -59,6 +52,7 @@ from app.domain.place_search import (
 from cross_language_expectations import EXPECTATIONS
 from schema_shape import schema_shape_mark
 from app.domain.weather_elements import (
+    MSM_FORECAST_HOURS,
     WEATHER_ELEMENTS,
     WEATHER_LAYER_GROUPS,
     WeatherElement,
@@ -68,6 +62,7 @@ from app.domain.weather_elements import (
 from app.domain.cycling_speed import SEGMENT_SPEED_CONDITIONS
 from app.domain.difficulty import DIFFICULTY_DECIMALS, OVERALL_DIFFICULTY_WORDING
 from app.domain.map_paint import DEFAULT_DIFFICULTY_BOUNDARIES
+from app.domain.road_classes import NO_DATA_VALUE
 from app.domain.map_display import (
     ALWAYS_SHOWN_ATTRIBUTIONS,
     MODEL_VALUE_DISCLAIMER,
@@ -155,7 +150,7 @@ from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from app.domain.region import MAX_MERCATOR_LATITUDE, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
 from app.domain.leg_costs import MAX_TIME_BINS, MISSING_TRAVEL_DATA_WORDING, TIME_BIN_HOURS
 from app.config import Settings
-from app.domain.route_preference import ENABLED_AXIS_WEIGHT, MAX_AXIS_SHARE
+from app.domain.route_preference import ENABLED_AXIS_WEIGHT
 from app.domain.tuning import client_tuning_values
 from app.domain.weather import PRECIPITATION_MIN_MM
 from app.infrastructure.msm_client import DEFAULT_UPDATE_INTERVAL_SECONDS as MSM_UPDATE_INTERVAL_SECONDS
@@ -168,10 +163,8 @@ OUTPUT_PATH = GENERATED_DIR / "openapi.json"
 REGION_TILE_CONFIG_PATH = GENERATED_DIR / "region-tile-config.json"
 GEO_CONFIG_PATH = GENERATED_DIR / "geo-config.json"
 PRIMARY_ATTRIBUTES_PATH = GENERATED_DIR / "primaryAttributes.ts"
-WIND_GRID_CONFIG_PATH = GENERATED_DIR / "wind-grid-config.json"
 ROUTE_GENERATE_CONFIG_PATH = GENERATED_DIR / "route-generate-config.json"
 REFRESH_INTERVALS_PATH = GENERATED_DIR / "refresh-intervals.json"
-AXIS_PAYLOAD_CONFIG_PATH = GENERATED_DIR / "axis-payload-config.json"
 MATERIAL_CATALOG_PATH = GENERATED_DIR / "material-catalog.json"
 LANDCOVER_CLASSES_PATH = GENERATED_DIR / "landcover-classes.json"
 PALETTE_PATH = GENERATED_DIR / "palette.json"
@@ -400,6 +393,8 @@ def main() -> None:
                 "unknownOpacity": ROAD_UNKNOWN_OPACITY,
                 "underlayOpacity": ROAD_UNDERLAY_OPACITY,
                 "inspectedWidthPx": ROAD_INSPECTED_WIDTH_PX,
+                # 地図の線の層の値で「データなし」。
+                "noDataValue": NO_DATA_VALUE,
             },
             "point": {
                 "radiusPx": POINT_RADIUS_PX,
@@ -425,6 +420,8 @@ def main() -> None:
                 "floodLineWidthByZoom": [list(pair) for pair in FLOOD_LINE_WIDTH_BY_ZOOM],
                 "rainbandOutlineWidthPx": RAINBAND_OUTLINE_WIDTH_PX,
                 "rainbandOutlineCasingWidthPx": RAINBAND_OUTLINE_CASING_WIDTH_PX,
+                # MSMの予報を読む先の長さ（時間）。出発時刻を選べる先の長さがこれを読む。
+                "msmForecastHours": MSM_FORECAST_HOURS,
             },
             "valueScale": {
                 "difficultyBoundaries": list(DEFAULT_DIFFICULTY_BOUNDARIES),
@@ -529,10 +526,6 @@ def main() -> None:
                 # idから組み立て直さない——組み立て方の正本は`MaterialSpec.full_label`。
                 "label": spec.full_label(),
                 "name": spec.label,
-                "description": spec.description,
-                "dtype": spec.dtype,
-                "unit": spec.unit,
-                "reference_points": [{"label": p.label, "value": p.value} for p in spec.reference_points],
                 "value_labels": dict(spec.value_labels) if spec.value_labels else None,
                 # 路面タイルがこの材料を載せる属性の名前（載せない材料はnull）。
                 "tile_property": spec.tile_property,
@@ -567,28 +560,6 @@ def main() -> None:
             for attr in PRIMARY_ATTRIBUTES
         ],
     )
-    # 風・降水延長予報の粗い格子の間隔と、詳細格子の問い合わせが受け付ける範囲（domain/wind_grid.py）。
-    # APIレスポンスは間隔を含まないため、画面はこのJSONから読む以外に値を知る手段がない。
-    _write_json(
-        WIND_GRID_CONFIG_PATH,
-        {
-            "spacing_deg": WIND_GRID_SPACING_DEG,
-            "detail_min_spacing_deg": WIND_GRID_DETAIL_MIN_SPACING_DEG,
-            "detail_max_points": WIND_GRID_DETAIL_MAX_POINTS,
-        },
-    )
-    # 軸スタジオが送る軸の既定値。画面は編集欄を持たない項目を新規の軸で
-    # この既定値のまま送る（写しを持つと、backendの既定を変えたとき新規の軸だけ古い値で作られる）。
-    _write_json(
-        AXIS_PAYLOAD_CONFIG_PATH,
-        {
-            "defaults": {
-                name: field.get_default(call_default_factory=True)
-                for name, field in AxisDefinitionPayload.model_fields.items()
-                if not field.is_required()
-            },
-        },
-    )
     # ルート生成の上限・既定値。frontendが独立にハードコードすると、backendだけ変えた
     # ときに入力の上限と受理される値がずれる。
     _write_json(
@@ -599,13 +570,11 @@ def main() -> None:
             "max_routes": MAX_ROUTES,
             "default_max_routes": DEFAULT_MAX_ROUTES,
             "default_assumed_speed_kmh": ASSUMED_SPEED_KMH,
-            "default_distance_tolerance_km": DEFAULT_DISTANCE_TOLERANCE_KM,
             # 画面は経由地をこの数まで置け、超える点は置かない。
             "max_waypoints": MAX_WAYPOINTS,
             # 住所の検索の欄が打ちかけで引き始める長さと、打つのが止まってから引くまでの間。口の回数制限はこの間から導く。
             "place_prediction_min_length": PLACE_PREDICTION_MIN_LENGTH,
             "place_prediction_delay_seconds": PLACE_PREDICTION_DELAY_SECONDS,
-            "max_axis_share": MAX_AXIS_SHARE,
             "enabled_axis_weight": ENABLED_AXIS_WEIGHT,
             "min_assumed_speed_kmh": MIN_ASSUMED_SPEED_KMH,
             "max_assumed_speed_kmh": MAX_ASSUMED_SPEED_KMH,
@@ -628,14 +597,12 @@ def main() -> None:
             # フロントが使う較正値の**既定**（`domain/tuning.py`の宣言そのまま）。フロントはidの型にだけ使い、
             # 値は読まない——効いている値はGET /api/axis-catalogが返し、取れるまではその値を使う機能を出さない。
             "client_tuning": client_tuning_values(),
-            # 0次ハードフィルタのキー一覧・画面に出す名前・既定値。backendは`_check_filter_keys`で
-            # **キー集合の完全一致**を要求するため、frontendが手書きで持っていると
-            # キーを1つ足した瞬間にすべてのルート生成が422になる。名前も同じ行で配る——
-            # 別に持つと、足したフィルタの名前が無く画面に内部名が出る。
-            "hard_filters": {
-                "filters": [{"key": name, "label": HARD_FILTER_LABELS[name]} for name in sorted(HARD_FILTER_NAMES)],
-                "defaults": sorted(DEFAULT_HARD_FILTERS),
-            },
+            # 0次ハードフィルタ。除外タブにいつも「通らない」の行として見せる（要求では受けない）。選べる行と段は
+            # 管理DBの道の区分から、GET /api/axis-catalogが配る。
+            "hard_filters": [
+                {"key": name, "label": spec.label, "description": spec.description}
+                for name, spec in HARD_FILTERS.items()
+            ],
         },
     )
 

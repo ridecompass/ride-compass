@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * `lib/mapDisplay/valueScale.ts`——地図が軸を塗る段の並び（下限・鍵・範囲の文字・体感ラベル・色）と、値の種類ごとの配色。
- * 入口は`bandColorsFor`・`valueBands`・`bandCondition`で、確かめるのは戻り値（段の式はMapLibreと同じ評価器で値へ当てる）。配色の中継点は
+ * 入口は`bandColorsFor`・`valueBands`・`bandCondition`・`bandStep`・`bandAt`で、確かめるのは戻り値（段の式はMapLibreと同じ評価器で値へ当てる）。配色の中継点は
  * 生成物の`palette.json`から引く（色の値はbackendの宣言が持ち、ここは並べ方を見る）。
  *
  * ここで見ないもの:
@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import { evaluateExpression } from "@/testing/mapExpressions";
 import palette from "@/types/generated/palette.json";
 
-import { bandColorsFor, bandCondition, valueBands } from "./valueScale";
+import { bandAt, bandColorsFor, bandCondition, bandStep, valueBands } from "./valueScale";
 
 const {
   evaluation_good: GOOD,
@@ -103,12 +103,44 @@ describe("bandCondition", () => {
     [30, 1],
     [69.99, 1],
     [70, 2],
-  ])("値%sはちょうど1つの段%sに入り、境界ちょうどの値は上の段に入る", (value, band) => {
-    expect(bandsOf(value)).toEqual([band]);
-  });
+  ])(
+    "値%sはちょうど1つの段%sに入り、境界ちょうどの値は上の段に入る。数の値から引く段（bandAt）も同じ段",
+    (value, band) => {
+      expect(bandsOf(value)).toEqual([band]);
+      expect(bandAt(bands, value)).toBe(bands[band]);
+    },
+  );
 
   it("段が1つなら、どの値もその段に入る", () => {
     const single = valueBands({ kind: "difficulty", boundaries: [], legend: { boundaries: [], unit: null } });
     expect(evaluateExpression(bandCondition(single, 0, ["get", "v"]), { v: -1000 })).toBe(true);
+  });
+});
+
+describe("bandStep", () => {
+  const bandOf = (bands: ReturnType<typeof valueBands>, value: number) =>
+    evaluateExpression(
+      bandStep(bands, ["get", "v"], (band) => band.key),
+      { v: value },
+    );
+
+  const ascending = [30, 70];
+  // 後ろの段に覆われる段（下限が後ろの段以上）は選ばれない。
+  const unordered = [70, 30, 30, 50];
+  it.each([
+    ...[29.99, 30, 69.99, 70].map((value) => ["昇順", ascending, value] as const),
+    ...[29.99, 30, 49.99, 50, 70].map((value) => ["昇順でない", unordered, value] as const),
+  ])("境界が%s（%j）の値%sに、数の値から引く段（bandAt）と同じ段を選ぶ", (_, boundaries, value) => {
+    const bands = valueBands({
+      kind: "difficulty",
+      boundaries: [...boundaries],
+      legend: { boundaries: [...boundaries], unit: null },
+    });
+    expect(bandOf(bands, value)).toBe(bandAt(bands, value).key);
+  });
+
+  it("段が1つなら、どの値もその段になる", () => {
+    const single = valueBands({ kind: "difficulty", boundaries: [], legend: { boundaries: [], unit: null } });
+    expect(bandOf(single, -1000)).toBe(single[0].key);
   });
 });

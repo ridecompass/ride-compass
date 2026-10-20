@@ -7,7 +7,7 @@
 #   レーンで動くので、本はその issue のほかのジョブ（担当の Pull Request の CI 等）と枠を分け合い、レーンより多い本は空くまで待つ
 #   （レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
 # - 2段で回る:
-#   1. shard（8本）: 変異と、テストの当たる関数ごとの基準（変異を入れずに同じテストを2回）を1つの無作為の並び（種を固定）に
+#   1. shard（15本）: 変異と、テストの当たる関数ごとの基準（変異を入れずに同じテストを2回）を1つの無作為の並び（種を固定）に
 #      して、行を順に配り、1本ずつ別のランナーで回す。1本の中ではテストDBを分けた4つの担い手で回す（CI の backend と同じ
 #      arm64・4コアのランナー）。回し終えたら、その本の生き残りのうち読み込みのときに呼ばれうる関数の変異（importtime.py）に、
 #      同じランナーでテスト全体を当て直す（読み込みのときに呼ばれうるかは関数ごとに決まるので、ほかの本の結果は要らない。
@@ -17,9 +17,10 @@
 #      候補は消す一覧ではなく、1件ずつ壊れるものを書いてから決める（test-review/SKILL.md）。数の表は実行の要約に出す。
 # - 測る版の backend/scripts/mutation/ に一覧（only.txt・recheck.txt・baseline.txt）があれば、1 はその一覧だけを回し（当て直しも
 #   しない）、2 は走らない（消したあとの確かめ等。run-checks/SKILL.md「変異テストでテストの効きを測る」）。
-# - 持ち時間: 2026-10-09 の同じ形の測りで、変異は1本あたり55〜59分（基準は別に回して9分）、当て直しは1本あたり約26分だった。
-#   変異の生成と記録は1本あたり約9分（2026-10-10）。担い手は始めて stop_after 分で新しい変異を取らずに抜け、当て直しは
-#   30分で抜けて、持ち時間（180分）の前に結果を残す。
+# - 持ち時間: 2026-10-18 の測り（15本、実行 39099279906）で、1本あたり変異と基準（約1,710件）が61〜87分、当て直し（26〜42件）が
+#   21〜72分、変異の生成が約4分で、1本は1時間28分〜2時間38分。本はレーンに3本ずつ載るので3巡して、実時間は約7時間25分
+#   （review は1分未満）。担い手は始めて stop_after 分で新しい変異を取らずに抜け、当て直しは90分で抜けて、持ち時間（240分）の
+#   前に結果を残す（この測りではどちらにも当たらずに回し切った）。
 # - 成果物: 1 は mutation-<番号>・recheck-<番号>（14日）、2 は mutation-review（次の見直しが比べるので90日）。
 name: Mutation
 
@@ -38,7 +39,7 @@ on:
         required: true
         default: "0"
       stop_after:
-        description: 1本の担い手が新しい変異を取るのをやめるまでの分（このあと当て直しに最長30分）
+        description: 1本の担い手が新しい変異を取るのをやめるまでの分（このあと当て直しに最長90分）
         required: true
         default: "120"
 
@@ -47,10 +48,10 @@ permissions:
 
 concurrency:
   group: mutation
-  cancel-in-progress: false
+  queue: max
 
 env:
-  SHARDS: 8
+  SHARDS: 15
   WORKERS: 4
   MUT_OUT: /tmp/mutation
   MUT_DB_PREFIX: mut_w
@@ -61,7 +62,7 @@ jobs:
       group: orch/tasks-${{ inputs.issue }}-lane-${{ matrix.lane }}
       queue: max
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 180
+    timeout-minutes: 240
     strategy:
       fail-fast: false
       matrix:
@@ -75,6 +76,13 @@ jobs:
           - { shard: 5, lane: 1 }
           - { shard: 6, lane: 2 }
           - { shard: 7, lane: 3 }
+          - { shard: 8, lane: 4 }
+          - { shard: 9, lane: 5 }
+          - { shard: 10, lane: 1 }
+          - { shard: 11, lane: 2 }
+          - { shard: 12, lane: 3 }
+          - { shard: 13, lane: 4 }
+          - { shard: 14, lane: 5 }
     defaults:
       run:
         working-directory: backend
@@ -125,7 +133,7 @@ jobs:
           recheck=$(python3 -c 'import sys; sys.path.insert(0, "scripts/mutation"); from _shared import RECHECK_LIST; print(RECHECK_LIST)')
           python scripts/mutation/importtime.py "$MUT_OUT/results.jsonl" "$recheck"
           cd mutants
-          MUT_OUT="$RECHECK_OUT" MUT_STOP_AFTER=1800 python ../scripts/mutation/runner.py "$recheck" "$RECHECK_OUT/results.jsonl" "$WORKERS"
+          MUT_OUT="$RECHECK_OUT" MUT_STOP_AFTER=5400 python ../scripts/mutation/runner.py "$recheck" "$RECHECK_OUT/results.jsonl" "$WORKERS"
       - if: always() && steps.mode.outputs.full == 'true'
         uses: actions/upload-artifact@v4
         with:
@@ -169,11 +177,11 @@ jobs:
       - uses: ./.github/actions/python
       - uses: actions/download-artifact@v4
         with:
-          pattern: mutation-?
+          pattern: mutation-*
           path: /tmp/art
       - uses: actions/download-artifact@v4
         with:
-          pattern: recheck-?
+          pattern: recheck-*
           path: /tmp/rart
       - name: 前の実行の見直しを取る
         env:

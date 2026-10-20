@@ -1,4 +1,4 @@
-"""`domain/evaluation.py`——静的スコア行列を組む間の軸定義の読み方と、葉の材料の列の分け方。
+"""`domain/evaluation.py`——静的スコア行列を組む間の軸定義の読み方と、葉の材料の列の分け方と、観測として受ける材料。
 
 ここで見ないもの:
 - どの軸を密度の軸とするか → `test_axis_definitions.py`
@@ -8,6 +8,7 @@
 from collections.abc import Iterator, Mapping
 
 import numpy as np
+import pytest
 
 from app.domain.attributes import EdgeMaterialArrays
 from app.domain.axis_definitions import (
@@ -40,9 +41,8 @@ def no_materials(n: int) -> EdgeMaterialArrays:
     return EdgeMaterialArrays(
         numeric_ids=(), numeric_values=np.empty((n, 0)),
         categorical_ids=(), categorical_columns=(),
-        hard_filter_ids=(), hard_filter_flags=np.empty((n, 0), dtype=bool),
         distance_m=np.full(n, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
-        elevation_present=np.zeros(n, dtype=bool),
+        start_elevation_m=nan, end_elevation_m=nan,
         elevation_gain_m=nan, elevation_loss_m=nan,
     )
 
@@ -122,3 +122,8 @@ def test_internal_axes_no_published_axis_reads_stay_out_of_the_matrix():
     assert matrix.axis_ids == ["shown"]
     assert matrix.raw_axis_ids == ["shown"]
     assert not {"intersection_count_per_km", ACCIDENT_COUNT_PER_KM_YEAR} & set(matrix.material_ids)
+
+
+def test_a_material_not_sourced_from_observation_is_refused_as_an_observed_column():
+    with pytest.raises(ValueError, match=GRADIENT_PERCENT):
+        build_static_edge_score_matrix(no_materials(2), {GRADIENT_PERCENT: np.zeros(2)})

@@ -18,30 +18,11 @@ import {
   type RouteStyleMode,
 } from "@/lib/mapDisplay/routeStyleModes";
 import type { LensOption } from "@/features/map/LensControl/LensControl";
-import type { CatalogAxis } from "@/lib/catalogAxis";
-import { cardinalLabel } from "@/lib/cardinalLabel";
+import { evaluationConditions, type CatalogAxis } from "@/lib/catalogAxis";
 
 /** 全道路を塗っている軸。ルート確定後は、周囲も塗り続ける設定の間だけ塗る。 */
 export function paintedAxisId(lens: LensId, hasDetail: boolean, keepAfterRoute: boolean): LensId | null {
   return !hasDetail || keepAfterRoute ? lens : null;
-}
-
-/** 周りの道の色が拠る走る条件の文（例:「北へ走る・時速20km・19:30出発」）。塗っている軸が使う条件だけを、軸カタログの
- * 宣言から並べる。塗っている軸が条件を使わなければnull——画面に出ていない条件で、同じ道の色が変わって見えないように出す。 */
-export function lensConditionsLabel(
-  paintedAxis: LensId | null,
-  dedicatedAxes: readonly DedicatedWayValueAxis[],
-  ride: { bearingDeg: number; speedKmh: number },
-  departureLabel: string,
-): string | null {
-  const axis = dedicatedAxes.find((candidate) => candidate.axisId === paintedAxis);
-  if (axis === undefined) return null;
-  const parts = [
-    axis.wayValueConditions.includes("bearing_deg") ? `${cardinalLabel(ride.bearingDeg)}へ走る` : null,
-    axis.wayValueConditions.includes("speed_kmh") ? `時速${ride.speedKmh}km` : null,
-    axis.wayValueConditions.includes("at") ? `${departureLabel}出発` : null,
-  ].filter((part) => part !== null);
-  return parts.length > 0 ? parts.join("・") : null;
 }
 
 /** 時間帯の印ごとの、周りの道の色の前提。周りの道は通過する時刻を持たないので、時間帯で効く軸は前提を書き添える。 */
@@ -51,22 +32,22 @@ const TIME_SCOPE_PREMISE: Record<CatalogAxis["timeScope"], string | null> = {
     "周りの道は通過する時刻を置かずに塗っています。この評価は夜に通る区間でだけ効き、ルートを作ると区間ごとに決まります。",
 };
 
-/** 凡例に書く、周りの道の色の前提（走る条件・時間帯）。どの入力に依るかは軸カタログの宣言（走る条件の文・時間帯の印）
- * から決め、軸idで分けない。前提の無い軸は空。 */
-export function lensPremises(
-  paintedAxis: LensId | null,
-  axes: readonly CatalogAxis[],
-  conditions: string | null,
-): string[] {
-  const timeScope = axes.find((axis) => axis.axisId === paintedAxis)?.timeScope ?? "always";
-  return [
-    conditions !== null ? `周りの道は「${conditions}」の条件で塗っています。` : null,
-    TIME_SCOPE_PREMISE[timeScope],
-  ].filter((premise) => premise !== null);
+/** 周りの道を塗れない軸の前提。凡例を出さない（地図のどこにも色が無い）ので、凡例の代わりにこの文で知らせる。 */
+const NO_SURROUNDING_PAINT_PREMISE =
+  "この評価では周りの道を塗れません。ルートを作ると、ルートの線をこの評価で塗ります。";
+
+/** 凡例に書く、周りの道の色の前提（周りの道を塗れるか・時間帯）。どの入力に依るかは軸カタログの印から決め、軸idで分けない。
+ * 前提の無い軸は空。走る条件（向き・速さ・出発時刻）は文にせず、地図の右の列のボタンに印を付けて見せる。 */
+export function lensPremises(paintedAxis: LensId | null, axes: readonly CatalogAxis[]): string[] {
+  const axis = axes.find((candidate) => candidate.axisId === paintedAxis);
+  if (axis === undefined) return [];
+  if (!axis.paintsSurroundingRoads) return [NO_SURROUNDING_PAINT_PREMISE];
+  const premise = TIME_SCOPE_PREMISE[axis.timeScope];
+  return premise === null ? [] : [premise];
 }
 
 /** レンズの凡例。地図がいま塗っているものの凡例だけを出す——塗っていない間に出すと、
- * 地図のどこにも無い色見本の表になる。ルート確定後はルート線のモードの凡例。密度の軸はルートの前に線を塗らない。 */
+ * 地図のどこにも無い色見本の表になる。ルート確定後はルート線のモードの凡例。 */
 export function lensLegend(
   lens: LensId,
   hasDetail: boolean,
@@ -77,7 +58,7 @@ export function lensLegend(
 ): readonly LegendEntry[] {
   if (hasDetail) return catalog.routeStyleModes.find((mode) => mode.id === lens)?.legend ?? [];
   const axis = catalog.dedicatedAxes.find((candidate) => candidate.axisId === lens);
-  return axis !== undefined && axis.densityTerms === null ? dedicatedWayValueLegend(axis) : [];
+  return axis !== undefined && axis.paintsSurroundingRoads ? dedicatedWayValueLegend(axis) : [];
 }
 
 /** レンズの選択肢（公開軸、カタログの並び順）。「なし」「総合難易度」は`LensControl`が足す。
@@ -94,7 +75,10 @@ export function lensOptions(
     label: axis.label,
     color: axisColors[axis.axisId] ?? LENS_NEUTRAL_COLOR,
     unused: (weights[axis.axisId] ?? 0) <= 0,
-    routeOnly: false,
+    description: axis.description,
+    iconId: axis.iconId,
+    conditions: evaluationConditions(axis),
+    paintsSurroundingRoads: axis.paintsSurroundingRoads,
   }));
 }
 

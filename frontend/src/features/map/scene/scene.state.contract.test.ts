@@ -10,11 +10,12 @@ import { describe, expect, it } from "vitest";
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
 import { evaluateExpression, matchesFilter } from "@/testing/mapExpressions";
 import { createRecordingMap, type StyleLayer } from "@/testing/mapTrace/recordingMap";
-import { catalogEntry, dedicatedEntry } from "@/testing/catalogAxes";
+import { catalogEntry, dedicatedEntry, MATERIAL_VALUE_FORMULA, roadClass, roadMapLayer } from "@/testing/catalogAxes";
 import { dedicatedWayValueAxesFromCatalogAxes } from "@/lib/mapDisplay/axisLayers";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
-import { POINT_LAYERS, POINT_TILE_SOURCES, pointAxisKey } from "@/features/map/scene/groups/points";
-import { ROAD_LINE_SOURCE_ID, ROAD_TRACKS } from "@/features/map/scene/groups/roadLines";
+import { POINT_TILE_SOURCES, pointAxisKey } from "@/features/map/scene/groups/points";
+import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
+import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 import { pointLegendAxes, roadLegendAxes } from "@/features/map/scene/legends";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { valueBands } from "@/lib/mapDisplay/valueScale";
@@ -25,11 +26,20 @@ import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 
 const DEDICATED_AXES = dedicatedWayValueAxesFromCatalogAxes([
-  catalogEntry({ axis_id: "ded1" }),
-  catalogEntry({ axis_id: "ded2" }),
+  catalogEntry({ axis_id: "ded1", way_value_formula: MATERIAL_VALUE_FORMULA }),
+  catalogEntry({ axis_id: "ded2", way_value_formula: MATERIAL_VALUE_FORMULA }),
+  catalogEntry({ axis_id: "unformulated" }),
 ]);
 
-const CATALOG = { dedicatedAxes: DEDICATED_AXES };
+// 道の線の層はテストが組む（本番の区分は管理DBが持つ）。絞り込みの式も検証の対象にするため、どの層も区分の条件を持つ。
+const ROAD_LAYERS = ["surface", "highway"].map((id) =>
+  roadMapLayer(id, {
+    has_no_data: true,
+    classes: [roadClass("first")],
+  }),
+);
+
+const CATALOG = { dedicatedAxes: DEDICATED_AXES, roadLayers: ROAD_LAYERS };
 
 /** 表示ONのレイヤーだけを持つ状態。 */
 function shown(layerVisibility: Record<string, boolean>, look: SceneStateOverrides["look"] = {}) {
@@ -79,21 +89,12 @@ describe("状態を地図へ伝えた結果", () => {
 
       rebuild(map, shown({ surface: true, highway: true }));
 
-      const offsets = ROAD_TRACKS.map((track) => handle.layer(roadLayerId(track.attr_id))?.paint["line-offset"]).filter(
+      const offsets = ROAD_LAYERS.map((layer) => handle.layer(roadLayerId(layer.id))?.paint["line-offset"]).filter(
         (value) => value !== undefined,
       );
-      expect(new Set(offsets).size).toBeGreaterThan(1);
-      expect(offsets).toContain(0);
-    });
-
-    it("凡例で隠した分類は、その線から落ちる", () => {
-      const { map, handle } = createRecordingMap();
-
-      // 行の鍵は源泉の宣言から取る（書き写すと、行の鍵を変えたときにこの検査だけが黙って何も隠さなくなる）。
-      const firstRow = ROAD_TRACKS.find((track) => track.attr_id === "surface")!.display_axes[0].categories[0].key;
-      rebuild(map, shown({ surface: true }, { hiddenLegendKeys: { surface: [firstRow] } }));
-
-      expect(handle.layer(roadLayerId("surface"))?.filter).toBeDefined();
+      expect(offsets).toHaveLength(2);
+      expect(offsets[0]).not.toBe(0);
+      expect(offsets[0]).toBe(-Number(offsets[1]));
     });
   });
 
@@ -110,18 +111,6 @@ describe("状態を地図へ伝えた結果", () => {
     });
   });
   describe("基礎地図の店・施設の印", () => {
-    // OpenMapTilesのスキーマの値（`class`は束ねた種類、`subclass`は元のOSMのタグの値）と、それを出す立ち寄り先の群。
-    const STOP_PLACE_KINDS = [
-      ["飲食店", "eat_drink", { class: "restaurant", subclass: "restaurant" }],
-      ["カフェ", "eat_drink", { class: "cafe", subclass: "cafe" }],
-      ["酒場", "eat_drink", { class: "beer", subclass: "pub" }],
-      ["自転車の店", "bicycle", { class: "bicycle", subclass: "bicycle" }],
-      ["公園", "scenic", { class: "park", subclass: "park" }],
-      ["展望地", "scenic", { class: "attraction", subclass: "viewpoint" }],
-      ["宿", "lodging", { class: "lodging", subclass: "hotel" }],
-      ["キャンプ場", "lodging", { class: "campsite", subclass: "camp_site" }],
-      ["礼拝の場所", "temple_shrine", { class: "place_of_worship", subclass: "place_of_worship" }],
-    ] as const;
     const CONVENIENCE = { class: "shop", subclass: "convenience" };
     const RANKS = [3, 8, 25];
 
@@ -141,38 +130,12 @@ describe("状態を地図へ伝えた結果", () => {
     const stopPlace = POINT_LAYERS.find((layer) => layer.attr_id === "stop_place")!;
     const stopPlaceAxisKey = pointAxisKey(stopPlace, stopPlace.display_axes[0]);
 
-    it("立ち寄り先・補給休憩を出していないときは、基礎地図の店・施設を全部描く", () => {
+    it("立ち寄り先を出しても、補給休憩のコンビニは基礎地図に描く", () => {
       const { map } = drawBasemap();
 
-      rebuild(map, shown({}));
+      rebuild(map, shown({ stop_place: true }));
 
-      for (const [, , kind] of STOP_PLACE_KINDS) expect(drawsAnyRank(map, kind)).toBe(true);
       expect(drawsAnyRank(map, CONVENIENCE)).toBe(true);
-    });
-
-    it.each(STOP_PLACE_KINDS)("立ち寄り先を出している間は、%s を基礎地図に描かない", (_, _group, kind) => {
-      const { map } = drawBasemap();
-
-      rebuild(map, shown({ stop_place: true }));
-
-      expect(drawsAnyRank(map, kind)).toBe(false);
-    });
-
-    it("立ち寄り先を出しても、病院・銀行・郵便局・学校・ほかの店・駅と、補給休憩のコンビニは基礎地図に描く", () => {
-      const { map } = drawBasemap();
-
-      rebuild(map, shown({ stop_place: true }));
-
-      for (const kind of [
-        { class: "hospital", subclass: "hospital" },
-        { class: "bank", subclass: "bank" },
-        { class: "post", subclass: "post_office" },
-        { class: "school", subclass: "school" },
-        { class: "shop", subclass: "bakery" },
-        { class: "rail", subclass: "station" },
-        CONVENIENCE,
-      ])
-        expect(drawsAnyRank(map, kind)).toBe(true);
     });
 
     it("凡例で隠した群の種類は、立ち寄り先を出していても基礎地図に描く", () => {
@@ -197,32 +160,55 @@ describe("状態を地図へ伝えた結果", () => {
   });
 
   describe("評価軸の線", () => {
-    const delivered = (values: Record<string, Record<string, number>>) =>
+    const fetched = (byAxis: Record<string, Record<string, Record<string, number>>>) =>
       new Map(
-        Object.entries(values).map(([axisId, byWay]) => [
+        Object.entries(byAxis).map(([axisId, byWay]) => [
           axisId,
-          { values: new Map(Object.entries(byWay)), loading: false },
+          { materials: new Map(Object.entries(byWay)), loading: false },
         ]),
       );
+    const MATERIALS = fetched({ ded1: { w1: { value: 3 } }, ded2: { w1: { value: 7 } } });
 
-    it("配られた値は、道路のソースの地物へ載り、塗っている軸の線が見える", () => {
+    it("取った材料は道路のソースの地物へ軸ごとに載り、塗っている軸の線が見える", () => {
       const { map, handle } = createRecordingMap();
-      rebuild(
-        map,
-        shown(
-          { surface: true },
-          { paintedAxisId: "ded1", dedicatedWayValues: delivered({ ded1: { w1: 3 }, ded2: { w1: 7 } }) },
-        ),
-      );
+      rebuild(map, shown({ surface: true }, { paintedAxisId: "ded1", wayMaterials: MATERIALS }));
 
-      expect(handle.featureState(ROAD_LINE_SOURCE_ID, "w1")).toEqual({ ded1Value: 3, ded2Value: 7 });
+      expect(handle.featureState(ROAD_LINE_SOURCE_ID, "w1")).toEqual({ "ded1:value": 3, "ded2:value": 7 });
       expect(handle.layer(roadLayerId("ded1"))?.visibility).toBe("visible");
       expect(handle.layer(roadLayerId("ded2"))?.visibility).toBe("none");
     });
 
+    it("走る条件だけを変えると、地図全体の状態だけを置き直し、材料もレイヤーも当て直さない", () => {
+      const { map, handle } = createRecordingMap();
+      const look = { paintedAxisId: "ded1", wayMaterials: MATERIALS };
+      rebuild(map, shown({ surface: true }, { ...look, wayConditions: { bearing_deg: 0, speed_kmh: 20 } }));
+      const callsBefore = handle.trace.length;
+
+      applyScene(
+        map as never,
+        buildMapScene(
+          sceneInputsFrom(shown({ surface: true }, { ...look, wayConditions: { bearing_deg: 135.5, speed_kmh: 20 } })),
+        ),
+      );
+
+      expect(handle.trace.slice(callsBefore)).toEqual([
+        { call: "setGlobalStateProperty", args: ["bearing_deg", 135.5] },
+      ]);
+    });
+
+    it("式の木の無い軸は、塗っていても周りの道の線を持たない", () => {
+      const { map, handle } = createRecordingMap();
+      rebuild(map, shown({ surface: true }, { paintedAxisId: "unformulated" }));
+
+      expect(handle.layerOrder().filter((id) => id.includes("unformulated"))).toEqual([]);
+    });
+
     it("塗っている軸は、その材料のレイヤーが出ている間だけ下敷きになる", () => {
       const dedicatedAxes = dedicatedWayValueAxesFromCatalogAxes([
-        dedicatedEntry("paved", [50], { primary_attribute_ids: ["surface"] }),
+        dedicatedEntry("paved", [50], {
+          road_layer_ids: ["surface"],
+          way_value_formula: MATERIAL_VALUE_FORMULA,
+        }),
       ]);
       const opacityWith = (surface: boolean) => {
         const { map, handle } = createRecordingMap();
@@ -235,16 +221,6 @@ describe("状態を地図へ伝えた結果", () => {
 
       expect(opacityWith(true)).toBe(mapDisplay.road.underlayOpacity);
       expect(opacityWith(false)).not.toBe(mapDisplay.road.underlayOpacity);
-    });
-
-    it("密度の軸は、塗っている軸でも線を出さない", () => {
-      const dedicatedAxes = dedicatedWayValueAxesFromCatalogAxes([
-        dedicatedEntry("density", [50], { density_terms: [{ material_id: "m", label: "m", weight: 1 }] }),
-      ]);
-      const { map, handle } = createRecordingMap();
-      rebuild(map, sceneState({ catalog: { dedicatedAxes }, look: { paintedAxisId: "density" } }));
-
-      expect(handle.layer(roadLayerId("density"))?.visibility).toBe("none");
     });
   });
 
@@ -335,7 +311,7 @@ describe("レイヤーを横断する要求", () => {
   /** 出せるものを全部出した状態。チップのidは各グループの宣言から取る。 */
   function everythingVisible(): SceneState {
     const visibility: Record<string, boolean> = {};
-    for (const track of ROAD_TRACKS) visibility[track.attr_id] = true;
+    for (const layer of ROAD_LAYERS) visibility[layer.id] = true;
     for (const layer of POINT_LAYERS) visibility[layer.attr_id] = true;
     for (const role of Object.keys(AREA_SOURCE_ID)) visibility[role] = true;
     visibility.route = true;
@@ -366,7 +342,7 @@ describe("レイヤーを横断する要求", () => {
         paintedAxisId: DEDICATED_AXES[0].axisId,
         lens: "difficulty",
         hiddenLegendKeys: {
-          ...firstKeyHidden(roadLegendAxes()),
+          ...firstKeyHidden(roadLegendAxes(ROAD_LAYERS)),
           ...firstKeyHidden(pointLegendAxes()),
           ...Object.fromEntries(
             DEDICATED_AXES.map((axis) => [axis.axisId, firstBandAndNoData(valueBands(axis.display))]),

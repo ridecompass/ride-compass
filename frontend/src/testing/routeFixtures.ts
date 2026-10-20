@@ -10,7 +10,6 @@ export function makeRouteCandidate(overrides: Partial<RouteCandidate> = {}): Rou
     kind: "loop",
     direction_label: "",
     is_fastest: false,
-    spliceable: false,
     distance_km: 0,
     geometry: { type: "LineString", coordinates: [] },
     elevation_gain_m: null,
@@ -27,6 +26,8 @@ export function makeRouteCandidate(overrides: Partial<RouteCandidate> = {}): Rou
     edge_point_offsets: [],
     node_ids: [],
     turns: [],
+    points: [],
+    waypoint_distances_km: [],
     axis_contributions: {},
     ...overrides,
   };
@@ -96,7 +97,7 @@ export function makeGenerationConditions(overrides: Partial<GenerationConditions
     route_preference: {},
     penalty_strength: 0,
     max_average_grade_percent: null,
-    hard_filters: {},
+    road_avoidance: {},
     max_routes: 0,
     start_time: "",
     assumed_speed_kmh: 0,
@@ -124,6 +125,8 @@ export function makeRouteSegment(overrides: Partial<RouteSegmentDetail> = {}): R
     material_values: {},
     difficulty: null,
     wind: null,
+    elevations: [],
+    road_classes: {},
     ...overrides,
   };
 }

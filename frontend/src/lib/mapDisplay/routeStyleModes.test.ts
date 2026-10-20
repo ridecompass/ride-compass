@@ -12,7 +12,6 @@
  * - モードを選ぶ画面と、選んだモードの式を地図へ渡すこと → `features/map/LensControl/LensControl.test.tsx`・
  *   `features/map/view/lens.test.ts`
  */
-import { Color } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
 import { catalogEntry } from "@/testing/catalogAxes";
@@ -20,13 +19,7 @@ import { evaluateExpression, matchesFilter } from "@/testing/mapExpressions";
 import palette from "@/types/generated/palette.json";
 
 import { LEGEND_NO_DATA_KEY } from "./mapColorLegend";
-import {
-  LENS_DIFFICULTY_ID,
-  LENS_NEUTRAL_COLOR,
-  LENS_NONE_ID,
-  routeStyleModesFromCatalogAxes,
-  type RouteStyleMode,
-} from "./routeStyleModes";
+import { LENS_DIFFICULTY_ID, routeStyleModesFromCatalogAxes, type RouteStyleMode } from "./routeStyleModes";
 import { DEFAULT_DIFFICULTY_BOUNDARIES } from "./valueScale";
 
 function modeOf(axes: Parameters<typeof routeStyleModesFromCatalogAxes>[0], id: string): RouteStyleMode {
@@ -40,7 +33,7 @@ function drawn(mode: RouteStyleMode, segment: Record<string, unknown>) {
   return {
     color: evaluateExpression(mode.colorExpression, segment),
     rows: mode.legend.filter((row) => matchesFilter(row.filter, segment)).map((row) => row.key),
-    dashed: mode.noDataExpression === undefined ? false : evaluateExpression(mode.noDataExpression, segment),
+    dashed: evaluateExpression(mode.noDataExpression, segment),
   };
 }
 
@@ -71,10 +64,10 @@ function expectColorsMatchLegend(
 }
 
 describe("モードの一覧", () => {
-  it("公開軸ごとのモードをカタログの順に並べ、そのあとに総合難易度と「なし」を置く", () => {
+  it("公開軸ごとのモードをカタログの順に並べ、そのあとに総合難易度を置く", () => {
     const modes = routeStyleModesFromCatalogAxes([catalogEntry({ axis_id: "b" }), catalogEntry({ axis_id: "a" })]);
 
-    expect(modes.map((mode) => mode.id)).toEqual(["b", "a", LENS_DIFFICULTY_ID, LENS_NONE_ID]);
+    expect(modes.map((mode) => mode.id)).toEqual(["b", "a", LENS_DIFFICULTY_ID]);
   });
 });
 
@@ -135,17 +128,5 @@ describe("総合難易度のモード", () => {
 
   it("区間の総合難易度を、難易度の既定の境界で塗る", () => {
     expectColorsMatchLegend(mode, DEFAULT_DIFFICULTY_BOUNDARIES, (difficulty) => ({ difficulty }));
-  });
-});
-
-describe("「なし」のモード", () => {
-  it("どの区間も中立の1色で塗り、凡例も破線も持たない", () => {
-    const mode = modeOf([], LENS_NONE_ID);
-
-    expect(drawn(mode, { difficulty: 90 })).toEqual({
-      color: Color.parse(LENS_NEUTRAL_COLOR),
-      rows: [],
-      dashed: false,
-    });
   });
 });

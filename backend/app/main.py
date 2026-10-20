@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.admin_db_errors import install_admin_db_unavailable_handler
-from app.api.cache_policy import CachePolicyMiddleware
+from app.api.cache_policy import TILE_PATH_PREFIXES, CachePolicyMiddleware
 from app.api.dependencies import get_amedas_service, get_jma_tile_client, open_region_service
 from app.api.finite_json_body import reject_non_finite_json_body
 from app.api.routers import api_router
@@ -34,6 +34,7 @@ from app.infrastructure.response_compression import ContentTypeGZipMiddleware
 from app.infrastructure.single_process import require_single_worker
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
 from app.services.axis_registry_service import refresh_axis_definitions
+from app.services.road_class_service import refresh_road_classes
 from app.services.tuning_service import refresh_tuning_values
 from app.services.jma_tile_prewarm_service import prewarm_jma_tiles
 
@@ -88,10 +89,10 @@ async def _prewarm_jma_tile_job() -> None:
 
 
 async def _sync_msm_job() -> None:
-    """気象庁MSM（風・降水の予報）の.omファイルをローカルへ同期する。
+    """気象庁MSM（風の予報）の.omファイルをローカルへ同期する。
 
-    風グリッド・ルート評価はこのローカルファイルだけを読むため、同期が止まるとデータは
-    順次古くなり、予報終端が現在時刻へ追いつくと風グリッドは502を返す。
+    ルート評価と地図の道ごとの風はこのローカルファイルだけを読むため、同期が止まるとデータは
+    順次古くなり、予報終端が現在時刻へ追いつくと風が読めなくなる。
     """
     await refresh_msm(get_http_client(60.0))
 
@@ -130,6 +131,8 @@ async def lifespan(app: FastAPI):
         get_http_client(timeout)
 
     async with get_session_factory()() as session:
+        # 軸は区分から作る材料（`class:<分け方>`）を指せるので、区分を先に読む。
+        await refresh_road_classes(session)
         # 例外をここで捕捉しないため、軸定義を読めない状態では起動自体が失敗する（fail-fast）。
         await refresh_axis_definitions(AxisDefinitionRepository(session))
         # 較正値は行が1つも無ければ宣言どおりの既定値のまま動く（壊れた値の行だけが起動を止める）。
@@ -154,7 +157,7 @@ async def lifespan(app: FastAPI):
         next_run_time=datetime.now(),
         id="prewarm_jma_tile",
     )
-    # 初回はローカルにファイルが無く、完了するまで風グリッド・ルート評価の風が使えない。
+    # 初回はローカルにファイルが無く、完了するまでルート評価と地図の道ごとの風が使えない。
     scheduler.add_job(
         _sync_msm_job,
         trigger="interval",
@@ -202,7 +205,7 @@ app.add_middleware(CachePolicyMiddleware)
 
 # 後から登録したミドルウェアが外側になる(アクセスログはCORS処理も含めた全体を計測・記録したい
 # ため、CORSより外側に置く。リクエストIDはアクセスログの行にも載るよう、さらにその外側に置く)。
-app.middleware("http")(request_log_middleware)
+app.middleware("http")(request_log_middleware(TILE_PATH_PREFIXES))
 app.add_middleware(CorrelationIdMiddleware)
 # 未処理例外(500)発生時もX-Request-IDヘッダを付ける。
 app.add_exception_handler(Exception, unhandled_exception_handler)

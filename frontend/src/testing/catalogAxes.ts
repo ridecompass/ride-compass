@@ -5,7 +5,13 @@
 // （段の境界・配信に添える条件等）は呼び出し側が書く。
 import { axisCatalogFromResponse, type AxisCatalog } from "@/lib/axisCatalog";
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import type { AxisCatalogEntry, AxisCatalogResponse } from "@/types/route";
+import type {
+  AxisCatalogEntry,
+  AxisCatalogResponse,
+  RoadAvoidanceView,
+  RoadClassView,
+  RoadMapLayerView,
+} from "@/types/route";
 
 type MapPaint = AxisCatalogEntry["map_paint"];
 
@@ -29,7 +35,7 @@ export function catalogEntry(overrides: EntryOverrides = {}): AxisCatalogEntry {
     default_weight: 0,
     icon_id: null,
     primary_attribute_ids: [],
-    weather_layer_groups: [],
+    road_layer_ids: [],
     map_paint: {
       value: { kind: "difficulty" },
       unit: "",
@@ -38,19 +44,25 @@ export function catalogEntry(overrides: EntryOverrides = {}): AxisCatalogEntry {
       legend: { boundaries: thresholds, unit: null },
       band_labels: null,
       ...mapPaint,
-      tiles: { kind: "none", tile_inputs: [], thresholds: [] },
     },
     raw_value_units: { unit: null, total_unit: null, ...rawValueUnits },
     material_breakdown: [],
-    density_terms: null,
     dynamic_way_value_conditions: [],
+    dynamic_way_value_material_conditions: [],
     dynamic_way_value_undetermined_by_bearing: false,
+    way_value_formula: null,
     time_scope: "always",
     ...rest,
   };
 }
 
-/** 段の境界を持つ軸（地図は全軸を配信された値で塗る）。 */
+/** 地図が道を塗れる最小の式の木: 道ごとの材料 `value` をそのまま道の値にし、向きで決まらない道を持たない。 */
+export const MATERIAL_VALUE_FORMULA: NonNullable<AxisCatalogEntry["way_value_formula"]> = {
+  value: { op: "feature", name: "value" },
+  undetermined: { op: "const", value: 0 },
+};
+
+/** 段の境界を持つ軸。周りの道を塗るには、式の木（`way_value_formula`）を呼び出し側が渡す。 */
 export function dedicatedEntry(axisId: string, thresholds: number[], overrides: EntryOverrides = {}) {
   return catalogEntry({
     axis_id: axisId,
@@ -66,11 +78,69 @@ export function catalogResponse(
 ): AxisCatalogResponse {
   return {
     axes: [...entries],
-    tile_runtime_scales: {},
     client_tuning: {},
     tile_versions: {},
     accident_years: [],
+    road_classes: roadClassCatalog(),
     ...overrides,
+  };
+}
+
+// 道の区分と層も、軸と同じく管理DBが持つ任意の値なので、テストが自分で組む。
+
+/** 区分1つ。 */
+export function roadClass(key: string, overrides: Partial<RoadClassView> = {}): RoadClassView {
+  return { key, label: key, description: "", color: "#000000", ...overrides };
+}
+
+/** 道の線の層1つ。区分は無い。 */
+export function roadMapLayer(id: string, overrides: Partial<RoadMapLayerView> = {}): RoadMapLayerView {
+  return {
+    id,
+    label: id,
+    category: "",
+    icon: "",
+    description: [],
+    panel_hint: [],
+    hide_missing_rows: false,
+    has_no_data: false,
+    classes: [],
+    ...overrides,
+  };
+}
+
+/** 避け方の段（弱い順）。段の鍵はbackendの型が決める。 */
+export const AVOIDANCE_LEVELS: RoadAvoidanceView["levels"] = [
+  { key: "pass", label: "通る" },
+  { key: "avoid", label: "なるべく避ける" },
+  { key: "exclude", label: "通らない" },
+];
+
+/** 避け方を選べる行1つ。既定は「通る」で、前の鍵は無い。 */
+export function avoidanceRow(
+  key: string,
+  section: string,
+  overrides: Partial<RoadAvoidanceView["rows"][number]> = {},
+): RoadAvoidanceView["rows"][number] {
+  return {
+    key,
+    section,
+    label: key,
+    description: "",
+    default: "pass",
+    former_keys: [],
+    ...overrides,
+  };
+}
+
+/** 道の区分を持つ応答の`road_classes`。 */
+export function roadClassCatalog(
+  overrides: { map_layers?: RoadMapLayerView[]; avoidance?: Partial<RoadAvoidanceView> } = {},
+): AxisCatalogResponse["road_classes"] {
+  return {
+    generation: "",
+    map_layers: overrides.map_layers ?? [],
+    avoidance: { levels: [], sections: [], rows: [], ...overrides.avoidance },
   };
 }
 
@@ -81,6 +151,9 @@ export const TWO_AXIS_CATALOG = catalogResponse([
 ]);
 
 /** 本番と同じ`axisCatalogFromResponse`を通したカタログ。 */
-export function catalogOf(entries: readonly AxisCatalogEntry[]): AxisCatalog {
-  return axisCatalogFromResponse(catalogResponse(entries));
+export function catalogOf(
+  entries: readonly AxisCatalogEntry[],
+  overrides: Partial<Omit<AxisCatalogResponse, "axes">> = {},
+): AxisCatalog {
+  return axisCatalogFromResponse(catalogResponse(entries, overrides));
 }

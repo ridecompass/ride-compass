@@ -3,7 +3,7 @@
 // 動的気象レイヤーの取得・選んだ時刻に描くコマ・地図へ渡す描画内容・チップの取得状態。
 // **要素を名指さない**——何を・どこから・どう読み・どのコマを描くかは源泉の宣言
 // （`weatherSources.ts: WEATHER_SOURCES`）が持ち、ここは表示中のソースをループして、段の種類
-// （配信元のタイル・配信元の地物・自前の格子）ごとに1つずつの実装で描画内容を作る。
+// （配信元のタイル・配信元の地物・MSMの格子点）ごとに1つずつの実装で描画内容を作る。
 import { useQueries, type UseQueryResult } from "@tanstack/react-query";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { deriveFetchLayerStatus, type LayerDataStatus, type MapLayerVisibility } from "@/features/map/layers/mapLayers";
@@ -28,7 +28,8 @@ import {
   type WeatherSource,
 } from "@/features/map/layers/weatherSources";
 import { precipitationCells } from "@/features/map/layers/precipitationNowcast";
-import { gridAtTime, windArrows, type MapViewport } from "@/features/map/layers/windLayer";
+import { windArrows } from "@/features/map/layers/windLayer";
+import type { MapViewport } from "@/features/map/view/mapLook";
 import {
   isTileRenderKind,
   pointsAtFailedTiles,
@@ -39,13 +40,10 @@ import {
 import { jmaTileFailures, subscribeJmaTileFailures } from "@/features/map/layers/jmaTileProtocol";
 import { useWeatherGrid } from "@/features/map/useWeatherGrid";
 import { getQueryClient } from "@/lib/queryClient";
-import type { WindGridPoint } from "@/types/weather";
+import type { MsmGridForecast } from "@/types/weather";
 
 /** 格子の段の描き方。読む値ごとに1つ。 */
-const GRID_PAYLOAD: Record<
-  GridValue,
-  (grid: readonly WindGridPoint[], time: string, spacingDeg: number) => DynamicWeatherRenderPayload
-> = {
+const GRID_PAYLOAD: Record<GridValue, (grid: MsmGridForecast, timeIndex: number) => DynamicWeatherRenderPayload> = {
   precipitation: precipitationCells,
   wind: windArrows,
 };
@@ -211,7 +209,7 @@ export function useDynamicWeatherLayers({
     return results;
   }, [files, fileStates, deliveries]);
 
-  // 自前の格子（風と降水の延長予報が共有する1回の取得、`useWeatherGrid.ts`）。
+  // MSMの格子点（風の矢印と降水の升目が共有する1回の取得、`useWeatherGrid.ts`）。
   const usesGrid = shownSources.some(readsGrid);
   const grid = useWeatherGrid(usesGrid, mapViewport);
 
@@ -288,14 +286,14 @@ export function useDynamicWeatherLayers({
       const ref = selected.get(source);
       if (ref === undefined) return undefined;
       if (ref.origin === "grid") {
-        const drawn = gridAtTime(grid.grid, grid.detail, ref.time);
-        return GRID_PAYLOAD[ref.value](drawn.points, ref.time, drawn.spacingDeg);
+        const timeIndex = grid.grid?.times.indexOf(ref.time) ?? -1;
+        return timeIndex < 0 ? undefined : GRID_PAYLOAD[ref.value](grid.grid!, timeIndex);
       }
       if (isTileRenderKind(ref.kind)) return jmaTilePayload(ref.kind, ref.delivery, ref.frame);
       const geojson = geojsons.get(geojsonKey(ref.delivery, ref.frame));
       return geojson && { kind: ref.kind, geojson };
     },
-    [selected, grid.grid, grid.detail, geojsons],
+    [selected, grid.grid, geojsons],
   );
 
   const dynamicWeather = useMemo(() => {

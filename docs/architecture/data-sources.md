@@ -10,6 +10,7 @@
   1行足す。商用利用が不可・不明なら採用しない（不明なまま使い始めない）。
 - **既存のソースの使い方を変える前**（表示だけだったものを評価・ルート計算へ使う、
   取得したものを再配布する等）に、その行の条件がその使い方を許すかを読み直す。
+- **OSM の値を使う材料・配信を足す・変える前**と、OSM 以外の値を道へ結ぶ前に、下の「OSM から作った値と独自の層」の持ち方に合うかを見る。
 - 表記の要件は画面の出典表記（[static-map-layers.md](../modules/frontend/static-map-layers.md)
   「出典表記」）が満たす。行を足したら、表記が要件を満たしているかも見る。
 - 観測や第三者の記事から推測して埋めない。公式の文言を読めなかった項目は「要確認」と書き、
@@ -167,13 +168,57 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
   上の「そのまま伝える」に入るか（ガイドブック p.3 は「気象庁…が出した予報をそのまま掲載する・伝える。またはそれを解説する」を
   対象外と書き、色の塗り替えには触れていない。予報業務許可Q&Aにも記述が無い。2026-10-05確認）。
 
-**照会の答えが来るまでの扱い**（ユーザーの判断）: 上の「書いてあること」が言い切っている2点——モデルの値を
-「予報」と称して出すことと、数値予報から天気を計算して出すこと——はしない。画面はMSMの値を「モデルの計算値
-（予報ではなく誤差を含みうる）」と出し、天気の分類（晴れ・雨等）は観測（アメダスと推計気象分布）からだけ導く。「可能性がある」
-とだけ書かれた補間（地点・通過予定時刻ごとの値を画面に出す・経路の探索に使う）は答えまで続ける。
+**今の扱い**（ユーザーの判断）: 上の「書いてあること」が言い切っている2点——モデルの値を「予報」と称して出すことと、
+数値予報から天気を計算して出すこと——はしない。天気の分類（晴れ・雨等）は観測（アメダスと推計気象分布）からだけ導く。
+MSMの値を画面と公開の口に出すときは、格子点の値を変えずに出し、地点・区間に添えるなら最寄りの格子点の値として示す
+（気象庁の答え、2026-10-19: 最寄りの格子点の値として示すなら許可は要らない）。格子点に無い地点・時刻の値（補間した値）は出さず
+（日次の集計・出発時点の風を出さない）、画面に値を出さない計算（所要時間・到達見込み・点数・道の色分け）にだけ使う。
+ルートの区間の風は、最寄りの格子点を読めない区間と予報期間の外の区間では出さない。出すときは、数値予報モデルの計算結果で
+大きな誤差を含みうること・予報ではないことを添える（文は`backend/app/domain/map_display.py: MODEL_VALUE_DISCLAIMER`が持つ）。
 気象庁が出したものをそのまま重ねる表示（警報・キキクル等）は対象外。降水ナウキャスト・降水短時間予報は、段の区切りを
-そのままに色だけをアプリの降水の段の色へ1対1で塗り替えて重ね（新しい予想を作らず、どこが何mm/hの段かは気象庁の画像と同じ）、
-答えまで続ける。
+そのままに色だけをアプリの降水の段の色へ1対1で塗り替えて重ねる（新しい予想を作らず、どこが何mm/hの段かは気象庁の画像と同じ）。
+
+## OSM から作った値と独自の層
+
+道の形と属性は OpenStreetMap（ODbL 1.0）から取る。OSM から作った値を公に使うと共有の義務がかかり、独占できない。
+走りやすさ・較正のデータを独占できる資産として持つため、義務の外に置く「独自の層」を、**較正の値**と**OSM のデータを含まない値**の
+2つにする（ユーザーの判断）。根拠は ODbL 1.0 の本文と OSMF の理事会が承認したコミュニティの指針（ガイドライン）だけにする。
+ガイドラインはライセンスの本文ではなく、場面を言い尽くしてもいない。
+
+ODbL 1.0 と指針に**書いてあること**（[ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/)・
+[Collective Database Guideline](https://osmfoundation.org/wiki/Licence/Community_Guidelines/Collective_Database_Guideline_Guideline)（2016-06-17 承認）・
+[Horizontal Map Layers Guideline](https://osmfoundation.org/wiki/Licence/Community_Guidelines/Horizontal_Map_Layers_-_Guideline)・
+[Produced Work Guideline](https://osmfoundation.org/wiki/Licence/Community_Guidelines/Produced_Work_-_Guideline)・
+[Regional Cuts Guideline](https://osmfoundation.org/wiki/Licence/Community_Guidelines/Regional_Cuts_-_Guideline)（3つとも 2014-06-06 承認）、2026-10-19確認）:
+
+- OSM を元に変えたり内容の相当な部分を取り出したりして作ったデータベースは派生データベースで、公に使うなら ODbL（か互換のライセンス）で
+  出す。派生データベースから作った Produced Work（地図の絵等）を公に使うときも同じ（4.4）。「公に」は自分と自分の支配下の者以外へで、
+  組織の内側だけで使うのは当たらない（4.5 c）。
+- 公に使う派生データベースか、そこから作った Produced Work を受け取った人へ、派生データベース全体か、元に加えた変更か変更の方法を
+  収めたファイルを、機械で読める形で渡せるようにする。ネットで配るなら無償（4.6）。
+- OSM を変えずに独立したデータベースの集まりへ含めたもの（Collective Database）は、ODbL で出さなくてよい（4.5 a）。指針は、OSM の
+  データを含まない別の種類のデータを OSM の地物に参照（DB の鍵等）で結ぶだけなら、その別のデータを独立したものとして扱い、共有の
+  義務の外とする。条件は、同じ地域の範囲（少なくとも国）で、ある種類のデータが全部 OSM か全部 OSM 以外であること。自前の車の GPS から
+  作った交通量で道を分類する例を、義務がかからない例として挙げる。
+- 同じ種類の地物に OSM と OSM 以外が混ざると、層を分けても義務がかかる。OSM に足りないものだけを補って足した層も、OSM と
+  かみ合うので義務がかかる。
+- 元のデータを取り出すことを目的にした出力はデータベースで、画像はふつう Produced Work。
+
+これに従う持ち方:
+
+- **OSM の値に依る値（道ごとの点数・タイルへ焼く属性等）は独占しない**: OSM の派生データベースとして ODbL で出す。公に使う
+  経路（認証の無い配信・タイル・ルートの応答）があるうちは、4.6 のとおり派生データベースを渡せるようにする。派生データベース
+  全体を渡せば、較正の値を渡すことは求められない。道の鍵を付けた値の配信は取り出せる形なので、データベースとして扱う。
+- **較正の値**（人が決めた段の境界・折れ点・カテゴリの点・材料の重み・内部軸の組み合わせ）は OSM の中身を含まず、独自の層にする。
+  正本は本番の DB で、本番の値を公開のリポジトリ（コード・文書・テストの期待値・軸の定義の JSON）へ写さない。コードが持つ
+  既定値も公開のリポジトリにあるので、守る較正は既定値でなく本番の DB の値として持つ。認証の無い API が出す較正は、画面が描くのに
+  要るもの（地図の段の境界と名前等）だけにする。点数から較正をある程度逆算できることと、すでに公開した履歴は消せないことは残る。
+- **OSM のデータを含まない値**（OSM 以外のソースの値・利用者の走行の記録等）は、OSM のタグや OSM の形から求めた量（長さ・向き等）を
+  入れずに求め、OSM の道・区間とは鍵で結ぶだけにする。結び付け（最寄りの区間を引く・区間の形の周りを数える）に OSM の形を使うのは
+  参照に当たる。OSM の値と同じ表に混ぜずに別の表へ置き、OSM の値と合わせる（長さで割る・向きで負荷にする・点数にする）のは
+  評価・配信のときだけにする。合わせた結果は OSM の値に依る値として扱う。
+- **同じ種類の値は、国の単位で全部 OSM 以外にする**: OSM 以外の値の欠けを OSM から作った値で埋めない。OSM に無いものだけを足す形にもしない。
+- 材料・データを足すときは、どちらの層に入るか（OSM の値に依るか、OSM のデータを含まないか）を、そのタスクの issue に書く。
 
 ## 使わないと決めたソース
 
@@ -185,45 +230,3 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 
 国土数値情報は**データごとに**使用許諾条件が違う（商用可のものもある）。国土数値情報から
 別のデータを使うときも、そのデータのページの「使用許諾条件」を読む。
-
-## 厳選まで仮置き
-
-原則の見直しで消えた記載を、厳選まで元の節ごとに仮に置く。**今の決まりと食い違えば今の決まりを取る。**
-
-### 元: docs/architecture の data-sources.md
-
-#### 使い方
-
-- 観測や第三者の記事から推測して埋めない。公式の文言を読めなかった項目は「要確認」と書き、
-  確認の手順をタスクとして提案する（置き場に issue を起こす。[flow.md](../conventions/flow.md)）。
-
-#### Overture Maps の地点（places）
-
-5. 群ごとの件数（`SELECT place_group, count(*) FROM stop_places GROUP BY 1`）を前の版と比べ、大きく動いた群があれば 1 の変更を疑う。
-
-4. 本番 VM で、別のコンテナ（[deployment-sync.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
-   `python scripts/fetch_overture_places.py`（範囲の地点を写す。関東の枠で約190MB。Actions のランナーで17秒）→ `python -m app.batch.ingest_cli --source overture_place`
-   → `python -m app.batch.derive_cli`の順に打つ。本番 DB へ書くので、開発機の対話のセッションで、ユーザーがチャットで言ったときだけ Claude が打つ（[flow.md](../conventions/flow.md)「本番へ書く」）。
-
-#### 文化財の建造物（文化遺産オンライン）
-
-4. 寺社の数（`SELECT count(*) FROM stop_places WHERE place_group = 'temple_shrine'`。関東の範囲で 2026-10-08 に194）を前と比べ、
-   大きく動いていれば、取込が読む項目（指定の別`bunka-11-s`・所有者`bunka-14-s`・`common.coordinates`）の名前か、
-   所有者の書き方（`backend/app/domain/stop_place.py`の寺社の語）が変わっていないかを見る。
-
-3. 本番 VM で、別のコンテナ（[deployment-sync.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
-   `python scripts/fetch_bunka_heritages.py` → `python -m app.batch.ingest_cli --source bunka_heritage` → `python -m app.batch.derive_cli`
-   の順に打つ。本番 DB へ書くので、開発機の対話のセッションで、ユーザーがチャットで言ったときだけ Claude が打つ（[flow.md](../conventions/flow.md)「本番へ書く」）。
-
-#### 住所の区画の元データ（アドレス・ベース・レジストリ・e-Stat の小地域の境界）
-
-3. 本番 VM で、別のコンテナ（[deployment-sync.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
-   `python scripts/fetch_abr.py` → `python scripts/fetch_estat_small_areas.py`（都道府県を ABR の市区町村の代表点から決めるので、この順）
-   → `python -m app.batch.ingest_cli --source abr --source estat_small_area` → `python -m app.batch.derive_cli`の順に打つ。
-   本番 DB へ書くので、開発機の対話のセッションで、ユーザーがチャットで言ったときだけ Claude が打つ（[flow.md](../conventions/flow.md)「本番へ書く」）。
-
-#### 住所の区画の元データ（アドレス・ベース・レジストリ・e-Stat の小地域の境界・街区レベル位置参照情報）
-
-4. 段ごとの区画の数（`SELECT level, count(*) FROM address_areas GROUP BY 1`）と、境界の結び付きの数（`SELECT count(*) FROM address_boundary_links`）と、種類ごとの街区の数（`SELECT kind, count(*) FROM address_blocks GROUP BY 1`）を
-   前と比べ、大きく動いていれば、取込が読む列（`backend/app/infrastructure/source_models.py`の`ABR_*_SOURCE_SQL`・`ESTAT_SMALL_AREAS_SOURCE_SQL`）の
-   名前か、町字区分の意味（`backend/app/domain/address_area.py: MACHIAZA_TYPE_LEVELS`）が変わっていないかを見る。

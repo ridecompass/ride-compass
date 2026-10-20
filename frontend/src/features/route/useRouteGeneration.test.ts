@@ -19,7 +19,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_HARD_FILTERS } from "@/features/route/RouteSettingsPanel/HardFilterPanel";
 import { heldReplies, onBackend } from "@/testing/backendServer";
 import { TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
@@ -65,6 +64,12 @@ async function submit({ result }: Rendered) {
   await act(() => result.current.generation.submit());
 }
 
+/** 周回を外して目的地を置く（既定は周回で、周回の間の目的地は送らない）。 */
+function placeDestination({ result }: Rendered, at: Coordinates) {
+  act(() => result.current.conditions.setLoop(false));
+  act(() => result.current.conditions.setDestination(at));
+}
+
 function route(id: string, seconds: number | null = null): RouteCandidate {
   return makeRouteCandidate({ id, estimated_duration_seconds: seconds });
 }
@@ -75,10 +80,9 @@ function used(overrides: Partial<GenerationConditions> = {}): GenerationConditio
     latitude: ORIGIN.latitude,
     longitude: ORIGIN.longitude,
     distance_km: 30,
-    distance_tolerance_km: routeGenerateConfig.default_distance_tolerance_km,
+    distance_tolerance_km: 5,
     route_preference: { axis_a: 0.5, axis_b: 0.5 },
     penalty_strength: 1,
-    hard_filters: DEFAULT_HARD_FILTERS,
     max_routes: routeGenerateConfig.default_max_routes,
     start_time: T1.toISOString(),
     assumed_speed_kmh: 20,
@@ -118,14 +122,18 @@ afterEach(() => {
 });
 
 describe("送る要求", () => {
-  it("全長の目標を決めていれば、いまの位置・入力した距離と候補数・走行条件・除外と、置いた経由地（置いた順）・目的地をそのまま送り、重みは送らない", async () => {
+  it("全長の目標を決めていれば、いまの位置・入力した距離と候補数・走行条件・除外・選んだ道の避け方と、置いた経由地（置いた順）・目的地をそのまま送り、重みは送らない", async () => {
     const rendered = renderGeneration();
     const { conditions } = rendered.result.current;
     act(() => conditions.setDistanceInput("42"));
     act(() => rendered.result.current.conditions.setMaxRoutesInput("3"));
-    act(() => rendered.result.current.conditions.setDestination(A));
-    act(() => rendered.result.current.conditions.placePin("waypoint", B));
-    act(() => rendered.result.current.conditions.placePin("waypoint", A));
+    placeDestination(rendered, A);
+    act(() => rendered.result.current.conditions.selectPoint({ role: "waypoint", index: null }));
+    act(() => rendered.result.current.conditions.placeAtSelected(B, null));
+    act(() => rendered.result.current.conditions.placeAtSelected(A, null));
+    // 選んでいない行と前の鍵はbackendが今の行へ揃えるので、選んだ段をそのまま送る。
+    const avoidance = { gravel: "exclude", "retired.row": "avoid" } as const;
+    act(() => rendered.result.current.conditions.setRoadAvoidance(avoidance));
     respond([route("r1")]);
 
     await submit(rendered);
@@ -134,8 +142,7 @@ describe("送る要求", () => {
       latitude: ORIGIN.latitude,
       longitude: ORIGIN.longitude,
       distance_km: 42,
-      distance_tolerance_km: routeGenerateConfig.default_distance_tolerance_km,
-      hard_filters: DEFAULT_HARD_FILTERS,
+      road_avoidance: avoidance,
       max_routes: 3,
       assumed_speed_kmh: 20,
       start_time: T1.toISOString(),
@@ -147,7 +154,7 @@ describe("送る要求", () => {
   it("全長の目標を外すと距離を送らず、置いた地点は同じに送る", async () => {
     const rendered = renderGeneration();
     act(() => rendered.result.current.conditions.setDistanceTargeted(false));
-    act(() => rendered.result.current.conditions.placePin("destination", A));
+    placeDestination(rendered, A);
     respond([route("r1")]);
 
     await submit(rendered);
@@ -158,18 +165,6 @@ describe("送る要求", () => {
 });
 
 describe("入力の誤り", () => {
-  it("出発地が仮の地点のままなら送らず、理由を案内に出して、押すたびに失敗として知らせる", async () => {
-    const rendered = renderGeneration({ originKnown: false });
-
-    await submit(rendered);
-    await submit(rendered);
-
-    const { generation } = rendered.result.current;
-    expect(jobs.submitted).toEqual([]);
-    expect(generation.outcome).toEqual({ kind: "failed", message: expect.stringMatching(/^現在地が分かりません/) });
-    expect(rendered.onOutcome.mock.calls).toEqual([["failed"], ["failed"]]);
-  });
-
   it("入力の誤りは、直前の生成の失敗の文言より先に出す", async () => {
     const rendered = renderGeneration();
     jobs.fail("リクエストに失敗しました");
@@ -236,23 +231,19 @@ describe("生成の結果", () => {
     expect(rendered.result.current.generation.destinationCorrected).toBe(false);
   });
 
-  it.each([
-    {
-      label: "理由が届いたらその理由",
-      reason: "目的地へ行ける道が見つかりませんでした",
-      message: "目的地へ行ける道が見つかりませんでした",
+  it.each([{ label: "理由が届かなければ決まった文言", reason: undefined, message: NO_ROUTES_MESSAGE }])(
+    "候補0件は、「$label」を案内に出して候補0件として知らせ、失敗とは扱わない",
+    async ({ reason, message }) => {
+      const rendered = renderGeneration();
+      respond([], used(), reason);
+
+      await submit(rendered);
+
+      expect(rendered.onGenerated).toHaveBeenCalledWith([], used().route_preference);
+      expect(rendered.onOutcome).toHaveBeenCalledWith("empty");
+      expect(rendered.result.current.generation.outcome).toEqual({ kind: "empty", message });
     },
-    { label: "理由が届かなければ決まった文言", reason: undefined, message: NO_ROUTES_MESSAGE },
-  ])("候補0件は、「$label」を案内に出して候補0件として知らせ、失敗とは扱わない", async ({ reason, message }) => {
-    const rendered = renderGeneration();
-    respond([], used(), reason);
-
-    await submit(rendered);
-
-    expect(rendered.onGenerated).toHaveBeenCalledWith([], used().route_preference);
-    expect(rendered.onOutcome).toHaveBeenCalledWith("empty");
-    expect(rendered.result.current.generation.outcome).toEqual({ kind: "empty", message });
-  });
+  );
 
   it("生成が失敗したら文言を失敗として返して知らせ、結果は渡さない。次の生成で消す", async () => {
     const message = "ルート生成がタイムアウトしました";
@@ -274,7 +265,7 @@ describe("生成の結果", () => {
 
   it("backendが目的地を補正したら、置いた目的地を補正後の地点へ動かして知らせ、条件が変わったとは扱わない", async () => {
     const rendered = renderGeneration();
-    act(() => rendered.result.current.conditions.placePin("destination", A));
+    placeDestination(rendered, A);
     respond([route("r1")], used({ destination: A, corrected_destination: B }));
 
     await submit(rendered);
@@ -288,7 +279,7 @@ describe("生成の結果", () => {
 
   it("生成を待つ間に目的地を置き直したら、補正後の地点で置き直した目的地を上書きせず、条件が変わったと返す", async () => {
     const rendered = renderGeneration();
-    act(() => rendered.result.current.conditions.placePin("destination", A));
+    placeDestination(rendered, A);
     const job = heldReplies();
     jobs.answerWith(job.reply);
     let generating: Promise<void> = Promise.resolve();
@@ -297,7 +288,7 @@ describe("生成の結果", () => {
     });
 
     const moved: Coordinates = { latitude: 35.72, longitude: 139.82 };
-    act(() => rendered.result.current.conditions.placePin("destination", moved));
+    act(() => rendered.result.current.conditions.setDestination(moved));
     await act(async () => {
       await job.answer(
         0,
@@ -376,18 +367,10 @@ describe("消す", () => {
     expect(rendered.result.current.generation.running).toBe(true);
   });
 
-  it("入力の誤りの案内も消す", async () => {
-    const rendered = renderGeneration({ originKnown: false });
-    await submit(rendered);
-
-    act(() => rendered.result.current.generation.clearNotice());
-    expect(rendered.result.current.generation.outcome).toBeNull();
-  });
-
   it("生成の結果（作った条件・補正・既定の配分・案内）を消す", async () => {
     const rendered = renderGeneration();
     act(() => rendered.result.current.conditions.setWeightOverrideEnabled(true));
-    act(() => rendered.result.current.conditions.placePin("destination", A));
+    act(() => rendered.result.current.conditions.setDestination(A));
     respond([route("r1")], used({ corrected_destination: B }));
     await submit(rendered);
     jobs.fail("リクエストに失敗しました");

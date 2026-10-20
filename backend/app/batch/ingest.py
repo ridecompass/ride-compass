@@ -12,14 +12,13 @@
 差し替えは「そのソースのパーティションを空にしてから入れ直す」。同一トランザクション内で
 行うため、途中の状態が読まれることはない。
 
-取込は派生の作り直しと同時に走らない（`common.py: SOURCE_DATA_LOCK`）。作り直しが走っていれば
+取込は派生の作り直し・DBのバックアップと同時に走らない（`common.py: SOURCE_DATA_LOCK`）。どちらかが走っていれば
 始めずに止まる。
 
 **入力が前回と同じなら取り込まない。** 取込の行は、アダプタが読むファイルの中身・プロファイルの宣言・
 アダプタのコード・ライブラリの版だけで決まる（どのアダプタも時刻・乱数・網の向こうを読まない）。取込はこれらから
 指紋（`input_fingerprint`）を作って成功したrunへ残し、そのソースの成功した最新のrunと同じなら、行を入れ替えず、
 新しいrunも作らずに、そのrunを返す。runが変わらないので、派生の作り直しも生データが変わっていないと読める。
-読むファイルを言えないアダプタ（`inputs`を宣言しないもの）は、毎回取り込む。
 """
 
 import hashlib
@@ -100,11 +99,11 @@ class RegisteredAdapter[I: AdapterInputs]:
     #: プロファイルの`rows`/`grid`の型。読み込みはこのフィールドにある欄だけを受け付ける。
     rows: type
     grid: type
+    #: 読む入力。取込はこれで指紋を作り、同じ入力を読み手へ渡す。
+    inputs: InputsOf[I]
     #: このアダプタのソースの行が必ず持つ列（`SourceFeatureRow`の空を許す列）。取込が区画を作るときに
     #: NOT NULLで張り、`scripts/schema_gap.py`が実DBの区画と比べる。
     required: tuple[InstrumentedAttribute[Any], ...] = ()
-    #: 読む入力。無ければ指紋を作れず毎回取り込み、読み手へはファイルの無い入力を渡す。
-    inputs: InputsOf[I] | None = None
 
 
 ADAPTERS: dict[str, RegisteredAdapter] = {}
@@ -239,7 +238,7 @@ async def ingest_source(
     if conn.is_in_transaction():
         raise RuntimeError("取込はトランザクションの外の接続で呼ぶ（中で呼ぶと、失敗の記録が行と一緒に巻き戻る）")
     if not await conn.fetchval("SELECT pg_try_advisory_lock_shared(hashtext($1))", SOURCE_DATA_LOCK):
-        raise RuntimeError("派生の作り直しが走っている")
+        raise RuntimeError("派生の作り直しかDBのバックアップが走っている")
     try:
         return await _ingest(conn, profile, source_name)
     finally:
@@ -251,17 +250,16 @@ async def _ingest(conn: asyncpg.Connection, profile: SourceProfile, source_name:
     registered = ADAPTERS[spec.adapter]
 
     hashing = time.perf_counter()
-    inputs = AdapterInputs(files=()) if registered.inputs is None else registered.inputs(spec, profile)
-    fingerprint = None if registered.inputs is None else input_fingerprint(spec, profile, inputs)
+    inputs = registered.inputs(spec, profile)
+    fingerprint = input_fingerprint(spec, profile, inputs)
     hashed = time.perf_counter() - hashing
-    if fingerprint is not None:
-        previous = await conn.fetchrow(
-            f"SELECT run_id, origin ->> '{INPUT_FINGERPRINT}' AS fingerprint "
-            f"FROM {latest_succeeded_run_by_column_sql('$1')} r", spec.name)
-        if previous is not None and previous["fingerprint"] == fingerprint:
-            logger.info("取り込まなかった（入力が前回と同じ）: source=%s 前回のrun_id=%d 入力の指紋=%.1fs",
-                        spec.name, previous["run_id"], hashed)
-            return previous["run_id"]
+    previous = await conn.fetchrow(
+        f"SELECT run_id, origin ->> '{INPUT_FINGERPRINT}' AS fingerprint "
+        f"FROM {latest_succeeded_run_by_column_sql('$1')} r", spec.name)
+    if previous is not None and previous["fingerprint"] == fingerprint:
+        logger.info("取り込まなかった（入力が前回と同じ）: source=%s 前回のrun_id=%d 入力の指紋=%.1fs",
+                    spec.name, previous["run_id"], hashed)
+        return previous["run_id"]
 
     await _ensure_partition(conn, spec)
     origin = inputs.origin()

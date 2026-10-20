@@ -29,6 +29,8 @@ export type MapReading = {
   }[];
   /** 名指ししたソースへ最後に流し込んだ GeoJSON。 */
   readonly sourceData: readonly { readonly source: string; readonly data: unknown }[];
+  /** 地図全体の状態。名指しした名前だけを読む。 */
+  readonly globalState?: Readonly<Record<string, unknown>>;
 };
 
 export type MapContractCase = {
@@ -173,5 +175,15 @@ export const MAP_CONTRACT: readonly MapContractCase[] = [
       featureStates: [],
       sourceData: [{ source: "points", data: { ...EMPTY, features: [point(2)] } }],
     },
+  },
+  {
+    name: "地図全体の状態は名前ごとに最後に置いた値になり、null を置くと値の無いことになる",
+    steps: [
+      { call: "setGlobalStateProperty", args: ["bearing", 90] },
+      { call: "setGlobalStateProperty", args: ["speed", 20] },
+      { call: "setGlobalStateProperty", args: ["bearing", 135.5] },
+      { call: "setGlobalStateProperty", args: ["speed", null] },
+    ],
+    expected: { layers: [], featureStates: [], sourceData: [], globalState: { bearing: 135.5, speed: null } },
   },
 ];

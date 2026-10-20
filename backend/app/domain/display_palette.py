@@ -16,12 +16,12 @@ from app.domain.registry import PrimaryAttributeSpec
 _MAX_LIGHTNESS = 58.0
 
 #: 順序のある分類（幹線→細街路）。明度で順序を示し、色相も並びに沿って動かす（明度だけの濃淡は、上限の明度の下では
-#: 隣どうしが近く、どれも暗い灰に見える）。色相は評価の配色（緑〜赤）を避けて紫→水色に限る——観測された事実の
+#: 隣どうしが近く、どれも暗い灰に見える）。色相は評価の配色（緑〜赤）を避けて赤紫→水色に限る——観測された事実の
 #: 分類を良し悪しの色で読ませない。暗い端は黒と見分けられる所で止める。
-_ORDERED_HUE_RANGE_DEG = (305.0, 205.0)
+_ORDERED_HUE_RANGE_DEG = (350.0, 205.0)
 _ORDERED_LIGHTNESS_RANGE = (26.0, 56.0)
 #: 上の範囲の両端（並びの先頭・末尾の行）の色を、画面で呼ぶ名前。地図の説明の文が差し込む。範囲を変えたら、ここも変える。
-ORDERED_END_COLOR_NAMES: tuple[str, str] = ("濃い紫", "明るい水色")
+ORDERED_END_COLOR_NAMES: tuple[str, str] = ("濃い赤紫", "明るい水色")
 #: 目標の彩度。暗い側の色相によってはsRGBに収まらないので、収まるところまで下げる（`_fit_chroma`）。
 _ORDERED_CHROMA = 45.0
 
@@ -35,7 +35,7 @@ _NOMINAL_CHROMA = 28.0
 #: 近い色が残るので、レイヤーごとに明度を変えて離す。暗い段は色相によってsRGBに収まらない
 #: （水色〜青）ので、そこだけ収まるところまで彩度を下げる（`_fit_chroma`）。鮮やかな段は明度を標準のまま
 #: 彩度で離す——明度は上を地色とのコントラストが、下を絵記号の白との見分けが決め、明度だけでは段が足りない。
-_NOMINAL_TONES: dict[str | None, tuple[float, float]] = {
+NOMINAL_TONES: dict[str | None, tuple[float, float]] = {
     None: (52.0, _NOMINAL_CHROMA),
     "dark": (42.0, _NOMINAL_CHROMA),
     "light": (_MAX_LIGHTNESS, _NOMINAL_CHROMA),
@@ -86,13 +86,19 @@ def ordered_colors(count: int) -> list[str]:
     ]
 
 
+def ordered_ends_phrase(first_label: str, last_label: str) -> str:
+    """順序のある分類の、先頭の行と末尾の行の名前から組む色の向きの文。"""
+    dark, light = ORDERED_END_COLOR_NAMES
+    return f"「{first_label}」ほど{dark}、「{last_label}」ほど{light}"
+
+
 def nominal_colors(hue_slot: int, count: int, tone: str | None) -> list[str]:
     """順序を持たない列挙の1軸ぶん。起点から色相環を行数で等分する。**同じ起点・同じ行数・同じ段なら
-    常に同じ色**（行を足すと、その軸の色は配り直される）。"""
+    常に同じ色**（行を足すと、その軸の色は配り直される）。知らない段は標準の段で塗る。"""
     if not 0 <= hue_slot < NOMINAL_HUE_SLOTS:
         raise ValueError(f"色相の起点は0〜{NOMINAL_HUE_SLOTS - 1}: {hue_slot}")
     start = _NOMINAL_START_HUE_DEG + (360.0 / NOMINAL_HUE_SLOTS) * hue_slot
-    lightness, chroma = _NOMINAL_TONES[tone]
+    lightness, chroma = NOMINAL_TONES.get(tone, NOMINAL_TONES[None])
     return [_fit_chroma(lightness, chroma, start + 360.0 * i / count) for i in range(count)]
 
 
@@ -147,6 +153,10 @@ SEMANTIC_COLORS: dict[str, str] = {
     "pin_origin_unresolved": "#9ca3af",
     "pin_waypoint": "#2563eb",
     "pin_destination": "#059669",
+    # 道のりのグラフ・地図で選んだ地点の印と、その地点を含む区間の範囲の縁取り。印は評価の配色・ルートの線の色・
+    # 現在地の青のどれとも重ならない朱色、縁取りはルートの線の下に敷いても線の色（評価・候補・乗り換え）に溶けない紫にする。
+    "selected_point": "#ff4d1a",
+    "selected_section": "#7c3aed",
 }
 
 def resolved_display_axes(attr: PrimaryAttributeSpec) -> list[dict]:

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
-import { CopyIcon } from "@/components/ui/icons/icons";
+import { CopyIcon } from "@/components/ui/icons/lucideIcons";
 import { Card } from "@/components/ui/Card/Card";
 import { Input, Select } from "@/components/ui/Input/Input";
 import { Button } from "@/components/ui/Button/Button";

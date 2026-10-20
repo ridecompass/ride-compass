@@ -9,10 +9,11 @@ import { isDebugEnabled } from "@/lib/debugLog";
 import { getQueryClient } from "@/lib/queryClient";
 import { fetchAxisInspector, type AxisInspectorConditions, type AxisInspectorResult } from "@/features/map/regionApi";
 import type { RoutePreferenceWeights } from "@/types/route";
-import { LANDCOVER_CLASSES } from "@/features/map/layers/landcoverClasses";
+import { LANDCOVER_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { PRIMARY_ATTRIBUTE_LABELS } from "@/features/map/layers/primaryAttributes";
 import { roadDisplayName, roadFactRows, roadFeatureKey, roadWayId, type RoadSurfacePopupProperties } from "./roadFacts";
 import { Button } from "@/components/ui/Button/Button";
+import { InspectRoadIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { formatDifficultyOutOfScale } from "@/lib/mapDisplay/valueScale";
@@ -77,8 +78,16 @@ export default function RoadInspectorPopup({
     <div className="max-h-[min(22rem,45vh)] max-w-68 overflow-y-auto text-[length:var(--font-size-md)] leading-[1.4]">
       {name !== null && <div className="mb-1 font-semibold">{name}</div>}
       {wayId != null && featureKey != null && result === null && (
-        <Button size="sm" className="disabled:cursor-progress" onClick={load} disabled={inspector.isFetching}>
-          {inspector.isFetching ? "評価を取得中…" : "この道の評価を見る"}
+        <Button
+          size="panelIcon"
+          className="disabled:cursor-progress"
+          onClick={load}
+          disabled={inspector.isFetching}
+          aria-busy={inspector.isFetching}
+          aria-label="この道の評価を見る"
+          usage="この道を、いまの条件と重みで評価した値を取りに行きます。"
+        >
+          <InspectRoadIcon />
         </Button>
       )}
       {inspector.isError && <p className={textVariants({ variant: "hint" })}>評価を取得できませんでした。</p>}

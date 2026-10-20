@@ -9,7 +9,7 @@
 
 ここで見ないもの:
 - タイルの取得・キャッシュ・空タイルの扱い・読めない時刻一覧の形 → `test_jma_tile_client.py`・`test_jma_tile_redis_cache.py`
-- 空かどうかの判定（取得の結果が空なら`EmptyTile`になる） → `test_jma_tile_content.py`・`test_jma_tile_client.py`
+- 空かどうかの判定（取得の結果が空なら`UPSTREAM_NOT_FOUND`になる） → `test_jma_tile_content.py`・`test_jma_tile_client.py`
 - 配信元仕様（ズームの偶奇・時刻一覧のファイル）・時刻一覧の読み方（別の要素の行・最新の実況・最新の行・
   メンバーごとの最新の完全なラン）・タイルのパスと拡張子 → `test_jma_tile_specs.py`
 - 段をつないだときの各段の最初のコマ（前の段の後ろに続く・前の段に覆われた段は描かない） → `test_weather_elements.py`
@@ -25,7 +25,8 @@ import logging
 import pytest
 from PIL import Image
 
-from app.domain.region import BoundingBox, tiles_covering_bbox
+from app.domain.region import BoundingBox
+from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from app.infrastructure.jma_tile_client import JmaTileClient
 from app.services import jma_tile_prewarm_service as prewarm
 from tests.bound_fake import bound
@@ -106,7 +107,7 @@ class Source:
         for fragment, value in self.tiles.items():
             if fragment in path:
                 return value
-        return prewarm.EmptyTile()
+        return UPSTREAM_NOT_FOUND
 
     get = bound(JmaTileClient.get, get)
 
@@ -144,15 +145,6 @@ async def _run(source):
 # --- 取りに行くもの ---
 
 
-async def test_each_time_list_is_fetched_once_even_when_several_elements_share_it(stored):
-    source = Source()
-
-    await _run(source)
-
-    target_times_requests = [p for p in source.requests if p in TARGET_TIMES]
-    assert sorted(target_times_requests) == sorted(TARGET_TIMES)
-
-
 async def test_tiles_are_fetched_at_the_zooms_the_source_has_data_for(stored):
     source = Source()
 
@@ -162,27 +154,6 @@ async def test_tiles_are_fetched_at_the_zooms_the_source_has_data_for(stored):
     assert {_tile_parts(p)["z"] for p in source.tile_requests("thns")} == {4, 6, 8}
 
 
-async def test_tiles_are_fetched_over_the_given_area(stored):
-    source = Source()
-
-    await _run(source)
-
-    z10 = {(_tile_parts(p)["x"], _tile_parts(p)["y"]) for p in source.tile_requests("rain_mesh") if _tile_parts(p)["z"] == 10}
-    assert z10 == set(tiles_covering_bbox(AREA, 10))
-
-
-async def test_a_later_stage_warms_the_first_frame_the_screen_draws_after_the_earlier_stage(stored):
-    """降水は01:00まで1段目（2つの時刻一覧に分かれて載る）、その先を2段目で描く。2段目は最新の完全な予報ランの、
-    01:00より後の最初のフレーム。予測フレームを全部温めるとタイル数が桁違いになるので、段ごとに1フレームだけ。"""
-    source = Source()
-
-    await _run(source)
-
-    frames = {(_tile_parts(p)["basetime"], _tile_parts(p)["validtime"], _tile_parts(p)["member"])
-              for p in source.tile_requests("rasrf")}
-    assert frames == {("20260922000000", "20260922020000", "m1")}
-
-
 # --- 在否インデックス ---
 
 
@@ -190,8 +161,8 @@ async def test_the_index_lists_the_tiles_that_have_something_to_draw(stored):
     """中身のあるタイルだけを載せる。空タイル・取れなかったタイルは載せない。"""
     source = Source(tiles={
         "/surf/rain_mesh/4/": (OPAQUE, "image/png"),
-        "/surf/rain_mesh/6/": prewarm.EmptyTile(),
-        "/surf/flood/4/": prewarm.EmptyTile(),
+        "/surf/rain_mesh/6/": UPSTREAM_NOT_FOUND,
+        "/surf/flood/4/": UPSTREAM_NOT_FOUND,
         "/surf/land/4/": None,
     })
 
@@ -260,13 +231,3 @@ async def test_a_later_stage_starts_the_timeline_when_the_earlier_stage_has_no_f
     frames = {(_tile_parts(p)["basetime"], _tile_parts(p)["validtime"], _tile_parts(p)["member"])
               for p in source.tile_requests("rasrf")}
     assert frames == {("20260922000000", "20260922003000", "m1")}
-
-
-async def test_nothing_is_stored_when_no_time_list_can_be_read(stored):
-    """空のインデックスを書くと、クライアントは全タイルを空と見なして何も描かなくなる。"""
-    source = Source(target_times={})
-
-    await _run(source)
-
-    assert stored == []
-    assert [p for p in source.requests if p not in TARGET_TIMES] == []

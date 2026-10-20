@@ -1,77 +1,58 @@
 """0次ハードフィルタ（Hard Constraint）。
 
 スコア計算には一切登場させず、ルーティンググラフから除外する判定だけを担う。
-フィルタごとに名前を付け、レシピ単位で個別に有効/無効を選べる。判定
-（`compute_hard_filter_excluded`）はレジストリをループするため、フィルタを1つ
-増やしても判定側は無変更で反映される。
+フィルタはどれもいつも効き、要求で切れない。判定（`compute_search_exclusion`）は
+レジストリをループするため、フィルタを増やしても判定側は無変更で反映される。フィルタは道の区分（`domain/road_classes.py`）と
+同じ形の条件で事実の列に当て、区分の宣言とは別に持つ。道の区分ごとの避け方（`domain/road_avoidance.py`）も同じ判定で、除く区間と
+割り増す区間に分ける。
 """
 
-from typing import Mapping, NamedTuple
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 
-from app.domain.material_sql import BICYCLE_NORMALIZED_SQL, HIGHWAY_SQL, sql_literals
+from app.domain.attributes import MaterialColumn
+from app.domain.material_catalog import GRADIENT_PERCENT
+from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks, road_avoidance_masks
+from app.domain.road_classes import Condition, ConditionTerm, conditions_match
+
+if TYPE_CHECKING:
+    # 行列を組む側（`domain/evaluation.py`）がこのファイルの判定を使うので、型だけを読む。
+    from app.domain.evaluation import StaticEdgeScoreMatrix
 
 
-class HighwayHardFilter(NamedTuple):
-    #: 画面に出す名前。フィルタと同じ行に持つ——名前だけ別の表にすると、フィルタを
+class HardFilter(NamedTuple):
+    #: 画面に出す名前と説明。フィルタと同じ行に持つ——名前だけ別の表にすると、フィルタを
     #: 足したときに名前の無い行ができ、画面に内部名が出る。
     label: str
-    highway_types: frozenset[str]
+    description: str
+    #: 該当する道（`domain/road_classes.py: conditions_match`の条件。どれかに当たる道）。
+    conditions: list[Condition]
 
 
-class TagHardFilter(NamedTuple):
-    label: str
-    #: 「該当するか」をSQLで表す式。
-    predicate_sql: str
+def _tag_is(fact_key: str, *values: str) -> Condition:
+    return {fact_key: ConditionTerm(fact_values=list(values), negated=False, matches_absent=False)}
 
 
-# highway種別で決まるフィルタ。ここへ1行足すだけで、名前の集合も判定式の列も画面の
-# 名前も増える。
-#
-# 日本のtrunk（国道等の幹線道路）は法的には自転車通行可能な場合が多いが、ロードバイクの
-# 周回ルートにとって「実質的に走りにくい・危険」という実務判断で除外対象に含める。
-HARD_FILTER_HIGHWAY_TYPES: dict[str, HighwayHardFilter] = {
-    "motorway": HighwayHardFilter("高速道路", frozenset({"motorway", "motorway_link"})),
-    "trunk": HighwayHardFilter("国道", frozenset({"trunk", "trunk_link"})),
-}
-
-# highwayでは決まらない、タグ由来のフィルタ。足すならここへ1エントリ書くだけでよい。
-HARD_FILTER_TAG_PREDICATE_SQL: dict[str, TagHardFilter] = {
-    "no_bicycle": TagHardFilter("自転車通行禁止", f"COALESCE({BICYCLE_NORMALIZED_SQL} = 'no', false)"),
-}
-
-#: フィルタ名→画面に出す名前。上の2つの宣言から導く。
-HARD_FILTER_LABELS: dict[str, str] = {
-    **{name: spec.label for name, spec in HARD_FILTER_HIGHWAY_TYPES.items()},
-    **{name: spec.label for name, spec in HARD_FILTER_TAG_PREDICATE_SQL.items()},
-}
-
-# APIの`hard_filters`が受け付けるキー集合の正本。**別の場所で組み立て直さないこと**
-# ——キー完全一致で検証するため、片方だけ増えた瞬間にすべてのルート生成が422になる。
-HARD_FILTER_NAMES: frozenset[str] = frozenset({*HARD_FILTER_TAG_PREDICATE_SQL, *HARD_FILTER_HIGHWAY_TYPES})
-
-# 画面の既定は全フィルタを有効にする。「受け付けるキー」と「既定でONのキー」は別の
-# 概念で、たまたま一致している。
-DEFAULT_HARD_FILTERS: frozenset[str] = HARD_FILTER_NAMES
-
-
-def _highway_is_one_of_sql(highway_types: frozenset[str]) -> str:
-    return f"{HIGHWAY_SQL} IN ({sql_literals(sorted(highway_types))})"
-
-
-# フィルタ名→「その区間が該当するか」をSQLで表す式。材料を読むクエリがこの名前のまま
-# 列として受け取る。**フィルタごとに専用の列を作らない**——上の2つのレジストリから導く
-# ため、`HARD_FILTER_NAMES`とキー集合がずれようがない。
-HARD_FILTER_VALUE_SQL: dict[str, str] = {
-    **{name: _highway_is_one_of_sql(spec.highway_types) for name, spec in HARD_FILTER_HIGHWAY_TYPES.items()},
-    **{name: spec.predicate_sql for name, spec in HARD_FILTER_TAG_PREDICATE_SQL.items()},
+# 自転車が走ってはいけない道。どれもいつも除き、要求では入り切りを受けない。
+HARD_FILTERS: dict[str, HardFilter] = {
+    "motorway": HardFilter(
+        "高速道路・自動車専用道路",
+        "高速道路と、自動車専用の標識のある一般道（バイパス等）。自転車は通れないので、いつも経路から外します。",
+        [_tag_is("highway", "motorway", "motorway_link"), _tag_is("motorroad", "yes")],
+    ),
+    "no_bicycle": HardFilter(
+        "自転車通行禁止",
+        "自転車の通行が禁止された道。いつも経路から外します。",
+        [_tag_is("bicycle", "no")],
+    ),
 }
 
 
-def hard_filter_columns() -> tuple[str, ...]:
-    """0次フィルタの列の並び。組み立てる側と読む側が別々に並べると意味がずれる。"""
-    return tuple(sorted(HARD_FILTER_VALUE_SQL))
+def hard_filtered(columns: Mapping[str, MaterialColumn], n: int) -> np.ndarray:
+    """区間ごとに、0次ハードフィルタのどれかに当たるか。"""
+    return conditions_match([c for spec in HARD_FILTERS.values() for c in spec.conditions], columns, n)
 
 
 def compute_routable_nodes(
@@ -96,31 +77,18 @@ def compute_routable_nodes(
     return routable
 
 
-def compute_hard_filter_excluded(
-    hard_filter_flags: Mapping[str, np.ndarray],
-    gradient_percent: np.ndarray,
-    hard_filters: frozenset[str],
+def compute_search_exclusion(
+    score_matrix: "StaticEdgeScoreMatrix",
+    road_avoidance: Mapping[str, AvoidanceLevel],
     max_average_grade_percent: float | None,
-) -> np.ndarray:
-    """静的スコア行列が持つ生フラグから、リクエスト時点の`hard_filters`/
-    `max_average_grade_percent`を反映した0次フィルタ除外の真偽値配列を求める。
-
-    `hard_filter_flags`は`HARD_FILTER_NAMES`のフィルタ名→該当フラグ配列で、**キー集合の
-    完全一致を要求する**——欠けたフィルタは黙って無効になり、高速道路や`bicycle=no`の道が
-    そのまま候補へ入る。フィルタを1つ増やしてもこの関数は変わらない。
-    """
-    if set(hard_filter_flags) != HARD_FILTER_NAMES:
-        raise ValueError(
-            f"0次フィルタの列が宣言と違います 不足={sorted(HARD_FILTER_NAMES - set(hard_filter_flags))} "
-            f"未知={sorted(set(hard_filter_flags) - HARD_FILTER_NAMES)}"
-        )
-    excluded = np.zeros(len(gradient_percent), dtype=bool)
-    for filter_name, flags in hard_filter_flags.items():
-        if filter_name in hard_filters:
-            excluded |= flags
+) -> RoadAvoidanceMasks:
+    """静的スコア行列が持つ0次ハードフィルタ・区分・勾配の列から、リクエスト時点の`road_avoidance`/
+    `max_average_grade_percent`を反映した、探索から除く区間と割り増す区間を求める。"""
+    rows = road_avoidance_masks(score_matrix.road_classes, road_avoidance, len(score_matrix.distance_m))
+    excluded = rows.excluded | score_matrix.hard_filtered
     # 勾配の〇次ハードフィルタ（NaNとの比較は常にFalseになるため、勾配不明のEdgeへは
     # 適用されない）。
     if max_average_grade_percent is not None:
         with np.errstate(invalid="ignore"):
-            excluded |= np.abs(gradient_percent) > max_average_grade_percent
-    return excluded
+            excluded |= np.abs(score_matrix.material_column(GRADIENT_PERCENT)) > max_average_grade_percent
+    return RoadAvoidanceMasks(excluded=excluded, avoided=rows.avoided)

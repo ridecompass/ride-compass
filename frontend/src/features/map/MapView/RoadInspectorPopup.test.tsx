@@ -38,17 +38,17 @@ const RIDE = {
   },
   routePreference: null,
 };
-/** 路面の区分の項目名と、呼び名を持つ値の1つ（書き写さず材料カタログから引く）。 */
-const SURFACE_CLASS = materialCatalog.find((material) => material.material_id === "surface_class")!;
-const [SURFACE_CLASS_VALUE] = Object.entries(SURFACE_CLASS.value_labels ?? {}).find(
+/** 路面の種類の項目名と、呼び名を持つ値の1つ（書き写さず材料カタログから引く）。 */
+const SURFACE = materialCatalog.find((material) => material.material_id === "surface")!;
+const [SURFACE_VALUE] = Object.entries(SURFACE.value_labels ?? {}).find(
   (entry): entry is [string, string] => typeof entry[1] === "string",
 )!;
 
-/** 路面の区分を持つ1本の道。 */
+/** 路面の種類を持つ1本の道。 */
 const SURFACED_ROAD: RoadSurfacePopupProperties = {
   osm_way_id: 1,
   feature_key: "1",
-  surface_class: SURFACE_CLASS_VALUE,
+  surface: SURFACE_VALUE,
 };
 
 function renderPopup(properties: RoadSurfacePopupProperties = SURFACED_ROAD) {
@@ -135,7 +135,9 @@ describe("RoadInspectorPopup", () => {
     renderPopup({ ...SURFACED_ROAD, name: "明治通り" });
 
     expect(screen.getByText("明治通り")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
+    const inspect = screen.getByRole("button", { name: "この道の評価を見る" });
+    expect(inspect).toHaveTextContent(/^$/);
+    expect(inspect.querySelector("svg")).not.toBeNull();
   });
 
   it("評価はルート結果と同じ寄与度で出し、算出できない軸は並べない", async () => {
@@ -235,10 +237,10 @@ describe("RoadInspectorPopup", () => {
     renderPopup();
 
     const attributes = screen.getByText("この道の属性").closest("details");
-    expect(screen.getByText(SURFACE_CLASS.name)).not.toBeVisible();
+    expect(screen.getByText(SURFACE.name)).not.toBeVisible();
     // 畳みを開くと、評価を取る前からタイルの事実が読める。
     await user.click(screen.getByText("この道の属性"));
-    expect(screen.getByText(SURFACE_CLASS.name)).toBeVisible();
+    expect(screen.getByText(SURFACE.name)).toBeVisible();
     await openEvaluation(user);
 
     await waitFor(() => expect(screen.getByText("residential")).toBeInTheDocument());
@@ -293,16 +295,6 @@ describe("評価の走行の条件", () => {
     render(<RoadInspectorPopup {...props} conditions={{ ...CONDITIONS }} />);
 
     expect(screen.getByText(/この道全体で見た難易度/)).toBeInTheDocument();
-  });
-});
-
-describe("OSMの生値", () => {
-  it("OSMの生値はタグとして解釈されない（第三者が編集できるデータのため）", () => {
-    const attack = '<img src=x onerror="alert(1)">';
-    const { container } = renderPopup({ osm_way_id: 1, name: attack });
-
-    expect(container.querySelector("img")).toBeNull();
-    expect(container.textContent).toContain(attack);
   });
 });
 

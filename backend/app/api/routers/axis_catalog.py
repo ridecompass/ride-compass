@@ -17,15 +17,7 @@
 
 **`map_paint`フィールド**: `domain/map_paint.py: map_paint()`
 （プロセス内メモリのみを見る純粋関数、DB/IO無し）を軸ごとに呼んで含める。これにより、
-軸スタジオでの公開操作（is_publishedの切替）が、地図レイヤーのramp表示へ**再デプロイ
-なしに即座に**反映される（docs/records/decisions/t308-axis-map-display-auto-derivation.md参照）。
-
-**`tile_runtime_scales`**: 地図表示の導出は、タイルの生値を材料の値へ換算する係数が実行時に
-しか決まらない材料（`MaterialSpec.tile_property_runtime_scale`）も対象に含めるが、係数の源
-（事故の収録年）はDBにしか無いため、`domain/axis_display.py`の純粋関数では求められない。
-本エンドポイントがリクエスト毎に1回だけ地域サービス（`services/region_service.py`）から収録年を読み、係数は
-`domain/material_catalog.py: tile_runtime_scales`が材料の宣言から導く。フロントのJS式ビルダーが
-これを取得しタイル生値に掛け合わせる。
+軸スタジオでの公開操作（is_publishedの切替）が、地図の塗りへ**再デプロイなしに即座に**反映される。
 """
 
 from fastapi import APIRouter, Depends
@@ -34,15 +26,11 @@ from app.api.dependencies import get_region_service
 from app.domain.axis_definitions import (
     AXIS_DEFINITIONS,
     AxisCategory,
-    AxisDefinition,
-    BreakpointLinearShape,
     TimeScope,
-    averages_density,
     primary_attribute_ids_for,
     published_axis_definitions,
-    weather_layer_groups_for,
+    road_layer_ids_for,
 )
-from app.domain.material_catalog import MATERIAL_CATALOG, tile_runtime_scales
 from app.domain.axis_raw_value import (
     AxisMaterialBreakdownEntry,
     RawValueUnits,
@@ -51,34 +39,15 @@ from app.domain.axis_raw_value import (
 )
 from app.domain.dynamic_way_values import WayValueConditionName
 from app.domain.map_paint import MapPaint, map_paint
+from app.domain.road_class_catalog import RoadClassCatalog, road_class_catalog
+from app.domain.road_classes import current_road_classes
 from app.domain.tuning import client_tuning_values
+from app.domain.way_value_formula import WayValueFormula
 from app.services.dedicated_way_values import dedicated_way_value_layers
 from app.services.region_service import RegionService
 from app.domain.strict_model import StrictModel
 
 router = APIRouter()
-
-
-def _density_terms(definition: AxisDefinition) -> list["AxisDensityTerm"] | None:
-    """密度の軸（`domain/axis_definitions.py: averages_density`）の項を、軸定義の並びのまま。密度の軸でなければNone。"""
-    if not averages_density(definition):
-        return None
-    shape = definition.shape
-    assert isinstance(shape, BreakpointLinearShape)
-    return [
-        AxisDensityTerm(material_id=term.material, label=MATERIAL_CATALOG[term.material].label, weight=term.weight)
-        for term in shape.terms
-    ]
-
-
-class AxisDensityTerm(StrictModel):
-    """密度の軸の項1件。軸の生値は、項の材料（1kmあたりの回数・件数）にこの重みを掛けて足したもの。"""
-
-    material_id: str
-    #: 材料の表示名（`MaterialSpec.label`）。
-    label: str
-    #: 軸定義に書いた重みのまま（正規化しない）。0の項も並べる——材料の点が地図に出ても、数に入らないことを言える。
-    weight: float
 
 
 class AxisCatalogEntry(StrictModel):
@@ -95,9 +64,9 @@ class AxisCatalogEntry(StrictModel):
     # 材料[階層構造]は除く）。軸と一次属性レイヤーの対応を、軸idで分岐せずに引けるよう
     # 軸スタジオの公開軸にも同じ形で配る。
     primary_attribute_ids: list[str]
-    # この軸の材料の元データを描く気象のチップ（`domain/axis_definitions.py: weather_layer_groups_for`）。
-    # 一次属性を持たない動的な材料（風等）は`primary_attribute_ids`に現れないため、こちらが運ぶ。
-    weather_layer_groups: list[str]
+    # この軸の材料を区分の決め手に読む、地図の道の線の層（`domain/axis_definitions.py: road_layer_ids_for`。
+    # `road_classes`の`map_layers`の`id`）。
+    road_layer_ids: list[str]
     # 地図がこの軸について塗るもの——塗る値・単位・段の境界・凡例の目盛り・タイルの塗り・段の体感ラベル
     # （domain/map_paint.py: map_paint）。ルート確定前の塗り・ルート確定後のルート線色分け・凡例のどれもこれに従う。
     map_paint: MapPaint
@@ -110,18 +79,22 @@ class AxisCatalogEntry(StrictModel):
     # 絶対の事実を出す。
     # 並びは正規化重みの降順で、フロントは先頭から順に出す（並べ替えを持たない）。
     material_breakdown: list[AxisMaterialBreakdownEntry]
-    # 密度の軸（`domain/axis_definitions.py: averages_density`）の項。密度の軸でなければnull。
-    # 地図はこれがある軸を、塗った線ではなく材料の点と項の重みで見せる。
-    density_terms: list[AxisDensityTerm] | None
-    # 配信（`GET /api/region/dynamic-way-values/{axis_id}`）へ地図がこの軸について
-    # 載せるクエリパラメータの名前（`services/dedicated_way_values.py: DedicatedWayValueLayer`。
-    # 軸の葉の材料を配るサービスが受け取る条件の型から導く）。条件の要らない軸は空。受け取る側が
-    # 「どの軸の取得に時刻・向き・想定速度を添えるか」を、axis_idで分岐せずここから決めるために配る。
+    # この軸の値に効く条件の名前（`services/dedicated_way_values.py: DedicatedWayValueLayer`。
+    # 軸の葉の材料を配るサービスが受け取る条件の型から導く）。条件の要らない軸は空。受け取る側が「どの軸が
+    # 時刻・向き・想定速度で変わるか」を、axis_idで分岐せずここから決めるために配る。
     dynamic_way_value_conditions: list[WayValueConditionName]
-    # 配信が、走行方位しだいで値の決まらない道（値がnull）を返しうるか
+    # `dynamic_way_value_conditions`のうち、道ごとの材料（`GET /api/region/way-materials/{axis_id}`）の要求へ
+    # 載せる名前（`services/dedicated_way_values.py: DedicatedWayValueLayer`）。ほかは`way_value_formula`が読む。
+    # 載せない名前は応答に効かないので、受け取る側はこの名前の値が変わったときだけ取り直せばよい。
+    dynamic_way_value_material_conditions: list[WayValueConditionName]
+    # 走行方位しだいで値の決まらない道（木の`undetermined`が真になる道）がありうるか
     # （`services/dedicated_way_values.py: DedicatedWayValueLayer`）。trueの軸だけ、
     # 地図の凡例が「向きで決まらない」の行を持つ（返さない軸に出すと、どの道も入らない行になる）。
     dynamic_way_value_undetermined_by_bearing: bool
+    # 地図がこの軸について塗る値を、道ごとの材料（`GET /api/region/way-materials/{axis_id}`）と、
+    # `dynamic_way_value_material_conditions`に無い要求の条件から求める式の木（`services/dedicated_way_values.py: DedicatedWayValueLayer`）。
+    # 値は区間インスペクタの得点と同じ評価になる。木にできない軸はnullで、ルートの無い間の周りの道を塗れない。
+    way_value_formula: WayValueFormula | None
     # 重みが効く時間帯（`domain/axis_definitions.py: AxisDefinition`の`time_scope`）。"always"以外の軸は、
     # その時間帯に通る区間でだけ効く。周りの道は通過する時刻を持たないので、受け取る側が地図の色の前提を
     # axis_idで分岐せずここから決めるために配る。
@@ -130,22 +103,20 @@ class AxisCatalogEntry(StrictModel):
 
 class AxisCatalogResponse(StrictModel):
     axes: list[AxisCatalogEntry]
-    # タイルのプロパティ名→実行時にしか決まらない換算係数（タイル生値に掛けると材料の値になる倍率、
-    # `domain/material_catalog.py: tile_runtime_scales`）。`TileInputSpec.needs_runtime_scale=True`な
-    # tile_inputのタイル生値へ、受け取る側が`property`で引いて掛ける。
-    tile_runtime_scales: dict[str, float] = {}
     # フロントが使う較正値（id → いま効いている値、`domain/tuning.py`が宣言）。管理画面から
     # 変えた値を**再デプロイなしに**画面へ届けるため、起動時に1回取るこのカタログへ相乗り
     # させる（ビルド時生成物のroute-generate-config.jsonが持つ既定値は、画面がidの型にだけ使い、値は読まない）。
-    client_tuning: dict[str, float] = {}
+    client_tuning: dict[str, float]
     # 配信するタイルの世代（系統名 → `<派生の世代>.<生データの世代>-<形の署名>`、`services/
     # tile_version_service.py`）。フロントはこれをタイルURLのクエリへ入れてブラウザの
     # キャッシュを分ける。**ビルド時生成物では配れない**——バッチが中身を作り直しても
     # デプロイは起きないため、次のデプロイまで古い値を配り続ける。
-    tile_versions: dict[str, str] = {}
+    tile_versions: dict[str, str]
     # 事故データの収録年（今の事故の数を数えた取込の宣言そのもの）。地図の説明文が範囲を書くために
     # 使う。**表示側に持たせない**——文字列で持つと取り込み直したときに黙って食い違う。
-    accident_years: list[int] = []
+    accident_years: list[int]
+    # 道の区分（`domain/road_class_catalog.py: road_class_catalog`）。管理APIで書いた区分を再デプロイなしに届ける。
+    road_classes: RoadClassCatalog
 
 
 @router.get("/api/axis-catalog", response_model=AxisCatalogResponse)
@@ -154,15 +125,17 @@ async def get_axis_catalog(region_service: RegionService = Depends(get_region_se
     # services/axis_registry_service.py参照）のため、DBへは触れずプロセス内の値を
     # そのまま返す（評価ホットパスと同じ同期アクセス方式）。map_paint()・
     # primary_attribute_ids_for()も同様にプロセス内メモリだけを見る純粋関数のため、
-    # リクエスト毎に呼んでもコストは無視できる。事故の収録年と、それから導く換算係数・タイルの世代だけがDBを見る。
+    # リクエスト毎に呼んでもコストは無視できる。事故の収録年とタイルの世代だけがDBを見る。
     accident_years = await region_service.get_accident_years()
     tile_versions = await region_service.tile_versions()
     way_value_layers = dedicated_way_value_layers()
+    road_classes = current_road_classes()
 
     return AxisCatalogResponse(
         client_tuning=client_tuning_values(),
         accident_years=accident_years,
         tile_versions=tile_versions,
+        road_classes=road_class_catalog(road_classes),
         axes=[
             AxisCatalogEntry(
                 axis_id=definition.axis_id,
@@ -172,16 +145,16 @@ async def get_axis_catalog(region_service: RegionService = Depends(get_region_se
                 default_weight=definition.default_weight,
                 icon_id=definition.icon_id,
                 primary_attribute_ids=primary_attribute_ids_for(definition),
-                weather_layer_groups=weather_layer_groups_for(definition),
+                road_layer_ids=road_layer_ids_for(definition, road_classes),
                 map_paint=map_paint(definition),
                 raw_value_units=raw_value_units(definition),
                 material_breakdown=axis_material_breakdown(definition, AXIS_DEFINITIONS),
-                density_terms=_density_terms(definition),
                 dynamic_way_value_conditions=way_value_layers[definition.axis_id].conditions,
+                dynamic_way_value_material_conditions=way_value_layers[definition.axis_id].material_conditions,
                 dynamic_way_value_undetermined_by_bearing=way_value_layers[definition.axis_id].undetermined_by_bearing,
+                way_value_formula=way_value_layers[definition.axis_id].formula,
                 time_scope=definition.time_scope,
             )
             for definition in published_axis_definitions()
         ],
-        tile_runtime_scales=tile_runtime_scales(accident_years),
     )

@@ -6,15 +6,18 @@ import type { RouteCandidate } from "@/types/route";
 // 同じルートで走行モードを続けられるようにする。
 
 /** 端末の保存の鍵。 */
-export const RIDE_SESSION_STORAGE_KEY = "ridecompass:ride-session";
+export const RIDE_SESSION_STORAGE_KEY = "ridecompass:riding-session";
 
 /** 最後に保存してから、この時間を過ぎた保存は使わない（1日の長い走行と休憩を覆い、翌朝は前日のルートを出さない）。 */
 export const RIDE_SESSION_TTL_MS = 12 * HOUR_MS;
 
-/** 走行中のルートと走行モードの入切。 */
+/** 走行中のルート。 */
 export interface RideSession {
   route: RouteCandidate;
-  riding: boolean;
+  /** 前に当てたルートの上の距離（km）。読み込み直したら、ここから続く側を選ぶ。まだ当てていなければnull。 */
+  km: number | null;
+  /** 休んでいたか。読み込み直したら、休んだまま戻す。 */
+  resting: boolean;
 }
 
 // 保存した版のルート候補の型の印。画面が更新されて型が変わったら、前の版の候補を今の型として読まない。
@@ -35,8 +38,10 @@ export function readRideSession(raw: string | null, now: number): RideSession | 
     return null;
   }
   if (typeof parsed !== "object" || parsed === null) return null;
-  const { route, riding, savedAt, shape } = parsed as Record<string, unknown>;
+  const { route, km, resting, savedAt, shape } = parsed as Record<string, unknown>;
   if (shape !== ROUTE_CANDIDATE_SHAPE) return null;
-  if (typeof riding !== "boolean" || typeof savedAt !== "number" || now - savedAt > RIDE_SESSION_TTL_MS) return null;
-  return { route: route as RouteCandidate, riding };
+  if (typeof savedAt !== "number" || now - savedAt > RIDE_SESSION_TTL_MS) return null;
+  if (km !== null && typeof km !== "number") return null;
+  if (typeof resting !== "boolean") return null;
+  return { route: route as RouteCandidate, km, resting };
 }

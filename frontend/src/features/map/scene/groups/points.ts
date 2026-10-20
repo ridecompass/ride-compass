@@ -8,7 +8,7 @@
  * レイヤーは自分の`tile_kind`のソースを読む。**同じタイルを2つ以上のレイヤーが分け合うときは、種別の集合で分ける**
  * ——分ける条件を持たないと互いの点が混ざる。その集合は源泉の表示の行（`display_axes`の値）から
  * 取る。行が種別を取りこぼすと、その種別の点は地図から消える——行と種別の一覧が一致することは
- * backendのテスト（`test_material_catalog.py`）が全種別で確かめる。
+ * backendのテスト（`test_primary_attributes.py`）が全種別で確かめる。
  *
  * 点の形も源泉が決める。先頭の軸の行が絵記号（`glyph`）を持つレイヤーは、行の色の角丸四角に絵記号を載せた
  * 記号で描き、持たないレイヤーは丸い点で描く。重なった絵を間引くか・どれを残すかも源泉（`point_thinning`）が決める。
@@ -19,7 +19,6 @@
  * キャッシュへ載って以後ずっと残る。
  */
 import type { BasemapPoiKinds } from "@/features/map/layers/mapStyleOps";
-import type { PointTileLayer } from "@/features/map/regionApi";
 import { sceneLayerId, sceneSourceId, valueInExpression, type SceneSourceId } from "@/features/map/scene/sceneBuilders";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
@@ -27,7 +26,15 @@ import regionTileConfig from "@/types/generated/region-tile-config.json";
 import type { FilterSpecification } from "maplibre-gl";
 
 import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
-import { primaryAttributes } from "@/types/generated/primaryAttributes";
+import {
+  isPointTileLayer,
+  POINT_LAYERS,
+  pointCategoryRadiusPx,
+  sizeAxis,
+  type PointAxis,
+  type PointLayer,
+  type PointTileLayer,
+} from "@/lib/mapDisplay/pointLayers";
 
 import { drawPointIcon } from "@/features/map/layers/pointIcon";
 import type { MapSceneImage } from "@/features/map/scene/mapScene";
@@ -37,10 +44,6 @@ const POINT = mapDisplay.point;
 
 /** 配信される点のタイルの名前 → source-layer。 */
 const POINT_TILE_SOURCE_LAYERS: Readonly<Record<PointTileLayer, string>> = regionTileConfig.point_layers;
-
-function isPointTileLayer(name: string | null): name is PointTileLayer {
-  return name !== null && Object.hasOwn(POINT_TILE_SOURCE_LAYERS, name);
-}
 
 /** 配信される点のタイルの名前の一覧。 */
 export const POINT_TILE_LAYERS = Object.keys(POINT_TILE_SOURCE_LAYERS).filter(isPointTileLayer);
@@ -53,16 +56,6 @@ export const POINT_TILE_SOURCES = Object.fromEntries(
   ]),
 ) as Readonly<Record<PointTileLayer, { readonly sourceId: SceneSourceId; readonly sourceLayer: string }>>;
 
-/** 点で描くもの。**源泉が「点の幾何を持ち、表示の定義がある」と言ったものが出る。**
- * 軸・束ね方・行の名前・色・どのタイルに載るかは、すべて源泉が決める。点の属性の`tile_kind`が配信される
- * 点のタイルを指すことは、backendのテスト（`test_point_tile_layers.py`）が確かめる。 */
-export const POINT_LAYERS = primaryAttributes.filter(
-  (attr): attr is typeof attr & { tile_kind: PointTileLayer } =>
-    attr.geometry === "point" && attr.display_axes.length > 0 && isPointTileLayer(attr.tile_kind),
-);
-
-type PointLayer = (typeof POINT_LAYERS)[number];
-
 /** 地図のレイヤーidから点の宣言を引く。idは`pointGroup`と同じソースと役割から決める。 */
 const POINT_LAYER_BY_SCENE_ID = new Map(
   POINT_LAYERS.map((layer) => [sceneLayerId(POINT_TILE_SOURCES[layer.tile_kind].sourceId, layer.attr_id), layer]),
@@ -72,7 +65,6 @@ const POINT_LAYER_BY_SCENE_ID = new Map(
 export function pointLayerOfSceneLayer(sceneLayerIdOfFeature: string): PointLayer | undefined {
   return POINT_LAYER_BY_SCENE_ID.get(sceneLayerIdOfFeature);
 }
-export type PointAxis = PointLayer["display_axes"][number];
 
 /** 常に効く絞り込み。同じタイル・同じsource-layerを2つ以上のレイヤーが分け合うときは、
  * 自分の行に属する値だけを通す（持たないと互いの点が混ざる）。 */
@@ -224,17 +216,6 @@ function iconImageExpression(layer: PointLayer, categories: readonly GlyphCatego
   const axis = layer.display_axes[0];
   const cases = categories.flatMap((category) => [categoryMatch(axis, category), pointIconId(layer, category)]);
   return ["case", ...cases, ""];
-}
-
-/** 大きさで示す軸。源泉が行に半径を付けた軸で、付けるのは点の軸のうち1本だけ。 */
-function sizeAxis(layer: PointLayer): PointAxis | undefined {
-  return layer.display_axes.find((axis) => axis.categories.some((category) => "radius_px" in category));
-}
-
-/** 行が地図に描かれる半径。**凡例の見本も同じ関数を読む**——凡例が別に大きさを持つと、
- * 地図と食い違う。半径を持たない行は既定の半径。 */
-export function pointCategoryRadiusPx(category: PointAxis["categories"][number]): number {
-  return "radius_px" in category ? category.radius_px : POINT.radiusPx;
 }
 
 function radiusExpression(layer: PointLayer): unknown {

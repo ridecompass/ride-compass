@@ -34,6 +34,19 @@ export function routeStretches<S extends RouteSegmentShape>(segments: readonly S
   return stretches;
 }
 
+/** 並び`items`の中で、区間`segment`と同じ区間を持つもの。同じものが無ければ、区間の始まりの距離（候補の中で区間ごとに違う）が
+ * 同じものを探す——地図で押した区間は、地物の属性から組み直した写しで、候補の区間と同じものではない（形も持たない）。 */
+export function findSameSegment<T>(
+  items: readonly T[],
+  segment: Pick<RouteSegmentDetail, "cumulative_distance_km">,
+  segmentOf: (item: T) => Pick<RouteSegmentDetail, "cumulative_distance_km">,
+): T | undefined {
+  return (
+    items.find((item) => segmentOf(item) === segment) ??
+    items.find((item) => segmentOf(item).cumulative_distance_km === segment.cumulative_distance_km)
+  );
+}
+
 /** 区間の道なりの形。形が無い区間（2点未満のEdge等）は、始点と終点を結ぶ直線。 */
 export function segmentPath(segment: RouteSegmentShape): LngLat[] {
   return segment.geometry !== null

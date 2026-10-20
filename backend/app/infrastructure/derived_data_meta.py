@@ -112,11 +112,6 @@ async def bump_revision(conn: asyncpg.Connection) -> int:
     return revision
 
 
-async def read_source_runs(conn: asyncpg.Connection) -> dict[str, int]:
-    """今の派生の表を作った取込（ソース → `run_id`）。"""
-    return await _read_pairs(conn, DerivedSourceRunRow.__tablename__, "source", "run_id")
-
-
 async def replace_source_runs(conn: asyncpg.Connection, runs: dict[str, int]) -> None:
     """派生の表を作った取込を`runs`へ置き換える。"""
     await _replace_rows(conn, DerivedSourceRunRow.__tablename__, ("source", "run_id"), runs.items())

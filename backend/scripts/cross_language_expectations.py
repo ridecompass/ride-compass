@@ -6,10 +6,12 @@
 画面のテストが落ちる。backendの関数そのものの正しさは、手で書いたあるべき値のpytestが見る。
 """
 
+import math
 from collections.abc import Callable
 
 from datetime import UTC, datetime
 
+from app.domain.gradient import ROAD_BEARING_LEAF, travel_direction_formula
 from app.domain.geo import COMPASS_LABELS, LatLonPoint, compass_label, haversine_distance_km
 from app.domain.jma_tile_specs import (
     JMA_ELEMENTS,
@@ -20,9 +22,34 @@ from app.domain.jma_tile_specs import (
     read_target_times,
 )
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tile_position, tiles_covering_bbox
+from app.domain.road_avoidance import AvoidanceLevel, resolve_road_avoidance
+from app.domain.road_class_catalog import road_class_catalog
+from app.domain.road_classes import (
+    EMPTY_ROAD_CLASSES,
+    AvoidanceClassification,
+    AvoidanceOverride,
+    AvoidanceSection,
+    RoadClass,
+    RoadClassification,
+)
 from app.domain.route import RouteSegmentDetail, merge_overall_difficulty
 from app.domain.time_zone import jst_local_text
+from app.domain.way_value_formula import (
+    FALSE,
+    Binary,
+    Case,
+    Interpolate,
+    Missing,
+    Round,
+    Unary,
+    WayValueFormula,
+    add,
+    const,
+    evaluate_formula,
+    feature,
+)
 from app.domain.weather_elements import stage_first_frames
+from app.domain.wind import WIND_DRAG_RATIO_WAY_FORMULA
 from app.infrastructure.jma_tile_client import parse_target_times
 from app.infrastructure.jma_tile_paths import read_jma_tile_path
 
@@ -45,8 +72,10 @@ _DISTANCE_PAIRS: list[tuple[LatLonPoint, LatLonPoint]] = [
 
 
 def _bearings() -> list[float]:
-    width = 360 / len(COMPASS_LABELS)
-    boundaries = [i * width + width / 2 for i in range(len(COMPASS_LABELS))]
+    """方位の区分（北が中心）の境界ちょうどとその少し手前、負の角度・一周を超える角度。"""
+    count = len(COMPASS_LABELS)
+    width = 360 / count
+    boundaries = [i * width + width / 2 for i in range(count)]
     edges = [angle for boundary in boundaries for angle in (boundary, boundary - _JUST_BEFORE_DEG)]
     return [0.0, *edges, -width, -width / 2, 360.0, 360.0 + width / 2, 720.0 + width]
 
@@ -374,6 +403,8 @@ def _segment(distance_km: float, contributions: dict[str, float] | None) -> Rout
         end_longitude=139.0,
         cumulative_distance_km=0.0,
         distance_km=distance_km,
+        elevations=[],
+        road_classes={},
         axis_contributions=contributions or {},
         difficulty=None if contributions is None else sum(contributions.values()),
     )
@@ -410,6 +441,157 @@ def difficulty_expectations() -> dict[str, list[dict]]:
     return {"overall_difficulty": rows}
 
 
+def _values_only(value: object) -> WayValueFormula:
+    return WayValueFormula(value=value, undetermined=FALSE)
+
+
+_X = feature("x")
+_Y = feature("y")
+
+#: 場面 → 木と、木へ入れる道ごとの材料（値の無い材料は載せない）と条件の組。
+_WAY_VALUE_FORMULAS: list[tuple[str, WayValueFormula, list[tuple[dict[str, float], dict[str, float]]]]] = [
+    (
+        "丸め1桁（2進で中点ちょうど・中点のすぐ上下・負）",
+        _values_only(Round(arg=_X, decimals=1)),
+        [({"x": x}, {}) for x in (0.25, 0.35, 0.45, 1.15, 1.25, 1.35, 11.55, -0.25, -0.35, -1.25, 0.04, 99.95)]
+        + [({}, {})],
+    ),
+    (
+        "丸め3桁と0桁",
+        _values_only(add(Round(arg=_X, decimals=3), Round(arg=_Y, decimals=0))),
+        [({"x": x, "y": y}, {}) for x, y in ((2.675, 0.5), (0.0005, 1.5), (-0.0015, 2.5), (1.0005, -0.5), (0.1235, 3.49))],
+    ),
+    (
+        "勾配の割合を足した折れ線（中点に乗る和・両端の外・値の無い材料）",
+        _values_only(Round(arg=Interpolate(input=add(_X, _Y), stops=[(0.0, 0.0), (4.0, 30.0), (10.0, 100.0)]),
+                           decimals=1)),
+        [*(({"x": x, "y": y}, {}) for x, y in ((1.0, 0.1), (2.3, 0.0), (0.7, 0.33), (-1.0, 0.0), (11.0, 2.0), (4.0, 0.0))),
+         ({"x": 1.0}, {})],
+    ),
+    (
+        "折れ点1つ",
+        _values_only(Interpolate(input=_X, stops=[(3.0, 7.0)])),
+        [({"x": -5.0}, {}), ({"x": 3.0}, {}), ({"x": 8.0}, {}), ({}, {})],
+    ),
+    (
+        "剰余・比べ・論理・否定・欠け",
+        _values_only(Case(
+            when=Binary(op="and", left=Unary(op="not", arg=Unary(op="is_missing", arg=_X)),
+                        right=Binary(op="or", left=Binary(op="lt", left=_Y, right=const(0.0)),
+                                     right=Binary(op="ge", left=_Y, right=const(10.0)))),
+            then=Binary(op="mod", left=_X, right=const(3.0)),
+            otherwise=Case(when=Binary(op="le", left=_X, right=_Y), then=Unary(op="abs", arg=_Y),
+                           otherwise=Missing()),
+        )),
+        [({"x": -7.0, "y": -1.0}, {}), ({"x": 7.5, "y": 12.0}, {}), ({"x": 2.0, "y": 5.0}, {}),
+         ({"x": 6.0, "y": 5.0}, {}), ({"y": -1.0}, {}), ({"x": 1.0}, {}), ({"x": 0.0, "y": 0.0}, {})],
+    ),
+    (
+        "平方根・符号・割り算",
+        _values_only(Binary(op="div", left=Unary(op="sqrt", arg=_X), right=Unary(op="neg", arg=_Y))),
+        [({"x": 2.0, "y": 4.0}, {}), ({"x": -1.0, "y": 1.0}, {}), ({"x": 9.0, "y": -3.0}, {})],
+    ),
+    (
+        "走る向きで選ぶ勾配（道の向き寄り・逆向き寄り・直角の付近・向きの無い道）",
+        travel_direction_formula(feature("forward"), feature("backward")),
+        [({ROAD_BEARING_LEAF: road, "forward": 3.0, "backward": -3.0}, {"bearing_deg": bearing})
+         for road, bearing in ((10.0, 0.0), (10.0, 200.0), (350.0, 5.0), (0.0, 104.0), (0.0, 105.0), (0.0, 106.0),
+                               (0.0, 255.5), (180.0, 359.75))]
+        + [({"forward": 3.0, "backward": -3.0}, {"bearing_deg": 90.0}), ({ROAD_BEARING_LEAF: 0.0}, {"bearing_deg": 0.0})],
+    ),
+    (
+        "風の追加負荷（向かい風・追い風・横風・風の無い道）",
+        WIND_DRAG_RATIO_WAY_FORMULA,
+        [({"wind_speed_ms": speed, "wind_direction_deg": direction}, {"bearing_deg": bearing, "speed_kmh": kmh})
+         for speed, direction, bearing, kmh in ((5.0, 0.0, 0.0, 20.0), (5.0, 180.0, 0.0, 20.0), (8.0, 90.0, 0.0, 25.0),
+                                                (3.2, 47.0, 312.5, 18.0), (12.0, 200.0, 20.0, 40.0))]
+        + [({}, {"bearing_deg": 0.0, "speed_kmh": 20.0})],
+    ),
+]
+
+
+def _formula_row(formula: WayValueFormula, features: dict[str, float], conditions: dict[str, float]) -> dict:
+    value = float(evaluate_formula(formula.value, features, conditions))
+    undetermined = float(evaluate_formula(formula.undetermined, features, conditions))
+    return {
+        "features": features,
+        "conditions": conditions,
+        "value": None if math.isnan(value) else value,
+        "undetermined": not math.isnan(undetermined) and undetermined != 0,
+    }
+
+
+def way_value_expectations() -> dict[str, list[dict]]:
+    """地図が塗る値の木を、道ごとの材料と条件で評価した値（値の無い道はnull）と、向きで決まらないか。丸めの中点・
+    折れ線の端・値の無い材料のように、地図の式と食い違いうる場面を並べる。"""
+    return {
+        "way_value_formula": [
+            {"scene": scene, "formula": formula.model_dump(mode="json"),
+             "rows": [_formula_row(formula, features, conditions) for features, conditions in inputs]}
+            for scene, formula, inputs in _WAY_VALUE_FORMULAS
+        ]
+    }
+
+
+def _road_class(sort_order: int, former_keys: list[str]) -> RoadClass:
+    return RoadClass(label="", description="", sort_order=sort_order, former_keys=former_keys, conditions=[])
+
+
+# 前の鍵の付き方が分かれる区分: 分けた区分（1つの前の鍵を2つの行が持ち、片方は既定が「なるべく避ける」）・合わせた区分
+# （前の鍵を2つ持つ）・前の鍵を持たない区分。
+_AVOIDANCE_DEFINITIONS = EMPTY_ROAD_CLASSES.model_copy(
+    update={
+        "classifications": {
+            "kind": RoadClassification(
+                label="",
+                description="",
+                is_published=True,
+                classes={
+                    "split_a": _road_class(0, ["old.split"]),
+                    "split_b": _road_class(1, ["old.split"]),
+                    "merged": _road_class(2, ["old.x", "old.y"]),
+                    "plain": _road_class(3, []),
+                },
+            )
+        },
+        "avoidance_sections": {"s": AvoidanceSection(label="", description="", sort_order=0)},
+        "avoidance_classifications": {
+            "kind": AvoidanceClassification(
+                section_key="s",
+                sort_order=0,
+                overrides={"split_b": AvoidanceOverride(section_key=None, default_level="avoid", selectable=True)},
+            )
+        },
+    }
+)
+
+# 要求の場面: （場面, 行の鍵 → 選んだ段）。
+_AVOIDANCE_REQUESTS: list[tuple[str, dict[str, AvoidanceLevel]]] = [
+    ("何も選んでいない", {}),
+    ("今の鍵だけ", {"kind.split_a": "exclude", "kind.plain": "avoid"}),
+    ("分けた区分の前の鍵は、分けてできたどの行にも効く", {"old.split": "exclude"}),
+    ("前の鍵の段は既定より弱くても効く", {"old.split": "pass"}),
+    ("合わせた区分の前の鍵は強い方（前に書いた方が強い）", {"old.x": "exclude", "old.y": "pass"}),
+    ("合わせた区分の前の鍵は強い方（後に書いた方が強い）", {"old.x": "pass", "old.y": "avoid"}),
+    ("今の鍵が前の鍵に勝つ", {"kind.split_b": "pass", "old.split": "exclude"}),
+    ("今の行でも前の鍵でもない鍵は読まない", {"gone.a": "exclude"}),
+]
+
+
+def road_avoidance_expectations() -> dict[str, list[dict]]:
+    """要求の避け方を今の行へ揃えた段。行と段は軸カタログが配る形で出す。"""
+    avoidance = road_class_catalog(_AVOIDANCE_DEFINITIONS).avoidance
+    return {
+        "levels": [level.model_dump() for level in avoidance.levels],
+        "rows": [row.model_dump() for row in avoidance.rows],
+        "resolve_road_avoidance": [
+            {"scene": scene, "requested": requested,
+             "resolved": resolve_road_avoidance(requested, _AVOIDANCE_DEFINITIONS)}
+            for scene, requested in _AVOIDANCE_REQUESTS
+        ],
+    }
+
+
 #: 組の名前 → 表を作る関数。組を足すときはここに1行足す（書き出しと置き場の名前はこれから決まる）。
 EXPECTATIONS: dict[str, Callable[[], dict[str, list[dict]]]] = {
     "geo": geo_expectations,
@@ -417,4 +599,6 @@ EXPECTATIONS: dict[str, Callable[[], dict[str, list[dict]]]] = {
     "time": time_expectations,
     "difficulty": difficulty_expectations,
     "jma": jma_expectations,
+    "way-value": way_value_expectations,
+    "road-avoidance": road_avoidance_expectations,
 }

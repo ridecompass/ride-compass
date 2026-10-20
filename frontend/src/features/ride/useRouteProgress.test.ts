@@ -39,12 +39,18 @@ const QUARTER: Coordinates = { latitude: 35, longitude: 139.005 };
 const TURN: Coordinates = { latitude: 35, longitude: 139.02 };
 const ACCURACY_M = 20;
 
-type Props = { route: RouteSegmentDetail[] | null; position: Coordinates | null; accuracyM: number | null };
+type Props = {
+  route: RouteSegmentDetail[] | null;
+  position: Coordinates | null;
+  accuracyM: number | null;
+  startKm?: number | null;
+};
 
 function renderProgress(initialProps: Props) {
-  return renderHook(({ route, position, accuracyM }: Props) => useRouteProgress(route, position, accuracyM), {
-    initialProps,
-  });
+  return renderHook(
+    ({ route, position, accuracyM, startKm = null }: Props) => useRouteProgress(route, position, accuracyM, startKm),
+    { initialProps },
+  );
 }
 
 describe("useRouteProgress", () => {
@@ -58,9 +64,9 @@ describe("useRouteProgress", () => {
     rerender({ route: segments, position: QUARTER, accuracyM: ACCURACY_M });
     expect(result.current.km).toBeCloseTo(3.5);
 
-    // 位置が届かない間は出さず、届き直したら覚えた位置から続ける。
+    // 位置が無い間（休んでいる間）は覚えた位置を出し、届き直したらそこから続ける。
     rerender({ route: segments, position: null, accuracyM: null });
-    expect(result.current.km).toBeNull();
+    expect(result.current).toEqual({ km: expect.closeTo(3.5), offRoute: false });
     rerender({ route: segments, position: QUARTER, accuracyM: ACCURACY_M });
     expect(result.current.km).toBeCloseTo(3.5);
 
@@ -69,6 +75,17 @@ describe("useRouteProgress", () => {
 
     rerender({ route: null, position: QUARTER, accuracyM: ACCURACY_M });
     expect(result.current.km).toBeNull();
+  });
+
+  it("このルートで当てた位置がまだ無ければ、渡された距離（読み込み直す前に当てた位置）から続く側を選ぶ", () => {
+    // 帰り道の3.5km（行きの0.5kmと同じ地点）で読み込み直した。
+    const { result } = renderProgress({ route: outAndBack(), position: QUARTER, accuracyM: ACCURACY_M, startKm: 3.4 });
+    expect(result.current.km).toBeCloseTo(3.5);
+  });
+
+  it("このルートで当てた位置も現在地もまだ無ければ、渡された距離（読み込み直す前に当てた位置）を出す", () => {
+    const { result } = renderProgress({ route: outAndBack(), position: null, accuracyM: null, startKm: 3.4 });
+    expect(result.current).toEqual({ km: 3.4, offRoute: false });
   });
 
   it("ルートを外れている間は外れた点で止めて外れたと出し、戻ったら戻った点から続ける", () => {

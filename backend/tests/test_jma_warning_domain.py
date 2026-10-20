@@ -16,7 +16,6 @@ from app.domain.jma_warning import (
     AreaWarningKind,
     WarningBulletin,
     extract_active_warnings,
-    warning_level,
 )
 
 IRRELEVANT = min(NOT_RELEVANT_TO_CYCLING)
@@ -24,20 +23,6 @@ IRRELEVANT = min(NOT_RELEVANT_TO_CYCLING)
 
 def _kind(name: str, active: bool = True, additions: tuple[str, ...] = (), code: str = "t_code") -> AreaWarningKind:
     return AreaWarningKind(code=code, name=name, active=active, additions=additions)
-
-
-@pytest.mark.parametrize(
-    ("name", "level"),
-    [
-        ("架空注意報", "advisory"),
-        ("架空警報", "warning"),
-        ("架空危険警報", "severe_warning"),
-        ("架空特別警報", "emergency_warning"),
-    ],
-)
-def test_the_level_is_read_from_the_name(name, level):
-    """危険警報（警戒レベル4）は警報と特別警報の間。どちらの名称も「警報」を含む。"""
-    assert warning_level(name) == level
 
 
 def test_active_warnings_come_out_in_order_with_their_code_name_level_and_additions():

@@ -4,16 +4,14 @@
   "max_routes": 15,
   "default_max_routes": 8,
   "default_assumed_speed_kmh": 20.0,
-  "default_distance_tolerance_km": 5.0,
   "max_waypoints": 8,
   "place_prediction_min_length": 1,
   "place_prediction_delay_seconds": 0.4,
-  "max_axis_share": 0.6,
   "enabled_axis_weight": 0.1,
   "min_assumed_speed_kmh": 5.0,
   "max_assumed_speed_kmh": 60.0,
   "job_result_ttl_seconds": 600.0,
-  "route_candidate_shape": "b57a388819df0768",
+  "route_candidate_shape": "3790e3b89eee99d0",
   "wind_forecast_hours_per_leg": 4.0,
   "wind_time_bin_hours": 1.0,
   "segment_speed_conditions": [
@@ -32,27 +30,20 @@
     "speed.mass_kg": 80.0,
     "speed.max_descent_kmh": 45.0,
     "speed.walking_kmh": 4.5,
+    "search.distance_tolerance_km": 5.0,
+    "gradient.perpendicular_band_deg": 15.0,
     "splice.min_stretch_km": 0.2
   },
-  "hard_filters": {
-    "filters": [
-      {
-        "key": "motorway",
-        "label": "高速道路"
-      },
-      {
-        "key": "no_bicycle",
-        "label": "自転車通行禁止"
-      },
-      {
-        "key": "trunk",
-        "label": "国道"
-      }
-    ],
-    "defaults": [
-      "motorway",
-      "no_bicycle",
-      "trunk"
-    ]
-  }
+  "hard_filters": [
+    {
+      "key": "motorway",
+      "label": "高速道路・自動車専用道路",
+      "description": "高速道路と、自動車専用の標識のある一般道（バイパス等）。自転車は通れないので、いつも経路から外します。"
+    },
+    {
+      "key": "no_bicycle",
+      "label": "自転車通行禁止",
+      "description": "自転車の通行が禁止された道。いつも経路から外します。"
+    }
+  ]
 }

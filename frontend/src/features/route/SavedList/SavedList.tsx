@@ -5,13 +5,13 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import { ConfirmDialog } from "@/components/ui/Dialog/Dialog";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
-import { DeleteSavedIcon } from "@/components/ui/icons/icons";
+import { DeleteSavedIcon } from "@/components/ui/icons/lucideIcons";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { textVariants } from "@/components/ui/Text/Text";
 
 interface SavedListProps<T extends { name: string }> {
   items: T[];
-  /** 保存したものの呼び名（「地点」「設定」）。空の案内と消す確認の文に入る。 */
+  /** 保存したものの呼び名（「地点」「プリセット」）。空の案内と消す確認の文に入る。 */
   noun: string;
   /** 空のときに(i)の奥へ置く、保存の仕方。 */
   howToSave: string;
@@ -22,7 +22,7 @@ interface SavedListProps<T extends { name: string }> {
   onRemove: (item: T) => void;
 }
 
-// 「保存」タブの一覧（地点・設定）。名前で見分け、消すは確認の窓で「消す」を押すまで消さない——一覧の形と消し方を
+// 「保存済み」タブの一覧（地点・プリセット）。名前で見分け、消すは確認の窓で「消す」を押すまで消さない——一覧の形と消し方を
 // 1か所に持ち、地点と設定で違って見えないようにする。
 export default function SavedList<T extends { name: string }>({
   items,

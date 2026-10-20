@@ -1,4 +1,4 @@
-/** ルート（候補の参考線・選択中候補・区間の色分け・乗り換えの帯・合成ルート・
+/** ルート（選んだ区間の範囲の縁取り・候補の参考線・選択中候補・区間の色分け・乗り換えの帯・合成ルート・
  * 進行方向の矢印）。
  *
  * **重なりはこのファイルの宣言の並びだけが決める**（背面→前面）。押したときに拾う対象は
@@ -31,10 +31,16 @@ const TRAVELLED_OPACITY: ExpressionSpecification = [
   1,
 ];
 
-const HIT_PAINT = { "line-color": palette.semantic.hit, "line-opacity": 0 } as const;
+/** ルートの線を進む向きの左へずらす量（負が左）。往復で行きと帰りが同じ道を通る所でも2本の縁取りが接して並び、
+ * 後に描く帰りが走り終えて薄めた行きを覆わない。左側通行と同じ側に並ぶので、どちらが行きかも読める。
+ * 線・ハロー・当たり判定・矢印を同じだけずらし、見た目の線と押せる所と向きの印を揃える。 */
+const ROUTE_OFFSET_PX = -ROUTE.casingWidthsPx.detail / 2;
+
+const HIT_PAINT = { "line-color": palette.semantic.hit, "line-opacity": 0, "line-offset": ROUTE_OFFSET_PX } as const;
 const ROUND_CAP = { "line-cap": "round", "line-join": "round" } as const;
 
 export const ROUTE_HIT_TARGET_SEGMENT = "routeSegment";
+export const ROUTE_HIT_TARGET_CANDIDATE = "routeCandidate";
 export const ROUTE_HIT_TARGET_SPLICE_BAND = "routeSpliceBand";
 
 type Shape = { readonly path: RoutePath; readonly properties?: Readonly<Record<string, unknown>> };
@@ -53,6 +59,8 @@ export type RouteState = {
   readonly hiddenBandFilter?: FilterSpecification;
   readonly spliceBands: readonly Shape[];
   readonly composite: Shape | null;
+  /** 選んだ地点を含む区間の形。選んでいなければnull。 */
+  readonly selectedSection: RoutePath | null;
 };
 
 const SOURCE = {
@@ -61,6 +69,7 @@ const SOURCE = {
   segments: sceneSourceId("route-segments"),
   spliceBands: sceneSourceId("route-splice-bands"),
   composite: sceneSourceId("route-composite"),
+  selectedSection: sceneSourceId("route-selected-section"),
 } as const;
 
 function line(path: RoutePath, properties: Readonly<Record<string, unknown>> = {}): Feature<LineString> {
@@ -96,6 +105,16 @@ export const routeGroup = declareGroup<RouteState>((state) => {
       "icon-allow-overlap": true,
       "icon-ignore-placement": true,
       "icon-size": zoomScaleExpression(scale, ROUTE.arrowSizeByZoom),
+      // 矢印の絵は右が進む向きで、線に沿って回ると上（負）が進む向きの左になる。ずらしは大きさ倍されるので、大きさで割る。
+      "icon-offset": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        ...ROUTE.arrowSizeByZoom.flatMap(([zoom, factor]) => [
+          zoom,
+          ["literal", [0, ROUTE_OFFSET_PX / (scale * factor)]],
+        ]),
+      ],
     },
     paint: { "icon-color": color, "icon-opacity": opacity },
   });
@@ -110,7 +129,7 @@ export const routeGroup = declareGroup<RouteState>((state) => {
     {
       id: SOURCE.candidates,
       spec: { type: "geojson" },
-      data: collection(references.map((c) => line(c.path))),
+      data: collection(references.map((c) => line(c.path, { routeId: c.routeId }))),
     },
     {
       id: SOURCE.selected,
@@ -132,6 +151,11 @@ export const routeGroup = declareGroup<RouteState>((state) => {
       spec: { type: "geojson" },
       data: collection(state.composite === null ? [] : [line(state.composite.path, state.composite.properties)]),
     },
+    {
+      id: SOURCE.selectedSection,
+      spec: { type: "geojson" },
+      data: collection(state.selectedSection === null ? [] : [line(state.selectedSection)]),
+    },
   ];
 
   const withBandFilter = (entry: SceneLayerEntry): SceneLayerEntry =>
@@ -139,6 +163,21 @@ export const routeGroup = declareGroup<RouteState>((state) => {
 
   // 背面から前面。
   const layers: readonly SceneLayerEntry[] = [
+    // 選んだ区間の範囲は、どのルートの線より後ろに太く敷き、線の外側へはみ出た所で示す——線の上に重ねると、区間の色分けを隠す。
+    {
+      role: "selectedSection",
+      tier: "route",
+      source: SOURCE.selectedSection,
+      type: "line",
+      visible: state.visible && state.selectedSection !== null,
+      layout: ROUND_CAP,
+      paint: {
+        "line-color": palette.semantic.selected_section,
+        "line-width": ROUTE.lineWidthsPx.selectedSection,
+        "line-opacity": ROUTE.opacities.selectedSection,
+        "line-offset": ROUTE_OFFSET_PX,
+      },
+    },
     {
       role: "selectedHalo",
       tier: "route",
@@ -149,6 +188,7 @@ export const routeGroup = declareGroup<RouteState>((state) => {
         "line-color": palette.semantic.route_selected_halo,
         "line-width": ROUTE.lineWidthsPx.selectedHalo,
         "line-opacity": ROUTE.opacities.selectedHalo,
+        "line-offset": ROUTE_OFFSET_PX,
       },
     },
     {
@@ -161,7 +201,18 @@ export const routeGroup = declareGroup<RouteState>((state) => {
         "line-color": palette.semantic.route_candidate,
         "line-width": ROUTE.lineWidthsPx.candidate,
         "line-opacity": ROUTE.opacities.candidate,
+        "line-offset": ROUTE_OFFSET_PX,
       },
+    },
+    // 候補の線の当たり判定は、区間と乗り換えの帯の当たり判定より後ろ——重なった所は選んでいるルートの区間・帯を選ぶ。
+    {
+      role: "candidateHit",
+      tier: "route",
+      source: SOURCE.candidates,
+      type: "line",
+      visible: state.visible,
+      paint: { ...HIT_PAINT, "line-width": HIT_WIDTH_PX },
+      hitTargets: [ROUTE_HIT_TARGET_CANDIDATE],
     },
     {
       role: "spliceBandLine",
@@ -173,6 +224,7 @@ export const routeGroup = declareGroup<RouteState>((state) => {
         "line-width": ROUTE.lineWidthsPx.splice,
         "line-opacity": ROUTE.opacities.splice,
         "line-dasharray": [...ROUTE.spliceDash],
+        "line-offset": ROUTE_OFFSET_PX,
       },
       visible: state.visible && state.spliceBands.length > 0,
     },
@@ -183,7 +235,11 @@ export const routeGroup = declareGroup<RouteState>((state) => {
       type: "line",
       visible: state.visible,
       layout: ROUND_CAP,
-      paint: { "line-color": palette.semantic.route_casing, "line-width": ROUTE.casingWidthsPx.composite },
+      paint: {
+        "line-color": palette.semantic.route_casing,
+        "line-width": ROUTE.casingWidthsPx.composite,
+        "line-offset": ROUTE_OFFSET_PX,
+      },
     },
     {
       role: "compositeLine",
@@ -192,7 +248,11 @@ export const routeGroup = declareGroup<RouteState>((state) => {
       type: "line",
       visible: state.visible,
       layout: ROUND_CAP,
-      paint: { "line-color": palette.semantic.route_splice, "line-width": ROUTE.lineWidthsPx.composite },
+      paint: {
+        "line-color": palette.semantic.route_splice,
+        "line-width": ROUTE.lineWidthsPx.composite,
+        "line-offset": ROUTE_OFFSET_PX,
+      },
     },
     withBandFilter({
       role: "detailCasing",
@@ -204,6 +264,7 @@ export const routeGroup = declareGroup<RouteState>((state) => {
         "line-color": palette.semantic.route_casing,
         "line-width": ROUTE.casingWidthsPx.detail,
         "line-opacity": TRAVELLED_OPACITY,
+        "line-offset": ROUTE_OFFSET_PX,
       },
     }),
     withBandFilter({
@@ -216,6 +277,7 @@ export const routeGroup = declareGroup<RouteState>((state) => {
         "line-color": state.segmentColor,
         "line-width": ROUTE.lineWidthsPx.detail,
         "line-opacity": TRAVELLED_OPACITY,
+        "line-offset": ROUTE_OFFSET_PX,
         ...(state.segmentNoData === undefined ? {} : { "line-dasharray": noDataDashExpression(state.segmentNoData) }),
       },
     }),

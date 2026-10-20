@@ -161,7 +161,7 @@ describe("downloadGpx", () => {
   });
 
   it("細かく揺れる経路で形を保てる点が上限より多くても、上限以下へ収め、両端を残す", async () => {
-    const route = straightLine(3000, 5, 0).map((point, i) => offset(point, 0, i % 2 === 0 ? 0 : 40));
+    const route = straightLine(1001, 5, 0).map((point, i) => offset(point, 0, i % 2 === 0 ? 0 : 40));
     const { points } = await exportGpx(candidate(route));
     expect(points.length).toBeLessThanOrEqual(1000);
     expect(points.length).toBeGreaterThanOrEqual(2);

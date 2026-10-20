@@ -126,7 +126,7 @@ def composite_weighted_sums(
     axis_arrays: Mapping[str, np.ndarray],
     weights: Mapping[str, float | np.ndarray],
     length: int,
-    static_sums: tuple[np.ndarray, np.ndarray] | None = None,
+    static_sums: tuple[np.ndarray, np.ndarray] | None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """合成の`(重み付きスコアの和, データのある軸の重みの和)`。`static_sums`は`axis_arrays`に**含めなかった**軸ぶんの
     和（`axis_weighted_sums`）。"""

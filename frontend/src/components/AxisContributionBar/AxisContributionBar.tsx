@@ -5,7 +5,7 @@ import type React from "react";
 import type { ReactNode } from "react";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
-import { InfoIcon } from "@/components/ui/icons/icons";
+import { InfoIcon } from "@/components/ui/icons/lucideIcons";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import { formatDifficulty } from "@/lib/mapDisplay/valueScale";
 import {
@@ -29,6 +29,8 @@ interface AxisContributionBarProps {
   legendAxes?: readonly CatalogAxis[];
   /** 凡例のチップを押して開く、その軸の詳細。nullを返した軸は凡例から落ちる。 */
   renderDetail: (axis: CatalogAxis) => ReactNode | null;
+  /** `stacked`（既定）は帯の下に凡例のチップを折り返して並べ、`inline`は帯の右に軸のアイコンと数字だけの小さいチップを並べて1行に収める。 */
+  layout?: "stacked" | "inline";
 }
 
 const FALLBACK_COLOR = palette.semantic.neutral;
@@ -53,14 +55,16 @@ export default function AxisContributionBar({
   axisColors,
   legendAxes,
   renderDetail,
+  layout = "stacked",
 }: AxisContributionBarProps) {
   if (!hasAnyContribution(axes, contributions)) return null;
   const rows = axes.filter((axis) => hasContribution(contributions, axis.axisId));
   const colorOf = (axisId: string) => axisColors[axisId] ?? FALLBACK_COLOR;
+  const inline = layout === "inline";
 
   return (
-    <div className="flex min-w-30 flex-auto flex-col gap-1">
-      <div className={stackBarClass} role="img" aria-label="難易度の内訳">
+    <div className={cn("flex flex-auto gap-1", inline ? "min-w-0 items-center gap-2" : "min-w-30 flex-col")}>
+      <div className={cn(stackBarClass, inline && "min-w-12 flex-auto")} role="img" aria-label="難易度の内訳">
         {rows.map((axis) => {
           const value = Math.min(100, Math.max(0, contributions[axis.axisId]));
           const color = colorOf(axis.axisId);
@@ -74,7 +78,7 @@ export default function AxisContributionBar({
           );
         })}
       </div>
-      <ul className={legendChipsClass}>
+      <ul className={cn(legendChipsClass, inline && "flex-none flex-nowrap gap-0.5")}>
         {(legendAxes ?? rows)
           .map((axis) => ({ axis, detail: renderDetail(axis) }))
           .filter(({ detail }) => detail !== null)
@@ -83,9 +87,13 @@ export default function AxisContributionBar({
             // 名前は出さずアイコンと値だけ（狭い幅では名前がそのまま行数になる）。名前は説明とaria-labelが持つ。
             const Icon = axisIconFor(axis.iconId);
             return (
-              <li key={axis.axisId} className={legendChipClass}>
+              <li key={axis.axisId} className={cn(legendChipClass, inline && "flex-none")}>
                 <InfoPopover
-                  triggerClassName={cn(legendChipBodyClass, "cursor-pointer [&>svg]:text-[var(--color-muted)]")}
+                  triggerClassName={cn(
+                    legendChipBodyClass,
+                    "cursor-pointer [&>svg]:text-[var(--color-muted)]",
+                    inline && "gap-0.5 px-1 py-0",
+                  )}
                   triggerAriaLabel={`${axis.label}の詳細`}
                   // 押せることを(i)で示す（輪郭の濃さだけでは伝わらない）。
                   triggerContent={
@@ -98,7 +106,8 @@ export default function AxisContributionBar({
                           {formatDifficulty(contributions[axis.axisId])}
                         </span>
                       )}
-                      <InfoIcon size={12} />
+                      {/* 小さい並びは帯の右の1行に収めるため(i)を省き、チップの地の色で押せることを示す。 */}
+                      {!inline && <InfoIcon size={12} />}
                     </>
                   }
                 >

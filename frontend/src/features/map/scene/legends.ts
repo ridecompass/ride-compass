@@ -1,19 +1,20 @@
 /** 地図チップの凡例の行（道の属性・点・災害）を、地図を描いているのと同じ宣言から作る。
  *
- * 分類と色は、道と点はグループ（`groups/*.ts`）の宣言、災害は源泉の気象の段、値が無い行は
+ * 分類と色は、道は`lib/mapDisplay/roadTracks.ts: roadTrackRows`、点はグループ（`groups/*.ts`）の宣言、災害は源泉の気象の段、値が無い行は
  * `NO_DATA_LEGEND_BAND`から引く——凡例が別に色を持つと、地図とチップの色が静かに食い違う。
  * 評価軸の凡例はここではなく`features/map/view/lens.ts`が、地図の線と同じ段の関数から作る。
  */
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
+import { ROAD_OTHER_KEY, roadTrackRows } from "@/lib/mapDisplay/roadTracks";
+import type { RoadMapLayerView } from "@/types/route";
 
-import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import weatherScales from "@/types/generated/weather-scales.json";
 
-import { POINT_LAYERS, pointAxisKey, pointCategoryRadiusPx, type PointAxis } from "@/features/map/scene/groups/points";
+import { pointAxisKey } from "@/features/map/scene/groups/points";
+import { POINT_LAYERS, pointCategoryRadiusPx, type PointAxis } from "@/lib/mapDisplay/pointLayers";
 import { DISASTER_ELEMENTS, DISASTER_LAYER_ID, type DisasterElement } from "@/features/map/scene/groups/weather";
-import { ROAD_OTHER_KEY, ROAD_TRACKS, roadTrackAxis, roadTrackHasMissing } from "@/features/map/scene/groups/roadLines";
 
 /** 凡例1本ぶん。1つのチップが複数の軸を持つことがある（事故は当事者と重大度）。 */
 type SceneLegendAxis = {
@@ -26,43 +27,26 @@ type SceneLegendAxis = {
   readonly entries: readonly LegendEntry[];
 };
 
-/** 分類に当てはまらない値の道。値はあるので実線で出す。タグの不在も確定した値として載る属性（トンネル等）では、
- * それが「該当しない」ことそのものなので呼び方を変える。 */
-function otherEntry(hasMissing: boolean): LegendEntry {
-  const row = hasMissing ? mapDisplay.legendSharedRows.other : mapDisplay.legendSharedRows.notApplicable;
-  return { key: ROAD_OTHER_KEY, ...row, color: palette.semantic.no_data };
-}
-
-export function roadLegendAxes(): readonly SceneLegendAxis[] {
-  return ROAD_TRACKS.map((track) => ({
-    layerId: track.attr_id,
-    axisId: track.attr_id,
-    // 見出しはチップ名で足りる（軸が1本しかない）。名前の正本は源泉。
+/** 道の線の層ごとの凡例。鍵は層の鍵（チップのidと、隠した行を覚えておく鍵を兼ねる）。 */
+export function roadLegendAxes(layers: readonly RoadMapLayerView[]): readonly SceneLegendAxis[] {
+  return layers.map((layer) => ({
+    layerId: layer.id,
+    axisId: layer.id,
+    // 見出しはチップ名で足りる（軸が1本しかない）。
     label: "",
-    entries: [
-      ...roadTrackAxis(track).categories.map((category) => ({
-        key: category.key,
-        label: category.label,
-        description: category.description,
-        color: category.color,
-        line: true as const,
-      })),
-      { ...otherEntry(roadTrackHasMissing(track)), line: true as const },
-      // タグが無い道の受け皿。**地図も同じ扱い**（消さずに薄い破線で出す）。
-      ...(roadTrackHasMissing(track) ? [{ ...NO_DATA_LEGEND_BAND, line: true as const }] : []),
-    ],
+    entries: roadTrackRows(layer).map((row) => ({ ...row, line: true as const })),
   }));
 }
 
-/** 最初に凡例で隠しておく行。源泉が`hideMissingRows`を宣言した道の線の、値の無い道の行（データなし、タグの不在も
- * 確定した値として載る属性では該当なし）。 */
-export function initiallyHiddenLegendKeys(): Readonly<Record<string, readonly string[]>> {
-  const hiding = new Set<string>(mapDisplay.layers.filter((layer) => layer.hideMissingRows).map((layer) => layer.id));
+/** 最初に凡例で隠しておく行。区分の外の道を隠す層（`hide_missing_rows`）の、値の無い道の行（データなしを分ける層では
+ * データなし、分けない層では該当なし）。 */
+export function initiallyHiddenLegendKeys(
+  layers: readonly RoadMapLayerView[],
+): Readonly<Record<string, readonly string[]>> {
   return Object.fromEntries(
-    ROAD_TRACKS.filter((track) => hiding.has(track.attr_id)).map((track) => [
-      track.attr_id,
-      [roadTrackHasMissing(track) ? NO_DATA_LEGEND_BAND.key : ROAD_OTHER_KEY],
-    ]),
+    layers
+      .filter((layer) => layer.hide_missing_rows)
+      .map((layer) => [layer.id, [layer.has_no_data ? NO_DATA_LEGEND_BAND.key : ROAD_OTHER_KEY]]),
   );
 }
 

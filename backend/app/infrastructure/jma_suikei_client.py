@@ -18,16 +18,16 @@ from typing import NamedTuple, cast
 
 from PIL import Image
 
-from app.domain.jma_tile_specs import JmaFrame, read_target_times
+from app.domain.jma_tile_specs import JMA_DATA_ROOT, JmaFrame, read_target_times
 from app.domain.region import tile_position
 from app.domain.weather import SuikeiWeather
 from app.infrastructure.debug_log import log_throttled_warning
 from app.infrastructure.jma_tile_client import JmaTileClient, get_target_times
-from app.infrastructure.jma_tile_redis_cache import EmptyTile
+from app.infrastructure.http_client import UpstreamNotFound
 
 #: 時刻一覧に載る天気の要素id。
 _WEATHER_ELEMENT = "wthr"
-_ROOT = "bosai/jmatile/data/suikeikishou"
+_ROOT = f"{JMA_DATA_ROOT}/suikeikishou"
 _TARGET_TIMES_PATH = f"{_ROOT}/targetTimes.json"
 # 設定ファイルの`maxNativeZoom`（画像が実在する最大ズーム）。`zoomUse="even"`とも合う。
 _ZOOM = 10
@@ -94,7 +94,7 @@ async def fetch_weather(client: JmaTileClient, latitude: float, longitude: float
     pixel = _pixel(latitude, longitude)
     path = _tile_path(frames[0], pixel)
     raw = await client.get(path)
-    if raw is None or isinstance(raw, EmptyTile):
+    if raw is None or isinstance(raw, UpstreamNotFound):
         return None
     content, _content_type = raw
     try:

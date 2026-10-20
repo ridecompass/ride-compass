@@ -34,7 +34,7 @@ from app.infrastructure import derived_data_meta, road_network_store
 from app.infrastructure.derived_data_freshness import declared_columns, derived_tables
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.source_models import PARTY_TYPE_CODES, Source
-from tests.conftest import empty_ingested_tables, postgis_database_url, raw_connection
+from tests.conftest import APP_TABLES_SQL, empty_ingested_tables, postgis_database_url, raw_connection
 from tests.source_ingest import (
     abr_block_record,
     abr_city_record,
@@ -409,13 +409,14 @@ async def test_each_stage_declares_what_it_reads_and_writes(world, monkeypatch):
     assert missing == {}
 
 
-@pytest.mark.parametrize("table", [table for stage in derive_cli.STAGES for table in stage.tables])
-async def test_every_table_a_stage_writes_has_statistics_after_the_rebuild(world, table):
+async def test_every_table_a_stage_writes_has_statistics_after_the_rebuild(world):
     """段が書いた表は、作り直しの後に統計（`pg_stats`）を持つ——無いまま配信と後ろの段が読むと、実行計画が桁で外れる。
     表は段の宣言から取るので、足した段の表も宣言するだけでここに入る。統計を書くのは`ANALYZE`だけで、表を作り直すたびに
-    消える（作業用のスキーマに新しく作る）。"""
-    assert await world.fetchval(
+    消える（作業用のスキーマに新しく作る）。表ごとにテストを分けないのは、テストごとに`world`を作り直すため。"""
+    tables = [table for stage in derive_cli.STAGES for table in stage.tables]
+    assert {table: await world.fetchval(
         "SELECT count(*) > 0 FROM pg_stats WHERE schemaname = 'public' AND tablename = $1", table)
+        for table in tables} == dict.fromkeys(tables, True)
 
 
 async def test_the_network_inputs_refuse_a_table_no_stage_writes():
@@ -425,9 +426,10 @@ async def test_the_network_inputs_refuse_a_table_no_stage_writes():
         derive_cli.network_inputs(["road_edges", "source_features_osm_way", "tuning_overrides"])
 
 
-#: この接続のトランザクションで表を読んだ数（`_TOUCHED_SQL`と同じ統計）。
+#: この接続のトランザクションでアプリ側の表を読んだ数（`_TOUCHED_SQL`と同じ統計）。拡張が持ち込んだ表は外す——
+#: `::geography`は SRID の定義を`spatial_ref_sys`から実行時に引くが、計画には出ず、行は拡張が決めて段も取込も変えない。
 _SCANS_SQL = text("SELECT relname, coalesce(seq_scan, 0) + coalesce(idx_scan, 0) AS scans"
-                  " FROM pg_stat_xact_user_tables WHERE schemaname = 'public'")
+                  f" FROM pg_stat_xact_user_tables WHERE schemaname = 'public' AND relname IN ({APP_TABLES_SQL})")
 
 
 async def _scans(session: AsyncSession) -> dict[str, int]:
