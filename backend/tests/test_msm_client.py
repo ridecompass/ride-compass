@@ -4,7 +4,7 @@
 `freshness`/`freshness_from_meta`/`warn_if_stale`）から
 見える振る舞いだけ。差し替えるのはプロセス境界だけで、網は本物の`httpx.AsyncClient`へ配信元の代役
 （`MockTransport`）を付け、ディスクは一時ディレクトリ、時計は固定する。何時間先まで同期し・読むかは
-設定（`settings.msm_forecast_hours`）をテストごとに与える。
+定数（`domain/weather_elements.py: MSM_FORECAST_HOURS`）をテストごとに差し替える。
 `.om`ファイルは本物のライブラリ（omfiles）で書く。
 
 ここで見ないもの:
@@ -24,7 +24,6 @@ import numpy as np
 import pytest
 from omfiles import OmFileWriter
 
-from app.config import settings
 from app.domain.time_zone import JST
 from app.infrastructure import msm_client
 
@@ -73,7 +72,7 @@ def msm_dir(tmp_path, monkeypatch, clock):
     clock.move_to(datetime.fromtimestamp(NOW, UTC))
 
     def forecast_hours(hours: int) -> None:
-        monkeypatch.setattr(settings, "msm_forecast_hours", hours)
+        monkeypatch.setattr(msm_client, "MSM_FORECAST_HOURS", hours)
 
     return SimpleNamespace(path=directory, clock=clock, forecast_hours=forecast_hours)
 
