@@ -61,6 +61,7 @@ from app.domain.weather_elements import (
 from app.domain.cycling_speed import SEGMENT_SPEED_CONDITIONS
 from app.domain.difficulty import DIFFICULTY_DECIMALS, OVERALL_DIFFICULTY_WORDING
 from app.domain.map_paint import DEFAULT_DIFFICULTY_BOUNDARIES
+from app.domain.road_classes import NO_DATA_VALUE
 from app.domain.map_display import (
     ALWAYS_SHOWN_ATTRIBUTIONS,
     MODEL_VALUE_DISCLAIMER,
@@ -391,6 +392,8 @@ def main() -> None:
                 "unknownOpacity": ROAD_UNKNOWN_OPACITY,
                 "underlayOpacity": ROAD_UNDERLAY_OPACITY,
                 "inspectedWidthPx": ROAD_INSPECTED_WIDTH_PX,
+                # 地図の線の層の値で「データなし」。
+                "noDataValue": NO_DATA_VALUE,
             },
             "point": {
                 "radiusPx": POINT_RADIUS_PX,

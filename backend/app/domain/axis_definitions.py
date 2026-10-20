@@ -259,7 +259,7 @@ def named_references(refs: Iterable[str], axes: Mapping[str, "AxisDefinition"]) 
     """
 
     def name(ref: str) -> str:
-        spec = material_catalog.MATERIAL_CATALOG.get(ref)
+        spec = material_catalog.material_spec(ref)
         if spec is not None:
             return spec.label
         axis = axes.get(ref)
@@ -587,7 +587,7 @@ def primary_attribute_ids_for(definition: AxisDefinition) -> list[str]:
         dict.fromkeys(
             spec.primary_attribute.attr_id
             for material_id in _leaf_materials(definition)
-            if (spec := material_catalog.MATERIAL_CATALOG.get(material_id)) is not None
+            if (spec := material_catalog.material_spec(material_id)) is not None
             and spec.primary_attribute is not None
         )
     )
@@ -599,9 +599,8 @@ def road_layer_ids_for(definition: AxisDefinition, road_classes: RoadClassDefini
     return [
         key
         for key in road_classes.map_layers
-        if (classification := road_classes.classifications.get(key)) is not None
-        and classification.is_published
-        and leaves & classification_materials(road_classes, key)
+        if (classification := road_classes.classifications[key]).is_published
+        and leaves & classification_materials(key, classification)
     ]
 
 
@@ -675,7 +674,7 @@ def averages_density(definition: AxisDefinition) -> bool:
         return False
     terms = [term for term in shape.terms if term.weight != 0]
     return bool(terms) and all(
-        (spec := material_catalog.MATERIAL_CATALOG.get(term.material)) is not None and spec.additive for term in terms
+        (spec := material_catalog.material_spec(term.material)) is not None and spec.additive for term in terms
     )
 
 
@@ -758,7 +757,7 @@ def _check_references(definition: AxisDefinition, axes: Mapping[str, AxisDefinit
             f"材料{named_references(mismatched, axes)}は、この点数の決め方には使えません（使えるのは{kinds}の材料）。"
         )
     if isinstance(shape, CategoricalShape) and material_catalog.is_known_material(shape.material):
-        dtype = material_catalog.MATERIAL_CATALOG[shape.material].dtype
+        dtype = material_catalog.known_material_spec(shape.material).dtype
         key_types = {type(key) for key in shape.mapping}
         expected_key_type = bool if dtype == "boolean" else str
         if key_types and key_types != {expected_key_type}:

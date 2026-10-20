@@ -25,6 +25,7 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useWayMaterials } from "@/features/map/useWayMaterials";
+import { useRoadClasses } from "@/features/map/useRoadClasses";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
 import { useStoredBooleanState, useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates } from "@/types/route";
@@ -166,6 +167,11 @@ export function useMapView({
   const speedKmh = riding?.speedKmh ?? ride.speedKmh;
   const wayConditions = useMemo(() => ({ bearingDeg, at: ride.at, speedKmh }), [bearingDeg, ride.at, speedKmh]);
   const wayMaterials = useWayMaterials(fetchAxes, viewport, wayConditions);
+  const roadClasses = useRoadClasses(
+    mapCatalog.roadLayers.some((layer) => layerVisibility[layer.id] === true),
+    viewport,
+    catalog.roadClasses.generation,
+  );
   // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。速度が数でない間は値の無いことにする。
   const formulaConditions = useMemo(
     () => ({ bearing_deg: bearingDeg, ...(Number.isFinite(speedKmh) ? { speed_kmh: speedKmh } : {}) }),
@@ -180,6 +186,7 @@ export function useMapView({
       dynamicWeather: weather.dynamicWeather,
       lens,
       paintedAxisId: painted,
+      roadClasses,
       wayMaterials,
       wayConditions: formulaConditions,
       hiddenLegendKeys: debouncedHidden,
@@ -192,6 +199,7 @@ export function useMapView({
       weather.dynamicWeather,
       lens,
       painted,
+      roadClasses,
       wayMaterials,
       formulaConditions,
       debouncedHidden,

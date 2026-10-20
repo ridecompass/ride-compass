@@ -63,7 +63,7 @@ def _coordinates(osm_node_id: int) -> tuple[float, float]:
 
 
 def grid_network(
-    *, bad_ways=(), unknown_ways=(), oneway_ways=(), motorway_ways=(), island=False, no_gradient_ways=(), no_stop_count_ways=(),
+    *, bad_ways=(), oneway_ways=(), motorway_ways=(), island=False, no_gradient_ways=(),
     stop_density_of=None, gradient_of=None, elevation_of=None, tunnel_ways=(), landcover_of=None,
 ) -> RoadNetwork:
     """3×3の格子。`island`で格子とつながらない道を足す。ほかの引数は`road_network`と同じ。"""
@@ -71,8 +71,8 @@ def grid_network(
     if island:
         ways[ISLAND_WAY] = tuple(ISLAND_NODES)
     return road_network(
-        ways, {**COORDINATES, **ISLAND_NODES}, bad_ways=bad_ways, unknown_ways=unknown_ways, oneway_ways=oneway_ways,
-        motorway_ways=motorway_ways, no_gradient_ways=no_gradient_ways, no_stop_count_ways=no_stop_count_ways,
+        ways, {**COORDINATES, **ISLAND_NODES}, bad_ways=bad_ways, oneway_ways=oneway_ways,
+        motorway_ways=motorway_ways, no_gradient_ways=no_gradient_ways,
         stop_density_of=stop_density_of, gradient_of=gradient_of, elevation_of=elevation_of, tunnel_ways=tunnel_ways,
         landcover_of=landcover_of,
     )
@@ -107,14 +107,14 @@ def lattice_network(size: int, **attributes) -> RoadNetwork:
 
 def road_network(
     ways: dict[int, tuple[int, int]], coordinates: dict[int, tuple[float, float]],
-    *, bad_ways=(), bad_forward_ways=(), unknown_ways=(), oneway_ways=(), motorway_ways=(), no_gradient_ways=(),
-    no_stop_count_ways=(), stop_density_of=None, gradient_of=None, elevation_of=None, tunnel_ways=(), landcover_of=None,
+    *, bad_ways=(), bad_forward_ways=(), oneway_ways=(), motorway_ways=(), no_gradient_ways=(),
+    stop_density_of=None, gradient_of=None, elevation_of=None, tunnel_ways=(), landcover_of=None,
 ) -> RoadNetwork:
     """道（1本1区間、道→(始点, 終点)）とノードの地点（osm_node_id→(緯度, 経度)）から道路網を組む。
 
     `bad_ways`は避けたい材料が1（それ以外は0）、`bad_forward_ways`は始点→終点の向きだけ避けたい材料が1、
-    `unknown_ways`はその材料のデータが無い、`oneway_ways`は始点→終点だけ走れる。
-    勾配はどの道も平ら（0%）で、`gradient_of`（道→始点から終点へ登る%）の道だけその勾配（逆向きは下り）を持ち、`no_gradient_ways`だけ値が無い。停止要因（信号・一時停止等）はどの道にも無い（0件）で、`no_stop_count_ways`だけ件数の値が無い。
+    `oneway_ways`は始点→終点だけ走れる。
+    勾配はどの道も平ら（0%）で、`gradient_of`（道→始点から終点へ登る%）の道だけその勾配（逆向きは下り）を持ち、`no_gradient_ways`だけ値が無い。停止要因（信号・一時停止等）はどの道にも無い（0件）。
     `stop_density_of`（道→1kmあたりの回数）の道だけ、どの種類の停止要因もその密度で持つ。
     標高はどの道にも無く、`elevation_of`（道→(始点, 終点)の標高m）の道だけ持つ（獲得・損失は両端の差）。
     道路の種類（`HIGHWAY`）はどの道も生活道路（residential）で、`motorway_ways`だけ高速道路。トンネル（`TUNNEL`）は`tunnel_ways`だけ。
@@ -137,11 +137,10 @@ def road_network(
     points = [(Coordinates(latitude=lat[a], longitude=lon[a]), Coordinates(latitude=lat[b], longitude=lon[b]))
               for a, b in zip(tail, head, strict=True)]
     bad = (np.isin(way_of_row, list(bad_ways)) | (np.isin(way_of_row, list(bad_forward_ways)) & forward)).astype(float)
-    bad[np.isin(way_of_row, list(unknown_ways))] = np.nan
     gradient = np.where(np.isin(way_of_row, list(no_gradient_ways)), np.nan, 0.0)
     for way, percent in (gradient_of or {}).items():
         gradient[way_of_row == way] = np.where(forward[way_of_row == way], percent, -percent)
-    stop_count = np.where(np.isin(way_of_row, list(no_stop_count_ways)), np.nan, 0.0)
+    stop_count = np.zeros(n)
     for way, density in (stop_density_of or {}).items():
         stop_count[way_of_row == way] = density
     start_elevation = np.full(n, np.nan)

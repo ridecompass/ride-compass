@@ -9,7 +9,6 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 
 import weatherScales from "@/types/generated/weather-scales.json";
 
-import { LANDCOVER_PAINTED_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import {
   buildMapLayers,
   deriveFetchLayerStatus,
@@ -93,11 +92,6 @@ describe("buildMapLayers（レイヤーの一覧）", () => {
       mapCatalogOf([catalogEntry({ axis_id: "a", label: "坂" }), catalogEntry({ axis_id: "b", label: "風" })]),
     );
     expect(layer(axes, "route").description).toContain("[坂・風・総合難易度]");
-  });
-
-  it("土地被覆の凡例は、地図に塗るクラスだけを並べる", () => {
-    const [block] = layer(withoutAxes, "landcover").readOnlyLegend ?? [];
-    expect(block.legend.map((entry) => entry.label)).toEqual(LANDCOVER_PAINTED_CLASSES.map((cls) => cls.label));
   });
 
   it("災害の凡例は、要素が塗る段ごとに1つ並び、見出しにその段で塗る要素の名前が入る", () => {

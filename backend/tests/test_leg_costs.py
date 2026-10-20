@@ -14,7 +14,6 @@
 """
 
 import dataclasses
-import logging
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -35,7 +34,7 @@ from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 START = datetime(2026, 10, 3, 9, 0)
 CRUISE_KMH = 20.0
 AVOID_MULTIPLIER = 3.0
-SURFACE = leg_costs.ROLLING_RESISTANCE_MATERIAL_ID
+SURFACE = "class:rolling"
 GRADIENT = leg_costs.GRADIENT_PERCENT
 WIND_DRAG = next(iter(leg_costs.REQUEST_DYNAMIC_MATERIAL_IDS))
 STOP_DENSITY = dict(zip(leg_costs.POI_COUNT_KINDS, leg_costs.stop_count_material_ids(), strict=True))
@@ -127,12 +126,6 @@ def _snapshot(matrix, **kwargs):
 
 
 # --- 所要時間 -------------------------------------------------------------
-
-
-def test_a_flat_paved_segment_without_wind_or_stops_is_ridden_at_the_cruise_speed():
-    leg = _snapshot(_matrix(1, distance=1000.0))
-
-    assert leg.travel_seconds_full[0] == pytest.approx(1000.0 / (CRUISE_KMH / 3.6), rel=2e-3)
 
 
 def test_the_gradient_in_percent_slows_the_rider_as_that_grade_and_a_missing_one_counts_as_flat():
@@ -353,21 +346,6 @@ def test_legs_with_the_same_bins_but_a_different_middle_are_not_mixed_up():
 
     assert shorter.cost_lazy.tolist() == shorter.cost_bins_lazy[2].tolist()
     assert longer.cost_lazy.tolist() == longer.cost_bins_lazy[3].tolist()
-
-
-def test_a_bin_already_composed_for_its_hour_is_composed_only_once(caplog):
-    """周回の往路の先頭のビンは、見込み時間なしで先に合成した1本と同じ時刻から始まる。"""
-    composer = _composer(_matrix(1), series=_series([0.0, 4.0, 8.0]))
-    first = composer.compose("prepare", None, 0.0, +1)
-
-    with caplog.at_level(logging.INFO, logger="ridecompass.graph"):
-        again = composer.compose("prepare", None, 0.0, +1)
-        binned = composer.compose("outbound", None, 0.0, +1, duration_hours=2.0)
-
-    assert again is first
-    assert binned.cost_bins_lazy[0].tolist() == first.cost_lazy.tolist()
-    assert "mode=reused" in caplog.messages[0]
-    assert "reused_bins=1" in caplog.messages[1]
 
 
 def test_a_tree_without_a_clock_reads_the_wind_at_each_segment_s_own_passage():

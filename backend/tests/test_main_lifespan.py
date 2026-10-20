@@ -30,11 +30,6 @@ async def _noop(*args, **kwargs) -> None:
     return None
 
 
-async def _noop_job(*args, **kwargs) -> None:
-    """スケジューラへ載せる代わりの何もしない仕事。"""
-    return None
-
-
 def _startup_job_attribute_names() -> list[str]:
     """`lifespan`がスケジューラへ載せるジョブの属性名。
 
@@ -60,8 +55,9 @@ def _harmless_startup(monkeypatch):
     """
     monkeypatch.setattr(main_module, "refresh_axis_definitions", bound(main_module.refresh_axis_definitions, _noop))
     monkeypatch.setattr(main_module, "refresh_tuning_values", bound(main_module.refresh_tuning_values, _noop))
+    monkeypatch.setattr(main_module, "refresh_road_classes", bound(main_module.refresh_road_classes, _noop))
     for name in _startup_job_attribute_names():
-        monkeypatch.setattr(main_module, name, bound(getattr(main_module, name), _noop_job))
+        monkeypatch.setattr(main_module, name, bound(getattr(main_module, name), _noop))
     monkeypatch.setattr(main_module, "get_http_client", lambda timeout: None)
 
 

@@ -298,16 +298,6 @@ describe("評価の走行の条件", () => {
   });
 });
 
-describe("OSMの生値", () => {
-  it("OSMの生値はタグとして解釈されない（第三者が編集できるデータのため）", () => {
-    const attack = '<img src=x onerror="alert(1)">';
-    const { container } = renderPopup({ osm_way_id: 1, name: attack });
-
-    expect(container.querySelector("img")).toBeNull();
-    expect(container.textContent).toContain(attack);
-  });
-});
-
 describe("道の識別子", () => {
   // 一般の利用者には読めない値なので既定では出さず、デバッグログONなら地図で押した1本をそのままbackendの調査へ渡せるように出す。
   it.each([

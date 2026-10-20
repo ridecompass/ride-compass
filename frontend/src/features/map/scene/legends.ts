@@ -6,7 +6,7 @@
  */
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
-import { ROAD_OTHER_KEY, roadTrackHasMissing, roadTrackRows } from "@/lib/mapDisplay/roadTracks";
+import { ROAD_OTHER_KEY, roadTrackRows } from "@/lib/mapDisplay/roadTracks";
 import type { RoadMapLayerView } from "@/types/route";
 
 import palette from "@/types/generated/palette.json";
@@ -46,7 +46,7 @@ export function initiallyHiddenLegendKeys(
   return Object.fromEntries(
     layers
       .filter((layer) => layer.hide_missing_rows)
-      .map((layer) => [layer.id, [roadTrackHasMissing(layer) ? NO_DATA_LEGEND_BAND.key : ROAD_OTHER_KEY]]),
+      .map((layer) => [layer.id, [layer.has_no_data ? NO_DATA_LEGEND_BAND.key : ROAD_OTHER_KEY]]),
   );
 }
 

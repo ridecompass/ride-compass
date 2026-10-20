@@ -3,27 +3,26 @@
 正本は管理DBの表（`infrastructure/road_class_models.py`）で、コードは写しも既定も持たない——表が空なら区分は0件。
 型は表の行を写すだけで、表の制約が守る形（鍵の綴り・参照先の実在・並びの重なり）をもう一度確かめない。制約で表せない
 データの良し悪し（条件の重なり・前の鍵の付け方・値の綴り）も判定せず、振り分けの式がどんなデータにも1つの答えを出す。
-
-プロセス内の全体は`replace_road_classes`で丸ごと差し替え（起動時と管理APIで書いた直後、`services/road_class_service.py`）、
-読む側は`current_road_classes`で今の全体を取る。
 """
 
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from typing import Annotated
+from typing import Annotated, Protocol, cast
 
 import numpy as np
 from pydantic import Field
 
 from app.domain.attributes import CategoricalColumn, MaterialColumn
-from app.domain.material_catalog import MATERIAL_CATALOG, SURFACE_ESTIMATE, MaterialSpec
+from app.domain.material_catalog import CoverageExcluded, MaterialSpec
 from app.domain.strict_model import StrictModel
 
 #: 真偽の事実が「ある」ときの値の綴り。
 TRUE_FACT_VALUE = "true"
 #: 区分の列の材料のidの接頭辞。
 CLASS_MATERIAL_PREFIX = "class:"
+#: 地図の線の層の値で「データなし」（区分の外で、層の`no_data_fact_key`の事実も無い道）。区分の鍵の綴り（表の制約）と重ならない。
+NO_DATA_VALUE = "-"
 
 
 class ConditionTerm(StrictModel):
@@ -128,25 +127,35 @@ def replace_road_classes(definitions: RoadClassDefinitions) -> None:
     _current = definitions
 
 
+class _Sorted(Protocol):
+    sort_order: int
+
+
+def by_sort_order[T: _Sorted](items: Mapping[str, T]) -> list[tuple[str, T]]:
+    """鍵と値を`sort_order`の順に。"""
+    return sorted(items.items(), key=lambda item: item[1].sort_order)
+
+
 def road_class_generation(definitions: RoadClassDefinitions) -> str:
     """中身から作る指紋。鍵の順に依らない。"""
     text = json.dumps(definitions.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
-def _term_matches(term: ConditionTerm, column: MaterialColumn | None, n: int) -> np.ndarray:
-    """区間ごとに項が当たるか。知らない事実（列が無い）は、どの区間も事実が無いとして当てる。
-
-    分類の事実は値があれば「事実あり」。分類でない列は真偽として読み、1.0のときだけ`TRUE_FACT_VALUE`の値で「事実あり」、
-    ほかの値と値なしは「事実なし」。"""
+def _present(column: MaterialColumn | None, n: int) -> np.ndarray:
+    """区間ごとに事実があるか。知らない事実（列が無い）は、どの区間にも無い。分類の事実は値があれば「事実あり」。分類でない列は
+    真偽として読み、1.0のときだけ（`TRUE_FACT_VALUE`の値で）「事実あり」、ほかの値と値なしは「事実なし」。"""
     if column is None:
-        present = np.zeros(n, dtype=bool)
-        listed = present
-    elif isinstance(column, CategoricalColumn):
-        present = column.codes != 0
+        return np.zeros(n, dtype=bool)
+    return column.codes != 0 if isinstance(column, CategoricalColumn) else column == 1.0
+
+
+def _term_matches(term: ConditionTerm, column: MaterialColumn | None, n: int) -> np.ndarray:
+    """区間ごとに項が当たるか。"""
+    present = _present(column, n)
+    if isinstance(column, CategoricalColumn):
         listed = np.isin(column.codes, [code for code, value in enumerate(column.vocab) if value in term.fact_values])
     else:
-        present = column == 1.0
         listed = np.full(n, TRUE_FACT_VALUE in term.fact_values)
     return (present & (listed != term.negated)) | (~present & term.matches_absent)
 
@@ -162,67 +171,83 @@ def conditions_match(conditions: Sequence[Condition], columns: Mapping[str, Mate
     return matched
 
 
-def class_indices(classification: RoadClassification, columns: Mapping[str, MaterialColumn], n: int) -> np.ndarray:
-    """区間ごとに、入る区分の`classification.classes`での位置。どの区分にも当たらない道と、2つ以上の区分に当たる道は-1。"""
-    hits = np.zeros(n, dtype=np.int32)
-    indices = np.full(n, -1, dtype=np.int32)
-    for position, road_class in enumerate(classification.classes.values()):
-        matched = conditions_match(road_class.conditions, columns, n)
-        hits += matched
-        indices[matched] = position
-    indices[hits != 1] = -1
-    return indices
+def _facts(classification: RoadClassification) -> set[str]:
+    return {fact_key for c in classification.classes.values() for condition in c.conditions for fact_key in condition}
+
+
+def classification_materials(key: str, classification: RoadClassification) -> set[str]:
+    """分け方が区分を決めるのに読む材料のid: 条件の事実と、その分け方の区分の列（`class:<分け方>`）。"""
+    return {*_facts(classification), class_material_id(key)}
 
 
 def condition_facts(definitions: RoadClassDefinitions) -> set[str]:
     """区分の条件が読む事実の材料のid。"""
-    return {
-        fact_key
-        for classification in definitions.classifications.values()
-        for road_class in classification.classes.values()
-        for condition in road_class.conditions
-        for fact_key in condition
-    }
-
-
-def classification_materials(definitions: RoadClassDefinitions, classification_key: str) -> set[str]:
-    """分け方が区分を決めるのに読む材料のid（条件の事実と、転がり抵抗の表が指す分け方では`surface_estimate`）。"""
-    classification = definitions.classifications.get(classification_key)
-    if classification is None:
-        return set()
-    facts = {fact_key for c in classification.classes.values() for condition in c.conditions for fact_key in condition}
-    if classification_key == definitions.rolling_resistance_classification:
-        facts.add(SURFACE_ESTIMATE)
-    return facts
+    return {fact for classification in definitions.classifications.values() for fact in _facts(classification)}
 
 
 def class_material_id(classification_key: str) -> str:
-    """分け方の区分の列の材料のid。区分の列は材料の列と同じ経路で運ぶが、軸から選べる材料（`MATERIAL_CATALOG`）にはしない。"""
+    """分け方の区分の列の材料のid。区分の列は材料の列と同じ経路で運び、軸からも材料として選べる（`class_material_spec`）。"""
     return f"{CLASS_MATERIAL_PREFIX}{classification_key}"
 
 
 def class_columns(
     definitions: RoadClassDefinitions, columns: Mapping[str, MaterialColumn], n: int
 ) -> dict[str, CategoricalColumn]:
-    """分け方ごとの区分の列（鍵は`class_material_id`、値は区分の鍵。どの区分にも入らない道は値なし）。
-
-    転がり抵抗の表が指す分け方の列は、材料`surface_estimate`の列としても置く（指す分け方が無ければ置かず、材料は値なしになる）。"""
+    """分け方ごとの区分の列（鍵は`class_material_id`、値は区分の鍵）。どの区分にも当たらない道と、2つ以上の区分に当たる道は値なし。"""
     result: dict[str, CategoricalColumn] = {}
     for key, classification in definitions.classifications.items():
-        indices = class_indices(classification, columns, n)
-        result[class_material_id(key)] = CategoricalColumn((indices + 1).astype(np.int16), (None, *classification.classes))
-    rolling = definitions.rolling_resistance_classification
-    if rolling is not None and (column := result.get(class_material_id(rolling))) is not None:
-        result[SURFACE_ESTIMATE] = column
+        hits = np.zeros(n, dtype=np.int16)
+        codes = np.zeros(n, dtype=np.int16)
+        for code, road_class in enumerate(classification.classes.values(), start=1):
+            matched = conditions_match(road_class.conditions, columns, n)
+            hits += matched
+            codes[matched] = code
+        codes[hits != 1] = 0
+        result[class_material_id(key)] = CategoricalColumn(codes, (None, *classification.classes))
     return result
 
 
-def material_with_class_labels(material_id: str) -> MaterialSpec:
-    """材料の宣言。`surface_estimate`は、値（転がり抵抗の表が指す分け方の区分の鍵）の呼び名に今の区分の名前を入れて返す。"""
-    spec = MATERIAL_CATALOG[material_id]
-    if material_id != SURFACE_ESTIMATE:
-        return spec
-    definitions = current_road_classes()
-    classification = definitions.classifications.get(definitions.rolling_resistance_classification or "")
-    labels = {key: c.label for key, c in classification.classes.items()} if classification else {}
-    return spec.model_copy(update={"value_labels": labels})
+def layer_columns(
+    definitions: RoadClassDefinitions, columns: Mapping[str, MaterialColumn], n: int
+) -> dict[str, CategoricalColumn]:
+    """公開した分け方の地図の線の層ごとの値（鍵は分け方）。地図の線とルートの区間の帯が読む。値は区分の鍵で、区分の外は値なし、
+    区分の外で層の`no_data_fact_key`の事実も無い道は`NO_DATA_VALUE`。`columns`は事実と区分の列（`class_columns`）を持つ。"""
+    result: dict[str, CategoricalColumn] = {}
+    for key, layer in definitions.map_layers.items():
+        if not definitions.classifications[key].is_published:
+            continue
+        column = cast(CategoricalColumn, columns[class_material_id(key)])
+        if layer.no_data_fact_key is not None:
+            missing = (column.codes == 0) & ~_present(columns.get(layer.no_data_fact_key), n)
+            column = CategoricalColumn(
+                np.where(missing, len(column.vocab), column.codes).astype(np.int16), (*column.vocab, NO_DATA_VALUE)
+            )
+        result[key] = column
+    return result
+
+
+def _class_material_spec(key: str, classification: RoadClassification) -> MaterialSpec:
+    return MaterialSpec(
+        material_id=class_material_id(key),
+        label=classification.label,
+        description=classification.description or classification.label,
+        dtype="categorical",
+        tile_property=None,
+        source="road_class",
+        coverage=CoverageExcluded(reason="道の区分から都度作る値で、DBに静的な値を持たない", missing_semantics="unknown"),
+        value_labels={class_key: c.label for class_key, c in classification.classes.items()},
+    )
+
+
+def class_material_spec(material_id: str) -> MaterialSpec | None:
+    """区分から作る材料（`class:<分け方>`）の宣言。今の区分にその分け方が無ければNone。"""
+    if not material_id.startswith(CLASS_MATERIAL_PREFIX):
+        return None
+    key = material_id.removeprefix(CLASS_MATERIAL_PREFIX)
+    classification = current_road_classes().classifications.get(key)
+    return _class_material_spec(key, classification) if classification is not None else None
+
+
+def class_material_specs() -> list[MaterialSpec]:
+    """今の区分の分け方ごとの、区分から作る材料の宣言。"""
+    return [_class_material_spec(key, c) for key, c in current_road_classes().classifications.items()]

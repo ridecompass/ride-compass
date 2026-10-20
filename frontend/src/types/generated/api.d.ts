@@ -260,6 +260,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/region/road-classes/{z}/{x}/{y}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["region_road_classes_api_region_road_classes__z___x___y__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/region/axis-inspector": {
         parameters: {
             query?: never;
@@ -735,10 +751,6 @@ export interface components {
             key: string;
             /** Section */
             section: string;
-            /** Layer */
-            layer: string;
-            /** Layer Label */
-            layer_label: string;
             /** Label */
             label: string;
             /** Description */
@@ -1809,17 +1821,6 @@ export interface components {
             /** Value */
             value: string | null;
         };
-        /** RoadClassTermView */
-        RoadClassTermView: {
-            /** Property */
-            property: string | null;
-            /** Values */
-            values: string[];
-            /** Negated */
-            negated: boolean;
-            /** Matches Absent */
-            matches_absent: boolean;
-        };
         /** RoadClassView */
         RoadClassView: {
             /** Key */
@@ -1830,10 +1831,6 @@ export interface components {
             description: string;
             /** Color */
             color: string;
-            /** Former Keys */
-            former_keys: string[];
-            /** Conditions */
-            conditions: components["schemas"]["RoadClassTermView"][][];
         };
         /** RoadClassification */
         RoadClassification: {
@@ -1887,8 +1884,8 @@ export interface components {
             panel_hint: (string | components["schemas"]["LayerTextSlotView"])[];
             /** Hide Missing Rows */
             hide_missing_rows: boolean;
-            /** No Data Property */
-            no_data_property: string | null;
+            /** Has No Data */
+            has_no_data: boolean;
             /** Classes */
             classes: components["schemas"]["RoadClassView"][];
         };
@@ -2836,6 +2833,43 @@ export interface operations {
                     "application/json": {
                         [key: string]: {
                             [key: string]: number;
+                        };
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    region_road_classes_api_region_road_classes__z___x___y__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                z: number;
+                x: number;
+                y: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: {
+                            [key: string]: string;
                         };
                     };
                 };

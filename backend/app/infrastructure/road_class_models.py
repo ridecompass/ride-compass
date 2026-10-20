@@ -7,7 +7,7 @@
 """
 
 from datetime import datetime
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 from sqlalchemy import (
     BigInteger,
@@ -23,7 +23,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, attribute_keyed_dict, mapped_column, relationship
 
 from app.infrastructure.orm_base import Base
 
@@ -41,6 +41,12 @@ _IMMEDIATE: _Deferral = {"deferrable": True, "initially": "IMMEDIATE"}
 
 def _classification_fk(ondelete: str | None = None) -> ForeignKey:
     return ForeignKey("road_classifications.classification_key", ondelete=ondelete, **_DEFERRED)
+
+
+def _children(key: str | None, order_by: str) -> Any:
+    """親を読むと一緒に読み、親と一緒に書く子の行。`key`の欄で引く辞書か、Noneなら並び。"""
+    collection = list if key is None else attribute_keyed_dict(key)
+    return relationship(lazy="selectin", cascade="all, delete-orphan", order_by=order_by, collection_class=collection)
 
 
 def _class_fk(ondelete: str | None = None) -> ForeignKeyConstraint:
@@ -65,10 +71,11 @@ class RoadClassificationRow(Base):
     description: Mapped[str] = mapped_column(String, nullable=False)
     is_published: Mapped[bool] = mapped_column(Boolean, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    classes: Mapped[dict[str, "RoadClassRow"]] = _children("class_key", "RoadClassRow.class_key")
 
 
 class RoadClassRow(Base):
-    """分け方の区分1つ。`sort_order`は凡例・除外タブ・帯で共通の並びで、色もこの順で決まる。振り分けには使わない。"""
+    """分け方の区分1つ。"""
 
     __tablename__ = "road_classes"
     __table_args__ = (
@@ -82,8 +89,12 @@ class RoadClassRow(Base):
     #: 意味の文だけ。タグの注は配るときに条件から組む。
     description: Mapped[str] = mapped_column(String, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
-    #: `<分け方>.<区分>`の形の、前の鍵。
     former_keys: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default="{}")
+    condition_rows: Mapped[list["RoadClassConditionRow"]] = _children(None, "RoadClassConditionRow.condition_id")
+
+    @property
+    def conditions(self) -> list[dict[str, "RoadClassConditionTermRow"]]:
+        return [condition.terms for condition in self.condition_rows]
 
 
 class RoadClassConditionRow(Base):
@@ -95,6 +106,7 @@ class RoadClassConditionRow(Base):
     condition_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     classification_key: Mapped[str] = mapped_column(String, nullable=False)
     class_key: Mapped[str] = mapped_column(String, nullable=False)
+    terms: Mapped[dict[str, "RoadClassConditionTermRow"]] = _children("fact_key", "RoadClassConditionTermRow.fact_key")
 
 
 class RoadClassConditionTermRow(Base):
@@ -113,7 +125,6 @@ class RoadClassConditionTermRow(Base):
     )
     #: 事実の材料のid（`domain/material_catalog.py: MATERIAL_CATALOG`の鍵）。
     fact_key: Mapped[str] = mapped_column(String, primary_key=True)
-    #: 真偽の事実は`'true'`だけ。
     fact_values: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
     # 2つの真偽は既定を置かない——書き忘れた道が黙って区分の外へ落ちないように。
     negated: Mapped[bool] = mapped_column(Boolean, nullable=False)
@@ -193,6 +204,7 @@ class RoadAvoidanceClassificationRow(Base):
         String, ForeignKey("road_avoidance_sections.section_key", **_DEFERRED), nullable=False
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    overrides: Mapped[dict[str, "RoadAvoidanceOverrideRow"]] = _children("class_key", "RoadAvoidanceOverrideRow.class_key")
 
 
 class RoadAvoidanceOverrideRow(Base):

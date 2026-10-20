@@ -51,7 +51,6 @@ export type AxisCatalogEntry = Schemas["AxisCatalogEntry"];
 export type RoadClassCatalog = Schemas["RoadClassCatalog"];
 export type RoadMapLayerView = Schemas["RoadMapLayerView"];
 export type RoadClassView = Schemas["RoadClassView"];
-export type RoadClassTermView = Schemas["RoadClassTermView"];
 export type RoadAvoidanceView = Schemas["RoadAvoidanceView"];
 
 // 軸スタジオが使う評価軸定義のCRUD型。/api/admin/axis-definitions。

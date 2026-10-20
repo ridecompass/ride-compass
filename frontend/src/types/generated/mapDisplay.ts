@@ -732,7 +732,8 @@ export const mapDisplay = {
     "knownOpacity": 0.8,
     "unknownOpacity": 0.6,
     "underlayOpacity": 0.15,
-    "inspectedWidthPx": 8
+    "inspectedWidthPx": 8,
+    "noDataValue": "-"
   },
   "point": {
     "radiusPx": 4,

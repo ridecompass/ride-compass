@@ -13,8 +13,7 @@ from app.domain.axis_definitions import (
     AxisDefinition,
     BreakpointLinearShape,
 )
-from app.domain.material_catalog import MATERIAL_CATALOG, MaterialDType
-from app.domain.road_classes import material_with_class_labels
+from app.domain.material_catalog import MaterialDType, known_material_spec, material_spec
 from app.domain.strict_model import StrictModel
 
 
@@ -37,7 +36,7 @@ def raw_value_unit(definition: AxisDefinition) -> str | None:
             continue
         if term.weight != 1.0:
             return None
-        spec = MATERIAL_CATALOG.get(term.material)
+        spec = material_spec(term.material)
         if spec is None or not spec.unit:
             return None
         specs.append(spec)
@@ -84,7 +83,7 @@ def _total_unit(definition: AxisDefinition) -> str | None:
     total_units = {
         spec.total_unit
         for term in shape.terms
-        if term.weight != 0 and (spec := MATERIAL_CATALOG.get(term.material)) is not None
+        if term.weight != 0 and (spec := material_spec(term.material)) is not None
     }
     if len(total_units) != 1:
         return None
@@ -187,7 +186,7 @@ def axis_material_breakdown(
     """
     entries = []
     for share in axis_material_shares(definition, definitions):
-        spec = material_with_class_labels(share.material_id)
+        spec = known_material_spec(share.material_id)
         entries.append(
             AxisMaterialBreakdownEntry(
                 material_id=share.material_id,

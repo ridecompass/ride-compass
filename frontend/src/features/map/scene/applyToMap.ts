@@ -49,6 +49,7 @@ import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { applyMapScene } from "./applyMapScene";
 import type { AxisLineState, WayConditions, WayMaterials } from "./groups/axisLines";
 import { POINT_TILE_LAYERS } from "./groups/points";
+import type { RoadClassValues } from "./groups/roadLines";
 import type { RouteState } from "./groups/routes";
 import { weatherElementKey, type WeatherState } from "./groups/weather";
 import { buildLegendFilterExpression } from "./sceneBuilders";
@@ -76,6 +77,8 @@ export interface SceneLook {
   readonly lens: LensId;
   /** 全道路を塗っている軸（塗っていなければnull）。 */
   readonly paintedAxisId: LensId | null;
+  /** 今の範囲の道ごとの、道の線の層の値。 */
+  readonly roadClasses: RoadClassValues;
   /** 軸ごとの、今の範囲の道ごとの材料の取得結果。 */
   readonly wayMaterials: ReadonlyMap<string, { materials: WayMaterials; loading: boolean }>;
   /** 道の値の式が読む走る条件。 */
@@ -243,6 +246,7 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
       tiles: roadTiles,
       visible,
       hiddenKeys,
+      classes: props.look.roadClasses,
       inspectedWayId: props.inspectedWayId,
     },
     axis: axisStateFrom(props, roadTiles?.sourceLayer ?? null),

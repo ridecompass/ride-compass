@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from collections.abc import Mapping
 
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.config import settings
@@ -37,11 +36,11 @@ def _max_search_edges() -> int | None:
 
 
 #: 最後に作った区分の列と、作ったときの道路網・区分の全体。どちらかが入れ替わったら作り直す。
-_classes: tuple[RoadNetwork, RoadClassDefinitions, Mapping[str, CategoricalColumn]] | None = None
+_classes: tuple[RoadNetwork, RoadClassDefinitions, tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]] | None = None
 
 
-def _network_classes(network: RoadNetwork) -> Mapping[str, CategoricalColumn]:
-    """取込範囲全体の区分の列。道路網と区分の全体の組ごとに1回だけ作り、組が替わったら丸ごと入れ替える。
+def _network_classes(network: RoadNetwork) -> tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]:
+    """取込範囲全体の区分の列と層ごとの値。道路網と区分の全体の組ごとに1回だけ作り、組が替わったら丸ごと入れ替える。
 
     別のスレッドが同時に作り直しても、どちらも同じ組から同じ列を作るだけなので、束縛の差し替えは1回で済ませる。"""
     global _classes

@@ -53,8 +53,9 @@ from app.domain.difficulty import (
 )
 from app.domain.map_paint import SignedMaterialMapValue, map_paint
 from app.domain.material_catalog import (
-    MATERIAL_CATALOG,
+    all_material_specs,
     is_known_material,
+    material_spec,
     materials_of_source,
 )
 from app.domain.cycling_speed import travel_model_material_ids
@@ -128,7 +129,7 @@ def _route_facing_leaf_material_ids(definitions: dict[str, AxisDefinition], *, c
     """所要時間が読む材料と公開軸の葉の材料のうち、categoricalかどうかが`categorical`に合うもの（動的材料を除く）を安定順で並べる。"""
     seen: dict[str, None] = {}
     for material_id in (*travel_model_material_ids(), *_published_axis_leaf_material_ids(definitions)):
-        spec = MATERIAL_CATALOG.get(material_id)
+        spec = material_spec(material_id)
         if spec is None or (spec.dtype == "categorical") != categorical:
             continue
         if material_id in REQUEST_DYNAMIC_MATERIAL_IDS:
@@ -179,7 +180,7 @@ def empty_material_arrays(n: int, present: Container[str]) -> dict[str, Material
     その軸だけ恒久的に欠損扱いになる。
     """
     arrays: dict[str, MaterialColumn] = {}
-    for spec in MATERIAL_CATALOG.values():
+    for spec in all_material_specs():
         if spec.material_id in present:
             continue
         if spec.dtype == "categorical":

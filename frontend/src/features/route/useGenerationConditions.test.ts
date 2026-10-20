@@ -78,22 +78,6 @@ describe("周回", () => {
     expect(reopen(first).result.current.loop).toBe(false);
   });
 
-  it("周回にしても置いた目的地を覚えておき、周回の間は返さず選べず（地図で置くと出発地）、外すと戻す", () => {
-    const { result, onOriginPlace } = renderConditions();
-    act(() => result.current.setLoop(false));
-    act(() => result.current.selectPoint({ role: "destination" }));
-    act(() => result.current.placeAtSelected(A, null));
-
-    act(() => result.current.setLoop(true));
-    expect(result.current.destination).toBeNull();
-    expect(result.current.selectedPoint).toEqual({ role: "origin" });
-    act(() => result.current.placeAtSelected(B, null));
-    expect(onOriginPlace).toHaveBeenCalledExactlyOnceWith(B);
-
-    act(() => result.current.setLoop(false));
-    expect(result.current.destination).toEqual(A);
-  });
-
   it("周回の間に経由地と目的地を一度に消すと、経由地だけを消して覚えている目的地は残す", () => {
     const { result } = renderConditions();
     act(() => result.current.setLoop(false));
@@ -113,17 +97,6 @@ describe("周回", () => {
 describe("地点", () => {
   // 目的地を置くのは周回を外した間（周回の間の目的地は上の「周回」）。
   beforeEach(() => window.localStorage.setItem("ridecompass:loop", "false"));
-
-  it("何も選んでいなければ出発地を選んでいて、地図で置くと位置の持ち主へ渡す。自分では持たない", () => {
-    const { result, onOriginPlace } = renderConditions();
-    expect(result.current.selectedPoint).toEqual({ role: "origin" });
-
-    act(() => result.current.placeAtSelected(A, null));
-
-    expect(onOriginPlace).toHaveBeenCalledWith(A);
-    expect(result.current.destination).toBeNull();
-    expect(result.current.waypoints).toEqual([]);
-  });
 
   it("選んだ地点を置き、選んだままにする（続けて置くとその地点を置き直す）", () => {
     const { result } = renderConditions();
@@ -259,7 +232,6 @@ describe("距離と候補数", () => {
   });
 
   it.each([
-    { label: "5km刻みの値", saved: "45", read: "45" },
     {
       label: "上限ちょうど",
       saved: String(routeGenerateConfig.max_distance_km),

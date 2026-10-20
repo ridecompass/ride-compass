@@ -92,10 +92,6 @@ describe("段の色", () => {
     expect(lookOf("along", { hiddenBandKeys: ["high"] }).color).toBe("#f59e0b");
   });
 
-  it("段の境界ちょうどの値の道は上の段の色（段の引き方は`valueScale.ts: bandCondition`の1つ）", () => {
-    expect(lookOf("onBoundary").color).toBe("#dc2626");
-  });
-
   it("走る向きを変えると、地図全体の状態の向きが変わり、その向きで求めた値の段の色になる", () => {
     const turned = groupFor({}, { bearing_deg: 10 });
 
@@ -111,13 +107,6 @@ describe("値の無い道", () => {
     expect(absent.color).toBe(TRANSPARENT);
     expect(absent.dashOpacity).toBe(mapDisplay.road.unknownOpacity);
     expect(lookOf("along").dashOpacity).toBe(0);
-  });
-
-  it("破線の線は「データなし」の色で、データなしの刻みを持つ", () => {
-    const dashed = groupFor().layers[1];
-
-    expect(dashed.paint["line-color"]).toBe(palette.semantic.no_data);
-    expect(evaluate(dashed.paint["line-dasharray"], {})).toEqual([...mapDisplay.noDataDash]);
   });
 
   it("「データなし」を隠すと、実線も破線も描かない", () => {

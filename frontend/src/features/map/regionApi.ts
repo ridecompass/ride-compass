@@ -168,3 +168,26 @@ export async function fetchWayMaterials(
     return { materials: {}, error: true };
   }
 }
+
+/** 路面タイルと同じz/x/yの中の道ごとの、道の線の層の値（層のid→区分の鍵か「データなし」。区分の外の道の層は無い）。
+ * 失敗しても例外にせず空を返す（その道は区分の外に見える）。 */
+export async function fetchRoadClasses(
+  z: number,
+  x: number,
+  y: number,
+): Promise<Record<string, Record<string, string>>> {
+  try {
+    return await requestApi(
+      (init) => backendApi.GET("/api/region/road-classes/{z}/{x}/{y}", { params: { path: { z, x, y } }, ...init }),
+      {
+        timeoutMs: API_TIMEOUT_MS.default,
+        category: "api:road-classes",
+        messages: { failure: "道の区分の取得に失敗しました", parseFailure: "道の区分の解析に失敗しました" },
+        successMeta: (data) => ({ wayCount: Object.keys(data).length }),
+      },
+    );
+  } catch {
+    // 失敗の内訳は`requestApi`が記録済み。
+    return {};
+  }
+}

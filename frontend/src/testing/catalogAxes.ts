@@ -88,9 +88,9 @@ export function catalogResponse(
 
 // 道の区分と層も、軸と同じく管理DBが持つ任意の値なので、テストが自分で組む。
 
-/** 区分1つ。条件は無い（どの道にも当たらない）ので、当て方を見るテストは`conditions`を書く。 */
+/** 区分1つ。 */
 export function roadClass(key: string, overrides: Partial<RoadClassView> = {}): RoadClassView {
-  return { key, label: key, description: "", color: "#000000", former_keys: [], conditions: [], ...overrides };
+  return { key, label: key, description: "", color: "#000000", ...overrides };
 }
 
 /** 道の線の層1つ。区分は無い。 */
@@ -103,7 +103,7 @@ export function roadMapLayer(id: string, overrides: Partial<RoadMapLayerView> = 
     description: [],
     panel_hint: [],
     hide_missing_rows: false,
-    no_data_property: null,
+    has_no_data: false,
     classes: [],
     ...overrides,
   };
@@ -125,8 +125,6 @@ export function avoidanceRow(
   return {
     key,
     section,
-    layer: "",
-    layer_label: "",
     label: key,
     description: "",
     default: "pass",

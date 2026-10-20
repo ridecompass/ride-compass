@@ -74,15 +74,13 @@ def _with_road_classes(sample: list[tuple[float, dict[str, object]]]) -> list[tu
     書き換わるので、標本を読むたびに当てる。"""
     definitions = current_road_classes()
     values = [materials for _, materials in sample]
-    facts: dict[str, MaterialColumn] = {}
-    for fact_key in condition_facts(definitions):
-        dtype = material_dtype(fact_key)
-        if dtype == "categorical":
-            facts[fact_key] = CategoricalColumn.encode(materials.get(fact_key) for materials in values)  # type: ignore[misc]
-        elif dtype is not None:
-            facts[fact_key] = np.array(
-                [np.nan if (value := materials.get(fact_key)) is None else float(value) for materials in values]  # type: ignore[arg-type]
-            )
+    facts: dict[str, MaterialColumn] = {
+        key: CategoricalColumn.encode(m.get(key) for m in values)  # type: ignore[misc]
+        if material_dtype(key) == "categorical"
+        else np.array([np.nan if (v := m.get(key)) is None else float(v) for m in values])  # type: ignore[arg-type]
+        for key in condition_facts(definitions)
+        if material_dtype(key) is not None
+    }
     classes = class_columns(definitions, facts, len(values))
     return [
         (length_m, {**materials, **{material_id: column.value_at(i) for material_id, column in classes.items()}})
