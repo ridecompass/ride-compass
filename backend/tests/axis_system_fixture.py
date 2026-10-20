@@ -10,11 +10,12 @@ from contextlib import contextmanager
 from typing import Any
 
 from app.domain.axis_definitions import (
-    AXIS_DEFINITIONS,
     AxisDefinition,
     AxisShape,
     BreakpointLinearShape,
     MaterialTerm,
+    copy_axis_definitions,
+    replace_axis_definitions,
 )
 
 
@@ -43,18 +44,16 @@ def axis_definitions_snapshot():
 
     ブロック内で何を書き込むか（差し替えるか、そもそも書き込まないか）は呼び出し側の責務。
     """
-    original = dict(AXIS_DEFINITIONS)
+    original = copy_axis_definitions()
     try:
-        yield original
+        yield
     finally:
-        AXIS_DEFINITIONS.clear()
-        AXIS_DEFINITIONS.update(original)
+        replace_axis_definitions(original)
 
 
 @contextmanager
 def replaced_axis_definitions(definitions: Mapping[str, AxisDefinition]):
     """ブロックの間だけ`AXIS_DEFINITIONS`を`definitions`だけにする。"""
     with axis_definitions_snapshot():
-        AXIS_DEFINITIONS.clear()
-        AXIS_DEFINITIONS.update(definitions)
+        replace_axis_definitions(definitions)
         yield

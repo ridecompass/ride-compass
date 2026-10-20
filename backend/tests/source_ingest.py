@@ -82,42 +82,42 @@ def point_record(key: int | str, lon: float, lat: float,
                         attrs=attrs or {})
 
 
+def _abr_place(lon: float, lat: float) -> dict[str, str]:
+    """`abr`の各段に共通の、代表点と廃止日の列。"""
+    return {"ablt_date": "", "rep_lon": str(lon), "rep_lat": str(lat), "rep_srid": "EPSG:6668"}
+
+
 def abr_prefecture_record(code: str, name: str, lon: float, lat: float) -> SourceRecord:
     """住所の生データ（`abr`）の都道府県1件。列は取込のアダプタ（`source_adapters/abr.py`）が入れる配布の列の名前。
     住所の区画の派生の段は`abr`の取込が無いと止まるので、派生を最初から流すテストは少なくともこれを取り込む。"""
-    return point_record(code, lon, lat, {"lg_code": code, "pref": name, "ablt_date": "",
-                                         "rep_lon": str(lon), "rep_lat": str(lat), "rep_srid": "EPSG:6668"})
+    return point_record(code, lon, lat, {"lg_code": code, "pref": name, **_abr_place(lon, lat)})
 
 
 def abr_city_record(code: str, prefecture: str, city: str, lon: float, lat: float, *, ward: str = "",
                     county: str = "") -> SourceRecord:
     """住所の生データ（`abr`）の市区町村1件（政令市の区は`ward`を持つ行）。"""
     return point_record(code, lon, lat, {"lg_code": code, "pref": prefecture, "county": county, "city": city,
-                                         "ward": ward, "ablt_date": "", "rep_lon": str(lon), "rep_lat": str(lat),
-                                         "rep_srid": "EPSG:6668"})
+                                         "ward": ward, **_abr_place(lon, lat)})
 
 
 def abr_town_record(code: str, town_id: str, town_type: str, city: tuple[str, str, str], lon: float, lat: float, *,
                     oaza: str = "", chome: str = "", koaza: str = "") -> SourceRecord:
     """住所の生データ（`abr`）の町字1件。`code`は属す市区町村（区）のコード、`city`はその (都道府県, 市, 区) の名前。"""
     prefecture, city_name, ward = city
-    return SourceRecord(
-        natural_key=f"{code}:{town_id}", geom_wkb=shapely.to_wkb(Point(lon, lat)),
-        attrs={"lg_code": code, "machiaza_id": town_id, "machiaza_type": town_type, "pref": prefecture, "county": "",
-               "city": city_name, "ward": ward, "oaza_cho": oaza, "chome": chome,
-               "chome_number": standardize_address(chome).rstrip("-"), "koaza": koaza, "ablt_date": "",
-               "rsdt_addr_flg": "0", "rep_lon": str(lon), "rep_lat": str(lat), "rep_srid": "EPSG:6668"})
+    return point_record(f"{code}:{town_id}", lon, lat, {
+        "lg_code": code, "machiaza_id": town_id, "machiaza_type": town_type, "pref": prefecture, "county": "",
+        "city": city_name, "ward": ward, "oaza_cho": oaza, "chome": chome,
+        "chome_number": standardize_address(chome).rstrip("-"), "koaza": koaza, "rsdt_addr_flg": "0",
+        **_abr_place(lon, lat)})
 
 
 def abr_block_record(town: SourceRecord, block_id: str, number: str, lon: float, lat: float) -> SourceRecord:
     """住所の生データ（`abr`）の住居表示の街区1件。`town`は属す町字（`abr_town_record`）、`number`は街区符号。"""
     code, town_id = town.attrs["lg_code"], town.attrs["machiaza_id"]
-    return SourceRecord(
-        natural_key=f"{code}:{town_id}:{block_id}", geom_wkb=shapely.to_wkb(Point(lon, lat)),
-        attrs={"lg_code": code, "machiaza_id": town_id, "blk_id": block_id, "city": town.attrs["city"],
-               "ward": town.attrs["ward"], "oaza_cho": town.attrs["oaza_cho"], "chome": town.attrs["chome"],
-               "koaza": town.attrs["koaza"], "blk_num": number, "rsdt_addr_flg": "1", "ablt_date": "",
-               "rep_lon": str(lon), "rep_lat": str(lat), "rep_srid": "EPSG:6668"})
+    return point_record(f"{code}:{town_id}:{block_id}", lon, lat, {
+        "lg_code": code, "machiaza_id": town_id, "blk_id": block_id, "city": town.attrs["city"],
+        "ward": town.attrs["ward"], "oaza_cho": town.attrs["oaza_cho"], "chome": town.attrs["chome"],
+        "koaza": town.attrs["koaza"], "blk_num": number, "rsdt_addr_flg": "1", **_abr_place(lon, lat)})
 
 
 def isj_block_record(prefecture: str, city: str, oaza: str, number: str, lon: float, lat: float, *,

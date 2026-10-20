@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import subprocess
+from functools import cache
 from pathlib import Path
 
 from scripts import deploy_gate
@@ -34,6 +35,7 @@ def _image_code_dirs() -> list[Path]:
     return [BACKEND / src for src in sources if (BACKEND / src).is_dir()]
 
 
+@cache
 def _excluded_files() -> dict[str, list[Path]]:
     """外したパターンごとの、当たる追跡中のファイル（当て方はゲートと同じgitのpathspec）。"""
     files = {}

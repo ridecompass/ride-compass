@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import ast
+from functools import cache
 from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -47,6 +48,7 @@ def _referenced_loaders(tree: ast.AST) -> set[str]:
     return found
 
 
+@cache
 def loader_references(root: Path) -> set[tuple[str, str]]:
     """テストを除く`root`配下の`.py`で、読み込む関数を値として参照している（ファイル, 関数の名前）。"""
     out: set[tuple[str, str]] = set()

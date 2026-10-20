@@ -29,9 +29,10 @@ from __future__ import annotations
 import ast
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
-from tests.structure.source_symbols import Scope, SourceTree, Symbol, called_name
+from tests.structure.source_symbols import Scope, SourceTree, Symbol, called_name, write_files
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -50,7 +51,10 @@ class _Class:
     path: str
 
 
-def _app_modules(source: SourceTree) -> dict[str, tuple[Path, ast.Module, Scope]]:
+@cache
+def _app_modules(root: Path) -> dict[str, tuple[Path, ast.Module, Scope]]:
+    """`app`の各モジュールの木と`Scope`。このファイルの2つの検査が1回の解析を共有する（木は書き換えない）。"""
+    source = SourceTree(root)
     out = {}
     for path in sorted((source.root / "app").rglob("*.py")):
         module = source.module_of(path)
@@ -167,8 +171,7 @@ def _validated_inputs(
 
 def silent_model_defaults(root: Path) -> dict[str, str]:
     """作り手が渡さない欄・誰も既定値を使わない欄（`パス: クラス.欄` → どちらか）。"""
-    source = SourceTree(root)
-    modules = _app_modules(source)
+    modules = _app_modules(root)
     classes = _strict_classes(modules, root)
     validated = _validated_inputs(modules, classes)
     producers: dict[tuple[str, str], list[ast.Call]] = defaultdict(list)
@@ -211,11 +214,10 @@ def _defaulted_parameters(function: ast.FunctionDef | ast.AsyncFunctionDef, meth
 
 def always_passed_defaults(root: Path) -> list[str]:
     """`app`の中の呼び出しが全部渡している、既定値つきの引数（`パス: 関数(引数)`）。"""
-    source = SourceTree(root)
     definitions: dict[str, list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef, bool]]] = defaultdict(list)
     calls: dict[str, list[ast.Call]] = defaultdict(list)
     referenced: set[str] = set()
-    for path, tree, _ in _app_modules(source).values():
+    for path, tree, _ in _app_modules(root).values():
         relative = path.relative_to(root).as_posix()
         for top in tree.body:
             if isinstance(top, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -265,39 +267,35 @@ def test_function_defaults_are_omitted_by_some_caller() -> None:
     )
 
 
-def _write(root: Path, relative: str, text: str) -> None:
-    path = root / relative
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-
-
 def test_detects_model_defaults_without_a_use(tmp_path: Path) -> None:
     """作り手が渡さない欄と全部の作り手が渡す欄を落とし、一部の作り手が省く欄と入力として検証する型は落とさない。"""
-    _write(tmp_path, "app/domain/strict_model.py", (
-        "from pydantic import BaseModel\n\n\n"
-        "class StrictModel(BaseModel):\n"
-        "    pass\n"
-    ))
-    _write(tmp_path, "app/domain/route.py", (
-        "from pydantic import Field\n"
-        "from app.domain.strict_model import StrictModel\n\n\n"
-        "class Draft(StrictModel):\n"
-        "    distance_km: float\n"
-        "    turns: list[int] = Field(default_factory=list)\n"
-        "    overall: float | None = None\n"
-        "    note: str = ''\n\n\n"
-        "class Request(StrictModel):\n"
-        "    limit: int = 3\n"
-    ))
-    _write(tmp_path, "app/services/engine.py", (
-        "from app.domain.route import Draft, Request\n\n\n"
-        "def build():\n"
-        "    request = Request.model_validate({})\n"
-        "    Request(limit=1)\n"
-        "    first = Draft(distance_km=1.0, turns=[], note='a')\n"
-        "    second = Draft(distance_km=2.0, turns=[1])\n"
-        "    return [d.model_copy(update={'overall': 1.0}) for d in (first, second)], request\n"
-    ))
+    write_files(tmp_path, {
+        "app/domain/strict_model.py": (
+            "from pydantic import BaseModel\n\n\n"
+            "class StrictModel(BaseModel):\n"
+            "    pass\n"
+        ),
+        "app/domain/route.py": (
+            "from pydantic import Field\n"
+            "from app.domain.strict_model import StrictModel\n\n\n"
+            "class Draft(StrictModel):\n"
+            "    distance_km: float\n"
+            "    turns: list[int] = Field(default_factory=list)\n"
+            "    overall: float | None = None\n"
+            "    note: str = ''\n\n\n"
+            "class Request(StrictModel):\n"
+            "    limit: int = 3\n"
+        ),
+        "app/services/engine.py": (
+            "from app.domain.route import Draft, Request\n\n\n"
+            "def build():\n"
+            "    request = Request.model_validate({})\n"
+            "    Request(limit=1)\n"
+            "    first = Draft(distance_km=1.0, turns=[], note='a')\n"
+            "    second = Draft(distance_km=2.0, turns=[1])\n"
+            "    return [d.model_copy(update={'overall': 1.0}) for d in (first, second)], request\n"
+        ),
+    })
 
     assert silent_model_defaults(tmp_path) == {
         "app/domain/route.py: Draft.turns": "誰も既定値を使わない",
@@ -307,20 +305,22 @@ def test_detects_model_defaults_without_a_use(tmp_path: Path) -> None:
 
 def test_detects_a_default_every_caller_passes(tmp_path: Path) -> None:
     """全部の呼び出しが位置かキーワードで渡す引数を落とし、省く呼び出しのある引数と値として渡す関数は落とさない。"""
-    _write(tmp_path, "app/services/route_generator.py", (
-        "class RouteGenerator:\n"
-        "    async def generate_loops(self, origin, distance_km, points=None, *, max_routes=5):\n"
-        "        return origin\n\n\n"
-        "def callback(value=0):\n"
-        "    return value\n"
-    ))
-    _write(tmp_path, "app/api/routes.py", (
-        "from app.services.route_generator import RouteGenerator, callback\n\n\n"
-        "async def handler(generator: RouteGenerator, points):\n"
-        "    await generator.generate_loops(1, 2, points)\n"
-        "    await generator.generate_loops(1, 2, points=points, max_routes=3)\n"
-        "    callback(1)\n"
-        "    return list(map(callback, [1]))\n"
-    ))
+    write_files(tmp_path, {
+        "app/services/route_generator.py": (
+            "class RouteGenerator:\n"
+            "    async def generate_loops(self, origin, distance_km, points=None, *, max_routes=5):\n"
+            "        return origin\n\n\n"
+            "def callback(value=0):\n"
+            "    return value\n"
+        ),
+        "app/api/routes.py": (
+            "from app.services.route_generator import RouteGenerator, callback\n\n\n"
+            "async def handler(generator: RouteGenerator, points):\n"
+            "    await generator.generate_loops(1, 2, points)\n"
+            "    await generator.generate_loops(1, 2, points=points, max_routes=3)\n"
+            "    callback(1)\n"
+            "    return list(map(callback, [1]))\n"
+        ),
+    })
 
     assert always_passed_defaults(tmp_path) == ["app/services/route_generator.py: generate_loops(points)"]

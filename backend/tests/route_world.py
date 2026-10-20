@@ -50,34 +50,27 @@ WAYS = {
     **{200 + row * 3 + col: (NODE_OF[row, col], NODE_OF[row + 1, col]) for row in range(2) for col in range(3)},
 }
 SOUTH_WEST, NORTH_EAST, CENTER = NODE_OF[0, 0], NODE_OF[2, 2], NODE_OF[1, 1]
-SOUTH_EAST, NORTH_WEST = NODE_OF[0, 2], NODE_OF[2, 0]
-COORDINATES = {
-    osm: (BASE_LAT + row * LAT_STEP, BASE_LON + col * LON_STEP) for (row, col), osm in NODE_OF.items()
-}
+SOUTH_EAST = NODE_OF[0, 2]
+
+
+def _grid_point(row: int, col: int) -> tuple[float, float]:
+    return BASE_LAT + row * LAT_STEP, BASE_LON + col * LON_STEP
+
+
+COORDINATES = {osm: _grid_point(row, col) for (row, col), osm in NODE_OF.items()}
 #: 北東の角のすぐ東にある、格子とつながらない短い道（2ノード）。孤立した小塊の代わり。
 ISLAND_NODES = {90: (COORDINATES[NORTH_EAST][0], COORDINATES[NORTH_EAST][1] + 0.004),
                 91: (COORDINATES[NORTH_EAST][0], COORDINATES[NORTH_EAST][1] + 0.008)}
 ISLAND_WAY = 300
+ALL_COORDINATES = {**COORDINATES, **ISLAND_NODES}
 
 
-def _coordinates(osm_node_id: int) -> tuple[float, float]:
-    return {**COORDINATES, **ISLAND_NODES}[osm_node_id]
-
-
-def grid_network(
-    *, bad_ways=(), oneway_ways=(), motorway_ways=(), island=False, no_gradient_ways=(),
-    stop_density_of=None, gradient_of=None, elevation_of=None, tunnel_ways=(), landcover_of=None,
-) -> RoadNetwork:
+def grid_network(*, island=False, **attributes) -> RoadNetwork:
     """3×3の格子。`island`で格子とつながらない道を足す。ほかの引数は`road_network`と同じ。"""
     ways = dict(WAYS)
     if island:
         ways[ISLAND_WAY] = tuple(ISLAND_NODES)
-    return road_network(
-        ways, {**COORDINATES, **ISLAND_NODES}, bad_ways=bad_ways, oneway_ways=oneway_ways,
-        motorway_ways=motorway_ways, no_gradient_ways=no_gradient_ways,
-        stop_density_of=stop_density_of, gradient_of=gradient_of, elevation_of=elevation_of, tunnel_ways=tunnel_ways,
-        landcover_of=landcover_of,
-    )
+    return road_network(ways, ALL_COORDINATES, **attributes)
 
 
 def lattice_node(row: int, col: int) -> int:
@@ -100,10 +93,7 @@ def lattice_ways(size: int) -> dict[int, tuple[int, int]]:
 def lattice_network(size: int, **attributes) -> RoadNetwork:
     """`size`×`size`の格子（1辺約1km、道は`lattice_ways`）。3×3では足りない長さ（経由地を通る周回等）を見るときに使う。
     `attributes`は`road_network`の道の性質（既定はどの道も平らで、避けたい材料を持たない）。"""
-    coordinates = {
-        lattice_node(row, col): (BASE_LAT + row * LAT_STEP, BASE_LON + col * LON_STEP)
-        for row in range(size) for col in range(size)
-    }
+    coordinates = {lattice_node(row, col): _grid_point(row, col) for row in range(size) for col in range(size)}
     return road_network(lattice_ways(size), coordinates, **attributes)
 
 
@@ -259,7 +249,7 @@ def avoid_axis_declared():
 
 
 def at(osm_node_id: int) -> Coordinates:
-    lat, lon = _coordinates(osm_node_id)
+    lat, lon = ALL_COORDINATES[osm_node_id]
     return Coordinates(latitude=lat, longitude=lon)
 
 
