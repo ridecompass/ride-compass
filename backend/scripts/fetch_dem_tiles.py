@@ -11,6 +11,7 @@
 
 - 手元にあるタイルは叩かない
 - その製品に無いタイル（区域外）は製品ごとに印を置き、次からは叩かない
+- 置くタイルの更新時刻は配信元の最終更新（`Last-Modified`）にする。返さなかったタイルは置かず、失敗に数える
 - 一時的な失敗は`--attempts`回で打ち切り、件数を報告して終える。無限に粘らない
 
 実行方法（backendディレクトリから）:
@@ -23,13 +24,15 @@ import asyncio
 import logging
 import sys
 import time
+from datetime import datetime
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.dem_tile_store import (  # noqa: E402
+from app.batch.dem_tile_store import (
     TILE_ROOT,
     TILE_URL,
     is_absent,
@@ -37,13 +40,11 @@ from app.batch.dem_tile_store import (  # noqa: E402
     mark_absent,
     write_tile,
 )
-from app.batch.common import (  # noqa: E402
-    PROGRESS_INTERVAL_SECONDS,
-    format_progress,
-)
-from app.batch.source_profile import SourceProfile, load_source_profile  # noqa: E402
-from app.domain.region import BoundingBox, tiles_covering_bbox  # noqa: E402
-from app.infrastructure.source_models import Source  # noqa: E402
+from app.batch.common import PROGRESS_INTERVAL_SECONDS, format_progress
+from app.batch.fetch_cli import run_profile_fetch_cli
+from app.batch.source_profile import SourceProfile, SourceSpec
+from app.domain.region import tiles_covering_bbox
+from app.infrastructure.source_models import Source
 
 logger = logging.getLogger("ridecompass.fetch_dem_tiles")
 
@@ -53,18 +54,28 @@ _MAX_CONCURRENT = 8
 #: 1タイルあたりの試行回数の既定。超えたらそのタイルは諦め、件数として報告する。
 _DEFAULT_ATTEMPTS = 3
 
+#: 進捗を数えて出す区切りの枚数。
+_CHUNK = _MAX_CONCURRENT * 8
+
 _REQUEST_TIMEOUT = httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=10.0)
 
 
+class _NoLastModified(Exception):
+    """配信元が最終更新を返さなかった。置くと、取込がいつ時点の標高かを記録できない。"""
+
+
 async def _fetch_one(client: httpx.AsyncClient, product: str, zoom: int,
-                     x: int, y: int) -> str | None:
-    """本文。その製品に無ければ（404）None。"""
+                     x: int, y: int) -> tuple[bytes, datetime] | None:
+    """本文と配信元での最終更新。その製品に無ければ（404）None。"""
     response = await client.get(
         TILE_URL.format(product=product, z=zoom, x=x, y=y), timeout=_REQUEST_TIMEOUT)
     if response.status_code == 404:
         return None
     response.raise_for_status()
-    return response.text
+    header = response.headers.get("Last-Modified")
+    if header is None:
+        raise _NoLastModified("Last-Modified がありません")
+    return response.content, parsedate_to_datetime(header)
 
 
 async def _fetch_product(client: httpx.AsyncClient, root: Path, product: str, zoom: int,
@@ -87,25 +98,25 @@ async def _fetch_product(client: httpx.AsyncClient, root: Path, product: str, zo
             try:
                 async with semaphore:
                     counts["往復"] += 1
-                    text = await _fetch_one(client, product, zoom, x, y)
-            except (httpx.HTTPError, httpx.StreamError) as exc:
+                    fetched = await _fetch_one(client, product, zoom, x, y)
+            except (httpx.HTTPError, httpx.StreamError, _NoLastModified) as exc:
                 if attempt == attempts:
                     logger.warning("諦めた %s z%d/%d/%d: %s", product, zoom, x, y, exc)
                     counts["諦めた"] += 1
                     return
                 await asyncio.sleep(2 ** attempt)
                 continue
-            if text is None:
+            if fetched is None:
                 mark_absent(root, product, zoom, x, y)
                 counts["区域外"] += 1
             else:
-                write_tile(root, product, zoom, x, y, text)
+                write_tile(root, product, zoom, x, y, *fetched)
                 counts["取得"] += 1
             return
 
     last_report = started
-    for start in range(0, len(wanted), _MAX_CONCURRENT * 8):
-        chunk = wanted[start:start + _MAX_CONCURRENT * 8]
+    for start in range(0, len(wanted), _CHUNK):
+        chunk = wanted[start:start + _CHUNK]
         await asyncio.gather(*(one(x, y) for x, y in chunk))
         now = time.perf_counter()
         done = counts["取得"] + counts["区域外"] + counts["諦めた"]
@@ -119,9 +130,7 @@ async def _fetch_product(client: httpx.AsyncClient, root: Path, product: str, zo
 async def fetch(client: httpx.AsyncClient, root: Path, profile: SourceProfile,
                 attempts: int) -> dict[str, dict[str, int]]:
     """プロファイルが挙げた製品ごとに、対象範囲のタイルを写す。製品ごとの内訳を返す。"""
-    low_lat, low_lon, high_lat, high_lon = profile.target.bbox
-    bbox = BoundingBox(min_latitude=low_lat, min_longitude=low_lon,
-                       max_latitude=high_lat, max_longitude=high_lon)
+    bbox = profile.target.bounding_box()
     results: dict[str, dict[str, int]] = {}
     for product, zoom in profile.source(Source.DEM).grid.products.items():
         tiles = tiles_covering_bbox(bbox, zoom)
@@ -136,24 +145,24 @@ async def fetch(client: httpx.AsyncClient, root: Path, profile: SourceProfile,
     return results
 
 
-async def run(profile_path: Path | None, attempts: int) -> int:
-    profile = load_source_profile(profile_path)
+async def _run(profile: SourceProfile, attempts: int) -> bool:
     async with httpx.AsyncClient() as client:
         results = await fetch(client, TILE_ROOT, profile, attempts)
     if any(counts["諦めた"] for counts in results.values()):
         logger.warning("諦めたタイルがあります。もう一度実行すると、その分だけ取りに行きます")
-        return 1
-    return 0
+        return False
+    return True
+
+
+def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
+    return asyncio.run(_run(profile, args.attempts))
 
 
 def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     parser = argparse.ArgumentParser(description="標高タイルを手元へ写す")
-    parser.add_argument("--profile", default=None, type=Path)
     parser.add_argument("--attempts", default=_DEFAULT_ATTEMPTS, type=int,
                         help="1タイルあたりの試行回数。超えたら諦めて件数で報告する")
-    args = parser.parse_args()
-    return asyncio.run(run(args.profile, args.attempts))
+    return run_profile_fetch_cli(parser, "gsi_dem_tile", _fetch_specs, logger=logger)
 
 
 if __name__ == "__main__":

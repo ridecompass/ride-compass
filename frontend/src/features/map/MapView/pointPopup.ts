@@ -1,9 +1,9 @@
 // 点（事故・POI・立ち寄り先）を押したときのポップアップの本文。
 // 値はOSMタグ由来で第三者が編集できるため、HTML文字列を経由せずテキストノードで組む
-// （`Popup.setHTML()`はサニタイズしない。docs/modules/frontend/static-map-layers.md参照）。
-import type { PointAxis } from "@/features/map/scene/groups/points";
+// （`Popup.setHTML()`はサニタイズしない）。
+import { pointCategoryOf, pointPlaceName, type PointAxis } from "@/lib/mapDisplay/pointLayers";
 
-// line-height 1.4はサイドバーの他カード（components/ui/Card等）に近い密度に合わせている。
+// 行間はサイドバーの他のカードに近い密度に合わせる。
 const POPUP_BODY_STYLE = "font-size:var(--font-size-md); line-height:1.4;";
 
 function popupBody(lines: readonly string[]): HTMLDivElement {
@@ -37,19 +37,15 @@ export function buildPointPopupContent(
   properties: Record<string, unknown>,
   lngLat: { lng: number; lat: number },
 ): HTMLDivElement {
-  const names = layer.display_axes.map((axis) => {
-    const value = String(properties[axis.property]);
-    return axis.categories.find((category) => category.values.some((v) => String(v) === value))?.label ?? "不明";
-  });
-  const placeName = layer.point_name_property === null ? undefined : properties[layer.point_name_property];
-  const hasName = typeof placeName === "string" && placeName !== "";
-  const lines = [...(hasName ? [placeName] : []), `${layer.label}: ${names.join(" ・ ")}`];
+  const names = layer.display_axes.map((axis) => pointCategoryOf(axis, properties)?.label ?? "不明");
+  const placeName = pointPlaceName(layer, properties);
+  const lines = [...(placeName !== null ? [placeName] : []), `${layer.label}: ${names.join(" ・ ")}`];
   for (const fact of layer.point_facts) {
     const value = properties[fact.property];
     if (value != null) lines.push(`${fact.label}: ${String(value)}`);
   }
   const body = popupBody(lines);
-  if (hasName) {
+  if (placeName !== null) {
     const link = document.createElement("a");
     link.href = externalMapSearchUrl(placeName, lngLat);
     link.target = "_blank";

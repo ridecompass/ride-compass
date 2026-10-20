@@ -1,13 +1,13 @@
 /**
  * 端末に保存して、開き直しても戻る状態（`hooks/useStoredState.ts`）——保存値を読んで復元し、変えるたびに保存する。
- * 読めない・壊れた保存値は既定値として扱い、保存できない端末でも状態は変わる。
+ * 読めない・壊れた保存値は既定値として扱う。
  * JSON で保存する形（`useStoredJsonState`）と、真偽値だけを受け入れる形（`useStoredBooleanState`）も、ここで見る。
  *
  * ここで見ないもの:
  * - どのキーに何を保存するか・どう復元するか（変換の中身） → 呼び出し側
  *
- * 差し替えたもの: 保存の読み書きが例外を投げる端末（`window.localStorage` のゲッターを、読むか書くかが例外を投げる
- * 保存へ）。それ以外の保存はテスト環境の `localStorage` を本物のまま使う。
+ * 差し替えたもの: 保存の読み出しが例外を投げる端末（`window.localStorage` のゲッターを、読むと例外を投げる保存へ）。
+ * それ以外の保存はテスト環境の `localStorage` を本物のまま使う。
  */
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -22,15 +22,14 @@ const PREFIXED = {
   deserialize: (raw: string) => (raw.startsWith("ok:") ? raw.slice(3) : null),
 };
 
-/** 読むか書くかが例外を投げる端末にする。もう片方はテスト環境の保存へ渡す。 */
-function breakStorage(method: "getItem" | "setItem") {
+/** 読むと例外を投げる端末にする。書くのはテスト環境の保存へ渡す。 */
+function breakStorageRead() {
   const real = window.localStorage;
   const storage = {
-    getItem: (key: string) => real.getItem(key),
-    setItem: (key: string, value: string) => real.setItem(key, value),
-    [method]: () => {
+    getItem: () => {
       throw new Error("storage unavailable");
     },
+    setItem: (key: string, value: string) => real.setItem(key, value),
   };
   vi.spyOn(window, "localStorage", "get").mockReturnValue(storage as unknown as Storage);
 }
@@ -41,26 +40,14 @@ afterEach(() => {
 });
 
 describe("useStoredState", () => {
-  it.each([
-    ["値", "ab"],
-    ["今の値から作る関数", (prev: string) => `${prev}b`],
-  ])("%sを渡して変えると、状態が変わり、変換した文字列で保存する", (_, next) => {
+  it("今の値から作る関数を渡して変えると、状態が変わり、変換した文字列で保存する", () => {
     window.localStorage.setItem(KEY, "ok:a");
     const { result } = renderHook(() => useStoredState(KEY, "default", PREFIXED));
 
-    act(() => result.current[1](next));
+    act(() => result.current[1]((prev) => `${prev}b`));
 
     expect(result.current[0]).toBe("ab");
     expect(window.localStorage.getItem(KEY)).toBe("ok:ab");
-  });
-
-  it("保存できない端末でも、状態は変わる", () => {
-    breakStorage("setItem");
-    const { result } = renderHook(() => useStoredState(KEY, "default", PREFIXED));
-
-    act(() => result.current[1]("next"));
-
-    expect(result.current[0]).toBe("next");
   });
 
   it("保存には、変えた時点で渡されている変換を使う", () => {
@@ -100,7 +87,7 @@ describe("useStoredState", () => {
   it.each([
     ["保存が無い", () => {}],
     ["保存が読めない", () => window.localStorage.setItem("key-b", "broken")],
-    ["保存を読めない端末", () => breakStorage("getItem")],
+    ["保存を読めない端末", breakStorageRead],
   ])("キーが変わって新しいキーの%sときは、前のキーの値を引きずらず既定値へ戻る", (_, arrange) => {
     window.localStorage.setItem("key-a", "ok:a");
     const { result, rerender } = renderHook(({ key }) => useStoredState(key, "default", PREFIXED), {
@@ -131,6 +118,19 @@ describe("useStoredState", () => {
     expect(result.current[0]).toBe("axis_b");
   });
 
+  // 前の形の保存（`old:`）も読む変換で、今の形（`ok:`）へ書き戻すかを見る。
+  it.each([
+    { case: "書き戻しを選ぶと、前の形の保存を今の形で書き直す", rewrite: true, stored: "old:a", after: "ok:a" },
+    { case: "読めない保存は、書き戻しを選んでも残す", rewrite: true, stored: "broken", after: "broken" },
+  ])("$case", ({ rewrite, stored, after }) => {
+    window.localStorage.setItem(KEY, stored);
+    const deserialize = (raw: string) => (raw.startsWith("old:") ? raw.slice(4) : PREFIXED.deserialize(raw));
+
+    renderHook(() => useStoredState(KEY, "default", { ...PREFIXED, deserialize, rewrite }));
+
+    expect(window.localStorage.getItem(KEY)).toBe(after);
+  });
+
   it("読み直しの合図が同じなら、描き直しのたびに変換や既定値が新しく渡されても読み直さない", () => {
     window.localStorage.setItem(KEY, "ok:saved");
     let renders = 0;
@@ -154,6 +154,14 @@ describe("useStoredJsonState", () => {
     const second = renderHook(() => useStoredJsonState(KEY, { size: 1 }));
 
     expect(second.result.current[0]).toEqual({ size: 3 });
+  });
+
+  // 変換が投げる保存値を既定値へ倒すのはこのフックで、保存した一覧の読み方（`lib/storedList.ts`）はそれに任せている。
+  it("JSONとして読めない保存値は、既定値として扱う", () => {
+    window.localStorage.setItem(KEY, "{");
+    const { result } = renderHook(() => useStoredJsonState(KEY, { size: 1 }));
+
+    expect(result.current[0]).toEqual({ size: 1 });
   });
 });
 

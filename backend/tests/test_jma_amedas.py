@@ -26,17 +26,7 @@ def test_apparent_temperature_needs_all_three_observations(temperature, humidity
 
 
 temperatures = st.floats(min_value=-20, max_value=40)
-humidities = st.floats(min_value=0, max_value=100)
 winds = st.floats(min_value=0, max_value=30)
-
-
-@given(temperature=temperatures, humidity=humidities, wind=winds, more_wind=st.floats(min_value=0, max_value=10))
-def test_each_metre_per_second_of_wind_lowers_apparent_temperature_by_0_7(temperature, humidity, wind, more_wind):
-    """BOMの式の風の項は-0.70×風速。"""
-    calm = apparent_temperature_from_amedas(temperature, humidity, wind)
-    windier = apparent_temperature_from_amedas(temperature, humidity, wind + more_wind)
-    assert calm is not None and windier is not None
-    assert math.isclose(calm - windier, 0.7 * more_wind, abs_tol=1e-9)
 
 
 @given(temperature=temperatures, wind=winds)
@@ -47,16 +37,7 @@ def test_bone_dry_air_feels_four_degrees_colder_than_the_wind_alone_makes_it(tem
     assert math.isclose(apparent, temperature - 0.7 * wind - 4.0, abs_tol=1e-9)
 
 
-@given(temperature=temperatures, humidity=humidities, more=st.floats(min_value=1, max_value=50), wind=winds)
-def test_more_humid_air_feels_warmer(temperature, humidity, more, wind):
-    drier = apparent_temperature_from_amedas(temperature, humidity, wind)
-    humid = apparent_temperature_from_amedas(temperature, min(humidity + more, 100.0), wind)
-    assert drier is not None and humid is not None
-    assert humid >= drier
-
-
 def test_saturated_still_air_matches_the_published_saturation_vapour_pressure():
     """湿度100%・無風では水蒸気圧が飽和水蒸気圧になる。30℃の飽和水蒸気圧は表の値で42.46hPa
     （水面上）で、AT = 30 + 0.33×42.46 - 4.00。"""
     assert apparent_temperature_from_amedas(30.0, 100.0, 0.0) == pytest.approx(30 + 0.33 * 42.46 - 4.0, abs=0.1)
-

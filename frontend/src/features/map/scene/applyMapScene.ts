@@ -7,6 +7,8 @@ import {
   type MapScene,
   type MapSceneFeatureStateValue,
   type MapSceneFeatureStates,
+  type MapSceneGlobalState,
+  type MapSceneImageOptions,
   type MapSceneLayer,
   type MapSceneSource,
 } from "./mapScene";
@@ -23,14 +25,17 @@ export type MapSceneTarget = {
   setLayoutProperty(layerId: string, name: string, value: unknown): unknown;
   setFeatureState(target: FeatureIdentifier, state: Record<string, MapSceneFeatureStateValue>): unknown;
   removeFeatureState(target: FeatureIdentifier, key?: string): unknown;
+  setGlobalStateProperty(name: string, value: number | null): unknown;
+  hasImage(id: string): boolean;
+  addImage(id: string, image: ImageData, options: MapSceneImageOptions): unknown;
 };
 
 type ApplyMapSceneOptions = {
   /** いま載っているべき宣言。 */
   readonly scene: MapScene;
   /**
-   * 前回この関数が当てた宣言。**この関数は地図を読み返さず、これを地図の状態そのものとして
-   * 扱う**。スタイルを差し替えたら `EMPTY_MAP_SCENE` を渡す。
+   * 前回この関数が当てた宣言。**ソース・レイヤーは地図を読み返さず、これを地図の状態そのものとして
+   * 扱う**（絵だけは地図に有るかで足す）。スタイルを差し替えたら `EMPTY_MAP_SCENE` を渡す。
    */
   readonly previous: MapScene;
   /**
@@ -64,6 +69,10 @@ export function applyMapScene(map: MapSceneTarget, options: ApplyMapSceneOptions
       .map((source) => source.id),
   );
 
+  // 地図全体の状態は、それを読むレイヤーより先に置く（置く前に載ったレイヤーは、値の無い状態で一度描かれる）。
+  // スタイルを差し替えると地図全体の状態も消えるので、前回の宣言との差分で当て直す。
+  applyGlobalState(map, previous.globalState, scene.globalState);
+
   const ordered = orderedSceneLayers(scene);
   const keptIds = new Set(ordered.map((layer) => layer.spec.id));
   const present = new Set<string>();
@@ -77,6 +86,14 @@ export function applyMapScene(map: MapSceneTarget, options: ApplyMapSceneOptions
   for (const id of previousSources.keys()) {
     if (nextSourceIds.has(id) && !recreated.has(id)) continue;
     map.removeSource(id);
+  }
+
+  // 絵は前回の宣言ではなく地図に有るかで足す。スタイルを差分で差し替えても地図に残り、同じ id を足し直すと
+  // 地図が誤りを出す。記号のレイヤーより先に足す。
+  for (const image of scene.images) {
+    if (map.hasImage(image.id)) continue;
+    const { data, options } = image.draw();
+    map.addImage(image.id, data, options);
   }
 
   for (const source of scene.sources) {
@@ -153,6 +170,15 @@ function updateLayer(map: MapSceneTarget, layer: MapSceneLayer, before: MapScene
   }
 }
 
+function applyGlobalState(map: MapSceneTarget, before: MapSceneGlobalState, after: MapSceneGlobalState): void {
+  for (const [name, value] of Object.entries(after)) {
+    if (!Object.is(before[name], value)) map.setGlobalStateProperty(name, value);
+  }
+  for (const name of Object.keys(before)) {
+    if (!(name in after)) map.setGlobalStateProperty(name, null);
+  }
+}
+
 /**
  * ソース単位の一括クリアは、そのソースの feature-state が1つも残らないときだけ使う
  * ——`removeFeatureState` は source/sourceLayer 単位で全キーをまとめて消すため、
@@ -178,6 +204,7 @@ function applyFeatureStates(
 
   for (const [key, previousValues] of previousStates) {
     const nextValues = nextStates.get(key);
+    if (nextValues === previousValues) continue;
     for (const featureId of previousValues.keys()) {
       if (nextValues?.has(featureId) === true) continue;
       map.removeFeatureState({ ...sourceTarget, id: featureId }, key);
@@ -187,6 +214,7 @@ function applyFeatureStates(
   const pending = new Map<string, Record<string, MapSceneFeatureStateValue>>();
   for (const [key, nextValues] of nextStates) {
     const previousValues = previousStates.get(key);
+    if (previousValues === nextValues) continue;
     for (const [featureId, value] of nextValues) {
       if (isSameValue(previousValues?.get(featureId), value)) continue;
       const state = pending.get(featureId) ?? {};

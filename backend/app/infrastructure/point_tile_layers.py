@@ -5,26 +5,29 @@ RegionService.get_point_tile`）で配り、レイヤーごとに違うのは焼
 **点のレイヤーを足すのは、ここへ1エントリ足すことだけ**——配信・世代の表（`services/tile_version_service.py:
 TILE_SHAPES`）・生成物（`region-tile-config.json`の`point_layers`）はここから組み立てる。
 
-どのSQLも`(covered, tile)`の1行を返す。取込範囲を判定するレイヤーは`road_graph_repository.py: COVERAGE_SQL`を
+どのSQLも`(covered, tile)`の1行を返す。取込範囲を判定するレイヤーは`source_models.py: COVERAGE_SQL`を
 読み、判定しないレイヤー（事故・立ち寄り先は対象範囲を一括で取り込むため「範囲の一部だけ取得済み」が無い）は`covered`を
 常に真にする。`:layer_name`・`:extent`・タイル座標（`:z`・`:x`・`:y`・`:xmin`等）は読み出しの側
 （`road_graph_repository.py: RoadGraphRepository.get_tile_mvt`）が渡す。
 """
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from functools import cached_property
 
 from sqlalchemy import Float, Text, TextClause, bindparam, text
 from sqlalchemy.dialects.postgresql import ARRAY
 
 from app.domain.accident import BICYCLE_SQL, FATAL_SQL
 from app.domain.geo import degrees_covering_m
-from app.domain.primary_attributes import stop_poi_map_group_sql
-from app.domain.registry import TileKind
+from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, stop_poi_map_group_sql
+from app.domain.registry import PrimaryAttributeSpec, TileKind
 from app.domain.stop_place import StopPlaceGroup
 from app.domain.traffic import POI_CLUSTER_EPS_M, STOP_POI_KINDS, stop_kind_sql
 from app.infrastructure.cache_identity import shape_digest
-from app.infrastructure.road_graph_repository import COVERAGE_SQL
-from app.infrastructure.source_models import ACCIDENTS_SOURCE_SQL, NODES_SOURCE_SQL
+from app.infrastructure.source_models import COVERAGE_SQL
+from app.infrastructure.source_models import NODES_SOURCE_SQL, accidents_within_sql
+from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, TILE_BUFFER
 
 
 @dataclass(frozen=True)
@@ -35,13 +38,15 @@ class PointTileLayer:
     source_layer: str
     sql: TextClause
 
-    @property
+    @cached_property
     def shape(self) -> str:
         """タイルの世代に入る形の署名。source-layer名を変えても鍵が変わる（古い名前のタイルを配らない）。"""
         return shape_digest(self.sql, self.source_layer)
 
 
-# 種別は`node_materials.kind`（派生側の分類器が付けたもの）に信号の読み替えを済ませたもので、
+_CONVENIENCE_GROUP = bindparam("convenience_group", value=StopPlaceGroup.CONVENIENCE.value, type_=Text())
+
+# 種別は`node_kinds.kind`（派生側の分類器が付けたもの）に信号の読み替えを済ませたもので、
 # 位置は`source_features`の点。コンビニだけは立ち寄り先の表（`stop_places`）から足し、店の名前も添える。
 _POI_KIND_EXPR = stop_kind_sql("nm")
 _POI_GROUP_EXPR = stop_poi_map_group_sql("nm")
@@ -62,7 +67,7 @@ _POI_TILE_MVT_SQL = text(
                 SELECT
                     ST_AsMVTGeom(
                         ST_Transform(grouped.geom, 3857),
-                        ST_TileEnvelope(:z, :x, :y), :extent, 256, true
+                        ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true
                     ) AS geom,
                     grouped.kind AS kind,
                     grouped.name AS name
@@ -85,9 +90,8 @@ _POI_TILE_MVT_SQL = text(
                                ELSE 'n' || p.osm_node_id END AS cluster_key,
                                NULL::text AS name
                         FROM {NODES_SOURCE_SQL} p
-                        JOIN node_materials nm ON nm.osm_node_id = p.osm_node_id
-                        WHERE nm.kind IS NOT NULL
-                          AND ST_Intersects(
+                        JOIN node_kinds nm ON nm.osm_node_id = p.osm_node_id
+                        WHERE ST_Intersects(
                               p.geom,
                               ST_Expand(
                                   ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326),
@@ -113,7 +117,7 @@ _POI_TILE_MVT_SQL = text(
     bindparam("stop_kinds", value=sorted(STOP_POI_KINDS), type_=ARRAY(Text())),
     bindparam("cluster_eps_m", value=POI_CLUSTER_EPS_M, type_=Float()),
     bindparam("cluster_pad_deg", value=_POI_CLUSTER_PAD_DEG, type_=Float()),
-    bindparam("convenience_group", value=StopPlaceGroup.CONVENIENCE.value, type_=Text()),
+    _CONVENIENCE_GROUP,
 )
 
 # 事故。表示に使う値（死亡事故か・自転車が絡むか・発生年）は生データの列から都度導く。判定の
@@ -126,13 +130,12 @@ _ACCIDENT_TILE_MVT_SQL = text(
             SELECT ST_AsMVT(mvt.*, :layer_name, :extent, 'geom') FROM (
                 SELECT
                     ST_AsMVTGeom(
-                        ST_Transform(a.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, 256, true
+                        ST_Transform(a.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true
                     ) AS geom,
                     {BICYCLE_SQL} AS involves_bicycle,
                     {FATAL_SQL} AS fatal,
                     a.occurred_year
-                FROM {ACCIDENTS_SOURCE_SQL} a
-                WHERE ST_Intersects(a.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
+                FROM {accidents_within_sql("ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326)")} a
             ) mvt
             WHERE mvt.geom IS NOT NULL
         ) AS tile
@@ -141,14 +144,14 @@ _ACCIDENT_TILE_MVT_SQL = text(
 
 # 立ち寄り先。群へ入れ、近くの同じ店をまとめた後の表（`batch/derive_stop_places.py`）をそのまま出す。
 _STOP_PLACE_TILE_MVT_SQL = text(
-    """
+    f"""
     SELECT
         true AS covered,
         (
             SELECT ST_AsMVT(mvt.*, :layer_name, :extent, 'geom') FROM (
                 SELECT
                     ST_AsMVTGeom(
-                        ST_Transform(s.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, 256, true
+                        ST_Transform(s.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true
                     ) AS geom,
                     s.place_group AS "group",
                     s.confidence,
@@ -161,7 +164,7 @@ _STOP_PLACE_TILE_MVT_SQL = text(
             WHERE mvt.geom IS NOT NULL
         ) AS tile
     """
-).bindparams(bindparam("convenience_group", value=StopPlaceGroup.CONVENIENCE.value, type_=Text()))
+).bindparams(_CONVENIENCE_GROUP)
 
 #: 名前→点のレイヤー。
 POINT_TILE_LAYERS: dict[str, PointTileLayer] = {
@@ -172,3 +175,22 @@ POINT_TILE_LAYERS: dict[str, PointTileLayer] = {
         PointTileLayer(name="stop_place", source_layer="stop_places", sql=_STOP_PLACE_TILE_MVT_SQL),
     )
 }
+
+
+def check_point_tile_layers(layers: Mapping[str, PointTileLayer], attributes: Iterable[PrimaryAttributeSpec]) -> None:
+    """点の一次属性を配らない・タイルの中のレイヤーを取り違える宣言を断る。
+
+    地図に点として出す一次属性が指す系統が宣言に無いと、画面はその点のタイルを要求できない。source-layer名を道路の
+    タイルや別のレイヤーと同じにすると、画面がタイルの中のレイヤーを取り違える。
+    """
+    unserved = {
+        a.tile_kind for a in attributes if a.geometry == "point" and a.tile_kind is not None and a.tile_kind not in layers
+    }
+    if unserved:
+        raise ValueError(f"点の一次属性が指す系統{unserved}を配るレイヤーが無い")
+    names = [ROAD_SURFACE_LAYER_NAME, *(layer.source_layer for layer in layers.values())]
+    if len(set(names)) != len(names):
+        raise ValueError(f"source-layer名が重なる: {names}")
+
+
+check_point_tile_layers(POINT_TILE_LAYERS, PRIMARY_ATTRIBUTES)

@@ -4,22 +4,23 @@
 止める上限（生成物`route-generate-config.json`）の両方がここから読む。
 """
 
-import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Annotated
 
 from pydantic import Field
 from pydantic_core import PydanticCustomError
 
+from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.route import Coordinates
+from app.domain.route_preference import RoutePreference
+from app.domain.tuning import tuning_value
 
 # ルート生成距離の上限（km）。上限が無いと探索の範囲が際限なく広がり、道路網の読み込みが
 # 長時間止まりうる。30km規模までの検証実績に余裕を見た値。経由地・目的地は出発地からこの
 # 距離の中に置く。
 MAX_ROUTE_DISTANCE_KM = 100
-# 目標距離からの許容差（km）。画面はこの既定値をそのまま送る——片方だけ変えると、画面の
-# 見込みと探索の範囲がずれる。
-DEFAULT_DISTANCE_TOLERANCE_KM = 5.0
+# 要求が受け付ける、目標距離からの許容差（km）の上限。省略したときの許容差は`resolve_distance_tolerance_km`。
 MAX_DISTANCE_TOLERANCE_KM = 50.0
 # 経由地の数の上限。経由地ごとにレグの探索が1本増える。
 MAX_WAYPOINTS = 8
@@ -39,14 +40,14 @@ MAX_ASSUMED_SPEED_KMH = 60.0
 # 想定速度の値の範囲。速度を受けるどの入口（ルート生成・地図の配信・区間インスペクタ）もこの型で書く。範囲の検査は
 # NaN・無限大も断る。
 AssumedSpeedKmh = Annotated[float, Field(ge=MIN_ASSUMED_SPEED_KMH, le=MAX_ASSUMED_SPEED_KMH)]
-# 経由地を伴う生成が返す候補の数。経由地があるとレグごとの代替が組合せで増えるため、候補数の
-# 指定を使わず単一経路にする。
-ROUTES_WITH_WAYPOINTS = 1
 
 
-def applied_max_routes(max_routes: int, *, has_waypoints: bool) -> int:
-    """その生成で実際に使う候補数の上限。画面も同じ値を生成物で受け取り、候補数の入力欄に出す。"""
-    return ROUTES_WITH_WAYPOINTS if has_waypoints else max_routes
+def resolve_distance_tolerance_km(requested: float | None) -> float:
+    """要求が省略したときの目標距離からの許容差（km）を、**呼ばれた時点で**較正値から読む（モジュール直下で束ねると
+    管理画面の上書きが効かない理由は`domain/evaluation.py: resolve_penalty_strength`）。"""
+    if requested is not None:
+        return requested
+    return tuning_value("search.distance_tolerance_km")
 
 
 def request_error(message: str) -> PydanticCustomError:
@@ -65,41 +66,72 @@ def check_spliced_edge_count(count: int) -> None:
         raise request_error("組み合わせたルートが長すぎるため評価できません。")
 
 
-def search_distance_km(farthest_km: float) -> int:
-    """経由地・目的地を置いたときの探索の範囲（km）。`farthest_km`は出発地から最も遠い点までの距離。
-
-    範囲は最も遠い点より長くする（ただし上限`MAX_ROUTE_DISTANCE_KM`を超えないので、最も遠い点が上限ちょうどなら
-    等しい）。上限より遠い点は要求の誤り。
-    """
+def check_points_within_reach(farthest_km: float) -> None:
+    """`farthest_km`は出発地から最も遠い経由地・目的地までの距離。"""
     if farthest_km > MAX_ROUTE_DISTANCE_KM:
         raise request_error(f"経由地・目的地は出発地から{MAX_ROUTE_DISTANCE_KM}km以内に置いてください。")
-    return min(MAX_ROUTE_DISTANCE_KM, math.ceil(farthest_km) + 1)
+
+
+#: 距離も経由地も無く、終点が出発地と同じ要求（目的地を置かない・目的地が出発地へ寄る）を断る文。目的地が出発地へ寄るかは
+#: 道路網に寄せるまで分からないので、要求の検証（`nothing_to_generate_error`）が断れなかった分は生成が同じ文で断る。
+NOTHING_TO_GENERATE = "距離か、経由地・目的地を指定してください。"
+
+
+def nothing_to_generate_error() -> PydanticCustomError:
+    """出発地だけで、距離も経由地・目的地も無い要求の誤り。"""
+    return request_error(NOTHING_TO_GENERATE)
 
 
 @dataclass(frozen=True)
-class LoopTarget:
-    """起点へ戻る周回候補を、目標距離で探す。"""
+class FixedPoints:
+    """出発地のあとに順に通る、置いた点の並び。経由地を置いた順に通り、目的地（無ければ出発地）で終わる。"""
 
-    distance_km: float
-
-
-@dataclass(frozen=True)
-class WaypointsTarget:
-    """経由地・目的地を通る1本を探す。`distance_km`は置いた点から決めた探索の範囲。"""
-
-    distance_km: float
     waypoints: list[Coordinates]
     destination: Coordinates | None
+
+    @property
+    def placed(self) -> list[Coordinates]:
+        """置いた点を通る順に（経由地のあとに目的地）。"""
+        return [*self.waypoints, *([self.destination] if self.destination is not None else [])]
+
+
+@dataclass(frozen=True)
+class DistanceTarget:
+    """置いた点を順に通り、全長が目標に合う候補を探す（距離あり）。"""
+
+    distance_km: float
+    points: FixedPoints
+
+
+@dataclass(frozen=True)
+class NoDistanceTarget:
+    """置いた点を順に通り、終点へ良い道で向かう候補を探す（距離なし）。"""
+
+    points: FixedPoints
 
 
 @dataclass(frozen=True)
 class SplicedTarget:
-    """区間を差し替えて組み立てた経路を、探索せずに評価する。目的地ルートだけが対象。"""
+    """区間を差し替えて組み立てた経路を、探索せずに評価する。経路は出発地から始まり、終点（目的地、無ければ出発地）で
+    終わらなければならない（周回の候補どうしを乗り換えた経路も、出発地へ戻ることを評価の前に確かめる）。"""
 
-    distance_km: float
-    destination: Coordinates
+    destination: Coordinates | None
     edge_ids: tuple[str, *tuple[str, ...]]
 
 
-# 検証を通った要求が何を生成するか。生成はこれだけを見て分岐する。
-RouteTarget = LoopTarget | WaypointsTarget | SplicedTarget
+# 検証を通った要求が何を生成するか。距離の有無（仕上げの戦略）は要求の検証がここで1回だけ選び、生成は型だけを見る。
+# 距離はどの型でも全長の目標で、置いた点の有無で意味を変えない。
+RouteTarget = DistanceTarget | NoDistanceTarget | SplicedTarget
+
+
+@dataclass(frozen=True)
+class RequestedConditions:
+    """要求が指定した評価条件。Noneは省略で、既定はエンジンを組む側（`services/route_generation_setup.py:
+    assemble_route_generation_setup`）が決める。"""
+
+    preference_override: RoutePreference | None
+    penalty_strength: float | None
+    max_average_grade_percent: float | None
+    # 避け方を選べる行→段（`domain/road_avoidance.py: resolve_road_avoidance`が今の行へ揃える）。
+    road_avoidance: Mapping[str, AvoidanceLevel]
+    assumed_speed_kmh: float

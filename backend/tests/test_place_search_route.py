@@ -2,23 +2,27 @@
 
 経路から、サービス（`services/place_search_service.py`）と住所の区画の表を引く層（`infrastructure/address_search.py`）・
 施設の表を引く層（`infrastructure/stop_place_search.py`）の判断を見る: 住所の候補の段・表示名・位置、書き方の違う入力
-（空白・漢数字・長音）、全部に当たる・番地付き・続きの3通りの当たり方とその並び（段の粗いもの → 鍵の短いもの → 中心に近いもの）、
+（空白・漢数字・長音）、全部に当たる・番地付き・続きの3通りの当たり方とその並び（段の粗いもの → 全部に当たるもの → 続き → 中心に近いもの）、
+番地付きの残りの番号で当たる街区（住居表示の区域）と地番（それ以外の区域）、
 件数の上限、入力の一部にだけ当たった住所を出さないこと、施設の名前を表記の揺れを除いて部分一致で引くこと（並び・地図の
-真ん中に近い店から上限まで）、施設に添える辺り、住所と施設を並べる順、対象範囲を読めなければ502、回数制限。
-住所の区画の表は、アドレス・ベース・レジストリの行（施設の辺りは小地域の境界も）を取り込んで住所の派生の段を本物のまま
-流して作る。対象範囲は道路の取込の記録から、施設は Overture の地点の取込から立ち寄り先の派生の段を本物のまま流して作り、
+真ん中に近い店から上限まで）、群の語で群の店を名前に当たる店より先に引くこと、施設に添える辺り、住所と施設を並べる順、対象範囲を読めなければ502、回数制限。
+置いた位置の辺りの口（`GET /api/place-area`）も、同じ注入から本物を通して見る。
+住所の区画の表は、アドレス・ベース・レジストリの行（街区を含む。地番は街区レベル位置参照情報の行）を取り込んで住所の派生の段を
+本物のまま流して作る。辺りは小地域の境界の行を取り込んで引く。対象範囲は道路の取込の記録から、施設は Overture の地点の取込から立ち寄り先の派生の段を本物のまま流して作り、
 注入から本物を通す。
 
 ここで見ないもの:
 - 対象範囲を読むこと（どの取込の記録の範囲か） → `test_ingested_area.py`
-- 住所の区画・鍵の作り方（範囲・祖先・鍵の別形） → `test_address_areas.py`、表記の揃え方の1つずつ → `test_address_area.py`
-- 立ち寄り先の群・絞り・まとめ → `test_stop_places.py`
-- 施設の辺りの決め方（辺の上・境界の外・結べない境界） → `test_stop_place_areas.py`
+- 住所の区画・鍵・街区の作り方（範囲・祖先・鍵の別形・地番を区画に結ぶ名前・住居表示の区域で ABR を採る） → `test_address_areas.py`、表記の揃え方の1つずつ → `test_address_area.py`
+- 立ち寄り先の群・絞り・まとめ → `test_stop_places.py`、入力を群の語として読むか → `test_stop_place_words.py`
+- 辺りの決め方（辺の上・境界の外・名前の無い境界・配布の境界の読み方） → `test_stop_place_areas.py`。置いた位置の辺りも
+  同じ SQL の部品（`infrastructure/place_area_query.py: area_label_sql`）で決めるので、ここでは境界の中と外の両側だけを見る
 - 回数制限の窓 → `test_rate_limiter.py`
 - Cache-Control の値と、失敗の応答に付けないこと → `test_cache_policy.py`
 - 入力の長さ（`domain/place_search.py: PlaceQuery`の制約で、FastAPIが422で返す）
-- 続きを長さごとに数えて引く鍵を切ること（時間を抑えるためのもので、答えは切らずに全部を並べたものと変わらない）
 """
+
+import math
 
 import httpx
 import pytest
@@ -34,15 +38,17 @@ from app.infrastructure import database, rate_limiter
 from app.main import app
 from tests.conftest import postgis_database_url, raw_connection
 from tests.source_ingest import (
+    abr_block_record,
     abr_city_record,
     abr_prefecture_record,
     abr_town_record,
     estat_small_area_record,
     ingest_records,
+    isj_block_record,
     point_record,
 )
 
-pytestmark = [pytest.mark.asyncio(loop_scope="module"), pytest.mark.xdist_group(name="postgis"), pytest.mark.postgis]
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 #: 対象範囲（関東）。道路の取込が宣言した範囲から読まれる。
 AREA = BoundingBox(min_latitude=34.9, min_longitude=138.4, max_latitude=37.2, max_longitude=140.9)
@@ -92,9 +98,11 @@ async def _ingest_facilities(records: list[object]) -> None:
         await derive_stop_places.derive(conn)
 
 
-async def _ingest_addresses(records: list[SourceRecord]) -> None:
-    """アドレス・ベース・レジストリの行を取り込み、住所の区画の表を作る派生の段を流す（範囲は`area`の宣言）。"""
+async def _ingest_addresses(records: list[SourceRecord], parcels: list[SourceRecord] | None = None) -> None:
+    """アドレス・ベース・レジストリの行と街区レベル位置参照情報の行を取り込み、住所の区画の表を作る派生の段を流す
+    （範囲は`area`の宣言）。"""
     await ingest_records("abr", records)
+    await ingest_records("isj_block", parcels or [])
     async with raw_connection() as conn:
         await derive_addresses.derive(conn)
 
@@ -129,9 +137,16 @@ SHIBUYA_HONMACHI_CHOMES = [
     for number, chome in ((1, "一丁目"), (2, "二丁目"), (12, "十二丁目"))]
 IWATSUKI_HONMACHI = _town(IWATSUKI, "0020000", "1", 139.693159, 35.947813, oaza="本町")
 KOSUGI = _town(NAKAHARA, "0010000", "1", 139.66, 35.575, oaza="小杉")
+#: 住居表示の区域の街区（西新宿二丁目8番）。
+NISHI_SHINJUKU_2_8 = abr_block_record(NISHI_SHINJUKU_2, "008", "8", 139.6912, 35.6895)
+#: 住居表示でない区域（郡の町の大字）と、その地番。
+HINODE = abr_city_record("133051", "東京都", "日の出町", 139.257, 35.742, county="西多摩郡")
+HIRAI = _town(HINODE, "0001000", "1", 139.26, 35.74, oaza="大字平井")
+HIRAI_123 = isj_block_record("東京都", "西多摩郡日の出町", "大字平井", "123", 139.2612, 35.7415)
 ADDRESSES = [TOKYO, SAITAMA, KANAGAWA, SHINJUKU, SHIBUYA, ADACHI, SAITAMA_CITY, IWATSUKI, KAWASAKI, NAKAHARA,
              NISHI_SHINJUKU, NISHI_SHINJUKU_2, NISHIARAI, SHIBUYA_HONMACHI_TOWN, *SHIBUYA_HONMACHI_CHOMES,
-             IWATSUKI_HONMACHI, KOSUGI]
+             IWATSUKI_HONMACHI, KOSUGI, NISHI_SHINJUKU_2_8, HINODE, HIRAI]
+PARCELS = [HIRAI_123]
 
 
 def _address(record: SourceRecord, name: str, level: str) -> dict:
@@ -153,10 +168,17 @@ def _address(record: SourceRecord, name: str, level: str) -> dict:
         _address(SHIBUYA_HONMACHI_TOWN, "東京都渋谷区本町", "oaza"),
         _address(IWATSUKI_HONMACHI, "埼玉県さいたま市岩槻区本町", "oaza"),
     ], id="丁目の数字まで"),
-    pytest.param("西新宿2-8-1", [_address(NISHI_SHINJUKU_2, "東京都新宿区西新宿二丁目", "aza")], id="番地まで"),
-    pytest.param("西新宿二丁目八番一号", [_address(NISHI_SHINJUKU_2, "東京都新宿区西新宿二丁目", "aza")],
+    # 残りの最初の数字（8）を二丁目の街区の番号として引き、街区の点に当たる。号は持たない。
+    pytest.param("西新宿2-8-1", [_address(NISHI_SHINJUKU_2_8, "東京都新宿区西新宿二丁目8番", "block")], id="番地まで"),
+    pytest.param("西新宿二丁目八番一号", [_address(NISHI_SHINJUKU_2_8, "東京都新宿区西新宿二丁目8番", "block")],
                  id="番地まで漢数字で"),
-    pytest.param("西新宿2ー8ー1", [_address(NISHI_SHINJUKU_2, "東京都新宿区西新宿二丁目", "aza")], id="番地まで長音で"),
+    pytest.param("西新宿2ー8ー1", [_address(NISHI_SHINJUKU_2_8, "東京都新宿区西新宿二丁目8番", "block")],
+                 id="番地まで長音で"),
+    pytest.param("西新宿2-99-1", [_address(NISHI_SHINJUKU_2, "東京都新宿区西新宿二丁目", "aza")],
+                 id="無い街区の番号は丁目まで"),
+    pytest.param("日の出町平井123番地", [_address(HIRAI_123, "東京都日の出町大字平井123番地", "block")],
+                 id="地番まで"),
+    pytest.param("平井124", [_address(HIRAI, "東京都日の出町大字平井", "oaza")], id="無い地番は大字まで"),
     # 十二丁目までの町の「13」は、一丁目（鍵「本町1-」）にも十二丁目にも当てず、大字の本町の番地として読む。
     pytest.param("本町13-5", [
         _address(SHIBUYA_HONMACHI_TOWN, "東京都渋谷区本町", "oaza"),
@@ -170,7 +192,7 @@ def _address(record: SourceRecord, name: str, level: str) -> dict:
 ])
 @pytest.mark.usefixtures("area")
 async def test_addresses_are_the_areas_the_input_reaches(query, candidates):
-    await _ingest_addresses(ADDRESSES)
+    await _ingest_addresses(ADDRESSES, PARCELS)
 
     response = await _search(query)
 
@@ -195,7 +217,7 @@ async def test_areas_of_the_same_name_come_nearest_to_the_center_first(near, fir
 
 
 @pytest.mark.usefixtures("area")
-async def test_a_coarser_level_comes_before_shorter_keys():
+async def test_a_coarser_level_comes_before_an_exact_name():
     """1文字の「柏」で、全部に当たる大字の「柏」が上限を超えてあっても、続きの柏市（鍵「柏市」）が先頭に出る。"""
     chiba = abr_prefecture_record("120006", "千葉県", 140.1233, 35.6047)
     kashiwa = abr_city_record("122173", "千葉県", "柏市", 139.975, 35.8676)
@@ -213,10 +235,26 @@ async def test_a_coarser_level_comes_before_shorter_keys():
 
 
 @pytest.mark.usefixtures("area")
-async def test_continuations_are_the_shortest_ones_up_to_the_limit():
+async def test_an_exact_name_comes_before_a_nearer_continuation():
+    """「浅草」で、見ている所に近い「浅草橋」より、遠い「浅草」そのものが先に出る。"""
+    taito = abr_city_record("131067", "東京都", "台東区", 139.779, 35.712)
+    asakusa = _town(taito, "0001000", "1", 139.797, 35.715, oaza="浅草")
+    asakusabashi = _town(taito, "0002000", "1", 139.786, 35.697, oaza="浅草橋")
+    await _ingest_addresses([TOKYO, taito, asakusa, asakusabashi])
+
+    response = await _search("浅草", 139.786, 35.697)
+
+    assert response.status_code == 200
+    assert response.json() == {"candidates": [
+        _address(asakusa, "東京都台東区浅草", "oaza"), _address(asakusabashi, "東京都台東区浅草橋", "oaza")]}
+
+
+@pytest.mark.usefixtures("area")
+async def test_continuations_are_the_shortest_ones_up_to_the_limit_nearest_first():
+    """続きは短い鍵から上限まで引き、その中を見ている所に近い順に並べる（長い鍵ほど近くに置く）。"""
     chiyoda = abr_city_record("131016", "東京都", "千代田区", 139.753595, 35.694003)
     oazas = {
-        length: _town(chiyoda, f"00{length:02d}000", "1", 139.76 + length / 1000, 35.69,
+        length: _town(chiyoda, f"00{length:02d}000", "1", 139.76 - length / 1000, 35.69,
                                 oaza="西" + "あ" * length)
         for length in range(PLACE_PREDICTION_LIMIT + 1, 0, -1)}
     await _ingest_addresses([TOKYO, chiyoda, *oazas.values()])
@@ -226,7 +264,7 @@ async def test_continuations_are_the_shortest_ones_up_to_the_limit():
     assert response.status_code == 200
     assert response.json() == {"candidates": [
         _address(oazas[length], f"東京都千代田区西{'あ' * length}", "oaza")
-        for length in range(1, PLACE_PREDICTION_LIMIT + 1)]}
+        for length in range(PLACE_PREDICTION_LIMIT, 0, -1)]}
 
 
 @pytest.mark.usefixtures("app_db")
@@ -320,6 +358,51 @@ async def test_facilities_with_the_same_name_beyond_the_limit_are_the_nearest_on
 
 
 @pytest.mark.usefixtures("area")
+async def test_a_facility_nearer_on_the_ground_comes_first_even_when_degrees_scaled_by_latitude_say_otherwise():
+    """経度の差に中心の緯度の余弦を掛けて度で比べると遠い店でも、測地の距離で近ければ先に出る。東西の1度は南北の1度に
+    余弦を掛けたものより地球の扁平の分だけ長いので、北の店は、東の上限の件数の店より度では遠く、地面では近い。"""
+    north = LAT + 0.01 * math.cos(math.radians(LAT)) * 1.002
+    await _ingest_facilities(
+        [_facility_record(i, "喫茶ことり", LON + 0.01 - i / 1e6, LAT) for i in range(PLACE_PREDICTION_LIMIT)]
+        + [_facility_record(PLACE_PREDICTION_LIMIT, "喫茶ことり", LON, north)])
+
+    response = await _search("喫茶ことり")
+
+    assert response.status_code == 200
+    assert [(c["longitude"], c["latitude"]) for c in response.json()["candidates"]] == [(LON, north)] + [
+        (LON + 0.01 - i / 1e6, LAT) for i in range(PLACE_PREDICTION_LIMIT - 1, 0, -1)
+    ]
+
+
+def _convenience_record(key: int, name: str, longitude: float, latitude: float = LAT) -> object:
+    """Overture の地点の1件（群「コンビニ」に入る分類。群はチェーンの名前の店だけを入れる）。"""
+    return point_record(key, longitude, latitude, {
+        "names": {"primary": name}, "confidence": 0.75,
+        "brand": {"names": {"primary": None}}, "taxonomy": {"hierarchy": ["shopping", "convenience_store"]}})
+
+
+@pytest.mark.usefixtures("area")
+async def test_a_name_of_a_group_finds_the_nearest_stores_of_the_group_before_the_names_it_matches():
+    """「コンビニ」と打つと、名前に「コンビニ」を含まない近くのコンビニの店が、名前が入力と同じ店（より近くても）より先に近い順に出る。"""
+    await _ingest_facilities([
+        _facility_record(1, "コンビニ", LON, LAT),
+        _convenience_record(2, "セブン-イレブン 西新宿店", LON + 0.02),
+        _convenience_record(3, "ファミリーマート 新宿店", LON + 0.01),
+        _convenience_record(4, "ローソン 道頓堀店", OUTSIDE_LON, OUTSIDE_LAT),
+        _facility_record(5, "ラーメン一風堂", LON + 0.005, LAT),
+    ])
+
+    response = await _search("コンビニ")
+
+    assert response.status_code == 200
+    assert response.json() == {"candidates": [
+        _facility("ファミリーマート 新宿店", LON + 0.01),
+        _facility("セブン-イレブン 西新宿店", LON + 0.02),
+        _facility("コンビニ", LON),
+    ]}
+
+
+@pytest.mark.usefixtures("area")
 async def test_an_input_without_letters_finds_no_facility():
     """表記の揺れを除くと空になる入力（中点・ハイフンだけ）は、どの名前にも含まれるとみなさない。"""
     await _ingest_facilities([_facility_record(1, "小杉湯", LON, LAT)])
@@ -348,30 +431,22 @@ async def test_addresses_come_before_facilities():
 # --- 施設の辺り ------------------------------------------------------------------
 
 
-@pytest.mark.usefixtures("area")
-async def test_facilities_of_the_same_name_show_the_area_each_one_is_in():
-    """チェーンの名前で探すと同じ表示名の店が並ぶので、辺り（店の位置を含む小地域の境界に結んだ町字の、市区町村から先の
-    名前）で見分ける。"""
-    shinjuku, iwatsuki = ("東京都", "新宿区", ""), ("埼玉県", "さいたま市", "岩槻区")
-    await ingest_records("abr", [
-        abr_prefecture_record("130001", "東京都", 139.69, 35.69),
-        abr_prefecture_record("110001", "埼玉県", 139.65, 35.86),
-        abr_city_record("131041", "東京都", "新宿区", 139.70, 35.69),
-        abr_city_record("111007", "埼玉県", "さいたま市", 139.645, 35.86),
-        abr_city_record("111104", "埼玉県", "さいたま市", 139.69, 35.95, ward="岩槻区"),
-        abr_town_record("131041", "0024000", "1", shinjuku, LON - 0.01, LAT, oaza="西新宿"),
-        abr_town_record("131041", "0024002", "2", shinjuku, LON, LAT, oaza="西新宿", chome="二丁目"),
-        abr_town_record("111104", "0001000", "1", iwatsuki, 139.70, 35.95, oaza="本町"),
-    ])
+async def _ingest_boundaries() -> None:
+    """新宿区西新宿二丁目（`LON`・`LAT`の周り）とさいたま市岩槻区本町（経度139.70・緯度35.95の周り）の小地域の境界を取り込む。"""
     await ingest_records("estat_small_area", [
-        estat_small_area_record("13104002402", "西新宿２丁目", [
+        estat_small_area_record("13104002402", "新宿区", "西新宿二丁目", [
             (LON - 0.002, LAT - 0.002), (LON - 0.002, LAT + 0.002), (LON + 0.002, LAT + 0.002),
             (LON + 0.002, LAT - 0.002), (LON - 0.002, LAT - 0.002)]),
-        estat_small_area_record("11110000100", "本町", [
+        estat_small_area_record("11110000100", "さいたま市岩槻区", "本町", [
             (139.69, 35.94), (139.69, 35.96), (139.71, 35.96), (139.71, 35.94), (139.69, 35.94)]),
     ])
-    async with raw_connection() as conn:
-        await derive_addresses.derive(conn)
+
+
+@pytest.mark.usefixtures("area")
+async def test_facilities_of_the_same_name_show_the_area_each_one_is_in():
+    """チェーンの名前で探すと同じ表示名の店が並ぶので、辺り（店の位置を含む小地域の境界の、市区町村から先の名前）で
+    見分ける。"""
+    await _ingest_boundaries()
     await _ingest_facilities([
         _facility_record(1, "ファミリーマート", LON, LAT),
         _facility_record(2, "ファミリーマート", 139.70, 35.95),
@@ -385,3 +460,36 @@ async def test_facilities_of_the_same_name_show_the_area_each_one_is_in():
         _facility("ファミリーマート", 139.70, 35.95, "さいたま市岩槻区本町"),
     ]}
 
+
+# --- 置いた位置の辺り ------------------------------------------------------------
+
+
+async def _area_at(longitude: float, latitude: float) -> httpx.Response:
+    transport = httpx.ASGITransport(app=app, client=(CLIENT_HOST, 50000))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        return await client.get("/api/place-area", params={"latitude": latitude, "longitude": longitude})
+
+
+@pytest.mark.parametrize(("longitude", "latitude", "expected"), [
+    pytest.param(LON + 0.001, LAT, "新宿区西新宿二丁目", id="境界の中"),
+    pytest.param(OUTSIDE_LON, OUTSIDE_LAT, None, id="境界の外"),
+])
+@pytest.mark.usefixtures("area")
+async def test_a_placed_point_shows_the_area_it_is_in(longitude, latitude, expected):
+    """地図で置いた地点・現在地にも、施設の辺りと同じ形の辺り（位置を含む小地域の境界の、市区町村から先の名前）を出す。"""
+    await _ingest_boundaries()
+
+    response = await _area_at(longitude, latitude)
+
+    assert response.status_code == 200
+    assert response.json() == {"area": expected}
+
+
+@pytest.mark.usefixtures("area")
+async def test_the_area_is_rate_limited_per_client():
+    limit = settings.place_area_rate_limit_per_minute
+    for _ in range(limit - 1):
+        rate_limiter.check_rate_limit(f"place-area:{CLIENT_HOST}", limit)
+
+    assert (await _area_at(LON, LAT)).status_code == 200
+    assert (await _area_at(LON, LAT)).status_code == 429

@@ -1,49 +1,34 @@
 import { expect, type Page, type Response } from "@playwright/test";
 import { VectorTile } from "@mapbox/vector-tile";
 import { PbfReader } from "pbf";
-import { mapDisplay } from "@/types/generated/mapDisplay";
+import { featureFilter } from "@maplibre/maplibre-gl-style-spec";
+import type { AxisCatalogResponse } from "@/types/route";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
-import { installMapFinder } from "../e2e/fixtures";
+import { lonLatToTileIndex } from "@/features/map/layers/webMercatorTile";
+import { ROUTE_HIT_TARGET_SEGMENT } from "@/features/map/scene/groups/routes";
+import { INTRO_CLOSED, MOBILE_VIEWPORT, installMapFinder, seedStoredState } from "../e2e/fixtures";
 import { installPageHelpers } from "../e2e/states";
 
-// 実backend・開発DBへ向けて回すe2eの共通の段取りと観測（docs/conventions/testing-operations.md「E2E・画面の撮影の走らせ方」）。
+// 実backendへ向けて回すe2eの共通の段取りと観測（.claude/skills/run-checks/SKILL.md「E2E・画面の撮影の走らせ方」）。
 // 期待値は値そのものではなく性質（1件以上ある・2つの出どころが食い違わない・エラー0件）で書く。
 
-/** 手元のbackend。アプリのビルドが埋め込む向け先（`NEXT_PUBLIC_API_URL`の既定）と同じ。 */
+/** 向けるbackend。アプリのビルドが埋め込む向け先（`NEXT_PUBLIC_API_URL`）と同じにする。既定は手元のbackend。 */
 export const LIVE_API = process.env.E2E_LIVE_API ?? "http://localhost:8000";
 
-/** 起点。開発DBの取込範囲はリポジトリに記録が無いので、範囲から推測せず環境変数で与える。既定はアプリの既定地点。 */
+/** 起点。backendのDBの取込範囲はリポジトリに記録が無いので、範囲から推測せず環境変数で与える。既定はアプリの既定地点。 */
 export const LIVE_POINT = (() => {
   const [latitude, longitude] = (process.env.E2E_LIVE_POINT ?? "35.7597,139.7387").split(",").map(Number);
   return { latitude, longitude };
 })();
 
-const LIVE_VIEWPORT = { width: 390, height: 812 };
-
-interface CatalogAxis {
-  axis_id: string;
-  label: string;
-  display: { kind: string; tile_inputs: { property: string }[] };
-  dedicated_way_value_layer: boolean;
-  dynamic_way_value_conditions: string[];
-}
-
-export interface Catalog {
-  axes: CatalogAxis[];
-  tile_versions: Record<string, string>;
-}
-
-export async function fetchCatalog(): Promise<Catalog> {
+export async function fetchCatalog(): Promise<AxisCatalogResponse> {
   const response = await fetch(`${LIVE_API}/api/axis-catalog`);
   if (!response.ok) throw new Error(`軸カタログの取得に失敗: ${response.status}`);
-  return (await response.json()) as Catalog;
+  return (await response.json()) as AxisCatalogResponse;
 }
 
 export function tileOf(z: number, { latitude, longitude }: { latitude: number; longitude: number }) {
-  const n = 2 ** z;
-  const x = Math.floor(((longitude + 180) / 360) * n);
-  const rad = (latitude * Math.PI) / 180;
-  const y = Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n);
+  const [x, y] = lonLatToTileIndex(longitude, latitude, z);
   return { z, x, y };
 }
 
@@ -64,13 +49,13 @@ export interface Watch {
   /** backendが上流（外部の配信元・キャッシュ）の失敗として返した502・503・504（HTTPの定義で上流の失敗を表す）。合否に入れない。 */
   gatewayFailures: string[];
   roadTiles: Map<string, Record<string, unknown>[]>;
-  wayValues: { axisId: string; url: string; values: Record<string, number> }[];
+  wayMaterials: { axisId: string; url: string; materials: Record<string, Record<string, number>> }[];
   jmaTiles: { url: string; body: Buffer }[];
   generated: { routes: unknown[]; no_candidates_reason: string | null }[];
 }
 
 const ROAD_TILE = /\/api\/region\/road-surface-tiles\/(\d+)\/(\d+)\/(\d+)\.pbf/;
-const WAY_VALUES = /\/api\/region\/dynamic-way-values\/([^/]+)\//;
+const WAY_MATERIALS = /\/api\/region\/way-materials\/([^/]+)\//;
 
 async function record(watch: Watch, response: Response): Promise<void> {
   const url = response.url();
@@ -80,10 +65,10 @@ async function record(watch: Watch, response: Response): Promise<void> {
   else if (isBackend && (status >= 500 || status === 429)) watch.backendFailures.push(`${status} ${url}`);
   if (!response.ok()) return;
   const road = ROAD_TILE.exec(url);
-  const wayValues = WAY_VALUES.exec(url);
+  const wayMaterials = WAY_MATERIALS.exec(url);
   const isJmaTile = url.includes("/api/jma-tile/") && url.endsWith(".png");
   const isGeneration = url.includes("/api/routes/generate/");
-  if (!road && !wayValues && !isJmaTile && !isGeneration) return;
+  if (!road && !wayMaterials && !isJmaTile && !isGeneration) return;
   let body: Buffer;
   try {
     body = await response.body();
@@ -93,7 +78,8 @@ async function record(watch: Watch, response: Response): Promise<void> {
   }
   try {
     if (road) watch.roadTiles.set(`${road[1]}/${road[2]}/${road[3]}`, decodeRoadTile(body));
-    else if (wayValues) watch.wayValues.push({ axisId: wayValues[1], url, values: JSON.parse(body.toString("utf-8")) });
+    else if (wayMaterials)
+      watch.wayMaterials.push({ axisId: wayMaterials[1], url, materials: JSON.parse(body.toString("utf-8")) });
     else if (isJmaTile) watch.jmaTiles.push({ url, body });
     else {
       const job = JSON.parse(body.toString("utf-8"));
@@ -113,7 +99,7 @@ export async function openLive(
   page: Page,
   {
     storedState = {},
-    viewport = LIVE_VIEWPORT,
+    viewport = MOBILE_VIEWPORT,
   }: { storedState?: Record<string, string>; viewport?: { width: number; height: number } } = {},
 ) {
   const watch: Watch = {
@@ -122,7 +108,7 @@ export async function openLive(
     backendFailures: [],
     gatewayFailures: [],
     roadTiles: new Map(),
-    wayValues: [],
+    wayMaterials: [],
     jmaTiles: [],
     generated: [],
   };
@@ -137,26 +123,13 @@ export async function openLive(
   await page.setViewportSize(viewport);
   await page.addInitScript(installPageHelpers);
   await page.addInitScript(installMapFinder);
-  await page.addInitScript(
-    (items) => {
-      for (const [key, value] of Object.entries(items)) window.localStorage.setItem(key, value);
-    },
-    { "ridecompass:first-visit-intro-closed": "true", ...storedState },
-  );
+  await seedStoredState(page, { ...INTRO_CLOSED, ...storedState });
 
   await page.goto("/");
   await expect(page.getByRole("button", { name: "メニュー" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 60_000 });
   await settleMap(page);
   return watch;
-}
-
-/** 全レイヤーONとデバッグログ（`[map:error]`を読むため）の保存状態。出どころは`map-runtime.spec.ts`と同じ宣言。 */
-export function allLayersOn(): Record<string, string> {
-  return {
-    "ridecompass:debug-enabled": "1",
-    "ridecompass:layer-visibility": JSON.stringify(Object.fromEntries(mapDisplay.layers.map(({ id }) => [id, true]))),
-  };
 }
 
 /**
@@ -262,22 +235,69 @@ export function expectNoOwnFailures(watch: Watch): void {
     .toEqual([]);
 }
 
-/** レンズを選ぶ（ピルを押して選択肢を押す。選ぶとポップオーバーは閉じる）。選択肢の名前には「ルート後のみ」等の印が続くので、ラベルの要素で当てる。
- *  選び済みの選択肢を押しても閉じないので、ピルが既にそのレンズを出していれば押さない（選んだレンズは localStorage に残り、開き直しても選ばれたまま）。
- *  ピルの名前には印や条件が続くので、名前ではなくラベルの要素で当てる。 */
-export async function chooseLens(page: Page, label: string): Promise<void> {
-  const pill = page.getByRole("button", { name: /^地図の色分け: / });
-  if (await pill.getByText(label, { exact: true }).isVisible()) return;
-  await pill.click();
-  const group = page.getByRole("radiogroup", { name: "地図の色分け" });
-  await group
-    .getByRole("radio")
-    .filter({ has: page.getByText(label, { exact: true }) })
-    .click();
+/** 「評価で塗る」のピル（押すと評価軸の一覧を開く）。 */
+function lensPill(page: Page) {
+  return page.getByRole("button", { name: /^評価で塗る: / });
+}
+
+/** 評価軸を名前で選ぶ（null は評価軸を選んでいない状態へ戻す）。一覧は選んでも閉じず、選んでいる行をもう一度押すと外れるので、
+ *  選び済みなら押さず、Escape で閉じる。行の名前には走る条件・「未使用」の印が続くので、名前の要素で当てる。 */
+export async function chooseLens(page: Page, label: string | null): Promise<void> {
+  await lensPill(page).click();
+  const group = page.getByRole("radiogroup", { name: "評価で塗る" });
+  await expect(group).toBeVisible();
+  if (label === null) {
+    const clear = page.getByRole("button", { name: "選択を外す" });
+    if (await clear.isEnabled()) await clear.click();
+  } else {
+    const row = group.getByRole("radio").filter({ has: page.getByText(label, { exact: true }) });
+    if ((await row.getAttribute("aria-checked")) !== "true") await row.click();
+  }
+  await page.keyboard.press("Escape");
   await expect(group).toBeHidden();
 }
 
-export async function currentLensLabel(page: Page): Promise<string> {
-  const name = await page.getByRole("button", { name: /^地図の色分け: / }).getAttribute("aria-label");
-  return /^地図の色分け: (.*)（タップで変更）$/.exec(name ?? "")?.[1] ?? "";
+/** 今の評価軸の名前。ピルがどの軸の名前も出していなければ、評価軸を選んでいない（null）。 */
+export async function currentLensLabel(page: Page, catalog: AxisCatalogResponse): Promise<string | null> {
+  for (const { label } of catalog.axes) {
+    if (await lensPill(page).getByText(label, { exact: true }).isVisible()) return label;
+  }
+  return null;
+}
+
+/**
+ * 選んでいる候補のルートの区間のうち、描かれている数と、そのうち「データなし」でない（いまのレンズの値で塗られた）数。
+ * 区間は scene が区間の当たり判定（`ROUTE_HIT_TARGET_SEGMENT`）を宣言したソースで引き、「データなし」かは、いまの地図が
+ * 区間の線に当てている「値が無ければ破線にする」式の条件を、MapLibre の式の評価器で区間のデータに当てて決める（塗り方の規則を
+ * ここで書き直さない）。区間のデータは地図への問い合わせ（`queryRenderedFeatures`）ではなくソースから取る——問い合わせが返す地物は
+ * 入れ子のプロパティ（`axis_difficulties` 等）を文字列にしていて、式の条件がどの区間にも当たらない。
+ */
+export async function routeSegmentsPainted(page: Page): Promise<{ drawn: number; withValue: number }> {
+  const { missing, drawn, segments } = await page.evaluate(async (target) => {
+    const map = window.__liveMap();
+    const layers = window.__liveScene().layers.map((layer) => ({
+      ...layer,
+      spec: layer.spec as { id: string; source?: string; paint?: Record<string, unknown> },
+    }));
+    const sources = new Set(
+      layers.filter((layer) => layer.hitTargets.includes(target)).map((layer) => layer.spec.source),
+    );
+    const dashOf = (layer: (typeof layers)[number]) => layer.spec.paint?.["line-dasharray"];
+    const line = layers.find((layer) => {
+      const dash = dashOf(layer);
+      return sources.has(layer.spec.source) && Array.isArray(dash) && dash[0] === "case";
+    });
+    if (!line) throw new Error("ルートの区間の線に「データなし」の式が無い（いまのレンズが値という考えを持たない）");
+    const source = map.getSource(line.spec.source!) as unknown as { getData(): Promise<GeoJSON.FeatureCollection> };
+    return {
+      missing: (dashOf(line) as unknown[])[1],
+      drawn: map.queryRenderedFeatures({ layers: [line.spec.id] }).length,
+      segments: (await source.getData()).features.map((feature) => feature.properties ?? {}),
+    };
+  }, ROUTE_HIT_TARGET_SEGMENT);
+  const hasValue = featureFilter(["!", missing] as never, "ルートの区間の値あり");
+  const withValue = segments.filter((properties) =>
+    hasValue.filter({ zoom: 0 }, { type: 2, properties } as never),
+  ).length;
+  return { drawn, withValue };
 }

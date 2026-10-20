@@ -1,22 +1,20 @@
 """e2e-live（`frontend/e2e-live/`）のために、この作業ツリーのbackendを開発DBへ向けて起動する。
 
 作業ツリーには`.env`が無い（gitignoreの対象は作業ツリーへ写らない）ので、本体のチェックアウトの`backend/.env`
-を読み（DBの向け先・土地被覆ラスタのパス等）、E2Eのオリジンへ向ける2つ——基礎地図のURLとCORSの許可——だけを
-足して起動する。ポートは空いているものを選ぶ（並行する担当のbackendと取り合わない）。起点は開発DBの区間から、
-路面タイルに道が出る点を選ぶ——開発DBの取込範囲はリポジトリに記録が無く、DBだけが知っている。`/health`が
+を読み（DBの向け先・土地被覆ラスタのパス等）、基礎地図のURLだけをE2Eのオリジンへ向けて起動する。ポートは
+空いているものを選ぶ（並行する担当のbackendと取り合わない）。起点は開発DBの区間から、路面タイルに道が出る点を選ぶ——開発DBの取込範囲はリポジトリに記録が無く、DBだけが知っている。`/health`が
 返り起点が決まったら、ビルドと実行のコマンド（向け先・起点を埋めたもの）を出し、止められるまで動き続ける
 （Bashの道具なら裏で走らせ、出力を読む）。
 
     python backend/scripts/serve_e2e_live.py [--port N] [--point 緯度,経度]
 
 本体の`backend/.venv`のPythonで走らせ直すので、どのPythonで呼んでもよい。前提・手順の正本は
-docs/conventions/testing-operations.md「E2E・画面の撮影の走らせ方」。
+.claude/skills/run-checks/SKILL.md「E2E・画面の撮影の走らせ方」。
 """
 
 import argparse
 import asyncio
 import json
-import math
 import os
 import socket
 import subprocess
@@ -25,22 +23,21 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[1]
 WORKTREE = BACKEND.parent
-#: E2Eのオリジン。E2Eの設定と同じ値でなければCORSで弾かれる（`frontend/playwright.live.config.ts: LIVE_ORIGIN`）。
+sys.path.insert(0, str(WORKTREE / "scripts"))
+
+from repo_git import main_checkout  # noqa: E402
+
+#: E2Eのオリジン。基礎地図をここのrewrites越しに取らせる（`frontend/playwright.live.config.ts: LIVE_ORIGIN`）。
 LIVE_ORIGIN = "http://localhost:3200"
 DEFAULT_PORT = 8000
 HEALTH_TIMEOUT_SECONDS = 300
 #: 起点の候補にする区間の数。取込範囲の真ん中あたりの区間から順に、路面タイルに道が出るものを探す。
 POINT_CANDIDATES = 40
-
-
-def main_checkout() -> Path:
-    common = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=BACKEND,
-                            capture_output=True, check=True).stdout.decode("utf-8").strip()
-    return Path(common).parent
 
 
 def venv_python(main: Path) -> Path:
@@ -49,7 +46,7 @@ def venv_python(main: Path) -> Path:
 
 
 def backend_env(main: Path, port: int) -> dict[str, str]:
-    """本体の`.env`に、E2Eのオリジンへ向ける値を足した環境。`.env`の値は画面へ出さない。"""
+    """本体の`.env`に、基礎地図のURLをE2Eのオリジンへ向けた環境。`.env`の値は画面へ出さない。"""
     from dotenv import dotenv_values
 
     env = dict(os.environ)
@@ -57,9 +54,6 @@ def backend_env(main: Path, port: int) -> dict[str, str]:
         if value is not None:
             env[key.upper()] = value
     env["BASEMAP_PUBLIC_BASE_URL"] = f"{LIVE_ORIGIN}/api/basemap"
-    # `settings.cors_allowed_origins_list`はカンマで区切る（JSONの配列ではない）。
-    origins = [o.strip() for o in env.get("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()]
-    env["CORS_ALLOWED_ORIGINS"] = ",".join(origins + ([LIVE_ORIGIN] if LIVE_ORIGIN not in origins else []))
     env["PYTHONIOENCODING"] = "utf-8"
     env["PORT"] = str(port)
     return env
@@ -115,36 +109,37 @@ async def candidate_points(database_url: str) -> list[tuple[float, float]]:
     return [(float(r["lat"]), float(r["lon"])) for r in rows]
 
 
-def tile_of(z: int, lat: float, lon: float) -> tuple[int, int]:
-    n = 2**z
-    rad = math.radians(lat)
-    return int((lon + 180) / 360 * n), int((1 - math.log(math.tan(rad) + 1 / math.cos(rad)) / math.pi) / 2 * n)
-
-
-def roads_in_tile(api: str, lat: float, lon: float) -> int:
-    """最大ズームの路面タイルに道が何本出るか。0本の起点ではE2Eの前準備が止まる。"""
+def road_tile_counter(api: str) -> Callable[[float, float], int]:
+    """起点の最大ズームの路面タイルに道が何本出るかを数える関数。0本の起点ではE2Eの前準備が止まる。"""
     import mapbox_vector_tile
 
-    config = json.loads((WORKTREE / "frontend/src/types/generated/region-tile-config.json").read_text(encoding="utf-8"))
+    from app.domain.region import ROAD_TILE_MAX_ZOOM, tile_position
+    from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME
+
     catalog = json.loads(get(f"{api}/api/axis-catalog") or b"{}")
     version = (catalog.get("tile_versions") or {}).get("road_surface")
-    z = int(config["road_tile_max_zoom"])
-    x, y = tile_of(z, lat, lon)
-    body = get(f"{api}/api/region/road-surface-tiles/{z}/{x}/{y}.pbf?v={version}")
-    if not body:
-        return 0
-    layer = mapbox_vector_tile.decode(body).get(config["road_surface"]["layer_name"]) or {}
-    return len(layer.get("features") or [])
+    z = ROAD_TILE_MAX_ZOOM
+
+    def roads_in_tile(lat: float, lon: float) -> int:
+        x, y = (int(v) for v in tile_position(lon, lat, z))
+        body = get(f"{api}/api/region/road-surface-tiles/{z}/{x}/{y}.pbf?v={version}")
+        if not body:
+            return 0
+        layer = mapbox_vector_tile.decode(body).get(ROAD_SURFACE_LAYER_NAME) or {}
+        return len(layer.get("features") or [])
+
+    return roads_in_tile
 
 
 def choose_point(api: str, env: dict[str, str], given: str | None) -> str:
+    roads_in_tile = road_tile_counter(api)
     if given:
         lat, lon = (float(v) for v in given.split(","))
-        if not roads_in_tile(api, lat, lon):
+        if not roads_in_tile(lat, lon):
             raise SystemExit(f"起点 {given} の路面タイルに道が無い（開発DBの取込範囲の外）。--point を外すとDBから選ぶ")
         return given
     for lat, lon in asyncio.run(candidate_points(env["DATABASE_URL"])):
-        if roads_in_tile(api, lat, lon):
+        if roads_in_tile(lat, lon):
             return f"{lat:.5f},{lon:.5f}"
     raise SystemExit("開発DBの区間から、路面タイルに道が出る起点を選べなかった（--point で与える）")
 
@@ -154,7 +149,7 @@ def main() -> int:
     parser.add_argument("--port", type=int, help=f"待ち受けるポート（既定: {DEFAULT_PORT}、使われていれば空いているもの）")
     parser.add_argument("--point", help="起点（緯度,経度）。既定は開発DBの区間から選ぶ")
     args = parser.parse_args()
-    main = main_checkout()
+    main = main_checkout(BACKEND)
     python = venv_python(main)
     if python.exists() and Path(sys.executable).resolve() != python.resolve():
         return subprocess.call([str(python), __file__, *sys.argv[1:]])

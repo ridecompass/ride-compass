@@ -4,6 +4,7 @@
 """
 
 from collections import Counter
+from collections.abc import Collection
 
 from app.domain.registry import (
     DisplayAxisSpec,
@@ -12,23 +13,11 @@ from app.domain.registry import (
     PointThinningSpec,
     PrimaryAttributeSpec,
 )
-from app.domain.material_sql import CYCLEWAY_CLASSES
-from app.domain.road import SURFACE_CLASSES, TRACK_GRADES, surface_class_description
 from app.domain.stop_place import StopPlaceGroup
-from app.domain.traffic import TAG_KIND_RULES, kind_map_sql, kinds_shown_as, stop_kind_sql
+from app.domain.traffic import NODE_KINDS, STOP_POI_KINDS, TAG_KIND_RULES, kind_map_sql, kinds_shown_as, stop_kind_sql
 
 #: 元のタグの値をこの数より多く持つ種別は、説明でタグの名前だけを言う（値を並べると説明が値の一覧になる）。
 _LISTED_TAG_VALUES = 3
-
-
-def _values_note(tag_key: str, values: tuple[str, ...]) -> str:
-    """行の説明の末尾に添える元のタグ（OSM の値そのものを行の値に持つ行）。行の値から組むので、値を足すと説明にも出る。
-    連絡路（`<値>_link`）が元の値とそろっていれば「とその連絡路」とまとめる。"""
-    links = sorted(v for v in values if v.endswith("_link"))
-    bases = [v for v in values if not v.endswith("_link")]
-    if links and links == sorted(f"{v}_link" for v in bases):
-        return f"[OSM の {tag_key}={'・'.join(bases)} とその連絡路]"
-    return f"[OSM の {tag_key}={'・'.join(values)}]"
 
 
 def _kinds_note(kinds: tuple[str, ...]) -> str:
@@ -47,13 +36,6 @@ def _kinds_note(kinds: tuple[str, ...]) -> str:
     ) + "]"
 
 
-def _tag_row(
-    tag_key: str, key: str, label: str, values: tuple[str, ...], meaning: str
-) -> DisplayCategorySpec:
-    """OSM の`tag_key`の値を行の値に持つ行。説明は意味の文`meaning`に元のタグを添える。"""
-    return DisplayCategorySpec(key=key, label=label, values=values, description=f"{meaning}{_values_note(tag_key, values)}。")
-
-
 def _kind_row(key: str, label: str, values: tuple[str, ...], meaning: str, glyph: str | None = None) -> DisplayCategorySpec:
     """種別を行の値に持つ行。説明は意味の文`meaning`に元のタグを添える。"""
     return DisplayCategorySpec(
@@ -66,160 +48,16 @@ def _kind_row(key: str, label: str, values: tuple[str, ...], meaning: str, glyph
 #: 材料を1つも持たない属性（どの軸からも参照されず評価に効かない）も同じ表に並ぶ——
 #: 材料を持つかどうかは材料カタログを引けば分かるため、表を分けない。
 PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
-    ATTR_HIGHWAY := PrimaryAttributeSpec(
-        attr_id="highway",
-        tile_kind="road_surface",
-        label="道路の種類",
-        geometry="line",
-        # 順序のある分類なので、色相ではなく濃淡で幹線→細街路を表す。
-        display_axes=(
-            DisplayAxisSpec(
-                key="highway",
-                property="highway",
-                palette="ordered",
-                categories=(
-                    _tag_row(
-                        "highway",
-                        "arterial",
-                        "幹線道路",
-                        ("motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link"),
-                        "高速道路・国道・主要な県道など、車が遠くへ行くための太い通り",
-                    ),
-                    _tag_row(
-                        "highway",
-                        "secondary",
-                        "主要道",
-                        ("secondary", "secondary_link", "tertiary", "tertiary_link"),
-                        "県道・市町村の主な道など、地域の中を結ぶ通り",
-                    ),
-                    _tag_row(
-                        "highway",
-                        "local",
-                        "生活道路",
-                        ("residential", "unclassified", "living_street", "service", "road"),
-                        "住宅街の道・名前の付かない細い道・施設の中の通路など、主に近くへ行くための道",
-                    ),
-                    _tag_row(
-                        "highway",
-                        "cycleway",
-                        "自転車・歩行者道",
-                        ("cycleway", "path", "footway", "pedestrian", "bridleway", "steps"),
-                        "自転車道・歩道・遊歩道・歩行者専用の道・階段など、車が通らない道",
-                    ),
-                    _tag_row("highway", "track", "農道・林道", ("track",), "田畑や山林へ入るための道。舗装も未舗装もある"),
-                ),
-            ),
-        ),
-    ),
+    ATTR_HIGHWAY := PrimaryAttributeSpec(attr_id="highway", label="道路の種類", geometry="line"),
     ATTR_LANES := PrimaryAttributeSpec(attr_id="lanes", label="車線数", geometry="line"),
     ATTR_MAXSPEED := PrimaryAttributeSpec(attr_id="maxspeed", label="制限速度", geometry="line"),
-    ATTR_CYCLEWAY := PrimaryAttributeSpec(
-        attr_id="cycleway",
-        tile_kind="road_surface",
-        label="自転車インフラ",
-        geometry="line",
-        # 行は材料「自転車の走る場所」の値そのもの。当てはまらない道は値を持たない（該当なし）。
-        display_axes=(
-            DisplayAxisSpec(
-                key="cycleway",
-                property="cycleway_class",
-                palette="nominal",
-                hue_slot=7,
-                categories=tuple(
-                    DisplayCategorySpec(key=c.key, label=c.label, values=(c.key,), description=c.description)
-                    for c in CYCLEWAY_CLASSES
-                ),
-            ),
-        ),
-    ),
-    ATTR_SURFACE := PrimaryAttributeSpec(
-        attr_id="surface",
-        tile_kind="road_surface",
-        label="路面の種類",
-        geometry="line",
-        # 行は材料「路面の区分」の値そのもの（区分の宣言は`domain/road.py: SURFACE_CLASSES`）。
-        # 区分に無い値は材料の値が「その他」になり、地図も行の外（その他）として出す。
-        display_axes=(
-            DisplayAxisSpec(
-                key="surface",
-                property="surface_class",
-                palette="nominal",
-                hue_slot=9,
-                categories=tuple(
-                    DisplayCategorySpec(
-                        key=c.key, label=c.label, values=(c.key,), description=surface_class_description(c)
-                    )
-                    for c in SURFACE_CLASSES
-                ),
-            ),
-        ),
-    ),
-    ATTR_TRACKTYPE := PrimaryAttributeSpec(
-        attr_id="tracktype",
-        tile_kind="road_surface",
-        label="農道・林道の等級",
-        geometry="line",
-        # 等級は固い路面から柔らかい路面への順序を持つ。
-        display_axes=(
-            DisplayAxisSpec(
-                key="tracktype",
-                property="tracktype",
-                palette="ordered",
-                categories=tuple(
-                    _tag_row("tracktype", g.value, g.label, (g.value,), g.description) for g in TRACK_GRADES
-                ),
-            ),
-        ),
-    ),
+    ATTR_CYCLEWAY := PrimaryAttributeSpec(attr_id="cycleway", label="自転車インフラ", geometry="line"),
+    ATTR_SURFACE := PrimaryAttributeSpec(attr_id="surface", label="路面の種類", geometry="line"),
+    ATTR_TRACKTYPE := PrimaryAttributeSpec(attr_id="tracktype", label="農道・林道の等級", geometry="line"),
     ATTR_MOTOR_VEHICLE_ACCESS := PrimaryAttributeSpec(attr_id="motor_vehicle_access", label="自動車通行可否", geometry="line"),
     ATTR_LIT := PrimaryAttributeSpec(attr_id="lit", label="街灯", geometry="line"),
-    ATTR_TUNNEL := PrimaryAttributeSpec(
-        attr_id="tunnel",
-        tile_kind="road_surface",
-        label="トンネル",
-        geometry="line",
-        display_axes=(
-            DisplayAxisSpec(
-                key="tunnel",
-                property="tunnel",
-                palette="nominal",
-                hue_slot=2,
-                categories=(
-                    DisplayCategorySpec(
-                        key="tunnel",
-                        label="トンネル",
-                        values=(True,),
-                        description="トンネルの中を通る区間[OSM の tunnel タグ]。",
-                    ),
-                ),
-            ),
-        ),
-    ),
-    ATTR_ONEWAY := PrimaryAttributeSpec(
-        attr_id="oneway",
-        tile_kind="road_surface",
-        label="一方通行",
-        geometry="line",
-        display_axes=(
-            DisplayAxisSpec(
-                key="oneway",
-                property="oneway",
-                palette="nominal",
-                hue_slot=5,
-                categories=(
-                    DisplayCategorySpec(
-                        key="oneway",
-                        label="一方通行",
-                        values=(True,),
-                        description=(
-                            "一方向にしか進めない道。環状交差点も含み、自転車だけ両方向に通れる道は含まない"
-                            "[OSM の oneway・oneway:bicycle・junction タグ]。"
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    ),
+    ATTR_TUNNEL := PrimaryAttributeSpec(attr_id="tunnel", label="トンネル", geometry="line"),
+    ATTR_ONEWAY := PrimaryAttributeSpec(attr_id="oneway", label="一方通行", geometry="line"),
     ATTR_ELEVATION := PrimaryAttributeSpec(attr_id="elevation", label="標高図", geometry="area"),
     ATTR_STOP_POI := PrimaryAttributeSpec(
         attr_id="stop_poi",
@@ -448,14 +286,40 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
         point_name_property="name",
     ),
 )
-# 読む側はidで1件を引く（`next(...)`）ため、同じidを2度宣言すると後の宣言が黙って消える。
-_REPEATED_ATTR_IDS = sorted(attr_id for attr_id, n in Counter(a.attr_id for a in PRIMARY_ATTRIBUTES).items() if n > 1)
-if _REPEATED_ATTR_IDS:
-    raise ValueError(f"primary attribute declared more than once: {_REPEATED_ATTR_IDS}")
+
+
+def check_primary_attributes(attributes: tuple[PrimaryAttributeSpec, ...]) -> None:
+    """属性をまたいで1つの意味に読めない宣言を`ValueError`で断る。
+
+    読む側はidで1件を引くため、同じidを2度宣言すると片方の宣言が黙って消える。順序を持たない列挙の色相の起点が
+    重なると、1行しか持たない軸どうし（トンネルと一方通行）が必ず同じ色になる。"""
+    repeated = sorted(attr_id for attr_id, n in Counter(a.attr_id for a in attributes).items() if n > 1)
+    if repeated:
+        raise ValueError(f"一次属性が2度宣言されている: {repeated}")
+    slots = [a.display_axes[0].hue_slot for a in attributes if a.display_axes and a.display_axes[0].palette == "nominal"]
+    if len(slots) != len(set(slots)):
+        raise ValueError(f"順序を持たない列挙の色相の起点が属性をまたいで重なる: {slots}")
+
+
+def check_point_rows(attribute: PrimaryAttributeSpec, kinds: Collection[str]) -> None:
+    """点のレイヤーの先頭の軸の行の値が、そのレイヤーが描く種別とちょうど重なることを確かめ、外れれば`ValueError`。
+
+    行に無い種別の点は地図から消え、凡例にも出ない。種別に無い行は何も塗らない。種別の分類は取込が持ち、行の束ね方
+    （利用者から見て同じものを1行にする）は表示が持つので、片方からもう片方を導けない。"""
+    values = {value for category in attribute.display_axes[0].categories for value in category.values}
+    if values != set(kinds):
+        raise ValueError(f"'{attribute.attr_id}'の行の値と描く種別が食い違う: {sorted(map(str, values ^ set(kinds)))}")
+
+
+check_primary_attributes(PRIMARY_ATTRIBUTES)
+PRIMARY_ATTRIBUTES_BY_ID = {attr.attr_id: attr for attr in PRIMARY_ATTRIBUTES}
+check_point_rows(ATTR_STOP_POI, STOP_POI_KINDS)
+# 補給の点のコンビニは、ノードの種別でなく立ち寄り先の群「コンビニ」から、点のタイルの`poi`のレイヤーが足す。
+check_point_rows(PRIMARY_ATTRIBUTES_BY_ID["supply_poi"], NODE_KINDS - STOP_POI_KINDS | {StopPlaceGroup.CONVENIENCE})
 
 
 def stop_poi_map_group_sql(alias: str) -> str:
-    """地図の停止要因の点を近いものどうしまとめる単位を返すSQL式（`node_materials`の別名`alias`）。
+    """地図の停止要因の点を近いものどうしまとめる単位を返すSQL式（`node_kinds`の別名`alias`）。
 
     単位は凡例の行で、数える種別（`COUNT_KIND_OF`）ではない。地図の点は「そこに何があるか」を
     示すため、凡例で分けて見せている種別（例: 車止めとハンプ・狭さく）は近くても別の点のまま

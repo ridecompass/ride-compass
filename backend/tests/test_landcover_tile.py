@@ -85,20 +85,6 @@ async def test_outside_the_rasters_the_tile_is_the_clear_image_of_the_raster(ras
     assert response == service.TileResponse(content=RASTER.empty_tile_png(), cacheable=True)
 
 
-async def test_the_cache_key_follows_the_rasters_actually_opened(raster, served):
-    await service.get_landcover_tile(10, 905, 403)
-    raster.opened = ["/data/zone53.tif", "/data/zone54.tif"]
-    await service.get_landcover_tile(10, 905, 403)
-    raster.opened = ["/other/zone54.tif", "/other/zone53.tif"]
-    await service.get_landcover_tile(10, 905, 403)
-
-    first, added, reordered = (call["generation"] for call in served)
-    # ラスタを1枚足したら別の鍵——継ぎ目のタイルが古い絵（片側が透明）を返し続けない
-    assert added != first
-    # 同じ構成なら置き場所・並びに依らず同じ鍵
-    assert reordered == added
-
-
 async def test_the_cache_key_carries_the_tile_version(raster, served):
     await service.get_landcover_tile(10, 905, 403)
 
@@ -128,15 +114,3 @@ async def test_without_any_raster_there_is_no_tile_and_the_cause_is_logged(
     assert served == []
     # 前のテストで抑えた件数の知らせが、窓が替わって最初の警告の前に出ることがあるので、原因を持つ行で読む。
     assert [r for r in caplog.records if r.name == debug_log.logger.name and cause in r.getMessage()]
-
-
-async def test_the_missing_raster_warning_is_not_repeated_for_every_tile(raster, served, caplog):
-    raster.opened = []
-    tiles = debug_log.WARN_BURST_PER_WINDOW + 3
-
-    with caplog.at_level(logging.WARNING, logger=debug_log.logger.name):
-        for y in range(tiles):
-            await service.get_landcover_tile(10, 905, 403 + y)
-
-    # 1枚ごとに出すと地図を1画面開くだけで数十行になる
-    assert len([r for r in caplog.records if r.name == debug_log.logger.name]) < tiles

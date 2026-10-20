@@ -24,7 +24,7 @@ from typing import Any
 import shapely
 from shapely.geometry import Point
 
-from app.batch.ingest import SourceRecord, file_origin, register_adapter
+from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceSpec
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "bunka"
@@ -48,15 +48,23 @@ def heritages_path(snapshot: str) -> Path:
     return DATA_DIR / f"architecture_{snapshot}.jsonl"
 
 
-@register_adapter("bunka_heritages", rows=BunkaHeritageRows)
-async def read_bunka_heritages(spec: SourceSpec, profile: SourceProfile,
-                               origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
-    rows: BunkaHeritageRows = spec.rows
+def _existing_heritages_path(rows: BunkaHeritageRows) -> Path:
     path = heritages_path(rows.snapshot)
     if not path.exists():
         raise FileNotFoundError(f"文化財の建造物の一覧がありません: {path}（scripts/fetch_bunka_heritages.py が写す）")
-    origin.update({"snapshot": rows.snapshot, **file_origin(path)})
-    min_lat, min_lon, max_lat, max_lon = profile.target.bbox
+    return path
+
+
+def bunka_heritages_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
+    return AdapterInputs(files=(_existing_heritages_path(spec.rows),))
+
+
+@register_adapter("bunka_heritages", rows=BunkaHeritageRows, inputs=bunka_heritages_inputs)
+async def read_bunka_heritages(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
+                               origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
+    rows: BunkaHeritageRows = spec.rows
+    (path,) = inputs.files
+    origin["snapshot"] = rows.snapshot
     designations = set(rows.designations)
     with path.open(encoding="utf-8") as lines:
         for line in lines:
@@ -65,6 +73,6 @@ async def read_bunka_heritages(spec: SourceSpec, profile: SourceProfile,
             if coordinates is None or item.get(DESIGNATION_FIELD) not in designations:
                 continue
             lat, lon = coordinates["lat"], coordinates["lon"]
-            if not (min_lat <= lat <= max_lat and min_lon <= lon <= max_lon):
+            if not profile.target.contains(lat, lon):
                 continue
             yield SourceRecord(natural_key=item["id"], geom_wkb=shapely.to_wkb(Point(lon, lat)), attrs=item)

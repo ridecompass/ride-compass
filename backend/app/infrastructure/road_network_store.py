@@ -5,7 +5,7 @@ DBから作ると数分かかる。そのため作るのは派生の作り直し
 backendは置かれたものを読むだけにする。
 
 置き場は`data/road_network/<形の署名>-r<派生データの世代>/`。中に配列ごとの`.npy`と、
-配列でない値（語彙・列の並び・世代）を書いた`manifest.json`を置く。書き終えるまでは読み手が
+配列でない値（語彙・列の並び・世代）と配列を作った入力の指紋を書いた`manifest.json`を置く。書き終えるまでは読み手が
 拾わない名前（先頭が`.`）のディレクトリに書き、最後に名前を付け替える——途中で落ちても、読む側が
 書きかけを掴まない。
 
@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import time
+from collections.abc import Iterator
 from dataclasses import fields
 from pathlib import Path
 from typing import Any
@@ -26,21 +27,24 @@ from typing import Any
 import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.domain.attributes import EdgeMaterialArrays
+from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, EdgeMaterialArrays
 from app.domain.road_network import RoadNetwork
 from app.domain.traffic import travel_allowed
 from app.infrastructure.cache_identity import shape_digest
+from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.road_graph_repository import NETWORK_SQL_SOURCES, RoadGraphRepository
 
 logger = logging.getLogger("ridecompass.road_network")
 
 #: 本番の読み手はこのファイルだけだが、テストがディスク（プロセス境界）の置き場を一時ディレクトリへ差し替えるために公開する
 #: （testing.md「確かめる高さ」の (c)）。
-ROOT = Path(__file__).resolve().parent.parent.parent / "data" / "road_network"
+ROOT = DATA_DIR / "road_network"
 
 NETWORK_SHAPE = shape_digest(RoadNetwork, *NETWORK_SQL_SOURCES)
 
 _MANIFEST = "manifest.json"
+#: manifestの中の、配列を作った入力の指紋の名前（`RoadNetwork`の列ではないので、`load`は読まない）。
+_INPUTS = "inputs"
 _DIRECTORY_PATTERN = re.compile(r"^(?P<shape>[0-9a-f]+)-r(?P<revision>\d+|x)$")
 # 行を流す単位と、材料を1回で引く区間の数。材料は区間ごとに列の値を作るため、1回ぶんの
 # 一時的なメモリがこの数に比例する。
@@ -52,15 +56,22 @@ def directory_name(revision: int | None) -> str:
     return f"{NETWORK_SHAPE}-r{'x' if revision is None else revision}"
 
 
+def _directories() -> Iterator[tuple[Path, re.Match[str]]]:
+    """置き場の名前の形をしたディレクトリと、名前の照合の結果（書きかけは名前の形に合わないので含まない）。"""
+    for path in ROOT.glob("*"):
+        match = _DIRECTORY_PATTERN.match(path.name)
+        if match is not None and path.is_dir():
+            yield path, match
+
+
 def _latest_directory() -> Path | None:
     """形の署名が一致するもののうち、世代が最も新しい置き場。無ければNone。
 
     世代が読めなかったDBで作ったもの（`-rx`）は、世代のあるものより古いとみなす。
     """
     best: tuple[int, Path] | None = None
-    for path in ROOT.glob("*"):
-        match = _DIRECTORY_PATTERN.match(path.name)
-        if not path.is_dir() or match is None or match["shape"] != NETWORK_SHAPE:
+    for path, match in _directories():
+        if match["shape"] != NETWORK_SHAPE:
             continue
         revision = -1 if match["revision"] == "x" else int(match["revision"])
         if best is None or revision > best[0]:
@@ -76,26 +87,61 @@ def save(network: RoadNetwork) -> Path:
     return publish(write_pending(network))
 
 
-def write_pending(network: RoadNetwork) -> Path:
-    """読み手（`_latest_directory`）が拾わない名前で書き、そのディレクトリを返す。`publish`で世代の名前にする。"""
-    ROOT.mkdir(parents=True, exist_ok=True)
-    temporary = ROOT / f".{directory_name(network.revision)}.tmp-{os.getpid()}"
-    shutil.rmtree(temporary, ignore_errors=True)
-    temporary.mkdir()
-    values: dict[str, object] = {}
+def write_pending(network: RoadNetwork, inputs: str | None = None) -> Path:
+    """読み手（`_latest_directory`）が拾わない名前で書き、そのディレクトリを返す。`publish`で世代の名前にする。
+
+    `inputs`は配列を作った入力の指紋（作り手が決める）。次の作り直しが`reuse_pending`で同じ入力の置き場を探す。
+    """
+    temporary = _new_pending(network.revision)
+    values: dict[str, object] = {_INPUTS: inputs}
     for f in fields(network):
         value = getattr(network, f.name)
         if isinstance(value, np.ndarray):
             np.save(temporary / f"{f.name}.npy", value, allow_pickle=False)
         else:
             values[f.name] = value
-    (temporary / _MANIFEST).write_text(json.dumps(values, ensure_ascii=False), encoding="utf-8")
+    _write_manifest(temporary, values)
     return temporary
+
+
+def reuse_pending(inputs: str, revision: int) -> Path | None:
+    """今の形で世代が最も新しい置き場が`inputs`から作ったものなら、その配列を`revision`の世代として読み手が拾わない名前に
+    出し直し、そのディレクトリを返す（`publish`で世代の名前にする）。無ければNone。
+
+    配列はハードリンクで置く——書き直さず、前の世代の置き場が`publish`で消えても中身は残る。
+    """
+    latest = _latest_directory()
+    if latest is None:
+        return None
+    values = _read_manifest(latest)
+    if values.get(_INPUTS) != inputs:
+        return None
+    temporary = _new_pending(revision)
+    for path in latest.glob("*.npy"):
+        os.link(path, temporary / path.name)
+    _write_manifest(temporary, {**values, "revision": revision})
+    return temporary
+
+
+def _new_pending(revision: int | None) -> Path:
+    ROOT.mkdir(parents=True, exist_ok=True)
+    temporary = ROOT / f".{directory_name(revision)}.tmp-{os.getpid()}"
+    shutil.rmtree(temporary, ignore_errors=True)
+    temporary.mkdir()
+    return temporary
+
+
+def _write_manifest(directory: Path, values: dict[str, object]) -> None:
+    (directory / _MANIFEST).write_text(json.dumps(values, ensure_ascii=False), encoding="utf-8")
+
+
+def _read_manifest(directory: Path) -> dict[str, Any]:
+    return json.loads((directory / _MANIFEST).read_text(encoding="utf-8"))
 
 
 def publish(pending: Path) -> Path:
     """`write_pending`が書いたものを世代の名前へ付け替え、同じ形で世代の古い置き場を消す。"""
-    revision = json.loads((pending / _MANIFEST).read_text(encoding="utf-8"))["revision"]
+    revision = _read_manifest(pending)["revision"]
     target = ROOT / directory_name(revision)
     try:
         pending.rename(target)
@@ -112,7 +158,7 @@ def publish(pending: Path) -> Path:
 
 def load(directory: Path) -> RoadNetwork:
     """置き場を読む。配列はメモリマップで開く——常に要る列だけがメモリに載る。"""
-    values = json.loads((directory / _MANIFEST).read_text(encoding="utf-8"))
+    values = _read_manifest(directory)
     arguments: dict[str, object] = {}
     for f in fields(RoadNetwork):
         if f.name in values:
@@ -161,9 +207,8 @@ def prune(keep: Path) -> list[Path]:
     古いコンテナは古い署名の置き場を読んでいる。
     """
     removed = []
-    for path in ROOT.glob("*"):
-        match = _DIRECTORY_PATTERN.match(path.name)
-        if path == keep or not path.is_dir() or match is None or match["shape"] != NETWORK_SHAPE:
+    for path, match in _directories():
+        if path == keep or match["shape"] != NETWORK_SHAPE:
             continue
         shutil.rmtree(path, ignore_errors=True)
         removed.append(path)
@@ -176,9 +221,8 @@ def prune_other_shapes() -> int:
     backendの起動後に呼ぶ——デプロイで入れ替わるまでは、旧コンテナが古い署名の置き場を読んでいる。
     """
     freed = 0
-    for path in ROOT.glob("*"):
-        match = _DIRECTORY_PATTERN.match(path.name)
-        if not path.is_dir() or match is None or match["shape"] == NETWORK_SHAPE:
+    for path, match in _directories():
+        if match["shape"] == NETWORK_SHAPE:
             continue
         freed += sum(f.stat().st_size for f in path.iterdir() if f.is_file())
         shutil.rmtree(path, ignore_errors=True)
@@ -202,60 +246,51 @@ async def ensure_current(session_factory: async_sessionmaker[AsyncSession]) -> P
 async def build(repository: RoadGraphRepository, revision: int | None) -> RoadNetwork:
     """DBから道路網全体を読み、`revision`の世代の`RoadNetwork`を組む。"""
     started = time.monotonic()
-    node_columns = await _read_nodes(repository)
-    node_osm_id = node_columns["osm_node_id"]
-    edges = await _read_directed_edges(repository, node_osm_id)
+    nodes = await _read_nodes(repository)
+    edges, dropped_without_endpoint = await _read_directed_edges(repository, nodes["node_osm_id"])
     topology_s = time.monotonic() - started
     logger.info(
         "道路網のつながりを読みました ノード=%d 有向の区間=%d 端点のノードが無く落とした有向の区間=%d %.0f秒",
-        len(node_osm_id), len(edges["way"]), edges["dropped_without_endpoint"], topology_s,
+        len(nodes["node_osm_id"]), len(edges["edge_way_id"]), dropped_without_endpoint, topology_s,
     )
 
-    materials = await _read_materials(repository, edges["way"], edges["segment"], edges["forward"])
-    logger.info("道路網の材料を読みました 有向の区間=%d %.0f秒", len(edges["way"]), time.monotonic() - started - topology_s)
-    return RoadNetwork(
-        revision=revision,
-        node_osm_id=node_osm_id,
-        node_lat=node_columns["latitude"],
-        node_lon=node_columns["longitude"],
-        node_has_signals=node_columns["has_traffic_signals"],
-        node_max_rank=node_columns["max_highway_rank"],
-        edge_way_id=edges["way"],
-        edge_segment=edges["segment"],
-        edge_forward=edges["forward"],
-        edge_from=edges["from"],
-        edge_to=edges["to"],
-        edge_highway=edges["highway"],
-        highway_vocab=edges["highway_vocab"],
-        edge_min_lon=edges["min_lon"],
-        edge_min_lat=edges["min_lat"],
-        edge_max_lon=edges["max_lon"],
-        edge_max_lat=edges["max_lat"],
-        **materials,
-    )
+    materials = await _read_materials(repository, edges["edge_way_id"], edges["edge_segment"], edges["edge_forward"])
+    logger.info(
+        "道路網の材料を読みました 有向の区間=%d %.0f秒", len(edges["edge_way_id"]), time.monotonic() - started - topology_s)
+    return RoadNetwork(revision=revision, **nodes, **edges, **materials)
 
 
-async def _read_nodes(repository: RoadGraphRepository) -> dict[str, np.ndarray]:
-    chunks: dict[str, list[np.ndarray]] = {
-        "osm_node_id": [], "latitude": [], "longitude": [], "has_traffic_signals": [], "max_highway_rank": [],
-    }
-    dtypes = {"osm_node_id": np.int64, "latitude": np.float64, "longitude": np.float64,
-              "has_traffic_signals": np.bool_, "max_highway_rank": np.int64}
+#: `RoadNetwork`の欄 → (ノードの行の列, 型)。
+_NODE_COLUMNS = {
+    "node_osm_id": ("osm_node_id", np.int64), "node_lat": ("latitude", np.float64),
+    "node_lon": ("longitude", np.float64), "node_has_signals": ("has_traffic_signals", np.bool_),
+    "node_max_rank": ("max_highway_rank", np.int64),
+}
+#: `RoadNetwork`の区間の欄 → 型。
+_EDGE_DTYPES = {"edge_way_id": np.int64, "edge_segment": np.int32, "edge_forward": np.bool_, "edge_from": np.int32,
+                "edge_to": np.int32, "edge_highway": np.int16, "edge_min_lon": np.float64, "edge_min_lat": np.float64,
+                "edge_max_lon": np.float64, "edge_max_lat": np.float64, "edge_start_bearing_deg": np.float64,
+                "edge_end_bearing_deg": np.float64}
+_BBOX_COLUMNS = ("min_lon", "min_lat", "max_lon", "max_lat")
+_BEARING_COLUMNS = ("start_bearing_deg", "end_bearing_deg", "reverse_start_bearing_deg", "reverse_end_bearing_deg")
+
+
+async def _read_nodes(repository: RoadGraphRepository) -> dict[str, Any]:
+    chunks: dict[str, list[np.ndarray]] = {name: [] for name in _NODE_COLUMNS}
     async for rows in repository.stream_network_nodes(_STREAM_CHUNK):
-        for name, dtype in dtypes.items():
-            chunks[name].append(np.fromiter((getattr(r, name) for r in rows), dtype=dtype, count=len(rows)))
-    return {name: _concatenate(parts, dtypes[name]) for name, parts in chunks.items()}
+        for name, (column, dtype) in _NODE_COLUMNS.items():
+            chunks[name].append(np.fromiter((getattr(r, column) for r in rows), dtype=dtype, count=len(rows)))
+    return {name: _concatenate(parts, _NODE_COLUMNS[name][1]) for name, parts in chunks.items()}
 
 
-async def _read_directed_edges(repository: RoadGraphRepository, node_osm_id: np.ndarray) -> dict[str, Any]:
-    """区間を有向の行へ広げる。一方通行は走れる向きだけ、端点のノードが無い区間は落とし、落とした
-    有向の行の数を`dropped_without_endpoint`で返す（道の値の行は、区間が持つ外部キーが保証する）。"""
+async def _read_directed_edges(
+    repository: RoadGraphRepository, node_osm_id: np.ndarray
+) -> tuple[dict[str, Any], int]:
+    """区間を有向の行へ広げ、`RoadNetwork`の区間の欄と、端点のノードが無く落とした有向の行の数を返す。
+    一方通行は走れる向きだけを持つ（道の値の行は、区間が持つ外部キーが保証する）。"""
     highway_vocab: dict[str, int] = {}
     dropped_without_endpoint = 0
-    parts: dict[str, list[np.ndarray]] = {
-        name: [] for name in ("way", "segment", "forward", "from", "to", "highway",
-                              "min_lon", "min_lat", "max_lon", "max_lat")
-    }
+    parts: dict[str, list[np.ndarray]] = {name: [] for name in _EDGE_DTYPES}
     async for rows in repository.stream_network_edges(_STREAM_CHUNK):
         n = len(rows)
         way = np.fromiter((r.osm_way_id for r in rows), dtype=np.int64, count=n)
@@ -265,7 +300,11 @@ async def _read_directed_edges(repository: RoadGraphRepository, node_osm_id: np.
         highway = np.fromiter(
             (highway_vocab.setdefault(r.highway, len(highway_vocab)) for r in rows), dtype=np.int16, count=n)
         bbox = {name: np.fromiter((getattr(r, name) for r in rows), dtype=np.float64, count=n)
-                for name in ("min_lon", "min_lat", "max_lon", "max_lat")}
+                for name in _BBOX_COLUMNS}
+        # 方位は2点が同じならNULLで、NaNとして読む。
+        bearings = {name: np.fromiter((np.nan if (v := getattr(r, name)) is None else v for r in rows),
+                                      dtype=np.float64, count=n)
+                    for name in _BEARING_COLUMNS}
 
         # 区間ごとに順方向・逆方向の2行を並べ、走れない向きを落とす。
         keep = np.fromiter((ok for r in rows for ok in travel_allowed(r.direction)), dtype=bool, count=2 * n)
@@ -279,22 +318,21 @@ async def _read_directed_edges(repository: RoadGraphRepository, node_osm_id: np.
         dropped_without_endpoint += int((~found).sum())
         source, is_forward = source[found], is_forward[found]
 
-        parts["way"].append(way[source])
-        parts["segment"].append(segment[source])
-        parts["forward"].append(is_forward)
-        parts["from"].append(tail_row[found].astype(np.int32))
-        parts["to"].append(head_row[found].astype(np.int32))
-        parts["highway"].append(highway[source])
+        parts["edge_way_id"].append(way[source])
+        parts["edge_segment"].append(segment[source])
+        parts["edge_forward"].append(is_forward)
+        parts["edge_from"].append(tail_row[found].astype(np.int32))
+        parts["edge_to"].append(head_row[found].astype(np.int32))
+        parts["edge_highway"].append(highway[source])
         for name, values in bbox.items():
-            parts[name].append(values[source])
+            parts[f"edge_{name}"].append(values[source])
+        for end in ("start", "end"):
+            parts[f"edge_{end}_bearing_deg"].append(np.where(
+                is_forward, bearings[f"{end}_bearing_deg"][source], bearings[f"reverse_{end}_bearing_deg"][source]))
 
-    dtypes = {"way": np.int64, "segment": np.int32, "forward": np.bool_, "from": np.int32, "to": np.int32,
-              "highway": np.int16, "min_lon": np.float64, "min_lat": np.float64, "max_lon": np.float64,
-              "max_lat": np.float64}
-    result: dict[str, Any] = {name: _concatenate(values, dtypes[name]) for name, values in parts.items()}
+    result: dict[str, Any] = {name: _concatenate(values, _EDGE_DTYPES[name]) for name, values in parts.items()}
     result["highway_vocab"] = tuple(sorted(highway_vocab, key=highway_vocab.__getitem__))
-    result["dropped_without_endpoint"] = dropped_without_endpoint
-    return result
+    return result, dropped_without_endpoint
 
 
 def _rows_of(sorted_ids: np.ndarray, ids: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -337,16 +375,15 @@ class MaterialColumns:
     def add(self, materials: EdgeMaterialArrays) -> None:
         """次の束を、前の束の続きの行へ詰める。"""
         if not self._arrays:
-            self._ids = {"numeric_ids": materials.numeric_ids, "categorical_ids": materials.categorical_ids,
-                         "hard_filter_ids": materials.hard_filter_ids}
+            self._ids = {"numeric_ids": materials.numeric_ids, "categorical_ids": materials.categorical_ids}
             self._vocab = [{None: 0} for _ in materials.categorical_ids]
             self._arrays["categorical_codes"] = np.zeros(
                 (self._edge_count, len(materials.categorical_ids)), dtype=np.int16)
-            for name in _MATERIAL_ARRAY_FIELDS:
+            for name in EDGE_ROW_ARRAY_FIELDS:
                 value = getattr(materials, name)
                 self._arrays[name] = np.empty((self._edge_count, *value.shape[1:]), dtype=value.dtype)
         start, stop = self._filled, self._filled + len(materials.distance_m)
-        for name in _MATERIAL_ARRAY_FIELDS:
+        for name in EDGE_ROW_ARRAY_FIELDS:
             self._arrays[name][start:stop] = getattr(materials, name)
         for column, values in enumerate(materials.categorical_columns):
             codes = self._vocab[column]
@@ -365,12 +402,6 @@ class MaterialColumns:
         }
 
 
-#: `EdgeMaterialArrays`から、そのまま行を写す配列の列（分類の材料は束ごとの語彙の番号を全体の語彙の番号へ
-#: 付け替えるので含めない）。
-_MATERIAL_ARRAY_FIELDS = (
-    "numeric_values", "hard_filter_flags", "distance_m", "bearing_deg", "mid_lat", "mid_lon",
-    "elevation_present", "elevation_gain_m", "elevation_loss_m",
-)
 
 
 def _concatenate(parts: list[np.ndarray], dtype) -> np.ndarray:

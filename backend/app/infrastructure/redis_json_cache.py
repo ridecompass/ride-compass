@@ -49,7 +49,7 @@ async def _get(
     with log_external_call(category, **log_fields) as fields:
         try:
             raw = await read(client)
-        except Exception as exc:  # noqa: BLE001 Redis障害は「取れない」へのfail-open対象
+        except Exception as exc:  # Redis障害は「取れない」へのfail-open対象
             record_redis_failure()
             mark_failed(fields, exc)
             return UNAVAILABLE
@@ -71,7 +71,7 @@ async def _set(
     with log_external_call(category, **log_fields) as fields:
         try:
             await write(client)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             record_redis_failure()
             mark_failed(fields, exc)
             return
@@ -84,7 +84,7 @@ async def get_json(key: str, *, category: str, **log_fields: Any) -> Any | None 
 
     `category`は`log_external_call`のカテゴリ（`/api/debug/stats`の集計単位）。
     """
-    return await _get(lambda client: client.get(key), _json_or_none, category, log_fields)
+    return await get_bytes(key, decode=_json_or_none, category=category, **log_fields)
 
 
 def _json_or_none(raw: bytes) -> Any | None:
@@ -96,7 +96,7 @@ def _json_or_none(raw: bytes) -> Any | None:
 
 async def set_json(key: str, value: Any, *, ttl_seconds: int, category: str, **log_fields: Any) -> None:
     """値をJSONで保存する。Redis障害時は黙って諦める（呼び出し元は成否を気にしない）。"""
-    await _set(lambda client: client.set(key, json.dumps(value), ex=ttl_seconds), category, log_fields)
+    await set_bytes(key, json.dumps(value).encode(), ttl_seconds=ttl_seconds, category=category, **log_fields)
 
 
 async def get_bytes(

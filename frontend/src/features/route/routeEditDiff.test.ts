@@ -13,7 +13,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { cumulativeDistancesKm } from "@/features/route/geoDistance";
+import { routeStretches } from "@/lib/routeDistance";
 import { makeRouteCandidate, routeThrough, type Places } from "@/testing/routeFixtures";
 import type { RouteCandidate } from "@/types/route";
 
@@ -32,18 +32,13 @@ const PLACES: Places = {
   R: [139.04, 35.02],
 };
 
-function route(names: string, overrides: Partial<RouteCandidate> = {}): RouteCandidate {
-  return makeRouteCandidate({ ...routeThrough(PLACES, [...names]), ...overrides });
+function route(names: string, overrides: Partial<RouteCandidate> = {}, segmentKm?: number[]): RouteCandidate {
+  return makeRouteCandidate({ ...routeThrough(PLACES, [...names], segmentKm), ...overrides });
 }
 
 /** 指標の名前 → 差。 */
 function deltasOf(metrics: MetricDifference[]): Record<string, number | null> {
   return Object.fromEntries(metrics.map((metric) => [metric.label, metric.delta]));
-}
-
-/** 地点の並びをたどった長さ（km）。 */
-function lengthKm(names: string): number {
-  return cumulativeDistancesKm(routeThrough(PLACES, [...names]).geometry.coordinates).at(-1)!;
 }
 
 describe("editDifference", () => {
@@ -84,18 +79,21 @@ describe("editDifference", () => {
     }
   });
 
-  it("変えた区間を、元の始点からの位置と、変えた後の長さ − 元の長さで、起点に近い順に出す", () => {
-    const difference = editDifference(route("ABCDEF"), route("APCDRF"));
-    const expected = [
-      { startKm: 0, endKm: lengthKm("ABC"), lengthDiffKm: lengthKm("APC") - lengthKm("ABC") },
-      { startKm: lengthKm("ABCD"), endKm: lengthKm("ABCDEF"), lengthDiffKm: lengthKm("DRF") - lengthKm("DEF") },
-    ];
-    difference.stretches.forEach((stretch, index) => {
-      expect(stretch.startKm).toBeCloseTo(expected[index].startKm, 10);
-      expect(stretch.endKm).toBeCloseTo(expected[index].endKm, 10);
-      expect(stretch.lengthDiffKm).toBeCloseTo(expected[index].lengthDiffKm, 10);
-    });
+  it("変えた区間を、プロファイルと同じ区間の長さの物差しで、元の始点からの位置と、変えた後の長さ − 元の長さで、起点に近い順に出す", () => {
+    // 区間の長さを形の長さと違う値にして、形から測った距離では合わないようにする。
+    const origin = route("ABCDEF", {}, [1, 2, 3, 4, 5]);
+    const edited = route("APCDRF", {}, [1.5, 2.5, 3, 4.2, 5.1]);
+    const ruler = routeStretches(origin.segments);
+    const difference = editDifference(origin, edited);
     expect(difference.stretches).toHaveLength(2);
+    [
+      { startKm: ruler[0].startKm, endKm: ruler[1].endKm, lengthDiffKm: 1 },
+      { startKm: ruler[3].startKm, endKm: ruler[4].endKm, lengthDiffKm: 0.3 },
+    ].forEach((expected, index) => {
+      expect(difference.stretches[index].startKm).toBeCloseTo(expected.startKm, 10);
+      expect(difference.stretches[index].endKm).toBeCloseTo(expected.endKm, 10);
+      expect(difference.stretches[index].lengthDiffKm).toBeCloseTo(expected.lengthDiffKm, 10);
+    });
   });
 });
 

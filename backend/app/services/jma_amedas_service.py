@@ -19,10 +19,10 @@ from datetime import datetime, timedelta
 
 import httpx
 import numpy as np
-from cachetools import TTLCache
+from cachetools import LRUCache, TTLCache
 
 from app.domain.rain import RAIN_HISTORY_HOURS, StationRainMaterials, is_rain_history_current, rain_material_values
-from app.domain.time_zone import JST
+from app.domain.time_zone import JST, as_jst
 from app.domain.geo import nearest_point_index
 from app.domain.jma_amedas import AmedasObservation, apparent_temperature_from_amedas
 from app.domain.route import Coordinates
@@ -33,6 +33,7 @@ from app.infrastructure.jma_amedas_client import AmedasReading, AmedasStation
 from app.infrastructure.jma_amedas_store import RainHistory
 from app.infrastructure.jma_tile_client import JmaTileClient
 from app.infrastructure.debug_log import log_throttled_warning
+from app.services.nearest_point_areas import nearest_point_area
 
 logger = logging.getLogger("ridecompass.jma_amedas_service")
 
@@ -53,11 +54,13 @@ class JmaAmedasService:
         *,
         station_table_cache: TTLCache,
         latest_time_cache: TTLCache,
+        cells_cache: LRUCache,
     ):
         self._http_client = http_client
         self._tile_client = tile_client
         self._station_table_cache = station_table_cache
         self._latest_time_cache = latest_time_cache
+        self._cells_cache = cells_cache
 
     async def get_nearest_observation(self, point: Coordinates) -> AmedasObservation | None:
         """最寄り観測所を解決し、保存済みの観測値に地点の日の出・日没と天気コードを入れて返す。観測値はJMAへ
@@ -70,11 +73,7 @@ class JmaAmedasService:
         if not stations:
             return None
         station_ids = list(stations)
-        nearest_index = nearest_point_index(
-            point.latitude, point.longitude,
-            np.array([stations[station_id].latitude for station_id in station_ids]),
-            np.array([stations[station_id].longitude for station_id in station_ids]),
-        )
+        nearest_index = nearest_point_index(point, list(stations.values()))
         if nearest_index is None:
             return None
         station_id = station_ids[nearest_index]
@@ -91,6 +90,7 @@ class JmaAmedasService:
                 "weather_code": derive_observed_weather_code(
                     observation.precipitation_10min_mm, suikei, observation.temperature_c
                 ),
+                "valid_area": nearest_point_area(point, list(stations.values()), self._cells_cache, table="amedas"),
             }
         )
 
@@ -133,9 +133,11 @@ class JmaAmedasService:
 
         起動直後やRedisが空のときは全本を過去の地図JSONから取り直す（気象庁は過去の地図JSONも
         同じURLの形で置いている）。平常時に取りに行くのは、新しく来た正時の1本だけ。
-        取れなかった正時は欠けたまま残し、次のバッチでまた取りに行く。
+        取れなかった正時は欠けたまま残し、次のバッチでまた取りに行く。地図JSONが取れても1時間雨量の
+        値を持つ観測所が1つも無ければ取れなかったとする——取れたとして残すと二度と取り直さず、その正時を
+        含む窓が全国で値を持たないまま、窓から外れるまで戻らない。
         """
-        latest_hour = latest_time.astimezone(JST).replace(minute=0, second=0, microsecond=0)
+        latest_hour = as_jst(latest_time).replace(minute=0, second=0, microsecond=0)
         hours = [latest_hour - timedelta(hours=back) for back in range(RAIN_HISTORY_HOURS)]
         stored = await jma_amedas_store.read_rain_history()
         if stored is jma_amedas_store.UNAVAILABLE:
@@ -152,10 +154,11 @@ class JmaAmedasService:
                 hour_map: dict[str, AmedasReading] | None = latest_map
             else:
                 hour_map = await jma_amedas_client.fetch_observation_map(self._http_client, hour)
-            if hour_map is None:
+            rain = None if hour_map is None else _hourly_rain(hour_map)
+            if rain is None or all(mm is None for mm in rain.values()):
                 failed += 1
                 continue
-            history[hour] = _hourly_rain(hour_map)
+            history[hour] = rain
             fetched += 1
         if failed:
             log_throttled_warning(
@@ -196,6 +199,7 @@ def _observation(station: AmedasStation, observed_at: datetime, reading: AmedasR
         # クエリ地点依存のためバッチ時点では決められない。
         twilight=None,
         weather_code=None,
+        valid_area=None,
     )
 
 

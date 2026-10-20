@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   deserializeHiddenLegendKeys,
   hiddenKeysOf,
+  hiddenOverInitial,
   presentHiddenKeys,
   toggleHiddenKey,
   withHiddenKeys,
@@ -31,17 +32,17 @@ describe("凡例で隠した行の保存先", () => {
   });
 
   it("保存値は、文字列の並びを持つ軸だけを読み、それ以外は捨てる", () => {
-    expect(deserializeHiddenLegendKeys(JSON.stringify({ a: ["x"], b: [], c: [1], d: "x" }), {})).toEqual({
+    expect(deserializeHiddenLegendKeys(JSON.stringify({ a: ["x"], b: [], c: [1], d: "x" }))).toEqual({
       a: ["x"],
       b: [],
     });
-    expect(deserializeHiddenLegendKeys("null", {})).toBeNull();
-    expect(deserializeHiddenLegendKeys("3", {})).toBeNull();
+    expect(deserializeHiddenLegendKeys("null")).toBeNull();
+    expect(deserializeHiddenLegendKeys("3")).toBeNull();
   });
 
   it("保存値に無い軸は最初に隠す行のまま、保存値にある軸は空の並びも含めて保存値のとおり", () => {
     const initial = { untouched: ["nodata"], shown: ["nodata"] };
-    expect(deserializeHiddenLegendKeys(JSON.stringify({ shown: [] }), initial)).toEqual({
+    expect(hiddenOverInitial(initial, { shown: [] })).toEqual({
       untouched: ["nodata"],
       shown: [],
     });

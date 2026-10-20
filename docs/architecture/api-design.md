@@ -19,7 +19,7 @@ backendが公開するHTTP APIの**全体の形**と、エンドポイントを�
 | 運用 | `/health`・`/api/debug/stats` | 不要（集計値のみ） | — |
 | ルート生成 | `/api/routes/generate` | 不要 | ジョブの`error` |
 | 天候・防災バッジ | `/api/weather/*` | 不要 | 502（警報系の空応答は「出ていない」だけ） |
-| 地点の検索 | `/api/place-search` | 不要 | 502（対象範囲を読めない）。空の応答は「当たらなかった」だけ |
+| 地点の検索 | `/api/place-search`・`/api/place-area` | 不要 | 502（対象範囲を読めない）。空の応答は「当たらなかった」・「辺りが無い」だけ |
 | 地図タイル | `/api/region/*-tiles`・`/api/basemap/*`・`/api/jma-tile/*`・`/api/gsi-*-tile/*` | 不要 | 空タイル／502 |
 | 軸カタログ | `/api/axis-catalog` | 不要（読み取り専用） | DBから読む値（事故の収録年・タイルの世代）だけ空へ倒す |
 | 管理 | `/api/admin/*` | HTTP Basic必須 | 401／404／422／503（DBの障害。どの口も`api/admin_db_errors.py`の1か所で返す） |
@@ -28,7 +28,7 @@ backendが公開するHTTP APIの**全体の形**と、エンドポイントを�
 
 - 応答の型の約束（名前の付け方・取得できなかった値・いつも一緒に決まる値・軸の辞書）は
   [data-model.md](data-model.md)「命名と欠損」「軸に関わる値だけは「キー自体を持たない」」が持つ。
-- **上書きは全フィールド必須**。`route_preference`（公開軸のaxis_idを全件）・`hard_filters`は
+- **上書きは全フィールド必須**。`route_preference`（公開軸のaxis_idを全件）・`road_avoidance`（道のレイヤの避け方を選べる行を全件）は
   部分指定を422で拒む——部分指定を許すと、指定しなかった項目にクラス既定値が黙って入り、
   「送った覚えのない条件で生成された」状態になる。公開軸はDBが正本で軸スタジオから
   増減するため、**現在のキー集合は`GET /api/axis-catalog`で引く**。

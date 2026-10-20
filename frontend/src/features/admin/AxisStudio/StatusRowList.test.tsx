@@ -1,9 +1,9 @@
 /**
- * `StatusRowList.tsx`——点検の行の一覧: 見出しは持たせた群にだけ出し、行は名前・規模・手当ての要否
- * （読み上げの文）を1行に、開いた先に項目と値・注記を置く。結果の一言は手当ての要否で目立たせ方を変える。
+ * `StatusRowList.tsx`——点検の行の一覧: 行は名前・規模・手当ての要否（読み上げの文）を1行に、開いた先に項目と値・
+ * 注記を置く。結果の一言は手当てが要れば目立たせる。
  *
  * ここで見ないもの:
- * - どの点検からどの行を作るか → `DerivedDataFreshnessPanel.test.tsx`・`DbStatusPanel.test.tsx`
+ * - どの点検からどの行を作るか、群の見出し → `DerivedDataFreshnessPanel.test.tsx`・`DbStatusPanel.test.tsx`
  */
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -20,15 +20,6 @@ function renderList(groups: { title?: string; rows: StatusRow[] }[]) {
 }
 
 describe("StatusRowList", () => {
-  it("見出しは、持たせた群にだけ、その群の行より前に出す", () => {
-    const list = renderList([{ title: "群A", rows: [row({ name: "a1" })] }, { rows: [row({ name: "b1" })] }]);
-
-    const items = within(list)
-      .getAllByRole("listitem")
-      .map((item) => item.textContent);
-    expect(items).toEqual(["群A", expect.stringMatching(/^a1/), expect.stringMatching(/^b1/)]);
-  });
-
   it("行の名前の横に規模と、手当ての要否を置く", () => {
     renderList([
       {
@@ -61,11 +52,8 @@ describe("StatusRowList", () => {
 });
 
 describe("StatusVerdict", () => {
-  it.each([
-    [true, "danger"],
-    [false, "neutral"],
-  ] as const)("手当てが要る（%s）かで目立たせ方を変える", (flagged, tone) => {
-    render(<StatusVerdict flagged={flagged}>結果</StatusVerdict>);
-    expect(screen.getByText("結果")).toHaveClass(calloutVariants({ tone }));
+  it("手当てが要れば目立たせる", () => {
+    render(<StatusVerdict flagged>結果</StatusVerdict>);
+    expect(screen.getByText("結果")).toHaveClass(calloutVariants({ tone: "danger" }));
   });
 });

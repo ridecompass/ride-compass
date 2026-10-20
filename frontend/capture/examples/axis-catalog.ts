@@ -6,7 +6,7 @@ import type { CaptureScript } from "../context";
 const script: CaptureScript = async ({ page, fixtures, catalogAxes, open, shot }) => {
   const catalog = fixtures.axisCatalogFixture(
     ["坂", "路面", "交通"].map((axisId, index) =>
-      catalogAxes.rampEntry(axisId, [50], { category: "推定", default_weight: index + 1 }),
+      catalogAxes.dedicatedEntry(axisId, [50], { category: "推定", default_weight: index + 1 }),
     ),
   );
   catalog.client_tuning = {

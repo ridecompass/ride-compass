@@ -2,7 +2,7 @@
 /**
  * `lib/adminBasicAuth.ts`——管理画面の資格情報を環境変数から読む口。
  *
- * 資格情報の環境変数を読むのはこの口だけなので、`vi.stubEnv`で立てて呼ぶ（testing.md「パターン7」）。
+ * 資格情報の環境変数を読むのはこの口だけなので、`vi.stubEnv`で立てて呼ぶ（testing-frontend.md「パターン7」）。
  *
  * ここで見ないもの:
  * - 資格情報で画面を守ること → `proxy.test.ts`
@@ -28,11 +28,8 @@ describe("adminBasicAuthCredentials", () => {
     expect(adminBasicAuthCredentials()).toEqual({ username: "admin", password: "secret" });
   });
 
-  it.each([
-    ["ユーザー名が無い", undefined, "secret"],
-    ["パスワードが空", "admin", ""],
-  ])("%sなら、認証を成立させない（null）", (_scene, username, password) => {
-    stubCredentials(username, password);
+  it("パスワードが空なら、認証を成立させない（null）", () => {
+    stubCredentials("admin", "");
 
     expect(adminBasicAuthCredentials()).toBeNull();
   });

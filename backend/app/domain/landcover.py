@@ -1,4 +1,4 @@
-"""土地被覆クラス別割合（`edge_materials.lc_*`・`way_materials.lc_*`）の算出。
+"""土地被覆クラス別割合（`edge_landcover.lc_*`・`way_landcover.lc_*`）の算出。
 
 Esri×Impact Observatory Sentinel-2 10m Annual LULCの画素値ヒストグラム（バッチが
 道路centerline周囲のリングから集計したクラス別画素数）を、クラスごとの割合(%)へ
@@ -9,6 +9,7 @@ Esri×Impact Observatory Sentinel-2 10m Annual LULCの画素値ヒストグラ�
 """
 
 from dataclasses import dataclass, field
+from collections.abc import Sequence
 from typing import Annotated, Any
 
 from pydantic import Field, create_model
@@ -111,6 +112,28 @@ LANDCOVER_CLASSES: tuple[LandcoverClass, ...] = (
     ),
 )
 
+
+
+def check_landcover_classes(classes: Sequence[LandcoverClass]) -> None:
+    """クラスの宣言が、画素・割合列・凡例のどこで読んでも1つのクラスに決まらなければ断る。
+
+    画素値が重なると1つの画素が2クラスに数えられ、割合列の名前が重なると材料の列がぶつかる。表示名・色が重なると
+    凡例と区間インスペクタで見分けられない。割合列の名前は材料の列の名前を導く接尾辞で終わる。凡例の行は（i）から説明を開く。
+    """
+    for attribute in ("value", "percent_field", "label", "color"):
+        values = [getattr(cls, attribute) for cls in classes]
+        if len(set(values)) != len(values):
+            raise ValueError(f"土地被覆のクラスの{attribute}が重なる")
+    if not all(cls.percent_field.endswith("_percent") for cls in classes):
+        raise ValueError("土地被覆の割合列の名前が`_percent`で終わらない")
+    if not all(cls.description.strip() for cls in classes):
+        raise ValueError("土地被覆のクラスに、凡例の行が開く説明が無い")
+    if {cls.value for cls in classes} & LULC_INVALID_VALUES:
+        raise ValueError("土地被覆のクラスが、どのクラスでもない画素値（No Data・Clouds）を持つ")
+
+
+check_landcover_classes(LANDCOVER_CLASSES)
+
 #: (割合列の名前, クラス値)。割合を出す対象は`LANDCOVER_CLASSES`が決め、ここはそれを
 #: SQLの列順（クラス値の昇順）へ並べ替えただけのもの。並びを表示順から切り離すのは、
 #: 表示順を変えただけで焼き込み済みの列順が動かないようにするため。
@@ -123,10 +146,6 @@ def landcover_key(percent_field: str) -> str:
     """割合列の名前（`crops_percent`）から、材料の列（`lc_crops`）・集計SQLの別名が使うクラスの鍵（`crops`）。"""
     return percent_field.removesuffix("_percent")
 
-
-def landcover_tile_property(percent_field: str) -> str:
-    """材料の`tile_property`と、路面タイルへ焼き込む列の名前（`crops_pct`）。両者が同じ名前で初めて地図が塗れる。"""
-    return f"{landcover_key(percent_field)}_pct"
 
 #: 材料の割合列（`lc_*`）と1対1のモデル。**クラスの宣言から作る**
 #: ——手で並べると、宣言したクラスに対応する項目が無いまま集計だけが走り、その列の

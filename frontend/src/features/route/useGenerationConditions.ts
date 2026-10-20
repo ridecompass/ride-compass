@@ -4,24 +4,37 @@ import { useCallback, useMemo, useState } from "react";
 
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useStoredBooleanState, useStoredJsonState, useStoredState } from "@/hooks/useStoredState";
-import { DEFAULT_HARD_FILTERS } from "@/features/route/RouteSettingsPanel/HardFilterPanel";
-import type { RouteMode } from "@/features/route/RouteForm/useRouteFormSubmit";
-import { syncHardFilterKeys } from "@/features/route/hardFilterSync";
+import { readRoadAvoidance } from "@/features/route/roadAvoidance";
 import { alignRoutePreference, routePreferenceToSend } from "@/features/route/routePreferenceSync";
 import {
   acceptedDistanceInput,
   acceptedMaxRoutesInput,
+  destinationInUse,
   type GenerationConditionsSnapshot,
 } from "@/features/route/savedConditions";
-import type { Coordinates, HardFilterOverride, PinRole, RoutePreferenceWeights } from "@/types/route";
+import type {
+  Coordinates,
+  PinRole,
+  PlaceCandidate,
+  PointTarget,
+  RoadAvoidanceOverride,
+  RoutePreferenceWeights,
+} from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 const WEIGHT_OVERRIDE_ENABLED_STORAGE_KEY = "ridecompass:weight-override-enabled";
 const ROUTE_PREFERENCE_STORAGE_KEY = "ridecompass:route-preference";
-const HARD_FILTERS_STORAGE_KEY = "ridecompass:hard-filters";
+const ROAD_AVOIDANCE_STORAGE_KEY = "ridecompass:road-avoidance";
+const NO_ROAD_AVOIDANCE: RoadAvoidanceOverride = {};
+
+/** 経由地を、生成が受け付ける数まで置いてあるか（置いてあれば、もう足さない）。 */
+export function waypointsFull(waypoints: readonly Coordinates[]): boolean {
+  return waypoints.length >= routeGenerateConfig.max_waypoints;
+}
 // 「条件」タブの入力値。場所（目的地・経由地のピン）は持たない——行くたびに変わるうえ、
 // 古いピンが残っていると気づかないまま生成してしまう。
-const ROUTE_MODE_STORAGE_KEY = "ridecompass:route-mode";
+const LOOP_STORAGE_KEY = "ridecompass:loop";
+const DISTANCE_TARGETED_STORAGE_KEY = "ridecompass:distance-targeted";
 const DISTANCE_STORAGE_KEY = "ridecompass:distance-km";
 const MAX_ROUTES_STORAGE_KEY = "ridecompass:max-routes";
 
@@ -30,20 +43,14 @@ function applyEachField<T extends object>(apply: { [K in keyof T]-?: (value: T[K
   for (const key in apply) apply[key](value[key]);
 }
 
-// モードに入ったとき（切り替えた・開き直した）に置ける役割。目的地モードで何も置いていなければ、次のタップで目的地を
-// 置ける。既に置いてあれば、次のタップは経由地の追加かもしれないので自動では武装しない（目的地が意図せず上書きされる）。
-function pinRoleOnEnter(mode: RouteMode, destination: Coordinates | null, waypointCount: number): PinRole | null {
-  return mode === "destination" && destination === null && waypointCount === 0 ? "destination" : null;
-}
-
 interface GenerationConditionsInputs {
   /** 地図で出発地を置いたとき（出発地は位置の取得と同じ持ち主が持つ）。 */
   onOriginPlace: (point: Coordinates) => void;
 }
 
 /**
- * 生成の条件（「ルート設定」の入力）: 周回か目的地か・距離・候補数・地点（出発地以外）・重み・除外と、地図のタップで
- * 置ける地点の役割と、保存した条件での入れ替え。保存する値は、読むときに今の画面が受け付ける範囲・今の項目へ揃える。
+ * 生成の条件（「ルート設定」の入力）: 周回か・全長の目標を決めるか・距離・候補数・地点（出発地以外）・重み・除外・避け方と、地図のタップで
+ * 置く地点の選びと、保存した条件での入れ替え。保存する値は、読むときに今の画面が受け付ける範囲・今の項目へ揃える。
  */
 export function useGenerationConditions({ onOriginPlace }: GenerationConditionsInputs) {
   const axisCatalog = useAxisCatalog();
@@ -56,62 +63,86 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
   const moveWaypoint = useCallback((index: number, point: Coordinates) => {
     setWaypoints((prev) => prev.map((current, i) => (i === index ? point : current)));
   }, []);
-  const clearWaypoints = useCallback(() => setWaypoints([]), []);
+  const addWaypoint = useCallback((point: Coordinates) => {
+    setWaypoints((prev) => [...prev, point]);
+  }, []);
 
-  // 目的地（あれば片道のルート）。
-  const [destination, setDestination] = useState<Coordinates | null>(null);
+  // 周回か（終点を出発地にする）。周回の間も置いた目的地は消さずに覚えておき、生成にも画面にも使わない（外すと戻る）。
+  const [loop, setLoop] = useStoredBooleanState(LOOP_STORAGE_KEY, true);
+
+  // 置いた目的地（周回の間は覚えておくだけ）。生成と画面が読むのは、周回の間を外した`destination`（下の返り値）。
+  const [placedDestination, setDestination] = useState<Coordinates | null>(null);
   const clearDestination = useCallback(() => setDestination(null), []);
-  // 地図のタップで置ける地点の役割（1つだけ）。無い間は地図を触ってもピンは増えない。undefinedは開いてから誰も選んで
-  // いない間で、保存したモードから決める（モードの保存値はマウントの後に読まれるため、初期値には使えない）。
-  const [chosenPinRole, setArmedPinRole] = useState<PinRole | null | undefined>(undefined);
+  const destination = destinationInUse({ loop, destination: placedDestination });
 
-  // 周回か目的地か。切り替えても経由地・目的地は消さない（周回の間は地図に出さず送らないだけで、戻れば復元される）。
-  const [routeMode, setRouteMode] = useStoredState<RouteMode>(ROUTE_MODE_STORAGE_KEY, "loop", {
-    serialize: (mode) => mode,
-    deserialize: (raw) => (raw === "loop" || raw === "destination" ? raw : null),
-  });
-  const changeRouteMode = useCallback(
-    (mode: RouteMode) => {
-      setRouteMode(mode);
-      setArmedPinRole(pinRoleOnEnter(mode, destination, waypoints.length));
-    },
-    [destination, waypoints.length, setRouteMode],
+  // 選んでいる地点（地図のタップが置く地点）。何も選んでいない・選んだ経由地が消えた・周回で目的地を使わない間は出発地——
+  // 周回を作る人が地図を触っても目的地が置かれず、詳しくに出ている地点と置かれる地点がいつも同じになる。
+  const [chosenPoint, setChosenPoint] = useState<PointTarget | null>(null);
+  const selectedPoint = useMemo<PointTarget>(
+    () =>
+      chosenPoint === null ||
+      (chosenPoint.role === "destination" && loop) ||
+      (chosenPoint.role === "waypoint" && chosenPoint.index !== null && chosenPoint.index >= waypoints.length)
+        ? { role: "origin" }
+        : chosenPoint,
+    [chosenPoint, loop, waypoints.length],
   );
-  const armedPinRole =
-    chosenPinRole === undefined ? pinRoleOnEnter(routeMode, destination, waypoints.length) : chosenPinRole;
 
-  // 武装中の役割の地点として地図のタップを受ける。経由地だけは置いたあとも武装を続ける
-  // （続けて何地点も置くのが普通の使い方で、1つ置くたびに押し直させない）。上限に達したら武装を解く（解けた行は押せないので、
-  // 超える点は置かれない）。
-  const placePin = useCallback(
-    (role: PinRole, point: Coordinates) => {
-      if (role === "origin") {
-        onOriginPlace(point);
-        setArmedPinRole(null);
-        return;
-      }
-      if (role === "destination") {
-        setDestination(point);
-        setArmedPinRole(null);
-        return;
-      }
-      setWaypoints((prev) => [...prev, point]);
-      if (waypoints.length + 1 >= routeGenerateConfig.max_waypoints) setArmedPinRole(null);
+  const selectPoint = useCallback((target: PointTarget) => setChosenPoint(target), []);
+
+  // 検索・名前のある点で置いた地点の候補。名前を出すのは、その地点がまだ候補の位置にある間だけ（ピンを動かす・地図で置き直すと、
+  // 名前の所ではなくなる）。
+  const [found, setFound] = useState<PlaceCandidate[]>([]);
+
+  // 地図のタップで、選んでいる地点を置く。新しい経由地を選んでいる間は置くたびに足す（続けて何地点も置くのが普通の使い方で、
+  // 1つ置くたびに選び直させない）が、生成が受け付ける数を超える点は置かない。名前のある点（店など）を押したなら、その点の
+  // 候補として置く。
+  const placeAtSelected = useCallback(
+    (point: Coordinates, spot: PlaceCandidate | null) => {
+      if (selectedPoint.role === "origin") onOriginPlace(point);
+      else if (selectedPoint.role === "destination") setDestination(point);
+      else if (selectedPoint.index !== null) moveWaypoint(selectedPoint.index, point);
+      else if (!waypointsFull(waypoints)) addWaypoint(point);
+      else return;
+      if (spot !== null) setFound((prev) => [...prev, spot]);
     },
-    [onOriginPlace, waypoints.length],
+    [selectedPoint, onOriginPlace, moveWaypoint, addWaypoint, waypoints],
   );
-  // 検索で選んだ地点を置く。周回は経由地・目的地を使わず地図にも出さないので、目的地モードへ切り替えて置く。地図のタップで
-  // 置く状態は解く（次のタップで意図しない地点が置かれる）。
+  // 探して選んだ地点を置く（経由地は`waypointIndex`番目を置き直し、無ければ足して、足した経由地を選ぶ——どこに置いたかを
+  // 詳しくで確かめられる）。
   const placeFound = useCallback(
-    (role: PinRole, point: Coordinates) => {
-      if (role !== "origin") setRouteMode("destination");
-      placePin(role, point);
-      setArmedPinRole(null);
+    (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => {
+      const point = { latitude: candidate.latitude, longitude: candidate.longitude };
+      if (role === "origin") onOriginPlace(point);
+      else if (role === "destination") setDestination(point);
+      else if (waypointIndex !== null) moveWaypoint(waypointIndex, point);
+      else {
+        addWaypoint(point);
+        setChosenPoint({ role: "waypoint", index: waypoints.length });
+      }
+      setFound((prev) => [...prev, candidate]);
     },
-    [placePin, setRouteMode],
+    [onOriginPlace, moveWaypoint, addWaypoint, waypoints.length],
   );
-  // 行を押して武装する。置いてある地点から武装しても値は残し、次のタップで置き換える（外してから置き直させない）。
-  const armPinRole = useCallback((role: PinRole | null) => setArmedPinRole(role), []);
+  /** 地点`at`が検索で置いたときの位置のままなら、その候補。 */
+  const foundAt = useCallback(
+    (at: Coordinates | null): PlaceCandidate | null =>
+      at === null
+        ? null
+        : (found.findLast((candidate) => candidate.latitude === at.latitude && candidate.longitude === at.longitude) ??
+          null),
+    [found],
+  );
+  // 並びに出ている経由地と目的地を一度に消す（周回の間に覚えている目的地は消さない）。選んでいる地点も出発地に戻す（消した地点を
+  // 置き直す途中のまま残さない）。
+  const clearPoints = useCallback(() => {
+    setWaypoints([]);
+    if (!loop) setDestination(null);
+    setChosenPoint(null);
+  }, [loop]);
+
+  // 全長の目標を決めるか。外すと距離を送らず、置いた地点へ良い道で向かう。
+  const [distanceTargeted, setDistanceTargeted] = useStoredBooleanState(DISTANCE_TARGETED_STORAGE_KEY, true);
 
   // 距離の入力（文字列のまま）。表示中の候補を作った条件と比べて「生成条件が変更されています」を出すため、入力の形で持つ。
   const [distanceInput, setDistanceInput] = useStoredState(DISTANCE_STORAGE_KEY, "30", {
@@ -140,56 +171,54 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     {},
   );
   // 画面が読む重みは、軸カタログの公開軸へ揃えたこの値だけ（保存値は次に重みを動かしたときに揃った形で書かれる）。
+  // 上書きしていない間は保存した重みを読まず、送らない間に効く既定の重みにする（重みのタブが出す値と送る値を食い違わせない）。
   const routePreference = useMemo(
-    () => alignRoutePreference(storedRoutePreference, axisCatalog),
-    [storedRoutePreference, axisCatalog],
+    () => alignRoutePreference(weightOverrideEnabled ? storedRoutePreference : {}, axisCatalog),
+    [weightOverrideEnabled, storedRoutePreference, axisCatalog],
   );
-  // 除外の設定。常に送る。保存値に今は無い項目が混じっていても、読むときに今の項目へ揃える。
-  const [hardFilters, setHardFilters] = useStoredState<HardFilterOverride>(
-    HARD_FILTERS_STORAGE_KEY,
-    DEFAULT_HARD_FILTERS,
+  // 道の区分の行ごとに選んだ避け方。選んだ段だけを覚え、常に送る。
+  const [roadAvoidance, setRoadAvoidance] = useStoredState<RoadAvoidanceOverride>(
+    ROAD_AVOIDANCE_STORAGE_KEY,
+    NO_ROAD_AVOIDANCE,
     {
-      serialize: (value) => JSON.stringify(value),
-      deserialize: (raw) => {
-        try {
-          return syncHardFilterKeys(JSON.parse(raw) as HardFilterOverride, DEFAULT_HARD_FILTERS);
-        } catch {
-          return null;
-        }
-      },
+      serialize: JSON.stringify,
+      deserialize: (raw) => readRoadAvoidance(JSON.parse(raw)),
     },
   );
 
   // いまの条件を、保存・呼び出しと同じ形1つで返す（保存・生成の入力・保存の説明はこれを読む）。
   const snapshot: GenerationConditionsSnapshot = useMemo(
     () => ({
-      routeMode,
+      loop,
+      distanceTargeted,
       distance: distanceInput,
       maxRoutes: maxRoutesInput,
       waypoints,
-      destination,
+      destination: placedDestination,
       routePreference: weightOverrideEnabled ? routePreference : null,
-      hardFilters,
+      roadAvoidance,
     }),
     [
-      routeMode,
+      loop,
+      distanceTargeted,
       distanceInput,
       maxRoutesInput,
       waypoints,
-      destination,
+      placedDestination,
       weightOverrideEnabled,
       routePreference,
-      hardFilters,
+      roadAvoidance,
     ],
   );
 
-  // 保存した条件で入れ替える（出発地は位置の持ち主が受け取るので、呼び出し側が渡す）。地点を入れ替えたので、置ける役割は
-  // 選び直させる。
+  // 保存した条件で入れ替える（出発地は位置の持ち主が受け取るので、呼び出し側が渡す）。地点を入れ替えたので、選んでいる地点は
+  // 出発地に戻す。
   const restore = useCallback(
     (saved: GenerationConditionsSnapshot) => {
       applyEachField<GenerationConditionsSnapshot>(
         {
-          routeMode: setRouteMode,
+          loop: setLoop,
+          distanceTargeted: setDistanceTargeted,
           distance: setDistanceInput,
           maxRoutes: setMaxRoutesInput,
           waypoints: setWaypoints,
@@ -198,20 +227,30 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
             if (weights !== null) setRoutePreference(weights);
             setWeightOverrideEnabled(weights !== null);
           },
-          hardFilters: setHardFilters,
+          roadAvoidance: setRoadAvoidance,
         },
         saved,
       );
-      setArmedPinRole(null);
+      setChosenPoint(null);
     },
-    [setRouteMode, setDistanceInput, setMaxRoutesInput, setRoutePreference, setWeightOverrideEnabled, setHardFilters],
+    [
+      setLoop,
+      setDistanceTargeted,
+      setDistanceInput,
+      setMaxRoutesInput,
+      setRoutePreference,
+      setWeightOverrideEnabled,
+      setRoadAvoidance,
+    ],
   );
 
   return {
     snapshot,
     restore,
-    routeMode,
-    changeRouteMode,
+    loop,
+    setLoop,
+    distanceTargeted,
+    setDistanceTargeted,
     distanceInput,
     setDistanceInput,
     maxRoutesInput,
@@ -219,22 +258,24 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     waypoints,
     removeWaypoint,
     moveWaypoint,
-    clearWaypoints,
+    /** 生成と画面（地点の並び・地図のピン）が使う目的地（周回の間はnull）。 */
     destination,
     setDestination,
     clearDestination,
-    armedPinRole,
-    armPinRole,
-    placePin,
+    clearPoints,
+    selectedPoint,
+    selectPoint,
+    placeAtSelected,
     placeFound,
+    foundAt,
     weightOverrideEnabled,
     setWeightOverrideEnabled,
     routePreference,
     setRoutePreference,
     /** 生成リクエストと道の評価へ載せる重み（上書きしていない間・軸カタログが無い間はnull）。 */
     routePreferenceToSend: routePreferenceToSend(routePreference, axisCatalog.loaded, weightOverrideEnabled),
-    hardFilters,
-    setHardFilters,
+    roadAvoidance,
+    setRoadAvoidance,
   };
 }
 

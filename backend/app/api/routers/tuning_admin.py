@@ -7,18 +7,14 @@
 書き足す場所は無い（`TUNING_PARAMETERS`に載っているものだけを返す——較正値ではない固定値は
 使う側のモジュールに置いたままで、このAPIからは見えない（物理定数を出すと模型を壊せ、
 資源の上限を出すと本番を止められる）。
-
-**名前に添える対象（どの路面・どの停止要因の値か）は、値を使う側の宣言から引く**。`domain/tuning.py`は
-その宣言を読めない（循環する）ので、ここで添える。
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.admin_auth import require_admin_basic_auth
 from app.api.dependencies import get_tuning_service
-from app.domain.road import rolling_resistance_subjects
 from app.domain.strict_model import StrictModel
-from app.domain.traffic import stop_seconds_subjects
-from app.domain.tuning import TUNING_PARAMETERS_BY_ID, tuning_parameters_by_effect, tuning_value
+from app.domain.tuning import TUNING_PARAMETERS_BY_ID, TuningParameter, tuning_parameters_by_effect, tuning_value
+from app.domain.tuning_labels import tuning_label, tuning_subjects
 from app.infrastructure.tuning_overrides import TuningOverrideError
 from app.services.tuning_service import TuningService
 
@@ -51,12 +47,12 @@ class TuningUpdateRequest(StrictModel):
     value: float | None
 
 
-def _view(param_id: str, overridden_ids: set[str]) -> TuningParameterView:
-    parameter = TUNING_PARAMETERS_BY_ID[param_id]
-    subjects = {**rolling_resistance_subjects(), **stop_seconds_subjects()}.get(param_id)
+def _view(
+    parameter: TuningParameter, overridden_ids: set[str], subjects_by_id: dict[str, tuple[str, ...]]
+) -> TuningParameterView:
     return TuningParameterView(
         id=parameter.id,
-        label=f"{parameter.label}（{'／'.join(subjects)}）" if subjects else parameter.label,
+        label=tuning_label(parameter, subjects_by_id),
         unit=parameter.unit,
         description=parameter.description,
         default=parameter.default,
@@ -75,7 +71,8 @@ async def list_tuning_parameters(
 ) -> list[TuningParameterView]:
     """較正値を効き方の順（`tuning_parameters_by_effect`）に返す。"""
     overridden = await service.overridden_parameter_ids()
-    return [_view(p.id, overridden) for p in tuning_parameters_by_effect()]
+    subjects_by_id = tuning_subjects()
+    return [_view(p, overridden, subjects_by_id) for p in tuning_parameters_by_effect()]
 
 
 @router.put("/{param_id}", response_model=TuningParameterView)
@@ -92,4 +89,4 @@ async def update_tuning_parameter(
         overridden = await service.save_override(param_id, request.value)
     except TuningOverrideError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return _view(param_id, overridden)
+    return _view(parameter, overridden, tuning_subjects())

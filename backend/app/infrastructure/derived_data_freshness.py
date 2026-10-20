@@ -8,8 +8,8 @@
 - **表**: 表ごとに、今の表を作ったときの列（`derived_columns`）が、今の宣言の列と同じか。違えば、最後の
   作り直しの後に列を足した・消した（足した列は全行がNULLのまま）。記録が無い表も作り直しが要る側に数える。
 
-値のNULLは作り直しが要るかに使わない——作り直しは全部の段を流して表ごと入れ替えるので、入れ替えた後の
-NULLは「計算した結果、値が無い」しかない（区間に切れない道・標高の取れない区間・土地被覆のタイルが無い区間）。
+値のNULLは作り直しが要るかに使わない——作り直しは表ごと入れ替え、流さない段は入力（書く表の列を含む）が前回と
+同じ段だけなので、入れ替えた後のNULLは「計算した結果、値が無い」しかない（区間に切れない道・標高の取れない区間・土地被覆のタイルが無い区間）。
 列ごとのNULLの件数は参考として返す。
 
 **対象は宣言から導く**——表の印（`orm_base.py: DERIVED`）を持つ表が派生データで、その表の主キー
@@ -89,7 +89,7 @@ def build_table_sql(table) -> str:
     列名は宣言からのみ組み立てる（外部入力を連結しない）。
     """
     counts = [f"count(*) FILTER (WHERE {name} IS NULL) AS nulls_{name}" for name in value_columns(table)]
-    return f"SELECT {', '.join(['count(*) AS row_count', *counts])} FROM {table.name}"  # noqa: S608 宣言のみ
+    return f"SELECT {', '.join(['count(*) AS row_count', *counts])} FROM {table.name}"  # 宣言のみ
 
 
 #: 取込か作り直しの記録にあるソースごとに、作り直しに使った取込と成功した最新の取込。

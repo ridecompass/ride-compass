@@ -1,6 +1,6 @@
 "use client";
 
-// 軸スタジオで編集中の折れ点が、値それぞれに何点を付けるか（分布の階級の代表値・材料の参考点）を取得する。
+// 軸スタジオで編集中の折れ点が、値それぞれに何点を付けるか（分布の階級の代表値）を取得する。
 // 点数の計算はbackendが持つ（評価と同じ`BreakpointLinearShape.score_at`）。
 
 import { fetchScoresPreview, type ScoresPreview, type ScoresPreviewRequest } from "@/features/admin/adminApi";

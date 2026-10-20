@@ -6,32 +6,23 @@
 ドリフトするため、ここへ集約する。表を読む文（生データの表から`w`を作る副問い合わせ等）は
 実行する層が持ち、ここは別名の列に対する式だけを持つ。
 
-式はテーブルのエイリアスを固定で参照する。FROM句は読み出し側が組み立てる:
+式はテーブルのエイリアスを固定で参照する。FROM句は読み出し側が組み立てる（`em`・`wm`は
+`infrastructure/material_joins.py: material_from_clause`が、式が読む列を持つ派生の表を結んで与える）:
 
 | 別名 | 何 |
 |---|---|
 | `w` | 道の生データ（`infrastructure/source_models.py: ways_source_sql`。タグは`w.tags`、`highway`・`surface`は列としても出す） |
 | `re` | `road_edges`（区間の形） |
-| `em` | `edge_materials`（区間に付く値） |
-| `wm` | `way_materials`（道1本に付く値） |
+| `em` | 区間に付く値（主キーが区間の鍵の派生の表の列） |
+| `wm` | 道1本に付く値（主キーが道の鍵の派生の表の列） |
 
 **値が無ければNULL**（NULLの意味は`docs/modules/backend/static-road-attributes.md`「値が無ければNULL」）。真偽の材料の
 「タグが無い」は別で、道の行があれば非該当（false）になる（`tag_absent_is_false_sql`）。
 """
 
-from collections.abc import Iterable, Sequence
-from typing import NamedTuple
+import re
+from collections.abc import Iterable
 
-from app.domain.road import (
-    SURFACE_CLASSES,
-    SURFACE_OTHER_KEY,
-    TRACK_GRADES,
-    TRACK_HIGHWAY,
-    UNKNOWN_ROAD_SURFACE,
-    UNKNOWN_TRACK_SURFACE,
-    SurfaceClass,
-    TrackGrade,
-)
 from app.domain.traffic import poi_count_column
 
 
@@ -55,39 +46,11 @@ SURFACE_NORMALIZED_SQL = "lower(btrim(w.surface))"
 TRACKTYPE_NORMALIZED_SQL = normalized_tag_sql("tracktype")
 
 
-def _sql_literals(values: Iterable[str]) -> str:
+def sql_literals(values: Iterable[str]) -> str:
+    """文字列の並びを、`IN (...)`・`ARRAY[...]`へ並べるSQLの文字列リテラルの列にする（引用符はエスケープする）。"""
     return ", ".join("'" + value.replace("'", "''") + "'" for value in values)
 
 
-def _surface_class_branches(classes: Sequence[SurfaceClass]) -> str:
-    return " ".join(
-        f"WHEN {SURFACE_NORMALIZED_SQL} IN ({_sql_literals(c.tags)}) THEN '{c.key}'" for c in classes if c.tags
-    )
-
-
-def surface_class_sql(classes: Sequence[SurfaceClass]) -> str:
-    """surfaceタグの路面区分。タグが無ければNULL、区分に無い値は`SURFACE_OTHER_KEY`。"""
-    return (
-        f"CASE {_surface_class_branches(classes)} "
-        f"WHEN {SURFACE_NORMALIZED_SQL} IS NOT NULL THEN '{SURFACE_OTHER_KEY}' END"
-    )
-
-
-def surface_estimate_sql(classes: Sequence[SurfaceClass], grades: Sequence[TrackGrade]) -> str:
-    """路面の見込み（`domain/road.py: SurfaceEstimate`）。surfaceの区分、無ければ等級から写した区分、
-    どちらも無ければ道路種別で分けた「不明」。どの道も値を持つ。"""
-    grade_branches = " ".join(
-        f"WHEN {TRACKTYPE_NORMALIZED_SQL} = '{g.value}' THEN '{g.surface_class}'" for g in grades
-    )
-    return (
-        f"CASE {_surface_class_branches(classes)} {grade_branches} "
-        f"WHEN {HIGHWAY_SQL} = '{TRACK_HIGHWAY}' THEN '{UNKNOWN_TRACK_SURFACE.key}' "
-        f"ELSE '{UNKNOWN_ROAD_SURFACE.key}' END"
-    )
-
-
-SURFACE_CLASS_SQL = surface_class_sql(SURFACE_CLASSES)
-SURFACE_ESTIMATE_SQL = surface_estimate_sql(SURFACE_CLASSES, TRACK_GRADES)
 SMOOTHNESS_NORMALIZED_SQL = normalized_tag_sql("smoothness")
 MAXSPEED_KMH_CASE_SQL = positive_integer_tag_sql("maxspeed")
 LANES_COUNT_CASE_SQL = positive_integer_tag_sql("lanes")
@@ -100,12 +63,12 @@ BICYCLE_NORMALIZED_SQL = normalized_tag_sql("bicycle")
 # 自転車インフラ系材料（highway_is_cycleway以外）が参照するcyclewayタグの完全な集合。
 CYCLEWAY_TAG_NAMES = ("cycleway", "cycleway:left", "cycleway:right", "cycleway:both")
 # 上記いずれかに値があるかを見るARRAY式（どのタグにも値が無い場合のみ欠損）。
-_CYCLEWAY_TAGS_ARRAY_SQL = "ARRAY[" + ", ".join(f"lower(btrim(w.tags->>'{tag}'))" for tag in CYCLEWAY_TAG_NAMES) + "]"
+_CYCLEWAY_TAGS_ARRAY_SQL = "ARRAY[" + ", ".join(normalized_tag_sql(tag) for tag in CYCLEWAY_TAG_NAMES) + "]"
 
 
 def tag_absent_is_false_sql(condition: str) -> str:
     """タグが無ければ非該当（false）。`w`の行が無ければ不明（NULL）——行が無い区間はありうる。
-    `road_edges.osm_way_id`の外部キーは`way_materials`へ向き、道の生データへは向かないため、取込で消えた道を、
+    `road_edges.osm_way_id`の外部キーは`road_ways`へ向き、道の生データへは向かないため、取込で消えた道を、
     派生を作り直すまでの区間が指し続ける。"""
     return f"CASE WHEN w.osm_way_id IS NOT NULL THEN COALESCE({condition}, false) END"
 
@@ -114,66 +77,46 @@ def tag_is_value_sql(tag: str, expected: str) -> str:
     return tag_absent_is_false_sql(f"{normalized_tag_sql(tag)} = '{expected}'")
 
 
+def tag_note(tag: str, *values: str) -> str:
+    """説明の文がタグの条件を指す書き方（`cycleway=share_busway・shared_lane`）。条件の式と同じ値から作る。"""
+    return f"{tag}={'・'.join(values)}"
+
+
 # 橋・トンネルとみなすのは、道が地面から浮いているか地中にある値だけ（値の意味は OSM wiki の
 # Key:bridge・Key:tunnel）。地図の「橋・高架」「トンネル」と、勾配で地表を拾わない区間
 # （`attributes.py: elevation_values_sql` の on_structure）が同じ道を指すよう、両方がここを読む。
 # 建物の下の通路（building_passage）・道の下の水路（culvert）・水面すれすれの低い橋
 # （low_water_crossing）は道が地表にあり、載っていない値も普通の道として扱う——知らない値を
 # 構造物に入れると、地図に誤った橋・トンネルが出る。
-_BRIDGE_STRUCTURE_VALUES = ("yes", "viaduct", "cantilever", "covered", "suspension_bridge", "boardwalk")
-_TUNNEL_STRUCTURE_VALUES = ("yes", "avalanche_protector")
-IS_BRIDGE_SQL = tag_absent_is_false_sql(f"{BRIDGE_NORMALIZED_SQL} IN ({_sql_literals(_BRIDGE_STRUCTURE_VALUES)})")
-IS_TUNNEL_SQL = tag_absent_is_false_sql(f"{TUNNEL_NORMALIZED_SQL} IN ({_sql_literals(_TUNNEL_STRUCTURE_VALUES)})")
+BRIDGE_STRUCTURE_VALUES = ("yes", "viaduct", "cantilever", "covered", "suspension_bridge", "boardwalk")
+TUNNEL_STRUCTURE_VALUES = ("yes", "avalanche_protector")
+IS_BRIDGE_SQL = tag_absent_is_false_sql(f"{BRIDGE_NORMALIZED_SQL} IN ({sql_literals(BRIDGE_STRUCTURE_VALUES)})")
+IS_TUNNEL_SQL = tag_absent_is_false_sql(f"{TUNNEL_NORMALIZED_SQL} IN ({sql_literals(TUNNEL_STRUCTURE_VALUES)})")
 
 
 def _cycleway_tags_include_sql(*values: str) -> str:
-    listed = ", ".join(f"'{v}'" for v in values)
-    return f"{_CYCLEWAY_TAGS_ARRAY_SQL} && ARRAY[{listed}]"
+    return f"{_CYCLEWAY_TAGS_ARRAY_SQL} && ARRAY[{sql_literals(values)}]"
 
 
 def cycleway_has_value_sql(*values: str) -> str:
     return tag_absent_is_false_sql(_cycleway_tags_include_sql(*values))
 
 
+#: 自転車のためのタグの値。条件の式と説明の文の両方がここから作る。
+CYCLEWAY_HIGHWAY = "cycleway"
+CYCLEWAY_TRACK_VALUES = ("track",)
+CYCLEWAY_LANE_VALUES = ("lane",)
+CYCLEWAY_SHARED_VALUES = ("share_busway", "shared_lane")
+_SHARED_PATH_HIGHWAYS = ("footway", "path")
+_SHARED_PATH_BICYCLE = ("yes", "designated")
+
 #: 車道と分けられた歩行者道のうち、自転車も通ってよい道（河川敷のサイクリングロード等）。
-SHARED_PEDESTRIAN_PATH_SQL = f"{HIGHWAY_SQL} IN ('footway', 'path') AND {BICYCLE_NORMALIZED_SQL} IN ('yes', 'designated')"
-
-
-class CyclewayClass(NamedTuple):
-    """自転車の走る場所の区分の1つ。`condition`は道がこの区分に当たるかのSQL真偽式。"""
-
-    key: str
-    label: str
-    #: 地図の凡例の行が開く説明。
-    description: str
-    condition: str
-
-
-#: 並びが判定の順（1本の道が複数に当たれば先の区分）で、地図の凡例の並び。車道から分けられた度合いの強い順。
-CYCLEWAY_CLASSES: tuple[CyclewayClass, ...] = (
-    CyclewayClass(
-        "separated",
-        "自転車道",
-        "車道から分けられた、自転車の通る道[OSM の highway=cycleway・cycleway=track]。",
-        f"{HIGHWAY_SQL} = 'cycleway' OR {_cycleway_tags_include_sql('track')}",
-    ),
-    CyclewayClass(
-        "lane",
-        "自転車レーン",
-        "車道の上に線で区切った、自転車の通る帯[OSM の cycleway=lane]。",
-        _cycleway_tags_include_sql("lane"),
-    ),
-    CyclewayClass(
-        "shared",
-        "共用の道",
-        "バス・車と共用の帯か、自転車も通ってよい歩道・遊歩道"
-        "[OSM の cycleway=share_busway・shared_lane、highway=footway・path かつ bicycle=yes・designated]。",
-        f"{_cycleway_tags_include_sql('share_busway', 'shared_lane')} OR ({SHARED_PEDESTRIAN_PATH_SQL})",
-    ),
+SHARED_PEDESTRIAN_PATH_SQL = (
+    f"{HIGHWAY_SQL} IN ({sql_literals(_SHARED_PATH_HIGHWAYS)}) "
+    f"AND {BICYCLE_NORMALIZED_SQL} IN ({sql_literals(_SHARED_PATH_BICYCLE)})"
 )
-
-#: どの区分にも当たらない道（自転車のための設けが無い道）はNULL。
-CYCLEWAY_CLASS_SQL = "CASE " + " ".join(f"WHEN {c.condition} THEN '{c.key}'" for c in CYCLEWAY_CLASSES) + " END"
+#: `SHARED_PEDESTRIAN_PATH_SQL`の条件を説明の文で指す書き方。
+SHARED_PEDESTRIAN_PATH_NOTE = f"{tag_note('highway', *_SHARED_PATH_HIGHWAYS)} かつ {tag_note('bicycle', *_SHARED_PATH_BICYCLE)}"
 
 
 def per_km_value_sql(count: str) -> str:
@@ -190,6 +133,16 @@ def landcover_value_sql(key: str) -> str:
     """区間単位の土地被覆。道1本の値へは落とさない——区間の値は全区間ぶん計算されており、
     落とす先は「同じ道の平均」でしかない（区間ごとの違いを消す）。"""
     return f"em.lc_{key}"
+
+
+#: 区間ごとの値を読む別名（上の表の`re`・`em`）の列の参照。
+_SEGMENT_VALUE_REFERENCE = re.compile(r"(?<![\w.])(?:re|em)\.\w")
+
+
+def reads_segment_values(expression: str) -> bool:
+    """式が区間ごとの値（別名`re`・`em`の列）を読むか。読む材料は、道1本を1つのフィーチャーにする読み出しでは
+    道1本の値で読まれるが、同じ道でも区間ごとに値が違いうる。"""
+    return _SEGMENT_VALUE_REFERENCE.search(expression) is not None
 
 
 def length_weighted_mean_sql(value: str) -> str:

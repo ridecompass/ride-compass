@@ -4,7 +4,7 @@
 
 ## テスト
 
-手元で検査とテストを回すかと、回すときの範囲は[../conventions/testing-operations.md](../conventions/testing-operations.md)「手元の検査の回し方」が決める。
+手元で検査とテストを回すかと、回すときの範囲は[run-checks/SKILL.md](../../.claude/skills/run-checks/SKILL.md)「手元の検査の回し方」が決める。
 ここには、回すときの開発機での前提と所要を置く。
 
 ```bash
@@ -20,9 +20,30 @@ backendのフルスイートは開発機で5〜10分かかる（CIは`-n auto`�
 
 PostGIS統合テスト（`road_graph_session`フィクスチャを使うもの。`postgis`マーカー付き）は、
 テスト専用DB（既定は作業ツリーごとのDB、`TEST_DATABASE_URL`で上書き可。
-[testing-operations.md](../conventions/testing-operations.md)「テストDBは作業ツリーごとに分かれる」）へ接続できないと
+[run-checks/SKILL.md](../../.claude/skills/run-checks/SKILL.md)「テストDBは作業ツリーごとに分かれる」）へ接続できないと
 落ちる（スキップにはしない。`backend/tests/conftest.py`）。DBの無い環境では
 `-m "not postgis"`で除外して回す。
+
+## 開発機の画面を本番のデータで開く
+
+開発用のDBは道のデータが一部だけで、今のコードに追いついていないことがある。画面を試すときは、開発機のfrontendを
+本番のbackendのデータ（APIとタイル）で開く。読むだけで、本番のデータは書き換えない（ルートの生成も、本番でふつうの
+利用者と同じに作られる）。
+
+1. 起こす設定（`.claude/launch.json`）の`backend-prod-data`と`frontend-prod-data`を起こす（手で起こすなら、根で
+   `backend/.venv/Scripts/python.exe backend/scripts/dev_prod_data_backend.py`と`npm run dev:prod-data --prefix frontend`）。
+2. この PC では`http://localhost:3000`を開く。同じ Wi-Fi のスマホでは、backend が起動の最初の行に出す
+   `http://<開発機の LAN の住所>:3000`を開く。
+   - 外へ出る口が複数あって違う住所が出たら、`RC_LAN_HOST`に正しい住所を入れて backend を起こし直す。
+   - スマホから開けないときは、Windows のファイアウォールで、開発機の node（3000番）への受信をプライベートのネットワークで許す
+     （許すのはユーザーが行う）。
+   - 現在地は`https`か`localhost`でしか取れないので、スマホの`http://<LAN の住所>`では現在地が出ない。出発地は地図で置く。
+
+取り次ぎの向け先は`frontend/src/lib/backendRewrites.ts`が決める: APIの呼び出し（`/prod/…`）とタイルは本番のbackend
+（宛先は`production-origins.json`）へ、地図の下地だけは開発機のbackendへ向ける（本番の下地のスタイルは本番のbackendの
+住所を中に持ち、画面から直接は読めない）。開発機のbackendは、下地のスタイルが中に持つ住所と許す相手に、開発機の
+LANの住所を入れて起きる（`backend/scripts/dev_prod_data_backend.py`）。管理画面（`/admin`）は、本番を読み書きしないよう
+いつも開発機のbackendへ転送する。
 
 ## 開発機の本体のチェックアウトの遅れ
 
@@ -37,6 +58,7 @@ PostGIS統合テスト（`road_graph_session`フィクスチャを使うもの�
 |---|---|---|
 | 本番へつなぐ道具（例: `backend/scripts/run_probe.py`・`backend/scripts/axis_apply.py`） | `backend/scripts/_prod_env.py: read_prod_env`（接続情報を渡す前） | 本番へ流すのがこのチェックアウトのコード（プローブが読む`app`・管理APIへ送る形） |
 | `scripts/review_checks.py`の`size`・`metrics`・`trigger` | `scripts/review_checks.py: main` | 前回のレビューから HEAD までを測るので、HEAD が古いと変更を数え漏らす |
+| ベンチマークの実行口（`backend/benchmarks/`） | `backend/benchmarks/revision.py: announce_revision`（止めずに警告を出す。手元の反復でも測るため） | 測った数字が実測として引用され、古いコードの数字と見分けが付かない |
 
 開発機の手元のスクリプト（リポジトリに入れないもの）で本体のコードを流すものは、上の道具を経由するか、
 頭で`python <本体>/scripts/checkout_freshness.py`を打って終了コードを見る。
@@ -84,7 +106,7 @@ RideCompass/
 ### 前提
 
 - Node.js 22.12+（frontend のテストの道具 vitest の要件）
-- Python 3.12（`backend/Dockerfile`・CI と同じ）
+- Python（版は `backend/Dockerfile` の `FROM` と同じ。CI もそこから取る）
 - PostgreSQL + PostGIS（Road Graph・路面タイル生成の一次系統。**DBなしでは起動しない**）
 - Redis（JMA気象データの短命キャッシュ。未接続でもフォールバックする箇所が
   一部あるが、ローカル開発でも用意することを推奨）
@@ -116,7 +138,7 @@ docker compose run --rm backend python scripts/bootstrap_database.py --create-ex
 **スキーマを作っても、軸定義が0行のままではbackendは起動しない**（`refresh_axis_definitions`が
 0行を起動失敗にする。[axis-studio.md](../modules/backend/axis-studio.md)「まっさらなDBに軸の行は
 入らない」）。軸を入れる管理APIも起動したbackendにしか無いため、新しい環境へ軸が入るのは管理データの
-バックアップから戻したときだけで、それは本番を作り直すための経路である（[deployment-sync.md](../conventions/deployment-sync.md)
+バックアップから戻したときだけで、それは本番を作り直すための経路である（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)
 「本番DBを失ったとき」）——composeのDB・クラウドのセッションは**テストを回す場**であり、アプリを実データで
 確かめるのは本番か手元の開発機で行う（地図に色を出すには軸のほかに取込済みのデータも要る）。
 テスト（`-m postgis`を含む）は軸を要らないので、この状態で回せる。
@@ -130,20 +152,20 @@ docker compose run --rm backend python scripts/bootstrap_database.py --create-ex
   次の1行を書く:
 
   ```bash
-  d=$(mktemp -d) && git clone -q --depth 1 https://github.com/hidakagit/ride-compass "$d" && bash "$d/scripts/remote_dev/setup.sh"; rm -rf "$d"; true
+  d=$(mktemp -d) && git clone -q --depth 1 https://github.com/ridecompass/ride-compass "$d" && bash "$d/scripts/remote_dev/setup.sh"; rm -rf "$d"; true
   ```
 
   masterの浅いcloneから`setup.sh`を流す（セットアップの時点でリポジトリがどこにあるかに
   依存しないため）。backendのvenvとfrontendの`node_modules`をlockfileのダイジェストごとに
   リポジトリの外（`/opt/ridecompass-dev`）へ作り、postgres・redisのイメージを取る。さらにcomposeの
-  postgresを一度起動してボリュームを初期化し（テストの複製元DB`ridecompass_test`も作る）、止めてから終える。
+  postgresを一度起動してボリュームを初期化し（テストの複製元DB`backend/tests/database_names.py: SHARED_TEST_DATABASE`も作る）、止めてから終える。
   ボリュームがキャッシュに無いと、毎回の開始で空のボリュームへのinitdbとPostGIS拡張の読み込み（実測で約10秒）が走る。
   composeのプロジェクト名は`ride-compass`に固定している（一時ディレクトリのcloneから流しても、セッションの
   cloneと同じボリュームになるように）。
 - **SessionStartフック**（`.claude/settings.json`→`scripts/remote_dev/session_start.sh`）が
   毎セッションの開始時に、`backend/.venv`と`frontend/node_modules`をそこへ繋ぎ（lockfileが
   変わっていれば入れ直す）、dockerdを起こしてcomposeのpostgres・redisを起動し、テストの
-  複製元DB`ridecompass_test`を作る。`CLAUDE_CODE_REMOTE`が`true`でない（手元の）セッション
+  複製元DB（`backend/tests/database_names.py: SHARED_TEST_DATABASE`）を作る。`CLAUDE_CODE_REMOTE`が`true`でない（手元の）セッション
   では何もせずに抜ける。セットアップの欄が空でもフックが依存を入れる（開始が遅くなるだけ）。
   DB・Redisの起動は裏で行い、フックは待たない——保存から戻したディスクでは起動に20秒ほど
   かかる（キャッシュからの開始の実測22秒。温まったディスクなら7〜8秒）。DBを使う前に
@@ -185,7 +207,7 @@ uvicorn app.main:app --reload
 ```bash
 curl http://localhost:8000/health
 curl -X POST http://localhost:8000/api/routes/generate -H "Content-Type: application/json" \
-  -d '{"latitude":35.7597,"longitude":139.7387,"distance_km":15,"distance_tolerance_km":5,"max_routes":8,"assumed_speed_kmh":20,"start_time":"2026-10-06T09:00:00+09:00","hard_filters":{"motorway":true,"no_bicycle":true,"trunk":true}}'
+  -d '{"latitude":35.7597,"longitude":139.7387,"distance_km":15,"max_routes":8,"assumed_speed_kmh":20,"start_time":"2026-10-06T09:00:00+09:00","road_avoidance":{}}'
 ```
 
 対象エリアが取込範囲の外なら候補0件になる。範囲内でも、道路網全体の配列の置き場

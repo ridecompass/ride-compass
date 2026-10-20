@@ -1,14 +1,14 @@
-"""取り直せない管理データのバックアップ（`backend/ops/admin_data_backup.sh`）が、最後に置けてから何時間たったか。
+"""本番DBのバックアップ（`backend/ops/admin_data_backup.sh`）が、最後に置けてから何時間たったか。
 
 退避のスクリプトは本番VMのホストで動き、置けた時刻（UTC、ISO 8601）を1行だけ`MARKER_PATH`へ書く。ホストの
 `/home/ubuntu/ridecompass-cache-data`がコンテナの`data/`（`deploy-backend.yml`の`-v`）なので、スクリプトの書き先と
-この名前は揃える。止まっても知らせが来ないため、`/health`が経過時間を返し、それを読んで気づく。
+この名前は揃える。`/health`が経過時間を返し、定時のActions（`backend/scripts/prod_backup_check.py`）がそれを読んで止まりを知らせる。
 """
 
 from datetime import datetime
 
+from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.debug_log import log_throttled_warning
-from app.infrastructure.tile_cache import DATA_DIR
 
 #: 本番の読み手はこのファイルだけだが、テストがディスク（プロセス境界）の置き場を一時ディレクトリへ差し替えるために公開する
 #: （testing.md「確かめる高さ」の (c)）。
@@ -26,7 +26,7 @@ def backup_age_hours(now: datetime) -> float | None:
     except (OSError, ValueError) as exc:
         # `/health`が毎回読むので、ここで落とすとそれを待つデプロイまで止まる。読めない理由はここでしか分からない。
         log_throttled_warning(
-            "admin-data-backup", "管理データのバックアップの印のファイルが読めない path=%s error=%r", MARKER_PATH, exc
+            "admin-data-backup", "DBのバックアップの印のファイルが読めない path=%s error=%r", MARKER_PATH, exc
         )
         return None
     return (now - placed_at).total_seconds() / 3600

@@ -1,6 +1,6 @@
 """mutmut に変異の生成と関数ごとのテストの記録だけをさせる（変異は回さない。回すのは runner.py）。backend の下で打つ。
 
-mutmut 自身の回し方は最初の失敗で止め、テストごとの発見が取れないので使わない（issue #661 の「打ち方」）。
+mutmut 自身の回し方は最初の失敗で止め、テストごとの発見が取れないので使わない。
 Windows では、mutmut 3.8.0 が読み込みの時点で断るので、その照らしと Unix 専用の読み込み（resource・fork）だけを避ける
 （fork を使うのは変異を回す段だけで、生成は multiprocessing.Pool、記録はこのプロセスで pytest を回す）。
 """
@@ -17,10 +17,10 @@ if os.name == "nt":
     multiprocessing.set_start_method = lambda *a, **k: None
     _real_system = platform.system
     platform.system = lambda: "Linux"
-    import mutmut.__main__ as m  # noqa: E402
+    import mutmut.__main__ as m
     platform.system = _real_system
 else:
-    import mutmut.__main__ as m  # noqa: E402
+    import mutmut.__main__ as m
 
 
 def main():

@@ -1,14 +1,18 @@
 import asyncio
 import logging
-import time
 
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.config import settings
 from app.domain.errors import SearchAreaTooLargeError
 from app.domain.graph import LeanEdge
 from app.domain.region import BoundingBox, tiles_covering_bbox
-from app.domain.road_network import RoadSlice, slice_network
+from app.domain.attributes import CategoricalColumn
+from app.domain.road_classes import RoadClassDefinitions, current_road_classes
+from app.domain.road_network import RoadNetwork, RoadSlice, road_class_columns, slice_network
 from app.domain.route_search import DETOUR_RATIO_SHARING_ZOOM
+from app.domain.route_points import RoutePointHit
 from app.infrastructure import container_memory, road_network_store
+from app.infrastructure.detour_ratio_cache import TileSet
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 
 logger = logging.getLogger("ridecompass.graph")
@@ -31,6 +35,35 @@ def _max_search_edges() -> int | None:
     return max(0, (limit - _RESERVED_BYTES) // settings.generate_max_concurrent // _BYTES_PER_EDGE)
 
 
+#: 最後に作った区分の列と、作ったときの道路網・区分の全体。どちらかが入れ替わったら作り直す。
+_classes: tuple[RoadNetwork, RoadClassDefinitions, tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]] | None = None
+
+
+def _network_classes(network: RoadNetwork) -> tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]:
+    """取込範囲全体の区分の列と層ごとの値。道路網と区分の全体の組ごとに1回だけ作り、組が替わったら丸ごと入れ替える。
+
+    別のスレッドが同時に作り直しても、どちらも同じ組から同じ列を作るだけなので、束縛の差し替えは1回で済ませる。"""
+    global _classes
+    definitions = current_road_classes()
+    cached = _classes
+    if cached is not None and cached[0] is network and cached[1] is definitions:
+        return cached[2]
+    started = start_timer()
+    columns = road_class_columns(network, definitions)
+    logger.info("road_class_columns edges=%d classifications=%d ms=%d",
+                network.edge_count, len(definitions.classifications), elapsed_ms(started))
+    _classes = (network, definitions, columns)
+    return columns
+
+
+def _slice_current(bbox: BoundingBox) -> RoadSlice:
+    network = road_network_store.current()
+    return slice_network(
+        network, _network_classes(network),
+        bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude,
+    )
+
+
 class GraphService:
     """探索範囲の道路網を、取込範囲全体の配列（`infrastructure/road_network_store.py`）から
     切り出す。**読むだけで、作らない。**
@@ -42,7 +75,7 @@ class GraphService:
     def __init__(self, repository: RoadGraphRepository):
         self._repository = repository
 
-    async def get_search_slice(self, bbox: BoundingBox) -> tuple[RoadSlice, frozenset[tuple[int, int, int]]] | None:
+    async def get_search_slice(self, bbox: BoundingBox) -> tuple[RoadSlice, TileSet] | None:
         """探索範囲の区間を返す。
 
         切り出すのはbboxそのもの。あわせて返すbboxを覆うz12タイルの集合は、近い範囲をまとめて
@@ -54,10 +87,10 @@ class GraphService:
                 bbox.min_latitude, bbox.min_longitude, bbox.max_latitude, bbox.max_longitude)
             return None
 
-        started = time.monotonic()
+        started = start_timer()
         tiles = tiles_covering_bbox(bbox, DETOUR_RATIO_SHARING_ZOOM)
-        network = await asyncio.to_thread(road_network_store.current)
-        road = slice_network(network, bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude)
+        # 全区間を走査するので、読み込みと一緒にイベントループの外で切り出す。
+        road = await asyncio.to_thread(_slice_current, bbox)
         limit = _max_search_edges()
         if limit is not None and road.edge_count > limit:
             logger.warning(
@@ -67,7 +100,7 @@ class GraphService:
             raise SearchAreaTooLargeError(road.edge_count, limit)
         logger.info(
             "get_search_slice tiles=%d edges=%d nodes=%d slice_ms=%d",
-            len(tiles), road.edge_count, road.node_count, round((time.monotonic() - started) * 1000),
+            len(tiles), road.edge_count, road.node_count, elapsed_ms(started),
         )
         tile_set = frozenset((DETOUR_RATIO_SHARING_ZOOM, x, y) for x, y in tiles)
         return road, tile_set
@@ -75,3 +108,7 @@ class GraphService:
     async def get_edges_with_geometry(self, edges: list[LeanEdge]) -> dict[str, LeanEdge]:
         """探索用グラフは形を持たない。確定した経路の区間へ実体を後付けする。"""
         return await self._repository.get_edges_with_geometry(edges)
+
+    async def get_route_side_points(self, edges: list[LeanEdge]) -> dict[tuple[int, int], list[RoutePointHit]]:
+        """確定した経路の区間ごとの、近くの点（停止要因・補給・立ち寄り先・事故）。"""
+        return await self._repository.get_route_side_points(edges)

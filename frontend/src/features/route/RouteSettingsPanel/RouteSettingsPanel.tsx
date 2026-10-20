@@ -1,19 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
-import {
-  ENABLED_AXIS_WEIGHT,
-  MAX_AXIS_SHARE,
-  WEIGHT_STEP,
-  clampBoundaryDrag,
-  totalWeight,
-} from "@/features/route/routeWeightShare";
+import { ENABLED_AXIS_WEIGHT, clampBoundaryDrag, totalWeight, weightStep } from "@/features/route/routeWeightShare";
 import { axisCatalogFetchFailure, retryAxisCatalogFetch, useAxisCatalog } from "@/hooks/useAxisCatalog";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import type { RoutePreferenceWeights } from "@/types/route";
 import { Button } from "@/components/ui/Button/Button";
+import { RetryIcon } from "@/components/ui/icons/lucideIcons";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
 import { cn } from "@/lib/cn";
 import { legendChipBodyClass, legendChipClass, legendIconClass } from "@/components/ui/AxisLegend/axisLegend";
@@ -23,6 +18,13 @@ import { calloutVariants } from "@/components/ui/Callout/Callout";
 // （どの軸の%もチップでは必ず読める）。
 const SEGMENT_ICON_MIN_PCT = 10;
 const SEGMENT_VALUE_MIN_PCT = 6;
+
+// 部品にせず関数で描く。部品の本体で`axisIconFor`の戻りを描くとreact-hooks/static-componentsが誤検知し、
+// パネルの本体の中で部品を定義すると、描き直しのたびにアイコンが作り直される。
+function renderAxisIcon(axis: CatalogAxis, size = 14) {
+  const Icon = axisIconFor(axis.iconId);
+  return <Icon size={size} />;
+}
 
 interface RouteSettingsPanelProps {
   /** 軸カタログの公開軸へ揃えた重み（`features/route/routePreferenceSync.ts: alignRoutePreference`を通した値）。 */
@@ -48,42 +50,19 @@ export default function RouteSettingsPanel({
     onRoutePreferenceChange(next);
   };
 
-  // `const Icon = axisIconFor(...); <Icon/>`を本体の直下に書くとreact-hooks/static-componentsが誤検知するので、関数を通す。
-  function AxisIcon({ axis, size = 14 }: { axis: CatalogAxis; size?: number }) {
-    const Icon = axisIconFor(axis.iconId);
-    return <Icon size={size} />;
-  }
+  // 帯で動かした重みを覚えておき、無効にした軸を有効に戻したときに戻す（送る値の側は0になるので、ここでしか持てない）。
+  // 動かしていない軸は、そのときの既定の重みへ戻す。
+  const [movedWeights, setMovedWeights] = useState<Record<string, number>>({});
 
-  // 無効にした軸の重みを覚えておき、有効に戻したときに戻す（送る値の側は0になるので、ここでしか持てない）。
-  const [lastWeights, setLastWeights] = useState<Record<string, number>>(() => ({
-    ...catalog.defaultWeights,
-  }));
-  // 既定の重みが届いたら、手で変えていない軸だけを新しい既定へ追従させる（しないと、届く前の値へ戻ってしまう）。
-  const previousDefaultWeightsRef = useRef(catalog.defaultWeights);
-  useEffect(() => {
-    const previousDefaults = previousDefaultWeightsRef.current;
-    previousDefaultWeightsRef.current = catalog.defaultWeights;
-    if (previousDefaults === catalog.defaultWeights) return;
-    setLastWeights((prev) => {
-      const next = { ...prev };
-      for (const [axisId, defaultWeight] of Object.entries(catalog.defaultWeights)) {
-        if (!(axisId in prev) || prev[axisId] === previousDefaults[axisId]) {
-          next[axisId] = defaultWeight;
-        }
-      }
-      return next;
-    });
-  }, [catalog.defaultWeights]);
-
-  // 覚えた重みは既定か、帯で動かした値（下限より上）なので、0になるのは既定の重みが0の軸だけ。
+  // 動かした重みは下限より上なので、0になるのは動かしていない、既定の重みが0の軸だけ。
   function handleToggle(axisId: string, checked: boolean) {
-    const restored = checked ? lastWeights[axisId] || ENABLED_AXIS_WEIGHT : 0;
+    const restored = checked ? (movedWeights[axisId] ?? catalog.defaultWeights[axisId]) || ENABLED_AXIS_WEIGHT : 0;
     handlePreferenceChange({ ...routePreference, [axisId]: restored });
   }
 
   // 隣り合う2軸を1回の更新へまとめる（1軸ずつ2回呼ぶと、2回目が1回目を反映しない値から組むので1回目が消える）。
   function handlePairWeightChange(axisIdA: string, valueA: number, axisIdB: string, valueB: number) {
-    setLastWeights((prev) => ({ ...prev, [axisIdA]: valueA, [axisIdB]: valueB }));
+    setMovedWeights((prev) => ({ ...prev, [axisIdA]: valueA, [axisIdB]: valueB }));
     handlePreferenceChange({ ...routePreference, [axisIdA]: valueA, [axisIdB]: valueB });
   }
 
@@ -118,10 +97,15 @@ export default function RouteSettingsPanel({
     if (!bar) return;
     const startClientX = e.clientX;
     const pixelsPerUnit = bar.getBoundingClientRect().width / total;
+    let applied: { weightA: number; weightB: number } | null = null;
     const handleWindowPointerMove = (moveEvent: PointerEvent) => {
       const rawDelta = (moveEvent.clientX - startClientX) / pixelsPerUnit;
-      const { weightA, weightB } = clampBoundaryDrag(startWeightA, startWeightB, rawDelta, total);
-      handlePairWeightChange(axisIdA, weightA, axisIdB, weightB);
+      const next = clampBoundaryDrag(startWeightA, startWeightB, rawDelta, total);
+      // 刻みに届かない動き・端で止まっている間は、保存と描き直しを繰り返さない。最初の動きは値が変わらなくても通す
+      // （動かした2軸の今の値を、有効に戻すときの値として覚える）。
+      if (applied !== null && next.weightA === applied.weightA && next.weightB === applied.weightB) return;
+      applied = next;
+      handlePairWeightChange(axisIdA, next.weightA, axisIdB, next.weightB);
     };
     const handleWindowPointerUp = () => {
       window.removeEventListener("pointermove", handleWindowPointerMove);
@@ -140,12 +124,11 @@ export default function RouteSettingsPanel({
     axisIdB: string,
     weightB: number,
   ) {
-    let rawDelta = 0;
-    if (e.key === "ArrowLeft" || e.key === "ArrowDown") rawDelta = -WEIGHT_STEP;
-    else if (e.key === "ArrowRight" || e.key === "ArrowUp") rawDelta = WEIGHT_STEP;
-    else return;
+    const direction =
+      e.key === "ArrowLeft" || e.key === "ArrowDown" ? -1 : e.key === "ArrowRight" || e.key === "ArrowUp" ? 1 : 0;
+    if (direction === 0) return;
     e.preventDefault();
-    const next = clampBoundaryDrag(weightA, weightB, rawDelta, total);
+    const next = clampBoundaryDrag(weightA, weightB, direction * weightStep(total), total);
     if (next.weightA === weightA && next.weightB === weightB) return;
     handlePairWeightChange(axisIdA, next.weightA, axisIdB, next.weightB);
   }
@@ -164,7 +147,7 @@ export default function RouteSettingsPanel({
           onClick={() => handleToggle(axis.axisId, !checked)}
         >
           <span aria-hidden="true" className={legendIconClass} style={{ color }}>
-            <AxisIcon axis={axis} />
+            {renderAxisIcon(axis)}
           </span>
           <span>{axis.label}</span>
           {checked && (
@@ -195,8 +178,8 @@ export default function RouteSettingsPanel({
           role="status"
         >
           <span>{`${catalogFailure.label}を取得できませんでした。${catalogFailure.effect}`}</span>
-          <Button variant="warning" size="xs" onClick={retryAxisCatalogFetch}>
-            再試行
+          <Button variant="warning" size="panelIcon" aria-label="再試行" onClick={retryAxisCatalogFetch}>
+            <RetryIcon />
           </Button>
         </p>
       )}
@@ -214,7 +197,7 @@ export default function RouteSettingsPanel({
                 >
                   {pct >= SEGMENT_ICON_MIN_PCT && (
                     <span aria-hidden="true" className="inline-flex text-[rgba(15,23,42,0.85)]">
-                      <AxisIcon axis={axis} size={13} />
+                      {renderAxisIcon(axis, 13)}
                     </span>
                   )}
                   {pct >= SEGMENT_VALUE_MIN_PCT && (
@@ -252,8 +235,7 @@ export default function RouteSettingsPanel({
           })}
         </div>
         <InfoPopover triggerAriaLabel="重みの配分の説明">
-          帯の境目を動かして、評価軸ごとの重みの割合を変えます。1つの評価軸に置ける重みは
-          {Math.round(MAX_AXIS_SHARE * 100)}%までで、境目はそこで止まります。
+          帯の境目を動かして、評価軸ごとの重みの割合を変えます。境目は、どの評価軸も重みが0（無効）になる手前で止まります。
         </InfoPopover>
       </div>
 

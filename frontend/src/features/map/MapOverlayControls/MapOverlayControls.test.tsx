@@ -1,5 +1,5 @@
 /**
- * `MapOverlayControls.tsx`——「表示」のボタンが開く一覧が、レイヤーを群（源泉の並び）へ束ね、行のチェックでON/OFFし、
+ * `MapOverlayControls.tsx`——「表示」のボタンが開く一覧が、先頭のルートの行で選んだ候補の線を出し入れし、レイヤーを群（源泉の並び）へ束ね、行のチェックでON/OFFし、
  * ⓘ・▶を行のすぐ下に開いて説明・内訳・案内・取得状態を読ませ、内訳から凡例を絞り込めること。群はたため、群ごとに
  * 一覧に並べる項目を選べ、どちらも次の訪問でも保つこと。「表示する項目を選ぶ」の「すべて」で、群の項目をまとめて選べること。末尾のまとめての操作が、押せるときだけ押せること。
  *
@@ -14,7 +14,10 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import MapOverlayControls, { type LegendFilterSummaryAxis, type OverlayLayerChip } from "./MapOverlayControls";
+import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
+import MapOverlayControls from "./MapOverlayControls";
+import type { LegendFilterSummaryAxis } from "./LegendDetails";
+import type { OverlayLayerChip } from "./OverlayLayerRow";
 import {
   LAYER_DATA_STATUS_LABELS,
   MAP_LAYER_CATEGORY_ORDER,
@@ -35,6 +38,7 @@ function categoriesOf(group: MapOverlayGroup): MapLayerCategory[] {
 }
 const [ROAD] = MAP_OVERLAY_GROUP_ORDER;
 const ROAD_LABEL = MAP_OVERLAY_GROUP_LABELS[ROAD];
+const chooser = () => screen.getByRole("button", { name: `${ROAD_LABEL}の表示項目を選ぶ` });
 
 /** 1件のレイヤー。既定では道路の群の1件目のカテゴリに属する。 */
 function chip(id: string, overrides: Partial<OverlayLayerChip> = {}): OverlayLayerChip {
@@ -50,9 +54,15 @@ function legend(axisId: string | undefined, keys: string[], hiddenKeys: string[]
   };
 }
 
-function propsOf(layers: OverlayLayerChip[], overrides: { anyLegendHidden?: boolean } = {}) {
+type Overrides = { anyLegendHidden?: boolean; route?: { shown: boolean; selectable: boolean } };
+
+function propsOf(
+  layers: OverlayLayerChip[],
+  { route = { shown: true, selectable: true }, ...overrides }: Overrides = {},
+) {
   return {
     layers,
+    route: { ...route, onChange: vi.fn() },
     onToggle: vi.fn(),
     onLegendEntryToggle: vi.fn(),
     onLegendAxisSetHidden: vi.fn(),
@@ -64,7 +74,7 @@ function propsOf(layers: OverlayLayerChip[], overrides: { anyLegendHidden?: bool
 }
 
 /** 描いて「表示」のボタンを押し、一覧を開く。 */
-async function setup(layers: OverlayLayerChip[], overrides: { anyLegendHidden?: boolean } = {}) {
+async function setup(layers: OverlayLayerChip[], overrides: Overrides = {}) {
   const props = propsOf(layers, overrides);
   const user = userEvent.setup();
   const view = render(<MapOverlayControls {...props} />);
@@ -72,11 +82,15 @@ async function setup(layers: OverlayLayerChip[], overrides: { anyLegendHidden?: 
   return { user, props, list: screen.getByRole("dialog", { name: LIST_NAME }), ...view };
 }
 
-/** 一覧に並んでいる行の名前（行のチェックボックスの名前）。 */
+/** 群の外の先頭にある、ルートの行のチェックボックスの名前。 */
+const ROUTE_ROW = "ルート";
+
+/** 群に並んでいるレイヤーの行の名前（行のチェックボックスの名前）。 */
 const rowNames = (list: HTMLElement) =>
   within(list)
     .queryAllByRole("checkbox")
-    .map((box) => box.getAttribute("aria-label"));
+    .map((box) => box.getAttribute("aria-label"))
+    .filter((name) => name !== ROUTE_ROW);
 
 /** 行のtitle（行の名前のチェックボックスを包むラベルが持つ）。 */
 const rowTitle = (name: string) => screen.getByRole("checkbox", { name }).closest("label")?.getAttribute("title");
@@ -198,16 +212,17 @@ describe("行の印", () => {
     expect(rowTitle("unfiltered")).toBeNull();
   });
 
-  it("「表示」のボタンは、地図に出している件数と、どれかの行が凡例を絞り込んでいれば「絞り込み中」をtitleに添える", () => {
+  it("「表示」のボタンは、地図に出している件数と、どれかの行が凡例を絞り込んでいれば「絞り込み中」を説明に添える", () => {
     const { rerender } = render(<MapOverlayControls {...propsOf([chip("on", { on: true }), chip("off")])} />);
-    expect(screen.getByRole("button", { name: LIST_NAME })).toHaveAttribute("title", `${LIST_NAME}[1件を表示中]`);
+    expect(screen.getByRole("button", { name: LIST_NAME })).toHaveAccessibleDescription(
+      `${FACT_DISPLAY_NAME}（${LIST_NAME}）[1件を表示中]`,
+    );
 
     rerender(
       <MapOverlayControls {...propsOf([chip("filtered", { on: true, legendDetails: [legend("a", ["1"], ["1"])] })])} />,
     );
-    expect(screen.getByRole("button", { name: LIST_NAME })).toHaveAttribute(
-      "title",
-      `${LIST_NAME}[1件を表示中]・絞り込み中`,
+    expect(screen.getByRole("button", { name: LIST_NAME })).toHaveAccessibleDescription(
+      `${FACT_DISPLAY_NAME}（${LIST_NAME}）[1件を表示中]・絞り込み中`,
     );
   });
 });
@@ -253,7 +268,6 @@ describe("群", () => {
 
   it("「表示する項目を選ぶ」で外した項目は一覧に並べず（地図に出していればOFFにする）、次の訪問でも保ち、並べ直してもONにはしない", async () => {
     const first = await setup([chip("kept"), chip("dropped", { on: true })]);
-    const chooser = () => screen.getByRole("button", { name: `${ROAD_LABEL}の表示項目を選ぶ` });
 
     await first.user.click(chooser());
     await first.user.click(screen.getByRole("checkbox", { name: "droppedを一覧に並べる" }));
@@ -275,7 +289,6 @@ describe("群", () => {
 
   it("「表示する項目を選ぶ」の「すべて」は、1つでも外れていれば全部並べ、全部並んでいれば全部外す（外す項目のONはOFFにする）", async () => {
     const { user, props, list } = await setup([chip("shown", { on: true }), chip("off"), chip("dropped")]);
-    const chooser = () => screen.getByRole("button", { name: `${ROAD_LABEL}の表示項目を選ぶ` });
     const all = () => screen.getByRole("checkbox", { name: `${ROAD_LABEL}の項目をすべて選ぶ/外す` });
 
     await user.click(chooser());
@@ -295,9 +308,29 @@ describe("群", () => {
   });
 });
 
+describe("ルートの行", () => {
+  it("候補を選んでいれば、出し入れを反転した値で知らせる", async () => {
+    const { user, props, list } = await setup([], { route: { shown: true, selectable: true } });
+    const route = within(list).getByRole("checkbox", { name: ROUTE_ROW });
+    expect(route).toBeChecked();
+    await user.click(route);
+    expect(props.route.onChange).toHaveBeenCalledWith(false);
+  });
+
+  it("候補を選ぶまでは押せず、ONに見えない", async () => {
+    const { list } = await setup([], { route: { shown: true, selectable: false } });
+    const route = within(list).getByRole("checkbox", { name: ROUTE_ROW });
+    expect(route).toBeDisabled();
+    expect(route).not.toBeChecked();
+  });
+});
+
 describe("まとめての操作", () => {
-  it("「表示中のレイヤーをすべて非表示」は出している行があるときだけ、「絞り込みをすべて解除」は凡例で隠している間だけ押せる", async () => {
+  it("「表示中のレイヤーをすべて非表示」は出している行があるときだけ、「絞り込みをすべて解除」は凡例で隠している間だけ押せる。どちらも文字の無いアイコン", async () => {
     const shown = await setup([chip("on", { on: true })], { anyLegendHidden: false });
+    for (const name of ["表示中のレイヤーをすべて非表示", "絞り込みをすべて解除"]) {
+      expect(screen.getByRole("button", { name })).toHaveTextContent(/^$/);
+    }
     expect(screen.getByRole("button", { name: "絞り込みをすべて解除" })).toBeDisabled();
     await shown.user.click(screen.getByRole("button", { name: "表示中のレイヤーをすべて非表示" }));
     expect(shown.props.onHideAllLayers).toHaveBeenCalledOnce();

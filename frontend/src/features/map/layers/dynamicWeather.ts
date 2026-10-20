@@ -13,21 +13,35 @@ interface DynamicWeatherSourceState {
 /** 動的気象のチップ（1つのチップが複数の名前付きソースを束ねる。どれがチップかは源泉が決める）。 */
 export type DynamicWeatherLayerId = (typeof mapDisplay.weatherLayerGroups)[number];
 
-/** 1コマの描画内容。表示層はkindだけで描き方を決める（どの配信元由来かはデータ層が吸収済み）。 */
+/** 配信元のタイルで描く描き方。それ以外の描き方は、中身をGeoJSONで持つ。 */
+export type TileRenderKind = "rasterTile" | "vectorTile";
+
+/** 配信元のタイルで描くコマの描画内容（ベクタの色分けに使うプロパティ名等は描き方の宣言が持つ）。 */
+type TileRenderPayload = { kind: TileRenderKind; tileUrlTemplate: string };
+
+/** 1コマの描画内容。表示層はkindだけで描き方を決める（どの配信元由来かはデータ層が吸収済み）。
+ * GeoJSONの`outline`は配信元が配る領域の輪郭線で、属性は読まず線として描くだけ。 */
 export type DynamicWeatherRenderPayload =
-  | { kind: "rasterTile"; tileUrlTemplate: string }
-  | { kind: "gridFill"; geojson: GeoJSON.FeatureCollection }
-  | { kind: "gridMark"; geojson: GeoJSON.FeatureCollection }
-  // 配信元がGeoJSONで配る領域の輪郭線（属性は読まず、線として描くだけ）。
-  | { kind: "outline"; geojson: GeoJSON.FeatureCollection }
-  // 配信元のベクタタイルをそのまま渡す（色分けに使うプロパティ名等は描き方の宣言が持つ）。
-  | { kind: "vectorTile"; tileUrlTemplate: string };
+  TileRenderPayload | { kind: "gridFill" | "gridMark" | "outline"; geojson: GeoJSON.FeatureCollection };
+
+/** 配信元のタイルで描く描き方か。 */
+export function isTileRenderKind(kind: DynamicWeatherRenderPayload["kind"]): kind is TileRenderKind {
+  return kind === "rasterTile" || kind === "vectorTile";
+}
+
+/** 配信元のタイルで描く描画内容か。 */
+export function isTilePayload(payload: DynamicWeatherRenderPayload): payload is TileRenderPayload {
+  return isTileRenderKind(payload.kind);
+}
 
 /** グループの中の名前付きソースのキー。ソースが1つのグループも1キーを持つ（特例を作らない）。 */
 type DynamicWeatherSourceId = string;
 
 /** 1グループぶんの状態。ソースキー→状態。 */
 export type DynamicWeatherGroupState = Partial<Record<DynamicWeatherSourceId, DynamicWeatherSourceState>>;
+
+// 範囲の判定の許容幅（目盛りがコマの時刻そのものの境界で、丸めに揺られないように）。
+const FRAME_RANGE_EPSILON_MS = 1000;
 
 /** 対象の時刻が今から`windowMs`先までの窓に入るか（コマの列を持たない単発の配信用）。 */
 export function isWithinFutureWindow(target: Date, now: Date, windowMs: number): boolean {
@@ -40,9 +54,6 @@ export interface DynamicWeatherFrame<TRef = unknown> {
   time: Date;
   ref: TRef;
 }
-
-// 範囲の判定の許容幅（目盛りがコマの時刻そのものの境界で、丸めに揺られないように）。
-const FRAME_RANGE_EPSILON_MS = 1000;
 
 /** 対象の時刻に最も近いコマ。データの範囲の外ならnull（描かない——範囲外で最後のコマを出し続けない）。 */
 export function frameIndexForTime(frames: readonly { time: Date }[], target: Date): number | null {
@@ -87,35 +98,31 @@ export function gridToFeatureCollection<TPoint, TValue, TGeometry extends GeoJSO
   return { type: "FeatureCollection", features };
 }
 
-/** 格子点を中心とする1辺`spacingDeg`の正方形（閉じたリング）。 */
-export function gridCellRing(latitude: number, longitude: number, spacingDeg: number): GeoJSON.Position[] {
-  const half = spacingDeg / 2;
+/** 格子点を中心に、緯度・経度の間隔の半分ずつ広げた升目（閉じたリング）。 */
+export function gridCellRing(
+  latitude: number,
+  longitude: number,
+  latitudeStepDeg: number,
+  longitudeStepDeg: number,
+): GeoJSON.Position[] {
+  const halfLat = latitudeStepDeg / 2;
+  const halfLon = longitudeStepDeg / 2;
   return [
-    [longitude - half, latitude - half],
-    [longitude + half, latitude - half],
-    [longitude + half, latitude + half],
-    [longitude - half, latitude + half],
-    [longitude - half, latitude - half],
+    [longitude - halfLon, latitude - halfLat],
+    [longitude + halfLon, latitude - halfLat],
+    [longitude + halfLon, latitude + halfLat],
+    [longitude - halfLon, latitude + halfLat],
+    [longitude - halfLon, latitude - halfLat],
   ];
 }
 
-/** 配信元のタイルが返らなくなっている要素を、いま表示しているチップ。表示中のコマのURLと突き合わせるので、コマが
- * 進んで取れるようになった要素や表示していない要素は当たらない。自前で取る表現はフェッチ自身が状態を持つので対象外。 */
-export function tileDeliveryFailureLayerIds(
-  groups: Partial<Record<DynamicWeatherLayerId, DynamicWeatherGroupState>>,
+/** 描く中身が、配信元のタイルが返らなくなっているコマを指すか。`failures`は配信要素→失敗したコマのテンプレート
+ * （`jmaTileProtocol.ts: jmaTileFailures`）。コマが進んで別のテンプレートを指せば当たらない。自前で取る表現は
+ * フェッチ自身が状態を持つので対象外。 */
+export function pointsAtFailedTiles(
+  payload: DynamicWeatherRenderPayload | undefined,
   failures: ReadonlyMap<string, string>,
-): DynamicWeatherLayerId[] {
-  if (failures.size === 0) return [];
-  const failedUrls = new Set(failures.values());
-  const failed: DynamicWeatherLayerId[] = [];
-  for (const [layerId, group] of Object.entries(groups) as [DynamicWeatherLayerId, DynamicWeatherGroupState][]) {
-    const hit = Object.values(group ?? {}).some((source) => {
-      if (!source?.visible) return false;
-      const payload = source.payload;
-      if (payload?.kind !== "rasterTile" && payload?.kind !== "vectorTile") return false;
-      return failedUrls.has(payload.tileUrlTemplate);
-    });
-    if (hit) failed.push(layerId);
-  }
-  return failed;
+): boolean {
+  if (payload === undefined || !isTilePayload(payload)) return false;
+  return [...failures.values()].includes(payload.tileUrlTemplate);
 }

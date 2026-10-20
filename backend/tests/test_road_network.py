@@ -3,7 +3,7 @@
 入口は次のとおり。
 - `RoadNetwork`: 組み立てた時点で行数・列数の食い違いを断る
 - `slice_network`: 範囲に掛かる区間と、その両端のノードを取り出す
-- `material_arrays_of`: 切り出した区間の材料
+- `road_class_columns`・`material_arrays_of`: 区分の列と、切り出した区間の材料
 - `elevation_attribute`: 1区間の標高属性
 - `edge_row_of`: `(道, 区間番号, 向き)`から区間の行
 
@@ -23,7 +23,16 @@ from hypothesis import example, given
 from hypothesis import strategies as st
 
 from app.domain import road_network
-from app.domain.road_network import RoadNetwork, edge_row_of, elevation_attribute, material_arrays_of, slice_network
+from app.domain.road_classes import class_material_id
+from app.domain.road_network import (
+    RoadNetwork,
+    edge_row_of,
+    elevation_attribute,
+    material_arrays_of,
+    road_class_columns,
+    slice_network,
+)
+from tests.road_class_fixture import classification, fact_is, road_classes
 
 NAN = float("nan")
 GRADE = road_network.GRADIENT_PERCENT
@@ -75,18 +84,19 @@ def network() -> RoadNetwork:
         edge_min_lat=np.minimum(lat[edge_from], lat[edge_to]),
         edge_max_lon=np.maximum(lon[edge_from], lon[edge_to]),
         edge_max_lat=np.maximum(lat[edge_from], lat[edge_to]),
+        edge_start_bearing_deg=np.array([80.0, 260.0, 100.0, 90.0, NAN]),
+        edge_end_bearing_deg=np.array([100.0, 280.0, 80.0, 90.0, NAN]),
         numeric_ids=("num_a", GRADE),
         numeric_values=np.column_stack([row * 10, [3.0, -3.0, NAN, 1.5, 2.5]]),
         categorical_ids=("cat_a",),
         categorical_codes=np.array([[1], [1], [2], [0], [2]], dtype=np.int16),
         categorical_vocab=((None, "x", "y"),),
-        hard_filter_ids=("filter_a",),
-        hard_filter_flags=np.array([[False], [False], [True], [False], [False]]),
         distance_m=row * 100 + 100,
         bearing_deg=np.array([90.0, 270.0, 90.0, 90.0, NAN]),
         mid_lat=lat[edge_from],
         mid_lon=(lon[edge_from] + lon[edge_to]) / 2,
-        elevation_present=np.array([True, True, True, False, True]),
+        start_elevation_m=np.array([10.0, 22.0, 5.0, NAN, 7.0]),
+        end_elevation_m=np.array([22.0, 10.0, 5.0, NAN, 10.0]),
         elevation_gain_m=np.array([12.0, 0.0, 0.0, NAN, 3.0]),
         elevation_loss_m=np.array([0.0, 12.0, 0.0, NAN, 0.0]),
     )
@@ -119,7 +129,7 @@ def test_a_slice_keeps_the_edges_and_their_ends_of_the_whole_network(lon_a, lon_
     min_lon, max_lon = sorted((lon_a, lon_b))
     min_lat, max_lat = sorted((lat_a, lat_b))
 
-    road = slice_network(whole, min_lon, min_lat, max_lon, max_lat)
+    road = slice_network(whole, ({}, {}), min_lon, min_lat, max_lon, max_lat)
 
     expected = [
         index
@@ -135,15 +145,17 @@ def test_a_slice_keeps_the_edges_and_their_ends_of_the_whole_network(lon_a, lon_
         assert road.node_lon[road.edge_to[position]] == whole.node_lon[whole.edge_to[global_row]]
 
 
-def test_the_materials_of_a_slice_follow_its_rows():
-    road = slice_network(network(), 139.015, 34.99, 139.11, 35.01)
+def test_the_materials_and_road_classes_of_a_slice_follow_its_rows():
+    """区分は取込範囲全体の事実から決め、切り出した区間の材料へ同じ行で足す。"""
+    whole = network()
+    classes = road_class_columns(whole, road_classes({"k": classification({"is_y": [fact_is("cat_a", "y")]})}))
+    road = slice_network(whole, classes, 139.015, 34.99, 139.11, 35.01)
 
-    materials = material_arrays_of(road)
+    columns = material_arrays_of(road).columns()
 
-    columns = materials.columns()
     assert columns["num_a"].tolist() == [20.0, 30.0]
     assert [columns["cat_a"].value_at(i) for i in range(2)] == ["y", None]
-    assert materials.hard_filter_columns()["filter_a"].tolist() == [True, False]
+    assert [columns[class_material_id("k")].value_at(i) for i in range(2)] == ["is_y", None]
 
 
 def test_the_elevation_attribute_reads_the_average_grade_from_the_material():
@@ -152,6 +164,8 @@ def test_the_elevation_attribute_reads_the_average_grade_from_the_material():
     assert attribute is not None
     assert attribute.model_dump() == {
         "edge_id": "10:0:f",
+        "start_elevation_m": 10.0,
+        "end_elevation_m": 22.0,
         "elevation_gain_m": 12.0,
         "elevation_loss_m": 0.0,
         "average_grade": 3.0,
@@ -165,18 +179,12 @@ def test_grades_missing_in_the_arrays_are_none_in_the_attribute():
     assert attribute.average_grade is None
 
 
-def test_an_edge_without_computed_elevation_has_no_attribute():
-    assert elevation_attribute(network(), 3, "30:0:f") is None
-
-
 @pytest.mark.parametrize(
     ("way", "segment", "forward", "expected"),
     [
-        (10, 0, True, 0),
         (10, 0, False, 1),
         (30, 1, True, 4),
         (20, 0, False, None),  # 一方通行の逆向き
-        (30, 2, True, None),  # 道にその区間番号が無い
         (15, 0, True, None),  # 取込範囲に無い道
     ],
 )

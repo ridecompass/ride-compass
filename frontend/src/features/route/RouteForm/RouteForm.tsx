@@ -1,22 +1,21 @@
 "use client";
 
-import { TabsContent } from "@/components/ui/Tabs/Tabs";
-import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
-import {
-  ORIGIN_MARK_COLOR,
-  ORIGIN_MARK_FALLBACK_COLOR,
-  PIN_MARK_BACKGROUND,
-  PinMark,
-} from "@/components/PinMark/PinMark";
-import type { PinRole } from "@/types/route";
-import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
+import type { Coordinates, PinRole, PlaceCandidate } from "@/types/route";
+import { waypointsFull, type GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import { MIN_DISTANCE_KM } from "@/features/route/savedConditions";
-import { fixedRouteCount, type RouteMode } from "./useRouteFormSubmit";
+import { DISTANCE_STEP_KM } from "@/features/route/savedConditions";
+import SavedPlacesPanel from "@/features/route/SavedPlacesPanel/SavedPlacesPanel";
+import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
+import RoutePoints from "./RoutePoints";
 import { Button } from "@/components/ui/Button/Button";
-import { Toggle } from "@/components/ui/Toggle/Toggle";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
+import { DistanceTargetIcon } from "@/components/ui/icons/lucideIcons";
+import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
+import Ruler, { type RulerFrame } from "@/components/ui/Ruler/Ruler";
 import { textVariants } from "@/components/ui/Text/Text";
+import { panelIconToggleClass, Toggle } from "@/components/ui/Toggle/Toggle";
+import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
 import { cn } from "@/lib/cn";
 
 /** 「ルート設定」区分のタブ。タブ列と選択状態はpage.tsxが持ち（見出し行に置くため）、
@@ -24,323 +23,244 @@ import { cn } from "@/lib/cn";
 export type SettingsTab = "generate" | "weights" | "exclusions" | "saved";
 
 /** 「条件」タブが読む生成の条件（`features/route/useGenerationConditions.ts`の返り値をそのまま渡す）。距離・候補数は
- * 文字列のまま持つ——生成条件のdirty判定（`features/route/useRouteGeneration.ts`）に使うため。候補数は周回モードと、
- * 目的地モードで経由地が無い場合に意味を持つ（経由地を伴う目的地ルートはbackendが常に1件へ固定し無視する）。 */
+ * 文字列のまま持つ——生成条件のdirty判定（`features/route/useRouteGeneration.ts`）に使うため。 */
 type RouteFormConditions = Pick<
   GenerationConditionsState,
   | "distanceInput"
   | "setDistanceInput"
   | "maxRoutesInput"
   | "setMaxRoutesInput"
-  | "routeMode"
-  | "changeRouteMode"
+  | "loop"
+  | "setLoop"
+  | "distanceTargeted"
+  | "setDistanceTargeted"
   | "waypoints"
-  | "clearWaypoints"
+  | "removeWaypoint"
   | "destination"
   | "clearDestination"
-  | "armedPinRole"
-  | "armPinRole"
+  | "clearPoints"
+  | "selectedPoint"
+  | "selectPoint"
+  | "foundAt"
 >;
 
 interface RouteFormProps {
   /** 生成の条件と、それを変える操作。 */
   conditions: RouteFormConditions;
+  /** 出発地の位置（現在地か、地図で置いた地点）。 */
+  origin: Coordinates;
   /** 出発地を地図で置き直してあるか（falseなら現在地のまま）。 */
   originManual: boolean;
   /** 出発地が実際の位置か（現在地を取れたか、地図で置いたか）。falseの間は地図のピンと同じく印を灰色にし、
-   * 行の値も「現在地」と出さない（位置が仮の地点のままであることを、行と地図で示す）。 */
+   * 名前も「現在地」と出さない（位置が仮の地点のままであることを、パネルと地図で示す）。 */
   originLocated: boolean;
+  /** 出発地が、最後に取れた現在地にあるか（真なら「出発地を現在地に戻す」を押せなくする）。 */
+  originAtHere: boolean;
   /** 出発地を現在地へ戻す（現在地の取得もこの操作が兼ねる）。 */
   onOriginReset: () => void;
+  /** 出発地が、探して置いたときの位置のままなら、その候補（名前を出す）。 */
+  originFound: PlaceCandidate | null;
+  /** 地図でいま見ている所の真ん中。探す施設の候補は、ここから近い順に並ぶ。 */
+  mapCenter: Coordinates;
+  /** 探して選んだ候補を、その役割の地点として置く（経由地は`waypointIndex`番目を置き直し、無ければ足す）。 */
+  onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
+  /** 保存した地点（地点の詳しくで保存して打つ欄の候補に出し、「保存済み」タブの「地点」に並べて呼び出す）。 */
+  savedPlaces: SavedPlacesState;
+  /** 「条件」タブへ移る（「保存済み」タブの「地点」から呼び出した地点を見せる）。 */
+  onPointsShow: () => void;
+  /** 地図をタップすると選んでいる地点を置くか（ルート設定が地図で効いている間）。 */
+  placing: boolean;
   /** 「重み」タブの中身。タブの列と「ルート生成」ボタンは見出しの行（page.tsx）、検証は`useRouteFormSubmit`が持つ。 */
   weightsPanel: React.ReactNode;
   /** 「除外」タブの中身。 */
   exclusionsPanel: React.ReactNode;
-  /** 「保存」タブの中身（保存した条件の一覧と保存）。 */
-  savedPanel: React.ReactNode;
+  /** 「条件」タブの、いまの設定を保存するアイコン（保存するものは各タブに及ぶが、条件を詰める所で保存する）。 */
+  saveConditionsButton: React.ReactNode;
+  /** 「保存済み」タブの「プリセット」の中身（保存した設定の一覧）。 */
+  savedConditionsPanel: React.ReactNode;
 }
 
 const MAX_DISTANCE_KM = routeGenerateConfig.max_distance_km;
-const DISTANCE_TOLERANCE_KM = routeGenerateConfig.default_distance_tolerance_km;
+/** 全長の目標のルーラーのコマ。止まる刻みごとに1コマで（下限は1刻み分）、10kmごとに太い目盛りと数を付ける。 */
+const DISTANCE_FRAMES: RulerFrame[] = Array.from({ length: Math.floor(MAX_DISTANCE_KM / DISTANCE_STEP_KM) }, (_, i) => {
+  const km = (i + 1) * DISTANCE_STEP_KM;
+  const major = km % 10 === 0;
+  return { label: `${km}km`, major, tickLabel: major ? String(km) : undefined };
+});
 const MIN_ROUTES = routeGenerateConfig.min_routes;
 const MAX_ROUTES = routeGenerateConfig.max_routes;
-const MAX_WAYPOINTS = routeGenerateConfig.max_waypoints;
+
+// forceMount+data-stateでの表示切替（ルート結果のタブと同じ方式）。
+// 候補数等は`features/route/useGenerationConditions.ts`の制御stateのため非表示中も値は失われないが、
+// 重みタブ（RouteSettingsPanel）はドラッグ中の帯グラフ・チェックOFF前の
+// 重み記憶をローカルstateで持つため、タブ切替のたびにアンマウントすると失われる。
+function KeptTabContent({ value, children }: { value: string; children: React.ReactNode }) {
+  return (
+    <TabsContent value={value} forceMount className="data-[state=inactive]:hidden">
+      {children}
+    </TabsContent>
+  );
+}
 
 export default function RouteForm({
   conditions,
+  origin,
   originManual,
   originLocated,
+  originAtHere,
   onOriginReset,
+  originFound,
+  mapCenter,
+  onPlaceFound,
+  savedPlaces,
+  onPointsShow,
+  placing,
   weightsPanel,
   exclusionsPanel,
-  savedPanel,
+  saveConditionsButton,
+  savedConditionsPanel,
 }: RouteFormProps) {
-  const {
-    distanceInput,
-    setDistanceInput,
-    maxRoutesInput,
-    setMaxRoutesInput,
-    routeMode,
-    changeRouteMode,
-    clearWaypoints,
-    clearDestination,
-    armedPinRole,
-    armPinRole,
-  } = conditions;
-  const waypointCount = conditions.waypoints.length;
-  const destinationSet = conditions.destination !== null;
-  const fixedCount = fixedRouteCount(routeMode, waypointCount);
-  const maxRoutesRelevant = fixedCount === null;
+  const { distanceTargeted, setDistanceTargeted, distanceInput, setDistanceInput, maxRoutesInput, setMaxRoutesInput } =
+    conditions;
+  const distanceToggleName = distanceTargeted ? "全長の目標をやめる" : "全長の目標を決める";
+  // 許容差は管理画面の較正値。引けない間は幅の文を出さない（較正したのとは別の数を出さない）。
+  const distanceToleranceKm = clientTuningValue(useAxisCatalog(), CLIENT_TUNING_IDS.distanceToleranceKm);
+
+  // 保存した地点を呼び出したら「条件」タブへ移り、置いた地点を選んで詳しくを出す（足した経由地は`onPlaceFound`が選ぶ）。
+  function recallSavedPlace(role: PinRole, place: PlaceCandidate) {
+    onPlaceFound(role, place, null);
+    if (role !== "waypoint") conditions.selectPoint({ role });
+    onPointsShow();
+  }
 
   // 範囲の端ではボタンを押せなくするので、足した値は範囲を出ない。
   function stepMaxRoutes(delta: number) {
     setMaxRoutesInput(String(Number(maxRoutesInput) + delta));
   }
 
-  // 出発地・経由地・目的地は同じ形の行で並べる（役割が同じ「地点を置く」操作のため）。
-  // 武装は1つだけで、押している行以外は自動的に解除される（`features/route/useGenerationConditions.ts: armedPinRole`）。
-  function renderPointRow(
-    role: PinRole,
-    label: string,
-    markLabel: string | undefined,
-    value: string,
-    armLabel: string,
-    extra: React.ReactNode,
-    /** 武装中に値の代わりに出す文言。置いた数を隠さないため、経由地は件数を添える。 */
-    armedHint: string = "地図をタップ",
-    usage: string,
-    /** 上限まで置いてあり、これ以上置けない（武装できない）。 */
-    full: boolean = false,
-  ) {
-    const armed = armedPinRole === role;
-    return (
-      <div
-        className="group flex items-center rounded-sm border border-[var(--color-border)] pr-1 data-[armed=true]:border-[var(--color-accent)] data-[armed=true]:shadow-[inset_0_0_0_1px_var(--color-accent)]"
-        data-armed={armed}
-      >
-        {/* 行全体が「その地点を置く」1つの押下領域。押す場所を探させず、行の幅も詰まる。
-            クリア（✕）・現在地に戻すは別の操作なので、入れ子にせず行の外側へ並べる。 */}
-        <Toggle
-          variant="plain"
-          className="flex min-w-0 flex-auto items-center gap-2 rounded-sm px-1.5 py-1"
-          pressed={armed}
-          disabled={full}
-          aria-label={
-            full ? `${label}は上限まで置いてあります` : armed ? `${label}の指定をやめる` : `${label}を${armLabel}`
-          }
-          onClick={() => armPinRole(armed ? null : role)}
-          usage={usage}
-        >
-          {/* 地図のピンと同じ図形を出す。同じものを2度描くと、片方だけ直したときに行とピンが
-              違う見た目になる。 */}
-          <span
-            aria-hidden="true"
-            className="inline-flex size-4.5 flex-none items-center justify-center rounded-full text-[0.7rem] text-white"
-            style={{ background: PIN_MARK_BACKGROUND[role] }}
-          >
-            <PinMark
-              role={role}
-              label={markLabel}
-              size={13}
-              color={originLocated ? ORIGIN_MARK_COLOR : ORIGIN_MARK_FALLBACK_COLOR}
-            />
-          </span>
-          <span
-            className={cn(
-              textVariants({ variant: "hint" }),
-              "w-14 flex-none text-left group-data-[armed=true]:text-[var(--color-accent-strong)]",
-            )}
-          >
-            {label}
-          </span>
-          <span className="min-w-0 flex-auto truncate text-left text-[length:var(--font-size-sm)]">
-            {armed ? armedHint : value}
-          </span>
-          <span
-            aria-hidden="true"
-            className={
-              armed
-                ? "flex-none rounded-sm bg-[var(--color-accent)] px-1.5 py-px text-[length:var(--font-size-sm)] text-[var(--color-surface)]"
-                : "flex-none text-[length:var(--font-size-sm)] text-[var(--color-accent-strong)]"
-            }
-          >
-            {armed ? "やめる" : full ? "上限" : armLabel}
-          </span>
-        </Toggle>
-        {extra}
-      </div>
-    );
-  }
-
-  // 出発地はどちらのモードでも置ける（現在地が取れないときの案内が指す入口）。
-  const originRow = renderPointRow(
-    "origin",
-    "出発地",
-    undefined,
-    originManual ? "地図で指定" : originLocated ? "現在地" : "現在地を取得できていません",
-    "地図で選ぶ",
-    originManual ? (
-      <Button
-        size="xs"
-        aria-label="出発地を現在地に戻す"
-        onClick={onOriginReset}
-        usage="地図で置いた出発地をやめて、現在地から出発します。"
-      >
-        現在地に戻す
-      </Button>
-    ) : undefined,
-    undefined,
-    "押してから地図をタップすると、そこを出発地にします。もう一度押すとやめます。",
-  );
-
   return (
     <div>
-      {/* forceMount+data-stateでの表示切替（ルート結果のタブと同じ方式）。
-          候補数等は`features/route/useGenerationConditions.ts`の制御stateのため非表示中も値は失われないが、
-          重みタブ（RouteSettingsPanel）はドラッグ中の帯グラフ・チェックOFF前の
-          重み記憶をローカルstateで持つため、タブ切替のたびにアンマウントすると失われる。 */}
-      <TabsContent value="generate" forceMount className="data-[state=inactive]:hidden">
-        {/* モードと候補数は同じ行に置く。候補数はどちらのモードでも効く共通の条件で、
-            モードごとの入力（距離／地点）とは別の階層にある。 */}
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <ToggleGroup
-            className="shrink-0"
-            value={routeMode}
-            onValueChange={(mode) => changeRouteMode(mode as RouteMode)}
-            aria-label="ルート生成モード"
-          >
-            <ToggleGroupItem value="loop" usage="出発地から出て出発地へ戻る、指定した距離のルートを作ります。">
-              周回
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="destination"
-              usage="地図で置いた目的地へ向かうルートを作ります。経由地を置くと、そこを通ります。"
+      <KeptTabContent value="generate">
+        {/* 全長の目標と候補数といまの設定の保存を1行に並べ、パネルの縦幅を詰める。ルーラーは残りの幅を取り、狭い幅では長い距離の側を
+            見えない所へ置く（滑らせると出る）。全長の目標を外している間もルーラーと値は出したまま薄くする（入れ直すと
+            前の値に戻ることが見える）。部品の間は詰めて、いちばん狭い幅でもルーラーに押せる幅（24px四方）を残す。 */}
+        <div className="mb-2 flex items-center gap-1.5">
+          <div className="flex min-w-0 flex-1 items-center gap-1">
+            <Toggle
+              variant="plain"
+              className={cn(panelIconToggleClass, "flex-none")}
+              pressed={distanceTargeted}
+              aria-label={distanceToggleName}
+              onClick={() => setDistanceTargeted(!distanceTargeted)}
+              usage="押している間は、ルート全体の長さを目標に合わせます。"
             >
-              目的地
-            </ToggleGroupItem>
-          </ToggleGroup>
-          {/* 経由地があるとbackendは決まった数へ固定する（route_request.py:
-              applied_max_routes）。押せない状態で残す——消えると壊れて見えるうえ、
-              複数候補へ広げる予定があるため置き場を動かさない。理由は隣の(i)の奥。 */}
-          <div className="flex items-center gap-2 data-[disabled=true]:opacity-55" data-disabled={!maxRoutesRelevant}>
+              <DistanceTargetIcon />
+            </Toggle>
+            <Ruler
+              frames={DISTANCE_FRAMES}
+              index={Number(distanceInput) / DISTANCE_STEP_KM - 1}
+              onIndexChange={(i) => setDistanceInput(String((i + 1) * DISTANCE_STEP_KM))}
+              ariaLabel="全長の目標"
+              disabled={!distanceTargeted}
+              className="min-w-0 flex-1 touch-pan-y"
+              usage="ルート全体の長さの目標を、目盛りを横に滑らせて決めます。"
+            />
+            <span
+              className={cn(
+                // 文字の大きさは地点の並びの札の名前とそろえる（`RoutePoints.tsx: chipName`）。
+                "min-w-[3.25em] flex-shrink-0 text-right text-[length:var(--font-size-md)] tabular-nums",
+                !distanceTargeted && "opacity-40",
+              )}
+            >
+              {distanceInput}km
+            </span>
+            <InfoPopover triggerAriaLabel="全長の目標の説明" triggerClassName="flex-none">
+              {[
+                "ルート全体の長さの目標です。",
+                distanceToleranceKm === undefined
+                  ? ""
+                  : `作る候補は、この長さの±${distanceToleranceKm}kmに入るものだけです。`,
+                "外すと長さを決めず、目的地（周回なら経由地を回って出発地）へ良い道で向かいます。",
+              ].join("")}
+            </InfoPopover>
+          </div>
+          <div className="flex flex-none items-center gap-1">
             <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>候補数</span>
-            {!maxRoutesRelevant && (
-              <InfoPopover triggerAriaLabel="候補数を変えられない理由">
-                経由地を置いている間は、その地点を通る経路を{fixedCount}本だけ引きます。候補数は経由地を
-                消すと使えます。
-              </InfoPopover>
-            )}
-            <div className="inline-flex items-center gap-2">
+            <div className="inline-flex items-center">
               <Button
                 variant="stepper"
                 size="sm"
                 onClick={() => stepMaxRoutes(-1)}
-                disabled={!maxRoutesRelevant || Number(maxRoutesInput) <= MIN_ROUTES}
+                disabled={Number(maxRoutesInput) <= MIN_ROUTES}
                 aria-label="候補数を減らす"
-                usage="一度に作る候補の数を減らします。経由地を置いている間は変えられません。"
+                usage="一度に作る候補の数を減らします。"
               >
                 ‹
               </Button>
-              <span className="min-w-[2.5em] text-center tabular-nums">{`${fixedCount ?? maxRoutesInput}件`}</span>
+              <span className="min-w-[2.25em] text-center text-[length:var(--font-size-md)] tabular-nums">{`${maxRoutesInput}件`}</span>
               <Button
                 variant="stepper"
                 size="sm"
                 onClick={() => stepMaxRoutes(1)}
-                disabled={!maxRoutesRelevant || Number(maxRoutesInput) >= MAX_ROUTES}
+                disabled={Number(maxRoutesInput) >= MAX_ROUTES}
                 aria-label="候補数を増やす"
-                usage="一度に作る候補の数を増やします。経由地を置いている間は変えられません。"
+                usage="一度に作る候補の数を増やします。"
               >
                 ›
               </Button>
             </div>
           </div>
+          <div className="flex-none">{saveConditionsButton}</div>
         </div>
 
-        <div className="flex flex-col gap-2">
-          {routeMode === "loop" ? (
-            <>
-              {originRow}
-              <div className="flex items-center gap-2">
-                <label htmlFor="route-form-distance" className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>
-                  距離
-                </label>
-                <input
-                  id="route-form-distance"
-                  type="range"
-                  min={MIN_DISTANCE_KM}
-                  max={MAX_DISTANCE_KM}
-                  step={1}
-                  value={distanceInput}
-                  onChange={(e) => setDistanceInput(e.target.value)}
-                  className="h-6 min-w-0 flex-1"
-                  data-usage={`周回するルートの長さを決めます。作る候補は、この距離の±${DISTANCE_TOLERANCE_KM}kmに入るものだけです。`}
-                />
-                <span className="min-w-[3.5em] flex-shrink-0 text-right tabular-nums">{distanceInput}km</span>
-                <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0 tabular-nums")}>
-                  ±{DISTANCE_TOLERANCE_KM}km
-                </span>
-              </div>
-            </>
-          ) : (
-            <div className="flex flex-col gap-1">
-              {originRow}
-              {renderPointRow(
-                "waypoint",
-                "経由地",
-                waypointCount > 0 ? String(waypointCount) : undefined,
-                waypointCount > 0 ? `${waypointCount}地点` : "なし",
-                "追加",
-                waypointCount > 0 ? (
-                  <Button
-                    variant="ghost"
-                    size="bare"
-                    className="p-1 text-xs"
-                    aria-label="経由地をクリア"
-                    onClick={clearWaypoints}
-                  >
-                    ✕
-                  </Button>
-                ) : undefined,
-                waypointCount > 0 ? `地図をタップ[${waypointCount}地点]` : "地図をタップ",
-                "押してから地図をタップするたびに、そこを通る経由地を足します。もう一度押すとやめます。",
-                waypointCount >= MAX_WAYPOINTS,
-              )}
-              {renderPointRow(
-                "destination",
-                "目的地",
-                undefined,
-                destinationSet ? "地図で指定" : "未設定",
-                destinationSet ? "置き直す" : "地図で選ぶ",
-                destinationSet ? (
-                  <Button
-                    variant="ghost"
-                    size="bare"
-                    className="p-1 text-xs"
-                    aria-label="目的地をクリア"
-                    onClick={clearDestination}
-                  >
-                    ✕
-                  </Button>
-                ) : undefined,
-                undefined,
-                "押してから地図をタップすると、そこを目的地にします。もう一度押すとやめます。",
-              )}
-            </div>
-          )}
-        </div>
-      </TabsContent>
+        <RoutePoints
+          conditions={conditions}
+          origin={origin}
+          originManual={originManual}
+          originLocated={originLocated}
+          originAtHere={originAtHere}
+          onOriginReset={onOriginReset}
+          originFound={originFound}
+          mapCenter={mapCenter}
+          onPlaceFound={onPlaceFound}
+          savedPlaces={savedPlaces}
+          placing={placing}
+        />
+      </KeptTabContent>
 
-      <TabsContent value="weights" forceMount className="data-[state=inactive]:hidden">
-        {weightsPanel}
-      </TabsContent>
+      <KeptTabContent value="weights">{weightsPanel}</KeptTabContent>
 
-      <TabsContent value="exclusions" forceMount className="data-[state=inactive]:hidden">
-        {exclusionsPanel}
-      </TabsContent>
+      <KeptTabContent value="exclusions">{exclusionsPanel}</KeptTabContent>
 
-      <TabsContent value="saved" forceMount className="data-[state=inactive]:hidden">
-        {savedPanel}
-      </TabsContent>
+      <KeptTabContent value="saved">
+        {/* 保存したものは地点とプリセットの2つで、呼び出すと変わるものが違う（地点は選んだ1地点を置き、プリセットは各タブの値を入れ替える）。 */}
+        <Tabs defaultValue="places">
+          <TabsList className="mb-2" aria-label="保存したもの">
+            <TabsTrigger
+              value="places"
+              usage="条件タブで名前を付けて保存した地点の一覧です。呼び出すと、出発地・経由地・目的地に置きます。"
+            >
+              地点
+            </TabsTrigger>
+            <TabsTrigger
+              value="conditions"
+              usage="条件タブで名前を付けて保存した設定（プリセット）の一覧です。呼び出すと、各タブの値を入れ替えます。"
+            >
+              プリセット
+            </TabsTrigger>
+          </TabsList>
+          <KeptTabContent value="places">
+            <SavedPlacesPanel
+              places={savedPlaces.places}
+              waypointsFull={waypointsFull(conditions.waypoints)}
+              loop={conditions.loop}
+              onRecall={recallSavedPlace}
+              onRemove={savedPlaces.remove}
+            />
+          </KeptTabContent>
+          <KeptTabContent value="conditions">{savedConditionsPanel}</KeptTabContent>
+        </Tabs>
+      </KeptTabContent>
     </div>
   );
 }

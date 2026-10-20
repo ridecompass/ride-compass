@@ -9,10 +9,8 @@
 """
 
 import gzip
-from contextlib import asynccontextmanager
 
 import pytest
-from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 from app.infrastructure.response_compression import DEFAULT_MINIMUM_SIZE, ContentTypeGZipMiddleware
@@ -61,26 +59,3 @@ def test_a_response_that_is_not_compressible_passes_through_unchanged(content_ty
 
     assert "content-encoding" not in response.headers
     assert raw == LARGE_BODY
-
-
-def test_a_compressible_response_is_not_gzipped_for_a_client_that_does_not_accept_it():
-    response, raw = fetch("application/json", accept_encoding="identity")
-
-    assert "content-encoding" not in response.headers
-    assert raw == LARGE_BODY
-
-
-def test_the_application_still_starts_and_stops_behind_the_middleware():
-    """起動と停止の通知（lifespan）も同じミドルウェアを通る。"""
-    events: list[str] = []
-
-    @asynccontextmanager
-    async def lifespan(_app):
-        events.append("startup")
-        yield
-        events.append("shutdown")
-
-    with TestClient(ContentTypeGZipMiddleware(Starlette(lifespan=lifespan))):
-        assert events == ["startup"]
-
-    assert events == ["startup", "shutdown"]

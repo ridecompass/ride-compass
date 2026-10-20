@@ -9,6 +9,8 @@ import { catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";
 import { jst } from "@/testing/jst";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
+import { LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
+
 import RideConditionBar from "./RideConditionBar";
 
 // 時刻のルーラーのドラッグはEmbla（ライブラリ）の持ち物。ここでは位置合わせを受けるだけの代役にする。
@@ -44,6 +46,8 @@ function renderBar(overrides: Partial<Props> = {}) {
     onDepartureNow: vi.fn(),
     speedKmh: 20,
     onSpeedKmhChange: vi.fn(),
+    linkedDeparture: false,
+    linkedSpeed: false,
     ...overrides,
   };
   render(<RideConditionBar {...props} />);
@@ -73,12 +77,25 @@ describe("RideConditionBar 出発時刻", () => {
     [
       "出発時刻で値の変わる評価があれば、その名前で",
       ["at", "bearing_deg"],
+      "always",
       "ルートの「評価A」の評価・到達予想の時刻に使います。",
     ],
-    ["無ければ評価に触れずに", ["bearing_deg"], "ルートの到達予想の時刻に使います。"],
-  ] as const)("出発時刻の説明は、%s何に使うかを書く", async (_case, conditions, tail) => {
+    [
+      "夜だけ効く評価は通る時刻で効くかが決まるので、その名前で",
+      ["bearing_deg"],
+      "night_only",
+      "ルートの「評価A」の評価・到達予想の時刻に使います。",
+    ],
+    ["無ければ評価に触れずに", ["bearing_deg"], "always", "ルートの到達予想の時刻に使います。"],
+  ] as const)("出発時刻の説明は、%s何に使うかを書く", async (_case, conditions, timeScope, tail) => {
     serveAxisCatalog(
-      catalogResponse([dedicatedEntry("a", [1], { label: "評価A", dynamic_way_value_conditions: [...conditions] })]),
+      catalogResponse([
+        dedicatedEntry("a", [1], {
+          label: "評価A",
+          dynamic_way_value_conditions: [...conditions],
+          time_scope: timeScope,
+        }),
+      ]),
     );
     renderBar();
     await waitFor(() => expect(getQueryClient().isFetching()).toBe(0));
@@ -188,5 +205,19 @@ describe("RideConditionBar 想定速度", () => {
     // 軸カタログが届いてから確かめる（届く前も文を出さないので、届く前に見ると引けたかを見分けない）。
     await waitFor(() => expect(getQueryClient().isFetching()).toBe(0));
     expect(screen.queryByText(/標準値で計算します/)).not.toBeInTheDocument();
+  });
+});
+
+describe("RideConditionBar 地図の塗りとの結び", () => {
+  it.each([
+    [{ linkedDeparture: true, linkedSpeed: false }, [LENS_LINK_DESCRIPTION, null]],
+    [{ linkedDeparture: false, linkedSpeed: true }, [null, LENS_LINK_DESCRIPTION]],
+  ])("いまの地図の塗りが決まっている条件（%j）のボタンにだけ、そう添える", (linked, descriptions) => {
+    renderBar(linked);
+    const buttons = [
+      screen.getByRole("button", { name: /^出発時刻:/ }),
+      screen.getByRole("button", { name: /^想定速度:/ }),
+    ];
+    expect(buttons.map((button) => button.getAttribute("aria-description"))).toEqual(descriptions);
   });
 });

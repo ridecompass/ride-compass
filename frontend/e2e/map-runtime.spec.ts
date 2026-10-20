@@ -1,7 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mapDisplay } from "@/types/generated/mapDisplay";
 import {
+  INTRO_CLOSED,
+  KEYBOARD_HEIGHT,
   MOBILE_VIEWPORT,
+  allLayersOn,
   installApiMocks,
   installMapFinder,
   openMobileApp,
@@ -101,60 +103,10 @@ test("地図が描ける（Workerが動き、ソースの面が画素になる�
   await expect.poll(() => probeFillRatio(page), { timeout: 20_000 }).toBeGreaterThan(0.5);
 });
 
-// 初期表示の覆い（「地図を読み込み中…」）は基礎地図が描けた時点（MapLibreの"load"）で外す。基礎地図の
-// タイルが終わらず"load"が来なくても、覆いが残って「壊れている」ように見えないよう、上限の時間で外れる。
-test("タイル取得が終わらなくても地図の覆いは外れる", async ({ page }) => {
-  await installApiMocks(page);
-  await page.route("**/api/basemap/**", (route) =>
-    route.fulfill({
-      json: {
-        version: 8,
-        sources: { slow: { type: "raster", tiles: ["https://slow.invalid/{z}/{x}/{y}.png"], tileSize: 256 } },
-        layers: [{ id: "slow", type: "raster", source: "slow" }],
-      },
-    }),
-  );
-  // 応答しない（fulfillもabortもしない）ことで取得を宙吊りにする。
-  await page.route("https://slow.invalid/**", () => {});
-
-  await page.goto("/");
-
-  const overlay = page.getByText("地図を読み込み中…");
-  await expect(overlay).toBeVisible({ timeout: 5000 });
-  await expect(overlay).toBeHidden({ timeout: 12_000 });
-});
-
-// 生成に関わる操作は「ルート生成」ボタンがある場所でだけ受け付ける。ルート結果で候補線を
-// 選ぼうとして外すたびに経由地が増えるのを防ぐ。canvasへの実クリックがMapLibreの
-// clickとして届いた上で、受け付けるかどうかが画面の状態で分かれることを見る。
-test("モバイル: ルート結果を見ている間は地図タップでピンが置かれない", async ({ page }) => {
-  await openMobileApp(page);
-
-  const settings = await openMobileSheet(page, "ルート設定");
-  await settings.getByRole("radio", { name: "目的地", exact: true }).click();
-  await page.locator(".app-map-pane canvas").click({ position: { x: 180, y: 150 } });
-  await expect(settings.getByRole("button", { name: "目的地を置き直す" })).toBeVisible();
-
-  // 経由地を置ける状態にしてから「ルート結果」へ移る。結果を見ている間は、置ける状態の
-  // ままでも地図のタップでピンが増えない。
-  await settings.getByRole("button", { name: "経由地を追加" }).click();
-  await openMobileSheet(page, "ルート結果");
-  await page.locator(".app-map-pane canvas").click({ position: { x: 220, y: 200 } });
-  await page.waitForTimeout(400);
-
-  // 戻ってきても「置ける状態」は保たれている（離れている間だけ置けない）。経由地が増えて
-  // いないことは、件数>0のときだけ出るクリアボタンが無いことで見る。
-  const settingsAgain = await openMobileSheet(page, "ルート設定");
-  await expect(settingsAgain.getByRole("button", { name: "経由地の指定をやめる" })).toBeVisible();
-  await expect(settingsAgain.getByRole("button", { name: "経由地をクリア" })).toHaveCount(0);
-  await page.locator(".app-map-pane canvas").click({ position: { x: 240, y: 220 } });
-  await expect(settingsAgain.getByRole("button", { name: "経由地をクリア" })).toBeVisible({ timeout: 5000 });
-});
-
-// 住所の検索で置いた地点は、実際の地図のその位置にピンとして立ち、ピンを実際につかんで動かすと地点が動く（パターン4 観点2）。
+// 目的地を探して置いた地点は、実際の地図のその位置にピンとして立ち、ピンを実際につかんで動かすと地点が動く（パターン4 観点2）。
 // 単体テストの代役地図はピンの位置もドラッグも持たないため、ここで見る。置いた・動かした位置は、生成の要求に載る目的地で読む
 // ——画面の印とは別の出口で確かめる。
-test("住所の検索で目的地に置いた地点は地図のその位置にピンが立ち、ピンを動かすと目的地が動く", async ({ page }) => {
+test("目的地を探して置いた地点は地図のその位置にピンが立ち、ピンを動かすと目的地が動く", async ({ page }) => {
   const candidate = {
     kind: "address",
     level: "aza",
@@ -165,18 +117,23 @@ test("住所の検索で目的地に置いた地点は地図のその位置に�
   };
   await installApiMocks(page);
   await page.route("**/api/place-search*", (route) => route.fulfill({ json: { candidates: [candidate] } }));
-  await seedStoredState(page, { "ridecompass:first-visit-intro-closed": "true" });
+  await seedStoredState(page, INTRO_CLOSED);
   await page.addInitScript(installMapFinder);
   await page.goto("/");
   await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
 
-  await page.getByRole("searchbox", { name: "住所・施設で探す" }).fill("王子");
-  await page.getByRole("searchbox", { name: "住所・施設で探す" }).press("Enter");
-  await page.getByRole("button", { name: new RegExp(candidate.name) }).click();
-  await page.getByRole("button", { name: "目的地へ" }).click();
+  await page.getByRole("button", { name: "周回", pressed: true }).click();
+  await page.getByRole("button", { name: "目的地: 未設定", exact: true }).click();
+  const searchBox = page.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
+  await searchBox.fill("王子");
+  await searchBox.press("Enter");
+  await page
+    .getByRole("list", { name: "地点の候補" })
+    .getByRole("button", { name: new RegExp(candidate.name) })
+    .click();
 
   // ピンの位置（印の要素の中心）が、地図がその地点を描く位置にある。寄せる動きが終わるまで待つ。
-  const pin = page.locator(".maplibregl-marker", { hasText: "⚑" });
+  const pin = page.getByRole("img", { name: "目的地", exact: true });
   const offset = async () => {
     const box = (await pin.boundingBox())!;
     const at = await page.evaluate(
@@ -234,10 +191,9 @@ test("宣言された地図レイヤーを全部ONにしても、スタイル検
 
   await installApiMocks(page);
   await seedStoredState(page, {
-    "ridecompass:debug-enabled": "1",
-    "ridecompass:layer-visibility": JSON.stringify(Object.fromEntries(mapDisplay.layers.map(({ id }) => [id, true]))),
+    ...allLayersOn(),
     // installApiMocks の軸カタログが持つ軸。
-    "ridecompass:route-style-mode": "ramp",
+    "ridecompass:route-style-mode": "axis_a",
   });
   await page.goto("/");
   await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
@@ -247,35 +203,94 @@ test("宣言された地図レイヤーを全部ONにしても、スタイル検
   expect(styleErrors).toEqual([]);
 });
 
-// ルートを収める余白は、地図の上に重ねた部品が覆う幅を含む（含まないと、ルートの端が操作列の下に隠れる）。
-// 閉じられる一時の重なり（住所の検索の候補の一覧）は含まない（含むと、すぐ閉じる一覧のためにルートが小さく収まる）。
-// 余白はMapLibreへ渡した値をデバッグログで読み、覆う幅は部品を名前で探して実寸で測る——余白を決めた側の印とは
-// 別の入力で確かめる。
-test("ルートを収めるとき、地図の上の操作部品が覆う所へルートの端を置かず、検索の候補の一覧の分は空けない", async ({
+/**
+ * キーボードが出たときにブラウザがすることを、見える範囲（visual viewport）の高さで見立てる。Playwright の Chromium は
+ * ソフトウェアキーボードを出さないので、見える範囲を下から縮めて縮んだことを知らせる（fixed の基準は縮めない）。
+ */
+async function showKeyboard(page: Page): Promise<number> {
+  return page.evaluate((keyboard) => {
+    const viewport = window.visualViewport!;
+    const height = window.innerHeight - keyboard;
+    Object.defineProperty(viewport, "height", { configurable: true, get: () => height });
+    viewport.dispatchEvent(new Event("resize"));
+    return height;
+  }, KEYBOARD_HEIGHT);
+}
+
+// 狭い画面では、欄を押すと欄のあった位置からせり上がって、打つ欄と候補を画面の上側へ出し、候補はキーボードの上までの中で
+// 送る。せり上がりが欄の位置から始まること、候補が多くてもキーボードに覆われずに末尾まで押せて、選んだ地点が地図に立つことを
+// 実ブラウザの寸法で見る（単体テストはレイアウトの実寸を持たない）。
+test("モバイル: 目的地を探すと候補を画面の上側でキーボードに隠れずに選べ、選ぶと地点の並びにその名前が出て地図にピンが立つ", async ({
   page,
 }) => {
+  const candidates = Array.from({ length: 30 }, (_, index) => ({
+    kind: "facility",
+    level: "point",
+    name: `浅草寺${index + 1}`,
+    area: "台東区浅草二丁目",
+    latitude: 35.7148 + index * 0.001,
+    longitude: 139.7967,
+  }));
+  // 末尾の候補を選ぶ（候補が多いと、隠れうるのは末尾の側）。
+  const candidate = candidates[candidates.length - 1];
+  await openMobileApp(page, {
+    routes: (p) => p.route("**/api/place-search*", (route) => route.fulfill({ json: { candidates } })),
+  });
+  const settings = await openMobileSheet(page, "ルート設定");
+  await settings.getByRole("button", { name: "周回", pressed: true }).click();
+  await settings.getByRole("button", { name: "目的地: 未設定", exact: true }).click();
+  const searchBox = settings.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
+  await searchBox.scrollIntoViewIfNeeded();
+  const fieldTop = (await searchBox.boundingBox())!.y;
+  await searchBox.click();
+  // 上側へは、欄のあった位置からせり上がって開く（一瞬で画面が切り替わらない）。動きを始めに止めて欄の位置を測り、終わらせる。
+  const risingFrom = await searchBox.evaluate((input) => {
+    const rising = document
+      .getAnimations()
+      .filter((animation) => (animation.effect as KeyframeEffect | null)?.target?.contains(input));
+    rising.forEach((animation) => {
+      animation.pause();
+      animation.currentTime = 0;
+    });
+    const top = rising.length > 0 ? input.getBoundingClientRect().top : null;
+    rising.forEach((animation) => animation.finish());
+    return top;
+  });
+  expect(risingFrom).not.toBeNull();
+  expect(Math.abs(risingFrom! - fieldTop)).toBeLessThan(2);
+  const keyboardTop = await showKeyboard(page);
+  await searchBox.fill("浅草寺");
+  await searchBox.press("Enter");
+  const list = settings.getByRole("list", { name: "地点の候補" });
+  await expect(list).toBeVisible();
+  const box = (await searchBox.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(keyboardTop);
+  const choice = list.getByRole("button", { name: new RegExp(`${candidate.name}\\b`) });
+  // 一覧の下端まで送る（中ほどへ送ると、一覧の下端がキーボードの裏にあっても見えてしまう）。
+  await choice.evaluate((element) => element.scrollIntoView({ block: "end" }));
+  const choiceBox = (await choice.boundingBox())!;
+  expect(choiceBox.y).toBeGreaterThan(box.y + box.height);
+  expect(choiceBox.y + choiceBox.height).toBeLessThanOrEqual(keyboardTop);
+  await choice.click();
+
+  await expect(settings.getByRole("button", { name: `目的地: ${candidate.name}` })).toBeVisible();
+  await expect(page.getByRole("img", { name: "目的地", exact: true })).toHaveCount(1);
+});
+
+// ルートを収める余白は、地図の上に重ねた部品が覆う幅を含む（含まないと、ルートの端が操作列の下に隠れる）。
+// 余白はMapLibreへ渡した値をデバッグログで読み、覆う幅は部品を名前で探して実寸で測る——余白を決めた側の印とは
+// 別の入力で確かめる。
+test("ルートを収めるとき、地図の上の操作部品が覆う所へルートの端を置かない", async ({ page }) => {
   const fit: { padding?: Record<"top" | "bottom" | "left" | "right", number> } = {};
   page.on("console", async (message) => {
     if (!message.text().includes("[map:viewport] ルートを収める")) return;
     Object.assign(fit, await message.args()[1]?.jsonValue());
   });
   await installApiMocks(page);
-  // 一覧が上の操作部品より深く地図を覆う件数。
-  const candidates = Array.from({ length: 5 }, (_, i) => ({
-    kind: "address",
-    level: "block",
-    name: `東京都千代田区丸の内一丁目${i + 1}番`,
-    latitude: 35.681,
-    longitude: 139.767,
-  }));
-  await page.route("**/api/place-search*", (route) => route.fulfill({ json: { candidates } }));
   await seedStoredState(page, { "ridecompass:debug-enabled": "1" });
   await page.goto("/");
   await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
-  await page.getByRole("searchbox", { name: "住所・施設で探す" }).fill("丸の内");
-  await page.getByRole("searchbox", { name: "住所・施設で探す" }).press("Enter");
-  const list = page.getByRole("list", { name: "地点の候補" });
-  await expect(list).toBeVisible();
   await runGeneration(page);
   await expect.poll(() => fit.padding, { timeout: 10_000 }).toBeDefined();
 
@@ -285,15 +300,13 @@ test("ルートを収めるとき、地図の上の操作部品が覆う所へ�
     return boxes.filter((box) => box !== null);
   };
   const depths = {
-    right: (await covers(/^(拡大|縮小|走行方位を設定|現在地に移動)$/)).map((box) => canvas.x + canvas.width - box.x),
-    top: (await covers(/^(地図の色分け:|地図に出す情報$)/)).map((box) => box.y + box.height - canvas.y),
+    right: (await covers(/^(拡大|縮小|地図の向き|現在地に移動)$/)).map((box) => canvas.x + canvas.width - box.x),
+    top: (await covers(/^(評価で塗る:|地図に出す情報$)/)).map((box) => box.y + box.height - canvas.y),
   };
   for (const [edge, values] of Object.entries(depths) as [keyof typeof depths, number[]][]) {
     expect(values.length, `${edge}の辺を覆う部品が見つからない`).toBeGreaterThan(0);
     expect(fit.padding![edge], `${edge}の余白`).toBeGreaterThanOrEqual(Math.max(...values));
   }
-  const listBox = (await list.boundingBox())!;
-  expect(fit.padding!.top, "一覧の下まで空けている").toBeLessThan(listBox.y + listBox.height - canvas.y);
 });
 
 // 地図の上で始めたピンチは、ページではなく地図を拡大する（パターン4 観点2）。地図のcanvas以外の部品から
@@ -304,7 +317,8 @@ test.describe("タッチ端末", () => {
   test.use({ viewport: MOBILE_VIEWPORT, isMobile: true, hasTouch: true });
 
   // 地図のズームはデバッグログの"zoomend"で読む。
-  test("地図の上で始めたピンチは、ページではなく地図を拡大する", async ({ page }) => {
+  test("地図の上で始めたピンチは、ページではなく地図を拡大する", async ({ page, browserName }) => {
+    test.skip(browserName !== "chromium", "2本指のタッチはCDP（Chromiumだけの口）でしか送れない");
     const zoomEnds: string[] = [];
     page.on("console", (message) => {
       if (message.text().includes("[map:viewport] zoomend")) zoomEnds.push(message.text());

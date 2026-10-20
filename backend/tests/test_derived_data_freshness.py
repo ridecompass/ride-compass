@@ -28,11 +28,8 @@ from datetime import datetime, timezone
 DERIVED = derived_tables()
 
 
-def on_postgis(test):
-    """DBで確かめるテストにだけ付ける。ほかのテストはDBの無い環境でも走る。"""
-    for mark in (pytest.mark.asyncio(loop_scope="module"), pytest.mark.xdist_group(name="postgis"), pytest.mark.postgis):
-        test = mark(test)
-    return test
+#: DBで確かめるテストにだけ付ける（接続とイベントループをファイルで共有する。testing-backend.md パターン2）。
+on_postgis = pytest.mark.asyncio(loop_scope="module")
 
 
 # --- 対象の導出 -------------------------------------------------------------
@@ -125,14 +122,14 @@ async def test_作り直した直後は値や行の無い道と区間があっ�
     await ingest_records(Source.OSM_WAY, [
         way_record(way_id, [points[n] for n in nodes], nodes) for way_id, nodes in ((100, [1, 2]), (200, [3, 4]))])
     await ingest_records(Source.ABR, [abr_prefecture_record("130001", "東京都", *points[1])])
-    assert await derive_cli.run(postgis_database_url(), None) == 0
+    assert await derive_cli.run(postgis_database_url()) == 0
 
     report = await _report(road_graph_session)
 
     tables = {table.table_name: table for table in report.tables}
-    nulls = {column.column: column.null_count for column in tables[derived_models.EdgeMaterialRow.__tablename__].columns}
-    # 前提: 道200は道1本の表に行が無く、道100の区間は標高も土地被覆も持たない。
-    assert tables[derived_models.WayMaterialRow.__tablename__].row_count == 1
-    assert (nulls["start_elevation_m"], nulls["lc_valid_pixels"]) == (1, 1)
+    # 前提: 道200は道の表に行が無く、道100の区間は標高も土地被覆も持たない。
+    assert tables[derived_models.RoadWayRow.__tablename__].row_count == 1
+    assert (tables[derived_models.EdgeElevationRow.__tablename__].row_count,
+            tables[derived_models.EdgeLandcoverRow.__tablename__].row_count) == (0, 0)
     assert [source.source for source in report.sources if source.needs_rebuild] == []
     assert [table.table_name for table in report.tables if table.needs_rebuild] == []

@@ -1,30 +1,41 @@
 /**
  * `maplibre-gl` の代役。地図の部品を本物で描くテストが、描画の手前（WebGL を要する所）で差し替えるのに使う
- * （docs/conventions/testing.md「確かめる高さ」の境界の表の「テスト環境に無いブラウザの機能」）。
+ * （.claude/rules/testing-frontend.md「確かめる高さ（frontend）」の境界の表の「テスト環境に無いブラウザの機能」）。
  *
  * 代役は MapLibre の振る舞いを真似ず、受けたものを記録して返すだけにする:
  * - ソース・レイヤー・地物の状態は `mapTrace/recordingMap.ts` へ記録し、`MapOnScreen` から読む。
  * - 印（`Marker`）とポップアップ（`Popup`）は、渡された要素を地図の器へ置く（画面の問い合わせで引ける）。
- * - カメラの操作（`fitBounds`）とスタイルの取り直し（`setStyle`）は、引数を残す。
+ * - カメラの操作（`fitBounds`）とスタイルの取り直し（`setStyle`）は、引数を残す。向き（`setBearing`・`easeTo` の `bearing`）と
+ *   倍率（`zoomIn`・`zoomOut`）は、受けた値をそのまま今の値にする（動きの途中は無い）。向きが変わったら "rotate" だけを出す。
  * - `addProtocol` で登録された受け手は、`protocolHandler` で引ける（テストが要求を渡して呼ぶ）。
- * - 出来事（"load"・"click" 等）は自分では起こさず、テストが `MapOnScreen` で起こす。押した所に描かれている地物も、
+ * - 出来事（"load"・"click" 等）は、上の "rotate" のほかは自分では起こさず、テストが `MapOnScreen` で起こす。押した所に描かれている地物も、
  *   テストが渡したものを返す。
  *
  * `vi.mock` は import より先へ巻き上げられるため、`vi.mock("maplibre-gl", () => import("@/testing/maplibre"))` の形で置く。
  */
 import type { Coordinates } from "@/types/route";
 
-import { createRecordingMap, type StyleLayer } from "./mapTrace/recordingMap";
+import { createRecordingMap, type RecordingMap, type StyleLayer } from "./mapTrace/recordingMap";
 
 type Handler = (event: Record<string, unknown>) => void;
 type Listener = { readonly type: string; readonly layerId?: string; readonly handler: Handler; readonly once: boolean };
 type LngLat = { lng: number; lat: number };
+
+/** 見えている範囲（経度・緯度）。 */
+export interface ViewBounds {
+  readonly west: number;
+  readonly south: number;
+  readonly east: number;
+  readonly north: number;
+}
 
 /** 押した所に描かれている地物。`layer` は描いているレイヤーの id。 */
 export interface PointedFeature {
   readonly layer: string;
   readonly properties: Record<string, unknown>;
   readonly geometry?: GeoJSON.Geometry;
+  /** 地物の feature-state。MapLibre は押した所の地物にいつも付けて返す（載せていなければ空）。 */
+  readonly state?: Record<string, unknown>;
 }
 
 function toLngLat(value: readonly [number, number] | LngLat): LngLat {
@@ -73,7 +84,12 @@ class Evented {
 }
 
 function asRendered(feature: PointedFeature) {
-  return { layer: { id: feature.layer }, properties: feature.properties, geometry: feature.geometry };
+  return {
+    layer: { id: feature.layer },
+    properties: feature.properties,
+    geometry: feature.geometry,
+    state: feature.state ?? {},
+  };
 }
 
 export class LngLatBounds {
@@ -81,8 +97,6 @@ export class LngLatBounds {
     return this;
   }
 }
-
-export class NavigationControl {}
 
 export class Marker extends Evented {
   readonly element: HTMLElement;
@@ -103,6 +117,14 @@ export class Marker extends Evented {
 
   getLngLat() {
     return this.lngLat;
+  }
+
+  getElement() {
+    return this.element;
+  }
+
+  setRotation() {
+    return this;
   }
 
   setDraggable(draggable: boolean) {
@@ -159,6 +181,7 @@ const STYLE_OPERATIONS = [
   "getLayer",
   "getSource",
   "hasImage",
+  "addImage",
   "addSource",
   "removeSource",
   "addLayer",
@@ -169,23 +192,28 @@ const STYLE_OPERATIONS = [
   "setFilter",
   "setFeatureState",
   "removeFeatureState",
+  "setGlobalStateProperty",
 ] as const;
 
 const drawn: StandInMap[] = [];
 
 class StandInMap extends Evented {
   readonly markers = new Set<Marker>();
-  readonly fits: unknown[] = [];
   readonly styles: string[];
-  readonly content: ReturnType<typeof createRecordingMap>["handle"];
+  readonly content: RecordingMap;
   private readonly container: HTMLElement;
   private readonly canvas: HTMLCanvasElement;
-  private readonly zoom: number;
+  private zoom: number;
+  private bearing = 0;
+  private bounds: ViewBounds | null = null;
   private pointed: readonly PointedFeature[] = [];
+  // 手ぶりの入切は、代役では指の操作が無いので受けるだけにする。
+  readonly touchZoomRotate = { disableRotation() {}, enableRotation() {} };
+  readonly touchPitch = { disable() {}, enable() {} };
 
   constructor(options: { container: HTMLElement; style: string; zoom: number }) {
     super();
-    const { map, handle } = createRecordingMap({ styleReady: false });
+    const { map, handle } = createRecordingMap();
     Object.assign(this, Object.fromEntries(STYLE_OPERATIONS.map((name) => [name, map[name]])));
     this.content = handle;
     this.container = options.container;
@@ -213,8 +241,33 @@ class StandInMap extends Evented {
     return this.zoom;
   }
 
+  zoomIn() {
+    this.zoom += 1;
+    return this;
+  }
+
+  zoomOut() {
+    this.zoom -= 1;
+    return this;
+  }
+
+  /** テストが範囲を置くまでは、範囲の無い地図（MapLibre が範囲を求められないとき）として null を返す。 */
   getBounds() {
-    return null;
+    const bounds = this.bounds;
+    if (bounds === null) return null;
+    return {
+      getWest: () => bounds.west,
+      getSouth: () => bounds.south,
+      getEast: () => bounds.east,
+      getNorth: () => bounds.north,
+    };
+  }
+
+  /** 範囲と倍率を置き、動き終わった（"moveend"）ことを出す。 */
+  moveTo(bounds: ViewBounds, zoom: number) {
+    this.bounds = bounds;
+    this.zoom = zoom;
+    this.fire("moveend", {});
   }
 
   addControl() {
@@ -229,8 +282,32 @@ class StandInMap extends Evented {
     return this;
   }
 
-  fitBounds(_bounds: LngLatBounds, options: unknown) {
-    this.fits.push(options);
+  easeTo(options: { bearing?: number } = {}) {
+    if (options.bearing !== undefined) this.turn(options.bearing, {});
+    return this;
+  }
+
+  setBearing(bearing: number) {
+    this.turn(bearing, {});
+    return this;
+  }
+
+  /** 向きを変え、変わったら MapLibre と同じく "rotate" を出す。`event` は出来事の中身。 */
+  turn(bearing: number, event: Record<string, unknown>) {
+    if (bearing === this.bearing) return;
+    this.bearing = bearing;
+    this.fire("rotate", event);
+  }
+
+  getBearing() {
+    return this.bearing;
+  }
+
+  isZooming() {
+    return false;
+  }
+
+  fitBounds() {
     return this;
   }
 
@@ -255,12 +332,13 @@ class StandInMap extends Evented {
   }
 
   remove() {
-    drawn.splice(drawn.indexOf(this), 1);
+    const index = drawn.indexOf(this);
+    if (index !== -1) drawn.splice(index, 1);
   }
 
-  /** テストが起こす出来事。 */
-  emit(type: string) {
-    this.fire(type);
+  /** テストが起こす出来事。`event` は出来事の中身（利用者の操作なら `originalEvent` を持たせる）。 */
+  emit(type: string, event: Record<string, unknown> = {}) {
+    this.fire(type, event);
   }
 
   /** `lngLat` を押す。`features` はそこに描かれている地物で、無い・隠したレイヤーのものは渡せない（MapLibre は返さない）。 */
@@ -295,8 +373,8 @@ export function setWorkerUrl() {}
 
 /** いま描かれている地図。 */
 export interface MapOnScreen {
-  /** 出来事を起こす（"load"・"style.load" 等）。 */
-  emit(type: string): void;
+  /** 出来事を起こす（"load"・"style.load" 等）。`event` は出来事の中身。 */
+  emit(type: string, event?: Record<string, unknown>): void;
   /** スタイルを読み込んだ状態にする（`layers` はスタイルが最初から持つレイヤー。undefined なら読み込み中）。 */
   loadStyle(layers: readonly StyleLayer[] | undefined): void;
   /** `lngLat` を押す。`features` はそこに描かれている地物。 */
@@ -307,41 +385,46 @@ export interface MapOnScreen {
   sourceFeatures(sourceId: string): GeoJSON.Feature[];
   /** 地図に置いた印。 */
   markers(): { coordinates: Coordinates; draggable: boolean; element: HTMLElement }[];
-  /** 範囲を収めたときの指定（余白等。古い順）。 */
-  readonly fits: readonly unknown[];
   /** 求めたスタイル（最初の1つと、取り直しの分）。 */
   readonly styles: readonly string[];
-}
-
-/** ソースへ最後に渡された中身（作ったときの宣言の `data` か、そのあとの `setData`）。消えていれば undefined。 */
-function lastData(trace: StandInMap["content"]["trace"], sourceId: string): unknown {
-  for (const { call, args } of [...trace].reverse()) {
-    if (call === "__styleReplaced") return undefined;
-    if (args[0] !== sourceId) continue;
-    if (call === "setData") return args[1];
-    if (call === "addSource") return (args[1] as { data?: unknown }).data;
-    if (call === "removeSource") return undefined;
-  }
-  return undefined;
+  /** いまの倍率。 */
+  zoom(): number;
+  /** いまの向き（真北0・時計回りの度）。 */
+  bearing(): number;
+  /** 利用者が地図を指で回す（向きを変えて "rotate" を出す）。 */
+  rotateByHand(bearing: number): void;
+  /** 利用者が地図を動かす（範囲と倍率を置いて "moveend" を出す）。 */
+  moveTo(bounds: ViewBounds, zoom: number): void;
+  /** 地物の状態（`setFeatureState` で載せたもの）。 */
+  featureState(sourceId: string, featureId: string): Record<string, unknown> | undefined;
+  /** レイヤーの今の塗りの宣言。無いレイヤーは undefined。 */
+  layerPaint(layerId: string): Record<string, unknown> | undefined;
 }
 
 export function mapOnScreen(): MapOnScreen {
   const map = drawn.at(-1);
   if (map === undefined) throw new Error("地図が描かれていない");
   return {
-    emit: (type) => map.emit(type),
+    emit: (type, event) => map.emit(type, event),
     loadStyle: (layers) => map.content.loadStyle(layers),
     click: (lngLat, features = []) => map.click(lngLat, features),
     visibleLayerIds: () => map.content.layerOrder().filter((id) => map.content.layer(id)?.visibility !== "none"),
     sourceFeatures: (sourceId) =>
-      (lastData(map.content.trace, sourceId) as GeoJSON.FeatureCollection | undefined)?.features ?? [],
+      (map.content.sourceContent(sourceId)?.data as GeoJSON.FeatureCollection | undefined)?.features ?? [],
     markers: () =>
       [...map.markers].map((marker) => ({
         coordinates: { latitude: marker.getLngLat().lat, longitude: marker.getLngLat().lng },
         draggable: marker.draggable,
         element: marker.element,
       })),
-    fits: map.fits,
     styles: map.styles,
+    zoom: () => map.getZoom(),
+    bearing: () => map.getBearing(),
+    rotateByHand: (bearing) => {
+      map.turn(bearing, { originalEvent: new Event("touchmove") });
+    },
+    moveTo: (bounds, zoom) => map.moveTo(bounds, zoom),
+    featureState: (sourceId, featureId) => map.content.featureState(sourceId, featureId),
+    layerPaint: (layerId) => map.content.layer(layerId)?.paint,
   };
 }

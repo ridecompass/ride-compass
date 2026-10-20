@@ -18,11 +18,10 @@ const START = new Date("2026-10-04T01:30:00Z");
 const LOOP: GenerationInput = {
   origin: { latitude: 35.68, longitude: 139.77 },
   distanceKm: 40,
-  distanceToleranceKm: 5,
   maxRoutes: 3,
   assumedSpeedKmh: 22,
   startTime: START,
-  hardFilters: { exclude_a: true, exclude_b: false },
+  roadAvoidance: { "layer.row_a": "avoid", "layer.row_b": "pass" },
   routePreference: null,
   waypoints: [],
   destination: null,
@@ -30,20 +29,19 @@ const LOOP: GenerationInput = {
 };
 
 describe("buildGenerateRequest", () => {
-  it("周回では、地点・目標距離・幅・除外・候補数・速度・出発時刻を送り、値の無い項目は載せない", () => {
+  it("地点を置かなければ、出発地・目標距離・避け方・候補数・速度・出発時刻を送り、値の無い項目は載せない", () => {
     expect(buildGenerateRequest(LOOP)).toEqual({
       latitude: 35.68,
       longitude: 139.77,
       distance_km: 40,
-      distance_tolerance_km: 5,
-      hard_filters: { exclude_a: true, exclude_b: false },
+      road_avoidance: { "layer.row_a": "avoid", "layer.row_b": "pass" },
       max_routes: 3,
       assumed_speed_kmh: 22,
       start_time: "2026-10-04T01:30:00.000Z",
     });
   });
 
-  it("目標距離が無ければ（経由地・目的地を置いたとき）距離を載せず、経由地と目的地を送る", () => {
+  it("目標距離が無ければ距離を載せず、置いた経由地と目的地を送る", () => {
     const waypoints = [
       { latitude: 35.7, longitude: 139.8 },
       { latitude: 35.71, longitude: 139.81 },
@@ -68,8 +66,8 @@ describe("buildGenerateRequest", () => {
 describe("generationConditionsKey", () => {
   const key = (overrides: Partial<GenerationInput>) => generationConditionsKey({ ...LOOP, ...overrides });
 
-  it("送る値（除外）が変われば、キーが変わる", () => {
-    expect(key({ hardFilters: { exclude_a: false, exclude_b: false } })).not.toBe(key({}));
+  it("送る値（避け方）が変われば、キーが変わる", () => {
+    expect(key({ roadAvoidance: { "layer.row_a": "exclude", "layer.row_b": "pass" } })).not.toBe(key({}));
   });
 
   it("出発時刻は、利用者が選んだときだけ比べる", () => {
@@ -78,9 +76,12 @@ describe("generationConditionsKey", () => {
     expect(key({ startTime: later, startTimePinned: true })).not.toBe(key({ startTimePinned: true }));
   });
 
-  it("除外・重みの項目の並びが違うだけなら、キーは変わらない", () => {
+  it("避け方・重みの項目の並びが違うだけなら、キーは変わらない", () => {
     expect(
-      key({ hardFilters: { exclude_b: false, exclude_a: true }, routePreference: { slope: 0.6, wind: 0.4 } }),
+      key({
+        roadAvoidance: { "layer.row_b": "pass", "layer.row_a": "avoid" },
+        routePreference: { slope: 0.6, wind: 0.4 },
+      }),
     ).toBe(key({ routePreference: { wind: 0.4, slope: 0.6 } }));
   });
 

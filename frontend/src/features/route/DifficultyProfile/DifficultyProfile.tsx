@@ -1,17 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useMemo, type ReactNode } from "react";
 
+import ProfileChart, { PROFILE_VIEW_HEIGHT, useProfileScale } from "@/features/route/ProfileChart/ProfileChart";
 import palette from "@/types/generated/palette.json";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 
-import { columnAtKm, pointAlongSegment, profileBoxes, profileColumns, type ProfileBox } from "./profileGeometry";
-
-/** 描画の座標。横は距離を`VIEW_WIDTH`へ、縦は難易度0〜100をそのまま使い、枠いっぱいへ伸ばす。 */
-const VIEW_WIDTH = 1000;
-const VIEW_HEIGHT = 100;
-/** 矢印キー1回で動く距離（全長に対する割合）。 */
-const KEY_STEP_RATIO = 0.01;
+import { columnAtKm, profileBoxes, type ProfileBox } from "./profileGeometry";
 
 interface DifficultyProfileProps {
   segments: readonly RouteSegmentDetail[];
@@ -23,22 +18,28 @@ interface DifficultyProfileProps {
   /** 横軸の右端の距離。一覧の中で最も長い候補の距離にすると、候補どうしで面積（負荷）を見比べられる。 */
   scaleKm: number;
   selected: SelectedRouteSegment | null;
-  onSelect: (selection: SelectedRouteSegment) => void;
+  /** なぞる・押して離すと、その地点の区間を選ぶ。無ければ押せない見るだけの図にする。 */
+  onSelect?: (selection: SelectedRouteSegment) => void;
+  /** 走行中の現在地のルートの上の距離。印を引き、始点からそこまでを走り終えた区間として薄める。 */
+  progressKm?: number | null;
+  /** 置いた経由地を通る所のルートの上の距離（置いた順）。 */
+  waypointKms: readonly number[];
+  /** 走行中の地図の下の図。目盛りの文字を大きくする。 */
+  riding?: boolean;
+  /** 図の下の1行。区間を選んでいれば、その地点の距離を受け取る。 */
+  caption?: (pointKm: number | null) => ReactNode;
 }
 
 function boxesPath(boxes: readonly ProfileBox[], xOf: (km: number) => number): string {
   return boxes
     .map(
       (box) =>
-        `M${xOf(box.startKm)} ${VIEW_HEIGHT - box.top}H${xOf(box.endKm)}V${VIEW_HEIGHT - box.bottom}H${xOf(box.startKm)}Z`,
+        `M${xOf(box.startKm)} ${PROFILE_VIEW_HEIGHT - box.top}H${xOf(box.endKm)}V${PROFILE_VIEW_HEIGHT - box.bottom}H${xOf(box.startKm)}Z`,
     )
     .join("");
 }
 
-/** 道のりに沿った難易度。横が距離、縦が区間ごとの難易度で、塗った面積がルートの負荷になる。1本の指（マウス）で
- * なぞるか押して離すと、その距離の地点を選ぶ（地図に印が出て、下にその区間の詳細が出る）。**押しただけでは選ばず、
- * 途中で2本目の指が触れた操作は選択にしない**——グラフの上で始めたピンチ（拡大しようとした操作）で区間が選ばれ、
- * 表示が区間の詳細へ切り替わらないようにする。 */
+/** 道のりに沿った難易度。横が距離、縦が区間ごとの難易度で、塗った面積がルートの負荷になる。 */
 export default function DifficultyProfile({
   segments,
   overallDifficulty,
@@ -47,147 +48,48 @@ export default function DifficultyProfile({
   scaleKm,
   selected,
   onSelect,
+  progressKm = null,
+  waypointKms,
+  riding = false,
+  caption,
 }: DifficultyProfileProps) {
-  const [scrubKm, setScrubKm] = useState<number | null>(null);
-  // グラフに触れている指（ポインター）と、いまの操作に2本目が加わったか。
-  const gesture = useRef<{ pointers: Set<number>; multi: boolean }>({ pointers: new Set(), multi: false });
-  // 画面のどこかに触れている指。2本目はグラフの外に触れることがあり、グラフのポインターだけでは数えられない
-  // （タッチイベントの指の数は、グラフのpointermoveより後に届くので間に合わない）。
-  const screenPointers = useRef<Set<number>>(new Set());
-  useEffect(() => {
-    const pointers = screenPointers.current;
-    const down = (event: globalThis.PointerEvent) => {
-      pointers.add(event.pointerId);
-      if (pointers.size > 1 && gesture.current.pointers.size > 0) gesture.current.multi = true;
+  const scale = useProfileScale(segments, scaleKm);
+  // 塗る形はルートと横軸が変わったときだけ組む（なぞる間に動くのは、カーソルの線と選んだ区間の帯だけ）。
+  const paths = useMemo(() => {
+    const { byAxis, missing } = profileBoxes(scale.columns, axisOrder, overallDifficulty);
+    return {
+      missing: missing.length > 0 ? boxesPath(missing, scale.xOf) : null,
+      byAxis: axisOrder.flatMap((axisId) => {
+        const boxes = byAxis.get(axisId) ?? [];
+        return boxes.length === 0 ? [] : [{ axisId, d: boxesPath(boxes, scale.xOf) }];
+      }),
+      boxes: [...missing, ...[...byAxis.values()].flat()],
     };
-    const up = (event: globalThis.PointerEvent) => pointers.delete(event.pointerId);
-    window.addEventListener("pointerdown", down, true);
-    window.addEventListener("pointerup", up, true);
-    window.addEventListener("pointercancel", up, true);
-    return () => {
-      window.removeEventListener("pointerdown", down, true);
-      window.removeEventListener("pointerup", up, true);
-      window.removeEventListener("pointercancel", up, true);
-    };
-  }, []);
-  const columns = profileColumns(segments);
-  const routeKm = columns.length === 0 ? 0 : columns[columns.length - 1].endKm;
-  const widthKm = Math.max(scaleKm, routeKm);
-  if (routeKm <= 0 || widthKm <= 0) return null;
-
-  const xOf = (km: number) => Math.round((km / widthKm) * VIEW_WIDTH * 100) / 100;
-  const { byAxis, missing } = profileBoxes(columns, axisOrder, overallDifficulty);
-  const selectedColumn = selected === null ? undefined : columns.find((column) => column.segment === selected.segment);
-  // 自分で動かした地点がいま選ばれている区間の中にあるときだけ線を引く（地図で区間を押したときは区間の帯だけ）。
-  const cursorKm =
-    selectedColumn !== undefined &&
-    scrubKm !== null &&
-    scrubKm >= selectedColumn.startKm &&
-    scrubKm <= selectedColumn.endKm
-      ? scrubKm
-      : null;
-
-  function selectAt(km: number) {
-    // 横軸が候補より長いとき、候補の終わりより右は終点として選び、線も終点に引く。
-    const clamped = Math.min(routeKm, Math.max(0, km));
-    const hit = columnAtKm(columns, clamped);
-    if (hit === null) return;
-    const [longitude, latitude] = pointAlongSegment(hit.column.segment, hit.fraction);
-    setScrubKm(clamped);
-    onSelect({ segment: hit.column.segment, latitude, longitude });
-  }
-
-  function kmAtPointer(event: PointerEvent<SVGSVGElement>): number {
-    const rect = event.currentTarget.getBoundingClientRect();
-    return rect.width > 0 ? ((event.clientX - rect.left) / rect.width) * widthKm : 0;
-  }
-
-  function handleKeyDown(event: KeyboardEvent<SVGSVGElement>) {
-    const current = cursorKm ?? selectedColumn?.startKm ?? 0;
-    const step = routeKm * KEY_STEP_RATIO;
-    const next =
-      event.key === "ArrowRight"
-        ? current + step
-        : event.key === "ArrowLeft"
-          ? current - step
-          : event.key === "Home"
-            ? 0
-            : event.key === "End"
-              ? routeKm
-              : null;
-    if (next === null) return;
-    event.preventDefault();
-    selectAt(next);
-  }
+  }, [scale, axisOrder, overallDifficulty]);
+  // 現在地の印は、その距離の柱の上端に置く。
+  const progressColumn = progressKm === null ? null : columnAtKm(scale.columns, progressKm);
+  const progressTops = paths.boxes
+    .filter((box) => box.startKm === progressColumn?.column.startKm)
+    .map((box) => box.top);
+  const progressMarkY = progressTops.length === 0 ? null : PROFILE_VIEW_HEIGHT - Math.max(...progressTops);
 
   return (
-    <div className="flex flex-col gap-0.5">
-      <svg
-        viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
-        preserveAspectRatio="none"
-        // 押したまま横へ動かす操作をシートのスクロール・スワイプへ渡さない。
-        className="h-14 w-full cursor-crosshair touch-none rounded-sm bg-[var(--color-surface-2)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
-        role="slider"
-        tabIndex={0}
-        aria-label="道のりに沿った難易度（動かすと、その地点を地図に出す）"
-        data-usage="横が道のり、縦がその区間の難易度で、塗った面積がルートの負荷です。なぞるか押して離すと、その地点を地図に印で出し、下にその区間の詳細を出します。"
-        aria-valuemin={0}
-        aria-valuemax={Math.round(routeKm * 10) / 10}
-        aria-valuenow={Math.round((cursorKm ?? selectedColumn?.startKm ?? 0) * 10) / 10}
-        aria-valuetext={`${(cursorKm ?? selectedColumn?.startKm ?? 0).toFixed(1)} km地点`}
-        onPointerDown={(event) => {
-          event.currentTarget.setPointerCapture?.(event.pointerId);
-          gesture.current.pointers.add(event.pointerId);
-          if (gesture.current.pointers.size > 1 || screenPointers.current.size > 1) gesture.current.multi = true;
-        }}
-        onPointerMove={(event) => {
-          if (event.buttons === 0 || gesture.current.multi || !gesture.current.pointers.has(event.pointerId)) return;
-          selectAt(kmAtPointer(event));
-        }}
-        onPointerUp={(event) => {
-          if (!gesture.current.multi && gesture.current.pointers.has(event.pointerId)) selectAt(kmAtPointer(event));
-          gesture.current.pointers.delete(event.pointerId);
-          if (gesture.current.pointers.size === 0) gesture.current.multi = false;
-        }}
-        onPointerCancel={(event) => {
-          gesture.current.pointers.delete(event.pointerId);
-          if (gesture.current.pointers.size === 0) gesture.current.multi = false;
-        }}
-
-        onKeyDown={handleKeyDown}
-      >
-        {selectedColumn !== undefined && (
-          <rect
-            x={xOf(selectedColumn.startKm)}
-            y={0}
-            width={Math.max(xOf(selectedColumn.endKm) - xOf(selectedColumn.startKm), 2)}
-            height={VIEW_HEIGHT}
-            fill={palette.semantic.inspected}
-            opacity={0.25}
-          />
-        )}
-        {missing.length > 0 && <path d={boxesPath(missing, xOf)} fill={palette.semantic.no_data} opacity={0.6} />}
-        {axisOrder.map((axisId) => {
-          const boxes = byAxis.get(axisId) ?? [];
-          if (boxes.length === 0) return null;
-          return <path key={axisId} d={boxesPath(boxes, xOf)} fill={axisColors[axisId] ?? palette.semantic.no_data} />;
-        })}
-        {cursorKm !== null && (
-          <line
-            x1={xOf(cursorKm)}
-            x2={xOf(cursorKm)}
-            y1={0}
-            y2={VIEW_HEIGHT}
-            stroke={palette.semantic.inspected}
-            strokeWidth={2}
-            vectorEffect="non-scaling-stroke"
-          />
-        )}
-      </svg>
-      <div className="flex justify-between text-[length:var(--font-size-xs)] text-[var(--color-muted)] tabular-nums">
-        <span>0</span>
-        <span>{widthKm.toFixed(1)}km</span>
-      </div>
-    </div>
+    <ProfileChart
+      scale={scale}
+      label="道のりに沿った難易度"
+      usage="横が道のり、縦がその区間の難易度で、塗った面積がルートの負荷です。なぞるか押して離すと、その地点を地図に印で出し、下にその区間の詳細を出します。"
+      selected={selected}
+      onSelect={onSelect}
+      progressKm={progressKm}
+      progressMarkY={progressMarkY}
+      waypointKms={waypointKms}
+      riding={riding}
+      caption={caption}
+    >
+      {paths.missing !== null && <path d={paths.missing} fill={palette.semantic.no_data} opacity={0.6} />}
+      {paths.byAxis.map(({ axisId, d }) => (
+        <path key={axisId} d={d} fill={axisColors[axisId] ?? palette.semantic.no_data} />
+      ))}
+    </ProfileChart>
   );
 }

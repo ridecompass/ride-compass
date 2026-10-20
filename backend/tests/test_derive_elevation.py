@@ -1,4 +1,4 @@
-"""標高の取込（`gsi_dem_tile`）と派生（`derive_raster_materials.derive`の標高の段）。
+"""標高の取込（`gsi_dem_tile`）と派生（`derive_elevation.derive`）。
 
 手元へ写したタイル（置き場は一時ディレクトリ）から取り込み、区間の標高が画素ごとに
 配信元の定める順で採られることを見る。配信元の文書:
@@ -7,45 +7,45 @@
 > 写真測量（DEM5B, DEM5C）→1/2.5万地形図等高線（DEM10B）の順で存在する最も計測精度の良い
 > 標高タイルの値が参照され（https://maps.gsi.go.jp/development/hyokochi.html ）
 
-z15のタイルTを4つの区画に分け、製品ごとに値のある区画を変えて置く:
+z15のタイルTを4つの区画に分け、製品ごとに値のある区画を変えて置く（―は欠測）:
 
 | 区画（Tの画素） | dem5a | dem5b | dem（z14） | 採られる値 |
 |---|---|---|---|---|
 | 上・左 | 10 | 20 | 99 | 10（全部にある） |
-| 上・右 | e | 20 | 99 | 20（上位が欠けた画素だけ下位で埋まる） |
-| 下・左 | 10 | e | e | 10 |
-| 下・右の左寄り | e | e | 30 | 30（ズームの違う製品の画素を引ける） |
-| 下・右の右寄り | e | e | e | 無し（どの製品にも無い） |
+| 上・右 | ― | 20 | 99 | 20（上位が欠けた画素だけ下位で埋まる） |
+| 下・左 | 10 | ― | ― | 10 |
+| 下・右の左寄り | ― | ― | 30 | 30（ズームの違う製品の画素を引ける） |
+| 下・右の右寄り | ― | ― | ― | 無し（どの製品にも無い） |
 
 製品ごとのタイルがそれぞれ1行に入ることは、別々の製品から採る区画の値が見る。
+
+取込の記録には、読んだタイルの配信元での最終更新のうち一番新しいものが残る。製品ごとに時刻を変えて置き、
+一番新しいものが最初の製品でも最後の製品でもない形にする——どれか1つの製品の時刻を書くと、手元の標高が配信元の
+いつ時点までの更新を含むかを読み違える。
 
 ここで見ないもの:
 - 橋・トンネルとみなすタグの値の一つずつ——値の並びは`domain/material_sql.py`が持ち、ここは橋と
   トンネルの1つずつだけを通す
 - 橋・トンネルの区間の勾配の出し方 → `test_elevation_values.py`
-- 1枚の本文を画素の順に詰めること → `test_gsi_dem_tile.py`
 """
 
 from dataclasses import replace
+from datetime import datetime, timezone
 
 import asyncpg
 import pytest
 import pytest_asyncio
 
-from app.batch import dem_tile_store, derive_raster_materials, derive_topology
+from app.batch import dem_tile_store, derive_elevation, derive_topology
 from app.batch.ingest import ingest_source
 from app.batch.source_profile import Target, load_source_profile
 from app.domain.region import tile_bounds_lonlat
 from tests.conftest import empty_ingested_tables
-from tests.source_ingest import ingest_records, way_record
+from tests.source_ingest import gsi_dem_png, ingest_records, way_record
 
-# road_graph_session（conftest.py）と同じDBを使うため、docs/conventions/testing.mdのパターン2どおり
-# loop_scope="module"・xdist_group="postgis"が必須。
-pytestmark = [
-    pytest.mark.asyncio(loop_scope="module"),
-    pytest.mark.xdist_group(name="postgis"),
-    pytest.mark.postgis,
-]
+# road_graph_session（conftest.py）と同じDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
+# loop_scope="module"が必須。
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 #: タイルT。x・yとも偶数なので、z14の親タイルの左上の4分の1に当たる。
 ZOOM, X, Y = 15, 29100, 12902
@@ -62,11 +62,9 @@ CASES = (
 )
 
 
-def _tile_text(value) -> str:
-    """`value(行, 列)`が返す値（Noneは欠測）で埋めた、配信元と同じ形の本文。"""
-    return "\n".join(
-        ",".join("e" if (v := value(r, c)) is None else f"{v:.2f}" for c in range(SIZE))
-        for r in range(SIZE)) + "\n"
+def _tile_png(value) -> bytes:
+    """`value(行, 列)`が返す値（Noneは欠測）で埋めた、配信元と同じ形の1枚。"""
+    return gsi_dem_png([[value(r, c) for c in range(SIZE)] for r in range(SIZE)])
 
 
 def _dem5a(r, c):
@@ -84,6 +82,14 @@ def _dem10b(pr, pc):
     if 64 <= pr < 128 and 64 <= pc < 96:
         return 30.0
     return None
+
+
+#: 製品ごとのタイルの配信元での最終更新。一番新しいのは`dem5b`。
+MODIFIED = {
+    "dem5a": datetime(2026, 3, 30, tzinfo=timezone.utc),
+    "dem5b": datetime(2026, 4, 2, 1, 30, tzinfo=timezone.utc),
+    "dem": datetime(2025, 2, 13, tzinfo=timezone.utc),
+}
 
 
 def _pixel_center(r: int, c: int) -> tuple[float, float]:
@@ -122,9 +128,9 @@ def _way(way_id: int, pixels, tags: dict[str, str] | None = None):
 def tile_root(tmp_path_factory):
     """手元へ写したタイルの置き場。"""
     root = tmp_path_factory.mktemp("dem")
-    dem_tile_store.write_tile(root, "dem5a", ZOOM, X, Y, _tile_text(_dem5a))
-    dem_tile_store.write_tile(root, "dem5b", ZOOM, X, Y, _tile_text(_dem5b))
-    dem_tile_store.write_tile(root, "dem", *PARENT, _tile_text(_dem10b))
+    dem_tile_store.write_tile(root, "dem5a", ZOOM, X, Y, _tile_png(_dem5a), MODIFIED["dem5a"])
+    dem_tile_store.write_tile(root, "dem5b", ZOOM, X, Y, _tile_png(_dem5b), MODIFIED["dem5b"])
+    dem_tile_store.write_tile(root, "dem", *PARENT, _tile_png(_dem10b), MODIFIED["dem"])
     dem_tile_store.mark_absent(root, "dem5c", ZOOM, X, Y)
     return root
 
@@ -138,16 +144,23 @@ async def elevation_conn(derive_conn, tile_root):
     await ingest_records("osm_way", [_way(way_id, pixels) for way_id, pixels, _ in CASES], conn=conn)
     async with conn.transaction():
         await derive_topology.derive(conn)
-        await derive_raster_materials.derive(conn)
+        await derive_elevation.derive(conn, previous=None)
     return conn
 
 
 async def test_each_pixel_takes_the_most_accurate_product_that_has_a_value(elevation_conn):
     rows = await elevation_conn.fetch(
-        "SELECT osm_way_id, start_elevation_m, end_elevation_m FROM edge_materials"
-        " ORDER BY osm_way_id")
+        "SELECT osm_way_id, start_elevation_m, end_elevation_m"
+        " FROM road_edges LEFT JOIN edge_elevation USING (osm_way_id, segment_index) ORDER BY osm_way_id")
     got = {r["osm_way_id"]: (r["start_elevation_m"], r["end_elevation_m"]) for r in rows}
     assert got == {way_id: (expected, expected) for way_id, _pixels, expected in CASES}
+
+
+async def test_the_run_records_the_newest_last_modified_of_the_tiles_it_read(elevation_conn):
+    stamp = await elevation_conn.fetchval(
+        "SELECT origin ->> 'tiles_last_modified' FROM source_runs"
+        " WHERE source = 'dem' AND status = 'succeeded' ORDER BY run_id DESC LIMIT 1")
+    assert datetime.fromisoformat(stamp) == MODIFIED["dem5b"]
 
 
 async def test_rerun_without_a_product_keeps_no_value_only_that_product_gave(elevation_conn, tile_root):
@@ -156,12 +169,13 @@ async def test_rerun_without_a_product_keeps_no_value_only_that_product_gave(ele
     conn = elevation_conn
 
     async def elevations() -> dict[int, float | None]:
-        rows = await conn.fetch("SELECT osm_way_id, start_elevation_m, average_grade FROM edge_materials")
+        rows = await conn.fetch("SELECT osm_way_id, start_elevation_m, average_grade"
+                                " FROM road_edges LEFT JOIN edge_elevation USING (osm_way_id, segment_index)")
         assert all(r["average_grade"] is None for r in rows if r["start_elevation_m"] is None)
         return {r["osm_way_id"]: r["start_elevation_m"] for r in rows}
 
     async def rerun() -> dict[int, float | None]:
-        await derive_raster_materials.derive(conn)
+        await derive_elevation.derive(conn, previous=None)
         return await elevations()
 
     await _ingest_dem(conn, tile_root, without="dem")
@@ -183,17 +197,18 @@ VALLEY_PIXELS = ((40, 40), (40, 200), (40, 44))
     ({"tunnel": "yes"}, (0.0, 0.0)),
 ])
 async def test_a_bridge_or_tunnel_does_not_climb_the_terrain_under_it(elevation_conn, structure, climb):
-    """浮いた橋・地中のトンネルの区間は、下の地表の起伏を上り下りに数えない。同じ形のタグの無い道は数える。"""
+    """浮いた橋・地中のトンネルの区間は、下の地表の起伏を上り下りに数えない。同じ形のタグの無い道は数える。
+    どちらの区間も、橋かトンネルだったかを値と一緒に持つ（前回の値を使い回してよいかを、形と並べて見分けるため）。"""
     conn = elevation_conn
     await ingest_records("osm_way", [
         *(_way(way_id, pixels) for way_id, pixels, _ in CASES),
         _way(11, VALLEY_PIXELS), _way(12, VALLEY_PIXELS, structure)], conn=conn)
     async with conn.transaction():
         await derive_topology.derive(conn)
-        await derive_raster_materials.derive(conn)
+        await derive_elevation.derive(conn, previous=None)
 
     rows = await conn.fetch(
-        "SELECT osm_way_id, elevation_gain_m, elevation_loss_m FROM edge_materials"
+        "SELECT osm_way_id, elevation_gain_m, elevation_loss_m, on_structure FROM edge_elevation"
         " WHERE osm_way_id IN (11, 12)")
-    assert {r["osm_way_id"]: (r["elevation_gain_m"], r["elevation_loss_m"]) for r in rows} == {
-        11: (10.0, 10.0), 12: climb}
+    assert {r["osm_way_id"]: (r["elevation_gain_m"], r["elevation_loss_m"], r["on_structure"]) for r in rows} == {
+        11: (10.0, 10.0, False), 12: (*climb, True)}

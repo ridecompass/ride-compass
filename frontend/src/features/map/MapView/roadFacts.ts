@@ -1,5 +1,5 @@
 // 地図上の道をクリックしたときに出す「この道の事実」。路面タイルへ焼き込み済みの
-// プロパティだけから作る純関数で、DOM・MapLibre・Reactを知らない。
+// プロパティだけから作る。
 //
 // 値の対訳は生成物（materialCatalog）と点の分類の宣言から引く——
 // 手書きで持つと、同じ値を地図のポップアップと軸スタジオで別の呼び方をすることになる。
@@ -40,9 +40,9 @@ const materialLabel = (materialId: string) => MATERIALS.get(materialId)!.name;
 const valueLabel = (materialId: string, value: string) =>
   (MATERIALS.get(materialId)?.value_labels as Record<string, string> | undefined)?.[value] ?? value;
 
-/** 値の呼び名で出す事実（材料）。**路面の区分は値が無くても「不明」として出す**——
+/** 値の呼び名で出す事実（材料）。**路面の種類は値が無くても「不明」として出す**——
  * どの道でも最初に見たい項目で、行ごと消すと「舗装されていない」と読める。 */
-const ALWAYS_SHOWN_VALUE_MATERIAL = "surface_class";
+const ALWAYS_SHOWN_VALUE_MATERIAL = "surface";
 const VALUE_FACT_MATERIALS = ["tracktype", "smoothness"] as const;
 
 /** 当てはまるときだけ「あり」と出す事実（材料）。タイルのどの属性を読むかは材料の宣言が持つ。 */
@@ -66,14 +66,11 @@ export function roadDisplayName(properties: RoadSurfacePopupProperties): string 
 /** 「項目: 値」の行。**値を持たない項目は行ごと出さない**——「なし」を並べると、
  * 実際に該当する項目が同じ密度の中に埋もれる。 */
 export function roadFactRows(properties: RoadSurfacePopupProperties): RoadFactRow[] {
-  const surfaceClass = tileValue(properties, ALWAYS_SHOWN_VALUE_MATERIAL);
+  const surface = tileValue(properties, ALWAYS_SHOWN_VALUE_MATERIAL);
   const rows: RoadFactRow[] = [
     {
       label: materialLabel(ALWAYS_SHOWN_VALUE_MATERIAL),
-      value:
-        typeof surfaceClass === "string" && surfaceClass
-          ? valueLabel(ALWAYS_SHOWN_VALUE_MATERIAL, surfaceClass)
-          : "不明",
+      value: typeof surface === "string" && surface ? valueLabel(ALWAYS_SHOWN_VALUE_MATERIAL, surface) : "不明",
     },
   ];
   for (const material of VALUE_FACT_MATERIALS) {

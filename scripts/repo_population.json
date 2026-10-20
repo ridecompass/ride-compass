@@ -1,0 +1,9 @@
+{
+  "unmaintained": ["docs/records/"],
+  "scaffold": ["frontend/src/testing/", "frontend/src/structure/"],
+  "generated": "frontend/src/types/generated/",
+  "generatedWithoutNames": ["openapi.json", "api.d.ts"],
+  "nameKey": "label",
+  "nameMinLength": 3,
+  "japanese": "[぀-ヿ㐀-鿿]"
+}

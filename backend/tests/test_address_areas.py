@@ -1,12 +1,12 @@
-"""住所の区画の表（`address_areas`・`address_search_keys`・`address_boundary_links`）を、アドレス・ベース・レジストリと
-e-Stat の小地域の境界の配布の形から作る。
+"""住所の区画の表（`address_areas`・`address_search_keys`・`address_blocks`）を、アドレス・ベース・レジストリと
+街区レベル位置参照情報の配布の形から作る。
 
-入口は取込（`ingest_source`。アダプタ`abr`・`estat_small_area`は本物で、手元の zip を読む）と派生の段
-（`derive_addresses.derive`）。配布の形の小さな見本（ABR の CSV の zip・e-Stat の Shapefile の zip）を置き場に書き、
-表に入った区画・鍵・結び付きを見る。範囲は道路の取込の範囲で、見本の道を範囲の宣言つきで取り込んで決める。
+入口は取込（`ingest_source`。アダプタ`abr`・`isj_block`は本物で、手元の zip を読む）と派生の段
+（`derive_addresses.derive`）。配布の形の小さな見本（ABR の BOM 付きの CSV の zip・位置参照情報の Shift_JIS の CSV の zip）を置き場に
+書き、表に入った区画・鍵・街区を見る。範囲は道路の取込の範囲で、見本の道を範囲の宣言つきで取り込んで決める。
 
 ここで見ないもの:
-- 配布元から手元へ写す取得（`scripts/fetch_abr.py`・`scripts/fetch_estat_small_areas.py`）→ どのテストも通さない
+- 配布元から手元へ写す取得（`scripts/fetch_abr.py`・`scripts/fetch_isj_blocks.py`）→ どのテストも通さない
   （網の向こうを読むだけで、範囲に掛かる都道府県の決め方はアダプタと同じ関数を通る）
 - 表記の揃え方の1つずつ → `test_address_area.py`
 """
@@ -18,28 +18,23 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-import shapefile
 
 from app.batch import derive_addresses
 from app.batch.ingest import ingest_source
-from app.batch.source_adapters import abr, estat_small_area
+from app.batch.source_adapters import abr, isj_block
 from app.domain.address_area import standardize_address
 from app.batch.source_profile import Target, load_source_profile
 from app.infrastructure.source_models import Source
 from tests.conftest import empty_ingested_tables
 from tests.source_ingest import ingest_records, way_record
 
-pytestmark = [
-    pytest.mark.asyncio(loop_scope="module"),
-    pytest.mark.xdist_group(name="postgis"),
-    pytest.mark.postgis,
-]
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 #: 取込の範囲（min_lat, min_lon, max_lat, max_lon）。
 BBOX = (35.40, 139.20, 35.80, 139.80)
 PROFILE = replace(load_source_profile(None), target=Target(bbox=BBOX))
 SNAPSHOT = PROFILE.source(Source.ABR).rows.snapshot
-SURVEY = PROFILE.source(Source.ESTAT_SMALL_AREA).rows.survey
+ISJ_VERSION = PROFILE.source(Source.ISJ_BLOCK).rows.version
 
 # 配布の CSV の見出し（配布のまま）。
 PREF_COLUMNS = "lg_code,pref,pref_kana,pref_roma,efct_date,ablt_date,remarks"
@@ -57,6 +52,15 @@ TOWN_COLUMNS = (
 TOWN_POS_COLUMNS = ("lg_code,machiaza_id,rsdt_addr_flg,rep_lon,rep_lat,rep_srid,rep_scale,rep_src_code,plygn_fname,"
                     "plygn_kcode,plygn_fmt,plygn_srid,plygn_scale,plygn_src_code,pos_oaza_cho_chome_code,"
                     "pos_data_mnt_year,cns_bnd_s_area_kcode,cns_bnd_year")
+
+BLOCK_COLUMNS = ("lg_code,machiaza_id,blk_id,city,ward,oaza_cho,chome,koaza,machiaza_dist,blk_num,rsdt_addr_flg,"
+                 "rsdt_addr_mtd_code,status_flg,efct_date,ablt_date,src_code,remarks")
+BLOCK_POS_COLUMNS = ("lg_code,machiaza_id,blk_id,rsdt_addr_flg,rsdt_addr_mtd_code,rep_lon,rep_lat,rep_srid,rep_scale,"
+                     "rep_src_code,plygn_fname,plygn_kcode,plygn_fmt,plygn_srid,plygn_scale,plygn_src_code,pos_pref,"
+                     "pos_city,pos_oaza_cho_chome,pos_koaza_aka,pos_blk_prc_num,pos_data_mnt_year,rsdt_addr_code_rdbl,"
+                     "rsdt_addr_data_mnt_date")
+ISJ_COLUMNS = ("都道府県名,市区町村名,大字・丁目名,小字・通称名,街区符号・地番,座標系番号,Ｘ座標,Ｙ座標,緯度,経度,"
+               "住居表示フラグ,代表フラグ,更新前履歴フラグ,更新後履歴フラグ")
 
 #: 都道府県: (コード, 名前, 経度, 緯度)。埼玉県の代表点は範囲の外。
 PREFECTURES = [("130001", "東京都", 139.69, 35.69), ("140007", "神奈川県", 139.64, 35.45),
@@ -115,32 +119,40 @@ TOWN_POSITIONS = [
     ("141011", "0001002", "0", 139.69, 35.52),
 ]
 
-#: 境界の多角形を作る1辺の半分（度）。
-HALF = 0.001
-
-
-def _box(lon: float, lat: float, half: float = HALF) -> list[list[float]]:
-    """点を囲む四角（Shapefile の外周の向き＝時計回り）。"""
-    return [[lon - half, lat - half], [lon - half, lat + half], [lon + half, lat + half], [lon + half, lat - half],
-            [lon - half, lat - half]]
-
-
-#: 境界: (都道府県, 市区町村, 町丁・字等, 名前, 区分, 多角形の外周の並び)。
-BOUNDARIES = [
-    # 同じ小地域が2枚に分かれている。
-    ("13", "104", "002402", "西新宿２丁目", 8101, [_box(139.692, 35.688), _box(139.70, 35.70)]),
-    ("13", "104", "002400", "西新宿", 8101, [_box(139.66, 35.66)]),
-    ("13", "104", "002500", "西新宿北部", 8101, [_box(139.65, 35.65)]),
-    # 1つの丁目を分けた小地域は、名前の途中に括弧の印を挟む。
-    ("13", "104", "002412", "西新宿（一）２丁目", 8101, [_box(139.62, 35.62)]),
-    ("13", "104", "002600", "西新宿", 8154, [_box(139.64, 35.64)]),
-    ("13", "104", "009900", "無関係", 8101, [_box(139.50, 35.50)]),
-    # 平井と坊主岳の代表点を囲む、名前の無い小地域。
-    ("13", "305", "000000", "", 8101, [_box(139.265, 35.7425, 0.01)]),
-    ("14", "101", "001000", "学区鶴見中央", 8101, [_box(139.60, 35.60)]),
-    ("11", "203", "000200", "安行", 8101, [_box(139.75, 35.79)]),
+#: 住居表示の街区のテキスト: (コード, 町字ID, 街区ID, 街区符号, 住居表示, 廃止の日)。
+BLOCKS = [
+    ("131041", "0024002", "001", "8", "1", ""),
+    ("131041", "0024002", "002", "9", "1", "2020-01-01"),
+    ("131041", "0024002", "003", "10", "1", ""),
+    ("131041", "0024002", "004", "11", "1", ""),
+    # 区画にしない（廃止の日のある）町字の街区。
+    ("131041", "0024009", "001", "1", "1", ""),
 ]
-
+#: 住居表示の街区の代表点: (コード, 町字ID, 街区ID, 住居表示, 経度, 緯度)。10番は代表点を持たない。8番は住居表示の
+#: 実施・未実施の2行を持ち、テキストと同じ実施の行を採る。11番は未実施の行だけを持つ。
+BLOCK_POSITIONS = [
+    ("131041", "0024002", "001", "0", 139.6900, 35.6880),
+    ("131041", "0024002", "001", "1", 139.6915, 35.6890),
+    ("131041", "0024002", "004", "0", 139.6925, 35.6885),
+    ("131041", "0024009", "001", "1", 139.6930, 35.6870),
+]
+#: 位置参照情報の行: (都道府県名, 市区町村名, 大字・丁目名, 小字・通称名, 街区符号・地番, 経度, 緯度, 住居表示, 代表,
+#: 更新後履歴)。
+PARCELS = [
+    ("東京都", "西多摩郡日の出町", "大字平井", "", "123", 139.261, 35.741, "0", "1", "0"),
+    # 区画にしない小字（代表点の無い「無点」）の地番は大字に寄り、大字の同じ番号と重なる。
+    ("東京都", "西多摩郡日の出町", "大字平井", "無点", "123", 139.262, 35.742, "0", "1", "0"),
+    ("東京都", "西多摩郡日の出町", "大字平井", "坊主岳", "45", 139.271, 35.746, "0", "1", "0"),
+    ("東京都", "西多摩郡日の出町", "大字平井", "", "7", 139.263, 35.743, "0", "0", "0"),
+    ("東京都", "西多摩郡日の出町", "大字平井", "", "8", 139.264, 35.744, "0", "1", "3"),
+    ("東京都", "西多摩郡日の出町", "大字平井", "", "9", 138.90, 35.744, "0", "1", "0"),
+    # 住居表示の区域（ABR の街区を持つ西新宿二丁目）の行は、住居表示の印が無くても入れない。
+    ("東京都", "新宿区", "西新宿二丁目", "", "8", 139.6999, 35.6999, "0", "1", "0"),
+    ("東京都", "新宿区", "西新宿二丁目", "", "20", 139.6998, 35.6998, "0", "1", "0"),
+    ("東京都", "新宿区", "西新宿二丁目", "", "11", 139.6997, 35.6997, "1", "1", "0"),
+    ("神奈川県", "横浜市鶴見区", "鶴見中央一丁目", "", "5", 139.671, 35.501, "0", "1", "0"),
+    ("神奈川県", "横浜市鶴見区", "無関係", "", "6", 139.672, 35.502, "0", "1", "0"),
+]
 
 def _write_csv_zip(path: Path, columns: str, rows: list[dict[str, str]]) -> None:
     text = io.StringIO()
@@ -149,7 +161,7 @@ def _write_csv_zip(path: Path, columns: str, rows: list[dict[str, str]]) -> None
     writer.writerows(rows)
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w") as archive:
-        archive.writestr(path.name.removesuffix(".zip"), text.getvalue())
+        archive.writestr(path.name.removesuffix(".zip"), text.getvalue().encode(abr.ENCODING))
 
 
 def _position(code: str, lon: float, lat: float, srid: str) -> dict[str, str]:
@@ -174,41 +186,48 @@ def _write_abr() -> None:
             {"lg_code": c, "machiaza_id": town_id, "rsdt_addr_flg": flag, "rep_lon": str(lon), "rep_lat": str(lat),
              "rep_srid": "EPSG:6668"}
             for c, town_id, flag, lon, lat in TOWN_POSITIONS if c.startswith(prefecture)])
+        texts, positions = abr.block_stems(prefecture)
+        _write_csv_zip(path(texts), BLOCK_COLUMNS, [
+            {"lg_code": c, "machiaza_id": town_id, "blk_id": blk_id, "blk_num": number, "rsdt_addr_flg": flag,
+             "ablt_date": abolished}
+            for c, town_id, blk_id, number, flag, abolished in BLOCKS if c.startswith(prefecture)])
+        _write_csv_zip(path(positions), BLOCK_POS_COLUMNS, [
+            {"lg_code": c, "machiaza_id": town_id, "blk_id": blk_id, "rsdt_addr_flg": flag, "rep_lon": str(lon),
+             "rep_lat": str(lat), "rep_srid": "EPSG:6668"}
+            for c, town_id, blk_id, flag, lon, lat in BLOCK_POSITIONS if c.startswith(prefecture)])
 
 
-def _write_estat() -> None:
-    for prefecture in ("11", "13", "14"):
-        shp, shx, dbf = io.BytesIO(), io.BytesIO(), io.BytesIO()
-        with shapefile.Writer(shp=shp, shx=shx, dbf=dbf, shapeType=shapefile.POLYGON, encoding="cp932") as writer:
-            for name, kind, size in (("KEY_CODE", "C", 11), ("PREF", "C", 2), ("CITY", "C", 3), ("S_AREA", "C", 6),
-                                     ("S_NAME", "C", 96), ("HCODE", "N", 4), ("AREA_MAX_F", "C", 1)):
-                writer.field(name, kind, size=size)
-            for pref, city, s_area, name, hcode, rings in BOUNDARIES:
-                if pref != prefecture:
-                    continue
-                for index, ring in enumerate(rings):
-                    writer.poly([ring])
-                    writer.record(pref + city + s_area, pref, city, s_area, name, hcode, "M" if index == 0 else "")
-        path = estat_small_area.boundary_path(SURVEY, prefecture)
+def _write_isj() -> None:
+    """都道府県ごとの zip（Shift_JIS の CSV と、説明の HTML）。"""
+    names = {"11": "埼玉県", "13": "東京都", "14": "神奈川県"}
+    for prefecture, name in names.items():
+        text = io.StringIO()
+        writer = csv.writer(text, quoting=csv.QUOTE_ALL, lineterminator="\r\n")
+        writer.writerow(ISJ_COLUMNS.split(","))
+        for pref, city, oaza, koaza, number, lon, lat, residential, representative, deleted in PARCELS:
+            if pref == name:
+                writer.writerow([pref, city, oaza, koaza, number, "9", "0.0", "0.0", str(lat), str(lon), residential,
+                                 representative, "0", deleted])
+        path = isj_block.archive_path(ISJ_VERSION, prefecture)
         path.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(path, "w") as archive:
-            for suffix, data in ((".shp", shp), (".shx", shx), (".dbf", dbf)):
-                archive.writestr(f"r2ka{prefecture}{suffix}", data.getvalue())
+            archive.writestr(f"{prefecture}_2025.csv", text.getvalue().encode("cp932"))
+            archive.writestr(f"{ISJ_VERSION}.html", "<html></html>")
 
 
 @pytest.fixture
 def address_data(monkeypatch, tmp_path):
     """見本の配布を置き場に書く。"""
     monkeypatch.setattr(abr, "DATA_DIR", tmp_path / "abr")
-    monkeypatch.setattr(estat_small_area, "DATA_DIR", tmp_path / "estat")
+    monkeypatch.setattr(isj_block, "DATA_DIR", tmp_path / "isj")
     _write_abr()
-    _write_estat()
+    _write_isj()
 
 
 async def _derive(conn) -> None:
     """見本を取り込み、範囲の宣言つきで道を1本取り込んで、住所の段を流す。"""
     await ingest_source(conn, PROFILE, Source.ABR)
-    await ingest_source(conn, PROFILE, Source.ESTAT_SMALL_AREA)
+    await ingest_source(conn, PROFILE, Source.ISJ_BLOCK)
     await ingest_records("osm_way", [way_record(1, [(139.70, 35.69), (139.701, 35.691)], [1, 2])], conn=conn, bbox=BBOX)
     await derive_addresses.derive(conn)
 
@@ -270,22 +289,22 @@ async def test_区画は書き始める段の違う別形の鍵で引ける(deri
     assert continuable == {"prefecture": {True}, "city": {True}, "ward": {True}, "oaza": {True}, "aza": {False}}
 
 
-async def test_小地域の境界は名前か中の代表点で区画に結ぶ(derive_conn, address_data):
-    """同じ名前 → 名前の頭（大字＋集落名）→ 名前のお尻（学区＋町名）の順で名前で結び、名前で結べない境界は中に代表点が
-    ある区画（字・丁目を先に）に結ぶ。名前の括弧の中は除いて結ぶ（分けた丁目が大字でなく丁目に結ぶ）。どれにも当たらない
-    境界と、通常の小地域でない境界（水面）は行にならない。"""
+async def test_街区は住居表示の区域でABRの街区を鍵で地番の区域で位置参照情報の地番を名前で区画に結ぶ(derive_conn, address_data):
+    """ABR の街区は町字の鍵で結び、廃止の日のある街区・代表点の無い街区・区画にしない町字の街区は入らない。代表点は
+    テキストと同じ住居表示の印の行（無ければ別の印の行）。位置参照情報の地番は、市区町村の名前（郡・政令市の区を含む）と
+    大字・丁目名＋小字・通称名で区画に結ぶ（区画にしない小字は大字に寄り、同じ番号は小字の無い行を採る）。代表でない点・
+    削除の行・範囲の外の点・結べない名前は入らない。ABR の街区を持つ区画（住居表示の区域）には地番を入れない。"""
     await _derive(derive_conn)
 
-    links = {row["key_code"]: row["area_id"] for row in await derive_conn.fetch("SELECT * FROM address_boundary_links")}
+    blocks = {(row["area_id"], row["number"]): (row["kind"], row["lon"], row["lat"]) for row in await derive_conn.fetch(
+        "SELECT area_id, number, kind, ST_X(geom) AS lon, ST_Y(geom) AS lat FROM address_blocks")}
 
-    assert links == {
-        "13104002402": "1310410024002",
-        "13104002412": "1310410024002",
-        "13104002400": "1310410024000",
-        "13104002500": "1310410024000",
-        "13305000000": "1330510001101",
-        "14101001000": "1410110001000",
-        "11203000200": "1120380002000",
+    assert blocks == {
+        ("1310410024002", "8"): ("residential", pytest.approx(139.6915), pytest.approx(35.6890)),
+        ("1310410024002", "11"): ("residential", pytest.approx(139.6925), pytest.approx(35.6885)),
+        ("1330510001000", "123"): ("parcel", pytest.approx(139.261), pytest.approx(35.741)),
+        ("1330510001101", "45"): ("parcel", pytest.approx(139.271), pytest.approx(35.746)),
+        ("1410110001001", "5"): ("parcel", pytest.approx(139.671), pytest.approx(35.501)),
     }
 
 

@@ -8,7 +8,7 @@
  * - この口を読んで画面に出すこと → `features/admin/SystemStatusPanel/SystemStatusPanel.test.tsx`・
  *   `components/HeaderMenu/HeaderMenu.test.tsx`
  *
- * コミットの環境変数はこの口だけが読むので、`vi.stubEnv`で立てて入口を呼ぶ（docs/conventions/testing.md パターン7）。
+ * コミットの環境変数はこの口だけが読むので、`vi.stubEnv`で立てて入口を呼ぶ（.claude/rules/testing-frontend.md パターン7）。
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -25,11 +25,14 @@ describe("GET /api/version", () => {
     vi.unstubAllEnvs();
   });
 
-  it("デプロイされたコミットを返し、注入されていない環境（手元）ではnullを返す", async () => {
-    vi.stubEnv("RENDER_GIT_COMMIT", "0123456789abcdef0123456789abcdef01234567");
+  it("像に入れたコミットを返し、入れていない環境（手元・コミットを渡さずに作った像）ではnullを返す", async () => {
+    vi.stubEnv("GIT_COMMIT", "0123456789abcdef0123456789abcdef01234567");
     expect(await body()).toMatchObject({ status: "ok", commit: "0123456789abcdef0123456789abcdef01234567" });
 
-    vi.stubEnv("RENDER_GIT_COMMIT", undefined);
+    vi.stubEnv("GIT_COMMIT", undefined);
+    expect((await body()).commit).toBeNull();
+
+    vi.stubEnv("GIT_COMMIT", "");
     expect((await body()).commit).toBeNull();
   });
 

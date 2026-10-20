@@ -1,6 +1,6 @@
 """道路網の形の導出（`batch/derive_topology.py`）が、意図した形の派生を作ること。
 
-見るのは、切る位置・閉じた区間の切り直し・枝数・値の器・区間の形と、長さと方位の測り方。
+見るのは、切る位置・閉じた区間の切り直し・枝数・区間の形と、長さと方位の測り方。
 長さと方位は値そのものではなく性質を見る——長さは形状の測地線長であること、方位は始点→終点の
 方位であること。
 
@@ -16,13 +16,9 @@ import pytest_asyncio
 from app.batch import derive_topology
 from tests.source_ingest import ingest_records, way_record
 
-# road_graph_session（conftest.py）と同じDBを使うため、docs/conventions/testing.mdのパターン2どおり
-# loop_scope="module"・xdist_group="postgis"が必須。
-pytestmark = [
-    pytest.mark.asyncio(loop_scope="module"),
-    pytest.mark.xdist_group(name="postgis"),
-    pytest.mark.postgis,
-]
+# road_graph_session（conftest.py）と同じDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
+# loop_scope="module"が必須。
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 #: 東京都心付近。座標そのものに意味は無く、測地線長が0にならない間隔であればよい。
 BASE_LON, BASE_LAT = 139.70, 35.68
@@ -79,7 +75,7 @@ async def test_closed_segment_is_split_again_so_no_self_loop_remains(topology_co
 async def test_branch_count_is_the_number_of_segment_ends_at_the_node(topology_conn):
     """枝数は「そこに集まる道の本数」＝区間の端点としての出現回数。"""
     rows = await topology_conn.fetch(
-        "SELECT osm_node_id, branch_count FROM node_materials ORDER BY osm_node_id")
+        "SELECT osm_node_id, branch_count FROM road_nodes ORDER BY osm_node_id")
     assert {r["osm_node_id"]: r["branch_count"] for r in rows} == {
         1: 1,   # 道100の始端
         3: 3,   # 道100の2区間が接し、道200が出る
@@ -89,18 +85,6 @@ async def test_branch_count_is_the_number_of_segment_ends_at_the_node(topology_c
         11: 2,  # 切り直しで生まれた端点
         # ノード2・12は区間の端にならないので行が無い。
     }
-
-
-async def test_edge_materials_has_one_empty_row_per_segment(topology_conn):
-    """値を出すバッチが埋める器を、区間と同時に作る。未計算はNULLで表す。"""
-    counts = await topology_conn.fetchrow(
-        "SELECT (SELECT count(*) FROM road_edges) AS edges,"
-        " (SELECT count(*) FROM edge_materials) AS materials,"
-        " (SELECT count(*) FROM edge_materials"
-        "  WHERE accident_count IS NOT NULL OR intersection_count IS NOT NULL) AS filled")
-    # 道100が2区間・道200が1区間・道300が切り直して2区間。
-    assert counts["edges"] == counts["materials"] == 5
-    assert counts["filled"] == 0
 
 
 async def test_distance_is_the_geodesic_length_of_the_geometry(topology_conn):

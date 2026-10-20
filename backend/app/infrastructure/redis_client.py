@@ -1,4 +1,4 @@
-"""Redis共有クライアント（何をRedisへ置くかは docs/conventions/caching.md）。
+"""Redis共有クライアント（何をRedisへ置くかは .claude/rules/caching-retention.md）。
 
 すべての用途がTTL付きキャッシュ、またはPostGIS（正本）へ即座にフォールバック可能な
 cache-asideのため、Redis接続自体の障害はfail-fastさせない。
@@ -42,7 +42,7 @@ def get_redis_client_or_none() -> redis.Redis | None:
                 retry_on_timeout=False,
             )
         return _client
-    except Exception as exc:  # noqa: BLE001 設定の誤りでも未キャッシュで進む
+    except Exception as exc:  # 設定の誤りでも未キャッシュで進む
         record_redis_failure()
         log_throttled_warning(_CLIENT_CATEGORY, "Redisのクライアントを作れません error=%r", exc)
         return None

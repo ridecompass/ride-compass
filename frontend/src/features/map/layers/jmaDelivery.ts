@@ -4,18 +4,22 @@
 
 import { fetchJson } from "@/lib/apiClient";
 import { apiPath } from "@/lib/apiPath";
+import { fillTemplate, TEMPLATE_PLACEHOLDER } from "@/lib/urlTemplate";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
-import { DEFAULT_API_TIMEOUT_MS } from "@/lib/apiTimeouts";
+import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
+import { MINUTE_MS } from "@/lib/duration";
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import type { DynamicWeatherRenderPayload } from "@/features/map/layers/dynamicWeather";
-
-// JMA bosaiタイル系（時刻一覧JSON・ラスタタイルPNG）の共通ベースURL。
-// バックエンドのプロキシ＋キャッシュ（backend/app/infrastructure/jma_tile_client.py、
-// `GET /api/jma-tile/{path}`）経由にすることで、JMAの非公式内部APIへの直接アクセスを
-// 避けつつ配信する。
+import {
+  isTileRenderKind,
+  type DynamicWeatherRenderPayload,
+  type TileRenderKind,
+} from "@/features/map/layers/dynamicWeather";
 
 /**
  * JMAプロキシ配下のパスを、タイル本体と同じ配信オリジンの絶対URLにする。
+ *
+ * 配信元の時刻一覧・タイル・地点は、バックエンドのプロキシ＋キャッシュ（backend/app/infrastructure/jma_tile_client.py、
+ * `GET /api/jma-tile/{path}`）経由で取り、JMAの非公式内部APIへ直接は当たらない。
  *
  * 時刻一覧（`targetTimes*.json`）・地点のGeoJSONは、タイル本体と違ってアプリ自身の`fetch()`で
  * 読む。**タイルURLは時刻一覧が返るまで確定しない**ため、ここでフロントのホスティングを経由すると
@@ -34,14 +38,6 @@ type DeclaredElement = (typeof mapDisplay.weatherElements)[number];
 /** 時刻の段1つぶんの配信要素（要素id・時刻一覧のパス・コマのパスのテンプレート・読み方・更新間隔）。 */
 export type JmaDelivery = DeclaredElement["jmaElements"][number];
 
-/** 配信元のタイルで描く描き方。 */
-type JmaTileKind = "rasterTile" | "vectorTile";
-
-/** 配信元のタイルで描く描き方か。それ以外の描き方の配信要素は、コマごとの地物をGeoJSONで配る。 */
-export function isJmaTileKind(kind: DeclaredElement["kind"]): kind is JmaTileKind {
-  return kind === "rasterTile" || kind === "vectorTile";
-}
-
 /** 時刻一覧から読み出したコマ1つ。タイル・地点のURLを決める時刻と系列。項目名は源泉のパスのテンプレートの
  * `{basetime}`等と同じ名前で、テンプレートはこの名前で埋める。 */
 export interface JmaFrame {
@@ -51,13 +47,14 @@ export interface JmaFrame {
   validtime: string;
 }
 
-const PLACEHOLDER = /\{([^}]+)\}/g;
+/** コマを一意に指す鍵。1つのbasetimeに実況と複数の予測のvalidtimeが載るため、3つが揃って初めて同じ画像を指す。 */
+export function jmaFrameKey(frame: JmaFrame): string {
+  return `${frame.basetime}/${frame.member}/${frame.validtime}`;
+}
 
 /** 源泉のテンプレート（`urlTemplate`）の、コマの項目を埋める。タイル座標の`{z}/{x}/{y}`は地図ライブラリが埋めるので残す。 */
 function fillFrame(template: string, frame: JmaFrame): string {
-  return template.replace(PLACEHOLDER, (whole, name: string) =>
-    name in frame ? frame[name as keyof JmaFrame] : whole,
-  );
+  return fillTemplate(template, { ...frame });
 }
 
 /** そのコマの配信元のURL。タイルなら`{z}/{x}/{y}`を残したテンプレート、地点ならGeoJSONのURL。 */
@@ -67,10 +64,10 @@ function jmaFrameUrl(delivery: JmaDelivery, frame: JmaFrame): string {
 
 /** 配信元のタイルで描く段の、そのコマの描画ペイロード。 */
 export function jmaTilePayload(
-  kind: JmaTileKind,
+  kind: TileRenderKind,
   delivery: JmaDelivery,
   frame: JmaFrame,
-): Extract<DynamicWeatherRenderPayload, { kind: JmaTileKind }> {
+): Extract<DynamicWeatherRenderPayload, { kind: TileRenderKind }> {
   return { kind, tileUrlTemplate: jmaFrameUrl(delivery, frame) };
 }
 
@@ -108,7 +105,7 @@ function escapeRegExp(text: string): string {
 
 /** 源泉のテンプレートを、URLの末尾に当てる正規表現と項目名の並びにする。 */
 function templateMatcher(template: string): { pattern: RegExp; names: string[] } {
-  const parts = template.split(PLACEHOLDER);
+  const parts = template.split(TEMPLATE_PLACEHOLDER);
   const names = parts.filter((_, index) => index % 2 === 1);
   const body = parts
     .map((part, index) => (index % 2 === 0 ? escapeRegExp(part) : TILE_COORDINATES.has(part) ? "(\\d+)" : "([^/?]+)"))
@@ -117,7 +114,7 @@ function templateMatcher(template: string): { pattern: RegExp; names: string[] }
 }
 
 const TILE_DELIVERY_MATCHERS = mapDisplay.weatherElements
-  .filter((element) => isJmaTileKind(element.kind))
+  .filter((element) => isTileRenderKind(element.kind))
   .flatMap((element): readonly JmaDelivery[] => element.jmaElements)
   .map((delivery) => ({ delivery, ...templateMatcher(delivery.urlTemplate) }));
 
@@ -141,31 +138,18 @@ export function readJmaTileUrl(url: string): JmaTileRef | null {
   return null;
 }
 
-/** 配信元が地点をGeoJSONで配る段の記号の大きさを決めるプロパティ。配信元は地点ごとの強弱を
- * 持たないため、gridMarkのicon-size式が必須で参照するこのプロパティへ固定値を入れる。描き方の宣言
- * （`features/map/scene/groups/weather.ts`）もこの定数を参照する。 */
-export const JMA_POINT_VALUE_PROPERTY = "value";
-
-/** そのコマの地物（落雷の地点・線状降水帯の雨域等）。どの地物にも記号の大きさを決める値を足す（線・面には効かない）。
- * 失敗（配信元の404を含む）はそのまま投げる——取るコマは配信の遅れのぶん前へずらしてあり（`jmaFramesOf`）、配信済みの
+/** そのコマの地物（落雷の地点・線状降水帯の雨域等）。失敗（配信元の404を含む）はそのまま投げる——取るコマは配信の遅れのぶん前へずらしてあり（`jmaFramesOf`）、配信済みの
  * コマは地物が無くても空の集まりで返るので、404は取れていないことを表す。 */
-export async function fetchJmaGeojson(
+export function fetchJmaGeojson(
   delivery: JmaDelivery,
   frame: JmaFrame,
   label: string,
 ): Promise<GeoJSON.FeatureCollection> {
-  const geojson = await fetchJson<GeoJSON.FeatureCollection>(jmaFrameUrl(delivery, frame), {
-    timeoutMs: DEFAULT_API_TIMEOUT_MS,
+  return fetchJson<GeoJSON.FeatureCollection>(jmaFrameUrl(delivery, frame), {
+    timeoutMs: API_TIMEOUT_MS.default,
     category: "api:jma-geojson",
     errorLabel: label,
   });
-  return {
-    ...geojson,
-    features: geojson.features.map((feature) => ({
-      ...feature,
-      properties: { ...feature.properties, [JMA_POINT_VALUE_PROPERTY]: 1 },
-    })),
-  };
 }
 
 /** 時刻一覧の1行。 */
@@ -183,7 +167,7 @@ interface RawTargetTime {
 /** 時刻一覧のファイル1つ（源泉の`targetTimesPaths`の1つ）の行。`label`はエラーメッセージに使う対象名（「の時刻一覧」は本関数が付ける）。 */
 export async function fetchJmaTargetTimesFile(path: string, label: string): Promise<unknown[]> {
   const data = await fetchJson<unknown>(jmaProxyUrl(path), {
-    timeoutMs: DEFAULT_API_TIMEOUT_MS,
+    timeoutMs: API_TIMEOUT_MS.default,
     category: "api:jma-nowcast-times",
     errorLabel: `${label}の時刻一覧`,
   });
@@ -202,25 +186,22 @@ function byValidtime(a: JmaFrame, b: JmaFrame): number {
 /** 実況＋予測。その要素の行を時刻順に並べ、最新の実況（validtime===basetime）より前を捨てる
  * ——過去を振り返る用途は無く、左端が「今」になる。実況が1つも無ければ何も捨てない（最も未来の
  * 1コマだけを残すと、実況が欠けた回に要素が実質空になる）。 */
-function readNowcast(rows: readonly RawTargetTime[], elementId: string): JmaFrame[] {
-  const frames = rows
-    .filter((row) => row.elements.includes(elementId))
-    .map(toFrame)
-    .sort(byValidtime);
-  let latestObserved = 0;
-  frames.forEach((frame, index) => {
-    if (frame.validtime === frame.basetime) latestObserved = index;
-  });
-  return frames.slice(latestObserved);
+function readNowcast(rows: readonly RawTargetTime[]): JmaFrame[] {
+  const frames = rows.map(toFrame).sort(byValidtime);
+  return frames.slice(
+    Math.max(
+      frames.findLastIndex((frame) => frame.validtime === frame.basetime),
+      0,
+    ),
+  );
 }
 
 /** 数値予報のラン。系列（`member`）ごとに、有効時刻を複数持つ最新のラン（完全な予報）だけを使う
  * ——同じ系列の中にも、10分おきの中間ランが返す単発の有効時刻（basetime===validtime）が混ざり、
- * それを最新として拾うと1コマしか得られない。同じファイルに別の要素（線状降水帯予測）の行も混ざる
- * ため、数える前にその要素の行へ絞る。系列どうしは有効時刻の範囲が重ならない設計だが、重なれば
+ * それを最新として拾うと1コマしか得られない。系列どうしは有効時刻の範囲が重ならない設計だが、重なれば
  * 新しいランを採る。 */
-function readLatestFullRun(rows: readonly RawTargetTime[], elementId: string): JmaFrame[] {
-  const entries = rows.filter((row) => row.elements.includes(elementId)).map(toFrame);
+function readLatestFullRun(rows: readonly RawTargetTime[]): JmaFrame[] {
+  const entries = rows.map(toFrame);
   const byTime = new Map<string, JmaFrame>();
   for (const member of new Set(entries.map((frame) => frame.member))) {
     const ofMember = entries.filter((frame) => frame.member === member);
@@ -244,9 +225,8 @@ function readLatestFullRun(rows: readonly RawTargetTime[], elementId: string): J
 }
 
 /** 配信元が統合済みの「現在」の単一値。その要素の最新の行だけを1コマにする。 */
-function readLatest(rows: readonly RawTargetTime[], elementId: string): JmaFrame[] {
-  const entries = rows.filter((row) => row.elements.includes(elementId));
-  const latest = [...entries].sort((a, b) => b.basetime.localeCompare(a.basetime))[0];
+function readLatest(rows: readonly RawTargetTime[]): JmaFrame[] {
+  const latest = [...rows].sort((a, b) => b.basetime.localeCompare(a.basetime))[0];
   return latest ? [toFrame(latest)] : [];
 }
 
@@ -254,32 +234,31 @@ function readLatest(rows: readonly RawTargetTime[], elementId: string): JmaFrame
 // 片方だけ変えると在否インデックスのフレームが画面と一致せず、画面は全タイルを取りに行く。同じコマになることは、
 // backendが出す表（生成物`jma-expectations.json`）をテストが通して確かめる。配信の遅れのずらし
 // （`delayed`）はプリウォームが持たず、タイルの要素には宣言できない（`domain/jma_tile_specs.py: JmaElement`）。
-const READERS: Record<JmaDelivery["reader"], (rows: readonly RawTargetTime[], elementId: string) => JmaFrame[]> = {
+const READERS: Record<JmaDelivery["reader"], (rows: readonly RawTargetTime[]) => JmaFrame[]> = {
   nowcast: readNowcast,
   latestFullRun: readLatestFullRun,
   latest: readLatest,
 };
 
 /** 時刻一覧の行（読めたファイルの行を宣言の順につないだもの）から、その配信要素の段のコマ（時刻順）を読む。
- * 読み方と配信の遅れは源泉の宣言が決める。 */
+ * 読み方と配信の遅れは源泉の宣言が決める。同じファイルにほかの要素の行も混ざるので、読む前にその要素の行へ絞る。 */
 export function jmaFramesOf(delivery: JmaDelivery, rows: readonly unknown[]): JmaFrame[] {
-  const frames = READERS[delivery.reader](rows as readonly RawTargetTime[], delivery.id);
-  return delayed(frames, rows as readonly RawTargetTime[], delivery);
+  const own = (rows as readonly RawTargetTime[]).filter((row) => row.elements.includes(delivery.id));
+  return delayed(READERS[delivery.reader](own), own, delivery);
 }
 
 /** 配信の遅れ（`dataDelayMinutes`）を持つ要素は、時刻一覧に載せたコマをまだ配信していないことがある。公式の画面と
  * 同じく、その要素の最新の`basetime`から遅れの幅に入るコマを、幅の端まで前の`basetime`へずらす（実況のコマは
  * `validtime`も同じだけ戻し、ずらした先の実況にする）。 */
-function delayed(frames: JmaFrame[], rows: readonly RawTargetTime[], delivery: JmaDelivery): JmaFrame[] {
-  const delayMs = delivery.dataDelayMinutes * 60_000;
+function delayed(frames: JmaFrame[], ownRows: readonly RawTargetTime[], delivery: JmaDelivery): JmaFrame[] {
+  const delayMs = delivery.dataDelayMinutes * MINUTE_MS;
   if (delayMs === 0) return frames;
-  const latest = Math.max(
-    ...rows.filter((row) => row.elements.includes(delivery.id)).map((row) => parseValidtime(row.basetime).getTime()),
-  );
+  const latest = Math.max(...ownRows.map((row) => parseValidtime(row.basetime).getTime()));
   return frames.map((frame) => {
-    const behindMs = latest - parseValidtime(frame.basetime).getTime();
+    const baseMs = parseValidtime(frame.basetime).getTime();
+    const behindMs = latest - baseMs;
     if (behindMs >= delayMs) return frame;
-    const basetime = formatValidtime(new Date(parseValidtime(frame.basetime).getTime() - (delayMs - behindMs)));
+    const basetime = formatValidtime(new Date(baseMs - (delayMs - behindMs)));
     return { ...frame, basetime, validtime: frame.validtime === frame.basetime ? basetime : frame.validtime };
   });
 }

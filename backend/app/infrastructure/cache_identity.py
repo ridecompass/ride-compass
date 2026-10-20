@@ -1,4 +1,4 @@
-"""キャッシュ鍵の組み立て（方針は docs/conventions/caching.md）。
+"""キャッシュ鍵の組み立て（方針は .claude/rules/caching.md）。
 
 署名はSHA-1の先頭12桁。鍵はタイルURLとディスクのディレクトリ名へ入るため、衝突耐性より
 パス長を優先している（形の変化を見分けるのが目的で、暗号的な強度は要らない）。
@@ -16,7 +16,7 @@ from app.infrastructure.derived_data_meta import DataRevisions
 # URLもディスクキャッシュの鍵も変わらないため）。
 LANDCOVER_REVISION = "2"
 
-def bound_values(source: object) -> list[tuple[str, str]]:
+def _bound_values(source: object) -> list[tuple[str, str]]:
     """SQLのバインドパラメータのうち、定義時点で値が決まっているもの（名前と値）。
 
     実行時に値を渡すパラメータ（タイル座標等）はこの時点で値を持たない。
@@ -42,7 +42,7 @@ def shape_digest(*sources: object) -> str:
             parts.append(",".join(f.name for f in dataclasses.fields(source)))
             continue
         parts.append(str(source))
-        parts.append(repr(bound_values(source)))
+        parts.append(repr(_bound_values(source)))
     return hashlib.sha1("\x1f".join(parts).encode()).hexdigest()[:12]
 
 

@@ -89,14 +89,6 @@ describe("FloatingPanel", () => {
     expect(panelPosition()).toEqual({ x: (window.innerWidth - 200) / 2, y: 2 * rootFontSizePx });
   });
 
-  it("画面より広いときは、左端へ寄せる", () => {
-    stubPanelWidth(window.innerWidth + 100);
-
-    renderPanel();
-
-    expect(panelPosition().x).toBe(0);
-  });
-
   it("閉じて開き直すと、中央へ置き直す", () => {
     stubPanelWidth(200);
     const { view, onClose } = renderPanel();

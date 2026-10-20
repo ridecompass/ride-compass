@@ -36,8 +36,9 @@ export function useSavedConditions({
   onOriginFollowCurrent,
 }: SavedConditionsInputs) {
   const [saved, setSaved] = useStoredState<SavedCondition[]>(SAVED_CONDITIONS_STORAGE_KEY, [], {
-    serialize: (list) => JSON.stringify(list),
+    serialize: JSON.stringify,
     deserialize: readSavedConditions,
+    rewrite: true,
   });
 
   // 出発地は保存のときに固定するかを選ぶので、いまの条件には持たない。

@@ -7,7 +7,7 @@
  * （軸別難易度の丸めと「データなし」・生値・材料の内訳・説明）。
  *
  * ここで見ないもの: 帯の積み方・チップの値と色 → `components/AxisContributionBar`。生値と内訳の1件の書き方 →
- * `features/route/RouteAxisProfile/axisRawValue.ts`。所要の書き方 → `features/route/formatDuration.ts`。
+ * `features/route/RouteAxisProfile/axisRawValue.ts`。所要の書き方 → `lib/duration.ts`。
  *
  * 軸は架空のもの（`axis_a`等）を`src/testing/catalogAxes.ts`の雛形から作る。
  */
@@ -88,7 +88,7 @@ describe("RouteAxisProfile", () => {
   it.each([
     [null, null],
     [0.004, null],
-    [0.012, "データの無い区間が1%[坂・信号の無い道として所要時間を出しています]"],
+    [0.012, "データの無い区間が1%[坂の無い平地で、止まる所も無い道として所要時間を出しています]"],
   ])("値の無い区間の割合が%sなら、注記は%s（百分率へ丸めて1以上のときだけ出す）", (share, expected) => {
     renderProfile({ missingTravelDataShare: share });
     if (expected === null) expect(screen.queryByText(/データの無い区間が/)).not.toBeInTheDocument();
@@ -117,14 +117,13 @@ describe("RouteAxisProfile", () => {
         description: "軸Aの説明",
         raw_value_units: { unit: "回/km", total_unit: "回" },
         material_breakdown: [
-          { material_id: "lit", label: "街灯あり", dtype: "boolean", unit: "", share: 0.5, value_labels: {} },
-          { material_id: "absent", label: "値の来ない材料", dtype: "numeric", unit: "m", share: 0.2, value_labels: {} },
+          { material_id: "lit", label: "街灯あり", dtype: "boolean", unit: "", value_labels: {} },
+          { material_id: "absent", label: "値の来ない材料", dtype: "numeric", unit: "m", value_labels: {} },
           {
             material_id: "road_kind",
             label: "道の種類",
             dtype: "categorical",
             unit: "",
-            share: 0.3,
             value_labels: { residential: "住宅街の道" },
           },
         ],

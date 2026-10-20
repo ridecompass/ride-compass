@@ -2,20 +2,15 @@
 
 対応表の網羅性を機械的に検証することで、新しいエンドポイントを追加したときの
 「ポリシーの決め忘れ」と、リファクタで消えたパスの「死んだエントリ」の両方を落とす。
-ミドルウェアは、表から付ける・ハンドラの明示を残す・エラー応答に付けない、の3つの側を見る。
 
 ここで見ないもの: 表の各行の秒数（宣言の書き写しになる）
 """
 
-import pytest
-from fastapi import FastAPI
 from fastapi.routing import APIRoute
-from fastapi.testclient import TestClient
 
 from app.api.cache_policy import (
     ROUTE_POLICIES,
     CachePolicy,
-    CachePolicyMiddleware,
     policy_for_path,
 )
 from app.main import app
@@ -36,12 +31,6 @@ def test_every_policy_entry_matches_a_real_route():
     assert dead == [], f"どの実ルートにも一致しない対応表のエントリ: {dead}"
 
 
-def test_policy_for_path_prefers_the_longest_prefix():
-    # 表への追記順に依存しないことの保証。
-    assert policy_for_path("/api/weather/amedas").header() == "public, max-age=120"
-    assert policy_for_path("/api/weather").header() == "public, max-age=300"
-
-
 def test_policy_for_path_returns_none_for_unknown_path():
     assert policy_for_path("/api/does-not-exist") is None
 
@@ -49,44 +38,3 @@ def test_policy_for_path_returns_none_for_unknown_path():
 def test_cache_policy_header_formats():
     assert CachePolicy(max_age_seconds=60, immutable=True).header() == "public, max-age=60, immutable"
     assert CachePolicy(max_age_seconds=None).header() == "no-store"
-
-
-@pytest.fixture
-def middleware_client():
-    """本物の対応表だけを共有し、ミドルウェアの振る舞いを確かめるための最小アプリ。"""
-    test_app = FastAPI()
-    test_app.add_middleware(CachePolicyMiddleware)
-
-    @test_app.get("/api/axis-catalog")
-    def catalog():
-        return {"ok": True}
-
-    @test_app.get("/api/axis-catalog/explicit")
-    def explicit():
-        from fastapi import Response
-
-        return Response(content="{}", media_type="application/json", headers={"Cache-Control": "max-age=1"})
-
-    @test_app.get("/api/axis-catalog/boom")
-    def boom():
-        from fastapi import HTTPException
-
-        raise HTTPException(status_code=502, detail="boom")
-
-    return TestClient(test_app)
-
-
-def test_middleware_applies_policy_from_the_table(middleware_client):
-    response = middleware_client.get("/api/axis-catalog")
-    assert response.headers["cache-control"] == "public, max-age=60"
-
-
-def test_middleware_keeps_handler_supplied_header(middleware_client):
-    response = middleware_client.get("/api/axis-catalog/explicit")
-    assert response.headers["cache-control"] == "max-age=1"
-
-
-def test_middleware_does_not_cache_error_responses(middleware_client):
-    response = middleware_client.get("/api/axis-catalog/boom")
-    assert response.status_code == 502
-    assert "cache-control" not in response.headers

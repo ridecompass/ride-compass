@@ -10,7 +10,7 @@
  * 受け取る重みを公開軸へ揃えること → `features/route/routePreferenceSync.test.ts`（このパネルは揃った値を受け取る）。
  * 再試行で取れたかどうか → `hooks/useAxisCatalog.test.ts`。無効な軸のチップを薄くすること（クラスで付ける見た目）。
  * 軸カタログの値をそのまま渡すもの（チップの印と帯の区間の色・(i)の奥の軸の説明）、割合に%を付けて渡す区間の幅、
- * 書いた定数を差し込むだけのもの（帯の(i)の奥の上限・区切りの値の範囲）。
+ * 書いた定数を差し込むだけのもの（区切りの値の範囲）。
  *
  * 差し替えたもの: 軸カタログの応答（網の層）はテストが決め、軸は架空のもの
  * （`testing/catalogAxes.ts`）。帯の実寸はテスト環境に無いので、ドラッグのテストだけ帯の`getBoundingClientRect`を決める。
@@ -21,7 +21,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ENABLED_AXIS_WEIGHT, WEIGHT_STEP } from "@/features/route/routeWeightShare";
+import { ENABLED_AXIS_WEIGHT } from "@/features/route/routeWeightShare";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { inTurn, onBackend, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
@@ -97,7 +97,7 @@ describe("RouteSettingsPanel 評価軸の一覧を取れないとき", () => {
     renderPanel({});
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "評価軸の一覧を取得できませんでした。地図の道路・スポットを表示できません。ルートは重み配分を変えていても反映できず、既定の配分で作ります。ルートの合成も使えません。",
+      "評価軸の一覧を取得できませんでした。地図の道の線・スポットを表示できません。ルートは重み配分を変えていても反映できず、既定の配分で作ります。ルートの合成も使えません。",
     );
 
     await userEvent.click(screen.getByRole("button", { name: "再試行" }));
@@ -222,8 +222,9 @@ describe("RouteSettingsPanel 配分の帯", () => {
 
   it("区切りで右・上の矢印は右の軸から左の軸へ1刻み移し、左・下の矢印は戻す。ほかの軸は変えず、上書きの状態にする", async () => {
     serveCatalog();
+    // 2軸で合計0.2なので、1刻みは0.002。
     const { onRoutePreferenceChange, onOverrideEnabledChange } = renderPanel(
-      { width: 0.4, traffic: 0.3, slope: 0.3, light: 0 },
+      { width: 0.1, traffic: 0.1, slope: 0, light: 0 },
       false,
     );
     await chipsShown();
@@ -236,38 +237,25 @@ describe("RouteSettingsPanel 配分の帯", () => {
 
     expect(onRoutePreferenceChange).toHaveBeenCalledTimes(4);
     expect(forward).toEqual({
-      width: expect.closeTo(0.4 + 2 * WEIGHT_STEP, 5),
-      traffic: expect.closeTo(0.3 - 2 * WEIGHT_STEP, 5),
-      slope: 0.3,
+      width: expect.closeTo(0.104, 6),
+      traffic: expect.closeTo(0.096, 6),
+      slope: 0,
       light: 0,
     });
-    expect(back).toEqual({ width: 0.4, traffic: 0.3, slope: 0.3, light: 0 });
+    expect(back).toEqual({ width: 0.1, traffic: 0.1, slope: 0, light: 0 });
     expect(onOverrideEnabledChange).toHaveBeenCalledExactlyOnceWith(true);
   });
 
   it("矢印以外のキーと、もう動かせない向きの矢印では何も上げない", async () => {
     serveCatalog();
-    const { onRoutePreferenceChange } = renderPanel({ width: WEIGHT_STEP, traffic: 0.3, slope: 0.3, light: 0 });
+    // 道幅は合計1の1%で、もう減らせない。
+    const { onRoutePreferenceChange } = renderPanel({ width: 0.01, traffic: 0.49, slope: 0.5, light: 0 });
     await chipsShown();
 
     boundary("道幅と交通の配分").focus();
     await userEvent.keyboard("{Enter}{Home}{ArrowLeft}");
 
     expect(onRoutePreferenceChange).not.toHaveBeenCalled();
-  });
-
-  it("合計が1でない配分でも、区切りは割合の上限（説明の文の%）で止まる", async () => {
-    serveCatalog();
-    // 合計 0.38 で、道幅は 0.22（58%）。もう1刻み足すと 0.23（61%）で上限を越える。
-    const { onRoutePreferenceChange } = renderPanel({ width: 0.22, traffic: 0.08, slope: 0.08, light: 0 });
-    await chipsShown();
-
-    boundary("道幅と交通の配分").focus();
-    await userEvent.keyboard("{ArrowRight}");
-    await userEvent.click(screen.getByRole("button", { name: "重みの配分の説明を表示" }));
-
-    expect(onRoutePreferenceChange).not.toHaveBeenCalled();
-    expect(await screen.findByText(/1つの評価軸に置ける重みは60%まで/)).toBeInTheDocument();
   });
 
   /** 帯の幅を決めて、区切りを押してから画面の上で指を動かす。 */

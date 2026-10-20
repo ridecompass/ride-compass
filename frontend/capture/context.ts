@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import * as catalogAxes from "@/testing/catalogAxes";
@@ -15,7 +16,7 @@ interface OpenOptions {
   point?: { latitude: number; longitude: number };
   /** 開いたあとに寄せる地図の倍率。 */
   zoom?: number;
-  /** ON にするレイヤーの id（mapDisplay.layers）。渡さないレイヤーは既定の表示のまま。 */
+  /** ON にするレイヤーの id（mapDisplay.layers と、軸カタログが配る道の線の層）。渡さないレイヤーは既定の表示のまま。 */
   layers?: string[];
   /** 開く前に入れる保存状態（localStorage）。 */
   storedState?: Record<string, string>;
@@ -37,7 +38,7 @@ export interface CaptureContext {
   fixtures: typeof fixtures;
   /** e2e/states.ts の全状態の走査の段取り（installScanMocks・splice 等）。 */
   states: typeof states;
-  /** src/testing/catalogAxes.ts の軸の雛形（catalogEntry・rampEntry 等）。モックの軸カタログを組むときに fixtures.axisCatalogFixture へ渡す。 */
+  /** src/testing/catalogAxes.ts の軸の雛形（catalogEntry・dedicatedEntry 等）。モックの軸カタログを組むときに fixtures.axisCatalogFixture へ渡す。 */
   catalogAxes: typeof catalogAxes;
   /** アプリを開き、地図の全ソースの読み終わりまで待つ。初回の案内は閉じた状態で開く。 */
   open(options?: OpenOptions): Promise<void>;
@@ -46,8 +47,8 @@ export interface CaptureContext {
    * backend は撮影用の資格情報を通さない）。選べなければ、選べるタブを並べて止まる。
    */
   openAdmin(options?: OpenAdminOptions): Promise<Locator>;
-  /** 地図の色分け（レンズ）を名前で選び、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
-  chooseLens(label: string): Promise<void>;
+  /** 「評価で塗る」の評価軸（レンズ）を名前で選び（null は選んでいない状態へ戻す）、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
+  chooseLens(label: string | null): Promise<void>;
   /**
    * 「表示」の一覧の行の名前で凡例の内訳を開き、その内訳を返す。一覧が閉じていれば開く。`row` を渡せば、その行の説明も開く。
    * 開けなければ、選べる名前を並べて止まる。
@@ -66,6 +67,9 @@ export interface CaptureContext {
   /**
    * URL が glob に当たる応答の本文を `transform` の返した JSON に替える。本物の応答を取ってから本文だけを替えるので、CORS 等の
    * ヘッダーは本物のまま残る（ヘッダーの無い応答で返すと、別オリジンの backend への取得としてブラウザが捨てる）。
+   * 本物の応答が失敗（本番の backend にまだ無い経路の 404 等）なら、`transform` に undefined を渡し、返した JSON を成功（200）の
+   * 応答として CORS のヘッダーを付けて返す。新しい経路の応答も、作業ツリーの版を本番の backend へ向けたまま替えられる（例は examples/place-area.ts）。
+   * open より前に呼ぶ（open が開くときに取る応答も替える）。
    * 本物の backend へ向けたときに使う（モックの応答を替えるなら open の routes で page.route を足す。例は examples/axis-catalog.ts）。
    * 本文を JSON として読み替えるだけなので、画像等の JSON でない応答は替えられない。作業ツリーの backend が変える、DB を読まない
    * 経路の応答は、scripts/capture.mjs の --backend で作業ツリーの backend に返させる（例は examples/jma-precipitation.ts）。
@@ -75,6 +79,13 @@ export interface CaptureContext {
   settle(): Promise<void>;
   /** 今の画面（`target` を渡せばその要素だけ）を撮り、書いたファイルを返す。 */
   shot(name: string, target?: Locator): Promise<string>;
+  /**
+   * スマホのキーボードが出た画面に見立てて撮り、書いたファイルを返す。`field`（打つ欄）がキーボードの上に隠れず見えるだけ画面を
+   * 上へずらし、下からキーボードの高さを板で覆う。ページには何も足さず、撮った画像を組み直す（ページへ板を重ねると、
+   * ヘッドレスの地図の描き直しが崩れて白く抜ける）。`height` はキーボードの高さ（CSS の px。既定は e2e/fixtures.ts: KEYBOARD_HEIGHT。
+   * 候補の帯や Safari の入力の補助の帯が出る欄で見せたいときは、脚本が足す）。
+   */
+  shotWithKeyboard(name: string, field: Locator, options?: { height?: number }): Promise<string>;
 }
 
 export type CaptureScript = (context: CaptureContext) => Promise<void>;
@@ -93,6 +104,33 @@ export interface WorktreeBackend {
  * jma_tile_upstream_max_requests_per_second）ので、地図が一度に取るタイルの数だけ待ちが積もる。
  */
 const WORKTREE_BACKEND_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * 撮った画像（PNG）の上を `shift` だけ切り落とし、下から `keyboard` の高さを板で覆った画像を、同じ寸法で組み直す。iOS の
+ * Safari はキーボードが出てもレイアウトの寸法を変えず、見える範囲を欄が見えるだけずらすので、画面の中身は動かない。
+ */
+async function composeKeyboard(
+  page: Page,
+  image: Buffer,
+  { width, height }: { width: number; height: number },
+  { shift, keyboard }: { shift: number; keyboard: number },
+): Promise<Buffer> {
+  const sheet = await page.context().newPage();
+  try {
+    await sheet.setViewportSize({ width, height });
+    await sheet.setContent(`<!doctype html>
+<body style="margin:0;width:${width}px;height:${height}px;overflow:hidden;position:relative">
+  <img src="data:image/png;base64,${image.toString("base64")}"
+    style="position:absolute;left:0;top:${-shift}px;width:${width}px;height:${height}px">
+  <div style="position:absolute;left:0;right:0;bottom:0;height:${keyboard}px;background:#9ca3af;color:#fff;
+    display:flex;align-items:center;justify-content:center;font:20px sans-serif">キーボード（見立て）</div>
+</body>`);
+    await sheet.locator("img").evaluate((img: HTMLImageElement) => img.decode());
+    return await sheet.screenshot();
+  } finally {
+    await sheet.close();
+  }
+}
 
 /** 「表示」のボタンと、押すと開く一覧の名前（`MapOverlayControls`）。 */
 const OVERLAY_LIST_NAME = "地図に出す情報";
@@ -122,8 +160,8 @@ function fileName(name: string): string {
 
 /** 選び損ねた直後に呼ぶので、選択肢が閉じていれば開く。 */
 async function lensLabels(page: Page): Promise<string[]> {
-  const group = page.getByRole("radiogroup", { name: "地図の色分け" });
-  if (!(await group.isVisible())) await page.getByRole("button", { name: /^地図の色分け: / }).click();
+  const group = page.getByRole("radiogroup", { name: "評価で塗る" });
+  if (!(await group.isVisible())) await page.getByRole("button", { name: /^評価で塗る: / }).click();
   const labels = await group.getByRole("radio").allInnerTexts();
   return labels.map((label) => label.replace(/\s+/g, " ").trim());
 }
@@ -137,6 +175,10 @@ async function ariaLabels(scope: Page | Locator, suffix: string): Promise<string
 
 export function captureContext(page: Page, { out, mocked }: { out: string; mocked: boolean }): CaptureContext {
   let count = 0;
+  const nextFile = (name: string) => {
+    count += 1;
+    return path.join(out, `${count}-${fileName(name)}.png`);
+  };
   const settle = () => settleMap(page);
   return {
     page,
@@ -146,8 +188,9 @@ export function captureContext(page: Page, { out, mocked }: { out: string; mocke
     catalogAxes,
     settle,
     async open({ point, zoom, layers = [], storedState, routes } = {}) {
-      const layerIds: string[] = mapDisplay.layers.map(({ id }) => id);
-      const unknown = layers.filter((id) => !layerIds.includes(id));
+      // 道の線の層は軸カタログが配るので、前もって照らせるのはモックの層だけ（本物の backend の層は開いた画面が決める）。
+      const layerIds: string[] = [...mapDisplay.layers, ...fixtures.E2E_ROAD_LAYERS].map(({ id }) => id);
+      const unknown = mocked ? layers.filter((id) => !layerIds.includes(id)) : [];
       if (unknown.length > 0) {
         throw new Error(`知らないレイヤー: ${unknown.join(" / ")}。選べるレイヤー: ${layerIds.join(" / ")}`);
       }
@@ -160,7 +203,7 @@ export function captureContext(page: Page, { out, mocked }: { out: string; mocke
       await page.addInitScript(states.installPageHelpers);
       await page.addInitScript(fixtures.installMapFinder);
       await fixtures.seedStoredState(page, {
-        "ridecompass:first-visit-intro-closed": "true",
+        ...fixtures.INTRO_CLOSED,
         ...(layers.length > 0
           ? { "ridecompass:layer-visibility": JSON.stringify(Object.fromEntries(layers.map((id) => [id, true]))) }
           : {}),
@@ -248,13 +291,32 @@ export function captureContext(page: Page, { out, mocked }: { out: string; mocke
     async patch(glob, transform) {
       await page.route(glob, async (route) => {
         const response = await route.fetch();
-        await route.fulfill({ response, json: await transform(await response.json()) });
+        if (response.ok()) {
+          await route.fulfill({ response, json: await transform(await response.json()) });
+          return;
+        }
+        // 本物の backend にまだ無い経路（404 等）。失敗の状態を引き継ぐと替えた本文も失敗として読まれるので、成功で返す。
+        await route.fulfill({ json: await transform(undefined), headers: { "access-control-allow-origin": "*" } });
       });
     },
     async shot(name, target) {
-      count += 1;
-      const file = path.join(out, `${count}-${fileName(name)}.png`);
+      const file = nextFile(name);
       await (target ?? page).screenshot({ path: file });
+      console.log(`[capture] ${file}`);
+      return file;
+    },
+    async shotWithKeyboard(name, field, { height: keyboard = fixtures.KEYBOARD_HEIGHT } = {}) {
+      const viewport = page.viewportSize();
+      const box = await field.boundingBox();
+      if (!viewport || !box) throw new Error(`「${name}」: 打つ欄が画面に無い`);
+      if (keyboard <= 0 || keyboard >= viewport.height) {
+        throw new Error(`「${name}」: キーボードの高さ ${keyboard} は画面の高さ ${viewport.height} の中に収まらない`);
+      }
+      // 見える範囲は、レイアウトの下端より下へはずれない。
+      const shift = Math.min(keyboard, Math.max(0, box.y + box.height - (viewport.height - keyboard)));
+      const image = await composeKeyboard(page, await page.screenshot(), viewport, { shift, keyboard });
+      const file = nextFile(name);
+      await writeFile(file, image);
       console.log(`[capture] ${file}`);
       return file;
     },

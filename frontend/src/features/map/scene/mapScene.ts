@@ -92,6 +92,15 @@ export type MapSceneLayer = {
   readonly hidesBasemapPois?: BasemapPoiKinds;
 };
 
+/** `sdf` の絵は色を持たないシルエットで、色は記号のレイヤーが付ける。 */
+export type MapSceneImageOptions = { readonly sdf?: boolean; readonly pixelRatio?: number };
+
+/** 記号のレイヤーが名指す絵。描くのは地図に同じ id の絵が無いときだけ。 */
+export type MapSceneImage = {
+  readonly id: string;
+  readonly draw: () => { readonly data: ImageData; readonly options: MapSceneImageOptions };
+};
+
 /**
  * 地図に載っているべきものの宣言。ソース・レイヤーの id はそれぞれ一意。
  * 表示 ON/OFF・絞り込み・feature-state もここが持つ——スタイルを差し替えると
@@ -100,10 +109,16 @@ export type MapSceneLayer = {
 export type MapScene = {
   readonly sources: readonly MapSceneSource[];
   readonly layers: readonly MapSceneLayer[];
+  /** id はそれぞれ一意。外したものも地図に残す（絵は描くだけで、表示を持たない）。 */
+  readonly images: readonly MapSceneImage[];
+  /** 地図全体の状態（式が `global-state` で読む値）。名前を外すと、地図の上でも値の無いことになる。 */
+  readonly globalState: MapSceneGlobalState;
 };
 
+export type MapSceneGlobalState = Readonly<Record<string, number>>;
+
 /** スタイルを差し替えた直後に「前回」として渡すと、scene 全体が作り直される。 */
-export const EMPTY_MAP_SCENE: MapScene = { sources: [], layers: [] };
+export const EMPTY_MAP_SCENE: MapScene = { sources: [], layers: [], images: [], globalState: {} };
 
 /** 段の順に並べ替えたレイヤー。同じ段の中は scene が並べた順を保つ。 */
 export function orderedSceneLayers(scene: MapScene): readonly MapSceneLayer[] {
@@ -124,20 +139,16 @@ export function hiddenBasemapPois(scene: MapScene): BasemapPoiKinds {
 
 /** 押せるレイヤーの id。MapLibre へ渡すのは呼び出し側で、ここは宣言から導くだけ。 */
 export function interactiveSceneLayerIds(scene: MapScene): readonly string[] {
-  return sceneLayerIdsWhere(scene, (layer) => layer.hitTargets.length > 0);
+  return orderedSceneLayers(scene)
+    .filter((layer) => layer.hitTargets.length > 0)
+    .map((layer) => layer.spec.id);
 }
 
-/** ある対象を拾うレイヤーの id。対象を増やしてもこの関数は変わらない。 */
-export function sceneLayerIdsForHitTarget(scene: MapScene, target: string): readonly string[] {
-  return sceneLayerIdsWhere(scene, (layer) => layer.hitTargets.includes(target));
+/** 押された地物のレイヤーが拾う対象。scene に無いレイヤーは何も拾わない。 */
+export function sceneHitTargetsOfLayer(scene: MapScene, layerId: string): readonly string[] {
+  return scene.layers.find((layer) => layer.spec.id === layerId)?.hitTargets ?? [];
 }
 
 function tierIndex(tier: MapSceneTier): number {
   return MAP_SCENE_TIERS.findIndex((entry) => entry.id === tier);
-}
-
-function sceneLayerIdsWhere(scene: MapScene, keep: (layer: MapSceneLayer) => boolean): readonly string[] {
-  return orderedSceneLayers(scene)
-    .filter(keep)
-    .map((layer) => layer.spec.id);
 }
