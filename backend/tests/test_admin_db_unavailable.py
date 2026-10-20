@@ -1,6 +1,6 @@
 """`api/admin_db_errors.py`——管理API（`/api/admin/`配下）のDB障害を、どの口でも503で返すこと。
 
-DBに繋がらない状態は、本物のアプリのセッション工場を接続を断るDBへ向けて作る（本番のDB停止と同じく、
+DBに繋がらない状態は、アプリのセッション工場の依存を、接続を断るDBへ向けた工場で上書きして作る（本番のDB停止と同じく、
 最初の問い合わせで`ConnectionRefusedError`が出る）。口ごとの依存・サービスは本物を通す。
 
 ここで見ないもの:
@@ -24,6 +24,7 @@ from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.region import EDGE_UNIT_MIN_ZOOM
 from app.domain.tuning import TUNING_PARAMETERS
 from app.domain.road_classes import EMPTY_ROAD_CLASSES
+from app.infrastructure import database
 from app.main import app
 from app.services.axis_preview_service import new_sample_cache
 from tests.admin_auth import AUTH_HEADERS
@@ -93,8 +94,8 @@ ROUTES = [
 @pytest.fixture
 def database_down(monkeypatch):
     engine = create_async_engine(UNREACHABLE_DATABASE_URL, poolclass=NullPool)
-    for name in ("get_session_factory", "get_route_generation_session_factory"):
-        monkeypatch.setattr(dependencies, name, lambda: async_sessionmaker(engine))
+    for factory in (database.get_session_factory, database.get_route_generation_session_factory):
+        monkeypatch.setitem(app.dependency_overrides, factory, lambda: async_sessionmaker(engine))
     # 分布の標本は一度読むとプロセスに持つため、読んでいない状態から始める。
     monkeypatch.setitem(app.dependency_overrides, dependencies.get_axis_preview_sample_cache, new_sample_cache)
     # 軸の集合は起動時にDBから読んでプロセスに持つので、DBが落ちても軸`a`は引ける。

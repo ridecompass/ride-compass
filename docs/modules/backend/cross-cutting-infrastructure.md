@@ -216,6 +216,10 @@ composeのfrontendの公開先に従う値で、既定値（手元で`next dev`�
 ためで（タイル配信用の20秒では最後まで走らない）、生成のクエリはこの上限に近づかない——本番の
 都心40〜80kmで、形の取り直しを含む評価の段が全体で1.3秒以下（2026-09の計測）。
 
+DI工場はどちらの系統を使うかを、工場を受ける依存（`api/dependencies.py: TileSessions`・`api/dependencies.py: LongSessions`）の
+型で宣言し、中で工場を呼んで開かない。テストは`app.dependency_overrides`で工場を差し替える（例: DBに届かない状態）。
+HTTPの要求の外（定期ジョブ・ベンチマーク）は、工場を引数で渡して同じ開き方を使う。
+
 ### DB障害として扱う例外（`database.py: DB_UNAVAILABLE_ERRORS`）
 
 タイル配信・区間インスペクタ・動的way値等、DBの読み取りに失敗したら空（空タイル・空dict・
