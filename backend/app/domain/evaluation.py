@@ -61,7 +61,6 @@ from app.domain.material_catalog import (
 from app.domain.cycling_speed import travel_model_material_ids
 from app.domain.hard_filters import hard_filtered
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX
-from app.domain.tuning import tuning_value
 
 
 def has_route_facing_raw_value(definition: AxisDefinition) -> bool:
@@ -188,26 +187,6 @@ def empty_material_arrays(n: int, present: Container[str]) -> dict[str, Material
         else:  # numeric・boolean（真偽も数値の行列と同じく1.0/0.0/NaNで持つ）
             arrays[spec.material_id] = np.full(n, np.nan)
     return arrays
-
-
-# 主観的割増と時間の換算レート（P）の既定値。`難易度100の道は体感で所要時間の(1+P)倍`の
-# 意味で、コスト式は`所要時間 × (1 + P × difficulty/100)`。
-#
-# 走行モデルへ入っている現象を写した軸の既定重みは0のため（docs/architecture/design-principles.md
-# 構造仕様13）、difficultyは主観的な軸だけの加重平均になり、物理の軸で薄まらないぶん
-# 値が大きく出る。Pはその物差しに合わせた値で、**実走から較正した値ではない**。
-def resolve_penalty_strength(requested: float | None) -> float:
-    """リクエストが省略したときの換算レート（P）を、**呼ばれた時点で**較正値から読む。
-
-    **モジュール直下で束ねない**。`TUNING_VALUES`へDBの上書きを重ねる
-    `refresh_tuning_values`は起動時のlifespan（＝全importの後）で走るため、import時に
-    束ねた値にはDBの上書きが一度も入らない——プロセスを入れ替えても同じ順序を繰り返す
-    だけで、管理画面は変えた値を「いま効いている値」として表示しながら、探索はずっと
-    宣言の既定値で動く。
-    """
-    if requested is not None:
-        return requested
-    return tuning_value("evaluation.penalty_strength")
 
 
 class AxisComposition(NamedTuple):

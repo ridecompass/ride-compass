@@ -1323,8 +1323,6 @@ export interface components {
             route_preference: components["schemas"]["RoutePreferenceWeights"];
             /** Penalty Strength */
             penalty_strength: number;
-            /** Max Average Grade Percent */
-            max_average_grade_percent: number | null;
             road_avoidance: components["schemas"]["RoadAvoidanceOverride"];
             /** Max Routes */
             max_routes: number;
@@ -2008,13 +2006,7 @@ export interface components {
             longitude: number;
             /** Distance Km */
             distance_km?: number | null;
-            /** Distance Tolerance Km */
-            distance_tolerance_km?: number | null;
             route_preference?: components["schemas"]["RoutePreferenceWeights"] | null;
-            /** Penalty Strength */
-            penalty_strength?: number | null;
-            /** Max Average Grade Percent */
-            max_average_grade_percent?: number | null;
             road_avoidance: components["schemas"]["RoadAvoidanceOverride"];
             /** Max Routes */
             max_routes: number;

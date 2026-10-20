@@ -42,6 +42,7 @@ from app.domain.time_zone import JST
 from app.domain.route_request import ASSUMED_SPEED_KMH
 from app.domain.route_request import DEFAULT_MAX_ROUTES
 from app.domain.route_request import FixedPoints, RequestedConditions
+from app.domain.tuning import tuning_value
 from benchmarks._resources import sample_resources
 from benchmarks.revision import announce_revision
 
@@ -145,8 +146,7 @@ async def main() -> int:
         await refresh_axis_definitions(AxisDefinitionRepository(axis_session))
     # 評価条件を省いた生成の要求と、画面の既定の除外・避け方で組む。
     async with get_route_generation_setup_opener()(RequestedConditions(
-        preference_override=None, penalty_strength=None, max_average_grade_percent=None,
-        road_avoidance={}, assumed_speed_kmh=ASSUMED_SPEED_KMH,
+        preference_override=None, road_avoidance={}, assumed_speed_kmh=ASSUMED_SPEED_KMH,
     )) as setup:
         generator = setup.generator
         for index in range(runs):
@@ -155,7 +155,7 @@ async def main() -> int:
             async with sample_resources(dsn) as trace:
                 started = time.perf_counter()
                 candidates = await generator.generate_loops(
-                    origin, distance_km=distance_km, distance_tolerance_km=5.0,
+                    origin, distance_km=distance_km, distance_tolerance_km=tuning_value("search.distance_tolerance_km"),
                     points=FixedPoints(waypoints=[], destination=None),
                     max_routes=DEFAULT_MAX_ROUTES, start_time=datetime.now(JST))
                 elapsed = time.perf_counter() - started
