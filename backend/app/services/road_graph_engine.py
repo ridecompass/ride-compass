@@ -155,10 +155,7 @@ from app.services.weather_service import WeatherService
 _BBOX_MARGIN_RATIO = 0.3
 _BBOX_MARGIN_MIN_KM = 2.0
 
-# ランキング上位から間引き判定にかけるリングNode数の上限（往路の経路復元コストの上限）。
-_MAX_RING_CANDIDATES_EXAMINED = 4000
-# ランキング上位から間引き判定にかけるvia-node候補数の上限（_MAX_RING_CANDIDATES_EXAMINEDと
-# 同じ役割）。目的地ルートのbboxは周回より小さいため周回より小さい上限にする。
+# ランキング上位から間引き判定にかけるvia-node候補数の上限（往路の経路復元コストの上限）。
 _MAX_VIA_NODE_CANDIDATES_EXAMINED = 2000
 
 logger = logging.getLogger("ridecompass.graph")
@@ -596,7 +593,7 @@ class RoadGraphEngine:
         4. 上位から順に、既採用候補と往路の重複率が重なりの上限（`domain/route_search.py: corridor_overlap_ratios`）を
            超えるもの・最小の間隔（`domain/route_search.py: turnaround_separation`）より近いものを飛ばして`pool_size`件
            採る（同一コリドー上の隣接Nodeが上位を独占し似た周回が並ぶのを防ぐ）。
-           埋まらなければ閾値を緩めた上限へ上げてやり直す。
+           埋まらなければ閾値を緩めた上限へ上げてやり直す。上位の決まった数で切らず、帯の全Nodeを間引きにかける。
 
         `context.legs`は前段のレグのあとに、往路（最後の固定点から離れるレグ）と帰り（終点へ向かうレグ）を置く。
         """
@@ -680,12 +677,10 @@ class RoadGraphEngine:
         closeness_key = closeness_m[ring]
         ranking = rank_by_pareto_layers(
             ring, closeness_key, tree.node_cost[ring], tree.node_seconds[ring], self._penalty_strength,
-            max_items=pool_size, max_examined=_MAX_RING_CANDIDATES_EXAMINED, tie_by_distance=True,
+            max_items=pool_size, max_examined=None, tie_by_distance=True,
         )
         order = ranking.order
         ranked = ring[order]
-        # 方位／近接判定用平面座標は、以降で実際に引かれうる`ranked`
-        # （上限_MAX_RING_CANDIDATES_EXAMINED件）ぶんだけ用意する。
         ranked_list = ranked.tolist()
         # 同点（層と丸めた難易度が等しい）候補はグループとして渡し、グループ内の試行順は
         # 「採用済み候補との方位角距離の最小値が最大」（最遠点貪欲法、方位は生成機構ではなく

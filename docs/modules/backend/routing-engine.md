@@ -619,7 +619,9 @@ Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を
 候補間の順序はこの並べ替えでは変わらない。
 
 `select_diverse_by_overlap`は上位から、既採用候補と往路が重複しすぎるもの・近すぎるものを
-飛ばして`pool_size`件採る（埋まらなければ重複の条件を緩めてやり直す）。しきい値は較正値で、
+飛ばして`pool_size`件採る（埋まらなければ重複の条件を緩めてやり直す）。間引きには帯の全Nodeをかける——易しい往路の上位は
+地図の上で数か所に固まり、上位の決まった数で切ると大半が近さで捨てられてプールが埋まらない（関東の網では上位4,000点のうち
+9割以上が近さで捨てられた）。埋まらなかった生成は、生成のログの行に`pool_unfilled`（不足数）が出る。しきい値は較正値で、
 `domain/route_search.py: corridor_overlap_ratios`・`domain/route_search.py: turnaround_separation`が呼ばれた時点で読む。
 
 ### `trace_loop_from_turnaround`（帰りの探索）
