@@ -221,18 +221,19 @@ async def test_a_spliced_route_is_evaluated_as_sent(client, body):
     ],
 )
 async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(
-    client, world, origin, waypoints, destination, target,
+    client, world, monkeypatch, origin, waypoints, destination, target,
 ):
     """経由地を置いても、距離は全長の目標として効く（夕食と銭湯に寄って30kmの周回）。
     探索は置いた点の近くに限らず、全長の目標に足りる広さで探す。"""
     world.network = LATTICE
     tolerance = 2.0
+    monkeypatch.setitem(TUNING_VALUES, "search.distance_tolerance_km", tolerance)
     end = origin if destination is None else destination
 
     result = (await _generate(
         client, **_lattice_point(*origin), waypoints=[_lattice_point(*point) for point in waypoints] or None,
         destination=_lattice_point(*destination) if destination else None,
-        distance_km=target, distance_tolerance_km=tolerance,
+        distance_km=target,
     ))["result"]
 
     assert len(result["routes"]) >= 2
@@ -244,10 +245,10 @@ async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(
     assert result["conditions"]["distance_km"] == target
 
 
-async def test_an_empty_result_says_why(client):
+async def test_an_empty_result_says_why(client, monkeypatch):
     """置いた点を通るだけで距離を超えると、候補は無く、理由が返る。"""
-    status = await _generate(client, **_point(SOUTH_WEST), waypoints=[_point(NORTH_EAST)], distance_km=2.0,
-                             distance_tolerance_km=0.5)
+    monkeypatch.setitem(TUNING_VALUES, "search.distance_tolerance_km", 0.5)
+    status = await _generate(client, **_point(SOUTH_WEST), waypoints=[_point(NORTH_EAST)], distance_km=2.0)
 
     assert status["status"] == "done"
     assert status["result"]["routes"] == []
@@ -276,23 +277,19 @@ async def test_the_overrides_that_were_sent_are_echoed(client):
     )
     with replaced_road_classes(definitions):
         conditions = (await _generate(
-            client, route_preference={AVOID_AXIS: 2.0}, penalty_strength=0.5, max_average_grade_percent=8.0,
-            road_avoidance={"old.local": "avoid"}, assumed_speed_kmh=25.0, distance_tolerance_km=2.0,
+            client, route_preference={AVOID_AXIS: 2.0}, road_avoidance={"old.local": "avoid"}, assumed_speed_kmh=25.0,
         ))["result"]["conditions"]
 
     assert conditions["route_preference"] == {AVOID_AXIS: 2.0}
-    assert conditions["penalty_strength"] == 0.5
-    assert conditions["max_average_grade_percent"] == 8.0
     assert conditions["road_avoidance"] == {"kind.local": "avoid"}
     assert conditions["assumed_speed_kmh"] == 25.0
-    assert conditions["distance_tolerance_km"] == 2.0
 
 
 @pytest.mark.parametrize(("field", "tuning_id", "values"), [
     ("penalty_strength", "evaluation.penalty_strength", (0.37, 0.61)),
     ("distance_tolerance_km", "search.distance_tolerance_km", (3.0, 4.0)),
 ])
-async def test_an_omitted_value_is_the_calibrated_value_at_the_time_of_generation(
+async def test_the_calibrated_value_at_the_time_of_generation_is_applied(
     client, monkeypatch, field, tuning_id, values,
 ):
     """管理画面で変えた較正値は、プロセスを入れ替えずに次の生成から効き、使った値として返る。"""

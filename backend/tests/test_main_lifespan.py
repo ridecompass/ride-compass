@@ -53,9 +53,7 @@ def _harmless_startup(monkeypatch):
     構築を伴い、環境によっては1回あたり約1秒かかる。ジョブを無害化済みで返り値を
     実際には使わないため、安全にこのコストを避けられる。
     """
-    monkeypatch.setattr(main_module, "refresh_axis_definitions", bound(main_module.refresh_axis_definitions, _noop))
-    monkeypatch.setattr(main_module, "refresh_tuning_values", bound(main_module.refresh_tuning_values, _noop))
-    monkeypatch.setattr(main_module, "refresh_road_classes", bound(main_module.refresh_road_classes, _noop))
+    monkeypatch.setattr(main_module, "refresh_definitions", bound(main_module.refresh_definitions, _noop))
     for name in _startup_job_attribute_names():
         monkeypatch.setattr(main_module, name, bound(getattr(main_module, name), _noop))
     monkeypatch.setattr(main_module, "get_http_client", lambda timeout: None)
@@ -90,13 +88,13 @@ def lifespan_schedulers(monkeypatch) -> list[_RecordingScheduler]:
     return created
 
 
-def test_lifespan_fails_fast_when_refresh_axis_definitions_raises(monkeypatch):
+def test_lifespan_fails_fast_when_axis_definitions_cannot_be_loaded(monkeypatch):
     """`AxisDefinitionSyncError`はlifespan内で捕捉されず、アプリ起動自体が失敗する。"""
 
     async def _raise(*args, **kwargs):
         raise AxisDefinitionSyncError("boom")
 
-    monkeypatch.setattr(main_module, "refresh_axis_definitions", _raise)
+    monkeypatch.setattr(main_module, "refresh_definitions", _raise)
 
     with pytest.raises(AxisDefinitionSyncError):
         with TestClient(app):

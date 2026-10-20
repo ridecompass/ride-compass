@@ -25,6 +25,7 @@ from app.domain.route import Coordinates
 from app.domain.route_points import RoutePointHit
 from app.domain.route_preference import RoutePreference
 from app.domain.route_request import FixedPoints, RequestedConditions
+from app.domain.tuning import TUNING_VALUES
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
 from app.services.graph_service import GraphService
@@ -234,17 +235,17 @@ def serve_road_network(monkeypatch, current: Callable[[], RoadNetwork]) -> None:
 
 def generator_for(
     monkeypatch, network: RoadNetwork, avoid_weight: float, wind: WindForecastSeries | None,
-    max_average_grade_percent: float | None = None,
     side_points: dict[tuple[int, int], list[RoutePointHit]] | None = None,
     *, assumed_speed_kmh: float = 20.0, road_avoidance: dict[str, AvoidanceLevel] | None = None,
 ):
-    """道路網を全体の配列として読ませ、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""
+    """道路網を全体の配列として読ませ、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。
+    主観と時間の換算レートは1（難易度100の道が体感で2倍の時間）にする。"""
     serve_road_network(monkeypatch, lambda: network)
+    monkeypatch.setitem(TUNING_VALUES, "evaluation.penalty_strength", 1.0)
     return assemble_route_generation_setup(
         GraphService(NetworkRepository(network, side_points)), Weather(wind),
         RequestedConditions(
             preference_override=RoutePreference(weights={AVOID_AXIS: avoid_weight}),
-            penalty_strength=1.0, max_average_grade_percent=max_average_grade_percent,
             road_avoidance=road_avoidance or {}, assumed_speed_kmh=assumed_speed_kmh,
         ),
     ).generator

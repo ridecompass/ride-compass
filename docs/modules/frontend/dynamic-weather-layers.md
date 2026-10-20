@@ -300,7 +300,7 @@ MSMの格子点の段（`origin`が`grid`）は、`useWeatherGrid`の応答の`t
    （種類の集合は生成物から導くため、足し忘れは型検査が落ちる）。取得・時系列・描画内容・取得状態は
    宣言の一覧をループして作るため、要素を足すだけならフロントの手書き作業は無い。
 
-契約テスト（`scene/scene.state.contract.test.ts`の全部を載せた状態）の母集団も生成物の
+契約テスト（`scene/scene.allLayers.contract.test.ts`の全部を載せた状態）の母集団も生成物の
 `mapDisplay.weatherElements`で、1で足した要素はそのまま検査の対象になる。
 
 ## データ取得状態
@@ -325,7 +325,7 @@ JMA_REFRESH_INTERVAL_SECONDS`）に合わせる——遅い系統を早めに取
 （キャッシュに残る間。読み手が消えてから既定の5分）をすぐに出し、裏で取り直す——読み込み中を経ない。前の値は
 定期の取り直しの周期の間に出している値と同じ種類の古さで、取り直しが届けば置き換わる。
 
-**MapLibreのソースイベント経由の系統（`MapView.tsx: buildLayerDataSources`）は
+**MapLibreのソースイベント経由の系統（`features/map/MapView/layerDataSources.ts: buildLayerDataSources`）は
 動的気象レイヤーの対象外**——実際の外部フェッチはアプリ自身の取得（TanStack Query）で
 行われ、結果を`map.getSource(id).setData(...)`/`setTiles(...)`で流し込むだけのため、
 MapLibre側のソースイベントはフェッチの待ち時間・失敗を観測できない（`kind`が

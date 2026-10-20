@@ -1,7 +1,7 @@
 """backendのデプロイ対象から外したファイルが、本番で読まれていないことの検査。
 
 `backend/scripts/deploy_gate.py`は、本番プロセスに届かない変更でコンテナを入れ替えないよう、
-一部のファイルを`NOT_DEPLOYED`で外している。外したファイルを本番側のコードが
+イメージに入るが本番プロセスが読まないファイルを`NOT_DEPLOYED`で外している。外したファイルを本番側のコードが
 importすると、**そのファイルの変更だけが本番へ届かなくなる**。エラーにはならず、古い値で
 動き続ける。
 
@@ -30,12 +30,8 @@ _GATE = deploy_gate
 
 def _image_code_dirs() -> list[Path]:
     """DockerfileがCOPYするもののうちディレクトリ（イメージへ入るコードの置き場）。"""
-    dirs = []
-    for line in (BACKEND / "Dockerfile").read_text(encoding="utf-8").splitlines():
-        parts = line.split()
-        if parts[:1] == ["COPY"]:
-            dirs += [BACKEND / src for src in parts[1:-1] if (BACKEND / src).is_dir()]
-    return dirs
+    sources = _GATE.image_sources((REPO / _GATE.DOCKERFILE).read_text(encoding="utf-8"))
+    return [BACKEND / src for src in sources if (BACKEND / src).is_dir()]
 
 
 def _excluded_files() -> dict[str, list[Path]]:

@@ -32,8 +32,6 @@ _WARNING_CACHE_TTL_SECONDS = 10 * 60
 
 logger = logging.getLogger("ridecompass.jma_warning_client")
 
-REQUEST_TIMEOUT = httpx.Timeout(connect=3.0, read=5.0, write=5.0, pool=5.0)
-
 _AREA_DATA_CACHE_KEY = "area"
 
 # 別表3の全コード→種別の名称。「レベルN」の接頭辞は段（`domain/jma_warning.py: warning_level`）が名称から
@@ -238,7 +236,7 @@ async def fetch_area_data(client: httpx.AsyncClient, cache: TTLCache) -> AreaMas
     プロセス内で長時間キャッシュする。"""
 
     async def fetch() -> AreaMaster:
-        payload = await get_json(client, JMA_AREA_JSON_URL, dict, "area master is", timeout=REQUEST_TIMEOUT)
+        payload = await get_json(client, JMA_AREA_JSON_URL, dict, "area master is")
         return _parse_area_master(payload)
 
     return await cached_fetch("weather:jma-area", fetch, cache=cache, key=_AREA_DATA_CACHE_KEY)
@@ -260,7 +258,6 @@ async def fetch_warning_documents(
             JMA_WARNING_URL_TEMPLATE.format(office_code=office_code),
             list,
             "warning bulletins are",
-            timeout=REQUEST_TIMEOUT,
         )
         return _parse_bulletins(payload, office_code)
 

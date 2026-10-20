@@ -1,7 +1,9 @@
-// 点（事故・POI・立ち寄り先）を押したときのポップアップの本文。
+// 点（事故・POI・立ち寄り先）と地点のピンを押したときのポップアップの本文。
 // 値はOSMタグ由来で第三者が編集できるため、HTML文字列を経由せずテキストノードで組む
 // （`Popup.setHTML()`はサニタイズしない）。
 import { pointCategoryOf, pointPlaceName, type PointAxis } from "@/lib/mapDisplay/pointLayers";
+import { pinMarkName } from "@/components/PinMark/PinMark";
+import type { PointTarget } from "@/types/route";
 
 // 行間はサイドバーの他のカードに近い密度に合わせる。
 const POPUP_BODY_STYLE = "font-size:var(--font-size-md); line-height:1.4;";
@@ -55,4 +57,25 @@ export function buildPointPopupContent(
     body.appendChild(link);
   }
   return body;
+}
+
+/** 地点のピンの名前（見るだけの間にピンを押すと、小窓に呼び名と並べて出す）。 */
+export interface PinNames {
+  origin: string;
+  waypoints: readonly string[];
+  destination: string;
+}
+
+/** 地点のピンを押したときのポップアップの本文:「<ピンの呼び名>: <名前>」。 */
+export function buildPinPopupContent(target: PointTarget, pinNames: PinNames): HTMLParagraphElement {
+  const index = target.role === "waypoint" ? (target.index ?? 0) : 0;
+  const name =
+    target.role === "origin"
+      ? pinNames.origin
+      : target.role === "destination"
+        ? pinNames.destination
+        : pinNames.waypoints[index];
+  const content = document.createElement("p");
+  content.textContent = `${pinMarkName(target.role, target.role === "waypoint" ? String(index + 1) : undefined)}: ${name}`;
+  return content;
 }

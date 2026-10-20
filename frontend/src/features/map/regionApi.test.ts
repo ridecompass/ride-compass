@@ -8,7 +8,7 @@
  * - タイルのオリジンの決め方 → `lib/tileBaseUrl.test.ts`
  * - パスの`{名前}`の埋め方 → `lib/apiPath.ts`を通る全URLが同じで、ここでは結果のURLだけを見る
  * - 失敗の文言の組み立て・通信の失敗とタイムアウトの包み直し → `lib/apiClient.test.ts`
- * - 軸カタログの応答から世代を引き、揃うまで地図を描かないこと → `features/map/view/useMapView.test.ts`
+ * - 軸カタログの応答から世代を引き、揃うまで地図を描かないこと → `features/map/view/useMapView.layerStatus.test.ts`
  * - 内訳・道ごとの材料を画面へ出すこと → `features/map/MapView/RoadInspectorPopup.test.tsx`・
  *   `features/map/useWayMaterials.test.ts`
  */

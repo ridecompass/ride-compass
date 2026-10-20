@@ -4345,17 +4345,6 @@
             "type": "number",
             "title": "Penalty Strength"
           },
-          "max_average_grade_percent": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Average Grade Percent"
-          },
           "road_avoidance": {
             "$ref": "#/components/schemas/RoadAvoidanceOverride"
           },
@@ -4420,7 +4409,6 @@
           "distance_tolerance_km",
           "route_preference",
           "penalty_strength",
-          "max_average_grade_percent",
           "road_avoidance",
           "max_routes",
           "start_time",
@@ -6550,19 +6538,6 @@
             ],
             "title": "Distance Km"
           },
-          "distance_tolerance_km": {
-            "anyOf": [
-              {
-                "type": "number",
-                "maximum": 50.0,
-                "exclusiveMinimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Distance Tolerance Km"
-          },
           "route_preference": {
             "anyOf": [
               {
@@ -6572,30 +6547,6 @@
                 "type": "null"
               }
             ]
-          },
-          "penalty_strength": {
-            "anyOf": [
-              {
-                "type": "number",
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Penalty Strength"
-          },
-          "max_average_grade_percent": {
-            "anyOf": [
-              {
-                "type": "number",
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Average Grade Percent"
           },
           "road_avoidance": {
             "$ref": "#/components/schemas/RoadAvoidanceOverride"
