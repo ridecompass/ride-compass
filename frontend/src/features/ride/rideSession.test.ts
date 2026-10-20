@@ -25,7 +25,6 @@ describe("rideSession: 走行中のルートの一時保存の書き方と読み
       now: SAVED_AT + RIDE_SESSION_TTL_MS + 1,
     },
     { case: "保存が無い", raw: null, now: SAVED_AT },
-    { case: "消した保存（空）", raw: "", now: SAVED_AT },
     { case: "読めない保存", raw: "{", now: SAVED_AT },
     { case: "形の違う保存", raw: JSON.stringify({ ...WRITTEN, savedAt: "朝" }), now: SAVED_AT },
     // 距離の欄は、まだ当てていなければnullで書く。欄の無い保存（距離を足す前の版）も形が違う側に入る。

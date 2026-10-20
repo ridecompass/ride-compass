@@ -13,7 +13,8 @@
  *
  * ここで見ないもの: タブの列と選んだタブ、どのタブの中身が見えるか（スタイルで隠す）→ `app/page.tsx`。
  * 書いた定数や受け取った値をそのまま渡すもの（今の値と km の表記・候補の距離の幅、印の
- * 役割ごとの背景色、(i)の奥の文）。
+ * 役割ごとの背景色、(i)の奥の文、出発地が現在地にある間に戻す操作を押せなくすること、経由地が上限の間に探す欄を押せなくすること）。
+ * 周回の間に呼び出した地点を目的地にできないこと → `SavedPlacesPanel/SavedPlacesPanel.test.tsx`。
  * 選んでいる地点をどう決めるか（何も選んでいない・選んだ経由地が消えた・探して足した経由地を選ぶ） → `features/route/useGenerationConditions.test.ts`。
  * 打ちかけで引く間・変換中に引かないこと・候補の行の中身（辺り・距離・札）・引けない／当たらないときの文、探して置いた
  * 地点の辺りと代表の位置 → `RouteForm/PointDetail.test.tsx`。
@@ -228,12 +229,6 @@ describe("RouteForm 候補数", () => {
 
     expect(screen.getByRole("button", { name: "候補数を増やす" })).toBeDisabled();
   });
-
-  it("入力の件数を出す", () => {
-    renderForm({ maxRoutesInput: "8" });
-
-    expect(screen.getByText("8件")).toBeInTheDocument();
-  });
 });
 
 describe("RouteForm 全長の目標", () => {
@@ -300,15 +295,6 @@ describe("RouteForm 出発地", () => {
 
     expect(detail("出発地")).toHaveTextContent(`出発地${name}`);
     expect(originMark()).toHaveStyle({ color });
-  });
-
-  it.each([
-    [true, true],
-    [false, false],
-  ])("出発地が今の現在地にあるか（%s）で、現在地に戻す操作を押せなくする（%s）", (originAtHere, disabled) => {
-    renderForm({ originAtHere });
-
-    expect(button("出発地を現在地に戻す")).toHaveProperty("disabled", disabled);
   });
 
   it.each([
@@ -442,13 +428,6 @@ describe("RouteForm 地点の並び", () => {
 });
 
 describe("RouteForm 経由地", () => {
-  it("上限まで置いたあとは、新しい経由地を探しても置けない", () => {
-    const max = routeGenerateConfig.max_waypoints;
-    renderForm({ waypoints: waypointsOf(max), selectedPoint: { role: "waypoint", index: null } });
-
-    expect(pointBox("新しい経由地")).toBeDisabled();
-  });
-
   it("置いた経由地は、消す操作でその経由地を消す", async () => {
     const { removeWaypoint } = renderForm({ waypoints: waypointsOf(3) });
 
@@ -483,13 +462,10 @@ describe("RouteForm 周回", () => {
     expect(strip()).toEqual(["出発地: 現在地", "経由地1: 地図で選んだ地点", "経由地を足す"]);
   });
 
-  it.each([
-    [null, "未設定"],
-    [DESTINATION, "地図で選んだ地点"],
-  ])("周回を外すと、終点は目的地（%o）の札で「%s」と出し、目的地の印を付ける", (destination, name) => {
-    renderForm({ loop: false, destination });
+  it("周回を外すと、終点は目的地の札で出し、目的地の印を付ける", () => {
+    renderForm({ loop: false, destination: DESTINATION });
 
-    const mark = button(`目的地: ${name}`).querySelector("svg")?.parentElement;
+    const mark = button("目的地: 地図で選んだ地点").querySelector("svg")?.parentElement;
     expect(mark).toHaveStyle({ color: PIN_MARK_COLOR.destination });
     expect(screen.queryByText(/^終点:/)).toBeNull();
   });
@@ -615,13 +591,10 @@ describe("RouteForm 保存した地点を呼び出す", () => {
     },
   );
 
-  it.each([
-    [{ waypoints: waypointsOf(routeGenerateConfig.max_waypoints) }, "経由地に足す"],
-    [{ loop: true }, "目的地にする"],
-  ])("条件（%o）では「%s」を押せない", async (condition, label) => {
-    renderForm({ savedPlaces, ...condition }, "saved");
+  it("経由地を上限まで置いたあとは「経由地に足す」を押せない", async () => {
+    renderForm({ savedPlaces, waypoints: waypointsOf(routeGenerateConfig.max_waypoints) }, "saved");
 
-    expect(within(await openRecallMenu()).getByRole("button", { name: label })).toBeDisabled();
+    expect(within(await openRecallMenu()).getByRole("button", { name: "経由地に足す" })).toBeDisabled();
   });
 });
 

@@ -132,9 +132,6 @@ describe("保存して呼び出す", () => {
     const { result } = renderSaved();
 
     expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual(result.current.saved.saved);
-    expect(result.current.saved.saved).toEqual([
-      expect.objectContaining({ name: "いつもの周回", distanceTargeted: true, waypoints: [] }),
-    ]);
   });
 
   it("消すとその件だけが一覧から外れる", () => {

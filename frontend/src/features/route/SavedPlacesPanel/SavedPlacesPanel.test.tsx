@@ -1,11 +1,12 @@
 /**
- * 「保存済み」タブの「地点」（`SavedPlacesPanel.tsx`）——保存した地点を名前と辺りで並べ、「呼び出す」で選んだ役割の地点として置き、
- * 「消す」は確認の窓で「消す」を押したときだけ消す。無ければ無いと出し、保存の仕方を(i)の奥に置く。
+ * 「保存済み」タブの「地点」（`SavedPlacesPanel.tsx`）——保存した地点を名前と辺りで並べ、「呼び出す」で選んだ役割の地点として置く。
+ * 無ければ無いと出し、保存の仕方を(i)の奥に置く。
  *
  * ここで見ないもの:
  * - 地点の保存 → `RouteForm/PointDetail.test.tsx`
  * - 呼び出した地点が条件に置かれ、条件タブへ移ること → `RouteForm/RouteForm.test.tsx`・`app/page.test.tsx`
  * - (i)の奥の文（書いた文をそのまま出す）
+ * - 「消す」の確認の窓（一覧の部品 `SavedList/SavedList.tsx` が持ち、受け口をそのまま渡す） → `SavedConditionsPanel/SavedConditionsPanel.test.tsx`
  */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -83,20 +84,5 @@ describe("SavedPlacesPanel", () => {
         .filter((item) => item.hasAttribute("disabled"))
         .map((item) => item.textContent),
     ).toEqual([disabled]);
-  });
-
-  it("「消す」で、確認の窓の「消す」を押したときだけその地点を消す", async () => {
-    const { onRemove } = renderPanel();
-    const confirmDialog = () => screen.getByRole("dialog", { name: "「自宅」を消します" });
-
-    await userEvent.click(screen.getByRole("button", { name: "「自宅」を消す" }));
-    await userEvent.click(within(confirmDialog()).getByRole("button", { name: "キャンセル" }));
-    expect(onRemove).not.toHaveBeenCalled();
-
-    await userEvent.click(screen.getByRole("button", { name: "「自宅」を消す" }));
-    await userEvent.click(within(confirmDialog()).getByRole("button", { name: "消す" }));
-
-    expect(onRemove).toHaveBeenCalledExactlyOnceWith(HOME);
-    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

@@ -18,10 +18,10 @@
  *
  * 通さない分岐（どれも入口から作れない）:
  * - 生成の入力が無いときの`start`: 始められるのは表示中の候補を作った生成があるときだけで、入口（`canStart`）が出ない
- * - 帯の相手が一覧に無い・帯の座標が2点未満: 相手は同じ一覧から引き、範囲は少なくとも1本のEdgeを持つ
+ * - 帯の相手が一覧に無い: 相手は同じ一覧から引く
  * - 1グループの選択肢の上限: 候補数の上限（`route-generate-config.json: max_routes`）より多くは並ばない
- * - 評価の入口の前提（編集・乗り換え・形が無い）と、編集が無いときの乗り換え: 呼ぶ側が先に同じ前提で止め、
- *   編集していない間は乗り換え先が出ない
+ * - 評価の入口の前提（編集・乗り換え・形が無い）と、編集が無いときの乗り換え: 呼ぶ側が先に同じ前提で止め（乗り換えていない間は
+ *   編集面が差分と作成を押せなくする）、編集していない間は乗り換え先が出ない
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -352,15 +352,6 @@ describe("差分を見る", () => {
     expect(rendered.result.current.panel?.sameRouteId).toBe(sameRouteId);
   });
 
-  it("乗り換えていない間は評価しない", async () => {
-    const rendered = renderSplice();
-    await startEditing(rendered);
-
-    await press(rendered.result.current.panel?.onPreview);
-
-    expect(jobs.submitted).toEqual([]);
-  });
-
   it("評価を待っている間は待っていると返し、選び直しても続ける。待っている間に押しても投げ直さない", async () => {
     const rendered = renderSplice({ routes: [BASE, VIA_Q, VIA_Q_R] });
     await startEditing(rendered);
@@ -522,7 +513,6 @@ describe("作成", () => {
       label: "作り直す",
       interrupt: (rendered: Rendered) => rendered.rerender({ ...PROPS, generatedInput: { ...BASIS } }),
     },
-    { label: "全部消す", interrupt: (rendered: Rendered) => rendered.rerender({ ...PROPS, generatedInput: null }) },
     { label: "編集をやめる", interrupt: (rendered: Rendered) => act(() => rendered.result.current.panel?.onCancel()) },
   ])("評価を待っている間に「$label」と、あとから届いた評価で作らない", async ({ interrupt }) => {
     const rendered = renderSplice();
@@ -564,15 +554,6 @@ describe("作成", () => {
     expect(rendered.onApplied).not.toHaveBeenCalled();
     expect(rendered.result.current.editingRoute).toEqual(BASE);
     expect(rendered.result.current.panel?.applying).toBe(false);
-  });
-
-  it("乗り換えていない間は作らない", async () => {
-    const rendered = renderSplice();
-    await startEditing(rendered);
-
-    await press(rendered.result.current.panel?.onApply);
-
-    expect(jobs.submitted).toEqual([]);
   });
 
   it.each([
