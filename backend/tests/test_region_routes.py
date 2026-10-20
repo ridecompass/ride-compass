@@ -325,10 +325,14 @@ def test_region_way_materials_answer_the_wind_axis_with_its_value_under_the_maps
 
 
 @pytest.fixture
-def app_on_test_database(road_graph_engine, monkeypatch):
-    """アプリのタイル配信のセッション工場を、表を作ったテストDBへ向ける。"""
+def session_factory_dependency_on_test_database(road_graph_engine, override_dependency):
+    """依存のセッション工場を、表を作ったテストDBへ向ける。
+
+    `conftest.py: app_on_test_database`はアプリの工場をモジュールのイベントループで作り直すので、別のループで動く同期の
+    `TestClient`からは使えない（閉じるときに`ResourceWarning`で落ちる）。ここは接続を持ち越さない（`NullPool`）エンジンを依存に渡す。
+    """
     engine = create_async_engine(postgis_database_url(), poolclass=NullPool)
-    monkeypatch.setitem(app.dependency_overrides, database.get_session_factory, lambda: async_sessionmaker(engine))
+    override_dependency(database.get_session_factory, lambda: async_sessionmaker(engine))
 
 
 async def _none(*args, **kwargs):
@@ -353,7 +357,7 @@ class NoRainHistoryWeather:
         (None, True, 404),
     ],
 )
-@pytest.mark.usefixtures("app_on_test_database")
+@pytest.mark.usefixtures("session_factory_dependency_on_test_database")
 def test_region_way_materials_serve_every_published_axis(override_dependency, material, published, status):
     added = {} if material is None else {
         "axis_new_name": axis_definition("axis_new_name", material=material, is_published=published)}
