@@ -8,7 +8,8 @@ check_tile_index`が持ち、ここでは入口ごとにそれを使っている
 種類ごとに別に数えるレート制限。
 
 差し替えるのは、注入されるサービス（`RegionService`・配信サービス・タイルの材料の読み出し・区間インスペクタ。地図のレンズは
-それらの代役で組んだ本物の`AxisWayValueLens`を注入する）・土地被覆のタイルの取得・道路網の読み出し・レート制限の記録だけ。
+それらの代役で組んだ本物の`AxisWayValueLens`を注入する）・土地被覆のタイルの取得・レート制限の記録だけ。地図のレンズの組み立てを
+本物で通すテストは、道路網をテストDBから読む。
 
 ここで見ないもの:
 - タイルの中身とキャッシュ、区間インスペクタが出す値 → `test_region_service.py`・`test_landcover_tile.py`
@@ -24,6 +25,8 @@ from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.api import dependencies
 from app.api.cache_policy import BATCH_TILE, NO_STORE
@@ -43,10 +46,8 @@ from app.config import settings
 from app.domain.axis_inspector import AxisInspectorAxis, AxisInspectorResult, InspectorComposite, InspectorValues
 from app.domain.rain import RAIN_WINDOW_HOURS, rain_window_material_id
 from app.domain.region import ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
-from app.infrastructure import rate_limiter
-from app.infrastructure.derived_data_meta import DataRevisions
+from app.infrastructure import database, rate_limiter
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
-from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.region_tile_cache import TileResponse
 from app.domain.dynamic_way_values import (
     FeatureMaterials,
@@ -62,6 +63,7 @@ from app.main import app
 from app.domain.landcover import LANDCOVER_TILE_MAX_ZOOM, LANDCOVER_TILE_MIN_ZOOM
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 from tests.bound_fake import bound
+from tests.conftest import postgis_database_url
 
 client = TestClient(app)
 
@@ -343,21 +345,15 @@ def test_region_way_materials_answer_the_wind_axis_with_its_value_under_the_maps
     assert "bearing_deg" in unconditioned.json()["detail"]
 
 
+@pytest.fixture
+def app_on_test_database(road_graph_engine, monkeypatch):
+    """アプリのタイル配信のセッション工場を、表を作ったテストDBへ向ける。"""
+    engine = create_async_engine(postgis_database_url(), poolclass=NullPool)
+    monkeypatch.setitem(app.dependency_overrides, database.get_session_factory, lambda: async_sessionmaker(engine))
+
+
 async def _none(*args, **kwargs):
     return None
-
-
-class UncoveredRepository:
-    """どのタイルも取込範囲外と答えるDBの代役。"""
-
-    async def get_data_revisions(self):
-        return DataRevisions(derived=1, imported=1)
-
-    async def get_accident_years_covered(self):
-        return 1
-
-    get_feature_gradient_inputs_in_tile = bound(RoadGraphRepository.get_feature_gradient_inputs_in_tile, _none)
-    get_feature_materials_in_tile = bound(RoadGraphRepository.get_feature_materials_in_tile, _none)
 
 
 class NoRainHistoryWeather:
@@ -378,10 +374,10 @@ class NoRainHistoryWeather:
         (None, True, 404),
     ],
 )
+@pytest.mark.usefixtures("app_on_test_database")
 def test_region_way_materials_serve_every_published_axis(monkeypatch, material, published, status):
     added = {} if material is None else {
         "axis_new_name": axis_definition("axis_new_name", material=material, is_published=published)}
-    monkeypatch.setattr(dependencies, "RoadGraphRepository", lambda session: UncoveredRepository())
     app.dependency_overrides[get_weather_service] = NoRainHistoryWeather
 
     with replaced_axis_definitions({**copy_axis_definitions(), **added}):

@@ -13,13 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain import tuning
 from app.domain.tuning import TUNING_PARAMETERS, TUNING_PARAMETERS_BY_ID
-from app.infrastructure.tuning_overrides import (
-    TuningOverrideError,
-    clear_override,
-    merge_overrides,
-    read_overrides,
-    set_override,
-)
+from app.infrastructure.tuning_overrides import TuningOverrideError, TuningOverrideStore, merge_overrides
 from app.services.tuning_service import refresh_tuning_values
 
 # 範囲の広いものを選ぶ（値を動かしても宣言の範囲に収まるように）。
@@ -62,24 +56,25 @@ async def test_override_round_trip_reaches_the_running_value(road_graph_session:
     """書いた値が、プロセス内の`TUNING_VALUES`まで届いて消費者に効く。"""
     default = TUNING_PARAMETERS_BY_ID[_PARAM].default
     changed = default + 7.0
+    overrides = TuningOverrideStore(road_graph_session)
     try:
-        await set_override(road_graph_session, _PARAM, changed)
+        await overrides.set_override(_PARAM, changed)
         await road_graph_session.commit()
 
-        assert await read_overrides(road_graph_session) == {_PARAM: changed}
+        assert await overrides.read_overrides() == {_PARAM: changed}
 
         await refresh_tuning_values(road_graph_session)
         assert tuning.tuning_value(_PARAM) == changed
 
         # 既定値と同じ値を書くと行が消える（差分だけを持つ形を保つ）。
-        await set_override(road_graph_session, _PARAM, default)
+        await overrides.set_override(_PARAM, default)
         await road_graph_session.commit()
-        assert await read_overrides(road_graph_session) == {}
+        assert await overrides.read_overrides() == {}
 
         await refresh_tuning_values(road_graph_session)
         assert tuning.tuning_value(_PARAM) == default
     finally:
-        await clear_override(road_graph_session, _PARAM)
+        await overrides.clear_override(_PARAM)
         await road_graph_session.commit()
         await refresh_tuning_values(road_graph_session)
 
@@ -91,13 +86,14 @@ async def test_one_of_a_pair_can_be_moved_past_the_default_of_the_other_once_the
     """上限を下げてから緩めた上限を、上限の既定より下へ下げられる。1件を書く前の検算が相手を既定のまま見ると、
     片方ずつしか書けない画面からは、この組み合わせへ動かせない。"""
     lower, upper = "search.turnaround_max_overlap_ratio", "search.turnaround_relaxed_overlap_ratio"
+    overrides = TuningOverrideStore(road_graph_session)
     try:
-        await set_override(road_graph_session, lower, 0.4)
-        await set_override(road_graph_session, upper, 0.5)
+        await overrides.set_override(lower, 0.4)
+        await overrides.set_override(upper, 0.5)
         await road_graph_session.commit()
 
-        assert merge_overrides(await read_overrides(road_graph_session)).items() >= {lower: 0.4, upper: 0.5}.items()
+        assert merge_overrides(await overrides.read_overrides()).items() >= {lower: 0.4, upper: 0.5}.items()
     finally:
-        await clear_override(road_graph_session, lower)
-        await clear_override(road_graph_session, upper)
+        await overrides.clear_override(lower)
+        await overrides.clear_override(upper)
         await road_graph_session.commit()

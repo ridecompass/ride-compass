@@ -13,6 +13,7 @@
 """
 
 import logging
+
 import pytest
 
 from app.infrastructure import debug_log
@@ -20,6 +21,7 @@ from app.services import landcover_tile_service as service
 from tests.bound_fake import bound
 
 RASTER = service.landcover_raster
+
 
 class Raster:
     """ラスタの口の代役。開けているパスと、描いた絵を持つ。"""

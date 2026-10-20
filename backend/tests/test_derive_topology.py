@@ -15,15 +15,14 @@ import pytest
 import pytest_asyncio
 
 from app.batch import derive_topology
-from tests.source_ingest import ingest_records, way_record
+from tests.source_ingest import WAY_ORIGIN, WAY_STEP, ingest_records, way_record
 
-# road_graph_session（conftest.py）と同じDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
+# moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
-#: 東京都心付近。座標そのものに意味は無く、測地線長が0にならない間隔であればよい。
-BASE_LON, BASE_LAT = 139.70, 35.68
-STEP = 0.001
+#: 座標そのものに意味は無く、測地線長が0にならない間隔であればよい。
+BASE_LON, BASE_LAT = WAY_ORIGIN
 
 #: (wayのid, 参照ノードid列)。ノード3は2本の道が通るので切る位置になる。
 #: ノード10で閉じる道は、中間でもう1回切られて自己ループでなくなる。
@@ -45,20 +44,19 @@ WGS84_A, WGS84_F = 6378137.0, 1 / 298.257223563
 #: ノードidから座標を作る。閉じる道の終端だけ始点と同じ位置へ戻す。
 def _point(node_id: int, ordinal: int) -> tuple[float, float]:
     index = 0 if node_id == 10 and ordinal == 3 else node_id
-    return (BASE_LON + STEP * index, BASE_LAT + STEP * (index % 3))
+    return (BASE_LON + WAY_STEP * index, BASE_LAT + WAY_STEP * (index % 3))
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def topology_conn(derive_conn):
     """道を取り込み、区間まで作った状態。"""
-    conn = derive_conn
     parallel_id, parallel_nodes, lat, lon, d_lon = PARALLEL_WAY
     await ingest_records("osm_way", [
         *(way_record(way_id, [_point(n, i) for i, n in enumerate(node_ids)], node_ids) for way_id, node_ids in WAYS),
         way_record(parallel_id, [(lon, lat), (lon + d_lon, lat)], parallel_nodes),
-    ], conn=conn)
-    await derive_topology.derive(conn)
-    return conn
+    ], conn=derive_conn)
+    await derive_topology.derive(derive_conn)
+    return derive_conn
 
 
 async def test_splits_where_two_ways_pass_the_same_node(topology_conn):
