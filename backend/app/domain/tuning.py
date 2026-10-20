@@ -329,7 +329,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "search.distance_tolerance_km",
         "全長の目標の許容", "km", 5.0, 0.1, 50.0, TuningEffect.IMMEDIATE,
         "距離ありで、全長が目標からこの長さの中に入る候補だけを返す。折返し点を探す往路の長さの範囲もこの幅から"
-        "決める。要求ごとに上書きできるため、ここで決めるのは省略されたときの値。",
+        "決める。",
         shown_to_users=True,
     ),
     TuningParameter(
@@ -360,8 +360,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "evaluation.penalty_strength",
         "主観と時間の換算レート", "", 0.7, 0.0, 5.0,
         TuningEffect.IMMEDIATE,
-        "難易度を所要時間の割増しへ換算する強さ。"
-        "リクエストごとに上書きできるため、ここで決めるのは省略されたときの値。",
+        "難易度を所要時間の割増しへ換算する強さ。",
     ),
 )
 

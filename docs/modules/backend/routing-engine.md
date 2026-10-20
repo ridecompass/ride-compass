@@ -322,8 +322,8 @@ RouteGenerator.generate_loops(origin, distance_km, distance_tolerance_km, max_ro
 **暗黙の前提**: 値の読み出しは呼ぶたびに行う。プロセス内に束ねる（import時に評価する・
 dataclassのフィールド既定値に置く）と、実行時に変えた値が効かない。**プロセスを入れ替えても
 直らない**——起動のたびに同じ順序で束ね直すだけで、上書きを読むのは全importの後だからである。
-リクエストが省略したときの既定値をAPIスキーマへ書くのも同じ束ね方で、`| None`＋リクエスト
-処理時の解決へ倒す（`domain/evaluation.py: resolve_penalty_strength`）。
+較正値をAPIスキーマの既定値へ書くのも同じ束ね方になるので、較正値は要求の欄にせず、使う処理が呼ばれるたびに
+読む（`services/route_generation_setup.py: assemble_route_generation_setup`）。
 
 この前提を守るのは「書いた値がプロセス内の`TUNING_VALUES`まで届く」テストで、母集団は
 宣言から導く（`tests/test_tuning_overrides.py`。上書きしていない全パラメータが宣言の
@@ -680,8 +680,7 @@ Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を
 候補が基準線に対して何を犠牲に何を得たかを読むための物差しになる。コストが秒のため
 A*のヒューリスティックも秒の下界にする（直線距離÷出せる最大速度）。
 
-**軸の重みは使わないが、0次フィルタ（`no_bicycle`・`motorway`・
-`max_average_grade_percent`）と道の行ごとの「通らない」は使う**——これらは好みではなく通行可否・走行可否の表明で、
+**軸の重みは使わないが、0次フィルタ（`no_bicycle`・`motorway`）と道の行ごとの「通らない」は使う**——これらは好みではなく通行可否・走行可否の表明で、
 所要時間を優先する経路でも越えてよいものではない。除外Edgeの所要時間を`inf`にすることで
 表現する（軸コスト経路で`cost_lazy`が`inf`になっているのと同じ意味）。
 

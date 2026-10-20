@@ -186,7 +186,7 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
   場所に書いた式はスタイル検証も通り、例外も出さず、どの道も値が無いものとして評価される（全部の道が破線になる）。
   破線の線は刻みを定数で持ち、どの道に出すかを濃さ（`line-opacity`、feature-stateを読める）で決める。実線の線は
   値が無い道を透明にする（重ねると破線が実線に埋もれる）。feature-stateを読めるプロパティにだけ置かれていることは
-  `scene/scene.state.contract.test.ts`が全レイヤーについて確かめる。
+  `scene/scene.allLayers.contract.test.ts`が全レイヤーについて確かめる。
 - **値が無い道は薄く、値を持つ道は濃く塗る**（濃さは源泉が配る
   `mapDisplay.road.unknownOpacity`/`knownOpacity`をそのまま使い、
   地図全体の「薄い＝対象外、濃い＝分類あり」という読み方に揃える）。
@@ -372,7 +372,7 @@ features/map/view/useMapView.ts
   `promoteId`でこのプロパティを地物のidにする（`scene/groups/roadLines.ts`）——これが無いと
   `setFeatureState`が使えない。**`osm_way_id`では代用できない**（タイルのフィーチャーはズームに
   よってway丸ごとにも区間にもなり、`feature_key`だけがその単位に追従する）。ここを取り違えても
-  例外も警告も出ず、ただ色が付かなくなるだけのため、`scene/scene.state.contract.test.ts`が固定している。
+  例外も警告も出ず、ただ色が付かなくなるだけのため、`scene/scene.axisLines.contract.test.ts`が固定している。
 - 評価軸の線は、路面本体と同じ`ROAD_LINE_SOURCE_ID`を共有する独立レイヤーとして
   宣言される（`tunnel`/`oneway`と同型の構成）。
 - **軸の材料が来なくなったときは、その軸のキーだけを消す。** `map.removeFeatureState`は
