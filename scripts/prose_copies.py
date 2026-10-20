@@ -22,12 +22,16 @@ frontend と backend の文:
 backend の文:
   (5) 文∩較正値の id: 較正値の宣言（`TUNING`）が id に使う名前空間（`speed.` 等）で始まる綴りを含む文。id は差し込みで
       引けば地の部分に残らないので、地の部分に書いた id は宣言の綴りを書き写している。
+frontend の文:
+  (6) 文∩数と単位: (4) と同じ母集団の行のうち、数字と単位（時間幅・寸法・度・方位・段・刻み）を含むもの。画面自身の定数
+      （丸めの刻み・段・時間幅）の値を文に書くと、定数を変えたときに文だけが残る。定数を差し込んだ文は数字が地に残らない。
 拾わない形（性質に当たりうるのに上に入らない。0件でも無いとは言えず、使う人が読んで見る）:
   - 言い換え: 名前を別の語で書いた文（語の表の別名。`frontend-design-system.md`「5-4. 画面の語」）は (1) に当たらない。
   - 数字を語で書いた時間幅・大きさ（「半日」「倍」等）は (2) に当たらない。
   - 説明が値を言い換えて書いた形（値 `grade1` を「1」と書く等）と、説明の補足を別の宣言で書いた形
     （同じ分類の補足を2つの宣言が持つ）は (3) に当たらない。
   - (4) は行で見るので、行をまたいで続く文の後ろの行と、語を別の語で書いた文（「上り」等）は当たらない。
+  - (6) は数字を語で書いた形（「8方位」でなく「八方位」）と、数字の無い言い換え（「細かく丸めた向き」）に当たらない。
   - (5) は名前空間を付けずに id の後ろだけを書いた形（「signal_seconds」）と、id を語で言い換えた形（「転がり抵抗の値」）に当たらない。
   - 値を含まない言い換えと否定の事実（「評価には影響しません」のように、宣言の振る舞いを語で言い切る文）は、どれにも
     当たらない。宣言が変わると嘘になる文なので、使う人が読んで見る。
@@ -65,6 +69,7 @@ LOOK = re.compile(
     r"(?:濃い|薄い|明るい|暗い)?(?:紫|水色|灰色|赤|青|緑|黄色|橙|黒|白)|破線|実線|点線|太く|細く|大きく|小さく"
     r"|\d+(?:\.\d+)?\s*(?:分|時間|日|px|m|km|%)"
 )
+NUMBER_UNIT = re.compile(r"\d+(?:\.\d+)?\s*(?:分|時間|日|px|m|km|%|°|度|方位|段|刻み)")
 VALUE_TOKEN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{2,}$")
 TRAVEL_TIME = re.compile(r"所要|走行時間|速度|速さ")
 TRAVEL_CONDITION = re.compile(r"坂|勾配|風|路面")
@@ -180,6 +185,7 @@ LABELS = {
     "3": "(3) backend の説明∩同じ行の値",
     "4": "(4) 走行モデル・難易度の数え方を述べる文",
     "5": "(5) backend の文∩較正値の id",
+    "6": "(6) frontend の文∩数と単位",
 }
 
 
@@ -240,8 +246,9 @@ def backend_findings(names: list[str]) -> dict[str, list[str]]:
     return found
 
 
-def frontend_findings() -> list[str]:
-    found = []
+def frontend_findings() -> dict[str, list[str]]:
+    """(4) と (6) の frontend の行。"""
+    found: dict[str, list[str]] = {"4": [], "6": []}
     for path in sorted(FRONTEND_SRC.rglob("*.ts*")):
         if path.suffix not in (".ts", ".tsx") or re.search(r"\.test\.tsx?$", path.name):
             continue
@@ -253,13 +260,17 @@ def frontend_findings() -> list[str]:
             if text.startswith(COMMENT_LINE) or not JAPANESE.search(text):
                 continue
             if describes_model(text):
-                found.append(f"{rel}:{number}\t{text[:70]}")
+                found["4"].append(f"{rel}:{number}\t{text[:70]}")
+            units = sorted({match.group(0) for match in NUMBER_UNIT.finditer(text)})
+            if units:
+                found["6"].append(f"{rel}:{number}\t{'・'.join(units)}\t{text[:70]}")
     return found
 
 
 def main() -> int:
     found = backend_findings(generated_names())
-    found["4"] += frontend_findings()
+    for kind, lines in frontend_findings().items():
+        found.setdefault(kind, []).extend(lines)
     for kind, lines in found.items():
         print(f"## {LABELS[kind]}: {len(lines)}件")
         for line in lines:

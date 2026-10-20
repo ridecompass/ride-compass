@@ -45,9 +45,17 @@ export interface CatalogAxis {
 
 export type WayValueCondition = AxisCatalogEntry["dynamic_way_value_conditions"][number];
 
-/** 走る条件の1つで値の変わる軸の名前を、文へ差し込む形（「A」「B」）で並べる。無ければ空文字で、呼ぶ側は評価に触れる句を出さない。 */
+/** 軸の評価が変わる走る条件。道の値を求める条件に、時間帯で効く軸は出発時刻（通る時刻で効くかが決まる）を足す。
+ * 周りの道は通る時刻を持たないので、周りの道の塗りが何で決まるかは`wayValueConditions`のほうを読む。 */
+export function evaluationConditions(axis: CatalogAxis): readonly WayValueCondition[] {
+  return axis.timeScope === "always" || axis.wayValueConditions.includes("at")
+    ? axis.wayValueConditions
+    : [...axis.wayValueConditions, "at"];
+}
+
+/** 走る条件の1つで評価の変わる軸の名前を、文へ差し込む形（「A」「B」）で並べる。無ければ空文字で、呼ぶ側は評価に触れる句を出さない。 */
 export function axisNamesUsing(axes: readonly CatalogAxis[], condition: WayValueCondition): string {
-  return axisNamesInText(axes.filter((axis) => axis.wayValueConditions.includes(condition)));
+  return axisNamesInText(axes.filter((axis) => evaluationConditions(axis).includes(condition)));
 }
 
 /** 文へ差し込む評価の名前の並び（「A」「B」）。評価の名前を文に直書きせず、軸カタログから引いてこの形で入れる。 */

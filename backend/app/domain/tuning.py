@@ -117,6 +117,7 @@ _STOP_ID = stop_seconds_parameter_id("stop")
 _SIGNAL_ID = stop_seconds_parameter_id("signal")
 _CRR_ID = "speed.crr"
 _CRR_GRAVEL_ID = "speed.crr_gravel"
+_CRR_COBBLESTONE_ID = "speed.crr_cobblestone"
 _TURNAROUND_OVERLAP_ID = "search.turnaround_max_overlap_ratio"
 _TURNAROUND_RELAXED_OVERLAP_ID = "search.turnaround_relaxed_overlap_ratio"
 _LOOP_RATIO_MIN_ID = "search.loop_to_outbound_ratio_min"
@@ -200,7 +201,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         "speed.crr_paving_stones",
         "転がり抵抗", "", 0.0065, 0.001, 0.1, TuningEffect.IMMEDIATE,
-        f"切石・レンガの敷石の計測値が見当たらないため、舗装（{_CRR_ID}）と石畳（speed.crr_cobblestone）の間に置く。",
+        f"切石・レンガの敷石の計測値が見当たらないため、舗装（{_CRR_ID}）と石畳（{_CRR_COBBLESTONE_ID}）の間に置く。",
     ),
     TuningParameter(
         "speed.crr_compacted",
@@ -218,7 +219,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "草は舗装の約3.5倍（惰行試験）。砂はさらに大きいが、区分の中では土・草が多いため未舗装の値域の上寄りに置く。",
     ),
     TuningParameter(
-        "speed.crr_cobblestone",
+        _CRR_COBBLESTONE_ID,
         "転がり抵抗", "", 0.008, 0.001, 0.1, TuningEffect.IMMEDIATE,
         "模擬石畳の試験台で空気圧を最適にしたロードバイクのタイヤが約0.0055。実際の玉石は凹凸が大きく"
         "空気圧も合わせないため、それより上で、舗装と締め固めの間に置く。",
