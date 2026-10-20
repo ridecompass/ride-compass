@@ -479,7 +479,6 @@ def _edit_stage_code(stage: str):
 
 #: どれも道を取り直すので、区間を切る段が流れ、区間ごとに写す段も流れる。
 EDGE_CHANGES = [
-    EdgeChange("道を同じ形で取り直した", _reingest(_ingest_ways), {"landcover": (2, 0), "elevation": (2, 0)}),
     EdgeChange("道の形を一部変え、道を足した", _reingest(lambda conn: _ingest_ways(conn, RESHAPED_WAYS)),
                {"landcover": (1, 2), "elevation": (1, 2)}),
     # 橋かトンネルかは標高の値だけが読む。

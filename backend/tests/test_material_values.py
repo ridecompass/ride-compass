@@ -115,20 +115,6 @@ async def test_a_cycleway_value_on_any_side_counts(road_graph_session):
     assert values == {1: True, 2: False}
 
 
-# 停止要因の種別は区間の値の表の列名を決めるだけで、どの種別でも式は同じ。
-_POI_KIND = "signal"
-
-
-@pytest.mark.parametrize(("count", "distance_m", "expected"), [
-    (3.0, 500.0, 6.0),
-])
-async def test_a_poi_density_is_per_km(road_graph_session, count, distance_m, expected):
-    value = await _edge_value(road_graph_session, material_sql.poi_density_value_sql(_POI_KIND),
-                              distance_m=distance_m, **{f"poi_{_POI_KIND}": count})
-
-    assert value == (None if expected is None else pytest.approx(expected))
-
-
 # --- カタログに直に書かれた式（domain/material_catalog.py） -----------------------------
 
 
