@@ -66,6 +66,12 @@ def turnaround_pool_size(max_routes: int) -> int:
     return min(_TURNAROUND_POOL_MAX, max(_TURNAROUND_POOL_MIN, max_routes * _TURNAROUND_POOL_FACTOR))
 
 
+def _pool_note(selected: int, pool_size: int) -> str:
+    """生成のログの行の、折返し点のプールの欄。届かなければ不足数を`pool_unfilled`で添える。"""
+    shortfall = pool_size - selected
+    return f"pool={pool_size}" + (f" pool_unfilled={shortfall}" if shortfall > 0 else "")
+
+
 #: 区間から候補単位へ集約する値（載せるフィールド → `segments`から作る関数）。
 #: **集約を1段増やすときはここへ1行足す**（design-principles.md 構造仕様8）。集約は候補の
 #: 並び順・id等を読まないため、呼び出し側がそれらを付ける前でも後でも結果は変わらない。
@@ -194,7 +200,7 @@ class _DistanceFinish:
                 if not self.points.waypoints and fixed.closes
                 else f"置いた地点を通って全長{self.distance_km:.1f}km前後になる経路が見つかりませんでした。"
                 "距離や地点、除外する道路の設定を変えてお試しください。",
-                f"turnarounds=0 select_ms={select_ms}",
+                f"turnarounds=0 {_pool_note(0, pool_size)} select_ms={select_ms}",
             )
 
         # 候補はランク順に逐次処理し、距離フィルタ合格がmax_routes件に達した時点で停止する
@@ -238,7 +244,7 @@ class _DistanceFinish:
         trace_ms = elapsed_ms(trace_started)
 
         summary = (
-            f"turnarounds={len(turnarounds)} examined={examined} trace_failed={failed} "
+            f"turnarounds={len(turnarounds)} {_pool_note(len(turnarounds), pool_size)} examined={examined} trace_failed={failed} "
             f"filtered_out={filtered_out} dedup_skipped={dedup_skipped} select_ms={select_ms} trace_ms={trace_ms}"
         )
         if not traced:

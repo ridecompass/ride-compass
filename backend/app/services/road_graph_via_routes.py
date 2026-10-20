@@ -49,7 +49,7 @@ from app.services.road_graph_context import (
 )
 
 # ランキング上位から間引き判定にかけるvia-node候補数の上限（経路復元コストの上限）。目的地ルートのbboxは周回より
-# 小さいため、周回のリングNodeの上限（`road_graph_engine.py: _MAX_RING_CANDIDATES_EXAMINED`）より小さくする。
+# 小さいため、上限は小さくてよい。
 _MAX_VIA_NODE_CANDIDATES_EXAMINED = 2000
 
 logger = logging.getLogger("ridecompass.graph")
