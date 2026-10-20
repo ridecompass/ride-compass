@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChosenSheetHeight } from "@/components/BottomSheet/BottomSheet";
 import { useStoredBooleanState } from "@/hooks/useStoredState";
-import type { MapTapMode } from "@/features/map/MapView/MapView";
+import type { MapTapMode } from "@/features/map/MapView/mapTaps";
 import type { SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import type { RouteOutcomeKind } from "@/features/route/useRouteGeneration";
 

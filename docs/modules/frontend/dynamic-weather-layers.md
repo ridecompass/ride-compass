@@ -325,7 +325,7 @@ JMA_REFRESH_INTERVAL_SECONDS`）に合わせる——遅い系統を早めに取
 （キャッシュに残る間。読み手が消えてから既定の5分）をすぐに出し、裏で取り直す——読み込み中を経ない。前の値は
 定期の取り直しの周期の間に出している値と同じ種類の古さで、取り直しが届けば置き換わる。
 
-**MapLibreのソースイベント経由の系統（`MapView.tsx: buildLayerDataSources`）は
+**MapLibreのソースイベント経由の系統（`features/map/MapView/layerDataSources.ts: buildLayerDataSources`）は
 動的気象レイヤーの対象外**——実際の外部フェッチはアプリ自身の取得（TanStack Query）で
 行われ、結果を`map.getSource(id).setData(...)`/`setTiles(...)`で流し込むだけのため、
 MapLibre側のソースイベントはフェッチの待ち時間・失敗を観測できない（`kind`が

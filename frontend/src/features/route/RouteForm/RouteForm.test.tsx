@@ -25,7 +25,7 @@
  *
  * 差し替えたもの: 検索の口と辺りの口の応答（網の層）。辺りの口は、テストが応答を渡さなければ辺り無しと答える。
  *
- * タブの中身を描くには`Tabs`の中に置く必要があるので、テストが`page.tsx`の代わりに`Tabs`で包む。
+ * タブの中身を描くには`Tabs`の中に置く必要があるので、テストが囲む側の代わりに`Tabs`で包む。
  */
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
