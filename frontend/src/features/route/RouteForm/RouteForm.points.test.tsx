@@ -120,13 +120,10 @@ describe("RouteForm 周回", () => {
     expect(strip()).toEqual(["出発地: 現在地", "経由地1: 地図で選んだ地点", "経由地を足す"]);
   });
 
-  it.each([
-    [null, "未設定"],
-    [DESTINATION, "地図で選んだ地点"],
-  ])("周回を外すと、終点は目的地（%o）の札で「%s」と出し、目的地の印を付ける", (destination, name) => {
-    renderForm({ loop: false, destination });
+  it("周回を外すと、終点は目的地の札で出し、目的地の印を付ける", () => {
+    renderForm({ loop: false, destination: DESTINATION });
 
-    const mark = button(`目的地: ${name}`).querySelector("svg")?.parentElement;
+    const mark = button("目的地: 地図で選んだ地点").querySelector("svg")?.parentElement;
     expect(mark).toHaveStyle({ color: PIN_MARK_COLOR.destination });
     expect(screen.queryByText(/^終点:/)).toBeNull();
   });

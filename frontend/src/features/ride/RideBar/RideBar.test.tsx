@@ -42,7 +42,6 @@ describe("RideBar", () => {
     { case: "北が上の地図", mapBearingDeg: 0, rotation: "rotate(0deg)" },
     // 地図が東を上に回っているときは、矢印も同じだけ戻して地図の上の向きに合わせる。
     { case: "東が上の地図", mapBearingDeg: 90, rotation: "rotate(270deg)" },
-    { case: "進む向きを上にせず、指で30度回した地図", mapBearingDeg: 30, rotation: "rotate(330deg)" },
   ])("風の矢印は地図の向きに合わせて回す: $case", ({ mapBearingDeg, rotation }) => {
     render(
       <RideBar

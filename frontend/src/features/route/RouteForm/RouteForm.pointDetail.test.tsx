@@ -2,12 +2,13 @@
  * `RouteForm/PointDetail.tsx`を`RouteForm`の中で使う所——押した地点の詳しくに、どの地点の何を渡すか。`RouteForm`を描いて確かめる。
  *
  * 見るもの: 押した地点の詳しく（呼び名・出どころ・名前・その位置から引いた辺り）、出発地の印の色、地図で置ける間の打つ欄の誘い、
- * 消す/現在地に戻す操作、経由地の上限で探して置けないこと、名前を打って選んだ候補をその地点として上げること。
+ * 消す/現在地に戻す操作、名前を打って選んだ候補をその地点として上げること。
  *
  * ここで見ないもの: 打ちかけで引く間・変換中に引かないこと・候補の行の中身（辺り・距離・札）・引けない／当たらないときの文
  * → `RouteForm/PointSearch.test.tsx`。探して置いた地点の辺りと代表の位置 → `RouteForm/PointDetail.test.tsx`。
  * 検索で置いた地点が、ピンを動かすまでその候補のままか → `features/route/useGenerationConditions.test.ts`。
  * 地点の並びと押した地点の選び → `RouteForm/RouteForm.points.test.tsx`。
+ * 受け取った値をそのまま渡すもの（出発地が現在地にある間に戻す操作を押せなくすること、経由地が上限の間に探す欄を押せなくすること）。
  *
  * 差し替えたもの: 検索の口と辺りの口の応答（網の層）。辺りの口は、テストが応答を渡さなければ辺り無しと答える。
  */
@@ -20,7 +21,6 @@ import { onBackend, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogResponse } from "@/testing/catalogAxes";
 import { DESTINATION, ORIGIN, button, detail, pointBox, renderForm, waypointsOf } from "@/testing/routeForm";
 import { AZA_CANDIDATE as AZA, FACILITY_CANDIDATE as FACILITY } from "@/testing/routeFixtures";
-import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 // 詳しくは置いた地点の辺りを引く。辺りを見ないテストには、辺り無しと答える（見るテストは後から応答を渡す）。
 beforeEach(() => {
@@ -44,15 +44,6 @@ describe("RouteForm 出発地", () => {
 
     expect(detail("出発地")).toHaveTextContent(`出発地${name}`);
     expect(originMark()).toHaveStyle({ color });
-  });
-
-  it.each([
-    [true, true],
-    [false, false],
-  ])("出発地が今の現在地にあるか（%s）で、現在地に戻す操作を押せなくする（%s）", (originAtHere, disabled) => {
-    renderForm({ originAtHere });
-
-    expect(button("出発地を現在地に戻す")).toHaveProperty("disabled", disabled);
   });
 
   it.each([
@@ -120,13 +111,6 @@ describe("RouteForm 地点の詳しく", () => {
 });
 
 describe("RouteForm 経由地", () => {
-  it("上限まで置いたあとは、新しい経由地を探しても置けない", () => {
-    const max = routeGenerateConfig.max_waypoints;
-    renderForm({ waypoints: waypointsOf(max), selectedPoint: { role: "waypoint", index: null } });
-
-    expect(pointBox("新しい経由地")).toBeDisabled();
-  });
-
   it("置いた経由地は、消す操作でその経由地を消す", async () => {
     const { removeWaypoint } = renderForm({ waypoints: waypointsOf(3) });
 

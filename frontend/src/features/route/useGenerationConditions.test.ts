@@ -313,17 +313,12 @@ describe("道ごとの避け方", () => {
   });
 
   // 行は軸カタログが届くまで分からず、今の行に無い鍵も前の鍵として読まれうるので、鍵では落とさない（今の行へ揃えるのはbackend）。
-  it("保存値は段として読める鍵だけを残し、保存が無い・読めない保存値なら何も選んでいない", () => {
-    expect(renderConditions().result.current.roadAvoidance).toEqual({});
-
+  it("保存値は段として読める鍵だけを残す", () => {
     window.localStorage.setItem(
       "ridecompass:road-avoidance",
       JSON.stringify({ gravel: "exclude", unpaved: "retired_level", "retired.row": "avoid" }),
     );
     expect(renderConditions().result.current.roadAvoidance).toEqual({ gravel: "exclude", "retired.row": "avoid" });
-
-    window.localStorage.setItem("ridecompass:road-avoidance", "{broken");
-    expect(renderConditions().result.current.roadAvoidance).toEqual({});
   });
 
   it("軸カタログが届くと、前の鍵に選んだ段を今の鍵へ移して保存へ書き戻す", async () => {

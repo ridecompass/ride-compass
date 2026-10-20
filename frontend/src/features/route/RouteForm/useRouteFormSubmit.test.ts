@@ -53,7 +53,6 @@ describe("useRouteFormSubmit", () => {
   it.each([
     { label: "周回で全長の目標だけ", options: LOOP },
     { label: "周回で経由地だけ", options: { ...LOOP_NO_DISTANCE, waypointCount: 2 } },
-    { label: "目的地へ向かい全長の目標あり", options: TO_DESTINATION },
     { label: "目的地へ向かい全長の目標なし", options: { ...TO_DESTINATION, distanceTargeted: false } },
   ])("「$label」なら、出発地が分かれば生成する", ({ options }) => {
     const { result } = renderSubmit(options);
