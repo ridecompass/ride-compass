@@ -175,11 +175,11 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
       - uses: ./.github/actions/python
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: mutation-*
           path: /tmp/art
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: recheck-*
           path: /tmp/rart
