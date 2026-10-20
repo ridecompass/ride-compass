@@ -107,8 +107,8 @@ HTTPステータスが`message`に入るのは、応答に`detail`が無い（JS
 - **キーをまたいで前の値を使う取得は、refを持たずキャッシュから引く**。`useQuery`の`placeholderData: keepPreviousData`は
   1つの観測者の前のキーの値を渡すが、`useQueries`は観測者をキーで対応付けるため、キーが変わった観測者に前の値を
   渡さない（`query-core/src/queriesObserver.ts: #findMatchingObservers`）。件数が実行時に変わる取得で取り直しの間に
-  前の値を残すものは、全体を1つのキーで取ってその中で要素ごとの答えを`fetchQuery`で引く
-  （`features/map/useWayMaterials.ts`）。
+  前の値を残すものは、`placeholderData`の関数で、同じ要素を前の入力で取った答えをキャッシュから引く
+  （`features/map/tileQueries.ts: tileQueryOptions`）。
 - テストでは、取得の結果は区切り（`setTimeout(0)`、`query-core/src/notifyManager.ts`）ごとに購読者へ届く。応答を
   返した直後に同期で確かめず、`waitFor`か区切りを待つ（偽の時計で`setTimeout`まで止めると届かない）。
 - 取得の関数の中身（通信・ログ・文言）は`apiClient.ts`・`services/*Api.ts`のまま。キャッシュは呼び出し口の
