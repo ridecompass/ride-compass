@@ -11,7 +11,8 @@ import RideConditionBar from "@/features/conditions/RideConditionBar/RideConditi
 import type { useRideConditions } from "@/features/conditions/useRideConditions";
 import LensControl from "@/features/map/LensControl/LensControl";
 import MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayControls";
-import MapView, { type MapTapMode } from "@/features/map/MapView/MapView";
+import MapView from "@/features/map/MapView/MapView";
+import type { MapTapMode } from "@/features/map/MapView/mapTaps";
 import type { useMapView } from "@/features/map/view/useMapView";
 import RideBottom from "@/features/ride/RideBottom/RideBottom";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
