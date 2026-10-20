@@ -14,7 +14,7 @@ import weatherScales from "@/types/generated/weather-scales.json";
 
 import { pointAxisKey } from "@/features/map/scene/groups/points";
 import { POINT_LAYERS, pointCategoryRadiusPx, type PointAxis } from "@/lib/mapDisplay/pointLayers";
-import { DISASTER_ELEMENTS, DISASTER_LAYER_ID, type DisasterElement } from "@/features/map/scene/groups/weather";
+import { DISASTER_ELEMENTS, DISASTER_LAYER_ID, type DisasterElement } from "@/features/map/layers/dynamicWeather";
 
 /** 凡例1本ぶん。1つのチップが複数の軸を持つことがある（事故は当事者と重大度）。 */
 type SceneLegendAxis = {

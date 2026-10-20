@@ -14,7 +14,14 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { serveAxisCatalog } from "@/testing/backendServer";
-import { TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
+import {
+  AVOIDANCE_LEVELS,
+  avoidanceRow,
+  catalogResponse,
+  roadClassCatalog,
+  TWO_AXIS_CATALOG,
+} from "@/testing/catalogAxes";
+import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { Coordinates } from "@/types/route";
 
 import { useGenerationConditions } from "./useGenerationConditions";
@@ -142,6 +149,39 @@ describe("保存して呼び出す", () => {
     act(() => result.current.saved.remove("A"));
 
     expect(result.current.saved.saved.map((entry) => entry.name)).toEqual(["B"]);
+  });
+});
+
+describe("道の区分の前の鍵", () => {
+  it("軸カタログが届くと、保存した件の前の鍵に選んだ段を今の鍵へ移して保存へ書き戻す", async () => {
+    const entry = {
+      name: "砂利を避ける",
+      loop: true,
+      distanceTargeted: true,
+      distance: "30",
+      maxRoutes: String(routeGenerateConfig.default_max_routes),
+      origin: null,
+      waypoints: [],
+      destination: null,
+      routePreference: null,
+      roadAvoidance: { dirt: "exclude" },
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([entry]));
+    serveAxisCatalog(
+      catalogResponse([], {
+        road_classes: roadClassCatalog({
+          avoidance: {
+            levels: AVOIDANCE_LEVELS,
+            rows: [avoidanceRow("unpaved", "surface", { former_keys: ["dirt"] })],
+          },
+        }),
+      }),
+    );
+    const { result } = renderSaved();
+
+    const rewritten = [{ ...entry, roadAvoidance: { unpaved: "exclude" } }];
+    await waitFor(() => expect(result.current.saved.saved).toEqual(rewritten));
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual(rewritten);
   });
 });
 
