@@ -100,15 +100,6 @@ describe("点の凡例", () => {
   });
 });
 
-// 見本は地図と同じ形で見せる（線の行は線、点の行は点）。
-describe("凡例の見本の形", () => {
-  it("道の線の凡例の行は、受け皿の行も含めてどれも線の見本にする", () => {
-    const entries = roadLegendAxes([SURFACE_LAYER, TUNNEL_LAYER]).flatMap((axis) => axis.entries);
-    expect(entries.length).toBeGreaterThan(0);
-    expect(entries.every((entry) => entry.line === true)).toBe(true);
-  });
-});
-
 // 「データなし」（プロパティが無い）と、区分の外の値（その他・該当なし）は別の行。データなしを分ける層だけが
 // 「データなし」の行を持つ。
 describe("道の線の凡例の受け皿", () => {

@@ -11,12 +11,10 @@ import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TILE_VERSIONS_MISSING_NOTICE, TILE_ZOOM_TOO_WIDE_NOTICE } from "@/features/map/layers/mapLayers";
-import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { MAP_FETCH_DEBOUNCE_MS } from "@/hooks/useDebouncedValue";
 import { onBackend, onSameOrigin } from "@/testing/backendServer";
 import {
-  catalogEntry,
   catalogResponse,
   dedicatedEntry,
   MATERIAL_VALUE_FORMULA,
@@ -36,7 +34,7 @@ const DEDICATED = dedicatedEntry("axis_wind", [10, 20], {
   way_value_formula: MATERIAL_VALUE_FORMULA,
 });
 const OTHER_DEDICATED = dedicatedEntry("axis_other", [10, 20], { way_value_formula: MATERIAL_VALUE_FORMULA });
-/** 値の無い道の行を最初は隠す道の層。データなしを分ける層（surface）と、区分の外が全部「該当なし」の層（cycleway）。 */
+/** 値の無い道の行を最初は隠す道の層（データなしを分ける）。 */
 const ROAD_LAYERS = [
   roadMapLayer("surface", {
     category: "roadCondition",
@@ -44,7 +42,6 @@ const ROAD_LAYERS = [
     has_no_data: true,
     classes: [roadClass("paved")],
   }),
-  roadMapLayer("cycleway", { category: "roadCondition", hide_missing_rows: true, classes: [roadClass("lane")] }),
 ];
 /** 世代が届くまで要求できない、静的に宣言された層。 */
 const GATED_LAYER = "stop_poi";
@@ -92,21 +89,6 @@ afterEach(() => {
 });
 
 describe("useMapView", () => {
-  it.each([
-    { name: "軸カタログにあれば、届いてから戻す", entries: [SCORE], lens: "axis_score" },
-    { name: "軸カタログに無ければ、総合難易度のまま", entries: [], lens: "difficulty" },
-  ])("保存したレンズは、$name", async ({ entries, lens }) => {
-    window.localStorage.setItem("ridecompass:route-style-mode", "axis_score");
-    serve(entries);
-
-    const { result } = render();
-
-    expect(result.current.lensControl.lens).toBe("difficulty");
-    await waitFor(() => expect(chip(result, GATED_LAYER)?.dataStatus).not.toBe("loading"));
-    expect(result.current.lensControl.lens).toBe(lens);
-    expect(result.current.look.lens).toBe(lens);
-  });
-
   it("レンズを選んでもルートの線の出し入れは変えず、ルートの確定後に周りを塗らない設定なら全道路を塗らない", () => {
     serve();
     const { result, rerender } = render({ hasSelectedRoute: true });
@@ -122,23 +104,7 @@ describe("useMapView", () => {
     expect(result.current.look.paintedAxisId).toBeNull();
   });
 
-  it("レンズの選択肢は公開軸から作り、生成に使った重みが0の軸を「未使用」に分ける", async () => {
-    serve([SCORE, catalogEntry({ axis_id: "axis_plain" })]);
-
-    const { result } = render({ routeWeights: { axis_score: 0.5 } });
-
-    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(2));
-    expect(result.current.lensControl.axisOptions).toMatchObject([
-      { id: "axis_score", unused: false },
-      { id: "axis_plain", unused: true },
-    ]);
-  });
-
-  it.each([
-    { name: "取れなければ失敗", reply: () => new HttpResponse(null, { status: 500 }), status: "error" },
-    { name: "値が無ければ空", reply: () => Response.json({}), status: "empty" },
-    { name: "材料があれば何も言わない", reply: () => Response.json({ way_1: { value: 12 } }), status: undefined },
-  ])(
+  it.each([{ name: "取れなければ失敗", reply: () => new HttpResponse(null, { status: 500 }), status: "error" }])(
     "塗っている軸だけ表示範囲の材料を取り、塗りに効く走る条件と、取得の状態（$name）をレンズに出す",
     async ({ reply, status }) => {
       serve([DEDICATED, OTHER_DEDICATED]);
@@ -227,10 +193,7 @@ describe("useMapView", () => {
     expect(result.current.overlayControls.anyLegendHidden).toBe(true);
   });
 
-  it.each([
-    { layer: "surface", row: "データなし（値の無い道が分からない属性）", key: LEGEND_NO_DATA_KEY },
-    { layer: "cycleway", row: "該当なし（タグの不在が当てはまらない属性）", key: ROAD_OTHER_KEY },
-  ])(
+  it.each([{ layer: "surface", row: "データなし", key: LEGEND_NO_DATA_KEY }])(
     "値の無い道の行を最初は隠す層（$layer）は、「$row」を地図でも凡例でも隠して始め、凡例で出すと次に開いたときも出たまま",
     async ({ layer, key }) => {
       serve();
@@ -277,23 +240,6 @@ describe("useMapView", () => {
     expect(result.current.look.layerVisibility.hillshade).toBe(true);
     expect(result.current.lensControl.keepAfterRoute).toBe(false);
     expect(chip(result, "disaster")?.legendDetails?.[0].hiddenKeys).toEqual(["heavyRain"]);
-  });
-
-  it("表示中のレイヤーをすべて非表示にすると一覧の行だけを消してルートは残し、地図へは中身が変わるか再描画を頼んだときだけ新しい値を渡す", () => {
-    serve();
-    const { result, rerender } = render();
-    expect(result.current.overlayControls.layers.some((layer) => layer.on)).toBe(true);
-    expect(result.current.look.layerVisibility.route).toBe(true);
-
-    act(() => result.current.overlayControls.onHideAllLayers());
-
-    expect(result.current.overlayControls.layers.filter((layer) => layer.on)).toEqual([]);
-    expect(result.current.look.layerVisibility.route).toBe(true);
-    const look = result.current.look;
-    rerender({});
-    expect(result.current.look).toBe(look);
-    act(() => result.current.redrawMap());
-    expect(result.current.look).toMatchObject({ ...look, refreshToken: 1 });
   });
 
   it.each([

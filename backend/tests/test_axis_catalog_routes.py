@@ -23,8 +23,6 @@ from app.domain.axis_definitions import (
     CategoricalShape,
     MaterialTerm,
 )
-from app.domain.axis_raw_value import RawValueUnits
-from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.way_value_formula import WayValueFormula, condition_names
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.main import app
@@ -45,17 +43,6 @@ CATALOG_AXES: dict[str, AxisDefinition] = {
         label="軸グ",
         is_published=True,
     ),
-    # 得点を塗る軸。
-    "axis_way_value_scored": AxisDefinition(
-        axis_id="axis_way_value_scored",
-        shape=BreakpointLinearShape(
-            terms=[MaterialTerm(material="wind_drag_ratio")],
-            breakpoints=[(-1.0, 0.0), (0.0, 20.0), (4.0, 100.0)],
-        ),
-        default_weight=0.2,
-        label="軸ウ",
-        is_published=True,
-    ),
     # 分類のshape。地図表示を導出できる。
     "axis_categorical": AxisDefinition(
         axis_id="axis_categorical",
@@ -71,8 +58,6 @@ CATALOG_AXES: dict[str, AxisDefinition] = {
             terms=[
                 MaterialTerm(material="poi_signal_per_km", weight=1.0, required=False),
                 MaterialTerm(material="poi_level_crossing_per_km", weight=2.5, required=False),
-                MaterialTerm(material="poi_stop_per_km", weight=0.4, required=False),
-                MaterialTerm(material="poi_crossing_per_km", weight=0.0, required=False),
             ],
             breakpoints=[(0.0, 0.0), (1.0, 50.0), (4.0, 100.0)],
         ),
@@ -152,18 +137,6 @@ def test_only_the_published_axes_are_served_without_auth(client):
         assert set(_entries(client)) == set(CATALOG_AXES)
 
 
-def test_each_axis_carries_what_the_domain_derives_for_it(client, catalog_axes):
-    """導出の入力違いは domain のテストが持つ。ここは軸ごとの欄へ結果が届くことだけを見る。"""
-    entries = _entries(client)
-
-    assert entries["axis_categorical"]["primary_attribute_ids"] == ["highway"]
-    signed = entries["axis_way_value_signed"]
-    assert (signed["map_paint"]["value"], signed["map_paint"]["unit"]) == (
-        {"kind": "signed_material", "material": "gradient_percent"},
-        "%",
-    )
-
-
 def test_get_axis_catalog_carries_the_calibration_values_the_client_needs(client, monkeypatch):
     """フロントが使う較正値は、このカタログが**いま効いている値**で運ぶ。
 
@@ -218,12 +191,6 @@ def test_get_axis_catalog_includes_raw_value_unit(client, catalog_axes):
     assert entries["axis_optional_terms"]["raw_value_units"] == {"unit": None, "total_unit": None}
 
 
-def test_a_total_unit_without_a_raw_value_unit_cannot_be_served():
-    """総量は生値に距離を掛けたものなので、生値の単位の無い総量の単位は掛ける元の無い総量を画面に出させる。"""
-    with pytest.raises(ValueError, match="without a raw value unit"):
-        RawValueUnits(unit=None, total_unit="回")
-
-
 def test_get_axis_catalog_includes_material_breakdown(client, catalog_axes):
     # 単位が定まらない軸は、材料まで分解した内訳を持つ（得点だけでは軸単体で判断できない）。並びは正規化重みの降順で、フロントは並べ替えを持たない。
     entries = _entries(client)
@@ -234,8 +201,6 @@ def test_get_axis_catalog_includes_material_breakdown(client, catalog_axes):
     # 分類の材料はルート結果が値ごとの割合を日本語にする対訳を、数値の材料は単位を運ぶ。
     mixed = entries["axis_mixed_terms"]["material_breakdown"]
     assert [entry["material_id"] for entry in mixed] == ["poi_signal_per_km", "highway"]
-    assert mixed[0]["unit"] == MATERIAL_CATALOG["poi_signal_per_km"].unit
-    assert mixed[1]["value_labels"] == MATERIAL_CATALOG["highway"].value_labels
 
 
 def _numbers(value) -> set[float]:

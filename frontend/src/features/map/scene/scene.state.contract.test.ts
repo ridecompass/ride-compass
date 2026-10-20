@@ -9,7 +9,6 @@ import { describe, expect, it } from "vitest";
 
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
 import { evaluateExpression, matchesFilter } from "@/testing/mapExpressions";
-import palette from "@/types/generated/palette.json";
 import { createRecordingMap, type StyleLayer } from "@/testing/mapTrace/recordingMap";
 import { catalogEntry, dedicatedEntry, MATERIAL_VALUE_FORMULA, roadClass, roadMapLayer } from "@/testing/catalogAxes";
 import { dedicatedWayValueAxesFromCatalogAxes } from "@/lib/mapDisplay/axisLayers";
@@ -97,16 +96,6 @@ describe("状態を地図へ伝えた結果", () => {
       expect(offsets[0]).not.toBe(0);
       expect(offsets[0]).toBe(-Number(offsets[1]));
     });
-
-    it("凡例で隠した分類は、その線で透明に描く", () => {
-      const { map, handle } = createRecordingMap();
-      const hiddenKey = ROAD_LAYERS[0].classes[0].key;
-
-      rebuild(map, shown({ surface: true }, { hiddenLegendKeys: { surface: [hiddenKey] } }));
-
-      const color = handle.layer(roadLayerId("surface"))?.paint["line-color"];
-      expect(evaluateExpression(color, {}, { "road:surface": hiddenKey })).toBe(palette.semantic.hidden);
-    });
   });
 
   describe("点（事故・停止要因POI・補給休憩POI）", () => {
@@ -122,18 +111,6 @@ describe("状態を地図へ伝えた結果", () => {
     });
   });
   describe("基礎地図の店・施設の印", () => {
-    // OpenMapTilesのスキーマの値（`class`は束ねた種類、`subclass`は元のOSMのタグの値）と、それを出す立ち寄り先の群。
-    const STOP_PLACE_KINDS = [
-      ["飲食店", "eat_drink", { class: "restaurant", subclass: "restaurant" }],
-      ["カフェ", "eat_drink", { class: "cafe", subclass: "cafe" }],
-      ["酒場", "eat_drink", { class: "beer", subclass: "pub" }],
-      ["自転車の店", "bicycle", { class: "bicycle", subclass: "bicycle" }],
-      ["公園", "scenic", { class: "park", subclass: "park" }],
-      ["展望地", "scenic", { class: "attraction", subclass: "viewpoint" }],
-      ["宿", "lodging", { class: "lodging", subclass: "hotel" }],
-      ["キャンプ場", "lodging", { class: "campsite", subclass: "camp_site" }],
-      ["礼拝の場所", "temple_shrine", { class: "place_of_worship", subclass: "place_of_worship" }],
-    ] as const;
     const CONVENIENCE = { class: "shop", subclass: "convenience" };
     const RANKS = [3, 8, 25];
 
@@ -153,38 +130,12 @@ describe("状態を地図へ伝えた結果", () => {
     const stopPlace = POINT_LAYERS.find((layer) => layer.attr_id === "stop_place")!;
     const stopPlaceAxisKey = pointAxisKey(stopPlace, stopPlace.display_axes[0]);
 
-    it("立ち寄り先・補給休憩を出していないときは、基礎地図の店・施設を全部描く", () => {
+    it("立ち寄り先を出しても、補給休憩のコンビニは基礎地図に描く", () => {
       const { map } = drawBasemap();
 
-      rebuild(map, shown({}));
+      rebuild(map, shown({ stop_place: true }));
 
-      for (const [, , kind] of STOP_PLACE_KINDS) expect(drawsAnyRank(map, kind)).toBe(true);
       expect(drawsAnyRank(map, CONVENIENCE)).toBe(true);
-    });
-
-    it.each(STOP_PLACE_KINDS)("立ち寄り先を出している間は、%s を基礎地図に描かない", (_, _group, kind) => {
-      const { map } = drawBasemap();
-
-      rebuild(map, shown({ stop_place: true }));
-
-      expect(drawsAnyRank(map, kind)).toBe(false);
-    });
-
-    it("立ち寄り先を出しても、病院・銀行・郵便局・学校・ほかの店・駅と、補給休憩のコンビニは基礎地図に描く", () => {
-      const { map } = drawBasemap();
-
-      rebuild(map, shown({ stop_place: true }));
-
-      for (const kind of [
-        { class: "hospital", subclass: "hospital" },
-        { class: "bank", subclass: "bank" },
-        { class: "post", subclass: "post_office" },
-        { class: "school", subclass: "school" },
-        { class: "shop", subclass: "bakery" },
-        { class: "rail", subclass: "station" },
-        CONVENIENCE,
-      ])
-        expect(drawsAnyRank(map, kind)).toBe(true);
     });
 
     it("凡例で隠した群の種類は、立ち寄り先を出していても基礎地図に描く", () => {

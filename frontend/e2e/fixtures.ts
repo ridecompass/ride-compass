@@ -156,13 +156,6 @@ function gridPointTodayFixture(): components["schemas"]["GridPointToday"] {
   };
 }
 
-// 基礎地図スタイル（features/map/regionApi.ts: mapStyleUrl）の応答。sources/layersを空にして
-// 外部タイル・グリフ・スプライトへの追加リクエストが発生しない自己完結スタイルにする
-// （地図の見た目は検証対象外、UI操作の疎通のみが目的）。
-function emptyMapStyleFixture() {
-  return { version: 8, sources: {}, layers: [] };
-}
-
 /** モックの軸カタログが配る道の線の層。区分は管理DBが持つ任意の値なので、ここで組む。 */
 export const E2E_ROAD_LAYERS = [
   roadMapLayer("surface", {
@@ -259,9 +252,9 @@ export async function installApiMocks(page: Page): Promise<void> {
     );
   }
 
-  // 基礎地図スタイル（/api/basemap/styles/liberty）と、それ以外のbasemap配下
-  // （タイル等、空スタイルなら通常発生しない）をまとめて空スタイルで応答する。
-  await page.route("**/api/basemap/**", (route) => route.fulfill({ json: emptyMapStyleFixture() }));
+  // 基礎地図スタイル（/api/basemap/styles/liberty）と、それ以外のbasemap配下を、sources/layersの空の自己完結スタイルで応答する
+  // （外部タイル・グリフ・スプライトへの追加リクエストが起きない。地図の見た目は検証対象外）。
+  await page.route("**/api/basemap/**", (route) => route.fulfill({ json: { version: 8, sources: {}, layers: [] } }));
 
   // 気象庁の時刻一覧は配列が要る。空の配列（取得できたが時刻が無い）で返す。
   await page.route(
