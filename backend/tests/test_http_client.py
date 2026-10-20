@@ -13,9 +13,10 @@ from app.infrastructure import http_client
 
 
 def test_one_client_is_kept_per_timeout_and_waits_that_long():
-    short = http_client.get_http_client(10.0)
-    long = http_client.get_http_client(15.0)
+    short = http_client.get_http_client(httpx.Timeout(3.0, read=5.0))
+    long = http_client.get_http_client(httpx.Timeout(3.0, read=8.0))
 
-    assert http_client.get_http_client(10.0) is short
+    assert http_client.get_http_client(httpx.Timeout(3.0, read=5.0)) is short
+    assert http_client.get_http_client(15.0) is http_client.get_http_client(httpx.Timeout(15.0))
     assert long is not short
-    assert (short.timeout, long.timeout) == (httpx.Timeout(10.0), httpx.Timeout(15.0))
+    assert (short.timeout, long.timeout) == (httpx.Timeout(3.0, read=5.0), httpx.Timeout(3.0, read=8.0))
