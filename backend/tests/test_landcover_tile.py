@@ -6,7 +6,7 @@
 - キャッシュの読み書きと空タイルの扱いの骨格 → `test_region_tile_cache.py`
 - 骨格へ渡すタイルの種類（`content_type`）——キャッシュの項目に書かれるだけで読み手が無く、応答の種類はルーターが
   決める（`test_region_routes.py`）
-- ラスタ構成の指紋の作り方 → `test_landcover.py`
+- 鍵の世代（タイルの版とラスタ構成の指紋）の作り方 → `test_region_tile_cache.py`
 
 ラスタ（`landcover_raster`の口）と、キャッシュを通す骨格（`serve_region_tile`）は代役へ差し替え、
 本物の署名へ当てる（`bound`）。範囲外の空のタイルのテストだけは骨格を本物で通す。
@@ -16,7 +16,6 @@ import logging
 import pytest
 
 from app.infrastructure import debug_log
-from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION
 from app.services import landcover_tile_service as service
 from tests.bound_fake import bound
 
@@ -83,12 +82,6 @@ async def test_outside_the_rasters_the_tile_is_the_clear_image_of_the_raster(ras
     response = await service.get_landcover_tile(10, 905, 403)
 
     assert response == service.TileResponse(content=RASTER.empty_tile_png(), cacheable=True)
-
-
-async def test_the_cache_key_carries_the_tile_version(raster, served):
-    await service.get_landcover_tile(10, 905, 403)
-
-    assert served[0]["generation"].startswith(f"{LANDCOVER_TILE_VERSION}/")
 
 
 # ---- ラスタが1枚も無いとき ----
