@@ -29,7 +29,7 @@ const NO_ROUTES: RouteState = {
   segmentColor: "#16a34a",
   spliceBands: [],
   composite: null,
-  arrowIconImage: "arrow",
+  selectedSection: null,
 };
 
 const DECLARED_LAYERS = routeGroup.build(NO_ROUTES).layers;
@@ -74,6 +74,21 @@ describe("ルートの描画", () => {
 
     for (const role of ["detailCasing", "detailLine", "detailHit"]) {
       expect(handle.layer(routeSceneLayerId(role))?.filter).toEqual(filter);
+    }
+  });
+
+  // 重なると、往復で後に描く帰りの濃い線が、走り終えて薄めた行きの線を覆い、地図で走り終えた所が見えない。
+  it("往復で同じ道を逆向きに通る区間の線は、進む向きの左へ縁取りの半分以上ずれて、行きと帰りが重ならずに並ぶ", () => {
+    const { map, handle } = createRecordingMap();
+    const tell = bindCurrentImplementation(map);
+    const back: RoutePathShape = { path: [...PATH].reverse(), properties: { osm_way_id: 1 } };
+
+    tell({ segments: [{ ...SEGMENT, properties: { osm_way_id: 1, travelled: true } }, back] });
+
+    const casingWidth = handle.layer(routeSceneLayerId("detailCasing"))?.paint["line-width"] as number;
+    for (const role of ["detailCasing", "detailLine"]) {
+      // 負は進む向きの左。逆向きの線は道の反対側へ同じだけずれるので、縁取りの半分ずれれば2本の縁取りが接する。
+      expect(handle.layer(routeSceneLayerId(role))?.paint["line-offset"]).toBeLessThanOrEqual(-casingWidth / 2);
     }
   });
 });

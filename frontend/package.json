@@ -8,6 +8,8 @@
   "scripts": {
     "predev": "node scripts/copy-maplibre-worker.mjs",
     "dev": "next dev",
+    "predev:prod-data": "node scripts/copy-maplibre-worker.mjs",
+    "dev:prod-data": "node scripts/dev-prod-data.mjs",
     "prebuild": "node scripts/copy-maplibre-worker.mjs",
     "build": "next build",
     "prebuild:e2e": "node scripts/copy-maplibre-worker.mjs",

@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 
 import httpx
 import numpy as np
-from cachetools import TTLCache
+from cachetools import LRUCache, TTLCache
 
 from app.domain.rain import RAIN_HISTORY_HOURS, StationRainMaterials, is_rain_history_current, rain_material_values
 from app.domain.time_zone import JST, as_jst
@@ -33,6 +33,7 @@ from app.infrastructure.jma_amedas_client import AmedasReading, AmedasStation
 from app.infrastructure.jma_amedas_store import RainHistory
 from app.infrastructure.jma_tile_client import JmaTileClient
 from app.infrastructure.debug_log import log_throttled_warning
+from app.services.nearest_point_areas import nearest_point_area
 
 logger = logging.getLogger("ridecompass.jma_amedas_service")
 
@@ -53,11 +54,13 @@ class JmaAmedasService:
         *,
         station_table_cache: TTLCache,
         latest_time_cache: TTLCache,
+        cells_cache: LRUCache,
     ):
         self._http_client = http_client
         self._tile_client = tile_client
         self._station_table_cache = station_table_cache
         self._latest_time_cache = latest_time_cache
+        self._cells_cache = cells_cache
 
     async def get_nearest_observation(self, point: Coordinates) -> AmedasObservation | None:
         """最寄り観測所を解決し、保存済みの観測値に地点の日の出・日没と天気コードを入れて返す。観測値はJMAへ
@@ -87,6 +90,7 @@ class JmaAmedasService:
                 "weather_code": derive_observed_weather_code(
                     observation.precipitation_10min_mm, suikei, observation.temperature_c
                 ),
+                "valid_area": nearest_point_area(point, list(stations.values()), self._cells_cache, table="amedas"),
             }
         )
 
@@ -195,6 +199,7 @@ def _observation(station: AmedasStation, observed_at: datetime, reading: AmedasR
         # クエリ地点依存のためバッチ時点では決められない。
         twilight=None,
         weather_code=None,
+        valid_area=None,
     )
 
 

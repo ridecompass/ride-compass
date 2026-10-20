@@ -43,7 +43,7 @@ import os
 import subprocess
 import sys
 import tempfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,32 +52,27 @@ import asyncpg
 from coverage import CoverageData
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from app.batch.common import asyncpg_dsn  # noqa: E402  sys.pathを通した後に読む
-
-
-def _defined_names(node: ast.stmt) -> list[str]:
-    """最上位の文が定義する名前（関数・クラス・名前への代入）。"""
-    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-        return [node.name]
-    if isinstance(node, ast.Assign):
-        return [t.id for t in node.targets if isinstance(t, ast.Name)]
-    if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-        return [node.target.id]
-    return []
+from tests.structure.source_symbols import SourceTree, bound_names
+from app.batch.common import asyncpg_dsn  # sys.pathを通した後に読む
+from pytest_report import Case, junit_args, read_cases
+from repo_git import merge_base, run
 
 
-def module_symbols(path: Path) -> tuple[set[str], dict[str, str]]:
-    """実装ファイルの最上位で「定義されたもの」と「importされたもの」を分ける。"""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+def module_symbols(source: SourceTree, path: Path) -> tuple[set[str], dict[str, str]]:
+    """実装ファイルの最上位で「定義されたもの」と「importされたもの」（名前 → 取り込み元のモジュール）を分ける。"""
+    module = source.module_of(path)
     defined: set[str] = set()
     imported: dict[str, str] = {}
-    for node in tree.body:
-        defined.update(_defined_names(node))
-        if isinstance(node, ast.ImportFrom):
-            imported.update({a.asname or a.name: node.module or "" for a in node.names})
-        elif isinstance(node, ast.Import):
-            imported.update({a.asname or a.name.split(".")[0]: a.name for a in node.names})
+    for name, statement in bound_names(ast.parse(path.read_text(encoding="utf-8")).body).items():
+        if isinstance(statement, ast.ImportFrom):
+            imported[name] = source.absolute(module, statement)
+        elif isinstance(statement, ast.Import):
+            alias = next(a for a in statement.names if (a.asname or a.name.split(".")[0]) == name)
+            imported[name] = alias.name
+        else:
+            defined.add(name)
     return defined, imported
 
 
@@ -104,12 +99,11 @@ def public_names(tree: ast.Module) -> list[tuple[str, str]]:
     最上位の関数・クラス・代入と、公開のクラスの`_`で始まらないメソッド（表示は`クラス.メソッド`）。
     """
     out: list[tuple[str, str]] = []
-    for node in tree.body:
-        names = _defined_names(node)
-        if not names:
+    for name, node in bound_names(tree.body).items():
+        if isinstance(node, (ast.Import, ast.ImportFrom)) or name.startswith("_"):
             continue
-        out.extend((name, name) for name in names if not name.startswith("_"))
-        if isinstance(node, ast.ClassDef) and not node.name.startswith("_"):
+        out.append((name, name))
+        if isinstance(node, ast.ClassDef):
             out.extend(
                 (f"{node.name}.{item.name}", item.name)
                 for item in node.body
@@ -229,22 +223,6 @@ def names_in_string_constants(tree: ast.AST, names: set[str]) -> set[str]:
     }
 
 
-def passed_test_ids(pytest_output: str) -> set[str]:
-    """`-rA`の要約から、実行されたテストのnode idを取る。
-
-    `PASSED`の行はnode idだけを持つ。`XFAIL`・`XPASS`の行は` - 理由`が続くが、パラメータの
-    idも` - `を含みうるため、理由の区切りはこの2つにだけ当てる。
-    """
-    ids: set[str] = set()
-    for line in pytest_output.splitlines():
-        outcome, _, rest = line.partition(" ")
-        if outcome == "PASSED" and "::" in rest:
-            ids.add(rest.strip())
-        elif outcome in {"XFAIL", "XPASS"} and "::" in rest:
-            ids.add(rest.rsplit(" - ", 1)[0].strip())
-    return ids
-
-
 def lines_by_test(coverage_db: Path, implementation: Path) -> dict[str, set[int]]:
     """`--cov-context=test`の記録から、テストごとに対象ファイルで実行した行を引く。
 
@@ -311,7 +289,7 @@ def test_database_unreachable(backend: Path) -> str | None:
 
     try:
         asyncio.run(connect())
-    except Exception as exc:  # noqa: BLE001 繋がらない理由はそのまま出す
+    except Exception as exc:  # 繋がらない理由はそのまま出す
         return f"{type(exc).__name__}: {exc}"
     return None
 
@@ -348,11 +326,11 @@ def line_ranges(lines: set[int] | frozenset[int]) -> str:
 
 
 def run_pytest(
-    backend: Path, tests: list[str], cov_dir: str, env: dict[str, str], with_postgis: bool, report: Path
+    backend: Path, tests: list[str], cov_dir: str, env: dict[str, str], with_postgis: bool, report: Path, results: Path
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "pytest", *tests, "-q", "-rA", *([] if with_postgis else ["-m", "not postgis"]),
-         "-p", "no:randomly",
+        [sys.executable, "-m", "pytest", *tests, "-q", *([] if with_postgis else ["-m", "not postgis"]),
+         "-p", "no:randomly", *junit_args(results),
          f"--cov={cov_dir}", "--cov-branch", "--cov-context=test",
          f"--cov-report=json:{report}"],
         cwd=backend, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -360,7 +338,7 @@ def run_pytest(
 
 
 def measurement(
-    backend: Path, report: Path, implementation: str, tests: list[str], pytest_output: str
+    backend: Path, report: Path, implementation: str, tests: list[str], cases: list[Case]
 ) -> Measurement:
     """pytestの実行が残したカバレッジから、対象ファイルの④⑤とテストファイルごとの数を読む。
 
@@ -371,7 +349,7 @@ def measurement(
     files = json.loads(report.read_text(encoding="utf-8"))["files"]
     data = next(f for path, f in files.items() if (backend / path).resolve() == target)
     summary = data["summary"]
-    executed = passed_test_ids(pytest_output)
+    executed = {case.nodeid for case in cases if case.outcome in {"passed", "xfailed"}}
     dead, without_own_lines = tests_without_own_lines(executed, lines_by_test(backend / ".coverage", target))
     return Measurement(
         covered_lines=summary["covered_lines"],
@@ -411,7 +389,8 @@ def main() -> int:
         print(f"見つからない: {' '.join(missing)}", file=sys.stderr)
         return 1
     implementation = args.implementation.replace("\\", "/")
-    module = implementation.removesuffix(".py").replace("/", ".")
+    source = SourceTree(backend)
+    module = source.module_of(impl_path)
     cov_dir = implementation.rsplit("/", 1)[0]
 
     print(f"対象:     {args.implementation}")
@@ -425,20 +404,16 @@ def main() -> int:
     print("=" * 78)
 
     # --- ① 実装を変えていないか ---
-    def git(*command: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["git", *command], cwd=backend, capture_output=True, text=True, encoding="utf-8", errors="replace",
-        )
-
     # origin/master との合流点から作業ツリーまでの差（コミット済みの変更も含む）。
-    base = git("merge-base", "origin/master", "HEAD")
-    if base.returncode != 0:
-        print(f"\n① 実装の変更: **測れない**（origin/master との合流点が取れない: {base.stderr.strip()}）")
+    try:
+        base = merge_base(cwd=backend)
+    except RuntimeError as e:
+        print(f"\n① 実装の変更: **測れない**（origin/master との合流点が取れない: {e}）")
     else:
-        status = git("diff", "--stat", base.stdout.strip(), "--", args.implementation).stdout.strip()
+        status = run("diff", "--stat", base, "--", args.implementation, cwd=backend).stdout.strip()
         print(f"\n① 実装の変更（origin/master との合流点から）: {'**あり** → ' + status if status else 'なし'}")
 
-    defined, imported = module_symbols(impl_path)
+    defined, imported = module_symbols(source, impl_path)
     for test in tests:
         tree = ast.parse((backend / test).read_text(encoding="utf-8"))
         print(f"\n--- {test}")
@@ -471,8 +446,8 @@ def main() -> int:
         unknown = sorted(a for a in touched if a not in defined and a not in imported)
         print(f"③ テストが触る {alias}.X: 自ファイル定義 {len(own)}種"
               f" / 他モジュール由来 {len(foreign)}種 / 判定不能 {len(unknown)}種")
-        for name, source in foreign:
-            print(f"     {alias}.{name:<32} <- {source}  ({touched[name]}回)"
+        for name, origin in foreign:
+            print(f"     {alias}.{name:<32} <- {origin}  ({touched[name]}回)"
                   "  ← seamか責務外かを言うこと")
         for name in unknown:
             print(f"     {alias}.{name}  （判定不能）")
@@ -493,18 +468,20 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="ridecompass-audit-") as work_dir:
         work = Path(work_dir)
         report = work / "measured.json"
-        result = run_pytest(backend, tests, cov_dir, env, not unreachable, report)
+        results = work / "results.xml"
+        result = run_pytest(backend, tests, cov_dir, env, not unreachable, report, results)
         lines = result.stdout.splitlines()
-        for line in lines:
-            if line.startswith("=") and (" passed" in line or " failed" in line or " error" in line):
-                print("     " + line.strip())
+        cases = read_cases(results) if results.exists() else []
+        outcomes = Counter(c.outcome for c in cases)
+        print("     テストの結果: " + "・".join(f"{label} {outcomes[outcome]}" for outcome, label in (
+            ("passed", "通った"), ("xfailed", "xfail"), ("skipped", "飛ばした"), ("failed", "落ちた")) if outcomes[outcome]))
         if result.returncode != 0:
             print("\n     テストが緑でない。監査の残りは当てにならない。pytestの出力の末尾:", file=sys.stderr)
             for line in (lines + result.stderr.splitlines())[-15:]:
                 print("     " + line, file=sys.stderr)
             return 1
 
-        measured = measurement(backend, report, implementation, tests, result.stdout)
+        measured = measurement(backend, report, implementation, tests, cases)
         print(f"\n④ 実装へ1行も入らないテスト: {len(measured.dead)} / {measured.executed}")
         for name in measured.dead:
             print("     " + (name if len(tests) > 1 else name.split("::", 1)[1]))

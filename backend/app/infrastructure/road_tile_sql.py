@@ -9,19 +9,20 @@ from collections.abc import Iterable
 from sqlalchemy import text
 
 from app.domain.attributes import AVERAGE_GRADE_DECIMALS
+from app.domain.geo import bearing_sql, midpoint_sql
 from app.domain.graph import edge_feature_key_sql
 from app.domain.material_catalog import (
     GRADIENT_PERCENT,
     material_tile_columns,
     material_value_sql,
-    tile_unscaled_sql_params,
+    segment_material_ids,
 )
 from app.domain.material_sql import length_weighted_mean_sql
 from app.domain.region import EDGE_UNIT_MIN_ZOOM
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.source_models import COVERAGE_SQL, WAYS_SOURCE_SQL, ways_lookup_sql
-from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES
+from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, TILE_BUFFER
 
 #: どちらの単位も`feature_key`という同じ名前で出す。フロントは`promoteId`でこれを
 #: feature.idへ昇格させるだけでよく、中身がway_idか区間の鍵かを知らなくてよい。
@@ -61,6 +62,9 @@ _TILE_FEATURE_SOURCE_SQL = f"""
       AND ST_Intersects(w3.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
       AND NOT EXISTS (SELECT 1 FROM road_edges re2 WHERE re2.osm_way_id = w3.osm_way_id)
 """
+#: フィーチャー（`_TILE_FEATURE_SOURCE_SQL`の行`src`）の始点と終点で決める中点と方位。
+_FEATURE_MIDPOINT_SQL = midpoint_sql("ST_StartPoint(src.geom)", "ST_EndPoint(src.geom)")
+_FEATURE_BEARING_SQL = bearing_sql("ST_StartPoint(src.geom)", "ST_EndPoint(src.geom)")
 
 
 #: 材料の焼き込み列。`tile_property`を持つ全材料について、値式から組んだ式を並べる
@@ -96,7 +100,6 @@ def _tile_material_joins(expressions: Iterable[str]) -> str:
 # **最終値（軸の得点）を焼かない。** タイルは全利用者で共有してキャッシュされるため、
 # 判定基準を変えるたびに世界中のタイルを作り直すことになる。焼くのは材料の値（レシピに
 # 依存しない静的な事実）だけで、最終値はフロントとルート採点がそれぞれ同じ材料から計算する。
-# 実行時にしか決まらない係数で割る材料は、割る前の値を焼く（係数の引数を1で束ねる）。
 #
 # カバレッジ判定も同じクエリへ畳み込み、1タイルあたりのDB往復を1回にする。CASE式は条件が
 # falseの分岐を評価しないため、カバレッジ外ではMVT生成のサブクエリ自体が実行されない。
@@ -109,7 +112,7 @@ ROAD_SURFACE_TILE_MVT_SQL = text(
             SELECT ST_AsMVT(mvt.*, :layer_name, :extent, 'geom') FROM (
                 SELECT
                     ST_AsMVTGeom(
-                        ST_Transform(src.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, 256, true
+                        ST_Transform(src.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true
                     ) AS geom,
                     src.feature_key AS {ROAD_FEATURE_PROPERTIES['feature_key']},
                     -- 区間インスペクタが、ポップアップに出た値と同じ行を曖昧さ無く引き
@@ -129,7 +132,7 @@ ROAD_SURFACE_TILE_MVT_SQL = text(
         ) END AS tile
     FROM coverage
     """
-).bindparams(**tile_unscaled_sql_params())
+)
 
 
 # 鍵→動的値配信層（風、「評価軸」グループ）。**タイルと同じソース**から鍵の一覧を引く。
@@ -147,8 +150,8 @@ FEATURE_MIDPOINTS_IN_TILE_SQL = text(
                 jsonb_object_agg(
                     src.feature_key,
                     jsonb_build_array(
-                        (ST_Y(ST_StartPoint(src.geom)) + ST_Y(ST_EndPoint(src.geom))) / 2,
-                        (ST_X(ST_StartPoint(src.geom)) + ST_X(ST_EndPoint(src.geom))) / 2
+                        {_FEATURE_MIDPOINT_SQL[0]},
+                        {_FEATURE_MIDPOINT_SQL[1]}
                     )
                 ) FILTER (WHERE ST_StartPoint(src.geom) IS NOT NULL),
                 '{{}}'::jsonb
@@ -184,13 +187,10 @@ FEATURE_GRADIENT_INPUTS_IN_TILE_SQL = text(
                     src.feature_key,
                     round(({length_weighted_mean_sql(_GRADIENT_SQL)})::numeric, {AVERAGE_GRADE_DECIMALS})
                         ::double precision AS average_grade,
-                    degrees(ref.azimuth) AS bearing_deg
+                    ref.bearing_deg
                 FROM ({_TILE_FEATURE_SOURCE_SQL}) src
                 CROSS JOIN LATERAL (
-                    -- geographyへキャストする。geometry(4326)のままだと経度緯度を平面と
-                    -- して扱った角度になり、緯度35度では真の方位と数度ずれる。
-                    SELECT ST_Azimuth(ST_StartPoint(src.geom)::geography,
-                                      ST_EndPoint(src.geom)::geography) AS azimuth
+                    SELECT {_FEATURE_BEARING_SQL} AS bearing_deg
                 ) ref
                 CROSS JOIN LATERAL (
                     -- 区間を道ごとに主キーの索引で引く。`OFFSET 0`は副問い合わせを外の結合へ
@@ -203,8 +203,8 @@ FEATURE_GRADIENT_INPUTS_IN_TILE_SQL = text(
                 ) re
                 {material_from_clause([_GRADIENT_SQL], 're.osm_way_id', 're.segment_index')}
                 WHERE ({_GRADIENT_SQL}) IS NOT NULL
-                  AND ref.azimuth IS NOT NULL
-                GROUP BY src.feature_key, ref.azimuth
+                  AND ref.bearing_deg IS NOT NULL
+                GROUP BY src.feature_key, ref.bearing_deg
             ) t
         ) END AS feature_gradient_inputs
     FROM coverage
@@ -212,8 +212,8 @@ FEATURE_GRADIENT_INPUTS_IN_TILE_SQL = text(
 )
 
 
-#: フィーチャーごとの材料。値は探索と同じ値式（`material_value_sql`）で求め、タイルへ焼くときの丸め・係数を通さない
-#: ——地図に配る得点を、探索が同じ道に付ける得点と揃える。並びは配列の位置（`ord`）で揃え、列ごとに別々に並べない。
+#: フィーチャーごとの材料。値は探索と同じ値式（`material_value_sql`）で求め、地図に配る得点を、
+#: 探索が同じ道に付ける得点と揃える。並びは配列の位置（`ord`）で揃え、列ごとに別々に並べない。
 #: 材料の列は`c_<材料id>`、鍵は`feature_keys`。取込範囲の外は`covered`が偽で、範囲内で0件なら配列はNULL。
 _FEATURE_MATERIAL_EXPRESSIONS = dict(sorted(material_value_sql().items()))
 FEATURE_MATERIALS_IN_TILE_SQL = text(
@@ -240,6 +240,46 @@ FEATURE_MATERIALS_IN_TILE_SQL = text(
 )
 
 
+#: 道1本を1つのフィーチャーにするズーム（`EDGE_UNIT_MIN_ZOOM`より下）のタイルの、フィーチャーごとの区間と、区間ごとに値が
+#: 違いうる材料（`segment_material_ids`）の区間の値。区間は道の全区間で、タイルの外の区間も読む——フィーチャーは道1本
+#: 全体を塗る。値は探索と同じ値式を区間の行で読み（勾配は道の向きを正とする）、フィーチャーの方位は勾配の配信と同じ
+#: 両端を結ぶ方位。並びは配列の位置（`ord`）で揃える。列は`FEATURE_MATERIALS_IN_TILE_SQL`と同じ形（`c_<材料id>`）に、
+#: `distance_m`・`bearing_deg`を足したもの。
+_FEATURE_SEGMENT_EXPRESSIONS = {material_id: expression for material_id, expression in _FEATURE_MATERIAL_EXPRESSIONS.items()
+                                if material_id in segment_material_ids()}
+FEATURE_SEGMENTS_IN_TILE_SQL = text(
+    f"""
+    WITH coverage AS ({COVERAGE_SQL})
+    SELECT
+        coverage.covered,
+        array_agg(f.feature_key ORDER BY f.ord) FILTER (WHERE f.ord IS NOT NULL) AS feature_keys,
+        array_agg(f.distance_m ORDER BY f.ord) FILTER (WHERE f.ord IS NOT NULL) AS distance_m,
+        array_agg(f.bearing_deg ORDER BY f.ord) FILTER (WHERE f.ord IS NOT NULL) AS bearing_deg,
+        {", ".join(f"array_agg(f.m_{material_id} ORDER BY f.ord) FILTER (WHERE f.ord IS NOT NULL) AS c_{material_id}"
+                   for material_id in _FEATURE_SEGMENT_EXPRESSIONS)}
+    FROM coverage
+    LEFT JOIN LATERAL (
+        SELECT
+            src.feature_key,
+            row_number() OVER () AS ord,
+            re.distance_m,
+            {_FEATURE_BEARING_SQL} AS bearing_deg,
+            {", ".join(f"({expression}) AS m_{material_id}"
+                       for material_id, expression in _FEATURE_SEGMENT_EXPRESSIONS.items())}
+        FROM ({_TILE_FEATURE_SOURCE_SQL}) src
+        JOIN LATERAL {ways_lookup_sql('src.osm_way_id')} w ON true
+        CROSS JOIN LATERAL (
+            -- 区間を道ごとに主キーの索引で引く（`OFFSET 0`は`FEATURE_GRADIENT_INPUTS_IN_TILE_SQL`と同じ理由）。
+            SELECT * FROM road_edges r WHERE r.osm_way_id = src.osm_way_id OFFSET 0
+        ) re
+        {material_from_clause(_FEATURE_SEGMENT_EXPRESSIONS.values(), 're.osm_way_id', 're.segment_index')}
+        WHERE coverage.covered AND src.segment_index IS NULL
+    ) f ON true
+    GROUP BY coverage.covered
+    """
+)
+
+
 #: タイルのディスク／Redisキャッシュの鍵に入る**形の署名**。焼き込むSQLから導出するため、
 #: 列や分類タグを変えれば自動的に別の鍵になる。DBの中身が作り直されたことは署名では表せず、
 #: そちらは`services/tile_version_service.py`が世代の変化として扱う。
@@ -250,3 +290,5 @@ FEATURE_GRADIENT_INPUTS_SHAPE = shape_digest(FEATURE_GRADIENT_INPUTS_IN_TILE_SQL
 #: フィーチャーごとの材料を読むSQLの形の署名。材料のタイル値のキャッシュの鍵に入る
 #: （`services/feature_materials.py: FEATURE_MATERIALS_VALUE_SHAPE`）。
 FEATURE_MATERIALS_SHAPE = shape_digest(FEATURE_MATERIALS_IN_TILE_SQL)
+#: フィーチャーごとの区間の材料を読むSQLの形の署名（`services/feature_materials.py: FEATURE_SEGMENTS_VALUE_SHAPE`）。
+FEATURE_SEGMENTS_SHAPE = shape_digest(FEATURE_SEGMENTS_IN_TILE_SQL)

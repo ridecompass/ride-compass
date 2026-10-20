@@ -16,6 +16,10 @@ import { createRecordingMap } from "./recordingMap";
 
 type Callable = Record<string, (...args: readonly unknown[]) => unknown>;
 
+function namedOf(state: Record<string, unknown>, named: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  return Object.fromEntries(Object.keys(named).map((name) => [name, state[name]]));
+}
+
 describe("地図の代役は、本物と同じ呼び出しで同じものを載せる", () => {
   it.each(MAP_CONTRACT)("$name", ({ steps, expected }) => {
     const { map, handle } = createRecordingMap();
@@ -40,6 +44,9 @@ describe("地図の代役は、本物と同じ呼び出しで同じものを載�
         state: { ...handle.featureState(entry.source, String(entry.id)) },
       })),
       sourceData: expected.sourceData.map(({ source }) => ({ source, data: handle.sourceContent(source)?.data })),
+      ...(expected.globalState === undefined
+        ? {}
+        : { globalState: namedOf(handle.globalState(), expected.globalState) }),
     };
 
     expect(reading).toEqual(expected);

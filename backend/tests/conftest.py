@@ -23,6 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.batch.common import asyncpg_dsn
+from app.domain import stopwatch
 from app.infrastructure import (
     debug_log,
     jma_area_boundaries,
@@ -44,6 +45,12 @@ from app.config import settings
 from app.services import derived_data_revision_service
 from scripts.schema_gap import collect_gaps
 from tests.admin_auth import ADMIN_PASSWORD, ADMIN_USERNAME
+from tests.database_names import (
+    SHARED_TEST_DATABASE,
+    TEMPLATE_TEST_DATABASE,
+    TEST_DATABASE_PREFIX,
+    TEST_DATABASE_SERVER,
+)
 
 # hypothesisは1例ごとに壁時計の締め切り（既定200ms）を持ち、超えると落とす。共有のランナーでは同じ例の所要時間が
 # 実行ごとに揺れて別のテストが落ちるため外す。止まったテストはpytest-timeoutが落とす。
@@ -146,7 +153,7 @@ async def fake_redis(monkeypatch, redis_server):
 
 
 class MonotonicClock:
-    """回数制限・外部I/Oの記録・データの世代の読み直しが読む単調時計。止まっていて、進めたぶんだけ進む。"""
+    """回数制限・外部I/Oの記録・所要時間の測り・データの世代の読み直しが読む単調時計。止まっていて、進めたぶんだけ進む。"""
 
     def __init__(self) -> None:
         self._now = 0.0
@@ -160,7 +167,7 @@ class MonotonicClock:
 
 @pytest.fixture(autouse=True, scope="session")
 def _monotonic_clock_for_the_session():
-    """回数制限・外部I/Oの記録・データの世代の読み直しが読む時計を、テストが進める時計へ替える。
+    """回数制限・外部I/Oの記録・所要時間の測り・データの世代の読み直しが読む時計を、テストが進める時計へ替える。
 
     戻すのはセッションの終わりだけ。途中で実時計へ戻すと、進めた時計で数えた回数・窓の始まり・TTLが
     未来の時刻として残り、後のテストに食い込む。freezegun（`clock`）はこの時計を動かさない——止めた時刻は
@@ -170,6 +177,7 @@ def _monotonic_clock_for_the_session():
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(rate_limiter, "time", clock)
         patch.setattr(debug_log, "time", clock)
+        patch.setattr(stopwatch, "time", clock)
         patch.setattr(derived_data_revision_service, "time", clock)
         yield clock
 
@@ -238,11 +246,6 @@ def _use_temp_disk_cache_dirs(tmp_path, monkeypatch, _keep_disk_caches_out_of_th
         yield
 
 
-# road_graph_repository.pyのPostGIS統合テスト専用の接続先。開発機で稼働中の実DB
-# (ridecompass, backend/.envのDATABASE_URLが指す先)とは別のテスト専用DBを使う
-# (取り込んだ実データに触れないため)。ローカルでのみ実行する
-# 前提で、環境変数postgis_database_url()で上書き可能にしておく（CIはこの経路で注入する）。
-TEST_DATABASE_SERVER = "postgresql+asyncpg://ridecompass:ridecompass@localhost:5432"
 #: 作業ツリーの場所を書いておくDB。消してよいかの判断に使う（drop_orphan_test_databases.py）。
 TEST_DATABASE_MAINTENANCE = f"{TEST_DATABASE_SERVER}/postgres"
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
@@ -258,16 +261,9 @@ def default_test_database_name(root: Path) -> str:
     同名の作業ツリーがあると衝突するため、絶対パスのダイジェストを添える。
     """
     slug = re.sub(r"[^a-z0-9]+", "_", root.name.lower()).strip("_")[:24] or "wt"
-    return f"ridecompass_test_{slug}_{hashlib.sha1(str(root).encode('utf-8')).hexdigest()[:8]}"
+    return f"{TEST_DATABASE_PREFIX}{slug}_{hashlib.sha1(str(root).encode('utf-8')).hexdigest()[:8]}"
 
 
-#: 作業ツリー専用のDBを作れない環境（ロールにCREATEDBが無い等）での退避先。
-#: **分離できないことより、PostGISテストが丸ごと走らなくなる方が害が大きい。**
-SHARED_TEST_DATABASE = "ridecompass_test"
-#: 複製元。`CREATE EXTENSION postgis`はsuperuserを要求する（postgisはtrusted拡張ではない）
-#: ため、空のDBを作っても拡張を入れられない。**拡張を持つDBを複製する**ことで、
-#: superuserなしで使えるDBを増やせる。
-TEMPLATE_TEST_DATABASE = "ridecompass_test_template"
 #: 同時に作ろうとして競り負けたときの例外。PostgreSQLは競争の負け側へ、宣言的な
 #: 42P04（duplicate_database）ではなく23505（unique_violation、pg_databaseの一意索引違反）を
 #: 返すことがある。**片方だけを捕まえると、並行実行のときだけ退避してしまう。**
@@ -344,7 +340,7 @@ async def _create_database_if_absent(name: str, owner_path: str) -> bool:
     return True
 
 
-#: この実行の接続先。`pytest_collection_modifyitems`が1回だけ決める。
+#: この実行の接続先。`pytest_collection_finish`が1回だけ決める。
 _RESOLVED_DATABASE_URL: str | None = None
 
 
@@ -355,6 +351,12 @@ def postgis_database_url() -> str:
     作れない環境では共有DBへ退避する）。名前を`test_`で始めないのは、pytestが
     テスト関数として収集してしまうため。
     """
+    if _RUNNING_ITEM is not None and _RUNNING_ITEM.get_closest_marker("postgis") is None:
+        pytest.fail(
+            f"{_RUNNING_ITEM.nodeid} がDBの印の無いままテストDBへつなごうとした。"
+            f"{DATABASE_FIXTURE}（を使うフィクスチャ）を取れば印が付く",
+            pytrace=False,
+        )
     if _RESOLVED_DATABASE_URL is not None:
         return _RESOLVED_DATABASE_URL
     # フックを経ていない呼び出し（pytest外からのimport等）。DBを作らずに行き先だけ答える。
@@ -388,7 +390,7 @@ def _prepare_worktree_database() -> str:
     name = default_test_database_name(WORKTREE_ROOT)
     try:
         created = asyncio.run(_create_database_if_absent(name, str(WORKTREE_ROOT)))
-    except Exception as exc:  # noqa: BLE001 作れない理由はそのまま伝える
+    except Exception as exc:  # 作れない理由はそのまま伝える
         print(
             f"作業ツリー専用のテストDBを用意できないため、共有の{SHARED_TEST_DATABASE}を使います"
             f"（並行セッションと衝突しうる）: {exc}\n"
@@ -400,19 +402,61 @@ def _prepare_worktree_database() -> str:
     return f"{TEST_DATABASE_SERVER}/{name}"
 
 
+#: テストDBへつなぐ足場の根。これを（フィクスチャを経て間接にでも）使うテストに、DBの印を付ける。
+DATABASE_FIXTURE = "road_graph_engine"
+
+#: 準備か本体を走らせているテスト。DBの印の無いテストがテストDBへつなぐのを`postgis_database_url`で止める。
+_RUNNING_ITEM: pytest.Item | None = None
+
+
+@pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(config, items):
+    """テストDBへつなぐテストに、DBの印（`-m`で選ぶ`postgis`と、1つのワーカーへ寄せる`xdist_group`）を付ける。
+
+    先に動くのは、`-m`の選り分けとpytest-xdistの`--dist loadgroup`が同じフックで印を読むから。
+    """
+    for item in items:
+        if DATABASE_FIXTURE in getattr(item, "fixturenames", ()):
+            item.add_marker(pytest.mark.postgis)
+            item.add_marker(pytest.mark.xdist_group(name="postgis"))
+
+
+@contextmanager
+def _running(item):
+    global _RUNNING_ITEM
+    _RUNNING_ITEM = item
+    try:
+        yield
+    finally:
+        _RUNNING_ITEM = None
+
+
+# 後片付けは見ない。ファイル単位のフィクスチャは、印の無いテストの後片付けの中で片付くことがある。
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_setup(item):
+    with _running(item):
+        return (yield)
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item):
+    with _running(item):
+        return (yield)
+
+
+def pytest_collection_finish(session):
     """PostGISテストが1件でも選ばれていれば、この実行の接続先を決めて用意する。
 
     ここで済ませるのは、**同期のまま・イベントループの外で・1回だけ**行える唯一の場所だから
     （`asyncio.run`は実行中のループの中からは呼べず、フィクスチャの中では遅い）。
-    `-m "not postgis"`の実行には接続を1本も足さない。
+    `-m`の選り分けのあとに動くので、`-m "not postgis"`の実行には接続を1本も足さない。
     """
     global _RESOLVED_DATABASE_URL
     explicit = os.environ.get("TEST_DATABASE_URL")
     if explicit:
         _RESOLVED_DATABASE_URL = explicit
         return
-    if not any(item.get_closest_marker("postgis") for item in items):
+    if not any(item.get_closest_marker("postgis") for item in session.items):
         return
     _RESOLVED_DATABASE_URL = _prepare_worktree_database()
 
@@ -438,7 +482,7 @@ async def road_graph_engine():
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-    except Exception as exc:  # noqa: BLE001 接続できない理由はそのまま伝える
+    except Exception as exc:  # 接続できない理由はそのまま伝える
         await engine.dispose()
         # URLはそのまま出さない（パスワードを含む）。行き先はDB名で足りる。
         database = postgis_database_url().rsplit("/", 1)[-1]
@@ -453,7 +497,7 @@ async def road_graph_engine():
         try:
             async with engine.begin() as conn:
                 await conn.execute(text(f"CREATE EXTENSION IF NOT EXISTS {extension}"))
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
     await create_tables(engine)
     # create_tables()は在る表を直さないので、前の実行が宣言と違う形で残した表（表を入れ替える実装を壊して回した・

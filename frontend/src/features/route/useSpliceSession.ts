@@ -3,8 +3,10 @@
 import { useCallback, useMemo, useRef, useState, type ComponentProps } from "react";
 
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { errorMessage } from "@/lib/apiError";
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect";
 import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
+import { routeEdgeKms } from "@/lib/routeDistance";
 import { buildGenerateRequest, type GenerationInput } from "@/features/route/generationRequest";
 import { generateRoutes } from "@/features/route/routeApi";
 import {
@@ -23,6 +25,7 @@ const SPLICE_IDLE: SpliceTask = { status: "idle", error: null };
 
 /** 失敗の文言だけを消す（処理中なら何もしない）。 */
 const withoutError = (task: SpliceTask): SpliceTask => (task.status === "idle" ? SPLICE_IDLE : task);
+const NOT_EVALUATED: SpliceTask = { status: "idle", error: "組み合わせたルートを評価できませんでした" };
 
 /** 区間の乗り換えの編集1回ぶん。 */
 interface SpliceSession {
@@ -44,14 +47,18 @@ interface SpliceSession {
 }
 const NO_ALTERNATIVES: StretchAlternative[] = [];
 
-function spliceFailureMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "組み合わせたルートの評価に失敗しました";
-}
+/** 適用した乗り換えを入れ替え、前の失敗の文言を消す。 */
+const withApplied = (session: SpliceSession, applied: StretchAlternative[]): SpliceSession => ({
+  ...session,
+  applied,
+  task: withoutError(session.task),
+});
 
 const shapeOfRoute = (route: RouteCandidate): SplicedRouteShape => ({
   edgeIds: route.edge_ids,
   coordinates: route.geometry.coordinates as GeoJSON.Position[],
   edgePointOffsets: route.edge_point_offsets,
+  edgeKms: routeEdgeKms(route.segments, route.edge_point_offsets),
   nodeIds: route.node_ids,
 });
 
@@ -66,8 +73,6 @@ interface SpliceSessionInputs {
   generatedInput: GenerationInput | null;
   /** 候補を選んでいるか。 */
   hasSelectedRoute: boolean;
-  /** 「作成」を押して評価を始める直前に呼ぶ。 */
-  onApplyStart: () => void;
   /** 作った経路と元にした候補。作った経路が既にある候補と同じ道なら、作らずにその候補のidだけを渡す。 */
   onApplied: (result: { created: RouteCandidate; originId: string } | { existingRouteId: string }) => void;
 }
@@ -101,7 +106,6 @@ export function useSpliceSession({
   routes,
   generatedInput,
   hasSelectedRoute,
-  onApplyStart,
   onApplied,
 }: SpliceSessionInputs): SpliceSessionView {
   const axisCatalog = useAxisCatalog();
@@ -172,7 +176,7 @@ export function useSpliceSession({
   const sameRouteAs = (candidate: RouteCandidate) =>
     routes.find((route) => sameEdges(route.edge_ids, candidate.edge_ids)) ?? null;
   const changeApplied = (next: (applied: StretchAlternative[]) => StretchAlternative[]) =>
-    updateSplice((current) => ({ ...current, applied: next(current.applied), task: withoutError(current.task) }));
+    updateSplice((current) => withApplied(current, next(current.applied)));
 
   // 適用した順で識別する。同じ位置でも積み上げた経緯が違えば別の経路になるため順番を含める。
   const spliceChoiceKey = appliedAlternatives
@@ -184,20 +188,22 @@ export function useSpliceSession({
     (index: number) => {
       const option = spliceOptions[index];
       if (!option) return;
-      setSplice((current) =>
-        current === null
-          ? null
-          : { ...current, applied: [...current.applied, option], task: withoutError(current.task) },
-      );
+      setSplice((current) => current && withApplied(current, [...current.applied, option]));
     },
     [spliceOptions],
   );
+
+  const canEvaluate = splice !== null && editingRoute !== null && appliedAlternatives.length > 0;
+  const failTask = (token: symbol, error: unknown) => {
+    if (isLive(token))
+      setSpliceTask({ status: "idle", error: errorMessage(error, "組み合わせたルートの評価に失敗しました") });
+  };
 
   // 選んだ組み合わせをbackendで評価する（frontendは経路を組み立てるだけ）。差分の表示と「作る」で同じものを使い、
   // 評価済みなら投げ直さない。
   // 評価を待つ間に編集が効かなくなったら、評価を捨てて何も書かない（`stale`）。
   async function evaluateSplicedRoute(): Promise<RouteCandidate | null | "stale"> {
-    if (!splice || !editingRoute || appliedAlternatives.length === 0 || !splicedShape) return null;
+    if (!canEvaluate || !splicedShape) return null;
     const cached = splice.previews[spliceChoiceKey];
     if (cached) return cached;
     // 表示中の候補を作った条件（編集を始めたときの生成の入力）で評価する（いまのフォームだと、生成後に重みを
@@ -215,15 +221,15 @@ export function useSpliceSession({
 
   // 作る前に、この組み合わせで何が変わるかを見る（評価はbackendでしか出せないので、押したときだけ投げる）。
   async function handlePreviewSplice() {
-    if (!splice || !editingRoute || appliedAlternatives.length === 0 || spliceTask.status === "previewing") return;
+    if (!canEvaluate || spliceTask.status === "previewing") return;
     const { token } = splice;
     setSpliceTask({ status: "previewing" });
     try {
       const spliced = await evaluateSplicedRoute();
       if (spliced === "stale") return;
-      setSpliceTask(spliced ? SPLICE_IDLE : { status: "idle", error: "組み合わせたルートを評価できませんでした" });
+      setSpliceTask(spliced ? SPLICE_IDLE : NOT_EVALUATED);
     } catch (error) {
-      if (isLive(token)) setSpliceTask({ status: "idle", error: spliceFailureMessage(error) });
+      failTask(token, error);
     }
   }
 
@@ -231,16 +237,15 @@ export function useSpliceSession({
     // 連打で2本入るのを防ぐ（ボタンを押せなくするのは再描画を待つため、その前の2回目は通る）。
     if (applyingRef.current) return;
     // 前提の確認は印を立てる前に済ませる（立ててから抜けると、印が立ったままこの操作が二度と効かなくなる）。
-    if (!splice || !editingRoute || appliedAlternatives.length === 0) return;
+    if (!canEvaluate) return;
     const { token } = splice;
     applyingRef.current = true;
     setSpliceTask({ status: "applying" });
-    onApplyStart();
     try {
       const spliced = await evaluateSplicedRoute();
       if (spliced === "stale") return;
       if (!spliced) {
-        setSpliceTask({ status: "idle", error: "組み合わせたルートを評価できませんでした" });
+        setSpliceTask(NOT_EVALUATED);
         return;
       }
       // 既にある候補と同じ道なら、並べずにその候補を選ぶ。
@@ -248,7 +253,7 @@ export function useSpliceSession({
       onApplied(sameRoute ? { existingRouteId: sameRoute.id } : { created: spliced, originId: editingRoute.id });
       setSplice(null);
     } catch (error) {
-      if (isLive(token)) setSpliceTask({ status: "idle", error: spliceFailureMessage(error) });
+      failTask(token, error);
     } finally {
       applyingRef.current = false;
     }
@@ -256,15 +261,10 @@ export function useSpliceSession({
 
   return {
     editingRoute,
-    // 編集できるかはbackendが候補ごとに返す印で見る（目的地を持つ生成の候補だけ。周回は乗り換えると起点へ戻れる
-    // 保証が無い）。いまのピンで見ると、目的地を消した後も編集が出て、評価の要求が目的地無しで弾かれる。
-    // 区間を割る下限を引けない間（軸カタログが取れていない）も出さない。取れていないことはヘッダーの印が知らせる。
-    canStart:
-      generatedInput !== null &&
-      routes.length > 1 &&
-      routes.every((route) => route.spliceable) &&
-      hasSelectedRoute &&
-      minStretchKm !== undefined,
+    // 周回も目的地ルートも乗り換えの元にできる（評価は表示中の候補を作った生成の入力で投げ、backendが終点［目的地、
+    // 無ければ出発地］へ着くかを確かめる）。区間を割る下限を引けない間（軸カタログが取れていない）は出さない。
+    // 取れていないことはヘッダーの印が知らせる。
+    canStart: generatedInput !== null && routes.length > 1 && hasSelectedRoute && minStretchKm !== undefined,
     start: (routeId) => {
       if (generatedInput)
         setSplice({ token: Symbol(), basis: generatedInput, routeId, applied: [], previews: {}, task: SPLICE_IDLE });

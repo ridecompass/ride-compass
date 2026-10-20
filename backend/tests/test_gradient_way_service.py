@@ -1,8 +1,11 @@
 """鍵→勾配配信層（`services/gradient_way_service.py`）。差し替えるのはDB（リポジトリ）だけで、ディスクの置き場は
 `conftest.py`のautouseがテストごとの一時ディレクトリへ差し替える。
 
+材料は走行方位を受け取らないので、走行方位での値は配る木（`GradientWayService.material_formula`）で当てて確かめる。
+
 ここで見ないもの:
-- 実効勾配の式・直角で値を決めない幅 → `test_gradient.py`
+- 実効勾配の式・直角で値を決めない幅 → `test_dynamic_way_values.py`
+- 区間ごとの値を道1本の値へ畳むこと → `test_dynamic_way_values.py`
 - 鍵のどの部分が違っても別のエントリになること・置き場の失敗と失効 → `test_dynamic_way_value_cache.py`・`test_tile_persistent_cache.py`
 - 路面タイルの世代がDBの世代と形の署名を持つこと → `test_cache_identity.py`
 """
@@ -10,18 +13,20 @@
 import inspect
 from contextlib import nullcontext
 
+import numpy as np
 import pytest
 
 from app.config import settings
-from app.domain.gradient import GradientCalculator
+from app.domain.dynamic_way_values import FeatureSegments
+from app.domain.material_catalog import GRADIENT_PERCENT
+from app.domain.way_value_formula import way_values_from_formula
 from app.infrastructure import debug_log
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.services import gradient_way_service
-from app.services.gradient_way_service import GradientConditions, GradientWayService
+from app.services.gradient_way_service import GradientWayService
 
 Z, X, Y = 14, 14551, 6447
-#: キャッシュの検査で、1回目の後にDBの中身を替える先。`{1: (5.0, 30.0)}`と走行方位0度で値が違う。
+#: キャッシュの検査で、1回目の後にDBの中身を替える先。`{1: (5.0, 30.0)}`と材料が違う。
 CHANGED_INPUTS = {1: (8.0, 30.0)}
 
 
@@ -47,56 +52,34 @@ class FakeGradientInputsRepository:
         return self.inputs
 
 
-async def test_uncovered_tile_returns_empty_dict():
-    repository = FakeGradientInputsRepository(inputs=None)
-    service = GradientWayService(repository=repository)
-
-    result = await service.get_way_values(Z, X, Y, GradientConditions(0.0))
-
-    assert result == {}
+FORMULA = GradientWayService.material_formula(GRADIENT_PERCENT).formula
 
 
-async def test_computes_effective_gradient_per_way():
-    # way1・way2は道路自身の勾配・向きが異なるため、同じ走行方位でも異なる値になる
-    # （wind_way_serviceと違いbroadcastしない、モジュールdocstring参照）。
-    inputs = {1: (5.0, 90.0), 2: (-3.0, 45.0)}
-    repository = FakeGradientInputsRepository(inputs=inputs)
-    service = GradientWayService(repository=repository)
-    bearing_deg = 90.0
+def test_segments_are_signed_by_the_direction_of_their_way():
+    """引いた地図の道1本の値を区間から畳むとき、区間の勾配の符号は、道1本の値と同じく道の両端を結ぶ方位で決まる。
+    区間ごとの方位で決めると、つづら折りを登り続ける道の区間が上りと下りに分かれる。道が走行方位に直角なら、その道の
+    区間は値を決めない。"""
+    segments = FeatureSegments(
+        feature_keys=("1", "1", "2"), distance_m=np.full(3, 100.0), feature_bearing_deg=np.array([0.0, 0.0, 90.0]),
+        columns={GRADIENT_PERCENT: np.array([5.0, -3.0, 4.0])},
+    )
 
-    result = await service.get_way_values(Z, X, Y, GradientConditions(bearing_deg))
+    leaves = GradientWayService(repository=FakeGradientInputsRepository(inputs={})).segment_materials(segments)
 
-    expected_1 = round(GradientCalculator.effective_gradient(5.0, 90.0, bearing_deg), 1)
-    expected_2 = round(GradientCalculator.effective_gradient(-3.0, 45.0, bearing_deg), 1)
-    assert result == {1: expected_1, 2: expected_2}
-
-
-async def test_perpendicular_way_is_undetermined_instead_of_zero_or_missing():
-    """直角に近い道路はNone（地図では「向きで決まらない」）。
-
-    0.0を返すと凡例の「平坦」の段へ入り、実際には急な坂の道が平坦な道と同じ色で塗られる。落とすと、
-    値の無い道（「データなし」）と見分けられない。
-    """
-    # way1は走行方位と直角、way2は沿っている。
-    repository = FakeGradientInputsRepository(inputs={1: (15.0, 0.0), 2: (15.0, 90.0)})
-    service = GradientWayService(repository=repository)
-
-    result = await service.get_way_values(Z, X, Y, GradientConditions(90.0))
-
-    assert result == {1: None, 2: 15.0}
+    assert way_values_from_formula(FORMULA, ["a", "b", "c"], leaves, {"bearing_deg": 180.0}) == {
+        "a": -5.0, "b": 3.0, "c": None}
 
 
-async def test_second_call_with_same_bearing_bucket_is_served_from_cache():
-    # 直角に落ちない向きにする（空の結果同士を比べても、キャッシュの検査にならない）。
+async def test_second_call_is_served_from_cache():
     repository = FakeGradientInputsRepository(inputs={1: (5.0, 30.0)})
     service = GradientWayService(repository=repository)
     before = debug_log.get_stats().external.get("region:gradient-way-values")
 
-    first = await service.get_way_values(Z, X, Y, GradientConditions(0.0))
+    first = await service.get_way_materials(Z, X, Y, None)
     # wind_way_serviceと異なり、way一覧の取得もキャッシュした値に含まれる。DBの中身が変わっても、
     # 当たれば前の値を返す。
     repository.inputs = CHANGED_INPUTS
-    second = await service.get_way_values(Z, X, Y, GradientConditions(0.0))
+    second = await service.get_way_materials(Z, X, Y, None)
 
     assert first == second
     # 外した1回と当たった1回が、運用の統計のヒット率に載る（集計はプロセスの寿命の間に足されるだけなので差で見る）。
@@ -105,45 +88,18 @@ async def test_second_call_with_same_bearing_bucket_is_served_from_cache():
     assert (after.cache_misses - counted_before[0], after.cache_hits - counted_before[1]) == (1, 1)
 
 
-async def test_different_bearing_bucket_recomputes():
-    # どちらの走行方位でも直角に落ちない向きにする（片方が空になると、値が作り直された
-    # ことではなく落ちたことを見てしまう）。
-    repository = FakeGradientInputsRepository(inputs={1: (5.0, 30.0)})
-    service = GradientWayService(repository=repository)
-
-    # 走行方位は符号を決める（domain/gradient.py）。値が変わる組み合わせにするため、
-    # 道路の向きを挟んで反対側の方位を選ぶ。
-    first = await service.get_way_values(Z, X, Y, GradientConditions(0.0))
-    second = await service.get_way_values(Z, X, Y, GradientConditions(180.0))
-
-    assert first != second
-
-
 async def test_a_new_derived_data_revision_recomputes_without_the_catalog(monkeypatch):
     """勾配の鍵は路面タイルの世代を持つ。世代はこの経路が自分で読み直すため、バッチが世代を進めれば、
     カタログを誰も取らなくてもTTLの後から作り直す（前の世代の値は路面タイルの鍵と一致しない）。"""
     monkeypatch.setattr(settings, "derived_data_revision_check_interval_seconds", 0.0)
     repository = FakeGradientInputsRepository(inputs={1: (5.0, 30.0)})
     service = GradientWayService(repository=repository)
-    first = await service.get_way_values(Z, X, Y, GradientConditions(0.0))
+    first = await service.get_way_materials(Z, X, Y, None)
 
     repository.inputs = CHANGED_INPUTS
     repository.revision = 2
 
-    assert await service.get_way_values(Z, X, Y, GradientConditions(0.0)) != first
-
-
-async def test_a_deploy_that_changes_how_gradient_is_computed_recomputes(monkeypatch):
-    """勾配の作り方（入力のSQL・落とす幅・丸め・式のリビジョン）を変えたデプロイは、DBの世代も路面タイルの形も
-    動かさない。署名が鍵に届いていないと、前の計算の値がTTL（24時間）の間返り続ける。"""
-    repository = FakeGradientInputsRepository(inputs={1: (5.0, 30.0)})
-    service = GradientWayService(repository=repository)
-    first = await service.get_way_values(Z, X, Y, GradientConditions(0.0))
-
-    repository.inputs = CHANGED_INPUTS
-    monkeypatch.setattr(gradient_way_service, "GRADIENT_VALUE_SHAPE", "another-computation")
-
-    assert await service.get_way_values(Z, X, Y, GradientConditions(0.0)) != first
+    assert await service.get_way_materials(Z, X, Y, None) != first
 
 
 @pytest.mark.parametrize(
@@ -158,4 +114,4 @@ async def test_only_a_db_outage_is_turned_into_an_empty_result(error, outcome):
     service = GradientWayService(repository=FakeGradientInputsRepository(inputs=None, error=error))
 
     with outcome:
-        assert await service.get_way_values(Z, X, Y, GradientConditions(0.0)) == {}
+        assert await service.get_way_materials(Z, X, Y, None) == {}

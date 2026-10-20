@@ -27,8 +27,8 @@ import pytest
 
 from app.api import dependencies
 from app.config import settings
-from app.domain.hard_filters import DEFAULT_HARD_FILTERS, HARD_FILTER_NAMES
-from app.domain.route_request import DEFAULT_DISTANCE_TOLERANCE_KM, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
+from app.domain.road_classes import AvoidanceClassification, AvoidanceSection
+from app.domain.route_request import DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
 from app.domain.tuning import TUNING_VALUES
 from app.domain.route_request import ASSUMED_SPEED_KMH
 from app.infrastructure import rate_limiter
@@ -36,9 +36,11 @@ from app.infrastructure.road_network_store import RoadNetworkUnavailableError
 from app.main import app
 from app.services.graph_service import GraphService
 from app.services.route_generation_setup import assemble_route_generation_setup
+from tests.road_class_fixture import classification, fact_is, replaced_road_classes, road_classes
 from tests.route_world import (
     AVOID_AXIS,
     CENTER,
+    HIGHWAY,
     NORTH_EAST,
     SOUTH_WEST,
     NetworkRepository,
@@ -58,8 +60,7 @@ BEYOND_REACH = {"latitude": 37.0, "longitude": 139.8}  # 格子から100km超
 JAPANESE = re.compile(r"[぀-ヿ一-鿿]")  # かな・漢字
 #: 画面がいつも送る欄（値は画面の既定）。
 ALWAYS_SENT = {
-    "distance_tolerance_km": DEFAULT_DISTANCE_TOLERANCE_KM,
-    "hard_filters": {name: name in DEFAULT_HARD_FILTERS for name in HARD_FILTER_NAMES},
+    "road_avoidance": {},
     "max_routes": DEFAULT_MAX_ROUTES,
     "assumed_speed_kmh": ASSUMED_SPEED_KMH,
     "start_time": "2026-09-22T08:00:00+09:00",
@@ -103,8 +104,8 @@ def world(monkeypatch):
     world = World()
 
     @asynccontextmanager
-    async def open_setup(**options):
-        yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network)), world.weather, **options)
+    async def open_setup(requested):
+        yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network)), world.weather, requested)
 
     serve_road_network(monkeypatch, world.current)
     monkeypatch.setitem(app.dependency_overrides, dependencies.get_route_generation_setup_opener, lambda: open_setup)
@@ -198,9 +199,14 @@ async def test_a_waypoint_route_returns_to_the_origin_with_up_to_the_requested_c
     assert all(_ends(route) == (_node(SOUTH_WEST), _node(SOUTH_WEST)) for route in result["routes"])
 
 
-async def test_a_spliced_route_is_evaluated_as_sent(client):
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param({**_point(SOUTH_WEST), "destination": _point(NORTH_EAST), "distance_km": None}, id="目的地ルート"),
+    ],
+)
+async def test_a_spliced_route_is_evaluated_as_sent(client, body):
     """区間を差し替えた経路は探索し直さず、そのまま1件として評価して返す。"""
-    body = {**_point(SOUTH_WEST), "destination": _point(NORTH_EAST), "distance_km": None}
     (route, *_) = (await _generate(client, **body, max_routes=1))["result"]["routes"]
 
     spliced = (await _generate(client, **body, spliced_edge_ids=route["edge_ids"]))["result"]
@@ -212,13 +218,12 @@ async def test_a_spliced_route_is_evaluated_as_sent(client):
     ("origin", "waypoints", "destination", "target"),
     [
         pytest.param((1, 1), [(1, 2)], None, 12.0, id="周回に経由地を置いて"),
-        pytest.param((1, 1), [], (4, 4), 10.0, id="目的地へ寄り道して"),
     ],
 )
 async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(
     client, world, origin, waypoints, destination, target,
 ):
-    """経由地・目的地を置いても、距離は全長の目標として効く（夕食と銭湯に寄って30kmの周回、目的地へ寄り道して20km）。
+    """経由地を置いても、距離は全長の目標として効く（夕食と銭湯に寄って30kmの周回）。
     探索は置いた点の近くに限らず、全長の目標に足りる広さで探す。"""
     world.network = LATTICE
     tolerance = 2.0
@@ -262,29 +267,41 @@ async def test_the_defaults_that_were_applied_are_echoed(client):
 
 
 async def test_the_overrides_that_were_sent_are_echoed(client):
-    """保存したレスポンスの条件をそのまま送り直せば、同じ条件で生成し直せる。"""
-    hard_filters = {name: False for name in HARD_FILTER_NAMES}
-    conditions = (await _generate(
-        client, route_preference={AVOID_AXIS: 2.0}, penalty_strength=0.5, max_average_grade_percent=8.0,
-        hard_filters=hard_filters, assumed_speed_kmh=25.0, distance_tolerance_km=2.0,
-    ))["result"]["conditions"]
+    """保存したレスポンスの条件をそのまま送り直せば、同じ条件で生成し直せる。避け方は、区分を分け直す前の鍵で送っても
+    今の行の鍵で返る。"""
+    definitions = road_classes(
+        {"kind": classification({"local": [fact_is(HIGHWAY, "residential")]}, former_keys={"local": ["old.local"]})},
+        avoidance_sections={"s": AvoidanceSection(label="見出し", description="", sort_order=0)},
+        avoidance_classifications={"kind": AvoidanceClassification(section_key="s", sort_order=0, overrides={})},
+    )
+    with replaced_road_classes(definitions):
+        conditions = (await _generate(
+            client, route_preference={AVOID_AXIS: 2.0}, penalty_strength=0.5, max_average_grade_percent=8.0,
+            road_avoidance={"old.local": "avoid"}, assumed_speed_kmh=25.0, distance_tolerance_km=2.0,
+        ))["result"]["conditions"]
 
     assert conditions["route_preference"] == {AVOID_AXIS: 2.0}
     assert conditions["penalty_strength"] == 0.5
     assert conditions["max_average_grade_percent"] == 8.0
-    assert conditions["hard_filters"] == hard_filters
+    assert conditions["road_avoidance"] == {"kind.local": "avoid"}
     assert conditions["assumed_speed_kmh"] == 25.0
     assert conditions["distance_tolerance_km"] == 2.0
 
 
-async def test_an_omitted_rate_is_the_calibrated_value_at_the_time_of_generation(client, monkeypatch):
+@pytest.mark.parametrize(("field", "tuning_id", "values"), [
+    ("penalty_strength", "evaluation.penalty_strength", (0.37, 0.61)),
+    ("distance_tolerance_km", "search.distance_tolerance_km", (3.0, 4.0)),
+])
+async def test_an_omitted_value_is_the_calibrated_value_at_the_time_of_generation(
+    client, monkeypatch, field, tuning_id, values,
+):
     """管理画面で変えた較正値は、プロセスを入れ替えずに次の生成から効き、使った値として返る。"""
-    monkeypatch.setitem(TUNING_VALUES, "evaluation.penalty_strength", 0.37)
-    first = (await _generate(client))["result"]["conditions"]["penalty_strength"]
-    monkeypatch.setitem(TUNING_VALUES, "evaluation.penalty_strength", 0.61)
-    second = (await _generate(client))["result"]["conditions"]["penalty_strength"]
+    echoed = []
+    for value in values:
+        monkeypatch.setitem(TUNING_VALUES, tuning_id, value)
+        echoed.append((await _generate(client))["result"]["conditions"][field])
 
-    assert (first, second) == (0.37, 0.61)
+    assert tuple(echoed) == values
 
 
 @pytest.mark.parametrize(("sent", "applied"), [
@@ -315,9 +332,6 @@ async def test_a_destination_moved_to_the_nearest_reachable_road_is_echoed(clien
 @pytest.mark.parametrize("body", [
     {"route_preference": {}},                                        # 公開軸を全部書いていない
     {"route_preference": {AVOID_AXIS: -1.0}},                        # 値の検査（`check_axis_weights`）へ寄せている
-    {"hard_filters": {}},
-    {"spliced_edge_ids": ["way-100-seg0-fwd"]},                       # 目的地が無い
-    {"assumed_speed_kmh": 0},                                        # 想定速度の型（`AssumedSpeedKmh`）
 ])
 async def test_a_request_outside_what_can_be_generated_is_refused_before_any_job(client, body):
     response = await _post(client, **body)

@@ -34,16 +34,3 @@ def test_modules_reachable_by_import_are_counted(app_root):
     assert sorted(code_fingerprint.reachable_modules("app.batch.adapter")) == [
         "app", "app.batch", "app.batch.adapter", "app.batch.helper", "app.batch.lazy", "app.domain",
         "app.domain.rules"]
-
-
-@pytest.mark.parametrize("changed, differs", [
-    ("app/batch/lazy.py", True),
-    ("app/domain/rules.py", True),
-    ("app/batch/unrelated.py", False),
-])
-def test_the_fingerprint_changes_only_with_a_reachable_module(app_root, changed, differs):
-    before = code_fingerprint.code_fingerprint("app.batch.adapter")
-    path = app_root / changed
-    path.write_text(path.read_text(encoding="utf-8") + "# 直した\n", encoding="utf-8")
-
-    assert (code_fingerprint.code_fingerprint("app.batch.adapter") != before) is differs

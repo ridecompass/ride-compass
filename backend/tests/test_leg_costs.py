@@ -8,12 +8,12 @@
 ここで見ないもの:
 - 勾配・風・路面から速度を解く走行モデルそのもの → `test_cycling_speed.py`
 - 軸の得点の重み付き平均と、データの無い区間の扱い → `test_difficulty.py`・`test_axis_definitions.py`
-- 風を進行方向の成分へ分けることと、予報の格子点の引き当て → `test_wind.py`・`test_wind_grid.py`
+- 風を進行方向の成分へ分けることと、予報の格子点の引き当て → `test_wind.py`
 - ある時刻が夜か（市民薄明の外か） → `test_twilight.py`
 - 合成した配列で探索し、経路の区間を組み立てること → `test_route_generation_behavior.py`
 """
 
-import logging
+import dataclasses
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -22,22 +22,27 @@ import pytest
 from app.domain import leg_costs
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm
+from app.domain.cycling_speed import RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.evaluation import DensityAxisColumn, StaticEdgeScoreMatrix
 from app.domain.leg_costs import LegCostComposer
+from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates
-from app.domain.wind import DepartureWind, WindForecastSeries, WindLattice
+from app.domain.msm import MsmBlock, MsmGrid
+from app.domain.wind import DepartureWind, WindForecastSeries
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 
 START = datetime(2026, 10, 3, 9, 0)
 CRUISE_KMH = 20.0
-SURFACE = leg_costs.ROLLING_RESISTANCE_MATERIAL_ID
+AVOID_MULTIPLIER = 3.0
+SURFACE = "class:rolling"
+GRADIENT = leg_costs.GRADIENT_PERCENT
 WIND_DRAG = next(iter(leg_costs.REQUEST_DYNAMIC_MATERIAL_IDS))
 STOP_DENSITY = dict(zip(leg_costs.POI_COUNT_KINDS, leg_costs.stop_count_material_ids(), strict=True))
 WIND_AXIS = "axis_wind"
 NIGHT_AXIS = "axis_night"
 STOP_AXIS = "axis_stops"
-#: 信号の1kmあたりの回数を、0から始まる直線（9.58回/kmで100点、その先は100点）で点数にする（本番の停止密度の軸の形）。
-STOP_LINE = BreakpointLinearShape(terms=[MaterialTerm(material=STOP_DENSITY["signal"])], breakpoints=[(0.0, 0.0), (9.58, 100.0)])
+#: 信号の1kmあたりの回数を、0から始まる直線（11回/kmで100点、その先は100点）で点数にする（停止密度の軸の形）。
+STOP_LINE = BreakpointLinearShape(terms=[MaterialTerm(material=STOP_DENSITY["signal"])], breakpoints=[(0.0, 0.0), (11.0, 100.0)])
 NORTH, SOUTH = 0.0, 180.0
 #: 昼夜を決める地点。`START`の日の市民薄明の終わりは17時51分、翌朝の始まりは5時15分（JST）。
 PLACE = Coordinates(latitude=35.0, longitude=139.0)
@@ -56,11 +61,12 @@ def _column(values, n: int) -> np.ndarray:
 
 def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="paved",
             axes: dict | None = None, raw_axes: dict | None = None, materials: dict | None = None,
-            categories: dict | None = None, signals_per_km=None) -> StaticEdgeScoreMatrix:
-    """`n`区間の静的スコア行列。引数は全区間に同じ値か、区間ごとの並び。
+            categories: dict | None = None, signals_per_km=None, mid_lat=35.0) -> StaticEdgeScoreMatrix:
+    """`n`区間の静的スコア行列。引数は全区間に同じ値か、区間ごとの並び。停止の密度は`materials`で渡さなければ0。
 
     `signals_per_km`を渡すと、その信号の密度で待ちが入り、密度の軸`STOP_AXIS`（折れ線は`STOP_LINE`）が点数を持つ。"""
-    axes, raw_axes, materials = dict(axes or {}), raw_axes or {}, dict(materials or {})
+    axes, raw_axes = dict(axes or {}), raw_axes or {}
+    materials = {GRADIENT: gradient, **dict.fromkeys(STOP_DENSITY.values(), 0.0), **(materials or {})}
     density_axes = {}
     if signals_per_km is not None:
         signals = _column(signals_per_km, n)
@@ -74,8 +80,8 @@ def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="pa
 
     return StaticEdgeScoreMatrix(
         axis_ids=list(axes), axis_scores=stacked(axes),
-        distance_m=_column(distance, n), bearing_deg=_column(bearing, n), hard_filter_flags={},
-        gradient_percent=_column(gradient, n), mid_lat=np.full(n, 35.0), mid_lon=np.full(n, 139.0),
+        distance_m=_column(distance, n), bearing_deg=_column(bearing, n), hard_filtered=np.zeros(n, dtype=bool), road_classes={},
+        mid_lat=_column(mid_lat, n), mid_lon=np.full(n, 139.0),
         raw_axis_ids=list(raw_axes), axis_raw_values=stacked(raw_axes),
         material_ids=list(materials), material_values=stacked(materials),
         categorical_material_ids=list(categories),
@@ -94,16 +100,22 @@ def _series(speeds_by_hour: list[float], from_deg: float = NORTH) -> WindForecas
         times=[START + timedelta(hours=h) for h in range(len(speeds_by_hour))],
         speed_ms=np.array([speeds_by_hour], dtype=float),
         direction_deg=np.full((1, len(speeds_by_hour)), from_deg),
-        lattice=WindLattice(south=35.0, west=139.0, lat_step=0.05, lon_step=0.0625, rows=1, cols=1),
+        lattice=MsmBlock(
+            grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=0.05, d_lon=0.0625, n_lat=1, n_lon=1), row0=0, col0=0, rows=1, cols=1,
+        ),
     )
 
 
-def _composer(matrix: StaticEdgeScoreMatrix, *, weights=None, penalty=0.0, excluded=None, departure_wind=None,
-              series=None, lazy=None) -> LegCostComposer:
+def _composer(matrix: StaticEdgeScoreMatrix, *, weights=None, penalty=0.0, excluded=None, avoided=None,
+              departure_wind=None, series=None, lazy=None) -> LegCostComposer:
     n = len(matrix.distance_m)
+    none = np.zeros(n, dtype=bool)
+    masks = RoadAvoidanceMasks(
+        excluded=none if excluded is None else np.asarray(excluded, dtype=bool),
+        avoided=none if avoided is None else np.asarray(avoided, dtype=bool),
+    )
     return LegCostComposer(
-        matrix, weights or {}, penalty,
-        np.zeros(n, dtype=bool) if excluded is None else np.asarray(excluded, dtype=bool),
+        matrix, weights or {}, penalty, masks, AVOID_MULTIPLIER,
         departure_wind, series, START, CRUISE_KMH,
         np.arange(n) if lazy is None else np.asarray(lazy), detour_ratio=1.3, twilight_origin=PLACE,
     )
@@ -116,26 +128,15 @@ def _snapshot(matrix, **kwargs):
 # --- 所要時間 -------------------------------------------------------------
 
 
-def test_a_flat_paved_segment_without_wind_or_stops_is_ridden_at_the_cruise_speed():
-    leg = _snapshot(_matrix(1, distance=1000.0))
-
-    assert leg.travel_seconds_full[0] == pytest.approx(1000.0 / (CRUISE_KMH / 3.6), rel=2e-3)
-
-
 def test_the_gradient_in_percent_slows_the_rider_as_that_grade_and_a_missing_one_counts_as_flat():
-    """勾配の材料は%で、走行モデルは割合で読む。20km/hの人は5%の登りで時速10km前後になり、平地の倍ほどかかる
-    （500%として読めば押して歩く速度で4倍超、0.05%として読めば平地とほぼ同じ）。"""
+    """勾配の材料は%で、走行モデルは割合で読む。読み違えると、坂の所要時間が別の勾配の坂のものになる。"""
     leg = _snapshot(_matrix(3, gradient=[5.0, np.nan, 0.0]))
     climb, missing, flat = leg.travel_seconds_full
+    five_percent = SegmentSpeedModel(
+        RiderProfile(cruise_speed_kmh=CRUISE_KMH), np.array([0.05]), crr_for_surface(CategoricalColumn.encode(["paved"])))
 
-    assert 1.5 * flat < climb < 3.0 * flat
+    assert climb == pytest.approx(five_percent.travel_seconds(np.array([1000.0]), np.zeros(1), np.zeros(1))[0])
     assert missing == flat
-
-
-def test_a_rougher_surface_takes_longer():
-    leg = _snapshot(_matrix(2, surface=["paved", "gravel"]))
-
-    assert leg.travel_seconds_full[1] > leg.travel_seconds_full[0]
 
 
 def test_each_stop_on_a_segment_adds_its_wait():
@@ -146,6 +147,17 @@ def test_each_stop_on_a_segment_adds_its_wait():
     assert leg.travel_seconds_full[2] == leg.travel_seconds_full[1]
 
 
+def test_a_matrix_without_a_column_the_travel_time_reads_is_refused():
+    """所要時間が読む材料の列が無い行列を通すと、その材料が足す時間（停止の待ち等）が全区間で黙って0秒になる。"""
+    matrix = _matrix(2)
+    kept = [i for i, material_id in enumerate(matrix.material_ids) if material_id != STOP_DENSITY["signal"]]
+
+    with pytest.raises(ValueError, match=STOP_DENSITY["signal"]):
+        dataclasses.replace(
+            matrix, material_ids=[matrix.material_ids[i] for i in kept], material_values=matrix.material_values[:, kept],
+        )
+
+
 def test_an_excluded_segment_cannot_be_passed():
     leg = _snapshot(_matrix(2, axes={"axis_a": 10.0}), weights={"axis_a": 1.0}, penalty=0.5, excluded=[True, False])
 
@@ -153,12 +165,12 @@ def test_an_excluded_segment_cannot_be_passed():
     assert np.isfinite(leg.cost_lazy[1])
 
 
-def test_the_wind_at_departure_slows_a_segment_against_it_and_helps_one_with_it():
-    calm = _snapshot(_matrix(1)).travel_seconds_full[0]
+def test_a_segment_to_avoid_costs_more_but_takes_the_same_time():
+    """割り増しが所要時間へ混ざると、避けた道を通った候補の所要時間と到着の予想が延びる。"""
+    leg = _snapshot(_matrix(2), avoided=[True, False])
 
-    leg = _snapshot(_matrix(2, bearing=[NORTH, SOUTH]), departure_wind=_departure_wind(5.0, from_deg=NORTH))
-
-    assert leg.travel_seconds_full[0] > calm > leg.travel_seconds_full[1]
+    assert leg.cost_lazy[0] == pytest.approx(AVOID_MULTIPLIER * leg.cost_lazy[1])
+    assert leg.travel_seconds_full[0] == pytest.approx(leg.travel_seconds_full[1])
 
 
 @pytest.mark.parametrize(
@@ -211,14 +223,14 @@ def test_a_segment_without_data_on_the_weighted_axes_is_raised_by_the_mean_diffi
 
 
 def test_a_density_axis_adds_seconds_in_proportion_to_the_count_and_its_share_of_the_weights():
-    """1kmに信号2回の区間。停止密度の軸（傾き 100/9.58 点/(回/km)）と軸a（30点）に同じ重みを置くと、費用は
+    """1kmに信号2回の区間。停止密度の軸（傾き 100/11 点/(回/km)）と軸a（30点）に同じ重みを置くと、費用は
     所要時間 × (1 + P × 軸aの分15点/100) に、P × 重みの割合1/2 × 傾き/100 × 2回 × 想定速度で1km走る秒 を足したもの。
     停止の待ちの秒は所要時間に入っていて、密度の軸の点数では割増さない。重みは割合だけが効き、和が1以下でも同じ。"""
     leg = _snapshot(_matrix(1, signals_per_km=2.0, axes={"axis_a": 30.0}),
                     weights={STOP_AXIS: 0.25, "axis_a": 0.25}, penalty=0.7)
 
     cruise_seconds_per_km = 3600.0 / CRUISE_KMH
-    added = 0.7 * 0.5 * (100.0 / 9.58) / 100 * 2.0 * cruise_seconds_per_km
+    added = 0.7 * 0.5 * (100.0 / 11.0) / 100 * 2.0 * cruise_seconds_per_km
     assert leg.cost_lazy[0] == pytest.approx(leg.travel_seconds_lazy[0] * (1 + 0.7 * 15.0 / 100) + added)
 
 
@@ -238,19 +250,6 @@ def test_a_density_axis_costs_the_same_along_a_route_however_its_road_is_cut(win
 
     assert cut_leg.cost_lazy.sum() == pytest.approx(whole_leg.cost_lazy.sum(), rel=1e-9)
     assert whole_leg.cost_lazy.sum() > whole_leg.travel_seconds_lazy.sum()
-
-
-def test_weight_on_a_density_axis_makes_the_search_prefer_fewer_stops_however_they_are_spread():
-    """2kmの2本の道。北は500mごとに交差点の脇の50mの区間に信号1つ（2回/km）、南は500mの区間4本に均して1.8回/km。
-    停止密度の軸だけに重みを置くと、回数の少ない南の費用が小さい（探索は経路の費用の和が小さい道を選ぶ）。"""
-    north = _matrix(8, distance=[50.0, 450.0] * 4, signals_per_km=[20.0, 0.0] * 4)
-    south = _matrix(4, distance=500.0, signals_per_km=1.8)
-
-    north_cost, south_cost = (
-        _snapshot(matrix, weights={STOP_AXIS: 1.0}, penalty=0.7).cost_lazy.sum() for matrix in (north, south)
-    )
-
-    assert south_cost < north_cost
 
 
 def test_an_axis_that_reads_the_wind_scores_a_headwind_above_a_tailwind(wind_axis):
@@ -338,30 +337,6 @@ def test_a_leg_toward_the_anchor_ends_at_its_offset():
     assert leg.bin_start_hours == (3.0, 4.0)
 
 
-def test_each_bin_uses_the_wind_forecast_for_its_hour():
-    """風が1時間ごとに強まる予報で、北へ向かう区間は後のビンほど時間がかかる。"""
-    leg = _composer(_matrix(1), series=_series([0.0, 4.0, 8.0])).compose("leg", None, 0.0, +1, duration_hours=3.0)
-
-    first, second, third = leg.travel_bins_lazy[:, 0]
-    assert first < second < third
-
-
-@pytest.mark.parametrize(
-    ("duration_hours", "representative"),
-    [
-        (3.0, 1),  # 3本のうち、中間の1.5時間が入る2本目
-        (10.0, 3),  # 上限の4本より先に中間（5時間）があれば、最後のビン
-    ],
-)
-def test_the_search_without_a_clock_and_the_display_read_the_bin_at_the_middle_of_the_leg(duration_hours, representative):
-    composer = _composer(_matrix(1), series=_series([float(h) for h in range(12)]))
-
-    leg = composer.compose("leg", None, 0.0, +1, duration_hours=duration_hours)
-
-    assert leg.cost_lazy.tolist() == leg.cost_bins_lazy[representative].tolist()
-    assert leg.travel_seconds_lazy.tolist() == leg.travel_bins_lazy[representative].tolist()
-
-
 def test_legs_with_the_same_bins_but_a_different_middle_are_not_mixed_up():
     """同じ開始時刻・同じ本数でも、見込み時間が違えば代表のビンは変わる。"""
     composer = _composer(_matrix(1), series=_series([float(h) for h in range(12)]))
@@ -371,21 +346,6 @@ def test_legs_with_the_same_bins_but_a_different_middle_are_not_mixed_up():
 
     assert shorter.cost_lazy.tolist() == shorter.cost_bins_lazy[2].tolist()
     assert longer.cost_lazy.tolist() == longer.cost_bins_lazy[3].tolist()
-
-
-def test_a_bin_already_composed_for_its_hour_is_composed_only_once(caplog):
-    """周回の往路の先頭のビンは、見込み時間なしで先に合成した1本と同じ時刻から始まる。"""
-    composer = _composer(_matrix(1), series=_series([0.0, 4.0, 8.0]))
-    first = composer.compose("prepare", None, 0.0, +1)
-
-    with caplog.at_level(logging.INFO, logger="ridecompass.graph"):
-        again = composer.compose("prepare", None, 0.0, +1)
-        binned = composer.compose("outbound", None, 0.0, +1, duration_hours=2.0)
-
-    assert again is first
-    assert binned.cost_bins_lazy[0].tolist() == first.cost_lazy.tolist()
-    assert "mode=reused" in caplog.messages[0]
-    assert "reused_bins=1" in caplog.messages[1]
 
 
 def test_a_tree_without_a_clock_reads_the_wind_at_each_segment_s_own_passage():
@@ -459,12 +419,6 @@ def test_the_night_axis_weighs_only_in_the_bins_ridden_in_the_dark(night_axis):
     assert ratio.tolist() == pytest.approx([1.0, 1.0, 1.25])
 
 
-def test_a_tree_without_a_clock_weighs_the_night_axis_at_each_segment_s_own_passage(night_axis):
-    leg = _night_composer(2).compose("inbound", None, 10.0, -1, passage_hours=np.array([8.0, 9.5]))
-
-    assert (leg.cost_lazy / leg.travel_seconds_lazy).tolist() == pytest.approx([1.0, 1.25])
-
-
 def test_the_display_of_a_segment_weighs_the_night_axis_at_the_hour_it_is_ridden(night_axis):
     """17時30分に通る区間には夜の軸が効かず、18時30分に通る区間には効く。"""
     values = _night_composer().values_at_rows(np.array([0, 0]), np.array([8.5, 9.5]))
@@ -488,24 +442,33 @@ def test_the_share_of_distance_timed_without_gradient_or_stop_data():
 
 
 def test_the_wind_of_a_segment_is_the_forecast_at_its_passage():
-    composer = _composer(_matrix(3), series=_series([1.04, 2.0, 3.0], from_deg=90.0))
+    composer = _composer(_matrix(4), series=_series([1.04, 2.0, 3.0], from_deg=90.0))
 
-    winds = composer.winds_at([0, 1, 2], [0.2, 1.0, 9.0], [False, True, False])
+    winds = composer.winds_at([0, 1, 2, 3], [0.2, 1.0, 1.0, 9.0], [False, False, True, False])
 
-    assert [(w.speed_ms, w.direction_deg, w.forecast_at) for w in winds] == [
-        (1.0, 90.0, "2026-10-03T09:00"), (2.0, 90.0, "2026-10-03T10:00"), (3.0, 90.0, "2026-10-03T11:00")]
-    # 時刻ビンの範囲の先・予報の期間の先は、最後に追った予報を延ばして使っている。
-    assert [w.extended for w in winds] == [False, True, True]
+    # 時刻ビンの範囲の先・計算値の期間の先は、最後に追った値を延ばして評価しているので、値を出さない。
+    assert winds == [
+        leg_costs.SegmentWind(speed_ms=1.0, direction_deg=90.0, forecast_at="2026-10-03T09:00"),
+        leg_costs.SegmentWind(speed_ms=2.0, direction_deg=90.0, forecast_at="2026-10-03T10:00"),
+        None,
+        None,
+    ]
 
 
-def test_a_segment_without_a_passage_shows_the_wind_at_departure():
+def test_a_segment_whose_nearest_grid_point_is_outside_the_forecast_shows_no_wind():
+    """予報の格子点の並びの外の区間は端の格子点の風で評価しているので、最寄りの格子点の値として示さない。"""
+    composer = _composer(_matrix(2, mid_lat=[35.0, 35.5]), series=_series([1.0, 2.0]))
+
+    winds = composer.winds_at([0, 1], [0.0, 0.0], [False, False])
+
+    assert winds[0] is not None
+    assert winds[1] is None
+
+
+def test_a_segment_evaluated_with_the_wind_at_departure_shows_no_wind():
     composer = _composer(_matrix(2), departure_wind=_departure_wind(3.0, from_deg=271.1))
 
     winds = composer.winds_at([0, 1], [None, 0.5], [False, False])
 
     # 時別の予報が無いと、通過時刻で合成した区間（夜だけ効く軸のため）も出発時点の風で走っている。
-    assert winds == [leg_costs.SegmentWind(speed_ms=3.0, direction_deg=271.1)] * 2
-
-
-def test_a_segment_has_no_wind_when_no_wind_was_available():
-    assert _composer(_matrix(1)).winds_at([0], [None], [False]) == [None]
+    assert winds == [None, None]

@@ -1,13 +1,16 @@
 "use client";
 
+import { cn } from "@/lib/cn";
+import { LENS_LINK_CLASS, LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { useState, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import { clampSpeedKmh, departureLabelParts, MAX_SPEED_KMH, MIN_SPEED_KMH } from "@/features/conditions/rideConditions";
+import { departureLabelParts } from "@/features/conditions/rideConditions";
+import { clampSpeedKmh, MAX_SPEED_KMH, MIN_SPEED_KMH } from "@/lib/assumedSpeed";
 
 import DynamicLayerTimeSlider from "@/features/conditions/DynamicLayerTimeSlider/DynamicLayerTimeSlider";
 import { nearestTimeIndex, parseJstLocalValue, toJstLocalValue } from "@/lib/time";
-import { ClockIcon, SpeedGaugeIcon } from "@/components/ui/icons/icons";
+import { ClockIcon, SpeedGaugeIcon } from "@/components/ui/icons/lucideIcons";
 import { buildDepartureFrames, buildDepartureTimeline } from "./departureTimeline";
 import { Button } from "@/components/ui/Button/Button";
 import { NumberInput } from "@/components/ui/NumberInput/NumberInput";
@@ -32,6 +35,9 @@ interface RideConditionBarProps {
   /** 想定速度（km/h、backend: RouteGenerateRequest.assumed_speed_kmh）。 */
   speedKmh: number;
   onSpeedKmhChange: (speedKmh: number) => void;
+  /** いまの「評価で塗る」の周りの道の塗りが、出発時刻・想定速度で決まっている。 */
+  linkedDeparture: boolean;
+  linkedSpeed: boolean;
 }
 
 const subscribeNothing = () => () => {};
@@ -55,14 +61,16 @@ function ConditionTrigger({
   name,
   icon,
   children,
+  linked,
   ...buttonProps
-}: { name: string; icon: ReactNode } & ComponentProps<typeof Button>) {
+}: { name: string; icon: ReactNode; linked: boolean } & ComponentProps<typeof Button>) {
   return (
     <Button
       {...buttonProps}
       variant="mapCtrl"
       size="mapCtrl"
-      className="h-auto min-h-[var(--map-ctrl-button-size)] flex-col gap-px py-[3px]"
+      className={cn("h-auto min-h-[var(--map-ctrl-button-size)] flex-col gap-px py-[3px]", linked && LENS_LINK_CLASS)}
+      aria-description={linked ? LENS_LINK_DESCRIPTION : undefined}
       aria-label={`${name}（タップで変更）`}
       title={name}
     >
@@ -102,14 +110,16 @@ function DepartureRuler({
 
 // 地図右上の走行条件アイコン列。走行条件（出発時刻・想定速度）は時刻・速さで値の変わる評価と
 // 気象レイヤーの表示時刻の両方が参照する共有stateのため、ルート設定フォームでは
-// なく地図上に常時置き、アイコンをタップしてその場で変えられるようにする。TravelBearingControl
-// と同じ列の幅のアイコンボタンに揃える（page.tsxがTravelBearingControlの直下へ積む）。
+// なく地図上に常時置き、アイコンをタップしてその場で変えられるようにする。地図の右上の
+// 拡大・縮小と方位磁針と同じ列の幅のアイコンボタンに揃える（page.tsxがその列の直下へ積む）。
 export default function RideConditionBar({
   departureTime,
   onDepartureTimeChange,
   onDepartureNow,
   speedKmh,
   onSpeedKmhChange,
+  linkedDeparture,
+  linkedSpeed,
 }: RideConditionBarProps) {
   const axisCatalog = useAxisCatalog();
   const riderDefaults = riderDefaultsOf(axisCatalog);
@@ -137,6 +147,7 @@ export default function RideConditionBar({
           <ConditionTrigger
             name={departureName}
             icon={<ClockIcon />}
+            linked={linkedDeparture}
             usage={`出発する日時を決めます。地図の気象の表示の時刻と、ルートの${timeAxes ? `${timeAxes}の評価・` : ""}到達予想の時刻に使います。`}
           >
             {/* 別の日は日付も付くため、列の幅に収まるよう日付と時刻を2行に分ける。 */}
@@ -183,6 +194,7 @@ export default function RideConditionBar({
           <ConditionTrigger
             name={`想定速度: ${speedLabel}`}
             icon={<SpeedGaugeIcon />}
+            linked={linkedSpeed}
             usage="平地・無風で巡航する速さを決めます。所要時間と、区間ごとの到達予想の時刻に使います。"
           >
             {speedLabel}

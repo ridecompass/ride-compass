@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useDebugEnabled, useDebugLogEntries } from "@/hooks/useDebugLog";
-import { CopyIcon } from "@/components/ui/icons/icons";
+import { CopyIcon } from "@/components/ui/icons/lucideIcons";
 import { clearDebugLog, type DebugLogEntry, type DebugLogLevel } from "@/lib/debugLog";
 import FloatingPanel from "@/components/FloatingPanel/FloatingPanel";
 import { Button } from "@/components/ui/Button/Button";
@@ -78,7 +78,6 @@ export default function DebugConsole({ open, onClose }: DebugConsoleProps) {
             onClick={() => copy(visibleEntries.map(entryText).join("\n"))}
             disabled={visibleEntries.length === 0}
             aria-label={copied ? "表示中のログをコピーしました" : "表示中のログをコピー"}
-            title={copied ? "コピーしました" : "表示中のログをコピー"}
           >
             <CopyIcon size={14} />
           </Button>

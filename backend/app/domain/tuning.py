@@ -10,7 +10,7 @@
 使う側のモジュールが値と根拠を隣り合わせで持つ——ここへ載せた瞬間に管理画面から変えられる
 ようになり、模型を壊す値や本番を止める値が画面の手に入る。
 
-宣言そのものの矛盾（idの重複・既定が範囲の外・空の見出し）はimport時に落ちる。黙って
+宣言そのものの矛盾（idの重複・既定が範囲の外・既定が順の約束を破る・空の見出し）はimport時に落ちる。黙って
 通すと、後勝ちで消えた1件は画面にも探索にも現れず、範囲外の既定は画面が出した値を
 書き戻せない状態になる。
 """
@@ -63,7 +63,7 @@ class TuningParameter:
 
     id: str
     #: 管理画面の表示名。値を使う側の宣言が対象を持つもの（路面の見込みの転がり抵抗・停止要因の待ち）は、
-    #: 対象の名前を管理APIがそこから添える（`api/routers/tuning_admin.py`）——ここはその宣言を読めない（循環する）ため、
+    #: 対象の名前は`domain/tuning_labels.py: tuning_label`がそこから添える——ここはその宣言を読めない（循環する）ため、
     #: 対象の名前を写すと、対象の名前を変えたときに古くなる。
     label: str
     #: 単位（管理画面が値の右に出す）。無次元の比率等は空。
@@ -111,6 +111,19 @@ def _stop_parameter(kind: str, default: float, description: str) -> TuningParame
     )
 
 
+#: 説明の文が名指す較正値のid。宣言と説明が同じ綴りを引く。
+_MAJOR_CROSSING_ID = "turn.major_crossing_seconds"
+_STOP_ID = stop_seconds_parameter_id("stop")
+_SIGNAL_ID = stop_seconds_parameter_id("signal")
+_CRR_ID = "speed.crr"
+_CRR_GRAVEL_ID = "speed.crr_gravel"
+_CRR_COBBLESTONE_ID = "speed.crr_cobblestone"
+_TURNAROUND_OVERLAP_ID = "search.turnaround_max_overlap_ratio"
+_TURNAROUND_RELAXED_OVERLAP_ID = "search.turnaround_relaxed_overlap_ratio"
+_LOOP_RATIO_MIN_ID = "search.loop_to_outbound_ratio_min"
+_LOOP_RATIO_MAX_ID = "search.loop_to_outbound_ratio_max"
+
+
 TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     # --- ターンの費用（方位差だけで決まる） ---
     TuningParameter(
@@ -135,13 +148,13 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "この角度までの曲がりは直進とみなし、費用を足さない。",
     ),
     TuningParameter(
-        "turn.major_crossing_seconds",
+        _MAJOR_CROSSING_ID,
         "上位の道の横断", "秒", 8.0, 0.0, 300.0,
         TuningEffect.TURN_STRUCTURE,
         "信号の無い交差点で、上位の階級の道を直進で渡るときに足す。"
-        "一時停止で止まるぶん（stop.stop_seconds）とは別で、義務の停止を超えて相手の"
+        f"一時停止で止まるぶん（{_STOP_ID}）とは別で、義務の停止を超えて相手の"
         "流れが途切れるのを待つぶんを表す（止まること自体は交通ルール上、車が来ていなくても"
-        "発生する）。信号のある交差点では足さない——signal_secondsが赤で待つ時間、"
+        f"発生する）。信号のある交差点では足さない——{_SIGNAL_ID}が赤で待つ時間、"
         "すなわち渡れるようになるまでの待ちそのものを表すため。",
     ),
     TuningParameter(
@@ -154,13 +167,13 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     _stop_parameter("signal", 21.0,
                     "一般的な信号サイクルからの見積もり。赤で待つ時間、すなわち渡れるように"
                     "なるまでの待ちそのものを表すため、信号のある交差点では"
-                    "turn.major_crossing_secondsを足さない。"),
+                    f"{_MAJOR_CROSSING_ID}を足さない。"),
     _stop_parameter("crossing", 0.0,
                     "自転車が止まる前提を置いていないため既定は0秒。"),
     _stop_parameter("stop", 8.0,
                     "標識・標示で減速して止まるぶん。交通ルール上、車が来ていなくても止まる"
                     "ため相手の交通と無関係に発生する。相手の流れが途切れるのを待つぶんは"
-                    "含まず、そちらはturn.major_crossing_secondsが上位の道を渡るときだけ"
+                    f"含まず、そちらは{_MAJOR_CROSSING_ID}が上位の道を渡るときだけ"
                     "足す。"),
     _stop_parameter("level_crossing", 25.0, "遮断機の待ちを含む見積もり。"),
     _stop_parameter("barrier", 8.0, "ボラード等で減速するぶん。"),
@@ -180,18 +193,23 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         shown_to_users=True,
     ),
     TuningParameter(
-        "speed.crr",
+        _CRR_ID,
         "転がり抵抗", "", 0.005, 0.001, 0.05, TuningEffect.IMMEDIATE,
         "舗装路の23〜28mmタイヤの標準値。",
     ),
-    # 路面の区分ごとの転がり抵抗。どの区分がどの値を使うかは`domain/road.py`の路面の見込みの宣言が持つ。
+    # 路面の区分ごとの転がり抵抗。どの区分がどの値を使うかは管理DBの道の区分の転がり抵抗の表が持つ。
+    TuningParameter(
+        "speed.crr_paving_stones",
+        "転がり抵抗", "", 0.0065, 0.001, 0.1, TuningEffect.IMMEDIATE,
+        f"切石・レンガの敷石の計測値が見当たらないため、舗装（{_CRR_ID}）と石畳（{_CRR_COBBLESTONE_ID}）の間に置く。",
+    ),
     TuningParameter(
         "speed.crr_compacted",
         "転がり抵抗", "", 0.010, 0.001, 0.1, TuningEffect.IMMEDIATE,
-        "締め固めた路面の計測値が見当たらないため、舗装（speed.crr）と砂利（speed.crr_gravel）の中間に置く。",
+        f"締め固めた路面の計測値が見当たらないため、舗装（{_CRR_ID}）と砂利（{_CRR_GRAVEL_ID}）の中間に置く。",
     ),
     TuningParameter(
-        "speed.crr_gravel",
+        _CRR_GRAVEL_ID,
         "転がり抵抗", "", 0.015, 0.001, 0.1, TuningEffect.IMMEDIATE,
         "未舗装の値域（0.012〜0.020）の中ほどで、舗装の約3倍（惰行試験で砂利は舗装の約3倍）。",
     ),
@@ -201,7 +219,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "草は舗装の約3.5倍（惰行試験）。砂はさらに大きいが、区分の中では土・草が多いため未舗装の値域の上寄りに置く。",
     ),
     TuningParameter(
-        "speed.crr_cobblestone",
+        _CRR_COBBLESTONE_ID,
         "転がり抵抗", "", 0.008, 0.001, 0.1, TuningEffect.IMMEDIATE,
         "模擬石畳の試験台で空気圧を最適にしたロードバイクのタイヤが約0.0055。実際の玉石は凹凸が大きく"
         "空気圧も合わせないため、それより上で、舗装と締め固めの間に置く。",
@@ -209,7 +227,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         "speed.crr_unknown",
         "転がり抵抗", "", 0.010, 0.001, 0.1, TuningEffect.IMMEDIATE,
-        "舗装の道も未舗装の道も多いため、舗装（speed.crr）と砂利（speed.crr_gravel）の中間に置く。",
+        f"舗装の道も未舗装の道も多いため、舗装（{_CRR_ID}）と砂利（{_CRR_GRAVEL_ID}）の中間に置く。",
     ),
     TuningParameter(
         "speed.mass_kg",
@@ -244,6 +262,92 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         TuningEffect.IMMEDIATE,
         "平地の巡航に対して何倍まで踏むか。増え方をここで頭打ちにする。",
     ),
+    # --- 道の避け方 ---
+    TuningParameter(
+        "avoidance.avoid_cost_multiplier",
+        "「なるべく避ける」の割り増し", "倍", 2.0, 1.0, 20.0, TuningEffect.IMMEDIATE,
+        "道のレイヤの行を「なるべく避ける」にしたとき、その行に当たる区間の探索の費用に掛ける倍率。"
+        "2なら、その区間を通るより倍の長さまでの回り道を選ぶ。1は避けない。",
+    ),
+    # --- 候補の選び方 ---
+    TuningParameter(
+        _TURNAROUND_OVERLAP_ID,
+        "折返し点の往路の重なりの上限", "", 0.6, 0.0, 1.0, TuningEffect.IMMEDIATE,
+        "採用済みの折返し点と往路が、距離の割合でこれより重なる折返し点は飛ばす。同じ道筋の折返し点が上位を"
+        "占め、往路の大半が同じ周回が並ぶのを防ぐ。距離なしの目的地の代替経路も、経路全体の重なりに同じ値を使う。",
+    ),
+    TuningParameter(
+        _TURNAROUND_RELAXED_OVERLAP_ID,
+        "折返し点の往路の重なりの緩めた上限", "", 0.85, 0.0, 1.0, TuningEffect.IMMEDIATE,
+        f"{_TURNAROUND_OVERLAP_ID}で候補の数が埋まらないとき、この上限まで緩めてやり直す。"
+        f"{_TURNAROUND_OVERLAP_ID}以上にする。",
+    ),
+    TuningParameter(
+        "search.min_turnaround_separation_km",
+        "折返し点どうしの最小の間隔", "km", 1.5, 0.0, 20.0, TuningEffect.IMMEDIATE,
+        "採用済みの折返し点からこれより近い折返し点は飛ばす。近い折返し点は同じ周回の変種にしかならない。",
+    ),
+    TuningParameter(
+        "search.loop_max_overlap_ratio",
+        "周回どうしの重なりの上限", "", 0.7, 0.0, 1.0, TuningEffect.IMMEDIATE,
+        "帰りまで継いだ周回が、採用済みの周回と進む向きによらず距離の割合でこれより重なれば捨てる。"
+        "同じ周回の逆回りや、往路は違うが帰りが同じ裏道へ収まる周回を弾く。"
+        f"往路だけを見る{_TURNAROUND_OVERLAP_ID}より緩い、最後の確かめ。",
+    ),
+    TuningParameter(
+        _LOOP_RATIO_MIN_ID,
+        "周回の全長の見込みの下限", "倍", 2.0, 1.0, 5.0, TuningEffect.IMMEDIATE,
+        "周回の全長が往路の何倍になるかの見込みの下限。帰りは往路を避けて探すため往路と同じかそれより長い。"
+        "全長が目標±許容に入るよう、折返し点を探す往路の長さの範囲をこの見込みで決める。"
+        "置いた点を通る・目的地で終わるときの帰りは、終点までの最短のこの値−1倍以上と見込む。",
+    ),
+    TuningParameter(
+        _LOOP_RATIO_MAX_ID,
+        "周回の全長の見込みの上限", "倍", 2.3, 1.0, 5.0, TuningEffect.IMMEDIATE,
+        f"{_LOOP_RATIO_MIN_ID}の上限側。{_LOOP_RATIO_MIN_ID}以上にする。",
+    ),
+    TuningParameter(
+        "search.alternative_max_stretch",
+        "目的地への代わりの道の長さの上限", "倍", 1.3, 1.0, 3.0, TuningEffect.IMMEDIATE,
+        "距離なしで目的地へ向かうとき、合成の費用が最も低い道の長さの何倍までの道を代わりの道の候補にするか。"
+        "上げるほど遠回りの候補が並ぶ。",
+    ),
+    TuningParameter(
+        "search.pareto_distance_quantum_m",
+        "候補の距離を同じとみなす粒度", "m", 200.0, 1.0, 5000.0, TuningEffect.IMMEDIATE,
+        "候補（折返し点・目的地への道の経由のNode）を並べるとき、距離の鍵がこの刻みの中で違うだけなら同じ距離とみなす。細かすぎると"
+        "互いに劣らない候補が全件残って間引けず、粗すぎると候補が減りすぎる。",
+    ),
+    TuningParameter(
+        "search.turnaround_radius_ratio",
+        "距離ありの探索範囲の半径の比", "倍", 0.4, 0.1, 1.0, TuningEffect.IMMEDIATE,
+        "距離ありで道路網を切り出す範囲の半径を、自由に選ぶ部分（目標から置いた点の間の長さを引いた残り）の"
+        "何倍にするか。折返し点の往路はその半分付近にあり、直線ではそれより短いので0.5より小さく置く。"
+        "上げると範囲の面積が二乗で増え、生成の準備の時間とメモリが増える。足りなければ折返し点の候補が欠ける。",
+    ),
+    TuningParameter(
+        "search.distance_tolerance_km",
+        "全長の目標の許容", "km", 5.0, 0.1, 50.0, TuningEffect.IMMEDIATE,
+        "距離ありで、全長が目標からこの長さの中に入る候補だけを返す。折返し点を探す往路の長さの範囲もこの幅から"
+        "決める。要求ごとに上書きできるため、ここで決めるのは省略されたときの値。",
+        shown_to_users=True,
+    ),
+    TuningParameter(
+        "search.retrace_penalty_multiplier",
+        "走った道を帰りで通る罰", "倍", 8.0, 1.0, 100.0, TuningEffect.IMMEDIATE,
+        "帰りを探す間、それまでに走った道（逆向きを含む）の探索の費用に掛ける倍率。1は避けない。"
+        "有限なので、走った道を戻るほかに道が無い所（袋小路等）は通れる。",
+    ),
+    # --- 地図の評価 ---
+    # 地図は軸カタログの`way_value_formula`の木でこの幅を読むので、カタログを取り直す（画面を読み込み直す）と効く。
+    # 道ごとの材料のキャッシュは道の勾配と向きだけを持ち、幅を抱えない（予報の値まで求めて配る軸だけは、
+    # `/api/region/way-materials`の応答のブラウザのキャッシュが切れてから効く）。
+    TuningParameter(
+        "gradient.perpendicular_band_deg",
+        "勾配を示さない直角からの幅", "度", 15.0, 0.0, 45.0, TuningEffect.CLIENT_RELOAD,
+        "走る向きに対して直角からこの角度以内の道は、どちら向きに辿るか決まらないため、その向きでの勾配を示さない"
+        "（地図では向きで決まらない道として塗る）。広げるほど勾配を示さない道が増える。",
+    ),
     # --- 画面が使う値（カタログ取得でフロントへ配る） ---
     TuningParameter(
         "splice.min_stretch_km",
@@ -270,6 +374,23 @@ _DUPLICATE_IDS = sorted(
 )
 if _DUPLICATE_IDS:
     raise ValueError(f"較正値のidが重複している: {', '.join(_DUPLICATE_IDS)}")
+
+#: 値どうしの順の約束（下側のid, 上側のid）。下側は上側以下でなければならない。範囲は1件ずつしか
+#: 見ないので、片方だけを動かして順が逆になる上書きは、全件を重ねたあとにここで断る。
+TUNING_ORDERINGS: tuple[tuple[str, str], ...] = (
+    (_TURNAROUND_OVERLAP_ID, _TURNAROUND_RELAXED_OVERLAP_ID),
+    (_LOOP_RATIO_MIN_ID, _LOOP_RATIO_MAX_ID),
+)
+
+
+def misordered_pairs(values: dict[str, float]) -> list[tuple[str, str]]:
+    """`values`（id → 値。宣言の全idを持つ）のうち、順の約束（`TUNING_ORDERINGS`）を破る組。"""
+    return [(lower, upper) for lower, upper in TUNING_ORDERINGS if values[lower] > values[upper]]
+
+
+_MISORDERED_DEFAULTS = misordered_pairs({p.id: p.default for p in TUNING_PARAMETERS})
+if _MISORDERED_DEFAULTS:
+    raise ValueError(f"較正値の既定が順の約束を破る: {_MISORDERED_DEFAULTS}")
 
 #: いま効いている値（id → 値）。既定で初期化し、DBの上書きを読み込んだときに**中身だけ**を
 #: 差し替える（束縛済みの参照先が古いままにならないよう、`.update()`で更新する。鍵は宣言の全idで

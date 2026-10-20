@@ -45,8 +45,11 @@ export const buttonVariants = cva(
         md: "rounded-sm px-3.5 py-2 text-[length:var(--font-size-md)]",
         /** 四角のアイコンボタン。 */
         icon: "size-8 rounded-sm",
-        /** パネルの操作のボタン。アイコンだけを置き、名前は`aria-label`で渡す（マウスを重ねた吹き出しにも同じ名前が出る）。 */
+        /** パネルの操作のボタン。アイコンだけを置き、名前は`aria-label`で渡す（長押し・マウスを重ねると、名前と使い方が
+         * `components/UsageGuide/UsageTooltip.tsx`のツールチップに出る）。 */
         panelIcon: "rounded-sm px-1.5 py-1",
+        /** 上部の帯の印（警報）。値の並びに混ざるので、枠の無い`ghost`と組む。 */
+        headerIcon: "size-7 rounded-sm",
         /** 小さい丸のアイコンボタン。 */
         iconRound: "size-6.5 rounded-full",
         /** 地図右上の列の1段。 */
@@ -82,8 +85,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       type={type}
       className={cn(buttonVariants({ variant, size, shape }), className)}
       data-usage={usage}
-      // アイコンだけのボタンは、名前を画面に出さないので吹き出しで読ませる。
-      title={size === "panelIcon" ? props["aria-label"] : undefined}
       {...props}
     />
   );

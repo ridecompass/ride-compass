@@ -14,6 +14,7 @@
 """
 
 import hashlib
+from collections.abc import Iterable
 from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
 from typing import Any
@@ -50,6 +51,11 @@ class Target:
         """点が範囲に入るか（境界を含む）。"""
         min_lat, min_lon, max_lat, max_lon = self.bbox
         return min_lat <= lat <= max_lat and min_lon <= lon <= max_lon
+
+    def prefectures(self, points: Iterable[tuple[str, float, float]]) -> list[str]:
+        """範囲に掛かる都道府県のコード。`points`は都道府県の中の点の (都道府県コード, 緯度, 経度) で、範囲の中に
+        点を1つも持たない都道府県は、範囲が端に掛かっていても入らない。"""
+        return sorted({prefecture for prefecture, lat, lon in points if self.contains(lat, lon)})
 
     def bounding_box(self) -> BoundingBox:
         min_lat, min_lon, max_lat, max_lon = self.bbox

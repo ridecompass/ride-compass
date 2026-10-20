@@ -28,18 +28,16 @@ from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[1]
 WORKTREE = BACKEND.parent
+sys.path.insert(0, str(WORKTREE / "scripts"))
+
+from repo_git import main_checkout  # noqa: E402
+
 #: E2Eのオリジン。基礎地図をここのrewrites越しに取らせる（`frontend/playwright.live.config.ts: LIVE_ORIGIN`）。
 LIVE_ORIGIN = "http://localhost:3200"
 DEFAULT_PORT = 8000
 HEALTH_TIMEOUT_SECONDS = 300
 #: 起点の候補にする区間の数。取込範囲の真ん中あたりの区間から順に、路面タイルに道が出るものを探す。
 POINT_CANDIDATES = 40
-
-
-def main_checkout() -> Path:
-    common = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=BACKEND,
-                            capture_output=True, check=True).stdout.decode("utf-8").strip()
-    return Path(common).parent
 
 
 def venv_python(main: Path) -> Path:
@@ -115,20 +113,19 @@ def road_tile_counter(api: str) -> Callable[[float, float], int]:
     """起点の最大ズームの路面タイルに道が何本出るかを数える関数。0本の起点ではE2Eの前準備が止まる。"""
     import mapbox_vector_tile
 
-    from app.domain.region import tile_position
+    from app.domain.region import ROAD_TILE_MAX_ZOOM, tile_position
+    from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME
 
-    config = json.loads((WORKTREE / "frontend/src/types/generated/region-tile-config.json").read_text(encoding="utf-8"))
     catalog = json.loads(get(f"{api}/api/axis-catalog") or b"{}")
     version = (catalog.get("tile_versions") or {}).get("road_surface")
-    z = int(config["road_tile_max_zoom"])
-    layer_name = config["road_surface"]["layer_name"]
+    z = ROAD_TILE_MAX_ZOOM
 
     def roads_in_tile(lat: float, lon: float) -> int:
         x, y = (int(v) for v in tile_position(lon, lat, z))
         body = get(f"{api}/api/region/road-surface-tiles/{z}/{x}/{y}.pbf?v={version}")
         if not body:
             return 0
-        layer = mapbox_vector_tile.decode(body).get(layer_name) or {}
+        layer = mapbox_vector_tile.decode(body).get(ROAD_SURFACE_LAYER_NAME) or {}
         return len(layer.get("features") or [])
 
     return roads_in_tile
@@ -152,7 +149,7 @@ def main() -> int:
     parser.add_argument("--port", type=int, help=f"待ち受けるポート（既定: {DEFAULT_PORT}、使われていれば空いているもの）")
     parser.add_argument("--point", help="起点（緯度,経度）。既定は開発DBの区間から選ぶ")
     args = parser.parse_args()
-    main = main_checkout()
+    main = main_checkout(BACKEND)
     python = venv_python(main)
     if python.exists() and Path(sys.executable).resolve() != python.resolve():
         return subprocess.call([str(python), __file__, *sys.argv[1:]])

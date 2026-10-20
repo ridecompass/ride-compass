@@ -15,7 +15,7 @@
 
 実行方法（backendディレクトリから）:
     python scripts/measure_axis_saturation.py
-    python scripts/measure_axis_saturation.py --axis stop_density --sample-percent 5
+    python scripts/measure_axis_saturation.py --axis <軸id> --sample-percent 5
     python scripts/measure_axis_saturation.py --bbox 35.65,139.72,35.71,139.80
     python scripts/run_probe.py scripts/measure_axis_saturation.py --bbox 35.65,139.72,35.71,139.80   # 本番
 
@@ -24,7 +24,6 @@
 
 import argparse
 import asyncio
-import os
 import sys
 from collections import defaultdict
 from collections.abc import Callable
@@ -33,18 +32,19 @@ from typing import Literal
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import batch_session_factory  # noqa: E402
-from app.domain.axis_definitions import (  # noqa: E402
+from _probe_env import probe_database_url
+from app.batch.common import batch_session_factory
+from app.domain.axis_definitions import (
     AXIS_DEFINITIONS,
     evaluate_axes_inputs,
     evaluate_axes_values,
 )
-from app.domain.region import BoundingBox, parse_bbox  # noqa: E402
-from app.infrastructure.road_graph_repository import RoadGraphRepository  # noqa: E402
-from app.domain.value_distribution import weighted_quantiles  # noqa: E402
-from app.services import axis_preview_service  # noqa: E402
-from app.services.axis_registry_service import refresh_axis_definitions  # noqa: E402
-from app.infrastructure.axis_definition_repository import AxisDefinitionRepository  # noqa: E402
+from app.domain.region import BoundingBox, parse_bbox
+from app.infrastructure.road_graph_repository import RoadGraphRepository
+from app.domain.value_distribution import weighted_quantiles
+from app.services import axis_preview_service
+from app.services.axis_registry_service import refresh_axis_definitions
+from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 
 # 「上端へ張り付いている」とみなす難易度。100ちょうどに限ると、折れ点の最終区間に
 # わずかに届かない値ばかりの軸を見逃す。
@@ -106,7 +106,7 @@ def saturation_cause(rows: list[Row]) -> Cause | None:
 
 
 async def run(
-    database_url: str | None,
+    database_url: str,
     axis_filter: str | None,
     sample_percent: float,
     limit: int,
@@ -136,9 +136,8 @@ async def run(
     print(f"{'軸':<28} {'算出率':>7} {'p10':>7} {'p50':>7} {'p90':>7} {'p99':>7}  上端／下端／最多の値")
     print("-" * 100)
 
-    # 軸の階層（内部軸→公開軸）を解いて公開軸の難易度を得る。個々の軸へ
-    # `evaluate_axis_values`を直接当てると、他の軸を材料にする合成軸が
-    # 「材料が欠損」になってしまう。
+    # 軸の階層（内部軸→公開軸）を解いて公開軸の難易度を得る。軸を1本ずつ評価すると、
+    # 他の軸を材料にする合成軸が「材料が欠損」になってしまう。
     material_ids = {key for _, materials in sample for key in materials}
     columns = {key: [materials.get(key) for _, materials in sample] for key in material_ids}
     inputs = evaluate_axes_inputs(columns, len(sample))
@@ -201,8 +200,7 @@ def main() -> int:
     parser.add_argument("--database-url", default=None, help="既定: 本番の調査の道具が渡す接続先、無ければ設定値")
     args = parser.parse_args()
     bbox = parse_bbox(args.bbox) if args.bbox else None
-    database_url = args.database_url or os.environ.get("PROBE_DATABASE_URL")
-    return asyncio.run(run(database_url, args.axis, args.sample_percent, args.limit, bbox))
+    return asyncio.run(run(probe_database_url(args.database_url), args.axis, args.sample_percent, args.limit, bbox))
 
 
 if __name__ == "__main__":

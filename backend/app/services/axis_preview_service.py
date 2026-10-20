@@ -1,4 +1,4 @@
-"""軸スタジオが実データを見て設定を決めるための読み出し（分布プレビュー・材料の値の一覧）。
+"""軸スタジオが実データを見て設定を決めるための読み出し（分布プレビュー・材料の値ごとの延長）。
 
 折れ点や重みを編集している最中に、**その設定で実データがどう分布するか**を返す。
 軸スタジオは数値の入力欄を並べるだけでは折れ点の妥当性を判断できず、公開して地図と
@@ -13,16 +13,21 @@
 """
 
 import logging
-from typing import SupportsFloat, cast
 
+import numpy as np
 from cachetools import TTLCache
 
+from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.axis_definitions import AxisShape
 from app.domain.material_catalog import material_dtype
+from app.domain.road_classes import class_columns, condition_facts, current_road_classes
 from app.domain.region import BoundingBox
-from app.domain.value_distribution import ValueDistribution, ValueSpread, raw_value_distribution, weighted_spread
-from app.infrastructure.database import DB_UNAVAILABLE_ERRORS
-from app.infrastructure.debug_log import log_external_call, mark_failed
+from app.domain.value_distribution import (
+    ValueDistribution,
+    ValueShares,
+    raw_value_distribution,
+    weighted_value_shares,
+)
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 
 logger = logging.getLogger("ridecompass.axis_preview")
@@ -34,7 +39,11 @@ SAMPLE_LIMIT = 20_000
 # サンプルの保持時間。編集中は同じサンプルを使い回して即応させ、取込・集計バッチの後は
 # 自然に入れ替わる程度の長さにする。
 _SAMPLE_TTL_SECONDS = 15 * 60
-_sample_cache: TTLCache = TTLCache(maxsize=1, ttl=_SAMPLE_TTL_SECONDS)
+
+
+def new_sample_cache() -> TTLCache:
+    """`AxisPreviewService`へ渡す標本の置き場。リクエストをまたいで持つのは組み立てる側（`api/dependencies.py`）。"""
+    return TTLCache(maxsize=1, ttl=_SAMPLE_TTL_SECONDS)
 
 
 async def load_way_sample(
@@ -48,62 +57,68 @@ async def load_way_sample(
     分布プレビューと飽和度の実測スクリプト（`backend/scripts/measure_axis_saturation.py`）が
     同じ標本の作り方を共有するための口。
     """
+    return _with_road_classes(await _sample_ways(repository, sample_percent, limit, bbox))
+
+
+async def _sample_ways(
+    repository: RoadGraphRepository, sample_percent: float, limit: int, bbox: BoundingBox | None
+) -> list[tuple[float, dict[str, object]]]:
     accident_years = await repository.get_accident_years_covered()
     return await repository.sample_way_material_values(
         accident_years, sample_percent, limit, bbox
     )
 
 
-async def _load_sample(repository: RoadGraphRepository) -> list[tuple[float, dict[str, object]]]:
-    cached = _sample_cache.get("sample")
-    if cached is not None:
-        return cached
-    sample = await load_way_sample(repository, SAMPLE_PERCENT, SAMPLE_LIMIT)
-    _sample_cache["sample"] = sample
-    logger.info("軸プレビューのサンプルを取得 ways=%d", len(sample))
-    return sample
+def _with_road_classes(sample: list[tuple[float, dict[str, object]]]) -> list[tuple[float, dict[str, object]]]:
+    """標本の道ごとの材料に、今の区分の列（`domain/road_classes.py: class_columns`）の値を足す。区分は標本を持つ間にも
+    書き換わるので、標本を読むたびに当てる。"""
+    definitions = current_road_classes()
+    values = [materials for _, materials in sample]
+    facts: dict[str, MaterialColumn] = {
+        key: CategoricalColumn.encode(m.get(key) for m in values)  # type: ignore[misc]
+        if material_dtype(key) == "categorical"
+        else np.array([np.nan if (v := m.get(key)) is None else float(v) for m in values])  # type: ignore[arg-type]
+        for key in condition_facts(definitions)
+        if material_dtype(key) is not None
+    }
+    classes = class_columns(definitions, facts, len(values))
+    return [
+        (length_m, {**materials, **{material_id: column.value_at(i) for material_id, column in classes.items()}})
+        for i, (length_m, materials) in enumerate(sample)
+    ]
+
+
+async def _load_sample(
+    repository: RoadGraphRepository, sample_cache: TTLCache
+) -> list[tuple[float, dict[str, object]]]:
+    sample = sample_cache.get("sample")
+    if sample is None:
+        sample = await _sample_ways(repository, SAMPLE_PERCENT, SAMPLE_LIMIT, None)
+        sample_cache["sample"] = sample
+        logger.info("軸プレビューのサンプルを取得 ways=%d", len(sample))
+    return _with_road_classes(sample)
 
 
 class AxisPreviewService:
     """軸スタジオが設定を決めるための実データの読み出し。
 
     `repository`はルート生成用の長い`command_timeout`のセッションで渡す（`api/dependencies.py:
-    get_axis_preview_service`）——標本の抽選も値の一覧も全表走査寄りで、タイル配信の短い方だと最後まで走らない。
+    get_axis_preview_service`）——標本の抽選は全表走査寄りで、タイル配信の短い方だと最後まで走らない。
     """
 
-    def __init__(self, repository: RoadGraphRepository):
+    def __init__(self, repository: RoadGraphRepository, sample_cache: TTLCache):
         self._repository = repository
+        self._sample_cache = sample_cache
 
     async def raw_value_distribution(self, shape: AxisShape) -> ValueDistribution:
         """候補の`shape`の生値（折れ点を通す前）の分布。"""
-        return raw_value_distribution(shape, await _load_sample(self._repository))
+        return raw_value_distribution(shape, await _load_sample(self._repository, self._sample_cache))
 
-    async def material_value_distribution(self, material_id: str) -> ValueSpread | None:
-        """1材料の値の分位点とゼロの割合。数値材料のみ（真偽・カテゴリは分位に意味が無いためNone）。"""
-        if material_dtype(material_id) != "numeric":
+    async def material_value_shares(self, material_id: str) -> ValueShares | None:
+        """種類・はい/いいえの材料の値ごとの延長の割合。数値材料はNone（値ごとに数えても意味が無い）。"""
+        if material_dtype(material_id) == "numeric":
             return None
-        sample = await _load_sample(self._repository)
-        pairs = [
-            (length_m, float(cast(SupportsFloat, materials[material_id])))
-            for length_m, materials in sample
-            if materials.get(material_id) is not None
-        ]
-        return weighted_spread(pairs)
-
-    async def material_values(self, material_id: str) -> list[str] | None:
-        """指定した材料についてDBへ実際に取り込まれている値の一覧。軸スタジオの値入力が使う。
-
-        索引の効かない`SELECT DISTINCT`（実質全表走査）。
-
-        **取得できなかったとき（DB例外・タイムアウト）はNone**、取得できて値が無いときは空リスト。
-        両方を空リストへ倒すと、画面は「候補が無い」と「候補を出せなかった」を区別できず、
-        DBのタイムアウトが「この材料には値が無い」として静かに表示される。
-        """
-        with log_external_call("axis-preview:material-values", material_id=material_id) as fields:
-            try:
-                values = await self._repository.get_distinct_material_values(material_id)
-            except DB_UNAVAILABLE_ERRORS as exc:
-                mark_failed(fields, exc)
-                return None
-            fields["value_count"] = len(values)
-            return values
+        sample = await _load_sample(self._repository, self._sample_cache)
+        return weighted_value_shares(
+            [(length_m, materials[material_id]) for length_m, materials in sample if materials.get(material_id) is not None]
+        )

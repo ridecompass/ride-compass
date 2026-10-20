@@ -106,7 +106,8 @@ describe("SystemStatusPanel", () => {
     serveVersion({ ...frontendVersion, commit: null });
     render(<SystemStatusPanel open onClose={() => {}} />);
 
-    const backend = await waitFor(() => section("バックエンド"));
+    await screen.findByText("backend-sha");
+    const backend = section("バックエンド");
     expect(within(backend).getByText("backend-sha")).toBeInTheDocument();
     expect(within(backend).getByText("debug_mode ON")).toBeInTheDocument();
     expect(within(section("フロントエンド")).getByText("(ローカル)")).toBeInTheDocument();

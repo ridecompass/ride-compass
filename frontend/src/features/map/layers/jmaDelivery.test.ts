@@ -1,16 +1,16 @@
 // @vitest-environment node
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { onUrl } from "@/testing/backendServer";
 import { JMA_DELIVERIES, jmaTileUrlAt } from "@/testing/jmaDeliveries";
 import jmaExpectations from "@/types/generated/jma-expectations.json";
 import { mapDisplay } from "@/types/generated/mapDisplay";
+import { isTileRenderKind } from "@/features/map/layers/dynamicWeather";
 
 import {
   fetchJmaGeojson,
   fetchJmaTargetTimesFile,
-  isJmaTileKind,
   jmaFramesOf,
-  JMA_POINT_VALUE_PROPERTY,
   jmaPlaceholderTileUrl,
   jmaTilePayload,
   parseValidtime,
@@ -22,7 +22,7 @@ import {
 vi.mock("@/lib/tileBaseUrl", () => ({ tileBaseUrl: () => "https://tiles.test" }));
 const PROXY = "https://tiles.test/api/jma-tile/";
 const isTileElement = (element: (typeof mapDisplay.weatherElements)[number]) =>
-  isJmaTileKind(element.kind) && element.jmaElements.length > 0;
+  isTileRenderKind(element.kind) && element.jmaElements.length > 0;
 const TILE_ELEMENTS = mapDisplay.weatherElements.filter(isTileElement);
 const TILE_DELIVERIES = TILE_ELEMENTS.flatMap((element): readonly JmaDelivery[] => element.jmaElements);
 const FEATURE_ELEMENT = mapDisplay.weatherElements.find(
@@ -30,20 +30,6 @@ const FEATURE_ELEMENT = mapDisplay.weatherElements.find(
 )!;
 const FEATURE_DELIVERY: JmaDelivery = FEATURE_ELEMENT.jmaElements[0]!;
 const fileOf = (delivery: JmaDelivery, index = 0) => `${PROXY}${delivery.targetTimesPaths[index]}`;
-
-/** 時刻一覧のファイルごとの応答。`undefined`のファイルは500を返す。 */
-function stubFiles(files: Record<string, unknown>) {
-  const fetchMock = vi.fn(async (request: Request) => {
-    const body = files[request.url];
-    return body === undefined ? new Response(null, { status: 500 }) : Response.json(body);
-  });
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
-}
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 const row = (basetime: string, validtime: string, elements: string[], member?: string) => ({
   basetime,
@@ -90,7 +76,7 @@ describe("配信の遅れ", () => {
 describe("時刻一覧のファイル", () => {
   it("配列でない応答は形式の誤りとして失敗に数える", async () => {
     const delivery = JMA_DELIVERIES[0];
-    stubFiles({ [fileOf(delivery)]: {} });
+    onUrl(fileOf(delivery), () => Response.json({}));
     await expect(fetchJmaTargetTimesFile(delivery.targetTimesPaths[0], "要素")).rejects.toThrow(
       "要素の時刻一覧の形式が想定と異なります",
     );
@@ -101,7 +87,7 @@ describe("コマのURL", () => {
   const frame = { basetime: "20260924000000", member: "immed", validtime: "20260924010000" };
   const delivery = FEATURE_DELIVERY;
 
-  it("タイルのURLはbackendの表のパスを指し、同じ配信要素・コマ・タイル座標に読み戻せる", () => {
+  it("タイルのURLはbackendの表のパスを指し、読み戻したコマのURLはそのコマのテンプレートと同じ", () => {
     const rows = jmaExpectations.tile_path;
     expect(rows.length).toBeGreaterThan(0);
     for (const { element_id, frame: tileFrame, z, x, y, path } of rows) {
@@ -110,14 +96,18 @@ describe("コマのURL", () => {
       const { tileUrlTemplate } = jmaTilePayload("rasterTile", tile, tileFrame);
       const url = jmaTileUrlAt(tileUrlTemplate, z, x, y);
       expect(url).toBe(`${PROXY}${path}`);
-      expect(readJmaTileUrl(url), element_id).toEqual({
-        delivery: tile,
-        frame: tileFrame,
-        frameUrl: tileUrlTemplate,
-        z,
-        x,
-        y,
-      });
+      expect(readJmaTileUrl(url)?.frameUrl, element_id).toBe(tileUrlTemplate);
+    }
+  });
+
+  it("配信元のパスを、backendの表と同じ配信要素・コマ・タイル座標に読み戻す（タイルでないパスは読み戻さない）", () => {
+    const rows = jmaExpectations.read_tile_path;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const { path, tile } of rows) {
+      const ref = readJmaTileUrl(`${PROXY}${path}`);
+      expect(ref && { element_id: ref.delivery.id, frame: ref.frame, z: ref.z, x: ref.x, y: ref.y }, path).toEqual(
+        tile,
+      );
     }
   });
 
@@ -133,26 +123,26 @@ describe("コマのURL", () => {
     expect(ref?.frame).toEqual({ basetime: "00000000000000", member: "none", validtime: "00000000000000" });
   });
 
-  it("地物はそのコマの要素配下のGeoJSONを取り、どの地物にも記号の大きさを決める値を足す（元の属性は残す）", async () => {
+  it("地物はそのコマの要素配下のGeoJSONを取る", async () => {
     const url = `${PROXY}${delivery.urlTemplate}`
       .replace("{basetime}", frame.basetime)
       .replace("{member}", frame.member)
       .replace("{validtime}", frame.validtime);
-    stubFiles({
-      [url]: {
-        type: "FeatureCollection",
-        features: [
-          { type: "Feature", geometry: { type: "Point", coordinates: [139, 35] }, properties: { type: 1 } },
-          { type: "Feature", geometry: { type: "Point", coordinates: [140, 36] }, properties: null },
-        ],
-      },
-    });
+    // mswはパスで当てるので、問い合わせまで同じ要求にだけ中身を返す。
+    onUrl(url.split("?")[0], (request) =>
+      request.url !== url
+        ? new Response(null, { status: 404 })
+        : Response.json({
+            type: "FeatureCollection",
+            features: [
+              { type: "Feature", geometry: { type: "Point", coordinates: [139, 35] }, properties: { type: 1 } },
+              { type: "Feature", geometry: { type: "Point", coordinates: [140, 36] }, properties: null },
+            ],
+          }),
+    );
 
     const geojson = await fetchJmaGeojson(delivery, frame, "地点");
-    expect(geojson.features.map((feature) => feature.properties)).toEqual([
-      { type: 1, [JMA_POINT_VALUE_PROPERTY]: 1 },
-      { [JMA_POINT_VALUE_PROPERTY]: 1 },
-    ]);
+    expect(geojson.features.map((feature) => feature.properties)).toEqual([{ type: 1 }, null]);
   });
 });
 

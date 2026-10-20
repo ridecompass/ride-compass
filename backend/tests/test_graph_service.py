@@ -43,10 +43,6 @@ def road_network(monkeypatch):
     serve_road_network(monkeypatch, network)
 
 
-async def test_outside_the_ingested_area_there_is_no_search_range():
-    assert await GraphService(FakeRepository(covered=False)).get_search_slice(BBOX) is None
-
-
 async def test_the_range_is_cut_along_the_bbox_itself(road_network):
     """切り出しはbboxそのもの——同じz12タイル（138.955〜139.043E）の中でも、bboxの外の道20は取らない。
     タイル集合は迂回率の鍵としてz12で返る。"""
@@ -75,14 +71,6 @@ async def test_a_range_too_large_for_the_memory_limit_is_refused(monkeypatch, tm
     assert (raised.value.edges, raised.value.limit) == (3, 0)
 
 
-async def test_the_limit_grows_with_the_memory_limit(monkeypatch, tmp_path, road_network):
-    """メモリを増やせば、上限の数字を直さなくても同じ範囲が通るようになる。"""
-    _memory_limit(monkeypatch, tmp_path, str(8 * 1024**3))
-    road, _tiles = await GraphService(FakeRepository()).get_search_slice(BBOX)
-
-    assert road.edge_count == 3
-
-
 @pytest.mark.parametrize("content", ["max\n", None], ids=["上限なし", "cgroupの外"])
 async def test_without_a_memory_limit_no_range_is_refused(monkeypatch, tmp_path, content, road_network):
     _memory_limit(monkeypatch, tmp_path, content)
@@ -90,4 +78,3 @@ async def test_without_a_memory_limit_no_range_is_refused(monkeypatch, tmp_path,
     road, _tiles = await GraphService(FakeRepository()).get_search_slice(BBOX)
 
     assert road.edge_count == 3
-

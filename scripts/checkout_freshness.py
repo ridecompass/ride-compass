@@ -18,43 +18,30 @@
 from __future__ import annotations
 
 import argparse
-import io
-import os
-import subprocess
 import sys
 from pathlib import Path
 
+from repo_git import BRANCH, REMOTE, UPSTREAM, run
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-REMOTE = "origin"
-BRANCH = "master"
-UPSTREAM = f"{REMOTE}/{BRANCH}"
-
-
-def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    # 資格情報を端末で尋ねられると、フックも道具も入力を待ったまま止まる。
-    return subprocess.run(
-        ["git", "-C", str(repo), *args],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
-        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
-    )
 
 
 def _behind(repo: Path) -> int | str:
     """origin の master を取り直し、HEAD に無いコミットの数を返す。数えられなければ理由を返す。"""
     for args in (("fetch", "-q", REMOTE, BRANCH), ("rev-list", "--count", f"HEAD..{UPSTREAM}")):
-        result = _git(repo, *args)
+        result = run(*args, cwd=repo)
         if result.returncode != 0:
             return result.stderr.strip() or f"git {args[0]} の終了コード {result.returncode}"
     return int(result.stdout.strip())
 
 
 def _branch(repo: Path) -> str | None:
-    result = _git(repo, "symbolic-ref", "-q", "--short", "HEAD")
+    result = run("symbolic-ref", "-q", "--short", "HEAD", cwd=repo)
     return result.stdout.strip() if result.returncode == 0 else None
 
 
 def _dirty(repo: Path) -> bool:
-    return bool(_git(repo, "status", "--porcelain", "--untracked-files=no").stdout.strip())
+    return bool(run("status", "--porcelain", "--untracked-files=no", cwd=repo).stdout.strip())
 
 
 def _catch_up_command(repo: Path) -> str:
@@ -74,15 +61,14 @@ def _describe(repo: Path, behind: int | str) -> str | None:
         return f"{repo} が {UPSTREAM} に追いついているかを確かめられない（{behind}）"
     if not behind:
         return None
-    return (f"{repo} の HEAD は {UPSTREAM} より {behind} コミット遅れている。"
-            f"古いコードで判定しないよう止まる。追いつく: {_catch_up_command(repo)}")
+    return f"{repo} の HEAD は {UPSTREAM} より {behind} コミット遅れている。追いつく: {_catch_up_command(repo)}"
 
 
 def _fast_forward(repo: Path) -> bool:
     """master にいて変更が無ければ早送りする。早送りできたかを返す。"""
     if _branch(repo) != BRANCH or _dirty(repo):
         return False
-    return _git(repo, "merge", "-q", "--ff-only", UPSTREAM).returncode == 0
+    return run("merge", "-q", "--ff-only", UPSTREAM, cwd=repo).returncode == 0
 
 
 def require_current(repo: Path = REPO_ROOT) -> None:
@@ -93,7 +79,7 @@ def require_current(repo: Path = REPO_ROOT) -> None:
         behind = 0
     message = _describe(repo, behind)
     if message:
-        raise SystemExit(message)
+        raise SystemExit(f"{message}\n古いコードで判定しないよう止まる。")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -108,7 +94,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    for stream in (sys.stdout, sys.stderr):
-        if isinstance(stream, io.TextIOWrapper):
-            stream.reconfigure(encoding="utf-8")
+    sys.path.append(str(REPO_ROOT / "backend" / "scripts"))
+    from _stdio import use_utf8_stdio
+
+    use_utf8_stdio()
     sys.exit(main())

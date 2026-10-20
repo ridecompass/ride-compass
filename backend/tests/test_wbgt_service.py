@@ -8,15 +8,18 @@
 - 配信元の応答を解くこと → `test_wbgt_client.py`
 """
 
+import asyncio
 from datetime import datetime
 
 import httpx
 import pytest
 import respx
+from shapely.geometry import Point, shape
 
 from app.domain.route import Coordinates
 from app.infrastructure import wbgt_client
 from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_cache
+from app.services.nearest_point_areas import new_cells_cache
 from app.services.wbgt_service import WbgtService
 from tests.fake_http import client_for
 
@@ -50,9 +53,29 @@ def _service(*, point_master=POINT_MASTER_CSV, forecast=None) -> tuple[WbgtServi
     else:
         forecasts.respond(json={"status": "success", "data": forecast})
     service = WbgtService(
-        client_for(upstream), point_master_cache=new_point_master_cache(), forecast_cache=new_forecast_cache()
+        client_for(upstream),
+        point_master_cache=new_point_master_cache(),
+        forecast_cache=new_forecast_cache(),
+        cells_cache=new_cells_cache(),
     )
     return service, upstream
+
+
+async def test_the_status_carries_the_area_the_same_point_holds_for():
+    """同じ情報提供地点の予測が当たる範囲（その地点が最寄りである範囲）を添える。もう1つの地点の近くは含まない。
+    範囲のために地点の表を取り直さない（予測を引くときに取った表を使う）。"""
+    master = POINT_MASTER_CSV + ",,44263,大阪,,,,34,40.9,135,31.1,,9999-99-99,,,,,\n"
+    service, upstream = _service(
+        point_master=master, forecast=[_forecast("2026/08/22 14:00:00", "2026/08/22 15:00:00", "300")]
+    )
+
+    result = await service.get_status(POINT, now=SUMMER_NOW)
+
+    assert result is not None and result.valid_area is not None
+    area = shape(result.valid_area.model_dump())
+    assert area.contains(Point(POINT.longitude, POINT.latitude))
+    assert not area.contains(Point(135 + 31.1 / 60, 34 + 40.9 / 60))
+    assert [call.request.url for call in upstream.calls].count(wbgt_client.WBGT_POINT_MASTER_URL) == 1
 
 
 async def test_a_value_outside_the_provision_period_is_shown():
@@ -105,3 +128,13 @@ async def test_get_status_returns_empty_when_below_almost_safe_threshold():
     result = await service.get_status(POINT, now=SUMMER_NOW)  # 15.0、21未満
 
     assert result is not None and result.reading is None
+
+
+async def test_points_asked_at_once_fetch_each_table_once():
+    """同時に開いた画面の問い合わせは、地点の表と予測を環境省へ1回ずつだけ取りに行く。"""
+    service, upstream = _service(forecast=[_forecast("2026/08/22 14:00:00", "2026/08/22 15:00:00", "300")])
+
+    await asyncio.gather(service.get_status(POINT, now=SUMMER_NOW), service.get_status(POINT, now=SUMMER_NOW))
+
+    urls = [str(call.request.url) for call in upstream.calls]
+    assert sorted(urls) == sorted(set(urls)) and len(urls) == 2

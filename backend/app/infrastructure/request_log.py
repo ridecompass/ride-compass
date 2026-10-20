@@ -5,29 +5,17 @@
 """
 
 import logging
-import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 from asgi_correlation_id import CorrelationIdFilter, correlation_id
 from fastapi import Request, Response
 from fastapi.responses import PlainTextResponse
 
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.time_zone import JST
 
 access_logger = logging.getLogger("ridecompass.access")
-
-# タイル系は通常操作でも毎分数百リクエストになるため、成功と「そのタイルは無い」404のアクセスログは
-# DEBUG(debug_mode時のみ実質出力)へ落とし、ログを埋めないようにする。どれもGETだけの経路。
-HIGH_FREQUENCY_PATH_PREFIXES = (
-    "/api/basemap/",
-    "/api/region/road-surface-tiles/",
-    "/api/region/point-tiles/",
-    "/api/region/landcover-tiles/",
-    "/api/region/dynamic-way-values/",
-    "/api/jma-tile/",
-    "/api/gsi-relief-tile/",
-    "/api/gsi-terrain-tile/",
-)
 
 
 #: ログ1行の書式。`%(correlation_id)s`は`format_log_lines`が付けるフィルタが入れる。
@@ -69,45 +57,49 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> Respo
     )
 
 
-def access_level(path: str, status_code: int) -> int:
+def access_level(path: str, status_code: int, tile_path_prefixes: tuple[str, ...]) -> int:
+    """アクセスログの1行のレベル。`tile_path_prefixes`は地図タイルの経路（GETだけで、通常操作でも毎分数百件になる）。"""
     if status_code >= 500:
         return logging.ERROR
     if status_code == 429:
         # 429はrecord_rate_limit_rejection(debug_log.py)が抑制付きWARNINGで別途記録する
         # ため、アクセスログ側で重ねてWARNINGにしない。
         return logging.DEBUG
-    # 疎な格子・整備区域の外・配信前のタイルは404が正常系として視界の分だけ並ぶ
-    # （api/cache_policy.py: JMA_TILE_NOT_FOUND・JMA_NOT_YET_DELIVERED・GSI_TILE_NOT_FOUND）。
-    if path.startswith(HIGH_FREQUENCY_PATH_PREFIXES) and (status_code < 400 or status_code == 404):
+    # タイルの成功と「そのタイルは無い」404はログを埋めないようDEBUGへ落とす。疎な格子・整備区域の外・
+    # 配信前のタイルは404が正常系として視界の分だけ並ぶ。
+    if path.startswith(tile_path_prefixes) and (status_code < 400 or status_code == 404):
         return logging.DEBUG
     if status_code >= 400:
         return logging.WARNING
     return logging.INFO
 
 
-async def request_log_middleware(request: Request, call_next) -> Response:
-    started = time.monotonic()
-    client = request.client.host if request.client else "unknown"
-    try:
-        response = await call_next(request)
-    except Exception:
-        elapsed_ms = round((time.monotonic() - started) * 1000)
-        access_logger.exception(
-            "%s %s -> unhandled exception after %dms client=%s",
+def request_log_middleware(tile_path_prefixes: tuple[str, ...]) -> Callable[..., Awaitable[Response]]:
+    """1リクエスト=1行のアクセスログを出すHTTPミドルウェア。`tile_path_prefixes`は`access_level`へ渡す。"""
+
+    async def log_access(request: Request, call_next) -> Response:
+        started = start_timer()
+        client = request.client.host if request.client else "unknown"
+        try:
+            response = await call_next(request)
+        except Exception:
+            access_logger.exception(
+                "%s %s -> unhandled exception after %dms client=%s",
+                request.method,
+                request.url.path,
+                elapsed_ms(started),
+                client,
+            )
+            raise
+        access_logger.log(
+            access_level(request.url.path, response.status_code, tile_path_prefixes),
+            "%s %s -> %d in %dms client=%s",
             request.method,
             request.url.path,
-            elapsed_ms,
+            response.status_code,
+            elapsed_ms(started),
             client,
         )
-        raise
-    elapsed_ms = round((time.monotonic() - started) * 1000)
-    access_logger.log(
-        access_level(request.url.path, response.status_code),
-        "%s %s -> %d in %dms client=%s",
-        request.method,
-        request.url.path,
-        response.status_code,
-        elapsed_ms,
-        client,
-    )
-    return response
+        return response
+
+    return log_access

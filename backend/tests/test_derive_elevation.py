@@ -19,14 +19,18 @@ z15のタイルTを4つの区画に分け、製品ごとに値のある区画を
 
 製品ごとのタイルがそれぞれ1行に入ることは、別々の製品から採る区画の値が見る。
 
+取込の記録には、読んだタイルの配信元での最終更新のうち一番新しいものが残る。製品ごとに時刻を変えて置き、
+一番新しいものが最初の製品でも最後の製品でもない形にする——どれか1つの製品の時刻を書くと、手元の標高が配信元の
+いつ時点までの更新を含むかを読み違える。
+
 ここで見ないもの:
 - 橋・トンネルとみなすタグの値の一つずつ——値の並びは`domain/material_sql.py`が持ち、ここは橋と
   トンネルの1つずつだけを通す
 - 橋・トンネルの区間の勾配の出し方 → `test_elevation_values.py`
-- 1枚の本文を画素の順に詰めること → `test_gsi_dem_tile.py`
 """
 
 from dataclasses import replace
+from datetime import datetime, timezone
 
 import asyncpg
 import pytest
@@ -40,12 +44,8 @@ from tests.conftest import empty_ingested_tables
 from tests.source_ingest import gsi_dem_png, ingest_records, way_record
 
 # road_graph_session（conftest.py）と同じDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
-# loop_scope="module"・xdist_group="postgis"が必須。
-pytestmark = [
-    pytest.mark.asyncio(loop_scope="module"),
-    pytest.mark.xdist_group(name="postgis"),
-    pytest.mark.postgis,
-]
+# loop_scope="module"が必須。
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 #: タイルT。x・yとも偶数なので、z14の親タイルの左上の4分の1に当たる。
 ZOOM, X, Y = 15, 29100, 12902
@@ -84,6 +84,14 @@ def _dem10b(pr, pc):
     return None
 
 
+#: 製品ごとのタイルの配信元での最終更新。一番新しいのは`dem5b`。
+MODIFIED = {
+    "dem5a": datetime(2026, 3, 30, tzinfo=timezone.utc),
+    "dem5b": datetime(2026, 4, 2, 1, 30, tzinfo=timezone.utc),
+    "dem": datetime(2025, 2, 13, tzinfo=timezone.utc),
+}
+
+
 def _pixel_center(r: int, c: int) -> tuple[float, float]:
     """Tの画素 (r, c) の中心の (経度, 緯度)。z23のタイル1枚がちょうどz15の1画素に当たる。"""
     b = tile_bounds_lonlat(ZOOM + 8, X * SIZE + c, Y * SIZE + r)
@@ -120,9 +128,9 @@ def _way(way_id: int, pixels, tags: dict[str, str] | None = None):
 def tile_root(tmp_path_factory):
     """手元へ写したタイルの置き場。"""
     root = tmp_path_factory.mktemp("dem")
-    dem_tile_store.write_tile(root, "dem5a", ZOOM, X, Y, _tile_png(_dem5a))
-    dem_tile_store.write_tile(root, "dem5b", ZOOM, X, Y, _tile_png(_dem5b))
-    dem_tile_store.write_tile(root, "dem", *PARENT, _tile_png(_dem10b))
+    dem_tile_store.write_tile(root, "dem5a", ZOOM, X, Y, _tile_png(_dem5a), MODIFIED["dem5a"])
+    dem_tile_store.write_tile(root, "dem5b", ZOOM, X, Y, _tile_png(_dem5b), MODIFIED["dem5b"])
+    dem_tile_store.write_tile(root, "dem", *PARENT, _tile_png(_dem10b), MODIFIED["dem"])
     dem_tile_store.mark_absent(root, "dem5c", ZOOM, X, Y)
     return root
 
@@ -146,6 +154,13 @@ async def test_each_pixel_takes_the_most_accurate_product_that_has_a_value(eleva
         " FROM road_edges LEFT JOIN edge_elevation USING (osm_way_id, segment_index) ORDER BY osm_way_id")
     got = {r["osm_way_id"]: (r["start_elevation_m"], r["end_elevation_m"]) for r in rows}
     assert got == {way_id: (expected, expected) for way_id, _pixels, expected in CASES}
+
+
+async def test_the_run_records_the_newest_last_modified_of_the_tiles_it_read(elevation_conn):
+    stamp = await elevation_conn.fetchval(
+        "SELECT origin ->> 'tiles_last_modified' FROM source_runs"
+        " WHERE source = 'dem' AND status = 'succeeded' ORDER BY run_id DESC LIMIT 1")
+    assert datetime.fromisoformat(stamp) == MODIFIED["dem5b"]
 
 
 async def test_rerun_without_a_product_keeps_no_value_only_that_product_gave(elevation_conn, tile_root):

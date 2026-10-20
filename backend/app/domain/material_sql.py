@@ -20,19 +20,9 @@
 「タグが無い」は別で、道の行があれば非該当（false）になる（`tag_absent_is_false_sql`）。
 """
 
-from collections.abc import Iterable, Sequence
-from typing import NamedTuple
+import re
+from collections.abc import Iterable
 
-from app.domain.road import (
-    SURFACE_CLASSES,
-    SURFACE_OTHER_KEY,
-    TRACK_GRADES,
-    TRACK_HIGHWAY,
-    UNKNOWN_ROAD_SURFACE,
-    UNKNOWN_TRACK_SURFACE,
-    SurfaceClass,
-    TrackGrade,
-)
 from app.domain.traffic import poi_count_column
 
 
@@ -61,35 +51,6 @@ def sql_literals(values: Iterable[str]) -> str:
     return ", ".join("'" + value.replace("'", "''") + "'" for value in values)
 
 
-def _surface_class_branches(classes: Sequence[SurfaceClass]) -> str:
-    return " ".join(
-        f"WHEN {SURFACE_NORMALIZED_SQL} IN ({sql_literals(c.tags)}) THEN '{c.key}'" for c in classes if c.tags
-    )
-
-
-def surface_class_sql(classes: Sequence[SurfaceClass]) -> str:
-    """surfaceタグの路面区分。タグが無ければNULL、区分に無い値は`SURFACE_OTHER_KEY`。"""
-    return (
-        f"CASE {_surface_class_branches(classes)} "
-        f"WHEN {SURFACE_NORMALIZED_SQL} IS NOT NULL THEN '{SURFACE_OTHER_KEY}' END"
-    )
-
-
-def surface_estimate_sql(classes: Sequence[SurfaceClass], grades: Sequence[TrackGrade]) -> str:
-    """路面の見込み（`domain/road.py: SurfaceEstimate`）。surfaceの区分、無ければ等級から写した区分、
-    どちらも無ければ道路種別で分けた「不明」。どの道も値を持つ。"""
-    grade_branches = " ".join(
-        f"WHEN {TRACKTYPE_NORMALIZED_SQL} = '{g.value}' THEN '{g.surface_class}'" for g in grades
-    )
-    return (
-        f"CASE {_surface_class_branches(classes)} {grade_branches} "
-        f"WHEN {HIGHWAY_SQL} = '{TRACK_HIGHWAY}' THEN '{UNKNOWN_TRACK_SURFACE.key}' "
-        f"ELSE '{UNKNOWN_ROAD_SURFACE.key}' END"
-    )
-
-
-SURFACE_CLASS_SQL = surface_class_sql(SURFACE_CLASSES)
-SURFACE_ESTIMATE_SQL = surface_estimate_sql(SURFACE_CLASSES, TRACK_GRADES)
 SMOOTHNESS_NORMALIZED_SQL = normalized_tag_sql("smoothness")
 MAXSPEED_KMH_CASE_SQL = positive_integer_tag_sql("maxspeed")
 LANES_COUNT_CASE_SQL = positive_integer_tag_sql("lanes")
@@ -116,16 +77,21 @@ def tag_is_value_sql(tag: str, expected: str) -> str:
     return tag_absent_is_false_sql(f"{normalized_tag_sql(tag)} = '{expected}'")
 
 
+def tag_note(tag: str, *values: str) -> str:
+    """説明の文がタグの条件を指す書き方（`cycleway=share_busway・shared_lane`）。条件の式と同じ値から作る。"""
+    return f"{tag}={'・'.join(values)}"
+
+
 # 橋・トンネルとみなすのは、道が地面から浮いているか地中にある値だけ（値の意味は OSM wiki の
 # Key:bridge・Key:tunnel）。地図の「橋・高架」「トンネル」と、勾配で地表を拾わない区間
 # （`attributes.py: elevation_values_sql` の on_structure）が同じ道を指すよう、両方がここを読む。
 # 建物の下の通路（building_passage）・道の下の水路（culvert）・水面すれすれの低い橋
 # （low_water_crossing）は道が地表にあり、載っていない値も普通の道として扱う——知らない値を
 # 構造物に入れると、地図に誤った橋・トンネルが出る。
-_BRIDGE_STRUCTURE_VALUES = ("yes", "viaduct", "cantilever", "covered", "suspension_bridge", "boardwalk")
-_TUNNEL_STRUCTURE_VALUES = ("yes", "avalanche_protector")
-IS_BRIDGE_SQL = tag_absent_is_false_sql(f"{BRIDGE_NORMALIZED_SQL} IN ({sql_literals(_BRIDGE_STRUCTURE_VALUES)})")
-IS_TUNNEL_SQL = tag_absent_is_false_sql(f"{TUNNEL_NORMALIZED_SQL} IN ({sql_literals(_TUNNEL_STRUCTURE_VALUES)})")
+BRIDGE_STRUCTURE_VALUES = ("yes", "viaduct", "cantilever", "covered", "suspension_bridge", "boardwalk")
+TUNNEL_STRUCTURE_VALUES = ("yes", "avalanche_protector")
+IS_BRIDGE_SQL = tag_absent_is_false_sql(f"{BRIDGE_NORMALIZED_SQL} IN ({sql_literals(BRIDGE_STRUCTURE_VALUES)})")
+IS_TUNNEL_SQL = tag_absent_is_false_sql(f"{TUNNEL_NORMALIZED_SQL} IN ({sql_literals(TUNNEL_STRUCTURE_VALUES)})")
 
 
 def _cycleway_tags_include_sql(*values: str) -> str:
@@ -136,45 +102,21 @@ def cycleway_has_value_sql(*values: str) -> str:
     return tag_absent_is_false_sql(_cycleway_tags_include_sql(*values))
 
 
+#: 自転車のためのタグの値。条件の式と説明の文の両方がここから作る。
+CYCLEWAY_HIGHWAY = "cycleway"
+CYCLEWAY_TRACK_VALUES = ("track",)
+CYCLEWAY_LANE_VALUES = ("lane",)
+CYCLEWAY_SHARED_VALUES = ("share_busway", "shared_lane")
+_SHARED_PATH_HIGHWAYS = ("footway", "path")
+_SHARED_PATH_BICYCLE = ("yes", "designated")
+
 #: 車道と分けられた歩行者道のうち、自転車も通ってよい道（河川敷のサイクリングロード等）。
-SHARED_PEDESTRIAN_PATH_SQL = f"{HIGHWAY_SQL} IN ('footway', 'path') AND {BICYCLE_NORMALIZED_SQL} IN ('yes', 'designated')"
-
-
-class CyclewayClass(NamedTuple):
-    """自転車の走る場所の区分の1つ。`condition`は道がこの区分に当たるかのSQL真偽式。"""
-
-    key: str
-    label: str
-    #: 地図の凡例の行が開く説明。
-    description: str
-    condition: str
-
-
-#: 並びが判定の順（1本の道が複数に当たれば先の区分）で、地図の凡例の並び。車道から分けられた度合いの強い順。
-CYCLEWAY_CLASSES: tuple[CyclewayClass, ...] = (
-    CyclewayClass(
-        "separated",
-        "自転車道",
-        "車道から分けられた、自転車の通る道[OSM の highway=cycleway・cycleway=track]。",
-        f"{HIGHWAY_SQL} = 'cycleway' OR {_cycleway_tags_include_sql('track')}",
-    ),
-    CyclewayClass(
-        "lane",
-        "自転車レーン",
-        "車道の上に線で区切った、自転車の通る帯[OSM の cycleway=lane]。",
-        _cycleway_tags_include_sql("lane"),
-    ),
-    CyclewayClass(
-        "shared",
-        "共用の道",
-        "バス・車と共用の帯か、自転車も通ってよい歩道・遊歩道"
-        "[OSM の cycleway=share_busway・shared_lane、highway=footway・path かつ bicycle=yes・designated]。",
-        f"{_cycleway_tags_include_sql('share_busway', 'shared_lane')} OR ({SHARED_PEDESTRIAN_PATH_SQL})",
-    ),
+SHARED_PEDESTRIAN_PATH_SQL = (
+    f"{HIGHWAY_SQL} IN ({sql_literals(_SHARED_PATH_HIGHWAYS)}) "
+    f"AND {BICYCLE_NORMALIZED_SQL} IN ({sql_literals(_SHARED_PATH_BICYCLE)})"
 )
-
-#: どの区分にも当たらない道（自転車のための設けが無い道）はNULL。
-CYCLEWAY_CLASS_SQL = "CASE " + " ".join(f"WHEN {c.condition} THEN '{c.key}'" for c in CYCLEWAY_CLASSES) + " END"
+#: `SHARED_PEDESTRIAN_PATH_SQL`の条件を説明の文で指す書き方。
+SHARED_PEDESTRIAN_PATH_NOTE = f"{tag_note('highway', *_SHARED_PATH_HIGHWAYS)} かつ {tag_note('bicycle', *_SHARED_PATH_BICYCLE)}"
 
 
 def per_km_value_sql(count: str) -> str:
@@ -191,6 +133,16 @@ def landcover_value_sql(key: str) -> str:
     """区間単位の土地被覆。道1本の値へは落とさない——区間の値は全区間ぶん計算されており、
     落とす先は「同じ道の平均」でしかない（区間ごとの違いを消す）。"""
     return f"em.lc_{key}"
+
+
+#: 区間ごとの値を読む別名（上の表の`re`・`em`）の列の参照。
+_SEGMENT_VALUE_REFERENCE = re.compile(r"(?<![\w.])(?:re|em)\.\w")
+
+
+def reads_segment_values(expression: str) -> bool:
+    """式が区間ごとの値（別名`re`・`em`の列）を読むか。読む材料は、道1本を1つのフィーチャーにする読み出しでは
+    道1本の値で読まれるが、同じ道でも区間ごとに値が違いうる。"""
+    return _SEGMENT_VALUE_REFERENCE.search(expression) is not None
 
 
 def length_weighted_mean_sql(value: str) -> str:

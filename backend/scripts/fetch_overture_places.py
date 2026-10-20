@@ -3,9 +3,8 @@ r"""Overture Maps の地点（places）を配布元から手元へ写す（取�
 取込はローカルのファイルを読むだけにする（`source_adapters/overture_places.py`）。
 
 配布は版ごとの GeoParquet で、全世界ぶんを AWS S3 に置いている。DuckDB で取込の範囲（`target.bbox`）の地点だけを
-読み、列は全部のまま1つの Parquet へ書く（公式の文書「DuckDB」の読み方。S3 は認証なしで読める）。手順は
-`app.batch.common.fetch_verified`と同じく、読めるものは取り直さず、一時ファイルへ書いてから所定の名前へ移し、
-書き終えたら開いてみる。
+読み、列は全部のまま1つの Parquet へ書く（公式の文書「DuckDB」の読み方。S3 は認証なしで読める）。置く手順
+（読めるものは取り直さない・一時ファイル経由・書き終えたら開いてみる）は`app.batch.common.place_verified`が持つ。
 
 どの版を要るかはプロファイルが持つ（`overture_places`ソースの`rows.release`）。
 
@@ -17,16 +16,16 @@ r"""Overture Maps の地点（places）を配布元から手元へ写す（取�
 import argparse
 import logging
 import sys
-import time
 from pathlib import Path
 
 import duckdb
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import FETCH_PART_SUFFIX, format_duration  # noqa: E402
-from app.batch.source_adapters.overture_places import places_path  # noqa: E402
-from app.batch.source_profile import load_source_profile  # noqa: E402
+from app.batch.common import fetched_all, place_verified
+from app.batch.fetch_cli import run_profile_fetch_cli
+from app.batch.source_adapters.overture_places import places_path
+from app.batch.source_profile import SourceProfile, SourceSpec
 
 logger = logging.getLogger("ridecompass.fetch_overture_places")
 
@@ -46,45 +45,32 @@ def _readable(path: Path) -> bool:
 
 
 def fetch(release: str, bbox: tuple[float, float, float, float]) -> bool:
-    destination = places_path(release)
-    if destination.exists() and _readable(destination):
-        logger.info("既にある %s", destination)
-        return True
+    """範囲の地点を書く。範囲に地点が無ければ、書いたものが読めない（1行以上ない）として退ける。"""
     url = PLACES_URL_TEMPLATE.format(release=release)
-    logger.info("取りに行く %s", url)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_name(destination.name + FETCH_PART_SUFFIX)
     min_lat, min_lon, max_lat, max_lon = bbox
-    started = time.perf_counter()
-    with duckdb.connect() as conn:
-        conn.execute(f"SET s3_region = '{_S3_REGION}'")
-        # 点の`bbox`の最小は点そのもの。`hive_partitioning`は置き場のパスの`theme=`・`type=`を列にする。
-        conn.execute(
-            "COPY (SELECT * FROM read_parquet(?, hive_partitioning = true)"
-            " WHERE bbox.xmin BETWEEN ? AND ? AND bbox.ymin BETWEEN ? AND ?)"
-            f" TO '{temporary}' (FORMAT parquet)",
-            [url, min_lon, max_lon, min_lat, max_lat])
-    if not _readable(temporary):
-        temporary.unlink(missing_ok=True)
-        logger.error("取り出した地点を開けない（範囲に地点が無いか、書き込みが壊れた）: %s", url)
-        return False
-    temporary.replace(destination)
-    logger.info("置いた %s / %s", destination, format_duration(time.perf_counter() - started))
-    return True
+
+    def write(temporary: Path) -> bool:
+        with duckdb.connect() as conn:
+            conn.execute(f"SET s3_region = '{_S3_REGION}'")
+            # 点の`bbox`の最小は点そのもの。`hive_partitioning`は置き場のパスの`theme=`・`type=`を列にする。
+            conn.execute(
+                "COPY (SELECT * FROM read_parquet(?, hive_partitioning = true)"
+                " WHERE bbox.xmin BETWEEN ? AND ? AND bbox.ymin BETWEEN ? AND ?)"
+                f" TO '{temporary}' (FORMAT parquet)",
+                [url, min_lon, max_lon, min_lat, max_lat])
+        return True
+
+    return place_verified(places_path(release), _readable, write, source=url, logger=logger)
+
+
+def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
+    releases = sorted({spec.rows.release for spec in specs})
+    return fetched_all(fetch(release, profile.target.bbox) for release in releases)
 
 
 def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     parser = argparse.ArgumentParser(description="Overture Maps の地点を手元へ写す")
-    parser.add_argument("--profile", default=None, type=Path)
-    args = parser.parse_args()
-
-    profile = load_source_profile(args.profile)
-    releases = sorted({spec.rows.release for spec in profile.sources if spec.adapter == "overture_places"})
-    if not releases:
-        logger.info("プロファイルに Overture の地点の指定がありません")
-        return 0
-    return 0 if all(fetch(release, profile.target.bbox) for release in releases) else 1
+    return run_profile_fetch_cli(parser, "overture_places", _fetch_specs, logger=logger)
 
 
 if __name__ == "__main__":

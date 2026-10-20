@@ -8,6 +8,7 @@ import {
   clickMap,
   defaultAxisCatalogFixture,
   doneJobFixture,
+  generateInMobileSheet,
   openMobileSheet,
   routeGenerateResponseFixture,
   runGeneration,
@@ -17,23 +18,25 @@ import {
 // 土台の上では、画面がARIAで宣言している開閉の部品（`aria-expanded`・`role="tab"`）のうち、最前面で
 // 押せるものを押せる限り辿る。どの状態へも1回だけ入る: 幅 × 段階ごとに1枚のページで辿り、開いたものは閉じて戻す。
 
+// 各レイアウトのいちばん狭い幅に置く。モバイルは320px（WCAG 2.1 達成基準 1.4.10 のリフローの幅で、小さいiPhoneを
+// 画面表示の拡大にしたときの幅）。高さは縮めない——縮めると画面の外へ出た部品を押せず、辿れる状態が減る。
 export const WIDTHS = {
-  mobile: MOBILE_VIEWPORT,
-  desktop: { width: 1280, height: 800 },
+  mobile: { ...MOBILE_VIEWPORT, width: 320 },
+  desktop: { width: 641, height: 800 },
 } as const;
 export type WidthName = keyof typeof WIDTHS;
 
 /** アプリの段階。ルートを生成する前と後、区間を乗り換えた後で、画面に出る部品の集合が入れ替わる。 */
 export const PHASES = ["生成前", "生成後", "乗り換え後"] as const;
 
-/** 幅の分岐はCSSのブレークポイント1つだけで、WIDTHSはその両側に1つずつ置く。 */
+/** 幅の分岐はCSSのブレークポイント1つだけで、デスクトップの幅はその1px外側（デスクトップのいちばん狭い幅）に置く。 */
 export async function assertWidthsStraddleBreakpoint(page: Page): Promise<void> {
   const breakpoint = await page.evaluate(() =>
     Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--breakpoint-mobile")),
   );
   expect(breakpoint, "--breakpoint-mobile が読めない").toBeGreaterThan(0);
   expect(WIDTHS.mobile.width).toBeLessThanOrEqual(breakpoint);
-  expect(WIDTHS.desktop.width).toBeGreaterThan(breakpoint);
+  expect(WIDTHS.desktop.width).toBe(breakpoint + 1);
 }
 
 interface Opener {
@@ -271,10 +274,9 @@ export async function openApp(page: Page): Promise<void> {
 /** ルートを1回生成し、基本の状態へ戻して落ち着くまで待つ。 */
 export async function generate(page: Page, width: WidthName): Promise<void> {
   if (width === "mobile") {
-    const sheet = await openMobileSheet(page, "ルート設定");
-    await runGeneration(sheet);
-    await page.getByRole("button", { name: "ルート設定", exact: true }).click();
-    await expect(sheet).toBeHidden();
+    const outcome = await generateInMobileSheet(page, await openMobileSheet(page, "ルート設定"));
+    await page.getByRole("button", { name: "ルート結果", exact: true }).click();
+    await expect(outcome).toBeHidden();
   } else {
     await runGeneration(page);
   }
@@ -291,14 +293,20 @@ const SPLICE_PLACES: Places = {
   D: [139.7466, 35.7622],
 };
 
+/** 走査の軸カタログが持つ重みのある軸の数。公開の軸が増えると見込む最大の数で、軸が並ぶ部品の溢れをこの数で見る。 */
+const SCAN_WEIGHTED_AXES = 25;
+
 /**
- * 走査の軸カタログ。アプリを開く前に入れる。本番と同じく重みのある軸を3つ持つ（重みのある軸が2つ以上のときだけ
+ * 走査の軸カタログ。アプリを開く前に入れる。重みのある軸を`SCAN_WEIGHTED_AXES`本持つ（重みのある軸が2つ以上のときだけ
  * 出る部品があり、既定の1軸では走査に入らない）。乗り換えの入口が出るように、区間を割る下限の較正値を持つ。
  */
 export async function installScanMocks(page: Page): Promise<void> {
   const catalog = axisCatalogFixture([
     ...defaultAxisCatalogFixture().axes,
-    ...["first", "second", "third"].map((axisId) => ({ ...catalogEntry({ axis_id: axisId }), default_weight: 1 / 3 })),
+    ...Array.from({ length: SCAN_WEIGHTED_AXES }, (_, i) => ({
+      ...catalogEntry({ axis_id: `axis-${i + 1}` }),
+      default_weight: 1 / SCAN_WEIGHTED_AXES,
+    })),
   ]);
   catalog.client_tuning = { "splice.min_stretch_km": 0 };
   await page.route(`${API_BASE}/api/axis-catalog*`, (route) => route.fulfill({ json: catalog }));
@@ -340,32 +348,30 @@ export async function splice(page: Page, width: WidthName): Promise<void> {
       ...routeThrough(SPLICE_PLACES, ["S", "N1", "N2", "D"]),
       id: "route-1",
       kind: "destination",
-      spliceable: true,
       distance_km: 3.1,
     }),
     makeRouteCandidate({
       ...routeThrough(SPLICE_PLACES, ["S", "N1", "VIA", "N2", "D"]),
       id: "route-2",
       kind: "destination",
-      spliceable: true,
       distance_km: 3.6,
     }),
   ];
   await page.route(`${API_BASE}/api/routes/generate/*`, (route) => route.fulfill({ json: doneJobFixture(result) }));
-  const scope = width === "mobile" ? await openMobileSheet(page, "ルート設定") : page;
+  const settings = width === "mobile" ? await openMobileSheet(page, "ルート設定") : null;
+  const scope = settings ?? page;
+  await scope.getByRole("button", { name: "周回", pressed: true }).click();
   await scope.getByRole("button", { name: "目的地: 未設定", exact: true }).click();
-  await scope.getByRole("button", { name: "目的地を地図で選ぶ" }).click();
-  // スマホ幅は、シートを閉じると目的地の指定が外れるので、開いたまま見えている地図を押す。
+  // スマホ幅は、シートを閉じると地図で地点を置けなくなるので、開いたまま見えている地図を押す。
   await clickVisible(page, SPLICE_PLACES.D);
-  await expect(scope.getByRole("button", { name: "目的地を地図で置き直す" })).toBeVisible();
-  await runGeneration(scope);
-  if (width === "mobile") {
-    await page.getByRole("button", { name: "ルート設定", exact: true }).click();
-    const sheet = await openMobileSheet(page, "ルート結果");
+  await expect(scope.getByRole("button", { name: "目的地を消す" })).toBeEnabled();
+  if (settings) {
+    const sheet = await generateInMobileSheet(page, settings);
     await sheet.getByRole("button", { name: "ルートを合成" }).first().click();
     await page.getByRole("button", { name: "ルート結果", exact: true }).click();
     await expect(sheet).toBeHidden();
   } else {
+    await runGeneration(page);
     await page.getByRole("button", { name: "ルートを合成" }).first().click();
   }
   await settle(page);

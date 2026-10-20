@@ -85,6 +85,8 @@ class JmaElement:
     forecast_minutes: int | None = None
 
     def __post_init__(self) -> None:
+        if not self.time_files:
+            raise ValueError("時刻一覧のファイルが無いと、その要素のコマを取りに行けない")
         # ずらし方は画面の読み方だけが持ち、プリウォーム（タイルだけを温める）の読み方`read_target_times`は持たない。
         if self.tile is not None and self.data_delay_minutes:
             raise ValueError("タイルで配る要素に配信の遅れを宣言するなら、プリウォームの読み方にも同じずらしが要る")
@@ -206,11 +208,12 @@ def _read_latest_full_run(frames: list[JmaFrame]) -> list[JmaFrame]:
     return sorted(by_validtime.values(), key=lambda frame: frame.validtime)
 
 
-_DATA_ROOT = "bosai/jmatile/data"
+#: 配信元のタイルと時刻一覧の根。地図に重ねない要素（推計気象分布）も同じ根の下にある。
+JMA_DATA_ROOT = "bosai/jmatile/data"
 #: 時刻一覧の置き場。
-_TARGET_TIMES_PATH = _DATA_ROOT + "/{group}/{file}"
+_TARGET_TIMES_PATH = JMA_DATA_ROOT + "/{group}/{file}"
 #: 配信要素の1コマの置き場。この下にタイル（地図の`{z}/{x}/{y}`）か、タイルで配らない要素の地物（GeoJSON）がある。
-_FRAME_PATH = _DATA_ROOT + "/{group}/{basetime}/{member}/{validtime}/surf/{element}"
+_FRAME_PATH = JMA_DATA_ROOT + "/{group}/{basetime}/{member}/{validtime}/surf/{element}"
 _TILE_FILE = "{z}/{x}/{y}.{extension}"
 _FEATURES_FILE = "data.geojson?id={element}"
 #: テンプレートの埋める所（`{名前}`）。画面も同じ書き方で埋める。

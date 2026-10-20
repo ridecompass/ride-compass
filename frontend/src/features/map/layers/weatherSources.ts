@@ -12,8 +12,9 @@ import {
   type DynamicWeatherLayerId,
 } from "@/features/map/layers/dynamicWeather";
 import { parseValidtime, type JmaDelivery, type JmaFrame } from "@/features/map/layers/jmaDelivery";
+import { MINUTE_MS } from "@/lib/duration";
 import { parseJstLocalValue } from "@/lib/time";
-import type { WindGridPoint } from "@/types/weather";
+import type { MsmGridForecast } from "@/types/weather";
 
 type DeclaredElement = (typeof mapDisplay.weatherElements)[number];
 
@@ -23,9 +24,14 @@ export type FrameRule = DeclaredElement["frameRule"];
 /** 自前のMSM格子から描く段が読む値。 */
 export type GridValue = NonNullable<DeclaredElement["gridValue"]>;
 
-/** 時刻の段1つ。配信元から取る段と、自前の格子から描く段がある。 */
-type WeatherStage =
-  { origin: "jma"; kind: DeclaredElement["kind"]; delivery: JmaDelivery } | { origin: "grid"; value: GridValue };
+/** 配信元から取る時刻の段。 */
+export type JmaStage = { origin: "jma"; kind: DeclaredElement["kind"]; delivery: JmaDelivery };
+
+/** MSMの格子点から描く時刻の段。 */
+export type GridStage = { origin: "grid"; value: GridValue };
+
+/** 時刻の段1つ。 */
+type WeatherStage = JmaStage | GridStage;
 
 /** 名前付きソース1つ。同じ名前を名乗る要素の段を、宣言の順（近い時刻から）に持つ。 */
 export interface WeatherSource {
@@ -40,7 +46,7 @@ function stagesOf(element: DeclaredElement): WeatherStage[] {
   if (element.jmaElements.length > 0) {
     return element.jmaElements.map((delivery) => ({ origin: "jma", kind: element.kind, delivery }));
   }
-  // 配信元から取らない要素は必ず読む格子の値を持つ（backendのtest_map_display.pyが全要素で確かめる）。
+  // 配信元から取らない要素は必ず読む格子の値を持つ（`backend/app/domain/weather_elements.py: check_weather_elements`が宣言の読み込みで断る）。
   return [{ origin: "grid", value: element.gridValue! }];
 }
 
@@ -67,31 +73,28 @@ function buildWeatherSources(): readonly WeatherSource[] {
 /** 名前付きソースの一覧（源泉の宣言の順）。 */
 export const WEATHER_SOURCES: readonly WeatherSource[] = buildWeatherSources();
 
-/** 自前の格子を読む段を持つソースか。 */
+/** MSMの格子点を読む段を持つソースか。 */
 export function readsGrid(source: WeatherSource): boolean {
   return source.stages.some((stage) => stage.origin === "grid");
 }
 
-/** 段のコマ。配信元の段は時刻一覧から読んだコマ、格子の段は格子の時刻の値
- * （描くときの格子はズーム依存の詳細格子になりうるため、コマを作った格子の点そのものは指さない。
- * `windLayer.ts: gridAtTime`）。 */
-export type StageFrameRef = { stage: number; frame: JmaFrame } | { stage: number; time: string };
+/** 段のコマ。段そのものと、配信元の段なら時刻一覧から読んだコマ、格子の段なら格子の時刻の値。 */
+export type StageFrameRef = (JmaStage & { frame: JmaFrame }) | (GridStage & { time: string });
 
 /** 配信元の段のコマを、共有タイムラインのコマにする。 */
-export function jmaStageFrames(stage: number, frames: readonly JmaFrame[]): DynamicWeatherFrame<StageFrameRef>[] {
-  return frames.map((frame) => ({ time: parseValidtime(frame.validtime), ref: { stage, frame } }));
+export function jmaStageFrames(stage: JmaStage, frames: readonly JmaFrame[]): DynamicWeatherFrame<StageFrameRef>[] {
+  return frames.map((frame) => ({ time: parseValidtime(frame.validtime), ref: { ...stage, frame } }));
 }
 
-/** 格子の段のコマ。1回の取得の時刻の列は全点で共通なので、先頭の点（最後に届いた応答の点）だけを見る。
- * 格子の時刻は日本時間の壁時計の値。`now`が属する1時間より前のコマは出さない（格子は取ってから時間が経つと先頭が
- * 過去になる）。「属する1時間」は最も近い時刻ではなく`now`以下で最も新しい時刻——最も近い時刻だと、正時を少し
- * 過ぎただけで今の1時間が消える。 */
+/** 格子の段のコマ。格子の時刻は日本時間の壁時計の値。`now`が属する1時間より前のコマは出さない（格子は取ってから
+ * 時間が経つと先頭が過去になる）。「属する1時間」は最も近い時刻ではなく`now`以下で最も新しい時刻——最も近い時刻だと、
+ * 正時を少し過ぎただけで今の1時間が消える。 */
 export function gridStageFrames(
-  stage: number,
-  grid: readonly WindGridPoint[],
+  stage: GridStage,
+  grid: MsmGridForecast | null,
   now: Date,
 ): DynamicWeatherFrame<StageFrameRef>[] {
-  const frames = (grid[0]?.times ?? []).map((time) => ({ time: parseJstLocalValue(time), ref: { stage, time } }));
+  const frames = (grid?.times ?? []).map((time) => ({ time: parseJstLocalValue(time), ref: { ...stage, time } }));
   const current = frames.findLastIndex((frame) => frame.time.getTime() <= now.getTime());
   return frames.slice(Math.max(current, 0));
 }
@@ -118,8 +121,6 @@ export function sourceTimeline(
   }
   return timeline;
 }
-
-const MINUTE_MS = 60 * 1000;
 
 /** 選んだ時刻`at`に描くコマ。描かないならundefined。 */
 export function selectFrame<T>(

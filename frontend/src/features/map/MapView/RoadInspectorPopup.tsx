@@ -2,20 +2,21 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import AxisContributionBar, { hasContribution } from "@/components/AxisContributionBar/AxisContributionBar";
+import AxisContributionBar, { hasAnyContribution } from "@/components/AxisContributionBar/AxisContributionBar";
 import AxisDetail from "@/components/AxisContributionBar/AxisDetail";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import { isDebugEnabled } from "@/lib/debugLog";
 import { getQueryClient } from "@/lib/queryClient";
 import { fetchAxisInspector, type AxisInspectorConditions, type AxisInspectorResult } from "@/features/map/regionApi";
 import type { RoutePreferenceWeights } from "@/types/route";
-import { LANDCOVER_CLASSES } from "@/features/map/layers/landcoverClasses";
+import { LANDCOVER_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { PRIMARY_ATTRIBUTE_LABELS } from "@/features/map/layers/primaryAttributes";
 import { roadDisplayName, roadFactRows, roadFeatureKey, roadWayId, type RoadSurfacePopupProperties } from "./roadFacts";
 import { Button } from "@/components/ui/Button/Button";
+import { InspectRoadIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
-import { formatDifficulty } from "@/lib/mapDisplay/valueScale";
+import { formatDifficultyOutOfScale } from "@/lib/mapDisplay/valueScale";
 
 interface RoadInspectorPopupProps {
   properties: RoadSurfacePopupProperties;
@@ -55,11 +56,11 @@ export default function RoadInspectorPopup({
       queryKey: ["axis-inspector", wayId, featureKey, JSON.stringify(pinned?.conditions ?? conditions), weightsKey],
       // 取りに行くのは押したあと（`pinned`がある間）だけ。
       queryFn: async () => {
-        const value = await fetchAxisInspector(wayId!, featureKey, pinned!.conditions, routePreference);
+        const value = await fetchAxisInspector(wayId!, featureKey!, pinned!.conditions, routePreference);
         if (value === null) throw new Error("評価が返りませんでした");
         return value;
       },
-      enabled: pinned !== null && wayId != null,
+      enabled: pinned !== null && wayId != null && featureKey != null,
       // 同じ道を同じ条件・重みで開き直したときは、前に取った評価を出す（押すたびに引くとレート制限に当たる）。
       staleTime: Infinity,
     },
@@ -72,59 +73,101 @@ export default function RoadInspectorPopup({
     else setPressed({ weightsKey, conditions });
   };
 
+  return (
+    // 高さに上限を付け、あふれたら中でスクロールする——地図の上の枠は、中身が伸びても画面の外へ出てはいけない。
+    <div className="max-h-[min(22rem,45vh)] max-w-68 overflow-y-auto text-[length:var(--font-size-md)] leading-[1.4]">
+      {name !== null && <div className="mb-1 font-semibold">{name}</div>}
+      {wayId != null && featureKey != null && result === null && (
+        <Button
+          size="panelIcon"
+          className="disabled:cursor-progress"
+          onClick={load}
+          disabled={inspector.isFetching}
+          aria-busy={inspector.isFetching}
+          aria-label="この道の評価を見る"
+          usage="この道を、いまの条件と重みで評価した値を取りに行きます。"
+        >
+          <InspectRoadIcon />
+        </Button>
+      )}
+      {inspector.isError && <p className={textVariants({ variant: "hint" })}>評価を取得できませんでした。</p>}
+      {result !== null &&
+        FEATURES.map((feature) => (
+          <FeatureValues
+            key={feature.key}
+            feature={feature}
+            values={result[feature.key]}
+            axes={axes}
+            axisColors={axisColors}
+          />
+        ))}
+      <div className="mt-1 grid gap-0.5 border-t border-[var(--color-border)] pt-1">
+        <RoadAttributeRows properties={properties} result={result} />
+      </div>
+      {isDebugEnabled() && wayId != null && <p className={textVariants({ variant: "hint" })}>OSM way id: {wayId}</p>}
+    </div>
+  );
+}
+
+type InspectorValues = AxisInspectorResult["way"];
+
+/** 窓に並べるフィーチャー（応答の欄）と、その値をどの範囲の値として見せるか。押した区間は寄せた地図の色、道全体は
+ * 引いた地図の色と同じ値なので、どちらの値かを見出しと文で名指す。 */
+const FEATURES = [
+  { key: "segment", heading: "押した区間", subject: "この区間" },
+  { key: "way", heading: "この道全体", subject: "この道全体" },
+] as const satisfies readonly { key: keyof AxisInspectorResult; heading: string; subject: string }[];
+
+/** 1つのフィーチャーの評価: 軸ごとの効き方・合成・周囲の土地被覆。 */
+function FeatureValues({
+  feature,
+  values,
+  axes,
+  axisColors,
+}: {
+  feature: (typeof FEATURES)[number];
+  values: InspectorValues;
+  axes: readonly CatalogAxis[];
+  axisColors: Record<string, string>;
+}) {
   // 寄与度はbackendが返す（軸ごとの重み付き寄与、合計が合成スコアと一致する）。
   // フロントで重みを掛け直さない——ルート結果側と同じ規約。
   const contributions: Record<string, number> = {};
-  for (const axis of result?.axes ?? []) {
+  for (const axis of values.axes) {
     if (axis.contribution != null) contributions[axis.axis_id] = axis.contribution;
   }
 
   // 合成に使えた軸の重みの割合（%）。出すのと同じ丸めで100%に届かないときだけ、一部の軸だけの値だと添える。
   const coveredWeightPercent =
-    result?.composite_difficulty != null ? Math.round(result.composite_difficulty.covered_weight_fraction * 100) : null;
+    values.composite_difficulty != null ? Math.round(values.composite_difficulty.covered_weight_fraction * 100) : null;
 
   return (
-    // 高さに上限を付け、あふれたら中でスクロールする——地図の上の枠は、中身が伸びても画面の外へ出てはいけない。
-    <div className="max-h-[min(22rem,45vh)] max-w-68 overflow-y-auto text-[length:var(--font-size-md)] leading-[1.4]">
-      {name !== null && <div className="mb-1 font-semibold">{name}</div>}
-      {wayId != null && result === null && (
-        <Button size="sm" className="disabled:cursor-progress" onClick={load} disabled={inspector.isFetching}>
-          {inspector.isFetching ? "評価を取得中…" : "この道の評価を見る"}
-        </Button>
+    <section aria-label={feature.heading} className="mt-1 grid gap-1">
+      <h3 className={cn(textVariants({ variant: "label" }), "m-0")}>{feature.heading}</h3>
+      {hasAnyContribution(axes, contributions) ? (
+        <AxisContributionBar
+          axes={axes}
+          contributions={contributions}
+          axisColors={axisColors}
+          renderDetail={(axis) => {
+            const found = values.axes.find((a) => a.axis_id === axis.axisId);
+            if (found === undefined || found.difficulty === null) return null;
+            return <AxisDetail axis={axis} difficulty={found.difficulty} />;
+          }}
+        />
+      ) : (
+        <p className={textVariants({ variant: "hint" })}>{`${feature.subject}で値を出せる評価軸がありません。`}</p>
       )}
-      {inspector.isError && <p className={textVariants({ variant: "hint" })}>評価を取得できませんでした。</p>}
-      {result !== null && (
-        <div className="grid gap-1">
-          {axes.some((axis) => hasContribution(contributions, axis.axisId)) ? (
-            <AxisContributionBar
-              axes={axes}
-              contributions={contributions}
-              axisColors={axisColors}
-              renderDetail={(axis) => {
-                const found = result.axes.find((a) => a.axis_id === axis.axisId);
-                if (found === undefined || found.difficulty === null) return null;
-                return <AxisDetail axis={axis} difficulty={found.difficulty} />;
-              }}
-            />
-          ) : (
-            <p className={textVariants({ variant: "hint" })}>この道で値を出せる評価軸がありません。</p>
-          )}
-          {result.composite_difficulty !== null && (
-            <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
-              {`この道だけで見た難易度: ${formatDifficulty(result.composite_difficulty.value)}/100`}
-              {coveredWeightPercent !== null && coveredWeightPercent < 100
-                ? `[重みの約${coveredWeightPercent}%ぶんの評価軸だけ。残りの評価軸は、この道とこの走る条件では値が出せません]`
-                : ""}
-            </p>
-          )}
-        </div>
+      {values.composite_difficulty !== null && (
+        <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
+          {`${feature.subject}で見た難易度: ${formatDifficultyOutOfScale(values.composite_difficulty.value)}`}
+          {coveredWeightPercent !== null && coveredWeightPercent < 100
+            ? `[重みの約${coveredWeightPercent}%ぶんの評価軸だけ。残りの評価軸は、${feature.subject}とこの走る条件では値が出せません]`
+            : ""}
+        </p>
       )}
-      <div className="mt-1 grid gap-0.5 border-t border-[var(--color-border)] pt-1">
-        <RoadAttributeRows properties={properties} result={result} />
-        {result !== null && <RoadLandcoverRows result={result} />}
-      </div>
-      {isDebugEnabled() && wayId != null && <p className={textVariants({ variant: "hint" })}>OSM way id: {wayId}</p>}
-    </div>
+      <RoadLandcoverRows landcover={values.landcover} />
+    </section>
   );
 }
 
@@ -145,9 +188,8 @@ function FactList({ rows }: { rows: readonly { label: string; value: string }[] 
 /** 道路の周囲100mリングの土地被覆。走行中に読むものではないため畳んでおき、閉じている
  * 間は最も多いクラスだけを見せる。クラスの割合は合計100%になるため、開いたときは割合の
  * 大きい順に並べ、0%のクラスは出さない。 */
-function RoadLandcoverRows({ result }: { result: AxisInspectorResult }) {
-  const landcover = result.landcover;
-  if (landcover === null || landcover === undefined) return null;
+function RoadLandcoverRows({ landcover }: { landcover: InspectorValues["landcover"] }) {
+  if (landcover === null) return null;
   const rows = LANDCOVER_CLASSES.map((cls) => ({
     label: cls.label,
     value: landcover[cls.percentField as keyof typeof landcover] as number,

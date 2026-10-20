@@ -45,3 +45,7 @@ next-env.d.ts
 
 # maplibre-glのWorker（ビルド前にnode_modulesから複製する）
 /public/maplibre/
+
+# 変異テスト（scripts/mutation/）の結果と、Stryker が回す間だけ作る写し
+/reports/mutation/
+/.stryker-tmp/

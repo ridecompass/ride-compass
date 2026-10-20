@@ -1,28 +1,35 @@
-# 変異テストの全部の測りと、テストの見直し。backend の app の関数の中を機械的に1か所ずつ書き換え（mutmut 3.8.0 が作る変異）、
+# 変異テストの全部の測りと、テストの見直し。backend の app の関数の中を機械的に1か所ずつ書き換え（mutmut が作る変異。版と準備は .github/actions/mutmut）、
 # 変異ごとに、その関数を通るテストを最後まで回して、どのテストが落ちたかを記録し、.claude/rules/testing.md「テストを変異テストで
 # 見直す」の候補を出す（tasks#661）。回し方と結果の読み方は .claude/skills/test-review/SKILL.md。
 #
 # - 手で起こす（gh workflow run mutation.yml、または Actions → Mutation → Run workflow）。測る版と台本は、起こすときに
-#   選んだ ref から読む（台本は backend/scripts/mutation/。台本を直すたびにこのファイルを変えずに済む）。
+#   選んだ ref から読む（台本は backend/scripts/mutation/。台本を直すたびにこのファイルを変えずに済む）。測りは入力の issue の
+#   レーンで動くので、本はその issue のほかのジョブ（担当の Pull Request の CI 等）と枠を分け合い、レーンより多い本は空くまで待つ
+#   （レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
 # - 2段で回る:
-#   1. shard（8本）: 変異と、テストの当たる関数ごとの基準（変異を入れずに同じテストを2回）を1つの無作為の並び（種を固定）に
+#   1. shard（15本）: 変異と、テストの当たる関数ごとの基準（変異を入れずに同じテストを2回）を1つの無作為の並び（種を固定）に
 #      して、行を順に配り、1本ずつ別のランナーで回す。1本の中ではテストDBを分けた4つの担い手で回す（CI の backend と同じ
 #      arm64・4コアのランナー）。回し終えたら、その本の生き残りのうち読み込みのときに呼ばれうる関数の変異（importtime.py）に、
 #      同じランナーでテスト全体を当て直す（読み込みのときに呼ばれうるかは関数ごとに決まるので、ほかの本の結果は要らない。
 #      別の段にすると、変異の生成とランナーの空き待ちがもう1回ずつ要る）。
-#   2. review（1本）: 1 を集計し（analyze.py）、見直しの候補を出す（review.py）。前の実行の見直し（成果物 mutation-review）を
-#      取ってきて比べ、2回続けて重なりの候補になったテストを消す一覧にする。表は実行の要約に出す。
+#   2. review（1本）: 1 を層に依らない表（Stryker の結果の JSON の形）にし（report.py）、その表から見直しの候補を出す
+#      （review.py）。前の実行の見直し（成果物 mutation-review）を取ってきて比べ、前回も重なりの候補だったテストに印を付ける。
+#      候補は消す一覧ではなく、1件ずつ壊れるものを書いてから決める（test-review/SKILL.md）。数の表は実行の要約に出す。
 # - 測る版の backend/scripts/mutation/ に一覧（only.txt・recheck.txt・baseline.txt）があれば、1 はその一覧だけを回し（当て直しも
 #   しない）、2 は走らない（消したあとの確かめ等。run-checks/SKILL.md「変異テストでテストの効きを測る」）。
-# - 持ち時間: 2026-10-09 の同じ形の測りで、変異は1本あたり55〜59分（基準は別に回して9分）、当て直しは1本あたり約26分だった。
-#   変異の生成と記録は1本あたり約9分（2026-10-10）。担い手は始めて stop_after 分で新しい変異を取らずに抜け、当て直しは
-#   30分で抜けて、持ち時間（180分）の前に結果を残す。
+# - 持ち時間: 2026-10-18 の測り（15本、実行 39099279906）で、1本あたり変異と基準（約1,710件）が61〜87分、当て直し（26〜42件）が
+#   21〜72分、変異の生成が約4分で、1本は1時間28分〜2時間38分。本はレーンに3本ずつ載るので3巡して、実時間は約7時間25分
+#   （review は1分未満）。担い手は始めて stop_after 分で新しい変異を取らずに抜け、当て直しは90分で抜けて、持ち時間（240分）の
+#   前に結果を残す（この測りではどちらにも当たらずに回し切った）。
 # - 成果物: 1 は mutation-<番号>・recheck-<番号>（14日）、2 は mutation-review（次の見直しが比べるので90日）。
 name: Mutation
 
 on:
   workflow_dispatch:
     inputs:
+      issue:
+        description: この測りを持つ置き場の issue の番号（同時に動かすジョブの数をその issue のレーンで数える）
+        required: true
       ref:
         description: 測る版（台本も同じ版の backend/scripts/mutation/ から読む）
         required: true
@@ -32,7 +39,7 @@ on:
         required: true
         default: "0"
       stop_after:
-        description: 1本の担い手が新しい変異を取るのをやめるまでの分（このあと当て直しに最長30分）
+        description: 1本の担い手が新しい変異を取るのをやめるまでの分（このあと当て直しに最長90分）
         required: true
         default: "120"
 
@@ -41,24 +48,41 @@ permissions:
 
 concurrency:
   group: mutation
-  cancel-in-progress: false
+  queue: max
 
 env:
-  SHARDS: 8
+  SHARDS: 15
   WORKERS: 4
   MUT_OUT: /tmp/mutation
   MUT_DB_PREFIX: mut_w
-  TEST_DATABASE_URL: postgresql+asyncpg://ridecompass:ridecompass@localhost:5432/ridecompass_test
-  DATABASE_URL: postgresql+asyncpg://ridecompass:ridecompass@localhost:5432/ridecompass_test
 
 jobs:
   shard:
+    concurrency:
+      group: orch/tasks-${{ inputs.issue }}-lane-${{ matrix.lane }}
+      queue: max
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 180
+    timeout-minutes: 240
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        # 本をレーン 1〜5 へ順に振る。1回の測りが同時に取るのは、この issue のレーンの数まで。
+        include:
+          - { shard: 0, lane: 1 }
+          - { shard: 1, lane: 2 }
+          - { shard: 2, lane: 3 }
+          - { shard: 3, lane: 4 }
+          - { shard: 4, lane: 5 }
+          - { shard: 5, lane: 1 }
+          - { shard: 6, lane: 2 }
+          - { shard: 7, lane: 3 }
+          - { shard: 8, lane: 4 }
+          - { shard: 9, lane: 5 }
+          - { shard: 10, lane: 1 }
+          - { shard: 11, lane: 2 }
+          - { shard: 12, lane: 3 }
+          - { shard: 13, lane: 4 }
+          - { shard: 14, lane: 5 }
     defaults:
       run:
         working-directory: backend
@@ -71,43 +95,25 @@ jobs:
       - id: mode
         name: 全部の測りか、一覧だけか
         run: |
-          if ls scripts/mutation/only.txt scripts/mutation/recheck.txt scripts/mutation/baseline.txt 2>/dev/null; then
-            echo "full=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "full=true" >> "$GITHUB_OUTPUT"
-          fi
+          full=$(python3 -c 'import os, sys; sys.path.insert(0, "scripts/mutation"); from _shared import LISTS; print(str(not any(map(os.path.exists, LISTS))).lower())')
+          echo "full=$full" >> "$GITHUB_OUTPUT"
       # 本番と同じ版を PostgreSQL 公式の apt リポジトリから入れる。取得が詰まると、ジョブの上限まで止まり続けた（2026-10-10 の
       # 試しで1本が37分止まった）ので、上限を付けて落とし、落ちた本だけをやり直す（test-review/SKILL.md の3）。
+      # 担い手ごとのテストDBも作る。
       - uses: ./.github/actions/postgis
         timeout-minutes: 10
-      - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: |
-            backend/requirements.txt
-            backend/requirements-batch.txt
-            backend/requirements-dev.txt
-      # mutmut は測るときだけ入れる（開発の依存には足さない）。
-      - run: pip install -r requirements-batch.txt -r requirements-dev.txt mutmut==3.8.0
-      - name: 担い手ごとのテストDB
-        run: |
-          for i in $(seq 0 $((WORKERS - 1))); do
-            sudo -u postgres createdb -O ridecompass -T ridecompass_test "${MUT_DB_PREFIX}$i"
-          done
-      - name: 変異を作り、関数ごとに通るテストを記録する
-        run: |
-          mkdir -p "$MUT_OUT"
-          cp scripts/mutation/setup.cfg setup.cfg
-          python scripts/mutation/gen.py
+          copies: ${{ env.WORKERS }}
+          copy-prefix: ${{ env.MUT_DB_PREFIX }}
+      - uses: ./.github/actions/mutmut
+        with:
+          baseline: "1"
       - name: 変異と基準を分ける
         working-directory: backend/mutants
         env:
           SHARD: ${{ matrix.shard }}
           COUNT: ${{ inputs.count }}
-          MUT_WITH_BASELINE: "1"
         run: |
-          python ../scripts/mutation/plan.py
           awk -v s="$SHARD" -v n="$SHARDS" '(NR - 1) % n == s' "$MUT_OUT/all.txt" > "$MUT_OUT/shard.txt"
           if [ "$COUNT" -gt 0 ]; then head -n "$COUNT" "$MUT_OUT/shard.txt" > "$MUT_OUT/shard.tmp" && mv "$MUT_OUT/shard.tmp" "$MUT_OUT/shard.txt"; fi
           echo "この本で回す変異と基準: $(wc -l < "$MUT_OUT/shard.txt") 件"
@@ -124,10 +130,10 @@ jobs:
           RECHECK_OUT: /tmp/recheck
         run: |
           mkdir -p "$RECHECK_OUT"
-          python -c "import json, sys; print(json.dumps([r['mutant'] for r in map(json.loads, open(sys.argv[1], encoding='utf-8')) if r['status'] == 'survived' and ':' not in r['mutant']]))"             "$MUT_OUT/results.jsonl" > "$RECHECK_OUT/survived.json"
-          python scripts/mutation/importtime.py "$RECHECK_OUT/survived.json" scripts/mutation/recheck.txt
+          recheck=$(python3 -c 'import sys; sys.path.insert(0, "scripts/mutation"); from _shared import RECHECK_LIST; print(RECHECK_LIST)')
+          python scripts/mutation/importtime.py "$MUT_OUT/results.jsonl" "$recheck"
           cd mutants
-          MUT_OUT="$RECHECK_OUT" MUT_STOP_AFTER=1800 python ../scripts/mutation/runner.py ../scripts/mutation/recheck.txt "$RECHECK_OUT/results.jsonl" "$WORKERS"
+          MUT_OUT="$RECHECK_OUT" MUT_STOP_AFTER=5400 python ../scripts/mutation/runner.py "$recheck" "$RECHECK_OUT/results.jsonl" "$WORKERS"
       - if: always() && steps.mode.outputs.full == 'true'
         uses: actions/upload-artifact@v4
         with:
@@ -153,6 +159,9 @@ jobs:
   review:
     needs: shard
     if: needs.shard.outputs.full == 'true'
+    concurrency:
+      group: orch/tasks-${{ inputs.issue }}-lane-1
+      queue: max
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     permissions:
@@ -165,38 +174,38 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref }}
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
+      - uses: ./.github/actions/python
       - uses: actions/download-artifact@v4
         with:
-          pattern: mutation-?
+          pattern: mutation-*
           path: /tmp/art
       - uses: actions/download-artifact@v4
         with:
-          pattern: recheck-?
+          pattern: recheck-*
           path: /tmp/rart
       - name: 前の実行の見直しを取る
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p /tmp/prev
+          # 一覧が成果物の ID まで返すので、ID で取る（gh run download はその実行の成果物を一覧し直してから取る）。
           prev=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=mutation-review&per_page=30" \
-            -q '[.artifacts[] | select(.expired | not) | select(.workflow_run.id != ${{ github.run_id }})][0].workflow_run.id // empty')
+            -q '[.artifacts[] | select(.expired | not) | select(.workflow_run.id != ${{ github.run_id }})][0] // empty | "\(.id) \(.workflow_run.id)"')
           if [ -n "$prev" ]; then
-            gh run download "$prev" -R "${{ github.repository }}" -n mutation-review -D /tmp/prev
-            echo "前の見直し: 実行 $prev"
+            gh api "repos/${{ github.repository }}/actions/artifacts/${prev% *}/zip" > /tmp/prev.zip
+            unzip -q /tmp/prev.zip -d /tmp/prev
+            echo "前の見直し: 実行 ${prev#* }"
           else
-            echo "前の見直しは無い（消す一覧は空になる）"
+            echo "前の見直しは無い（前回も候補だった印は付かない）"
           fi
       - id: review
         name: 集計して見直す
         run: |
           mkdir -p /tmp/review
-          python scripts/mutation/analyze.py /tmp/art /tmp/rart | tee /tmp/review/analyze.txt
-          python scripts/mutation/review.py /tmp/art /tmp/prev /tmp/review
+          mkdir -p /tmp/rart
+          python scripts/mutation/report.py /tmp/art /tmp/rart /tmp/review/report.json
+          python scripts/mutation/review.py /tmp/review/report.json /tmp/prev /tmp/review
           cat /tmp/review/summary.md >> "$GITHUB_STEP_SUMMARY"
-          cp /tmp/art/summary.json /tmp/art/pertest.json /tmp/art/survivors.json /tmp/review/
       # 変異を全部回し終えた測りの見直しだけを残す（途中で止まった測り・count で減らした試しを、次の見直しが前回として
       # 読まないように）。見直しが落ちたときも残さない。
       - if: steps.review.outputs.complete == 'true'

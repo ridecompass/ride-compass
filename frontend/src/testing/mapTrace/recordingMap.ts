@@ -29,6 +29,8 @@ export interface RecordingMap {
   /** `addSource` に渡された宣言。 */
   sourceSpec(sourceId: string): unknown;
   featureState(sourceId: string, featureId: string): Record<string, unknown> | undefined;
+  /** 地図全体の状態（`setGlobalStateProperty` で置いたもの）。 */
+  globalState(): Record<string, unknown>;
   /** ソースの今の中身（作ったときの宣言の `data`・`tiles` か、そのあと `setData`・`setTiles` で流し込んだもの）。 */
   sourceContent(sourceId: string): { data?: unknown; tiles?: readonly string[] } | undefined;
   /** スタイルを差し替えたときの状態（このアプリが足したものが消える）。 */
@@ -69,6 +71,7 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
   let sourceHandles = new Map<string, { setData: (data: unknown) => void; setTiles: (tiles: string[]) => void }>();
   const content = new Map<string, { data?: unknown; tiles?: readonly string[] }>();
   let featureStates = new Map<string, Record<string, unknown>>();
+  let globalState: Record<string, unknown> = {};
   let styleLoading = false;
 
   const record = (call: string, ...args: unknown[]) => {
@@ -109,6 +112,9 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
     // 記号の絵はブラウザのcanvasが要るため、「登録済み」を返して作らせない
     // （比べたいのはレイヤーの構成で、絵の中身ではない）。
     hasImage: () => true,
+    addImage: () => {
+      throw new Error("記号の絵は登録済みとして答えるので、足されることは無い");
+    },
 
     addSource: (id: string, spec: unknown) => {
       record("addSource", id, spec);
@@ -205,6 +211,11 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
       const entry = featureStates.get(`${target.source}:${target.id}`);
       if (entry && key) delete entry[key];
     },
+    // MapLibreは、null を置くとスタイルの宣言の既定へ戻す。このアプリのスタイルは地図全体の状態を宣言しないので null になる。
+    setGlobalStateProperty: (name: string, value: unknown) => {
+      record("setGlobalStateProperty", name, value);
+      globalState = { ...globalState, [name]: value };
+    },
   };
 
   const handle: RecordingMap = {
@@ -214,6 +225,7 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
     sources: () => [...sources.keys()],
     sourceSpec: (sourceId) => sources.get(sourceId),
     featureState: (sourceId, featureId) => featureStates.get(`${sourceId}:${featureId}`),
+    globalState: () => ({ ...globalState }),
     sourceContent: (sourceId) => content.get(sourceId),
     dropEverything: () => {
       layers = [];
@@ -221,6 +233,7 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
       sourceHandles = new Map();
       content.clear();
       featureStates = new Map();
+      globalState = {};
     },
     loadStyle: (next) => {
       styleLoading = next === undefined;

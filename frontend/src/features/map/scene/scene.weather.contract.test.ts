@@ -1,7 +1,7 @@
 // @vitest-environment node
-/** 動的気象（降水・風・災害）を地図へ伝えたとき、**最後にどうなっているか**。
+/** 動的気象（降水・災害）を地図へ伝えたとき、**最後にどうなっているか**。
  *
- * 1つのチップが複数の名前付きソースを持ち、ソースごとに描き方（ラスタ／格子の面／格子のマーク／
+ * 1つのチップが複数の名前付きソースを持ち、ソースごとに描き方（ラスタ／マーク／輪郭／
  * ベクタ）が宣言されている。中身は時刻の変化で何度も入れ替わる。
  *
  * どのレイヤーが何を描いているかは、idの綴りではなく、**何も伝えなかったときより増えて見えている
@@ -15,7 +15,7 @@ import { sceneState } from "@/testing/sceneState";
 import { buildMapScene } from "@/features/map/scene/buildScene";
 import type { DynamicWeatherGroupState } from "@/features/map/layers/dynamicWeather";
 
-type Chip = "precipitationNowcast" | "windVector" | "disaster";
+type Chip = "precipitationNowcast" | "disaster";
 
 function raster(tileUrlTemplate: string) {
   return { visible: true, payload: { kind: "rasterTile" as const, tileUrlTemplate } };
@@ -45,7 +45,6 @@ function shownByWeather(handle: RecordingMap) {
 }
 
 describe("動的気象を地図へ伝えた結果", () => {
-  // 降水の`main`はラスタと格子の面の2つの描き方を宣言している。見えるのは**いま来ている中身の描き方**だけ。
   it("中身が来ていて表示ONなら、その中身の描き方のレイヤーだけが見えている", () => {
     const { map, handle } = createRecordingMap();
 

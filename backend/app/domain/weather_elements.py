@@ -16,7 +16,7 @@ from app.domain.jma_tile_specs import (
 )
 
 #: 動的気象の描き方の種類。配信元が描いた画像（`rasterTile`）・配信元の地物（`vectorTile`）・
-#: 自前の格子の面（`gridFill`）・格子や地点の記号（`gridMark`）・配信元がGeoJSONで配る領域の輪郭線（`outline`）。
+#: MSMの格子点を中心にした升目の塗り（`gridFill`）・格子点や地点の記号（`gridMark`）・配信元がGeoJSONで配る領域の輪郭線（`outline`）。
 WeatherRenderKind = Literal["rasterTile", "vectorTile", "gridFill", "gridMark", "outline"]
 _TILE_KINDS: frozenset[str] = frozenset({"rasterTile", "vectorTile"})
 
@@ -28,7 +28,12 @@ _TILE_KINDS: frozenset[str] = frozenset({"rasterTile", "vectorTile"})
 #:   その幅の間だけ描く（予報の意味そのものが「今後N時間」のもの）。
 FrameRuleKind = Literal["nearest", "latestObservation", "current"]
 
-#: 自前のMSM格子から描く要素が読む値。
+#: MSMの予報を、現在時刻から何時間先まで読むか。runごとの予報時間（39時間、00/12UTCのrunは78時間）を超える分は
+#: 配信元のデータ終端で打ち切られる。生成物`mapDisplay`へも焼くので、環境の設定で上書きできる口を持たない
+#: （変えるときは配り直す）。
+MSM_FORECAST_HOURS = 48
+
+#: MSMの格子点から描く要素が読む値（`GET /api/weather/msm-grid`の格子点の欄）。
 GridValue = Literal["precipitation", "wind"]
 
 #: 配信元が値の段ごとに色を焼き込んで配る要素の、その段の宣言（`domain/weather_display.py`。生成物
@@ -72,7 +77,7 @@ class WeatherElement(NamedTuple):
     #: 気象庁の配信要素id（配信元のパス`.../surf/<id>/`）を、**時刻の段の順**（近い時刻から）に並べる
     #: ——1つの名前付きソースが、選んだ時刻によって別の配信要素から届くことがある。タイルで描くものは
     #: 全段が`JMA_ELEMENTS`にタイルの仕様を持ち、ソースのズーム範囲は1つなので段の間で一致する。
-    #: 自前のMSM格子から描くものは空。
+    #: MSMの格子点から描くものは空。
     jma_elements: tuple[str, ...]
     #: 画面で要素を呼ぶ名前（▶パネルで要素ごとに表示を切り替える行の名前）。同じ名前付き
     #: ソースの要素は同じ名前を持つ。
@@ -80,45 +85,60 @@ class WeatherElement(NamedTuple):
     #: 選んだ時刻に対して描くコマの規則。同じ名前付きソースの要素は同じ規則を持つ
     #: （1つのソースの時刻の段は1本の時系列につながる）。
     frame_rule: FrameRule
-    #: 自前のMSM格子から描く要素が読む値。配信元から取る要素はNone。
+    #: MSMの格子点から描く要素が読む値。配信元から取る要素はNone。
     grid_value: GridValue | None = None
     #: 地図がこの要素を塗る段。災害のチップは、同じ段で塗る要素の名前を見出しにして段を凡例に並べる。
-    #: 段を持たない要素（記号・格子の塗り・輪郭線）と、凡例を別に持つ降水の要素はNone。
+    #: 段を持たない要素（記号・輪郭線・升目の塗り）と、凡例を別に持つ降水の要素はNone。
     level_scale: LevelScale | None = None
-    #: ▶パネルの要素の行の（i）から開く説明。行を出す要素（災害のチップ）だけが持ち、同じ名前付きソースの
-    #: 要素は同じ説明を持つ。
+    #: 要素を利用者に言う文。災害のチップは▶パネルの要素の行の（i）から開き、降水のチップは凡例の行に出す。
+    #: 同じ名前付きソースの要素は同じ説明を持つ。
     description: str | None = None
 
+
+#: 線状降水帯予測を重ねる幅（分）。「今後3時間以内に大雨のおそれ」という予報なので、現在から3時間先の間だけ重ねる。
+_LINEAR_RAINBAND_WINDOW_MINUTES = 3 * 60
 
 #: 並びが同じ段（面・線・記号）の中の重なり順になる。災害は面を下に、見落としやすい線（洪水）・
 #: 点（落雷）を上に置き、大雨は土砂・浸水を統合した指標なので個別の2つより下に置く。
 WEATHER_ELEMENTS: tuple[WeatherElement, ...] = (
-    # 降水。60分先までは降水ナウキャスト、その先15時間先までは降水短時間予報を配信元のラスタで、
-    # それ以降は自前の格子を塗る。どれが届くかは選んだ時刻で決まる。
+    # 降水。60分先までは降水ナウキャスト、その先15時間先までは降水短時間予報を配信元のラスタで描き、
+    # その先はMSMの格子点の値で升目を塗る。どれが届くかは選んだ時刻で決まる。
     WeatherElement("precipitationNowcast", "main", "rasterTile", ("hrpns", "rasrf"), "降水", _NEAREST),
-    WeatherElement("precipitationNowcast", "main", "gridFill", (), "降水", _NEAREST, "precipitation"),
-    # 「今後3時間以内に大雨のおそれ」という予報なので、現在から3時間先の間だけ重ねる。
+    WeatherElement("precipitationNowcast", "main", "gridFill", (), "降水", _NEAREST, grid_value="precipitation"),
+    # 矩形に見えることも説明に書く（細かい雨域と重なると描画の不具合に見える）。
     WeatherElement(
         "precipitationNowcast",
         "linearRainband",
         "rasterTile",
         ("sjfcstmap",),
         "線状降水帯予測",
-        FrameRule("current", 3 * 60),
+        FrameRule("current", _LINEAR_RAINBAND_WINDOW_MINUTES),
+        description=(
+            f"今後{reach_text(_LINEAR_RAINBAND_WINDOW_MINUTES)}以内に大雨のおそれ"
+            f"[矩形の予測領域。現在〜{reach_text(_LINEAR_RAINBAND_WINDOW_MINUTES)}先のみ]"
+        ),
     ),
     # 今まさに追跡中の線状降水帯の雨域（実況と予測）。公式の既定の表示と同じく2つを同じ見た目で重ねる。
-    WeatherElement(
-        "precipitationNowcast", "linearRainbandArea", "outline", ("slmcs_unify",), "線状降水帯の雨域", _NEAREST
+    # 説明の文言は配信元の公式の画面の凡例に合わせる。
+    *(
+        WeatherElement(
+            "precipitationNowcast",
+            source,
+            "outline",
+            (element_id,),
+            "線状降水帯の雨域",
+            _NEAREST,
+            description=(
+                "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域"
+                f"[赤い輪郭線。実況〜{forecast_reach('slmcs_unifyfcst')}先のみ]"
+            ),
+        )
+        for source, element_id in (
+            ("linearRainbandArea", "slmcs_unify"),
+            ("linearRainbandAreaForecast", "slmcs_unifyfcst"),
+        )
     ),
-    WeatherElement(
-        "precipitationNowcast",
-        "linearRainbandAreaForecast",
-        "outline",
-        ("slmcs_unifyfcst",),
-        "線状降水帯の雨域",
-        _NEAREST,
-    ),
-    WeatherElement("windVector", "arrow", "gridMark", (), "風", _NEAREST, "wind"),
+    WeatherElement("windVector", "arrow", "gridMark", (), "風", _NEAREST, grid_value="wind"),
     # キキクルは「現在の危険度」だけを配るので、選んだ時刻によらず描く。
     WeatherElement(
         "disaster",
@@ -224,7 +244,7 @@ class WeatherDelivery(NamedTuple):
 
 
 def weather_element_deliveries(element: WeatherElement) -> list[WeatherDelivery]:
-    """配信元から取る段（近い時刻から）。自前のMSM格子から描く要素は空。
+    """配信元から取る段（近い時刻から）。MSMの格子点から描く要素は空。
 
     宣言の無い配信要素は`KeyError`。"""
     deliveries = []
@@ -258,6 +278,37 @@ def stage_first_frames(stage_frames: Sequence[Sequence[JmaFrame]]) -> list[JmaFr
         last_validtime = max([last_validtime, *(frame.validtime for frame in continuing)])
     return first_frames
 
+
+def check_weather_elements(elements: Sequence[WeatherElement]) -> None:
+    """要素の並びが画面で1つの意味に読めることを確かめ、読めなければ`ValueError`。
+
+    画面は（チップ, 名前付きソース, 描き方）ごとに1つのレイヤーを作り、名前付きソース1つを1行として呼び、
+    その時刻の段を1本の時系列へつなぎ、配信元から取るものは（チップ, 名前付きソース）から配信要素を引く。"""
+    by_source: dict[tuple[str, str], tuple[str, FrameRule, str | None]] = {}
+    layers: set[tuple[str, str, str]] = set()
+    fetched: set[tuple[str, str]] = set()
+    for element in elements:
+        name = f"{element.group}/{element.source}"
+        key = (element.group, element.source)
+        if (*key, element.kind) in layers:
+            raise ValueError(f"チップ・名前付きソース・描き方の組が重なる: {name} {element.kind}")
+        layers.add((*key, element.kind))
+        shared = (element.label, element.frame_rule, element.description)
+        if by_source.setdefault(key, shared) != shared:
+            raise ValueError(f"同じ名前付きソースの要素で、呼び名・コマの規則・説明が食い違う: {name}")
+        if bool(element.jma_elements) == (element.grid_value is not None):
+            raise ValueError(f"配信元から取る段とMSMの格子点で読む値の、ちょうど一方を持たない: {name}")
+        if element.jma_elements:
+            if key in fetched:
+                raise ValueError(f"配信元から取る要素が、チップと名前付きソースで重なる: {name}")
+            fetched.add(key)
+        weather_element_deliveries(element)
+        tile = weather_element_tile(element)
+        if element.kind == "vectorTile" and (tile is None or tile.vector_layer is None):
+            raise ValueError(f"配信元の地物で描く要素の段に、ベクタのレイヤー名が無い: {name}")
+
+
+check_weather_elements(WEATHER_ELEMENTS)
 
 #: 気象のまとまり（チップ）。要素の宣言から導く——並びは最初に現れた順。
 WEATHER_LAYER_GROUPS: tuple[str, ...] = tuple(dict.fromkeys(element.group for element in WEATHER_ELEMENTS))

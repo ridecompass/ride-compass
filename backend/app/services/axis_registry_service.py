@@ -57,7 +57,7 @@ def _loading_problem(definitions: dict[str, AxisDefinition]) -> str | None:
     """起動時の読み込みがこの軸の集合を受け入れない理由。受け入れるならNone。運用者が読む文で、軸はidで名指す。
 
     管理APIの書き込みも確定する前の状態を同じ判定（0行と`_rejected_axes`と`check_axis_set`）へ通すが、断りの文は
-    画面に出るため書き込みの側で書く（`_check_loadable_after_write`・`AxisRegistryAdminService.delete`）。
+    画面に出るため書き込みの側で書く（`check_loadable_after_write`・`AxisRegistryAdminService.delete`）。
     """
     if not definitions:
         return (
@@ -90,7 +90,7 @@ async def refresh_axis_definitions(repository: AxisDefinitionRepository) -> None
     """
     try:
         definitions = await repository.list_all()
-    except Exception as exc:  # noqa: BLE001 fail-fast用に専用の例外へラップして再送出する
+    except Exception as exc:  # fail-fast用に専用の例外へラップして再送出する
         raise AxisDefinitionSyncError(f"軸定義のDB読み込みに失敗しました error={exc!r}") from exc
     problem = _loading_problem(definitions)
     if problem is not None:
@@ -99,7 +99,7 @@ async def refresh_axis_definitions(repository: AxisDefinitionRepository) -> None
     replace_axis_definitions(definitions)
 
 
-def _check_loadable_after_write(after: dict[str, AxisDefinition], written_axis_id: str) -> None:
+def check_loadable_after_write(after: dict[str, AxisDefinition], written_axis_id: str) -> None:
     """作成・更新の後の全軸が起動時の読み込みを通るか。軸を足す・差し替える書き込みなので、0行にはならない。
 
     集合の誤り（`check_axis_set`）は、その文のまま断る。材料の重なりは後に並ぶ軸の誤りとして名指されるので、
@@ -149,7 +149,7 @@ def _checked_after_write(
     existing_definitions = _definitions_of(existing)
     check_internal_axis_not_published(definition, existing_definitions)
     after = {**existing_definitions, axis_id: definition}
-    _check_loadable_after_write(after, axis_id)
+    check_loadable_after_write(after, axis_id)
     return after
 
 
@@ -218,7 +218,7 @@ class AxisRegistryAdminService:
         await refresh_axis_definitions(self._repository)
 
     async def unpublish(self, axis_id: str) -> dict[str, AxisDefinition]:
-        """公開済み軸を下書きへ戻し、戻した後の全軸を返す。`update()`が公開済み軸を一律拒否するための逃げ道。
+        """公開済み軸を下書きへ戻し、戻した後の全軸を返す。`update()`が公開したまま書けない差（材料・重み等）を変える前に通す。
 
         **フロント側が公開軸集合の変化に合わせてroutePreferenceのキーを自己修復すること**が
         前提。それが無いと、旧設定を保持したブラウザは次のルート生成で

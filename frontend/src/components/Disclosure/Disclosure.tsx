@@ -7,8 +7,6 @@ import { cn } from "@/lib/cn";
 // 1つだけ開閉する見出しと本文（1項目だけのRadix Accordion）。各セクションは互いに独立して開閉する。項目の層は
 // display:contentsで透過させ、呼ぶ側のレイアウトに影響させない。
 interface DisclosureProps {
-  /** 全体を包む要素のid（トリガーではなく領域全体に付く）。 */
-  id?: string;
   className?: string;
   /** 見出しの行のクラス。 */
   headerClassName?: string;
@@ -26,12 +24,13 @@ interface DisclosureProps {
   onOpenChange?: (open: boolean) => void;
   /** 見出し（開閉のトリガー）の使い方の文（`Button`の`usage`と同じ）。 */
   usage?: string;
+  /** 見出しの今の状態を、名前とは別に読み上げで添える文。 */
+  description?: string;
 }
 
 const ITEM_VALUE = "content";
 
 export default function Disclosure({
-  id,
   className,
   headerClassName,
   triggerClassName,
@@ -42,6 +41,7 @@ export default function Disclosure({
   open,
   onOpenChange,
   usage,
+  description,
 }: DisclosureProps) {
   const handleValueChange = onOpenChange ? (value: string) => onOpenChange(value === ITEM_VALUE) : undefined;
 
@@ -50,6 +50,7 @@ export default function Disclosure({
       <Accordion.Trigger
         className={cn("block min-h-6 w-full cursor-pointer text-left", triggerClassName)}
         data-usage={usage}
+        aria-description={description}
       >
         {summary}
       </Accordion.Trigger>
@@ -58,7 +59,6 @@ export default function Disclosure({
 
   return (
     <Accordion.Root
-      id={id}
       type="single"
       collapsible
       className={className}

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openMobileSheet, runGeneration } from "../e2e/fixtures";
+import { generateInMobileSheet, openMobileSheet } from "../e2e/fixtures";
 import {
   branch,
   chooseLens,
@@ -34,10 +34,10 @@ test("S2 ルート生成（生成後）", async ({ page }) => {
   await settings.getByLabel("距離").fill(String(distanceKm));
   const started = Date.now();
   // 生成は探索範囲の区間の数に比例して数秒〜数十秒かかる。
-  await runGeneration(settings, { timeout: 240_000 });
+  const outcome = await generateInMobileSheet(page, settings, { timeout: 240_000 });
   console.log(`[e2e-live] 生成（${distanceKm}km） ${((Date.now() - started) / 1000).toFixed(1)}秒`);
-  await page.getByRole("button", { name: "ルート設定", exact: true }).click();
-  await expect(settings).toBeHidden();
+  await page.getByRole("button", { name: "ルート結果", exact: true }).click();
+  await expect(outcome).toBeHidden();
   await settleMap(page);
 
   // C: 候補が1件以上、エラー表示が無い。

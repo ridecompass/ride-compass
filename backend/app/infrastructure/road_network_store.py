@@ -27,7 +27,7 @@ from typing import Any
 import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.domain.attributes import EdgeMaterialArrays
+from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, EdgeMaterialArrays
 from app.domain.road_network import RoadNetwork
 from app.domain.traffic import travel_allowed
 from app.infrastructure.cache_identity import shape_digest
@@ -269,8 +269,10 @@ _NODE_COLUMNS = {
 #: `RoadNetwork`の区間の欄 → 型。
 _EDGE_DTYPES = {"edge_way_id": np.int64, "edge_segment": np.int32, "edge_forward": np.bool_, "edge_from": np.int32,
                 "edge_to": np.int32, "edge_highway": np.int16, "edge_min_lon": np.float64, "edge_min_lat": np.float64,
-                "edge_max_lon": np.float64, "edge_max_lat": np.float64}
+                "edge_max_lon": np.float64, "edge_max_lat": np.float64, "edge_start_bearing_deg": np.float64,
+                "edge_end_bearing_deg": np.float64}
 _BBOX_COLUMNS = ("min_lon", "min_lat", "max_lon", "max_lat")
+_BEARING_COLUMNS = ("start_bearing_deg", "end_bearing_deg", "reverse_start_bearing_deg", "reverse_end_bearing_deg")
 
 
 async def _read_nodes(repository: RoadGraphRepository) -> dict[str, Any]:
@@ -299,6 +301,10 @@ async def _read_directed_edges(
             (highway_vocab.setdefault(r.highway, len(highway_vocab)) for r in rows), dtype=np.int16, count=n)
         bbox = {name: np.fromiter((getattr(r, name) for r in rows), dtype=np.float64, count=n)
                 for name in _BBOX_COLUMNS}
+        # 方位は2点が同じならNULLで、NaNとして読む。
+        bearings = {name: np.fromiter((np.nan if (v := getattr(r, name)) is None else v for r in rows),
+                                      dtype=np.float64, count=n)
+                    for name in _BEARING_COLUMNS}
 
         # 区間ごとに順方向・逆方向の2行を並べ、走れない向きを落とす。
         keep = np.fromiter((ok for r in rows for ok in travel_allowed(r.direction)), dtype=bool, count=2 * n)
@@ -320,6 +326,9 @@ async def _read_directed_edges(
         parts["edge_highway"].append(highway[source])
         for name, values in bbox.items():
             parts[f"edge_{name}"].append(values[source])
+        for end in ("start", "end"):
+            parts[f"edge_{end}_bearing_deg"].append(np.where(
+                is_forward, bearings[f"{end}_bearing_deg"][source], bearings[f"reverse_{end}_bearing_deg"][source]))
 
     result: dict[str, Any] = {name: _concatenate(values, _EDGE_DTYPES[name]) for name, values in parts.items()}
     result["highway_vocab"] = tuple(sorted(highway_vocab, key=highway_vocab.__getitem__))
@@ -366,16 +375,15 @@ class MaterialColumns:
     def add(self, materials: EdgeMaterialArrays) -> None:
         """次の束を、前の束の続きの行へ詰める。"""
         if not self._arrays:
-            self._ids = {"numeric_ids": materials.numeric_ids, "categorical_ids": materials.categorical_ids,
-                         "hard_filter_ids": materials.hard_filter_ids}
+            self._ids = {"numeric_ids": materials.numeric_ids, "categorical_ids": materials.categorical_ids}
             self._vocab = [{None: 0} for _ in materials.categorical_ids]
             self._arrays["categorical_codes"] = np.zeros(
                 (self._edge_count, len(materials.categorical_ids)), dtype=np.int16)
-            for name in _MATERIAL_ARRAY_FIELDS:
+            for name in EDGE_ROW_ARRAY_FIELDS:
                 value = getattr(materials, name)
                 self._arrays[name] = np.empty((self._edge_count, *value.shape[1:]), dtype=value.dtype)
         start, stop = self._filled, self._filled + len(materials.distance_m)
-        for name in _MATERIAL_ARRAY_FIELDS:
+        for name in EDGE_ROW_ARRAY_FIELDS:
             self._arrays[name][start:stop] = getattr(materials, name)
         for column, values in enumerate(materials.categorical_columns):
             codes = self._vocab[column]
@@ -394,12 +402,6 @@ class MaterialColumns:
         }
 
 
-#: `EdgeMaterialArrays`から、そのまま行を写す配列の列（分類の材料は束ごとの語彙の番号を全体の語彙の番号へ
-#: 付け替えるので含めない）。
-_MATERIAL_ARRAY_FIELDS = (
-    "numeric_values", "hard_filter_flags", "distance_m", "bearing_deg", "mid_lat", "mid_lon",
-    "elevation_present", "elevation_gain_m", "elevation_loss_m",
-)
 
 
 def _concatenate(parts: list[np.ndarray], dtype) -> np.ndarray:

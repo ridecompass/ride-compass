@@ -10,14 +10,13 @@
 """
 
 import asyncio
-import logging
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import batch_session_factory  # noqa: E402
-from app.infrastructure import road_network_store  # noqa: E402
+from app.batch.common import batch_session_factory, configure_cli_logging
+from app.infrastructure import road_network_store
 
 
 async def run() -> int:
@@ -27,9 +26,12 @@ async def run() -> int:
 
 
 def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+    configure_cli_logging()
     return asyncio.run(run())
 
 
 if __name__ == "__main__":
+    from _stdio import use_utf8_stdio
+
+    use_utf8_stdio()
     raise SystemExit(main())

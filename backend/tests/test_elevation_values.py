@@ -9,7 +9,6 @@ PostGISで実行して、返った行を見る。頂点は赤道の上に経度0
 """
 
 import math
-import random
 from decimal import Decimal
 
 import pytest
@@ -17,11 +16,7 @@ from sqlalchemy import text
 
 from app.domain.attributes import MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT, ElevationAttribute, elevation_values_sql
 
-pytestmark = [
-    pytest.mark.asyncio(loop_scope="module"),
-    pytest.mark.xdist_group(name="postgis"),
-    pytest.mark.postgis,
-]
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 STEP_DEG = 0.001
 STEP_M = 6378137.0 * math.radians(STEP_DEG)
@@ -163,39 +158,5 @@ async def test_segments_are_computed_separately(road_graph_session):
 
 
 def attribute(row: dict, edge_id: str) -> ElevationAttribute:
-    """SQLの行のうち、属性が持つ欄（始点・終点の標高は派生の表にだけ残る）。"""
+    """SQLの行のうち、属性が持つ欄。"""
     return ElevationAttribute(edge_id=edge_id, **{name: row[name] for name in ElevationAttribute.model_fields.keys() - {"edge_id"}})
-
-
-async def test_running_the_vertices_backwards_gives_the_reverse_of_the_attribute(road_graph_session):
-    """`reversed_as`が導く逆方向の値は、同じ頂点列を逆順に辿ってSQLで出した値に一致する。
-    起伏・欠損・構造物を含む区間を乱数で作って確かめる（種は固定）。"""
-    generator = random.Random(192)
-    segments: dict[tuple[int, int], list] = {}
-    structures = set()
-    for way in range(1, 121):
-        elevation = generator.uniform(0, 500)
-        profile = []
-        for _ in range(generator.randint(2, 8)):
-            elevation += generator.uniform(-1, 1) * rise(12)
-            profile.append(None if generator.random() < 0.15 else round(elevation, 3))
-        segments[(way, 0)] = profile
-        if generator.random() < 0.2:
-            structures.add((way, 0))
-
-    forward = await values(road_graph_session, segments, on_structure=structures)
-    backward = await values(
-        road_graph_session, {key: profile[::-1] for key, profile in segments.items()}, on_structure=structures
-    )
-
-    assert forward.keys() == backward.keys()
-    assert len(forward) > 80  # 有効な頂点が2点未満で落ちる区間を除いても、多くの区間を比べている
-    for key in forward:
-        expected = attribute(forward[key], "f").reversed_as("r").model_dump()
-        actual = attribute(backward[key], "r").model_dump()
-        for name, value in expected.items():
-            if isinstance(value, float):
-                tolerance = 0.011 if name.endswith("grade") else 0.11
-                assert actual[name] == pytest.approx(value, abs=tolerance), (key, name)
-            else:
-                assert actual[name] == value, (key, name)

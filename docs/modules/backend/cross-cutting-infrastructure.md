@@ -11,19 +11,20 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | レイヤー | ファイル | 責務 |
 |---|---|---|
 | ルート | `main.py` | アプリ起動（lifespan）・ミドルウェア登録 |
-| ルート | `config.py` | 設定（`Settings`、環境変数） |
+| ルート | `config.py` | 設定（`config.py: Settings`、環境変数） |
 | ルート | `version.py` | プロセス起動時刻（デプロイ確認用） |
-| domain | `time_zone.py` | 日本標準時（`JST`）の正準定義と時刻の読み方（タイムゾーンの無い時刻はJSTとして読む`as_jst`、予報の系列の時刻＝タイムゾーンの無いJSTへ直す`as_series_time`）。時刻を扱う全モジュールがここを参照する |
-| domain | `warning_levels.py` | 警戒度バッジ4段階（`WarningBadgeLevel`）の正準定義。JMA警報・WBGT・河川氾濫予報が判定根拠は別々のまま同じ語彙を返す |
-| domain | `strict_model.py` | 全Pydanticモデルの基底（`StrictModel`）。未知のフィールドを黙って捨てず例外にする |
+| domain | `time_zone.py` | 日本標準時（`time_zone.py: JST`）の正準定義と時刻の読み方（タイムゾーンの無い時刻はJSTとして読む`time_zone.py: as_jst`、予報の系列の時刻＝タイムゾーンの無いJSTへ直す`time_zone.py: as_series_time`）と、応答へ書くタイムゾーンの無い時刻の形（`time_zone.py: jst_local_text`。画面と同じ形になることは生成物`time-expectations.json`の表を画面のテストが通して確かめる）。時刻を扱う全モジュールがここを参照する |
+| domain | `warning_levels.py` | 警戒度バッジ4段階（`warning_levels.py: WarningBadgeLevel`）の正準定義。JMA警報・WBGT・河川氾濫予報が判定根拠は別々のまま同じ語彙を返す |
+| domain | `stopwatch.py` | ログへ出す所要時間の測り方（測り始めの`stopwatch.py: start_timer`とミリ秒の整数の`stopwatch.py: elapsed_ms`）。測り始めと終わりは同じ時計で読む |
+| domain | `strict_model.py` | 全Pydanticモデルの基底（`strict_model.py: StrictModel`）。未知のフィールドを黙って捨てず例外にする |
 | api | `admin_auth.py` | 管理API共通の認可境界 |
 | api | `admin_db_errors.py` | 管理APIのDB障害を、どの口でも503で返すアプリ単位の例外の扱い（下の「DB障害として扱う例外」） |
 | api | `cache_policy.py` | 応答の`Cache-Control`（パスとポリシーの対応表・付与ミドルウェア） |
 | api | `dependencies.py`（横断的な部分のみ、他は各モジュール参照） | DI工場（公開関数は注入の口だけ） |
 | api | `finite_json_body.py` | 要求の本文のNaN・無限大を、アプリ全体の依存として経路の処理より前に422で断る（Starletteの本文の読み方はJSONの外の`NaN`・`Infinity`を通す） |
-| api | `rate_limit.py` | per-IPレート制限（`enforce_rate_limit`集約・`client_id`） |
+| api | `rate_limit.py` | per-IPレート制限（`rate_limit.py: enforce_rate_limit`集約・`rate_limit.py: client_id`） |
 | api/routers | `health.py` | `/health`・`/api/debug/stats` |
-| api/routers | `debug_admin.py` | `debug_mode`のランタイム切替・直近ログ取得 |
+| api/routers | `debug_admin.py` | `debug_admin.py: debug_mode`のランタイム切替・直近ログ取得 |
 | infrastructure | `database.py` | PostGIS接続（SQLAlchemy） |
 | infrastructure | `redis_client.py` | Redis共有クライアント |
 | infrastructure | `redis_json_cache.py` | Redisへ持つcache-asideの共通骨格（JSON・生のバイト列・Hash） |
@@ -34,27 +35,34 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | infrastructure | `response_compression.py` | 応答のgzip圧縮（対象content-typeのみ） |
 | infrastructure | `media_types.py` | 自前で作って配るタイルのメディアタイプ（MVT・PNG）。作る側・配る側・gzipの対象の判定が同じ値を読む |
 | infrastructure | `data_paths.py` | backendがディスクへ置くものの根（本番ではホストのディレクトリを載せ、コンテナを入れ替えても残る） |
-| infrastructure | `debug_log.py` | 外部I/O（外部API・タイル/標高キャッシュ）イベントのログと集計。集計の型（`ExternalCallStats`）はプロセス内のカウンタと`/api/debug/stats`の応答が共有する（ヒット率・平均の計算元の回数・合計時間は応答に載せない） |
-| infrastructure | `debug_control.py` | `debug_mode`のランタイム切替・直近ログの保持 |
-| infrastructure | `admin_data_backup.py` | 管理データのバックアップが最後に置けてからの時間（`/health`が返す）。下の「取り直せない管理データのバックアップ」 |
+| infrastructure | `debug_log.py` | 外部I/O（外部API・タイル/標高キャッシュ）イベントのログと集計。集計の型（`debug_log.py: ExternalCallStats`）はプロセス内のカウンタと`/api/debug/stats`の応答が共有する（ヒット率・平均の計算元の回数・合計時間は応答に載せない） |
+| infrastructure | `debug_control.py` | `debug_control.py: debug_mode`のランタイム切替・直近ログの保持 |
+| infrastructure | `admin_data_backup.py` | DBのバックアップが最後に置けてからの時間（`/health`が返す）。下の「本番DBのバックアップ」 |
 | infrastructure | `job_registry.py` | 汎用の非同期ジョブレジストリ（プロセス内メモリのみ） |
 | infrastructure | `single_process.py` | 起動時にワーカー数を読み、複数なら起動を止める（プロセス内に持つ状態の前提を落ちる形にする） |
 | infrastructure | `tuning_overrides.py` | 較正値の上書き（宣言の既定値から動かしたぶんだけをDBへ持つ）の読み書きと、宣言の範囲での検算。プロセス内の値へは書かない |
 | services | `tuning_service.py` | 較正値の上書きの取引境界（構造仕様7）と、プロセス内の値への反映（起動時の読み込みと、書いた直後） |
-| api | `tuning_admin.py` | 較正値の一覧・更新（管理画面用、`require_admin_basic_auth`の内側）。並べる項目も、効き方ごとの見出しと並び順も宣言から導く。名前に添える対象（どの路面の見込み・停止要因の種別の値か）は、値を使う側の宣言（`domain/road.py`・`domain/traffic.py`）から引く |
-| scripts | `admin_data_dump_args.py` | 取り直せない管理データの表を書き出す`pg_dump`の引数（DB名と表）。表は印（`orm_base.IRREPLACEABLE`）から導く |
-| ops | `admin_data_backup.sh` | 本番VMのホストで、上の引数で`pg_dump`し、Object Storageの非公開バケットへ置き、置けた時刻を書く |
+| api | `tuning_admin.py` | 較正値の一覧・更新（管理画面用、`api/admin_auth.py: require_admin_basic_auth`の内側）。並べる項目も、効き方ごとの見出しと並び順も宣言から導く。名前は`domain/tuning_labels.py: tuning_label`が付ける |
+| ops | `admin_data_backup.sh` | 本番VMのホストで、DBの全体を`pg_dump`し、Object Storageの非公開バケットの前の1個と入れ替え、置けた時刻を書く |
 | ops | `ridecompass-admin-data-backup.service`・`ridecompass-admin-data-backup.timer` | それを毎日打つsystemdのユニット（VMへの登録は手で1回） |
 | scripts | `schema_gap.py` | 実DBのスキーマとORMの宣言（`orm_base.declared_metadata`）の差を出す。宣言どおりの表を同じ接続の一時スキーマへ作ってから巻き戻すまでの間に、`public`とカタログを突き合わせる——制約・既定値・索引の式をPostgreSQLが正規化した形で比べるので、CHECKの式・主キー・一意も比べられる。名前は比べない。取込が作る子パーティション（生データの区画）は、列のNULL許容だけをアダプタの宣言（`batch/ingest.py: partition_required_columns`）と比べ、カタログの値だけを読む（取込が入れ直している最中でも、そのロックを待たずに測れる）。本番DBへは、backendのデプロイがコンテナを入れ替えたあとに毎回当てる（差があればデプロイが失敗で終わる。docs/architecture/tech-stack.md「デプロイの反映確認」）ほか、手で`run_probe.py`から当てる |
 | scripts | `lost_constraints.py` | 2つの版の`backend/app`をgitから取り出し、ORMが宣言する表・制約を名前抜きの同じ形へ揃えて、消えたものを出す（DBは使わない）。SQLの文の中の絞り込みは見ない——断片をつないで組み立てるSQLは文字列から構文木を取れないものが残るため |
-| scripts | `mutation/` | 変異テストの台本。mutmut 3.8.0（測るときだけ入れる）には`app`の関数の中の変異の生成と、関数ごとに通るテストの記録だけをさせ（`gen.py`）、変異ごとに別のプロセスでそのテストを最後まで回して、落ちたテストを記録する（`runner.py`・`mutkill.py`）。回す変異と基準の並べ方と一覧の口（`plan.py`）・集計（`analyze.py`）・生き残りの振り分け（`classify.py`・`importtime.py`）・テストの見直しの候補と前回との比べ（`review.py`）・Pull Request の差分で変わった関数を拾って回し、生き残りを知らせる（`diff_scope.py`・`pr_plan.py`・`report_pr.py`）。回し方は[run-checks/SKILL.md](../../../.claude/skills/run-checks/SKILL.md)「変異テストでテストの効きを測る」、見直しの1回の進め方は[test-review/SKILL.md](../../../.claude/skills/test-review/SKILL.md) |
-| scripts | `_stdio.py` | `scripts/`の実行口が共通で使う、標準出力・標準エラーのUTF-8化 |
+| scripts | `mutation/` | 変異テストの台本。mutmut 3.8.0（測るときだけ入れる）には`app`の関数の中の変異の生成と、関数ごとに通るテストの記録だけをさせ（`gen.py`）、変異ごとに別のプロセスでそのテストを最後まで回して、落ちたテストを記録する（`runner.py`・`mutkill.py`）。回す変異と基準の並べ方と一覧の口（`plan.py`）・記録を層や道具に依らない表（Stryker の結果の JSON の形）にする（`report.py`）・生き残りの振り分け（`classify.py`・`importtime.py`）・その表からテストの見直しの候補を出し、前回と比べる（`review.py`）。台本どうしが同じに読むもの（変異と基準の名前・記録・一覧の口）と生き残りの判断は`_shared.py`が持ち、全部の測りの表と Pull Request の知らせは同じ判断で数える。回し方は[run-checks/SKILL.md](../../../.claude/skills/run-checks/SKILL.md)「変異テストでテストの効きを測る」、見直しの1回の進め方は[test-review/SKILL.md](../../../.claude/skills/test-review/SKILL.md) |
+| scripts | `_stdio.py` | `scripts/`の実行口と、リポジトリの根の`scripts/`の道具・フックが共通で使う、標準の入出力のUTF-8化。backendの像の中の実行口も読むので、根の側ではなくここに置く |
 | scripts | `run_probe.py` | 調査用のスクリプトを本番DBに対して走らせる（手元のPythonから本番DBを引くか、本番のbackendコンテナの中で走らせる）。手元実行では接続文字列をSQLAlchemy用と素のasyncpg用の両方の形で環境変数へ渡す。プローブの後ろに書いた引数はそのままプローブへ渡す |
 | scripts | `_prod_env.py` | 本番へつなぐ道具（`run_probe.py`・`axis_apply.py`等）が共有する、手元の接続情報（`backend/.env.oracle.local`）の読み方。worktreeから打ったときは本体のチェックアウト側のファイルを読む（gitignore対象のファイルはworktreeへ写らない）。接続情報を渡す前に、このチェックアウトがorigin/masterより遅れていれば止まる（[setup.md](../../architecture/setup.md)「開発機の本体のチェックアウトの遅れ」） |
+| scripts | `_probe_env.py` | 調査のスクリプト（`schema_gap.py`・`measure_axis_saturation.py`等）が接続先を決める口。引数で渡された接続先、無ければ`run_probe.py`が環境変数で渡した本番の接続先、無ければ設定値を使う。DBへ書くバッチはこれを読まない——調査のつもりの環境から本番へ書かないため。本番のコンテナの中でも読めるよう、`.env.oracle.local`もリポジトリの根の`scripts/`も読まない |
+| scripts | `prod_backup_check.py` | 本番の`/health`からDBのバックアップの経過時間を読み、止まっていれば失敗で終わる。下の「本番DBのバックアップ」 |
+| scripts | `_production_origins.py` | 本番の宛先（リポジトリの根の`production-origins.json`）の読み方。標準ライブラリだけで読むので、依存を入れないランナー（`prod-route-check.yml`）からも打てる |
 | scripts | `drop_orphan_test_databases.py` | 作業ツリーごとに作られるPostGIS統合テストのDBのうち、作業ツリーが無くなったものを出し、`--drop`で落とす。どの作業ツリーのものかはDB自身のコメントから読む（名前から推測しない） |
 | scripts | `serve_e2e_live.py` | e2e-live（`frontend/e2e-live/`）のために、この作業ツリーのbackendを開発DBへ向けて空いたポートで起動し、路面タイルに道が出る起点を開発DBの区間から選んで、ビルドと実行のコマンドを出す（手順の正本は[run-checks/SKILL.md](../../../.claude/skills/run-checks/SKILL.md)「E2E・画面の撮影の走らせ方」） |
 | scripts | `serve_capture.py` | 撮影の道具（`frontend/scripts/capture.mjs`の`--backend`）のために、この作業ツリーのbackendを、起動の段（DBの軸定義の読み込み・定期ジョブ）を外して起動する。ルーターとミドルウェアは`main.py: app`のまま。DBを読む経路は失敗するので、撮影の道具はDBを読まない経路（タイルの中継等）だけをここへ向ける |
 | scripts | `audit_test_rewrite.py` | 実装から起こし直したテストを外から測る（実装を変えていないか・テストが読む`app.*`・対象の属性の出どころ・seams 数・実装へ1行も入らないテスト・そのテストだけが通す行が0行のテスト・カバレッジ・テストファイルごとの項目と関数と行の数・テストからしか使われない公開の名前の候補。テストは対象を読む母集団を並べて渡す。PostGISのテストはテスト用DBへ繋がるときだけ含める）。起こし直しの手順は[testing-rewrite.md](../../../.claude/rules/testing-rewrite.md) |
+| scripts | `build_road_network.py` | 取込範囲全体の道路網の配列を作り、ディスクへ置く（[経路探索エンジン](routing-engine.md)）。今の派生データの世代とコードの形の置き場が既にあれば何もしない。デプロイの前処理が旧コンテナを止める前に打つ |
+| scripts | `cross_language_expectations.py` | backendと画面が同じ計算を持つところの「入力→答え」の表（`cross_language_expectations.py: EXPECTATIONS`）。答えはbackendの関数が出し、`export_openapi.py`が組ごとに生成物へ書き出す |
+| scripts | `schema_shape.py` | 応答の型の契約から作る印（`schema_shape.py: schema_shape_mark`）。端末に置いた応答が今の型で読めるかを見分けるために、`export_openapi.py`が生成物へ書き出して配る |
+| scripts | `deploy_gate.py` | 本番へ出すかを決める（デプロイのワークフローが呼ぶ）。本番がそのコミットか、より新しいコミットで動いていれば出さない |
+| scripts | `dev_prod_data_backend.py` | 開発機の画面を本番のデータで開くときの、開発機のbackendを起こす（[setup.md](../../architecture/setup.md)「開発機の画面を本番のデータで開く」）。同じLANの端末から届くよう、LANの住所のfrontendを許す相手に足す |
 
 ## Pydanticモデルの基底（`domain/strict_model.py`）
 
@@ -106,9 +114,9 @@ FastAPI(lifespan=lifespan)
         │       （interval=jma_tile_prewarm_interval_minutes分＋next_run_time=nowで
         │       同様に起動直後にも即時実行、[動的気象レイヤー](weather-dynamic-layers.md)
         │       「定期プリウォーム」節参照）
-        ├─ (5) 同じくAPSchedulerで気象庁MSM（風・降水の予報）の.omファイル定期同期ジョブを
+        ├─ (5) 同じくAPSchedulerで気象庁MSM（風の予報）の.omファイル定期同期ジョブを
         │       登録（interval=msm_sync_interval_minutes分＋next_run_time=now。初回は
-        │       ローカルにファイルが無く、完了するまで風グリッド・ルート評価の風が使えない）
+        │       ローカルにファイルが無く、完了するまでルート評価と地図の道ごとの風が使えない）
         ├─ (6) 同じくAPSchedulerでディスク永続キャッシュの旧世代掃除ジョブを登録
         │       （trigger="date"で起動直後に1回だけ。世代を上げたデプロイの直後がこの
         │       タイミングに当たる、.claude/rules/caching-retention.md「無効化」参照）
@@ -228,8 +236,8 @@ None）へ倒す箇所は、`except Exception`ではなくこのタプルだけ�
 
 `check_rate_limit`→超過時の記録→`HTTPException(429)`という一連の処理を
 `enforce_rate_limit(request, prefix, limit_per_minute)`へ集約している。routerはこれを直接呼び
-（`weather.py`・`routes.py`等）、`region.py`は路面・点のタイル・専用way値配信で同じ上限を共有するため
-`_check_tile_rate_limit`という薄いラッパー経由で呼ぶ。DI工場ではなく、ルーターが要求ごとに`prefix`と上限を
+（`weather.py`・`routes.py`等）、地域のタイル（路面・点のタイル・専用way値配信・軸スタジオの下書きの道の点数）は同じ上限を
+共有するため`api/routers/_tile_http.py: check_tile_rate_limit`という薄いラッパー経由で呼ぶ。DI工場ではなく、ルーターが要求ごとに`prefix`と上限を
 変えて普通に呼ぶ関数なので、`dependencies.py`（公開関数は注入の口だけ）と分けて置く。`prefix`はレート制限キー・
 rejection集計カテゴリの両方を兼ねる。
 
@@ -266,7 +274,7 @@ frontend側（`src/proxy.ts`）も同じ資格情報を別のBasic認証チェ�
 
 | エンドポイント | 認可 | 内容 |
 |---|---|---|
-| `GET /health` | 不要 | `status`・`commit`（デプロイされたコミットSHA）・`started_at`・`admin_data_backup_age_hours`（管理データのバックアップが最後に置けてからの時間。記録が無いか印のファイルが読めなければnull（読めない理由はWARNINGのログ）。下の「取り直せない管理データのバックアップ」） |
+| `GET /health` | 不要 | `status`・`commit`（デプロイされたコミットSHA）・`started_at`・`admin_data_backup_age_hours`（DBのバックアップが最後に置けてからの時間。記録が無いか印のファイルが読めなければnull（読めない理由はWARNINGのログ）。下の「本番DBのバックアップ」） |
 | `GET /api/debug/stats` | 不要（集計値のみ、秘匿情報なし） | `debug_log.py`の集計（呼び出し数・エラー数・ヒット率・所要時間・429拒否数）と、予報（MSM）の同期の鮮度 |
 
 どちらも集計値だけで機微情報を含まないため無認証。本番DBがコードの期待に追いついているか
@@ -313,7 +321,7 @@ JSONは`get_json`/`set_json`、バイナリは`get_bytes`/`set_bytes`、観測�
 
 新しくRedisへ持つキャッシュはこれを使う（例: 気象庁タイル本体の`jma_tile_redis_cache`・在否インデックスの
 `jma_tile_index`・アメダスの`jma_amedas_store`）。タイル本体は値がバイナリ（PNG/PBF）なので`get_bytes`/`set_bytes`に乗せている。
-骨格に無い操作が要るときは骨格へ口を足す（.claude/rules/caching-retention.md「Redisへ持つときは`redis_json_cache`を使う」）。
+自前の骨格を持ってよい場合は.claude/rules/caching-retention.md「Redisへ持つときは`redis_json_cache`を使う」の「自前で骨格を書いてよい例外」が決める。
 
 ## Redisクライアント（`redis_client.py`、サーキットブレーカー）
 
@@ -336,6 +344,10 @@ JMA気象データの短命キャッシュが使う共有接続。値を生の�
 SSLコンテキスト構築（CA証明書バンドルの読み込み・パース）を伴い環境によっては高コストに
 なりうるため、リクエストごとの新規生成をやめプロセス全体で使い回す（`main.py`の
 lifespanが起動時に主要なtimeout値[10.0/15.0]を事前ウォームアップするのもこのため）。
+
+タイルを中継するクライアントは、上流から1件取る所を`fetch_upstream`へ寄せる。上流の404（このパスで得るものが無い事実）は
+`UPSTREAM_NOT_FOUND`、ほかの失敗はNoneとして返し、404は`log_external_call`の失敗に数えない。404を受けた応答の本文と
+`Cache-Control`は、配信元ごとの宣言（`api/routers/_tile_http.py: UpstreamReplies`）から引く。
 
 ## 応答のgzip圧縮（`response_compression.py`）
 
@@ -405,7 +417,7 @@ Basic認証必須）はサーバー側のファイルキャッシュしか消せ
 |---|---|
 | ステータス5xx | ERROR |
 | ステータス429 | DEBUG（`record_rate_limit_rejection`が抑制付きWARNINGで別途記録するため、ここでは重ねない） |
-| タイルの経路（`HIGH_FREQUENCY_PATH_PREFIXES`。どれもGETだけ）の成功と404（疎な格子・整備区域の外・配信前のタイルでは正常系） | DEBUG |
+| タイルの経路（`api/cache_policy.py: TILE_PATH_PREFIXES`。ブラウザに覚えさせる時間の対応表のタイルの行から導く。どれもGETだけ）の成功と404（疎な格子・整備区域の外・配信前のタイルでは正常系） | DEBUG |
 | ステータス4xx（429以外。タイルの経路の404を除く） | WARNING |
 | それ以外 | INFO |
 
@@ -427,33 +439,44 @@ FastAPI側で処理済みのためここには来ない）。
 コンテナの`TZ`ではなく整形する側を変える。`TZ`を動かすと素の`datetime.now()`の意味まで
 変わり、スケジューラ・DBへ書く時刻へ波及する。
 
-## 取り直せない管理データのバックアップ（`ops/admin_data_backup.sh`）
+## 本番DBのバックアップ（`ops/admin_data_backup.sh`）
 
-管理画面で人が積み上げた行（軸の定義・較正値の上書き等）は、外部から取り直せず派生からも作り直せない。
-DBを失ったときに戻せるよう、本番VMのsystemdのtimerが毎日、その表だけを`pg_dump`（custom形式）で書き出し、
-Oracle Cloud Object Storageの非公開バケットへ置く。戻しは`pg_restore`（登録・戻しの手順は
-[production-data/SKILL.md](../../../.claude/skills/production-data/SKILL.md)「管理データのバックアップ」「本番DBを失ったとき」）。
+本番DBには、外部から取り直せず派生からも作り直せない行（管理画面で人が積み上げた軸の定義・較正値の上書き等）と、
+取り直しと作り直しに時間のかかる生データ・派生データがある。DBを失ったときに書き出しから全体を戻せるよう、本番VMの
+systemdのtimerが毎日、DBの全体を`pg_dump`（custom形式・圧縮あり）で書き出し、Oracle Cloud Object Storageの非公開バケットへ
+置く。戻しは`pg_restore`（登録・戻しの手順は[production-data/SKILL.md](../../../.claude/skills/production-data/SKILL.md)「DBのバックアップ」
+「本番DBを失ったとき」）。
 
-- **対象は表の印から導く**。ORMの表に`__table_args__ = {"info": IRREPLACEABLE}`を付けると、次の書き出しから
-  入る。表の名前とDB名は、デプロイ済みのイメージで`scripts/admin_data_dump_args.py`を打って取る（シェルに
-  表の名前を書かない）。`pg_dump`は`--strict-names`で打つので、印の付いた表が本番DBに無ければ書き出しごと失敗する。
+- **バケットに置くのは常に1個**。書き出しはObject Storageの無料の枠に2個は入らない大きさなので、確かめの通った新しい書き出しが
+  手元にできてから前の1個を消し、新しいものを置く。枠を超える書き出しは置かずに失敗する（上限は同じスクリプトの定数）。
+- **手元にも1個残す**。書き出しはDBのディスクの、PostgreSQLの`data_directory`の外へ書き、次の回まで消さない。バケットへ置く途中で
+  落ちても、手元から送り直せる。VMごと失ったときはバケットのものから戻す。書き出す前に、そのディスクの空きがDBの大きさより
+  少なければ書かずに失敗する（OSのディスクと`/run`には書き出しが入らない）。
+- **書き出すのは、取込と派生の作り直しが止まっている時点**。`pg_dump`のスナップショットは、そのあとに取込が表を
+  空にして入れ直すと空の表を書き出し、作り直しの途中なら作業用のスキーマの作りかけの表を書き出す。取込と作り直しが
+  互いを止めるのに取る鍵（`backend/app/batch/common.py: SOURCE_DATA_LOCK`）を書き出す間は排他で持ち、走っていれば
+  終わるまで待つ。持つ間に始めた取込と作り直しは、鍵を取れずに止まる。
+- **圧縮は`pg_dump`の側で1コアを使い切る**ので、ユニットは`Nice=`で優先度を下げ、backendと取り合ったときにbackendを先にする。
+  DBを読む重さはPostgreSQLの側にあり、これでは下がらない。
+- **DB名は、デプロイ済みのbackendの接続先の設定から取る**（シェルにDB名を書かない）。鍵の名前も同じイメージから取る。
 - **`pg_dump`はホストのもの**を使う。サーバーと同じPGDGのパッケージで入るので版が揃う——`pg_dump`は自分より
   新しいメジャー版のサーバーからは書き出さず、イメージ（python:slim）のDebianの配布物はサーバーより古い。
-- **置くのはVMの鍵を使わない形**（インスタンス・プリンシパル。OCI CLIは公式のコンテナイメージで打つ）。VMに
-  許すのはそのバケットへの新しいオブジェクトの作成（`OBJECT_CREATE`）だけで、読み出し・上書き・削除はできない
-  ——VMが乗っ取られても、置いたバックアップは消せない。オブジェクト名は書き出した時刻（UTC）なので、毎日増える
-  だけで上書きしない。消すのはバケットのライフサイクルの規則で、30日より古いものだけ（VMの権限の外）。止まった日が
-  30日続くと残りが無くなるので、止まりは次のとおり外から気づく。
+- **置くのはVMの鍵を使わない形**（インスタンス・プリンシパル。OCI CLIは公式のコンテナイメージで打つ）。VMに許すのは
+  そのバケットのオブジェクトの一覧・作成・削除だけで、ほかのバケットには触れない。前の1個を消すのがこのスクリプトなので、
+  VMが乗っ取られればバケットのものは消せる——そのときは手元の1個も同じVMにあり、戻す材料が無くなる。
 - **止まりは`/health`で外へ出す**。置けたらその時刻を、ホストの`/home/ubuntu/ridecompass-cache-data`（コンテナの`data/`）の
   `admin_data_backup_at`へ書き、`infrastructure/admin_data_backup.py`が経過時間を出す。DBに表を足さないのは、本番のスキーマを
   人が埋める手間（docs/architecture/tech-stack.md「デプロイの反映確認」）を、1行の時刻のために増やさないため。
-- **書き出しの時点では中身を検算しない**。アプリが起動できない中身（値の不変条件に通らない軸等）も書き出すが、
-  前の日のものは残る。戻した行は、backendの起動時の読み込み（`services/axis_registry_service.py:
+  スクリプトは途中のどこで落ちても（`set -e`）時刻を書かないので、置けなかった日は経過時間が伸びる。
+- **止まりの見張りは定時のActions**。`prod-route-check.yml`が毎日06:23（日本時間）に`scripts/prod_backup_check.py`で
+  `/health`を外から読み、経過時間が`prod_backup_check.py: MAX_AGE_HOURS`（25）を超えたか、値が無いか、`/health`が読めなければ
+  落とし、GitHub Actionsの失敗の知らせが届く。上限は、timerの間隔（24時間）に、1回の所要（本番で書き出し約28分・送り約2分半）と
+  取込・作り直しの鍵の待ちの分を足したもの。03:17に始まった回が置けていれば06:23の経過時間は3時間ほどで、置けなかった日は
+  前の日の回が05:23までに置けていれば26時間を超えてその日に落ちる。それより遅く置けた日の翌日に止まると、知らせは1日遅れる。
+  Actionsの起動の遅れは経過時間を伸ばす向きにしか効かず、置けた日を落とさない。
+- **書き出しの時点では中身を検算しない**。戻したDBの軸・較正値は、backendの起動時の読み込み（`services/axis_registry_service.py:
   refresh_axis_definitions`・`infrastructure/tuning_overrides.py: load_tuning_values`）が管理APIの本文と同じ
-  検査に通し、通らなければ起動しない。
-- **戻しはスキーマごと入れ替える**（`pg_restore --clean --if-exists --single-transaction`）。表の定義は
-  書き出した日の本番のもので、ほかの表からの外部キーは無いので落とせる。1つのトランザクションなので、
-  途中で落ちれば何も変わらない。
+  検査に通し、通らなければ起動しない。残るのは1個なので、前の日のものへは戻れない。
 - 稼働中のbackendは戻した行を読み直さない（読み込みは起動時と管理APIの書き込み直後だけ）。戻したら再起動する。
 
 ## 非同期ジョブレジストリ詳細（`job_registry.py`）

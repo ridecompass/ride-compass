@@ -13,7 +13,7 @@
 | `app/admin/page.tsx` | `/admin`のタブ構成を束ねるコンポジションルート（開いたときは軸スタジオのタブ） | 独立URL |
 | `components/HeaderMenu/HeaderMenu.tsx` | 使い方の説明の入口（「使い方を見る」。[ページ全体構成](page-composition.md)「使い方の説明」）・地図の表示を再描画（[地図: 静的レイヤー](static-map-layers.md)「まとめて戻す操作」）・デバッグログ表示・バージョン表示を1個のメニューアイコンへ集約したRadix Popover。バージョン表示は、動いている版（コミットの頭8文字）を窓に出し、確かめ待ちの変更が本番に出たかを利用者が画面から見分けられるようにする | `page.tsx`（`/`）のヘッダー |
 | `features/admin/DebugPanel/DebugPanel.tsx` | デバッグログ表示のON/OFFトグル | `/admin`「開発者」タブ |
-| `components/DebugConsole/DebugConsole.tsx` | 地図イベント・外部API呼び出しの詳細ログを時系列表示するフローティングパネル。**表示中の行をそのままの形でコピーできる**（絞り込みを無視して全件にすると、絞って見つけた数行を渡したいときに関係ない行まで混ざる） | `page.tsx`（`/`）、`HeaderMenu`から開閉 |
+| `components/DebugConsole/DebugConsole.tsx` | 地図イベント・外部API呼び出しの詳細ログを時系列表示するフローティングパネル。**表示中の行をそのままの形でコピーできる**（絞り込みを無視して全件にすると、絞って見つけた数行を渡したいときに関係ない行まで混ざる） | `page.tsx`（`/`）、`HeaderMenu.tsx: HeaderMenu`から開閉 |
 | `features/admin/SystemStatusPanel/SystemStatusPanel.tsx` | backend `/api/debug/stats`の集計・フロントバージョン・予報（MSM）の同期鮮度を表示するフローティングパネル | `/admin`「開発者」タブ |
 | `features/admin/BackendStatus/BackendStatus.tsx` | バックエンドの死活確認の簡易表示 | `/admin`「開発者」タブ |
 | `features/admin/BackendLogsPanel/BackendLogsPanel.tsx` | backend `GET /api/admin/debug/logs`の直近ログをレベル（DEBUG〜CRITICAL）・部分一致で絞り込んで表示するパネル。取得は「取得」ボタン押下時のみ（ポーリングなし） | `/admin`「開発者」タブ |
@@ -21,6 +21,21 @@
 | `hooks/useCopyToClipboard.ts` | クリップボードへの書き込みと結果表示（コピー済み・失敗）。Clipboard APIは[SecureContext]のため、httpのIPアクセス等では`navigator.clipboard`自体がundefinedになる——`.catch()`はPromiseの拒否しか捕まえず、プロパティアクセスの同期TypeErrorをtryで受けないとボタンが無反応のままになる。失敗は握り潰さず文言を返す | `DebugConsole`・`BackendLogsPanel` |
 | `hooks/useDebugLog.ts`・`lib/debugLog.ts` | デバッグモードON/OFF状態・ログエントリのシングルストア（`useSyncExternalStore`） | |
 | `app/api/version/route.ts`・`services/versionApi.ts` | フロントエンドの動いている版（コミット・起動時刻）を返すNext.js route handlerと、それを読む口（`SystemStatusPanel`と`HeaderMenu`のバージョン表示が読む） | |
+
+## 開発の道具（`frontend/scripts/`）
+
+画面に載らず、ビルド・検査・撮影・開発機で打つ道具。パスは`frontend/`から。
+
+| ファイル | 責務 |
+|---|---|
+| `scripts/copy-maplibre-worker.mjs` | maplibre-glのWorkerを静的配信できる場所へ複製する（[静的レイヤー](static-map-layers.md)の`features/map/maplibreWorker.ts`の行）。複製物はリポジトリへ置かない |
+| `scripts/prepare-standalone.mjs` | standalone構成のビルド成果物へ`.next/static`と`public`を写し、手元・CIのE2Eで本番と同じ入口を起こせるようにする |
+| `scripts/image.mjs` | 本番のfrontendの像を作る（CIと、frontendのデプロイの手動の起動が呼ぶ）。像へ渡す環境変数の組は撮影の道具も同じものを使う |
+| `scripts/capture.mjs` | 画面を、選んだ版と応答で開き、脚本で進めた状態を撮る（[デザイン基盤](frontend-design-system.md)「7. 実機確認の方法」） |
+| `scripts/dev-prod-data.mjs` | 開発機の画面を本番のbackendのデータで開く開発サーバーを起こす（[setup.md](../../architecture/setup.md)「開発機の画面を本番のデータで開く」）。取り次ぎの向け先とAPIの宛先は`next.config.ts`が切り替えから決める |
+| `scripts/audit-test-rewrite.mjs` | 実装から起こし直したテストを外から測る（`.claude/rules/testing-rewrite.md`の手順） |
+| `scripts/structure-population.mjs` | 画面がbackendの宣言を持ち直している形の候補を構文木から列挙する（周期レビューの「構造の問い」のfrontendの母集団）。候補を出すだけで判じない |
+| `scripts/mutation/` | 変異テスト（Stryker）の設定と、書き換えるファイルを本に分ける・結果を比べる・報告する台本 |
 
 ## `/admin`とpage.tsx（`/`）の境界
 

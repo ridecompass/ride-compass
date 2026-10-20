@@ -12,12 +12,21 @@
 分類の材料は文字列のまま持たず、列ごとの語彙への番号で持つ（番号0は値なし）。
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass, fields
+from typing import Any
 
 import numpy as np
 
-from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays, ElevationAttribute
+from app.domain.attributes import (
+    EDGE_ROW_ARRAY_FIELDS,
+    CategoricalColumn,
+    EdgeMaterialArrays,
+    ElevationAttribute,
+    MaterialColumn,
+)
 from app.domain.material_catalog import GRADIENT_PERCENT
+from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
 
 
 @dataclass(frozen=True, eq=False)
@@ -45,6 +54,9 @@ class RoadNetwork:
     edge_min_lat: np.ndarray
     edge_max_lon: np.ndarray
     edge_max_lat: np.ndarray
+    # 点を出てすぐの向きと、点へ入る直前の向き（度）。交差点での曲がりを測る。NaN=方位が決まらない。
+    edge_start_bearing_deg: np.ndarray  # float64
+    edge_end_bearing_deg: np.ndarray  # float64
 
     # 材料（`EdgeMaterialArrays`と同じ列。区間と同じ行順）。
     numeric_ids: tuple[str, ...]
@@ -52,13 +64,12 @@ class RoadNetwork:
     categorical_ids: tuple[str, ...]
     categorical_codes: np.ndarray  # (区間, 列) int16。0は値なし
     categorical_vocab: tuple[tuple[str | None, ...], ...]  # 列ごとの語彙。先頭は必ずNone
-    hard_filter_ids: tuple[str, ...]
-    hard_filter_flags: np.ndarray  # (区間, 列) bool
     distance_m: np.ndarray  # float64
     bearing_deg: np.ndarray  # float64, NaN=方位が決まらない
     mid_lat: np.ndarray
     mid_lon: np.ndarray
-    elevation_present: np.ndarray  # bool
+    start_elevation_m: np.ndarray  # float64, NaN=標高が無い（獲得・損失も無い）
+    end_elevation_m: np.ndarray  # float64, NaN=標高が無い
     elevation_gain_m: np.ndarray  # float64, NaN=欠損
     elevation_loss_m: np.ndarray
 
@@ -80,7 +91,6 @@ class RoadNetwork:
             for name, matrix, ids in (
                 ("numeric_values", self.numeric_values, self.numeric_ids),
                 ("categorical_codes", self.categorical_codes, self.categorical_ids),
-                ("hard_filter_flags", self.hard_filter_flags, self.hard_filter_ids),
             )
             if matrix.shape[1] != len(ids)
         }
@@ -106,6 +116,9 @@ class RoadSlice:
     """
 
     network: RoadNetwork
+    #: 取込範囲全体の区分の列と地図の線の層ごとの値（`road_class_columns`）。区分の列は、切り出した区間の材料へ`rows`で引いて足す。
+    classes: Mapping[str, CategoricalColumn]
+    layers: Mapping[str, CategoricalColumn]
     rows: np.ndarray  # int64, 全体の区間の行
     nodes: np.ndarray  # int64, 全体のノードの行
     edge_from: np.ndarray  # int64, 切り出しの中のノード番号
@@ -128,8 +141,25 @@ class RoadSlice:
         return np.asarray(self.network.node_lon[self.nodes], dtype=np.float64)
 
 
+def road_class_columns(
+    network: RoadNetwork, definitions: RoadClassDefinitions
+) -> tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]:
+    """取込範囲全体の区間ごとの区分の列と、地図の線の層ごとの値（`domain/road_classes.py: class_columns`・`layer_columns`）。"""
+    facts: dict[str, MaterialColumn] = {
+        **{material_id: network.numeric_values[:, i] for i, material_id in enumerate(network.numeric_ids)},
+        **{
+            material_id: CategoricalColumn(network.categorical_codes[:, i], vocab)
+            for i, (material_id, vocab) in enumerate(zip(network.categorical_ids, network.categorical_vocab, strict=True))
+        },
+    }
+    classes = class_columns(definitions, facts, network.edge_count)
+    return classes, layer_columns(definitions, {**facts, **classes}, network.edge_count)
+
+
 def slice_network(
-    network: RoadNetwork, min_lon: float, min_lat: float, max_lon: float, max_lat: float
+    network: RoadNetwork,
+    classes: tuple[Mapping[str, CategoricalColumn], Mapping[str, CategoricalColumn]],
+    min_lon: float, min_lat: float, max_lon: float, max_lat: float,
 ) -> RoadSlice:
     """区間の形の外接矩形が範囲に重なる区間を取り出す。範囲の外へはみ出す区間も、端点ごと含む。"""
     overlaps = np.asarray(network.edge_max_lon) >= min_lon
@@ -141,44 +171,43 @@ def slice_network(
     head = np.asarray(network.edge_to[rows], dtype=np.int64)
     nodes, inverse = np.unique(np.concatenate([tail, head]), return_inverse=True)
     return RoadSlice(
-        network=network, rows=rows, nodes=nodes,
+        network=network, classes=classes[0], layers=classes[1], rows=rows, nodes=nodes,
         edge_from=inverse[: len(rows)].astype(np.int64, copy=False),
         edge_to=inverse[len(rows):].astype(np.int64, copy=False),
     )
 
 
 def material_arrays_of(road: RoadSlice) -> EdgeMaterialArrays:
-    """切り出した区間の材料（行は`road.rows`の順）。分類の材料は語彙への番号のまま渡す。"""
+    """切り出した区間の材料（行は`road.rows`の順）。分類の材料は語彙への番号のまま渡し、区分の列も分類の材料として足す。"""
     network, rows = road.network, road.rows
     # 分類の材料は(区間, 列)の行列なので、行を1回だけ引いてから列へ分ける。
     codes = np.asarray(network.categorical_codes[rows])
 
-    def take(values: np.ndarray) -> np.ndarray:
-        return np.asarray(values[rows])
-
+    row_arrays: dict[str, Any] = {name: np.asarray(getattr(network, name)[rows]) for name in EDGE_ROW_ARRAY_FIELDS}
     return EdgeMaterialArrays(
-        numeric_ids=network.numeric_ids, numeric_values=take(network.numeric_values),
-        categorical_ids=network.categorical_ids,
-        categorical_columns=tuple(
-            CategoricalColumn(np.ascontiguousarray(codes[:, column]), vocab)
-            for column, vocab in enumerate(network.categorical_vocab)
+        numeric_ids=network.numeric_ids,
+        categorical_ids=(*network.categorical_ids, *road.classes),
+        categorical_columns=(
+            *(
+                CategoricalColumn(np.ascontiguousarray(codes[:, column]), vocab)
+                for column, vocab in enumerate(network.categorical_vocab)
+            ),
+            *(column.take(rows) for column in road.classes.values()),
         ),
-        hard_filter_ids=network.hard_filter_ids, hard_filter_flags=take(network.hard_filter_flags),
-        distance_m=take(network.distance_m), bearing_deg=take(network.bearing_deg),
-        mid_lat=take(network.mid_lat), mid_lon=take(network.mid_lon),
-        elevation_present=take(network.elevation_present),
-        elevation_gain_m=take(network.elevation_gain_m), elevation_loss_m=take(network.elevation_loss_m),
+        **row_arrays,
     )
 
 
 def elevation_attribute(network: RoadNetwork, row: int, edge_id: str) -> ElevationAttribute | None:
     """全体の行`row`の区間の標高属性。標高が無ければNone。平均勾配は材料`gradient_percent`の値
     （表示用の標高列と重複して持たないため、勾配だけは材料の列から読む）。"""
-    if not network.elevation_present[row]:
+    if np.isnan(network.start_elevation_m[row]):
         return None
     grade_column = network.numeric_ids.index(GRADIENT_PERCENT)
     return ElevationAttribute(
         edge_id=edge_id,
+        start_elevation_m=float(network.start_elevation_m[row]),
+        end_elevation_m=float(network.end_elevation_m[row]),
         elevation_gain_m=float(network.elevation_gain_m[row]),
         elevation_loss_m=float(network.elevation_loss_m[row]),
         average_grade=None if np.isnan(grade := network.numeric_values[row, grade_column]) else float(grade),

@@ -11,7 +11,15 @@ import type { FilterSpecification, LayerSpecification } from "maplibre-gl";
 
 import type { BasemapPoiKinds } from "@/features/map/layers/mapStyleOps";
 
-import type { MapScene, MapSceneFeatureStates, MapSceneLayer, MapSceneSource, MapSceneTier } from "./mapScene";
+import type {
+  MapScene,
+  MapSceneFeatureStates,
+  MapSceneGlobalState,
+  MapSceneImage,
+  MapSceneLayer,
+  MapSceneSource,
+  MapSceneTier,
+} from "./mapScene";
 import { geojsonContent, layerSpec, sceneLayerId, type SceneSourceId, tilesContent } from "./sceneBuilders";
 
 /** レイヤー1枚ぶんの宣言。id は役割から決まる。
@@ -49,11 +57,15 @@ export type SceneSourceEntry = {
   readonly featureStates?: MapSceneFeatureStates;
 };
 
-/** 地図に載るもののひとまとまり。状態から、ソースとレイヤーの並びを返す。 */
+/** 地図に載るもののひとまとまり。状態から、ソースとレイヤーの並びと、記号のレイヤーが名指す絵を返す。 */
 export type SceneGroup<State> = {
   readonly build: (state: State) => {
     readonly sources: readonly SceneSourceEntry[];
     readonly layers: readonly SceneLayerEntry[];
+    /** 同じ id を複数のグループが名乗ってもよい——束ねる側が1つへ畳む。 */
+    readonly images?: readonly MapSceneImage[];
+    /** 同じ名前を複数のグループが置くなら、同じ事実の同じ値でなければならない——束ねる側は後のグループの値を使う。 */
+    readonly globalState?: MapSceneGlobalState;
   };
 };
 
@@ -66,19 +78,24 @@ export function declareGroup<State>(build: SceneGroup<State>["build"]): SceneGro
  *
  * **重なりは段（tier）だけが決める**ので、グループをどの順で並べても結果は変わらない
  * （同じ段の中だけは、宣言の順を保つ）。同じソースを複数のグループが名乗ったときは
- * 1本へ畳み、feature-state は合わせる——ソースは地図に1本しか作れないため。
+ * 1本へ畳み、feature-state は合わせる——ソースは地図に1本しか作れないため。絵も id ごとに
+ * 先に名乗った1つへ畳む。
  */
 export function composeScene<State>(groups: readonly SceneGroup<State>[], state: State): MapScene {
   const sources = new Map<string, MapSceneSource>();
   const layers: MapSceneLayer[] = [];
+  const images = new Map<string, MapSceneImage>();
+  const globalState: Record<string, number> = {};
 
   for (const group of groups) {
     const built = group.build(state);
     for (const entry of built.sources) mergeSource(sources, entry);
     for (const entry of built.layers) layers.push(toSceneLayer(entry));
+    for (const image of built.images ?? []) if (!images.has(image.id)) images.set(image.id, image);
+    Object.assign(globalState, built.globalState);
   }
 
-  return { sources: [...sources.values()], layers };
+  return { sources: [...sources.values()], layers, images: [...images.values()], globalState };
 }
 
 function toSceneLayer(entry: SceneLayerEntry): MapSceneLayer {

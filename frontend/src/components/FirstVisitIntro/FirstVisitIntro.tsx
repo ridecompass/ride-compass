@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { cardVariants } from "@/components/ui/Card/Card";
 import { textVariants } from "@/components/ui/Text/Text";
-import { MenuIcon } from "@/components/ui/icons/icons";
+import { MenuIcon } from "@/components/ui/icons/lucideIcons";
 import { ORIGIN_MARK_FALLBACK_COLOR, PIN_MARK_BACKGROUND, PinMark } from "@/components/PinMark/PinMark";
 import { useStoredBooleanState } from "@/hooks/useStoredState";
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect";
@@ -19,7 +19,7 @@ interface FirstVisitIntroProps {
   /** 最初の一手の場所を、スマホ（下部タブ）とPC（左のパネル）で言い分ける。 */
   isMobile: boolean;
   /** 最初の位置の取得が決着して、位置が分からないと分かったか。真の間は出発地の印が灰色の仮の地点なので、
-   * 「出発地を地図で選ぶ」で置く手順を案内する（決着するまでは「はじめは現在地」のまま）。 */
+   * 「ルート設定」を開いて地図をタップして置く手順を案内する（決着するまでは「はじめは現在地」のまま）。 */
   locationUnknown: boolean;
 }
 
@@ -57,15 +57,15 @@ export default function FirstVisitIntro({ isMobile, locationUnknown }: FirstVisi
         <li className="flex items-start gap-1.5">
           <span
             className="inline-flex shrink-0 rounded-full p-0.5 shadow-sm"
-            style={{ background: PIN_MARK_BACKGROUND.origin }}
+            style={{ background: PIN_MARK_BACKGROUND }}
           >
-            <PinMark role="origin" size={14} color={locationUnknown ? ORIGIN_MARK_FALLBACK_COLOR : undefined} />
+            <PinMark role="origin" size={14} originColor={locationUnknown ? ORIGIN_MARK_FALLBACK_COLOR : undefined} />
           </span>
           <span>
             <GuideText
               text={
                 locationUnknown
-                  ? "現在地が分からないため、この灰色の印は仮の地点です。「ルート設定」の「出発地を地図で選ぶ」を押して地図をタップすると、そこが出発地になります。"
+                  ? "現在地が分からないため、この灰色の印は仮の地点です。「ルート設定」を開いて地図をタップすると、そこが出発地になります。"
                   : "この印が出発地です（はじめは現在地）。地図の上でつかんで動かせます。"
               }
             />

@@ -17,8 +17,7 @@ paths:
 前者のうち、CIが既に流している静的な検査（backendの`ruff.toml`・`.importlinter`・`mypy.ini`、frontendのESLint・knip）の
 設定で表せて、許可リストが要らないものは、テストにせずその設定へ置く（例: web層が`app.batch`をモジュール直下で
 importしない → `backend/ruff.toml`の`TID253`）。テストにするのは、自前でソースを読む（ASTの走査・一覧からの母集団）ことが
-要るものと、許可リストが要るもの（ruffの`per-file-ignores`は、古くなっても落ちない）だけである。行ごとの`# noqa`で許せば
-足りるものは、古くなった`# noqa`を落とす`RUF100`も`select`へ入れて、設定の側に置く。
+要るものと、許可リストが要るもの（ruffの`per-file-ignores`と`# noqa`は、古くなっても落ちない）だけである。
 `scripts/review_checks.py`の検知器へは置かない（[fixing.md](fixing.md)「検知器を足す条件は厳しい」）。
 
 テストにするものの置き場は次の2か所。普通のテストと混ぜない。
@@ -28,14 +27,15 @@ importしない → `backend/ruff.toml`の`TID253`）。テストにするのは
 | backend | `backend/tests/structure/` |
 | frontend | `frontend/src/structure/` |
 
+**母集団をソースから導く**（ファイルを手で名指ししない）。
 許可リストが要るなら、**その列挙が古くなったときにテスト自身が落ちる**ようにする
 （載っているのに実態が無い側も違反にする。`test_redis_skeleton.py`参照）。
 
 ## わざと壊すのは、テストの中で
 
-検知器・ガードが効いていることは、わざと壊した入力で落ちることを見て確かめる（[fixing.md](fixing.md)「直し方」）。
-**壊すのはテストの中の入力で、ソースやビルドを書き換えない。** テストの効きを実装を一時に変えて測るのは
-[testing-review.md](testing-review.md)の側で、変えた行の戻し方もそちらが持つ。
+検知器・ガード・テストが効いていることは、わざと壊した入力で落ちることを見て確かめる（[fixing.md](fixing.md)「直し方」）。
+**壊すのはテストの中の入力で、ソースやビルドを書き換えない。** 例外は、消す・まとめるテストの壊れ方で残す側が落ちるかを見るとき
+（[testing-review.md](testing-review.md)「消す・まとめる前に、残す側が落ちるかを見る」）で、実装の1行を一時に変える。戻し方もそちらが持つ。
 
 - **画面の検知器**は、壊れた状態をテストの中で作る: playwrightなら`page.addStyleTag`で崩れたスタイルを足す・
   モックの応答を差し替える、vitestなら渡す入力（props・フェイクの応答）を差し替える。ソースを書き換えて
@@ -65,12 +65,10 @@ for (const color of expressionColors) { expect(legendColors.has(color)).toBe(tru
 
 空でないことの主張は**同じテストの中**に置く。
 
-**要素ごとの検査は、ループより`parametrize`で書く。** ループで書くのは、上の例のように1回の実I/Oの結果を要素ごとに見るときである（testing.md「ループで実I/Oを繰り返さない」）。
+**要素ごとの検査は、ループより`parametrize`で書く。** ループで書くのは、上の例のように1回の実I/Oの結果を要素ごとに見るときである（testing.md「基本原則」の1）。
 宣言から導いた母集団を`parametrize`へ渡す（空になったら、`backend/pytest.ini`の`empty_parameter_set_mark`で集める時点で落ちる）。
 
 絞り込みの書き方は問わない。ループの中の条件で要素を選ぶ形（`if`の片側にだけアサーションを置く・`continue`で飛ばす）と、
 空なら真になる量化（`assert all(...)`・`assert not any(...)`・`expect(xs.every(...)).toBe(true)`）も同じに扱う。
 
 落とす規則は`backend/tests/structure/test_vacuous_loops.py`と`frontend/src/structure/vacuousLoops.test.ts`が持つ。
-**読めるのは上の例の形の主張だけ**で、別の形（`assert set(picked) == {...}`等）で確かめていても
-違反として出る——そのときは上の形の主張を1行足す。

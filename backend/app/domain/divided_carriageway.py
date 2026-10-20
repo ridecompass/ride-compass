@@ -6,7 +6,7 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 逆方向は数m隣にある）。判定は逆向きに並走する相方の有無で行う。
 """
 
-from app.domain.geo import degrees_covering_m
+from app.domain.geo import bearing_sql, degrees_covering_m
 from app.domain.material_sql import sql_literals
 from app.domain.traffic import DIRECTION_BACKWARD, one_way_sql
 
@@ -30,6 +30,12 @@ SAMPLE_FRACTIONS = (0.05, 0.25, 0.5, 0.75, 0.95)
 #: OSMが「上下線が分かれている」と言っている`carriageway`の値。
 TAG_VALUES = ("dual", "triple", "2")
 
+#: 説明の文が判定を指す言い方。分かれた道として除く距離を、判定の値から引く。
+DIVIDED_ROAD_NOTE = (
+    f"上下線が分かれているだけの道[逆向きの一方通行が{GEOMETRIC_GAP_M:g}m以内、"
+    f"同じ路線番号・名前なら{NAMED_GAP_M:g}m以内を並走する道]"
+)
+
 
 def facts_sql(way: str, direction: str) -> str:
     """`divided_sql`が読む道1本の値を出すSELECTの列（`carriageway`・`ident`・`travel_deg`）。
@@ -38,7 +44,7 @@ def facts_sql(way: str, direction: str) -> str:
     """
     return f"""lower(btrim(coalesce({way}.tags->>'carriageway', ''))) AS carriageway,
        COALESCE(NULLIF(btrim({way}.tags->>'ref'), ''), NULLIF(btrim({way}.tags->>'name'), '')) AS ident,
-       degrees(ST_Azimuth(ST_StartPoint({way}.geom)::geography, ST_EndPoint({way}.geom)::geography))
+       {bearing_sql(f"ST_StartPoint({way}.geom)", f"ST_EndPoint({way}.geom)")}
            + CASE WHEN {direction} = '{DIRECTION_BACKWARD}' THEN 180 ELSE 0 END AS travel_deg"""
 
 
@@ -100,4 +106,4 @@ def divided_sql(row: str, candidates: str) -> str:
 
 def oneway_material_sql(direction: str, divided: str) -> str:
     """一方通行の道かのSQL式（材料`oneway`の値）。上下線が分かれた道の片側は外す。"""
-    return f"{one_way_sql(direction)} AND NOT COALESCE({divided}, false)"
+    return f"{one_way_sql(direction)} AND NOT {divided}"

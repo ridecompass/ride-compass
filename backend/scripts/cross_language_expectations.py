@@ -6,20 +6,12 @@
 画面のテストが落ちる。backendの関数そのものの正しさは、手で書いたあるべき値のpytestが見る。
 """
 
-from collections.abc import Callable, Mapping
+import math
+from collections.abc import Callable
 
-from app.domain.axis_definitions import (
-    AxisDefinition,
-    AxisShape,
-    BreakpointLinearShape,
-    CategoricalShape,
-    MaterialTerm,
-    copy_axis_definitions,
-    evaluate_axis_values,
-    raw_values,
-    replace_axis_definitions,
-)
-from app.domain.axis_display import axis_display_for
+from datetime import UTC, datetime
+
+from app.domain.gradient import ROAD_BEARING_LEAF, travel_direction_formula
 from app.domain.geo import COMPASS_LABELS, LatLonPoint, compass_label, haversine_distance_km
 from app.domain.jma_tile_specs import (
     JMA_ELEMENTS,
@@ -29,10 +21,37 @@ from app.domain.jma_tile_specs import (
     jma_tile_path,
     read_target_times,
 )
-from app.domain.material_catalog import MATERIAL_CATALOG, tile_property_value, tile_runtime_scales
-from app.domain.registry import AxisDisplaySpec
+from app.domain.region import BoundingBox, tile_bounds_lonlat, tile_position, tiles_covering_bbox
+from app.domain.road_avoidance import AvoidanceLevel, resolve_road_avoidance
+from app.domain.road_class_catalog import road_class_catalog
+from app.domain.road_classes import (
+    EMPTY_ROAD_CLASSES,
+    AvoidanceClassification,
+    AvoidanceOverride,
+    AvoidanceSection,
+    RoadClass,
+    RoadClassification,
+)
+from app.domain.route import RouteSegmentDetail, merge_overall_difficulty
+from app.domain.time_zone import jst_local_text
+from app.domain.way_value_formula import (
+    FALSE,
+    Binary,
+    Case,
+    Interpolate,
+    Missing,
+    Round,
+    Unary,
+    WayValueFormula,
+    add,
+    const,
+    evaluate_formula,
+    feature,
+)
 from app.domain.weather_elements import stage_first_frames
+from app.domain.wind import WIND_DRAG_RATIO_WAY_FORMULA
 from app.infrastructure.jma_tile_client import parse_target_times
+from app.infrastructure.jma_tile_paths import read_jma_tile_path
 
 # 距離は生成物がどの機械で書いてもバイト単位で同じになる桁へ丸める（numpyの三角関数は
 # CPUの命令セットで最下位の桁が変わりうる）。1mmの桁で、式の違いは十分に見分けられる。
@@ -53,8 +72,10 @@ _DISTANCE_PAIRS: list[tuple[LatLonPoint, LatLonPoint]] = [
 
 
 def _bearings() -> list[float]:
-    width = 360 / len(COMPASS_LABELS)
-    boundaries = [i * width + width / 2 for i in range(len(COMPASS_LABELS))]
+    """方位の区分（北が中心）の境界ちょうどとその少し手前、負の角度・一周を超える角度。"""
+    count = len(COMPASS_LABELS)
+    width = 360 / count
+    boundaries = [i * width + width / 2 for i in range(count)]
     edges = [angle for boundary in boundaries for angle in (boundary, boundary - _JUST_BEFORE_DEG)]
     return [0.0, *edges, -width, -width / 2, 360.0, 360.0 + width / 2, 720.0 + width]
 
@@ -198,6 +219,24 @@ _TILES = [
 ]
 
 
+def _tile_row(tile: JmaTile) -> dict:
+    return {"element_id": tile.element_id, "frame": tile.frame._asdict(), "z": tile.z, "x": tile.x, "y": tile.y}
+
+
+def _not_number(path: str) -> str:
+    """タイルのパスの最後のタイル座標（y）を数字でない区切りにしたもの。"""
+    head, _, tail = path.rpartition("/")
+    return f"{head}/y{tail}"
+
+
+# 読み戻すパス: タイルで配る要素すべてのタイルのパスと、タイル座標が数字でないパス・要素の無いパス。
+_READ_PATHS = [
+    *(jma_tile_path(tile) for tile in _TILES),
+    _not_number(jma_tile_path(_TILES[0])),
+    "bosai/jmatile/data/unknown/20260924000000/none/20260924010000/surf/unknown/9/454/201.png",
+]
+
+
 def jma_expectations() -> dict[str, list[dict]]:
     return {
         "read_target_times": [
@@ -231,178 +270,324 @@ def jma_expectations() -> dict[str, list[dict]]:
             }
             for tile in _TILES
         ],
+        "read_tile_path": [
+            {"path": path, "tile": None if (tile := read_jma_tile_path(path)) is None else _tile_row(tile)}
+            for path in _READ_PATHS
+        ],
     }
 
 
-# 係数（収録年数の逆数）で割り戻したタイルの値も2進で割り切れる年数。
-_ACCIDENT_YEARS = [2019, 2020, 2021, 2022]
+# タイル座標の小数部の桁。タイルの中の位置として十分に細かく、CPUで変わりうる最下位の桁を落とす。
+_TILE_DECIMALS = 9
 
-#: 道1本の材料の値（材料id → 値。欠損はNone）。
-_Road = Mapping[str, object]
+# 緯度経度→タイル座標の場面: （場面, 経度, 緯度, ズーム）。
+_TILE_POINTS: list[tuple[str, float, float, int]] = [
+    ("東京駅", 139.7671, 35.6812, 14),
+    ("経度0度・赤道（タイルの境目ちょうど）", 0.0, 0.0, 1),
+    ("西の端", -180.0, 10.0, 3),
+    ("東の端", 180.0, -10.0, 3),
+    ("Web Mercatorの限界より北", 100.0, 89.9, 3),
+    ("Web Mercatorの限界より南", -100.0, -89.9, 3),
+]
+
+# 範囲→覆うタイルの場面: （場面, 範囲, ズーム）。
+_TILE_AREAS: list[tuple[str, BoundingBox, int]] = [
+    (
+        "東京駅の辺り（1枚）",
+        BoundingBox(min_latitude=35.6811, min_longitude=139.7670, max_latitude=35.6813, max_longitude=139.7672),
+        14,
+    ),
+    (
+        "東京の辺り（東西南北に複数枚）",
+        BoundingBox(min_latitude=35.5, min_longitude=139.5, max_latitude=35.8, max_longitude=139.9),
+        12,
+    ),
+    (
+        "東端・南端がタイルの境目ちょうど",
+        BoundingBox(min_latitude=0.0, min_longitude=-90.0, max_latitude=10.0, max_longitude=0.0),
+        1,
+    ),
+    (
+        "東端と北端が世界の端（端のタイルへ寄せる）",
+        BoundingBox(min_latitude=89.0, min_longitude=179.0, max_latitude=89.9, max_longitude=180.0),
+        3,
+    ),
+    (
+        "西端と南端が世界の端（端のタイルへ寄せる）",
+        BoundingBox(min_latitude=-89.9, min_longitude=-180.0, max_latitude=-89.0, max_longitude=-179.0),
+        3,
+    ),
+]
+
+# タイル→範囲の場面: （場面, ズーム, x, y）。
+_TILE_INDICES: list[tuple[str, int, int, int]] = [
+    ("世界全体", 0, 0, 0),
+    ("東京駅", 14, 14552, 6451),
+    ("南東の端", 3, 7, 7),
+    ("北東", 1, 1, 0),
+]
 
 
-def _tile_property(material_id: str) -> str:
-    tile_property = MATERIAL_CATALOG[material_id].tile_property
-    assert tile_property is not None  # 表の材料はタイルへ焼くものから選ぶ
-    return tile_property
+def _span(values: list[int]) -> list[int]:
+    return [min(values), max(values)]
 
 
-def _tile_properties(road: _Road, scales: Mapping[str, float]) -> dict[str, object]:
-    """材料の値を、路面タイルへ焼いたときのプロパティにする。実行時の係数が要る材料は、材料の値を係数で
-    割り戻したタイルの生値を焼く。"""
-    properties: dict[str, object] = {}
-    for material_id, value in road.items():
-        tile_property = _tile_property(material_id)
-        if tile_property in scales and value is not None:
-            assert isinstance(value, float)
-            value = value / scales[tile_property]
-        baked = tile_property_value(MATERIAL_CATALOG[material_id], value)
-        if baked is not None:
-            properties[tile_property] = baked
-    return properties
-
-
-def _axis(axis_id: str, shape: AxisShape) -> AxisDefinition:
-    return AxisDefinition(axis_id=axis_id, label=axis_id, default_weight=1.0, shape=shape)
-
-
-def _score(shape: AxisShape, road: _Road) -> float | None:
-    """評価がその道に付ける値。折れ点の軸は折れ点を通す前の重み付き和（地図の段はこの目盛りで切る）、
-    分類の軸は点数。評価できなければNone。"""
-    materials = {material_id: [value] for material_id, value in road.items()}
-    if isinstance(shape, BreakpointLinearShape):
-        [value] = raw_values(shape, materials, 1)
-    else:
-        [value] = evaluate_axis_values(_axis("score", shape), materials, 1)
-    return value
-
-
-def _linear(*terms: MaterialTerm, breakpoints: list[tuple[float, float]]) -> BreakpointLinearShape:
-    return BreakpointLinearShape(terms=list(terms), breakpoints=breakpoints)
-
-
-def _axis_rows(
-    name: str, display: AxisDisplaySpec, roads: dict[str, _Road], answer: Callable[[_Road], float | None]
-) -> dict:
-    assert display.kind == "ramp", name  # 表の軸は地図に出る形だけ
-    scales = tile_runtime_scales(_ACCIDENT_YEARS)
-    rows = []
-    for road_name, road in roads.items():
-        value = answer(road)
-        rows.append(
-            {"road": road_name, "properties": _tile_properties(road, scales), "value": value, "unknown": value is None}
+def region_expectations() -> dict[str, list[dict]]:
+    """XYZタイル（Web Mercator）の座標の式。"""
+    rows_position = []
+    for scene, lon, lat, z in _TILE_POINTS:
+        x, y = tile_position(lon, lat, z)
+        rows_position.append(
+            {
+                "scene": scene,
+                "lon": lon,
+                "lat": lat,
+                "z": z,
+                "x": round(x, _TILE_DECIMALS) + 0.0,
+                "y": round(y, _TILE_DECIMALS) + 0.0,
+            }
         )
-    return {"axis": name, "display": display.model_dump(mode="json"), "runtime_scales": scales, "roads": rows}
+    rows_covering = []
+    for scene, bbox, z in _TILE_AREAS:
+        tiles = tiles_covering_bbox(bbox, z)
+        rows_covering.append(
+            {
+                "scene": scene,
+                "bbox": bbox.model_dump(),
+                "z": z,
+                "x_range": _span([x for x, _ in tiles]),
+                "y_range": _span([y for _, y in tiles]),
+            }
+        )
+    rows_bounds = []
+    for scene, z, x, y in _TILE_INDICES:
+        bounds = tile_bounds_lonlat(z, x, y)
+        rows_bounds.append(
+            {
+                "scene": scene,
+                "z": z,
+                "x": x,
+                "y": y,
+                "bounds": {key: round(value, _TILE_DECIMALS) for key, value in bounds.model_dump().items()},
+            }
+        )
+    return {"tile_position": rows_position, "tiles_covering_bbox": rows_covering, "tile_bounds_lonlat": rows_bounds}
 
 
-def _derived_axis_rows(name: str, shape: AxisShape, roads: dict[str, _Road]) -> dict:
-    """軸の定義から地図の表示を導き、評価の答えと並べる。"""
-    return _axis_rows(name, axis_display_for(_axis(name, shape)), roads, lambda road: _score(shape, road))
+# 時刻の場面: （場面, 時点）。日本時間で日付・月・年・うるう日が変わる所を選ぶ。
+_INSTANTS: list[tuple[str, datetime]] = [
+    ("協定世界時の0時（日本時間の9時）", datetime(2026, 8, 30, 0, 0, tzinfo=UTC)),
+    ("日本時間の日付が変わる直前", datetime(2026, 8, 30, 14, 59, tzinfo=UTC)),
+    ("日本時間の日付が変わる", datetime(2026, 8, 30, 15, 0, tzinfo=UTC)),
+    ("日本時間の年が変わる", datetime(2026, 12, 31, 15, 0, tzinfo=UTC)),
+    ("日本時間のうるう日", datetime(2028, 2, 28, 15, 30, tzinfo=UTC)),
+]
 
 
-def _referenced_axis_rows() -> dict:
-    """他の軸を参照する項（地図では`TileInputSpec.breakpoints`）。導出は`AXIS_DEFINITIONS`（DBから読む）にある軸だけを
-    参照先として辿るので、表示を導く間だけ参照先を置く。答えは参照先の点数を材料にした外側の和。"""
-    inner = _linear(MaterialTerm(material="maxspeed_kmh"), breakpoints=[(30.0, 0.0), (60.0, 50.0), (90.0, 100.0)])
-    outer_weight = 0.5
-    outer = _linear(
-        MaterialTerm(material="inner", weight=outer_weight, required=False),
-        MaterialTerm(material="intersection_count_per_km"),
-        breakpoints=[(0.0, 0.0), (60.0, 100.0)],
-    )
-    original = copy_axis_definitions()
-    replace_axis_definitions({"inner": _axis("inner", inner)})
-    try:
-        display = axis_display_for(_axis("outer", outer))
-    finally:
-        replace_axis_definitions(original)
-
-    def answer(road: _Road) -> float | None:
-        materials = {material_id: [value] for material_id, value in road.items()}
-        [inner_score] = evaluate_axis_values(_axis("inner", inner), materials, 1)
-        return _score(outer, {**road, "inner": inner_score})
-
-    roads: dict[str, _Road] = {
-        "折れ点の間（点数を小数1桁へ丸める）": {"maxspeed_kmh": 40.0, "intersection_count_per_km": 2.0},
-        "折れ点より下（端の点数）": {"maxspeed_kmh": 20.0, "intersection_count_per_km": 2.0},
-        "折れ点より上（端の点数）": {"maxspeed_kmh": 100.0, "intersection_count_per_km": 2.0},
-        "参照先の材料が欠けた（任意の項は寄与0）": {"maxspeed_kmh": None, "intersection_count_per_km": 2.0},
-    }
-    return _axis_rows("他の軸を参照する項", display, roads, answer)
-
-
-def axis_ramp_expectations() -> dict[str, list[dict]]:
-    """地図のramp軸（タイルの材料で道を塗る軸）が道1本に付ける値と「不明」を、形ごとに評価の答えと並べる。
-
-    必須の材料が欠けた道・全項の材料が欠けた道は入れない——評価は不能、地図は寄与0で、タイルの形では
-    欠損と0を見分けられない（`docs/modules/backend/axis-studio.md`「暗黙の前提」）。"""
+def time_expectations() -> dict[str, list[dict]]:
+    """応答へ書くタイムゾーンの無い時刻（JSTのローカル時刻）。"""
     return {
-        "axes": [
-            _derived_axis_rows(
-                "数値の材料（重み違いの複数項）",
-                _linear(
-                    MaterialTerm(material="built_percent", weight=1.5),
-                    MaterialTerm(material="trees_percent", weight=-0.5),
-                    breakpoints=[(0.0, 0.0), (50.0, 50.0), (100.0, 100.0)],
-                ),
-                {
-                    "両方ある": {"built_percent": 40.0, "trees_percent": 10.0},
-                    "片方が0": {"built_percent": 0.0, "trees_percent": 20.0},
+        "jst_local_text": [
+            {"scene": scene, "instant": instant.isoformat().replace("+00:00", "Z"), "text": jst_local_text(instant)}
+            for scene, instant in _INSTANTS
+        ],
+    }
+
+
+def _segment(distance_km: float, contributions: dict[str, float] | None) -> RouteSegmentDetail:
+    """区間1本。寄与度の和が区間の難易度で、`None`は値の無い区間。"""
+    return RouteSegmentDetail(
+        start_latitude=35.0,
+        start_longitude=139.0,
+        end_latitude=35.0,
+        end_longitude=139.0,
+        cumulative_distance_km=0.0,
+        distance_km=distance_km,
+        elevations=[],
+        road_classes={},
+        axis_contributions=contributions or {},
+        difficulty=None if contributions is None else sum(contributions.values()),
+    )
+
+
+# ルート全体の難易度の場面: （場面, 区間（距離km, 軸ごとの寄与度。値の無い区間はNone））。平均が丸めで動かない値を選ぶ。
+_ROUTES: list[tuple[str, list[tuple[float, dict[str, float] | None]]]] = [
+    ("どの区間にも値がある", [(1.0, {"a": 10.0, "b": 10.0}), (1.0, {"a": 40.0})]),
+    ("値の無い区間がある", [(1.0, {"a": 10.0, "b": 10.0}), (2.0, None), (1.0, {"a": 40.0})]),
+    ("どの区間にも値が無い", [(1.0, None), (2.0, None)]),
+]
+
+
+def difficulty_expectations() -> dict[str, list[dict]]:
+    """ルート全体の難易度（平均と総量）。値の無い区間の数え方が分かれる場面を並べる。"""
+    rows = []
+    for scene, parts in _ROUTES:
+        segments = [_segment(distance_km, contributions) for distance_km, contributions in parts]
+        overall = merge_overall_difficulty(segments)
+        rows.append(
+            {
+                "scene": scene,
+                "segments": [
+                    {
+                        "distance_km": segment.distance_km,
+                        "difficulty": segment.difficulty,
+                        "axis_contributions": segment.axis_contributions,
+                    }
+                    for segment in segments
+                ],
+                "overall_difficulty": None if overall is None else overall.model_dump(),
+            }
+        )
+    return {"overall_difficulty": rows}
+
+
+def _values_only(value: object) -> WayValueFormula:
+    return WayValueFormula(value=value, undetermined=FALSE)
+
+
+_X = feature("x")
+_Y = feature("y")
+
+#: 場面 → 木と、木へ入れる道ごとの材料（値の無い材料は載せない）と条件の組。
+_WAY_VALUE_FORMULAS: list[tuple[str, WayValueFormula, list[tuple[dict[str, float], dict[str, float]]]]] = [
+    (
+        "丸め1桁（2進で中点ちょうど・中点のすぐ上下・負）",
+        _values_only(Round(arg=_X, decimals=1)),
+        [({"x": x}, {}) for x in (0.25, 0.35, 0.45, 1.15, 1.25, 1.35, 11.55, -0.25, -0.35, -1.25, 0.04, 99.95)]
+        + [({}, {})],
+    ),
+    (
+        "丸め3桁と0桁",
+        _values_only(add(Round(arg=_X, decimals=3), Round(arg=_Y, decimals=0))),
+        [({"x": x, "y": y}, {}) for x, y in ((2.675, 0.5), (0.0005, 1.5), (-0.0015, 2.5), (1.0005, -0.5), (0.1235, 3.49))],
+    ),
+    (
+        "勾配の割合を足した折れ線（中点に乗る和・両端の外・値の無い材料）",
+        _values_only(Round(arg=Interpolate(input=add(_X, _Y), stops=[(0.0, 0.0), (4.0, 30.0), (10.0, 100.0)]),
+                           decimals=1)),
+        [*(({"x": x, "y": y}, {}) for x, y in ((1.0, 0.1), (2.3, 0.0), (0.7, 0.33), (-1.0, 0.0), (11.0, 2.0), (4.0, 0.0))),
+         ({"x": 1.0}, {})],
+    ),
+    (
+        "折れ点1つ",
+        _values_only(Interpolate(input=_X, stops=[(3.0, 7.0)])),
+        [({"x": -5.0}, {}), ({"x": 3.0}, {}), ({"x": 8.0}, {}), ({}, {})],
+    ),
+    (
+        "剰余・比べ・論理・否定・欠け",
+        _values_only(Case(
+            when=Binary(op="and", left=Unary(op="not", arg=Unary(op="is_missing", arg=_X)),
+                        right=Binary(op="or", left=Binary(op="lt", left=_Y, right=const(0.0)),
+                                     right=Binary(op="ge", left=_Y, right=const(10.0)))),
+            then=Binary(op="mod", left=_X, right=const(3.0)),
+            otherwise=Case(when=Binary(op="le", left=_X, right=_Y), then=Unary(op="abs", arg=_Y),
+                           otherwise=Missing()),
+        )),
+        [({"x": -7.0, "y": -1.0}, {}), ({"x": 7.5, "y": 12.0}, {}), ({"x": 2.0, "y": 5.0}, {}),
+         ({"x": 6.0, "y": 5.0}, {}), ({"y": -1.0}, {}), ({"x": 1.0}, {}), ({"x": 0.0, "y": 0.0}, {})],
+    ),
+    (
+        "平方根・符号・割り算",
+        _values_only(Binary(op="div", left=Unary(op="sqrt", arg=_X), right=Unary(op="neg", arg=_Y))),
+        [({"x": 2.0, "y": 4.0}, {}), ({"x": -1.0, "y": 1.0}, {}), ({"x": 9.0, "y": -3.0}, {})],
+    ),
+    (
+        "走る向きで選ぶ勾配（道の向き寄り・逆向き寄り・直角の付近・向きの無い道）",
+        travel_direction_formula(feature("forward"), feature("backward")),
+        [({ROAD_BEARING_LEAF: road, "forward": 3.0, "backward": -3.0}, {"bearing_deg": bearing})
+         for road, bearing in ((10.0, 0.0), (10.0, 200.0), (350.0, 5.0), (0.0, 104.0), (0.0, 105.0), (0.0, 106.0),
+                               (0.0, 255.5), (180.0, 359.75))]
+        + [({"forward": 3.0, "backward": -3.0}, {"bearing_deg": 90.0}), ({ROAD_BEARING_LEAF: 0.0}, {"bearing_deg": 0.0})],
+    ),
+    (
+        "風の追加負荷（向かい風・追い風・横風・風の無い道）",
+        WIND_DRAG_RATIO_WAY_FORMULA,
+        [({"wind_speed_ms": speed, "wind_direction_deg": direction}, {"bearing_deg": bearing, "speed_kmh": kmh})
+         for speed, direction, bearing, kmh in ((5.0, 0.0, 0.0, 20.0), (5.0, 180.0, 0.0, 20.0), (8.0, 90.0, 0.0, 25.0),
+                                                (3.2, 47.0, 312.5, 18.0), (12.0, 200.0, 20.0, 40.0))]
+        + [({}, {"bearing_deg": 0.0, "speed_kmh": 20.0})],
+    ),
+]
+
+
+def _formula_row(formula: WayValueFormula, features: dict[str, float], conditions: dict[str, float]) -> dict:
+    value = float(evaluate_formula(formula.value, features, conditions))
+    undetermined = float(evaluate_formula(formula.undetermined, features, conditions))
+    return {
+        "features": features,
+        "conditions": conditions,
+        "value": None if math.isnan(value) else value,
+        "undetermined": not math.isnan(undetermined) and undetermined != 0,
+    }
+
+
+def way_value_expectations() -> dict[str, list[dict]]:
+    """地図が塗る値の木を、道ごとの材料と条件で評価した値（値の無い道はnull）と、向きで決まらないか。丸めの中点・
+    折れ線の端・値の無い材料のように、地図の式と食い違いうる場面を並べる。"""
+    return {
+        "way_value_formula": [
+            {"scene": scene, "formula": formula.model_dump(mode="json"),
+             "rows": [_formula_row(formula, features, conditions) for features, conditions in inputs]}
+            for scene, formula, inputs in _WAY_VALUE_FORMULAS
+        ]
+    }
+
+
+def _road_class(sort_order: int, former_keys: list[str]) -> RoadClass:
+    return RoadClass(label="", description="", sort_order=sort_order, former_keys=former_keys, conditions=[])
+
+
+# 前の鍵の付き方が分かれる区分: 分けた区分（1つの前の鍵を2つの行が持ち、片方は既定が「なるべく避ける」）・合わせた区分
+# （前の鍵を2つ持つ）・前の鍵を持たない区分。
+_AVOIDANCE_DEFINITIONS = EMPTY_ROAD_CLASSES.model_copy(
+    update={
+        "classifications": {
+            "kind": RoadClassification(
+                label="",
+                description="",
+                is_published=True,
+                classes={
+                    "split_a": _road_class(0, ["old.split"]),
+                    "split_b": _road_class(1, ["old.split"]),
+                    "merged": _road_class(2, ["old.x", "old.y"]),
+                    "plain": _road_class(3, []),
                 },
-            ),
-            _derived_axis_rows(
-                "任意の材料",
-                _linear(
-                    MaterialTerm(material="intersection_count_per_km"),
-                    MaterialTerm(material="poi_signal_per_km", weight=2.0, required=False),
-                    breakpoints=[(0.0, 0.0), (5.0, 50.0), (10.0, 100.0)],
-                ),
-                {
-                    "両方ある": {"intersection_count_per_km": 3.0, "poi_signal_per_km": 1.5},
-                    "任意の材料が欠けた": {"intersection_count_per_km": 3.0, "poi_signal_per_km": None},
-                },
-            ),
-            _derived_axis_rows(
-                "真偽の材料の重み付き和",
-                _linear(
-                    MaterialTerm(material="lit", weight=10.0),
-                    MaterialTerm(material="has_tunnel", weight=5.0),
-                    breakpoints=[(0.0, 0.0), (15.0, 100.0)],
-                ),
-                {
-                    "片方が真": {"lit": True, "has_tunnel": False},
-                    "両方が偽（タイルに載らない）": {"lit": False, "has_tunnel": False},
-                    "両方が真": {"lit": True, "has_tunnel": True},
-                },
-            ),
-            _derived_axis_rows(
-                "真偽の分類",
-                CategoricalShape(material="bridge", mapping={True: 80.0, False: 10.0}),
-                {"真": {"bridge": True}, "偽（タイルに載らない）": {"bridge": False}},
-            ),
-            _derived_axis_rows(
-                "3値以上の分類",
-                CategoricalShape(material="highway", mapping={"primary": 60.0, "residential": 20.0, "cycleway": 0.0}),
-                {
-                    "登録した値": {"highway": "primary"},
-                    "点数0の登録した値": {"highway": "cycleway"},
-                    "未登録の値": {"highway": "service"},
-                    "欠けた": {"highway": None},
-                },
-            ),
-            _derived_axis_rows(
-                "実行時の係数が要る材料",
-                _linear(
-                    MaterialTerm(material="accident_count_per_km_year", weight=2.0),
-                    MaterialTerm(material="built_percent", weight=0.5),
-                    breakpoints=[(0.0, 0.0), (20.0, 100.0)],
-                ),
-                {
-                    "両方ある": {"accident_count_per_km_year": 0.5, "built_percent": 30.0},
-                    "係数の要る材料が0": {"accident_count_per_km_year": 0.0, "built_percent": 30.0},
-                },
-            ),
-            _referenced_axis_rows(),
+            )
+        },
+        "avoidance_sections": {"s": AvoidanceSection(label="", description="", sort_order=0)},
+        "avoidance_classifications": {
+            "kind": AvoidanceClassification(
+                section_key="s",
+                sort_order=0,
+                overrides={"split_b": AvoidanceOverride(section_key=None, default_level="avoid", selectable=True)},
+            )
+        },
+    }
+)
+
+# 要求の場面: （場面, 行の鍵 → 選んだ段）。
+_AVOIDANCE_REQUESTS: list[tuple[str, dict[str, AvoidanceLevel]]] = [
+    ("何も選んでいない", {}),
+    ("今の鍵だけ", {"kind.split_a": "exclude", "kind.plain": "avoid"}),
+    ("分けた区分の前の鍵は、分けてできたどの行にも効く", {"old.split": "exclude"}),
+    ("前の鍵の段は既定より弱くても効く", {"old.split": "pass"}),
+    ("合わせた区分の前の鍵は強い方（前に書いた方が強い）", {"old.x": "exclude", "old.y": "pass"}),
+    ("合わせた区分の前の鍵は強い方（後に書いた方が強い）", {"old.x": "pass", "old.y": "avoid"}),
+    ("今の鍵が前の鍵に勝つ", {"kind.split_b": "pass", "old.split": "exclude"}),
+    ("今の行でも前の鍵でもない鍵は読まない", {"gone.a": "exclude"}),
+]
+
+
+def road_avoidance_expectations() -> dict[str, list[dict]]:
+    """要求の避け方を今の行へ揃えた段。行と段は軸カタログが配る形で出す。"""
+    avoidance = road_class_catalog(_AVOIDANCE_DEFINITIONS).avoidance
+    return {
+        "levels": [level.model_dump() for level in avoidance.levels],
+        "rows": [row.model_dump() for row in avoidance.rows],
+        "resolve_road_avoidance": [
+            {"scene": scene, "requested": requested,
+             "resolved": resolve_road_avoidance(requested, _AVOIDANCE_DEFINITIONS)}
+            for scene, requested in _AVOIDANCE_REQUESTS
         ],
     }
 
@@ -410,6 +595,10 @@ def axis_ramp_expectations() -> dict[str, list[dict]]:
 #: 組の名前 → 表を作る関数。組を足すときはここに1行足す（書き出しと置き場の名前はこれから決まる）。
 EXPECTATIONS: dict[str, Callable[[], dict[str, list[dict]]]] = {
     "geo": geo_expectations,
+    "region": region_expectations,
+    "time": time_expectations,
+    "difficulty": difficulty_expectations,
     "jma": jma_expectations,
-    "axis-ramp": axis_ramp_expectations,
+    "way-value": way_value_expectations,
+    "road-avoidance": road_avoidance_expectations,
 }

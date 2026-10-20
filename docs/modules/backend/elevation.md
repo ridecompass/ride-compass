@@ -9,7 +9,7 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `attributes.py`（`elevation_values_sql`。区間の頂点列から標高・勾配を出すSQLを組み立てる） |
+| domain | `attributes.py`（`attributes.py: elevation_values_sql`。区間の頂点列から標高・勾配を出すSQLを組み立てる） |
 | batch | `source_adapters/gsi_dem_tile.py`（取込。手元へ写したタイルを製品ごとに読み、int32へ詰める。配信元は叩かない）・`dem_tile_store.py`（写したタイルの置き場と、配信元のURL・画素の値を採る製品の順・その製品に無いことの印）・`scripts/fetch_dem_tiles.py`（取得。プロファイルが挙げた製品ごとに、手元に無い分だけ取りに行く。取込と分けてあるので、失敗しても欠けた分だけ取り直せる）・`source_adapters/raster_wkb.py`（画素の並びをPostGISの`raster`へ包む）・`derive_elevation.py`（派生） |
 
 ## 3段に分かれている
@@ -94,6 +94,11 @@ DEMが返すのは地表面の標高で、桁や坑道の高さではない—�
 止まっているので取らない（https://maps.gsi.go.jp/development/ichiran.html の備考）。位置・画素の大きさ・型・
 欠測値は`raster`の値自身が持ち、`raster`が持てない尺度と、画素の番地を出すのに要る幅だけを
 `attrs`へ書く（`raster`から幅を読むと、そのたびに画素が実体化される）。
+
+取込の記録（`source_runs.origin`の`tiles_last_modified`）には、読んだタイルの配信元での最終更新のうち一番新しいものを残す。
+取得がタイルのファイルの更新時刻を配信元の`Last-Modified`にして置き、取込はそれを読む。配信元は標高の製品の更新を
+タイルの単位で一覧にしておらず（タイルの目録`mokuroku.csv.gz`も標高の製品には無い）、手元が配信元より古いかは、
+この時刻と配信元のタイルの`Last-Modified`を比べて言う。
 
 ### 製品ごとの性質（配信元の仕様、コードからは導けない）
 

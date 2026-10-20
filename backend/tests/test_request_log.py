@@ -10,12 +10,14 @@
 
 import calendar
 import logging
+import re
 
 import pytest
 from asgi_correlation_id import CorrelationIdMiddleware
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.testclient import TestClient
 
+from app.api.cache_policy import TILE_PATH_PREFIXES
 from app.main import app as main_app
 from app.infrastructure.request_log import (
     access_level,
@@ -25,12 +27,6 @@ from app.infrastructure.request_log import (
 )
 
 CLIENT_REQUEST_ID = "0f8fad5bd9cb469fa16570867728950e"
-
-
-def test_incoming_request_id_is_propagated():
-    client = TestClient(main_app)
-    response = client.get("/health", headers={"X-Request-ID": CLIENT_REQUEST_ID})
-    assert response.headers["X-Request-ID"] == CLIENT_REQUEST_ID
 
 
 def test_access_log_line_carries_the_request_id(caplog):
@@ -63,34 +59,73 @@ def test_access_log_line_carries_the_request_id(caplog):
     ],
 )
 def test_access_level_policy(path, status_code, level):
-    assert access_level(path, status_code) == level
+    assert access_level(path, status_code, TILE_PATH_PREFIXES) == level
 
 
-def test_unhandled_exception_logged_as_error_with_traceback(caplog):
-    caplog.set_level(logging.ERROR, logger="ridecompass.access")
-
+def _app_with_access_log() -> FastAPI:
+    """アクセスログのミドルウェアだけを載せたアプリ。タイルの経路の404と、未処理例外の経路を持つ。"""
     test_app = FastAPI()
-    test_app.middleware("http")(request_log_middleware)
+    test_app.middleware("http")(request_log_middleware(TILE_PATH_PREFIXES))
+
+    @test_app.get("/api/basemap/missing")
+    def missing_tile():
+        return Response(status_code=404)
 
     @test_app.get("/boom")
     def boom():
         raise RuntimeError("kaboom")
 
-    client = TestClient(test_app)
-    with pytest.raises(RuntimeError):
-        client.get("/boom")
+    return test_app
 
-    errors = [r for r in caplog.records if r.name == "ridecompass.access" and r.levelno == logging.ERROR]
-    assert len(errors) == 1
-    assert "GET /boom -> unhandled exception" in errors[0].getMessage()
-    assert errors[0].exc_info is not None
+
+def _access_records(caplog) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.name == "ridecompass.access"]
+
+
+def test_access_log_line_reports_the_request_at_the_level_of_its_path(caplog):
+    """1行がメソッド・経路・状態・所要・接続元を持ち、レベルは経路のタイルの接頭辞と状態で決まる。
+
+    タイルの404がWARNINGへ上がると、視界の分だけ並ぶ正常な404で運用のログが埋まる。
+    """
+    caplog.set_level(logging.DEBUG, logger="ridecompass.access")
+    TestClient(_app_with_access_log()).get("/api/basemap/missing")
+
+    [record] = _access_records(caplog)
+    assert record.levelno == logging.DEBUG
+    assert re.fullmatch(r"GET /api/basemap/missing -> 404 in \d+ms client=testclient", record.getMessage())
+
+
+def test_access_log_line_names_unknown_client_when_the_server_gives_none(caplog):
+    """ASGIの`client`はUnixソケット越し等で None になる。そのときも1行を出し、接続元は`unknown`と書く。"""
+    inner = _app_with_access_log()
+
+    async def without_client(scope, receive, send):
+        await inner({**scope, "client": None}, receive, send)
+
+    caplog.set_level(logging.DEBUG, logger="ridecompass.access")
+    TestClient(without_client).get("/api/basemap/missing")
+
+    [record] = _access_records(caplog)
+    assert re.fullmatch(r"GET /api/basemap/missing -> 404 in \d+ms client=unknown", record.getMessage())
+
+
+def test_unhandled_exception_logged_as_error_with_traceback(caplog):
+    caplog.set_level(logging.ERROR, logger="ridecompass.access")
+
+    with pytest.raises(RuntimeError):
+        TestClient(_app_with_access_log()).get("/boom")
+
+    [record] = _access_records(caplog)
+    assert record.levelno == logging.ERROR
+    assert re.fullmatch(r"GET /boom -> unhandled exception after \d+ms client=testclient", record.getMessage())
+    assert record.exc_info is not None
 
 
 # 未処理例外(500)でもX-Request-IDヘッダが付く。TestClientは既定で
 # raise_server_exceptions=Trueのため、実際のHTTPレスポンスを得るにはFalseを指定する。
 def test_unhandled_exception_response_has_request_id_header():
     test_app = FastAPI()
-    test_app.middleware("http")(request_log_middleware)
+    test_app.middleware("http")(request_log_middleware(TILE_PATH_PREFIXES))
     test_app.add_middleware(CorrelationIdMiddleware)
     test_app.add_exception_handler(Exception, unhandled_exception_handler)
 

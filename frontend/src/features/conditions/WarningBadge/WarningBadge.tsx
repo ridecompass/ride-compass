@@ -2,7 +2,7 @@
 
 import type { components } from "@/types/generated/api";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
-import { RetryIcon, WarningTriangleIcon } from "@/components/ui/icons/icons";
+import { NotFetchedIcon, RetryIcon, WarningTriangleIcon } from "@/components/ui/icons/lucideIcons";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { vocabulary } from "@/types/generated/vocabulary";
@@ -59,11 +59,11 @@ function highestLevelItem(items: readonly WarningBadgeItem[]): WarningBadgeItem 
   );
 }
 
-// 警告バッジは「最も警戒度が高いレベル+件数のサマリーボタン1つを常時1行で表示し、
-// タップで全件の詳細（Radix Popover）を開く」形式にしてある。全件表示という安全側の
-// 方針自体は変えず（警報の存在に気づけないことを避ける）、ボタンの文言・色だけで
-// 「今の最高警戒度」が常に分かり、内訳は開かないと見えないぶん、常時全件表示より
-// 一歩踏み込む操作が要るという妥当なトレードオフ。
+// 警告バッジは「最も警戒度が高いレベルの色のアイコン1つを常時出し、タップで全件の詳細
+// （Radix Popover）を開く」形式にしてある。全件表示という安全側の方針自体は変えず（警報の
+// 存在に気づけないことを避ける）、アイコンの色だけで「今の最高警戒度」が常に分かり、
+// 呼び名と件数は名前（読み上げと長押しのツールチップ）に出す。内訳は開かないと見えないぶん、
+// 常時全件表示より一歩踏み込む操作が要るという妥当なトレードオフ。
 export default function WarningBadgeList({ items, failures }: WarningBadgeListProps) {
   return (
     <>
@@ -81,16 +81,13 @@ function WarningFetchFailureMark({ failures }: { failures: readonly FetchFailure
   return (
     <Popover>
       <PopoverTrigger asChild>
-        {/* 警告の配色（白抜き・塗り）と取り違えないよう、塗らずに枠線と前景色だけで描く。 */}
         <Button
-          size="xs"
-          shape="pill"
-          className="bg-transparent"
+          variant="ghost"
+          size="headerIcon"
           aria-label={`${labels}を取得できていません。押すと詳細を表示`}
           usage="取得できていない情報と、その間に画面で起きていることを開きます。そこから取り直せます。"
         >
-          <WarningTriangleIcon size={14} />
-          <span>未取得</span>
+          <NotFetchedIcon size={18} />
         </Button>
       </PopoverTrigger>
       <PopoverContent {...DETAIL_PANEL_PROPS}>
@@ -132,14 +129,13 @@ function WarningSummary({ items }: { items: WarningBadgeItem[] }) {
     <Popover>
       <PopoverTrigger asChild>
         <Button
-          size="xs"
-          shape="pill"
-          className="border-0 font-bold text-white data-[state=open]:text-white"
-          style={{ backgroundColor: top.color }}
+          variant="ghost"
+          size="headerIcon"
+          style={{ color: top.color }}
           aria-label={`気象警報・注意報あり: ${summaryLabel}。押すと詳細を表示`}
           usage="いまいる場所に出ている気象警報・注意報の詳細を開きます。"
         >
-          {summaryLabel}
+          <WarningTriangleIcon size={18} />
         </Button>
       </PopoverTrigger>
       <PopoverContent {...DETAIL_PANEL_PROPS}>

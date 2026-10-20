@@ -1,24 +1,11 @@
-// 専用配信の値を取るタイルの座標と、複数タイルの応答の統合（軸によらない）。
+// 道ごとの材料を取るタイルの座標と、複数タイルの応答の統合（軸によらない）。
 
-import regionTileConfig from "@/types/generated/region-tile-config.json";
+import { lonLatToTileIndex } from "@/features/map/layers/webMercatorTile";
 
 export interface TileXY {
   z: number;
   x: number;
   y: number;
-}
-
-// Web Mercatorで表せる緯度の限界。挟まないとlogがNaN/Infinityになりうる。
-const MAX_MERCATOR_LATITUDE = regionTileConfig.max_mercator_latitude;
-
-/** 緯度経度を含むXYZタイルのx,y。 */
-function lonLatToTileIndex(lon: number, lat: number, z: number): [number, number] {
-  const n = 2 ** z;
-  const x = Math.floor(((lon + 180) / 360) * n);
-  const clampedLat = Math.max(-MAX_MERCATOR_LATITUDE, Math.min(lat, MAX_MERCATOR_LATITUDE));
-  const latRad = (clampedLat * Math.PI) / 180;
-  const y = Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n);
-  return [x, y];
 }
 
 // 1回に求めるタイルの数の上限（ズームは範囲へ丸めるので、ふつうの画面では届かない）。
@@ -29,18 +16,11 @@ function roadTileZoom(zoom: number, minZoom: number, maxZoom: number): number {
   return Math.min(maxZoom, Math.max(minZoom, Math.floor(zoom)));
 }
 
-/** 1点を含むタイルの番号を、ズームzのタイルの範囲へ収めたもの。 */
-function clampedTileIndex(lon: number, lat: number, z: number): [number, number] {
-  const last = 2 ** z - 1;
-  const [x, y] = lonLatToTileIndex(lon, lat, z);
-  return [Math.max(0, Math.min(x, last)), Math.max(0, Math.min(y, last))];
-}
-
 /** 指定した1点を含む道路タイル。**レンズが引いたのと同じタイルを指す**ため、ズームの
  * 丸め方はtilesCoveringViewportと共有する（ずれると同じ値がキャッシュにあっても引き直しになる）。 */
 export function tileContainingLonLat(lon: number, lat: number, zoom: number, minZoom: number, maxZoom: number): TileXY {
   const z = roadTileZoom(zoom, minZoom, maxZoom);
-  const [x, y] = clampedTileIndex(lon, lat, z);
+  const [x, y] = lonLatToTileIndex(lon, lat, z);
   return { z, x, y };
 }
 
@@ -53,8 +33,8 @@ export function tilesCoveringViewport(
 ): TileXY[] {
   if (viewport.zoom < minZoom) return [];
   const z = roadTileZoom(viewport.zoom, minZoom, maxZoom);
-  const [xStart, yStart] = clampedTileIndex(viewport.west, viewport.north, z);
-  const [xEnd, yEnd] = clampedTileIndex(viewport.east, viewport.south, z);
+  const [xStart, yStart] = lonLatToTileIndex(viewport.west, viewport.north, z);
+  const [xEnd, yEnd] = lonLatToTileIndex(viewport.east, viewport.south, z);
   const xs = [xStart, xEnd].sort((a, b) => a - b);
   const ys = [yStart, yEnd].sort((a, b) => a - b);
   const tiles: TileXY[] = [];
@@ -72,8 +52,8 @@ export function tilesCoveringViewport(
  * **鍵は文字列のまま扱う**。路面タイルの`feature_key`はズームによってway_idにも
  * edge_idにもなり（backendの`EDGE_UNIT_MIN_ZOOM`）、edge_idは数値ではない。数値へ
  * 変換すると`setFeatureState`のidがタイル側のfeature.idと一致せず、色が一切付かない。 */
-export function mergeDynamicWayValues(responses: readonly Record<string, number | null>[]): Map<string, number | null> {
-  const merged = new Map<string, number | null>();
+export function mergeTileValues<Value>(responses: readonly Record<string, Value>[]): Map<string, Value> {
+  const merged = new Map<string, Value>();
   for (const response of responses) {
     for (const [featureKey, value] of Object.entries(response)) {
       merged.set(featureKey, value);

@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
-import { CopyIcon } from "@/components/ui/icons/icons";
+import { CopyIcon } from "@/components/ui/icons/lucideIcons";
 import { Card } from "@/components/ui/Card/Card";
 import { Input, Select } from "@/components/ui/Input/Input";
 import { Button } from "@/components/ui/Button/Button";
@@ -11,6 +12,7 @@ import { vocabulary } from "@/types/generated/vocabulary";
 import { LogLine } from "@/components/ui/LogLine/LogLine";
 import { textVariants } from "@/components/ui/Text/Text";
 import { errorMessage } from "@/lib/apiError";
+import { getQueryClient } from "@/lib/queryClient";
 
 const DEFAULT_LIMIT = 200;
 /** 選べるレベル（軽い順）。**backendの宣言の並びそのもの**（生成物`vocabulary.ts: logLevels`）。キーの過不足は
@@ -41,24 +43,19 @@ export default function BackendLogsPanel() {
   const [minLevel, setMinLevel] = useState<LogLevelName | "">("WARNING");
   const [limit, setLimit] = useState(String(DEFAULT_LIMIT));
   const [lines, setLines] = useState<string[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const fetchLogs = useMutation({ mutationFn: getRecentLogs, onSuccess: setLines }, getQueryClient());
+  const error = fetchLogs.isError ? errorMessage(fetchLogs.error) : null;
   // 絞り込みの欄は1文字ごとに描き直すので、行の段階は取得したときに1回だけ読む。
   const levels = useMemo(() => lines?.map(parseLogLevel) ?? [], [lines]);
   const { copied, error: copyError, copy } = useCopyToClipboard();
 
   const handleFetch = () => {
-    setLoading(true);
-    setError(null);
     const parsedLimit = Number(limit);
-    getRecentLogs({
+    fetchLogs.mutate({
       contains: contains.trim() || undefined,
       min_level: minLevel || undefined,
       limit: Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined,
-    })
-      .then(setLines)
-      .catch((err) => setError(errorMessage(err)))
-      .finally(() => setLoading(false));
+    });
   };
 
   return (
@@ -97,8 +94,8 @@ export default function BackendLogsPanel() {
           className="w-24"
           aria-label="件数"
         />
-        <Button onClick={handleFetch} disabled={loading}>
-          {loading ? "取得中…" : "取得"}
+        <Button onClick={handleFetch} disabled={fetchLogs.isPending}>
+          {fetchLogs.isPending ? "取得中…" : "取得"}
         </Button>
       </div>
       {error && <p className={textVariants({ variant: "error" })}>取得失敗: {error}</p>}

@@ -3,74 +3,88 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
-import { ConfirmDialog } from "@/components/ui/Dialog/Dialog";
-import { GuideText } from "@/components/ui/GuideText/GuideText";
-import { DeleteSavedIcon } from "@/components/ui/icons/icons";
-import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
+import { RecallSavedIcon } from "@/components/ui/icons/lucideIcons";
+import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
+import SavedList from "@/features/route/SavedList/SavedList";
 import type { SavedPlace } from "@/features/route/savedPlaces";
+import type { PinRole } from "@/types/route";
 
 interface SavedPlacesPanelProps {
   places: SavedPlace[];
+  /** 経由地を上限まで置いてあるか（置いてあれば「経由地に足す」を押せない）。 */
+  waypointsFull: boolean;
+  /** 周回か（周回の間は目的地を使わないので「目的地にする」を押せない）。 */
+  loop: boolean;
+  /** 保存した地点を、選んだ役割の地点として置く（経由地は足す）。 */
+  onRecall: (role: PinRole, place: SavedPlace) => void;
   onRemove: (place: SavedPlace) => void;
 }
 
-// 「保存」タブの「地点」。保存した地点の一覧と消すだけを置く——保存と呼び出しは、地点を置く所（条件タブの地点の詳しく）が持つ。
-// 一覧の行は名前と辺りで、どこに置くかを選ばせない（置く地点は、打つ欄を押した地点で決まる）。
-export default function SavedPlacesPanel({ places, onRemove }: SavedPlacesPanelProps) {
-  // 消すを押した地点。確認の窓で「消す」を押すまで消さない。
-  const [removing, setRemoving] = useState<SavedPlace | null>(null);
+const RECALL_ROLES: { role: PinRole; label: string }[] = [
+  { role: "origin", label: "出発地にする" },
+  { role: "waypoint", label: "経由地に足す" },
+  { role: "destination", label: "目的地にする" },
+];
+
+// 「保存済み」タブの「地点」。保存した地点の一覧と、呼び出す・消すを置く（保存は条件タブの地点の詳しくの星）。行の「呼び出す」は
+// 「プリセット」の行と同じアイコンで、押すとどの役割に置くかを選ぶメニューを開く。
+export default function SavedPlacesPanel({ places, waypointsFull, loop, onRecall, onRemove }: SavedPlacesPanelProps) {
+  // 「呼び出す」のメニューを開いている地点。
+  const [recalling, setRecalling] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col gap-3">
-      {places.length === 0 ? (
-        <p className={textVariants({ variant: "hint" })}>
-          保存した地点はまだありません。
-          <InfoPopover triggerAriaLabel="地点の保存の仕方" triggerClassName="ml-1 align-middle">
-            <GuideText text="条件タブで地点を押し、「地点を保存」で保存します。地点の打つ欄を押すと、保存した地点から選べます。" />
-          </InfoPopover>
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-1">
-          {places.map((place) => (
-            <li
-              key={place.name}
-              className="flex items-center gap-1 rounded-sm border border-[var(--color-border)] px-1.5 py-1"
-            >
-              <span className="min-w-0 flex-auto [overflow-wrap:anywhere]">
-                <span className="font-semibold">{place.name}</span>
-                {place.area !== null && (
-                  <span className={cn("ml-1.5", textVariants({ variant: "note" }))}>{place.area}</span>
-                )}
-              </span>
+      <SavedList
+        items={places}
+        noun="地点"
+        howToSave="条件タブで地点を押し、「地点を保存」で保存します。保存した地点は、ここで行の「呼び出す」を押すと出発地・経由地・目的地にできます。"
+        renderMain={(place) => (
+          <span className="min-w-0 flex-auto [overflow-wrap:anywhere]">
+            <span className="font-semibold">{place.name}</span>
+            {place.area !== null && (
+              <span className={cn("ml-1.5", textVariants({ variant: "note" }))}>{place.area}</span>
+            )}
+          </span>
+        )}
+        renderActions={(place) => (
+          <Popover open={recalling === place.name} onOpenChange={(open) => setRecalling(open ? place.name : null)}>
+            <PopoverTrigger asChild>
               <Button
-                variant="ghost"
                 size="panelIcon"
-                aria-label={`「${place.name}」を消す`}
-                aria-haspopup="dialog"
-                aria-expanded={removing?.name === place.name}
-                onClick={() => setRemoving(place)}
+                aria-label={`「${place.name}」を呼び出す`}
+                usage="この地点を、出発地・経由地・目的地のどれにするかを選んで置きます。置くと条件タブへ移ります。"
               >
-                <DeleteSavedIcon size={18} />
+                <RecallSavedIcon size={18} />
               </Button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <ConfirmDialog
-        open={removing !== null}
-        title={`「${removing?.name ?? ""}」を消します`}
-        confirmLabel="消す"
-        onCancel={() => setRemoving(null)}
-        onConfirm={() => {
-          if (removing === null) return;
-          setRemoving(null);
-          onRemove(removing);
-        }}
-      >
-        消した地点は元に戻せません。
-      </ConfirmDialog>
+            </PopoverTrigger>
+            <PopoverContent
+              className="flex flex-col px-1 py-1"
+              side="bottom"
+              align="end"
+              collisionPadding={POPOVER_COLLISION_PADDING_PX}
+              aria-label={`「${place.name}」をどこに置くか`}
+            >
+              {RECALL_ROLES.map(({ role, label }) => (
+                <Button
+                  key={role}
+                  variant="menu"
+                  size="sm"
+                  disabled={(role === "waypoint" && waypointsFull) || (role === "destination" && loop)}
+                  onClick={() => {
+                    setRecalling(null);
+                    onRecall(role, place);
+                  }}
+                >
+                  {label}
+                </Button>
+              ))}
+            </PopoverContent>
+          </Popover>
+        )}
+        onRemove={onRemove}
+      />
     </div>
   );
 }

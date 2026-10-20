@@ -1,0 +1,68 @@
+# backend の Python を入れ、依存と道具を入れる。ワークフローはここを通して入れる。
+# 版は本番のイメージ（backend/Dockerfile の FROM）から取る。pip のキャッシュの鍵は、入れる宣言と、
+# そこから -r で読まれる宣言の全部にする（鍵に無い宣言が変わると、古いキャッシュが当たり続けて毎回取り直す）。
+name: Python（本番のイメージと同じ版）
+description: backend/Dockerfile と同じ版の Python を入れ、backend の依存の宣言から依存と道具を入れる
+
+inputs:
+  requirements:
+    description: 入れる依存の宣言（backend/ の下のファイル名を空白で区切る）
+    default: ""
+  tools:
+    description: 版を backend の依存の宣言から取って入れる道具の名前（空白で区切る）
+    default: ""
+  extra:
+    description: 宣言の外から足すもの（pip install の引数）
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - id: plan
+      shell: bash
+      working-directory: ${{ github.workspace }}/backend
+      env:
+        REQUIREMENTS: ${{ inputs.requirements }}
+        TOOLS: ${{ inputs.tools }}
+      run: |
+        version=$(sed -n 's/^FROM python:\([0-9.]*\).*/\1/p' Dockerfile)
+        [ -n "$version" ] || { echo "::error::backend/Dockerfile の FROM から Python の版を読めない"; exit 1; }
+        pending=($REQUIREMENTS)
+        keys=()
+        while [ ${#pending[@]} -gt 0 ]; do
+          file=${pending[0]}
+          pending=("${pending[@]:1}")
+          [[ " ${keys[*]} " == *" backend/$file "* ]] && continue
+          keys+=("backend/$file")
+          pending+=($(sed -n 's/^-r[[:space:]]*//p' "$file"))
+        done
+        pins=()
+        for tool in $TOOLS; do
+          pin=$(grep -hE "^${tool}==" requirements*.txt | sort -u || true)
+          [ "$(grep -c . <<< "$pin")" = 1 ] || { echo "::error::$tool の版が backend の依存の宣言に1つだけ無い: $pin"; exit 1; }
+          pins+=("$pin")
+        done
+        {
+          echo "version=$version"
+          echo "cache=${keys:+pip}"
+          echo "pins=${pins[*]}"
+          echo "keys<<EOF"
+          printf '%s\n' "${keys[@]}"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+    - uses: actions/setup-python@v6
+      with:
+        python-version: ${{ steps.plan.outputs.version }}
+        cache: ${{ steps.plan.outputs.cache }}
+        cache-dependency-path: ${{ steps.plan.outputs.keys }}
+    - if: inputs.requirements != '' || inputs.tools != '' || inputs.extra != ''
+      shell: bash
+      working-directory: ${{ github.workspace }}/backend
+      env:
+        REQUIREMENTS: ${{ inputs.requirements }}
+        PINS: ${{ steps.plan.outputs.pins }}
+        EXTRA: ${{ inputs.extra }}
+      run: |
+        args=()
+        for file in $REQUIREMENTS; do args+=(-r "$file"); done
+        pip install "${args[@]}" $PINS $EXTRA

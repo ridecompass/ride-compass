@@ -4,10 +4,16 @@
 
 import { fetchJson } from "@/lib/apiClient";
 import { apiPath } from "@/lib/apiPath";
+import { fillTemplate, TEMPLATE_PLACEHOLDER } from "@/lib/urlTemplate";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
-import { DEFAULT_API_TIMEOUT_MS } from "@/lib/apiTimeouts";
+import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
+import { MINUTE_MS } from "@/lib/duration";
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import type { DynamicWeatherRenderPayload } from "@/features/map/layers/dynamicWeather";
+import {
+  isTileRenderKind,
+  type DynamicWeatherRenderPayload,
+  type TileRenderKind,
+} from "@/features/map/layers/dynamicWeather";
 
 /**
  * JMAプロキシ配下のパスを、タイル本体と同じ配信オリジンの絶対URLにする。
@@ -32,14 +38,6 @@ type DeclaredElement = (typeof mapDisplay.weatherElements)[number];
 /** 時刻の段1つぶんの配信要素（要素id・時刻一覧のパス・コマのパスのテンプレート・読み方・更新間隔）。 */
 export type JmaDelivery = DeclaredElement["jmaElements"][number];
 
-/** 配信元のタイルで描く描き方。 */
-type JmaTileKind = "rasterTile" | "vectorTile";
-
-/** 配信元のタイルで描く描き方か。それ以外の描き方の配信要素は、コマごとの地物をGeoJSONで配る。 */
-export function isJmaTileKind(kind: DeclaredElement["kind"]): kind is JmaTileKind {
-  return kind === "rasterTile" || kind === "vectorTile";
-}
-
 /** 時刻一覧から読み出したコマ1つ。タイル・地点のURLを決める時刻と系列。項目名は源泉のパスのテンプレートの
  * `{basetime}`等と同じ名前で、テンプレートはこの名前で埋める。 */
 export interface JmaFrame {
@@ -54,13 +52,9 @@ export function jmaFrameKey(frame: JmaFrame): string {
   return `${frame.basetime}/${frame.member}/${frame.validtime}`;
 }
 
-const PLACEHOLDER = /\{([^}]+)\}/g;
-
 /** 源泉のテンプレート（`urlTemplate`）の、コマの項目を埋める。タイル座標の`{z}/{x}/{y}`は地図ライブラリが埋めるので残す。 */
 function fillFrame(template: string, frame: JmaFrame): string {
-  return template.replace(PLACEHOLDER, (whole, name: string) =>
-    name in frame ? frame[name as keyof JmaFrame] : whole,
-  );
+  return fillTemplate(template, { ...frame });
 }
 
 /** そのコマの配信元のURL。タイルなら`{z}/{x}/{y}`を残したテンプレート、地点ならGeoJSONのURL。 */
@@ -70,10 +64,10 @@ function jmaFrameUrl(delivery: JmaDelivery, frame: JmaFrame): string {
 
 /** 配信元のタイルで描く段の、そのコマの描画ペイロード。 */
 export function jmaTilePayload(
-  kind: JmaTileKind,
+  kind: TileRenderKind,
   delivery: JmaDelivery,
   frame: JmaFrame,
-): Extract<DynamicWeatherRenderPayload, { kind: JmaTileKind }> {
+): Extract<DynamicWeatherRenderPayload, { kind: TileRenderKind }> {
   return { kind, tileUrlTemplate: jmaFrameUrl(delivery, frame) };
 }
 
@@ -111,7 +105,7 @@ function escapeRegExp(text: string): string {
 
 /** 源泉のテンプレートを、URLの末尾に当てる正規表現と項目名の並びにする。 */
 function templateMatcher(template: string): { pattern: RegExp; names: string[] } {
-  const parts = template.split(PLACEHOLDER);
+  const parts = template.split(TEMPLATE_PLACEHOLDER);
   const names = parts.filter((_, index) => index % 2 === 1);
   const body = parts
     .map((part, index) => (index % 2 === 0 ? escapeRegExp(part) : TILE_COORDINATES.has(part) ? "(\\d+)" : "([^/?]+)"))
@@ -120,7 +114,7 @@ function templateMatcher(template: string): { pattern: RegExp; names: string[] }
 }
 
 const TILE_DELIVERY_MATCHERS = mapDisplay.weatherElements
-  .filter((element) => isJmaTileKind(element.kind))
+  .filter((element) => isTileRenderKind(element.kind))
   .flatMap((element): readonly JmaDelivery[] => element.jmaElements)
   .map((delivery) => ({ delivery, ...templateMatcher(delivery.urlTemplate) }));
 
@@ -144,31 +138,18 @@ export function readJmaTileUrl(url: string): JmaTileRef | null {
   return null;
 }
 
-/** 配信元が地点をGeoJSONで配る段の記号の大きさを決めるプロパティ。配信元は地点ごとの強弱を
- * 持たないため、gridMarkのicon-size式が必須で参照するこのプロパティへ固定値を入れる。描き方の宣言
- * （`features/map/scene/groups/weather.ts`）もこの定数を参照する。 */
-export const JMA_POINT_VALUE_PROPERTY = "value";
-
-/** そのコマの地物（落雷の地点・線状降水帯の雨域等）。どの地物にも記号の大きさを決める値を足す（線・面には効かない）。
- * 失敗（配信元の404を含む）はそのまま投げる——取るコマは配信の遅れのぶん前へずらしてあり（`jmaFramesOf`）、配信済みの
+/** そのコマの地物（落雷の地点・線状降水帯の雨域等）。失敗（配信元の404を含む）はそのまま投げる——取るコマは配信の遅れのぶん前へずらしてあり（`jmaFramesOf`）、配信済みの
  * コマは地物が無くても空の集まりで返るので、404は取れていないことを表す。 */
-export async function fetchJmaGeojson(
+export function fetchJmaGeojson(
   delivery: JmaDelivery,
   frame: JmaFrame,
   label: string,
 ): Promise<GeoJSON.FeatureCollection> {
-  const geojson = await fetchJson<GeoJSON.FeatureCollection>(jmaFrameUrl(delivery, frame), {
-    timeoutMs: DEFAULT_API_TIMEOUT_MS,
+  return fetchJson<GeoJSON.FeatureCollection>(jmaFrameUrl(delivery, frame), {
+    timeoutMs: API_TIMEOUT_MS.default,
     category: "api:jma-geojson",
     errorLabel: label,
   });
-  return {
-    ...geojson,
-    features: geojson.features.map((feature) => ({
-      ...feature,
-      properties: { ...feature.properties, [JMA_POINT_VALUE_PROPERTY]: 1 },
-    })),
-  };
 }
 
 /** 時刻一覧の1行。 */
@@ -186,7 +167,7 @@ interface RawTargetTime {
 /** 時刻一覧のファイル1つ（源泉の`targetTimesPaths`の1つ）の行。`label`はエラーメッセージに使う対象名（「の時刻一覧」は本関数が付ける）。 */
 export async function fetchJmaTargetTimesFile(path: string, label: string): Promise<unknown[]> {
   const data = await fetchJson<unknown>(jmaProxyUrl(path), {
-    timeoutMs: DEFAULT_API_TIMEOUT_MS,
+    timeoutMs: API_TIMEOUT_MS.default,
     category: "api:jma-nowcast-times",
     errorLabel: `${label}の時刻一覧`,
   });
@@ -270,7 +251,7 @@ export function jmaFramesOf(delivery: JmaDelivery, rows: readonly unknown[]): Jm
  * 同じく、その要素の最新の`basetime`から遅れの幅に入るコマを、幅の端まで前の`basetime`へずらす（実況のコマは
  * `validtime`も同じだけ戻し、ずらした先の実況にする）。 */
 function delayed(frames: JmaFrame[], ownRows: readonly RawTargetTime[], delivery: JmaDelivery): JmaFrame[] {
-  const delayMs = delivery.dataDelayMinutes * 60_000;
+  const delayMs = delivery.dataDelayMinutes * MINUTE_MS;
   if (delayMs === 0) return frames;
   const latest = Math.max(...ownRows.map((row) => parseValidtime(row.basetime).getTime()));
   return frames.map((frame) => {

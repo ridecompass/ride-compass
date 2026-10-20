@@ -19,13 +19,12 @@ import logging
 import sys
 from pathlib import Path
 
-import httpx
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified  # noqa: E402
-from app.batch.source_adapters.npa_honhyo import ENCODING, honhyo_path  # noqa: E402
-from app.batch.source_profile import load_source_profile  # noqa: E402
+from app.batch.common import fetch_verified, fetched_all
+from app.batch.fetch_cli import run_profile_fetch_cli
+from app.batch.source_adapters.npa_honhyo import ENCODING, honhyo_path
+from app.batch.source_profile import SourceProfile, SourceSpec
 
 logger = logging.getLogger("ridecompass.fetch_accident_csv")
 
@@ -33,7 +32,7 @@ logger = logging.getLogger("ridecompass.fetch_accident_csv")
 HONHYO_URL_TEMPLATE = (
     "https://www.npa.go.jp/publications/statistics/koutsuu/opendata/{year}/honhyo_{year}.csv")
 
-_REQUEST_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=30.0)
+_READ_TIMEOUT_SECONDS = 120.0
 
 
 def _readable(path: Path) -> bool:
@@ -46,29 +45,21 @@ def _readable(path: Path) -> bool:
         return False
 
 
-def fetch(years: list[int]) -> int:
-    return sum(
-        not fetch_verified(HONHYO_URL_TEMPLATE.format(year=year), honhyo_path(year), _readable,
-                           timeout=_REQUEST_TIMEOUT, logger=logger)
+def fetch(years: list[int]) -> bool:
+    return fetched_all(
+        fetch_verified(HONHYO_URL_TEMPLATE.format(year=year), honhyo_path(year), _readable,
+                       read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
         for year in years
     )
 
 
-def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-    parser = argparse.ArgumentParser(description="警察庁の本票CSVを手元へ写す")
-    parser.add_argument("--profile", default=None, type=Path)
-    args = parser.parse_args()
+def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
+    return fetch(sorted({int(year) for spec in specs for year in spec.rows.years}))
 
-    profile = load_source_profile(args.profile)
-    years = sorted({
-        int(year) for spec in profile.sources if spec.adapter == "npa_honhyo"
-        for year in spec.rows.years
-    })
-    if not years:
-        logger.info("プロファイルに本票CSVの年の指定がありません")
-        return 0
-    return 1 if fetch(years) else 0
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="警察庁の本票CSVを手元へ写す")
+    return run_profile_fetch_cli(parser, "npa_honhyo", _fetch_specs, logger=logger)
 
 
 if __name__ == "__main__":

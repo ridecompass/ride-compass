@@ -17,18 +17,14 @@ from app.batch import derive_cli
 from app.batch.source_adapters.npa_honhyo import HonhyoRows
 from app.domain.accident import PartyType
 from app.domain.material_catalog import ACCIDENT_COUNT_PER_KM_YEAR
-from app.infrastructure import derived_data_meta, road_network_store
+from app.infrastructure import road_network_store
 from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.source_models import PARTY_TYPE_CODES
 from tests.conftest import postgis_database_url, raw_connection
 from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record, zigzag_point
 
-pytestmark = [
-    pytest.mark.asyncio(loop_scope="module"),
-    pytest.mark.xdist_group(name="postgis"),
-    pytest.mark.postgis,
-]
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 #: (道, 参照ノード列, タグ)。道100を一方通行にして取り直すと、作り直しで通行方向が変わる。
 WAYS = (
@@ -249,7 +245,8 @@ async def test_a_rebuild_records_the_latest_succeeded_import_of_every_source(der
 
     assert await derive_cli.run(postgis_database_url()) == 0
 
-    assert await derived_data_meta.read_source_runs(derived_before) == {
+    recorded = await derived_before.fetch("SELECT source, run_id FROM derived_source_runs")
+    assert {row["source"]: row["run_id"] for row in recorded} == {
         "osm_way": way_run, "osm_node": node_run, "abr": address_run}
 
 
@@ -259,7 +256,7 @@ async def test_an_import_is_refused_while_a_rebuild_runs(derived_before, monkeyp
     runs_before = await derived_before.fetchval("SELECT count(*) FROM source_runs")
 
     async def import_meanwhile():
-        with pytest.raises(RuntimeError, match="派生の作り直しが走っている"):
+        with pytest.raises(RuntimeError, match="派生の作り直しかDBのバックアップが走っている"):
             await ingest_records("accident", [], conn=derived_before)
 
     _observe_after("topology", monkeypatch, import_meanwhile)

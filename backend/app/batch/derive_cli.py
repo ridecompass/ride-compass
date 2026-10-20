@@ -24,7 +24,7 @@
 段が何を読むかは`STAGES`の宣言が持ち、宣言の漏れは段が読んだ表の数で見張る（`tests/test_derive_skip.py: test_each_stage_declares_what_it_reads_and_writes`）。
 前の段（`after`）には、読む表を書く段と、自分が書く表の行を入れる・消す段を挙げる（区間を切る段は、区間・道・頂点を
 外部キーで指す値の表を空にする）。
-作り直しは取込と同時に走らない（`common.py: SOURCE_DATA_LOCK`）。
+作り直しは取込・DBのバックアップと同時に走らない（`common.py: SOURCE_DATA_LOCK`）。
 
 **作り直しは作業用のスキーマで行い、道路網の配列まで作ってから1つのトランザクションで`public`の
 表と入れ替える**（仕組みと理由は`docs/modules/backend/static-road-attributes.md`「派生」）。
@@ -52,9 +52,9 @@ from types import ModuleType
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import asyncpg  # noqa: E402
+import asyncpg
 
-from app.batch import (  # noqa: E402
+from app.batch import (
     derive_addresses,
     derive_counts,
     derive_elevation,
@@ -64,20 +64,20 @@ from app.batch import (  # noqa: E402
     derive_topology,
     derive_way_directions,
 )
-from app.batch.code_fingerprint import code_fingerprint, library_versions  # noqa: E402
-from app.batch.ingest import partition_table_name  # noqa: E402
-from app.batch.common import (  # noqa: E402
+from app.batch.code_fingerprint import code_fingerprint, library_versions
+from app.batch.ingest import partition_table_name
+from app.batch.common import (
     SOURCE_DATA_LOCK,
     asyncpg_dsn,
     batch_session_factory,
     format_duration,
     run_batch_cli,
 )
-from app.infrastructure.tuning_overrides import load_tuning_values  # noqa: E402
-from app.infrastructure import derived_data_meta, road_network_store  # noqa: E402
-from app.infrastructure.derived_data_freshness import declared_columns  # noqa: E402
-from app.infrastructure.road_graph_repository import RoadGraphRepository  # noqa: E402
-from app.infrastructure.source_models import LATEST_SUCCEEDED_RUNS_SQL, Source  # noqa: E402
+from app.infrastructure.tuning_overrides import load_tuning_values
+from app.infrastructure import derived_data_meta, road_network_store
+from app.infrastructure.derived_data_freshness import declared_columns
+from app.infrastructure.road_graph_repository import RoadGraphRepository
+from app.infrastructure.source_models import LATEST_SUCCEEDED_RUNS_SQL, Source
 
 logger = logging.getLogger("ridecompass.derive_cli")
 
@@ -108,6 +108,9 @@ class DeriveStage:
         if self.per_edge:
             arguments["previous"] = previous
         await self.module.derive(conn, **arguments)
+        # 後ろの段と配信はこれらの表を読む。autovacuumは既定60秒周期の背景処理で、派生は数秒で走り切るため、
+        # 統計が付くのを待てない。無いまま読まれると実行計画が桁で外れる。
+        await conn.execute(f"ANALYZE {', '.join(self.tables)}")
 
 
 def _outside_key(stage: DeriveStage) -> str:
@@ -309,7 +312,7 @@ async def run(database_url: str) -> int:
     conn = await asyncpg.connect(asyncpg_dsn(database_url))
     if not await conn.fetchval("SELECT pg_try_advisory_lock(hashtext($1))", SOURCE_DATA_LOCK):
         await conn.close()
-        raise RuntimeError("別の派生の作り直しか取込が走っている")
+        raise RuntimeError("別の派生の作り直しか取込かDBのバックアップが走っている")
     pending: Path | None = None
     started = time.perf_counter()
     try:

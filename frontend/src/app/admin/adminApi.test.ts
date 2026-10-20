@@ -13,7 +13,7 @@
  * ここで見ないもの:
  * - 転送そのもの（資格情報・本文・状態の受け渡し） → `app/admin/api/[...path]/route.test.ts`
  * - 骨格（失敗時の文言・204・ログ） → `lib/apiClient.ts`
- * - 判断の無い詰め替え（応答の項目名・問い合わせの絞り込み） → 使う側（`useMapBandsOfThresholds.test.ts`・`BackendLogsPanel.test.tsx`）が網の層で見る
+ * - 判断の無い詰め替え（応答の項目名・問い合わせの絞り込み） → 使う側（`BackendLogsPanel.test.tsx`）が網の層で見る
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as adminApi from "@/features/admin/adminApi";
 import * as adminRoute from "@/app/admin/api/[...path]/route";
 import { ADMIN_PROXY_TIMEOUT_MS } from "@/lib/apiTimeouts";
-import { inTurn, onBackend } from "@/testing/backendServer";
+import { inTurn, onBackend, onUrl } from "@/testing/backendServer";
 import { openApi } from "@/testing/openApi";
 
 vi.mock("@/lib/adminBasicAuth", () => ({
@@ -57,8 +57,7 @@ interface Recorded {
 let lastTimeoutMs: number | undefined;
 let recorded: Recorded[] = [];
 
-async function dispatch(input: Request | string, init?: RequestInit): Promise<Response> {
-  const request = typeof input === "string" ? new Request(input, init) : input;
+async function dispatch(request: Request): Promise<Response> {
   const text = await request.text();
   const body = text === "" ? undefined : text;
   const { method, url } = request;
@@ -83,12 +82,11 @@ describe("叩く先", () => {
       lastTimeoutMs = ms;
       return new AbortController().signal;
     });
-    vi.stubGlobal("fetch", vi.fn(dispatch));
+    onUrl("*", dispatch);
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    vi.unstubAllGlobals();
   });
 
   it("関数が1つ以上ある", () => {

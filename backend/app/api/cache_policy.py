@@ -63,7 +63,7 @@ BASEMAP = CachePolicy(max_age_seconds=10 * 60)
 #: 派生の作り直しまで答えが変わらない引き当て（地点の検索。住所（住所の区画の表）も施設（立ち寄り先の表）も
 #: 派生の作り直しのときにしか変わらない。施設を近い順に並べる点はURLに入るので、同じURLの答えは変わらない）。caching-retention.md「TTLの決め方」の「ほぼ不変なマスタ」。
 MASTER_LOOKUP = CachePolicy(max_age_seconds=24 * 60 * 60)
-#: 数分の再利用で表示が古くならないもの（例: 風グリッド・材料タイル・天候予報）。
+#: 数分の再利用で表示が古くならないもの（例: 材料タイル・MSMの格子点）。
 SHORT = CachePolicy(max_age_seconds=5 * 60)
 #: 数分で変わりうる警戒情報・実測値。
 VOLATILE = CachePolicy(max_age_seconds=2 * 60)
@@ -81,7 +81,7 @@ HANDLER_MANAGED = CachePolicy(max_age_seconds=None, handler_managed=True)
 #: 短くする。
 JMA_TARGET_TIMES = CachePolicy(max_age_seconds=60)
 #: 気象庁タイルの恒久404。`basetime`が確定した過去の一時点に対する結果のため再問い合わせ
-#: しても変わらない（`jma_tile_redis_cache.py: EmptyTile`と同じ理由）。疎な格子状タイルでは
+#: しても変わらない（`infrastructure/jma_tile_paths.py: is_final_absence`）。疎な格子状タイルでは
 #: 404が正常系として多数発生するため、再要求させない効果はタイル本体と変わらない。
 JMA_TILE_NOT_FOUND = CachePolicy(max_age_seconds=10 * 60)
 #: 気象庁のコマごとの地物（GeoJSON）の404。配信元はそのコマを配信するまで404を返すため確定しておらず、
@@ -97,14 +97,9 @@ GSI_TILE_NOT_FOUND = CachePolicy(max_age_seconds=60 * 60)
 
 # --- パスとポリシーの対応表 ---------------------------------------------------
 # 前方一致で引き、複数該当する場合は最も長いパターンを採る（表の記載順に依存しない）。
-# 本番の読み手はこのファイルだけだが、テストが読むために公開する（testing.md「確かめる高さ」の例外）: 行がどれも
-# 実在のルートに当たること——ルートを改名して行が取り残され、改名したルートが短いパターンの方針へ黙って落ちないこと——は、
-# 表の行とアプリのルートを突き合わせないと判じられず、`policy_for_path`の入口からは表の行を数えられない。
-ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
-    # 地図タイル系（1画面あたり数十〜数百枚が飛ぶ。キャッシュの有無が最も効く）
-    # 在否インデックスはプリウォーム（10分間隔）ごとに内容が変わる。古いものを掴むと
-    # 「中身があるのに取りに行かない」ことになるため短命にする。
-    ("/api/jma-tile-index", LIVE),
+
+#: 地図タイル系（1画面あたり数十〜数百枚が飛ぶ。キャッシュの有無が最も効き、アクセスログも埋める）。
+TILE_ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     ("/api/jma-tile/", HANDLER_MANAGED),
     ("/api/gsi-relief-tile/", PERMANENT),
     # 同じ国土地理院のDEMタイルを、MapLibreが読めるTerrain-RGBへ変換して返す。
@@ -117,16 +112,29 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     # **開いているラスタの構成は環境変数で決まりURLに現れない**（landcover_tile_service.py）。
     # 同じURLの内容が変わりうるため`immutable`は付けられない。
     ("/api/region/landcover-tiles/", BATCH_TILE),
-    ("/api/region/dynamic-way-values/", SHORT),
+    ("/api/region/way-materials/", SHORT),
+    ("/api/region/road-classes/", SHORT),
+)
+#: 地図タイル系の経路の接頭辞。アクセスログの高さを分ける（`infrastructure/request_log.py: access_level`）。
+TILE_PATH_PREFIXES: Final[tuple[str, ...]] = tuple(prefix for prefix, _ in TILE_ROUTE_POLICIES)
+
+# 本番の読み手はこのファイルだけだが、テストが読むために公開する（testing.md「確かめる高さ」の例外）: 行がどれも
+# 実在のルートに当たること——ルートを改名して行が取り残され、改名したルートが短いパターンの方針へ黙って落ちないこと——は、
+# 表の行とアプリのルートを突き合わせないと判じられず、`policy_for_path`の入口からは表の行を数えられない。
+ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
+    # 在否インデックスはプリウォーム（10分間隔）ごとに内容が変わる。古いものを掴むと
+    # 「中身があるのに取りに行かない」ことになるため短命にする。
+    ("/api/jma-tile-index", LIVE),
+    *TILE_ROUTE_POLICIES,
     # カタログ・設定
     ("/api/axis-catalog", LIVE),
     # 天候（URLに緯度経度を含むため地点ごとに別エントリになる）
-    ("/api/weather/wind-grid", SHORT),
+    ("/api/weather", SHORT),
+    ("/api/weather/msm-grid", SHORT),
     ("/api/weather/warnings", VOLATILE),
     ("/api/weather/wbgt", VOLATILE),
     ("/api/weather/flood-forecast", VOLATILE),
     ("/api/weather/amedas", VOLATILE),
-    ("/api/weather", SHORT),
     # 地点の検索（URLに入力の文字列を含むため入力ごとに別エントリになる）
     ("/api/place-search", MASTER_LOOKUP),
     # 置いた位置の辺り（URLに緯度経度を含むため位置ごとに別エントリになる）

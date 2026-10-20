@@ -22,14 +22,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.domain.wind_grid import (  # noqa: E402
-    WIND_GRID_DETAIL_MAX_POINTS,
-    WIND_GRID_DETAIL_MIN_SPACING_DEG,
-    WIND_GRID_SPACING_DEG,
-)
-from app.domain.route_request import (  # noqa: E402
+from app.domain.route_request import (
     ASSUMED_SPEED_KMH,
-    DEFAULT_DISTANCE_TOLERANCE_KM,
     DEFAULT_MAX_ROUTES,
     MAX_ASSUMED_SPEED_KMH,
     MAX_ROUTE_DISTANCE_KM,
@@ -38,15 +32,16 @@ from app.domain.route_request import (  # noqa: E402
     MIN_ASSUMED_SPEED_KMH,
     MIN_ROUTES,
 )
-from app.api.routers.axis_admin import AxisDefinitionPayload  # noqa: E402
-from app.api.routers.debug_admin import LogLevelName  # noqa: E402
-from app.infrastructure.source_models import SOURCE_RUN_STATUS_LABELS  # noqa: E402
-from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS  # noqa: E402
-from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME  # noqa: E402
-from app.main import app  # noqa: E402
-from app.domain.hard_filters import DEFAULT_HARD_FILTERS, HARD_FILTER_LABELS, HARD_FILTER_NAMES  # noqa: E402
-from app.domain.geo import COMPASS_LABELS  # noqa: E402
-from app.domain.place_search import (  # noqa: E402
+from app.api.routers.debug_admin import LogLevelName
+from app.infrastructure.source_models import SOURCE_RUN_STATUS_LABELS
+from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
+from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME
+from app.main import app
+from app.domain.hard_filters import HARD_FILTERS
+from app.domain.address_area import ADDRESS_AREA_LEVELS
+from app.domain.geo import COMPASS_LABELS, EARTH_RADIUS_KM
+from app.domain.value_distribution import QUANTILE_TARGETS
+from app.domain.place_search import (
     PLACE_KIND_LABELS,
     PLACE_MATCH_LEVEL_LABELS,
     PLACE_PREDICTION_DELAY_SECONDS,
@@ -54,19 +49,23 @@ from app.domain.place_search import (  # noqa: E402
     PlaceKind,
     PlaceMatchLevel,
 )
-from cross_language_expectations import EXPECTATIONS  # noqa: E402
-from app.domain.weather_elements import (  # noqa: E402
+from cross_language_expectations import EXPECTATIONS
+from schema_shape import schema_shape_mark
+from app.domain.weather_elements import (
+    MSM_FORECAST_HOURS,
     WEATHER_ELEMENTS,
     WEATHER_LAYER_GROUPS,
     WeatherElement,
     weather_element_deliveries,
     weather_element_tile,
 )
-from app.domain.cycling_speed import SEGMENT_SPEED_CONDITIONS  # noqa: E402
-from app.domain.difficulty import DIFFICULTY_DECIMALS, OVERALL_DIFFICULTY_WORDING  # noqa: E402
-from app.domain.map_paint import DEFAULT_DIFFICULTY_BOUNDARIES  # noqa: E402
-from app.domain.map_display import (  # noqa: E402
+from app.domain.cycling_speed import SEGMENT_SPEED_CONDITIONS
+from app.domain.difficulty import DIFFICULTY_DECIMALS, OVERALL_DIFFICULTY_WORDING
+from app.domain.map_paint import DEFAULT_DIFFICULTY_BOUNDARIES
+from app.domain.road_classes import NO_DATA_VALUE
+from app.domain.map_display import (
     ALWAYS_SHOWN_ATTRIBUTIONS,
+    MODEL_VALUE_DISCLAIMER,
     AXIS_LAYER_SPECS,
     LayerText,
     LEGEND_SHARED_ROWS,
@@ -112,8 +111,8 @@ from app.domain.map_display import (  # noqa: E402
     MAP_LAYER_DATA_SOURCES,
     MAP_OVERLAY_GROUPS,
 )
-from app.domain.warning_display import WARNING_BADGE_DISPLAY  # noqa: E402
-from app.domain.weather_display import (  # noqa: E402
+from app.domain.warning_display import WARNING_BADGE_DISPLAY
+from app.domain.weather_display import (
     WEATHER_CATEGORIES,
     LINEAR_RAINBAND_COLOR,
     LINEAR_RAINBAND_OUTLINE_CASING_COLOR,
@@ -125,48 +124,47 @@ from app.domain.weather_display import (  # noqa: E402
     WIND_CALM_BELOW_MS,
     WIND_SPEED_COLOR_STOPS,
 )
-from app.domain.display_palette import (  # noqa: E402
+from app.domain.display_palette import (
     SEMANTIC_COLORS,
     resolved_display_axes,
 )
-from app.api.routers.gsi_tile import RELIEF_TILE_URL, TERRAIN_TILE_URL  # noqa: E402
-from app.api.cache_policy import BASEMAP  # noqa: E402
-from app.domain.gsi_tiles import RELIEF_ATTRIBUTION, RELIEF_MAX_ZOOM, TERRAIN_MAX_ZOOM  # noqa: E402
-from app.domain.terrain_rgb import TERRAIN_RGB_BASE_M, TERRAIN_RGB_UNIT_M  # noqa: E402
-from app.domain.landcover import (  # noqa: E402
+from app.api.routers.gsi_tile import RELIEF_TILE_URL, TERRAIN_TILE_URL
+from app.api.cache_policy import BASEMAP
+from app.domain.gsi_tiles import RELIEF_ATTRIBUTION, RELIEF_MAX_ZOOM, TERRAIN_MAX_ZOOM
+from app.domain.terrain_rgb import TERRAIN_RGB_BASE_M, TERRAIN_RGB_UNIT_M
+from app.domain.landcover import (
     LANDCOVER_CLASSES,
     LANDCOVER_RING_OUTER_M,
     LANDCOVER_TILE_MAX_ZOOM,
     LANDCOVER_TILE_MIN_ZOOM,
 )
-from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION  # noqa: E402
-from app.domain.jma_tile_specs import JMA_ELEMENTS, JMA_TILE_MIN_ZOOM, effective_max_zoom  # noqa: E402
-from app.domain.material_catalog import (  # noqa: E402
+from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION
+from app.domain.jma_tile_specs import JMA_ELEMENTS, JMA_TILE_MIN_ZOOM, effective_max_zoom
+from app.domain.material_catalog import (
     MATERIAL_CATALOG,
     MISSING_SEMANTICS_DISPLAY,
     POPULATION_LABELS,
     display_axis_missing_semantics,
 )
-from app.domain.primary_attributes import PRIMARY_ATTRIBUTES  # noqa: E402
-from app.domain.region import MAX_MERCATOR_LATITUDE, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM  # noqa: E402
-from app.domain.leg_costs import MAX_TIME_BINS, TIME_BIN_HOURS  # noqa: E402
-from app.config import Settings  # noqa: E402
-from app.domain.route_preference import ENABLED_AXIS_WEIGHT, MAX_AXIS_SHARE  # noqa: E402
-from app.domain.tuning import client_tuning_values  # noqa: E402
-from app.domain.weather import PRECIPITATION_MIN_MM  # noqa: E402
-from app.infrastructure.msm_client import DEFAULT_UPDATE_INTERVAL_SECONDS as MSM_UPDATE_INTERVAL_SECONDS  # noqa: E402
-from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES  # noqa: E402
-from app.infrastructure.job_registry import JOB_TTL_SECONDS  # noqa: E402
-from app.services.tile_version_service import TILE_SHAPES  # noqa: E402
+from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
+from app.domain.region import MAX_MERCATOR_LATITUDE, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
+from app.domain.leg_costs import MAX_TIME_BINS, MISSING_TRAVEL_DATA_WORDING, TIME_BIN_HOURS
+from app.config import Settings
+from app.domain.route_preference import ENABLED_AXIS_WEIGHT
+from app.domain.tuning import client_tuning_values
+from app.domain.weather import PRECIPITATION_MIN_MM
+from app.infrastructure.msm_client import DEFAULT_UPDATE_INTERVAL_SECONDS as MSM_UPDATE_INTERVAL_SECONDS
+from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
+from app.infrastructure.job_registry import JOB_TTL_SECONDS
+from app.services.tile_version_service import TILE_SHAPES
 
 GENERATED_DIR = Path(__file__).resolve().parents[2] / "frontend" / "src" / "types" / "generated"
 OUTPUT_PATH = GENERATED_DIR / "openapi.json"
 REGION_TILE_CONFIG_PATH = GENERATED_DIR / "region-tile-config.json"
+GEO_CONFIG_PATH = GENERATED_DIR / "geo-config.json"
 PRIMARY_ATTRIBUTES_PATH = GENERATED_DIR / "primaryAttributes.ts"
-WIND_GRID_CONFIG_PATH = GENERATED_DIR / "wind-grid-config.json"
 ROUTE_GENERATE_CONFIG_PATH = GENERATED_DIR / "route-generate-config.json"
 REFRESH_INTERVALS_PATH = GENERATED_DIR / "refresh-intervals.json"
-AXIS_PAYLOAD_CONFIG_PATH = GENERATED_DIR / "axis-payload-config.json"
 MATERIAL_CATALOG_PATH = GENERATED_DIR / "material-catalog.json"
 LANDCOVER_CLASSES_PATH = GENERATED_DIR / "landcover-classes.json"
 PALETTE_PATH = GENERATED_DIR / "palette.json"
@@ -277,7 +275,8 @@ def _weather_element_entry(element: WeatherElement) -> dict:
 
 def main() -> None:
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
-    _write_json(OUTPUT_PATH, _strip_prose(app.openapi()))  # type: ignore[arg-type]
+    openapi = _strip_prose(app.openapi())
+    _write_json(OUTPUT_PATH, openapi)  # type: ignore[arg-type]
     # 地域タイルのレイヤー名・ズーム範囲等。画面はこのJSONを読み、値を手で写さない
     # （生成物と宣言のずれはCIのapi-contractジョブが検知する）。
     _write_json(
@@ -334,6 +333,8 @@ def main() -> None:
             },
         },
     )
+    # 地球を球とみなす半径（domain/geo.py）。画面の大円距離の式がこれを読む。
+    _write_json(GEO_CONFIG_PATH, {"earth_radius_km": EARTH_RADIUS_KM})
     # 役割ごとの色（domain/display_palette.py）。**画面は色の値を持たず、この名前で引く**。
     # 色を変えるときに触るのはbackendの1ファイルだけになる。
     _write_json(
@@ -379,6 +380,8 @@ def main() -> None:
             # 方位の呼び名。**画面が写しを持たない**——丸め規則が違うと境界で
             # ラベルが食い違うため、並びは1箇所（domain/geo.py）だけが持つ。
             "compassLabels": list(COMPASS_LABELS),
+            # 数値予報モデルの計算値に添える断りの文。
+            "modelValueDisclaimer": MODEL_VALUE_DISCLAIMER,
             # 地図へ常に出す出典。
             "alwaysShownAttributions": list(ALWAYS_SHOWN_ATTRIBUTIONS),
             # 値が無い線の破線（道・評価軸・ルートで共有）。
@@ -390,6 +393,8 @@ def main() -> None:
                 "unknownOpacity": ROAD_UNKNOWN_OPACITY,
                 "underlayOpacity": ROAD_UNDERLAY_OPACITY,
                 "inspectedWidthPx": ROAD_INSPECTED_WIDTH_PX,
+                # 地図の線の層の値で「データなし」。
+                "noDataValue": NO_DATA_VALUE,
             },
             "point": {
                 "radiusPx": POINT_RADIUS_PX,
@@ -415,6 +420,8 @@ def main() -> None:
                 "floodLineWidthByZoom": [list(pair) for pair in FLOOD_LINE_WIDTH_BY_ZOOM],
                 "rainbandOutlineWidthPx": RAINBAND_OUTLINE_WIDTH_PX,
                 "rainbandOutlineCasingWidthPx": RAINBAND_OUTLINE_CASING_WIDTH_PX,
+                # MSMの予報を読む先の長さ（時間）。出発時刻を選べる先の長さがこれを読む。
+                "msmForecastHours": MSM_FORECAST_HOURS,
             },
             "valueScale": {
                 "difficultyBoundaries": list(DEFAULT_DIFFICULTY_BOUNDARIES),
@@ -452,9 +459,13 @@ def main() -> None:
             "sourceRunStatuses": [{"key": key, "label": label} for key, label in SOURCE_RUN_STATUS_LABELS.items()],
             # 地点の検索の候補の種類と、当たった段（粗い→細かい）の呼び名。
             "placeKinds": [{"key": key, "label": PLACE_KIND_LABELS[key]} for key in get_args(PlaceKind)],
+            # `area`は住所の区画の段で、位置は区画の代表点（行きたい所から離れうる）。
             "placeMatchLevels": [
-                {"key": key, "label": PLACE_MATCH_LEVEL_LABELS[key]} for key in get_args(PlaceMatchLevel)
+                {"key": key, "label": PLACE_MATCH_LEVEL_LABELS[key], "area": key in ADDRESS_AREA_LEVELS}
+                for key in get_args(PlaceMatchLevel)
             ],
+            # 値の分布の分位点の名前（小さい比率から）。応答の`quantiles`の鍵がこの名前。
+            "quantiles": [name for name, _ in QUANTILE_TARGETS],
         },
     )
     # 気象の値を色へ写す段（domain/weather_display.py）。危険度・雷・竜巻は配信元が
@@ -515,10 +526,6 @@ def main() -> None:
                 # idから組み立て直さない——組み立て方の正本は`MaterialSpec.full_label`。
                 "label": spec.full_label(),
                 "name": spec.label,
-                "description": spec.description,
-                "dtype": spec.dtype,
-                "unit": spec.unit,
-                "reference_points": [{"label": p.label, "value": p.value} for p in spec.reference_points],
                 "value_labels": dict(spec.value_labels) if spec.value_labels else None,
                 # 路面タイルがこの材料を載せる属性の名前（載せない材料はnull）。
                 "tile_property": spec.tile_property,
@@ -553,28 +560,6 @@ def main() -> None:
             for attr in PRIMARY_ATTRIBUTES
         ],
     )
-    # 風・降水延長予報の粗い格子の間隔と、詳細格子の問い合わせが受け付ける範囲（domain/wind_grid.py）。
-    # APIレスポンスは間隔を含まないため、画面はこのJSONから読む以外に値を知る手段がない。
-    _write_json(
-        WIND_GRID_CONFIG_PATH,
-        {
-            "spacing_deg": WIND_GRID_SPACING_DEG,
-            "detail_min_spacing_deg": WIND_GRID_DETAIL_MIN_SPACING_DEG,
-            "detail_max_points": WIND_GRID_DETAIL_MAX_POINTS,
-        },
-    )
-    # 軸スタジオが送る軸の既定値。画面は編集欄を持たない項目を新規の軸で
-    # この既定値のまま送る（写しを持つと、backendの既定を変えたとき新規の軸だけ古い値で作られる）。
-    _write_json(
-        AXIS_PAYLOAD_CONFIG_PATH,
-        {
-            "defaults": {
-                name: field.get_default(call_default_factory=True)
-                for name, field in AxisDefinitionPayload.model_fields.items()
-                if not field.is_required()
-            },
-        },
-    )
     # ルート生成の上限・既定値。frontendが独立にハードコードすると、backendだけ変えた
     # ときに入力の上限と受理される値がずれる。
     _write_json(
@@ -585,19 +570,19 @@ def main() -> None:
             "max_routes": MAX_ROUTES,
             "default_max_routes": DEFAULT_MAX_ROUTES,
             "default_assumed_speed_kmh": ASSUMED_SPEED_KMH,
-            "default_distance_tolerance_km": DEFAULT_DISTANCE_TOLERANCE_KM,
             # 画面は経由地をこの数まで置け、超える点は置かない。
             "max_waypoints": MAX_WAYPOINTS,
             # 住所の検索の欄が打ちかけで引き始める長さと、打つのが止まってから引くまでの間。口の回数制限はこの間から導く。
             "place_prediction_min_length": PLACE_PREDICTION_MIN_LENGTH,
             "place_prediction_delay_seconds": PLACE_PREDICTION_DELAY_SECONDS,
-            "max_axis_share": MAX_AXIS_SHARE,
             "enabled_axis_weight": ENABLED_AXIS_WEIGHT,
             "min_assumed_speed_kmh": MIN_ASSUMED_SPEED_KMH,
             "max_assumed_speed_kmh": MAX_ASSUMED_SPEED_KMH,
             # フロントのポーリングの打ち切り。backendが結果を持つ時間より長く待つと、
             # 掃除済みのjob_idを引いて「ジョブが見つかりません」になる。
             "job_result_ttl_seconds": JOB_TTL_SECONDS,
+            # ルート候補の型の契約の印。画面は端末に置いた候補にこの印を添え、印が違う候補は今の型で読めないとして使わない。
+            "route_candidate_shape": schema_shape_mark(openapi, "RouteCandidate"),  # type: ignore[arg-type]
             # 風の予報を追う長さ（レグごと、時刻ビンの本数×幅）。区間の詳細の説明が、この先は最後に追った時刻の予報を
             # そのまま使うことを数字で示す。
             "wind_forecast_hours_per_leg": MAX_TIME_BINS * TIME_BIN_HOURS,
@@ -607,17 +592,17 @@ def main() -> None:
             "segment_speed_conditions": list(SEGMENT_SPEED_CONDITIONS),
             # ルート全体の難易度（平均・総量）の数え方の文。結果の難易度の説明が差し込む。
             "overall_difficulty_wording": OVERALL_DIFFICULTY_WORDING,
+            # 所要時間の計算が値の無い区間をどう数えるかの文。結果の「データの無い区間」の注記が差し込む。
+            "missing_travel_data_wording": MISSING_TRAVEL_DATA_WORDING,
             # フロントが使う較正値の**既定**（`domain/tuning.py`の宣言そのまま）。フロントはidの型にだけ使い、
             # 値は読まない——効いている値はGET /api/axis-catalogが返し、取れるまではその値を使う機能を出さない。
             "client_tuning": client_tuning_values(),
-            # 0次ハードフィルタのキー一覧・画面に出す名前・既定値。backendは`_check_filter_keys`で
-            # **キー集合の完全一致**を要求するため、frontendが手書きで持っていると
-            # キーを1つ足した瞬間にすべてのルート生成が422になる。名前も同じ行で配る——
-            # 別に持つと、足したフィルタの名前が無く画面に内部名が出る。
-            "hard_filters": {
-                "filters": [{"key": name, "label": HARD_FILTER_LABELS[name]} for name in sorted(HARD_FILTER_NAMES)],
-                "defaults": sorted(DEFAULT_HARD_FILTERS),
-            },
+            # 0次ハードフィルタ。除外タブにいつも「通らない」の行として見せる（要求では受けない）。選べる行と段は
+            # 管理DBの道の区分から、GET /api/axis-catalogが配る。
+            "hard_filters": [
+                {"key": name, "label": spec.label, "description": spec.description}
+                for name, spec in HARD_FILTERS.items()
+            ],
         },
     )
 

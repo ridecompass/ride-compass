@@ -1,5 +1,21 @@
 import math
 
+from app.domain.tuning import tuning_value
+from app.domain.way_value_formula import (
+    Binary,
+    FormulaNode,
+    Unary,
+    WayValueFormula,
+    add,
+    all_of,
+    case,
+    condition,
+    const,
+    feature,
+    mul,
+    sub,
+)
+
 # gradient_percentは道路自身の始点→終点方向を基準にした符号付き値（登り=正、下り=負）。
 #
 # **走行方位が決めるのは符号だけで、坂の急さは変えない。** 道路は道路に沿ってしか走れず、
@@ -17,32 +33,37 @@ import math
 # 元に戻る。
 
 
-#: 直角からこの角度以内の道路は、その走行方位での勾配を示さない（地図では「データなし」）。
-LENS_PERPENDICULAR_BAND_DEG = 15.0
-
 #: 地図へ配る勾配（%）を丸める小数の桁。
 GRADIENT_VALUE_DECIMALS = 1
 
+#: 道ごとの材料の名前: 道の向き（度）。向きを持たない道（始点と終点が同じ）は値が無い。
+ROAD_BEARING_LEAF = "road_bearing_deg"
 
-class GradientCalculator:
-    """道路自身の勾配・向きと、ユーザーが指定した走行方位から、その道をその向きに辿った
-    場合の勾配（%）を求める。"""
 
-    @staticmethod
-    def effective_gradient(
-        gradient_percent: float, road_bearing_deg: float, travel_bearing_deg: float
-    ) -> float | None:
-        """その走行方位での勾配（%）。符号を選べない向きではNone（値を配らない）。
+def travel_direction_formula(forward: FormulaNode, backward: FormulaNode) -> WayValueFormula:
+    """要求の走行方位で道を辿るとき、道の向き寄りなら`forward`、逆向き寄りなら`backward`になる値。道の向きが走行方位に
+    直角に近い道（直角からの幅は較正値`gradient.perpendicular_band_deg`で、呼ばれた時点で読む）は、どちらとも決まらない
+    （`undetermined`）。向きを持たない道は`backward`になる。
 
-        示せるかの判定と値の算出を別々の口にすると、判定を呼ばない呼び出し側が
-        符号の決まらない値を受け取れてしまう。
-        """
-        # 角度そのもので比べる（cosの大小で比べると、直角の左右で浮動小数の差だけ
-        # 判定が食い違う）。180度で畳むのは、逆走（符号が反転するだけ）を同じ扱いに
-        # するため。
-        folded = (road_bearing_deg - travel_bearing_deg) % 180
-        if abs(folded - 90) <= LENS_PERPENDICULAR_BAND_DEG:
-            return None
-        diff = math.radians(road_bearing_deg - travel_bearing_deg)
-        # 符号だけを決める。道路の向き寄りならそのまま、逆向き寄りなら登り下りが入れ替わる。
-        return gradient_percent if math.cos(diff) >= 0 else -gradient_percent
+    示せるかの判定と値の算出を1つの木に持つ——別々の口にすると、判定を読まない呼び出し側が符号の決まらない値を
+    受け取れてしまう。
+    """
+    diff = sub(feature(ROAD_BEARING_LEAF), condition("bearing_deg"))
+    along_road = Binary(op="ge", left=Unary(op="cos", arg=mul(diff, const(math.pi / 180))), right=const(0.0))
+    # 角度そのもので比べる（cosの大小で比べると、直角の左右で浮動小数の差だけ判定が食い違う）。180度で畳むのは、
+    # 逆走（符号が反転するだけ）を同じ扱いにするため。剰余は割られる数の符号に従うので、負の余りは180を足して戻す。
+    remainder = Binary(op="mod", left=diff, right=const(180.0))
+    folded = case(Binary(op="lt", left=remainder, right=const(0.0)), add(remainder, const(180.0)), remainder)
+    band_deg = const(tuning_value("gradient.perpendicular_band_deg"))
+    near_perpendicular = Binary(op="le", left=Unary(op="abs", arg=sub(folded, const(90.0))), right=band_deg)
+    has_bearing = Unary(op="not", arg=Unary(op="is_missing", arg=feature(ROAD_BEARING_LEAF)))
+    return WayValueFormula(
+        value=case(along_road, forward, backward),
+        undetermined=all_of([has_bearing, near_perpendicular]),
+    )
+
+
+def gradient_by_direction(gradient_percent: FormulaNode) -> tuple[FormulaNode, FormulaNode]:
+    """道路自身の勾配（`gradient_percent`）を、道の向き寄り・逆向き寄りに辿ったときの勾配（%）。符号だけが入れ替わる。
+    要求の走行方位でどちらを選ぶかは`travel_direction_formula`が決める。"""
+    return gradient_percent, Unary(op="neg", arg=gradient_percent)
