@@ -43,7 +43,7 @@ from app.domain.region import BoundingBox, parse_bbox
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.domain.value_distribution import weighted_quantiles
 from app.services import axis_preview_service
-from app.services.axis_registry_service import refresh_axis_definitions
+from app.services.definitions_loading import refresh_definitions
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 
 # 「上端へ張り付いている」とみなす難易度。100ちょうどに限ると、折れ点の最終区間に
@@ -115,7 +115,7 @@ async def run(
     async with batch_session_factory(database_url) as session_factory:
         async with session_factory() as session:
             # 軸定義はDBが唯一の正本。Python側に既定値は無いため先に読み込む。
-            await refresh_axis_definitions(AxisDefinitionRepository(session))
+            await refresh_definitions(session, AxisDefinitionRepository(session))
             sample = await axis_preview_service.load_way_sample(
                 RoadGraphRepository(session), sample_percent, limit, bbox)
 

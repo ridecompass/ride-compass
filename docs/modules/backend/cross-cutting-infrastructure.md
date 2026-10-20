@@ -41,6 +41,7 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | infrastructure | `job_registry.py` | 汎用の非同期ジョブレジストリ（プロセス内メモリのみ） |
 | infrastructure | `single_process.py` | 起動時にワーカー数を読み、複数なら起動を止める（プロセス内に持つ状態の前提を落ちる形にする） |
 | infrastructure | `tuning_overrides.py` | 較正値の上書き（宣言の既定値から動かしたぶんだけをDBへ持つ）の読み書きと、宣言の範囲での検算。プロセス内の値へは書かない |
+| services | `definitions_loading.py` | DBの定義（道の区分・軸定義・較正値）をプロセスへ読み込む1つの入口と、その順。起動時と、起動を通らない道具が呼ぶ |
 | services | `tuning_service.py` | 較正値の上書きの取引境界（構造仕様7）と、プロセス内の値への反映（起動時の読み込みと、書いた直後） |
 | api | `tuning_admin.py` | 較正値の一覧・更新（管理画面用、`api/admin_auth.py: require_admin_basic_auth`の内側）。並べる項目も、効き方ごとの見出しと並び順も宣言から導く。名前は`domain/tuning_labels.py: tuning_label`が付ける |
 | ops | `admin_data_backup.sh` | 本番VMのホストで、DBの全体を`pg_dump`し、Object Storageの非公開バケットの前の1個と入れ替え、置けた時刻を書く |
@@ -101,11 +102,12 @@ FastAPI(lifespan=lifespan)
         ├─ (1) httpx.AsyncClientのウォームアップ（10.0秒/15.0秒タイムアウト分を事前構築。
         │       SSLコンテキスト構築が数百ms〜1秒かかるため、デプロイ直後の最初のリクエストが
         │       このコストを負わないようにする）
-        ├─ (2) refresh_axis_definitions() を1回呼ぶ（軸スタジオ・評価軸定義参照）。
-        │       失敗するとAxisDefinitionSyncErrorがここで捕捉されず起動自体が失敗する
-        ├─ (2') 同じセッションで refresh_tuning_values() を呼び、較正値の上書きを重ねる
-        │       （[ルーティングエンジン](routing-engine.md)参照）。行が無い・テーブルが
-        │       無い場合は宣言の既定値のまま進み、値が壊れている行だけが起動を止める
+        ├─ (2) services/definitions_loading.py: refresh_definitions を1回呼び、道の区分 → 軸定義
+        │       （軸スタジオ・評価軸定義参照）→ 較正値の上書き（[ルーティングエンジン](routing-engine.md)参照）の
+        │       順に読む。軸は区分から作る材料を指せるので、区分が先。軸定義を読めないと
+        │       AxisDefinitionSyncErrorがここで捕捉されず起動自体が失敗する。較正値は行が無い・テーブルが
+        │       無い場合は宣言の既定値のまま進み、値が壊れている行だけが起動を止める。
+        │       起動を通らずに生成・評価を回す道具（ベンチ・scripts/）も同じ関数で読む
         ├─ (2'') スケジューラをここで作り（アプリの寿命の間だけ動くので、モジュールの大域に持たない）、
         │       失敗の受け口（EVENT_JOB_ERROR）を付ける（下記「定期ジョブの失敗」）
         ├─ (3) APSchedulerでJMAアメダス定期更新ジョブを登録（interval分ごと＋

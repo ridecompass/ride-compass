@@ -36,7 +36,7 @@ from app.batch.common import asyncpg_dsn
 from app.config import settings
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.infrastructure.database import get_session_factory
-from app.services.axis_registry_service import refresh_axis_definitions
+from app.services.definitions_loading import refresh_definitions
 from app.domain.route import Coordinates
 from app.domain.time_zone import JST
 from app.domain.route_request import ASSUMED_SPEED_KMH
@@ -140,9 +140,9 @@ async def main() -> int:
     print(f"\n=== {label} / {origin.latitude},{origin.longitude} / {distance_km}km / {runs}回 ===")
     records: list[dict[str, object]] = []
 
-    # 軸レジストリを読む前に組み立てると、既定の重みが空になる。
-    async with get_session_factory()() as axis_session:
-        await refresh_axis_definitions(AxisDefinitionRepository(axis_session))
+    # 定義を読む前に組み立てると、既定の重みが空になり、較正値も宣言の既定のままになる。
+    async with get_session_factory()() as session:
+        await refresh_definitions(session, AxisDefinitionRepository(session))
     # 評価条件を省いた生成の要求と、画面の既定の除外・避け方で組む。
     async with get_route_generation_setup_opener()(RequestedConditions(
         preference_override=None, penalty_strength=None, max_average_grade_percent=None,
