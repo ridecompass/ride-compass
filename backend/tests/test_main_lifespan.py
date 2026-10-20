@@ -96,9 +96,8 @@ def test_lifespan_fails_fast_when_axis_definitions_cannot_be_loaded(monkeypatch)
 
     monkeypatch.setattr(main_module, "refresh_definitions", _raise)
 
-    with pytest.raises(AxisDefinitionSyncError):
-        with TestClient(app):
-            pass
+    with pytest.raises(AxisDefinitionSyncError), TestClient(app):
+        pass
 
 
 def test_every_interval_job_also_runs_immediately_at_startup(lifespan_schedulers):

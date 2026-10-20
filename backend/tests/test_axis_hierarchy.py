@@ -62,7 +62,6 @@ def catalog(monkeypatch):
         DYNAMIC: material(DYNAMIC, source="request"),
     }
     monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", specs)
-    return specs
 
 
 def axis(axis_id: str, *refs: str, published: bool = False, **fields) -> AxisDefinition:
