@@ -20,8 +20,9 @@ export function readRoadAvoidance(stored: unknown): RoadAvoidanceOverride {
   return Object.fromEntries(Object.entries(stored).filter((entry) => isAvoidanceLevel(entry[1])));
 }
 
-/** 画面に出す行の段。今の鍵に段が無ければ前の鍵の段のうち強い方を、どちらも無ければ既定の段を取る（backendが要求を揃える
- * のと同じ読み方で、画面と経路の段を食い違わせない）。 */
+/** 画面に出す行の段。今の鍵に段が無ければ前の鍵の段のうち強い方を、どちらも無ければ既定の段を取る。経路の段はbackendが
+ * 要求を今の行へ揃えて決めるので、画面の段がそれと食い違わないことは生成物`road-avoidance-expectations.json`の表で確かめる。
+ * 前の鍵は行の`former_keys`が配るものだけを読み、外す期限は区分のデータの側が持つ。 */
 export function avoidanceLevelOf(
   row: AvoidanceRow,
   chosen: RoadAvoidanceOverride,

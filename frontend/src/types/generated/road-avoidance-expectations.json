@@ -1,0 +1,157 @@
+{
+  "levels": [
+    {
+      "key": "pass",
+      "label": "通る"
+    },
+    {
+      "key": "avoid",
+      "label": "なるべく避ける"
+    },
+    {
+      "key": "exclude",
+      "label": "通らない"
+    }
+  ],
+  "rows": [
+    {
+      "key": "kind.split_a",
+      "section": "s",
+      "label": "",
+      "description": "",
+      "default": "pass",
+      "former_keys": [
+        "old.split"
+      ]
+    },
+    {
+      "key": "kind.split_b",
+      "section": "s",
+      "label": "",
+      "description": "",
+      "default": "avoid",
+      "former_keys": [
+        "old.split"
+      ]
+    },
+    {
+      "key": "kind.merged",
+      "section": "s",
+      "label": "",
+      "description": "",
+      "default": "pass",
+      "former_keys": [
+        "old.x",
+        "old.y"
+      ]
+    },
+    {
+      "key": "kind.plain",
+      "section": "s",
+      "label": "",
+      "description": "",
+      "default": "pass",
+      "former_keys": []
+    }
+  ],
+  "resolve_road_avoidance": [
+    {
+      "scene": "何も選んでいない",
+      "requested": {},
+      "resolved": {
+        "kind.split_a": "pass",
+        "kind.split_b": "avoid",
+        "kind.merged": "pass",
+        "kind.plain": "pass"
+      }
+    },
+    {
+      "scene": "今の鍵だけ",
+      "requested": {
+        "kind.split_a": "exclude",
+        "kind.plain": "avoid"
+      },
+      "resolved": {
+        "kind.split_a": "exclude",
+        "kind.split_b": "avoid",
+        "kind.merged": "pass",
+        "kind.plain": "avoid"
+      }
+    },
+    {
+      "scene": "分けた区分の前の鍵は、分けてできたどの行にも効く",
+      "requested": {
+        "old.split": "exclude"
+      },
+      "resolved": {
+        "kind.split_a": "exclude",
+        "kind.split_b": "exclude",
+        "kind.merged": "pass",
+        "kind.plain": "pass"
+      }
+    },
+    {
+      "scene": "前の鍵の段は既定より弱くても効く",
+      "requested": {
+        "old.split": "pass"
+      },
+      "resolved": {
+        "kind.split_a": "pass",
+        "kind.split_b": "pass",
+        "kind.merged": "pass",
+        "kind.plain": "pass"
+      }
+    },
+    {
+      "scene": "合わせた区分の前の鍵は強い方（前に書いた方が強い）",
+      "requested": {
+        "old.x": "exclude",
+        "old.y": "pass"
+      },
+      "resolved": {
+        "kind.split_a": "pass",
+        "kind.split_b": "avoid",
+        "kind.merged": "exclude",
+        "kind.plain": "pass"
+      }
+    },
+    {
+      "scene": "合わせた区分の前の鍵は強い方（後に書いた方が強い）",
+      "requested": {
+        "old.x": "pass",
+        "old.y": "avoid"
+      },
+      "resolved": {
+        "kind.split_a": "pass",
+        "kind.split_b": "avoid",
+        "kind.merged": "avoid",
+        "kind.plain": "pass"
+      }
+    },
+    {
+      "scene": "今の鍵が前の鍵に勝つ",
+      "requested": {
+        "kind.split_b": "pass",
+        "old.split": "exclude"
+      },
+      "resolved": {
+        "kind.split_a": "exclude",
+        "kind.split_b": "pass",
+        "kind.merged": "pass",
+        "kind.plain": "pass"
+      }
+    },
+    {
+      "scene": "今の行でも前の鍵でもない鍵は読まない",
+      "requested": {
+        "gone.a": "exclude"
+      },
+      "resolved": {
+        "kind.split_a": "pass",
+        "kind.split_b": "avoid",
+        "kind.merged": "pass",
+        "kind.plain": "pass"
+      }
+    }
+  ]
+}

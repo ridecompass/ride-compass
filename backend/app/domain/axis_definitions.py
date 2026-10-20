@@ -50,7 +50,7 @@ from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.axis_templates import evaluate_breakpoint_linear, evaluate_categorical
 from app.domain.difficulty import round_difficulty_array, weight_share
 from app.domain import material_catalog
-from app.domain.road_classes import RoadClassDefinitions, class_material_id, classification_materials
+from app.domain.road_classes import CLASS_MATERIAL_PREFIX, RoadClassDefinitions, class_material_id, classification_materials
 from app.domain.strict_model import StrictModel
 
 
@@ -591,6 +591,16 @@ def primary_attribute_ids_for(definition: AxisDefinition) -> list[str]:
             and spec.primary_attribute is not None
         )
     )
+
+
+def missing_class_materials(definition: AxisDefinition, road_classes: RoadClassDefinitions) -> list[str]:
+    """軸が直に指す区分から作る材料（`class:<分け方>`）のうち、`road_classes`に分け方が無いもの。
+
+    区分を入れ替えて破れうる起動時の読み込みの判定（`check_axis_definition`）は、この材料の実在だけ——区分から作る材料の型は
+    いつも分類で、判定はその分け方の区分を見ない。
+    """
+    present = {class_material_id(key) for key in road_classes.classifications}
+    return [m for m in dict.fromkeys(definition.materials) if m.startswith(CLASS_MATERIAL_PREFIX) and m not in present]
 
 
 def road_layer_ids_for(definition: AxisDefinition, road_classes: RoadClassDefinitions) -> list[str]:

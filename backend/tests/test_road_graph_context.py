@@ -1,4 +1,4 @@
-"""探索のエンジン（`services/road_graph_engine.py`）のうち、値を受けて判断を返す部品を確かめる。
+"""探索のエンジンと仕上げが共有する状態（`services/road_graph_context.py`）のうち、値を受けて判断を返す部品を確かめる。
 
 ここで見ないもの:
 - 生成の結果（経路・区間の表示・所要時間）の性質 → `test_route_generation_behavior.py`
@@ -6,7 +6,7 @@
 """
 
 from app.domain.route import Coordinates
-from app.services.road_graph_engine import FixedLegs
+from app.services.road_graph_context import FixedLegs
 
 
 def test_the_finishing_legs_follow_the_placed_legs_in_order():
