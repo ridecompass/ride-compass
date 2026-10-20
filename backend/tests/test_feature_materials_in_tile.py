@@ -14,11 +14,14 @@
 - 区間の材料から道1本の値を畳むこと → `test_dynamic_way_values.py`
 """
 
+import functools
+
 import numpy as np
 import pytest
 
 from app.batch import derive_counts, derive_elevation, derive_nodes, derive_topology
 from app.batch.dem_tile_store import PRODUCT_PRIORITY
+from app.batch.ingest import SourceRecord
 from app.domain.attributes import CategoricalColumn
 from app.domain.material_catalog import segment_material_ids
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, BoundingBox
@@ -36,6 +39,12 @@ def _climbing_north(lon: float, lat: float) -> float:
     return 100.0 + (lat - AREA.min_latitude) * 111_000 * 0.4
 
 
+@functools.cache
+def _dem_records() -> list[SourceRecord]:
+    """`AREA`を覆う`_climbing_north`の標高のタイル。画素ごとに標高を求めるので、テストごとに作り直さない。"""
+    return dem_tile_records(PRODUCT_PRIORITY[0], 15, AREA, _climbing_north)
+
+
 async def _derive_world() -> None:
     await ingest_records("osm_way", [
         way_record(1, [(139.700, 35.680), (139.705, 35.6805), (139.6995, 35.681)], [1, 2, 3],
@@ -43,7 +52,7 @@ async def _derive_world() -> None:
         way_record(2, [(139.705, 35.6805), (139.706, 35.6795)], [2, 9], {"highway": "track", "tracktype": "grade3"}),
     ], bbox=(AREA.min_latitude, AREA.min_longitude, AREA.max_latitude, AREA.max_longitude))
     await ingest_records("osm_node", [point_record(3, 139.6995, 35.681, {"highway": "crossing"})])
-    await ingest_records("dem", dem_tile_records(PRODUCT_PRIORITY[0], 15, AREA, _climbing_north))
+    await ingest_records("dem", _dem_records())
     async with raw_connection() as conn:
         await derive_topology.derive(conn)
         await derive_elevation.derive(conn, previous=None)
@@ -107,7 +116,7 @@ async def test_segments_of_a_way_on_the_zoomed_out_map_have_the_materials_the_se
         assert _rows(segments.distance_m, segments.columns, mine) == _rows(
             search.distance_m, {material_id: expected[material_id] for material_id in segments.columns}, theirs)
     gradient_inputs = await road_graph_repository.get_feature_gradient_inputs_in_tile(z, 0, 0, AREA)
-    assert {key: bearing for key, bearing in zip(segments.feature_keys, segments.feature_bearing_deg)} == {
+    assert dict(zip(segments.feature_keys, segments.feature_bearing_deg)) == {
         key: bearing for key, (_, bearing) in gradient_inputs.items()}
 
 

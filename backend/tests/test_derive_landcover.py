@@ -23,7 +23,7 @@ from app.domain.landcover import (
 from app.domain.region import WEB_MERCATOR_HALF_M, tile_bounds_3857, tile_bounds_lonlat
 from tests.source_ingest import ingest_records, tile_record, way_record
 
-# road_graph_session（conftest.py）と同じDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
+# moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -92,11 +92,10 @@ def _ring_raster(inside: int, ring: int, outside: int) -> bytes:
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def prepared_conn(derive_conn):
     """道1本とタイル1枚を取り込み、区間まで作った状態。"""
-    conn = derive_conn
-    await ingest_records("osm_way", [way_record(WAY_ID, ROAD, [1, 2])], conn=conn)
-    await _ingest_tile(conn, _raster(PERCENT_CLASSES[0][1]))
-    await derive_topology.derive(conn)
-    return conn
+    await ingest_records("osm_way", [way_record(WAY_ID, ROAD, [1, 2])], conn=derive_conn)
+    await _ingest_tile(derive_conn, _raster(PERCENT_CLASSES[0][1]))
+    await derive_topology.derive(derive_conn)
+    return derive_conn
 
 
 @pytest_asyncio.fixture(loop_scope="module")
@@ -108,19 +107,18 @@ async def landcover_conn(prepared_conn):
 
 async def test_rerun_on_pixels_left_out_keeps_no_share_on_segments_or_ways(landcover_conn):
     """画素が欠測になって流し直すと、区間も道も割合も有効画素も持たない（有効画素が足りない）。"""
-    conn = landcover_conn
     first = landcover_key(PERCENT_CLASSES[0][0])
 
     async def shares() -> list[tuple[int | None, float | None]]:
         """区間と道それぞれの (有効画素数, 塗ったクラスの割合)。"""
-        return [(r["lc_valid_pixels"], r[f"lc_{first}"]) for r in await conn.fetch(
+        return [(r["lc_valid_pixels"], r[f"lc_{first}"]) for r in await landcover_conn.fetch(
             f"SELECT lc_valid_pixels, lc_{first} FROM road_edges LEFT JOIN edge_landcover USING (osm_way_id, segment_index)"
             f" UNION ALL SELECT lc_valid_pixels, lc_{first} FROM road_ways LEFT JOIN way_landcover USING (osm_way_id)")]
 
-    await derive_landcover.derive(conn, previous=None)
+    await derive_landcover.derive(landcover_conn, previous=None)
     before = await shares()
-    await _ingest_tile(conn, _raster(NODATA))
-    await derive_landcover.derive(conn, previous=None)
+    await _ingest_tile(landcover_conn, _raster(NODATA))
+    await derive_landcover.derive(landcover_conn, previous=None)
 
     # 前提: 1回目は区間にも道にも値が付いている。
     assert len(before) == 2
@@ -131,14 +129,13 @@ async def test_rerun_on_pixels_left_out_keeps_no_share_on_segments_or_ways(landc
 async def test_only_pixels_in_the_band_around_the_road_are_counted(landcover_conn):
     """数えるのは中心線から帯の内径〜外径の画素だけ。路面そのもの（内径より内側）と、
     外径より外側の画素は、区間の割合にも道の割合にも入らない。"""
-    conn = landcover_conn
     classes = PERCENT_CLASSES[:3]
-    await _ingest_tile(conn, _ring_raster(*(value for _, value in classes)))
+    await _ingest_tile(landcover_conn, _ring_raster(*(value for _, value in classes)))
     inside, ring, outside = (landcover_key(name) for name, _ in classes)
 
-    await derive_landcover.derive(conn, previous=None)
+    await derive_landcover.derive(landcover_conn, previous=None)
 
-    rows = await conn.fetch(
+    rows = await landcover_conn.fetch(
         f"SELECT lc_{inside} AS inside, lc_{ring} AS ring, lc_{outside} AS outside"
         " FROM edge_landcover UNION ALL"
         f" SELECT lc_{inside}, lc_{ring}, lc_{outside} FROM way_landcover")

@@ -20,8 +20,7 @@ async def _directions(engine, tags_by_id: dict[int, dict[str, str]]) -> dict[int
     rows = ", ".join(f"(CAST(:id{i} AS bigint), CAST(:tags{i} AS jsonb))" for i in range(len(tags_by_id)))
     params = {}
     for i, (way_id, tags) in enumerate(tags_by_id.items()):
-        params[f"id{i}"] = way_id
-        params[f"tags{i}"] = json.dumps(tags)
+        params |= {f"id{i}": way_id, f"tags{i}": json.dumps(tags)}
     source = f"SELECT * FROM (VALUES {rows}) AS t(id, tags)"
     async with engine.connect() as conn:
         result = (await conn.execute(text(traffic.direction_sql(source)), params)).all()

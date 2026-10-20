@@ -154,6 +154,7 @@ PARCELS = [
     ("神奈川県", "横浜市鶴見区", "無関係", "", "6", 139.672, 35.502, "0", "1", "0"),
 ]
 
+
 def _write_csv_zip(path: Path, columns: str, rows: list[dict[str, str]]) -> None:
     text = io.StringIO()
     writer = csv.DictWriter(text, fieldnames=columns.split(","), restval="", lineterminator="\n")

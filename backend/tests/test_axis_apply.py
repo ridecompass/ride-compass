@@ -17,8 +17,8 @@ import json
 import httpx
 import pytest
 
-import axis_apply
 from app.domain.axis_definitions import AxisDefinition, is_update_allowed_while_published
+from scripts import axis_apply
 
 ADMIN = "/api/admin/axis-definitions"
 

@@ -16,7 +16,6 @@ JMAの観測値エンドポイントは1地点だけを絞り込めず全国分�
 - 1時間雨量の履歴から窓の累計・止んでからの時間を求めること → `test_rain.py`
 """
 
-import io
 import json
 from datetime import datetime, timedelta
 
@@ -25,7 +24,6 @@ import numpy as np
 import pytest
 import respx
 from PIL import Image
-from shapely.geometry import Point, shape
 
 from app.domain.jma_amedas import apparent_temperature_from_amedas
 from app.domain.rain import HOURS_SINCE_RAIN, RAIN_HISTORY_HOURS, RAIN_HISTORY_MAX_AGE, rain_window_material_id
@@ -36,7 +34,9 @@ from app.infrastructure.jma_amedas_client import new_latest_time_cache, new_stat
 from app.infrastructure.jma_tile_client import JmaTileClient, JmaTileSharedState
 from app.services.jma_amedas_service import JmaAmedasService, load_station_rain_materials, new_rain_materials_cache
 from app.services.nearest_point_areas import new_cells_cache
+from tests.area_shapes import holds
 from tests.fake_http import client_for
+from tests.tile_images import encode
 
 POINT = Coordinates(latitude=35.68, longitude=139.76)
 LATEST_TIME = "2026-08-29T12:00:00+09:00"
@@ -85,9 +85,7 @@ def suikei_tile(color_at_point, elsewhere=CLOUDY) -> bytes:
     """`POINT`の画素だけを`color_at_point`で、ほかを`elsewhere`で塗った、配信元と同じパレットのPNG。"""
     image = Image.new("RGBA", (512, 512), elsewhere)
     image.putpixel(POINT_PIXEL, color_at_point)
-    buffer = io.BytesIO()
-    image.convert("P").save(buffer, format="PNG")
-    return buffer.getvalue()
+    return encode(image.convert("P"))
 
 
 def _router(
@@ -196,10 +194,9 @@ async def test_get_nearest_observation_reads_from_redis_without_fetching():
     # 日の出・日没はRedisには無く、クエリ地点に対してその場で計算される。
     assert result.twilight is not None
     # 同じ観測所の観測が当たる範囲（東京が最寄りである範囲）は、地点と東京を含み、遠い観測所を含まない。
-    area = shape(result.valid_area.model_dump())
-    assert area.contains(Point(POINT.longitude, POINT.latitude))
-    assert area.contains(Point(139 + 45.6 / 60, 35 + 41.4 / 60))
-    assert not area.contains(Point(0.0, 0.0))
+    assert holds(result.valid_area, POINT)
+    assert holds(result.valid_area, Coordinates(latitude=35 + 41.4 / 60, longitude=139 + 45.6 / 60))
+    assert not holds(result.valid_area, Coordinates(latitude=0.0, longitude=0.0))
 
 
 async def _nearest(**answers):

@@ -118,14 +118,13 @@ async def test_a_cycleway_value_on_any_side_counts(road_graph_session):
 # --- カタログに直に書かれた式（domain/material_catalog.py） -----------------------------
 
 
-@pytest.mark.parametrize(("count", "distance_m", "years", "expected"), [
-    (3.0, 500.0, 2, 3.0),
-    (3.0, 500.0, 0, None),  # 収録年の無い取込
+@pytest.mark.parametrize(("years", "expected"), [
+    (2, 3.0),
+    (0, None),  # 収録年の無い取込
 ])
-async def test_the_accident_density_is_per_km_and_per_year_covered(road_graph_session, count, distance_m, years,
-                                                                    expected):
+async def test_the_accident_density_is_per_km_and_per_year_covered(road_graph_session, years, expected):
     value = await _edge_value(road_graph_session, material_value_sql()[ACCIDENT_COUNT_PER_KM_YEAR],
-                              distance_m=distance_m, accident_years=years, accident_count=count)
+                              distance_m=500.0, accident_years=years, accident_count=3.0)
 
     assert value == (None if expected is None else pytest.approx(expected))
 

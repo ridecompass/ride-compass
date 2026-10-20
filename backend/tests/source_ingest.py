@@ -12,7 +12,6 @@ runの記録・パーティション・入れ替えは本物を通す。外部�
 """
 
 import atexit
-import io
 import os
 import tempfile
 import uuid
@@ -36,6 +35,7 @@ from app.batch.source_profile import NoFields, SourceProfile, SourceSpec, Target
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tiles_covering_bbox
 from app.infrastructure.source_models import WAY_KIND_TAG
 from tests.conftest import raw_connection
+from tests.tile_images import encode
 
 #: テストが渡した行を返すアダプタの名前。取込の間だけ`ADAPTERS`に置く。
 _ADAPTER = "given_records"
@@ -152,9 +152,7 @@ def gsi_dem_png(meters: Sequence[Sequence[float | None]]) -> bytes:
     x = np.array([[1 << 23 if v is None else round(v * 100) % (1 << 24) for v in row] for row in meters],
                  dtype=np.int64)
     rgb = np.stack([(x >> 16) & 0xFF, (x >> 8) & 0xFF, x & 0xFF], axis=-1).astype(np.uint8)
-    buffer = io.BytesIO()
-    Image.fromarray(rgb, mode="RGB").save(buffer, format="PNG")
-    return buffer.getvalue()
+    return encode(Image.fromarray(rgb, mode="RGB"))
 
 
 #: 標高のタイル1枚の1辺の画素数。読み手はタイルの`attrs`の幅で画素の番地を出すので、配信元の幅に揃えなくてよい。

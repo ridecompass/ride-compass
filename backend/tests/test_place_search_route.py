@@ -83,17 +83,17 @@ def _facility_record(key: int, name: str, longitude: float, latitude: float) -> 
 
 async def _ingest_facilities(records: list[object]) -> None:
     """Overture の地点を取り込み、立ち寄り先の表を作る派生の段を流す。"""
-    await ingest_records("overture_place", records)
     async with raw_connection() as conn:
+        await ingest_records("overture_place", records, conn=conn)
         await derive_stop_places.derive(conn)
 
 
 async def _ingest_addresses(records: list[SourceRecord], parcels: list[SourceRecord] | None = None) -> None:
     """アドレス・ベース・レジストリの行と街区レベル位置参照情報の行を取り込み、住所の区画の表を作る派生の段を流す
     （範囲は`area`の宣言）。"""
-    await ingest_records("abr", records)
-    await ingest_records("isj_block", parcels or [])
     async with raw_connection() as conn:
+        await ingest_records("abr", records, conn=conn)
+        await ingest_records("isj_block", parcels or [], conn=conn)
         await derive_addresses.derive(conn)
 
 

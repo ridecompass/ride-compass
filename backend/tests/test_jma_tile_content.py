@@ -8,19 +8,12 @@
 - 在否インデックスへ載せないこと → `test_jma_tile_prewarm_service.py`
 """
 
-import io
-
 from PIL import Image
 
 from app.infrastructure.jma_tile_content import is_empty_tile
+from tests.tile_images import encode
 
 SIZE = 256
-
-
-def encode(image: Image.Image) -> bytes:
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
-    return buffer.getvalue()
 
 
 def test_a_palette_raster_whose_every_pixel_is_the_transparent_entry_is_empty():

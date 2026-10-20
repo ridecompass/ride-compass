@@ -14,13 +14,13 @@ from datetime import datetime
 import httpx
 import pytest
 import respx
-from shapely.geometry import Point, shape
 
 from app.domain.route import Coordinates
 from app.infrastructure import wbgt_client
 from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_cache
 from app.services.nearest_point_areas import new_cells_cache
 from app.services.wbgt_service import WbgtService
+from tests.area_shapes import holds
 from tests.fake_http import client_for
 
 POINT = Coordinates(latitude=35.6812, longitude=139.7671)
@@ -71,9 +71,8 @@ async def test_the_status_carries_the_area_the_same_point_holds_for():
     result = await service.get_status(POINT, now=SUMMER_NOW)
 
     assert result is not None and result.valid_area is not None
-    area = shape(result.valid_area.model_dump())
-    assert area.contains(Point(POINT.longitude, POINT.latitude))
-    assert not area.contains(Point(135 + 31.1 / 60, 34 + 40.9 / 60))
+    assert holds(result.valid_area, POINT)
+    assert not holds(result.valid_area, Coordinates(latitude=34 + 40.9 / 60, longitude=135 + 31.1 / 60))
 
 
 async def test_a_value_outside_the_provision_period_is_shown():
@@ -135,4 +134,4 @@ async def test_points_asked_at_once_fetch_each_table_once():
     await asyncio.gather(service.get_status(POINT, now=SUMMER_NOW), service.get_status(POINT, now=SUMMER_NOW))
 
     urls = [str(call.request.url) for call in upstream.calls]
-    assert sorted(urls) == sorted(set(urls)) and len(urls) == 2
+    assert len(set(urls)) == len(urls) == 2

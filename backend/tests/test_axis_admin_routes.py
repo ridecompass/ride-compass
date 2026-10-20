@@ -267,7 +267,7 @@ class TestPreviews:
         }
 
     def test_scores_of_a_draft(self, client):
-        shape = {**linear_shape(NUM_A), "breakpoints": [[0, 0], [10, 100]]}
+        shape = linear_shape(NUM_A)
 
         body = client.post(BASE + "/preview-scores", json={"shape": shape, "xs": [2.5, 20.0]}).json()
 
@@ -310,7 +310,6 @@ def preview_body(shape, axis_id="a", **fields):
 
 # 較正の地図は、保存されている折れ点では地図の配信と同じ色で塗り、下書きを動かすとその折れ点の色へ変わる。下書きを
 # 問い合わせても、公開中の軸で塗る利用者の地図は変わらない。
-@pytest.mark.usefixtures("referenced_axis")
 class TestWayValuesPreview:
     def test_published_breakpoints_answer_what_the_map_serves(self, client, way_axes):
         served = way_axes()

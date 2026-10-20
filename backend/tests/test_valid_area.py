@@ -8,16 +8,13 @@
 """
 
 import pytest
-from shapely.geometry import MultiPolygon, Point, box, shape
+from shapely.geometry import MultiPolygon, box
 
 from app.domain.route import Coordinates
 from app.domain.valid_area import NearestPointCells, valid_area_of
+from tests.area_shapes import holds
 
 INSIDE = Coordinates(latitude=35.5, longitude=139.5)
-
-
-def _contains(area, point: Coordinates) -> bool:
-    return shape(area.model_dump()).contains(Point(point.longitude, point.latitude))
 
 
 @pytest.mark.parametrize(
@@ -36,7 +33,7 @@ def test_an_area_is_valid_only_when_it_contains_the_point(geometry, expected):
     assert (area is not None) == expected
     if area is not None:
         assert area.type == "MultiPolygon"
-        assert _contains(area, INSIDE)
+        assert holds(area, INSIDE)
 
 
 # 東西に並ぶ3つの観測所（経度0.2度おき）。
@@ -71,9 +68,9 @@ def test_the_area_of_the_nearest_point_holds_the_point_and_only_that_station(sta
     area = NearestPointCells(stations).area(point)
 
     assert area is not None
-    assert _contains(area, point)
+    assert holds(area, point)
     for index, station in enumerate(stations):
-        assert _contains(area, station) == (index == nearest)
+        assert holds(area, station) == (index == nearest)
 
 
 def test_a_single_point_has_no_boundary():

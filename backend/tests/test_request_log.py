@@ -36,9 +36,8 @@ def test_access_log_line_carries_the_request_id(caplog):
     client = TestClient(main_app)
     client.get("/health", headers={"X-Request-ID": CLIENT_REQUEST_ID})
 
-    records = [r for r in caplog.records if r.name == "ridecompass.access"]
-    assert len(records) == 1
-    line = caplog.handler.format(records[0])
+    [record] = _access_records(caplog)
+    line = caplog.handler.format(record)
     assert f"[req:{CLIENT_REQUEST_ID}]" in line
 
 
@@ -122,15 +121,9 @@ def test_unhandled_exception_logged_as_error_with_traceback(caplog):
 # 未処理例外(500)でもX-Request-IDヘッダが付く。TestClientは既定で
 # raise_server_exceptions=Trueのため、実際のHTTPレスポンスを得るにはFalseを指定する。
 def test_unhandled_exception_response_has_request_id_header():
-    test_app = FastAPI()
-    test_app.middleware("http")(request_log_middleware(TILE_PATH_PREFIXES))
+    test_app = _app_with_access_log()
     test_app.add_middleware(CorrelationIdMiddleware)
     test_app.add_exception_handler(Exception, unhandled_exception_handler)
-
-    @test_app.get("/boom")
-    def boom():
-        raise RuntimeError("kaboom")
-
     client = TestClient(test_app, raise_server_exceptions=False)
     response = client.get("/boom", headers={"X-Request-ID": CLIENT_REQUEST_ID})
 

@@ -20,7 +20,6 @@ check_tile_index`が持ち、ここでは入口ごとにそれを使っている
 - 同時実行の上限（semaphore）。待たせるだけで、応答には現れない
 """
 
-import inspect
 from datetime import datetime, timezone
 
 import pytest
@@ -35,10 +34,10 @@ from app.api.dependencies import (
     get_weather_service,
 )
 from app.domain.axis_definitions import (
-    AXIS_DEFINITIONS,
     AxisDefinition,
     BreakpointLinearShape,
     MaterialTerm,
+    copy_axis_definitions,
 )
 from app.config import settings
 from app.domain.axis_inspector import AxisInspectorAxis, AxisInspectorResult, InspectorComposite, InspectorValues
@@ -68,6 +67,9 @@ from tests.bound_fake import bound
 client = TestClient(app)
 
 POINT_LAYER = next(iter(POINT_TILE_LAYERS))
+
+SCORED = "axis_way_value_scored"
+SIGNED = "axis_way_value_signed"
 
 
 class FakeRegionService:
@@ -142,8 +144,8 @@ def test_region_tiles_hand_the_services_mvt_over(override_dependency, path, cach
         (f"/api/region/point-tiles/{POINT_LAYER}/{ROAD_TILE_MIN_ZOOM - 1}/0/0.pbf", None),
         (f"/api/region/point-tiles/{POINT_LAYER}/14/{2**14}/6447.pbf", None),
         (f"/api/region/landcover-tiles/10/{2**10}/403.png", None),
-        (f"/api/region/way-materials/axis_way_value_signed/{ROAD_TILE_MIN_ZOOM - 1}/0/0", None),
-        (f"/api/region/way-materials/axis_way_value_signed/14/{2**14}/6447", None),
+        (f"/api/region/way-materials/{SIGNED}/{ROAD_TILE_MIN_ZOOM - 1}/0/0", None),
+        (f"/api/region/way-materials/{SIGNED}/14/{2**14}/6447", None),
         ("/api/region/axis-inspector", {"z": ROAD_TILE_MAX_ZOOM + 1}),
         ("/api/region/axis-inspector", {"x": 2**14}),
         ("/api/region/axis-inspector", {"bearing_deg": 360.0}),
@@ -189,7 +191,7 @@ def test_each_kind_of_region_request_is_counted_on_its_own(override_dependency):
     exhausted_point = point.format(exhausted_layer)
     exhausted = [client.get(path).status_code for path in (road, road, exhausted_point, exhausted_point)]
     others = [client.get(point.format(layer)).status_code for layer in other_layers]
-    others.append(client.get("/api/region/way-materials/axis_way_value_signed/14/14551/6447").status_code)
+    others.append(client.get(f"/api/region/way-materials/{SIGNED}/14/14551/6447").status_code)
     others.append(client.post("/api/region/axis-inspector", json=INSPECTED).status_code)
 
     assert exhausted == [200, 429, 200, 429]
@@ -245,14 +247,11 @@ def _lens(
     return axis_way_value_lens(axis_id, FakeFeatureMaterials(materials), services)
 
 
-SCORED = "axis_way_value_scored"
-SIGNED = "axis_way_value_signed"
-
 #: 地図が式の木と道ごとの材料で塗る軸。時刻・方位・速度を要るもの（得点を塗る）と、方位だけを要るもの
 #: （符号付きの生値を塗る）の2本。
 DEDICATED_AXES = {
-    "axis_way_value_scored": AxisDefinition(
-        axis_id="axis_way_value_scored",
+    SCORED: AxisDefinition(
+        axis_id=SCORED,
         shape=BreakpointLinearShape(
             terms=[MaterialTerm(material="wind_drag_ratio")],
             breakpoints=[(-1.0, 0.0), (0.0, 20.0), (4.0, 100.0)],
@@ -260,8 +259,8 @@ DEDICATED_AXES = {
         default_weight=0.2,
         label="軸ウ",
     ),
-    "axis_way_value_signed": AxisDefinition(
-        axis_id="axis_way_value_signed",
+    SIGNED: AxisDefinition(
+        axis_id=SIGNED,
         shape=BreakpointLinearShape(
             terms=[MaterialTerm(material="gradient_percent")],
             preprocess="abs",
@@ -323,6 +322,10 @@ def test_region_way_materials_answer_the_wind_axis_with_its_value_under_the_maps
     assert "bearing_deg" in unconditioned.json()["detail"]
 
 
+async def _none(*args, **kwargs):
+    return None
+
+
 class UncoveredRepository:
     """どのタイルも取込範囲外と答えるDBの代役。"""
 
@@ -332,21 +335,14 @@ class UncoveredRepository:
     async def get_accident_years_covered(self):
         return 1
 
-    async def get_feature_gradient_inputs_in_tile(self, *args, **kwargs):
-        inspect.signature(RoadGraphRepository.get_feature_gradient_inputs_in_tile).bind(self, *args, **kwargs)
-        return None
-
-    async def get_feature_materials_in_tile(self, *args, **kwargs):
-        inspect.signature(RoadGraphRepository.get_feature_materials_in_tile).bind(self, *args, **kwargs)
-        return None
+    get_feature_gradient_inputs_in_tile = bound(RoadGraphRepository.get_feature_gradient_inputs_in_tile, _none)
+    get_feature_materials_in_tile = bound(RoadGraphRepository.get_feature_materials_in_tile, _none)
 
 
 class NoRainHistoryWeather:
     """雨の観測の履歴が無いと答える気象サービスの代役。"""
 
-    async def get_station_rain_materials(self, *args, **kwargs):
-        inspect.signature(WeatherService.get_station_rain_materials).bind(self, *args, **kwargs)
-        return None
+    get_station_rain_materials = bound(WeatherService.get_station_rain_materials, _none)
 
 
 # 実際のget_dedicated_way_value_serviceを通し、初めて見る名前の公開軸が、配信のサービスの材料（勾配、要求の気象サービスを
@@ -362,13 +358,13 @@ class NoRainHistoryWeather:
     ],
 )
 def test_region_way_materials_serve_every_published_axis(override_dependency, monkeypatch, material, published, status):
-    if material is not None:
-        axis = axis_definition("axis_new_name", material=material, is_published=published)
-        monkeypatch.setitem(AXIS_DEFINITIONS, "axis_new_name", axis)
+    added = {} if material is None else {
+        "axis_new_name": axis_definition("axis_new_name", material=material, is_published=published)}
     monkeypatch.setattr(dependencies, "RoadGraphRepository", lambda session: UncoveredRepository())
     override_dependency(get_weather_service, NoRainHistoryWeather)
 
-    response = client.get("/api/region/way-materials/axis_new_name/14/14551/6447")
+    with replaced_axis_definitions({**copy_axis_definitions(), **added}):
+        response = client.get("/api/region/way-materials/axis_new_name/14/14551/6447")
 
     assert response.status_code == status
 
@@ -437,7 +433,7 @@ def test_region_axis_inspector_uses_the_weights_it_is_sent(override_dependency):
     """合成は利用者がいま設定している重みで計算する。送らなければ既定の重み。"""
     fake = FakeAxisInspector()
     override_dependency(get_axis_inspector_service, lambda: fake)
-    weights = {axis_id: 0.0 for axis_id in _WEIGHTED_AXES}
+    weights = dict.fromkeys(_WEIGHTED_AXES, 0.0)
     sent = client.post("/api/region/axis-inspector", json={**INSPECTED, "route_preference": weights})
     sent_preference = fake.request[-1]
     omitted = client.post("/api/region/axis-inspector", json=INSPECTED)

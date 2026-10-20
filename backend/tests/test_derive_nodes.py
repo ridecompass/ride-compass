@@ -12,13 +12,13 @@ from app.batch import derive_nodes, derive_topology
 from app.domain.traffic import HIGHWAY_RANK
 from app.domain.tuning import TUNING_PARAMETERS_BY_ID
 from tests.conftest import empty_ingested_tables
-from tests.source_ingest import ingest_records, point_record, way_record
+from tests.source_ingest import WAY_ORIGIN, ingest_records, point_record, way_record
 
-# road_graph_session（conftest.py）と同じDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
+# moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
-BASE_LON, BASE_LAT = 139.70, 35.68
+BASE_LON, BASE_LAT = WAY_ORIGIN
 #: 信号とみなす半径（較正値の既定）。
 RADIUS_M = TUNING_PARAMETERS_BY_ID["signal.match_radius_m"].default
 #: 経度0.001度は約90m。信号とみなす半径より十分に遠い。
@@ -59,12 +59,11 @@ async def _signals(conn: asyncpg.Connection) -> dict[int, bool]:
 @pytest_asyncio.fixture(loop_scope="module")
 async def node_conn(derive_conn):
     """テストごとに同じ生データから作り直す。生データのタグを書き換えるテストがあるため。"""
-    conn = derive_conn
-    await empty_ingested_tables(conn)
-    await _ingest(conn)
-    await derive_topology.derive(conn)
-    await derive_nodes.derive(conn, RADIUS_M)
-    return conn
+    await empty_ingested_tables(derive_conn)
+    await _ingest(derive_conn)
+    await derive_topology.derive(derive_conn)
+    await derive_nodes.derive(derive_conn, RADIUS_M)
+    return derive_conn
 
 
 async def test_node_near_a_signal_is_flagged_and_far_one_is_not(node_conn):
