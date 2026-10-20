@@ -7,6 +7,7 @@
 import logging
 from datetime import datetime, timezone
 
+from app.domain.db_status import source_needs_rebuild, table_needs_rebuild
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.strict_model import StrictModel
 from app.infrastructure.debug_log import log_external_call
@@ -21,14 +22,12 @@ logger = logging.getLogger("ridecompass.derived_data_freshness")
 
 
 class SourceEntry(SourceFreshness):
-    #: 作り直しに使った取込が成功した最新の取込でない（取込が1度も成功していない・まだ作り直しに
-    #: 使っていない、も含む）。画面は理由を問わずこれでソースを「作り直しが必要」に数える。
+    #: `domain/db_status.py: source_needs_rebuild`の判断。画面は理由を問わずこれでソースを「作り直しが必要」に数える。
     needs_rebuild: bool
 
 
 class TableEntry(TableFreshness):
-    #: 作り直しが要る（今の表を作ったときの列の記録が無い・記録が今の宣言の列と違う のどちらか）。
-    #: 画面は理由を問わずこれで表を「作り直しが必要」に数える。
+    #: `domain/db_status.py: table_needs_rebuild`の判断。画面は理由を問わずこれで表を「作り直しが必要」に数える。
     needs_rebuild: bool
 
 
@@ -46,15 +45,18 @@ def build_freshness_report(
         sources=[
             SourceEntry(
                 **dict(source),
-                needs_rebuild=source.latest_run_id is None or source.derived_run_id != source.latest_run_id,
+                needs_rebuild=source_needs_rebuild(derived_run_id=source.derived_run_id, latest_run_id=source.latest_run_id),
             )
             for source in freshness.sources
         ],
         tables=[
             TableEntry(
                 **dict(table),
-                needs_rebuild=(table.columns_change is None
-                               or bool(table.columns_change.added or table.columns_change.removed)),
+                needs_rebuild=table_needs_rebuild(
+                    recorded=table.columns_change is not None,
+                    added=() if table.columns_change is None else table.columns_change.added,
+                    removed=() if table.columns_change is None else table.columns_change.removed,
+                ),
             )
             for table in freshness.tables
         ],

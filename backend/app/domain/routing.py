@@ -85,6 +85,12 @@ _CSR_INDEX_DTYPE = np.int32
 # 小さく始めることで、伸長の経路が普通の探索で毎回通る（使われない分岐にしない）。
 HEAP_INITIAL_SLACK = 64
 
+# `tree_cost_bound`が最初に並べる区間の数。帯の上限の距離は、たいていこの数の区間で埋まる
+# （全区間を並べ替えるより部分の選び出しのほうが速い）。足りなければ4倍ずつ広げる。
+_TREE_BOUND_FIRST_K = 4096
+# `tree_cost_bound`の和と探索の和は足す順が違い、浮動小数の丸めの分だけずれうる。そのずれを覆う相対の余裕。
+_TREE_BOUND_ROUNDING = 1e-9
+
 
 @dataclass
 class CsrGraphStructure:
@@ -1191,6 +1197,36 @@ def build_turn_expanded_tree(
         node_length_m=node_length_m, node_seconds=node_seconds,
         predecessor_list=predecessor.tolist(),
     )
+
+
+def tree_cost_bound(
+    structure: TurnExpandedStructure, edge_cost: np.ndarray, edge_length_m: np.ndarray, length_m: float,
+) -> float:
+    """前向きの`build_turn_expanded_tree`へ同じ`edge_cost`を渡したとき、実距離`length_m`以内で届く状態の
+    木の費用を下回らない値（`cost_limit`に渡すと、その状態を1つも打ち切らない上界）。
+
+    木の費用は、経路の区間ごとの費用（どの時刻ビンかは到達時刻で決まる）と、区間へ入る遷移の待ちの和で、
+    経路は同じ区間を2度通らない。区間ごとに「どのビンの費用の最大＋入る遷移の待ちの最大」を重さ、実距離を
+    大きさとした分数ナップサックの貪欲で、重さ/大きさの大きい区間から実距離の合計が`length_m`に届くまで足す。
+    費用の合成（割り増し・密度・罰）・待ち・走行モデルの形に依らず成り立つ。
+    """
+    cost_bins = _as_time_bins("tree_cost_bound", edge_cost)
+    finite = np.isfinite(cost_bins)
+    reachable = finite.any(axis=0)
+    entry_wait = np.zeros(structure.state_count)
+    np.maximum.at(entry_wait, structure.target_state, structure.turn_seconds)
+    weight = (np.max(cost_bins, axis=0, initial=0.0, where=finite) + entry_wait)[reachable]
+    size = np.asarray(edge_length_m, dtype=np.float64)[reachable]
+    ratio = np.divide(weight, size, out=np.full(weight.shape, np.inf), where=size > 0)
+    k = _TREE_BOUND_FIRST_K
+    while True:
+        top = np.argpartition(-ratio, k - 1)[:k] if k < len(ratio) else np.arange(len(ratio))
+        top = top[np.argsort(-ratio[top], kind="stable")]
+        filled = np.cumsum(size[top]) >= length_m
+        if filled.any() or len(top) == len(ratio):
+            picked = top[: int(np.argmax(filled)) + 1] if filled.any() else top
+            return float(weight[picked].sum()) * (1.0 + _TREE_BOUND_ROUNDING)
+        k *= 4
 
 
 def _walk_predecessors(predecessors: Sequence[int] | np.ndarray, state_index: int) -> list[int]:

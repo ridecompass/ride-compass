@@ -19,6 +19,7 @@ from app.domain.graph import node_key
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.traffic import stop_count_material_ids
+from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
 from app.domain.route_points import RoutePointHit
@@ -235,6 +236,7 @@ def generator_for(
     monkeypatch, network: RoadNetwork, avoid_weight: float, wind: WindForecastSeries | None,
     max_average_grade_percent: float | None = None,
     side_points: dict[tuple[int, int], list[RoutePointHit]] | None = None,
+    *, assumed_speed_kmh: float = 20.0, road_avoidance: dict[str, AvoidanceLevel] | None = None,
 ):
     """道路網を全体の配列として読ませ、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""
     serve_road_network(monkeypatch, lambda: network)
@@ -243,7 +245,7 @@ def generator_for(
         RequestedConditions(
             preference_override=RoutePreference(weights={AVOID_AXIS: avoid_weight}),
             penalty_strength=1.0, max_average_grade_percent=max_average_grade_percent,
-            road_avoidance={}, assumed_speed_kmh=20.0,
+            road_avoidance=road_avoidance or {}, assumed_speed_kmh=assumed_speed_kmh,
         ),
     ).generator
 
