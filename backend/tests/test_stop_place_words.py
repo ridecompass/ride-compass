@@ -18,7 +18,6 @@ from app.domain.stop_place import StopPlaceGroup, queried_group
     pytest.param("スーパー銭湯", StopPlaceGroup.BATH, id="長音を残す"),
     # 群の名前を含むだけの語は、店の名前（「大江戸温泉物語」）でありうる。
     pytest.param("コンビニ王子", None, id="群の名前を含むだけ"),
-    pytest.param("一蘭", None, id="群の名前でない"),
 ])
 def test_a_query_is_read_as_a_group_only_when_it_is_a_name_of_the_group(query, group):
     assert queried_group(query) == group

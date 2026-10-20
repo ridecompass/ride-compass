@@ -172,14 +172,10 @@ def test_each_place_reads_the_value_of_its_nearest_grid_point_unchanged(points):
     assert np.all(np.abs(point_longitudes - longitudes) <= GRID.d_lon / 2 + 1e-9)
 
 
-@pytest.mark.parametrize(
-    "corners",
-    [(22.39, 135.0, 35.0, 136.0), (35.0, 135.0, 47.61, 136.0), (35.0, 119.99, 36.0, 136.0), (35.0, 135.0, 36.0, 150.01)],
-    ids=["south", "north", "west", "east"],
-)
-def test_a_rectangle_reaching_outside_the_grid_is_refused(corners):
+def test_a_rectangle_reaching_outside_the_grid_is_refused():
+    """4辺の判断は`test_a_point_outside_the_grid_is_refused`が持つ。矩形もその判断へ寄せていることだけを見る。"""
     with pytest.raises(ValueError):
-        GRID.block_covering(*corners)
+        GRID.block_covering(22.39, 135.0, 35.0, 136.0)
 
 
 @given(

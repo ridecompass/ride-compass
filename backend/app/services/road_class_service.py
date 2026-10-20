@@ -9,7 +9,7 @@ import logging
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.axis_definitions import AxisDefinition, missing_class_materials, named_references
+from app.domain.axis_definitions import AxisDefinition, missing_class_materials, named_references, unknown_class_values
 from app.domain.road_classes import RoadClassDefinitions, replace_road_classes, undeclared_references
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.infrastructure.road_class_repository import read_road_classes, replace_road_class_rows
@@ -32,7 +32,8 @@ async def refresh_road_classes(session: AsyncSession) -> None:
 
 
 def _check_writable(definitions: RoadClassDefinitions, axes: dict[str, AxisDefinition]) -> None:
-    """書く全体が、コードの宣言に無い名を指さず、確定しても次の起動で全軸を読み込めるか。通らなければ`RoadClassRejectedError`。"""
+    """書く全体が、コードの宣言に無い名を指さず、確定しても次の起動で全軸を読み込め、軸が名指す区分の値がどの道にも当たらなく
+    ならないか。通らなければ`RoadClassRejectedError`。"""
     undeclared = undeclared_references(definitions)
     if undeclared:
         raise RoadClassRejectedError(f"コードの宣言に無い名を指しています（{'／'.join(undeclared)}）")
@@ -44,6 +45,17 @@ def _check_writable(definitions: RoadClassDefinitions, axes: dict[str, AxisDefin
         raise RoadClassRejectedError(
             f"この入れ替えを確定すると、次の起動で読み込めない軸ができるため確定しません（{reasons}）。"
             "先に軸の材料から外してください"
+        )
+    stale = {axis_id: unknown for axis_id, axis in axes.items() if (unknown := unknown_class_values(axis, definitions))}
+    if stale:
+        reasons = "／".join(
+            f"{named_references([axis_id], axes)}が{named_references([material], axes)}の値「{name}」を使っています"
+            for axis_id, unknown in stale.items()
+            for material, name in unknown
+        )
+        raise RoadClassRejectedError(
+            f"軸が名指す区分が、今の鍵にも前の鍵にも無くなるため確定しません（{reasons}）。"
+            "区分の鍵を改めるときは前の鍵を残すか、先に軸の値を直してください"
         )
 
 

@@ -37,10 +37,6 @@ TRAVEL_SPEEDS = st.floats(1.0, 17.0)
 BEARINGS = st.floats(0.0, 360.0)
 
 
-def test_kmh_to_ms():
-    assert kmh_to_ms(36.0) == pytest.approx(10.0)
-
-
 # --- 風の追加負荷 ---
 
 

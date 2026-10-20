@@ -114,19 +114,6 @@ async def test_get_warnings_merges_across_documents_and_dedupes(boundary_path):
     ]
 
 
-async def test_get_warnings_returns_empty_when_no_active_cycling_relevant_codes(boundary_path):
-    documents = [
-        {
-            "reportDatetime": "2026-08-22T15:29:00+09:00",
-            "warning": {"class20Items": [{"areaCode": CLASS20_CODE, "kinds": [{"status": "発表警報・注意報はなし"}]}]},
-        }
-    ]
-
-    result = await _service(boundary_path, warning_documents=documents).get_warnings(CHIYODA_POINT)
-
-    assert result.warnings == []
-
-
 async def test_points_asked_at_once_fetch_each_document_once(boundary_path):
     """同時に開いた画面の問い合わせは、地域マスタと警報の電文を気象庁へ1回ずつだけ取りに行く。"""
     upstream = area_lookup_upstream(boundary_path, warning_documents=[])

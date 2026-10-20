@@ -1,6 +1,6 @@
 """DBの派生データと生データの世代を読み直す経路（`services/derived_data_revision_service.py`）。
 
-TTLが切れるまでDBを読み直さないこと。
+TTLが切れるまでDBを読み直さないことと、DBが読めないとき前回の値のまま配ること。
 
 ここで見ないもの:
 - 世代の文字列の組み立て・世代が分からないときの印 → `test_cache_identity.py`
@@ -10,6 +10,7 @@ TTLが切れるまでDBを読み直さないこと。
 
 import pytest
 
+from app.config import settings
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.services import derived_data_revision_service
 
@@ -22,8 +23,11 @@ class FakeRepository:
     def __init__(self, revision: int | None, imported: int = 3):
         self.revision = revision
         self.imported = imported
+        self.error: Exception | None = None
 
     async def get_data_revisions(self) -> DataRevisions:
+        if self.error is not None:
+            raise self.error
         return DataRevisions(derived=self.revision, imported=self.imported)
 
 
@@ -37,3 +41,15 @@ async def test_second_call_within_ttl_does_not_read_db():
 
     assert derived_data_revision_service.current_revisions() == DataRevisions(derived=7, imported=3)
 
+
+
+async def test_unreadable_db_keeps_the_last_revisions(monotonic_clock):
+    # DBの一時的な断で例外を送り出すと、タイルの世代を決める経路ごとタイルの配信が止まる。
+    repository = FakeRepository(7)
+    await derived_data_revision_service.refresh_current_revisions(repository)
+
+    repository.error = OSError("connection refused")
+    monotonic_clock.advance(settings.derived_data_revision_check_interval_seconds)
+    await derived_data_revision_service.refresh_current_revisions(repository)
+
+    assert derived_data_revision_service.current_revisions() == DataRevisions(derived=7, imported=3)

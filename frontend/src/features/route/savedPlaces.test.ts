@@ -4,7 +4,7 @@
  * 受け付けない件だけを捨ててほかの件を残す。同じ名前か同じ位置で保存すると置き換える。
  *
  * ここで見ないもの:
- * - 一覧をどこに出し、選ぶと何が起きるか → `RouteForm/PointDetail.test.tsx`
+ * - 一覧をどこに出し、選ぶと何が起きるか → `RouteForm/PointSearch.test.tsx`
  * - 一覧として読めない保存値・入れた件を先頭に置くこと → `lib/storedList.test.ts`
  */
 import { describe, expect, it } from "vitest";

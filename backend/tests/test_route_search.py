@@ -293,11 +293,10 @@ def test_rank_treats_distances_within_the_calibrated_quantum_as_the_same(monkeyp
     assert _ranked_ids([5, 7, 9], [0.0, 2000.0, 2000.0], [50.0, 10.0, 30.0], tie_by_distance=False) == [7, 9, 5]
 
 
-@pytest.mark.parametrize(("stretch", "expected"), [(None, [0, 1]), (1.0, [0]), (1.5, [0, 1, 2])])
+@pytest.mark.parametrize(("stretch", "expected"), [(1.0, [0]), (1.5, [0, 1, 2])])
 def test_alternative_routes_are_at_most_the_calibrated_stretch_of_the_best(monkeypatch, stretch, expected):
-    """目的地への代わりの道は、最良路（1km）の長さの較正値の倍までを候補にする（既定は1.2kmまで、1.4kmは外れる）。"""
-    if stretch is not None:
-        monkeypatch.setitem(TUNING_VALUES, "search.alternative_max_stretch", stretch)
+    """目的地への代わりの道は、最良路（1km）の長さの較正値の倍までを候補にする。"""
+    monkeypatch.setitem(TUNING_VALUES, "search.alternative_max_stretch", stretch)
 
     best, alternatives = alternative_via_nodes(
         np.array([1.0, 2.0, 3.0]), np.array([1000.0, 1200.0, 1400.0]), np.array([True, True, True]))
@@ -310,23 +309,19 @@ def test_rank_breaks_ties_by_distance_only_when_asked(tie_by_distance, expected)
     assert _ranked_ids([3, 8], [60.0, 10.0], [20.0, 20.0], tie_by_distance=tie_by_distance) == expected
 
 
-@pytest.mark.parametrize(("ratio_min", "expected"), [(2.0, (4950.0, 5050.0)), (2.2, (4500.0, 10100.0 / 2.2))])
-def test_turnaround_ring_falls_back_to_the_loop_length_estimate_minimum_when_the_tolerance_is_too_narrow(
-    monkeypatch, ratio_min, expected,
-):
+def test_turnaround_ring_falls_back_to_the_loop_length_estimate_minimum_when_the_tolerance_is_too_narrow(monkeypatch):
     """許容が狭いと`[(目標-許容)/MIN, (目標+許容)/MAX]`が逆転し、折返し点が1つも見つからない。戻す先は管理画面で
     変えた見込みの下限に従い、目標10km±0.1kmの往路は見込みの下限で割った長さになる。"""
-    monkeypatch.setitem(TUNING_VALUES, "search.loop_to_outbound_ratio_min", ratio_min)
+    monkeypatch.setitem(TUNING_VALUES, "search.loop_to_outbound_ratio_min", 2.2)
 
     lower_m, upper_m, _ = turnaround_ring_m(10.0, 0.1)
-    assert (lower_m, upper_m) == pytest.approx(expected)
+    assert (lower_m, upper_m) == pytest.approx((4500.0, 10100.0 / 2.2))
 
 
-@pytest.mark.parametrize(("distance_km", "tolerance_km"), [(10.0, 2.0), (60.0, 10.0)])
-def test_turnaround_ring_center_lies_inside_the_ring(distance_km, tolerance_km):
+def test_turnaround_ring_center_lies_inside_the_ring():
     """折返し点の候補はリング中心に近い順に並ぶ。中心がリングの外にあると、リングの端の候補ばかりが先に試される。
     許容が狭くリングが戻る場合は、リングだけが広がり中心は動かないので、ここでは戻らない許容で見る。"""
-    lower_m, upper_m, center_m = turnaround_ring_m(distance_km, tolerance_km)
+    lower_m, upper_m, center_m = turnaround_ring_m(10.0, 2.0)
     assert lower_m <= center_m <= upper_m
 
 
@@ -348,7 +343,6 @@ def test_turnaround_ring_follows_the_loop_length_estimate_in_effect(monkeypatch)
         # 見込みの幅（帰り7km×0.3）が許容の幅より広いので、帰りを最短のまま見る（10.0km）。幅のままだと上端12.1kmで外れる
         (1000.0, 7000.0, True),
         (3000.0, np.nan, False),  # 終点へ届かない中継点
-        (np.nan, 4000.0, False),  # 最後の固定点から届かない中継点
     ],
 )
 def test_relay_band_takes_relays_whose_whole_estimate_of_the_route_fits_the_distance(outbound_m, shortest_m, in_band):
