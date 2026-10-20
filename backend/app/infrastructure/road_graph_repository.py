@@ -233,10 +233,10 @@ _EDGE_MATERIAL_ARRAYS_SQL = text(
 #: 区間がこれより短ければ端から端を見る。
 _NEAR_NODE_BEARING_DISTANCE_M = 20.0
 _NEAR_START = (
-    f"ST_LineInterpolatePoint(re.geom, LEAST(1.0, {_NEAR_NODE_BEARING_DISTANCE_M} / NULLIF(re.distance_m, 0)))"
+    f"ST_LineInterpolatePoint(re.geom, LEAST(1.0, {_NEAR_NODE_BEARING_DISTANCE_M} / re.distance_m))"
 )
 _NEAR_END = (
-    f"ST_LineInterpolatePoint(re.geom, GREATEST(0.0, 1.0 - {_NEAR_NODE_BEARING_DISTANCE_M} / NULLIF(re.distance_m, 0)))"
+    f"ST_LineInterpolatePoint(re.geom, GREATEST(0.0, 1.0 - {_NEAR_NODE_BEARING_DISTANCE_M} / re.distance_m))"
 )
 
 #: 取込範囲全体の区間（向きを持たない1行）。どの道も通行方向の行を持つ（通行方向の段が数を比べて守る）ので、
@@ -556,7 +556,7 @@ class RoadGraphRepository:
             "osm_way_id": osm_way_id,
             "segment_index": segment[1] if segment is not None and segment[0] == osm_way_id else None,
         })).one()
-        # 割合は有効画素のある行だけが全部持つ（表の制約`landcover_shares_follow_valid_pixels`）。
+        # 土地被覆の行が無いときは外部結合で全列がNULLになる。行があれば割合は全部ある（列はNOT NULL）。
         if row.lc_valid_pixels is None:
             return None
         return LandcoverPercentages(**{field: getattr(row, f"lc_{landcover_key(field)}")
