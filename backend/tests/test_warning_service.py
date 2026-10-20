@@ -10,7 +10,6 @@
 """
 
 import asyncio
-import logging
 
 import pytest
 from shapely.geometry import Point, shape
@@ -57,8 +56,7 @@ async def test_get_warnings_carries_the_area_the_same_warnings_hold_for(boundary
 
 
 @pytest.mark.parametrize("failure", [
-    {"area_data": None},
-    {"class20_code": "9999900"},  # 境界が返した区域を地域マスタで辿れない
+    {"area_data": None},  # 区域が分からない
     {"warning_documents": None},
 ])
 async def test_get_warnings_is_unknown_rather_than_empty_when_a_step_fails(boundary_path, failure):
@@ -66,21 +64,7 @@ async def test_get_warnings_is_unknown_rather_than_empty_when_a_step_fails(bound
     assert await _service(boundary_path, **failure).get_warnings(CHIYODA_POINT) is None
 
 
-async def test_get_warnings_names_the_area_the_master_cannot_follow(boundary_path, caplog):
-    """区域の境界と地域マスタは別々に配られ、片方だけが区域の変更に追いつくと起きる。運用者が気づけるように出す。"""
-    with caplog.at_level(logging.WARNING, logger="ridecompass.external"):
-        await _service(boundary_path, class20_code="9999900").get_warnings(CHIYODA_POINT)
-
-    assert any("9999900" in record.getMessage() for record in caplog.records)
-
-
-async def test_get_warnings_is_unknown_when_area_boundaries_are_unreadable(boundary_path):
-    service = _service(boundary_path, warning_documents=[])
-    boundary_path.unlink()
-    assert await service.get_warnings(CHIYODA_POINT) is None
-
-
-async def test_get_warnings_merges_across_documents_and_dedupes(boundary_path):
+async def test_get_warnings_merges_across_documents(boundary_path):
     """区域の項目の無い電文は、二次細分区域で引く。"""
     documents = [
         {

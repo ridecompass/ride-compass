@@ -71,6 +71,8 @@ async def test_changing_the_public_address_takes_effect_on_cached_json_without_a
     content, _ = await client(unreachable(), proxy="https://ridecompass.example/api/basemap").get(STYLE)
 
     assert json.loads(content)["sprite"] == "https://ridecompass.example/api/basemap/sprites/ofm_f384/ofm"
+    # 地の文の上流の名前（出典の表記）は書き換えない。書き換えると利用条件に反する。
+    assert json.loads(content)["metadata"] == json.loads(style_json())["metadata"]
 
 
 async def test_json_left_under_the_plain_path_by_an_older_version_is_not_served():

@@ -20,6 +20,7 @@ from PIL import Image
 from shapely.geometry import LineString
 
 from app.api.dependencies import get_jma_tile_client
+from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from app.infrastructure.jma_tile_index import JmaTileIndex, set_index
 from app.main import app
 
@@ -80,6 +81,21 @@ def test_a_cached_tile_is_served_without_asking_upstream(monkeypatch, path, cach
     assert response.content == b"\x89PNG"
     assert response.headers["cache-control"] == cache_control
     assert fake.fetched_paths == []
+
+
+@pytest.mark.parametrize(("path", "cache_control"), [
+    # 疎な格子の穴は確定した事実なので、ブラウザに覚えさせて再要求させない。
+    (TILE, "public, max-age=600"),
+    # コマの地物は配信されるまで404が返る。覚えさせると、配信されたあとも空白のまま見える。
+    ("/api/jma-tile/bosai/jmatile/data/nowc/20260904120000/none/20260904120000/surf/liden/data.geojson?id=liden", "no-store"),
+])
+def test_an_upstream_404_is_remembered_by_the_browser_only_when_final(monkeypatch, path, cache_control):
+    _answer(monkeypatch, fetched=UPSTREAM_NOT_FOUND)
+
+    response = client.get(path)
+
+    assert response.status_code == 404
+    assert response.headers["cache-control"] == cache_control
 
 
 def test_jma_tile_proxy_forwards_query_string_to_client(monkeypatch):
