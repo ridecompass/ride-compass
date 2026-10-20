@@ -45,19 +45,18 @@ def _segments(distances: list[float], **fields_per_segment) -> list[RouteSegment
     return segments
 
 
-def _signal_segments(distances: list[float], signals: list[float], share: float | None = None) -> list[RouteSegmentDetail]:
+def _signal_segments(distances: list[float], signals: list[float], share: float) -> list[RouteSegmentDetail]:
     """信号の数で決まる停止密度の軸（`stops`）と、どの区間も20点の軸（`other`）を持つ区間。`share`は停止密度の軸の
-    重みの割合（`other`が残り）で、Noneなら合成に入らない。区間の値はエンジンと同じく区間の点数・寄与度・合成から作る。"""
+    重みの割合（`other`が残り）。区間の値はエンジンと同じく区間の点数・寄与度・合成から作る。"""
     segments = []
     for distance, count in zip(distances, signals, strict=True):
         density = count / distance
         score = STOP_SHAPE.score_at(density)
-        fields = {"axis_difficulties": {"stops": score, "other": 20.0}}
-        if share is not None:
-            fields |= {
-                "axis_contributions": {"stops": score * share, "other": 20.0 * (1 - share)},
-                "difficulty": score * share + 20.0 * (1 - share),
-            }
+        fields = {
+            "axis_difficulties": {"stops": score, "other": 20.0},
+            "axis_contributions": {"stops": score * share, "other": 20.0 * (1 - share)},
+            "difficulty": score * share + 20.0 * (1 - share),
+        }
         segments.append((distance, fields, DensityScoreInput(
             value=density, distance_km=distance, weight_share=share, shape=STOP_SHAPE)))
     built = _segments(

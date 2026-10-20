@@ -51,6 +51,7 @@ from tests.route_world import (
     COORDINATES,
     HIGHWAY,
     ISLAND_WAY,
+    LATTICE,
     LAT_STEP,
     LON_STEP,
     NODE_OF,
@@ -62,12 +63,16 @@ from tests.route_world import (
     WAYS,
     at,
     avoid_axis_declared,
+    edges_of,
     generator_for,
     grid_network,
+    lattice_at,
     lattice_network,
     lattice_node,
     lattice_ways,
     node_point,
+    nodes_of,
+    passes_in_order,
     road_network,
     ways_of,
 )
@@ -101,8 +106,8 @@ def assert_connected(candidate, start: int, end: int) -> None:
     assert candidate.node_ids[0] == node_key(start)
     assert candidate.node_ids[-1] == node_key(end)
     assert len(candidate.node_ids) == len(candidate.edge_ids) + 1
-    lengths = [haversine_distance_km(at(int(a.split("-")[-1])), at(int(b.split("-")[-1])))
-               for a, b in zip(candidate.node_ids, candidate.node_ids[1:])]
+    nodes = nodes_of(candidate)
+    lengths = [haversine_distance_km(at(a), at(b)) for a, b in zip(nodes, nodes[1:])]
     assert all(length > 0 for length in lengths)
     assert math.isclose(sum(lengths), candidate.distance_km, abs_tol=0.02)
 
@@ -150,7 +155,7 @@ async def test_oneway_road_is_never_driven_against_its_direction(engine_over):
     assert candidates
     for candidate in candidates:
         assert_connected(candidate, NODE_OF[2, 1], NODE_OF[0, 1])
-        assert not [e for e in candidate.edge_ids if int(e.split("-")[1]) in oneway and e.endswith("bwd")]
+        assert not [way for way, _, forward in edges_of(candidate) if way in oneway and not forward]
 
 
 async def test_motorway_is_never_used_even_when_short(engine_over):
@@ -381,31 +386,10 @@ async def test_loop_never_drives_against_a_one_way_road(engine_over):
     assert candidates
     for candidate in candidates:
         assert_connected(candidate, CENTER, CENTER)
-        assert not [e for e in candidate.edge_ids if int(e.split("-")[1]) in oneway and e.endswith("bwd")]
+        assert not [way for way, _, forward in edges_of(candidate) if way in oneway and not forward]
 
 
 # --- 経由地・目的地の扱い ---
-
-
-#: 経由地・目的地を置いた生成を見る格子（6×6、1辺約1km）。3×3では、置いた点を通っても候補が分かれる長さが無い。
-LATTICE = lattice_network(6)
-
-
-def lattice_at(row: int, col: int) -> Coordinates:
-    return node_point(LATTICE, lattice_node(row, col))
-
-
-def passes_in_order(candidate, start: int, stops: list[int], end: int) -> bool:
-    """経路が`start`から始まり、`stops`を置いた順に通り、`end`で終わる。"""
-    nodes = candidate.node_ids
-    if nodes[0] != node_key(start) or nodes[-1] != node_key(end):
-        return False
-    position = 0
-    for stop in stops:
-        if node_key(stop) not in nodes[position:]:
-            return False
-        position = nodes.index(node_key(stop), position)
-    return True
 
 
 @pytest.mark.parametrize(
@@ -440,7 +424,7 @@ async def test_routes_through_placed_points_keep_their_order_come_in_several_and
 
     assert len(candidates) >= 2
     for candidate in candidates:
-        assert passes_in_order(candidate, start, stops, end)
+        assert passes_in_order(candidate.node_ids, start, stops, end)
         if distance is not None:
             assert abs(candidate.distance_km - target) <= tolerance
     assert sum(candidate.is_fastest for candidate in candidates) == (distance is None and destination is not None)
@@ -491,7 +475,7 @@ async def test_the_freely_chosen_part_avoids_every_road_already_ridden_but_the_p
     for candidate in candidates:
         fixed_nodes = candidate.node_ids[:fixed_count + 1]
         assert [n for n in fixed_nodes if n in straight] == fixed_nodes  # 置いた点どうしは横の道のまま
-        assert passes_in_order(candidate, origin, stops[1:], origin)
+        assert passes_in_order(candidate.node_ids, origin, stops[1:], origin)
         segments = physical_segments(candidate)
         free = segments[fixed_count:]
         assert not set(free) & set(segments[:fixed_count])
@@ -630,7 +614,7 @@ async def test_each_placed_point_is_listed_at_the_distance_where_the_route_passe
 
     assert candidates
     for candidate in candidates:
-        osm_ids = [int(node_id.split("-")[-1]) for node_id in candidate.node_ids]
+        osm_ids = nodes_of(candidate)
         road_km = [0.0, *accumulate(
             haversine_distance_km(node_point(network, a), node_point(network, b)) for a, b in zip(osm_ids, osm_ids[1:])
         )]
@@ -742,7 +726,7 @@ async def test_turns_are_listed_where_the_route_changes_direction_at_a_branch(en
 
     assert candidates
     for candidate in candidates:
-        nodes = [int(node_id.split("-")[-1]) for node_id in candidate.node_ids]
+        nodes = nodes_of(candidate)
         expected = []
         for k in range(1, len(nodes) - 1):
             (a_lat, a_lon), (b_lat, b_lon), (c_lat, c_lon) = (COORDINATES[n] for n in nodes[k - 1:k + 2])

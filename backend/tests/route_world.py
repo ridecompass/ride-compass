@@ -15,7 +15,7 @@ import numpy as np
 
 from app.services.route_generation_setup import assemble_route_generation_setup
 from app.domain.geo import bearing_between, haversine_distance_km
-from app.domain.graph import node_key
+from app.domain.graph import node_key, parse_edge_key
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.traffic import stop_count_material_ids
@@ -259,5 +259,41 @@ def node_point(network: RoadNetwork, osm_node_id: int) -> Coordinates:
     return Coordinates(latitude=float(network.node_lat[row]), longitude=float(network.node_lon[row]))
 
 
+def edges_of(candidate) -> list[tuple[int, int, bool]]:
+    """候補の区間の`(道, 区間番号, 順方向)`を、通る順に。"""
+    edges = []
+    for edge_id in candidate.edge_ids:
+        edge = parse_edge_key(edge_id)
+        assert edge is not None, edge_id
+        edges.append(edge)
+    return edges
+
+
+#: 置いた点（経由地・目的地）を通る生成を見る格子（6×6、1辺約1km）。3×3では、置いた点を通っても候補が分かれ、
+#: 距離に合わせる長さが無い。
+LATTICE = lattice_network(6)
+
+
+def lattice_at(row: int, col: int) -> Coordinates:
+    return node_point(LATTICE, lattice_node(row, col))
+
+
+def passes_in_order(node_ids: list[str], start: int, stops: list[int], end: int) -> bool:
+    """経路のノードの列`node_ids`が`start`から始まり、`stops`を置いた順に通り、`end`で終わる。"""
+    if node_ids[0] != node_key(start) or node_ids[-1] != node_key(end):
+        return False
+    position = 0
+    for stop in stops:
+        if node_key(stop) not in node_ids[position:]:
+            return False
+        position = node_ids.index(node_key(stop), position)
+    return True
+
+
 def ways_of(candidate) -> list[int]:
-    return [int(edge_id.split("-")[1]) for edge_id in candidate.edge_ids]
+    return [way for way, _, _ in edges_of(candidate)]
+
+
+def nodes_of(candidate) -> list[int]:
+    """候補が通るノードのOSMのid（`node_key`の逆）を、通る順に。"""
+    return [int(node_id.rsplit("-", 1)[1]) for node_id in candidate.node_ids]
