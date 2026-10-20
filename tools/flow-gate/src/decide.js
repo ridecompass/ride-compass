@@ -62,7 +62,7 @@ export function decide(f, config) {
 
 // 欄「実行の status」: ステータスが指す種類の、動いている実行の status（GitHub の値のまま。無ければ null）。検査は、最も新しい検査の実行の status。
 function runStatus(f, status) {
-  if (status === "検査") return (f.pr ? f.pr.checks : f.mergeChecks).stage.toLowerCase(); // 検査は走っている実行があるときだけ
+  if (status === "検査") return (f.pr ? f.pr.checks : mergeChecks(f)).stage.toLowerCase(); // 検査は走っている実行があるときだけ
   return f.runs.find((r) => r.kind === status)?.status ?? null;
 }
 
@@ -136,6 +136,8 @@ function status(f, config) {
 const held = (f, t) => (DISPATCH.includes(t.status) && waiting(f) ? { ...t, status: "待機" } : t);
 
 // 検査は、走っている間は検査、合格していなければ（不合格か、検査の実行が1本も無い）実装（検査が始まる形で push するのも、直すのも実装担当）。
+// マージのコミットの検査。自分の実行が取り消されたら、その変更を判定に入れる後の master の実行（src/facts.js: readFacts の covering）で読む。
+const mergeChecks = (f) => (f.mergeChecks.cancelled && need(f, "covering")) || f.mergeChecks;
 const unchecked = (c) => ({ status: c.stage && c.stage !== "COMPLETED" ? "検査" : "実装" });
 
 // 1階: 成果物の事実と関係性から、次に結果を出す者の行為を決める（上から最初に当たる行）。次に結果を出すのが、いま手放した担当と
@@ -155,7 +157,7 @@ function rows(f) {
   if (f.blocked) return { status: "待機" };
   if (f.dropped.length && !need(f, "droppedAsked")) return { status: "回答", ask: { dropped: f.dropped } };
   // 作る側の完了（マージのコミットの検査が通り、本番に出た）も約束のうち。マージのあとの残りは、本番に出てから扱う（本番に出る前に確かめを問わない。原則2）。
-  if (f.merged && !f.mergeChecks.passed) return unchecked(f.mergeChecks);
+  if (f.merged && !mergeChecks(f).passed) return unchecked(mergeChecks(f));
   if (f.remaining.every((c) => c.verify === "ユーザー")) return { status: "回答", ask: "確かめ" };
   return { status: "実装" };
 }

@@ -2,7 +2,7 @@
 
 リポジトリの根を一時ディレクトリへ替え、そこに置いた小さな backend の文で確かめる。
 
-ここで見ないもの: 生成物から名前を集める部分と frontend の行（(4)）は、本物のリポジトリへ流して周期レビューで人が読む。
+ここで見ないもの: 生成物から名前を集める部分と frontend の行の (4) は、本物のリポジトリへ流して周期レビューで人が読む。
 """
 
 import textwrap
@@ -76,3 +76,22 @@ def test_tuning_id_written_in_a_phrase(backend, statement, expected):
     found = pc.backend_findings([])["5"]
 
     assert [line.split("\t")[1] for line in found] == expected
+
+
+def test_number_and_unit_in_a_screen_phrase(tmp_path, monkeypatch):
+    """画面の定数の値を文に書いた形は数字が地に残る。定数を差し込んだ文とコメントの行は当たらない。"""
+    monkeypatch.setattr(pc, "ROOT", tmp_path)
+    monkeypatch.setattr(pc, "FRONTEND_SRC", tmp_path / "frontend" / "src")
+    monkeypatch.setattr(pc, "FRONTEND_EXCLUDED", [])
+    path = tmp_path / "frontend" / "src" / "Dial.tsx"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        textwrap.dedent('''
+            const copied = "走る向きは、地図の上の向きを8方位に丸めた向きです。";
+            const read = `走る向きは、地図の上の向きを${STEP_DEG}°刻みに丸めた向きです。`;
+            // 走る向きは10°刻みに丸める。
+        '''),
+        encoding="utf-8",
+    )
+
+    assert [line.split("\t")[:2] for line in pc.frontend_findings()["6"]] == [["frontend/src/Dial.tsx:2", "8方位"]]

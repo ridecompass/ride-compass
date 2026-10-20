@@ -796,7 +796,8 @@ export const mapDisplay = {
       ]
     ],
     "rainbandOutlineWidthPx": 4,
-    "rainbandOutlineCasingWidthPx": 6
+    "rainbandOutlineCasingWidthPx": 6,
+    "msmForecastHours": 48
   },
   "valueScale": {
     "difficultyBoundaries": [

@@ -927,6 +927,58 @@ def test_tree_stops_at_the_cost_limit():
         assert np.isfinite(tree.node_cost[node_index]) == reachable, node_id
 
 
+@given(seed=st.integers(0, 2**32 - 1), length_m=st.floats(0.0, 2000.0))
+def test_tree_cost_bound_cuts_no_state_within_the_length(seed, length_m):
+    """どんな区間の費用（時刻ビンで変わる・割り増し・通れない区間）とターンの待ちでも、実距離`length_m`以内で届く
+    状態の木の費用は上界を超えず、上界で打ち切った木はそれらの状態で打ち切らない木と同じになる。上界を
+    超えると、帯の中の折返し点が木から落ち、長さの合う周回が出なくなる。"""
+    rng = np.random.default_rng(seed)
+    lazy, _, structure = build_all(make_grid(6), TURN_SPEC)
+    states = structure.state_count
+    cost = rng.uniform(0.0, 50.0, (2, states)) * rng.choice([1.0, 10.0], (2, states))
+    cost[rng.random((2, states)) < 0.1] = np.inf
+    edge_length_m = rng.uniform(1.0, 200.0, states)
+    seeds = out_states(lazy, "n0_0")
+
+    def tree(**kwargs):
+        return routing.build_turn_expanded_tree(
+            structure, cost, edge_length_m, seeds, lazy.node_count,
+            edge_seconds=np.ones((2, states)), bin_seconds=30.0, **kwargs,
+        )
+
+    full = tree()
+    bound = routing.tree_cost_bound(structure, cost, edge_length_m, length_m)
+    within = np.isfinite(full.state_cost) & (full.state_length_m <= length_m)
+    assert (full.state_cost[within] <= bound).all()
+    cut = tree(cost_limit=bound)
+    np.testing.assert_array_equal(cut.state_cost[within], full.state_cost[within])
+
+
+def test_tree_cost_bound_covers_the_waits_and_the_dearest_time_bin():
+    """通れる区間が1本の経路に乗る一方通行の折れ線では、上界が経路の費用とちょうど同じになる。ターンの待ちか、
+    到達時刻で選ばれる高いほうのビンを見込まない上界は、折れ線の先を打ち切る。曲がる所の待ちは分かれ道にだけ
+    付くので、通れない枝を曲がる所ごとに置く。"""
+    graph = make_graph(
+        {"a": (35.0, 139.0), "b": (35.0, 139.001), "c": (35.001, 139.001), "d": (35.001, 139.002),
+         "e": (35.002, 139.002), "bx": (34.999, 139.001), "cx": (35.001, 139.0), "dx": (35.0, 139.002)},
+        {"ab": ("a", "b", 100.0, 90.0), "bc": ("b", "c", 100.0, 0.0), "cd": ("c", "d", 100.0, 90.0),
+         "de": ("d", "e", 100.0, 0.0), "bx": ("b", "bx", 100.0, 180.0), "cx": ("c", "cx", 100.0, 270.0),
+         "dx": ("d", "dx", 100.0, 180.0)},
+    )
+    lazy, statics, structure = build_all(graph, TURN_SPEC)
+    states = state_index(lazy)
+    last = states["de"]
+    cost = np.full((2, structure.state_count), 10.0)
+    cost[:, [states["bx"], states["cx"], states["dx"]]] = np.inf
+    cost[1, last] = 100.0
+    bound = routing.tree_cost_bound(structure, cost, statics.edge_length_m, 400.0)
+    tree = routing.build_turn_expanded_tree(
+        structure, cost, statics.edge_length_m, out_states(lazy, "a"), lazy.node_count,
+        cost_limit=bound, edge_seconds=np.ones((2, structure.state_count)), bin_seconds=1.5,
+    )
+    assert tree.state_cost[last] == pytest.approx(10.0 * 3 + 100.0 + 2 * TURN_SPEC.left_seconds + TURN_SPEC.right_seconds)
+
+
 def test_tree_never_enters_a_non_finite_cost_edge():
     """コストinfはHard Constraintの表現。種にも遷移先にもしない（迂回する）。"""
     graph = make_grid(6)

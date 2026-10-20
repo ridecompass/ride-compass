@@ -39,6 +39,7 @@ from app.domain.traffic import stop_count_material_ids
 from app.domain.tuning import TUNING_VALUES
 from tests import rain_history_fake
 from tests.axis_system_fixture import replaced_axis_definitions
+from app.domain.road_classes import AvoidanceClassification, AvoidanceSection
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 from app.domain.route_request import FixedPoints
 from tests.route_world import (
@@ -86,8 +87,9 @@ def engine_over(monkeypatch, avoid_axis):
     """道路網から、本物のエンジンの上に戦略層（`RouteGenerator`）を組む。軸は`avoid_axis`の1本。"""
 
     def build(network: RoadNetwork, *, avoid_weight: float = 0.0, wind: WindForecastSeries | None = None,
-              max_average_grade_percent: float | None = None, side_points=None):
-        return generator_for(monkeypatch, network, avoid_weight, wind, max_average_grade_percent, side_points)
+              max_average_grade_percent: float | None = None, side_points=None, **conditions):
+        return generator_for(monkeypatch, network, avoid_weight, wind, max_average_grade_percent, side_points,
+                             **conditions)
 
     return build
 
@@ -294,6 +296,25 @@ async def test_the_next_loops_search_turnarounds_within_the_radius_changed_in_th
     default_count = await loop_count()
     monkeypatch.setitem(TUNING_VALUES, "search.turnaround_radius_ratio", 0.1)
     assert 0 < await loop_count() < default_count
+
+
+async def test_a_slow_cruise_on_roads_to_avoid_still_turns_at_the_far_side_of_the_ring(engine_over):
+    """巡航5km/hで、どの道もなるべく避け（割り増しは既定の2倍）、どの道も難しい設定でも、往路が帯の上限に近い折返し点から
+    周回が出る。探索の打ち切りが割り増しを見込まないと、帯の遠い側の点が木から落ち、長さの合う周回が出ない。"""
+    definitions = road_classes(
+        {"kind": classification({"local": [fact_is(HIGHWAY, "residential")]})},
+        avoidance_sections={"s": AvoidanceSection(label="見出し", description="", sort_order=0)},
+        avoidance_classifications={"kind": AvoidanceClassification(section_key="s", sort_order=0, overrides={})},
+    )
+    network = lattice_network(6, bad_ways=lattice_ways(6))
+    with replaced_road_classes(definitions):
+        generator = engine_over(
+            network, avoid_weight=1.0, assumed_speed_kmh=5.0, road_avoidance={"kind.local": "avoid"})
+        candidates = await generator.generate_loops(
+            lattice_at(0, 0), 12.0, 0.5, max_routes=5, start_time=DEPARTURE, points=NO_POINTS)
+
+    assert candidates
+    assert all(abs(c.distance_km - 12.0) <= 0.5 for c in candidates)
 
 
 async def test_loop_never_drives_against_a_one_way_road(engine_over):

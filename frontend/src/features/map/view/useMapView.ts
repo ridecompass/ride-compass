@@ -34,6 +34,7 @@ import { snapDeg } from "@/lib/cardinalLabel";
 import type { WayValueCondition } from "@/lib/catalogAxis";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
+import { WAY_BEARING_STEP_DEG } from "@/features/map/mapHeading";
 
 import {
   deserializeHiddenLegendKeys,
@@ -59,8 +60,6 @@ import { deserializeLayerVisibility, overlayChips } from "./overlayChips";
 export const LEGEND_FILTER_DEBOUNCE_MS = 400;
 
 const ROUTE_LAYER_ID = "route";
-// 道の値を求める走る向きの刻み。細かくするほど、向きで材料を取り直す軸の取り直しが増える。
-const WAY_BEARING_STEP_DEG = 10;
 const NO_STORED_VALUES = {};
 
 interface MapViewInputs {

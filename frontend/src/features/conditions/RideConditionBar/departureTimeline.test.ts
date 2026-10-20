@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import { jst } from "@/testing/jst";
+import { mapDisplay } from "@/types/generated/mapDisplay";
 
 import { buildDepartureFrames, buildDepartureTimeline } from "./departureTimeline";
 
@@ -18,13 +19,16 @@ describe("buildDepartureTimeline（出発時刻を選ぶ目盛り）", () => {
     expect(fine.at(-1)).toEqual(jst("2026-09-24T11:00"));
   });
 
-  it("5分刻みの後は、開いた時刻の48時間後まで1時間刻み", () => {
+  it("5分刻みの後は、開いた時刻からMSMの予報を読む先まで1時間刻み", () => {
     const times = buildDepartureTimeline(jst("2026-09-24T09:07"));
     const cut = times.findIndex((t) => t.getTime() === jst("2026-09-24T11:00").getTime());
     const hourly = times.slice(cut);
     expect(hourly.length).toBeGreaterThan(1);
     expect(hourly.every((t, i) => i === 0 || t.getTime() - hourly[i - 1].getTime() === HOUR)).toBe(true);
-    expect(times.at(-1)).toEqual(jst("2026-09-26T09:00"));
+    // 開いた時刻（9:07）から予報を読む先までのうち、最後の正時。
+    expect(times.at(-1)).toEqual(
+      new Date(jst("2026-09-24T09:00").getTime() + mapDisplay.weather.msmForecastHours * HOUR),
+    );
   });
 
   it("開いた時刻の1時間後がちょうど正時なら、そこで1時間刻みへ切り替える", () => {

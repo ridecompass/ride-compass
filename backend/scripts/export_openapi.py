@@ -52,6 +52,7 @@ from app.domain.place_search import (
 from cross_language_expectations import EXPECTATIONS
 from schema_shape import schema_shape_mark
 from app.domain.weather_elements import (
+    MSM_FORECAST_HOURS,
     WEATHER_ELEMENTS,
     WEATHER_LAYER_GROUPS,
     WeatherElement,
@@ -419,6 +420,8 @@ def main() -> None:
                 "floodLineWidthByZoom": [list(pair) for pair in FLOOD_LINE_WIDTH_BY_ZOOM],
                 "rainbandOutlineWidthPx": RAINBAND_OUTLINE_WIDTH_PX,
                 "rainbandOutlineCasingWidthPx": RAINBAND_OUTLINE_CASING_WIDTH_PX,
+                # MSMの予報を読む先の長さ（時間）。出発時刻を選べる先の長さがこれを読む。
+                "msmForecastHours": MSM_FORECAST_HOURS,
             },
             "valueScale": {
                 "difficultyBoundaries": list(DEFAULT_DIFFICULTY_BOUNDARIES),
