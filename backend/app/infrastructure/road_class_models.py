@@ -75,7 +75,7 @@ class RoadClassificationRow(Base):
 
 
 class RoadClassRow(Base):
-    """分け方の区分1つ。`sort_order`は凡例・除外タブ・帯で共通の並びで、色もこの順で決まる。振り分けには使わない。"""
+    """分け方の区分1つ。"""
 
     __tablename__ = "road_classes"
     __table_args__ = (
@@ -89,7 +89,6 @@ class RoadClassRow(Base):
     #: 意味の文だけ。タグの注は配るときに条件から組む。
     description: Mapped[str] = mapped_column(String, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
-    #: `<分け方>.<区分>`の形の、前の鍵。
     former_keys: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default="{}")
     condition_rows: Mapped[list["RoadClassConditionRow"]] = _children(None, "RoadClassConditionRow.condition_id")
 
@@ -126,7 +125,6 @@ class RoadClassConditionTermRow(Base):
     )
     #: 事実の材料のid（`domain/material_catalog.py: MATERIAL_CATALOG`の鍵）。
     fact_key: Mapped[str] = mapped_column(String, primary_key=True)
-    #: 真偽の事実は`'true'`だけ。
     fact_values: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
     # 2つの真偽は既定を置かない——書き忘れた道が黙って区分の外へ落ちないように。
     negated: Mapped[bool] = mapped_column(Boolean, nullable=False)

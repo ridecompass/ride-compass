@@ -3,9 +3,6 @@
 正本は管理DBの表（`infrastructure/road_class_models.py`）で、コードは写しも既定も持たない——表が空なら区分は0件。
 型は表の行を写すだけで、表の制約が守る形（鍵の綴り・参照先の実在・並びの重なり）をもう一度確かめない。制約で表せない
 データの良し悪し（条件の重なり・前の鍵の付け方・値の綴り）も判定せず、振り分けの式がどんなデータにも1つの答えを出す。
-
-プロセス内の全体は`replace_road_classes`で丸ごと差し替え（起動時と管理APIで書いた直後、`services/road_class_service.py`）、
-読む側は`current_road_classes`で今の全体を取る。
 """
 
 import hashlib
