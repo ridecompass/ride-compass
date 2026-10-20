@@ -4335,7 +4335,14 @@
             "title": "Distance Km"
           },
           "distance_tolerance_km": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Distance Tolerance Km"
           },
           "route_preference": {

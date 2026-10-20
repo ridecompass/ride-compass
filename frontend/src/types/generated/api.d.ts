@@ -1319,7 +1319,7 @@ export interface components {
             /** Distance Km */
             distance_km: number | null;
             /** Distance Tolerance Km */
-            distance_tolerance_km: number;
+            distance_tolerance_km: number | null;
             route_preference: components["schemas"]["RoutePreferenceWeights"];
             /** Penalty Strength */
             penalty_strength: number;

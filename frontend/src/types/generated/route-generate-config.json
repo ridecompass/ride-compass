@@ -30,7 +30,7 @@
     "speed.mass_kg": 80.0,
     "speed.max_descent_kmh": 45.0,
     "speed.walking_kmh": 4.5,
-    "search.distance_tolerance_km": 5.0,
+    "search.distance_tolerance_ratio": 0.15,
     "gradient.perpendicular_band_deg": 15.0,
     "splice.min_stretch_km": 0.2
   },

@@ -17,6 +17,7 @@ from app.domain.route_request import (
     RouteTarget,
     SplicedTarget,
 )
+from app.domain.route_search import distance_tolerance_km
 from app.domain.tuning import tuning_value
 from app.services.graph_service import GraphService
 from app.services.road_graph_engine import RoadGraphEngine
@@ -83,8 +84,8 @@ class GeneratedRoutes:
     corrected_destination: Coordinates | None
     # 候補数の上限。
     max_routes: int
-    # 使った目標距離からの許容差（較正値）。
-    distance_tolerance_km: float
+    # 使った目標距離からの許容差（目標に対する割合の較正値から決めた長さ）。全長の目標が無ければNone。
+    distance_tolerance_km: float | None
     conditions: AppliedConditions
 
 
@@ -100,7 +101,7 @@ async def generate_route_candidates(
 
     仕上げの戦略は要求の検証が型で選び済みで、ここは型ごとの入口へ渡すだけ（距離の有無を見直さない）。
     """
-    tolerance_km = tuning_value("search.distance_tolerance_km")
+    tolerance_km: float | None = None
     async with open_setup() as setup:
         generator = setup.generator
         match target:
@@ -120,6 +121,7 @@ async def generate_route_candidates(
                     start_time=start_time,
                 )
             case DistanceTarget():
+                tolerance_km = distance_tolerance_km(target.distance_km)
                 candidates = await generator.generate_loops(
                     origin=origin,
                     distance_km=target.distance_km,
