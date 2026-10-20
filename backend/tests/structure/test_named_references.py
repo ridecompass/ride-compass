@@ -312,8 +312,8 @@ def test_named_api_paths_exist() -> None:
 
 
 def test_detects_dangling_references(tmp_path: Path) -> None:
-    """検査が効いていること（消えた名前・無いパス・曖昧なパスを置いて捕まえ、正しい名指しと
-    文字列リテラルは見逃す）。"""
+    """検査が効いていること（消えた名前・無いパス・曖昧なパスを、対象ファイル表の行の中でも置いて捕まえ、
+    正しい名指しと文字列リテラルは見逃す）。"""
     files = {
         "app/a.py": '"""モジュール。"""\n\nLIVE = 1\n# GONE はコメントにだけ残っている\n',
         "app/b/util.ts": "export const helper = 1;\n",
@@ -326,6 +326,7 @@ def test_detects_dangling_references(tmp_path: Path) -> None:
         ),
         "app/e.ts": '// `a.py: GONE_TS`\nconst url = "https://x/a.py: NOT_A_REFERENCE";\n',
         "docs/guide.md": "`util.ts: helper`と`b/util.ts: helper`と`missing.py: X`。\n",
+        "docs/modules/table.md": "| domain | `a.py`（`a.py: LIVE`と`a.py: GONE_ROW`） |\n",
         "docs/records/old.md": "`a.py: GONE`\n",
     }
     for rel, body in files.items():
@@ -338,6 +339,7 @@ def test_detects_dangling_references(tmp_path: Path) -> None:
         "app/e.ts:1: a.py: GONE_TS（そのファイルのコードに名前が無い）",
         "docs/guide.md:1: util.ts: helper（パスが2本に当たる。親ディレクトリを足して1本に決める）",
         "docs/guide.md:1: missing.py: X（そのパスのファイルが無い）",
+        "docs/modules/table.md:1: a.py: GONE_ROW（そのファイルのコードに名前が無い）",
     ]
 
 

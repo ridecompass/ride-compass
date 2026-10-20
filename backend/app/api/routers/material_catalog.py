@@ -1,8 +1,9 @@
 """材料カタログの管理画面向けAPI（いずれもHTTP Basic認可要）。
 
-材料の一覧そのものはAPIで配らない。材料はコードの宣言（`domain/material_catalog.py`）で決まり
-再デプロイでしか変わらないため、frontendはビルド時の生成物（`export_openapi.py`が書き出す
-`material-catalog.json`）だけから材料を知る。ここに置くのは、実データを読まないと答えられないものだけ。
+材料の一覧そのものはAPIで配らない。コードが宣言した材料（`domain/material_catalog.py: MATERIAL_CATALOG`）は
+再デプロイでしか変わらず、ビルド時の生成物（`export_openapi.py`が書き出す`material-catalog.json`）が持つ。
+道の区分から作る材料（`class:<分け方>`）は管理DBの区分から実行時に決まり、生成物に載らない。
+ここに置くのは、実データを読まないと答えられないものだけ。
 
 `GET /api/admin/material-catalog/{material_id}/value-shares`は、種類・はい/いいえの材料の値ごとの道の延長の割合を、
 軸スタジオの分布と同じ道の標本から返す（較正の画面が対応表の軸の点数を延長を見ながら決める）。

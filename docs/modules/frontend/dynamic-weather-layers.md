@@ -18,17 +18,17 @@
 |---|---|
 | `features/map/layers/dynamicWeather.ts` | 共通契約（型・共有タイムライン・状態管理の型・純粋関数） |
 | `lib/time.ts` | 画面に出す時刻の扱い（日本時間の暦と時刻・書式・日時の入力欄との変換）と、時刻の並びから最も近いコマを引く関数。気象レイヤーと出発時刻は同じ表記・同じ引き方を使う |
-| `features/map/layers/weatherSources.ts` | 源泉の宣言（`mapDisplay.weatherElements`）を名前付きソースへ束ね、段を1本の時系列へつなぎ、源泉が要素ごとに宣言する規則で選んだ時刻に描くコマを選ぶ |
-| `features/map/layers/jmaDelivery.ts` | 気象庁の配信の時刻一覧の取得と読み方・コマのタイルと地物（GeoJSON）のURL（源泉のパスのテンプレートをコマで埋める）（配信の遅れを持つ要素は、まだ配信されていないコマを前の`basetime`へずらして読む）・地物の取得・タイルのURLの読み戻し |
+| `features/map/layers/weatherSources.ts` | 源泉の宣言（`mapDisplay.ts: mapDisplay.weatherElements`）を名前付きソースへ束ね、段を1本の時系列へつなぎ、源泉が要素ごとに宣言する規則で選んだ時刻に描くコマを選ぶ |
+| `features/map/layers/jmaDelivery.ts` | 気象庁の配信の時刻一覧の取得と読み方・コマのタイルと地物（GeoJSON）のURL（源泉のパスのテンプレートをコマで埋める）（配信の遅れを持つ要素は、まだ配信されていないコマを前の`features/map/layers/jmaDelivery.ts: basetime`へずらして読む）・地物の取得・タイルのURLの読み戻し |
 | `features/map/layers/precipitationNowcast.ts` | 降水の色の段と凡例と、MSMの格子点を中心にした升目の降水の塗り（gridFill） |
 | `features/map/layers/windLayer.ts`・`windArrowIcon.ts` | 風速の色の段と凡例と、MSMの格子点の風の矢印（gridMark）・Canvas 2Dアイコン描画 |
 | `features/map/layers/lidenIcon.ts` | 落雷の地点の記号（Canvas 2Dアイコン描画） |
 | `features/map/layers/jmaTileIndex.ts` | 在否インデックスの解釈（「空だと確認済み」の判定、純ロジック） |
 | `features/map/layers/jmaTileProtocol.ts` | `jmatile://`スキームのMapLibreプロトコル。空と分かっているタイルをネットワークへ出さずに透明タイルで返し、配信の失敗を要素ごとに記録して購読できるようにする |
 | `features/map/useJmaTileIndex.ts` | 在否インデックスの定期取得 |
-| `features/map/scene/groups/weather.ts` | 動的気象の描き方。何を描くか（チップid・名前付きソース・描き方の種類・配信元）は源泉の`mapDisplay.weatherElements`をループして受け取り、ここは要素ごとの見た目（`paint`・`layout`・`filter`・記号の絵）だけを持つ。ソース名（`weatherSourceId`）・ソースの宣言・レイヤー・記号の絵（sceneの`images`）はこの2つから導かれる。描画内容をソースの中身（タイルのURL・GeoJSON）へ移し、JMAタイルのURLへ`jmatile://`スキームを付ける |
-| `features/map/scene/applyToMap.ts`（`weatherStateFrom`） | `dynamicWeather`（チップid→名前付きソース→表示・中身）を宣言の入力へ移す |
-| `features/map/useDynamicWeatherLayers.ts`・`useWeatherGrid.ts`・`features/conditions/useWeatherConditions.ts` | 状態管理・フェッチ。動的気象は要素を名指さず、表示中の名前付きソースをループして段の種類（配信元のタイル・配信元の地物・MSMの格子点）ごとに1つずつの実装で描画内容を作る。取得の骨格（重複排除・定期の取り直し・読み込み中と失敗の状態）はTanStack Queryが持ち（[ページ全体構成](page-composition.md)「データ取得の骨格」）、配信元の時刻一覧・在否インデックス・MSMの格子点は`refetchInterval`で、現在地に追随する取得は`useWeatherConditions`内の`useLocationFetch`（キーに位置を持つ）で取り直す。取り直す間隔（アメダス・在否インデックス・MSMの格子点）はbackendの宣言が生成物`refresh-intervals.json`で配る（新しい値が出る間隔そのもの。配信元の時刻一覧の間隔は`jmaElements[].refreshIntervalMs`）。降水・風速の色の段と「降っていない」「無風」の境も生成物`weather-scales.json`から読み、画面は持たない |
+| `features/map/scene/groups/weather.ts` | 動的気象の描き方。何を描くか（チップid・名前付きソース・描き方の種類・配信元）は源泉の`mapDisplay.ts: mapDisplay.weatherElements`をループして受け取り、ここは要素ごとの見た目（`features/map/scene/groups/weather.ts: paint`・`features/map/scene/groups/weather.ts: layout`・`features/map/scene/groups/weather.ts: filter`・記号の絵）だけを持つ。ソース名（`features/map/scene/groups/weather.ts: weatherSourceId`）・ソースの宣言・レイヤー・記号の絵（sceneの`features/map/scene/groups/weather.ts: images`）はこの2つから導かれる。描画内容をソースの中身（タイルのURL・GeoJSON）へ移し、JMAタイルのURLへ`jmatile://`スキームを付ける |
+| `features/map/scene/applyToMap.ts`（`features/map/scene/applyToMap.ts: weatherStateFrom`） | `features/map/scene/applyToMap.ts: dynamicWeather`（チップid→名前付きソース→表示・中身）を宣言の入力へ移す |
+| `features/map/useDynamicWeatherLayers.ts`・`useWeatherGrid.ts`・`features/conditions/useWeatherConditions.ts` | 状態管理・フェッチ。動的気象は要素を名指さず、表示中の名前付きソースをループして段の種類（配信元のタイル・配信元の地物・MSMの格子点）ごとに1つずつの実装で描画内容を作る。取得の骨格（重複排除・定期の取り直し・読み込み中と失敗の状態）はTanStack Queryが持ち（[ページ全体構成](page-composition.md)「データ取得の骨格」）、配信元の時刻一覧・在否インデックス・MSMの格子点は`features/conditions/useWeatherConditions.ts: refetchInterval`で、現在地に追随する取得は`features/conditions/useWeatherConditions.ts: useWeatherConditions`内の`features/conditions/useWeatherConditions.ts: useLocationFetch`（キーに位置を持つ）で取り直す。取り直す間隔（アメダス・在否インデックス・MSMの格子点）はbackendの宣言が生成物`refresh-intervals.json`で配る（新しい値が出る間隔そのもの。配信元の時刻一覧の間隔は`jmaElements[].refreshIntervalMs`）。降水・風速の色の段と「降っていない」「無風」の境も生成物`weather-scales.json`から読み、画面は持たない |
 | `features/conditions/WeatherPanel/WeatherPanel.tsx`・`amedasWeatherIcon.ts`・`features/conditions/WarningBadge/WarningBadge.tsx` | UI（警報バッジの出所ごとの段階の呼び名と色は、backendの宣言`domain/warning_display.py`が生成物`vocabulary.ts`で配る） |
 | `services/weatherApi.ts`・`types/weather.ts` | API呼び出し・型定義 |
 

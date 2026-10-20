@@ -155,7 +155,7 @@ python scripts/review_checks.py docs
      `/api/axis-catalog`の応答。宛先は`docs/architecture/tech-stack.md`「本番の宛先」）で次の4つを列挙し、出た候補を
      全件読んで、直す（起票）・既存のタスクへ寄せる・見送る（理由）を決める。範囲と拾う形・拾わない形の正本は道具の先頭で、
      拾わない形は道具の外（別の grep・読む）で見る
-       - (a) 文字列リテラル∩生成物の識別子（宣言の鍵を名指して1つを選ぶ。例: `windowHoursOf("linearRainband")`）
+       - (a) 文字列リテラル∩生成物の識別子（宣言の鍵を名指して1つを選ぶ。例: `weatherSourceOf("linearRainband")`）
        - (b) 画面の文∩本番の軸名・現象の語（文の中に宣言の事実を書き写す。例: 「死亡事故は円を大きく表示」）
        - (c) 重み・閾値の文脈の数値リテラル（関数の中を含む。例: `lastWeights[axisId] || 0.1`）
        - (d) 宣言の意味の鍵を名指す分岐（例: `axis.key === "severity"`・`values.includes(true)`）
