@@ -28,7 +28,8 @@ from app.domain.route import Coordinates, EvaluatedRoute, RouteCandidate, RouteS
 from app.domain.route_request import DEFAULT_MAX_ROUTES, MAX_ROUTES, FixedPoints
 from app.domain.time_zone import JST
 from app.services import route_generator
-from app.services.road_graph_engine import FixedLegs, RoadGraphEngine
+from app.services.road_graph_context import FixedLegs
+from app.services.road_graph_engine import RoadGraphEngine
 from app.services.route_generator import RouteGenerator
 from tests.bound_fake import bound
 from tests.route_world import NO_POINTS
