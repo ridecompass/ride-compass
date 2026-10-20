@@ -85,6 +85,8 @@ async def serve_region_tile(
     """
     key = region_tile_key(kind, generation, z, x, y, extension)
     with log_external_call(external_call_name, z=z, x=x, y=y) as fields:
+        # ディスクの読み書きは同期のI/O。地図を開くと多数のタイルが同時に来るため、イベントループの上で行うと
+        # 同時に処理中の他の要求が止まる。
         cached = await asyncio.to_thread(tile_cache.get, key)
         if cached is not None:
             fields["cache"] = "hit"

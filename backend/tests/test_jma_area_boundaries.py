@@ -1,14 +1,15 @@
 """`infrastructure/jma_area_boundaries.py`——置き場の区域の境界から、地点が属する区域（area.jsonのclass20）のコードを引く。
 
-入口は`find_class20_code`で、境界は`write_boundaries`で置き場（`tests/conftest.py: boundary_path`）に書いたものを
+入口は`find_class20_code`と、引いた区域を地域マスタで警報のエリアまで辿る`resolve_point_area`で、境界は`write_boundaries`で置き場（`tests/conftest.py: boundary_path`）に書いたものを
 本物の読み込みで読む。区域は架空のコードと矩形で作る。見るのは、境界を一度だけ読んで持つことと、境界を読めない
 とき（区域なしとは別の例外とWARNING）。地点から区域を引く規則（含む区域・寄せる距離の内側の最寄りの区域・
-どこにも入らない地点のNone）は、境界を直接与えた`AreaBoundaries.find`の性質で見る。
+どこにも入らない地点のNone）は、境界を直接与えた`AreaBoundaries.find`の性質で見る。`resolve_point_area`は、区域の外と
+区域が分からない（境界を読めない・地域マスタを取れない・辿れない）を分けることと、辿れない区域の名前を出すことを見る。
 
 ここで見ないもの:
 - 配布元のシェープファイルから境界を作る・置き場の版の入れ替え → `test_fetch_jma_area_boundaries.py`
 - 区域のコードから警報エリアを辿る → `test_jma_area.py`
-- 区域を引けない・境界を読めないときの警報・洪水予報の応答 → `test_warning_service.py`・`test_flood_service.py`
+- 区域の外・区域が分からないが警報・洪水予報の応答のどこへ出るか → `test_warning_service.py`・`test_flood_service.py`
 """
 
 import logging
@@ -19,8 +20,19 @@ from hypothesis import assume, given
 from hypothesis import strategies as st
 from shapely.geometry import box
 
-from app.domain.jma_area import NEAREST_LIMIT_DEG
+from app.domain.jma_area import NEAREST_LIMIT_DEG, ResolvedArea
 from app.infrastructure import jma_area_boundaries
+from app.infrastructure.jma_area_boundaries import OUTSIDE_AREAS
+from app.infrastructure.jma_warning_client import new_area_data_cache
+from tests.fake_http import client_for
+from tests.jma_area_fixtures import (
+    CHIYODA_POINT,
+    CLASS10_CODE,
+    CLASS20_CODE,
+    OFFICE_CODE,
+    OFFSHORE_POINT,
+    area_lookup_upstream,
+)
 
 LIMIT = NEAREST_LIMIT_DEG
 
@@ -65,3 +77,42 @@ async def test_missing_boundaries_raise_and_warn_until_they_are_written(boundary
     jma_area_boundaries.write_boundaries(boundary_path, {"0000010": WEST})
 
     assert await jma_area_boundaries.find_class20_code(35.65, 139.7) == "0000010"
+
+
+@pytest.mark.parametrize(
+    ("point", "upstream", "unreadable", "expected"),
+    [
+        (CHIYODA_POINT, {}, False, ResolvedArea(CLASS20_CODE, CLASS10_CODE, OFFICE_CODE)),
+        (OFFSHORE_POINT, {}, False, OUTSIDE_AREAS),
+        (CHIYODA_POINT, {}, True, None),
+        (CHIYODA_POINT, {"area_data": None}, False, None),
+        # 境界が返した区域を地域マスタで辿れない
+        (CHIYODA_POINT, {"class20_code": "9999900"}, False, None),
+    ],
+    ids=["resolved", "outside", "boundaries_unreadable", "master_unavailable", "master_cannot_follow"],
+)
+async def test_a_point_resolves_to_its_warning_area_or_says_it_is_unknown(
+    boundary_path, point, upstream, unreadable, expected
+):
+    """区域が分からない（None）を区域の外（`OUTSIDE_AREAS`）と同じに扱うと、警報・洪水予報が出ていないと見せる。"""
+    client = client_for(area_lookup_upstream(boundary_path, **upstream))
+    if unreadable:
+        boundary_path.unlink()
+
+    resolved = await jma_area_boundaries.resolve_point_area(
+        client, new_area_data_cache(), point.latitude, point.longitude
+    )
+
+    assert resolved == expected
+
+
+async def test_a_point_the_master_cannot_follow_names_its_area(boundary_path, caplog):
+    """区域の境界と地域マスタは別々に配られ、片方だけが区域の変更に追いつくと起きる。運用者が気づけるように出す。"""
+    client = client_for(area_lookup_upstream(boundary_path, class20_code="9999900"))
+
+    with caplog.at_level(logging.WARNING, logger="ridecompass.external"):
+        await jma_area_boundaries.resolve_point_area(
+            client, new_area_data_cache(), CHIYODA_POINT.latitude, CHIYODA_POINT.longitude
+        )
+
+    assert any("9999900" in record.getMessage() for record in caplog.records)

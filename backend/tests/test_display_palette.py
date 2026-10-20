@@ -137,7 +137,7 @@ def test_a_hue_slot_outside_the_wheel_is_refused(slot):
         nominal_colors(slot, 3, None)
 
 
-@pytest.mark.parametrize("tone", [None, "dark", "light"])
+@pytest.mark.parametrize("tone", list(display_palette.NOMINAL_TONES))
 def test_every_nominal_color_stands_out_from_the_ground(tone):
     """どの起点・行数・段でも、配る色は地色に対してコントラスト比3を割らない（明度の上限で守る）。"""
     colors = [
