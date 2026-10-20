@@ -710,13 +710,9 @@ def y_fork_edges(left_deg, right_deg):
 @pytest.mark.parametrize(
     ("nodes", "edges", "route", "expected"),
     [
-        # 十字路で左折・右折・Uターン・直進。直進は案内しない。
+        # 十字路の曲がりは案内し、直進は案内しない。曲がりの分け方は遷移の分類のテストが見る。
         (PLUS_NODES, PLUS_EDGES, ["WC", "CN"], [(1, routing.TurnKind.LEFT)]),
-        (PLUS_NODES, PLUS_EDGES, ["WC", "CS"], [(1, routing.TurnKind.RIGHT)]),
-        (PLUS_NODES, PLUS_EDGES, ["WC", "CW"], [(1, routing.TurnKind.UTURN)]),
         (PLUS_NODES, PLUS_EDGES, ["WC", "CE"], []),
-        # 交差点から離れた所で曲がる区間でも、交差点のそばの向きで案内する。
-        (PLUS_NODES, CURVED_PLUS_EDGES, ["WC", "CS"], [(1, routing.TurnKind.RIGHT)]),
         # 分かれ道の無い角では、道なりに曲がるだけなので案内しない。
         (BEND_NODES, BEND_EDGES, ["AB", "BC"], []),
         # 浅いY字では、よりまっすぐに近い枝が別にある方へ進むときだけ、その向きで案内する。

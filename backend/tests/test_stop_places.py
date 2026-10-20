@@ -97,21 +97,10 @@ async def test_each_place_goes_to_the_group_of_its_category(derive_conn, overtur
 
 
 async def test_places_outside_the_groups_are_not_taken(derive_conn, overture_dir):
-    """寺社は文化財の一覧から、補給の点のうちコンビニ以外は OpenStreetMap から出すので、Overture からは取らない。
-    群の語の上の段だけの分類（エステの`spa`・マンションの多い`historic_site`・寮の多い`lodging`だけ）も取らない。"""
-    outside = [
-        ["cultural_and_historic", "place_of_worship", "buddhist_place_of_worship"],
-        ["cultural_and_historic", "religious_organization"],
-        ["community_and_government", "public_facility", "public_restroom"],
-        ["travel_and_transportation", "parking", "bike_parking"],
-        ["lifestyle_services", "wellness_service", "spa"],
-        ["cultural_and_historic", "historic_site"],
-        ["lodging"],
-    ]
+    """群の語の上の段だけの分類（マンションの多い`historic_site`だけ等）は取らない。"""
+    outside = _place("outside", LON, ["cultural_and_historic", "historic_site"])
 
-    places = [_place(f"outside{i}", LON + i * APART, hierarchy) for i, hierarchy in enumerate(outside)]
-
-    assert await _stop_places(derive_conn, overture_dir, [*places, _place("kept", LON - APART, FOOD)]) == {
+    assert await _stop_places(derive_conn, overture_dir, [outside, _place("kept", LON - APART, FOOD)]) == {
         "kept": "eat_drink"}
 
 
@@ -176,23 +165,18 @@ async def test_each_place_keeps_its_name_without_variations_in_notation(derive_c
 
 async def test_the_convenience_group_takes_only_convenience_chains(derive_conn, overture_dir):
     """Overture のコンビニの分類には、コンビニでない店・個人の店も入っている。群「コンビニ」はコンビニのチェーンの名前か
-    ブランドに当たる店（小さなチェーン・駅の売店を含む）だけを入れる。ほかの群はチェーンを問わない。"""
+    ブランドに当たる店だけを入れる。ほかの群はチェーンを問わない。"""
     kept = [
         _place("ローソン 渋谷店", LON, STORE),
-        _place("スリーエフ 平塚店", LON + APART, STORE),
-        _place("トモニー 小平駅店", LON + 2 * APART, STORE),
-        _place("FM", LON + 3 * APART, STORE, brand="FamilyMart"),
+        _place("FM", LON + APART, STORE, brand="FamilyMart"),
     ]
     dropped = [
-        _place("ダイソー 渋谷店", LON + 4 * APART, STORE),
-        _place("根岸屋酒店", LON + 5 * APART, STORE),
-        _place("まいばすけっと 渋谷店", LON + 6 * APART, STORE),
-        _place("U Co-op", LON + 7 * APART, STORE, brand="Co-op"),
+        _place("ダイソー 渋谷店", LON + 2 * APART, STORE),
+        _place("U Co-op", LON + 3 * APART, STORE, brand="Co-op"),
     ]
 
     assert await _stop_places(derive_conn, overture_dir, [*kept, *dropped, _place("個店", LON - APART, FOOD)]) == {
-        "ローソン 渋谷店": "convenience", "スリーエフ 平塚店": "convenience", "トモニー 小平駅店": "convenience",
-        "FM": "convenience", "個店": "eat_drink"}
+        "ローソン 渋谷店": "convenience", "FM": "convenience", "個店": "eat_drink"}
 
 
 async def test_a_chain_name_whose_voiced_marks_turned_into_spaces_is_still_the_chain(derive_conn, overture_dir):

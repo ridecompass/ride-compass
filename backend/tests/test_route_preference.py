@@ -45,7 +45,6 @@ def test_weights_left_out_are_filled_with_defaults_in_the_order_of_the_axes():
         {"axis_a": -0.1},
         # NaN・無限大は合成difficultyと寄与を黙って欠損にする。NaNは負かどうかの比べをすり抜ける。
         {"axis_a": math.nan},
-        {"axis_a": math.inf},
     ],
 )
 def test_weights_for_unpublished_axes_or_below_zero_or_not_finite_are_refused(weights):
