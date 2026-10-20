@@ -1,5 +1,5 @@
 """区分に道を振り分ける式（`domain/road_classes.py: class_columns`）と、地図の線の層の値（`layer_columns`）と、
-コードの宣言に無い名指し（`undeclared_references`）を見る。
+区分の列を引く表が前の鍵の区分の名でも当たること（`ClassColumn`）と、コードの宣言に無い名指し（`undeclared_references`）を見る。
 
 区分の型は表の行の写しで、表の制約が守る形はここで見ない（構造仕様15）。配る形は`test_road_class_catalog.py`、表との往復と
 書く側で断ること（の受け渡し）は`test_road_class_admin_routes.py`が持つ。振り分けの事実の材料のidは性質だけを表す架空の名前を使い、
@@ -60,13 +60,35 @@ def test_term_meaning(fact_key: str, term: ConditionTerm, expected: list[str | N
 
 def test_terms_and_conditions_combine() -> None:
     """条件の中の項は全部当たる道、区分は条件のどれかに当たる道。"""
-    both = {"cat_a": _term(["a", "b"]), "bool_a": _term(["true"], negated=True, matches_absent=True)}
-    assert _classes(c=[both, {"cat_a": _term([], matches_absent=True)}]) == ["c", "c", "c"]
+    both = {"cat_a": _term(["a"]), "bool_a": _term(["true"], negated=True, matches_absent=True)}
+    # 3行目は項の片方（真偽）にだけ当たる。項を OR で結ぶと区分に入る。
+    assert _classes(c=[both, {"cat_a": _term([], matches_absent=True)}]) == ["c", "c", None]
 
 
 def test_overlapping_classes_leave_road_unclassified() -> None:
     """2つの区分に当たる道は、どちらか一方へ黙って寄せず区分なしにする（並びの順で勝ち負けを決めない）。"""
     assert _classes(ab=[{"cat_a": _term(["a", "b"])}], b=[{"cat_a": _term(["b"])}]) == [None, "ab", None]
+
+
+@pytest.mark.parametrize(
+    ("table", "expected"),
+    [
+        # 今の鍵で引ければ、前の名より先に効く。
+        ({"c": 1.0, "old": 2.0}, [None, 1.0, None]),
+        # 今の鍵で引けなければ、前の名のうち先に書いた方。ほかの分け方を指す前の鍵は読まない。
+        ({"older": 3.0, "old": 2.0, "elsewhere": 4.0}, [None, 2.0, None]),
+        ({"elsewhere": 4.0}, [None, None, None]),
+    ],
+)
+def test_tables_reading_a_class_column_fall_back_to_former_class_names(table: dict, expected: list) -> None:
+    """改名した区分の道は、表（軸の対応表・0次条件・転がり抵抗）を直すまで前の名で引かれ、点数・一致が黙って抜けない。"""
+    definitions = road_classes(
+        {"k": classification({"c": [fact_is("cat_a", "a")]}, former_keys={"c": ["k.old", "k.older", "j.elsewhere"]})}
+    )
+    (column,) = class_columns(definitions, COLUMNS, N).values()
+    assert [None if np.isnan(v) else v for v in column.lookup(table).tolist()] == expected
+    assert column.equals("older").tolist() == [False, True, False]
+    assert column.take(np.array([1])).equals("old").tolist() == [True]
 
 
 def test_layer_values_split_roads_outside_classes_by_the_no_data_fact() -> None:

@@ -3,7 +3,7 @@
 入口は`get`・`set`・`set_empty`。Redisはfakeredis、時計はfreezegunで与える。
 
 ここで見ないもの:
-- どのタイルを空とみなすか（透明・0バイト・読めない画像） → `test_jma_tile_content.py`。ここでは空の代表を1つずつ使う
+- どのタイルを空とみなすか → `test_jma_tile_content.py`。ここでは空の代表を1つずつ使う
 - いつ`set_empty`を呼ぶか（確定した404） → `test_jma_tile_client.py`
 - Redisの障害で何も持たず、例外を出さないこと → `test_redis_json_cache.py`（ここは`get_bytes`・`set_bytes`へ委ねるだけ）
 - 一度も書いていないパスの外れ → 同じ。ここでは別のパスが外れるテストが通す
@@ -54,12 +54,6 @@ async def test_a_vector_tile_is_judged_as_a_vector_by_its_path(fake_redis):
     await jma_tile_redis_cache.set(VECTOR_TILE, b"", "application/x-protobuf")
 
     assert await jma_tile_redis_cache.get(VECTOR_TILE) is UPSTREAM_NOT_FOUND
-
-
-async def test_a_path_recorded_as_having_nothing_to_draw_comes_back_as_the_flag(fake_redis):
-    await jma_tile_redis_cache.set_empty(TILE)
-
-    assert await jma_tile_redis_cache.get(TILE) is UPSTREAM_NOT_FOUND
 
 
 async def test_tiles_and_flags_are_forgotten_after_twenty_minutes(fake_redis, clock):

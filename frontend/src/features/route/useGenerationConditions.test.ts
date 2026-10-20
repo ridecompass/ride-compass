@@ -10,7 +10,7 @@
  *   ここでは開き直した後に送る重みを1件見る
  * - 保存の読み書きそのもの（読めない・書けない端末で既定値になる） → `hooks/useStoredState.test.ts`
  * - 地図で置いた出発地を位置の持ち主が受け取ったあと → `hooks/useLocation.test.ts`
- * - 地図のタップが選んだ地点を置く場面（「ルート設定」の「条件」タブが効いている間だけ） → `app/page.test.tsx`
+ * - 地図のタップが選んだ地点を置く場面（「ルート設定」の「条件」タブが効いている間だけ） → `app/page.map.test.tsx`
  * - 条件を生成へ送る形 → `useRouteGeneration.test.ts`
  *
  * 差し替えたもの: 軸カタログの応答（網の層）。保存はテスト環境の`localStorage`を

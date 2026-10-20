@@ -681,8 +681,13 @@ async def test_a_point_whose_nearest_road_cannot_be_left_is_moved_to_the_nearest
         assert node_key(NORTH_EAST) in candidate.node_ids
 
 
-@pytest.mark.parametrize("nearest", ["cannot_be_left", "far"])
-@pytest.mark.parametrize("placed", ["origin", "waypoint", "destination"])
+@pytest.mark.parametrize(("nearest", "placed"), [
+    ("cannot_be_left", "origin"),
+    # 寄せる判断は1つで、置いた点の種類ごとには寄せていることを1行で見る。
+    ("far", "origin"),
+    ("far", "waypoint"),
+    ("far", "destination"),
+])
 async def test_a_point_with_no_road_it_can_ride_nearby_is_refused(engine_over, nearest, placed):
     """出入りできる道が近くに無いなら、指した覚えのない遠くの道へ黙って寄せない。一番近い道が出入りできない
     （`cannot_be_left`）ときも、一番近い道が格子の角で、それ自体が遠い（`far`。川・山の中を指した）ときも同じ。"""

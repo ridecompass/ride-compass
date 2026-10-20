@@ -2,8 +2,8 @@
 
 ここで見ないもの:
 - 鍵をどう組み立てるか・いつ失効させるか → 呼び出し元（`test_dynamic_way_value_cache.py`等）
-- 違う鍵が別のエントリになること・同じ鍵の上書き・`expire`での失効 → `diskcache`へ鍵と`expire`をそのまま渡すだけで、
-  自前の判断が無い
+- 違う鍵が別のエントリになること・同じ鍵の上書き・`expire`での失効・書いていない鍵の外れ → `diskcache`へ鍵と`expire`を
+  そのまま渡すだけで、自前の判断が無い
 - 生バイトの置き場 → `test_tile_cache.py`
 
 置き場は`conftest.py`のautouseフィクスチャがテストごとの一時ディレクトリへ差し替える。
@@ -17,11 +17,6 @@ TTL = 3600
 
 def _boom(*_args, **_kwargs):
     raise RuntimeError("sqlite")
-
-
-class TestKeepingAnObject:
-    def test_a_key_never_written_is_a_miss(self):
-        assert tile_persistent_cache.get_by_key(KEY) is None
 
 
 class TestWhenTheDiskRefuses:

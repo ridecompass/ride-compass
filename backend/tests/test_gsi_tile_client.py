@@ -8,6 +8,7 @@
 ここで見ないもの:
 - HTTPの状態コードへの読み替え（404・502）・ズームの上限・レート制限 → `test_gsi_tile_routes.py`
 - 標高タイルの書式の変換 → `test_gsi_dem_png.py`
+- 上流の失敗の種類（404・失敗の応答・通信の失敗）の見分け → `test_http_client.py`
 - ディスクの読み書きの失敗 → `test_tile_cache.py`（このクライアントには未キャッシュとして届く）
 - 読み書きをイベントループの外で行うこと → 結果に現れない順序の約束で、理由は実装の隣のコメントが持つ
 """
@@ -69,15 +70,10 @@ async def test_outside_coverage_is_remembered_for_the_process_but_not_across_a_r
     assert warnings() == []
 
 
-@pytest.mark.parametrize(
-    "answer",
-    [httpx.Response(503), httpx.ConnectTimeout("timed out")],
-    ids=["server-error", "transport-error"],
-)
-async def test_an_upstream_failure_gives_nothing_is_logged_and_is_not_remembered(answer, warnings):
+async def test_an_upstream_failure_gives_nothing_is_logged_and_is_not_remembered(warnings):
     router = respx.Router()
     route = router.get(f"{UPSTREAM}/{RELIEF}")
-    route.side_effect = [answer, httpx.Response(200, content=b"\x89PNG")]
+    route.side_effect = [httpx.Response(503), httpx.Response(200, content=b"\x89PNG")]
     not_found = LRUCache(maxsize=16)
 
     assert await client(router, not_found).get(RELIEF) is None

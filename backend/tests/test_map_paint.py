@@ -8,6 +8,7 @@
 ここで見ないもの:
 - 折れ線の得点そのもの（`domain/axis_definitions.py: BreakpointLinearShape.score_at`） → `test_axis_definitions.py`
 - 配る材料の生値を塗る値へ写すこと → `test_dynamic_way_values.py`
+- 段の体感ラベル → 軸の上書き（`AxisDefinition.display_band_labels_override`）をそのまま渡すだけで、自前の判断が無い
 """
 
 import pytest
@@ -208,22 +209,3 @@ def test_bands_that_cannot_be_written_as_a_quantity_are_written_as_scores(defini
 def test_a_signed_material_axis_is_written_in_the_material_unit():
     assert map_paint(SIGNED).legend == MapLegendScale(boundaries=[-6.0, -2.0, 2.0, 6.0], unit="%")
 
-
-# --- 段の並び ---
-
-LABELLED = shaped_axis(
-    _line("rain_live", breakpoints=RAIN_LINE),
-    display_thresholds_override=[20.0, 40.0],
-    display_band_labels_override=list("abc"),
-)
-
-
-LABELLED_AXES = {
-    "難易度を塗る軸": LABELLED,
-    "符号付きの材料を塗る軸": SIGNED.model_copy(update={"display_band_labels_override": list("abcde")}),
-}
-
-
-@pytest.mark.parametrize("definition", LABELLED_AXES.values(), ids=LABELLED_AXES.keys())
-def test_band_labels_are_the_overriding_labels(definition):
-    assert map_paint(definition).band_labels == definition.display_band_labels_override

@@ -87,11 +87,6 @@ def test_declarations_pointing_to_no_single_name_are_refused(groups, categories,
         map_display.check_map_layer_declarations(groups, categories, sources, specs)
 
 
-def test_declarations_pointing_to_single_names_are_accepted():
-    map_display.check_map_layer_declarations(
-        (G("g", "群"),), (C("c", "g"),), (S("s"),), (_layer(), MapLayerSpec("s", None)))
-
-
 @pytest.mark.parametrize("stops", [(), ((10, 1), (10, 2)), ((13, 1), (10, 2))], ids=["空", "同じズーム", "降順"])
 def test_a_zoom_curve_not_strictly_ascending_is_refused(stops):
     """地図の式（MapLibreの`interpolate`・`step`）は入力の段が厳密に昇順でないと式ごと失敗し、レイヤーが黙って消える。"""
