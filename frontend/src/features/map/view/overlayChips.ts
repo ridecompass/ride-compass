@@ -3,9 +3,7 @@
  * チップも▶パネルの中身も宣言から作る——チップはレイヤーカタログ（`buildMapLayers`）、絞り込める
  * 凡例は`scene/legends.ts`、表示専用の凡例は記述子の`readOnlyLegend`。
  */
-import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import {
-  buildDefaultLayerVisibility,
   isAxisStudioLayer,
   TILE_VERSIONS_MISSING_NOTICE,
   TILE_ZOOM_TOO_WIDE_NOTICE,
@@ -15,24 +13,31 @@ import {
   type MapLayerId,
   type MapLayerVisibility,
 } from "@/features/map/layers/mapLayers";
-import type { LegendFilterSummaryAxis, OverlayLayerChip } from "@/features/map/MapOverlayControls/MapOverlayControls";
+import type { RoadMapLayerView } from "@/types/route";
+import type { LegendFilterSummaryAxis } from "@/features/map/MapOverlayControls/LegendDetails";
+import type { OverlayLayerChip } from "@/features/map/MapOverlayControls/OverlayLayerRow";
 import { disasterSourceLegendAxis, pointLegendAxes, roadLegendAxes } from "@/features/map/scene/legends";
 
 import { hiddenKeysOf, presentHiddenKeys } from "./legendFilters";
 import type { HiddenLegendKeys } from "./mapLook";
 
-/** 凡例1本。`axisId`を持てば絞り込める（保存先の鍵）。 */
-interface ChipLegend {
-  label: string;
-  legend: readonly LegendEntry[];
-  axisId?: string;
-}
+type ChipLegend = Omit<LegendFilterSummaryAxis, "hiddenKeys">;
 
-function chipLegends(layer: ChipLayerDescriptor): ChipLegend[] {
+// 点と災害の凡例は生成物の宣言だけから決まるので、一度だけ組む。
+const DECLARED_LEGEND_AXES = [...pointLegendAxes(), disasterSourceLegendAxis()];
+
+function chipLegends(
+  layer: ChipLayerDescriptor,
+  legendAxes: readonly (typeof DECLARED_LEGEND_AXES)[number][],
+): ChipLegend[] {
   return [
-    ...[...roadLegendAxes(), ...pointLegendAxes(), disasterSourceLegendAxis()]
+    ...legendAxes
       .filter((axis) => axis.layerId === layer.id)
-      .map((axis) => ({ label: axis.label, legend: axis.entries, axisId: axis.axisId })),
+      .map((axis) => ({
+        label: axis.label,
+        legend: axis.entries,
+        axisId: axis.axisId,
+      })),
     ...(layer.readOnlyLegend ?? []),
   ];
 }
@@ -42,6 +47,7 @@ function chipLegends(layer: ChipLayerDescriptor): ChipLegend[] {
  * 見ないので、除くのはここの1か所で、束ねる前に除く。 */
 export function overlayChips(options: {
   layers: readonly MapLayerDescriptor[];
+  roadLayers: readonly RoadMapLayerView[];
   visibility: MapLayerVisibility;
   hidden: HiddenLegendKeys;
   dataStatus: LayerDataStatusByLayer;
@@ -52,6 +58,7 @@ export function overlayChips(options: {
   catalogSettled: boolean;
 }): OverlayLayerChip[] {
   const { hidden, catalogSettled } = options;
+  const legendAxes = [...roadLegendAxes(options.roadLayers), ...DECLARED_LEGEND_AXES];
   return options.layers
     .filter((layer): layer is ChipLayerDescriptor => !isAxisStudioLayer(layer))
     .filter((layer) => layer.kind !== "dynamic")
@@ -69,7 +76,7 @@ export function overlayChips(options: {
             : options.zoomTooWideLayerIds.includes(layer.id)
               ? TILE_ZOOM_TOO_WIDE_NOTICE
               : null,
-        legendDetails: chipLegends(layer).map((axis): LegendFilterSummaryAxis => ({
+        legendDetails: chipLegends(layer, legendAxes).map((axis): LegendFilterSummaryAxis => ({
           ...axis,
           hiddenKeys:
             axis.axisId === undefined ? [] : presentHiddenKeys(axis.legend, hiddenKeysOf(hidden, axis.axisId)),
@@ -82,15 +89,10 @@ export function overlayChips(options: {
     });
 }
 
-/** 保存値のうち、いまのレイヤーカタログにある鍵の真偽値だけを読む。無い鍵は既定のまま
- * ——レイヤーが増えた後の古い保存値から、新しいレイヤーの既定が消えないようにする。 */
-export function deserializeLayerVisibility(raw: string): MapLayerVisibility {
+/** 保存値のうち、真偽値の鍵だけを読む。既定は読む側が層の一覧から重ねる（道の線の層は軸カタログが届くまで分からず、
+ * 届く前に読んだ保存値から道の層の真偽を落とすと、選んだ表示が消える）。 */
+export function deserializeLayerVisibility(raw: string): MapLayerVisibility | null {
   const stored: unknown = JSON.parse(raw);
-  const visibility = buildDefaultLayerVisibility();
-  if (stored === null || typeof stored !== "object") return visibility;
-  for (const id of Object.keys(visibility) as MapLayerId[]) {
-    const value = (stored as Record<string, unknown>)[id];
-    if (typeof value === "boolean") visibility[id] = value;
-  }
-  return visibility;
+  if (stored === null || typeof stored !== "object") return null;
+  return Object.fromEntries(Object.entries(stored).filter((entry) => typeof entry[1] === "boolean"));
 }

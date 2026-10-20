@@ -75,25 +75,19 @@ test_routes_generate.py
    依存させる場合は、その自前fixtureにも明示的に`loop_scope="module"`を付ける
    （`@pytest_asyncio.fixture(loop_scope="module")`）。
 3. 素の`@pytest.fixture`でasync fixtureを書かない。`@pytest_asyncio.fixture`を明示的に使う。
+   （2・3を外すと`backend/pytest.ini`の`asyncio_default_fixture_loop_scope`（関数ごとのループ）で動き、モジュールのループの接続に触れた時点で`RuntimeError: ... attached to a different loop`で落ちる）
 4. ファイル単位で共有するのは接続とスキーマまでにする。**テストが書き換える行（生データ・派生の表）は、
    関数スコープのfixtureで各テストの前に作り直す。** 共有した行を書き換えて後片付けで戻す形にしない。
 
 実例: test_material_values.py（road_graph_sessionを直接使う）, test_derive_topology.py（自前の
 module fixtureを重ねる）
 
-**xdist_group="postgis"（必須）**:
-road_graph_session系フィクスチャを使うテスト（ファイルまたは個別テスト関数）には必ず
-`pytest.mark.xdist_group(name="postgis")`と`pytest.mark.postgis`（`pytest.ini`の`markers`に登録済み）の両方を付け、
-`pytestmark`が既にリストでなければ
-`pytestmark = [pytest.mark.asyncio(loop_scope="module"), pytest.mark.xdist_group(name="postgis"), pytest.mark.postgis]`
-の形にする。
-
 ## パターン8: テストが用意する状態は、本番で起こりうるものに限る
 
 DBの制約・取込の順序から**作れない状態**をテストで作らない。
 
 - **派生行を作るテストは、親を先に入れる**。区間（`road_edges`）は生の道
-  （`source_features`の`osm_way`）とノード（`node_materials`、端点はFK）の派生。本番と同じ順
+  （`source_features`の`osm_way`）とノード（`road_nodes`、端点はFK）の派生。本番と同じ順
   （生データを入れてから派生バッチを流す）で作り、派生の表へ行を直接書き込まない
   （`test_derive_topology.py: topology_conn`が、生の道を取り込んでから
   `derive_topology.derive`を呼ぶ形）。

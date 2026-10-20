@@ -13,9 +13,9 @@ import { apiPath } from "@/lib/apiPath";
 
 describe("apiPath", () => {
   it("渡した名前を値で埋め、数値は文字列にする", () => {
-    expect(
-      apiPath("/api/region/dynamic-way-values/{axis_id}/{z}/{x}/{y}", { axis_id: "wind", z: 14, x: 1, y: 2 }),
-    ).toBe("/api/region/dynamic-way-values/wind/14/1/2");
+    expect(apiPath("/api/region/way-materials/{axis_id}/{z}/{x}/{y}", { axis_id: "wind", z: 14, x: 1, y: 2 })).toBe(
+      "/api/region/way-materials/wind/14/1/2",
+    );
   });
 
   it("渡さなかった名前は`{名前}`のまま残す（タイルの座標は地図ライブラリが埋める）", () => {

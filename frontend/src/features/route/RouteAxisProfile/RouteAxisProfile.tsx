@@ -2,14 +2,14 @@
 
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import type { CatalogAxis } from "@/lib/catalogAxis";
-import { formatDurationShort } from "@/features/route/formatDuration";
+import { formatDurationShort } from "@/lib/duration";
 import type { OverallDifficulty, RoutePreferenceWeights } from "@/types/route";
-import AxisContributionBar, { hasContribution } from "@/components/AxisContributionBar/AxisContributionBar";
+import AxisContributionBar, { hasAnyContribution } from "@/components/AxisContributionBar/AxisContributionBar";
 import AxisDetail from "@/components/AxisContributionBar/AxisDetail";
 import { formatAxisRawValue, formatCategoryBreakdown, formatMaterialBreakdown } from "./axisRawValue";
 import { textVariants } from "@/components/ui/Text/Text";
-import { cn } from "@/lib/cn";
-import { formatDifficulty, formatLoad } from "@/lib/mapDisplay/valueScale";
+import WarningText from "@/features/route/WarningText/WarningText";
+import { DIFFICULTY_SCALE_SUFFIX, formatDifficulty, formatLoad } from "@/lib/mapDisplay/valueScale";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 /** 区間ごとに速度を変える条件の名前（backendの走行モデルが宣言する並び）。 */
@@ -74,8 +74,8 @@ export default function RouteAxisProfile({
   missingTravelDataShare,
   axisColors,
 }: RouteAxisProfileProps) {
-  const contributionRows = axes.filter((axis) => hasContribution(axisContributions, axis.axisId));
-
+  // 値の無い区間の割合（丸めた%）。値が無ければ0として扱い、知らせない。
+  const missingPct = missingTravelDataShare == null ? 0 : Math.round(missingTravelDataShare * 100);
   // 評価に使っていない軸（重み0）はnullを返し、AxisContributionBarの凡例から落とす。
   // 内訳は候補ごとに縦へ伸びるため、使っていない軸まで並べると狭い幅で「このルートで
   // 何が効いたか」が読めなくなる（設計原則「消さずに薄くする」の例外）。
@@ -117,7 +117,7 @@ export default function RouteAxisProfile({
             <span className="inline-flex flex-shrink-0 items-baseline gap-0.5">
               <span className={textVariants({ variant: "hint" })}>総合難易度</span>
               <span className="text-[1.05rem] font-semibold">{formatDifficulty(overallDifficulty.average)}</span>
-              <span className={textVariants({ variant: "hint" })}>/100</span>
+              <span className={textVariants({ variant: "hint" })}>{DIFFICULTY_SCALE_SUFFIX}</span>
               <InfoPopover triggerAriaLabel="総合難易度の説明">
                 <p>
                   {DIFFICULTY_WORDING.average}
@@ -158,18 +158,14 @@ export default function RouteAxisProfile({
           {/* 所要時間の前提が崩れていることは、所要時間のすぐ下で知らせる（黙って短い所要時間を見せない）。
               値の無い区間は丸めて1%以上のときだけ出す——0%を並べても判断の材料にならない。 */}
           {windUnavailable && (
-            <p className={cn(textVariants({ variant: "hint" }), "m-0 text-[var(--color-warning-strong)]")}>
-              風のモデルの計算値を使えなかったため、無風として所要時間を出しています
-            </p>
+            <WarningText>風のモデルの計算値を使えなかったため、無風として所要時間を出しています</WarningText>
           )}
-          {missingTravelDataShare != null && Math.round(missingTravelDataShare * 100) >= 1 && (
-            <p className={cn(textVariants({ variant: "hint" }), "m-0 text-[var(--color-warning-strong)]")}>
-              {`データの無い区間が${Math.round(missingTravelDataShare * 100)}%[坂・信号の無い道として所要時間を出しています]`}
-            </p>
+          {missingPct >= 1 && (
+            <WarningText>{`データの無い区間が${missingPct}%[${routeGenerateConfig.missing_travel_data_wording}]`}</WarningText>
           )}
-          {contributionRows.length > 0 ? (
+          {hasAnyContribution(axes, axisContributions) ? (
             <AxisContributionBar
-              axes={contributionRows}
+              axes={axes}
               legendAxes={axes}
               contributions={axisContributions}
               axisColors={axisColors}

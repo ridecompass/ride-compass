@@ -1,38 +1,39 @@
-"""鍵→wind_drag_ratio配信層（`services/wind_way_service.py`）。ルートを出す前の地図の風。
+"""鍵→風の道ごとの材料の配信層（`services/wind_way_service.py`）。ルートを出す前の地図の風。
 
-走行方位は呼び出し側が指定する単一の値で、道路自身の向きは使わない。予報の地点と時刻は
-ルートの区間と同じ選び方——各道は中ほどに最も近い予報の格子点（緯度0.05度・経度0.0625度の
-固定の格子）の、指定時刻に最も近い時刻の風を引く。予報の範囲の外の時刻は塗らない。
+材料は道ごとの風速・風向で、走行方位と想定速度は受け取らない。予報の地点と時刻は
+ルートの区間と同じ選び方——各道は中ほどに最も近いMSMの格子点（緯度0.05度・経度0.0625度）の、
+指定時刻に最も近い時刻の風を、格子点の値のまま引く。予報の範囲の外の時刻は塗らない。
 
 差し替えるのはDB（リポジトリ）とMSMのローカルファイルの読み出しだけで、天候サービス・
-評価器は本物を通す。
+評価器・格子点の選び方は本物を通す。
 
 ここで見ないもの:
-- 指定時刻に最も近い予報の時刻の選び方・格子点の寄せ方・空気抵抗の式 → `test_wind.py`
-- 予報の格子の読み出し → `test_weather_service.py`・`test_msm_client.py`
+- 指定時刻に最も近い予報の時刻の選び方・空気抵抗の式と、材料から負荷を求める木 → `test_wind.py`
+- 格子点の並びの作り方と寄せ方 → `test_msm.py`
+- 格子点の値の読み出し → `test_msm_client.py`
 """
 
 import inspect
-from contextlib import nullcontext
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import numpy as np
-import pytest
 
-from app.domain.msm import wind_speed_and_direction
+from app.domain.msm import MsmGrid, wind_speed_and_direction
 from app.domain.time_zone import JST
-from app.domain.wind import kmh_to_ms, wind_drag_ratio
+from app.domain.wind import WIND_DIRECTION_LEAF, WIND_SPEED_LEAF
 from app.infrastructure import msm_client
-from app.infrastructure.msm_client import MsmSeries, MsmUnavailableError
+from app.infrastructure.msm_client import MsmGridPointSeries, MsmUnavailableError
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services.weather_service import WeatherService
-from app.services.wind_way_service import WindConditions, WindWayService
+from app.services.wind_way_service import WindWayService
+from tests.bound_fake import bound
 
 # 東京駅付近のz14タイル（緯度35.67〜35.69・経度139.71〜139.74あたり）
 Z, X, Y = 14, 14551, 6447
-SPEED_KMH = 20.0
 AT = datetime(2026, 8, 30, 9, 0)
 TIMES = ["2026-08-30T08:00", "2026-08-30T09:00", "2026-08-30T10:00"]
+#: MSMの公表の範囲と形状から作った格子。
+MSM_GRID = MsmGrid.from_bbox_and_shape((22.4, 120.0, 47.6, 150.0), 505, 481)
 
 
 class FakeMidpointsRepository:
@@ -61,38 +62,35 @@ def _wind_uv(latitudes, longitudes, hour_index):
 
 
 def _patch_msm(monkeypatch, times: list[str] = TIMES) -> None:
-    async def read_series(latitudes, longitudes):
+    async def read_grid_block(south, west, north, east):
+        points = MSM_GRID.block_covering(south, west, north, east).all_points()
+        latitudes, longitudes = points.coordinates()
         u, v = zip(*(_wind_uv(latitudes, longitudes, h) for h in range(len(times))))
-        count = len(latitudes)
-        return MsmSeries(
+        return MsmGridPointSeries(
             times=[datetime.fromisoformat(t) for t in times],
+            points=points,
             wind_u_ms=np.stack(u, axis=1),
             wind_v_ms=np.stack(v, axis=1),
-            precipitation_mm=np.zeros((count, len(times))),
-            temperature_c=np.full((count, len(times)), 20.0),
         )
 
-    monkeypatch.setattr(msm_client, "read_series", read_series)
+    monkeypatch.setattr(msm_client, "read_grid_block", bound(msm_client.read_grid_block, read_grid_block))
 
 
-def _expected(grid_lat: float, grid_lon: float, hour_index: int, bearing_deg: float, speed_kmh: float) -> float:
+def _expected(grid_lat: float, grid_lon: float, hour_index: int) -> tuple[float, float]:
     u, v = _wind_uv(grid_lat, grid_lon, hour_index)
     speed, direction = wind_speed_and_direction(u, v)
-    return round(wind_drag_ratio(float(speed), float(direction), bearing_deg, kmh_to_ms(speed_kmh)), 3)
+    return float(speed), float(direction)
+
+
+def _materials(winds: dict[str, tuple[float, float]]) -> dict[str, dict[str, float]]:
+    return {
+        WIND_SPEED_LEAF: {key: speed for key, (speed, _) in winds.items()},
+        WIND_DIRECTION_LEAF: {key: direction for key, (_, direction) in winds.items()},
+    }
 
 
 def _service(repository) -> WindWayService:
     return WindWayService(repository=repository, weather_service=WeatherService())
-
-
-def _conditions(bearing_deg: float = 0.0, speed_kmh: float = SPEED_KMH, at: datetime | None = AT) -> WindConditions:
-    return WindConditions(bearing_deg=bearing_deg, speed_kmh=speed_kmh, at=at)
-
-
-async def test_uncovered_tile_returns_empty_dict(monkeypatch):
-    _patch_msm(monkeypatch)
-
-    assert await _service(FakeMidpointsRepository(None)).get_way_values(Z, X, Y, _conditions()) == {}
 
 
 async def test_each_way_takes_the_wind_of_the_grid_point_nearest_its_middle(monkeypatch):
@@ -105,13 +103,13 @@ async def test_each_way_takes_the_wind_of_the_grid_point_nearest_its_middle(monk
         "3": (35.60, 139.80),       # タイルの外 → (35.60, 139.8125)
     })
 
-    result = await _service(repository).get_way_values(Z, X, Y, _conditions(bearing_deg=45.0, speed_kmh=25.0))
+    result = await _service(repository).get_way_materials(Z, X, Y, AT)
 
-    assert result == {
-        "1": _expected(35.65, 139.6875, 1, 45.0, 25.0),
-        "2-0": _expected(35.70, 139.75, 1, 45.0, 25.0),
-        "3": _expected(35.60, 139.8125, 1, 45.0, 25.0),
-    }
+    assert result == _materials({
+        "1": _expected(35.65, 139.6875, 1),
+        "2-0": _expected(35.70, 139.75, 1),
+        "3": _expected(35.60, 139.8125, 1),
+    })
 
 
 async def test_a_time_outside_the_forecast_is_not_painted(monkeypatch):
@@ -119,18 +117,7 @@ async def test_a_time_outside_the_forecast_is_not_painted(monkeypatch):
     _patch_msm(monkeypatch)
     repository = FakeMidpointsRepository({"1": (35.674, 139.713)})
 
-    assert await _service(repository).get_way_values(Z, X, Y, _conditions(at=datetime(2026, 8, 30, 10, 40))) == {}
-
-
-async def test_utc_aware_at_is_read_as_jst(monkeypatch):
-    # 予報の時刻はJSTの壁時計時刻。tzinfoを剥がすだけで比べると時差ぶんずれ、範囲外と判定される。
-    _patch_msm(monkeypatch)
-    repository = FakeMidpointsRepository({"1": (35.674, 139.713)})
-    at_utc = AT.replace(tzinfo=JST).astimezone(timezone.utc)
-
-    result = await _service(repository).get_way_values(Z, X, Y, _conditions(at=at_utc))
-
-    assert result == {"1": _expected(35.65, 139.6875, 1, 0.0, SPEED_KMH)}
+    assert await _service(repository).get_way_materials(Z, X, Y, datetime(2026, 8, 30, 10, 40)) == {}
 
 
 async def test_at_none_defaults_to_now(monkeypatch):
@@ -139,29 +126,16 @@ async def test_at_none_defaults_to_now(monkeypatch):
     _patch_msm(monkeypatch, times)
     repository = FakeMidpointsRepository({"1": (35.674, 139.713)})
 
-    result = await _service(repository).get_way_values(Z, X, Y, _conditions(at=None))
+    result = await _service(repository).get_way_materials(Z, X, Y, None)
 
-    assert set(result) == {"1"}
+    assert {key for values in result.values() for key in values} == {"1"}
 
 
 async def test_forecast_unavailable_returns_empty_dict(monkeypatch):
-    async def unavailable(latitudes, longitudes):
+    async def unavailable(south, west, north, east):
         raise MsmUnavailableError("未同期")
 
-    monkeypatch.setattr(msm_client, "read_series", unavailable)
+    monkeypatch.setattr(msm_client, "read_grid_block", unavailable)
     repository = FakeMidpointsRepository({"1": (35.674, 139.713)})
 
-    assert await _service(repository).get_way_values(Z, X, Y, _conditions()) == {}
-
-
-@pytest.mark.parametrize(
-    ("error", "outcome"),
-    [
-        (ConnectionRefusedError("db down"), nullcontext()),
-        # DB障害でない例外まで空へ倒すと、利用者には「データなし」に見えて誰も気づかない。
-        (TypeError("wrong arguments"), pytest.raises(TypeError)),
-    ],
-)
-async def test_only_a_db_outage_is_turned_into_an_empty_result(error, outcome):
-    with outcome:
-        assert await _service(FakeMidpointsRepository(None, error=error)).get_way_values(Z, X, Y, _conditions()) == {}
+    assert await _service(repository).get_way_materials(Z, X, Y, AT) == {}

@@ -17,12 +17,15 @@ import palette from "@/types/generated/palette.json";
 import weatherScales from "@/types/generated/weather-scales.json";
 import type { FilterSpecification } from "maplibre-gl";
 
+import { isTilePayload, type DynamicWeatherRenderPayload } from "@/features/map/layers/dynamicWeather";
 import { createLidenIcon } from "@/features/map/layers/lidenIcon";
-import { JMA_POINT_VALUE_PROPERTY, jmaPlaceholderTileUrl } from "@/features/map/layers/jmaDelivery";
+import { jmaPlaceholderTileUrl } from "@/features/map/layers/jmaDelivery";
+import { withJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
 import { PRECIPITATION_COLOR_STOPS, PRECIPITATION_NONE_THRESHOLD_MM } from "@/features/map/layers/precipitationNowcast";
 import { createWindArrowIcon } from "@/features/map/layers/windArrowIcon";
 import { WIND_CALM_THRESHOLD_MS, WIND_SPEED_COLOR_STOPS } from "@/features/map/layers/windLayer";
 
+import type { MapSceneImage } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 import { AREA_OPACITY } from "./areaRasters";
 import { zoomScaleExpression, sceneSourceId, type SceneSourceId } from "@/features/map/scene/sceneBuilders";
@@ -37,29 +40,35 @@ type DeclaredElement = (typeof mapDisplay.weatherElements)[number];
 
 type WeatherRenderKind = DeclaredElement["kind"];
 
-const TIER_OF = {
-  rasterTile: "area",
-  gridFill: "area",
-  vectorTile: "observedLine",
-  outline: "observedLine",
-  gridMark: "point",
-} as const satisfies Record<WeatherRenderKind, string>;
+/** 災害のチップのid（源泉の気象のグループの名前）。 */
+export const DISASTER_LAYER_ID = "disaster" as const;
 
-/** いま届いている中身。種類が宣言と合うときだけ描く。 */
-export type WeatherPayload =
-  | { readonly kind: "rasterTile"; readonly tiles: readonly string[] }
-  | { readonly kind: "vectorTile"; readonly tiles: readonly string[] }
-  | { readonly kind: "gridFill"; readonly data: unknown }
-  | { readonly kind: "gridMark"; readonly data: unknown }
-  | { readonly kind: "outline"; readonly data: unknown };
+export type DisasterElement = Extract<DeclaredElement, { group: typeof DISASTER_LAYER_ID }>;
+
+/** 災害のチップに載る要素。並びは源泉の宣言のまま。 */
+export const DISASTER_ELEMENTS: readonly DisasterElement[] = mapDisplay.weatherElements.filter(
+  (element): element is DisasterElement => element.group === DISASTER_LAYER_ID,
+);
+
+/** 描き方ごとの、重なりの段とレイヤーの型。 */
+const LAYER_OF_KIND = {
+  rasterTile: { tier: "area", type: "raster" },
+  gridFill: { tier: "area", type: "fill" },
+  vectorTile: { tier: "observedLine", type: "line" },
+  outline: { tier: "observedLine", type: "line" },
+  gridMark: { tier: "point", type: "symbol" },
+} as const satisfies Record<WeatherRenderKind, Pick<SceneLayerEntry, "tier" | "type">>;
+
+/** ソースへ渡す中身。タイルのURLか、GeoJSONか。 */
+type SourceContent = { readonly tiles: readonly string[] } | { readonly data: unknown };
 
 /** 要素1つぶんの見た目。画面が決めてよいのはここだけ。 */
 type Drawing = {
   readonly paint: Readonly<Record<string, unknown>>;
   readonly layout?: Readonly<Record<string, unknown>>;
   readonly filter?: FilterSpecification;
-  /** 記号を描くのに要るアイコン。登録してからでないと出ない。 */
-  readonly icon?: { readonly id: string; readonly create: () => ImageData };
+  /** 記号を描くのに要るアイコン。 */
+  readonly icon?: MapSceneImage;
   /** 主の線の下に敷く縁取りの線の見た目。背景の色に関わらず線を読めるようにする。 */
   readonly casing?: { readonly paint: Readonly<Record<string, unknown>> };
 };
@@ -106,19 +115,39 @@ const RAINBAND_OUTLINE_DRAWING: Drawing = {
   },
 };
 
+/** 生成物の`*_below_*`の境（これ未満は無い側）で絞る。境ちょうどの値は有る側に入れる。 */
+function notBelowFilter(property: string, below: number): FilterSpecification {
+  return [">=", ["to-number", ["get", property]], below] as unknown as FilterSpecification;
+}
+
+/** 記号の大きさの倍率。固定の倍率か、地物の値で決まる倍率（値0で`range[0]`、`fullScaleValue`以上で`range[1]`）。 */
+type MarkScale =
+  number | { readonly property: string; readonly range: readonly [number, number]; readonly fullScaleValue: number };
+
+function markScaleExpression(scale: MarkScale): unknown {
+  if (typeof scale === "number") return scale;
+  return [
+    "interpolate",
+    ["linear"],
+    ["to-number", ["get", scale.property]],
+    0,
+    scale.range[0],
+    scale.fullScaleValue,
+    scale.range[1],
+  ];
+}
+
 function markDrawing(options: {
   readonly iconId: string;
   readonly createIcon: () => ImageData;
   readonly color: unknown;
-  readonly valueProperty: string;
+  readonly scale: MarkScale;
+  /** 記号を地図の北から時計回りに回す角度（度）を持つプロパティ。無ければ回さない。 */
   readonly rotateProperty?: string;
-  readonly minScale: number;
-  readonly maxScale: number;
-  readonly fullScaleValue: number;
-  readonly minValueToShow?: number;
+  readonly filter?: FilterSpecification;
 }): Drawing {
   return {
-    icon: { id: options.iconId, create: options.createIcon },
+    icon: { id: options.iconId, draw: () => ({ data: options.createIcon(), options: { sdf: true } }) },
     layout: {
       "icon-image": options.iconId,
       "icon-rotate": options.rotateProperty === undefined ? 0 : ["to-number", ["get", options.rotateProperty]],
@@ -126,18 +155,7 @@ function markDrawing(options: {
       // 記号が密なズームでは間引く（重ねると格子が塗り潰しに見える）。
       "icon-allow-overlap": false,
       "icon-ignore-placement": false,
-      "icon-size": zoomScaleExpression(
-        [
-          "interpolate",
-          ["linear"],
-          ["to-number", ["get", options.valueProperty]],
-          0,
-          options.minScale,
-          options.fullScaleValue,
-          options.maxScale,
-        ],
-        WEATHER.markSizeByZoom,
-      ),
+      "icon-size": zoomScaleExpression(markScaleExpression(options.scale), WEATHER.markSizeByZoom),
     },
     paint: {
       "icon-color": options.color,
@@ -147,9 +165,7 @@ function markDrawing(options: {
       "icon-halo-color": palette.semantic.mark_halo,
       "icon-halo-width": WEATHER.markHaloWidthPx,
     },
-    ...(options.minValueToShow === undefined
-      ? {}
-      : { filter: aboveFilter(options.valueProperty, options.minValueToShow) }),
+    ...(options.filter === undefined ? {} : { filter: options.filter }),
   };
 }
 
@@ -165,7 +181,7 @@ const DRAWINGS: { readonly [K in DrawnKey]: Drawing } = {
       "fill-opacity": AREA_OPACITY,
     },
     // 降っていない格子まで塗ると、地図全体が薄く覆われて下が読めない。
-    filter: aboveFilter("mmPerHour", PRECIPITATION_NONE_THRESHOLD_MM),
+    filter: notBelowFilter("mmPerHour", PRECIPITATION_NONE_THRESHOLD_MM),
   },
   "windVector/arrow/gridMark": markDrawing({
     iconId: "weather-wind-arrow",
@@ -174,13 +190,10 @@ const DRAWINGS: { readonly [K in DrawnKey]: Drawing } = {
       ["get", "speed"],
       WIND_SPEED_COLOR_STOPS.map((stop) => ({ from: stop.speedMs, color: stop.color })),
     ),
-    valueProperty: "speed",
+    scale: { property: "speed", range: WEATHER.windIconScaleRange, fullScaleValue: WEATHER.windFullScaleMs },
     rotateProperty: "bearing",
-    minScale: WEATHER.windIconScaleRange[0],
-    maxScale: WEATHER.windIconScaleRange[1],
-    fullScaleValue: WEATHER.windFullScaleMs,
     // ほぼ無風の矢印は向きが意味を持たない。
-    minValueToShow: WIND_CALM_THRESHOLD_MS,
+    filter: notBelowFilter("speed", WIND_CALM_THRESHOLD_MS),
   }),
   "disaster/flood/vectorTile": {
     paint: {
@@ -202,10 +215,7 @@ const DRAWINGS: { readonly [K in DrawnKey]: Drawing } = {
     createIcon: createLidenIcon,
     // 落雷の強弱を配信元が持たないため、大きさはズームだけで決まる。
     color: palette.semantic.lightning,
-    valueProperty: JMA_POINT_VALUE_PROPERTY,
-    minScale: WEATHER.lightningIconScale,
-    maxScale: WEATHER.lightningIconScale,
-    fullScaleValue: 1,
+    scale: WEATHER.lightningIconScale,
   }),
 };
 
@@ -217,13 +227,11 @@ type WeatherElement = {
   readonly drawing: Drawing;
   readonly sourceSpec: SceneSourceEntry["spec"];
   readonly sourceLayer?: string;
-  /** 中身が届く前に指すタイル。**タイルを持たないソース宣言は成り立たない**ため、
-   * 届くまでの間もここを指す（実データのない架空のURL）。**このURLは実際に要求されうる**
+  /** 中身が届く前の中身。**タイルを持たないソース宣言は成り立たない**ため、タイルのソースは
+   * 届くまでの間も架空のURLを指す（GeoJSONは同じ理由で空の中身を持つ）。**このURLは実際に要求されうる**
    * ——開発サーバーでは二重実行で一瞬表示状態になりうるので、配信元へ無駄な要求が
    * 飛んでも害のない先にしておく。 */
-  readonly placeholderTiles?: readonly string[];
-  /** 中身が届く前の GeoJSON（同じ理由で、空の中身を持たせる）。 */
-  readonly placeholderData?: unknown;
+  readonly placeholder: SourceContent;
 };
 
 function drawingOf(element: DeclaredElement): Drawing {
@@ -231,9 +239,7 @@ function drawingOf(element: DeclaredElement): Drawing {
   return DRAWINGS[`${element.group}/${element.source}/${element.kind}` as DrawnKey];
 }
 
-function sourceOf(
-  element: DeclaredElement,
-): Pick<WeatherElement, "sourceSpec" | "sourceLayer" | "placeholderTiles" | "placeholderData"> {
+function sourceOf(element: DeclaredElement): Pick<WeatherElement, "sourceSpec" | "sourceLayer" | "placeholder"> {
   switch (element.kind) {
     case "rasterTile":
       return {
@@ -243,22 +249,22 @@ function sourceOf(
           minzoom: element.tile.minZoom,
           maxzoom: element.tile.maxZoom,
         },
-        placeholderTiles: [jmaPlaceholderTileUrl(element)],
+        placeholder: { tiles: [jmaPlaceholderTileUrl(element)] },
       };
     case "vectorTile":
       return {
         sourceSpec: { type: "vector", minzoom: element.tile.minZoom, maxzoom: element.tile.maxZoom },
         sourceLayer: element.tile.vectorLayer,
-        placeholderTiles: [jmaPlaceholderTileUrl(element)],
+        placeholder: { tiles: [jmaPlaceholderTileUrl(element)] },
       };
     case "gridFill":
     case "gridMark":
     case "outline":
-      return { sourceSpec: { type: "geojson" }, placeholderData: EMPTY_FEATURE_COLLECTION };
+      return { sourceSpec: { type: "geojson" }, placeholder: { data: EMPTY_FEATURE_COLLECTION } };
   }
 }
 
-/** 並びは源泉の宣言のまま。同じ段（`TIER_OF`）の中ではこの並びが重なり順になる。 */
+/** 並びは源泉の宣言のまま。同じ段（`LAYER_OF_KIND`）の中ではこの並びが重なり順になる。 */
 const WEATHER_ELEMENTS: readonly WeatherElement[] = mapDisplay.weatherElements.map((element) => ({
   group: element.group,
   source: element.source,
@@ -268,16 +274,15 @@ const WEATHER_ELEMENTS: readonly WeatherElement[] = mapDisplay.weatherElements.m
 }));
 
 export type WeatherState = {
-  /** 表示ON/OFFと中身。鍵は `${group}/${source}`。 */
-  readonly shown: ReadonlyMap<string, { readonly visible: boolean; readonly payload?: WeatherPayload }>;
+  /** 表示ON/OFFと中身。鍵は`weatherElementKey`が作る。 */
+  readonly shown: ReadonlyMap<string, { readonly visible: boolean; readonly payload?: DynamicWeatherRenderPayload }>;
 };
 
-function weatherElementKey(element: Pick<WeatherElement, "group" | "source">): string {
+export function weatherElementKey(element: Pick<WeatherElement, "group" | "source">): string {
   return `${element.group}/${element.source}`;
 }
 
-/** 登録が要るアイコン。**出す前に登録しないと記号が描かれない。** */
-export const WEATHER_ICONS: readonly { id: string; create: () => ImageData }[] = WEATHER_ELEMENTS.flatMap((element) =>
+const WEATHER_IMAGES: readonly MapSceneImage[] = WEATHER_ELEMENTS.flatMap((element) =>
   element.drawing.icon === undefined ? [] : [element.drawing.icon],
 );
 
@@ -285,10 +290,17 @@ export const WEATHER_ICONS: readonly { id: string; create: () => ImageData }[] =
  * 付け直すと、源泉が知っているものに画面だけの語彙が重なる。1要素＝1ソース（要素ごとに
  * 配信先が違うため相乗りできない）。
  * **描き方も名前に含める**——同じ名前付きソースを描き方違いで2要素が名乗る（降水の`main`は
- * 配信元のラスタと自前の格子の面）。描き方を落とすとソースが1本へ畳まれ、後から名乗った側の
+ * 配信元のラスタとMSMの格子点の升目の塗り）。描き方を落とすとソースが1本へ畳まれ、後から名乗った側の
  * レイヤーが種類の合わないソースを指して、そのレイヤーだけが黙って描かれない。 */
 function weatherSourceId(element: Pick<WeatherElement, "group" | "source" | "kind">): SceneSourceId {
   return sceneSourceId(`${element.group}-${element.source}-${element.kind}`);
+}
+
+/** 届いた中身をソースへ渡す形へ移す。配信元のタイルは自前のプロトコル経由で取りに行く（空タイルの肩代わり・
+ * 失敗の観測）。 */
+function contentOf(payload: DynamicWeatherRenderPayload | undefined, placeholder: SourceContent): SourceContent {
+  if (payload === undefined) return placeholder;
+  return isTilePayload(payload) ? { tiles: [withJmaTileProtocol(payload.tileUrlTemplate)] } : { data: payload.geojson };
 }
 
 export const weatherGroup = declareGroup<WeatherState>((state) => {
@@ -297,68 +309,28 @@ export const weatherGroup = declareGroup<WeatherState>((state) => {
 
   for (const element of WEATHER_ELEMENTS) {
     const shown = state.shown.get(weatherElementKey(element));
-    const payload = shown?.payload;
-    const matches = payload !== undefined && payload.kind === element.kind;
+    const payload = shown?.payload?.kind === element.kind ? shown.payload : undefined;
     const id = weatherSourceId(element);
     const { drawing } = element;
 
-    sources.push({
-      id,
-      spec: element.sourceSpec,
-      ...(element.sourceLayer === undefined ? {} : { sourceLayer: element.sourceLayer }),
-      ...(matches && "tiles" in payload
-        ? { tiles: payload.tiles }
-        : element.placeholderTiles === undefined
-          ? {}
-          : { tiles: element.placeholderTiles }),
-      ...(matches && "data" in payload
-        ? { data: payload.data }
-        : element.placeholderData === undefined
-          ? {}
-          : { data: element.placeholderData }),
-    });
+    const sourceLayer = element.sourceLayer === undefined ? {} : { sourceLayer: element.sourceLayer };
+    sources.push({ id, spec: element.sourceSpec, ...sourceLayer, ...contentOf(payload, element.placeholder) });
 
-    const visible = (shown?.visible ?? false) && matches;
-    // 縁取りは同じ段の中で主の線より先に積み、下に置く。
-    if (drawing.casing !== undefined) {
-      layers.push({
-        role: `${element.kind}-casing`,
-        tier: TIER_OF[element.kind],
-        source: id,
-        ...(element.sourceLayer === undefined ? {} : { sourceLayer: element.sourceLayer }),
-        type: layerTypeOf(element.kind),
-        paint: drawing.casing.paint,
-        ...(drawing.layout === undefined ? {} : { layout: drawing.layout }),
-        visible,
-        ...(drawing.filter === undefined ? {} : { filter: drawing.filter }),
-      });
-    }
-    layers.push({
-      role: element.kind,
-      tier: TIER_OF[element.kind],
+    const visible = (shown?.visible ?? false) && payload !== undefined;
+    const layerOf = (role: string, paint: SceneLayerEntry["paint"]): SceneLayerEntry => ({
+      role,
+      ...LAYER_OF_KIND[element.kind],
       source: id,
-      ...(element.sourceLayer === undefined ? {} : { sourceLayer: element.sourceLayer }),
-      type: layerTypeOf(element.kind),
-      paint: drawing.paint,
+      ...sourceLayer,
+      paint,
       ...(drawing.layout === undefined ? {} : { layout: drawing.layout }),
       visible,
       ...(drawing.filter === undefined ? {} : { filter: drawing.filter }),
     });
+    // 縁取りは同じ段の中で主の線より先に積み、下に置く。
+    if (drawing.casing !== undefined) layers.push(layerOf(`${element.kind}-casing`, drawing.casing.paint));
+    layers.push(layerOf(element.kind, drawing.paint));
   }
 
-  return { sources, layers };
+  return { sources, layers, images: WEATHER_IMAGES };
 });
-
-function layerTypeOf(kind: WeatherRenderKind): SceneLayerEntry["type"] {
-  switch (kind) {
-    case "rasterTile":
-      return "raster";
-    case "gridFill":
-      return "fill";
-    case "vectorTile":
-    case "outline":
-      return "line";
-    case "gridMark":
-      return "symbol";
-  }
-}

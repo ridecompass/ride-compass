@@ -61,13 +61,28 @@ export function onSameOrigin(method: Method, path: string, reply: Reply): SentRe
   return answer(method, path, reply);
 }
 
+/**
+ * どのオリジンの`url`（`*`で続きを受ける）へのどのメソッドの要求にも`reply`で応え、届いた要求の写しを順に積む配列を返す。
+ * backend以外の外部（配信元・管理APIの口の先）への要求に使う。`reply`へは要求をそのまま渡す（ヘッダ・中断の合図も読める）。
+ */
+export function onUrl(url: string, reply: (request: Request) => Response | Promise<Response>): Request[] {
+  const sent: Request[] = [];
+  backendServer.use(
+    http.all(url, ({ request }) => {
+      sent.push(request.clone());
+      return reply(request);
+    }),
+  );
+  return sent;
+}
+
 /** 軸カタログの取得に`response`を返す（多くの画面が描くと同時に取る）。 */
 export function serveAxisCatalog(response: AxisCatalogResponse): void {
   onBackend("GET", "/api/axis-catalog", () => Response.json(response));
 }
 
 /** 届いた順に`responses`を返す（尽きたら最後のものを返し続ける）。 */
-export function inTurn(...responses: Response[]): Reply {
+export function inTurn(...responses: Response[]): (request?: unknown) => Response {
   let next = 0;
   return () => responses[Math.min(next++, responses.length - 1)].clone();
 }
@@ -76,7 +91,7 @@ export function inTurn(...responses: Response[]): Reply {
 const unanswered = new Map<(response: Response) => void, () => Response>();
 
 /**
- * 届いた要求に、テストが応えるまで応答を返さない。`reply`を`onBackend`等へ渡し、`answer(番目, 応答)`で、届いた順の
+ * 届いた要求に、テストが応えるまで応答を返さない。`reply`を`onBackend`・`onUrl`等へ渡し、`answer(番目, 応答)`で、届いた順の
  * その番目に応える（届くまで待つ）。応えなかった要求は、テストの終わりに`closeWith`（既定は網の失敗）で閉じる。
  */
 export function heldReplies(closeWith: () => Response = () => HttpResponse.error()) {
@@ -88,7 +103,8 @@ export function heldReplies(closeWith: () => Response = () => HttpResponse.error
         unanswered.set(settle, closeWith);
       }),
     answer: async (index: number, response: Response) => {
-      // 間をおいて出る要求（ルート生成の2回目からの問い合わせは1.5秒あとに出る）も待てる長さにする。
+      // 間をおいて出る要求（ルート生成の2回目からの問い合わせ。間隔は`features/route/routeApi.ts: POLL_INTERVAL_MS`）も
+      // 待てる長さにする。
       await vi.waitFor(() => expect(pending.length).toBeGreaterThan(index), { timeout: 5000 });
       unanswered.delete(pending[index]);
       pending[index](response);

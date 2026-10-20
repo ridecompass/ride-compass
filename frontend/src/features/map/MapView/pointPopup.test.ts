@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { PointAxis } from "@/features/map/scene/groups/points";
+import type { PointAxis } from "@/lib/mapDisplay/pointLayers";
 
 import { buildPointPopupContent } from "./pointPopup";
 
@@ -80,14 +80,11 @@ describe("buildPointPopupContent", () => {
     expect(url.searchParams.get("query")).toBe("店 1&2 35.705300,139.649700");
   });
 
-  it.each([[{ kind: "a1" }], [{ kind: "a1", name: "" }]])(
-    "名前の無い点（%o）は、名前も導線も出さない",
-    (properties) => {
-      const layer = { label: "点", display_axes: [KIND], point_facts: [], point_name_property: "name" };
-      const content = buildPointPopupContent(layer, properties, AT);
+  it("名前が空の点は、名前も導線も出さない", () => {
+    const layer = { label: "点", display_axes: [KIND], point_facts: [], point_name_property: "name" };
+    const content = buildPointPopupContent(layer, { kind: "a1", name: "" }, AT);
 
-      expect(content.querySelector("a")).toBeNull();
-      expect(content.textContent).toBe("点: 区分A");
-    },
-  );
+    expect(content.querySelector("a")).toBeNull();
+    expect(content.textContent).toBe("点: 区分A");
+  });
 });

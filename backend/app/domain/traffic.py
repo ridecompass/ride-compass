@@ -99,7 +99,7 @@ _TRAFFIC_CALMING_VALUES: frozenset[str] = frozenset(
 )
 
 # 停止要因POIのkind正準集合（SQL側のkindフィルタ用）。補給POI（_SupplyPoiKind）も同じ
-# `node_materials.kind`に入っているため、kindを絞らないCOUNTは停止密度へ自販機・
+# `node_kinds.kind`に入っているため、kindを絞らないCOUNTは停止密度へ自販機・
 # トイレを誤算入する。停止要因を数える・まとめるSQLは必ずこの集合でフィルタする。
 #
 # **型の宣言から導く。** 集合を別に並べると、型に無いkindを集合へ入れられてしまい、
@@ -107,7 +107,7 @@ _TRAFFIC_CALMING_VALUES: frozenset[str] = frozenset(
 STOP_POI_KINDS: frozenset[str] = frozenset(get_args(StopPoiKind))
 
 
-# 停止要因の集計キー（`edge_materials`・`way_materials`の件数列`poi_<キー>`）と、
+# 停止要因の集計キー（`edge_counts`・`way_counts`の件数列`poi_<キー>`）と、
 # その日本語ラベル。**キーの単一ソース**で、材料
 # （`domain/material_catalog.py`の`poi_*_per_km`）はこの一覧から生成する。
 #
@@ -180,7 +180,7 @@ def stop_seconds(kind: str) -> float:
 
 
 def poi_count_column(kind: str) -> str:
-    """停止要因の種別`kind`の件数を持つ列（`edge_materials`・`way_materials`）の名前。"""
+    """停止要因の種別`kind`の件数を持つ列（`edge_counts`・`way_counts`）の名前。"""
     return f"poi_{kind}"
 
 
@@ -190,12 +190,7 @@ def poi_density_material_id(kind: str) -> str:
 
 
 def stop_count_material_ids() -> tuple[str, ...]:
-    """停止の待ちを所要時間へ足すのに要る材料id（`POI_COUNT_KINDS`と1対1）。
-
-    走行モデルはこれらを**軸の構成と無関係に**必要とする。軸が分解した材料だけを
-    経路へ運ぶ既定（`evaluation.py: route_facing_material_ids`）に任せると、停止の軸を
-    非公開にした瞬間に所要時間から停止の待ちが静かに消える。
-    """
+    """停止の待ちを所要時間へ足すのに要る材料id（`POI_COUNT_KINDS`と1対1）。"""
     return tuple(poi_density_material_id(kind) for kind in POI_COUNT_KINDS)
 
 
@@ -222,7 +217,7 @@ def place_count_sql(inside_ends: str) -> str:
 # 「コンビニ」）から出し、1つの種類を2つの出どころから出さない。
 _SupplyPoiKind = Literal["vending_drinks", "vending_unknown", "toilets", "drinking_water", "bicycle_parking"]
 
-#: `node_materials.kind`の語彙。`tag_kind_sql`が付けうる種別で、表の検査制約もここから作る。
+#: `node_kinds.kind`の語彙。`tag_kind_sql`が付けうる種別で、表の検査制約もここから作る。
 NODE_KINDS: frozenset[str] = STOP_POI_KINDS | frozenset(get_args(_SupplyPoiKind))
 
 _AMENITY_SUPPLY_KINDS: dict[str, _SupplyPoiKind] = {
@@ -310,12 +305,14 @@ _VENDING_MACHINE = ("amenity", "vending_machine")
 SUPPLY_POI_TAGS: frozenset[tuple[str, str]] = frozenset(
     (tag_key, value) for tag_key, value, kind, _priority in TAG_KIND_RULES
     if kind in get_args(_SupplyPoiKind)) | {_VENDING_MACHINE}
+_SUPPLY_POI_TAG_KEYS = frozenset(key for key, _value in SUPPLY_POI_TAGS)
 
 
 def has_supply_poi_tag(tags: Mapping[str, str]) -> bool:
     """`tags`が補給・休憩の種別が付きうるタグを持つか。値は`tag_kind_sql`と同じく、前後の
     空白を落として小文字にしてから比べる。"""
-    return any((key, value.strip(" ").lower()) in SUPPLY_POI_TAGS for key, value in tags.items())
+    return any((value := tags.get(key)) is not None and (key, value.strip(" ").lower()) in SUPPLY_POI_TAGS
+               for key in _SUPPLY_POI_TAG_KEYS)
 
 #: 信号の判定。**`TAG_KIND_RULES`と違い、値を正規化せずそのまま比べる**——
 #: 現行の判定がそうであり、ここで揃えると付く信号の数が変わる。
@@ -328,11 +325,13 @@ TRAFFIC_SIGNAL_SQL = (
 #: 道の形の向き（始点→終点）にだけ通れる道・逆にだけ通れる道の通行方向。
 DIRECTION_FORWARD = "forward"
 DIRECTION_BACKWARD = "backward"
+#: どの規則にも当たらない道は両方向。
+DIRECTION_DEFAULT = "both"
 
 _ONEWAY_DIRECTIONS: dict[str, str] = {
     **{value: DIRECTION_FORWARD for value in sorted(ONEWAY_FORWARD_ONLY)},
     **{value: DIRECTION_BACKWARD for value in sorted(ONEWAY_BACKWARD_ONLY)},
-    **{value: "both" for value in sorted(ONEWAY_BIDIRECTIONAL)},
+    **{value: DIRECTION_DEFAULT for value in sorted(ONEWAY_BIDIRECTIONAL)},
 }
 
 #: 引き当ての順。`oneway:bicycle`（自転車に限り一方通行規制の対象外、という例外タグ）を
@@ -350,10 +349,7 @@ DIRECTION_RULES: tuple[tuple[str, str, str, int], ...] = tuple(
     for value, direction in values.items()
 )
 
-#: どの規則にも当たらない道は両方向。
-DIRECTION_DEFAULT = "both"
-
-#: `way_materials.direction`の語彙。表の検査制約もここから作る。
+#: `way_directions.direction`の語彙。表の検査制約もここから作る。
 DIRECTIONS: frozenset[str] = frozenset(
     direction for _key, _value, direction, _priority in DIRECTION_RULES) | {DIRECTION_DEFAULT}
 
@@ -381,7 +377,7 @@ _Kind = TypeVar("_Kind", bound=str)
 
 
 def stop_kind_sql(alias: str) -> str:
-    """`node_materials`の別名`alias`の行の種別を、信号の読み替えを済ませて返すSQL式。
+    """`node_kinds`の別名`alias`の行の種別を、信号の読み替えを済ませて返すSQL式。
 
     地図へ出す種別も数える種別もこの式から導く——別々に書くと、見えている点の数と
     評価の停止回数が合わなくなる。
@@ -404,7 +400,7 @@ def kind_map_sql(kind_sql: str, mapping: Mapping[_Kind, str], *, otherwise: str 
 
 
 def count_kind_sql(alias: str) -> str:
-    """`node_materials`の別名`alias`の行を、数える種別（`POI_COUNT_KINDS`のキー）へ畳むSQL式。
+    """`node_kinds`の別名`alias`の行を、数える種別（`POI_COUNT_KINDS`のキー）へ畳むSQL式。
 
     停止要因でない行（補給休憩・ただの交差点）はNULL。
     """

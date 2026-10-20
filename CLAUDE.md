@@ -3,8 +3,8 @@
 サイクリング向け周回ルート生成アプリ。backend（FastAPI）+ frontend（Next.js）。
 アーキテクチャ全体は docs/architecture/ 参照。
 
-タスクは GitHub の非公開リポジトリ ridecompass/ride-compass-tasks の issue で持つ（issue＝タスク、sub-issue＝段階。
-背景・方針・問いと答え・検証の結果も issue に書く）。ステータスと割り当ては遷移の表が決め、ゲートが守る。
+タスクは GitHub の非公開リポジトリ ridecompass/ride-compass-tasks の issue で持つ（issue＝タスク、sub-issue＝1つの要望を機能ごとに分けた子。
+背景・方針・問いと答え・検証の結果も issue に書く）。ステータスと割り当ては、ゲートが事実から決める。
 進め方は docs/conventions/flow.md と流れのスキル（`.claude/skills/`）。リファクタリング・機能追加の着手前に、該当する issue の有無を確認すること。
 2026-09-28 までの記録は docs/records/tasks/T<番号>.md（タスク番号1件=1ファイル）に残っている（維持しない）。
 
@@ -13,7 +13,7 @@
 
 ## ドキュメント階層（必読、新しいルールを追加する前に確認すること）
 
-ルール・方針を書く場所は以下の基準で決める。**何でもCLAUDE.mdへ足さない**。
+ルール・方針を書く場所は以下の基準で決める。**何でもCLAUDE.mdへ足さない**（毎セッション無条件で全文が読まれ、肥大化すると常時要る内容が埋もれる）。
 
 | 階層 | 置くもの | 判定基準 |
 |---|---|---|
@@ -27,7 +27,7 @@
 | **docs/records/** | 2026-09-28 までの記録（タスク・決定）。**維持しない**。新しい記録は issue に書く | 記録時点で嘘がなければよく、訂正は新しい記録で行う。レビュー・検知器の対象外（`docs/records/README.md`） |
 
 **ルール・基準は、上の表の置き場（リポジトリ）にだけ置く。** Claude の自動の記憶には、開発機の環境の事実（パス・道具の癖等）
-だけを置き、ルールを置かない。
+だけを置き、ルールを置かない（記憶は担当にも別のセッションにも届かず、誰も見直さない）。
 
 ## 出力言語（必読）
 
@@ -35,7 +35,7 @@
 ScheduleWakeupのreason等）も含めて、常にすべて日本語で書く。** 英語の技術用語（ファイル名・コマンド・ライブラリ名等）は
 そのままでよい。道具の合間の短い文も同じで、英語の文はフック（`scripts/hooks/japanese_only.py`）が止める。英語の文を引くときは
 `` ` `` かコードブロックで囲む。
-**ユーザーを名前で呼ばない**。呼ぶ必要があれば「ユーザー」と書く。
+**ユーザーを名前で呼ばない**（名乗っていない）。呼ぶ必要があれば「ユーザー」と書く。
 
 ## 作業の種類と読む節（必読）
 
@@ -46,7 +46,7 @@ docs/conventions/ にある（.claude/rules/・.claude/skills/ のものはパ�
 | 作業 | 読む節 |
 |---|---|
 | 開発機の対話のセッションでタスクを進める（裏の作業役に任せるときも） | .claude/skills/dev-session/SKILL.md: 開発機の対話のセッション／.claude/commands/review.md: 回すとき |
-| タスクに着手する | flow.md: 1つのタスクを触るのは1者だけ／.claude/skills/task-work/SKILL.md: 作る担当（1〜3）／.claude/skills/file-issue/SKILL.md: 前後関係と組（探す）・issue の形（1つの Pull Request に収まらない・方針を選ぶタスクは最初に背景・方針を書く） |
+| タスクに着手する | flow.md: 1つのタスクを触るのは1者だけ／.claude/skills/task-work/SKILL.md: 実装担当（1〜3）／.claude/skills/file-issue/SKILL.md: 前後関係と組（探す）・issue の形（1つの Pull Request に収まらない・方針を選ぶタスクは最初に背景・方針を書く） |
 | 新しい仕組みを作る・設計を判断する | docs/architecture/design-principles.md（全文）／.claude/commands/review.md: 判断原則 |
 | backend・frontend のコードを足す・変える | docs/modules/README.md: 着手の前に読む（と対象の docs/modules/*.md）／.claude/rules/comments.md: ルール・判定基準（新しくコメントを書く/既存コメントを見直す/コードを撤去するとき）・残すと決めたものの行き先／.claude/rules/logging.md: 基本原則・使う仕組み（新規実装はこれらを使うこと） |
 | APIルーター・Pydanticモデル・レジストリ・domain定数・MVT焼き込み値を変える | .claude/rules/deployment-sync.md: コミットと同時に揃えるもの |
@@ -55,25 +55,28 @@ docs/conventions/ にある（.claude/rules/・.claude/skills/ のものはパ�
 | 外部データソースを使う・使い方を変える | docs/architecture/data-sources.md: 使い方 |
 | 評価軸を足す・消す・調整する | .claude/rules/deployment-sync.md: コミットと同時に揃えるもの／.claude/skills/production-data/SKILL.md: 本番へ効かせたい軸定義の変更は、本番の管理APIへ入れる |
 | 指摘・不具合を直す | .claude/rules/fixing.md（全文） |
-| テストを書く | .claude/rules/testing.md: 確かめる高さ・単体で確かめるかを、コードの種類で先に決める・そのテストは要るか（3問を順に）・挙動を変えるなら、テストを先に書く（書く場所・足場に固有の決まりは、その場所の `.claude/rules/testing-*.md` が `paths` で読まれる） |
-| テストを消す・まとめる・変異テストで見直す | .claude/rules/testing-review.md（全文） |
+| テストを書く | .claude/rules/testing.md: 確かめる高さ・単体で確かめるかを、コードの種類で先に決める・そのテストは要るか（3問を順に）・挙動を変えたら、入口で確かめる（書く場所・足場に固有の決まりは、その場所の `.claude/rules/testing-*.md` が `paths` で読まれる） |
+| テストを消す・まとめる・変異テストで見直す | .claude/rules/testing-review.md（全文）／全部の測りで見直す1回は .claude/skills/test-review/SKILL.md（全文） |
 | テストを実装から起こし直す | .claude/rules/testing-rewrite.md（全文） |
 | テストや検査を回す | .claude/skills/run-checks/SKILL.md: 手元の検査の回し方・検査の置き場（手元・作業ブランチのCI・masterのCI）・開発機でのbackendテストの回し方／.claude/rules/testing.md: テストが落ちたときの直し方（①〜⑥）・警告は既定でエラー |
-| 画面を撮る | .claude/skills/task-work/SKILL.md: 作る担当（5 の画面に届く変更のキャプチャ） |
+| 画面を撮る | .claude/skills/task-work/SKILL.md: 実装担当（5 の画面に届く変更のキャプチャ） |
 | コミットする | flow.md: コミット／.github/pull_request_template.md（増減）／.claude/rules/deployment-sync.md: コミットと同時に揃えるもの |
-| PR を出す | .claude/skills/task-work/SKILL.md: 作る担当（4〜6） |
-| PR を確かめてマージする | .claude/skills/task-work/SKILL.md: 確かめる担当・Pull Request のあと・競合を解く |
+| PR を出す | .claude/skills/task-work/SKILL.md: 実装担当（4〜6） |
+| PR を確かめてマージする | .claude/skills/task-work/SKILL.md: 検証担当・競合を解く |
 | 本番へ書く | flow.md: 自動で進めないもの／.claude/skills/dev-session/SKILL.md: 本番へ書く／.claude/skills/production-data/SKILL.md: 本番へ効かせたい軸定義の変更は、本番の管理APIへ入れる・派生データの作り直し |
 | 本番を読む | docs/modules/backend/cross-cutting-infrastructure.md の `run_probe.py` の行／docs/architecture/tech-stack.md: 本番の宛先／docs/architecture/setup.md: 開発機の本体のチェックアウトの遅れ |
-| 起票する | .claude/skills/file-issue/SKILL.md: 改善を起票する・issue の形・ラベルと種類と欄（規模の札・優先度の見積もり）・前後関係と組 |
+| 起票する・流れ（手順・道具・ゲート・検査）で困った | .claude/skills/file-issue/SKILL.md: 流れの摩擦を記録する・起票する・issue の形・ラベルと種類と欄（規模の札・優先度の見積もり）・前後関係と組 |
 | 問う・保留する | .claude/skills/ask/SKILL.md: 問い・答え・保留と棚卸 |
 | 文書を書く | 上の「ドキュメント階層」／.claude/rules/documentation.md（全文）／.claude/rules/comments.md: 残すと決めたものの行き先 |
-| 流れの道具（`tools/flow-gate`・担当のワークフロー）を変える | flow.md: ゲートを変える・公開する・担当の権限・担当が書けないファイル／.claude/skills/task-work/SKILL.md: 確かめる担当（1 の書き込みのある道具を流す） |
+| 流れの道具（`tools/flow-gate`・担当のワークフロー）を変える | flow.md: ゲートを変える・公開する・担当の権限・担当が書けないファイル／.claude/skills/task-work/SKILL.md: 検証担当（1） |
 | 作業ツリーを作る・依存を入れる | docs/architecture/setup.md: 作業ツリーどうしで node_modules を共有しない |
 | 周期レビューをする | .claude/commands/review.md（全文） |
 
 ## 作業の進め方（必読）
 
+- **外部の API への要求は、回数を最小にする**: API の実行には資源と費用がかかる。仕組み・道具・スクリプトの全部で、1回の要求にまとめられる
+  読み書きはまとめ、確かめのための読み直しや打ち直しの繰り返しをしない。値を取っておいて使い回すのは、使う間に変わらないことが確定している
+  もの（失効の時刻が決まった鍵等）だけで、変わりうるものは使うたびに読む。
 - **数分以上かかる処理は、始める前に計画と見込みを伝える**: 何を・どの順で・どれくらいかかるか（未計測ならそう言う）を
   伝え、裏で流して区切りごとに知らせる。実行中の重い処理を中断・やり直すかは、独断せずユーザーに問う。これは開発機の
   対話のセッションの決まりで、Actions の担当は裏の道具を持たず、終わるまで前に出したまま待つ（flow.md「担当」の3）。
@@ -82,7 +85,7 @@ docs/conventions/ にある（.claude/rules/・.claude/skills/ のものはパ�
 - **コードの構造について言う前に、機械的に列挙する**: 「◯◯は2か所にある」「唯一の定義だ」「この形は
   他に無い」は思い出しで言わず、grepかASTで数えた結果を先に出す。所要時間も同じで、実測の無い数字は
   出さず「未計測」と言う。
-- **測る前に母集団の定義を書く**。
+- **測る前に母集団の定義を書く**（定義が無いと、問い直されるたびに数字が変わる）。
 - **列挙器そのものの穴を疑う**: 機械が見ていない形（関数を参照で渡す`asyncio.to_thread(f, ...)`・
   属性を文字列で指す`setattr(mod, "X", ...)`等）は0件として出る。0件だったときこそ、その形が拾えて
   いるかを既知の1件で検算する。独立した2通りで数えても、和は真値ではない。
@@ -94,12 +97,15 @@ docs/conventions/ にある（.claude/rules/・.claude/skills/ のものはパ�
 - **手で操作を組み立てる前に、既に仕組み化されているもので済まないかを見る**: 規模・churnは
   `scripts/review_checks.py metrics`、本番DBへの調査は`backend/scripts/run_probe.py`、docsの整合は
   `scripts/review_checks.py docs`。
-- **同じ操作を3回やったら仕組み化を検討する**。
+- **同じ操作を3回やったら仕組み化を検討する**（手で組み立てる長いコマンドは、繰り返すたびに崩れる）。
+- **合意した設計に無い特別扱いを足す前に止まる**: 直しの途中で、合意した設計に無い場合分け・対象の広げ・例外を足したくなったら、足す前に止まり、既にある仕組み（出来事・決め直し等）の使い方で済まないかを考える。済まなければ、足す前にユーザーに見せる。
+- **書く前に、その判断の持ち主を探す**: 処理・判定・表を足す前に、同じ判断を既に持つ関数・定数・表を grep で探し、あればそれを使うか1か所へ寄せる。横展開や直しで同じ形を写さない（同じ理由で変わるものは1か所に置く。docs/architecture/design-principles.md の構造仕様17「源泉に従わせるかは「同じ事実か」で決める」）。
 - **道具を作ったら、どこから呼ぶかまで同じ作業で決める。**
 - **その作業に必要な最小の情報量で動く**: 確かめたいことに要る対象（1ファイル・1関数・1件）だけを回し、
   手持ちで一番大きいコマンド（フルスイート・全タイル・全期間）を反射的に叩かない。
 - **既に手元にある情報を取り直さない**: 失敗したファイル名・件数・エラー内容は直前の実行結果にある。
-  回し直すのは「前回の実行時点から変えた結果」を取るときだけ。
+  回し直すのは「前回の実行時点から変えた結果」を取るときだけ。issue を読み直すときは、前に読んだ時刻より後のコメントだけを取る
+  （`--jq '.comments[] | select(.createdAt > "<前に読んだ時刻>")'`）。大きなファイルは丸ごと読まず、`grep -n` で場所を見てから範囲を読む。
 - **長いスクリプト・ヒアドキュメントはWriteツールでファイルに書いてから実行する**（Windowsの開発機では長いBashのコマンドが黙って切れる。上限と症状は
   [setup.md](docs/architecture/setup.md)「Windowsの開発機でのBashの長さの上限」）。
 
@@ -108,13 +114,13 @@ docs/conventions/ にある（.claude/rules/・.claude/skills/ のものはパ�
 並行セッション（複数のClaude Codeセッション・エージェント）が同じ作業ツリーを同時に触りうる。
 
 - **`git add -A` を使わない**: 変えたパスを明示してステージし、コミットの直前に `git diff --cached --stat` を読む。
-  調べのための使い捨ての spec を `frontend/e2e/` へ置かない。並行セッションがある間は、本体の
-  作業ツリーでコミットしない。コミットは作業ブランチの専用の作業ツリーで行う。
-- **読むだけの調べを Agent に委ねるときは Explore を使う**。
+  調べのための使い捨ての spec を `frontend/e2e/` へ置かない（CI の対象になる）。並行セッションがある間は、本体の
+  作業ツリーでコミットしない（共有のインデックスに他のセッションのステージが混ざる）。コミットは作業ブランチの専用の作業ツリーで行う。
+- **読むだけの調べを Agent に委ねるときは Explore を使う**（全部の道具を持つ Agent は、読むだけと頼んでも書き込み・削除をすることがある）。
 - **自分が変更したのではないファイルの変更を、絶対に自動で戻さない**（`git checkout --`/`git reset`/`git stash`/`git clean`等）。
-  並行セッションの作業中を疑い、対応が要るなら内容を報告してユーザーに確認してから行う。
+  並行セッションの作業中を疑い、対応が要るなら内容を報告してユーザーに確認してから行う（破棄した未ステージの変更は多くの場合復元できない）。
 - **最初から変更を目的としていない作業（調査・分析・レビュー系コマンド等）は、本体ではなく専用の`git worktree`で行う。**
-- **バックグラウンドAgentへ実装タスクを委任するときは、`isolation: "worktree"`を必ず指定する**。
+- **バックグラウンドAgentへ実装タスクを委任するときは、`isolation: "worktree"`を必ず指定する**（同じ作業ツリーで並行して書くと、互いの変更を壊す）。
   タスクの担当は GitHub Actions のワークフローで起きる（flow.md「担当」）。開発機で裏の作業役に任せるときの渡し方は .claude/skills/dev-session/SKILL.md「開発機の対話のセッション」。
 - **新しいタスクは、今あるタスクのどれにも属さず、今の作業の中では片付かない作業にだけ起こす**——今の流れで片付く直し・派生・
   気づきは元のタスクの issue へ書く。**進め方の指示**（待つ・続ける・順番を変える）は issue にもコミットにもしない。

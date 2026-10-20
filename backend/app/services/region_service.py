@@ -1,24 +1,56 @@
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from dataclasses import dataclass
 from functools import partial
 
-from app.domain.axis_inspector import AxisInspectorResult, axis_inspector_breakdown
+from app.domain.axis_definitions import copy_axis_definitions, published_axis_order
+from app.domain.axis_inspector import AxisInspectorResult, InspectorValues, inspector_values
+from app.domain.dynamic_way_values import MissingConditions, WayValueQuery
+from app.domain.geo import LatLon
+from app.domain.landcover import LandcoverPercentages
 from app.domain.route_preference import RoutePreference
-from app.domain.region import BoundingBox, tile_bounds_lonlat
+from app.domain.region import (
+    EDGE_UNIT_MIN_ZOOM,
+    BoundingBox,
+    edge_unit_tile,
+    tile_bounds_lonlat,
+    way_unit_tile,
+)
 from app.domain.registry import TileKind
-from app.infrastructure.cache_identity import is_known_tile_version
 from app.infrastructure.database import DB_UNAVAILABLE_ERRORS
 from app.infrastructure.debug_log import log_external_call, log_throttled_warning, mark_failed
 from app.infrastructure.point_tile_layers import PointTileLayer
-from app.infrastructure.road_graph_repository import ROAD_SURFACE_TILE_SHAPE, RoadGraphRepository
+from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, encode_empty_tile
 from app.infrastructure.media_types import MVT_CONTENT_TYPE
 from app.infrastructure.region_tile_cache import TileResponse, serve_region_tile
-from app.services.dedicated_way_values import DirectionalMaterialService
-from app.services.tile_version_service import current_tile_versions, prune_other_tile_generations, served_tile_version
+from app.services.dedicated_way_values import FeatureMaterialSource, MaterialServiceBuilder, tile_axis_values
+from app.services.tile_version_service import (
+    TILE_SHAPES,
+    current_tile_versions,
+    prune_other_tile_generations,
+    served_tile_version,
+)
 
 # z・x・yとその範囲（経度・緯度）から、PostGISが生成したタイル1枚を返す読み出し。
 _TileReader = Callable[[int, int, int, BoundingBox], Awaitable[bytes | None]]
+
+
+@dataclass(frozen=True)
+class InspectedFeature:
+    """区間インスペクタが評価するフィーチャー1つ。"""
+
+    key: str
+    #: そのフィーチャーを焼くタイル`(z, x, y)`。地図の配信がこのタイルで塗る値を、そのまま評価に使う。
+    tile: tuple[int, int, int]
+    landcover: LandcoverPercentages | None
+
+
+@dataclass(frozen=True)
+class InspectedRoad:
+    highway: str
+    tags: dict[str, str]
+    segment: InspectedFeature
+    way: InspectedFeature
 
 
 class RegionService:
@@ -51,33 +83,11 @@ class RegionService:
         （`services/tile_version_service.py`）。"""
         return await prune_other_tile_generations(self._repository)
 
-    async def _tile_from_repository(
-        self, read_tile: _TileReader, z: int, x: int, y: int, fields: dict
-    ) -> bytes | None:
-        """PostGIS側（ST_AsMVT）でタイル1枚分のMVTを丸ごと生成する。
-
-        `read_tile`は「カバレッジ外はNone・カバレッジ内0件は空バイト列」という契約を
-        満たすこと。DB障害もNoneへ倒し、PostGIS停止時も地図表示全体を落とさない。
-        """
-        try:
-            # カバレッジ判定（取込の宣言した範囲か）はMVT生成と同じ1クエリへ畳み込まれて
-            # いる（DBの往復1回分を節約。repository側のdocstring参照）。
-            tile_bytes = await read_tile(z, x, y, tile_bounds_lonlat(z, x, y))
-        except DB_UNAVAILABLE_ERRORS as exc:
-            mark_failed(fields, exc)
-            return None
-        if tile_bytes is None:
-            fields["postgis"] = "uncovered"
-            return None
-        fields["postgis"] = "hit"
-        return tile_bytes
-
     async def _get_tile(
         self,
         *,
         read_tile: _TileReader,
         kind: TileKind,
-        shape: str,
         empty_tile: bytes,
         external_call_name: str,
         label: str,
@@ -86,20 +96,32 @@ class RegionService:
         y: int,
     ) -> TileResponse:
         async def fetch_tile(fields: dict) -> bytes | None:
-            postgis_tile = await self._tile_from_repository(read_tile, z, x, y, fields)
-            if postgis_tile is None and fields.get("result") != "error":
-                # 失敗のときに出さないのは、「取込範囲外」という表記がDB障害には当てはまらず、
-                # かつその失敗は記録の口が抜けるときにWARNINGで出すため。
+            """PostGIS側（ST_AsMVT）でタイル1枚分のMVTを丸ごと生成する。
+
+            `read_tile`は「カバレッジ外はNone・カバレッジ内0件は空バイト列」という契約を
+            満たすこと。DB障害もNoneへ倒し、PostGIS停止時も地図表示全体を落とさない。
+            """
+            try:
+                # カバレッジ判定（取込の宣言した範囲か）はMVT生成と同じ1クエリへ畳み込まれて
+                # いる（DBの往復1回分を節約。repository側のdocstring参照）。
+                tile_bytes = await read_tile(z, x, y, tile_bounds_lonlat(z, x, y))
+            except DB_UNAVAILABLE_ERRORS as exc:
+                # 「取込範囲外」のWARNINGは出さない——その表記はDB障害に当てはまらず、失敗は記録の口が抜けるときに出る。
+                mark_failed(fields, exc)
+                return None
+            if tile_bytes is None:
+                fields["postgis"] = "uncovered"
                 log_throttled_warning(
                     f"{external_call_name}-uncovered", "[%s] %sタイルがPostGIS取込範囲外 z=%d x=%d y=%d",
                     external_call_name, label, z, x, y,
                 )
-            return postgis_tile
+                return None
+            fields["postgis"] = "hit"
+            return tile_bytes
 
-        version = await served_tile_version(self._repository, shape)
         return await serve_region_tile(
             kind=kind,
-            generation=version,
+            generation=await served_tile_version(self._repository, TILE_SHAPES[kind]),
             z=z,
             x=x,
             y=y,
@@ -108,15 +130,12 @@ class RegionService:
             content_type=MVT_CONTENT_TYPE,
             external_call_name=external_call_name,
             fetch_tile=fetch_tile,
-            # 世代を読めていない間はディスクへ残さない（`serve_region_tile`のdocstring参照）。
-            persist=is_known_tile_version(version),
         )
 
     async def get_road_surface_tile(self, z: int, x: int, y: int) -> TileResponse:
         return await self._get_tile(
             read_tile=self._repository.get_road_surface_tile_mvt,
             kind="road_surface",
-            shape=ROAD_SURFACE_TILE_SHAPE,
             empty_tile=encode_empty_tile(ROAD_SURFACE_LAYER_NAME),
             external_call_name="region:road-surface-tile",
             label="路面",
@@ -130,7 +149,6 @@ class RegionService:
         return await self._get_tile(
             read_tile=partial(self._repository.get_tile_mvt, layer.sql, layer.source_layer),
             kind=layer.name,
-            shape=layer.shape,
             empty_tile=encode_empty_tile(layer.source_layer),
             external_call_name=f"region:{layer.name}-tile",
             label=layer.name,
@@ -139,29 +157,16 @@ class RegionService:
             y=y,
         )
 
-    async def get_axis_inspector(
-        self,
-        osm_way_id: int,
-        edge_id: str | None,
-        dynamic_materials: dict[str, float] | None,
-        preference: RoutePreference | None,
-    ) -> AxisInspectorResult | None:
-        """区間インスペクタ。クリックされた道路について、一次属性→二次軸スコア→三次合成
-        コスト（取得可能な軸だけの参考値）を返す。
+    async def inspected_road(
+        self, osm_way_id: int, feature_key: str, z: int, x: int, y: int, point: LatLon
+    ) -> InspectedRoad | None:
+        """区間インスペクタが評価する、押した道の区間と道1本のフィーチャーと、道の一次属性。
 
-        引き直しの鍵はタイルへ焼き込み済みのosm_way_idで、クリック地点の緯度経度からの
-        空間マッチは使わない——交差点付近など複数の道路が近接する場所で、実際にクリック
-        されたフィーチャーとは別の道路を拾う。
+        引き直しの鍵はタイルへ焼き込み済みのosm_way_idで、クリック地点の緯度経度から道を空間マッチで選ばない——交差点
+        付近など複数の道路が近接する場所で、実際にクリックされたフィーチャーとは別の道路を拾う。地点は、道1本で塗る倍率で
+        押したときに、その道の区間を選ぶのにだけ使う。
 
-        `dynamic_materials`は進行方向に依存する材料（勾配・風）の値。**1本の道は往復2方向で
-        値が違う**ため、方向が決まらないと算出できない。地図が指定している走行方位・時刻・
-        想定速度から呼び出し側が引いて渡す（渡さなければその軸は「データなし」のまま）。
-
-        `preference`は合成に使う重み。利用者がいま設定している重みを渡す——ルート生成と同じ重みで見せないと、
-        重みを0にした軸まで効いて見える。省略すると既定の重み。
-
-        該当way不在・DB例外はいずれもNoneへ倒す（タイル配信と同じ
-        グレースフルデグレード方針）。
+        該当way不在・DB例外はいずれもNoneへ倒す（タイル配信と同じグレースフルデグレード方針）。
         """
         with log_external_call("region:axis-inspector", osm_way_id=osm_way_id) as fields:
             try:
@@ -169,21 +174,27 @@ class RegionService:
                 if way_tags_result is None:
                     fields["lookup"] = "not_found"
                     return None
-                accident_years_covered = await self._repository.get_accident_years_covered()
-                materials = await self._repository.get_way_material_values(
-                    osm_way_id, accident_years_covered
-                )
-                # 地図が塗っている値と同じ単位で読む（区間が特定できるときは区間単位）。
-                landcover = await self._repository.get_feature_landcover(osm_way_id, edge_id)
+                if z >= EDGE_UNIT_MIN_ZOOM:
+                    segment_key, segment_tile = feature_key, (z, x, y)
+                else:
+                    nearest = await self._repository.get_nearest_way_segment(
+                        osm_way_id, point.latitude, point.longitude)
+                    if nearest is None:
+                        fields["lookup"] = "not_found"
+                        return None
+                    segment_key, latitude, longitude = nearest
+                    segment_tile = edge_unit_tile(longitude, latitude)
+                way_key = str(osm_way_id)
+                segment = InspectedFeature(segment_key, segment_tile,
+                                           await self._repository.get_feature_landcover(osm_way_id, segment_key))
+                way = InspectedFeature(way_key, way_unit_tile(z, x, y),
+                                       await self._repository.get_feature_landcover(osm_way_id, way_key))
             except DB_UNAVAILABLE_ERRORS as exc:
                 mark_failed(fields, exc)
                 return None
             fields["lookup"] = "ok"
             highway, tags = way_tags_result
-            combined = {**(materials or {}), **(dynamic_materials or {})}
-            return axis_inspector_breakdown(
-                highway, tags, combined, landcover, preference or RoutePreference(),
-            )
+            return InspectedRoad(highway, tags, segment, way)
 
     async def get_accident_years(self) -> list[int]:
         """事故データの収録年。地図の説明文へ配る。
@@ -203,8 +214,8 @@ class RegionService:
             return years
 
     async def get_ingested_area(self) -> BoundingBox | None:
-        """サービスの対象範囲（取り込んだ道路の範囲）。風の格子と気象庁タイルのプリウォームが、ここから
-        範囲を引く——範囲を持つのは取込の宣言だけで、取込範囲を広げれば風とタイルも同じ範囲へ広がる。
+        """サービスの対象範囲（取り込んだ道路の範囲）。気象庁タイルのプリウォームが、ここから
+        範囲を引く——範囲を持つのは取込の宣言だけで、取込範囲を広げればタイルも同じ範囲へ広がる。
 
         道路をまだ取り込んでいない・DB例外のときはNone（どちらもWARNING）。
         """
@@ -221,25 +232,50 @@ class RegionService:
 
 
 class AxisInspectorService:
-    """区間インスペクタの段取り。進行方向に依存する材料を地図と同じ経路で引き、道の内訳へ合わせる。"""
+    """区間インスペクタ。押した区間と、その区間を含む道1本の公開軸の得点を、地図の配信がそれぞれを塗るタイルの値
+    （`tile_axis_values`）から出す——地図の色と内訳の数字が、同じ評価の同じ値になる。"""
 
-    def __init__(self, region_service: RegionService, directional_materials: DirectionalMaterialService):
+    def __init__(
+        self,
+        region_service: RegionService,
+        feature_materials: FeatureMaterialSource,
+        build_service: MaterialServiceBuilder,
+    ):
         self._region_service = region_service
-        self._directional_materials = directional_materials
+        self._feature_materials = feature_materials
+        self._build_service = build_service
 
     async def inspect(
         self,
         osm_way_id: int,
-        feature_key: str | None,
+        feature_key: str,
         z: int,
         x: int,
         y: int,
-        at: datetime | None,
-        bearing_deg: float,
-        speed_kmh: float | None,
+        point: LatLon,
+        query: WayValueQuery,
         preference: RoutePreference | None,
     ) -> AxisInspectorResult | None:
-        dynamic = await self._directional_materials.materials(
-            osm_way_id, feature_key, z, x, y, at, bearing_deg, speed_kmh
-        )
-        return await self._region_service.get_axis_inspector(osm_way_id, feature_key, dynamic, preference)
+        """`preference`は合成に使う重み。利用者がいま設定している重みを渡す——ルート生成と同じ重みで見せないと、
+        重みを0にした軸まで効いて見える。省略すると既定の重み。
+
+        `query`の条件が欠けて値の出ない軸は、評価できない軸になる（地図の配信なら欠けを断る）。
+        """
+        road = await self._region_service.inspected_road(osm_way_id, feature_key, z, x, y, point)
+        if road is None:
+            return None
+        definitions = copy_axis_definitions()
+        published = published_axis_order(definitions)
+        weights = preference or RoutePreference()
+
+        async def values(feature: InspectedFeature) -> InspectorValues:
+            painted = await tile_axis_values(
+                published, definitions, self._feature_materials, self._build_service, *feature.tile, query,
+                feature_key=feature.key, as_difficulty=True,
+            )
+            scores = {axis_id: None if isinstance(by_key, MissingConditions) else by_key.get(feature.key)
+                      for axis_id, by_key in painted.items()}
+            return inspector_values({axis_id: scores[axis_id] for axis_id in published}, feature.landcover, weights)
+
+        return AxisInspectorResult(
+            highway=road.highway, tags=road.tags, segment=await values(road.segment), way=await values(road.way))

@@ -1,0 +1,194 @@
+{
+  "tile_position": [
+    {
+      "scene": "東京駅",
+      "lon": 139.7671,
+      "lat": 35.6812,
+      "z": 14,
+      "x": 14552.956017778,
+      "y": 6451.660892583
+    },
+    {
+      "scene": "経度0度・赤道（タイルの境目ちょうど）",
+      "lon": 0.0,
+      "lat": 0.0,
+      "z": 1,
+      "x": 1.0,
+      "y": 1.0
+    },
+    {
+      "scene": "西の端",
+      "lon": -180.0,
+      "lat": 10.0,
+      "z": 3,
+      "x": 0.0,
+      "y": 3.776640897
+    },
+    {
+      "scene": "東の端",
+      "lon": 180.0,
+      "lat": -10.0,
+      "z": 3,
+      "x": 8.0,
+      "y": 4.223359103
+    },
+    {
+      "scene": "Web Mercatorの限界より北",
+      "lon": 100.0,
+      "lat": 89.9,
+      "z": 3,
+      "x": 6.222222222,
+      "y": 0.0
+    },
+    {
+      "scene": "Web Mercatorの限界より南",
+      "lon": -100.0,
+      "lat": -89.9,
+      "z": 3,
+      "x": 1.777777778,
+      "y": 8.0
+    }
+  ],
+  "tiles_covering_bbox": [
+    {
+      "scene": "東京駅の辺り（1枚）",
+      "bbox": {
+        "min_latitude": 35.6811,
+        "min_longitude": 139.767,
+        "max_latitude": 35.6813,
+        "max_longitude": 139.7672
+      },
+      "z": 14,
+      "x_range": [
+        14552,
+        14552
+      ],
+      "y_range": [
+        6451,
+        6451
+      ]
+    },
+    {
+      "scene": "東京の辺り（東西南北に複数枚）",
+      "bbox": {
+        "min_latitude": 35.5,
+        "min_longitude": 139.5,
+        "max_latitude": 35.8,
+        "max_longitude": 139.9
+      },
+      "z": 12,
+      "x_range": [
+        3635,
+        3639
+      ],
+      "y_range": [
+        1611,
+        1615
+      ]
+    },
+    {
+      "scene": "東端・南端がタイルの境目ちょうど",
+      "bbox": {
+        "min_latitude": 0.0,
+        "min_longitude": -90.0,
+        "max_latitude": 10.0,
+        "max_longitude": 0.0
+      },
+      "z": 1,
+      "x_range": [
+        0,
+        1
+      ],
+      "y_range": [
+        0,
+        1
+      ]
+    },
+    {
+      "scene": "東端と北端が世界の端（端のタイルへ寄せる）",
+      "bbox": {
+        "min_latitude": 89.0,
+        "min_longitude": 179.0,
+        "max_latitude": 89.9,
+        "max_longitude": 180.0
+      },
+      "z": 3,
+      "x_range": [
+        7,
+        7
+      ],
+      "y_range": [
+        0,
+        0
+      ]
+    },
+    {
+      "scene": "西端と南端が世界の端（端のタイルへ寄せる）",
+      "bbox": {
+        "min_latitude": -89.9,
+        "min_longitude": -180.0,
+        "max_latitude": -89.0,
+        "max_longitude": -179.0
+      },
+      "z": 3,
+      "x_range": [
+        0,
+        0
+      ],
+      "y_range": [
+        7,
+        7
+      ]
+    }
+  ],
+  "tile_bounds_lonlat": [
+    {
+      "scene": "世界全体",
+      "z": 0,
+      "x": 0,
+      "y": 0,
+      "bounds": {
+        "min_latitude": -85.05112878,
+        "min_longitude": -180.0,
+        "max_latitude": 85.05112878,
+        "max_longitude": 180.0
+      }
+    },
+    {
+      "scene": "東京駅",
+      "z": 14,
+      "x": 14552,
+      "y": 6451,
+      "bounds": {
+        "min_latitude": 35.675147436,
+        "min_longitude": 139.74609375,
+        "max_latitude": 35.692994632,
+        "max_longitude": 139.768066406
+      }
+    },
+    {
+      "scene": "南東の端",
+      "z": 3,
+      "x": 7,
+      "y": 7,
+      "bounds": {
+        "min_latitude": -85.05112878,
+        "min_longitude": 135.0,
+        "max_latitude": -79.171334641,
+        "max_longitude": 180.0
+      }
+    },
+    {
+      "scene": "北東",
+      "z": 1,
+      "x": 1,
+      "y": 0,
+      "bounds": {
+        "min_latitude": 0.0,
+        "min_longitude": 0.0,
+        "max_latitude": 85.05112878,
+        "max_longitude": 180.0
+      }
+    }
+  ]
+}

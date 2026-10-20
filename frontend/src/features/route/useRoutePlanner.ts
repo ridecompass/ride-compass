@@ -2,19 +2,19 @@
 
 import { useCallback, useMemo } from "react";
 
-import { useRouteGeneration, type RouteOutcomeKind } from "@/features/route/useRouteGeneration";
+import {
+  useRouteGeneration,
+  type RouteGenerationInputs,
+  type RouteOutcomeKind,
+} from "@/features/route/useRouteGeneration";
 import { useRouteResults } from "@/features/route/useRouteResults";
 import { useSpliceSession } from "@/features/route/useSpliceSession";
-import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
-import type { Coordinates } from "@/types/route";
 
-interface RoutePlannerInputs {
-  conditions: GenerationConditionsState;
-  origin: Coordinates;
-  /** 出発地が実際の位置か（現在地を取れたか、地図で置いたか）。 */
-  originKnown: boolean;
-  departure: { at: Date; pinned: boolean };
-  assumedSpeedKmh: number;
+/** 生成の入力のうち、ページから渡すもの（候補の有無と生成の結果の受け取り先は結果の側がつなぐ）。 */
+interface RoutePlannerInputs extends Pick<
+  RouteGenerationInputs,
+  "conditions" | "origin" | "originKnown" | "departure" | "assumedSpeedKmh"
+> {
   /** 「ルート結果」でしか中身が見えない結果が出た（生成の結果・入力の誤り・乗り換えで作った経路）。押した操作1回に1度。 */
   onOutcome: (outcome: RouteOutcomeKind) => void;
 }
@@ -35,13 +35,12 @@ export function useRoutePlanner({ conditions, onOutcome, ...generationInputs }: 
     onGenerated: replaceWithGenerated,
     onOutcome,
   });
-  const { clear: clearGeneration, clearNotice } = generation;
+  const { clear: clearGeneration } = generation;
 
   const splice = useSpliceSession({
     routes: results.routes,
     generatedInput: generation.generatedInput,
     hasSelectedRoute: results.selectedCandidate !== null,
-    onApplyStart: clearNotice,
     onApplied: (applied) => {
       if ("created" in applied) addEdit(applied.created, applied.originId);
       else selectReused(applied.existingRouteId);

@@ -20,6 +20,8 @@ paths:
 | ページ（`app/**/page.tsx`） | 部品と同じ | 部品と同じ。ある機能の変化が別の機能の振る舞いを変える受け渡しを見る（[page-composition.md](../../docs/modules/frontend/page-composition.md)） |
 | 純関数（`lib/`等） | 引数 | 戻り値 |
 
+部品・フックごとに単体テストを書くかは、[testing.md](testing.md)「単体で確かめるかを、コードの種類で先に決める」の「画面の部品・フック」の行が決める。
+
 **画面の操作は、利用者の1つの流れを1本のテストにしてよい**（開く→選ぶ→送る、のような流れ。途中で何度
 確かめてもよい）。backendは1つのテストで1つの振る舞いを確かめる。
 
@@ -76,7 +78,7 @@ vi.mock("@/lib/tileBaseUrl", () => ({ tileBaseUrl: () => "" }));
 
 漏れは`vitest.setup.ts`が実行時に見る（テストファイルの終わりに`process.env`が開始時と違えば落ちる。`vi.stubEnv`のように
 復元されるものは通る）。自分のテスト対象だけが読む環境変数
-（`app/api/version/route.ts: RENDER_GIT_COMMIT`・`lib/adminBasicAuth.ts`の資格情報等）は対象外で、`vi.stubEnv`で立てて公開の入口を呼ぶ
+（`app/api/version/route.ts: GIT_COMMIT`・`lib/adminBasicAuth.ts`の資格情報等）は対象外で、`vi.stubEnv`で立てて公開の入口を呼ぶ
 （使う側のテストは読み取り口のモジュールをモックして、その値を読まない）。
 
 ## パターン9: 期待値の出どころを選ぶ（書き写さない・素のテキストを引く・軸を取り違えない）

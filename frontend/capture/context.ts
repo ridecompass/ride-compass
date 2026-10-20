@@ -16,7 +16,7 @@ interface OpenOptions {
   point?: { latitude: number; longitude: number };
   /** 開いたあとに寄せる地図の倍率。 */
   zoom?: number;
-  /** ON にするレイヤーの id（mapDisplay.layers）。渡さないレイヤーは既定の表示のまま。 */
+  /** ON にするレイヤーの id（mapDisplay.layers と、軸カタログが配る道の線の層）。渡さないレイヤーは既定の表示のまま。 */
   layers?: string[];
   /** 開く前に入れる保存状態（localStorage）。 */
   storedState?: Record<string, string>;
@@ -38,7 +38,7 @@ export interface CaptureContext {
   fixtures: typeof fixtures;
   /** e2e/states.ts の全状態の走査の段取り（installScanMocks・splice 等）。 */
   states: typeof states;
-  /** src/testing/catalogAxes.ts の軸の雛形（catalogEntry・rampEntry 等）。モックの軸カタログを組むときに fixtures.axisCatalogFixture へ渡す。 */
+  /** src/testing/catalogAxes.ts の軸の雛形（catalogEntry・dedicatedEntry 等）。モックの軸カタログを組むときに fixtures.axisCatalogFixture へ渡す。 */
   catalogAxes: typeof catalogAxes;
   /** アプリを開き、地図の全ソースの読み終わりまで待つ。初回の案内は閉じた状態で開く。 */
   open(options?: OpenOptions): Promise<void>;
@@ -47,8 +47,8 @@ export interface CaptureContext {
    * backend は撮影用の資格情報を通さない）。選べなければ、選べるタブを並べて止まる。
    */
   openAdmin(options?: OpenAdminOptions): Promise<Locator>;
-  /** 地図の色分け（レンズ）を名前で選び、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
-  chooseLens(label: string): Promise<void>;
+  /** 「評価で塗る」の評価軸（レンズ）を名前で選び（null は選んでいない状態へ戻す）、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
+  chooseLens(label: string | null): Promise<void>;
   /**
    * 「表示」の一覧の行の名前で凡例の内訳を開き、その内訳を返す。一覧が閉じていれば開く。`row` を渡せば、その行の説明も開く。
    * 開けなければ、選べる名前を並べて止まる。
@@ -82,7 +82,8 @@ export interface CaptureContext {
   /**
    * スマホのキーボードが出た画面に見立てて撮り、書いたファイルを返す。`field`（打つ欄）がキーボードの上に隠れず見えるだけ画面を
    * 上へずらし、下からキーボードの高さを板で覆う。ページには何も足さず、撮った画像を組み直す（ページへ板を重ねると、
-   * ヘッドレスの地図の描き直しが崩れて白く抜ける）。`height` はキーボードの高さ（CSS の px。既定は KEYBOARD_HEIGHT）。
+   * ヘッドレスの地図の描き直しが崩れて白く抜ける）。`height` はキーボードの高さ（CSS の px。既定は e2e/fixtures.ts: KEYBOARD_HEIGHT。
+   * 候補の帯や Safari の入力の補助の帯が出る欄で見せたいときは、脚本が足す）。
    */
   shotWithKeyboard(name: string, field: Locator, options?: { height?: number }): Promise<string>;
 }
@@ -103,14 +104,6 @@ export interface WorktreeBackend {
  * jma_tile_upstream_max_requests_per_second）ので、地図が一度に取るタイルの数だけ待ちが積もる。
  */
 const WORKTREE_BACKEND_TIMEOUT_MS = 5 * 60_000;
-
-/**
- * shotWithKeyboard のキーボードの既定の高さ（CSS の px）。Apple は高さを公開せず、アプリには実行時に測るよう求めるので、出どころは
- * 実測: iOS 27 のシミュレータで、6.1 型の iPhone（17e・18 Pro）の英字のキーボードが 301pt（変換の候補の帯なし。
- * https://github.com/Saffsanity/sill/pull/30 のコミット 9ee69c7）。候補の帯や Safari の入力の補助の帯が出る欄で見せたいときは、
- * 脚本が height で足す。
- */
-const KEYBOARD_HEIGHT = 301;
 
 /**
  * 撮った画像（PNG）の上を `shift` だけ切り落とし、下から `keyboard` の高さを板で覆った画像を、同じ寸法で組み直す。iOS の
@@ -167,8 +160,8 @@ function fileName(name: string): string {
 
 /** 選び損ねた直後に呼ぶので、選択肢が閉じていれば開く。 */
 async function lensLabels(page: Page): Promise<string[]> {
-  const group = page.getByRole("radiogroup", { name: "地図の色分け" });
-  if (!(await group.isVisible())) await page.getByRole("button", { name: /^地図の色分け: / }).click();
+  const group = page.getByRole("radiogroup", { name: "評価で塗る" });
+  if (!(await group.isVisible())) await page.getByRole("button", { name: /^評価で塗る: / }).click();
   const labels = await group.getByRole("radio").allInnerTexts();
   return labels.map((label) => label.replace(/\s+/g, " ").trim());
 }
@@ -195,8 +188,9 @@ export function captureContext(page: Page, { out, mocked }: { out: string; mocke
     catalogAxes,
     settle,
     async open({ point, zoom, layers = [], storedState, routes } = {}) {
-      const layerIds: string[] = mapDisplay.layers.map(({ id }) => id);
-      const unknown = layers.filter((id) => !layerIds.includes(id));
+      // 道の線の層は軸カタログが配るので、前もって照らせるのはモックの層だけ（本物の backend の層は開いた画面が決める）。
+      const layerIds: string[] = [...mapDisplay.layers, ...fixtures.E2E_ROAD_LAYERS].map(({ id }) => id);
+      const unknown = mocked ? layers.filter((id) => !layerIds.includes(id)) : [];
       if (unknown.length > 0) {
         throw new Error(`知らないレイヤー: ${unknown.join(" / ")}。選べるレイヤー: ${layerIds.join(" / ")}`);
       }
@@ -209,7 +203,7 @@ export function captureContext(page: Page, { out, mocked }: { out: string; mocke
       await page.addInitScript(states.installPageHelpers);
       await page.addInitScript(fixtures.installMapFinder);
       await fixtures.seedStoredState(page, {
-        "ridecompass:first-visit-intro-closed": "true",
+        ...fixtures.INTRO_CLOSED,
         ...(layers.length > 0
           ? { "ridecompass:layer-visibility": JSON.stringify(Object.fromEntries(layers.map((id) => [id, true]))) }
           : {}),
@@ -311,7 +305,7 @@ export function captureContext(page: Page, { out, mocked }: { out: string; mocke
       console.log(`[capture] ${file}`);
       return file;
     },
-    async shotWithKeyboard(name, field, { height: keyboard = KEYBOARD_HEIGHT } = {}) {
+    async shotWithKeyboard(name, field, { height: keyboard = fixtures.KEYBOARD_HEIGHT } = {}) {
       const viewport = page.viewportSize();
       const box = await field.boundingBox();
       if (!viewport || !box) throw new Error(`「${name}」: 打つ欄が画面に無い`);

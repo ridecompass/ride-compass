@@ -4,20 +4,14 @@ import httpx
 from cachetools import LRUCache
 
 from app.infrastructure import tile_cache
-from app.infrastructure.debug_log import log_external_call, mark_failed
+from app.infrastructure.debug_log import log_external_call
+from app.infrastructure.http_client import UPSTREAM_NOT_FOUND, UpstreamNotFound, fetch_upstream
+from app.infrastructure.media_types import PNG_CONTENT_TYPE
 
 UPSTREAM_HOST = "https://cyberjapandata.gsi.go.jp"
 
 #: 整備区域外の記憶に使う上限付きLRUの大きさ（キー=path）。
 NOT_FOUND_MAX_ENTRIES = 2000
-
-
-class GsiTileNotFound:
-    """指定パスのタイルが上流（GSI）に存在しないこと（404）を確認済みという
-    キャッシュ済みの事実を表すセンチネル。"""
-
-
-GSI_TILE_NOT_FOUND = GsiTileNotFound()
 
 
 class GsiTileClient:
@@ -40,9 +34,9 @@ class GsiTileClient:
         self._http_client = http_client
         self._not_found_paths = not_found_paths
 
-    async def get(self, path: str) -> tuple[bytes, str] | GsiTileNotFound | None:
+    async def get(self, path: str) -> tuple[bytes, str] | UpstreamNotFound | None:
         if path in self._not_found_paths:
-            return GSI_TILE_NOT_FOUND
+            return UPSTREAM_NOT_FOUND
         with log_external_call("gsi:relief-tile", path=path) as fields:
             # tile_cacheの読み書きは同期的なディスクI/O。basemap_client.pyと同じ理由
             # （多数のタイルリクエストが同時に来るとイベントループをブロックする）で
@@ -53,26 +47,15 @@ class GsiTileClient:
                 return cached
             fields["cache"] = "miss"
 
-            try:
-                response = await self._http_client.get(f"{UPSTREAM_HOST}/{path}")
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 404:
-                    # 整備区域外。珍しくない正常系のため、エラー扱い（WARNING・
-                    # /api/debug/statsのerror集計）にしない。
-                    fields["result"] = "ok"
-                    fields["status"] = 404
-                    self._not_found_paths[path] = None
-                    return GSI_TILE_NOT_FOUND
-                mark_failed(fields, exc)
+            response = await fetch_upstream(self._http_client, f"{UPSTREAM_HOST}/{path}", fields)
+            if response is None:
                 return None
-            except httpx.HTTPError as exc:
-                mark_failed(fields, exc)
-                return None
+            if isinstance(response, UpstreamNotFound):
+                # 404は整備区域外。
+                self._not_found_paths[path] = None
+                return response
 
-            fields["result"] = "ok"
-            fields["status"] = response.status_code
-            content_type = response.headers.get("content-type", "image/png")
+            content_type = response.headers.get("content-type", PNG_CONTENT_TYPE)
             content = response.content
             await asyncio.to_thread(tile_cache.set, path, content, content_type)
             return content, content_type

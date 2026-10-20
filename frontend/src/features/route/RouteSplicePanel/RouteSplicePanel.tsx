@@ -6,7 +6,13 @@ import ErrorText from "@/features/route/ErrorText/ErrorText";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { NewRouteIcon, RouteDiffIcon, UndoAllIcon, UndoIcon } from "@/components/ui/icons/icons";
 import type { CatalogAxis } from "@/lib/catalogAxis";
-import { formatDelta, formatMetric, metricDifferences, roundToDigits } from "@/features/route/routeEditDiff";
+import {
+  DELTA_TONE_CLASS,
+  deltaTone,
+  formatDelta,
+  formatMetric,
+  metricDifferences,
+} from "@/features/route/routeEditDiff";
 import { DIFFICULTY_DECIMALS } from "@/lib/mapDisplay/valueScale";
 import type { RouteCandidate } from "@/types/route";
 import { Button } from "@/components/ui/Button/Button";
@@ -97,6 +103,23 @@ export default function RouteSplicePanel({
   const metrics = metricDifferences(displayed, preview);
   const halves = [metrics.slice(0, 2), metrics.slice(2)];
 
+  // 差の棒の片側（楽になった軸は中央から左へ、きつくなった軸は右へ積む）。
+  function renderDeltaHalf(side: "decrease" | "increase") {
+    return (
+      <div className={cn("flex min-w-0 flex-[1_1_50%]", side === "decrease" ? "justify-end" : "justify-start")}>
+        {deltas
+          .filter((item) => (side === "decrease" ? item.delta < 0 : item.delta > 0))
+          .map((item) => (
+            <span
+              key={item.axisId}
+              className="block h-full"
+              style={{ width: `${(Math.abs(item.delta) / scale) * 50}%`, background: axisColors[item.axisId] }}
+            />
+          ))}
+      </div>
+    );
+  }
+
   return (
     <section
       className={cn(
@@ -105,7 +128,8 @@ export default function RouteSplicePanel({
       )}
       aria-labelledby="splice-heading"
     >
-      <div className="flex items-center gap-1">
+      {/* 狭いスマホの幅では、右の操作をまとめて次の行の右端へ折り返す。 */}
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5">
         <Button
           variant="ghost"
           size="bare"
@@ -193,7 +217,7 @@ export default function RouteSplicePanel({
                 key={index}
               >
                 {half.map((metric) => {
-                  const shown = metric.delta != null ? roundToDigits(metric.delta, metric.digits) : null;
+                  const tone = deltaTone(metric);
                   return (
                     <Fragment key={metric.label}>
                       <dt className={textVariants({ variant: "note" })}>{metric.label}</dt>
@@ -204,19 +228,11 @@ export default function RouteSplicePanel({
                       <dd className={cn(textVariants({ variant: "note" }), "m-0")} aria-hidden="true">
                         {metric.after !== null ? "→" : ""}
                       </dd>
-                      <dd
-                        className="m-0 font-bold data-[better=true]:text-[var(--color-accent)] data-[worse=true]:text-[var(--color-route-splice)]"
-                        data-worse={shown != null && shown > 0}
-                        data-better={shown != null && shown < 0}
-                      >
+                      <dd className={cn("m-0 font-bold", DELTA_TONE_CLASS)} {...tone}>
                         {metric.after !== null ? formatMetric(metric, metric.after) : ""}
                       </dd>
-                      <dd
-                        className="m-0 text-[length:var(--font-size-xs)] data-[better=true]:text-[var(--color-accent)] data-[worse=true]:text-[var(--color-route-splice)]"
-                        data-worse={shown != null && shown > 0}
-                        data-better={shown != null && shown < 0}
-                      >
-                        {metric.delta != null ? formatDelta(metric.delta, metric.digits) : ""}
+                      <dd className={cn("m-0 text-[length:var(--font-size-xs)]", DELTA_TONE_CLASS)} {...tone}>
+                        {metric.delta !== null ? formatDelta(metric.delta, metric.digits) : ""}
                       </dd>
                     </Fragment>
                   );
@@ -238,35 +254,9 @@ export default function RouteSplicePanel({
                   .map((item) => `${item.label} ${formatDelta(item.delta, DIFFICULTY_DECIMALS)}`)
                   .join("、")}
               >
-                <div className="flex min-w-0 flex-[1_1_50%] justify-end">
-                  {deltas
-                    .filter((item) => item.delta < 0)
-                    .map((item) => (
-                      <span
-                        key={item.axisId}
-                        className="block h-full"
-                        style={{
-                          width: `${(Math.abs(item.delta) / scale) * 50}%`,
-                          background: axisColors[item.axisId],
-                        }}
-                      />
-                    ))}
-                </div>
+                {renderDeltaHalf("decrease")}
                 <div className="-my-0.5 w-0.5 bg-[var(--foreground)]" />
-                <div className="flex min-w-0 flex-[1_1_50%] justify-start">
-                  {deltas
-                    .filter((item) => item.delta > 0)
-                    .map((item) => (
-                      <span
-                        key={item.axisId}
-                        className="block h-full"
-                        style={{
-                          width: `${(Math.abs(item.delta) / scale) * 50}%`,
-                          background: axisColors[item.axisId],
-                        }}
-                      />
-                    ))}
-                </div>
+                {renderDeltaHalf("increase")}
               </div>
               <span className="text-[length:var(--font-size-sm)] leading-none font-bold text-[var(--color-route-splice)]">
                 ＋

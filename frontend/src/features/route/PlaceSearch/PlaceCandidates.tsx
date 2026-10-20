@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/Badge/Badge";
 import { textVariants } from "@/components/ui/Text/Text";
 import ErrorText from "@/features/route/ErrorText/ErrorText";
-import { haversineKm } from "@/features/route/geoDistance";
+import { haversineKm } from "@/lib/geoDistance";
 import { cn } from "@/lib/cn";
 import { vocabulary } from "@/types/generated/vocabulary";
 import type { PlaceCandidate } from "@/types/route";
@@ -19,19 +19,20 @@ const LEVEL_LABELS = Object.fromEntries(vocabulary.placeMatchLevels.map((l) => [
   PlaceCandidate["level"],
   string
 >;
-// 区画（都道府県から字・丁目まで）で当たった住所は、その範囲の代表の位置にすぎず、行きたい所から離れうる。街区・地番
-// （`block`）は番地まで当たった点、施設（`point`）はその施設の位置。
-const PRECISE_LEVELS: ReadonlySet<PlaceCandidate["level"]> = new Set(["block", "point"]);
+// 住所の区画の段（backendの語彙の`area`）で当たった住所は、その範囲の代表の位置にすぎず、行きたい所から離れうる。
+const AREA_LEVELS: ReadonlySet<PlaceCandidate["level"]> = new Set(
+  vocabulary.placeMatchLevels.filter((l) => l.area).map((l) => l.key),
+);
 
 /** 置いた地点が、当たった範囲の代表の位置にすぎないか（ピンは行きたい所から離れうる）。 */
 export function isRepresentative(candidate: PlaceCandidate): boolean {
-  return !PRECISE_LEVELS.has(candidate.level);
+  return AREA_LEVELS.has(candidate.level);
 }
 
 interface PlaceCandidatesProps {
   lookup: ReturnType<typeof usePlaceLookup>;
   /** 候補1件の行。中身（名前・辺り・距離・札）は`label`で渡す。 */
-  renderCandidate: (candidate: PlaceCandidate, index: number, label: React.ReactNode) => React.ReactNode;
+  renderCandidate: (candidate: PlaceCandidate, label: React.ReactNode) => React.ReactNode;
 }
 
 /** 引いた候補の一覧。引いている間・引けない・当たらないときは、その文を出す。 */
@@ -55,11 +56,10 @@ export default function PlaceCandidates({ lookup, renderCandidate }: PlaceCandid
   }
   return (
     <ul aria-label="地点の候補" className="flex flex-col gap-0.5">
-      {candidates.map((candidate, index) => (
+      {candidates.map((candidate) => (
         <li key={`${candidate.name}:${candidate.latitude}:${candidate.longitude}`}>
           {renderCandidate(
             candidate,
-            index,
             <>
               <span className="min-w-0 flex-auto truncate">
                 {candidate.name}

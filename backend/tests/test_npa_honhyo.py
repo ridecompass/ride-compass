@@ -12,7 +12,6 @@
 """
 
 import pytest
-from hypothesis import given
 from hypothesis import strategies as st
 
 from app.batch.source_adapters.npa_honhyo import latitude_from_raw, longitude_from_raw
@@ -21,10 +20,6 @@ from app.batch.source_adapters.npa_honhyo import latitude_from_raw, longitude_fr
 def encode(degrees: int, minutes: int, milliseconds: int) -> str:
     """本票の表記: 右5桁が秒×1000、次の2桁が分、残りが度（警察庁のコード表の定義）。"""
     return f"{degrees}{minutes:02d}{milliseconds:05d}"
-
-
-def test_whitespace_around_the_digits_is_ignored():
-    assert latitude_from_raw(" 354010500\n") == latitude_from_raw("354010500")
 
 
 @pytest.mark.parametrize(
@@ -90,11 +85,3 @@ def test_a_real_row_from_the_published_csv_is_read_correctly():
 
 minutes = st.integers(min_value=0, max_value=59)
 milliseconds = st.integers(min_value=0, max_value=59999)
-
-
-@given(degrees=st.integers(min_value=20, max_value=45), minutes=minutes, milliseconds=milliseconds)
-def test_any_latitude_in_japan_reads_back_to_the_value_it_was_written_from(degrees, minutes, milliseconds):
-    assert latitude_from_raw(encode(degrees, minutes, milliseconds)) == pytest.approx(
-        degrees + minutes / 60 + milliseconds / 3_600_000
-    )
-

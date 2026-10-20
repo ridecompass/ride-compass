@@ -12,8 +12,8 @@ import { cn } from "@/lib/cn";
 const groupVariants = cva("inline-flex", {
   variants: {
     variant: {
-      /** 横に並ぶ切り替え（周回／目的地）。 */
-      segmented: "overflow-hidden rounded-full border border-[var(--color-border)]",
+      /** 横に並ぶ切り替え。置き場より広ければ、各項目の文字を折り返して置き場の幅に収める。 */
+      segmented: "max-w-full overflow-hidden rounded-full border border-[var(--color-border)]",
       /** 札を横へ流して選ぶ（レンズの軸）。 */
       chips: "w-full flex-wrap gap-1",
     },
@@ -21,16 +21,15 @@ const groupVariants = cva("inline-flex", {
   defaultVariants: { variant: "segmented" },
 });
 
-// 押す所は24px四方以上（`Button`と同じ）。
 const itemVariants = cva(
-  "inline-flex min-h-6 min-w-6 cursor-pointer items-center whitespace-nowrap border-0 transition-colors disabled:cursor-default disabled:opacity-50",
+  "inline-flex min-h-6 min-w-6 cursor-pointer items-center border-0 transition-colors disabled:cursor-default disabled:opacity-50",
   {
     variants: {
       variant: {
         segmented:
-          "bg-transparent px-3 py-1.5 text-[length:var(--font-size-xs)] text-[var(--foreground)] data-[state=on]:bg-[var(--color-accent)] data-[state=on]:text-white",
+          "justify-center bg-transparent px-3 py-1.5 text-center text-[length:var(--font-size-xs)] text-[var(--foreground)] data-[state=on]:bg-[var(--color-accent)] data-[state=on]:text-white",
         chips:
-          "gap-1 rounded-full border border-[var(--color-border)] bg-transparent px-2 py-0.5 text-inherit hover:bg-[var(--color-surface-hover)] data-[state=on]:border-[var(--color-accent)] data-[state=on]:bg-[var(--color-accent-soft)] data-[state=on]:font-semibold",
+          "gap-1 whitespace-nowrap rounded-full border border-[var(--color-border)] bg-transparent px-2 py-0.5 text-inherit hover:bg-[var(--color-surface-hover)] data-[state=on]:border-[var(--color-accent)] data-[state=on]:bg-[var(--color-accent-soft)] data-[state=on]:font-semibold",
       },
     },
     defaultVariants: { variant: "segmented" },
@@ -47,10 +46,21 @@ interface ToggleGroupProps extends VariantProps<typeof groupVariants> {
   className?: string;
   /** 使い方の文（`Button`の`usage`と同じ）。文を持たない選択肢を押したときも、これを出す。 */
   usage?: string;
+  /** 選んでいる項目をもう一度押すと外せる（`onValueChange`へ空文字を渡す）。無ければ外せない。 */
+  deselectable?: boolean;
   children: React.ReactNode;
 }
 
-export function ToggleGroup({ variant, value, onValueChange, className, usage, children, ...props }: ToggleGroupProps) {
+export function ToggleGroup({
+  variant,
+  value,
+  onValueChange,
+  className,
+  usage,
+  deselectable,
+  children,
+  ...props
+}: ToggleGroupProps) {
   const v = variant ?? "segmented";
   return (
     <VariantContext.Provider value={v}>
@@ -58,7 +68,7 @@ export function ToggleGroup({ variant, value, onValueChange, className, usage, c
         type="single"
         value={value}
         onValueChange={(next) => {
-          if (next === "") return;
+          if (next === "" && !deselectable) return;
           onValueChange(next);
         }}
         className={cn(groupVariants({ variant: v }), className)}

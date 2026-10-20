@@ -20,13 +20,12 @@ import logging
 import sys
 from pathlib import Path
 
-import httpx
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified  # noqa: E402
-from app.batch.source_adapters.osm_pbf import DATA_DIR, OsmWayRows  # noqa: E402
-from app.batch.source_profile import load_source_profile  # noqa: E402
+from app.batch.common import fetch_verified, fetched_all
+from app.batch.fetch_cli import run_profile_fetch_cli
+from app.batch.source_adapters.osm_pbf import DATA_DIR
+from app.batch.source_profile import SourceProfile, SourceSpec
 
 logger = logging.getLogger("ridecompass.fetch_osm_pbf")
 
@@ -34,7 +33,7 @@ logger = logging.getLogger("ridecompass.fetch_osm_pbf")
 #: Geofabrikの日本の抽出は`asia/japan/`の下に地方ごとに置かれている。
 PBF_URL = "https://download.geofabrik.de/asia/japan/{name}"
 
-_REQUEST_TIMEOUT = httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=30.0)
+_READ_TIMEOUT_SECONDS = 60.0
 
 
 def _readable(path: Path) -> bool:
@@ -61,27 +60,19 @@ def _readable(path: Path) -> bool:
     return False
 
 
-def _fetch(names: list[str]) -> int:
-    return sum(
-        not fetch_verified(PBF_URL.format(name=name), DATA_DIR / name, _readable,
-                           timeout=_REQUEST_TIMEOUT, logger=logger)
+def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
+    names = sorted({spec.rows.file for spec in specs})
+    return fetched_all(
+        fetch_verified(PBF_URL.format(name=name), DATA_DIR / name, _readable,
+                       read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
         for name in names
     )
 
 
 def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     parser = argparse.ArgumentParser(description="OSMの抽出ファイルを手元へ写す")
-    parser.add_argument("--profile", default=None, type=Path)
-    args = parser.parse_args()
-
-    profile = load_source_profile(args.profile)
     # wayのソースが読むファイル。頂点のソースは参照先のwayと同じファイルを読むので数えない。
-    names = sorted({spec.rows.file for spec in profile.sources if isinstance(spec.rows, OsmWayRows)})
-    if not names:
-        logger.info("プロファイルにOSMのwayのソースがありません")
-        return 0
-    return 1 if _fetch(names) else 0
+    return run_profile_fetch_cli(parser, "osm_pbf_way", _fetch_specs, logger=logger)
 
 
 if __name__ == "__main__":

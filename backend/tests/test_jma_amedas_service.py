@@ -25,6 +25,7 @@ import numpy as np
 import pytest
 import respx
 from PIL import Image
+from shapely.geometry import Point, shape
 
 from app.domain.jma_amedas import apparent_temperature_from_amedas
 from app.domain.rain import HOURS_SINCE_RAIN, RAIN_HISTORY_HOURS, RAIN_HISTORY_MAX_AGE, rain_window_material_id
@@ -35,6 +36,7 @@ from app.infrastructure.debug_log import get_stats
 from app.infrastructure.jma_amedas_client import new_latest_time_cache, new_station_table_cache
 from app.infrastructure.jma_tile_client import JmaTileClient, JmaTileSharedState
 from app.services.jma_amedas_service import JmaAmedasService, load_station_rain_materials, new_rain_materials_cache
+from app.services.nearest_point_areas import new_cells_cache
 from tests.fake_http import client_for
 
 POINT = Coordinates(latitude=35.68, longitude=139.76)
@@ -144,6 +146,7 @@ def _service(http_client: httpx.AsyncClient) -> JmaAmedasService:
         JmaTileClient(http_client, JmaTileSharedState()),
         station_table_cache=new_station_table_cache(),
         latest_time_cache=new_latest_time_cache(),
+        cells_cache=new_cells_cache(),
     )
 
 
@@ -193,6 +196,11 @@ async def test_get_nearest_observation_reads_from_redis_without_fetching():
     assert result.precipitation_10min_mm == 0.0
     # 日の出・日没はRedisには無く、クエリ地点に対してその場で計算される。
     assert result.twilight is not None
+    # 同じ観測所の観測が当たる範囲（東京が最寄りである範囲）は、地点と東京を含み、遠い観測所を含まない。
+    area = shape(result.valid_area.model_dump())
+    assert area.contains(Point(POINT.longitude, POINT.latitude))
+    assert area.contains(Point(139 + 45.6 / 60, 35 + 41.4 / 60))
+    assert not area.contains(Point(0.0, 0.0))
 
 
 async def test_observation_reads_and_writes_are_counted_in_the_stats():
@@ -282,12 +290,13 @@ def _latest_hour(now: datetime) -> datetime:
 
 
 class RainMaps:
-    """正時ごとの地図JSON。東京（44132）だけが雨量計を持ち、`rain_by_back`（何時間前の正時→mm）の雨を返す。"""
+    """正時ごとの地図JSON。東京（44132）だけが雨量計を持ち、`rain_by_back`（何時間前の正時→mm）の雨を返す。
+    `broken_by_back`（何時間前の正時→応答）の正時は、雨の代わりにその応答を返す（Noneは取れない）。"""
 
-    def __init__(self, latest_hour: datetime, rain_by_back: dict[int, float], failing_backs: set[int] = frozenset()):
+    def __init__(self, latest_hour: datetime, rain_by_back: dict[int, float], broken_by_back: dict[int, dict | None] = {}):
         self.latest_hour = latest_hour
         self.rain_by_back = rain_by_back
-        self.failing_backs = set(failing_backs)
+        self.broken_by_back = broken_by_back
         self.requested_hours: list[int] = []
 
     def observation_map(self, timestamp):
@@ -296,8 +305,8 @@ class RainMaps:
             return OBSERVATION_MAP
         back = int((self.latest_hour - at) / timedelta(hours=1))
         self.requested_hours.append(back)
-        if back in self.failing_backs:
-            return None
+        if back in self.broken_by_back:
+            return self.broken_by_back[back]
         rain = self.rain_by_back.get(back, 0.0)
         return {**OBSERVATION_MAP, "44132": {**OBSERVATION_MAP["44132"], "precipitation1h": [rain, 0]}}
 
@@ -337,10 +346,21 @@ async def test_rain_history_fetches_only_hours_it_does_not_have():
     assert materials.values[rain_window_material_id(1)][0] == 1.5
 
 
-async def test_an_hour_that_could_not_be_fetched_is_retried_and_leaves_its_windows_empty_meanwhile():
+@pytest.mark.parametrize(
+    "broken",
+    [
+        None,
+        OBSERVATION_MAP,
+        {**OBSERVATION_MAP, "44132": {**OBSERVATION_MAP["44132"], "precipitation1h": [None, 1]}},
+    ],
+    ids=["not fetched", "no rain gauge reports", "every rain gauge is missing"],
+)
+async def test_an_hour_that_could_not_be_fetched_is_retried_and_leaves_its_windows_empty_meanwhile(broken):
+    """取れても1時間雨量の値が1つも無い正時を取れたとして残すと、二度と取り直さず、その正時を含む窓が全国で
+    値を持たないまま、窓から外れるまで戻らない。"""
     now = datetime.now(JST)
     latest_hour = _latest_hour(now)
-    failing = RainMaps(latest_hour, rain_by_back={}, failing_backs={5})
+    failing = RainMaps(latest_hour, rain_by_back={}, broken_by_back={5: broken})
     await _rain_service(failing).refresh_all_stations()
     materials = await load_station_rain_materials(now, new_rain_materials_cache())
 

@@ -5,21 +5,29 @@
 でき、取込の側が変わってもテストは気づかない。
 
 差し替えるのはアダプタ（外部の形を開いて1件ずつ返す部分）だけで、テストが渡した1件ずつをそのまま返す。
-runの記録・パーティション・入れ替えは本物を通す。外部の形の読み方は各アダプタのテスト（例: `test_gsi_dem_tile.py`）が見る。
+runの記録・パーティション・入れ替えは本物を通す。外部の形の読み方は各アダプタのテスト（例: `test_npa_honhyo.py`）が見る。
 
 入れ直すと、そのソースの行は丸ごと入れ替わり、新しいrunになる（本番の取り直しと同じ）。行を変えたいテストは、
 変えた後の全行を渡して入れ直す。失敗したrunは、途中で例外を投げる`records`を渡して作る。
 """
 
+import atexit
+import io
+import os
+import tempfile
+import uuid
 from collections.abc import AsyncIterator, Callable, Iterable, Sequence
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 import asyncpg
+import numpy as np
 import shapely
+from PIL import Image
 from shapely.geometry import LineString, Point, Polygon
 
-from app.batch.ingest import ADAPTERS, RegisteredAdapter, SourceRecord, ingest_source
+from app.batch.ingest import ADAPTERS, AdapterInputs, RegisteredAdapter, SourceRecord, ingest_source
 from app.batch.source_adapters.gsi_dem_tile import NODATA, SCALE, pack_elevations
 from app.batch.source_adapters.raster_wkb import tile_bbox_wkb, tile_raster_wkb
 from app.batch.source_adapters.osm_pbf import way_payload
@@ -31,6 +39,19 @@ from tests.conftest import raw_connection
 
 #: テストが渡した行を返すアダプタの名前。取込の間だけ`ADAPTERS`に置く。
 _ADAPTER = "given_records"
+
+#: 取り直したファイルの置き場。プロセスごとに1つで、プロセスが終わると消す。
+_FETCHED = Path(tempfile.gettempdir()) / f"source_ingest_{os.getpid()}"
+atexit.register(_FETCHED.unlink, missing_ok=True)
+
+
+def fetched_anew(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
+    """取込のたびに配信元から取り直した、前と中身の違うファイルを読む入力（アダプタの`inputs`）。
+
+    指紋が毎回変わるので、取込は入力が前回と同じとは読まず、毎回行を入れ替えて新しいrunにする。
+    """
+    _FETCHED.write_text(uuid.uuid4().hex)
+    return AdapterInputs(files=(_FETCHED,))
 
 
 def way_record(way_id: int, points: Sequence[tuple[float, float]], node_ids: Sequence[int],
@@ -124,6 +145,18 @@ def tile_record(key: str, zoom: int, x: int, y: int, rast: bytes,
     return SourceRecord(natural_key=key, geom_wkb=tile_bbox_wkb(zoom, x, y), attrs=attrs, rast=rast)
 
 
+def gsi_dem_png(meters: Sequence[Sequence[float | None]]) -> bytes:
+    """標高（m。Noneは欠測）の格子を、配信元のPNG形式の1枚にする。配信元の仕様
+    （https://maps.gsi.go.jp/development/demtile.html）: x = 2^16·R + 2^8·G + B、x < 2^23 なら x·0.01m、
+    x = 2^23 は欠測（(R, G, B) = (128, 0, 0)）、x > 2^23 なら (x − 2^24)·0.01m。"""
+    x = np.array([[1 << 23 if v is None else round(v * 100) % (1 << 24) for v in row] for row in meters],
+                 dtype=np.int64)
+    rgb = np.stack([(x >> 16) & 0xFF, (x >> 8) & 0xFF, x & 0xFF], axis=-1).astype(np.uint8)
+    buffer = io.BytesIO()
+    Image.fromarray(rgb, mode="RGB").save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 #: 標高のタイル1枚の1辺の画素数。読み手はタイルの`attrs`の幅で画素の番地を出すので、配信元の幅に揃えなくてよい。
 _DEM_TILE_PIXELS = 256
 
@@ -139,10 +172,8 @@ def dem_tile_records(product: str, zoom: int, bbox: BoundingBox,
         centers = [tile_bounds_lonlat(zoom + 8, x * pixel + i, y * pixel + i) for i in range(pixel)]
         lons = [(b.min_longitude + b.max_longitude) / 2 for b in centers]
         lats = [(b.min_latitude + b.max_latitude) / 2 for b in centers]
-        text = "\n".join(
-            ",".join("e" if (v := elevation(lon, lat)) is None else f"{v:.2f}" for lon in lons)
-            for lat in lats) + "\n"
-        pixels, missing = pack_elevations(text)
+        pixels, missing = pack_elevations(gsi_dem_png(
+            [[elevation(lon, lat) for lon in lons] for lat in lats]))
         records.append(SourceRecord(
             natural_key=f"{product}/{zoom}/{x}/{y}", geom_wkb=tile_bbox_wkb(zoom, x, y),
             attrs={"product": product, "z": zoom, "x": x, "y": y, "width": pixel, "scale": SCALE, "missing": missing},
@@ -175,7 +206,7 @@ async def ingest_records(source: str, records: Iterable[SourceRecord], *,
     （(min_lat, min_lon, max_lat, max_lon)）で、省けば本物の宣言の範囲。`rows`はそのソースの絞り込みの宣言
     （例: 事故の年`HonhyoRows`）で、省けば本物の宣言。
     """
-    async def read(spec: SourceSpec, profile: SourceProfile,
+    async def read(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                    origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
         for record in records:
             yield record
@@ -183,7 +214,7 @@ async def ingest_records(source: str, records: Iterable[SourceRecord], *,
     if conn is None:
         async with raw_connection() as connection:
             return await ingest_records(source, records, conn=connection, bbox=bbox, rows=rows)
-    ADAPTERS[_ADAPTER] = RegisteredAdapter(read=read, rows=NoFields, grid=NoFields)
+    ADAPTERS[_ADAPTER] = RegisteredAdapter(read=read, rows=NoFields, grid=NoFields, inputs=fetched_anew)
     try:
         return await ingest_source(conn, _profile(source, bbox, rows), source)
     finally:

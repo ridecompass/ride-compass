@@ -9,13 +9,14 @@
 
 import logging
 import math
-import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from functools import cached_property
 from datetime import datetime
 
 import numpy as np
 
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import (
     AXIS_DEFINITIONS,
@@ -24,20 +25,25 @@ from app.domain.axis_definitions import (
     time_scoped_weights,
 )
 from app.domain.cycling_speed import (
-    ROLLING_RESISTANCE_MATERIAL_ID,
     RiderProfile,
     SegmentSpeedModel,
     crr_for_surface,
+    rolling_resistance_material_id,
 )
 from app.domain.difficulty import axis_contributions_at_row, axis_weight_shares_at_row, axis_weighted_sums
 from app.domain.dynamic_materials import DynamicAxisRequestContext, evaluate_dynamic_axis_arrays
 from app.domain.evaluation import (
     AxisComposition,
     DensityAxisColumn,
+    DensityCost,
     StaticEdgeScoreMatrix,
     compose_costs_from_axis_matrix,
+    density_costs,
 )
+from app.domain.material_catalog import GRADIENT_PERCENT
+from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates, SegmentWind
+from app.domain.time_zone import jst_local_text
 from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_seconds
 from app.domain.twilight import night_mask
 from app.domain.wind import DepartureWind, WindForecastSeries, kmh_to_ms
@@ -49,11 +55,31 @@ from app.domain.wind import DepartureWind, WindForecastSeries, kmh_to_ms
 TIME_BIN_HOURS = 1.0
 MAX_TIME_BINS = 4
 
+#: 所要時間の計算が値の無い区間をどう数えるかを、利用者に言う文（`_travel_time_seconds`が勾配の欠けを0%、
+#: 停止要因の件数の欠けを0件に置き換える）。置き換え方を変えたら、ここも変える。
+MISSING_TRAVEL_DATA_WORDING = "坂の無い平地で、止まる所も無い道として所要時間を出しています"
+
 logger = logging.getLogger("ridecompass.graph")
 
 
+class _AxisRowReader:
+    """軸の列・重み・重みの合計から、1行ぶんの軸別の値を引く（`LegCostArrays`と`RowValues`が共有する）。"""
+
+    axis_arrays: dict[str, np.ndarray]
+    weight_sums: np.ndarray
+    weights: Mapping[str, float | np.ndarray]
+
+    def axis_contributions_at(self, row: int) -> dict[str, float]:
+        """その区間の軸別寄与度（配列の行番号で引く）。"""
+        return axis_contributions_at_row(self.axis_arrays, self.weights, self.weight_sums, row)
+
+    def axis_weight_shares_at(self, row: int) -> dict[str, float]:
+        """その区間の、データのある軸の重みの割合（配列の行番号で引く）。"""
+        return axis_weight_shares_at_row(self.axis_arrays, self.weights, self.weight_sums, row)
+
+
 @dataclass
-class LegCostArrays:
+class LegCostArrays(_AxisRowReader):
     """1レグぶんの合成済みコスト配列一式。`cost_lazy`は区間の番号順（探索が使う
     行順）、それ以外は切り出した区間の順の表示用配列。レグごとに違うのは通過予定時刻で決まるもの（各Edgeの
     通過予定時刻の風と、時間帯を持つ軸の重み）だけで、静的軸の列は共有する。"""
@@ -100,17 +126,9 @@ class LegCostArrays:
     # 区間ごとの通過時刻（出発からの経過[h]、切り出した区間の順）で1本に合成したレグ（目的地から遡る木）だけが持つ。
     passage_hours: np.ndarray | None = None
 
-    def axis_contributions_at(self, row: int) -> dict[str, float]:
-        """その区間の軸別寄与度（切り出した区間の順の行番号で引く）。"""
-        return axis_contributions_at_row(self.axis_arrays, self.weights, self.weight_sums, row)
-
-    def axis_weight_shares_at(self, row: int) -> dict[str, float]:
-        """その区間の、データのある軸の重みの割合（切り出した区間の順の行番号で引く）。"""
-        return axis_weight_shares_at_row(self.axis_arrays, self.weights, self.weight_sums, row)
-
 
 @dataclass
-class RowValues:
+class RowValues(_AxisRowReader):
     """経路上の行だけを、ある時刻で合成し直した表示用の値。配列は`rows`と同じ並びで、`LegCostArrays`と
     同じ名前の属性を持つ（区間の組み立ては、どちらから読んでも同じ書き方になる）。"""
 
@@ -120,12 +138,6 @@ class RowValues:
     weight_sums: np.ndarray
     weights: Mapping[str, float | np.ndarray]
     material_arrays: dict[str, np.ndarray]
-
-    def axis_contributions_at(self, row: int) -> dict[str, float]:
-        return axis_contributions_at_row(self.axis_arrays, self.weights, self.weight_sums, row)
-
-    def axis_weight_shares_at(self, row: int) -> dict[str, float]:
-        return axis_weight_shares_at_row(self.axis_arrays, self.weights, self.weight_sums, row)
 
 
 def _representative_bin(bin_count: int, duration_hours: float | None) -> int:
@@ -180,7 +192,8 @@ class LegCostComposer:
         score_matrix: StaticEdgeScoreMatrix,
         weights: dict[str, float],
         penalty_strength: float,
-        hard_filter_excluded: np.ndarray,
+        search_masks: RoadAvoidanceMasks,
+        avoid_cost_multiplier: float,
         departure_wind: DepartureWind | None,
         wind_series: WindForecastSeries | None,
         start: datetime,
@@ -194,7 +207,7 @@ class LegCostComposer:
             axis_id: score_matrix.axis_raw_values[:, i]
             for i, axis_id in enumerate(score_matrix.raw_axis_ids)
         }
-        # 内訳として見せる静的材料の値（`route_facing_material_ids`の列をそのまま指す）。
+        # 内訳として見せる静的材料と所要時間が読む材料の値（`route_facing_material_ids`の列をそのまま指す）。
         self._static_material_arrays = {
             material_id: score_matrix.material_values[:, i]
             for i, material_id in enumerate(score_matrix.material_ids)
@@ -221,13 +234,26 @@ class LegCostComposer:
         )
         self._weights = weights
         self._penalty_strength = penalty_strength
-        self._hard_filter_excluded = hard_filter_excluded
+        # 密度の軸の、探索の費用で回数の足し算として持つ分（重みのある軸だけ。重み0の軸は何も足さない）。
+        self._density_costs = density_costs(
+            {a: c for a, c in score_matrix.density_axes.items() if weights.get(a, 0.0) > 0},
+            self._static_axis_scores, score_matrix.distance_m, speed_kmh,
+        )
+        # 探索から除く区間（費用を無限大にする）と、費用を割り増す区間。割り増しは探索の費用にだけ掛け、
+        # 所要時間・難易度には掛けない。倍率は1以上で、費用を下げないので探索の下限の見積もりは崩れない。
+        self._excluded = search_masks.excluded
+        self._cost_scale = np.where(search_masks.avoided, avoid_cost_multiplier, 1.0)
         self._departure_wind = departure_wind
         self._wind_series = wind_series
-        # 各Edgeの中点に最も近い予報の格子点（切り出した区間の順）。
+        # 各Edgeの中点に最も近い予報の格子点（切り出した区間の順）と、それが本当に最寄りの格子点か（格子点の並びの外の
+        # 中点は端の格子点へ寄せており、計算には使うが「最寄りの格子点の値」として画面に出せない）。
         self._wind_points = (
             None if wind_series is None
             else wind_series.lattice.points_of(score_matrix.mid_lat, score_matrix.mid_lon)
+        )
+        self._wind_points_are_nearest = (
+            None if wind_series is None
+            else wind_series.lattice.holds_nearest(score_matrix.mid_lat, score_matrix.mid_lon)
         )
         self.start = start
         # 昼夜を決める地点。探索範囲の中の位置の違いで薄明の時刻がずれるのは数分のため、区間ごとには引かない。
@@ -250,7 +276,6 @@ class LegCostComposer:
         self._cache: dict[tuple, LegCostArrays] = {}
         self._fixed_axis_sums_cache: tuple[np.ndarray, np.ndarray] | None = None
         self._travel_inputs_cache: tuple[SegmentSpeedModel, np.ndarray] | None = None
-        self._time_invariant_composition_cache: AxisComposition | None = None
 
     def _travel_inputs(self, rows: np.ndarray | None) -> tuple[SegmentSpeedModel, np.ndarray]:
         """所要時間のうち風に依らない入力: 走行モデル（勾配・路面・巡航速度）と、区間にある停止要因の
@@ -259,25 +284,18 @@ class LegCostComposer:
         if rows is None and self._travel_inputs_cache is not None:
             return self._travel_inputs_cache
         take = _row_taker(rows)
-
-        def static_material(material_id: str) -> np.ndarray | None:
-            values = self._static_material_arrays.get(material_id)
-            return None if values is None else take(values)
-
         distance_m = take(self._score_matrix.distance_m)
-        # 勾配は静的スコア行列が生配列として常に持つ（0次フィルタの勾配しきい値と同じ列）。
-        # 内訳として見せる材料だけを運ぶ`material_arrays`では、勾配軸が分解されていない構成で欠ける。
-        grade = np.nan_to_num(take(self._score_matrix.gradient_percent)) / 100.0
-        surface = self._categorical_material_arrays[ROLLING_RESISTANCE_MATERIAL_ID]
+        grade = np.nan_to_num(take(self._static_material_arrays[GRADIENT_PERCENT])) / 100.0
+        rolling = rolling_resistance_material_id()
+        surface = self._categorical_material_arrays.get(rolling) if rolling is not None else None
+        if surface is None:  # 転がり抵抗の表が分け方を指していない: どの区間も基準の転がり抵抗
+            surface = CategoricalColumn(np.zeros(len(self._score_matrix.distance_m), dtype=np.int16), (None,))
         crr = crr_for_surface(surface if rows is None else surface.take(rows))
         model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=self.speed_kmh), grade, crr)
         stops = np.zeros(len(distance_m))
-        # 材料idの綴りは`stop_count_material_ids()`が単一の情報源。ここで組み立て直すと、
-        # 向こうで綴りを変えたときにここだけがNoneを引き、全区間の停止の待ちが無言で0秒になる。
         for kind, material_id in zip(POI_COUNT_KINDS, stop_count_material_ids(), strict=True):
-            per_km = static_material(material_id)
-            if per_km is not None:
-                stops += np.nan_to_num(per_km) * (distance_m / 1000.0) * stop_seconds(kind)
+            per_km = self._static_material_arrays[material_id]
+            stops += np.nan_to_num(take(per_km)) * (distance_m / 1000.0) * stop_seconds(kind)
         if rows is None:
             self._travel_inputs_cache = (model, stops)
         return model, stops
@@ -290,13 +308,13 @@ class LegCostComposer:
         走行モデル（`domain/cycling_speed.py`）で勾配・風の成分・路面・巡航速度から求めた
         走行時間に、その区間にある停止要因の待ちを足したもの。
         ターンの待ちは遷移ごとに決まるためここには含まない（探索側が足す）。
-        0次フィルタで除外された区間は無限大にする（探索から見た通行可否をコストの下地だけで
+        探索から除く区間は無限大にする（探索から見た通行可否をコストの下地だけで
         表すため）。`rows`を渡すとその行だけ（引数の配列も同じ並び）で求める。
         """
         take = _row_taker(rows)
         model, stops = self._travel_inputs(rows)
         travel = model.travel_seconds(take(self._score_matrix.distance_m), headwind_ms, crosswind_ms)
-        return np.where(take(self._hard_filter_excluded), np.inf, travel + stops)
+        return np.where(take(self._excluded), np.inf, travel + stops)
 
     def compose(
         self,
@@ -325,15 +343,12 @@ class LegCostComposer:
         `passage_hours`（切り出した区間の順）として渡す。
         """
         bin_count = self._bin_count(duration_hours)
-        edge_count = len(self._score_matrix.distance_m)
         # `direction=-1`の`offset_hours`はレグの終了時刻のため、開始時刻へ直す。
         leg_start = offset_hours if direction > 0 else offset_hours - (duration_hours or 0.0)
         if not self.time_varying:
             key: tuple = ("snapshot",)
-            bin_count = 1
         elif passage_hours is not None:
             key = ("passage", round(offset_hours, 3), direction, float(np.nansum(passage_hours)))
-            bin_count = 1
         else:
             key = _timed_leg_key(leg_start, bin_count, duration_hours)
         cached = self._cache.get(key)
@@ -344,7 +359,7 @@ class LegCostComposer:
             logger.info("compose_leg_costs leg=%s mode=reused key=%s", label, key[0])
             return cached
 
-        started = time.monotonic()
+        started = start_timer()
         reused_bins = 0
         if not self.time_varying:
             bins = [self._compose_at(None)]
@@ -361,7 +376,7 @@ class LegCostComposer:
                     reused_bins += 1
                     bins.append(single)
                 else:
-                    bins.append(self._compose_at(np.full(edge_count, bin_start)))
+                    bins.append(self._compose_at(np.full(len(self._score_matrix.distance_m), bin_start)))
 
         # 代表はレグの中間地点が入るビン（ビンはレグの見込み時間より長く張られることがあり、
         # 単純な中央の添字だと終盤のビンへ寄る）。
@@ -392,7 +407,7 @@ class LegCostComposer:
         logger.info(
             "compose_leg_costs leg=%s mode=%s bins=%d reused_bins=%d compose_ms=%d",
             label, "time_varying" if self.time_varying and anchor is not None else "snapshot",
-            len(bins), reused_bins, round((time.monotonic() - started) * 1000),
+            len(bins), reused_bins, elapsed_ms(started),
         )
         return leg
 
@@ -415,18 +430,20 @@ class LegCostComposer:
             )
         return self._fixed_axis_sums_cache
 
-    @property
+    @cached_property
     def _time_invariant_composition(self) -> AxisComposition:
-        """時刻で変わる軸に重みが無いときの、全区間ぶんの合成。下地を1にして合成するので`cost`は割増の
-        倍率そのもので、ビンごとのコストは所要時間にこれを掛けるだけになる。"""
-        if self._time_invariant_composition_cache is None:
-            distance_m = self._score_matrix.distance_m
-            self._time_invariant_composition_cache = compose_costs_from_axis_matrix(
-                distance_m,
-                {axis_id: self._static_axis_scores[axis_id] for axis_id in self._fixed_axis_ids},
-                self._weights, self._penalty_strength, base=np.ones(len(distance_m)),
-            )
-        return self._time_invariant_composition_cache
+        """時刻で変わる軸に重みが無いときの、全区間ぶんの合成。所要時間に依らないので、ビンごとのコストは
+        ビンの所要時間を渡すだけになる。"""
+        return compose_costs_from_axis_matrix(
+            self._score_matrix.distance_m,
+            {axis_id: self._static_axis_scores[axis_id] for axis_id in self._fixed_axis_ids},
+            self._weights, self._penalty_strength, density=self._density_costs,
+        )
+
+    def _density_costs_at(self, rows: np.ndarray | None) -> dict[str, DensityCost]:
+        if rows is None:
+            return self._density_costs
+        return {a: DensityCost(c.scores[rows], c.score_seconds[rows]) for a, c in self._density_costs.items()}
 
     def to_full_row_order(self, lazy_values: np.ndarray) -> np.ndarray:
         """lazy行順（探索が使う並び）の配列を切り出した区間の順へ戻す。
@@ -496,13 +513,12 @@ class LegCostComposer:
         # （合成の時間は軸数にほぼ比例する）。表示が読む`axis_arrays`は全軸を持たせる。
         published = {axis_id: resolved[axis_id] for axis_id in self._score_matrix.axis_ids}
         if rows is None and self._composition_is_time_invariant:
-            invariant = self._time_invariant_composition
-            composed = AxisComposition(travel * invariant.cost, invariant.difficulty, invariant.weight_sums)
+            composed = self._time_invariant_composition
         else:
             time_varying = {axis_id: resolved[axis_id] for axis_id in self._time_varying_axis_ids}
             composed = compose_costs_from_axis_matrix(
                 take(self._score_matrix.distance_m), time_varying, weights, self._penalty_strength,
-                base=travel, static_sums=self._fixed_axis_sums(rows),
+                static_sums=self._fixed_axis_sums(rows), density=self._density_costs_at(rows),
             )
         return _Evaluated(
             published=published, material_arrays=material_arrays, travel=travel, composed=composed, weights=weights,
@@ -559,62 +575,56 @@ class LegCostComposer:
         total = float(distance.sum())
         if total <= 0:
             return None
-        missing = np.isnan(self._score_matrix.gradient_percent[rows])
+        missing = np.isnan(self._static_material_arrays[GRADIENT_PERCENT][rows])
         for material_id in stop_count_material_ids():
-            per_km = self._static_material_arrays.get(material_id)
-            if per_km is not None:
-                missing |= np.isnan(per_km[rows])
+            missing |= np.isnan(self._static_material_arrays[material_id][rows])
         return round(float(distance[missing].sum()) / total, 4)
 
     def winds_at(
         self, rows: list[int], passage_hours: list[float | None], beyond_bins: list[bool]
     ) -> list[SegmentWind | None]:
         """区間（切り出した区間の順の行`rows`）ごとの通過時刻（出発からの経過[h]、Noneは出発時点の値を使った区間）で
-        引いた風。`beyond_bins`はレグの時刻ビンの範囲の先で、最後のビンをそのまま使った区間。"""
+        引いた、区間の中点に最寄りのMSMの格子点の、通過時刻に最も近い正時の値（格子点の値のまま）。`beyond_bins`は
+        レグの時刻ビンの範囲の先で、最後のビンをそのまま使った区間。出発時点の値の区間と、ビンか計算値の期間の先で
+        最後の時刻の値をそのまま使った区間と、最寄りの格子点が予報の格子点の並びの外にある区間はNone。"""
         winds: list[SegmentWind | None] = [None] * len(passage_hours)
-        timed = [i for i, passage in enumerate(passage_hours) if passage is not None]
-        if self._wind_series is not None and self._wind_points is not None and timed:
-            timed_hours = np.array([passage_hours[i] for i in timed], dtype=float)
-            points = self._wind_points[[rows[i] for i in timed]]
-            speed, direction = self._wind_series.sample(self.start, timed_hours, points)
-            times, clamped = self._wind_series.sampled_times(self.start, timed_hours)
-            for j, i in enumerate(timed):
+        if self._wind_series is None or self._wind_points is None or self._wind_points_are_nearest is None:
+            return winds
+        timed = [
+            i for i, passage in enumerate(passage_hours)
+            if passage is not None and not beyond_bins[i] and self._wind_points_are_nearest[rows[i]]
+        ]
+        if not timed:
+            return winds
+        timed_hours = np.array([passage_hours[i] for i in timed], dtype=float)
+        points = self._wind_points[[rows[i] for i in timed]]
+        speed, direction = self._wind_series.sample(self.start, timed_hours, points)
+        times, clamped = self._wind_series.sampled_times(self.start, timed_hours)
+        for j, i in enumerate(timed):
+            if not clamped[j]:
                 winds[i] = SegmentWind(
                     speed_ms=round(float(speed[j]), 1),
                     direction_deg=round(float(direction[j]), 1),
-                    forecast_at=times[j].isoformat(timespec="minutes"),
-                    extended=bool(clamped[j]) or beyond_bins[i],
+                    forecast_at=jst_local_text(times[j]),
                 )
-        if self._departure_wind is not None:
-            # 時刻で引けなかった区間（出発時点の値で合成した区間と、時別系列が無いまま昼夜のために
-            # 時刻で合成した区間）は、出発時点の風。
-            for i, wind in enumerate(winds):
-                if wind is None:
-                    winds[i] = SegmentWind(
-                        speed_ms=self._departure_wind.speed_ms,
-                        direction_deg=self._departure_wind.direction_deg,
-                    )
         return winds
 
     def _compose_at(self, passage: np.ndarray | None) -> LegCostArrays:
         """指定した通過時刻（`None`は出発時点のスナップショット）で1本ぶん合成する。"""
         evaluated = self._evaluate(passage)
-        published, material_arrays, travel, composed = (
-            evaluated.published, evaluated.material_arrays, evaluated.travel, evaluated.composed,
-        )
-        cost_array, difficulty_array = composed.cost, composed.difficulty
-        cost_array = np.where(self._hard_filter_excluded, np.inf, cost_array)
+        composed, travel = evaluated.composed, evaluated.travel
+        cost_array = np.where(self._excluded, np.inf, self._cost_scale * composed.cost(travel))
         lazy_cost = cost_array[self._lazy_row_index]
         lazy_travel = travel[self._lazy_row_index]
         return LegCostArrays(
             cost_lazy=lazy_cost,
-            difficulty_array=difficulty_array,
-            axis_arrays=published,
+            difficulty_array=composed.difficulty,
+            axis_arrays=evaluated.published,
             weight_sums=composed.weight_sums,
             weights=evaluated.weights,
             axis_raw_arrays=self._axis_raw_arrays,
             density_axes=self._score_matrix.density_axes,
-            material_arrays=material_arrays,
+            material_arrays=evaluated.material_arrays,
             categorical_material_arrays=self._categorical_material_arrays,
             travel_seconds_full=travel,
             travel_seconds_lazy=lazy_travel,

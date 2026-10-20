@@ -55,11 +55,16 @@ def effective_max_zoom(spec: JmaTileSpec) -> int:
     ズームのタイルは存在せず空タイルが返る。合う側へ1段下げた値が実際の上限になる。
     """
     z = spec.max_native_zoom
+    return z if _matches_zoom_use(spec, z) else z - 1
+
+
+def _matches_zoom_use(spec: JmaTileSpec, zoom: int) -> bool:
+    """ズームが`zoom_use`の偶奇に合うか。"""
     if spec.zoom_use == "even":
-        return z if z % 2 == 0 else z - 1
+        return zoom % 2 == 0
     if spec.zoom_use == "odd":
-        return z if z % 2 == 1 else z - 1
-    return z
+        return zoom % 2 == 1
+    return True
 
 
 @dataclass(frozen=True)
@@ -80,6 +85,8 @@ class JmaElement:
     forecast_minutes: int | None = None
 
     def __post_init__(self) -> None:
+        if not self.time_files:
+            raise ValueError("時刻一覧のファイルが無いと、その要素のコマを取りに行けない")
         # ずらし方は画面の読み方だけが持ち、プリウォーム（タイルだけを温める）の読み方`read_target_times`は持たない。
         if self.tile is not None and self.data_delay_minutes:
             raise ValueError("タイルで配る要素に配信の遅れを宣言するなら、プリウォームの読み方にも同じずらしが要る")
@@ -201,11 +208,12 @@ def _read_latest_full_run(frames: list[JmaFrame]) -> list[JmaFrame]:
     return sorted(by_validtime.values(), key=lambda frame: frame.validtime)
 
 
-_DATA_ROOT = "bosai/jmatile/data"
+#: 配信元のタイルと時刻一覧の根。地図に重ねない要素（推計気象分布）も同じ根の下にある。
+JMA_DATA_ROOT = "bosai/jmatile/data"
 #: 時刻一覧の置き場。
-_TARGET_TIMES_PATH = _DATA_ROOT + "/{group}/{file}"
+_TARGET_TIMES_PATH = JMA_DATA_ROOT + "/{group}/{file}"
 #: 配信要素の1コマの置き場。この下にタイル（地図の`{z}/{x}/{y}`）か、タイルで配らない要素の地物（GeoJSON）がある。
-_FRAME_PATH = _DATA_ROOT + "/{group}/{basetime}/{member}/{validtime}/surf/{element}"
+_FRAME_PATH = JMA_DATA_ROOT + "/{group}/{basetime}/{member}/{validtime}/surf/{element}"
 _TILE_FILE = "{z}/{x}/{y}.{extension}"
 _FEATURES_FILE = "data.geojson?id={element}"
 #: テンプレートの埋める所（`{名前}`）。画面も同じ書き方で埋める。
@@ -217,7 +225,7 @@ def _fill(template: str, **values: str) -> str:
     return TEMPLATE_PLACEHOLDER.sub(lambda match: values.get(match.group(1), match.group(0)), template)
 
 
-def _tile_extension(spec: JmaTileSpec) -> str:
+def tile_extension(spec: JmaTileSpec) -> str:
     """配信元はベクタをMapbox Vector Tile（.pbf）、ラスタを画像（.png）で配る。"""
     return "pbf" if spec.vector_layer else "png"
 
@@ -238,7 +246,7 @@ def jma_url_template(element_id: str) -> str:
         f"{_FRAME_PATH}/{_TILE_FILE}",
         group=element.path_group,
         element=element_id,
-        extension=_tile_extension(element.tile),
+        extension=tile_extension(element.tile),
     )
 
 
@@ -254,8 +262,7 @@ class JmaTile(NamedTuple):
 
 def jma_tile_path(tile: JmaTile) -> str:
     """タイルの、配信元のパス。タイルで配らない要素は`ValueError`。"""
-    if JMA_ELEMENTS[tile.element_id].tile is None:
-        raise ValueError(f"タイルで配らない配信要素: {tile.element_id}")
+    jma_tile_spec(tile.element_id)
     return _fill(
         jma_url_template(tile.element_id),
         **tile.frame._asdict(),
@@ -278,13 +285,7 @@ def has_native_tile(spec: JmaTileSpec, zoom: int) -> bool:
 
     `zoom_use`の偶奇に合わないズームは、配信元が200を返しても中身は空タイルになる。
     """
-    if zoom < JMA_TILE_MIN_ZOOM or zoom > effective_max_zoom(spec):
-        return False
-    if spec.zoom_use == "even":
-        return zoom % 2 == 0
-    if spec.zoom_use == "odd":
-        return zoom % 2 == 1
-    return True
+    return JMA_TILE_MIN_ZOOM <= zoom <= effective_max_zoom(spec) and _matches_zoom_use(spec, zoom)
 
 
 def source_zoom_for_interpolation(element_id: str, zoom: int) -> int | None:
@@ -296,11 +297,7 @@ def source_zoom_for_interpolation(element_id: str, zoom: int) -> int | None:
     """
     element = JMA_ELEMENTS.get(element_id)
     spec = element.tile if element is not None else None
-    if spec is None or spec.zoom_use == "all":
-        return None
-    if zoom > effective_max_zoom(spec) or zoom < JMA_TILE_MIN_ZOOM:
-        return None
-    if has_native_tile(spec, zoom):
+    if spec is None or not JMA_TILE_MIN_ZOOM <= zoom <= effective_max_zoom(spec) or _matches_zoom_use(spec, zoom):
         return None
     parent = zoom - 1
     return parent if parent >= JMA_TILE_MIN_ZOOM else None
@@ -318,9 +315,10 @@ def with_interpolated_zooms(
         return zooms
     filled = dict(zooms)
     for zoom in range(min(zooms) + 1, effective_max_zoom(jma_tile_spec(element_id)) + 1):
-        if source_zoom_for_interpolation(element_id, zoom) is None:
+        parent = source_zoom_for_interpolation(element_id, zoom)
+        if parent is None:
             continue
-        parents = filled.get(zoom - 1)
+        parents = filled.get(parent)
         if not parents:
             continue
         filled[zoom] = [

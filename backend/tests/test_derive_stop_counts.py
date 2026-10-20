@@ -2,24 +2,20 @@
 
 生データ（道・ノードのタグ）から派生の段を本物のまま通し、区間の値を経路に沿って足す。
 見ないもの: 道の値が区間の和であること → `test_derive_counts.py`の流し直しのテスト。道に属さないノードの
-種別と行 → `test_derive_node_materials.py`。
+種別と行 → `test_derive_nodes.py`。
 """
 
 import asyncpg
 import pytest
 import pytest_asyncio
 
-from app.batch import derive_counts, derive_node_materials, derive_topology
+from app.batch import derive_counts, derive_nodes, derive_topology
 from app.domain.tuning import TUNING_PARAMETERS_BY_ID
 from tests.source_ingest import ingest_records, point_record, way_record
 
 # road_graph_session（conftest.py）と同じDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
-# loop_scope="module"・xdist_group="postgis"が必須。
-pytestmark = [
-    pytest.mark.asyncio(loop_scope="module"),
-    pytest.mark.xdist_group(name="postgis"),
-    pytest.mark.postgis,
-]
+# loop_scope="module"が必須。
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 BASE_LON, BASE_LAT = 139.70, 35.68
 SIGNAL = {"highway": "traffic_signals"}
@@ -76,7 +72,7 @@ async def stop_conn(derive_conn):
         point_record(node_id, *_point(node_id), tags)
         for node_id, (_, _, tags) in NODES.items()], conn=conn)
     await derive_topology.derive(conn)
-    await derive_node_materials.derive(conn, TUNING_PARAMETERS_BY_ID["signal.match_radius_m"].default)
+    await derive_nodes.derive(conn, TUNING_PARAMETERS_BY_ID["signal.match_radius_m"].default)
     await derive_counts.derive(conn)
     return conn
 
@@ -84,7 +80,7 @@ async def stop_conn(derive_conn):
 async def _along(conn: asyncpg.Connection, column: str) -> dict[str, float]:
     """経路ごとに、通る区間の値を足す（どの道も区間1本）。"""
     values = {r["osm_way_id"]: r["v"] for r in await conn.fetch(
-        f"SELECT osm_way_id, {column} AS v FROM edge_materials")}
+        f"SELECT osm_way_id, {column} AS v FROM edge_counts")}
     return {name: sum(values[w] for w in ways) for name, ways in ROUTES.items()}
 
 

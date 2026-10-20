@@ -5,6 +5,7 @@
  *
  * ここで見ないもの:
  * - 一覧をどこに出し、選ぶと何が起きるか → `RouteForm/PointDetail.test.tsx`
+ * - 一覧として読めない保存値・入れた件を先頭に置くこと → `lib/storedList.test.ts`
  */
 import { describe, expect, it } from "vitest";
 
@@ -42,11 +43,10 @@ describe("readSavedPlaces", () => {
     expect(readSavedPlaces(raw)).toEqual([CAFE, HOME]);
   });
 
-  it.each([
-    ["壊れた値", "{"],
-    ["一覧でない値", JSON.stringify(CAFE)],
-  ])("%sは空の一覧", (_kind, raw) => {
-    expect(readSavedPlaces(raw)).toEqual([]);
+  it("街区・地番（block）で決めた住所の地点も読み戻す", () => {
+    const block: SavedPlace = { ...HOME, kind: "address", level: "block", name: "実家" };
+
+    expect(readSavedPlaces(JSON.stringify([block]))).toEqual([block]);
   });
 });
 

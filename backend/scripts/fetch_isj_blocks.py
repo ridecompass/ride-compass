@@ -3,7 +3,7 @@ r"""国土交通省の街区レベル位置参照情報（都道府県ごとの 
 取込はローカルのファイルを読むだけにする（`source_adapters/isj_block.py`）。
 
 取るのは取込の範囲に掛かる都道府県の zip（1都道府県1つ）。都道府県はアドレス・ベース・レジストリの市区町村の代表点から
-決める（`source_adapters/estat_small_area.py: range_prefectures`）ので、先に`scripts/fetch_abr.py`を流しておく。
+決める（`source_adapters/abr.py: range_prefectures`）ので、先に`scripts/fetch_abr.py`を流しておく。
 取得の手順は`app.batch.common.fetch_verified`が持つ。どの版かはプロファイルが持つ（`isj_block`ソースの`rows.version`）。
 
 実行方法（backendディレクトリから）:
@@ -14,52 +14,40 @@ r"""国土交通省の街区レベル位置参照情報（都道府県ごとの 
 import argparse
 import logging
 import sys
-import zipfile
 from pathlib import Path
-
-import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified  # noqa: E402
-from app.batch.source_adapters.estat_small_area import range_prefectures  # noqa: E402
-from app.batch.source_adapters.isj_block import DOWNLOAD_URL, archive_path, read_rows  # noqa: E402
-from app.batch.source_profile import load_source_profile  # noqa: E402
+from app.batch.common import fetch_verified, fetched_all
+from app.batch.fetch_cli import run_profile_fetch_cli
+from app.batch.source_adapters.abr import abr_snapshot, range_prefectures
+from app.batch.source_adapters.isj_block import DOWNLOAD_URL, ENCODING, archive_path
+from app.batch.source_adapters.zip_csv import zip_csv_readable
+from app.batch.source_profile import SourceProfile, SourceSpec
 
 logger = logging.getLogger("ridecompass.fetch_isj_blocks")
 
-_REQUEST_TIMEOUT = httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=30.0)
+_READ_TIMEOUT_SECONDS = 300.0
 
 
 def _readable(path: Path) -> bool:
-    """CSV を1つ持つ zip で、見出しに街区符号・地番があり、1行以上あるか。"""
-    try:
-        rows = read_rows(path)
-        first = next(rows, None)
-        rows.close()
-        return first is not None and "街区符号・地番" in first
-    except (OSError, ValueError, zipfile.BadZipFile, UnicodeDecodeError):
-        return False
+    """見出しに街区符号・地番があり、1行以上あるか。"""
+    return zip_csv_readable(path, ENCODING, "街区符号・地番")
+
+
+def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
+    versions = sorted({spec.rows.version for spec in specs})
+    prefectures = range_prefectures(abr_snapshot(profile), profile.target)
+    logger.info("範囲に掛かる都道府県: %s", ", ".join(prefectures))
+    return fetched_all(
+        fetch_verified(DOWNLOAD_URL.format(version=version, prefecture=code), archive_path(version, code), _readable,
+                       read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
+        for version in versions for code in prefectures)
 
 
 def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     parser = argparse.ArgumentParser(description="街区レベル位置参照情報を手元へ写す")
-    parser.add_argument("--profile", default=None, type=Path)
-    args = parser.parse_args()
-
-    profile = load_source_profile(args.profile)
-    versions = sorted({spec.rows.version for spec in profile.sources if spec.adapter == "isj_block"})
-    if not versions:
-        logger.info("プロファイルに街区レベル位置参照情報の指定がありません")
-        return 0
-    prefectures = range_prefectures(profile)
-    logger.info("範囲に掛かる都道府県: %s", ", ".join(prefectures))
-    fetched = [
-        fetch_verified(DOWNLOAD_URL.format(version=version, prefecture=code), archive_path(version, code), _readable,
-                       timeout=_REQUEST_TIMEOUT, logger=logger)
-        for version in versions for code in prefectures]
-    return 0 if all(fetched) else 1
+    return run_profile_fetch_cli(parser, "isj_block", _fetch_specs, logger=logger)
 
 
 if __name__ == "__main__":

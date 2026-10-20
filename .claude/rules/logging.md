@@ -14,13 +14,14 @@ paths:
 ## 基本原則
 
 1. **エラーは常時出す。** `debug_mode`はDEBUGレベルの詳細イベントを増やすためのスイッチであり、
-   エラー・警告の出力有無を切り替えるものではない。
+   エラー・警告の出力有無を切り替えるものではない（本番は`debug_mode=False`で動き、DEBUGでしか出ないエラーは無いのと同じ）。
 2. **1リクエスト=1行のサマリを常時(INFO)、イベント単位の詳細はdebug_mode時(DEBUG)。**
-   常時出す行は「あとで数えなくて済む」集約済みの情報にする。
+   タイル系は通常の操作でも毎分数百イベントになり、本番のコンテナのログは大きさに上限があって古い分から捨てる
+   （`deploy-backend.yml`の`--log-opt`）。常時出す行は「あとで数えなくて済む」集約済みの情報にする。
 3. **すべてのログにリクエストIDが付く。** `%(correlation_id)s`はフォーマッタが自動で付ける
    （`infrastructure/request_log.py`）ので、個々のログにIDを書き込まない。
-4. **常時出るログ(INFO以上)の座標は小数2桁(≈1km)へ丸める。** 道路のノードのOSMのid（`osm-node-…`）と、OSMの道のidを
-   含む区間の鍵（`way-…`）も座標に数え、常時出るログとそこへ載る例外の文には書かない。ノードは小数2桁の地点で、
+4. **常時出るログ(INFO以上)の座標は小数2桁(≈1km)へ丸める**（利用者の現在地を必要以上に残さない）。道路のノードのOSMのid（`osm-node-…`）と、OSMの道のidを
+   含む区間の鍵（`way-…`）も座標に数え（idは公開の地図で地点・道をそのまま引ける）、常時出るログとそこへ載る例外の文には書かない。ノードは小数2桁の地点で、
    区間は件数で書く。DEBUGはそのまま出してよい。APIキー・認証ヘッダはどのレベルでも出さない。
 
 ## レベルの使い分け
@@ -28,7 +29,7 @@ paths:
 | レベル | 出力条件 | 用途 |
 |---|---|---|
 | ERROR | 常時 | 未処理例外（スタックトレース付き）、想定外の内部エラー |
-| WARNING | 常時 | 外部API失敗、429拒否、候補0件などユーザー影響のある準異常。**同種の警告はカテゴリごとに毎分5件で抑制**（`debug_log.py: _throttled_warning`） |
+| WARNING | 常時 | 外部API失敗、429拒否、候補0件などユーザー影響のある準異常。**同種の警告はカテゴリごとに毎分5件で抑制**（`debug_log.py: log_throttled_warning`） |
 | INFO | 常時 | リクエスト1件=1行のアクセスサマリ、ルート生成のステージサマリ、起動時の構成スナップショット |
 | DEBUG | debug_mode時のみ | 外部API/キャッシュのイベント単位ログ、方位別のtrace失敗理由、距離フィルタの棄却詳細 |
 
@@ -48,7 +49,7 @@ paths:
   残したいときだけ書く。HTTPステータスは`fields["status"]`、クォータ系ヘッダがあれば`fields["quota_remaining"]`等で残す。
 - 「取得できないのが正常」なケース（GSIの整備区域外等）は`fields["result"]`を`"error"`にせず
   理由を別フィールドへ残し（`fields["status"]=404`等）、WARNINGでログを埋めない
-  （`gsi_tile_client.py`の404分岐が実例）。
+  （上流の404は`debug_log.py: mark_status_error`がこの形で記録する）。
 - 例外を捕まえて既定値（空・None）へ倒すときは、`debug_log.py: mark_failed`で失敗を記録する。
   独自のWARNINGを書き足さない——対象を示す値（対象のタイル・ID等）は`log_external_call`へ渡す`fields`に入れる。
   捕まえずに送り出す例外は何も書かなくてよい。
@@ -58,7 +59,7 @@ paths:
   要求ごとに通り、要求の中身に依らない原因（配信元の配色・コード・配信の止まり、置き場のファイル、プロキシの設定等）を
   知らせる警告は同じにする。1回の操作で1度しか通らない口（ルート生成・定期の同期・起動時の確認等）は、この限りでない。
 - **例外（`log_external_call`を使わないキャッシュ）**: `infrastructure/detour_ratio_cache.py`
-  （プロセス内メモリのみのLRU）は対象外。
+  （プロセス内メモリのみのLRUで、失敗しうる経路が無い）は対象外。
   `tile_persistent_cache.py`（ディスクI/O、失敗しうる）は`log_external_call`を経由せず、成功を専用loggerの
   DEBUG、失敗を`log_throttled_warning`で出す——`dynamic_way_value_cache.py`を
   読む配信サービス（`gradient_way_service.py`）が`log_external_call`で囲み、そちらがhit/missを
@@ -67,7 +68,7 @@ paths:
 
 ### 429拒否 → `record_rate_limit_rejection`
 
-レート制限・同時実行制限で429を返す箇所では`record_rate_limit_rejection(category, client_id, limit)`を呼ぶ。
+レート制限・同時実行制限で429を返す箇所では`record_rate_limit_rejection(category, client_id, limit)`を呼ぶ。抑制付きWARNINGと`/api/debug/stats`の`rate_limit_rejections`集計が付く。
 
 ### リクエストID
 
@@ -96,7 +97,8 @@ WARNINGへ昇格し、原因の内訳（どの段で減ったか）を同じ行�
 外部から配られるデータ（CSV・JSONの配列等）を読むパーサが、形の合わない記録を飛ばして
 続けるときは、**飛ばした件数と総件数を取得1回につき1行のWARNING**で出す（1件でも
 飛ばしたら）。行ごとには出さない。配布元が宣言した除外（運用終了済みの地点等）と空行は、
-飛ばした件数に数えない（`infrastructure/wbgt_client.py: _parse_point_master`）。
+飛ばした件数に数えない（`infrastructure/wbgt_client.py: _parse_point_master`）。一部だけ落ちる形は表示も
+`/api/debug/stats`も正常に見えるので、このログでしか気づけない。
 
 ## 観測エンドポイント
 
@@ -107,7 +109,7 @@ WARNINGへ昇格し、原因の内訳（どの段で減ったか）を同じ行�
 ## その他の運用上の注意
 
 - uvicorn標準のアクセスログは本番（`backend/Dockerfile`）では`--no-access-log`で無効化する。
-  アクセスサマリは`ridecompass.access`ロガーの1行ログが正。
+  アクセスサマリは`ridecompass.access`ロガーの1行ログが正（手元の`uvicorn`の起動では両方出るが、害は無い）。
 - ロガー名は`ridecompass.<用途>`（`external` / `access` / `generate` / `startup`、
   モジュール固有のものは`ridecompass.<モジュール名>`）。新しい用途を増やす場合も同じ
   接頭辞を使う——接頭辞単位でレベルを制御したとき、別接頭辞のロガーだけが漏れるため。

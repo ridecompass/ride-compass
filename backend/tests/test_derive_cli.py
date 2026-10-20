@@ -17,17 +17,14 @@ from app.batch import derive_cli
 from app.batch.source_adapters.npa_honhyo import HonhyoRows
 from app.domain.accident import PartyType
 from app.domain.material_catalog import ACCIDENT_COUNT_PER_KM_YEAR
-from app.infrastructure import derived_data_meta, road_network_store
+from app.infrastructure import road_network_store
+from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.source_models import PARTY_TYPE_CODES
 from tests.conftest import postgis_database_url, raw_connection
 from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record, zigzag_point
 
-pytestmark = [
-    pytest.mark.asyncio(loop_scope="module"),
-    pytest.mark.xdist_group(name="postgis"),
-    pytest.mark.postgis,
-]
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 #: (道, 参照ノード列, タグ)。道100を一方通行にして取り直すと、作り直しで通行方向が変わる。
 WAYS = (
@@ -35,7 +32,7 @@ WAYS = (
     (200, [3, 4], {"highway": "residential"}),
 )
 ONEWAY = {"oneway": "yes"}
-DERIVED = ("edge_materials", "way_materials", "road_edges", "node_materials")
+DERIVED = tuple(table.name for table in derived_tables())
 #: 派生の表と一緒に空にする記録（段の指紋・世代）。指紋を残すと、空にした表を作り直さずに段を飛ばしうる。
 RECORDS = ("derived_stages", "derived_data_meta")
 
@@ -121,13 +118,13 @@ async def test_readers_see_the_previous_tables_until_the_swap_and_the_rebuilt_on
     structure_before = await derived_before.fetch(_STRUCTURE_SQL, list(DERIVED))
     await _ingest_ways(derived_before, ONEWAY)
     async with raw_connection() as reader:
-        direction = await reader.prepare("SELECT direction FROM way_materials WHERE osm_way_id = $1")
+        direction = await reader.prepare("SELECT direction FROM way_directions WHERE osm_way_id = $1")
         seen_while_rebuilding: list[tuple[str, int | None]] = []
 
         async def observe():
             seen_while_rebuilding.append((await direction.fetchval(100), await _revision(reader)))
 
-        _observe_after("ways", monkeypatch, observe)
+        _observe_after("directions", monkeypatch, observe)
 
         assert await derive_cli.run(postgis_database_url()) == 0
 
@@ -153,13 +150,13 @@ async def test_a_failed_rebuild_changes_nothing_readers_see(derived_before, sche
     async def fail():
         raise RuntimeError("段の後で落ちた")
 
-    _observe_after("ways", monkeypatch, fail)
+    _observe_after("directions", monkeypatch, fail)
 
     with pytest.raises(RuntimeError, match="段の後で落ちた"):
         await derive_cli.run(postgis_database_url())
 
     assert await derived_before.fetchval(
-        "SELECT direction FROM way_materials WHERE osm_way_id = 100") == "both"
+        "SELECT direction FROM way_directions WHERE osm_way_id = 100") == "both"
     assert await _revision(derived_before) == 1
     assert sorted(road_network_store.ROOT.iterdir()) == network_before
     assert await _schemas(derived_before) == schemas_at_start
@@ -167,7 +164,8 @@ async def test_a_failed_rebuild_changes_nothing_readers_see(derived_before, sche
 
 async def _nodes_with_signal(conn: asyncpg.Connection) -> set[int]:
     return {r["osm_node_id"] for r in await conn.fetch(
-        "SELECT osm_node_id FROM node_materials WHERE has_traffic_signals")}
+        "SELECT osm_node_id FROM node_turns WHERE has_traffic_signals"
+        " UNION SELECT osm_node_id FROM node_kinds WHERE has_traffic_signals")}
 
 
 async def test_the_signal_radius_set_on_the_admin_screen_decides_which_nodes_get_the_signal(derived_before):
@@ -247,7 +245,8 @@ async def test_a_rebuild_records_the_latest_succeeded_import_of_every_source(der
 
     assert await derive_cli.run(postgis_database_url()) == 0
 
-    assert await derived_data_meta.read_source_runs(derived_before) == {
+    recorded = await derived_before.fetch("SELECT source, run_id FROM derived_source_runs")
+    assert {row["source"]: row["run_id"] for row in recorded} == {
         "osm_way": way_run, "osm_node": node_run, "abr": address_run}
 
 
@@ -257,7 +256,7 @@ async def test_an_import_is_refused_while_a_rebuild_runs(derived_before, monkeyp
     runs_before = await derived_before.fetchval("SELECT count(*) FROM source_runs")
 
     async def import_meanwhile():
-        with pytest.raises(RuntimeError, match="派生の作り直しが走っている"):
+        with pytest.raises(RuntimeError, match="派生の作り直しかDBのバックアップが走っている"):
             await ingest_records("accident", [], conn=derived_before)
 
     _observe_after("topology", monkeypatch, import_meanwhile)

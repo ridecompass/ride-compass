@@ -1,117 +1,130 @@
-// 回答フォーム。回答待ちのときだけ開く。答えのコメントは hidakagit の名義（env.FORM_TOKEN）で書き、遷移はゲートが書く。
-import { Gate } from "./gate.js";
-import { GitHub } from "./github.js";
-import { answerBody, bodyRest, checkAll, judge, nextChoices, normalize, parseQuestion, remaining, SCAN } from "./rules.js";
+// 回答フォーム（Cloudflare Access の内側の Worker）。見た目と流れはユーザーと合意したモック: スマホの幅で1列・エリアは「回答内容」（案と書く欄）と
+// 「この issue を」（次遷移のボタンの横並び）の2つで、互いに干渉しない・「確認」で入力を固めて戻る／送信を横に並べ・送ったあとは結果と「GitHub に
+// 戻る」だけ。欄は問いの回答内容の節だけから導き、ラベルで分けない（.claude/skills/ask/SKILL.md「問い」）。推奨も次遷移も最初から選んだ状態にしない。
+// 答えはユーザーの名義（env.FORM_TOKEN）でコメントに書き、ラベルの付け外しも同じ名義で、同じ1回の要求で書く。ゲートは次遷移だけを読み、
+// 書いた文があれば Claude が読んでから当てる。
+import { GitHub, batch } from "./github.js";
+import { byName, jstText } from "./facts.js";
+import { NEXT, answerBody, answerProblem, answerUrl, askerOf, conditions, isQuestion, isQuestionLabel, latestQuestion, withValues } from "./questions.js";
 
-const RECENT = 5; // 材料に載せる最近のコメントの件数（上に出した問いのコメントは数えない）
-// 案のどれでもないときの答え（補足に進め方を書く）。案のある問いでだけ、案の最後に並べる。
-const NONE = "どれでもない（補足に書く）";
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const RECENT = 5; // 材料に載せる最近のコメント（上に出した問いのコメントは数えない）
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-// 「確認へ」で入力を固め（完成なのに条件が残っていれば止める）、「送信」で送る。送ったあとは結果と「GitHub に戻る」だけ。
 const SCRIPT = `<script>
-const f = document.querySelector("form"), left = document.getElementById("left"), err = document.getElementById("err");
-const sync = () => { if (left) left.hidden = f.querySelector("[name=next]:checked").dataset.complete !== "1"; err.textContent = ""; };
-f?.addEventListener("change", sync); f && sync();
-document.getElementById("go")?.addEventListener("click", () => {
-  if (left && !left.hidden && [...left.querySelectorAll("input")].some((b) => !b.checked)) return (err.textContent = "完了の条件が残っています");
-  f.classList.add("lock");
-});
+const f = document.querySelector("form"), err = document.getElementById("err");
+document.getElementById("go")?.addEventListener("click", () => f.classList.add("lock"));
 document.getElementById("back")?.addEventListener("click", () => f.classList.remove("lock"));
+// 案は選ばずに答えてもよいので、選んだ案の丸をもう一度押すと外す（丸は押しても外れない）。
+let picked = null;
+f?.querySelectorAll("input[name=plan]").forEach((r) => r.addEventListener("click", () => {
+  if (picked === r) (r.checked = false, picked = null);
+  else picked = r;
+}));
 f?.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!f.classList.contains("lock")) return;
   f.querySelectorAll("button").forEach((b) => (b.disabled = true));
-  const j = await (await fetch(location.pathname, { method: "POST", body: new FormData(f) })).json();
+  const j = await (await fetch(location.href, { method: "POST", body: new FormData(f) })).json();
+  if (j.error) { err.textContent = j.error; f.classList.remove("lock"); f.querySelectorAll("button").forEach((b) => (b.disabled = false)); return; }
   const p = (text, className = "") => Object.assign(document.createElement("p"), { textContent: text, className });
-  document.body.replaceChildren(p(j.error || "受け付けました（" + j.label + "）。"));
-  if (!j.url) return;
-  // 先にタブを閉じる（リンクで移ったあとではこのページが無く、閉じる処理が動かない）。閉じられない開き方なら issue へ移る。
+  // 先にタブを閉じる（移ったあとではこのページが無く、閉じる処理が動かない）。閉じられない開き方なら issue へ移る。
   const back = Object.assign(document.createElement("button"), { textContent: "GitHub に戻る", className: "sub" });
   back.addEventListener("click", () => (window.close(), setTimeout(() => location.replace(j.url), 300)));
-  document.body.append(back, p("押すとこのタブを閉じる。閉じられない開き方のときは issue へ移る。", "note"));
+  document.body.replaceChildren(p("受け付けました（" + j.label + "）。"), back, p("押すとこのタブを閉じる。閉じられない開き方のときは issue へ移る。", "note"));
 });
 </script>`;
 
-// 見た目は合意したモック（スマホの幅で1列。材料と選ぶ行は下の区切り線だけ、次のステータスは1行のボタン）。
-const page = (body, status = 200) =>
-  new Response(
-    `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark">` +
-      `<title>回答</title><style>body{font:14px/1.6 system-ui,sans-serif;max-width:34rem;margin:.75rem auto;padding:0 16px}p{margin:0 0 .5rem}` +
-      `.num,.sec,.note,summary.s{font-size:13px;opacity:.7}.num{font-size:12px;margin:0}.title{font-weight:500;margin:0 0 6px}.sec{margin:14px 0 6px}` +
-      `details{border-bottom:1px solid #8884;padding:6px 0;overflow-wrap:anywhere}details>div{max-height:40vh;overflow:auto;font-size:13px;margin-top:6px}` +
-      `.opt{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #8884;overflow-wrap:anywhere}.cond .opt{font-size:13px}` +
-      `textarea{width:100%;box-sizing:border-box;font:inherit;margin-top:8px}` +
-      `.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid #8888;border-radius:8px;overflow:hidden}` +
-      `.seg label{text-align:center;font-size:13px;padding:8px 0}.seg label+label{border-left:1px solid #8888}.seg input{position:absolute;opacity:0;pointer-events:none}` +
-      `.seg label:has(input:checked){background:#1f6feb22;color:#1f6feb}.labels{border:0;margin-top:6px}.labels>div{display:flex;flex-wrap:wrap;gap:10px}` +
-      `#err{font-size:13px;color:#d1242f;min-height:1em;margin:8px 0 0}button{display:block;width:100%;padding:8px;margin-top:4px;border-radius:8px;font:inherit}` +
-      `.sub{background:transparent;color:inherit;border:1px solid #8888}.main{background:#1f6feb;color:#fff;border:0}.row{display:none;gap:8px}.row button{flex:1}` +
-      `.lock .inp{pointer-events:none;opacity:.55}.lock #go{display:none}.lock .row{display:flex}` +
-      `</style></head><body>${body}${SCRIPT}</body></html>`,
-    { status, headers: { "content-type": "text/html; charset=utf-8" } },
-  );
+const page = (inner, status = 200) => new Response(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark"><title>回答</title><style>body{font:14px/1.6 system-ui,sans-serif;max-width:34rem;margin:.75rem auto;padding:0 16px}p{margin:0 0 .5rem}
+.num,.sec,.note,summary.s{font-size:13px;opacity:.7}.num{font-size:12px;margin:0}.title{font-weight:500;margin:0 0 6px}.sec{margin:14px 0 6px}
+details{border-bottom:1px solid #8884;padding:6px 0;overflow-wrap:anywhere}details>div{max-height:40vh;overflow:auto;font-size:13px;margin-top:6px}
+.opt{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #8884;overflow-wrap:anywhere}.item{padding:8px 0;border-bottom:1px solid #8884}
+.item>p{font-size:13px;margin:0 0 6px}textarea,input[type=text]{width:100%;box-sizing:border-box;font:inherit;margin-top:8px}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid #8888;border-radius:8px;overflow:hidden}
+.seg label{text-align:center;font-size:13px;padding:8px 0}.seg label+label{border-left:1px solid #8888}.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){background:#1f6feb22;color:#1f6feb}.labels{border:0;margin-top:6px}.labels>div{display:flex;flex-wrap:wrap;gap:10px}
+#err{font-size:13px;color:#d1242f;min-height:1em;margin:8px 0 0}button{display:block;width:100%;padding:8px;margin-top:4px;border-radius:8px;font:inherit}
+.sub{background:transparent;color:inherit;border:1px solid #8888}.main{background:#1f6feb;color:#fff;border:0}.row{display:none;gap:8px}.row button{flex:1}
+.lock .inp{pointer-events:none;opacity:.55}.lock #go{display:none}.lock .row{display:flex}
+.why{display:block;font-size:12px;opacity:.75}.rec{font-size:11px;color:#1a7f37;margin-left:6px}
+.hint{font-size:12px;opacity:.7;margin:4px 0 0}</style></head><body>${inner}${SCRIPT}</body></html>`,
+{ status, headers: { "content-type": "text/html; charset=utf-8" } });
 
-// 回答待ちのタスクと、最新の「## 問い」のコメントを読む。答えられなければ理由を返す。
-async function load(gate, number) {
-  const issue = await gate.read({ number }, { comments: SCAN });
-  if (!issue?.item) return { error: "この issue は対象外です。" };
-  if (issue.state !== "OPEN" || issue.status !== gate.config.waiting) return { error: `いまは回答待ちではありません（${issue.state === "OPEN" ? issue.status : "閉じています"}）。` };
-  const asked = issue.comments.nodes.findLast((c) => normalize(c.body).startsWith("## 問い\n"));
-  const question = asked && parseQuestion(asked.body);
-  if (!question) return { error: "問いのコメントが見つかりません。issue を開いて確かめてください。" };
-  return { issue, asked, question, labels: Object.keys(gate.labelIds), choices: nextChoices(gate.config, issue.status), left: remaining(issue.body) };
+async function read(gh, config, number) {
+  const { owner: o, name: n } = config.repos.tasks;
+  const r = await gh.gql(`query($o:String!,$n:String!,$i:Int!){repository(owner:$o,name:$n){labels(first:100){nodes{id name}}
+    issue(number:$i){id title url body bodyHTML labels(first:50){nodes{name}} comments(last:40){nodes{body bodyHTML url createdAt author{login}}}}}}`, { o, n, i: number });
+  const { issue, labels } = r.repository;
+  const comments = issue.comments.nodes;
+  const asked = comments.findLast((c) => isQuestion(c.body));
+  // ゲートと同じ読み方（読めない問いは、回答内容を無いものとして読む）。
+  const question = latestQuestion(comments.map((c) => c.body), config.questionForms, asked && askerOf(config, asked.author?.login));
+  // 問いのラベルはゲートだけが付け外しするので、ラベルの欄に出さず、送っても変えない。
+  return { issue, comments, asked, question, ids: byName(labels),
+    all: labels.nodes.map((l) => l.name).filter((n) => !isQuestionLabel(n)), have: issue.labels.nodes.map((l) => l.name) };
 }
 
-function render({ issue, asked, question, labels, choices, left, html }) {
-  const fold = (title, inner, open = false) => `<details${open ? " open" : ""}><summary>${title}</summary><div>${inner}</div></details>`;
-  const box = (type, name, value, text, extra = "", cls = "opt") => `<label class="${cls}"><input type="${type}" name="${name}" value="${esc(value)}"${extra}><span>${esc(text)}</span></label>`;
-  const when = (t) => new Date(Date.parse(t) + 9 * 3600e3).toISOString().slice(0, 16).replace("T", " ");
-  const recent = issue.comments.nodes.filter((c) => c !== asked).slice(-RECENT).reverse().map((c) => `<p class="note"><a href="${esc(c.url)}">${esc(c.author?.login ?? "ghost")} ・ ${when(c.createdAt)}</a></p>${c.bodyHTML}`);
-  const have = new Set(issue.labels.nodes.map((l) => l.name));
-  return page(
-    `<p class="num">#${issue.number}</p><p class="title">${esc(issue.title)}</p><p>${esc(question.text)}</p>` +
-      (html.material ? fold("判断材料", html.material, true) : "") +
-      (html.body ? fold("本文", html.body) : "") +
-      fold("最近のコメント", recent.join("")) +
-      `<form><input type="hidden" name="issue" value="${issue.number}"><input type="hidden" name="q" value="${esc(asked.url)}"><div class="inp">` +
-      (question.plans.length ? `<p class="sec">回答</p>${[...question.plans, NONE].map((p) => box("radio", "plan", p, p)).join("")}` : "") +
-      `<textarea name="note" rows="2" placeholder="補足（任意）"></textarea>` +
-      `<p class="sec">次のステータス</p><div class="seg">${choices.map((c, i) => box("radio", "next", i, c.text, ` data-text="${esc(c.text)}"${c.close === "COMPLETED" ? ' data-complete="1"' : ""}${i ? "" : " checked"}`, "")).join("")}</div>` +
-      (left.length ? `<div id="left" class="cond" hidden><p class="sec">残っている完了の条件（確かめたものにチェック）</p>${left.map((l) => box("checkbox", "done", l, l)).join("")}</div>` : "") +
-      `<details class="labels"><summary class="s">ラベル（任意）</summary><div>${labels.map((n) => box("checkbox", "label", n, n, have.has(n) ? " checked" : "", "")).join("")}</div></details>` +
-      `</div><p id="err"></p><button type="button" id="go" class="sub">確認へ</button><div class="row"><button type="button" id="back" class="sub">戻る</button><button class="main">送信</button></div></form>`,
-  );
+const seg = (name, values) => `<div class="seg">${values.map(([v, text]) => `<label><input type="radio" name="${name}" value="${esc(v)}">${esc(text)}</label>`).join("")}</div>`;
+const box = (type, name, value, text, extra = "", cls = "opt") => `<label class="${cls}"><input type="${type}" name="${name}" value="${esc(value)}"${extra}><span>${esc(text)}</span></label>`;
+const fold = (title, inner, open = false) => (inner ? `<details${open ? " open" : ""}><summary>${title}</summary><div>${inner}</div></details>` : "");
+
+// 回答内容（案は1行ずつの丸に推奨の印と理由を添え、確かめること・済ませることは1行ずつの YES／NO）と書く欄、「この issue を」の次遷移のボタン。
+// 行は隠しの欄でも送り、開いたあとに問いが変わっていないかを照らす。読めない問いは、読めない所を先に出し、回答内容を出さない。
+// YES／NO の初めの値は、確かめることなら本文の約束の今の値、済ませることなら NO。
+const why = (r) => r.attrs.map(([n, v]) => `<span class="why">${esc(n)}: ${esc(v)}</span>`).join("");
+const yesNo = (name, yes) => `<div class="seg">${[["YES", yes], ["NO", !yes]].map(([v, on]) => `<label><input type="radio" name="${name}" value="${v}"${on ? " checked" : ""}>${v}</label>`).join("")}</div>`;
+function answerFields(q, body) {
+  const plan = q.header === "### 案";
+  const done = q.header === "### 確かめること" ? conditions(body).filter((c) => c.done).map((c) => c.text) : [];
+  const rows = q.rows.map((r, i) => `<input type="hidden" name="item${i}" value="${esc(r.text)}">` + (plan
+    ? `<label class="opt"><input type="radio" name="plan" value="${esc(r.text)}"><span>${esc(r.text)}${r.attrs.some(([n]) => n === "推奨") ? '<b class="rec">推奨</b>' : ""}${why(r)}</span></label>`
+    : `<div class="item"><span>${esc(r.text)}${why(r)}</span>${yesNo(`v${i}`, done.includes(r.text))}</div>`)).join("");
+  const loose = q.problems.length ? `<p class="note">この問いは形が外れているので、回答内容を出せません（${esc(q.problems.join("・"))}）。書く欄と「この issue を」で答えてください。</p>` : "";
+  return `<p class="sec">回答内容</p>${loose}${rows}
+<textarea name="note" rows="4" placeholder="Claude に伝えること（任意）" aria-label="Claude に伝えること"></textarea>
+<p class="sec">この issue を</p>${seg("next", Object.entries(NEXT))}`;
 }
 
-async function submit(gate, env, data) {
-  const loaded = await load(gate, Number(data.get("issue")));
-  if (loaded.error) return loaded;
-  const { issue, asked, question, labels, choices, left } = loaded;
-  if (data.get("q") !== asked.url) return { error: "問いが新しくなっています。開き直してください。" };
-  const choice = choices[Number(data.get("next"))];
-  if (!choice) return { error: "次のステータスを1つ選んでください。" };
-  const had = issue.labels.nodes.map((l) => l.name).filter((n) => labels.includes(n));
-  const chosen = data.getAll("label").filter((n) => labels.includes(n));
-  const checked = choice.close === "COMPLETED" ? data.getAll("done").filter((d) => left.includes(d)) : [];
-  const body = checked.length && checked.length === left.length ? checkAll(issue.body) : undefined;
-  // 断る答えは記録も書かないので、先に照らす（書くのは gate.apply で、同じ照らし）。
-  const verdict = judge(gate.config, issue.status, choice.to, { close: choice.close, body: body ?? issue.body });
-  if (!verdict.ok) return { error: verdict.reason };
-  const answer = { question, plan: [...question.plans, NONE].find((p) => p === data.get("plan")), choice, checked,
-    added: chosen.filter((n) => !had.includes(n)), removed: had.filter((n) => !chosen.includes(n)), note: String(data.get("note") ?? "").trim() };
-  await new GitHub(env.FORM_TOKEN).write([["addComment", { subjectId: issue.id, body: answerBody(answer) }]]);
-  await gate.apply(issue, choice.to, { close: choice.close, body, labels: answer.added, unlabels: answer.removed });
-  return { url: issue.url, label: choice.text };
+async function submit(gh, env, config, number, form) {
+  const { issue, question: q, ids, all, have } = await read(gh, config, number);
+  if (!q || q.answer) return { error: "答えていない問いがありません。" };
+  if (form.get("question") !== q.text) return { error: "問いが新しくなっています。開き直してください。" };
+  // 行は開いたときの文で送られる。今の問いの行と違えば、開いたあとに問いが変わったので開き直してもらう。
+  const items = [...form.keys()].filter((k) => /^item\d+$/.test(k)).map((k) => form.get(k));
+  if (JSON.stringify(items) !== JSON.stringify(q.rows.map((r) => r.text))) return { error: "問いが新しくなっています。開き直してください。" };
+  const answer = { next: form.get("next"), plan: form.get("plan"), yes: q.rows.filter((r, i) => form.get(`v${i}`) === "YES").map((r) => r.text),
+    text: String(form.get("note") ?? "").trim() };
+  const problem = answerProblem(q, answer);
+  if (problem) return { error: problem };
+  const chosen = form.getAll("label").filter((n) => all.includes(n));
+  const added = chosen.filter((n) => !have.includes(n));
+  const removed = have.filter((n) => all.includes(n) && !chosen.includes(n));
+  const labels = [...added.map((n) => `+${n}`), ...removed.map((n) => `−${n}`)].join(" ");
+  // 確かめることの値は本文の約束へ、答えと同じ1回の要求でユーザーの名義で書く。
+  const after = withValues(issue.body, q, answer.yes);
+  await new GitHub(env.FORM_TOKEN).gql(...batch([["addComment", "AddCommentInput", { subjectId: issue.id, body: answerBody(q, { ...answer, labels }) }],
+    ...(after !== issue.body ? [["updateIssue", "UpdateIssueInput", { id: issue.id, body: after }]] : []),
+    ...(added.length ? [["addLabelsToLabelable", "AddLabelsToLabelableInput", { labelableId: issue.id, labelIds: added.map((n) => ids[n]) }]] : []),
+    ...(removed.length ? [["removeLabelsFromLabelable", "RemoveLabelsFromLabelableInput", { labelableId: issue.id, labelIds: removed.map((n) => ids[n]) }]] : [])]));
+  return { url: issue.url, label: NEXT[answer.next] };
 }
 
 export async function answerForm(request, env, config) {
-  const gate = await Gate.open(env, config);
-  if (request.method === "POST") return Response.json(await submit(gate, env, await request.formData()));
-  const loaded = await load(gate, Number(new URL(request.url).searchParams.get("issue")));
-  if (loaded.error) return page(`<p>${esc(loaded.error)}</p>`, 404);
-  // 判断材料と本文は GitHub の Markdown の描き方で HTML にする。
-  const draw = (text) => (text ? gate.gh.markdown(text, config.repository) : null);
-  const [material, body] = await Promise.all([draw(loaded.question.material), draw(bodyRest(loaded.issue.body).trim())]);
-  return render({ ...loaded, html: { material, body } });
+  const number = Number(new URL(request.url).searchParams.get("issue"));
+  const gh = await GitHub.app(env, config.installation);
+  if (request.method === "POST") return Response.json(await submit(gh, env, config, number, await request.formData()));
+  const { issue, comments, asked, question: q, all, have } = await read(gh, config, number);
+  if (!q || q.answer) return page(`<p>#${number} に、答えていない問いはありません。</p>`, 404);
+  const recent = comments.filter((c) => c !== asked).slice(-RECENT).reverse()
+    .map((c) => `<p class="note"><a href="${esc(c.url)}">${esc(c.author?.login ?? "ghost")} ・ ${jstText(Date.parse(c.createdAt))}</a></p>${c.bodyHTML}`).join("");
+  // 判断材料と本文は、読んだときに GitHub が描いた HTML を使う（判断材料は問いのコメントの <details>、本文は頭の回答のボタンを除く）。
+  const material = /<details[\s\S]*<\/details>/.exec(asked.bodyHTML)?.[0].replace("<details", "<details open") ?? "";
+  const button = issue.bodyHTML.indexOf(`href="${answerUrl(config, number)}"`);
+  const body = button < 0 ? issue.bodyHTML : issue.bodyHTML.slice(issue.bodyHTML.indexOf("</p>", button) + "</p>".length);
+  return page(`<p class="num">#${number}</p><p class="title">${esc(issue.title)}</p><p>${esc(q.text)}</p>
+${material}${fold("本文", body)}${fold("最近のコメント", recent)}
+<form><input type="hidden" name="question" value="${esc(q.text)}"><div class="inp">${answerFields(q, issue.body)}
+<p class="hint">書けば Claude が読んでから進みます。</p>
+<details class="labels"><summary class="s">ラベル（任意）</summary><div>${all.map((n) => box("checkbox", "label", n, n, have.includes(n) ? " checked" : "", "")).join("")}</div></details>
+</div><p id="err"></p><button type="button" id="go" class="sub">確認</button><div class="row"><button type="button" id="back" class="sub">戻る</button><button class="main">送信</button></div></form>`);
 }

@@ -10,14 +10,19 @@ from __future__ import annotations
 
 import ast
 import io
-import json
 import re
 import subprocess
+import sys
 import tokenize
 from collections.abc import Iterator
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+
+# 実在の母集団・維持しない置き場・例の形は、文書のリンクの検査（`scripts/review_checks.py`）と同じ口から取る。
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+from repo_population import EXAMPLE, UNMAINTAINED_PREFIXES, read_text, repository_files  # noqa: E402
 
 TARGET_EXTENSIONS = r"(?:py|tsx?|js|mjs|cjs|ya?ml|json|sql|sh|toml|ini|css)"
 
@@ -41,14 +46,12 @@ PATH = re.compile(
 TEST_FILE = re.compile(r"(?:^|/)(?:test_[^/]*\.py|[^/]*\.test\.tsx?)$")
 
 # `<…>`・`{…}`はその位置に何かが入る例として読む（`/api/admin<X>`・`/api/admin/<X>`）。
-API_PATH = re.compile(r"(?<![A-Za-z0-9_./:<>{}-])(?P<path>/api/(?:<[^<>\s]*>|[A-Za-z0-9_.{}*/-])*)")
-OPENAPI = "frontend/src/types/generated/openapi.json"
+API_PATH = re.compile(rf"(?<![A-Za-z0-9_./:<>{{}}-])(?P<path>/api/(?:{EXAMPLE.pattern}|[A-Za-z0-9_.{{}}*/-])*)")
 ROUTE_HANDLER = re.compile(r"^frontend/src/app/(?P<path>.*)/route\.ts$")
 
 HASH_COMMENT_SUFFIXES = {".yml", ".yaml", ".sh", ".ini", ".toml"}
 SLASH_COMMENT_SUFFIXES = {".ts", ".tsx", ".js", ".mjs", ".cjs", ".css"}
 SCANNED_SUFFIXES = {".md", ".py", ".sql"} | HASH_COMMENT_SUFFIXES | SLASH_COMMENT_SUFFIXES
-UNMAINTAINED_PREFIXES = ("docs/records/",)
 
 
 def _line_offsets(text: str) -> list[int]:
@@ -149,17 +152,6 @@ def _keep(text: str, spans: list[tuple[int, int]], *, inside: bool) -> str:
     return "".join(ch if keep or ch == "\n" else " " for ch, keep in zip(text, mask, strict=True))
 
 
-def repository_files(root: Path) -> list[str]:
-    """追跡下のファイルと、まだ`git add`していない無視されていないファイル。"""
-    out = subprocess.run(
-        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-        cwd=root,
-        check=True,
-        capture_output=True,
-    ).stdout.decode("utf-8")
-    return [f for f in out.split("\0") if f]
-
-
 class _Repository:
     def __init__(self, root: Path, files: list[str]) -> None:
         self.root = root
@@ -170,10 +162,7 @@ class _Repository:
         self._code: dict[str, str] = {}
 
     def text(self, rel_path: str) -> str:
-        try:
-            return (self.root / rel_path).read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            return ""
+        return read_text(self.root / rel_path)
 
     def resolve(self, written: str) -> list[str]:
         written = re.sub(r"^(?:\.\.?/)+", "", written)
@@ -269,7 +258,7 @@ def _api_exists(written: str, routes: list[str]) -> bool:
     """書いたパスが、あるAPIのパスそのものか、その先頭の区切り（`/api/admin`）か。"""
     written = written.rstrip("./")
     pattern = re.escape(written)
-    pattern = re.sub(r"<[^<>]*>", ".*", pattern)
+    pattern = EXAMPLE.sub(".*", pattern)
     pattern = re.sub(r"\\\{[^/]*?\\\}", "[^/]*", pattern)
     pattern = pattern.replace(r"\*\*", ".*").replace(r"\*", "[^/]*")
     for route in routes:
@@ -281,11 +270,10 @@ def _api_exists(written: str, routes: list[str]) -> bool:
     return False
 
 
-def dangling_api_paths(root: Path, files: list[str]) -> list[str]:
-    """名指ししたAPIのパス（`/api/…`）のうち、backendのOpenAPIにもNextのroute handlerにも無いものを返す。"""
+def dangling_api_paths(root: Path, files: list[str], api_paths: list[str]) -> list[str]:
+    """名指ししたAPIのパス（`/api/…`）のうち、backendのAPIのパス（`api_paths`）にもNextのroute handlerにも無いものを返す。"""
     repo = _Repository(root, files)
-    routes = list(json.loads(repo.text(OPENAPI))["paths"])
-    routes += [t for t in map(_route_template, files) if t and t.startswith("/api/")]
+    routes = api_paths + [t for t in map(_route_template, files) if t and t.startswith("/api/")]
     found = []
     for rel_path, prose in _prose_files(repo):
         for m in API_PATH.finditer(prose):
@@ -313,7 +301,9 @@ def test_named_paths_exist() -> None:
 
 
 def test_named_api_paths_exist() -> None:
-    dangling = dangling_api_paths(REPO_ROOT, repository_files(REPO_ROOT))
+    from app.main import app
+
+    dangling = dangling_api_paths(REPO_ROOT, repository_files(REPO_ROOT), list(app.openapi()["paths"]))
 
     assert dangling == [], (
         "文書・コメントが名指ししたAPIのパスが見つからない。今のパスへ直すか、例なら`<…>`の形で書く:\n  "
@@ -322,8 +312,8 @@ def test_named_api_paths_exist() -> None:
 
 
 def test_detects_dangling_references(tmp_path: Path) -> None:
-    """検査が効いていること（消えた名前・無いパス・曖昧なパスを置いて捕まえ、正しい名指しと
-    文字列リテラルは見逃す）。"""
+    """検査が効いていること（消えた名前・無いパス・曖昧なパスを、対象ファイル表の行の中でも置いて捕まえ、
+    正しい名指しと文字列リテラルは見逃す）。"""
     files = {
         "app/a.py": '"""モジュール。"""\n\nLIVE = 1\n# GONE はコメントにだけ残っている\n',
         "app/b/util.ts": "export const helper = 1;\n",
@@ -336,6 +326,7 @@ def test_detects_dangling_references(tmp_path: Path) -> None:
         ),
         "app/e.ts": '// `a.py: GONE_TS`\nconst url = "https://x/a.py: NOT_A_REFERENCE";\n',
         "docs/guide.md": "`util.ts: helper`と`b/util.ts: helper`と`missing.py: X`。\n",
+        "docs/modules/table.md": "| domain | `a.py`（`a.py: LIVE`と`a.py: GONE_ROW`） |\n",
         "docs/records/old.md": "`a.py: GONE`\n",
     }
     for rel, body in files.items():
@@ -348,6 +339,7 @@ def test_detects_dangling_references(tmp_path: Path) -> None:
         "app/e.ts:1: a.py: GONE_TS（そのファイルのコードに名前が無い）",
         "docs/guide.md:1: util.ts: helper（パスが2本に当たる。親ディレクトリを足して1本に決める）",
         "docs/guide.md:1: missing.py: X（そのパスのファイルが無い）",
+        "docs/modules/table.md:1: a.py: GONE_ROW（そのファイルのコードに名前が無い）",
     ]
 
 
@@ -411,7 +403,6 @@ def test_detects_dangling_api_paths(tmp_path: Path) -> None:
     files = _write_repository(
         tmp_path,
         {
-            OPENAPI: '{"paths": {"/api/admin/items/{item_id}/values": {}, "/api/tiles/{path}": {}}}\n',
             "frontend/src/app/api/version/route.ts": "export const GET = 1;\n",
             "frontend/src/app/admin/api/[...path]/route.ts": "export const GET = 1;\n",
             "backend/app/c.py": 'URL = "/api/gone"\n',
@@ -423,7 +414,7 @@ def test_detects_dangling_api_paths(tmp_path: Path) -> None:
         },
     )
 
-    assert dangling_api_paths(tmp_path, files) == [
+    assert dangling_api_paths(tmp_path, files, ["/api/admin/items/{item_id}/values", "/api/tiles/{path}"]) == [
         "docs/api.md:2: /api/items/{item_id}/values（そのパスのAPIが無い）",
         "docs/api.md:2: /api/version/gone（そのパスのAPIが無い）",
         "docs/api.md:2: /api/admi（そのパスのAPIが無い）",

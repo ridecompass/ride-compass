@@ -4,7 +4,7 @@
 
 **配信元は叩かない。** 取りに行くのは`scripts/fetch_estat_small_areas.py`の仕事で、ここは手元の配布の zip（都道府県ごとの
 Shapefile。座標は日本測地系2011（EPSG:6668）の経緯度、dbf は CP932）を読む。読む都道府県は、住所の生データと同じく
-取込の範囲に掛かる都道府県（`source_adapters/abr.py: prefectures_in_range`。ABR の市区町村の代表点から決める）。
+取込の範囲に掛かる都道府県（`source_adapters/abr.py: range_prefectures`。ABR の市区町村の代表点から決める）。
 
 1つの小地域が離れた島・飛び地で何枚かの多角形に分かれて入っているので、小地域のコード（都道府県2桁＋市区町村3桁＋
 町丁・字等6桁）ごとに1つの多角形にまとめ、それを鍵にする（配布の`KEY_CODE`は名前の無い小地域で桁が欠ける）。属性は
@@ -27,8 +27,8 @@ import shapely
 from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
 
-from app.batch.ingest import AdapterInputs, SourceRecord, file_origin, register_adapter
-from app.batch.source_adapters.abr import archive_path, prefectures_in_range, read_rows
+from app.batch.ingest import SourceRecord, register_adapter
+from app.batch.source_adapters.abr import JGD2011, RangeInputs, range_inputs, wgs84_transformer
 from app.batch.source_profile import SourceProfile, SourceSpec
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "estat"
@@ -38,7 +38,6 @@ NORMAL_AREA_HCODE = 8101
 #: 配布元の取得の口（統計地理情報システムの境界データ。Shapefile・経緯度・日本測地系2011）。
 DOWNLOAD_URL = ("https://www.e-stat.go.jp/gis/statmap-search/data?dlserveyId={survey}&code={prefecture}"
                 "&coordSys=1&format=shape&downloadType=5&datum=2011")
-_SOURCE_SRID = "EPSG:6668"
 _ENCODING = "cp932"
 #: 最も広い1枚に付く印（`AREA_MAX_F`）。
 _LARGEST_PART = "M"
@@ -65,31 +64,6 @@ def open_shapefile(archive: zipfile.ZipFile) -> shapefile.Reader:
                             dbf=io.BytesIO(archive.read(members[".dbf"])), encoding=_ENCODING)
 
 
-def _abr_sources(profile: SourceProfile) -> list[SourceSpec]:
-    return [spec for spec in profile.sources if spec.adapter == "abr"]
-
-
-def abr_snapshot(profile: SourceProfile) -> str:
-    """範囲に掛かる都道府県を決めるのに読む、ABR の取った日（プロファイルの`abr`の`rows.snapshot`）。"""
-    snapshots = {spec.rows.snapshot for spec in _abr_sources(profile)}
-    if len(snapshots) != 1:
-        raise ValueError(f"プロファイルの ABR の取った日が1つに決まらない: {sorted(snapshots)}")
-    return snapshots.pop()
-
-
-def _city_positions_path(profile: SourceProfile) -> Path:
-    path = archive_path(abr_snapshot(profile), "mt_city_pos_all")
-    if not path.exists():
-        raise FileNotFoundError(f"範囲に掛かる都道府県を決める ABR の市区町村の代表点がありません: {path}"
-                                "（scripts/fetch_abr.py が写す）")
-    return path
-
-
-def range_prefectures(profile: SourceProfile) -> list[str]:
-    """取込の範囲に掛かる都道府県（ABR の市区町村の代表点から決める）。"""
-    return prefectures_in_range(read_rows(_city_positions_path(profile)), profile.target.bbox)
-
-
 def _boundary_paths(rows: EstatSmallAreaRows, prefectures: list[str]) -> list[Path]:
     paths = [boundary_path(rows.survey, code) for code in prefectures]
     missing = [str(path) for path in paths if not path.exists()]
@@ -98,15 +72,8 @@ def _boundary_paths(rows: EstatSmallAreaRows, prefectures: list[str]) -> list[Pa
     return paths
 
 
-def range_inputs(profile: SourceProfile) -> AdapterInputs:
-    """範囲に掛かる都道府県を決めるのに読む入力（ABR の市区町村の代表点と、その取った日を宣言する ABR のソース）。"""
-    return AdapterInputs(files=(_city_positions_path(profile),), sources=tuple(abr.name for abr in _abr_sources(profile)))
-
-
-def estat_small_area_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
-    in_range = range_inputs(profile)
-    return AdapterInputs(files=(*in_range.files, *_boundary_paths(spec.rows, range_prefectures(profile))),
-                         sources=in_range.sources)
+def estat_small_area_inputs(spec: SourceSpec, profile: SourceProfile) -> RangeInputs:
+    return range_inputs(profile, lambda prefectures: _boundary_paths(spec.rows, prefectures))
 
 
 def _to_wgs84(geometry: BaseGeometry, transformer: pyproj.Transformer) -> BaseGeometry:
@@ -139,13 +106,10 @@ def _read_prefecture(path: Path, transformer: pyproj.Transformer) -> list[Source
 
 
 @register_adapter("estat_small_area", rows=EstatSmallAreaRows, inputs=estat_small_area_inputs)
-async def read_estat_small_areas(spec: SourceSpec, profile: SourceProfile,
+async def read_estat_small_areas(spec: SourceSpec, profile: SourceProfile, inputs: RangeInputs,
                                  origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
-    rows: EstatSmallAreaRows = spec.rows
-    prefectures = range_prefectures(profile)
-    paths = _boundary_paths(rows, prefectures)
-    origin.update({"survey": rows.survey, "prefectures": prefectures, "files": [file_origin(path) for path in paths]})
-    transformer = pyproj.Transformer.from_crs(_SOURCE_SRID, "EPSG:4326", always_xy=True)
-    for path in paths:
+    origin["survey"] = spec.rows.survey
+    transformer = wgs84_transformer(JGD2011)
+    for path in inputs.archives:
         for record in _read_prefecture(path, transformer):
             yield record

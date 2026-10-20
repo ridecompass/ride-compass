@@ -1,4 +1,4 @@
-"""`/health`のうち、管理データのバックアップからの経過時間を見る（見回りがこれを読んで止まりに気づく）。
+"""`/health`のうち、DBのバックアップからの経過時間を見る（見回りがこれを読んで止まりに気づく）。
 
 ここで見ないもの: `commit`・`started_at`（値を詰めて返すだけ）。
 """
@@ -35,7 +35,7 @@ def test_health_returns_hours_since_the_last_backup(tmp_path, monkeypatch, place
 )
 def test_health_stays_ok_when_the_backup_marker_is_unreadable(tmp_path, monkeypatch, caplog, write_marker):
     """印のファイルが壊れて/healthが落ちると、それを待つデプロイと見回りまで止まる。読めないときは記録が無いときと同じく
-    nullで返し（見回りが知らせに出す）、読めない理由はログにだけ出る。"""
+    nullで返し（見回りが知らせに出す）、読めない理由はログにだけ出る。ログに置き場と理由が無いと、運用がなぜ読めないかを追えない。"""
     marker = tmp_path / "admin_data_backup_at"
     monkeypatch.setattr(admin_data_backup, "MARKER_PATH", marker)
     write_marker(marker)
@@ -43,4 +43,6 @@ def test_health_stays_ok_when_the_backup_marker_is_unreadable(tmp_path, monkeypa
     response = client.get("/health")
 
     assert (response.status_code, response.json()["status"], response.json()["admin_data_backup_age_hours"]) == (200, "ok", None)
-    assert "管理データのバックアップの印のファイルが読めない" in caplog.text
+    message = next(r.getMessage() for r in caplog.records if "DBのバックアップの印のファイルが読めない" in r.getMessage())
+    assert f"path={marker} " in message
+    assert "Error(" in message

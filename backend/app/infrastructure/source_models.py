@@ -30,6 +30,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.domain.accident import PartyType
+from app.domain.material_sql import sql_literals
 from app.infrastructure.orm_base import Base
 
 
@@ -90,7 +91,7 @@ class SourceRunRow(Base):
     __tablename__ = "source_runs"
     __table_args__ = (
         CheckConstraint(
-            "status IN (" + ", ".join(f"'{s}'" for s in SourceRunStatus) + ")",
+            f"status IN ({sql_literals(SourceRunStatus)})",
             name="source_runs_status_known"),
         # 閉じたrunだけが終わった時刻を持つ。読み手は成功のrunの時刻を必ずあるものとして読む。
         CheckConstraint(
@@ -165,6 +166,33 @@ def latest_succeeded_run_by_column_sql(source_column: str) -> str:
     ソースごとに並べる読み手（取込の一覧）が、行ごとに相関させて使う。"""
     return (f"(SELECT * FROM {SourceRunRow.__tablename__} WHERE source = {source_column}"
             f" AND status = '{SourceRunStatus.SUCCEEDED}' ORDER BY run_id DESC LIMIT 1)")
+
+
+# 「この場所のデータを持っているか」は、取込の宣言そのものから決まる。マーカーの表を
+# 別に持たない——持つと、取込の範囲を広げたときに2箇所を揃える必要が生まれる。
+#
+# 手元の道路データは、成功した最新の道路の取込のもの——取込はソースのパーティションを入れ替え、派生も
+# 最新のrunから作る。範囲はそのrunが記録した宣言（`profile.target.bbox`、(min_lat, min_lon, max_lat, max_lon)）。
+# 住所の区画の派生の段（`batch/derive_addresses.py`）も、町字をこの範囲で選ぶ。道路を取り込んでいなければ0行。
+INGESTED_BBOX_SQL = f"""
+    SELECT
+        (profile->'target'->'bbox'->>0)::double precision AS min_lat,
+        (profile->'target'->'bbox'->>1)::double precision AS min_lon,
+        (profile->'target'->'bbox'->>2)::double precision AS max_lat,
+        (profile->'target'->'bbox'->>3)::double precision AS max_lon
+    FROM {latest_succeeded_run_sql(Source.OSM_WAY)} latest
+"""
+
+#: 要求タイルが取込範囲に入るか（`covered`）。範囲を判定するタイルのSQL（点のタイルは
+#: `point_tile_layers.py`）は`WITH coverage AS (...)`で読む。
+COVERAGE_SQL = f"""
+    SELECT EXISTS (
+        SELECT 1 FROM ({INGESTED_BBOX_SQL}) ingested
+        WHERE ST_Intersects(
+            ST_MakeEnvelope(ingested.min_lon, ingested.min_lat, ingested.max_lon, ingested.max_lat, 4326),
+            ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
+    ) AS covered
+"""
 
 
 #: 取込の成功したソースごとに、成功した最新の取込（`source`・`run_id`）を1行ずつ出す問い合わせ。

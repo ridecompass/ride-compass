@@ -24,10 +24,9 @@ import asyncpg
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import asyncpg_dsn  # noqa: E402  sys.pathを通した後に読む
-
-_DEFAULT_SERVER = "postgresql+asyncpg://ridecompass:ridecompass@localhost:5432"
-_NAME_PREFIX = "ridecompass_test_"
+# sys.pathを通した後に読む
+from app.batch.common import asyncpg_dsn
+from tests.database_names import TEST_DATABASE_PREFIX, TEST_DATABASE_SERVER
 
 
 def _is_worktree_record(comment: str | None) -> TypeGuard[str]:
@@ -44,7 +43,7 @@ async def _collect(server: str) -> list[tuple[str, str | None]]:
         rows = await conn.fetch(
             "SELECT datname, shobj_description(oid, 'pg_database') AS owner_path"
             " FROM pg_database WHERE datname LIKE $1 ORDER BY datname",
-            f"{_NAME_PREFIX}%",
+            f"{TEST_DATABASE_PREFIX}%",
         )
     finally:
         await conn.close()
@@ -63,14 +62,14 @@ async def _drop(server: str, names: list[str]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--server", default=os.environ.get("TEST_DATABASE_SERVER", _DEFAULT_SERVER),
+    parser.add_argument("--server", default=os.environ.get("TEST_DATABASE_SERVER", TEST_DATABASE_SERVER),
                         help="テストDBが載っているサーバー（既定はローカル）")
     parser.add_argument("--drop", action="store_true", help="一覧するだけでなく実際に落とす")
     args = parser.parse_args()
 
     found = asyncio.run(_collect(args.server))
     if not found:
-        print(f"{_NAME_PREFIX}* のDBはありません。")
+        print(f"{TEST_DATABASE_PREFIX}* のDBはありません。")
         return 0
 
     orphans = []

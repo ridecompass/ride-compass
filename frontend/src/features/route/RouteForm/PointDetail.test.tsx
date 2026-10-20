@@ -11,7 +11,7 @@
  * ここで見ないもの:
  * - 地点ごとの呼び名・出どころ・名前・地図で置く操作・消す・「現在地に戻す」・上限、候補を選んだあとに打った文字と一覧を消すこと →
  *   `RouteForm/RouteForm.test.tsx`
- * - 周回で経由地・目的地を選んだときのモードの切り替えと、置ける状態を解くこと → `features/route/useGenerationConditions.test.ts`
+ * - 選んだ候補を置いたあとに、置ける状態を解くこと → `features/route/useGenerationConditions.test.ts`
  * - 置いた地点へ地図を寄せること・地図の上でピンを動かすこと → `e2e/map-runtime.spec.ts`
  * - 狭い画面で、候補が出ている間に欄と候補をキーボードの上の見える範囲へ出すこと（レイアウトの実寸） → `e2e/map-runtime.spec.ts`
  * - 打ちかけの語の続きの候補・施設の候補とその並びを返すこと、位置の辺りの決め方 → backend の `tests/test_place_search_route.py`
@@ -21,27 +21,20 @@
  *
  * 差し替えたもの: 検索の口と辺りの口の応答（網の層）。保存した地点は本物の置き場（この端末の保存）を通す。
  */
-import { fireEvent, screen, render, within } from "@testing-library/react";
+import { act, fireEvent, screen, render, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SavedPlace } from "@/features/route/savedPlaces";
-import { useSavedPlaces } from "@/features/route/useSavedPlaces";
+import { SAVED_PLACES_STORAGE_KEY, useSavedPlaces } from "@/features/route/useSavedPlaces";
 
 import { onBackend } from "@/testing/backendServer";
+import { AZA_CANDIDATE as AZA, FACILITY_CANDIDATE as FACILITY } from "@/testing/routeFixtures";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { Coordinates, PlaceCandidate } from "@/types/route";
 
 import PointDetail from "./PointDetail";
 
-const AZA: PlaceCandidate = {
-  kind: "address",
-  level: "aza",
-  name: "東京都千代田区丸の内二丁目",
-  area: null,
-  latitude: 35.679,
-  longitude: 139.764,
-};
 const BLOCK: PlaceCandidate = {
   kind: "address",
   level: "block",
@@ -49,14 +42,6 @@ const BLOCK: PlaceCandidate = {
   area: null,
   latitude: 35.681,
   longitude: 139.767,
-};
-const FACILITY: PlaceCandidate = {
-  kind: "facility",
-  level: "point",
-  name: "浅草寺",
-  area: "台東区浅草二丁目",
-  latitude: 35.7148,
-  longitude: 139.7967,
 };
 
 /** 地図の真ん中（東京駅）。丸の内二丁目まで直線で0.4km、浅草寺まで4.6km。 */
@@ -67,10 +52,13 @@ const NEAR_SENSOJI: Coordinates = { latitude: 35.713, longitude: 139.7967 };
 beforeEach(() => {
   window.localStorage.clear();
 });
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 /** 前に保存した地点を、この端末の保存へ置く。 */
 function storeSavedPlaces(places: SavedPlace[]) {
-  window.localStorage.setItem("ridecompass:saved-places", JSON.stringify(places));
+  window.localStorage.setItem(SAVED_PLACES_STORAGE_KEY, JSON.stringify(places));
 }
 
 function WithSavedPlaces(props: Omit<React.ComponentProps<typeof PointDetail>, "savedPlaces">) {
@@ -81,7 +69,7 @@ function renderDetail({
   mapCenter = TOKYO_STATION,
   found = null as PlaceCandidate | null,
   at = null as Coordinates | null,
-  armed = false,
+  placing = false,
 } = {}) {
   const onChoose = vi.fn();
   const detail = (center: Coordinates) => (
@@ -92,11 +80,8 @@ function renderDetail({
       found={found}
       at={at}
       placed={found !== null}
-      armLabel="地図で選ぶ"
-      usage=""
       chooseResult=""
-      armed={armed}
-      onArmToggle={() => {}}
+      placing={placing}
       originLocated
       mapCenter={center}
       onChoose={onChoose}
@@ -191,20 +176,29 @@ describe("PointDetail 打つ欄", () => {
   });
 
   it("文字を引き始める長さより短くすると候補を下げ、打ち直すとその文字の候補を出す", async () => {
+    // 時計は打ち終えてから進める（本物の時計では、遅い機械で打鍵の間が引くまでの待ちを超え、打ちかけの文字で引く）。
+    // `userEvent`は打つたびに本物の時計の`setTimeout`を待つので、偽の時計の下では打鍵を1字ずつ起こす。
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const sent = onBackend("GET", "/api/place-search", (request) =>
       Response.json({ candidates: request.query.q === "浅草寺" ? [FACILITY] : [AZA] }),
     );
     renderDetail();
+    const typeText = async (text: string) => {
+      for (let end = 1; end <= text.length; end += 1)
+        fireEvent.input(searchBox(), { target: { value: text.slice(0, end) } });
+      await act(() => vi.advanceTimersByTimeAsync(routeGenerateConfig.place_prediction_delay_seconds * 1000));
+    };
+    const listed = () => vi.waitFor(() => screen.getByRole("list", { name: "地点の候補" }));
 
-    await userEvent.type(searchBox(), "丸の内");
-    await screen.findByRole("list", { name: "地点の候補" });
+    await typeText("丸の内");
+    await listed();
 
     // 空の欄は、どの引き始める長さにも足りない。
-    await userEvent.clear(searchBox());
+    fireEvent.input(searchBox(), { target: { value: "" } });
     expect(screen.queryByRole("list", { name: "地点の候補" })).toBeNull();
 
-    await userEvent.type(searchBox(), "浅草寺");
-    const list = await screen.findByRole("list", { name: "地点の候補" });
+    await typeText("浅草寺");
+    const list = await listed();
     expect(within(list).getByRole("button")).toHaveTextContent(FACILITY.name);
     expect(sent.map((request) => request.query.q)).toEqual(["丸の内", "浅草寺"]);
   });
@@ -340,7 +334,7 @@ describe("PointDetail 狭い画面", () => {
   });
 
   it("地図で置く待ちでも、上側に出している間は地図が隠れているので、欄の空の案内に地図で置く案内を出さない", async () => {
-    renderDetail({ armed: true });
+    renderDetail({ placing: true });
     expect(searchBox()).toHaveAttribute("placeholder", "地図をタップ");
 
     await userEvent.click(searchBox());

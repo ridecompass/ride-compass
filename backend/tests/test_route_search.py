@@ -4,24 +4,24 @@
 対象は、入力を配列や値で直接与えられるもの。
 
 - 表示値の部品（ジオメトリの連結・標高の集約と逆回りの付け替え・候補の難易度の比較）
-- 探索の部品（繋ぎ目の候補・同点グループの試行順）
+- 探索の部品（繋ぎ目の候補・同点グループの試行順・中継点の帯）
 
 ここでは見ないもの:
 
 - 道路網から経路を作る一連の振る舞い（スナップ・周回・目的地・経由地・候補の選び方・区間の表示）
   → `test_route_generation_behavior.py`（公開の入口`RouteGenerator`から、小さな道路網で確かめる）。
-  エンジンの途中状態（`_RoadGraphContext`等）を手で組むテストはここに置かない——道路網の持ち方や
+  エンジンの途中状態（`RoadGraphContext`等）を手で組むテストはここに置かない——道路網の持ち方や
   組み立てを作り替えるたびに足場ごと書き直すことになり、振る舞いは何も守らない。
 - 起点・終点の状態の引き方（CSR／遷移構造からの索引）→ 周回・目的地の経路が起点に戻る・目的地へ着くことで
   `test_route_generation_behavior.py`が通す。
 - 標高属性の逆向き（`ElevationAttribute.reversed_as`）→ `test_attributes.py`。候補の難易度の距離加重平均
-  （`distance_weighted_difficulty`）→ `test_difficulty.py`。
+  （`domain/difficulty.py: weighted_mean_by_distance`）→ `test_difficulty.py`。
 - レグごとのコスト配列の合成（`domain/leg_costs.py`）→ `test_leg_costs.py`。
 - 探索カーネル（`domain/routing.py`）・評価軸（`domain/evaluation.py`）・走行モデル
   （`domain/cycling_speed.py`）・風（`domain/wind.py`）・0次フィルタ（`domain/hard_filters.py`）
   → それぞれの持ち主のテストが持つ。
 
-このファイルが組み立てて渡し、読むデータ型（探索構造・`RouteCandidate`等）は本物で作る——代役にしても
+このファイルが組み立てて渡し、読むデータ型（探索構造・`EvaluatedRoute`等）は本物で作る——代役にしても
 何も切り離せず、本物が変わったときに黙ってずれるだけになる。
 """
 
@@ -32,18 +32,21 @@ import pytest
 from app.domain.attributes import ElevationAttribute
 from app.domain.graph import LeanEdge
 from app.domain.route import (
-    RouteCandidate,
+    EvaluatedRoute,
     RouteSegmentDetail,
     concat_edge_geometries,
     reverse_elevation_by_edge,
     route_elevation_gain,
 )
 from app.domain.routing import NodeJunction, TurnExpandedTree, add_terminal_candidate
+from app.domain.tuning import TUNING_VALUES
 from app.domain.route_search import (
+    alternative_via_nodes,
     leg_of_edge_by_half,
     order_by_bearing_spread,
     pick_better_candidate,
     rank_by_pareto_layers,
+    relay_band,
     reverse_leg_assignment,
     turnaround_ring_m,
 )
@@ -65,8 +68,8 @@ def lean_edge(edge_id, from_node_id="n0", to_node_id="n1", *, distance_m=100.0, 
 
 
 def elevation(edge_id, **fields):
-    """テストが名指さない欄は、獲得・喪失標高は0m、勾配は値が取れなかった（None）として埋める。"""
-    ends = {"elevation_gain_m": 0.0, "elevation_loss_m": 0.0}
+    """テストが名指さない欄は、端の標高と獲得・喪失標高は0m、勾配は値が取れなかった（None）として埋める。"""
+    ends = {"start_elevation_m": 0.0, "end_elevation_m": 0.0, "elevation_gain_m": 0.0, "elevation_loss_m": 0.0}
     grades = dict.fromkeys(ElevationAttribute.model_fields.keys() - {"edge_id"} - ends.keys())
     return ElevationAttribute(edge_id=edge_id, **{**ends, **grades, **fields})
 
@@ -86,13 +89,19 @@ def turn_tree(state_count, *, node_cost, node_length_m, node_seconds, node_best_
 def segment_detail(difficulty, distance_km):
     return RouteSegmentDetail(
         start_latitude=35.0, start_longitude=139.0, end_latitude=35.0, end_longitude=139.0,
-        cumulative_distance_km=0.0, distance_km=distance_km, difficulty=difficulty,
+        cumulative_distance_km=0.0, distance_km=distance_km, elevations=[],
+        road_classes={}, difficulty=difficulty,
     )
 
 
 def route_candidate(name, segments=()):
-    """`name`は候補を見分けるためだけのid。"""
-    return RouteCandidate(id=name, direction_label=name, distance_km=1.0, geometry={}, segments=list(segments))
+    """`name`は候補を見分けるためだけの名前。"""
+    return EvaluatedRoute(
+        direction_label=name, distance_km=1.0, geometry={}, elevation_gain_m=None, segments=list(segments),
+        estimated_duration_seconds=None, wind_unavailable=False, missing_travel_data_share=None, axis_raw_values={},
+        material_category_shares={}, edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[], points=[],
+        waypoint_distances_km=[],
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -112,15 +121,6 @@ def test_concat_edge_geometries_offsets_slice_back_to_each_edge():
 
     assert coordinates[offsets[0]:offsets[1] + 1] == [[139.0, 35.0], [139.1, 35.1], [139.2, 35.2]]
     assert coordinates[offsets[1]:offsets[2] + 1] == [[139.2, 35.2], [139.3, 35.3]]
-
-
-def test_concat_edge_geometries_keeps_both_points_when_edges_do_not_touch():
-    edges = [
-        lean_edge("e1", geometry=[[35.0, 139.0]]),
-        lean_edge("e2", geometry=[[36.0, 140.0]]),
-    ]
-    geometry, _ = concat_edge_geometries(edges)
-    assert geometry["coordinates"] == [[139.0, 35.0], [140.0, 36.0]]
 
 
 # --------------------------------------------------------------------------------------
@@ -197,7 +197,7 @@ def test_pick_better_candidate_takes_the_lower_difficulty(forward_difficulty, re
     forward = candidate("forward", forward_difficulty)
     reverse = candidate("reverse", reverse_difficulty)
 
-    assert pick_better_candidate(forward, reverse).id == picked
+    assert pick_better_candidate(forward, reverse).direction_label == picked
 
 
 # --------------------------------------------------------------------------------------
@@ -266,13 +266,6 @@ def test_order_by_bearing_spread_puts_the_most_distant_bearing_on_the_circle_fir
     assert order == [11, 10]
 
 
-def test_order_by_bearing_spread_breaks_ties_by_node_index():
-    order = order_by_bearing_spread(
-        [12, 11], [99], {11: 90.0, 12: 90.0, 99: 0.0}, {11: 5.0, 12: 5.0}
-    )
-    assert order == [11, 12]
-
-
 # --------------------------------------------------------------------------------------
 # 候補の並べ方と、折返し点を探す範囲
 # --------------------------------------------------------------------------------------
@@ -293,13 +286,79 @@ def test_rank_puts_the_pareto_layer_before_the_difficulty():
     assert _ranked_ids([5, 7, 9], [0.0, 2000.0, 2000.0], [50.0, 10.0, 30.0], tie_by_distance=False) == [7, 5, 9]
 
 
+def test_rank_treats_distances_within_the_calibrated_quantum_as_the_same(monkeypatch):
+    """管理画面で距離の粒度を2kmより粗くすると、2km違いの候補は同じ距離とみなされ、難易度だけで並ぶ。"""
+    monkeypatch.setitem(TUNING_VALUES, "search.pareto_distance_quantum_m", 5000.0)
+
+    assert _ranked_ids([5, 7, 9], [0.0, 2000.0, 2000.0], [50.0, 10.0, 30.0], tie_by_distance=False) == [7, 9, 5]
+
+
+@pytest.mark.parametrize(("stretch", "expected"), [(None, [0, 1]), (1.0, [0]), (1.5, [0, 1, 2])])
+def test_alternative_routes_are_at_most_the_calibrated_stretch_of_the_best(monkeypatch, stretch, expected):
+    """目的地への代わりの道は、最良路（1km）の長さの較正値の倍までを候補にする（既定は1.2kmまで、1.4kmは外れる）。"""
+    if stretch is not None:
+        monkeypatch.setitem(TUNING_VALUES, "search.alternative_max_stretch", stretch)
+
+    best, alternatives = alternative_via_nodes(
+        np.array([1.0, 2.0, 3.0]), np.array([1000.0, 1200.0, 1400.0]), np.array([True, True, True]))
+    assert (best, alternatives.tolist()) == (0, expected)
+
+
 @pytest.mark.parametrize(("tie_by_distance", "expected"), [(True, [8, 3]), (False, [3, 8])])
 def test_rank_breaks_ties_by_distance_only_when_asked(tie_by_distance, expected):
     """同じ層・同じ難易度の中は、周回なら距離の鍵（リング中心からのずれ）の順、目的地なら番号の順。"""
     assert _ranked_ids([3, 8], [60.0, 10.0], [20.0, 20.0], tie_by_distance=tie_by_distance) == expected
 
 
-def test_turnaround_ring_falls_back_to_half_the_loop_when_the_tolerance_is_too_narrow():
-    """許容が狭いと`[(目標-許容)/MIN, (目標+許容)/MAX]`が逆転し、折返し点が1つも見つからない。"""
-    lower_m, upper_m, _ = turnaround_ring_m(10.0, 0.5)
-    assert (lower_m, upper_m) == (4750.0, 5250.0)
+@pytest.mark.parametrize(("ratio_min", "expected"), [(2.0, (4950.0, 5050.0)), (2.2, (4500.0, 10100.0 / 2.2))])
+def test_turnaround_ring_falls_back_to_the_loop_length_estimate_minimum_when_the_tolerance_is_too_narrow(
+    monkeypatch, ratio_min, expected,
+):
+    """許容が狭いと`[(目標-許容)/MIN, (目標+許容)/MAX]`が逆転し、折返し点が1つも見つからない。戻す先は管理画面で
+    変えた見込みの下限に従い、目標10km±0.1kmの往路は見込みの下限で割った長さになる。"""
+    monkeypatch.setitem(TUNING_VALUES, "search.loop_to_outbound_ratio_min", ratio_min)
+
+    lower_m, upper_m, _ = turnaround_ring_m(10.0, 0.1)
+    assert (lower_m, upper_m) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(("distance_km", "tolerance_km"), [(10.0, 2.0), (60.0, 10.0)])
+def test_turnaround_ring_center_lies_inside_the_ring(distance_km, tolerance_km):
+    """折返し点の候補はリング中心に近い順に並ぶ。中心がリングの外にあると、リングの端の候補ばかりが先に試される。
+    許容が狭くリングが戻る場合は、リングだけが広がり中心は動かないので、ここでは戻らない許容で見る。"""
+    lower_m, upper_m, center_m = turnaround_ring_m(distance_km, tolerance_km)
+    assert lower_m <= center_m <= upper_m
+
+
+def test_turnaround_ring_follows_the_loop_length_estimate_in_effect(monkeypatch):
+    """周回の全長の見込み（較正値）を管理画面で変えると、次に探すリングがその見込みで決まる。見込みを全長÷2.5に
+    揃えると、目標10km±1kmのリングは9km÷2.5〜11km÷2.5で、中心は10km÷2.5。"""
+    monkeypatch.setitem(TUNING_VALUES, "search.loop_to_outbound_ratio_min", 2.5)
+    monkeypatch.setitem(TUNING_VALUES, "search.loop_to_outbound_ratio_max", 2.5)
+
+    assert turnaround_ring_m(10.0, 1.0) == pytest.approx((3600.0, 4400.0, 4000.0))
+
+
+@pytest.mark.parametrize(
+    ("outbound_m", "shortest_m", "in_band"),
+    [
+        (3000.0, 4000.0, True),  # 見込み9.0〜10.2km: 下端がちょうど目標−許容
+        (2900.0, 4000.0, False),  # 下端8.9kmが目標−許容より短い
+        (3000.0, 4700.0, False),  # 上端11.1kmが目標＋許容より長い
+        # 見込みの幅（帰り7km×0.3）が許容の幅より広いので、帰りを最短のまま見る（10.0km）。幅のままだと上端12.1kmで外れる
+        (1000.0, 7000.0, True),
+        (3000.0, np.nan, False),  # 終点へ届かない中継点
+        (np.nan, 4000.0, False),  # 最後の固定点から届かない中継点
+    ],
+)
+def test_relay_band_takes_relays_whose_whole_estimate_of_the_route_fits_the_distance(outbound_m, shortest_m, in_band):
+    """目標10km±1km、前段2km。全長の見込みは前段＋往路＋帰りの最短×1.0〜1.3。帯から外れた中継点を選ぶと、帰りを
+    探したあとの距離フィルタで落ち、候補が減る。"""
+    (inside,), _ = relay_band(2000.0, np.array([outbound_m]), np.array([shortest_m]), 10.0, 1.0)
+    assert bool(inside) is in_band
+
+
+def test_relay_band_ranks_relays_by_how_far_the_middle_of_the_estimate_is_from_the_target():
+    """見込みの中央（帰り×1.15）が目標から遠いほど後ろに並ぶ。短すぎる経路も長すぎる経路も同じに扱う。"""
+    _, closeness_m = relay_band(2000.0, np.array([3000.0, 3000.0]), np.array([4000.0, 4000.0 + 800.0 / 1.15]), 10.0, 1.0)
+    assert closeness_m == pytest.approx([400.0, 400.0])

@@ -4,13 +4,13 @@ const USAGE_ATTRIBUTE = "data-usage";
 /** 説明を見る状態の自分の部品（案内・説明の面）に付ける印。ここを押した操作は止めない。 */
 export const USAGE_GUIDE_ATTRIBUTE = "data-usage-guide";
 
-/** 押すと浮きパネルを開く部品の印（`components/ui/Popover/Popover.tsx: PopoverTrigger`が付ける）。 */
-const USAGE_OPENS_ATTRIBUTE = "data-usage-opens";
-
-/** 押すと浮きパネルを開く部品か。 */
-function isPopoverOpener(element: Element): boolean {
-  return element.hasAttribute(USAGE_OPENS_ATTRIBUTE);
+/** 説明を見る状態の自分の部品（案内・説明の面）の中か。 */
+export function isInUsageGuide(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(`[${USAGE_GUIDE_ATTRIBUTE}]`) !== null;
 }
+
+/** 押すと浮きパネルを開く部品の印（`components/ui/Popover/Popover.tsx: PopoverTrigger`が付ける）。 */
+export const USAGE_OPENS_ATTRIBUTE = "data-usage-opens";
 
 /** 選ばれていないタブか。Radix のタブは click でなく mousedown で切り替わる。 */
 export function isUnselectedTab(element: Element): boolean {
@@ -25,7 +25,7 @@ export function isUnselectedTab(element: Element): boolean {
 function opensInside(element: Element): boolean {
   if (isUnselectedTab(element)) return true;
   if (element.getAttribute("aria-expanded") !== "false") return false;
-  return isPopoverOpener(element) || !element.hasAttribute("aria-haspopup");
+  return element.hasAttribute(USAGE_OPENS_ATTRIBUTE) || !element.hasAttribute("aria-haspopup");
 }
 
 /** 押して何かが起きる要素。押された要素から最寄りのこれを、説明する部品とみなす。 */
@@ -93,4 +93,25 @@ export function usageTargetOf(pressed: Element): UsageTarget | null {
     usage: part.closest(`[${USAGE_ATTRIBUTE}]`)?.getAttribute(USAGE_ATTRIBUTE) ?? null,
     opens: opensInside(part),
   };
+}
+
+/** 見えている文字か。読み上げから隠したもの（件数の札）・読み上げにだけ出すもの・アイコンの中の文字は数えない。 */
+function isVisibleText(node: Node, part: Element): boolean {
+  if (!node.textContent?.trim()) return false;
+  for (let element = node.parentElement; element !== null && element !== part; element = element.parentElement) {
+    if (element.getAttribute("aria-hidden") === "true" || element.classList.contains("sr-only")) return false;
+    if (element instanceof SVGElement) return false;
+  }
+  return true;
+}
+
+/** 押された要素から、アイコンだけで見えている部品を引く。文字を出す部品・アイコンの無い部品（つまみ等）ならnull。 */
+export function iconTargetOf(pressed: Element): UsageTarget | null {
+  const target = usageTargetOf(pressed);
+  if (target === null || target.element.querySelector("svg") === null) return null;
+  const texts = target.element.ownerDocument.createTreeWalker(target.element, NodeFilter.SHOW_TEXT);
+  for (let node = texts.nextNode(); node !== null; node = texts.nextNode()) {
+    if (isVisibleText(node, target.element)) return null;
+  }
+  return target;
 }

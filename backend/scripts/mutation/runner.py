@@ -4,6 +4,7 @@
 環境変数:
 - MUT_OUT: 落ちたテストの記録（kills/）と、テストの名前を渡すファイル（args/）を置く場所
 - MUT_DB_PREFIX: 担い手ごとのテストDBの名前の頭（<頭><番号>。前もって作っておく）
+- TEST_DATABASE_SERVER: その DB が載っているサーバー
 - MUT_STOP_AFTER: 始めてからこの秒数を過ぎたら、新しい変異を取らずに抜ける（ジョブの持ち時間の前に結果を残す。任意）
 済んだ変異（結果の JSONL にあるもの）は飛ばすので、止まっても打ち直せる。MUT_OUT に STOP というファイルを置いても止まる。
 この台本の隣に recheck.txt があれば、そこに並んだ変異には記録のテストでなくテスト全体を当てる（担い手を1つにし、
@@ -18,28 +19,26 @@ import sys
 import threading
 import time
 
+from _shared import ORIGINAL, RECHECK_LIST, baseline_of, fn_of, read_lines, read_results, read_stats
+
 OUT = os.environ["MUT_OUT"]
 DB_PREFIX = os.environ["MUT_DB_PREFIX"]
+DB_SERVER = os.environ["TEST_DATABASE_SERVER"]
 STOP_AFTER = float(os.environ.get("MUT_STOP_AFTER") or "inf")
-names = [line.strip() for line in open(sys.argv[1], encoding="utf-8") if line.strip()]
+names = read_lines(sys.argv[1])
 out_path = sys.argv[2]
 workers = int(sys.argv[3])
 HERE = os.path.dirname(os.path.abspath(__file__))
-RECHECK_FILE = os.path.join(HERE, "recheck.txt")
 RECHECK = set()
-if os.path.exists(RECHECK_FILE):
-    RECHECK = {line.strip() for line in open(RECHECK_FILE, encoding="utf-8") if line.strip()}
+if os.path.exists(RECHECK_LIST):
+    RECHECK = set(read_lines(RECHECK_LIST))
     cfg = configparser.ConfigParser()
     cfg.read(os.path.join(HERE, "setup.cfg"), encoding="utf-8")
     FULL_SELECTION = cfg["mutmut"]["pytest_add_cli_args_test_selection"].split()
     XDIST = ["-n", str(workers), "--dist", "loadgroup"]
     workers = 1
-done = set()
-if os.path.exists(out_path):
-    done = {json.loads(line)["mutant"] for line in open(out_path, encoding="utf-8")}
-stats = json.load(open("mutmut-stats.json", encoding="utf-8"))
-tbf = stats["tests_by_mangled_function_name"]
-dur = stats["duration_by_test"]
+done = set(read_results(out_path))
+tbf, dur = read_stats()
 
 q: queue.Queue[str] = queue.Queue()
 for n in names:
@@ -89,6 +88,8 @@ def run_child(cmd, env, limit, err_path, cwd=None):
                 if pid:
                     code = os.waitstatus_to_exitcode(wstatus)
                     maxrss = round(usage.ru_maxrss / 1024)
+                    # wait4 で回収したことを Popen に知らせる（None のままだと、捨てるときに ResourceWarning を出して
+                    # 回収済みの pid を待ちの一覧へ残す）。
                     proc.returncode = code
                     break
                 if time.time() > deadline:
@@ -104,7 +105,7 @@ def run_child(cmd, env, limit, err_path, cwd=None):
 
 
 def work(slot):
-    url = f"postgresql+asyncpg://ridecompass:ridecompass@localhost:5432/{DB_PREFIX}{slot}"
+    url = f"{DB_SERVER}/{DB_PREFIX}{slot}"
     env = dict(os.environ, TEST_DATABASE_URL=url, DATABASE_URL=url, PYTHONPATH=os.path.dirname(os.path.abspath(__file__)),
                MUTKILL_DIR=kill_dir, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     # 差し込んだ版のファイルは大きい（元の100倍を超えるものがある）。.pyc を書かせないと、プロセスごとに翻訳し直して
@@ -115,13 +116,13 @@ def work(slot):
             name = q.get_nowait()
         except queue.Empty:
             return
-        base_kind, _, base_func = name.partition(":")
+        base_kind, base_func = baseline_of(name) or (None, None)
         if base_func:
             # 基準: 変異を入れずに、その関数の変異と同じテストの組み合わせを同じ並びで回す（BASE1・BASE2 は差し込んだ版を2回、
             # ORIG は元の版）。基準で落ちるテストは、変異の回で落ちても見つけたとは言えない。
             tests = sorted(tbf.get(base_func, []))
         else:
-            tests = sorted(tbf.get(name.partition("__mutmut_")[0], []))
+            tests = sorted(tbf.get(fn_of(name), []))
         if name in RECHECK:
             tests = FULL_SELECTION
             extra = XDIST
@@ -145,7 +146,7 @@ def work(slot):
                 [sys.executable, "-m", "pytest", "-q", "--rootdir=.", "--tb=no", "-p", "no:cacheprovider",
                  "-p", "no:randomly", "-p", "mutkill", "-o", "timeout=60", *extra, f"@{args_file}"],
                 env, limit, os.path.join(args_dir, f"w{slot}.err"),
-                cwd=".." if base_kind == "ORIG" and base_func else None)  # 元の版は差し込んだ版の1つ上（backend）
+                cwd=".." if base_kind == ORIGINAL else None)  # 元の版は差し込んだ版の1つ上（backend）
             if code is None:
                 status = "timeout"
             else:

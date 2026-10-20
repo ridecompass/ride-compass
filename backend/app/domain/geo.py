@@ -1,4 +1,5 @@
 import math
+from collections.abc import Sequence
 from typing import Annotated, NamedTuple, Protocol
 
 import numpy as np
@@ -82,25 +83,41 @@ def ground_m_sql(geom_expr: str) -> str:
     return f"ST_Transform({geom_expr}, '{_GROUND_M_PROJ}')"
 
 
+def bearing_sql(start: str, end: str) -> str:
+    """点`start`から点`end`を見た方位（度、0=北・時計回り）を求めるSQLの式。2点が同じならNULL。"""
+    # geographyで測る。geometry(4326)のままだと経度緯度を平面として扱った角度になり、緯度35度では真の方位と数度ずれる。
+    return f"degrees(ST_Azimuth({start}::geography, {end}::geography))"
+
+
+def midpoint_sql(start: str, end: str) -> tuple[str, str]:
+    """点`start`と点`end`の中点の緯度・経度を求めるSQLの式の組。区間の値を1点で引く所（予報の格子点等）に使う。"""
+    return f"(ST_Y({start}) + ST_Y({end})) / 2", f"(ST_X({start}) + ST_X({end})) / 2"
+
+
 #: 16方位の呼び名（0=北から時計回り）。8方位の呼び名はこの1つおきで、別に持たない——
 #: 片方だけ直すと、同じ向きを場所によって違う名前で出す。
 SIXTEEN_POINT_LABELS = [
     "北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東",
     "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西",
 ]
+if len(set(SIXTEEN_POINT_LABELS)) != len(SIXTEEN_POINT_LABELS):
+    raise ValueError("16方位の呼び名が重なると、違う向きが画面で同じ名前になる")
 COMPASS_LABELS = SIXTEEN_POINT_LABELS[::2]
 
 
 def compass_label(bearing_deg: float) -> str:
     """任意の角度（0=北、時計回り）を方位の呼び名に変換する。区分の幅は呼び名の数から決まる。
 
-    区分の境界は上の区分へ倒す（half-up）。組み込みの`round`は偶数丸めのため使わない。
     画面も同じ角度を名付けるので、境界を含む入力とこの関数の答えを
     `scripts/cross_language_expectations.py: geo_expectations`が表にして配り、画面のテストが通す。
     """
-    count = len(COMPASS_LABELS)
-    index = math.floor((bearing_deg % 360) / (360 / count) + 0.5) % count
-    return COMPASS_LABELS[index]
+    return COMPASS_LABELS[bearing_sector(bearing_deg, len(COMPASS_LABELS))]
+
+
+def bearing_sector(bearing_deg: float, count: int) -> int:
+    """任意の角度（0=北、時計回り）を、北を中心にした`count`等分の区分の番号（0〜count-1）へ丸める。
+    境界は上の区分へ倒す（組み込みの`round`は偶数丸めで、境界の区分の幅が揃わない）。"""
+    return math.floor((bearing_deg % 360) / (360 / count) + 0.5) % count
 
 
 def compass_degrees(bearing_deg: float) -> int:
@@ -138,8 +155,8 @@ def haversine_distance_km_array(lat: np.ndarray, lon: np.ndarray, target: LatLon
     `haversine_distance_km`もこれを通す。
 
     `lat`/`lon`は複数地点の緯度経度配列（同一形状）、`target`は単一の目的地。
-    A*ヒューリスティック（`node_heuristic`）が、レグごとに目的地が変わるたびグラフ上の
-    全Nodeとの距離を1回のnumpy演算で求め直すために使う。
+    A*ヒューリスティック（`domain/route_search.py: straight_distances_m`）が、向かう先ごとにグラフ上の
+    全Nodeとの距離を1回のnumpy演算で求めるために使う。
     """
     lat1 = np.radians(lat)
     lon1 = np.radians(lon)
@@ -250,13 +267,14 @@ def _candidates_per_cell(rows: np.ndarray, columns: np.ndarray, size_deg: float,
     return candidates
 
 
-def nearest_point_index(
-    latitude: float, longitude: float, point_latitudes: np.ndarray, point_longitudes: np.ndarray
-) -> int | None:
-    """1地点に球面の距離で最も近い点（`point_*`）の番号。点が無ければNone。同じ距離の点が並べば
+def nearest_point_index(location: LatLon, points: Sequence[LatLon]) -> int | None:
+    """1地点に球面の距離で最も近い点（`points`）の番号。点が無ければNone。同じ距離の点が並べば
     先に並んだ点を選ぶ。"""
-    if len(point_latitudes) == 0:
+    if not points:
         return None
     return int(
-        nearest_point_indices(np.array([latitude]), np.array([longitude]), point_latitudes, point_longitudes)[0]
+        nearest_point_indices(
+            np.array([location.latitude]), np.array([location.longitude]),
+            np.array([p.latitude for p in points]), np.array([p.longitude for p in points]),
+        )[0]
     )

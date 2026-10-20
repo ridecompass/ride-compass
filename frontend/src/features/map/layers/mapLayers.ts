@@ -1,45 +1,27 @@
 // 地図レイヤーのカタログ。地図のチップとその▶パネルがこの並びを列挙して描く。種別・情報源・性質・既定の表示・名前・
-// 説明は源泉（backendの`domain/map_display.py`）が宣言し、ここはアイコンと表示専用の凡例だけを足す。
+// 説明は源泉（backendの`domain/map_display.py`と、道の線の層は軸カタログの`road_classes.map_layers`）が宣言し、ここは
+// アイコンと表示専用の凡例だけを足す。
 // 地図に描く宣言（`scene/groups/`、絞り込める凡例は`scene/legends.ts`）は別に要る——書き忘れるとチップはONになり
 // 凡例も出るのに、地図には何も出ない。
 
 import weatherScales from "@/types/generated/weather-scales.json";
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import {
-  AccidentIcon,
-  BicycleIcon,
-  ElevationIcon,
-  HillshadeIcon,
-  LandcoverIcon,
-  OnewayIcon,
-  RaindropIcon,
-  RoadIcon,
-  RoadSurfaceIcon,
-  RouteIcon,
-  ShieldIcon,
-  StopPlaceIcon,
-  StopPoiIcon,
-  SupplyPoiIcon,
-  TrackGradeIcon,
-  TunnelIcon,
-  WindIcon,
-  type MapIconComponent,
-} from "@/components/ui/icons/icons";
+import type { MapIconComponent } from "@/components/ui/icons/icons";
+import { MAP_LAYER_ICONS, roadLayerIcon, type StaticMapLayerId } from "@/components/ui/icons/mapLayerIcons";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { TILE_VERSION_GATED_SOURCES } from "@/lib/mapDisplay/tileVersionGated";
-import { LANDCOVER_PAINTED_CLASSES } from "./landcoverClasses";
+import { LANDCOVER_PAINTED_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { PRECIPITATION_INTENSITY_LEVELS } from "./precipitationNowcast";
 import { WIND_SPEED_LEGEND_LEVELS } from "./windLayer";
-import { axisMapLayerId, type AxisMapLayerId, type RampAxis } from "@/lib/mapDisplay/axisLayers";
 import type { MapAxisCatalog } from "@/features/map/mapAxisCatalog";
 import { axisNamesInText, type CatalogAxis } from "@/lib/catalogAxis";
-import { FIXED_LENS_LABELS, LENS_DIFFICULTY_ID } from "@/lib/mapDisplay/routeStyleModes";
+import { primaryAttributeIdsToLayerIds } from "@/features/map/layers/primaryAttributes";
+import type { RoadMapLayerView } from "@/types/route";
+import { DISASTER_ELEMENTS } from "@/features/map/scene/groups/weather";
+import { DIFFICULTY_LENS_LABEL } from "@/lib/mapDisplay/routeStyleModes";
 
-/** 源泉が宣言する、地図に載るものの名前。 */
-type StaticMapLayerId = (typeof mapDisplay.layers)[number]["id"];
-
-/** 地図に載るものの名前。静的な一覧は源泉が持ち、軸スタジオ由来のものは実行時に決まる。 */
-export type MapLayerId = StaticMapLayerId | AxisMapLayerId | DedicatedWayValueMapLayerId;
+/** 地図に載るものの名前。静的な一覧は源泉が持ち、道の線の層（鍵は層のデータが決める）と軸スタジオ由来のものは実行時に決まる。 */
+export type MapLayerId = StaticMapLayerId | DedicatedWayValueMapLayerId | string;
 
 // 選んだルートに付くデータ（選び直すたびに描き直す）か、地域に固定のデータ（表示の切り替えだけ）か。値が時間で
 // 変わるかは別の`dataNature`が表す（降水ナウキャストは地域に固定で、値が時間で変わる）。
@@ -62,39 +44,17 @@ interface ReadOnlyLegendBlock {
   legend: readonly LegendEntry[];
 }
 
-/** 表示専用の凡例の`filter`へ入れるダミー（描画へ当てないので、一致しない式でよい）。 */
-const UNUSED_LEGEND_FILTER: unknown[] = ["==", 1, 0];
-
-function readOnlyEntries(levels: readonly Omit<LegendEntry, "filter">[]): LegendEntry[] {
-  return levels.map((level) => ({ ...level, filter: UNUSED_LEGEND_FILTER }));
-}
-
-/** 名前付きソースの宣言（同じソースを名乗る要素は名前・コマの規則・配信を共有するので、先頭の要素で引く）。 */
+/** 名前付きソースの宣言（同じソースを名乗る要素は名前・説明を共有するので、先頭の要素で引く）。 */
 function weatherSourceOf(source: string) {
   const element = mapDisplay.weatherElements.find((candidate) => candidate.source === source);
-  if (!element) throw new Error(`${source}は宣言されていない`);
-  return element;
+  if (!element?.description) throw new Error(`${source}は説明を宣言していない`);
+  return { label: element.label, description: element.description };
 }
 
-/** 名前付きソースを重ねる幅（「今」から何時間先まで）。源泉が要素の描くコマの規則として宣言する値。 */
-function windowHoursOf(source: string): number {
-  const minutes = weatherSourceOf(source).frameRule.windowMinutes;
-  if (minutes == null) throw new Error(`${source}は重ねる幅を宣言していない`);
-  return minutes / 60;
-}
-
-const LINEAR_RAINBAND_HOURS = windowHoursOf("linearRainband");
-
-/** 名前付きソースの予測が届く先（分）。源泉が配信の要素ごとに宣言する値。 */
-function forecastMinutesOf(source: string): number {
-  const minutes = weatherSourceOf(source).jmaElements[0]?.forecastMinutes;
-  if (minutes == null) throw new Error(`${source}は予測が届く先を宣言していない`);
-  return minutes;
-}
+const LINEAR_RAINBAND = weatherSourceOf("linearRainband");
+const LINEAR_RAINBAND_AREA = weatherSourceOf("linearRainbandArea");
 
 type WeatherElementDeclaration = (typeof mapDisplay.weatherElements)[number];
-
-const DISASTER_ELEMENTS = mapDisplay.weatherElements.filter((element) => element.group === "disaster");
 
 /** 名前の並び。同じ名前を名乗る要素（描き方違いの同じ名前付きソース）は1つにする。 */
 function labelList(elements: readonly WeatherElementDeclaration[]): string {
@@ -106,33 +66,10 @@ function disasterLegendBlocks(): ReadOnlyLegendBlock[] {
   const scales = [...new Set(DISASTER_ELEMENTS.flatMap((element) => element.levelScale ?? []))];
   return scales.map((scale) => ({
     label: labelList(DISASTER_ELEMENTS.filter((element) => element.levelScale === scale)),
-    legend: readOnlyEntries(weatherScales[scale]),
+    legend: weatherScales[scale],
   }));
 }
 
-/** 源泉が宣言するレイヤーのアイコン。省略できない（描く側の対応表で引く形だと、書き忘れても汎用のアイコンで
- * 見分けの付かないまま出続ける）。 */
-const STATIC_LAYER_ICONS: Record<StaticMapLayerId, MapIconComponent> = {
-  elevation: ElevationIcon,
-  hillshade: HillshadeIcon,
-  landcover: LandcoverIcon,
-  highway: RoadIcon,
-  surface: RoadSurfaceIcon,
-  tracktype: TrackGradeIcon,
-  tunnel: TunnelIcon,
-  oneway: OnewayIcon,
-  cycleway: BicycleIcon,
-  stop_poi: StopPoiIcon,
-  supply_poi: SupplyPoiIcon,
-  stop_place: StopPlaceIcon,
-  accident_point: AccidentIcon,
-  precipitationNowcast: RaindropIcon,
-  windVector: WindIcon,
-  disaster: ShieldIcon,
-  route: RouteIcon,
-};
-
-/** ▶を開いたときの表示専用の凡例。無いレイヤーは絞り込める凡例か、画面の状態から組む凡例を持つ。 */
 const READ_ONLY_LEGENDS: Partial<Record<StaticMapLayerId, readonly ReadOnlyLegendBlock[]>> = {
   landcover: [
     {
@@ -142,7 +79,6 @@ const READ_ONLY_LEGENDS: Partial<Record<StaticMapLayerId, readonly ReadOnlyLegen
         label: cls.label,
         description: cls.description,
         color: cls.color,
-        filter: UNUSED_LEGEND_FILTER,
       })),
     },
   ],
@@ -150,29 +86,26 @@ const READ_ONLY_LEGENDS: Partial<Record<StaticMapLayerId, readonly ReadOnlyLegen
   precipitationNowcast: [
     {
       label: "",
-      legend: readOnlyEntries(PRECIPITATION_INTENSITY_LEVELS),
+      legend: PRECIPITATION_INTENSITY_LEVELS,
     },
     {
-      label: `${weatherSourceOf("linearRainband").label}[現在〜${LINEAR_RAINBAND_HOURS}時間先のみ]`,
-      // 色は配信元の塗り色そのもの。矩形に見えることも書く（細かい雨域と重なると描画の不具合に見える）。
+      label: LINEAR_RAINBAND.label,
+      // 色は配信元の塗り色そのもの。
       legend: [
         {
           key: "linearRainband",
-          label: `今後${LINEAR_RAINBAND_HOURS}時間以内に大雨のおそれ[矩形の予測領域]`,
+          label: LINEAR_RAINBAND.description,
           color: weatherScales.linear_rainband_color,
-          filter: UNUSED_LEGEND_FILTER,
         },
       ],
     },
     {
-      label: `${weatherSourceOf("linearRainbandArea").label}[実況〜${forecastMinutesOf("linearRainbandAreaForecast")}分先のみ]`,
-      // 文言は配信元の公式の画面の凡例に合わせる。
+      label: LINEAR_RAINBAND_AREA.label,
       legend: [
         {
           key: "linearRainbandArea",
-          label: "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[赤い輪郭線]",
+          label: LINEAR_RAINBAND_AREA.description,
           color: weatherScales.linear_rainband_outline_color,
-          filter: UNUSED_LEGEND_FILTER,
         },
       ],
     },
@@ -181,7 +114,7 @@ const READ_ONLY_LEGENDS: Partial<Record<StaticMapLayerId, readonly ReadOnlyLegen
   windVector: [
     {
       label: "矢印[風速]",
-      legend: readOnlyEntries(WIND_SPEED_LEGEND_LEVELS),
+      legend: WIND_SPEED_LEGEND_LEVELS,
     },
   ],
   // 配信元が色を焼き込んだ画像なので絞り込めない。
@@ -206,9 +139,9 @@ const GROUP_BY_CATEGORY: Readonly<Record<string, MapOverlayGroup>> = Object.from
   mapDisplay.layerCategories.map((category) => [category.key, category.group]),
 );
 
-/** 軸スタジオ由来のレイヤー（ramp軸・専用配信の軸）か。地図のチップに出さない。idの集合でなく記述子の印で決める。 */
+/** 軸スタジオ由来のレイヤー（評価軸で道を塗るもの）か。地図のチップに出さない。idの集合でなく記述子の印で決める。 */
 export function isAxisStudioLayer(layer: MapLayerDescriptor): layer is AxisStudioLayerDescriptor {
-  return layer.axisStudioLayer === true || layer.dataNature === "composite";
+  return layer.axisStudioLayer === true;
 }
 
 /** チップが属するグループ。中分類だけで決めるので、軸スタジオ由来のレイヤーは渡さない——チップの一覧
@@ -223,7 +156,6 @@ export interface ChipLayerDescriptor {
   id: MapLayerId;
   label: string;
   kind: MapLayerKind;
-  /** 省略できない（描く側の対応表で引く形だと、書き忘れても汎用のアイコンで見分けの付かないまま出続ける）。 */
   icon: MapIconComponent;
   /** 省略できない（書き忘れたレイヤーは取得状態を持たず、チップの状態の印が出ない）。 */
   dataSource: MapLayerDataSource;
@@ -251,8 +183,7 @@ type LayerDeclaration = Pick<
  * 地図の組み立てが情報源を引くためのidと源泉の宣言だけを持つ。 */
 export interface AxisStudioLayerDescriptor extends LayerDeclaration {
   id: MapLayerId;
-  /** 専用配信の軸から作ったレイヤーか（ramp軸は`dataNature`の合成で同じ判定を受ける）。 */
-  axisStudioLayer?: true;
+  axisStudioLayer: true;
 }
 
 export type MapLayerDescriptor = ChipLayerDescriptor | AxisStudioLayerDescriptor;
@@ -277,10 +208,9 @@ function declaredLayer(spec: {
 }
 
 /** 源泉の説明の文の差し込み口。 */
-type LayerTextSlot = Extract<
-  NonNullable<(typeof mapDisplay.layers)[number]["description" | "panelHint"]>[number],
-  { name: string }
->;
+type LayerTextSlot =
+  | Extract<NonNullable<(typeof mapDisplay.layers)[number]["description" | "panelHint"]>[number], { name: string }>
+  | Extract<RoadMapLayerView["panel_hint"][number], { name: string }>;
 
 type LayerTextPart = string | LayerTextSlot;
 
@@ -308,47 +238,64 @@ function coverageYearsLabel(years: readonly number[]): string {
 }
 
 /** レイヤーの一覧を組むのに要る軸カタログの項目。 */
-type LayerCatalog = Pick<MapAxisCatalog, "axes" | "rampAxes" | "dedicatedAxes" | "accidentYears">;
+type LayerCatalog = Pick<MapAxisCatalog, "axes" | "dedicatedAxes" | "accidentYears" | "roadLayers">;
 
-const NO_AXES: LayerCatalog = { axes: [], rampAxes: [], dedicatedAxes: [], accidentYears: [] };
+export const NO_AXES: LayerCatalog = { axes: [], dedicatedAxes: [], accidentYears: [], roadLayers: [] };
+
+/** 軸が材料として読む元データを見せるレイヤー（一次属性の層と、区分を決める材料を読む道の線の層）。 */
+export function axisMapLayerIds(axis: CatalogAxis): readonly MapLayerId[] {
+  return [...primaryAttributeIdsToLayerIds(axis.primaryAttributeIds), ...axis.roadLayerIds];
+}
 
 /** そのレイヤーが見せる元データを材料に持つ公開中の評価の名前（「A」「B」）。無ければ空文字で、呼ぶ側は評価に触れる一文を出さない。 */
-function axisNamesReading(axes: readonly CatalogAxis[], layerId: StaticMapLayerId): string {
-  return axisNamesInText(
-    axes.filter((axis) => axis.primaryAttributeIds.includes(layerId) || axis.weatherLayerGroups.includes(layerId)),
-  );
+function axisNamesReading(axes: readonly CatalogAxis[], layerId: MapLayerId): string {
+  return axisNamesInText(axes.filter((axis) => axisMapLayerIds(axis).includes(layerId)));
+}
+
+const CATEGORY_KEYS: ReadonlySet<string> = new Set(MAP_LAYER_CATEGORY_ORDER);
+
+/** 層のデータが指す中分類。知らない鍵は中分類なし（どのグループにも入らず、チップに出ない）。 */
+function knownCategory(key: string): MapLayerCategory | null {
+  return CATEGORY_KEYS.has(key) ? (key as MapLayerCategory) : null;
 }
 
 export function buildMapLayers({
   axes,
-  rampAxes,
   dedicatedAxes,
   accidentYears,
+  roadLayers,
 }: LayerCatalog): readonly MapLayerDescriptor[] {
   // 取れていないときは年に触れない（既定の年を出すと、それが正しいように見える）。
   const accidentCoverage = coverageYearsLabel(accidentYears);
   // 並びはレンズの選択肢と同じ（公開中の評価と総合難易度）。
-  const routeLenses = [...axes.map((axis) => axis.label), FIXED_LENS_LABELS[LENS_DIFFICULTY_ID]].join("・");
+  const routeLenses = [...axes.map((axis) => axis.label), DIFFICULTY_LENS_LABEL].join("・");
   const staticLayers = mapDisplay.layers.map((layer): ChipLayerDescriptor => {
     const slots = { axes: axisNamesReading(axes, layer.id), accidentYears: accidentCoverage, routeLenses };
     return {
       id: layer.id,
       label: layer.label,
       ...declaredLayer(layer),
-      icon: STATIC_LAYER_ICONS[layer.id],
+      icon: MAP_LAYER_ICONS[layer.id],
       readOnlyLegend: READ_ONLY_LEGENDS[layer.id],
       description: fillLayerText(layer.description, slots),
       panelHint: layer.panelHint ? fillLayerText(layer.panelHint, slots) : undefined,
     };
   });
+  const roadLayerChips = roadLayers.map((layer): ChipLayerDescriptor => {
+    const slots = { axes: axisNamesReading(axes, layer.id), accidentYears: "", routeLenses: "" };
+    return {
+      id: layer.id,
+      label: layer.label,
+      ...declaredLayer({ ...mapDisplay.axisLayers.road, category: knownCategory(layer.category) }),
+      icon: roadLayerIcon(layer.icon),
+      description: fillLayerText(layer.description, slots),
+      panelHint: layer.panel_hint.length > 0 ? fillLayerText(layer.panel_hint, slots) : undefined,
+    };
+  });
   return [
     ...staticLayers,
-    // ramp軸は軸カタログから作る（軸を公開すればここを変えずに現れる）。
-    ...rampAxes.map((axis): AxisStudioLayerDescriptor => ({
-      id: axisMapLayerId(axis.axisId),
-      ...declaredLayer(mapDisplay.axisLayers.ramp),
-    })),
-    // 専用配信の軸。チップには出ないが、地図の組み立てが情報源をここから引く（無いと描く時点で落ちる）。
+    ...roadLayerChips,
+    // 評価軸は軸カタログから作る（軸を公開すればここを変えずに現れる）。チップには出ないが、地図の組み立てが情報源をここから引く（無いと描く時点で落ちる）。
     ...dedicatedAxes.map((axis): AxisStudioLayerDescriptor => ({
       id: dedicatedWayValueMapLayerId(axis.axisId),
       ...declaredLayer(mapDisplay.axisLayers.dedicated),
@@ -365,25 +312,25 @@ export const TILE_ZOOM_TOO_WIDE_NOTICE = "ズームインすると表示され�
 /** チップ下に出す、タイルの世代が届いていないときの案内（届くまでソースを作らないので何も描けない）。 */
 export const TILE_VERSIONS_MISSING_NOTICE = "配信情報を取得できず表示できません";
 
-/** タイルの世代が届くまで何も描けないレイヤー。ramp軸も路面タイルを読むので含める。 */
-export function tileVersionGatedLayerIds(rampAxes: readonly RampAxis[]): readonly MapLayerId[] {
-  return buildMapLayers({ ...NO_AXES, rampAxes })
-    .filter((layer) => TILE_VERSION_GATED_SOURCES.has(layer.dataSource))
+/** タイルの世代が届くまで何も描けないレイヤー。軸のレイヤーはチップが無く案内の出し先が無いので含めない。 */
+export function tileVersionGatedLayerIds(layers: readonly MapLayerDescriptor[]): readonly MapLayerId[] {
+  return layers
+    .filter((layer) => !isAxisStudioLayer(layer) && TILE_VERSION_GATED_SOURCES.has(layer.dataSource))
     .map((layer) => layer.id);
 }
 
 /** そのズームではタイルが要求されず、ONにしても何も出ないレイヤー。軸のレイヤーはチップが無く案内の出し先が無いので含めない。 */
-export function tileZoomTooWideLayerIds(zoom: number): readonly MapLayerId[] {
-  return buildMapLayers(NO_AXES)
-    .filter((layer) => layer.tileMinZoom !== undefined && zoom < layer.tileMinZoom)
+export function tileZoomTooWideLayerIds(layers: readonly MapLayerDescriptor[], zoom: number): readonly MapLayerId[] {
+  return layers
+    .filter((layer) => !isAxisStudioLayer(layer) && layer.tileMinZoom !== undefined && zoom < layer.tileMinZoom)
     .map((layer) => layer.id);
 }
 
 /** チップからON/OFFできるレイヤーの既定の表示。軸のレイヤーはレンズだけが決めるので持たない。 */
-export function buildDefaultLayerVisibility(): MapLayerVisibility {
+export function buildDefaultLayerVisibility(layers: readonly MapLayerDescriptor[]): MapLayerVisibility {
   return Object.fromEntries(
-    buildMapLayers(NO_AXES).map((layer) => [layer.id, layer.defaultOn === true]),
-  ) as MapLayerVisibility;
+    layers.filter((layer) => !isAxisStudioLayer(layer)).map((layer) => [layer.id, layer.defaultOn === true]),
+  );
 }
 
 // レイヤーごとの取得の状態。正常なときはキー自体を持たない。
@@ -417,7 +364,6 @@ export function deriveFetchLayerStatus(
   return undefined;
 }
 
-/** ramp軸の`axis:${axisId}`とは別の名前（同じ軸がramp・専用配信の両方を持ちうる）。 */
 type DedicatedWayValueMapLayerId = `${string}Axis`;
 
 function dedicatedWayValueMapLayerId(axisId: string): DedicatedWayValueMapLayerId {
