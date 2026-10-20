@@ -1,5 +1,5 @@
 """外部I/O(外部API・タイル/標高キャッシュ)イベントのログと集計
-（ログレベルの方針は docs/conventions/logging.md）。
+（ログレベルの方針は .claude/rules/logging.md）。
 
 失敗はdebug_modeに関わらず常時WARNINGで出す。外部サービス障害時に同種の警告でログが
 埋まらないよう、カテゴリごとに固定窓で抑制し、超過分は窓の切り替わり時に件数だけ報告する。
@@ -11,8 +11,13 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
+import httpx
+from pydantic import Field
+
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.strict_model import StrictModel
 
 logger = logging.getLogger("ridecompass.external")
@@ -37,9 +42,10 @@ class ExternalCallStats(StrictModel):
 
     calls: int
     errors: int
-    cache_hits: int
-    cache_misses: int
-    total_ms: int
+    # ヒット率・平均の計算元。応答には載せない（画面は率と平均を読む）。
+    cache_hits: int = Field(exclude=True)
+    cache_misses: int = Field(exclude=True)
+    total_ms: int = Field(exclude=True)
     max_ms: int
     avg_ms: int
     cache_hit_rate: float | None
@@ -47,10 +53,6 @@ class ExternalCallStats(StrictModel):
     # HTTPステータス（"http_429"）か例外クラス名のみの粗いラベルで、メッセージ本文・座標は含まない。
     error_types: dict[str, int]
     last_error: LastError | None
-    last_success_at: str | None
-    retried_calls: int
-    retry_attempts_total: int
-    stale_fallback_used: int
 
 
 class StatsSnapshot(StrictModel):
@@ -75,10 +77,6 @@ def _empty_stats() -> ExternalCallStats:
         cache_hit_rate=None,
         error_types={},
         last_error=None,
-        last_success_at=None,
-        retried_calls=0,
-        retry_attempts_total=0,
-        stale_fallback_used=0,
     )
 
 
@@ -86,8 +84,18 @@ _lock = threading.Lock()
 _external_stats: dict[str, ExternalCallStats] = {}
 # category -> 429拒否数(record_rate_limit_rejection)
 _rate_limit_rejections: dict[str, int] = {}
-# category -> [window_start(monotonic), emitted_count, suppressed_count]
-_warn_windows: dict[str, list[float]] = {}
+
+
+@dataclass
+class _WarnWindow:
+    """抑制付きWARNINGのカテゴリごとの固定窓。"""
+
+    start: float  # 窓の始まり（monotonic）
+    emitted: int = 0
+    suppressed: int = 0
+
+
+_warn_windows: dict[str, _WarnWindow] = {}
 
 
 def error_type_label(exc: BaseException) -> str:
@@ -113,60 +121,22 @@ def _round_floats(value: object) -> object:
     return value
 
 
-def _throttled_warning(category: str, message: str, *args: object) -> None:
-    """カテゴリごとの固定窓レートで抑制しつつWARNINGを出す。"""
-    emit = False
-    suppression_notice: int | None = None
-    with _lock:
-        now = time.monotonic()
-        window = _warn_windows.get(category)
-        if window is None or now - window[0] >= WARN_WINDOW_SECONDS:
-            if window is not None and window[2]:
-                suppression_notice = int(window[2])
-            window = [now, 0, 0]
-            _warn_windows[category] = window
-        if window[1] < WARN_BURST_PER_WINDOW:
-            window[1] += 1
-            emit = True
-        else:
-            window[2] += 1
-    if suppression_notice is not None:
-        logger.warning(
-            "[%s] suppressed %d similar warnings in last %ds", category, suppression_notice, int(WARN_WINDOW_SECONDS)
-        )
-    if emit:
-        logger.warning(message, *args)
-
-
 def _record(category: str, elapsed_ms: int, fields: dict, error: bool) -> None:
     with _lock:
         stats = _external_stats.get(category)
         if stats is None:
             stats = _external_stats[category] = _empty_stats()
         stats.calls += 1
-        now_iso = datetime.now(UTC).isoformat()
         if error:
             stats.errors += 1
             error_type = fields.get("error_type") or "unknown"
             stats.error_types[error_type] = stats.error_types.get(error_type, 0) + 1
-            stats.last_error = LastError(type=error_type, at=now_iso)
-        else:
-            stats.last_success_at = now_iso
+            stats.last_error = LastError(type=error_type, at=datetime.now(UTC).isoformat())
         cache = fields.get("cache")
         if cache == "hit":
             stats.cache_hits += 1
         elif cache == "miss":
             stats.cache_misses += 1
-        # 429/ConnectTimeout等で再試行が発生した回数（最終的に成功した呼び出しも含む）。
-        # 「まだ成功はしているが上流が混み始めている」兆候を502化する前に把握できる。
-        retries = fields.get("retries")
-        if retries:
-            stats.retried_calls += 1
-            stats.retry_attempts_total += retries
-        # 「取得失敗時に古いキャッシュで代用した」回数。
-        fallback = fields.get("fallback")
-        if isinstance(fallback, str) and fallback.startswith("stale_cache"):
-            stats.stale_fallback_used += 1
         stats.total_ms += elapsed_ms
         stats.max_ms = max(stats.max_ms, elapsed_ms)
         stats.avg_ms = round(stats.total_ms / stats.calls)
@@ -185,13 +155,46 @@ def mark_failed(fields: dict, exc: BaseException) -> None:
     fields["error_type"] = error_type_label(exc)
 
 
+def mark_status_error(fields: dict, exc: httpx.HTTPStatusError) -> bool:
+    """`log_external_call`の中で上流の失敗の応答を捕まえたときの記録の入口。404ならTrueを返す。
+
+    404は配信元に無いことを確かめた正常系で、成功として数え（`status`に404を残す）、WARNINGを出さない。
+    ほかの応答は`mark_failed`で失敗として記録する。
+    """
+    if exc.response.status_code == 404:
+        fields["result"] = "ok"
+        fields["status"] = 404
+        return True
+    mark_failed(fields, exc)
+    return False
+
+
 def log_throttled_warning(category: str, message: str, *args: object) -> None:
-    """カテゴリ単位の抑制付きWARNING。
+    """カテゴリ単位の抑制付きWARNING（カテゴリごとの固定窓で数を絞る）。
 
     `log_external_call`で囲む形にできない失敗（本処理へフォールバックして呼び出し自体は
     成功扱いになるもの）を記録するための入口。
     """
-    _throttled_warning(category, message, *args)
+    emit = False
+    suppression_notice: int | None = None
+    with _lock:
+        now = time.monotonic()
+        window = _warn_windows.get(category)
+        if window is None or now - window.start >= WARN_WINDOW_SECONDS:
+            if window is not None and window.suppressed:
+                suppression_notice = window.suppressed
+            window = _warn_windows[category] = _WarnWindow(start=now)
+        if window.emitted < WARN_BURST_PER_WINDOW:
+            window.emitted += 1
+            emit = True
+        else:
+            window.suppressed += 1
+    if suppression_notice is not None:
+        logger.warning(
+            "[%s] suppressed %d similar warnings in last %ds", category, suppression_notice, int(WARN_WINDOW_SECONDS)
+        )
+    if emit:
+        logger.warning(message, *args)
 
 
 def record_rate_limit_rejection(category: str, client_id: str, limit: str) -> None:
@@ -202,7 +205,7 @@ def record_rate_limit_rejection(category: str, client_id: str, limit: str) -> No
     """
     with _lock:
         _rate_limit_rejections[category] = _rate_limit_rejections.get(category, 0) + 1
-    _throttled_warning(f"ratelimit:{category}", "[ratelimit:%s] rejected client=%s limit=%s", category, client_id, limit)
+    log_throttled_warning(f"ratelimit:{category}", "[ratelimit:%s] rejected client=%s limit=%s", category, client_id, limit)
 
 
 def get_stats() -> StatsSnapshot:
@@ -225,23 +228,23 @@ def log_external_call(category: str, **fields: object) -> Iterator[dict]:
     常時出力し、成功はDEBUG(debug_mode時のみ実質出力)に留める。例外を捕まえて既定値へ
     倒す呼び出し元は`mark_failed`で失敗を記録する。
     """
-    started = time.monotonic()
+    started = start_timer()
     logger.debug("[%s] start %s", category, fields)
     try:
         yield fields
     except Exception as exc:
-        elapsed_ms = round((time.monotonic() - started) * 1000)
+        took_ms = elapsed_ms(started)
         fields["error_type"] = error_type_label(exc)
-        _record(category, elapsed_ms, fields, error=True)
-        _throttled_warning(
-            category, "[%s] error after %dms %s error=%r", category, elapsed_ms, _round_floats(fields), exc
+        _record(category, took_ms, fields, error=True)
+        log_throttled_warning(
+            category, "[%s] error after %dms %s error=%r", category, took_ms, _round_floats(fields), exc
         )
         raise
     else:
-        elapsed_ms = round((time.monotonic() - started) * 1000)
+        took_ms = elapsed_ms(started)
         error = fields.get("result") == "error"
-        _record(category, elapsed_ms, fields, error=error)
+        _record(category, took_ms, fields, error=error)
         if error:
-            _throttled_warning(category, "[%s] failed after %dms %s", category, elapsed_ms, _round_floats(fields))
+            log_throttled_warning(category, "[%s] failed after %dms %s", category, took_ms, _round_floats(fields))
         else:
-            logger.debug("[%s] done in %dms %s", category, elapsed_ms, fields)
+            logger.debug("[%s] done in %dms %s", category, took_ms, fields)

@@ -1,9 +1,10 @@
 import asyncio
 import functools
 import hashlib
+import logging
 import os
 import re
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
 from app.infrastructure.proj_data import pin_bundled_proj_data
@@ -22,8 +23,19 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.batch.common import asyncpg_dsn
-from app.infrastructure import debug_log, rate_limiter, redis_client, tile_cache, tile_persistent_cache
-from app.infrastructure.orm_base import Base
+from app.domain import stopwatch
+from app.infrastructure import (
+    debug_log,
+    jma_area_boundaries,
+    rate_limiter,
+    redis_client,
+    road_network_store,
+    tile_cache,
+    tile_persistent_cache,
+)
+from app.infrastructure.derived_data_freshness import derived_tables
+from app.infrastructure.derived_data_meta import DerivedStageRow
+from app.infrastructure.orm_base import declared_metadata
 from app.infrastructure.road_graph_repository import (
     REQUIRED_EXTENSIONS,
     RoadGraphRepository,
@@ -31,7 +43,14 @@ from app.infrastructure.road_graph_repository import (
 )
 from app.config import settings
 from app.services import derived_data_revision_service
+from scripts.schema_gap import collect_gaps
 from tests.admin_auth import ADMIN_PASSWORD, ADMIN_USERNAME
+from tests.database_names import (
+    SHARED_TEST_DATABASE,
+    TEMPLATE_TEST_DATABASE,
+    TEST_DATABASE_PREFIX,
+    TEST_DATABASE_SERVER,
+)
 
 # hypothesisは1例ごとに壁時計の締め切り（既定200ms）を持ち、超えると落とす。共有のランナーでは同じ例の所要時間が
 # 実行ごとに揺れて別のテストが落ちるため外す。止まったテストはpytest-timeoutが落とす。
@@ -40,10 +59,49 @@ hypothesis_settings.load_profile("ridecompass")
 
 
 @pytest.fixture
-def admin_credentials(monkeypatch):
-    """管理画面APIのBasic認証を、テスト用の固定の認証情報で通るようにする。"""
-    monkeypatch.setattr(settings, "admin_basic_auth_username", ADMIN_USERNAME)
-    monkeypatch.setattr(settings, "admin_basic_auth_password", ADMIN_PASSWORD)
+def admin_credentials(monkeypatch, request):
+    """管理画面APIのBasic認証を、テスト用の固定の認証情報で通るようにする。
+
+    `indirect`で`(ユーザー名, パスワード)`を渡すと、その値を置く（`("", "")`なら認証情報が無い本番の状態）。
+    """
+    username, password = getattr(request, "param", (ADMIN_USERNAME, ADMIN_PASSWORD))
+    monkeypatch.setattr(settings, "admin_basic_auth_username", username)
+    monkeypatch.setattr(settings, "admin_basic_auth_password", password)
+
+
+@pytest.fixture
+def road_network_root(monkeypatch, tmp_path) -> Path:
+    """道路網の置き場（`road_network_store.ROOT`）を、テストごとの空の一時ディレクトリへ移したパス。
+
+    前のテストが読み込んだ道路網は置き場の場所が違うので使われない。
+    """
+    root = tmp_path / "road_network"
+    monkeypatch.setattr(road_network_store, "ROOT", root)
+    return root
+
+
+@pytest.fixture
+def boundary_path(monkeypatch, tmp_path) -> Path:
+    """区域の境界の置き場（`jma_area_boundaries.BOUNDARY_PATH`）を、テストごとの一時ディレクトリの下へ移したパス。
+    ファイルはまだ無い（読めない置き場）。"""
+    path = tmp_path / "jma_area" / "boundaries.json"
+    monkeypatch.setattr(jma_area_boundaries, "BOUNDARY_PATH", path)
+    return path
+
+
+@pytest.fixture
+def restore_debug_mode():
+    """debug_modeの切替の口を叩いたテストのあとで、debug_modeとルートロガーのレベルを元に戻す。
+
+    どちらもプロセス全体で共有される可変状態で、残すと後のテストのログの拾い方が変わる
+    （ルートロガーがINFOのままだと、`caplog.at_level`の外で出たINFOまで拾われる）。
+    """
+    original_debug_mode = settings.debug_mode
+    original_level = logging.getLogger().level
+    yield
+    settings.debug_mode = original_debug_mode
+    logging.getLogger().setLevel(original_level)
+
 
 @pytest.fixture(autouse=True)
 def _closed_redis_circuit_breaker():
@@ -86,17 +144,16 @@ def redis_server():
 @pytest.fixture
 async def fake_redis(monkeypatch, redis_server):
     """空のRedis。接続を作る所（`redis.asyncio.from_url`）を同じサーバのfakeredisへ差し、共有クライアントを
-    閉じる口（`redis_client.py: close_redis_clients`）で作る前に戻すので、`get_redis_client_or_none`・
-    `get_redis_binary_client_or_none`を読むどのモジュールからも同じものが見える。
-    返すのは文字列側のクライアント。"""
+    閉じる口（`redis_client.py: close_redis_client`）で作る前に戻すので、`get_redis_client_or_none`を読むどの
+    モジュールからも同じものが見える。返すのはその共有クライアントで、値は生のバイト列で返る。"""
     monkeypatch.setattr(redis.asyncio, "from_url", functools.partial(fakeredis.FakeAsyncRedis.from_url, server=redis_server))
-    await redis_client.close_redis_clients()
+    await redis_client.close_redis_client()
     yield redis_client.get_redis_client_or_none()
-    await redis_client.close_redis_clients()
+    await redis_client.close_redis_client()
 
 
 class MonotonicClock:
-    """回数制限・外部I/Oの記録・データの世代の読み直しが読む単調時計。止まっていて、進めたぶんだけ進む。"""
+    """回数制限・外部I/Oの記録・所要時間の測り・データの世代の読み直しが読む単調時計。止まっていて、進めたぶんだけ進む。"""
 
     def __init__(self) -> None:
         self._now = 0.0
@@ -110,7 +167,7 @@ class MonotonicClock:
 
 @pytest.fixture(autouse=True, scope="session")
 def _monotonic_clock_for_the_session():
-    """回数制限・外部I/Oの記録・データの世代の読み直しが読む時計を、テストが進める時計へ替える。
+    """回数制限・外部I/Oの記録・所要時間の測り・データの世代の読み直しが読む時計を、テストが進める時計へ替える。
 
     戻すのはセッションの終わりだけ。途中で実時計へ戻すと、進めた時計で数えた回数・窓の始まり・TTLが
     未来の時刻として残り、後のテストに食い込む。freezegun（`clock`）はこの時計を動かさない——止めた時刻は
@@ -120,6 +177,7 @@ def _monotonic_clock_for_the_session():
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(rate_limiter, "time", clock)
         patch.setattr(debug_log, "time", clock)
+        patch.setattr(stopwatch, "time", clock)
         patch.setattr(derived_data_revision_service, "time", clock)
         yield clock
 
@@ -148,20 +206,19 @@ _DISK_CACHES = {"tile_persistent_cache": tile_persistent_cache, "tile_cache": ti
 
 @contextmanager
 def _disk_caches_in(patch: pytest.MonkeyPatch, directory_of):
-    """ディスクのキャッシュの置き場を差し替え、抜けるときに開いたキャッシュを閉じる。
+    """ディスクのキャッシュの置き場を差し替え、差し替える前と抜けるときに開いたキャッシュを閉じる。
 
-    キャッシュは最初に使われたときに開かれ、モジュール変数に残る。閉じずに置き場を戻すと、
+    キャッシュは最初に使われたときに開かれ、置き場を差し替えても開き直さない。閉じずに置き場を変えると、
     開いたままのSQLiteが次の置き場を使うはずの呼び出しへそのまま渡る。
     """
     for name, module in _DISK_CACHES.items():
+        module.close()
         patch.setattr(module, "CACHE_DIR", directory_of(name))
-        patch.setattr(module, "opened_cache", None)
     try:
         yield
     finally:
         for module in _DISK_CACHES.values():
-            if module.opened_cache is not None:
-                module.opened_cache.close()
+            module.close()
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -189,11 +246,6 @@ def _use_temp_disk_cache_dirs(tmp_path, monkeypatch, _keep_disk_caches_out_of_th
         yield
 
 
-# road_graph_repository.pyのPostGIS統合テスト専用の接続先。開発機で稼働中の実DB
-# (ridecompass, backend/.envのDATABASE_URLが指す先)とは別のテスト専用DBを使う
-# (docs/osm-pbf-import.md関連の進行中データに触れないため)。ローカルでのみ実行する
-# 前提で、環境変数postgis_database_url()で上書き可能にしておく（CIはこの経路で注入する）。
-TEST_DATABASE_SERVER = "postgresql+asyncpg://ridecompass:ridecompass@localhost:5432"
 #: 作業ツリーの場所を書いておくDB。消してよいかの判断に使う（drop_orphan_test_databases.py）。
 TEST_DATABASE_MAINTENANCE = f"{TEST_DATABASE_SERVER}/postgres"
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
@@ -209,26 +261,19 @@ def default_test_database_name(root: Path) -> str:
     同名の作業ツリーがあると衝突するため、絶対パスのダイジェストを添える。
     """
     slug = re.sub(r"[^a-z0-9]+", "_", root.name.lower()).strip("_")[:24] or "wt"
-    return f"ridecompass_test_{slug}_{hashlib.sha1(str(root).encode('utf-8')).hexdigest()[:8]}"
+    return f"{TEST_DATABASE_PREFIX}{slug}_{hashlib.sha1(str(root).encode('utf-8')).hexdigest()[:8]}"
 
 
-#: 作業ツリー専用のDBを作れない環境（ロールにCREATEDBが無い等）での退避先。
-#: **分離できないことより、PostGISテストが丸ごと走らなくなる方が害が大きい。**
-SHARED_TEST_DATABASE = "ridecompass_test"
-#: 複製元。`CREATE EXTENSION postgis`はsuperuserを要求する（postgisはtrusted拡張ではない）
-#: ため、空のDBを作っても拡張を入れられない。**拡張を持つDBを複製する**ことで、
-#: superuserなしで使えるDBを増やせる。
-TEMPLATE_TEST_DATABASE = "ridecompass_test_template"
 #: 同時に作ろうとして競り負けたときの例外。PostgreSQLは競争の負け側へ、宣言的な
 #: 42P04（duplicate_database）ではなく23505（unique_violation、pg_databaseの一意索引違反）を
 #: 返すことがある。**片方だけを捕まえると、並行実行のときだけ退避してしまう。**
 ALREADY_CREATED = (asyncpg.DuplicateDatabaseError, asyncpg.UniqueViolationError)
-#: 拡張が持ち込んだ表（`spatial_ref_sys`等）以外の、アプリ側の表。落とす対象を名前で
+#: 拡張が持ち込んだ表（`spatial_ref_sys`等）以外の、アプリ側の表（パーティションの親を含む）。落とす対象を名前で
 #: 並べずに依存関係から導く（表が増えてもこの問い合わせは追従する）。
 APP_TABLES_SQL = """
 SELECT c.relname FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
-WHERE n.nspname = 'public' AND c.relkind = 'r'
+WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
   AND NOT EXISTS (
     SELECT 1 FROM pg_depend d JOIN pg_extension e ON e.oid = d.refobjid
     WHERE d.objid = c.oid AND d.deptype = 'e')
@@ -254,7 +299,7 @@ async def _ensure_template_database(conn) -> None:
 async def _clear_app_tables(url: str) -> None:
     """複製に引き継がれたアプリ側の表を落とす。
 
-    テストは自分でテーブルを作る（`Base.metadata.create_all`）ので、複製元に残っていた
+    テストは自分でテーブルを作る（`declared_metadata().create_all`）ので、複製元に残っていた
     表と行が初期状態に混ざらないようにする。落とす対象は名前で並べず、**拡張が持ち込んだ
     表（`spatial_ref_sys`等）ではないこと**から導く。
     """
@@ -295,7 +340,7 @@ async def _create_database_if_absent(name: str, owner_path: str) -> bool:
     return True
 
 
-#: この実行の接続先。`pytest_collection_modifyitems`が1回だけ決める。
+#: この実行の接続先。`pytest_collection_finish`が1回だけ決める。
 _RESOLVED_DATABASE_URL: str | None = None
 
 
@@ -306,6 +351,12 @@ def postgis_database_url() -> str:
     作れない環境では共有DBへ退避する）。名前を`test_`で始めないのは、pytestが
     テスト関数として収集してしまうため。
     """
+    if _RUNNING_ITEM is not None and _RUNNING_ITEM.get_closest_marker("postgis") is None:
+        pytest.fail(
+            f"{_RUNNING_ITEM.nodeid} がDBの印の無いままテストDBへつなごうとした。"
+            f"{DATABASE_FIXTURE}（を使うフィクスチャ）を取れば印が付く",
+            pytrace=False,
+        )
     if _RESOLVED_DATABASE_URL is not None:
         return _RESOLVED_DATABASE_URL
     # フックを経ていない呼び出し（pytest外からのimport等）。DBを作らずに行き先だけ答える。
@@ -314,11 +365,32 @@ def postgis_database_url() -> str:
     )
 
 
+@asynccontextmanager
+async def raw_connection():
+    """テストDBへの生の接続（asyncpg）。取込の入口と派生の段は、SQLAlchemyのセッションではなく
+    トランザクションの外のこの接続を受ける。抜けるときに閉じる。"""
+    conn = await asyncpg.connect(asyncpg_dsn(postgis_database_url()))
+    try:
+        yield conn
+    finally:
+        await conn.close()
+
+
+#: 生データと、派生の段が書く表（表の印から導く）と段の指紋の記録。派生の段を生の接続で回すテストは、これを空にしてから
+#: 取り込む——記録が残ると、空にした表を作り直さずに段を飛ばしうる。
+INGESTED_TABLES = (*(table.name for table in derived_tables()), DerivedStageRow.__tablename__, "source_features",
+                   "source_runs")
+
+
+async def empty_ingested_tables(conn) -> None:
+    await conn.execute("TRUNCATE " + ", ".join(INGESTED_TABLES) + " CASCADE")
+
+
 def _prepare_worktree_database() -> str:
     name = default_test_database_name(WORKTREE_ROOT)
     try:
         created = asyncio.run(_create_database_if_absent(name, str(WORKTREE_ROOT)))
-    except Exception as exc:  # noqa: BLE001 作れない理由はそのまま伝える
+    except Exception as exc:  # 作れない理由はそのまま伝える
         print(
             f"作業ツリー専用のテストDBを用意できないため、共有の{SHARED_TEST_DATABASE}を使います"
             f"（並行セッションと衝突しうる）: {exc}\n"
@@ -330,19 +402,61 @@ def _prepare_worktree_database() -> str:
     return f"{TEST_DATABASE_SERVER}/{name}"
 
 
+#: テストDBへつなぐ足場の根。これを（フィクスチャを経て間接にでも）使うテストに、DBの印を付ける。
+DATABASE_FIXTURE = "road_graph_engine"
+
+#: 準備か本体を走らせているテスト。DBの印の無いテストがテストDBへつなぐのを`postgis_database_url`で止める。
+_RUNNING_ITEM: pytest.Item | None = None
+
+
+@pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(config, items):
+    """テストDBへつなぐテストに、DBの印（`-m`で選ぶ`postgis`と、1つのワーカーへ寄せる`xdist_group`）を付ける。
+
+    先に動くのは、`-m`の選り分けとpytest-xdistの`--dist loadgroup`が同じフックで印を読むから。
+    """
+    for item in items:
+        if DATABASE_FIXTURE in getattr(item, "fixturenames", ()):
+            item.add_marker(pytest.mark.postgis)
+            item.add_marker(pytest.mark.xdist_group(name="postgis"))
+
+
+@contextmanager
+def _running(item):
+    global _RUNNING_ITEM
+    _RUNNING_ITEM = item
+    try:
+        yield
+    finally:
+        _RUNNING_ITEM = None
+
+
+# 後片付けは見ない。ファイル単位のフィクスチャは、印の無いテストの後片付けの中で片付くことがある。
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_setup(item):
+    with _running(item):
+        return (yield)
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item):
+    with _running(item):
+        return (yield)
+
+
+def pytest_collection_finish(session):
     """PostGISテストが1件でも選ばれていれば、この実行の接続先を決めて用意する。
 
     ここで済ませるのは、**同期のまま・イベントループの外で・1回だけ**行える唯一の場所だから
     （`asyncio.run`は実行中のループの中からは呼べず、フィクスチャの中では遅い）。
-    `-m "not postgis"`の実行には接続を1本も足さない。
+    `-m`の選り分けのあとに動くので、`-m "not postgis"`の実行には接続を1本も足さない。
     """
     global _RESOLVED_DATABASE_URL
     explicit = os.environ.get("TEST_DATABASE_URL")
     if explicit:
         _RESOLVED_DATABASE_URL = explicit
         return
-    if not any(item.get_closest_marker("postgis") for item in items):
+    if not any(item.get_closest_marker("postgis") for item in session.items):
         return
     _RESOLVED_DATABASE_URL = _prepare_worktree_database()
 
@@ -368,7 +482,7 @@ async def road_graph_engine():
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-    except Exception as exc:  # noqa: BLE001 接続できない理由はそのまま伝える
+    except Exception as exc:  # 接続できない理由はそのまま伝える
         await engine.dispose()
         # URLはそのまま出さない（パスワードを含む）。行き先はDB名で足りる。
         database = postgis_database_url().rsplit("/", 1)[-1]
@@ -383,9 +497,16 @@ async def road_graph_engine():
         try:
             async with engine.begin() as conn:
                 await conn.execute(text(f"CREATE EXTENSION IF NOT EXISTS {extension}"))
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
     await create_tables(engine)
+    # create_tables()は在る表を直さないので、前の実行が宣言と違う形で残した表（表を入れ替える実装を壊して回した・
+    # ORMの宣言を一時に壊して回した）のまま走ってしまう。宣言と差があれば、表を消して今の宣言から作り直す。
+    async with engine.connect() as conn:
+        gaps = await conn.run_sync(collect_gaps)
+    if gaps:
+        await _clear_app_tables(postgis_database_url())
+        await create_tables(engine)
     # 前の実行が片付けの前に殺されると（時間切れ・中断）、その行がDBに残る。残った行は
     # 次の実行で最初に走るテストだけを落とし、そのテストの片付けで消える——単独で回すと
     # 通る失敗になる。ファイルの最初に消しておけば、どの実行も空から始まる。
@@ -397,8 +518,23 @@ async def road_graph_engine():
 
 async def _delete_app_rows(engine) -> None:
     async with engine.begin() as conn:
-        for table in reversed(Base.metadata.sorted_tables):
+        for table in reversed(declared_metadata().sorted_tables):
             await conn.execute(table.delete())
+
+
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def derive_conn(road_graph_engine):
+    """テストファイル単位で使い回す生の接続（`raw_connection`）。ファイルの前後で`INGESTED_TABLES`を空にする。
+
+    `road_graph_engine`に依存するのは接続のためではなく、**スキーマを作らせるため**。生の接続は
+    テーブルを作る経路を通らないので、まっさらなDB（CI）では最初の文から落ちる。
+    """
+    async with raw_connection() as conn:
+        await empty_ingested_tables(conn)
+        try:
+            yield conn
+        finally:
+            await empty_ingested_tables(conn)
 
 
 @pytest_asyncio.fixture(loop_scope="module")

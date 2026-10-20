@@ -1,26 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
-import Disclosure from "@/components/Disclosure/Disclosure";
 import { Button } from "@/components/ui/Button/Button";
-import { Card } from "@/components/ui/Card/Card";
+import { DialogContent, DialogRoot } from "@/components/ui/Dialog/Dialog";
+import { RecallSavedIcon, SaveConditionsIcon } from "@/components/ui/icons/lucideIcons";
 import { Input } from "@/components/ui/Input/Input";
 import { textVariants } from "@/components/ui/Text/Text";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
+import { cn } from "@/lib/cn";
 import {
   describeConditions,
   originDescription,
   type GenerationConditionsSnapshot,
   type SavedCondition,
 } from "@/features/route/savedConditions";
+import SavedList from "@/features/route/SavedList/SavedList";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
-import { cn } from "@/lib/cn";
 
-interface SavedConditionsPanelProps {
+interface SaveConditionsButtonProps {
+  /** 保存した設定（同じ名前があれば上書きと出す）。 */
   saved: SavedCondition[];
   /** いまの設定（出発地を除く）。保存の前に、何が保存されるかを並べる。 */
-  current: Omit<GenerationConditionsSnapshot, "origin">;
+  current: GenerationConditionsSnapshot;
   /** 名前の欄に最初から入れておく仮の名前（いまの条件から作る）。 */
   suggestedName: string;
   /** 出発地を地図で置いたか（置いていれば、出発地を固定して保存するのが既定）。 */
@@ -28,6 +30,11 @@ interface SavedConditionsPanelProps {
   /** 出発地が分かっているか（分からない間は固定できない）。 */
   originKnown: boolean;
   onSave: (name: string, fixOrigin: boolean) => void;
+}
+
+interface SavedConditionsPanelProps {
+  /** 保存した設定。 */
+  saved: SavedCondition[];
   onRecall: (entry: SavedCondition) => void;
   onRemove: (name: string) => void;
 }
@@ -45,18 +52,16 @@ function DescriptionRows({ rows }: { rows: [term: string, detail: React.ReactNod
   );
 }
 
-// 「ルート設定」区分の「保存」タブ。保存の前に、何が保存され出発地をどう扱うかを並べる。呼び出すと各タブの値と
-// 地図のピンが入れ替わり、生成はいつもの「ルート生成」で行う（入れ替えたあとに値を確かめたり少し変えたりできる）。
-export default function SavedConditionsPanel({
+// 「条件」タブの、いまの設定を保存するアイコン。押すと窓で、残るもの（条件・出発地の扱い・重みの割合・除外）だけを
+// 並べてから名前を付けて保存する（残らないものや重みを変えたかは書かない）。
+export function SaveConditionsButton({
   saved,
   current,
   suggestedName,
   originManual,
   originKnown,
   onSave,
-  onRecall,
-  onRemove,
-}: SavedConditionsPanelProps) {
+}: SaveConditionsButtonProps) {
   const catalog = useAxisCatalog();
   // 手で書き換えるまでは、いまの条件から作る仮の名前を出す（条件を変えると名前の案も変わる）。
   const [nameDraft, setNameDraft] = useState<string | null>(null);
@@ -65,150 +70,159 @@ export default function SavedConditionsPanel({
   // 選ぶまでは、出発地を地図で置いたかで決める（触らなければ、地図で置いた地点は固定・現在地は呼び出した時の現在地）。
   const [fixOriginDraft, setFixOriginDraft] = useState<boolean | null>(null);
   const fixOrigin = originKnown && (fixOriginDraft ?? originManual);
+  // 窓を開いているか。保存すると閉じる。
+  const [saving, setSaving] = useState(false);
+  // 窓を開くまで読まないが、パネルはページと一緒に描き直されるので、条件が変わったときだけ組む。
+  const currentDescription = useMemo(() => describeConditions(current, catalog), [current, catalog]);
+
+  return (
+    <>
+      <Button
+        size="panelIcon"
+        aria-label="いまの設定を保存"
+        aria-haspopup="dialog"
+        aria-expanded={saving}
+        usage="いまの設定（条件・出発地・重み・除外）を開いて確かめ、名前を付けてプリセットとしてこの端末に保存します。保存したプリセットは、「保存済み」タブの「プリセット」から呼び出せます。"
+        onClick={() => setSaving(true)}
+      >
+        <SaveConditionsIcon size={18} />
+      </Button>
+      <DialogRoot open={saving} onOpenChange={setSaving}>
+        <DialogContent title="いまの設定を保存">
+          <div className="flex flex-col gap-2">
+            <DescriptionRows
+              rows={[
+                ["条件", currentDescription.route],
+                [
+                  "出発地",
+                  <ToggleGroup
+                    key="origin"
+                    aria-label="保存する出発地"
+                    value={fixOrigin ? "fixed" : "current"}
+                    onValueChange={(value) => setFixOriginDraft(value === "fixed")}
+                  >
+                    <ToggleGroupItem value="current" usage="呼び出すたびに、その時いる場所から作ります。">
+                      呼び出した時の現在地
+                    </ToggleGroupItem>
+                    <ToggleGroupItem
+                      value="fixed"
+                      disabled={!originKnown}
+                      usage="いまの出発地を保存して、いつもそこから作ります。"
+                    >
+                      今の出発地に固定
+                    </ToggleGroupItem>
+                  </ToggleGroup>,
+                ],
+                ["重み", currentDescription.weights],
+                ["除外", currentDescription.exclusions],
+              ]}
+            />
+            <form
+              className="flex items-center gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                onSave(name, fixOrigin);
+                setNameDraft(null);
+                setFixOriginDraft(null);
+                setSaving(false);
+              }}
+            >
+              <Input
+                aria-label="保存する名前"
+                className="min-w-0 flex-auto"
+                value={name}
+                onChange={(event) => setNameDraft(event.target.value)}
+                data-usage="いまの設定に付ける名前です。そのまま保存もできます。"
+              />
+              <Button
+                type="submit"
+                size="sm"
+                className="flex-none"
+                usage="上に並べた設定を、この名前でこの端末に保存します。同じ名前があれば上書きします。"
+              >
+                {overwriting ? "上書き保存" : "保存"}
+              </Button>
+            </form>
+          </div>
+        </DialogContent>
+      </DialogRoot>
+    </>
+  );
+}
+
+// 「ルート設定」区分の「保存済み」タブの「プリセット」。保存した設定の一覧（呼び出す・消す）を置く（保存は「条件」タブ）。
+// 一覧の行は名前とアイコンの操作だけで、呼び出すと窓で中身を見せ、「反映する」で各タブの値と地図のピンが入れ替わる。
+// 生成はいつもの「ルート生成」で行う（入れ替えたあとに値を確かめたり少し変えたりできる）。
+export default function SavedConditionsPanel({ saved, onRecall, onRemove }: SavedConditionsPanelProps) {
+  const catalog = useAxisCatalog();
+  // 呼び出すを押した設定。確認の窓で中身を見せ、「反映する」を押すまで入れ替えない。
+  const [recalling, setRecalling] = useState<SavedCondition | null>(null);
   const [recalled, setRecalled] = useState<SavedCondition | null>(null);
-  const currentDescription = describeConditions(current, catalog);
+  const recallingDescription = recalling && describeConditions(recalling, catalog);
 
   return (
     <div className="flex flex-col gap-3">
-      <Card variant="outline" className="flex flex-col gap-2">
-        <h3 className={textVariants({ variant: "heading" })}>いまの設定を保存</h3>
-        <DescriptionRows
-          rows={[
-            ["条件", currentDescription.route],
-            [
-              "出発地",
-              <div key="origin" className="flex flex-col gap-1">
-                <ToggleGroup
-                  aria-label="保存する出発地"
-                  value={fixOrigin ? "fixed" : "current"}
-                  onValueChange={(value) => setFixOriginDraft(value === "fixed")}
-                  className="self-start"
-                >
-                  <ToggleGroupItem value="current" usage="呼び出すたびに、その時いる場所から作ります。">
-                    呼び出した時の現在地
-                  </ToggleGroupItem>
-                  <ToggleGroupItem
-                    value="fixed"
-                    disabled={!originKnown}
-                    usage="いまの出発地を保存して、いつもそこから作ります。"
-                  >
-                    今の出発地に固定
-                  </ToggleGroupItem>
-                </ToggleGroup>
-                <span className={textVariants({ variant: "hint" })}>
-                  {fixOrigin
-                    ? "いまの出発地を保存し、どこで呼び出してもその地点から作ります"
-                    : "どこで呼び出しても、その時いる場所から作ります"}
-                </span>
-              </div>,
-            ],
-            ["重み", currentDescription.weights],
-            ["除外", currentDescription.exclusions],
-          ]}
-        />
-        <p className={textVariants({ variant: "hint" })}>
-          出発時刻・想定速度・走行方位は保存しません（その日に決めます）
-        </p>
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSave(name, fixOrigin);
-            setNameDraft(null);
-            setFixOriginDraft(null);
-          }}
-        >
-          <Input
-            aria-label="保存する名前"
-            className="min-w-0 flex-auto"
-            value={name}
-            onChange={(event) => setNameDraft(event.target.value)}
-            data-usage="いまの設定に付ける名前です。そのまま保存もできます。"
-          />
-          <Button
-            type="submit"
-            size="sm"
-            className="flex-none"
-            usage="上に並べた設定を、この名前でこの端末に保存します。同じ名前があれば上書きします。"
-          >
-            {overwriting ? "上書き保存" : "保存"}
-          </Button>
-        </form>
-      </Card>
-
-      <p role="status" className={textVariants({ variant: "hint" })}>
+      {/* 知らせの行は読み上げが変化を拾えるよう常に置き、空のときは場所を取らない（一覧の上に空白を作らない）。 */}
+      <p role="status" className={cn("empty:sr-only", textVariants({ variant: "hint" }))}>
         {recalled !== null && saved.some((entry) => entry.name === recalled.name)
-          ? `「${recalled.name}」の条件・重み・除外にしました。出発地は${
-              recalled.origin === null ? "今いる場所" : "保存した地点"
-            }です。「ルート生成」で作れます。`
-          : ""}
+          ? `「${recalled.name}」を反映しました。`
+          : null}
       </p>
 
-      <h3 className={textVariants({ variant: "heading" })}>保存した設定</h3>
-      {saved.length === 0 ? (
-        <p className={textVariants({ variant: "hint" })}>まだありません。</p>
-      ) : (
-        <ul className="flex flex-col gap-1">
-          {saved.map((entry) => {
-            const description = describeConditions(entry, catalog);
-            return (
-              <li key={entry.name} className="rounded-sm border border-[var(--color-border)] px-1.5 py-1">
-                <Disclosure
-                  headerClassName="flex items-center gap-1"
-                  triggerClassName="group flex min-w-0 items-center gap-1.5"
-                  bodyClassName="pt-1"
-                  usage="押すと、この設定に保存した出発地・重み・除外を開きます。"
-                  summary={
-                    <>
-                      <span
-                        aria-hidden="true"
-                        className="size-1.5 flex-none -rotate-45 border-r-2 border-b-2 border-[var(--color-neutral)] transition-transform duration-150 group-data-[state=open]:rotate-45"
-                      />
-                      <span className="flex min-w-0 flex-col">
-                        <span className="truncate font-semibold">{entry.name}</span>
-                        <span className={cn(textVariants({ variant: "hint" }), "truncate")}>{description.route}</span>
-                      </span>
-                    </>
-                  }
-                  trailing={
-                    <>
-                      <Button
-                        size="sm"
-                        className="ml-auto flex-none"
-                        aria-label={`「${entry.name}」を呼び出す`}
-                        usage="この設定で各タブの値と地図の地点を入れ替えます。作るのはいつもの「ルート生成」です。"
-                        onClick={() => {
-                          onRecall(entry);
-                          setRecalled(entry);
-                        }}
-                      >
-                        呼び出す
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="bare"
-                        className="flex-none p-1 text-xs"
-                        aria-label={`「${entry.name}」を消す`}
-                        onClick={() => onRemove(entry.name)}
-                      >
-                        ✕
-                      </Button>
-                    </>
-                  }
-                >
-                  <DescriptionRows
-                    rows={[
-                      ["出発地", originDescription(entry.origin !== null)],
-                      ["重み", description.weights],
-                      ["除外", description.exclusions],
-                    ]}
-                  />
-                </Disclosure>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      <SavedList
+        items={saved}
+        noun="プリセット"
+        howToSave="条件タブの「いまの設定を保存」で、いまの設定（条件・出発地・重み・除外）に名前を付けてプリセットとして保存します。保存したプリセットは、ここで行の「呼び出す」を押すと各タブへ戻せます。"
+        renderMain={(entry) => <span className="min-w-0 flex-auto truncate font-semibold">{entry.name}</span>}
+        renderActions={(entry) => (
+          <Button
+            size="panelIcon"
+            aria-label={`「${entry.name}」を呼び出す`}
+            aria-haspopup="dialog"
+            aria-expanded={recalling?.name === entry.name}
+            usage="このプリセットの中身を窓で見て、「反映する」で各タブの値と地図の地点を入れ替えます。作るのはいつもの「ルート生成」です。"
+            onClick={() => setRecalling(entry)}
+          >
+            <RecallSavedIcon size={18} />
+          </Button>
+        )}
+        onRemove={(entry) => onRemove(entry.name)}
+      />
+      <DialogRoot
+        open={recalling !== null}
+        onOpenChange={(open) => {
+          if (!open) setRecalling(null);
+        }}
+      >
+        {recalling !== null && recallingDescription !== null && (
+          <DialogContent title={`「${recalling.name}」を反映します`}>
+            <DescriptionRows
+              rows={[
+                ["条件", recallingDescription.route],
+                ["出発地", originDescription(recalling.origin !== null)],
+                ["重み", recallingDescription.weights],
+                ["除外", recallingDescription.exclusions],
+              ]}
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <Button size="sm" onClick={() => setRecalling(null)}>
+                キャンセル
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  onRecall(recalling);
+                  setRecalled(recalling);
+                  setRecalling(null);
+                }}
+              >
+                反映する
+              </Button>
+            </div>
+          </DialogContent>
+        )}
+      </DialogRoot>
     </div>
   );
 }

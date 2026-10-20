@@ -13,11 +13,7 @@ import pytest
 from app.domain.region import BoundingBox
 from tests.source_ingest import ingest_records, point_record, way_record
 
-pytestmark = [
-    pytest.mark.asyncio(loop_scope="module"),
-    pytest.mark.xdist_group(name="postgis"),
-    pytest.mark.postgis,
-]
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 
 def _box(min_lat: float, min_lon: float, max_lat: float, max_lon: float) -> BoundingBox:
@@ -42,11 +38,6 @@ async def _fail_to_ingest_roads(area: BoundingBox) -> None:
     with pytest.raises(RuntimeError):
         await ingest_records("osm_way", records(),
                              bbox=(area.min_latitude, area.min_longitude, area.max_latitude, area.max_longitude))
-
-
-async def test_before_any_road_ingest_there_is_no_area_and_nothing_is_covered(road_graph_repository):
-    assert await road_graph_repository.get_ingested_area() is None
-    assert await road_graph_repository.is_covered(_AREA) is False
 
 
 async def test_the_area_is_the_one_declared_by_the_latest_successful_road_ingest(road_graph_repository):

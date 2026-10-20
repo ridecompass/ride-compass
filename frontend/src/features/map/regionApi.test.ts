@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * `features/map/regionApi.ts`——地域のデータの口。地図ライブラリへ渡すタイルのURL（世代つき）と、backendを呼ぶ口
- * （押した道の内訳・専用配信の軸の道ごとの値）。入口は公開の関数。差し替えるのは網（msw）とタイルのオリジンの
+ * （押した道の内訳・地図が塗る軸の道ごとの材料）。入口は公開の関数。差し替えるのは網（msw）とタイルのオリジンの
  * 読み取り口（`lib/tileBaseUrl.ts: tileBaseUrl`）で、確かめるのは戻り値と送った要求。
  *
  * ここで見ないもの:
@@ -9,12 +9,13 @@
  * - パスの`{名前}`の埋め方 → `lib/apiPath.ts`を通る全URLが同じで、ここでは結果のURLだけを見る
  * - 失敗の文言の組み立て・通信の失敗とタイムアウトの包み直し → `lib/apiClient.test.ts`
  * - 軸カタログの応答から世代を引き、揃うまで地図を描かないこと → `features/map/view/useMapView.test.ts`
- * - 内訳・道ごとの値を画面へ出すこと → `features/map/MapView/RoadInspectorPopup.test.tsx`・
- *   `features/map/useDedicatedWayValues.test.ts`
+ * - 内訳・道ごとの材料を画面へ出すこと → `features/map/MapView/RoadInspectorPopup.test.tsx`・
+ *   `features/map/useWayMaterials.test.ts`
  */
 import { describe, expect, it, vi } from "vitest";
 
 import { onBackend } from "@/testing/backendServer";
+import type { PointTileLayer } from "@/lib/mapDisplay/pointLayers";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 
 vi.mock("@/lib/tileBaseUrl", () => ({ tileBaseUrl: () => "https://tiles.example" }));
@@ -47,7 +48,7 @@ describe("タイルの世代とURL", () => {
 
   it("点のタイルは、1つの配信のパスにレイヤー名を持ち、そのレイヤーの世代を持つ", () => {
     const versions = api.completeTileVersions(allVersions())!;
-    const [layer] = Object.keys(regionTileConfig.point_layers) as api.PointTileLayer[];
+    const [layer] = Object.keys(regionTileConfig.point_layers) as PointTileLayer[];
 
     expect(api.pointTileUrl(versions, layer)).toBe(
       `https://tiles.example/api/region/point-tiles/${layer}/{z}/{x}/{y}.pbf?v=${layer}-v1`,
@@ -62,21 +63,40 @@ describe("タイルの世代とURL", () => {
 });
 
 describe("押した道の内訳（fetchAxisInspector）", () => {
-  const CONDITIONS = { z: 15, x: 1, y: 2, bearingDeg: 0 };
+  const CONDITIONS = {
+    z: 15,
+    x: 1,
+    y: 2,
+    latitude: 35.6,
+    longitude: 139.4,
+    bearingDeg: 0,
+    at: new Date("2026-10-01T00:30:00Z"),
+    speedKmh: 20,
+  };
 
-  it("押した地物・重み・タイルと走行の条件を、backendの項目名で送る", async () => {
-    const sent = onBackend("POST", "/api/region/axis-inspector", () => Response.json({}));
+  it("押した地物・地点・重み・タイルと走行の条件を、backendの項目名で送る", async () => {
+    const sent = onBackend("POST", "/api/region/axis-inspector", () => Response.json(null));
 
     await api.fetchAxisInspector(
       123,
       "123:4",
-      { z: 15, x: 29100, y: 12900, bearingDeg: 270, at: new Date("2026-10-01T00:30:00Z"), speedKmh: 22 },
+      {
+        z: 15,
+        x: 29100,
+        y: 12900,
+        latitude: 35.68,
+        longitude: 139.77,
+        bearingDeg: 270,
+        at: new Date("2026-10-01T00:30:00Z"),
+        speedKmh: 22,
+      },
       { wind: 2, slope: 0 },
     );
 
     expect(sent[0].body).toEqual({
       osm_way_id: 123,
       feature_key: "123:4",
+      point: { latitude: 35.68, longitude: 139.77 },
       route_preference: { wind: 2, slope: 0 },
       z: 15,
       x: 29100,
@@ -87,55 +107,62 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
     });
   });
 
-  it("地物・重み・時刻・速度が無ければ、その項目を送らない（重みはbackendの既定に任せる）", async () => {
-    const result = { composite_difficulty: 42 };
+  it("重みが無ければ、その項目を送らない（重みはbackendの既定に任せる）", async () => {
+    const result = { way: { composite_difficulty: 42 } };
     const sent = onBackend("POST", "/api/region/axis-inspector", () => Response.json(result));
 
-    await expect(api.fetchAxisInspector(123, null, CONDITIONS, null)).resolves.toEqual(result);
+    await expect(api.fetchAxisInspector(123, "123", CONDITIONS, null)).resolves.toEqual(result);
 
-    expect(sent.map(({ body }) => body)).toEqual([{ osm_way_id: 123, z: 15, x: 1, y: 2, bearing_deg: 0 }]);
+    expect(sent.map(({ body }) => body)).toEqual([
+      {
+        osm_way_id: 123,
+        feature_key: "123",
+        point: { latitude: 35.6, longitude: 139.4 },
+        z: 15,
+        x: 1,
+        y: 2,
+        bearing_deg: 0,
+        at: "2026-10-01T00:30:00.000Z",
+        speed_kmh: 20,
+      },
+    ]);
   });
 });
 
-describe("専用配信の軸の道ごとの値（fetchDynamicWayValues）", () => {
-  it("軸とタイルをパスへ、方位・時刻・速度を問い合わせへ載せ、道ごとの値を返す", async () => {
-    const sent = onBackend("GET", "/api/region/dynamic-way-values/:axisId/:z/:x/:y", () =>
-      Response.json({ "101": 3.5, "102": -1 }),
+describe("地図が塗る軸の道ごとの材料（fetchWayMaterials）", () => {
+  it("軸とタイルをパスへ、走る条件を問い合わせへ載せ、道ごとの材料を返す", async () => {
+    const sent = onBackend("GET", "/api/region/way-materials/:axisId/:z/:x/:y", () =>
+      Response.json({ "101": { slope: 3.5 }, "102": { slope: -1 } }),
     );
 
-    const result = await api.fetchDynamicWayValues(
-      "axis_a",
-      15,
-      29100,
-      12900,
-      90,
-      new Date("2026-10-01T00:00:00Z"),
-      25,
-    );
+    const result = await api.fetchWayMaterials("axis_a", 15, 29100, 12900, {
+      at: "2026-10-01T00:00:00.000Z",
+      bearing_deg: 90,
+      speed_kmh: 25,
+    });
 
-    expect(result).toEqual({ values: { "101": 3.5, "102": -1 }, error: false });
+    expect(result).toEqual({ values: { "101": { slope: 3.5 }, "102": { slope: -1 } }, error: false });
     expect(sent.map(({ method, path, query }) => ({ method, path, query }))).toEqual([
       {
         method: "GET",
-        path: "/api/region/dynamic-way-values/axis_a/15/29100/12900",
-        query: { bearing_deg: "90", at: "2026-10-01T00:00:00.000Z", speed_kmh: "25" },
+        path: "/api/region/way-materials/axis_a/15/29100/12900",
+        query: { at: "2026-10-01T00:00:00.000Z", bearing_deg: "90", speed_kmh: "25" },
       },
     ]);
   });
 
-  it("渡さなかった条件と、有限でない速度は問い合わせに載せない", async () => {
-    const sent = onBackend("GET", "/api/region/dynamic-way-values/:axisId/:z/:x/:y", () => Response.json({}));
+  it("条件を渡さなければ問い合わせに載せない", async () => {
+    const sent = onBackend("GET", "/api/region/way-materials/:axisId/:z/:x/:y", () => Response.json({}));
 
-    await api.fetchDynamicWayValues("axis_a", 15, 1, 2, undefined, undefined, undefined);
-    await api.fetchDynamicWayValues("axis_a", 15, 1, 2, 0, undefined, Number.NaN);
+    await api.fetchWayMaterials("axis_a", 15, 1, 2, {});
 
-    expect(sent.map(({ query }) => query)).toEqual([{}, { bearing_deg: "0" }]);
+    expect(sent.map(({ query }) => query)).toEqual([{}]);
   });
 
-  it("失敗は投げずに、空の値と失敗の印で返す（色分けの失敗で道路や他のレイヤーを止めない）", async () => {
-    onBackend("GET", "/api/region/dynamic-way-values/:axisId/:z/:x/:y", () => new Response(null, { status: 500 }));
+  it("失敗は投げずに、空の材料と失敗の印で返す（色分けの失敗で道路や他のレイヤーを止めない）", async () => {
+    onBackend("GET", "/api/region/way-materials/:axisId/:z/:x/:y", () => new Response(null, { status: 500 }));
 
-    await expect(api.fetchDynamicWayValues("axis_a", 15, 1, 2, 0, undefined, undefined)).resolves.toEqual({
+    await expect(api.fetchWayMaterials("axis_a", 15, 1, 2, {})).resolves.toEqual({
       values: {},
       error: true,
     });

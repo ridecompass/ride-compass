@@ -1,6 +1,6 @@
 """リクエストID・アクセスサマリログ(infrastructure/request_log.py)のテスト。
 
-docs/conventions/logging.mdの方針のうち「クライアント指定のX-Request-IDを応答とログ行へ引き継ぐ」
+.claude/rules/logging.mdの方針のうち「クライアント指定のX-Request-IDを応答とログ行へ引き継ぐ」
 「アクセスサマリのレベルはステータス・経路で変わる」「未処理例外はスタックトレース付きERRORで残り、
 500応答にもIDが付く」を守る。ログ行の時刻がJSTで、オフセットを名乗ることも併せて検査する
 （書式はこのモジュールが1つだけ持つ）。
@@ -10,12 +10,14 @@ docs/conventions/logging.mdの方針のうち「クライアント指定のX-Req
 
 import calendar
 import logging
+import re
 
 import pytest
 from asgi_correlation_id import CorrelationIdMiddleware
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.testclient import TestClient
 
+from app.api.cache_policy import TILE_PATH_PREFIXES
 from app.main import app as main_app
 from app.infrastructure.request_log import (
     access_level,
@@ -25,12 +27,6 @@ from app.infrastructure.request_log import (
 )
 
 CLIENT_REQUEST_ID = "0f8fad5bd9cb469fa16570867728950e"
-
-
-def test_incoming_request_id_is_propagated():
-    client = TestClient(main_app)
-    response = client.get("/health", headers={"X-Request-ID": CLIENT_REQUEST_ID})
-    assert response.headers["X-Request-ID"] == CLIENT_REQUEST_ID
 
 
 def test_access_log_line_carries_the_request_id(caplog):
@@ -49,46 +45,87 @@ def test_access_log_line_carries_the_request_id(caplog):
 
 
 @pytest.mark.parametrize(
-    ("method", "path", "status_code", "level"),
+    ("path", "status_code", "level"),
     [
-        # タイル系(高頻度)のGET成功はDEBUG、通常エンドポイントの成功はINFO。
-        ("GET", "/api/basemap/tiles/1", 200, logging.DEBUG),
-        ("GET", "/api/axis-catalog", 200, logging.INFO),
+        # タイル系(高頻度)の成功と「そのタイルは無い」404はDEBUG、通常エンドポイントの成功はINFO。
+        ("/api/basemap/tiles/1", 200, logging.DEBUG),
+        ("/api/jma-tile/bosai/jmatile/data/1.png", 404, logging.DEBUG),
+        ("/api/jma-tile-index", 200, logging.INFO),
         # 4xxはWARNING(ただし429は別途record_rate_limit_rejectionが出すためDEBUG)、5xxはERROR。
-        ("POST", "/api/routes/generate", 400, logging.WARNING),
-        ("POST", "/api/routes/generate", 429, logging.DEBUG),
-        ("GET", "/api/basemap/tiles/1", 502, logging.ERROR),
+        ("/api/gsi-terrain-tile/20/1/1.png", 400, logging.WARNING),
+        ("/api/routes/generate", 404, logging.WARNING),
+        ("/api/routes/generate", 429, logging.DEBUG),
+        ("/api/basemap/tiles/1", 502, logging.ERROR),
     ],
 )
-def test_access_level_policy(method, path, status_code, level):
-    assert access_level(method, path, status_code) == level
+def test_access_level_policy(path, status_code, level):
+    assert access_level(path, status_code, TILE_PATH_PREFIXES) == level
 
 
-def test_unhandled_exception_logged_as_error_with_traceback(caplog):
-    caplog.set_level(logging.ERROR, logger="ridecompass.access")
-
+def _app_with_access_log() -> FastAPI:
+    """アクセスログのミドルウェアだけを載せたアプリ。タイルの経路の404と、未処理例外の経路を持つ。"""
     test_app = FastAPI()
-    test_app.middleware("http")(request_log_middleware)
+    test_app.middleware("http")(request_log_middleware(TILE_PATH_PREFIXES))
+
+    @test_app.get("/api/basemap/missing")
+    def missing_tile():
+        return Response(status_code=404)
 
     @test_app.get("/boom")
     def boom():
         raise RuntimeError("kaboom")
 
-    client = TestClient(test_app)
-    with pytest.raises(RuntimeError):
-        client.get("/boom")
+    return test_app
 
-    errors = [r for r in caplog.records if r.name == "ridecompass.access" and r.levelno == logging.ERROR]
-    assert len(errors) == 1
-    assert "GET /boom -> unhandled exception" in errors[0].getMessage()
-    assert errors[0].exc_info is not None
+
+def _access_records(caplog) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.name == "ridecompass.access"]
+
+
+def test_access_log_line_reports_the_request_at_the_level_of_its_path(caplog):
+    """1行がメソッド・経路・状態・所要・接続元を持ち、レベルは経路のタイルの接頭辞と状態で決まる。
+
+    タイルの404がWARNINGへ上がると、視界の分だけ並ぶ正常な404で運用のログが埋まる。
+    """
+    caplog.set_level(logging.DEBUG, logger="ridecompass.access")
+    TestClient(_app_with_access_log()).get("/api/basemap/missing")
+
+    [record] = _access_records(caplog)
+    assert record.levelno == logging.DEBUG
+    assert re.fullmatch(r"GET /api/basemap/missing -> 404 in \d+ms client=testclient", record.getMessage())
+
+
+def test_access_log_line_names_unknown_client_when_the_server_gives_none(caplog):
+    """ASGIの`client`はUnixソケット越し等で None になる。そのときも1行を出し、接続元は`unknown`と書く。"""
+    inner = _app_with_access_log()
+
+    async def without_client(scope, receive, send):
+        await inner({**scope, "client": None}, receive, send)
+
+    caplog.set_level(logging.DEBUG, logger="ridecompass.access")
+    TestClient(without_client).get("/api/basemap/missing")
+
+    [record] = _access_records(caplog)
+    assert re.fullmatch(r"GET /api/basemap/missing -> 404 in \d+ms client=unknown", record.getMessage())
+
+
+def test_unhandled_exception_logged_as_error_with_traceback(caplog):
+    caplog.set_level(logging.ERROR, logger="ridecompass.access")
+
+    with pytest.raises(RuntimeError):
+        TestClient(_app_with_access_log()).get("/boom")
+
+    [record] = _access_records(caplog)
+    assert record.levelno == logging.ERROR
+    assert re.fullmatch(r"GET /boom -> unhandled exception after \d+ms client=testclient", record.getMessage())
+    assert record.exc_info is not None
 
 
 # 未処理例外(500)でもX-Request-IDヘッダが付く。TestClientは既定で
 # raise_server_exceptions=Trueのため、実際のHTTPレスポンスを得るにはFalseを指定する。
 def test_unhandled_exception_response_has_request_id_header():
     test_app = FastAPI()
-    test_app.middleware("http")(request_log_middleware)
+    test_app.middleware("http")(request_log_middleware(TILE_PATH_PREFIXES))
     test_app.add_middleware(CorrelationIdMiddleware)
     test_app.add_exception_handler(Exception, unhandled_exception_handler)
 

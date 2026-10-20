@@ -1,11 +1,5 @@
-import { adminApiClient, backendApi, fetchJson, getOptions, requestApi } from "@/lib/apiClient";
-import {
-  CATALOG_API_TIMEOUT_MS,
-  DEFAULT_API_TIMEOUT_MS,
-  DISTRIBUTION_API_TIMEOUT_MS,
-  HEAVY_ADMIN_API_TIMEOUT_MS,
-  STATUS_API_TIMEOUT_MS,
-} from "@/lib/apiTimeouts";
+import { adminApiClient, backendApi, getOptions, requestApi } from "@/lib/apiClient";
+import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
 import type { components, paths } from "@/types/generated/api";
 import type { AxisDefinitionPayload, AxisShape } from "@/types/route";
 
@@ -15,7 +9,7 @@ type Schemas = components["schemas"];
  * 本文を送る呼び出しは`body`を渡すと開始のログに載る。 */
 function adminOptions(
   label: string,
-  { timeoutMs = DEFAULT_API_TIMEOUT_MS, body }: { timeoutMs?: number; body?: unknown } = {},
+  { timeoutMs = API_TIMEOUT_MS.default, body }: { timeoutMs?: number; body?: unknown } = {},
 ) {
   return {
     timeoutMs,
@@ -31,13 +25,6 @@ export function listAxisDefinitions() {
   return requestApi((init) => adminApiClient.GET("/axis-definitions", init), adminOptions("軸の一覧の取得"));
 }
 
-export function createAxisDefinition(payload: AxisDefinitionPayload) {
-  return requestApi(
-    (init) => adminApiClient.POST("/axis-definitions", { body: payload, ...init }),
-    adminOptions("軸の保存", { body: payload }),
-  );
-}
-
 export function updateAxisDefinition(axisId: string, payload: AxisDefinitionPayload) {
   return requestApi(
     (init) =>
@@ -50,49 +37,15 @@ export function updateAxisDefinition(axisId: string, payload: AxisDefinitionPayl
   );
 }
 
-export async function deleteAxisDefinition(axisId: string): Promise<void> {
-  await requestApi(
-    (init) => adminApiClient.DELETE("/axis-definitions/{axis_id}", { params: { path: { axis_id: axisId } }, ...init }),
-    adminOptions("軸の削除"),
-  );
-}
-
-export function unpublishAxisDefinition(axisId: string) {
-  return requestApi(
-    (init) =>
-      adminApiClient.POST("/axis-definitions/{axis_id}/unpublish", { params: { path: { axis_id: axisId } }, ...init }),
-    adminOptions("軸の非公開化"),
-  );
-}
-
-// 軸の編集中のプレビュー。分布は初回にWayの抽選と材料の組み立てを伴う。しきい値と点数はDBを読まない。
+// 軸の編集中のプレビュー。分布は初回にWayの抽選と材料の組み立てを伴う。点数と地図の段はDBを読まない。
 
 /** 編集中のshapeで、折れ点を通す前の生値がどう分布するか。 */
 export function fetchAxisValueDistribution(shape: AxisShape) {
   const body = { shape };
   return requestApi(
     (init) => adminApiClient.POST("/axis-definitions/preview-distribution", { body, ...init }),
-    adminOptions("分布の取得", { timeoutMs: DISTRIBUTION_API_TIMEOUT_MS, body }),
+    adminOptions("分布の取得", { timeoutMs: API_TIMEOUT_MS.distribution, body }),
   );
-}
-
-export type DisplayThresholdsPreviewRequest = Schemas["DisplayThresholdsPreviewRequest"];
-
-/** 人が刻んだ段の境界が地図でどうなるか。`bandsOnMap`は地図の各段が入力のどの段に当たるか
- * （入力の段の番号、下から0始まり）で、nullは判定が無い（入力どおりの段で出す）。 */
-export interface MapBandsOfThresholds {
-  droppedOnMap: readonly number[];
-  bandsOnMap: readonly number[] | null;
-}
-
-/** 編集中の軸で、人が刻んだ段の境界のうち地図では段にならないものと、地図に残る段。判定はbackendが地図の段を
- * 作るのと同じ関数で行う。 */
-export async function fetchMapBandsOfThresholds(body: DisplayThresholdsPreviewRequest): Promise<MapBandsOfThresholds> {
-  const response = await requestApi(
-    (init) => adminApiClient.POST("/axis-definitions/preview-display-thresholds", { body, ...init }),
-    adminOptions("しきい値の確認", { body }),
-  );
-  return { droppedOnMap: response.dropped_on_map, bandsOnMap: response.bands_on_map };
 }
 
 export type ScoresPreviewRequest = Schemas["ScoresPreviewRequest"];
@@ -106,38 +59,49 @@ export function fetchScoresPreview(body: ScoresPreviewRequest) {
   );
 }
 
-// 材料
+export type CalibrationPreviewRequest = Schemas["CalibrationPreviewRequest"];
+export type CalibrationPreview = Schemas["CalibrationPreviewResponse"];
 
-export type MaterialDistribution = Schemas["MaterialDistributionResponse"];
-
-/** 1材料の値が実データでどの範囲に散らばっているか。 */
-export function fetchMaterialDistribution(materialId: string) {
+/** 較正の画面の下書きの定義で、地図の段（境界は上書きが無ければ折れ点から導いたもの）と、密度の軸か。 */
+export function fetchCalibrationPreview(body: CalibrationPreviewRequest) {
   return requestApi(
-    (init) =>
-      adminApiClient.GET("/material-catalog/{material_id}/distribution", {
-        params: { path: { material_id: materialId } },
-        ...init,
-      }),
-    adminOptions("分布の取得", { timeoutMs: DISTRIBUTION_API_TIMEOUT_MS }),
+    (init) => adminApiClient.POST("/axis-definitions/preview-calibration", { body, ...init }),
+    adminOptions("地図の段の確認", { body }),
   );
 }
 
-/** categoricalの材料が実データで取る値の一覧。 */
-export function getMaterialValues(materialId: string) {
+export type WayValuesPreviewRequest = Schemas["WayValuesPreviewRequest"];
+/** 道の点数を求める下書き（軸と点のつけ方）。 */
+export type WayValuesDraft = Pick<WayValuesPreviewRequest, "axis_id" | "shape">;
+
+/** 編集中の折れ点で、1枚のタイルの道（feature_key）それぞれが何点になるか。値は公開中の軸の道の点数の配信と同じ計算で出す。 */
+export function fetchWayValuesPreview(body: WayValuesPreviewRequest) {
+  return requestApi(
+    (init) => adminApiClient.POST("/axis-definitions/preview-way-values", { body, ...init }),
+    adminOptions("道の点数の確認", { body }),
+  );
+}
+
+// 材料
+
+export type MaterialValueShares = Schemas["MaterialValueSharesResponse"];
+
+/** 種類・はい/いいえの材料の値ごとに、その値を持つ道の延長の割合。 */
+export function fetchMaterialValueShares(materialId: string) {
   return requestApi(
     (init) =>
-      adminApiClient.GET("/material-catalog/{material_id}/values", {
+      adminApiClient.GET("/material-catalog/{material_id}/value-shares", {
         params: { path: { material_id: materialId } },
         ...init,
       }),
-    adminOptions("材料の値一覧の取得", { timeoutMs: CATALOG_API_TIMEOUT_MS }),
+    adminOptions("値ごとの延長の取得", { timeoutMs: API_TIMEOUT_MS.distribution }),
   );
 }
 
 export function getMaterialCoverage() {
   return requestApi(
     (init) => adminApiClient.GET("/material-catalog/coverage", init),
-    adminOptions("材料の欠損割合の取得", { timeoutMs: HEAVY_ADMIN_API_TIMEOUT_MS }),
+    adminOptions("材料の欠損割合の取得", { timeoutMs: API_TIMEOUT_MS.heavyAdmin }),
   );
 }
 
@@ -146,14 +110,14 @@ export function getMaterialCoverage() {
 export function getDerivedDataFreshness() {
   return requestApi(
     (init) => adminApiClient.GET("/derived-data/freshness", init),
-    adminOptions("派生データ鮮度台帳の取得", { timeoutMs: HEAVY_ADMIN_API_TIMEOUT_MS }),
+    adminOptions("派生データ鮮度台帳の取得", { timeoutMs: API_TIMEOUT_MS.heavyAdmin }),
   );
 }
 
 export function getDbStatus() {
   return requestApi(
     (init) => adminApiClient.GET("/db-status", init),
-    adminOptions("DB状態の取得", { timeoutMs: HEAVY_ADMIN_API_TIMEOUT_MS }),
+    adminOptions("DB状態の取得", { timeoutMs: API_TIMEOUT_MS.heavyAdmin }),
   );
 }
 
@@ -199,22 +163,8 @@ export function getRecentLogs(query: LogsQuery) {
 export function getDebugStats() {
   return requestApi(
     (init) => backendApi.GET("/api/debug/stats", init),
-    getOptions({ timeoutMs: STATUS_API_TIMEOUT_MS, category: "api:debug-stats", errorLabel: "システム状況" }),
+    getOptions({ timeoutMs: API_TIMEOUT_MS.status, category: "api:debug-stats", errorLabel: "システム状況" }),
   );
-}
-
-/** `app/api/version/route.ts`の応答。 */
-export interface FrontendVersion {
-  commit: string | null;
-  started_at: string;
-}
-
-export function getFrontendVersion() {
-  return fetchJson<FrontendVersion>("/api/version", {
-    timeoutMs: STATUS_API_TIMEOUT_MS,
-    category: "api:version",
-    errorLabel: "フロントエンドのバージョン",
-  });
 }
 
 /** backendへ疎通できるか。画面は「OK/接続できません」の2値しか出さないため失敗の種類は返さないが、中身は
@@ -223,7 +173,7 @@ export async function checkBackendHealth(): Promise<boolean> {
   const failure = "バックエンドへの疎通確認に失敗しました";
   try {
     const data = await requestApi((init) => backendApi.GET("/health", init), {
-      timeoutMs: STATUS_API_TIMEOUT_MS,
+      timeoutMs: API_TIMEOUT_MS.status,
       category: "api:health",
       messages: { failure, parseFailure: failure },
     });

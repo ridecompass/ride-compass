@@ -1,7 +1,6 @@
 """区間インスペクタ（地図上の道路クリックで出す「一次属性→二次軸スコア→合成」の内訳）。
 
-Edge単位の評価（`domain/evaluation.py`）とは入力の粒度が違う（Way1本、ルート文脈なし）
-だけで、材料の値は同じ`MaterialSpec.value_sql`をway粒度のエイリアスへ当てたものを受け取る。
+軸の得点は、呼び出し側が地図の配信と同じ評価から求めて渡す。
 
 合成スコアはここでサーバー側が計算する。タイルへ焼き込む値に課される「解釈は
 クライアントに」の制約（全ユーザー共有のキャッシュへ個別の解釈を載せられない）は、
@@ -10,7 +9,6 @@ Edge単位の評価（`domain/evaluation.py`）とは入力の粒度が違う（
 """
 
 
-from app.domain.axis_definitions import evaluate_axes_values
 from app.domain.difficulty import composite_difficulty
 from app.domain.landcover import LandcoverPercentages
 from app.domain.route_preference import RoutePreference
@@ -21,7 +19,6 @@ class AxisInspectorAxis(StrictModel):
     axis_id: str
     #: 材料が足りず評価できなければNone。
     difficulty: float | None
-    weight: float
     # この軸が合成スコアへ持ち込んでいる量（重み付き寄与度、`composite_difficulty`と同じ
     # 分母で正規化した値）。ルート結果の`axis_contributions`と同じ読み方にするため、
     # 重みを掛ける計算はサーバー側に置く。
@@ -37,56 +34,44 @@ class InspectorComposite(StrictModel):
     covered_weight_fraction: float
 
 
-class AxisInspectorResult(StrictModel):
-    highway: str | None
-    tags: dict[str, str]
+class InspectorValues(StrictModel):
+    """1つのフィーチャー（押した区間・その区間を含む道1本）の軸ごとの得点と合成。"""
+
     axes: list[AxisInspectorAxis]
     #: 1つも取得できなければNone。
     composite_difficulty: InspectorComposite | None
     # 道路周囲リングの土地被覆の内訳。軸の材料に使うのは一部のクラスだけだが、
     # 「この道が何で覆われているか」は軸の点数からは読み取れないため全クラスを返す。
     # 行が無い・割合がNULL（そのラスタ構成では値なし）ならNone。
-    landcover: LandcoverPercentages | None = None
+    landcover: LandcoverPercentages | None
 
 
-def axis_inspector_breakdown(
-    highway: str | None,
-    tags: dict[str, str],
-    materials: dict[str, object],
+class AxisInspectorResult(StrictModel):
+    highway: str
+    tags: dict[str, str]
+    #: 押した区間（道1本で塗る倍率で押したときは、押した地点に最も近いその道の区間）。値は区間で塗る地図と同じ。
+    segment: InspectorValues
+    #: 押した区間を含む道1本。値は道1本で塗る地図と同じ。
+    way: InspectorValues
+
+
+def inspector_values(
+    scores: dict[str, float | None],
     landcover: LandcoverPercentages | None,
     preference: RoutePreference,
-) -> AxisInspectorResult:
-    """区間インスペクタの内訳を算出する純関数。
-
-    `materials`は`RoadGraphRepository.get_way_material_values`が返すway1本ぶんの材料値に、
-    進行方向に依存する材料（勾配・風）を呼び出し側が引いて足したもの。足されなかった材料は
-    欠損として扱われ、それを参照する軸はavailable=Falseになる。`landcover`は表示用の
-    内訳にだけ使う——軸の材料はSQL側が同じ行から直接求めている。
+) -> InspectorValues:
+    """軸ごとの得点（評価できない軸はNone）を、重みで合成した内訳にする。
 
     重みは呼び出し側が渡す。ここで既定を組み立てると、呼び出し側が渡し忘れた重みが
     画面へ出たまま誰も気づかない。
     """
     weights = preference.weights
-    scores = {
-        axis_id: values[0]
-        for axis_id, values in evaluate_axes_values({key: [value] for key, value in materials.items()}, 1).items()
-    }
-
     composite, contributions = composite_difficulty(scores, weights)
-    axes = [
-        AxisInspectorAxis(
-            axis_id=axis_id,
-            difficulty=score,
-            weight=weights.get(axis_id, 0.0),
-            contribution=contributions[axis_id],
-        )
-        for axis_id, score in scores.items()
-    ]
-
-    return AxisInspectorResult(
-        highway=highway,
-        tags=tags,
-        axes=axes,
+    return InspectorValues(
+        axes=[
+            AxisInspectorAxis(axis_id=axis_id, difficulty=score, contribution=contributions[axis_id])
+            for axis_id, score in scores.items()
+        ],
         composite_difficulty=None if composite is None else _composite(composite, scores, weights),
         landcover=landcover,
     )

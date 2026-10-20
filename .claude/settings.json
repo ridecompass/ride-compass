@@ -9,15 +9,10 @@
             "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/remote_dev/session_start.sh\"; [ -f \"$f\" ] || exit 0; bash \"$f\"",
             "timeout": 600
-          }
-        ]
-      },
-      {
-        "matcher": "startup|resume",
-        "hooks": [
+          },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/tools/flow-gate/bin/settings.js\"",
+            "command": "[ \"$GITHUB_ACTIONS\" = true ] || [ \"$CLAUDE_CODE_REMOTE\" = true ] || python \"$CLAUDE_PROJECT_DIR/scripts/review_checks.py\" trigger --only-fired 2>&1; exit 0",
             "timeout": 60
           }
         ]
@@ -47,7 +42,30 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/hooks/format_frontend.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
     "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/hooks/japanese_only.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "MessageDisplay": [
       {
         "hooks": [
           {

@@ -15,7 +15,7 @@
 
 実行方法（backendディレクトリから）:
     python scripts/measure_axis_saturation.py
-    python scripts/measure_axis_saturation.py --axis stop_density --sample-percent 5
+    python scripts/measure_axis_saturation.py --axis <軸id> --sample-percent 5
     python scripts/measure_axis_saturation.py --bbox 35.65,139.72,35.71,139.80
     python scripts/run_probe.py scripts/measure_axis_saturation.py --bbox 35.65,139.72,35.71,139.80   # 本番
 
@@ -24,7 +24,6 @@
 
 import argparse
 import asyncio
-import os
 import sys
 from collections import defaultdict
 from collections.abc import Callable
@@ -33,17 +32,19 @@ from typing import Literal
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import batch_session_factory  # noqa: E402
-from app.domain.axis_definitions import (  # noqa: E402
+from _probe_env import probe_database_url
+from app.batch.common import batch_session_factory
+from app.domain.axis_definitions import (
     AXIS_DEFINITIONS,
     evaluate_axes_inputs,
     evaluate_axes_values,
 )
-from app.domain.region import BoundingBox, parse_bbox  # noqa: E402
-from app.infrastructure.road_graph_repository import RoadGraphRepository  # noqa: E402
-from app.services import axis_preview_service  # noqa: E402
-from app.services.axis_registry_service import refresh_axis_definitions  # noqa: E402
-from app.infrastructure.axis_definition_repository import AxisDefinitionRepository  # noqa: E402
+from app.domain.region import BoundingBox, parse_bbox
+from app.infrastructure.road_graph_repository import RoadGraphRepository
+from app.domain.value_distribution import weighted_quantiles
+from app.services import axis_preview_service
+from app.services.axis_registry_service import refresh_axis_definitions
+from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 
 # 「上端へ張り付いている」とみなす難易度。100ちょうどに限ると、折れ点の最終区間に
 # わずかに届かない値ばかりの軸を見逃す。
@@ -61,19 +62,21 @@ Row = tuple[float, float, object]
 Cause = Literal["breakpoints", "single_value"]
 
 
-def share_at_or_above(pairs: list[tuple[float, float]], threshold: float) -> float:
-    """値が`threshold`以上である延長の割合。"""
+def _length_share(pairs: list[tuple[float, float]], in_band: Callable[[float], bool]) -> float:
+    """値が`in_band`に入る延長の割合。"""
     total_m = sum(m for m, _ in pairs)
     if total_m <= 0:
         return 0.0
-    return sum(m for m, value in pairs if value >= threshold) / total_m
+    return sum(m for m, value in pairs if in_band(value)) / total_m
+
+
+def share_at_or_above(pairs: list[tuple[float, float]], threshold: float) -> float:
+    """値が`threshold`以上である延長の割合。"""
+    return _length_share(pairs, lambda value: value >= threshold)
 
 
 def share_at_or_below(pairs: list[tuple[float, float]], threshold: float) -> float:
-    total_m = sum(m for m, _ in pairs)
-    if total_m <= 0:
-        return 0.0
-    return sum(m for m, value in pairs if value <= threshold) / total_m
+    return _length_share(pairs, lambda value: value <= threshold)
 
 
 def largest_single_input_share(rows: list[Row], in_band: Callable[[float], bool] = lambda _: True) -> float:
@@ -92,18 +95,18 @@ def saturation_cause(rows: list[Row]) -> Cause | None:
     """張り付いていなければNone。張り付いた側の割合を1つの値だけで超えるなら`single_value`
     （同じ値の道はどの折れ点でも同じ難易度になり、散らない）、そうでなければ`breakpoints`。"""
     pairs = [(m, score) for m, score, _ in rows]
-    bands: list[tuple[float, Callable[[float], bool], float]] = [
-        (share_at_or_above(pairs, SATURATION_THRESHOLD), lambda s: s >= SATURATION_THRESHOLD, SATURATED_SHARE),
-        (share_at_or_below(pairs, FLOOR_THRESHOLD), lambda s: s <= FLOOR_THRESHOLD, FLOORED_SHARE),
+    bands: list[tuple[Callable[[float], bool], float]] = [
+        (lambda s: s >= SATURATION_THRESHOLD, SATURATED_SHARE),
+        (lambda s: s <= FLOOR_THRESHOLD, FLOORED_SHARE),
     ]
-    for share, in_band, limit in bands:
-        if share >= limit:
+    for in_band, limit in bands:
+        if _length_share(pairs, in_band) >= limit:
             return "single_value" if largest_single_input_share(rows, in_band) >= limit else "breakpoints"
     return None
 
 
 async def run(
-    database_url: str | None,
+    database_url: str,
     axis_filter: str | None,
     sample_percent: float,
     limit: int,
@@ -120,7 +123,8 @@ async def run(
         print("サンプルが0件でした（道の生データが未取込か、--bboxの範囲に道が無い可能性）")
         return 1
 
-    total_km = sum(m for m, _ in sample) / 1000.0
+    sample_m = sum(m for m, _ in sample)
+    total_km = sample_m / 1000.0
     scope = (
         f"TABLESAMPLE {sample_percent}%"
         if bbox is None
@@ -132,9 +136,8 @@ async def run(
     print(f"{'軸':<28} {'算出率':>7} {'p10':>7} {'p50':>7} {'p90':>7} {'p99':>7}  上端／下端／最多の値")
     print("-" * 100)
 
-    # 軸の階層（内部軸→公開軸）を解いて公開軸の難易度を得る。個々の軸へ
-    # `evaluate_axis_values`を直接当てると、他の軸を材料にする合成軸が
-    # 「材料が欠損」になってしまう。
+    # 軸の階層（内部軸→公開軸）を解いて公開軸の難易度を得る。軸を1本ずつ評価すると、
+    # 他の軸を材料にする合成軸が「材料が欠損」になってしまう。
     material_ids = {key for _, materials in sample for key in materials}
     columns = {key: [materials.get(key) for _, materials in sample] for key in material_ids}
     inputs = evaluate_axes_inputs(columns, len(sample))
@@ -155,11 +158,11 @@ async def run(
         rows = by_axis.get(axis_id, [])
         pairs = [(m, score) for m, score, _ in rows]
         evaluated_m = sum(m for m, _ in pairs)
-        evaluated_share = evaluated_m / sum(m for m, _ in sample)
+        evaluated_share = evaluated_m / sample_m
         if not pairs:
             print(f"{axis_id:<28} {'0.0%':>7}  （全区間で材料が欠損）")
             continue
-        q = axis_preview_service.weighted_quantiles(pairs, _QUANTILES, digits=1)
+        q = weighted_quantiles(pairs, _QUANTILES, digits=1)
         high = share_at_or_above(pairs, SATURATION_THRESHOLD)
         low = share_at_or_below(pairs, FLOOR_THRESHOLD)
         print(
@@ -197,8 +200,7 @@ def main() -> int:
     parser.add_argument("--database-url", default=None, help="既定: 本番の調査の道具が渡す接続先、無ければ設定値")
     args = parser.parse_args()
     bbox = parse_bbox(args.bbox) if args.bbox else None
-    database_url = args.database_url or os.environ.get("PROBE_DATABASE_URL")
-    return asyncio.run(run(database_url, args.axis, args.sample_percent, args.limit, bbox))
+    return asyncio.run(run(probe_database_url(args.database_url), args.axis, args.sample_percent, args.limit, bbox))
 
 
 if __name__ == "__main__":

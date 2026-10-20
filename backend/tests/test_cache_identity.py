@@ -5,6 +5,7 @@
 
 ここで見ないもの:
 - 道路網の置き場が署名で選ばれること → `test_road_network_store.py`
+- 開いているラスタの構成の指紋（`raster_set_fingerprint`）で土地被覆のタイルを入れ替えること → `test_region_tile_cache.py`
 - 世代をDBから読んでTTLで持つこと → `test_derived_data_revision_service.py`
 - 世代を読めなかったタイルをディスクへ残さないこと → `is_known_tile_version`を読む側（`services/region_service.py`）の
   責務で、`test_region_service.py`が見る

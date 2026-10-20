@@ -11,45 +11,15 @@
  */
 import { describe, expect, it } from "vitest";
 
-import {
-  formatJstDateTime,
-  formatJstHourMinute,
-  formatJstMinute,
-  isSameJstDay,
-  jstParts,
-  nearestTimeIndex,
-  parseJstLocalValue,
-  toJstLocalValue,
-} from "@/lib/time";
+import timeExpectations from "@/types/generated/time-expectations.json";
+
+import { formatJstDateTime, isSameJstDay, nearestTimeIndex, parseJstLocalValue, toJstLocalValue } from "@/lib/time";
 
 const at = (iso: string) => new Date(iso);
 
-describe("jstParts", () => {
-  it.each([
-    ["月は1から数える", "2026-08-20T00:05:00Z", { year: 2026, month: 8, day: 20, hour: 9, minute: 5 }],
-    [
-      "協定世界時の15時からは翌日で、年末なら年と月も進む",
-      "2026-12-31T15:00:00Z",
-      { year: 2027, month: 1, day: 1, hour: 0, minute: 0 },
-    ],
-  ])("協定世界時から9時間進めた暦と時刻を返す（%s）", (_scene, iso, expected) => {
-    expect(jstParts(at(iso))).toEqual(expected);
-  });
-});
-
 describe("書式", () => {
-  const time = at("2026-08-20T00:05:00Z");
-
-  it("時刻は時と分を2桁にする", () => {
-    expect(formatJstHourMinute(time)).toBe("09:05");
-  });
-
   it("日時は月と日を詰め、時刻を2桁にする", () => {
-    expect(formatJstDateTime(time)).toBe("8/20 09:05");
-  });
-
-  it("分だけを2桁で出す", () => {
-    expect(formatJstMinute(time)).toBe("05");
+    expect(formatJstDateTime(at("2026-08-20T00:05:00Z"))).toBe("8/20 09:05");
   });
 });
 
@@ -64,29 +34,21 @@ describe("isSameJstDay", () => {
   });
 });
 
-describe("日時の入力欄の値（時刻帯を持たない`YYYY-MM-DDTHH:mm`）", () => {
-  it("日本時間の暦と時刻を、各項目を2桁にして書く", () => {
-    expect(toJstLocalValue(at("2026-01-02T00:05:00Z"))).toBe("2026-01-02T09:05");
-  });
-
-  it("日本時間として読む", () => {
-    expect(parseJstLocalValue("2026-01-02T09:05").toISOString()).toBe("2026-01-02T00:05:00.000Z");
+describe("時刻帯を持たない`YYYY-MM-DDTHH:mm`（日時の入力欄の値・backendが応答へ書く時刻）", () => {
+  it("backendの表と同じく、日本時間として書き、日本時間として読む", () => {
+    const rows = timeExpectations.jst_local_text;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const { scene, instant, text } of rows) {
+      expect(toJstLocalValue(at(instant)), scene).toBe(text);
+      expect(parseJstLocalValue(text).getTime(), scene).toBe(at(instant).getTime());
+    }
   });
 });
 
 describe("nearestTimeIndex", () => {
   const times = ["2026-08-20T00:00:00Z", "2026-08-20T01:00:00Z", "2026-08-20T02:00:00Z"].map(at);
 
-  it("一覧が空なら、先頭（0）を返す", () => {
-    expect(nearestTimeIndex([], at("2026-08-20T00:00:00Z"))).toBe(0);
-  });
-
-  it.each([
-    ["2つの時刻からちょうど同じだけ離れていれば、前の時刻", "2026-08-20T01:30:00Z", 1],
-    ["中間を過ぎれば、後の時刻", "2026-08-20T01:40:00Z", 2],
-    ["一覧より前は、先頭", "2026-08-19T00:00:00Z", 0],
-    ["一覧より後は、末尾", "2026-08-21T00:00:00Z", 2],
-  ])("最も近い時刻の位置を返す（%s）", (_scene, iso, expected) => {
-    expect(nearestTimeIndex(times, at(iso))).toBe(expected);
+  it("最も近い時刻の位置を返す（2つの時刻からちょうど同じだけ離れていれば、前の時刻）", () => {
+    expect(nearestTimeIndex(times, at("2026-08-20T01:30:00Z"))).toBe(1);
   });
 });

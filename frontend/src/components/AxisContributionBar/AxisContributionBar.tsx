@@ -5,8 +5,9 @@ import type React from "react";
 import type { ReactNode } from "react";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
-import { InfoIcon } from "@/components/ui/icons/icons";
+import { InfoIcon } from "@/components/ui/icons/lucideIcons";
 import type { CatalogAxis } from "@/lib/catalogAxis";
+import { formatDifficulty } from "@/lib/mapDisplay/valueScale";
 import {
   legendChipBodyClass,
   legendChipClass,
@@ -26,17 +27,24 @@ interface AxisContributionBarProps {
   /** 凡例に並べる軸。省略すると帯に出る軸だけ。公開軸すべてを渡すと、寄与が0・欠損の軸も凡例に残る
    * （効くはずの軸が効かなかったことも判断の材料になる）。 */
   legendAxes?: readonly CatalogAxis[];
-  /** 凡例のチップを押して開く、その軸の詳細。nullを返した軸は凡例から落ちる。省略するとどのチップも押せない。 */
-  renderDetail?: (axis: CatalogAxis) => ReactNode | null;
+  /** 凡例のチップを押して開く、その軸の詳細。nullを返した軸は凡例から落ちる。 */
+  renderDetail: (axis: CatalogAxis) => ReactNode | null;
+  /** `stacked`（既定）は帯の下に凡例のチップを折り返して並べ、`inline`は帯の右に軸のアイコンと数字だけの小さいチップを並べて1行に収める。 */
+  layout?: "stacked" | "inline";
 }
 
 const FALLBACK_COLOR = palette.semantic.neutral;
 
-/** その軸に表示すべき寄与があるか（0はキーが無い＝欠損と同じく無し）。空のときの案内を出す側も同じ判定を使う
- * （別々に書くとずれ、案内も帯も出ない状態ができる）。 */
-export function hasContribution(contributions: Record<string, number>, axisId: string): boolean {
+/** その軸に表示すべき寄与があるか（0はキーが無い＝欠損と同じく無し）。 */
+function hasContribution(contributions: Record<string, number>, axisId: string): boolean {
   const value = contributions[axisId];
   return value != null && value !== 0;
+}
+
+/** `axes`のどれかに表示すべき寄与があるか（帯が何かを描くか）。空のときの案内を出す側はこれを読む——帯と違う軸で
+ * 数えるとずれ、案内も帯も出ない状態ができる。 */
+export function hasAnyContribution(axes: readonly CatalogAxis[], contributions: Record<string, number>): boolean {
+  return axes.some((axis) => hasContribution(contributions, axis.axisId));
 }
 
 /** 重み付きの寄与の内訳を、積み上げの帯1本と凡例で出す。ルート全体と区間の内訳が同じ部品を使う。寄与が1つも
@@ -47,67 +55,64 @@ export default function AxisContributionBar({
   axisColors,
   legendAxes,
   renderDetail,
+  layout = "stacked",
 }: AxisContributionBarProps) {
+  if (!hasAnyContribution(axes, contributions)) return null;
   const rows = axes.filter((axis) => hasContribution(contributions, axis.axisId));
-  if (rows.length === 0) return null;
+  const colorOf = (axisId: string) => axisColors[axisId] ?? FALLBACK_COLOR;
+  const inline = layout === "inline";
 
   return (
-    <div className="flex min-w-30 flex-auto flex-col gap-1">
-      <div className={stackBarClass} role="img" aria-label="難易度の内訳">
+    <div className={cn("flex flex-auto gap-1", inline ? "min-w-0 items-center gap-2" : "min-w-30 flex-col")}>
+      <div className={cn(stackBarClass, inline && "min-w-12 flex-auto")} role="img" aria-label="難易度の内訳">
         {rows.map((axis) => {
           const value = Math.min(100, Math.max(0, contributions[axis.axisId]));
-          const color = axisColors[axis.axisId] ?? FALLBACK_COLOR;
+          const color = colorOf(axis.axisId);
           return (
             <div
               key={axis.axisId}
               className="h-full"
               style={{ width: `${value}%`, background: color }}
-              title={`${axis.label} ${value.toFixed(1)}`}
+              title={`${axis.label} ${formatDifficulty(value)}`}
             />
           );
         })}
       </div>
-      <ul className={legendChipsClass}>
+      <ul className={cn(legendChipsClass, inline && "flex-none flex-nowrap gap-0.5")}>
         {(legendAxes ?? rows)
-          .map((axis) => ({ axis, detail: renderDetail?.(axis) ?? null }))
-          .filter(({ detail }) => renderDetail == null || detail !== null)
+          .map((axis) => ({ axis, detail: renderDetail(axis) }))
+          .filter(({ detail }) => detail !== null)
           .map(({ axis, detail }) => {
-            const color = axisColors[axis.axisId] ?? FALLBACK_COLOR;
+            const color = colorOf(axis.axisId);
             // 名前は出さずアイコンと値だけ（狭い幅では名前がそのまま行数になる）。名前は説明とaria-labelが持つ。
             const Icon = axisIconFor(axis.iconId);
-            const body = (
-              <>
-                <span aria-hidden="true" className={legendIconClass} style={{ color }}>
-                  <Icon size={14} />
-                </span>
-                {hasContribution(contributions, axis.axisId) && (
-                  <span className="text-[var(--color-muted)] tabular-nums">
-                    {contributions[axis.axisId].toFixed(1)}
-                  </span>
-                )}
-              </>
-            );
             return (
-              <li key={axis.axisId} className={legendChipClass}>
-                {detail === null ? (
-                  <span className={legendChipBodyClass} title={axis.label} aria-label={axis.label} role="img">
-                    {body}
-                  </span>
-                ) : (
-                  <InfoPopover
-                    triggerClassName={cn(legendChipBodyClass, "cursor-pointer [&>svg]:text-[var(--color-muted)]")}
-                    triggerAriaLabel={`${axis.label}の詳細`}
-                    // 押せることを(i)で示す（輪郭の濃さだけでは伝わらない）。
-                    triggerContent={
-                      <>
-                        {body}
-                        <InfoIcon size={12} />
-                      </>
-                    }
-                  >
-                    {detail}
-                  </InfoPopover>
-                )}
+              <li key={axis.axisId} className={cn(legendChipClass, inline && "flex-none")}>
+                <InfoPopover
+                  triggerClassName={cn(
+                    legendChipBodyClass,
+                    "cursor-pointer [&>svg]:text-[var(--color-muted)]",
+                    inline && "gap-0.5 px-1 py-0",
+                  )}
+                  triggerAriaLabel={`${axis.label}の詳細`}
+                  // 押せることを(i)で示す（輪郭の濃さだけでは伝わらない）。
+                  triggerContent={
+                    <>
+                      <span aria-hidden="true" className={legendIconClass} style={{ color }}>
+                        <Icon size={14} />
+                      </span>
+                      {hasContribution(contributions, axis.axisId) && (
+                        <span className="text-[var(--color-muted)] tabular-nums">
+                          {formatDifficulty(contributions[axis.axisId])}
+                        </span>
+                      )}
+                      {/* 小さい並びは帯の右の1行に収めるため(i)を省き、チップの地の色で押せることを示す。 */}
+                      {!inline && <InfoIcon size={12} />}
+                    </>
+                  }
+                >
+                  {detail}
+                </InfoPopover>
               </li>
             );
           })}

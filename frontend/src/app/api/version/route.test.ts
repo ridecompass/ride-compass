@@ -5,16 +5,19 @@
  *
  * ここで見ないもの:
  * - 応答をビルド時に固めない指定（`dynamic`）→ Next.jsの規約の宣言で、振る舞いはフレームワークが持つ
- * - この口を読んで画面に出すこと → `features/admin/SystemStatusPanel/SystemStatusPanel.test.tsx`
+ * - この口を読んで画面に出すこと → `features/admin/SystemStatusPanel/SystemStatusPanel.test.tsx`・
+ *   `components/HeaderMenu/HeaderMenu.test.tsx`
  *
- * コミットの環境変数はこの口だけが読むので、`vi.stubEnv`で立てて入口を呼ぶ（docs/conventions/testing.md パターン7）。
+ * コミットの環境変数はこの口だけが読むので、`vi.stubEnv`で立てて入口を呼ぶ（.claude/rules/testing-frontend.md パターン7）。
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import type { FrontendVersion } from "@/services/versionApi";
 
 import { GET } from "./route";
 
 async function body() {
-  return (await (await GET()).json()) as { status: string; commit: string | null; started_at: string };
+  return (await (await GET()).json()) as FrontendVersion & { status: string };
 }
 
 describe("GET /api/version", () => {
@@ -22,11 +25,14 @@ describe("GET /api/version", () => {
     vi.unstubAllEnvs();
   });
 
-  it("デプロイされたコミットを返し、注入されていない環境（手元）ではnullを返す", async () => {
-    vi.stubEnv("RENDER_GIT_COMMIT", "0123456789abcdef0123456789abcdef01234567");
+  it("像に入れたコミットを返し、入れていない環境（手元・コミットを渡さずに作った像）ではnullを返す", async () => {
+    vi.stubEnv("GIT_COMMIT", "0123456789abcdef0123456789abcdef01234567");
     expect(await body()).toMatchObject({ status: "ok", commit: "0123456789abcdef0123456789abcdef01234567" });
 
-    vi.stubEnv("RENDER_GIT_COMMIT", undefined);
+    vi.stubEnv("GIT_COMMIT", undefined);
+    expect((await body()).commit).toBeNull();
+
+    vi.stubEnv("GIT_COMMIT", "");
     expect((await body()).commit).toBeNull();
   });
 

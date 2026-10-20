@@ -1,75 +1,114 @@
-"""`domain/registry.py`——地図が軸をどう塗るかの宣言の型（`TileInputSpec`・`AxisDisplaySpec`）。
+"""`domain/registry.py`——一次属性の表示の宣言を、地図で1つの意味に読めない形で作れないこと。
 
-入口は2つの型の組み立て。読む側（画面の式）は形を1つだけ選んで塗るため、食い違う宣言は組み立ての時点で断る。
+入口は一次属性の宣言（`PrimaryAttributeSpec`）と表示の軸（`DisplayAxisSpec`）の組み立て。
 
 ここで見ないもの:
-- 軸の定義から宣言を組み立てること → `test_axis_display.py`
-- 一次属性の宣言（`PrimaryAttributeSpec`等）は検証を持たない型だけなので見ない
+- 一次属性の宣言の検証のうち、点の不透明度を点だけに付けること
+- 属性をまたぐ宣言の関係（色相の起点・点の行と種別）→ `test_primary_attributes.py`
 """
 
 import pytest
 from pydantic import ValidationError
 
-from app.domain.registry import AxisDisplaySpec, TileInputSpec
+from app.domain.registry import DisplayAxisSpec, DisplayCategorySpec, PointThinningSpec, PrimaryAttributeSpec
 
 
-def test_a_tile_input_with_two_forms_is_refused():
-    """形を2つ載せると、画面の式が片方を選び、選ばれなかった指定が黙って消える。"""
-    with pytest.raises(ValidationError, match="more than one form"):
-        TileInputSpec(property="p", categories={"a": 1.0}, breakpoints=[(0.0, 0.0), (1.0, 100.0)])
+def _rows(*keys: str, glyphs=None, radii=None) -> tuple[DisplayCategorySpec, ...]:
+    glyphs = glyphs or (None,) * len(keys)
+    radii = radii or (None,) * len(keys)
+    return tuple(
+        DisplayCategorySpec(key=key, label=key, values=(key,), description="d", glyph=glyph, radius_px=radius)
+        for key, glyph, radius in zip(keys, glyphs, radii, strict=True)
+    )
 
 
-@pytest.mark.parametrize("values", [{"true_value": 1.0}, {"false_value": 1.0}])
-def test_true_and_false_values_without_the_boolean_form_are_refused(values):
-    with pytest.raises(ValidationError, match="without boolean=True"):
-        TileInputSpec(property="p", **values)
+def _axis(categories, palette="nominal", **fields) -> DisplayAxisSpec:
+    hue_slot = 0 if palette == "nominal" else None
+    return DisplayAxisSpec(**{"key": "k", "property": "k", "palette": palette, "hue_slot": hue_slot, "categories": categories, **fields})
 
 
-def test_a_weight_on_the_boolean_form_is_refused_because_the_form_ignores_it():
-    with pytest.raises(ValidationError, match="weight the boolean form ignores"):
-        TileInputSpec(property="p", boolean=True, true_value=10.0, weight=2.0)
+def _attribute(*axes: DisplayAxisSpec, geometry="point", **fields) -> PrimaryAttributeSpec:
+    return PrimaryAttributeSpec(
+        **{"attr_id": "p", "label": "点", "geometry": geometry, "display_axes": axes, "tile_kind": "poi", **fields}
+    )
 
 
-@pytest.mark.parametrize("form", [{"weight": 2.0}, {"boolean": True, "true_value": 10.0, "false_value": 2.0}])
-def test_each_form_alone_is_accepted_and_reads_back_from_what_it_writes(form):
-    """配った値は、書き出した形（使わない形の欄は空の値）から同じ宣言へ読み直せる。"""
-    spec = TileInputSpec(property="p", **form)
-
-    assert TileInputSpec.model_validate(spec.model_dump()) == spec
+def _point_layer(rows: tuple[str, ...], glyph: str | None = "g") -> PrimaryAttributeSpec:
+    glyphs = (f"{glyph}a", f"{glyph}b") if glyph else None
+    return _attribute(
+        _axis(_rows("a", "b", glyphs=glyphs)), point_thinning=PointThinningSpec(rows=rows, ratio_property="r"))
 
 
-def test_categories_come_out_in_the_same_order_whatever_order_they_were_given_in():
-    """DB・API・コードのどこから組み立てても、配る値（と生成物の差分）が同じになる。"""
-    forward = TileInputSpec(property="p", categories={"a": 1.0, "b": 2.0, "c": 3.0})
-    backward = TileInputSpec(property="p", categories={"c": 3.0, "a": 1.0, "b": 2.0})
+@pytest.mark.parametrize("rows", [("a",), ("a", "a", "b"), ("a", "b", "c")])
+def test_a_thinning_order_that_does_not_rank_every_row_once_is_refused(rows):
+    """順に無い行の点は地図の式で最後に回り、同じ行を2度並べると先の順位だけが効く——どちらも宣言と違う順で残る。"""
+    with pytest.raises(ValidationError, match="1度ずつ全部"):
+        _point_layer(rows)
 
-    assert forward.model_dump_json() == backward.model_dump_json()
+
+def test_thinning_round_points_is_refused():
+    """地図は重なった丸い点を省けないので、宣言しても間引かれない。"""
+    with pytest.raises(ValidationError, match="絵記号で描く点にだけ"):
+        _point_layer(("a", "b"), glyph=None)
 
 
-def test_a_ramp_display_with_nothing_to_read_from_the_tile_is_refused():
-    with pytest.raises(ValidationError, match="nothing to read"):
-        AxisDisplaySpec(kind="ramp", label="軸", thresholds=[1.0])
+def test_a_thinning_order_ranking_every_row_once_is_accepted():
+    assert _point_layer(("b", "a")).point_thinning == PointThinningSpec(rows=("b", "a"), ratio_property="r")
 
 
 @pytest.mark.parametrize(
-    "payload",
-    [{"tile_inputs": [TileInputSpec(property="p")]}, {"thresholds": [1.0]}],
+    "build",
+    [
+        pytest.param(lambda: _axis(_rows("a"), palette=None, hue_slot=1), id="色を持たない軸に色相の起点"),
+        pytest.param(lambda: _axis(_rows("a"), palette=None, tone="dark"), id="色を持たない軸に段"),
+        pytest.param(lambda: _axis(_rows("a"), hue_slot=None), id="順序を持たない列挙に色相の起点が無い"),
+        pytest.param(
+            lambda: _axis((*_rows("a"), DisplayCategorySpec(key="b", label="b", values=("a",), description="d"))),
+            id="値が2つの行に属する",
+        ),
+        pytest.param(
+            lambda: _axis((*_rows("a"), DisplayCategorySpec(key="a", label="b", values=("b",), description="d"))),
+            id="行の鍵が重なる",
+        ),
+    ],
 )
-def test_a_display_that_is_not_drawn_refuses_a_ramp_payload(payload):
-    """`kind`だけを見てレイヤーを作るため、中身との食い違いは「地図に出ているのに塗られない」に化ける。"""
-    with pytest.raises(ValidationError, match="kind=none"):
-        AxisDisplaySpec(kind="none", label="軸", **payload)
+def test_an_axis_the_map_cannot_paint_one_way_is_refused(build):
+    """色は先頭の軸の宣言から行数で配り、2つの行に属する値は一方の色でしか塗られず、凡例の絞り込みは行を鍵で持つ。"""
+    with pytest.raises(ValidationError):
+        build()
 
 
-def test_band_boundaries_that_do_not_rise_are_refused():
-    """昇順でない境界は画面のstep式が読めず、境界が1つ先の帯へ吸われる。同じ値も昇順でない。"""
-    with pytest.raises(ValidationError, match="not ascending"):
-        AxisDisplaySpec(kind="ramp", label="軸", tile_inputs=[TileInputSpec(property="p")], thresholds=[1.0, 1.0])
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(lambda: _attribute(_axis(_rows("a"), palette=None)), id="先頭の軸が色を持たない"),
+        pytest.param(lambda: _attribute(_axis(_rows("a")), _axis(_rows("b"))), id="2本目の軸が色を持つ"),
+        pytest.param(lambda: _attribute(_axis(_rows("a")), geometry="area"), id="面が行を持つ"),
+        pytest.param(lambda: _attribute(_axis(_rows("a")), tile_kind=None), id="読むタイルが無い"),
+        pytest.param(
+            lambda: _attribute(_axis(_rows("a", "b", glyphs=("g", None)))), id="絵記号が一部の行にだけある"),
+        pytest.param(lambda: _attribute(_axis(_rows("a", "b", glyphs=("g", "g")))), id="絵記号が重なる"),
+        pytest.param(lambda: _attribute(_axis(_rows("a", glyphs=("g",))), geometry="line"), id="線に絵記号"),
+        pytest.param(
+            lambda: _attribute(_axis(_rows("a")), _axis(_rows("b", glyphs=("g",)), palette=None)),
+            id="2本目の軸に絵記号",
+        ),
+        pytest.param(
+            lambda: _attribute(_axis(_rows("a", radii=(4,))), _axis(_rows("b", radii=(6,)), palette=None)),
+            id="半径を持つ軸が2本",
+        ),
+        pytest.param(lambda: _attribute(_axis(_rows("a", radii=(4,))), geometry="line"), id="線に半径"),
+        pytest.param(lambda: _attribute(_axis(_rows("a", "b", radii=(4, 4)))), id="半径が行の間で重なる"),
+    ],
+)
+def test_an_attribute_the_map_cannot_draw_one_way_is_refused(build):
+    """地図は先頭の軸で塗り、絵記号は点の先頭の軸の行ごとの形として、半径は1本の軸から描く。外れた宣言は地図に出ないか、
+    形・大きさがどの行のものか決まらない。"""
+    with pytest.raises(ValidationError):
+        build()
 
 
-def test_displays_that_agree_with_their_kind_are_accepted():
-    ramp = AxisDisplaySpec(kind="ramp", label="軸", tile_inputs=[TileInputSpec(property="p")], thresholds=[1.0, 2.0])
-    none = AxisDisplaySpec(kind="none", label="軸")
-
-    assert ramp.thresholds == [1.0, 2.0]
-    assert none.tile_inputs == [] and none.thresholds == []
+def test_an_attribute_the_map_draws_one_way_is_accepted():
+    attribute = _attribute(
+        _axis(_rows("a", "b", glyphs=("g", "h"))), _axis(_rows("x", "y", radii=(4, 6)), palette=None, key="size"))
+    assert len(attribute.display_axes) == 2

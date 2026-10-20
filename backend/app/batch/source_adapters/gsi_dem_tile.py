@@ -2,19 +2,18 @@
 
 **製品×タイル1枚を1行**として返す。これで面のデータが点・線と同じ骨格に乗り、取込の経路を
 分けずに済む。同じタイル座標に複数の製品があれば、その数だけ行ができる——どの製品の値を
-採るかは画素ごとの判断で、派生（`derive_raster_materials.py`）が持つ。
+採るかは画素ごとの判断で、派生（`derive_elevation.py`）が持つ。
 
 **配信元は叩かない。**取りに行くのは`scripts/fetch_dem_tiles.py`の仕事で、ここは
 `app/batch/dem_tile_store.py`が指す置き場にあるものを読む。
 
-標高をint32（0.01m単位）で並べ、`raster`として持つ。配信元はテキストで返すが、同じ
-内容が数倍の大きさになるため詰める。位置・画素の大きさ・型・欠測値は`raster`の値自身が
-持つので、読み手は`attrs`から形を組み立てない。
+標高をint32（0.01m単位）で並べ、`raster`として持つ。配信元のPNGは画素の色に標高を
+符号化しており、DBの中で画素を読むには値の並びへ戻しておく必要がある。位置・画素の大きさ・
+型・欠測値は`raster`の値自身が持つので、読み手は`attrs`から形を組み立てない。
 
 どの製品をどのズームで読むかはプロファイルが持ち、実装は持たない。
 """
 
-import io
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -23,10 +22,11 @@ from typing import Any
 import numpy as np
 
 from app.batch import dem_tile_store
-from app.batch.ingest import SourceRecord, register_adapter
+from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
 from app.batch.source_adapters.raster_wkb import tile_bbox_wkb, tile_raster_wkb
 from app.batch.source_profile import SourceProfile, SourceProfileError, SourceSpec
-from app.domain.region import BoundingBox, tiles_covering_bbox
+from app.domain.region import tiles_covering_bbox
+from app.infrastructure.gsi_dem_png import read_gsi_dem_png
 from app.infrastructure.source_models import SourceFeatureRow
 
 logger = logging.getLogger("ridecompass.ingest.gsi_dem_tile")
@@ -36,12 +36,8 @@ logger = logging.getLogger("ridecompass.ingest.gsi_dem_tile")
 #: 出典: https://maps.gsi.go.jp/development/demtile.html
 _DEM_TILE_SIZE = 256
 
-#: 欠測を表す文字。「標高値が存在しない画素には「e」の文字が格納されている。」
-#: 出典: https://maps.gsi.go.jp/development/demtile.html
-_DEM_MISSING_MARKER = "e"
-
-#: 詰めるときの尺度と欠測値。地理院の標高タイル（テキスト形式）は「標高データは小数点
-#: 第二位までデータとして入っている（単位はm）」ため、0.01m単位で丸めずに保つ。
+#: 詰めるときの尺度と欠測値。地理院の標高タイル（PNG形式）の標高分解能が0.01mなので、
+#: 画素の値をそのまま0.01m単位として丸めずに保つ。
 #: 出典: https://maps.gsi.go.jp/development/demtile.html
 #:
 #: 型はint32。関東のbboxには富士山（3,776m）が入り、0.01m単位では377,600となって
@@ -50,14 +46,10 @@ SCALE = 100
 NODATA = -2147483648
 
 
-def pack_elevations(text: str) -> tuple[bytes, int]:
-    """タイル本文（カンマ区切りのテキスト）をint32の配列へ詰める。"""
-    # 値は小数第二位までの10進表記で指数を含まないため、`e`は欠測の印にしか現れない。
-    # 指数表記が来れば`1nan5`のような字句になり、黙って欠測にならず読み込みで止まる。
-    meters = np.loadtxt(io.StringIO(text.replace(_DEM_MISSING_MARKER, "nan")),
-                        delimiter=",", dtype=np.float64, ndmin=1).ravel()
-    missing = np.isnan(meters)
-    packed = np.where(missing, NODATA, np.rint(meters * SCALE)).astype("<i4")
+def pack_elevations(png: bytes) -> tuple[bytes, int]:
+    """タイル1枚（PNG）を、画素の順（行ごと）にint32の配列へ詰める。欠測の画素の数も返す。"""
+    elevations, missing = read_gsi_dem_png(png)
+    packed = np.where(missing, NODATA, elevations).astype("<i4")
     return packed.tobytes(), int(missing.sum())
 
 
@@ -76,28 +68,67 @@ class DemGrid:
                 f"選んでください（知らない製品: {unknown}）")
 
 
-@register_adapter("gsi_dem_tile", grid=DemGrid, required=(SourceFeatureRow.rast,))
-async def read_gsi_dem_tiles(spec: SourceSpec, profile: SourceProfile,
-                             origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
-    root = dem_tile_store.TILE_ROOT
-    products = {str(product): int(zoom) for product, zoom in spec.grid.products.items()}
-    # タイルは`fetch_dem_tiles.py`が先に写している。取込が読むのはその置き場。
-    origin.update({"tile_root": str(root), "products": products})
-    min_lat, min_lon, max_lat, max_lon = profile.target.bbox
-    bbox = BoundingBox(min_latitude=min_lat, min_longitude=min_lon,
-                       max_latitude=max_lat, max_longitude=max_lon)
+@dataclass(frozen=True)
+class ProductTiles:
+    """1製品の、範囲を覆うタイルの内訳。"""
 
-    for product, zoom in products.items():
-        tiles = tiles_covering_bbox(bbox, zoom)
-        stored = absent = unfetched = 0
-        for x, y in tiles:
-            if not dem_tile_store.is_stored(root, product, zoom, x, y):
-                if dem_tile_store.is_absent(root, product, zoom, x, y):
-                    absent += 1
-                else:
-                    unfetched += 1
-                continue
-            stored += 1
+    product: str
+    zoom: int
+    #: 範囲を覆うタイルの数。
+    covering: int
+    #: 置き場にあるタイルの (x, y)。区域外の印とまだ写していないタイルは、どちらも行にならない。
+    stored: tuple[tuple[int, int], ...]
+    #: 区域外の印のあるタイルの数。
+    absent: int
+
+    @property
+    def unfetched(self) -> int:
+        return self.covering - len(self.stored) - self.absent
+
+
+@dataclass(frozen=True, kw_only=True)
+class DemInputs(AdapterInputs):
+    products: tuple[ProductTiles, ...]
+
+    def origin(self) -> dict[str, Any]:
+        # タイルは数千枚になるので、ファイルの一覧ではなく置き場と製品を書く。
+        return {"tile_root": str(dem_tile_store.TILE_ROOT),
+                "products": {tiles.product: tiles.zoom for tiles in self.products}}
+
+
+def _product_tiles(product: str, zoom: int, profile: SourceProfile) -> ProductTiles:
+    root = dem_tile_store.TILE_ROOT
+    covering = tiles_covering_bbox(profile.target.bounding_box(), zoom)
+    stored: list[tuple[int, int]] = []
+    absent = 0
+    for x, y in covering:
+        if dem_tile_store.is_stored(root, product, zoom, x, y):
+            stored.append((x, y))
+        elif dem_tile_store.is_absent(root, product, zoom, x, y):
+            absent += 1
+    return ProductTiles(product=product, zoom=zoom, covering=len(covering), stored=tuple(stored), absent=absent)
+
+
+def gsi_dem_adapter_inputs(spec: SourceSpec, profile: SourceProfile) -> DemInputs:
+    root = dem_tile_store.TILE_ROOT
+    products = tuple(_product_tiles(str(product), int(zoom), profile) for product, zoom in spec.grid.products.items())
+    return DemInputs(files=tuple(dem_tile_store.tile_path(root, tiles.product, tiles.zoom, x, y)
+                                 for tiles in products for x, y in tiles.stored),
+                     products=products)
+
+
+@register_adapter("gsi_dem_tile", grid=DemGrid, required=(SourceFeatureRow.rast,), inputs=gsi_dem_adapter_inputs)
+async def read_gsi_dem_tiles(spec: SourceSpec, profile: SourceProfile, inputs: DemInputs,
+                             origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
+    # タイルは`fetch_dem_tiles.py`が先に写している。取込が読むのはその置き場。
+    root = dem_tile_store.TILE_ROOT
+    newest = None
+
+    for tiles in inputs.products:
+        product, zoom = tiles.product, tiles.zoom
+        for x, y in tiles.stored:
+            modified = dem_tile_store.tile_modified(root, product, zoom, x, y)
+            newest = modified if newest is None else max(newest, modified)
             pixels, missing = pack_elevations(dem_tile_store.read_tile(root, product, zoom, x, y))
             yield SourceRecord(
                 natural_key=f"{product}/{zoom}/{x}/{y}",
@@ -115,7 +146,8 @@ async def read_gsi_dem_tiles(spec: SourceSpec, profile: SourceProfile,
                     dtype="int32_le", nodata=NODATA),
             )
         logger.info("標高タイル: product=%s zoom=%d 対象%d枚 / 読んだ%d枚・区域外%d枚 / 置き場 %s",
-                    product, zoom, len(tiles), stored, absent, root)
-        if unfetched:
+                    product, zoom, tiles.covering, len(tiles.stored), tiles.absent, root)
+        if tiles.unfetched:
             logger.warning("まだ写していない標高タイル: product=%s zoom=%d %d枚"
-                           "（scripts/fetch_dem_tiles.py が写す）", product, zoom, unfetched)
+                           "（scripts/fetch_dem_tiles.py が写す）", product, zoom, tiles.unfetched)
+    origin["tiles_last_modified"] = None if newest is None else newest.isoformat()

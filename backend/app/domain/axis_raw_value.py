@@ -4,14 +4,17 @@
 単位が定まる軸には生値を単位付きで添え、定まらない軸には材料の内訳を添える。
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
+from pydantic import model_validator
+
 from app.domain.axis_definitions import (
-    AXIS_DEFINITIONS,
     AxisDefinition,
     BreakpointLinearShape,
 )
-from app.domain.material_catalog import MATERIAL_CATALOG
+from app.domain.material_catalog import MaterialDType, known_material_spec, material_spec
+from app.domain.strict_model import StrictModel
 
 
 def raw_value_unit(definition: AxisDefinition) -> str | None:
@@ -33,7 +36,7 @@ def raw_value_unit(definition: AxisDefinition) -> str | None:
             continue
         if term.weight != 1.0:
             return None
-        spec = MATERIAL_CATALOG.get(term.material)
+        spec = material_spec(term.material)
         if spec is None or not spec.unit:
             return None
         specs.append(spec)
@@ -44,21 +47,43 @@ def raw_value_unit(definition: AxisDefinition) -> str | None:
     return specs[0].unit
 
 
-def raw_value_total_unit(definition: AxisDefinition) -> str | None:
-    """生値へ走行距離を掛けた総量に付けられる単位。出す意味が無ければNone。
+class RawValueUnits(StrictModel):
+    """軸の生値に添える単位。"""
+
+    #: 折れ点を通す前の重み付き和の単位（`raw_value_unit`）。付けられなければNone。
+    unit: str | None
+    #: 生値へ走行距離を掛けた総量の単位。生値の単位が無い軸と、総量を出しても読み手の判断が
+    #: 変わらない軸はNone。
+    total_unit: str | None
+
+    @model_validator(mode="after")
+    def _check_total_has_a_rate(self) -> "RawValueUnits":
+        """総量は生値に距離を掛けたものなので、生値の単位が無いのに総量の単位だけがあると、
+        読む側は掛ける元の値の無い総量を出す。"""
+        if self.total_unit is not None and self.unit is None:
+            raise ValueError(f"total unit {self.total_unit!r} without a raw value unit")
+        return self
+
+
+def raw_value_units(definition: AxisDefinition) -> RawValueUnits:
+    """軸の生値と、それへ走行距離を掛けた総量に添える単位。"""
+    unit = raw_value_unit(definition)
+    return RawValueUnits(unit=unit, total_unit=None if unit is None else _total_unit(definition))
+
+
+def _total_unit(definition: AxisDefinition) -> str | None:
+    """生値の単位がある軸で、総量に付けられる単位。出す意味が無ければNone。
 
     「0.8回/km」に距離を掛けた「約26回」は何回止まるかを答えるが、「151度/km」に掛けた
     「約3322度」は比べる尺度が無く読み手の判断を変えない。単位が「◯◯/km」であることを
     条件にすると両者が同じ扱いになるため、出す意味があるかは材料の`total_unit`が持つ。
     """
-    if raw_value_unit(definition) is None:
-        return None
     shape = definition.shape
     assert isinstance(shape, BreakpointLinearShape)  # raw_value_unitが非Noneなら成り立つ
     total_units = {
         spec.total_unit
         for term in shape.terms
-        if term.weight != 0 and (spec := MATERIAL_CATALOG.get(term.material)) is not None
+        if term.weight != 0 and (spec := material_spec(term.material)) is not None
     }
     if len(total_units) != 1:
         return None
@@ -84,8 +109,10 @@ def _shape_terms(definition: AxisDefinition) -> list[tuple[str, float]]:
     return [(shape.material, 1.0)]
 
 
-def axis_material_shares(definition: AxisDefinition) -> list[AxisMaterialShare]:
-    """単位が定まらない軸のために、軸を材料まで分解して占有率を出す。
+def axis_material_shares(
+    definition: AxisDefinition, definitions: Mapping[str, AxisDefinition]
+) -> list[AxisMaterialShare]:
+    """単位が定まらない軸のために、軸を材料まで分解して占有率を出す。参照先の軸は`definitions`から引く。
 
     辿る先は必ず材料で、途中の軸の得点は結果に含めない——較正に依存する数字を内訳へ
     混ぜると、この関数が避けようとしている問題が入れ子で再発する。
@@ -110,7 +137,7 @@ def axis_material_shares(definition: AxisDefinition) -> list[AxisMaterialShare]:
             return
         for ref, weight in terms:
             share = inherited * abs(weight) / total
-            referenced_axis = AXIS_DEFINITIONS.get(ref)
+            referenced_axis = definitions.get(ref)
             if referenced_axis is not None:
                 walk(referenced_axis, share, depth + 1, next_visited)
             elif ref not in shares:
@@ -121,3 +148,52 @@ def axis_material_shares(definition: AxisDefinition) -> list[AxisMaterialShare]:
         return []
     # 挿入順（＝定義順の深さ優先）を保つ安定ソートのため、キーは share と depth だけにする。
     return sorted(shares.values(), key=lambda entry: (-entry.share, entry.depth))
+
+
+class AxisMaterialBreakdownEntry(StrictModel):
+    """合成軸の内訳1件（材料。並びは軸の生値に占める割合の降順）。
+
+    割合そのものは載せない——材料の重みは較正の値で、認証の無い軸カタログに載るため
+    （`docs/architecture/data-sources.md`「OSM から作った値と独自の層」）。
+    """
+
+    material_id: str
+    #: 材料の表示名（`MaterialSpec.label`）。フロントは対応表を持たない。
+    label: str
+    #: 値の型。`numeric`＝距離加重平均＋単位、`boolean`＝該当区間の延長割合、`categorical`＝値ごとの延長割合。
+    dtype: MaterialDType
+    #: numeric材料の単位。真偽値材料は空文字。
+    unit: str
+    #: categorical材料の「タグ生値→論理名」対訳（`MaterialSpec.value_labels`）。
+    #: ルート結果は`material_category_shares`の値をこれで日本語にする。他の型では空。
+    #: 軸スタジオが使う`value_label()`の「論理名 - 物理名」形式にしないのは、走行中に見る
+    #: 画面へ物理名を並べても読み手の判断が増えないため。
+    value_labels: dict[str, str]
+
+
+def axis_material_breakdown(
+    definition: AxisDefinition, definitions: Mapping[str, AxisDefinition]
+) -> list[AxisMaterialBreakdownEntry]:
+    """軸の内訳（材料まで分解した絶対量の並び）。参照先の軸は`definitions`から引く。
+
+    分解の葉はどれもカタログの材料である——軸の集合は、軸が指すidを材料か同じ集合の軸に限る検査
+    （`domain/axis_definitions.py: check_axis_definition`）を通ったものだけが入る。
+
+    categorical材料（`highway`等）も含めて返す——値ごとの延長割合を運ぶ器はまだ無いが、
+    内訳の並び自体は軸定義から決まるため、運搬側の都合で並びを変えると軸定義との
+    対応が読めなくなる。値が来ない材料を
+    フロントが飛ばす形にする。
+    """
+    entries = []
+    for share in axis_material_shares(definition, definitions):
+        spec = known_material_spec(share.material_id)
+        entries.append(
+            AxisMaterialBreakdownEntry(
+                material_id=share.material_id,
+                label=spec.label,
+                dtype=spec.dtype,
+                unit=spec.unit,
+                value_labels=dict(spec.value_labels),
+            )
+        )
+    return entries

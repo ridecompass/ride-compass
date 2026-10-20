@@ -17,11 +17,9 @@
 [ "$CLAUDE_CODE_REMOTE" = "true" ] || exit 0
 
 here="$(dirname "${BASH_SOURCE[0]}")"
-RC_DB_STATUS=/tmp/ridecompass-db-status
-RC_DB_LOG=/tmp/ridecompass-db.log
+. "$here/lib.sh"
 
 if [ "$1" = "db" ]; then
-  . "$here/lib.sh"
   started=$SECONDS
   if rc_db; then result="ok($((SECONDS - started))s)"; else result="失敗($((SECONDS - started))s)"; fi
   echo "$result" > "$RC_DB_STATUS.tmp" && mv "$RC_DB_STATUS.tmp" "$RC_DB_STATUS"
@@ -37,7 +35,6 @@ if [ "$1" = "setup" ]; then
 fi
 [ "$init_only" = 1 ] && exit 0
 
-. "$here/lib.sh"
 mkdir -p "$RC_CACHE"
 started=$SECONDS
 

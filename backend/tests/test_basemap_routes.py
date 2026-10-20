@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from app.api.dependencies import get_basemap_client
 from app.config import settings
 from app.infrastructure import rate_limiter, tile_cache
-from app.infrastructure.basemap_client import BASEMAP_NOT_FOUND
+from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from app.main import app
 from tests.admin_auth import ADMIN_PASSWORD, ADMIN_USERNAME
 
@@ -46,15 +46,20 @@ def test_basemap_proxy_returns_cached_content_with_correct_media_type(monkeypatc
     assert response.content == b'{"version":8}'
 
 
-@pytest.mark.parametrize(("result", "status"), [
-    (None, 502),
+@pytest.mark.parametrize(("result", "status", "detail"), [
+    (None, 502, "地図タイルの取得に失敗しました"),
     # 配信元に無い部品は上流障害ではない。502で返すと、本当の障害が埋もれる。
-    (BASEMAP_NOT_FOUND, 404),
+    (UPSTREAM_NOT_FOUND, 404, "指定されたリソースは存在しません"),
 ])
-def test_basemap_proxy_tells_a_missing_part_apart_from_an_upstream_failure(monkeypatch, result, status):
+def test_basemap_proxy_tells_a_missing_part_apart_from_an_upstream_failure(monkeypatch, result, status, detail):
     _answer(monkeypatch, result)
 
-    assert client.get("/api/basemap/fonts/NotoSans/40000-40255.pbf").status_code == status
+    response = client.get("/api/basemap/fonts/NotoSans/40000-40255.pbf")
+
+    assert response.status_code == status
+    assert response.json() == {"detail": detail}
+    # 部品の404をブラウザに覚えさせない。
+    assert "cache-control" not in response.headers
 
 
 def test_basemap_proxy_is_rate_limited_per_client(monkeypatch):

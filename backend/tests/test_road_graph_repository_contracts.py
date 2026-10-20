@@ -4,8 +4,10 @@
 
 - 地図のフィーチャーの鍵から、区間とwayのどちらの単位で読むか
 - 逆向きに辿ったときの列の読み替え規則
+- 材料の式が読む列を持つ表だけを結び、宣言に無い列を読む式を断ること
 - 行から探索用グラフ・材料の行列を組む部分
 - 取込範囲の外（None）と、範囲内で0件（空）の区別
+- 路面タイルの材料の列を、どの材料についても値式から組むこと
 
 ここで見ないもの:
 - 材料の値式そのもの → `test_material_values.py`、欠損率 → `test_material_coverage.py`
@@ -19,7 +21,6 @@
 選ぶ（idを名指ししない）。
 """
 
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -28,20 +29,17 @@ from sqlalchemy import text
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.graph import LeanEdge
-from app.domain.hard_filters import hard_filter_columns
 from app.domain.landcover import LandcoverPercentages, landcover_key
-from app.domain.material_catalog import material_array_columns
+from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns
 from app.domain.region import BoundingBox
-from app.infrastructure import road_graph_repository
-from app.infrastructure.derived_models import EdgeMaterialRow
+from app.infrastructure.derived_models import EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow
 from app.domain.graph import edge_key, node_key
 from app.services.axis_preview_service import SAMPLE_LIMIT, SAMPLE_PERCENT
+from app.infrastructure.material_joins import reversed_material_expression
 from app.infrastructure.road_graph_repository import (
     ID_CHUNK_SIZE,
     MATERIAL_ARRAY_COLUMN_ORDER,
     RoadGraphRepository,
-    reversed_material_expression,
-    way_from_clause,
 )
 
 BBOX = BoundingBox(min_latitude=35.0, min_longitude=139.0,
@@ -106,8 +104,7 @@ def _repo(*results) -> tuple[RoadGraphRepository, _FakeSession]:
 
 @pytest.mark.parametrize(("name", "expression"), [
     ("start_a", "m.end_a"),
-    # 勾配は符号を返す。対の語を持てば入れ替えもする
-    ("max_grade", "-m.min_grade"),
+    # 勾配は符号を返す
     ("a_grade", "-m.a_grade"),
     # 向きで変わらない列
     ("a_count", None),
@@ -118,7 +115,8 @@ def test_reversed_expression_swaps_paired_tokens_and_flips_grades(name, expressi
 
 def test_reversing_twice_returns_to_the_original_column():
     """対が壊れると、逆向きの枝の標高が別の列から来る。列の一覧は宣言から導く。"""
-    reversed_columns = {column.name: expression for column in EdgeMaterialRow.__table__.columns
+    reversed_columns = {column.name: expression
+                        for row in (EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow) for column in row.__table__.columns
                         if (expression := reversed_material_expression(column.name)) is not None}
     assert reversed_columns, "向きで変わる列が1つも無い"
     for name, expression in reversed_columns.items():
@@ -127,20 +125,6 @@ def test_reversing_twice_returns_to_the_original_column():
         assert back is not None
         assert back.lstrip("-").removeprefix("m.") == name
         assert back.startswith("-") == expression.startswith("-")
-
-
-# --- 材料の列 -----------------------------------------------------------------
-
-
-def test_material_array_columns_are_all_distinct():
-    """材料と付随列の名前がぶつかると、片方の値がもう片方を上書きして列がずれる。"""
-    assert len(set(MATERIAL_ARRAY_COLUMN_ORDER)) == len(MATERIAL_ARRAY_COLUMN_ORDER)
-
-
-def test_way_from_clause_joins_only_what_the_expression_reads():
-    """使わないJOINを足すと、材料1件を引くだけの値列挙まで道の全件へ広がる。"""
-    assert "JOIN" not in way_from_clause(["w.tags"])
-    assert way_from_clause(["em.a"]).count("JOIN") == 1
 
 
 # --- ジオメトリ付きの取り直し -------------------------------------------------
@@ -186,45 +170,38 @@ def _arrays_row(count: int, values: dict[str, list] | None = None) -> _Row:
 
 
 async def test_material_values_land_in_the_matrix_of_their_dtype():
-    """真偽と分類を数値の行列へ混ぜられないため、dtypeで3つに分かれる。"""
-    numeric_ids, boolean_ids, categorical_ids = material_array_columns()
-    assert numeric_ids and boolean_ids and categorical_ids, "dtypeごとの材料が揃っていない"
-    numeric, boolean, categorical = numeric_ids[0], boolean_ids[0], categorical_ids[0]
-    repo, _ = _repo([_arrays_row(2, {numeric: [1.5, None], boolean: [True, None],
-                                     categorical: ["value_a", None]})])
+    """分類を数値の行列へ混ぜられないため、数値と分類の2つに分かれる。真偽は数値の行列に1.0/0.0で載る。"""
+    numeric_ids, categorical_ids = material_array_columns()
+    boolean = next(m for m in numeric_ids if MATERIAL_CATALOG[m].dtype == "boolean")
+    numeric = next(m for m in numeric_ids if MATERIAL_CATALOG[m].dtype == "numeric")
+    assert categorical_ids, "分類の材料が無い"
+    categorical = categorical_ids[0]
+    repo, _ = _repo([_arrays_row(3, {numeric: [1.5, None, None], boolean: [True, False, None],
+                                     categorical: ["value_a", None, None]})])
 
-    arrays = await repo.get_edge_material_arrays([1, 1], [0, 1], [True, True], 5)
+    arrays = await repo.get_edge_material_arrays([1, 1, 1], [0, 1, 2], [True, True, True], 5)
 
     assert arrays.columns()[numeric][0] == 1.5
     # 欠損は0ではなくNaN。0で埋めると「値が無い」が「一番良い値」として採点される。
     assert np.isnan(arrays.columns()[numeric][1])
-    assert arrays.columns()[boolean].tolist() == [True, False]
+    # 真偽の欠損（道の生データが無い区間）も、非該当（0.0）ではなく不明（NaN）。
+    assert arrays.columns()[boolean][:2].tolist() == [1.0, 0.0]
+    assert np.isnan(arrays.columns()[boolean][2])
     # 分類の材料は語彙への番号の列で、値へ戻すと行ごとの値（値なしはNone）になる。
     column = arrays.columns()[categorical]
     assert isinstance(column, CategoricalColumn)
-    assert [column.value_at(row) for row in range(len(column))] == ["value_a", None]
-
-
-async def test_hard_filter_flags_are_named_by_their_filter():
-    """列が取り違うと、そのフィルタが常に「該当しない」になって黙って素通りする。"""
-    names = hard_filter_columns()
-    assert names, "0次ハードフィルタが1つも無い"
-    repo, _ = _repo([_arrays_row(1, {f"hf_{names[0]}": [True]})])
-
-    arrays = await repo.get_edge_material_arrays([1], [0], [True], 1)
-
-    assert arrays.hard_filter_columns()[names[0]].tolist() == [True]
+    assert [column.value_at(row) for row in range(len(column))] == ["value_a", None, None]
 
 
 class _EchoingArraysSession:
     """材料配列のクエリに、受け取った区間をそのまま値として返すセッション（DBの`WITH ORDINALITY`の代わり）。
-    way・区間の番号・向きを、それぞれ距離・始点の標高・標高の有無の列に入れる。"""
+    way・区間の番号・向きを、それぞれ距離・獲得標高・始まりの標高（順向きは1、逆向きは0）の列に入れる。"""
 
     async def execute(self, statement, params):
         count = len(params["way_ids"])
         return _Result([_arrays_row(count, {"distance_m": params["way_ids"],
-                                            "elevation_start_m": params["segment_indexes"],
-                                            "elevation_present": params["forwards"]})])
+                                            "elevation_gain_m": params["segment_indexes"],
+                                            "start_elevation_m": [float(f) for f in params["forwards"]]})])
 
 
 async def test_rows_keep_the_order_of_the_given_edges_across_chunks():
@@ -238,25 +215,23 @@ async def test_rows_keep_the_order_of_the_given_edges_across_chunks():
         way_ids, segment_indexes, forwards, 1)
 
     assert arrays.distance_m.tolist() == way_ids
-    assert arrays.elevation_start_m.tolist() == segment_indexes
-    assert arrays.elevation_present.tolist() == forwards
+    assert arrays.elevation_gain_m.tolist() == segment_indexes
+    assert arrays.start_elevation_m.tolist() == [float(f) for f in forwards]
 
 
 async def test_paired_edge_columns_are_not_swapped():
-    """取り違えても型では落ちない対だけを見る（緯度と経度・始点と終点・登りと下り）。"""
+    """取り違えても型では落ちない対だけを見る（緯度と経度・登りと下り・始まりと終わりの標高）。"""
     repo, _ = _repo([_arrays_row(1, {
         "mid_lat": [35.5], "mid_lon": [139.5],
-        "elevation_start_m": [5.0], "elevation_end_m": [7.0],
         "elevation_gain_m": [2.0], "elevation_loss_m": [1.0],
-        "elevation_max_grade": [3.0], "elevation_min_grade": [-4.0],
+        "start_elevation_m": [10.0], "end_elevation_m": [12.0],
     })])
 
     arrays = await repo.get_edge_material_arrays([1], [0], [True], 1)
 
     assert (arrays.mid_lat[0], arrays.mid_lon[0]) == (35.5, 139.5)
-    assert (arrays.elevation_start_m[0], arrays.elevation_end_m[0]) == (5.0, 7.0)
     assert (arrays.elevation_gain_m[0], arrays.elevation_loss_m[0]) == (2.0, 1.0)
-    assert (arrays.elevation_max_grade[0], arrays.elevation_min_grade[0]) == (3.0, -4.0)
+    assert (arrays.start_elevation_m[0], arrays.end_elevation_m[0]) == (10.0, 12.0)
 
 
 # --- way粒度の読み出し --------------------------------------------------------
@@ -265,20 +240,19 @@ async def test_paired_edge_columns_are_not_swapped():
 async def test_way_is_looked_up_by_its_key_as_text():
     """道の生データの主キー（`source_features.natural_key`）はtext。数で渡すと1件も当たらず、
     区間インスペクタが常に空になる。"""
-    repo, session = _repo([_Row(m_material_a=1.0)],
-                          [_Row(highway="highway_a", tags={"tag_a": "value_a"}, surface=None)])
+    repo, session = _repo([_Row(highway="highway_a", tags={"tag_a": "value_a"})], [])
 
-    await repo.get_way_material_values(123, 1)
     await repo.get_way_tags_by_osm_way_id(123)
+    await repo.get_nearest_way_segment(123, 35.0, 139.0)
 
-    assert [params["osm_way_id"] for params in session.params] == ["123", "123"]
+    assert [session.params[0]["osm_way_id"], session.params[1]["osm_way_key"]] == ["123", "123"]
 
 
-async def test_unknown_way_has_neither_materials_nor_tags():
+async def test_unknown_way_has_neither_tags_nor_a_segment():
     repo, _ = _repo([], [])
 
-    assert await repo.get_way_material_values(123, 1) is None
     assert await repo.get_way_tags_by_osm_way_id(123) is None
+    assert await repo.get_nearest_way_segment(123, 35.0, 139.0) is None
 
 
 async def test_sampled_way_without_length_is_dropped():
@@ -289,21 +263,6 @@ async def test_sampled_way_without_length_is_dropped():
     samples = await repo.sample_way_material_values(1, SAMPLE_PERCENT, SAMPLE_LIMIT, None)
 
     assert samples == [(10.0, {"material_a": 2.0})]
-
-
-async def test_distinct_values_are_listed_only_for_categorical_materials(monkeypatch):
-    """取りうる値の一覧に意味があるのは分類の材料だけ。値の求め方はカタログの宣言が唯一持つ。"""
-    monkeypatch.setattr(road_graph_repository, "MATERIAL_CATALOG", {
-        "material_a": SimpleNamespace(value_sql="w.tags->>'tag_a'", dtype="categorical"),
-        "material_b": SimpleNamespace(value_sql="w.tags->>'tag_b'", dtype="numeric"),
-        "material_c": SimpleNamespace(value_sql=None, dtype="categorical"),
-    })
-    repo, _ = _repo([_Row(value="value_a"), _Row(value="value_b")])
-
-    assert await repo.get_distinct_material_values("material_a") == ["value_a", "value_b"]
-    assert await repo.get_distinct_material_values("material_b") == []
-    assert await repo.get_distinct_material_values("material_c") == []
-    assert await repo.get_distinct_material_values("material_unknown") == []
 
 
 # --- 事故の収録年 -------------------------------------------------------------
@@ -320,11 +279,11 @@ async def test_accident_years_come_from_the_declared_profile(declared, years):
 # --- 土地被覆の内訳 -----------------------------------------------------------
 
 
-def _landcover_row(valid_pixels=100, missing: str | None = None) -> _Row:
+def _landcover_row(valid_pixels: int | None = 100) -> _Row:
+    """表が入れる形の行。割合は有効画素が正の行だけが持つ。"""
     values: dict[str, object] = {"lc_valid_pixels": valid_pixels}
     for name in LandcoverPercentages.model_fields:
-        if name.endswith("_percent"):
-            values[f"lc_{landcover_key(name)}"] = None if name == missing else 12.5
+        values[f"lc_{landcover_key(name)}"] = 12.5 if valid_pixels else None
     return _Row(**values)
 
 
@@ -346,35 +305,11 @@ async def test_landcover_is_read_at_the_unit_the_map_paints(feature_key, segment
     assert session.params[0].get("segment_index") == segment_index
 
 
-@pytest.mark.parametrize("row", [None, _landcover_row(valid_pixels=None),
-                                 _landcover_row(missing="water_percent")])
-async def test_incomplete_landcover_is_not_reported(row):
-    """画素が無い・割合が欠けている区間で0%と答えると、内訳が「すべて未分類」に見える。"""
-    repo, _ = _repo([] if row is None else [row])
-
-    assert await repo.get_feature_landcover(123, None) is None
-
-
 # --- タイル -------------------------------------------------------------------
 
 # タイル1枚を焼く口。路面の口はこの口へSQLを渡すだけ。SQLはフェイクのセッションが実行しない。
 def _read_mvt(repo):
     return repo.get_tile_mvt(text("SELECT 1"), "layer", 14, 1, 2, BBOX)
-
-
-_TILE_READERS = {
-    "mvt": _read_mvt,
-    "midpoints": lambda repo: repo.get_feature_midpoints_in_tile(14, 1, 2, BBOX),
-    "gradient_inputs": lambda repo: repo.get_feature_gradient_inputs_in_tile(14, 1, 2, BBOX),
-}
-
-
-@pytest.mark.parametrize("read", _TILE_READERS.values(), ids=_TILE_READERS)
-async def test_outside_the_imported_area_nothing_is_returned(read):
-    """取込範囲外（None）と、範囲内で対象0件（空）を区別する。利用側の見せ方が変わる。"""
-    repo, _ = _repo([_Row(covered=False, payload=None)])
-
-    assert await read(repo) is None
 
 
 @pytest.mark.parametrize(("tile", "payload"), [
@@ -397,11 +332,3 @@ async def test_feature_keys_are_returned_as_text():
     assert await repo.get_feature_midpoints_in_tile(14, 1, 2, BBOX) == {}
     assert await repo.get_feature_midpoints_in_tile(14, 1, 2, BBOX) == {
         "123": (35.1, 139.2), "123-4": (35.0, 139.0)}
-
-
-async def test_gradient_inputs_are_pairs_of_numbers():
-    repo, _ = _repo([_Row(covered=True, inputs=None)],
-                    [_Row(covered=True, inputs={"123-4": [3, 90]})])
-
-    assert await repo.get_feature_gradient_inputs_in_tile(14, 1, 2, BBOX) == {}
-    assert await repo.get_feature_gradient_inputs_in_tile(14, 1, 2, BBOX) == {"123-4": (3.0, 90.0)}

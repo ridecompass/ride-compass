@@ -1,10 +1,10 @@
 // @vitest-environment node
 /**
- * `breakpointTools.ts`——折れ点の自動生成とその逆、折れ点の追加位置、ドラッグの刻み。
+ * `breakpointTools.ts`——折れ点の自動生成とその逆、ドラッグの刻み。
  *
  * ここで見ないもの:
  * - 折れ点での点数の計算 → backend（`BreakpointLinearShape.score_at`）
- * - 生成を画面のどこで使うか → `AxisScoringSection.test.tsx`
+ * - 生成を画面のどこで使うか → `AxisCalibration.test.tsx`
  */
 import { describe, expect, it } from "vitest";
 
@@ -12,7 +12,6 @@ import {
   BREAKPOINT_SHAPE_OPTIONS,
   generateBreakpoints,
   generatorSettingsFrom,
-  insertBreakpointAtLargestGap,
   niceStep,
   snapToStep,
 } from "./breakpointTools";
@@ -67,77 +66,40 @@ describe("generateBreakpoints", () => {
 
 describe("generatorSettingsFrom", () => {
   it.each([...shapes.map((shape) => [shape, 3, 15] as const), ["flat", 40, 5] as const])(
-    "%s（0点 %d・100点 %d）で生成した折れ点からは、同じ3入力を一致として復元する",
+    "%s（0点 %d・100点 %d）で生成した折れ点からは、同じ3入力を復元する",
     (shape, zeroValue, hundredValue) => {
       expect(generatorSettingsFrom(generateBreakpoints(zeroValue, hundredValue, shape))).toEqual({
         zeroValue,
         hundredValue,
         shape,
-        matched: true,
       });
     },
   );
 
   it("並びが崩れていても、並べ直してから復元する", () => {
     const points = generateBreakpoints(3, 15, "front_loaded").reverse();
-    expect(generatorSettingsFrom(points)).toMatchObject({ zeroValue: 3, hundredValue: 15, matched: true });
+    expect(generatorSettingsFrom(points)).toEqual({ zeroValue: 3, hundredValue: 15, shape: "front_loaded" });
   });
 
-  it("手で直した折れ点は、一致とせず効き方を一定にし、端点は点数の低い側（同じならxの小さい側）を0点として復元する", () => {
+  it("手で直した折れ点は、効き方を一定にし、端点は点数の低い側（同じならxの小さい側）を0点として復元する", () => {
     expect(
       generatorSettingsFrom([
         [1, 50],
         [5, 80],
         [8, 50],
       ]),
-    ).toEqual({ zeroValue: 1, hundredValue: 8, shape: "flat", matched: false });
+    ).toEqual({ zeroValue: 1, hundredValue: 8, shape: "flat" });
     expect(
       generatorSettingsFrom([
         [0, 90],
         [4, 30],
         [9, 10],
       ]),
-    ).toEqual({ zeroValue: 9, hundredValue: 0, shape: "flat", matched: false });
+    ).toEqual({ zeroValue: 9, hundredValue: 0, shape: "flat" });
   });
 
-  it("点が2つ未満なら、端点は0と10・効き方は一定で、一致とはしない", () => {
-    expect(generatorSettingsFrom([[5, 50]])).toEqual({ zeroValue: 0, hundredValue: 10, shape: "flat", matched: false });
-  });
-});
-
-describe("insertBreakpointAtLargestGap", () => {
-  it("隣どうしのxの間隔が最も広い区間の中点へ、xは小数2桁・点数は整数で挿す", () => {
-    const next = insertBreakpointAtLargestGap([
-      [0, 0],
-      [1, 10],
-      [4.02, 55],
-      [5, 100],
-    ]);
-    expect(next).toEqual([
-      [0, 0],
-      [1, 10],
-      [2.51, 33],
-      [4.02, 55],
-      [5, 100],
-    ]);
-  });
-
-  it("並びが崩れていても、足した後の並びはxの昇順", () => {
-    const next = insertBreakpointAtLargestGap([
-      [10, 100],
-      [0, 0],
-      [2, 20],
-    ]);
-    expect(next.map(([x]) => x)).toEqual([0, 2, 6, 10]);
-  });
-
-  it("最も広い間隔が複数あれば、xの小さい側に挿す", () => {
-    const next = insertBreakpointAtLargestGap([
-      [0, 0],
-      [2, 20],
-      [4, 40],
-    ]);
-    expect(next.map(([x]) => x)).toEqual([0, 1, 2, 4]);
+  it("点が2つ未満なら、端点は0と10・効き方は一定にする", () => {
+    expect(generatorSettingsFrom([[5, 50]])).toEqual({ zeroValue: 0, hundredValue: 10, shape: "flat" });
   });
 });
 

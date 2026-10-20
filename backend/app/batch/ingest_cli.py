@@ -10,16 +10,17 @@
 import argparse
 import logging
 import sys
-from collections.abc import Awaitable
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import asyncpg  # noqa: E402
+import asyncpg
 
-from app.batch.common import asyncpg_dsn, run_batch_cli  # noqa: E402
-from app.batch.ingest import ingest_source  # noqa: E402
-from app.batch.source_profile import SourceProfile, load_source_profile  # noqa: E402
+from app.batch.common import asyncpg_dsn, run_batch_cli
+from app.batch.ingest import ingest_source
+from app.batch.source_profile import SourceProfile, load_source_profile
 
 logger = logging.getLogger("ridecompass.ingest_cli")
 
@@ -43,7 +44,7 @@ def main() -> int:
     # ——引数で範囲を上書きできるようにすると、宣言がファイルの外へ散る。
     parser.add_argument("--profile", default=None, type=Path)
 
-    def start(args: argparse.Namespace, database_url: str) -> Awaitable[int]:
+    def start(args: argparse.Namespace, database_url: str) -> Coroutine[Any, Any, int]:
         profile = load_source_profile(args.profile)
         names = [s.name for s in profile.sources] if args.all else args.source
         if not names:

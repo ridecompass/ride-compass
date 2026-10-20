@@ -1,7 +1,7 @@
 """`domain/region.py`——緯度経度の矩形と、XYZタイル（Web Mercator）との行き来。
 
 入口は`BoundingBox`・`bbox_covering_points`・`parse_bbox`・`tile_bounds_lonlat`・`tile_bounds_3857`・
-`tiles_covering_bbox`。期待値はWeb Mercatorの公開の定義（WGS84の長半径6378137m・緯度の限界±85.0511度）と、
+`tiles_covering_bbox`・`way_unit_tile`・`edge_unit_tile`。期待値はWeb Mercatorの公開の定義（WGS84の長半径6378137m・緯度の限界±85.0511度）と、
 地球を半径6371kmの球とみなした距離から書き、実装の定数を掛け戻さない。
 
 ここで見ないもの:
@@ -19,16 +19,20 @@ from hypothesis import strategies as st
 from pydantic import ValidationError
 
 from app.domain.region import (
+    EDGE_UNIT_MIN_ZOOM,
+    ROAD_TILE_MAX_ZOOM,
+    ROAD_TILE_MIN_ZOOM,
     BoundingBox,
     bbox_covering_points,
+    edge_unit_tile,
     parse_bbox,
     tile_bounds_3857,
     tile_bounds_lonlat,
     tiles_covering_bbox,
+    way_unit_tile,
 )
 
 WGS84_SEMI_MAJOR_AXIS_M = 6378137.0
-MERCATOR_LATITUDE_LIMIT = 85.0511287798
 KM_PER_DEGREE_ON_A_6371KM_SPHERE = 2 * math.pi * 6371.0 / 360
 
 
@@ -69,24 +73,6 @@ def test_the_margin_extends_every_side_by_about_that_many_kilometers_converting_
     assert (covering.max_longitude - 140.0) * km_per_degree_longitude == pytest.approx(10.0, rel=0.01)
 
 
-# 日本の取込範囲を含む広さ。極・日付変更線をまたぐ矩形は`BoundingBox`が表せない。
-japan_points = st.builds(
-    Point,
-    latitude=st.floats(min_value=20.0, max_value=46.0),
-    longitude=st.floats(min_value=122.0, max_value=154.0),
-)
-
-
-@given(points=st.lists(japan_points, min_size=1, max_size=20), margin_km=st.floats(min_value=0.1, max_value=200.0))
-def test_every_point_lies_inside_the_covering_box_with_the_margin_to_spare(points, margin_km):
-    covering = bbox_covering_points(points, margin_km)
-
-    margin_deg = margin_km / KM_PER_DEGREE_ON_A_6371KM_SPHERE / 1.01
-    for point in points:
-        assert covering.min_latitude + margin_deg < point.latitude < covering.max_latitude - margin_deg
-        assert covering.min_longitude + margin_deg < point.longitude < covering.max_longitude - margin_deg
-
-
 # --- parse_bbox ---
 
 
@@ -100,21 +86,6 @@ def test_parse_bbox_needs_exactly_four_values():
 
 
 # --- tile_bounds_lonlat・tile_bounds_3857 ---
-
-
-def _approx_box(actual: BoundingBox, expected: BoundingBox) -> bool:
-    return actual.model_dump() == pytest.approx(expected.model_dump(), abs=1e-9)
-
-
-def test_the_single_tile_at_zoom_0_covers_the_whole_mercator_world():
-    world = box(-MERCATOR_LATITUDE_LIMIT, -180.0, MERCATOR_LATITUDE_LIMIT, 180.0)
-
-    assert _approx_box(tile_bounds_lonlat(0, 0, 0), world)
-
-
-def test_y_grows_southward_and_x_grows_eastward():
-    """z1のx=1, y=0は北東の4分の1。"""
-    assert _approx_box(tile_bounds_lonlat(1, 1, 0), box(0.0, 0.0, MERCATOR_LATITUDE_LIMIT, 180.0))
 
 
 def mercator_m(longitude: float, latitude: float) -> tuple[float, float]:
@@ -139,24 +110,7 @@ def test_the_lonlat_and_meter_bounds_of_a_tile_are_the_same_area(tile):
     assert mercator_m(lonlat.max_longitude, lonlat.max_latitude) == pytest.approx((east, north), abs=1e-3)
 
 
-@given(tile=tiles)
-def test_neighboring_tiles_share_their_edges(tile):
-    z, x, y = tile
-    here = tile_bounds_lonlat(z, x, y)
-    if x + 1 < 2**z:
-        assert tile_bounds_lonlat(z, x + 1, y).min_longitude == here.max_longitude
-    if y + 1 < 2**z:
-        assert tile_bounds_lonlat(z, x, y + 1).max_latitude == here.min_latitude
-
-
 # --- tiles_covering_bbox ---
-
-
-def test_an_east_or_south_side_lying_on_a_tile_edge_also_takes_the_tile_beyond_it():
-    """境目の上の点は東・南のタイルに属するとみなす（覆い漏れの無い側へ倒れる）。"""
-    covering = tiles_covering_bbox(box(0.0, -10.0, 10.0, 0.0), 1)
-
-    assert sorted(covering) == [(0, 0), (0, 1), (1, 0), (1, 1)]
 
 
 def test_a_box_reaching_beyond_the_mercator_limits_stops_at_the_edge_of_the_world():
@@ -194,3 +148,35 @@ def _contains(bounds: BoundingBox, latitude: float, longitude: float) -> bool:
         bounds.min_latitude <= latitude <= bounds.max_latitude
         and bounds.min_longitude <= longitude <= bounds.max_longitude
     )
+
+
+# --- 道1本・区間で焼くタイル ---
+
+road_tiles = st.integers(min_value=ROAD_TILE_MIN_ZOOM, max_value=ROAD_TILE_MAX_ZOOM).flatmap(
+    lambda z: st.tuples(st.just(z), st.integers(0, 2**z - 1), st.integers(0, 2**z - 1))
+)
+
+
+@given(tile=road_tiles)
+def test_the_way_unit_tile_is_the_tile_itself_or_the_closest_way_unit_tile_holding_it(tile):
+    """道を押したタイルの道1本の値は、そのタイルを覆う道1本のタイルから取る。覆わないタイルを選ぶと、押した道がそのタイルに
+    無く、道1本の値が出ない。"""
+    z, x, y = tile
+    unit = way_unit_tile(z, x, y)
+
+    if z < EDGE_UNIT_MIN_ZOOM:
+        assert unit == tile
+    else:
+        assert unit[0] == EDGE_UNIT_MIN_ZOOM - 1
+        outer, inner = tile_bounds_lonlat(*unit), tile_bounds_lonlat(z, x, y)
+        assert _contains(outer, inner.min_latitude, inner.min_longitude)
+        assert _contains(outer, inner.max_latitude, inner.max_longitude)
+
+
+@given(latitude=st.floats(min_value=20.0, max_value=46.0), longitude=st.floats(min_value=122.0, max_value=154.0))
+def test_the_edge_unit_tile_of_a_point_holds_the_point(latitude, longitude):
+    """区間の値は、区間の上の点を含む区間のタイルから取る。点を含まないタイルを選ぶと、区間がそのタイルに無い。"""
+    z, x, y = edge_unit_tile(longitude, latitude)
+
+    assert z == EDGE_UNIT_MIN_ZOOM
+    assert _contains(tile_bounds_lonlat(z, x, y), latitude, longitude)

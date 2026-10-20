@@ -1,20 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
-import { CopyIcon } from "@/components/ui/icons/icons";
+import { CopyIcon } from "@/components/ui/icons/lucideIcons";
 import { Card } from "@/components/ui/Card/Card";
-import { Input } from "@/components/ui/Input/Input";
+import { Input, Select } from "@/components/ui/Input/Input";
 import { Button } from "@/components/ui/Button/Button";
 import { getRecentLogs, type LogLevelName } from "@/features/admin/adminApi";
 import { vocabulary } from "@/types/generated/vocabulary";
-import { Select } from "@/components/ui/Input/Input";
 import { LogLine } from "@/components/ui/LogLine/LogLine";
 import { textVariants } from "@/components/ui/Text/Text";
+import { errorMessage } from "@/lib/apiError";
+import { getQueryClient } from "@/lib/queryClient";
 
 const DEFAULT_LIMIT = 200;
-// 選択肢は軽い順に並べる。キーの過不足はbackendの契約から引いた型が検査する。
-/** 選べるレベル（軽い順）。**backendの宣言の並びそのもの**（生成物`vocabulary.ts: logLevels`）。 */
+/** 選べるレベル（軽い順）。**backendの宣言の並びそのもの**（生成物`vocabulary.ts: logLevels`）。キーの過不足は
+ * backendの契約から引いた型が検査する。 */
 const LOG_LEVEL_OPTIONS: readonly LogLevelName[] = vocabulary.logLevels;
 
 // フロントのDebugConsole（lib/debugLog.ts、entry.level="info"/"warn"/"error"）と同じ
@@ -41,22 +43,19 @@ export default function BackendLogsPanel() {
   const [minLevel, setMinLevel] = useState<LogLevelName | "">("WARNING");
   const [limit, setLimit] = useState(String(DEFAULT_LIMIT));
   const [lines, setLines] = useState<string[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const fetchLogs = useMutation({ mutationFn: getRecentLogs, onSuccess: setLines }, getQueryClient());
+  const error = fetchLogs.isError ? errorMessage(fetchLogs.error) : null;
+  // 絞り込みの欄は1文字ごとに描き直すので、行の段階は取得したときに1回だけ読む。
+  const levels = useMemo(() => lines?.map(parseLogLevel) ?? [], [lines]);
   const { copied, error: copyError, copy } = useCopyToClipboard();
 
   const handleFetch = () => {
-    setLoading(true);
-    setError(null);
     const parsedLimit = Number(limit);
-    getRecentLogs({
+    fetchLogs.mutate({
       contains: contains.trim() || undefined,
       min_level: minLevel || undefined,
       limit: Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined,
-    })
-      .then((result) => setLines(result))
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
+    });
   };
 
   return (
@@ -95,8 +94,8 @@ export default function BackendLogsPanel() {
           className="w-24"
           aria-label="件数"
         />
-        <Button onClick={handleFetch} disabled={loading}>
-          {loading ? "取得中…" : "取得"}
+        <Button onClick={handleFetch} disabled={fetchLogs.isPending}>
+          {fetchLogs.isPending ? "取得中…" : "取得"}
         </Button>
       </div>
       {error && <p className={textVariants({ variant: "error" })}>取得失敗: {error}</p>}
@@ -108,20 +107,16 @@ export default function BackendLogsPanel() {
           {/* 行ごとのdivを1件ずつドラッグ選択するのは手間なため、表示中の全行を
               まとめてクリップボードへコピーするボタンを用意する。 */}
           <div className="flex justify-end">
-            <Button
-              variant="secondary"
-              onClick={() => copy(lines.join("\n"))}
-              aria-label={copied ? "ログ全体をコピーしました" : "ログ全体をコピー"}
-              title={copied ? "コピーしました" : "ログ全体をコピー"}
-            >
+            <Button variant="secondary" onClick={() => copy(lines.join("\n"))}>
               <CopyIcon size={14} />
+              {copied ? "ログ全体をコピーしました" : "ログ全体をコピー"}
             </Button>
           </div>
           {/* ログ取得の失敗（error）とは原因も対処も別なので、同じ行へ混ぜない。 */}
           {copyError && <p className={textVariants({ variant: "error" })}>{copyError}</p>}
           <div className="max-h-96 overflow-auto rounded-sm border border-[var(--color-border-muted)] bg-[var(--color-surface)] p-2">
             {lines.map((line, i) => (
-              <LogLine key={i} tone={logTone(parseLogLevel(line))} data-level={parseLogLevel(line)}>
+              <LogLine key={i} tone={logTone(levels[i])} data-level={levels[i]}>
                 {line}
               </LogLine>
             ))}

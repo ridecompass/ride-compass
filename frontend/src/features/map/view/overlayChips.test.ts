@@ -9,58 +9,53 @@ import {
 } from "@/features/map/layers/mapLayers";
 import { roadLegendAxes } from "@/features/map/scene/legends";
 
-import { mapCatalogOf } from "@/testing/mapAxisCatalog";
-import { dedicatedEntry, rampEntry } from "@/testing/catalogAxes";
+import { mapAxisCatalogFromResponse } from "@/features/map/mapAxisCatalog";
+import { catalogResponse, dedicatedEntry, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/catalogAxes";
 import { deserializeLayerVisibility, overlayChips } from "./overlayChips";
 
-const catalog = mapCatalogOf([rampEntry("ramp_a", [1]), dedicatedEntry("dedicated_b", [1])]);
+// 道の線の層は軸カタログが配る（本番の層は管理DBが持つ）ので、テストが組む。
+const ROAD_LAYERS = [
+  roadMapLayer("surface", { classes: [roadClass("paved"), roadClass("unpaved")] }),
+  roadMapLayer("tunnel", { classes: [roadClass("tunnel")] }),
+];
+const catalog = mapAxisCatalogFromResponse(
+  catalogResponse([dedicatedEntry("axis_a", [1])], {
+    road_classes: roadClassCatalog({ map_layers: ROAD_LAYERS }),
+  }),
+);
 const LAYERS = buildMapLayers(catalog);
 
 type Options = Parameters<typeof overlayChips>[0];
 function chips(options: Partial<Options> = {}) {
   return overlayChips({
     layers: LAYERS,
-    visibility: buildDefaultLayerVisibility(),
+    roadLayers: ROAD_LAYERS,
+    visibility: buildDefaultLayerVisibility(LAYERS),
     hidden: {},
-    screenLegends: {},
     dataStatus: {},
     zoomTooWideLayerIds: [],
     versionMissingLayerIds: [],
     catalogSettled: true,
-    hasSelectedRoute: true,
     ...options,
   });
 }
 const chipOf = (list: ReturnType<typeof chips>, id: string) => list.find((chip) => chip.id === id)!;
 
 describe("overlayChips（地図上チップの状態）", () => {
-  it("軸スタジオ由来のレイヤーはチップにしない", () => {
+  it("軸スタジオ由来のレイヤーと、ルートにひもづくレイヤーはチップにしない（どちらも色分けが持つ）", () => {
     const ids = chips().map((chip) => chip.id);
-    expect(ids).not.toContain("axis:ramp_a");
-    expect(ids).toContain("highway");
-  });
-
-  it("表示状態をそのまま映し、略名が無ければ正式名で出す", () => {
-    const list = chips({ visibility: { ...buildDefaultLayerVisibility(), surface: true } });
-    const surface = LAYERS.find((layer) => layer.id === "surface")!;
-    expect(chipOf(list, "surface")).toMatchObject({ on: true, chipLabel: surface.chipLabel });
-    const withoutChipLabel = LAYERS.find((layer) => layer.chipLabel === undefined && layer.id !== "route")!;
-    expect(chipOf(list, withoutChipLabel.id).chipLabel).toBe(withoutChipLabel.label);
-  });
-
-  it("ルートにひもづくレイヤーは、候補を選ぶまで押せない", () => {
-    expect(chipOf(chips({ hasSelectedRoute: false }), "route").disabled).toBe(true);
-    expect(chipOf(chips({ hasSelectedRoute: false }), "highway").disabled).toBe(false);
-    expect(chipOf(chips(), "route").disabled).toBe(false);
+    expect(ids).not.toContain("axis_aAxis");
+    expect(ids).not.toContain("route");
+    expect(ids).toContain("tunnel");
   });
 
   it("タイル世代が無いときは、カタログを取り終えていれば失敗・取得中なら読み込み中として出す", () => {
-    const settled = chipOf(chips({ versionMissingLayerIds: ["highway"], zoomTooWideLayerIds: ["highway"] }), "highway");
+    const settled = chipOf(chips({ versionMissingLayerIds: ["tunnel"], zoomTooWideLayerIds: ["tunnel"] }), "tunnel");
     expect(settled).toMatchObject({ notice: TILE_VERSIONS_MISSING_NOTICE, dataStatus: "error" });
 
     const waiting = chipOf(
-      chips({ versionMissingLayerIds: ["highway"], zoomTooWideLayerIds: ["highway"], catalogSettled: false }),
-      "highway",
+      chips({ versionMissingLayerIds: ["tunnel"], zoomTooWideLayerIds: ["tunnel"], catalogSettled: false }),
+      "tunnel",
     );
     expect(waiting).toMatchObject({ notice: TILE_ZOOM_TOO_WIDE_NOTICE, dataStatus: "loading" });
   });
@@ -68,20 +63,15 @@ describe("overlayChips（地図上チップの状態）", () => {
   it("世代があれば、ズーム不足の案内と、地図が報告した取得状態を出す", () => {
     const list = chips({ zoomTooWideLayerIds: ["surface"], dataStatus: { surface: "empty" } });
     expect(chipOf(list, "surface")).toMatchObject({ notice: TILE_ZOOM_TOO_WIDE_NOTICE, dataStatus: "empty" });
-    expect(chipOf(list, "highway")).toMatchObject({ notice: null, dataStatus: undefined });
+    expect(chipOf(list, "tunnel")).toMatchObject({ notice: null, dataStatus: undefined });
   });
 
-  it("▶パネルの凡例は、絞り込める凡例（隠した行つき）・表示専用の凡例・画面から渡した凡例の順", () => {
-    const [road] = roadLegendAxes();
+  it("▶パネルの凡例は、絞り込める凡例（いまの凡例にある隠した行つき）と表示専用の凡例", () => {
+    const [road] = roadLegendAxes(ROAD_LAYERS);
     const [, second] = road.entries;
-    const screenLegend = { label: "画面から", legend: [] };
-    const list = chips({
-      hidden: { [road.axisId]: [second.key, "gone"] },
-      screenLegends: { [road.layerId]: [screenLegend] },
-    });
+    const list = chips({ hidden: { [road.axisId]: [second.key, "gone"] } });
     const details = chipOf(list, road.layerId).legendDetails ?? [];
     expect(details[0]).toMatchObject({ axisId: road.axisId, hiddenKeys: [second.key] });
-    expect(details.at(-1)).toEqual({ ...screenLegend, hiddenKeys: [] });
 
     const precipitation = chipOf(list, "precipitationNowcast").legendDetails ?? [];
     expect(precipitation.length).toBeGreaterThan(0);
@@ -89,13 +79,12 @@ describe("overlayChips（地図上チップの状態）", () => {
 });
 
 describe("deserializeLayerVisibility（表示状態の保存値）", () => {
-  it("いまのカタログにある鍵の真偽値だけを読み、無い鍵は既定のまま", () => {
-    const defaults = buildDefaultLayerVisibility();
-    const restored = deserializeLayerVisibility(JSON.stringify({ surface: true, gone: true, highway: "yes" }));
-    expect(restored).toEqual({ ...defaults, surface: true });
-  });
-
-  it("読めない形なら既定", () => {
-    expect(deserializeLayerVisibility("null")).toEqual(buildDefaultLayerVisibility());
+  // 道の線の層は軸カタログが届くまで分からないので、今の層に無い鍵も読む（既定は使う側が層の一覧から重ねる）。
+  it("真偽値の鍵だけを読み、読めない形なら読まない", () => {
+    const restored = deserializeLayerVisibility(
+      JSON.stringify({ surface: true, notYetArrived: false, highway: "yes" }),
+    );
+    expect(restored).toEqual({ surface: true, notYetArrived: false });
+    expect(deserializeLayerVisibility("null")).toBeNull();
   });
 });

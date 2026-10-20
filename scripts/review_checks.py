@@ -1,25 +1,6 @@
 """リポジトリの機械的な検査と計測。
 
-## 検知器の設計要件
-
-検知器はプロジェクト全体への一律チェックとして自動実行され、**実行タイミングも走査範囲も
-こちらで選べない**。したがって置いてよいのは、**どの文脈でも絶対に正しいと保証できる
-事実だけ**である。
-
-この要件から、次が導かれる。
-
-- **走査範囲を絞る仕組みを持たない。** 不変条件なら、全件でも差分でも同じ答えになる。
-  「新しく入った分だけを咎める」必要があるなら、それは不変条件ではない
-- **許可リストを持たない。** 許可リストは誤検知を認めた印である。「この綴りは外部の
-  語彙だから除外する」が必要なら、その検査は事実を見ていない
-- **母集団を手で書かない。** 「どのファイルが対象か」を人が列挙すると、実装が動いた
-  ときに静かにずれる。対象は、その検査が読む対象そのもの（マークダウン全件）
-  から自然に決まるものに限る
-- **実装そのものを検査対象にしない**（コードの書き方・import規則・型・レイヤーの
-  不変条件）。実装側の道具（lint・型検査・テスト）が持つ。検知器が実装の姿を知ろうと
-  すると写し（スナップショット・定数表）を抱え、実装が変わった瞬間に黙って死ぬ
-- **保存した過去の値と比べない。** それは検査ではなく報告である。必要な過去の値は
-  `periodic-review/NNN` タグが指すコミットから導く
+検知器（`docs`）を足す条件は .claude/rules/fixing.md「検知器を足す条件は厳しい」が持つ。
 
 ## 使い方
 
@@ -27,22 +8,26 @@
     python scripts/review_checks.py size      # 規模と前回比
     python scripts/review_checks.py metrics   # 定量メトリクスと総量の前回比
     python scripts/review_checks.py trigger   # 周期レビューの発火判定
+    python scripts/review_checks.py friction  # 前のレビューより後の流れの摩擦の行（gh で置き場を読む）
     python scripts/review_checks.py change    # 変更の増減と規模の札（master との差分から）
 
-終了コード: `docs`は違反があれば1。それ以外は表示のみで常に0。
+終了コード: `docs`は違反があれば1、`friction`は前回レビューのタグが無ければ1。どれも、測れずに止まれば（下の HEAD の遅れ等）0でない。
+それ以外は表示のみで0。
 
 `change`は検知器ではなく、作業者が自分の差分に対してその場で打つ報告である
-（差分の起点を選ぶので、上の設計要件の外にある）。
+（差分の起点を選ぶので、検知器を足す条件の外にある）。
 
 `size`・`metrics`・`trigger`はプロジェクトの今の姿を HEAD から測るので、HEAD が origin/master より
 遅れていれば止まる（`scripts/checkout_freshness.py`）。`docs`は手元の作業ツリーそのものを検査し、
-`change`は origin/master との差分を報告するので、遅れに左右されない。
+`change`は origin/master との差分を報告するので、遅れに左右されない。`friction`はタグの時刻と置き場の issue だけを読む。
 """
 
 from __future__ import annotations
 
 import argparse
 import datetime as dt
+import fnmatch
+import functools
 import json
 import re
 import subprocess
@@ -50,71 +35,80 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from repo_git import UPSTREAM, merge_base, run
+from repo_population import (
+    EXAMPLE,
+    GENERATED_PREFIXES,
+    SCAFFOLD_PREFIXES,
+    UNMAINTAINED_PREFIXES,
+    read_text,
+    repository_files,
+)
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SIZE_THRESHOLDS = REPO_ROOT / "scripts" / "size_thresholds.json"
-
-#: 記録。**維持しない**（`docs/records/README.md`）。記録時点で嘘が無ければよく、後から
-#: 実装と食い違っても欠陥ではないので、整合を求める対象にしない。走査範囲を文脈で絞る
-#: のとは別物で、パスで決まる恒久的な分類。実在はするのでリンク先の母集団には入れる。
-FROZEN_PREFIXES = ("docs/records/",)
 
 #: 周期レビューを実施した対象コミットへ打つ注釈付きタグ。`NNN`は回数。
 #: 日付を名前に使わないのは、同じ日に複数回レビューした実績があり一意にならないため。
 REVIEW_TAG_PREFIX = "periodic-review/"
 TRIGGER_DAYS = 14
+#: タスクの issue の置き場（名前はゲートの設定が持つ）。`friction`が gh で読む（gh のトークンが置き場を読めること）。
+TASKS_REPO = json.loads((REPO_ROOT / "tools" / "flow-gate" / "flow.config.json").read_text(encoding="utf-8"))["tasks"]
+#: 流れの摩擦の行。担当の終え方の要約は、後始末が終わりのコメントへ `> ` で引用して写すので、引用と箇条書きの頭も拾う。
+FRICTION_RE = re.compile(r"^(> )?(- )?流れの摩擦:")
 TRIGGER_IMPL_LINES = 20_000
 
 MARKDOWN_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s#]+)(?:#[^)]*)?\)")
 #: 雛形の綴り。「タスク番号1件=1ファイル」等を説明するためのもので、実在しなくてよい。
-PLACEHOLDER_RE = re.compile(r"Txxx|YYYY-MM-DD|<[^>]+>")
+PLACEHOLDER_RE = re.compile(rf"Txxx|YYYY-MM-DD|{EXAMPLE.pattern}")
 
 CODE_SUFFIXES = (".py", ".ts", ".tsx", ".js", ".mjs", ".mts", ".sh", ".bat", ".css")
 #: ワークフローの YAML は CI・デプロイ・担当の実行の手順そのものなので、コードとして数える。
 WORKFLOW_PREFIXES = (".github/workflows/",)
-#: テストのファイル名を持たないテストの足場の置き場（`/tests/`・`/test/`の外にあるもの）。
-TEST_PREFIXES = ("frontend/src/testing/", "frontend/src/structure/")
 #: 総量の「実装」の内訳は置き場で決める。製品は本番で動くコードの置き場で、ほかの実装は
 #: 道具（運用・計測・検査の道具・E2Eの共通部品・テストランナーとビルドの設定・CIのワークフロー・
 #: 開発機での起動の道具）。道具の置き場を列挙しないのは、道具が改名・新設されても製品へ
 #: 落ちないため。製品の増減が生成物・道具の増減に埋もれないよう、総量の前回比で分けて出す。
 #: タスク管理は製品と無関係に作り直されるので、道具の増減に混ぜずに分ける。
-#: ここで宣言する置き場は、どれも追跡下のファイルに当たる（`backend/tests/test_review_checks.py`）。
+#: ここで宣言する置き場は、どれも追跡下のファイルに当たる（`scripts/tests/test_review_checks.py`）。
 PRODUCT_PREFIXES = ("backend/app/", "frontend/src/")
-GENERATED_PREFIXES = ("frontend/src/types/generated/",)
-TASKFLOW_PREFIXES = ("tools/flow-gate/", ".github/workflows/claude-")
+#: タスク管理の置き場の正本は CI 側（`.github/taskflow-paths`。製品の CI はここだけの変更で重い検査を飛ばす）。
+TASKFLOW_PREFIXES = tuple(
+    line for line in (REPO_ROOT / ".github" / "taskflow-paths").read_text(encoding="utf-8").splitlines()
+    if line.strip() and not line.startswith("#")
+)
 
 #: この行数以上のファイルは、個別閾値（size_thresholds.json）を持つまで毎回発火する。
 #: 越えた周期だけ鳴らすと、分類で閾値を決めなかったファイルが以後+15%の成長でしか
 #: 鳴らなくなり、周期ごとの複利で黙って膨らむ。
 LARGE_FILE_LINES = 1000
-#: 前回比の発火（+15%）に要る増分の下限。小さいファイルは数十行の増分でも率が大きく出る。
+#: 前回比の発火の増加率（%）。個別閾値の見直しも同じ率を縮む側に当てる。
+GROWTH_PERCENT = 15
+#: 前回比の発火に要る増分の下限。小さいファイルは数十行の増分でも率が大きく出る。
 GROWTH_MIN_LINES = 50
-#: 個別閾値は自動では下がらない。到達率がこれを下回ったら、下げるか外すかを判断する。
-THRESHOLD_SLACK_RATIO = 0.5
+#: 個別閾値の刻み。閾値は今の行数+GROWTH_PERCENTをこの刻みへ切り上げた値に置く。
+THRESHOLD_STEP_LINES = 100
+
+
+def fitted_threshold(lines: int) -> int:
+    """今の行数に置く個別閾値。個別閾値は自動では下がらないので、置いた閾値がこれより
+    緩くなったら（縮んだ）見直しに出し、下げるか外すかを判断する。"""
+    step = THRESHOLD_STEP_LINES
+    return -(-lines * (100 + GROWTH_PERCENT) // (100 * step)) * step
+
+
+def kind_limit(path: str, limits: dict[str, int]) -> int | None:
+    """種類ごとの上限（size_thresholds.json の instruction_limits・code_limits）。当たらなければ None。"""
+    return next((limit for pattern, limit in limits.items() if fnmatch.fnmatchcase(path, pattern)), None)
 
 
 def git(*args: str, check: bool = True) -> str:
-    result = subprocess.run(["git", *args], cwd=str(REPO_ROOT), capture_output=True,
-                            text=True, encoding="utf-8", errors="replace", check=False)
-    if result.returncode != 0 and check:
-        raise RuntimeError(f"git {' '.join(args)}: {result.stderr.strip()}")
-    return result.stdout
+    return run(*args, cwd=REPO_ROOT, check=check).stdout
 
 
 def tracked_files() -> list[str]:
-    """追跡下の全ファイル。**「実在するか」の母集団はこちら。**
-
-    走査対象と取り違えると、記録を走査から外したとたんに、そこを指す生きた文書のリンクが
-    一斉に「実在しない」へ化ける。
-    """
+    """追跡下の全ファイル。HEAD から測る計測の母集団で、実在の母集団（`repo_population.py: repository_files`）とは別。"""
     return [line for line in git("ls-files").splitlines() if line]
-
-
-def read(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return ""
 
 
 def review_tags() -> list[tuple[str, str, dt.date | None]]:
@@ -149,7 +143,7 @@ def find_dead_doc_links(md_files: list[str], universe: set[str]) -> list[str]:
     out = []
     for f in md_files:
         path = REPO_ROOT / f
-        for lineno, line in enumerate(read(path).splitlines(), 1):
+        for lineno, line in enumerate(read_text(path).splitlines(), 1):
             for target in MARKDOWN_LINK_RE.findall(line):
                 if target.startswith(("http://", "https://", "mailto:")):
                     continue
@@ -167,25 +161,17 @@ def find_dead_doc_links(md_files: list[str], universe: set[str]) -> list[str]:
 
 
 def cmd_docs(args: argparse.Namespace) -> int:
-    universe = set(tracked_files())
-    md_files = [f for f in universe
-                if f.endswith(".md") and not f.startswith(FROZEN_PREFIXES)]
-
-    sections = [
-        ("dead_doc_links", "文書のリンクが解決しない",
-         find_dead_doc_links(sorted(md_files), universe)),
-    ]
-
-    total = 0
-    for key, title, lines in sections:
-        print(f"## [{key}] {title}: {len(lines)}件")
-        for line in lines:
-            print(f"  - {line}")
-        total += len(lines)
+    # 走査する文書と実在の母集団を取り違えると、記録を走査から外したとたんに、そこを指す生きた文書のリンクが
+    # 一斉に「実在しない」へ化ける。
+    universe = set(repository_files(REPO_ROOT))
+    lines = find_dead_doc_links(sorted(f for f in universe if is_maintained_doc(f)), universe)
+    print(f"## [dead_doc_links] 文書のリンクが解決しない: {len(lines)}件")
+    for line in lines:
+        print(f"  - {line}")
 
     print()
-    if total:
-        print(f"違反 {total}件")
+    if lines:
+        print(f"違反 {len(lines)}件")
         return 1
     print("違反なし")
     return 0
@@ -228,7 +214,11 @@ def files_at(sha: str) -> list[str]:
 
 def is_test(path: str) -> bool:
     return (".test." in path or ".spec." in path or "/tests/" in path or "/test/" in path
-            or path.startswith(TEST_PREFIXES))
+            or path.startswith(SCAFFOLD_PREFIXES))
+
+
+def is_maintained_doc(path: str) -> bool:
+    return path.endswith(".md") and not path.startswith(UNMAINTAINED_PREFIXES)
 
 
 def is_code(path: str) -> bool:
@@ -239,7 +229,7 @@ def volume_kind(path: str) -> str | None:
     """総量を数える種別（実装・テスト・維持する文書）。数えないものはNone。"""
     if is_code(path):
         return "テスト" if is_test(path) else "実装"
-    if path.endswith(".md") and not path.startswith(FROZEN_PREFIXES):
+    if is_maintained_doc(path):
         return "文書"
     return None
 
@@ -272,9 +262,17 @@ def volume_totals(counts: dict[str, int]) -> dict[str, int]:
 
 def cmd_size(args: argparse.Namespace) -> int:
     counts = volume_counts(tracked_files())
-    decided = json.loads(read(SIZE_THRESHOLDS)) if SIZE_THRESHOLDS.exists() else {}
-    thresholds = decided.get("thresholds", {})
-    on_fire = decided.get("on_fire", {})
+    decided = json.loads(read_text(SIZE_THRESHOLDS)) if SIZE_THRESHOLDS.exists() else {}
+    # 指示の文書とコードは種類ごとの上限だけで見て、ファイルごとに置いた閾値は上書きする。
+    # 生成物は書き手が分けられないので、コードの上限に当てずファイルごとの閾値で見る。
+    code_limits = {f: limit for f in counts if not f.startswith(GENERATED_PREFIXES)
+                   and (limit := kind_limit(f, decided.get("code_limits", {}))) is not None}
+    kind_limits = {f: limit for f in counts
+                   if (limit := kind_limit(f, decided.get("instruction_limits", {}))) is not None}
+    kind_limits.update(code_limits)
+    exceptions = sorted(f for f in decided.get("thresholds", {}) if f in kind_limits)
+    thresholds = dict(decided.get("thresholds", {}))
+    thresholds.update(kind_limits)
     groups: dict[str, list[str]] = defaultdict(list)
     for f in counts:
         groups["docs" if f.startswith("docs/") else f.split("/")[0]].append(f)
@@ -282,7 +280,9 @@ def cmd_size(args: argparse.Namespace) -> int:
     for members in groups.values():
         top.update(sorted(members, key=lambda f: -counts[f])[:args.top])
     large = {f for f, n in counts.items() if n >= LARGE_FILE_LINES}
-    watched = sorted(top | large | set(thresholds), key=lambda f: -counts.get(f, 0))
+    # 種類ごとの上限はその種類の全部に当たるので、表へ出すのは上限に届いたものだけにする。
+    reached = {f for f, limit in kind_limits.items() if counts[f] >= limit}
+    watched = sorted(top | large | reached | (set(thresholds) - set(kind_limits)), key=lambda f: -counts.get(f, 0))
 
     tags = review_tags()
     base_tag, base_sha, base_date = tags[0] if tags else (None, None, None)
@@ -304,30 +304,39 @@ def cmd_size(args: argparse.Namespace) -> int:
             continue
         p = prev.get(f)
         reasons = []
-        if p is not None and p > 0 and (cur - p) / p >= 0.15 and cur - p >= GROWTH_MIN_LINES:
+        if p is not None and p > 0 and (cur - p) * 100 >= GROWTH_PERCENT * p and cur - p >= GROWTH_MIN_LINES:
             reasons.append(f"+{(cur - p) / p * 100:.0f}%")
         if th is None and cur >= LARGE_FILE_LINES:
             reasons.append(f"{LARGE_FILE_LINES:,}行以上・閾値未設定")
-        if th and cur >= th:
+        # コードの上限は外の道具の最大の行数なので、道具と同じく超えたときだけ発火する。
+        if th and (cur > th if f in code_limits else cur >= th):
             reasons.append(f"閾値{th:,}超過")
         if reasons:
             fired.append(f)
-        if th and cur / th < THRESHOLD_SLACK_RATIO:
-            slack.append(f"{f}（{cur / th:.0%}）")
+        if th and f not in kind_limits and th > fitted_threshold(cur):
+            slack.append(f"{f}（{th}→{fitted_threshold(cur)}）")
         delta = f"{cur - p:+d}" if p is not None else "新規"
         rate = f"{cur / th:.0%}" if th else "-"
         print(f"| {f} | {cur:,} | {p if p is not None else '-'} | {delta} | {th or '-'} | "
               f"{rate} | {'・'.join(reasons)} |")
     print()
     print(f"発火 {len(fired)}件: " + (", ".join(fired) if fired else "なし"))
-    for f in fired:
-        if f in on_fire:
-            print(f"  - {f} の既定の対応: {on_fire[f]}")
-    print(f"閾値の見直し（到達率{THRESHOLD_SLACK_RATIO:.0%}未満・削除済み） {len(slack)}件: "
+    print(f"閾値の見直し（今の行数+{GROWTH_PERCENT}%を{THRESHOLD_STEP_LINES}行に切り上げた値より緩い・削除済み） "
+          f"{len(slack)}件: "
           + (", ".join(slack) if slack else "なし"))
+    if exceptions:
+        print(f"種類ごとの上限に当たるファイルごとの閾値（無視した。上限は instruction_limits・code_limits だけ） "
+              f"{len(exceptions)}件: "
+              + ", ".join(exceptions))
     if not base_sha:
         print("（周期レビューのタグが無いため前回比は出していない）")
     return 0
+
+
+def code_churn(sha: str) -> int:
+    """`sha` から HEAD までの backend・frontend の追加と削除の行数の和。"""
+    stat = git("diff", "--shortstat", f"{sha}..HEAD", "--", "backend", "frontend", check=False)
+    return sum(int(x) for x in re.findall(r"(\d+) (?:insertion|deletion)", stat))
 
 
 def cmd_metrics(args: argparse.Namespace) -> int:
@@ -339,16 +348,14 @@ def cmd_metrics(args: argparse.Namespace) -> int:
         by_area[f.split("/")[0] if "/" in f else "（ルート）"] += n
     tests = [f for f in counts if is_test(f)]
     current = volume_totals(volume)
-    records_lines = sum(len(read(REPO_ROOT / f).splitlines())
-                        for f in files if f.startswith(FROZEN_PREFIXES))
+    records_lines = sum(len(read_text(REPO_ROOT / f).splitlines())
+                        for f in files if f.startswith(UNMAINTAINED_PREFIXES))
 
     tags = review_tags()
     churn = "-"
     previous = None
     if tags:
-        stat = git("diff", "--shortstat", f"{tags[0][1]}..HEAD",
-                   "--", "backend", "frontend", check=False)
-        churn = f"{sum(int(x) for x in re.findall(r'(\d+) (?:insertion|deletion)', stat)):,}行"
+        churn = f"{code_churn(tags[0][1]):,}行"
         previous = volume_totals(volume_counts(files_at(tags[0][1]), tags[0][1]))
 
     print(f"# 定量メトリクス（{dt.datetime.now(tz=dt.timezone.utc).date().isoformat()}、"
@@ -378,40 +385,115 @@ def cmd_metrics(args: argparse.Namespace) -> int:
 
 def cmd_trigger(args: argparse.Namespace) -> int:
     tags = review_tags()
-    print("## 周期レビュー トリガー判定")
+    report = ["## 周期レビュー トリガー判定"]
     if not tags:
-        print(f"- 前回レビューのタグ（{REVIEW_TAG_PREFIX}*）が無い")
-        print("\n判定: **該当**（前回の記録が無い。実施してタグを打つ）")
+        report.append(f"- 前回レビューのタグ（{REVIEW_TAG_PREFIX}*）が無い")
+        report.append("\n判定: **該当**（前回の記録が無い。実施してタグを打つ）")
+        print("\n".join(report))
         return 0
     name, sha, day = tags[0]
     fired = []
     days = (dt.datetime.now(tz=dt.timezone.utc).date() - day).days if day else None
-    print(f"- 前回レビュー: {name} / {day}（{days}日経過、閾値 {TRIGGER_DAYS}日）")
+    report.append(f"- 前回レビュー: {name} / {day}（{days}日経過、閾値 {TRIGGER_DAYS}日）")
     if days is not None and days >= TRIGGER_DAYS:
         fired.append("日数")
-    stat = git("diff", "--shortstat", f"{sha}..HEAD", "--", "backend", "frontend", check=False)
-    lines = sum(int(x) for x in re.findall(r"(\d+) (?:insertion|deletion)", stat))
-    print(f"- コードの変更行数（{sha[:7]}..HEAD）: {lines:,}行（閾値 {TRIGGER_IMPL_LINES:,}）")
+    lines = code_churn(sha)
+    report.append(f"- コードの変更行数（{sha[:7]}..HEAD）: {lines:,}行（閾値 {TRIGGER_IMPL_LINES:,}）")
     if lines >= TRIGGER_IMPL_LINES:
         fired.append("変更行数")
-    print()
-    print("判定: " + (f"**該当（{'・'.join(fired)}）** → /review を実施する" if fired else "未該当"))
+    report.append("")
+    report.append("判定: " + (f"**該当（{'・'.join(fired)}）** → /review を実施する" if fired else "未該当"))
+    if fired or not args.only_fired:
+        print("\n".join(report))
     return 0
+
+
+def friction_lines(number: int, comments: list[dict], since: dt.datetime) -> list[str]:
+    """1件の issue のコメントのうち、`since`以後に書かれたものの流れの摩擦の行（頭に `#番号`）。"""
+    return [
+        f"#{number} {line}"
+        for comment in comments
+        if _stamp(comment) >= since
+        for line in comment["body"].split("\n")
+        if FRICTION_RE.match(line)
+    ]
+
+
+def comments_since(comments: dict, since: dt.datetime, read_earlier) -> list[dict]:
+    """新しい方から読んだコメントの1ページ（GraphQL の `comments(last:)`）へ、`since`以後のものが前のページに
+    まだありうる間だけ、`read_earlier(cursor)`で前のページを足し、古い順に並べて返す。"""
+    nodes = list(comments["nodes"])
+    page = comments["pageInfo"]
+    while page["hasPreviousPage"] and nodes and _stamp(nodes[0]) >= since:
+        earlier = read_earlier(page["startCursor"])
+        nodes = earlier["nodes"] + nodes
+        page = earlier["pageInfo"]
+    return nodes
+
+
+def _stamp(comment: dict) -> dt.datetime:
+    return dt.datetime.fromisoformat(comment["createdAt"].replace("Z", "+00:00"))
+
+
+def gh_graphql(query: str, **variables: str | int | None) -> dict:
+    """GraphQL を gh で1回打つ。値が None の変数は渡さない（問い合わせの側で null になる）。"""
+    fields = [arg for name, value in variables.items() if value is not None
+              for arg in ("-F" if isinstance(value, int) else "-f", f"{name}={value}")]
+    result = subprocess.run(["gh", "api", "graphql", "-f", f"query={query}", *fields], capture_output=True,
+                            text=True, encoding="utf-8", errors="replace", check=False)
+    if result.returncode != 0:
+        raise RuntimeError(f"gh api graphql: {result.stderr.strip()}")
+    return json.loads(result.stdout)["data"]
+
+
+#: 検索が返す issue の上限（GitHub の検索の決まり）。
+SEARCH_LIMIT = 1000
+#: issue は1回に50件、コメントは issue ごとに新しい方から100件（GraphQL の1ページの上限）を一緒に読む。
+_COMMENTS = "comments(last:100,before:$before){pageInfo{hasPreviousPage startCursor} nodes{createdAt body}}"
+FRICTION_SEARCH = ("query($q:String!,$after:String,$before:String){search(type:ISSUE,query:$q,first:50,after:$after){issueCount "
+                   "pageInfo{hasNextPage endCursor} nodes{...on Issue{number " + _COMMENTS + "}}}}")
+FRICTION_EARLIER = ("query($owner:String!,$name:String!,$number:Int!,$before:String){repository(owner:$owner,name:$name){"
+                    "issue(number:$number){" + _COMMENTS + "}}}")
+
+
+def _earlier_comments(number: int, cursor: str) -> dict:
+    owner, name = TASKS_REPO.split("/")
+    return gh_graphql(FRICTION_EARLIER, owner=owner, name=name, number=number, before=cursor)["repository"]["issue"]["comments"]
+
+
+def cmd_friction(args: argparse.Namespace) -> int:
+    tags = review_tags()
+    if not tags:
+        print(f"前回レビューのタグ（{REVIEW_TAG_PREFIX}*）が無い", file=sys.stderr)
+        return 1
+    stamp = git("for-each-ref", "--format=%(creatordate:unix)", f"refs/tags/{tags[0][0]}").strip()
+    since = dt.datetime.fromtimestamp(int(stamp), tz=dt.timezone.utc)
+    # 検索の日付は日の粒度なので、その日の更新から引き、コメントの時刻で絞る。
+    query = f"repo:{TASKS_REPO} is:issue updated:>={since.date().isoformat()}"
+    after = None
+    while True:
+        found = gh_graphql(FRICTION_SEARCH, q=query, after=after)["search"]
+        if after is None and found["issueCount"] > SEARCH_LIMIT:
+            print(f"更新された issue が {found['issueCount']} 件あり、検索が返す {SEARCH_LIMIT} 件を超える（取りこぼしうる）",
+                  file=sys.stderr)
+        for issue in found["nodes"]:
+            comments = comments_since(issue["comments"], since, functools.partial(_earlier_comments, issue["number"]))
+            for line in friction_lines(issue["number"], comments, since):
+                print(line)
+        if not found["pageInfo"]["hasNextPage"]:
+            return 0
+        after = found["pageInfo"]["endCursor"]
 
 
 # --- 差分の報告（作業者が自分の差分に対して打つ。検査ではない） -----------------
 
-#: docs/conventions/flow.md「規模の札」の閾値（実装＋テストの変更行の上限）。
+#: .claude/skills/file-issue/SKILL.md「規模の札」の閾値（実装＋テストの変更行の上限）。
 SIZE_LABELS = ((200, "S"), (1000, "M"))
 GENERATED_NAMES = ("package-lock.json",)
 
 
-def merge_base(base: str, head: str) -> str:
-    return git("merge-base", base, head).strip()
-
-
 def change_kind(path: str) -> str:
-    """変更の行数を分ける種別。規模の札は実装とテストだけで決まる（docs/conventions/flow.md「規模の札」）。
+    """変更の行数を分ける種別。規模の札は実装とテストだけで決まる。
 
     実装とテストは総量と同じ分け方（`volume_kind`）で、コードでないファイルは設定。
     """
@@ -424,7 +506,7 @@ def change_kind(path: str) -> str:
 
 def cmd_change(args: argparse.Namespace) -> int:
     target = args.head or "HEAD"
-    mb = merge_base(args.base, target)
+    mb = merge_base(target, args.base, cwd=REPO_ROOT)
     # -z では、移したファイルの行が「追加\t削除\t」のあと移す前と後のパスを別の欄に持つ。
     fields = git("diff", "-M", "--numstat", "-z", mb, *([args.head] if args.head else [])).split("\0")
     rows = []
@@ -439,11 +521,12 @@ def cmd_change(args: argparse.Namespace) -> int:
             rows.append((path, int(plus), int(minus)))
     if not args.head:
         for path in git("ls-files", "--others", "--exclude-standard").splitlines():
-            rows.append((path, len(read(REPO_ROOT / path).splitlines()), 0))
+            rows.append((path, len(read_text(REPO_ROOT / path).splitlines()), 0))
     totals = {kind: [0, 0] for kind in ("実装", "テスト", "文書", "設定", "生成物")}
     for path, added, deleted in rows:
-        totals[change_kind(path)][0] += added
-        totals[change_kind(path)][1] += deleted
+        pair = totals[change_kind(path)]
+        pair[0] += added
+        pair[1] += deleted
     measured = sum(totals["実装"]) + sum(totals["テスト"])
     label = next((name for limit, name in SIZE_LABELS if measured <= limit), "L")
     shown = git("rev-parse", "--short", args.head).strip() if args.head else "作業ツリー（未追跡のファイルを含む）"
@@ -462,12 +545,15 @@ def main() -> int:
     for name, help_text, func, measures_head in (
         ("docs", "文書の整合（常に全件）", cmd_docs, False),
         ("metrics", "定量メトリクスと総量の前回比", cmd_metrics, True),
-        ("trigger", "周期レビューの発火判定", cmd_trigger, True),
+        ("friction", "前のレビューより後の流れの摩擦の行", cmd_friction, False),
     ):
         p = sub.add_parser(name, help=help_text)
         p.set_defaults(func=func, measures_head=measures_head)
+    p = sub.add_parser("trigger", help="周期レビューの発火判定")
+    p.add_argument("--only-fired", action="store_true", help="発火したときだけ出す（セッションの始まりのフック）")
+    p.set_defaults(func=cmd_trigger, measures_head=True)
     p = sub.add_parser("change", help="変更の増減と規模の札")
-    p.add_argument("--base", default="origin/master", help="比べる相手（合流点から見る）")
+    p.add_argument("--base", default=UPSTREAM, help="比べる相手（合流点から見る）")
     p.add_argument("--head", help="見る版（省くと作業ツリー）")
     p.set_defaults(func=cmd_change, measures_head=False)
     p = sub.add_parser("size", help="規模と前回比")
@@ -481,6 +567,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
+    sys.path.append(str(REPO_ROOT / "backend" / "scripts"))
+    from _stdio import use_utf8_stdio
+
+    use_utf8_stdio()
     sys.exit(main())

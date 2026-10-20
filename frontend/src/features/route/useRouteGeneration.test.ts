@@ -1,10 +1,11 @@
 /**
  * ルート生成（`useRouteGeneration.ts`）——押した「生成」を検証して、いまの条件からbackendへ要求を送り、実行中の進み方・
- * 直近の案内（候補0件の理由・失敗の文言・入力の誤り）・表示中の候補を作った条件といまの条件のずれ・研究モードの実験
- * スロットを返す。結果は所要時間の短い順に並べて渡し、押した1回の結果の種類（新しい結果か失敗か）を知らせる。
+ * 直近の案内（候補0件の理由・失敗の文言・入力の誤り）・表示中の候補を作った条件といまの条件のずれを返す。結果は
+ * 所要時間の短い順に並べて渡し、押した1回の結果の種類（候補・候補0件・失敗）を知らせて、直近の結果（件数・0件の理由・
+ * 失敗）を返す。
  *
  * ここで見ないもの:
- * - 検証の文言の中身と、目的地モードで地点が無いときの検証 → `RouteForm/useRouteFormSubmit.test.ts`
+ * - 検証の文言の中身と、作るものが無いときの検証 → `RouteForm/useRouteFormSubmit.test.ts`
  * - 条件の値の持ち方（保存・地点の置き方・重みの揃え方） → `useGenerationConditions.test.ts`
  * - 入力から要求の形を組む細部（どの項目を比べないか・選んでいない出発時刻・キーの並びに依らない比較） →
  *   `generationRequest.test.ts`
@@ -18,14 +19,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_HARD_FILTERS } from "@/features/route/RouteSettingsPanel/HardFilterPanel";
-import { LENS_DIFFICULTY_ID, LENS_NONE_ID } from "@/lib/mapDisplay/routeStyleModes";
-import { setResearchEnabled } from "@/lib/researchMode";
 import { heldReplies, onBackend } from "@/testing/backendServer";
-import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
+import { TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
-import { makeRouteCandidate } from "@/testing/routeFixtures";
-import { EXPERIMENT_SLOT_COLORS, MAX_EXPERIMENT_SLOTS } from "@/types/experimentSlot";
+import { makeGenerationConditions, makeRouteCandidate } from "@/testing/routeFixtures";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { Coordinates, GenerationConditions, RouteCandidate } from "@/types/route";
 
@@ -37,11 +34,6 @@ const A: Coordinates = { latitude: 35.7, longitude: 139.8 };
 const B: Coordinates = { latitude: 35.71, longitude: 139.81 };
 const T1 = new Date("2026-10-04T09:00:00Z");
 const NO_ROUTES_MESSAGE = "条件に合うルート候補が見つかりませんでした。条件を変えて試してください。";
-
-const CATALOG = catalogResponse([
-  catalogEntry({ axis_id: "axis_a", default_weight: 0.4 }),
-  catalogEntry({ axis_id: "axis_b", default_weight: 0.6 }),
-]);
 
 interface Props {
   originKnown: boolean;
@@ -68,8 +60,14 @@ function renderGeneration(props: Partial<Props> = {}) {
 
 type Rendered = ReturnType<typeof renderGeneration>;
 
-async function submit({ result }: Rendered, lens: string = LENS_NONE_ID) {
-  await act(() => result.current.generation.submit(lens));
+async function submit({ result }: Rendered) {
+  await act(() => result.current.generation.submit());
+}
+
+/** 周回を外して目的地を置く（既定は周回で、周回の間の目的地は送らない）。 */
+function placeDestination({ result }: Rendered, at: Coordinates) {
+  act(() => result.current.conditions.setLoop(false));
+  act(() => result.current.conditions.setDestination(at));
 }
 
 function route(id: string, seconds: number | null = null): RouteCandidate {
@@ -78,24 +76,19 @@ function route(id: string, seconds: number | null = null): RouteCandidate {
 
 /** backendが返す生成の条件（`conditions`）。 */
 function used(overrides: Partial<GenerationConditions> = {}): GenerationConditions {
-  return {
+  return makeGenerationConditions({
     latitude: ORIGIN.latitude,
     longitude: ORIGIN.longitude,
     distance_km: 30,
-    distance_tolerance_km: routeGenerateConfig.default_distance_tolerance_km,
+    distance_tolerance_km: 5,
     route_preference: { axis_a: 0.5, axis_b: 0.5 },
     penalty_strength: 1,
-    max_average_grade_percent: null,
-    hard_filters: DEFAULT_HARD_FILTERS,
     max_routes: routeGenerateConfig.default_max_routes,
     start_time: T1.toISOString(),
     assumed_speed_kmh: 20,
-    waypoints: null,
-    destination: null,
-    corrected_destination: null,
     generated_at: "2026-10-04T09:00:30Z",
     ...overrides,
-  };
+  });
 }
 
 let jobs: ReturnType<typeof serveGenerationJobs>;
@@ -112,7 +105,7 @@ let catalog: ReturnType<typeof heldReplies>;
 
 /** 描画のときに投げた軸カタログの取得を届ける。 */
 async function loadCatalog(rendered: Rendered) {
-  await act(() => catalog.answer(0, Response.json(CATALOG)));
+  await act(() => catalog.answer(0, Response.json(TWO_AXIS_CATALOG)));
   await waitFor(() => expect(rendered.result.current.conditions.routePreference).toEqual({ axis_a: 0.4, axis_b: 0.6 }));
 }
 
@@ -125,39 +118,43 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  setResearchEnabled(false);
   vi.useRealTimers();
 });
 
 describe("送る要求", () => {
-  it("周回は、いまの位置・入力した距離と候補数・走行条件・除外を送り、置いてある地点・重み・塗る軸は送らない", async () => {
+  it("全長の目標を決めていれば、いまの位置・入力した距離と候補数・走行条件・除外・選んだ道の避け方と、置いた経由地（置いた順）・目的地をそのまま送り、重みは送らない", async () => {
     const rendered = renderGeneration();
     const { conditions } = rendered.result.current;
     act(() => conditions.setDistanceInput("42"));
     act(() => rendered.result.current.conditions.setMaxRoutesInput("3"));
-    act(() => rendered.result.current.conditions.setDestination(A));
-    act(() => rendered.result.current.conditions.placePin("waypoint", B));
+    placeDestination(rendered, A);
+    act(() => rendered.result.current.conditions.selectPoint({ role: "waypoint", index: null }));
+    act(() => rendered.result.current.conditions.placeAtSelected(B, null));
+    act(() => rendered.result.current.conditions.placeAtSelected(A, null));
+    // 選んでいない行と前の鍵はbackendが今の行へ揃えるので、選んだ段をそのまま送る。
+    const avoidance = { gravel: "exclude", "retired.row": "avoid" } as const;
+    act(() => rendered.result.current.conditions.setRoadAvoidance(avoidance));
     respond([route("r1")]);
 
-    await submit(rendered, "axis_a");
+    await submit(rendered);
 
     expect(sentRequest()).toEqual({
       latitude: ORIGIN.latitude,
       longitude: ORIGIN.longitude,
       distance_km: 42,
-      distance_tolerance_km: routeGenerateConfig.default_distance_tolerance_km,
-      route_type: "loop",
-      hard_filters: DEFAULT_HARD_FILTERS,
+      road_avoidance: avoidance,
       max_routes: 3,
       assumed_speed_kmh: 20,
       start_time: T1.toISOString(),
+      waypoints: [B, A],
+      destination: A,
     });
   });
 
-  it("目的地は距離を送らず（探索の範囲はbackendが点から決める）、目的地を送る", async () => {
+  it("全長の目標を外すと距離を送らず、置いた地点は同じに送る", async () => {
     const rendered = renderGeneration();
-    act(() => rendered.result.current.conditions.changeRouteMode("destination"));
-    act(() => rendered.result.current.conditions.placePin("destination", A));
+    act(() => rendered.result.current.conditions.setDistanceTargeted(false));
+    placeDestination(rendered, A);
     respond([route("r1")]);
 
     await submit(rendered);
@@ -165,53 +162,9 @@ describe("送る要求", () => {
     expect(sentRequest()).not.toHaveProperty("distance_km");
     expect(sentRequest()).toMatchObject({ destination: A });
   });
-
-  it("経由地があると、候補数の入力に関わらず決まった数を送り、経由地は置いた順に送る", async () => {
-    const rendered = renderGeneration();
-    act(() => rendered.result.current.conditions.changeRouteMode("destination"));
-    act(() => rendered.result.current.conditions.setMaxRoutesInput("4"));
-    act(() => rendered.result.current.conditions.placePin("waypoint", B));
-    act(() => rendered.result.current.conditions.placePin("waypoint", A));
-    respond([route("r1")]);
-
-    await submit(rendered);
-
-    expect(sentRequest()).toMatchObject({ max_routes: routeGenerateConfig.routes_with_waypoints, waypoints: [B, A] });
-  });
-
-  it("塗る軸は、軸カタログが届いていてレンズが軸を指すときだけ送り、作った入力にも残す", async () => {
-    const rendered = renderGeneration();
-    respond([route("r1")]);
-    await submit(rendered, "axis_a");
-    expect(sentRequest()).not.toHaveProperty("lens_axis_id");
-
-    await loadCatalog(rendered);
-    for (const lens of [LENS_NONE_ID, LENS_DIFFICULTY_ID]) {
-      respond([route("r1")]);
-      await submit(rendered, lens);
-      expect(sentRequest()).not.toHaveProperty("lens_axis_id");
-    }
-
-    respond([route("r1")]);
-    await submit(rendered, "axis_a");
-    expect(sentRequest()).toMatchObject({ lens_axis_id: "axis_a" });
-    expect(rendered.result.current.generation.generatedInput?.lensAxisId).toBe("axis_a");
-  });
 });
 
 describe("入力の誤り", () => {
-  it("出発地が仮の地点のままなら送らず、理由を案内に出して、押すたびに失敗として知らせる", async () => {
-    const rendered = renderGeneration({ originKnown: false });
-
-    await submit(rendered);
-    await submit(rendered);
-
-    const { generation } = rendered.result.current;
-    expect(jobs.submitted).toEqual([]);
-    expect(generation.inputError).toMatch(/現在地が分かりません/);
-    expect(rendered.onOutcome.mock.calls).toEqual([["failed"], ["failed"]]);
-  });
-
   it("入力の誤りは、直前の生成の失敗の文言より先に出す", async () => {
     const rendered = renderGeneration();
     jobs.fail("リクエストに失敗しました");
@@ -220,8 +173,7 @@ describe("入力の誤り", () => {
     rendered.rerender({ ...PROPS, originKnown: false });
     await submit(rendered);
 
-    expect(rendered.result.current.generation.failure).toMatch(/現在地が分かりません/);
-    expect(rendered.result.current.generation.lastMessage).toMatch(/現在地が分かりません/);
+    expect(rendered.result.current.generation.outcome?.message).toMatch(/^現在地が分かりません/);
   });
 });
 
@@ -235,7 +187,7 @@ describe("進み方", () => {
     const flush = () => act(() => vi.advanceTimersByTimeAsync(0));
     let done: Promise<void> = Promise.resolve();
     act(() => {
-      done = rendered.result.current.generation.submit(LENS_NONE_ID);
+      done = rendered.result.current.generation.submit();
     });
     expect(rendered.result.current.generation.running).toBe(true);
     expect(rendered.result.current.generation.progressLabel).toBeUndefined();
@@ -243,13 +195,11 @@ describe("進み方", () => {
     await job.answer(0, Response.json({ status: "queued" }));
     await flush();
     expect(rendered.result.current.generation.progressLabel).toBe("順番待ち...");
-    expect(rendered.result.current.generation.queued).toBe(true);
 
     await act(() => vi.advanceTimersByTimeAsync(2600));
     await job.answer(1, Response.json({ status: "running" }));
     await flush();
     expect(rendered.result.current.generation.progressLabel).toBe("生成中...(3秒経過)");
-    expect(rendered.result.current.generation.queued).toBe(false);
 
     await act(() => vi.advanceTimersByTimeAsync(1500));
     await job.answer(
@@ -269,7 +219,7 @@ describe("進み方", () => {
 });
 
 describe("生成の結果", () => {
-  it("候補を所要時間の短い順に並べ、生成に使われた重みと一緒に渡して新しい結果として知らせる。案内・目的地の補正・研究モードでない生成の実験スロットは出さない", async () => {
+  it("候補を所要時間の短い順に並べ、生成に使われた重みと一緒に渡して新しい結果として知らせる。案内・目的地の補正は出さない", async () => {
     const rendered = renderGeneration();
     respond([route("slow", 3600), route("fast", 1800)], used({ route_preference: { axis_a: 1 } }));
 
@@ -277,30 +227,23 @@ describe("生成の結果", () => {
 
     expect(rendered.onGenerated).toHaveBeenCalledWith([route("fast", 1800), route("slow", 3600)], { axis_a: 1 });
     expect(rendered.onOutcome).toHaveBeenCalledWith("fresh");
-    expect(rendered.result.current.generation.failure).toBeNull();
-    expect(rendered.result.current.generation.lastMessage).toBeUndefined();
+    expect(rendered.result.current.generation.outcome).toBeNull();
     expect(rendered.result.current.generation.destinationCorrected).toBe(false);
-    expect(rendered.result.current.generation.experimentSlots).toEqual([]);
   });
 
-  it.each([
-    {
-      label: "理由が届いたらその理由",
-      reason: "目的地へ行ける道が見つかりませんでした",
-      message: "目的地へ行ける道が見つかりませんでした",
+  it.each([{ label: "理由が届かなければ決まった文言", reason: undefined, message: NO_ROUTES_MESSAGE }])(
+    "候補0件は、「$label」を案内に出して候補0件として知らせ、失敗とは扱わない",
+    async ({ reason, message }) => {
+      const rendered = renderGeneration();
+      respond([], used(), reason);
+
+      await submit(rendered);
+
+      expect(rendered.onGenerated).toHaveBeenCalledWith([], used().route_preference);
+      expect(rendered.onOutcome).toHaveBeenCalledWith("empty");
+      expect(rendered.result.current.generation.outcome).toEqual({ kind: "empty", message });
     },
-    { label: "理由が届かなければ決まった文言", reason: undefined, message: NO_ROUTES_MESSAGE },
-  ])("候補0件は、「$label」を案内に出して新しい結果として知らせ、失敗とは扱わない", async ({ reason, message }) => {
-    const rendered = renderGeneration();
-    respond([], used(), reason);
-
-    await submit(rendered);
-
-    expect(rendered.onGenerated).toHaveBeenCalledWith([], used().route_preference);
-    expect(rendered.onOutcome).toHaveBeenCalledWith("fresh");
-    expect(rendered.result.current.generation.lastMessage).toBe(message);
-    expect(rendered.result.current.generation.failure).toBeNull();
-  });
+  );
 
   it("生成が失敗したら文言を失敗として返して知らせ、結果は渡さない。次の生成で消す", async () => {
     const message = "ルート生成がタイムアウトしました";
@@ -309,22 +252,20 @@ describe("生成の結果", () => {
 
     await submit(rendered);
 
-    expect(rendered.result.current.generation.failure).toBe(message);
-    expect(rendered.result.current.generation.lastMessage).toBe(message);
+    expect(rendered.result.current.generation.outcome).toEqual({ kind: "failed", message });
     expect(rendered.onOutcome).toHaveBeenCalledWith("failed");
     expect(rendered.onGenerated).not.toHaveBeenCalled();
 
     jobs.keepRunning();
     act(() => {
-      void rendered.result.current.generation.submit(LENS_NONE_ID);
+      void rendered.result.current.generation.submit();
     });
-    expect(rendered.result.current.generation.failure).toBeNull();
+    expect(rendered.result.current.generation.outcome).toBeNull();
   });
 
   it("backendが目的地を補正したら、置いた目的地を補正後の地点へ動かして知らせ、条件が変わったとは扱わない", async () => {
     const rendered = renderGeneration();
-    act(() => rendered.result.current.conditions.changeRouteMode("destination"));
-    act(() => rendered.result.current.conditions.placePin("destination", A));
+    placeDestination(rendered, A);
     respond([route("r1")], used({ destination: A, corrected_destination: B }));
 
     await submit(rendered);
@@ -334,6 +275,39 @@ describe("生成の結果", () => {
     expect(generation.destinationCorrected).toBe(true);
     expect(generation.conditionsDirty).toBe(false);
     expect(generation.generatedInput?.destination).toEqual(B);
+  });
+
+  it("生成を待つ間に目的地を置き直したら、補正後の地点で置き直した目的地を上書きせず、条件が変わったと返す", async () => {
+    const rendered = renderGeneration();
+    placeDestination(rendered, A);
+    const job = heldReplies();
+    jobs.answerWith(job.reply);
+    let generating: Promise<void> = Promise.resolve();
+    act(() => {
+      generating = rendered.result.current.generation.submit();
+    });
+
+    const moved: Coordinates = { latitude: 35.72, longitude: 139.82 };
+    act(() => rendered.result.current.conditions.setDestination(moved));
+    await act(async () => {
+      await job.answer(
+        0,
+        Response.json({
+          status: "done",
+          result: {
+            routes: [route("r1")],
+            conditions: used({ destination: A, corrected_destination: B }),
+            no_candidates_reason: null,
+          },
+        }),
+      );
+      await generating;
+    });
+
+    const { conditions, generation } = rendered.result.current;
+    expect(conditions.destination).toEqual(moved);
+    expect(generation.generatedInput?.destination).toEqual(B);
+    expect(generation.conditionsDirty).toBe(true);
   });
 
   it("上書きした重みは軸カタログが届いていれば送り、届かず送れなかったときだけ既定の配分で作ったと返す", async () => {
@@ -376,35 +350,6 @@ describe("条件のずれ", () => {
   });
 });
 
-describe("実験スロット", () => {
-  it("研究モードの生成を新しい順に上限まで残し、代表はbackendの並びの先頭、色は並びの位置で決める。候補0件は残さない", async () => {
-    setResearchEnabled(true);
-    const rendered = renderGeneration();
-    const runs = Array.from({ length: MAX_EXPERIMENT_SLOTS + 1 }, (_, i) => ({
-      conditions: used({ generated_at: `2026-10-04T09:0${i}:00Z` }),
-      // backendの並び（難易度の低い順）の先頭を、所要時間では後ろになる候補にする。
-      top: route(`top-${i}`, 3600),
-    }));
-    for (const run of runs) {
-      respond([run.top, route("fast", 1800)], run.conditions);
-      await submit(rendered);
-    }
-    respond([], used());
-    await submit(rendered);
-
-    const slots = rendered.result.current.generation.experimentSlots;
-    expect(slots.map((slot) => slot.topCandidate.id)).toEqual(
-      runs
-        .slice(-MAX_EXPERIMENT_SLOTS)
-        .reverse()
-        .map((run) => run.top.id),
-    );
-    expect(slots[0].conditions).toEqual(runs.at(-1)?.conditions);
-    expect(slots.map((slot) => slot.color)).toEqual(EXPERIMENT_SLOT_COLORS.slice(0, MAX_EXPERIMENT_SLOTS));
-    expect(new Set(slots.map((slot) => slot.id)).size).toBe(MAX_EXPERIMENT_SLOTS);
-  });
-});
-
 describe("消す", () => {
   it("案内を消す。実行中は何もしない", async () => {
     const rendered = renderGeneration();
@@ -412,23 +357,20 @@ describe("消す", () => {
     await submit(rendered);
 
     act(() => rendered.result.current.generation.clearNotice());
-    expect(rendered.result.current.generation.failure).toBeNull();
-    expect(rendered.result.current.generation.lastMessage).toBeUndefined();
+    expect(rendered.result.current.generation.outcome).toBeNull();
 
     jobs.keepRunning();
     act(() => {
-      void rendered.result.current.generation.submit(LENS_NONE_ID);
+      void rendered.result.current.generation.submit();
     });
     act(() => rendered.result.current.generation.clearNotice());
     expect(rendered.result.current.generation.running).toBe(true);
   });
 
-  it("生成の結果（作った条件・補正・既定の配分・実験スロット・案内）を消す", async () => {
-    setResearchEnabled(true);
+  it("生成の結果（作った条件・補正・既定の配分・案内）を消す", async () => {
     const rendered = renderGeneration();
     act(() => rendered.result.current.conditions.setWeightOverrideEnabled(true));
-    act(() => rendered.result.current.conditions.changeRouteMode("destination"));
-    act(() => rendered.result.current.conditions.placePin("destination", A));
+    act(() => rendered.result.current.conditions.setDestination(A));
     respond([route("r1")], used({ corrected_destination: B }));
     await submit(rendered);
     jobs.fail("リクエストに失敗しました");
@@ -440,7 +382,6 @@ describe("消す", () => {
     expect(generation.generatedInput).toBeNull();
     expect(generation.destinationCorrected).toBe(false);
     expect(generation.weightsNotApplied).toBe(false);
-    expect(generation.experimentSlots).toEqual([]);
-    expect(generation.failure).toBeNull();
+    expect(generation.outcome).toBeNull();
   });
 });

@@ -12,12 +12,18 @@ import asyncio
 import json
 import logging
 import threading
-import time
 from pathlib import Path
 
+import httpx
 import shapely
-from cachetools import LRUCache, cached
+from cachetools import LRUCache, TTLCache, cached
 from shapely.geometry.base import BaseGeometry
+
+from app.domain.stopwatch import elapsed_ms, start_timer
+from app.domain.jma_area import NEAREST_LIMIT_DEG, ResolvedArea, resolve_area
+from app.infrastructure.data_paths import DATA_DIR
+from app.infrastructure.debug_log import log_throttled_warning
+from app.infrastructure.jma_warning_client import fetch_area_data
 
 logger = logging.getLogger("ridecompass.jma_area_boundaries")
 
@@ -25,21 +31,22 @@ logger = logging.getLogger("ridecompass.jma_area_boundaries")
 #: https://www.data.jma.go.jp/developer/gis.html にある。
 SOURCE_URL = "https://www.data.jma.go.jp/developer/gis/20260226_AreaInformationCity_weather_GIS.zip"
 
-DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "jma_area"
-BOUNDARY_PATH = DATA_DIR / (SOURCE_URL.rsplit("/", 1)[1].removesuffix(".zip") + ".json")
-
-#: どの区域にも入らない地点を、最も近い区域へ寄せる距離の上限（度。おおむね1km）。境界は簡略化して
-#: 持つため隣の区域との間に隙間ができ、海岸の区域は岸壁・橋の上を含まないことがある。
-NEAREST_LIMIT_DEG = 0.01
-
+BOUNDARY_PATH = DATA_DIR / "jma_area" / (SOURCE_URL.rsplit("/", 1)[1].removesuffix(".zip") + ".json")
 
 class AreaBoundaries:
     def __init__(self, codes: list[str], geometries: list[BaseGeometry]):
         self._codes = codes
+        self._geometries = geometries
+        self._index = {code: index for index, code in enumerate(codes)}
         self._tree = shapely.STRtree(geometries)
 
     def __len__(self) -> int:
         return len(self._codes)
+
+    def shape(self, code: str) -> BaseGeometry | None:
+        """区域のコードの境界。無いコードならNone。"""
+        index = self._index.get(code)
+        return None if index is None else self._geometries[index]
 
     def find(self, lat: float, lon: float) -> str | None:
         """地点を含む区域のコード。含む区域が無ければ`NEAREST_LIMIT_DEG`以内で最も近い区域。"""
@@ -64,12 +71,12 @@ def write_boundaries(path: Path, areas: dict[str, BaseGeometry]) -> None:
 
 @cached(cache=LRUCache(maxsize=1), lock=threading.Lock())
 def load_boundaries(path: Path) -> AreaBoundaries:
-    started = time.perf_counter()
+    started = start_timer()
     payload: dict[str, str] = json.loads(path.read_text(encoding="utf-8"))
     boundaries = AreaBoundaries(list(payload), list(shapely.from_wkb(list(payload.values()))))
     logger.info(
-        "区域の境界を読み込んだ path=%s areas=%d ms=%.0f",
-        path.name, len(boundaries), (time.perf_counter() - started) * 1000,
+        "区域の境界を読み込んだ path=%s areas=%d ms=%d",
+        path.name, len(boundaries), elapsed_ms(started),
     )
     return boundaries
 
@@ -87,10 +94,50 @@ async def find_class20_code(lat: float, lon: float) -> str | None:
     try:
         boundaries = await asyncio.to_thread(load_boundaries, BOUNDARY_PATH)
     except (OSError, ValueError, shapely.errors.GEOSException) as exc:
-        logger.warning(
+        log_throttled_warning(
+            "weather:jma-area-boundaries",
             "区域の境界を読めないため警報・洪水予報の区域を引けません path=%s error=%r"
             "（scripts/fetch_jma_area_boundaries.pyで取得する）",
             BOUNDARY_PATH, exc,
         )
         raise AreaBoundariesUnavailableError from exc
     return boundaries.find(lat, lon)
+
+
+async def area_shape(class20_code: str) -> BaseGeometry | None:
+    """区域（area.jsonのclass20）の境界。無いコードならNone。境界は`find_class20_code`が読み込んだあとに呼ぶ。"""
+    boundaries = await asyncio.to_thread(load_boundaries, BOUNDARY_PATH)
+    return boundaries.shape(class20_code)
+
+
+class OutsideAreas:
+    """地点がどの区域にも入らない（遠い海上）。陸の区域の警報・予報は当たらない。"""
+
+
+OUTSIDE_AREAS = OutsideAreas()
+
+
+async def resolve_point_area(
+    http_client: httpx.AsyncClient, area_data_cache: TTLCache, lat: float, lon: float
+) -> ResolvedArea | OutsideAreas | None:
+    """地点が属する区域を、地域マスタ(area.json)で警報のエリアまで辿る。
+
+    どの区域にも入らなければ`OUTSIDE_AREAS`。境界か地域マスタを読めない・辿れないならNone（区域が分からない）。
+    """
+    try:
+        class20_code = await find_class20_code(lat, lon)
+    except AreaBoundariesUnavailableError:
+        return None
+    if class20_code is None:
+        return OUTSIDE_AREAS
+
+    area_master = await fetch_area_data(http_client, area_data_cache)
+    if area_master is None:
+        return None
+
+    resolved = resolve_area(class20_code, area_master)
+    if resolved is None:
+        log_throttled_warning(
+            "weather:jma-area", "区域の境界が返したコードを地域マスタ(area.json)で警報のエリアへ辿れない class20=%s", class20_code
+        )
+    return resolved

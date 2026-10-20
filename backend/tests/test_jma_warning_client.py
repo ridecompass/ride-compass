@@ -1,8 +1,9 @@
 """`infrastructure/jma_warning_client.py`——気象庁の地域マスタ（area.json）と警報・注意報の電文の取得と、応答の形の解き方。
 
 入口は`fetch_area_data`・`fetch_warning_documents`の2つで、気象庁の代役（respx）へ本物の`httpx.AsyncClient`を
-向けて呼ぶ。見るのは、返る値（`AreaMaster`・`WarningBulletin`）と、取得に失敗したときのNone、プロセス内
-キャッシュで上流を引き直さないこと（電文は府県予報区ごと）。
+向けて呼ぶ。見るのは、返る値（`AreaMaster`・`WarningBulletin`。種別はコードを名称へ、状態を発表中かへ読み替えて
+持つ）と、取得に失敗したときのNone、プロセス内キャッシュで上流を引き直さないこと（電文は府県予報区ごと）。
+コード表`WARNING_KINDS`（配信元の資料の写し）は差し替えず、期待する名称は配信元の資料の別表3から引く。
 
 ここで見ないもの:
 - キャッシュの骨格（失敗をキャッシュしない・ログの`fields`）→ `test_simple_api_client.py`
@@ -10,6 +11,8 @@
 - 電文から区域の種別を引く・発表中の警報の抽出 → `test_jma_warning_domain.py`
 - 地点から警報を返すまでの通し → `test_warning_service.py`
 """
+
+import logging
 
 import pytest
 import respx
@@ -28,7 +31,7 @@ def _warning_url(office_code: str) -> str:
 # --- 地域マスタ ---
 
 
-async def test_area_master_keeps_parent_and_name_of_each_level():
+async def test_area_master_keeps_the_parent_of_each_level():
     payload = {
         "centers": {"010300": {"name": "気象庁"}},
         "offices": {"130000": {"name": "東京都"}},
@@ -40,22 +43,29 @@ async def test_area_master_keeps_parent_and_name_of_each_level():
     master = await jma_warning_client.fetch_area_data(answering(json=payload), new_area_data_cache())
 
     assert master == AreaMaster(
-        class20s={"1310100": AreaEntry(parent="130011", name="千代田区")},
-        class15s={"130011": AreaEntry(parent="130010", name="２３区西部")},
-        class10s={"130010": AreaEntry(parent="130000", name="東京地方")},
+        class20s={"1310100": AreaEntry(parent="130011")},
+        class15s={"130011": AreaEntry(parent="130010")},
+        class10s={"130010": AreaEntry(parent="130000")},
     )
 
 
-async def test_area_master_tolerates_missing_or_malformed_sections():
-    """無い階層・辞書でない階層は空、辞書でない区域は載せない。親・名前の無い区域はNoneで持つ。"""
+async def test_area_master_tolerates_missing_or_malformed_sections(caplog):
+    """無い階層・辞書でない階層は空、辞書でない区域は載せず、載せなかった数を出す。親の無い区域と、
+    文字列でない親はNoneで持つ。"""
     payload = {
-        "class20s": {"1310100": {"name": "千代田区"}, "9999999": "壊れた行"},
+        "class20s": {"1310100": {"name": "千代田区"}, "1310200": {"parent": ["130011"], "name": 1}, "9999999": "壊れた行"},
         "class15s": ["辞書でない"],
     }
 
-    master = await jma_warning_client.fetch_area_data(answering(json=payload), new_area_data_cache())
+    with caplog.at_level(logging.WARNING, logger="ridecompass.jma_warning_client"):
+        master = await jma_warning_client.fetch_area_data(answering(json=payload), new_area_data_cache())
 
-    assert master == AreaMaster(class20s={"1310100": AreaEntry(parent=None, name="千代田区")}, class15s={}, class10s={})
+    assert master == AreaMaster(
+        class20s={"1310100": AreaEntry(parent=None), "1310200": AreaEntry(parent=None)},
+        class15s={},
+        class10s={},
+    )
+    assert "unreadable=1 entries=3" in caplog.text
 
 
 async def test_area_master_is_fetched_once_while_cached():
@@ -87,8 +97,8 @@ async def test_area_master_failure_is_none(response):
 
 
 async def test_bulletins_are_read_per_document_of_the_office():
-    """府県予報区の電文の配列を1件ずつ解く。区域・二次細分区域ごとに種別を持ち、警報の無い地域は
-    コードの無い「なし」の1件になる。"""
+    """府県予報区の電文の配列を1件ずつ解く。区域・二次細分区域ごとに種別を持ち、警報の無い地域
+    （コードの無い「なし」の1件）は種別を持たない。解除された種別は発表中でないとして持つ。"""
     router = respx.Router()
     router.get(_warning_url("130000")).respond(
         json=[
@@ -99,7 +109,9 @@ async def test_bulletins_are_read_per_document_of_the_office():
                         {"areaCode": "1310100", "kinds": [{"code": "10", "status": "発表", "additions": ["土砂災害"]}]},
                         {"areaCode": "1310200", "kinds": [{"status": "発表警報・注意報はなし"}]},
                     ],
-                    "class10Items": [{"areaCode": "130010", "kinds": [{"code": "14", "status": "継続"}]}],
+                    "class10Items": [
+                        {"areaCode": "130010", "kinds": [{"code": "14", "status": "継続"}, {"code": "03", "status": "解除"}]}
+                    ],
                 },
             },
             {"reportDatetime": "2026-08-29T16:00:00+09:00", "warning": {"class10Items": []}},
@@ -110,14 +122,18 @@ async def test_bulletins_are_read_per_document_of_the_office():
 
     assert bulletins == [
         WarningBulletin(
-            report_datetime="2026-08-29T17:00:00+09:00",
             class20_kinds={
-                "1310100": (AreaWarningKind(code="10", status="発表", additions=("土砂災害",)),),
-                "1310200": (AreaWarningKind(code=None, status="発表警報・注意報はなし", additions=()),),
+                "1310100": (AreaWarningKind(code="10", name="大雨注意報", active=True, additions=("土砂災害",)),),
+                "1310200": (),
             },
-            class10_kinds={"130010": (AreaWarningKind(code="14", status="継続", additions=()),)},
+            class10_kinds={
+                "130010": (
+                    AreaWarningKind(code="14", name="雷注意報", active=True, additions=()),
+                    AreaWarningKind(code="03", name="大雨警報", active=False, additions=()),
+                )
+            },
         ),
-        WarningBulletin(report_datetime="2026-08-29T16:00:00+09:00", class20_kinds={}, class10_kinds={}),
+        WarningBulletin(class20_kinds={}, class10_kinds={}),
     ]
 
 
@@ -135,30 +151,80 @@ async def test_first_item_wins_when_an_area_appears_twice():
 
     [bulletin] = await jma_warning_client.fetch_warning_documents(answering(json=payload), "130000", new_warning_cache())
 
-    assert bulletin.class20_kinds == {"1310100": (AreaWarningKind(code="10", status="発表", additions=()),)}
+    assert bulletin.class20_kinds == {"1310100": (AreaWarningKind(code="10", name="大雨注意報", active=True, additions=()),)}
 
 
-async def test_malformed_parts_of_a_bulletin_are_skipped():
-    """辞書でない電文・項目、コードが文字列でない地域は載せない。区域の項目が配列でない・
-    `warning`が無い・発表時刻が文字列でない電文は、その部分を空として持つ。"""
+async def test_malformed_parts_of_a_bulletin_are_skipped(caplog):
+    """辞書でない電文・項目・種別、コードが文字列でない地域、コード・状態が文字列でない種別は載せず、
+    載せなかった数を出す。区域の項目・種別が配列でない・`warning`が無い電文は、
+    その部分を空として持つ。付加事項は配列の中の文字列だけを持つ。"""
     payload = [
         "辞書でない電文",
         {
-            "reportDatetime": 20260829,
             "warning": {
-                "class20Items": ["辞書でない項目", {"areaCode": 1310100, "kinds": []}, {"kinds": []}],
+                "class20Items": [
+                    "辞書でない項目",
+                    {"areaCode": 1310100, "kinds": []},
+                    {"kinds": []},
+                    {
+                        "areaCode": "1310200",
+                        "kinds": [
+                            "辞書でない種別",
+                            {"code": 10, "status": "発表"},
+                            {"code": "14", "status": ["発表"]},
+                            {"code": "10", "status": "発表", "additions": None},
+                            {"code": "15", "status": "継続", "additions": ["雷", 1]},
+                        ],
+                    },
+                    {"areaCode": "1310300", "kinds": None},
+                ],
                 "class10Items": {"130010": "配列でない"},
             },
         },
         {"reportDatetime": "2026-08-29T17:00:00+09:00", "warning": "辞書でない"},
     ]
 
-    bulletins = await jma_warning_client.fetch_warning_documents(answering(json=payload), "130000", new_warning_cache())
+    with caplog.at_level(logging.WARNING, logger="ridecompass.jma_warning_client"):
+        bulletins = await jma_warning_client.fetch_warning_documents(
+            answering(json=payload), "130000", new_warning_cache()
+        )
 
     assert bulletins == [
-        WarningBulletin(report_datetime=None, class20_kinds={}, class10_kinds={}),
-        WarningBulletin(report_datetime="2026-08-29T17:00:00+09:00", class20_kinds={}, class10_kinds={}),
+        WarningBulletin(
+            class20_kinds={
+                "1310200": (
+                    AreaWarningKind(code="10", name="大雨注意報", active=True, additions=()),
+                    AreaWarningKind(code="15", name="強風注意報", active=True, additions=("雷",)),
+                ),
+                "1310300": (),
+            },
+            class10_kinds={},
+        ),
+        WarningBulletin(class20_kinds={}, class10_kinds={}),
     ]
+    assert "unreadable=7 bulletins=3" in caplog.text
+
+
+@pytest.mark.parametrize(("status", "logged"), [("発表", True), ("解除", False)], ids=["issued", "lifted"])
+async def test_a_code_missing_from_the_table_is_left_out_and_logged_once_per_fetch_while_issued(caplog, status, logged):
+    """表が配信元のコード表より古くなった印として、運用者に見えるように出す。電文ごとに出すと、同じコードが
+    種類の別の電文に並ぶたびに重なる。発表中でないものは画面へ出ないので、表に無くても出さない。"""
+    kinds = [{"code": "t_unknown", "status": status}]
+    payload = [
+        {"warning": {"class20Items": [{"areaCode": "1310100", "kinds": kinds}]}},
+        {"warning": {"class10Items": [{"areaCode": "130010", "kinds": kinds}]}},
+    ]
+
+    with caplog.at_level(logging.WARNING, logger="ridecompass.jma_warning_client"):
+        bulletins = await jma_warning_client.fetch_warning_documents(
+            answering(json=payload), "130000", new_warning_cache()
+        )
+
+    assert bulletins == [
+        WarningBulletin(class20_kinds={"1310100": ()}, class10_kinds={}),
+        WarningBulletin(class20_kinds={}, class10_kinds={"130010": ()}),
+    ]
+    assert [record.getMessage().count("t_unknown") for record in caplog.records] == ([1] if logged else [])
 
 
 async def test_bulletins_are_cached_per_office():

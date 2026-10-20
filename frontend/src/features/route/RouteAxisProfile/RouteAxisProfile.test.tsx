@@ -7,7 +7,7 @@
  * （軸別難易度の丸めと「データなし」・生値・材料の内訳・説明）。
  *
  * ここで見ないもの: 帯の積み方・チップの値と色 → `components/AxisContributionBar`。生値と内訳の1件の書き方 →
- * `features/route/RouteAxisProfile/axisRawValue.ts`。所要の書き方 → `features/route/formatDuration.ts`。
+ * `features/route/RouteAxisProfile/axisRawValue.ts`。所要の書き方 → `lib/duration.ts`。
  *
  * 軸は架空のもの（`axis_a`等）を`src/testing/catalogAxes.ts`の雛形から作る。
  */
@@ -61,7 +61,7 @@ describe("RouteAxisProfile", () => {
 
   it("総合難易度・所要・負荷を丸めて並べ、それぞれに(i)の説明を持つ", () => {
     renderProfile();
-    expect(screen.getByText("総合難易度").parentElement).toHaveTextContent("総合難易度42/100");
+    expect(screen.getByText("総合難易度").parentElement).toHaveTextContent("総合難易度41.6/100");
     expect(screen.getByText("所要").parentElement).toHaveTextContent("所要62分");
     expect(screen.getByText("負荷").parentElement).toHaveTextContent("負荷1248");
     for (const name of ["総合難易度の説明を表示", "所要時間の説明を表示", "負荷の説明を表示"]) {
@@ -88,7 +88,7 @@ describe("RouteAxisProfile", () => {
   it.each([
     [null, null],
     [0.004, null],
-    [0.012, "データの無い区間が1%[坂・信号の無い道として所要時間を出しています]"],
+    [0.012, "データの無い区間が1%[坂の無い平地で、止まる所も無い道として所要時間を出しています]"],
   ])("値の無い区間の割合が%sなら、注記は%s（百分率へ丸めて1以上のときだけ出す）", (share, expected) => {
     renderProfile({ missingTravelDataShare: share });
     if (expected === null) expect(screen.queryByText(/データの無い区間が/)).not.toBeInTheDocument();
@@ -97,7 +97,7 @@ describe("RouteAxisProfile", () => {
 
   it("寄与のある軸が1つも無ければ、帯の代わりに表示できるデータが無いと案内する", () => {
     renderProfile({ axisContributions: { axis_a: 0 } });
-    expect(screen.getByText("このルートで表示できる評価軸データがありません")).toBeInTheDocument();
+    expect(screen.getByText("このルートで表示できる評価軸の値がありません")).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "難易度の内訳" })).not.toBeInTheDocument();
   });
 
@@ -115,17 +115,15 @@ describe("RouteAxisProfile", () => {
         axis_id: "axis_a",
         label: "軸A",
         description: "軸Aの説明",
-        raw_value_unit: "回/km",
-        raw_value_total_unit: "回",
+        raw_value_units: { unit: "回/km", total_unit: "回" },
         material_breakdown: [
-          { material_id: "lit", label: "街灯あり", dtype: "boolean", unit: "", share: 0.5, value_labels: {} },
-          { material_id: "absent", label: "値の来ない材料", dtype: "numeric", unit: "m", share: 0.2, value_labels: {} },
+          { material_id: "lit", label: "街灯あり", dtype: "boolean", unit: "", value_labels: {} },
+          { material_id: "absent", label: "値の来ない材料", dtype: "numeric", unit: "m", value_labels: {} },
           {
             material_id: "road_kind",
             label: "道の種類",
             dtype: "categorical",
             unit: "",
-            share: 0.3,
             value_labels: { residential: "住宅街の道" },
           },
         ],
@@ -142,9 +140,9 @@ describe("RouteAxisProfile", () => {
     });
     const detail = await openDetail("軸A");
     expect(detail).toContain("軸A");
-    expect(detail).toContain("軸別難易度 38/100");
+    expect(detail).toContain("この評価軸の難易度 37.5/100");
     expect(detail).toContain("0.8回/km・約26回");
-    expect(detail).toContain("この軸の内訳: 街灯あり 68%・住宅街の道 62%");
+    expect(detail).toContain("この評価軸の内訳: 街灯あり 68%・住宅街の道 62%");
     expect(detail).toContain("軸Aの説明");
   });
 
@@ -152,6 +150,6 @@ describe("RouteAxisProfile", () => {
     renderProfile({ weights: { axis_a: 0.5, axis_b: 0.5 } });
     const detail = await openDetail("軸B");
     expect(detail).toContain("データなし");
-    expect(detail).not.toContain("この軸の内訳");
+    expect(detail).not.toContain("この評価軸の内訳");
   });
 });

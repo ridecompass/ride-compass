@@ -1,53 +1,67 @@
-import { DEFAULT_HARD_FILTERS } from "@/features/route/RouteSettingsPanel/HardFilterPanel";
-import type { RouteMode } from "@/features/route/RouteForm/useRouteFormSubmit";
-import { syncHardFilterKeys } from "@/features/route/hardFilterSync";
+import { avoidanceLevelOf, readRoadAvoidance } from "@/features/route/roadAvoidance";
 import { alignRoutePreference } from "@/features/route/routePreferenceSync";
 import { totalWeight } from "@/features/route/routeWeightShare";
 import type { AxisCatalog } from "@/lib/axisCatalog";
-import type { Coordinates, HardFilterOverride, RoutePreferenceWeights } from "@/types/route";
+import { isCoordinates, readStoredList, withEntryFirst } from "@/lib/storedList";
+import type { Coordinates, RoadAvoidanceOverride, RoutePreferenceWeights } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-/** 名前を付けて保存する生成の条件。その日の走行条件（出発時刻・想定速度・走行方位）と、生成した候補は持たない。 */
+/** 生成の条件（「ルート設定」の入力）。いまの条件・保存・呼び出しが同じこの形を使う。出発地は位置の持ち主が持つので含まず、
+ * その日の走行条件（出発時刻・想定速度）と、生成した候補も持たない。 */
 export interface GenerationConditionsSnapshot {
-  routeMode: RouteMode;
+  /** 周回か（終点を出発地にする）。周回の間も`destination`は覚えておき、外すと戻す（`destinationInUse`）。 */
+  loop: boolean;
+  /** 全長の目標を決めるか。外している間も距離の入力は残す（入れ直すと前の値に戻る）。 */
+  distanceTargeted: boolean;
   /** 距離の入力（文字列のまま。「ルート設定」が持つ形）。 */
   distance: string;
   /** 候補数の入力（同上）。 */
   maxRoutes: string;
-  /** 地図で置いた出発地。nullは「現在地から」で、呼び出したときの現在地から生成する。 */
-  origin: Coordinates | null;
   waypoints: Coordinates[];
+  /** 置いた目的地（周回の間は覚えておくだけで使わない）。 */
   destination: Coordinates | null;
   /** 上書きした重み。nullは上書きしない（backendの既定の配分）。 */
   routePreference: RoutePreferenceWeights | null;
-  hardFilters: HardFilterOverride;
+  /** 道の区分の行ごとに選んだ避け方（選んでいない行は無い）。 */
+  roadAvoidance: RoadAvoidanceOverride;
 }
 
+/** 生成と画面が使う目的地。周回の間は置いた目的地を使わない（null。終点は出発地）。 */
+export function destinationInUse({
+  loop,
+  destination,
+}: Pick<GenerationConditionsSnapshot, "loop" | "destination">): Coordinates | null {
+  return loop ? null : destination;
+}
+
+/** 名前を付けて保存した生成の条件。 */
 export interface SavedCondition extends GenerationConditionsSnapshot {
   name: string;
+  /** 地図で置いた出発地。nullは「現在地から」で、呼び出したときの現在地から生成する。 */
+  origin: Coordinates | null;
 }
 
-/** 距離の入力として受け付ける値か（画面の範囲内の数値）。範囲が縮んだ後でも、範囲外の距離が復元されて送られない。 */
+/** 距離の刻み（km）。backendは0より大きい距離を受け付けるが、画面は狙った値へ合わせやすいよう、この刻みで選ばせる。
+ * 距離の入力の下限も1刻み分。 */
+export const DISTANCE_STEP_KM = 5;
+
+/** 距離の入力として受け付ける値か。0より大きく上限以下の数なら、画面の刻みの近い方へ寄せて受け付ける（1km刻みだった頃の
+ * 保存値も読める）。範囲が縮んだ後でも、範囲外の距離が復元されて送られない。 */
 export function acceptedDistanceInput(raw: string): string | null {
   const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed >= 1 && parsed <= routeGenerateConfig.max_distance_km ? raw : null;
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > routeGenerateConfig.max_distance_km) return null;
+  const snapped = Math.round(parsed / DISTANCE_STEP_KM) * DISTANCE_STEP_KM;
+  return String(Math.min(Math.max(snapped, DISTANCE_STEP_KM), routeGenerateConfig.max_distance_km));
 }
 
 /** 候補数の入力として受け付ける値か。 */
 export function acceptedMaxRoutesInput(raw: string): string | null {
   const parsed = Number(raw);
-  return Number.isInteger(parsed) && parsed >= 1 && parsed <= routeGenerateConfig.max_routes ? raw : null;
-}
-
-function isCoordinates(value: unknown): value is Coordinates {
-  if (typeof value !== "object" || value === null) return false;
-  const { latitude, longitude } = value as Record<string, unknown>;
-  return (
-    typeof latitude === "number" &&
-    Number.isFinite(latitude) &&
-    typeof longitude === "number" &&
-    Number.isFinite(longitude)
-  );
+  return Number.isInteger(parsed) &&
+    parsed >= routeGenerateConfig.min_routes &&
+    parsed <= routeGenerateConfig.max_routes
+    ? raw
+    : null;
 }
 
 function isWeights(value: unknown): value is RoutePreferenceWeights {
@@ -55,110 +69,147 @@ function isWeights(value: unknown): value is RoutePreferenceWeights {
     typeof value === "object" &&
     value !== null &&
     !Array.isArray(value) &&
-    Object.values(value).every((weight) => typeof weight === "number" && Number.isFinite(weight))
+    Object.values(value).every((weight) => typeof weight === "number" && Number.isFinite(weight) && weight >= 0)
   );
 }
 
-// 1件を今の画面が受け付ける形で読む。読めない件はnull（ほかの件は残す）。重みの軸は読むときに揃えず、呼び出して
-// 「重み」へ入れたあと、いつもの保存値と同じく軸カタログの公開軸へ揃える。
+const coordinatesOrNull = (value: unknown) => (value === null || isCoordinates(value) ? value : undefined);
+
+// 全長の目標の有無を持たない件は、前に周回・目的地のモードで保存した件。周回は距離で作り、経由地・目的地を置いてあっても
+// 隠して使わず、目的地は距離を決めずに作っていた。一覧を読むと今の形で書き戻す（`useSavedConditions.ts`の`rewrite`）ので、
+// この読み替えは一覧をまだ開いていない端末のためだけにあり、2027-01-10に、これを読む分岐ごと消す。
+function savedMode(entry: Record<string, unknown>): "loop" | "destination" | null {
+  if (entry.distanceTargeted !== undefined) return null;
+  return entry.routeMode === "loop" || entry.routeMode === "destination" ? entry.routeMode : null;
+}
+
+// 保存した1件の項目ごとの読み方。今の画面が受け付けない値はundefinedを返し、その件を捨てる。キーは保存の形と同じ型の
+// 写像なので、形に項目を足すと読み方が要る（前に保存した件はその項目を持たないので、読み方が扱いを決める。2つ目の引数は
+// 保存した1件の全体）。重みの軸は読むときに揃えず、呼び出して「重み」へ入れたあと、いつもの保存値と同じく軸カタログの
+// 公開軸へ揃える。
+const SAVED_FIELD_READERS: {
+  [K in keyof SavedCondition]-?: (value: unknown, entry: Record<string, unknown>) => SavedCondition[K] | undefined;
+} = {
+  name: (value) => (typeof value === "string" && value.trim() !== "" ? value : undefined),
+  // 周回かを持たない件は、目的地の有無で周回を決めていた頃の件で、目的地を持たなければ周回として読む（その頃の生成と同じ形）。
+  // 目的地の有無で読む分岐は2027-01-19に消す。
+  loop: (value, entry) => {
+    if (value === undefined) return savedMode(entry) === "loop" || entry.destination === null;
+    return typeof value === "boolean" ? value : undefined;
+  },
+  distanceTargeted: (value, entry) => {
+    if (typeof value === "boolean") return value;
+    const mode = savedMode(entry);
+    return mode === null ? undefined : mode === "loop";
+  },
+  distance: (value) => (typeof value === "string" ? (acceptedDistanceInput(value) ?? undefined) : undefined),
+  maxRoutes: (value) => (typeof value === "string" ? (acceptedMaxRoutesInput(value) ?? undefined) : undefined),
+  origin: coordinatesOrNull,
+  waypoints: (value, entry) => {
+    if (!Array.isArray(value) || value.length > routeGenerateConfig.max_waypoints || !value.every(isCoordinates)) {
+      return undefined;
+    }
+    return savedMode(entry) === "loop" ? [] : value;
+  },
+  destination: (value, entry) => {
+    const destination = coordinatesOrNull(value);
+    return destination !== undefined && savedMode(entry) === "loop" ? null : destination;
+  },
+  routePreference: (value) => (value === null || isWeights(value) ? value : undefined),
+  // 避け方を持たない件は、行ごとに選べるようになる前に保存した件で、どの行も選んでいない（既定の段）として読む。
+  // この読み替えは2027-01-18に消し、避け方を持たない件を捨てる。
+  roadAvoidance: readRoadAvoidance,
+};
+
+// 1件を今の画面が受け付ける形で読む。読めない件はnull（ほかの件は残す）。
 function readSavedCondition(value: unknown): SavedCondition | null {
   if (typeof value !== "object" || value === null) return null;
   const entry = value as Record<string, unknown>;
-  const { name, routeMode, distance, maxRoutes, origin, waypoints, destination, routePreference, hardFilters } = entry;
-  if (typeof name !== "string" || name.trim() === "") return null;
-  if (routeMode !== "loop" && routeMode !== "destination") return null;
-  if (typeof distance !== "string" || acceptedDistanceInput(distance) === null) return null;
-  if (typeof maxRoutes !== "string" || acceptedMaxRoutesInput(maxRoutes) === null) return null;
-  if (origin !== null && !isCoordinates(origin)) return null;
-  if (
-    !Array.isArray(waypoints) ||
-    waypoints.length > routeGenerateConfig.max_waypoints ||
-    !waypoints.every(isCoordinates)
-  ) {
-    return null;
+  const read: Record<string, unknown> = {};
+  for (const [key, readField] of Object.entries(SAVED_FIELD_READERS)) {
+    const field = readField(entry[key], entry);
+    if (field === undefined) return null;
+    read[key] = field;
   }
-  if (destination !== null && !isCoordinates(destination)) return null;
-  if (routePreference !== null && !isWeights(routePreference)) return null;
-  if (typeof hardFilters !== "object" || hardFilters === null) return null;
+  return read as unknown as SavedCondition;
+}
+
+/** 保存した生成の条件の一覧を読む。 */
+export function readSavedConditions(raw: string): SavedCondition[] | null {
+  return readStoredList(raw, readSavedCondition);
+}
+
+// 名前と説明が並べる、ルートの形。
+function routeShape(conditions: GenerationConditionsSnapshot) {
   return {
-    name,
-    routeMode,
-    distance,
-    maxRoutes,
-    origin,
-    waypoints,
-    destination,
-    routePreference,
-    hardFilters: syncHardFilterKeys(hardFilters as HardFilterOverride, DEFAULT_HARD_FILTERS),
+    toDestination: !conditions.loop,
+    distance: conditions.distanceTargeted ? `${conditions.distance}km` : null,
+    waypointCount: conditions.waypoints.length,
   };
 }
 
-/** 保存した一覧を読む。壊れた保存値は空の一覧、読めない件はその件だけを捨てる。 */
-export function readSavedConditions(raw: string): SavedCondition[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(parsed)) return [];
-  return parsed.map(readSavedCondition).filter((entry): entry is SavedCondition => entry !== null);
-}
-
 /** 名前の欄に最初から入れておく仮の名前。 */
-export function suggestedConditionName(conditions: Omit<GenerationConditionsSnapshot, "origin">): string {
-  if (conditions.routeMode === "loop") return `周回 ${conditions.distance}km`;
-  return conditions.waypoints.length > 0 ? `目的地 経由${conditions.waypoints.length}地点` : "目的地";
+export function suggestedConditionName(conditions: GenerationConditionsSnapshot): string {
+  const { toDestination, distance, waypointCount } = routeShape(conditions);
+  return [toDestination ? "目的地" : "周回", distance, waypointCount > 0 ? `経由${waypointCount}地点` : null]
+    .filter((part) => part !== null)
+    .join(" ");
 }
 
 /** 保存の前と一覧の行に並べる、何が保存されるかの説明（出発地は`originDescription`）。 */
 interface ConditionsDescription {
-  /** 周回か目的地か・距離・経由地・候補数。 */
+  /** 周回か目的地か・全長の目標・経由地・候補数。 */
   route: string;
-  /** 配分の種類と、使う軸ごとの割合（重みの合計に占める%。「重み」タブのチップと同じ数）。 */
+  /** 使う軸ごとの割合（重みの合計に占める%。「重み」タブのチップと同じ数）。 */
   weights: string;
-  /** 除外する道路の名前。 */
+  /** 「通らない」を選んだ行と、なるべく避ける行の名前（いつも通らない固定の行は含めない）。 */
   exclusions: string;
 }
 
-function routeDescription(conditions: Omit<GenerationConditionsSnapshot, "origin">): string {
-  const route =
-    conditions.routeMode === "loop"
-      ? `周回 ${conditions.distance}km`
-      : conditions.waypoints.length > 0
-        ? `目的地へ・経由 ${conditions.waypoints.length}地点`
-        : "目的地へ";
-  return `${route}・候補 ${conditions.maxRoutes}本`;
+function routeDescription(conditions: GenerationConditionsSnapshot): string {
+  const { toDestination, distance, waypointCount } = routeShape(conditions);
+  const head = toDestination ? "目的地へ" : "周回";
+  return [
+    distance === null ? head : `${head} ${distance}`,
+    waypointCount > 0 ? `経由 ${waypointCount}地点` : null,
+    `候補 ${conditions.maxRoutes}本`,
+  ]
+    .filter((part) => part !== null)
+    .join("・");
 }
 
 // 上書きしない重みは、生成のときbackendの既定の配分で探すので、軸カタログが配る既定の重みを割合にして見せる。
-// 上書きした重みは、呼び出して送るときと同じく公開軸へ揃えてから割合にする。
+// 上書きした重みは、呼び出して送るときと同じく公開軸へ揃えてから割合にする。上書きしたかは出さない（残るのは割合だけ）。
 function weightsDescription(routePreference: RoutePreferenceWeights | null, catalog: AxisCatalog): string {
-  const kind = routePreference === null ? "おすすめの配分" : "自分で変えた配分";
   const weights = alignRoutePreference(routePreference ?? catalog.defaultWeights, catalog);
   const total = totalWeight(weights);
   const shares = catalog.axes
     .filter((axis) => weights[axis.axisId] > 0)
-    .map((axis) => ({ label: axis.chipLabel, pct: Math.round((weights[axis.axisId] / total) * 100) }))
+    .map((axis) => ({ label: axis.label, pct: Math.round((weights[axis.axisId] / total) * 100) }))
     .sort((a, b) => b.pct - a.pct);
-  return shares.length === 0 ? kind : `${kind}（${shares.map(({ label, pct }) => `${label} ${pct}%`).join("・")}）`;
+  return shares.length === 0 ? "—" : shares.map(({ label, pct }) => `${label} ${pct}%`).join("・");
 }
 
-function exclusionsDescription(hardFilters: HardFilterOverride): string {
-  const labels = routeGenerateConfig.hard_filters.filters
-    .filter(({ key }) => hardFilters[key])
-    .map(({ label }) => label);
-  return labels.length === 0 ? "なし" : labels.join("・");
+// 段ごとに「段の名前 行の名前・…」を、強い段から並べる。行と段は軸カタログが配るもので、届く前は「なし」になる。
+function exclusionsDescription(roadAvoidance: RoadAvoidanceOverride, catalog: AxisCatalog): string {
+  const { levels, rows } = catalog.roadClasses.avoidance;
+  const parts = levels.toReversed().flatMap(({ key: level, label: levelLabel }) => {
+    const labels = rows
+      .filter((row) => level !== "pass" && avoidanceLevelOf(row, roadAvoidance, levels) === level)
+      .map(({ label }) => label);
+    return labels.length === 0 ? [] : [`${levelLabel} ${labels.join("・")}`];
+  });
+  return parts.length === 0 ? "なし" : parts.join("／");
 }
 
 export function describeConditions(
-  conditions: Omit<GenerationConditionsSnapshot, "origin">,
+  conditions: GenerationConditionsSnapshot,
   catalog: AxisCatalog,
 ): ConditionsDescription {
   return {
     route: routeDescription(conditions),
     weights: weightsDescription(conditions.routePreference, catalog),
-    exclusions: exclusionsDescription(conditions.hardFilters),
+    exclusions: exclusionsDescription(conditions.roadAvoidance, catalog),
   };
 }
 
@@ -167,7 +218,7 @@ export function originDescription(fixed: boolean): string {
   return fixed ? "保存した地点に固定" : "呼び出した時の現在地";
 }
 
-/** 保存した一覧へ1件を入れる。同じ名前の件は上書きし、入れた件を先頭に置く（最近保存したものほど上）。 */
+/** 保存した一覧へ1件を入れる。同じ名前の件は上書きする。 */
 export function withSavedCondition(list: SavedCondition[], entry: SavedCondition): SavedCondition[] {
-  return [entry, ...list.filter((saved) => saved.name !== entry.name)];
+  return withEntryFirst(list, entry, (saved) => saved.name === entry.name);
 }

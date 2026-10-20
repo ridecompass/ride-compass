@@ -17,8 +17,9 @@ _WaySink = Callable[[dict, dict[int, tuple[float, float]]], None]
 _NodeSink = Callable[[dict], None]
 
 
-def _accept_all(_tags: dict[str, str]) -> bool:
-    return True
+def replication_timestamp(path: Path) -> str | None:
+    """配信元がPBFを焼いた断面の時刻（ヘッダの`osmosis_replication_timestamp`）。無ければNone。"""
+    return osmium.io.Reader(str(path)).header().get("osmosis_replication_timestamp") or None
 
 
 class _WayHandler(osmium.SimpleHandler):
@@ -26,13 +27,11 @@ class _WayHandler(osmium.SimpleHandler):
         self,
         tag_filter: Callable[[dict[str, str]], bool],
         sink: _WaySink,
-        node_tag_filter: Callable[[dict[str, str]], bool],
         node_sink: _NodeSink | None,
     ):
         super().__init__()
         self._tag_filter = tag_filter
         self._sink = sink
-        self._node_tag_filter = node_tag_filter
         self._node_sink = node_sink
 
     def way(self, w) -> None:
@@ -56,8 +55,6 @@ class _WayHandler(osmium.SimpleHandler):
         if self._node_sink is None or not n.tags:
             return
         tags = {t.k: t.v for t in n.tags}
-        if not self._node_tag_filter(tags):
-            return
         location = n.location
         if not location.valid():
             return
@@ -68,13 +65,12 @@ def stream_ways(
     pbf_path: str | Path,
     tag_filter: Callable[[dict[str, str]], bool],
     sink: _WaySink,
-    node_tag_filter: Callable[[dict[str, str]], bool] = _accept_all,
     node_sink: _NodeSink | None = None,
 ) -> None:
-    """PBF内の全way（・node_sink指定時はnodeも）を1パスで読み、tag_filter/node_tag_filterを
-    通った要素をそれぞれのsinkへ流す（ブロッキング）。
+    """PBF内の全way（・node_sink指定時はnodeも）を1パスで読み、tag_filterを
+    通ったwayとタグを持つnodeをそれぞれのsinkへ流す（ブロッキング）。
 
     ノード位置インデックスはflex_mem（メモリ上）で、PBFの規模に対して十分なメモリが要る。
     """
-    handler = _WayHandler(tag_filter, sink, node_tag_filter, node_sink)
+    handler = _WayHandler(tag_filter, sink, node_sink)
     handler.apply_file(str(pbf_path), locations=True, idx="flex_mem")

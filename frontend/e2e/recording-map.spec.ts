@@ -69,10 +69,9 @@ for (const { name, steps, expected } of MAP_CONTRACT) {
               filter: map.getFilter(id) ?? undefined,
             };
           }),
-          featureStates: expected.featureStates.map(({ source, id }) => ({
-            source,
-            id,
-            state: { ...map.getFeatureState({ source, id }) },
+          featureStates: expected.featureStates.map((entry) => ({
+            ...entry,
+            state: { ...map.getFeatureState({ source: entry.source, sourceLayer: entry.sourceLayer, id: entry.id }) },
           })),
           sourceData: await Promise.all(
             expected.sourceData.map(async ({ source }) => ({
@@ -80,6 +79,13 @@ for (const { name, steps, expected } of MAP_CONTRACT) {
               data: await (map.getSource(source) as import("maplibre-gl").GeoJSONSource).getData(),
             })),
           ),
+          ...(expected.globalState === undefined
+            ? {}
+            : {
+                globalState: Object.fromEntries(
+                  Object.keys(expected.globalState).map((name) => [name, map.getGlobalState()[name]]),
+                ),
+              }),
         };
         return result;
       },

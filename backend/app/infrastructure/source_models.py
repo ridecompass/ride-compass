@@ -29,6 +29,8 @@ from sqlalchemy.sql.selectable import ScalarSelect
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.domain.accident import PartyType
+from app.domain.material_sql import sql_literals
 from app.infrastructure.orm_base import Base
 
 
@@ -42,6 +44,11 @@ class Source(StrEnum):
     OSM_WAY = "osm_way"
     OSM_NODE = "osm_node"
     ACCIDENT = "accident"
+    OVERTURE_PLACE = "overture_place"
+    BUNKA_HERITAGE = "bunka_heritage"
+    ABR = "abr"
+    ESTAT_SMALL_AREA = "estat_small_area"
+    ISJ_BLOCK = "isj_block"
     DEM = "dem"
     LULC = "lulc"
 
@@ -84,8 +91,12 @@ class SourceRunRow(Base):
     __tablename__ = "source_runs"
     __table_args__ = (
         CheckConstraint(
-            "status IN (" + ", ".join(f"'{s}'" for s in SourceRunStatus) + ")",
+            f"status IN ({sql_literals(SourceRunStatus)})",
             name="source_runs_status_known"),
+        # 閉じたrunだけが終わった時刻を持つ。読み手は成功のrunの時刻を必ずあるものとして読む。
+        CheckConstraint(
+            f"(status = '{SourceRunStatus.RUNNING}') = (finished_at IS NULL)",
+            name="source_runs_finished_when_closed"),
     )
 
     run_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -155,6 +166,33 @@ def latest_succeeded_run_by_column_sql(source_column: str) -> str:
     ソースごとに並べる読み手（取込の一覧）が、行ごとに相関させて使う。"""
     return (f"(SELECT * FROM {SourceRunRow.__tablename__} WHERE source = {source_column}"
             f" AND status = '{SourceRunStatus.SUCCEEDED}' ORDER BY run_id DESC LIMIT 1)")
+
+
+# 「この場所のデータを持っているか」は、取込の宣言そのものから決まる。マーカーの表を
+# 別に持たない——持つと、取込の範囲を広げたときに2箇所を揃える必要が生まれる。
+#
+# 手元の道路データは、成功した最新の道路の取込のもの——取込はソースのパーティションを入れ替え、派生も
+# 最新のrunから作る。範囲はそのrunが記録した宣言（`profile.target.bbox`、(min_lat, min_lon, max_lat, max_lon)）。
+# 住所の区画の派生の段（`batch/derive_addresses.py`）も、町字をこの範囲で選ぶ。道路を取り込んでいなければ0行。
+INGESTED_BBOX_SQL = f"""
+    SELECT
+        (profile->'target'->'bbox'->>0)::double precision AS min_lat,
+        (profile->'target'->'bbox'->>1)::double precision AS min_lon,
+        (profile->'target'->'bbox'->>2)::double precision AS max_lat,
+        (profile->'target'->'bbox'->>3)::double precision AS max_lon
+    FROM {latest_succeeded_run_sql(Source.OSM_WAY)} latest
+"""
+
+#: 要求タイルが取込範囲に入るか（`covered`）。範囲を判定するタイルのSQL（点のタイルは
+#: `point_tile_layers.py`）は`WITH coverage AS (...)`で読む。
+COVERAGE_SQL = f"""
+    SELECT EXISTS (
+        SELECT 1 FROM ({INGESTED_BBOX_SQL}) ingested
+        WHERE ST_Intersects(
+            ST_MakeEnvelope(ingested.min_lon, ingested.min_lat, ingested.max_lon, ingested.max_lat, 4326),
+            ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
+    ) AS covered
+"""
 
 
 #: 取込の成功したソースごとに、成功した最新の取込（`source`・`run_id`）を1行ずつ出す問い合わせ。
@@ -230,8 +268,125 @@ def nodes_lookup_sql(key_expr: str) -> str:
     return f"({_NODES_SELECT} WHERE source = '{Source.OSM_NODE}' AND natural_key = ({key_expr})::text)"
 
 
+#: 本票の当事者種別のコード（警察庁のコード表 31_koudohyou_toujisyasyuetu.csv。
+#: https://www.npa.go.jp/publications/statistics/koutsuu/opendata/koudohyou/）→判定が名指す種別。
+PARTY_TYPE_CODES: dict[PartyType, str] = {PartyType.BICYCLE: "51", PartyType.POWER_ASSISTED_BICYCLE: "52"}
+
+
+def _party_type_sql(column: str) -> str:
+    """当事者種別の列を`PartyType`の値へ読み替える式。表に無いコードは`OTHER`、列が無ければNULL。"""
+    raw = f"attrs->>'{column}'"
+    whens = " ".join(f"WHEN '{code}' THEN '{party}'" for party, code in PARTY_TYPE_CODES.items())
+    return f"CASE WHEN {raw} IS NOT NULL THEN CASE {raw} {whens} ELSE '{PartyType.OTHER}' END END"
+
+
+def _accidents_sql(rows: str) -> str:
+    """事故の生データの行（`FROM`の後ろ。`geom`と`attrs`を持つ）を、判定の式が読む列へ読み替える副問い合わせ。
+
+    本票CSVの列名（日本語。取込は列を捨てずに`attrs`へ入れる）はここだけが名指し、式へは読み替えた列で渡す。
+    死者数と発生年はゼロ埋めの数字列で入っている。
+    """
+    return (
+        "(SELECT geom,"
+        " (attrs->>'死者数')::int AS deaths,"
+        f" {_party_type_sql('当事者種別（当事者A）')} AS party_type_a,"
+        f" {_party_type_sql('当事者種別（当事者B）')} AS party_type_b,"
+        " (attrs->>'発生日時　　年')::int AS occurred_year"
+        f" FROM {rows})"
+    )
+
+
 #: 事故の生データ（1件=1点）。判定の式（`domain/accident.py`）が読む別名`a`の中身。
-ACCIDENTS_SOURCE_SQL = f"(SELECT geom, attrs FROM {_TABLE} WHERE source = '{Source.ACCIDENT}')"
+ACCIDENTS_SOURCE_SQL = _accidents_sql(f"{_TABLE} WHERE source = '{Source.ACCIDENT}'")
+
+
+def accidents_within_sql(envelope: str) -> str:
+    """範囲（`envelope`はgeometryの式）に交わる事故の生データ。列は`ACCIDENTS_SOURCE_SQL`と同じ。
+
+    `attrs`は圧縮して置かれることがあり、外へ畳まれると読み替える列ごとに解凍し直す。そこで内側で1行1回だけ展開してから
+    読み替える: `OFFSET 0`だけでは圧縮のまま外へ渡り、`'{}'::jsonb ||`だけでは畳まれて列ごとに展開する。
+    範囲の絞りは空間の索引が効くよう内側に置く。
+    """
+    return _accidents_sql(
+        f"(SELECT geom, '{{}}'::jsonb || attrs AS attrs FROM {_TABLE}"
+        f" WHERE source = '{Source.ACCIDENT}' AND ST_Intersects(geom, {envelope}) OFFSET 0) expanded"
+    )
+
+
+#: Overture の地点の生データ（1件=1点）。群の判断（`domain/stop_place.py`）が読む列へ読み替える。配布の列の
+#: 入れ子（`names.primary` 等）はここだけが名指す。ウェブサイト・電話は文字列の配列か、無ければ null（jsonb）。
+OVERTURE_PLACES_SOURCE_SQL = (
+    "(SELECT natural_key AS overture_id, geom,"
+    " attrs->'names'->>'primary' AS name,"
+    " attrs->'brand'->'names'->>'primary' AS brand,"
+    " (attrs->>'confidence')::float8 AS confidence,"
+    " attrs->'taxonomy'->'hierarchy' AS hierarchy,"
+    " attrs->'websites' AS websites,"
+    " attrs->'phones' AS phones"
+    f" FROM {_TABLE} WHERE source = '{Source.OVERTURE_PLACE}')"
+)
+
+#: 国の指定・登録の文化財の建造物（1件=1つの建物）。寺社の判断（`domain/stop_place.py`）が読む列へ読み替える。
+#: ジャパンサーチの項目の列（文化遺産オンラインの所有者の項目`bunka-14-s`）はここだけが名指す。
+BUNKA_HERITAGES_SOURCE_SQL = (
+    "(SELECT natural_key AS heritage_id, geom,"
+    " attrs->>'bunka-14-s' AS owners"
+    f" FROM {_TABLE} WHERE source = '{Source.BUNKA_HERITAGE}')"
+)
+
+
+def _abr_sql(columns: dict[str, str], kind: str) -> str:
+    """アドレス・ベース・レジストリの生データのうち`kind`の行。列は ABR の列の名前 → 出す名前（空の値は空の文字列）。"""
+    selected = ", ".join(f"coalesce(attrs->>'{raw}', '') AS {name}" for raw, name in columns.items())
+    return (f"(SELECT {selected}, ST_X(geom) AS lon, ST_Y(geom) AS lat"
+            f" FROM {_TABLE} WHERE source = '{Source.ABR}' AND {kind})")
+
+
+#: アドレス・ベース・レジストリ（1回の取込に都道府県・市区町村・町字・住居表示の街区が混ざる）の都道府県（1件=1つの代表点）。
+#: 4種は持つ列で分ける（町字と街区だけが`machiaza_id`を、街区だけが`blk_id`を、都道府県のほかは`city`を持つ）。
+#: ABR の列の名前はここだけが名指す。
+ABR_PREFECTURES_SOURCE_SQL = _abr_sql(
+    {"lg_code": "code", "pref": "name", "ablt_date": "abolished"}, "NOT attrs ? 'city'")
+
+#: ABR の市区町村（政令市の区を含む。区の行は`ward`を持つ）。
+ABR_CITIES_SOURCE_SQL = _abr_sql(
+    {"lg_code": "code", "pref": "prefecture", "county": "county", "city": "city", "ward": "ward",
+     "ablt_date": "abolished"},
+    "attrs ? 'city' AND NOT attrs ? 'machiaza_id'")
+
+#: ABR の町字（大字・町、丁目、小字等。町字区分`machiaza_type`で分かれる）。`city_code`は属す市区町村（区）の`code`。
+ABR_TOWNS_SOURCE_SQL = _abr_sql(
+    {"lg_code": "city_code", "machiaza_id": "town_id", "machiaza_type": "town_type", "pref": "prefecture",
+     "county": "county", "city": "city", "ward": "ward", "oaza_cho": "oaza", "chome": "chome",
+     "chome_number": "chome_number", "koaza": "koaza",
+     "ablt_date": "abolished"},
+    "attrs ? 'machiaza_id' AND NOT attrs ? 'blk_id'")
+
+#: ABR の住居表示の街区（1件=1つの街区の代表点）。`city_code`・`town_id`は属す町字の鍵（`ABR_TOWNS_SOURCE_SQL`と同じ）、
+#: `number`は街区符号（「8」）。
+ABR_BLOCKS_SOURCE_SQL = _abr_sql(
+    {"lg_code": "city_code", "machiaza_id": "town_id", "blk_num": "number", "ablt_date": "abolished"},
+    "attrs ? 'blk_id'")
+
+#: e-Stat の小地域の境界（1件=1つの小地域の多角形）。`city_name`は市区町村の名前（郡を含まず、政令市は市と区をつないだ
+#: 「さいたま市岩槻区」）、`name`は小地域の名前（町丁・字等。名前の無い小地域は空）。どちらも配布の表記のまま。配布の dbf の
+#: 列の名前はここだけが名指す。
+ESTAT_SMALL_AREAS_SOURCE_SQL = (
+    "(SELECT natural_key AS key_code, coalesce(attrs->>'CITY_NAME', '') AS city_name,"
+    " coalesce(attrs->>'S_NAME', '') AS name, geom"
+    f" FROM {_TABLE} WHERE source = '{Source.ESTAT_SMALL_AREA}')"
+)
+
+
+#: 国土交通省の街区レベル位置参照情報（1件=1つの街区符号か地番の代表点）。名前は配布の表記のまま（市区町村は郡・政令市の
+#: 区を含む「西多摩郡日の出町」「さいたま市岩槻区」、丁目は漢数字）、`number`は街区符号か地番、`residential`は住居表示の
+#: 区域の行か。配布の CSV の列の名前はここだけが名指す。
+ISJ_BLOCKS_SOURCE_SQL = (
+    "(SELECT attrs->>'都道府県名' AS prefecture, attrs->>'市区町村名' AS city,"
+    " coalesce(attrs->>'大字・丁目名', '') AS oaza, coalesce(attrs->>'小字・通称名', '') AS koaza,"
+    " attrs->>'街区符号・地番' AS number, attrs->>'住居表示フラグ' = '1' AS residential, geom"
+    f" FROM {_TABLE} WHERE source = '{Source.ISJ_BLOCK}')"
+)
 
 
 def _raster_tiles_sql(source: Source) -> str:
@@ -243,12 +398,6 @@ DEM_TILES_SQL = _raster_tiles_sql(Source.DEM)
 
 #: 土地被覆タイル（1枚=1行）。
 LANDCOVER_TILES_SQL = _raster_tiles_sql(Source.LULC)
-
-
-def source_keys_sql(source: Source) -> str:
-    """そのソースの生データの識別子（`natural_key`、text）を全件指す副問い合わせ。
-    派生が生データを1件残らず覆うかを数える読み手（鮮度台帳）向け。"""
-    return f"(SELECT natural_key FROM {_TABLE} WHERE source = '{source}')"
 
 
 # 圧縮しない指定は型では表せないので、表を作った直後に当てる。親へ当てれば以後の

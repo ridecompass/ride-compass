@@ -6,7 +6,7 @@
  * 要求することになる。
  *
  * ここで見ないもの:
- * - ルートのレイヤーの重なり順（縁取り→色分け線→当たり判定→矢印・ハローは候補線の下・比較スロットは候補線と区間の間） →
+ * - ルートのレイヤーの重なり順（縁取り→色分け線→当たり判定→矢印・ハローは候補線の下） →
  *   `groups/routes.ts`の宣言の並びそのもの（testing.md「そのテストは要るか」の1問目の「並びそのもので順序を表す」）。
  *   同じ段の中を宣言の順で載せ、届く順によらないことは`applyMapScene.test.ts`が見る
  */
@@ -17,6 +17,7 @@ import { applyMapScene } from "@/features/map/scene/applyMapScene";
 import { EMPTY_MAP_SCENE, type MapScene } from "@/features/map/scene/mapScene";
 import { routeGroup, type RoutePath, type RouteState } from "@/features/map/scene/groups/routes";
 import { composeScene } from "@/features/map/scene/mapSceneGroups";
+import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
 
 type RoutePathShape = RouteState["segments"][number];
 
@@ -28,18 +29,17 @@ const NO_ROUTES: RouteState = {
   segmentColor: "#16a34a",
   spliceBands: [],
   composite: null,
-  comparisonSlots: [],
-  arrowIconImage: "arrow",
+  selectedSection: null,
 };
 
-const DECLARED_SCENE = composeScene([routeGroup], NO_ROUTES);
+const DECLARED_LAYERS = routeGroup.build(NO_ROUTES).layers;
 
-/** 役割からレイヤーidを引く。**綴りを組み立て直さない**——idはソース名＋役割で、ソース名は
- * 宣言する側が決めるため、外から組み直すと規則を変えたときにここだけ古い綴りで残る。 */
+/** 役割からレイヤーidを引く。**ソース名を書き写さない**——ソース名は宣言する側が決めるため、
+ * 宣言のソース名を本番と同じ規則に通す。外で綴ると、綴りを変えたときにここだけ古い綴りで残る。 */
 function routeSceneLayerId(role: string): string {
-  const layer = DECLARED_SCENE.layers.find((candidate) => candidate.role === role);
-  if (layer === undefined) throw new Error(`役割${role}のレイヤーが宣言に無い`);
-  return layer.spec.id;
+  const entry = DECLARED_LAYERS.find((candidate) => candidate.role === role);
+  if (entry === undefined) throw new Error(`役割${role}のレイヤーが宣言に無い`);
+  return sceneLayerId(entry.source, entry.role);
 }
 
 const PATH: RoutePath = [
@@ -57,7 +57,7 @@ function bindCurrentImplementation(map: unknown) {
   return (next: Partial<RouteState>) => {
     state = { ...state, ...next };
     const scene = composeScene([routeGroup], state);
-    applyMapScene(map as never, { scene, previous, areaLayerBeforeId: undefined });
+    applyMapScene(map as never, { scene, previous, basemapAnchors: { roads: undefined, labels: undefined } });
     previous = scene;
   };
 }
@@ -74,6 +74,21 @@ describe("ルートの描画", () => {
 
     for (const role of ["detailCasing", "detailLine", "detailHit"]) {
       expect(handle.layer(routeSceneLayerId(role))?.filter).toEqual(filter);
+    }
+  });
+
+  // 重なると、往復で後に描く帰りの濃い線が、走り終えて薄めた行きの線を覆い、地図で走り終えた所が見えない。
+  it("往復で同じ道を逆向きに通る区間の線は、進む向きの左へ縁取りの半分以上ずれて、行きと帰りが重ならずに並ぶ", () => {
+    const { map, handle } = createRecordingMap();
+    const tell = bindCurrentImplementation(map);
+    const back: RoutePathShape = { path: [...PATH].reverse(), properties: { osm_way_id: 1 } };
+
+    tell({ segments: [{ ...SEGMENT, properties: { osm_way_id: 1, travelled: true } }, back] });
+
+    const casingWidth = handle.layer(routeSceneLayerId("detailCasing"))?.paint["line-width"] as number;
+    for (const role of ["detailCasing", "detailLine"]) {
+      // 負は進む向きの左。逆向きの線は道の反対側へ同じだけずれるので、縁取りの半分ずれれば2本の縁取りが接する。
+      expect(handle.layer(routeSceneLayerId(role))?.paint["line-offset"]).toBeLessThanOrEqual(-casingWidth / 2);
     }
   });
 });

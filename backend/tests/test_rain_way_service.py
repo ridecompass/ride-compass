@@ -12,7 +12,7 @@ import inspect
 
 from app.domain.rain import HOURS_SINCE_RAIN, RAIN_HISTORY_HOURS, rain_window_material_id
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.services.rain_way_service import RainConditions, RainWayService
+from app.services.rain_way_service import RainWayService
 from app.services.weather_service import WeatherService
 from tests import rain_history_fake
 
@@ -50,9 +50,10 @@ async def test_each_road_takes_the_value_of_its_nearest_rain_gauge(fake_redis):
     await _observe({"44132": 2.0, "46106": 0.5})
     repository = FakeMidpointsRepository({"tokyo": (35.68, 139.77), "yokohama": (35.45, 139.64)})
 
-    values = await _service(repository, rain_window_material_id(3)).get_way_values(Z, X, Y, RainConditions())
+    material_id = rain_window_material_id(3)
+    values = await _service(repository, material_id).get_way_materials(Z, X, Y, None)
 
-    assert values == {"tokyo": 6.0, "yokohama": 1.5}
+    assert values == {material_id: {"tokyo": 6.0, "yokohama": 1.5}}
 
 
 async def test_a_gauge_with_a_missing_reading_leaves_its_roads_without_a_value(fake_redis):
@@ -60,19 +61,19 @@ async def test_a_gauge_with_a_missing_reading_leaves_its_roads_without_a_value(f
     await _observe({"44132": None, "46106": 0.0})
     repository = FakeMidpointsRepository({"tokyo": (35.68, 139.77), "yokohama": (35.45, 139.64)})
 
-    values = await _service(repository, HOURS_SINCE_RAIN).get_way_values(Z, X, Y, RainConditions())
+    values = await _service(repository, HOURS_SINCE_RAIN).get_way_materials(Z, X, Y, None)
 
-    assert values == {"yokohama": float(RAIN_HISTORY_HOURS)}
+    assert values == {HOURS_SINCE_RAIN: {"yokohama": float(RAIN_HISTORY_HOURS)}}
 
 
 async def test_no_history_yet_gives_no_values(fake_redis):
     repository = FakeMidpointsRepository({"tokyo": (35.68, 139.77)})
 
-    assert await _service(repository, rain_window_material_id(1)).get_way_values(Z, X, Y, RainConditions()) == {}
+    assert await _service(repository, rain_window_material_id(1)).get_way_materials(Z, X, Y, None) == {}
 
 
 async def test_outside_the_imported_area_gives_no_values(fake_redis):
     await _observe({"44132": 2.0})
 
     service = _service(FakeMidpointsRepository(None), rain_window_material_id(1))
-    assert await service.get_way_values(Z, X, Y, RainConditions()) == {}
+    assert await service.get_way_materials(Z, X, Y, None) == {}

@@ -1,22 +1,18 @@
-import type { GenerationConditions, RouteCandidate, RouteSegmentDetail } from "@/types/route";
+// ルート候補とその周り（生成の条件・区間）の組み立て。呼び出し側は変えたいフィールドだけ渡す。
+// **既定値は型を満たすための空だけ。** 見たい値（id・方位・距離等）は呼び出し側が書く。
+import { haversineKm } from "@/lib/geoDistance";
+import type { GenerationConditions, PlaceCandidate, RouteCandidate, RouteSegmentDetail } from "@/types/route";
 
-/**
- * テスト・ベンチで使う`RouteCandidate`の組み立て。
- *
- * `RouteCandidate`は全フィールドが必須（backendは既定値の項目も必ず返す）のため、素直に書くと
- * 構築するファイルの数だけ全フィールドの写しができ、フィールドを1つ足すたびに同じ数の
- * 差分が要る。ここを唯一の置き場にして、呼び出し側は変えたいフィールドだけ渡す。
- * **既定値は型を満たすための空だけ。** 見たい値（id・方位・距離等）は呼び出し側が書く。
- */
+/** `RouteCandidate`の組み立て（backendは既定値の項目も必ず返すため、型は全フィールドが必須）。 */
 export function makeRouteCandidate(overrides: Partial<RouteCandidate> = {}): RouteCandidate {
   return {
     id: "",
+    kind: "loop",
     direction_label: "",
+    is_fastest: false,
     distance_km: 0,
     geometry: { type: "LineString", coordinates: [] },
     elevation_gain_m: null,
-    min_elevation_m: null,
-    max_elevation_m: null,
     segments: [],
     overall_difficulty: null,
     estimated_duration_seconds: null,
@@ -29,6 +25,9 @@ export function makeRouteCandidate(overrides: Partial<RouteCandidate> = {}): Rou
     edge_ids: [],
     edge_point_offsets: [],
     node_ids: [],
+    turns: [],
+    points: [],
+    waypoint_distances_km: [],
     axis_contributions: {},
     ...overrides,
   };
@@ -38,20 +37,44 @@ export function makeRouteCandidate(overrides: Partial<RouteCandidate> = {}): Rou
 export type Places = Readonly<Record<string, readonly [number, number]>>;
 
 /**
- * 地点を順に通る経路の形（`edge_ids`・`edge_point_offsets`・`node_ids`・`geometry`）を、backendの契約
+ * 地点を順に通る経路の形（`edge_ids`・`edge_point_offsets`・`node_ids`・`geometry`・`segments`）を、backendの契約
  * （`backend/app/domain/route.py: RouteCandidate`）どおりに組む。Edge idは両端の地点の名前を「-」でつないだもの、
  * Node idは地点の名前。Edgeごとに中間点を1つ挟むので、Edgeの境界の位置（`edge_point_offsets`）は座標の位置と食い違う。
+ * 区間はEdge1本ずつで、長さはEdgeごとの`segmentKm`（省いたら形の大円距離）。
  */
 export function routeThrough(
   places: Places,
   names: readonly string[],
-): Pick<RouteCandidate, "edge_ids" | "edge_point_offsets" | "node_ids" | "geometry"> {
+  segmentKm?: readonly number[],
+): Pick<RouteCandidate, "edge_ids" | "edge_point_offsets" | "node_ids" | "geometry" | "segments"> {
   const coordinates: number[][] = [];
+  const segments: RouteSegmentDetail[] = [];
   names.forEach((name, index) => {
     const [lon, lat] = places[name];
     if (index > 0) {
       const [prevLon, prevLat] = places[names[index - 1]];
-      coordinates.push([(prevLon + lon) / 2, (prevLat + lat) / 2]);
+      const middle = [(prevLon + lon) / 2, (prevLat + lat) / 2];
+      coordinates.push(middle);
+      const shape = [[prevLon, prevLat], middle, [lon, lat]];
+      const shapeKm = shape
+        .slice(1)
+        .reduce(
+          (km, [toLon, toLat], i) =>
+            km + haversineKm({ latitude: shape[i][1], longitude: shape[i][0] }, { latitude: toLat, longitude: toLon }),
+          0,
+        );
+      const distanceKm = segmentKm?.[index - 1] ?? shapeKm;
+      segments.push(
+        makeRouteSegment({
+          geometry: { type: "LineString", coordinates: shape },
+          start_latitude: prevLat,
+          start_longitude: prevLon,
+          end_latitude: lat,
+          end_longitude: lon,
+          cumulative_distance_km: segments.reduce((km, segment) => km + segment.distance_km, 0),
+          distance_km: distanceKm,
+        }),
+      );
     }
     coordinates.push([lon, lat]);
   });
@@ -60,10 +83,11 @@ export function routeThrough(
     edge_point_offsets: names.map((_, index) => index * 2),
     node_ids: [...names],
     geometry: { type: "LineString", coordinates },
+    segments,
   };
 }
 
-/** `GenerationConditions`（生成に使われた条件）の組み立て。既定値は`makeRouteCandidate`と同じく型を満たすための空だけ。 */
+/** `GenerationConditions`（生成に使われた条件）の組み立て。 */
 export function makeGenerationConditions(overrides: Partial<GenerationConditions> = {}): GenerationConditions {
   return {
     latitude: 0,
@@ -73,7 +97,7 @@ export function makeGenerationConditions(overrides: Partial<GenerationConditions
     route_preference: {},
     penalty_strength: 0,
     max_average_grade_percent: null,
-    hard_filters: {},
+    road_avoidance: {},
     max_routes: 0,
     start_time: "",
     assumed_speed_kmh: 0,
@@ -85,7 +109,7 @@ export function makeGenerationConditions(overrides: Partial<GenerationConditions
   };
 }
 
-/** `RouteSegmentDetail`（候補の区間1つ）の組み立て。既定値は型を満たすための空だけ。 */
+/** `RouteSegmentDetail`（候補の区間1つ）の組み立て。 */
 export function makeRouteSegment(overrides: Partial<RouteSegmentDetail> = {}): RouteSegmentDetail {
   return {
     geometry: null,
@@ -99,9 +123,30 @@ export function makeRouteSegment(overrides: Partial<RouteSegmentDetail> = {}): R
     axis_difficulties: {},
     axis_contributions: {},
     material_values: {},
-    axis_raw_values: {},
     difficulty: null,
     wind: null,
+    elevations: [],
+    road_classes: {},
     ...overrides,
   };
 }
+
+/** 字・丁目で当たった住所（その範囲の代表の位置）。 */
+export const AZA_CANDIDATE: PlaceCandidate = {
+  kind: "address",
+  level: "aza",
+  name: "東京都千代田区丸の内二丁目",
+  area: null,
+  latitude: 35.679,
+  longitude: 139.764,
+};
+
+/** 名前で当たった施設（辺りを持つ）。 */
+export const FACILITY_CANDIDATE: PlaceCandidate = {
+  kind: "facility",
+  level: "point",
+  name: "浅草寺",
+  area: "台東区浅草二丁目",
+  latitude: 35.7148,
+  longitude: 139.7967,
+};

@@ -4,12 +4,12 @@
 """
 
 import logging
-import time
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 from pydantic import Field
 
+from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.material_catalog import MATERIAL_CATALOG, MaterialDType, MissingSemantics, Population
 from app.domain.strict_model import StrictModel
 from app.infrastructure.debug_log import log_external_call
@@ -42,7 +42,6 @@ class MaterialCoverageExcluded(StrictModel):
     kind: Literal["excluded"] = "excluded"
     material_id: str
     label: str
-    dtype: MaterialDType
     excluded_reason: str
 
 
@@ -58,39 +57,32 @@ class MaterialCoverageReport(StrictModel):
 
 
 def build_material_coverage_report(counts: MaterialCoverageCounts, computed_at: datetime) -> MaterialCoverageReport:
-    """カタログの登録順のまま1材料1行にする。
-
-    集計対象・対象外のどちらの宣言にも無い材料は`ValueError`。材料を足して宣言を書き
-    忘れたことを、黙った空行にしない。
-    """
+    """カタログの登録順のまま1材料1行にする。"""
     entries: list[MaterialCoverageEntry] = []
     for material_id, spec in MATERIAL_CATALOG.items():
         coverage = MATERIAL_COVERAGE_SPECS.get(material_id)
-        if coverage is not None:
-            total = counts.way_total if coverage.population == "way" else counts.edge_total
-            missing = counts.missing_by_material[material_id]
+        if coverage is None:
             entries.append(
-                MaterialCoverageCounted(
+                MaterialCoverageExcluded(
                     material_id=material_id,
                     label=spec.full_label(),
-                    dtype=spec.dtype,
-                    population=coverage.population,
-                    total=total,
-                    missing=missing,
-                    missing_ratio=(missing / total) if total > 0 else None,
-                    source=coverage.source,
-                    missing_semantics=coverage.missing_semantics,
+                    excluded_reason=MATERIAL_COVERAGE_EXCLUSIONS[material_id],
                 )
             )
             continue
-        excluded_reason = MATERIAL_COVERAGE_EXCLUSIONS.get(material_id)
-        if excluded_reason is None:
-            raise ValueError(
-                f"材料 '{material_id}' はMATERIAL_COVERAGE_SPECS/MATERIAL_COVERAGE_EXCLUSIONSのどちらにも未登録"
-            )
+        total = counts.way_total if coverage.population == "way" else counts.edge_total
+        missing = counts.missing_by_material[material_id]
         entries.append(
-            MaterialCoverageExcluded(
-                material_id=material_id, label=spec.full_label(), dtype=spec.dtype, excluded_reason=excluded_reason
+            MaterialCoverageCounted(
+                material_id=material_id,
+                label=spec.full_label(),
+                dtype=spec.dtype,
+                population=coverage.population,
+                total=total,
+                missing=missing,
+                missing_ratio=(missing / total) if total > 0 else None,
+                source=coverage.source,
+                missing_semantics=coverage.missing_semantics,
             )
         )
     return MaterialCoverageReport(
@@ -105,7 +97,7 @@ class MaterialCoverageService:
     async def get_material_coverage(self) -> MaterialCoverageReport:
         """DB例外は呼び出し元（router）へそのまま伝播させる。管理者向けの診断APIのため、
         空のレポートへ倒して「欠損0件」に見せるより失敗を明示する方が安全。"""
-        started = time.monotonic()
+        started = start_timer()
         with log_external_call("admin:material-coverage") as fields:
             counts = await self._repository.get_material_coverage_counts()
             fields["way_total"] = counts.way_total
@@ -113,6 +105,6 @@ class MaterialCoverageService:
         report = build_material_coverage_report(counts, datetime.now(timezone.utc))
         logger.info(
             "material coverage computed way_total=%d edge_total=%d materials=%d elapsed_ms=%d",
-            counts.way_total, counts.edge_total, len(report.materials), round((time.monotonic() - started) * 1000),
+            counts.way_total, counts.edge_total, len(report.materials), elapsed_ms(started),
         )
         return report

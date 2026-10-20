@@ -1,90 +1,45 @@
-"""本番DBの状態を「注意が要るか」まで判定してレポートにするサービス層。
+"""本番DBの数を読み、注意が要るかの印を付けたレポートにするサービス層。
 
-**判定のしきい値はこのモジュールが持つ**。しきい値そのものより「なぜその値か」が重要なため、
-定数ごとに根拠を書く。レポートの型は`GET /api/admin/db-status`の応答の型を兼ねる。
+レポートの型は`GET /api/admin/db-status`の応答の型を兼ねる。
 """
 
 import logging
-import time
 from datetime import datetime
 
+from app.domain.stopwatch import elapsed_ms, start_timer
+from app.domain.db_status import connection_attention, import_attention, table_attention
 from app.domain.strict_model import StrictModel
-from app.infrastructure.db_status import DbStatusCounts, DbStatusQuery
+from app.infrastructure.db_status import (
+    ConnectionCounts,
+    DbStatusCounts,
+    DbStatusQuery,
+    ImportRunCounts,
+    TableCounts,
+)
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.source_models import SOURCE_RUN_STATUS_LABELS, SourceRunStatus
 
 logger = logging.getLogger("ridecompass.db_status")
 
-#: `idle in transaction`がこれより長く続いていれば注意。放置されたトランザクションは
-#: VACUUMが古い行を回収するのを止め、テーブルを肥大化させる。冷えた状態のルート生成でも
-#: 数分で終わるため、正常な処理がこの長さを超えることは無い。
-IDLE_TRANSACTION_WARN_SECONDS = 600.0
-
-#: 接続数がmax_connectionsのこの割合を超えたら注意（残り枠が尽きると新規接続が失敗する）。
-CONNECTION_USAGE_WARN_RATIO = 0.8
-
-#: 不要行（dead tuple）が行全体のこの割合を超えたら注意。VACUUMが追いついていない。
-DEAD_TUPLE_WARN_RATIO = 0.2
-
-#: 統計が無いことを注意として出す行数の下限。これを下回るテーブルは、プランナが行数を
-#: どう推定しても全走査で足りるため実行計画が変わらない——注意を出しても打つ手が無い。
-STATISTICS_WARN_MIN_ROWS = 10_000
-
-#: 不要行を注意として出す絶対数の下限。割合だけで見ると、行数の少ないテーブルが常に注意に
-#: なるが、回収できる容量が無く行動につながらない。
-DEAD_TUPLE_WARN_MIN_ROWS = 1_000
-
-
-class LatestRunEntry(StrictModel):
-    id: int
-    status: str
-    #: 走っている間はNone。
-    finished_at: datetime | None
-    #: runを識別する情報（PBF名・対象年・種別など、テーブルごとに中身が違う）。
-    identity: dict[str, str]
-    item_count: int | None
-
-
-class SucceededRunEntry(StrictModel):
-    id: int
-    finished_at: datetime
-
-
-class ImportRunEntry(StrictModel):
+class ImportRunEntry(ImportRunCounts):
     """生データ取込1種別の最終実行。派生データの世代比較はこの記録を基準にするため、
     ここが失敗したままだと鮮度の判定そのものが古い基準の上で行われる。"""
 
-    label: str
-    #: 最新のrun。
-    latest: LatestRunEntry
-    #: 成功した最新のrun。成功が1件も無ければNone。
-    latest_succeeded: SucceededRunEntry | None
     #: 最新runが成功していない。
     needs_attention: bool
     note: str
 
 
-class TableEntry(StrictModel):
+class TableEntry(TableCounts):
     """テーブル1つの実数・容量とメンテナンス状態。行数は統計値ではなく実数を数えている
     （統計はANALYZE前のテーブルで大きくずれ、取り込み漏れの検出に使えないため）。"""
 
-    table_name: str
-    row_count: int
-    total_bytes: int
-    dead_tuples: int
-    analyzed_at: datetime | None
-    vacuumed_at: datetime | None
     #: 統計が一度も取られていない、または不要行が溜まっている。
     needs_attention: bool
     note: str
 
 
-class ConnectionEntry(StrictModel):
-    total: int
-    max_connections: int
-    idle_in_transaction: int
-    longest_idle_transaction_seconds: float
-    longest_query_seconds: float
+class ConnectionEntry(ConnectionCounts):
     needs_attention: bool
     note: str
 
@@ -97,74 +52,23 @@ class DbStatusReport(StrictModel):
     database_bytes: int
 
 
-def _import_entry(counts) -> ImportRunEntry:
-    failed = counts.latest_status != SourceRunStatus.SUCCEEDED
-    note = ""
-    if failed:
-        note = f"最後の取込が「{SOURCE_RUN_STATUS_LABELS.get(counts.latest_status, counts.latest_status)}」。"
-        if counts.latest_succeeded is not None:
-            note += f"派生データの基準は成功した#{counts.latest_succeeded.id}のままで、それ以降の取り込みは反映されていない"
-        else:
-            note += "成功した取込が1件も無い"
-    return ImportRunEntry(
-        label=counts.label,
-        latest=LatestRunEntry(
-            id=counts.latest_id,
-            status=counts.latest_status,
-            finished_at=counts.latest_finished_at,
-            identity=dict(counts.latest_identity),
-            item_count=counts.latest_item_count,
-        ),
-        latest_succeeded=(
-            None
-            if counts.latest_succeeded is None
-            else SucceededRunEntry(id=counts.latest_succeeded.id, finished_at=counts.latest_succeeded.finished_at)
-        ),
-        needs_attention=failed,
-        note=note,
+def _import_entry(counts: ImportRunCounts) -> ImportRunEntry:
+    status = counts.latest.status
+    reasons = import_attention(
+        succeeded=status == SourceRunStatus.SUCCEEDED, status_label=SOURCE_RUN_STATUS_LABELS.get(status, status),
+        latest_succeeded_id=None if counts.latest_succeeded is None else counts.latest_succeeded.id,
     )
+    return ImportRunEntry(**dict(counts), needs_attention=bool(reasons), note="／".join(reasons))
 
 
-def _table_entry(counts) -> TableEntry:
-    reasons: list[str] = []
-    if counts.analyzed_at is None and counts.row_count >= STATISTICS_WARN_MIN_ROWS:
-        reasons.append(
-            "統計を一度も取っていない（プランナの行数推定が実数から外れ、クエリが遅いプランを選びうる）"
-        )
-    live = max(counts.row_count, 1)
-    dead_ratio = counts.dead_tuples / (live + counts.dead_tuples)
-    if counts.dead_tuples >= DEAD_TUPLE_WARN_MIN_ROWS and dead_ratio > DEAD_TUPLE_WARN_RATIO:
-        reasons.append(f"不要行が{counts.dead_tuples:,}件（VACUUMが追いついていない）")
-    return TableEntry(
-        table_name=counts.table_name,
-        row_count=counts.row_count,
-        total_bytes=counts.total_bytes,
-        dead_tuples=counts.dead_tuples,
-        analyzed_at=counts.analyzed_at,
-        vacuumed_at=counts.vacuumed_at,
-        needs_attention=bool(reasons),
-        note="／".join(reasons),
-    )
+def _table_entry(counts: TableCounts) -> TableEntry:
+    reasons = table_attention(counts.row_count, counts.dead_tuples, analyzed=counts.analyzed_at is not None)
+    return TableEntry(**dict(counts), needs_attention=bool(reasons), note="／".join(reasons))
 
 
-def _connection_entry(counts) -> ConnectionEntry:
-    reasons: list[str] = []
-    if counts.longest_idle_transaction_seconds > IDLE_TRANSACTION_WARN_SECONDS:
-        minutes = counts.longest_idle_transaction_seconds / 60
-        reasons.append(
-            f"開いたまま放置されたトランザクションが{minutes:.0f}分（VACUUMが古い行を回収できず肥大化する）"
-        )
-    if counts.max_connections and counts.total / counts.max_connections > CONNECTION_USAGE_WARN_RATIO:
-        reasons.append(f"接続が{counts.total}/{counts.max_connections}（残り枠が尽きると新規接続が失敗する）")
-    return ConnectionEntry(
-        total=counts.total,
-        max_connections=counts.max_connections,
-        idle_in_transaction=counts.idle_in_transaction,
-        longest_idle_transaction_seconds=counts.longest_idle_transaction_seconds,
-        longest_query_seconds=counts.longest_query_seconds,
-        needs_attention=bool(reasons),
-        note="／".join(reasons),
-    )
+def _connection_entry(counts: ConnectionCounts) -> ConnectionEntry:
+    reasons = connection_attention(counts.total, counts.max_connections, counts.longest_idle_transaction_seconds)
+    return ConnectionEntry(**dict(counts), needs_attention=bool(reasons), note="／".join(reasons))
 
 
 def build_db_status_report(counts: DbStatusCounts, computed_at: datetime) -> DbStatusReport:
@@ -182,7 +86,7 @@ class DbStatusService:
         self._repository = repository
 
     async def get_status_report(self) -> DbStatusReport:
-        started = time.monotonic()
+        started = start_timer()
         with log_external_call("admin:db-status", operation="fetch_counts") as fields:
             counts = await self._repository.fetch_counts()
             fields["tables"] = len(counts.tables)
@@ -191,6 +95,6 @@ class DbStatusService:
             "db-status 集計完了 tables=%d 要注意=%d elapsed_ms=%d",
             len(report.tables),
             sum(entry.needs_attention for entry in report.tables),
-            round((time.monotonic() - started) * 1000),
+            elapsed_ms(started),
         )
         return report

@@ -1,7 +1,7 @@
 """`app/domain/routing.py`——Road Graphのトポロジと計算済みEdge Costだけで経路を探す層。
 
 見るもの: 探索用グラフ・CSR・ターンの遷移と秒の組み立て、一対全の木と2点間探索の結果（コスト・時刻ビン・
-経路の復元）、木の繋ぎ目、候補の間引き（パレートの層・重複率）、最近傍のノード、探索のJITの型。
+経路の復元）、木の繋ぎ目、候補の間引き（パレートの層・重複率）、最近傍のノード、置いた点を寄せてよいノード、探索のJITの型。
 
 ここで見ないもの:
 - Edge Costの中身（勾配・路面・風がどう秒へ化けるか） → `domain/evaluation.py`側
@@ -24,23 +24,26 @@ from typing import NamedTuple
 import numba
 import numpy as np
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 from numba.core import event
 from numba.core.registry import CPUDispatcher
 
 from app.domain import routing
 from app.domain.geo import haversine_distance_km_array
 from app.domain.route import Coordinates
-from app.domain.wind import WindForecastSeries, WindLattice
-from app.services.route_generator import RouteGenerator
+from app.domain.msm import MsmBlock, MsmGrid
+from app.domain.wind import WindForecastSeries
 from tests.route_world import (
     BASE_LAT,
     BASE_LON,
     CENTER,
     NORTH_EAST,
+    NO_POINTS,
     SOUTH_WEST,
     at,
     avoid_axis_declared,
-    engine_for,
+    generator_for,
     grid_network,
 )
 
@@ -65,16 +68,20 @@ class Net:
     edge_from: np.ndarray
     edge_to: np.ndarray
     distance_m: np.ndarray
-    # 方位を持たない区間はNaN。
-    bearing_deg: np.ndarray
+    # 始点のそば・終点のそばの方位。方位を持たない区間はNaN。
+    start_bearing_deg: np.ndarray
+    end_bearing_deg: np.ndarray
 
 
 def make_graph(nodes, edges):
-    """`nodes`は`{node_id: (緯度, 経度)}`、`edges`は`{edge_id: (始点, 終点[, 距離m[, 方位]])}`。"""
+    """`nodes`は`{node_id: (緯度, 経度)}`、`edges`は`{edge_id: (始点, 終点[, 距離m[, 方位]])}`。
+
+    方位は1つの値（まっすぐな区間）か、`(始点のそばの方位, 終点のそばの方位)`の組（途中で向きが変わる区間）。
+    """
     node_ids = list(nodes)
     index = {node_id: i for i, node_id in enumerate(node_ids)}
     specs = {edge_id: _edge(*spec) for edge_id, spec in edges.items()}
-    bearings = [spec[3] if len(spec) > 3 and spec[3] is not None else math.nan for spec in edges.values()]
+    ends = [_bearing_ends(spec[3]) for spec in specs.values()]
     return Net(
         node_ids=node_ids,
         node_id_to_index=index,
@@ -85,12 +92,21 @@ def make_graph(nodes, edges):
         edge_from=np.array([index[spec[0]] for spec in specs.values()], dtype=np.int64),
         edge_to=np.array([index[spec[1]] for spec in specs.values()], dtype=np.int64),
         distance_m=np.array([spec[2] for spec in specs.values()], dtype=float),
-        bearing_deg=np.array(bearings, dtype=float),
+        start_bearing_deg=np.array([start for start, _ in ends], dtype=float),
+        end_bearing_deg=np.array([end for _, end in ends], dtype=float),
     )
 
 
 def _edge(from_node_id, to_node_id, distance_m=100.0, bearing_deg=None):
     return (from_node_id, to_node_id, distance_m, bearing_deg)
+
+
+def _bearing_ends(bearing_deg):
+    if bearing_deg is None:
+        return (math.nan, math.nan)
+    if isinstance(bearing_deg, tuple):
+        return bearing_deg
+    return (bearing_deg, bearing_deg)
 
 
 @dataclasses.dataclass
@@ -141,10 +157,13 @@ def build_all(graph, spec=FLAT_SPEC, edge_rank=None, node_has_signal=None, node_
     """
     lazy = lazy_of(graph)
     statics = routing.build_search_graph_statics(lazy.graph, graph.distance_m)
-    bearings = routing.edge_bearings(lazy.graph, graph.bearing_deg, graph.latitude, graph.longitude)
+    start_bearings, end_bearings = (
+        routing.edge_bearings(lazy.graph, bearing_deg, graph.latitude, graph.longitude)
+        for bearing_deg in (graph.start_bearing_deg, graph.end_bearing_deg)
+    )
     node_count = lazy.node_count
     structure = routing.build_turn_expanded_structure(
-        statics.csr, lazy.graph, bearings,
+        statics.csr, lazy.graph, start_bearings, end_bearings,
         np.zeros(len(lazy.edge_ids), dtype=np.int64) if edge_rank is None else edge_rank,
         spec,
         np.zeros(node_count, dtype=bool) if node_has_signal is None else node_has_signal,
@@ -155,6 +174,16 @@ def build_all(graph, spec=FLAT_SPEC, edge_rank=None, node_has_signal=None, node_
 
 def state_index(lazy):
     return {edge_id: i for i, edge_id in enumerate(lazy.edge_ids)}
+
+
+def transition_kinds(lazy, structure):
+    """`(遷移元edge_id, 遷移先edge_id) -> 曲がりの種類`。"""
+    out = {}
+    for source in range(structure.state_count):
+        for entry in range(int(structure.indptr[source]), int(structure.indptr[source + 1])):
+            target = int(structure.target_state[entry])
+            out[(lazy.edge_ids[source], lazy.edge_ids[target])] = routing.TurnKind(int(structure.turn_kind[entry]))
+    return out
 
 
 def transition_seconds(lazy, structure):
@@ -482,20 +511,24 @@ SNAP_GRAPH = make_graph(
 )
 
 
+#: 索引の範囲より広い上限。これを渡す呼び出しでは、寄せるかを索引の範囲だけが決める。
+WIDER_THAN_THE_AREA_KM = 1000.0
+
+
 def node_index_of(net):
     return routing.build_node_spatial_index(net.latitude, net.longitude, None)
 
 
-def nearest(net, index, point, allowed_names=None, **kwargs):
+def nearest(net, index, point, allowed_names=None, *, max_distance_km):
     """最寄りノードの名前（無ければNone）。`allowed_names`は候補にしてよいノード名の集合。"""
     allowed = None if allowed_names is None else np.array([node_id in allowed_names for node_id in net.node_ids])
-    found = routing.find_nearest_node_indexed(index, point, allowed, **kwargs)
+    found = routing.find_nearest_node_indexed(index, point, allowed, max_distance_km=max_distance_km)
     return None if found is None else net.node_ids[found]
 
 
 def test_nearest_node_is_none_when_the_index_has_no_nodes():
     index = node_index_of(make_graph({}, {}))
-    assert routing.find_nearest_node_indexed(index, coords(35.0, 139.0)) is None
+    assert routing.find_nearest_node_indexed(index, coords(35.0, 139.0), max_distance_km=WIDER_THAN_THE_AREA_KM) is None
 
 
 @pytest.mark.parametrize(
@@ -514,19 +547,19 @@ def test_nearest_node_is_none_far_outside_the_indexed_area(point):
     指した覚えのない場所を通るルートになる。
     """
     index = node_index_of(SNAP_GRAPH)
-    assert routing.find_nearest_node_indexed(index, point) is None
+    assert routing.find_nearest_node_indexed(index, point, max_distance_km=WIDER_THAN_THE_AREA_KM) is None
 
 
 def test_nearest_node_tolerates_a_point_just_outside_the_indexed_area():
     """範囲の縁を1セルだけ外した点は、すぐ隣の道へ寄せる（地図の端をクリックした場合）。"""
     index = node_index_of(SNAP_GRAPH)
-    assert nearest(SNAP_GRAPH, index, coords(35.0550, 139.0000)) == "far"
+    assert nearest(SNAP_GRAPH, index, coords(35.0550, 139.0000), max_distance_km=WIDER_THAN_THE_AREA_KM) == "far"
 
 
 def test_nearest_node_is_none_when_no_node_is_allowed():
     """1件も真にならないときも索引の範囲を出た時点で止まる（走査が終わる）。"""
     index = node_index_of(SNAP_GRAPH)
-    assert nearest(SNAP_GRAPH, index, coords(35.0050, 139.0050), set()) is None
+    assert nearest(SNAP_GRAPH, index, coords(35.0050, 139.0050), set(), max_distance_km=WIDER_THAN_THE_AREA_KM) is None
 
 
 def test_nearest_node_respects_max_distance_km():
@@ -558,7 +591,37 @@ def test_nearest_node_is_the_closest_candidate_by_great_circle_distance(span_deg
         distances = haversine_distance_km_array(latitude, longitude, point)
         for mask in (candidates, candidates & allowed):
             expected = int(np.flatnonzero(mask)[np.argmin(distances[mask])])
-            assert routing.find_nearest_node_indexed(index, point, None if mask is candidates else allowed) == expected
+            found = routing.find_nearest_node_indexed(
+                index, point, None if mask is candidates else allowed, max_distance_km=WIDER_THAN_THE_AREA_KM)
+            assert found == expected
+
+
+# --- largest_strongly_connected_nodes ---
+
+
+@given(st.integers(1, 7).flatmap(lambda n: st.tuples(
+    st.just(n), st.lists(st.tuples(st.integers(0, n - 1), st.integers(0, n - 1), st.booleans()), min_size=1, max_size=20),
+)))
+def test_largest_strongly_connected_nodes_are_the_biggest_set_that_reach_each_other(graph):
+    """置いた点を寄せてよいNodeは、通れる区間だけで互いに行き来できる一番大きな集まり。外れると、出られない・戻れない
+    Nodeへ寄せた出発地・経由地から候補が出ないか、行き来できるNodeを寄せ先から外して遠くへ寄せる。
+    比べる相手は、到達の推移閉包から作った互いに届くNodeの集まり（同じ大きさが並べば、どれか1つ）。"""
+    node_count, edges = graph
+    lazy = routing.build_lazy_road_graph(
+        np.array([tail for tail, _, _ in edges]), np.array([head for _, head, _ in edges]), node_count)
+    passable = np.array([edges[row][2] for row in lazy.edge_rows], dtype=bool)
+    statics = routing.build_search_graph_statics(lazy, np.ones(len(edges)))
+
+    found = routing.largest_strongly_connected_nodes(statics.csr, passable)
+
+    reach = np.eye(node_count, dtype=bool)
+    reach[lazy.edge_from[passable], lazy.edge_to[passable]] = True
+    for middle in range(node_count):
+        reach |= reach[:, [middle]] & reach[[middle], :]
+    mutual = reach & reach.T
+    groups = {frozenset(np.flatnonzero(mutual[node]).tolist()) for node in range(node_count)}
+    largest = max(len(group) for group in groups)
+    assert frozenset(np.flatnonzero(found).tolist()) in {group for group in groups if len(group) == largest}
 
 
 # --- edge_bearings ---
@@ -572,7 +635,7 @@ def test_edge_bearings_prefer_the_stored_value_and_fall_back_to_the_node_pair():
     )
     lazy = lazy_of(graph)
     bearings = dict(
-        zip(lazy.edge_ids, routing.edge_bearings(lazy.graph, graph.bearing_deg, graph.latitude, graph.longitude))
+        zip(lazy.edge_ids, routing.edge_bearings(lazy.graph, graph.start_bearing_deg, graph.latitude, graph.longitude))
     )
     assert bearings["stored"] == pytest.approx(123.0)
     assert bearings["derived"] == pytest.approx(270.0, abs=1.0)
@@ -581,13 +644,23 @@ def test_edge_bearings_prefer_the_stored_value_and_fall_back_to_the_node_pair():
 # --- build_turn_expanded_structure ---
 
 
-def test_turn_transitions_lead_to_every_outgoing_edge_and_classify_the_turn():
+# 十字路の各区間を、Cから離れた側で60度向きを変える折れ線にしたもの。Cのそばの向きは`PLUS_EDGES`と同じ。
+CURVED_PLUS_EDGES = {
+    edge_id: (tail, head, distance_m, (bearing + 60.0, bearing) if head == "C" else (bearing, bearing - 60.0))
+    for edge_id, (tail, head, distance_m, bearing) in PLUS_EDGES.items()
+}
+
+
+@pytest.mark.parametrize("edges", [PLUS_EDGES, CURVED_PLUS_EDGES])
+def test_turn_transitions_lead_to_every_outgoing_edge_and_classify_the_turn(edges):
     """状態eの遷移先は「eの終点Nodeから出る全区間」。Uターンも禁止せず遷移として持つ
     （袋小路からの折り返しに要る）。
 
-    方位差の符号で左右を分け、直進とみなす幅の内側は0秒、始点へ戻る遷移はUターン。
+    方位差の符号で左右を分け、直進とみなす幅の内側は0秒、始点へ戻る遷移はUターン。向きは交差点の
+    そばで測るので、区間が交差点から離れた所で曲がっていても分け方は変わらない（区間の端から端の向きで
+    測ると、交差点の直進が曲がりに・曲がりが直進に見える）。
     """
-    graph = make_graph(PLUS_NODES, PLUS_EDGES)
+    graph = make_graph(PLUS_NODES, edges)
     lazy, _, structure = build_all(graph, spec=TURN_SPEC)
     from_west = {
         target: seconds for (source, target), seconds in transition_seconds(lazy, structure).items()
@@ -599,10 +672,95 @@ def test_turn_transitions_lead_to_every_outgoing_edge_and_classify_the_turn():
         "CS": TURN_SPEC.right_seconds,
         "CW": TURN_SPEC.uturn_seconds,
     })
+    kinds = {target: kind for (source, target), kind in transition_kinds(lazy, structure).items() if source == "WC"}
+    assert kinds == {
+        "CE": routing.TurnKind.STRAIGHT,
+        "CN": routing.TurnKind.LEFT,
+        "CS": routing.TurnKind.RIGHT,
+        "CW": routing.TurnKind.UTURN,
+    }
+
+
+# 角 A-B-C で B が直角に曲がる（B に分かれ道は無い）。
+BEND_NODES = {"A": (35.0, 138.99), "B": (35.0, 139.0), "C": (35.01, 139.0)}
+BEND_EDGES = {
+    "AB": ("A", "B", 100.0, 90.0),
+    "BA": ("B", "A", 100.0, 270.0),
+    "BC": ("B", "C", 100.0, 0.0),
+    "CB": ("C", "B", 100.0, 180.0),
+}
+
+
+# Y字。南から北向き（方位0）でYへ入り、左の枝と右の枝がどちらも直進とみなす幅の内側で分かれる。
+Y_NODES = {"S": (34.99, 139.0), "Y": (35.0, 139.0), "L": (35.01, 138.998), "R": (35.01, 139.002)}
+
+
+def y_fork_edges(left_deg, right_deg):
+    """左の枝を方位`left_deg`、右の枝を方位`right_deg`でYから出すY字の区間。"""
+    return {
+        "SY": ("S", "Y", 100.0, 0.0),
+        "YS": ("Y", "S", 100.0, 180.0),
+        "YL": ("Y", "L", 100.0, left_deg),
+        "LY": ("L", "Y", 100.0, (left_deg + 180.0) % 360.0),
+        "YR": ("Y", "R", 100.0, right_deg),
+        "RY": ("R", "Y", 100.0, (right_deg + 180.0) % 360.0),
+    }
+
+
+@pytest.mark.parametrize(
+    ("nodes", "edges", "route", "expected"),
+    [
+        # 十字路で左折・右折・Uターン・直進。直進は案内しない。
+        (PLUS_NODES, PLUS_EDGES, ["WC", "CN"], [(1, routing.TurnKind.LEFT)]),
+        (PLUS_NODES, PLUS_EDGES, ["WC", "CS"], [(1, routing.TurnKind.RIGHT)]),
+        (PLUS_NODES, PLUS_EDGES, ["WC", "CW"], [(1, routing.TurnKind.UTURN)]),
+        (PLUS_NODES, PLUS_EDGES, ["WC", "CE"], []),
+        # 交差点から離れた所で曲がる区間でも、交差点のそばの向きで案内する。
+        (PLUS_NODES, CURVED_PLUS_EDGES, ["WC", "CS"], [(1, routing.TurnKind.RIGHT)]),
+        # 分かれ道の無い角では、道なりに曲がるだけなので案内しない。
+        (BEND_NODES, BEND_EDGES, ["AB", "BC"], []),
+        # 浅いY字では、よりまっすぐに近い枝が別にある方へ進むときだけ、その向きで案内する。
+        (Y_NODES, y_fork_edges(340.0, 10.0), ["SY", "YL"], [(1, routing.TurnKind.LEFT)]),
+        (Y_NODES, y_fork_edges(340.0, 10.0), ["SY", "YR"], []),
+        (Y_NODES, y_fork_edges(350.0, 20.0), ["SY", "YR"], [(1, routing.TurnKind.RIGHT)]),
+    ],
+)
+def test_turns_along_a_path_are_the_turns_at_a_branch(nodes, edges, route, expected):
+    """案内する曲がりは、来た道へ戻る遷移を除いて2本以上の道へ進める点（分かれ道）での、直進でない遷移と、
+    よりまっすぐに近い道を外れて進む遷移。分かれ道の無い角で案内すると、道なりに進むだけの所で「曲がる」と
+    言ってしまい、浅いY字で道なりでない方へ入る所で案内しないと、道なりの方へ進んでしまう。"""
+    graph = make_graph(nodes, edges)
+    lazy, _, structure = build_all(graph, spec=TURN_SPEC)
+    index = state_index(lazy)
+
+    turns = routing.turns_along(structure, [index[edge_id] for edge_id in route])
+
+    assert [(turn.index, turn.kind) for turn in turns] == expected
 
 
 # 「そもそも待ちの要る階級か」の境目（`domain/traffic.py`が決める）。
 MAJOR = routing.MAJOR_CROSSING_MIN_RANK
+
+
+def test_a_shallow_fork_guided_off_the_straighter_branch_adds_no_turn_wait():
+    """浅いY字で道なりでない方へ入る所は案内するが、待ちは向きの差で決めたまま（直進とみなす幅の内側は0秒）。"""
+    graph = make_graph(Y_NODES, y_fork_edges(340.0, 10.0))
+    lazy, _, structure = build_all(graph, spec=TURN_SPEC)
+    assert transition_seconds(lazy, structure)[("SY", "YL")] == pytest.approx(0.0)
+
+
+def test_a_bend_without_a_branch_adds_no_wait_even_beside_a_higher_ranked_road():
+    """分かれ道の無い点（道のデータの継ぎ目）では道を選ばないので、曲がりの待ちも上位の道の待ちも足さない。
+    足すと、同じカーブでも区間の継ぎ目の位置しだいで経路と所要が変わる。来た道へ戻るUターンの待ちは足す。"""
+    graph = make_graph(BEND_NODES, BEND_EDGES)
+    lazy = lazy_of(graph)
+    ranks = rank_array(lazy, {edge_id: (MAJOR if edge_id in {"BC", "CB"} else MAJOR - 1) for edge_id in BEND_EDGES})
+    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=ranks)
+    from_a = {
+        target: seconds for (source, target), seconds in transition_seconds(lazy, structure).items()
+        if source == "AB"
+    }
+    assert from_a == pytest.approx({"BC": 0.0, "BA": TURN_SPEC.uturn_seconds})
 
 
 def _plus_ranks(lazy, crossing_rank, entering_rank):
@@ -767,6 +925,58 @@ def test_tree_stops_at_the_cost_limit():
         hops = row + col
         reachable = (hops if hops else 2) <= 3
         assert np.isfinite(tree.node_cost[node_index]) == reachable, node_id
+
+
+@given(seed=st.integers(0, 2**32 - 1), length_m=st.floats(0.0, 2000.0))
+def test_tree_cost_bound_cuts_no_state_within_the_length(seed, length_m):
+    """どんな区間の費用（時刻ビンで変わる・割り増し・通れない区間）とターンの待ちでも、実距離`length_m`以内で届く
+    状態の木の費用は上界を超えず、上界で打ち切った木はそれらの状態で打ち切らない木と同じになる。上界を
+    超えると、帯の中の折返し点が木から落ち、長さの合う周回が出なくなる。"""
+    rng = np.random.default_rng(seed)
+    lazy, _, structure = build_all(make_grid(6), TURN_SPEC)
+    states = structure.state_count
+    cost = rng.uniform(0.0, 50.0, (2, states)) * rng.choice([1.0, 10.0], (2, states))
+    cost[rng.random((2, states)) < 0.1] = np.inf
+    edge_length_m = rng.uniform(1.0, 200.0, states)
+    seeds = out_states(lazy, "n0_0")
+
+    def tree(**kwargs):
+        return routing.build_turn_expanded_tree(
+            structure, cost, edge_length_m, seeds, lazy.node_count,
+            edge_seconds=np.ones((2, states)), bin_seconds=30.0, **kwargs,
+        )
+
+    full = tree()
+    bound = routing.tree_cost_bound(structure, cost, edge_length_m, length_m)
+    within = np.isfinite(full.state_cost) & (full.state_length_m <= length_m)
+    assert (full.state_cost[within] <= bound).all()
+    cut = tree(cost_limit=bound)
+    np.testing.assert_array_equal(cut.state_cost[within], full.state_cost[within])
+
+
+def test_tree_cost_bound_covers_the_waits_and_the_dearest_time_bin():
+    """通れる区間が1本の経路に乗る一方通行の折れ線では、上界が経路の費用とちょうど同じになる。ターンの待ちか、
+    到達時刻で選ばれる高いほうのビンを見込まない上界は、折れ線の先を打ち切る。曲がる所の待ちは分かれ道にだけ
+    付くので、通れない枝を曲がる所ごとに置く。"""
+    graph = make_graph(
+        {"a": (35.0, 139.0), "b": (35.0, 139.001), "c": (35.001, 139.001), "d": (35.001, 139.002),
+         "e": (35.002, 139.002), "bx": (34.999, 139.001), "cx": (35.001, 139.0), "dx": (35.0, 139.002)},
+        {"ab": ("a", "b", 100.0, 90.0), "bc": ("b", "c", 100.0, 0.0), "cd": ("c", "d", 100.0, 90.0),
+         "de": ("d", "e", 100.0, 0.0), "bx": ("b", "bx", 100.0, 180.0), "cx": ("c", "cx", 100.0, 270.0),
+         "dx": ("d", "dx", 100.0, 180.0)},
+    )
+    lazy, statics, structure = build_all(graph, TURN_SPEC)
+    states = state_index(lazy)
+    last = states["de"]
+    cost = np.full((2, structure.state_count), 10.0)
+    cost[:, [states["bx"], states["cx"], states["dx"]]] = np.inf
+    cost[1, last] = 100.0
+    bound = routing.tree_cost_bound(structure, cost, statics.edge_length_m, 400.0)
+    tree = routing.build_turn_expanded_tree(
+        structure, cost, statics.edge_length_m, out_states(lazy, "a"), lazy.node_count,
+        cost_limit=bound, edge_seconds=np.ones((2, structure.state_count)), bin_seconds=1.5,
+    )
+    assert tree.state_cost[last] == pytest.approx(10.0 * 3 + 100.0 + 2 * TURN_SPEC.left_seconds + TURN_SPEC.right_seconds)
 
 
 def test_tree_never_enters_a_non_finite_cost_edge():
@@ -1044,11 +1254,14 @@ def test_shortest_path_is_none_when_the_goal_cannot_be_reached():
     assert path is None
 
 
+# AからCへ、北のBを回る道と南のDを回る道。BとDには、まっすぐ抜ける行き止まりの道（E・F）が分かれる。
 FORK_NODES = {
     "A": (35.00, 139.00),
     "B": (35.01, 139.01),
     "D": (34.99, 139.01),
     "C": (35.00, 139.02),
+    "E": (35.02, 139.02),
+    "F": (34.98, 139.02),
 }
 FORK_EDGES = {
     "AB": ("A", "B", 100.0, 45.0),
@@ -1059,6 +1272,10 @@ FORK_EDGES = {
     "DA": ("D", "A", 100.0, 315.0),
     "DC": ("D", "C", 100.0, 45.0),
     "CD": ("C", "D", 100.0, 225.0),
+    "BE": ("B", "E", 100.0, 45.0),
+    "EB": ("E", "B", 100.0, 225.0),
+    "DF": ("D", "F", 100.0, 135.0),
+    "FD": ("F", "D", 100.0, 315.0),
 }
 
 
@@ -1233,13 +1450,16 @@ async def test_route_generation_calls_from_python_only_the_jit_that_the_image_ba
     speed = np.full((4, len(times)), 3.0)
     wind = WindForecastSeries(
         times=times, speed_ms=speed, direction_deg=np.zeros_like(speed),
-        lattice=WindLattice(south=BASE_LAT, west=BASE_LON, lat_step=0.018, lon_step=0.022, rows=2, cols=2),
+        lattice=MsmBlock(
+            grid=MsmGrid(lat_min=BASE_LAT, lon_min=BASE_LON, d_lat=0.018, d_lon=0.022, n_lat=2, n_lon=2), row0=0, col0=0, rows=2, cols=2,
+        ),
     )
     with avoid_axis_declared():
-        generator = RouteGenerator(engine_for(monkeypatch, grid_network(), 0.0, wind))
+        generator = generator_for(monkeypatch, grid_network(), 0.0, wind)
         departure = datetime(2026, 9, 22, 8, tzinfo=timezone(timedelta(hours=9)))
-        assert await generator.generate_loops(at(CENTER), 4.0, 1.5, max_routes=3, start_time=departure)
+        assert await generator.generate_loops(
+                at(CENTER), 4.0, 1.5, points=NO_POINTS, max_routes=3, start_time=departure)
         assert await generator.generate_via_waypoints(
-            at(SOUTH_WEST), [], 4.0, destination=at(NORTH_EAST), max_routes=3, start_time=departure)
+            at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=3, start_time=departure)
 
     assert called and called <= baked

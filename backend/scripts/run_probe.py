@@ -10,7 +10,7 @@
     python scripts/run_probe.py --in-container path/to/probe.py
 
     # プローブの後ろに書いた引数は、そのままプローブへ渡る
-    python scripts/run_probe.py scripts/derived_distribution.py --column edge_materials.accident_count
+    python scripts/run_probe.py scripts/measure_axis_saturation.py --bbox 35.65,139.72,35.71,139.80
 
 手元実行の場合、プローブは次を環境変数から受け取る:
 
@@ -32,12 +32,12 @@ import shlex
 import subprocess
 import sys
 
-from _prod_env import read_prod_env
+from _prod_env import BACKEND_DIR, read_prod_env
+from _probe_env import PROBE_ASYNCPG_DSN, PROBE_DATABASE_URL
 
-_BACKEND_DIR = pathlib.Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_BACKEND_DIR))
+sys.path.insert(0, str(BACKEND_DIR))
 
-from app.batch.common import asyncpg_dsn  # noqa: E402
+from app.batch.common import asyncpg_dsn
 
 _CONTAINER = "ridecompass-backend"
 
@@ -46,9 +46,9 @@ def _run_locally(probe: pathlib.Path, probe_args: list[str]) -> int:
     database_url = read_prod_env("DATABASE_URL")
     env = {
         **os.environ,
-        "PROBE_DATABASE_URL": database_url,
-        "PROBE_ASYNCPG_DSN": asyncpg_dsn(database_url),
-        "BACKEND_DIR": str(_BACKEND_DIR),
+        PROBE_DATABASE_URL: database_url,
+        PROBE_ASYNCPG_DSN: asyncpg_dsn(database_url),
+        "BACKEND_DIR": str(BACKEND_DIR),
         "PYTHONIOENCODING": "utf-8",
     }
     return subprocess.call([sys.executable, str(probe), *probe_args], env=env)
