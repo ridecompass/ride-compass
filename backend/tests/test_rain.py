@@ -54,7 +54,7 @@ def test_a_window_sums_the_hours_inside_it_unless_one_is_missing(history, expect
     """3時間の窓。欠測を0として足すと、雨を少なく見せる。"""
     value = _value(rain_material_values(history), rain_window_material_id(3))
 
-    assert (np.isnan(value) and np.isnan(expected)) or value == expected
+    assert np.array_equal(value, expected, equal_nan=True)
 
 
 @pytest.mark.parametrize(
@@ -72,7 +72,7 @@ def test_hours_since_rain_counts_back_to_the_last_rainy_hour(history, expected):
     """天気の「降っていない」の境と同じ量から雨と数える。"""
     value = _value(rain_material_values(history), HOURS_SINCE_RAIN)
 
-    assert (np.isnan(value) and np.isnan(expected)) or value == expected
+    assert np.array_equal(value, expected, equal_nan=True)
 
 
 def test_each_station_gets_its_own_values():

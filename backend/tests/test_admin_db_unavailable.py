@@ -11,7 +11,6 @@ DBに繋がらない状態は、アプリのセッション工場の依存を、
 
 import pytest
 from fastapi import FastAPI
-from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -27,7 +26,7 @@ from app.domain.road_classes import EMPTY_ROAD_CLASSES
 from app.infrastructure import database
 from app.main import app
 from app.services.axis_preview_service import new_sample_cache
-from tests.admin_auth import AUTH_HEADERS
+from tests.admin_auth import AUTH_HEADERS, admin_routes
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 
 UNREACHABLE_DATABASE_URL = "postgresql+asyncpg://ridecompass:ridecompass@127.0.0.1:1/ridecompass"
@@ -83,12 +82,7 @@ ROUTE_CASES = {
     ("POST", "/api/admin/debug/mode"): ("/api/admin/debug/mode", {"enabled": False}, 200),
     ("GET", "/api/admin/debug/logs"): ("/api/admin/debug/logs", None, 200),
 }
-ROUTES = [
-    (method, route.path)
-    for route in app.routes
-    if isinstance(route, APIRoute) and route.path.startswith(ADMIN_PATH_PREFIX)
-    for method in sorted(route.methods)
-]
+ROUTES = [(method, route.path) for route in admin_routes(app) for method in sorted(route.methods)]
 
 
 @pytest.fixture

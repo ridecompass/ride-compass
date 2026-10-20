@@ -17,7 +17,7 @@ from app.domain.warning_levels import WarningBadgeLevel
 ACTIVE: WarningBadgeLevel = "severe_warning"
 
 
-def _bulletin(level: WarningBadgeLevel | None, class20_codes=("1310100",), class10_codes=("130010",)) -> FloodBulletin:
+def _bulletin(level: WarningBadgeLevel | None, class20_codes, class10_codes) -> FloodBulletin:
     return FloodBulletin(
         level=level,
         class20_codes=tuple(class20_codes),

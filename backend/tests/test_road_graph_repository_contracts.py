@@ -28,12 +28,11 @@ import shapely
 from sqlalchemy import text
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.graph import LeanEdge
+from app.domain.graph import LeanEdge, edge_key, node_key
 from app.domain.landcover import LandcoverPercentages, landcover_key
 from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns
 from app.domain.region import BoundingBox
 from app.infrastructure.derived_models import EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow
-from app.domain.graph import edge_key, node_key
 from app.services.axis_preview_service import SAMPLE_LIMIT, SAMPLE_PERCENT
 from app.infrastructure.material_joins import reversed_material_expression
 from app.infrastructure.road_graph_repository import (
@@ -130,9 +129,9 @@ def test_reversing_twice_returns_to_the_original_column():
 # --- ジオメトリ付きの取り直し -------------------------------------------------
 
 
-def _geometry_row(way_id=1, segment=0, coordinates=((139.0, 35.0), (139.1, 35.2))):
-    return _Row(osm_way_id=way_id, segment_index=segment, from_node_id=1, to_node_id=2,
-                distance_m=100.0, wkb=shapely.to_wkb(shapely.LineString(coordinates)))
+def _geometry_row():
+    return _Row(osm_way_id=1, segment_index=0, from_node_id=1, to_node_id=2,
+                distance_m=100.0, wkb=shapely.to_wkb(shapely.LineString(((139.0, 35.0), (139.1, 35.2)))))
 
 
 async def test_both_directions_of_a_segment_share_one_row():
@@ -279,12 +278,9 @@ async def test_accident_years_come_from_the_declared_profile(declared, years):
 # --- 土地被覆の内訳 -----------------------------------------------------------
 
 
-def _landcover_row(valid_pixels: int | None = 100) -> _Row:
-    """表が入れる形の行。割合は有効画素が正の行だけが持つ。"""
-    values: dict[str, object] = {"lc_valid_pixels": valid_pixels}
-    for name in LandcoverPercentages.model_fields:
-        values[f"lc_{landcover_key(name)}"] = 12.5 if valid_pixels else None
-    return _Row(**values)
+def _landcover_row() -> _Row:
+    """表が入れる形の、有効画素が正の行。"""
+    return _Row(lc_valid_pixels=100, **{f"lc_{landcover_key(name)}": 12.5 for name in LandcoverPercentages.model_fields})
 
 
 @pytest.mark.parametrize(("feature_key", "segment_index"), [

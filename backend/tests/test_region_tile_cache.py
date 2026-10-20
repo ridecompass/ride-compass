@@ -41,15 +41,12 @@ def records(monkeypatch):
 
 
 def _fetch(result, failure=None):
-    calls: list[dict] = []
-
     async def fetch(fields):
-        calls.append(fields)
         if failure is not None:
             mark_failed(fields, failure)
         return result
 
-    return fetch, calls
+    return fetch
 
 
 async def _serve(fetch, **overrides):
@@ -67,7 +64,7 @@ async def _serve(fetch, **overrides):
 
 async def test_a_cached_tile_is_returned_without_making_it_again(cache, records):
     cache.entries[KEY] = (b"cached", "image/png")
-    fetch, _ = _fetch(b"new")
+    fetch = _fetch(b"new")
 
     response = await _serve(fetch)
 
@@ -76,7 +73,7 @@ async def test_a_cached_tile_is_returned_without_making_it_again(cache, records)
 
 
 async def test_a_missing_tile_is_made_stored_and_returned(cache, records):
-    fetch, _ = _fetch(b"new")
+    fetch = _fetch(b"new")
 
     response = await _serve(fetch)
 
@@ -97,7 +94,7 @@ async def test_a_missing_tile_is_made_stored_and_returned(cache, records):
     ],
 )
 async def test_a_tile_that_cannot_be_made_is_the_empty_tile_and_is_not_stored(cache, records, failure, cacheable):
-    fetch, _ = _fetch(None, failure)
+    fetch = _fetch(None, failure)
 
     response = await _serve(fetch)
 
