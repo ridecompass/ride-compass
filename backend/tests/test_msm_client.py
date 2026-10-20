@@ -3,7 +3,7 @@
 確かめるのは公開の入口（`refresh`・`read_series`・`read_grid_points`・`read_grid_block`・`read_weather_grid`・
 `freshness`/`freshness_from_meta`/`warn_if_stale`）から
 見える振る舞いだけ。差し替えるのはプロセス境界だけで、網は本物の`httpx.AsyncClient`へ配信元の代役
-（`MockTransport`）を付け、ディスクは一時ディレクトリ、時計は固定する。何時間先まで同期し・読むかは
+（respxの経路）を付け、ディスクは一時ディレクトリ、時計は固定する。何時間先まで同期し・読むかは
 定数（`domain/weather_elements.py: MSM_FORECAST_HOURS`）をテストごとに差し替える。
 `.om`ファイルは本物のライブラリ（omfiles）で書く。
 
@@ -22,10 +22,12 @@ from types import SimpleNamespace
 import httpx
 import numpy as np
 import pytest
+import respx
 from omfiles import OmFileWriter
 
 from app.domain.time_zone import JST
 from app.infrastructure import msm_client
+from tests.fake_http import client_for
 
 CHUNK_HOURS = 6
 #: 2026-09-22 05:30 JST。6時間のチャンクは03:00 JSTに始まるので、先頭から2時間30分に当たる。
@@ -82,30 +84,23 @@ class Source:
 
     def __init__(self, tmp_path, meta=None):
         self.tmp_path = tmp_path
-        self.meta = meta if meta is not None else _meta()
-        self.requests: list[httpx.Request] = []
-        self.fail: set[str] = set()
+        self.router = respx.Router()
+        self.router.get(path__regex=r"/static/meta\.json$").respond(json=_meta() if meta is None else meta)
+        self.chunks = self.router.get(path__regex=r"/(?P<variable>[^/]+)/chunk_(?P<number>\d+)\.om$").mock(
+            side_effect=self._chunk
+        )
 
-    def handle(self, request: httpx.Request) -> httpx.Response:
-        self.requests.append(request)
-        name = request.url.path.rsplit("/", 2)
-        if "meta" in self.fail and name[-1] == "meta.json":
-            return httpx.Response(500)
-        if name[-1] == "meta.json":
-            return httpx.Response(200, json=self.meta) if isinstance(self.meta, dict) else httpx.Response(200, content=self.meta)
-        chunk_number = int(name[-1].removeprefix("chunk_").removesuffix(".om"))
-        if "chunk" in self.fail:
-            return httpx.Response(500)
-        etag = f'"{name[-2]}-{chunk_number}"'
+    def _chunk(self, request: httpx.Request, variable: str, number: str) -> httpx.Response:
+        etag = f'"{variable}-{number}"'
         if request.headers.get("If-None-Match") == etag:
             return httpx.Response(304)
-        return httpx.Response(200, content=_om_bytes(self.tmp_path, chunk_number), headers={"ETag": etag})
+        return httpx.Response(200, content=_om_bytes(self.tmp_path, int(number)), headers={"ETag": etag})
 
     def client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(transport=httpx.MockTransport(self.handle))
+        return client_for(self.router)
 
     def chunk_requests(self):
-        return [r for r in self.requests if r.url.path.endswith(".om")]
+        return [call.request for call in self.chunks.calls]
 
 
 async def _synced(tmp_path, msm_dir, meta=None, horizon_hours=CHUNK_HOURS):

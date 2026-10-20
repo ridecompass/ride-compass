@@ -27,10 +27,10 @@ import pytest
 
 from app.api import dependencies
 from app.config import settings
+from app.domain.graph import node_key
 from app.domain.road_classes import AvoidanceClassification, AvoidanceSection
-from app.domain.route_request import DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
+from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
 from app.domain.tuning import TUNING_VALUES
-from app.domain.route_request import ASSUMED_SPEED_KMH
 from app.infrastructure import rate_limiter
 from app.infrastructure.road_network_store import RoadNetworkUnavailableError
 from app.main import app
@@ -47,10 +47,11 @@ from tests.route_world import (
     Weather,
     at,
     avoid_axis_declared,
+    LATTICE,
     grid_network,
-    lattice_network,
+    lattice_at,
     lattice_node,
-    node_point,
+    passes_in_order,
     serve_road_network,
 )
 
@@ -144,27 +145,6 @@ def _ends(route):
     return route["node_ids"][0], route["node_ids"][-1]
 
 
-def _node(osm_node_id):
-    return f"osm-node-{osm_node_id}"
-
-
-#: 置いた点を通って距離に合わせる生成を見る格子（6×6、1辺約1km）。3×3では、置いた点を通っても距離に合わせる長さが無い。
-LATTICE = lattice_network(6)
-
-
-def _lattice_point(row, col):
-    return node_point(LATTICE, lattice_node(row, col)).model_dump()
-
-
-def _passes_in_order(route, start, stops, end):
-    """経路が`start`から始まり、`stops`を置いた順に通り、`end`で終わる。"""
-    nodes = route["node_ids"]
-    position = 0
-    for stop in stops:
-        if _node(stop) not in nodes[position:]:
-            return False
-        position = nodes.index(_node(stop), position)
-    return _ends(route) == (_node(start), _node(end))
 
 
 # --- 生成の種類 ---
@@ -174,7 +154,7 @@ async def test_a_loop_is_generated_when_neither_destination_nor_waypoints_are_gi
     result = (await _generate(client))["result"]
 
     assert result["routes"]
-    assert all(_ends(route) == (_node(CENTER), _node(CENTER)) for route in result["routes"])
+    assert all(_ends(route) == (node_key(CENTER), node_key(CENTER)) for route in result["routes"])
     assert result["no_candidates_reason"] is None
 
 
@@ -187,7 +167,7 @@ async def test_a_destination_route_ends_at_the_destination_with_up_to_the_reques
     assert result["conditions"]["max_routes"] == 2
     # 全長の目標が無ければ、許容も置かない
     assert result["conditions"]["distance_km"] is None and result["conditions"]["distance_tolerance_km"] is None
-    assert all(_ends(route) == (_node(SOUTH_WEST), _node(NORTH_EAST)) for route in result["routes"])
+    assert all(_ends(route) == (node_key(SOUTH_WEST), node_key(NORTH_EAST)) for route in result["routes"])
 
 
 async def test_a_waypoint_route_returns_to_the_origin_with_up_to_the_requested_count(client):
@@ -197,7 +177,7 @@ async def test_a_waypoint_route_returns_to_the_origin_with_up_to_the_requested_c
 
     assert 1 <= len(result["routes"]) <= 2
     assert result["conditions"]["max_routes"] == 2
-    assert all(_ends(route) == (_node(SOUTH_WEST), _node(SOUTH_WEST)) for route in result["routes"])
+    assert all(_ends(route) == (node_key(SOUTH_WEST), node_key(SOUTH_WEST)) for route in result["routes"])
 
 
 @pytest.mark.parametrize(
@@ -215,32 +195,22 @@ async def test_a_spliced_route_is_evaluated_as_sent(client, body):
     assert [r["edge_ids"] for r in spliced["routes"]] == [route["edge_ids"]]
 
 
-@pytest.mark.parametrize(
-    ("origin", "waypoints", "destination", "target"),
-    [
-        pytest.param((1, 1), [(1, 2)], None, 12.0, id="周回に経由地を置いて"),
-    ],
-)
-async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(
-    client, world, monkeypatch, origin, waypoints, destination, target,
-):
+async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(client, world, monkeypatch):
     """経由地を置いても、距離は全長の目標として効く（夕食と銭湯に寄って30kmの周回）。
     探索は置いた点の近くに限らず、全長の目標に足りる広さで探す。"""
     world.network = LATTICE
     tolerance_ratio = 0.2
     monkeypatch.setitem(TUNING_VALUES, "search.distance_tolerance_ratio", tolerance_ratio)
-    end = origin if destination is None else destination
+    origin, waypoint, target = (1, 1), (1, 2), 12.0
 
     result = (await _generate(
-        client, **_lattice_point(*origin), waypoints=[_lattice_point(*point) for point in waypoints] or None,
-        destination=_lattice_point(*destination) if destination else None,
-        distance_km=target,
+        client, **lattice_at(*origin).model_dump(), waypoints=[lattice_at(*waypoint).model_dump()], distance_km=target,
     ))["result"]
 
     assert len(result["routes"]) >= 2
     for route in result["routes"]:
-        assert _passes_in_order(
-            route, lattice_node(*origin), [lattice_node(*point) for point in waypoints], lattice_node(*end),
+        assert passes_in_order(
+            route["node_ids"], lattice_node(*origin), [lattice_node(*waypoint)], lattice_node(*origin),
         )
         assert abs(route["distance_km"] - target) <= target * tolerance_ratio
     assert result["conditions"]["distance_km"] == target

@@ -8,13 +8,12 @@
 - 配ってよい履歴の古さ・観測所ごとの材料の値の組み立て → `test_jma_amedas_service.py`
 """
 
-import inspect
-
 from app.domain.rain import HOURS_SINCE_RAIN, RAIN_HISTORY_HOURS, rain_window_material_id
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services.rain_way_service import RainWayService
 from app.services.weather_service import WeatherService
 from tests import rain_history_fake
+from tests.bound_fake import bound
 
 Z, X, Y = 14, 14551, 6447
 
@@ -30,11 +29,12 @@ class FakeMidpointsRepository:
     """RoadGraphRepositoryのうちget_feature_midpoints_in_tileだけを実装したフェイク。引数は本物の定義へ当てて照合する。"""
 
     def __init__(self, midpoints):
-        self._midpoints = midpoints
+        self.midpoints = midpoints
 
     async def get_feature_midpoints_in_tile(self, *args, **kwargs):
-        inspect.signature(RoadGraphRepository.get_feature_midpoints_in_tile).bind(self, *args, **kwargs)
-        return self._midpoints
+        return self.midpoints
+
+    get_feature_midpoints_in_tile = bound(RoadGraphRepository.get_feature_midpoints_in_tile, get_feature_midpoints_in_tile)
 
 
 async def _observe(rain_mm: dict[str, float | None]):

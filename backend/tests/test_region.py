@@ -96,9 +96,13 @@ def mercator_m(longitude: float, latitude: float) -> tuple[float, float]:
     )
 
 
-tiles = st.integers(min_value=0, max_value=18).flatmap(
-    lambda z: st.tuples(st.just(z), st.integers(0, 2**z - 1), st.integers(0, 2**z - 1))
-)
+def tiles_at(min_zoom: int, max_zoom: int):
+    return st.integers(min_value=min_zoom, max_value=max_zoom).flatmap(
+        lambda z: st.tuples(st.just(z), st.integers(0, 2**z - 1), st.integers(0, 2**z - 1))
+    )
+
+
+tiles = tiles_at(0, 18)
 
 
 @given(tile=tiles)
@@ -136,25 +140,16 @@ def test_the_tiles_are_exactly_the_block_of_tiles_the_box_touches(bbox, z):
     # 四隅はどれも、覆うタイルのどれかの中（境目を含む）にある。
     for latitude in (bbox.min_latitude, bbox.max_latitude):
         for longitude in (bbox.min_longitude, bbox.max_longitude):
-            assert any(_contains(tile_bounds_lonlat(z, x, y), latitude, longitude) for x, y in covering)
+            assert any(tile_bounds_lonlat(z, x, y).contains(Point(latitude, longitude)) for x, y in covering)
     # 四方の端の列・行は、どれも矩形に触れている（余分な列・行が無い）。境目の上の点は東・南のタイルに入る。
     north_west, south_east = tile_bounds_lonlat(z, xs[0], ys[0]), tile_bounds_lonlat(z, xs[-1], ys[-1])
     assert north_west.max_longitude > bbox.min_longitude and south_east.min_longitude <= bbox.max_longitude
     assert north_west.min_latitude < bbox.max_latitude and south_east.max_latitude >= bbox.min_latitude
 
 
-def _contains(bounds: BoundingBox, latitude: float, longitude: float) -> bool:
-    return (
-        bounds.min_latitude <= latitude <= bounds.max_latitude
-        and bounds.min_longitude <= longitude <= bounds.max_longitude
-    )
-
-
 # --- 道1本・区間で焼くタイル ---
 
-road_tiles = st.integers(min_value=ROAD_TILE_MIN_ZOOM, max_value=ROAD_TILE_MAX_ZOOM).flatmap(
-    lambda z: st.tuples(st.just(z), st.integers(0, 2**z - 1), st.integers(0, 2**z - 1))
-)
+road_tiles = tiles_at(ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM)
 
 
 @given(tile=road_tiles)
@@ -169,8 +164,8 @@ def test_the_way_unit_tile_is_the_tile_itself_or_the_closest_way_unit_tile_holdi
     else:
         assert unit[0] == EDGE_UNIT_MIN_ZOOM - 1
         outer, inner = tile_bounds_lonlat(*unit), tile_bounds_lonlat(z, x, y)
-        assert _contains(outer, inner.min_latitude, inner.min_longitude)
-        assert _contains(outer, inner.max_latitude, inner.max_longitude)
+        assert outer.contains(Point(inner.min_latitude, inner.min_longitude))
+        assert outer.contains(Point(inner.max_latitude, inner.max_longitude))
 
 
 @given(latitude=st.floats(min_value=20.0, max_value=46.0), longitude=st.floats(min_value=122.0, max_value=154.0))
@@ -179,4 +174,4 @@ def test_the_edge_unit_tile_of_a_point_holds_the_point(latitude, longitude):
     z, x, y = edge_unit_tile(longitude, latitude)
 
     assert z == EDGE_UNIT_MIN_ZOOM
-    assert _contains(tile_bounds_lonlat(z, x, y), latitude, longitude)
+    assert tile_bounds_lonlat(z, x, y).contains(Point(latitude, longitude))

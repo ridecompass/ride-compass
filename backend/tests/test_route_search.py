@@ -38,8 +38,6 @@ from app.domain.route import (
     reverse_elevation_by_edge,
     route_elevation_gain,
 )
-from app.domain.routing import NodeJunction, TurnExpandedTree, add_terminal_candidate
-from app.domain.tuning import TUNING_VALUES
 from app.domain.route_search import (
     alternative_via_nodes,
     leg_of_edge_by_half,
@@ -52,6 +50,8 @@ from app.domain.route_search import (
     reverse_leg_assignment,
     turnaround_ring_m,
 )
+from app.domain.routing import NodeJunction, TurnExpandedTree, add_terminal_candidate
+from app.domain.tuning import TUNING_VALUES
 
 
 # --------------------------------------------------------------------------------------
@@ -59,12 +59,12 @@ from app.domain.route_search import (
 # --------------------------------------------------------------------------------------
 
 
-def lean_edge(edge_id, from_node_id="n0", to_node_id="n1", *, distance_m=100.0, geometry=None):
-    """探索用グラフの区間と同じく、`geometry`を省くと空のプレースホルダになる。DBの区間の番号は
+def lean_edge(edge_id, *, geometry=None):
+    """探索用グラフの区間と同じく、`geometry`を省くと空のプレースホルダになる。端のNode・長さ・DBの区間の番号は
     ここを通るテストが読まないため、どの区間にも同じ値を入れる。"""
     return LeanEdge(
-        edge_id=edge_id, from_node_id=from_node_id, to_node_id=to_node_id,
-        geometry=[] if geometry is None else geometry, distance_m=distance_m,
+        edge_id=edge_id, from_node_id="n0", to_node_id="n1",
+        geometry=[] if geometry is None else geometry, distance_m=100.0,
         osm_way_id=1, segment_index=0, forward=True,
     )
 
@@ -88,10 +88,10 @@ def turn_tree(state_count, *, node_cost, node_length_m, node_seconds, node_best_
     )
 
 
-def segment_detail(difficulty, distance_km):
+def segment_detail(difficulty):
     return RouteSegmentDetail(
         start_latitude=35.0, start_longitude=139.0, end_latitude=35.0, end_longitude=139.0,
-        cumulative_distance_km=0.0, distance_km=distance_km, elevations=[],
+        cumulative_distance_km=0.0, distance_km=1.0, elevations=[],
         road_classes={}, difficulty=difficulty,
     )
 
@@ -194,7 +194,7 @@ def test_leg_of_edge_by_half_switches_where_the_accumulated_weight_reaches_half(
 def test_pick_better_candidate_takes_the_lower_difficulty(forward_difficulty, reverse_difficulty, picked):
     """難易度は区間から求める。区間が無い候補は比較できない。"""
     def candidate(name, difficulty):
-        return route_candidate(name, segments=[] if difficulty is None else [segment_detail(difficulty, 1.0)])
+        return route_candidate(name, segments=[] if difficulty is None else [segment_detail(difficulty)])
 
     forward = candidate("forward", forward_difficulty)
     reverse = candidate("reverse", reverse_difficulty)

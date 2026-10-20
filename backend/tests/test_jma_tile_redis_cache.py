@@ -10,12 +10,11 @@
 - 後から書いた値が前の値を置き換えること → Redisの`SET`の振る舞いで、ここに判断が無い
 """
 
-import io
-
 from PIL import Image
 
 from app.infrastructure import jma_tile_redis_cache
 from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
+from tests.tile_images import encode
 
 TILE = "bosai/jmatile/data/risk/20260101000000/none/20260101000000/surf/land/10/908/403.png"
 OTHER_TILE = "bosai/jmatile/data/risk/20260101000000/none/20260101000000/surf/land/10/908/404.png"
@@ -23,9 +22,7 @@ VECTOR_TILE = "bosai/jmatile/data/risk/20260101000000/none/20260101000000/surf/f
 
 
 def png(alpha: int) -> bytes:
-    buffer = io.BytesIO()
-    Image.new("RGBA", (4, 4), (255, 0, 0, alpha)).save(buffer, format="PNG")
-    return buffer.getvalue()
+    return encode(Image.new("RGBA", (4, 4), (255, 0, 0, alpha)))
 
 
 async def test_a_stored_tile_comes_back_byte_for_byte_with_its_content_type(fake_redis):
