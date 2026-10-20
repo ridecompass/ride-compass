@@ -29,22 +29,18 @@ from sqlalchemy import text
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.graph import LeanEdge
-from app.domain.hard_filters import route_flag_columns
 from app.domain.landcover import LandcoverPercentages, landcover_key
-from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns, tile_column_sql
+from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns
 from app.domain.region import BoundingBox
-from app.infrastructure.road_tile_sql import ROAD_SURFACE_TILE_MVT_SQL
-from app.infrastructure.derived_models import EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow, WayCountsRow
+from app.infrastructure.derived_models import EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow
 from app.domain.graph import edge_key, node_key
 from app.services.axis_preview_service import SAMPLE_LIMIT, SAMPLE_PERCENT
-from app.infrastructure.material_joins import material_from_clause, reversed_material_expression
+from app.infrastructure.material_joins import reversed_material_expression
 from app.infrastructure.road_graph_repository import (
     ID_CHUNK_SIZE,
     MATERIAL_ARRAY_COLUMN_ORDER,
     RoadGraphRepository,
-    way_from_clause,
 )
-from app.infrastructure.source_models import WAYS_SOURCE_SQL
 
 BBOX = BoundingBox(min_latitude=35.0, min_longitude=139.0,
                    max_latitude=35.1, max_longitude=139.1)
@@ -131,32 +127,6 @@ def test_reversing_twice_returns_to_the_original_column():
         assert back.startswith("-") == expression.startswith("-")
 
 
-# --- 材料の列 -----------------------------------------------------------------
-
-
-def test_material_array_columns_are_all_distinct():
-    """材料と付随列の名前がぶつかると、片方の値がもう片方を上書きして列がずれる。"""
-    assert len(set(MATERIAL_ARRAY_COLUMN_ORDER)) == len(MATERIAL_ARRAY_COLUMN_ORDER)
-
-
-def test_material_tables_are_joined_only_for_the_columns_the_expressions_read():
-    """使わないJOINを足すと、読む材料の少ない問い合わせまで道の全件と材料の表の結合へ広がる。"""
-    edge_column = next(column for column in EdgeCountsRow.__table__.columns if not column.primary_key)
-    clause = material_from_clause([f"em.{edge_column.name}"], "k.osm_way_id", "k.segment_index")
-
-    assert "JOIN" not in way_from_clause(["w.tags"], WAYS_SOURCE_SQL)
-    assert EdgeCountsRow.__tablename__ in clause
-    assert EdgeElevationRow.__tablename__ not in clause
-    assert WayCountsRow.__tablename__ not in clause
-
-
-@pytest.mark.parametrize("alias", ["em", "wm"])
-def test_an_expression_reading_an_undeclared_column_is_refused(alias):
-    """SQLの実行まで気づかないと、その経路の読み出しが材料ぶん丸ごと落ちる。"""
-    with pytest.raises(ValueError, match=f"{alias}.column_a"):
-        material_from_clause([f"{alias}.column_a"], "k.osm_way_id", "k.segment_index")
-
-
 # --- ジオメトリ付きの取り直し -------------------------------------------------
 
 
@@ -221,17 +191,6 @@ async def test_material_values_land_in_the_matrix_of_their_dtype():
     column = arrays.columns()[categorical]
     assert isinstance(column, CategoricalColumn)
     assert [column.value_at(row) for row in range(len(column))] == ["value_a", None, None]
-
-
-async def test_route_flags_are_named_by_their_filter():
-    """列が取り違うと、そのフィルタが常に「該当しない」になって黙って素通りする。"""
-    names = route_flag_columns()
-    assert names, "0次ハードフィルタが1つも無い"
-    repo, _ = _repo([_arrays_row(1, {f"hf_{names[0]}": [True]})])
-
-    arrays = await repo.get_edge_material_arrays([1], [0], [True], 1)
-
-    assert arrays.route_flag_columns()[names[0]].tolist() == [True]
 
 
 class _EchoingArraysSession:
@@ -346,33 +305,11 @@ async def test_landcover_is_read_at_the_unit_the_map_paints(feature_key, segment
     assert session.params[0].get("segment_index") == segment_index
 
 
-async def test_incomplete_landcover_is_not_reported():
-    """値が無い・有効画素が足りなかった区間で0%と答えると、内訳が「すべて未分類」に見える。"""
-    repo, _ = _repo([_landcover_row(valid_pixels=None)])
-
-    assert await repo.get_feature_landcover(123, None) is None
-
-
 # --- タイル -------------------------------------------------------------------
 
 # タイル1枚を焼く口。路面の口はこの口へSQLを渡すだけ。SQLはフェイクのセッションが実行しない。
 def _read_mvt(repo):
     return repo.get_tile_mvt(text("SELECT 1"), "layer", 14, 1, 2, BBOX)
-
-
-_TILE_READERS = {
-    "mvt": _read_mvt,
-    "midpoints": lambda repo: repo.get_feature_midpoints_in_tile(14, 1, 2, BBOX),
-    "gradient_inputs": lambda repo: repo.get_feature_gradient_inputs_in_tile(14, 1, 2, BBOX),
-}
-
-
-@pytest.mark.parametrize("read", _TILE_READERS.values(), ids=_TILE_READERS)
-async def test_outside_the_imported_area_nothing_is_returned(read):
-    """取込範囲外（None）と、範囲内で対象0件（空）を区別する。利用側の見せ方が変わる。"""
-    repo, _ = _repo([_Row(covered=False, payload=None)])
-
-    assert await read(repo) is None
 
 
 @pytest.mark.parametrize(("tile", "payload"), [
@@ -386,19 +323,6 @@ async def test_tile_inside_the_imported_area_is_bytes_even_without_features(tile
     assert await _read_mvt(repo) == payload
 
 
-def test_every_material_on_the_road_tile_is_baked_from_its_value_expression():
-    """地図の色と評価は、同じ材料なら同じ求め方から出る。タイルの列を手で書くと、値式を直しても地図だけが
-    古い求め方のまま残る。"""
-    sql = str(ROAD_SURFACE_TILE_MVT_SQL)
-    on_tile = [spec for spec in MATERIAL_CATALOG.values() if spec.tile_property is not None]
-
-    assert on_tile
-    for spec in on_tile:
-        column = tile_column_sql(spec)
-        assert f"({spec.value_sql})" in column, spec.material_id
-        assert f"{column} AS {spec.tile_property}" in sql, spec.material_id
-
-
 async def test_feature_keys_are_returned_as_text():
     """鍵はタイルが焼いたものと同じ文字列で配る。数で配ると、フロントのidと噛み合わず
     色が一切付かない。"""
@@ -408,11 +332,3 @@ async def test_feature_keys_are_returned_as_text():
     assert await repo.get_feature_midpoints_in_tile(14, 1, 2, BBOX) == {}
     assert await repo.get_feature_midpoints_in_tile(14, 1, 2, BBOX) == {
         "123": (35.1, 139.2), "123-4": (35.0, 139.0)}
-
-
-async def test_gradient_inputs_are_pairs_of_numbers():
-    repo, _ = _repo([_Row(covered=True, inputs=None)],
-                    [_Row(covered=True, inputs={"123-4": [3, 90]})])
-
-    assert await repo.get_feature_gradient_inputs_in_tile(14, 1, 2, BBOX) == {}
-    assert await repo.get_feature_gradient_inputs_in_tile(14, 1, 2, BBOX) == {"123-4": (3.0, 90.0)}

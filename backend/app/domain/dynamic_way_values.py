@@ -320,6 +320,9 @@ class ServedMaterialFormula:
     #: 値が道を道の向き寄りに辿るか逆向き寄りに辿るかだけで決まる材料の、(順向き, 逆向き)の値の木（条件を読まない）。
     #: このとき`formula`は2つを`domain/gradient.py: travel_direction_formula`で選ぶ木（`by_direction_material`）。
     by_direction: tuple[FormulaNode, FormulaNode] | None = None
+    #: 道ごとの材料（葉）を地図へ配らないか。葉を道ごとに読める形で外へ出せない材料（気象の予報の値そのもの等）は、
+    #: 地図の要求の条件で値まで求めてから配る（`map_way_value_formula`）。
+    withholds_leaves: bool = False
 
     @property
     def reads_conditions(self) -> bool:
@@ -348,6 +351,7 @@ class TileWayInputs:
 
 # 軸の木が読む、前もって求めた道ごとの材料の名前。`:`を含め、材料id・軸id・配信のサービスの葉と重ならない綴りにする。
 _FIXED_LEAF = "axis:value"
+_UNDETERMINED_LEAF = "axis:undetermined"
 _FORWARD_LEAF = "axis:forward"
 _BACKWARD_LEAF = "axis:backward"
 _PRIORITY_LEAF_PREFIX = "axis:priority:"
@@ -515,6 +519,41 @@ def axis_way_materials(
         else:
             out[name] = np.asarray(with_axes[name], dtype=float)
     return out
+
+
+def _withholds_leaves(served: Mapping[str, ServedMaterialFormula]) -> bool:
+    return any(served[material].withholds_leaves for material in _dependent_materials(served))
+
+
+def map_way_value_formula(
+    axis_id: str, definitions: Mapping[str, AxisDefinition], served: Mapping[str, ServedMaterialFormula],
+) -> WayValueFormula | None:
+    """地図へ配る、軸`axis_id`の値の木。地図はこの木を道ごとの材料（`map_way_materials`）と要求の条件で評価する。
+
+    条件で変わる材料のどれかが葉を配らない（`ServedMaterialFormula.withholds_leaves`）軸は、値そのもの（と値の決まらない
+    こと）を材料にする——材料は要求の条件で求めるので、条件が変わると材料を取り直す。ほかは`axis_way_value_formula`。
+    """
+    if not _withholds_leaves(served):
+        return axis_way_value_formula(axis_id, definitions, served, as_difficulty=False)
+    undetermined = any(served[material].formula.undetermined != FALSE for material in _dependent_materials(served))
+    return WayValueFormula(
+        value=feature(_FIXED_LEAF), undetermined=feature(_UNDETERMINED_LEAF) if undetermined else FALSE)
+
+
+def map_way_materials(
+    axis_id: str, definitions: Mapping[str, AxisDefinition], served: Mapping[str, ServedMaterialFormula],
+    inputs: TileWayInputs, conditions: Mapping[str, float],
+) -> dict[str, np.ndarray]:
+    """`map_way_value_formula`の木が読む道ごとの材料（名前→`inputs.feature_keys`と同じ並びの値、無ければNaN）。
+    `conditions`は、葉を配らない材料を読む軸でだけ読む。木がNoneの軸には使わない。"""
+    if not _withholds_leaves(served):
+        return axis_way_materials(axis_id, definitions, served, inputs, as_difficulty=False)
+    painted = axis_way_values(axis_id, definitions, served, inputs, conditions, as_difficulty=False)
+    return {
+        _FIXED_LEAF: _painted_column(inputs.feature_keys, painted),
+        _UNDETERMINED_LEAF: np.array(
+            [1.0 if key in painted and painted[key] is None else np.nan for key in inputs.feature_keys], dtype=float),
+    }
 
 
 def axis_way_values(

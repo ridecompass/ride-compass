@@ -1,14 +1,15 @@
-/** 道路そのものの線（路面の種類・道路の種類・トンネル・一方通行）と、詳細を見ている
- * 1本の道の強調。
+/** 道の線の層（軸カタログの`road_classes.map_layers`。分け方1つが層1つ）と、詳細を見ている1本の道の強調。
  *
- * 何を線で描くかと分類・色は`lib/mapDisplay/roadTracks.ts: ROAD_TRACKS`が持ち、ここはそれを式へ組む。
- * タイルのプロパティ名は属性idと同じ綴りで、対応表を別に持たない。
+ * 道の層の値（区分の鍵か「データなし」）はbackendが決め、地図は道ごとに feature-state で受け取って塗るだけにする——ルートの
+ * 区間の帯と同じ値になる。**feature-state の値は MapLibre の絞り込みからも `line-dasharray` からも読めない**ため、凡例で隠した
+ * 行は透明で落とし、データなしの道の破線は、破線だけの線を重ねて濃さで出し入れする。区分の外の道は値を持たないので、値を
+ * 取っている間は、値の無い道をどれも取得中の色で描く（届いていない道と区分の外の道は、取り終えるまで見分けられない）。
  *
  * すべて**同じ路面タイルのソース**を共有する。評価軸の線も同じソースを読むため、
  * ソースの宣言は合成（`composeScene`）が1本へ畳む。
  *
  * **同じ道へ複数の線を重ねると後から描いた方が隠す**ので、出ている本数から対称に
- * 横へ割り付ける（1本なら中央）。線の太さは意味を運ばず、線種が運ぶのは値が無いこと（タグが無い道）だけ
+ * 横へ割り付ける（1本なら中央）。線の太さは意味を運ばず、線種が運ぶのは値が無いこと（データなし）だけ
  * ——1本の線へ2つの分類を載せると、色の意味がもう一方のON/OFFで入れ替わる。
  */
 import { mapDisplay } from "@/types/generated/mapDisplay";
@@ -16,15 +17,10 @@ import palette from "@/types/generated/palette.json";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 import type { FilterSpecification } from "maplibre-gl";
 
-import { noDataDashExpression, sceneSourceId, valueInExpression } from "@/features/map/scene/sceneBuilders";
+import { sceneLayerId, sceneSourceId } from "@/features/map/scene/sceneBuilders";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
-import {
-  ROAD_OTHER_KEY,
-  ROAD_TRACKS,
-  roadTrackAxis,
-  roadTrackHasMissing,
-  type RoadTrack,
-} from "@/lib/mapDisplay/roadTracks";
+import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
+import type { RoadMapLayerView } from "@/types/route";
 
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 
@@ -40,6 +36,8 @@ export const ROAD_LINE_HIT_TARGET = "road";
 const { feature_key: FEATURE_KEY_PROPERTY, way_id: WAY_ID_PROPERTY } = regionTileConfig.road_surface.properties;
 
 export type RoadLineState = {
+  /** 道の線の層。**軸カタログが届くまでは空**。 */
+  readonly layers: readonly RoadMapLayerView[];
   /** タイルの配信先。**世代が届くまでは null**。 */
   readonly tiles: {
     readonly urls: readonly string[];
@@ -47,61 +45,82 @@ export type RoadLineState = {
     readonly minZoom: number;
     readonly maxZoom: number;
   } | null;
-  /** 属性idごとの表示ON/OFF。 */
+  /** 層の鍵ごとの表示ON/OFF。 */
   readonly visible: Readonly<Record<string, boolean>>;
-  /** 属性idごとの、凡例で隠した行の鍵。 */
+  /** 層の鍵ごとの、凡例で隠した行の鍵。 */
   readonly hiddenKeys: Readonly<Record<string, readonly string[]>>;
+  /** 今の範囲の道ごとの層の値。 */
+  readonly classes: RoadClassValues;
+  /** 今の範囲の層の値を取っている最中か。 */
+  readonly loading: boolean;
   /** 詳細を見ている道。開いていなければ null。 */
   readonly inspectedWayId: number | null;
 };
 
-/** 値を引く式。プロパティが無い道はどの分類にも当たらない空文字へ倒す
- * （欠落のまま比べると式の評価が落ちる）。 */
-function valueOf(track: RoadTrack): unknown {
-  return ["coalesce", ["get", roadTrackAxis(track).property], ""];
+/** 道ごとの層の値。feature_key → 層のid → 区分の鍵か「データなし」（区分の外の道の層は鍵ごと無い）。 */
+export type RoadClassValues = ReadonlyMap<string, Readonly<Record<string, string>>>;
+
+const NO_DATA_VALUE = ROAD.noDataValue;
+
+/** 層の値の feature-state のキー。評価軸の線が同じソースへ載せる材料のキーと重ならないよう、前に印を付ける。 */
+const stateKey = (layerId: string): string => `road:${layerId}`;
+
+/** 道の層の値。値の届いていない道と区分の外の道は空文字。 */
+function valueOf(layer: RoadMapLayerView): unknown {
+  return ["to-string", ["feature-state", stateKey(layer.id)]];
 }
 
-/** タグが無い道（本当に不明）。タグはあるが分類に当てはまらない道（その他）とは分ける——前者は値が無く、
- * 後者は値があって種類が分類の外にあるだけ。 */
-function missingOf(track: RoadTrack): unknown {
-  return ["==", valueOf(track), ""];
+/** 押した道の線（地図のレイヤーid）が、凡例で隠した行の道か。透明に描いた道も当たり判定には残るので、押す側がこれで飛ばす。 */
+export function hiddenRoadLineAt(
+  layerId: string,
+  state: Readonly<Record<string, unknown>>,
+  layers: readonly RoadMapLayerView[],
+  hiddenKeys: Readonly<Record<string, readonly string[]>>,
+): boolean {
+  const layer = layers.find((candidate) => sceneLayerId(ROAD_LINE_SOURCE_ID, candidate.id) === layerId);
+  if (layer === undefined) return false;
+  const value = state[stateKey(layer.id)];
+  const row = typeof value !== "string" ? ROAD_OTHER_KEY : value === NO_DATA_VALUE ? LEGEND_NO_DATA_KEY : value;
+  return (hiddenKeys[layer.id] ?? []).includes(row);
 }
 
-/** 道の値が分類のどれかに入るか。 */
-function knownMatch(track: RoadTrack): unknown {
-  return valueInExpression(
-    valueOf(track),
-    roadTrackAxis(track).categories.flatMap((category) => [...category.values]),
-  );
+/** 区分ごとの色。凡例で隠した行は透明。データなしの道は破線の線が描くので、実線は透明にする。取得中の色は「その他」を
+ * 隠していても残す——消すと「まだ来ていない」と「隠した」が区別できなくなる。 */
+function colorExpression(layer: RoadMapLayerView, hiddenKeys: readonly string[], loading: boolean): unknown {
+  const shown = (key: string, color: string) => (hiddenKeys.includes(key) ? palette.semantic.hidden : color);
+  const pairs = [
+    ...layer.classes.flatMap((roadClass) => [roadClass.key, shown(roadClass.key, roadClass.color)]),
+    ...(layer.has_no_data ? [NO_DATA_VALUE, palette.semantic.hidden] : []),
+  ];
+  const other = loading ? palette.semantic.loading : shown(ROAD_OTHER_KEY, palette.semantic.no_data);
+  return pairs.length === 0 ? other : ["match", valueOf(layer), ...pairs, other];
 }
 
-function colorExpression(track: RoadTrack): unknown[] {
-  const value = valueOf(track);
-  const cases = roadTrackAxis(track).categories.flatMap((category) => [
-    valueInExpression(value, category.values),
-    category.color,
-  ]);
-  return ["case", ...cases, palette.semantic.no_data];
+/** 区分に入る道は濃く、それ以外（その他・データなし）は薄く（消さずに薄くする）。 */
+function opacityExpression(layer: RoadMapLayerView): unknown {
+  const keys = layer.classes.map((roadClass) => roadClass.key);
+  return keys.length === 0
+    ? ROAD.unknownOpacity
+    : ["match", valueOf(layer), keys, ROAD.knownOpacity, ROAD.unknownOpacity];
 }
 
-/** 分類に入る道は濃く、それ以外（その他・不明）は薄く（消さずに薄くする）。 */
-function opacityExpression(track: RoadTrack): unknown[] {
-  return ["case", knownMatch(track), ROAD.knownOpacity, ROAD.unknownOpacity];
-}
+const statesByValues = new WeakMap<RoadClassValues, Map<string, Map<string, string>>>();
 
-function trackFilter(track: RoadTrack, hiddenKeys: readonly string[]): FilterSpecification | undefined {
-  const hidden = roadTrackAxis(track).categories.filter((category) => hiddenKeys.includes(category.key));
-  const values = hidden.flatMap((category) => [...category.values]);
-  const conditions: unknown[] = [];
-  if (values.length > 0) conditions.push(["!", valueInExpression(valueOf(track), values)]);
-  const hasMissing = roadTrackHasMissing(track);
-  if (hiddenKeys.includes(ROAD_OTHER_KEY)) {
-    const known = knownMatch(track);
-    conditions.push(hasMissing ? ["any", missingOf(track), known] : known);
+/** 道ごとの層の値を、層ごとの feature-state へ移す。同じ値の結果からは同じ参照を返す——当てる側は参照が同じなら道ごとに
+ * 比べ直さない。 */
+function classStates(values: RoadClassValues): ReadonlyMap<string, ReadonlyMap<string, string>> {
+  const cached = statesByValues.get(values);
+  if (cached !== undefined) return cached;
+  const states = new Map<string, Map<string, string>>();
+  for (const [featureKey, byLayer] of values) {
+    for (const [layerId, value] of Object.entries(byLayer)) {
+      let byFeature = states.get(stateKey(layerId));
+      if (byFeature === undefined) states.set(stateKey(layerId), (byFeature = new Map()));
+      byFeature.set(featureKey, value);
+    }
   }
-  if (hasMissing && hiddenKeys.includes(LEGEND_NO_DATA_KEY)) conditions.push(["!", missingOf(track)]);
-  if (conditions.length === 0) return undefined;
-  return ["all", ...conditions] as unknown as FilterSpecification;
+  statesByValues.set(values, states);
+  return states;
 }
 
 /** 出ている本数から、対称に割り付けた横位置。1本なら0。 */
@@ -124,32 +143,51 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
       },
       sourceLayer: tiles.sourceLayer,
       tiles: tiles.urls,
+      featureStates: classStates(state.classes),
     },
   ];
 
-  const shown = ROAD_TRACKS.filter((track) => state.visible[track.attr_id] === true);
+  const shown = state.layers.filter((layer) => state.visible[layer.id] === true);
   const offsets = offsetsFor(shown.length);
-  const offsetOf = new Map(shown.map((track, index) => [track.attr_id, offsets[index] ?? 0]));
+  const offsetOf = new Map(shown.map((layer, index) => [layer.id, offsets[index] ?? 0]));
 
-  const layers: SceneLayerEntry[] = ROAD_TRACKS.map((track) => {
-    const filter = trackFilter(track, state.hiddenKeys[track.attr_id] ?? []);
-    return {
-      role: track.attr_id,
+  const layers: SceneLayerEntry[] = state.layers.flatMap((layer) => {
+    const hiddenKeys = state.hiddenKeys[layer.id] ?? [];
+    const visible = state.visible[layer.id] === true;
+    const line = {
       tier: "observedLine",
       source: ROAD_LINE_SOURCE_ID,
       sourceLayer: tiles.sourceLayer,
       type: "line",
-      paint: {
-        "line-color": colorExpression(track),
-        "line-width": ROAD.lineWidthPx,
-        "line-opacity": opacityExpression(track),
-        ...(roadTrackHasMissing(track) ? { "line-dasharray": noDataDashExpression(missingOf(track)) } : {}),
-        "line-offset": offsetOf.get(track.attr_id) ?? 0,
+    } as const;
+    const offset = offsetOf.get(layer.id) ?? 0;
+    return [
+      {
+        ...line,
+        role: layer.id,
+        paint: {
+          "line-color": colorExpression(layer, hiddenKeys, state.loading),
+          "line-width": ROAD.lineWidthPx,
+          "line-opacity": opacityExpression(layer),
+          "line-offset": offset,
+        },
+        visible,
+        hitTargets: [ROAD_LINE_HIT_TARGET],
       },
-      visible: state.visible[track.attr_id] === true,
-      hitTargets: [ROAD_LINE_HIT_TARGET],
-      filter,
-    };
+      // データなしの道だけを、薄い破線で描く。
+      {
+        ...line,
+        role: `${layer.id}-no-data`,
+        paint: {
+          "line-color": palette.semantic.no_data,
+          "line-width": ROAD.lineWidthPx,
+          "line-opacity": ["case", ["==", valueOf(layer), NO_DATA_VALUE], ROAD.unknownOpacity, 0],
+          "line-dasharray": ["literal", [...mapDisplay.noDataDash]],
+          "line-offset": offset,
+        },
+        visible: visible && layer.has_no_data && !hiddenKeys.includes(LEGEND_NO_DATA_KEY),
+      },
+    ];
   });
 
   layers.push({

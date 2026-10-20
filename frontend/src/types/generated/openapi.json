@@ -148,57 +148,6 @@
         }
       }
     },
-    "/api/weather": {
-      "get": {
-        "operationId": "get_weather_api_weather_get",
-        "parameters": [
-          {
-            "name": "latitude",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "number",
-              "maximum": 90,
-              "minimum": -90,
-              "title": "Latitude"
-            }
-          },
-          {
-            "name": "longitude",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "number",
-              "maximum": 180,
-              "minimum": -180,
-              "title": "Longitude"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WeatherConditions"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/weather/warnings": {
       "get": {
         "operationId": "get_weather_warnings_api_weather_warnings_get",
@@ -403,16 +352,50 @@
         }
       }
     },
-    "/api/weather/wind-grid": {
+    "/api/weather": {
       "get": {
-        "operationId": "get_wind_grid_api_weather_wind_grid_get",
+        "operationId": "get_weather_api_weather_get",
+        "parameters": [
+          {
+            "name": "latitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 90,
+              "minimum": -90,
+              "title": "Latitude"
+            }
+          },
+          {
+            "name": "longitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 180,
+              "minimum": -180,
+              "title": "Longitude"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WindGridResponse"
+                  "$ref": "#/components/schemas/GridPointToday"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -420,9 +403,9 @@
         }
       }
     },
-    "/api/weather/wind-grid-detail": {
+    "/api/weather/msm-grid": {
       "get": {
-        "operationId": "get_wind_grid_detail_api_weather_wind_grid_detail_get",
+        "operationId": "get_msm_grid_api_weather_msm_grid_get",
         "parameters": [
           {
             "name": "min_lon",
@@ -467,16 +450,6 @@
               "minimum": -90,
               "title": "Max Lat"
             }
-          },
-          {
-            "name": "spacing_deg",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "number",
-              "default": 0.02,
-              "title": "Spacing Deg"
-            }
           }
         ],
         "responses": {
@@ -485,7 +458,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WindGridResponse"
+                  "$ref": "#/components/schemas/MsmGridForecast"
                 }
               }
             }
@@ -859,6 +832,42 @@
               ],
               "title": "At"
             }
+          },
+          {
+            "name": "bearing_deg",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "exclusiveMaximum": 360
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bearing Deg"
+            }
+          },
+          {
+            "name": "speed_kmh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 60.0,
+                  "minimum": 5.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Speed Kmh"
+            }
           }
         ],
         "responses": {
@@ -875,6 +884,73 @@
                     }
                   },
                   "title": "Response Region Way Materials Api Region Way Materials  Axis Id   Z   X   Y  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/region/road-classes/{z}/{x}/{y}": {
+      "get": {
+        "operationId": "region_road_classes_api_region_road_classes__z___x___y__get",
+        "parameters": [
+          {
+            "name": "z",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 15,
+              "minimum": 12,
+              "title": "Z"
+            }
+          },
+          {
+            "name": "x",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "title": "X"
+            }
+          },
+          {
+            "name": "y",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "title": "Y"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "title": "Response Region Road Classes Api Region Road Classes  Z   X   Y  Get"
                 }
               }
             }
@@ -1685,6 +1761,74 @@
         }
       }
     },
+    "/api/admin/road-classes": {
+      "get": {
+        "tags": [
+          "road-class-admin"
+        ],
+        "operationId": "read_road_classes_api_admin_road_classes_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoadClassDefinitions"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "road-class-admin"
+        ],
+        "operationId": "replace_road_classes_api_admin_road_classes_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoadClassDefinitions"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoadClassDefinitions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
     "/api/axis-catalog": {
       "get": {
         "operationId": "get_axis_catalog_api_axis_catalog_get",
@@ -2165,6 +2309,190 @@
         ],
         "title": "AmedasObservation"
       },
+      "AvoidanceClassification": {
+        "properties": {
+          "section_key": {
+            "type": "string",
+            "title": "Section Key"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          },
+          "overrides": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AvoidanceOverride"
+            },
+            "type": "object",
+            "title": "Overrides"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "section_key",
+          "sort_order",
+          "overrides"
+        ],
+        "title": "AvoidanceClassification"
+      },
+      "AvoidanceLevelView": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "avoid",
+              "exclude"
+            ],
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "AvoidanceLevelView"
+      },
+      "AvoidanceOverride": {
+        "properties": {
+          "section_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Key"
+          },
+          "default_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Level"
+          },
+          "selectable": {
+            "type": "boolean",
+            "title": "Selectable"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "section_key",
+          "default_level",
+          "selectable"
+        ],
+        "title": "AvoidanceOverride"
+      },
+      "AvoidanceRowView": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "section": {
+            "type": "string",
+            "title": "Section"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "default": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "avoid",
+              "exclude"
+            ],
+            "title": "Default"
+          },
+          "former_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Former Keys"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "section",
+          "label",
+          "description",
+          "default",
+          "former_keys"
+        ],
+        "title": "AvoidanceRowView"
+      },
+      "AvoidanceSection": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "description",
+          "sort_order"
+        ],
+        "title": "AvoidanceSection"
+      },
+      "AvoidanceSectionView": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "description"
+        ],
+        "title": "AvoidanceSectionView"
+      },
       "AxisCatalogEntry": {
         "properties": {
           "axis_id": {
@@ -2210,12 +2538,12 @@
             "type": "array",
             "title": "Primary Attribute Ids"
           },
-          "weather_layer_groups": {
+          "road_layer_ids": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Weather Layer Groups"
+            "title": "Road Layer Ids"
           },
           "map_paint": {
             "$ref": "#/components/schemas/MapPaint"
@@ -2241,6 +2569,18 @@
             },
             "type": "array",
             "title": "Dynamic Way Value Conditions"
+          },
+          "dynamic_way_value_material_conditions": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "at",
+                "bearing_deg",
+                "speed_kmh"
+              ]
+            },
+            "type": "array",
+            "title": "Dynamic Way Value Material Conditions"
           },
           "dynamic_way_value_undetermined_by_bearing": {
             "type": "boolean",
@@ -2275,11 +2615,12 @@
           "default_weight",
           "icon_id",
           "primary_attribute_ids",
-          "weather_layer_groups",
+          "road_layer_ids",
           "map_paint",
           "raw_value_units",
           "material_breakdown",
           "dynamic_way_value_conditions",
+          "dynamic_way_value_material_conditions",
           "dynamic_way_value_undetermined_by_bearing",
           "way_value_formula",
           "time_scope"
@@ -2315,6 +2656,9 @@
             },
             "type": "array",
             "title": "Accident Years"
+          },
+          "road_classes": {
+            "$ref": "#/components/schemas/RoadClassCatalog"
           }
         },
         "additionalProperties": false,
@@ -2323,7 +2667,8 @@
           "axes",
           "client_tuning",
           "tile_versions",
-          "accident_years"
+          "accident_years",
+          "road_classes"
         ],
         "title": "AxisCatalogResponse"
       },
@@ -2867,10 +3212,6 @@
             "type": "string",
             "title": "Unit"
           },
-          "share": {
-            "type": "number",
-            "title": "Share"
-          },
           "value_labels": {
             "additionalProperties": {
               "type": "string"
@@ -2886,7 +3227,6 @@
           "label",
           "dtype",
           "unit",
-          "share",
           "value_labels"
         ],
         "title": "AxisMaterialBreakdownEntry"
@@ -3537,6 +3877,33 @@
         ],
         "title": "Condition"
       },
+      "ConditionTerm": {
+        "properties": {
+          "fact_values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fact Values"
+          },
+          "negated": {
+            "type": "boolean",
+            "title": "Negated"
+          },
+          "matches_absent": {
+            "type": "boolean",
+            "title": "Matches Absent"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "fact_values",
+          "negated",
+          "matches_absent"
+        ],
+        "title": "ConditionTerm"
+      },
       "ConnectionEntry": {
         "properties": {
           "total": {
@@ -4065,6 +4432,151 @@
         ],
         "title": "GenerationConditions"
       },
+      "GridPointToday": {
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          },
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
+          },
+          "bearing_deg": {
+            "type": "integer",
+            "title": "Bearing Deg"
+          },
+          "times": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Times"
+          },
+          "temperature_c": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Temperature C"
+          },
+          "precipitation_mm": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Precipitation Mm"
+          },
+          "wind_speed_ms": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Wind Speed Ms"
+          },
+          "wind_direction_deg": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Wind Direction Deg"
+          },
+          "highest_hourly_temperature_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highest Hourly Temperature C"
+          },
+          "lowest_hourly_temperature_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lowest Hourly Temperature C"
+          },
+          "highest_hourly_precipitation_mm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highest Hourly Precipitation Mm"
+          },
+          "highest_hourly_wind_speed_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highest Hourly Wind Speed Ms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "latitude",
+          "longitude",
+          "distance_km",
+          "bearing_deg",
+          "times",
+          "temperature_c",
+          "precipitation_mm",
+          "wind_speed_ms",
+          "wind_direction_deg",
+          "highest_hourly_temperature_c",
+          "lowest_hourly_temperature_c",
+          "highest_hourly_precipitation_mm",
+          "highest_hourly_wind_speed_ms"
+        ],
+        "title": "GridPointToday"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -4520,6 +5032,31 @@
         ],
         "title": "LatestRunCounts"
       },
+      "LayerTextSlotView": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "axes",
+            "title": "Name"
+          },
+          "before": {
+            "type": "string",
+            "title": "Before"
+          },
+          "after": {
+            "type": "string",
+            "title": "After"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "before",
+          "after"
+        ],
+        "title": "LayerTextSlotView"
+      },
       "MapLegendScale": {
         "properties": {
           "boundaries": {
@@ -4921,6 +5458,105 @@
         ],
         "title": "MsmFreshnessResponse"
       },
+      "MsmGridForecast": {
+        "properties": {
+          "times": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Times"
+          },
+          "latitude_step_deg": {
+            "type": "number",
+            "title": "Latitude Step Deg"
+          },
+          "longitude_step_deg": {
+            "type": "number",
+            "title": "Longitude Step Deg"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/MsmGridPointForecast"
+            },
+            "type": "array",
+            "title": "Points"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "times",
+          "latitude_step_deg",
+          "longitude_step_deg",
+          "points"
+        ],
+        "title": "MsmGridForecast"
+      },
+      "MsmGridPointForecast": {
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          },
+          "wind_speed_ms": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Wind Speed Ms"
+          },
+          "wind_direction_deg": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Wind Direction Deg"
+          },
+          "precipitation_mm": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Precipitation Mm"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "latitude",
+          "longitude",
+          "wind_speed_ms",
+          "wind_direction_deg",
+          "precipitation_mm"
+        ],
+        "title": "MsmGridPointForecast"
+      },
       "OverallDifficulty": {
         "properties": {
           "average": {
@@ -5111,6 +5747,173 @@
         "type": "object",
         "title": "RoadAvoidanceOverride"
       },
+      "RoadAvoidanceView": {
+        "properties": {
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/AvoidanceLevelView"
+            },
+            "type": "array",
+            "title": "Levels"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/AvoidanceSectionView"
+            },
+            "type": "array",
+            "title": "Sections"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/AvoidanceRowView"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "levels",
+          "sections",
+          "rows"
+        ],
+        "title": "RoadAvoidanceView"
+      },
+      "RoadClass": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          },
+          "former_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Former Keys"
+          },
+          "conditions": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/ConditionTerm"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Conditions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "description",
+          "sort_order",
+          "former_keys",
+          "conditions"
+        ],
+        "title": "RoadClass"
+      },
+      "RoadClassCatalog": {
+        "properties": {
+          "generation": {
+            "type": "string",
+            "title": "Generation"
+          },
+          "map_layers": {
+            "items": {
+              "$ref": "#/components/schemas/RoadMapLayerView"
+            },
+            "type": "array",
+            "title": "Map Layers"
+          },
+          "avoidance": {
+            "$ref": "#/components/schemas/RoadAvoidanceView"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "generation",
+          "map_layers",
+          "avoidance"
+        ],
+        "title": "RoadClassCatalog"
+      },
+      "RoadClassDefinitions": {
+        "properties": {
+          "classifications": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RoadClassification"
+            },
+            "type": "object",
+            "title": "Classifications"
+          },
+          "map_layers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RoadMapLayer"
+            },
+            "type": "object",
+            "title": "Map Layers"
+          },
+          "rolling_resistance_classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rolling Resistance Classification"
+          },
+          "rolling_resistance_classes": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "minProperties": 1
+            },
+            "type": "object",
+            "title": "Rolling Resistance Classes"
+          },
+          "avoidance_sections": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AvoidanceSection"
+            },
+            "type": "object",
+            "title": "Avoidance Sections"
+          },
+          "avoidance_classifications": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AvoidanceClassification"
+            },
+            "type": "object",
+            "title": "Avoidance Classifications"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "classifications",
+          "map_layers",
+          "rolling_resistance_classification",
+          "rolling_resistance_classes",
+          "avoidance_sections",
+          "avoidance_classifications"
+        ],
+        "title": "RoadClassDefinitions"
+      },
       "RoadClassStretch": {
         "properties": {
           "distance_km": {
@@ -5121,9 +5924,6 @@
             "anyOf": [
               {
                 "type": "string"
-              },
-              {
-                "type": "boolean"
               },
               {
                 "type": "null"
@@ -5139,6 +5939,217 @@
           "value"
         ],
         "title": "RoadClassStretch"
+      },
+      "RoadClassView": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "description",
+          "color"
+        ],
+        "title": "RoadClassView"
+      },
+      "RoadClassification": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "is_published": {
+            "type": "boolean",
+            "title": "Is Published"
+          },
+          "classes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RoadClass"
+            },
+            "type": "object",
+            "title": "Classes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "description",
+          "is_published",
+          "classes"
+        ],
+        "title": "RoadClassification"
+      },
+      "RoadMapLayer": {
+        "properties": {
+          "group_key": {
+            "type": "string",
+            "title": "Group Key"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          },
+          "icon_key": {
+            "type": "string",
+            "title": "Icon Key"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "panel_hint": {
+            "type": "string",
+            "title": "Panel Hint"
+          },
+          "palette": {
+            "type": "string",
+            "title": "Palette"
+          },
+          "hue_slot": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hue Slot"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tone"
+          },
+          "no_data_fact_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Data Fact Key"
+          },
+          "hides_unclassified": {
+            "type": "boolean",
+            "title": "Hides Unclassified"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "group_key",
+          "sort_order",
+          "icon_key",
+          "summary",
+          "panel_hint",
+          "palette",
+          "hue_slot",
+          "tone",
+          "no_data_fact_key",
+          "hides_unclassified"
+        ],
+        "title": "RoadMapLayer"
+      },
+      "RoadMapLayerView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "icon": {
+            "type": "string",
+            "title": "Icon"
+          },
+          "description": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Description"
+          },
+          "panel_hint": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/LayerTextSlotView"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Panel Hint"
+          },
+          "hide_missing_rows": {
+            "type": "boolean",
+            "title": "Hide Missing Rows"
+          },
+          "has_no_data": {
+            "type": "boolean",
+            "title": "Has No Data"
+          },
+          "classes": {
+            "items": {
+              "$ref": "#/components/schemas/RoadClassView"
+            },
+            "type": "array",
+            "title": "Classes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "category",
+          "icon",
+          "description",
+          "panel_hint",
+          "hide_missing_rows",
+          "has_no_data",
+          "classes"
+        ],
+        "title": "RoadMapLayerView"
       },
       "Round": {
         "properties": {
@@ -5408,10 +6419,6 @@
           "is_fastest": {
             "type": "boolean",
             "title": "Is Fastest"
-          },
-          "spliceable": {
-            "type": "boolean",
-            "title": "Spliceable"
           }
         },
         "additionalProperties": false,
@@ -5439,8 +6446,7 @@
           "material_values",
           "id",
           "kind",
-          "is_fastest",
-          "spliceable"
+          "is_fastest"
         ],
         "title": "RouteCandidate"
       },
@@ -5545,9 +6551,16 @@
             "title": "Distance Km"
           },
           "distance_tolerance_km": {
-            "type": "number",
-            "maximum": 50.0,
-            "exclusiveMinimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 50.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Distance Tolerance Km"
           },
           "route_preference": {
@@ -5651,7 +6664,6 @@
         "required": [
           "latitude",
           "longitude",
-          "distance_tolerance_km",
           "road_avoidance",
           "max_routes",
           "assumed_speed_kmh",
@@ -5969,20 +6981,8 @@
             "title": "Direction Deg"
           },
           "forecast_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Forecast At"
-          },
-          "extended": {
-            "type": "boolean",
-            "title": "Extended",
-            "default": false
           }
         },
         "additionalProperties": false,
@@ -5990,8 +6990,7 @@
         "required": [
           "speed_ms",
           "direction_deg",
-          "forecast_at",
-          "extended"
+          "forecast_at"
         ],
         "title": "SegmentWind"
       },
@@ -6078,25 +7077,6 @@
           "finished_at"
         ],
         "title": "SucceededRunCounts"
-      },
-      "TemperatureRange": {
-        "properties": {
-          "min_c": {
-            "type": "number",
-            "title": "Min C"
-          },
-          "max_c": {
-            "type": "number",
-            "title": "Max C"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "min_c",
-          "max_c"
-        ],
-        "title": "TemperatureRange"
       },
       "TuningParameterView": {
         "properties": {
@@ -6672,124 +7652,6 @@
         ],
         "title": "WbgtStatus"
       },
-      "WeatherConditions": {
-        "properties": {
-          "precipitation_mm": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Precipitation Mm"
-          },
-          "twilight": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Twilight"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "precipitation_max_mm": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Precipitation Max Mm"
-          },
-          "wind_speed_max_ms": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Wind Speed Max Ms"
-          },
-          "temperature_range": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TemperatureRange"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "today_periods": {
-            "items": {
-              "$ref": "#/components/schemas/WeatherPeriodOutlook"
-            },
-            "type": "array",
-            "title": "Today Periods"
-          },
-          "today_period_interval_hours": {
-            "type": "integer",
-            "title": "Today Period Interval Hours"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "precipitation_mm",
-          "twilight",
-          "precipitation_max_mm",
-          "wind_speed_max_ms",
-          "temperature_range",
-          "today_periods",
-          "today_period_interval_hours"
-        ],
-        "title": "WeatherConditions"
-      },
-      "WeatherPeriodOutlook": {
-        "properties": {
-          "period": {
-            "type": "string",
-            "title": "Period"
-          },
-          "temperature_c": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Temperature C"
-          },
-          "precipitation_mm": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Precipitation Mm"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "period",
-          "temperature_c",
-          "precipitation_mm"
-        ],
-        "title": "WeatherPeriodOutlook"
-      },
       "WeatherWarnings": {
         "properties": {
           "warnings": {
@@ -6836,95 +7698,6 @@
           "label"
         ],
         "title": "WindDirection"
-      },
-      "WindGridPoint": {
-        "properties": {
-          "latitude": {
-            "type": "number",
-            "title": "Latitude"
-          },
-          "longitude": {
-            "type": "number",
-            "title": "Longitude"
-          },
-          "wind_speed_ms": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Wind Speed Ms"
-          },
-          "wind_direction_deg": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Wind Direction Deg"
-          },
-          "precipitation_mm": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Precipitation Mm"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "latitude",
-          "longitude",
-          "wind_speed_ms",
-          "wind_direction_deg",
-          "precipitation_mm"
-        ],
-        "title": "WindGridPoint"
-      },
-      "WindGridResponse": {
-        "properties": {
-          "times": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Times"
-          },
-          "points": {
-            "items": {
-              "$ref": "#/components/schemas/WindGridPoint"
-            },
-            "type": "array",
-            "title": "Points"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "times",
-          "points"
-        ],
-        "title": "WindGridResponse"
       },
       "app__services__db_status_service__TableEntry": {
         "properties": {

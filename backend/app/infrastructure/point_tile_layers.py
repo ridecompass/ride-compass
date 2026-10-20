@@ -11,6 +11,7 @@ TILE_SHAPES`）・生成物（`region-tile-config.json`の`point_layers`）は�
 （`road_graph_repository.py: RoadGraphRepository.get_tile_mvt`）が渡す。
 """
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import cached_property
 
@@ -19,14 +20,14 @@ from sqlalchemy.dialects.postgresql import ARRAY
 
 from app.domain.accident import BICYCLE_SQL, FATAL_SQL
 from app.domain.geo import degrees_covering_m
-from app.domain.primary_attributes import stop_poi_map_group_sql
-from app.domain.registry import TileKind
+from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, stop_poi_map_group_sql
+from app.domain.registry import PrimaryAttributeSpec, TileKind
 from app.domain.stop_place import StopPlaceGroup
 from app.domain.traffic import POI_CLUSTER_EPS_M, STOP_POI_KINDS, stop_kind_sql
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.source_models import COVERAGE_SQL
 from app.infrastructure.source_models import NODES_SOURCE_SQL, accidents_within_sql
-from app.infrastructure.vector_tile import TILE_BUFFER
+from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, TILE_BUFFER
 
 
 @dataclass(frozen=True)
@@ -174,3 +175,22 @@ POINT_TILE_LAYERS: dict[str, PointTileLayer] = {
         PointTileLayer(name="stop_place", source_layer="stop_places", sql=_STOP_PLACE_TILE_MVT_SQL),
     )
 }
+
+
+def check_point_tile_layers(layers: Mapping[str, PointTileLayer], attributes: Iterable[PrimaryAttributeSpec]) -> None:
+    """点の一次属性を配らない・タイルの中のレイヤーを取り違える宣言を断る。
+
+    地図に点として出す一次属性が指す系統が宣言に無いと、画面はその点のタイルを要求できない。source-layer名を道路の
+    タイルや別のレイヤーと同じにすると、画面がタイルの中のレイヤーを取り違える。
+    """
+    unserved = {
+        a.tile_kind for a in attributes if a.geometry == "point" and a.tile_kind is not None and a.tile_kind not in layers
+    }
+    if unserved:
+        raise ValueError(f"点の一次属性が指す系統{unserved}を配るレイヤーが無い")
+    names = [ROAD_SURFACE_LAYER_NAME, *(layer.source_layer for layer in layers.values())]
+    if len(set(names)) != len(names):
+        raise ValueError(f"source-layer名が重なる: {names}")
+
+
+check_point_tile_layers(POINT_TILE_LAYERS, PRIMARY_ATTRIBUTES)

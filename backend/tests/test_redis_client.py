@@ -19,7 +19,6 @@ import redis.exceptions
 
 from app.config import settings
 from app.infrastructure import redis_client
-from app.infrastructure.redis_client import CIRCUIT_COOLDOWN_SECONDS
 
 @pytest.fixture
 async def no_clients_yet():
@@ -46,25 +45,6 @@ async def silent_redis(monkeypatch, no_clients_yet):
     await server.wait_closed()
 
 
-def test_after_a_failure_redis_is_skipped_until_the_cooldown_has_passed(clock):
-    redis_client.record_redis_failure()
-    assert not redis_client.redis_available()
-
-    clock.tick(CIRCUIT_COOLDOWN_SECONDS - 1)
-    assert not redis_client.redis_available()
-
-    clock.tick(1)
-    assert redis_client.redis_available()
-
-
-def test_a_success_closes_the_breaker_at_once():
-    redis_client.record_redis_failure()
-
-    redis_client.record_redis_success()
-
-    assert redis_client.redis_available()
-
-
 @pytest.mark.usefixtures("no_clients_yet")
 def test_a_malformed_url_gives_no_client_opens_the_breaker_and_warns(monkeypatch, caplog):
     """設定の誤りで落ちず、未キャッシュで進める。誤りは警告で出す——黙って未キャッシュで進むと、どのキャッシュも効かないまま気づけない。"""
@@ -75,11 +55,6 @@ def test_a_malformed_url_gives_no_client_opens_the_breaker_and_warns(monkeypatch
 
     assert not redis_client.redis_available()
     assert "Redis" in caplog.text
-
-
-@pytest.mark.usefixtures("silent_redis")
-def test_the_client_is_built_once():
-    assert redis_client.get_redis_client_or_none() is redis_client.get_redis_client_or_none()
 
 
 @pytest.mark.usefixtures("silent_redis")

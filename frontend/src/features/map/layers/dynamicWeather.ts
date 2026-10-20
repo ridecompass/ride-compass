@@ -98,15 +98,21 @@ export function gridToFeatureCollection<TPoint, TValue, TGeometry extends GeoJSO
   return { type: "FeatureCollection", features };
 }
 
-/** 格子点を中心とする1辺`spacingDeg`の正方形（閉じたリング）。 */
-export function gridCellRing(latitude: number, longitude: number, spacingDeg: number): GeoJSON.Position[] {
-  const half = spacingDeg / 2;
+/** 格子点を中心に、緯度・経度の間隔の半分ずつ広げた升目（閉じたリング）。 */
+export function gridCellRing(
+  latitude: number,
+  longitude: number,
+  latitudeStepDeg: number,
+  longitudeStepDeg: number,
+): GeoJSON.Position[] {
+  const halfLat = latitudeStepDeg / 2;
+  const halfLon = longitudeStepDeg / 2;
   return [
-    [longitude - half, latitude - half],
-    [longitude + half, latitude - half],
-    [longitude + half, latitude + half],
-    [longitude - half, latitude + half],
-    [longitude - half, latitude - half],
+    [longitude - halfLon, latitude - halfLat],
+    [longitude + halfLon, latitude - halfLat],
+    [longitude + halfLon, latitude + halfLat],
+    [longitude - halfLon, latitude + halfLat],
+    [longitude - halfLon, latitude - halfLat],
   ];
 }
 

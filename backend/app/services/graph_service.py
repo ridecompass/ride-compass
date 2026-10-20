@@ -6,7 +6,9 @@ from app.config import settings
 from app.domain.errors import SearchAreaTooLargeError
 from app.domain.graph import LeanEdge
 from app.domain.region import BoundingBox, tiles_covering_bbox
-from app.domain.road_network import RoadSlice, slice_network
+from app.domain.attributes import CategoricalColumn
+from app.domain.road_classes import RoadClassDefinitions, current_road_classes
+from app.domain.road_network import RoadNetwork, RoadSlice, road_class_columns, slice_network
 from app.domain.route_search import DETOUR_RATIO_SHARING_ZOOM
 from app.domain.route_points import RoutePointHit
 from app.infrastructure import container_memory, road_network_store
@@ -33,9 +35,32 @@ def _max_search_edges() -> int | None:
     return max(0, (limit - _RESERVED_BYTES) // settings.generate_max_concurrent // _BYTES_PER_EDGE)
 
 
+#: 最後に作った区分の列と、作ったときの道路網・区分の全体。どちらかが入れ替わったら作り直す。
+_classes: tuple[RoadNetwork, RoadClassDefinitions, tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]] | None = None
+
+
+def _network_classes(network: RoadNetwork) -> tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]:
+    """取込範囲全体の区分の列と層ごとの値。道路網と区分の全体の組ごとに1回だけ作り、組が替わったら丸ごと入れ替える。
+
+    別のスレッドが同時に作り直しても、どちらも同じ組から同じ列を作るだけなので、束縛の差し替えは1回で済ませる。"""
+    global _classes
+    definitions = current_road_classes()
+    cached = _classes
+    if cached is not None and cached[0] is network and cached[1] is definitions:
+        return cached[2]
+    started = start_timer()
+    columns = road_class_columns(network, definitions)
+    logger.info("road_class_columns edges=%d classifications=%d ms=%d",
+                network.edge_count, len(definitions.classifications), elapsed_ms(started))
+    _classes = (network, definitions, columns)
+    return columns
+
+
 def _slice_current(bbox: BoundingBox) -> RoadSlice:
+    network = road_network_store.current()
     return slice_network(
-        road_network_store.current(), bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude
+        network, _network_classes(network),
+        bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude,
     )
 
 

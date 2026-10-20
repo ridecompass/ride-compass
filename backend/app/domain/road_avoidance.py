@@ -1,115 +1,64 @@
-"""道のレイヤの凡例の行ごとの避け方（通る・なるべく避ける・通らない）。
+"""道の区分ごとの避け方（通る・なるべく避ける・通らない）。
 
-選べる行は、地図の道の線のレイヤ（`domain/route_road_classes.py: LINE_LAYER_MATERIALS`）の色を決める軸の行
-（`DisplayAxisSpec.categories`）から導く。行の鍵・名前・説明を別の表に書かない——行や線のレイヤが増えれば、
-選べる行も増える。行の外の道（その他・データなし等の受け皿）は道の種類ではないので選べない。0次ハードフィルタが
-いつも除く道の行（`_FIXED_ROWS`）も、段を選べても効かないので選べない。
-
-区間が行に当たるかは、行の値と、地図がそのレイヤを塗るのと同じ材料の値式から決める。探索は0次ハードフィルタと
-同じ旗の列（`domain/hard_filters.py: ROUTE_FLAG_VALUE_SQL`）で受け取る。
+選べる行は、除外の設定（`domain/road_classes.py: RoadClassDefinitions.avoidance_classifications`）が指す公開した分け方の区分で、
+選べないとした区分を除く。鍵は`<分け方>.<区分>`。区間が行に当たるかは、その分け方の区分の列から決める。
 """
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal, get_args
+from typing import Literal, NamedTuple, cast, get_args
 
 import numpy as np
 
-from app.domain.material_sql import sql_literals
-from app.domain.primary_attributes import ATTR_HIGHWAY, PRIMARY_ATTRIBUTES
-from app.domain.route_road_classes import LINE_LAYER_MATERIALS
+from app.domain.attributes import CategoricalColumn
+from app.domain.road_classes import AvoidanceOverride, RoadClass, RoadClassDefinitions, by_sort_order, class_material_id
 
 #: 避け方の段。並びは弱い順で、1つの区間が複数の行に当たれば後ろ（強い）の段を取る。
 AvoidanceLevel = Literal["pass", "avoid", "exclude"]
 AVOIDANCE_LEVELS: tuple[AvoidanceLevel, ...] = get_args(AvoidanceLevel)
 AVOIDANCE_LEVEL_LABELS: dict[AvoidanceLevel, str] = {"pass": "通る", "avoid": "なるべく避ける", "exclude": "通らない"}
 
-#: 既定で「通る」でない行（レイヤのid, 行の鍵）→段。行の宣言に無い組はimport時に落ちる。
-_DEFAULT_LEVELS: dict[tuple[str, str], AvoidanceLevel] = {
-    (ATTR_HIGHWAY.attr_id, "trunk"): "avoid",
-    (ATTR_HIGHWAY.attr_id, "primary"): "avoid",
-}
 
-#: 1つの行を分けてできた行（レイヤのid, 行の鍵）→分ける前の行の鍵。前の鍵で選んだ段を、分けたどの行にも引き継がせる。
-#: 前の鍵をそのまま持ち続ける行は書かない。今の行の宣言に無い組はimport時に落ちる。
-_FORMER_ROW_KEYS: dict[tuple[str, str], str] = {
-    (ATTR_HIGHWAY.attr_id, "trunk"): "arterial",
-    (ATTR_HIGHWAY.attr_id, "primary"): "arterial",
-    (ATTR_HIGHWAY.attr_id, "unclassified"): "local",
-    (ATTR_HIGHWAY.attr_id, "residential"): "local",
-    (ATTR_HIGHWAY.attr_id, "footway"): "cycleway",
-}
+class AvoidanceRow(NamedTuple):
+    """避け方を選べる行1つ。"""
 
-#: 選べない行（レイヤのid, 行の鍵）。当たる道は0次ハードフィルタ（`domain/hard_filters.py: HARD_FILTERS`）が
-#: `FIXED_ROW_MATCH_SQL`の式でいつも除く。今の行の宣言に無い組はimport時に落ちる。
-_FIXED_ROWS: frozenset[tuple[str, str]] = frozenset({(ATTR_HIGHWAY.attr_id, "motorway")})
-
-
-@dataclass(frozen=True)
-class AvoidableRow:
-    """避け方を選べる凡例の1行。"""
-
-    #: APIの`road_avoidance`の鍵。`<レイヤのid>.<行の鍵>`。
+    #: `<分け方>.<区分>`。
     key: str
-    layer_id: str
-    layer_label: str
-    label: str
-    description: str
-    default_level: AvoidanceLevel
-    #: 分ける前の行のAPIの鍵（`<レイヤのid>.<前の行の鍵>`）。分けてできた行でなければNone。
-    former_key: str | None
-    #: 区間がこの行に当たるか（真偽、値が無ければfalse）を求めるSQL式。
-    match_sql: str
+    section_key: str
+    road_class: RoadClass
+    override: AvoidanceOverride | None
+
+    @property
+    def default_level(self) -> AvoidanceLevel:
+        return cast(AvoidanceLevel, (self.override and self.override.default_level) or "pass")
 
 
-def _sql_value(value: str | bool) -> str:
-    return ("true" if value else "false") if isinstance(value, bool) else sql_literals((value,))
-
-
-def _avoidable_rows() -> tuple[dict[str, AvoidableRow], dict[str, str]]:
-    rows: dict[str, AvoidableRow] = {}
-    fixed: dict[str, str] = {}
-    for attr in PRIMARY_ATTRIBUTES:
-        material = LINE_LAYER_MATERIALS.get(attr.attr_id)
-        if material is None:
+def avoidance_rows(definitions: RoadClassDefinitions) -> list[AvoidanceRow]:
+    """避け方を選べる行。並びは除外の設定の分け方の順、その中は区分の順。"""
+    rows = []
+    for key, avoidance in by_sort_order(definitions.avoidance_classifications):
+        classification = definitions.classifications[key]
+        if not classification.is_published:
             continue
-        for category in attr.display_axes[0].categories:
-            key = f"{attr.attr_id}.{category.key}"
-            values = ", ".join(_sql_value(v) for v in category.values)
-            match_sql = f"COALESCE(({material.value_sql}) IN ({values}), false)"
-            if (attr.attr_id, category.key) in _FIXED_ROWS:
-                fixed[key] = match_sql
-                continue
-            rows[key] = AvoidableRow(
-                key=key,
-                layer_id=attr.attr_id,
-                layer_label=attr.label,
-                label=category.label,
-                description=category.description,
-                default_level=_DEFAULT_LEVELS.get((attr.attr_id, category.key), "pass"),
-                former_key=(
-                    f"{attr.attr_id}.{former}" if (former := _FORMER_ROW_KEYS.get((attr.attr_id, category.key))) else None
-                ),
-                match_sql=match_sql,
-            )
-    unknown = sorted(f"{layer}.{row}" for layer, row in _DEFAULT_LEVELS if f"{layer}.{row}" not in rows)
-    if unknown:
-        raise ValueError(f"既定の段を置いた行が凡例の行の宣言に無い: {unknown}")
-    split_unknown = sorted(f"{layer}.{row}" for layer, row in _FORMER_ROW_KEYS if f"{layer}.{row}" not in rows)
-    if split_unknown:
-        raise ValueError(f"前の鍵を置いた行が凡例の行の宣言に無い: {split_unknown}")
-    fixed_unknown = sorted(f"{layer}.{row}" for layer, row in _FIXED_ROWS if f"{layer}.{row}" not in fixed)
-    if fixed_unknown:
-        raise ValueError(f"選べない行が凡例の行の宣言に無い: {fixed_unknown}")
-    return rows, fixed
+        for class_key, road_class in by_sort_order(classification.classes):
+            override = avoidance.overrides.get(class_key)
+            if override is None or override.selectable:
+                section = (override and override.section_key) or avoidance.section_key
+                rows.append(AvoidanceRow(f"{key}.{class_key}", section, road_class, override))
+    return rows
 
 
-_ROWS = _avoidable_rows()
-#: 避け方を選べる行。鍵はAPIの`road_avoidance`の鍵の集合の正本。
-AVOIDABLE_ROWS: dict[str, AvoidableRow] = _ROWS[0]
-#: 選べない行の鍵（`<レイヤのid>.<行の鍵>`）→区間がその行に当たるかを求めるSQL式。
-FIXED_ROW_MATCH_SQL: dict[str, str] = _ROWS[1]
-DEFAULT_ROAD_AVOIDANCE: dict[str, AvoidanceLevel] = {key: row.default_level for key, row in AVOIDABLE_ROWS.items()}
+def resolve_road_avoidance(
+    requested: Mapping[str, AvoidanceLevel], definitions: RoadClassDefinitions
+) -> dict[str, AvoidanceLevel]:
+    """要求の段を、今の行の鍵へ揃える。今の鍵が無い行は前の鍵の段のうち強い方を、どちらも無い行は既定の段を取る。
+    今の行でも前の鍵でもない鍵は読まない（区分を直す前に読み込んだ画面の要求も断らない）。"""
+    resolved: dict[str, AvoidanceLevel] = {}
+    for row in avoidance_rows(definitions):
+        # 前の鍵は区分のデータが持ち、入れてから3か月で外す（`domain/road_classes.py: RoadClass.former_keys`）。
+        keys = [row.key] if row.key in requested else [key for key in row.road_class.former_keys if key in requested]
+        resolved[row.key] = max((requested[key] for key in keys), key=AVOIDANCE_LEVELS.index, default=row.default_level)
+    return resolved
 
 
 @dataclass(frozen=True)
@@ -122,13 +71,23 @@ class RoadAvoidanceMasks:
     avoided: np.ndarray
 
 
-def road_avoidance_masks(flags: Mapping[str, np.ndarray], levels: Mapping[str, AvoidanceLevel], n: int) -> RoadAvoidanceMasks:
-    """行→区間が当たるかの旗と、行→段から、区間ごとの段を求める。`levels`の鍵は`AVOIDABLE_ROWS`と同じ集合。"""
+def road_avoidance_masks(
+    classes: Mapping[str, CategoricalColumn], levels: Mapping[str, AvoidanceLevel], n: int
+) -> RoadAvoidanceMasks:
+    """区分の列（`domain/road_classes.py: class_material_id`の鍵）と、行→段から、区間ごとの段を求める。
+    列の無い分け方の行と、列の語彙に無い区分の行は、どの区間にも当たらない。"""
     excluded = np.zeros(n, dtype=bool)
     avoided = np.zeros(n, dtype=bool)
     for key, level in levels.items():
+        if level == "pass":
+            continue
+        classification_key, _, class_key = key.partition(".")
+        column = classes.get(class_material_id(classification_key))
+        if column is None or class_key not in column.vocab:
+            continue
+        hit = column.codes == column.vocab.index(class_key)
         if level == "exclude":
-            excluded |= flags[key]
-        elif level == "avoid":
-            avoided |= flags[key]
+            excluded |= hit
+        else:
+            avoided |= hit
     return RoadAvoidanceMasks(excluded=excluded, avoided=avoided)

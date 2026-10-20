@@ -22,9 +22,10 @@ describe("useProfileLayers", () => {
     expect(reopened.result.current.ids).toEqual(["elevation"]);
   });
 
-  it("覚えた中に今は無いレイヤがあれば、それだけを捨てる", () => {
-    localStorage.setItem("ridecompass:profile-layers", JSON.stringify(["gone", "elevation"]));
+  it("覚えた中に今は分からないレイヤ（軸カタログが届く前の道の層）があっても捨てない", () => {
+    // 読むときに捨てると、軸カタログが届く前に開いた回で、選んでいた道の層が選択から消える。
+    localStorage.setItem("ridecompass:profile-layers", JSON.stringify(["road_layer", "elevation"]));
     const { result } = renderHook(() => useProfileLayers());
-    expect(result.current.ids).toEqual(["elevation"]);
+    expect(result.current.ids).toEqual(["road_layer", "elevation"]);
   });
 });

@@ -342,9 +342,6 @@ _DIRECTION_GROUPS: tuple[tuple[str, dict[str, str]], ...] = (
     ("junction", {value: DIRECTION_FORWARD for value in sorted(ONEWAY_JUNCTION_VALUES)}),
 )
 
-#: 通行方向を決めるタグの名前（引き当ての順）。説明の文が引く。
-DIRECTION_TAG_KEYS: tuple[str, ...] = tuple(tag_key for tag_key, _values in _DIRECTION_GROUPS)
-
 #: (タグ名, 値, 通行方向, 優先順位)。
 DIRECTION_RULES: tuple[tuple[str, str, str, int], ...] = tuple(
     (tag_key, value, direction, priority)

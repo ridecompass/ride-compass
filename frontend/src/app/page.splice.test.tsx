@@ -53,7 +53,7 @@ describe("区間の乗り換え", () => {
   };
 
   function through(id: string, names: string[], overrides: Partial<RouteCandidate> = {}) {
-    return route(id, { kind: "destination", spliceable: true, ...routeThrough(PLACES, names), ...overrides });
+    return route(id, { kind: "destination", ...routeThrough(PLACES, names), ...overrides });
   }
 
   const BASE = through("base", ["P0", "P1", "P2", "P3", "P4"], { estimated_duration_seconds: 1800 });

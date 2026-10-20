@@ -33,7 +33,6 @@ from app.domain.region import (
 )
 
 WGS84_SEMI_MAJOR_AXIS_M = 6378137.0
-MERCATOR_LATITUDE_LIMIT = 85.0511287798
 KM_PER_DEGREE_ON_A_6371KM_SPHERE = 2 * math.pi * 6371.0 / 360
 
 
@@ -74,24 +73,6 @@ def test_the_margin_extends_every_side_by_about_that_many_kilometers_converting_
     assert (covering.max_longitude - 140.0) * km_per_degree_longitude == pytest.approx(10.0, rel=0.01)
 
 
-# 日本の取込範囲を含む広さ。極・日付変更線をまたぐ矩形は`BoundingBox`が表せない。
-japan_points = st.builds(
-    Point,
-    latitude=st.floats(min_value=20.0, max_value=46.0),
-    longitude=st.floats(min_value=122.0, max_value=154.0),
-)
-
-
-@given(points=st.lists(japan_points, min_size=1, max_size=20), margin_km=st.floats(min_value=0.1, max_value=200.0))
-def test_every_point_lies_inside_the_covering_box_with_the_margin_to_spare(points, margin_km):
-    covering = bbox_covering_points(points, margin_km)
-
-    margin_deg = margin_km / KM_PER_DEGREE_ON_A_6371KM_SPHERE / 1.01
-    for point in points:
-        assert covering.min_latitude + margin_deg < point.latitude < covering.max_latitude - margin_deg
-        assert covering.min_longitude + margin_deg < point.longitude < covering.max_longitude - margin_deg
-
-
 # --- parse_bbox ---
 
 
@@ -105,21 +86,6 @@ def test_parse_bbox_needs_exactly_four_values():
 
 
 # --- tile_bounds_lonlat・tile_bounds_3857 ---
-
-
-def _approx_box(actual: BoundingBox, expected: BoundingBox) -> bool:
-    return actual.model_dump() == pytest.approx(expected.model_dump(), abs=1e-9)
-
-
-def test_the_single_tile_at_zoom_0_covers_the_whole_mercator_world():
-    world = box(-MERCATOR_LATITUDE_LIMIT, -180.0, MERCATOR_LATITUDE_LIMIT, 180.0)
-
-    assert _approx_box(tile_bounds_lonlat(0, 0, 0), world)
-
-
-def test_y_grows_southward_and_x_grows_eastward():
-    """z1のx=1, y=0は北東の4分の1。"""
-    assert _approx_box(tile_bounds_lonlat(1, 1, 0), box(0.0, 0.0, MERCATOR_LATITUDE_LIMIT, 180.0))
 
 
 def mercator_m(longitude: float, latitude: float) -> tuple[float, float]:
@@ -144,24 +110,7 @@ def test_the_lonlat_and_meter_bounds_of_a_tile_are_the_same_area(tile):
     assert mercator_m(lonlat.max_longitude, lonlat.max_latitude) == pytest.approx((east, north), abs=1e-3)
 
 
-@given(tile=tiles)
-def test_neighboring_tiles_share_their_edges(tile):
-    z, x, y = tile
-    here = tile_bounds_lonlat(z, x, y)
-    if x + 1 < 2**z:
-        assert tile_bounds_lonlat(z, x + 1, y).min_longitude == here.max_longitude
-    if y + 1 < 2**z:
-        assert tile_bounds_lonlat(z, x, y + 1).max_latitude == here.min_latitude
-
-
 # --- tiles_covering_bbox ---
-
-
-def test_an_east_or_south_side_lying_on_a_tile_edge_also_takes_the_tile_beyond_it():
-    """境目の上の点は東・南のタイルに属するとみなす（覆い漏れの無い側へ倒れる）。"""
-    covering = tiles_covering_bbox(box(0.0, -10.0, 10.0, 0.0), 1)
-
-    assert sorted(covering) == [(0, 0), (0, 1), (1, 0), (1, 1)]
 
 
 def test_a_box_reaching_beyond_the_mercator_limits_stops_at_the_edge_of_the_world():

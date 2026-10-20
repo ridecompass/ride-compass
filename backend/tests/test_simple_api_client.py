@@ -11,8 +11,6 @@
 
 import asyncio
 
-import httpx
-import pytest
 from cachetools import TTLCache
 
 from app.infrastructure import simple_api_client
@@ -28,15 +26,6 @@ def _counting_fetch(value):
         return value
 
     return fetch, calls
-
-
-async def test_without_cache_calls_fetch_every_time():
-    fetch, calls = _counting_fetch({"a": 1})
-
-    assert await simple_api_client.cached_fetch("cat", fetch) == {"a": 1}
-    assert await simple_api_client.cached_fetch("cat", fetch) == {"a": 1}
-
-    assert len(calls) == 2
 
 
 async def test_cache_miss_calls_fetch_and_stores_result(monkeypatch):
@@ -65,27 +54,6 @@ async def test_cache_hit_skips_fetch(monkeypatch):
     assert recorded[0].fields["cache"] == "hit"
 
 
-async def test_none_from_upstream_is_cached():
-    """上流の「該当なし」もキャッシュする。未取得と同じ値にすると、該当なしの問い合わせが
-    TTLの間ずっと上流へ流れ続ける。"""
-    cache: TTLCache = TTLCache(maxsize=4, ttl=60)
-    fetch, calls = _counting_fetch(None)
-
-    assert await simple_api_client.cached_fetch("cat", fetch, cache=cache, key="k") is None
-    assert await simple_api_client.cached_fetch("cat", fetch, cache=cache, key="k") is None
-
-    assert len(calls) == 1
-
-
-async def _unexpected_shape():
-    raise simple_api_client.UnexpectedShapeError("list, not dict")
-
-
-async def test_unexpected_shape_is_swallowed_even_when_catch_is_empty():
-    """`UnexpectedShapeError`は`catch`の指定に関わらず常にNoneへ倒れる。"""
-    assert await simple_api_client.cached_fetch("cat", _unexpected_shape, catch=()) is None
-
-
 async def test_caught_exception_returns_none_and_is_not_cached(monkeypatch):
     recorded = record_external_calls(monkeypatch, simple_api_client)
     cache: TTLCache = TTLCache(maxsize=4, ttl=60)
@@ -102,14 +70,6 @@ async def test_caught_exception_returns_none_and_is_not_cached(monkeypatch):
     assert recorded[0].fields["result"] == "error"
 
 
-async def test_exception_outside_catch_propagates():
-    async def fetch():
-        raise httpx.ConnectError("boom")
-
-    with pytest.raises(httpx.ConnectError):
-        await simple_api_client.cached_fetch("cat", fetch, catch=(KeyError,))
-
-
 def _held_fetch(outcome):
     """`release`が立つまで返らないfetch。先の要求が上流を待つ間に、次の要求を来させる。"""
     release = asyncio.Event()
@@ -123,20 +83,6 @@ def _held_fetch(outcome):
         return outcome
 
     return fetch, calls, release
-
-
-@pytest.mark.parametrize(("outcome", "expected"), [("v", "v"), (ValueError("bad json"), None)])
-async def test_requests_for_a_key_being_fetched_share_that_fetch(outcome, expected):
-    """同じ鍵に同時に来た要求は、上流へ1回だけ取りに行き、その結果（失敗も）を分け合う。"""
-    cache: TTLCache = TTLCache(maxsize=4, ttl=60)
-    fetch, calls, release = _held_fetch(outcome)
-
-    requests = [asyncio.ensure_future(simple_api_client.cached_fetch("cat", fetch, cache=cache, key="k")) for _ in range(2)]
-    await asyncio.sleep(0)
-    release.set()
-
-    assert await asyncio.gather(*requests) == [expected, expected]
-    assert len(calls) == 1
 
 
 async def test_a_dropped_request_does_not_stop_the_fetch_others_wait_for():

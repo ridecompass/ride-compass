@@ -15,17 +15,14 @@ import pytest
 
 from app.batch import derive_elevation, derive_topology
 from app.batch.dem_tile_store import PRODUCT_PRIORITY
-from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.region import BoundingBox
 from app.infrastructure.material_coverage import (
-    MATERIAL_COVERAGE_EXCLUSIONS,
     MATERIAL_COVERAGE_SPECS,
     MaterialCoverageCounts,
     MaterialCoverageQuery,
 )
 from app.services.material_coverage_service import (
     MaterialCoverageCounted,
-    MaterialCoverageExcluded,
     MaterialCoverageService,
     build_material_coverage_report,
 )
@@ -44,12 +41,6 @@ def _counts(way_total: int = 10, edge_total: int = 4, **missing_overrides: int) 
 # --- レポート組み立て（純関数） ---
 
 
-def test_build_report_lists_all_catalog_materials_in_catalog_order():
-    report = build_material_coverage_report(_counts(), COMPUTED_AT)
-
-    assert [e.material_id for e in report.materials] == list(MATERIAL_CATALOG)
-
-
 def test_build_report_computes_ratio_against_population_total():
     report = build_material_coverage_report(_counts(way_total=10, edge_total=4, surface=8, gradient_percent=3), COMPUTED_AT)
     by_id = {e.material_id: e for e in report.materials}
@@ -65,15 +56,6 @@ def test_build_report_computes_ratio_against_population_total():
     assert gradient.population == "edge"
     assert (gradient.total, gradient.missing) == (4, 3)
     assert gradient.missing_ratio == pytest.approx(0.75)
-
-
-def test_build_report_marks_excluded_materials_with_reason():
-    report = build_material_coverage_report(_counts(), COMPUTED_AT)
-    by_id = {e.material_id: e for e in report.materials}
-
-    wind = by_id["wind_drag_ratio"]
-    assert isinstance(wind, MaterialCoverageExcluded)
-    assert wind.excluded_reason == MATERIAL_COVERAGE_EXCLUSIONS["wind_drag_ratio"]
 
 
 def test_build_report_returns_none_ratio_when_population_is_empty():

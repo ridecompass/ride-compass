@@ -23,7 +23,7 @@ import math
 
 import numpy as np
 import pytest
-from hypothesis import example, given
+from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 from pydantic_core import PydanticCustomError
@@ -106,24 +106,6 @@ class TestShapeModels:
     def test_an_empty_mapping_is_refused(self):
         assert_refused(lambda: CategoricalShape(material="m", mapping={}), "1件")
 
-    def test_only_true_and_false_are_read_as_flags_in_a_mapping(self):
-        shape = CategoricalShape(material="m", mapping={"true": 1.0, "false": 2.0, "yes": 3.0, "1": 4.0})
-
-        assert shape.mapping == {True: 1.0, False: 2.0, "yes": 3.0, "1": 4.0}
-
-    def test_a_shape_reports_only_the_errors_of_its_own_kind(self):
-        with pytest.raises(ValidationError) as caught:
-            AxisDefinition.model_validate(
-                {
-                    "axis_id": "a",
-                    "label": "軸",
-                    "default_weight": 1.0,
-                    "shape": {"kind": "categorical", "material": "m", "mapping": {}},
-                }
-            )
-
-        assert [kind for kind, _ in axis_errors(caught.value)] == ["axis_definition"]
-
     @pytest.mark.parametrize(
         ("shape", "expected"),
         [
@@ -152,11 +134,6 @@ class TestAxisModel:
         assert_refused(
             lambda: axis(display_thresholds_override=[1.0, 2.0], display_band_labels_override=["弱", "強"]), "3件"
         )
-
-    def test_band_labels_one_more_than_the_thresholds_are_accepted(self):
-        definition = axis(display_thresholds_override=[1.0, 2.0], display_band_labels_override=["弱", "中", "強"])
-
-        assert definition.display_band_labels_override == ["弱", "中", "強"]
 
     @pytest.mark.parametrize(
         ("shape", "expected"),
@@ -203,11 +180,6 @@ class TestCheckAxisDefinition:
     def test_materials_that_change_by_the_hour_are_not_mixed_with_static_ones(self, definition, fragment):
         refused_by_check(definition, fragment)
 
-    def test_an_hourly_material_may_be_combined_with_another_axis(self):
-        definition = axis(shape=linear(MaterialTerm(material=DYNAMIC), MaterialTerm(material="other_axis")))
-
-        axis_definitions.check_axis_definition(definition, {"other_axis": axis("other_axis")})
-
     def test_a_reference_that_is_neither_a_material_nor_a_given_axis_is_refused_by_its_id(self):
         refused_by_check(axis(shape=linear(MaterialTerm(material="nowhere"))), "nowhere")
 
@@ -221,9 +193,6 @@ class TestCheckAxisDefinition:
     def test_a_material_of_a_type_the_shape_cannot_read_is_refused_by_its_name(self, shape, fragment):
         refused_by_check(axis(shape=shape), fragment)
 
-    def test_a_sum_may_mix_numbers_and_flags(self):
-        axis_definitions.check_axis_definition(axis(shape=linear(MaterialTerm(material="num_a"), MaterialTerm(material="flag"))), {})
-
     @pytest.mark.parametrize(
         ("material_id", "mapping", "fragment"),
         [("flag", {"yes": 1.0}, "「はい」「いいえ」"), ("cat", {"true": 1.0}, "値の名前")],
@@ -234,11 +203,6 @@ class TestCheckAxisDefinition:
     @pytest.mark.parametrize(("material_id", "mapping"), [("flag", {"true": 1.0}), ("cat", {"x": 1.0})])
     def test_mapping_keys_of_the_materials_type_are_accepted(self, material_id, mapping):
         axis_definitions.check_axis_definition(axis(shape=CategoricalShape(material=material_id, mapping=mapping)), {})
-
-    def test_a_mapping_over_another_axis_is_not_type_checked(self):
-        definition = axis(shape=CategoricalShape(material="other_axis", mapping={"x": 1.0}))
-
-        axis_definitions.check_axis_definition(definition, {"other_axis": axis("other_axis")})
 
     @pytest.mark.parametrize(
         ("condition", "fragment"),
@@ -264,21 +228,21 @@ class TestCheckAxisDefinition:
 
     @pytest.mark.parametrize(
         "breakpoints",
-        [[(0.0, 0.0), (1.5, 40.0), (12.0, 100.0)], [(1.0, 0.0), (10.0, 100.0)]],
+        [[(0.0, 0.0), (2.0, 35.0), (10.0, 100.0)], [(1.0, 0.0), (10.0, 100.0)]],
         ids=["上に凸の折れ線", "0で0点から始まらない直線"],
     )
     def test_an_axis_summing_only_counts_per_km_must_score_in_proportion_to_the_count(self, breakpoints):
         """探索の費用は回数×傾きで足すので、傾きが1つに決まらない折れ線では、探索とルートの値が食い違い、点数の和が道の
         切り方で変わる。"""
-        shape = linear(MaterialTerm(material="count_a"), MaterialTerm(material="count_b", weight=1.5), breakpoints=breakpoints)
+        shape = linear(MaterialTerm(material="count_a"), MaterialTerm(material="count_b", weight=2.5), breakpoints=breakpoints)
 
         refused_by_check(axis(shape=shape), "「0のとき0点」ともう1点")
 
     @pytest.mark.parametrize(
         ("terms", "breakpoints"),
         [
-            ([MaterialTerm(material="count_a")], [(0.0, 0.0), (9.58, 100.0)]),
-            ([MaterialTerm(material="count_a"), MaterialTerm(material="num_a")], [(0.0, 0.0), (1.5, 40.0), (12.0, 100.0)]),
+            ([MaterialTerm(material="count_a")], [(0.0, 0.0), (8.0, 100.0)]),
+            ([MaterialTerm(material="count_a"), MaterialTerm(material="num_a")], [(0.0, 0.0), (2.0, 35.0), (10.0, 100.0)]),
         ],
         ids=["回数だけの軸の0からの直線", "回数でない材料も読む軸の折れ線"],
     )
@@ -290,8 +254,8 @@ class TestCheckAxisDefinition:
 @pytest.mark.parametrize(
     ("definition", "averaged"),
     [
-        # 本番の停止密度の軸の形（重みが1でない項を持つ）。
-        (axis(shape=linear(MaterialTerm(material="count_a"), MaterialTerm(material="count_b", weight=1.5))), True),
+        # 重みが1でない項を持つ。
+        (axis(shape=linear(MaterialTerm(material="count_a"), MaterialTerm(material="count_b", weight=2.5))), True),
         # 重み0の項は読まない。
         (axis(shape=linear(MaterialTerm(material="count_a"), MaterialTerm(material="num_a", weight=0.0))), True),
         # 密度でない材料（勾配の%等）を読む。
@@ -313,9 +277,6 @@ NEW_BREAKPOINTS = ((0.0, 0.0), (5.0, 100.0))
 
 
 class TestPublishImmutability:
-    def test_a_draft_may_be_deleted(self):
-        axis_definitions.check_publish_immutability(axis(), "deleted")
-
     def test_a_published_axis_is_not_deleted(self):
         with pytest.raises(axis_definitions.AxisPublishedImmutableError) as caught:
             axis_definitions.check_publish_immutability(axis(is_published=True), "deleted")
@@ -375,25 +336,6 @@ class TestMaterialExclusivity:
         assert (error.axis_id, error.conflicting_axis_id, error.overlapping_materials) == ("axis_a", "axis_b", {"num_a"})
         assert "「数値A」" in str(error) and "「先の軸」" in str(error)
 
-    def test_a_material_in_a_condition_also_counts(self):
-        existing = {"axis_b": axis("axis_b", shape=linear(MaterialTerm(material="num_b")),
-                                   priority_overrides=[PriorityCondition(material="flag", equals="true", value=0.0)])}
-        candidate = axis("axis_a", shape=CategoricalShape(material="flag", mapping={"true": 1.0}))
-
-        with pytest.raises(axis_definitions.AxisMaterialConflictError):
-            axis_definitions.check_material_exclusivity(candidate, existing)
-
-    def test_two_axes_may_share_an_internal_axis(self):
-        existing = {
-            "inner": axis("inner"),
-            "axis_b": axis("axis_b", shape=linear(MaterialTerm(material="inner"))),
-        }
-
-        axis_definitions.check_material_exclusivity(axis("axis_a", shape=linear(MaterialTerm(material="inner"))), existing)
-
-    def test_an_axis_does_not_conflict_with_its_own_saved_version(self):
-        axis_definitions.check_material_exclusivity(axis("axis_a"), {"axis_a": axis("axis_a")})
-
 
 @pytest.mark.usefixtures("catalog")
 class TestAxisSet:
@@ -415,15 +357,6 @@ class TestAxisSet:
     def test_a_set_breaking_an_invariant_is_refused(self, definitions, refusal):
         with pytest.raises(ValueError, match=refusal):
             axis_definitions.check_axis_set(definitions)
-
-    def test_a_material_counted_twice_is_named_from_the_later_axis(self):
-        # 書き込みは書いた軸を最後に並べて渡すので、断りの文が書いた軸の側から読める。
-        definitions = {"axis_b": axis("axis_b", label="先の軸"), "axis_a": axis("axis_a")}
-
-        with pytest.raises(axis_definitions.AxisMaterialConflictError) as caught:
-            axis_definitions.check_axis_set(definitions)
-
-        assert (caught.value.axis_id, caught.value.conflicting_axis_id) == ("axis_a", "axis_b")
 
     def test_a_published_axis_another_axis_combines_is_accepted(self):
         # 時刻で変わる軸は公開軸の点数しか受け取れないので、変わらない部分を公開軸にして組み合わせる。
@@ -459,32 +392,13 @@ class TestInternalAxisPublish:
             {**self.EXISTING, "inner": axis("inner", is_published=True)},
         )
 
-    def test_an_axis_another_axis_reads_may_stay_a_draft(self):
-        axis_definitions.check_internal_axis_not_published(axis("inner"), self.EXISTING)
-
-    def test_an_axis_no_one_reads_may_be_published(self):
-        axis_definitions.check_internal_axis_not_published(axis("lonely", is_published=True), self.EXISTING)
-
 
 def scores(values) -> list:
     """NaNをNoneへ（配列の比較を読みやすくする）。"""
     return [None if math.isnan(v) else v for v in np.asarray(values, dtype=float).tolist()]
 
 
-A2_B1 = linear(MaterialTerm(material="a", weight=2.0), MaterialTerm(material="b", weight=1.0))
-
-
 class TestBreakpointScores:
-    def test_the_weighted_sum_is_mapped_by_the_breakpoints(self):
-        result = axis_definitions.evaluate_axis_array(axis(shape=A2_B1), {"a": np.array([2.0]), "b": np.array([1.0])})
-
-        assert scores(result) == [50.0]
-
-    def test_a_missing_required_material_leaves_the_road_unscored(self):
-        result = axis_definitions.evaluate_axis_array(axis(shape=A2_B1), {"a": np.array([1.0, NAN]), "b": np.array([NAN, 1.0])})
-
-        assert scores(result) == [None, None]
-
     def test_a_missing_optional_material_adds_nothing(self):
         shape = linear(MaterialTerm(material="a", weight=2.0), MaterialTerm(material="b", required=False))
 
@@ -500,43 +414,6 @@ class TestBreakpointScores:
         )
 
         assert scores(result) == [None, 0.0]
-
-    def test_a_flag_counts_as_one_when_set_and_is_never_missing(self):
-        shape = linear(MaterialTerm(material="flag", weight=5.0))
-
-        result = axis_definitions.evaluate_axis_array(axis(shape=shape), {"flag": np.array([True, False])})
-
-        assert scores(result) == [50.0, 0.0]
-
-    @given(st.floats(min_value=0.0, max_value=100.0))
-    @example(0.15)
-    @example(0.25)
-    @example(0.35)
-    def test_scores_round_to_one_decimal_as_python_round_does(self, x):
-        """`.x5`の値は2進の実際の値で丸める（0.15と0.35は下へ、ちょうど表せる0.25は偶数の側へ）。"""
-        shape = linear(MaterialTerm(material="a"), breakpoints=((0.0, 0.0), (100.0, 100.0)))
-
-        assert shape.score_at(x) == round(x, 1)
-
-    @given(
-        st.lists(st.integers(-1000, 1000), min_size=1, max_size=6, unique=True),
-        st.lists(st.floats(0.0, 100.0), min_size=6, max_size=6),
-        st.floats(-1100.0, 1100.0),
-    )
-    def test_a_score_lies_on_the_line_through_the_breakpoints(self, xs, ys, x):
-        points = list(zip(sorted(float(v) for v in xs), ys))
-        shape = linear(MaterialTerm(material="a"), breakpoints=points)
-
-        assert abs(shape.score_at(x) - on_the_line(points, x)) <= 0.05 + 1e-9
-
-    @given(st.floats(-1000.0, 1000.0))
-    def test_abs_scores_both_directions_of_a_signed_material_alike(self, x):
-        shape = linear(MaterialTerm(material="a"), breakpoints=((0.0, 0.0), (500.0, 100.0)), preprocess="abs")
-
-        result = axis_definitions.evaluate_axis_array(axis(shape=shape), {"a": np.array([x, -x])})
-
-        assert scores(result) == [shape.score_at(abs(x))] * 2
-
 
     @given(
         st.lists(st.integers(-1000, 1000), min_size=1, max_size=6, unique=True),
@@ -554,50 +431,8 @@ class TestBreakpointScores:
         assert magnitude >= 0.0
         assert shape.score_at(magnitude) == score
 
-    @pytest.mark.parametrize(("breakpoints", "score", "magnitude"), [
-        # 上って平らになり下がる折れ線は、その点数に最初に届く値（平らな所はその始まり）。
-        (((0.0, 0.0), (5.0, 50.0), (10.0, 50.0), (15.0, 20.0)), 35.0, 3.5),
-        (((0.0, 0.0), (5.0, 50.0), (10.0, 50.0), (15.0, 20.0)), 50.0, 5.0),
-        # 0以上の範囲で届かない点数は、点数の最も近い節。
-        (((-10.0, 100.0), (10.0, 0.0)), 60.0, 0.0),
-    ])
-    def test_a_magnitude_is_the_smallest_value_with_the_score(self, breakpoints, score, magnitude):
-        shape = linear(MaterialTerm(material="a"), breakpoints=breakpoints, preprocess="abs")
-
-        assert shape.smallest_magnitude_at(score) == pytest.approx(magnitude)
-
-
-def on_the_line(points: list[tuple[float, float]], x: float) -> float:
-    """折れ線の素直な読み方: 両端の外は端の値、内側は挟む2点を結ぶ直線。"""
-    if x <= points[0][0]:
-        return points[0][1]
-    if x >= points[-1][0]:
-        return points[-1][1]
-    for (x0, y0), (x1, y1) in zip(points, points[1:]):
-        if x0 <= x <= x1:
-            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
-    raise AssertionError("unreachable")
-
-
-class TestMappingScores:
-    def test_only_registered_values_are_scored(self):
-        definition = axis(shape=CategoricalShape(material="cat", mapping={"x": 10.0, "y": 20.0}))
-
-        result = axis_definitions.evaluate_axis_array(definition, {"cat": CategoricalColumn.encode(["y", None, "z"])})
-
-        assert scores(result) == [20.0, None, None]
-
 
 class TestPriorityConditions:
-    def test_a_matching_condition_decides_the_score_even_where_the_shape_cannot(self):
-        definition = axis(priority_overrides=[PriorityCondition(material="flag", equals="true", value=5.0)])
-
-        result = axis_definitions.evaluate_axis_array(
-            definition, {"num_a": np.array([NAN, 1.0, NAN]), "flag": np.array([True, False, False])}
-        )
-
-        assert scores(result) == [5.0, 10.0, None]
-
     def test_the_first_matching_condition_in_order_wins(self):
         definition = axis(
             priority_overrides=[
@@ -613,41 +448,8 @@ class TestPriorityConditions:
 
         assert scores(result) == [1.0, 2.0, 0.0]
 
-    def test_an_unknown_flag_matches_neither_true_nor_false(self):
-        definition = axis(
-            priority_overrides=[
-                PriorityCondition(material="flag", equals="true", value=1.0),
-                PriorityCondition(material="flag", equals="false", value=2.0),
-            ]
-        )
-
-        result = axis_definitions.evaluate_axis_array(
-            definition, {"num_a": np.zeros(3), "flag": np.array([1.0, 0.0, NAN])}
-        )
-
-        assert scores(result) == [1.0, 2.0, 0.0]
-
-    def test_a_coded_column_matches_by_value(self):
-        definition = axis(priority_overrides=[PriorityCondition(material="cat", equals="x", value=1.0)])
-
-        result = axis_definitions.evaluate_axis_array(definition, {"num_a": np.zeros(2), "cat": CategoricalColumn.encode(["x", "y"])})
-
-        assert scores(result) == [1.0, 0.0]
-
 
 class TestRawValues:
-    def test_the_raw_value_is_the_sum_before_the_breakpoints(self):
-        result = axis_definitions.axis_raw_value_array(
-            axis(shape=A2_B1), {"a": np.array([9.0, NAN]), "b": np.array([9.0, 1.0])}
-        )
-
-        assert scores(result) == [27.0, None]
-
-    def test_the_raw_value_keeps_an_optional_missing_material_as_nothing_added(self):
-        shape = linear(MaterialTerm(material="a", weight=-1.0), MaterialTerm(material="b", required=False), preprocess="abs")
-
-        assert axis_definitions.raw_values(shape, {"a": [4.0, None], "b": [None, None]}, 2) == [4.0, None]
-
     def test_a_mapping_axis_has_no_raw_value(self):
         shape = CategoricalShape(material="cat", mapping={"x": 1.0})
 

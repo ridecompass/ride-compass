@@ -28,11 +28,13 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
     tileVersions: READY_TILE_VERSIONS,
     inspectedWayId: null,
     travelledKm: null,
+    selectedRouteSegment: null,
     ...rest,
     look: {
       dynamicWeather: {},
       lens: "none",
       paintedAxisId: null,
+      roadClasses: { values: new Map(), loading: false },
       wayMaterials: new Map(),
       wayConditions: {},
       hiddenLegendKeys: {},
@@ -41,6 +43,7 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
     },
     catalog: {
       dedicatedAxes: [],
+      roadLayers: [],
       routeStyleModes: ROUTE_STYLE_MODES_WITHOUT_AXES,
       ...catalog,
     },

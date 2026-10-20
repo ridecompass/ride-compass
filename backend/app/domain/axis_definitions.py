@@ -50,8 +50,8 @@ from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.axis_templates import evaluate_breakpoint_linear, evaluate_categorical
 from app.domain.difficulty import round_difficulty_array, weight_share
 from app.domain import material_catalog
+from app.domain.road_classes import CLASS_MATERIAL_PREFIX, RoadClassDefinitions, class_material_id, classification_materials
 from app.domain.strict_model import StrictModel
-from app.domain.weather_elements import WEATHER_ELEMENTS
 
 
 #: 軸の宣言に使うモデル共通の設定。`allow_inf_nan=False`は、NaN・無限大の重み・係数が
@@ -259,7 +259,7 @@ def named_references(refs: Iterable[str], axes: Mapping[str, "AxisDefinition"]) 
     """
 
     def name(ref: str) -> str:
-        spec = material_catalog.MATERIAL_CATALOG.get(ref)
+        spec = material_catalog.material_spec(ref)
         if spec is not None:
             return spec.label
         axis = axes.get(ref)
@@ -587,20 +587,35 @@ def primary_attribute_ids_for(definition: AxisDefinition) -> list[str]:
         dict.fromkeys(
             spec.primary_attribute.attr_id
             for material_id in _leaf_materials(definition)
-            if (spec := material_catalog.MATERIAL_CATALOG.get(material_id)) is not None
+            if (spec := material_catalog.material_spec(material_id)) is not None
             and spec.primary_attribute is not None
         )
     )
 
 
-def weather_layer_groups_for(definition: AxisDefinition) -> list[str]:
-    """軸の材料の元データを描く気象のチップ（`WEATHER_LAYER_GROUPS`の名前）。一次属性を持つ材料は現れない。"""
-    grid_values = {
-        spec.weather_grid_value
-        for material_id in _leaf_materials(definition)
-        if (spec := material_catalog.MATERIAL_CATALOG.get(material_id)) is not None and spec.weather_grid_value is not None
-    }
-    return list(dict.fromkeys(element.group for element in WEATHER_ELEMENTS if element.grid_value in grid_values))
+def missing_class_materials(definition: AxisDefinition, road_classes: RoadClassDefinitions) -> list[str]:
+    """軸が直に指す区分から作る材料（`class:<分け方>`）のうち、`road_classes`に分け方が無いもの。
+
+    区分を入れ替えて破れうる起動時の読み込みの判定（`check_axis_definition`）は、この材料の実在だけ——区分から作る材料の型は
+    いつも分類で、判定はその分け方の区分を見ない。
+    """
+    present = {class_material_id(key) for key in road_classes.classifications}
+    return [m for m in dict.fromkeys(definition.materials) if m.startswith(CLASS_MATERIAL_PREFIX) and m not in present]
+
+
+def road_layer_ids_for(definition: AxisDefinition, road_classes: RoadClassDefinitions) -> list[str]:
+    """軸が最終的に見ている材料を区分の決め手に読む、地図の道の線の層（公開した分け方の鍵）。区分の列（`class:<分け方>`）を
+    読む軸は、その分け方が区分を決めるのに読む事実も見ている。"""
+    leaves = set(_leaf_materials(definition))
+    for key, classification in road_classes.classifications.items():
+        if class_material_id(key) in leaves:
+            leaves |= classification_materials(key, classification)
+    return [
+        key
+        for key in road_classes.map_layers
+        if (classification := road_classes.classifications[key]).is_published
+        and leaves & classification_materials(key, classification)
+    ]
 
 
 class AxisInternalAxisPublishError(ValueError):
@@ -673,7 +688,7 @@ def averages_density(definition: AxisDefinition) -> bool:
         return False
     terms = [term for term in shape.terms if term.weight != 0]
     return bool(terms) and all(
-        (spec := material_catalog.MATERIAL_CATALOG.get(term.material)) is not None and spec.additive for term in terms
+        (spec := material_catalog.material_spec(term.material)) is not None and spec.additive for term in terms
     )
 
 
@@ -756,7 +771,7 @@ def _check_references(definition: AxisDefinition, axes: Mapping[str, AxisDefinit
             f"材料{named_references(mismatched, axes)}は、この点数の決め方には使えません（使えるのは{kinds}の材料）。"
         )
     if isinstance(shape, CategoricalShape) and material_catalog.is_known_material(shape.material):
-        dtype = material_catalog.MATERIAL_CATALOG[shape.material].dtype
+        dtype = material_catalog.known_material_spec(shape.material).dtype
         key_types = {type(key) for key in shape.mapping}
         expected_key_type = bool if dtype == "boolean" else str
         if key_types and key_types != {expected_key_type}:

@@ -136,7 +136,7 @@ LANDCOVER = {
 SIGNED = "axis_slope"
 INSPECTED_AXES = {
     "axis_surface": shaped_axis(
-        CategoricalShape(material="surface_class", mapping={"paved": 10.0, "unpaved": 90.0}),
+        CategoricalShape(material="cat_a", mapping={"paved": 10.0, "unpaved": 90.0}),
         axis_id="axis_surface", is_published=True),
     "axis_grade": shaped_axis(
         BreakpointLinearShape(terms=[MaterialTerm(material="gradient_percent")],
@@ -179,7 +179,7 @@ class _TileMaterials:
     async def materials(self, z, x, y):
         key = WAY if (z, x, y) == WAY_TILE else SEGMENT
         return FeatureMaterials(feature_keys=("other", key),
-                                columns={"surface_class": CategoricalColumn.encode(["unpaved", "paved"])}
+                                columns={"cat_a": CategoricalColumn.encode(["unpaved", "paved"])}
                                 ) if self._readable else None
 
     async def segments(self, z, x, y):
@@ -225,9 +225,9 @@ def _difficulty(axis_id: str, painted: float) -> float:
 async def _map_values(axis_id: str, tile: tuple[int, int, int]) -> dict[str, float | None]:
     """地図が塗る値: 軸カタログの式の木へ、地図が受け取る道ごとの材料と`QUERY`の走る向きを入れたもの。"""
     lens = AxisWayValueLens(axis_id, copy_axis_definitions(), _TileMaterials(), {"gradient_percent": _Gradients()}.__getitem__)
-    by_way = await lens.way_materials(*tile, QUERY.at)
+    by_way = await lens.way_materials(*tile, QUERY)
     formula = dedicated_way_value_layers()[axis_id].formula
-    assert by_way is not None and formula is not None
+    assert isinstance(by_way, dict) and formula is not None
     keys = list(by_way)
     names = {name for materials in by_way.values() for name in materials}
     leaves = {name: [by_way[key].get(name, np.nan) for key in keys] for name in names}

@@ -16,7 +16,6 @@ import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
 import RouteAxisProfile from "@/features/route/RouteAxisProfile/RouteAxisProfile";
 import RouteSplicePanel from "@/features/route/RouteSplicePanel/RouteSplicePanel";
-import SegmentDetail from "@/features/route/SegmentDetail/SegmentDetail";
 import { formatDurationShort } from "@/lib/duration";
 import EditDifference from "@/features/route/EditDifference/EditDifference";
 import WarningText from "@/features/route/WarningText/WarningText";
@@ -215,8 +214,8 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
               style={{ "--profile-chart-height": "5.5rem" } as CSSProperties}
               value={route.id}
             >
-              {/* 道のりのグラフ。区間を選んでいる間も残す（動かして地点を選ぶ操作の置き場のため）。シートは、高さを決めて
-                  いなければ、開いたときにここの下端までの高さに合わせる。 */}
+              {/* 道のりのグラフ。区間を選んでいる間も残す（動かして地点を選ぶ操作の置き場のため）。選んでいる間は、その地点の
+                  詳しくをグラフが自分の下に出す。シートは、高さを決めていなければ、開いたときにここの下端までの高さに合わせる。 */}
               {route.segments.length > 0 && (
                 <div {...{ [SHEET_FIT_END_ATTRIBUTE]: "" }}>
                   <RouteProfile
@@ -234,10 +233,8 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
                 </div>
               )}
               {renderEditDifference(route, nameOf)}
-              {/* 押した区間がある間は、その区間の地点・到達予想・内訳を出す（区間は選んでいる候補にしか描かれない）。 */}
-              {selectedRouteSegment ? (
-                <SegmentDetail selection={selectedRouteSegment} onClear={() => results.selectSegment(null)} />
-              ) : (
+              {/* 区間を押している間は、候補全体の内訳を出さない（その区間の詳しくはグラフの下に出る）。 */}
+              {selectedRouteSegment === null && (
                 <RouteAxisProfile
                   axes={axisCatalog.axes}
                   weights={routeWeights}

@@ -57,11 +57,11 @@ from app.services.route_generation_setup import (
     RouteGenerationSetup,
     assemble_route_generation_setup,
 )
+from app.services.road_class_service import RoadClassAdminService
 from app.services.tuning_service import TuningService
 from app.services.warning_service import WarningService
 from app.services.wbgt_service import WbgtService
 from app.services.weather_service import WeatherService
-from app.services.wind_grid_service import WindGridService
 
 
 #: 気象の取得のプロセス内キャッシュ。サービス・クライアントはリクエストごとに作られるため、プロセスの側で持つ。
@@ -158,7 +158,7 @@ async def get_axis_preview_service(sample_cache: TTLCache = Depends(get_axis_pre
 
 @asynccontextmanager
 async def open_region_service() -> AsyncIterator[RegionService]:
-    """地域サービスの開き方。HTTPの要求の外（定期ジョブ）と、読む間だけセッションを持ちたいサービスが開く。"""
+    """地域サービスの開き方。HTTPの要求の外（定期ジョブ）と、要求の依存が開く。"""
     async with get_session_factory()() as session:
         yield RegionService(repository=RoadGraphRepository(session))
 
@@ -166,10 +166,6 @@ async def open_region_service() -> AsyncIterator[RegionService]:
 async def get_region_service():
     async with open_region_service() as region_service:
         yield region_service
-
-
-def get_wind_grid_service(weather_service: WeatherService = Depends(get_weather_service)):
-    return WindGridService(weather_service, open_region_service)
 
 
 @asynccontextmanager
@@ -199,6 +195,11 @@ async def get_dedicated_way_value_service(
         yield axis_way_value_lens(
             axis_id, FeatureMaterialService(repository), material_service_builder(repository, weather_service)
         )
+
+
+async def get_feature_material_service():
+    async with get_session_factory()() as session:
+        yield FeatureMaterialService(RoadGraphRepository(session))
 
 
 async def get_draft_way_value_lens_builder(
@@ -252,6 +253,11 @@ async def get_axis_registry_admin_service():
 async def get_tuning_service():
     async with get_session_factory()() as session:
         yield TuningService(session)
+
+
+async def get_road_class_admin_service():
+    async with get_session_factory()() as session:
+        yield RoadClassAdminService(session, AxisDefinitionRepository(session))
 
 
 async def get_material_coverage_service():

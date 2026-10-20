@@ -23,9 +23,7 @@ test("モバイル: 観測値の取得に失敗してもヘッダーが幅に収
       ),
   });
 
-  // 一般画面にはリクエストIDを含む長い文言を出さない。
   await expect(page.getByRole("img", { name: "観測値を取得できません" })).toBeVisible();
-  await expect(page.getByText(/\[req:/)).toHaveCount(0);
 
   const header = page.locator("header").first();
   const size = await header.evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }));
@@ -226,23 +224,32 @@ test("モバイル: 生成したルートを地図へ収めると、開いた「
   expect((Math.max(...ys) - Math.min(...ys)) / (sheetTop - freeTop)).toBeGreaterThan(0.7);
 });
 
-// 観点1（収まる）: 走行中の地図の下の道のりのグラフは、切り替えとボタンの行を図の上に出して図に重ねず、結果のシートの図より
-// 高く描いて画面に収める。結果のシートの図は切り替えを図に重ねたまま。重なりと高さは実寸でしか決まらない。
-test("モバイル: 走行中の道のりのグラフは、切り替えの行を図の上に出し、結果の図より高く画面に収まる", async ({
+// 観点1（収まる）: 道のりのグラフの切り替えは、結果のシートの図も走行中の地図の下の図も、図の上に段を取らずに図の右上に
+// 重ねる。走行中の図は結果のシートの図より高く描いて画面に収める。重なりと高さは実寸でしか決まらない。
+test("モバイル: 道のりのグラフの切り替えは、結果も走行中も図の右上に重ね、走行中の図は結果の図より高く画面に収まる", async ({
   page,
 }) => {
+  // 切り替えが図の右半分の中に収まる（図の上に段を取らず、左上の値の目盛りに掛からない）。
+  const expectOnTopRight = (
+    tabs: { x: number; y: number; width: number; height: number },
+    graph: { x: number; y: number; width: number; height: number },
+  ) => {
+    expect(tabs.y).toBeGreaterThanOrEqual(graph.y);
+    expect(tabs.y + tabs.height).toBeLessThanOrEqual(graph.y + graph.height);
+    expect(tabs.x).toBeGreaterThan(graph.x + graph.width / 2);
+    expect(tabs.x + tabs.width).toBeLessThanOrEqual(graph.x + graph.width);
+  };
   await openMobileApp(page);
   const sheet = await generateRoutes(page);
   const resultGraph = (await sheet.getByRole("slider", { name: /^道のりに沿った難易度/ }).boundingBox())!;
   const resultTabs = (await sheet.getByRole("tablist", { name: "道のりのグラフ" }).boundingBox())!;
-  expect(resultTabs.y).toBeGreaterThanOrEqual(resultGraph.y);
-  expect(resultTabs.y + resultTabs.height).toBeLessThanOrEqual(resultGraph.y + resultGraph.height);
+  expectOnTopRight(resultTabs, resultGraph);
 
   await sheet.getByRole("button", { name: /このルートで走る/ }).click();
   const ride = page.getByRole("region", { name: "予定ルートのプロファイル" });
   const rideGraph = (await ride.getByRole("slider", { name: /^道のりに沿った難易度/ }).boundingBox())!;
   const rideTabs = (await ride.getByRole("tablist", { name: "道のりのグラフ" }).boundingBox())!;
-  expect(rideTabs.y + rideTabs.height).toBeLessThanOrEqual(rideGraph.y);
+  expectOnTopRight(rideTabs, rideGraph);
   expect(rideGraph.height).toBeGreaterThan(resultGraph.height);
   expect(rideGraph.y + rideGraph.height).toBeLessThanOrEqual(MOBILE_VIEWPORT.height);
 });

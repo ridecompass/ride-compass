@@ -14,10 +14,13 @@
 
 import logging
 
+import numpy as np
 from cachetools import TTLCache
 
+from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.axis_definitions import AxisShape
 from app.domain.material_catalog import material_dtype
+from app.domain.road_classes import class_columns, condition_facts, current_road_classes
 from app.domain.region import BoundingBox
 from app.domain.value_distribution import (
     ValueDistribution,
@@ -54,22 +57,46 @@ async def load_way_sample(
     分布プレビューと飽和度の実測スクリプト（`backend/scripts/measure_axis_saturation.py`）が
     同じ標本の作り方を共有するための口。
     """
+    return _with_road_classes(await _sample_ways(repository, sample_percent, limit, bbox))
+
+
+async def _sample_ways(
+    repository: RoadGraphRepository, sample_percent: float, limit: int, bbox: BoundingBox | None
+) -> list[tuple[float, dict[str, object]]]:
     accident_years = await repository.get_accident_years_covered()
     return await repository.sample_way_material_values(
         accident_years, sample_percent, limit, bbox
     )
 
 
+def _with_road_classes(sample: list[tuple[float, dict[str, object]]]) -> list[tuple[float, dict[str, object]]]:
+    """標本の道ごとの材料に、今の区分の列（`domain/road_classes.py: class_columns`）の値を足す。区分は標本を持つ間にも
+    書き換わるので、標本を読むたびに当てる。"""
+    definitions = current_road_classes()
+    values = [materials for _, materials in sample]
+    facts: dict[str, MaterialColumn] = {
+        key: CategoricalColumn.encode(m.get(key) for m in values)  # type: ignore[misc]
+        if material_dtype(key) == "categorical"
+        else np.array([np.nan if (v := m.get(key)) is None else float(v) for m in values])  # type: ignore[arg-type]
+        for key in condition_facts(definitions)
+        if material_dtype(key) is not None
+    }
+    classes = class_columns(definitions, facts, len(values))
+    return [
+        (length_m, {**materials, **{material_id: column.value_at(i) for material_id, column in classes.items()}})
+        for i, (length_m, materials) in enumerate(sample)
+    ]
+
+
 async def _load_sample(
     repository: RoadGraphRepository, sample_cache: TTLCache
 ) -> list[tuple[float, dict[str, object]]]:
-    cached = sample_cache.get("sample")
-    if cached is not None:
-        return cached
-    sample = await load_way_sample(repository, SAMPLE_PERCENT, SAMPLE_LIMIT)
-    sample_cache["sample"] = sample
-    logger.info("軸プレビューのサンプルを取得 ways=%d", len(sample))
-    return sample
+    sample = sample_cache.get("sample")
+    if sample is None:
+        sample = await _sample_ways(repository, SAMPLE_PERCENT, SAMPLE_LIMIT, None)
+        sample_cache["sample"] = sample
+        logger.info("軸プレビューのサンプルを取得 ways=%d", len(sample))
+    return _with_road_classes(sample)
 
 
 class AxisPreviewService:

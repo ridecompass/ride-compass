@@ -35,7 +35,7 @@ _NOMINAL_CHROMA = 28.0
 #: 近い色が残るので、レイヤーごとに明度を変えて離す。暗い段は色相によってsRGBに収まらない
 #: （水色〜青）ので、そこだけ収まるところまで彩度を下げる（`_fit_chroma`）。鮮やかな段は明度を標準のまま
 #: 彩度で離す——明度は上を地色とのコントラストが、下を絵記号の白との見分けが決め、明度だけでは段が足りない。
-_NOMINAL_TONES: dict[str | None, tuple[float, float]] = {
+NOMINAL_TONES: dict[str | None, tuple[float, float]] = {
     None: (52.0, _NOMINAL_CHROMA),
     "dark": (42.0, _NOMINAL_CHROMA),
     "light": (_MAX_LIGHTNESS, _NOMINAL_CHROMA),
@@ -86,13 +86,19 @@ def ordered_colors(count: int) -> list[str]:
     ]
 
 
+def ordered_ends_phrase(first_label: str, last_label: str) -> str:
+    """順序のある分類の、先頭の行と末尾の行の名前から組む色の向きの文。"""
+    dark, light = ORDERED_END_COLOR_NAMES
+    return f"「{first_label}」ほど{dark}、「{last_label}」ほど{light}"
+
+
 def nominal_colors(hue_slot: int, count: int, tone: str | None) -> list[str]:
     """順序を持たない列挙の1軸ぶん。起点から色相環を行数で等分する。**同じ起点・同じ行数・同じ段なら
-    常に同じ色**（行を足すと、その軸の色は配り直される）。"""
+    常に同じ色**（行を足すと、その軸の色は配り直される）。知らない段は標準の段で塗る。"""
     if not 0 <= hue_slot < NOMINAL_HUE_SLOTS:
         raise ValueError(f"色相の起点は0〜{NOMINAL_HUE_SLOTS - 1}: {hue_slot}")
     start = _NOMINAL_START_HUE_DEG + (360.0 / NOMINAL_HUE_SLOTS) * hue_slot
-    lightness, chroma = _NOMINAL_TONES[tone]
+    lightness, chroma = NOMINAL_TONES.get(tone, NOMINAL_TONES[None])
     return [_fit_chroma(lightness, chroma, start + 360.0 * i / count) for i in range(count)]
 
 
@@ -147,6 +153,10 @@ SEMANTIC_COLORS: dict[str, str] = {
     "pin_origin_unresolved": "#9ca3af",
     "pin_waypoint": "#2563eb",
     "pin_destination": "#059669",
+    # 道のりのグラフ・地図で選んだ地点の印と、その地点を含む区間の範囲の縁取り。印は評価の配色・ルートの線の色・
+    # 現在地の青のどれとも重ならない朱色、縁取りはルートの線の下に敷いても線の色（評価・候補・乗り換え）に溶けない紫にする。
+    "selected_point": "#ff4d1a",
+    "selected_section": "#7c3aed",
 }
 
 def resolved_display_axes(attr: PrimaryAttributeSpec) -> list[dict]:

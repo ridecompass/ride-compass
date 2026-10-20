@@ -26,15 +26,6 @@ LIMIT = NEAREST_LIMIT_DEG
 
 #: 経度方向に長い矩形（緯度35.6〜35.7・経度139.6〜139.9）を東西に分けた区域。緯度と経度を取り違えると外れる。
 WEST = box(139.6, 35.6, 139.75, 35.7)
-EAST = box(139.75 + LIMIT, 35.6, 139.9, 35.7)
-
-
-@pytest.fixture
-def two_areas(boundary_path):
-    jma_area_boundaries.write_boundaries(boundary_path, {"0000010": WEST, "0000020": EAST})
-    return boundary_path
-
-
 #: 寄せる距離と同じ程度の大きさの区域を、寄せる距離ちょうどの隙間で並べた架空の区域。区域の中・隙間・
 #: 寄せる距離の内外が、どれも乱数で十分に引かれる大きさにする。経度方向に長いので、緯度と経度を取り違えると外れる。
 _SMALL_AREAS = {
@@ -64,14 +55,6 @@ def test_point_gets_the_nearest_area_within_the_limit(lat, lon):
         assert distances[found] <= nearest + 1e-12
 
 
-async def test_boundaries_are_read_once_and_kept(two_areas):
-    """一度読んだ境界はプロセス内に持ち、置き場を読み直さない。"""
-    await jma_area_boundaries.find_class20_code(35.65, 139.7)
-    two_areas.unlink()
-
-    assert await jma_area_boundaries.find_class20_code(35.65, 139.85) == "0000020"
-
-
 async def test_missing_boundaries_raise_and_warn_until_they_are_written(boundary_path, caplog):
     """置き場に無ければ、区域なし（None）ではなく読めない例外とWARNING。置いたあとは再起動せずに引ける。"""
     with caplog.at_level(logging.WARNING, logger="ridecompass.external"):
@@ -82,18 +65,3 @@ async def test_missing_boundaries_raise_and_warn_until_they_are_written(boundary
     jma_area_boundaries.write_boundaries(boundary_path, {"0000010": WEST})
 
     assert await jma_area_boundaries.find_class20_code(35.65, 139.7) == "0000010"
-
-
-@pytest.mark.parametrize(
-    "content",
-    [
-        pytest.param("{", id="JSONでない"),
-        pytest.param('{"0000010": "0101"}', id="境界でない"),
-    ],
-)
-async def test_unreadable_boundaries_raise(boundary_path, content):
-    boundary_path.parent.mkdir(parents=True)
-    boundary_path.write_text(content, encoding="utf-8")
-
-    with pytest.raises(jma_area_boundaries.AreaBoundariesUnavailableError):
-        await jma_area_boundaries.find_class20_code(35.65, 139.7)

@@ -53,7 +53,7 @@ test("R3・決め1・決め7・#760: 担当の実行が終わったら、表の�
     ["マージのコミットの検査がまだ（本番に出る前に確かめを問わない）", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "PENDING" } }, "検査", 1, null],
     ["マージのコミットの検査が1つも無い（合格していない）→ 実装担当", verify, { pr: merged }, "実装", 2, null],
     ["マージのコミットの検査が落ちた → 打ち直すか直す実装担当", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, "実装", 2, null],
-    ["マージのコミットの検査が取り消された（合格でない）→ 実装担当", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "CANCELLED" } }, "実装", 2, null],
+    ["マージのコミットの検査が取り消され、後の master の実行も無い（合格でない）→ 実装担当", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "CANCELLED" } }, "実装", 2, null],
     ["マージのコミットの上で担当の実行が取り消されても、担当の実行は検査に数えない → 確かめの問い", verify,
       { body: CONFIRM, pr: { ...merged, mergeChecks: "SUCCESS", mergeTasks: ["CANCELLED", "SUCCESS"] } }, "回答", 1, "## 問い（確かめ）"],
     ["実装担当が、落ちたマージのコミットの検査を打ち直しも直しもせずに手放した → イレギュラー", { body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, { pr: { ...merged, mergeChecks: "FAILURE" } }, "回答", 1, "## 問い（イレギュラー）"],
@@ -269,4 +269,24 @@ test("tasks#938 振り出す前に、今の事実で決め直す（保存した�
   const w = world([{ n: 1, status: "検証", pr: { draft: false, checks: "SUCCESS", mergeable: "CONFLICTING" } }, { n: 2, status: "実装", comments: [QUESTION] }]);
   await w.send(ev.schedule());
   assert.deepEqual([w.at(1).status, w.at(2).status, w.titles()], ["実装", "回答", ["#1 実装"]], "ぶつかった PR に検証担当を、答えを待つ問いに実装担当を起こさない");
+});
+
+test("tasks#1079 マージのコミットの master の実行が後の push で取り消されたら、その変更を判定に入れる後の master の実行（first-parent の子の側で一番近い、取り消されていないもの）の結論で決める", async () => {
+  const merged = (sha, parent, mergeChecks) => ({ state: "MERGED", merged: true, sha, parent, mergeChecks });
+  const rows = [
+    // [要求, 後のマージのコミットの検査（古い順。m2 は m1 の子、m3 は m2 の子）, #1 のステータス, 振り出した担当]
+    ["後の実行が走っている間は検査（打ち直す担当を振り出さない）", ["PENDING"], "検査", []],
+    ["後の実行が通った → 本番に出たので確かめを問う", ["SUCCESS"], "回答", []],
+    ["後の実行も取り消され、さらに後の実行が通った → 確かめを問う", ["CANCELLED", "SUCCESS"], "回答", []],
+    ["後の実行が落ちた → 取り消された変更も検査が通っていないので、直す実装担当", ["FAILURE"], "実装", ["#1 実装"]],
+  ];
+  for (const [name, later, status, runs] of rows) {
+    const w = world([{ n: 1, status: "検査", body: CONFIRM, pr: merged("m1", "m0", "CANCELLED") },
+      ...later.map((checks, k) => ({ n: k + 2, status: "検査", body: "- [ ] 作る\n", pr: merged(`m${k + 2}`, `m${k + 1}`, checks) }))]);
+    await w.send(ev.merge(1)); // #1 の実行が取り消された知らせ
+    await w.send(ev.merge(later.length + 1)); // 一番後の実行の知らせ（#1 の番号は名前に無い）
+    assert.deepEqual([w.at(1).status, said(w.at(1)), w.titles().filter((t) => t.startsWith("#1 "))],
+      [status, status === "回答" ? "## 問い（確かめ）" : null, runs], name);
+    if (status === "検査") assert.equal(w.at(1).run, "in_progress", `${name}: 欄「実行の status」は、代わりに検査を持つ実行の status`);
+  }
 });

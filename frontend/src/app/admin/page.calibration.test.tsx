@@ -15,6 +15,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { MAP_FETCH_DEBOUNCE_MS } from "@/hooks/useDebouncedValue";
 import { bandColorsFor, DEFAULT_DIFFICULTY_BOUNDARIES } from "@/lib/mapDisplay/valueScale";
 import { onSameOrigin, serveAxisCatalog, type SentRequest } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
@@ -57,6 +58,12 @@ const SAVED_WAY_VALUES = { "101": 10, "102": 50 };
 const DRAFT_WAY_VALUES = { "101": 50, "102": 90 };
 /** 道路タイルのズームの、狭い表示範囲（覆うタイルが1枚）。 */
 const NARROW_VIEW = { west: 139.7, south: 35.68, east: 139.701, north: 35.681 };
+/** `NARROW_VIEW`から東へタイル1枚分（z14の幅）動かした範囲。 */
+const NEXT_TILE_VIEW = {
+  ...NARROW_VIEW,
+  west: NARROW_VIEW.west + 360 / 2 ** 14,
+  east: NARROW_VIEW.east + 360 / 2 ** 14,
+};
 
 let updated: SentRequest[];
 let wayValueRequests: SentRequest[];
@@ -99,7 +106,9 @@ beforeEach(() => {
 async function openSlopeOnMap() {
   const user = userEvent.setup();
   render(<AdminPage />);
-  await user.selectOptions(await screen.findByRole("combobox", { name: "較正する軸" }), SLOPE.axis_id);
+  // 較正の欄は軸の一覧が届く前から空のまま描かれるので、欄ではなく選ぶ軸の選択肢が出るのを待つ。
+  await screen.findByRole("option", { name: new RegExp(`^${SLOPE.label}`) });
+  await user.selectOptions(screen.getByRole("combobox", { name: "較正する軸" }), SLOPE.axis_id);
   await screen.findByRole("region", { name: "下書きの点数の地図" });
   act(() => {
     mapOnScreen().emit("load");
@@ -153,6 +162,24 @@ describe("下書きの点数の地図", () => {
       }),
     );
     expect(wayValueRequests).toHaveLength(1);
+  });
+
+  it("地図を動かしても、前に取ったタイルの点数は取り直さず、新しく入ったタイルだけを求める", async () => {
+    await openSlopeOnMap();
+    await waitFor(() => expect(roadColor("101")).toBe(defaultBandColors[0]));
+
+    for (const view of [NEXT_TILE_VIEW, NARROW_VIEW]) {
+      act(() => mapOnScreen().moveTo(view, 14));
+      await new Promise((resolve) => setTimeout(resolve, MAP_FETCH_DEBOUNCE_MS + 100));
+      await waitFor(() => expect(roadColor("101")).toBe(defaultBandColors[0]));
+    }
+
+    const tiles = wayValueRequests.map(({ body }) => {
+      const { z, x, y } = body as { z: number; x: number; y: number };
+      return `${z}/${x}/${y}`;
+    });
+    expect(tiles).toHaveLength(2);
+    expect(new Set(tiles).size).toBe(2);
   });
 
   it("道の点数を求められないと、backendの理由を出す", async () => {

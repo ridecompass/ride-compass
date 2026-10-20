@@ -89,6 +89,23 @@ class DisplayAxisSpec(StrictModel):
     tone: Literal["dark", "light", "vivid"] | None = None
     categories: tuple[DisplayCategorySpec, ...]
 
+    @model_validator(mode="after")
+    def _colors_follow_the_palette(self) -> "DisplayAxisSpec":
+        if self.palette is None and (self.hue_slot is not None or self.tone is not None):
+            raise ValueError(f"色を持たない軸'{self.key}'に色相の起点か段がある")
+        if self.palette == "nominal" and self.hue_slot is None:
+            raise ValueError(f"順序を持たない列挙の軸'{self.key}'に色相の起点が無い")
+        return self
+
+    @model_validator(mode="after")
+    def _rows_do_not_overlap(self) -> "DisplayAxisSpec":
+        # 2つの行に属する値は、地図ではどちらか一方の色でしか塗られない。凡例の絞り込みと点のまとめは行を鍵で持つ。
+        values = [value for category in self.categories for value in category.values]
+        keys = [category.key for category in self.categories]
+        if len(values) != len(set(values)) or len(keys) != len(set(keys)):
+            raise ValueError(f"軸'{self.key}'の行の値か鍵が重なる")
+        return self
+
 
 class PrimaryAttributeSpec(StrictModel):
     """一次属性の宣言。
@@ -127,6 +144,39 @@ class PrimaryAttributeSpec(StrictModel):
     def _point_opacity_is_for_points(self) -> "PrimaryAttributeSpec":
         if self.point_opacity is not None and self.geometry != "point":
             raise ValueError(f"点でない一次属性'{self.attr_id}'に点の不透明度がある")
+        return self
+
+    @model_validator(mode="after")
+    def _only_the_first_axis_paints(self) -> "PrimaryAttributeSpec":
+        if not self.display_axes:
+            return self
+        if self.geometry == "area":
+            raise ValueError(f"面の一次属性'{self.attr_id}'は配信元の画像の色で塗り、行を持たない")
+        if self.tile_kind is None:
+            raise ValueError(f"地図へ出す一次属性'{self.attr_id}'に、読むタイルの系統が無い")
+        first, *rest = self.display_axes
+        if first.palette is None or any(spec.palette is not None for spec in rest):
+            raise ValueError(f"'{self.attr_id}'の色は先頭の軸だけが持つ")
+        return self
+
+    @model_validator(mode="after")
+    def _glyphs_and_radii_mark_points_one_way(self) -> "PrimaryAttributeSpec":
+        if not self.display_axes:
+            return self
+        first, *rest = self.display_axes
+        glyphs = [category.glyph for category in first.categories]
+        if any(category.glyph is not None for spec in rest for category in spec.categories):
+            raise ValueError(f"'{self.attr_id}'の2本目以降の軸の絵記号は地図に描かれない")
+        if any(glyph is not None for glyph in glyphs) and (
+            self.geometry != "point" or None in glyphs or len(glyphs) != len(set(glyphs))
+        ):
+            raise ValueError(f"'{self.attr_id}'の絵記号は、点の先頭の軸の行の全部に、行ごとに違う絵で付ける")
+        sized = [spec for spec in self.display_axes if any(c.radius_px is not None for c in spec.categories)]
+        if len(sized) > 1 or (sized and self.geometry != "point"):
+            raise ValueError(f"'{self.attr_id}'の点の半径を持つ軸は、点の軸の1本だけ")
+        radii = [c.radius_px for c in sized[0].categories if c.radius_px is not None] if sized else []
+        if len(radii) != len(set(radii)):
+            raise ValueError(f"'{self.attr_id}'の点の半径は、行ごとに違う大きさにする")
         return self
 
     @model_validator(mode="after")

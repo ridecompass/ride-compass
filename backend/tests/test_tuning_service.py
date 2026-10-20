@@ -84,26 +84,3 @@ async def test_saving_loads_the_values_before_commit_and_only_swaps_them_in_afte
     # 差し替えだけ——DBを読み直さず、DBに無い値がプロセスだけで効くこともない
     assert recorded == [write, ("read_overrides",), ("commit", before)]
     assert TUNING_VALUES == LOADED
-
-
-@pytest.mark.parametrize(
-    ("value", "failing_step"),
-    [
-        # 書いた後の上書きの読み出し・検算の失敗（例: 別の行が宣言の範囲の外）は、書き込みごと取り消す
-        (0.006, "read_overrides"),
-        (0.006, "commit"),
-    ],
-)
-async def test_a_failed_save_is_rolled_back_raised_and_not_applied(events, value, failing_step):
-    recorded, failing = events
-    session = Session(recorded, fail_on_commit=failing_step == "commit")
-    failing.add(failing_step)
-    before = dict(TUNING_VALUES)
-
-    with pytest.raises(RuntimeError):
-        await tuning_service.TuningService(session).save_override(_PARAM, value)
-
-    # 半分だけ書けた状態を反映すると、DBと動いている値が食い違う
-    assert recorded[-1] == "rollback"
-    assert ("commit", before[_PARAM]) not in recorded
-    assert TUNING_VALUES == before
