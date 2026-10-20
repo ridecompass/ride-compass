@@ -141,13 +141,20 @@ def relay_band(
     return in_band, np.abs(center_m - band.target_m)
 
 
-def ring_closeness_m(ring_length_m: np.ndarray, ring_center_m: float) -> np.ndarray:
-    """折返し点候補の往路実距離の、リング中心からのずれ（m）。候補の並べ方（`rank_by_pareto_layers`）の第1指標。
+def turnaround_band(
+    outbound_m: np.ndarray, distance_km: float, tolerance_km: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """経由地の無い周回の、折返し点の帯と並べる鍵（折返し点ごと）。
 
-    往路実距離そのものではなく中心からのずれを使うのは、周回では距離が「短いほど良い」ではなく「目標に
-    近いほど良い」ためで、目標より短すぎる往路（起点のすぐ近くで折り返す周回）も長すぎる往路も対称に扱われる。
+    往路の実距離`outbound_m`がリング（`turnaround_ring_m`）に入る点を帯に入れる。届かない（長さが有限でない）点は
+    帯に入らない。鍵は往路の実距離とリング中心のずれ（m）で、周回では距離が「短いほど良い」ではなく「目標に近いほど
+    良い」ため、目標より短すぎる往路（起点のすぐ近くで折り返す周回）も長すぎる往路も対称に扱う。
     """
-    return np.abs(ring_length_m - ring_center_m)
+    lower_m, upper_m, center_m = turnaround_ring_m(distance_km, tolerance_km)
+    length_m = np.asarray(outbound_m, dtype=float)
+    with np.errstate(invalid="ignore"):
+        in_band = (length_m >= lower_m) & (length_m <= upper_m)
+    return in_band, np.abs(length_m - center_m)
 
 
 def retrace_penalized(costs: np.ndarray) -> np.ndarray:

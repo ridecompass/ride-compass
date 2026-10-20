@@ -100,7 +100,7 @@ from app.domain.route_search import (
     retrace_penalized,
     reverse_leg_assignment,
     relay_band,
-    ring_closeness_m,
+    turnaround_band,
     route_passages,
     straight_distances_m,
     turnaround_ring_m,
@@ -119,6 +119,7 @@ from app.domain.routing import (
     add_terminal_candidate,
     build_turn_expanded_structure,
     build_turn_expanded_tree,
+    tree_cost_bound,
     combine_forward_backward_at_nodes,
     edge_bearings,
     edge_index_between,
@@ -139,7 +140,6 @@ from app.domain.wind import (
     detour_ratio_or_default,
     estimate_passage_hours,
     is_usable_detour_ratio,
-    kmh_to_ms,
     reached_or_estimated_hours,
     straight_line_hours,
 )
@@ -155,9 +155,6 @@ from app.services.weather_service import WeatherService
 _BBOX_MARGIN_RATIO = 0.3
 _BBOX_MARGIN_MIN_KM = 2.0
 
-# 一対全探索のコスト上限に掛ける余裕。Edge単位の丸めの積み上がりで上限ぎりぎりのNodeを
-# 取りこぼさないため。
-_COST_LIMIT_SLACK = 1.01
 # ランキング上位から間引き判定にかけるリングNode数の上限（往路の経路復元コストの上限）。
 _MAX_RING_CANDIDATES_EXAMINED = 4000
 # ランキング上位から間引き判定にかけるvia-node候補数の上限（_MAX_RING_CANDIDATES_EXAMINEDと
@@ -589,10 +586,10 @@ class RoadGraphEngine:
 
         1. 最後の固定点（経由地が無ければ起点）からの一対全最短経路木（`domain/routing.py: build_turn_expanded_tree`、
            軸重み付きコスト）を1回だけ求める。前段で走った道（同じNode対の逆向きを含む）には帰りと同じ罰を置く。
-           探索はコスト上限（帯の上限の距離を最低速度で秒へ直し×(1+P)。帯の中のNodeを取りこぼさない上界）で打ち切る。
+           探索は、帯の上限の距離までに積みうる木の費用の上界（`domain/routing.py: tree_cost_bound`）で打ち切る。
         2. 帯に入るNodeを選ぶ。終点からの逆向きの木で中継点から終点までの長さを取り、全長の見込み（前段＋往路＋帰り）が
            目標±許容に入るNode（`domain/route_search.py: relay_band`）。経由地の無い周回は帰りの最短を往路の長さで
-           代え、木に沿った往路の**実距離**が周回のリング（`domain/route_search.py: turnaround_ring_m`）に入るNodeにする。
+           代え、木に沿った往路の**実距離**が周回のリングに入るNodeにする（`domain/route_search.py: turnaround_band`）。
            どちらも最短実距離ではなく軸コスト最適経路の実距離で定義する——重みを極端に振った設定ほど往路が遠回りする
            ため、最短実距離基準だと往路だけで目標の半分を超え距離フィルタで全滅する。
         3. 帯の中心からのずれ・往路の難易度のパレート層の順に並べる（`rank_by_pareto_layers`）。
@@ -623,8 +620,8 @@ class RoadGraphEngine:
         if fixed.closes and leg_index == 0:
             # 経由地の無い周回は、出発地からの往路と出発地への帰りの最短が同じ2点を結ぶので、帰りの最短を往路の長さで
             # 代えられる（リング）。逆向きの木を求めない。
-            ring_lower_m, ring_upper_m, ring_center_m = turnaround_ring_m(distance_km, distance_tolerance_km)
-            outbound_upper_m = ring_upper_m
+            ring_lower_m, outbound_upper_m, _ = turnaround_ring_m(distance_km, distance_tolerance_km)
+            band_km = (ring_lower_m / 1000, outbound_upper_m / 1000)
         else:
             # 帰りレグ: 終点へ向かうレグとして、全長の目標ぶんの所要時間を終点への到着予定時刻に置く。
             inbound = self._compose_inbound(context, end_point, distance_km, remaining_km)
@@ -636,22 +633,16 @@ class RoadGraphEngine:
                 reverse=True, edge_seconds=inbound.travel_seconds_lazy,
             )
             outbound_upper_m = LengthBand.from_km(distance_km, distance_tolerance_km).upper_m - fixed_m
+            band_km = ((distance_km - distance_tolerance_km), (distance_km + distance_tolerance_km))
         if outbound_upper_m <= 0:
             logger.info("select_turnarounds fixed_km=%.1f exceeds the target", fixed_m / 1000)
             return []
-        # コストは秒（体感の所要時間）のため、上限も帯の上限の距離を秒へ直して決める。
-        # 走行モデルが出しうる最も遅い速度（押して歩く）で割ることで、帯の中のNodeを
-        # 取りこぼさない上界になる（`cost <= 所要時間 × (1+P)`かつ
-        # `所要時間 <= 距離 ÷ 最低速度`）。走った道の罰はコストを増やすだけなので、上界のまま。
-        cost_limit = (
-            outbound_upper_m / kmh_to_ms(tuning_value("speed.walking_kmh"))
-            * (1.0 + max(self._penalty_strength, 0.0)) * _COST_LIMIT_SLACK
-        )
-
+        outbound_costs = _avoiding_traveled(outbound.cost_bins_lazy, traveled)
         tree_started = start_timer()
+        cost_limit = tree_cost_bound(context.turn_structure, outbound_costs, statics.edge_length_m, outbound_upper_m)
         tree = await asyncio.to_thread(
             build_turn_expanded_tree,
-            context.turn_structure, _avoiding_traveled(outbound.cost_bins_lazy, traveled), statics.edge_length_m,
+            context.turn_structure, outbound_costs, statics.edge_length_m,
             _origin_states(statics, start_node), statics.csr.node_count,
             cost_limit=cost_limit, edge_seconds=outbound.travel_bins_lazy,
             bin_seconds=outbound.bin_seconds,
@@ -660,14 +651,12 @@ class RoadGraphEngine:
 
         length = tree.node_length_m
         if backward_tree is None:
-            in_ring = (length >= ring_lower_m) & (length <= ring_upper_m)
-            band_km = (ring_lower_m / 1000, ring_upper_m / 1000)
+            in_ring, closeness_m = turnaround_band(length, distance_km, distance_tolerance_km)
         else:
-            in_ring, total_closeness_m = relay_band(
+            in_ring, closeness_m = relay_band(
                 fixed_m, length, backward_tree.node_length_m, distance_km, distance_tolerance_km,
             )
             in_ring[end_node] = False
-            band_km = ((distance_km - distance_tolerance_km), (distance_km + distance_tolerance_km))
         in_ring[start_node] = False
         ring = np.flatnonzero(in_ring)
         if len(ring) == 0:
@@ -688,9 +677,7 @@ class RoadGraphEngine:
             # 到着予定時刻に置いて合成する（距離フィルタが目標±許容を強制するため定数扱いできる）。
             inbound = self._compose_inbound(context, end_point, distance_km, remaining_km)
             context.legs = [*context.legs[:leg_index + 1], inbound]
-            closeness_key = ring_closeness_m(ring_length, ring_center_m)
-        else:
-            closeness_key = total_closeness_m[ring]
+        closeness_key = closeness_m[ring]
         ranking = rank_by_pareto_layers(
             ring, closeness_key, tree.node_cost[ring], tree.node_seconds[ring], self._penalty_strength,
             max_items=pool_size, max_examined=_MAX_RING_CANDIDATES_EXAMINED, tie_by_distance=True,
