@@ -11,7 +11,6 @@
 - 回数制限の数え方そのもの → `test_rate_limiter.py`
 """
 
-import io
 
 import mapbox_vector_tile
 import pytest
@@ -23,6 +22,7 @@ from app.api.dependencies import get_jma_tile_client
 from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from app.infrastructure.jma_tile_index import JmaTileIndex, set_index
 from app.main import app
+from tests.tile_images import encode
 
 client = TestClient(app)
 
@@ -112,17 +112,10 @@ def test_jma_tile_proxy_forwards_query_string_to_client(monkeypatch):
     ]
 
 
-def _tile_png(color):
-    """指定色で塗りつぶした256x256のPNG。"""
-    buffer = io.BytesIO()
-    Image.new("RGBA", (256, 256), color).save(buffer, format="PNG")
-    return buffer.getvalue()
-
-
 def test_jma_tile_proxy_interpolates_zoom_without_native_data(monkeypatch):
     # 大雨キキクルはzoomUse="even"のためz9に実データが無い。上流へ問い合わせる代わりに
     # 親（z8）のタイルから該当象限を切り出し、元のパスのキーでキャッシュへ書き戻す（次回は補間をやり直さない）。
-    fake = _answer(monkeypatch, parent=(_tile_png((255, 0, 0, 255)), "image/png"))
+    fake = _answer(monkeypatch, parent=(encode(Image.new("RGBA", (256, 256), (255, 0, 0, 255))), "image/png"))
 
     response = client.get(f"/api/jma-tile/{RAIN_FRAME}/9/455/201.png")
 
