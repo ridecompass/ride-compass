@@ -3,10 +3,11 @@
  *
  * 見るもの: 固定の行を「通らない」に鍵を付けて並びの先頭に出し、選ぶ操作を持たないこと（軸カタログが届く前も出す）。行の避け方を
  * 節ごとに畳んで並べ（行の無い節は出さない）、選ぶとその行だけを変えた値を上げ、既定から変えた行の数を畳んだ見出しに出すこと。
- * 選んでいない行は、前の鍵に選んだ段のうち強い方を、それも無ければ既定の段を出すこと。見出しの行と全部を既定へ戻す操作を持たないこと。
+ * 選んでいない行は、前の鍵に選んだ段で出すこと。見出しの行と全部を既定へ戻す操作を持たないこと。
  *
  * ここで見ないもの: 保存値を読むこと → `features/route/useGenerationConditions.test.ts`。生成の要求へ載せること →
- * `features/route/useRouteGeneration.test.ts`。(i)の奥の文（配られた説明を写すだけ）。
+ * `features/route/useRouteGeneration.test.ts`。今の鍵・前の鍵・既定の段のどれを取るか → `features/route/roadAvoidance.test.ts`。
+ * (i)の奥の文（配られた説明を写すだけ）。
  *
  * 固定の行は生成物（`route-generate-config.json`）から読む。行・段・節は軸カタログが配る（本番の値は管理DBが持つ）ので、テストが組む。
  */
@@ -78,15 +79,11 @@ describe("HardFilterPanel", () => {
     expect(onRoadAvoidanceChange).toHaveBeenCalledExactlyOnceWith({ private: "avoid", gravel: "exclude" });
   });
 
-  it.each([
-    ["何も選んでいなければ既定の段", {}, "なるべく避ける"],
-    ["前の鍵に選んだ段があれば、そのうち強い方", { dirt: "exclude", mud: "pass" }, "通らない"],
-    ["今の鍵に選んだ段があれば、前の鍵より今の鍵", { unpaved: "pass", dirt: "exclude" }, "通る"],
-  ] as const)("選んでいない行は、%sを出す", async (_, roadAvoidance, shown) => {
-    renderPanel(roadAvoidance);
+  it("選んでいない行は、前の鍵に選んだ段のうち強い方を出す", async () => {
+    renderPanel({ dirt: "exclude", mud: "pass" });
     await userEvent.click(sectionTrigger("路面"));
 
-    expect(checkedLevel("未舗装")).toHaveTextContent(shown);
+    expect(checkedLevel("未舗装")).toHaveTextContent("通らない");
   });
 
   it("既定から変えた行がある節は、畳んだ見出しに変えた行の数を出す", () => {

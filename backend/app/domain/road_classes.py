@@ -2,7 +2,8 @@
 
 正本は管理DBの表（`infrastructure/road_class_models.py`）で、コードは写しも既定も持たない——表が空なら区分は0件。
 型は表の行を写すだけで、表の制約が守る形（鍵の綴り・参照先の実在・並びの重なり）をもう一度確かめない。制約で表せない
-データの良し悪し（条件の重なり・前の鍵の付け方・値の綴り）も判定せず、振り分けの式がどんなデータにも1つの答えを出す。
+データの良し悪し（条件の重なり・前の鍵の付け方・条件の値の綴り）も判定せず、振り分けの式がどんなデータにも1つの答えを出す。
+コードの宣言を名指す値は、書く側だけが宣言に照らす（`undeclared_references`）。
 """
 
 import hashlib
@@ -14,8 +15,11 @@ import numpy as np
 from pydantic import Field
 
 from app.domain.attributes import CategoricalColumn, MaterialColumn
-from app.domain.material_catalog import CoverageExcluded, MaterialSpec
+from app.domain.display_palette import NOMINAL_TONES
+from app.domain.map_display import MAP_LAYER_CATEGORIES
+from app.domain.material_catalog import MATERIAL_CATALOG, CoverageExcluded, MaterialSpec
 from app.domain.strict_model import StrictModel
+from app.domain.tuning import TUNING_PARAMETERS_BY_ID
 
 #: 真偽の事実が「ある」ときの値の綴り。
 TRUE_FACT_VALUE = "true"
@@ -42,7 +46,7 @@ class RoadClass(StrictModel):
     description: str
     #: 凡例・除外タブ・帯で共通の並び。色もこの順で決まる。振り分けには使わない。
     sort_order: int
-    #: `<分け方>.<区分>`の形の前の鍵。
+    #: `<分け方>.<区分>`の形の前の鍵。区分の鍵を改める・分ける・合わせるときに足し、その全体を本番へ入れてから3か月で外す。
     former_keys: list[str]
     #: 区分は、条件のどれかに当たる道。
     conditions: list[Condition]
@@ -113,6 +117,36 @@ EMPTY_ROAD_CLASSES = RoadClassDefinitions(
     avoidance_sections={},
     avoidance_classifications={},
 )
+
+def undeclared_references(definitions: RoadClassDefinitions) -> list[str]:
+    """コードの宣言を名指す値のうち、宣言に無いもの（運用者が読む文）。空なら全部が宣言にある。
+
+    読む側は知らない値を1つの振る舞いへ倒す（どの道にも無い事実・標準の段・基準の転がり抵抗等）ので、綴り違いは書いた
+    あと黙って効く。書く側（管理APIの入れ替え）だけがこれで断る。宣言から値を消しても、残った行は読む側が倒すだけで起動は止まらない。
+    """
+    problems = [
+        f"区分「{class_key}」（分け方 {key}）の条件の事実 {fact_key} は材料にありません"
+        for key, classification in definitions.classifications.items()
+        for class_key, road_class in classification.classes.items()
+        for fact_key in dict.fromkeys(fact for condition in road_class.conditions for fact in condition)
+        if fact_key not in MATERIAL_CATALOG
+    ]
+    groups = {category.key for category in MAP_LAYER_CATEGORIES}
+    for key, layer in definitions.map_layers.items():
+        if layer.group_key not in groups:
+            problems.append(f"地図の線の層 {key} のまとめ先 {layer.group_key} は地図の種別にありません")
+        if layer.tone not in NOMINAL_TONES:
+            problems.append(f"地図の線の層 {key} の色の段 {layer.tone} はありません")
+        if layer.no_data_fact_key is not None and layer.no_data_fact_key not in MATERIAL_CATALOG:
+            problems.append(f"地図の線の層 {key} のデータなしの事実 {layer.no_data_fact_key} は材料にありません")
+    problems += [
+        f"転がり抵抗の区分 {key}.{class_key} の較正値 {tuning_id} は較正値の宣言にありません"
+        for key, classes in definitions.rolling_resistance_classes.items()
+        for class_key, tuning_id in classes.items()
+        if tuning_id not in TUNING_PARAMETERS_BY_ID
+    ]
+    return problems
+
 
 _current = EMPTY_ROAD_CLASSES
 

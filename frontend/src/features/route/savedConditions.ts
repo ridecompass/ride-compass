@@ -77,7 +77,7 @@ const coordinatesOrNull = (value: unknown) => (value === null || isCoordinates(v
 
 // 全長の目標の有無を持たない件は、前に周回・目的地のモードで保存した件。周回は距離で作り、経由地・目的地を置いてあっても
 // 隠して使わず、目的地は距離を決めずに作っていた。一覧を読むと今の形で書き戻す（`useSavedConditions.ts`の`rewrite`）ので、
-// この読み替えは一覧をまだ開いていない端末のためだけにある。
+// この読み替えは一覧をまだ開いていない端末のためだけにあり、2027-01-10に、これを読む分岐ごと消す。
 function savedMode(entry: Record<string, unknown>): "loop" | "destination" | null {
   if (entry.distanceTargeted !== undefined) return null;
   return entry.routeMode === "loop" || entry.routeMode === "destination" ? entry.routeMode : null;
@@ -92,6 +92,7 @@ const SAVED_FIELD_READERS: {
 } = {
   name: (value) => (typeof value === "string" && value.trim() !== "" ? value : undefined),
   // 周回かを持たない件は、目的地の有無で周回を決めていた頃の件で、目的地を持たなければ周回として読む（その頃の生成と同じ形）。
+  // 目的地の有無で読む分岐は2027-01-19に消す。
   loop: (value, entry) => {
     if (value === undefined) return savedMode(entry) === "loop" || entry.destination === null;
     return typeof value === "boolean" ? value : undefined;
@@ -116,6 +117,7 @@ const SAVED_FIELD_READERS: {
   },
   routePreference: (value) => (value === null || isWeights(value) ? value : undefined),
   // 避け方を持たない件は、行ごとに選べるようになる前に保存した件で、どの行も選んでいない（既定の段）として読む。
+  // この読み替えは2027-01-18に消し、避け方を持たない件を捨てる。
   roadAvoidance: readRoadAvoidance,
 };
 

@@ -29,6 +29,7 @@ from omfiles import OmFileReader
 from app.domain.time_zone import JST, as_series_time
 from app.config import settings
 from app.domain.msm import MsmGrid, MsmGridPoints, MsmThinnedPoints, MsmWindow
+from app.domain.weather_elements import MSM_FORECAST_HOURS
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.debug_log import log_external_call
 
@@ -292,10 +293,10 @@ def _prune(keep: set[Path]) -> None:
 async def refresh(client: httpx.AsyncClient) -> int:
     """配信元と同期する。実際に取得したファイル数を返す。
 
-    現在時刻から`settings.msm_forecast_hours`先までを覆うチャンク（通常1〜2個）を変数ごとに取得する。
+    現在時刻から`domain/weather_elements.py: MSM_FORECAST_HOURS`先までを覆うチャンク（通常1〜2個）を変数ごとに取得する。
     内容が変わっていないチャンクはETagによる条件付きGETで転送自体が起きない。
     """
-    horizon = settings.msm_forecast_hours
+    horizon = MSM_FORECAST_HOURS
     meta = await _fetch_meta(client)
     chunk_hours = int(meta["chunk_time_length"])
     now = int(time.time())
@@ -420,12 +421,12 @@ async def _read[S: _Selection](
     extract: Callable[[S, np.ndarray], np.ndarray],
     variables: tuple[str, ...] = _WIND_VARIABLES,
 ) -> tuple[S, list[datetime], dict[str, np.ndarray]]:
-    """`_read_sync`を、現在時刻の正時から`settings.msm_forecast_hours`時間ぶんについて別スレッドで回す。
+    """`_read_sync`を、現在時刻の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶんについて別スレッドで回す。
 
     同期が済んでいない・予報が現在時刻へ追いついていない・置き場のファイルが読めない（壊れたメタ情報・チャンク）・
     地点が格子の外にある場合は`MsmUnavailableError`。
     """
-    requested = settings.msm_forecast_hours
+    requested = MSM_FORECAST_HOURS
     with log_external_call("msm:read", hours=requested) as fields:
         fields["cache"] = "hit"
         try:
@@ -440,7 +441,7 @@ async def _read[S: _Selection](
 
 
 async def read_series(latitudes: np.ndarray, longitudes: np.ndarray) -> MsmSeries:
-    """地点ごとの時系列（現在時刻の正時から`settings.msm_forecast_hours`時間ぶん）を、周囲の格子点から補間して返す。
+    """地点ごとの時系列（現在時刻の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶん）を、周囲の格子点から補間して返す。
     画面に出さない計算にだけ使う（domain/msm.py のモジュールの説明）。読めなければ`MsmUnavailableError`。"""
     _, times, values = await _read(
         lambda grid: grid.window(latitudes, longitudes), MsmWindow.interpolate,

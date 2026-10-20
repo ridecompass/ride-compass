@@ -289,7 +289,7 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
 
 同じ集約を軸の**生値**（折れ点を通す前の値、`StaticEdgeScoreMatrix.axis_raw_values`）にも
 掛ける。区間の応答は生値を持たず、エンジンがEdge単位の生値を区間と同じ切り方でビンへ畳んでから
-候補全体へ畳む（`road_graph_engine.py: _build_candidate`→`route.py: route_axis_raw_values`→
+候補全体へ畳む（`road_graph_candidates.py: _build_candidate`→`route.py: route_axis_raw_values`→
 `RouteCandidate.axis_raw_values`）。得点0-100は目盛りの引き方に依存する相対評価のため、
 軸単体で経路を判断するには絶対値が要る。生値を持つのは単位が定まる軸
 （[軸スタジオ](axis-studio.md)「生値の単位」節）だけで、かつリクエストごとに変わる
@@ -316,7 +316,7 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
 categorical材料は数値列に載せられないため、対になる別の列で運ぶ:
 `StaticEdgeScoreMatrix.categorical_material_ids`/`categorical_material_columns`
 （語彙への番号の列、列を決める述語は`route_facing_categorical_material_ids`）→
-区間ごとの値（`road_graph_engine.py: _build_segment_details`が区間の並びと対で返す。
+区間ごとの値（`road_graph_candidates.py: _build_segment_details`が区間の並びと対で返す。
 区間の器`RouteSegmentDetail`は約500mのビンへ畳まれ、分類値はビンの代表値1つにすると
 割合がビンの粒度へ量子化されるため、器には載せない）→
 `merge_material_category_shares`（距離加重で「値ごとの延長割合」へ畳む。分母はその材料の値を
