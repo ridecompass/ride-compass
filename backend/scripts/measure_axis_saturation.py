@@ -15,7 +15,7 @@
 
 実行方法（backendディレクトリから）:
     python scripts/measure_axis_saturation.py
-    python scripts/measure_axis_saturation.py --axis stop_density --sample-percent 5
+    python scripts/measure_axis_saturation.py --axis <軸id> --sample-percent 5
     python scripts/measure_axis_saturation.py --bbox 35.65,139.72,35.71,139.80
     python scripts/run_probe.py scripts/measure_axis_saturation.py --bbox 35.65,139.72,35.71,139.80   # 本番
 

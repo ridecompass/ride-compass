@@ -9,8 +9,9 @@ docs/modules/backend/evaluation-scoring.md「材料カタログ」参照）。
 網羅的に登録する。登録済みでも対応する軸が無ければ評価には使われない（軸の定義ファイルから
 使える）。
 
-材料自体はGUIから追加・編集・削除できない（コード変更＋デプロイが前提）。frontendは本カタログを
-ビルド時の生成物（`scripts/export_openapi.py`が書き出す`material-catalog.json`）だけから知る。
+本カタログの材料はGUIから追加・編集・削除できず（コード変更＋デプロイが前提）、ビルド時の生成物
+（`scripts/export_openapi.py`が書き出す`material-catalog.json`）へ書き出す。道の区分から作る材料（`class:<分け方>`）は
+本カタログの外で、管理DBの区分から実行時に作る（`domain/road_classes.py: class_material_spec`）。
 
 `tile_property`はMVTタイル（`road_tile_sql.py: ROAD_SURFACE_TILE_MVT_SQL`）へ焼き込む
 プロパティ名（Noneなら材料がタイルに載らない）。
@@ -365,8 +366,7 @@ _RAIN_COVERAGE = CoverageExcluded(
 
 # 材料の値（OSMタグ生値）ごとの日本語ラベル対訳表。
 # MaterialSpec.value_labelsのdocstring参照——「地図表示と評価は別」という方針に基づき、
-# 地図の表示分類（一次属性`highway`の`display_axes`が持つ`DisplayCategorySpec`、
-# 意図的に多対一）とは独立した1値1ラベルの専用対訳表。各値の日本語ラベルはOSM wiki
+# 地図の表示分類（管理DBの道の区分。意図的に多対一）とは独立した1値1ラベルの専用対訳表。各値の日本語ラベルはOSM wiki
 # （Key:highway/Key:surface）の一般的なタグ定義に基づく。MaterialSpecの呼び出し直下へ
 # インラインで書くと材料定義ブロックの見通しが悪くなるためここへ分けているだけで、
 # 値は`value_labels=`で各MaterialSpecへそのまま渡す。材料をまたぐ別辞書ではない。

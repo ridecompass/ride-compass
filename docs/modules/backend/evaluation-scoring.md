@@ -49,7 +49,7 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 
 ## 0次ハードフィルタと道の行ごとの避け方（`domain/hard_filters.py`・`domain/road_avoidance.py`）
 
-`compute_search_exclusion`が、静的スコア行列（`StaticEdgeScoreMatrix`）の旗の名前→該当フラグの配列と、
+`domain/hard_filters.py: compute_search_exclusion`が、静的スコア行列の0次フィルタに当たる区間（`domain/evaluation.py: StaticEdgeScoreMatrix.hard_filtered`）と区分の列（`domain/evaluation.py: StaticEdgeScoreMatrix.road_classes`）と、
 リクエストが指定した行ごとの避け方の段・勾配の上限から、Edgeごとに「探索から除く」と「割り増す」を求める。
 0次フィルタは宣言されたものがいつも全部効き、リクエストでは切れない（要求の欄も持たない）。
 
@@ -347,7 +347,7 @@ MaterialSpec]`が単一ソース。
 | フィールド | 意味 |
 |---|---|
 | `dtype` | `"numeric"`/`"boolean"`/`"categorical"` |
-| `unit` | 値の単位（凡例・数値表示用、無次元・真偽値・カテゴリ値は空文字）。生成物`material-catalog.json`がfrontendへ届け、frontendは単位を持たない（唯一の正）。**`label`へ単位を書かない**——ラベルと単位を別々に組み立てる画面で「制限速度(km/h) 35km/h」のように二重になる |
+| `unit` | 値の単位（凡例・数値表示用、無次元・真偽値・カテゴリ値は空文字）。生成物`material-catalog.json`がfrontendへ届け、frontendは単位を持たない（唯一の正）。**`material-catalog.json: label`へ単位を書かない**——ラベルと単位を別々に組み立てる画面で「制限速度(km/h) 35km/h」のように二重になる |
 | `additive` | 同じ単位の他の材料と**足し合わせて意味を持つ量**か（示量／示強の区別）。個数と、それを同じ距離で割った密度はTrue。%・km/h・倍率のような割合・率はFalse。`raw_value_unit`が2項以上の和を見せてよいかの判定に使う |
 | `total_unit` | 生値へ走行距離を掛けた**総量**を出すときの単位（出す意味が無ければ`None`）。`additive`とは別の問い——事故密度（件/[km・年]）は足せるが、総量に比べる尺度が無い。|
 | `tile_property` | MVTタイルへ既に焼き込み済みのプロパティ名。`None`はタイルに載らない材料。列は`value_sql`から組む（上の「タイルへ焼く列」） |
