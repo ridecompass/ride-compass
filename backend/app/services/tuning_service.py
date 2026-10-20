@@ -15,13 +15,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.tuning import TUNING_PARAMETERS_BY_ID, TUNING_VALUES
-from app.infrastructure.tuning_overrides import (
-    clear_override,
-    load_tuning_values,
-    merge_overrides,
-    read_overrides,
-    set_override,
-)
+from app.infrastructure.tuning_overrides import TuningOverrideStore, load_tuning_values, merge_overrides
 
 logger = logging.getLogger("ridecompass.tuning")
 
@@ -47,14 +41,16 @@ async def refresh_tuning_values(session: AsyncSession) -> None:
 
 
 class TuningService:
-    """管理画面の較正値の読み書き。`session`はタイル配信と同じ工場のもの（`api/dependencies.py: get_tuning_service`）。"""
+    """管理画面の較正値の読み書き。`session`はタイル配信と同じ工場のもので、`overrides`は同じセッションの上の
+    上書きの行の読み書き（`api/dependencies.py: get_tuning_service`）。"""
 
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, overrides: TuningOverrideStore):
         self._session = session
+        self._overrides = overrides
 
     async def overridden_parameter_ids(self) -> set[str]:
         """既定から動かしてある較正値のid。"""
-        return set(await read_overrides(self._session))
+        return set(await self._overrides.read_overrides())
 
     async def save_override(self, param_id: str, value: float | None) -> set[str]:
         """1件を上書きし（`value`が`None`なら既定へ戻す）、書いた後に既定から動かしてある較正値のidを返す。
@@ -69,10 +65,10 @@ class TuningService:
         session = self._session
         try:
             if value is None:
-                await clear_override(session, param_id)
+                await self._overrides.clear_override(param_id)
             else:
-                await set_override(session, param_id, value)
-            overrides = await read_overrides(session)
+                await self._overrides.set_override(param_id, value)
+            overrides = await self._overrides.read_overrides()
             values = merge_overrides(overrides)
             overridden = set(overrides)
             await session.commit()
