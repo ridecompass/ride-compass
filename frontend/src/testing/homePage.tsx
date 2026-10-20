@@ -133,6 +133,23 @@ export const SECOND = route("second", {
   },
 });
 
+// 東へ1km進む区間1つで、計画では4分かかるルート。走行モードのテストで、現在地をその真ん中（`RIDDEN_MIDDLE`）に置く。
+export const RIDDEN = route("ridden", {
+  segments: [
+    makeRouteSegment({
+      start_latitude: 35.7,
+      start_longitude: 139.7,
+      end_latitude: 35.7,
+      end_longitude: 139.71,
+      distance_km: 1,
+      estimated_arrival_time: "2026-10-13T09:00:00+09:00",
+    }),
+  ],
+  distance_km: 1,
+  estimated_duration_seconds: 4 * 60,
+});
+export const RIDDEN_MIDDLE: Coordinates = { latitude: 35.7, longitude: 139.705 };
+
 export const LOOP_CONDITIONS = makeGenerationConditions({ latitude: HERE.latitude, longitude: HERE.longitude });
 
 /** 地図のソースに載った線の座標。 */

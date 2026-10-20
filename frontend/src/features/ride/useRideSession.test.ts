@@ -4,7 +4,7 @@
  *
  * ここで見ないもの:
  * - 保存の形と期限の判定 → `rideSession.test.ts`
- * - 知らせを受けて候補を戻し走行モードを始め直すこと → `app/page.test.tsx`
+ * - 知らせを受けて候補を戻し走行モードを始め直すこと → `app/page.ride.test.tsx`
  */
 import { renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

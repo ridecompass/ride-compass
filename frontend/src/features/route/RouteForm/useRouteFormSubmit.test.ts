@@ -4,7 +4,7 @@
  * 目的地が無ければ、目的地か周回を促す。通れば前の文言を消す。
  *
  * ここで見ないもの:
- * - 文言を出す場所（「ルート結果」欄・モバイルの「ルート設定」シート） → `RouteOutcome/RouteOutcome.test.tsx`・`app/page.test.tsx`
+ * - 文言を出す場所（「ルート結果」欄・モバイルの「ルート設定」シート） → `RouteOutcome/RouteOutcome.test.tsx`・`app/page.mobile.test.tsx`
  * - 検証を通った値で何を送るか（距離・経由地・目的地・候補数） → `useRouteGeneration.test.ts`
  * - 候補数のステッパーを押せなくする表示 → `RouteForm/RouteForm.test.tsx`
  * - 距離・候補数の値域 → 検証しない（入力はスライダー・ステッパーで、保存値は読むときに範囲の外を捨てる。

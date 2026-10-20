@@ -2,7 +2,7 @@
  * 走りの帯（`features/ride/RideBar/RideBar.tsx`）——走行モードの間、画面の上の1行にルートの残り・到着予想・今の速さ・風を出す。
  *
  * ここで見ないもの:
- * - 走行モードの間だけ天気の帯の代わりに出ること → `app/page.test.tsx`
+ * - 走行モードの間だけ天気の帯の代わりに出ること → `app/page.ride.test.tsx`
  * - 残りと到着予想の出し方 → `rideRemaining.test.ts`
  */
 import { render, screen } from "@testing-library/react";
