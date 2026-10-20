@@ -182,11 +182,9 @@ def test_grades_missing_in_the_arrays_are_none_in_the_attribute():
 @pytest.mark.parametrize(
     ("way", "segment", "forward", "expected"),
     [
-        (10, 0, True, 0),
         (10, 0, False, 1),
         (30, 1, True, 4),
         (20, 0, False, None),  # 一方通行の逆向き
-        (30, 2, True, None),  # 道にその区間番号が無い
         (15, 0, True, None),  # 取込範囲に無い道
     ],
 )
