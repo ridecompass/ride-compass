@@ -4,82 +4,27 @@
  *
  * 見るもの: 候補数のステッパー（今の件数・1件ずつの増減・端で押せない）、全長の目標の入り切り（押して上がる値・
  * 外している間はルーラーを動かせない）とルーラーのコマ（5km刻みの範囲・今の値）と動かして上がる値、全長の目標の(i)の奥の
- * 許容差（軸カタログが配る較正値で、引けない間は書かない）、
- * 周回の切り替え（押している状態と、押して上げる値）、地点の並び（出発地・経由地の番号の丸・終点。周回の間の終点は出発地の印と
- * 名前で押せない）と、距離・候補数の値と札の名前の文字の大きさのそろい、
- * 押した地点の詳しく（呼び名・出どころ・名前・その位置から引いた辺り）、出発地の印の色、
- * 押した地点を選んで上げること・地図で置ける間の打つ欄の誘い・消す/戻す操作、名前を打って選んだ候補をその地点として上げること、
+ * 許容差（軸カタログが配る較正値で、引けない間は書かない）、距離・候補数の値と地点の並びの札の名前の文字の大きさのそろい、
  * 「保存済み」タブの「地点」から呼び出した地点をその役割で上げて「条件」タブへ移ること、タブを切り替えても各タブの中身を外さないこと。
  *
  * ここで見ないもの: タブの列と選んだタブ、どのタブの中身が見えるか（スタイルで隠す）→ `app/page.tsx`。
- * 書いた定数や受け取った値をそのまま渡すもの（今の値と km の表記・候補の距離の幅、印の
- * 役割ごとの背景色、(i)の奥の文）。
- * 選んでいる地点をどう決めるか（何も選んでいない・選んだ経由地が消えた・探して足した経由地を選ぶ） → `features/route/useGenerationConditions.test.ts`。
- * 打ちかけで引く間・変換中に引かないこと・候補の行の中身（辺り・距離・札）・引けない／当たらないときの文、探して置いた
- * 地点の辺りと代表の位置 → `RouteForm/PointDetail.test.tsx`。
- * 検索で置いた地点が、ピンを動かすまでその候補のままか → `features/route/useGenerationConditions.test.ts`。
- * 並びに入りきらないときに両端の札を印だけにすること（テスト環境はレイアウトの実寸を持たない）→ `e2e/all-states.spec.ts`の
- * 省略の検査（名前を途中で切っていないこと）。
- *
+ * 書いた定数や受け取った値をそのまま渡すもの（今の値と km の表記・候補の距離の幅、(i)の奥の文）。
+ * 周回の切り替えと地点の並び → `RouteForm/RouteForm.points.test.tsx`。押した地点の詳しく → `RouteForm/RouteForm.pointDetail.test.tsx`。
  * ルーラーのドラッグ・横スクロール・押せない間の止め方 → `components/ui/Ruler/Ruler.test.tsx`。
  *
- * 差し替えたもの: 検索の口と辺りの口の応答（網の層）。辺りの口は、テストが応答を渡さなければ辺り無しと答える。
- *
- * タブの中身を描くには`Tabs`の中に置く必要があるので、テストが`page.tsx`の代わりに`Tabs`で包む。
+ * 差し替えたもの: 辺りの口の応答（網の層）。テストが応答を渡さなければ辺り無しと答える。
  */
-import { act, render, screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState, type ComponentProps, type ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
+import { beforeEach, describe, expect, it } from "vitest";
 
-import { ORIGIN_MARK_FALLBACK_COLOR, PIN_MARK_COLOR } from "@/components/PinMark/PinMark";
-import { Tabs } from "@/components/ui/Tabs/Tabs";
 import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
 import { onBackend, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogResponse } from "@/testing/catalogAxes";
-import { AZA_CANDIDATE as AZA, FACILITY_CANDIDATE as FACILITY } from "@/testing/routeFixtures";
+import { DESTINATION, button, renderForm, waypointsOf } from "@/testing/routeForm";
+import { FACILITY_CANDIDATE as FACILITY } from "@/testing/routeFixtures";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import type { PointTarget } from "@/types/route";
-
-import RouteForm, { type SettingsTab } from "./RouteForm";
-
-type Props = ComponentProps<typeof RouteForm>;
-/** 部品へ渡す値。生成の条件の欄（`conditions`）とほかの props を並べて渡し、`renderForm` が分ける。 */
-type Options = Partial<Props["conditions"]> & Partial<Omit<Props, "conditions">>;
-
-/** 出発地の位置（現在地）。 */
-const ORIGIN = { latitude: 35.75, longitude: 139.73 };
-
-/** コールバック以外の既定。見たい値はテストが渡す。 */
-const BASE = {
-  loop: false,
-  distanceInput: "30",
-  maxRoutesInput: "8",
-  distanceTargeted: true,
-  waypoints: [],
-  destination: null,
-  origin: ORIGIN,
-  originManual: false,
-  originLocated: true,
-  originAtHere: true,
-  selectedPoint: { role: "origin" },
-  placing: false,
-  foundAt: () => null,
-  originFound: null,
-  mapCenter: { latitude: 35.681, longitude: 139.767 },
-  weightsPanel: null,
-  exclusionsPanel: null,
-  saveConditionsButton: null,
-  savedConditionsPanel: null,
-  savedPlaces: { places: [], save: () => {}, remove: () => {} },
-} satisfies Options;
-
-/** 置いた経由地（地点は並べるだけ）。 */
-function waypointsOf(count: number) {
-  return Array.from({ length: count }, (_, i) => ({ latitude: 35 + i * 0.01, longitude: 139 }));
-}
-
-const DESTINATION = { latitude: 35.1, longitude: 139.1 };
 
 // 詳しくは置いた地点の辺りを引く。辺りを見ないテストには、辺り無しと答える（見るテストは後から応答を渡す）。
 beforeEach(() => {
@@ -87,124 +32,9 @@ beforeEach(() => {
   serveAxisCatalog(catalogResponse([]));
 });
 
-/** 選んでいる地点を持つ親の代わり（選ぶと上げ、その地点の詳しくを出し直す）。 */
-function Selecting({
-  initial,
-  onSelect,
-  children,
-}: {
-  initial: PointTarget;
-  onSelect: (target: PointTarget) => void;
-  children: (selected: PointTarget, select: (target: PointTarget) => void) => ReactNode;
-}) {
-  const [selected, setSelected] = useState(initial);
-  return children(selected, (target) => {
-    setSelected(target);
-    onSelect(target);
-  });
-}
-
-function renderForm(options: Options = {}, tab: SettingsTab = "generate") {
-  const handlers = {
-    setDistanceInput: vi.fn(),
-    setMaxRoutesInput: vi.fn(),
-    setDistanceTargeted: vi.fn(),
-    setLoop: vi.fn(),
-    removeWaypoint: vi.fn(),
-    clearDestination: vi.fn(),
-    clearPoints: vi.fn(),
-    onOriginReset: vi.fn(),
-    selectPoint: vi.fn(),
-    onPlaceFound: vi.fn(),
-    onPointsShow: vi.fn(),
-  };
-  const element = (nextTab: SettingsTab, changed: Options = {}) => {
-    const {
-      origin,
-      originManual,
-      originLocated,
-      originAtHere,
-      onOriginReset,
-      originFound,
-      mapCenter,
-      onPlaceFound,
-      onPointsShow,
-      weightsPanel,
-      exclusionsPanel,
-      saveConditionsButton,
-      savedConditionsPanel,
-      savedPlaces,
-      placing,
-      selectedPoint,
-      selectPoint,
-      ...conditions
-    } = {
-      ...BASE,
-      ...handlers,
-      ...options,
-      ...changed,
-    };
-    return (
-      <Selecting initial={selectedPoint} onSelect={selectPoint}>
-        {(selected, select) => (
-          <Tabs value={nextTab}>
-            <RouteForm
-              conditions={{ ...conditions, selectedPoint: selected, selectPoint: select }}
-              origin={origin}
-              originManual={originManual}
-              originLocated={originLocated}
-              originAtHere={originAtHere}
-              onOriginReset={onOriginReset}
-              originFound={originFound}
-              mapCenter={mapCenter}
-              onPlaceFound={onPlaceFound}
-              onPointsShow={onPointsShow}
-              savedPlaces={savedPlaces}
-              placing={placing}
-              weightsPanel={weightsPanel}
-              exclusionsPanel={exclusionsPanel}
-              saveConditionsButton={saveConditionsButton}
-              savedConditionsPanel={savedConditionsPanel}
-            />
-          </Tabs>
-        )}
-      </Selecting>
-    );
-  };
-  const view = render(element(tab));
-  return {
-    ...handlers,
-    showTab: (nextTab: SettingsTab) => view.rerender(element(nextTab)),
-    /** 上げた操作を受けて変わった条件で描き直す。 */
-    showWith: (changed: Options) => view.rerender(element(tab, changed)),
-  };
-}
-
-/** 消す・現在地に戻す等のボタン。 */
-function button(name: string) {
-  return screen.getByRole("button", { name });
-}
-
 /** 全長の目標のルーラー。 */
 function distanceRuler() {
   return screen.getByRole("slider", { name: "全長の目標" });
-}
-
-/** 押した地点の詳しく（呼び名・出どころ・名前・打つ欄・操作）。 */
-function detail(title: string) {
-  return screen.getByRole("region", { name: title });
-}
-
-/** 詳しくの打つ欄。 */
-function pointBox(title: string) {
-  return screen.getByRole("searchbox", { name: `${title}を住所・施設で探す` });
-}
-
-/** 地点の並び（出発地 › 経由地の番号の丸 ＋ › 目的地）の、押せるものの名前。 */
-function strip() {
-  return within(screen.getByRole("group", { name: "地点の並び" }))
-    .getAllByRole("button")
-    .map((chip) => chip.getAttribute("aria-label"));
 }
 
 describe("RouteForm 候補数", () => {
@@ -284,217 +114,6 @@ describe("RouteForm 全長の目標", () => {
   });
 });
 
-describe("RouteForm 出発地", () => {
-  /** 印（スタートの旗）を描く要素。 */
-  function originMark() {
-    const mark = detail("出発地").querySelector<HTMLElement>("svg")?.parentElement;
-    if (!mark) throw new Error("出発地の印が無い");
-    return mark;
-  }
-
-  it.each([
-    [true, "現在地", PIN_MARK_COLOR.origin],
-    [false, "現在地を取得できていません", ORIGIN_MARK_FALLBACK_COLOR],
-  ])("現在地を取れたか（%s）で名前を「%s」とし、印の色を変える", (originLocated, name, color) => {
-    renderForm({ originLocated });
-
-    expect(detail("出発地")).toHaveTextContent(`出発地${name}`);
-    expect(originMark()).toHaveStyle({ color });
-  });
-
-  it.each([
-    [true, true],
-    [false, false],
-  ])("出発地が今の現在地にあるか（%s）で、現在地に戻す操作を押せなくする（%s）", (originAtHere, disabled) => {
-    renderForm({ originAtHere });
-
-    expect(button("出発地を現在地に戻す")).toHaveProperty("disabled", disabled);
-  });
-
-  it.each([
-    [null, "出発地地図で選んだ地点", "地図で選んだ地点"],
-    [FACILITY, `出発地${FACILITY.name}探して選んだ地点`, "探して選んだ地点"],
-  ])(
-    "置いた出発地は、探して置いたときの位置のままなら名前、ほかは「地図で選んだ地点」と出し、現在地に戻す操作を出す",
-    async (originFound, text, once) => {
-      const { onOriginReset } = renderForm({ originManual: true, originAtHere: false, originFound });
-
-      expect(detail("出発地").textContent).toContain(text);
-      expect(detail("出発地").textContent?.split(once)).toHaveLength(2);
-      await userEvent.click(button("出発地を現在地に戻す"));
-
-      expect(onOriginReset).toHaveBeenCalledOnce();
-    },
-  );
-});
-
-describe("RouteForm 地点の並び", () => {
-  it("出発地・経由地の番号の丸・足す・目的地を並べ、選んでいる地点（既定は出発地）の詳しくを出す", () => {
-    const [first, second] = waypointsOf(2);
-    renderForm({
-      waypoints: [first, second],
-      destination: DESTINATION,
-      foundAt: (at) => (at === second ? FACILITY : at === DESTINATION ? AZA : null),
-    });
-
-    expect(strip()).toEqual([
-      "出発地: 現在地",
-      "経由地1: 地図で選んだ地点",
-      `経由地2: ${FACILITY.name}`,
-      "経由地を足す",
-      `目的地: ${AZA.name}`,
-    ]);
-    expect(button("出発地: 現在地")).toHaveAttribute("aria-pressed", "true");
-    expect(detail("出発地")).toBeInTheDocument();
-  });
-
-  it("押した地点を選んで上げ、その詳しくを出す", async () => {
-    const { selectPoint } = renderForm({
-      waypoints: waypointsOf(2),
-      foundAt: (at) => (at?.latitude === 35.01 ? FACILITY : null),
-    });
-
-    await userEvent.click(button(`経由地2: ${FACILITY.name}`));
-    expect(selectPoint).toHaveBeenLastCalledWith({ role: "waypoint", index: 1 });
-    expect(detail("経由地2").textContent).toContain(`経由地2${FACILITY.name}探して選んだ地点`);
-    expect(button(`経由地2: ${FACILITY.name}`)).toHaveAttribute("aria-pressed", "true");
-
-    await userEvent.click(button("経由地を足す"));
-    expect(selectPoint).toHaveBeenLastCalledWith({ role: "waypoint", index: null });
-    expect(detail("新しい経由地")).toBeInTheDocument();
-  });
-
-  it.each([
-    [true, "地図をタップ"],
-    [false, "住所・施設で置き直す"],
-  ])("地図で置ける間か（%s）で、選んでいる地点の打つ欄に「%s」と出す", (placing, placeholder) => {
-    renderForm({ placing });
-
-    expect(pointBox("出発地")).toHaveAttribute("placeholder", placeholder);
-  });
-
-  it.each([
-    [3, "地図をタップ[3地点]"],
-    [0, "地図をタップ"],
-  ])(
-    "置いた経由地が%i件のとき、新しい経由地を選んでいれば打つ欄に件数があれば添えて「地図をタップ」を出す",
-    (count, hint) => {
-      renderForm({ waypoints: waypointsOf(count), selectedPoint: { role: "waypoint", index: null }, placing: true });
-
-      expect(pointBox("新しい経由地")).toHaveAttribute("placeholder", hint);
-    },
-  );
-
-  it.each([
-    ["出発地: 現在地", "出発地", ORIGIN],
-    ["経由地2: 地図で選んだ地点", "経由地2", waypointsOf(2)[1]],
-    ["目的地: 地図で選んだ地点", "目的地", DESTINATION],
-  ])("押した地点（%s）の詳しくに、その位置から引いた辺りを出す", async (chip, title, point) => {
-    onBackend("GET", "/api/place-area", ({ query }) =>
-      Response.json({ area: query.latitude === String(point.latitude) ? "押した地点の辺り" : "ほかの地点の辺り" }),
-    );
-    renderForm({ waypoints: waypointsOf(2), destination: DESTINATION });
-
-    await userEvent.click(button(chip));
-
-    expect(await within(detail(title)).findByText("押した地点の辺り")).toBeInTheDocument();
-  });
-
-  it("現在地を取れていない出発地は、仮の位置の辺りを引かない", async () => {
-    const sent = onBackend("GET", "/api/place-area", () => Response.json({ area: "仮の位置の辺り" }));
-    renderForm({ originLocated: false });
-
-    // 引くなら詳しくを描いた直後に送る。少し待っても送っていない。
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(sent).toEqual([]);
-  });
-
-  it.each([
-    [routeGenerateConfig.max_waypoints, "経由地は上限まで置いてあります", true],
-    [routeGenerateConfig.max_waypoints - 1, "経由地を足す", false],
-  ])("経由地が%i件なら足す操作を「%s」とし、生成が受け付ける数までなら押せなくする", (waypointCount, name, full) => {
-    renderForm({ waypoints: waypointsOf(waypointCount) });
-
-    expect(button(name)).toHaveProperty("disabled", full);
-  });
-
-  it.each([
-    [false, 0, null, "経由地と目的地を全部消す", true],
-    [false, 1, null, "経由地と目的地を全部消す", false],
-    [false, 0, DESTINATION, "経由地と目的地を全部消す", false],
-    [true, 0, null, "経由地を全部消す", true],
-  ])(
-    "周回か（%s）・経由地が%i件・目的地が%oなら、全部消す操作を「%s」とし、押せない（%s）",
-    (loop, waypointCount, destination, name, disabled) => {
-      renderForm({ loop, waypoints: waypointsOf(waypointCount), destination });
-
-      expect(button(name)).toHaveProperty("disabled", disabled);
-    },
-  );
-
-  it("全部消す操作を押すと上げる", async () => {
-    const { clearPoints } = renderForm({ waypoints: waypointsOf(2), destination: DESTINATION });
-
-    await userEvent.click(button("経由地と目的地を全部消す"));
-
-    expect(clearPoints).toHaveBeenCalledOnce();
-  });
-});
-
-describe("RouteForm 経由地", () => {
-  it("上限まで置いたあとは、新しい経由地を探しても置けない", () => {
-    const max = routeGenerateConfig.max_waypoints;
-    renderForm({ waypoints: waypointsOf(max), selectedPoint: { role: "waypoint", index: null } });
-
-    expect(pointBox("新しい経由地")).toBeDisabled();
-  });
-
-  it("置いた経由地は、消す操作でその経由地を消す", async () => {
-    const { removeWaypoint } = renderForm({ waypoints: waypointsOf(3) });
-
-    await userEvent.click(button("経由地2: 地図で選んだ地点"));
-    await userEvent.click(button("経由地2を消す"));
-
-    expect(removeWaypoint).toHaveBeenCalledExactlyOnceWith(1);
-  });
-});
-
-describe("RouteForm 周回", () => {
-  it.each([
-    [true, "true", false],
-    [false, "false", true],
-  ] as const)(
-    "周回か（%s）で切り替えを押した状態（%s）にし、押すと反対（%s）を上げる",
-    async (loop, pressed, raised) => {
-      const { setLoop } = renderForm({ loop });
-
-      expect(button("周回")).toHaveAttribute("aria-pressed", pressed);
-      await userEvent.click(button("周回"));
-
-      expect(setLoop).toHaveBeenCalledExactlyOnceWith(raised);
-    },
-  );
-
-  it("周回の間は、終点を出発地の印と「出発地の名前[周回]」で出し、押せない（変えられるのは経由地だけ）", () => {
-    renderForm({ loop: true, waypoints: waypointsOf(1), distanceTargeted: false });
-
-    const end = screen.getByText("終点: 現在地[周回]").parentElement;
-    expect(end?.querySelector("svg")?.parentElement).toHaveStyle({ color: PIN_MARK_COLOR.origin });
-    expect(strip()).toEqual(["出発地: 現在地", "経由地1: 地図で選んだ地点", "経由地を足す"]);
-  });
-
-  it.each([
-    [null, "未設定"],
-    [DESTINATION, "地図で選んだ地点"],
-  ])("周回を外すと、終点は目的地（%o）の札で「%s」と出し、目的地の印を付ける", (destination, name) => {
-    renderForm({ loop: false, destination });
-
-    const mark = button(`目的地: ${name}`).querySelector("svg")?.parentElement;
-    expect(mark).toHaveStyle({ color: PIN_MARK_COLOR.destination });
-    expect(screen.queryByText(/^終点:/)).toBeNull();
-  });
-});
-
 describe("RouteForm 文字の大きさ", () => {
   /** 要素に効く文字の大きさのトークン（自分か、いちばん近い祖先が書いたもの）。 */
   function fontSizeToken(element: HTMLElement): string | null {
@@ -517,76 +136,6 @@ describe("RouteForm 文字の大きさ", () => {
     ].map(fontSizeToken);
     expect(tokens[0]).not.toBeNull();
     expect(new Set(tokens)).toEqual(new Set([tokens[0]]));
-  });
-});
-
-describe("RouteForm 目的地", () => {
-  it("目的地が無い間は「未設定」と出して消す操作を押せなくしておく", async () => {
-    renderForm({ distanceTargeted: false, destination: null });
-    await userEvent.click(button("目的地: 未設定"));
-
-    expect(detail("目的地")).toHaveTextContent("目的地未設定");
-    expect(button("目的地を消す")).toBeDisabled();
-  });
-
-  it.each([
-    [null, "目的地地図で選んだ地点", "地図で選んだ地点"],
-    [FACILITY, `目的地${FACILITY.name}探して選んだ地点`, "探して選んだ地点"],
-  ])(
-    "置いた目的地は、探して置いたときの位置のままなら名前、ほかは「地図で選んだ地点」と出し、消す操作を押すと上げる",
-    async (found, text, once) => {
-      const { clearDestination } = renderForm({
-        destination: DESTINATION,
-        foundAt: (at) => (at === DESTINATION ? found : null),
-      });
-      await userEvent.click(button(`目的地: ${found?.name ?? "地図で選んだ地点"}`));
-
-      expect(detail("目的地").textContent).toContain(text);
-      expect(detail("目的地").textContent?.split(once)).toHaveLength(2);
-
-      await userEvent.click(button("目的地を消す"));
-
-      expect(clearDestination).toHaveBeenCalledOnce();
-    },
-  );
-});
-
-describe("RouteForm 探して置く", () => {
-  it.each([
-    ["目的地", "目的地: 未設定", "destination", null],
-    ["新しい経由地", "経由地を足す", "waypoint", null],
-    ["経由地2", "経由地2: 地図で選んだ地点", "waypoint", 1],
-    ["出発地", "出発地: 現在地", "origin", null],
-  ] as const)(
-    "%sの詳しくで名前を打つと候補を欄の下に出し、選ぶとその地点として上げて、打った文字と一覧を消す",
-    async (title, chip, role, waypointIndex) => {
-      const sent = onBackend("GET", "/api/place-search", () => Response.json({ candidates: [AZA, FACILITY] }));
-      const { onPlaceFound } = renderForm({ waypoints: waypointsOf(2) });
-      await userEvent.click(button(chip));
-
-      await userEvent.type(pointBox(title), "浅草寺{Enter}");
-
-      const list = await within(detail(title)).findByRole("list", { name: "地点の候補" });
-      expect(sent.map((request) => request.query.q)).toEqual(["浅草寺"]);
-      await userEvent.click(within(list).getByRole("button", { name: new RegExp(FACILITY.name) }));
-
-      expect(onPlaceFound).toHaveBeenCalledExactlyOnceWith(role, FACILITY, waypointIndex);
-      expect(screen.queryByRole("list", { name: "地点の候補" })).toBeNull();
-    },
-  );
-
-  it("候補の一覧は✕で閉じ、打った文字も消す", async () => {
-    onBackend("GET", "/api/place-search", () => Response.json({ candidates: [AZA] }));
-    const { onPlaceFound } = renderForm();
-    await userEvent.click(button("目的地: 未設定"));
-
-    await userEvent.type(pointBox("目的地"), "丸の内{Enter}");
-    await screen.findByRole("list", { name: "地点の候補" });
-    await userEvent.click(button("目的地の候補を閉じる"));
-
-    expect(screen.queryByRole("list", { name: "地点の候補" })).toBeNull();
-    expect(pointBox("目的地")).toHaveValue("");
-    expect(onPlaceFound).not.toHaveBeenCalled();
   });
 });
 
