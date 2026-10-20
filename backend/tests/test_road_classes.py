@@ -1,15 +1,28 @@
-"""区分に道を振り分ける式（`domain/road_classes.py: class_columns`）と、地図の線の層の値（`layer_columns`）を見る。
+"""区分に道を振り分ける式（`domain/road_classes.py: class_columns`）と、地図の線の層の値（`layer_columns`）と、
+コードの宣言に無い名指し（`undeclared_references`）を見る。
 
-区分の型は表の行の写しで、表の制約が守る形はここで見ない（構造仕様15）。配る形は`test_road_class_catalog.py`、表との往復は
-`test_road_class_admin_routes.py`が持つ。事実の材料のidは性質だけを表す架空の名前を使う。
+区分の型は表の行の写しで、表の制約が守る形はここで見ない（構造仕様15）。配る形は`test_road_class_catalog.py`、表との往復と
+書く側で断ること（の受け渡し）は`test_road_class_admin_routes.py`が持つ。振り分けの事実の材料のidは性質だけを表す架空の名前を使い、
+宣言に無い名指しは宣言の実在が関心なので本物の宣言から選ぶ。
 """
 
 import numpy as np
 import pytest
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.road_classes import NO_DATA_VALUE, Condition, ConditionTerm, class_columns, layer_columns
-from tests.road_class_fixture import classification, map_layer, road_classes
+from app.domain.cycling_speed import BASE_CRR_ID
+from app.domain.map_display import MAP_LAYER_CATEGORIES
+from app.domain.material_catalog import MATERIAL_CATALOG
+from app.domain.road_classes import (
+    NO_DATA_VALUE,
+    Condition,
+    ConditionTerm,
+    RoadClassDefinitions,
+    class_columns,
+    layer_columns,
+    undeclared_references,
+)
+from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
 
 # 区間は順に: 分類の値なし・a・b、真偽の真・偽・値なしを、同じ並びで持つ。
 COLUMNS = {"cat_a": CategoricalColumn.encode([None, "a", "b"]), "bool_a": np.array([1.0, 0.0, np.nan])}
@@ -64,3 +77,37 @@ def test_layer_values_split_roads_outside_classes_by_the_no_data_fact() -> None:
     )
     (column,) = layer_columns(definitions, {**COLUMNS, **class_columns(definitions, COLUMNS, N)}, N).values()
     assert [column.value_at(i) for i in range(N)] == [NO_DATA_VALUE, "is_a", None]
+
+
+DECLARED_FACT = next(iter(MATERIAL_CATALOG))
+UNKNOWN = "no_such_name"
+
+
+def _naming(*, fact: str = DECLARED_FACT, group: str = MAP_LAYER_CATEGORIES[0].key, tone: str | None = "dark",
+            no_data_fact: str | None = DECLARED_FACT, tuning_id: str = BASE_CRR_ID) -> RoadClassDefinitions:
+    """コードの宣言を名指す欄を全部持つ全体。既定はどれも宣言にある名。"""
+    return road_classes(
+        {"k": classification({"c": [fact_is(fact, "a")]})},
+        map_layers={"k": map_layer().model_copy(update={"group_key": group, "tone": tone, "no_data_fact_key": no_data_fact})},
+        rolling_resistance_classification="k",
+        rolling_resistance_classes={"k": {"c": tuning_id}},
+    )
+
+
+@pytest.mark.parametrize(
+    ("definitions", "undeclared"),
+    [
+        (_naming(), None),
+        # 任意の欄は、書いていなければ名指していない。
+        (_naming(tone=None, no_data_fact=None), None),
+        (_naming(fact=UNKNOWN), UNKNOWN),
+        (_naming(group=UNKNOWN), UNKNOWN),
+        (_naming(tone=UNKNOWN), UNKNOWN),
+        (_naming(no_data_fact=UNKNOWN), UNKNOWN),
+        (_naming(tuning_id="speed.crr_pavd"), "speed.crr_pavd"),
+    ],
+)
+def test_names_missing_from_the_code_declarations(definitions: RoadClassDefinitions, undeclared: str | None) -> None:
+    """宣言に無い名を指す欄を、その名で1件ずつ挙げる（書く側が断る文になる）。"""
+    problems = undeclared_references(definitions)
+    assert [undeclared in problem for problem in problems] == ([] if undeclared is None else [True])
