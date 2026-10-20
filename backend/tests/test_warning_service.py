@@ -96,11 +96,11 @@ async def test_get_warnings_merges_across_documents_and_dedupes(boundary_path):
             "warning": {"class10Items": [{"areaCode": CLASS10_CODE, "kinds": [{"code": "14", "status": "発表"}]}]},
         },
         {
-            # 対象コードが濃霧（対象外の種別）のみの電文。結果に含まれないこと。
+            # 対象コードが乾燥（対象外の種別）のみの電文。結果に含まれないこと。
             "reportDatetime": "2026-08-22T20:00:00+09:00",
             "warning": {
                 "class20Items": [
-                    {"areaCode": CLASS20_CODE, "kinds": [{"code": "20", "status": "発表"}]},
+                    {"areaCode": CLASS20_CODE, "kinds": [{"code": "21", "status": "発表"}]},
                 ]
             },
         },
