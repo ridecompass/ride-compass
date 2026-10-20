@@ -42,7 +42,7 @@ permissions:
 
 concurrency:
   group: mutation-frontend
-  cancel-in-progress: false
+  queue: max
 
 env:
   SHARDS: 16
