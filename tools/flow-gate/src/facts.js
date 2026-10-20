@@ -64,16 +64,49 @@ const query = () => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:Strin
   comments(last:40){totalCount nodes{body createdAt author{login}}} ${FIELDS} ${relationsOf(true)} blocking(first:20){nodes{number state}}
   timelineItems(first:50,itemTypes:[ISSUE_TYPE_CHANGED_EVENT]){nodes{...on IssueTypeChangedEvent{prevIssueType{name} issueType{name}}}}}}
  c:repository(owner:$co,name:$cn){pullRequests(headRefName:$head,first:5,orderBy:{field:CREATED_AT,direction:DESC}){nodes{
-  id state isDraft mergeable merged createdAt mergedAt mergeCommit{${SUITES}} commits(last:1){nodes{commit{committedDate ${SUITES}}}}
+  id state isDraft mergeable merged createdAt mergedAt mergeCommit{oid ${SUITES}} commits(last:1){nodes{commit{committedDate ${SUITES}}}}
   timelineItems(last:1,itemTypes:[CONVERT_TO_DRAFT_EVENT]){nodes{...on ConvertToDraftEvent{createdAt}}}}}}}`;
 
 // 合格の結論（GitHub が必須の検査の合格に数えるもの: 成功・スキップ・中立）。
 const PASSED = ["SUCCESS", "SKIPPED", "NEUTRAL"];
 // コミットの検査。stage は最も新しい検査の実行の status（実行が無ければ null）、passed はその実行が終わって合格したか。実行の結論は
 // Pull Request では結論のジョブ（ci-ok）と同じで、master ではデプロイも含む（本番に出てから合格にする）。
+// cancelled は、その実行が取り消されたか（master では、後の push が待ちを置き換えた。.github/workflows/ci.yml の concurrency）。
 function checksOf(config, commit) {
   const last = checkRuns(config, commit).reduce((a, s) => (a && a.createdAt > s.createdAt ? a : s), null);
-  return { stage: last?.status ?? null, passed: PASSED.includes(last?.conclusion) };
+  return { stage: last?.status ?? null, passed: PASSED.includes(last?.conclusion), cancelled: last?.conclusion === "CANCELLED" };
+}
+// master の検査の実行が取り消されたコミットの変更は、後の master の実行が検査とデプロイの判定に入れる（ci.yml の changes ジョブは、first-parent の
+// 祖先のうち検査が通った一番近いコミットと比べる）。その実行は、first-parent の子の側へ辿って、検査の実行が取り消されていない一番近いコミットの
+// もの。FOLLOW はその辿る数で、取り消しが続くのは待ちが重なった間だけなので、辿り切れなければ代わりの実行は無いと読む。
+const FOLLOW = 10;
+// oid のコミットの代わりに検査を持つ後の master の実行（checksOf の形）。無ければ null。
+async function coveringChecks(gh, config, oid) {
+  const { owner, name } = config.repos.code;
+  // 比べる API は、oid に無く master にあるコミットを古い順に返す（GitHub の公式の文書「Compare two commits」）ので、子の側の近いものが先のページにある。
+  const { commits } = await gh.rest("GET", `/repos/${config.code}/compare/${oid}...${config.base}?per_page=100`);
+  const chain = [];
+  for (let at = oid; chain.length < FOLLOW;) {
+    const child = commits.find((c) => c.parents[0]?.sha === at);
+    if (!child) break;
+    chain.push(at = child.sha);
+  }
+  if (!chain.length) return null;
+  const { repository: r } = await gh.gql(`query($o:String!,$r:String!){repository(owner:$o,name:$r){${chain.map((sha, k) => `c${k}:object(oid:"${sha}"){...on Commit{${SUITES}}}`).join(" ")}}}`,
+    { o: owner, r: name });
+  const found = chain.map((_, k) => r[`c${k}`]).find((c) => checkRuns(config, c).length && !checksOf(config, c).cancelled);
+  return found ? checksOf(config, found) : null;
+}
+// sha のコミットの master の実行が代わりに検査を持つ、first-parent の祖先のマージのコミットの issue の番号（上の coveringChecks の逆向き）。
+export async function coveredTasks(gh, config, sha) {
+  const { owner, name } = config.repos.code;
+  const { repository: { object: o } } = await gh.gql(`query($o:String!,$r:String!,$s:GitObjectID!){repository(owner:$o,name:$r){object(oid:$s){...on Commit{
+    history(first:${FOLLOW * 3}){nodes{oid messageHeadline parents(first:1){nodes{oid}} ${SUITES}}}}}}}`, { o: owner, r: name, s: sha });
+  const by = new Map((o?.history.nodes ?? []).map((n) => [n.oid, n]));
+  const up = (n) => by.get(n?.parents.nodes[0]?.oid);
+  const numbers = [];
+  for (let n = up(by.get(sha)); n && checksOf(config, n).cancelled && numbers.length < FOLLOW; n = up(n)) numbers.push(subjectTask(n.messageHeadline));
+  return numbers.filter(Boolean);
 }
 
 // 置き場のオーナーと名前（GraphQL の $o・$r）。
@@ -181,8 +214,9 @@ export async function readFacts(gh, config, number, runs) {
   // 読むのに要求の要る事実は、決め方が使うときだけ読む（src/decide.js: Need。src/gate.js: settle が読んで決め直す）:
   // superseded は、答えのあとにユーザーがステータスを変えたか開き直したか（その答えはユーザーの次の決定で置き換わり、当て直さない）。
   // adoptAsked・droppedAsked は、採否・続行の問いを一度でも出したか（最近のコメントに無く、それより前があれば全部を読む）。
-  // ranMoved は、最後に終わった担当の実行で状態か約束が動いたか。
-  const later = { superseded: () => movedSince(gh, config, number, answer.createdAt), droppedAsked: () => ever((x) => x.includes(asking)),
+  // ranMoved は、最後に終わった担当の実行で状態か約束が動いたか。covering は、マージのコミットの検査の実行が取り消されたとき、代わりに検査を持つ
+  // 後の master の実行（coveringChecks）。
+  const later = { covering: () => coveringChecks(gh, config, merged.mergeCommit.oid), superseded: () => movedSince(gh, config, number, answer.createdAt), droppedAsked: () => ever((x) => x.includes(asking)),
     adoptAsked: () => ever((x) => x.startsWith(questionHead("採否"))), ranMoved: async () => handed > Date.parse(ended.from) || movedOf(gh, config, number, ended, conds) };
   return { ...task, later, author: i.author?.login, parent: p && { number: p.number }, origin: originOf(norm(i.body)), unread, answerRead, answerApplied, number,
     id: i.id, closedAs: i.stateReason, body: i.body, remaining: conds.filter((x) => !x.done), question, dead, types, dialog,

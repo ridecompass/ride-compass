@@ -43,7 +43,9 @@ description: "タスクを実装担当・検証担当として進める手順（
    - 1つの Pull Request に収まらないと分かったら、.claude/skills/file-issue/SKILL.md「分ける」のとおり約束の行を移管して終える（約束が動いたので、
      ゲートは絞った残りを次の実装担当へ渡す。docs/conventions/flow.md「issue のライフサイクル」の実行の終わり）。
    - マージのコミットの master の CI が落ちて戻ってきたら、落ちたジョブ（`gh run list -R ridecompass/ride-compass --commit <マージのコミット>`）を
-     読み、取り消された・一時の失敗なら `gh run rerun <実行> -R ridecompass/ride-compass --failed` で打ち直し（ジョブが始まる前に取り消された実行は `--failed` を外して全体を）、コードの誤りなら直す
+     読む。マージのコミットの実行が待ちのまま取り消されていたら、それは打ち直さない（打ち直すと、待っている後の実行が取り消される）。ゲートはその変更を、
+     master の first-parent の子の側で一番近い、取り消されていないコミットの実行（`tools/flow-gate/src/facts.js: coveringChecks`）で読んでいるので、
+     その実行の落ちたジョブを読む。ジョブが取り消された・一時の失敗なら `gh run rerun <実行> -R ridecompass/ride-compass --failed` で打ち直し、コードの誤りなら直す
      Pull Request を出す。どちらもせずに手放すと、ゲートがイレギュラーを問う。打ち直しても通らない（その版の設定が今の環境では通らない等）なら
      理由を経緯に書いて手放す（マージのコミットの検査が合格していないので、ゲートがイレギュラーとしてユーザーに渡す）。
    - マージのあとの残りは、済ませて完了の条件にチェックを付ける。時間を待つものだけが残るなら、欄「着手可能日時」に済ませられる
