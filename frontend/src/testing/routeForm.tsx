@@ -1,6 +1,6 @@
 // 「ルート設定」区分の各タブの中身（`features/route/RouteForm/RouteForm.tsx`）を描いて操る足場。生成の条件とほかの props の既定を置き、
 // 選んでいる地点を持つ親の代わりと`Tabs`で包んで描き、上げた操作を受け取る関数と、条件やタブを変えて描き直す関数を返す。
-// タブの中身を描くには`Tabs`の中に置く必要があるので、`page.tsx`の代わりに`Tabs`で包む。
+// タブの中身を描くには`Tabs`の中に置く必要があるので、囲む側の代わりに`Tabs`で包む。
 import { render, screen, within } from "@testing-library/react";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { vi } from "vitest";

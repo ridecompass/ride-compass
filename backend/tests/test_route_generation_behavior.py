@@ -24,7 +24,7 @@ import numpy as np
 import pytest
 
 from app.domain.axis_definitions import AXIS_DEFINITIONS, AxisDefinition, BreakpointLinearShape, MaterialTerm
-from app.domain.geo import haversine_distance_km
+from app.domain.geo import KM_PER_DEGREE_LATITUDE, haversine_distance_km, km_per_degree_longitude
 from app.domain.graph import node_key
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_classes import TRUE_FACT_VALUE
@@ -315,6 +315,64 @@ async def test_a_slow_cruise_on_roads_to_avoid_still_turns_at_the_far_side_of_th
 
     assert candidates
     assert all(abs(c.distance_km - 12.0) <= 0.5 for c in candidates)
+
+
+def _clustered_ring_network() -> tuple[RoadNetwork, Coordinates]:
+    """易しい折返し点が1か所に数千点固まる道路網（関東の網で、易しい往路の先の住宅地の細かい網が上位を占める形）と出発地。
+
+    出発地から16方向へ1km刻みの道を6kmまで延ばし、東の1本だけを易しい道にして、その先（4.6km）を中心に
+    1.1km四方の細かい格子（81×81点）を置く。ほかの15本は避けたい道。周回12km±3kmの帯（往路4.5〜6.5km）には、
+    格子の全点と、15本の道の5・6km目の点が入る。"""
+    origin = (BASE_LAT, BASE_LON)
+    km_lon = km_per_degree_longitude(BASE_LAT)
+
+    def offset(north_km: float, east_km: float) -> tuple[float, float]:
+        return origin[0] + north_km / KM_PER_DEGREE_LATITUDE, origin[1] + east_km / km_lon
+
+    coordinates = {1: origin}
+    ways: dict[int, tuple[int, int]] = {}
+    bad_ways: list[int] = []
+    easy_bearing = 4
+    for spoke in range(16):
+        angle = math.radians(spoke * 22.5)
+        steps = [1.0, 2.0, 3.0, 4.0, 4.6] if spoke == easy_bearing else [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        previous = 1
+        for step, km in enumerate(steps):
+            node = 100 + spoke * 10 + step
+            coordinates[node] = offset(km * math.cos(angle), km * math.sin(angle))
+            ways[len(ways) + 1] = (previous, node)
+            if spoke != easy_bearing:
+                bad_ways.append(len(ways))
+            previous = node
+    side, spacing_km = 81, 1.1 / 80
+
+    def patch_node(row: int, col: int) -> int:
+        return 10_000 + row * side + col
+
+    for row in range(side):
+        for col in range(side):
+            coordinates[patch_node(row, col)] = offset((row - 40) * spacing_km, 4.6 + (col - 40) * spacing_km)
+            if col + 1 < side:
+                ways[len(ways) + 1] = (patch_node(row, col), patch_node(row, col + 1))
+            if row + 1 < side:
+                ways[len(ways) + 1] = (patch_node(row, col), patch_node(row + 1, col))
+    ways[len(ways) + 1] = (100 + easy_bearing * 10 + 4, patch_node(40, 40))
+    return road_network(ways, coordinates, bad_ways=bad_ways), Coordinates(latitude=origin[0], longitude=origin[1])
+
+
+async def test_loops_come_in_the_requested_number_even_when_the_easiest_turnarounds_crowd_into_one_place(
+    engine_over, caplog,
+):
+    """易しい折返し点が1か所に数千点固まっていても、その外の折返し点で補い、頼んだ数の周回が出る。上位の決まった数だけを
+    間引きにかけると、固まった点どうしが近すぎで捨てられて折返し点が数点しか残らず、候補が頼んだ数に届かない。"""
+    network, origin = _clustered_ring_network()
+    generator = engine_over(network, avoid_weight=1.0)
+
+    with caplog.at_level(logging.INFO, logger="ridecompass.generate"):
+        candidates = await generator.generate_loops(origin, 12.0, 3.0, max_routes=4, start_time=DEPARTURE, points=NO_POINTS)
+
+    assert len(candidates) == 4
+    assert not [r for r in caplog.records if "pool_unfilled" in r.getMessage()]
 
 
 async def test_loop_never_drives_against_a_one_way_road(engine_over):

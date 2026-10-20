@@ -167,7 +167,7 @@ def retrace_penalized(costs: np.ndarray) -> np.ndarray:
 class CandidateRanking:
     """`rank_by_pareto_layers`の結果。`layer_key`・`difficulty_key`は渡した候補の位置ごと。"""
 
-    #: 渡した候補の位置を、並べた順に`max_examined`件まで。
+    #: 渡した候補の位置を、並べた順に`max_examined`件まで（Noneなら全件）。
     order: np.ndarray
     #: パレート層の番号（層に入らなかった候補は最大値で最後尾）。
     layer_key: np.ndarray
@@ -196,7 +196,7 @@ def rank_by_pareto_layers(
     penalty_strength: float,
     *,
     max_items: int,
-    max_examined: int,
+    max_examined: int | None,
     tie_by_distance: bool,
 ) -> CandidateRanking:
     """候補（折返し点・経由Node）を「距離の鍵」「難易度」の2指標で非優越ソートし、パレート層の順に並べる。
