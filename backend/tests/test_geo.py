@@ -1,8 +1,7 @@
-"""`domain/geo.py`——球面の距離・方位・方位の呼び名と、多数の地点それぞれの最寄りの点。
+"""`domain/geo.py`——方位とその呼び名と、多数の地点それぞれの最寄りの点。
 
-入口は`km_per_degree_longitude`・`degrees_covering_m`・`compass_label`・`bearing_between`（と配列版）・`haversine_distance_km`（と配列版）・
-`nearest_point_indices`・`nearest_point_index`。距離の性質（同じ点で0・三角不等式）・方位が別の道で求めた向きと合うこと・最寄りが本当に最も近いことは
-hypothesisで任意の地点について確かめ、絶対値は公開の事実（子午線の4分の1はおよそ1万km）と突き合わせる。
+入口は`compass_label`・`bearing_between_array`・`nearest_point_indices`・`nearest_point_index`。方位が別の道で求めた向きと合うこと・
+最寄りが本当に最も近いことはhypothesisで任意の地点について確かめ、方位の呼び名は区分の表で確かめる。
 
 ここで見ないもの:
 - 方位の呼び名と距離を画面の計算と揃えること → 生成物`geo-expectations.json`を通す画面のテスト
@@ -29,11 +28,6 @@ longitudes = st.floats(min_value=-180.0, max_value=180.0)
 points = st.builds(Point, latitude=latitudes, longitude=longitudes)
 
 
-# --- km_per_degree_longitude ---
-
-
-
-# --- degrees_covering_m ---
 # --- compass_label ---
 
 
@@ -81,9 +75,6 @@ def test_the_bearing_agrees_with_the_direction_on_the_tangent_plane(origin, dest
         length = np.hypot(toward_north, toward_east)
         angle = np.radians(bearing)
         assert (length * np.cos(angle), length * np.sin(angle)) == pytest.approx((toward_north, toward_east), abs=1e-9)
-
-
-# --- haversine_distance_km ---
 
 
 # --- nearest_point_indices・nearest_point_index ---

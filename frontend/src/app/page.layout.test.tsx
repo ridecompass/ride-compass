@@ -8,8 +8,8 @@
  * 出所と「現在地に移動」の失敗、「現在地に移動」が出発地を変えずに地図を寄せて現在地に点を出すこと、メニューから入る
  * 使い方の説明とデバッグログ。
  *
- * ここで見ないもの: シートの高さの決め方・覚え方は`components/BottomSheet/BottomSheet.test.tsx`、ルートを収めるときに
- * シートを避けることは実寸が要るので`e2e/mobile.spec.ts`が見る。
+ * ここで見ないもの: シートの高さの決め方・覚え方は`components/BottomSheet/BottomSheet.resize.test.tsx`と
+ * `components/BottomSheet/BottomSheet.fit.test.tsx`、ルートを収めるときにシートを避けることは実寸が要るので`e2e/mobile.spec.ts`が見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */

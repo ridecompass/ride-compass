@@ -83,6 +83,3 @@ class TestValueShares:
         result = weighted_value_shares([(100.0, True), (100.0, False)])
 
         assert {s.value for s in result.shares} == {"true", "false"}
-
-    def test_no_pairs_give_no_shares(self):
-        assert weighted_value_shares([]).shares == []

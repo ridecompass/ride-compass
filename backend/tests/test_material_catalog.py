@@ -95,17 +95,17 @@ def test_a_material_pointing_to_an_attribute_outside_the_table_is_refused():
         spec("x", primary_attribute=ATTR_A.model_copy())
 
 
-def test_a_value_is_shown_with_its_label_when_the_table_has_one():
-    material = spec("cat_a", "categorical", value_labels={"paved": "舗装"})
-
-    assert material.value_label("paved") == "舗装 - paved"
-    assert material.value_label("new_value") == "new_value"
-
-
-def test_a_yes_no_value_is_shown_as_yes_or_no():
-    material = spec("flag_a", "boolean")
-
-    assert [material.value_label(v) for v in ("true", "false")] == ["はい - true", "いいえ - false"]
+@pytest.mark.parametrize(
+    ("material", "value", "shown"),
+    [
+        (spec("cat_a", "categorical", value_labels={"paved": "舗装"}), "paved", "舗装 - paved"),
+        (spec("cat_a", "categorical", value_labels={"paved": "舗装"}), "new_value", "new_value"),
+        (spec("flag_a", "boolean"), "true", "はい - true"),
+        (spec("flag_a", "boolean"), "false", "いいえ - false"),
+    ],
+)
+def test_a_value_is_shown_with_its_label_when_there_is_one(material, value, shown):
+    assert material.value_label(value) == shown
 
 
 def test_the_matrix_columns_are_the_materials_with_sql_sorted_by_id(catalog):
@@ -124,14 +124,18 @@ def test_every_material_is_either_measured_for_coverage_or_excluded_with_a_reaso
     assert excluded == {"dynamic_a": "都度引く", "per_year_a": "都度引く"}
 
 
-def test_a_display_axis_takes_the_missing_semantics_of_the_material_on_its_tile_property(catalog):
-    assert material_catalog.display_axis_missing_semantics(ATTR_A, "num_b_tile") == "unknown"
-    assert material_catalog.display_axis_missing_semantics(ATTR_A, "bool_tile") == "definite"
-
-
-def test_a_display_axis_without_its_material_has_no_missing_semantics(catalog):
-    assert material_catalog.display_axis_missing_semantics(ATTR_B, "num_b_tile") is None  # 別の属性の材料
-    assert material_catalog.display_axis_missing_semantics(ATTR_A, "nothing") is None
+@pytest.mark.parametrize(
+    ("attribute", "tile_property", "semantics"),
+    [
+        (ATTR_A, "num_b_tile", "unknown"),
+        (ATTR_A, "bool_tile", "definite"),
+        (ATTR_B, "num_b_tile", None),  # 別の属性の材料
+        (ATTR_A, "nothing", None),
+    ],
+)
+def test_a_display_axis_takes_the_missing_semantics_of_the_material_on_its_tile_property(
+        catalog, attribute, tile_property, semantics):
+    assert material_catalog.display_axis_missing_semantics(attribute, tile_property) == semantics
 
 
 @pytest.mark.parametrize(

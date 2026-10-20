@@ -750,8 +750,8 @@ E2Eの`e2e/map-runtime.spec.ts`「宣言された地図レイヤーを全部ON�
 分類値の一覧はbackendが正で、フロントは色とラベルを与えるだけ。**backendが種別を1つ足した
 のにフロントが古いままだと、その地物は`baseFilter`に弾かれて地図から完全に消える**（凡例にも
 出ないため「データが無い」としか見えない）ため、分ける条件は源泉の表示の行（生成物
-`types/generated/primaryAttributes.ts: display_axes`の値）から導き、行と種別の一覧が一致することはbackendの
-テスト（`test_primary_attributes.py`）が全種別で確かめる。凡例の行は種別と1対1ではない——利用者から見て区別する意味の無い種別（車道用の踏切と
+`types/generated/primaryAttributes.ts: display_axes`の値）から導き、行と種別の一覧が一致することはbackendが
+読み込みの時点に全種別で確かめる（`domain/primary_attributes.py: check_point_rows`）。凡例の行は種別と1対1ではない——利用者から見て区別する意味の無い種別（車道用の踏切と
 歩道・自転車道用の踏切）は1行へまとめる。色分け式には各種別がそのまま載るため、地図の
 見た目とポップアップの語彙は種別ごとに正しく出る。
 

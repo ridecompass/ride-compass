@@ -14,7 +14,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import text
 
-from app.domain.attributes import MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT, ElevationAttribute, elevation_values_sql
+from app.domain.attributes import MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT, elevation_values_sql
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -106,20 +106,20 @@ async def test_gaps_only_between_known_vertices_give_no_climb_but_still_an_avera
     assert row["average_grade"] == pytest.approx(3.0, abs=0.005)
 
 
-async def test_a_structure_uses_only_its_two_ends(road_graph_session):
+@pytest.mark.parametrize(
+    ("elevations", "gain", "loss"),
+    [
+        ([100.0, 60.0, 70.0, 100.0 + rise(1, 3)], rise(1, 3), 0.0),
+        ([100.0, 140.0, 100.0 - rise(2, 2)], 0.0, rise(2, 2)),
+    ],
+    ids=["上る橋", "下る橋"],
+)
+async def test_a_structure_uses_only_its_two_ends(road_graph_session, elevations, gain, loss):
     """橋の途中の頂点は下の谷を指すので、谷の起伏を獲得・喪失に入れない。"""
-    row = await one(road_graph_session, [100.0, 60.0, 70.0, 100.0 + rise(1, 3)], on_structure=True)
+    row = await one(road_graph_session, elevations, on_structure=True)
 
-    assert row["elevation_gain_m"] == pytest.approx(rise(1, 3), abs=0.05)
-    assert row["elevation_loss_m"] == 0.0
-    assert row["average_grade"] == pytest.approx(1.0, abs=0.005)
-
-
-async def test_a_descending_structure_counts_only_the_loss(road_graph_session):
-    row = await one(road_graph_session, [100.0, 140.0, 100.0 - rise(2, 2)], on_structure=True)
-
-    assert row["elevation_gain_m"] == 0.0
-    assert row["elevation_loss_m"] == pytest.approx(rise(2, 2), abs=0.05)
+    assert row["elevation_gain_m"] == pytest.approx(gain, abs=0.05)
+    assert row["elevation_loss_m"] == pytest.approx(loss, abs=0.05)
 
 
 @pytest.mark.parametrize(
@@ -156,7 +156,3 @@ async def test_segments_are_computed_separately(road_graph_session):
     assert rows[(1, 1)]["average_grade"] == pytest.approx(-3.0, abs=0.005)
     assert rows[(2, 0)]["average_grade"] == 0.0
 
-
-def attribute(row: dict, edge_id: str) -> ElevationAttribute:
-    """SQLの行のうち、属性が持つ欄。"""
-    return ElevationAttribute(edge_id=edge_id, **{name: row[name] for name in ElevationAttribute.model_fields.keys() - {"edge_id"}})

@@ -5,6 +5,7 @@
 - 密度の軸の見分け（`averages_density`）
 - 軸の外に照らす検査（`check_axis_definition`）・軸の集合の検査（`check_axis_set`）と書き込みのガード
   （`check_publish_immutability`・`check_material_exclusivity`・`check_internal_axis_not_published`）
+- 区分を入れ替えるときに軸を照らす判定（`unknown_class_values`）
 - 軸1本の評価（`evaluate_axis_array`）と生値（`axis_raw_value_array`・`raw_values`・
   `BreakpointLinearShape.score_at`）と、点数から値の大きさへの戻し（`BreakpointLinearShape.smallest_magnitude_at`）
 
@@ -37,6 +38,8 @@ from app.domain.axis_definitions import (
     MaterialTerm,
     PriorityCondition,
 )
+from app.domain.road_classes import class_material_id
+from tests.road_class_fixture import classification, road_classes
 
 NAN = float("nan")
 DYNAMIC = next(iter(axis_definitions.REQUEST_DYNAMIC_MATERIAL_IDS))
@@ -154,7 +157,11 @@ class TestAxisModel:
         assert definition.materials == expected
 
 
-def refused_by_check(definition: AxisDefinition, fragment: str, axes=None) -> None:
+def refused_by_check(definition: AxisDefinition, fragment: str | None, axes=None) -> None:
+    """`fragment`がNoneなら、検査が通ることを見る。"""
+    if fragment is None:
+        axis_definitions.check_axis_definition(definition, axes or {})
+        return
     with pytest.raises(PydanticCustomError) as caught:
         axis_definitions.check_axis_definition(definition, axes or {})
     assert caught.value.type == "axis_definition"
@@ -195,14 +202,15 @@ class TestCheckAxisDefinition:
 
     @pytest.mark.parametrize(
         ("material_id", "mapping", "fragment"),
-        [("flag", {"yes": 1.0}, "「はい」「いいえ」"), ("cat", {"true": 1.0}, "値の名前")],
+        [
+            ("flag", {"yes": 1.0}, "「はい」「いいえ」"),
+            ("cat", {"true": 1.0}, "値の名前"),
+            ("flag", {"true": 1.0}, None),
+            ("cat", {"x": 1.0}, None),
+        ],
     )
     def test_mapping_keys_must_be_of_the_materials_type(self, material_id, mapping, fragment):
         refused_by_check(axis(shape=CategoricalShape(material=material_id, mapping=mapping)), fragment)
-
-    @pytest.mark.parametrize(("material_id", "mapping"), [("flag", {"true": 1.0}), ("cat", {"x": 1.0})])
-    def test_mapping_keys_of_the_materials_type_are_accepted(self, material_id, mapping):
-        axis_definitions.check_axis_definition(axis(shape=CategoricalShape(material=material_id, mapping=mapping)), {})
 
     @pytest.mark.parametrize(
         ("condition", "fragment"),
@@ -212,6 +220,8 @@ class TestCheckAxisDefinition:
             (PriorityCondition(material="num_a", equals="true", value=0.0), "数値の材料"),
             (PriorityCondition(material="flag", equals="yes", value=0.0), "「yes」"),
             (PriorityCondition(material="cat", equals="true", value=0.0), "「true」"),
+            (PriorityCondition(material="flag", equals="true", value=0.0), None),
+            (PriorityCondition(material="cat", equals="residential", value=0.0), None),
         ],
     )
     def test_a_condition_that_can_match_no_road_is_refused(self, condition, fragment):
@@ -219,35 +229,23 @@ class TestCheckAxisDefinition:
 
         refused_by_check(definition, fragment, axes={"other_axis": axis("other_axis", label="ほかの軸")})
 
-    @pytest.mark.parametrize("condition", [("flag", "true"), ("cat", "residential")])
-    def test_a_condition_on_a_value_the_material_has_is_accepted(self, condition):
-        material_id, equals = condition
-        definition = axis(priority_overrides=[PriorityCondition(material=material_id, equals=equals, value=0.0)])
-
-        axis_definitions.check_axis_definition(definition, {})
-
     @pytest.mark.parametrize(
-        "breakpoints",
-        [[(0.0, 0.0), (2.0, 35.0), (10.0, 100.0)], [(1.0, 0.0), (10.0, 100.0)]],
-        ids=["上に凸の折れ線", "0で0点から始まらない直線"],
+        ("terms", "breakpoints", "fragment"),
+        [
+            ([MaterialTerm(material="count_a"), MaterialTerm(material="count_b", weight=2.5)],
+             [(0.0, 0.0), (2.0, 35.0), (10.0, 100.0)], "「0のとき0点」ともう1点"),
+            ([MaterialTerm(material="count_a"), MaterialTerm(material="count_b", weight=2.5)],
+             [(1.0, 0.0), (10.0, 100.0)], "「0のとき0点」ともう1点"),
+            ([MaterialTerm(material="count_a")], [(0.0, 0.0), (8.0, 100.0)], None),
+            ([MaterialTerm(material="count_a"), MaterialTerm(material="num_a")], [(0.0, 0.0), (2.0, 35.0), (10.0, 100.0)],
+             None),
+        ],
+        ids=["上に凸の折れ線", "0で0点から始まらない直線", "回数だけの軸の0からの直線", "回数でない材料も読む軸の折れ線"],
     )
-    def test_an_axis_summing_only_counts_per_km_must_score_in_proportion_to_the_count(self, breakpoints):
+    def test_an_axis_summing_only_counts_per_km_must_score_in_proportion_to_the_count(self, terms, breakpoints, fragment):
         """探索の費用は回数×傾きで足すので、傾きが1つに決まらない折れ線では、探索とルートの値が食い違い、点数の和が道の
         切り方で変わる。"""
-        shape = linear(MaterialTerm(material="count_a"), MaterialTerm(material="count_b", weight=2.5), breakpoints=breakpoints)
-
-        refused_by_check(axis(shape=shape), "「0のとき0点」ともう1点")
-
-    @pytest.mark.parametrize(
-        ("terms", "breakpoints"),
-        [
-            ([MaterialTerm(material="count_a")], [(0.0, 0.0), (8.0, 100.0)]),
-            ([MaterialTerm(material="count_a"), MaterialTerm(material="num_a")], [(0.0, 0.0), (2.0, 35.0), (10.0, 100.0)]),
-        ],
-        ids=["回数だけの軸の0からの直線", "回数でない材料も読む軸の折れ線"],
-    )
-    def test_a_line_from_zero_or_a_bend_on_an_axis_reading_more_than_counts_is_accepted(self, terms, breakpoints):
-        axis_definitions.check_axis_definition(axis(shape=linear(*terms, breakpoints=breakpoints)), {})
+        refused_by_check(axis(shape=linear(*terms, breakpoints=breakpoints)), fragment)
 
 
 @pytest.mark.usefixtures("catalog")
@@ -276,51 +274,45 @@ def test_only_axes_reading_counts_per_km_as_they_are_are_density_axes(definition
 NEW_BREAKPOINTS = ((0.0, 0.0), (5.0, 100.0))
 
 
+SHOWN_DIFFERENTLY = {
+    "shape": linear(MaterialTerm(material="num_a"), breakpoints=((0.0, 0.0), (5.0, 60.0), (20.0, 100.0))),
+    "icon_id": "icon",
+    "display_thresholds_override": [1.0],
+    "display_band_labels_override": ["弱", "強"],
+}
+UPDATE_REFUSED = "表示と折れ点以外は変えられません"
+
+
 class TestPublishImmutability:
-    def test_a_published_axis_is_not_deleted(self):
-        with pytest.raises(axis_definitions.AxisPublishedImmutableError) as caught:
-            axis_definitions.check_publish_immutability(axis(is_published=True), "deleted")
-
-        assert "「軸」は公開中のため削除できません" in str(caught.value)
-
-    def test_a_published_axis_is_not_updated_without_knowing_the_new_contents(self):
-        with pytest.raises(axis_definitions.AxisPublishedImmutableError) as caught:
-            axis_definitions.check_publish_immutability(axis(is_published=True), "updated")
-
-        assert "表示と折れ点以外は変えられません" in str(caught.value)
-
-    def test_a_published_axis_may_change_how_it_is_shown_and_its_breakpoints(self):
-        # 公開したまま書けないと、下書きへ戻す間だけ一般の画面から軸が消え、利用者の重みが既定へ戻る。
-        published = axis(is_published=True)
-        shown_differently = published.model_copy(
-            update={
-                "shape": linear(MaterialTerm(material="num_a"), breakpoints=((0.0, 0.0), (5.0, 60.0), (20.0, 100.0))),
-                "icon_id": "icon",
-                "display_thresholds_override": [1.0],
-                "display_band_labels_override": ["弱", "強"],
-            }
-        )
-
-        axis_definitions.check_publish_immutability(published, "updated", shown_differently)
-
     @pytest.mark.parametrize(
-        "changed",
+        ("action", "changed", "refusal"),
         [
-            {"default_weight": 2.0, "shape": linear(MaterialTerm(material="num_a"), breakpoints=NEW_BREAKPOINTS)},
-            {"shape": linear(MaterialTerm(material="num_b"), breakpoints=NEW_BREAKPOINTS)},
-            {"shape": linear(MaterialTerm(material="num_a", weight=2.0), breakpoints=NEW_BREAKPOINTS)},
-            {"shape": linear(MaterialTerm(material="num_a"), breakpoints=NEW_BREAKPOINTS, preprocess="abs")},
-            {"shape": CategoricalShape(material="num_a", mapping={"x": 50.0})},
-            {"is_published": False, "shape": linear(MaterialTerm(material="num_a"), breakpoints=NEW_BREAKPOINTS)},
+            ("deleted", None, "「軸」は公開中のため削除できません"),
+            # 公開したまま書けないと、下書きへ戻す間だけ一般の画面から軸が消え、利用者の重みが既定へ戻る。
+            ("updated", SHOWN_DIFFERENTLY, None),
+            # 折れ点は、ほかを変えない差し替えのときだけ公開したまま書ける。
+            ("updated", {"default_weight": 2.0, "shape": linear(MaterialTerm(material="num_a"), breakpoints=NEW_BREAKPOINTS)},
+             UPDATE_REFUSED),
+            ("updated", {"shape": linear(MaterialTerm(material="num_b"), breakpoints=NEW_BREAKPOINTS)}, UPDATE_REFUSED),
+            ("updated", {"shape": linear(MaterialTerm(material="num_a", weight=2.0), breakpoints=NEW_BREAKPOINTS)},
+             UPDATE_REFUSED),
+            ("updated", {"shape": linear(MaterialTerm(material="num_a"), breakpoints=NEW_BREAKPOINTS, preprocess="abs")},
+             UPDATE_REFUSED),
+            ("updated", {"shape": CategoricalShape(material="num_a", mapping={"x": 50.0})}, UPDATE_REFUSED),
+            ("updated", {"is_published": False, "shape": linear(MaterialTerm(material="num_a"), breakpoints=NEW_BREAKPOINTS)},
+             UPDATE_REFUSED),
         ],
-        ids=["重み", "材料", "項", "前処理", "形の種類", "公開"],
+        ids=["削除", "表示と折れ点", "重み", "材料", "項", "前処理", "形の種類", "公開"],
     )
-    def test_a_published_axis_may_not_change_anything_else(self, changed):
-        # 折れ点は、ほかを変えない差し替えのときだけ公開したまま書ける。
+    def test_a_published_axis_may_change_only_how_it_is_shown_and_its_breakpoints(self, action, changed, refusal):
         published = axis(is_published=True)
+        candidate = None if changed is None else published.model_copy(update=changed)
 
-        with pytest.raises(axis_definitions.AxisPublishedImmutableError):
-            axis_definitions.check_publish_immutability(published, "updated", published.model_copy(update=changed))
+        if refusal is None:
+            axis_definitions.check_publish_immutability(published, action, candidate)
+            return
+        with pytest.raises(axis_definitions.AxisPublishedImmutableError, match=refusal):
+            axis_definitions.check_publish_immutability(published, action, candidate)
 
 
 @pytest.mark.usefixtures("catalog")
@@ -351,21 +343,28 @@ class TestAxisSet:
                 },
                 "輪になっています",
             ),
+            # 時刻で変わる軸は公開軸の点数しか受け取れないので、変わらない部分を公開軸にして組み合わせる。
+            (
+                {
+                    "still": axis("still", is_published=True),
+                    "wind": axis("wind", shape=linear(MaterialTerm(material=DYNAMIC), MaterialTerm(material="still"))),
+                },
+                None,
+            ),
         ],
-        ids=["axis_id_is_a_material_id", "two_axes_count_one_material", "axes_combine_in_a_cycle"],
+        ids=[
+            "axis_id_is_a_material_id",
+            "two_axes_count_one_material",
+            "axes_combine_in_a_cycle",
+            "a_published_axis_another_axis_combines",
+        ],
     )
     def test_a_set_breaking_an_invariant_is_refused(self, definitions, refusal):
+        if refusal is None:
+            axis_definitions.check_axis_set(definitions)
+            return
         with pytest.raises(ValueError, match=refusal):
             axis_definitions.check_axis_set(definitions)
-
-    def test_a_published_axis_another_axis_combines_is_accepted(self):
-        # 時刻で変わる軸は公開軸の点数しか受け取れないので、変わらない部分を公開軸にして組み合わせる。
-        definitions = {
-            "still": axis("still", is_published=True),
-            "wind": axis("wind", shape=linear(MaterialTerm(material=DYNAMIC), MaterialTerm(material="still"))),
-        }
-
-        axis_definitions.check_axis_set(definitions)
 
 
 @pytest.mark.usefixtures("catalog")
@@ -373,24 +372,47 @@ class TestInternalAxisPublish:
     EXISTING = {"outer": axis("outer", label="外の軸", shape=linear(MaterialTerm(material="inner")))}
 
     @pytest.mark.parametrize(
-        "previous",
-        [{}, {"inner": axis("inner")}],
-        ids=["new", "draft"],
+        ("previous", "refused"),
+        [
+            ({}, True),
+            ({"inner": axis("inner")}, True),
+            # 時刻で変わる軸が組み合わせる公開軸の、表示だけの直し。公開へ切り替える書き込みではない。
+            ({"inner": axis("inner", is_published=True)}, False),
+        ],
+        ids=["new", "draft", "already_published"],
     )
-    def test_an_axis_another_axis_reads_is_not_published(self, previous):
-        with pytest.raises(axis_definitions.AxisInternalAxisPublishError) as caught:
-            axis_definitions.check_internal_axis_not_published(
-                axis("inner", is_published=True), {**self.EXISTING, **previous}
-            )
+    def test_an_axis_another_axis_reads_is_not_published(self, previous, refused):
+        candidate = axis("inner", is_published=True, icon_id="内")
+        if not refused:
+            axis_definitions.check_internal_axis_not_published(candidate, {**self.EXISTING, **previous})
+            return
+        with pytest.raises(axis_definitions.AxisInternalAxisPublishError, match="「軸」は「外の軸」が組み合わせに使っている軸"):
+            axis_definitions.check_internal_axis_not_published(candidate, {**self.EXISTING, **previous})
 
-        assert "「軸」は「外の軸」が組み合わせに使っている軸" in str(caught.value)
 
-    def test_an_axis_another_axis_reads_that_is_already_published_may_stay_published(self):
-        # 時刻で変わる軸が組み合わせる公開軸の、表示だけの直し。公開へ切り替える書き込みではない。
-        axis_definitions.check_internal_axis_not_published(
-            axis("inner", is_published=True, icon_id="内"),
-            {**self.EXISTING, "inner": axis("inner", is_published=True)},
-        )
+#: 分け方`k`は、区分`paved`（前の鍵`k.sealed`と、ほかの分け方を指す`other.gravel`を持つ）と`unpaved`。
+RENAMED = road_classes({"k": classification({"paved": [], "unpaved": []}, former_keys={"paved": ["k.sealed", "other.gravel"]})})
+
+
+@pytest.mark.parametrize(
+    ("material_id", "mapping", "equals", "unknown"),
+    [
+        (class_material_id("k"), {"paved": 1.0, "sealed": 2.0}, "unpaved", []),
+        # 前の鍵がほかの分け方を指す名は、この分け方の列の値だったことが無い。
+        (class_material_id("k"), {"gravel": 1.0}, "unpaved", [(class_material_id("k"), "gravel")]),
+        (class_material_id("k"), {"paved": 1.0}, "dirt", [(class_material_id("k"), "dirt")]),
+        # 分け方の無い材料と、区分から作らない材料は見ない。
+        (class_material_id("gone"), {"x": 1.0}, "x", []),
+        ("cat_a", {"x": 1.0}, "x", []),
+    ],
+)
+def test_class_values_named_by_neither_current_nor_former_keys(material_id, mapping, equals, unknown):
+    """値ごとの点数のキーと0次条件の値のうち、今の区分の鍵にも前の鍵の区分の名にも無いものを挙げる（区分の入れ替えが断る文になる）。"""
+    axis = AxisDefinition(
+        axis_id="axis_a", shape=CategoricalShape(material=material_id, mapping=mapping), default_weight=1.0, label="軸A",
+        priority_overrides=[PriorityCondition(material=material_id, equals=equals, value=0.0)],
+    )
+    assert axis_definitions.unknown_class_values(axis, RENAMED) == unknown
 
 
 def scores(values) -> list:
