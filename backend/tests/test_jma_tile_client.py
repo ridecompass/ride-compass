@@ -31,8 +31,7 @@ from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from app.infrastructure.jma_tile_client import JmaTileClient, JmaTileSharedState
 from tests.fake_external_log import record_external_calls
 from tests.fake_http import client_for
-from tests.test_jma_tile_content import encode
-from tests.test_jma_tile_recolor import palette_tile, pixels, rgba
+from tests.tile_images import encode, palette_tile, pixels, rgba
 
 TILE = "bosai/jmatile/data/risk/20260101000000/none/20260101000000/surf/land/6/57/25.png"
 OTHER_TILE = "bosai/jmatile/data/risk/20260101000000/none/20260101000000/surf/land/6/57/26.png"
