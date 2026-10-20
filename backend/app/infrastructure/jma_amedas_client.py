@@ -24,8 +24,6 @@ AMEDAS_STATION_TABLE_URL = "https://www.jma.go.jp/bosai/amedas/const/amedastable
 AMEDAS_LATEST_TIME_URL = "https://www.jma.go.jp/bosai/amedas/data/latest_time.txt"
 AMEDAS_OBSERVATION_URL_TEMPLATE = "https://www.jma.go.jp/bosai/amedas/data/map/{timestamp}.json"
 
-REQUEST_TIMEOUT = httpx.Timeout(connect=3.0, read=5.0, write=5.0, pool=5.0)
-
 #: 気象庁アメダスの配信間隔（毎正時から10分おき）。
 AMEDAS_REFRESH_INTERVAL_MINUTES = 10
 
@@ -129,7 +127,7 @@ async def fetch_station_table(client: httpx.AsyncClient, cache: TTLCache) -> dic
     """観測所マスタ（観測所id → 観測所）を取得する。"""
 
     async def fetch() -> dict[str, AmedasStation]:
-        payload = await get_json(client, AMEDAS_STATION_TABLE_URL, dict, "station table is", timeout=REQUEST_TIMEOUT)
+        payload = await get_json(client, AMEDAS_STATION_TABLE_URL, dict, "station table is")
         return _parse_station_table(payload)
 
     return await cached_fetch("weather:jma-amedas-stations", fetch, cache=cache, key=_STATION_TABLE_CACHE_KEY)
@@ -143,7 +141,7 @@ async def fetch_latest_observation_time(client: httpx.AsyncClient, cache: TTLCac
     """
 
     async def fetch() -> datetime:
-        response = await client.get(AMEDAS_LATEST_TIME_URL, timeout=REQUEST_TIMEOUT)
+        response = await client.get(AMEDAS_LATEST_TIME_URL)
         response.raise_for_status()
         latest = response.text.strip()
         try:
@@ -177,7 +175,6 @@ async def fetch_observation_map(
             AMEDAS_OBSERVATION_URL_TEMPLATE.format(timestamp=timestamp),
             dict,
             "observation map is",
-            timeout=REQUEST_TIMEOUT,
         )
         return {station_id: _parse_reading(raw) for station_id, raw in payload.items()}
 

@@ -17,7 +17,6 @@ from app.config import settings
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.route_preference import RoutePreference, check_axis_weights, published_axis_ids
 from app.domain.route_request import (
-    MAX_DISTANCE_TOLERANCE_KM,
     MAX_ROUTE_DISTANCE_KM,
     MAX_ROUTES,
     MAX_SPLICED_EDGES,
@@ -86,23 +85,13 @@ class RoadAvoidanceOverride(RootModel[dict[str, AvoidanceLevel]]):
 class RouteGenerateRequest(StrictModel):
     latitude: Latitude
     longitude: Longitude
-    # 全長の目標距離（±`distance_tolerance_km`）。経由地・目的地を置いても同じ意味で、省略すると全長の目標を置かない
+    # 全長の目標距離（±較正値`search.distance_tolerance_km`）。経由地・目的地を置いても同じ意味で、省略すると全長の目標を置かない
     # （置いた点へ良い道で向かう）。
     distance_km: float | None = Field(default=None, gt=0, le=MAX_ROUTE_DISTANCE_KM)
-    # 目標距離からの許容差（km）。**省略が既定**で、そのとき使う値はリクエスト処理時に較正値から読む
-    # （`domain/route_request.py: resolve_distance_tolerance_km`）。使った値はconditionsへエコーする。
-    distance_tolerance_km: float | None = Field(default=None, gt=0, le=MAX_DISTANCE_TOLERANCE_KM)
     # 評価重みのリクエスト単位の上書き。省略時はAXIS_DEFINITIONS由来の既定値
     # （`RoutePreference()`）を使う。
     # 実際に適用された値はレスポンスのconditionsへエコーされる。
     route_preference: RoutePreferenceWeights | None = None
-    # 主観的割増と時間の換算レート（P）。**省略が既定**で、そのとき使う値は
-    # リクエスト処理時に較正値から読む（`domain/evaluation.py: resolve_penalty_strength`、
-    # 値の意味と根拠もそちら）。ここへ既定値を書くとimport時に束ねられ、DBの上書きが効かない。
-    penalty_strength: float | None = Field(ge=0, default=None)
-    # 0次ハードフィルタの勾配しきい値（%、絶対値。省略時は除外なし。
-    # `domain/hard_filters.py: compute_search_exclusion`参照）。
-    max_average_grade_percent: float | None = Field(ge=0, default=None)
     # 道の区分ごとの避け方。
     road_avoidance: RoadAvoidanceOverride
     # 返す候補の上限件数。距離があれば距離フィルタ合格・overall_difficulty昇順の上位この件数、距離が無ければ
@@ -188,13 +177,11 @@ class GenerationConditions(StrictModel):
     longitude: float
     # 全長の目標距離（無ければNone）。
     distance_km: float | None
-    # 使った目標距離からの許容差（要求が省略したときは較正値）。
+    # 使った目標距離からの許容差（較正値）。
     distance_tolerance_km: float
     route_preference: RoutePreferenceWeights
-    # 主観的割増と時間の換算レート（P）。
+    # 主観的割増と時間の換算レート（P、較正値）。
     penalty_strength: float
-    # 0次ハードフィルタの勾配しきい値（%、Noneは除外なし）。
-    max_average_grade_percent: float | None
     # 道の区分ごとの避け方（実際に適用された値）。
     road_avoidance: RoadAvoidanceOverride
     # 候補数の上限。
@@ -331,8 +318,6 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
                 open_setup,
                 RequestedConditions(
                     preference_override=preference_override,
-                    penalty_strength=request.penalty_strength,
-                    max_average_grade_percent=request.max_average_grade_percent,
                     road_avoidance=dict(request.road_avoidance.root),
                     assumed_speed_kmh=request.assumed_speed_kmh,
                 ),
@@ -341,7 +326,6 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
             target=target,
             start_time=request.start_time,
             max_routes=request.max_routes,
-            distance_tolerance_km=request.distance_tolerance_km,
         )
         applied = generated.conditions
         response = RouteGenerateResponse(
@@ -354,7 +338,6 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
                 distance_tolerance_km=generated.distance_tolerance_km,
                 route_preference=RoutePreferenceWeights(applied.route_preference.weights),
                 penalty_strength=applied.penalty_strength,
-                max_average_grade_percent=applied.max_average_grade_percent,
                 road_avoidance=RoadAvoidanceOverride(dict(applied.road_avoidance)),
                 max_routes=generated.max_routes,
                 start_time=request.start_time,

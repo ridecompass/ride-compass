@@ -9,7 +9,7 @@
 
 ここで見ないもの:
 - タイルの取得・キャッシュ・空タイルの扱い・読めない時刻一覧の形 → `test_jma_tile_client.py`・`test_jma_tile_redis_cache.py`
-- 空かどうかの判定 → `test_jma_tile_content.py`
+- 空かどうかの判定（取得の結果が空なら`UPSTREAM_NOT_FOUND`になる） → `test_jma_tile_content.py`・`test_jma_tile_client.py`
 - 配信元仕様（ズームの偶奇・時刻一覧のファイル）・時刻一覧の読み方（別の要素の行・最新の実況・最新の行・
   メンバーごとの最新の完全なラン）・タイルのパスと拡張子 → `test_jma_tile_specs.py`
 - 段をつないだときの各段の最初のコマ（前の段の後ろに続く・前の段に覆われた段は描かない） → `test_weather_elements.py`
@@ -86,7 +86,7 @@ def _png(alpha: int) -> bytes:
     return buffer.getvalue()
 
 
-OPAQUE, TRANSPARENT = _png(255), _png(0)
+OPAQUE = _png(255)
 
 
 class Source:
@@ -158,11 +158,11 @@ async def test_tiles_are_fetched_at_the_zooms_the_source_has_data_for(stored):
 
 
 async def test_the_index_lists_the_tiles_that_have_something_to_draw(stored):
-    """中身のあるタイルだけを載せる。空タイル・透明な画像・0バイトのベクタ・取れなかったタイルは載せない。"""
+    """中身のあるタイルだけを載せる。空タイル・取れなかったタイルは載せない。"""
     source = Source(tiles={
         "/surf/rain_mesh/4/": (OPAQUE, "image/png"),
-        "/surf/rain_mesh/6/": (TRANSPARENT, "image/png"),
-        "/surf/flood/4/": (b"", "application/x-protobuf"),
+        "/surf/rain_mesh/6/": UPSTREAM_NOT_FOUND,
+        "/surf/flood/4/": UPSTREAM_NOT_FOUND,
         "/surf/land/4/": None,
     })
 

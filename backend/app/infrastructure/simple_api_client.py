@@ -33,12 +33,10 @@ class UnexpectedShapeError(ValueError):
     """
 
 
-async def get_json(
-    client: httpx.AsyncClient, url: str, expected: type[J], shape_error_prefix: str, *, timeout: httpx.Timeout
-) -> J:
+async def get_json(client: httpx.AsyncClient, url: str, expected: type[J], shape_error_prefix: str) -> J:
     """`url`をGETしてJSONを読む。`expected`の型でなければ`UnexpectedShapeError`
     （文は`<shape_error_prefix> <届いた型の名前>`）。"""
-    response = await client.get(url, timeout=timeout)
+    response = await client.get(url)
     response.raise_for_status()
     payload = response.json()
     if not isinstance(payload, expected):

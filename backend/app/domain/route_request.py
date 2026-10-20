@@ -14,14 +14,11 @@ from pydantic_core import PydanticCustomError
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.route import Coordinates
 from app.domain.route_preference import RoutePreference
-from app.domain.tuning import tuning_value
 
 # ルート生成距離の上限（km）。上限が無いと探索の範囲が際限なく広がり、道路網の読み込みが
 # 長時間止まりうる。30km規模までの検証実績に余裕を見た値。経由地・目的地は出発地からこの
 # 距離の中に置く。
 MAX_ROUTE_DISTANCE_KM = 100
-# 要求が受け付ける、目標距離からの許容差（km）の上限。省略したときの許容差は`resolve_distance_tolerance_km`。
-MAX_DISTANCE_TOLERANCE_KM = 50.0
 # 経由地の数の上限。経由地ごとにレグの探索が1本増える。
 MAX_WAYPOINTS = 8
 # 区間の乗り換えで受け取るEdge idの上限。1本の候補が数百Edgeで、区間を差し替えても
@@ -40,14 +37,6 @@ MAX_ASSUMED_SPEED_KMH = 60.0
 # 想定速度の値の範囲。速度を受けるどの入口（ルート生成・地図の配信・区間インスペクタ）もこの型で書く。範囲の検査は
 # NaN・無限大も断る。
 AssumedSpeedKmh = Annotated[float, Field(ge=MIN_ASSUMED_SPEED_KMH, le=MAX_ASSUMED_SPEED_KMH)]
-
-
-def resolve_distance_tolerance_km(requested: float | None) -> float:
-    """要求が省略したときの目標距離からの許容差（km）を、**呼ばれた時点で**較正値から読む（モジュール直下で束ねると
-    管理画面の上書きが効かない理由は`domain/evaluation.py: resolve_penalty_strength`）。"""
-    if requested is not None:
-        return requested
-    return tuning_value("search.distance_tolerance_km")
 
 
 def request_error(message: str) -> PydanticCustomError:
@@ -130,8 +119,6 @@ class RequestedConditions:
     assemble_route_generation_setup`）が決める。"""
 
     preference_override: RoutePreference | None
-    penalty_strength: float | None
-    max_average_grade_percent: float | None
     # 避け方を選べる行→段（`domain/road_avoidance.py: resolve_road_avoidance`が今の行へ揃える）。
     road_avoidance: Mapping[str, AvoidanceLevel]
     assumed_speed_kmh: float

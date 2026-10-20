@@ -20,7 +20,7 @@ from app.config import settings
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.infrastructure.database import get_session_factory
 from app.infrastructure.debug_control import install_ring_buffer_handler
-from app.infrastructure.http_client import JSON_API_TIMEOUT, TILE_PROXY_TIMEOUT, get_http_client
+from app.infrastructure.http_client import JMA_JSON_TIMEOUT, SLOW_JSON_TIMEOUT, TILE_PROXY_TIMEOUT, get_http_client
 from app.infrastructure import road_network_store
 from app.infrastructure.region_tile_cache import PRUNE_INTERVAL_HOURS
 from app.infrastructure.msm_client import refresh as refresh_msm
@@ -33,9 +33,7 @@ from app.infrastructure.request_log import (
 from app.infrastructure.response_compression import ContentTypeGZipMiddleware
 from app.infrastructure.single_process import require_single_worker
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
-from app.services.axis_registry_service import refresh_axis_definitions
-from app.services.road_class_service import refresh_road_classes
-from app.services.tuning_service import refresh_tuning_values
+from app.services.definitions_loading import refresh_definitions
 from app.services.jma_tile_prewarm_service import prewarm_jma_tiles
 
 logging.basicConfig(level=logging.DEBUG if settings.debug_mode else logging.INFO)
@@ -127,16 +125,12 @@ async def lifespan(app: FastAPI):
     # httpx.AsyncClientの生成はSSLコンテキスト構築を伴い、環境によっては数百ms〜1秒かかる。
     # 遅延生成のままだとデプロイ直後の最初のリクエストがこのコストを負い、接続タイムアウトが
     # タイトな外部呼び出しではConnectTimeoutを誘発する。実際に使うtimeout値を先に構築しておく。
-    get_http_client(JSON_API_TIMEOUT)
-    get_http_client(TILE_PROXY_TIMEOUT)
+    for timeout in (JMA_JSON_TIMEOUT, SLOW_JSON_TIMEOUT, TILE_PROXY_TIMEOUT):
+        get_http_client(timeout)
 
     async with get_session_factory()() as session:
-        # 軸は区分から作る材料（`class:<分け方>`）を指せるので、区分を先に読む。
-        await refresh_road_classes(session)
         # 例外をここで捕捉しないため、軸定義を読めない状態では起動自体が失敗する（fail-fast）。
-        await refresh_axis_definitions(AxisDefinitionRepository(session))
-        # 較正値は行が1つも無ければ宣言どおりの既定値のまま動く（壊れた値の行だけが起動を止める）。
-        await refresh_tuning_values(session)
+        await refresh_definitions(session, AxisDefinitionRepository(session))
 
     # 定期ジョブはアプリの寿命の間だけ動くので、スケジューラもこの寿命の中で作る。
     scheduler = AsyncIOScheduler()

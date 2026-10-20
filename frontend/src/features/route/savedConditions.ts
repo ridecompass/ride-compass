@@ -1,9 +1,9 @@
-import { avoidanceLevelOf, readRoadAvoidance } from "@/features/route/roadAvoidance";
+import { avoidanceLevelOf, readRoadAvoidance, withCurrentRoadKeys } from "@/features/route/roadAvoidance";
 import { alignRoutePreference } from "@/features/route/routePreferenceSync";
 import { totalWeight } from "@/features/route/routeWeightShare";
 import type { AxisCatalog } from "@/lib/axisCatalog";
 import { isCoordinates, readStoredList, withEntryFirst } from "@/lib/storedList";
-import type { Coordinates, RoadAvoidanceOverride, RoutePreferenceWeights } from "@/types/route";
+import type { Coordinates, RoadAvoidanceOverride, RoadAvoidanceView, RoutePreferenceWeights } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 /** 生成の条件（「ルート設定」の入力）。いまの条件・保存・呼び出しが同じこの形を使う。出発地は位置の持ち主が持つので含まず、
@@ -221,4 +221,16 @@ export function originDescription(fixed: boolean): string {
 /** 保存した一覧へ1件を入れる。同じ名前の件は上書きする。 */
 export function withSavedCondition(list: SavedCondition[], entry: SavedCondition): SavedCondition[] {
   return withEntryFirst(list, entry, (saved) => saved.name === entry.name);
+}
+
+/** 保存した一覧の避け方を今の行の鍵へ書き直す（`withCurrentRoadKeys`）。書き直す件が無ければ同じ一覧を返す。 */
+export function savedWithCurrentRoadKeys(
+  list: SavedCondition[],
+  view: Pick<RoadAvoidanceView, "rows" | "levels">,
+): SavedCondition[] {
+  const rewritten = list.map((entry) => {
+    const roadAvoidance = withCurrentRoadKeys(entry.roadAvoidance, view);
+    return roadAvoidance === entry.roadAvoidance ? entry : { ...entry, roadAvoidance };
+  });
+  return rewritten.some((entry, index) => entry !== list[index]) ? rewritten : list;
 }

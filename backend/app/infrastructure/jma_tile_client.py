@@ -103,6 +103,7 @@ class JmaTileClient:
 
         上流の404は`UPSTREAM_NOT_FOUND`を返す（疎な格子状タイルでは珍しくない正常系、配信前の
         地物では毎回の配信の間に必ず起きる正常系のため、WARNINGを出さない）。他の失敗はNoneを返す。
+        取得できたものは`store`が返す形で返す。
         """
         await self._shared.wait_for_upstream_rate_limit()
         with log_external_call("weather:jma-tile", path=path, cache="miss") as fields:
@@ -118,21 +119,20 @@ class JmaTileClient:
                     await jma_tile_redis_cache.set_empty(path)
                 return response
             content_type = response.headers.get("content-type", "application/octet-stream")
-            content = recolored(path, response.content)
-            await self.store(path, content, content_type)
-            return content, content_type
+            return await self.store(path, recolored(path, response.content), content_type)
 
-    async def store(self, path: str, content: bytes, content_type: str) -> None:
+    async def store(self, path: str, content: bytes, content_type: str) -> tuple[bytes, str] | UpstreamNotFound:
         """上流フェッチを伴わずに生成したタイルをキャッシュへ書き戻す。
 
         奇数ズームの補間結果（`services/jma_tile_interpolation_service.py: interpolated_tile`）のように、上流に実体が無く
         アプリ側で組み立てたタイルを、次回以降そのまま返せるようにするための入口。
         書き込み先は`fetch`と同じ（`targetTimes*.json`はプロセス内、それ以外はRedis）。
+        戻り値は、次に`get_cached`が返すのと同じ形（中身が空なら`UPSTREAM_NOT_FOUND`）。
         """
         if is_target_times_path(path):
             self._shared.target_times[path] = (content, content_type)
-        else:
-            await jma_tile_redis_cache.set(path, content, content_type)
+            return content, content_type
+        return await jma_tile_redis_cache.set(path, content, content_type)
 
     async def get(self, path: str) -> tuple[bytes, str] | UpstreamNotFound | None:
         """キャッシュ参照→ミスなら外部フェッチ、という一括呼び出し。
