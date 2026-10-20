@@ -66,27 +66,22 @@ from app.domain.route_search import (
     turnaround_ring_m,
     turnaround_separation,
 )
-from app.domain.routing import (
-    LazyRoadGraph,
-    NodeSpatialIndex,
-    SearchGraphStatics,
-    build_lazy_road_graph,
-    build_node_spatial_index,
-    build_search_graph_statics,
+from app.domain.search_graph import LazyRoadGraph, SearchGraphStatics, build_lazy_road_graph, build_search_graph_statics
+from app.domain.node_spatial_index import NodeSpatialIndex, build_node_spatial_index, snap_to_accessible_node
+from app.domain.turn_structure import (
     current_turn_cost,
     TurnExpandedStructure,
     build_turn_expanded_structure,
+    edge_bearings,
+)
+from app.domain.routing import (
     build_turn_expanded_tree,
     tree_cost_bound,
-    edge_bearings,
     largest_strongly_connected_nodes,
-    overlap_ratio,
-    physical_overlap_ratio,
-    select_diverse_by_overlap,
-    snap_to_accessible_node,
     turn_expanded_path_edge_indices,
     turn_expanded_shortest_path,
 )
+from app.domain.route_diversity import overlap_ratio, physical_overlap_ratio, select_diverse_by_overlap
 from app.domain.wind import (
     cruise_hours,
     detour_ratio_or_default,
@@ -299,7 +294,7 @@ class RoadGraphEngine:
         （駅前が国道の交差点に直接面する場所が実例）が選ばれ、そこがHard Constraint除外後の
         グラフ上では孤立点になるため、すべての折返し点・経由地への探索が"no path found"で失敗する。
         区間が残っていても出て戻れないNode（孤立した小さな塊・一方通行の袋）は、置いた点を寄せるときに
-        外す（`domain/routing.py: snap_to_accessible_node`）。
+        外す（`domain/node_spatial_index.py: snap_to_accessible_node`）。
         """
         started = start_timer()
         road = search.road
@@ -346,7 +341,7 @@ class RoadGraphEngine:
         つなぐなら0）。出発地と置いた点を覆う矩形をこの半径とマージンだけ広げるので、中継点がどの方位に選ばれても
         この1回の取得で足りる。
 
-        起点は出て戻れるNodeへ寄せ（`domain/routing.py: snap_to_accessible_node`）、寄せられなければ`RoutingError`。"""
+        起点は出て戻れるNodeへ寄せ（`domain/node_spatial_index.py: snap_to_accessible_node`）、寄せられなければ`RoutingError`。"""
         # nowは出発時刻。区間ごとの通過時刻（風・昼夜）はここからの経過で決まる。
         margin_km = max(_BBOX_MARGIN_MIN_KM, radius_km * _BBOX_MARGIN_RATIO)
         bbox = bbox_covering_points([origin, *points], radius_km + margin_km)

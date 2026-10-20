@@ -29,15 +29,10 @@ from app.domain.route_search import (
     retrace_penalized,
     straight_distances_m,
 )
-from app.domain.routing import (
-    LazyRoadGraph,
-    NodeSpatialIndex,
-    SearchGraphStatics,
-    TurnExpandedStructure,
-    edge_index_between,
-    lengths_by_physical_segment,
-    snap_to_accessible_node,
-)
+from app.domain.search_graph import LazyRoadGraph, SearchGraphStatics, edge_index_between
+from app.domain.node_spatial_index import NodeSpatialIndex, snap_to_accessible_node
+from app.domain.turn_structure import TurnExpandedStructure
+from app.domain.route_diversity import lengths_by_physical_segment
 from app.domain.wind import (
     is_usable_detour_ratio,
 )
@@ -61,7 +56,7 @@ class RoadGraphContext:
     # 置いた点を寄せてよいNode（ノード番号順の真偽。`domain/routing.py: largest_strongly_connected_nodes`）。
     # 起点・経由地・目的地をどれもこの中へ寄せるので、置いた点どうしは互いに行き来できる。
     accessible: np.ndarray
-    # 探索用グラフ（区間は番号、domain/routing.py: LazyRoadGraph参照）。
+    # 探索用グラフ（区間は番号、domain/search_graph.py: LazyRoadGraph参照）。
     lazy_graph: LazyRoadGraph
     # レグごとのコスト配列を合成する部品と、合成済みのレグ配列（前段の区間ごとのレグのあとに、仕上げの往路[最後の
     # 固定点から離れるレグ]と帰り[終点へ向かうレグ]。経由地が無ければ0=往路・1=帰り）。
@@ -74,7 +69,7 @@ class RoadGraphContext:
     # numpyで1回だけベクトル計算するための、ノード番号順の緯度・経度配列。
     node_lat: np.ndarray
     node_lon: np.ndarray
-    # 一対全最短経路木用のCSR構造＋Edge実距離配列（domain/routing.py: SearchGraphStatics参照）。
+    # 一対全最短経路木用のCSR構造＋Edge実距離配列（domain/search_graph.py: SearchGraphStatics参照）。
     statics: SearchGraphStatics
     # 状態＝有向Edge・辺＝ターンの遷移構造（`statics.csr`から導く。起点にもコストにも
     # 依存しないためリクエスト内で共有する）。
@@ -178,7 +173,7 @@ def node_coordinates(context: RoadGraphContext, node: int) -> Coordinates:
 
 
 def snap_point(context: RoadGraphContext, point: Coordinates) -> tuple[int, bool] | None:
-    """置いた点を、起点と同じく出て戻れるNodeへ寄せる（`domain/routing.py: snap_to_accessible_node`）。"""
+    """置いた点を、起点と同じく出て戻れるNodeへ寄せる（`domain/node_spatial_index.py: snap_to_accessible_node`）。"""
     return snap_to_accessible_node(context.node_index, context.accessible, point, MAX_SNAP_CORRECTION_KM)
 
 

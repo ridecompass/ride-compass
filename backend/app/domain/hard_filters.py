@@ -62,7 +62,7 @@ def compute_routable_nodes(
 ) -> np.ndarray:
     """0次ハードフィルタで除外されなかった区間が1本以上あるノード（ノード番号順の真偽）。
 
-    探索用グラフ（`domain/routing.py: LazyRoadGraph`）はHard Constraintをグラフ構造では
+    探索用グラフ（`domain/search_graph.py: LazyRoadGraph`）はHard Constraintをグラフ構造では
     なくコスト（`math.inf`）で表現するため、「実際に経路探索可能なNode」はここで別途
     求める必要がある。
 

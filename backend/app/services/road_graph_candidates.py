@@ -49,11 +49,7 @@ from app.domain.route_search import (
     reverse_leg_assignment,
     route_passages,
 )
-from app.domain.routing import (
-    TurnExpandedStructure,
-    TurnKind,
-    turns_along,
-)
+from app.domain.turn_structure import TurnExpandedStructure, TurnKind, turns_along
 from app.services.graph_service import GraphService
 from app.domain.loop_routing import TracedLoop
 from app.services.road_graph_context import (

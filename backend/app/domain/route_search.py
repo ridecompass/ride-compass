@@ -18,7 +18,9 @@ from app.domain.geo import (
 )
 from app.domain.leg_costs import LegCostArrays
 from app.domain.route import EvaluatedRoute, RouteDraft, merge_difficulty
-from app.domain.routing import TurnExpandedStructure, pareto_layer_index, time_bin_of
+from app.domain.turn_structure import TurnExpandedStructure
+from app.domain.route_diversity import pareto_layer_index
+from app.domain.routing import time_bin_of
 from app.domain.tuning import tuning_value
 from app.domain.wind import cruise_hours, kmh_to_ms
 
