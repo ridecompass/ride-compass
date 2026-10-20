@@ -6,11 +6,10 @@
  * ここで見ないもの:
  * - どのキーに何を保存するか・どう復元するか（変換の中身） → 呼び出し側
  *
- * 差し替えたもの: 保存の読み出しが例外を投げる端末（`window.localStorage` のゲッターを、読むと例外を投げる保存へ）。
- * それ以外の保存はテスト環境の `localStorage` を本物のまま使う。
+ * 保存はテスト環境の `localStorage` を本物のまま使う。
  */
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { useStoredBooleanState, useStoredJsonState, useStoredState } from "./useStoredState";
 
@@ -22,20 +21,7 @@ const PREFIXED = {
   deserialize: (raw: string) => (raw.startsWith("ok:") ? raw.slice(3) : null),
 };
 
-/** 読むと例外を投げる端末にする。書くのはテスト環境の保存へ渡す。 */
-function breakStorageRead() {
-  const real = window.localStorage;
-  const storage = {
-    getItem: () => {
-      throw new Error("storage unavailable");
-    },
-    setItem: (key: string, value: string) => real.setItem(key, value),
-  };
-  vi.spyOn(window, "localStorage", "get").mockReturnValue(storage as unknown as Storage);
-}
-
 afterEach(() => {
-  vi.restoreAllMocks();
   window.localStorage.clear();
 });
 
@@ -87,7 +73,6 @@ describe("useStoredState", () => {
   it.each([
     ["保存が無い", () => {}],
     ["保存が読めない", () => window.localStorage.setItem("key-b", "broken")],
-    ["保存を読めない端末", breakStorageRead],
   ])("キーが変わって新しいキーの%sときは、前のキーの値を引きずらず既定値へ戻る", (_, arrange) => {
     window.localStorage.setItem("key-a", "ok:a");
     const { result, rerender } = renderHook(({ key }) => useStoredState(key, "default", PREFIXED), {

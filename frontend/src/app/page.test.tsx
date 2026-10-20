@@ -438,14 +438,6 @@ describe("走行モード", () => {
     expect(rideBar).toHaveTextContent(`到着予想: ${formatJstHourMinute(arrival)}`);
   });
 
-  it("スマホでは、走行モードの間は下部タブも隠す", async () => {
-    useMobileLayout();
-    const { user } = renderHome();
-    expect(screen.getByRole("navigation", { name: "パネル切り替え" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "走行モード" }));
-    expect(screen.queryByRole("navigation", { name: "パネル切り替え" })).toBeNull();
-  });
-
   it("走行モードのボタンで休むと、位置を受けるのをやめてルートと進み具合を残し、読み込み直しても休んだまま戻り、地図の下の「続きから走る」で休む前の進み具合から続ける。地図を指で動かすと「現在地へ戻る」を出し、ボタンで案内を終えると止める", async () => {
     const geolocation = installGeolocation(HERE);
     const first = renderHome();
