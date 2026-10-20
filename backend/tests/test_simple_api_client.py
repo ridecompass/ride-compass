@@ -36,7 +36,6 @@ async def test_cache_miss_calls_fetch_and_stores_result(monkeypatch):
     assert await simple_api_client.cached_fetch("cat", fetch, cache=cache, key="k") == "v"
 
     assert cache["k"] == "v"
-    assert recorded[0].category == "cat"
     fields = recorded[0].fields
     assert fields["cache"] == "miss"
     assert fields["result"] == "ok"

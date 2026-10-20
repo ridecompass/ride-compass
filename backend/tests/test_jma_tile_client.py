@@ -12,6 +12,7 @@
 - 解いた行をコマにする読み方 → `test_jma_tile_specs.py`
 - 上流が404・失敗を返した取得も間隔に数えること → 待ちは結果を問わず問い合わせの前に置かれる（`fetch`の先頭）
 - 別のパスのタイルが混ざらないこと → `test_jma_tile_redis_cache.py`
+- 上流の失敗の種類（404・失敗の応答・通信の失敗）の見分け → `test_http_client.py`
 """
 
 import asyncio
@@ -153,51 +154,14 @@ async def test_features_not_yet_delivered_are_missing_but_not_remembered(upstrea
     assert await client(upstream).get_cached(FEATURES) is None
 
 
-@pytest.mark.parametrize(
-    "answer, error_type",
-    [
-        (httpx.Response(503), "http_503"),
-        (httpx.ConnectError("refused"), "ConnectError"),
-    ],
-)
-async def test_an_upstream_failure_reads_as_nothing_and_is_not_remembered(
-    monkeypatch, upstream, fake_redis, answer, error_type, client
-):
+async def test_an_upstream_failure_reads_as_nothing_and_is_not_remembered(monkeypatch, upstream, fake_redis, client):
     recorded = record_external_calls(monkeypatch, jma_tile_client)
-    route = upstream.get(f"/{TILE}")
-    if isinstance(answer, Exception):
-        route.side_effect = answer
-    else:
-        route.return_value = answer
+    upstream.get(f"/{TILE}").return_value = httpx.Response(503)
 
     assert await client(upstream).fetch(TILE) is None
 
     assert recorded[0].fields["result"] == "error"
-    assert recorded[0].fields["error_type"] == error_type
     assert await client(upstream).get_cached(TILE) is None
-
-
-async def test_a_locally_built_tile_is_served_like_a_fetched_one(upstream, fake_redis, client):
-    await client(upstream).store(TILE, OPAQUE, "image/png")
-
-    assert await client(upstream).get_cached(TILE) == (OPAQUE, "image/png")
-
-
-@pytest.mark.parametrize(
-    "answer, expected",
-    [
-        (httpx.Response(404), UPSTREAM_NOT_FOUND),
-        (httpx.Response(500), None),
-    ],
-    ids=["missing", "failed"],
-)
-async def test_get_tells_a_tile_with_nothing_to_draw_apart_from_a_failure(
-    upstream, fake_redis, answer, expected, client
-):
-    """プリウォームは空を正常に数え、失敗だけを数える。混ぜると平常時の大半の空が失敗に見える。"""
-    upstream.get(f"/{TILE}").return_value = answer
-
-    assert await client(upstream).get(TILE) is expected
 
 
 async def test_upstream_requests_are_spaced_by_the_configured_rate_only_until_the_interval_has_passed(

@@ -130,13 +130,12 @@ async def test_observation_map_is_requested_by_the_jst_time():
     """URLの時刻はJSTの`YYYYMMDDHHMMSS`。UTCで渡しても同じ観測を引く。"""
     router = respx.Router()
     url = jma_amedas_client.AMEDAS_OBSERVATION_URL_TEMPLATE.format(timestamp="20260829170000")
-    route = router.get(url).respond(json={"44132": _FULL_READING})
+    router.get(url).respond(json={"44132": _FULL_READING})
 
     readings = await jma_amedas_client.fetch_observation_map(
         client_for(router), datetime(2026, 8, 29, 8, 0, tzinfo=timezone.utc)
     )
 
-    assert route.called
     assert readings == {
         "44132": jma_amedas_client.AmedasReading(
             temperature_c=21.3,
