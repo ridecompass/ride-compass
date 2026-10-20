@@ -4,40 +4,17 @@
  * ここで見ないもの:
  * - 評価を利用者のいまの重みで取りに行くこと → 受けた重みをそのまま取得の口へ渡す1行の委譲（testing.md「そのテストは
  *   要るか」の1問目）。重みを要求の項目へ載せることは`features/map/regionApi.test.ts`が見る
+ * - 重み・走行の条件が変わったときに評価を取り直すか → `RoadInspectorPopup.refetch.test.tsx`
  */
 import { render, screen, waitFor, within } from "@testing-library/react";
-import userEvent, { type UserEvent } from "@testing-library/user-event";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { setDebugEnabled } from "@/lib/debugLog";
-import { catalogAxisFromEntry, type CatalogAxis } from "@/lib/catalogAxis";
-import { onBackend } from "@/testing/backendServer";
-import { catalogEntry } from "@/testing/catalogAxes";
+import { AXES, AXIS_COLORS, inspectorResult, openEvaluation, RIDE, serveInspector } from "@/testing/roadInspector";
 import materialCatalog from "@/types/generated/material-catalog.json";
-import type { AxisInspectorResult } from "@/features/map/regionApi";
 import RoadInspectorPopup from "./RoadInspectorPopup";
 import type { RoadSurfacePopupProperties } from "./roadFacts";
 
-const INSPECTOR = "/api/region/axis-inspector";
-const serveInspector = (result: AxisInspectorResult) => onBackend("POST", INSPECTOR, () => Response.json(result));
-
-const axis = (axisId: string, label: string, description: string): CatalogAxis =>
-  catalogAxisFromEntry(catalogEntry({ axis_id: axisId, label, description }));
-const AXES = [axis("axis_sample", "見本の軸", "車の通行量の説明"), axis("night", "夜間", "夜間の暗さの説明")];
-const AXIS_COLORS: Record<string, string> = { axis_sample: "#111111", night: "#222222" };
-/** 地図がいつも渡す走行の条件（押した点のタイル込み）と重み（nullは既定の重み）。 */
-const RIDE = {
-  conditions: {
-    bearingDeg: 0,
-    at: new Date("2026-09-24T00:00:00Z"),
-    speedKmh: 20,
-    z: 14,
-    x: 1,
-    y: 2,
-    latitude: 35.6,
-    longitude: 139.4,
-  },
-  routePreference: null,
-};
 /** 路面の種類の項目名と、呼び名を持つ値の1つ（書き写さず材料カタログから引く）。 */
 const SURFACE = materialCatalog.find((material) => material.material_id === "surface")!;
 const [SURFACE_VALUE] = Object.entries(SURFACE.value_labels ?? {}).find(
@@ -53,55 +30,6 @@ const SURFACED_ROAD: RoadSurfacePopupProperties = {
 
 function renderPopup(properties: RoadSurfacePopupProperties = SURFACED_ROAD) {
   return render(<RoadInspectorPopup properties={properties} axes={AXES} axisColors={AXIS_COLORS} {...RIDE} />);
-}
-
-const openEvaluation = (user: UserEvent) => user.click(screen.getByRole("button", { name: "この道の評価を見る" }));
-
-/** 押した区間と道1本の評価を差し替えた応答。区間と道1本は、どの値も違う値にしてある（窓がどちらの値を出したかが分かる）。 */
-function inspectorResult(
-  way: Partial<AxisInspectorResult["way"]> = {},
-  segment: Partial<AxisInspectorResult["segment"]> = {},
-): AxisInspectorResult {
-  return {
-    highway: "residential",
-    tags: { lit: "yes", name: "明治通り" },
-    segment: { ...segmentValues(), ...segment },
-    way: { ...wayValues(), ...way },
-  };
-}
-
-const NO_LANDCOVER = {
-  water_percent: 0,
-  trees_percent: 0,
-  flooded_veg_percent: 0,
-  crops_percent: 0,
-  built_percent: 0,
-  bare_percent: 0,
-  snow_ice_percent: 0,
-  rangeland_percent: 0,
-};
-
-function wayValues(): AxisInspectorResult["way"] {
-  return {
-    axes: [
-      { axis_id: "axis_sample", difficulty: 57.8, contribution: 30 },
-      { axis_id: "night", difficulty: 20, contribution: 10 },
-      { axis_id: "gradient", difficulty: null, contribution: null },
-    ],
-    composite_difficulty: { value: 40, covered_weight_fraction: 0.8 },
-    landcover: { ...NO_LANDCOVER, trees_percent: 20, crops_percent: 30, built_percent: 50 },
-  };
-}
-
-function segmentValues(): AxisInspectorResult["segment"] {
-  return {
-    axes: [
-      { axis_id: "axis_sample", difficulty: 81.2, contribution: 45 },
-      { axis_id: "night", difficulty: 6, contribution: 3 },
-    ],
-    composite_difficulty: { value: 48, covered_weight_fraction: 1 },
-    landcover: { ...NO_LANDCOVER, trees_percent: 70, built_percent: 30 },
-  };
 }
 
 /** 窓の中の、押した区間の評価と道1本の評価のまとまり。 */
@@ -247,54 +175,6 @@ describe("RoadInspectorPopup", () => {
     const labels = Array.from(attributes?.querySelectorAll("dt") ?? []).map((dt) => dt.textContent);
     expect(labels.length).toBeGreaterThan(1);
     expect(new Set(labels).size).toBe(labels.length);
-  });
-});
-
-describe("評価の重み", () => {
-  const WEIGHTS = { axis_sample: 0, night: 1 };
-
-  it("重みを変えたら、前の重みで取った評価を見せずに取り直しへ戻る", async () => {
-    const user = userEvent.setup();
-    serveInspector(inspectorResult());
-    const props = { properties: { osm_way_id: 1, feature_key: "1" }, axes: AXES, axisColors: AXIS_COLORS, ...RIDE };
-    const { rerender } = render(<RoadInspectorPopup {...props} routePreference={WEIGHTS} />);
-    await openEvaluation(user);
-    await waitFor(() => expect(screen.getByText(/この道全体で見た難易度/)).toBeInTheDocument());
-
-    rerender(<RoadInspectorPopup {...props} routePreference={{ axis_sample: 1, night: 1 }} />);
-
-    expect(screen.queryByText(/この道全体で見た難易度/)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
-  });
-});
-
-describe("評価の走行の条件", () => {
-  const CONDITIONS = RIDE.conditions;
-  const props = { properties: { osm_way_id: 1, feature_key: "1" }, axes: AXES, axisColors: AXIS_COLORS, ...RIDE };
-
-  it("開いている間に出発時刻が進んでも、押したときの条件で取った評価を出し続ける", async () => {
-    const user = userEvent.setup();
-    serveInspector(inspectorResult());
-    const { rerender } = render(<RoadInspectorPopup {...props} conditions={CONDITIONS} />);
-    await openEvaluation(user);
-    await screen.findByText(/この道全体で見た難易度/);
-
-    rerender(<RoadInspectorPopup {...props} conditions={{ ...CONDITIONS, at: new Date("2026-09-24T00:05:00Z") }} />);
-
-    expect(screen.getByText(/この道全体で見た難易度/)).toBeInTheDocument();
-  });
-
-  it("同じ道を同じ条件・重みで開き直したときは、取り直さずに前の評価を出す", async () => {
-    const user = userEvent.setup();
-    serveInspector(inspectorResult());
-    const first = render(<RoadInspectorPopup {...props} conditions={CONDITIONS} />);
-    await openEvaluation(user);
-    await screen.findByText(/この道全体で見た難易度/);
-    first.unmount();
-
-    render(<RoadInspectorPopup {...props} conditions={{ ...CONDITIONS }} />);
-
-    expect(screen.getByText(/この道全体で見た難易度/)).toBeInTheDocument();
   });
 });
 
