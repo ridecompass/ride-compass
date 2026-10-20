@@ -257,7 +257,7 @@ async def get_tuning_service():
 
 async def get_road_class_admin_service():
     async with get_session_factory()() as session:
-        yield RoadClassAdminService(session)
+        yield RoadClassAdminService(session, AxisDefinitionRepository(session))
 
 
 async def get_material_coverage_service():

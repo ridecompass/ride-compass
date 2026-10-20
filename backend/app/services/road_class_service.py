@@ -50,8 +50,9 @@ def _check_writable(definitions: RoadClassDefinitions, axes: dict[str, AxisDefin
 class RoadClassAdminService:
     """管理APIの全体の読みと入れ替え。入れ替えは1つの取引で、確定してからプロセス内へ反映する。"""
 
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, axes: AxisDefinitionRepository):
         self._session = session
+        self._axes = axes
 
     async def read(self) -> RoadClassDefinitions:
         return await read_road_classes(self._session)
@@ -61,8 +62,7 @@ class RoadClassAdminService:
 
         軸の書き込みの鍵を取ってから軸を読む——取らないと、確かめてから確定するまでの間に、消す分け方を指す軸が書ける。
         """
-        session = self._session
-        axes = AxisDefinitionRepository(session)
+        session, axes = self._session, self._axes
         try:
             await axes.acquire_write_lock()
             _check_writable(definitions, await axes.list_all())

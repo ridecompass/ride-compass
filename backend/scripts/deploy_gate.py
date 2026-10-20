@@ -58,7 +58,6 @@ NOT_DEPLOYED = (
     "backend/scripts/prod_route_check.py",
     # 本番のDBのバックアップの止まりの見張り。定時に、ランナーから本番の`/health`を読む（像の中では動かさない）。
     "backend/scripts/prod_backup_check.py",
-    "backend/app/domain/map_display.py",
     "backend/app/domain/warning_display.py",
 )
 
