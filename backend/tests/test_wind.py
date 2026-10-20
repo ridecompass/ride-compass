@@ -10,6 +10,7 @@
 - 探索の時刻ビンと区間の風（`SegmentWind`） → `test_leg_costs.py`・`test_route_generation_behavior.py`
 """
 
+import dataclasses
 import math
 from datetime import datetime, timedelta
 
@@ -18,6 +19,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from app.domain.geo import EARTH_RADIUS_KM
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.route import Coordinates
 from app.domain.way_value_formula import way_values_from_formula
@@ -66,9 +68,10 @@ def test_drag_requires_a_positive_travel_speed():
 T0 = datetime(2026, 7, 1, 9, 0)
 
 
-def _series(hours=3, lattice=None) -> WindForecastSeries:
-    """格子点2つ。風速は「点の番号×100＋時刻の番号」、風向は時刻の番号×10。"""
-    lattice = lattice or MsmBlock(
+def _series() -> WindForecastSeries:
+    """格子点2つ・3時刻。風速は「点の番号×100＋時刻の番号」、風向は時刻の番号×10。"""
+    hours = 3
+    lattice = MsmBlock(
         grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=1.0, d_lon=1.0, n_lat=2, n_lon=2), row0=0, col0=0, rows=1, cols=2,
     )
     points = lattice.size
@@ -91,15 +94,9 @@ def _series(hours=3, lattice=None) -> WindForecastSeries:
 )
 def test_a_series_refuses_values_that_do_not_line_up_with_hourly_times_and_points(broken):
     series = _series()
-    fields = {
-        "times": series.times,
-        "speed_ms": series.speed_ms,
-        "direction_deg": series.direction_deg,
-        "lattice": series.lattice,
-    }
 
     with pytest.raises(ValueError):
-        WindForecastSeries(**{**fields, **broken})
+        dataclasses.replace(series, **broken)
 
 
 def test_sample_picks_the_nearest_hour_for_each_point():
@@ -126,8 +123,8 @@ def test_sample_extends_the_edge_hours_beyond_the_series():
 # --- 通過予定時刻 ---
 
 ANCHOR = Coordinates(latitude=35.0, longitude=139.0)
-#: 緯度1度の大円の長さ（km、地球の半径6371km）。
-KM_PER_DEGREE = 2 * math.pi * 6371.0 / 360
+#: 緯度1度の大円の長さ（km）。
+KM_PER_DEGREE = 2 * math.pi * EARTH_RADIUS_KM / 360
 
 
 @pytest.mark.parametrize(("direction", "expected"), [(1, 5.0), (-1, 1.0)], ids=["離れていく", "向かっていく"])

@@ -20,14 +20,9 @@ from PIL import Image
 
 from app.infrastructure.gsi_dem_png import gsi_dem_png_to_terrain_rgb
 from tests.source_ingest import gsi_dem_png
+from tests.tile_images import encode
 
 GSI_NO_DATA = (128, 0, 0)
-
-
-def png_of(rgb: np.ndarray) -> bytes:
-    buffer = io.BytesIO()
-    Image.fromarray(rgb, mode="RGB").save(buffer, format="PNG")
-    return buffer.getvalue()
 
 
 def terrain_rgb_meters(png: bytes) -> np.ndarray:
@@ -48,7 +43,7 @@ def test_every_elevation_reads_back_to_the_nearest_tenth_of_a_metre(centimeters)
 def test_a_pixel_without_elevation_becomes_sea_level_not_a_cliff():
     rgb = np.array([[GSI_NO_DATA]], dtype=np.uint8)
 
-    meters = terrain_rgb_meters(gsi_dem_png_to_terrain_rgb(png_of(rgb)))
+    meters = terrain_rgb_meters(gsi_dem_png_to_terrain_rgb(encode(Image.fromarray(rgb, mode="RGB"))))
 
     np.testing.assert_allclose(meters, [[0.0]], atol=1e-6)
 

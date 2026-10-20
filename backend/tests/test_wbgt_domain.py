@@ -61,12 +61,8 @@ def test_both_the_first_and_the_last_day_are_within_the_period(at, within):
     assert is_within_provision_period(at) is within
 
 
-def _forecast(reference_time: str, forecast_time: datetime | None, wbgt: float | None = 26.0) -> WbgtForecast:
-    return WbgtForecast(
-        reference_time=reference_time,
-        forecast_time=forecast_time,
-        wbgt=wbgt,
-    )
+def _forecast(reference_time: str, forecast_time: datetime | None) -> WbgtForecast:
+    return WbgtForecast(reference_time=reference_time, forecast_time=forecast_time, wbgt=26.0)
 
 
 NOW = datetime(2026, 7, 1, 13, 20, tzinfo=JST)
