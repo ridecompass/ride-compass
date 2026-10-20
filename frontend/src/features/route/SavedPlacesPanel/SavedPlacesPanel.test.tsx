@@ -4,7 +4,7 @@
  *
  * ここで見ないもの:
  * - 地点の保存 → `RouteForm/PointDetail.test.tsx`
- * - 呼び出した地点が条件に置かれ、条件タブへ移ること → `RouteForm/RouteForm.test.tsx`・`app/page.test.tsx`
+ * - 呼び出した地点が条件に置かれ、条件タブへ移ること → `RouteForm/RouteForm.test.tsx`・`app/page.places.test.tsx`
  * - (i)の奥の文（書いた文をそのまま出す）
  */
 import { render, screen, within } from "@testing-library/react";
