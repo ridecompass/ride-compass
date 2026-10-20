@@ -17,7 +17,7 @@
  * 元との違い・区間の風・編集面）は本物を描き、ここでは受け渡し（親の値が子のどこに出るか・子の操作で親の何が変わるか）
  * だけを見る。子が値をどう描くか（書式・並び・空のときの案内）は各部品のテストが見る。値を子・文へそのまま渡すだけの所
  * （内訳の生値・材料の値・所要の前提の知らせ・内訳に渡す重み等）は1行の委譲なので見ない。候補1本への操作（走る・合成・GPX）
- * → `features/route/RouteCandidateActions/RouteCandidateActions.tsx`（置き場は`app/page.tsx`の見出しの行）。値から段を引く判断 →
+ * → `features/route/RouteCandidateActions/RouteCandidateActions.tsx`（置き場は見出しの行の`RouteOutcomeHeaderActions.tsx`）。値から段を引く判断 →
  * `lib/mapDisplay/valueScale.ts: bandAt`。シートが開いたときに合わせる高さ → `components/BottomSheet/BottomSheet.tsx`。
  * 道のりのグラフの塗り（積む軸の並び・色・値の無い区間の高さ）は読み上げに出ないので見ない。
  *

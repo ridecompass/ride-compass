@@ -11,9 +11,9 @@
 | ファイル | 責務 | マウント先 |
 |---|---|---|
 | `app/admin/page.tsx` | `/admin`のタブ構成を束ねるコンポジションルート（開いたときは軸スタジオのタブ） | 独立URL |
-| `components/HeaderMenu/HeaderMenu.tsx` | 使い方の説明の入口（「使い方を見る」。[ページ全体構成](page-composition.md)「使い方の説明」）・地図の表示を再描画（[地図: 静的レイヤー](static-map-layers.md)「まとめて戻す操作」）・デバッグログ表示・バージョン表示を1個のメニューアイコンへ集約したRadix Popover。バージョン表示は、動いている版（コミットの頭8文字）を窓に出し、確かめ待ちの変更が本番に出たかを利用者が画面から見分けられるようにする | `page.tsx`（`/`）のヘッダー |
+| `components/HeaderMenu/HeaderMenu.tsx` | 使い方の説明の入口（「使い方を見る」。[ページ全体構成](page-composition.md)「使い方の説明」）・地図の表示を再描画（[地図: 静的レイヤー](static-map-layers.md)「まとめて戻す操作」）・デバッグログ表示・バージョン表示を1個のメニューアイコンへ集約したRadix Popover。バージョン表示は、動いている版（コミットの頭8文字）を窓に出し、確かめ待ちの変更が本番に出たかを利用者が画面から見分けられるようにする | `app/HomeHeader.tsx`（`/`のヘッダー） |
 | `features/admin/DebugPanel/DebugPanel.tsx` | デバッグログ表示のON/OFFトグル | `/admin`「開発者」タブ |
-| `components/DebugConsole/DebugConsole.tsx` | 地図イベント・外部API呼び出しの詳細ログを時系列表示するフローティングパネル。**表示中の行をそのままの形でコピーできる**（絞り込みを無視して全件にすると、絞って見つけた数行を渡したいときに関係ない行まで混ざる） | `page.tsx`（`/`）、`HeaderMenu.tsx: HeaderMenu`から開閉 |
+| `components/DebugConsole/DebugConsole.tsx` | 地図イベント・外部API呼び出しの詳細ログを時系列表示するフローティングパネル。**表示中の行をそのままの形でコピーできる**（絞り込みを無視して全件にすると、絞って見つけた数行を渡したいときに関係ない行まで混ざる） | `app/HomeHeader.tsx`（`/`のヘッダーの下）、`HeaderMenu.tsx: HeaderMenu`から開閉 |
 | `features/admin/SystemStatusPanel/SystemStatusPanel.tsx` | backend `/api/debug/stats`の集計・フロントバージョン・予報（MSM）の同期鮮度を表示するフローティングパネル | `/admin`「開発者」タブ |
 | `features/admin/BackendStatus/BackendStatus.tsx` | バックエンドの死活確認の簡易表示 | `/admin`「開発者」タブ |
 | `features/admin/BackendLogsPanel/BackendLogsPanel.tsx` | backend `GET /api/admin/debug/logs`の直近ログをレベル（DEBUG〜CRITICAL）・部分一致で絞り込んで表示するパネル。取得は「取得」ボタン押下時のみ（ポーリングなし） | `/admin`「開発者」タブ |
@@ -69,7 +69,7 @@ localStorage経由で`/`側へ共有される（`HeaderMenu`はデバッグロ�
    デバッグモードON中、`services/`配下のfetchラッパー・`MapView.tsx`のmapイベント
    ハンドラから直接呼ばれるフレームワーク非依存のシングルトン（最大300件、
    `console.debug`/`warn`/`error`にも同時出力）。
-3. **パネルの開閉**（`app/page.tsx: debugConsoleOpen`）: `DebugConsole`自体の表示/非表示。
+3. **パネルの開閉**（`app/HomeHeader.tsx: debugConsoleOpen`）: `DebugConsole`自体の表示/非表示。
    デバッグモードONでも常時パネルを占有させない、記録の有効/無効とは独立したstate。
 
 ## 暗黙の前提

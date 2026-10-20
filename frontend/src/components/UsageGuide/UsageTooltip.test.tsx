@@ -8,7 +8,7 @@
  *
  * ここで見ないもの:
  * - 吹き出しの置き方 → Radixの位置取りに任せている
- * - 説明を見る状態（`UsageGuide.tsx`）の間はこの部品を置かないこと → 置く側（`app/page.tsx`）
+ * - 説明を見る状態（`UsageGuide.tsx`）の間はこの部品を置かないこと → 置く側（`app/HomeMapPane.tsx`。`app/page.tsx`のテストが見る）
  */
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
