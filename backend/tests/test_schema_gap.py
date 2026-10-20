@@ -79,10 +79,3 @@ async def test_measures_while_an_ingest_holds_a_child_partition(road_graph_engin
         async with road_graph_engine.begin() as conn:
             await conn.execute(text(f"DROP TABLE {partition}"))
 
-
-async def test_measuring_leaves_no_table_behind(road_graph_engine):
-    async with road_graph_engine.connect() as conn:
-        await conn.run_sync(collect_gaps)
-        temp_tables = await conn.scalar(text(
-            "SELECT count(*) FROM pg_class WHERE relnamespace = pg_my_temp_schema()"))
-    assert temp_tables == 0

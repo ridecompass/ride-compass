@@ -2,19 +2,18 @@
 
 入口は`main`（デプロイが呼ぶ）と、zipから区域を読む`read_areas`。配布元は`respx_mock`で代わりのzipを返し、
 置き場は`tests/conftest.py: boundary_path`。作った境界は`jma_area_boundaries.find_class20_code`で引いて確かめる。
-見るのは、置き場に今の版があれば取りに行かないこと・取得から書き込みまで・取得の失敗で置き場を作らないこと・
+見るのは、置き場に今の版があれば取りに行かないこと・取得から書き込みまで・zipでない応答で置き場を作らないこと・
 他の版の掃除・コードの空の図形を落とすこと・同じコードの図形をまとめること・簡略化。
 
 ここで見ないもの:
-- 一時ファイル経由の取得と、落としたものを開いて確かめる手順（`app/batch/common.py: fetch_verified`）→ 同じ手順を使う
-  取得の道具のテスト（例: `test_fetch_osm_pbf.py`）
+- 一時ファイル経由の取得と、落としたものを開いて確かめる手順（`app/batch/common.py: fetch_verified`）
+  → `test_fetch_accident_csv.py`
 - 置き場の境界から地点の区域を引く規則（含む・寄せる・区域なし）→ `test_jma_area_boundaries.py`
 """
 
 import io
 import zipfile
 
-import pytest
 import shapefile
 import shapely
 
@@ -88,15 +87,8 @@ def test_present_version_is_not_fetched_again_but_other_versions_are_removed(bou
     assert list(boundary_path.parent.iterdir()) == [boundary_path]
 
 
-@pytest.mark.parametrize(
-    "response",
-    [
-        pytest.param({"status_code": 503}, id="配布元の失敗"),
-        pytest.param({"content": b"<html>maintenance</html>"}, id="zipでない"),
-    ],
-)
-def test_failed_fetch_places_nothing(boundary_path, respx_mock, response):
-    respx_mock.get(jma_area_boundaries.SOURCE_URL).respond(**response)
+def test_a_response_that_is_not_a_zip_places_nothing(boundary_path, respx_mock):
+    respx_mock.get(jma_area_boundaries.SOURCE_URL).respond(content=b"<html>maintenance</html>")
 
     assert fetch_jma_area_boundaries.main() == 1
 
