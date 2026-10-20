@@ -99,7 +99,7 @@ jobs:
           echo "この本で書き換えるファイル: $(echo "$files" | tr ',' '\n' | wc -l) 本"
           npx stryker run scripts/mutation/stryker.config.mjs --mutate "$files"
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-frontend-shard-${{ matrix.shard }}
           path: frontend/reports/mutation/mutation.json
@@ -175,7 +175,7 @@ jobs:
         run: echo "範囲を絞った測り（mutate）なので、この見直しは次の見直しの前回にしない。" >> "$GITHUB_STEP_SUMMARY"
       # src/ の全部の書き換えを回し終えた測りの見直しだけを残す（本が落ちて欠けた測り・範囲を絞った測りを、次の見直しが前回として読まないように）。
       - if: steps.review.outputs.complete == 'true' && needs.shard.result == 'success' && inputs.mutate == ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-frontend-review
           path: /tmp/review/
@@ -219,7 +219,7 @@ jobs:
       - name: 突き合わせる
         run: node scripts/mutation/compare.mjs /tmp/compare/vitest.json /tmp/compare/command.json | tee -a "$GITHUB_STEP_SUMMARY"
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-frontend-compare
           path: /tmp/compare/
