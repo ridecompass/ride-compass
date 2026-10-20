@@ -7,15 +7,12 @@
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import type { ExpressionSpecification, FilterSpecification } from "maplibre-gl";
-import type { Feature, FeatureCollection, LineString, Position } from "geojson";
 
 import { createRouteArrowIcon, ROUTE_ARROW_ICON_ID } from "@/features/map/layers/routeArrowIcon";
 import type { MapSceneImage } from "@/features/map/scene/mapScene";
-import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
-import { noDataDashExpression, zoomScaleExpression, sceneSourceId } from "@/features/map/scene/sceneBuilders";
-
-/** [経度, 緯度] の並び。 */
-export type RoutePath = readonly Position[];
+import { declareGroup, type SceneLayerEntry } from "@/features/map/scene/mapSceneGroups";
+import { noDataDashExpression, zoomScaleExpression } from "@/features/map/scene/sceneBuilders";
+import { ROUTE_SOURCE as SOURCE, routeSourceEntries, type RoutePath, type RouteShape } from "./routeSources";
 
 /** 見た目の値は源泉が配る（`backend/app/domain/map_display.py`）。ここは受け取って塗るだけ。 */
 const ROUTE = mapDisplay.route;
@@ -43,46 +40,23 @@ export const ROUTE_HIT_TARGET_SEGMENT = "routeSegment";
 export const ROUTE_HIT_TARGET_CANDIDATE = "routeCandidate";
 export const ROUTE_HIT_TARGET_SPLICE_BAND = "routeSpliceBand";
 
-type Shape = { readonly path: RoutePath; readonly properties?: Readonly<Record<string, unknown>> };
-
 export type RouteState = {
   readonly visible: boolean;
   readonly candidates: readonly { readonly routeId: string; readonly path: RoutePath }[];
   readonly selectedRouteId: string | null;
   /** 区間の形。`properties.travelled`が真の区間は、走り終えたものとして薄める。 */
-  readonly segments: readonly Shape[];
+  readonly segments: readonly RouteShape[];
   /** 区間の色。段の切り方・配色は軸カタログが決めるため、出来上がった式のまま受け取る。 */
   readonly segmentColor: string | ExpressionSpecification;
   /** 値が無い区間で真になる式。その区間を破線にする。値という考えを持たない塗り方（レンズ「なし」）では無い。 */
   readonly segmentNoData?: ExpressionSpecification;
   /** 凡例で隠した段を落とす絞り込み。色分け線・縁取り・当たり判定の3枚へ同じものを当てる。 */
   readonly hiddenBandFilter?: FilterSpecification;
-  readonly spliceBands: readonly Shape[];
-  readonly composite: Shape | null;
+  readonly spliceBands: readonly RouteShape[];
+  readonly composite: RouteShape | null;
   /** 選んだ地点を含む区間の形。選んでいなければnull。 */
   readonly selectedSection: RoutePath | null;
 };
-
-const SOURCE = {
-  candidates: sceneSourceId("route-candidates"),
-  selected: sceneSourceId("route-selected"),
-  segments: sceneSourceId("route-segments"),
-  spliceBands: sceneSourceId("route-splice-bands"),
-  composite: sceneSourceId("route-composite"),
-  selectedSection: sceneSourceId("route-selected-section"),
-} as const;
-
-function line(path: RoutePath, properties: Readonly<Record<string, unknown>> = {}): Feature<LineString> {
-  return {
-    type: "Feature",
-    geometry: { type: "LineString", coordinates: path.map(([lng, lat]) => [lng, lat]) },
-    properties: { ...properties },
-  };
-}
-
-function collection(features: readonly Feature<LineString>[]): FeatureCollection<LineString> {
-  return { type: "FeatureCollection", features: [...features] };
-}
 
 /** 進行方向の矢印の絵。色を持たないシルエットで、色はレイヤーが決める。 */
 const ROUTE_ARROW_IMAGE: MapSceneImage = {
@@ -125,38 +99,14 @@ export const routeGroup = declareGroup<RouteState>((state) => {
   const detailed = state.segments.length > 0 ? selected : null;
   const references = state.candidates.filter((candidate) => candidate !== detailed);
 
-  const sources: readonly SceneSourceEntry[] = [
-    {
-      id: SOURCE.candidates,
-      spec: { type: "geojson" },
-      data: collection(references.map((c) => line(c.path, { routeId: c.routeId }))),
-    },
-    {
-      id: SOURCE.selected,
-      spec: { type: "geojson" },
-      data: collection(selected === null ? [] : [line(selected.path)]),
-    },
-    {
-      id: SOURCE.segments,
-      spec: { type: "geojson" },
-      data: collection(state.segments.map((s) => line(s.path, s.properties))),
-    },
-    {
-      id: SOURCE.spliceBands,
-      spec: { type: "geojson" },
-      data: collection(state.spliceBands.map((b) => line(b.path, b.properties))),
-    },
-    {
-      id: SOURCE.composite,
-      spec: { type: "geojson" },
-      data: collection(state.composite === null ? [] : [line(state.composite.path, state.composite.properties)]),
-    },
-    {
-      id: SOURCE.selectedSection,
-      spec: { type: "geojson" },
-      data: collection(state.selectedSection === null ? [] : [line(state.selectedSection)]),
-    },
-  ];
+  const sources = routeSourceEntries({
+    references,
+    selected,
+    segments: state.segments,
+    spliceBands: state.spliceBands,
+    composite: state.composite,
+    selectedSection: state.selectedSection,
+  });
 
   const withBandFilter = (entry: SceneLayerEntry): SceneLayerEntry =>
     state.hiddenBandFilter === undefined ? entry : { ...entry, filter: state.hiddenBandFilter };

@@ -35,7 +35,7 @@ _NOMINAL_CHROMA = 28.0
 #: 近い色が残るので、レイヤーごとに明度を変えて離す。暗い段は色相によってsRGBに収まらない
 #: （水色〜青）ので、そこだけ収まるところまで彩度を下げる（`_fit_chroma`）。鮮やかな段は明度を標準のまま
 #: 彩度で離す——明度は上を地色とのコントラストが、下を絵記号の白との見分けが決め、明度だけでは段が足りない。
-_NOMINAL_TONES: dict[str | None, tuple[float, float]] = {
+NOMINAL_TONES: dict[str | None, tuple[float, float]] = {
     None: (52.0, _NOMINAL_CHROMA),
     "dark": (42.0, _NOMINAL_CHROMA),
     "light": (_MAX_LIGHTNESS, _NOMINAL_CHROMA),
@@ -98,7 +98,7 @@ def nominal_colors(hue_slot: int, count: int, tone: str | None) -> list[str]:
     if not 0 <= hue_slot < NOMINAL_HUE_SLOTS:
         raise ValueError(f"色相の起点は0〜{NOMINAL_HUE_SLOTS - 1}: {hue_slot}")
     start = _NOMINAL_START_HUE_DEG + (360.0 / NOMINAL_HUE_SLOTS) * hue_slot
-    lightness, chroma = _NOMINAL_TONES.get(tone, _NOMINAL_TONES[None])
+    lightness, chroma = NOMINAL_TONES.get(tone, NOMINAL_TONES[None])
     return [_fit_chroma(lightness, chroma, start + 360.0 * i / count) for i in range(count)]
 
 

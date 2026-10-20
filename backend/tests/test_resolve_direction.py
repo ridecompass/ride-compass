@@ -43,30 +43,17 @@ async def test_every_way_gets_a_direction_and_untagged_ways_are_two_way(road_gra
 
 
 @pytest.mark.parametrize(
-    ("oneway", "expected"),
+    ("tags", "expected"),
     [
-        (" TRUE ", "forward"),
-        ("-1", "backward"),
+        ({"oneway": " TRUE "}, "forward"),
+        ({"oneway": "-1"}, "backward"),
         # 時間帯で向きが変わる等、向きを言い切れない値は一方通行にしない。
-        ("alternating", "both"),
+        ({"oneway": "alternating"}, "both"),
+        ({"junction": "roundabout"}, "forward"),
+        ({"junction": "roundabout", "oneway": "no"}, "both"),
+        # 自転車は一方通行の規制の対象外（逆走できる）。
+        ({"oneway": "yes", "oneway:bicycle": "no"}, "both"),
     ],
 )
-async def test_the_oneway_tag_decides_the_direction(road_graph_engine, oneway, expected):
-    assert await _direction(road_graph_engine, {"oneway": oneway}) == expected
-
-
-async def test_a_roundabout_is_one_way_without_a_oneway_tag(road_graph_engine):
-    assert await _direction(road_graph_engine, {"junction": "roundabout"}) == "forward"
-
-
-async def test_an_explicit_two_way_tag_overrides_the_roundabout(road_graph_engine):
-    assert await _direction(road_graph_engine, {"junction": "roundabout", "oneway": "no"}) == "both"
-
-
-async def test_a_oneway_value_that_says_nothing_leaves_the_roundabout_one_way(road_graph_engine):
-    assert await _direction(road_graph_engine, {"junction": "roundabout", "oneway": "alternating"}) == "forward"
-
-
-async def test_the_bicycle_exception_overrides_the_oneway_tag(road_graph_engine):
-    """自転車は一方通行の規制の対象外（逆走できる）。"""
-    assert await _direction(road_graph_engine, {"oneway": "yes", "oneway:bicycle": "no"}) == "both"
+async def test_the_tags_decide_the_direction(road_graph_engine, tags, expected):
+    assert await _direction(road_graph_engine, tags) == expected

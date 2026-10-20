@@ -33,6 +33,8 @@ from tests.structure.source_symbols import (
     called_name,
     is_scaffold,
     scanned_tests,
+    within,
+    write_files,
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -43,10 +45,6 @@ NAMED_BY_STRING = REPLACING_BY_NAME | {"getattr", "hasattr"}
 
 def _internal(name: str) -> bool:
     return len(name) > 1 and name.startswith("_") and not (name.startswith("__") and name.endswith("__"))
-
-
-def _in_app(module: str) -> bool:
-    return module == APP or module.startswith(f"{APP}.")
 
 
 def _defined(tree: ast.AST) -> set[str]:
@@ -95,12 +93,12 @@ def internal_reaches(root: Path) -> list[str]:
                 return False
             owner = scope.resolve(owner_expr)
             if owner is not None:
-                return _in_app(owner.module)
+                return within(owner.module, APP)
             return name in defined and name not in own
 
         for node in ast.walk(tree):
             text = None
-            if isinstance(node, ast.ImportFrom) and _in_app(imported := source.absolute(module, node)):
+            if isinstance(node, ast.ImportFrom) and within(imported := source.absolute(module, node), APP):
                 text = ", ".join(f"{imported}.{alias.name}" for alias in node.names if _internal(alias.name)) or None
             elif isinstance(node, ast.Attribute) and reaches(node.value, node.attr):
                 text = ast.unparse(node)
@@ -121,7 +119,7 @@ def test_tests_do_not_reach_app_internal_names() -> None:
 
 
 def _backend(tmp_path: Path, test_source: str) -> Path:
-    for relative, text in {
+    return write_files(tmp_path, {
         "app/__init__.py": "",
         "app/batch/__init__.py": "",
         "app/batch/rebuild.py": (
@@ -134,10 +132,7 @@ def _backend(tmp_path: Path, test_source: str) -> Path:
         "tests/__init__.py": "",
         "tests/fakes.py": "class FakeRows:\n    def __init__(self):\n        self._calls = []\n",
         "tests/test_sample.py": test_source,
-    }.items():
-        (tmp_path / relative).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / relative).write_text(text, encoding="utf-8")
-    return tmp_path
+    })
 
 
 def test_detects_reaching_app_internal_names_but_not_names_the_tests_or_libraries_own(tmp_path: Path) -> None:

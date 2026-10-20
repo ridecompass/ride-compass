@@ -1,26 +1,23 @@
 """道の区分のPostGISスキーマ（SQLAlchemy ORM）。
 
-区分・地図の線の層・転がり抵抗・除外の設定の正本はこの表で、コードは写しを持たない。**守るべき形は表の制約だけが守る**
-（docs/architecture/design-principles.md 構造仕様15）。外部キーは全部トランザクションの終わりまで遅らせ、全体を1回で
+区分・地図の線の層・転がり抵抗・除外の設定の正本はこの表で、コードは写しを持たない。**表の中で閉じる形は表の制約だけが守る**
+（docs/architecture/design-principles.md 構造仕様15。コードの宣言と軸を名指す値は、書く側が確かめる）。外部キーは全部トランザクションの終わりまで遅らせ、全体を1回で
 入れ替える書き込み（`infrastructure/road_class_repository.py: replace_road_class_rows`）を、入れ替えた後の形で確かめる。
 改名は「新しい鍵＋前の鍵」でしかしないので、`ON UPDATE CASCADE`は置かない。
 """
 
-from datetime import datetime
 from typing import Any, Literal, TypedDict
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
-    DateTime,
     ForeignKey,
     ForeignKeyConstraint,
     Identity,
     Integer,
     String,
     UniqueConstraint,
-    func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, attribute_keyed_dict, mapped_column, relationship
@@ -70,7 +67,6 @@ class RoadClassificationRow(Base):
     label: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(String, nullable=False)
     is_published: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     classes: Mapped[dict[str, "RoadClassRow"]] = _children("class_key", "RoadClassRow.class_key")
 
 
@@ -89,7 +85,7 @@ class RoadClassRow(Base):
     #: 意味の文だけ。タグの注は配るときに条件から組む。
     description: Mapped[str] = mapped_column(String, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
-    former_keys: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default="{}")
+    former_keys: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
     condition_rows: Mapped[list["RoadClassConditionRow"]] = _children(None, "RoadClassConditionRow.condition_id")
 
     @property
@@ -235,4 +231,4 @@ class RoadAvoidanceOverrideRow(Base):
     #: NULLは「通る」。
     default_level: Mapped[str | None] = mapped_column(String, nullable=True)
     #: falseは除外タブに出さず、段も効かせない。
-    selectable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    selectable: Mapped[bool] = mapped_column(Boolean, nullable=False)

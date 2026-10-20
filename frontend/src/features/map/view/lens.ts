@@ -17,7 +17,7 @@ import {
   type LensId,
   type RouteStyleMode,
 } from "@/lib/mapDisplay/routeStyleModes";
-import type { LensOption } from "@/features/map/LensControl/LensControl";
+import type { LensOption } from "@/features/map/LensControl/LensRow";
 import { evaluationConditions, type CatalogAxis } from "@/lib/catalogAxis";
 
 /** 全道路を塗っている軸。ルート確定後は、周囲も塗り続ける設定の間だけ塗る。 */

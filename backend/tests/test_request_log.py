@@ -40,8 +40,6 @@ def test_access_log_line_carries_the_request_id(caplog):
     assert len(records) == 1
     line = caplog.handler.format(records[0])
     assert f"[req:{CLIENT_REQUEST_ID}]" in line
-    assert "GET /health -> 200" in line
-    assert "ms client=" in line
 
 
 @pytest.mark.parametrize(

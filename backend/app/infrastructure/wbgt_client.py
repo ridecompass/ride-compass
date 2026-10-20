@@ -32,8 +32,6 @@ _POINT_MASTER_CACHE_TTL_SECONDS = 24 * 60 * 60
 # に配慮して1時間TTLとする。
 _FORECAST_CACHE_TTL_SECONDS = 60 * 60
 
-REQUEST_TIMEOUT = httpx.Timeout(connect=3.0, read=8.0, write=5.0, pool=5.0)
-
 logger = logging.getLogger("ridecompass.wbgt_client")
 
 _POINT_MASTER_CACHE_KEY = "point_master"
@@ -57,7 +55,7 @@ async def fetch_point_master(client: httpx.AsyncClient, cache: TTLCache) -> list
     （End Year-End Month-End Dayが"9999-99-99"以外）は除外する。"""
 
     async def fetch() -> list[WbgtPoint]:
-        response = await client.get(WBGT_POINT_MASTER_URL, timeout=REQUEST_TIMEOUT)
+        response = await client.get(WBGT_POINT_MASTER_URL)
         response.raise_for_status()
         return _parse_point_master(response.text)
 
@@ -150,7 +148,7 @@ async def fetch_forecast(
     }
 
     async def fetch() -> list[WbgtForecast]:
-        response = await client.get(WBGT_FORECAST_API_URL, params=params, timeout=REQUEST_TIMEOUT)
+        response = await client.get(WBGT_FORECAST_API_URL, params=params)
         response.raise_for_status()
         body = response.json()
         if not isinstance(body, dict) or body.get("status") != "success":

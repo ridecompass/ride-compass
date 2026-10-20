@@ -1,7 +1,6 @@
 """`api/routers/jma_tile.py`——気象庁のタイルの中継と、在否インデックスの配信。
 
-確かめるのは、キャッシュ・補間・上流の結果がどの応答になるか（中身・404・502とブラウザに覚えさせる時間）、
-回数制限（429）をキャッシュの外れにだけ当てること、問い合わせの文字列を上流へ渡すこと、
+確かめるのは、キャッシュ・補間・上流の結果がどの応答になるか（中身とブラウザに覚えさせる時間）、問い合わせの文字列を上流へ渡すこと、
 配信元が持たないズームを親タイルから補間して書き戻すこと（`services/jma_tile_proxy_service.py`・`services/jma_tile_interpolation_service.py`の段取りも
 ここで通す）、インデックスの有無の応答。取得の口（`get_jma_tile_client`）は応答を差し替え、Redisは`fake_redis`で通す。
 
@@ -21,6 +20,7 @@ from PIL import Image
 from shapely.geometry import LineString
 
 from app.api.dependencies import get_jma_tile_client
+from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from app.infrastructure.jma_tile_index import JmaTileIndex, set_index
 from app.main import app
 
@@ -42,7 +42,7 @@ class FakeJmaTileClient:
         self._fetched = fetched
         self._parent = parent
         self.fetched_paths: list[str] = []
-        self.stored: list[tuple[str, str]] = []
+        self.stored: list[tuple[str, bytes, str]] = []
 
     async def get_cached(self, path):
         return self._cached
@@ -55,7 +55,8 @@ class FakeJmaTileClient:
         return self._parent
 
     async def store(self, path, content, content_type):
-        self.stored.append((path, content_type))
+        self.stored.append((path, content, content_type))
+        return content, content_type
 
 
 def _answer(monkeypatch, **answers) -> FakeJmaTileClient:
@@ -80,6 +81,21 @@ def test_a_cached_tile_is_served_without_asking_upstream(monkeypatch, path, cach
     assert response.content == b"\x89PNG"
     assert response.headers["cache-control"] == cache_control
     assert fake.fetched_paths == []
+
+
+@pytest.mark.parametrize(("path", "cache_control"), [
+    # 疎な格子の穴は確定した事実なので、ブラウザに覚えさせて再要求させない。
+    (TILE, "public, max-age=600"),
+    # コマの地物は配信されるまで404が返る。覚えさせると、配信されたあとも空白のまま見える。
+    ("/api/jma-tile/bosai/jmatile/data/nowc/20260904120000/none/20260904120000/surf/liden/data.geojson?id=liden", "no-store"),
+])
+def test_an_upstream_404_is_remembered_by_the_browser_only_when_final(monkeypatch, path, cache_control):
+    _answer(monkeypatch, fetched=UPSTREAM_NOT_FOUND)
+
+    response = client.get(path)
+
+    assert response.status_code == 404
+    assert response.headers["cache-control"] == cache_control
 
 
 def test_jma_tile_proxy_forwards_query_string_to_client(monkeypatch):
@@ -113,7 +129,7 @@ def test_jma_tile_proxy_interpolates_zoom_without_native_data(monkeypatch):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/png")
     assert fake.fetched_paths == []
-    assert fake.stored == [(f"{RAIN_FRAME}/9/455/201.png", "image/png")]
+    assert fake.stored == [(f"{RAIN_FRAME}/9/455/201.png", response.content, "image/png")]
 
 
 def test_jma_tile_proxy_interpolates_vector_tiles(monkeypatch):
@@ -128,7 +144,7 @@ def test_jma_tile_proxy_interpolates_vector_tiles(monkeypatch):
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("binary/octet-stream")
-    assert fake.stored == [(f"{FLOOD_FRAME}/9/455/201.pbf", "binary/octet-stream")]
+    assert fake.stored == [(f"{FLOOD_FRAME}/9/455/201.pbf", response.content, "binary/octet-stream")]
 
 
 def test_jma_tile_proxy_falls_back_when_parent_tile_is_unavailable(monkeypatch):

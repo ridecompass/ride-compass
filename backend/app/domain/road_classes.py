@@ -2,20 +2,25 @@
 
 正本は管理DBの表（`infrastructure/road_class_models.py`）で、コードは写しも既定も持たない——表が空なら区分は0件。
 型は表の行を写すだけで、表の制約が守る形（鍵の綴り・参照先の実在・並びの重なり）をもう一度確かめない。制約で表せない
-データの良し悪し（条件の重なり・前の鍵の付け方・値の綴り）も判定せず、振り分けの式がどんなデータにも1つの答えを出す。
+データの良し悪し（条件の重なり・前の鍵の付け方・条件の値の綴り）も判定せず、振り分けの式がどんなデータにも1つの答えを出す。
+コードの宣言を名指す値は、書く側だけが宣言に照らす（`undeclared_references`）。
 """
 
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from typing import Annotated, Protocol, cast
+from dataclasses import dataclass
+from typing import Annotated, Any, Protocol, cast
 
 import numpy as np
 from pydantic import Field
 
 from app.domain.attributes import CategoricalColumn, MaterialColumn
-from app.domain.material_catalog import CoverageExcluded, MaterialSpec
+from app.domain.display_palette import NOMINAL_TONES
+from app.domain.map_display import MAP_LAYER_CATEGORIES
+from app.domain.material_catalog import MATERIAL_CATALOG, CoverageExcluded, MaterialSpec
 from app.domain.strict_model import StrictModel
+from app.domain.tuning import TUNING_PARAMETERS_BY_ID
 
 #: 真偽の事実が「ある」ときの値の綴り。
 TRUE_FACT_VALUE = "true"
@@ -114,6 +119,36 @@ EMPTY_ROAD_CLASSES = RoadClassDefinitions(
     avoidance_classifications={},
 )
 
+def undeclared_references(definitions: RoadClassDefinitions) -> list[str]:
+    """コードの宣言を名指す値のうち、宣言に無いもの（運用者が読む文）。空なら全部が宣言にある。
+
+    読む側は知らない値を1つの振る舞いへ倒す（どの道にも無い事実・標準の段・基準の転がり抵抗等）ので、綴り違いは書いた
+    あと黙って効く。書く側（管理APIの入れ替え）だけがこれで断る。宣言から値を消しても、残った行は読む側が倒すだけで起動は止まらない。
+    """
+    problems = [
+        f"区分「{class_key}」（分け方 {key}）の条件の事実 {fact_key} は材料にありません"
+        for key, classification in definitions.classifications.items()
+        for class_key, road_class in classification.classes.items()
+        for fact_key in dict.fromkeys(fact for condition in road_class.conditions for fact in condition)
+        if fact_key not in MATERIAL_CATALOG
+    ]
+    groups = {category.key for category in MAP_LAYER_CATEGORIES}
+    for key, layer in definitions.map_layers.items():
+        if layer.group_key not in groups:
+            problems.append(f"地図の線の層 {key} のまとめ先 {layer.group_key} は地図の種別にありません")
+        if layer.tone not in NOMINAL_TONES:
+            problems.append(f"地図の線の層 {key} の色の段 {layer.tone} はありません")
+        if layer.no_data_fact_key is not None and layer.no_data_fact_key not in MATERIAL_CATALOG:
+            problems.append(f"地図の線の層 {key} のデータなしの事実 {layer.no_data_fact_key} は材料にありません")
+    problems += [
+        f"転がり抵抗の区分 {key}.{class_key} の較正値 {tuning_id} は較正値の宣言にありません"
+        for key, classes in definitions.rolling_resistance_classes.items()
+        for class_key, tuning_id in classes.items()
+        if tuning_id not in TUNING_PARAMETERS_BY_ID
+    ]
+    return problems
+
+
 _current = EMPTY_ROAD_CLASSES
 
 
@@ -190,6 +225,38 @@ def class_material_id(classification_key: str) -> str:
     return f"{CLASS_MATERIAL_PREFIX}{classification_key}"
 
 
+def former_class_names(key: str, road_class: RoadClass) -> tuple[str, ...]:
+    """区分の前の鍵のうち分け方`key`の中を指すものの、区分の名。ほかの分け方を指す前の鍵は、`key`の区分の列の値だったことが無い。"""
+    return tuple(name for former in road_class.former_keys for owner, _, name in [former.partition(".")] if owner == key)
+
+
+def class_value_names(key: str, classification: RoadClassification) -> set[str]:
+    """分け方`key`の区分の列を引く表が名指してよい値: 今の区分の鍵と、前の鍵の区分の名（`ClassColumn`が引く）。"""
+    return {*classification.classes, *(name for c in classification.classes.values() for name in former_class_names(key, c))}
+
+
+@dataclass(frozen=True, slots=True)
+class ClassColumn(CategoricalColumn):
+    """区分の列。値は今の区分の鍵で、列を引く表（軸の対応表・0次条件・転がり抵抗の表）は、今の鍵で引けない区分を前の鍵の
+    区分の名（`former`、番号ごと）でも引く。区分を改名・分けたあとも、表を直すまで前の値で読み続ける。前の名のうち先に書いた方が勝つ。"""
+
+    former: tuple[tuple[str, ...], ...]
+
+    def take(self, rows: np.ndarray) -> "ClassColumn":
+        return ClassColumn(self.codes[rows], self.vocab, self.former)
+
+    def lookup(self, table: Mapping[Any, float]) -> np.ndarray:
+        per_code = np.array([
+            np.nan if value is None else next((table[name] for name in (value, *former) if name in table), np.nan)
+            for value, former in zip(self.vocab, self.former, strict=True)
+        ])
+        return per_code[self.codes]
+
+    def equals(self, value: object) -> np.ndarray:
+        """区間ごとに、値が`value`か、前の名に`value`を持つか（1行だけの表を`lookup`で引いたときに当たる区間）。"""
+        return CategoricalColumn.equals(self, value) | np.isin(self.codes, [code for code, former in enumerate(self.former) if value in former])
+
+
 def class_columns(
     definitions: RoadClassDefinitions, columns: Mapping[str, MaterialColumn], n: int
 ) -> dict[str, CategoricalColumn]:
@@ -203,7 +270,8 @@ def class_columns(
             hits += matched
             codes[matched] = code
         codes[hits != 1] = 0
-        result[class_material_id(key)] = CategoricalColumn(codes, (None, *classification.classes))
+        former = tuple(former_class_names(key, c) for c in classification.classes.values())
+        result[class_material_id(key)] = ClassColumn(codes, (None, *classification.classes), ((), *former))
     return result
 
 

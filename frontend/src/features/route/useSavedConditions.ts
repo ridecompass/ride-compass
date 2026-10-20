@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 
+import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useStoredState } from "@/hooks/useStoredState";
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import {
   readSavedConditions,
+  savedWithCurrentRoadKeys,
   suggestedConditionName,
   withSavedCondition,
   type SavedCondition,
@@ -40,6 +42,15 @@ export function useSavedConditions({
     deserialize: readSavedConditions,
     rewrite: true,
   });
+  // 軸カタログが届いたら、前の鍵に選んだ避け方の段を今の鍵へ書き直して保存へ書き戻す（`rewrite`は形を直すだけで、鍵は
+  // 軸カタログが届くまで分からない）。
+  const axisCatalog = useAxisCatalog();
+  const avoidanceView = axisCatalog.roadClasses.avoidance;
+  useEffect(() => {
+    if (axisCatalog.loaded && savedWithCurrentRoadKeys(saved, avoidanceView) !== saved) {
+      setSaved((prev) => savedWithCurrentRoadKeys(prev, avoidanceView));
+    }
+  }, [axisCatalog.loaded, avoidanceView, saved, setSaved]);
 
   // 出発地は保存のときに固定するかを選ぶので、いまの条件には持たない。
   const { snapshot: current, restore } = conditions;

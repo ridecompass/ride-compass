@@ -18,7 +18,7 @@ import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
 import { cn } from "@/lib/cn";
 
-/** 「ルート設定」区分のタブ。タブ列と選択状態はpage.tsxが持ち（見出し行に置くため）、
+/** 「ルート設定」区分のタブ。タブ列（`SettingsTabsList.tsx`）と選択状態は外が持ち（見出し行に置くため）、
  * ここは各タブの中身だけを描く。 */
 export type SettingsTab = "generate" | "weights" | "exclusions" | "saved";
 
@@ -70,7 +70,7 @@ interface RouteFormProps {
   onPointsShow: () => void;
   /** 地図をタップすると選んでいる地点を置くか（ルート設定が地図で効いている間）。 */
   placing: boolean;
-  /** 「重み」タブの中身。タブの列と「ルート生成」ボタンは見出しの行（page.tsx）、検証は`useRouteFormSubmit`が持つ。 */
+  /** 「重み」タブの中身。タブの列と「ルート生成」ボタンは見出しの行、検証は`useRouteFormSubmit`が持つ。 */
   weightsPanel: React.ReactNode;
   /** 「除外」タブの中身。 */
   exclusionsPanel: React.ReactNode;
@@ -167,7 +167,7 @@ export default function RouteForm({
             />
             <span
               className={cn(
-                // 文字の大きさは地点の並びの札の名前とそろえる（`RoutePoints.tsx: chipName`）。
+                // 文字の大きさは地点の並びの札の名前とそろえる（`PointStrip.tsx: chipName`）。
                 "min-w-[3.25em] flex-shrink-0 text-right text-[length:var(--font-size-md)] tabular-nums",
                 !distanceTargeted && "opacity-40",
               )}

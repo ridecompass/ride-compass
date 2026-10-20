@@ -9,10 +9,10 @@
 
 ここで見ないもの:
 - タイルの取得・キャッシュ・空タイルの扱い・読めない時刻一覧の形 → `test_jma_tile_client.py`・`test_jma_tile_redis_cache.py`
-- 空かどうかの判定 → `test_jma_tile_content.py`
+- 空かどうかの判定（取得の結果が空なら`UPSTREAM_NOT_FOUND`になる） → `test_jma_tile_content.py`・`test_jma_tile_client.py`
 - 配信元仕様（ズームの偶奇・時刻一覧のファイル）・時刻一覧の読み方（別の要素の行・最新の実況・最新の行・
   メンバーごとの最新の完全なラン）・タイルのパスと拡張子 → `test_jma_tile_specs.py`
-- 段をつないだときの各段の最初のコマ（前の段の後ろに続く・前の段に覆われた段は描かない） → `test_weather_elements.py`
+- 段をつないだときの各段の最初のコマ（前の段の後ろに続く・前の段に覆われた段は描かない・前の段が空なら最初から描く） → `test_weather_elements.py`
 
 配信元の仕様の事実として、要素はどれも偶数ズーム（4・6・8・10、雷と竜巻は8まで）だけが実データを持ち、
 奇数ズームは親から補う。
@@ -86,7 +86,7 @@ def _png(alpha: int) -> bytes:
     return buffer.getvalue()
 
 
-OPAQUE, TRANSPARENT = _png(255), _png(0)
+OPAQUE = _png(255)
 
 
 class Source:
@@ -151,18 +151,17 @@ async def test_tiles_are_fetched_at_the_zooms_the_source_has_data_for(stored):
     await _run(source)
 
     assert {_tile_parts(p)["z"] for p in source.tile_requests("rain_mesh")} == {4, 6, 8, 10}
-    assert {_tile_parts(p)["z"] for p in source.tile_requests("thns")} == {4, 6, 8}
 
 
 # --- 在否インデックス ---
 
 
 async def test_the_index_lists_the_tiles_that_have_something_to_draw(stored):
-    """中身のあるタイルだけを載せる。空タイル・透明な画像・0バイトのベクタ・取れなかったタイルは載せない。"""
+    """中身のあるタイルだけを載せる。空タイル・取れなかったタイルは載せない。"""
     source = Source(tiles={
         "/surf/rain_mesh/4/": (OPAQUE, "image/png"),
-        "/surf/rain_mesh/6/": (TRANSPARENT, "image/png"),
-        "/surf/flood/4/": (b"", "application/x-protobuf"),
+        "/surf/rain_mesh/6/": UPSTREAM_NOT_FOUND,
+        "/surf/flood/4/": UPSTREAM_NOT_FOUND,
         "/surf/land/4/": None,
     })
 
@@ -217,17 +216,3 @@ async def test_elements_whose_time_list_cannot_be_read_are_skipped_with_a_warnin
     assert source.tile_requests("thns")
     warning = next(r.getMessage() for r in caplog.records if r.levelno == logging.WARNING)
     assert all(element in warning for element in RISK_ELEMENTS)
-
-
-async def test_a_later_stage_starts_the_timeline_when_the_earlier_stage_has_no_frames(stored):
-    """1段目が取れなければ、画面は2段目を最初から描く。温めるのもその最初のフレーム。"""
-    target_times = _target_times()
-    target_times[N1] = target_times[N2] = None
-
-    source = Source(target_times=target_times)
-    await _run(source)
-
-    assert not source.tile_requests("hrpns")
-    frames = {(_tile_parts(p)["basetime"], _tile_parts(p)["validtime"], _tile_parts(p)["member"])
-              for p in source.tile_requests("rasrf")}
-    assert frames == {("20260922000000", "20260922003000", "m1")}

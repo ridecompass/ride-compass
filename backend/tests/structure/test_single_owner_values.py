@@ -15,7 +15,7 @@
 
 import json
 import re
-import subprocess
+import sys
 from functools import cache
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -23,7 +23,11 @@ from urllib.parse import urlsplit
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ORIGINS_FILE = "production-origins.json"
 FLOW_CONFIG_FILE = "tools/flow-gate/flow.config.json"
-UNMAINTAINED_PREFIXES = ("docs/records/",)
+
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+from repo_git import run  # noqa: E402
+from repo_population import UNMAINTAINED_PREFIXES  # noqa: E402
 
 ORIGIN = re.compile(r"https?://[A-Za-z0-9.-]+(?::\d+)?")
 
@@ -31,9 +35,8 @@ ORIGIN = re.compile(r"https?://[A-Za-z0-9.-]+(?::\d+)?")
 @cache
 def _tracked_texts() -> list[tuple[str, str]]:
     """(リポジトリからのパス, 中身)。UTF-8 で読めないファイル（画像等）と、作業ツリーに無いファイルは読まない。"""
-    out = subprocess.run(["git", "ls-files", "-z"], cwd=REPO_ROOT, capture_output=True, check=True).stdout
     texts = []
-    for name in out.decode("utf-8").split("\0"):
+    for name in run("ls-files", "-z", cwd=REPO_ROOT, check=True).stdout.split("\0"):
         if not name or name.startswith(UNMAINTAINED_PREFIXES):
             continue
         try:

@@ -237,7 +237,7 @@ class WayDirectionRow(_WayKey, Base):
 
     #: 通行方向（forward/backward/both）。タグからの判断なので、生データではなくここに置く。
     #: 探索が有向グラフをメモリ上で組むときに、逆向きの枝を作ってよいかを決める。
-    direction: Mapped[str] = mapped_column(String, nullable=False, server_default="both")
+    direction: Mapped[str] = mapped_column(String, nullable=False)
 
     #: 上下線が分かれた道の片側か。
     divided: Mapped[bool] = mapped_column(Boolean, nullable=False)

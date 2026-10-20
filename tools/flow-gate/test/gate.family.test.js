@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { NO_GRANDCHILD, originLine } from "../src/family.js";
 import { conditions, droppedQuestion, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
-import { config, T, END, world, ev, head, ASK_DROPPED, QUESTION, REPLY, CONFIRMED, ASKED } from "./world.js";
+import { config, T, END, world, ev, head, said, ASK_DROPPED, QUESTION, REPLY, CONFIRMED, ASKED } from "./world.js";
 
 // 分けたタスクの扱い（tasks#824・#842 の C4）: 子は要望の値（優先度・日時・急ぎ・保留・採否）を親から継ぎ、約束（完了の条件）は自分の本文に持つ。
 // 待つ相手は前提と子で、閉じたことと保留が矢印1本ずつ伝わる。
@@ -227,4 +227,34 @@ test("tasks#938 前提の対話作業が config.dialogIdleHours より長く動�
     assert.deepEqual([w.at(1).status, notices(w.at(1)).length], ["待機", count], name);
     if (count) assert.match(notices(w.at(1))[0], /#9/, `${name}: どの前提かを書く`);
   }
+});
+
+test("tasks#1078 完了の条件が全部済んでも、本文の「やること」に行き先を名指していない項目が残る間は完成で閉じず、実装担当へ渡して一度だけ知らせる", async () => {
+  // 項目1の行き先を変え、項目2は見送りで結んでおく。完了の条件は全部済んでいる。
+  const body = (...to) => ["<details><summary>やること</summary>", "", "1. 作る", ...to.map((t) => `   - 行き先: ${t}`), "2. 消す", "   - 行き先: 見送り（要らないと分かった）",
+    "", "</details>", "", "- [x] 作る", ""].join("\n");
+  const rows = [
+    // [要求, 項目1の行き先, 閉じるか]
+    ["行き先が無い", [], false],
+    ["今の完了の条件の文の頭を指す", ["完了の条件「作る」"], true],
+    ["今の完了の条件に無い文を指す", ["完了の条件「消えた条件」"], false],
+    ["ほかの issue を指す", ["#5 へ寄せた"], true],
+    ["自分を指す", ["#1"], false],
+    ["理由の無い見送り", ["見送り"], false],
+    ["当たらない行き先と並べても、名指した行き先が1つあればよい", ["完了の条件「消えた条件」", "#5"], true],
+  ];
+  for (const [name, to, closes] of rows) {
+    const w = world([{ n: 1, status: "実装", body: body(...to) }]);
+    await w.send(ev.issue(1, "edited", config.claude));
+    const i = w.at(1);
+    assert.deepEqual([i.state, i.status, w.titles()], closes ? ["CLOSED", "完了", []] : ["OPEN", "実装", ["#1 実装"]], name);
+    if (!closes) assert.match(said(i), /「やること」の 1「作る」 が行き先を名指していない/, `${name}: どの項目かを知らせる`);
+  }
+  const w = world([{ n: 1, status: "検証", body: body() }]);
+  await w.send(ev.issue(1, "edited", config.claude));
+  await w.send(ev.comment(1));
+  assert.equal(w.at(1).comments.filter((c) => c.includes("行き先を名指していない")).length, 1, "直るまで同じ知らせを重ねない");
+  w.at(1).body = body("完了の条件「作る」");
+  await w.send(ev.issue(1, "edited", config.claude));
+  assert.equal(w.at(1).state, "CLOSED", "実装担当が行き先を書いたら完成で閉じる");
 });

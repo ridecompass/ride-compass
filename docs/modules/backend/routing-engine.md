@@ -14,7 +14,7 @@
 | レイヤー | ファイル |
 |---|---|
 | domain | `road_network.py`（取込範囲全体の道路網を、有向の区間とノードの番号で引ける列の配列として持つ型。行の並び・分類の材料を語彙への番号で持つことはそのdocstringが持つ）・`routing.py`・`graph.py`・`route.py`・`route_points.py`（ルートの近くの点を、経路の区間の並びと向きから始点からの道のりへ置き直す`route_points.py: points_along_route`）・`route_road_classes.py`（区間に載せる道の区分の値を道路網の行から読む`route_road_classes.py: SegmentClassReader`。値は地図がそのレイヤを塗るのと同じ値で、「緑と水」は割合が最も多いクラス）・`geo.py`・`errors.py`・`region.py`（矩形（`domain/region.py: BoundingBox`）と地点を覆う矩形の組み立て、XYZタイルとの相互変換（緯度経度・Web Mercatorのメートル・同じ式のSQL）。タイル座標の型（路面のズーム`domain/region.py: RoadTileZoom`・列と行`domain/region.py: TileIndex`。ほかのレイヤーのズームの型はそのレイヤーの宣言の隣）と、列・行がズームの範囲にあるかの検査`domain/region.py: check_tile_index`も持ち、タイルを受ける入口（path・本文）はどれもこれで書く。タイル配信・取込・派生バッチ・推計気象分布の画素（`infrastructure/jma_suikei_client.py`）もこの変換を共有する）・`cycling_speed.py`（自転車の走行モデル。平地・無風の巡航速度からホイール出力を逆算し、勾配・向かい風・転がり抵抗から区間ごとの速度を走行方程式で解く。速度の逆算は`v`の3次方程式になるため二分法で、numpyでベクトル化してある。候補の所要時間と基準線の探索コストがここから出る）・`tuning.py`（ルーティング評価が読む固定値の宣言。走ってみて決める値［較正値］は既定ごとここが持ち、エンジンが読む値・管理画面が並べる項目・変更が効くために何をやり直す必要があるかをそこから導く。較正値ではない固定値は載せない）・`tuning_labels.py`（較正値の管理画面での名前。値を使う側の宣言が持つ対象を添える）・`route_search.py`（探索が候補を選ぶ判断の値と手順。折返し点・復路・代替経路の間引きのしきい値、往路と周回全長の比の範囲と折返し点を探すリング、候補を同じとみなす距離の粒度、目的地を寄せてよい距離、候補の並べ方（パレート層と難易度）・同点の組・離れているかの判定・逆回りとの比べ方・A*の下界・迂回率の測り方と共有の粒度、応答の候補の並び）・`loop_routing.py`（周回・目的地ルートの探索結果を運ぶ型。探索の実装と候補を並べる戦略のどちらにも属さない）・`route_request.py`（ルート生成の要求が受け付ける値の範囲（返す候補数の既定と上限・想定速度の既定と範囲の型`route_request.py: AssumedSpeedKmh`を含む。想定速度は地図の配信・区間インスペクタの入口も同じ型で受ける）と、その外れを知らせる文。経由地・目的地が出発地から届く範囲にあるかの検査`route_request.py: check_points_within_reach`。要求の検証と、画面が操作を止める上限の生成物が同じ宣言を読む。検証を通った要求が何を生成するか（距離あり・距離なし・差し替えた経路）の型も持ち、仕上げの戦略を選ぶのはこの型だけ）・`leg_costs.py`（レグごとのコスト配列の合成。静的スコア行列・重み・0次フィルタ・風の予報から、探索のコストと区間の表示が読む配列を時刻ビンごとに作る。外部とやり取りせず配列だけを受け取るので、エンジンの途中状態を組まずに確かめられる。下記「レグ別コスト配列」） |
-| services | `route_generator.py`（戦略層。生成の骨組みと、距離の有無で分かれる仕上げの戦略）・`road_graph_engine.py`・`graph_service.py`・`route_generation_setup.py`（エンジンの組み立てと評価条件の既定の解決。組んだエンジンで要求の対象の候補を作る段取り`route_generation_setup.py: generate_route_candidates`） |
+| services | `route_generator.py`（戦略層。生成の骨組みと、距離の有無で分かれる仕上げの戦略）・`road_graph_engine.py`（探索範囲の準備・前段・距離ありの仕上げ）・`road_graph_context.py`（1回の生成の間、エンジン・仕上げ・候補の組み立てが共有する状態`road_graph_context.py: RoadGraphContext`と前段の結果`road_graph_context.py: FixedLegs`、そこから区間・ノードを引く部品）・`road_graph_via_routes.py`（距離なしの仕上げ。via-nodeの代わりの道と基準線）・`road_graph_candidates.py`（選んだ経路を応答の候補へ組み立てる`road_graph_candidates.py: evaluate_routes`）・`graph_service.py`・`route_generation_setup.py`（エンジンの組み立てと評価条件の既定の解決。組んだエンジンで要求の対象の候補を作る段取り`route_generation_setup.py: generate_route_candidates`） |
 | infrastructure | `road_graph_repository.py`（道路網・材料の読み出し専用）・`route_side_points.py`（区間ごとに、近くの点を区間の形の上の位置つきで引くSQL）・`material_joins.py`（材料の式が読む別名`material_joins.py: em`・`material_joins.py: wm`を与える表の結び方）・`road_tile_sql.py`（地図のタイルと、タイルと同じフィーチャーごとに値を配る読み出しのSQL）・`road_network_store.py`（道路網全体の配列をDBから作り、ディスクへ置き、読む）・`detour_ratio_cache.py`（探索範囲ごとに学習した迂回率）・`cache_identity.py`（キャッシュ鍵の組み立て方の正本。手で書くリビジョンと、焼き込みSQL・列構成から導く署名を合成する。道路網の置き場の形の署名とタイル配信側の世代も同じ関数を使う）・`container_memory.py`（このプロセスのコンテナのメモリ上限。読み込む量の上限を導く）・`derived_data_meta.py`（派生データの世代と、今の派生の表を作った全ソースの取込。世代はバッチが中身を書き直すたびに進む単調カウンタで、デプロイを伴わない変化を表せる唯一の経路。配信するタイルのために生データの世代も一緒に読む） |
 | api | `routes.py` |
 
@@ -111,7 +111,7 @@ Edgeコストは「探索範囲の静的Edge×公開軸スコア行列＋リク�
 （`DynamicAxisRequestContext.wind_components_ms`）。合成結果`LegCostArrays`は`cost_lazy`（区間の番号順）と表示用の
 `difficulty_array`/`axis_arrays`/`weight_sums`/`material_arrays`（動的材料id→
 切り出した区間の順の配列の辞書、`evaluate_dynamic_material_arrays`が返す全材料のうち値がある
-ものだけ）を持ち、`_RoadGraphContext.legs`に添字順で並ぶ。`compose`は
+ものだけ）を持ち、`RoadGraphContext.legs`に添字順で並ぶ。`compose`は
 `DynamicAxisRequestContext`へ風の入力と走行速度（`speed_kmh`を`kmh_to_ms`でm/sへ変換）を
 渡し、風の材料（`wind_drag_ratio`）はこのcontextから求まる:
 
@@ -146,7 +146,7 @@ Edgeごとの値で上書きする。`displayed_material_ids`は符号付き材�
 （無ければ`ROUTE_DETOUR_RATIO`。`domain/wind.py: detour_ratio_or_default`）を合成器へ渡す。往路木を求めるたびに実測の中央値
 （周回はリングNode、目的地ルートは起点から`DETOUR_RATIO_MIN_ROAD_M`以上の到達Node）を測って
 `detour_ratio_cache.set_detour_ratio`へ学習値として保存し（`domain/route_search.py: median_detour_ratio`・
-`_learn_detour_ratio`。NaN・非正の実測は使わない＝`domain/wind.py: is_usable_detour_ratio`）、目的地ルートの後ろ向きレグはその場で測った値で到着予定時刻を置く。
+`learn_detour_ratio`。NaN・非正の実測は使わない＝`domain/wind.py: is_usable_detour_ratio`）、目的地ルートの後ろ向きレグはその場で測った値で到着予定時刻を置く。
 **周回の復路レグは迂回率を読まない**——総所要時間は目標距離÷仮定速度で決まる（距離
 フィルタが目標±許容を強制する）。運用時は`_build_search_graph`のINFOサマリ
 （`time_varying`・`speed_kmh`・`detour_ratio=値(learned|default)`）、
@@ -173,7 +173,7 @@ Edgeごとの値で上書きする。`displayed_material_ids`は符号付き材�
 | 距離なし（`_NoDistanceFinish`） | `generate_via_waypoints` | 置いた所へ良い道で向かう。最後の固定点から終点までの代わりの道と、終点が出発地と違えば最速の1本（下の`generate_via_waypoints`） |
 
 **周回は、終点が出発地と同じ目的地ルートとして扱う**。周回か目的地ルートかは目的地の有無ではなく、前段が決めた終点の
-Nodeが出発地のNodeか（`road_graph_engine.py: FixedLegs.closes`）の1つの判定で決め、目的地を置かない要求と、目的地が出発地と
+Nodeが出発地のNodeか（`road_graph_context.py: FixedLegs.closes`）の1つの判定で決め、目的地を置かない要求と、目的地が出発地と
 同じNodeへ寄る所に置いた要求を同じに扱う（終点の基準点も置いた出発地に揃え、同じ候補を作る）。この判定で分かれるのは、
 経由地の無い周回の近道（下の中継点の選び方の「経由地の無い周回」のリング）・方位の名前と逆回り・種類と名前・最速の基準線を含めるか、だけである。
 距離も経由地も無く終点が出発地と同じ要求は、出発地のすぐ隣で折り返すだけの経路しか作れないので断る——目的地を置かなければ
@@ -282,12 +282,12 @@ RouteGenerator.generate_loops(origin, distance_km, distance_tolerance_km, max_ro
 乗り換えられる所は少なめになりうる。
 
 **別エンドポイントにしていない**のは、合成も生成と同じコスト曲線だから——経路は確定済み
-でも`prepare`は通る（評価は`_RoadGraphContext`のコスト配列から読む。design-principles.md
+でも`prepare`は通る（評価は`RoadGraphContext`のコスト配列から読む。design-principles.md
 構造仕様10）。`prepare`は範囲の切り出しと探索素材の組み立てを毎回行い、区間数に比例して時間がかかるため、
 202＋ポーリングのジョブ機構がそのまま要る。
 
 送られたEdge id列が**実在し・順につながり・起点から始まり・終点へ着く**ことは
-`engine.build_traced_from_edge_ids`が確かめ（鍵は`_lazy_index_of`で区間の番号へ戻す。探索範囲に無い・
+`engine.build_traced_from_edge_ids`が確かめ（鍵は`lazy_index_of`で区間の番号へ戻す。探索範囲に無い・
 探索用グラフに載らない区間は実在しない扱い）、成立しなければ`RoutingError`で落とす
 （グラフを知るのはエンジンのため戦略層には置けない）。終点は生成と同じく出て戻れるNodeへ寄せて解く
 （下の「地点をNodeへ寄せる範囲」）ため、比べる相手は元の候補が実際に終わったNodeになる
@@ -322,8 +322,8 @@ RouteGenerator.generate_loops(origin, distance_km, distance_tolerance_km, max_ro
 **暗黙の前提**: 値の読み出しは呼ぶたびに行う。プロセス内に束ねる（import時に評価する・
 dataclassのフィールド既定値に置く）と、実行時に変えた値が効かない。**プロセスを入れ替えても
 直らない**——起動のたびに同じ順序で束ね直すだけで、上書きを読むのは全importの後だからである。
-リクエストが省略したときの既定値をAPIスキーマへ書くのも同じ束ね方で、`| None`＋リクエスト
-処理時の解決へ倒す（`domain/evaluation.py: resolve_penalty_strength`）。
+較正値をAPIスキーマの既定値へ書くのも同じ束ね方になるので、較正値は要求の欄にせず、使う処理が呼ばれるたびに
+読む（`services/route_generation_setup.py: assemble_route_generation_setup`）。
 
 この前提を守るのは「書いた値がプロセス内の`TUNING_VALUES`まで届く」テストで、母集団は
 宣言から導く（`tests/test_tuning_overrides.py`。上書きしていない全パラメータが宣言の
@@ -441,7 +441,7 @@ import済みの参照が古い辞書を指したままになる）。差し替�
 元にできるので、乗り換えの可否は持たない（上の`generate_spliced_route`）。idは
 `<種類>-<並びの位置>`（例: `loop-00`・`destination-01`）で、応答の中で一意になる（同じ方位に複数候補が並びうるため、
 方位からは作らない）。種類は終点で決まる——終点のNodeが出発地のNodeなら`loop`（目的地を出発地に置いた要求も）、ほかの所で
-終われば`destination`（経由地の有無・距離の有無を問わない。`road_graph_engine.py: FixedLegs.closes`）。
+終われば`destination`（経由地の有無・距離の有無を問わない。`road_graph_context.py: FixedLegs.closes`）。
 距離ありの周回の名前は方位、距離なしで出発地へ戻る候補は「経由地ルート」、目的地で終わる候補は「目的地ルート」。
 エンジン（`_build_candidate`）は並びも種類も知らないので、方位を持つ候補の`direction_label`
 （`domain/geo.py: compass_label`）だけを付けた`EvaluatedRoute`を返し、`route_generator.py`が区間からの集約を足して`RouteDraft`にする。id・種類・最速の印は`RouteCandidate`だけが
@@ -449,6 +449,9 @@ import済みの参照が古い辞書を指したままになる）。差し替�
 idの文字列や要求の形から決め直さない。
 
 ## RoadGraphEngine（`road_graph_engine.py`）
+
+戦略層が呼ぶ口はどれも`RoadGraphEngine`のメソッドで、距離なしの仕上げ（`road_graph_via_routes.py`）と候補の組み立て
+（`road_graph_candidates.py`）は、エンジンが持つ評価条件を渡して呼び出す。
 
 自前Road Graphを`GraphService`経由で取得し、`domain/routing.py`の辺基準グラフ探索で
 探索する。Edgeコストは`prepare`が対象bbox全体ぶんを**1回だけnumpyで合成**し、探索へは
@@ -488,7 +491,7 @@ NaN）へ動的軸（風、`domain/dynamic_materials.py: evaluate_dynamic_axis_a
 関数の登録制`DYNAMIC_MATERIAL_EVALUATORS`で軸名をハードコードしない汎用実装）と重み
 ベクトルを適用し、`compose_costs_from_axis_matrix`でコスト配列を1回だけ合成する。合成結果はレグ（往路/復路）ごとに`LegCostArrays`
 （`cost_lazy`[区間の番号順]・`difficulty_array`・`axis_arrays`[切り出した区間の順]）へ
-まとまり、`_RoadGraphContext.legs`が保持する（下記「レグ別コスト配列」節）。並行Edge
+まとまり、`RoadGraphContext.legs`が保持する（下記「レグ別コスト配列」節）。並行Edge
 （同一Node間の複数Edge）は、`build_lazy_road_graph`が元の行（切り出した区間の順＝道路網全体の行の昇順）が
 最も小さい1本を採る決定的な規則で解消する——コストはリクエストごとに変わるため、トポロジを組む時点では
 コストで選べない。同じ`LegCostArrays`は`_build_segment_details`（区間表示）からも区間の番号→切り出した
@@ -580,8 +583,8 @@ Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を
 探索範囲の中では、ノードは切り出しの中の番号（`RoadSlice.nodes`の添字）、区間は探索用グラフの番号
 （`LazyRoadGraph.edge_rows`の添字、`TracedLoop.data`もこの番号列）で持つ。区間の文字列の鍵
 （`edge_id`、`domain/graph.py: edge_key`）とノードの鍵は、**経路に載った区間の分だけ**番号から作る
-（`_lean_edge`・`_node_key_of`）——範囲全体ぶんの鍵や区間オブジェクトを作ると、範囲の区間数に比例した
-メモリを生成のたびに払うため。クライアントが送り返す鍵（区間の乗り換え）は`_lazy_index_of`が番号へ戻す。
+（`lean_edge`・`node_key_of`）——範囲全体ぶんの鍵や区間オブジェクトを作ると、範囲の区間数に比例した
+メモリを生成のたびに払うため。クライアントが送り返す鍵（区間の乗り換え）は`lazy_index_of`が番号へ戻す。
 並行区間の採られなかった側・探索範囲の外の区間は番号を持たない（None）。
 
 探索用グラフ・CSR・索引・ターン構造はキャッシュしない（リクエストごとに組む）。範囲ごとに
@@ -619,7 +622,9 @@ Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を
 候補間の順序はこの並べ替えでは変わらない。
 
 `select_diverse_by_overlap`は上位から、既採用候補と往路が重複しすぎるもの・近すぎるものを
-飛ばして`pool_size`件採る（埋まらなければ重複の条件を緩めてやり直す）。しきい値は較正値で、
+飛ばして`pool_size`件採る（埋まらなければ重複の条件を緩めてやり直す）。間引きには帯の全Nodeをかける——易しい往路の上位は
+地図の上で数か所に固まり、上位の決まった数で切ると大半が近さで捨てられてプールが埋まらない（関東の網では上位4,000点のうち
+9割以上が近さで捨てられた）。埋まらなかった生成は、生成のログの行に`pool_unfilled`（不足数）が出る。しきい値は較正値で、
 `domain/route_search.py: corridor_overlap_ratios`・`domain/route_search.py: turnaround_separation`が呼ばれた時点で読む。
 
 ### `trace_loop_from_turnaround`（帰りの探索）
@@ -629,7 +634,7 @@ Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を
 同一Node対の逆方向Edgeのコストを共有`cost_lazy`上で較正値の倍率を掛けた値（`domain/route_search.py: retrace_penalized`）へ
 **差し替え**（infにはしない——帰りが走った道を戻る以外に道が無い区間[袋小路等]は通れる必要が
 ある）、A*（向かう先は1回の生成で決まっているため、ヒューリスティック配列は向かう先ごとに1回だけ計算し、
-区間の探索・最速の経路・全候補の帰りの探索で共有する。`road_graph_engine.py: _RoadGraphContext.heuristics`）で探索した後、
+区間の探索・最速の経路・全候補の帰りの探索で共有する。`road_graph_context.py: RoadGraphContext.heuristics`）で探索した後、
 `try`/`finally`で元の値へ復元する。差し替え・探索・戻すはイベントループの外の1つのスレッドの中で続けて行い、間にawaitを
 挟まない（間に他のコルーチンへ制御が渡ると、別の候補が書き換え後の値を見る）。候補は呼び出し側が1本ずつawaitする
 直列実行である前提の上で安全（並列化すると共有`cost_lazy`の書き換えが競合するため両立しない）。
@@ -675,8 +680,7 @@ Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を
 候補が基準線に対して何を犠牲に何を得たかを読むための物差しになる。コストが秒のため
 A*のヒューリスティックも秒の下界にする（直線距離÷出せる最大速度）。
 
-**軸の重みは使わないが、0次フィルタ（`no_bicycle`・`motorway`・
-`max_average_grade_percent`）と道の行ごとの「通らない」は使う**——これらは好みではなく通行可否・走行可否の表明で、
+**軸の重みは使わないが、0次フィルタ（`no_bicycle`・`motorway`）と道の行ごとの「通らない」は使う**——これらは好みではなく通行可否・走行可否の表明で、
 所要時間を優先する経路でも越えてよいものではない。除外Edgeの所要時間を`inf`にすることで
 表現する（軸コスト経路で`cost_lazy`が`inf`になっているのと同じ意味）。
 
@@ -696,7 +700,7 @@ A*のヒューリスティックも秒の下界にする（直線距離÷出せ�
 
 ### `evaluate_loops`（実ジオメトリ取得・評価）
 
-距離フィルタを通過した全候補ぶんの区間（番号から`_lean_edge`で作った形の無い枝）を1つにまとめ、
+距離フィルタを通過した全候補ぶんの区間（番号から`lean_edge`で作った形の無い枝）を1つにまとめ、
 `GraphService.get_edges_with_geometry`を**1回のクエリ**で呼んで実ジオメトリを取得する（棄却済み候補への
 DB問い合わせを避ける2段階分割を維持したまま、候補ごとには問い合わせない）。
 取得後は候補ごとに`_build_best_candidate`を`asyncio.gather`で並行評価する（標高取得・

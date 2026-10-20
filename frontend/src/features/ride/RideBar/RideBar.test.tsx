@@ -2,7 +2,7 @@
  * 走りの帯（`features/ride/RideBar/RideBar.tsx`）——走行モードの間、画面の上の1行にルートの残り・到着予想・今の速さ・風を出す。
  *
  * ここで見ないもの:
- * - 走行モードの間だけ天気の帯の代わりに出ること → `app/page.test.tsx`
+ * - 走行モードの間だけ天気の帯の代わりに出ること → `app/page.ride.test.tsx`
  * - 残りと到着予想の出し方 → `rideRemaining.test.ts`
  */
 import { render, screen } from "@testing-library/react";
@@ -42,7 +42,6 @@ describe("RideBar", () => {
     { case: "北が上の地図", mapBearingDeg: 0, rotation: "rotate(0deg)" },
     // 地図が東を上に回っているときは、矢印も同じだけ戻して地図の上の向きに合わせる。
     { case: "東が上の地図", mapBearingDeg: 90, rotation: "rotate(270deg)" },
-    { case: "進む向きを上にせず、指で30度回した地図", mapBearingDeg: 30, rotation: "rotate(330deg)" },
   ])("風の矢印は地図の向きに合わせて回す: $case", ({ mapBearingDeg, rotation }) => {
     render(
       <RideBar

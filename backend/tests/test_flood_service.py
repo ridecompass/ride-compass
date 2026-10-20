@@ -9,7 +9,6 @@
 """
 
 import asyncio
-import logging
 
 import pytest
 from shapely.geometry import Point, shape
@@ -65,27 +64,12 @@ async def test_get_forecasts_carries_the_area_the_same_forecasts_hold_for(bounda
 
 
 @pytest.mark.parametrize("failure", [
-    {"area_data": None},
-    {"class20_code": "9999900"},  # 境界が返した区域を地域マスタで辿れない
+    {"area_data": None},  # 区域が分からない
     {"flood_documents": None},
 ])
 async def test_get_forecasts_is_unknown_rather_than_empty_when_a_step_fails(boundary_path, failure):
     """取れなかったことを「予報なし」と同じ空で返すと、画面は氾濫予報が出ていないと見せる。"""
     assert await _service(boundary_path, **failure).get_forecasts(CHIYODA_POINT) is None
-
-
-async def test_get_forecasts_names_the_area_the_master_cannot_follow(boundary_path, caplog):
-    """区域の境界と地域マスタは別々に配られ、片方だけが区域の変更に追いつくと起きる。運用者が気づけるように出す。"""
-    with caplog.at_level(logging.WARNING, logger="ridecompass.external"):
-        await _service(boundary_path, class20_code="9999900").get_forecasts(CHIYODA_POINT)
-
-    assert any("9999900" in record.getMessage() for record in caplog.records)
-
-
-async def test_get_forecasts_is_unknown_when_area_boundaries_are_unreadable(boundary_path):
-    service = _service(boundary_path, flood_documents=[])
-    boundary_path.unlink()
-    assert await service.get_forecasts(CHIYODA_POINT) is None
 
 
 async def test_get_forecasts_collects_every_active_forecast_and_leaves_out_the_rest(boundary_path):

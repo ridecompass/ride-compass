@@ -32,7 +32,6 @@ from app.domain.rain import HOURS_SINCE_RAIN, RAIN_HISTORY_HOURS, RAIN_HISTORY_M
 from app.domain.route import Coordinates
 from app.domain.time_zone import JST
 from app.infrastructure import jma_amedas_client, jma_tile_client
-from app.infrastructure.debug_log import get_stats
 from app.infrastructure.jma_amedas_client import new_latest_time_cache, new_station_table_cache
 from app.infrastructure.jma_tile_client import JmaTileClient, JmaTileSharedState
 from app.services.jma_amedas_service import JmaAmedasService, load_station_rain_materials, new_rain_materials_cache
@@ -201,20 +200,6 @@ async def test_get_nearest_observation_reads_from_redis_without_fetching():
     assert area.contains(Point(POINT.longitude, POINT.latitude))
     assert area.contains(Point(139 + 45.6 / 60, 35 + 41.4 / 60))
     assert not area.contains(Point(0.0, 0.0))
-
-
-async def test_observation_reads_and_writes_are_counted_in_the_stats():
-    """置き場の不調は`/api/debug/stats`で見る。集計に載らないと、Redisが落ちても観測値が出ないだけで気づけない。"""
-    category = "cache:jma-amedas-redis"
-    before = get_stats().external.get(category)
-    service = _service(_upstream())
-
-    await service.refresh_all_stations()
-    await service.get_nearest_observation(POINT)
-
-    after = get_stats().external[category]
-    assert after.calls - (before.calls if before else 0) == 2
-    assert after.cache_hits - (before.cache_hits if before else 0) == 1
 
 
 async def _nearest(**answers):

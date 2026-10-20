@@ -16,8 +16,10 @@ from app.api.cache_policy import GSI_TILE_NOT_FOUND
 from app.api.dependencies import get_gsi_tile_client
 from app.config import settings
 from app.infrastructure import rate_limiter
+from app.infrastructure.gsi_dem_png import gsi_dem_png_to_terrain_rgb
 from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from app.main import app
+from tests.source_ingest import gsi_dem_png
 
 client = TestClient(app)
 
@@ -37,14 +39,23 @@ def _answer(monkeypatch, result):
     monkeypatch.setitem(app.dependency_overrides, get_gsi_tile_client, lambda: FakeGsiTileClient(result))
 
 
-def test_gsi_relief_tile_proxy_returns_content_with_correct_media_type(monkeypatch):
-    _answer(monkeypatch, (b"\x89PNG", "image/png"))
+#: 経路ごとの、上流が返す中身と、利用者へ届く中身。標高タイルは変換してから配る（変換そのものは`test_gsi_dem_png.py`）。
+_DEM = gsi_dem_png([[0.0, 3776.0]])
+SUCCESSES = [
+    (RELIEF_TILE, b"\x89PNG", b"\x89PNG"),
+    (TERRAIN_TILE, _DEM, gsi_dem_png_to_terrain_rgb(_DEM)),
+]
 
-    response = client.get(RELIEF_TILE)
+
+@pytest.mark.parametrize(("path", "upstream", "served"), SUCCESSES, ids=["relief", "terrain"])
+def test_a_tile_is_served_as_png(monkeypatch, path, upstream, served):
+    _answer(monkeypatch, (upstream, "image/png"))
+
+    response = client.get(path)
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/png")
-    assert response.content == b"\x89PNG"
+    assert response.content == served
 
 
 @pytest.mark.parametrize("path", [RELIEF_TILE, TERRAIN_TILE])
@@ -74,14 +85,19 @@ def test_整備区域外は404で返し_ブラウザへもキャッシュさせ�
     assert response.headers["cache-control"] == GSI_TILE_NOT_FOUND.header()
 
 
-def test_gsi_relief_tile_proxy_is_rate_limited_per_client(monkeypatch):
-    _answer(monkeypatch, (b"x", "image/png"))
+@pytest.mark.parametrize(
+    ("path", "upstream", "prefix"),
+    [(RELIEF_TILE, b"x", "gsi-relief-tile"), (TERRAIN_TILE, _DEM, "gsi-terrain-tile")],
+    ids=["relief", "terrain"],
+)
+def test_tiles_are_rate_limited_per_client(monkeypatch, path, upstream, prefix):
+    _answer(monkeypatch, (upstream, "image/png"))
 
     for _ in range(settings.gsi_tile_rate_limit_per_minute - 1):
-        rate_limiter.check_rate_limit("gsi-relief-tile:testclient", settings.gsi_tile_rate_limit_per_minute)
-    assert client.get(RELIEF_TILE).status_code == 200
+        rate_limiter.check_rate_limit(f"{prefix}:testclient", settings.gsi_tile_rate_limit_per_minute)
+    assert client.get(path).status_code == 200
 
-    assert client.get(RELIEF_TILE).status_code == 429
+    assert client.get(path).status_code == 429
 
 
 def test_標高タイルは配信元がデータを持たないズームを拒む(monkeypatch):

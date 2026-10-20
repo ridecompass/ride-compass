@@ -28,7 +28,8 @@ from app.domain.route import Coordinates, EvaluatedRoute, RouteCandidate, RouteS
 from app.domain.route_request import DEFAULT_MAX_ROUTES, MAX_ROUTES, FixedPoints
 from app.domain.time_zone import JST
 from app.services import route_generator
-from app.services.road_graph_engine import FixedLegs, RoadGraphEngine
+from app.services.road_graph_context import FixedLegs
+from app.services.road_graph_engine import RoadGraphEngine
 from app.services.route_generator import RouteGenerator
 from tests.bound_fake import bound
 from tests.route_world import NO_POINTS
@@ -246,6 +247,20 @@ async def test_loops_stop_once_enough_routes_are_accepted():
     engine = FakeEngine(turnarounds=[_turnaround(_route(k)) for k in keys], routes={k: _candidate(k) for k in keys})
 
     assert len(await _loops(engine, max_routes=2)) == 2
+
+
+@pytest.mark.parametrize(("missing", "unfilled"), [(0, False), (1, True)], ids=["filled", "one_short"])
+async def test_the_generation_log_says_when_the_turnaround_pool_was_not_filled(missing, unfilled, caplog):
+    """折返し点がプールの数に届かなかった生成は、ログの行だけで分かる。分からないと、頼んだ数より候補が少ない原因を
+    選ぶ段の数を見比べて探すことになる。"""
+    pool = route_generator.turnaround_pool_size(DEFAULT_MAX_ROUTES)
+    keys = [str(i) for i in range(pool - missing)]
+    engine = FakeEngine(turnarounds=[_turnaround(_route(k)) for k in keys], routes={k: _candidate(k) for k in keys})
+
+    with caplog.at_level(logging.INFO, logger=route_generator.logger.name):
+        await _loops(engine)
+
+    assert any(f"pool_unfilled={missing}" in r.getMessage() for r in caplog.records) is unfilled
 
 
 async def test_loops_pass_over_turnarounds_whose_return_trip_fails(caplog):

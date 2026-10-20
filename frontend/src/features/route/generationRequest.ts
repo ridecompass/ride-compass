@@ -33,9 +33,6 @@ export function buildGenerateRequest(input: GenerationInput): RouteGenerateReque
     latitude: input.origin.latitude,
     longitude: input.origin.longitude,
     ...(input.distanceKm !== null ? { distance_km: input.distanceKm } : {}),
-    // 目標距離からの許容差と、主観と時間の換算レート（P）は**送らない**。このAPIでは省略が
-    // 「較正値から読む」の合図で、画面から変える手段が無いのに値を載せると、管理画面で調整しても
-    // 効かなくなる。画面から変えられるようになるまでは省略する。
     road_avoidance: input.roadAvoidance,
     max_routes: input.maxRoutes,
     assumed_speed_kmh: input.assumedSpeedKmh,
