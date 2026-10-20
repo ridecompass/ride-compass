@@ -408,7 +408,7 @@ ON/OFFから行う（画面の側は下敷きの有無を知らない）。
 グループが返す宣言の一部として出す。宣言の外から`setPaintProperty`や`setFilter`で
 足す形を取らないため、**「当てた後に誰かが巻き戻す」という経路が無い**（当てるのは
 `applyMapScene`だけで、前回の宣言との差分しか触らない）。この性質は
-`scene/scene.state.contract.test.ts`の「スタイルを差し替えても、同じ状態を伝え直せば元へ戻る」で固定してある。
+`scene/scene.allLayers.contract.test.ts`の「スタイルを差し替えても、同じ状態を伝え直せば元へ戻る」で固定してある。
 
 ## 初期表示の覆い（`initialTilesLoading`）
 
@@ -718,7 +718,7 @@ ON/OFFで入れ替わる）。
 
 **スタイル式の誤りは例外にならない。** `addLayer`や`setPaintProperty`が式を受け付けなくても
 JSの例外は飛ばず、`map.on("error")`にしか出ない。画面上は**そのレイヤーだけが黙って
-描かれない**。記録用の代役地図は式を検証しないため、`scene/scene.state.contract.test.ts`が
+描かれない**。記録用の代役地図は式を検証しないため、`scene/scene.allLayers.contract.test.ts`が
 出せるものを全部出した状態の宣言（凡例の絞り込みを含む）をMapLibreと同じ版のstyle検証
 （`@maplibre/maplibre-gl-style-spec: validateStyleMin`）へ通す。実際のアプリの配線（カタログ・
 タイル世代・保存されたレイヤーのON/OFFから組まれたもの）が本物の地図の`addLayer`を通ることは、

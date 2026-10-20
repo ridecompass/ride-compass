@@ -243,7 +243,8 @@ Pythonの値、ルート選びと地図の配信は材料の型ごとの配列�
         │ 読み込み
         ▼
   refresh_axis_definitions()（axis_registry_service.py）
-    起動タイミング: (1) main.py起動時（lifespan）に1回
+    起動タイミング: (1) 起動時（lifespan）と、起動を通らない道具（ベンチ・scripts/）の読み込みに1回。
+                        どちらも services/definitions_loading.py: refresh_definitions から、区分を読んだあとに呼ぶ
                     (2) axis_admin.py書き込み成功直後に1回
         │ replace_axis_definitions()（同じdictのまま .clear() + .update()）
         ▼

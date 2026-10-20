@@ -13,13 +13,15 @@
 拾わない形:
 - `*`・`**`で渡す呼び出しを持つ型・関数は判断しない（どの欄・引数を渡したかが読めない）。
 - 入力として検証される型（`model_validate`・`model_validate_json`・`TypeAdapter`の対象、ルーターの入口の
-  引数の型と、それらの欄の型の中に入る型）は、既定値が外から来る値の省略を受けるので判断しない。
+  引数の型と、それらの欄の型の中に入る型）は、既定値が外から来る値の省略を受けるので判断しない。HTTPの要求の
+  本文の任意の欄を画面が送るかは`frontend/src/structure/requestFields.test.ts`が見る。
 - 関数の名前が呼び出し以外で参照される（関数を値として渡す）なら、呼び手を数えきれないので判断しない。
   呼び出しは名前（`f`・`obj.f`）で突き合わせ、同じ名前の定義が複数あれば、キーワードで渡した引数だけを数える。
 - `__init__`等の特殊メソッドと、frontendの既定値は見ない。
 
 ここで見ないもの:
 - StrictModelが未知の欄を断ること → `tests/test_strict_model.py`
+- 表の列の既定値 → `test_column_defaults.py`
 """
 
 from __future__ import annotations

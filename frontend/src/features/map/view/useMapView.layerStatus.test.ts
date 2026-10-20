@@ -1,0 +1,88 @@
+/**
+ * 地図の見え方のフックが、「表示」の一覧のチップへ、レイヤーのデータの取得の状態と案内を出すこと（地図から上がる状態・
+ * 気象の取得・道の線の層の値の取得・タイルの世代）。道の線の層の値と軸カタログは網の層で応え、取得のフックも間引きも本物を通す。
+ *
+ * ここで見ないもの: レンズ・表示・凡例で隠した行の状態 → `useMapView.test.ts`
+ */
+import { act, waitFor } from "@testing-library/react";
+import { HttpResponse } from "msw";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { TILE_VERSIONS_MISSING_NOTICE, TILE_ZOOM_TOO_WIDE_NOTICE } from "@/features/map/layers/mapLayers";
+import { MAP_FETCH_DEBOUNCE_MS } from "@/hooks/useDebouncedValue";
+import { onBackend } from "@/testing/backendServer";
+import { catalogResponse } from "@/testing/catalogAxes";
+import { chip, renderMapView, serve, VIEWPORT } from "@/testing/mapViewHook";
+
+/** 世代が届くまで要求できない、静的に宣言された層。 */
+const GATED_LAYER = "stop_poi";
+/** `VIEWPORT`から東へタイル1枚分（z14の幅）動かした範囲。 */
+const NEXT_TILE_VIEWPORT = { ...VIEWPORT, west: VIEWPORT.west + 360 / 2 ** 14, east: VIEWPORT.east + 360 / 2 ** 14 };
+const ROAD_CLASSES = "/api/region/road-classes/:z/:x/:y";
+
+afterEach(() => {
+  window.localStorage.clear();
+});
+
+describe("useMapView のチップの取得の状態", () => {
+  it("チップには、地図から上がる取得の状態と気象の取得の状態を合わせ、表示範囲のズームで出ないレイヤーに案内を出す", async () => {
+    serve();
+    const { result } = renderMapView();
+    await waitFor(() => expect(chip(result, "surface")).toBeDefined());
+
+    act(() => result.current.look.onLayerDataStatusChange({ surface: "loading" }));
+    act(() => result.current.look.onViewportChange({ ...VIEWPORT, zoom: 8 }));
+
+    expect(chip(result, "surface")).toMatchObject({ dataStatus: "loading", notice: TILE_ZOOM_TOO_WIDE_NOTICE });
+    expect(chip(result, "hillshade")?.notice).toBeNull();
+    await waitFor(() => expect(chip(result, "disaster")?.dataStatus).toBe("empty"));
+  });
+
+  it("道の線の層の値が取れなければ、その層のチップに取得の失敗を出す（失敗を空の値に倒すと、どの道も区分の外に読める）", async () => {
+    serve();
+    onBackend("GET", ROAD_CLASSES, () => new HttpResponse(null, { status: 500 }));
+    const { result } = renderMapView();
+    await waitFor(() => expect(chip(result, "surface")).toBeDefined());
+    act(() => result.current.overlayControls.onToggle("surface", true));
+
+    act(() => result.current.look.onViewportChange(VIEWPORT));
+
+    await waitFor(() => expect(chip(result, "surface")?.dataStatus).toBe("error"), { timeout: 3000 });
+  });
+
+  // 層の値の要求はタイルごとに backend の回数の制限に数えられ、1枚ごとに秒単位でかかるので、送った数を見る。
+  it("道の線の層の値は、地図を動かしても前に取ったタイルを取り直さず、新しく入ったタイルだけを取る", async () => {
+    serve();
+    const sent = onBackend("GET", ROAD_CLASSES, () => Response.json({ way_1: { surface: "paved" } }));
+    const { result } = renderMapView();
+    await waitFor(() => expect(chip(result, "surface")).toBeDefined());
+    act(() => result.current.overlayControls.onToggle("surface", true));
+
+    for (const viewport of [VIEWPORT, NEXT_TILE_VIEWPORT, VIEWPORT]) {
+      act(() => result.current.look.onViewportChange(viewport));
+      await new Promise((resolve) => setTimeout(resolve, MAP_FETCH_DEBOUNCE_MS + 100));
+      await waitFor(() => expect(result.current.look.roadClasses).toMatchObject({ loading: false }));
+    }
+
+    expect(result.current.look.roadClasses.values.get("way_1")).toEqual({ surface: "paved" });
+    const paths = sent.map(({ path }) => path);
+    expect(paths).toHaveLength(2);
+    expect(new Set(paths).size).toBe(2);
+  });
+
+  it.each([
+    { name: "世代を持たない応答", catalog: () => Response.json(catalogResponse([])) },
+    { name: "取得の失敗", catalog: () => new HttpResponse(null, { status: 500 }) },
+  ])(
+    "タイルの世代で描くレイヤーは、軸カタログが届くまで読み込み中、届いても世代が無ければ失敗にする（$name）",
+    async ({ catalog }) => {
+      serve(catalog());
+
+      const { result } = renderMapView();
+
+      expect(chip(result, GATED_LAYER)?.dataStatus).toBe("loading");
+      await waitFor(() => expect(chip(result, GATED_LAYER)?.dataStatus).toBe("error"));
+      expect(chip(result, GATED_LAYER)?.notice).toBe(TILE_VERSIONS_MISSING_NOTICE);
+    },
+  );
+});

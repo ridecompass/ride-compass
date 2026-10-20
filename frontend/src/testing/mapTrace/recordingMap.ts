@@ -1,7 +1,7 @@
 /** 地図への呼び出しを順番に記録し、地図に載っているもの（レイヤー・ソース・地物の状態）を持つ代役。
  *
  * 受けるのは**地図の中身を変える呼び出しと、その判断に使う問い合わせ**だけで、
- * 描画そのものは行わない。`maplibre-gl` の代役（`testing/maplibre.ts`）も、地図の中身の記録にこれを使う。
+ * 描画そのものは行わない。`maplibre-gl` の地図の代役（`testing/maplibreStandIn/map.ts`）も、地図の中身の記録にこれを使う。
  */
 interface TraceEntry {
   readonly call: string;

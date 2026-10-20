@@ -300,7 +300,7 @@ MSMの格子点の段（`origin`が`grid`）は、`useWeatherGrid`の応答の`t
    （種類の集合は生成物から導くため、足し忘れは型検査が落ちる）。取得・時系列・描画内容・取得状態は
    宣言の一覧をループして作るため、要素を足すだけならフロントの手書き作業は無い。
 
-契約テスト（`scene/scene.state.contract.test.ts`の全部を載せた状態）の母集団も生成物の
+契約テスト（`scene/scene.allLayers.contract.test.ts`の全部を載せた状態）の母集団も生成物の
 `mapDisplay.weatherElements`で、1で足した要素はそのまま検査の対象になる。
 
 ## データ取得状態

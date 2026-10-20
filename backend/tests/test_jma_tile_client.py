@@ -20,6 +20,7 @@ import types
 import httpx
 import pytest
 import respx
+from PIL import Image
 
 from app.domain.jma_tile_specs import JmaFrame, TargetTimesRow
 from app.domain.weather_display import PRECIPITATION_COLOR_STOPS
@@ -29,6 +30,7 @@ from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from app.infrastructure.jma_tile_client import JmaTileClient, JmaTileSharedState
 from tests.fake_external_log import record_external_calls
 from tests.fake_http import client_for
+from tests.test_jma_tile_content import encode
 from tests.test_jma_tile_recolor import palette_tile, pixels, rgba
 
 TILE = "bosai/jmatile/data/risk/20260101000000/none/20260101000000/surf/land/6/57/25.png"
@@ -37,6 +39,7 @@ PRECIPITATION_TILE = "bosai/jmatile/data/nowc/20260101000000/none/20260101000000
 LISTING = "bosai/jmatile/data/nowc/targetTimes_N1.json"
 FEATURES = "bosai/jmatile/data/nowc/20260101000000/none/20260101000000/surf/liden/data.geojson?id=liden"
 OPAQUE = b"\x89PNG not decoded by the client"
+NOTHING_TO_DRAW = encode(Image.new("RGBA", (4, 4), (0, 0, 0, 0)))
 
 
 @pytest.fixture
@@ -98,6 +101,21 @@ async def test_a_fetched_precipitation_tile_is_served_and_cached_in_the_legend_c
 
     assert fetched == cached
     assert pixels(fetched[0])[1:] == [rgba(stop.color) for stop in PRECIPITATION_COLOR_STOPS]
+
+
+async def test_a_fetched_tile_with_nothing_to_draw_reads_the_same_the_first_time_as_from_the_cache(upstream, fake_redis, client):
+    """初めての取得だけが中身を返すと、同じタイルが1回目は透明な画像、2回目からは「無い」で届く。"""
+    upstream.get(f"/{TILE}").respond(content=NOTHING_TO_DRAW, content_type="image/png")
+
+    fetched = await client(upstream).fetch(TILE)
+    cached = await client(upstream).get_cached(TILE)
+
+    assert fetched is UPSTREAM_NOT_FOUND
+    assert cached is UPSTREAM_NOT_FOUND
+
+
+async def test_a_locally_built_tile_with_nothing_to_draw_reads_as_nothing_to_draw(upstream, fake_redis, client):
+    assert await client(upstream).store(TILE, NOTHING_TO_DRAW, "image/png") is UPSTREAM_NOT_FOUND
 
 
 async def test_a_fetch_without_a_content_type_is_served_as_generic_bytes(upstream, fake_redis, client):

@@ -6,7 +6,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,15 +28,15 @@ class AxisDefinitionRow(Base):
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
     shape_params: Mapped[dict] = mapped_column(JSONB, nullable=False)
     default_weight: Mapped[float] = mapped_column(Float, nullable=False)
-    label: Mapped[str] = mapped_column(String, nullable=False, server_default="")
-    description: Mapped[str] = mapped_column(String, nullable=False, server_default="")
-    category: Mapped[str] = mapped_column(String, nullable=False, server_default="推定")
+    label: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=False)
+    category: Mapped[str] = mapped_column(String, nullable=False)
     # 公開済み軸は不変（管理APIが更新・削除を拒否する）。
-    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
-    priority_overrides: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    priority_overrides: Mapped[list] = mapped_column(JSONB, nullable=False)
     # 未設定はフロント側の汎用のアイコンに委ねるため、空文字ではなくNoneが「未設定」の意味を持つ。
     icon_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    time_scope: Mapped[str] = mapped_column(String, nullable=False, server_default="always")
+    time_scope: Mapped[str] = mapped_column(String, nullable=False)
     display_thresholds_override: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     display_band_labels_override: Mapped[list | None] = mapped_column(JSONB, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
