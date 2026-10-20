@@ -35,7 +35,7 @@ from app.api.dependencies import get_route_generation_setup_opener
 from app.batch.common import asyncpg_dsn
 from app.config import settings
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
-from app.infrastructure.database import get_session_factory
+from app.infrastructure.database import get_route_generation_session_factory, get_session_factory
 from app.services.definitions_loading import refresh_definitions
 from app.domain.route import Coordinates
 from app.domain.time_zone import JST
@@ -145,7 +145,7 @@ async def main() -> int:
     async with get_session_factory()() as session:
         await refresh_definitions(session, AxisDefinitionRepository(session))
     # 評価条件を省いた生成の要求と、画面の既定の除外・避け方で組む。
-    async with get_route_generation_setup_opener()(RequestedConditions(
+    async with get_route_generation_setup_opener(get_route_generation_session_factory())(RequestedConditions(
         preference_override=None, road_avoidance={}, assumed_speed_kmh=ASSUMED_SPEED_KMH,
     )) as setup:
         generator = setup.generator
