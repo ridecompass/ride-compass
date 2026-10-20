@@ -32,7 +32,9 @@
 | `lib/mapDisplay/legendFilter.ts` | 凡例の行の型（`lib/mapDisplay/legendFilter.ts: LegendEntry`）と、凡例で隠した行を落とす絞り込み式の組み立て（ルート線のモードが使う） |
 | `lib/mapDisplay/landcoverClasses.ts` | 土地被覆のクラス（表示名・色・割合列・地図に塗るか）。backendのレジストリ由来の生成物（`landcover-classes.json`）を読むだけの薄い層で、凡例（レイヤーの記述子）・区間インスペクタ（`RoadInspectorPopup.tsx`）・道のりのグラフの「緑と水」の帯が共有する。色は地図タイルの塗りと同じ値のため、凡例と地図がずれない。**凡例は塗るクラスだけ**（`LANDCOVER_PAINTED_CLASSES`）——塗らないクラスを並べると色見本があるのに地図のどこにも無い表になる。区間インスペクタは数値なので全クラスを出す |
 | `features/map/layers/primaryAttributes.ts` | 一次属性のカタログと、二次軸→一次属性の導出（軸増減時の観測データ連動表示に使用） |
-| `features/map/layers/mapLayers.ts` | レイヤーカタログ本体（`MapLayerDescriptor[]`）・地図上チップの最上位グループ（`features/map/layers/mapLayers.ts: MAP_OVERLAY_GROUP_ORDER`が正本。現在は道路/環境/スポット）判定・軸スタジオ由来レイヤーの除外判定（軸スタジオ由来のレイヤーはチップに出ないので、名前・アイコン・説明を持たず、idと源泉の宣言だけを持つ`features/map/layers/mapLayers.ts: AxisStudioLayerDescriptor`）・`features/map/layers/mapLayers.ts: deriveFetchLayerStatus`（MapLibreのソースイベントを経由しないレイヤーのデータ状態判定）。静的なレイヤーは源泉の宣言（生成物`mapDisplay.ts: mapDisplay.layers`）の並びを列挙して組み、足すのはアイコン（`components/ui/icons/mapLayerIcons.ts: MAP_LAYER_ICONS`）と表示専用の凡例（`features/map/layers/mapLayers.ts: READ_ONLY_LEGENDS`）だけ。名前・略名・説明・(i)の文は源泉が持ち、説明の差し込み口だけを軸カタログの値で埋める（下記「説明文に評価の名前を書き込まない」）。**`layers/`は`scene/`を読まない**（`scene/`が`layers/`を読む一方向） |
+| `features/map/layers/mapLayers.ts` | レイヤーカタログ本体（`MapLayerDescriptor[]`）・地図上チップの最上位グループ（`features/map/layers/mapLayers.ts: MAP_OVERLAY_GROUP_ORDER`が正本。現在は道路/環境/スポット）判定・軸スタジオ由来レイヤーの除外判定（軸スタジオ由来のレイヤーはチップに出ないので、名前・アイコン・説明を持たず、idと源泉の宣言だけを持つ`features/map/layers/mapLayers.ts: AxisStudioLayerDescriptor`）・`features/map/layers/mapLayers.ts: deriveFetchLayerStatus`（MapLibreのソースイベントを経由しないレイヤーのデータ状態判定）。静的なレイヤーは源泉の宣言（生成物`mapDisplay.ts: mapDisplay.layers`）の並びを列挙して組み、足すのはアイコン（`components/ui/icons/mapLayerIcons.ts: MAP_LAYER_ICONS`）と表示専用の凡例（`features/map/layers/readOnlyLegends.ts: READ_ONLY_LEGENDS`）だけ。名前・略名・説明・(i)の文は源泉が持ち、説明の差し込み口だけを軸カタログの値で埋める（下記「説明文に評価の名前を書き込まない」）。**`layers/`は`scene/`を読まない**（`scene/`が`layers/`を読む一方向） |
+| `features/map/layers/readOnlyLegends.ts` | 絞り込めない表示専用の凡例（`features/map/layers/readOnlyLegends.ts: READ_ONLY_LEGENDS`。土地被覆・降水ナウキャスト・風の矢印・災害）。災害の凡例は、同じ段で塗る要素の名前を見出しにして段を並べる |
+| `features/map/layers/layerText.ts` | チップの説明の文の差し込み口を埋める（`features/map/layers/layerText.ts: fillLayerText`。値が空の口は前後の文ごと出さない）と、事故の収録年の言い方（`features/map/layers/layerText.ts: coverageYearsLabel`） |
 | `features/map/scene/mapScene.ts` | 地図に載っているべきものの宣言の型（ソース・レイヤー・feature-state）と、重なりの段（`features/map/scene/mapScene.ts: MAP_SCENE_TIERS`）・押せるレイヤーの引き方 |
 | `features/map/scene/applyMapScene.ts` | 宣言を地図へ当てる唯一の実装（`features/map/scene/applyMapScene.ts: addImage`/`features/map/scene/applyMapScene.ts: addSource`/`features/map/scene/applyMapScene.ts: addLayer`/`features/map/scene/applyMapScene.ts: setPaintProperty`/`features/map/scene/applyMapScene.ts: setFilter`/`features/map/scene/applyMapScene.ts: setFeatureState`）。前回の宣言との差分だけを当て、段の順に差し込む |
 | `features/map/MapView/MapView.tsx`（静的レイヤーの箇所のみ） | 画面の状態をsceneの入力へ渡す配線・押した所で一番上の地物を、そのレイヤーが宣言した当たり判定の対象（`hitTargets`）で開く手続きへ振り分けること・ポップアップ・レイヤーのデータ取得状態の算出元（`features/map/MapView/MapView.tsx: buildLayerDataSources`）。レイヤーの描画コードは持たない |
@@ -107,7 +109,7 @@ backendから取り、タイル本体はrewrites経由に戻る。
 
 源泉（backendの`domain/map_display.py: _LAYER_SPECS`）へ描き方以外の宣言（種別・情報源・性質・既定表示・名前・説明・(i)の文・最初に隠す行。
 一次属性を描くレイヤーの名前は属性の名前で、書かない）を1件、
-アイコンの表（`components/ui/icons/mapLayerIcons.ts: MAP_LAYER_ICONS`）へ1行足し（表示専用の凡例があれば`mapLayers.ts`の`READ_ONLY_LEGENDS`へも）、そのレイヤーの描き方を
+アイコンの表（`components/ui/icons/mapLayerIcons.ts: MAP_LAYER_ICONS`）へ1行足し（表示専用の凡例があれば`readOnlyLegends.ts`の`READ_ONLY_LEGENDS`へも）、そのレイヤーの描き方を
 家族の宣言（`features/map/scene/groups/*.ts`。道路の線なら`roadLines.ts`、点なら`points.ts`、
 面なら`areaRasters.ts`）へ足す。描き方の分類・色が源泉（backendの一次属性カタログ）の行で
 決まる家族では、源泉へ1行足せば宣言が導かれる。新しい家族そのものを足すときだけ、
@@ -140,7 +142,7 @@ backendから取り、タイル本体はrewrites経由に戻る。
 
 ## 表示専用の凡例（`MapLayerDescriptor.readOnlyLegend`）
 
-配信元が色を焼き込み済みでカテゴリ単位に選べないレイヤー（土地被覆・降水ナウキャスト等）は、▶パネルに出す凡例を`mapLayers.ts: READ_ONLY_LEGENDS`が宣言する。絞り込める凡例は`hiddenKeys`と保存先の
+配信元が色を焼き込み済みでカテゴリ単位に選べないレイヤー（土地被覆・降水ナウキャスト等）は、▶パネルに出す凡例を`readOnlyLegends.ts: READ_ONLY_LEGENDS`が宣言する。絞り込める凡例は`hiddenKeys`と保存先の
 `axisId`を持ち、`scene/legends.ts`が出す——**型の上で分けてあるので、ここへ絞り込める
 つもりの凡例を書いても黙って読み取り専用にはならない**。
 
