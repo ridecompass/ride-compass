@@ -55,6 +55,7 @@ def resolve_road_avoidance(
     今の行でも前の鍵でもない鍵は読まない（区分を直す前に読み込んだ画面の要求も断らない）。"""
     resolved: dict[str, AvoidanceLevel] = {}
     for row in avoidance_rows(definitions):
+        # 前の鍵は区分のデータが持ち、入れてから3か月で外す（`domain/road_classes.py: RoadClass.former_keys`）。
         keys = [row.key] if row.key in requested else [key for key in row.road_class.former_keys if key in requested]
         resolved[row.key] = max((requested[key] for key in keys), key=AVOIDANCE_LEVELS.index, default=row.default_level)
     return resolved
