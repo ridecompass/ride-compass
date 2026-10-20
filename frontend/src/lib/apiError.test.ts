@@ -1,13 +1,13 @@
 // @vitest-environment node
 /**
- * `lib/apiError.ts`——backendのエラー応答の`detail`を、利用者へ出せる1つの文言にする。
+ * `lib/apiError.ts`——backendのエラー応答の`detail`と、捕まえた例外を、利用者へ出せる1つの文言にする。
  *
  * ここで見ないもの:
  * - 文言を`Error`にして投げること・`detail`が無いときの文言 → `lib/apiClient.test.ts`
  */
 import { describe, expect, it } from "vitest";
 
-import { formatErrorDetail } from "@/lib/apiError";
+import { errorMessage, formatErrorDetail } from "@/lib/apiError";
 
 describe("formatErrorDetail", () => {
   it("無ければ文言を作らない（呼び出し側が自分の文言を使う）", () => {
@@ -38,5 +38,15 @@ describe("formatErrorDetail", () => {
     ["配列でないオブジェクト", { reason: "busy" }, '{"reason":"busy"}'],
   ])("%sは、JSONの文字列にして中身を残す", (_scene, detail, expected) => {
     expect(formatErrorDetail(detail)).toBe(expected);
+  });
+});
+
+describe("errorMessage", () => {
+  it.each([
+    ["`Error`は、既定の文言があっても自分の文言", new Error("保存できません"), "既定", "保存できません"],
+    ["`Error`でない値は、既定の文言", "busy", "既定", "既定"],
+    ["`Error`でない値で既定の文言が無ければ、その値を文字列にする", 42, undefined, "42"],
+  ])("%s", (_scene, error, fallback, expected) => {
+    expect(errorMessage(error, fallback)).toBe(expected);
   });
 });

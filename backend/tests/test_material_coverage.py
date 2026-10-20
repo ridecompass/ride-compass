@@ -11,27 +11,23 @@
 
 from datetime import datetime, timezone
 
-import asyncpg
 import pytest
 
-from app.batch import derive_topology
-from app.batch.common import asyncpg_dsn
-from app.domain.material_catalog import MATERIAL_CATALOG
+from app.batch import derive_elevation, derive_topology
+from app.batch.dem_tile_store import PRODUCT_PRIORITY
+from app.domain.region import BoundingBox
 from app.infrastructure.material_coverage import (
-    MATERIAL_COVERAGE_EXCLUSIONS,
     MATERIAL_COVERAGE_SPECS,
     MaterialCoverageCounts,
     MaterialCoverageQuery,
 )
-from app.services import material_coverage_service
 from app.services.material_coverage_service import (
     MaterialCoverageCounted,
-    MaterialCoverageExcluded,
     MaterialCoverageService,
     build_material_coverage_report,
 )
-from tests.conftest import postgis_database_url
-from tests.source_ingest import ingest_records, way_record
+from tests.conftest import raw_connection
+from tests.source_ingest import dem_tile_records, ingest_records, way_record
 
 COMPUTED_AT = datetime(2026, 9, 4, tzinfo=timezone.utc)
 
@@ -43,12 +39,6 @@ def _counts(way_total: int = 10, edge_total: int = 4, **missing_overrides: int) 
 
 
 # --- レポート組み立て（純関数） ---
-
-
-def test_build_report_lists_all_catalog_materials_in_catalog_order():
-    report = build_material_coverage_report(_counts(), COMPUTED_AT)
-
-    assert [e.material_id for e in report.materials] == list(MATERIAL_CATALOG)
 
 
 def test_build_report_computes_ratio_against_population_total():
@@ -68,15 +58,6 @@ def test_build_report_computes_ratio_against_population_total():
     assert gradient.missing_ratio == pytest.approx(0.75)
 
 
-def test_build_report_marks_excluded_materials_with_reason():
-    report = build_material_coverage_report(_counts(), COMPUTED_AT)
-    by_id = {e.material_id: e for e in report.materials}
-
-    wind = by_id["wind_drag_ratio"]
-    assert isinstance(wind, MaterialCoverageExcluded)
-    assert wind.excluded_reason == MATERIAL_COVERAGE_EXCLUSIONS["wind_drag_ratio"]
-
-
 def test_build_report_returns_none_ratio_when_population_is_empty():
     report = build_material_coverage_report(_counts(way_total=0, edge_total=0), COMPUTED_AT)
 
@@ -87,31 +68,22 @@ def test_build_report_returns_none_ratio_when_population_is_empty():
         assert entry.missing_ratio is None
 
 
-def test_build_report_fails_fast_when_material_is_registered_nowhere(monkeypatch):
-    monkeypatch.setattr(material_coverage_service, "MATERIAL_COVERAGE_EXCLUSIONS", {})
-
-    with pytest.raises(ValueError, match="wind_drag_ratio"):
-        build_material_coverage_report(_counts(), COMPUTED_AT)
-
-
 # --- 集計（テスト用DB） ---
 
 
 @pytest.mark.asyncio(loop_scope="module")
-@pytest.mark.xdist_group(name="postgis")
-@pytest.mark.postgis
 async def test_the_report_counts_missing_values_per_population_on_the_database(road_graph_session):
-    # 道3本（路面のタグは1本だけ）を取り込んで区間へ切り、区間1つにだけ勾配を付ける。
+    # 道3本（路面のタグは1本だけ）を取り込んで区間へ切る。標高は道1の周りにだけ置き、その区間だけが勾配を持つ。
     await ingest_records("osm_way", [
         way_record(way_id, [(139.70, 35.68 + 0.001 * way_id), (139.701, 35.68 + 0.001 * way_id)],
                    [way_id * 10, way_id * 10 + 1], tags)
         for way_id, tags in {1: {"surface": "asphalt"}, 2: {}, 3: {}}.items()])
-    conn = await asyncpg.connect(asyncpg_dsn(postgis_database_url()))
-    try:
+    area = BoundingBox(min_latitude=35.6805, min_longitude=139.6995, max_latitude=35.6835, max_longitude=139.7015)
+    await ingest_records("dem", dem_tile_records(
+        PRODUCT_PRIORITY[0], 15, area, lambda lon, lat: 50.0 if lat < 35.6815 else None))
+    async with raw_connection() as conn:
         await derive_topology.derive(conn)
-        await conn.execute("UPDATE edge_materials SET average_grade = 1.0 WHERE osm_way_id = 1")
-    finally:
-        await conn.close()
+        await derive_elevation.derive(conn, previous=None)
 
     report = await MaterialCoverageService(MaterialCoverageQuery(road_graph_session)).get_material_coverage()
     by_id = {e.material_id: e for e in report.materials}

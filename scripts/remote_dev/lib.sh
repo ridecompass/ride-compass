@@ -1,6 +1,6 @@
 # クラウドのセッション（Claude Code on the web）の開発環境を用意する処理。
 # setup.sh（環境の初回だけ走り、終了時のファイルシステムが保存される）と
-# session_start.sh（毎セッションの開始時に走る）の両方から読む。
+# session_start.sh（毎セッションの開始時に走る）と、DBを待つwait_db.shから読む。
 #
 # 依存（backendのvenv・frontendのnode_modules）は、lockfileのダイジェストごとにリポジトリの
 # 外（$RC_CACHE）へ作る。セッションはリポジトリを新しくcloneして始まるため、リポジトリの中に
@@ -9,8 +9,13 @@
 
 RC_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RC_CACHE="${RC_CACHE:-/opt/ridecompass-dev}"
-RC_PYTHON="${RC_PYTHON:-python3.12}"
-RC_TIMES="$(mktemp)"
+# 版は本番のイメージ（backend/Dockerfile の FROM）に合わせる。
+RC_PYTHON="${RC_PYTHON:-python$(sed -n 's/^FROM python:\([0-9.]*\).*/\1/p' "$RC_REPO/backend/Dockerfile")}"
+# 読み込むだけでファイルを作らない（wait_db.shも読む）。$$は裏で走らせた段の中でも読み込んだシェルのpid。
+RC_TIMES="/tmp/ridecompass-times.$$"
+# DB・Redisの裏の起動（session_start.sh db）の結果とログ。待つのはwait_db.sh。
+RC_DB_STATUS=/tmp/ridecompass-db-status
+RC_DB_LOG=/tmp/ridecompass-db.log
 
 rc_log() { printf '[remote_dev %s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 
@@ -132,11 +137,15 @@ rc_db() { rc_ensure_dockerd && rc_start_services; }
 # クラッシュリカバリも起こさないようにする。
 rc_prime_db() { rc_ensure_dockerd && rc_start_services && rc_compose stop >/dev/null 2>&1; }
 
-# postgres・redisを起動し、テストの複製元になる共有DB（conftest.pyのSHARED_TEST_DATABASE）を用意する。
+# postgres・redisを起動し、テストの複製元になる共有DB（backend/tests/database_names.py: SHARED_TEST_DATABASE）を用意する。
+# 名前はその定義の行から読み、利用者はcomposeがコンテナへ渡すPOSTGRES_USERを使う。
 rc_start_services() {
+  local db
+  db=$(sed -n 's/^SHARED_TEST_DATABASE = "\(.*\)"$/\1/p' "$RC_REPO/backend/tests/database_names.py")
+  [ -n "$db" ] || { rc_log "database_names.pyからSHARED_TEST_DATABASEを読めない"; return 1; }
   rc_pull_images || return 1
   rc_compose up -d --wait postgres redis >/dev/null 2>&1 || { rc_compose ps -a >&2; return 1; }
-  rc_compose exec -T postgres sh -c \
-    'psql -U ridecompass -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '\''ridecompass_test'\''" | grep -q 1 \
-     || createdb -U ridecompass ridecompass_test'
+  rc_compose exec -T -e DB="$db" postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '\''$DB'\''" | grep -q 1 \
+     || createdb -U "$POSTGRES_USER" "$DB"'
 }

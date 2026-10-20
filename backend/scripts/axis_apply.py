@@ -6,13 +6,13 @@ r"""軸の定義1本を、本番の今の定義との差を見てから管理API
 
 定義のJSONは管理APIの単体取得（`GET /api/admin/axis-definitions/{axis_id}`）と同じ項目の軸1本で、
 `is_published`が書いた後の公開の状態になる。書く操作は今の状態から決まる: 無ければ追加、下書きなら更新（1回）、
-公開済みなら公開の取り消し→更新、削除は（公開済みなら取り消し→）削除。
+公開済みなら公開の取り消し→更新（公開したまま書ける差だけなら更新1回）、削除は（公開済みなら取り消し→）削除。
 
 **書くのは、差を出したときの指紋を`--apply`に渡したときだけ**。指紋は今の定義と書く定義から作るので、
 差を見てから書くまでに本番が変わっていれば一致せず、何も書かずに止まる。公開の取り消しの後の段で失敗したら
 元の定義へ戻す。書いた後は、管理APIの単体取得と公開の軸カタログの両方で反映を確かめる。
 
-宛先と認証情報は`backend/.env.oracle.local`の`BACKEND_ORIGIN`（本番backendの直接のオリジン）・
+宛先はリポジトリの`production-origins.json`の`backend`、認証情報は`backend/.env.oracle.local`の
 `ADMIN_BASIC_AUTH_USERNAME`・`ADMIN_BASIC_AUTH_PASSWORD`から読み、引数には取らず出力にも出さない。
 """
 
@@ -30,12 +30,10 @@ from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.domain.axis_definitions import AxisDefinition  # noqa: E402
+from app.domain.axis_definitions import AxisDefinition, is_update_allowed_while_published
 
 ADMIN_PATH = "/api/admin/axis-definitions"
 CATALOG_PATH = "/api/axis-catalog"
-#: 軸カタログが定義の値をそのまま返さない項目。体感ラベルは地図の段へ引き直して配る。
-_CATALOG_RESHAPED = frozenset({"display_band_labels_override"})
 _ABSENT = object()
 
 Definition = dict[str, Any]
@@ -83,7 +81,7 @@ def read_current(client: httpx.Client, axis_id: str) -> Definition | None:
     response = _request(client, "GET", f"{ADMIN_PATH}/{axis_id}")
     if response.status_code == 404:
         return None
-    # 応答は定義に算出項目（地図表示・重みの割合）を足したもの。
+    # 応答は定義に算出項目（重みの割合）を足したもの。
     body = response.json()
     return _canonical({key: body[key] for key in AxisDefinition.model_fields if key in body})
 
@@ -101,7 +99,11 @@ def plan(axis_id: str, current: Definition | None, desired: Definition | None) -
     if current == desired:
         return []
     update = Step("PUT", f"{ADMIN_PATH}/{axis_id}", desired, "定義を書き換える" + ("（公開にする）" if desired["is_published"] else ""))
-    return [unpublish, update] if current["is_published"] else [update]
+    if current["is_published"] and not is_update_allowed_while_published(
+        AxisDefinition.model_validate(current), AxisDefinition.model_validate(desired)
+    ):
+        return [unpublish, update]
+    return [update]
 
 
 def fingerprint(current: Definition | None, desired: Definition | None) -> str:
@@ -146,15 +148,8 @@ def _restore(client: httpx.Client, original: Definition) -> None:
     """元の定義へ戻す。戻せなければ、手で戻すための定義を添えて止まる。"""
     axis_id = original["axis_id"]
     try:
-        now = read_current(client, axis_id)
-        if now == original:
-            return
-        if now is None:
-            _request(client, "POST", ADMIN_PATH, original)
-            return
-        if now["is_published"]:
-            _request(client, "POST", f"{ADMIN_PATH}/{axis_id}/unpublish")
-        _request(client, "PUT", f"{ADMIN_PATH}/{axis_id}", original)
+        for step in plan(axis_id, read_current(client, axis_id), original):
+            _request(client, step.method, step.path, step.body)
     except AxisApplyError as error:
         raise AxisApplyError(
             f"元の定義へ戻せませんでした（{error}）。本番の軸 {axis_id} を次の定義へ手で戻してください:\n"
@@ -186,10 +181,7 @@ def verify(client: httpx.Client, axis_id: str, desired: Definition | None) -> No
     if published != (entry is not None):
         raise AxisApplyError(f"軸カタログに軸 {axis_id} が{'ありません' if published else '残っています'}")
     if entry is not None and desired is not None:
-        stale = sorted(
-            key for key in entry
-            if key in desired and key not in _CATALOG_RESHAPED and entry[key] != desired[key]
-        )
+        stale = sorted(key for key in entry if key in desired and entry[key] != desired[key])
         if stale:
             raise AxisApplyError(f"軸カタログの軸 {axis_id} の {stale} が書いた定義と一致しません")
 
@@ -242,10 +234,11 @@ def run(args: argparse.Namespace, client: httpx.Client) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     from _prod_env import read_prod_env
+    from _production_origins import production_origin
 
     args = parse_args(argv)
     auth = httpx.BasicAuth(read_prod_env("ADMIN_BASIC_AUTH_USERNAME"), read_prod_env("ADMIN_BASIC_AUTH_PASSWORD"))
-    with httpx.Client(base_url=read_prod_env("BACKEND_ORIGIN").rstrip("/"), auth=auth, timeout=30.0) as client:
+    with httpx.Client(base_url=production_origin("backend"), auth=auth, timeout=30.0) as client:
         return run(args, client)
 
 

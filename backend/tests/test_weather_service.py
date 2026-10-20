@@ -1,186 +1,90 @@
-"""`services/weather_service.py`——MSMの読み出しから、地点の天候・風の格子・風の予報の系列を組み立てる。
+"""`services/weather_service.py`——MSMの読み出しから、出発時点の風と格子点ごとの時別の予報・地図に描く格子点の風と降水を組み立てる。
 
-MSMの読み出し（`msm_client.read_series`）だけを差し替え、domainの計算は本物を通す。「今日」のパネルの
-読み方（`domain/weather.py`の今日の範囲・日次の値・コマ）は、ここで入口から見る。
+MSMの読み出し（`msm_client.read_series`・`msm_client.read_grid_block`・`msm_client.read_weather_grid`）だけを差し替え、domainの計算は本物を通す。
 
 ここで見ないもの:
-- 実測から天気コードを導く規則 → `test_weather_domain.py`
-- 風の成分から風速・風向を求めること・格子の敷き方 → `test_msm.py`・`test_wind.py`
-- 日の出・日没の計算 → `test_twilight.py`
+- 風の成分から風速・風向を求めること・格子点の並びの作り方と間引き → `test_msm.py`
+- 格子点ごとの予報を道・区間へ配ること → `test_wind_way_service.py`・`test_leg_costs.py`
 """
 
 from datetime import datetime
 
 import numpy as np
 
+from app.domain.msm import MsmGrid
 from app.domain.region import BoundingBox
 from app.domain.route import Coordinates
-from app.domain.weather import TemperatureRange
+from app.domain.wind import DepartureWind
 from app.infrastructure import msm_client
-from app.infrastructure.msm_client import MsmSeries, MsmUnavailableError
+from app.infrastructure.msm_client import MsmGridPointSeries, MsmSeries, MsmWeatherGridSeries
 from app.services.weather_service import WeatherService
+from tests.bound_fake import bound
 
 POINT = Coordinates(latitude=35.7597, longitude=139.7387)
-OTHER_POINT = Coordinates(latitude=35.1, longitude=139.1)
 
 
-def _series(times, *, u=None, v=None, precipitation=None, temperature=None, count=1):
-    """MSMの読み出し結果を、`count`地点とも同じ値で組み立てる。省略した変数は既定値で埋める。"""
-    n = len(times)
-
-    def column(values, default):
-        return np.tile(np.array(values if values is not None else [default] * n, dtype=float), (count, 1))
-
-    return MsmSeries(
-        times=times,
-        wind_u_ms=column(u, 0.0),
-        wind_v_ms=column(v, 0.0),
-        precipitation_mm=column(precipitation, 0.0),
-        temperature_c=column(temperature, 20.0),
-    )
-
-
-def _patch_read_series(monkeypatch, **values):
+def _patch_read_series(monkeypatch, *, times, u, v):
     async def read_series(latitudes, longitudes):
-        return _series(**values, count=len(latitudes))
+        def column(values):
+            return np.tile(np.array(values, dtype=float), (len(latitudes), 1))
+
+        return MsmSeries(
+            times=[datetime.fromisoformat(t) for t in times], wind_u_ms=column(u), wind_v_ms=column(v),
+        )
 
     monkeypatch.setattr(msm_client, "read_series", read_series)
 
 
-def _patch_unavailable(monkeypatch):
-    async def unavailable(latitudes, longitudes):
-        raise MsmUnavailableError("未同期")
+async def test_the_departure_wind_is_the_first_hour_rounded_to_a_tenth(monkeypatch):
+    """経路の計算が全区間へ一様に使う出発時点の風。東西成分だけの風（u=3.04）は西から吹くため270度。"""
+    _patch_read_series(monkeypatch, times=["2026-09-07T13:00", "2026-09-07T14:00"], u=[3.04, 9.0], v=[0.0, 0.0])
 
-    monkeypatch.setattr(msm_client, "read_series", unavailable)
-
-
-async def test_get_conditions_reports_the_first_hour_as_current(monkeypatch):
-    _patch_read_series(
-        monkeypatch,
-        times=["2026-09-07T13:00", "2026-09-07T14:00"],
-        u=[3.0, 0.0],
-        v=[0.0, 0.0],
-        temperature=[24.6, 25.0],
-        precipitation=[0.2, 0.0],
-    )
-
-    conditions = await WeatherService().get_conditions(POINT)
-
-    assert conditions.observed_at == "2026-09-07T13:00"
-    assert conditions.temperature_c == 24.6
-    assert conditions.wind_speed_ms == 3.0
-    # 東西成分だけの風（u=3）は西から吹くため270度。
-    assert conditions.wind_direction_deg == 270.0
-    assert conditions.wind_direction_label == "西"
-    assert conditions.precipitation_mm == 0.2
-    assert conditions.twilight.sunrise.startswith("2026-09-07T0")
+    assert await WeatherService().get_departure_wind(POINT) == DepartureWind(speed_ms=3.0, direction_deg=270.0)
 
 
-async def test_get_conditions_aggregates_today_only(monkeypatch):
-    """日次の集計は同じJST暦日ぶんに限る（翌日の値を今日の最高気温に混ぜない）。"""
-    _patch_read_series(
-        monkeypatch,
-        times=["2026-09-07T22:00", "2026-09-07T23:00", "2026-09-08T00:00"],
-        temperature=[25.0, 23.0, 35.0],
-        precipitation=[0.0, 1.5, 9.9],
-        u=[1.0, 4.0, 20.0],
-    )
+def _patch_read_grid_block(monkeypatch, *, times):
+    grid = MsmGrid.from_bbox_and_shape((22.4, 120.0, 47.6, 150.0), 505, 481)
 
-    conditions = await WeatherService().get_conditions(POINT)
+    async def read_grid_block(south, west, north, east):
+        points = grid.block_covering(south, west, north, east).all_points()
+        values = np.ones((len(points.points), len(times)))
+        return MsmGridPointSeries(
+            times=[datetime.fromisoformat(t) for t in times], points=points, wind_u_ms=values, wind_v_ms=values,
+        )
 
-    assert conditions.temperature_range == TemperatureRange(min_c=23.0, max_c=25.0)
-    assert conditions.precipitation_max_mm == 1.5
-    assert conditions.wind_speed_max_ms == 4.0
+    monkeypatch.setattr(msm_client, "read_grid_block", bound(msm_client.read_grid_block, read_grid_block))
 
 
-async def test_a_missing_hour_leaves_the_temperature_range_out(monkeypatch):
-    """格子の欠損（NaN）を含む日の範囲は、片方だけでなく丸ごと無い（応答でnullが混ざった範囲を配らない）。"""
-    _patch_read_series(monkeypatch, times=["2026-09-07T13:00", "2026-09-07T14:00"], temperature=[24.0, float("nan")])
+async def test_a_forecast_of_a_single_hour_gives_no_hourly_series(monkeypatch):
+    """1時間刻みの並びを作れない予報で、ルートの生成と地図の風の配信を落とさない（風の予報が無いものとして扱う）。"""
+    _patch_read_grid_block(monkeypatch, times=["2026-09-07T13:00"])
+    bbox = BoundingBox(min_latitude=35.6, min_longitude=139.6, max_latitude=35.7, max_longitude=139.7)
 
-    conditions = await WeatherService().get_conditions(POINT)
-
-    assert conditions.temperature_range is None
-
-
-async def test_get_conditions_builds_two_hourly_periods(monkeypatch):
-    times = [f"2026-09-07T{hour:02d}:00" for hour in range(6, 22)]
-    _patch_read_series(monkeypatch, times=times, temperature=[20.0 + i for i in range(len(times))])
-
-    conditions = await WeatherService().get_conditions(POINT)
-
-    assert [p.period for p in conditions.today_periods] == [
-        "06:00",
-        "08:00",
-        "10:00",
-        "12:00",
-        "14:00",
-        "16:00",
-        "18:00",
-        "20:00",
-    ]
-    assert conditions.today_periods[1].temperature_c == 22.0
-    # 画面はこの間隔をコマの並びの見出しに出す。並びの実際の間隔と食い違わない。
-    assert conditions.today_period_interval_hours == 2
+    assert await WeatherService().get_wind_forecast_lattice(bbox) is None
 
 
-async def test_get_conditions_truncates_periods_at_the_end_of_the_forecast(monkeypatch):
-    """予報の終端に達したらコマ数は8未満になる（runによって予報の長さが変わるため）。"""
-    _patch_read_series(monkeypatch, times=["2026-09-07T13:00", "2026-09-07T14:00", "2026-09-07T15:00"])
+async def test_the_map_grid_gives_each_grid_point_its_rounded_wind_and_rain_with_missing_values_as_none(monkeypatch):
+    """東西成分だけの風（u=3.04）は西から吹くため270度。格子の欠損（NaN）を0と読むと、降っていないと見せる。"""
+    grid = MsmGrid.from_bbox_and_shape((22.4, 120.0, 47.6, 150.0), 505, 481)
 
-    conditions = await WeatherService().get_conditions(POINT)
+    async def read_weather_grid(south, west, north, east, max_points):
+        points = grid.block_overlapping(south, west, north, east).thinned_points(max_points)
+        count = len(points.points)
+        return MsmWeatherGridSeries(
+            times=[datetime(2026, 10, 7, 12, 0)],
+            points=points,
+            wind_u_ms=np.full((count, 1), 3.04),
+            wind_v_ms=np.zeros((count, 1)),
+            precipitation_mm=np.array([[1.26], [np.nan]] + [[0.0]] * (count - 2)),
+        )
 
-    assert [p.period for p in conditions.today_periods] == ["13:00", "15:00"]
+    monkeypatch.setattr(msm_client, "read_weather_grid", bound(msm_client.read_weather_grid, read_weather_grid))
+    bbox = BoundingBox(min_latitude=35.6, min_longitude=139.6, max_latitude=35.7, max_longitude=139.7)
 
+    forecast = await WeatherService().get_msm_grid(bbox)
 
-async def test_get_conditions_returns_none_when_msm_unavailable(monkeypatch):
-    _patch_unavailable(monkeypatch)
-
-    assert await WeatherService().get_conditions(POINT) is None
-
-
-async def test_get_wind_grid_builds_speed_and_direction_from_msm(monkeypatch):
-    # 北風（v=-1, u=0）は「北から吹いてくる」ため風向0度、風速1.0 m/s になる。
-    _patch_read_series(monkeypatch, times=["2026-09-07T13:00"], u=[0.0], v=[-1.0], precipitation=[0.4])
-
-    times, results = await WeatherService().get_wind_grid([POINT, OTHER_POINT])
-
-    assert times == ["2026-09-07T13:00"]
-    assert len(results) == 2
-    assert results[0].latitude == POINT.latitude
-    assert results[0].longitude == POINT.longitude
-    assert results[0].wind_speed_ms == [1.0]
-    assert results[0].wind_direction_deg == [0.0]
-    assert results[0].precipitation_mm == [0.4]
-
-
-async def test_get_wind_grid_returns_all_none_when_msm_unavailable(monkeypatch):
-    _patch_unavailable(monkeypatch)
-
-    times, results = await WeatherService().get_wind_grid([POINT, OTHER_POINT])
-
-    assert times == []
-    assert results == [None, None]
-
-
-async def test_get_wind_grid_returns_empty_for_empty_points():
-    assert await WeatherService().get_wind_grid([]) == ([], [])
-
-
-ROUTE_BBOX = BoundingBox(min_latitude=35.0, min_longitude=139.0, max_latitude=35.12, max_longitude=139.1)
-
-
-async def test_get_wind_forecast_lattice_reads_the_series_of_the_area(monkeypatch):
-    _patch_read_series(monkeypatch, times=["2026-09-07T13:00", "2026-09-07T14:00"], u=[3.0, 0.0], v=[0.0, 4.0])
-
-    series = await WeatherService().get_wind_forecast_lattice(ROUTE_BBOX)
-
-    assert series.times == [datetime(2026, 9, 7, 13, 0), datetime(2026, 9, 7, 14, 0)]
-    # 西風（u=3）は270度、北向きに吹く風（v=4）は南から＝180度。
-    assert series.speed_ms[0].tolist() == [3.0, 4.0]
-    assert series.direction_deg[0].tolist() == [270.0, 180.0]
-
-
-async def test_get_wind_forecast_lattice_returns_none_when_msm_unavailable(monkeypatch):
-    _patch_unavailable(monkeypatch)
-
-    assert await WeatherService().get_wind_forecast_lattice(ROUTE_BBOX) is None
+    first, second = forecast.points[:2]
+    assert (first.latitude, first.longitude) == (35.6, 139.5625)
+    assert (first.wind_speed_ms, first.wind_direction_deg, first.precipitation_mm) == ([3.0], [270.0], [1.3])
+    assert second.precipitation_mm == [None]
+    assert (forecast.latitude_step_deg, forecast.longitude_step_deg) == (0.05, 0.0625)

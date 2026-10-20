@@ -12,7 +12,8 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
-import type { FrontendVersion, getDebugStats } from "@/features/admin/adminApi";
+import type { getDebugStats } from "@/features/admin/adminApi";
+import type { FrontendVersion } from "@/services/versionApi";
 import { heldReplies, inTurn, onBackend, onSameOrigin } from "@/testing/backendServer";
 
 import SystemStatusPanel from "./SystemStatusPanel";
@@ -24,18 +25,11 @@ function externalStats(overrides: Partial<ExternalStats> = {}): ExternalStats {
   return {
     calls: 0,
     errors: 0,
-    cache_hits: 0,
-    cache_misses: 0,
-    total_ms: 0,
     max_ms: 0,
     avg_ms: 0,
     cache_hit_rate: null,
     error_types: {},
     last_error: null,
-    last_success_at: null,
-    retried_calls: 0,
-    retry_attempts_total: 0,
-    stale_fallback_used: 0,
     ...overrides,
   };
 }
@@ -112,7 +106,8 @@ describe("SystemStatusPanel", () => {
     serveVersion({ ...frontendVersion, commit: null });
     render(<SystemStatusPanel open onClose={() => {}} />);
 
-    const backend = await waitFor(() => section("バックエンド"));
+    await screen.findByText("backend-sha");
+    const backend = section("バックエンド");
     expect(within(backend).getByText("backend-sha")).toBeInTheDocument();
     expect(within(backend).getByText("debug_mode ON")).toBeInTheDocument();
     expect(within(section("フロントエンド")).getByText("(ローカル)")).toBeInTheDocument();
@@ -146,7 +141,6 @@ describe("SystemStatusPanel", () => {
   it("予報の同期は、backendが鮮度を返したときだけ出し、滞っていれば警告する", async () => {
     const msm = {
       last_run_at: "2026-09-24T00:00:00Z",
-      data_end_at: "2026-09-26T00:00:00Z",
       run_age_hours: 3,
       remaining_hours: 45,
     };
@@ -205,7 +199,7 @@ describe("SystemStatusPanel", () => {
     expect(cells[1][4]).toBe("—");
   });
 
-  it("失敗のあったカテゴリの行はエラーとして目立たせ、失敗の内訳・再試行・古いキャッシュでの代用をエラー件数に添える", async () => {
+  it("失敗のあったカテゴリの行はエラーとして目立たせ、失敗の内訳をエラー件数に添える", async () => {
     serveVersion(frontendVersion);
     serveStats(
       debugStats({
@@ -214,9 +208,6 @@ describe("SystemStatusPanel", () => {
             calls: 10,
             errors: 3,
             error_types: { TimeoutError: 2, HTTP429: 1 },
-            retried_calls: 2,
-            retry_attempts_total: 5,
-            stale_fallback_used: 1,
             last_error: { type: "TimeoutError", at: "2026-09-24T01:00:00Z" },
           }),
           healthy: externalStats({ calls: 5 }),
@@ -228,15 +219,11 @@ describe("SystemStatusPanel", () => {
     const failing = (await screen.findByText("failing")).closest("tr")!;
     expect(failing).toHaveAttribute("data-level", "error");
     const [, , errorsCell, lastErrorCell] = within(failing).getAllByRole("cell");
-    expect(errorsCell).toHaveAttribute(
-      "title",
-      "TimeoutError:2 / HTTP429:1 / 再試行あり 2件(延べ5回) / 古いキャッシュで代用 1件",
-    );
+    expect(Array.from(errorsCell.childNodes, (node) => node.textContent)).toEqual(["3", "TimeoutError:2", "HTTP429:1"]);
     expect(lastErrorCell.textContent).toMatch(/^TimeoutError \(.+\)$/);
 
     const healthy = screen.getByText("healthy").closest("tr")!;
     expect(healthy).not.toHaveAttribute("data-level");
-    expect(within(healthy).getAllByRole("cell")[2]).not.toHaveAttribute("title");
   });
 
   it("429で拒否した件数を、カテゴリごとに出す", async () => {

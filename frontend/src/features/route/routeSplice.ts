@@ -5,15 +5,11 @@
  * （docs/architecture/design-principles.md 構造仕様1）——差し替えた経路の評価はbackendが
  * 既存候補と同じ経路で行う。
  *
- * `segments`は約500m単位へ畳まれておりEdgeの境目と一致しないため、ここでは使えない。
- *
  * 区間を細かく割るときだけ座標（`geometry.coordinates`と`edge_point_offsets`）も読む
  * ——2本が交差・接触する地点はEdge idの一致では分からないため（`splitPairedStretch`）。
  * `edge_ids`を持つ候補は、`edge_point_offsets`・`node_ids`もEdgeの数より1件多く必ず持つ（backendの
  * `services/road_graph_engine.py`が同じ箇所で組む）ので、ここでは欠けを見ない。
  */
-import { cumulativeDistancesKm } from "@/features/route/geoDistance";
-
 /** 表示中の候補が、比較相手と別の道を通る区間。`edge_ids`における`[start, end)`。 */
 interface RouteStretch {
   start: number;
@@ -84,6 +80,8 @@ interface RouteGeometryShape {
   edgePointOffsets: readonly number[];
   /** Edge iの始点のNode id（末尾に終点を持つ）。backendの`node_ids`。 */
   nodeIds: readonly string[];
+  /** Edge iの始点のルートの上の距離（km。末尾に全体）。`lib/routeDistance.ts: routeEdgeKms`が区間から求める。 */
+  edgeKms: readonly number[];
 }
 
 /**
@@ -102,7 +100,6 @@ function splitPairedStretch(
   target: RouteGeometryShape,
   pair: PairedStretch,
   minLengthKm: number,
-  baseCumulativeKm: readonly number[],
 ): PairedStretch[] {
   const sharedOnBase = new Map<string, number>();
   for (let index = pair.displayed.start + 1; index < pair.displayed.end; index += 1) {
@@ -110,9 +107,8 @@ function splitPairedStretch(
   }
   if (sharedOnBase.size === 0) return [pair];
 
-  const kmAt = (edgeIndex: number) => baseCumulativeKm[base.edgePointOffsets[edgeIndex]];
-  const startKm = kmAt(pair.displayed.start);
-  const endKm = kmAt(pair.displayed.end);
+  const startKm = base.edgeKms[pair.displayed.start];
+  const endKm = base.edgeKms[pair.displayed.end];
 
   const splits: PairedStretch[] = [];
   let lastBase = pair.displayed.start;
@@ -121,7 +117,7 @@ function splitPairedStretch(
   for (let index = pair.target.start + 1; index < pair.target.end; index += 1) {
     const onBase = sharedOnBase.get(target.nodeIds[index]);
     if (onBase === undefined || onBase <= lastBase) continue;
-    const splitKm = kmAt(onBase);
+    const splitKm = base.edgeKms[onBase];
     // 手前の断片と、残り全部の両方が下限を満たすときだけ割る（割った結果に下限未満を作らない）。
     if (splitKm - lastKm < minLengthKm || endKm - splitKm < minLengthKm) continue;
     splits.push({
@@ -199,29 +195,26 @@ function createsRevisit(
  * 積み上げても互いに影響しない（`buildSplicedShape`）。
  */
 export function stretchAlternativeGroups(
-  baseEdgeIds: readonly string[],
-  candidates: readonly { id: string; edgeIds: readonly string[]; shape: RouteGeometryShape }[],
+  baseShape: SplicedRouteShape,
+  candidates: readonly { id: string; shape: SplicedRouteShape }[],
   // 割る下限（km）は**省略できない**。backendの較正値（`domain/tuning.py`が宣言し、
   // 起動時のカタログ取得で届く）で、ここに既定を持つと**届かなかったときに下限なし＝
   // 共有地点すべてで区間を割る**という、較正したのとは別の切り方で黙って動く。
   // backend側の`tuning_value`は宣言に無いidをその場で落とす。受ける側も同じにする。
-  options: { baseShape: RouteGeometryShape; minSplitLengthKm: number },
+  minSplitLengthKm: number,
 ): StretchGroup[] {
   const alternatives: StretchAlternative[] = [];
   const seen = new Set<string>();
-  const { baseShape, minSplitLengthKm } = options;
-  // 区間を割るために元ルートの累積距離を1回だけ求める（候補ごとに作り直さない）。
-  const baseCumulativeKm = cumulativeDistancesKm(baseShape.coordinates);
   // 折り返しの判定に使う元ルートのNode集合。候補ごとに作り直さない。
   const baseNodeSet = new Set(baseShape.nodeIds);
   for (const candidate of candidates) {
-    const pairs = pairedStretches(baseEdgeIds, candidate.edgeIds).flatMap((pair) =>
-      splitPairedStretch(baseShape, candidate.shape, pair, minSplitLengthKm, baseCumulativeKm),
+    const pairs = pairedStretches(baseShape.edgeIds, candidate.shape.edgeIds).flatMap((pair) =>
+      splitPairedStretch(baseShape, candidate.shape, pair, minSplitLengthKm),
     );
     for (const pair of pairs) {
       // 差し替え後に通るEdgeは相手側の範囲そのもの。両端の共有Edgeを目印に切り出す形には
       // できない——共有**地点**で割った区間は、両端に共有Edgeを持たない。
-      const edgeIds = candidate.edgeIds.slice(pair.target.start, pair.target.end);
+      const edgeIds = candidate.shape.edgeIds.slice(pair.target.start, pair.target.end);
       if (createsRevisit(baseShape.nodeIds, baseNodeSet, candidate.shape.nodeIds, pair.displayed, pair.target)) {
         continue;
       }
@@ -252,8 +245,9 @@ export function stretchAlternativeGroups(
   return groups;
 }
 
-/** 乗り換えを適用した後の経路の形。次に選べる区間の計算と、地図の描画が同じものを見る。 */
-interface SplicedRouteShape extends RouteGeometryShape {
+/** 経路の形（Edge id列＋区間を割るための形）。元ルート・乗り換え先・乗り換えを適用した後の経路が同じ形を持ち、
+ * 次に選べる区間の計算と地図の描画が同じものを見る。 */
+export interface SplicedRouteShape extends RouteGeometryShape {
   edgeIds: string[];
 }
 
@@ -276,10 +270,8 @@ export function buildSplicedShape(
   for (const alternative of applied) {
     const targetShape = shapeOf(alternative.candidateId);
     if (!targetShape) continue;
-    const from = targetShape.edgePointOffsets[alternative.targetStretch.start];
-    const to = targetShape.edgePointOffsets[alternative.targetStretch.end];
-    const head = current.edgePointOffsets[alternative.stretch.start];
-    const tail = current.edgePointOffsets[alternative.stretch.end];
+    const { start: from, end: to } = stretchCoordinateRange(targetShape.edgePointOffsets, alternative.targetStretch);
+    const { start: head, end: tail } = stretchCoordinateRange(current.edgePointOffsets, alternative.stretch);
     const edgeIds = [
       ...current.edgeIds.slice(0, alternative.stretch.start),
       ...alternative.edgeIds,
@@ -309,7 +301,18 @@ export function buildSplicedShape(
         .map((offset) => offset - from + head),
       ...current.edgePointOffsets.slice(alternative.stretch.end).map((offset) => offset + shift),
     ];
-    current = { edgeIds, coordinates, edgePointOffsets, nodeIds };
+    // 距離も同じ位置で継ぎ、後ろ側は差し替えで伸び縮みした分だけずらす。
+    const baseKm = current.edgeKms;
+    const targetKm = targetShape.edgeKms;
+    const { start: s, end: e } = alternative.stretch;
+    const { start: ts, end: te } = alternative.targetStretch;
+    const stretchShift = targetKm[te] - targetKm[ts] - (baseKm[e] - baseKm[s]);
+    const edgeKms = [
+      ...baseKm.slice(0, s),
+      ...targetKm.slice(ts, te).map((km) => km - targetKm[ts] + baseKm[s]),
+      ...baseKm.slice(e).map((km) => km + stretchShift),
+    ];
+    current = { edgeIds, coordinates, edgePointOffsets, nodeIds, edgeKms };
   }
   return current;
 }

@@ -1,4 +1,4 @@
-import type { Coordinates, HardFilterOverride, RouteGenerateRequest, RoutePreferenceWeights } from "@/types/route";
+import type { Coordinates, RoadAvoidanceOverride, RouteGenerateRequest, RoutePreferenceWeights } from "@/types/route";
 
 // 生成リクエストのpayloadと、「生成条件が変更されています」（conditionsDirty）の比較キーを
 // **同じ入力から**組み立てる。
@@ -10,19 +10,16 @@ import type { Coordinates, HardFilterOverride, RouteGenerateRequest, RoutePrefer
 /** 生成リクエストを決める入力一式（画面の状態から実効値へ解決済み）。 */
 export interface GenerationInput {
   origin: Coordinates;
-  /** 周回の目標距離。経由地・目的地を置いたときはnull（探索の範囲はbackendが置いた点から決める）。 */
+  /** 全長の目標距離。nullなら全長の目標を置かない（送らない）。 */
   distanceKm: number | null;
-  distanceToleranceKm: number;
-  /** 実際に使う候補数（経由地を伴う目的地ルートは決まった数、`fixedRouteCount`）。 */
   maxRoutes: number;
   assumedSpeedKmh: number;
   startTime: Date;
-  hardFilters: HardFilterOverride;
-  /** レンズが軸を指している場合のみ。地図の見え方の選択で、候補の選定には影響しない。 */
-  lensAxisId: string | null;
+  /** 道の区分の行ごとに選んだ避け方（選んでいない行と前の鍵は、backendが今の行へ揃える）。 */
+  roadAvoidance: RoadAvoidanceOverride;
   /** 重み上書きが有効なときのみ（無効ならbackendの既定値に委ねる）。 */
   routePreference: RoutePreferenceWeights | null;
-  /** 目的地モードのときだけ値を持つ（周回モードでは常に空・null）。 */
+  /** 置いた経由地（通る順）と目的地。目的地が無ければ出発地へ戻る。 */
   waypoints: readonly Coordinates[];
   destination: Coordinates | null;
   /** 利用者が出発時刻を明示的に選んだか。falseの間の`startTime`は「今」へ張り付いて
@@ -36,39 +33,20 @@ export function buildGenerateRequest(input: GenerationInput): RouteGenerateReque
     latitude: input.origin.latitude,
     longitude: input.origin.longitude,
     ...(input.distanceKm !== null ? { distance_km: input.distanceKm } : {}),
-    distance_tolerance_km: input.distanceToleranceKm,
-    route_type: "loop",
-    // 主観と時間の換算レート（P）は**送らない**。このAPIでは省略が「較正値から読む」の
-    // 合図で、画面から変える手段が無いのに値を載せると、管理画面で調整しても効かなくなる。
-    // 画面から変えられるようになるまでは省略する。
-    // hard_filtersは一般向けルート設定画面（RouteSettingsPanel）が常時操作する対象の
-    // ため、重み上書きのようなトグルを介さず常に送る（既定値はbackendの
-    // DEFAULT_HARD_FILTERSと一致するため挙動は変わらない）。
-    hard_filters: input.hardFilters,
-    // RouteGenerateRequest.max_routesは既定値を持つがrequiredのため、モードに関わらず常に送る。
+    // 目標距離からの許容差と、主観と時間の換算レート（P）は**送らない**。このAPIでは省略が
+    // 「較正値から読む」の合図で、画面から変える手段が無いのに値を載せると、管理画面で調整しても
+    // 効かなくなる。画面から変えられるようになるまでは省略する。
+    road_avoidance: input.roadAvoidance,
     max_routes: input.maxRoutes,
     assumed_speed_kmh: input.assumedSpeedKmh,
     start_time: input.startTime.toISOString(),
-    // レンズが軸を要求していれば、重み0でも区間表示のため風の時変化合成を行う（backend）。
-    ...(input.lensAxisId !== null ? { lens_axis_id: input.lensAxisId } : {}),
     ...(input.routePreference !== null ? { route_preference: input.routePreference } : {}),
-    // 目的地モードのときだけ経由地・目的地を送る（backend側の分岐はapi/routers/routes.py）。
     ...(input.waypoints.length > 0 ? { waypoints: [...input.waypoints] } : {}),
     ...(input.destination !== null ? { destination: input.destination } : {}),
   };
 }
 
-/** 比較対象から外すpayloadフィールドと、その理由。
- *
- * ここに挙げた以外は**すべて**比較対象になる。payloadへフィールドを足したときに
- * 比較側へ足し忘れることが起きないよう、除外は明示的な列挙だけに限る。 */
-const IGNORED_WHEN_COMPARING = {
-  // レンズは地図の見え方の選択で、候補の選定（探索コスト）には影響しない。頻繁に
-  // 切り替えるため、変えるたびに「生成条件が変更されています」を出すと通知が意味を失う。
-  lens_axis_id: "地図の見え方の選択で、候補の選定には影響しない",
-} as const;
-
-/** キー順に依存しないJSON化。`hard_filters`・`route_preference`のように、同じ内容でも
+/** キー順に依存しないJSON化。`road_avoidance`・`route_preference`のように、同じ内容でも
  * 組み立て方（保存値からの復元・キー整合による補完）でプロパティの並びが変わりうる
  * オブジェクトを、並びの違いだけで「条件が変わった」と誤判定しないため。配列
  * （`waypoints`）は順序自体に意味があるのでそのまま保つ。 */
@@ -85,19 +63,13 @@ function stableStringify(value: unknown): string {
 
 /**
  * `conditionsDirty`の比較キー。payloadと同じ入力から作るため、送る値の変更は
- * `IGNORED_WHEN_COMPARING`に挙げたもの以外すべてが差分として現れる。
+ * 下の出発時刻を除いてすべてが差分として現れる。
  *
- * `startTimePinned=false`（利用者が出発時刻を選んでいない）のときは`start_time`も外す
+ * `startTimePinned=false`（利用者が出発時刻を選んでいない）のときは`start_time`を外す
  * ——共有時刻は「今」へ5分刻みで追従するので、放置するだけで値が変わる。利用者が何も
  * していないのに「生成条件が変更されています」が点くと、印そのものが合図として機能しなくなる。
  */
 export function generationConditionsKey(input: GenerationInput): string {
-  const request = buildGenerateRequest(input) as Record<string, unknown>;
-  const comparable: Record<string, unknown> = {};
-  for (const key of Object.keys(request)) {
-    if (key in IGNORED_WHEN_COMPARING) continue;
-    if (key === "start_time" && !input.startTimePinned) continue;
-    comparable[key] = request[key];
-  }
-  return stableStringify(comparable);
+  const { start_time: startTime, ...rest } = buildGenerateRequest(input);
+  return stableStringify(input.startTimePinned ? { ...rest, start_time: startTime } : rest);
 }

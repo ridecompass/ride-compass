@@ -4,10 +4,8 @@ import { cn } from "@/lib/cn";
 
 // 押すと1回動く操作のボタン。画面のボタンはすべてこれか、押して切り替える`Toggle`・
 // 1つを選ぶ`ToggleGroup`・`Tabs`を使う（見た目はここだけが決める）。
-//
-// 色は必ずvar(--color-*)をTailwindの任意値記法で参照する(docs/modules/frontend/frontend-design-system.md)。
 export const buttonVariants = cva(
-  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-1 whitespace-nowrap border font-normal leading-none transition-colors disabled:cursor-default disabled:opacity-50 [&_svg]:shrink-0",
+  "inline-flex min-h-6 min-w-6 shrink-0 cursor-pointer items-center justify-center gap-1 whitespace-nowrap border font-normal leading-none transition-colors disabled:cursor-default disabled:opacity-50 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -32,10 +30,10 @@ export const buttonVariants = cva(
          * 消えるのが遅れ、押した後も枠が青く見えるため消す。 */
         float:
           "pointer-events-auto touch-none border-[var(--color-border-strong)] bg-[var(--color-surface)] text-[var(--foreground)] shadow-float [-webkit-tap-highlight-color:transparent] hover:enabled:border-[var(--color-accent)]",
-        /** 地図右上のMapLibre純正コントロールの続きに見えるボタン。MapLibre側がテーマに追従しないため、
-         * 同じ列で色違いにならないよう固定色にする。寸法はglobals.cssの--map-ctrl-*（縦積みの位置計算と共有）。 */
+        /** 地図右上のMapLibre純正コントロールの続きに見えるボタン。面の色はテーマに従い、純正の側はglobals.cssが同じ色へ
+         * 揃える。寸法はglobals.cssの--map-ctrl-*（縦積みの位置計算と共有）。 */
         mapCtrl:
-          "pointer-events-auto touch-none rounded-[4px] border-0 bg-white text-[#333] shadow-[0_0_0_2px_rgba(0,0,0,0.1)] data-[state=open]:shadow-[0_0_2px_2px_#0096ff] [&_svg]:size-[var(--map-ctrl-icon-size)]",
+          "pointer-events-auto touch-none rounded-[4px] border-0 bg-[var(--color-surface)] text-[var(--foreground)] shadow-[0_0_0_2px_rgba(0,0,0,0.1)] data-[state=open]:shadow-[0_0_2px_2px_#0096ff] [&_svg]:size-[var(--map-ctrl-icon-size)]",
         /** メニューの1行（押すと1回動く。切り替えの行は`Toggle`の`menu`）。 */
         menu: "justify-start gap-2 border-0 bg-transparent text-left text-[var(--foreground)] hover:enabled:bg-[var(--color-surface-2)]",
         /** 見出し脇の(i)。開いている間はアクセント色。 */
@@ -47,8 +45,11 @@ export const buttonVariants = cva(
         md: "rounded-sm px-3.5 py-2 text-[length:var(--font-size-md)]",
         /** 四角のアイコンボタン。 */
         icon: "size-8 rounded-sm",
-        /** パネルの操作のボタン。アイコンだけを置き、名前は`aria-label`で渡す（マウスを重ねた吹き出しにも同じ名前が出る）。 */
+        /** パネルの操作のボタン。アイコンだけを置き、名前は`aria-label`で渡す（長押し・マウスを重ねると、名前と使い方が
+         * `components/UsageGuide/UsageTooltip.tsx`のツールチップに出る）。 */
         panelIcon: "rounded-sm px-1.5 py-1",
+        /** 上部の帯の印（警報）。値の並びに混ざるので、枠の無い`ghost`と組む。 */
+        headerIcon: "size-7 rounded-sm",
         /** 小さい丸のアイコンボタン。 */
         iconRound: "size-6.5 rounded-full",
         /** 地図右上の列の1段。 */
@@ -84,8 +85,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       type={type}
       className={cn(buttonVariants({ variant, size, shape }), className)}
       data-usage={usage}
-      // アイコンだけのボタンは、名前を画面に出さないので吹き出しで読ませる。
-      title={size === "panelIcon" ? props["aria-label"] : undefined}
       {...props}
     />
   );

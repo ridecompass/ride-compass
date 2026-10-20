@@ -6,16 +6,16 @@ SQLの中の条件はPythonのカバレッジに現れないので、式をテ�
 入力の作り方:
 - 道（別名`w`）: 道を取込の入口（`tests/source_ingest.py`）から入れ、読み手と同じ副問い合わせ
   （`infrastructure/source_models.py: WAYS_SOURCE_SQL`）で読む。
-- 区間（`re`）・区間の値（`em`）: 派生の段が書く表の行の型（`road_edges`・`edge_materials`）で値を与える。
+- 区間（`re`）・区間の値（`em`）: 派生の段が書く表の行の型（`road_edges`と、区間の値の表を並べたもの）で値を与える。
   値そのものの出し方（件数を数える等）は派生の段の責務なので、ここでは作らない。
 
-部品の節は架空のタグ・路面の区分で確かめる。カタログの節だけは、カタログに直に書かれた式（部品を使わないもの）を
+部品の節は架空のタグで、タイルへの載せ方の節は架空の材料で確かめる。カタログの節は、カタログに直に書かれた式（部品を使わないもの）を
 本物の材料のidで引く——そこでは、その材料が何を返すかがテストの関心である。
 
 カタログの全部の式が、読み出しの各経路（`infrastructure/road_graph_repository.py: RoadGraphRepository`の区間の材料・
-道1本・道の標本・値の一覧・路面タイル）の中で実在の列だけを読むことも見る。上の節は別名を値で与えるので、
-綴りの合わない列や、経路に無い別名を読む式を見つけられない。値の一覧の経路は、SQLが値を重ねず・値の無い道を除き・
-並べることも、道の標本の経路は、範囲を絞ると抽選しないことも見る（セッションを差し替える契約のテストには、SQLが返す値が現れない）。
+道1本・道の標本・路面タイル・タイルのフィーチャーごとの材料・土地被覆の内訳）の中で実在の列だけを読むことも見る。上の節は別名を値で与えるので、
+綴りの合わない列や、経路に無い別名を読む式を見つけられない。道の標本の経路は、範囲を絞ると抽選しないことも見る
+（セッションを差し替える契約のテストには、SQLが返す値が現れない）。
 
 ここで見ないもの:
 - 読み出しの経路が結果をどの形に並べるか（列と材料の対応・取込範囲の外のタイル） → `test_road_graph_repository_contracts.py`
@@ -29,17 +29,18 @@ import pytest
 from sqlalchemy import text
 
 from app.domain import material_sql
-from app.domain.material_catalog import ACCIDENT_COUNT_PER_KM_YEAR, material_value_sql
+from app.domain.material_catalog import (
+    ACCIDENT_COUNT_PER_KM_YEAR,
+    CoverageExcluded,
+    MaterialSpec,
+    material_value_sql,
+    tile_column_sql,
+)
 from app.domain.region import BoundingBox
-from app.domain.road import SurfaceClass, TrackGrade
 from app.infrastructure.source_models import WAYS_SOURCE_SQL
 from tests.source_ingest import ingest_records, way_record
 
-pytestmark = [
-    pytest.mark.asyncio(loop_scope="module"),
-    pytest.mark.xdist_group(name="postgis"),
-    pytest.mark.postgis,
-]
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 
 async def _ingest_ways(tags_by_way: dict[int, dict[str, str]]) -> None:
@@ -58,13 +59,15 @@ async def _way_values(session, expression: str, tags_by_way: dict[int, dict[str,
 
 
 async def _edge_value(session, expression: str, *, distance_m: float, accident_years: int = 1,
-                      **edge_materials: float | None) -> object:
+                      **edge_values: float | None) -> object:
     """区間の長さと区間の値を与えて、式を1区間ぶん評価する。"""
     row = await session.execute(
         text(f"SELECT ({expression})"
              " FROM json_populate_record(NULL::road_edges, CAST(:re AS json)) re,"
-             " json_populate_record(NULL::edge_materials, CAST(:em AS json)) em"),
-        {"re": json.dumps({"distance_m": distance_m}), "em": json.dumps(edge_materials),
+             " (SELECT * FROM json_populate_record(NULL::edge_counts, CAST(:em AS json)) c,"
+             "  json_populate_record(NULL::edge_elevation, CAST(:em AS json)) e,"
+             "  json_populate_record(NULL::edge_landcover, CAST(:em AS json)) l) em"),
+        {"re": json.dumps({"distance_m": distance_m}), "em": json.dumps(edge_values),
          "accident_years": accident_years})
     return row.scalar_one()
 
@@ -85,50 +88,21 @@ async def test_a_number_tag_has_a_value_only_when_it_is_a_positive_number(road_g
     assert values == {1: expected}
 
 
-_CLASSES = (
-    SurfaceClass("class_a", "区分A", {"value_a": "A", "o'quoted": "引用符"}, "speed.crr"),
-    SurfaceClass("class_b", "区分B", {"value_b": "B"}, "speed.crr"),
-    SurfaceClass("class_empty", "タグの無い区分", {}, "speed.crr"),
-)
-_GRADES = (
-    TrackGrade("grade_a", "等級A", "class_b", "説明"),
-)
-
-
-async def test_a_surface_falls_in_the_class_that_lists_it_and_other_values_in_other(road_graph_session):
-    values = await _way_values(road_graph_session, material_sql.surface_class_sql(_CLASSES), {
-        1: {"surface": " VALUE_A "},
-        2: {"surface": "o'quoted"},
-        3: {"surface": "value_b"},
-        4: {"surface": "unlisted"},
-        5: {},
-    })
-
-    assert values == {1: "class_a", 2: "class_a", 3: "class_b", 4: material_sql.SURFACE_OTHER_KEY, 5: None}
-
-
-async def test_the_surface_estimate_gives_every_road_a_value(road_graph_session):
-    unknown_track = material_sql.UNKNOWN_TRACK_SURFACE.key
-    unknown_road = material_sql.UNKNOWN_ROAD_SURFACE.key
-    track = {"highway": material_sql.TRACK_HIGHWAY}
-
-    values = await _way_values(road_graph_session, material_sql.surface_estimate_sql(_CLASSES, _GRADES), {
-        # surfaceの区分が等級に先立つ。
-        1: {**track, "surface": "value_a", "tracktype": "grade_a"},
-        # 区分に無いsurfaceは、等級があれば等級から写す。
-        2: {**track, "surface": "unlisted", "tracktype": " GRADE_A "},
-        3: {"surface": "unlisted"},
-        4: track,
-    })
-
-    assert values == {1: "class_a", 2: "class_b", 3: unknown_road, 4: unknown_track}
-
-
 async def test_a_tag_with_the_value_is_true_and_an_absent_tag_is_false(road_graph_session):
     values = await _way_values(road_graph_session, material_sql.tag_is_value_sql("tag_a", "yes"),
                                {1: {"tag_a": " Yes "}, 2: {"tag_a": "no"}, 3: {}})
 
     assert values == {1: True, 2: False, 3: False}
+
+
+async def test_a_tag_condition_is_unknown_where_the_road_has_no_raw_way(road_graph_session):
+    """取込で消えた道を、派生を作り直すまで区間が指し続ける（区間の材料の読み手は`w`を外部結合する）。
+    道が無いことは、タグが無いこと（非該当）ではない。"""
+    row = await road_graph_session.execute(text(
+        f"SELECT ({material_sql.tag_is_value_sql('tag_a', 'yes')})"
+        f" FROM (VALUES (1)) AS edge(id) LEFT JOIN {WAYS_SOURCE_SQL} w ON false"))
+
+    assert row.scalar_one() is None
 
 
 async def test_a_cycleway_value_on_any_side_counts(road_graph_session):
@@ -147,9 +121,8 @@ _POI_KIND = "signal"
 
 @pytest.mark.parametrize(("count", "distance_m", "expected"), [
     (3.0, 500.0, 6.0),
-    (None, 500.0, None),  # 未計算
 ])
-async def test_a_poi_density_is_per_km_and_missing_until_counted(road_graph_session, count, distance_m, expected):
+async def test_a_poi_density_is_per_km(road_graph_session, count, distance_m, expected):
     value = await _edge_value(road_graph_session, material_sql.poi_density_value_sql(_POI_KIND),
                               distance_m=distance_m, **{f"poi_{_POI_KIND}": count})
 
@@ -159,20 +132,8 @@ async def test_a_poi_density_is_per_km_and_missing_until_counted(road_graph_sess
 # --- カタログに直に書かれた式（domain/material_catalog.py） -----------------------------
 
 
-@pytest.mark.parametrize(("count", "distance_m", "expected"), [
-    (2.0, 250.0, 8.0),
-    (None, 250.0, None),
-])
-async def test_the_intersection_density_is_per_km(road_graph_session, count, distance_m, expected):
-    value = await _edge_value(road_graph_session, material_value_sql()["intersection_count_per_km"],
-                              distance_m=distance_m, intersection_count=count)
-
-    assert value == (None if expected is None else pytest.approx(expected))
-
-
 @pytest.mark.parametrize(("count", "distance_m", "years", "expected"), [
     (3.0, 500.0, 2, 3.0),
-    (None, 500.0, 2, None),
     (3.0, 500.0, 0, None),  # 収録年の無い取込
 ])
 async def test_the_accident_density_is_per_km_and_per_year_covered(road_graph_session, count, distance_m, years,
@@ -201,14 +162,22 @@ async def test_a_shared_pedestrian_path_is_a_footway_or_path_that_lets_bicycles_
     assert values == {1: True, 2: False, 3: False, 4: False}
 
 
+# --- タイルへの載せ方（domain/material_catalog.py: tile_column_sql） ---------------------------
+
+
+async def test_a_value_goes_on_the_tile_in_the_form_the_map_reads(road_graph_session):
+    """非該当の真偽はキーごと省く（地図は欠損を非該当として読む）。"""
+    column = tile_column_sql(MaterialSpec(
+        material_id="material_a", label="材料A", description="説明", dtype="boolean", tile_property="material_a",
+        value_sql="em.accident_count > 0", coverage=CoverageExcluded(reason="試し", missing_semantics="definite")))
+
+    baked = await _edge_value(road_graph_session, f"ARRAY[pg_typeof({column})::text, ({column})::text]",
+                              distance_m=4000.0, accident_count=0.0)
+
+    assert baked == ["boolean", None]
+
+
 # --- 読み出しの経路（infrastructure/road_graph_repository.py） -----------------------------
-
-
-async def test_the_value_list_of_a_material_has_each_value_once_in_order_without_missing(road_graph_repository):
-    """軸スタジオの値の候補。値の無い道は候補を足さない。"""
-    await _ingest_ways({1: {"tracktype": "grade3"}, 2: {"tracktype": "grade1"}, 3: {"tracktype": "grade3"}, 4: {}})
-
-    assert await road_graph_repository.get_distinct_material_values("tracktype") == ["grade1", "grade3"]
 
 
 async def test_a_sample_within_a_range_takes_every_way_in_it_regardless_of_the_sampling_rate(road_graph_repository):
@@ -229,10 +198,10 @@ async def test_every_declared_expression_reads_only_what_each_reading_path_provi
 
     arrays = await road_graph_repository.get_edge_material_arrays([1], [0], [True], 1)
     assert len(arrays.distance_m) == 1
-    assert await road_graph_repository.get_way_material_values(1, 1) is None
     assert await road_graph_repository.sample_way_material_values(1, 100.0, 10, None) == []
     assert await road_graph_repository.sample_way_material_values(1, 100.0, 10, area) == []
-    for material_id in material_value_sql():
-        assert await road_graph_repository.get_distinct_material_values(material_id) == []
+    assert await road_graph_repository.get_feature_landcover(1, "1-0") is None
+    assert await road_graph_repository.get_feature_landcover(1, None) is None
     # 取込範囲の外なので焼かずにNoneを返すが、タイルの列は先に解決される。
     assert await road_graph_repository.get_road_surface_tile_mvt(14, 14552, 6451, area) is None
+    assert await road_graph_repository.get_feature_materials_in_tile(14, 14552, 6451, area, 1) is None

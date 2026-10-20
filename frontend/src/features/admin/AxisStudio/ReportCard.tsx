@@ -1,11 +1,14 @@
 "use client";
 
 import { type ReactNode, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button/Button";
 import { Card } from "@/components/ui/Card/Card";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { textVariants } from "@/components/ui/Text/Text";
 import { formatJstDateTime } from "@/lib/time";
+import { errorMessage } from "@/lib/apiError";
+import { getQueryClient } from "@/lib/queryClient";
 
 /** 件数・行数（3桁区切り）。数えられなかったものは「-」。 */
 export function formatCount(value: number | null): string {
@@ -34,18 +37,9 @@ export function ReportCard<T extends { computed_at: string }>({
   summary?: (report: T) => string;
   children: (report: T) => ReactNode;
 }) {
+  // 集計し直す間と失敗したときも、前の集計を出したままにする（mutationの`data`は打ち直すと空になる）。
   const [report, setReport] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const handleFetch = () => {
-    setLoading(true);
-    setError(null);
-    load()
-      .then(setReport)
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
-  };
+  const fetchReport = useMutation({ mutationFn: load, onSuccess: setReport }, getQueryClient());
 
   return (
     <Card className="flex flex-col gap-2">
@@ -54,8 +48,8 @@ export function ReportCard<T extends { computed_at: string }>({
         <InfoPopover triggerAriaLabel={`${title}の説明`}>{info}</InfoPopover>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={handleFetch} disabled={loading}>
-          {loading ? "集計中…" : report ? "再集計する" : "集計する"}
+        <Button onClick={() => fetchReport.mutate()} disabled={fetchReport.isPending}>
+          {fetchReport.isPending ? "集計中…" : report ? "再集計する" : "集計する"}
         </Button>
         {report && (
           <span className={textVariants({ variant: "hint" })}>
@@ -63,7 +57,9 @@ export function ReportCard<T extends { computed_at: string }>({
           </span>
         )}
       </div>
-      {error && <p className={textVariants({ variant: "error" })}>集計失敗: {error}</p>}
+      {fetchReport.isError && (
+        <p className={textVariants({ variant: "error" })}>集計失敗: {errorMessage(fetchReport.error)}</p>
+      )}
       {report && children(report)}
     </Card>
   );

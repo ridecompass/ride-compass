@@ -2,7 +2,9 @@
 // backendも日本時間で扱う（`domain/time_zone.py`）。日本に夏時間は無いので、協定世界時から
 // 9時間ずらすだけで日本時間の暦と時刻が求まる。
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+import { HOUR_MS } from "@/lib/duration";
+
+const JST_OFFSET_MS = 9 * HOUR_MS;
 
 interface JstParts {
   year: number;

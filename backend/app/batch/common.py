@@ -7,10 +7,10 @@ import argparse
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Coroutine, Iterable, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import httpx
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -43,9 +43,14 @@ async def batch_session_factory(
         await engine.dispose()
 
 
+def configure_cli_logging() -> None:
+    """バッチと取得の道具が端末へ出すログの書式。"""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+
+
 def run_batch_cli(
     parser: argparse.ArgumentParser,
-    start: Callable[[argparse.Namespace, str], Awaitable[int]],
+    start: Callable[[argparse.Namespace, str], Coroutine[Any, Any, int]],
 ) -> int:
     """DBを書くバッチの入口の骨格。ログを整え、引数を読み、本体を流す。
 
@@ -53,15 +58,43 @@ def run_batch_cli(
     本体のコルーチンを返す。イベントループの外で呼ぶので、引数の検査（`parser.error`）は
     `start`の中に置いてよい。
     """
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+    configure_cli_logging()
     parser.add_argument("--database-url", default=None)
     args = parser.parse_args()
-    started = start(args, args.database_url or settings.database_url)
+    return asyncio.run(start(args, args.database_url or settings.database_url))
 
-    async def body() -> int:
-        return await started
 
-    return asyncio.run(body())
+def affected_rows(status: str) -> int:
+    """asyncpgの`execute`が返す状態の文字列（`INSERT 0 123`・`UPDATE 45`等）から、書いた行の数を読む。"""
+    return int(status.split()[-1])
+
+
+def reused_edges_sql(previous: str | None, source: str = "road_edges", condition: str = "") -> str:
+    """区間ごとに写す段が、前回の値を写す区間を一時の表`_reused`に置く。
+
+    同じ形とみなすのは、鍵が同じで座標とその並びも同じ区間だけ（`=`。`ST_Equals`のように形を幾何として
+    比べる計算をしない）。`source`は今回の区間（別名`s`。`geom`を持つ）、`condition`は段が足す
+    結合と条件。`previous`がNone（写せない）なら空の表を置く。
+    """
+    if previous is None:
+        return f"CREATE TEMP TABLE _reused ON COMMIT DROP AS SELECT osm_way_id, segment_index FROM {source} WHERE false"
+    return f"""
+CREATE TEMP TABLE _reused ON COMMIT DROP AS
+SELECT s.osm_way_id, s.segment_index
+FROM {source} s JOIN {previous}.road_edges p
+  ON p.osm_way_id = s.osm_way_id AND p.segment_index = s.segment_index AND p.geom = s.geom
+{condition}
+"""
+
+
+def copy_reused_sql(table: str, columns: Sequence[str], previous: str) -> str:
+    """`_reused`の区間へ、前回の表`table`の値を写す。前回に値の無かった区間は前回の表に行が無く、今回も行を持たない。"""
+    return f"""
+INSERT INTO {table} (osm_way_id, segment_index, {", ".join(columns)})
+SELECT p.osm_way_id, p.segment_index, {", ".join(f"p.{column}" for column in columns)}
+FROM _reused r JOIN {previous}.{table} p
+  ON p.osm_way_id = r.osm_way_id AND p.segment_index = r.segment_index
+"""
 
 
 def asyncpg_dsn(sqlalchemy_url: str) -> str:
@@ -78,22 +111,12 @@ def asyncpg_dsn(sqlalchemy_url: str) -> str:
 #: 取込と派生の作り直しが取るadvisory lockの名前（`hashtext`で鍵にする）。作り直しは排他で、取込は共有で
 #: 取る——取込どうしは並んで走れ、取込と作り直しはどちらかが止まる。作り直しの段と段の間に取込が
 #: 終わると、段ごとに違う取込を読み、記録した取込（`derived_source_runs`）とも食い違うため。
+#: DBのバックアップ（`backend/ops/admin_data_backup.sh`）も書き出す間は排他で持ち、取込と作り直しの途中を書き出さない。
 SOURCE_DATA_LOCK = "source_data"
 
 
 #: 進捗を出す間隔（秒）。件数ごとに出すと、関東全域では行数が多すぎて読めない。
 PROGRESS_INTERVAL_SECONDS = 15.0
-
-
-def reset_columns_sql(table: str, unset: Mapping[str, str]) -> str:
-    """派生の段が書く列を、値を出す前の状態へ戻すUPDATE。`unset`は列名→戻す値（SQLの式）。
-
-    段が値を書くのは値の出た行だけなので、先に戻しておかないと、流し直したときに
-    分類・しきい値・入力から外れた行へ前回の値が残る。すでに戻っている行は書かない。
-    """
-    assigned = ", ".join(f"{column} = {value}" for column, value in unset.items())
-    changed = " OR ".join(f"{column} IS DISTINCT FROM {value}" for column, value in unset.items())
-    return f"UPDATE {table} SET {assigned} WHERE {changed}"
 
 
 def format_duration(seconds: float) -> str:
@@ -109,13 +132,12 @@ def format_progress(done: int, total: int | None, elapsed: float, unit: str = "�
     とき）は残りを出さない——分からないものを推測で埋めると、読み手が当てにする。
     """
     rate = done / elapsed if elapsed > 0 else 0.0
-    line = f"{done:,}{unit} / 経過 {format_duration(elapsed)} / {rate:.1f}{unit}/秒"
     if total:
         remaining = (total - done) / rate if rate > 0 else 0.0
-        line = (f"{done:,}/{total:,}{unit}（{done / total * 100:.1f}%）"
+        return (f"{done:,}/{total:,}{unit}（{done / total * 100:.1f}%）"
                 f" / 経過 {format_duration(elapsed)} / {rate:.1f}{unit}/秒"
                 f" / 残り およそ {format_duration(remaining)}")
-    return line
+    return f"{done:,}{unit} / 経過 {format_duration(elapsed)} / {rate:.1f}{unit}/秒"
 
 
 #: 取得途中の一時ファイルの印。所定の名前と紛れないもの。
@@ -126,56 +148,95 @@ FETCH_PART_SUFFIX = ".part"
 FETCH_BROKEN_SUFFIX = ".broken"
 
 
+def fetch_timeout(read_seconds: float) -> httpx.Timeout:
+    """配布元から1つのファイルを取るときのタイムアウト。
+
+    つなぐ・送る・接続の空きを待つ上限はどの配布元でも同じで、応答の途中で黙ってよい秒数（`read_seconds`）だけが
+    配布元ごとに違う。
+    """
+    return httpx.Timeout(connect=10.0, read=read_seconds, write=30.0, pool=30.0)
+
+
+def place_verified(
+    destination: Path,
+    readable: Callable[[Path], bool],
+    write: Callable[[Path], bool],
+    *,
+    source: str,
+    logger: logging.Logger,
+) -> bool:
+    """配布元から取ったものを手元の所定の名前へ置く。何度実行しても安全で、終わる。
+
+    - 手元にあって読めるファイルは取り直さない
+    - `write`に一時ファイルへ書かせてから所定の名前へ移す。途中で落ちた半端なものを「取得済み」に見せない
+    - 書き終えたら`readable`で実際に開いてみる。開けないか、`write`が欠けていると返したら（False）退けてFalseを
+      返す——読めないファイルを置いたまま成功を報告すると、次に落ちるのはそれを読む取込の途中になる
+
+    開いてみるのは所定の名前へ移してから——開く道具には名前の拡張子で形を決めるものがあり、一時ファイルの印の付いた
+    名前では開けない。`source`は取りに行く先で、ログにだけ使う。`write`の例外はそのまま呼び出し側へ出す。
+    """
+    if destination.exists() and readable(destination):
+        logger.info("既にある %s", destination)
+        return True
+    logger.info("取りに行く %s", source)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(destination.name + FETCH_PART_SUFFIX)
+    broken = destination.with_name(destination.name + FETCH_BROKEN_SUFFIX)
+    started = time.perf_counter()
+    if write(temporary):
+        temporary.replace(destination)
+        logger.info("取得した %s（%.1f MB / %s）", destination.name,
+                    destination.stat().st_size / (1024 * 1024), format_duration(time.perf_counter() - started))
+        if readable(destination):
+            return True
+        destination.replace(broken)
+    else:
+        temporary.replace(broken)
+    logger.error("取ったが読めない: %s（%s へ退けた。もう一度実行すると取り直す）", destination.name, broken.name)
+    return False
+
+
 def fetch_verified(
     url: str,
     destination: Path,
     readable: Callable[[Path], bool],
     *,
-    timeout: httpx.Timeout | float,
+    read_timeout: float,
     logger: logging.Logger,
 ) -> bool:
-    """配布元のファイルを手元の所定の名前へ写す。何度実行しても安全で、終わる。
+    """配布元のURLのファイルを、`place_verified`の手順で手元の所定の名前へ写す。
 
-    - 手元にあって読めるファイルは落とし直さない
-    - 一時ファイルへ書いてから所定の名前へ移す。途中で落ちた半端なものを「取得済み」に
-      見せない
-    - 落とし終えたら`readable`で実際に開いてみる。開けなければ退けてFalseを返す——読めない
-      ファイルを置いたまま成功を報告すると、次に落ちるのはそれを読む取込の途中になる
-
-    大きさだけでは半端なファイルも配布元が200で返すエラー本文も弾けないため、`readable`は
-    中身を開いて確かめるものを渡す。通信の失敗は例外のまま呼び出し側へ出す。
+    大きさだけでは半端なファイルも配布元が200で返すエラー本文も弾けないため、`readable`は中身を開いて確かめる
+    ものを渡す。`read_timeout`は`fetch_timeout`へ渡す。通信の失敗は例外のまま呼び出し側へ出す。
     """
-    if destination.exists() and readable(destination):
-        logger.info("既にある %s", destination)
+    def write(temporary: Path) -> bool:
+        started = time.perf_counter()
+        last_report = started
+        written = 0
+        with httpx.stream("GET", url, timeout=fetch_timeout(read_timeout), follow_redirects=True) as response:
+            response.raise_for_status()
+            total = int(response.headers.get("content-length") or 0) or None
+            with temporary.open("wb") as sink:
+                for chunk in response.iter_bytes():
+                    sink.write(chunk)
+                    written += len(chunk)
+                    now = time.perf_counter()
+                    if now - last_report < PROGRESS_INTERVAL_SECONDS:
+                        continue
+                    last_report = now
+                    logger.info("取得中 %s", format_progress(
+                        written // (1024 * 1024),
+                        total // (1024 * 1024) if total else None,
+                        now - started, "MB"))
         return True
-    logger.info("取りに行く %s", url)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_name(destination.name + FETCH_PART_SUFFIX)
-    started = time.perf_counter()
-    last_report = started
-    written = 0
-    with httpx.stream("GET", url, timeout=timeout, follow_redirects=True) as response:
-        response.raise_for_status()
-        total = int(response.headers.get("content-length") or 0) or None
-        with temporary.open("wb") as sink:
-            for chunk in response.iter_bytes():
-                sink.write(chunk)
-                written += len(chunk)
-                now = time.perf_counter()
-                if now - last_report < PROGRESS_INTERVAL_SECONDS:
-                    continue
-                last_report = now
-                logger.info("取得中 %s", format_progress(
-                    written // (1024 * 1024),
-                    total // (1024 * 1024) if total else None,
-                    now - started, "MB"))
-    temporary.replace(destination)
-    logger.info("取得した %s（%.1f MB / %s）", destination.name,
-                written / (1024 * 1024), format_duration(time.perf_counter() - started))
-    if readable(destination):
-        return True
-    broken = destination.with_name(destination.name + FETCH_BROKEN_SUFFIX)
-    destination.replace(broken)
-    logger.error("落としたが開けない: %s（%s へ退けた。もう一度実行すると取り直す）",
-                 destination.name, broken.name)
-    return False
+
+    return place_verified(destination, readable, write, source=url, logger=logger)
+
+
+def fetched_all(attempts: Iterable[bool]) -> bool:
+    """取得を全部試してから、全部を置けたかを返す。
+
+    `attempts`は1件ずつ取りに行く生成器を渡す。1つ置けなくても残りを取りに行く——置けたものは次の実行で取り直さない
+    ので、止めると直したあとの実行で残りを初めて取ることになる。`all`へ生成器をそのまま渡すと最初の失敗で止まる。
+    """
+    return all(list(attempts))

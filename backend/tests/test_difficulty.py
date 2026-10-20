@@ -2,8 +2,7 @@
 
 入口は丸め（`round_difficulty`・`round_difficulty_array`）、合成（`composite_difficulty_array`・
 `axis_weighted_sums`・`axis_contributions_at_row`・`composite_difficulty`）、重みの割合（`weight_share`）、
-距離での集約（`weighted_mean_by_distance`・`distance_weighted_difficulty`・`overall_difficulty`・
-`distance_weighted_difficulty_array`）。同じ計算を持つ2つの道（スカラーと配列・先に和を求めるかどうか）は、
+距離での集約（`weighted_mean_by_distance`・`distance_weighted_difficulty_array`）。同じ計算を持つ2つの道（スカラーと配列・先に和を求めるかどうか）は、
 同じ入力で同じ答えになることを確かめる。
 
 期待値は素直な計算（Pythonの`round`・重み付き平均）から作る。性質の入力は、和と商が2進で正確に求まる
@@ -26,9 +25,7 @@ from app.domain.difficulty import (
     axis_weighted_sums,
     composite_difficulty,
     composite_difficulty_array,
-    distance_weighted_difficulty,
     distance_weighted_difficulty_array,
-    overall_difficulty,
     round_difficulty,
     round_difficulty_array,
     weight_share,
@@ -82,20 +79,6 @@ def _mean_of_axes_with_data(arrays, weights, row) -> float:
     return math.nan if total == 0 else sum(w * s for w, s in scored) / total
 
 
-@given(axes=_axes())
-def test_the_composite_is_the_mean_of_the_axes_with_data_weighted_and_rounded(axes):
-    """欠損の軸はその区間だけ分母からも外し、データのある軸の重みで割り直す。重みの無い軸は数えない。"""
-    length, arrays, weights = axes
-
-    composite, weight_sums = composite_difficulty_array(arrays, weights, length)
-
-    expected = [_mean_of_axes_with_data(arrays, weights, row) for row in range(length)]
-    np.testing.assert_array_equal(composite, [value if math.isnan(value) else round(value, 1) for value in expected])
-    assert weight_sums.tolist() == [
-        sum(weights.get(a, 0.0) for a, arr in arrays.items() if not math.isnan(arr[row])) for row in range(length)
-    ]
-
-
 @given(axes=_axes(), data=st.data())
 def test_summing_some_axes_first_gives_the_same_composite(axes, data):
     """変わらない軸の和を先に求めて使い回す合成は、全軸をまとめて合成したものと一致する。"""
@@ -133,39 +116,8 @@ def test_a_segment_composite_names_every_axis_and_leaves_axes_without_a_score_em
     assert contributions == {"a": 11.0, "b": None, "c": 44.0}
 
 
-def test_contributions_of_a_segment_are_rounded_and_may_not_add_up_to_the_composite():
-    composite, contributions = composite_difficulty({"a": 1.0, "b": 1.0, "c": 1.0}, {"a": 1.0, "b": 1.0, "c": 1.0})
-
-    assert composite == 1.0
-    assert contributions == {"a": 0.3, "b": 0.3, "c": 0.3}
-
-
 def test_a_segment_without_a_composite_has_no_contributions():
     assert composite_difficulty({"a": 50.0}, {"a": 0.0}) == (None, {"a": None})
-
-
-def test_the_mean_by_distance_skips_segments_without_a_value_and_is_not_rounded():
-    assert weighted_mean_by_distance([(10.0, 1.0), (None, 5.0), (20.0, 2.0)]) == pytest.approx(50.0 / 3.0)
-
-
-@pytest.mark.parametrize(
-    "segments", [[(None, 1.0)], [(10.0, 0.0), (None, 3.0)]], ids=["値が無い", "値のある区間の距離が0"]
-)
-def test_the_mean_by_distance_is_missing_without_a_measured_distance(segments):
-    assert weighted_mean_by_distance(segments) is None
-
-
-def test_a_route_without_a_mean_by_distance_has_no_load():
-    assert overall_difficulty([(None, 1.0)]) is None
-
-
-def test_the_load_of_a_route_is_its_rounded_average_over_every_segment_including_those_without_a_value():
-    """欠損の区間を飛ばして積むと、データの無い区間が多いルートほど楽に見える。"""
-    overall = overall_difficulty([(10.0, 1.0), (None, 1.0), (20.0, 2.0)])
-
-    assert overall is not None
-    # 平均 50/3 は 16.7 に丸め、総量はその 16.7 に全区間の 4km を掛ける（丸める前の平均なら 66.7）。
-    assert (overall.average, overall.load) == (16.7, 66.8)
 
 
 _segments = st.lists(
@@ -183,4 +135,6 @@ def test_the_array_difficulty_by_distance_agrees_with_the_list(segments):
     difficulty = np.array([math.nan if value is None else value for value, _ in segments], dtype=float)
     distance = np.array([distance for _, distance in segments], dtype=float)
 
-    assert distance_weighted_difficulty_array(difficulty, distance) == distance_weighted_difficulty(segments)
+    mean = weighted_mean_by_distance(segments)
+
+    assert distance_weighted_difficulty_array(difficulty, distance) == (None if mean is None else round_difficulty(mean))

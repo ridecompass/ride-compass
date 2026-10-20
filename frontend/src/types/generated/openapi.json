@@ -148,57 +148,6 @@
         }
       }
     },
-    "/api/weather": {
-      "get": {
-        "operationId": "get_weather_api_weather_get",
-        "parameters": [
-          {
-            "name": "latitude",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "number",
-              "maximum": 90,
-              "minimum": -90,
-              "title": "Latitude"
-            }
-          },
-          {
-            "name": "longitude",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "number",
-              "maximum": 180,
-              "minimum": -180,
-              "title": "Longitude"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WeatherConditions"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/weather/warnings": {
       "get": {
         "operationId": "get_weather_warnings_api_weather_warnings_get",
@@ -403,16 +352,50 @@
         }
       }
     },
-    "/api/weather/wind-grid": {
+    "/api/weather": {
       "get": {
-        "operationId": "get_wind_grid_api_weather_wind_grid_get",
+        "operationId": "get_weather_api_weather_get",
+        "parameters": [
+          {
+            "name": "latitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 90,
+              "minimum": -90,
+              "title": "Latitude"
+            }
+          },
+          {
+            "name": "longitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 180,
+              "minimum": -180,
+              "title": "Longitude"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WindGridResponse"
+                  "$ref": "#/components/schemas/GridPointToday"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -420,9 +403,9 @@
         }
       }
     },
-    "/api/weather/wind-grid-detail": {
+    "/api/weather/msm-grid": {
       "get": {
-        "operationId": "get_wind_grid_detail_api_weather_wind_grid_detail_get",
+        "operationId": "get_msm_grid_api_weather_msm_grid_get",
         "parameters": [
           {
             "name": "min_lon",
@@ -467,15 +450,67 @@
               "minimum": -90,
               "title": "Max Lat"
             }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MsmGridForecast"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/place-search": {
+      "get": {
+        "operationId": "search_places_api_place_search_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "title": "Q"
+            }
           },
           {
-            "name": "spacing_deg",
+            "name": "latitude",
             "in": "query",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "number",
-              "default": 0.02,
-              "title": "Spacing Deg"
+              "maximum": 90,
+              "minimum": -90,
+              "title": "Latitude"
+            }
+          },
+          {
+            "name": "longitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 180,
+              "minimum": -180,
+              "title": "Longitude"
             }
           }
         ],
@@ -485,7 +520,58 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WindGridResponse"
+                  "$ref": "#/components/schemas/PlaceSearchResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/place-area": {
+      "get": {
+        "operationId": "place_area_api_place_area_get",
+        "parameters": [
+          {
+            "name": "latitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 90,
+              "minimum": -90,
+              "title": "Latitude"
+            }
+          },
+          {
+            "name": "longitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 180,
+              "minimum": -180,
+              "title": "Longitude"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceArea"
                 }
               }
             }
@@ -513,6 +599,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 15,
+              "minimum": 12,
               "title": "Z"
             }
           },
@@ -522,6 +610,7 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "title": "X"
             }
           },
@@ -531,6 +620,7 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "title": "Y"
             }
           }
@@ -576,6 +666,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 15,
+              "minimum": 12,
               "title": "Z"
             }
           },
@@ -585,6 +677,7 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "title": "X"
             }
           },
@@ -594,6 +687,7 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "title": "Y"
             }
           }
@@ -630,6 +724,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 14,
+              "minimum": 6,
               "title": "Z"
             }
           },
@@ -639,6 +735,7 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "title": "X"
             }
           },
@@ -648,6 +745,7 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "title": "Y"
             }
           }
@@ -674,9 +772,9 @@
         }
       }
     },
-    "/api/region/dynamic-way-values/{axis_id}/{z}/{x}/{y}": {
+    "/api/region/way-materials/{axis_id}/{z}/{x}/{y}": {
       "get": {
-        "operationId": "region_dedicated_way_values_api_region_dynamic_way_values__axis_id___z___x___y__get",
+        "operationId": "region_way_materials_api_region_way_materials__axis_id___z___x___y__get",
         "parameters": [
           {
             "name": "axis_id",
@@ -693,6 +791,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 15,
+              "minimum": 12,
               "title": "Z"
             }
           },
@@ -702,6 +802,7 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "title": "X"
             }
           },
@@ -711,23 +812,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "title": "Y"
-            }
-          },
-          {
-            "name": "bearing_deg",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bearing Deg"
             }
           },
           {
@@ -748,13 +834,33 @@
             }
           },
           {
+            "name": "bearing_deg",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "exclusiveMaximum": 360
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bearing Deg"
+            }
+          },
+          {
             "name": "speed_kmh",
             "in": "query",
             "required": false,
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 60.0,
+                  "minimum": 5.0
                 },
                 {
                   "type": "null"
@@ -772,9 +878,79 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": {
-                    "type": "number"
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
                   },
-                  "title": "Response Region Dedicated Way Values Api Region Dynamic Way Values  Axis Id   Z   X   Y  Get"
+                  "title": "Response Region Way Materials Api Region Way Materials  Axis Id   Z   X   Y  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/region/road-classes/{z}/{x}/{y}": {
+      "get": {
+        "operationId": "region_road_classes_api_region_road_classes__z___x___y__get",
+        "parameters": [
+          {
+            "name": "z",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 15,
+              "minimum": 12,
+              "title": "Z"
+            }
+          },
+          {
+            "name": "x",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "title": "X"
+            }
+          },
+          {
+            "name": "y",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "title": "Y"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "title": "Response Region Road Classes Api Region Road Classes  Z   X   Y  Get"
                 }
               }
             }
@@ -1006,6 +1182,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 14,
+              "minimum": 2,
               "title": "Z"
             }
           },
@@ -1015,6 +1193,7 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "title": "X"
             }
           },
@@ -1024,6 +1203,7 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "title": "Y"
             }
           }
@@ -1395,17 +1575,17 @@
         ]
       }
     },
-    "/api/admin/axis-definitions/preview-display-thresholds": {
+    "/api/admin/axis-definitions/preview-calibration": {
       "post": {
         "tags": [
           "axis-admin"
         ],
-        "operationId": "preview_display_thresholds_api_admin_axis_definitions_preview_display_thresholds_post",
+        "operationId": "preview_calibration_api_admin_axis_definitions_preview_calibration_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DisplayThresholdsPreviewRequest"
+                "$ref": "#/components/schemas/CalibrationPreviewRequest"
               }
             }
           },
@@ -1417,7 +1597,63 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DisplayThresholdsPreviewResponse"
+                  "$ref": "#/components/schemas/CalibrationPreviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/api/admin/axis-definitions/preview-way-values": {
+      "post": {
+        "tags": [
+          "axis-admin"
+        ],
+        "operationId": "preview_way_values_api_admin_axis_definitions_preview_way_values_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WayValuesPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "object",
+                  "title": "Response Preview Way Values Api Admin Axis Definitions Preview Way Values Post"
                 }
               }
             }
@@ -1525,6 +1761,74 @@
         }
       }
     },
+    "/api/admin/road-classes": {
+      "get": {
+        "tags": [
+          "road-class-admin"
+        ],
+        "operationId": "read_road_classes_api_admin_road_classes_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoadClassDefinitions"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "road-class-admin"
+        ],
+        "operationId": "replace_road_classes_api_admin_road_classes_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoadClassDefinitions"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoadClassDefinitions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
     "/api/axis-catalog": {
       "get": {
         "operationId": "get_axis_catalog_api_axis_catalog_get",
@@ -1542,9 +1846,9 @@
         }
       }
     },
-    "/api/admin/material-catalog/{material_id}/distribution": {
+    "/api/admin/material-catalog/{material_id}/value-shares": {
       "get": {
-        "operationId": "get_material_distribution_api_admin_material_catalog__material_id__distribution_get",
+        "operationId": "get_material_value_shares_api_admin_material_catalog__material_id__value_shares_get",
         "security": [
           {
             "HTTPBasic": []
@@ -1567,50 +1871,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MaterialDistributionResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin/material-catalog/{material_id}/values": {
-      "get": {
-        "operationId": "get_material_values_api_admin_material_catalog__material_id__values_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "material_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Material Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MaterialValuesResponse"
+                  "$ref": "#/components/schemas/MaterialValueSharesResponse"
                 }
               }
             }
@@ -1868,14 +2129,6 @@
             "type": "string",
             "title": "River Code"
           },
-          "river_name": {
-            "type": "string",
-            "title": "River Name"
-          },
-          "level": {
-            "type": "integer",
-            "title": "Level"
-          },
           "badge_level": {
             "type": "string",
             "enum": [
@@ -1893,22 +2146,15 @@
           "condition": {
             "type": "string",
             "title": "Condition"
-          },
-          "report_datetime": {
-            "type": "string",
-            "title": "Report Datetime"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "river_code",
-          "river_name",
-          "level",
           "badge_level",
           "label",
-          "condition",
-          "report_datetime"
+          "condition"
         ],
         "title": "ActiveFloodForecast"
       },
@@ -1952,24 +2198,13 @@
       },
       "AmedasObservation": {
         "properties": {
-          "station_id": {
-            "type": "string",
-            "title": "Station Id"
-          },
           "station_name": {
             "type": "string",
             "title": "Station Name"
           },
-          "latitude": {
-            "type": "number",
-            "title": "Latitude"
-          },
-          "longitude": {
-            "type": "number",
-            "title": "Longitude"
-          },
           "observed_at": {
             "type": "string",
+            "format": "date-time",
             "title": "Observed At"
           },
           "temperature_c": {
@@ -2046,15 +2281,22 @@
               }
             ],
             "title": "Weather Code"
+          },
+          "valid_area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "station_id",
           "station_name",
-          "latitude",
-          "longitude",
           "observed_at",
           "temperature_c",
           "apparent_temperature_c",
@@ -2062,9 +2304,194 @@
           "wind_direction",
           "precipitation_10min_mm",
           "twilight",
-          "weather_code"
+          "weather_code",
+          "valid_area"
         ],
         "title": "AmedasObservation"
+      },
+      "AvoidanceClassification": {
+        "properties": {
+          "section_key": {
+            "type": "string",
+            "title": "Section Key"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          },
+          "overrides": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AvoidanceOverride"
+            },
+            "type": "object",
+            "title": "Overrides"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "section_key",
+          "sort_order",
+          "overrides"
+        ],
+        "title": "AvoidanceClassification"
+      },
+      "AvoidanceLevelView": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "avoid",
+              "exclude"
+            ],
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "AvoidanceLevelView"
+      },
+      "AvoidanceOverride": {
+        "properties": {
+          "section_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Key"
+          },
+          "default_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Level"
+          },
+          "selectable": {
+            "type": "boolean",
+            "title": "Selectable"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "section_key",
+          "default_level",
+          "selectable"
+        ],
+        "title": "AvoidanceOverride"
+      },
+      "AvoidanceRowView": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "section": {
+            "type": "string",
+            "title": "Section"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "default": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "avoid",
+              "exclude"
+            ],
+            "title": "Default"
+          },
+          "former_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Former Keys"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "section",
+          "label",
+          "description",
+          "default",
+          "former_keys"
+        ],
+        "title": "AvoidanceRowView"
+      },
+      "AvoidanceSection": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "description",
+          "sort_order"
+        ],
+        "title": "AvoidanceSection"
+      },
+      "AvoidanceSectionView": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "description"
+        ],
+        "title": "AvoidanceSectionView"
       },
       "AxisCatalogEntry": {
         "properties": {
@@ -2093,8 +2520,212 @@
             "type": "number",
             "title": "Default Weight"
           },
-          "display": {
-            "$ref": "#/components/schemas/AxisDisplaySpec"
+          "icon_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Id"
+          },
+          "primary_attribute_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Primary Attribute Ids"
+          },
+          "road_layer_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Road Layer Ids"
+          },
+          "map_paint": {
+            "$ref": "#/components/schemas/MapPaint"
+          },
+          "raw_value_units": {
+            "$ref": "#/components/schemas/RawValueUnits"
+          },
+          "material_breakdown": {
+            "items": {
+              "$ref": "#/components/schemas/AxisMaterialBreakdownEntry"
+            },
+            "type": "array",
+            "title": "Material Breakdown"
+          },
+          "dynamic_way_value_conditions": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "at",
+                "bearing_deg",
+                "speed_kmh"
+              ]
+            },
+            "type": "array",
+            "title": "Dynamic Way Value Conditions"
+          },
+          "dynamic_way_value_material_conditions": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "at",
+                "bearing_deg",
+                "speed_kmh"
+              ]
+            },
+            "type": "array",
+            "title": "Dynamic Way Value Material Conditions"
+          },
+          "dynamic_way_value_undetermined_by_bearing": {
+            "type": "boolean",
+            "title": "Dynamic Way Value Undetermined By Bearing"
+          },
+          "way_value_formula": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WayValueFormula"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time_scope": {
+            "type": "string",
+            "enum": [
+              "always",
+              "night_only"
+            ],
+            "title": "Time Scope"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "axis_id",
+          "label",
+          "description",
+          "category",
+          "default_weight",
+          "icon_id",
+          "primary_attribute_ids",
+          "road_layer_ids",
+          "map_paint",
+          "raw_value_units",
+          "material_breakdown",
+          "dynamic_way_value_conditions",
+          "dynamic_way_value_material_conditions",
+          "dynamic_way_value_undetermined_by_bearing",
+          "way_value_formula",
+          "time_scope"
+        ],
+        "title": "AxisCatalogEntry"
+      },
+      "AxisCatalogResponse": {
+        "properties": {
+          "axes": {
+            "items": {
+              "$ref": "#/components/schemas/AxisCatalogEntry"
+            },
+            "type": "array",
+            "title": "Axes"
+          },
+          "client_tuning": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Client Tuning"
+          },
+          "tile_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Tile Versions"
+          },
+          "accident_years": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Accident Years"
+          },
+          "road_classes": {
+            "$ref": "#/components/schemas/RoadClassCatalog"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "axes",
+          "client_tuning",
+          "tile_versions",
+          "accident_years",
+          "road_classes"
+        ],
+        "title": "AxisCatalogResponse"
+      },
+      "AxisDefinition": {
+        "properties": {
+          "axis_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Axis Id"
+          },
+          "shape": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BreakpointLinearShape-Input"
+              },
+              {
+                "$ref": "#/components/schemas/CategoricalShape-Input"
+              }
+            ],
+            "title": "Shape"
+          },
+          "default_weight": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Default Weight"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "観測",
+              "推定",
+              "動的"
+            ],
+            "title": "Category",
+            "default": "推定"
+          },
+          "is_published": {
+            "type": "boolean",
+            "title": "Is Published",
+            "default": false
+          },
+          "priority_overrides": {
+            "items": {
+              "$ref": "#/components/schemas/PriorityCondition"
+            },
+            "type": "array",
+            "title": "Priority Overrides"
           },
           "icon_id": {
             "anyOf": [
@@ -2107,56 +2738,14 @@
             ],
             "title": "Icon Id"
           },
-          "chip_label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+          "time_scope": {
+            "type": "string",
+            "enum": [
+              "always",
+              "night_only"
             ],
-            "title": "Chip Label"
-          },
-          "panel_hint": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Panel Hint"
-          },
-          "show_map_icon": {
-            "type": "boolean",
-            "title": "Show Map Icon"
-          },
-          "primary_attribute_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Primary Attribute Ids"
-          },
-          "weather_layer_groups": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Weather Layer Groups"
-          },
-          "shape": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/BreakpointLinearShape-Output"
-              },
-              {
-                "$ref": "#/components/schemas/CategoricalShape-Output"
-              }
-            ],
-            "title": "Shape"
+            "title": "Time Scope",
+            "default": "always"
           },
           "display_thresholds_override": {
             "anyOf": [
@@ -2164,7 +2753,8 @@
                 "items": {
                   "type": "number"
                 },
-                "type": "array"
+                "type": "array",
+                "minItems": 1
               },
               {
                 "type": "null"
@@ -2185,167 +2775,17 @@
               }
             ],
             "title": "Display Band Labels Override"
-          },
-          "dedicated_way_value_layer": {
-            "type": "boolean",
-            "title": "Dedicated Way Value Layer"
-          },
-          "map_value": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/DifficultyMapValue"
-              },
-              {
-                "$ref": "#/components/schemas/SignedMaterialMapValue"
-              }
-            ],
-            "title": "Map Value",
-            "discriminator": {
-              "propertyName": "kind",
-              "mapping": {
-                "difficulty": "#/components/schemas/DifficultyMapValue",
-                "signed_material": "#/components/schemas/SignedMaterialMapValue"
-              }
-            }
-          },
-          "map_value_unit": {
-            "type": "string",
-            "title": "Map Value Unit"
-          },
-          "map_value_thresholds": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Map Value Thresholds"
-          },
-          "map_legend": {
-            "$ref": "#/components/schemas/MapLegendScale"
-          },
-          "raw_value_unit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Raw Value Unit"
-          },
-          "raw_value_total_unit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Raw Value Total Unit"
-          },
-          "material_breakdown": {
-            "items": {
-              "$ref": "#/components/schemas/AxisMaterialBreakdownEntry"
-            },
-            "type": "array",
-            "title": "Material Breakdown"
-          },
-          "dynamic_way_value_conditions": {
-            "items": {
-              "type": "string",
-              "enum": [
-                "at",
-                "bearing_deg",
-                "speed_kmh"
-              ]
-            },
-            "type": "array",
-            "title": "Dynamic Way Value Conditions"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "axis_id",
-          "label",
-          "description",
-          "category",
-          "default_weight",
-          "display",
-          "icon_id",
-          "chip_label",
-          "panel_hint",
-          "show_map_icon",
-          "primary_attribute_ids",
-          "weather_layer_groups",
           "shape",
-          "display_thresholds_override",
-          "display_band_labels_override",
-          "dedicated_way_value_layer",
-          "map_value",
-          "map_value_unit",
-          "map_value_thresholds",
-          "map_legend",
-          "raw_value_unit",
-          "raw_value_total_unit",
-          "material_breakdown",
-          "dynamic_way_value_conditions"
+          "default_weight",
+          "label"
         ],
-        "title": "AxisCatalogEntry"
-      },
-      "AxisCatalogResponse": {
-        "properties": {
-          "axes": {
-            "items": {
-              "$ref": "#/components/schemas/AxisCatalogEntry"
-            },
-            "type": "array",
-            "title": "Axes"
-          },
-          "tile_runtime_scales": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Tile Runtime Scales",
-            "default": {}
-          },
-          "client_tuning": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Client Tuning",
-            "default": {}
-          },
-          "tile_versions": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Tile Versions",
-            "default": {}
-          },
-          "accident_years": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Accident Years",
-            "default": []
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "axes",
-          "tile_runtime_scales",
-          "client_tuning",
-          "tile_versions",
-          "accident_years"
-        ],
-        "title": "AxisCatalogResponse"
+        "title": "AxisDefinition"
       },
       "AxisDefinitionPayload": {
         "properties": {
@@ -2413,35 +2853,6 @@
             ],
             "title": "Icon Id"
           },
-          "chip_label": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 4,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Chip Label"
-          },
-          "panel_hint": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Panel Hint"
-          },
-          "show_map_icon": {
-            "type": "boolean",
-            "title": "Show Map Icon",
-            "default": true
-          },
           "time_scope": {
             "type": "string",
             "enum": [
@@ -2479,11 +2890,6 @@
               }
             ],
             "title": "Display Band Labels Override"
-          },
-          "dedicated_way_value_layer": {
-            "type": "boolean",
-            "title": "Dedicated Way Value Layer",
-            "default": false
           }
         },
         "additionalProperties": false,
@@ -2562,35 +2968,6 @@
             ],
             "title": "Icon Id"
           },
-          "chip_label": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 4,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Chip Label"
-          },
-          "panel_hint": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Panel Hint"
-          },
-          "show_map_icon": {
-            "type": "boolean",
-            "title": "Show Map Icon",
-            "default": true
-          },
           "time_scope": {
             "type": "string",
             "enum": [
@@ -2629,14 +3006,6 @@
             ],
             "title": "Display Band Labels Override"
           },
-          "dedicated_way_value_layer": {
-            "type": "boolean",
-            "title": "Dedicated Way Value Layer",
-            "default": false
-          },
-          "display": {
-            "$ref": "#/components/schemas/AxisDisplaySpec"
-          },
           "weight_share_when_published": {
             "anyOf": [
               {
@@ -2661,63 +3030,12 @@
           "is_published",
           "priority_overrides",
           "icon_id",
-          "chip_label",
-          "panel_hint",
-          "show_map_icon",
           "time_scope",
           "display_thresholds_override",
           "display_band_labels_override",
-          "dedicated_way_value_layer",
-          "display",
           "weight_share_when_published"
         ],
         "title": "AxisDefinitionResponse"
-      },
-      "AxisDisplaySpec": {
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "ramp",
-              "none"
-            ],
-            "title": "Kind"
-          },
-          "label": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Label"
-          },
-          "category": {
-            "type": "string",
-            "title": "Category",
-            "default": "trafficSafety"
-          },
-          "tile_inputs": {
-            "items": {
-              "$ref": "#/components/schemas/TileInputSpec"
-            },
-            "type": "array",
-            "title": "Tile Inputs"
-          },
-          "thresholds": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Thresholds"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "kind",
-          "label",
-          "category",
-          "tile_inputs",
-          "thresholds"
-        ],
-        "title": "AxisDisplaySpec"
       },
       "AxisInspectorAxis": {
         "properties": {
@@ -2736,10 +3054,6 @@
             ],
             "title": "Difficulty"
           },
-          "weight": {
-            "type": "number",
-            "title": "Weight"
-          },
           "contribution": {
             "anyOf": [
               {
@@ -2757,7 +3071,6 @@
         "required": [
           "axis_id",
           "difficulty",
-          "weight",
           "contribution"
         ],
         "title": "AxisInspectorAxis"
@@ -2769,58 +3082,32 @@
             "title": "Osm Way Id"
           },
           "feature_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Feature Key"
           },
+          "point": {
+            "$ref": "#/components/schemas/Coordinates"
+          },
           "z": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "integer",
+            "maximum": 15.0,
+            "minimum": 12.0,
             "title": "Z"
           },
           "x": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "integer",
+            "minimum": 0.0,
             "title": "X"
           },
           "y": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "integer",
+            "minimum": 0.0,
             "title": "Y"
           },
           "bearing_deg": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "number",
+            "exclusiveMaximum": 360.0,
+            "minimum": 0.0,
             "title": "Bearing Deg"
           },
           "at": {
@@ -2838,7 +3125,9 @@
           "speed_kmh": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "maximum": 60.0,
+                "minimum": 5.0
               },
               {
                 "type": "null"
@@ -2860,21 +3149,20 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "osm_way_id"
+          "osm_way_id",
+          "feature_key",
+          "point",
+          "z",
+          "x",
+          "y",
+          "bearing_deg"
         ],
         "title": "AxisInspectorRequest"
       },
       "AxisInspectorResult": {
         "properties": {
           "highway": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Highway"
           },
           "tags": {
@@ -2884,32 +3172,11 @@
             "type": "object",
             "title": "Tags"
           },
-          "axes": {
-            "items": {
-              "$ref": "#/components/schemas/AxisInspectorAxis"
-            },
-            "type": "array",
-            "title": "Axes"
+          "segment": {
+            "$ref": "#/components/schemas/InspectorValues"
           },
-          "composite_difficulty": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/InspectorComposite"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "landcover": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LandcoverPercentages"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "way": {
+            "$ref": "#/components/schemas/InspectorValues"
           }
         },
         "additionalProperties": false,
@@ -2917,9 +3184,8 @@
         "required": [
           "highway",
           "tags",
-          "axes",
-          "composite_difficulty",
-          "landcover"
+          "segment",
+          "way"
         ],
         "title": "AxisInspectorResult"
       },
@@ -2935,23 +3201,23 @@
           },
           "dtype": {
             "type": "string",
+            "enum": [
+              "numeric",
+              "boolean",
+              "categorical"
+            ],
             "title": "Dtype"
           },
           "unit": {
             "type": "string",
             "title": "Unit"
           },
-          "share": {
-            "type": "number",
-            "title": "Share"
-          },
           "value_labels": {
             "additionalProperties": {
               "type": "string"
             },
             "type": "object",
-            "title": "Value Labels",
-            "default": {}
+            "title": "Value Labels"
           }
         },
         "additionalProperties": false,
@@ -2961,7 +3227,6 @@
           "label",
           "dtype",
           "unit",
-          "share",
           "value_labels"
         ],
         "title": "AxisMaterialBreakdownEntry"
@@ -2986,6 +3251,159 @@
           "shape"
         ],
         "title": "AxisPreviewRequest"
+      },
+      "Binary": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "enum": [
+              "add",
+              "sub",
+              "mul",
+              "div",
+              "mod",
+              "lt",
+              "le",
+              "gt",
+              "ge",
+              "and",
+              "or"
+            ],
+            "title": "Op"
+          },
+          "left": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Left",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          },
+          "right": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Right",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "left",
+          "right"
+        ],
+        "title": "Binary"
       },
       "BreakpointLinearShape-Input": {
         "properties": {
@@ -3093,6 +3511,242 @@
         ],
         "title": "BreakpointLinearShape"
       },
+      "CalibrationPreviewRequest": {
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/AxisDefinition"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "definition"
+        ],
+        "title": "CalibrationPreviewRequest"
+      },
+      "CalibrationPreviewResponse": {
+        "properties": {
+          "map_paint": {
+            "$ref": "#/components/schemas/MapPaint"
+          },
+          "averages_density": {
+            "type": "boolean",
+            "title": "Averages Density"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "map_paint",
+          "averages_density"
+        ],
+        "title": "CalibrationPreviewResponse"
+      },
+      "Case": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "const": "case",
+            "title": "Op",
+            "default": "case"
+          },
+          "when": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "When",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Then",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          },
+          "otherwise": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Otherwise",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "when",
+          "then",
+          "otherwise"
+        ],
+        "title": "Case"
+      },
       "CategoricalShape-Input": {
         "properties": {
           "kind": {
@@ -3154,29 +3808,101 @@
         ],
         "title": "CategoricalShape"
       },
-      "ColumnEntry": {
+      "ColumnNulls": {
         "properties": {
           "column": {
             "type": "string",
             "title": "Column"
           },
-          "uncalculated_count": {
+          "null_count": {
             "type": "integer",
-            "title": "Uncalculated Count"
-          },
-          "absent_count": {
-            "type": "integer",
-            "title": "Absent Count"
+            "title": "Null Count"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "column",
-          "uncalculated_count",
-          "absent_count"
+          "null_count"
         ],
-        "title": "ColumnEntry"
+        "title": "ColumnNulls"
+      },
+      "ColumnsChange": {
+        "properties": {
+          "added": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Added"
+          },
+          "removed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Removed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "added",
+          "removed"
+        ],
+        "title": "ColumnsChange"
+      },
+      "Condition": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "const": "condition",
+            "title": "Op",
+            "default": "condition"
+          },
+          "name": {
+            "type": "string",
+            "enum": [
+              "bearing_deg",
+              "speed_kmh"
+            ],
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "name"
+        ],
+        "title": "Condition"
+      },
+      "ConditionTerm": {
+        "properties": {
+          "fact_values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fact Values"
+          },
+          "negated": {
+            "type": "boolean",
+            "title": "Negated"
+          },
+          "matches_absent": {
+            "type": "boolean",
+            "title": "Matches Absent"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "fact_values",
+          "negated",
+          "matches_absent"
+        ],
+        "title": "ConditionTerm"
       },
       "ConnectionEntry": {
         "properties": {
@@ -3222,6 +3948,27 @@
         ],
         "title": "ConnectionEntry"
       },
+      "Constant": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "const": "const",
+            "title": "Op",
+            "default": "const"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "value"
+        ],
+        "title": "Constant"
+      },
       "Coordinates": {
         "properties": {
           "latitude": {
@@ -3244,30 +3991,6 @@
           "longitude"
         ],
         "title": "Coordinates"
-      },
-      "CoverageEntry": {
-        "properties": {
-          "parent": {
-            "type": "string",
-            "title": "Parent"
-          },
-          "parent_row_count": {
-            "type": "integer",
-            "title": "Parent Row Count"
-          },
-          "missing_rows": {
-            "type": "integer",
-            "title": "Missing Rows"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "parent",
-          "parent_row_count",
-          "missing_rows"
-        ],
-        "title": "CoverageEntry"
       },
       "DbStatusReport": {
         "properties": {
@@ -3442,73 +4165,43 @@
         ],
         "title": "DifficultyMapValue"
       },
-      "DisplayThresholdsPreviewRequest": {
+      "ElevationStretch": {
         "properties": {
-          "axis_id": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Axis Id"
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
           },
-          "shape": {
-            "oneOf": [
+          "start_elevation_m": {
+            "anyOf": [
               {
-                "$ref": "#/components/schemas/BreakpointLinearShape-Input"
+                "type": "number"
               },
               {
-                "$ref": "#/components/schemas/CategoricalShape-Input"
+                "type": "null"
               }
             ],
-            "title": "Shape"
+            "title": "Start Elevation M"
           },
-          "priority_overrides": {
-            "items": {
-              "$ref": "#/components/schemas/PriorityCondition"
-            },
-            "type": "array",
-            "title": "Priority Overrides"
-          },
-          "thresholds": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "minItems": 1,
-            "title": "Thresholds"
+          "end_elevation_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Elevation M"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "axis_id",
-          "shape",
-          "thresholds"
+          "distance_km",
+          "start_elevation_m",
+          "end_elevation_m"
         ],
-        "title": "DisplayThresholdsPreviewRequest"
-      },
-      "DisplayThresholdsPreviewResponse": {
-        "properties": {
-          "dropped_on_map": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Dropped On Map"
-          },
-          "bands_on_map": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Bands On Map"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "dropped_on_map",
-          "bands_on_map"
-        ],
-        "title": "DisplayThresholdsPreviewResponse"
+        "title": "ElevationStretch"
       },
       "ExternalCallStats": {
         "properties": {
@@ -3519,18 +4212,6 @@
           "errors": {
             "type": "integer",
             "title": "Errors"
-          },
-          "cache_hits": {
-            "type": "integer",
-            "title": "Cache Hits"
-          },
-          "cache_misses": {
-            "type": "integer",
-            "title": "Cache Misses"
-          },
-          "total_ms": {
-            "type": "integer",
-            "title": "Total Ms"
           },
           "max_ms": {
             "type": "integer",
@@ -3567,29 +4248,6 @@
                 "type": "null"
               }
             ]
-          },
-          "last_success_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Success At"
-          },
-          "retried_calls": {
-            "type": "integer",
-            "title": "Retried Calls"
-          },
-          "retry_attempts_total": {
-            "type": "integer",
-            "title": "Retry Attempts Total"
-          },
-          "stale_fallback_used": {
-            "type": "integer",
-            "title": "Stale Fallback Used"
           }
         },
         "additionalProperties": false,
@@ -3597,20 +4255,35 @@
         "required": [
           "calls",
           "errors",
-          "cache_hits",
-          "cache_misses",
-          "total_ms",
           "max_ms",
           "avg_ms",
           "cache_hit_rate",
           "error_types",
-          "last_error",
-          "last_success_at",
-          "retried_calls",
-          "retry_attempts_total",
-          "stale_fallback_used"
+          "last_error"
         ],
         "title": "ExternalCallStats"
+      },
+      "FeatureValue": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "const": "feature",
+            "title": "Op",
+            "default": "feature"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "name"
+        ],
+        "title": "FeatureValue"
       },
       "FloodForecasts": {
         "properties": {
@@ -3620,12 +4293,23 @@
             },
             "type": "array",
             "title": "Forecasts"
+          },
+          "valid_area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "forecasts"
+          "forecasts",
+          "valid_area"
         ],
         "title": "FloodForecasts"
       },
@@ -3640,7 +4324,14 @@
             "title": "Longitude"
           },
           "distance_km": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Distance Km"
           },
           "distance_tolerance_km": {
@@ -3665,8 +4356,8 @@
             ],
             "title": "Max Average Grade Percent"
           },
-          "hard_filters": {
-            "$ref": "#/components/schemas/HardFilterOverride"
+          "road_avoidance": {
+            "$ref": "#/components/schemas/RoadAvoidanceOverride"
           },
           "max_routes": {
             "type": "integer",
@@ -3730,7 +4421,7 @@
           "route_preference",
           "penalty_strength",
           "max_average_grade_percent",
-          "hard_filters",
+          "road_avoidance",
           "max_routes",
           "start_time",
           "assumed_speed_kmh",
@@ -3740,6 +4431,151 @@
           "generated_at"
         ],
         "title": "GenerationConditions"
+      },
+      "GridPointToday": {
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          },
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
+          },
+          "bearing_deg": {
+            "type": "integer",
+            "title": "Bearing Deg"
+          },
+          "times": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Times"
+          },
+          "temperature_c": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Temperature C"
+          },
+          "precipitation_mm": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Precipitation Mm"
+          },
+          "wind_speed_ms": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Wind Speed Ms"
+          },
+          "wind_direction_deg": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Wind Direction Deg"
+          },
+          "highest_hourly_temperature_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highest Hourly Temperature C"
+          },
+          "lowest_hourly_temperature_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lowest Hourly Temperature C"
+          },
+          "highest_hourly_precipitation_mm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highest Hourly Precipitation Mm"
+          },
+          "highest_hourly_wind_speed_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highest Hourly Wind Speed Ms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "latitude",
+          "longitude",
+          "distance_km",
+          "bearing_deg",
+          "times",
+          "temperature_c",
+          "precipitation_mm",
+          "wind_speed_ms",
+          "wind_direction_deg",
+          "highest_hourly_temperature_c",
+          "lowest_hourly_temperature_c",
+          "highest_hourly_precipitation_mm",
+          "highest_hourly_wind_speed_ms"
+        ],
+        "title": "GridPointToday"
       },
       "HTTPValidationError": {
         "properties": {
@@ -3754,13 +4590,6 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
-      "HardFilterOverride": {
-        "additionalProperties": {
-          "type": "boolean"
-        },
-        "type": "object",
-        "title": "HardFilterOverride"
-      },
       "ImportRunEntry": {
         "properties": {
           "label": {
@@ -3768,12 +4597,12 @@
             "title": "Label"
           },
           "latest": {
-            "$ref": "#/components/schemas/LatestRunEntry"
+            "$ref": "#/components/schemas/LatestRunCounts"
           },
           "latest_succeeded": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/SucceededRunEntry"
+                "$ref": "#/components/schemas/SucceededRunCounts"
               },
               {
                 "type": "null"
@@ -3818,6 +4647,143 @@
           "covered_weight_fraction"
         ],
         "title": "InspectorComposite"
+      },
+      "InspectorValues": {
+        "properties": {
+          "axes": {
+            "items": {
+              "$ref": "#/components/schemas/AxisInspectorAxis"
+            },
+            "type": "array",
+            "title": "Axes"
+          },
+          "composite_difficulty": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InspectorComposite"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "landcover": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LandcoverPercentages"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "axes",
+          "composite_difficulty",
+          "landcover"
+        ],
+        "title": "InspectorValues"
+      },
+      "Interpolate": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "const": "interpolate",
+            "title": "Op",
+            "default": "interpolate"
+          },
+          "input": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Input",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          },
+          "stops": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Stops"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "input",
+          "stops"
+        ],
+        "title": "Interpolate"
       },
       "JmaTileIndexAvailable": {
         "properties": {
@@ -3948,10 +4914,6 @@
       },
       "LandcoverPercentages": {
         "properties": {
-          "valid_pixels": {
-            "type": "integer",
-            "title": "Valid Pixels"
-          },
           "water_percent": {
             "type": "number",
             "title": "Water Percent"
@@ -3988,7 +4950,6 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "valid_pixels",
           "water_percent",
           "trees_percent",
           "flooded_veg_percent",
@@ -4019,7 +4980,7 @@
         ],
         "title": "LastError"
       },
-      "LatestRunEntry": {
+      "LatestRunCounts": {
         "properties": {
           "id": {
             "type": "integer",
@@ -4069,7 +5030,32 @@
           "identity",
           "item_count"
         ],
-        "title": "LatestRunEntry"
+        "title": "LatestRunCounts"
+      },
+      "LayerTextSlotView": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "axes",
+            "title": "Name"
+          },
+          "before": {
+            "type": "string",
+            "title": "Before"
+          },
+          "after": {
+            "type": "string",
+            "title": "After"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "before",
+          "after"
+        ],
+        "title": "LayerTextSlotView"
       },
       "MapLegendScale": {
         "properties": {
@@ -4099,6 +5085,66 @@
           "unit"
         ],
         "title": "MapLegendScale"
+      },
+      "MapPaint": {
+        "properties": {
+          "value": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DifficultyMapValue"
+              },
+              {
+                "$ref": "#/components/schemas/SignedMaterialMapValue"
+              }
+            ],
+            "title": "Value",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "difficulty": "#/components/schemas/DifficultyMapValue",
+                "signed_material": "#/components/schemas/SignedMaterialMapValue"
+              }
+            }
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "thresholds": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Thresholds"
+          },
+          "legend": {
+            "$ref": "#/components/schemas/MapLegendScale"
+          },
+          "band_labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Band Labels"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "value",
+          "unit",
+          "thresholds",
+          "legend",
+          "band_labels"
+        ],
+        "title": "MapPaint"
       },
       "MaterialCoverageCounted": {
         "properties": {
@@ -4197,15 +5243,6 @@
             "type": "string",
             "title": "Label"
           },
-          "dtype": {
-            "type": "string",
-            "enum": [
-              "numeric",
-              "boolean",
-              "categorical"
-            ],
-            "title": "Dtype"
-          },
           "excluded_reason": {
             "type": "string",
             "title": "Excluded Reason"
@@ -4217,7 +5254,6 @@
           "kind",
           "material_id",
           "label",
-          "dtype",
           "excluded_reason"
         ],
         "title": "MaterialCoverageExcluded"
@@ -4268,64 +5304,6 @@
           "materials"
         ],
         "title": "MaterialCoverageReport"
-      },
-      "MaterialDistributionResponse": {
-        "properties": {
-          "sample_ways": {
-            "type": "integer",
-            "title": "Sample Ways"
-          },
-          "total_km": {
-            "type": "number",
-            "title": "Total Km"
-          },
-          "quantiles": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Quantiles"
-          },
-          "bins": {
-            "items": {
-              "prefixItems": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "number"
-                }
-              ],
-              "type": "array",
-              "maxItems": 3,
-              "minItems": 3
-            },
-            "type": "array",
-            "title": "Bins"
-          },
-          "zero_share": {
-            "type": "number",
-            "title": "Zero Share"
-          },
-          "available": {
-            "type": "boolean",
-            "title": "Available"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "sample_ways",
-          "total_km",
-          "quantiles",
-          "bins",
-          "zero_share",
-          "available"
-        ],
-        "title": "MaterialDistributionResponse"
       },
       "MaterialTerm-Input": {
         "properties": {
@@ -4379,7 +5357,7 @@
         ],
         "title": "MaterialTerm"
       },
-      "MaterialValueEntry": {
+      "MaterialValueShareEntry": {
         "properties": {
           "value": {
             "type": "string",
@@ -4388,26 +5366,38 @@
           "label": {
             "type": "string",
             "title": "Label"
+          },
+          "share": {
+            "type": "number",
+            "title": "Share"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "value",
-          "label"
+          "label",
+          "share"
         ],
-        "title": "MaterialValueEntry"
+        "title": "MaterialValueShareEntry"
       },
-      "MaterialValuesResponse": {
+      "MaterialValueSharesResponse": {
         "properties": {
           "available": {
             "type": "boolean",
-            "title": "Available",
-            "default": true
+            "title": "Available"
+          },
+          "sample_ways": {
+            "type": "integer",
+            "title": "Sample Ways"
+          },
+          "total_km": {
+            "type": "number",
+            "title": "Total Km"
           },
           "values": {
             "items": {
-              "$ref": "#/components/schemas/MaterialValueEntry"
+              "$ref": "#/components/schemas/MaterialValueShareEntry"
             },
             "type": "array",
             "title": "Values"
@@ -4417,19 +5407,33 @@
         "type": "object",
         "required": [
           "available",
+          "sample_ways",
+          "total_km",
           "values"
         ],
-        "title": "MaterialValuesResponse"
+        "title": "MaterialValueSharesResponse"
+      },
+      "Missing": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "const": "missing",
+            "title": "Op",
+            "default": "missing"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op"
+        ],
+        "title": "Missing"
       },
       "MsmFreshnessResponse": {
         "properties": {
           "last_run_at": {
             "type": "string",
             "title": "Last Run At"
-          },
-          "data_end_at": {
-            "type": "string",
-            "title": "Data End At"
           },
           "run_age_hours": {
             "type": "number",
@@ -4448,12 +5452,110 @@
         "type": "object",
         "required": [
           "last_run_at",
-          "data_end_at",
           "run_age_hours",
           "remaining_hours",
           "healthy"
         ],
         "title": "MsmFreshnessResponse"
+      },
+      "MsmGridForecast": {
+        "properties": {
+          "times": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Times"
+          },
+          "latitude_step_deg": {
+            "type": "number",
+            "title": "Latitude Step Deg"
+          },
+          "longitude_step_deg": {
+            "type": "number",
+            "title": "Longitude Step Deg"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/MsmGridPointForecast"
+            },
+            "type": "array",
+            "title": "Points"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "times",
+          "latitude_step_deg",
+          "longitude_step_deg",
+          "points"
+        ],
+        "title": "MsmGridForecast"
+      },
+      "MsmGridPointForecast": {
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          },
+          "wind_speed_ms": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Wind Speed Ms"
+          },
+          "wind_direction_deg": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Wind Direction Deg"
+          },
+          "precipitation_mm": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Precipitation Mm"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "latitude",
+          "longitude",
+          "wind_speed_ms",
+          "wind_direction_deg",
+          "precipitation_mm"
+        ],
+        "title": "MsmGridPointForecast"
       },
       "OverallDifficulty": {
         "properties": {
@@ -4473,6 +5575,107 @@
           "load"
         ],
         "title": "OverallDifficulty"
+      },
+      "PlaceArea": {
+        "properties": {
+          "area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "area"
+        ],
+        "title": "PlaceArea"
+      },
+      "PlaceCandidate": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "address",
+              "facility"
+            ],
+            "title": "Kind"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "prefecture",
+              "city",
+              "ward",
+              "oaza",
+              "aza",
+              "block",
+              "point"
+            ],
+            "title": "Level"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area"
+          },
+          "latitude": {
+            "type": "number",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Longitude"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "level",
+          "name",
+          "area",
+          "latitude",
+          "longitude"
+        ],
+        "title": "PlaceCandidate"
+      },
+      "PlaceSearchResult": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/PlaceCandidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "candidates"
+        ],
+        "title": "PlaceSearchResult"
       },
       "PriorityCondition": {
         "properties": {
@@ -4499,12 +5702,542 @@
         ],
         "title": "PriorityCondition"
       },
-      "RouteCandidate": {
+      "RawValueUnits": {
+        "properties": {
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "total_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Unit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "unit",
+          "total_unit"
+        ],
+        "title": "RawValueUnits"
+      },
+      "RoadAvoidanceOverride": {
+        "additionalProperties": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "avoid",
+            "exclude"
+          ]
+        },
+        "type": "object",
+        "title": "RoadAvoidanceOverride"
+      },
+      "RoadAvoidanceView": {
+        "properties": {
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/AvoidanceLevelView"
+            },
+            "type": "array",
+            "title": "Levels"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/AvoidanceSectionView"
+            },
+            "type": "array",
+            "title": "Sections"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/AvoidanceRowView"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "levels",
+          "sections",
+          "rows"
+        ],
+        "title": "RoadAvoidanceView"
+      },
+      "RoadClass": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          },
+          "former_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Former Keys"
+          },
+          "conditions": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/ConditionTerm"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Conditions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "description",
+          "sort_order",
+          "former_keys",
+          "conditions"
+        ],
+        "title": "RoadClass"
+      },
+      "RoadClassCatalog": {
+        "properties": {
+          "generation": {
+            "type": "string",
+            "title": "Generation"
+          },
+          "map_layers": {
+            "items": {
+              "$ref": "#/components/schemas/RoadMapLayerView"
+            },
+            "type": "array",
+            "title": "Map Layers"
+          },
+          "avoidance": {
+            "$ref": "#/components/schemas/RoadAvoidanceView"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "generation",
+          "map_layers",
+          "avoidance"
+        ],
+        "title": "RoadClassCatalog"
+      },
+      "RoadClassDefinitions": {
+        "properties": {
+          "classifications": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RoadClassification"
+            },
+            "type": "object",
+            "title": "Classifications"
+          },
+          "map_layers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RoadMapLayer"
+            },
+            "type": "object",
+            "title": "Map Layers"
+          },
+          "rolling_resistance_classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rolling Resistance Classification"
+          },
+          "rolling_resistance_classes": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "minProperties": 1
+            },
+            "type": "object",
+            "title": "Rolling Resistance Classes"
+          },
+          "avoidance_sections": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AvoidanceSection"
+            },
+            "type": "object",
+            "title": "Avoidance Sections"
+          },
+          "avoidance_classifications": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AvoidanceClassification"
+            },
+            "type": "object",
+            "title": "Avoidance Classifications"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "classifications",
+          "map_layers",
+          "rolling_resistance_classification",
+          "rolling_resistance_classes",
+          "avoidance_sections",
+          "avoidance_classifications"
+        ],
+        "title": "RoadClassDefinitions"
+      },
+      "RoadClassStretch": {
+        "properties": {
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "distance_km",
+          "value"
+        ],
+        "title": "RoadClassStretch"
+      },
+      "RoadClassView": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "description",
+          "color"
+        ],
+        "title": "RoadClassView"
+      },
+      "RoadClassification": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "is_published": {
+            "type": "boolean",
+            "title": "Is Published"
+          },
+          "classes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RoadClass"
+            },
+            "type": "object",
+            "title": "Classes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "description",
+          "is_published",
+          "classes"
+        ],
+        "title": "RoadClassification"
+      },
+      "RoadMapLayer": {
+        "properties": {
+          "group_key": {
+            "type": "string",
+            "title": "Group Key"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          },
+          "icon_key": {
+            "type": "string",
+            "title": "Icon Key"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "panel_hint": {
+            "type": "string",
+            "title": "Panel Hint"
+          },
+          "palette": {
+            "type": "string",
+            "title": "Palette"
+          },
+          "hue_slot": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hue Slot"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tone"
+          },
+          "no_data_fact_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Data Fact Key"
+          },
+          "hides_unclassified": {
+            "type": "boolean",
+            "title": "Hides Unclassified"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "group_key",
+          "sort_order",
+          "icon_key",
+          "summary",
+          "panel_hint",
+          "palette",
+          "hue_slot",
+          "tone",
+          "no_data_fact_key",
+          "hides_unclassified"
+        ],
+        "title": "RoadMapLayer"
+      },
+      "RoadMapLayerView": {
         "properties": {
           "id": {
             "type": "string",
             "title": "Id"
           },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "icon": {
+            "type": "string",
+            "title": "Icon"
+          },
+          "description": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Description"
+          },
+          "panel_hint": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/LayerTextSlotView"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Panel Hint"
+          },
+          "hide_missing_rows": {
+            "type": "boolean",
+            "title": "Hide Missing Rows"
+          },
+          "has_no_data": {
+            "type": "boolean",
+            "title": "Has No Data"
+          },
+          "classes": {
+            "items": {
+              "$ref": "#/components/schemas/RoadClassView"
+            },
+            "type": "array",
+            "title": "Classes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "category",
+          "icon",
+          "description",
+          "panel_hint",
+          "hide_missing_rows",
+          "has_no_data",
+          "classes"
+        ],
+        "title": "RoadMapLayerView"
+      },
+      "Round": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "const": "round",
+            "title": "Op",
+            "default": "round"
+          },
+          "arg": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Arg",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          },
+          "decimals": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Decimals"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "arg",
+          "decimals"
+        ],
+        "title": "Round"
+      },
+      "RouteCandidate": {
+        "properties": {
           "direction_label": {
             "type": "string",
             "title": "Direction Label"
@@ -4547,44 +6280,12 @@
             ],
             "title": "Elevation Gain M"
           },
-          "min_elevation_m": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Min Elevation M"
-          },
-          "max_elevation_m": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Elevation M"
-          },
           "segments": {
             "items": {
               "$ref": "#/components/schemas/RouteSegmentDetail"
             },
             "type": "array",
             "title": "Segments"
-          },
-          "overall_difficulty": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OverallDifficulty"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "estimated_duration_seconds": {
             "anyOf": [
@@ -4599,8 +6300,7 @@
           },
           "wind_unavailable": {
             "type": "boolean",
-            "title": "Wind Unavailable",
-            "default": false
+            "title": "Wind Unavailable"
           },
           "missing_travel_data_share": {
             "anyOf": [
@@ -4613,33 +6313,12 @@
             ],
             "title": "Missing Travel Data Share"
           },
-          "axis_difficulties": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Axis Difficulties"
-          },
-          "axis_contributions": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Axis Contributions"
-          },
           "axis_raw_values": {
             "additionalProperties": {
               "type": "number"
             },
             "type": "object",
             "title": "Axis Raw Values"
-          },
-          "material_values": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Material Values"
           },
           "material_category_shares": {
             "additionalProperties": {
@@ -4671,31 +6350,103 @@
             },
             "type": "array",
             "title": "Node Ids"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/RouteTurn"
+            },
+            "type": "array",
+            "title": "Turns"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/RoutePoint"
+            },
+            "type": "array",
+            "title": "Points"
+          },
+          "waypoint_distances_km": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Waypoint Distances Km"
+          },
+          "overall_difficulty": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverallDifficulty"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "axis_difficulties": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Axis Difficulties"
+          },
+          "axis_contributions": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Axis Contributions"
+          },
+          "material_values": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Material Values"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "loop",
+              "destination",
+              "spliced"
+            ],
+            "title": "Kind"
+          },
+          "is_fastest": {
+            "type": "boolean",
+            "title": "Is Fastest"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "id",
           "direction_label",
           "distance_km",
           "geometry",
           "elevation_gain_m",
-          "min_elevation_m",
-          "max_elevation_m",
           "segments",
-          "overall_difficulty",
           "estimated_duration_seconds",
           "wind_unavailable",
           "missing_travel_data_share",
-          "axis_difficulties",
-          "axis_contributions",
           "axis_raw_values",
-          "material_values",
           "material_category_shares",
           "edge_ids",
           "edge_point_offsets",
-          "node_ids"
+          "node_ids",
+          "turns",
+          "points",
+          "waypoint_distances_km",
+          "overall_difficulty",
+          "axis_difficulties",
+          "axis_contributions",
+          "material_values",
+          "id",
+          "kind",
+          "is_fastest"
         ],
         "title": "RouteCandidate"
       },
@@ -4800,17 +6551,17 @@
             "title": "Distance Km"
           },
           "distance_tolerance_km": {
-            "type": "number",
-            "maximum": 50.0,
-            "exclusiveMinimum": 0.0,
-            "title": "Distance Tolerance Km",
-            "default": 5.0
-          },
-          "route_type": {
-            "type": "string",
-            "const": "loop",
-            "title": "Route Type",
-            "default": "loop"
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 50.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Tolerance Km"
           },
           "route_preference": {
             "anyOf": [
@@ -4846,29 +6597,20 @@
             ],
             "title": "Max Average Grade Percent"
           },
-          "hard_filters": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/HardFilterOverride"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "road_avoidance": {
+            "$ref": "#/components/schemas/RoadAvoidanceOverride"
           },
           "max_routes": {
             "type": "integer",
             "maximum": 15.0,
             "minimum": 1.0,
-            "title": "Max Routes",
-            "default": 8
+            "title": "Max Routes"
           },
           "assumed_speed_kmh": {
             "type": "number",
             "maximum": 60.0,
             "minimum": 5.0,
-            "title": "Assumed Speed Kmh",
-            "default": 20.0
+            "title": "Assumed Speed Kmh"
           },
           "waypoints": {
             "anyOf": [
@@ -4895,27 +6637,9 @@
               }
             ]
           },
-          "lens_axis_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lens Axis Id"
-          },
           "start_time": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "format": "date-time",
             "title": "Start Time"
           },
           "spliced_edge_ids": {
@@ -4939,7 +6663,11 @@
         "type": "object",
         "required": [
           "latitude",
-          "longitude"
+          "longitude",
+          "road_avoidance",
+          "max_routes",
+          "assumed_speed_kmh",
+          "start_time"
         ],
         "title": "RouteGenerateRequest"
       },
@@ -4975,6 +6703,46 @@
           "no_candidates_reason"
         ],
         "title": "RouteGenerateResponse"
+      },
+      "RoutePoint": {
+        "properties": {
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
+          },
+          "layer": {
+            "type": "string",
+            "title": "Layer"
+          },
+          "properties": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Properties"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "distance_km",
+          "layer",
+          "properties"
+        ],
+        "title": "RoutePoint"
       },
       "RoutePreferenceWeights": {
         "additionalProperties": {
@@ -5039,6 +6807,13 @@
             "type": "number",
             "title": "Distance Km"
           },
+          "elevations": {
+            "items": {
+              "$ref": "#/components/schemas/ElevationStretch"
+            },
+            "type": "array",
+            "title": "Elevations"
+          },
           "estimated_arrival_time": {
             "anyOf": [
               {
@@ -5071,13 +6846,6 @@
             "type": "object",
             "title": "Material Values"
           },
-          "axis_raw_values": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Axis Raw Values"
-          },
           "difficulty": {
             "anyOf": [
               {
@@ -5098,6 +6866,16 @@
                 "type": "null"
               }
             ]
+          },
+          "road_classes": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/RoadClassStretch"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Road Classes"
           }
         },
         "additionalProperties": false,
@@ -5110,34 +6888,50 @@
           "end_longitude",
           "cumulative_distance_km",
           "distance_km",
+          "elevations",
           "estimated_arrival_time",
           "axis_difficulties",
           "axis_contributions",
           "material_values",
-          "axis_raw_values",
           "difficulty",
-          "wind"
+          "wind",
+          "road_classes"
         ],
         "title": "RouteSegmentDetail"
       },
-      "ScorePoint": {
+      "RouteTurn": {
         "properties": {
-          "x": {
+          "distance_km": {
             "type": "number",
-            "title": "X"
+            "title": "Distance Km"
           },
-          "score": {
+          "direction": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right",
+              "uturn"
+            ],
+            "title": "Direction"
+          },
+          "latitude": {
             "type": "number",
-            "title": "Score"
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "x",
-          "score"
+          "distance_km",
+          "direction",
+          "latitude",
+          "longitude"
         ],
-        "title": "ScorePoint"
+        "title": "RouteTurn"
       },
       "ScoresPreviewRequest": {
         "properties": {
@@ -5150,13 +6944,6 @@
             },
             "type": "array",
             "title": "Xs"
-          },
-          "material_values": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Material Values"
           }
         },
         "additionalProperties": false,
@@ -5174,27 +6961,12 @@
             },
             "type": "array",
             "title": "Scores"
-          },
-          "material_points": {
-            "items": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/ScorePoint"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Material Points"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "scores",
-          "material_points"
+          "scores"
         ],
         "title": "ScoresPreviewResponse"
       },
@@ -5209,20 +6981,8 @@
             "title": "Direction Deg"
           },
           "forecast_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Forecast At"
-          },
-          "extended": {
-            "type": "boolean",
-            "title": "Extended",
-            "default": false
           }
         },
         "additionalProperties": false,
@@ -5230,8 +6990,7 @@
         "required": [
           "speed_ms",
           "direction_deg",
-          "forecast_at",
-          "extended"
+          "forecast_at"
         ],
         "title": "SegmentWind"
       },
@@ -5299,7 +7058,7 @@
         ],
         "title": "SourceEntry"
       },
-      "SucceededRunEntry": {
+      "SucceededRunCounts": {
         "properties": {
           "id": {
             "type": "integer",
@@ -5317,117 +7076,7 @@
           "id",
           "finished_at"
         ],
-        "title": "SucceededRunEntry"
-      },
-      "TemperatureRange": {
-        "properties": {
-          "min_c": {
-            "type": "number",
-            "title": "Min C"
-          },
-          "max_c": {
-            "type": "number",
-            "title": "Max C"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "min_c",
-          "max_c"
-        ],
-        "title": "TemperatureRange"
-      },
-      "TileInputSpec": {
-        "properties": {
-          "property": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Property"
-          },
-          "weight": {
-            "type": "number",
-            "title": "Weight",
-            "default": 1.0
-          },
-          "boolean": {
-            "type": "boolean",
-            "title": "Boolean",
-            "default": false
-          },
-          "true_value": {
-            "type": "number",
-            "title": "True Value",
-            "default": 0.0
-          },
-          "false_value": {
-            "type": "number",
-            "title": "False Value",
-            "default": 0.0
-          },
-          "has_unknown_fallback": {
-            "type": "boolean",
-            "title": "Has Unknown Fallback",
-            "default": false
-          },
-          "categories": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "type": "number"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Categories"
-          },
-          "breakpoints": {
-            "anyOf": [
-              {
-                "items": {
-                  "prefixItems": [
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "type": "number"
-                    }
-                  ],
-                  "type": "array",
-                  "maxItems": 2,
-                  "minItems": 2
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Breakpoints"
-          },
-          "needs_runtime_scale": {
-            "type": "boolean",
-            "title": "Needs Runtime Scale",
-            "default": false
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "property",
-          "weight",
-          "boolean",
-          "true_value",
-          "false_value",
-          "has_unknown_fallback",
-          "categories",
-          "breakpoints",
-          "needs_runtime_scale"
-        ],
-        "title": "TileInputSpec"
+        "title": "SucceededRunCounts"
       },
       "TuningParameterView": {
         "properties": {
@@ -5509,6 +7158,9 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "value"
+        ],
         "title": "TuningUpdateRequest"
       },
       "Twilight": {
@@ -5529,6 +7181,124 @@
           "sunset"
         ],
         "title": "Twilight"
+      },
+      "Unary": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "enum": [
+              "neg",
+              "abs",
+              "sin",
+              "cos",
+              "sqrt",
+              "not",
+              "is_missing"
+            ],
+            "title": "Op"
+          },
+          "arg": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Arg",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "arg"
+        ],
+        "title": "Unary"
+      },
+      "ValidArea": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "MultiPolygon",
+            "title": "Type"
+          },
+          "coordinates": {
+            "items": {
+              "items": {
+                "items": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Coordinates"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "ValidArea"
       },
       "ValidationError": {
         "properties": {
@@ -5599,10 +7369,6 @@
             },
             "type": "array",
             "title": "Bins"
-          },
-          "zero_share": {
-            "type": "number",
-            "title": "Zero Share"
           }
         },
         "additionalProperties": false,
@@ -5611,10 +7377,219 @@
           "sample_ways",
           "total_km",
           "quantiles",
-          "bins",
-          "zero_share"
+          "bins"
         ],
         "title": "ValueDistribution"
+      },
+      "WayValueFormula": {
+        "properties": {
+          "value": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Value",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          },
+          "undetermined": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Constant"
+              },
+              {
+                "$ref": "#/components/schemas/Missing"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureValue"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "$ref": "#/components/schemas/Unary"
+              },
+              {
+                "$ref": "#/components/schemas/Binary"
+              },
+              {
+                "$ref": "#/components/schemas/Case"
+              },
+              {
+                "$ref": "#/components/schemas/Interpolate"
+              },
+              {
+                "$ref": "#/components/schemas/Round"
+              }
+            ],
+            "title": "Undetermined",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "abs": "#/components/schemas/Unary",
+                "add": "#/components/schemas/Binary",
+                "and": "#/components/schemas/Binary",
+                "case": "#/components/schemas/Case",
+                "condition": "#/components/schemas/Condition",
+                "const": "#/components/schemas/Constant",
+                "cos": "#/components/schemas/Unary",
+                "div": "#/components/schemas/Binary",
+                "feature": "#/components/schemas/FeatureValue",
+                "ge": "#/components/schemas/Binary",
+                "gt": "#/components/schemas/Binary",
+                "interpolate": "#/components/schemas/Interpolate",
+                "is_missing": "#/components/schemas/Unary",
+                "le": "#/components/schemas/Binary",
+                "lt": "#/components/schemas/Binary",
+                "missing": "#/components/schemas/Missing",
+                "mod": "#/components/schemas/Binary",
+                "mul": "#/components/schemas/Binary",
+                "neg": "#/components/schemas/Unary",
+                "not": "#/components/schemas/Unary",
+                "or": "#/components/schemas/Binary",
+                "round": "#/components/schemas/Round",
+                "sin": "#/components/schemas/Unary",
+                "sqrt": "#/components/schemas/Unary",
+                "sub": "#/components/schemas/Binary"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "value",
+          "undetermined"
+        ],
+        "title": "WayValueFormula"
+      },
+      "WayValuesPreviewRequest": {
+        "properties": {
+          "axis_id": {
+            "type": "string",
+            "title": "Axis Id"
+          },
+          "shape": {
+            "$ref": "#/components/schemas/BreakpointLinearShape-Input"
+          },
+          "z": {
+            "type": "integer",
+            "maximum": 15.0,
+            "minimum": 12.0,
+            "title": "Z"
+          },
+          "x": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "X"
+          },
+          "y": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Y"
+          },
+          "bearing_deg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 360.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bearing Deg"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "speed_kmh": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 60.0,
+                "minimum": 5.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed Kmh"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "axis_id",
+          "shape",
+          "z",
+          "x",
+          "y"
+        ],
+        "title": "WayValuesPreviewRequest"
       },
       "WbgtReading": {
         "properties": {
@@ -5635,10 +7610,6 @@
           "value": {
             "type": "number",
             "title": "Value"
-          },
-          "observed_at": {
-            "type": "string",
-            "title": "Observed At"
           }
         },
         "additionalProperties": false,
@@ -5646,8 +7617,7 @@
         "required": [
           "level",
           "label",
-          "value",
-          "observed_at"
+          "value"
         ],
         "title": "WbgtReading"
       },
@@ -5662,203 +7632,51 @@
                 "type": "null"
               }
             ]
+          },
+          "valid_area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "reading"
+          "reading",
+          "valid_area"
         ],
         "title": "WbgtStatus"
       },
-      "WeatherConditions": {
-        "properties": {
-          "temperature_c": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Temperature C"
-          },
-          "wind_speed_ms": {
-            "type": "number",
-            "title": "Wind Speed Ms"
-          },
-          "wind_direction_deg": {
-            "type": "number",
-            "title": "Wind Direction Deg"
-          },
-          "wind_direction_label": {
-            "type": "string",
-            "title": "Wind Direction Label"
-          },
-          "precipitation_mm": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Precipitation Mm"
-          },
-          "observed_at": {
-            "type": "string",
-            "title": "Observed At"
-          },
-          "twilight": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Twilight"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "precipitation_max_mm": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Precipitation Max Mm"
-          },
-          "wind_speed_max_ms": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Wind Speed Max Ms"
-          },
-          "temperature_range": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TemperatureRange"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "today_periods": {
-            "items": {
-              "$ref": "#/components/schemas/WeatherPeriodOutlook"
-            },
-            "type": "array",
-            "title": "Today Periods"
-          },
-          "today_period_interval_hours": {
-            "type": "integer",
-            "title": "Today Period Interval Hours"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "temperature_c",
-          "wind_speed_ms",
-          "wind_direction_deg",
-          "wind_direction_label",
-          "precipitation_mm",
-          "observed_at",
-          "twilight",
-          "precipitation_max_mm",
-          "wind_speed_max_ms",
-          "temperature_range",
-          "today_periods",
-          "today_period_interval_hours"
-        ],
-        "title": "WeatherConditions"
-      },
-      "WeatherPeriodOutlook": {
-        "properties": {
-          "period": {
-            "type": "string",
-            "title": "Period"
-          },
-          "temperature_c": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Temperature C"
-          },
-          "precipitation_mm": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Precipitation Mm"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "period",
-          "temperature_c",
-          "precipitation_mm"
-        ],
-        "title": "WeatherPeriodOutlook"
-      },
       "WeatherWarnings": {
         "properties": {
-          "area_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Area Name"
-          },
-          "report_datetime": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Report Datetime"
-          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/ActiveWarning"
             },
             "type": "array",
             "title": "Warnings"
+          },
+          "valid_area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "area_name",
-          "report_datetime",
-          "warnings"
+          "warnings",
+          "valid_area"
         ],
         "title": "WeatherWarnings"
       },
@@ -5880,74 +7698,6 @@
           "label"
         ],
         "title": "WindDirection"
-      },
-      "WindGridPoint": {
-        "properties": {
-          "latitude": {
-            "type": "number",
-            "title": "Latitude"
-          },
-          "longitude": {
-            "type": "number",
-            "title": "Longitude"
-          },
-          "wind_speed_ms": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Wind Speed Ms"
-          },
-          "wind_direction_deg": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Wind Direction Deg"
-          },
-          "precipitation_mm": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Precipitation Mm"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "latitude",
-          "longitude",
-          "wind_speed_ms",
-          "wind_direction_deg",
-          "precipitation_mm"
-        ],
-        "title": "WindGridPoint"
-      },
-      "WindGridResponse": {
-        "properties": {
-          "times": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Times"
-          },
-          "points": {
-            "items": {
-              "$ref": "#/components/schemas/WindGridPoint"
-            },
-            "type": "array",
-            "title": "Points"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "times",
-          "points"
-        ],
-        "title": "WindGridResponse"
       },
       "app__services__db_status_service__TableEntry": {
         "properties": {
@@ -6024,22 +7774,22 @@
             "type": "integer",
             "title": "Row Count"
           },
-          "coverage": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnNulls"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "columns_change": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CoverageEntry"
+                "$ref": "#/components/schemas/ColumnsChange"
               },
               {
                 "type": "null"
               }
             ]
-          },
-          "columns": {
-            "items": {
-              "$ref": "#/components/schemas/ColumnEntry"
-            },
-            "type": "array",
-            "title": "Columns"
           },
           "needs_rebuild": {
             "type": "boolean",
@@ -6051,8 +7801,8 @@
         "required": [
           "table_name",
           "row_count",
-          "coverage",
           "columns",
+          "columns_change",
           "needs_rebuild"
         ],
         "title": "TableEntry"

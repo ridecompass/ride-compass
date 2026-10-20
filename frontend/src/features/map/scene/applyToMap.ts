@@ -14,22 +14,26 @@ import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
 
 import type { MapLayerVisibility } from "@/features/map/layers/mapLayers";
-import type { DedicatedWayValueAxis, RampAxis } from "@/lib/mapDisplay/axisLayers";
+import type { DedicatedWayValueAxis } from "@/lib/mapDisplay/axisLayers";
+import type { CatalogAxis } from "@/lib/catalogAxis";
 import { debugLog } from "@/lib/debugLog";
 import type {
   DynamicWeatherGroupState,
   DynamicWeatherLayerId,
   DynamicWeatherRenderPayload,
 } from "@/features/map/layers/dynamicWeather";
-import { withJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
-import { areaLayerAnchor, prepareBasemapForAreaLayers, runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
-import { primaryAttributeIdsToLayerIds } from "@/features/map/layers/primaryAttributes";
-import { ROUTE_ARROW_ICON_ID, createRouteArrowIcon } from "@/features/map/layers/routeArrowIcon";
-import { LENS_NEUTRAL_COLOR, type LensId, type RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
-import type { SecondaryAxisSummary } from "@/features/map/secondaryAxes";
-import type { ExperimentSlot } from "@/types/experimentSlot";
-import type { RouteCandidate } from "@/types/route";
-import { dedicatedAxisBands, rampAxisBands, type ValueBand } from "@/lib/mapDisplay/valueScale";
+import {
+  areaLayerAnchor,
+  hideBasemapPois,
+  labelLayerAnchor,
+  prepareBasemap,
+  runWhenStyleReady,
+} from "@/features/map/layers/mapStyleOps";
+import { axisMapLayerIds } from "@/features/map/layers/mapLayers";
+import type { LensId, RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
+import type { RoadMapLayerView, RouteCandidate, SelectedRouteSegment } from "@/types/route";
+import { valueBands } from "@/lib/mapDisplay/valueScale";
+import { findSameSegment, routeStretches, segmentPath, splitSegmentAt } from "@/lib/routeDistance";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import {
   ROAD_TILE_MAX_ZOOM,
@@ -37,24 +41,23 @@ import {
   landcoverTileUrl,
   pointTileUrl,
   roadSurfaceTileUrl,
-  type PointTileLayer,
   type TileVersions,
 } from "@/features/map/regionApi";
+import type { PointTileLayer } from "@/lib/mapDisplay/pointLayers";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
+
+import { applyMapScene } from "./applyMapScene";
+import type { AxisLineState, WayConditions, WayMaterials } from "./groups/axisLines";
+import { POINT_TILE_LAYERS } from "./groups/points";
+import type { RoadClassValues } from "./groups/roadLines";
+import type { RouteState } from "./groups/routes";
+import { weatherElementKey, type WeatherState } from "./groups/weather";
+import { buildLegendFilterExpression } from "./sceneBuilders";
+import type { SceneInputs } from "./buildScene";
+import { EMPTY_MAP_SCENE, hiddenBasemapPois, type MapScene } from "./mapScene";
 
 /** ベクタタイル内のレイヤー名。源泉が配る値をそのまま使う。 */
 export const ROAD_TILE_SOURCE_LAYER = regionTileConfig.road_surface.layer_name;
-
-import { applyMapScene } from "./applyMapScene";
-import { buildAxisRampUnknownExpression, buildAxisRampValueExpression } from "./groups/axisLines";
-import { buildLegendFilterExpression } from "./sceneBuilders";
-import type { SceneInputs } from "./buildScene";
-import type { AxisBand, AxisLineState } from "@/features/map/scene/groups/axisLines";
-import type { RoutePath, RouteState } from "@/features/map/scene/groups/routes";
-import { drawPointIcon } from "@/features/map/layers/pointIcon";
-import { POINT_ICONS, POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
-import { WEATHER_ICONS, type WeatherPayload, type WeatherState } from "@/features/map/scene/groups/weather";
-import { EMPTY_MAP_SCENE, type MapScene } from "./mapScene";
 
 /** 乗り換えられる区間1本ぶんの入力。`index`は押されたときに呼び出し側が見分ける値。 */
 export interface SpliceStretchInput {
@@ -74,8 +77,12 @@ export interface SceneLook {
   readonly lens: LensId;
   /** 全道路を塗っている軸（塗っていなければnull）。 */
   readonly paintedAxisId: LensId | null;
-  /** 専用配信軸ごとの取得結果。 */
-  readonly dedicatedWayValues: ReadonlyMap<string, { values: ReadonlyMap<string, number>; loading: boolean }>;
+  /** 今の範囲の道ごとの、道の線の層の値の取得結果。 */
+  readonly roadClasses: { values: RoadClassValues; loading: boolean };
+  /** 軸ごとの、今の範囲の道ごとの材料の取得結果。 */
+  readonly wayMaterials: ReadonlyMap<string, { materials: WayMaterials; loading: boolean }>;
+  /** 道の値の式が読む走る条件。 */
+  readonly wayConditions: WayConditions;
   readonly hiddenLegendKeys: HiddenLegendKeys;
 }
 
@@ -85,10 +92,9 @@ export interface SceneLook {
 type SceneWiringProps = {
   readonly look: SceneLook;
   readonly catalog: {
-    readonly rampAxes: readonly RampAxis[];
     readonly dedicatedAxes: readonly DedicatedWayValueAxis[];
     readonly routeStyleModes: readonly RouteStyleMode[];
-    readonly secondaryAxes: readonly SecondaryAxisSummary[];
+    readonly roadLayers: readonly RoadMapLayerView[];
   };
   readonly routes: readonly RouteCandidate[];
   readonly selectedRouteId: string | null;
@@ -96,81 +102,82 @@ type SceneWiringProps = {
   readonly spliceStretches: readonly SpliceStretchInput[];
   /** 編集中に「いま作っているルート」として描く座標列（編集していなければnull）。 */
   readonly splicedRoute: readonly GeoJSON.Position[] | null;
-  readonly experimentSlots: readonly ExperimentSlot[];
   /** タイルの世代。全系統が揃うまで`null`。 */
   readonly tileVersions: TileVersions | null;
   /** 詳細を見ている道（ポップアップが開いている間だけ非null）。 */
   readonly inspectedWayId: number | null;
+  /** 選んだ候補の上で走り終えた距離（km）。走っていなければnull。 */
+  readonly travelledKm: number | null;
+  /** 道のりのグラフか地図で選んだ地点と、その地点を含む区間。選んでいなければnull。 */
+  readonly selectedRouteSegment: SelectedRouteSegment | null;
 };
 
 const NO_KEYS: readonly string[] = [];
+const NO_MATERIALS: WayMaterials = new Map();
+
+/** 道の線を塗る評価軸は、レンズが塗っている1本だけ。密度の軸は線を塗らず、材料の点で見せる。 */
+function isAxisShown(look: Pick<SceneLook, "paintedAxisId">, axis: Pick<CatalogAxis, "axisId">): boolean {
+  return axis.axisId === look.paintedAxisId;
+}
 
 function routeStateFrom(props: SceneWiringProps): RouteState {
   const { look } = props;
   const visible = look.layerVisibility.route === true;
   const selected = props.routes.find((route) => route.id === props.selectedRouteId) ?? null;
-  // モードが1つも配られていない間（軸カタログの取得前）は、色分けの指定が無い状態として
-  // 参考線と同じ単色で描く。
-  const modes = props.catalog.routeStyleModes;
-  const mode = modes.length > 0 ? getRouteStyleMode(modes, look.lens) : null;
+  const mode = getRouteStyleMode(props.catalog.routeStyleModes, look.lens);
   const segments = visible ? (selected?.segments ?? []) : [];
   const bands = visible ? props.spliceStretches : [];
   const composite = visible ? props.splicedRoute : null;
-  const hiddenBandFilter =
-    mode === null
-      ? null
-      : (buildLegendFilterExpression(
-          mode.legend,
-          look.hiddenLegendKeys[look.lens] ?? NO_KEYS,
-        ) as maplibregl.FilterSpecification | null);
+  const picked = visible ? props.selectedRouteSegment : null;
+  // 区間の形は、選んでいる候補の同じ区間から引く（地図で押した区間は形を持たない写し）。
+  const pickedSegment =
+    picked === null ? null : (findSameSegment(segments, picked.segment, (segment) => segment) ?? picked.segment);
+  const hiddenBandFilter = buildLegendFilterExpression(
+    mode.legend,
+    look.hiddenLegendKeys[look.lens] ?? NO_KEYS,
+  ) as maplibregl.FilterSpecification | null;
   return {
     visible,
     candidates: props.routes.map((route) => ({
       routeId: route.id,
-      path: route.geometry.coordinates as unknown as RoutePath,
+      path: route.geometry.coordinates,
     })),
     selectedRouteId: props.selectedRouteId,
-    segments: segments.map((segment) => {
-      const { geometry, ...properties } = segment;
-      return {
-        // 道なりの形が無い区間（2点未満のEdge等）は、始点と終点を結ぶ直線で代替する。
-        path: (geometry?.coordinates ?? [
-          [segment.start_longitude, segment.start_latitude],
-          [segment.end_longitude, segment.end_latitude],
-        ]) as unknown as RoutePath,
-        properties,
-      };
+    segments: routeStretches(segments).flatMap(({ segment, startKm, endKm }) => {
+      // 形は`segmentPath`が読み、地物の属性には載せない。
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { geometry: _geometry, ...properties } = segment;
+      const travelled = { ...properties, travelled: true };
+      const km = props.travelledKm;
+      if (km === null || km <= startKm) return [{ path: segmentPath(segment), properties }];
+      if (km >= endKm) return [{ path: segmentPath(segment), properties: travelled }];
+      // 走り終えた地点で区間を分け、手前だけを薄める。
+      const { before, after } = splitSegmentAt(segment, (km - startKm) / (endKm - startKm));
+      return [
+        { path: before, properties: travelled },
+        { path: after, properties },
+      ];
     }),
-    segmentColor: (mode?.colorExpression ?? LENS_NEUTRAL_COLOR) as maplibregl.ExpressionSpecification,
-    ...(mode?.noDataExpression === undefined
+    segmentColor: mode.colorExpression as maplibregl.ExpressionSpecification,
+    ...(mode.noDataExpression === undefined
       ? {}
       : { segmentNoData: mode.noDataExpression as maplibregl.ExpressionSpecification }),
     ...(hiddenBandFilter === null ? {} : { hiddenBandFilter }),
     spliceBands: bands.map((band) => ({
-      path: band.coordinates as unknown as RoutePath,
+      path: band.coordinates,
       properties: { index: band.index },
     })),
-    composite: composite !== null && composite.length > 1 ? { path: composite as unknown as RoutePath } : null,
-    comparisonSlots: props.experimentSlots.map((slot) => ({
-      path: slot.topCandidate.geometry.coordinates as unknown as RoutePath,
-      color: slot.color,
-    })),
-    arrowIconImage: ROUTE_ARROW_ICON_ID,
+    composite: composite !== null && composite.length > 1 ? { path: composite } : null,
+    selectedSection: pickedSegment === null ? null : segmentPath(pickedSegment),
   };
 }
 
-/** 評価軸の段を線の宣言へ渡す形にする。**上の段から順に**並べる——色式は最初に当たった段を採るため。 */
-function axisLineBands(bands: readonly ValueBand[]): AxisBand[] {
-  return bands.map(({ key, lowerBound, color }) => ({ key, lowerBound, color })).reverse();
-}
-
-/** 下敷きで描くramp軸。その軸の材料（一次属性の表示レイヤー）が1つでも出ている間は、材料の
- * 線を隠さないよう下へ敷く。 */
+/** 下敷きで描く軸。その軸の材料を見せるレイヤーが1つでも出ている間は、材料の線を隠さないよう下へ敷く。 */
 function underlaidAxisIds(props: SceneWiringProps): ReadonlySet<string> {
   const visible = props.look.layerVisibility;
   return new Set(
-    props.catalog.secondaryAxes
-      .filter((axis) => primaryAttributeIdsToLayerIds(axis.primaryAttributeIds).some((id) => visible[id]))
+    props.catalog.dedicatedAxes
+      .filter((axis) => axisMapLayerIds(axis).some((id) => visible[id]))
       .map((axis) => axis.axisId),
   );
 }
@@ -178,76 +185,53 @@ function underlaidAxisIds(props: SceneWiringProps): ReadonlySet<string> {
 function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): AxisLineState {
   const { look } = props;
   const underlaid = underlaidAxisIds(props);
-  const hiddenOf = (axisId: string) => look.hiddenLegendKeys[axisId] ?? NO_KEYS;
-  const ramp = props.catalog.rampAxes.map((axis) => ({
-    axisId: axis.axisId,
-    visible: axis.axisId === look.paintedAxisId,
-    bands: axisLineBands(rampAxisBands(axis)),
-    value: {
-      kind: "tile" as const,
-      expression: buildAxisRampValueExpression(axis),
-      unknown: buildAxisRampUnknownExpression(axis),
-    },
-    hiddenBandKeys: hiddenOf(axis.axisId),
-    underlay: underlaid.has(axis.axisId),
-  }));
-  const dedicated = props.catalog.dedicatedAxes.map((axis) => {
-    const delivered = look.dedicatedWayValues.get(axis.axisId);
+  // 式の木の無い軸は、ルートの無い間の周りの道を塗らない。
+  const axes = props.catalog.dedicatedAxes.flatMap((axis) => {
+    if (axis.wayValueFormula === null) return [];
+    const fetched = look.wayMaterials.get(axis.axisId);
     return {
       axisId: axis.axisId,
-      visible: axis.axisId === look.paintedAxisId,
-      bands: axisLineBands(dedicatedAxisBands(axis.display)),
-      value: {
-        kind: "delivered" as const,
-        values: delivered?.values ?? new Map<string, number>(),
-        loading: delivered?.loading === true,
-      },
-      hiddenBandKeys: hiddenOf(axis.axisId),
-      underlay: false,
+      visible: isAxisShown(look, axis),
+      bands: valueBands(axis.display),
+      formula: axis.wayValueFormula,
+      materials: fetched?.materials ?? NO_MATERIALS,
+      loading: fetched?.loading === true,
+      hiddenBandKeys: look.hiddenLegendKeys[axis.axisId] ?? NO_KEYS,
+      underlay: underlaid.has(axis.axisId),
     };
   });
-  return { axes: [...ramp, ...dedicated], sourceLayer };
+  return { axes, conditions: look.wayConditions, sourceLayer, roadLayerCount: props.catalog.roadLayers.length };
 }
 
-/** 届いている中身を、要素の鍵（`${チップid}/${ソース}`）で引ける形へ移す。 */
+/** 届いている中身を、要素の鍵（`groups/weather.ts: weatherElementKey`）で引ける形へ移す。 */
 function weatherStateFrom(props: SceneWiringProps): WeatherState {
-  const shown = new Map<string, { visible: boolean; payload?: WeatherPayload }>();
+  const shown = new Map<string, { visible: boolean; payload?: DynamicWeatherRenderPayload }>();
   for (const [groupId, group] of Object.entries(props.look.dynamicWeather)) {
     if (group === undefined) continue;
     for (const [sourceId, source] of Object.entries(group)) {
       if (source === undefined) continue;
-      shown.set(`${groupId}/${sourceId}`, {
+      shown.set(weatherElementKey({ group: groupId, source: sourceId }), {
         visible: source.visible,
-        ...(source.payload === undefined ? {} : { payload: weatherPayloadFrom(source.payload) }),
+        ...(source.payload === undefined ? {} : { payload: source.payload }),
       });
     }
   }
   return { shown };
 }
 
-function weatherPayloadFrom(payload: DynamicWeatherRenderPayload): WeatherPayload {
-  switch (payload.kind) {
-    case "rasterTile":
-    case "vectorTile":
-      // 配信元のタイルは自前のプロトコル経由で取りに行く（空タイルの肩代わり・失敗の観測）。
-      return { kind: payload.kind, tiles: [withJmaTileProtocol(payload.tileUrlTemplate)] };
-    case "gridFill":
-    case "gridMark":
-    case "outline":
-      return { kind: payload.kind, data: payload.geojson };
-  }
-}
-
 /** 点のタイルごとのURL。 */
 function pointTileUrls(versions: TileVersions): Record<PointTileLayer, readonly string[]> {
   const urls = {} as Record<PointTileLayer, readonly string[]>;
-  for (const name of Object.keys(POINT_TILE_SOURCES) as PointTileLayer[]) urls[name] = [pointTileUrl(versions, name)];
+  for (const name of POINT_TILE_LAYERS) urls[name] = [pointTileUrl(versions, name)];
   return urls;
 }
 
 export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
   // 世代が届く前にタイルのソースを作ると、世代の違う中身がブラウザのキャッシュへ載る。
   const versions = props.tileVersions;
+  const zoom = { minZoom: ROAD_TILE_MIN_ZOOM, maxZoom: ROAD_TILE_MAX_ZOOM };
+  const roadTiles =
+    versions === null ? null : { urls: [roadSurfaceTileUrl(versions)], sourceLayer: ROAD_TILE_SOURCE_LAYER, ...zoom };
   // 家族はどれも自分の役割の鍵だけを読むため、状態をそのまま渡す。
   const visible = props.look.layerVisibility;
   const hiddenKeys = props.look.hiddenLegendKeys;
@@ -258,28 +242,18 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
       landcoverTileUrl: landcoverTileUrl(),
     },
     road: {
-      tiles: versions
-        ? {
-            urls: [roadSurfaceTileUrl(versions)],
-            sourceLayer: ROAD_TILE_SOURCE_LAYER,
-            minZoom: ROAD_TILE_MIN_ZOOM,
-            maxZoom: ROAD_TILE_MAX_ZOOM,
-          }
-        : null,
+      layers: props.catalog.roadLayers,
+      tiles: roadTiles,
       visible,
       hiddenKeys,
+      classes: props.look.roadClasses.values,
+      loading: props.look.roadClasses.loading,
       inspectedWayId: props.inspectedWayId,
     },
-    axis: axisStateFrom(props, versions ? ROAD_TILE_SOURCE_LAYER : null),
+    axis: axisStateFrom(props, roadTiles?.sourceLayer ?? null),
     point: {
-      tiles: versions
-        ? {
-            urls: pointTileUrls(versions),
-            minZoom: ROAD_TILE_MIN_ZOOM,
-            maxZoom: ROAD_TILE_MAX_ZOOM,
-          }
-        : null,
-      visible,
+      tiles: versions === null ? null : { urls: pointTileUrls(versions), ...zoom },
+      visible: props.look.layerVisibility,
       hiddenKeys,
     },
     weather: weatherStateFrom(props),
@@ -287,30 +261,17 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
   };
 }
 
-/** 記号に要る単色の絵（色は記号の側で付ける）。**出す前に登録しないと記号が描かれない。** 色を焼き込んだ点の絵は`POINT_ICONS`。 */
-const SCENE_ICONS: readonly { id: string; create: () => ImageData }[] = [
-  ...WEATHER_ICONS,
-  { id: ROUTE_ARROW_ICON_ID, create: createRouteArrowIcon },
-];
-
 /** 地図へ当てた宣言を地図ごとに覚える。スタイルを差し替えた後は `reset` で作り直す。 */
 const appliedScene = new WeakMap<MapLibreMap, MapScene>();
 
 export function applyScene(map: MapLibreMap, scene: MapScene, options: { reset?: boolean } = {}) {
   runWhenStyleReady(map, () => {
-    for (const icon of SCENE_ICONS) {
-      if (!map.hasImage(icon.id)) map.addImage(icon.id, icon.create(), { sdf: true });
-    }
-    for (const icon of POINT_ICONS) {
-      if (map.hasImage(icon.id)) continue;
-      const { data, pixelRatio } = drawPointIcon(icon.color, icon.glyph);
-      map.addImage(icon.id, data, { pixelRatio });
-    }
-    prepareBasemapForAreaLayers(map);
+    prepareBasemap(map);
+    hideBasemapPois(map, hiddenBasemapPois(scene));
     applyMapScene(map, {
       scene,
       previous: options.reset === true ? EMPTY_MAP_SCENE : (appliedScene.get(map) ?? EMPTY_MAP_SCENE),
-      areaLayerBeforeId: areaLayerAnchor(map),
+      basemapAnchors: { roads: areaLayerAnchor(map), labels: labelLayerAnchor(map) },
     });
     appliedScene.set(map, scene);
   });
@@ -322,7 +283,7 @@ function getRouteStyleMode(modes: readonly RouteStyleMode[], id: LensId): RouteS
   // 軸の非公開等でidのモードが消えていたら先頭へ倒す。選択中の色分けが黙って変わるため警告を残す。
   debugLog(
     "map:route-style-mode",
-    `route style mode "${id}" not found, falling back to "${modes[0]?.id ?? "(no modes)"}"`,
+    `route style mode "${id}" not found, falling back to "${modes[0].id}"`,
     { requestedId: id, availableIds: modes.map((mode) => mode.id) },
     "warn",
   );

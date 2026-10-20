@@ -1,8 +1,8 @@
-"""`services/db_status_service.py`——DBの数を、管理画面で「注意が要るか」の印を付けたレポートにする判断。
+"""`services/db_status_service.py`・`domain/db_status.py`——DBの数を、管理画面で「注意が要るか」の印を付けたレポートにする判断。
 
 入口は`build_db_status_report`（数を値で受ける）。しきい値の境界の入力は本物の定数から組み立てる。
 
-ここで見ないもの: 数の読み出し → `infrastructure/db_status.py`、応答への受け渡し・503 → `test_db_status_routes.py`
+ここで見ないもの: 数の読み出し → `test_db_status_query.py`、応答への受け渡し → `test_db_status_routes.py`、503 → `test_admin_db_unavailable.py`
 """
 
 from datetime import datetime, timezone
@@ -13,17 +13,18 @@ from app.infrastructure.db_status import (
     ConnectionCounts,
     DbStatusCounts,
     ImportRunCounts,
+    LatestRunCounts,
     SucceededRunCounts,
     TableCounts,
 )
-from app.services.db_status_service import (
+from app.domain.db_status import (
     CONNECTION_USAGE_WARN_RATIO,
     DEAD_TUPLE_WARN_MIN_ROWS,
     DEAD_TUPLE_WARN_RATIO,
     IDLE_TRANSACTION_WARN_SECONDS,
     STATISTICS_WARN_MIN_ROWS,
-    build_db_status_report,
 )
+from app.services.db_status_service import build_db_status_report
 
 AT = datetime(2026, 9, 14, tzinfo=timezone.utc)
 MAX_CONNECTIONS = 100
@@ -42,8 +43,9 @@ def _connections(*, total: int = 2, longest_idle: float = 0.0) -> ConnectionCoun
 
 
 def _import(status: str, succeeded: SucceededRunCounts | None) -> ImportRunCounts:
-    return ImportRunCounts(label="OSM取込", latest_id=5, latest_status=status, latest_finished_at=AT,
-                           latest_identity={}, latest_item_count=None, latest_succeeded=succeeded)
+    return ImportRunCounts(label="OSM取込",
+                           latest=LatestRunCounts(id=5, status=status, finished_at=AT, identity={}, item_count=None),
+                           latest_succeeded=succeeded)
 
 
 def _report(*, tables=(), connections=None, imports=()):
@@ -89,9 +91,9 @@ def test_connections_need_attention_when_a_transaction_is_left_open_or_slots_run
 
 def test_a_failed_import_says_which_run_the_derived_data_still_stands_on():
     (failed, never, succeeded) = _report(imports=[
-        _import("failed", SucceededRunCounts(4, AT)),
+        _import("failed", SucceededRunCounts(id=4, finished_at=AT)),
         _import("failed", None),
-        _import("succeeded", SucceededRunCounts(5, AT)),
+        _import("succeeded", SucceededRunCounts(id=5, finished_at=AT)),
     ]).imports
 
     assert failed.needs_attention and "#4" in failed.note

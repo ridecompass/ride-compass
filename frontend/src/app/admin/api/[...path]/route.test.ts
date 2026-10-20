@@ -8,14 +8,15 @@
  *
  * ここで見ないもの:
  * - 管理画面のクライアントが叩く先・待ち時間 → `app/admin/adminApi.test.ts`
- * - 資格情報の「片方だけ設定」の扱い → `lib/adminBasicAuth.ts`
+ * - 資格情報の「片方だけ設定」の扱い → `lib/adminBasicAuth.test.ts`
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { HttpResponse } from "msw";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BACKEND_INTERNAL_URL } from "@/lib/backendInternalUrl";
+import { onUrl } from "@/testing/backendServer";
+import { openApi } from "@/testing/openApi";
 
 import * as route from "./route";
 
@@ -24,9 +25,6 @@ vi.mock("@/lib/adminBasicAuth", () => ({ adminBasicAuthCredentials: () => creden
 
 const handlers = route as unknown as Record<string, (request: Request) => Promise<Response>>;
 
-const openApi: { paths: Record<string, Record<string, unknown>> } = JSON.parse(
-  readFileSync(join(__dirname, "../../../../types/generated/openapi.json"), "utf-8"),
-);
 const adminOperations = Object.entries(openApi.paths)
   .filter(([path]) => path.startsWith("/api/admin/"))
   .flatMap(([path, ops]) => Object.keys(ops).map((method) => [method.toUpperCase(), path] as const));
@@ -36,28 +34,13 @@ const operations = [...new Set(adminOperations.map(([method]) => method))].map(
     adminOperations.find(([m]) => m === method)!,
 );
 
-interface Forwarded {
-  url: string;
-  init: RequestInit;
-}
-let forwarded: Forwarded[] = [];
+let forwarded: Request[] = [];
 let backendResponse: () => Response;
 
 beforeEach(() => {
   credentials = { username: "admin", password: "s3cret" };
-  forwarded = [];
   backendResponse = () => new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } });
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (url: string, init: RequestInit) => {
-      forwarded.push({ url, init });
-      return backendResponse();
-    }),
-  );
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
+  forwarded = onUrl(`${BACKEND_INTERNAL_URL}/*`, () => backendResponse());
 });
 
 function call(method: string, path: string, body?: string) {
@@ -82,23 +65,21 @@ describe("管理APIの口", () => {
     expect(response.status).toBe(200);
     expect(forwarded).toHaveLength(1);
     expect(forwarded[0].url).toBe(`${BACKEND_INTERNAL_URL}${path}?limit=5`);
-    expect(forwarded[0].init.method).toBe(method);
+    expect(forwarded[0].method).toBe(method);
   });
 
   it("Basic認証の資格情報を付ける", async () => {
     await call("GET", "/admin/api/db-status");
-    expect(new Headers(forwarded[0].init.headers).get("Authorization")).toBe(
-      `Basic ${Buffer.from("admin:s3cret").toString("base64")}`,
-    );
+    expect(forwarded[0].headers.get("Authorization")).toBe(`Basic ${Buffer.from("admin:s3cret").toString("base64")}`);
   });
 
   it("POST・PUTは本文をJSONとしてそのまま渡し、GET・DELETEは本文を渡さない", async () => {
     await call("PUT", "/admin/api/tuning/a", '{"value":1}');
     await call("DELETE", "/admin/api/axis-definitions/a");
-    expect(forwarded[0].init.body).toBe('{"value":1}');
-    expect(new Headers(forwarded[0].init.headers).get("Content-Type")).toBe("application/json");
-    expect(forwarded[1].init.body).toBeUndefined();
-    expect(new Headers(forwarded[1].init.headers).has("Content-Type")).toBe(false);
+    expect(await forwarded[0].text()).toBe('{"value":1}');
+    expect(forwarded[0].headers.get("Content-Type")).toBe("application/json");
+    expect(await forwarded[1].text()).toBe("");
+    expect(forwarded[1].headers.has("Content-Type")).toBe(false);
   });
 
   it("backendの状態と本文をそのまま返す（誤りも、204も）", async () => {
@@ -113,12 +94,7 @@ describe("管理APIの口", () => {
 
   it("backendへ届かなければ502で、ランタイムの英語の文言は本文へ入れない", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        throw new TypeError("fetch failed");
-      }),
-    );
+    backendResponse = () => HttpResponse.error();
     const response = await call("GET", "/admin/api/db-status");
     expect(response.status).toBe(502);
     const { detail } = await response.json();

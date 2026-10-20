@@ -26,4 +26,10 @@ describe("routeThrough", () => {
       expect([shape[0], shape.at(-1)]).toEqual([PLACES[names[i]], PLACES[names[i + 1]]]);
     });
   });
+
+  it("区間の形を、前の終点と同じ先頭点を重ねずにつなぐと、候補の座標の列になる", () => {
+    const { geometry, segments } = routeThrough(PLACES, ["a", "b", "c"]);
+    const joined = segments.flatMap((segment, i) => (segment.geometry?.coordinates ?? []).slice(i === 0 ? 0 : 1));
+    expect(joined).toEqual(geometry.coordinates);
+  });
 });

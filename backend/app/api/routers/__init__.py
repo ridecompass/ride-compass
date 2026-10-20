@@ -31,7 +31,9 @@ from app.api.routers import (
     health,
     jma_tile,
     material_catalog,
+    place_search,
     region,
+    road_class_admin,
     routes,
     tuning_admin,
     weather,
@@ -41,12 +43,14 @@ api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(routes.router)
 api_router.include_router(weather.router)
+api_router.include_router(place_search.router)
 api_router.include_router(region.router)
 api_router.include_router(basemap.router)
 api_router.include_router(jma_tile.router)
 api_router.include_router(gsi_tile.router)
 api_router.include_router(axis_admin.router)
 api_router.include_router(tuning_admin.router)
+api_router.include_router(road_class_admin.router)
 api_router.include_router(axis_catalog.router)
 api_router.include_router(material_catalog.router)
 api_router.include_router(debug_admin.router)

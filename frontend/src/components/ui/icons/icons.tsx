@@ -1,53 +1,23 @@
-// 地図・パネル・ヘッダーが共有するアイコン集。天気・警告・操作のような意味の決まった汎用の形は
-// lucide-reactの同じ意味の形を使い、このアプリ固有の概念（軸・レイヤー・区間の乗り換え等）の形だけを
-// 自前のSVGで持つ。自前の形はlucideと同じ線画の様式（線の色は文字色・丸い端・塗りなし基調）で描き、
-// 線の太さを表示の大きさに対する比でそろえる。
+// 地図・パネル・ヘッダーが共有するアイコンの土台と、このアプリ固有の操作・地点の形。天気・警告・操作のような
+// 意味の決まった汎用の形はlucide-reactの同じ意味の形を使い（lucideIcons.tsx）、このアプリ固有の概念の形だけを
+// 自前のSVGで持つ（レイヤーと評価軸の形はlayerIcons.tsx）。自前の形はlucideと同じ線画の様式（線の色は文字色・
+// 丸い端・塗りなし基調）で描き、線の太さを表示の大きさに対する比でそろえる。
 import type { ReactElement } from "react";
-import {
-  ArrowUp,
-  CircleQuestionMark,
-  Clock,
-  Cloud,
-  Copy,
-  Download,
-  Droplet,
-  EllipsisVertical,
-  Gauge,
-  Info,
-  Layers,
-  Moon,
-  Play,
-  RotateCw,
-  Shield,
-  SlidersHorizontal,
-  Snowflake,
-  Sun,
-  Target,
-  Thermometer,
-  Trash,
-  TriangleAlert,
-  Wind,
-  Zap,
-  type LucideIcon,
-} from "lucide-react";
 
-// サイズは呼び出し側のCSSで決まる（デフォルトは16px）ため、ここでは形だけを定義する。
-
-interface IconProps {
+export interface IconProps {
   size?: number;
 }
 
-/** このファイルのアイコン1つぶん。軸カタログ（axisIconPalette.tsx）とレイヤー
- * カタログ（mapLayers.ts）のどちらもこの型で持つ。 */
+/** アイコン1つぶん。 */
 export type MapIconComponent = (props: IconProps) => ReactElement;
 
 const VIEWBOX_SIZE = 20;
 const STROKE_WIDTH = 1.6;
 /** lucideの形は24単位の枠で描かれているので、同じ比の太さへ直す。 */
-const LUCIDE_STROKE_WIDTH = (STROKE_WIDTH * 24) / VIEWBOX_SIZE;
+export const LUCIDE_STROKE_WIDTH = (STROKE_WIDTH * 24) / VIEWBOX_SIZE;
 
 // 線の色・太さ・端は親に置き、子は既定と違うときだけ書く（線を持たない形は`stroke="none"`）。
-const svgProps = {
+export const svgProps = {
   viewBox: `0 0 ${VIEWBOX_SIZE} ${VIEWBOX_SIZE}`,
   fill: "none" as const,
   stroke: "currentColor",
@@ -55,230 +25,6 @@ const svgProps = {
   strokeLinecap: "round" as const,
   "aria-hidden": true as const,
 };
-
-/** 標高図: 色別標高図のイメージに合わせた山並みのシルエット */
-export function ElevationIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <path
-        d="M1.5 15.5 6 8l3 3.5 2.5-4 5.5 8H1.5Z"
-
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/** 起伏（陰影）: 同じ山並みの片斜面だけに陰が乗った形。ElevationIcon（輪郭だけの山並み＝
- * 標高そのもの）と対にして、「塗るのは斜面だけ」を形で示す。 */
-export function HillshadeIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <path d="M1.5 15.5 6 8l3 3.5 2.5-4 5.5 8H1.5Z" fill="currentColor" opacity="0.28" stroke="none" />
-      <path
-        d="M1.5 15.5 6 8l3 3.5 2.5-4 5.5 8H1.5Z"
-
-        strokeLinejoin="round"
-      />
-      <path d="M6 8 1.5 15.5h4.7Z" fill="currentColor" stroke="none" />
-      <path d="M11.5 7.5 9 11.5h5Z" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-/** 土地被覆: 用途の違う区画が並ぶ様子を表す、大きさの違う4区画 */
-export function LandcoverIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1" strokeWidth="1.4" strokeLinecap="butt" />
-      <rect x="11" y="2.5" width="6.5" height="4" rx="1" strokeWidth="1.4" strokeLinecap="butt" />
-      <rect x="2.5" y="11" width="4" height="6.5" rx="1" strokeWidth="1.4" strokeLinecap="butt" />
-      <rect x="8.5" y="8.5" width="9" height="9" rx="1" strokeWidth="1.4" strokeLinecap="butt" />
-    </svg>
-  );
-}
-
-/** 二次軸rampレイヤーの汎用フォールバック: 密度の濃淡を表す棒グラフ。各軸は`icon_id`
- * （軸自身のデータ）でaxisIconPalette.tsxの固定パレットから専用アイコンを選べる。
- * この汎用形はicon_id未設定の軸（まだ専用アイコンを選んでいないramp軸・単独チップ）
- * 向けのフォールバックとして残す。 */
-export function AxisRampIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <path d="M3.5 16.5v-4M8 16.5v-7M12.5 16.5V6M17 16.5V3.5" />
-    </svg>
-  );
-}
-
-/** 勾配（推定軸）: 地面から立ち上がる傾斜線+矢頭。標高図（ElevationIcon、山並みの
- * シルエット）は生の標高そのものを表すのに対し、こちらは傾き（変化率）という別概念を表す
- * ため意匠を分ける。 */
-export function GradientAxisIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <path d="M2.5 16.5h15" />
-      <path d="M3.5 16.5 13.5 5.5" />
-      <path d="M9.5 5.5h4v4" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/** 舗装質（推定軸）: 路面の滑らかさ/粗さを表す波線。路面の種類（RoadSurfaceIcon、材質の
- * テクスチャを表す帯+点）は観測データ（種別の分類）、こちらは推定指標（質のスコア）という
- * 別概念を表すため意匠を分ける。 */
-export function SurfaceQualityAxisIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <path
-        d="M2 14c1.8-3.4 3.6-3.4 5.4 0s3.6 3.4 5.4 0 3.6-3.4 5.4 0"
-
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/** 夜間（推定軸）: 三日月のシルエット */
-export function NightAxisIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <path
-        d="M17.5 10.66A7.5 7.5 0 1 1 9.34 2.5 5.83 5.83 0 0 0 17.5 10.66Z"
-
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/** 停止密度（推定軸）: 縦に積み重なり下ほど大きくなる点で、停止要因の集積を表す。
- * 停止要因（StopPoiIcon、信号機のシルエット）は観測データ（個々の要因の種類）、こちらは
- * 推定指標（密度）という別概念を表すため意匠を分ける。 */
-export function StopDensityAxisIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <circle cx="10" cy="4.6" r="1.3" fill="currentColor" stroke="none" />
-      <circle cx="10" cy="9.6" r="1.9" fill="currentColor" stroke="none" />
-      <circle cx="10" cy="15.4" r="2.6" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-/** 事故密度（推定軸）: 大小不揃いに散らばる点の集まりで、集積（ヒートマップ）を表す。
- * 事故（AccidentIcon、単一の衝突バースト）は観測データ（個々の事故地点）、こちらは
- * 推定指標（密度）という別概念を表すため意匠を分ける。停止密度（StopDensityAxisIcon）とは
- * 縦一列の整列 vs 不規則な散らばりで区別する。 */
-export function AccidentDensityAxisIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <circle cx="5.5" cy="13.5" r="1.6" fill="currentColor" stroke="none" />
-      <circle cx="11" cy="7" r="2.3" fill="currentColor" stroke="none" />
-      <circle cx="15.5" cy="14.5" r="1.3" fill="currentColor" stroke="none" />
-      <circle cx="8" cy="16.3" r="1" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-/** 道路の種類（「道路情報」から論理分割した1軸）: 消失点へ向かう道路と車線の破線 */
-export function RoadIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <path d="M7 2 3 18M13 2l4 16" />
-      <path d="M10 5v2M10 9.3v2M10 13.6v2" />
-    </svg>
-  );
-}
-
-/** 路面の種類（「道路情報」から論理分割した1軸）: 材質のテクスチャを表す帯+点の並び */
-export function RoadSurfaceIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <rect x="2.5" y="6" width="15" height="8" rx="1.5" strokeWidth="1.4" strokeLinecap="butt" />
-      <circle cx="6" cy="8.6" r="0.9" fill="currentColor" stroke="none" />
-      <circle cx="10" cy="11.4" r="0.9" fill="currentColor" stroke="none" />
-      <circle cx="14" cy="8.6" r="0.9" fill="currentColor" stroke="none" />
-      <circle cx="6.5" cy="11.6" r="0.7" fill="currentColor" stroke="none" />
-      <circle cx="14" cy="11.6" r="0.7" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-/** 農道・林道の等級: 轍の2本線と、その間に生えた草。路面の種類（RoadSurfaceIcon）とは別のタグの話なので意匠を分ける */
-export function TrackGradeIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <path d="M6.5 2 4 18M13.5 2 16 18" />
-      <path d="M9 15.5l1-2.5 1 2.5M9.4 9l.6-1.6.6 1.6" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-export function TunnelIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <path
-        d="M3 17V9a7 7 0 0 1 14 0v8"
-
-        strokeLinejoin="round"
-      />
-      <path d="M3 17h14" />
-    </svg>
-  );
-}
-
-/** 一方通行（一次属性、OSM onewayタグ）: 一方向の矢印 */
-export function OnewayIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <path d="M3 10h13" />
-      <path
-        d="M12 5.5 17 10l-5 4.5"
-
-        strokeLinejoin="round"
-        fill="none"
-      />
-    </svg>
-  );
-}
-
-/** 事故: 衝突を示す星形バースト */
-export function AccidentIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <path d="M10 1.5v5M10 13.5v5M1.5 10h5M13.5 10h5M4 4l3.5 3.5M16 4l-3.5 3.5M4 16l3.5-3.5M16 16l-3.5-3.5" />
-      <circle cx="10" cy="10" r="2.3" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-/** 停止要因: 信号機のシルエット（3灯） */
-export function StopPoiIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <rect x="7" y="2" width="6" height="13" rx="2" strokeWidth="1.5" strokeLinecap="butt" />
-      <circle cx="10" cy="5.3" r="1" fill="currentColor" stroke="none" />
-      <circle cx="10" cy="8.5" r="1" fill="currentColor" stroke="none" />
-      <circle cx="10" cy="11.7" r="1" fill="currentColor" stroke="none" />
-      <path d="M10 15v3" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-/** 補給・休憩ポイント: 買い物袋のシルエット */
-export function SupplyPoiIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <path
-        d="M5 7h10l-1 10a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 7Z"
-
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="butt"
-      />
-      <path d="M7.5 7V5a2.5 2.5 0 0 1 5 0v2" strokeWidth="1.5" />
-    </svg>
-  );
-}
 
 /** 環境（地図チップ最上位グループ）: 標高（terrain）・降水/風/雷等（weather）をまとめて
  * 表す雲のシルエット。 */
@@ -325,6 +71,17 @@ export function RouteIcon({ size = 16 }: IconProps) {
   );
 }
 
+/** ルートを外れている: ルートの道なり（点線）が途中で切れ、先に×。 */
+export function OffRouteIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      <path d="M3.5 16c2.8-1 2.8-5.2 6-6" strokeDasharray="0.2 3" />
+      <circle cx="3.5" cy="16" r="1.6" fill="currentColor" stroke="none" />
+      <path d="M12 3.5l4.5 4.5M16.5 3.5L12 8" />
+    </svg>
+  );
+}
+
 /** ログ: 記録済みの行を表す簡易ターミナル/リスト */
 export function LogIcon({ size = 16 }: IconProps) {
   return (
@@ -367,10 +124,8 @@ export function RouteDiffIcon({ size = 16 }: IconProps) {
       <path d="M10 3v11M4.4 5.4h11.2M5.6 13.4h8.8" strokeWidth="1.4" />
       <path
         d="M4.4 5.4 2.2 10.2h4.4zM15.6 5.4 13.4 10.2h4.4z"
-
         strokeWidth="1.3"
         strokeLinejoin="round"
-        fill="none"
         strokeLinecap="butt"
       />
     </svg>
@@ -394,17 +149,8 @@ export function NewRouteIcon({ size = 16 }: IconProps) {
 export function UndoIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
-      <path
-        d="M4.2 8.4h6.6a4.2 4.2 0 0 1 0 8.4H6.4"
-
-        fill="none"
-      />
-      <path
-        d="M7.4 4.6 3.6 8.4l3.8 3.8"
-
-        strokeLinejoin="round"
-        fill="none"
-      />
+      <path d="M4.2 8.4h6.6a4.2 4.2 0 0 1 0 8.4H6.4" />
+      <path d="M7.4 4.6 3.6 8.4l3.8 3.8" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -413,24 +159,15 @@ export function UndoIcon({ size = 16 }: IconProps) {
 export function UndoAllIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
-      <path
-        d="M6.6 8.4h5.2a4.2 4.2 0 0 1 0 8.4H8"
-
-        fill="none"
-      />
-      <path
-        d="M9.4 4.6 5.8 8.4l3.6 3.8"
-
-        strokeLinejoin="round"
-        fill="none"
-      />
+      <path d="M6.6 8.4h5.2a4.2 4.2 0 0 1 0 8.4H8" />
+      <path d="M9.4 4.6 5.8 8.4l3.6 3.8" strokeLinejoin="round" />
       <path d="M3.2 3.6v9.6" strokeWidth="1.8" />
     </svg>
   );
 }
 
 /** 全レイヤー一括OFF: 重なり（レイヤー）＋バツ。
- * 地図下部の一括操作行には「戻す」操作が複数並ぶため、バツは「消す」の意味だけに使い、
+ * 「表示」の一覧の末尾には「戻す」操作が複数並ぶため、バツは「消す」の意味だけに使い、
  * 何を消すのかは対象の形（重なり／漏斗）で示す——バツ単体だと対象を表せない。 */
 export function ClearAllLayersIcon({ size = 16 }: IconProps) {
   return (
@@ -447,18 +184,13 @@ export function ClearAllLayersIcon({ size = 16 }: IconProps) {
 export function ClearAllFiltersIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
-      <path
-        d="M1.8 3.4h11.4L8.9 8.3v4.4L6.1 14V8.3L1.8 3.4Z"
-
-        strokeLinejoin="round"
-        strokeLinecap="butt"
-      />
+      <path d="M1.8 3.4h11.4L8.9 8.3v4.4L6.1 14V8.3L1.8 3.4Z" strokeLinejoin="round" strokeLinecap="butt" />
       <path d="M12.4 12.4 17.6 17.6M17.6 12.4 12.4 17.6" />
     </svg>
   );
 }
 
-/** 表示する項目を選ぶ: 中抜きのつまみが付いた横線2本。RouteSettingsIcon（短い縦線のつまみが3つ）とは、つまみの形と本数で見分ける。 */
+/** 地図に出す情報を選ぶ（「表示」のボタン）: 中抜きのつまみが付いた横線2本。RouteSettingsIcon（短い縦線のつまみが3つ）とは、つまみの形と本数で見分ける。 */
 export function DisplayItemsIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
@@ -469,7 +201,43 @@ export function DisplayItemsIcon({ size = 16 }: IconProps) {
   );
 }
 
-/** 現在地（出発地の印・現在地へ移動）: 照準の輪と、塗った中心の点。lucideの`LocateFixed`は中心が輪で、
+/** 出発地の印: 竿に、塗った旗。目的地の`GoalFlagIcon`と竿をそろえ、旗の模様だけで見分ける。 */
+export function StartFlagIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      <path d="M4 18V2.5" />
+      <path d="M4 3h11.5l-2.8 3.75L15.5 10.5H4Z" fill="currentColor" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** 目的地の印: 竿に、市松の旗（ゴールの旗）。 */
+export function GoalFlagIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      <path d="M4 18V2.5" />
+      <rect x="4" y="3" width="12" height="7.5" strokeLinejoin="round" />
+      <path
+        d="M4 3h3v2.5H4ZM10 3h3v2.5h-3ZM7 5.5h3V8H7ZM13 5.5h3V8h-3ZM4 8h3v2.5H4ZM10 8h3v2.5h-3Z"
+        fill="currentColor"
+        stroke="none"
+      />
+    </svg>
+  );
+}
+
+/** 周回（終点を出発地にする）: 角の丸い横長の輪と、左下の塗った起点の点・右上の進む向きの矢じり。 */
+export function LoopRouteIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      <path d="M6 6h8a4 4 0 0 1 0 8H6a4 4 0 0 1 0-8Z" />
+      <circle cx="6" cy="14" r="1.8" fill="currentColor" stroke="none" />
+      <path d="M12.5 4 14.5 6 12.5 8" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** 現在地（現在地へ移動）: 照準の輪と、塗った中心の点。lucideの`LocateFixed`は中心が輪で、
  * 行頭の印の大きさ（13px）では点に見えない。この形だけ24単位の枠で描く。 */
 export function LocateIcon({ size = 16 }: IconProps) {
   return (
@@ -480,40 +248,40 @@ export function LocateIcon({ size = 16 }: IconProps) {
   );
 }
 
-// --- 汎用の形（lucide-react） ---
+// 走行モードの倍率の段ごとの、ファインダーの角の中心からの距離。
+const FINDER_HALF_SIZE = { near: 4, middle: 6, far: 8.5 } as const;
+const FINDER_ARM = 2.5;
 
-/** lucideの形を、このファイルの他のアイコンと同じ呼び方（`size`だけを受け、既定16px）と
- * 同じ線の太さ（表示の大きさに対する比）にそろえる。 */
-function fromLucide(Icon: LucideIcon, defaultSize = 16): MapIconComponent {
-  return function LucideMapIcon({ size = defaultSize }: IconProps) {
-    return <Icon size={size} strokeWidth={LUCIDE_STROKE_WIDTH} />;
-  };
+/** 走行モードの倍率の段: 現在地の点を囲むファインダーの角。角が外ほど遠くまで見える。 */
+export function RideZoomIcon({ size = 16, reach }: IconProps & { reach: keyof typeof FINDER_HALF_SIZE }) {
+  const h = FINDER_HALF_SIZE[reach];
+  const [lo, hi] = [10 - h, 10 + h];
+  return (
+    <svg width={size} height={size} {...svgProps} strokeLinejoin="round">
+      <path
+        d={`M${lo} ${lo + FINDER_ARM}V${lo}h${FINDER_ARM}M${hi - FINDER_ARM} ${lo}H${hi}v${FINDER_ARM}M${hi} ${hi - FINDER_ARM}V${hi}h${-FINDER_ARM}M${lo + FINDER_ARM} ${hi}H${lo}v${-FINDER_ARM}`}
+      />
+      <circle cx="10" cy="10" r="1.6" fill="var(--color-accent)" stroke="none" />
+    </svg>
+  );
 }
 
-export const WarningTriangleIcon = fromLucide(TriangleAlert);
-export const WindIcon = fromLucide(Wind);
-/** 呼び出し側が風向・走行方位のぶん回転させて使うため、上向きのまっすぐな矢印にしてある。 */
-export const WindDirectionArrowIcon = fromLucide(ArrowUp);
-export const ThermometerIcon = fromLucide(Thermometer);
-export const RaindropIcon = fromLucide(Droplet);
-export const SunIcon = fromLucide(Sun);
-export const MoonIcon = fromLucide(Moon);
-export const CloudIcon = fromLucide(Cloud);
-export const SnowflakeIcon = fromLucide(Snowflake);
-export const GenerateRoutesIcon = fromLucide(Play);
-/** 生成した候補を捨てる。バツ印にしない——パネルを閉じる✕の隣に並び、同じ形だと見分けられない。 */
-export const ClearRoutesIcon = fromLucide(Trash);
-export const InfoIcon = fromLucide(Info, 14);
-export const CopyIcon = fromLucide(Copy);
-export const RedrawMapIcon = fromLucide(RotateCw);
-export const RouteSettingsIcon = fromLucide(SlidersHorizontal);
-export const ShieldIcon = fromLucide(Shield);
-export const TargetIcon = fromLucide(Target);
-export const ClockIcon = fromLucide(Clock);
-/** 最も早く着くルート。 */
-export const FastestRouteIcon = fromLucide(Zap);
-export const LayersStackIcon = fromLucide(Layers);
-export const MenuIcon = fromLucide(EllipsisVertical);
-export const DownloadIcon = fromLucide(Download);
-export const SpeedGaugeIcon = fromLucide(Gauge);
-export const HelpIcon = fromLucide(CircleQuestionMark);
+/** 方位磁針の針: 赤い先が北（上）、灰色の先が南。地図の向きのぶん回して使う。 */
+export function CompassNeedleIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps} stroke="none">
+      <path d="M10 2 13 10H7Z" fill="var(--color-danger)" />
+      <path d="M10 18 7 10h6Z" fill="var(--color-muted)" />
+    </svg>
+  );
+}
+
+/** 走行中の曲がる所の案内: Uターン。上へ進んで折り返し、下へ戻る矢印。 */
+export function UTurnIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      <path d="M13.5 17V7.5a3.5 3.5 0 0 0-7 0V13" strokeLinejoin="round" />
+      <path d="M3.5 10.5 6.5 13.5 9.5 10.5" strokeLinejoin="round" />
+    </svg>
+  );
+}

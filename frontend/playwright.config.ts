@@ -1,17 +1,48 @@
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig, devices, type PlaywrightTestConfig } from "@playwright/test";
 
-// 何をE2Eの対象にするかは docs/conventions/testing.md パターン4。
+// 何をE2Eの対象にするかは .claude/rules/testing-e2e.md パターン4。
 // 実バックエンド・実外部APIには依存しない（e2e/fixtures.ts）。
 
 /** E2E専用のポート。devサーバー（3000）や他の作業ツリーのサーバーと取り合わない。 */
 const E2E_PORT = 3100;
 const E2E_ORIGIN = `http://localhost:${E2E_PORT}`;
 
+/** 撮影・実データで見る系統はChromiumだけで回す。E2EのWebKitは下の`WEBKIT_PROJECT`（.claude/rules/testing-e2e.md パターン4）。 */
+export const CHROMIUM_PROJECTS = [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }];
+
+/**
+ * iPhoneのSafariと同じ描画の仕組み（WebKit）でも回す。全状態の走査は部品の役割の判定にCDP（Chromiumだけの口）を使うので外す。
+ * スマホの幅は各specが自分で開くので、端末の見立てはデスクトップにする。
+ */
+const WEBKIT_PROJECT = { name: "webkit", use: { ...devices["Desktop Safari"] }, testIgnore: ["all-states.spec.ts"] };
+
+/**
+ * 本番Dockerfileと同じ`node .next/standalone/server.js`を、同じ静的ファイルの配置（prepare-standalone.mjs）で起動する。
+ * 起動だけを行い、ビルドは呼び手が先に済ませる。`cwd`はビルドのあるfrontend（既定はこの設定のある所）。
+ */
+export function standaloneServer(port: number | string, cwd?: string): PlaywrightTestConfig["webServer"] {
+  return serverAt(port, "npm run start:standalone", cwd);
+}
+
+function serverAt(port: number | string, command: string, cwd?: string): PlaywrightTestConfig["webServer"] {
+  return {
+    command,
+    cwd,
+    url: `http://localhost:${port}`,
+    // standaloneのserver.jsは待ち受けるアドレスを環境変数HOSTNAMEから取る。Git Bashはこれへ機械名を
+    // exportするので、固定しないと機械名の解決先（IPv6のアドレス等）でしか待ち受けず、localhostへ届かない。
+    env: { PORT: String(port), HOSTNAME: "localhost" },
+    timeout: 60_000,
+    // 既に動いているサーバー（devサーバー・古いビルド）を使うと、いまのビルドを試さない。
+    reuseExistingServer: false,
+  };
+}
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  // 再試行しない（docs/conventions/testing.md「テストの足場で、本来のNGを覆わない」）。
+  // 再試行しない（.claude/rules/testing-scaffold.md「テストの足場で、本来のNGを覆わない」）。
   retries: 0,
   // 1つのサーバーへ複数のChromiumが同時に地図（MapLibre・WASM）を読みに行くと、開発機では
   // ページ遷移とフックが30秒の枠を超える。CIのランナーはジョブ専有なので既定のまま。
@@ -22,23 +53,10 @@ export default defineConfig({
     baseURL: E2E_ORIGIN,
     trace: "retain-on-failure",
   },
-  projects: [
-    {
-      name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
-    },
-  ],
-  webServer: {
-    // 起動だけを行う。ビルドは`npm run test:e2e`が先に済ませる——ビルドをここへ入れると、
-    // 開発機ではビルドだけで起動待ちの枠を使い切る。本番Dockerfileと同じ
-    // `node .next/standalone/server.js`を、同じ静的ファイルの配置（prepare-standalone.mjs）で起動する。
-    command: "npm run start:standalone",
-    url: E2E_ORIGIN,
-    // standaloneのserver.jsは待ち受けるアドレスを環境変数HOSTNAMEから取る。Git Bashはこれへ機械名を
-    // exportするので、固定しないと機械名の解決先（IPv6のアドレス等）でしか待ち受けず、localhostへ届かない。
-    env: { PORT: String(E2E_PORT), HOSTNAME: "localhost" },
-    timeout: 60_000,
-    // 既に動いているサーバー（devサーバー・古いビルド）を使うと、いまのビルドを試さない。
-    reuseExistingServer: false,
-  },
+  projects: [...CHROMIUM_PROJECTS, WEBKIT_PROJECT],
+  // ビルドは`npm run test:e2e`が先に済ませる——ビルドをここへ入れると、開発機ではビルドだけで起動待ちの枠を使い切る。
+  // `E2E_APP_DIR`があれば、そこに広げた本番の像の中のアプリ（`server.js`のある所）をビルドせずに起こす（CIが像の中身を試す）。
+  webServer: process.env.E2E_APP_DIR
+    ? serverAt(E2E_PORT, "node server.js", process.env.E2E_APP_DIR)
+    : standaloneServer(E2E_PORT),
 });

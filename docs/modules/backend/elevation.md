@@ -9,22 +9,22 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `attributes.py`（`elevation_values_sql`。区間の頂点列から標高・勾配を出すSQLを組み立てる） |
-| batch | `source_adapters/gsi_dem_tile.py`（取込。手元へ写したタイルを製品ごとに読み、int32へ詰める。配信元は叩かない）・`dem_tile_store.py`（写したタイルの置き場と、配信元のURL・画素の値を採る製品の順・その製品に無いことの印）・`scripts/fetch_dem_tiles.py`（取得。プロファイルが挙げた製品ごとに、手元に無い分だけ取りに行く。取込と分けてあるので、失敗しても欠けた分だけ取り直せる）・`source_adapters/raster_wkb.py`（画素の並びをPostGISの`raster`へ包む）・`derive_raster_materials.py`（派生） |
+| domain | `attributes.py`（`attributes.py: elevation_values_sql`。区間の頂点列から標高・勾配を出すSQLを組み立てる） |
+| batch | `source_adapters/gsi_dem_tile.py`（取込。手元へ写したタイルを製品ごとに読み、int32へ詰める。配信元は叩かない）・`dem_tile_store.py`（写したタイルの置き場と、配信元のURL・画素の値を採る製品の順・その製品に無いことの印）・`scripts/fetch_dem_tiles.py`（取得。プロファイルが挙げた製品ごとに、手元に無い分だけ取りに行く。取込と分けてあるので、失敗しても欠けた分だけ取り直せる）・`source_adapters/raster_wkb.py`（画素の並びをPostGISの`raster`へ包む）・`derive_elevation.py`（派生） |
 
 ## 3段に分かれている
 
 ```
-国土地理院 DEMタイル（テキスト、256×256。製品ごと）
+国土地理院 DEMタイル（PNG、256×256。製品ごと）
    │ source_adapters/gsi_dem_tile.py: 製品ごとにint32へ詰めて、製品×タイル1枚=1行
    ▼
 source_features(source='dem')          ← 生データ。取り直さない限り変わらない
-   │ derive_raster_materials.py: 区間の形状点で、画素ごとに製品を選んで標高を読み、勾配を出す
+   │ derive_elevation.py: 区間の形状点で、画素ごとに製品を選んで標高を読み、勾配を出す
    ▼
-edge_materials（start/end・gain/loss・average/max/min）
+edge_elevation（start/end・gain/loss・average・橋かトンネルか）
    │ 探索フェーズが材料として読む（road_graph_repository.py）
    ▼
-経路の集計（services/road_graph_engine.py: aggregate_elevation）
+経路の集計（domain/route.py: route_elevation_gain）
 ```
 
 値の出し方そのものは`domain/attributes.py: elevation_values_sql`が持つ。派生バッチは
@@ -32,14 +32,12 @@ edge_materials（start/end・gain/loss・average/max/min）
 
 ## 勾配を出さない区間
 
-`average_grade`がNULLなのは「まだ計算していない」だけではない。**舗装公道としてありえない
+`average_grade`がNULLなのは、標高を出せなかった区間だけではない。**舗装公道としてありえない
 急勾配**（`MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT`）は、計算したうえで**値を持たせない**と決めた
 区間である。道の起伏ではなくDEMの読み違いで、丸めても上限で切っても直らない。
 
 標高そのもの（start/end・gain/loss）は残す。0次ハードフィルタは値の無い区間を
 除外しない（`domain/hard_filters.py`）ため、誤った値で黙って経路から外すより安全側になる。
-
-この列のNULLは鮮度台帳で「未計算」として数えない（`derived_models.py: ABSENT_OK`）。
 
 ## 橋・高架・トンネル
 
@@ -57,7 +55,7 @@ DEMが返すのは地表面の標高で、桁や坑道の高さではない—�
 
 標高が読めなかった点は除外して評価する。**除外後に隣り合う2点でも、元の点列では間に
 欠損点を挟んでいることがある**——そのまま隣接扱いすると、欠損区間の実際の起伏が均された
-平均勾配として混入する。距離（両点とも既知なので常に正確）と、獲得/喪失・勾配（欠損を
+差として混入する。距離（両点とも既知なので常に正確）と、獲得/喪失（欠損を
 挟むと信頼できない）を分けて積む。
 
 その製品の整備区域外のタイルは配信元が404を返す。取得は製品ごとに印を置き、取込はその
@@ -73,27 +71,34 @@ DEMが返すのは地表面の標高で、桁や坑道の高さではない—�
 ## 向きと標高
 
 区間は向きを持たない1行で、標高も順方向の値だけを持つ。逆向きは読み出し時に導く
-（始点↔終点、上り↔下り、平均勾配は符号反転、最大↔最小は入れ替えて符号反転）。地形の
+（始点↔終点、上り↔下り、平均勾配は符号反転）。地形の
 物理量は進行方向に依存しないため、この変換は厳密に正しい。変換はSQLが行う
-（`road_graph_repository.py: _REVERSED_ELEVATION_COLUMNS`）ので、材料の式も評価も向きを
+（`material_joins.py: material_from_clause`）ので、材料の式も評価も向きを
 知らない。
 
-## 経路の集計（`services/road_graph_engine.py: aggregate_elevation`）
+## 経路の集計（`domain/route.py: route_elevation_gain`）
 
-確定した経路の区間ぶんの値から、累積標高・最低/最高標高を組み立てる（エンジンの一部で、
+確定した経路の区間ぶんの値から、獲得標高を組み立てる（エンジンが呼ぶ domain の関数で、
 ファイルは[ルート生成エンジン](routing-engine.md)の対象）。区間の値は探索フェーズで読んだ
 材料がそのまま持っているため、ここでDBへ問い合わせ直さない。値が1つも無ければNone
 （0mと「標高が取れなかった」を分ける）。
 
 ## タイルの読み方（`batch/source_adapters/gsi_dem_tile.py`）
 
-欠測の記法を持つ。配信元のURLと製品の順は`dem_tile_store.py`が持ち、取込・取得・派生だけが
+画素の詰め方を持つ。配信元のURLと製品の順は`dem_tile_store.py`が持ち、取込・取得・派生だけが
 使う（web側は読まない）。どの製品をどのズームで取るかは`source_profile.yaml`が持つ。
 
-タイル本文はテキスト（256行×256列のカンマ区切り、単位m、欠測は`"e"`）で、取込は
-int32（0.01m単位）へ詰めてPostGISの`raster`（`rast`列）へ入れる。位置・画素の大きさ・型・
+タイルはPNG形式（256×256。画素の色に0.01m単位の標高を符号化し、欠測は決め打ちの色）で、取込は
+画素を標高へ戻し、int32（0.01m単位）へ詰めてPostGISの`raster`（`rast`列）へ入れる。画素の読み方は
+`infrastructure/gsi_dem_png.py: read_gsi_dem_png`が持ち、地図の陰影のタイルの変換と共有する。配信元のテキスト形式は更新が
+止まっているので取らない（https://maps.gsi.go.jp/development/ichiran.html の備考）。位置・画素の大きさ・型・
 欠測値は`raster`の値自身が持ち、`raster`が持てない尺度と、画素の番地を出すのに要る幅だけを
 `attrs`へ書く（`raster`から幅を読むと、そのたびに画素が実体化される）。
+
+取込の記録（`source_runs.origin`の`tiles_last_modified`）には、読んだタイルの配信元での最終更新のうち一番新しいものを残す。
+取得がタイルのファイルの更新時刻を配信元の`Last-Modified`にして置き、取込はそれを読む。配信元は標高の製品の更新を
+タイルの単位で一覧にしておらず（タイルの目録`mokuroku.csv.gz`も標高の製品には無い）、手元が配信元より古いかは、
+この時刻と配信元のタイルの`Last-Modified`を比べて言う。
 
 ### 製品ごとの性質（配信元の仕様、コードからは導けない）
 

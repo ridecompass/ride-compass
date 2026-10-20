@@ -1,6 +1,6 @@
-// 折れ点(breakpoints)編集の省力化（自動生成・エディタの補助計算）を
-// AxisComposer.tsxから切り出した純粋関数群。DOM/Reactに依存しない（BreakpointCurveEditor.
-// test.tsxが単体で検証できるようにする、他のlib/*.ts純粋関数と同じ方針）。
+// 折れ点(breakpoints)編集の省力化（自動生成・エディタの補助計算）の純粋関数群。DOM/Reactに依存しない。
+
+import { roundToDigits } from "@/lib/numberFormat";
 
 export type BreakpointShape = "flat" | "back_loaded" | "front_loaded" | "s_curve";
 
@@ -46,30 +46,28 @@ export function generateBreakpoints(
     const t = i / (GENERATED_POINT_COUNT - 1);
     const x = zeroValue + t * (hundredValue - zeroValue);
     const y = shapeScoreAt(shape, t);
-    points.push([Math.round(x * 100) / 100, Math.round(y)]);
+    points.push([roundToDigits(x, 2), Math.round(y)]);
   }
   return sortBreakpoints(points);
 }
 
-/** いまの折れ点から、自動生成フォームの3入力（0点・100点・効き方）を復元する。
+/** いまの折れ点から、折れ点を作る3入力（0点・100点・効き方）を復元する。
  *
- * 生成フォームは**使い捨ての入力欄ではない**——`draft.breakpoints`と別に固定の初期値を
+ * 3入力は**使い捨ての入力欄ではない**——いまの折れ点と別に固定の初期値を
  * 持たせると、既存の軸を開いたときに入力欄がその軸と無関係な値（0と10）を表示し、
  * どれか1つに触れた瞬間にその値で折れ点が作り直される。較正済みの端点が黙って消えるため、
  * 入力欄は必ずいまの折れ点から導く。
  *
- * `matched`は「いまの折れ点が、この3入力から生成したものとぴったり一致するか」。
- * falseなら手で編集された（あるいは別の手順で作られた）折れ点で、効き方は復元できない
- * ——そのときも端点だけは正しく復元し、効き方は`flat`を初期値にする。 */
+ * 3入力から生成したものとぴったり一致しない折れ点は、手で編集された（あるいは別の手順で作られた）もので、
+ * 効き方は復元できない——そのときも端点だけは正しく復元し、効き方は`flat`を初期値にする。 */
 export function generatorSettingsFrom(breakpoints: readonly [number, number][]): {
   zeroValue: number;
   hundredValue: number;
   shape: BreakpointShape;
-  matched: boolean;
 } {
   const sorted = sortBreakpoints(breakpoints);
   if (sorted.length < 2) {
-    return { zeroValue: 0, hundredValue: 10, shape: "flat", matched: false };
+    return { zeroValue: 0, hundredValue: 10, shape: "flat" };
   }
   const lowX = sorted[0][0];
   const highX = sorted[sorted.length - 1][0];
@@ -83,7 +81,7 @@ export function generatorSettingsFrom(breakpoints: readonly [number, number][]):
       const candidate = generateBreakpoints(zeroValue, hundredValue, id);
       if (candidate.length !== sorted.length) continue;
       if (candidate.every(([x, y], i) => x === sorted[i][0] && y === sorted[i][1])) {
-        return { zeroValue, hundredValue, shape: id, matched: true };
+        return { zeroValue, hundredValue, shape: id };
       }
     }
   }
@@ -93,35 +91,12 @@ export function generatorSettingsFrom(breakpoints: readonly [number, number][]):
     zeroValue: sorted[zeroSide][0],
     hundredValue: sorted[zeroSide === 0 ? sorted.length - 1 : 0][0],
     shape: "flat",
-    matched: false,
   };
 }
 
 /** 折れ点をx昇順へ並べ替える（ドラッグ・数値入力・自動生成のいずれの後も呼ぶ）。 */
 function sortBreakpoints(breakpoints: readonly [number, number][]): [number, number][] {
   return [...breakpoints].sort((a, b) => a[0] - b[0]);
-}
-
-/** 「+ 折れ点を追加」の挿入位置。隣接点どうしのx方向の間隔が最も広い区間の中間へ挿入する
- * ——追加した点が常に昇順制約を満たすため。点が1つ以下では追加できないため呼び出し側で
- * length>=2を保証すること。 */
-export function insertBreakpointAtLargestGap(breakpoints: readonly [number, number][]): [number, number][] {
-  const sorted = sortBreakpoints(breakpoints);
-  let gapIndex = 0;
-  let widestGap = -Infinity;
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const gap = sorted[i + 1][0] - sorted[i][0];
-    if (gap > widestGap) {
-      widestGap = gap;
-      gapIndex = i;
-    }
-  }
-  const [x0, y0] = sorted[gapIndex];
-  const [x1, y1] = sorted[gapIndex + 1];
-  const midpoint: [number, number] = [Math.round(((x0 + x1) / 2) * 100) / 100, Math.round((y0 + y1) / 2)];
-  const next = [...sorted];
-  next.splice(gapIndex + 1, 0, midpoint);
-  return next;
 }
 
 /** 表示レンジを何個の目盛りに刻むか（`niceStep`の目安）。 */

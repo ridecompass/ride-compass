@@ -6,9 +6,15 @@ import ErrorText from "@/features/route/ErrorText/ErrorText";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { NewRouteIcon, RouteDiffIcon, UndoAllIcon, UndoIcon } from "@/components/ui/icons/icons";
 import type { CatalogAxis } from "@/lib/catalogAxis";
-import { formatDelta, roundToDigits } from "@/features/route/routeEditDiff";
-import { formatDurationShort } from "@/features/route/formatDuration";
-import type { OverallDifficulty, RouteCandidate } from "@/types/route";
+import {
+  DELTA_TONE_CLASS,
+  deltaTone,
+  formatDelta,
+  formatMetric,
+  metricDifferences,
+} from "@/features/route/routeEditDiff";
+import { DIFFICULTY_DECIMALS } from "@/lib/mapDisplay/valueScale";
+import type { RouteCandidate } from "@/types/route";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { textVariants } from "@/components/ui/Text/Text";
@@ -28,6 +34,8 @@ interface RouteSplicePanelProps {
   onReset: () => void;
   /** 「差分を見る」で評価した、いまの組み合わせの候補。まだ見ていなければnull。 */
   preview: RouteCandidate | null;
+  /** 評価した組み合わせと同じ道を通る、一覧の候補の名前。無ければnull（あれば作成の操作は、新しく足さずにこの候補を選ぶ切り替えになる）。 */
+  sameRouteName: string | null;
   /** 差分の評価を待っている間はtrue。 */
   previewing: boolean;
   /** いまの組み合わせを評価して結果を出す。 */
@@ -49,10 +57,6 @@ interface RouteSplicePanelProps {
 const MIN_CONTRIBUTION_DELTA = 0.1;
 /** 差分バーの下へ数値を書く軸の数。大きい順。 */
 const LABELLED_DELTA_COUNT = 2;
-
-function digitsOf(label: string): number {
-  return label === "距離" ? 1 : 0;
-}
 
 /** 元→編集後で寄与度が動いた軸（大きい順）。減った軸は負、増えた軸は正。 */
 function contributionDeltas(
@@ -77,6 +81,7 @@ export default function RouteSplicePanel({
   onUndo,
   onReset,
   preview,
+  sameRouteName,
   previewing,
   onPreview,
   onApply,
@@ -94,40 +99,26 @@ export default function RouteSplicePanel({
   const deltas = preview ? contributionDeltas(displayed.axis_contributions, preview.axis_contributions, axes) : [];
   const scale = deltas.reduce((max, item) => Math.max(max, Math.abs(item.delta)), 0);
 
-  const duration = (seconds: number | null | undefined) => (seconds != null ? formatDurationShort(seconds) : null);
-  const rounded = (value: number | null | undefined) => (value != null ? `${Math.round(value)}` : null);
-  const difficultyMetric = (label: string, key: keyof OverallDifficulty) => {
-    const base = displayed.overall_difficulty;
-    const after = preview?.overall_difficulty;
-    return {
-      label,
-      base: rounded(base?.[key]),
-      after: rounded(after?.[key]),
-      delta: base != null && after != null ? after[key] - base[key] : null,
-    };
-  };
-
   // 1セルに「元→編集後 差」を収める（列見出しを持たないぶん1行減る）。
-  const metrics: { label: string; base: string | null; after: string | null; delta: number | null }[] = [
-    {
-      label: "距離",
-      base: `${displayed.distance_km.toFixed(1)}`,
-      after: preview ? `${preview.distance_km.toFixed(1)}km` : null,
-      delta: preview ? preview.distance_km - displayed.distance_km : null,
-    },
-    {
-      label: "所要",
-      base: duration(displayed.estimated_duration_seconds),
-      after: duration(preview?.estimated_duration_seconds),
-      delta:
-        preview?.estimated_duration_seconds != null && displayed.estimated_duration_seconds != null
-          ? (preview.estimated_duration_seconds - displayed.estimated_duration_seconds) / 60
-          : null,
-    },
-    difficultyMetric("総合難易度", "average"),
-    difficultyMetric("負荷", "load"),
-  ];
+  const metrics = metricDifferences(displayed, preview);
   const halves = [metrics.slice(0, 2), metrics.slice(2)];
+
+  // 差の棒の片側（楽になった軸は中央から左へ、きつくなった軸は右へ積む）。
+  function renderDeltaHalf(side: "decrease" | "increase") {
+    return (
+      <div className={cn("flex min-w-0 flex-[1_1_50%]", side === "decrease" ? "justify-end" : "justify-start")}>
+        {deltas
+          .filter((item) => (side === "decrease" ? item.delta < 0 : item.delta > 0))
+          .map((item) => (
+            <span
+              key={item.axisId}
+              className="block h-full"
+              style={{ width: `${(Math.abs(item.delta) / scale) * 50}%`, background: axisColors[item.axisId] }}
+            />
+          ))}
+      </div>
+    );
+  }
 
   return (
     <section
@@ -137,11 +128,12 @@ export default function RouteSplicePanel({
       )}
       aria-labelledby="splice-heading"
     >
-      <div className="flex items-center gap-1">
+      {/* 狭いスマホの幅では、右の操作をまとめて次の行の右端へ折り返す。 */}
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5">
         <Button
           variant="ghost"
           size="bare"
-          className="px-0.5 text-[15px]"
+          className="-ml-2 px-0.5 text-[15px]"
           aria-label="編集をやめて候補へ戻る"
           onClick={onCancel}
         >
@@ -151,10 +143,11 @@ export default function RouteSplicePanel({
           区間の乗り換え
         </h3>
         {/* 使い方は画面へ書かずここへ置く（設計原則「冗長なものは削る」）。 */}
-        <InfoPopover triggerAriaLabel="区間の乗り換えの説明">
+        {/* 押す所（24px四方）の余りを両脇の間に重ね、デスクトップのパネルの幅に1行で収める。「‹」は余りをカードの余白へ寄せる。 */}
+        <InfoPopover triggerAriaLabel="区間の乗り換えの説明" triggerClassName="-mx-1">
           地図の破線が、いまの道から乗り換えられる先です。タップするとそこへ乗り換わり、その先に
-          分かれ道があれば次の破線が出ます。太い線が、いま作っているルートです。軸の棒は中央が0で、左[−]へ
-          伸びた軸ほど難易度が下がり、右[＋]へ伸びた軸ほど上がっています。
+          分かれ道があれば次の破線が出ます。太い線が、いま作っているルートです。評価軸の棒は中央が0で、左[−]へ
+          伸びた評価軸ほど難易度が下がり、右[＋]へ伸びた評価軸ほど上がっています。
         </InfoPopover>
         {appliedCount > 0 && (
           <span className={cn(textVariants({ variant: "hint" }), "ml-1 whitespace-nowrap")}>{appliedCount}回</span>
@@ -193,22 +186,25 @@ export default function RouteSplicePanel({
             >
               <RouteDiffIcon size={18} />
             </Button>
-            <Button
-              size="panelIcon"
-              onClick={onApply}
-              disabled={appliedCount === 0 || busy}
-              aria-busy={applying}
-              aria-label="新しいルートを作成"
-              usage="いまの乗り換えで作ったルートを、合成ルートに加えます。元のルートは残ります。"
-            >
-              <NewRouteIcon size={18} />
-            </Button>
+            {/* 同じ道なら押しても新しく足さずにその候補を選ぶので、作成を出さず、知らせの行の切り替えに替える。 */}
+            {sameRouteName === null && (
+              <Button
+                size="panelIcon"
+                onClick={onApply}
+                disabled={appliedCount === 0 || busy}
+                aria-busy={applying}
+                aria-label="新しいルートを作成"
+                usage="いまの乗り換えで作ったルートを、合成ルートに加えます。元のルートは残ります。"
+              >
+                <NewRouteIcon size={18} />
+              </Button>
+            )}
           </div>
         )}
       </div>
 
       {unavailable ? (
-        <p className={textVariants({ variant: "hint" })}>この候補は経路のEdge情報を持たないため、区間を出せません。</p>
+        <p className={textVariants({ variant: "hint" })}>この候補は通る道の並びを持たないため、区間を出せません。</p>
       ) : (
         <>
           {/* 指標はルート結果と同じ項目。2列×2行で、元→編集後の位置を縦に揃える。 */}
@@ -221,28 +217,22 @@ export default function RouteSplicePanel({
                 key={index}
               >
                 {half.map((metric) => {
-                  const shown = metric.delta != null ? roundToDigits(metric.delta, digitsOf(metric.label)) : null;
+                  const tone = deltaTone(metric);
                   return (
                     <Fragment key={metric.label}>
                       <dt className={textVariants({ variant: "note" })}>{metric.label}</dt>
-                      <dd className="m-0 text-right text-[var(--color-muted)]">{metric.base ?? "—"}</dd>
+                      <dd className="m-0 text-right text-[var(--color-muted)]">
+                        {metric.base === null ? "—" : formatMetric(metric, metric.base)}
+                      </dd>
                       {/* 評価前は矢印も出さない（行き先が無いのに→だけ残ると読み手が待たされる）。 */}
                       <dd className={cn(textVariants({ variant: "note" }), "m-0")} aria-hidden="true">
-                        {metric.after ? "→" : ""}
+                        {metric.after !== null ? "→" : ""}
                       </dd>
-                      <dd
-                        className="m-0 font-bold data-[better=true]:text-[var(--color-accent)] data-[worse=true]:text-[var(--color-route-splice)]"
-                        data-worse={shown != null && shown > 0}
-                        data-better={shown != null && shown < 0}
-                      >
-                        {metric.after ?? ""}
+                      <dd className={cn("m-0 font-bold", DELTA_TONE_CLASS)} {...tone}>
+                        {metric.after !== null ? formatMetric(metric, metric.after) : ""}
                       </dd>
-                      <dd
-                        className="m-0 text-[length:var(--font-size-xs)] data-[better=true]:text-[var(--color-accent)] data-[worse=true]:text-[var(--color-route-splice)]"
-                        data-worse={shown != null && shown > 0}
-                        data-better={shown != null && shown < 0}
-                      >
-                        {metric.delta != null ? formatDelta(metric.delta, digitsOf(metric.label)) : ""}
+                      <dd className={cn("m-0 text-[length:var(--font-size-xs)]", DELTA_TONE_CLASS)} {...tone}>
+                        {metric.delta !== null ? formatDelta(metric.delta, metric.digits) : ""}
                       </dd>
                     </Fragment>
                   );
@@ -260,41 +250,32 @@ export default function RouteSplicePanel({
               <div
                 className="flex h-3 min-w-0 flex-1 items-stretch"
                 role="img"
-                aria-label={deltas.map((item) => `${item.label} ${formatDelta(item.delta, 1)}`).join("、")}
+                aria-label={deltas
+                  .map((item) => `${item.label} ${formatDelta(item.delta, DIFFICULTY_DECIMALS)}`)
+                  .join("、")}
               >
-                <div className="flex min-w-0 flex-[1_1_50%] justify-end">
-                  {deltas
-                    .filter((item) => item.delta < 0)
-                    .map((item) => (
-                      <span
-                        key={item.axisId}
-                        className="block h-full"
-                        style={{
-                          width: `${(Math.abs(item.delta) / scale) * 50}%`,
-                          background: axisColors[item.axisId],
-                        }}
-                      />
-                    ))}
-                </div>
+                {renderDeltaHalf("decrease")}
                 <div className="-my-0.5 w-0.5 bg-[var(--foreground)]" />
-                <div className="flex min-w-0 flex-[1_1_50%] justify-start">
-                  {deltas
-                    .filter((item) => item.delta > 0)
-                    .map((item) => (
-                      <span
-                        key={item.axisId}
-                        className="block h-full"
-                        style={{
-                          width: `${(Math.abs(item.delta) / scale) * 50}%`,
-                          background: axisColors[item.axisId],
-                        }}
-                      />
-                    ))}
-                </div>
+                {renderDeltaHalf("increase")}
               </div>
               <span className="text-[length:var(--font-size-sm)] leading-none font-bold text-[var(--color-route-splice)]">
                 ＋
               </span>
+            </div>
+          )}
+
+          {sameRouteName !== null && (
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+              <p className={textVariants({ variant: "hint" })}>この組み合わせは「{sameRouteName}」と同じ道です</p>
+              <Button
+                size="sm"
+                onClick={onApply}
+                disabled={busy}
+                aria-busy={applying}
+                usage="編集を閉じて、この組み合わせと同じ道の候補を選びます。"
+              >
+                「{sameRouteName}」に切り替える
+              </Button>
             </div>
           )}
 
@@ -304,9 +285,12 @@ export default function RouteSplicePanel({
             {deltas.length > 0 ? (
               deltas.slice(0, LABELLED_DELTA_COUNT).map((item) => (
                 <span className="mr-2.5" key={item.axisId}>
-                  {item.label} {formatDelta(item.delta, 1)}
+                  {item.label} {formatDelta(item.delta, DIFFICULTY_DECIMALS)}
                 </span>
               ))
+            ) : preview ? (
+              // 評価済みで棒が空なのは、どの軸の差も棒に出す下限に届かないとき。押す案内を残すと押しても変わらない。
+              "どの評価軸も、元とほぼ変わりません"
             ) : appliedCount > 0 ? (
               <GuideText text="「差分を見る」を押すと、乗り換えた結果が出ます" />
             ) : hasAlternatives ? (

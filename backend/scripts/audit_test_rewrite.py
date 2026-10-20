@@ -1,6 +1,6 @@
 r"""起こし直したテストを機械で監査する。報告の自己申告を鵜呑みにしないため。
 
-テストを「実装から起こし直す」手順（docs/conventions/testing.md）は、守ったかどうかが
+テストを「実装から起こし直す」手順（.claude/rules/testing-rewrite.md）は、守ったかどうかが
 成果物の見た目からは分からない。旧版を写しても、他モジュールへ結びついても、テストは
 緑になる。この監査は、守れていれば必ず満たすはずの5点を外から測る。
 
@@ -24,15 +24,6 @@ r"""起こし直したテストを機械で監査する。報告の自己申告�
     .venv\Scripts\python.exe scripts\audit_test_rewrite.py --no-jit app/domain/routing.py tests/test_routing.py
     .venv\Scripts\python.exe scripts\audit_test_rewrite.py --backend ../.claude/worktrees/agent-x/backend \
         app/infrastructure/wbgt_client.py tests/test_wbgt_client.py
-    .venv\Scripts\python.exe scripts\audit_test_rewrite.py --ref origin/master app/domain/traffic.py tests/test_traffic.py
-
-`--ref`は起こし直す前の値を同じ実行で測る。その版を一時の作業ツリーへ取り出して同じ母集団で④⑤を測り、
-前と後の行・分岐カバレッジ・④の数・テストファイルごとの数と、後で新たに未到達になった行・分岐を並べる。
-作業ツリーは終わるときに消す（テストが落ちても）。前の版のテスト名は出さない（起こし直しの手順1〜3では
-旧版を開かないため）。母集団は前と後を合わせて渡し、その版に無いテストファイルは前の測りから、作業ツリーに
-無い（消した・改名した）テストファイルは後の測りから外し、外したことを出す。改名は前の名と後の名を
-両方渡す。どちらにも無いファイルは止める。PostGISのテストは、前の版でも今の
-作業ツリーと同じテスト用DBへ繋ぐ（一時の作業ツリー専用のDBは、作業ツリーを消しても残るため作らせない）。
 
 `--no-jit`は`NUMBA_DISABLE_JIT=1`を立てる。`njit`の中はcoverage.pyが追えないため、
 JITを通る対象はこれを付けないと⑤が実態より低く出る。
@@ -49,13 +40,11 @@ import ast
 import asyncio
 import json
 import os
-import re
 import subprocess
 import sys
 import tempfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -63,26 +52,27 @@ import asyncpg
 from coverage import CoverageData
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from app.batch.common import asyncpg_dsn  # noqa: E402  sys.pathを通した後に読む
+from tests.structure.source_symbols import SourceTree, bound_names
+from app.batch.common import asyncpg_dsn  # sys.pathを通した後に読む
+from pytest_report import Case, junit_args, read_cases
+from repo_git import merge_base, run
 
 
-def module_symbols(path: Path) -> tuple[set[str], dict[str, str]]:
-    """実装ファイルの最上位で「定義されたもの」と「importされたもの」を分ける。"""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+def module_symbols(source: SourceTree, path: Path) -> tuple[set[str], dict[str, str]]:
+    """実装ファイルの最上位で「定義されたもの」と「importされたもの」（名前 → 取り込み元のモジュール）を分ける。"""
+    module = source.module_of(path)
     defined: set[str] = set()
     imported: dict[str, str] = {}
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            defined.add(node.name)
-        elif isinstance(node, ast.Assign):
-            defined.update(t.id for t in node.targets if isinstance(t, ast.Name))
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            defined.add(node.target.id)
-        elif isinstance(node, ast.ImportFrom):
-            imported.update({a.asname or a.name: node.module or "" for a in node.names})
-        elif isinstance(node, ast.Import):
-            imported.update({a.asname or a.name.split(".")[0]: a.name for a in node.names})
+    for name, statement in bound_names(ast.parse(path.read_text(encoding="utf-8")).body).items():
+        if isinstance(statement, ast.ImportFrom):
+            imported[name] = source.absolute(module, statement)
+        elif isinstance(statement, ast.Import):
+            alias = next(a for a in statement.names if (a.asname or a.name.split(".")[0]) == name)
+            imported[name] = alias.name
+        else:
+            defined.add(name)
     return defined, imported
 
 
@@ -109,17 +99,11 @@ def public_names(tree: ast.Module) -> list[tuple[str, str]]:
     最上位の関数・クラス・代入と、公開のクラスの`_`で始まらないメソッド（表示は`クラス.メソッド`）。
     """
     out: list[tuple[str, str]] = []
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            names = [node.name]
-        elif isinstance(node, ast.Assign):
-            names = [t.id for t in node.targets if isinstance(t, ast.Name)]
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            names = [node.target.id]
-        else:
+    for name, node in bound_names(tree.body).items():
+        if isinstance(node, (ast.Import, ast.ImportFrom)) or name.startswith("_"):
             continue
-        out.extend((name, name) for name in names if not name.startswith("_"))
-        if isinstance(node, ast.ClassDef) and not node.name.startswith("_"):
+        out.append((name, name))
+        if isinstance(node, ast.ClassDef):
             out.extend(
                 (f"{node.name}.{item.name}", item.name)
                 for item in node.body
@@ -174,6 +158,17 @@ def bare_import_alias(tree: ast.AST, name: str) -> str | None:
     return None
 
 
+def _attribute_calls(tree: ast.AST, alias: str) -> Iterator[tuple[ast.Call, ast.expr]]:
+    """`setattr`・`delattr`・`getattr`を`alias`に当てた呼び出しと、属性を指す第2引数。"""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+            if name in {"setattr", "delattr", "getattr"} and len(node.args) >= 2:
+                target = node.args[0]
+                if isinstance(target, ast.Name) and target.id == alias:
+                    yield node, node.args[1]
+
+
 def touched_attributes(tree: ast.AST, alias: str) -> dict[str, int]:
     """テストが`alias.X`として触った属性。
 
@@ -184,22 +179,14 @@ def touched_attributes(tree: ast.AST, alias: str) -> dict[str, int]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == alias:
             touched[node.attr] += 1
-        if isinstance(node, ast.Call):
-            name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
-            if name in {"setattr", "delattr", "getattr"} and len(node.args) >= 2:
-                target, attr = node.args[0], node.args[1]
-                if (
-                    isinstance(target, ast.Name)
-                    and target.id == alias
-                    and isinstance(attr, ast.Constant)
-                    and isinstance(attr.value, str)
-                ):
-                    touched[attr.value] += 1
+    for _call, attr in _attribute_calls(tree, alias):
+        if isinstance(attr, ast.Constant) and isinstance(attr.value, str):
+            touched[attr.value] += 1
     return dict(touched)
 
 
 def monkeypatch_seams(tree: ast.AST) -> set[str]:
-    """`monkeypatch.setattr`の第2引数の文字列（差し替えた属性の名前）。testing.mdの seams 数はこのユニーク数。"""
+    """`monkeypatch.setattr`の第2引数の文字列（差し替えた属性の名前）。testing-scaffold.md「フェイクの数は、実装の外向き参照の写し」の seams 数はこのユニーク数。"""
     return {
         node.args[1].value
         for node in ast.walk(tree)
@@ -220,15 +207,7 @@ def unresolved_attribute_calls(tree: ast.AST, alias: str) -> list[int]:
     ③の内訳はこれを数えられない（ループで差し替える形が典型）。黙って0件にせず、
     行番号を出して人が読む。
     """
-    lines: list[int] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call):
-            name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
-            if name in {"setattr", "delattr", "getattr"} and len(node.args) >= 2:
-                target, attr = node.args[0], node.args[1]
-                if isinstance(target, ast.Name) and target.id == alias and not isinstance(attr, ast.Constant):
-                    lines.append(node.lineno)
-    return sorted(set(lines))
+    return sorted({call.lineno for call, attr in _attribute_calls(tree, alias) if not isinstance(attr, ast.Constant)})
 
 
 def names_in_string_constants(tree: ast.AST, names: set[str]) -> set[str]:
@@ -242,22 +221,6 @@ def names_in_string_constants(tree: ast.AST, names: set[str]) -> set[str]:
         for node in ast.walk(tree)
         if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in names
     }
-
-
-def passed_test_ids(pytest_output: str) -> set[str]:
-    """`-rA`の要約から、実行されたテストのnode idを取る。
-
-    `PASSED`の行はnode idだけを持つ。`XFAIL`・`XPASS`の行は` - 理由`が続くが、パラメータの
-    idも` - `を含みうるため、理由の区切りはこの2つにだけ当てる。
-    """
-    ids: set[str] = set()
-    for line in pytest_output.splitlines():
-        outcome, _, rest = line.partition(" ")
-        if outcome == "PASSED" and "::" in rest:
-            ids.add(rest.strip())
-        elif outcome in {"XFAIL", "XPASS"} and "::" in rest:
-            ids.add(rest.rsplit(" - ", 1)[0].strip())
-    return ids
 
 
 def lines_by_test(coverage_db: Path, implementation: Path) -> dict[str, set[int]]:
@@ -326,22 +289,14 @@ def test_database_unreachable(backend: Path) -> str | None:
 
     try:
         asyncio.run(connect())
-    except Exception as exc:  # noqa: BLE001 繋がらない理由はそのまま出す
+    except Exception as exc:  # 繋がらない理由はそのまま出す
         return f"{type(exc).__name__}: {exc}"
     return None
 
 
-def worktree_test_database_url(backend: Path) -> str:
-    """作業ツリーのPostGISのテストが繋ぐDBのURL（無ければ作る）。テストと同じ規則で、子プロセスで決める。"""
-    return os.environ.get("TEST_DATABASE_URL") or subprocess.run(
-        [sys.executable, "-c", "from tests.conftest import _prepare_worktree_database as p; print(p())"],
-        cwd=backend, capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
-    ).stdout.strip().splitlines()[-1]
-
-
 @dataclass(frozen=True)
 class Measurement:
-    """1つの版の④⑤。"""
+    """④⑤の測った値。"""
 
     covered_lines: int
     statements: int
@@ -371,11 +326,11 @@ def line_ranges(lines: set[int] | frozenset[int]) -> str:
 
 
 def run_pytest(
-    backend: Path, tests: list[str], cov_dir: str, env: dict[str, str], with_postgis: bool, report: Path
+    backend: Path, tests: list[str], cov_dir: str, env: dict[str, str], with_postgis: bool, report: Path, results: Path
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "pytest", *tests, "-q", "-rA", *([] if with_postgis else ["-m", "not postgis"]),
-         "-p", "no:randomly",
+        [sys.executable, "-m", "pytest", *tests, "-q", *([] if with_postgis else ["-m", "not postgis"]),
+         "-p", "no:randomly", *junit_args(results),
          f"--cov={cov_dir}", "--cov-branch", "--cov-context=test",
          f"--cov-report=json:{report}"],
         cwd=backend, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -383,7 +338,7 @@ def run_pytest(
 
 
 def measurement(
-    backend: Path, report: Path, implementation: str, tests: list[str], pytest_output: str
+    backend: Path, report: Path, implementation: str, tests: list[str], cases: list[Case]
 ) -> Measurement:
     """pytestの実行が残したカバレッジから、対象ファイルの④⑤とテストファイルごとの数を読む。
 
@@ -394,7 +349,7 @@ def measurement(
     files = json.loads(report.read_text(encoding="utf-8"))["files"]
     data = next(f for path, f in files.items() if (backend / path).resolve() == target)
     summary = data["summary"]
-    executed = passed_test_ids(pytest_output)
+    executed = {case.nodeid for case in cases if case.outcome in {"passed", "xfailed"}}
     dead, without_own_lines = tests_without_own_lines(executed, lines_by_test(backend / ".coverage", target))
     return Measurement(
         covered_lines=summary["covered_lines"],
@@ -410,100 +365,12 @@ def measurement(
     )
 
 
-@contextmanager
-def checkout(backend: Path, ref: str, parent: Path) -> Iterator[Path]:
-    """版`ref`を一時の作業ツリーへ取り出し、そのbackendを渡す。抜けるとき（テストが落ちても・中断されても）消す。"""
-    root = parent / "before"
-    subprocess.run(
-        ["git", "worktree", "add", "--detach", str(root), ref],
-        cwd=backend, capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
-    )
-    try:
-        yield root / "backend"
-    finally:
-        removed = subprocess.run(
-            ["git", "worktree", "remove", "--force", str(root)],
-            cwd=backend, capture_output=True, text=True, encoding="utf-8", errors="replace",
-        )
-        if removed.returncode != 0:
-            print(f"一時の作業ツリーを消せなかった: {root}（git worktree remove --force で消す）"
-                  f"\n     {removed.stderr.strip()}", file=sys.stderr)
-
-
-def compare_with_ref(
-    backend: Path, ref: str, tests: list[str], implementation: str, cov_dir: str,
-    env: dict[str, str], with_postgis: bool, after: Measurement, work: Path,
-) -> int:
-    """版`ref`の同じ母集団で④⑤を測り、後の値と並べる。前の版のテスト名は出さない。"""
-    print(f"\n前の版（{ref}）を一時の作業ツリーへ取り出して④⑤を測っています…")
-    if with_postgis:
-        env = dict(env, TEST_DATABASE_URL=worktree_test_database_url(backend))
-    try:
-        with checkout(backend, ref, work) as before_backend:
-            present = [test for test in tests if (before_backend / test).exists()]
-            absent = [test for test in tests if test not in present]
-            if absent:
-                print(f"     前の版に無いテスト（前の測りから外した）: {' '.join(absent)}")
-            if not present:
-                print("     前の版に母集団のテストが1本も無い。前の値は測れない", file=sys.stderr)
-                return 1
-            if not (before_backend / implementation).exists():
-                print(f"     前の版に対象の実装が無い: {implementation}", file=sys.stderr)
-                return 1
-            report = work / "before.json"
-            result = run_pytest(before_backend, present, cov_dir, env, with_postgis, report)
-            if result.returncode != 0:
-                print("     前の版のテストが緑でない。前の値は当てにならない（旧版のテスト名は落ちたものだけ出す）:",
-                      file=sys.stderr)
-                for line in (result.stdout + "\n" + result.stderr).splitlines():
-                    if line.startswith(("FAILED ", "ERROR ")) or (
-                        "::" not in line and re.search(r"\d+ (passed|failed|errors?)\b", line)
-                    ):
-                        print("     " + line, file=sys.stderr)
-                return 1
-            before = measurement(before_backend, report, implementation, present, result.stdout)
-    except subprocess.CalledProcessError as exc:
-        print(f"     前の版を取り出せない: {' '.join(exc.cmd)}\n     {exc.stderr.strip()}", file=sys.stderr)
-        return 1
-
-    print(f"\n前（{ref}）→ 後（作業ツリー）")
-    print(f"     テスト: {before.executed}本 → {after.executed}本")
-    print(f"     行:     {rate(before.covered_lines, before.statements)} → {rate(after.covered_lines, after.statements)}")
-    print(f"     分岐:   {rate(before.covered_branches, before.branches)}"
-          f" → {rate(after.covered_branches, after.branches)}")
-    print(f"     ④ 実装へ1行も入らないテスト: {len(before.dead)} → {len(after.dead)}")
-    print(f"     そのテストだけが通す行が0行のテスト（④を含む）: {len(before.dead) + len(before.without_own_lines)}"
-          f" → {len(after.dead) + len(after.without_own_lines)}")
-    print("     テストファイルごと（項目・test_の関数・空行とコメントを除いた行。無い側は -）:")
-    for test in sorted(before.test_files.keys() | after.test_files.keys()):
-        sides = [measured.test_files.get(test) for measured in (before, after)]
-        print(f"       {test}: " + "  ".join(
-            f"{name} {' → '.join('-' if side is None else str(side[i]) for side in sides)}"
-            for i, name in enumerate(("項目", "関数", "行"))
-        ))
-    same_implementation = subprocess.run(
-        ["git", "diff", "--quiet", ref, "--", implementation], cwd=backend, capture_output=True,
-    ).returncode == 0
-    if not same_implementation:
-        print(f"     実装が {ref} と違うため、行番号は前と後で対応しない。新たに未到達になった行は出さない")
-        return 0
-    lines = after.missing_lines - before.missing_lines
-    branches = after.missing_branches - before.missing_branches
-    print(f"     後で新たに未到達になった行: {line_ranges(lines)}")
-    print("     後で新たに未到達になった分岐: "
-          + (", ".join(f"{a}->{b}" for a, b in sorted(branches)) or "なし"))
-    if lines or branches:
-        print("     ← 下がった箇所ごとに、なぜ見なくてよいかを1行書く（testing.md「既存テストを直さず、実装から起こし直す」）")
-    return 0
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="起こし直したテストを機械で監査する")
     parser.add_argument("implementation", help="実装ファイル（backendディレクトリからの相対パス）")
     parser.add_argument("tests", nargs="+", help="テストファイル（同上）。母集団を並べて渡す")
     parser.add_argument("--backend", default=".", help="別の作業ツリーのbackendディレクトリ（既定: .）")
     parser.add_argument("--no-jit", action="store_true", help="NUMBA_DISABLE_JIT=1で測る")
-    parser.add_argument("--ref", help="前の値を測る版（例: origin/master）。後の値と並べる")
     args = parser.parse_args()
 
     not_python = [test for test in args.tests if not test.endswith(".py")]
@@ -518,30 +385,16 @@ def main() -> int:
         return 1
     tests = [test.replace("\\", "/") for test in args.tests]
     missing = [test for test in tests if not (backend / test).exists()]
-    # 消した・改名したテストは前の版にだけある。前の測りにだけ入れ、後の測り（①〜⑤）から外す。
-    only_before = [
-        test for test in missing
-        if args.ref and subprocess.run(
-            ["git", "cat-file", "-e", f"{args.ref}:./{test}"], cwd=backend, capture_output=True,
-        ).returncode == 0
-    ]
-    not_found = [test for test in missing if test not in only_before]
-    if not_found:
-        print(f"見つからない（作業ツリーにも{'、' + args.ref + ' にも' if args.ref else ''}無い）:"
-              f" {' '.join(not_found)}", file=sys.stderr)
-        return 1
-    after_tests = [test for test in tests if test not in only_before]
-    if not after_tests:
-        print("作業ツリーに母集団のテストが1本も無い。後の値は測れない", file=sys.stderr)
+    if missing:
+        print(f"見つからない: {' '.join(missing)}", file=sys.stderr)
         return 1
     implementation = args.implementation.replace("\\", "/")
-    module = implementation.removesuffix(".py").replace("/", ".")
+    source = SourceTree(backend)
+    module = source.module_of(impl_path)
     cov_dir = implementation.rsplit("/", 1)[0]
 
     print(f"対象:     {args.implementation}")
-    print(f"テスト:   {' '.join(after_tests)}")
-    if only_before:
-        print(f"前の版にだけあるテスト（後の測りから外し、前の測りにだけ入れる）: {' '.join(only_before)}")
+    print(f"テスト:   {' '.join(tests)}")
     print(f"--cov:    {cov_dir}（親ディレクトリで測り、対象ファイルへ絞る）")
     unreachable = test_database_unreachable(backend)
     if unreachable:
@@ -551,14 +404,17 @@ def main() -> int:
     print("=" * 78)
 
     # --- ① 実装を変えていないか ---
-    status = subprocess.run(
-        ["git", "status", "--short", "--", args.implementation],
-        cwd=backend, capture_output=True, text=True, encoding="utf-8", errors="replace",
-    ).stdout.strip()
-    print(f"\n① 実装の変更: {'**あり** → ' + status if status else 'なし'}")
+    # origin/master との合流点から作業ツリーまでの差（コミット済みの変更も含む）。
+    try:
+        base = merge_base(cwd=backend)
+    except RuntimeError as e:
+        print(f"\n① 実装の変更: **測れない**（origin/master との合流点が取れない: {e}）")
+    else:
+        status = run("diff", "--stat", base, "--", args.implementation, cwd=backend).stdout.strip()
+        print(f"\n① 実装の変更（origin/master との合流点から）: {'**あり** → ' + status if status else 'なし'}")
 
-    defined, imported = module_symbols(impl_path)
-    for test in after_tests:
+    defined, imported = module_symbols(source, impl_path)
+    for test in tests:
         tree = ast.parse((backend / test).read_text(encoding="utf-8"))
         print(f"\n--- {test}")
         seams = monkeypatch_seams(tree)
@@ -590,8 +446,8 @@ def main() -> int:
         unknown = sorted(a for a in touched if a not in defined and a not in imported)
         print(f"③ テストが触る {alias}.X: 自ファイル定義 {len(own)}種"
               f" / 他モジュール由来 {len(foreign)}種 / 判定不能 {len(unknown)}種")
-        for name, source in foreign:
-            print(f"     {alias}.{name:<32} <- {source}  ({touched[name]}回)"
+        for name, origin in foreign:
+            print(f"     {alias}.{name:<32} <- {origin}  ({touched[name]}回)"
                   "  ← seamか責務外かを言うこと")
         for name in unknown:
             print(f"     {alias}.{name}  （判定不能）")
@@ -611,36 +467,33 @@ def main() -> int:
         env["NUMBA_DISABLE_JIT"] = "1"
     with tempfile.TemporaryDirectory(prefix="ridecompass-audit-") as work_dir:
         work = Path(work_dir)
-        report = work / "after.json"
-        result = run_pytest(backend, after_tests, cov_dir, env, not unreachable, report)
+        report = work / "measured.json"
+        results = work / "results.xml"
+        result = run_pytest(backend, tests, cov_dir, env, not unreachable, report, results)
         lines = result.stdout.splitlines()
-        for line in lines:
-            if line.startswith("=") and (" passed" in line or " failed" in line or " error" in line):
-                print("     " + line.strip())
+        cases = read_cases(results) if results.exists() else []
+        outcomes = Counter(c.outcome for c in cases)
+        print("     テストの結果: " + "・".join(f"{label} {outcomes[outcome]}" for outcome, label in (
+            ("passed", "通った"), ("xfailed", "xfail"), ("skipped", "飛ばした"), ("failed", "落ちた")) if outcomes[outcome]))
         if result.returncode != 0:
             print("\n     テストが緑でない。監査の残りは当てにならない。pytestの出力の末尾:", file=sys.stderr)
             for line in (lines + result.stderr.splitlines())[-15:]:
                 print("     " + line, file=sys.stderr)
             return 1
 
-        after = measurement(backend, report, implementation, after_tests, result.stdout)
-        print(f"\n④ 実装へ1行も入らないテスト: {len(after.dead)} / {after.executed}")
-        for name in after.dead:
-            print("     " + (name if len(after_tests) > 1 else name.split("::", 1)[1]))
-        print(f"   実装へ入るが、そのテストだけが通す行が0行のテスト: {len(after.without_own_lines)} / {after.executed}")
-        for name in after.without_own_lines:
-            print("     " + (name if len(after_tests) > 1 else name.split("::", 1)[1]))
-        print(f"\n⑤ 行:   {rate(after.covered_lines, after.statements)}"
-              f"  未到達: {line_ranges(after.missing_lines)}")
-        print(f"   分岐: {rate(after.covered_branches, after.branches)}  未到達: "
-              + (", ".join(f"{a}->{b}" for a, b in sorted(after.missing_branches)) or "なし"))
-        for test, (items, functions, test_lines) in after.test_files.items():
+        measured = measurement(backend, report, implementation, tests, cases)
+        print(f"\n④ 実装へ1行も入らないテスト: {len(measured.dead)} / {measured.executed}")
+        for name in measured.dead:
+            print("     " + (name if len(tests) > 1 else name.split("::", 1)[1]))
+        print(f"   実装へ入るが、そのテストだけが通す行が0行のテスト: {len(measured.without_own_lines)} / {measured.executed}")
+        for name in measured.without_own_lines:
+            print("     " + (name if len(tests) > 1 else name.split("::", 1)[1]))
+        print(f"\n⑤ 行:   {rate(measured.covered_lines, measured.statements)}"
+              f"  未到達: {line_ranges(measured.missing_lines)}")
+        print(f"   分岐: {rate(measured.covered_branches, measured.branches)}  未到達: "
+              + (", ".join(f"{a}->{b}" for a, b in sorted(measured.missing_branches)) or "なし"))
+        for test, (items, functions, test_lines) in measured.test_files.items():
             print(f"   {test}: 項目 {items}  test_の関数 {functions}  行 {test_lines}（空行とコメントを除く）")
-
-        if args.ref and compare_with_ref(
-            backend, args.ref, tests, implementation, cov_dir, env, not unreachable, after, work
-        ):
-            return 1
 
     print("\n" + "=" * 78)
     print("機械化できないもの（人が読む）:"

@@ -5,79 +5,10 @@ export const primaryAttributes = [
     "label": "道路の種類",
     "geometry": "line",
     "point_facts": [],
-    "tile_kind": "road_surface",
-    "display_axes": [
-      {
-        "key": "highway",
-        "label": "",
-        "property": "highway",
-        "categories": [
-          {
-            "key": "arterial",
-            "label": "幹線道路",
-            "values": [
-              "motorway",
-              "motorway_link",
-              "trunk",
-              "trunk_link",
-              "primary",
-              "primary_link"
-            ],
-            "description": "高速道路・国道・主要な県道など、車が遠くへ行くための太い通り[OSM の highway=motorway・trunk・primary とその連絡路]。",
-            "color": "#433176"
-          },
-          {
-            "key": "secondary",
-            "label": "主要道",
-            "values": [
-              "secondary",
-              "secondary_link",
-              "tertiary",
-              "tertiary_link"
-            ],
-            "description": "県道・市町村の主な道など、地域の中を結ぶ通り[OSM の highway=secondary・tertiary とその連絡路]。",
-            "color": "#064f94"
-          },
-          {
-            "key": "local",
-            "label": "生活道路",
-            "values": [
-              "residential",
-              "unclassified",
-              "living_street",
-              "service",
-              "road"
-            ],
-            "description": "住宅街の道・名前の付かない細い道・施設の中の通路など、主に近くへ行くための道[OSM の highway=residential・unclassified・living_street・service・road]。",
-            "color": "#036793"
-          },
-          {
-            "key": "cycleway",
-            "label": "自転車・歩行者道",
-            "values": [
-              "cycleway",
-              "path",
-              "footway",
-              "pedestrian",
-              "bridleway",
-              "steps"
-            ],
-            "description": "自転車道・歩道・遊歩道・歩行者専用の道・階段など、車が通らない道[OSM の highway=cycleway・path・footway・pedestrian・bridleway・steps]。",
-            "color": "#0e7e98"
-          },
-          {
-            "key": "track",
-            "label": "農道・林道",
-            "values": [
-              "track"
-            ],
-            "description": "田畑や山林へ入るための道。舗装も未舗装もある[OSM の highway=track]。",
-            "color": "#0d959d"
-          }
-        ],
-        "missing_semantics": "unknown"
-      }
-    ]
+    "tile_kind": null,
+    "point_thinning": null,
+    "point_name_property": null,
+    "display_axes": []
   },
   {
     "attr_id": "lanes",
@@ -85,6 +16,8 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
+    "point_thinning": null,
+    "point_name_property": null,
     "display_axes": []
   },
   {
@@ -93,6 +26,8 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
+    "point_thinning": null,
+    "point_name_property": null,
     "display_axes": []
   },
   {
@@ -101,6 +36,8 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
+    "point_thinning": null,
+    "point_name_property": null,
     "display_axes": []
   },
   {
@@ -108,124 +45,20 @@ export const primaryAttributes = [
     "label": "路面の種類",
     "geometry": "line",
     "point_facts": [],
-    "tile_kind": "road_surface",
-    "display_axes": [
-      {
-        "key": "surface",
-        "label": "",
-        "property": "surface_class",
-        "categories": [
-          {
-            "key": "paved",
-            "label": "舗装",
-            "values": [
-              "paved"
-            ],
-            "description": "路面がアスファルト・舗装[種別不明]・チップシール舗装・コンクリート・コンクリート版・コンクリート帯[轍部のみ舗装]・石畳[切石]・レンガ舗装の道[OSM の surface タグ]。",
-            "color": "#48886f"
-          },
-          {
-            "key": "compacted",
-            "label": "締め固め・細砂利",
-            "values": [
-              "compacted"
-            ],
-            "description": "路面が締固め砂利・細砂利の道[OSM の surface タグ]。",
-            "color": "#3085a4"
-          },
-          {
-            "key": "gravel",
-            "label": "砂利・未舗装",
-            "values": [
-              "gravel"
-            ],
-            "description": "路面が砂利・小石敷き・岩盤・未舗装[種別不明]の道[OSM の surface タグ]。",
-            "color": "#8873a1"
-          },
-          {
-            "key": "soil",
-            "label": "土・草・泥・砂",
-            "values": [
-              "soil"
-            ],
-            "description": "路面が土・地面[土・砂利混合]・土[地表面]・泥・砂・芝・草地・ウッドチップの道[OSM の surface タグ]。",
-            "color": "#ab6a6c"
-          },
-          {
-            "key": "cobblestone",
-            "label": "石畳",
-            "values": [
-              "cobblestone"
-            ],
-            "description": "路面が石畳[玉石]・玉石舗装・玉石舗装[未加工]の道[OSM の surface タグ]。",
-            "color": "#8a7b4c"
-          }
-        ],
-        "missing_semantics": "unknown"
-      }
-    ]
+    "tile_kind": null,
+    "point_thinning": null,
+    "point_name_property": null,
+    "display_axes": []
   },
   {
     "attr_id": "tracktype",
     "label": "農道・林道の等級",
     "geometry": "line",
     "point_facts": [],
-    "tile_kind": "road_surface",
-    "display_axes": [
-      {
-        "key": "tracktype",
-        "label": "",
-        "property": "tracktype",
-        "categories": [
-          {
-            "key": "grade1",
-            "label": "1 舗装・固く締まる",
-            "values": [
-              "grade1"
-            ],
-            "description": "固い路面の農道・林道。多くは舗装されている[OSM の tracktype=grade1]。",
-            "color": "#433176"
-          },
-          {
-            "key": "grade2",
-            "label": "2 砂利[未舗装]",
-            "values": [
-              "grade2"
-            ],
-            "description": "おおむね固い未舗装の農道・林道。砂や土の混じった砂利道が多い[OSM の tracktype=grade2]。",
-            "color": "#064f94"
-          },
-          {
-            "key": "grade3",
-            "label": "3 砂利と土が半々",
-            "values": [
-              "grade3"
-            ],
-            "description": "固い部分と柔らかい部分が半々の未舗装の農道・林道[OSM の tracktype=grade3]。",
-            "color": "#036793"
-          },
-          {
-            "key": "grade4",
-            "label": "4 土・草が主",
-            "values": [
-              "grade4"
-            ],
-            "description": "土・砂・草が主で、固い部分が少し混じる未舗装の農道・林道[OSM の tracktype=grade4]。",
-            "color": "#0e7e98"
-          },
-          {
-            "key": "grade5",
-            "label": "5 土・草・砂",
-            "values": [
-              "grade5"
-            ],
-            "description": "固い材料が無く、締まっていない土・砂・草の農道・林道[OSM の tracktype=grade5]。",
-            "color": "#0d959d"
-          }
-        ],
-        "missing_semantics": "unknown"
-      }
-    ]
+    "tile_kind": null,
+    "point_thinning": null,
+    "point_name_property": null,
+    "display_axes": []
   },
   {
     "attr_id": "motor_vehicle_access",
@@ -233,6 +66,8 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
+    "point_thinning": null,
+    "point_name_property": null,
     "display_axes": []
   },
   {
@@ -241,6 +76,8 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
+    "point_thinning": null,
+    "point_name_property": null,
     "display_axes": []
   },
   {
@@ -248,52 +85,20 @@ export const primaryAttributes = [
     "label": "トンネル",
     "geometry": "line",
     "point_facts": [],
-    "tile_kind": "road_surface",
-    "display_axes": [
-      {
-        "key": "tunnel",
-        "label": "",
-        "property": "tunnel",
-        "categories": [
-          {
-            "key": "tunnel",
-            "label": "トンネル",
-            "values": [
-              true
-            ],
-            "description": "トンネルの中を通る区間[OSM の tunnel タグ]。",
-            "color": "#8e729e"
-          }
-        ],
-        "missing_semantics": "definite"
-      }
-    ]
+    "tile_kind": null,
+    "point_thinning": null,
+    "point_name_property": null,
+    "display_axes": []
   },
   {
     "attr_id": "oneway",
     "label": "一方通行",
     "geometry": "line",
     "point_facts": [],
-    "tile_kind": "road_surface",
-    "display_axes": [
-      {
-        "key": "oneway",
-        "label": "",
-        "property": "oneway",
-        "categories": [
-          {
-            "key": "oneway",
-            "label": "一方通行",
-            "values": [
-              true
-            ],
-            "description": "一方向にしか進めない道。環状交差点も含み、自転車だけ両方向に通れる道は含まない[OSM の oneway・oneway:bicycle・junction タグ]。",
-            "color": "#a66e5b"
-          }
-        ],
-        "missing_semantics": "definite"
-      }
-    ]
+    "tile_kind": null,
+    "point_thinning": null,
+    "point_name_property": null,
+    "display_axes": []
   },
   {
     "attr_id": "elevation",
@@ -301,6 +106,8 @@ export const primaryAttributes = [
     "geometry": "area",
     "point_facts": [],
     "tile_kind": null,
+    "point_thinning": null,
+    "point_name_property": null,
     "display_axes": []
   },
   {
@@ -309,6 +116,8 @@ export const primaryAttributes = [
     "geometry": "point",
     "point_facts": [],
     "tile_kind": "poi",
+    "point_thinning": null,
+    "point_name_property": null,
     "display_axes": [
       {
         "key": "kind",
@@ -321,7 +130,7 @@ export const primaryAttributes = [
             "values": [
               "traffic_signals"
             ],
-            "description": "信号機。信号付きの横断歩道もここに入る[OSM の highway=traffic_signals など]。",
+            "description": "信号機。信号付きの横断歩道もここに入る[OSM の highway=traffic_signals・crossing]。",
             "color": "#885270"
           },
           {
@@ -395,6 +204,8 @@ export const primaryAttributes = [
       }
     ],
     "tile_kind": "accident",
+    "point_thinning": null,
+    "point_name_property": null,
     "display_axes": [
       {
         "key": "party",
@@ -433,7 +244,7 @@ export const primaryAttributes = [
             "values": [
               true
             ],
-            "description": "死者が1人以上記録された事故[警察庁の交通事故統計の死者数]。",
+            "description": "死者が1人以上記録された事故[事故後24時間以内の死者。警察庁の交通事故統計の死者数]。",
             "radius_px": 6
           },
           {
@@ -456,6 +267,8 @@ export const primaryAttributes = [
     "geometry": "point",
     "point_facts": [],
     "tile_kind": null,
+    "point_thinning": null,
+    "point_name_property": null,
     "display_axes": []
   },
   {
@@ -464,6 +277,8 @@ export const primaryAttributes = [
     "geometry": "area",
     "point_facts": [],
     "tile_kind": null,
+    "point_thinning": null,
+    "point_name_property": null,
     "display_axes": []
   },
   {
@@ -472,6 +287,8 @@ export const primaryAttributes = [
     "geometry": "point",
     "point_facts": [],
     "tile_kind": "poi",
+    "point_thinning": null,
+    "point_name_property": "name",
     "display_axes": [
       {
         "key": "kind",
@@ -484,7 +301,7 @@ export const primaryAttributes = [
             "values": [
               "convenience"
             ],
-            "description": "コンビニエンスストア[OSM の shop=convenience]。",
+            "description": "コンビニのチェーンの店[Overture Maps の地点のコンビニの分類のうち、チェーンの名前に当たるもの]。",
             "glyph": "bag",
             "color": "#7d89ba"
           },
@@ -537,6 +354,95 @@ export const primaryAttributes = [
             "description": "自転車を止められる所[OSM の amenity=bicycle_parking]。",
             "glyph": "parking",
             "color": "#3b97ad"
+          }
+        ],
+        "missing_semantics": null
+      }
+    ]
+  },
+  {
+    "attr_id": "stop_place",
+    "label": "立ち寄り先",
+    "geometry": "point",
+    "point_facts": [],
+    "tile_kind": "stop_place",
+    "point_thinning": {
+      "rows": [
+        "temple_shrine",
+        "bath",
+        "bicycle",
+        "lodging",
+        "scenic",
+        "eat_drink"
+      ],
+      "ratio_property": "confidence"
+    },
+    "point_name_property": "name",
+    "display_axes": [
+      {
+        "key": "group",
+        "label": "",
+        "property": "group",
+        "categories": [
+          {
+            "key": "eat_drink",
+            "label": "飲食店",
+            "values": [
+              "eat_drink"
+            ],
+            "description": "飲食店・カフェ・酒場[Overture Maps の地点の飲食の分類]。",
+            "glyph": "cup",
+            "color": "#9f7439"
+          },
+          {
+            "key": "bath",
+            "label": "銭湯・温泉",
+            "values": [
+              "bath"
+            ],
+            "description": "銭湯・温泉・サウナ[Overture Maps の地点の分類]。",
+            "glyph": "steam",
+            "color": "#59884a"
+          },
+          {
+            "key": "bicycle",
+            "label": "自転車",
+            "values": [
+              "bicycle"
+            ],
+            "description": "自転車の店・修理・貸し自転車[Overture Maps の地点の分類]。",
+            "glyph": "wrench",
+            "color": "#018b89"
+          },
+          {
+            "key": "scenic",
+            "label": "景色・名所",
+            "values": [
+              "scenic"
+            ],
+            "description": "公園・庭園・湖・滝・山・浜・城・展望台・博物館の類[Overture Maps の地点の分類]。",
+            "glyph": "mountain",
+            "color": "#0984ba"
+          },
+          {
+            "key": "lodging",
+            "label": "宿",
+            "values": [
+              "lodging"
+            ],
+            "description": "ホテル・旅館・民宿・キャンプ場の類[Overture Maps の地点の分類]。",
+            "glyph": "bed",
+            "color": "#956cad"
+          },
+          {
+            "key": "temple_shrine",
+            "label": "寺社",
+            "values": [
+              "temple_shrine"
+            ],
+            "description": "国の指定・登録の文化財の建造物を持つ寺社[文化遺産オンライン]。",
+            "glyph": "gate",
+            "color": "#bd606c"
           }
         ],
         "missing_semantics": null

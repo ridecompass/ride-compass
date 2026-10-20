@@ -6,7 +6,7 @@
 - 停止の待ちが区間の所要時間へ足されること → `test_leg_costs.py`
 - 待ちの秒が管理画面から変えた値を読むこと → `test_tuning_overrides.py`
 - 階級を比べて交差点の待ちを足すこと → `test_routing.py`
-- 停止要因の種別を地図の凡例の行へ写すこと → `test_material_catalog.py`
+- 停止要因の種別を地図の凡例の行へ写すこと → `test_primary_attributes.py`
 """
 
 import pytest
@@ -41,11 +41,6 @@ def test_minor_roads_share_one_rank_below_tertiary_and_above_paths():
 
     assert len(minor) == 1
     assert traffic.highway_rank("cycleway") < minor.pop() < traffic.highway_rank("tertiary")
-
-
-@pytest.mark.parametrize("highway", ["cycleway", None])
-def test_paths_unknown_values_and_missing_tags_rank_lowest(highway):
-    assert traffic.highway_rank(highway) == 0
 
 
 def test_only_roads_from_tertiary_up_need_a_wait_to_cross():

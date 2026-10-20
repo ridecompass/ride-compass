@@ -13,7 +13,7 @@
 | Frontendスタイリング | Tailwind CSS + Radix UI + `frontend/src/components/ui/`（CSS Modulesは使わない） | 使い分け基準・Design Token・意図的に作らないものは[frontend-design-system.md](../modules/frontend/frontend-design-system.md) |
 | Frontendのデータ取得 | TanStack Query（`@tanstack/react-query`） | 取得の共有・取り直し・状態の骨格。MIT（依存の`@tanstack/query-core`も同じ）で、商用で使える。対応するReactは18・19（パッケージの`peerDependencies`）。使い方は[page-composition.md](../modules/frontend/page-composition.md)「データ取得の骨格」 |
 | FrontendのAPIの呼び出し | openapi-fetch（`openapi-typescript`の生成物からパス・問い合わせ・本文・応答の型を推論する） | MIT（依存の`openapi-typescript-helpers`も同じ）で、商用で使える。版の制約は下記。使い方は[page-composition.md](../modules/frontend/page-composition.md) |
-| Frontendアイコン | lucide-react（汎用の形）＋自前のSVG（このアプリ固有の概念の形） | 振り分けと線の太さのそろえ方は`frontend/src/components/ui/icons/icons.tsx`。lucideはISC（一部のアイコンはFeather由来でMIT）で、商用で使える |
+| Frontendアイコン | lucide-react（汎用の形）＋自前のSVG（このアプリ固有の概念の形） | 振り分けと線の太さのそろえ方は`frontend/src/components/ui/icons/icons.tsx`（土台と自前の形）・`frontend/src/components/ui/icons/lucideIcons.tsx`（lucideの包み）。lucideはISC（一部のアイコンはFeather由来でMIT）で、商用で使える |
 | Backend | Python + FastAPI | バージョンの正本は`backend/requirements.txt` |
 | DB | PostgreSQL + PostGIS | 生データ層・派生層・MVT生成（`ST_AsMVT`）の唯一の系統。**取込範囲外は「データ未整備」として扱い、外部APIへのフォールバックを持たない**。ルート生成には`DATABASE_URL`への実接続が必須 |
 | ルーティング | 自前のRoad Graph単一構成 | 外部ルーティングAPIへの依存は無い。[route-generation.md](route-generation.md) |
@@ -22,7 +22,8 @@
 | 天候（実測）・防災 | 気象庁の公開API（アメダス・警報・ナウキャスト・キキクル・洪水予報）・環境省WBGT | 予報と統合しない。数値予報モデルの出力は公式発表の代わりにならない |
 | 標高 | 国土地理院DEMタイル（APIキー不要、日本国内限定） | 評価の材料（勾配）は取込バッチだけが叩き、**ルート生成・評価が実行時に取りに行く経路は無い**。地図の地形の表示は、backendが実行時に取りに行って中継し、ディスクに持つ |
 | 土地被覆 | Esri × Impact Observatory の10m LULC（GeoTIFF） | リポジトリに持たず、デプロイがVMへ取得して読み取り専用でマウントする |
-| 管理データの退避先 | Oracle Cloud Object Storage（非公開のバケット） | 本番VMのtimerが取り直せない管理データを置き、バケットのライフサイクルの規則が古いものを消す。仕組みと登録の手順は[deployment-sync.md](../conventions/deployment-sync.md)付録「管理データのバックアップ」 |
+| 立ち寄り先の地点 | Overture Maps の places（GeoParquet）を DuckDB（MIT）で取込の範囲だけ切り出す | 取得と取込のバッチだけが使う（`backend/requirements-batch.txt`）。利用条件と版の入れ替えは[data-sources.md](data-sources.md) |
+| 本番DBの退避先 | Oracle Cloud Object Storage（非公開のバケット） | 本番VMのtimerがDBの全体の書き出しを置き、前の1個を消す（無料の枠に1個だけ入る）。仕組みと登録の手順は[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)付録「DBのバックアップ」 |
 | タスクの流れのゲート | Cloudflare Workers（`tools/flow-gate/wrangler.toml`。Webhookを受けるWorkerと、Cloudflare Accessで守る回答フォームのWorker） | アプリの外の運用の道具で、本番の利用者の経路に無い。公開するトークンは下の「秘密の値とトークン」、決まりは[flow.md](../conventions/flow.md) |
 
 ## 地図タイルプロバイダ
@@ -41,7 +42,7 @@
 （`isStyleLoaded()`が`true`にならない）。
 
 そこで**Workerの実体を`public/`から配り、`setWorkerUrl`でそこを指す**。複製は
-`frontend/scripts/copy-maplibre-worker.mjs`が`predev`/`prebuild`で`node_modules`から行い、
+`frontend/scripts/copy-maplibre-worker.mjs`が`predev`/`prebuild`/`prebuild:e2e`で`node_modules`から行い、
 リポジトリには置かない。Workerはsharedチャンクを**自分のURLからの相対**でimportするため、
 2本を同じディレクトリへ置く。代償は**sharedチャンクを二重に配る**こと（バンドル内と
 静的配信で1本ずつ）。
@@ -66,8 +67,33 @@
 上流の報告は[openapi-ts/openapi-typescript#2632](https://github.com/openapi-ts/openapi-typescript/issues/2632)で、
 直す変更（#2673・#2842）は2026-09-27時点で取り込まれていない。0.16.0は同じ変換を持たず、実行時の実装は
 0.17.0と同じ（差は長さ0の応答の判定だけ）。`package.json`の`^0.16.0`は0.x系のキャレットなので0.17へは上がらない。
-**上げるときは、上げた先でタプルを含む応答（例: `/api/admin/material-catalog/{material_id}/distribution`の`bins`）の
+**上げるときは、上げた先でタプルを含む応答（例: `/api/admin/axis-definitions/preview-distribution`の`bins`）の
 推論した型がタプルのままかを`tsc --noEmit`で確かめる。**
+
+## DependabotのPull Requestは、同じ版を取り込んだタスクが閉じる
+
+Dependabotは、masterが同じ版になってもPull Requestを閉じないことがあり、閉じる条件は公式の文書に無い。依存の版上げを
+取り込むタスクは、同じ版を出しているDependabotのPull Requestをissueの本文に番号で名指し、完了の条件に
+「dependabot の #<番号> が閉じている」を書く（判定役は、issueが名指したDependabotのPull Requestだけを担当が閉じてよいものと
+読む。`.github/claude-task/settings.json`の`autoMode`）。閉じるのは実装担当で、マージのあとの残りとして済ませる:
+`gh pr view <番号> -R ridecompass/ride-compass --json state`が`OPEN`なら
+`gh pr close <番号> -R ridecompass/ride-compass --comment "<取り込んだ Pull Request> で同じ版を取り込んだ"`で閉じる。
+
+## 走行モードが頼るブラウザの制約
+
+走行モード（画面の作りは[page-composition.md](../modules/frontend/page-composition.md)「走行モード」）は、自転車に固定した
+スマホのブラウザで、画面を点けたまま使う前提で作る。前提を決めているのは次のブラウザの決まり。
+
+- **位置は見えている文書にだけ届く**: `watchPosition`は、文書が見えていない間の位置の変化を届けず、見えたあとも溜めておいた分を
+  届けない（[W3C Geolocation](https://www.w3.org/TR/geolocation/)「Request a position」）。画面が消えると走った道のりが途切れる。
+- **画面を点けたままにする頼み（Screen Wake Lock）は、文書が隠れると外れる**: 隠れた文書は頼めず、見えたときに頼み直す必要がある
+  （[W3C Screen Wake Lock](https://www.w3.org/TR/screen-wake-lock/)「Handling document loss of visibility」）。
+- **向きを読む許しは、利用者の操作の中でしか求められない**: `DeviceOrientationEvent.requestPermission()`は、許しがまだ決まって
+  いない間は利用者の操作の中で呼ばないと断られる（[W3C Device Orientation](https://www.w3.org/TR/orientation-event/)
+  「requestPermission()」）。この口を持つのはiPhoneのSafariで、ほかのブラウザは許しを求めずに向きを届ける。
+- **裏に回したタブは捨てられることがある**: スマホのブラウザはメモリが足りないと、裏のタブを捨て、戻ったときに読み込み直す
+  （Chromeは[Page Lifecycle API](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)の`discarded`）。画面の中の
+  状態だけに持った値は消えるので、走行中のルートは端末へ一時保存する。
 
 ## Windows: `uvicorn --reload`の多重プロセス
 
@@ -83,25 +109,27 @@ Windowsでは`uvicorn --reload`がリローダー親プロセスとワーカー�
 
 ## 本番の宛先（frontendのオリジンからbackendへ届くのは一部だけ）
 
+**本番の宛先は、リポジトリの根の`production-origins.json`だけが持つ。** ワークフロー（像のビルド・デプロイ・デプロイのあとの
+確かめ）と道具（例: `axis_apply.py`）はそこから読む。値を書くしかない所（下の表・担当の設定の説明の文等）は、
+`backend/tests/structure/test_single_owner_values.py`が持ち主と照らし、違えば全部の Pull Request の CI
+（`ci.yml`の`doc-reading-tests`）が落ちる。宛先が変わったら、このファイルと照らしで落ちた所を同じ Pull Request で直す。マージすると、
+`ci.yml: changes`がこのファイルの変更をbackendとfrontendの両方の変更に数えるので、frontendの像が新しい宛先で作られて出て、
+backendのデプロイがCORSの許可へ新しいfrontendの宛先を足す。
+
 | | 宛先 | 中身 |
 |---|---|---|
 | frontend | `https://ride-compass-frontend.onrender.com` | Render。backendのCORSの許可に無ければ、`deploy-backend.yml`がデプロイのたびに足す |
 | backend | `https://193-123-166-150.sslip.io` | Oracle Cloud VM。VMのnginxがTLS（certbot）を終端し、`127.0.0.1:8000`のコンテナへ渡す。名前はVMの公開IPをsslip.ioで引けるようにしたもので、**IPが変わると宛先も変わる** |
 
-**画面がbackendを呼ぶ宛先はリポジトリに無い。** ブラウザからのAPIは`NEXT_PUBLIC_API_URL`、タイルは
-`NEXT_PUBLIC_TILE_BASE_URL`（[static-map-layers.md](../modules/frontend/static-map-layers.md)）で、どちらも
-Renderのダッシュボードの環境変数にあり、ビルドのときにJSへ埋め込まれる。
+**画面がbackendを呼ぶ宛先は、像のビルドのときに埋め込まれる。** ブラウザからのAPIは`NEXT_PUBLIC_API_URL`、タイルは
+`NEXT_PUBLIC_TILE_BASE_URL`（[static-map-layers.md](../modules/frontend/static-map-layers.md)）、rewritesと管理画面の転送の先は
+`BACKEND_INTERNAL_URL`で、`frontend/scripts/image.mjs`が3つともbackendの宛先にして像のビルドへ渡す（撮影の道具も同じ組を使う）。
 
 **frontendのオリジンからbackendへ届くのは、`frontend/next.config.ts`のrewritesにあるタイル類と、管理画面の
 転送（`/admin/api/…`→backendの`/api/admin/…`、Basic認証をサーバー側で付ける）だけ。** それ以外のAPI
-（例: `/api/axis-catalog`・`/api/region/dynamic-way-values/…`・`/health`）をfrontendのオリジンへ投げると、
+（例: `/api/axis-catalog`・`/api/region/way-materials/…`・`/health`）をfrontendのオリジンへ投げると、
 Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で叩くとき・道具から引くときは、backendの
-宛先へ直接投げる。frontend自身の口（`/api/version`）はfrontendのオリジンにだけある。
-
-**手元の道具は、backendの宛先を`backend/.env.oracle.local`の`BACKEND_ORIGIN`から読む**（読み方は
-`backend/scripts/_prod_env.py`。例: `axis_apply.py`）。道具のコードに宛先を書き込まない——IPが変わったとき、
-道具の側で直すのが各自の`BACKEND_ORIGIN`だけで済むようにするため。振り出しの見回りは、同じ値をコードのリポジトリの
-Actionsの変数`BACKEND_ORIGIN`から読む（宛先が変わったらここも書き換える）。
+宛先へ直接投げる。frontend自身の口（`/api/version`）はfrontendのオリジンにだけある。開発機で画面を本番のデータで開くときだけ、APIも`/prod/…`で本番のbackendへ転送する（[setup.md](setup.md)「開発機の画面を本番のデータで開く」）。
 
 ## デプロイの反映確認（backend/frontendで注入元が異なる）
 
@@ -110,7 +138,7 @@ Actionsの変数`BACKEND_ORIGIN`から読む（宛先が変わったらここも
 
 | | 稼働先 | `commit`の注入元 |
 |---|---|---|
-| frontend | Render | `RENDER_GIT_COMMIT`（Renderが自動で入れる。設定不要） |
+| frontend | Render | `deploy-frontend.yml`が像のビルドへコミットを渡し、像の`GIT_COMMIT`に入れる（`frontend/Dockerfile`） |
 | backend | Oracle Cloud VM | デプロイワークフローがVM上で`git rev-parse HEAD`を実行し、`GIT_COMMIT`として`docker run`へ渡す |
 
 ローカル開発ではどちらの環境変数も無いため`null`になる。`started_at`（プロセス起動時刻、
@@ -118,13 +146,13 @@ Actionsの変数`BACKEND_ORIGIN`から読む（宛先が変わったらここも
 デプロイの目安にもなる——`commit`が変わっていなくても、再起動自体が起きたかを確認できる。
 
 確認は`GET /health`（backend）と`GET /api/version`（frontend）の`commit`を、手元の
-`git rev-parse HEAD`と突き合わせる。
+`git rev-parse HEAD`と突き合わせる。frontendの版は、画面のメニューの「バージョン表示」でも見られる（`commit`の頭8文字）。
 
 **backendのデプロイは、masterのCIが通ったコミットを、本番プロセスに届く変更があるときだけ
-出す。** `ci.yml`の`deploy-backend`が、masterへのpushでbackend・api-contract・frontend・e2e・e2e-scanの
-ジョブが通ったときだけ`deploy-backend.yml`を呼ぶ——どれかが赤ならデプロイは起動しない（flow-gate・文書の検査は待たない）。呼ばれた側は、本番で
+出す。** `ci.yml`の`deploy-backend`が、masterへのpushで`ci-ok`（このワークフローの検査の全部の結論）が
+通ったときだけ`deploy-backend.yml`を呼ぶ——どれかが赤ならデプロイは起動しない。呼ばれた側は、本番で
 動いているコミット（コンテナの`GIT_COMMIT`）からCIを通ったコミットまでの差分を
-`scripts/deploy_backend_gate.py`で見て、出すかを決める。
+`backend/scripts/deploy_gate.py`で見て、出すかを決める。
 
 - **差分の起点は直前のpushではなく、本番で動いているコミット。** CIが赤で出せなかった変更は、
   次にCIを通ったコミットの差分にそのまま含まれて出る（直前のpushとの差分では、テストだけを
@@ -139,9 +167,11 @@ Actionsの変数`BACKEND_ORIGIN`から読む（宛先が変わったらここも
   上限に届くのは起動が止まったときに限る。起動が遅くなる変更を入れたら、ログの秒数を見て上限を決め直す。
 - **入れ替えたあと、本番のスキーマと出したコードのORMの宣言の差を測る**（同じイメージで`scripts/schema_gap.py`）。
   差が1件でもあればジョブを失敗させ、差の行をログに出す。積み上げ式のmigrationは持たず、差は人が本番で埋める。
-  埋めるのは、新しいコードが書く列なら出す前、古いコードが読む列を消す・新しいコードが宣言した表を作るなら出した後で、
+  埋めるのは、新しいコードが書く・読む表や列なら出す前（.claude/rules/deployment-sync.md「コミットと同時に揃えるもの」）、
+  古いコードが読む列を消す・新しいコードが宣言しただけで読まない表を作るなら出した後で、
   **測るのは入れ替えの後、出すのは止めない**——前で止めると、出した後に埋める差がデプロイを止めて埋められなくなる。
   赤のまま次のデプロイも出る（判定は本番のコミットからの差分で、前の実行の成否を見ない）ので、差を埋めるまで毎回赤になる。
+  下の「本番でルートを作る確かめ」とは別の段にし、互いの失敗で飛ばさない（差が続く間も確かめは回る）。
 - **探索のJIT（numba）のコンパイル結果はイメージの組み立てで焼く**（`backend/Dockerfile`の`compile_search_kernels`）。
   焼かないと、コンパイル結果の置き場がコンテナの書き込み層のためコンテナの入れ替えで消え、デプロイ後の最初のルート
   生成がコンパイルを払う（本番の都心40kmで初回11.9秒・2回目5.1秒、差の大半がコンパイル）。
@@ -153,9 +183,11 @@ Actionsの変数`BACKEND_ORIGIN`から読む（宛先が変わったらここも
 - **CIを待つぶん、反映はpushからCIの所要だけ遅れる。** 急ぎの修正でも待つ。待たずに出す手段は
   `deploy-backend.yml`の手動起動（`workflow_dispatch`）で、選んだrefの先端を判定なしで出す。
 
-振り分けの一覧（`deploy_backend_gate.py: DEPLOY_PATHS`と`deploy_backend_gate.py: NOT_DEPLOYED`。gitのpathspecとして
+振り分けの一覧（`deploy_gate.py: DEPLOY_PATHS`と`deploy_gate.py: NOT_DEPLOYED`。gitのpathspecとして
 `git diff --name-only`に当てさせる）は`backend/**`から、イメージに入らないもの（テスト・lint設定等）と、イメージには入るが本番
-プロセスが読まないもの（`export_openapi.py`とそれだけが読む表示値の宣言）を外している。
+プロセスが読まないもの（`export_openapi.py`とそれだけが読む表示値の宣言）を外している。`backend/ops/`（VMのホストで動く
+systemdのユニットとシェル）はイメージに入らないが外さない——デプロイがVMの作業コピーをそのコミットへ揃えて
+`systemctl daemon-reload`を打つことでだけ届く。
 表示値の変更は生成物（`frontend/src/types/generated/`）を経由してfrontendのデプロイで
 画面へ届くため、backendのコンテナを入れ替える理由にならない。**外したモジュールを本番側が
 importすると、その変更だけが本番へ届かなくなる**（エラーにならず古い値で動き続ける）。
@@ -163,25 +195,24 @@ importすると、その変更だけが本番へ届かなくなる**（エラー
 導いてこれを検査する。
 
 **frontend（Render）のデプロイも、masterのCIが通ったコミットを出す。** `ci.yml`の`deploy-frontend`が、
-`deploy-backend`と同じ条件で`deploy-frontend.yml`を呼び、呼ばれた側がRenderのデプロイフックへそのコミットを
-`ref`で渡す（Render公式の[Deploy Hooks](https://render.com/docs/deploy-hooks)。フックのURLはリポジトリの秘密
-`RENDER_FRONTEND_DEPLOY_HOOK_URL`）。
+`deploy-backend`と同じ条件で`deploy-frontend.yml`を呼ぶ。像は同じCIの実行の`frontend-image`が`frontend/Dockerfile`で本番と同じ引数で
+作り、e2eと全状態の走査がその中のアプリを試し、GitHubのコンテナの置き場（`ghcr.io/<リポジトリの持ち主>/ride-compass-frontend:<コミット>`）へ
+置いたもの——**本番に出る中身は、CIが試した中身と同じ**。呼ばれた側は作り直さず、Renderのデプロイフックへその像を`imgURL`で渡す（Render公式の[Deploy Hooks](https://render.com/docs/deploy-hooks)。
+フックのURLはリポジトリの秘密`RENDER_FRONTEND_DEPLOY_HOOK_URL`）。
 
-- **Renderの自動デプロイは Off にしてある**（ダッシュボードのサービスの Settings → Auto-Deploy）。「After CI
-  Checks Pass」は連携したブランチの**最新のコミットだけ**を、そのコミットのチェックが全部終わってから出す
-  （Render公式の[Deploys](https://render.com/docs/deploys)。待つチェックは選べない）。Claudeの担当や見回りは
-  `workflow_dispatch`で動き、起こした時点のmasterの先頭にチェックを付けて長く動くので、それらが動き続ける間は
-  何も出ない。フックで`ref`を渡して出すと、Renderはそのサービスの自動デプロイを Off にする（同じ文書の
-  「Deploying a specific commit」）。
+- **Renderではビルドしない。** Renderのサービスは、GitHubのリポジトリではなく上の像から出す形にしてある（ダッシュボードの
+  サービスの Settings → Source）。Renderのワークスペースのビルドの時間は無料のプランで月500分で、使い切るとその月の残りは
+  ビルドを止める（Render公式の[Build pipeline](https://render.com/docs/build-pipeline)）。公開のリポジトリのGitHub Actionsは
+  無料なので、ビルドはActionsでする。フックの`imgURL`は、タグ以外がサービスに設定した像のURLと同じでないと断られる
+  （同じDeploy Hooksの文書）ので、リポジトリの持ち主が変わったらサービスの像のURLも直す。
 - **出すかは本番の`/api/version`の`commit`で決める。** CIを通ったコミットが本番のコミットか、その祖先なら出さない
-  （後から終わった古いCIの実行）。本番のコミットが読めない・履歴に無いときは出す。backendと違い変更のパスでは
-  振り分けない——重い検査が走ったmasterのコミットは全部出す（文書だけの変更は`ci.yml`の`changes`が重い検査ごと
-  飛ばすので、デプロイも起動しない）。
+  （後から終わった古いCIの実行）。本番のコミットが読めない・履歴に無いときは出す。この見分けはbackendと同じ道具
+  （`backend/scripts/deploy_gate.py`の`--any-change`）が持つ。このワークフローは変更のパスでは振り分けず、`ci.yml`が`frontend/`の変更があるときだけ呼ぶ（下の「CIの実行枠」）。
 - **出したあと、本番の`/api/version`がそのコミットになるまで待つ。** Renderは最後に頼まれたデプロイを出す
   （同じ文書の「Handling overlapping deploys」）ので、待たずに次へ進むと古いコミットが新しいコミットを上書きしうる。
-  判定・フック・待ちは1つのジョブで1本ずつ走る。上限（30分）までに変わらなければジョブを落とす——Renderのビルドか
-  起動が失敗している（ダッシュボードの Events に出る）。変わるまでの秒数は毎回ジョブのログに出る。
-- 待たずに出す手段は`deploy-frontend.yml`の手動起動（`workflow_dispatch`）で、選んだrefの先端を判定なしで出す。
+  判定・ビルド・フック・待ちは1つのジョブで1本ずつ走る。上限（30分）までに変わらなければジョブを落とす——Renderの
+  像の取得か起動が失敗している（ダッシュボードの Events に出る）。変わるまでの秒数は毎回ジョブのログに出る。
+- 待たずに出す手段は`deploy-frontend.yml`の手動起動（`workflow_dispatch`）で、選んだrefの先端から像を作り、判定なしで出す。
 
 **タイルプロパティを削除する変更はデプロイ順序に制約がある。** backendとfrontendは別
 サービスとして独立にデプロイされ、反映タイミングは同期しない。プロパティの**追加**は
@@ -189,6 +220,28 @@ importすると、その変更だけが本番へ届かなくなる**（エラー
 backendが先に配信すると、そのプロパティの有無を見ている旧フロントの凡例フィルタが
 全地物に一致し、対象レイヤーが一時的に「不明」表示になる。frontendを先に（または
 同時に）デプロイする。
+
+## 本番でルートを作る確かめ
+
+**本番のbackendで、利用者と同じ操作（ルートを作ってレンズを替える）が壊れていないかを外から見る。** CIの層は
+どれもこの組を本物の応答で通さない（e2eは応答がモックで、`frontend/e2e-live/`はCIに載らず、担当が変更のときに手で回すだけ）。
+`backend/scripts/prod_route_check.py`が、軸カタログを1回読み、画面の既定の条件・backendの既定の重みで生成を1回頼み、
+終わるまで結果を聞く。候補が0件か、カタログのどれかの軸について、候補1のどの区間もその軸のレンズが塗る値
+（軸カタログの`map_paint.value`が指す欄）を持たなければ失敗にする。区間ごとの値の有無は実データで変わるので、
+全区間が欠けたときだけ落とす。本番には書き込まない。
+
+- **回すのは2か所。** `deploy-backend.yml`が出したあと（出さなかった実行・入れ替えの段で落ちた実行では回さない。
+  スキーマの差の段の成否には左右されない）と、
+  `prod-route-check.yml`が毎日1回。本番の値はデプロイを伴わずにも変わる（派生データの作り直し・取込・軸スタジオでの
+  軸の変更・外部の観測の取込の止まり）ので、デプロイのあとだけでは次のデプロイまで気づけない。どちらも落ちたら
+  GitHub Actionsの失敗の知らせが届き、出したものは戻さない。決まった時刻の起動（`schedule`）は、GitHubが混むと遅れ、
+  ひどく混むと取りこぼされ、publicのリポジトリに60日動きが無いと止められる（公式の「Events that trigger workflows」の
+  `schedule`）。
+- **上限**: 生成を待つのは`backend/scripts/prod_route_check.py: GENERATION_LIMIT_SECONDS`（120）秒までで、超えたら失敗にする。段には`timeout-minutes`の3分を置く。
+  2026-10-10に本番で同じ条件を測った値は、デプロイで再起動した直後の1回目が生成36.6秒（結果を聞いた回数21）、2回目以降が
+  約4秒で、上限は再起動の直後の約3倍。デプロイのあとの確かめはいつも再起動の直後の形になる。
+- **利用者への影響**: 本番は生成を同時に決まった本数までしか受けないので、確かめの生成が走っている間（約4秒、再起動の直後は
+  約40秒）に利用者の生成が重なると、上限を超えた分が混み合いとして断られる。
 
 ## CIの実行枠（リポジトリがpublicである間の前提）
 
@@ -201,28 +254,75 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
 
 この前提の上で、CIは次のように組んである。
 
-- どの出来事でCIが走るかはdocs/conventions/testing.md「検査の置き場（手元・作業ブランチのCI・masterのCI）」が持つ。
+- どの出来事でCIが走るかは.claude/skills/run-checks/SKILL.md「検査の置き場（手元・作業ブランチのCI・masterのCI）」が持つ。
   作業ブランチへのpushで走らせないのは、検査はPull Requestの実行で済み、誰も待たないpushの実行で枠を使わないため。
   backendの本番へのデプロイは、masterへの
   pushでCIが通ったときだけ`ci.yml`から呼ばれる（上の「デプロイの反映確認」）。
-- 同じブランチへの新しいpushで古い実行を打ち切らない。打ち切ると、そのコミットのCIの結論が残らない。
-- ジョブの分け方・キャッシュ・文書や運用の道具だけの変更で重い検査を飛ばす範囲（`ci.yml: changes`ジョブの
-  `case`）は、所要時間と同時実行の枠で決める（理由は各ワークフローのコメント）。
+- `ci.yml`は、同じref（master・Pull Requestごと）の実行を1本ずつ動かし、待ちは一番新しい1件だけにする（`concurrency`）。
+  後のコミットは前の変更を全部含み、古いコミットの実行はデプロイにもマージの判断にも使わないため。Pull Requestは
+  新しいpushで走っている実行も打ち切り、masterは走っている実行を最後まで走らせる（デプロイが同じ実行の中で走るので、
+  途中で切らない）。打ち切った・待ちから外した実行のコミットにはCIの結論が残らないので、結論は最新のコミットで読む
+  （.claude/skills/run-checks/SKILL.md「CIの結論を読む」）。ゲートの公開（`deploy-gate`）も同じ実行の中で走るので、masterの
+  前の実行が終わるまで待つ。
+- ジョブの分け方・キャッシュは、所要時間と同時実行の枠で決める（理由は各ワークフローのコメント）。
+- **`ci.yml`は検査を2段に並べ、落ちた版の残りを走らせない。** 軽い検査（静的検査・単体のテスト・像の確かめ）を段1で
+  並べて走らせ、重い検査（e2e・全状態の走査）は段1のどれも落ちず・取り消されずに終わったときだけ始める。段に分けたぶん通る版の
+  待ちは延び、延びる幅は段1の一番長いジョブで決まるので、段1のジョブの持ち時間（`timeout-minutes`）を待ちの予算として詰めてある
+  （決め方は`ci.yml`の先頭）。段1の検査が予算を超えて延びたら持ち時間で切られ、上げるか・速くするか・段2へ移すかをその変更で決める。
+  重い検査のジョブを細かく割って待ちを縮めることはしない——待ちを決めているのは、検査の所要より同時に動くジョブの数の上限で、
+  ジョブごとに用意（containerの用意・`npm ci`）を払う本数を増やすと、取り合いのときの待ちが延びる。
+- **どのジョブを走らせるかは、変わった置き場で決める。** 置き場（`backend/`・`frontend/`・`scripts/`）はどれも自分のテストを自分の中に
+  持ち、`ci.yml: changes`は変わったファイルの頭からどの置き場が変わったかだけを見て（本番の宛先の`production-origins.json`は、
+  両方の像が読むのでbackendとfrontendの両方に数える）、その置き場の検査（backendならテスト・api-contract・
+  像の確かめ、frontendならテスト・e2e・全状態の走査・api-contract・像の確かめ、`scripts/`なら道具のテスト）とデプロイを走らせる。
+  それ以外の変更（文書・タスク管理・ほかのワークフロー）では、置き場に依らないジョブ（文書の整合・ゲートの検査等）だけを走らせる。`ci.yml`と`.github/actions/`を変えたら、
+  定義が変わったジョブ（使う`.github/actions/`の手順が変わったジョブと、それらが出力を読むジョブを含む）だけを足して走らせ、ほかのジョブは
+  置き場で決める。手順の変わっていないジョブのテストを回しても定義の確かめにはならず、ジョブどうしのつながりはいつも走る`doc-reading-tests`の
+  ワークフローを読むテストが見る。ジョブの外（`on`・`concurrency`等）が変わったときは、全部を走らせる。
+  YAMLとして読んだ中身で比べ、コメントだけの変更は定義の変更に数えない（`run`のシェルの中のコメントは中身なので数える）。置き場をまたいで読むものは数えず、テストを読む側の置き場へ置く（backendのための道具は`backend/scripts/`）。
+  走らせるジョブの組は`changes`の段だけが持ち、ジョブの`if`と`ci-ok`が読む。
+- **masterのpushの`changes`は、pushの実行が成功した一番近い祖先と比べる。** 直前のコミット
+  （`github.event.before`）と比べると、直前の実行が失敗で終わったか待ちのまま取り消された（上の`concurrency`）とき、その変更が
+  検査もデプロイもされないまま、次の文書だけの変更の実行がそれを飛ばして成功で終わる。デプロイだけが落ちた実行のあとは、
+  確かめ済みのテストも走り直すが、余分に走るだけで抜けはしない。
+- **masterのpushは、取り込んだPull RequestのCIが同じ中身を検査済みなら、検査を回し直さない。** Pull RequestのCIは先頭へ
+  その時のmasterを合わせた版を検査するので、比べる相手が親（親の実行が成功している）で、先頭が親を含み、先頭とマージのコミットの
+  木が同じで、その先頭のCIが成功していれば、同じ中身を検査済みとみなし、frontendの像・デプロイ・ゲートの公開と、
+  いつも走るジョブ（下の`docs-consistency`等）だけを走らせる。CIの定義を変えたときと、確かめられないときは、置き場のとおり回す。
+- **Pull Requestの`changes`は、検査するマージのコミットの基の側の親と比べる。** `pull_request`の出来事の`base.sha`は
+  Pull Requestへpushしたあとに基の先端が進んでも新しくならず、そのまま比べるとその間に基へ入った変更が差に混ざる
+  （`.github/actions/pr-base`）。
+- **タスク管理は製品のCIと分ける。** タスク管理の置き場（`.github/taskflow-paths`。ゲートの`tools/flow-gate/`と
+  担当のワークフロー）の検査とゲートの公開は`ci.yml`の`flow-gate`・`deploy-gate`が持ち、置き場に依らずいつも走る。
+  `ci.yml: changes`はその置き場だけの変更で製品のジョブを走らせず、backend・frontendのデプロイも起動しない。
+  置き場の定義は、総量の計測（`scripts/review_checks.py: TASKFLOW_PREFIXES`）が読む。
 - **ワークフローは`paths`で飛ばさず、いつも起こす。** コードのリポジトリは、master へ入れる前に必須チェック
-  （`ci.yml`の`ci-ok`と`docs-consistency.yml`のジョブ）が通ることを求める。ワークフローごと飛ばすと必須チェックが Pending のまま残り、
-  Pull Request がマージできない（公式の「Troubleshooting required status checks」）。重い検査を飛ばすのは
+  （`ci.yml`の`ci-ok`。このワークフローの検査の全部の結論）が通ることを求める。ワークフローごと飛ばすと必須チェックが Pending のまま残り、
+  Pull Request がマージできない（公式の「Troubleshooting required status checks」）。ジョブを飛ばすのは
   `changes`ジョブが決め、ジョブの`if`で飛ばしたものはスキップとして必須チェックを通る。
-- **飛ばす範囲は、その検査が読む対象から導く。** 飛ばしてよいのは、`ci.yml`のどの検査も読まないパスだけ。
-  文書を読むテストを足したら、読む範囲がディレクトリに限られるなら`changes`の`case`でそこを先に当てて入れ直し、
-  全ての文書を読むなら常に走る`docs-consistency.yml`でも走らせる。飛ばす運用の道具（`scripts/`の一部）を
-  テストやデプロイが読むようにしたら、`case`からその行を外す。飛ばす道具の静的検査は`docs-consistency.yml`が
-  常に走らせる。
+- **文書の整合は、置き場に依らずいつも走るジョブに置く。** 文書の整合の検査（`scripts/review_checks.py docs`）は
+  文書だけの変更こそが対象なので、`changes`の決める組に入れず、常に走る`ci.yml`の`docs-consistency`に置く。
+  全ての文書とワークフローを読むテスト（`doc-reading-tests`）と、backendの外のPythonとshの静的検査（`repo-wide`）も同じく常に走らせる。
+- **1つの持ち主（タスクの issue・master）が同時に動かせるジョブは、レーンの数までにする。** 同時に動くジョブの上限は
+  組織全体で1つで、GitHub の標準の道具には持ち主ごとの取り分が無い（`strategy.max-parallel` は1回の実行の中だけ、
+  `concurrency` は同じ group を1本ずつにするだけ）。そこで、ランナーを取るジョブはどれも、ジョブの `concurrency` の group を
+  「<鍵>-lane-<レーン>」にし、`queue: max` で待たせる。group はワークフローをまたいでリポジトリで1つなので、同じ鍵のジョブは
+  レーンの数より多くは動かず、多い分は取り消されずに順に待つ。持ち主の数×レーンの数が組織の上限を超えた分は、ふつうの順番待ちになる。
+  - 鍵は、Pull Request なら元のブランチ（タスクの作業ブランチ `orch/tasks-<番号>`）、push・定時・手の起こしなら ref の名前。
+    担当（`claude-task.yml`）と変異テストの全部の測り（`mutation.yml`）は、起こすときの入力の issue から作業ブランチの名を組む。
+    本番へ出す・公開するジョブは、どの ref から起こしても行き先が1つなので、鍵を master に決めてある。
+  - レーンは決め打ちで、ジョブごと（matrix なら行ごと）にどのレーンかを書く。式に余りの演算が無く、空いたレーンを取り合う形は
+    書けない。担当は持ち時間いっぱいまで動くので、レーン0を担当だけに与え、ほかのジョブはレーン1以降に置く（同じレーンに置くと、
+    担当が終わるまで待つ）。同じ実行の中で並んで始まるジョブは別のレーンへ、長いジョブ（変異テストの全部の測り）は始まりの
+    短いジョブとだけ同じレーンへ置き、Pull Request の CI の通しの長さを延ばさない。
+  - レーンの数と、どのジョブもレーンを持つことは `backend/tests/structure/test_workflow_lanes.py: LANES` のテストが持ち、
+    ワークフローを足す・ジョブを足すときに書き漏れると落ちる。
 
 **privateにしたら、この節の前提が崩れる。** 公式の同じページによれば、Freeプランのprivate
 リポジトリは標準ランナーで月2,000分までで、支払い方法が未登録なら使い切った時点で実行が止まる
 （登録済みなら超過分が課金される）。privateへ切り替えるときは、切り替えの前に次を見直す:
 Pull RequestごとにCIを走らせるか、古い実行を打ち切るか（`concurrency`）、文書・運用の道具
-だけの変更で重い検査を飛ばす範囲（`ci.yml: changes`）、ジョブの分け方とキャッシュ。検査の門を
+だけの変更でジョブを飛ばす範囲（`ci.yml: changes`）、ジョブの分け方とキャッシュ。検査の門を
 CIだけに置いているため、CIの分数が尽きると検査そのものが止まる。
 
 ## 秘密の値とトークン
@@ -234,14 +334,16 @@ CIだけに置いているため、CIの分数が尽きると検査そのもの�
 
 | 入れた場所 | 名前 | 中身（作った人・Resource owner・届く範囲・権限・期限） | 使う所 |
 |---|---|---|---|
-| hidakagit/ride-compassのActionsの秘密の値 | `CODE_TOKEN` | hidakagitが作ったfine-grained `ride-compass-actions`。Resource ownerはhidakagitで、届くのはhidakagit/ride-compassだけ。Actions・Contents・Issues・Pull requests・Variablesは読み書き、Commit statusesは読むだけ。期限は未記録 | `claude-task.yml`（checkout・Claudeの連携・ghの既定）・`claude-dispatch.yml`（盤面を読み担当を起こす・次の見回りを起こす） |
-| 同 | `FLOW_BOT_TOKEN` | hidakagit-botが作ったfine-grained。届くのはridecompass/ride-compass-tasksだけ。Contentsは読み書き（担当の手番の記録をリリースへ置く）。期限2027-09-29 | 担当と流れの道具が置き場へ書く・ゲートの公開のあと`refresh.js`。開発機ではユーザー環境変数の同じ名前 |
+| ridecompass/ride-compassのActionsの秘密の値 | `CODE_TOKEN` | hidakagitが作ったfine-grained。Resource ownerはridecompassで、届くのはridecompass/ride-compassだけ。Actions・Contents・Issues・Pull requests・Variables・Workflowsは読み書き（Workflowsは2026-10-09に足した。担当が`.github/workflows/`を自分でpushする）、Commit statusesは読むだけ。期限は未記録 | `claude-task.yml`（checkout・Claudeの連携・ghの既定） |
+| 同 | `FLOW_BOT_TOKEN` | hidakagit-botが作ったfine-grained。届くのはridecompass/ride-compass-tasksだけ。Contentsは読み書き（担当の手番の記録をリリースへ置く）。期限2027-09-29 | 担当と流れの道具が置き場へ書く。開発機ではユーザー環境変数の同じ名前 |
 | 同 | `CLAUDE_CODE_OAUTH_TOKEN` | Claudeの契約のトークン（GitHubのトークンではない） | `claude-task.yml` |
-| 同 | `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID` | Cloudflare | ゲートと回答フォームの公開（`ci.yml`） |
+| 同 | `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID` | Cloudflare | ゲートと回答フォームの公開（`ci.yml`の`deploy-gate`） |
+| 同 | `MAPILLARY_TOKEN` | hidakagitがMapillaryの開発者の画面で登録したアプリのClient Token（読むだけ。GitHubのトークンではない）。期限は未記録 | `claude-task.yml`（担当の環境変数。Mapillaryの街灯の点の付き方の測定） |
 | 同 | `ORACLE_VM_HOST`・`ORACLE_VM_SSH_KEY` | 本番のVM | backendのデプロイ |
 | 同 | `RENDER_FRONTEND_DEPLOY_HOOK_URL` | Render | frontendのデプロイ |
 | ゲートのWorker（`ridecompass-gate`） | `APP_ID`・`APP_KEY`・`WEBHOOK_SECRET` | GitHub Appの鍵とWebhookの秘密 | ゲート |
 | 回答フォームのWorker（`ride-compass-answer`） | `APP_ID`・`APP_KEY`・`FORM_TOKEN` | `FORM_TOKEN`はhidakagitが作ったfine-grained `ridecompass-answer-form-2`。Resource ownerはridecompassで、届くのはridecompass/ride-compass-tasksだけ。期限2027-09-29 | 回答フォームの答えをhidakagitの名義で書く |
+| Renderのワークスペースの資格（Container Registry Credentials） | `ghcr-read` | hidakagitが作ったclassic `render-ghcr-read`。`read:packages`だけ（GitHubのコンテナの置き場はclassicのトークンだけを受ける）。期限なし | Renderの`ride-compass-frontend`が、非公開のfrontendのコンテナイメージを取る（サービスの Settings → Image の Credential） |
 
 ## DBの版（本番が正本）
 
@@ -272,7 +374,7 @@ CIと`docker-compose.yml`も上げる。** CIが本番と違う版で合否を�
   サービスコンテナにできず、ランナーへ直接入れている。GitHubの標準ランナーのarm64は、
   リポジトリがpublicである間は無料（下の「CIの実行枠」）。
 - CIは`backend/Dockerfile`のイメージの中ではなく、ランナーのPython（`setup-python`）で
-  テストする。Pythonの依存はwheelが自前のライブラリ（GEOS・PROJ等）を同梱するため本番と
+  テストする。版はそのイメージの`FROM`から取る（`.github/actions/python/action.yml`）。Pythonの依存はwheelが自前のライブラリ（GEOS・PROJ等）を同梱するため本番と
   同じものになるが、**wheelに同梱されないOSのライブラリ**（例: rasterioが要る`libexpat`）の
   差はCIでは見えない。それは`deploy-backend.yml`がコンテナを入れ替える前の
   `import app.main`で止まる。
@@ -305,7 +407,7 @@ Execution Time: 1605.6 ms      （jit=off なら 678.6 ms）
 ## 本番Redisの設定
 
 Redisは「TTL付きキャッシュ、または実データ源へのフォールバックが必ず効くcache-aside」
-専用の層で、**正本データを持たない**（方針は[caching.md](../conventions/caching.md)）。
+専用の層で、**正本データを持たない**（方針は[caching.md](../../.claude/rules/caching.md)）。
 本番はOracle Cloud VMへネイティブに導入する（backendコンテナが`--network=host`のため
 追加設定なしで到達できる）。ローカル開発は`docker-compose.yml`のredisサービス。
 

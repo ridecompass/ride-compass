@@ -50,22 +50,11 @@
   --color-surface-2: #f3f4f2;
   --color-accent-strong: #1d4ed8;
 
-  /* 地図チップの最上位グループを見分ける色。ON状態の青（--color-accent）・展開見出しの地味色
-   * （--color-neutral）と別の意味で使うので、それらと被らない色相にする。OFF状態の枠線に使う。 */
+  /* 「表示」の一覧で、群（道路・環境・スポット）の見出しを見分ける色。ONのチェックの青（--color-accent）と
+   * 別の意味で使うので、それと被らない色相にする。 */
   --color-group-road: #0d9488;
   --color-group-environment: #b45309;
   --color-group-spot: #db2777;
-  /* ON状態の塗りつぶし背景。グループの色と同じ値にし、ダークモードでは明るく差し替えたOFF用の色へ
-   * そろえる（別の値にすると、同じグループの見出しとメンバーで色相がずれて見える）。 */
-  --color-group-road-on: #0d9488;
-  --color-group-environment-on: #b45309;
-  --color-group-spot-on: #db2777;
-  /* -onの背景に乗せる文字色。ダークモードは背景が明るい色になるので黒系へ切り替える。 */
-  --color-group-on-text: #ffffff;
-  /* グループの見出しチップを展開している間の薄い背景。文字と枠線は同じグループの濃い色を乗せる。 */
-  --color-group-road-bg: #ccfbf1;
-  --color-group-environment-bg: #fef3c7;
-  --color-group-spot-bg: #fce7f3;
 
   --shadow-float: 0 1px 4px rgba(0, 0, 0, 0.3);
 
@@ -84,8 +73,6 @@
 
   /* モバイルの下部タブバーの高さ。下部シートはこの高さぶん上に置き、タブバーの上に乗せる。 */
   --mobile-tabbar-height: 3.5rem;
-  /* 下部シートが占める高さ（page.tsxが地図ペインへ実値を与える。閉じている間は0）。 */
-  --mobile-sheet-height: 0px;
 
   /* 重なり順の共通スケール。**画面全体で重なり合う層はここにあるものだけ**——部品ごとに素の数値を
    * 持つと、新しい層がどれより上か下かを確かめる手立てが無くなる（Radix Portalでbody直下へ出る
@@ -100,19 +87,20 @@
   --z-top-popover: 60;
   --z-usage-guide: 70;
 
-  /* MapLibre自身のコントロール（ズーム+/−・回転）の実寸。アプリが地図右上へ足す
-   * ボタンは、テーマトークンではなくこの値へ揃えることで「MapLibreのボタン列の続き」
-   * として見える（components/ui/ButtonのmapCtrl）。 */
+  /* 地図の右上の列のボタン（components/ui/ButtonのmapCtrl）の実寸。拡大・縮小と方位磁針も、その下に積むボタンも
+   * これに揃えて1本の列に見せる。 */
   --map-ctrl-button-size: 29px;
   --map-ctrl-margin: 10px;
   --map-ctrl-stack-gap: 4px;
-  /* 右上の列（MapLibreのズーム+/−・回転と、その下に積むアプリのボタン）の共通の幅。
+  /* 右上の列（拡大・縮小と方位磁針と、その下に積むボタン）の共通の幅。
    * 値を中に出すボタン（走行条件）が「9/24」「20km/h」を収められる幅にそろえる。 */
   --map-ctrl-column-width: 40px;
   --map-ctrl-icon-size: 18px;
-  /* アプリのボタンを積み始める位置。MapLibreのNavigationControlは既定で3ボタン
-   * （ズーム+・ズーム−・回転）を1まとまりに縦へ並べるため、その下端から同じ間隔で続ける。 */
+  /* 走行条件のボタンを積み始める位置。拡大・縮小・方位磁針の3つを1まとまりに縦へ並べた
+   * （features/map/MapNavigationControl/MapNavigationControl.tsx）下端から、同じ間隔で続ける。走行モードの間は、
+   * 拡大・縮小の代わりの倍率のボタンと方位磁針の2つの下端から続ける。 */
   --map-ctrl-stack-top: calc(var(--map-ctrl-margin) + 3 * var(--map-ctrl-button-size) + var(--map-ctrl-stack-gap));
+  --map-ctrl-ride-stack-top: calc(var(--map-ctrl-margin) + 2 * var(--map-ctrl-button-size) + var(--map-ctrl-stack-gap));
 
   /* スマホ幅かどうか。**幅の分岐を書けるのはメディアクエリだけ**なので、
    * この判定はCSSが持ち、JS（hooks/useIsMobile.ts）はこの旗を読むだけにする。
@@ -147,14 +135,6 @@
     --color-group-road: #2dd4bf;
     --color-group-environment: #fbbf24;
     --color-group-spot: #f472b6;
-    --color-group-road-bg: #0f2e2b;
-    --color-group-environment-bg: #3a2a0f;
-    --color-group-spot-bg: #3a1329;
-    /* ON状態の背景は明るく差し替えたOFF用の色へそろえ、その上の文字は黒系にする。 */
-    --color-group-road-on: var(--color-group-road);
-    --color-group-environment-on: var(--color-group-environment);
-    --color-group-spot-on: var(--color-group-spot);
-    --color-group-on-text: #171717;
   }
 }
 
@@ -259,8 +239,9 @@
 
 .app-sidebar {
   /* デスクトップ専用（スマホ幅は下部タブバー＋下部シート）。ルート結果が「左に候補一覧・右に
-     その中身」の2列になるので、狭くすると右の中身が1語ずつ折り返す。 */
-  width: 380px;
+     その中身」の2列になるので、狭くすると右の中身が1語ずつ折り返す。「ルート設定」の見出しの行（題・タブ・
+     操作）も1行に収まる幅が要り、狭くすると題が折れて操作が縁を越える。 */
+  width: 400px;
   flex-shrink: 0;
   overflow-y: auto;
   border-right: 1px solid var(--color-border);
@@ -335,10 +316,10 @@
   /* 全<button>へ一律に44pxを掛けない（部品が意図して持つ大きさを詳細度で潰す）。44pxが要る主要な導線は、
      その部品自身が持つ（docs/modules/frontend/frontend-design-system.md 8節）。 */
 
-  /* 下部シートの中のチェックボックスは1.4rem角にする（ラベルを含む行全体がタップ領域になる。下の
-     labelの規則）。余白と最小の高さはCheckbox自身が持つので、ここは大きさだけを持つ。 */
+  /* 下部シートの中のチェックボックスは見た目の四角を1.4rem角にする（ラベルを含む行全体がタップ領域になる。下の
+     labelの規則）。押す所の大きさ・余白と最小の高さはCheckbox自身が持つので、ここは中の四角の大きさだけを持つ。 */
   .app-bottom-sheet input[type="checkbox"],
-  .app-bottom-sheet [role="checkbox"] {
+  .app-bottom-sheet [role="checkbox"] > span {
     width: 1.4rem;
     height: 1.4rem;
   }
@@ -366,13 +347,7 @@
   }
 }
 
-/* 右上のMapLibre純正コントロール（ズーム+/−・回転）を、その下に積むアプリのボタンと同じ幅に
-   そろえて1本の列にする（高さはMapLibreのまま）。 */
-.app-map-pane .maplibregl-ctrl-top-right .maplibregl-ctrl-group button {
-  width: var(--map-ctrl-column-width);
-}
-
-/* MapView.tsxがattributionControlを常時コンパクト（ⓘアイコン）固定にしているため、
+/* features/map/baseMap.tsがattributionControlを常時コンパクト（ⓘアイコン）固定にしているため、
    既定の白背景円もアプリの他の浮動UI（現在地ボタン等）と揃うよう馴染ませる。
    アイコン自体（.maplibregl-ctrl-attrib-buttonの背景画像）は地図の上に乗るため
    常に視認できる白系のまま変えず、外側の背景色と影だけをトークンに合わせる
@@ -382,12 +357,6 @@
   background-color: var(--color-surface);
   color: var(--foreground);
   box-shadow: var(--shadow-float);
-}
-
-/* 展開した出典は地図の下端の操作（元に戻すボタンの列・現在地ボタン）と重なる。出典は読めることが利用条件なので、
-   展開している間だけ操作系より前に出す（ⓘで畳めば操作系が戻る）。 */
-.app-map-pane .maplibregl-ctrl-bottom-right:has(.maplibregl-compact-show) {
-  z-index: var(--z-map-popup);
 }
 
 .app-map-pane .maplibregl-ctrl-attrib a {

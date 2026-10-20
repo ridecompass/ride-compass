@@ -1,12 +1,13 @@
 """ルート生成を公開の入口から確かめるテストが共有する、小さな道路網とその渡し口。
 
-3×3の格子（1辺約1km）を`RoadNetwork`で組み、プロセス境界（DB・道路網の置き場・天気の予報ファイル）だけを代役にして、
+3×3の格子（1辺約1km。長さの要るテストには大きな格子・任意の道と地点の道路網も）を`RoadNetwork`で組み、プロセス境界（DB・道路網の置き場・天気の予報ファイル）だけを代役にして、
 本物の`GraphService`・エンジンの組み立て（`services/route_generation_setup.py: assemble_route_generation_setup`）・戦略層を通す。
 
 使う側: `test_route_generation_behavior.py`（戦略層の入口）・`test_routes_generate.py`（HTTPの入口）・
-`test_routing.py`（生成の経路がPythonから呼ぶJIT）。
+`test_routing.py`（生成の経路がPythonから呼ぶJIT）・`test_route_generator.py`（経由地の無い周回の指定だけ）。
 """
 
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import replace
 
@@ -15,19 +16,25 @@ import numpy as np
 from app.services.route_generation_setup import assemble_route_generation_setup
 from app.domain.geo import bearing_between, haversine_distance_km
 from app.domain.graph import node_key
-from app.domain.hard_filters import hard_filter_columns
-from app.domain.cycling_speed import ROLLING_RESISTANCE_MATERIAL_ID
 from app.domain.material_catalog import GRADIENT_PERCENT
-from app.domain.road import UNKNOWN_ROAD_SURFACE
+from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.traffic import stop_count_material_ids
+from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
+from app.domain.route_points import RoutePointHit
 from app.domain.route_preference import RoutePreference
+from app.domain.route_request import FixedPoints, RequestedConditions
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
 from app.services.graph_service import GraphService
 from app.services.weather_service import WeatherService
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
+
+#: 道の区分の条件と0次ハードフィルタが読む事実の列。
+HIGHWAY, TUNNEL = "highway", "has_tunnel"
+#: 経由地も目的地も置かない周回の指定。
+NO_POINTS = FixedPoints(waypoints=[], destination=None)
 
 AVOID_AXIS = "avoid"
 BAD_MATERIAL = "m_bad"
@@ -57,61 +64,119 @@ def _coordinates(osm_node_id: int) -> tuple[float, float]:
 
 
 def grid_network(
-    *, bad_ways=(), unknown_ways=(), oneway_ways=(), motorway_ways=(), island=False, no_gradient_ways=(), no_stop_count_ways=()
+    *, bad_ways=(), oneway_ways=(), motorway_ways=(), island=False, no_gradient_ways=(),
+    stop_density_of=None, gradient_of=None, elevation_of=None, tunnel_ways=(), landcover_of=None,
 ) -> RoadNetwork:
-    """3×3の格子。`bad_ways`は避けたい材料が1（それ以外は0）、`unknown_ways`はその材料のデータが無い、
-    `oneway_ways`は始点→終点だけ走れる、`motorway_ways`は高速道路。`island`で格子とつながらない道を足す。
-    勾配はどの道も平ら（0%）で、`no_gradient_ways`だけ値が無い。停止要因（信号・一時停止等）はどの道にも無い（0件）で、`no_stop_count_ways`だけ件数の値が無い。
-    路面はどの道も、路面のタグの無い一般の道（取込んだ道の大半がこれ）。"""
+    """3×3の格子。`island`で格子とつながらない道を足す。ほかの引数は`road_network`と同じ。"""
     ways = dict(WAYS)
     if island:
         ways[ISLAND_WAY] = tuple(ISLAND_NODES)
+    return road_network(
+        ways, {**COORDINATES, **ISLAND_NODES}, bad_ways=bad_ways, oneway_ways=oneway_ways,
+        motorway_ways=motorway_ways, no_gradient_ways=no_gradient_ways,
+        stop_density_of=stop_density_of, gradient_of=gradient_of, elevation_of=elevation_of, tunnel_ways=tunnel_ways,
+        landcover_of=landcover_of,
+    )
+
+
+def lattice_node(row: int, col: int) -> int:
+    """`lattice_network`の格子のノード（行, 列）→ osm_node_id。行は南から北、列は西から東。"""
+    return 1000 + row * 100 + col
+
+
+def lattice_ways(size: int) -> dict[int, tuple[int, int]]:
+    """`size`×`size`の格子の道（1本1区間、道→(始点, 終点)）。横の道は西→東、縦の道は南→北。"""
+    ways: dict[int, tuple[int, int]] = {}
+    for row in range(size):
+        for col in range(size):
+            if col + 1 < size:
+                ways[len(ways) + 1] = (lattice_node(row, col), lattice_node(row, col + 1))
+            if row + 1 < size:
+                ways[len(ways) + 1] = (lattice_node(row, col), lattice_node(row + 1, col))
+    return ways
+
+
+def lattice_network(size: int, **attributes) -> RoadNetwork:
+    """`size`×`size`の格子（1辺約1km、道は`lattice_ways`）。3×3では足りない長さ（経由地を通る周回等）を見るときに使う。
+    `attributes`は`road_network`の道の性質（既定はどの道も平らで、避けたい材料を持たない）。"""
+    coordinates = {
+        lattice_node(row, col): (BASE_LAT + row * LAT_STEP, BASE_LON + col * LON_STEP)
+        for row in range(size) for col in range(size)
+    }
+    return road_network(lattice_ways(size), coordinates, **attributes)
+
+
+def road_network(
+    ways: dict[int, tuple[int, int]], coordinates: dict[int, tuple[float, float]],
+    *, bad_ways=(), bad_forward_ways=(), oneway_ways=(), motorway_ways=(), no_gradient_ways=(),
+    stop_density_of=None, gradient_of=None, elevation_of=None, tunnel_ways=(), landcover_of=None,
+) -> RoadNetwork:
+    """道（1本1区間、道→(始点, 終点)）とノードの地点（osm_node_id→(緯度, 経度)）から道路網を組む。
+
+    `bad_ways`は避けたい材料が1（それ以外は0）、`bad_forward_ways`は始点→終点の向きだけ避けたい材料が1、
+    `oneway_ways`は始点→終点だけ走れる。
+    勾配はどの道も平ら（0%）で、`gradient_of`（道→始点から終点へ登る%）の道だけその勾配（逆向きは下り）を持ち、`no_gradient_ways`だけ値が無い。停止要因（信号・一時停止等）はどの道にも無い（0件）。
+    `stop_density_of`（道→1kmあたりの回数）の道だけ、どの種類の停止要因もその密度で持つ。
+    標高はどの道にも無く、`elevation_of`（道→(始点, 終点)の標高m）の道だけ持つ（獲得・損失は両端の差）。
+    道路の種類（`HIGHWAY`）はどの道も生活道路（residential）で、`motorway_ways`だけ高速道路。トンネル（`TUNNEL`）は`tunnel_ways`だけ。
+    ほかのタグの事実は無く、区分（`tests/road_class_fixture.py`で入れる）はこの2つの事実から決まる。
+    土地被覆の割合はどの道にも無く、`landcover_of`（道→割合の材料のid→%）の道だけ持つ。"""
     node_ids = np.array(sorted({osm for pair in ways.values() for osm in pair}), dtype=np.int64)
     rows: list[tuple[int, bool, int, int]] = []
     for way, (start, end) in sorted(ways.items()):
         rows.append((way, True, start, end))
         if way not in oneway_ways:
             rows.append((way, False, end, start))
-    lat = np.array([_coordinates(i)[0] for i in node_ids])
-    lon = np.array([_coordinates(i)[1] for i in node_ids])
+    lat = np.array([coordinates[int(i)][0] for i in node_ids])
+    lon = np.array([coordinates[int(i)][1] for i in node_ids])
     row_of = {int(osm): i for i, osm in enumerate(node_ids)}
     tail = np.array([row_of[a] for _w, _f, a, _b in rows], dtype=np.int32)
     head = np.array([row_of[b] for _w, _f, _a, b in rows], dtype=np.int32)
     n = len(rows)
-    ways = np.array([w for w, _f, _a, _b in rows], dtype=np.int64)
+    way_of_row = np.array([w for w, _f, _a, _b in rows], dtype=np.int64)
+    forward = np.array([f for _w, f, _a, _b in rows])
     points = [(Coordinates(latitude=lat[a], longitude=lon[a]), Coordinates(latitude=lat[b], longitude=lon[b]))
               for a, b in zip(tail, head, strict=True)]
-    hard_filter_ids = hard_filter_columns()
-    flags = np.zeros((n, len(hard_filter_ids)), dtype=bool)
-    if "motorway" in hard_filter_ids:
-        flags[:, hard_filter_ids.index("motorway")] = np.isin(ways, list(motorway_ways))
-    nan = np.full(n, np.nan)
-    bad = np.isin(ways, list(bad_ways)).astype(float)
-    bad[np.isin(ways, list(unknown_ways))] = np.nan
-    gradient = np.where(np.isin(ways, list(no_gradient_ways)), np.nan, 0.0)
-    stop_count = np.where(np.isin(ways, list(no_stop_count_ways)), np.nan, 0.0)
+    bad = (np.isin(way_of_row, list(bad_ways)) | (np.isin(way_of_row, list(bad_forward_ways)) & forward)).astype(float)
+    gradient = np.where(np.isin(way_of_row, list(no_gradient_ways)), np.nan, 0.0)
+    for way, percent in (gradient_of or {}).items():
+        gradient[way_of_row == way] = np.where(forward[way_of_row == way], percent, -percent)
+    stop_count = np.zeros(n)
+    for way, density in (stop_density_of or {}).items():
+        stop_count[way_of_row == way] = density
+    start_elevation = np.full(n, np.nan)
+    end_elevation = np.full(n, np.nan)
+    for way, (start_m, end_m) in (elevation_of or {}).items():
+        start_elevation[way_of_row == way] = np.where(forward[way_of_row == way], start_m, end_m)
+        end_elevation[way_of_row == way] = np.where(forward[way_of_row == way], end_m, start_m)
+    climb = end_elevation - start_elevation
     return RoadNetwork(
         revision=1,
         node_osm_id=node_ids, node_lat=lat, node_lon=lon,
         node_has_signals=np.zeros(len(node_ids), dtype=bool), node_max_rank=np.zeros(len(node_ids), dtype=np.int64),
-        edge_way_id=ways, edge_segment=np.zeros(n, dtype=np.int32),
-        edge_forward=np.array([f for _w, f, _a, _b in rows]),
+        edge_way_id=way_of_row, edge_segment=np.zeros(n, dtype=np.int32),
+        edge_forward=forward,
         edge_from=tail, edge_to=head,
-        edge_highway=np.ones(n, dtype=np.int16), highway_vocab=(None, "residential"),
+        edge_highway=np.zeros(n, dtype=np.int16), highway_vocab=("residential",),
         edge_min_lon=np.minimum(lon[tail], lon[head]), edge_min_lat=np.minimum(lat[tail], lat[head]),
         edge_max_lon=np.maximum(lon[tail], lon[head]), edge_max_lat=np.maximum(lat[tail], lat[head]),
-        numeric_ids=(BAD_MATERIAL, GRADIENT_PERCENT, *stop_count_material_ids()),
-        numeric_values=np.column_stack([bad, gradient, *(stop_count for _ in stop_count_material_ids())]),
-        boolean_ids=(), boolean_values=np.zeros((n, 0), dtype=bool),
-        categorical_ids=(ROLLING_RESISTANCE_MATERIAL_ID,), categorical_codes=np.ones((n, 1), dtype=np.int16),
-        categorical_vocab=((None, UNKNOWN_ROAD_SURFACE.key),),
-        hard_filter_ids=hard_filter_ids, hard_filter_flags=flags,
+        edge_start_bearing_deg=np.full(n, np.nan), edge_end_bearing_deg=np.full(n, np.nan),
+        numeric_ids=(BAD_MATERIAL, GRADIENT_PERCENT, *stop_count_material_ids(), TUNNEL,
+                     *(c.percent_field for c in LANDCOVER_CLASSES)),
+        numeric_values=np.column_stack([
+            bad, gradient, *(stop_count for _ in stop_count_material_ids()),
+            np.isin(way_of_row, list(tunnel_ways)).astype(float),
+            *(np.array([(landcover_of or {}).get(int(way), {}).get(c.percent_field, np.nan) for way in way_of_row])
+              for c in LANDCOVER_CLASSES),
+        ]),
+        categorical_ids=(HIGHWAY,),
+        categorical_codes=np.where(np.isin(way_of_row, list(motorway_ways)), 2, 1).astype(np.int16)[:, None],
+        categorical_vocab=((None, "residential", "motorway"),),
         distance_m=np.array([haversine_distance_km(a, b) * 1000 for a, b in points]),
         bearing_deg=np.array([bearing_between(a, b) for a, b in points]),
         mid_lat=(lat[tail] + lat[head]) / 2, mid_lon=(lon[tail] + lon[head]) / 2,
-        elevation_present=np.zeros(n, dtype=bool),
-        elevation_start_m=nan, elevation_end_m=nan, elevation_gain_m=nan, elevation_loss_m=nan,
-        elevation_max_grade=nan, elevation_min_grade=nan,
+        start_elevation_m=start_elevation, end_elevation_m=end_elevation,
+        elevation_gain_m=np.maximum(climb, 0.0), elevation_loss_m=np.maximum(-climb, 0.0),
     )
 
 
@@ -119,13 +184,16 @@ def grid_network(
 
 
 class NetworkRepository:
-    """DBの代役。道路網はどこでも取込範囲の中で、区間の形は両端のノードを結ぶ直線。"""
+    """DBの代役。道路網はどこでも取込範囲の中で、区間の形は両端のノードを結ぶ直線。近くの点は`side_points`
+    （区間の(way, segment)ごとの当たり。無ければどの区間にも無い）。"""
 
-    def __init__(self, network: RoadNetwork):
+    def __init__(self, network: RoadNetwork,
+                 side_points: dict[tuple[int, int], list[RoutePointHit]] | None = None):
         self._coordinates = {
             node_key(int(osm)): [float(lat), float(lon)]
             for osm, lat, lon in zip(network.node_osm_id, network.node_lat, network.node_lon, strict=True)
         }
+        self._side_points = side_points or {}
 
     async def is_covered(self, bbox):
         return True
@@ -136,6 +204,10 @@ class NetworkRepository:
             for edge in edges
         }
 
+    async def get_route_side_points(self, edges):
+        keys = {(edge.osm_way_id, edge.segment_index) for edge in edges}
+        return {key: hits for key, hits in self._side_points.items() if key in keys}
+
 
 class Weather:
     """天気の代役。出発時点の風は無く、時別の風の予報は`series`（Noneなら無し）を返す。雨の観測は本物の
@@ -145,7 +217,7 @@ class Weather:
         self._series = series
         self._rain = WeatherService()
 
-    async def get_conditions(self, origin):
+    async def get_departure_wind(self, origin):
         return None
 
     async def get_wind_forecast_lattice(self, bbox):
@@ -155,14 +227,27 @@ class Weather:
         return await self._rain.get_station_rain_materials(now)
 
 
-def engine_for(monkeypatch, network: RoadNetwork, avoid_weight: float, wind: WindForecastSeries | None):
-    """道路網を全体の配列として読ませ、本物の`GraphService`とエンジンを組む。"""
-    monkeypatch.setattr(road_network_store, "current", lambda: network)
+def serve_road_network(monkeypatch, current: Callable[[], RoadNetwork]) -> None:
+    """道路網全体の配列を置き場から読まず、`current`が返すものとして読ませる（`road_network_store.current`の差し替え）。"""
+    monkeypatch.setattr(road_network_store, "current", current)
+
+
+def generator_for(
+    monkeypatch, network: RoadNetwork, avoid_weight: float, wind: WindForecastSeries | None,
+    max_average_grade_percent: float | None = None,
+    side_points: dict[tuple[int, int], list[RoutePointHit]] | None = None,
+    *, assumed_speed_kmh: float = 20.0, road_avoidance: dict[str, AvoidanceLevel] | None = None,
+):
+    """道路網を全体の配列として読ませ、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""
+    serve_road_network(monkeypatch, lambda: network)
     return assemble_route_generation_setup(
-        GraphService(NetworkRepository(network)), Weather(wind),
-        preference_override=RoutePreference(weights={AVOID_AXIS: avoid_weight}),
-        penalty_strength=1.0, assumed_speed_kmh=20.0,
-    ).engine
+        GraphService(NetworkRepository(network, side_points)), Weather(wind),
+        RequestedConditions(
+            preference_override=RoutePreference(weights={AVOID_AXIS: avoid_weight}),
+            penalty_strength=1.0, max_average_grade_percent=max_average_grade_percent,
+            road_avoidance=road_avoidance or {}, assumed_speed_kmh=assumed_speed_kmh,
+        ),
+    ).generator
 
 
 @contextmanager
@@ -175,6 +260,12 @@ def avoid_axis_declared():
 def at(osm_node_id: int) -> Coordinates:
     lat, lon = _coordinates(osm_node_id)
     return Coordinates(latitude=lat, longitude=lon)
+
+
+def node_point(network: RoadNetwork, osm_node_id: int) -> Coordinates:
+    """道路網`network`のノードの地点（`grid_network`以外の道路網の`at`）。"""
+    (row,) = np.flatnonzero(network.node_osm_id == osm_node_id)
+    return Coordinates(latitude=float(network.node_lat[row]), longitude=float(network.node_lon[row]))
 
 
 def ways_of(candidate) -> list[int]:

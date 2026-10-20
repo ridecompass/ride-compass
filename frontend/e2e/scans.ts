@@ -51,7 +51,9 @@ interface AXNode {
 
 /**
  * 観点1（配置の検査）: ページが横にスクロールしないこと、操作できる部品が画面の横幅からはみ出さないこと、
- * 操作できる部品の中心点（押す点）が祖先に切り取られていないこと。
+ * 操作できる部品の中心点（押す点）が祖先に切り取られていないこと、操作できる部品の箱が24px四方以上であること
+ * （WCAG 2.2 達成基準 2.5.8 Target Size (Minimum)。https://www.w3.org/TR/WCAG22/#target-size-minimum の例外のうち、
+ * 見るのを外すのはブラウザが描く部品（User agent control）だけで、間隔で補う形（Spacing）等は使わない）。
  * 部品はブラウザが計算したロール（アクセシビリティツリー）で決める。部品が横スクロールする容器（祖先の計算後の
  * `overflow-x`が`auto`・`scroll`。縦にスクロールする容器も計算後は`auto`になる）の中にあれば、容器を
  * スクロールすれば届くので、部品の代わりに最も近いその容器が画面の横幅に収まるかを見る（件数は`viaContainer`）。
@@ -101,11 +103,10 @@ export async function scanLayout(
         if (!el) return null;
         const box = el.getBoundingClientRect();
         if (box.width === 0 || box.height === 0 || !el.checkVisibility({ visibilityProperty: true })) return null;
-        const describe = (e, b) => {
-          const name = e.getAttribute("aria-label") ?? (e.textContent ?? "").trim().slice(0, 20);
-          return e.tagName.toLowerCase() + ' "' + name + '"' + " が画面の横からはみ出す（" +
-            Math.round(b.left) + "〜" + Math.round(b.right) + "px）";
-        };
+        const label = (e) =>
+          e.tagName.toLowerCase() + ' "' + (e.getAttribute("aria-label") ?? (e.textContent ?? "").trim().slice(0, 20)) + '"';
+        const describe = (e, b) =>
+          label(e) + " が画面の横からはみ出す（" + Math.round(b.left) + "〜" + Math.round(b.right) + "px）";
         const fits = (b) => b.left >= -1 && b.right <= window.innerWidth + 1;
         const scrolls = (v) => v === "auto" || v === "scroll";
         const clips = (v) => v === "hidden" || v === "clip";
@@ -127,8 +128,7 @@ export async function scanLayout(
           const outX = !reachX && clips(style.overflowX) && (cx < outer.left || cx > outer.right);
           const outY = !reachY && clips(style.overflowY) && (cy < outer.top || cy > outer.bottom);
           if (!clipped && (outX || outY)) {
-            const name = el.getAttribute("aria-label") ?? (el.textContent ?? "").trim().slice(0, 20);
-            clipped = el.tagName.toLowerCase() + ' "' + name + '" の押す点（' + Math.round(cx) + "," +
+            clipped = label(el) + " の押す点（" + Math.round(cx) + "," +
               Math.round(cy) + "）が祖先 " + p.tagName.toLowerCase() + "（" + Math.round(outer.left) + "〜" +
               Math.round(outer.right) + " × " + Math.round(outer.top) + "〜" + Math.round(outer.bottom) +
               "px）に切り取られて押せない";
@@ -139,11 +139,21 @@ export async function scanLayout(
           }
           if (scrolls(style.overflowY)) reachY = true;
         }
+        // 入力欄の中の欄・▼の印のように、ブラウザが入力欄の内側に描く部品は大きさを作り手が決めないので見ない
+        // （達成基準 2.5.8 の User agent control の例外）。
+        const root = el.getRootNode();
+        const drawnByBrowser = root instanceof ShadowRoot && root.host.shadowRoot === null &&
+          ["INPUT", "SELECT", "TEXTAREA", "VIDEO", "AUDIO"].includes(root.host.tagName);
+        let small = "";
+        if (!drawnByBrowser && (box.width < 24 || box.height < 24)) {
+          small = label(el) + " の押す所が24px四方に満たない（" +
+            Math.round(box.width * 10) / 10 + "×" + Math.round(box.height * 10) / 10 + "px）";
+        }
         if (container) {
           const outer = container.getBoundingClientRect();
-          return { via: true, problems: [fits(outer) ? "" : "容器 " + describe(container, outer), clipped] };
+          return { via: true, problems: [fits(outer) ? "" : "容器 " + describe(container, outer), clipped, small] };
         }
-        return { via: false, problems: [fits(box) ? "" : describe(el, box), clipped] };
+        return { via: false, problems: [fits(box) ? "" : describe(el, box), clipped, small] };
       });
     }`,
   })) as { result: { value: ({ via: boolean; problems: string[] } | null)[] } };
@@ -277,7 +287,7 @@ export async function scanSpacingUtilities(page: Page): Promise<{ checked: numbe
 }
 
 /** 2本の指を(x, y)の左右に置き、外へ開く。Input.synthesizePinchGestureはページの拡大を再現しない
- * （docs/conventions/testing.md パターン4）。 */
+ * （.claude/rules/testing-e2e.md パターン4）。 */
 export async function pinchOpen(client: CDPSession, x: number, y: number): Promise<void> {
   const fingers = (spread: number) => [
     { x: x - 2 - spread, y, id: 1 },
@@ -294,11 +304,11 @@ export async function pinchOpen(client: CDPSession, x: number, y: number): Promi
  * 観点2（部品の検査）: 地図のcanvas以外の部品から始めたピンチが、ページ全体の拡大にならないか（地図の上の
  * ピンチが地図を拡大することは map-runtime.spec.ts が見る）。対象は、見えている要素の中心点で最前面になる要素
  * （指が実際に触れる要素）。指は1回の移動で画面の左右の端まで開く——ブラウザがピンチとして扱うかが見えれば足り、
- * 移動を分けても検知は変わらない。拡大したら倍率を戻す（戻らなければ座標がずれるので、残りは未検査として打ち切る）。
+ * 移動を分けても検知は変わらない。指はつまみ・スライダーを動かしうるので、ピンチの間は画面の状態を止める
+ * （`window.__e2e.isolate`）。拡大したら倍率を戻す（戻らなければ座標がずれるので、残りは未検査として打ち切る）。
  */
 export async function scanPinch(page: Page, client: CDPSession): Promise<{ checked: number; problems: string[] }> {
-  const width = await page.evaluate(() => window.innerWidth);
-  const targets = await page.evaluate(() => {
+  const { width, targets } = await page.evaluate(() => {
     const canvas = document.querySelector("canvas.maplibregl-canvas");
     const found: { x: number; y: number; label: string }[] = [];
     for (const el of document.querySelectorAll("body *")) {
@@ -312,10 +322,11 @@ export async function scanPinch(page: Page, client: CDPSession): Promise<{ check
       const name = hit.getAttribute("aria-label") ?? (hit.textContent ?? "").trim().slice(0, 16);
       found.push({ x, y, label: `${hit.tagName.toLowerCase()} "${name}"` });
     }
-    return found;
+    return { width: window.innerWidth, targets: found };
   });
   const problems: string[] = [];
   for (const [index, target] of targets.entries()) {
+    await page.evaluate(({ x, y }) => window.__e2e.isolate(x, y), target);
     await client.send("Input.dispatchTouchEvent", {
       type: "touchStart",
       touchPoints: [
@@ -331,7 +342,10 @@ export async function scanPinch(page: Page, client: CDPSession): Promise<{ check
       ],
     });
     await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-    const scale = await page.evaluate(() => window.__e2e.stableScale());
+    const scale = await page.evaluate(() => {
+      window.__e2e.release();
+      return window.__e2e.stableScale();
+    });
     if (scale === 1) continue;
     problems.push(
       `${target.label} (${Math.round(target.x)},${Math.round(target.y)}) から始めたピンチでページが×${scale.toFixed(2)}に拡大した`,
