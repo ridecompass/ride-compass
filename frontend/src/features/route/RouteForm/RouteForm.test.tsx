@@ -80,13 +80,13 @@ describe("RouteForm 全長の目標", () => {
 
   it.each([
     [
-      { [CLIENT_TUNING_IDS.distanceToleranceKm]: 3 },
-      "ルート全体の長さの目標です。作る候補は、この長さの±3kmに入るものだけです。",
+      { [CLIENT_TUNING_IDS.distanceToleranceRatio]: 0.15 },
+      "ルート全体の長さの目標です。作る候補は、この長さの±15%（30kmなら±4.5km）に入るものだけです。",
     ],
     [{}, "ルート全体の長さの目標です。外すと長さを決めず"],
-  ])("(i)の奥に、軸カタログが配る許容差（%o）を書く", async (clientTuning, text) => {
+  ])("(i)の奥に、軸カタログが配る許容差（%o）を割合と今の目標での長さで書く", async (clientTuning, text) => {
     serveAxisCatalog(catalogResponse([], { client_tuning: clientTuning }));
-    renderForm();
+    renderForm({ distanceInput: "30" });
     await userEvent.click(button("全長の目標の説明を表示"));
 
     expect(await screen.findByText(new RegExp(`^${text}`))).toBeInTheDocument();

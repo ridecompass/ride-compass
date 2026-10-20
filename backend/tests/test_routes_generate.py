@@ -185,7 +185,8 @@ async def test_a_destination_route_ends_at_the_destination_with_up_to_the_reques
 
     assert 1 <= len(result["routes"]) <= 2
     assert result["conditions"]["max_routes"] == 2
-    assert result["conditions"]["distance_km"] is None
+    # 全長の目標が無ければ、許容も置かない
+    assert result["conditions"]["distance_km"] is None and result["conditions"]["distance_tolerance_km"] is None
     assert all(_ends(route) == (_node(SOUTH_WEST), _node(NORTH_EAST)) for route in result["routes"])
 
 
@@ -226,8 +227,8 @@ async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(
     """経由地を置いても、距離は全長の目標として効く（夕食と銭湯に寄って30kmの周回）。
     探索は置いた点の近くに限らず、全長の目標に足りる広さで探す。"""
     world.network = LATTICE
-    tolerance = 2.0
-    monkeypatch.setitem(TUNING_VALUES, "search.distance_tolerance_km", tolerance)
+    tolerance_ratio = 0.2
+    monkeypatch.setitem(TUNING_VALUES, "search.distance_tolerance_ratio", tolerance_ratio)
     end = origin if destination is None else destination
 
     result = (await _generate(
@@ -241,13 +242,13 @@ async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(
         assert _passes_in_order(
             route, lattice_node(*origin), [lattice_node(*point) for point in waypoints], lattice_node(*end),
         )
-        assert abs(route["distance_km"] - target) <= tolerance
+        assert abs(route["distance_km"] - target) <= target * tolerance_ratio
     assert result["conditions"]["distance_km"] == target
 
 
 async def test_an_empty_result_says_why(client, monkeypatch):
     """置いた点を通るだけで距離を超えると、候補は無く、理由が返る。"""
-    monkeypatch.setitem(TUNING_VALUES, "search.distance_tolerance_km", 0.5)
+    monkeypatch.setitem(TUNING_VALUES, "search.distance_tolerance_ratio", 0.25)
     status = await _generate(client, **_point(SOUTH_WEST), waypoints=[_point(NORTH_EAST)], distance_km=2.0)
 
     assert status["status"] == "done"
@@ -285,12 +286,13 @@ async def test_the_overrides_that_were_sent_are_echoed(client):
     assert conditions["assumed_speed_kmh"] == 25.0
 
 
-@pytest.mark.parametrize(("field", "tuning_id", "values"), [
-    ("penalty_strength", "evaluation.penalty_strength", (0.37, 0.61)),
-    ("distance_tolerance_km", "search.distance_tolerance_km", (3.0, 4.0)),
+@pytest.mark.parametrize(("field", "tuning_id", "values", "applied"), [
+    ("penalty_strength", "evaluation.penalty_strength", (0.37, 0.61), (0.37, 0.61)),
+    # 許容は割合の較正値で、目標4kmに掛けた長さを使って返す
+    ("distance_tolerance_km", "search.distance_tolerance_ratio", (0.25, 0.5), (1.0, 2.0)),
 ])
 async def test_the_calibrated_value_at_the_time_of_generation_is_applied(
-    client, monkeypatch, field, tuning_id, values,
+    client, monkeypatch, field, tuning_id, values, applied,
 ):
     """管理画面で変えた較正値は、プロセスを入れ替えずに次の生成から効き、使った値として返る。"""
     echoed = []
@@ -298,7 +300,7 @@ async def test_the_calibrated_value_at_the_time_of_generation_is_applied(
         monkeypatch.setitem(TUNING_VALUES, tuning_id, value)
         echoed.append((await _generate(client))["result"]["conditions"][field])
 
-    assert tuple(echoed) == values
+    assert tuple(echoed) == pytest.approx(applied)
 
 
 @pytest.mark.parametrize(("sent", "applied"), [

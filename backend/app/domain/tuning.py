@@ -122,6 +122,7 @@ _TURNAROUND_OVERLAP_ID = "search.turnaround_max_overlap_ratio"
 _TURNAROUND_RELAXED_OVERLAP_ID = "search.turnaround_relaxed_overlap_ratio"
 _LOOP_RATIO_MIN_ID = "search.loop_to_outbound_ratio_min"
 _LOOP_RATIO_MAX_ID = "search.loop_to_outbound_ratio_max"
+_DISTANCE_TOLERANCE_ID = "search.distance_tolerance_ratio"
 
 
 TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
@@ -296,14 +297,14 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     ),
     TuningParameter(
         _LOOP_RATIO_MIN_ID,
-        "周回の全長の見込みの下限", "倍", 2.0, 1.0, 5.0, TuningEffect.IMMEDIATE,
+        "周回の全長の見込みの下限", "倍", 1.8, 1.0, 5.0, TuningEffect.IMMEDIATE,
         "周回の全長が往路の何倍になるかの見込みの下限。帰りは往路を避けて探すため往路と同じかそれより長い。"
         "全長が目標±許容に入るよう、折返し点を探す往路の長さの範囲をこの見込みで決める。"
         "置いた点を通る・目的地で終わるときの帰りは、終点までの最短のこの値−1倍以上と見込む。",
     ),
     TuningParameter(
         _LOOP_RATIO_MAX_ID,
-        "周回の全長の見込みの上限", "倍", 2.3, 1.0, 5.0, TuningEffect.IMMEDIATE,
+        "周回の全長の見込みの上限", "倍", 2.2, 1.0, 5.0, TuningEffect.IMMEDIATE,
         f"{_LOOP_RATIO_MIN_ID}の上限側。{_LOOP_RATIO_MIN_ID}以上にする。",
     ),
     TuningParameter(
@@ -326,10 +327,10 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "上げると範囲の面積が二乗で増え、生成の準備の時間とメモリが増える。足りなければ折返し点の候補が欠ける。",
     ),
     TuningParameter(
-        "search.distance_tolerance_km",
-        "全長の目標の許容", "km", 5.0, 0.1, 50.0, TuningEffect.IMMEDIATE,
-        "距離ありで、全長が目標からこの長さの中に入る候補だけを返す。折返し点を探す往路の長さの範囲もこの幅から"
-        "決める。",
+        _DISTANCE_TOLERANCE_ID,
+        "全長の目標の許容の割合", "", 0.15, 0.01, 1.0, TuningEffect.IMMEDIATE,
+        "距離ありで、全長が目標からその目標のこの割合の長さの中に入る候補だけを返す（0.15なら30kmで±4.5km）。"
+        "折返し点を探す往路の長さの範囲もこの幅から決める。",
         shown_to_users=True,
     ),
     TuningParameter(

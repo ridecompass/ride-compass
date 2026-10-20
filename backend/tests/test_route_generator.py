@@ -236,9 +236,9 @@ async def test_loops_without_turnarounds_say_how_far_out_was_searched(caplog):
 
     with caplog.at_level(logging.WARNING, logger=route_generator.logger.name):
         # 片道が数十kmになる距離にする（数kmでは、小数1桁へ丸めると m から km への換算の誤りが消える）。
-        assert await generator.generate_loops(ORIGIN, 200.0, 20.0, DEFAULT_MAX_ROUTES, START, NO_POINTS) == []
+        assert await generator.generate_loops(ORIGIN, 200.0, 30.0, DEFAULT_MAX_ROUTES, START, NO_POINTS) == []
 
-    assert generator.last_no_candidates_reason == f"起点から片道90.0〜95.7kmで到達できる折返し地点が見つかりませんでした。{RETRY}"
+    assert generator.last_no_candidates_reason == f"起点から片道94.4〜104.5kmで到達できる折返し地点が見つかりませんでした。{RETRY}"
     assert _warned(caplog)
 
 

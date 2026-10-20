@@ -102,6 +102,13 @@ function KeptTabContent({ value, children }: { value: string; children: React.Re
   );
 }
 
+// 割合も長さも小数1桁へ丸める（0.15×100は15.000000000000002になる）。
+function toleranceSentence(ratio: number, distanceInput: string): string {
+  const percent = Math.round(ratio * 1000) / 10;
+  const km = Math.round(Number(distanceInput) * ratio * 10) / 10;
+  return `作る候補は、この長さの±${percent}%（${distanceInput}kmなら±${km}km）に入るものだけです。`;
+}
+
 export default function RouteForm({
   conditions,
   origin,
@@ -123,8 +130,8 @@ export default function RouteForm({
   const { distanceTargeted, setDistanceTargeted, distanceInput, setDistanceInput, maxRoutesInput, setMaxRoutesInput } =
     conditions;
   const distanceToggleName = distanceTargeted ? "全長の目標をやめる" : "全長の目標を決める";
-  // 許容差は管理画面の較正値。引けない間は幅の文を出さない（較正したのとは別の数を出さない）。
-  const distanceToleranceKm = clientTuningValue(useAxisCatalog(), CLIENT_TUNING_IDS.distanceToleranceKm);
+  // 許容差は管理画面の較正値（目標の距離に対する割合）。引けない間は幅の文を出さない（較正したのとは別の数を出さない）。
+  const distanceToleranceRatio = clientTuningValue(useAxisCatalog(), CLIENT_TUNING_IDS.distanceToleranceRatio);
 
   // 保存した地点を呼び出したら「条件」タブへ移り、置いた地点を選んで詳しくを出す（足した経由地は`onPlaceFound`が選ぶ）。
   function recallSavedPlace(role: PinRole, place: PlaceCandidate) {
@@ -177,9 +184,7 @@ export default function RouteForm({
             <InfoPopover triggerAriaLabel="全長の目標の説明" triggerClassName="flex-none">
               {[
                 "ルート全体の長さの目標です。",
-                distanceToleranceKm === undefined
-                  ? ""
-                  : `作る候補は、この長さの±${distanceToleranceKm}kmに入るものだけです。`,
+                distanceToleranceRatio === undefined ? "" : toleranceSentence(distanceToleranceRatio, distanceInput),
                 "外すと長さを決めず、目的地（周回なら経由地を回って出発地）へ良い道で向かいます。",
               ].join("")}
             </InfoPopover>
