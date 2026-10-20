@@ -1,7 +1,5 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
-
 import { Button } from "@/components/ui/Button/Button";
 import { LocateIcon, LoopRouteIcon } from "@/components/ui/icons/icons";
 import { ClearPointsIcon, RemovePointIcon } from "@/components/ui/icons/lucideIcons";
@@ -9,12 +7,12 @@ import { Toggle } from "@/components/ui/Toggle/Toggle";
 import { waypointsFull, type GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
 import { cn } from "@/lib/cn";
-import type { Coordinates, PinRole, PlaceCandidate, PointTarget } from "@/types/route";
+import type { Coordinates, PinRole, PlaceCandidate } from "@/types/route";
 
 import { MAP_PLACED, pointNames } from "@/features/route/pointNames";
 
 import PointDetail from "./PointDetail";
-import PointMark from "@/components/PinMark/PointMark";
+import PointStrip, { pressableClass } from "./PointStrip";
 
 type RoutePointsConditions = Pick<
   GenerationConditionsState,
@@ -55,17 +53,13 @@ interface RoutePointsProps {
   placing: boolean;
 }
 
-/** 札の印と名前の間（札の`gap-1`）。 */
-const NAME_GAP_PX = 4;
-
 /** どうやって置いた地点か。 */
 function sourceOf(found: PlaceCandidate | null): string {
   return found !== null ? "探して選んだ地点" : MAP_PLACED;
 }
 
 /**
- * 周回の切り替えと、出発地・経由地・終点。「周回 出発地 › ①②③… ＋ › 終点」を1行に並べ（経由地は地図のピンと同じ番号の丸。
- * 経由地が増えても出発地と終点が欠けず、スクロールも要らない）、押した地点の詳しくを下に出す。周回の間の終点は出発地の印と
+ * 周回の切り替えと、出発地・経由地・終点。「周回 出発地 › ①②③… ＋ › 終点」を1行に並べ、押した地点の詳しくを下に出す。周回の間の終点は出発地の印と
  * 「◯◯[周回]」で、押せない（目的地を置く操作を出さない）。周回を外すと終点は目的地の札になる。
  */
 export default function RoutePoints({
@@ -98,40 +92,11 @@ export default function RoutePoints({
 
   // 選んでいる地点の詳しくを出す（地図のタップもこの地点を置く）。
   const target = selectedPoint;
-  const isShown = (other: PointTarget) =>
-    other.role === "waypoint" ? target.role === "waypoint" && target.index === other.index : other.role === target.role;
 
   const names = pointNames({ waypoints, destination, foundAt, originFound, originManual, originLocated });
   const originName = names.origin;
   const destinationFound = foundAt(destination);
   const destinationName = loop ? `${originName}[周回]` : names.destination;
-
-  // 両端の札に名前を出すか。並び全体が1行に入りきるときだけ出し、入らなければ両端とも印だけにする（途中で切った名前は読めない。
-  // 名前は押すと詳しくに出る）。出さない間も名前は札の中で幅を測れる形で置いてあり、出したときの幅を足して入りきるかを見る。
-  const stripRef = useRef<HTMLDivElement>(null);
-  const [namesShown, setNamesShown] = useState(true);
-  useLayoutEffect(() => {
-    const strip = stripRef.current;
-    if (strip === null) return;
-    const fit = () => {
-      // 並べた中身の幅は、最後の札の右端まで（`scrollWidth`は箱の幅より小さくならず、空きを測れない）。
-      const used = (strip.lastElementChild?.getBoundingClientRect().right ?? 0) - strip.getBoundingClientRect().left;
-      if (namesShown) {
-        setNamesShown(used <= strip.clientWidth);
-        return;
-      }
-      const names = [...strip.querySelectorAll<HTMLElement>("[data-chip-name]")].reduce(
-        (sum, name) => sum + name.getBoundingClientRect().width + NAME_GAP_PX,
-        0,
-      );
-      // 戻すときは1px余らせる（端数の丸めで、出す・出さないを行き来し続けない）。
-      setNamesShown(used + names <= strip.clientWidth - 1);
-    };
-    fit();
-    const observer = new ResizeObserver(fit);
-    observer.observe(strip);
-    return () => observer.disconnect();
-  }, [namesShown, originName, destinationName, waypointCount]);
 
   function renderDetail() {
     const common = { originLocated, mapCenter, savedPlaces };
@@ -243,53 +208,6 @@ export default function RoutePoints({
     );
   }
 
-  const pressableClass =
-    "border border-[var(--color-border)] aria-pressed:border-[var(--color-accent)] aria-pressed:bg-[var(--color-accent-bg)] aria-pressed:shadow-[inset_0_0_0_1px_var(--color-accent)]";
-  const chipClass = cn("rounded-full", pressableClass);
-  const arrow = (
-    <span aria-hidden="true" className="flex-none text-[length:var(--font-size-xs)] text-[var(--color-muted)]">
-      ›
-    </span>
-  );
-  const chipName = (name: string) => (
-    <span
-      data-chip-name
-      className={cn(
-        // 右の余白は名前が持つ（出さない間に測る幅へ入れる）。
-        "pr-1.5 text-[length:var(--font-size-md)]",
-        !namesShown && "invisible absolute top-0 left-0",
-      )}
-    >
-      {name}
-    </span>
-  );
-  const endChip = (role: "origin" | "destination", title: string, name: string) => (
-    <Button
-      variant="ghost"
-      size="bare"
-      shape="pill"
-      className={cn(chipClass, "relative overflow-hidden p-0.5 text-[var(--foreground)]")}
-      aria-pressed={isShown({ role })}
-      aria-label={`${title}: ${name}`}
-      onClick={() => selectPoint({ role })}
-    >
-      <PointMark role={role} originLocated={originLocated} />
-      {chipName(name)}
-    </Button>
-  );
-  // 周回の間の終点。出発地なので出発地の印で出し、押せない（点線の枠で、押せる札と見分ける）。押す物でも絵でもないので役割を持たせず、
-  // 読み上げには名前を出さない間も残る文で渡す（見える名前は幅に入らないと隠れ、読み上げからも消える）。名前は折り返さない——隠した名前を
-  // 札の幅で折り返して測ると短く出て、出す・隠すを行き来し続ける。
-  const loopEnd = (
-    <span className="relative inline-flex flex-none items-center gap-1 overflow-hidden rounded-full border border-dotted border-[var(--color-border-strong)] p-0.5 whitespace-nowrap text-[var(--color-muted)]">
-      <span className="sr-only">{`終点: ${destinationName}`}</span>
-      <PointMark role="origin" originLocated={originLocated} />
-      <span aria-hidden="true" className="contents">
-        {chipName(destinationName)}
-      </span>
-    </span>
-  );
-
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex min-w-0 items-center gap-1">
@@ -306,45 +224,16 @@ export default function RoutePoints({
           <LoopRouteIcon />
           周回
         </Toggle>
-        <div ref={stripRef} role="group" aria-label="地点の並び" className="flex min-w-0 flex-1 items-center gap-1">
-          {endChip("origin", "出発地", originName)}
-          {arrow}
-          {/* 番号の丸は押す所（24px四方）を隙間なく並べ、両端の名前に幅を残す。 */}
-          <span className="flex flex-none items-center">
-            {waypoints.map((_, index) => (
-              <Button
-                key={index}
-                variant="ghost"
-                size="bare"
-                shape="pill"
-                className={cn(chipClass, "border-transparent p-px")}
-                aria-pressed={isShown({ role: "waypoint", index })}
-                aria-label={`経由地${index + 1}: ${names.waypoints[index]}`}
-                onClick={() => selectPoint({ role: "waypoint", index })}
-              >
-                <PointMark role="waypoint" label={String(index + 1)} originLocated={originLocated} />
-              </Button>
-            ))}
-            <Button
-              variant="ghost"
-              size="bare"
-              shape="pill"
-              className={cn(
-                chipClass,
-                "ml-0.5 border-dashed px-1.5 py-0.5 text-[length:var(--font-size-md)] text-[var(--color-accent-strong)]",
-              )}
-              aria-pressed={isShown({ role: "waypoint", index: null })}
-              aria-label={full ? "経由地は上限まで置いてあります" : "経由地を足す"}
-              disabled={full}
-              onClick={() => selectPoint({ role: "waypoint", index: null })}
-              usage="経由地を足します。地図をタップするか、住所・施設で探して置きます。"
-            >
-              ＋
-            </Button>
-          </span>
-          {arrow}
-          {loop ? loopEnd : endChip("destination", "目的地", destinationName)}
-        </div>
+        <PointStrip
+          loop={loop}
+          originName={originName}
+          destinationName={destinationName}
+          waypointNames={names.waypoints}
+          full={full}
+          originLocated={originLocated}
+          selectedPoint={selectedPoint}
+          selectPoint={selectPoint}
+        />
         {/* 消すものが無い間も押せない状態で残す（置き場が動くと、並びの名前の出し分けが揺れる）。周回の間は並びに出ている
             経由地だけを消し、覚えている目的地は残す。 */}
         <Button

@@ -1,5 +1,5 @@
 /**
- * `RouteForm/RoutePoints.tsx`——周回の切り替えと地点の並び。`RouteForm`の中に置かれる子なので、`RouteForm`を描いて確かめる。
+ * `RouteForm/RoutePoints.tsx`・`RouteForm/PointStrip.tsx`——周回の切り替えと地点の並び。`RouteForm`の中に置かれる子なので、`RouteForm`を描いて確かめる。
  *
  * 見るもの: 周回の切り替え（押している状態と、押して上げる値）、地点の並び（出発地・経由地の番号の丸・終点。周回の間の終点は
  * 出発地の印と名前で押せない）、押した地点を選んで上げること、経由地を足す操作の上限、並びに出ている地点を全部消す操作。
