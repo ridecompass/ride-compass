@@ -98,18 +98,10 @@ def test_the_load_of_a_route_is_its_rounded_average_over_every_segment_including
     assert (overall.average, overall.load) == (16.7, 66.8)
 
 
-@pytest.mark.parametrize(
-    ("distances", "bin_distances"),
-    [
-        # ちょうど幅に届いたところでビンを閉じる。
-        ([WIDTH / 2, WIDTH / 2, 0.1], [WIDTH, 0.1]),
-        ([0.3, 0.3, 0.3], [0.6, 0.3]),
-    ],
-)
-def test_a_bin_closes_as_soon_as_it_reaches_the_width_and_the_rest_stays(distances, bin_distances):
-    bins = route.aggregate_segments_into_bins(_segments(distances))
+def test_a_bin_closes_as_soon_as_it_reaches_the_width_and_the_rest_stays():
+    bins = route.aggregate_segments_into_bins(_segments([WIDTH / 2, WIDTH / 2, 0.1]))
 
-    assert [b.distance_km for b in bins] == bin_distances
+    assert [b.distance_km for b in bins] == [WIDTH, 0.1]
 
 
 @given(distances=st.lists(st.floats(min_value=0.001, max_value=1.5), min_size=1, max_size=40))

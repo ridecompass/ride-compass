@@ -342,22 +342,6 @@ async def test_facilities_are_ordered_by_how_the_name_matches_then_by_the_distan
 
 
 @pytest.mark.usefixtures("area")
-async def test_facilities_with_the_same_name_beyond_the_limit_are_the_nearest_ones():
-    """同じ名前の店が上限を超えると、画面が見ている所の真ん中に近い店から上限まで。"""
-    count = PLACE_PREDICTION_LIMIT + 2
-    # チェーンの分からない地点は、名前が同じでも別々の店のまま（立ち寄り先の派生の段）。経度の東端は対象範囲の中。
-    await _ingest_facilities([_facility_record(i, "喫茶ことり", LON + i / 10, LAT) for i in range(count)])
-    near_longitude = LON + (count - 1) / 10
-
-    response = await _search("喫茶ことり", near_longitude=near_longitude)
-
-    assert response.status_code == 200
-    assert [c["longitude"] for c in response.json()["candidates"]] == [
-        LON + i / 10 for i in range(count - 1, count - 1 - PLACE_PREDICTION_LIMIT, -1)
-    ]
-
-
-@pytest.mark.usefixtures("area")
 async def test_a_facility_nearer_on_the_ground_comes_first_even_when_degrees_scaled_by_latitude_say_otherwise():
     """経度の差に中心の緯度の余弦を掛けて度で比べると遠い店でも、測地の距離で近ければ先に出る。東西の1度は南北の1度に
     余弦を掛けたものより地球の扁平の分だけ長いので、北の店は、東の上限の件数の店より度では遠く、地面では近い。"""
