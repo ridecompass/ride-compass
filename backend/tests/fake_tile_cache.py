@@ -2,8 +2,8 @@
 
 
 class FakeTileCache:
-    def __init__(self, seed: dict | None = None):
-        self.entries = dict(seed or {})
+    def __init__(self):
+        self.entries = {}
 
     def get(self, path):
         return self.entries.get(path)
