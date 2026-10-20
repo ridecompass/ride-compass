@@ -66,8 +66,8 @@ localStorage経由で`/`側へ共有される（`HeaderMenu`はデバッグロ�
    `ridecompass:debug-enabled`）: ログの**記録自体**の有効/無効。`/admin`の
    `DebugPanel`で切り替える。
 2. **記録**（`debugLog(category, message, detail, level)`、`lib/debugLog.ts`）:
-   デバッグモードON中、`services/`配下のfetchラッパー・`MapView.tsx`のmapイベント
-   ハンドラから直接呼ばれるフレームワーク非依存のシングルトン（最大300件、
+   デバッグモードON中、`services/`配下のfetchラッパー・地図のイベント
+   ハンドラ（`features/map/MapView/useMapLifecycle.ts`）から直接呼ばれるフレームワーク非依存のシングルトン（最大300件、
    `console.debug`/`warn`/`error`にも同時出力）。
 3. **パネルの開閉**（`app/HomeHeader.tsx: debugConsoleOpen`）: `DebugConsole`自体の表示/非表示。
    デバッグモードONでも常時パネルを占有させない、記録の有効/無効とは独立したstate。
