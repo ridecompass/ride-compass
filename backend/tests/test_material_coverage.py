@@ -33,7 +33,7 @@ COMPUTED_AT = datetime(2026, 9, 4, tzinfo=timezone.utc)
 
 
 def _counts(way_total: int = 10, edge_total: int = 4, **missing_overrides: int) -> MaterialCoverageCounts:
-    missing = {material_id: 0 for material_id in MATERIAL_COVERAGE_SPECS}
+    missing = dict.fromkeys(MATERIAL_COVERAGE_SPECS, 0)
     missing.update(missing_overrides)
     return MaterialCoverageCounts(way_total=way_total, edge_total=edge_total, missing_by_material=missing)
 
