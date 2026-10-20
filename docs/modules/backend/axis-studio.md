@@ -117,6 +117,10 @@ JSONはリポジトリの外に置き、コミットしない（定義は較正�
 - **地図の線の層の値もbackendが決める**（`domain/road_classes.py: layer_columns`）。値は区分の鍵か「データなし」で、地図の線
   （`/api/region/road-classes`）とルートの区間の帯が同じ値を読む。地図は条件を当てない。
 - **本番へは管理APIで全体を入れる**（`PUT /api/admin/road-classes`）。全体のJSONは本番の今の全体（`GET`）から作り、リポジトリの外に置く。
+- **前の鍵は3か月で外す**: 区分の鍵を改める・分ける・合わせるときは、今の区分に前の鍵（`domain/road_classes.py: RoadClass.former_keys`）を
+  足し、前の鍵で選んだ段を今の行へ引き継ぐ（`domain/road_avoidance.py: resolve_road_avoidance`）。前の鍵は、その全体を本番へ
+  入れてから3か月で外す。入れるときに、外す日を着手可能日時にした対話作業の issue を起こす。外したあと、前の鍵だけを送る要求は
+  その行を既定の段で読む。
 
 ## データモデル（`domain/axis_definitions.py`）
 

@@ -16,7 +16,7 @@
 | `features/route/RouteForm/useRouteFormSubmit.ts` | 上記の検証（`{error, check}`。`features/route/RouteForm/useRouteFormSubmit.ts: check`は通ったかを返す）。「ルート生成」ボタン自体は`RouteForm`の外（`page.tsx`の見出し行）にあるため分離している（下記参照） |
 | `features/route/RouteSettingsPanel/RouteSettingsPanel.tsx` | 一般向け軸重み設定（「重み」タブの中身。地図の色分けはここになく`LensControl`のみが持つ、下記参照） |
 | `features/route/RouteSettingsPanel/HardFilterPanel.tsx` | 「除外」タブの中身。地図の道のレイヤの凡例の行ごとの避け方を1つの並びに出し、自転車が通れない道の行は「通らない」に固定して鍵を付ける（下記「除外」）。選べる行の鍵・名前・既定の段と行をまとめる節は軸カタログの`road_classes.avoidance`が、固定の行の名前と説明は生成物`route-generate-config.json`の`route-generate-config.json: hard_filters`が正で、名前をフロントに持たない——キーと名前を別々に持つと、足した行に名前が無く内部名が出る。軸カタログが届くまでは選べる行を出さない |
-| `features/route/roadAvoidance.ts` | 保存した避け方のうち段として読める鍵を残し（`features/route/roadAvoidance.ts: readRoadAvoidance`。今の行に無い鍵も前の鍵として読まれうるので残す）、画面に出す行の段を決める（`features/route/roadAvoidance.ts: avoidanceLevelOf`）。今の鍵の段が無ければ前の鍵（行の`former_keys`）の段のうち強い方を、どちらも無ければ既定の段を取る——backendが要求を今の行へ揃えるのと同じ読み方で、画面と経路の段を食い違わせない。要求には選んだ段をそのまま送り、行の増減はbackendが揃える |
+| `features/route/roadAvoidance.ts` | 保存した避け方のうち段として読める鍵を残し（`features/route/roadAvoidance.ts: readRoadAvoidance`。今の行に無い鍵も前の鍵として読まれうるので残す）、画面に出す行の段を決める（`features/route/roadAvoidance.ts: avoidanceLevelOf`）。今の鍵の段が無ければ前の鍵（行の`former_keys`）の段のうち強い方を、どちらも無ければ既定の段を取る。経路の段はbackendが要求を今の行へ揃えて決めるので、画面の段がそれと食い違わないことを生成物`road-avoidance-expectations.json`の表で確かめる（`roadAvoidance.test.ts`）。要求には選んだ段をそのまま送り、行の増減はbackendが揃える |
 | `features/route/SavedPlacesPanel/SavedPlacesPanel.tsx` | 「保存済み」タブの「地点」の中身: 保存した地点の一覧（行は名前・辺りと、アイコンの「呼び出す」「消す」。呼び出すはメニューで出発地・経由地・目的地のどれに置くかを選び（周回の間は目的地を使わないので「目的地にする」を押せない）、消すは確認の窓で「消す」を押すと消す）。無ければ無いと出し、保存の仕方は(i)の奥（下記「保存した地点」） |
 | `features/route/SavedList/SavedList.tsx` | 「保存済み」タブの一覧（地点・プリセット）の形: 空の案内と保存の仕方の(i)・行の枠・消す操作と確認の窓。行の名前の欄と行ごとの操作（「呼び出す」）は使う側が渡す |
 | `features/route/useSavedPlaces.ts` | 保存した地点の一覧（この端末の`localStorage`）と、保存・削除 |
@@ -360,7 +360,8 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
 - **読み方**: 保存値は読むときに、今の画面が受け付けない件（範囲の外の距離・候補数、上限を超える経由地等）だけを捨て、
   ほかの件は残す。周回・目的地のモードを切り替えていた頃に保存した件は、周回なら全長の目標を決めて経由地・目的地を外し（周回は置いて
   あっても隠して使わなかった）、目的地なら全長の目標を外した形で読む。周回かを持たない件は、目的地を持たなければ周回、持てば周回を外した
-  形で読む（周回の切り替えが無い間の生成と同じ形）。読んだ一覧は今の形で書き戻す（`useStoredState`の`rewrite`）。除外は今の項目へ揃え、道の避け方は今の行へ揃える（避け方を持たない件は既定の段で読む）。重みは「重み」へ入れたあと、いつもの保存値と同じく軸カタログの公開軸へ揃える
+  形で読む（周回の切り替えが無い間の生成と同じ形）。読んだ一覧は今の形で書き戻す（`useStoredState`の`rewrite`）。前の形の読み替えは、その形の変更が本番に出てから3か月で消し、消す日を
+  読み替えの隣に書く。除外は今の項目へ揃え、道の避け方は今の行へ揃える（避け方を持たない件は既定の段で読む）。重みは「重み」へ入れたあと、いつもの保存値と同じく軸カタログの公開軸へ揃える
   （「RouteSettingsPanel.tsx」）。
 
 ## 保存した地点（SavedPlacesPanel.tsx・useSavedPlaces.ts・PointDetail.tsx）

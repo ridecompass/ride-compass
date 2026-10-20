@@ -42,7 +42,7 @@ class RoadClass(StrictModel):
     description: str
     #: 凡例・除外タブ・帯で共通の並び。色もこの順で決まる。振り分けには使わない。
     sort_order: int
-    #: `<分け方>.<区分>`の形の前の鍵。
+    #: `<分け方>.<区分>`の形の前の鍵。区分の鍵を改める・分ける・合わせるときに足し、その全体を本番へ入れてから3か月で外す。
     former_keys: list[str]
     #: 区分は、条件のどれかに当たる道。
     conditions: list[Condition]
