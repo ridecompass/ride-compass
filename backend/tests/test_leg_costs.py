@@ -25,9 +25,9 @@ from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm
 from app.domain.cycling_speed import RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.evaluation import DensityAxisColumn, StaticEdgeScoreMatrix
 from app.domain.leg_costs import LegCostComposer
+from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates
-from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.wind import DepartureWind, WindForecastSeries
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 
@@ -202,7 +202,7 @@ def test_the_cost_is_the_travel_time_raised_by_the_weighted_difficulty(wind_axis
     matrix = _matrix(2, axes={"axis_a": 20.0, "axis_b": 80.0, WIND_AXIS: np.nan})
     weights = {"axis_a": 1.0, "axis_b": 3.0, WIND_AXIS: wind_weight}
 
-    leg = _composer(matrix, weights=weights, penalty=0.5, series=_series([0.0, 0.0])).compose("leg", None, 0.0, +1)
+    leg = _snapshot(matrix, weights=weights, penalty=0.5, series=_series([0.0, 0.0]))
 
     assert leg.difficulty_array.tolist() == [difficulty, difficulty]
     assert leg.cost_lazy == pytest.approx(leg.travel_seconds_lazy * (1 + 0.5 * difficulty / 100))
@@ -245,8 +245,8 @@ def test_a_density_axis_costs_the_same_along_a_route_however_its_road_is_cut(win
     cut = _matrix(3, distance=[10.0, 90.0, 400.0], signals_per_km=[50.0, 0.5 / 0.09, 0.0],
                   axes={"axis_a": 30.0, WIND_AXIS: np.nan})
 
-    whole_leg = _composer(whole, **kwargs).compose("leg", None, 0.0, +1)
-    cut_leg = _composer(cut, **kwargs).compose("leg", None, 0.0, +1)
+    whole_leg = _snapshot(whole, **kwargs)
+    cut_leg = _snapshot(cut, **kwargs)
 
     assert cut_leg.cost_lazy.sum() == pytest.approx(whole_leg.cost_lazy.sum(), rel=1e-9)
     assert whole_leg.cost_lazy.sum() > whole_leg.travel_seconds_lazy.sum()

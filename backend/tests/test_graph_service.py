@@ -18,10 +18,10 @@ from app.infrastructure import container_memory
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services.graph_service import GraphService
 from tests.bound_fake import bound
+from tests.east_west_network import network
 from tests.route_world import serve_road_network
-from tests.test_road_network import network
 
-#: `test_road_network.network()`の西側の2本の道（35.00N・139.00〜139.02E）を覆う。
+#: `east_west_network.network()`の西側の2本の道（35.00N・139.00〜139.02E）を覆う。
 BBOX = BoundingBox(min_latitude=34.99, min_longitude=138.99, max_latitude=35.01, max_longitude=139.03)
 
 def _repository_method(fake):
@@ -29,17 +29,14 @@ def _repository_method(fake):
 
 
 class FakeRepository:
-    def __init__(self, covered: bool = True):
-        self.covered = covered
-
     @_repository_method
     async def is_covered(self, bbox):
-        return self.covered
+        return True
 
 
 @pytest.fixture
 def road_network(monkeypatch):
-    """取込範囲全体の道路網は`test_road_network.network()`。"""
+    """取込範囲全体の道路網は`east_west_network.network()`。"""
     serve_road_network(monkeypatch, network)
 
 

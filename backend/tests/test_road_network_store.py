@@ -33,8 +33,8 @@ from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays
 from app.domain.road_network import RoadNetwork
 from app.infrastructure import road_network_store
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from tests.conftest import postgis_database_url
-from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record
+from tests.conftest import postgis_database_url, raw_connection
+from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record, zigzag_point
 
 #: DBから組むテストの印（テスト用DBへ繋ぎ、接続とイベントループをファイルで共有する。testing-backend.md パターン2）。
 _ON_TEST_DB = (pytest.mark.asyncio(loop_scope="module"), pytest.mark.usefixtures("road_graph_session"))
@@ -232,10 +232,8 @@ def test_batches_fill_consecutive_rows_and_share_one_vocabulary():
 
 # --- DBから組む ---------------------------------------------------------------------
 
-_BASE_LON, _BASE_LAT, _STEP = 139.70, 35.68, 0.001
-
 #: ノード → (経度, 緯度)。ノード9は道が参照するのに取り込まれていない。
-_NODES = {n: (_BASE_LON + _STEP * n, _BASE_LAT + _STEP * (n % 2)) for n in (1, 2, 3, 4, 5, 6, 9)}
+_NODES = {n: zigzag_point(n) for n in (1, 2, 3, 4, 5, 6, 9)}
 _INGESTED_NODES = (1, 2, 3, 4, 5, 6)
 _SIGNAL_NODE = 3
 
@@ -251,11 +249,14 @@ _WAYS = (
 
 async def _derive(ways=_WAYS, nodes=_INGESTED_NODES) -> None:
     """取込の入口から道とノードを入れ、派生の作り直しで区間と材料まで作る。作り直しが置いた道路網は消す。"""
-    await ingest_records("osm_node", [
-        point_record(n, *_NODES[n], {"highway": "traffic_signals"} if n == _SIGNAL_NODE else None) for n in nodes])
-    await ingest_records("osm_way", [
-        way_record(way_id, [_NODES[n] for n in node_ids], node_ids, tags) for way_id, node_ids, tags in ways])
-    await ingest_records("abr", [abr_prefecture_record("130001", "東京都", *_NODES[1])])
+    async with raw_connection() as conn:
+        await ingest_records("osm_node", [
+            point_record(n, *_NODES[n], {"highway": "traffic_signals"} if n == _SIGNAL_NODE else None) for n in nodes],
+            conn=conn)
+        await ingest_records("osm_way", [
+            way_record(way_id, [_NODES[n] for n in node_ids], node_ids, tags) for way_id, node_ids, tags in ways],
+            conn=conn)
+        await ingest_records("abr", [abr_prefecture_record("130001", "東京都", *_NODES[1])], conn=conn)
     assert await derive_cli.run(postgis_database_url()) == 0
     shutil.rmtree(road_network_store.ROOT)
 
