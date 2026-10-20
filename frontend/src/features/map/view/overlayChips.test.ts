@@ -9,18 +9,28 @@ import {
 } from "@/features/map/layers/mapLayers";
 import { roadLegendAxes } from "@/features/map/scene/legends";
 
-import { mapCatalogOf } from "@/testing/mapAxisCatalog";
-import { dedicatedEntry } from "@/testing/catalogAxes";
+import { mapAxisCatalogFromResponse } from "@/features/map/mapAxisCatalog";
+import { catalogResponse, dedicatedEntry, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/catalogAxes";
 import { deserializeLayerVisibility, overlayChips } from "./overlayChips";
 
-const catalog = mapCatalogOf([dedicatedEntry("axis_a", [1])]);
+// 道の線の層は軸カタログが配る（本番の層は管理DBが持つ）ので、テストが組む。
+const ROAD_LAYERS = [
+  roadMapLayer("surface", { classes: [roadClass("paved"), roadClass("unpaved")] }),
+  roadMapLayer("tunnel", { classes: [roadClass("tunnel")] }),
+];
+const catalog = mapAxisCatalogFromResponse(
+  catalogResponse([dedicatedEntry("axis_a", [1])], {
+    road_classes: roadClassCatalog({ map_layers: ROAD_LAYERS }),
+  }),
+);
 const LAYERS = buildMapLayers(catalog);
 
 type Options = Parameters<typeof overlayChips>[0];
 function chips(options: Partial<Options> = {}) {
   return overlayChips({
     layers: LAYERS,
-    visibility: buildDefaultLayerVisibility(),
+    roadLayers: ROAD_LAYERS,
+    visibility: buildDefaultLayerVisibility(LAYERS),
     hidden: {},
     dataStatus: {},
     zoomTooWideLayerIds: [],
@@ -57,7 +67,7 @@ describe("overlayChips（地図上チップの状態）", () => {
   });
 
   it("▶パネルの凡例は、絞り込める凡例（いまの凡例にある隠した行つき）と表示専用の凡例", () => {
-    const [road] = roadLegendAxes();
+    const [road] = roadLegendAxes(ROAD_LAYERS);
     const [, second] = road.entries;
     const list = chips({ hidden: { [road.axisId]: [second.key, "gone"] } });
     const details = chipOf(list, road.layerId).legendDetails ?? [];
@@ -69,13 +79,12 @@ describe("overlayChips（地図上チップの状態）", () => {
 });
 
 describe("deserializeLayerVisibility（表示状態の保存値）", () => {
-  it("いまのカタログにある鍵の真偽値だけを読み、無い鍵は既定のまま", () => {
-    const defaults = buildDefaultLayerVisibility();
-    const restored = deserializeLayerVisibility(JSON.stringify({ surface: true, gone: true, highway: "yes" }));
-    expect(restored).toEqual({ ...defaults, surface: true });
-  });
-
-  it("読めない形なら既定", () => {
-    expect(deserializeLayerVisibility("null")).toEqual(buildDefaultLayerVisibility());
+  // 道の線の層は軸カタログが届くまで分からないので、今の層に無い鍵も読む（既定は使う側が層の一覧から重ねる）。
+  it("真偽値の鍵だけを読み、読めない形なら読まない", () => {
+    const restored = deserializeLayerVisibility(
+      JSON.stringify({ surface: true, notYetArrived: false, highway: "yes" }),
+    );
+    expect(restored).toEqual({ surface: true, notYetArrived: false });
+    expect(deserializeLayerVisibility("null")).toBeNull();
   });
 });

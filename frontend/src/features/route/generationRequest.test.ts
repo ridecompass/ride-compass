@@ -18,7 +18,6 @@ const START = new Date("2026-10-04T01:30:00Z");
 const LOOP: GenerationInput = {
   origin: { latitude: 35.68, longitude: 139.77 },
   distanceKm: 40,
-  distanceToleranceKm: 5,
   maxRoutes: 3,
   assumedSpeedKmh: 22,
   startTime: START,
@@ -30,12 +29,11 @@ const LOOP: GenerationInput = {
 };
 
 describe("buildGenerateRequest", () => {
-  it("地点を置かなければ、出発地・目標距離・幅・避け方・候補数・速度・出発時刻を送り、値の無い項目は載せない", () => {
+  it("地点を置かなければ、出発地・目標距離・避け方・候補数・速度・出発時刻を送り、値の無い項目は載せない", () => {
     expect(buildGenerateRequest(LOOP)).toEqual({
       latitude: 35.68,
       longitude: 139.77,
       distance_km: 40,
-      distance_tolerance_km: 5,
       road_avoidance: { "layer.row_a": "avoid", "layer.row_b": "pass" },
       max_routes: 3,
       assumed_speed_kmh: 22,

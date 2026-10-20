@@ -50,12 +50,12 @@ import {
 import { buildMapScene, type SceneInputs } from "@/features/map/scene/buildScene";
 import { POINT_HIT_TARGET, POINT_TILE_SOURCES, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
-import { ROAD_LINE_HIT_TARGET, ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
+import { hiddenRoadLineAt, ROAD_LINE_HIT_TARGET, ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 import type { MapLook } from "@/features/map/view/mapLook";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { useLayerDataStatus, type LayerDataSourceEntry } from "@/features/map/MapView/useLayerDataStatus";
-import { ORIGIN_ZOOM, useMapMarkers } from "@/features/map/MapView/useMapMarkers";
+import { ORIGIN_ZOOM, SELECTED_POINT_PIN_HEIGHT_PX, useMapMarkers } from "@/features/map/MapView/useMapMarkers";
 import { pinMarkName } from "@/components/PinMark/PinMark";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
@@ -74,11 +74,18 @@ import { roundToDigits } from "@/lib/numberFormat";
 // これは基礎地図のタイルが止まって"load"が来ないときの保険。
 const INITIAL_TILES_OVERLAY_MAX_MS = 6000;
 
+// 自前のJSで取りに行く情報源。
+type SelfFetchedDataSource = "ownFetch" | "msmGrid";
+
+function isSelfFetched(dataSource: MapLayerDataSource): dataSource is SelfFetchedDataSource {
+  return dataSource === "ownFetch" || dataSource === "msmGrid";
+}
+
 /** 情報源の名前→MapLibreの(source, source-layer)。レイヤーごとではなく情報源ごとの表で、配信元を増やしたときだけ
  * 伸びる。点のタイルの情報源は点のタイルと同じ名前で、行はその一覧から来る。source-layerを持たないラスタは
  * 取得失敗だけを見て、空かどうかは判定しない。 */
 const TILE_SOURCE_BY_DATA_SOURCE: Record<
-  Exclude<MapLayerDataSource, "ownFetch">,
+  Exclude<MapLayerDataSource, SelfFetchedDataSource>,
   { sourceId: string; sourceLayer?: string }
 > = {
   road_surface: { sourceId: ROAD_LINE_SOURCE_ID, sourceLayer: ROAD_TILE_SOURCE_LAYER },
@@ -88,11 +95,11 @@ const TILE_SOURCE_BY_DATA_SOURCE: Record<
   landcoverRaster: { sourceId: AREA_SOURCE_ID.landcover },
 };
 
-/** レイヤーごとのデータ取得状態の算出元。母集団はレイヤーカタログそのもの。自前のJSで取りに行くもの（`ownFetch`）は
- * MapLibreのソースイベントでは観測できないため除く（取得した側が状態を出す）。 */
+/** レイヤーごとのデータ取得状態の算出元。母集団はレイヤーカタログそのもの。自前のJSで取りに行くもの（`ownFetch`・
+ * MSMの格子点）はMapLibreのソースイベントでは観測できないため除く（取得した側が状態を出す）。 */
 function buildLayerDataSources(layers: readonly MapLayerDescriptor[]): readonly LayerDataSourceEntry[] {
   return layers.flatMap((layer) =>
-    layer.dataSource === "ownFetch" ? [] : [{ key: layer.id, ...TILE_SOURCE_BY_DATA_SOURCE[layer.dataSource] }],
+    isSelfFetched(layer.dataSource) ? [] : [{ key: layer.id, ...TILE_SOURCE_BY_DATA_SOURCE[layer.dataSource] }],
   );
 }
 
@@ -108,7 +115,7 @@ function fitBoundsToRoutes(map: MapLibreMap, routes: RouteCandidate[]) {
 }
 
 // 区間の小窓を、押した区間の印（下端を地点に置いた絵）の上へ出すずれ。
-const SEGMENT_POPUP_OFFSET_PX = 28;
+const SEGMENT_POPUP_OFFSET_PX = SELECTED_POINT_PIN_HEIGHT_PX + 2;
 
 // 住所の検索で置いた地点・取り直した現在地へ寄せる倍率。ピンを直せるように、街区が見分けられるまで寄る。
 const FOCUS_ZOOM = 16;
@@ -189,7 +196,7 @@ interface MapViewProps {
   rideConditions: RideConditions;
   /** 利用者がいま設定している重み（ルート生成へ送るのと同じもの）。道の詳細の評価に使う。nullなら既定の重み。 */
   routePreference: RoutePreferenceWeights | null;
-  /** 押して選んでいる区間。地図は押した地点に印を立てるだけで、内訳は下部のシートが出す（地図上の
+  /** 押して選んでいる区間。地図は押した地点に印を立て、その区間の範囲を縁取るだけで、内訳は下部のシートが出す（地図上の
    * ポップアップはモバイルでシートに隠れる）。 */
   selectedRouteSegment: SelectedRouteSegment | null;
   /** ルートの区間を押したとき・印を押して選択を外したとき。 */
@@ -297,8 +304,19 @@ export default function MapView({
         tileVersions: mapCatalog.tileVersions,
         inspectedWayId,
         travelledKm,
+        selectedRouteSegment,
       }),
-    [look, mapCatalog, routes, selectedRouteId, spliceStretches, splicedRoute, inspectedWayId, travelledKm],
+    [
+      look,
+      mapCatalog,
+      routes,
+      selectedRouteId,
+      spliceStretches,
+      splicedRoute,
+      inspectedWayId,
+      travelledKm,
+      selectedRouteSegment,
+    ],
   );
   const scene = useMemo(() => buildMapScene(sceneInputs), [sceneInputs]);
   // 押せるのは scene が当たり判定を宣言したレイヤーだけ。
@@ -316,6 +334,7 @@ export default function MapView({
   const latestProps = {
     scene,
     look,
+    roadLayers: mapCatalog.roadLayers,
     layerVisibility,
     interactiveLayerIds,
     tapMode,
@@ -410,8 +429,14 @@ export default function MapView({
      * 重なった所は帯を選ぶ）。開けない対象の地物は、上に重なっていても飛ばす。 */
     function openableFeatureAt(point: MapMouseEvent["point"]) {
       const openable = OPENABLE_TARGETS[latest.current.tapMode];
+      const { roadLayers, look } = latest.current;
       for (const feature of interactiveFeaturesAt(point)) {
         const target = sceneHitTargetsOfLayer(latest.current.scene, feature.layer.id).find((t) => openable.has(t));
+        if (
+          target === ROAD_LINE_HIT_TARGET &&
+          hiddenRoadLineAt(feature.layer.id, feature.state, roadLayers, look.hiddenLegendKeys)
+        )
+          continue;
         if (target !== undefined) return { feature, target };
       }
       return null;

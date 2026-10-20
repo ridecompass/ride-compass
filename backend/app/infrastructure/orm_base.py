@@ -26,6 +26,7 @@ TABLE_MODULES = (
     "app.infrastructure.axis_definition_models",
     "app.infrastructure.derived_data_meta",
     "app.infrastructure.derived_models",
+    "app.infrastructure.road_class_models",
     "app.infrastructure.source_models",
     "app.infrastructure.tuning_overrides",
 )

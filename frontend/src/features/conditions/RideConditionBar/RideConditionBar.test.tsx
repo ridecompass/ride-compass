@@ -77,12 +77,25 @@ describe("RideConditionBar 出発時刻", () => {
     [
       "出発時刻で値の変わる評価があれば、その名前で",
       ["at", "bearing_deg"],
+      "always",
       "ルートの「評価A」の評価・到達予想の時刻に使います。",
     ],
-    ["無ければ評価に触れずに", ["bearing_deg"], "ルートの到達予想の時刻に使います。"],
-  ] as const)("出発時刻の説明は、%s何に使うかを書く", async (_case, conditions, tail) => {
+    [
+      "夜だけ効く評価は通る時刻で効くかが決まるので、その名前で",
+      ["bearing_deg"],
+      "night_only",
+      "ルートの「評価A」の評価・到達予想の時刻に使います。",
+    ],
+    ["無ければ評価に触れずに", ["bearing_deg"], "always", "ルートの到達予想の時刻に使います。"],
+  ] as const)("出発時刻の説明は、%s何に使うかを書く", async (_case, conditions, timeScope, tail) => {
     serveAxisCatalog(
-      catalogResponse([dedicatedEntry("a", [1], { label: "評価A", dynamic_way_value_conditions: [...conditions] })]),
+      catalogResponse([
+        dedicatedEntry("a", [1], {
+          label: "評価A",
+          dynamic_way_value_conditions: [...conditions],
+          time_scope: timeScope,
+        }),
+      ]),
     );
     renderBar();
     await waitFor(() => expect(getQueryClient().isFetching()).toBe(0));

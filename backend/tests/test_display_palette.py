@@ -9,7 +9,7 @@
 このファイルで計算し、実装の換算式を使わない。
 
 ここで見ないもの:
-- 一次属性の表示の宣言そのものの不変条件（行の重なり・色相の起点・欠損の意味・種別の網羅）→ `test_material_catalog.py`
+- 一次属性の表示の宣言そのものの不変条件（行の重なり・色相の起点・種別の網羅）→ `test_registry.py`・`test_primary_attributes.py`、欠損の意味 → `test_material_catalog.py`
 - 地図のレイヤー・グループ・情報源の宣言 → `test_map_display.py`
 - 行の値が画面の塗り分けの式になること → 画面側のテスト
 """
@@ -95,6 +95,7 @@ def test_only_the_first_axis_with_a_palette_gets_colors():
         label="属性A",
         geometry="point",
         display_axes=(axis("main", 3, palette="nominal", hue_slot=4), axis("size", 2)),
+        tile_kind="poi",
     )
 
     main, size = resolved_display_axes(attribute)
@@ -117,30 +118,13 @@ def test_a_glyph_reaches_the_screen_only_on_rows_that_declare_one():
         ),
     )
     attribute = PrimaryAttributeSpec(
-        attr_id="attr_a", label="属性A", geometry="point", display_axes=(with_glyphs, axis("size", 2))
+        attr_id="attr_a", label="属性A", geometry="point", display_axes=(with_glyphs, axis("size", 2)), tile_kind="poi"
     )
 
     main, size = resolved_display_axes(attribute)
 
     assert [c["glyph"] for c in main["categories"]] == ["bag", "drop"]
     assert all("glyph" not in c for c in size["categories"])
-
-
-def test_an_ordered_axis_is_colored_by_position():
-    attribute = PrimaryAttributeSpec(
-        attr_id="attr_a", label="属性A", geometry="line", display_axes=(axis("main", 4, palette="ordered"),)
-    )
-
-    [main] = resolved_display_axes(attribute)
-
-    assert [c["color"] for c in main["categories"]] == ordered_colors(4)
-
-
-def test_an_ordered_palette_goes_from_dark_to_light():
-    colors = ordered_colors(5)
-
-    lightness = [contrast(color, "#000000") for color in colors]
-    assert lightness == sorted(lightness)
 
 
 def test_an_ordered_axis_of_one_row_still_has_a_color():
@@ -222,5 +206,3 @@ def test_a_road_without_a_value_is_still_visible_on_the_ground():
     line = over_ground(SEMANTIC_COLORS["no_data"], ROAD_UNKNOWN_OPACITY)
 
     assert contrast(line, GROUND) >= NO_DATA_LINE_CONTRAST
-
-

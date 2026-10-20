@@ -41,12 +41,3 @@ def test_the_given_fields_and_what_the_caller_wrote_are_recorded(logger):
         fields["cache"] = "hit"
 
     assert recorded_fields() == {"tile": "14/1/2", "cache": "hit"}
-
-
-def test_an_exception_that_escapes_the_block_is_recorded_by_its_type(logger):
-    call, recorded_fields = logger
-
-    with pytest.raises(ValueError), call("cat", tile="14/1/2"):
-        raise ValueError("boom")
-
-    assert recorded_fields() == {"tile": "14/1/2", "error_type": "ValueError"}

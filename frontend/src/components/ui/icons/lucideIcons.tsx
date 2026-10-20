@@ -2,7 +2,6 @@
 import {
   ArrowUp,
   Bike,
-  CalendarDays,
   CircleQuestionMark,
   Clock,
   Cloud,
@@ -29,7 +28,6 @@ import {
   Paintbrush,
   Play,
   Plus,
-  RotateCcw,
   RotateCw,
   Ruler,
   Save,
@@ -117,14 +115,10 @@ export const DistanceTargetIcon = fromLucide(Ruler);
 export const RemovePointIcon = fromLucide(Trash);
 /** 利用者が変えられない選び方（いつも決まった値の行）。 */
 export const LockedIcon = fromLucide(Lock);
-/** 変えた値を既定値に戻す。 */
-export const ResetDefaultsIcon = fromLucide(RotateCcw);
 /** 取れなかったものを取り直す。 */
 export const RetryIcon = fromLucide(RotateCw);
 /** 取れていない情報がある印。警報の色と取り違えないよう、三角の形を使わない。 */
 export const NotFetchedIcon = fromLucide(CloudOff);
-/** 今日1日の見通し。 */
-export const TodayOutlookIcon = fromLucide(CalendarDays);
 /** 時刻を送った重ねを、いまの時刻に戻す。 */
 export const BackToNowIcon = fromLucide(History);
 /** 地図で選んだ道の評価を調べる。 */

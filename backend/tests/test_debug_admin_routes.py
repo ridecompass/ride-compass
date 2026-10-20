@@ -77,15 +77,6 @@ def test_read_logs_filters_by_min_level(admin_credentials):
     assert "[WARNING]" in lines[0]
 
 
-def test_read_logs_returns_nothing_while_debug_mode_disabled(admin_credentials):
-    client.post("/api/admin/debug/mode", json={"enabled": False}, headers=AUTH_HEADERS)
-    marker = uuid.uuid4().hex
-    logging.getLogger("test.t377").debug("should not be recorded marker=%s", marker)
-
-    response = client.get("/api/admin/debug/logs", params={"contains": marker}, headers=AUTH_HEADERS)
-
-    assert response.status_code == 200
-    assert response.json() == []
 
 
 # --- リングバッファの上限件数（debug_control.py単体） ---

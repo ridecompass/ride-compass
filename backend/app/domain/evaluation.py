@@ -53,11 +53,14 @@ from app.domain.difficulty import (
 )
 from app.domain.map_paint import SignedMaterialMapValue, map_paint
 from app.domain.material_catalog import (
-    MATERIAL_CATALOG,
+    all_material_specs,
     is_known_material,
+    material_spec,
     materials_of_source,
 )
 from app.domain.cycling_speed import travel_model_material_ids
+from app.domain.hard_filters import hard_filtered
+from app.domain.road_classes import CLASS_MATERIAL_PREFIX
 from app.domain.tuning import tuning_value
 
 
@@ -126,7 +129,7 @@ def _route_facing_leaf_material_ids(definitions: dict[str, AxisDefinition], *, c
     """所要時間が読む材料と公開軸の葉の材料のうち、categoricalかどうかが`categorical`に合うもの（動的材料を除く）を安定順で並べる。"""
     seen: dict[str, None] = {}
     for material_id in (*travel_model_material_ids(), *_published_axis_leaf_material_ids(definitions)):
-        spec = MATERIAL_CATALOG.get(material_id)
+        spec = material_spec(material_id)
         if spec is None or (spec.dtype == "categorical") != categorical:
             continue
         if material_id in REQUEST_DYNAMIC_MATERIAL_IDS:
@@ -177,7 +180,7 @@ def empty_material_arrays(n: int, present: Container[str]) -> dict[str, Material
     その軸だけ恒久的に欠損扱いになる。
     """
     arrays: dict[str, MaterialColumn] = {}
-    for spec in MATERIAL_CATALOG.values():
+    for spec in all_material_specs():
         if spec.material_id in present:
             continue
         if spec.dtype == "categorical":
@@ -342,7 +345,7 @@ def density_costs(
 
 @dataclass(frozen=True, slots=True)
 class StaticEdgeScoreMatrix:
-    """探索範囲の区間ごとの「Edge×公開軸」の静的スコア行列＋探索の旗・A*
+    """探索範囲の区間ごとの「Edge×公開軸」の静的スコア行列＋探索の除外の材料・A*
     ヒューリスティック用の生配列。全ての配列は同じ行順（切り出した区間の順）で揃う。
 
     `axis_scores`の列（`axis_ids`）は風などREQUEST_DYNAMIC_MATERIAL_IDSに依存する軸を
@@ -358,11 +361,10 @@ class StaticEdgeScoreMatrix:
     axis_scores: np.ndarray  # shape (区間, len(axis_ids))
     distance_m: np.ndarray
     bearing_deg: np.ndarray
-    # 旗の名前→該当フラグ（`domain/hard_filters.py: ROUTE_FLAG_VALUE_SQL`と同じキー集合）。リクエストごとに
+    # 0次ハードフィルタに当たる区間と、区分の列（鍵は`domain/road_classes.py: class_material_id`）。リクエストごとに
     # 変わる絞り込みと割り増しは`domain/hard_filters.py: compute_search_exclusion`が決める。
-    # 旗を1つ増やしてもこの構造は変わらない——専用フィールドへ潰すと、
-    # dataclass・結合・受け渡しの全段で1本ずつ追加が要る。
-    route_flags: dict[str, np.ndarray]
+    hard_filtered: np.ndarray
+    road_classes: dict[str, CategoricalColumn]
     # Edge中点の緯度経度（from/toノードの平均）。探索前に各Edgeの通過予定時刻を基準点からの
     # 直線距離で推定するために使う。
     mid_lat: np.ndarray
@@ -417,7 +419,8 @@ class StaticEdgeScoreMatrix:
                 ("bearing_deg", self.bearing_deg),
                 ("mid_lat", self.mid_lat),
                 ("mid_lon", self.mid_lon),
-                *((f"route_flags[{name}]", flags) for name, flags in self.route_flags.items()),
+                ("hard_filtered", self.hard_filtered),
+                *((f"road_classes[{key}]", column.codes) for key, column in self.road_classes.items()),
                 *((name, matrix) for name, matrix, _ in matrices),
                 *((f"categorical_material_columns[{material_id}]", column.codes) for material_id, column in zip(
                     self.categorical_material_ids, self.categorical_material_columns)),
@@ -460,7 +463,7 @@ def build_static_edge_score_matrix(
     観測（`MaterialSpec.source`）の材料に限る。
 
     重み付き合成は含まない——重みが定まった時点で呼び出し元が`compose_costs_from_axis_matrix`へ
-    渡す。探索の旗は生フラグだけを持ち、リクエストごとに変わる絞り込みと割り増しは
+    渡す。探索の除外は0次ハードフィルタの当たりと区分の列だけを持ち、リクエストごとに変わる絞り込みと割り増しは
     `domain/hard_filters.py: compute_search_exclusion`が別途決める。
 
     **動的材料（風）の列は常にNaN**。風は区間の通過時刻で変わるため、この行列では値を持てず、
@@ -519,7 +522,11 @@ def build_static_edge_score_matrix(
         density_axes=density_axes,
         distance_m=materials.distance_m,
         bearing_deg=materials.bearing_deg,
-        route_flags=materials.route_flag_columns(),
+        hard_filtered=hard_filtered(material_arrays, n),
+        road_classes={
+            material_id: column for material_id, column in material_arrays.items()
+            if material_id.startswith(CLASS_MATERIAL_PREFIX) and isinstance(column, CategoricalColumn)
+        },
         mid_lat=materials.mid_lat,
         mid_lon=materials.mid_lon,
     )

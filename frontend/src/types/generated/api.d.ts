@@ -68,22 +68,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/weather": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_weather_api_weather_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/weather/warnings": {
         parameters: {
             query?: never;
@@ -148,14 +132,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/weather/wind-grid": {
+    "/api/weather": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["get_wind_grid_api_weather_wind_grid_get"];
+        get: operations["get_weather_api_weather_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -164,14 +148,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/weather/wind-grid-detail": {
+    "/api/weather/msm-grid": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["get_wind_grid_detail_api_weather_wind_grid_detail_get"];
+        get: operations["get_msm_grid_api_weather_msm_grid_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -268,6 +252,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["region_way_materials_api_region_way_materials__axis_id___z___x___y__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/region/road-classes/{z}/{x}/{y}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["region_road_classes_api_region_road_classes__z___x___y__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -532,6 +532,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/road-classes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["read_road_classes_api_admin_road_classes_get"];
+        put: operations["replace_road_classes_api_admin_road_classes_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/axis-catalog": {
         parameters: {
             query?: never;
@@ -699,6 +715,72 @@ export interface components {
             weather_code: number | null;
             valid_area: components["schemas"]["ValidArea"] | null;
         };
+        /** AvoidanceClassification */
+        AvoidanceClassification: {
+            /** Section Key */
+            section_key: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Overrides */
+            overrides: {
+                [key: string]: components["schemas"]["AvoidanceOverride"];
+            };
+        };
+        /** AvoidanceLevelView */
+        AvoidanceLevelView: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "pass" | "avoid" | "exclude";
+            /** Label */
+            label: string;
+        };
+        /** AvoidanceOverride */
+        AvoidanceOverride: {
+            /** Section Key */
+            section_key: string | null;
+            /** Default Level */
+            default_level: string | null;
+            /** Selectable */
+            selectable: boolean;
+        };
+        /** AvoidanceRowView */
+        AvoidanceRowView: {
+            /** Key */
+            key: string;
+            /** Section */
+            section: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /**
+             * Default
+             * @enum {string}
+             */
+            default: "pass" | "avoid" | "exclude";
+            /** Former Keys */
+            former_keys: string[];
+        };
+        /** AvoidanceSection */
+        AvoidanceSection: {
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Sort Order */
+            sort_order: number;
+        };
+        /** AvoidanceSectionView */
+        AvoidanceSectionView: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+        };
         /** AxisCatalogEntry */
         AxisCatalogEntry: {
             /** Axis Id */
@@ -718,14 +800,16 @@ export interface components {
             icon_id: string | null;
             /** Primary Attribute Ids */
             primary_attribute_ids: string[];
-            /** Weather Layer Groups */
-            weather_layer_groups: string[];
+            /** Road Layer Ids */
+            road_layer_ids: string[];
             map_paint: components["schemas"]["MapPaint"];
             raw_value_units: components["schemas"]["RawValueUnits"];
             /** Material Breakdown */
             material_breakdown: components["schemas"]["AxisMaterialBreakdownEntry"][];
             /** Dynamic Way Value Conditions */
             dynamic_way_value_conditions: ("at" | "bearing_deg" | "speed_kmh")[];
+            /** Dynamic Way Value Material Conditions */
+            dynamic_way_value_material_conditions: ("at" | "bearing_deg" | "speed_kmh")[];
             /** Dynamic Way Value Undetermined By Bearing */
             dynamic_way_value_undetermined_by_bearing: boolean;
             way_value_formula: components["schemas"]["WayValueFormula"] | null;
@@ -749,6 +833,7 @@ export interface components {
             };
             /** Accident Years */
             accident_years: number[];
+            road_classes: components["schemas"]["RoadClassCatalog"];
         };
         /** AxisDefinition */
         AxisDefinition: {
@@ -929,8 +1014,6 @@ export interface components {
             dtype: "numeric" | "boolean" | "categorical";
             /** Unit */
             unit: string;
-            /** Share */
-            share: number;
             /** Value Labels */
             value_labels: {
                 [key: string]: string;
@@ -1077,6 +1160,15 @@ export interface components {
              * @enum {string}
              */
             name: "bearing_deg" | "speed_kmh";
+        };
+        /** ConditionTerm */
+        ConditionTerm: {
+            /** Fact Values */
+            fact_values: string[];
+            /** Negated */
+            negated: boolean;
+            /** Matches Absent */
+            matches_absent: boolean;
         };
         /** ConnectionEntry */
         ConnectionEntry: {
@@ -1250,6 +1342,35 @@ export interface components {
             /** Generated At */
             generated_at: string;
         };
+        /** GridPointToday */
+        GridPointToday: {
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+            /** Distance Km */
+            distance_km: number;
+            /** Bearing Deg */
+            bearing_deg: number;
+            /** Times */
+            times: string[];
+            /** Temperature C */
+            temperature_c: (number | null)[];
+            /** Precipitation Mm */
+            precipitation_mm: (number | null)[];
+            /** Wind Speed Ms */
+            wind_speed_ms: (number | null)[];
+            /** Wind Direction Deg */
+            wind_direction_deg: (number | null)[];
+            /** Highest Hourly Temperature C */
+            highest_hourly_temperature_c: number | null;
+            /** Lowest Hourly Temperature C */
+            lowest_hourly_temperature_c: number | null;
+            /** Highest Hourly Precipitation Mm */
+            highest_hourly_precipitation_mm: number | null;
+            /** Highest Hourly Wind Speed Ms */
+            highest_hourly_wind_speed_ms: number | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1388,6 +1509,18 @@ export interface components {
             };
             /** Item Count */
             item_count: number | null;
+        };
+        /** LayerTextSlotView */
+        LayerTextSlotView: {
+            /**
+             * Name
+             * @constant
+             */
+            name: "axes";
+            /** Before */
+            before: string;
+            /** After */
+            after: string;
         };
         /** MapLegendScale */
         MapLegendScale: {
@@ -1540,6 +1673,30 @@ export interface components {
             /** Healthy */
             healthy: boolean;
         };
+        /** MsmGridForecast */
+        MsmGridForecast: {
+            /** Times */
+            times: string[];
+            /** Latitude Step Deg */
+            latitude_step_deg: number;
+            /** Longitude Step Deg */
+            longitude_step_deg: number;
+            /** Points */
+            points: components["schemas"]["MsmGridPointForecast"][];
+        };
+        /** MsmGridPointForecast */
+        MsmGridPointForecast: {
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+            /** Wind Speed Ms */
+            wind_speed_ms: (number | null)[];
+            /** Wind Direction Deg */
+            wind_direction_deg: (number | null)[];
+            /** Precipitation Mm */
+            precipitation_mm: (number | null)[];
+        };
         /** OverallDifficulty */
         OverallDifficulty: {
             /** Average */
@@ -1598,12 +1755,139 @@ export interface components {
         RoadAvoidanceOverride: {
             [key: string]: "pass" | "avoid" | "exclude";
         };
+        /** RoadAvoidanceView */
+        RoadAvoidanceView: {
+            /** Levels */
+            levels: components["schemas"]["AvoidanceLevelView"][];
+            /** Sections */
+            sections: components["schemas"]["AvoidanceSectionView"][];
+            /** Rows */
+            rows: components["schemas"]["AvoidanceRowView"][];
+        };
+        /** RoadClass */
+        RoadClass: {
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Former Keys */
+            former_keys: string[];
+            /** Conditions */
+            conditions: {
+                [key: string]: components["schemas"]["ConditionTerm"];
+            }[];
+        };
+        /** RoadClassCatalog */
+        RoadClassCatalog: {
+            /** Generation */
+            generation: string;
+            /** Map Layers */
+            map_layers: components["schemas"]["RoadMapLayerView"][];
+            avoidance: components["schemas"]["RoadAvoidanceView"];
+        };
+        /** RoadClassDefinitions */
+        RoadClassDefinitions: {
+            /** Classifications */
+            classifications: {
+                [key: string]: components["schemas"]["RoadClassification"];
+            };
+            /** Map Layers */
+            map_layers: {
+                [key: string]: components["schemas"]["RoadMapLayer"];
+            };
+            /** Rolling Resistance Classification */
+            rolling_resistance_classification: string | null;
+            /** Rolling Resistance Classes */
+            rolling_resistance_classes: {
+                [key: string]: {
+                    [key: string]: string;
+                };
+            };
+            /** Avoidance Sections */
+            avoidance_sections: {
+                [key: string]: components["schemas"]["AvoidanceSection"];
+            };
+            /** Avoidance Classifications */
+            avoidance_classifications: {
+                [key: string]: components["schemas"]["AvoidanceClassification"];
+            };
+        };
         /** RoadClassStretch */
         RoadClassStretch: {
             /** Distance Km */
             distance_km: number;
             /** Value */
-            value: string | boolean | null;
+            value: string | null;
+        };
+        /** RoadClassView */
+        RoadClassView: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Color */
+            color: string;
+        };
+        /** RoadClassification */
+        RoadClassification: {
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Is Published */
+            is_published: boolean;
+            /** Classes */
+            classes: {
+                [key: string]: components["schemas"]["RoadClass"];
+            };
+        };
+        /** RoadMapLayer */
+        RoadMapLayer: {
+            /** Group Key */
+            group_key: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Icon Key */
+            icon_key: string;
+            /** Summary */
+            summary: string;
+            /** Panel Hint */
+            panel_hint: string;
+            /** Palette */
+            palette: string;
+            /** Hue Slot */
+            hue_slot: number | null;
+            /** Tone */
+            tone: string | null;
+            /** No Data Fact Key */
+            no_data_fact_key: string | null;
+            /** Hides Unclassified */
+            hides_unclassified: boolean;
+        };
+        /** RoadMapLayerView */
+        RoadMapLayerView: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Category */
+            category: string;
+            /** Icon */
+            icon: string;
+            /** Description */
+            description: string[];
+            /** Panel Hint */
+            panel_hint: (string | components["schemas"]["LayerTextSlotView"])[];
+            /** Hide Missing Rows */
+            hide_missing_rows: boolean;
+            /** Has No Data */
+            has_no_data: boolean;
+            /** Classes */
+            classes: components["schemas"]["RoadClassView"][];
         };
         /** Round */
         Round: {
@@ -1683,8 +1967,6 @@ export interface components {
             kind: "loop" | "destination" | "spliced";
             /** Is Fastest */
             is_fastest: boolean;
-            /** Spliceable */
-            spliceable: boolean;
         };
         /** RouteGenerateJobCreatedResponse */
         RouteGenerateJobCreatedResponse: {
@@ -1727,7 +2009,7 @@ export interface components {
             /** Distance Km */
             distance_km?: number | null;
             /** Distance Tolerance Km */
-            distance_tolerance_km: number;
+            distance_tolerance_km?: number | null;
             route_preference?: components["schemas"]["RoutePreferenceWeights"] | null;
             /** Penalty Strength */
             penalty_strength?: number | null;
@@ -1848,12 +2130,7 @@ export interface components {
             /** Direction Deg */
             direction_deg: number;
             /** Forecast At */
-            forecast_at: string | null;
-            /**
-             * Extended
-             * @default false
-             */
-            extended: boolean;
+            forecast_at: string;
         };
         /** SignedMaterialMapValue */
         SignedMaterialMapValue: {
@@ -1885,13 +2162,6 @@ export interface components {
              * Format: date-time
              */
             finished_at: string;
-        };
-        /** TemperatureRange */
-        TemperatureRange: {
-            /** Min C */
-            min_c: number;
-            /** Max C */
-            max_c: number;
         };
         /** TuningParameterView */
         TuningParameterView: {
@@ -2018,30 +2288,6 @@ export interface components {
             reading: components["schemas"]["WbgtReading"] | null;
             valid_area: components["schemas"]["ValidArea"] | null;
         };
-        /** WeatherConditions */
-        WeatherConditions: {
-            /** Precipitation Mm */
-            precipitation_mm: number | null;
-            twilight: components["schemas"]["Twilight"] | null;
-            /** Precipitation Max Mm */
-            precipitation_max_mm: number | null;
-            /** Wind Speed Max Ms */
-            wind_speed_max_ms: number | null;
-            temperature_range: components["schemas"]["TemperatureRange"] | null;
-            /** Today Periods */
-            today_periods: components["schemas"]["WeatherPeriodOutlook"][];
-            /** Today Period Interval Hours */
-            today_period_interval_hours: number;
-        };
-        /** WeatherPeriodOutlook */
-        WeatherPeriodOutlook: {
-            /** Period */
-            period: string;
-            /** Temperature C */
-            temperature_c: number | null;
-            /** Precipitation Mm */
-            precipitation_mm: number | null;
-        };
         /** WeatherWarnings */
         WeatherWarnings: {
             /** Warnings */
@@ -2054,26 +2300,6 @@ export interface components {
             deg: number;
             /** Label */
             label: string;
-        };
-        /** WindGridPoint */
-        WindGridPoint: {
-            /** Latitude */
-            latitude: number;
-            /** Longitude */
-            longitude: number;
-            /** Wind Speed Ms */
-            wind_speed_ms: (number | null)[];
-            /** Wind Direction Deg */
-            wind_direction_deg: (number | null)[];
-            /** Precipitation Mm */
-            precipitation_mm: (number | null)[];
-        };
-        /** WindGridResponse */
-        WindGridResponse: {
-            /** Times */
-            times: string[];
-            /** Points */
-            points: components["schemas"]["WindGridPoint"][];
         };
         /** TableEntry */
         app__services__db_status_service__TableEntry: {
@@ -2221,38 +2447,6 @@ export interface operations {
             };
         };
     };
-    get_weather_api_weather_get: {
-        parameters: {
-            query: {
-                latitude: number;
-                longitude: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WeatherConditions"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_weather_warnings_api_weather_warnings_get: {
         parameters: {
             query: {
@@ -2381,9 +2575,12 @@ export interface operations {
             };
         };
     };
-    get_wind_grid_api_weather_wind_grid_get: {
+    get_weather_api_weather_get: {
         parameters: {
-            query?: never;
+            query: {
+                latitude: number;
+                longitude: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2396,19 +2593,27 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WindGridResponse"];
+                    "application/json": components["schemas"]["GridPointToday"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    get_wind_grid_detail_api_weather_wind_grid_detail_get: {
+    get_msm_grid_api_weather_msm_grid_get: {
         parameters: {
             query: {
                 min_lon: number;
                 min_lat: number;
                 max_lon: number;
                 max_lat: number;
-                spacing_deg?: number;
             };
             header?: never;
             path?: never;
@@ -2422,7 +2627,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WindGridResponse"];
+                    "application/json": components["schemas"]["MsmGridForecast"];
                 };
             };
             /** @description Validation Error */
@@ -2605,6 +2810,8 @@ export interface operations {
         parameters: {
             query?: {
                 at?: string | null;
+                bearing_deg?: number | null;
+                speed_kmh?: number | null;
             };
             header?: never;
             path: {
@@ -2626,6 +2833,43 @@ export interface operations {
                     "application/json": {
                         [key: string]: {
                             [key: string]: number;
+                        };
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    region_road_classes_api_region_road_classes__z___x___y__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                z: number;
+                x: number;
+                y: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: {
+                            [key: string]: string;
                         };
                     };
                 };
@@ -3197,6 +3441,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TuningParameterView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_road_classes_api_admin_road_classes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoadClassDefinitions"];
+                };
+            };
+        };
+    };
+    replace_road_classes_api_admin_road_classes_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoadClassDefinitions"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoadClassDefinitions"];
                 };
             };
             /** @description Validation Error */

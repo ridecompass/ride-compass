@@ -34,7 +34,6 @@ import { useRoutePlanner } from "@/features/route/useRoutePlanner";
 import RouteCandidateActions from "@/features/route/RouteCandidateActions/RouteCandidateActions";
 import RouteOutcome from "@/features/route/RouteOutcome/RouteOutcome";
 import WeatherPanel from "@/features/conditions/WeatherPanel/WeatherPanel";
-import TodayOutlook from "@/features/conditions/TodayOutlook/TodayOutlook";
 import WarningBadgeList from "@/features/conditions/WarningBadge/WarningBadge";
 import HeaderMenu from "@/components/HeaderMenu/HeaderMenu";
 import UsageGuide from "@/components/UsageGuide/UsageGuide";
@@ -227,14 +226,13 @@ export default function Home() {
 
   const handleSettingsTabChange = (value: string) => setSettingsTab(value as SettingsTab);
 
-  // 「今日」のパネル・最寄りの実測・警報の類（位置が分かってから、位置が変わるたびに取る。仮の地点では取らない）。
+  // 最寄りの実測・警報の類（位置が分かってから、位置が変わるたびに取る。仮の地点では取らない）。
   const {
-    weather,
-    weatherLoading,
-    weatherError,
     amedas,
     amedasLoading,
     amedasError,
+    gridPointToday,
+    gridPointTodayError,
     warningBadgeItems,
     warningFetchFailures,
   } = useWeatherConditions(location, locationKnown, navigating ? (riding.map?.position ?? null) : null);
@@ -323,6 +321,7 @@ export default function Home() {
         }
         exclusionsPanel={
           <HardFilterPanel
+            avoidance={axisCatalog.roadClasses.avoidance}
             roadAvoidance={conditions.roadAvoidance}
             onRoadAvoidanceChange={conditions.setRoadAvoidance}
           />
@@ -520,15 +519,16 @@ export default function Home() {
           </div>
         ) : (
           <>
-            {/* 風と「今日」のパネルは左端に固定して常に見せる。入り切らないときに隠れるのは警報の側。 */}
+            {/* 観測のバーは左端に固定して常に見せる。入り切らないときに隠れるのは警報の側。 */}
             <div className="left-0 flex flex-shrink-0 items-center gap-2 sticky z-1 bg-[var(--color-surface)]">
               <WeatherPanel
                 amedas={amedas}
                 loading={amedasLoading}
                 error={amedasError}
+                today={gridPointToday}
+                todayError={gridPointTodayError}
                 mapBearingDeg={mapView.bearing}
               />
-              <TodayOutlook weather={weather} loading={weatherLoading} error={weatherError} />
             </div>
             <div className="ml-auto flex flex-shrink-0 items-center gap-2">
               <WarningBadgeList items={warningBadgeItems} failures={headerFetchFailures} />

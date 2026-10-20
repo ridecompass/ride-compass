@@ -1,5 +1,5 @@
 /**
- * 区間の乗り換えの編集（`useSpliceSession.ts`）——乗り換えの元にできる（backendの印）候補が2本以上あり、候補を選んでいて、区間を割る下限を
+ * 区間の乗り換えの編集（`useSpliceSession.ts`）——候補（周回も目的地ルートも）が2本以上あり、候補を選んでいて、区間を割る下限を
  * 引けるときだけ始められる。始めると元の候補を編集面と地図（いま作っているルート）へ渡し、他の候補が別の道を通る
  * 区間を乗り換え先として地図へ出す。乗り換え・1つ戻す・全部戻す・やめるができ、組み合わせた経路は表示中の候補を
  * 作った生成の入力でbackendに評価させ（同じ組み合わせは投げ直さない。評価が既にある候補と同じ道ならその候補も渡す）、
@@ -17,7 +17,7 @@
  * backendの回数制限に数えられるので、出した要求の数と中身を確かめる。
  *
  * 通さない分岐（どれも入口から作れない）:
- * - 生成の入力が無いときの`start`: 始められるのは目的地の生成があるときだけで、入口（`canStart`）が出ない
+ * - 生成の入力が無いときの`start`: 始められるのは表示中の候補を作った生成があるときだけで、入口（`canStart`）が出ない
  * - 帯の相手が一覧に無い・帯の座標が2点未満: 相手は同じ一覧から引き、範囲は少なくとも1本のEdgeを持つ
  * - 1グループの選択肢の上限: 候補数の上限（`route-generate-config.json: max_routes`）より多くは並ばない
  * - 評価の入口の前提（編集・乗り換え・形が無い）と、編集が無いときの乗り換え: 呼ぶ側が先に同じ前提で止め、
@@ -53,11 +53,8 @@ const PLACES: Places = {
 
 /** 地点を順に通る目的地の候補。Edgeの境界の位置は座標の位置と食い違う（`testing/routeFixtures.ts: routeThrough`）。 */
 function route(id: string, names: readonly string[]): RouteCandidate {
-  return makeRouteCandidate({ id, kind: "destination", spliceable: true, ...routeThrough(PLACES, names) });
+  return makeRouteCandidate({ id, kind: "destination", ...routeThrough(PLACES, names) });
 }
-
-/** 同じ道を通る周回の候補（backendは乗り換えの元にできない印を付ける）。 */
-const asLoop = (candidate: RouteCandidate): RouteCandidate => ({ ...candidate, kind: "loop", spliceable: false });
 
 /** 地点を順に通る線の座標。 */
 const line = (...names: string[]) => routeThrough(PLACES, names).geometry.coordinates;
@@ -76,7 +73,6 @@ const ELSEWHERE = edges("n0", "n1", "nq", "n3");
 const BASIS: GenerationInput = {
   origin: { latitude: 35.6, longitude: 139.7 },
   distanceKm: null,
-  distanceToleranceKm: 5,
   maxRoutes: 4,
   assumedSpeedKmh: 22,
   startTime: new Date("2026-10-04T09:00:00Z"),
@@ -91,7 +87,6 @@ const BASIS: GenerationInput = {
 const CONDITIONS = makeGenerationConditions({
   latitude: BASIS.origin.latitude,
   longitude: BASIS.origin.longitude,
-  distance_tolerance_km: BASIS.distanceToleranceKm,
   route_preference: { axis_a: 1 },
   penalty_strength: 1,
   max_routes: BASIS.maxRoutes,
@@ -134,7 +129,7 @@ function tapStretch(rendered: Rendered, n = 0) {
 }
 
 function evaluated(edgeIds: string[], id = "spliced"): RouteCandidate {
-  return makeRouteCandidate({ id, kind: "spliced", spliceable: true, edge_ids: edgeIds, distance_km: 12.3 });
+  return makeRouteCandidate({ id, kind: "spliced", edge_ids: edgeIds, distance_km: 12.3 });
 }
 
 let jobs: ReturnType<typeof serveGenerationJobs>;
@@ -168,20 +163,31 @@ beforeEach(() => {
 });
 
 describe("入口", () => {
-  it("乗り換えの元にできる候補が2本以上あり、候補を選んでいて、区間を割る下限を引けるときだけ始められる", async () => {
+  it("候補が2本以上あり、候補を選んでいて、区間を割る下限を引けるときだけ始められる", async () => {
     const rendered = renderSplice();
     await waitFor(() => expect(rendered.result.current.canStart).toBe(true));
 
-    // 周回の候補は、生成の入力が目的地を持っていても印に従って始めない（入力から決め直さない）
-    const blocked: Partial<Props>[] = [
-      { routes: [asLoop(BASE), asLoop(VIA_Q)] },
-      { routes: [BASE] },
-      { hasSelectedRoute: false },
-    ];
+    const blocked: Partial<Props>[] = [{ routes: [BASE] }, { hasSelectedRoute: false }];
     for (const props of blocked) {
       rendered.rerender({ ...PROPS, ...props });
       expect(rendered.result.current.canStart).toBe(false);
     }
+  });
+
+  it("周回の候補からも始められ、組み合わせた経路を目的地を付けずに評価へ送る（終点は出発地）", async () => {
+    const loop = (candidate: RouteCandidate): RouteCandidate => ({ ...candidate, kind: "loop" });
+    const loopBasis: GenerationInput = { ...BASIS, distanceKm: 30, destination: null };
+    const rendered = renderSplice({ routes: [loop(BASE), loop(VIA_Q)], generatedInput: loopBasis });
+    await waitFor(() => expect(rendered.result.current.canStart).toBe(true));
+    await startEditing(rendered);
+    tapStretch(rendered);
+    respond([evaluated(ELSEWHERE)]);
+
+    await press(rendered.result.current.panel?.onPreview);
+
+    expect(jobs.submitted).toHaveLength(1);
+    expect(jobs.submitted[0].body).toMatchObject({ spliced_edge_ids: VIA_Q.edge_ids });
+    expect(jobs.submitted[0].body).not.toHaveProperty("destination");
   });
 
   it("区間を割る下限を引けない間は始められず、始めても乗り換え先を作らない（較正と別の切り方で出さない）", async () => {
@@ -256,7 +262,6 @@ describe("編集", () => {
       makeRouteCandidate({
         id: route.id,
         kind: route.kind,
-        spliceable: route.spliceable,
         edge_ids: route.edge_ids,
         node_ids: route.node_ids,
       });

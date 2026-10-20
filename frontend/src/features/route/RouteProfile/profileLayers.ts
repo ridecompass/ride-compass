@@ -4,13 +4,15 @@
 // （応答の`road_classes`）を距離に沿って色で塗る。点はルートの近くの点（応答の`points`）を通る距離に印で並べる。
 // 帯と点のレイヤと名前・行（色と呼び名）は地図の「表示」と同じ宣言から引く。
 
+import type { MapIconComponent } from "@/components/ui/icons/icons";
+import { MAP_LAYER_ICONS, roadLayerIcon } from "@/components/ui/icons/mapLayerIcons";
 import { LANDCOVER_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
-import { ROAD_TRACKS, roadTrackRowOf, roadTrackRows, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
+import { roadTrackRowOf, roadTrackRows, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import type { RouteStretch } from "@/lib/routeDistance";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
-import type { RoutePoint, RouteSegmentDetail } from "@/types/route";
+import type { RoadMapLayerView, RoutePoint, RouteSegmentDetail } from "@/types/route";
 
 import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
 import {
@@ -42,6 +44,8 @@ export type BandLayer = {
   /** 地図のレイヤのid。区間の`road_classes`の鍵でもある。 */
   readonly id: string;
   readonly label: string;
+  /** 地図の「表示」の一覧と同じアイコン。 */
+  readonly icon: MapIconComponent;
   readonly draw: {
     readonly kind: "band";
     /** 凡例の行の並び。 */
@@ -78,42 +82,49 @@ function landcoverRowOf(value: RoadClassValue): RoadTrackRow {
   return row;
 }
 
-/** 地図のレイヤのid → 帯の行。 */
-const BAND_ROWS: Readonly<Record<string, Pick<BandLayer["draw"], "rows" | "rowOf">>> = {
-  ...Object.fromEntries(
-    ROAD_TRACKS.map((track) => [
-      track.attr_id,
-      { rows: roadTrackRows(track), rowOf: (value: RoadClassValue) => roadTrackRowOf(track, value) },
-    ]),
-  ),
-  landcover: { rows: LANDCOVER_ROWS, rowOf: landcoverRowOf },
+const ELEVATION_LAYER: LineLayer = {
+  id: "elevation",
+  label: "標高",
+  draw: {
+    kind: "line",
+    unit: "m",
+    stretches: (segment) =>
+      segment.elevations.map((stretch) => ({
+        distance_km: stretch.distance_km,
+        start: stretch.start_elevation_m,
+        end: stretch.end_elevation_m,
+      })),
+  },
 };
 
-export const PROFILE_LAYERS: readonly ProfileLayer[] = [
-  {
-    id: "elevation",
-    label: "標高",
-    draw: {
-      kind: "line",
-      unit: "m",
-      stretches: (segment) =>
-        segment.elevations.map((stretch) => ({
-          distance_km: stretch.distance_km,
-          start: stretch.start_elevation_m,
-          end: stretch.end_elevation_m,
-        })),
-    },
-  },
-  // 並びと名前は地図の「表示」のレイヤのまま。
-  ...mapDisplay.layers.flatMap((layer): (BandLayer | PointLayer)[] => {
-    if (layer.id in BAND_ROWS)
-      return [{ id: layer.id, label: layer.label, draw: { kind: "band", ...BAND_ROWS[layer.id] } }];
-    const declaration = POINT_LAYERS.find((point) => point.attr_id === layer.id);
-    return declaration === undefined
-      ? []
-      : [{ id: layer.id, label: layer.label, draw: { kind: "points", declaration } }];
-  }),
-];
+// 並びと名前は地図の「表示」のレイヤのまま。
+const DECLARED_LAYERS = mapDisplay.layers.flatMap((layer): (BandLayer | PointLayer)[] => {
+  if (layer.id === "landcover")
+    return [
+      {
+        id: layer.id,
+        label: layer.label,
+        icon: MAP_LAYER_ICONS[layer.id],
+        draw: { kind: "band", rows: LANDCOVER_ROWS, rowOf: landcoverRowOf },
+      },
+    ];
+  const declaration = POINT_LAYERS.find((point) => point.attr_id === layer.id);
+  return declaration === undefined ? [] : [{ id: layer.id, label: layer.label, draw: { kind: "points", declaration } }];
+});
+
+/** グラフに重ねられるレイヤ。道の帯は、軸カタログが配る道の線の層（地図のチップと同じ並び）から作る。 */
+export function profileLayers(roadLayers: readonly RoadMapLayerView[]): readonly ProfileLayer[] {
+  return [
+    ELEVATION_LAYER,
+    ...DECLARED_LAYERS,
+    ...roadLayers.map((layer): BandLayer => ({
+      id: layer.id,
+      label: layer.label,
+      icon: roadLayerIcon(layer.icon),
+      draw: { kind: "band", rows: roadTrackRows(layer), rowOf: (value) => roadTrackRowOf(layer, value) },
+    })),
+  ];
+}
 
 export type LinePoint = { readonly km: number; readonly value: number };
 

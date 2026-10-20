@@ -32,7 +32,7 @@ export default function RouteCandidateActions({ route, splice, onClearSegment, o
           <RideModeIcon size={18} />
         </Button>
       )}
-      {/* 合成（区間の乗り換え）の入口。乗り換えできない生成（周回・候補1件）では出さない。 */}
+      {/* 合成（区間の乗り換え）の入口。乗り換える相手が無い（候補1件）間は出さない。 */}
       {splice.canStart && (
         <Button
           size="panelIcon"

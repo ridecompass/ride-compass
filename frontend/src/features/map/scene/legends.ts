@@ -6,9 +6,9 @@
  */
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
-import { ROAD_OTHER_KEY, ROAD_TRACKS, roadTrackHasMissing, roadTrackRows } from "@/lib/mapDisplay/roadTracks";
+import { ROAD_OTHER_KEY, roadTrackRows } from "@/lib/mapDisplay/roadTracks";
+import type { RoadMapLayerView } from "@/types/route";
 
-import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import weatherScales from "@/types/generated/weather-scales.json";
 
@@ -27,25 +27,26 @@ type SceneLegendAxis = {
   readonly entries: readonly LegendEntry[];
 };
 
-export function roadLegendAxes(): readonly SceneLegendAxis[] {
-  return ROAD_TRACKS.map((track) => ({
-    layerId: track.attr_id,
-    axisId: track.attr_id,
-    // 見出しはチップ名で足りる（軸が1本しかない）。名前の正本は源泉。
+/** 道の線の層ごとの凡例。鍵は層の鍵（チップのidと、隠した行を覚えておく鍵を兼ねる）。 */
+export function roadLegendAxes(layers: readonly RoadMapLayerView[]): readonly SceneLegendAxis[] {
+  return layers.map((layer) => ({
+    layerId: layer.id,
+    axisId: layer.id,
+    // 見出しはチップ名で足りる（軸が1本しかない）。
     label: "",
-    entries: roadTrackRows(track).map((row) => ({ ...row, line: true as const })),
+    entries: roadTrackRows(layer).map((row) => ({ ...row, line: true as const })),
   }));
 }
 
-/** 最初に凡例で隠しておく行。源泉が`hideMissingRows`を宣言した道の線の、値の無い道の行（データなし、タグの不在も
- * 確定した値として載る属性では該当なし）。 */
-export function initiallyHiddenLegendKeys(): Readonly<Record<string, readonly string[]>> {
-  const hiding = new Set<string>(mapDisplay.layers.filter((layer) => layer.hideMissingRows).map((layer) => layer.id));
+/** 最初に凡例で隠しておく行。区分の外の道を隠す層（`hide_missing_rows`）の、値の無い道の行（データなしを分ける層では
+ * データなし、分けない層では該当なし）。 */
+export function initiallyHiddenLegendKeys(
+  layers: readonly RoadMapLayerView[],
+): Readonly<Record<string, readonly string[]>> {
   return Object.fromEntries(
-    ROAD_TRACKS.filter((track) => hiding.has(track.attr_id)).map((track) => [
-      track.attr_id,
-      [roadTrackHasMissing(track) ? NO_DATA_LEGEND_BAND.key : ROAD_OTHER_KEY],
-    ]),
+    layers
+      .filter((layer) => layer.hide_missing_rows)
+      .map((layer) => [layer.id, [layer.has_no_data ? NO_DATA_LEGEND_BAND.key : ROAD_OTHER_KEY]]),
   );
 }
 

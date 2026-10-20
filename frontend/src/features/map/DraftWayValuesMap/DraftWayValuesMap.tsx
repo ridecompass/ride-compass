@@ -2,19 +2,20 @@
 
 // 下書きの点数の地図。保存前の下書きで求めた道の点数を、下書きの段で塗る（管理画面の較正の画面が置く）。地図へ載せるものは一般の地図と同じ場面の組み立て
 // （`scene/applyToMap.ts: sceneInputsFrom`→`buildMapScene`→`applyScene`）を通し、道の線の塗りと凡例も一般の地図のものを使う。
-// 点数の取得の鍵は軸・下書き・範囲だけで、段の境界を含めない——境界だけを動かしたときは、手元の点数のまま塗り直す。
+// 点数の取得の鍵は軸・下書き・タイルだけで、段の境界を含めない——境界だけを動かしたときは、手元の点数のまま塗り直す。
 // 点数は backend が下書きと走る条件で求め終えた値なので、道ごとの材料1つとして載せ、それをそのまま道の値にする木で塗る
 // （公開中の軸の木は公開中の材料を読むので、下書きの点数には使えない）。
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQueries, type QueryObserverResult } from "@tanstack/react-query";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { createBaseMap } from "@/features/map/baseMap";
 import { mergeTileValues, tilesCoveringViewport, type TileXY } from "@/features/map/layers/dynamicWayValues";
-import { buildDefaultLayerVisibility, type MapLayerVisibility } from "@/features/map/layers/mapLayers";
-import type { MapViewport } from "@/features/map/layers/windLayer";
+import type { MapLayerVisibility } from "@/features/map/layers/mapLayers";
+import type { RoadMapLayerView } from "@/types/route";
+import type { MapViewport } from "@/features/map/view/mapLook";
 import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckboxList";
 import { LEGEND_SWATCH_CLASS } from "@/features/map/LensControl/LensControl";
 import { ORIGIN_ZOOM } from "@/features/map/MapView/useMapMarkers";
@@ -23,6 +24,7 @@ import { applyScene, sceneInputsFrom, type HiddenLegendKeys } from "@/features/m
 import { buildMapScene } from "@/features/map/scene/buildScene";
 import type { WayMaterials } from "@/features/map/scene/groups/axisLines";
 import { featureValueFormula } from "@/features/map/scene/wayValueFormula";
+import { tileQueryOptions } from "@/features/map/tileQueries";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { hiddenKeysOf, toggleHiddenKey } from "@/features/map/view/legendFilters";
 import { lensLegend } from "@/features/map/view/lens";
@@ -36,12 +38,12 @@ import { getQueryClient } from "@/lib/queryClient";
 import { textVariants } from "@/components/ui/Text/Text";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-// 下書きの点数の地図は道の点数だけを見せるため、チップで出し入れするレイヤーはどれも出さない。
-const NO_LAYERS = Object.fromEntries(
-  Object.keys(buildDefaultLayerVisibility()).map((id) => [id, false]),
-) as MapLayerVisibility;
+// 下書きの点数の地図は道の点数だけを見せるため、チップで出し入れするレイヤーはどれも出さない（どの層も真偽が無いと出ない）。
+const NO_LAYERS: MapLayerVisibility = {};
 
-const EMPTY_MATERIALS: WayMaterials = new Map();
+/** 道の線の層を描かない。 */
+const NO_ROAD_LAYERS: readonly RoadMapLayerView[] = [];
+const NO_ROAD_CLASSES = { values: new Map<string, Record<string, string>>(), loading: false };
 
 /** 木が条件を読まないので、地図に走る条件を置かない。 */
 const NO_CONDITIONS = {};
@@ -54,6 +56,7 @@ const DRAFT_PAINTING = {
   wayValueFormula: featureValueFormula(DRAFT_VALUE),
   paintsSurroundingRoads: true,
   undeterminedByBearing: false,
+  wayMaterialConditions: [],
 } satisfies Partial<DedicatedWayValueAxis>;
 
 /** タイルごとの点数を、道ごとの材料へ移す。値の無い道は材料を載せない（木が値の無い道として塗る）。 */
@@ -63,6 +66,17 @@ function draftMaterialsOf(responses: readonly Record<string, number | null>[]): 
     materials.set(featureKey, value === null ? {} : { [DRAFT_VALUE]: value });
   }
   return materials;
+}
+
+// 結果が変わらない限り同じ参照を返すよう、まとめ方はモジュールに1つだけ置く（`useQueries`は関数の参照が同じなら
+// まとめ直さない）。
+function combineDraftTiles(results: QueryObserverResult<Record<string, number | null>>[]) {
+  const failed = results.find((result) => result.error !== null);
+  return {
+    materials: draftMaterialsOf(results.flatMap((result) => (result.data ? [result.data] : []))),
+    fetching: results.some((result) => result.isFetching),
+    error: failed ? errorMessage(failed.error) : null,
+  };
 }
 
 /** 1枚のタイルの道の点数を求めるときに、地図が決める欄（タイルと走る条件）。値が条件で変わらない軸へ送っても、backendは読まずに捨てる。 */
@@ -75,7 +89,7 @@ interface DraftTileRequest extends TileXY {
 /** 下書きで1枚のタイルの道の点数（feature_key→点数）を求める。 */
 export type FetchDraftTile<Draft> = (draft: Draft, tile: DraftTileRequest) => Promise<Record<string, number | null>>;
 
-/** 見ている範囲の道の、下書きでの点数。入力が落ち着いてから取り、取り直す間は前の点数を残す。 */
+/** 見ている範囲の道の、下書きでの点数。入力が落ち着いてからタイル1枚ずつ取り、取り直す間は前の点数を残す。 */
 function useDraftWayValues<Draft>(
   axisId: string,
   draft: Draft | null,
@@ -92,28 +106,30 @@ function useDraftWayValues<Draft>(
     () => (viewport ? tilesCoveringViewport(viewport, ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM) : []),
     [viewport],
   );
-  const key = draft === null || tiles.length === 0 ? "" : JSON.stringify({ axisId, draft, tiles });
+  // 求められない間（null）は、前の下書きのまま塗る。
+  const [shownDraft, setShownDraft] = useState<string | null>(null);
+  const draftKey = draft === null ? shownDraft : JSON.stringify(draft);
+  if (draftKey !== shownDraft) setShownDraft(draftKey);
+  const key = draftKey === null || tiles.length === 0 ? "" : JSON.stringify({ draft: draftKey, tiles });
   const debouncedKey = useDebouncedValue(key, MAP_FETCH_DEBOUNCE_MS);
-  const { data, isFetching, error } = useQuery(
+  const request = useMemo(
+    () => (debouncedKey === "" ? null : (JSON.parse(debouncedKey) as { draft: string; tiles: TileXY[] })),
+    [debouncedKey],
+  );
+  const { materials, fetching, error } = useQueries(
     {
-      queryKey: ["draft-way-values", debouncedKey],
-      queryFn: async () => {
-        const request = JSON.parse(debouncedKey) as { draft: Draft; tiles: TileXY[] };
-        const responses = await Promise.all(
-          request.tiles.map((tile) => fetchTile(request.draft, { ...tile, ...condition })),
-        );
-        return draftMaterialsOf(responses);
-      },
-      enabled: debouncedKey !== "",
-      placeholderData: keepPreviousData,
+      queries: request
+        ? request.tiles.map((tile) =>
+            tileQueryOptions(["draft-way-values", axisId], request.draft, tile, () =>
+              fetchTile(JSON.parse(request.draft) as Draft, { ...tile, ...condition }),
+            ),
+          )
+        : [],
+      combine: combineDraftTiles,
     },
     getQueryClient(),
   );
-  return {
-    materials: data ?? EMPTY_MATERIALS,
-    loading: isFetching || key !== debouncedKey,
-    error: error === null ? null : errorMessage(error),
-  };
+  return { materials, loading: fetching || key !== debouncedKey, error };
 }
 
 /** 軸カタログに無い軸（公開していない下書き）を塗るための行。塗りに要らない欄は空にする。 */
@@ -128,7 +144,7 @@ function unpublishedAxis(axisId: string, label: string, paint: MapPaintDeclarati
     rawValueTotalUnit: null,
     materialBreakdown: [],
     primaryAttributeIds: [],
-    weatherLayerGroups: [],
+    roadLayerIds: [],
     wayValueConditions: [],
     timeScope: "always",
     display: paint,
@@ -173,11 +189,12 @@ export default function DraftWayValuesMap<Draft>({
             dynamicWeather: {},
             lens: LENS_DIFFICULTY_ID,
             paintedAxisId: axisId,
+            roadClasses: NO_ROAD_CLASSES,
             wayMaterials: new Map([[axisId, { materials, loading }]]),
             wayConditions: NO_CONDITIONS,
             hiddenLegendKeys,
           },
-          catalog: { dedicatedAxes: [axis], routeStyleModes: mapCatalog.routeStyleModes },
+          catalog: { dedicatedAxes: [axis], routeStyleModes: mapCatalog.routeStyleModes, roadLayers: NO_ROAD_LAYERS },
           routes: [],
           selectedRouteId: null,
           spliceStretches: [],
@@ -185,6 +202,7 @@ export default function DraftWayValuesMap<Draft>({
           tileVersions: mapCatalog.tileVersions,
           inspectedWayId: null,
           travelledKm: null,
+          selectedRouteSegment: null,
         }),
       ),
     [axisId, axis, materials, loading, hiddenLegendKeys, mapCatalog.routeStyleModes, mapCatalog.tileVersions],

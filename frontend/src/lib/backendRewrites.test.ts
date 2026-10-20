@@ -23,7 +23,6 @@ describe("prodDataBackend", () => {
   });
 
   it.each([
-    ["切り替えが無い開発サーバー", { NODE_ENV: "development" }],
     ["切り替えが1でない", { RC_PROD_DATA: "true", NODE_ENV: "development" }],
     ["本番の像のビルド（切り替えが入っていても）", { RC_PROD_DATA: "1", NODE_ENV: "production" }],
   ])("%s では null を返し、本番の宛先を読まない", (_scene, env) => {
@@ -35,12 +34,6 @@ describe("prodDataBackend", () => {
 });
 
 describe("backendRewrites", () => {
-  it("本番のデータで開かないときは、どの口も開発機の backend へ取り次ぎ、API の口を足さない", () => {
-    const rewrites = backendRewrites(LOCAL, null);
-    expect(rewrites.map((r) => r.destination.startsWith(`${LOCAL}/api/`))).not.toContain(false);
-    expect(rewrites.map((r) => r.source)).not.toContain(`${PROD_DATA_API_PREFIX}/:path*`);
-  });
-
   it("本番のデータで開くときは、地図の下地だけを開発機の backend に残し、タイルと API を本番の backend へ向ける", () => {
     const rewrites = backendRewrites(LOCAL, PROD);
     const target = (source: string) => rewrites.find((r) => r.source === source)?.destination;

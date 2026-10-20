@@ -1,4 +1,4 @@
-import { AVOIDABLE_ROWS, AVOIDANCE_LEVELS, syncRoadAvoidance } from "@/features/route/roadAvoidance";
+import { avoidanceLevelOf, readRoadAvoidance } from "@/features/route/roadAvoidance";
 import { alignRoutePreference } from "@/features/route/routePreferenceSync";
 import { totalWeight } from "@/features/route/routeWeightShare";
 import type { AxisCatalog } from "@/lib/axisCatalog";
@@ -9,6 +9,8 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 /** 生成の条件（「ルート設定」の入力）。いまの条件・保存・呼び出しが同じこの形を使う。出発地は位置の持ち主が持つので含まず、
  * その日の走行条件（出発時刻・想定速度）と、生成した候補も持たない。 */
 export interface GenerationConditionsSnapshot {
+  /** 周回か（終点を出発地にする）。周回の間も`destination`は覚えておき、外すと戻す（`destinationInUse`）。 */
+  loop: boolean;
   /** 全長の目標を決めるか。外している間も距離の入力は残す（入れ直すと前の値に戻る）。 */
   distanceTargeted: boolean;
   /** 距離の入力（文字列のまま。「ルート設定」が持つ形）。 */
@@ -16,11 +18,20 @@ export interface GenerationConditionsSnapshot {
   /** 候補数の入力（同上）。 */
   maxRoutes: string;
   waypoints: Coordinates[];
+  /** 置いた目的地（周回の間は覚えておくだけで使わない）。 */
   destination: Coordinates | null;
   /** 上書きした重み。nullは上書きしない（backendの既定の配分）。 */
   routePreference: RoutePreferenceWeights | null;
-  /** 道のレイヤの凡例の行ごとの避け方。 */
+  /** 道の区分の行ごとに選んだ避け方（選んでいない行は無い）。 */
   roadAvoidance: RoadAvoidanceOverride;
+}
+
+/** 生成と画面が使う目的地。周回の間は置いた目的地を使わない（null。終点は出発地）。 */
+export function destinationInUse({
+  loop,
+  destination,
+}: Pick<GenerationConditionsSnapshot, "loop" | "destination">): Coordinates | null {
+  return loop ? null : destination;
 }
 
 /** 名前を付けて保存した生成の条件。 */
@@ -66,7 +77,7 @@ const coordinatesOrNull = (value: unknown) => (value === null || isCoordinates(v
 
 // 全長の目標の有無を持たない件は、前に周回・目的地のモードで保存した件。周回は距離で作り、経由地・目的地を置いてあっても
 // 隠して使わず、目的地は距離を決めずに作っていた。一覧を読むと今の形で書き戻す（`useSavedConditions.ts`の`rewrite`）ので、
-// この読み替えは一覧をまだ開いていない端末のためだけにある。
+// この読み替えは一覧をまだ開いていない端末のためだけにあり、2027-01-10に、これを読む分岐ごと消す。
 function savedMode(entry: Record<string, unknown>): "loop" | "destination" | null {
   if (entry.distanceTargeted !== undefined) return null;
   return entry.routeMode === "loop" || entry.routeMode === "destination" ? entry.routeMode : null;
@@ -80,6 +91,12 @@ const SAVED_FIELD_READERS: {
   [K in keyof SavedCondition]-?: (value: unknown, entry: Record<string, unknown>) => SavedCondition[K] | undefined;
 } = {
   name: (value) => (typeof value === "string" && value.trim() !== "" ? value : undefined),
+  // 周回かを持たない件は、目的地の有無で周回を決めていた頃の件で、目的地を持たなければ周回として読む（その頃の生成と同じ形）。
+  // 目的地の有無で読む分岐は2027-01-19に消す。
+  loop: (value, entry) => {
+    if (value === undefined) return savedMode(entry) === "loop" || entry.destination === null;
+    return typeof value === "boolean" ? value : undefined;
+  },
   distanceTargeted: (value, entry) => {
     if (typeof value === "boolean") return value;
     const mode = savedMode(entry);
@@ -99,8 +116,9 @@ const SAVED_FIELD_READERS: {
     return destination !== undefined && savedMode(entry) === "loop" ? null : destination;
   },
   routePreference: (value) => (value === null || isWeights(value) ? value : undefined),
-  // 避け方を持たない件は、行ごとに選べるようになる前に保存した件で、既定の段で読む。
-  roadAvoidance: syncRoadAvoidance,
+  // 避け方を持たない件は、行ごとに選べるようになる前に保存した件で、どの行も選んでいない（既定の段）として読む。
+  // この読み替えは2027-01-18に消し、避け方を持たない件を捨てる。
+  roadAvoidance: readRoadAvoidance,
 };
 
 // 1件を今の画面が受け付ける形で読む。読めない件はnull（ほかの件は残す）。
@@ -121,10 +139,10 @@ export function readSavedConditions(raw: string): SavedCondition[] | null {
   return readStoredList(raw, readSavedCondition);
 }
 
-// 名前と説明が並べる、ルートの形。目的地が無ければ出発地へ戻る周回になる。
+// 名前と説明が並べる、ルートの形。
 function routeShape(conditions: GenerationConditionsSnapshot) {
   return {
-    toDestination: conditions.destination !== null,
+    toDestination: !conditions.loop,
     distance: conditions.distanceTargeted ? `${conditions.distance}km` : null,
     waypointCount: conditions.waypoints.length,
   };
@@ -172,12 +190,13 @@ function weightsDescription(routePreference: RoutePreferenceWeights | null, cata
   return shares.length === 0 ? "—" : shares.map(({ label, pct }) => `${label} ${pct}%`).join("・");
 }
 
-// 段ごとに「段の名前 行の名前・…」を、強い段から並べる。
-function exclusionsDescription(roadAvoidance: RoadAvoidanceOverride): string {
-  const parts = AVOIDANCE_LEVELS.toReversed().flatMap(({ key: level, label: levelLabel }) => {
-    const labels = AVOIDABLE_ROWS.filter(({ key }) => level !== "pass" && roadAvoidance[key] === level).map(
-      ({ label }) => label,
-    );
+// 段ごとに「段の名前 行の名前・…」を、強い段から並べる。行と段は軸カタログが配るもので、届く前は「なし」になる。
+function exclusionsDescription(roadAvoidance: RoadAvoidanceOverride, catalog: AxisCatalog): string {
+  const { levels, rows } = catalog.roadClasses.avoidance;
+  const parts = levels.toReversed().flatMap(({ key: level, label: levelLabel }) => {
+    const labels = rows
+      .filter((row) => level !== "pass" && avoidanceLevelOf(row, roadAvoidance, levels) === level)
+      .map(({ label }) => label);
     return labels.length === 0 ? [] : [`${levelLabel} ${labels.join("・")}`];
   });
   return parts.length === 0 ? "なし" : parts.join("／");
@@ -190,7 +209,7 @@ export function describeConditions(
   return {
     route: routeDescription(conditions),
     weights: weightsDescription(conditions.routePreference, catalog),
-    exclusions: exclusionsDescription(conditions.roadAvoidance),
+    exclusions: exclusionsDescription(conditions.roadAvoidance, catalog),
   };
 }
 

@@ -47,6 +47,11 @@ export type GenerationConditions = Schemas["GenerationConditions"];
 
 export type AxisCatalogResponse = Schemas["AxisCatalogResponse"];
 export type AxisCatalogEntry = Schemas["AxisCatalogEntry"];
+/** 道の区分。正本は管理DBで、軸カタログが公開した分け方を解決した形で配る。 */
+export type RoadClassCatalog = Schemas["RoadClassCatalog"];
+export type RoadMapLayerView = Schemas["RoadMapLayerView"];
+export type RoadClassView = Schemas["RoadClassView"];
+export type RoadAvoidanceView = Schemas["RoadAvoidanceView"];
 
 // 軸スタジオが使う評価軸定義のCRUD型。/api/admin/axis-definitions。
 export type AxisDefinitionPayload = Schemas["AxisDefinitionPayload"];
