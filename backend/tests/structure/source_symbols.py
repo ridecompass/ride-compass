@@ -175,6 +175,19 @@ REPLACING_BY_NAME = frozenset({"setattr", "delattr", "object"})
 REPLACING_BY_PATH = frozenset({"setattr", "delattr", "patch"})
 
 
+def within(module: str, package: str) -> bool:
+    """`module`が`package`そのものか、その中のモジュールか。"""
+    return module == package or module.startswith(f"{package}.")
+
+
+def write_files(root: Path, files: dict[str, str]) -> Path:
+    """`root`の下へ`{相対パス: 本文}`を書く（検査が効くことを確かめる架空の置き場を組む）。"""
+    for relative, text in files.items():
+        (root / relative).parent.mkdir(parents=True, exist_ok=True)
+        (root / relative).write_text(text, encoding="utf-8")
+    return root
+
+
 def called_name(call: ast.Call) -> str | None:
     """呼び出した名前（`a.b.f(...)`なら`f`）。"""
     func = call.func

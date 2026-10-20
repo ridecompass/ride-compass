@@ -15,7 +15,10 @@ import subprocess
 import sys
 import tokenize
 from collections.abc import Iterator
+from functools import cache
 from pathlib import Path
+
+from tests.structure.source_symbols import write_files
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -143,13 +146,23 @@ def prose_spans(rel_path: str, text: str) -> list[tuple[int, int]]:
     return []
 
 
+_BLANKED = re.compile(r"[^\n]")
+
+
 def _keep(text: str, spans: list[tuple[int, int]], *, inside: bool) -> str:
     """spansの内側（inside=True）か外側だけを残し、残りは改行を保って空白にする（位置と行番号を保つ）。"""
-    mask = [not inside] * len(text)
-    for start, end in spans:
-        for k in range(start, end):
-            mask[k] = inside
-    return "".join(ch if keep or ch == "\n" else " " for ch, keep in zip(text, mask, strict=True))
+    pieces: list[str] = []
+    at = 0
+    for start, end in sorted(spans):
+        start = max(start, at)
+        if start >= end:
+            continue
+        pieces += [text[at:start], text[start:end]]
+        at = end
+    pieces.append(text[at:])
+    blank = 0 if inside else 1
+    return "".join(_BLANKED.sub(" ", piece) if k % 2 == blank else piece for k, piece in enumerate(pieces))
+
 
 
 class _Repository:
@@ -184,13 +197,19 @@ def _names_in(code: str, dotted: str) -> bool:
     )
 
 
+@cache
+def _prose(root: Path, rel_path: str) -> str:
+    """人が読む文の範囲だけを残したテキスト。本物のリポジトリを読む3つの検査が1回の抜き出しを共有する。"""
+    text = read_text(root / rel_path)
+    return _keep(text, prose_spans(rel_path, text), inside=True)
+
+
 def _prose_files(repo: _Repository) -> Iterator[tuple[str, str]]:
     """維持するファイルごとの、人が読む文の範囲だけを残したテキスト。"""
     for rel_path in repo.files:
         if Path(rel_path).suffix not in SCANNED_SUFFIXES or rel_path.startswith(UNMAINTAINED_PREFIXES):
             continue
-        text = repo.text(rel_path)
-        yield rel_path, _keep(text, prose_spans(rel_path, text), inside=True)
+        yield rel_path, _prose(repo.root, rel_path)
 
 
 def _line_of(prose: str, match: re.Match[str]) -> int:
@@ -329,9 +348,7 @@ def test_detects_dangling_references(tmp_path: Path) -> None:
         "docs/modules/table.md": "| domain | `a.py`（`a.py: LIVE`と`a.py: GONE_ROW`） |\n",
         "docs/records/old.md": "`a.py: GONE`\n",
     }
-    for rel, body in files.items():
-        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / rel).write_text(body, encoding="utf-8")
+    write_files(tmp_path, files)
 
     assert dangling_references(tmp_path, sorted(files)) == [
         "app/d.py:1: a.py: GONE（そのファイルのコードに名前が無い）",
@@ -345,28 +362,21 @@ def test_detects_dangling_references(tmp_path: Path) -> None:
 
 def test_untracked_files_count_as_existing(tmp_path: Path) -> None:
     """`git add`前の新しいファイルは実在に数え、無視されたファイルは数えない。"""
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    files = {
+    files = _write_repository(tmp_path, {
         ".gitignore": "ignored.py\n",
         "app/new.py": "LIVE = 1\n",
         "app/ignored.py": "HIDDEN = 1\n",
         "docs/guide.md": "`new.py: LIVE`と`ignored.py: HIDDEN`。\n",
-    }
-    for rel, body in files.items():
-        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / rel).write_text(body, encoding="utf-8")
+    })
 
-    assert dangling_references(tmp_path, repository_files(tmp_path)) == [
+    assert dangling_references(tmp_path, files) == [
         "docs/guide.md:1: ignored.py: HIDDEN（そのパスのファイルが無い）",
     ]
 
 
 def _write_repository(root: Path, files: dict[str, str]) -> list[str]:
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
-    for rel, body in files.items():
-        (root / rel).parent.mkdir(parents=True, exist_ok=True)
-        (root / rel).write_text(body, encoding="utf-8")
-    return repository_files(root)
+    return repository_files(write_files(root, files))
 
 
 def test_detects_dangling_paths(tmp_path: Path) -> None:

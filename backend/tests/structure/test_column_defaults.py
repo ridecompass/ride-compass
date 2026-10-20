@@ -28,7 +28,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from tests.structure.source_symbols import Scope, SourceTree, called_name
+from tests.structure.source_symbols import Scope, SourceTree, called_name, write_files
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -174,37 +174,33 @@ def test_column_defaults_are_used_by_some_writer() -> None:
     )
 
 
-def _write(root: Path, relative: str, text: str) -> None:
-    path = root / relative
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-
-
 def test_detects_a_default_no_writer_omits(tmp_path: Path) -> None:
     """どの読める書き手も値を渡す列を落とし、省く書き手のある列と、読めない書き手は落とさない。読めない書き手の表は、
     載せた列を落とさず、省くと読める書き手がある列・既定値の無い列を載せていたら落とす。"""
-    _write(tmp_path, "app/infrastructure/models.py", (
-        "from sqlalchemy.orm import mapped_column\n\n\n"
-        "class AxisRow:\n"
-        "    __tablename__ = 'axes'\n"
-        "    axis_id: str = mapped_column(primary_key=True)\n"
-        "    label: str = mapped_column(server_default='')\n"
-        "    updated_at: str = mapped_column(server_default='now()')\n\n\n"
-        "class WayRow:\n"
-        "    __tablename__ = 'ways'\n"
-        "    direction: str = mapped_column(server_default='both')\n"
-        "    kind: str = mapped_column(default='road')\n"
-    ))
-    _write(tmp_path, "app/infrastructure/writers.py", (
-        "from sqlalchemy.dialects.postgresql import insert as pg_insert\n"
-        "from app.infrastructure.models import AxisRow, WayRow\n\n\n"
-        "def write(session, values, columns):\n"
-        "    session.add(AxisRow(axis_id='a', label='x'))\n"
-        "    session.execute(pg_insert(AxisRow).values(axis_id='b', label='y', updated_at='t'))\n"
-        "    session.execute(pg_insert(WayRow).values(**values))\n"
-        "    session.execute(f'INSERT INTO ways (direction, {\", \".join(columns)}) VALUES (1)')\n"
-        "    session.execute('INSERT INTO ways (direction, kind) VALUES ($1, $2)')\n"
-    ))
+    write_files(tmp_path, {
+        "app/infrastructure/models.py": (
+            "from sqlalchemy.orm import mapped_column\n\n\n"
+            "class AxisRow:\n"
+            "    __tablename__ = 'axes'\n"
+            "    axis_id: str = mapped_column(primary_key=True)\n"
+            "    label: str = mapped_column(server_default='')\n"
+            "    updated_at: str = mapped_column(server_default='now()')\n\n\n"
+            "class WayRow:\n"
+            "    __tablename__ = 'ways'\n"
+            "    direction: str = mapped_column(server_default='both')\n"
+            "    kind: str = mapped_column(default='road')\n"
+        ),
+        "app/infrastructure/writers.py": (
+            "from sqlalchemy.dialects.postgresql import insert as pg_insert\n"
+            "from app.infrastructure.models import AxisRow, WayRow\n\n\n"
+            "def write(session, values, columns):\n"
+            "    session.add(AxisRow(axis_id='a', label='x'))\n"
+            "    session.execute(pg_insert(AxisRow).values(axis_id='b', label='y', updated_at='t'))\n"
+            "    session.execute(pg_insert(WayRow).values(**values))\n"
+            "    session.execute(f'INSERT INTO ways (direction, {\", \".join(columns)}) VALUES (1)')\n"
+            "    session.execute('INSERT INTO ways (direction, kind) VALUES ($1, $2)')\n"
+        ),
+    })
 
     unreadable = {"ways.kind": "writers.py: write", "axes.updated_at": "writers.py: write", "axes.axis_id": "writers.py: write"}
 

@@ -36,6 +36,7 @@ from app.infrastructure import (
 from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.derived_data_meta import DerivedStageRow
 from app.infrastructure.orm_base import declared_metadata
+from app.infrastructure.source_models import SourceFeatureRow, SourceRunRow
 from app.infrastructure.road_graph_repository import (
     REQUIRED_EXTENSIONS,
     RoadGraphRepository,
@@ -251,7 +252,7 @@ TEST_DATABASE_MAINTENANCE = f"{TEST_DATABASE_SERVER}/postgres"
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 
 
-def default_test_database_name(root: Path) -> str:
+def default_test_database_name() -> str:
     """その作業ツリー専用のテストDB名。
 
     同じDBを複数のセッションが同時に書き換えると、変更と無関係なテストが落ちる
@@ -260,8 +261,8 @@ def default_test_database_name(root: Path) -> str:
     ——PostGIS拡張とテーブルの作成を毎回払わずに済む。ディレクトリ名だけでは別の場所に
     同名の作業ツリーがあると衝突するため、絶対パスのダイジェストを添える。
     """
-    slug = re.sub(r"[^a-z0-9]+", "_", root.name.lower()).strip("_")[:24] or "wt"
-    return f"{TEST_DATABASE_PREFIX}{slug}_{hashlib.sha1(str(root).encode('utf-8')).hexdigest()[:8]}"
+    slug = re.sub(r"[^a-z0-9]+", "_", WORKTREE_ROOT.name.lower()).strip("_")[:24] or "wt"
+    return f"{TEST_DATABASE_PREFIX}{slug}_{hashlib.sha1(str(WORKTREE_ROOT).encode('utf-8')).hexdigest()[:8]}"
 
 
 #: 同時に作ろうとして競り負けたときの例外。PostgreSQLは競争の負け側へ、宣言的な
@@ -361,7 +362,7 @@ def postgis_database_url() -> str:
         return _RESOLVED_DATABASE_URL
     # フックを経ていない呼び出し（pytest外からのimport等）。DBを作らずに行き先だけ答える。
     return os.environ.get("TEST_DATABASE_URL") or (
-        f"{TEST_DATABASE_SERVER}/{default_test_database_name(WORKTREE_ROOT)}"
+        f"{TEST_DATABASE_SERVER}/{default_test_database_name()}"
     )
 
 
@@ -378,8 +379,8 @@ async def raw_connection():
 
 #: 生データと、派生の段が書く表（表の印から導く）と段の指紋の記録。派生の段を生の接続で回すテストは、これを空にしてから
 #: 取り込む——記録が残ると、空にした表を作り直さずに段を飛ばしうる。
-INGESTED_TABLES = (*(table.name for table in derived_tables()), DerivedStageRow.__tablename__, "source_features",
-                   "source_runs")
+INGESTED_TABLES = (*(table.name for table in derived_tables()), DerivedStageRow.__tablename__,
+                   SourceFeatureRow.__tablename__, SourceRunRow.__tablename__)
 
 
 async def empty_ingested_tables(conn) -> None:
@@ -387,7 +388,7 @@ async def empty_ingested_tables(conn) -> None:
 
 
 def _prepare_worktree_database() -> str:
-    name = default_test_database_name(WORKTREE_ROOT)
+    name = default_test_database_name()
     try:
         created = asyncio.run(_create_database_if_absent(name, str(WORKTREE_ROOT)))
     except Exception as exc:  # 作れない理由はそのまま伝える

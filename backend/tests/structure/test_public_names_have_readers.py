@@ -23,7 +23,15 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
-from tests.structure.source_symbols import REPLACING_BY_NAME, REPLACING_BY_PATH, Scope, SourceTree, called_name
+from tests.structure.source_symbols import (
+    REPLACING_BY_NAME,
+    REPLACING_BY_PATH,
+    Scope,
+    SourceTree,
+    called_name,
+    within,
+    write_files,
+)
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(BACKEND_ROOT.parent / "scripts"))
@@ -57,7 +65,7 @@ def _registered(scope: Scope, stmt: ast.stmt) -> bool:
         while isinstance(root, ast.Attribute):
             root = root.value
         symbol = scope.resolve(root)
-        if symbol is not None and (symbol.module == APP or symbol.module.startswith(f"{APP}.")):
+        if symbol is not None and within(symbol.module, APP):
             return True
     return False
 
@@ -142,7 +150,7 @@ def test_detects_names_without_readers(tmp_path: Path) -> None:
     落とさない側は、別のモジュール・同じモジュール・`Dockerfile`が読む名前、`app`の口のデコレータと表の宣言、
     テストが算術の項に使う値・差し替える値・呼ぶ計算。"""
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    for relative, text in {
+    write_files(tmp_path, {
         "app/__init__.py": "",
         "app/registry.py": "def register(fn):\n    return fn\n",
         "app/models.py": (
@@ -170,9 +178,7 @@ def test_detects_names_without_readers(tmp_path: Path) -> None:
             "    assert models.compute(models.LIMIT + 1)\n"
             "    models.reset_state()\n"
         ),
-    }.items():
-        (tmp_path / relative).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / relative).write_text(text, encoding="utf-8")
+    })
 
     assert unread_names(tmp_path) == [
         "app/models.py: UNREAD",
