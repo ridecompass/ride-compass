@@ -28,8 +28,9 @@ _TILE_KINDS: frozenset[str] = frozenset({"rasterTile", "vectorTile"})
 #:   その幅の間だけ描く（予報の意味そのものが「今後N時間」のもの）。
 FrameRuleKind = Literal["nearest", "latestObservation", "current"]
 
-#: MSMの予報を、現在時刻から何時間先まで読むか（`config.py: Settings.msm_forecast_hours`の既定）。runごとの予報時間
-#: （39時間、00/12UTCのrunは78時間）を超える分は配信元のデータ終端で打ち切られる。
+#: MSMの予報を、現在時刻から何時間先まで読むか。runごとの予報時間（39時間、00/12UTCのrunは78時間）を超える分は
+#: 配信元のデータ終端で打ち切られる。生成物`mapDisplay`へも焼くので、環境の設定で上書きできる口を持たない
+#: （変えるときは配り直す）。
 MSM_FORECAST_HOURS = 48
 
 #: MSMの格子点から描く要素が読む値（`GET /api/weather/msm-grid`の格子点の欄）。
