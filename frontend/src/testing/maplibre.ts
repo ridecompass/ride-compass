@@ -34,6 +34,8 @@ export interface PointedFeature {
   readonly layer: string;
   readonly properties: Record<string, unknown>;
   readonly geometry?: GeoJSON.Geometry;
+  /** 地物の feature-state。MapLibre は押した所の地物にいつも付けて返す（載せていなければ空）。 */
+  readonly state?: Record<string, unknown>;
 }
 
 function toLngLat(value: readonly [number, number] | LngLat): LngLat {
@@ -82,7 +84,12 @@ class Evented {
 }
 
 function asRendered(feature: PointedFeature) {
-  return { layer: { id: feature.layer }, properties: feature.properties, geometry: feature.geometry };
+  return {
+    layer: { id: feature.layer },
+    properties: feature.properties,
+    geometry: feature.geometry,
+    state: feature.state ?? {},
+  };
 }
 
 export class LngLatBounds {
