@@ -59,9 +59,9 @@ class FakeJmaTileClient:
         return content, content_type
 
 
-def _answer(monkeypatch, **answers) -> FakeJmaTileClient:
+def _answer(override_dependency, **answers) -> FakeJmaTileClient:
     fake = FakeJmaTileClient(**answers)
-    monkeypatch.setitem(app.dependency_overrides, get_jma_tile_client, lambda: fake)
+    override_dependency(get_jma_tile_client, lambda: fake)
     return fake
 
 
@@ -71,8 +71,8 @@ def _answer(monkeypatch, **answers) -> FakeJmaTileClient:
     # 時刻一覧だけは同じURLのまま内容が更新されるため、immutableにせず短命にする。
     ("/api/jma-tile/bosai/jmatile/data/nowc/targetTimes_N3.json", "public, max-age=60"),
 ])
-def test_a_cached_tile_is_served_without_asking_upstream(monkeypatch, path, cache_control):
-    fake = _answer(monkeypatch, cached=(b"\x89PNG", "image/png"))
+def test_a_cached_tile_is_served_without_asking_upstream(override_dependency, path, cache_control):
+    fake = _answer(override_dependency, cached=(b"\x89PNG", "image/png"))
 
     response = client.get(path)
 
@@ -89,8 +89,8 @@ def test_a_cached_tile_is_served_without_asking_upstream(monkeypatch, path, cach
     # コマの地物は配信されるまで404が返る。覚えさせると、配信されたあとも空白のまま見える。
     ("/api/jma-tile/bosai/jmatile/data/nowc/20260904120000/none/20260904120000/surf/liden/data.geojson?id=liden", "no-store"),
 ])
-def test_an_upstream_404_is_remembered_by_the_browser_only_when_final(monkeypatch, path, cache_control):
-    _answer(monkeypatch, fetched=UPSTREAM_NOT_FOUND)
+def test_an_upstream_404_is_remembered_by_the_browser_only_when_final(override_dependency, path, cache_control):
+    _answer(override_dependency, fetched=UPSTREAM_NOT_FOUND)
 
     response = client.get(path)
 
@@ -98,8 +98,8 @@ def test_an_upstream_404_is_remembered_by_the_browser_only_when_final(monkeypatc
     assert response.headers["cache-control"] == cache_control
 
 
-def test_jma_tile_proxy_forwards_query_string_to_client(monkeypatch):
-    fake = _answer(monkeypatch, fetched=(b'{"type":"FeatureCollection"}', "application/json"))
+def test_jma_tile_proxy_forwards_query_string_to_client(override_dependency):
+    fake = _answer(override_dependency, fetched=(b'{"type":"FeatureCollection"}', "application/json"))
 
     response = client.get(
         "/api/jma-tile/bosai/jmatile/data/nowc/20260904120000/none/20260904120000/surf/liden/data.geojson",
@@ -119,10 +119,10 @@ def _tile_png(color):
     return buffer.getvalue()
 
 
-def test_jma_tile_proxy_interpolates_zoom_without_native_data(monkeypatch):
+def test_jma_tile_proxy_interpolates_zoom_without_native_data(override_dependency):
     # 大雨キキクルはzoomUse="even"のためz9に実データが無い。上流へ問い合わせる代わりに
     # 親（z8）のタイルから該当象限を切り出し、元のパスのキーでキャッシュへ書き戻す（次回は補間をやり直さない）。
-    fake = _answer(monkeypatch, parent=(_tile_png((255, 0, 0, 255)), "image/png"))
+    fake = _answer(override_dependency, parent=(_tile_png((255, 0, 0, 255)), "image/png"))
 
     response = client.get(f"/api/jma-tile/{RAIN_FRAME}/9/455/201.png")
 
@@ -132,13 +132,13 @@ def test_jma_tile_proxy_interpolates_zoom_without_native_data(monkeypatch):
     assert fake.stored == [(f"{RAIN_FRAME}/9/455/201.png", response.content, "image/png")]
 
 
-def test_jma_tile_proxy_interpolates_vector_tiles(monkeypatch):
+def test_jma_tile_proxy_interpolates_vector_tiles(override_dependency):
     # 洪水キキクル（ベクタ）もラスタ3種と同じズームで消えないよう、親から切り出して返す。
     # Content-Typeは親タイルのものをそのまま引き継ぐ。
     parent = mapbox_vector_tile.encode(
         [{"name": "flood", "features": [{"geometry": LineString([(0, 0), (4096, 4096)]), "properties": {}}]}],
     )
-    fake = _answer(monkeypatch, parent=(parent, "binary/octet-stream"))
+    fake = _answer(override_dependency, parent=(parent, "binary/octet-stream"))
 
     response = client.get(f"/api/jma-tile/{FLOOD_FRAME}/9/455/201.pbf")
 
@@ -147,9 +147,9 @@ def test_jma_tile_proxy_interpolates_vector_tiles(monkeypatch):
     assert fake.stored == [(f"{FLOOD_FRAME}/9/455/201.pbf", response.content, "binary/octet-stream")]
 
 
-def test_jma_tile_proxy_falls_back_when_parent_tile_is_unavailable(monkeypatch):
+def test_jma_tile_proxy_falls_back_when_parent_tile_is_unavailable(override_dependency):
     # 親タイルが取れない場合は補間せず、通常のフェッチ経路へ進む。
-    _answer(monkeypatch, parent=None, fetched=(b"\x89PNG-fallback", "image/png"))
+    _answer(override_dependency, parent=None, fetched=(b"\x89PNG-fallback", "image/png"))
 
     response = client.get(f"/api/jma-tile/{RAIN_FRAME}/9/455/201.png")
 

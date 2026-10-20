@@ -13,6 +13,7 @@ import asyncio
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.axis_definitions import (
@@ -96,13 +97,22 @@ async def test_deleting_tells_whether_there_was_an_axis_to_delete(repository):
     assert await repository.delete("axis_a") is False
 
 
+async def _waiting_for_a_lock(engine, pid: int) -> None:
+    """接続`pid`がロックの待ちに入るまで待つ（`pg_locks`はスナップショットでなく今のロックを返す）。"""
+    async with engine.connect() as watcher:
+        while not (await watcher.execute(
+                text("SELECT EXISTS (SELECT 1 FROM pg_locks WHERE pid = :pid AND NOT granted)"), {"pid": pid})).scalar_one():
+            await asyncio.sleep(0.01)
+
+
 async def test_the_write_lock_makes_a_second_writer_wait_until_the_first_commits(repository, road_graph_engine):
     await repository.acquire_write_lock()
 
     async with AsyncSession(road_graph_engine) as other:
         second = AxisDefinitionRepository(other)
+        other_pid = (await other.execute(text("SELECT pg_backend_pid()"))).scalar_one()
         waiting = asyncio.ensure_future(second.acquire_write_lock())
-        await asyncio.sleep(0.2)
+        await asyncio.wait_for(_waiting_for_a_lock(road_graph_engine, other_pid), timeout=5)
         assert not waiting.done()
         await repository.commit()
         await asyncio.wait_for(waiting, timeout=5)

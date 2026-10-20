@@ -31,6 +31,7 @@ from app.domain.material_catalog import (
     WayMaterialCoverageSpec,
 )
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
+from tests.material_fixture import material, replace_material_catalog
 
 ATTR_A, ATTR_B = PRIMARY_ATTRIBUTES[:2]
 
@@ -41,11 +42,8 @@ EXCLUDED = CoverageExcluded(reason="都度引く", missing_semantics="unknown")
 
 
 def spec(material_id: str, dtype="numeric", coverage=WAY_UNKNOWN, **fields) -> MaterialSpec:
-    fields.setdefault("tile_property", None)
-    fields.setdefault("value_sql", f"w.{material_id}")
-    return MaterialSpec(
-        material_id=material_id, label=f"名前{material_id}", description="説明", dtype=dtype, coverage=coverage, **fields
-    )
+    """欠損の見方が不明な材料（網羅の集計の対象）。"""
+    return material(material_id, dtype, coverage=coverage, **fields)
 
 
 @pytest.fixture
@@ -60,7 +58,7 @@ def catalog(monkeypatch):
         spec("dynamic_a", source="request", value_sql=None, coverage=EXCLUDED),
         spec("per_year_a", coverage=EXCLUDED),
     ]
-    monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", {s.material_id: s for s in specs})
+    replace_material_catalog(monkeypatch, specs)
 
 
 @pytest.mark.parametrize(
@@ -80,7 +78,7 @@ def test_a_declaration_that_does_not_fit_its_dtype_is_refused(fields):
     "fields",
     [
         {"value_sql": None},  # DBが値を求めない静的材料は、全区間で値が欠ける
-        {"source": "request", "coverage": EXCLUDED},  # DBの列にも載り、要求の値と2つの出どころを持つ
+        {"source": "request", "value_sql": "w.x", "coverage": EXCLUDED},  # DBの列にも載り、要求の値と2つの出どころを持つ
         {"source": "observation", "value_sql": None},  # DBに無い値の欠損率を数える
     ],
 )

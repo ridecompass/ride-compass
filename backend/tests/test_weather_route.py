@@ -135,16 +135,9 @@ class FakeService:
         return self._answer
 
 
-@pytest.fixture(autouse=True)
-def _clear_dependency_overrides():
-    """テストが足した依存の差し替えを、抜けるときに片付ける。"""
-    yield
-    app.dependency_overrides.clear()
-
-
 @pytest.mark.parametrize(("path", "dependency", "answer"), POINT_ROUTES)
-def test_a_point_route_returns_what_its_source_answered(path, dependency, answer):
-    app.dependency_overrides[dependency] = lambda: FakeService(answer)
+def test_a_point_route_returns_what_its_source_answered(override_dependency, path, dependency, answer):
+    override_dependency(dependency, lambda: FakeService(answer))
 
     response = client.get(path, params=POINT)
 
@@ -152,8 +145,8 @@ def test_a_point_route_returns_what_its_source_answered(path, dependency, answer
     assert response.json() == answer.model_dump(mode="json")
 
 
-def test_the_msm_grid_route_returns_the_grid_points_with_local_times():
-    app.dependency_overrides[get_weather_service] = lambda: FakeService(MSM_GRID)
+def test_the_msm_grid_route_returns_the_grid_points_with_local_times(override_dependency):
+    override_dependency(get_weather_service, lambda: FakeService(MSM_GRID))
 
     response = client.get("/api/weather/msm-grid", params=TOKYO_BBOX)
 
@@ -185,9 +178,9 @@ _TOO_WIDE_SIDE = MSM_GRID_MAX_AREA_SQ_DEG**0.5 + 0.01
         "表示範囲が広すぎます。ズームインしてください。",
     ),
 ], ids=["inverted", "too-wide"])
-def test_an_msm_grid_range_that_is_inverted_or_too_wide_is_refused(bbox, detail):
+def test_an_msm_grid_range_that_is_inverted_or_too_wide_is_refused(override_dependency, bbox, detail):
     """広すぎる範囲は、間引く前に格子点を丸ごと読む（読む量は範囲の格子点の数に比例する）。"""
-    app.dependency_overrides[get_weather_service] = lambda: FakeService(MSM_GRID)
+    override_dependency(get_weather_service, lambda: FakeService(MSM_GRID))
 
     response = client.get("/api/weather/msm-grid", params=bbox)
 
@@ -203,9 +196,11 @@ def test_an_msm_grid_range_that_is_inverted_or_too_wide_is_refused(bbox, detail)
     ("/api/weather", POINT, get_weather_service, "気象データの取得に失敗しました"),
     ("/api/weather/msm-grid", TOKYO_BBOX, get_weather_service, "気象データの取得に失敗しました"),
 ])
-def test_a_source_that_could_not_be_obtained_is_a_failure_not_an_empty_answer(path, params, dependency, detail):
+def test_a_source_that_could_not_be_obtained_is_a_failure_not_an_empty_answer(
+    override_dependency, path, params, dependency, detail
+):
     """空の応答は「出ていない」を表す。取れなかったことを同じ空で返すと、画面は出ていないと見せる。"""
-    app.dependency_overrides[dependency] = lambda: FakeService(None)
+    override_dependency(dependency, lambda: FakeService(None))
 
     response = client.get(path, params=params)
 
@@ -230,8 +225,8 @@ def test_a_source_that_could_not_be_obtained_is_a_failure_not_an_empty_answer(pa
         "msm-grid", settings.msm_grid_rate_limit_per_minute,
     ),
 ])
-def test_each_route_is_rate_limited_per_client(path, params, dependency, answer, key, limit):
-    app.dependency_overrides[dependency] = lambda: FakeService(answer)
+def test_each_route_is_rate_limited_per_client(override_dependency, path, params, dependency, answer, key, limit):
+    override_dependency(dependency, lambda: FakeService(answer))
     for _ in range(limit - 1):
         rate_limiter.check_rate_limit(f"{key}:testclient", limit)
 

@@ -34,9 +34,9 @@ from app.batch.ingest import SourceRecord
 from app.config import settings
 from app.domain.place_search import PLACE_PREDICTION_LIMIT
 from app.domain.region import BoundingBox
-from app.infrastructure import database, rate_limiter
+from app.infrastructure import rate_limiter
 from app.main import app
-from tests.conftest import postgis_database_url, raw_connection
+from tests.conftest import raw_connection
 from tests.source_ingest import (
     abr_block_record,
     abr_city_record,
@@ -61,18 +61,8 @@ OUTSIDE_LON, OUTSIDE_LAT = 135.50, 34.68
 
 
 @pytest_asyncio.fixture(loop_scope="module")
-async def app_db(road_graph_session, monkeypatch):
-    """アプリのセッション工場を、表を作ったテストDBへ向ける。工場はプロセスに1つなので、作り直してから始め、閉じて終える。
-    テストが入れた行は、抜けるときに`road_graph_session`の片付けが消す。"""
-    monkeypatch.setattr(settings, "database_url", postgis_database_url())
-    await database.dispose_engines()
-    yield
-    await database.dispose_engines()
-
-
-@pytest_asyncio.fixture(loop_scope="module")
-async def area(app_db):
-    """道路の取込が対象範囲を宣言した状態。"""
+async def area(road_graph_session, app_on_test_database):
+    """道路の取込が対象範囲を宣言した状態。入れた行は、抜けるときに`road_graph_session`の片付けが消す。"""
     await ingest_records("osm_way", [], bbox=(
         AREA.min_latitude, AREA.min_longitude, AREA.max_latitude, AREA.max_longitude))
 
@@ -267,7 +257,7 @@ async def test_continuations_are_the_shortest_ones_up_to_the_limit_nearest_first
         for length in range(PLACE_PREDICTION_LIMIT, 0, -1)]}
 
 
-@pytest.mark.usefixtures("app_db")
+@pytest.mark.usefixtures("road_graph_session", "app_on_test_database")
 async def test_the_search_is_a_failure_when_the_area_cannot_be_read():
     """対象範囲が読めない（DB障害・道路を未取込）ときは、候補を範囲で絞れない。"""
     response = await _search("東京都新宿区")

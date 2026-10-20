@@ -18,7 +18,7 @@ import pytest
 
 from app.config import settings
 from app.domain.attributes import CategoricalColumn
-from app.domain.axis_definitions import BreakpointLinearShape, CategoricalShape, MaterialTerm, copy_axis_definitions
+from app.domain.axis_definitions import BreakpointLinearShape, CategoricalShape, MaterialTerm
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments, WayValueQuery
 from app.domain.geo import LatLonPoint
 from app.domain.gradient import ROAD_BEARING_LEAF
@@ -30,10 +30,11 @@ from app.infrastructure.derived_data_meta import DataRevisions
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, encode_empty_tile
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.services.dedicated_way_values import AxisWayValueLens, dedicated_way_value_layers
+from app.services.dedicated_way_values import dedicated_way_value_layers
 from app.services import region_service
 from app.services.region_service import AxisInspectorService, RegionService
 from tests.axis_system_fixture import replaced_axis_definitions, shaped_axis
+from tests.way_value_lens_fixture import axis_way_value_lens
 from tests.fake_external_log import record_external_calls
 
 
@@ -224,7 +225,7 @@ def _difficulty(axis_id: str, painted: float) -> float:
 
 async def _map_values(axis_id: str, tile: tuple[int, int, int]) -> dict[str, float | None]:
     """地図が塗る値: 軸カタログの式の木へ、地図が受け取る道ごとの材料と`QUERY`の走る向きを入れたもの。"""
-    lens = AxisWayValueLens(axis_id, copy_axis_definitions(), _TileMaterials(), {"gradient_percent": _Gradients()}.__getitem__)
+    lens = axis_way_value_lens(axis_id, _TileMaterials(), {"gradient_percent": _Gradients()})
     by_way = await lens.way_materials(*tile, QUERY)
     formula = dedicated_way_value_layers()[axis_id].formula
     assert isinstance(by_way, dict) and formula is not None

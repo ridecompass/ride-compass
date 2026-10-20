@@ -113,7 +113,7 @@ class _CatalogRepository:
 
 
 @pytest.fixture
-def client():
+def client(override_dependency):
     """`/api/axis-catalog`を叩く口。このファイルの検証対象は軸カタログの内容で、DBの値は見ない。
 
     `/api/axis-catalog`は事故の収録年とタイル世代を出すためだけに`RegionService`を経由する。実DBが繋がる環境ではリクエストごとに接続を開き、
@@ -121,9 +121,8 @@ def client():
     コルーチンが未awaitのまま残る（`RuntimeWarning: coroutine 'Connection._cancel' was
     never awaited`）。DBの口を代役へ固定して、DBの有無でこのファイルの経路が変わらないようにする。
     """
-    app.dependency_overrides[get_region_service] = lambda: RegionService(repository=_CatalogRepository())
-    yield TestClient(app)
-    app.dependency_overrides.pop(get_region_service, None)
+    override_dependency(get_region_service, lambda: RegionService(repository=_CatalogRepository()))
+    return TestClient(app)
 
 
 def _entries(client) -> dict[str, dict]:

@@ -13,13 +13,9 @@
 """
 
 import json
-import sys
-from pathlib import Path
 
 import httpx
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import axis_apply
 from app.domain.axis_definitions import AxisDefinition, is_update_allowed_while_published

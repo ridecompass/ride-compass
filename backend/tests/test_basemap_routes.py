@@ -32,12 +32,12 @@ class FakeBasemapClient:
         return self._result
 
 
-def _answer(monkeypatch, result):
-    monkeypatch.setitem(app.dependency_overrides, get_basemap_client, lambda: FakeBasemapClient(result))
+def _answer(override_dependency, result):
+    override_dependency(get_basemap_client, lambda: FakeBasemapClient(result))
 
 
-def test_basemap_proxy_returns_cached_content_with_correct_media_type(monkeypatch):
-    _answer(monkeypatch, (b'{"version":8}', "application/json"))
+def test_basemap_proxy_returns_cached_content_with_correct_media_type(override_dependency):
+    _answer(override_dependency, (b'{"version":8}', "application/json"))
 
     response = client.get("/api/basemap/styles/liberty")
 
@@ -51,8 +51,8 @@ def test_basemap_proxy_returns_cached_content_with_correct_media_type(monkeypatc
     # 配信元に無い部品は上流障害ではない。502で返すと、本当の障害が埋もれる。
     (UPSTREAM_NOT_FOUND, 404, "指定されたリソースは存在しません"),
 ])
-def test_basemap_proxy_tells_a_missing_part_apart_from_an_upstream_failure(monkeypatch, result, status, detail):
-    _answer(monkeypatch, result)
+def test_basemap_proxy_tells_a_missing_part_apart_from_an_upstream_failure(override_dependency, result, status, detail):
+    _answer(override_dependency, result)
 
     response = client.get("/api/basemap/fonts/NotoSans/40000-40255.pbf")
 
@@ -62,8 +62,8 @@ def test_basemap_proxy_tells_a_missing_part_apart_from_an_upstream_failure(monke
     assert "cache-control" not in response.headers
 
 
-def test_basemap_proxy_is_rate_limited_per_client(monkeypatch):
-    _answer(monkeypatch, (b"x", "application/json"))
+def test_basemap_proxy_is_rate_limited_per_client(override_dependency):
+    _answer(override_dependency, (b"x", "application/json"))
 
     for _ in range(settings.basemap_rate_limit_per_minute - 1):
         rate_limiter.check_rate_limit("basemap:testclient", settings.basemap_rate_limit_per_minute)

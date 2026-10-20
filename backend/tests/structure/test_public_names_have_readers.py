@@ -19,10 +19,10 @@ from __future__ import annotations
 import ast
 import re
 import subprocess
-import sys
 from collections.abc import Iterator
 from pathlib import Path
 
+from repo_population import read_text, repository_files
 from tests.structure.source_symbols import (
     REPLACING_BY_NAME,
     REPLACING_BY_PATH,
@@ -34,9 +34,6 @@ from tests.structure.source_symbols import (
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(BACKEND_ROOT.parent / "scripts"))
-
-from repo_population import read_text, repository_files  # noqa: E402
 
 APP = "app"
 TESTS = "tests"

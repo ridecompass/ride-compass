@@ -19,16 +19,15 @@
 import numpy as np
 import pytest
 
-from app.domain import axis_definitions, material_catalog
+from app.domain import axis_definitions
 from app.domain.axis_definitions import (
     AxisDefinition,
-    BreakpointLinearShape,
     CategoricalShape,
-    MaterialTerm,
     PriorityCondition,
 )
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
-from tests.axis_system_fixture import replaced_axis_definitions
+from tests.axis_system_fixture import linear, replaced_axis_definitions
+from tests.material_fixture import material, replace_material_catalog
 from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
 
 ATTR_X, ATTR_Y = PRIMARY_ATTRIBUTES[:2]
@@ -37,39 +36,21 @@ DYNAMIC = next(iter(axis_definitions.REQUEST_DYNAMIC_MATERIAL_IDS))
 pytestmark = pytest.mark.usefixtures("catalog")
 
 
-def material(material_id: str, dtype="numeric", primary_attribute=None, source="db") -> material_catalog.MaterialSpec:
-    return material_catalog.MaterialSpec(
-        material_id=material_id,
-        label=material_id,
-        description=material_id,
-        dtype=dtype,
-        tile_property=None,
-        source=source,
-        value_sql=f"w.{material_id}" if source == "db" else None,
-        coverage=material_catalog.CoverageExcluded(reason="テスト用", missing_semantics="unknown"),
-        primary_attribute=primary_attribute,
-    )
-
-
 @pytest.fixture
 def catalog(monkeypatch):
-    specs = {
-        "num_a": material("num_a", primary_attribute=ATTR_X),
-        "num_b": material("num_b", primary_attribute=ATTR_Y),
-        "num_c": material("num_c", primary_attribute=ATTR_X),
-        "num_plain": material("num_plain"),
-        "cat": material("cat", dtype="categorical"),
-        DYNAMIC: material(DYNAMIC, source="request"),
-    }
-    monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", specs)
-    return specs
+    return replace_material_catalog(monkeypatch, [
+        material("num_a", primary_attribute=ATTR_X),
+        material("num_b", primary_attribute=ATTR_Y),
+        material("num_c", primary_attribute=ATTR_X),
+        material("num_plain"),
+        material("cat", "categorical"),
+        material(DYNAMIC, source="request"),
+    ])
 
 
 def axis(axis_id: str, *refs: str, published: bool = False, **fields) -> AxisDefinition:
     """`refs`を重み1で足し、0〜10を0〜100へ写す軸。"""
-    shape = BreakpointLinearShape(
-        terms=[MaterialTerm(material=ref) for ref in refs or ("num_a",)], breakpoints=[(0.0, 0.0), (10.0, 100.0)]
-    )
+    shape = linear(*(refs or ("num_a",)))
     return AxisDefinition(
         axis_id=axis_id, shape=shape, is_published=published, **{"default_weight": 1.0, "label": axis_id, **fields}
     )

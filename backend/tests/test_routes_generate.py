@@ -99,7 +99,7 @@ class GatedWeather(Weather):
 
 
 @pytest.fixture
-def world(monkeypatch):
+def world(override_dependency, monkeypatch):
     """格子の道路網・天気の代役と、避けたい材料を読む公開軸1本（`avoid_axis_declared`）。"""
     world = World()
 
@@ -108,7 +108,7 @@ def world(monkeypatch):
         yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network)), world.weather, requested)
 
     serve_road_network(monkeypatch, world.current)
-    monkeypatch.setitem(app.dependency_overrides, dependencies.get_route_generation_setup_opener, lambda: open_setup)
+    override_dependency(dependencies.get_route_generation_setup_opener, lambda: open_setup)
     with avoid_axis_declared():
         yield world
 

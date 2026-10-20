@@ -39,7 +39,6 @@ from app.domain.axis_definitions import (
     AxisDefinition,
     BreakpointLinearShape,
     MaterialTerm,
-    copy_axis_definitions,
 )
 from app.config import settings
 from app.domain.axis_inspector import AxisInspectorAxis, AxisInspectorResult, InspectorComposite, InspectorValues
@@ -62,6 +61,7 @@ from app.services.dedicated_way_values import AxisWayValueLens
 from app.services.weather_service import WeatherService
 from app.main import app
 from app.domain.landcover import LANDCOVER_TILE_MAX_ZOOM, LANDCOVER_TILE_MIN_ZOOM
+from tests.way_value_lens_fixture import FakeFeatureMaterials, axis_way_value_lens
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 from tests.bound_fake import bound
 
@@ -113,15 +113,12 @@ INSPECTED = {"osm_way_id": 12345, "feature_key": "12345-0", "point": {"latitude"
         (f"/api/region/point-tiles/{POINT_LAYER}/14/14551/6447.pbf", False, (POINT_LAYER, 14, 14551, 6447), NO_STORE),
     ],
 )
-def test_region_tiles_hand_the_services_mvt_over(path, cacheable, requested, cache_control):
+def test_region_tiles_hand_the_services_mvt_over(override_dependency, path, cacheable, requested, cache_control):
     tile = bytes(range(256)) * 40  # 圧縮する大きさを超える
     fake = FakeRegionService(tile_bytes=tile, cacheable=cacheable)
-    app.dependency_overrides[get_region_service] = lambda: fake
+    override_dependency(get_region_service, lambda: fake)
 
-    try:
-        response = client.get(path, headers={"Accept-Encoding": "gzip"})
-    finally:
-        app.dependency_overrides.clear()
+    response = client.get(path, headers={"Accept-Encoding": "gzip"})
 
     assert response.status_code == 200
     assert response.content == tile
@@ -153,32 +150,26 @@ def test_region_tiles_hand_the_services_mvt_over(path, cacheable, requested, cac
         ("/api/region/axis-inspector", {"speed_kmh": 0.0}),
     ],
 )
-def test_region_requests_outside_each_quantitys_range_are_refused(path, inspected):
-    app.dependency_overrides[get_region_service] = lambda: FakeRegionService()
-    app.dependency_overrides[get_dedicated_way_value_service] = lambda: _lens(SIGNED)
-    app.dependency_overrides[get_axis_inspector_service] = lambda: FakeAxisInspector()
+def test_region_requests_outside_each_quantitys_range_are_refused(override_dependency, path, inspected):
+    override_dependency(get_region_service, lambda: FakeRegionService())
+    override_dependency(get_dedicated_way_value_service, lambda: _lens(SIGNED))
+    override_dependency(get_axis_inspector_service, lambda: FakeAxisInspector())
 
-    try:
-        response = client.get(path) if inspected is None else client.post(path, json={**INSPECTED, **inspected})
-    finally:
-        app.dependency_overrides.clear()
+    response = client.get(path) if inspected is None else client.post(path, json={**INSPECTED, **inspected})
 
     assert response.status_code == 422
 
 
-def test_region_point_tile_rejects_an_undeclared_layer():
-    app.dependency_overrides[get_region_service] = lambda: FakeRegionService()
+def test_region_point_tile_rejects_an_undeclared_layer(override_dependency):
+    override_dependency(get_region_service, lambda: FakeRegionService())
 
-    try:
-        response = client.get("/api/region/point-tiles/no-such-layer/14/14551/6447.pbf")
-    finally:
-        app.dependency_overrides.clear()
+    response = client.get("/api/region/point-tiles/no-such-layer/14/14551/6447.pbf")
 
     assert response.status_code == 404
 
 
 @pytest.mark.usefixtures("dedicated_axes")
-def test_each_kind_of_region_request_is_counted_on_its_own():
+def test_each_kind_of_region_request_is_counted_on_its_own(override_dependency):
     """路面・点のレイヤーごと・道ごとの材料・区間インスペクタは、それぞれ別の回数で上限に当たる。
 
     回数を分け合うと、1つの種類の取得だけでほかの種類の上限を先に使い切り、地図の別のレイヤーが描かれなくなる。
@@ -187,29 +178,26 @@ def test_each_kind_of_region_request_is_counted_on_its_own():
     exhausted_layer, *other_layers = POINT_TILE_LAYERS
     road = "/api/region/road-surface-tiles/14/14551/6447.pbf"
     point = "/api/region/point-tiles/{}/14/14551/6447.pbf"
-    app.dependency_overrides[get_region_service] = lambda: FakeRegionService()
-    app.dependency_overrides[get_dedicated_way_value_service] = lambda: _lens(SIGNED)
-    app.dependency_overrides[get_axis_inspector_service] = lambda: FakeAxisInspector()
+    override_dependency(get_region_service, lambda: FakeRegionService())
+    override_dependency(get_dedicated_way_value_service, lambda: _lens(SIGNED))
+    override_dependency(get_axis_inspector_service, lambda: FakeAxisInspector())
 
-    try:
-        # 上限-1件は実HTTPを経由せず記録を直接埋め、境界の1回だけ実リクエストで見る。
-        for key in ("road-tile", f"{exhausted_layer}-tile"):
-            for _ in range(limit - 1):
-                rate_limiter.check_rate_limit(f"{key}:testclient", limit)
-        exhausted_point = point.format(exhausted_layer)
-        exhausted = [client.get(path).status_code for path in (road, road, exhausted_point, exhausted_point)]
-        others = [client.get(point.format(layer)).status_code for layer in other_layers]
-        others.append(client.get("/api/region/way-materials/axis_way_value_signed/14/14551/6447").status_code)
-        others.append(client.post("/api/region/axis-inspector", json=INSPECTED).status_code)
-    finally:
-        app.dependency_overrides.clear()
+    # 上限-1件は実HTTPを経由せず記録を直接埋め、境界の1回だけ実リクエストで見る。
+    for key in ("road-tile", f"{exhausted_layer}-tile"):
+        for _ in range(limit - 1):
+            rate_limiter.check_rate_limit(f"{key}:testclient", limit)
+    exhausted_point = point.format(exhausted_layer)
+    exhausted = [client.get(path).status_code for path in (road, road, exhausted_point, exhausted_point)]
+    others = [client.get(point.format(layer)).status_code for layer in other_layers]
+    others.append(client.get("/api/region/way-materials/axis_way_value_signed/14/14551/6447").status_code)
+    others.append(client.post("/api/region/axis-inspector", json=INSPECTED).status_code)
 
     assert exhausted == [200, 429, 200, 429]
     assert other_layers
     assert others == [200] * len(others)
 
 
-def test_region_axis_inspector_hands_the_pressed_feature_and_the_maps_conditions_over():
+def test_region_axis_inspector_hands_the_pressed_feature_and_the_maps_conditions_over(override_dependency):
     """押した道・フィーチャー・地点・タイルと、地図が指定している走行方位・時刻・想定速度がサービスへ渡り、その結果が
     応答になる。
 
@@ -223,14 +211,11 @@ def test_region_axis_inspector_hands_the_pressed_feature_and_the_maps_conditions
     )
     result = AxisInspectorResult(highway="primary", tags={}, segment=values, way=values)
     fake = FakeAxisInspector(result)
-    app.dependency_overrides[get_axis_inspector_service] = lambda: fake
-    try:
-        response = client.post(
-            "/api/region/axis-inspector",
-            json={**INSPECTED, "at": "2026-09-21T09:00:00+00:00", "speed_kmh": 20.0},
-        )
-    finally:
-        app.dependency_overrides.clear()
+    override_dependency(get_axis_inspector_service, lambda: fake)
+    response = client.post(
+        "/api/region/axis-inspector",
+        json={**INSPECTED, "at": "2026-09-21T09:00:00+00:00", "speed_kmh": 20.0},
+    )
 
     assert response.status_code == 200
     assert response.json() == result.model_dump()
@@ -252,27 +237,12 @@ class FakeDynamicWayValueService:
         return self._materials
 
 
-class FakeFeatureMaterials:
-    """タイルの材料を読む口（`services/feature_materials.py: FeatureMaterialService`）の代役。"""
-
-    def __init__(self, materials: FeatureMaterials | None = None):
-        self._materials = materials
-
-    async def materials(self, z, x, y):
-        return self._materials
-
-    async def segments(self, z, x, y):
-        return None
-
-
 def _lens(
     axis_id: str, services=None, materials: FeatureMaterials | None = None
 ) -> AxisWayValueLens:
     """軸の集合は今の`AXIS_DEFINITIONS`。`services`は材料id→配信サービスの代役。"""
     services = services if services is not None else {"gradient_percent": FakeDynamicWayValueService()}
-    return AxisWayValueLens(
-        axis_id, copy_axis_definitions(), FakeFeatureMaterials(materials), services.__getitem__
-    )
+    return axis_way_value_lens(axis_id, FakeFeatureMaterials(materials), services)
 
 
 SCORED = "axis_way_value_scored"
@@ -310,21 +280,18 @@ def dedicated_axes():
 
 
 @pytest.mark.usefixtures("dedicated_axes")
-def test_region_way_materials_are_the_same_whatever_heading_and_speed_the_map_has():
+def test_region_way_materials_are_the_same_whatever_heading_and_speed_the_map_has(override_dependency):
     """地図は道ごとの材料を走行方位・想定速度に依らずに1回取り、向きと速度を変えるたびに木で値を求め直す。材料が
     向きで変わると、向きを変えた地図が前の向きの材料で塗る。時刻は時刻に依る材料（風）へ渡る。"""
     fake = FakeDynamicWayValueService(materials={
         "gradient_percent": {"1": 2.0, "2": -1.5}, ROAD_BEARING_LEAF: {"1": 90.0}})
-    app.dependency_overrides[get_dedicated_way_value_service] = lambda: _lens(SIGNED, {"gradient_percent": fake})
+    override_dependency(get_dedicated_way_value_service, lambda: _lens(SIGNED, {"gradient_percent": fake}))
 
-    try:
-        responses = [
-            client.get(f"/api/region/way-materials/{SIGNED}/14/14551/6447",
-                       params={"at": "2026-08-30T09:00:00", **params})
-            for params in ({}, {"bearing_deg": 0, "speed_kmh": 20.0}, {"bearing_deg": 180, "speed_kmh": 30.0})
-        ]
-    finally:
-        app.dependency_overrides.clear()
+    responses = [
+        client.get(f"/api/region/way-materials/{SIGNED}/14/14551/6447",
+                   params={"at": "2026-08-30T09:00:00", **params})
+        for params in ({}, {"bearing_deg": 0, "speed_kmh": 20.0}, {"bearing_deg": 180, "speed_kmh": 30.0})
+    ]
 
     assert [response.status_code for response in responses] == [200] * 3
     bodies = [response.json() for response in responses]
@@ -335,20 +302,17 @@ def test_region_way_materials_are_the_same_whatever_heading_and_speed_the_map_ha
 
 
 @pytest.mark.usefixtures("dedicated_axes")
-def test_region_way_materials_answer_the_wind_axis_with_its_value_under_the_maps_heading_and_speed():
+def test_region_way_materials_answer_the_wind_axis_with_its_value_under_the_maps_heading_and_speed(override_dependency):
     """予報の風速・風向は地点の予報として外へ出せないので、風を読む軸は受け取った向き・速さで値まで求めて返し、風の値を
     載せない。向きを変えると値が変わり、向き・速さが無ければ値を求められずに断る。"""
     fake = FakeDynamicWayValueService(materials={WIND_SPEED_LEAF: {"1": 8.0}, WIND_DIRECTION_LEAF: {"1": 0.0}})
-    app.dependency_overrides[get_dedicated_way_value_service] = lambda: _lens(SCORED, {"wind_drag_ratio": fake})
+    override_dependency(get_dedicated_way_value_service, lambda: _lens(SCORED, {"wind_drag_ratio": fake}))
     path = f"/api/region/way-materials/{SCORED}/14/14551/6447"
 
-    try:
-        headwind, tailwind = (
-            client.get(path, params={"at": "2026-08-30T09:00:00", "bearing_deg": bearing, "speed_kmh": 20.0})
-            for bearing in (0, 180))
-        unconditioned = client.get(path, params={"at": "2026-08-30T09:00:00"})
-    finally:
-        app.dependency_overrides.clear()
+    headwind, tailwind = (
+        client.get(path, params={"at": "2026-08-30T09:00:00", "bearing_deg": bearing, "speed_kmh": 20.0})
+        for bearing in (0, 180))
+    unconditioned = client.get(path, params={"at": "2026-08-30T09:00:00"})
 
     assert [headwind.status_code, tailwind.status_code] == [200, 200]
     leaves = {name for body in (headwind.json(), tailwind.json()) for values in body.values() for name in values}
@@ -397,17 +361,14 @@ class NoRainHistoryWeather:
         (None, True, 404),
     ],
 )
-def test_region_way_materials_serve_every_published_axis(monkeypatch, material, published, status):
+def test_region_way_materials_serve_every_published_axis(override_dependency, monkeypatch, material, published, status):
     if material is not None:
         axis = axis_definition("axis_new_name", material=material, is_published=published)
         monkeypatch.setitem(AXIS_DEFINITIONS, "axis_new_name", axis)
     monkeypatch.setattr(dependencies, "RoadGraphRepository", lambda session: UncoveredRepository())
-    app.dependency_overrides[get_weather_service] = NoRainHistoryWeather
+    override_dependency(get_weather_service, NoRainHistoryWeather)
 
-    try:
-        response = client.get("/api/region/way-materials/axis_new_name/14/14551/6447")
-    finally:
-        app.dependency_overrides.clear()
+    response = client.get("/api/region/way-materials/axis_new_name/14/14551/6447")
 
     assert response.status_code == status
 
@@ -416,7 +377,7 @@ def test_region_way_materials_serve_every_published_axis(monkeypatch, material, 
 
 
 @pytest.fixture
-def landcover_tiles():
+def landcover_tiles(override_dependency):
     """配信の口が呼ぶタイルの取得（サービス）の代役。返す値は`result`で決め、呼ばれた座標を`calls`に残す。"""
     state = {"result": TileResponse(b"png-bytes"), "calls": []}
 
@@ -425,9 +386,8 @@ def landcover_tiles():
         return state["result"]
 
     reader = bound(dependencies.get_landcover_tile_reader(), fake)
-    app.dependency_overrides[dependencies.get_landcover_tile_reader] = lambda: reader
+    override_dependency(dependencies.get_landcover_tile_reader, lambda: reader)
     yield state
-    app.dependency_overrides.clear()
 
 
 def test_landcover_tile_endpoint_returns_the_tile_as_png(landcover_tiles):
@@ -473,17 +433,14 @@ def weighted_axes():
 
 
 @pytest.mark.usefixtures("weighted_axes")
-def test_region_axis_inspector_uses_the_weights_it_is_sent():
+def test_region_axis_inspector_uses_the_weights_it_is_sent(override_dependency):
     """合成は利用者がいま設定している重みで計算する。送らなければ既定の重み。"""
     fake = FakeAxisInspector()
-    app.dependency_overrides[get_axis_inspector_service] = lambda: fake
+    override_dependency(get_axis_inspector_service, lambda: fake)
     weights = {axis_id: 0.0 for axis_id in _WEIGHTED_AXES}
-    try:
-        sent = client.post("/api/region/axis-inspector", json={**INSPECTED, "route_preference": weights})
-        sent_preference = fake.request[-1]
-        omitted = client.post("/api/region/axis-inspector", json=INSPECTED)
-    finally:
-        app.dependency_overrides.clear()
+    sent = client.post("/api/region/axis-inspector", json={**INSPECTED, "route_preference": weights})
+    sent_preference = fake.request[-1]
+    omitted = client.post("/api/region/axis-inspector", json=INSPECTED)
 
     assert sent.status_code == 200
     assert sent_preference.weights == weights

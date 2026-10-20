@@ -31,14 +31,13 @@ client = TestClient(app)
 
 
 @pytest.fixture
-def override():
+def override(override_dependency):
     """経路の依存（`get_axis_preview_service`等）を、テストが置いた値へ差し替える。"""
 
     def _set(dependency, value):
-        app.dependency_overrides[dependency] = lambda: value
+        override_dependency(dependency, lambda: value)
 
-    yield _set
-    app.dependency_overrides.clear()
+    return _set
 
 
 def test_an_unknown_material_is_404(admin_credentials):
