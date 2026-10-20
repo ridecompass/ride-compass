@@ -25,12 +25,11 @@ from app.infrastructure.source_models import ACCIDENTS_SOURCE_SQL, PARTY_TYPE_CO
 from tests.conftest import empty_ingested_tables
 from tests.source_ingest import WAY_ORIGIN, WAY_STEP, ingest_records, point_record, way_record, zigzag_point
 
-# road_graph_session（conftest.py）と同じDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
+# moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 BASE_LON, BASE_LAT = WAY_ORIGIN
-STEP = WAY_STEP
 
 #: (wayのid, 参照ノードid列)。3本ともノード3で接する。ノード3の上で起きた事故は
 #: 3区間のどれからも距離0になる。
@@ -41,7 +40,7 @@ WAYS: tuple[tuple[int, list[int]], ...] = (
 )
 TIED_NODE = 3
 #: 道300（ノード1から3へ東西に延びる）の中ほど。ほかの道はここから約90m以上離れる。
-BESIDE_WAY = (BASE_LON + STEP * 2, BASE_LAT + STEP)
+BESIDE_WAY = (BASE_LON + WAY_STEP * 2, BASE_LAT + WAY_STEP)
 
 #: 自転車の当事者種別と、自転車ではない軽車両（その他）の当事者種別。
 BICYCLE_PARTY = PARTY_TYPE_CODES[PartyType.BICYCLE]
@@ -100,13 +99,12 @@ async def _stop_counts(conn: asyncpg.Connection) -> dict[int, dict[str, float]]:
 @pytest_asyncio.fixture(loop_scope="module")
 async def counts_conn(derive_conn):
     """テストごとに同じ生データから作り直す。どのテストも生データと派生の表を書き換えるため。"""
-    conn = derive_conn
-    await empty_ingested_tables(conn)
-    await ingest_records("osm_way", [_road(*way) for way in WAYS], conn=conn)
-    await _ingest_accidents(conn)
-    await derive_topology.derive(conn)
-    await derive_counts.derive(conn)
-    return conn
+    await empty_ingested_tables(derive_conn)
+    await ingest_records("osm_way", [_road(*way) for way in WAYS], conn=derive_conn)
+    await _ingest_accidents(derive_conn)
+    await derive_topology.derive(derive_conn)
+    await derive_counts.derive(derive_conn)
+    return derive_conn
 
 
 async def test_equidistant_accident_goes_to_exactly_one_existing_segment(counts_conn):

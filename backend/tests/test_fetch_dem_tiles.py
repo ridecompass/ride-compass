@@ -54,15 +54,6 @@ def _served(product: str, zoom: int, x: int, y: int) -> bool:
     return product in SERVED and (zoom, x, y) != (ZOOM, *UNSERVED_TILE)
 
 
-def _profile():
-    top_left = tile_bounds_lonlat(ZOOM, X, Y)
-    bottom_right = tile_bounds_lonlat(ZOOM, X + 1, Y + 1)
-    inset = 1e-6
-    bbox = (bottom_right.min_latitude + inset, top_left.min_longitude + inset,
-            top_left.max_latitude - inset, bottom_right.max_longitude - inset)
-    return replace(load_source_profile(None), target=Target(bbox=bbox))
-
-
 def _declared_requests(profile) -> set[tuple[str, int, int, int]]:
     """宣言どおりなら叩くはずの (製品, ズーム, x, y)。"""
     low_lat, low_lon, high_lat, high_lon = profile.target.bbox
@@ -97,7 +88,12 @@ class Origin:
 
 @pytest.fixture
 def profile():
-    return _profile()
+    top_left = tile_bounds_lonlat(ZOOM, X, Y)
+    bottom_right = tile_bounds_lonlat(ZOOM, X + 1, Y + 1)
+    inset = 1e-6
+    bbox = (bottom_right.min_latitude + inset, top_left.min_longitude + inset,
+            top_left.max_latitude - inset, bottom_right.max_longitude - inset)
+    return replace(load_source_profile(None), target=Target(bbox=bbox))
 
 
 async def test_served_tiles_are_stored_and_the_rest_marked_absent_per_product(tmp_path, profile):

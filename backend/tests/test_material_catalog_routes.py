@@ -102,7 +102,7 @@ class FakeCoverageQuery:
 
 def test_coverage_returns_the_report_of_counted_and_excluded_materials(admin_credentials, override):
     counted, excluded = next(iter(MATERIAL_COVERAGE_SPECS)), next(iter(MATERIAL_COVERAGE_EXCLUSIONS))
-    missing = {material_id: 0 for material_id in MATERIAL_COVERAGE_SPECS} | {counted: 1}
+    missing = dict.fromkeys(MATERIAL_COVERAGE_SPECS, 0) | {counted: 1}
     counts = MaterialCoverageCounts(way_total=4, edge_total=4, missing_by_material=missing)
     override(get_material_coverage_service, MaterialCoverageService(FakeCoverageQuery(counts)))
 

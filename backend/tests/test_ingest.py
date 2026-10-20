@@ -10,27 +10,23 @@ from dataclasses import replace
 
 import pytest
 import pytest_asyncio
-import shapely
-from shapely.geometry import Point
 
 from app.batch import derive_cli
 from app.batch.ingest import (
     ADAPTERS,
     RegisteredAdapter,
-    SourceRecord,
     ingest_source,
     partition_table_name,
 )
 from app.batch.source_profile import NoFields, SourceProfile, SourceSpec, load_source_profile
 from tests.conftest import postgis_database_url, raw_connection
-from tests.source_ingest import fetched_anew
+from tests.source_ingest import fetched_anew, point_record
 
-# road_graph_session（conftest.py）と同じDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
+# moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 SOURCE = "ingest_probe"
-POINT_WKB = shapely.to_wkb(Point(139.7, 35.6))
 
 
 def _only(source: str, adapter: str) -> SourceProfile:
@@ -54,7 +50,7 @@ async def conn(road_graph_engine):
 
 
 async def _breaks_midway(spec, profile, inputs, origin):
-    yield SourceRecord(natural_key="new", geom_wkb=POINT_WKB, attrs={})
+    yield point_record("new", 139.7, 35.6)
     raise OSError("配信元が途中で切れた")
 
 
@@ -69,7 +65,7 @@ async def test_a_rebuild_is_refused_while_an_import_runs(conn, monkeypatch):
     async def rebuild_meanwhile(spec, profile, inputs, origin):
         with pytest.raises(RuntimeError, match="取込かDBのバックアップが走っている"):
             await derive_cli.run(postgis_database_url())
-        yield SourceRecord(natural_key="new", geom_wkb=POINT_WKB, attrs={})
+        yield point_record("new", 139.7, 35.6)
 
     monkeypatch.setitem(ADAPTERS, "rebuild", _adapter(rebuild_meanwhile))
     await ingest_source(conn, _only(SOURCE, "rebuild"), SOURCE)

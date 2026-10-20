@@ -8,7 +8,7 @@ autouseがテストごとの一時ディレクトリへ差し替える。
 - 置き場の失敗と失効 → `test_tile_persistent_cache.py`
 """
 
-import inspect
+import functools
 
 import numpy as np
 
@@ -19,6 +19,7 @@ from app.infrastructure.derived_data_meta import DataRevisions
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services import feature_materials
 from app.services.feature_materials import FeatureMaterialService
+from tests.bound_fake import bound
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 
 Z, X, Y = 14, 14551, 6447
@@ -41,8 +42,8 @@ class FakeFeatureMaterialsRepository:
     async def get_accident_years_covered(self):
         return 1
 
+    @functools.partial(bound, RoadGraphRepository.get_feature_materials_in_tile)
     async def get_feature_materials_in_tile(self, *args, **kwargs):
-        inspect.signature(RoadGraphRepository.get_feature_materials_in_tile).bind(self, *args, **kwargs)
         return self.materials
 
 
