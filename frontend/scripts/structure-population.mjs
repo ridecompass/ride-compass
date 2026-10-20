@@ -28,11 +28,23 @@
 //   - 要求の形の述語: (d) は文字列の字句との比べだけを見るので、入力の欄の有無で分ける真偽の式
 //     （例: `Boolean(generatedInput?.destination)`）は当たらない。
 
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import ts from "typescript";
+
+import {
+  EQUALITY,
+  KEY_NAME,
+  VALUE_LIST_NAME,
+  isLiteralValue,
+  isStringLike,
+  isTypePosition,
+  lastName,
+  typedContexts,
+} from "./structure-population/contexts.mjs";
+import { readVocabulary, walk } from "./structure-population/vocabulary.mjs";
 
 const frontendRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const repoRoot = path.dirname(frontendRoot);
@@ -44,13 +56,6 @@ const generatedRoot = path.resolve(repoRoot, population.generated);
 const { values } = parseArgs({
   options: { "axis-catalog": { type: "string" } },
 });
-
-function walk(dir) {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const full = path.join(dir, entry.name);
-    return entry.isDirectory() ? walk(full) : [full];
-  });
-}
 
 const EXCLUDED_DIRS = [...population.scaffold, population.generated].map(
   (dir) => path.resolve(repoRoot, dir) + path.sep,
@@ -67,213 +72,18 @@ const tsconfig = ts.parseJsonConfigFileContent(
 );
 const program = ts.createProgram(sources, { ...tsconfig.options, incremental: false, noEmit: true });
 const checker = program.getTypeChecker();
-const isGeneratedFile = (file) => path.resolve(file).startsWith(generatedRoot + path.sep);
 
-const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const JAPANESE = new RegExp(population.japanese);
-
-/** 生成物の文字列の値と、その値を持つ鍵（配列の要素なら外側の鍵）。.ts の生成物は構文木から、.json は値の木から取る。 */
-function generatedStrings() {
-  const strings = [];
-  const visitJson = (value, key) => {
-    if (typeof value === "string") strings.push({ value, key });
-    else if (Array.isArray(value)) value.forEach((item) => visitJson(item, key));
-    else if (value && typeof value === "object") Object.entries(value).forEach(([k, v]) => visitJson(v, k));
-  };
-  for (const file of walk(generatedRoot)) {
-    const name = path.basename(file);
-    if (population.generatedWithoutNames.includes(name)) continue;
-    const text = readFileSync(file, "utf-8");
-    if (name.endsWith(".json")) {
-      visitJson(JSON.parse(text), null);
-      continue;
-    }
-    const visit = (node) => {
-      if (ts.isStringLiteral(node) && !(ts.isPropertyAssignment(node.parent) && node.parent.name === node)) {
-        let owner = node.parent;
-        while (ts.isArrayLiteralExpression(owner)) owner = owner.parent;
-        strings.push({
-          value: node.text,
-          key: ts.isPropertyAssignment(owner) ? owner.name.getText().replaceAll('"', "") : null,
-        });
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true));
-  }
-  return strings;
-}
-
-const generated = generatedStrings();
-
-/** 生成物の文字列の値（名前として配らない生成物の、型に書かれた字句を含む）。(d) が型を生成物の値と見るのに使う。 */
-function generatedLiteralValues() {
-  const values = new Set(generated.map(({ value }) => value));
-  for (const file of walk(generatedRoot).filter((name) => /\.d\.ts$/.test(name))) {
-    const visit = (node) => {
-      if (ts.isLiteralTypeNode(node) && ts.isStringLiteral(node.literal)) values.add(node.literal.text);
-      ts.forEachChild(node, visit);
-    };
-    visit(ts.createSourceFile(file, readFileSync(file, "utf-8"), ts.ScriptTarget.Latest, true));
-  }
-  return values;
-}
-const generatedLiterals = generatedLiteralValues();
-
-/** 型が、生成物の文字列の値だけでできた字句の型か（undefined・null は除いて見る）。 */
-function isGeneratedLiteralType(type) {
-  const members = (type.isUnion() ? type.types : [type]).filter(
-    (member) => !(member.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Null)),
-  );
-  return (
-    members.length > 0 && members.every((member) => member.isStringLiteral() && generatedLiterals.has(member.value))
-  );
-}
-
-/** 並びの型の要素の型（並びでなければ null）。 */
-function elementType(type) {
-  const nonNull = checker.getNonNullableType(type);
-  return checker.isArrayType(nonNull) || checker.isTupleType(nonNull)
-    ? (checker.getIndexTypeOfType(nonNull, ts.IndexKind.Number) ?? null)
-    : null;
-}
-const generatedIdentifiers = new Set(generated.map(({ value }) => value).filter((value) => IDENTIFIER.test(value)));
-
-function axisCatalogWords() {
-  if (!values["axis-catalog"]) return [];
-  const catalog = JSON.parse(readFileSync(values["axis-catalog"], "utf-8"));
-  return catalog.axes.map((axis) => axis.label);
-}
-
-/** 現象の語は、生成物が名前として配る値。 */
-const phenomenonWords = generated
-  .filter(
-    ({ value, key }) => key === population.nameKey && JAPANESE.test(value) && value.length >= population.nameMinLength,
-  )
-  .map(({ value }) => value);
-const words = [...new Set([...phenomenonWords, ...axisCatalogWords()])].sort((a, b) => b.length - a.length);
-
-const KEY_NAME =
-  /^(key|id|kind|role|source|group|property|level|type|tier|category|layerId|axisId|attrId)$|(Id|Key|_id|_key|_kind)$/;
-const LIMIT_NAME = /weight|threshold|min|max|limit|ratio|share|bound|floor|ceil|cap|tolerance|eps|default/i;
-const EQUALITY = new Set([
-  ts.SyntaxKind.EqualsEqualsEqualsToken,
-  ts.SyntaxKind.ExclamationEqualsEqualsToken,
-  ts.SyntaxKind.EqualsEqualsToken,
-  ts.SyntaxKind.ExclamationEqualsToken,
-]);
-const COMPARISON = new Set([
-  ...EQUALITY,
-  ts.SyntaxKind.LessThanToken,
-  ts.SyntaxKind.LessThanEqualsToken,
-  ts.SyntaxKind.GreaterThanToken,
-  ts.SyntaxKind.GreaterThanEqualsToken,
-]);
-
-/** 式の最後の名前（`a.b.key` なら key、`x` なら x、`a["key"]` なら key）。 */
-function lastName(node) {
-  if (ts.isIdentifier(node)) return node.text;
-  if (ts.isPropertyAccessExpression(node)) return node.name.text;
-  if (ts.isElementAccessExpression(node) && ts.isStringLiteral(node.argumentExpression))
-    return node.argumentExpression.text;
-  if (
-    ts.isNonNullExpression(node) ||
-    ts.isParenthesizedExpression(node) ||
-    ts.isAsExpression(node) ||
-    ts.isSatisfiesExpression(node)
-  )
-    return lastName(node.expression);
-  return null;
-}
-
-function isTypePosition(node) {
-  for (let current = node.parent; current; current = current.parent) {
-    if (ts.isTypeNode(current)) return true;
-    if (ts.isExpression(current) || ts.isStatement(current)) return false;
-  }
-  return false;
-}
-
-function isStringLike(node) {
-  return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node);
-}
-
-/** 宣言の値の並び（行の`values`・鍵の並び）の名前。 */
-const VALUE_LIST_NAME = /(values|keys|ids|kinds)$/i;
-
-function isLiteralValue(node) {
-  return isStringLike(node) || node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword;
-}
-
-/** 数値リテラルが置かれた文脈（(c) に当たらなければ null）。 */
-function numericContext(literal) {
-  let node = literal;
-  if (ts.isPrefixUnaryExpression(node.parent) && node.parent.operator === ts.SyntaxKind.MinusToken) node = node.parent;
-  const parent = node.parent;
-  if (ts.isBinaryExpression(parent)) {
-    const op = parent.operatorToken.kind;
-    if (COMPARISON.has(op)) return "比べる式";
-    if ((op === ts.SyntaxKind.BarBarToken || op === ts.SyntaxKind.QuestionQuestionToken) && parent.right === node)
-      return "既定の値";
-    if (op === ts.SyntaxKind.EqualsToken && LIMIT_NAME.test(lastName(parent.left) ?? "")) return "名前の付いた値";
-  }
-  if (ts.isCallExpression(parent) && /^(min|max|clamp)$/i.test(lastName(parent.expression) ?? ""))
-    return "上下限の引数";
-  if (
-    (ts.isVariableDeclaration(parent) ||
-      ts.isPropertyAssignment(parent) ||
-      ts.isParameter(parent) ||
-      ts.isBindingElement(parent)) &&
-    parent.initializer === node &&
-    ts.isIdentifier(parent.name) &&
-    LIMIT_NAME.test(parent.name.text)
-  )
-    return "名前の付いた値";
-  if (ts.isPropertyAssignment(parent) && parent.initializer === node && LIMIT_NAME.test(parent.name.getText()))
-    return "名前の付いた値";
-  if (ts.isPropertyAssignment(parent) && parent.initializer === node && isGeneratedProperty(parent))
-    return "生成物の欄の値";
-  if (isTopLevelConstValue(node)) return "画面自身の定数";
-  return null;
-}
-
-/** オブジェクトの欄が、型の上で生成物の宣言の欄か。 */
-function isGeneratedProperty(assignment) {
-  const contextual = checker.getContextualType(assignment.parent);
-  const property = contextual && checker.getPropertyOfType(contextual, assignment.name.getText().replaceAll('"', ""));
-  return (property?.declarations ?? []).some((declaration) => isGeneratedFile(declaration.getSourceFile().fileName));
-}
-
-/** モジュールの上位の const の値の式の中か（算術・括弧・並び・オブジェクトの値をたどる。関数の中は数えない）。 */
-function isTopLevelConstValue(node) {
-  let current = node;
-  while (
-    ts.isBinaryExpression(current.parent) ||
-    ts.isParenthesizedExpression(current.parent) ||
-    ts.isPrefixUnaryExpression(current.parent) ||
-    ts.isArrayLiteralExpression(current.parent) ||
-    ts.isAsExpression(current.parent) ||
-    ts.isSatisfiesExpression(current.parent) ||
-    (ts.isPropertyAssignment(current.parent) && current.parent.initializer === current) ||
-    ts.isObjectLiteralExpression(current.parent)
-  )
-    current = current.parent;
-  const declaration = current.parent;
-  return (
-    ts.isVariableDeclaration(declaration) &&
-    declaration.initializer === current &&
-    ts.isVariableDeclarationList(declaration.parent) &&
-    (declaration.parent.flags & ts.NodeFlags.Const) !== 0 &&
-    ts.isVariableStatement(declaration.parent.parent) &&
-    ts.isSourceFile(declaration.parent.parent.parent)
-  );
-}
-
-/** 並びの要素の型が、生成物の文字列の値だけでできた字句の型か。 */
-function isGeneratedElements(expression) {
-  const element = elementType(checker.getTypeAtLocation(expression));
-  return element !== null && isGeneratedLiteralType(element);
-}
+const { generatedIdentifiers, generatedLiterals, words } = readVocabulary({
+  generatedRoot,
+  population,
+  axisCatalog: values["axis-catalog"],
+});
+const { isGeneratedLiteralType, isGeneratedElements, numericContext } = typedContexts(
+  checker,
+  generatedRoot,
+  generatedLiterals,
+);
 
 const found = { a: [], b: [], c: [], d: [] };
 
