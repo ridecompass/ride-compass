@@ -3,8 +3,8 @@
     python backend/scripts/deploy_gate.py [--any-change] <本番で動いているコミット> <出したいコミット>
 
 本番がこのコミットかこれより新しいコミットで動いていれば出さない。本番より新しいなら、本番で動いている
-コミットから出したいコミットまでの変更に、`DEPLOY_PATHS`に当たり`NOT_DEPLOYED`に当たらないファイルが
-1つでもあれば出す（backend）。当てるのはgitのpathspec（`git diff --name-only`）。`--any-change`は
+コミットから出したいコミットまでの変更に、本番へ届くファイル（`deploy_paths`。イメージの中身は`DOCKERFILE`から
+導く）のうち`NOT_DEPLOYED`に当たらないものが1つでもあれば出す（backend）。当てるのはgitのpathspec（`git diff --name-only`）。`--any-change`は
 ファイルを当てずに出す（frontend。届く変更があるかは、呼ぶ前に`ci.yml`の`changes`が決めている）。
 判定と理由を1行で出し、GitHub Actionsの中では`$GITHUB_OUTPUT`へ`deploy=true|false`を書く。
 
@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import os
+import posixpath
 import sys
 from pathlib import Path
 
@@ -24,31 +25,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 from repo_git import run
 
-#: 本番へ届くファイル。gitのpathspecのglobとしてリポジトリの根から当てる
+#: 本番のイメージの組み立て方。これ自身と、これがCOPYで組み立ての文脈（このファイルのディレクトリ）から写すものが
+#: イメージに届く。
+DOCKERFILE = "backend/Dockerfile"
+
+#: イメージの外から本番へ届くもの。書き方は`NOT_DEPLOYED`と同じgitのpathspecのglobで、リポジトリの根から当てる
 #: （`*`は`/`を跨がず、`**`は跨ぐ）。
-DEPLOY_PATHS = (
-    # backend/ops/はイメージに入らないが、デプロイがVMの作業コピーを揃えて届けるので外さない。
-    "backend/**",
-    # デプロイの手順そのもの（この道具は上の backend/** に入る）。
+HOST_PATHS = (
+    # イメージに入らないが、デプロイがVMの作業コピーを揃えて`systemctl daemon-reload`で届ける。
+    "backend/ops/**",
+    # デプロイの手順そのもの。
     ".github/workflows/deploy-backend.yml",
 )
 
-#: `DEPLOY_PATHS`に当たっても、本番へ出す理由にならないもの（書き方は同じ）。
+#: イメージに届いても、本番へ出す理由にならないもの。
 NOT_DEPLOYED = (
-    # ベンチマークはイメージに入らない（backend/Dockerfileのcopy対象外。VM上の作業コピー
-    # から実行する）。押しただけでビルドとコンテナ入れ替えを起こさないよう除外し、VMの
-    # 作業コピーを新しくしたいときはworkflow_dispatchで明示的に起動する。どのコードを
-    # 測ったかは、どの実行口もbenchmarks/revision.pyが実行時に出力へ残す。
-    "backend/benchmarks/**",
-    # イメージに入らないもの（backend/DockerfileのCOPY対象外）。
-    "backend/tests/**",
-    "backend/pytest.ini",
-    "backend/ruff.toml",
-    "backend/mypy.ini",
-    "backend/.importlinter",
-    "backend/requirements-dev.txt",
-    "backend/.env.example",
-    # イメージに入るが、本番プロセスが読まないもの。生成スクリプトとそれだけが読む表示値で、
+    # 本番プロセスが読まないもの。生成スクリプトとそれだけが読む表示値で、
     # 変更は生成物（frontend/src/types/generated/）を経由してだけ画面へ届く。
     # **backend/app配下はbackend/tests/structure/test_deploy_exclusions.pyが、本番側から
     # importされていないことを検査する**——importされた時点で、ここに挙げたままでは
@@ -60,6 +52,23 @@ NOT_DEPLOYED = (
     "backend/scripts/prod_backup_check.py",
     "backend/app/domain/warning_display.py",
 )
+
+
+def image_sources(dockerfile: str) -> list[str]:
+    """`dockerfile`のCOPYが組み立ての文脈から写す元（文脈からの相対）。"""
+    sources = []
+    for line in dockerfile.splitlines():
+        parts = line.split()
+        if parts[:1] == ["COPY"]:
+            sources += parts[1:-1]
+    return sources
+
+
+def deploy_paths(dockerfile: str) -> tuple[str, ...]:
+    """本番へ届くファイルを指すglob。イメージの中身は`dockerfile`のCOPYから導く（写す元がファイルでもディレクトリでも当たる）。"""
+    context = posixpath.dirname(DOCKERFILE)
+    image = [posixpath.normpath(f"{context}/{src}") for src in image_sources(dockerfile)]
+    return (DOCKERFILE, *(p for path in image for p in (path, f"{path}/**")), *HOST_PATHS)
 
 
 def pathspec(include: tuple[str, ...], exclude: tuple[str, ...]) -> list[str]:
@@ -107,7 +116,12 @@ def main(argv: list[str]) -> int:
     relation = commit_relation(deployed, target)
     hits: list[str] | None = None if any_change else []
     if relation == "newer" and not any_change:
-        diff = run("diff", "--name-only", deployed, target, "--", *pathspec(DEPLOY_PATHS, NOT_DEPLOYED))
+        # 組み立て方は出したいコミットのものを読む（COPYを外した変更は、Dockerfileの変更として当たる）。
+        dockerfile = run("show", f"{target}:{DOCKERFILE}")
+        if dockerfile.returncode != 0:
+            print(dockerfile.stderr, file=sys.stderr)
+            return 1
+        diff = run("diff", "--name-only", deployed, target, "--", *pathspec(deploy_paths(dockerfile.stdout), NOT_DEPLOYED))
         if diff.returncode != 0:
             print(diff.stderr, file=sys.stderr)
             return 1

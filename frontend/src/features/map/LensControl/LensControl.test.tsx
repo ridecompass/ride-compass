@@ -14,7 +14,8 @@ import { describe, expect, it, vi } from "vitest";
 import { LAYER_DATA_STATUS_LABELS } from "@/features/map/layers/mapLayers";
 import { DIFFICULTY_LENS_LABEL, LENS_DIFFICULTY_ID } from "@/lib/mapDisplay/routeStyleModes";
 
-import LensControl, { type LensOption } from "./LensControl";
+import LensControl from "./LensControl";
+import type { LensOption } from "./LensRow";
 
 const option = (id: string, overrides: Partial<LensOption> = {}): LensOption => ({
   id,

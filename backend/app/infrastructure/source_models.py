@@ -146,7 +146,7 @@ class SourceFeatureRow(Base):
         BigInteger, ForeignKey("source_runs.run_id"), nullable=False
     )
     geom: Mapped[object] = mapped_column(Geometry(srid=4326, spatial_index=False), nullable=False)
-    attrs: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    attrs: Mapped[dict] = mapped_column(JSONB, nullable=False)
     payload: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     #: 面のソースの画素。線・点のソースでは空。外形の索引は張らない——面のタイルは`geom`で
     #: 絞るか番地で引き、`rast`で範囲を絞る読み手はいない。

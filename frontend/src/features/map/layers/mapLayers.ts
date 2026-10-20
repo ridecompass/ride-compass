@@ -1,24 +1,19 @@
 // 地図レイヤーのカタログ。地図のチップとその▶パネルがこの並びを列挙して描く。種別・情報源・性質・既定の表示・名前・
 // 説明は源泉（backendの`domain/map_display.py`と、道の線の層は軸カタログの`road_classes.map_layers`）が宣言し、ここは
-// アイコンと表示専用の凡例だけを足す。
+// アイコンと表示専用の凡例（`layers/readOnlyLegends.ts`）だけを足す。
 // 地図に描く宣言（`scene/groups/`、絞り込める凡例は`scene/legends.ts`）は別に要る——書き忘れるとチップはONになり
 // 凡例も出るのに、地図には何も出ない。
 
-import weatherScales from "@/types/generated/weather-scales.json";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { MapIconComponent } from "@/components/ui/icons/icons";
 import { MAP_LAYER_ICONS, roadLayerIcon, type StaticMapLayerId } from "@/components/ui/icons/mapLayerIcons";
-import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { TILE_VERSION_GATED_SOURCES } from "@/lib/mapDisplay/tileVersionGated";
-import { LANDCOVER_PAINTED_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
-import { PRECIPITATION_INTENSITY_LEVELS } from "./precipitationNowcast";
-import { WIND_SPEED_LEGEND_LEVELS } from "./windLayer";
 import type { MapAxisCatalog } from "@/features/map/mapAxisCatalog";
 import { axisNamesInText, type CatalogAxis } from "@/lib/catalogAxis";
 import { primaryAttributeIdsToLayerIds } from "@/features/map/layers/primaryAttributes";
-import type { RoadMapLayerView } from "@/types/route";
-import { DISASTER_ELEMENTS } from "@/features/map/scene/groups/weather";
 import { DIFFICULTY_LENS_LABEL } from "@/lib/mapDisplay/routeStyleModes";
+import { READ_ONLY_LEGENDS, type ReadOnlyLegendBlock } from "./readOnlyLegends";
+import { coverageYearsLabel, fillLayerText } from "./layerText";
 
 /** 地図に載るものの名前。静的な一覧は源泉が持ち、道の線の層（鍵は層のデータが決める）と軸スタジオ由来のものは実行時に決まる。 */
 export type MapLayerId = StaticMapLayerId | DedicatedWayValueMapLayerId | string;
@@ -36,90 +31,6 @@ export const MAP_LAYER_CATEGORY_ORDER: readonly MapLayerCategory[] = mapDisplay.
 
 /** 生データか、複数の要因から計算した推定指標（合成）か、時刻で中身が変わるデータか。 */
 type MapLayerDataNature = (typeof mapDisplay.layerDataNatures)[number];
-
-/** 絞り込めない表示専用の凡例の1ブロック（配信元が色を焼き込んだラスタ等）。絞り込める凡例は`scene/legends.ts`が出す。 */
-interface ReadOnlyLegendBlock {
-  /** ブロックの見出し。単一ブロックのレイヤーは空文字列。 */
-  label: string;
-  legend: readonly LegendEntry[];
-}
-
-/** 名前付きソースの宣言（同じソースを名乗る要素は名前・説明を共有するので、先頭の要素で引く）。 */
-function weatherSourceOf(source: string) {
-  const element = mapDisplay.weatherElements.find((candidate) => candidate.source === source);
-  if (!element?.description) throw new Error(`${source}は説明を宣言していない`);
-  return { label: element.label, description: element.description };
-}
-
-const LINEAR_RAINBAND = weatherSourceOf("linearRainband");
-const LINEAR_RAINBAND_AREA = weatherSourceOf("linearRainbandArea");
-
-type WeatherElementDeclaration = (typeof mapDisplay.weatherElements)[number];
-
-/** 名前の並び。同じ名前を名乗る要素（描き方違いの同じ名前付きソース）は1つにする。 */
-function labelList(elements: readonly WeatherElementDeclaration[]): string {
-  return [...new Set(elements.map((element) => element.label))].join("・");
-}
-
-/** 災害の凡例。同じ段で塗る要素の名前を見出しにして、段を並べる（並びは要素が最初に現れた順）。 */
-function disasterLegendBlocks(): ReadOnlyLegendBlock[] {
-  const scales = [...new Set(DISASTER_ELEMENTS.flatMap((element) => element.levelScale ?? []))];
-  return scales.map((scale) => ({
-    label: labelList(DISASTER_ELEMENTS.filter((element) => element.levelScale === scale)),
-    legend: weatherScales[scale],
-  }));
-}
-
-const READ_ONLY_LEGENDS: Partial<Record<StaticMapLayerId, readonly ReadOnlyLegendBlock[]>> = {
-  landcover: [
-    {
-      label: "",
-      legend: LANDCOVER_PAINTED_CLASSES.map((cls) => ({
-        key: cls.percentField,
-        label: cls.label,
-        description: cls.description,
-        color: cls.color,
-      })),
-    },
-  ],
-  // 1つのチップのまま、時刻の段ごとに配信元を切り替える（段は源泉が宣言する）。
-  precipitationNowcast: [
-    {
-      label: "",
-      legend: PRECIPITATION_INTENSITY_LEVELS,
-    },
-    {
-      label: LINEAR_RAINBAND.label,
-      // 色は配信元の塗り色そのもの。
-      legend: [
-        {
-          key: "linearRainband",
-          label: LINEAR_RAINBAND.description,
-          color: weatherScales.linear_rainband_color,
-        },
-      ],
-    },
-    {
-      label: LINEAR_RAINBAND_AREA.label,
-      legend: [
-        {
-          key: "linearRainbandArea",
-          label: LINEAR_RAINBAND_AREA.description,
-          color: weatherScales.linear_rainband_outline_color,
-        },
-      ],
-    },
-  ],
-  // 道路の色分け（向かい風・追い風）と別の配色なので、凡例は「矢印[風速]」と明示する。
-  windVector: [
-    {
-      label: "矢印[風速]",
-      legend: WIND_SPEED_LEGEND_LEVELS,
-    },
-  ],
-  // 配信元が色を焼き込んだ画像なので絞り込めない。
-  disaster: disasterLegendBlocks(),
-};
 
 /** そのレイヤーの絵がどこから来るか。取得状態はここから導く（同じタイルを読むレイヤーは同時に空・失敗になる）。
  * `ownFetch`はMapLibreのソースを経由せず自前で取るもので、取得状態はそのフェッチ自身が出す。 */
@@ -205,36 +116,6 @@ function declaredLayer(spec: {
     defaultOn: spec.defaultOn,
     tileMinZoom: minZoom ?? undefined,
   };
-}
-
-/** 源泉の説明の文の差し込み口。 */
-type LayerTextSlot =
-  | Extract<NonNullable<(typeof mapDisplay.layers)[number]["description" | "panelHint"]>[number], { name: string }>
-  | Extract<RoadMapLayerView["panel_hint"][number], { name: string }>;
-
-type LayerTextPart = string | LayerTextSlot;
-
-/** 説明の文の差し込み口の名前（源泉が宣言する）。 */
-type LayerTextSlotName = LayerTextSlot["name"];
-
-/** 源泉の説明の文の差し込み口を埋める。値が空の口は、前後の文ごと出さない。 */
-function fillLayerText(text: readonly LayerTextPart[], values: Readonly<Record<LayerTextSlotName, string>>): string {
-  return text
-    .map((part) => {
-      if (typeof part === "string") return part;
-      const value = values[part.name];
-      return value ? `${part.before}${value}${part.after}` : "";
-    })
-    .join("");
-}
-
-/** 収録年の言い方（連続なら範囲、飛んでいれば並べる）。年は取込の宣言が正本で、軸カタログが運ぶ。 */
-function coverageYearsLabel(years: readonly number[]): string {
-  if (years.length === 0) return "";
-  const sorted = [...years].sort((a, b) => a - b);
-  if (sorted.length === 1) return `${sorted[0]}年`;
-  const continuous = sorted.every((year, index) => index === 0 || year === sorted[index - 1] + 1);
-  return continuous ? `${sorted[0]}〜${sorted[sorted.length - 1]}年` : `${sorted.join("・")}年`;
 }
 
 /** レイヤーの一覧を組むのに要る軸カタログの項目。 */

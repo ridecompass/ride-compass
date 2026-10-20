@@ -13,6 +13,16 @@ interface DynamicWeatherSourceState {
 /** 動的気象のチップ（1つのチップが複数の名前付きソースを束ねる。どれがチップかは源泉が決める）。 */
 export type DynamicWeatherLayerId = (typeof mapDisplay.weatherLayerGroups)[number];
 
+/** 災害のチップのid（源泉の気象のグループの名前）。 */
+export const DISASTER_LAYER_ID = "disaster" as const;
+
+export type DisasterElement = Extract<(typeof mapDisplay.weatherElements)[number], { group: typeof DISASTER_LAYER_ID }>;
+
+/** 災害のチップに載る要素。並びは源泉の宣言のまま。 */
+export const DISASTER_ELEMENTS: readonly DisasterElement[] = mapDisplay.weatherElements.filter(
+  (element): element is DisasterElement => element.group === DISASTER_LAYER_ID,
+);
+
 /** 配信元のタイルで描く描き方。それ以外の描き方は、中身をGeoJSONで持つ。 */
 export type TileRenderKind = "rasterTile" | "vectorTile";
 

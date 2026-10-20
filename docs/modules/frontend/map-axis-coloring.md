@@ -21,6 +21,7 @@
 | `features/map/layers/webMercatorTile.ts` | Web MercatorのXYZタイルと緯度経度の行き来（点のタイル座標・点を含むタイル（世界の端はタイルの番号の範囲へ寄せる）・タイルが覆う範囲）。backendと同じ式で、一致は表の組`region`で照らす。道路タイルの値を引くタイルと、気象庁のタイルの在否の判定（`jmaTileIndex.ts`）が同じ式を通る |
 | `lib/mapDisplay/mapColorLegend.ts` | 地図上の色分け凡例（`lib/mapDisplay/mapColorLegend.ts: MapColorLegendBand`型・`lib/mapDisplay/mapColorLegend.ts: buildRangeLegendBands`・`lib/mapDisplay/mapColorLegend.ts: rangeStepLabel`）の共通ロジックと、値が無い行（`lib/mapDisplay/mapColorLegend.ts: NO_DATA_LEGEND_BAND`）。凡例を作る関数（`features/map/view/lens.ts`）・道の属性の凡例（`features/map/scene/legends.ts`）と管理画面が使う |
 | `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「評価で塗る」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上のピルが、道のりのグラフの「評価で塗る」の切り替えと同じ筆の絵（`lucideIcons.tsx: EvaluationPaintIcon`）と、選んでいる評価軸の名前と凡例の色の帯（段の数に依らない固定の幅）を示し、タップで縦の一覧（評価に使用中の軸を先、未使用の軸を後。各行に軸のアイコン・値が変わる走る条件のアイコン・「未使用」・(i) の説明）を開く。一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——選んでも閉じず、選んでいる行をもう一度押すと外れ、選んでいる行の ▶ で凡例と色の前提（`view/lens.ts: lensPremises`）を開き、下に「ルート後も周囲の道路を薄く塗る」と「選択を外す」「絞り込みをすべて解除」（この一覧の凡例だけを戻す）を置く（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`app/HomeMapPane.tsx`はそのまま渡す）。走行中も同じ大きさで出す |
+| `features/map/LensControl/LensRow.tsx` | 一覧の1行（`features/map/LensControl/LensRow.tsx: LensRow`）と選択肢の型（`features/map/LensControl/LensRow.tsx: LensOption`）。「表示」の一覧の行（`OverlayLayerRow.tsx: OverlayLayerRow`）と同じ形で、チェックの代わりに1つだけ選ぶ印を出し、(i) で説明を、▶（選んでいる行だけ）で凡例を行のすぐ下に開く |
 | `lib/lensLink.ts` | 走る条件のボタン（地図の向きの方位磁針・出発時刻・想定速度）に付ける、いまの周りの道の塗りがその条件で決まっている印（輪と読み上げ）。下記「周りの道の色が拠る走る条件」 |
 | `features/map/layers/mapLayers.ts` | `features/map/layers/mapLayers.ts: isAxisStudioLayer`（記述子の印で判定。地図上チップの一覧`overlayChips`が除くのに使う）・軸のレイヤーIDの導出（`features/map/layers/mapLayers.ts: dedicatedWayValueMapLayerId`） |
 | `features/map/MapView/MapView.tsx`（専用way値配信軸の箇所のみ） | 画面の状態を宣言の入力へ渡すだけの配線（下記「MapView.tsx側の配線」）。軸ごとの処理は持たない |
@@ -186,7 +187,7 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
   場所に書いた式はスタイル検証も通り、例外も出さず、どの道も値が無いものとして評価される（全部の道が破線になる）。
   破線の線は刻みを定数で持ち、どの道に出すかを濃さ（`line-opacity`、feature-stateを読める）で決める。実線の線は
   値が無い道を透明にする（重ねると破線が実線に埋もれる）。feature-stateを読めるプロパティにだけ置かれていることは
-  `scene/scene.state.contract.test.ts`が全レイヤーについて確かめる。
+  `scene/scene.allLayers.contract.test.ts`が全レイヤーについて確かめる。
 - **値が無い道は薄く、値を持つ道は濃く塗る**（濃さは源泉が配る
   `mapDisplay.road.unknownOpacity`/`knownOpacity`をそのまま使い、
   地図全体の「薄い＝対象外、濃い＝分類あり」という読み方に揃える）。
@@ -372,7 +373,7 @@ features/map/view/useMapView.ts
   `promoteId`でこのプロパティを地物のidにする（`scene/groups/roadLines.ts`）——これが無いと
   `setFeatureState`が使えない。**`osm_way_id`では代用できない**（タイルのフィーチャーはズームに
   よってway丸ごとにも区間にもなり、`feature_key`だけがその単位に追従する）。ここを取り違えても
-  例外も警告も出ず、ただ色が付かなくなるだけのため、`scene/scene.state.contract.test.ts`が固定している。
+  例外も警告も出ず、ただ色が付かなくなるだけのため、`scene/scene.axisLines.contract.test.ts`が固定している。
 - 評価軸の線は、路面本体と同じ`ROAD_LINE_SOURCE_ID`を共有する独立レイヤーとして
   宣言される（`tunnel`/`oneway`と同型の構成）。
 - **軸の材料が来なくなったときは、その軸のキーだけを消す。** `map.removeFeatureState`は

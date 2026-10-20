@@ -183,7 +183,6 @@ class RoadGraphEngine:
         *,
         route_preference: RoutePreference,
         penalty_strength: float,
-        max_average_grade_percent: float | None,
         road_avoidance: Mapping[str, AvoidanceLevel],
         assumed_speed_kmh: float,
     ):
@@ -195,9 +194,6 @@ class RoadGraphEngine:
         self._route_preference = route_preference
         # コスト式`所要時間 × (1 + P × difficulty/100)`のP＝「主観 vs 時間」の換算レート。
         self._penalty_strength = penalty_strength
-        # 0次ハードフィルタの勾配しきい値（%、None＝除外しない）。
-        # `domain/hard_filters.py: compute_search_exclusion`参照。
-        self._max_average_grade_percent = max_average_grade_percent
         # 道のレイヤの行→避け方の段。
         self._road_avoidance = road_avoidance
         # 「なるべく避ける」区間の費用の倍率。較正値のため、組み立てた時点の値で1回の生成を通す。
@@ -246,9 +242,7 @@ class RoadGraphEngine:
 
         # --- bbox全体ぶんのコスト配列の合成（レグごと。まず起点から離れる往路レグ） ---
         cost_started = start_timer()
-        search_masks = compute_search_exclusion(
-            score_matrix, self._road_avoidance, self._max_average_grade_percent,
-        )
+        search_masks = compute_search_exclusion(score_matrix, self._road_avoidance)
 
         graph_started = start_timer()
         lazy_graph = await asyncio.to_thread(build_lazy_road_graph, road.edge_from, road.edge_to, road.node_count)

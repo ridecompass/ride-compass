@@ -146,8 +146,8 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 利用者から見れば同じ**ため、サーバーは区別せず1つの事実として持つ——
 `jma_tile_redis_cache.set_empty`が実際のタイルと同じキー・TTLで0バイトの値を保存し、
 `get`は`UPSTREAM_NOT_FOUND`を返す。空だと分かったタイルは`set`も実体を保存せずこの
-フラグへ倒す（空の判定は`jma_tile_content.py: is_empty_tile`が唯一持ち、在否インデックスも
-同じ判定を使う）。`targetTimes*.json`はプロセス内`TTLCache`へ直接`UPSTREAM_NOT_FOUND`を積む。
+フラグへ倒す（空の判定は`jma_tile_content.py: is_empty_tile`が唯一持つ）。`set`は書いた形（空なら`UPSTREAM_NOT_FOUND`）を返し、
+取得・補間した直後の応答とプリウォームの在否インデックスもその形を読むので、初めて取ったときも2回目以降と同じ「無い」になる。`targetTimes*.json`はプロセス内`TTLCache`へ直接`UPSTREAM_NOT_FOUND`を積む。
 
 `jma_tile.py`は`UPSTREAM_NOT_FOUND`を受け取ると上流へ再問い合わせせず即座に404を返す（レート制限も
 消費しない）。クライアント側（`jmaTileProtocol.ts`）は404も空タイルも透明タイルへ倒すため、
