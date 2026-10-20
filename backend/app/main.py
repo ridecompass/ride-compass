@@ -80,7 +80,7 @@ async def _refresh_amedas_job() -> None:
 
 async def _prewarm_jma_tile_job() -> None:
     """対象範囲が読めなければ温めない（原因は`RegionService.get_ingested_area`がWARNINGで残す）。"""
-    async with open_region_service() as region_service:
+    async with open_region_service(get_session_factory()) as region_service:
         area = await region_service.get_ingested_area()
     if area is not None:
         await prewarm_jma_tiles(get_jma_tile_client(), area)
@@ -110,7 +110,7 @@ async def _prune_stale_disk_generations_job() -> None:
 
 async def _prune_stale_region_tiles_job() -> None:
     """いま配っていない世代の地域タイル（路面・点・土地被覆）をディスクから消す。"""
-    async with open_region_service() as region_service:
+    async with open_region_service(get_session_factory()) as region_service:
         removed = await region_service.prune_other_tile_generations()
     if removed:
         logging.getLogger("ridecompass.disk_generation_prune").info(
