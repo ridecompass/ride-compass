@@ -89,7 +89,7 @@ class RoadClassRow(Base):
     #: 意味の文だけ。タグの注は配るときに条件から組む。
     description: Mapped[str] = mapped_column(String, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
-    former_keys: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default="{}")
+    former_keys: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
     condition_rows: Mapped[list["RoadClassConditionRow"]] = _children(None, "RoadClassConditionRow.condition_id")
 
     @property
@@ -235,4 +235,4 @@ class RoadAvoidanceOverrideRow(Base):
     #: NULLは「通る」。
     default_level: Mapped[str | None] = mapped_column(String, nullable=True)
     #: falseは除外タブに出さず、段も効かせない。
-    selectable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    selectable: Mapped[bool] = mapped_column(Boolean, nullable=False)

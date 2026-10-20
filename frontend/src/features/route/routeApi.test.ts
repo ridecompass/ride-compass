@@ -25,7 +25,6 @@ const REQUEST: RouteGenerateRequest = {
   latitude: 35.68,
   longitude: 139.77,
   distance_km: 40,
-  distance_tolerance_km: 5,
   road_avoidance: {},
   max_routes: 3,
   assumed_speed_kmh: 22,
