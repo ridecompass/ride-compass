@@ -21,6 +21,7 @@
 """
 
 import math
+from contextlib import nullcontext
 
 import numpy as np
 import pytest
@@ -39,6 +40,7 @@ from app.domain.axis_definitions import (
     PriorityCondition,
 )
 from app.domain.road_classes import class_material_id
+from tests.axis_system_fixture import shaped_axis
 from tests.road_class_fixture import classification, road_classes
 
 NAN = float("nan")
@@ -74,7 +76,6 @@ def catalog(monkeypatch):
         DYNAMIC: material(DYNAMIC, "時刻の材料", "numeric", source="request"),
     }
     monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", specs)
-    return specs
 
 
 def linear(*terms: MaterialTerm, breakpoints=((0.0, 0.0), (10.0, 100.0)), preprocess="identity") -> BreakpointLinearShape:
@@ -308,10 +309,7 @@ class TestPublishImmutability:
         published = axis(is_published=True)
         candidate = None if changed is None else published.model_copy(update=changed)
 
-        if refusal is None:
-            axis_definitions.check_publish_immutability(published, action, candidate)
-            return
-        with pytest.raises(axis_definitions.AxisPublishedImmutableError, match=refusal):
+        with nullcontext() if refusal is None else pytest.raises(axis_definitions.AxisPublishedImmutableError, match=refusal):
             axis_definitions.check_publish_immutability(published, action, candidate)
 
 
@@ -360,10 +358,7 @@ class TestAxisSet:
         ],
     )
     def test_a_set_breaking_an_invariant_is_refused(self, definitions, refusal):
-        if refusal is None:
-            axis_definitions.check_axis_set(definitions)
-            return
-        with pytest.raises(ValueError, match=refusal):
+        with nullcontext() if refusal is None else pytest.raises(ValueError, match=refusal):
             axis_definitions.check_axis_set(definitions)
 
 
@@ -383,10 +378,8 @@ class TestInternalAxisPublish:
     )
     def test_an_axis_another_axis_reads_is_not_published(self, previous, refused):
         candidate = axis("inner", is_published=True, icon_id="内")
-        if not refused:
-            axis_definitions.check_internal_axis_not_published(candidate, {**self.EXISTING, **previous})
-            return
-        with pytest.raises(axis_definitions.AxisInternalAxisPublishError, match="「軸」は「外の軸」が組み合わせに使っている軸"):
+        refusal = pytest.raises(axis_definitions.AxisInternalAxisPublishError, match="「軸」は「外の軸」が組み合わせに使っている軸")
+        with refusal if refused else nullcontext():
             axis_definitions.check_internal_axis_not_published(candidate, {**self.EXISTING, **previous})
 
 
@@ -408,8 +401,8 @@ RENAMED = road_classes({"k": classification({"paved": [], "unpaved": []}, former
 )
 def test_class_values_named_by_neither_current_nor_former_keys(material_id, mapping, equals, unknown):
     """値ごとの点数のキーと0次条件の値のうち、今の区分の鍵にも前の鍵の区分の名にも無いものを挙げる（区分の入れ替えが断る文になる）。"""
-    axis = AxisDefinition(
-        axis_id="axis_a", shape=CategoricalShape(material=material_id, mapping=mapping), default_weight=1.0, label="軸A",
+    axis = shaped_axis(
+        CategoricalShape(material=material_id, mapping=mapping),
         priority_overrides=[PriorityCondition(material=material_id, equals=equals, value=0.0)],
     )
     assert axis_definitions.unknown_class_values(axis, RENAMED) == unknown

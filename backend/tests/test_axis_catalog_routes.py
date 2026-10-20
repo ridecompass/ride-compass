@@ -182,7 +182,8 @@ def test_get_axis_catalog_names_what_the_map_sends_and_shows_for_an_axis(
     assert condition_names(formula.value) | condition_names(formula.undetermined) == conditions - requested
 
 
-def test_get_axis_catalog_includes_raw_value_unit(client, catalog_axes):
+@pytest.mark.usefixtures("catalog_axes")
+def test_get_axis_catalog_includes_raw_value_unit(client):
     # 得点の隣へ生値を出すための単位（domain/axis_raw_value.py: raw_value_units）。
     # 勾配は単一材料をそのまま使うので%、内部軸を合成する軸は単位が定まらずnull。
     entries = _entries(client)
@@ -191,7 +192,8 @@ def test_get_axis_catalog_includes_raw_value_unit(client, catalog_axes):
     assert entries["axis_optional_terms"]["raw_value_units"] == {"unit": None, "total_unit": None}
 
 
-def test_get_axis_catalog_includes_material_breakdown(client, catalog_axes):
+@pytest.mark.usefixtures("catalog_axes")
+def test_get_axis_catalog_includes_material_breakdown(client):
     # 単位が定まらない軸は、材料まで分解した内訳を持つ（得点だけでは軸単体で判断できない）。並びは正規化重みの降順で、フロントは並べ替えを持たない。
     entries = _entries(client)
     # 単位が定まる軸は分解しない（軸単位の生値で足りる）。
@@ -215,7 +217,8 @@ def _numbers(value) -> set[float]:
     return set()
 
 
-def test_get_axis_catalog_does_not_serve_the_material_weights(client, catalog_axes):
+@pytest.mark.usefixtures("catalog_axes")
+def test_get_axis_catalog_does_not_serve_the_material_weights(client):
     """材料の重みは較正の値で、このカタログは認証なしで誰でも読める（`docs/architecture/data-sources.md`「OSM から作った値と独自の層」）。
 
     重みも、そこから出る正規化の割合も、応答のどこかに数として出れば読み取れる。
