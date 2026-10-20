@@ -30,7 +30,7 @@ from hypothesis import strategies as st
 from pydantic import ValidationError
 from pydantic_core import PydanticCustomError
 
-from app.domain import axis_definitions, material_catalog
+from app.domain import axis_definitions
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import (
     AxisDefinition,
@@ -40,46 +40,25 @@ from app.domain.axis_definitions import (
     PriorityCondition,
 )
 from app.domain.road_classes import class_material_id
-from tests.axis_system_fixture import shaped_axis
+from tests.axis_system_fixture import linear, shaped_axis
+from tests.material_fixture import material, replace_material_catalog
 from tests.road_class_fixture import classification, road_classes
 
 NAN = float("nan")
 DYNAMIC = next(iter(axis_definitions.REQUEST_DYNAMIC_MATERIAL_IDS))
 
 
-def material(
-    material_id: str, label: str, dtype: material_catalog.MaterialDType, *, additive: bool = False,
-    source: material_catalog.MaterialSource = "db",
-) -> material_catalog.MaterialSpec:
-    return material_catalog.MaterialSpec(
-        material_id=material_id,
-        label=label,
-        description=label,
-        dtype=dtype,
-        additive=additive,
-        tile_property=None,
-        source=source,
-        value_sql=f"w.{material_id}" if source == "db" else None,
-        coverage=material_catalog.CoverageExcluded(reason="テスト用", missing_semantics="unknown"),
-    )
-
-
 @pytest.fixture
 def catalog(monkeypatch):
-    specs = {
-        "num_a": material("num_a", "数値A", "numeric"),
-        "num_b": material("num_b", "数値B", "numeric"),
-        "count_a": material("count_a", "回数A", "numeric", additive=True),
-        "count_b": material("count_b", "回数B", "numeric", additive=True),
-        "flag": material("flag", "旗", "boolean"),
-        "cat": material("cat", "種類", "categorical"),
-        DYNAMIC: material(DYNAMIC, "時刻の材料", "numeric", source="request"),
-    }
-    monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", specs)
-
-
-def linear(*terms: MaterialTerm, breakpoints=((0.0, 0.0), (10.0, 100.0)), preprocess="identity") -> BreakpointLinearShape:
-    return BreakpointLinearShape(terms=list(terms), breakpoints=list(breakpoints), preprocess=preprocess)
+    return replace_material_catalog(monkeypatch, [
+        material("num_a", label="数値A"),
+        material("num_b", label="数値B"),
+        material("count_a", label="回数A", additive=True),
+        material("count_b", label="回数B", additive=True),
+        material("flag", "boolean", label="旗"),
+        material("cat", "categorical", label="種類"),
+        material(DYNAMIC, label="時刻の材料", source="request"),
+    ])
 
 
 def axis(axis_id: str = "axis_a", shape=None, **fields) -> AxisDefinition:

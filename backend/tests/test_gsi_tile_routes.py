@@ -35,8 +35,8 @@ class FakeGsiTileClient:
         return self._result
 
 
-def _answer(monkeypatch, result):
-    monkeypatch.setitem(app.dependency_overrides, get_gsi_tile_client, lambda: FakeGsiTileClient(result))
+def _answer(override_dependency, result):
+    override_dependency(get_gsi_tile_client, lambda: FakeGsiTileClient(result))
 
 
 #: 経路ごとの、上流が返す中身と、利用者へ届く中身。標高タイルは変換してから配る（変換そのものは`test_gsi_dem_png.py`）。
@@ -48,8 +48,8 @@ SUCCESSES = [
 
 
 @pytest.mark.parametrize(("path", "upstream", "served"), SUCCESSES, ids=["relief", "terrain"])
-def test_a_tile_is_served_as_png(monkeypatch, path, upstream, served):
-    _answer(monkeypatch, (upstream, "image/png"))
+def test_a_tile_is_served_as_png(override_dependency, path, upstream, served):
+    _answer(override_dependency, (upstream, "image/png"))
 
     response = client.get(path)
 
@@ -59,8 +59,8 @@ def test_a_tile_is_served_as_png(monkeypatch, path, upstream, served):
 
 
 @pytest.mark.parametrize("path", [RELIEF_TILE, TERRAIN_TILE])
-def test_an_upstream_failure_is_502(monkeypatch, path):
-    _answer(monkeypatch, None)
+def test_an_upstream_failure_is_502(override_dependency, path):
+    _answer(override_dependency, None)
 
     response = client.get(path)
 
@@ -69,14 +69,14 @@ def test_an_upstream_failure_is_502(monkeypatch, path):
 
 
 @pytest.mark.parametrize("path", [RELIEF_TILE, TERRAIN_TILE])
-def test_整備区域外は404で返し_ブラウザへもキャッシュさせる(monkeypatch, path):
+def test_整備区域外は404で返し_ブラウザへもキャッシュさせる(override_dependency, path):
     """整備区域外（珍しくない正常系）は上流障害の502にしない。
 
     `raster-dem`は整備区域外のタイルも視界へ入るたび要求する。サーバー側は同じ事実をプロセス内に
     持って上流へ問い合わせ直さないが、それだけではブラウザからの要求は減らない——沿岸部を連続して
     パンする利用者は404だけでレート制限に達しうる。恒久404はブラウザにも伝える。
     """
-    _answer(monkeypatch, UPSTREAM_NOT_FOUND)
+    _answer(override_dependency, UPSTREAM_NOT_FOUND)
 
     response = client.get(path)
 
@@ -90,8 +90,8 @@ def test_整備区域外は404で返し_ブラウザへもキャッシュさせ�
     [(RELIEF_TILE, b"x", "gsi-relief-tile"), (TERRAIN_TILE, _DEM, "gsi-terrain-tile")],
     ids=["relief", "terrain"],
 )
-def test_tiles_are_rate_limited_per_client(monkeypatch, path, upstream, prefix):
-    _answer(monkeypatch, (upstream, "image/png"))
+def test_tiles_are_rate_limited_per_client(override_dependency, path, upstream, prefix):
+    _answer(override_dependency, (upstream, "image/png"))
 
     for _ in range(settings.gsi_tile_rate_limit_per_minute - 1):
         rate_limiter.check_rate_limit(f"{prefix}:testclient", settings.gsi_tile_rate_limit_per_minute)
@@ -100,9 +100,9 @@ def test_tiles_are_rate_limited_per_client(monkeypatch, path, upstream, prefix):
     assert client.get(path).status_code == 429
 
 
-def test_標高タイルは配信元がデータを持たないズームを拒む(monkeypatch):
+def test_標高タイルは配信元がデータを持たないズームを拒む(override_dependency):
     # 配信元はz14までしか実データを持たない。範囲外をそのまま上流へ投げない。
-    _answer(monkeypatch, (b"", "image/png"))
+    _answer(override_dependency, (b"", "image/png"))
 
     assert client.get("/api/gsi-terrain-tile/16/58211/25802.png").status_code == 422
     assert client.get(f"/api/gsi-terrain-tile/14/{2**14}/6450.png").status_code == 422

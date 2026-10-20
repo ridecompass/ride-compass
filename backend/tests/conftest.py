@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from app.batch.common import asyncpg_dsn
 from app.domain import stopwatch
 from app.infrastructure import (
+    database,
     debug_log,
     jma_area_boundaries,
     rate_limiter,
@@ -102,6 +103,36 @@ def restore_debug_mode():
     yield
     settings.debug_mode = original_debug_mode
     logging.getLogger().setLevel(original_level)
+
+
+@pytest.fixture
+def override_dependency(monkeypatch):
+    """`app.main: app`の依存を差し替える口（`override_dependency(依存, 作る関数)`）。差し替えはテストを抜けるときに戻る。"""
+    from app.main import app
+
+    def override(dependency, provide) -> None:
+        monkeypatch.setitem(app.dependency_overrides, dependency, provide)
+
+    return override
+
+
+#: 何も聞いていないポートのDB。接続は張る段階ですぐに断られる。
+UNREACHABLE_DATABASE_URL = "postgresql+asyncpg://user:password@127.0.0.1:1/unreachable"
+
+
+@asynccontextmanager
+async def app_database_at(monkeypatch: pytest.MonkeyPatch, url: str):
+    """ブロックの間だけ、アプリのセッション工場（`infrastructure/database.py`）を`url`へ向ける。
+
+    工場はプロセスに1つなので、本番の寿命の口（`dispose_engines`）で作り直してから始め、同じ口で閉じて終える。
+    テストDBへ向けるなら`app_on_test_database`を取る。ほかの宛先は、使う側のイベントループの範囲のfixtureの中で開く。
+    """
+    monkeypatch.setattr(settings, "database_url", url)
+    await database.dispose_engines()
+    try:
+        yield
+    finally:
+        await database.dispose_engines()
 
 
 @pytest.fixture(autouse=True)
@@ -518,9 +549,16 @@ async def road_graph_engine():
 
 
 async def _delete_app_rows(engine) -> None:
-    async with engine.begin() as conn:
-        for table in reversed(declared_metadata().sorted_tables):
-            await conn.execute(table.delete())
+    """アプリの表の全行を、子の表から順に1回の往復で消す。
+
+    文をいくつも1回で送れるのは単純問い合わせ（引数を持たない`asyncpg.Connection.execute`）だけで、SQLAlchemyの
+    `execute`は1文ずつ準備して送る。単純問い合わせの文の並びは1つのトランザクションで走る。
+    """
+    statements = "; ".join(
+        str(table.delete().compile(dialect=engine.dialect)) for table in reversed(declared_metadata().sorted_tables))
+    async with engine.connect() as conn:
+        raw = await conn.get_raw_connection()
+        await raw.driver_connection.execute(statements)
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
@@ -546,6 +584,13 @@ async def road_graph_session(road_graph_engine) -> AsyncSession:
         await session.rollback()
 
     await _delete_app_rows(road_graph_engine)
+
+
+@pytest_asyncio.fixture(loop_scope="module")
+async def app_on_test_database(road_graph_engine, monkeypatch):
+    """アプリのセッション工場を、表を作ったテストDBへ向ける（`app_database_at`）。"""
+    async with app_database_at(monkeypatch, postgis_database_url()):
+        yield
 
 
 @pytest_asyncio.fixture(loop_scope="module")

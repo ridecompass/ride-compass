@@ -15,19 +15,16 @@
 
 import json
 import re
-import sys
 from functools import cache
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from repo_git import run
+from repo_population import UNMAINTAINED_PREFIXES
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ORIGINS_FILE = "production-origins.json"
 FLOW_CONFIG_FILE = "tools/flow-gate/flow.config.json"
-
-sys.path.insert(0, str(REPO_ROOT / "scripts"))
-
-from repo_git import run  # noqa: E402
-from repo_population import UNMAINTAINED_PREFIXES  # noqa: E402
 
 ORIGIN = re.compile(r"https?://[A-Za-z0-9.-]+(?::\d+)?")
 

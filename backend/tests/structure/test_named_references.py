@@ -12,20 +12,17 @@ import ast
 import io
 import re
 import subprocess
-import sys
 import tokenize
 from collections.abc import Iterator
 from functools import cache
 from pathlib import Path
 
+# 実在の母集団・維持しない置き場・例の形は、文書のリンクの検査（`scripts/review_checks.py`）と同じ口から取る。
+from repo_population import EXAMPLE, UNMAINTAINED_PREFIXES, read_text, repository_files
+
 from tests.structure.source_symbols import write_files
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-
-# 実在の母集団・維持しない置き場・例の形は、文書のリンクの検査（`scripts/review_checks.py`）と同じ口から取る。
-sys.path.insert(0, str(REPO_ROOT / "scripts"))
-
-from repo_population import EXAMPLE, UNMAINTAINED_PREFIXES, read_text, repository_files  # noqa: E402
 
 TARGET_EXTENSIONS = r"(?:py|tsx?|js|mjs|cjs|ya?ml|json|sql|sh|toml|ini|css)"
 

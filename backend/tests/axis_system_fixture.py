@@ -33,6 +33,17 @@ def axis_definition(axis_id: str, *, material: str = "material_a", **fields: Any
     )
 
 
+def linear(
+    *terms: str | MaterialTerm, breakpoints=((0.0, 0.0), (10.0, 100.0)), preprocess="identity"
+) -> BreakpointLinearShape:
+    """材料の項（idは重み1の項）を足し、折れ点で得点へ写す区分線形のshape。既定の折れ点は0〜10を0〜100へ写す。"""
+    return BreakpointLinearShape(
+        terms=[term if isinstance(term, MaterialTerm) else MaterialTerm(material=term) for term in terms],
+        breakpoints=list(breakpoints),
+        preprocess=preprocess,
+    )
+
+
 def shaped_axis(shape: AxisShape, axis_id: str = "axis_a", **fields: Any) -> AxisDefinition:
     """shape（得点の付け方）がテストの主題の軸を1本作る。重みと表示名は型を満たすための値。"""
     return AxisDefinition(axis_id=axis_id, shape=shape, default_weight=1.0, label="軸A", **fields)

@@ -13,7 +13,6 @@ import httpx
 import pytest
 import pytest_asyncio
 
-from app.config import settings
 from app.domain.axis_definitions import CategoricalShape
 from app.domain.cycling_speed import BASE_CRR_ID
 from app.domain.map_display import MAP_LAYER_CATEGORIES
@@ -25,12 +24,10 @@ from app.domain.road_classes import (
     AvoidanceSection,
     class_material_id,
 )
-from app.infrastructure import database
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.main import app
 from tests.admin_auth import AUTH_HEADERS
 from tests.axis_system_fixture import shaped_axis
-from tests.conftest import postgis_database_url
 from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -56,14 +53,11 @@ DEFINITIONS = road_classes(
 
 
 @pytest_asyncio.fixture(loop_scope="module")
-async def client(road_graph_session, admin_credentials, monkeypatch):
-    """アプリのセッション工場をテストDBへ向けた口。終わりに空の全体を書き、表とプロセス内の全体を空へ戻す。"""
-    monkeypatch.setattr(settings, "database_url", postgis_database_url())
-    await database.dispose_engines()
+async def client(road_graph_session, app_on_test_database, admin_credentials):
+    """テストDBへ向けたアプリの口。終わりに空の全体を書き、表とプロセス内の全体を空へ戻す。"""
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         yield client
         await client.put(PATH, json=EMPTY_ROAD_CLASSES.model_dump(mode="json"), headers=AUTH_HEADERS)
-    await database.dispose_engines()
 
 
 async def test_written_definitions_are_read_back_and_served(client):

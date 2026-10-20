@@ -8,12 +8,8 @@
 （`--in-container`）は本番VMへのSSHなので通さない。プローブの後ろの引数をそのまま渡すのはargparseの設定。
 """
 
-import sys
-from pathlib import Path
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import _prod_env
 import run_probe
