@@ -24,9 +24,11 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.material_catalog import SURFACE_ESTIMATE
-from app.domain.road import SURFACE_ESTIMATES
-from app.domain.tuning import tuning_value
+from app.domain.material_catalog import GRADIENT_PERCENT
+from app.domain.road_classes import class_material_id, current_road_classes
+from app.domain.traffic import stop_count_material_ids
+from app.domain.tuning import TUNING_PARAMETERS_BY_ID, tuning_value
+from app.domain.wind import kmh_to_ms
 
 AIR_DENSITY_KG_M3 = 1.225
 GRAVITY_M_S2 = 9.80665
@@ -35,28 +37,46 @@ GRAVITY_M_S2 = 9.80665
 # `domain/tuning.py`が宣言し、ここでは読むだけにする。定数として持つと、宣言と二重に
 # なったうえ管理画面からの変更が効かない。
 
-# 速度を挟み込む二分法の反復回数。初期区間は押して歩く速度〜速度の上限（`top_speed_kmh`。
-# 巡航速度の上限60km/hでも約17m/s）で、12回で幅は0.004m/s（0.01km/h）まで縮む。粗くすると平地・無風で巡航速度に一致しなくなる
+# 速度を挟み込む二分法の反復回数。初期区間は押して歩く速度〜速度の上限（`top_speed_kmh`。巡航速度の上限は
+# `domain/route_request.py: MAX_ASSUMED_SPEED_KMH`）で、12回で幅は初期区間の4096分の1（巡航速度が上限でも0.01km/h程度）まで縮む。粗くすると平地・無風で巡航速度に一致しなくなる
 # 一方、反復の中で配列を確保し直さないため回数を減らしても速くならない（実測）。
 SPEED_SOLVE_ITERATIONS = 12
 
-# 路面の見込みを持つ材料id。走行モデルはこれを**軸の構成と無関係に**必要とする
-# （`domain/traffic.py: stop_count_material_ids`と同じ理由）。
-ROLLING_RESISTANCE_MATERIAL_ID = SURFACE_ESTIMATE
+#: 区間ごとに速度を変える道と天気の条件の、画面で呼ぶ名前（走行方程式の重力・空気抵抗・転がり抵抗の順）。
+#: 画面の所要時間の説明はこの並びを差し込む。方程式に条件を足したら、ここにも足す。
+SEGMENT_SPEED_CONDITIONS: tuple[str, ...] = ("坂", "風", "路面")
+
+#: 基準の転がり抵抗の較正値のid。
+BASE_CRR_ID = "speed.crr"
 
 
-def crr_for_surface(surface_estimate: CategoricalColumn) -> np.ndarray:
-    """路面の見込み（`domain/road.py: SurfaceEstimate`の鍵）から、区間ごとの転がり抵抗を返す。
+def rolling_resistance_material_id() -> str | None:
+    """走行モデルが転がり抵抗に読む区分の列の材料id（転がり抵抗の表が指す分け方。指していなければNone）。"""
+    key = current_road_classes().rolling_resistance_classification
+    return class_material_id(key) if key is not None else None
 
-    宣言に無い値（値なしを含む）は送出する。材料の式はどの道にも見込みを与えるため、来るのは式と
-    宣言が食い違ったときだけで、舗装へ倒すと路面の違いが黙って所要時間から消える。
+
+def travel_model_material_ids() -> tuple[str, ...]:
+    """所要時間（走行方程式の勾配・路面と、停止の待ち）が区間ごとに読む材料id。
+
+    静的スコア行列はこれらを**軸の構成と無関係に**列として運び、欠けた行列は組み立てで断る
+    （`evaluation.py: StaticEdgeScoreMatrix`）。軸が分解した材料だけを運ぶ既定に任せると、その軸を
+    非公開にした瞬間に所要時間から坂・路面・停止の待ちが静かに消える。
     """
-    table = {estimate.key: tuning_value(estimate.rolling_resistance) for estimate in SURFACE_ESTIMATES}
-    crr = surface_estimate.lookup(table)
-    unknown = np.flatnonzero(np.isnan(crr))
-    if len(unknown):
-        raise ValueError(f"路面の見込みに宣言に無い値がある: {surface_estimate.value_at(int(unknown[0]))!r}")
-    return crr
+    rolling = rolling_resistance_material_id()
+    return (GRADIENT_PERCENT, *((rolling,) if rolling is not None else ()), *stop_count_material_ids())
+
+
+def crr_for_surface(rolling_classes: CategoricalColumn) -> np.ndarray:
+    """路面の見込み（転がり抵抗の表が指す分け方の区分）から、区間ごとの転がり抵抗を返す。
+
+    区分の外の道・表に無い区分・宣言に無い較正値のidは、基準の転がり抵抗（`RiderProfile.crr`）にする。
+    """
+    definitions = current_road_classes()
+    ids = definitions.rolling_resistance_classes.get(definitions.rolling_resistance_classification or "", {})
+    table = {key: tuning_value(tuning_id) for key, tuning_id in ids.items() if tuning_id in TUNING_PARAMETERS_BY_ID}
+    crr = rolling_classes.lookup(table)
+    return np.where(np.isnan(crr), tuning_value(BASE_CRR_ID), crr)
 
 
 @dataclass(frozen=True)
@@ -64,15 +84,15 @@ class RiderProfile:
     """走行モデルの個人パラメータ。利用者が入力するのは巡航速度だけで、残りは標準値。"""
 
     cruise_speed_kmh: float
-    # 標準値は宣言（`domain/tuning.py`）が持つ。既定を評価するのは**生成のたび**で、
+    # 標準値は宣言（`domain/tuning.py`）が持ち、作り手は渡さない。読むのは**生成のたび**で、
     # import時ではない——import時に束ねると、管理画面から変えた値が効かない。
-    cda_m2: float = field(default_factory=lambda: tuning_value("speed.cda_m2"))
-    crr: float = field(default_factory=lambda: tuning_value("speed.crr"))
-    mass_kg: float = field(default_factory=lambda: tuning_value("speed.mass_kg"))
+    cda_m2: float = field(init=False, default_factory=lambda: tuning_value("speed.cda_m2"))
+    crr: float = field(init=False, default_factory=lambda: tuning_value(BASE_CRR_ID))
+    mass_kg: float = field(init=False, default_factory=lambda: tuning_value("speed.mass_kg"))
 
     @property
     def cruise_speed_ms(self) -> float:
-        return self.cruise_speed_kmh / 3.6
+        return kmh_to_ms(self.cruise_speed_kmh)
 
 
 def wheel_power_w(profile: RiderProfile) -> float:
@@ -120,14 +140,12 @@ class SegmentSpeedModel:
         if rolling_crr.shape != grade.shape:
             raise ValueError(f"区間の配列の長さが揃っていません grade={grade.shape} crr={rolling_crr.shape}")
         self._shape = grade.shape
-        self._power = climb_power_w(wheel_power_w(profile), grade).astype(np.float32)
-        self._constant_force = (
-            rolling_crr * np.float32(profile.mass_kg * GRAVITY_M_S2)
-            + np.float32(profile.mass_kg * GRAVITY_M_S2) * grade
-        )
+        self._power = climb_power_w(wheel_power_w(profile), grade).astype(np.float32, copy=False)
+        weight_n = np.float32(profile.mass_kg * GRAVITY_M_S2)
+        self._constant_force = rolling_crr * weight_n + weight_n * grade
         self._drag_coefficient = np.float32(0.5 * AIR_DENSITY_KG_M3 * profile.cda_m2)
-        self._lowest_ms = tuning_value("speed.walking_kmh") / 3.6
-        self._highest_ms = top_speed_kmh(profile.cruise_speed_kmh) / 3.6
+        self._lowest_ms = kmh_to_ms(tuning_value("speed.walking_kmh"))
+        self._highest_ms = kmh_to_ms(top_speed_kmh(profile.cruise_speed_kmh))
 
     def speed_ms(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray) -> np.ndarray:
         """区間ごとの走行速度（m/s）。`headwind_ms`は進行方向への向かい風成分（正が向かい風）、
@@ -175,7 +193,8 @@ class SegmentSpeedModel:
             # 必要な出力が持っている出力を超えるなら、その速度は出せない（上限を下げる）。
             np.greater(scratch, power, out=too_fast)
             np.copyto(high, middle, where=too_fast)
-            np.copyto(low, middle, where=~too_fast)
+            np.logical_not(too_fast, out=too_fast)
+            np.copyto(low, middle, where=too_fast)
         np.add(low, high, out=middle)
         np.multiply(middle, np.float32(0.5), out=middle)
         # 呼び出し側（コスト配列・所要時間）はfloat64で揃えてある。

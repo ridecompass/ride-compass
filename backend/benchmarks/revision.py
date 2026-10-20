@@ -1,4 +1,4 @@
-"""計測した作業コピーの素性（HEAD・origin/masterとの一致・未コミットの変更）を出す。
+"""計測した作業コピーの素性（HEAD・未コミットの変更）と、origin/master に追いついているかを出す。
 
 ベンチマークの数字はタスクエントリへ「本番実測」として引用される。どのコードを測ったかが
 数字と一緒に残っていないと、作業コピーが古いまま測ったときに出るのはエラーではなく
@@ -7,38 +7,28 @@
 
 from __future__ import annotations
 
-import subprocess
+import sys
 from dataclasses import dataclass
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+
+from checkout_freshness import REPO_ROOT, staleness
+from repo_git import run
 
 
 @dataclass(frozen=True)
 class RevisionState:
     head: str | None
-    remote_head: str | None
     dirty: bool
 
 
-def _git(*args: str) -> str | None:
-    try:
-        out = subprocess.run(
-            ["git", *args], capture_output=True, text=True, timeout=30, check=False
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return out.stdout.strip() if out.returncode == 0 else None
-
-
 def read_revision_state() -> RevisionState:
-    """作業コピーのHEADと、配信元（origin/master）の現在のHEADを読む。
-
-    `ls-remote`で配信元へ直接聞く——手元の`origin/master`はfetchするまで動かないため、
-    それと比べても「古いまま測っている」ことを検出できない。
-    """
-    head = _git("rev-parse", "HEAD")
-    remote = _git("ls-remote", "origin", "refs/heads/master")
-    remote_head = remote.split()[0] if remote else None
-    status = _git("status", "--porcelain")
-    return RevisionState(head=head, remote_head=remote_head, dirty=bool(status))
+    """作業コピーのHEADと、未コミットの変更があるか。"""
+    head = run("rev-parse", "HEAD", cwd=REPO_ROOT)
+    status = run("status", "--porcelain", cwd=REPO_ROOT)
+    return RevisionState(head=head.stdout.strip() if head.returncode == 0 else None,
+                         dirty=bool(status.stdout.strip()))
 
 
 def describe(state: RevisionState) -> str:
@@ -47,39 +37,17 @@ def describe(state: RevisionState) -> str:
     parts = [f"計測した作業コピー: {head}"]
     if state.dirty:
         parts.append("未コミットの変更あり")
-    if state.remote_head and state.head and state.remote_head != state.head:
-        parts.append(f"origin/master: {state.remote_head[:12]}")
     return "（" + "／".join(parts) + "）"
 
 
-def stale_reason(state: RevisionState) -> str | None:
-    """配信元と違うコミットを測っているときの警告の文。問題が無ければNone。
+def announce_revision() -> None:
+    """素性を1行出し、古ければ（古いかを確かめられなければ）警告を出す（止めない）。
 
-    配信元を引けない（ネットワーク断・gitが無い）ときは警告しない——古いかを決められない。
-    素性は`describe`が出力へ残す。
-    """
-    if state.head is None or state.remote_head is None:
-        return None
-    if state.head != state.remote_head:
-        return (
-            f"作業コピーが配信元と違うコミットです（手元 {state.head[:12]} / "
-            f"origin/master {state.remote_head[:12]}）。古いコードを測ると、誤りではなく"
-            "もっともらしい数字が出ます。`git fetch origin master && git reset --hard origin/master`"
-            "で揃えてください。"
-        )
-    return None
-
-
-def announce_revision() -> RevisionState:
-    """素性を1行出し、古ければ警告を出す（止めない）。
-
-    個別のベンチは手元の反復でも使うため、配信元と違うコミットでも測れる方を採る。
+    個別のベンチは手元の反復でも使うため、遅れたコミットでも測れる方を採る。
     止めないぶん、**どのコードを測ったかは必ず出力へ残る**——数字だけが後から引用されると、
     古い作業コピーの数字かどうかを見分ける手段が無くなる。
     """
-    state = read_revision_state()
-    print(describe(state))
-    reason = stale_reason(state)
+    print(describe(read_revision_state()))
+    reason = staleness()
     if reason is not None:
         print(f"警告: {reason}")
-    return state

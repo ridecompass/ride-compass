@@ -37,12 +37,15 @@ class JmaTileSpec:
 
     zoom_use: ZoomUse
     max_native_zoom: int
-    min_zoom: int = 4
     #: ベクタタイル（.pbf）の中のレイヤー名。ラスタの要素はNone。
     vector_layer: str | None = None
-    #: 降水の段の色（`domain/weather_display.py: JMA_PRECIPITATION_TILE_COLORS`）で塗った画像で、中継がアプリの降水の段の
-    #: 色へ塗り替えて配る（`infrastructure/jma_tile_recolor.py`）。
+    #: 降水の段の色（`infrastructure/jma_tile_recolor.py: JMA_PRECIPITATION_TILE_COLORS`）で塗った画像で、中継がアプリの
+    #: 降水の段の色へ塗り替えて配る。
     precipitation_colors: bool = False
+
+
+#: どの要素も配信元に実データがある最小ズーム。
+JMA_TILE_MIN_ZOOM = 4
 
 
 def effective_max_zoom(spec: JmaTileSpec) -> int:
@@ -52,11 +55,16 @@ def effective_max_zoom(spec: JmaTileSpec) -> int:
     ズームのタイルは存在せず空タイルが返る。合う側へ1段下げた値が実際の上限になる。
     """
     z = spec.max_native_zoom
+    return z if _matches_zoom_use(spec, z) else z - 1
+
+
+def _matches_zoom_use(spec: JmaTileSpec, zoom: int) -> bool:
+    """ズームが`zoom_use`の偶奇に合うか。"""
     if spec.zoom_use == "even":
-        return z if z % 2 == 0 else z - 1
+        return zoom % 2 == 0
     if spec.zoom_use == "odd":
-        return z if z % 2 == 1 else z - 1
-    return z
+        return zoom % 2 == 1
+    return True
 
 
 @dataclass(frozen=True)
@@ -73,8 +81,12 @@ class JmaElement:
     #: 配信の遅れ（分。公式の画面の設定の`dataDelay`）。配信元は時刻一覧に載せたコマをこの幅のあいだ配信しておらず、
     #: 画面はその要素の最新の`basetime`から幅に入るコマを、幅の端まで前の`basetime`へずらして読む（公式の画面と同じ）。
     data_delay_minutes: int = 0
+    #: 予測が届く先（分。1つの`basetime`の実況から）。地図の説明の文と凡例が引く。予測を持たない要素はNone。
+    forecast_minutes: int | None = None
 
     def __post_init__(self) -> None:
+        if not self.time_files:
+            raise ValueError("時刻一覧のファイルが無いと、その要素のコマを取りに行けない")
         # ずらし方は画面の読み方だけが持ち、プリウォーム（タイルだけを温める）の読み方`read_target_times`は持たない。
         if self.tile is not None and self.data_delay_minutes:
             raise ValueError("タイルで配る要素に配信の遅れを宣言するなら、プリウォームの読み方にも同じずらしが要る")
@@ -100,18 +112,23 @@ JMA_ELEMENTS: dict[str, JmaElement] = {
     # 同じ11として扱う——z10に実データがありz11・z12が空という実測とも一致する。
     "flood": JmaElement("risk", ("targetTimes.json",), "latest", JmaTileSpec("even", 11, vector_layer="flood")),
     # 降水ナウキャスト（60分先まで）と降水短時間予報（その先15時間先まで）。
-    "hrpns": JmaElement("nowc", ("targetTimes_N1.json", "targetTimes_N2.json"), "nowcast", _PRECIPITATION_TILE),
-    "rasrf": JmaElement("rasrf", ("targetTimes.json",), "latestFullRun", _PRECIPITATION_TILE),
+    "hrpns": JmaElement(
+        "nowc", ("targetTimes_N1.json", "targetTimes_N2.json"), "nowcast", _PRECIPITATION_TILE, forecast_minutes=60
+    ),
+    "rasrf": JmaElement("rasrf", ("targetTimes.json",), "latestFullRun", _PRECIPITATION_TILE, forecast_minutes=15 * 60),
     # 雷・竜巻ナウキャストはmaxNativeZoomが9で、他のJMAタイルより1段粗い。
-    "thns": JmaElement("nowc", ("targetTimes_N3.json",), "nowcast", JmaTileSpec("even", 9)),
-    "trns": JmaElement("nowc", ("targetTimes_N3.json",), "nowcast", JmaTileSpec("even", 9)),
+    # どちらも実況と60分先まで。
+    "thns": JmaElement("nowc", ("targetTimes_N3.json",), "nowcast", JmaTileSpec("even", 9), forecast_minutes=60),
+    "trns": JmaElement("nowc", ("targetTimes_N3.json",), "nowcast", JmaTileSpec("even", 9), forecast_minutes=60),
     # 落雷の位置。タイルではなく、同じ系統の下にGeoJSONで配られる。
     "liden": JmaElement("nowc", ("targetTimes_N3.json",), "nowcast"),
     # 線状降水帯の雨域（公式の既定の表示「代表楕円表示方式」が読む2つ）。落雷と同じくコマごとのGeoJSONで、
     # 1つの`basetime`が実況と30分先までの予測を持つ。時刻一覧は最新の`basetime`の実況と20分先までを載せるが、
     # 配信は遅れるので、公式の画面は1つ前の`basetime`の実況と予測を読む。
     "slmcs_unify": JmaElement("nowc", ("targetTimes_N3.json",), "nowcast", data_delay_minutes=10),
-    "slmcs_unifyfcst": JmaElement("nowc", ("targetTimes_N3.json",), "nowcast", data_delay_minutes=10),
+    "slmcs_unifyfcst": JmaElement(
+        "nowc", ("targetTimes_N3.json",), "nowcast", data_delay_minutes=10, forecast_minutes=30
+    ),
     # 線状降水帯予測マップ。
     "sjfcstmap": JmaElement("rasrf", ("targetTimes.json",), "latest", JmaTileSpec("even", 10)),
 }
@@ -191,23 +208,21 @@ def _read_latest_full_run(frames: list[JmaFrame]) -> list[JmaFrame]:
     return sorted(by_validtime.values(), key=lambda frame: frame.validtime)
 
 
-_DATA_ROOT = "bosai/jmatile/data"
+#: 配信元のタイルと時刻一覧の根。地図に重ねない要素（推計気象分布）も同じ根の下にある。
+JMA_DATA_ROOT = "bosai/jmatile/data"
 #: 時刻一覧の置き場。
-_TARGET_TIMES_PATH = _DATA_ROOT + "/{group}/{file}"
+_TARGET_TIMES_PATH = JMA_DATA_ROOT + "/{group}/{file}"
 #: 配信要素の1コマの置き場。この下にタイル（地図の`{z}/{x}/{y}`）か、タイルで配らない要素の地物（GeoJSON）がある。
-_FRAME_PATH = _DATA_ROOT + "/{group}/{basetime}/{member}/{validtime}/surf/{element}"
+_FRAME_PATH = JMA_DATA_ROOT + "/{group}/{basetime}/{member}/{validtime}/surf/{element}"
 _TILE_FILE = "{z}/{x}/{y}.{extension}"
 _FEATURES_FILE = "data.geojson?id={element}"
-#: 読み戻すとき数字だけに当てる項目（タイル座標）。他の項目はパスの1区切りに当てる。
-_NUMERIC_FIELDS = frozenset({"z", "x", "y"})
-_NUMBER = r"\d+"
-_SEGMENT = r"[^/?]+"
-_PLACEHOLDER = re.compile(r"\{(\w+)\}")
+#: テンプレートの埋める所（`{名前}`）。画面も同じ書き方で埋める。
+TEMPLATE_PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
 
 def _fill(template: str, **values: str) -> str:
     """`{名前}`を値で埋める。渡さなかった名前は`{名前}`のまま残す。"""
-    return _PLACEHOLDER.sub(lambda match: values.get(match.group(1), match.group(0)), template)
+    return TEMPLATE_PLACEHOLDER.sub(lambda match: values.get(match.group(1), match.group(0)), template)
 
 
 def tile_extension(spec: JmaTileSpec) -> str:
@@ -247,53 +262,13 @@ class JmaTile(NamedTuple):
 
 def jma_tile_path(tile: JmaTile) -> str:
     """タイルの、配信元のパス。タイルで配らない要素は`ValueError`。"""
-    if JMA_ELEMENTS[tile.element_id].tile is None:
-        raise ValueError(f"タイルで配らない配信要素: {tile.element_id}")
+    jma_tile_spec(tile.element_id)
     return _fill(
         jma_url_template(tile.element_id),
         **tile.frame._asdict(),
         z=str(tile.z),
         x=str(tile.x),
         y=str(tile.y),
-    )
-
-
-def _template_pattern(template: str) -> re.Pattern[str]:
-    parts = _PLACEHOLDER.split(template)
-    pattern = "".join(
-        re.escape(part) if index % 2 == 0 else f"(?P<{part}>{_NUMBER if part in _NUMERIC_FIELDS else _SEGMENT})"
-        for index, part in enumerate(parts)
-    )
-    return re.compile(f"^{pattern}$")
-
-
-def read_jma_tile_path(path: str) -> JmaTile | None:
-    """配信元のパスを、宣言のある要素のタイルとして読む。タイルでないパス（時刻一覧・地物）・宣言の無い要素はNone。"""
-    for element_id, element in JMA_ELEMENTS.items():
-        if element.tile is None:
-            continue
-        match = _template_pattern(jma_url_template(element_id)).match(path)
-        if match is not None:
-            return JmaTile(
-                element_id,
-                JmaFrame(match["basetime"], match["member"], match["validtime"]),
-                int(match["z"]),
-                int(match["x"]),
-                int(match["y"]),
-            )
-    return None
-
-
-def is_final_absence(path: str) -> bool:
-    """配信元がこのパスに404を返したとき、それが「描くものが無い」という確定した事実か。
-
-    タイルと時刻一覧は確定する（疎な格子の穴）。タイルで配らない要素のコマの地物（GeoJSON）は確定しない
-    ——配信元は時刻一覧に載せたコマの地物を配信するまで404を返し、配信した後は地物が無くても200で空の
-    集まりを返すため、この404は「まだ配信されていない」である。"""
-    return not any(
-        _template_pattern(jma_url_template(element_id)).match(path)
-        for element_id, element in JMA_ELEMENTS.items()
-        if element.tile is None
     )
 
 
@@ -310,29 +285,43 @@ def has_native_tile(spec: JmaTileSpec, zoom: int) -> bool:
 
     `zoom_use`の偶奇に合わないズームは、配信元が200を返しても中身は空タイルになる。
     """
-    if zoom < spec.min_zoom or zoom > effective_max_zoom(spec):
-        return False
-    if spec.zoom_use == "even":
-        return zoom % 2 == 0
-    if spec.zoom_use == "odd":
-        return zoom % 2 == 1
-    return True
+    return JMA_TILE_MIN_ZOOM <= zoom <= effective_max_zoom(spec) and _matches_zoom_use(spec, zoom)
 
 
 def source_zoom_for_interpolation(element_id: str, zoom: int) -> int | None:
     """`zoom`のタイルを補間するために取得すべき親ズーム。補間が不要／不可能ならNone。
 
     `zoom_use`が偶奇を限る要素では、実データを持つズームが1つおきに並ぶため、親は常に
-    `zoom - 1`（そこは必ず反対の偶奇になる）。親が`min_zoom`を下回る場合は補間できない
+    `zoom - 1`（そこは必ず反対の偶奇になる）。親が`JMA_TILE_MIN_ZOOM`を下回る場合は補間できない
     （拡大の元が無い）。上限を超えるズームはMapLibre側のoverzoomが担うため対象外。
     """
     element = JMA_ELEMENTS.get(element_id)
     spec = element.tile if element is not None else None
-    if spec is None or spec.zoom_use == "all":
-        return None
-    if zoom > effective_max_zoom(spec) or zoom < spec.min_zoom:
-        return None
-    if has_native_tile(spec, zoom):
+    if spec is None or not JMA_TILE_MIN_ZOOM <= zoom <= effective_max_zoom(spec) or _matches_zoom_use(spec, zoom):
         return None
     parent = zoom - 1
-    return parent if parent >= spec.min_zoom else None
+    return parent if parent >= JMA_TILE_MIN_ZOOM else None
+
+
+def with_interpolated_zooms(
+    element_id: str, zooms: dict[int, list[list[int]]]
+) -> dict[int, list[list[int]]]:
+    """実データのあるズームの在否（ズーム→中身のあるタイルの`[x, y]`）に、補間で埋めるズームの在否を親から補う。
+
+    補間結果が空になるのは親が空のときだけなので、**親に中身のあるタイルの4象限**を
+    そのまま子ズームの中身ありとする（追加の取得は要らない）。
+    """
+    if not zooms:
+        return zooms
+    filled = dict(zooms)
+    for zoom in range(min(zooms) + 1, effective_max_zoom(jma_tile_spec(element_id)) + 1):
+        parent = source_zoom_for_interpolation(element_id, zoom)
+        if parent is None:
+            continue
+        parents = filled.get(parent)
+        if not parents:
+            continue
+        filled[zoom] = [
+            [x * 2 + dx, y * 2 + dy] for x, y in parents for dx in (0, 1) for dy in (0, 1)
+        ]
+    return filled

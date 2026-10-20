@@ -1,23 +1,32 @@
 import type { FilterSpecification, LayerSpecification, SourceSpecification } from "maplibre-gl";
 
+import { NO_BASEMAP_POI_KINDS, type BasemapPoiKinds } from "@/features/map/layers/mapStyleOps";
+
 /**
  * 重なりの段。背面から前面の順に並べ、地図上の重なりはこの宣言だけが決める
  * （scene を組み立てる側が配列へ挿す位置では決まらない）。
  * 並びは「後から前面へ積まれる側が、先に積まれた側を塗り潰さない」ように決める。
  * 面の塗りは下にあるものを隠すため、基礎地図の道路網より下へ潜らせる。
+ * 重なった絵を省く点は、基礎地図の文字より下へ潜らせる——MapLibre は前面の層の記号から場所を取るので、
+ * 下にあれば文字が先に置かれ、文字と重なった絵のほうが省かれる。
  */
 const MAP_SCENE_TIERS = [
-  { id: "area", underBasemapRoads: true },
-  { id: "observedLine", underBasemapRoads: false },
-  { id: "lensLine", underBasemapRoads: false },
-  { id: "point", underBasemapRoads: false },
-  { id: "route", underBasemapRoads: false },
+  { id: "area", under: "roads" },
+  { id: "pointUnderLabels", under: "labels" },
+  { id: "observedLine", under: null },
+  { id: "lensLine", under: null },
+  { id: "point", under: null },
+  { id: "route", under: null },
 ] as const;
 
 export type MapSceneTier = (typeof MAP_SCENE_TIERS)[number]["id"];
 
-export function isTierUnderBasemapRoads(tier: MapSceneTier): boolean {
-  return MAP_SCENE_TIERS.some((entry) => entry.id === tier && entry.underBasemapRoads);
+/** 段を潜らせる基礎地図の位置。 */
+export type BasemapAnchor = NonNullable<(typeof MAP_SCENE_TIERS)[number]["under"]>;
+
+/** 段が潜る基礎地図の位置。null なら基礎地図より前面に積む。 */
+export function basemapAnchorOf(tier: MapSceneTier): BasemapAnchor | null {
+  return MAP_SCENE_TIERS.find((entry) => entry.id === tier)!.under;
 }
 
 /** feature-state へ載せられる値。 */
@@ -68,9 +77,6 @@ export type MapSceneLayer = {
    * 「今は条件なし」と「外側が管理しているので触るな」が区別できなくなる。
    */
   readonly spec: LayerSpecification;
-  /** 宣言したときの役割。**idの綴りを知らなくても引ける**ようにここへ残す
-   * （idはソース名＋役割で、ソース名は宣言側が決める）。 */
-  readonly role: string;
   /** 同じ id で段を変えない（重なりは足された時点の段で決まる）。 */
   readonly tier: MapSceneTier;
   readonly visible: boolean;
@@ -82,6 +88,17 @@ export type MapSceneLayer = {
   readonly hitTargets: readonly string[];
   /** 省略は「絞り込み無し」。前回あった絞り込みは解除される。 */
   readonly filter?: FilterSpecification;
+  /** このレイヤーが出ている間、基礎地図から隠す店・施設の種類。省略は「隠さない」。 */
+  readonly hidesBasemapPois?: BasemapPoiKinds;
+};
+
+/** `sdf` の絵は色を持たないシルエットで、色は記号のレイヤーが付ける。 */
+export type MapSceneImageOptions = { readonly sdf?: boolean; readonly pixelRatio?: number };
+
+/** 記号のレイヤーが名指す絵。描くのは地図に同じ id の絵が無いときだけ。 */
+export type MapSceneImage = {
+  readonly id: string;
+  readonly draw: () => { readonly data: ImageData; readonly options: MapSceneImageOptions };
 };
 
 /**
@@ -92,10 +109,16 @@ export type MapSceneLayer = {
 export type MapScene = {
   readonly sources: readonly MapSceneSource[];
   readonly layers: readonly MapSceneLayer[];
+  /** id はそれぞれ一意。外したものも地図に残す（絵は描くだけで、表示を持たない）。 */
+  readonly images: readonly MapSceneImage[];
+  /** 地図全体の状態（式が `global-state` で読む値）。名前を外すと、地図の上でも値の無いことになる。 */
+  readonly globalState: MapSceneGlobalState;
 };
 
+export type MapSceneGlobalState = Readonly<Record<string, number>>;
+
 /** スタイルを差し替えた直後に「前回」として渡すと、scene 全体が作り直される。 */
-export const EMPTY_MAP_SCENE: MapScene = { sources: [], layers: [] };
+export const EMPTY_MAP_SCENE: MapScene = { sources: [], layers: [], images: [], globalState: {} };
 
 /** 段の順に並べ替えたレイヤー。同じ段の中は scene が並べた順を保つ。 */
 export function orderedSceneLayers(scene: MapScene): readonly MapSceneLayer[] {
@@ -105,22 +128,27 @@ export function orderedSceneLayers(scene: MapScene): readonly MapSceneLayer[] {
     .map((entry) => entry.layer);
 }
 
-/** 押せるレイヤーの id。MapLibre へ渡すのは呼び出し側で、ここは宣言から導くだけ。 */
-export function interactiveSceneLayerIds(scene: MapScene): readonly string[] {
-  return sceneLayerIdsWhere(scene, (layer) => layer.hitTargets.length > 0);
+/** 基礎地図から隠す店・施設の種類。出ているレイヤーが名指した種類を合わせる——出ていないレイヤーの種類は隠さない。 */
+export function hiddenBasemapPois(scene: MapScene): BasemapPoiKinds {
+  const shown = scene.layers
+    .filter((layer) => layer.visible)
+    .map((layer) => layer.hidesBasemapPois ?? NO_BASEMAP_POI_KINDS);
+  const union = (pick: (kinds: BasemapPoiKinds) => readonly string[]) => [...new Set(shown.flatMap(pick))].sort();
+  return { class: union((kinds) => kinds.class), subclass: union((kinds) => kinds.subclass) };
 }
 
-/** ある対象を拾うレイヤーの id。対象を増やしてもこの関数は変わらない。 */
-export function sceneLayerIdsForHitTarget(scene: MapScene, target: string): readonly string[] {
-  return sceneLayerIdsWhere(scene, (layer) => layer.hitTargets.includes(target));
+/** 押せるレイヤーの id。MapLibre へ渡すのは呼び出し側で、ここは宣言から導くだけ。 */
+export function interactiveSceneLayerIds(scene: MapScene): readonly string[] {
+  return orderedSceneLayers(scene)
+    .filter((layer) => layer.hitTargets.length > 0)
+    .map((layer) => layer.spec.id);
+}
+
+/** 押された地物のレイヤーが拾う対象。scene に無いレイヤーは何も拾わない。 */
+export function sceneHitTargetsOfLayer(scene: MapScene, layerId: string): readonly string[] {
+  return scene.layers.find((layer) => layer.spec.id === layerId)?.hitTargets ?? [];
 }
 
 function tierIndex(tier: MapSceneTier): number {
   return MAP_SCENE_TIERS.findIndex((entry) => entry.id === tier);
-}
-
-function sceneLayerIdsWhere(scene: MapScene, keep: (layer: MapSceneLayer) => boolean): readonly string[] {
-  return orderedSceneLayers(scene)
-    .filter(keep)
-    .map((layer) => layer.spec.id);
 }

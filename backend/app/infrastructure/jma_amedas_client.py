@@ -1,7 +1,7 @@
 """JMAアメダス観測値APIのクライアント。
 
 `jma_warning_client.py`と同じ「JMA公式の非公開だが広く使われているエンドポイント」を使う。
-応答の形（キー名・[度, 分]の座標・[値, 品質フラグ]の観測値）はここで解き、呼び出し元
+応答の形（キー名・[度, 分]の座標・[値, 品質フラグ]の観測値・16方位のコード）はここで解き、呼び出し元
 （`jma_amedas_service.py`）へは`AmedasStation`・`AmedasReading`の値で渡す。
 取得失敗時はNoneを返し、呼び出し元が「観測値なし」として扱う。
 """
@@ -12,8 +12,10 @@ from datetime import datetime
 import httpx
 from cachetools import TTLCache
 
+from app.domain.geo import SIXTEEN_POINT_LABELS
+from app.domain.jma_amedas import WindDirection
 from app.domain.time_zone import JST
-from app.infrastructure.simple_api_client import UnexpectedShapeError, cached_fetch
+from app.infrastructure.simple_api_client import UnexpectedShapeError, cached_fetch, get_json
 
 # 観測所マスタは`amedastable.json`（`amedas.json`ではない）。最新時刻は`latest_time.txt`
 # （ISO時刻文字列1個のプレーンテキスト、JSON配列ではない。fetch_latest_observation_time
@@ -27,7 +29,7 @@ REQUEST_TIMEOUT = httpx.Timeout(connect=3.0, read=5.0, write=5.0, pool=5.0)
 #: 気象庁アメダスの配信間隔（毎正時から10分おき）。
 AMEDAS_REFRESH_INTERVAL_MINUTES = 10
 
-# 観測所マスタ（緯度経度・名称）は行政区画変更等でしか変わらない静的に近いデータのため、
+# 観測所マスタ（緯度経度）は行政区画変更等でしか変わらない静的に近いデータのため、
 # jma_warning_client.pyのarea.jsonと同じ長寿命TTL。
 _STATION_TABLE_CACHE_TTL_SECONDS = 24 * 60 * 60
 # 最新観測時刻の一覧は10分更新のアメダスの鮮度に合わせた短いTTL。
@@ -61,8 +63,8 @@ class AmedasReading:
     temperature_c: float | None
     humidity_percent: float | None
     wind_speed_ms: float | None
-    #: 気象庁の16方位コード（0=静穏）。角度への読み替えは`domain/jma_amedas.py: wind_direction_from_jma_code`。
-    wind_direction_code: int | None
+    #: 静穏（方位不定）・欠測ならNone。
+    wind_direction: WindDirection | None
     precipitation_10min_mm: float | None
     #: その時刻に終わる1時間の雨量。正時の観測値だけが持つ。
     precipitation_1h_mm: float | None
@@ -77,13 +79,14 @@ def _degree_minute(value: list) -> float:
 
 
 def _parse_station_table(payload: dict) -> dict[str, AmedasStation]:
-    """座標か名称の無い観測所は載せない（最寄りにも、雨の履歴の座標にも使えない）。"""
+    """座標の無い観測所は載せない（最寄りにも、雨の履歴の座標にも使えない）。名前の無い観測所も載せない
+    （画面のヘッダーに観測所名を出すため）。"""
     stations = {}
     for station_id, entry in payload.items():
+        name = entry.get("kjName")
         lat = entry.get("lat")
         lon = entry.get("lon")
-        name = entry.get("kjName")
-        if not lat or not lon or not name:
+        if not name or not lat or not lon:
             continue
         stations[station_id] = AmedasStation(name=name, latitude=_degree_minute(lat), longitude=_degree_minute(lon))
     return stations
@@ -96,13 +99,26 @@ def _first_value(pair: list | None) -> float | None:
     return pair[0]
 
 
+def _wind_direction(code: float | None) -> WindDirection | None:
+    """気象庁の風向コード（0=静穏、1〜16=16方位）を、風の来る向きの角度（0=北・時計回り。
+    `domain/wind.py: DepartureWind.direction_deg`と揃える）と呼び名へ。0（静穏、風速がほぼ0で方位不定）・
+    欠測・1〜16の範囲外はNone（範囲外を別の方位として出すと、向かい風と追い風を取り違えさせる）。
+
+    角度と呼び名を別々の関数で読まない——どちらも同じ1つのコードの読み替えで、分けると方位の有無の判定と
+    16方位の割当が2か所に分かれ、片方だけずれても落ちない。"""
+    # 番号は1=北北東からcode*22.5度で時計回りに進み、16=北で一周する。16で割った余りが北を0とした16方位の番号になる。
+    if code is None or not 1 <= code <= 16:
+        return None
+    index = int(code) % 16
+    return WindDirection(deg=index * 22.5, label=SIXTEEN_POINT_LABELS[index])
+
+
 def _parse_reading(raw: dict) -> AmedasReading:
-    wind_direction = _first_value(raw.get("windDirection"))
     return AmedasReading(
         temperature_c=_first_value(raw.get("temp")),
         humidity_percent=_first_value(raw.get("humidity")),
         wind_speed_ms=_first_value(raw.get("wind")),
-        wind_direction_code=None if wind_direction is None else int(wind_direction),
+        wind_direction=_wind_direction(_first_value(raw.get("windDirection"))),
         precipitation_10min_mm=_first_value(raw.get("precipitation10m")),
         precipitation_1h_mm=_first_value(raw.get("precipitation1h")),
         reports_precipitation_1h="precipitation1h" in raw,
@@ -113,11 +129,7 @@ async def fetch_station_table(client: httpx.AsyncClient, cache: TTLCache) -> dic
     """観測所マスタ（観測所id → 観測所）を取得する。"""
 
     async def fetch() -> dict[str, AmedasStation]:
-        response = await client.get(AMEDAS_STATION_TABLE_URL, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise UnexpectedShapeError(f"station table is {type(payload).__name__}")
+        payload = await get_json(client, AMEDAS_STATION_TABLE_URL, dict, "station table is", timeout=REQUEST_TIMEOUT)
         return _parse_station_table(payload)
 
     return await cached_fetch("weather:jma-amedas-stations", fetch, cache=cache, key=_STATION_TABLE_CACHE_KEY)
@@ -160,13 +172,13 @@ async def fetch_observation_map(
     timestamp = observed_at.astimezone(JST).strftime("%Y%m%d%H%M%S")
 
     async def fetch() -> dict[str, AmedasReading]:
-        response = await client.get(
-            AMEDAS_OBSERVATION_URL_TEMPLATE.format(timestamp=timestamp), timeout=REQUEST_TIMEOUT
+        payload = await get_json(
+            client,
+            AMEDAS_OBSERVATION_URL_TEMPLATE.format(timestamp=timestamp),
+            dict,
+            "observation map is",
+            timeout=REQUEST_TIMEOUT,
         )
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise UnexpectedShapeError(f"observation map is {type(payload).__name__}")
         return {station_id: _parse_reading(raw) for station_id, raw in payload.items()}
 
     return await cached_fetch("weather:jma-amedas-observation", fetch, timestamp=timestamp)

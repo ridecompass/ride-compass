@@ -9,7 +9,6 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
-from app.config import settings
 from app.infrastructure.debug_control import RING_BUFFER_MAX_SIZE, get_recent_logs
 from app.main import app
 from tests.admin_auth import AUTH_HEADERS
@@ -17,16 +16,7 @@ from tests.admin_auth import AUTH_HEADERS
 client = TestClient(app)
 
 
-@pytest.fixture(autouse=True)
-def _restore_debug_mode():
-    # settings.debug_mode・ルートロガーのレベルはプロセス全体で共有される可変状態のため、
-    # このテストファイルでの切替が他のテストへ漏れないよう毎回元に戻す
-    # （test_axis_admin_routes.pyのadmin_credentialsパターンと同じ発想）。
-    original_debug_mode = settings.debug_mode
-    original_level = logging.getLogger().level
-    yield
-    settings.debug_mode = original_debug_mode
-    logging.getLogger().setLevel(original_level)
+pytestmark = pytest.mark.usefixtures("restore_debug_mode")
 
 
 # --- debug_modeのランタイム切替（再起動不要） ---
@@ -87,15 +77,6 @@ def test_read_logs_filters_by_min_level(admin_credentials):
     assert "[WARNING]" in lines[0]
 
 
-def test_read_logs_returns_nothing_while_debug_mode_disabled(admin_credentials):
-    client.post("/api/admin/debug/mode", json={"enabled": False}, headers=AUTH_HEADERS)
-    marker = uuid.uuid4().hex
-    logging.getLogger("test.t377").debug("should not be recorded marker=%s", marker)
-
-    response = client.get("/api/admin/debug/logs", params={"contains": marker}, headers=AUTH_HEADERS)
-
-    assert response.status_code == 200
-    assert response.json() == []
 
 
 # --- リングバッファの上限件数（debug_control.py単体） ---

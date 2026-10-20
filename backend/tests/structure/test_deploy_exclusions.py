@@ -1,6 +1,6 @@
 """backendのデプロイ対象から外したファイルが、本番で読まれていないことの検査。
 
-`scripts/deploy_backend_gate.py`は、本番プロセスに届かない変更でコンテナを入れ替えないよう、
+`backend/scripts/deploy_gate.py`は、本番プロセスに届かない変更でコンテナを入れ替えないよう、
 一部のファイルを`NOT_DEPLOYED`で外している。外したファイルを本番側のコードが
 importすると、**そのファイルの変更だけが本番へ届かなくなる**。エラーにはならず、古い値で
 動き続ける。
@@ -10,22 +10,22 @@ importすると、**そのファイルの変更だけが本番へ届かなくな
 範囲の`.py`からの参照（関数内の遅延importと、モジュール名を文字列で渡す形を含む）を探す。
 
 ここで見ないもの:
-- 変更をデプロイするかの判定 → `tests/test_deploy_backend_gate.py`
+- 変更をデプロイするかの判定 → `tests/test_deploy_gate.py`
 """
 
 from __future__ import annotations
 
 import ast
-import importlib.util
 import subprocess
 from pathlib import Path
+
+from scripts import deploy_gate
+from tests.structure.source_symbols import SourceTree
 
 BACKEND = Path(__file__).resolve().parents[2]
 REPO = BACKEND.parent
 
-_SPEC = importlib.util.spec_from_file_location("deploy_backend_gate", REPO / "scripts" / "deploy_backend_gate.py")
-_GATE = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(_GATE)
+_GATE = deploy_gate
 
 
 def _image_code_dirs() -> list[Path]:
@@ -50,21 +50,13 @@ def _excluded_files() -> dict[str, list[Path]]:
     return files
 
 
-def _module_name(path: Path) -> str:
-    return ".".join(path.relative_to(BACKEND).with_suffix("").parts)
-
-
-def _referenced_names(tree: ast.Module, module_parts: tuple[str, ...]) -> set[str]:
+def _referenced_names(source: SourceTree, module: str, tree: ast.Module) -> set[str]:
     names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             names.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
-            if node.level == 0:
-                base = node.module or ""
-            else:
-                base_parts = module_parts[: len(module_parts) - node.level]
-                base = ".".join([*base_parts, node.module] if node.module else list(base_parts))
+            base = source.absolute(module, node)
             names.add(base)
             names.update(f"{base}.{alias.name}" for alias in node.names)
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
@@ -78,10 +70,11 @@ def test_every_excluded_pattern_matches_a_file() -> None:
 
 
 def test_excluded_code_in_the_image_is_not_referenced_by_production_code() -> None:
+    source = SourceTree(BACKEND)
     image_dirs = _image_code_dirs()
     excluded = {path for files in _excluded_files().values() for path in files}
     excluded_in_image = {
-        _module_name(path): path
+        source.module_of(path): path
         for path in excluded
         if path.suffix == ".py" and any(path.is_relative_to(d) for d in image_dirs)
     }
@@ -91,12 +84,11 @@ def test_excluded_code_in_the_image_is_not_referenced_by_production_code() -> No
         for path in sorted(directory.rglob("*.py")):
             if path in excluded:
                 continue
-            module_parts = tuple(_module_name(path).split("."))
             tree = ast.parse(path.read_text(encoding="utf-8"))
-            for name in sorted(_referenced_names(tree, module_parts) & excluded_in_image.keys()):
+            for name in sorted(_referenced_names(source, source.module_of(path), tree) & excluded_in_image.keys()):
                 violations.append(f"{path.relative_to(BACKEND).as_posix()} -> {name}")
 
     assert violations == [], (
-        "deploy_backend_gate.pyのNOT_DEPLOYEDで外したモジュールを本番側のコードが参照している。"
+        "deploy_gate.pyのNOT_DEPLOYEDで外したモジュールを本番側のコードが参照している。"
         "参照を残すならNOT_DEPLOYEDから外す:\n" + "\n".join(violations)
     )

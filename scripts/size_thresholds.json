@@ -1,25 +1,24 @@
 {
-  "_": "個別に交渉した規模の閾値。これは測定値ではなく決定なので保存する（測定値=前回行数は periodic-review タグが指すコミットから導く）。ユーザー承認を経て変える。1,000行以上のファイルはここに載るまで毎回発火し、縮んで到達率が50%を割ったエントリは size の『閾値の見直し』に出る。on_fire は発火したときの既定の対応として決めてあるもので、size が発火の一覧の下に出す。",
-  "thresholds": {
-    "backend/app/domain/axis_definitions.py": 1300,
-    "backend/app/domain/evaluation.py": 500,
-    "backend/app/domain/material_catalog.py": 1400,
-    "backend/app/domain/routing.py": 1400,
-    "backend/app/infrastructure/road_graph_repository.py": 1400,
-    "backend/app/services/road_graph_engine.py": 2700,
-    "backend/tests/test_routing.py": 1500,
-    "docs/conventions/testing.md": 1400,
-    "docs/modules/backend/routing-engine.md": 1200,
-    "frontend/src/app/page.tsx": 800,
-    "frontend/src/features/admin/AxisStudio/AxisScoringSection.tsx": 900,
-    "frontend/src/components/ui/icons/icons.tsx": 1000,
-    "frontend/src/features/map/MapOverlayControls/MapOverlayControls.tsx": 800,
-    "frontend/src/types/generated/api.d.ts": 3800
+  "_": "規模の閾値。これは測定値ではなく決定なので保存する（測定値=前回行数は periodic-review タグが指すコミットから導く）。数を変えるにはユーザーの承認が要る（.github/claude-task/settings.json の permissions.ask がこのファイルの編集を止める）。instruction_limits は Claude に読ませる指示の文書の種類ごとの上限で、Claude Code の公式の目安の数（CLAUDE.md は200行未満・SKILL.md とコマンドは500行未満。rules は CLAUDE.md と同じ指示のファイルとして200行、docs/conventions は読む場面で開く点でスキルと同じ500行）に固定し、届いたら発火する。code_limits は生成物を除くコードの種類ごとの上限で、外の道具の既定の最大（Python は pylint の max-module-lines の1000行、TypeScript・JavaScript は ESLint の max-lines の300行。どちらも空行・コメントの行も数える）に固定し、道具と同じく超えたら発火する。種類ごとの上限に当たるファイルの例外を thresholds に置かない。超えたら上限を上げずにファイルを分ける。thresholds はそれ以外の1,000行以上のファイルごとの閾値で、ここに載るまで毎回発火し、縮んで今の行数+15%を100行に切り上げた値より緩くなったエントリは size の『閾値の見直し』に出る。",
+  "instruction_limits": {
+    "CLAUDE.md": 200,
+    "*/CLAUDE.md": 200,
+    ".claude/rules/*.md": 200,
+    ".claude/skills/*/SKILL.md": 500,
+    ".claude/commands/*.md": 500,
+    "docs/conventions/*.md": 500
   },
-  "on_fire": {
-    "backend/app/domain/axis_definitions.py": "評価の計算（evaluate_*・生値・_python_value_columns）を domain/axis_evaluation.py へ出す",
-    "backend/app/domain/material_catalog.py": "一次属性の表（PRIMARY_ATTRIBUTESとその型）を別モジュールへ出す",
-    "docs/conventions/testing.md": "運用の節（開発機での回し方・検査の置き場等）を別文書へ出す",
-    "docs/modules/backend/routing-engine.md": "レグ内の時刻ビン・レグ別コスト配列・domain層の節を別文書へ出す"
+  "code_limits": {
+    "*.py": 1000,
+    "*.ts": 300,
+    "*.tsx": 300,
+    "*.mts": 300,
+    "*.js": 300,
+    "*.mjs": 300
+  },
+  "thresholds": {
+    "docs/modules/backend/routing-engine.md": 1200,
+    "frontend/src/types/generated/api.d.ts": 3700,
+    "frontend/src/types/generated/mapDisplay.ts": 1100
   }
 }

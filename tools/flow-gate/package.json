@@ -2,7 +2,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint": "eslint",
+    "lint": "cd ../.. && eslint -c tools/flow-gate/eslint.config.js tools/flow-gate .claude/skills",
     "test": "node --test test/*.test.js"
   },
   "devDependencies": {

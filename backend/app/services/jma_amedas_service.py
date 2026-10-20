@@ -19,17 +19,12 @@ from datetime import datetime, timedelta
 
 import httpx
 import numpy as np
-from cachetools import TTLCache
+from cachetools import LRUCache, TTLCache
 
 from app.domain.rain import RAIN_HISTORY_HOURS, StationRainMaterials, is_rain_history_current, rain_material_values
-from app.domain.time_zone import JST
+from app.domain.time_zone import JST, as_jst
 from app.domain.geo import nearest_point_index
-from app.domain.jma_amedas import (
-    AmedasObservation,
-    apparent_temperature_from_amedas,
-    wind_direction_from_jma_code,
-)
-from app.domain.jma_suikei import sky_from_color
+from app.domain.jma_amedas import AmedasObservation, apparent_temperature_from_amedas
 from app.domain.route import Coordinates
 from app.domain.twilight import sunrise_sunset_jst
 from app.domain.weather import derive_observed_weather_code
@@ -38,6 +33,7 @@ from app.infrastructure.jma_amedas_client import AmedasReading, AmedasStation
 from app.infrastructure.jma_amedas_store import RainHistory
 from app.infrastructure.jma_tile_client import JmaTileClient
 from app.infrastructure.debug_log import log_throttled_warning
+from app.services.nearest_point_areas import nearest_point_area
 
 logger = logging.getLogger("ridecompass.jma_amedas_service")
 
@@ -58,11 +54,13 @@ class JmaAmedasService:
         *,
         station_table_cache: TTLCache,
         latest_time_cache: TTLCache,
+        cells_cache: LRUCache,
     ):
         self._http_client = http_client
         self._tile_client = tile_client
         self._station_table_cache = station_table_cache
         self._latest_time_cache = latest_time_cache
+        self._cells_cache = cells_cache
 
     async def get_nearest_observation(self, point: Coordinates) -> AmedasObservation | None:
         """最寄り観測所を解決し、保存済みの観測値に地点の日の出・日没と天気コードを入れて返す。観測値はJMAへ
@@ -75,11 +73,7 @@ class JmaAmedasService:
         if not stations:
             return None
         station_ids = list(stations)
-        nearest_index = nearest_point_index(
-            point.latitude, point.longitude,
-            np.array([stations[station_id].latitude for station_id in station_ids]),
-            np.array([stations[station_id].longitude for station_id in station_ids]),
-        )
+        nearest_index = nearest_point_index(point, list(stations.values()))
         if nearest_index is None:
             return None
         station_id = station_ids[nearest_index]
@@ -89,14 +83,14 @@ class JmaAmedasService:
         # 日の出/日没は最寄り観測所ではなく**クエリ地点**に対して計算する（観測所境界
         # 付近でのズレを避ける）。外部への問い合わせを伴わないため都度計算でよい。
         today = datetime.now(JST).date()
-        color = await jma_suikei_client.fetch_weather_color(self._tile_client, point.latitude, point.longitude)
-        sky = None if color is None else sky_from_color(*color)
+        suikei = await jma_suikei_client.fetch_weather(self._tile_client, point.latitude, point.longitude)
         return observation.model_copy(
             update={
                 "twilight": sunrise_sunset_jst(point, today),
                 "weather_code": derive_observed_weather_code(
-                    observation.precipitation_10min_mm, sky, observation.temperature_c
+                    observation.precipitation_10min_mm, suikei, observation.temperature_c
                 ),
+                "valid_area": nearest_point_area(point, list(stations.values()), self._cells_cache, table="amedas"),
             }
         )
 
@@ -122,11 +116,11 @@ class JmaAmedasService:
             logger.warning("アメダス観測値マップの取得に失敗しました（全滅バッチ）time=%s", latest_time.isoformat())
             return 0
 
-        observations = [
-            _observation(station_id, station, reading, latest_time.isoformat())
+        observations = {
+            station_id: _observation(stations[station_id], latest_time, reading)
             for station_id, reading in observation_map.items()
-            if (station := stations.get(station_id)) is not None
-        ]
+            if station_id in stations
+        }
         await jma_amedas_store.write_observations(observations)
         await self._refresh_rain_history(stations, latest_time, observation_map)
         return len(observations)
@@ -139,12 +133,14 @@ class JmaAmedasService:
 
         起動直後やRedisが空のときは全本を過去の地図JSONから取り直す（気象庁は過去の地図JSONも
         同じURLの形で置いている）。平常時に取りに行くのは、新しく来た正時の1本だけ。
-        取れなかった正時は欠けたまま残し、次のバッチでまた取りに行く。
+        取れなかった正時は欠けたまま残し、次のバッチでまた取りに行く。地図JSONが取れても1時間雨量の
+        値を持つ観測所が1つも無ければ取れなかったとする——取れたとして残すと二度と取り直さず、その正時を
+        含む窓が全国で値を持たないまま、窓から外れるまで戻らない。
         """
-        latest_hour = latest_time.astimezone(JST).replace(minute=0, second=0, microsecond=0)
+        latest_hour = as_jst(latest_time).replace(minute=0, second=0, microsecond=0)
         hours = [latest_hour - timedelta(hours=back) for back in range(RAIN_HISTORY_HOURS)]
         stored = await jma_amedas_store.read_rain_history()
-        if stored is None and not jma_amedas_store.available():
+        if stored is jma_amedas_store.UNAVAILABLE:
             # 置き場が使えない間に全本を取り直すと、10分ごとに気象庁へ全本を問い合わせ続ける。
             return
         stored_hours = {} if stored is None else stored.hours
@@ -158,10 +154,11 @@ class JmaAmedasService:
                 hour_map: dict[str, AmedasReading] | None = latest_map
             else:
                 hour_map = await jma_amedas_client.fetch_observation_map(self._http_client, hour)
-            if hour_map is None:
+            rain = None if hour_map is None else _hourly_rain(hour_map)
+            if rain is None or all(mm is None for mm in rain.values()):
                 failed += 1
                 continue
-            history[hour] = _hourly_rain(hour_map)
+            history[hour] = rain
             fetched += 1
         if failed:
             log_throttled_warning(
@@ -188,23 +185,21 @@ class JmaAmedasService:
         )
 
 
-def _observation(station_id: str, station: AmedasStation, reading: AmedasReading, observed_at: str) -> AmedasObservation:
+def _observation(station: AmedasStation, observed_at: datetime, reading: AmedasReading) -> AmedasObservation:
     return AmedasObservation(
-        station_id=station_id,
         station_name=station.name,
-        latitude=station.latitude,
-        longitude=station.longitude,
         observed_at=observed_at,
         temperature_c=reading.temperature_c,
         apparent_temperature_c=apparent_temperature_from_amedas(
             reading.temperature_c, reading.humidity_percent, reading.wind_speed_ms
         ),
         wind_speed_ms=reading.wind_speed_ms,
-        wind_direction=wind_direction_from_jma_code(reading.wind_direction_code),
+        wind_direction=reading.wind_direction,
         precipitation_10min_mm=reading.precipitation_10min_mm,
         # クエリ地点依存のためバッチ時点では決められない。
         twilight=None,
         weather_code=None,
+        valid_area=None,
     )
 
 
@@ -231,7 +226,7 @@ async def load_station_rain_materials(now: datetime, cache: TTLCache) -> Station
     materials = cache.get(_RAIN_MATERIALS_CACHE_KEY)
     if materials is None:
         history = await jma_amedas_store.read_rain_history()
-        if history is None or not history.stations:
+        if not isinstance(history, RainHistory) or not history.stations:
             return None
         materials = _station_rain_materials(history)
         cache[_RAIN_MATERIALS_CACHE_KEY] = materials

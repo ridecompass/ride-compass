@@ -33,7 +33,6 @@ GAPが1件でもあれば終了コード1。
 
 import argparse
 import asyncio
-import os
 import re
 import sys
 from collections.abc import Iterable
@@ -41,13 +40,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sqlalchemy import Connection, text  # noqa: E402
-from sqlalchemy.ext.asyncio import create_async_engine  # noqa: E402
+from sqlalchemy import Connection, text
+from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.batch.ingest import partition_required_columns, partition_table_name  # noqa: E402
-from app.batch.source_profile import load_source_profile  # noqa: E402
-from app.infrastructure.orm_base import declared_metadata  # noqa: E402
-from app.infrastructure.source_models import SourceFeatureRow  # noqa: E402
+from app.batch.ingest import partition_required_columns, partition_table_name
+from app.batch.source_profile import load_source_profile
+from app.infrastructure.orm_base import declared_metadata
+from app.infrastructure.source_models import SourceFeatureRow
 
 _TABLES = """
 SELECT c.relname AS table, coalesce(pg_get_partkeydef(c.oid), '') AS partition
@@ -204,12 +203,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="実DBとORM宣言のGAPを出す")
     parser.add_argument("--database-url", default=None)
     args = parser.parse_args()
-    url = args.database_url or os.environ.get("PROBE_DATABASE_URL")
-    if url is None:
-        from app.config import settings
+    from _probe_env import probe_database_url
 
-        url = settings.database_url
-    gaps = asyncio.run(_collect(url))
+    gaps = asyncio.run(_collect(probe_database_url(args.database_url)))
     if not gaps:
         print("GAP なし（実DBとORMの宣言が一致している）")
         return 0

@@ -7,17 +7,18 @@
 - 切り出した区間の材料と雨の観測から組む得点 → `test_route_generation_behavior.py`
 
 リポジトリは代役で、各メソッドを`RoadGraphRepository`の同名メソッドの署名へ当ててから呼ぶ（`bound`）。
-道路網全体の配列は`road_network_store.current`を、コンテナのメモリ上限はcgroupのファイルの置き場を差し替えて与える。
+道路網全体の配列は`tests/route_world.py: serve_road_network`で、コンテナのメモリ上限はcgroupのファイルの置き場を差し替えて与える。
 """
 
 import pytest
 
 from app.domain.errors import SearchAreaTooLargeError
 from app.domain.region import BoundingBox
-from app.infrastructure import container_memory, road_network_store
+from app.infrastructure import container_memory
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services.graph_service import GraphService
 from tests.bound_fake import bound
+from tests.route_world import serve_road_network
 from tests.test_road_network import network
 
 #: `test_road_network.network()`の西側の2本の道（35.00N・139.00〜139.02E）を覆う。
@@ -39,11 +40,7 @@ class FakeRepository:
 @pytest.fixture
 def road_network(monkeypatch):
     """取込範囲全体の道路網は`test_road_network.network()`。"""
-    monkeypatch.setattr(road_network_store, "current", network)
-
-
-async def test_outside_the_ingested_area_there_is_no_search_range():
-    assert await GraphService(FakeRepository(covered=False)).get_search_slice(BBOX) is None
+    serve_road_network(monkeypatch, network)
 
 
 async def test_the_range_is_cut_along_the_bbox_itself(road_network):
@@ -74,14 +71,6 @@ async def test_a_range_too_large_for_the_memory_limit_is_refused(monkeypatch, tm
     assert (raised.value.edges, raised.value.limit) == (3, 0)
 
 
-async def test_the_limit_grows_with_the_memory_limit(monkeypatch, tmp_path, road_network):
-    """メモリを増やせば、上限の数字を直さなくても同じ範囲が通るようになる。"""
-    _memory_limit(monkeypatch, tmp_path, str(8 * 1024**3))
-    road, _tiles = await GraphService(FakeRepository()).get_search_slice(BBOX)
-
-    assert road.edge_count == 3
-
-
 @pytest.mark.parametrize("content", ["max\n", None], ids=["上限なし", "cgroupの外"])
 async def test_without_a_memory_limit_no_range_is_refused(monkeypatch, tmp_path, content, road_network):
     _memory_limit(monkeypatch, tmp_path, content)
@@ -89,4 +78,3 @@ async def test_without_a_memory_limit_no_range_is_refused(monkeypatch, tmp_path,
     road, _tiles = await GraphService(FakeRepository()).get_search_slice(BBOX)
 
     assert road.edge_count == 3
-

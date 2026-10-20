@@ -1,11 +1,14 @@
 import type { FeatureIdentifier, FilterSpecification, LayerSpecification, SourceSpecification } from "maplibre-gl";
 
 import {
-  isTierUnderBasemapRoads,
+  basemapAnchorOf,
   orderedSceneLayers,
+  type BasemapAnchor,
   type MapScene,
   type MapSceneFeatureStateValue,
   type MapSceneFeatureStates,
+  type MapSceneGlobalState,
+  type MapSceneImageOptions,
   type MapSceneLayer,
   type MapSceneSource,
 } from "./mapScene";
@@ -22,22 +25,25 @@ export type MapSceneTarget = {
   setLayoutProperty(layerId: string, name: string, value: unknown): unknown;
   setFeatureState(target: FeatureIdentifier, state: Record<string, MapSceneFeatureStateValue>): unknown;
   removeFeatureState(target: FeatureIdentifier, key?: string): unknown;
+  setGlobalStateProperty(name: string, value: number | null): unknown;
+  hasImage(id: string): boolean;
+  addImage(id: string, image: ImageData, options: MapSceneImageOptions): unknown;
 };
 
 type ApplyMapSceneOptions = {
   /** いま載っているべき宣言。 */
   readonly scene: MapScene;
   /**
-   * 前回この関数が当てた宣言。**この関数は地図を読み返さず、これを地図の状態そのものとして
-   * 扱う**。スタイルを差し替えたら `EMPTY_MAP_SCENE` を渡す。
+   * 前回この関数が当てた宣言。**ソース・レイヤーは地図を読み返さず、これを地図の状態そのものとして
+   * 扱う**（絵だけは地図に有るかで足す）。スタイルを差し替えたら `EMPTY_MAP_SCENE` を渡す。
    */
   readonly previous: MapScene;
   /**
-   * 面の段をこのレイヤーの直下へ差し込む。基礎地図のどこから道路網が始まるかは
-   * 呼び出し側が決め、この関数は地図を調べない。undefinedなら面も他の段と同じく
+   * 基礎地図へ潜る段を、それぞれこのレイヤーの直下へ差し込む（`roads` は道路網の始まり、`labels` は文字の始まり）。
+   * 基礎地図のどこが位置になるかは呼び出し側が決め、この関数は地図を調べない。undefinedならその段も他の段と同じく
    * 基礎地図の上へ載る（段どうしの前後だけは保たれる）。
    */
-  readonly areaLayerBeforeId: string | undefined;
+  readonly basemapAnchors: Readonly<Record<BasemapAnchor, string | undefined>>;
 };
 
 const NO_FEATURE_STATES: MapSceneFeatureStates = new Map();
@@ -47,7 +53,7 @@ const NO_FEATURE_STATES: MapSceneFeatureStates = new Map();
  * レイヤー・ソース（基礎地図など）には触れない。
  */
 export function applyMapScene(map: MapSceneTarget, options: ApplyMapSceneOptions): void {
-  const { scene, previous, areaLayerBeforeId } = options;
+  const { scene, previous, basemapAnchors } = options;
 
   const previousSources = new Map(previous.sources.map((s) => [s.id, s]));
   const nextSourceIds = new Set(scene.sources.map((s) => s.id));
@@ -63,6 +69,10 @@ export function applyMapScene(map: MapSceneTarget, options: ApplyMapSceneOptions
       .map((source) => source.id),
   );
 
+  // 地図全体の状態は、それを読むレイヤーより先に置く（置く前に載ったレイヤーは、値の無い状態で一度描かれる）。
+  // スタイルを差し替えると地図全体の状態も消えるので、前回の宣言との差分で当て直す。
+  applyGlobalState(map, previous.globalState, scene.globalState);
+
   const ordered = orderedSceneLayers(scene);
   const keptIds = new Set(ordered.map((layer) => layer.spec.id));
   const present = new Set<string>();
@@ -76,6 +86,14 @@ export function applyMapScene(map: MapSceneTarget, options: ApplyMapSceneOptions
   for (const id of previousSources.keys()) {
     if (nextSourceIds.has(id) && !recreated.has(id)) continue;
     map.removeSource(id);
+  }
+
+  // 絵は前回の宣言ではなく地図に有るかで足す。スタイルを差分で差し替えても地図に残り、同じ id を足し直すと
+  // 地図が誤りを出す。記号のレイヤーより先に足す。
+  for (const image of scene.images) {
+    if (map.hasImage(image.id)) continue;
+    const { data, options } = image.draw();
+    map.addImage(image.id, data, options);
   }
 
   for (const source of scene.sources) {
@@ -94,7 +112,7 @@ export function applyMapScene(map: MapSceneTarget, options: ApplyMapSceneOptions
       updateLayer(map, layer, before);
       return;
     }
-    map.addLayer(layerSpecFor(layer), anchorFor(layer, ordered.slice(index + 1), present, areaLayerBeforeId));
+    map.addLayer(layerSpecFor(layer), anchorFor(layer, ordered.slice(index + 1), present, basemapAnchors));
     present.add(id);
   });
 
@@ -106,23 +124,25 @@ export function applyMapScene(map: MapSceneTarget, options: ApplyMapSceneOptions
 }
 
 /**
- * 1枚足すときの差し込み位置。段の順で自分より前面にあり、かつ既に地図へ載っている
- * 最初のレイヤーの直下へ入れる——これで、足す順に関わらず段の順が保たれる。
+ * 1枚足すときの差し込み位置。同じ基礎地図の位置へ潜る段のうち、段の順で自分より前面にあり、
+ * かつ既に地図へ載っている最初のレイヤーの直下へ入れる——これで、足す順に関わらず段の順が保たれる。
  */
 function anchorFor(
   layer: MapSceneLayer,
   laterLayers: readonly MapSceneLayer[],
   present: ReadonlySet<string>,
-  areaLayerBeforeId: string | undefined,
+  basemapAnchors: Readonly<Record<BasemapAnchor, string | undefined>>,
 ): string | undefined {
-  const goesUnder = (candidate: MapSceneLayer): boolean =>
-    areaLayerBeforeId !== undefined && isTierUnderBasemapRoads(candidate.tier);
-  const under = goesUnder(layer);
+  const basemapAnchorIdOf = (candidate: MapSceneLayer): string | undefined => {
+    const anchor = basemapAnchorOf(candidate.tier);
+    return anchor === null ? undefined : basemapAnchors[anchor];
+  };
+  const anchorId = basemapAnchorIdOf(layer);
   for (const later of laterLayers) {
-    if (goesUnder(later) !== under) continue;
+    if (basemapAnchorIdOf(later) !== anchorId) continue;
     if (present.has(later.spec.id)) return later.spec.id;
   }
-  return under ? areaLayerBeforeId : undefined;
+  return anchorId;
 }
 
 function sourceSpecFor(source: MapSceneSource): SourceSpecification {
@@ -147,6 +167,15 @@ function updateLayer(map: MapSceneTarget, layer: MapSceneLayer, before: MapScene
   }
   if (!isSameValue(before.filter, layer.filter)) {
     map.setFilter(id, layer.filter ?? null);
+  }
+}
+
+function applyGlobalState(map: MapSceneTarget, before: MapSceneGlobalState, after: MapSceneGlobalState): void {
+  for (const [name, value] of Object.entries(after)) {
+    if (!Object.is(before[name], value)) map.setGlobalStateProperty(name, value);
+  }
+  for (const name of Object.keys(before)) {
+    if (!(name in after)) map.setGlobalStateProperty(name, null);
   }
 }
 
@@ -175,6 +204,7 @@ function applyFeatureStates(
 
   for (const [key, previousValues] of previousStates) {
     const nextValues = nextStates.get(key);
+    if (nextValues === previousValues) continue;
     for (const featureId of previousValues.keys()) {
       if (nextValues?.has(featureId) === true) continue;
       map.removeFeatureState({ ...sourceTarget, id: featureId }, key);
@@ -184,6 +214,7 @@ function applyFeatureStates(
   const pending = new Map<string, Record<string, MapSceneFeatureStateValue>>();
   for (const [key, nextValues] of nextStates) {
     const previousValues = previousStates.get(key);
+    if (previousValues === nextValues) continue;
     for (const [featureId, value] of nextValues) {
       if (isSameValue(previousValues?.get(featureId), value)) continue;
       const state = pending.get(featureId) ?? {};

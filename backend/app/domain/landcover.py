@@ -1,4 +1,4 @@
-"""土地被覆クラス別割合（`edge_materials.lc_*`・`way_materials.lc_*`）の算出。
+"""土地被覆クラス別割合（`edge_landcover.lc_*`・`way_landcover.lc_*`）の算出。
 
 Esri×Impact Observatory Sentinel-2 10m Annual LULCの画素値ヒストグラム（バッチが
 道路centerline周囲のリングから集計したクラス別画素数）を、クラスごとの割合(%)へ
@@ -8,12 +8,11 @@ Esri×Impact Observatory Sentinel-2 10m Annual LULCの画素値ヒストグラ�
 何が難易度に寄与しているか分からなくなるため。
 """
 
-import hashlib
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
+from collections.abc import Sequence
+from typing import Annotated, Any
 
-from pydantic import create_model
+from pydantic import Field, create_model
 
 from app.domain.strict_model import StrictModel
 
@@ -113,6 +112,28 @@ LANDCOVER_CLASSES: tuple[LandcoverClass, ...] = (
     ),
 )
 
+
+
+def check_landcover_classes(classes: Sequence[LandcoverClass]) -> None:
+    """クラスの宣言が、画素・割合列・凡例のどこで読んでも1つのクラスに決まらなければ断る。
+
+    画素値が重なると1つの画素が2クラスに数えられ、割合列の名前が重なると材料の列がぶつかる。表示名・色が重なると
+    凡例と区間インスペクタで見分けられない。割合列の名前は材料の列の名前を導く接尾辞で終わる。凡例の行は（i）から説明を開く。
+    """
+    for attribute in ("value", "percent_field", "label", "color"):
+        values = [getattr(cls, attribute) for cls in classes]
+        if len(set(values)) != len(values):
+            raise ValueError(f"土地被覆のクラスの{attribute}が重なる")
+    if not all(cls.percent_field.endswith("_percent") for cls in classes):
+        raise ValueError("土地被覆の割合列の名前が`_percent`で終わらない")
+    if not all(cls.description.strip() for cls in classes):
+        raise ValueError("土地被覆のクラスに、凡例の行が開く説明が無い")
+    if {cls.value for cls in classes} & LULC_INVALID_VALUES:
+        raise ValueError("土地被覆のクラスが、どのクラスでもない画素値（No Data・Clouds）を持つ")
+
+
+check_landcover_classes(LANDCOVER_CLASSES)
+
 #: (割合列の名前, クラス値)。割合を出す対象は`LANDCOVER_CLASSES`が決め、ここはそれを
 #: SQLの列順（クラス値の昇順）へ並べ替えただけのもの。並びを表示順から切り離すのは、
 #: 表示順を変えただけで焼き込み済みの列順が動かないようにするため。
@@ -126,22 +147,14 @@ def landcover_key(percent_field: str) -> str:
     return percent_field.removesuffix("_percent")
 
 
-def landcover_tile_property(percent_field: str) -> str:
-    """材料の`tile_property`と、路面タイルへ焼き込む列の名前（`crops_pct`）。両者が同じ名前で初めて地図が塗れる。"""
-    return f"{landcover_key(percent_field)}_pct"
-
-#: 材料の割合列（`lc_*`）＋`lc_valid_pixels`と1対1のモデル。**クラスの宣言から作る**
+#: 材料の割合列（`lc_*`）と1対1のモデル。**クラスの宣言から作る**
 #: ——手で並べると、宣言したクラスに対応する項目が無いまま集計だけが走り、その列の
 #: 割合がどこへも入らない（SQLは列を吐き、読む側はその名前を知らない）。
-class _LandcoverValidPixels(StrictModel):
-    valid_pixels: int
-
-
 _PERCENT_FIELDS: dict[str, Any] = {name: (float, ...) for name, _ in PERCENT_CLASSES}
 
 LandcoverPercentages = create_model(
     "LandcoverPercentages",
-    __base__=_LandcoverValidPixels,
+    __base__=StrictModel,
     **_PERCENT_FIELDS,
 )
 
@@ -155,18 +168,7 @@ LandcoverPercentages = create_model(
 # UTMゾーン1枚ぶんで、これより広い表示では面が画面の一部を塗るだけになり読み取れない。
 LANDCOVER_TILE_MIN_ZOOM = 6
 LANDCOVER_TILE_MAX_ZOOM = 14
-
-
-def raster_set_fingerprint(raster_paths: list[str]) -> str:
-    """ラスタ構成の指紋（ファイル名の集合から決まる短い文字列）。
-
-    土地被覆の派生物は、どのラスタを開いていたかに従属する。「値なし」はその構成で
-    そう確定したという意味しか持たず、ラスタを1枚足せば境界またぎ・範囲外だった場所は
-    値を持ちうる。指紋を派生物の鍵へ入れておけば、構成が変わった時点で古い結果が
-    使われなくなる。順序には依存させない（同じ集合をどの順で渡しても同じ指紋になる）。
-    """
-    joined = "\n".join(sorted(Path(path).name for path in raster_paths))
-    return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:16]
+LandcoverTileZoom = Annotated[int, Field(ge=LANDCOVER_TILE_MIN_ZOOM, le=LANDCOVER_TILE_MAX_ZOOM)]
 
 
 def class_percentages_sql(counts: str) -> str:

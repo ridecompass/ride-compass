@@ -8,8 +8,8 @@
 全テーブルの行数は統計値（`n_live_tup`）ではなく**実数**を数える。統計は
 ANALYZEされていないテーブルでは桁が変わるほどずれるため、「取り込んだつもりが入っていない」の
 検出には使えない。1クエリで全テーブルぶんを数えるために
-`query_to_xml`を使う（テーブル名は`pg_stat_user_tables`由来で、`format('%I')`が識別子として
-引用するため外部入力の連結にはならない）。DB全体の走査を伴うので、呼び出しは管理APIの
+`query_to_xml`を使う（テーブル名は`pg_stat_user_tables`由来の`regclass`を文字列にしたもので、識別子として
+引用されるため外部入力の連結にはならない）。DB全体の走査を伴うので、呼び出しは管理APIの
 ボタン押下時のみ。
 """
 
@@ -19,23 +19,38 @@ from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.strict_model import StrictModel
 from app.infrastructure.source_models import latest_succeeded_run_by_column_sql
 
 
 # PostGISが作る付属テーブル。アプリのデータではないため一覧から外す。
 _EXCLUDED_TABLES = ("spatial_ref_sys",)
 
+# 分割の親は葉の和で出す。親を数えると全部の葉を読み直し、葉も一覧に並ぶので生データを2回読む。
+# `pg_partition_tree`は分割の木に入らない表には行を返さないので、その表は自分を葉として数える。
 _TABLE_STATS_SQL = """
+WITH s AS (
+    SELECT * FROM pg_stat_user_tables
+    WHERE schemaname = 'public' AND relname <> ALL(:excluded)
+), leaves AS (
+    SELECT s.relid AS table_relid, coalesce(tree.relid, s.relid) AS leaf_relid
+    FROM s LEFT JOIN LATERAL pg_partition_tree(s.relid) tree ON true
+    WHERE tree.relid IS NULL OR tree.isleaf
+), leaf_counts AS MATERIALIZED (
+    SELECT leaf_relid,
+           (xpath('/row/cnt/text()',
+                  query_to_xml(format('SELECT count(*) AS cnt FROM %s', leaf_relid::regclass),
+                               false, true, '')))[1]::text::bigint AS row_count
+    FROM (SELECT DISTINCT leaf_relid FROM leaves) l
+)
 SELECT s.relname AS table_name,
-       (xpath('/row/cnt/text()',
-              query_to_xml(format('SELECT count(*) AS cnt FROM %I.%I', s.schemaname, s.relname),
-                           false, true, '')))[1]::text::bigint AS row_count,
+       coalesce((SELECT sum(c.row_count) FROM leaves l JOIN leaf_counts c USING (leaf_relid)
+                 WHERE l.table_relid = s.relid), 0)::bigint AS row_count,
        pg_total_relation_size(s.relid) AS total_bytes,
        s.n_dead_tup,
        greatest(s.last_analyze, s.last_autoanalyze) AS analyzed_at,
        greatest(s.last_vacuum, s.last_autovacuum) AS vacuumed_at
-FROM pg_stat_user_tables s
-WHERE s.schemaname = 'public' AND s.relname <> ALL(:excluded)
+FROM s
 ORDER BY pg_total_relation_size(s.relid) DESC
 """
 
@@ -46,35 +61,41 @@ SELECT count(*) AS total,
        coalesce(max(EXTRACT(EPOCH FROM (now() - xact_start)))
                 FILTER (WHERE state = 'idle in transaction'), 0)::float AS longest_idle_transaction_seconds,
        coalesce(max(EXTRACT(EPOCH FROM (now() - query_start)))
-                FILTER (WHERE state = 'active'), 0)::float AS longest_query_seconds
+                FILTER (WHERE state = 'active'), 0)::float AS longest_query_seconds,
+       current_setting('max_connections')::int AS max_connections,
+       pg_database_size(current_database()) AS database_bytes
 FROM pg_stat_activity
 WHERE datname = current_database() AND pid <> pg_backend_pid()
 """
 
 
-@dataclass(frozen=True)
-class SucceededRunCounts:
+class LatestRunCounts(StrictModel, frozen=True):
     id: int
-    #: 成功のrunは、閉じるときに状態と一緒に書かれる（`batch/ingest.py: _close_run`）ので必ずある。
+    status: str
+    #: 閉じていない（`running`の）間だけNone（表の制約`source_runs_finished_when_closed`）。
+    finished_at: datetime | None
+    #: runを識別する情報（PBF名・対象年・種別など、テーブルごとに中身が違う。`source_runs.origin`をそのまま文字列化したもの）。
+    identity: dict[str, str]
+    item_count: int | None
+
+
+class SucceededRunCounts(StrictModel, frozen=True):
+    id: int
+    #: 閉じたrunは必ず持つ（表の制約`source_runs_finished_when_closed`）。
     finished_at: datetime
 
 
-@dataclass(frozen=True)
-class ImportRunCounts:
-    """取込1ソースぶんの生値。`latest`は成否を問わない最新、`latest_succeeded`は成功した最新。"""
+class ImportRunCounts(StrictModel, frozen=True):
+    """取込1ソースぶんの生値。"""
 
     label: str
-    latest_id: int
-    latest_status: str
-    latest_finished_at: datetime | None
-    #: そのrunが何を取りに行ったか（`source_runs.origin`をそのまま文字列化したもの）。
-    latest_identity: dict[str, str]
-    latest_item_count: int | None
+    #: 成否を問わない最新のrun。
+    latest: LatestRunCounts
+    #: 成功した最新のrun。成功が1件も無ければNone。
     latest_succeeded: SucceededRunCounts | None
 
 
-@dataclass(frozen=True)
-class TableCounts:
+class TableCounts(StrictModel, frozen=True):
     table_name: str
     row_count: int
     total_bytes: int
@@ -83,8 +104,7 @@ class TableCounts:
     vacuumed_at: datetime | None
 
 
-@dataclass(frozen=True)
-class ConnectionCounts:
+class ConnectionCounts(StrictModel, frozen=True):
     total: int
     max_connections: int
     idle_in_transaction: int
@@ -103,17 +123,18 @@ class DbStatusCounts:
 #: ソースごとの最新run（成否を問わない）と、成功した最新run。取込の記録は`source_runs`
 #: 1つだけなので、ソースが増えても宣言は要らない。
 _IMPORT_RUNS_SQL = f"""
-SELECT DISTINCT ON (source)
-       source,
-       run_id AS latest_id,
-       status AS latest_status,
-       finished_at AS latest_finished_at,
-       counts AS latest_counts,
-       origin AS latest_origin,
-       (SELECT run_id FROM {latest_succeeded_run_by_column_sql("r.source")} s) AS latest_succeeded_id,
-       (SELECT finished_at FROM {latest_succeeded_run_by_column_sql("r.source")} s) AS latest_succeeded_finished_at
-FROM source_runs r
-ORDER BY source, run_id DESC
+SELECT r.*, s.run_id AS latest_succeeded_id, s.finished_at AS latest_succeeded_finished_at
+FROM (SELECT DISTINCT ON (source)
+             source,
+             run_id AS latest_id,
+             status AS latest_status,
+             finished_at AS latest_finished_at,
+             counts AS latest_counts,
+             origin AS latest_origin
+      FROM source_runs
+      ORDER BY source, run_id DESC) r
+LEFT JOIN LATERAL {latest_succeeded_run_by_column_sql("r.source")} s ON true
+ORDER BY r.source
 """
 
 
@@ -128,14 +149,16 @@ class DbStatusQuery:
         imports = tuple(
             ImportRunCounts(
                 label=row["source"],
-                latest_id=int(row["latest_id"]),
-                latest_status=str(row["latest_status"]),
-                latest_finished_at=row["latest_finished_at"],
-                latest_identity={key: str(value) for key, value in row["latest_origin"].items()},
-                latest_item_count=row["latest_counts"].get("records"),
+                latest=LatestRunCounts(
+                    id=int(row["latest_id"]),
+                    status=str(row["latest_status"]),
+                    finished_at=row["latest_finished_at"],
+                    identity={key: str(value) for key, value in row["latest_origin"].items()},
+                    item_count=row["latest_counts"].get("records"),
+                ),
                 latest_succeeded=(None if row["latest_succeeded_id"] is None
-                                  else SucceededRunCounts(int(row["latest_succeeded_id"]),
-                                                          row["latest_succeeded_finished_at"])),
+                                  else SucceededRunCounts(id=int(row["latest_succeeded_id"]),
+                                                          finished_at=row["latest_succeeded_finished_at"])),
             )
             for row in (await self._session.execute(text(_IMPORT_RUNS_SQL))).mappings().all()
         )
@@ -156,22 +179,16 @@ class DbStatusQuery:
         )
 
         connection_row = (await self._session.execute(text(_CONNECTION_SQL))).mappings().one()
-        max_connections = int(
-            (await self._session.execute(text("SELECT current_setting('max_connections')::int"))).scalar_one()
-        )
-        database_bytes = int(
-            (await self._session.execute(text("SELECT pg_database_size(current_database())"))).scalar_one()
-        )
 
         return DbStatusCounts(
             imports=imports,
             tables=tables,
             connections=ConnectionCounts(
                 total=int(connection_row["total"]),
-                max_connections=max_connections,
+                max_connections=int(connection_row["max_connections"]),
                 idle_in_transaction=int(connection_row["idle_in_transaction"]),
                 longest_idle_transaction_seconds=float(connection_row["longest_idle_transaction_seconds"]),
                 longest_query_seconds=float(connection_row["longest_query_seconds"]),
             ),
-            database_bytes=database_bytes,
+            database_bytes=int(connection_row["database_bytes"]),
         )

@@ -1,15 +1,35 @@
 import math
 from collections.abc import Sequence
+from typing import Annotated
 
 from pydantic import Field, model_validator
+from pydantic_core import PydanticCustomError
 
-from app.domain.geo import KM_PER_DEGREE_LATITUDE, LatLon, km_per_degree_longitude
+from app.domain.geo import KM_PER_DEGREE_LATITUDE, Latitude, LatLon, Longitude, km_per_degree_longitude
 from app.domain.strict_model import StrictModel
 
 # 路面の地域レイヤーが配信されるXYZズームの範囲。MapLibreはminzoom未満でタイルを
 # 要求しないが、直接APIを叩かれた場合に備えてバックエンド側でもこの範囲外を拒否する。
 ROAD_TILE_MIN_ZOOM = 12
 ROAD_TILE_MAX_ZOOM = 15
+#: 路面タイルが1フィーチャーとして焼く単位。**区間が読めるズームでは区間、それより引いた
+#: 表示ではway丸ごと**にする。区間で焼くとgzip後の費用はz14で1.48倍・z12で1.81倍へ増える
+#: 一方、z12は1pxが約38mで、交差点で切った区間は数pxにしかならず塗り分けても読めない。
+EDGE_UNIT_MIN_ZOOM = 14
+
+
+# タイル座標の型。ズームはレイヤーごとに範囲が違うので、レイヤーの宣言の隣に置く（路面・点は`RoadTileZoom`、
+# 土地被覆は`domain/landcover.py`、標高は`domain/gsi_tiles.py`）。列・行の上限はズームに依り、欄の型だけでは
+# 書けないので`check_tile_index`が見る。
+RoadTileZoom = Annotated[int, Field(ge=ROAD_TILE_MIN_ZOOM, le=ROAD_TILE_MAX_ZOOM)]
+TileIndex = Annotated[int, Field(ge=0)]
+
+
+def check_tile_index(z: int, x: int, y: int) -> None:
+    """列・行がズーム`z`に在る範囲（2**z未満）か。外れたまま`tile_bounds_lonlat`へ渡すと在りもしない範囲を引き、
+    極端な値では`math.sinh`が桁あふれする。"""
+    if x >= 2**z or y >= 2**z:
+        raise PydanticCustomError("tile_index", "タイル座標がズームの範囲の外です。")
 
 
 class BoundingBox(StrictModel):
@@ -21,10 +41,10 @@ class BoundingBox(StrictModel):
     黙って別の場所を指す。
     """
 
-    min_latitude: float = Field(ge=-90.0, le=90.0)
-    min_longitude: float = Field(ge=-180.0, le=180.0)
-    max_latitude: float = Field(ge=-90.0, le=90.0)
-    max_longitude: float = Field(ge=-180.0, le=180.0)
+    min_latitude: Latitude
+    min_longitude: Longitude
+    max_latitude: Latitude
+    max_longitude: Longitude
 
     @model_validator(mode="after")
     def _check_increasing(self) -> "BoundingBox":
@@ -37,6 +57,11 @@ class BoundingBox(StrictModel):
                 f"経度はmin < maxが必要です: min={self.min_longitude} max={self.max_longitude}"
             )
         return self
+
+    def contains(self, point: LatLon) -> bool:
+        """地点が範囲に入るか（縁の上も入る）。"""
+        return (self.min_latitude <= point.latitude <= self.max_latitude
+                and self.min_longitude <= point.longitude <= self.max_longitude)
 
 
 def bbox_covering_points(points: Sequence[LatLon], margin_km: float) -> BoundingBox:
@@ -95,23 +120,39 @@ def tile_bounds_3857(z: int, x: int, y: int) -> tuple[float, float, float, float
 
 
 # Web Mercatorで表現できる緯度の限界。極ではmath.tan(lat)と1/math.cos(lat)が打ち消し合い、
-# _lonlat_to_tile_indexのmath.logが非正の値を受けてmath domain errorになる。
+# tile_positionのmath.logが非正の値を受けてmath domain errorになる。
 # BoundingBoxが許す±90度まではこの限界の外側にあるため、クランプしてから使う。
 MAX_MERCATOR_LATITUDE = 85.05112878
 
 
-def _lonlat_to_tile_index(lon: float, lat: float, z: int) -> tuple[int, int]:
-    """緯度経度からそれを含むXYZタイルのx,yを求める（tile_bounds_lonlatの逆関数）。"""
+def tile_position(lon: float, lat: float, z: int) -> tuple[float, float]:
+    """緯度経度のXYZタイル座標を小数のまま返す`(x, y)`（整数部がタイルの番号、小数部がタイルの中の位置。
+    `tile_bounds_lonlat`の逆）。緯度はWeb Mercatorの限界へクランプする。"""
     n = 2**z
-    x = int((lon + 180.0) / 360.0 * n)
+    x = (lon + 180.0) / 360.0 * n
     clamped_lat = max(-MAX_MERCATOR_LATITUDE, min(lat, MAX_MERCATOR_LATITUDE))
     lat_rad = math.radians(clamped_lat)
-    y = int((1.0 - math.log(math.tan(lat_rad) + 1.0 / math.cos(lat_rad)) / math.pi) / 2.0 * n)
+    y = (1.0 - math.log(math.tan(lat_rad) + 1.0 / math.cos(lat_rad)) / math.pi) / 2.0 * n
     return x, y
 
 
+def way_unit_tile(z: int, x: int, y: int) -> tuple[int, int, int]:
+    """タイル`(z, x, y)`の道を道1本のフィーチャーとして焼くタイル。道1本で焼くズームならそのタイル、区間で焼くズームなら
+    それを含む、道1本で焼く最も寄ったズームのタイル——中の道はどれもそのタイルにも在る。"""
+    if z < EDGE_UNIT_MIN_ZOOM:
+        return z, x, y
+    shift = z - (EDGE_UNIT_MIN_ZOOM - 1)
+    return EDGE_UNIT_MIN_ZOOM - 1, x >> shift, y >> shift
+
+
+def edge_unit_tile(lon: float, lat: float) -> tuple[int, int, int]:
+    """地点を含む、区間を1つのフィーチャーとして焼く最も引いたズームのタイル。"""
+    x, y = tile_position(lon, lat, EDGE_UNIT_MIN_ZOOM)
+    return EDGE_UNIT_MIN_ZOOM, int(x), int(y)
+
+
 def tile_position_sql(lon: str, lat: str, zoom: str) -> tuple[str, str]:
-    """`_lonlat_to_tile_index`と同じ式をSQLで書いたもの。経度・緯度の式`lon`・`lat`と
+    """`tile_position`と同じ式をSQLで書いたもの。経度・緯度の式`lon`・`lat`と
     ズームの式`zoom`から、タイル座標を小数のまま返す`(x, y)`の式（整数部がタイルの番号、
     小数部がタイルの中の位置）。緯度は丸めないため、Web Mercatorの限界の外を渡さないこと。"""
     scale = f"(2::double precision ^ {zoom})"
@@ -129,8 +170,8 @@ def tiles_covering_bbox(bbox: BoundingBox, z: int) -> list[tuple[int, int]]:
     倒れ、余分に1列・1行を含むだけ）。
     """
     n = 2**z
-    x_start, y_start = _lonlat_to_tile_index(bbox.min_longitude, bbox.max_latitude, z)
-    x_end, y_end = _lonlat_to_tile_index(bbox.max_longitude, bbox.min_latitude, z)
+    x_start, y_start = map(int, tile_position(bbox.min_longitude, bbox.max_latitude, z))
+    x_end, y_end = map(int, tile_position(bbox.max_longitude, bbox.min_latitude, z))
     x_start, x_end = sorted((max(0, min(x_start, n - 1)), max(0, min(x_end, n - 1))))
     y_start, y_end = sorted((max(0, min(y_start, n - 1)), max(0, min(y_end, n - 1))))
     return [(x, y) for x in range(x_start, x_end + 1) for y in range(y_start, y_end + 1)]

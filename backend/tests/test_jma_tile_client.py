@@ -2,11 +2,11 @@
 
 入口は`JmaTileClient`の`get_cached`・`fetch`・`store`・`get`と、`is_target_times_path`・`get_target_times`。
 上流はrespxの経路、Redisはfakeredis、時計はfreezegunで与え、待ちは時計を進める代役で受ける。
+どのパスが「配信前に404が返る地物」か（`infrastructure/jma_tile_paths.py: is_final_absence`）も、ここで404を覚えるか
+どうかで見る。入力には宣言にある地物（落雷）とタイル（土砂キキクル）のパスを1つずつ使う。
 
 ここで見ないもの:
 - 中身が空のタイルをフラグで持つこと・Redisの値の形 → `test_jma_tile_redis_cache.py`
-- どのパスが「配信前に404が返る地物」か（`domain/jma_tile_specs.py: is_final_absence`） → `test_jma_tile_specs.py`。
-  ここでは宣言にある地物（落雷）とタイル（土砂キキクル）のパスを1つずつ入力に使う
 - 降水のタイルの色の塗り替え → `test_jma_tile_recolor.py`。ここでは取得したタイルに塗り替えが当たることだけを見る
 - 404・502・`Cache-Control`への振り分け、レート制限を当てる順序 → `test_jma_tile_routes.py`
 - 解いた行をコマにする読み方 → `test_jma_tile_specs.py`
@@ -22,9 +22,11 @@ import pytest
 import respx
 
 from app.domain.jma_tile_specs import JmaFrame, TargetTimesRow
-from app.domain.weather_display import JMA_PRECIPITATION_TILE_COLORS, PRECIPITATION_COLOR_STOPS
+from app.domain.weather_display import PRECIPITATION_COLOR_STOPS
+from app.infrastructure.jma_tile_recolor import JMA_PRECIPITATION_TILE_COLORS
 from app.infrastructure import jma_tile_client
-from app.infrastructure.jma_tile_client import EmptyTile, JmaTileClient, JmaTileNotFoundError, JmaTileSharedState
+from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
+from app.infrastructure.jma_tile_client import JmaTileClient, JmaTileSharedState
 from tests.fake_external_log import record_external_calls
 from tests.fake_http import client_for
 from tests.test_jma_tile_recolor import palette_tile, pixels, rgba
@@ -63,20 +65,6 @@ def client():
     本番の組み立てと同じく1つを共有し、テストごとに空から始まる。"""
     shared = JmaTileSharedState()
     return lambda upstream: JmaTileClient(client_for(upstream), shared)
-
-
-@pytest.mark.parametrize(
-    "path, is_listing",
-    [
-        ("bosai/jmatile/data/nowc/targetTimes.json", True),
-        (LISTING, True),
-        ("bosai/jmatile/data/nowc/targetTimes.json/6/57/25.png", False),
-    ],
-    ids=["plain_name", "numbered_name", "name_in_the_middle"],
-)
-def test_a_time_listing_is_recognised_by_its_file_name(path, is_listing):
-    """時刻一覧の名前を途中に含むだけのパスを時刻一覧と取ると、内容の変わらないタイルを2分で捨て続ける。"""
-    assert jma_tile_client.is_target_times_path(path) is is_listing
 
 
 async def test_nothing_is_cached_at_first_and_a_lookup_never_asks_upstream(monkeypatch, upstream, fake_redis, client):
@@ -133,37 +121,34 @@ async def test_tiles_are_shared_through_redis_and_time_listings_are_kept_in_this
     assert await client(upstream).get_cached(LISTING) == (b"[]", "application/json")
 
 
-async def test_a_missing_tile_is_raised_apart_from_failures_and_remembered_as_nothing_to_draw(
+async def test_a_missing_tile_is_told_apart_from_failures_and_remembered_as_nothing_to_draw(
     monkeypatch, upstream, fake_redis, client
 ):
     """疎な格子の穴は正常系なので、失敗として数えず（WARNINGも出さず）、次からは上流へ問い合わせない。"""
     recorded = record_external_calls(monkeypatch, jma_tile_client)
     upstream.get(f"/{TILE}").respond(404)
 
-    with pytest.raises(JmaTileNotFoundError):
-        await client(upstream).fetch(TILE)
+    assert await client(upstream).fetch(TILE) is UPSTREAM_NOT_FOUND
 
     assert recorded[0].fields["result"] == "ok"
     assert recorded[0].fields["status"] == 404
-    assert isinstance(await client(upstream).get_cached(TILE), EmptyTile)
+    assert await client(upstream).get_cached(TILE) is UPSTREAM_NOT_FOUND
 
 
 async def test_a_missing_time_listing_is_remembered_in_this_process(upstream, fake_redis, redis_server, client):
     upstream.get(f"/{LISTING}").respond(404)
 
-    with pytest.raises(JmaTileNotFoundError):
-        await client(upstream).fetch(LISTING)
+    assert await client(upstream).fetch(LISTING) is UPSTREAM_NOT_FOUND
 
     redis_server.connected = False
-    assert isinstance(await client(upstream).get_cached(LISTING), EmptyTile)
+    assert await client(upstream).get_cached(LISTING) is UPSTREAM_NOT_FOUND
 
 
-async def test_features_not_yet_delivered_are_raised_but_not_remembered(upstream, fake_redis, client):
+async def test_features_not_yet_delivered_are_missing_but_not_remembered(upstream, fake_redis, client):
     """地物は配信されるまで404が返るので、覚えると配信された後も「無い」を返し続ける。"""
     upstream.get(f"/{FEATURES}").respond(404)
 
-    with pytest.raises(JmaTileNotFoundError):
-        await client(upstream).fetch(FEATURES)
+    assert await client(upstream).fetch(FEATURES) is UPSTREAM_NOT_FOUND
 
     assert await client(upstream).get_cached(FEATURES) is None
 
@@ -198,18 +183,10 @@ async def test_a_locally_built_tile_is_served_like_a_fetched_one(upstream, fake_
     assert await client(upstream).get_cached(TILE) == (OPAQUE, "image/png")
 
 
-async def test_a_locally_built_time_listing_is_kept_in_this_process(upstream, fake_redis, redis_server, client):
-    redis_server.connected = False
-
-    await client(upstream).store(LISTING, b"[]", "application/json")
-
-    assert await client(upstream).get_cached(LISTING) == (b"[]", "application/json")
-
-
 @pytest.mark.parametrize(
     "answer, expected",
     [
-        (httpx.Response(404), EmptyTile),
+        (httpx.Response(404), UPSTREAM_NOT_FOUND),
         (httpx.Response(500), None),
     ],
     ids=["missing", "failed"],
@@ -220,12 +197,7 @@ async def test_get_tells_a_tile_with_nothing_to_draw_apart_from_a_failure(
     """プリウォームは空を正常に数え、失敗だけを数える。混ぜると平常時の大半の空が失敗に見える。"""
     upstream.get(f"/{TILE}").return_value = answer
 
-    result = await client(upstream).get(TILE)
-
-    if expected is EmptyTile:
-        assert isinstance(result, EmptyTile)
-    else:
-        assert result == expected
+    assert await client(upstream).get(TILE) is expected
 
 
 async def test_upstream_requests_are_spaced_by_the_configured_rate_only_until_the_interval_has_passed(

@@ -1,7 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import {
-  allLayersOn,
   branch,
   chooseLens,
   expectNoOwnFailures,
@@ -13,6 +12,7 @@ import {
   settleMap,
   type Watch,
 } from "./live";
+import { allLayersOn } from "../e2e/fixtures";
 
 // S3 時刻で変わる入力。実行した時刻に任せず、欠陥の境界から代表点を選ぶ: 日本時間とUTCで日付が異なる時間帯
 // （日本時間0〜8時台）と同じ時間帯の1点ずつ、気象庁のタイルは偶数ズームと奇数ズームの1段ずつ。
@@ -85,9 +85,11 @@ function bySource(tiles: Watch["jmaTiles"]): Map<string, { even: Buffer[]; odd: 
 
 test("S3 時刻で変わる入力", async ({ page }) => {
   const catalog = await fetchCatalog();
-  const timed = catalog.axes.filter((axis) => axis.dynamic_way_value_conditions.includes("at"));
+  const timed = catalog.axes.filter(
+    (axis) => axis.dynamic_way_value_conditions.includes("at") && axis.way_value_formula !== null,
+  );
   const statsBefore = await externalErrors();
-  const watch = await openLive(page, { storedState: allLayersOn() });
+  const watch = await openLive(page, { storedState: allLayersOn(catalog.road_classes.map_layers) });
   // 地図のタイルをブラウザのキャッシュから出さず、ズームごとに取り直させる（取り直した応答の中身を見る）。
   const client = await page.context().newCDPSession(page);
   await client.send("Network.setCacheDisabled", { cacheDisabled: true });
@@ -112,19 +114,13 @@ test("S3 時刻で変わる入力", async ({ page }) => {
             notApplicable(`「${axis.label}」${name}`, "backendの予報（MSM）が古い");
             return;
           }
-          const before = watch.wayValues.length;
+          const before = watch.wayMaterials.length;
           await setDeparture(page, tomorrowJst(hour));
           await settleMap(page);
-          await expect
-            .poll(() => watch.wayValues.slice(before).filter((entry) => entry.axisId === axis.axis_id).length, {
-              timeout: 15_000,
-            })
-            .toBeGreaterThan(0);
-          const values = watch.wayValues
-            .slice(before)
-            .filter((entry) => entry.axisId === axis.axis_id)
-            .flatMap((entry) => Object.keys(entry.values));
-          expect.soft(values.length, `「${axis.label}」${name}: 道ごとの値を1件も受け取っていない`).toBeGreaterThan(0);
+          const received = () => watch.wayMaterials.slice(before).filter((entry) => entry.axisId === axis.axis_id);
+          await expect.poll(() => received().length, { timeout: 15_000 }).toBeGreaterThan(0);
+          const ways = received().flatMap((entry) => Object.keys(entry.materials));
+          expect.soft(ways.length, `「${axis.label}」${name}: 道ごとの材料を1件も受け取っていない`).toBeGreaterThan(0);
         },
         () => setDeparture(page, original),
       );

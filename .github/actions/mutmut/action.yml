@@ -1,0 +1,32 @@
+# backend の変異テストの準備。mutmut を依存に足さずに入れ（測るときだけ）、変異を作って関数ごとに通るテストを記録し（gen.py）、
+# 回す変異の一覧を書く（plan.py）。版と準備の手順は、backend の変異テストを回すワークフローはどこもここから取る
+# （.github/workflows/mutation.yml）。台本の口と書くものは backend/scripts/mutation/ の各台本の先頭。
+# テストDB（.github/actions/postgis）は呼ぶ側が先に作る（gen.py の記録がテストを回す）。
+name: mutmut の準備
+description: backend の依存と mutmut を入れ、変異を作って記録し、回す変異の一覧を MUT_OUT へ書く
+
+inputs:
+  baseline:
+    description: 空でなければ、一覧に関数ごとの基準も混ぜる（plan.py の MUT_WITH_BASELINE）
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/python
+      with:
+        requirements: requirements-batch.txt requirements-dev.txt
+        extra: mutmut==3.8.0
+    - name: 変異を作り、関数ごとに通るテストを記録する
+      shell: bash
+      working-directory: ${{ github.workspace }}/backend
+      run: |
+        mkdir -p "$MUT_OUT"
+        cp scripts/mutation/setup.cfg setup.cfg
+        python scripts/mutation/gen.py
+    - name: 回す変異の一覧を書く
+      shell: bash
+      working-directory: ${{ github.workspace }}/backend/mutants
+      env:
+        MUT_WITH_BASELINE: ${{ inputs.baseline }}
+      run: python ../scripts/mutation/plan.py

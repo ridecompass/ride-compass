@@ -1,38 +1,77 @@
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
+import { WindDirectionArrowIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
-import { cardinalLabel } from "@/lib/cardinalLabel";
+import { cardinalLabel, downwindDeg } from "@/lib/cardinalLabel";
 import { cn } from "@/lib/cn";
 import { formatJstHourMinute, parseJstLocalValue } from "@/lib/time";
+import { mapDisplay } from "@/types/generated/mapDisplay";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { RouteSegmentDetail } from "@/types/route";
 
 const HOURS_PER_LEG = routeGenerateConfig.wind_forecast_hours_per_leg;
 const HOURS_PER_BIN = routeGenerateConfig.wind_time_bin_hours;
 
-/** 区間の評価に使った風。どの時刻の値を使ったかと、追える時刻の先で延ばして使ったかを出す——出さないと、
- * 地図の矢印（選んだ時刻の地点ごとの値）やヘッダーの風（今の観測）と見比べて食い違って見える。
- * 値は数値予報モデルの計算値で、「予報」と呼ばない（docs/architecture/data-sources.md「気象業務法の予報業務許可」節）。 */
+type Wind = NonNullable<RouteSegmentDetail["wind"]>;
+
+// どの時刻の値を使ったかを出す——出さないと、ヘッダーの風（今の観測）と見比べて食い違って見える。値は数値予報モデルの
+// 最寄りの格子点の値で、「その区間の予報」として示さない（docs/architecture/data-sources.md「気象業務法の予報業務許可」節）。
+function windTimeLabel(wind: Wind): string {
+  return `最寄りの格子点の${formatJstHourMinute(parseJstLocalValue(wind.forecast_at))}の計算値`;
+}
+
+function windValueLabel(wind: Wind): string {
+  return `${cardinalLabel(wind.direction_deg)} ${wind.speed_ms.toFixed(1)}m/s`;
+}
+
+function WindExplanation() {
+  return (
+    <p>
+      この区間を通る見込みの時刻の、区間の中ほどに最寄りの格子点の風[気象庁の数値予報モデルMSMの格子点の値をそのまま、
+      {HOURS_PER_BIN}時間刻み]で評価しています。 {mapDisplay.modelValueDisclaimer}往路・復路それぞれ、走り始めてから
+      {HOURS_PER_LEG}
+      時間先までの区間に出します。
+    </p>
+  );
+}
+
+/** 区間の評価に使った風を、使った時刻・風向風速と(i)の説明で1行に出す。 */
 export default function SegmentWind({ wind }: { wind: RouteSegmentDetail["wind"] }) {
   // backendより先にこの画面が出ると、応答に`wind`が無い（undefined）。
   if (wind == null) return null;
-  const when =
-    wind.forecast_at == null
-      ? "出発時点の風"
-      : `${formatJstHourMinute(parseJstLocalValue(wind.forecast_at))}のモデルの計算値`;
   return (
     <p className={cn(textVariants({ variant: "hint" }), "m-0 inline-flex flex-wrap items-baseline gap-x-1")}>
       <span>
-        {when}: {cardinalLabel(wind.direction_deg)} {wind.speed_ms.toFixed(1)}m/s
+        {windTimeLabel(wind)}: {windValueLabel(wind)}
       </span>
-      {wind.extended && <span>[延長]</span>}
       <InfoPopover triggerAriaLabel="区間の風の説明">
-        <p>
-          この区間を通る見込みの時刻の、その場所に最も近い格子点の風[気象庁の数値予報モデルMSMの計算値、{HOURS_PER_BIN}
-          時間刻み]で評価しています。 予報ではなく、誤差を含みえます。往路・復路それぞれ、走り始めてから
-          {HOURS_PER_LEG}
-          時間先までを追い、その先の区間は最後に追った時刻の値をそのまま使います[「延長」と出ます]。
-        </p>
+        <WindExplanation />
       </InfoPopover>
     </p>
+  );
+}
+
+/** 区間の評価に使った風のチップ。風が吹いていく向きの矢印と風向風速を出し、押すと使った時刻と説明を開く。 */
+export function SegmentWindChip({ wind, className }: { wind: RouteSegmentDetail["wind"]; className: string }) {
+  if (wind == null) return null;
+  return (
+    <InfoPopover
+      triggerClassName={className}
+      triggerAriaLabel={`区間の風（最寄りの格子点の値 ${windValueLabel(wind)}）の説明`}
+      triggerContent={
+        <>
+          <span
+            aria-hidden="true"
+            className="inline-flex"
+            style={{ transform: `rotate(${downwindDeg(wind.direction_deg)}deg)` }}
+          >
+            <WindDirectionArrowIcon size={14} />
+          </span>
+          <span>{windValueLabel(wind)}</span>
+        </>
+      }
+    >
+      <p className="font-medium">{windTimeLabel(wind)}</p>
+      <WindExplanation />
+    </InfoPopover>
   );
 }

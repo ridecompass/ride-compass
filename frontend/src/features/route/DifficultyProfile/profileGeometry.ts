@@ -1,43 +1,13 @@
-// 道のりに沿った難易度のグラフの形と、グラフ上の距離から地図の場所を引く計算。
+// 道のりに沿った難易度のグラフの形と、グラフ上の距離が入る区間を引く計算。
 //
 // 横が始点からの距離、縦が区間ごとの難易度（0〜100）。区間はbackendがEdgeを約500mのビンへ畳んだもの
 // （`domain/route.py: aggregate_segments_into_bins`）で、区間の中では値が一定なので、形は区間ごとの階段になる。
-// **塗った面積がルートの負荷とほぼ一致する**ように、値の無い区間はルートの平均の高さで描く——負荷は
-// 「値のある区間の距離加重平均 × 値の無い区間も含めた全長」（backend `domain/difficulty.py: overall_difficulty`）で、
-// 値の無い区間を平均として数えているため。一致が「ほぼ」なのは、ビンの中で値の無いEdgeがそのビンの平均で数えられるため。
+// **塗った面積がルートの負荷とほぼ一致する**ように、値の無い区間はルートの平均の高さで描く——負荷は値の無い区間を
+// 平均として数える（backend `domain/route.py: merge_overall_difficulty`）。一致が「ほぼ」なのは、ビンの中で値の無いEdgeが
+// そのビンの平均で数えられるためと、1kmあたりの回数で測る評価軸はルート全体の回数の平均から点数にし直すため。
 
+import type { RouteStretch } from "@/lib/routeDistance";
 import type { RouteSegmentDetail } from "@/types/route";
-
-type ProfileSegment = Pick<
-  RouteSegmentDetail,
-  | "distance_km"
-  | "difficulty"
-  | "axis_contributions"
-  | "geometry"
-  | "start_latitude"
-  | "start_longitude"
-  | "end_latitude"
-  | "end_longitude"
->;
-
-/** 区間1本ぶんの柱。`startKm`は区間の長さを積み上げた値（丸めた累積距離は使わない——丸めの分だけ柱の間に隙間ができる）。 */
-type ProfileColumn<S extends ProfileSegment = ProfileSegment> = {
-  readonly segment: S;
-  readonly index: number;
-  readonly startKm: number;
-  readonly endKm: number;
-};
-
-export function profileColumns<S extends ProfileSegment>(segments: readonly S[]): ProfileColumn<S>[] {
-  const columns: ProfileColumn<S>[] = [];
-  let km = 0;
-  segments.forEach((segment, index) => {
-    const length = Math.max(0, segment.distance_km);
-    columns.push({ segment, index, startKm: km, endKm: km + length });
-    km += length;
-  });
-  return columns;
-}
 
 /** 塗る長方形1つ（距離と難易度の座標）。 */
 export type ProfileBox = {
@@ -52,7 +22,7 @@ export type ProfileBox = {
  * その区間の難易度になる）。`averageDifficulty`はルートの総合難易度で、値の無い区間の高さに使う。
  */
 export function profileBoxes(
-  columns: readonly ProfileColumn[],
+  columns: readonly RouteStretch<Pick<RouteSegmentDetail, "difficulty" | "axis_contributions">>[],
   axisOrder: readonly string[],
   averageDifficulty: number | null,
 ): { byAxis: Map<string, ProfileBox[]>; missing: ProfileBox[] } {
@@ -78,10 +48,10 @@ export function profileBoxes(
 }
 
 /** 距離`km`が入っている柱と、その区間の中の割合（0〜1）。範囲の外は端の区間へ寄せる。区間が無ければnull。 */
-export function columnAtKm<S extends ProfileSegment>(
-  columns: readonly ProfileColumn<S>[],
+export function columnAtKm<S extends RouteStretch<unknown>>(
+  columns: readonly S[],
   km: number,
-): { column: ProfileColumn<S>; fraction: number } | null {
+): { column: S; fraction: number } | null {
   const usable = columns.filter((column) => column.endKm > column.startKm);
   if (usable.length === 0) return null;
   let low = 0;
@@ -94,33 +64,4 @@ export function columnAtKm<S extends ProfileSegment>(
   const column = usable[low];
   const fraction = (km - column.startKm) / (column.endKm - column.startKm);
   return { column, fraction: Math.min(1, Math.max(0, fraction)) };
-}
-
-/** 区間の道なりの形の上で、始点から割合`fraction`だけ進んだ点（[経度, 緯度]）。形が無ければ始点と終点を結ぶ直線の上。 */
-export function pointAlongSegment(segment: ProfileSegment, fraction: number): [number, number] {
-  const coordinates: [number, number][] =
-    segment.geometry !== null
-      ? (segment.geometry.coordinates as [number, number][])
-      : [
-          [segment.start_longitude, segment.start_latitude],
-          [segment.end_longitude, segment.end_latitude],
-        ];
-  // 区間は短いので、緯度で経度方向を縮めた平面の距離で足りる（割合を決めるだけで、長さそのものは使わない）。
-  const scale = Math.cos((coordinates[0][1] * Math.PI) / 180);
-  const lengths = coordinates.slice(1).map(([lng, lat], i) => {
-    const [prevLng, prevLat] = coordinates[i];
-    return Math.hypot((lng - prevLng) * scale, lat - prevLat);
-  });
-  const total = lengths.reduce((sum, length) => sum + length, 0);
-  if (total === 0) return coordinates[0];
-  let remaining = Math.min(1, Math.max(0, fraction)) * total;
-  let i = 0;
-  while (i < lengths.length - 1 && remaining > lengths[i]) {
-    remaining -= lengths[i];
-    i += 1;
-  }
-  const t = lengths[i] === 0 ? 0 : Math.min(1, remaining / lengths[i]);
-  const [fromLng, fromLat] = coordinates[i];
-  const [toLng, toLat] = coordinates[i + 1];
-  return [fromLng + (toLng - fromLng) * t, fromLat + (toLat - fromLat) * t];
 }

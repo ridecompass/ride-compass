@@ -4,8 +4,7 @@
  * 誰と共有するか」だけ。同居させると、導出を確かめたい側がストアごと引き回すことになる。
  */
 import { catalogAxisFromEntry, type CatalogAxis } from "@/lib/catalogAxis";
-import { axisLabelsFromCatalogAxes } from "@/lib/mapDisplay/axisLayers";
-import type { AxisCatalogResponse, RoutePreferenceWeights } from "@/types/route";
+import type { AxisCatalogResponse, RoadClassCatalog, RoutePreferenceWeights } from "@/types/route";
 
 /** 軸カタログ。`GET /api/axis-catalog`の応答から導いた、機能をまたいで読む形。地図だけが読む形（地図の表示・
  * タイルの世代）は地図の機能が同じ応答から導く。 */
@@ -15,14 +14,14 @@ export interface AxisCatalog {
   axes: readonly CatalogAxis[];
   /** axis_idから既定重みを引く。未知のaxis_idには0を返す。 */
   defaultWeights: RoutePreferenceWeights;
-  /** axis_id→表示名の辞書。 */
-  axisLabels: Record<string, string>;
   /** axis_id→識別色。どの画面でも同じ軸は同じ色になるよう、ここで1回だけ決める。 */
   axisColors: Readonly<Record<string, string>>;
   /** フロントが使う較正値（id → いま効いている値）。backendの`domain/tuning.py`が宣言し、
    * 管理画面から変えた値が再デプロイなしにここへ届く。**取得できるまでは空**——ビルド時生成物の既定で
    * 埋めると、管理画面で較正したのとは別の値で黙って動く。読み手は引けない間その機能を出さない。 */
   clientTuning: Readonly<Record<string, number>>;
+  /** 道の区分（地図の線の層・除外タブの行）。正本は管理DBで、**取得できるまでは層も行も0件**。 */
+  roadClasses: RoadClassCatalog;
   /** GET /api/axis-catalogの取得が成功し、他フィールドが実際のDB由来の値であることを表す。
    * falseの間（未取得・取得失敗）は他フィールドが空のため、「軸スタジオの現在の公開軸集合と
    * 一致している」ことを要求する処理（route_preferenceのキー整合等）は、このフラグで
@@ -32,7 +31,7 @@ export interface AxisCatalog {
   /** GET /api/axis-catalogの取得を試みて失敗し、まだ一度も成功していないことを表す。
    * `loaded`とは同時にtrueにならない（未取得=両方false、成功=loadedのみ、失敗=failedのみ）。
    * この状態では他フィールドが空のため、`loaded`を要求する処理
-   * （route_preference・lens_axis_idの送信）は黙って省略される。利用者へ何も知らせないと
+   * （route_preferenceの送信）は黙って省略される。利用者へ何も知らせないと
    * 「重みを設定したのに反映されない」ことに気づけないため、UIはこのフラグで失敗と
    * 再試行導線を見せる（常設ヘッダーの「未取得」の印と、重みタブ）。 */
   failed: boolean;
@@ -51,6 +50,8 @@ export const CLIENT_TUNING_IDS = {
   cdaM2: "speed.cda_m2",
   maxDescentKmh: "speed.max_descent_kmh",
   walkingKmh: "speed.walking_kmh",
+  /** 全長の目標からの許容差（km）。全長の目標の説明文に出す（`features/route/RouteForm`）。 */
+  distanceToleranceKm: "search.distance_tolerance_km",
 } as const satisfies Record<string, ClientTuningId>;
 
 /** 較正値を1つ引く。**引けなければ`undefined`**——ここで既定を作らない。既定を作ると、
@@ -65,28 +66,32 @@ function axisColorsOf(axes: readonly CatalogAxis[]): Record<string, string> {
   return Object.fromEntries(axes.map((axis, index) => [axis.axisId, `hsl(${(index * 360) / axes.length}, 62%, 55%)`]));
 }
 
+const EMPTY_ROAD_CLASSES: RoadClassCatalog = {
+  generation: "",
+  map_layers: [],
+  avoidance: { levels: [], sections: [], rows: [] },
+};
+
 // 軸は`GET /api/axis-catalog`が配るものだけを使う。**ビルド時の写しを持たない**——
 // 持つと、APIが失敗したときに古い軸で地図が描かれ、伝播の失敗が見えなくなる。
 // 取得できるまでは軸が1つも無い状態で、呼び出し側は`loaded`で区別する。
 export const EMPTY_CATALOG: AxisCatalog = {
   clientTuning: {},
+  roadClasses: EMPTY_ROAD_CLASSES,
   axes: [],
   defaultWeights: {},
-  axisLabels: {},
   axisColors: {},
   loaded: false,
   failed: false,
 };
 
 export function axisCatalogFromResponse(response: AxisCatalogResponse): AxisCatalog {
-  const defaultWeights: RoutePreferenceWeights = {};
-  for (const entry of response.axes) defaultWeights[entry.axis_id] = entry.default_weight;
   const axes = response.axes.map(catalogAxisFromEntry);
   return {
     clientTuning: response.client_tuning,
+    roadClasses: response.road_classes,
     axes,
-    defaultWeights,
-    axisLabels: axisLabelsFromCatalogAxes(response.axes),
+    defaultWeights: Object.fromEntries(response.axes.map((entry) => [entry.axis_id, entry.default_weight])),
     axisColors: axisColorsOf(axes),
     loaded: true,
     failed: false,

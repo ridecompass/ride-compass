@@ -679,5 +679,141 @@
       "y": 201,
       "path": "bosai/jmatile/data/rasrf/20260924000000/immed/20260924010000/surf/sjfcstmap/9/454/201.png"
     }
+  ],
+  "read_tile_path": [
+    {
+      "path": "bosai/jmatile/data/risk/20260924000000/immed/20260924010000/surf/land/9/454/201.png",
+      "tile": {
+        "element_id": "land",
+        "frame": {
+          "basetime": "20260924000000",
+          "member": "immed",
+          "validtime": "20260924010000"
+        },
+        "z": 9,
+        "x": 454,
+        "y": 201
+      }
+    },
+    {
+      "path": "bosai/jmatile/data/risk/20260924000000/immed/20260924010000/surf/rain_mesh/9/454/201.png",
+      "tile": {
+        "element_id": "rain_mesh",
+        "frame": {
+          "basetime": "20260924000000",
+          "member": "immed",
+          "validtime": "20260924010000"
+        },
+        "z": 9,
+        "x": 454,
+        "y": 201
+      }
+    },
+    {
+      "path": "bosai/jmatile/data/risk/20260924000000/immed/20260924010000/surf/inund/9/454/201.png",
+      "tile": {
+        "element_id": "inund",
+        "frame": {
+          "basetime": "20260924000000",
+          "member": "immed",
+          "validtime": "20260924010000"
+        },
+        "z": 9,
+        "x": 454,
+        "y": 201
+      }
+    },
+    {
+      "path": "bosai/jmatile/data/risk/20260924000000/immed/20260924010000/surf/flood/9/454/201.pbf",
+      "tile": {
+        "element_id": "flood",
+        "frame": {
+          "basetime": "20260924000000",
+          "member": "immed",
+          "validtime": "20260924010000"
+        },
+        "z": 9,
+        "x": 454,
+        "y": 201
+      }
+    },
+    {
+      "path": "bosai/jmatile/data/nowc/20260924000000/immed/20260924010000/surf/hrpns/9/454/201.png",
+      "tile": {
+        "element_id": "hrpns",
+        "frame": {
+          "basetime": "20260924000000",
+          "member": "immed",
+          "validtime": "20260924010000"
+        },
+        "z": 9,
+        "x": 454,
+        "y": 201
+      }
+    },
+    {
+      "path": "bosai/jmatile/data/rasrf/20260924000000/immed/20260924010000/surf/rasrf/9/454/201.png",
+      "tile": {
+        "element_id": "rasrf",
+        "frame": {
+          "basetime": "20260924000000",
+          "member": "immed",
+          "validtime": "20260924010000"
+        },
+        "z": 9,
+        "x": 454,
+        "y": 201
+      }
+    },
+    {
+      "path": "bosai/jmatile/data/nowc/20260924000000/immed/20260924010000/surf/thns/9/454/201.png",
+      "tile": {
+        "element_id": "thns",
+        "frame": {
+          "basetime": "20260924000000",
+          "member": "immed",
+          "validtime": "20260924010000"
+        },
+        "z": 9,
+        "x": 454,
+        "y": 201
+      }
+    },
+    {
+      "path": "bosai/jmatile/data/nowc/20260924000000/immed/20260924010000/surf/trns/9/454/201.png",
+      "tile": {
+        "element_id": "trns",
+        "frame": {
+          "basetime": "20260924000000",
+          "member": "immed",
+          "validtime": "20260924010000"
+        },
+        "z": 9,
+        "x": 454,
+        "y": 201
+      }
+    },
+    {
+      "path": "bosai/jmatile/data/rasrf/20260924000000/immed/20260924010000/surf/sjfcstmap/9/454/201.png",
+      "tile": {
+        "element_id": "sjfcstmap",
+        "frame": {
+          "basetime": "20260924000000",
+          "member": "immed",
+          "validtime": "20260924010000"
+        },
+        "z": 9,
+        "x": 454,
+        "y": 201
+      }
+    },
+    {
+      "path": "bosai/jmatile/data/risk/20260924000000/immed/20260924010000/surf/land/9/454/y201.png",
+      "tile": null
+    },
+    {
+      "path": "bosai/jmatile/data/unknown/20260924000000/none/20260924010000/surf/unknown/9/454/201.png",
+      "tile": null
+    }
   ]
 }

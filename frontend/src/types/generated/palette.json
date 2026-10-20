@@ -7,6 +7,7 @@
     "signed_descent": "#0284c7",
     "no_data": "#9ca3af",
     "loading": "#d1d5db",
+    "undetermined": "#a78bfa",
     "hidden": "rgba(0,0,0,0)",
     "route_candidate": "#64748b",
     "route_selected_halo": "#1e3a8a",
@@ -23,15 +24,12 @@
     "hit": "#000000",
     "inspected": "#f59e0b",
     "neutral": "#94a3b8",
-    "pin_origin_background": "#ffffff",
+    "pin_face": "#ffffff",
     "pin_origin": "#e11d48",
     "pin_origin_unresolved": "#9ca3af",
     "pin_waypoint": "#2563eb",
-    "pin_destination": "#059669"
-  },
-  "comparison_slots": [
-    "#16a34a",
-    "#ea580c",
-    "#9333ea"
-  ]
+    "pin_destination": "#059669",
+    "selected_point": "#ff4d1a",
+    "selected_section": "#7c3aed"
+  }
 }

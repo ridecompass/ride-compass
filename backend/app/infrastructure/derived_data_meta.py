@@ -1,4 +1,4 @@
-"""派生データの世代（1行のみ、id=1固定）と、今の派生の表を作った取込（`derived_source_runs`）。
+"""派生データの世代（1行のみ、id=1固定）と、今の派生の表を作った取込（`derived_source_runs`）・列（`derived_columns`）。
 
 派生の作り直し（`app/batch/derive_cli.py`）が作り直した表を入れ替えるたびにインクリメントする単調カウンタ。
 道路網全体の配列の置き場の名前（`road_network_store.py`）と、配信する地図タイルの世代
@@ -14,6 +14,7 @@
 派生の世代がNoneになる。
 """
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 import asyncpg
@@ -36,18 +37,48 @@ class DerivedDataMetaRow(Base):
 class DerivedSourceRunRow(Base):
     """今の`public`の派生の表を作った取込。ソースごとに1行。
 
-    作り直しを始めた時点の、全ソースの成功した最新の取込を書く。段がどのソースを読むかは宣言していないので、
-    全ソースを記録する。派生の表と一緒に作業用のスキーマへ写して書き、表ごと入れ替える（`derive_cli.py`）——
+    作り直しを始めた時点の、全ソースの成功した最新の取込を書く（鮮度台帳がソースごとに比べる）。作り直す派生の表と一緒に
+    作業用のスキーマで書き、表ごと入れ替える（`derive_cli.py`）——
     事故密度の分母がこの記録の事故の取込の年から読まれる（`road_graph_repository.py: get_accident_years`）ので、
     入れ替えの前に作業用のスキーマから作る道路網の配列も、入れ替えの後の読み手も、数と同じ取込の年を読む。段が読んだ
-    生データがこの記録と一致するのは、取込と作り直しが同時に走らず、`--from`が記録から生データの
-    変わっていないときだけ流れるためである。
+    生データがこの記録と一致するのは、取込と作り直しが同時に走らず、流さなかった段は読むソースの取込が前回と
+    同じとき（段の指紋が同じとき）だけ飛ばされるためである。
     """
 
     __tablename__ = "derived_source_runs"
 
     source: Mapped[str] = mapped_column(String, primary_key=True)
     run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("source_runs.run_id"), nullable=False)
+
+
+class DerivedColumnRow(Base):
+    """今の`public`の派生の表を作ったときの、表ごとの列（ORMの宣言）。表と列ごとに1行。
+
+    作り直しは作業用のスキーマで表ごと入れ替え、流さない段は入力（書く表の列を含む）が前回と同じ段だけなので、入れ替えた
+    後の値のNULLは「計算した結果、値が無い」しかない。作り直しが要るのは、取込が変わったとき（`derived_source_runs`）と、最後の作り直しの後に
+    派生の表の列を足した・消したとき（足した列は全行がNULLのまま）だけで、後者をこの記録と今の宣言の比べで出す
+    （`derived_data_freshness.py`）。`derived_source_runs`と同じく作業用のスキーマで書き、表ごと入れ替える。
+    """
+
+    __tablename__ = "derived_columns"
+
+    table_name: Mapped[str] = mapped_column(String, primary_key=True)
+    column_name: Mapped[str] = mapped_column(String, primary_key=True)
+
+
+class DerivedStageRow(Base):
+    """今の`public`の派生の表を作ったときの、段ごとの入力の指紋（`derive_cli.py: stage_fingerprints`）。段ごとに1行で、
+    区間ごとに写す段は前の段を除いた入力の指紋の行も持つ。
+
+    次の作り直しは、指紋がこの記録と同じ段を流さず、その段の前回の表を残す。読むのは作り直しだけ。
+    `derived_source_runs`と同じく作業用のスキーマで書き、表ごと入れ替える——段を流した作り直しが途中で
+    落ちても、記録は前回の表の中身を指したまま残る。
+    """
+
+    __tablename__ = "derived_stages"
+
+    stage: Mapped[str] = mapped_column(String, primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String, nullable=False)
 
 
 @dataclass(frozen=True)
@@ -81,14 +112,32 @@ async def bump_revision(conn: asyncpg.Connection) -> int:
     return revision
 
 
-async def read_source_runs(conn: asyncpg.Connection) -> dict[str, int]:
-    """今の派生の表を作った取込（ソース → `run_id`）。"""
-    return {row["source"]: row["run_id"] for row in await conn.fetch(
-        f"SELECT source, run_id FROM {DerivedSourceRunRow.__tablename__}")}
-
-
 async def replace_source_runs(conn: asyncpg.Connection, runs: dict[str, int]) -> None:
     """派生の表を作った取込を`runs`へ置き換える。"""
-    await conn.execute(f"DELETE FROM {DerivedSourceRunRow.__tablename__}")
-    await conn.executemany(
-        f"INSERT INTO {DerivedSourceRunRow.__tablename__} (source, run_id) VALUES ($1, $2)", runs.items())
+    await _replace_rows(conn, DerivedSourceRunRow.__tablename__, ("source", "run_id"), runs.items())
+
+
+async def replace_columns(conn: asyncpg.Connection, columns: Mapping[str, frozenset[str]]) -> None:
+    """派生の表を作ったときの列を`columns`へ置き換える。"""
+    await _replace_rows(
+        conn, DerivedColumnRow.__tablename__, ("table_name", "column_name"),
+        [(table, name) for table, names in columns.items() for name in sorted(names)])
+
+
+async def read_stage_fingerprints(conn: asyncpg.Connection) -> dict[str, str]:
+    """今の派生の表を作ったときの段ごとの指紋（段の名前 → 指紋）。"""
+    return await _read_pairs(conn, DerivedStageRow.__tablename__, "stage", "fingerprint")
+
+
+async def replace_stage_fingerprints(conn: asyncpg.Connection, fingerprints: Mapping[str, str]) -> None:
+    """段ごとの指紋を`fingerprints`へ置き換える。"""
+    await _replace_rows(conn, DerivedStageRow.__tablename__, ("stage", "fingerprint"), fingerprints.items())
+
+
+async def _read_pairs(conn: asyncpg.Connection, table: str, key: str, value: str) -> dict:
+    return {row[key]: row[value] for row in await conn.fetch(f"SELECT {key}, {value} FROM {table}")}
+
+
+async def _replace_rows(conn: asyncpg.Connection, table: str, columns: tuple[str, str], rows: Iterable) -> None:
+    await conn.execute(f"DELETE FROM {table}")
+    await conn.executemany(f"INSERT INTO {table} ({', '.join(columns)}) VALUES ($1, $2)", rows)

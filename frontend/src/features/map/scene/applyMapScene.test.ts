@@ -1,177 +1,52 @@
 // @vitest-environment node
-import type { FeatureIdentifier, FilterSpecification, LayerSpecification, SourceSpecification } from "maplibre-gl";
+import type { FilterSpecification } from "maplibre-gl";
 import { describe, expect, it } from "vitest";
+
+import { createRecordingMap, type RecordingMap } from "@/testing/mapTrace/recordingMap";
 
 import { applyMapScene, type MapSceneTarget } from "./applyMapScene";
 import {
   EMPTY_MAP_SCENE,
   interactiveSceneLayerIds,
-  sceneLayerIdsForHitTarget,
   type MapScene,
   type MapSceneFeatureStateValue,
+  type MapSceneImage,
+  type MapSceneImageOptions,
   type MapSceneLayer,
   type MapSceneSource,
-  type MapSceneSourceContent,
   type MapSceneTier,
 } from "./mapScene";
+import { tilesContent } from "./sceneBuilders";
 
-type FakeSource = { readonly id: string; readonly spec: Record<string, unknown> };
-
-type FakeLayer = {
-  readonly id: string;
-  paint: Record<string, unknown>;
-  layout: Record<string, unknown>;
-  filter: unknown;
-};
-
-/** MapLibre の地図の代役。scene が触る操作だけを持ち、最後の状態を読み出せる。 */
-class FakeMap implements MapSceneTarget {
-  readonly layers: FakeLayer[] = [];
-  readonly sources = new Map<string, FakeSource>();
-  private readonly states = new Map<string, Map<string, Record<string, MapSceneFeatureStateValue>>>();
-
-  constructor(basemapLayerIds: readonly string[] = []) {
-    for (const id of basemapLayerIds) {
-      this.layers.push({ id, paint: {}, layout: {}, filter: undefined });
-    }
-  }
-
-  getSource(id: string): FakeSource | undefined {
-    return this.sources.get(id);
-  }
-
-  addSource(id: string, source: SourceSpecification): void {
-    this.sources.set(id, {
-      id,
-      spec: { ...(source as unknown as Record<string, unknown>) },
-    });
-  }
-
-  removeSource(id: string): void {
-    this.sources.delete(id);
-  }
-
-  addLayer(layer: LayerSpecification, beforeId?: string): void {
-    const spec = layer as unknown as Record<string, unknown>;
-    const record: FakeLayer = {
-      id: layer.id,
-      paint: { ...((spec.paint as Record<string, unknown>) ?? {}) },
-      layout: { ...((spec.layout as Record<string, unknown>) ?? {}) },
-      filter: spec.filter,
-    };
-    if (beforeId === undefined) this.layers.push(record);
-    else this.layers.splice(this.indexOf(beforeId), 0, record);
-  }
-
-  removeLayer(id: string): void {
-    this.layers.splice(this.indexOf(id), 1);
-  }
-
-  setFilter(layerId: string, filter?: FilterSpecification | null): void {
-    this.layer(layerId).filter = filter ?? undefined;
-  }
-
-  setPaintProperty(layerId: string, name: string, value: unknown): void {
-    assignOrDelete(this.layer(layerId).paint, name, value);
-  }
-
-  setLayoutProperty(layerId: string, name: string, value: unknown): void {
-    assignOrDelete(this.layer(layerId).layout, name, value);
-  }
-
-  setFeatureState(target: FeatureIdentifier, state: Record<string, MapSceneFeatureStateValue>): void {
-    const bucket = this.bucket(target);
-    const id = String(target.id);
-    bucket.set(id, { ...(bucket.get(id) ?? {}), ...state });
-  }
-
-  removeFeatureState(target: FeatureIdentifier, key?: string): void {
-    const bucket = this.bucket(target);
-    if (target.id === undefined) {
-      bucket.clear();
-      return;
-    }
-    const id = String(target.id);
-    const current = bucket.get(id);
-    if (key === undefined || current === undefined) {
-      bucket.delete(id);
-      return;
-    }
-    delete current[key];
-    if (Object.keys(current).length === 0) bucket.delete(id);
-  }
-
-  order(): string[] {
-    return this.layers.map((layer) => layer.id);
-  }
-
-  layer(id: string): FakeLayer {
-    const record = this.layers.find((entry) => entry.id === id);
-    if (record === undefined) throw new Error(`レイヤーが無い: ${id}`);
-    return record;
-  }
-
-  featureStatesOf(source: string, sourceLayer?: string): Record<string, Record<string, MapSceneFeatureStateValue>> {
-    return Object.fromEntries(this.states.get(bucketKey({ source, sourceLayer })) ?? new Map());
-  }
-
-  snapshot(): unknown {
-    return {
-      layers: this.layers.map(({ id, paint, layout, filter }) => ({
-        id,
-        paint,
-        layout,
-        filter,
-      })),
-      sources: [...this.sources.values()].sort((a, b) => a.id.localeCompare(b.id)),
-      states: [...this.states.entries()]
-        .map(([key, bucket]) => [key, Object.fromEntries(bucket)] as const)
-        .sort((a, b) => a[0].localeCompare(b[0])),
-    };
-  }
-
-  private indexOf(id: string): number {
-    return this.layers.indexOf(this.layer(id));
-  }
-
-  private bucket(target: FeatureIdentifier): Map<string, Record<string, MapSceneFeatureStateValue>> {
-    const key = bucketKey(target);
-    const existing = this.states.get(key);
-    if (existing !== undefined) return existing;
-    const created = new Map<string, Record<string, MapSceneFeatureStateValue>>();
-    this.states.set(key, created);
-    return created;
-  }
+/** 地物の状態。本物の `getFeatureState` と同じく、置かれていなければ空として読む。 */
+function roadStateOf(handle: RecordingMap, featureId: string): Record<string, unknown> {
+  return { ...handle.featureState("roads", featureId) };
 }
 
-function bucketKey(target: { source: string; sourceLayer?: string }): string {
-  return `${target.source}/${target.sourceLayer ?? ""}`;
-}
-
-function assignOrDelete(record: Record<string, unknown>, name: string, value: unknown): void {
-  if (value === null) delete record[name];
-  else record[name] = value;
+/** 地図に載っているレイヤー（並び・塗り・配置・絞り込み）とソース（宣言・流し込んだ中身）。 */
+function snapshot(handle: RecordingMap): unknown {
+  return {
+    layers: handle.layerOrder().map((id) => handle.layer(id)),
+    sources: handle
+      .sources()
+      .sort()
+      .map((id) => ({ id, spec: handle.sourceSpec(id), content: handle.sourceContent(id) })),
+  };
 }
 
 const BASEMAP_LAYER_IDS = ["basemap-water", "basemap-road", "basemap-label"];
-const AREA_BEFORE_ID = "basemap-road";
+const BASEMAP_ANCHORS = { roads: "basemap-road", labels: "basemap-label" };
 const ROAD_TILES = ["https://tiles.test/v1/{z}/{x}/{y}.pbf"];
 
-/** 呼び出し側が「どう差し替えるか」を宣言する形の一例。 */
-function tileContent(tiles: readonly string[]): MapSceneSourceContent {
-  return {
-    spec: { tiles },
-    replace: (source) => {
-      (source as FakeSource).spec.tiles = tiles;
-    },
-  };
+function recordingMap(): ReturnType<typeof createRecordingMap> {
+  return createRecordingMap({ basemapLayerIds: BASEMAP_LAYER_IDS });
 }
 
 function roadsSource(overrides: Partial<MapSceneSource> = {}): MapSceneSource {
   return {
     id: "roads",
     spec: { type: "vector" },
-    content: tileContent(ROAD_TILES),
+    content: tilesContent(ROAD_TILES),
     sourceLayer: "road",
     ...overrides,
   };
@@ -180,12 +55,11 @@ function roadsSource(overrides: Partial<MapSceneSource> = {}): MapSceneSource {
 const LANDCOVER_SOURCE: MapSceneSource = {
   id: "landcover",
   spec: { type: "raster", tileSize: 256 },
-  content: tileContent(["https://tiles.test/lc/{z}/{x}/{y}.png"]),
+  content: tilesContent(["https://tiles.test/lc/{z}/{x}/{y}.png"]),
 };
 
 function fillLayer(id: string, color = "#222222"): MapSceneLayer {
   return {
-    role: id,
     spec: { id, type: "fill", source: "landcover", paint: { "fill-color": color } },
     tier: "area",
     visible: true,
@@ -193,16 +67,16 @@ function fillLayer(id: string, color = "#222222"): MapSceneLayer {
   };
 }
 
-function lineLayer(id: string, tier: MapSceneTier, overrides: Partial<MapSceneLayer> = {}): MapSceneLayer {
+function lineLayer(
+  id: string,
+  tier: MapSceneTier,
+  {
+    paint = { "line-color": "#111111" },
+    ...overrides
+  }: Partial<MapSceneLayer> & { paint?: Record<string, unknown> } = {},
+): MapSceneLayer {
   return {
-    role: id,
-    spec: {
-      id,
-      type: "line",
-      source: "roads",
-      "source-layer": "road",
-      paint: { "line-color": "#111111" },
-    },
+    spec: { id, type: "line", source: "roads", "source-layer": "road", paint },
     tier,
     visible: true,
     hitTargets: [],
@@ -214,7 +88,7 @@ function scene(
   layers: readonly MapSceneLayer[],
   sources: readonly MapSceneSource[] = [roadsSource(), LANDCOVER_SOURCE],
 ): MapScene {
-  return { sources, layers };
+  return { sources, layers, images: [], globalState: {} };
 }
 
 const SCENE_LAYERS: readonly MapSceneLayer[] = [
@@ -222,8 +96,9 @@ const SCENE_LAYERS: readonly MapSceneLayer[] = [
   lineLayer("surface-line", "observedLine", { hitTargets: ["road"] }),
   lineLayer("lens-line", "lensLine"),
   lineLayer("poi", "point", { hitTargets: ["poi"] }),
-  lineLayer("route", "route", { hitTargets: ["road", "routeSegment"] }),
+  lineLayer("route", "route", { hitTargets: ["routeSegment"] }),
 ];
+const SHUFFLED_LAYERS = [...SCENE_LAYERS].reverse();
 
 const EXPECTED_ORDER = [
   "basemap-water",
@@ -236,39 +111,91 @@ const EXPECTED_ORDER = [
   "route",
 ];
 
-function applied(map: FakeMap, next: MapScene, previous = EMPTY_MAP_SCENE): void {
-  applyMapScene(map, { scene: next, previous, areaLayerBeforeId: AREA_BEFORE_ID });
+function applied(map: MapSceneTarget, next: MapScene, previous = EMPTY_MAP_SCENE): void {
+  applyMapScene(map, { scene: next, previous, basemapAnchors: BASEMAP_ANCHORS });
 }
 
-function statesScene(states: ReadonlyMap<string, ReadonlyMap<string, MapSceneFeatureStateValue>>): MapScene {
+/** キーごと・地物ごとの値を、ソースへ置く feature-state の形にする。 */
+function featureStates(
+  byKey: Record<string, Record<string, MapSceneFeatureStateValue>>,
+): ReadonlyMap<string, ReadonlyMap<string, MapSceneFeatureStateValue>> {
+  return new Map(Object.entries(byKey).map(([key, byFeature]) => [key, new Map(Object.entries(byFeature))]));
+}
+
+function statesScene(byKey: Record<string, Record<string, MapSceneFeatureStateValue>>): MapScene {
   return scene(
     [fillLayer("landcover-fill"), lineLayer("axis-line", "observedLine")],
-    [roadsSource({ featureStates: states }), LANDCOVER_SOURCE],
+    [roadsSource({ featureStates: featureStates(byKey) }), LANDCOVER_SOURCE],
   );
 }
 
 describe("mapScene", () => {
-  it("押せるレイヤーの一覧も、対象ごとの一覧も、同じ宣言から段の順で導ける", () => {
-    const shuffled = scene([...SCENE_LAYERS].reverse());
+  it("押せるレイヤーの一覧は、当たり判定の宣言から段の順で導ける", () => {
+    const shuffled = scene(SHUFFLED_LAYERS);
 
     expect(interactiveSceneLayerIds(shuffled)).toEqual(["surface-line", "poi", "route"]);
-    expect(sceneLayerIdsForHitTarget(shuffled, "road")).toEqual(["surface-line", "route"]);
   });
 });
 
 describe("applyMapScene", () => {
   it("宣言したソースとレイヤーが、渡した配列の並びによらず段の順で地図に載り、面の段だけ呼び出し側が渡した位置より下へ入る", () => {
-    const map = new FakeMap(BASEMAP_LAYER_IDS);
+    const { map, handle } = recordingMap();
 
-    applied(map, scene([...SCENE_LAYERS].reverse()));
+    applied(map, scene(SHUFFLED_LAYERS));
 
-    expect(map.order()).toEqual(EXPECTED_ORDER);
-    expect(map.getSource("roads")?.spec).toEqual({ type: "vector", tiles: ROAD_TILES });
-    expect(map.layer("surface-line").layout).toEqual({ visibility: "visible" });
+    expect(handle.layerOrder()).toEqual(EXPECTED_ORDER);
+    expect(handle.sourceSpec("roads")).toEqual({ type: "vector", tiles: ROAD_TILES });
+    expect(handle.layer("surface-line")?.visibility).toBe("visible");
+  });
+
+  it("記号の絵は、地図に無いものだけを描いて、記号のレイヤーより先に足す", () => {
+    const { map, handle } = recordingMap();
+    const drawn: string[] = [];
+    const added: { id: string; options: MapSceneImageOptions; layersOnMap: readonly string[] }[] = [];
+    const image = (id: string, options: MapSceneImageOptions): MapSceneImage => ({
+      id,
+      draw: () => {
+        drawn.push(id);
+        return { data: {} as ImageData, options };
+      },
+    });
+    const target: MapSceneTarget = {
+      ...map,
+      // スタイルを差分で差し替えた後のように、前回の宣言に無くても地図には残っている絵。
+      hasImage: (id) => id === "kept",
+      addImage: (id, _data, options) => added.push({ id, options, layersOnMap: handle.layerOrder() }),
+    };
+
+    applyMapScene(target, {
+      scene: { ...scene(SHUFFLED_LAYERS), images: [image("kept", { sdf: true }), image("arrow", { pixelRatio: 2 })] },
+      previous: EMPTY_MAP_SCENE,
+      basemapAnchors: BASEMAP_ANCHORS,
+    });
+
+    expect(drawn).toEqual(["arrow"]);
+    expect(added).toEqual([{ id: "arrow", options: { pixelRatio: 2 }, layersOnMap: BASEMAP_LAYER_IDS }]);
+  });
+
+  it("文字に場所を譲る点の段は、呼び出し側が渡した基礎地図の文字の位置より下へ入る", () => {
+    const { map, handle } = recordingMap();
+
+    applied(map, scene([lineLayer("thinned-poi", "pointUnderLabels"), ...SHUFFLED_LAYERS]));
+
+    expect(handle.layerOrder()).toEqual([
+      "basemap-water",
+      "landcover-fill",
+      "basemap-road",
+      "thinned-poi",
+      "basemap-label",
+      "surface-line",
+      "lens-line",
+      "poi",
+      "route",
+    ]);
   });
 
   it("あとから足したレイヤーも段の順の位置へ入る", () => {
-    const map = new FakeMap(BASEMAP_LAYER_IDS);
+    const { map, handle } = recordingMap();
     const before = scene([lineLayer("axis-line", "observedLine"), lineLayer("route", "route")]);
     applied(map, before);
 
@@ -283,7 +210,7 @@ describe("applyMapScene", () => {
       before,
     );
 
-    expect(map.order()).toEqual([
+    expect(handle.layerOrder()).toEqual([
       "basemap-water",
       "landcover-fill",
       "basemap-road",
@@ -295,28 +222,21 @@ describe("applyMapScene", () => {
   });
 
   it("scene が名指ししていない基礎地図のレイヤーは、scene を空にしても残る", () => {
-    const map = new FakeMap(BASEMAP_LAYER_IDS);
+    const { map, handle } = recordingMap();
     const first = scene(SCENE_LAYERS);
     applied(map, first);
 
     applied(map, EMPTY_MAP_SCENE, first);
 
-    expect(map.order()).toEqual(BASEMAP_LAYER_IDS);
-    expect([...map.sources.keys()]).toEqual([]);
+    expect(handle.layerOrder()).toEqual(BASEMAP_LAYER_IDS);
+    expect(handle.sources()).toEqual([]);
   });
 
   it("表示ON/OFF・絞り込み・paint は当て直した後の宣言どおりになる", () => {
-    const map = new FakeMap(BASEMAP_LAYER_IDS);
+    const { map, handle } = recordingMap();
     const before = scene([
       lineLayer("surface-line", "observedLine", {
-        role: "surface-line",
-        spec: {
-          id: "surface-line",
-          type: "line",
-          source: "roads",
-          "source-layer": "road",
-          paint: { "line-color": "#111111", "line-opacity": 0.4 },
-        },
+        paint: { "line-color": "#111111", "line-opacity": 0.4 },
         filter: ["==", ["get", "kind"], "paved"] as FilterSpecification,
       }),
     ]);
@@ -324,54 +244,42 @@ describe("applyMapScene", () => {
 
     applied(
       map,
-      scene([
-        lineLayer("surface-line", "observedLine", {
-          role: "surface-line",
-          spec: {
-            id: "surface-line",
-            type: "line",
-            source: "roads",
-            "source-layer": "road",
-            paint: { "line-color": "#222222" },
-          },
-          visible: false,
-        }),
-      ]),
+      scene([lineLayer("surface-line", "observedLine", { paint: { "line-color": "#222222" }, visible: false })]),
       before,
     );
 
-    const layer = map.layer("surface-line");
-    expect(layer.paint).toEqual({ "line-color": "#222222" });
-    expect(layer.layout).toEqual({ visibility: "none" });
-    expect(layer.filter).toBeUndefined();
+    const layer = handle.layer("surface-line");
+    expect(layer?.paint).toEqual({ "line-color": "#222222" });
+    expect(layer?.visibility).toBe("none");
+    expect(layer?.filter).toBeUndefined();
   });
 
   it("中身だけが変わったソースは、作り直さずに差し替わる", () => {
-    const map = new FakeMap(BASEMAP_LAYER_IDS);
+    const { map, handle } = recordingMap();
     const before = scene([lineLayer("axis-line", "observedLine")]);
     applied(map, before);
-    const handle = map.getSource("roads");
+    const roads = map.getSource("roads");
 
     const nextTiles = ["https://tiles.test/v2/{z}/{x}/{y}.pbf"];
     applied(
       map,
       scene(
         [lineLayer("axis-line", "observedLine")],
-        [roadsSource({ content: tileContent(nextTiles) }), LANDCOVER_SOURCE],
+        [roadsSource({ content: tilesContent(nextTiles) }), LANDCOVER_SOURCE],
       ),
       before,
     );
 
-    expect(map.getSource("roads")).toBe(handle);
-    expect(map.getSource("roads")?.spec.tiles).toEqual(nextTiles);
+    expect(map.getSource("roads")).toBe(roads);
+    expect(handle.sourceContent("roads")?.tiles).toEqual(nextTiles);
   });
 
   it("作り直せない宣言が変わったソースは作り直され、レイヤーとfeature-stateも戻る", () => {
-    const map = new FakeMap(BASEMAP_LAYER_IDS);
-    const states = new Map([["windValue", new Map([["w1", 3]])]]);
+    const { map, handle } = recordingMap();
+    const states = featureStates({ windValue: { w1: 3 } });
     const before = scene([lineLayer("axis-line", "observedLine")], [roadsSource({ featureStates: states })]);
     applied(map, before);
-    const handle = map.getSource("roads");
+    const roads = map.getSource("roads");
 
     applied(
       map,
@@ -382,50 +290,59 @@ describe("applyMapScene", () => {
       before,
     );
 
-    expect(map.getSource("roads")).not.toBe(handle);
-    expect(map.getSource("roads")?.spec.tiles).toEqual(ROAD_TILES);
-    expect(map.layer("axis-line").paint).toEqual({ "line-color": "#111111" });
-    expect(map.featureStatesOf("roads", "road")).toEqual({ w1: { windValue: 3 } });
+    expect(map.getSource("roads")).not.toBe(roads);
+    expect(handle.sourceSpec("roads")).toEqual({ type: "vector", maxzoom: 15, tiles: ROAD_TILES });
+    expect(handle.layer("axis-line")?.paint).toEqual({ "line-color": "#111111" });
+    expect(roadStateOf(handle, "w1")).toEqual({ windValue: 3 });
   });
 
   it("1つのキーだけが消えても、同じソースに残る別のキーの値は消えない", () => {
-    const map = new FakeMap(BASEMAP_LAYER_IDS);
-    const before = statesScene(
-      new Map([
-        [
-          "windValue",
-          new Map([
-            ["w1", 1],
-            ["w2", 2],
-          ]),
-        ],
-        ["gradientValue", new Map([["w1", 5]])],
-      ]),
-    );
+    const { map, handle } = recordingMap();
+    const before = statesScene({ windValue: { w1: 1, w2: 2 }, gradientValue: { w1: 5 } });
     applied(map, before);
-    expect(map.featureStatesOf("roads", "road")).toEqual({
-      w1: { windValue: 1, gradientValue: 5 },
-      w2: { windValue: 2 },
-    });
+    expect(roadStateOf(handle, "w1")).toEqual({ windValue: 1, gradientValue: 5 });
+    expect(roadStateOf(handle, "w2")).toEqual({ windValue: 2 });
 
-    applied(map, statesScene(new Map([["gradientValue", new Map([["w1", 5]])]])), before);
+    applied(map, statesScene({ gradientValue: { w1: 5 } }), before);
 
-    expect(map.featureStatesOf("roads", "road")).toEqual({ w1: { gradientValue: 5 } });
+    expect(roadStateOf(handle, "w1")).toEqual({ gradientValue: 5 });
+    expect(roadStateOf(handle, "w2")).toEqual({});
   });
 
   it("feature-state が1つも残らないときだけ、ソース単位で消える", () => {
-    const map = new FakeMap(BASEMAP_LAYER_IDS);
-    const before = statesScene(
-      new Map([
-        ["windValue", new Map([["w1", 1]])],
-        ["gradientValue", new Map([["w2", 5]])],
-      ]),
-    );
+    const { map, handle } = recordingMap();
+    const before = statesScene({ windValue: { w1: 1 }, gradientValue: { w2: 5 } });
     applied(map, before);
 
-    applied(map, statesScene(new Map()), before);
+    applied(map, statesScene({}), before);
 
-    expect(map.featureStatesOf("roads", "road")).toEqual({});
+    expect(roadStateOf(handle, "w1")).toEqual({});
+    expect(roadStateOf(handle, "w2")).toEqual({});
+  });
+
+  it("地図全体の状態だけが変わったら、変わった名前だけを置き直し、外した名前は値の無いことにし、他には触らない", () => {
+    const { map, handle } = recordingMap();
+    const before = { ...statesScene({ windValue: { w1: 1 } }), globalState: { bearing: 90, speed: 20 } };
+    applied(map, before);
+    const callsBefore = handle.trace.length;
+
+    applied(map, { ...before, globalState: { bearing: 135.5 } }, before);
+
+    expect(handle.trace.slice(callsBefore)).toEqual([
+      { call: "setGlobalStateProperty", args: ["bearing", 135.5] },
+      { call: "setGlobalStateProperty", args: ["speed", null] },
+    ]);
+  });
+
+  it("スタイルを差し替えたあと作り直すと、地図全体の状態も置き直される", () => {
+    const { map, handle } = recordingMap();
+    const shown = { ...statesScene({}), globalState: { bearing: 90 } };
+    applied(map, shown);
+
+    handle.dropEverything();
+    applied(map, shown, EMPTY_MAP_SCENE);
+
+    expect(handle.globalState()).toEqual({ bearing: 90 });
   });
 
   it("途中の scene を経由しても、同じ scene を当てた地図と同じ状態になる", () => {
@@ -443,14 +360,14 @@ describe("applyMapScene", () => {
       lineLayer("route", "route"),
     ]);
 
-    const stepwise = new FakeMap(BASEMAP_LAYER_IDS);
-    applied(stepwise, first);
-    applied(stepwise, second, first);
+    const stepwise = recordingMap();
+    applied(stepwise.map, first);
+    applied(stepwise.map, second, first);
 
-    const direct = new FakeMap(BASEMAP_LAYER_IDS);
-    applied(direct, second);
+    const direct = recordingMap();
+    applied(direct.map, second);
 
-    expect(stepwise.order()).toEqual(direct.order());
-    expect(stepwise.snapshot()).toEqual(direct.snapshot());
+    expect(stepwise.handle.layerOrder()).toEqual(direct.handle.layerOrder());
+    expect(snapshot(stepwise.handle)).toEqual(snapshot(direct.handle));
   });
 });

@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
+from app.domain.time_zone import as_series_time
 from app.domain.warning_levels import WarningBadgeLevel
 
 _WEDNESDAY = 2
@@ -79,10 +80,13 @@ class WbgtForecast:
     reference_time: str
     #: 予測の対象時刻（JSTの素の時刻）。読めない行はNone。
     forecast_time: datetime | None
-    #: 対象時刻の配信元の表記（応答へそのまま出す）。
-    forecast_time_text: str | None
     #: 暑さ指数。値が無い・読めない行はNone。
     wbgt: float | None
+
+
+# 発表（reference_time）は概ね毎時だが遅延もありうるため、直近この時間幅で発表時刻を
+# 検索する（1〜2時間の遅延は起こりうる前提で余裕を持たせる）。
+FORECAST_SEARCH_WINDOW_HOURS = 6
 
 
 def current_forecast(forecasts: list[WbgtForecast], now: datetime) -> WbgtForecast | None:
@@ -95,7 +99,7 @@ def current_forecast(forecasts: list[WbgtForecast], now: datetime) -> WbgtForeca
         return None
     latest_reference_time = max(forecast.reference_time for forecast in forecasts)
 
-    now_naive = now.replace(tzinfo=None)
+    now_naive = as_series_time(now)
     best: WbgtForecast | None = None
     best_diff: float | None = None
     for forecast in forecasts:

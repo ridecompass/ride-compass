@@ -17,7 +17,6 @@ class MsmFreshnessResponse(StrictModel):
     ログ（WARNING）だけでなく外からも確認できるようにする。未同期のときはnull。"""
 
     last_run_at: str
-    data_end_at: str
     run_age_hours: float
     remaining_hours: float
     healthy: bool
@@ -36,7 +35,7 @@ def health() -> dict[str, str | float | None]:
     # デプロイのたびに再起動されるため実質デプロイ時刻の目安）で、本番に実際に
     # デプロイされているコミットが最新かどうかを外部から確認できるようにする
     # （ローカル開発ではcommitはnullのまま。詳細はdocs/architecture/tech-stack.md参照）。
-    # admin_data_backup_age_hoursは管理データのバックアップが最後に置けてからの時間で、見回りが止まりに気づくために読む。
+    # admin_data_backup_age_hoursはDBのバックアップが最後に置けてからの時間で、止まりに気づくために読む。
     age = backup_age_hours(datetime.now(UTC))
     return {
         "status": "ok",
@@ -70,7 +69,6 @@ def _msm_freshness_response() -> MsmFreshnessResponse | None:
         return None
     return MsmFreshnessResponse(
         last_run_at=current.last_run_at.isoformat(),
-        data_end_at=current.data_end_at.isoformat(),
         run_age_hours=round(current.run_age_hours, 1),
         remaining_hours=round(current.remaining_hours, 1),
         healthy=current.is_healthy,

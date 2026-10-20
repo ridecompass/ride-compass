@@ -15,6 +15,7 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { routeEdgeKms } from "@/lib/routeDistance";
 import { routeThrough, type Places } from "@/testing/routeFixtures";
 
 import { buildSplicedShape, pairedStretches, stretchAlternativeGroups } from "./routeSplice";
@@ -43,17 +44,16 @@ function shape(names: string) {
     coordinates: route.geometry.coordinates,
     edgePointOffsets: route.edge_point_offsets,
     nodeIds: route.node_ids,
+    edgeKms: routeEdgeKms(route.segments, route.edge_point_offsets),
   };
 }
 
 function candidate(id: string, names: string) {
-  const { edgeIds, ...rest } = shape(names);
-  return { id, edgeIds, shape: rest };
+  return { id, shape: shape(names) };
 }
 
 function groupsFor(base: string, candidates: ReturnType<typeof candidate>[], minSplitLengthKm = 0.1) {
-  const baseShape = shape(base);
-  return stretchAlternativeGroups(baseShape.edgeIds, candidates, { baseShape, minSplitLengthKm });
+  return stretchAlternativeGroups(shape(base), candidates, minSplitLengthKm);
 }
 
 /** 組ごとに「元の範囲 → 候補id:乗り換え先のEdge」を並べる。 */
@@ -137,10 +137,7 @@ describe("buildSplicedShape", () => {
     expect(afterFirst).toEqual(shape("ABPQDEF"));
 
     // 1つ目でEdgeが1本増えたので、2つ目の範囲は乗り換えた後の形に対する位置で求める。
-    const next = stretchAlternativeGroups(afterFirst.edgeIds, [second], {
-      baseShape: afterFirst,
-      minSplitLengthKm: 0.1,
-    });
+    const next = stretchAlternativeGroups(afterFirst, [second], 0.1);
     const secondOption = next.flatMap((g) => g.options).find((o) => o.edgeIds.includes("D-S"));
     expect(secondOption?.stretch).toEqual({ start: 4, end: 6 });
 

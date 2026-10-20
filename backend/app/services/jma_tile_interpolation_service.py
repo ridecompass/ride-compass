@@ -2,7 +2,8 @@
 
 from app.domain.jma_tile_specs import source_zoom_for_interpolation
 from app.infrastructure.debug_log import log_throttled_warning
-from app.infrastructure.jma_tile_client import EmptyTile, JmaTileClient
+from app.infrastructure.http_client import UpstreamNotFound
+from app.infrastructure.jma_tile_client import JmaTileClient
 from app.infrastructure.jma_tile_interpolation import crop_and_upscale, crop_and_upscale_mvt, parse_tile_path
 
 
@@ -23,7 +24,7 @@ async def interpolated_tile(jma_tile_client: JmaTileClient, path: str) -> tuple[
     if source_zoom_for_interpolation(coords.element, coords.z) is None:
         return None
     parent = await jma_tile_client.get(coords.parent_path())
-    if parent is None or isinstance(parent, EmptyTile):
+    if parent is None or isinstance(parent, UpstreamNotFound):
         # 親が空なら拡大しても空にしかならない。
         return None
     parent_content, parent_content_type = parent
@@ -31,7 +32,7 @@ async def interpolated_tile(jma_tile_client: JmaTileClient, path: str) -> tuple[
         if coords.ext == "pbf":
             return crop_and_upscale_mvt(parent_content, coords.quadrant), parent_content_type
         return crop_and_upscale(parent_content, coords.quadrant), parent_content_type
-    except Exception as exc:  # noqa: BLE001 補間の失敗で地図表示自体を落とさない
+    except Exception as exc:  # 補間の失敗で地図表示自体を落とさない
         log_throttled_warning(
             "jma:tile-interpolation",
             "JMAタイルの補間に失敗しました path=%s parent=%s error=%r",

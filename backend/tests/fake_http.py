@@ -5,16 +5,25 @@
 `raise_for_status`・`json`・`text`・ヘッダの読み方は実装と同じものを通る。経路に無いURLを
 引くとrespxが落とす（引くはずの無いURLを黙って通さない）。
 
+応答の前に一度ほかのタスクへ順を譲る（網の上の要求と同じく、応答を待つ間に別の要求が進む）。同時に来た要求が
+上流への取得を重ねるかどうかは、これが無いと確かめられない——譲らない代役では、先の要求が応答まで一気に進んでしまう。
+
 要求を見るときは経路の記録（`router.calls`・`route.calls`）を読む。クエリはURLに載った形
 （`request.url.params`、値は文字列）で見る。
 """
+
+import asyncio
 
 import httpx
 import respx
 
 
 def client_for(router: respx.Router) -> httpx.AsyncClient:
-    return httpx.AsyncClient(transport=httpx.MockTransport(router.handler))
+    async def handler(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0)
+        return router.handler(request)
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
 
 def answering(*args, **kwargs) -> httpx.AsyncClient:

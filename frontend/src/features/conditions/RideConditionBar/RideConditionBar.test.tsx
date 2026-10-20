@@ -5,8 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
 import { getQueryClient } from "@/lib/queryClient";
 import { serveAxisCatalog } from "@/testing/backendServer";
-import { catalogResponse } from "@/testing/catalogAxes";
+import { catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";
+import { jst } from "@/testing/jst";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
+
+import { LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
 
 import RideConditionBar from "./RideConditionBar";
 
@@ -15,8 +18,12 @@ vi.mock("embla-carousel-react", () => ({
   default: () => [() => {}, { scrollTo: vi.fn(), on: vi.fn(), off: vi.fn(), selectedScrollSnap: () => 0 }],
 }));
 vi.mock("embla-carousel-wheel-gestures", () => ({ WheelGesturesPlugin: () => ({}) }));
+// 速度を変える条件の並びはbackendの走行モデルの宣言。架空の並びへ差し替え、説明がそれを書くことを見る。
+vi.mock("@/types/generated/route-generate-config.json", async (importOriginal) => {
+  const original = await importOriginal<{ default: typeof routeGenerateConfig }>();
+  return { default: { ...original.default, segment_speed_conditions: ["条件ア", "条件イ"] } };
+});
 
-const jst = (text: string) => new Date(`${text}+09:00`);
 const NOW = jst("2026-09-24T09:07");
 const { max_assumed_speed_kmh: MAX } = routeGenerateConfig;
 
@@ -39,6 +46,8 @@ function renderBar(overrides: Partial<Props> = {}) {
     onDepartureNow: vi.fn(),
     speedKmh: 20,
     onSpeedKmhChange: vi.fn(),
+    linkedDeparture: false,
+    linkedSpeed: false,
     ...overrides,
   };
   render(<RideConditionBar {...props} />);
@@ -62,6 +71,38 @@ describe("RideConditionBar 出発時刻", () => {
     expect(input).toHaveValue("2026-09-24T09:05");
     fireEvent.change(input, { target: { value: "2026-09-26T07:30" } });
     expect(props.onDepartureTimeChange).toHaveBeenCalledWith(jst("2026-09-26T07:30"));
+  });
+
+  it.each([
+    [
+      "出発時刻で値の変わる評価があれば、その名前で",
+      ["at", "bearing_deg"],
+      "always",
+      "ルートの「評価A」の評価・到達予想の時刻に使います。",
+    ],
+    [
+      "夜だけ効く評価は通る時刻で効くかが決まるので、その名前で",
+      ["bearing_deg"],
+      "night_only",
+      "ルートの「評価A」の評価・到達予想の時刻に使います。",
+    ],
+    ["無ければ評価に触れずに", ["bearing_deg"], "always", "ルートの到達予想の時刻に使います。"],
+  ] as const)("出発時刻の説明は、%s何に使うかを書く", async (_case, conditions, timeScope, tail) => {
+    serveAxisCatalog(
+      catalogResponse([
+        dedicatedEntry("a", [1], {
+          label: "評価A",
+          dynamic_way_value_conditions: [...conditions],
+          time_scope: timeScope,
+        }),
+      ]),
+    );
+    renderBar();
+    await waitFor(() => expect(getQueryClient().isFetching()).toBe(0));
+    expect(screen.getByRole("button", { name: /^出発時刻:/ })).toHaveAttribute(
+      "data-usage",
+      `出発する日時を決めます。地図の気象の表示の時刻と、${tail}`,
+    );
   });
 
   it("入力欄を空にしても、出発時刻は変えない", async () => {
@@ -123,6 +164,13 @@ describe("RideConditionBar 想定速度", () => {
     expect(props.onSpeedKmhChange).toHaveBeenCalledWith(MAX);
   });
 
+  it("(i)の奥に、走行モデルが速度を変える条件として宣言する並びを書く", async () => {
+    renderBar();
+    await userEvent.click(screen.getByRole("button", { name: /^想定速度:/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "想定速度の説明を表示" }));
+    expect(await screen.findByText(/区間ごとの条件ア・条件イで速度を変えて計算します/)).toBeInTheDocument();
+  });
+
   it("(i)の奥に、軸カタログが配る体格・機材の標準値を書く", async () => {
     serveAxisCatalog(
       catalogResponse([], {
@@ -157,5 +205,19 @@ describe("RideConditionBar 想定速度", () => {
     // 軸カタログが届いてから確かめる（届く前も文を出さないので、届く前に見ると引けたかを見分けない）。
     await waitFor(() => expect(getQueryClient().isFetching()).toBe(0));
     expect(screen.queryByText(/標準値で計算します/)).not.toBeInTheDocument();
+  });
+});
+
+describe("RideConditionBar 地図の塗りとの結び", () => {
+  it.each([
+    [{ linkedDeparture: true, linkedSpeed: false }, [LENS_LINK_DESCRIPTION, null]],
+    [{ linkedDeparture: false, linkedSpeed: true }, [null, LENS_LINK_DESCRIPTION]],
+  ])("いまの地図の塗りが決まっている条件（%j）のボタンにだけ、そう添える", (linked, descriptions) => {
+    renderBar(linked);
+    const buttons = [
+      screen.getByRole("button", { name: /^出発時刻:/ }),
+      screen.getByRole("button", { name: /^想定速度:/ }),
+    ];
+    expect(buttons.map((button) => button.getAttribute("aria-description"))).toEqual(descriptions);
   });
 });

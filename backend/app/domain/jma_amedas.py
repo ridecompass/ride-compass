@@ -1,8 +1,9 @@
 """JMAアメダス観測値のドメインモデル。"""
 
 import math
+from datetime import datetime
 
-from app.domain.geo import SIXTEEN_POINT_LABELS
+from app.domain.valid_area import ValidArea
 from app.domain.strict_model import StrictModel
 from app.domain.twilight import Twilight
 
@@ -12,23 +13,6 @@ class WindDirection(StrictModel):
 
     deg: float
     label: str
-
-
-def wind_direction_from_jma_code(code: int | None) -> WindDirection | None:
-    """JMAアメダスのwindDirectionコード（0=静穏、1〜16=16方位）を角度と日本語ラベルへ
-    変換する。角度は0=北・時計回り（`WeatherConditions.wind_direction_deg`と揃える）で、
-    code=16は360度ではなく0度（北）に正規化する。0（静穏、風速がほぼ0で方位不定）・None・
-    1〜16の範囲外のコードはNoneを返す（範囲外を別の方位として出すと、向かい風と追い風を取り違えさせる）。
-
-    角度とラベルを別々の関数で返さない——どちらも同じ1つのコードの読み替えで、分けると
-    「方位がある/ない」の判定と16方位の割当が2箇所に分かれ、片方だけずれても落ちない。
-    """
-    # JMA特有なのは番号の割当だけ（1=北北東からcode*22.5度で時計回りに進み、16=北で一周する）。
-    # 16で割った余りが北を0とした16方位の番号になり、呼び名は共通の並びから引く。
-    if code is None or not 1 <= code <= 16:
-        return None
-    index = code % 16
-    return WindDirection(deg=index * 22.5, label=SIXTEEN_POINT_LABELS[index])
 
 
 def apparent_temperature_from_amedas(
@@ -57,11 +41,10 @@ class AmedasObservation(StrictModel):
     このモデルに項目が無い。
     """
 
-    station_id: str
+    #: 観測所名（気象庁の観測所の表の漢字の名前）。
     station_name: str
-    latitude: float
-    longitude: float
-    observed_at: str
+    #: 観測の時刻（気象庁の最新の観測時刻）。
+    observed_at: datetime
     temperature_c: float | None
     apparent_temperature_c: float | None
     wind_speed_ms: float | None
@@ -74,3 +57,6 @@ class AmedasObservation(StrictModel):
     # WMO天気コード（`weather.derive_observed_weather_code`）。晴れ・くもりはリクエストの地点の推計気象分布で
     # 決まるため、twilightと同じく応答のたびに入れ、Redisには持たない。
     weather_code: int | None
+    #: 同じ観測所の観測が当たる範囲（その観測所が最寄りである範囲）。観測所の値（風・気温等）はこの中で変わらない。
+    #: 天気コード・日の出と日没はリクエストの地点で決まり、この範囲の中でも変わる。
+    valid_area: ValidArea | None

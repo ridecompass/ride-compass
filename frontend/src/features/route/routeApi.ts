@@ -5,8 +5,10 @@ import type {
   RouteGenerateRequest,
 } from "@/types/route";
 import { backendApi, getOptions, requestApi } from "@/lib/apiClient";
+import { errorMessage } from "@/lib/apiError";
 import { debugLog } from "@/lib/debugLog";
-import { DEFAULT_API_TIMEOUT_MS } from "@/lib/apiTimeouts";
+import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
+import { SECOND_MS } from "@/lib/duration";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 interface GenerateRoutesResult {
@@ -29,7 +31,7 @@ export interface GenerationProgress {
 const POLL_INTERVAL_MS = 1500;
 // backendがジョブの結果を持つ時間そのもの。これより長く待つと掃除済みのjob_idを引くため、
 // 独立に値を持たない（値を動かすのはbackendの宣言側）。
-const MAX_POLL_DURATION_MS = routeGenerateConfig.job_result_ttl_seconds * 1000;
+const MAX_POLL_DURATION_MS = routeGenerateConfig.job_result_ttl_seconds * SECOND_MS;
 // 続けて失敗してよい回数。backendはジョブを取り消せないので、早く諦めると同時実行の枠を孤立したジョブが占める。
 // 遅すぎると本当に切れたときの検知が遅れるので、間隔と合わせて数十秒に収める。
 const MAX_CONSECUTIVE_POLL_FAILURES = 5;
@@ -42,7 +44,7 @@ function sleep(ms: number): Promise<void> {
 async function pollGenerationJob(jobId: string): Promise<RouteGenerateJobStatusResponse> {
   return requestApi(
     (init) => backendApi.GET("/api/routes/generate/{job_id}", { params: { path: { job_id: jobId } }, ...init }),
-    getOptions({ timeoutMs: DEFAULT_API_TIMEOUT_MS, category: "api:route", errorLabel: "ルート生成の状態" }),
+    getOptions({ timeoutMs: API_TIMEOUT_MS.default, category: "api:route", errorLabel: "ルート生成の状態" }),
   );
 }
 
@@ -54,13 +56,16 @@ export async function generateRoutes(
   request: RouteGenerateRequest,
   onProgress?: (progress: GenerationProgress) => void,
 ): Promise<GenerateRoutesResult> {
-  // 文言は「リクエストに失敗しました」に留め、詳細はbackendのdetailに委ねる。
+  // 文言は失敗したことと次の手に留め、詳細はbackendのdetailに委ねる。
   const { job_id: jobId } = await requestApi(
     (init) => backendApi.POST("/api/routes/generate", { body: request, ...init }),
     {
-      timeoutMs: DEFAULT_API_TIMEOUT_MS,
+      timeoutMs: API_TIMEOUT_MS.default,
       category: "api:route",
-      messages: { failure: "リクエストに失敗しました", parseFailure: "サーバーからの応答の解析に失敗しました" },
+      messages: {
+        failure: "リクエストに失敗しました。時間をおいて再度お試しください",
+        parseFailure: "ルート生成の応答の解析に失敗しました",
+      },
       requestMeta: { body: request },
     },
   );
@@ -92,7 +97,7 @@ export async function generateRoutes(
       debugLog(
         "api:route",
         `ポーリング失敗、リトライします (${consecutivePollFailures}/${MAX_CONSECUTIVE_POLL_FAILURES})`,
-        { jobId, error: error instanceof Error ? error.message : String(error) },
+        { jobId, error: errorMessage(error) },
         "warn",
       );
       if (consecutivePollFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {

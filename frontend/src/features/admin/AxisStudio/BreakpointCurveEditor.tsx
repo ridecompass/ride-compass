@@ -1,8 +1,7 @@
 "use client";
 
-// 折れ点をドラッグ・矢印キーで調整できる曲線エディタ。数値入力行（正確な値の入力・行の
-// 追加削除）はAxisComposer側に残り、この曲線はその可視化＋補助的な操作手段として上に
-// 添える（両者は同じdraft.breakpoints stateを指すため常に同期する）。
+// 較正の画面の折れ点の曲線。動かせるのは渡された点（0点・100点の端）だけで、横（入力値）にだけ動く。保存済みの線と
+// 地図の段の境界を重ね、境界は上下に動かせる。
 //
 // 背景には実データの分布（生値のヒストグラムと分位）を薄く重ねる。折れ点だけを見ても
 // 「その形が実際の道路のどこに効いているか」は分からず、値が集中する帯の外側で曲線を
@@ -11,6 +10,7 @@
 
 import { useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 
+import { roundToDigits } from "@/lib/numberFormat";
 import { niceStep, snapToStep } from "./breakpointTools";
 import {
   maxBarShare,
@@ -27,39 +27,61 @@ function niceTicks(min: number, max: number): number[] {
   const start = Math.ceil(min / step) * step;
   const ticks: number[] = [];
   for (let v = start; v <= max + step * 1e-6; v += step) {
-    ticks.push(Math.round(v * 1000) / 1000);
+    ticks.push(roundToDigits(v, 3));
   }
   return ticks;
 }
 
-/** 折れ点(breakpoints)をドラッグ・矢印キーで調整できる曲線エディタ。既存の数値入力行
- * （正確な値の入力・行の追加削除）はそのまま残し、この曲線はその可視化＋補助的な操作手段
- * として上に添える（両者は同じdraft.breakpoints stateを指すため常に同期する）。
- * `referenceRange`（材料の参考点の値域）があれば横軸をその範囲に固定し、ドラッグ中に
- * 見た目のスケールが動かないようにする（材料の参考点が無い場合は現在のbreakpointsの
- * 値から自動スケールする）。 */
+/** 描く枠の大きさ（viewBoxの単位）。 */
+const FRAME = { width: 720, height: 320, padding: 36 } as const;
+
+/** 横にだけ動かせる点。`index`は`breakpoints`の位置。 */
+export interface CurveHandle {
+  index: number;
+  label: string;
+}
+
+/** 地図の段の境界（得点）。横の破線で描き、上下に動かせる。 */
+export interface CurveBoundary {
+  value: number;
+  color: string;
+}
+
+/** 矢印キーごとの、入力値を動かす向き。 */
+const ARROW_SIGNS = new Map<string, 1 | -1>([
+  ["ArrowRight", 1],
+  ["ArrowLeft", -1],
+]);
+
+/** 折れ点の曲線。横軸は`xRange`に前後1割の余白を足した範囲に固定し、点を動かしても目盛りが動かないようにする。 */
 export function BreakpointCurveEditor({
   breakpoints,
-  onChangePoint,
-  referenceRange,
+  handles,
+  onChangeHandle,
+  xRange,
   distribution,
+  referenceLine,
+  boundaries,
+  onChangeBoundary,
 }: {
   breakpoints: [number, number][];
-  onChangePoint: (index: number, pos: 0 | 1, value: number) => void;
-  referenceRange: { min: number; max: number } | undefined;
+  /** 動かせる点。ほかの点は線の上の印になる。 */
+  handles: readonly CurveHandle[];
+  onChangeHandle: (index: number, value: number) => void;
+  xRange: { min: number; max: number };
   /** 折れ点を通す前の生値の分布。背景へ薄く重ねる。未取得・取得不可ならnull。 */
   distribution: ValueDistribution | null;
+  /** 比べる線（保存済みの折れ点等）。灰色の破線で後ろに描く。 */
+  referenceLine: readonly [number, number][] | null;
+  boundaries: readonly CurveBoundary[];
+  onChangeBoundary: (index: number, value: number) => void;
 }) {
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
-  const width = 400;
-  const height = 160;
-  const padding = 28;
-  const xs = breakpoints.map((bp) => bp[0]);
+  const { width, height, padding } = FRAME;
   const ys = breakpoints.map((bp) => bp[1]);
-  // referenceRangeがあれば10%の余白を持たせて横軸を固定し、無ければ現在のbreakpoints
-  // から自動スケールする。
-  const xMin = referenceRange ? referenceRange.min - (referenceRange.max - referenceRange.min) * 0.1 : Math.min(...xs);
-  const xMax = referenceRange ? referenceRange.max + (referenceRange.max - referenceRange.min) * 0.1 : Math.max(...xs);
+  const xMargin = (xRange.max - xRange.min) * 0.1;
+  const xMin = xRange.min - xMargin;
+  const xMax = xRange.max + xMargin;
   const yMin = Math.min(0, ...ys);
   const yMax = Math.max(100, ...ys);
   const xSpan = xMax - xMin || 1;
@@ -85,39 +107,46 @@ export function BreakpointCurveEditor({
 
   const points = breakpoints.map(toScreen);
   const polyline = points.map(([x, y]) => `${x},${y}`).join(" ");
+  const referencePolyline = referenceLine?.map((bp) => toScreen([bp[0], bp[1]]).join(",")).join(" ");
+  const handleLabels = new Map(handles.map((handle) => [handle.index, handle.label]));
+
+  function pointerToSvg(e: ReactPointerEvent<SVGElement>): [number, number] | null {
+    const svg = e.currentTarget.ownerSVGElement;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    return [((e.clientX - rect.left) / rect.width) * width, ((e.clientY - rect.top) / rect.height) * height];
+  }
   const xTicks = niceTicks(xMin, xMax);
   const yTicks = [25, 50, 75];
 
   function handlePointerMove(e: ReactPointerEvent<SVGCircleElement>, index: number) {
     if (e.buttons !== 1) return;
-    const svg = e.currentTarget.ownerSVGElement;
-    if (!svg) return;
-    const rect = svg.getBoundingClientRect();
-    const sx = ((e.clientX - rect.left) / rect.width) * width;
-    const sy = ((e.clientY - rect.top) / rect.height) * height;
-    const [x, y] = fromScreen(sx, sy);
-    onChangePoint(index, 0, x);
-    onChangePoint(index, 1, y);
+    const position = pointerToSvg(e);
+    if (!position) return;
+    onChangeHandle(index, fromScreen(...position)[0]);
   }
 
-  // 矢印キーでの微調整（左右=入力値をxSnapStep刻み、上下=スコアを1刻み、Shift併用で
-  // その10倍）。ドラッグ操作の代替手段として、キーボード操作・スクリーンリーダー
-  // 利用者にも折れ点を動かす手段を確保する。
+  function handleBoundaryPointerMove(e: ReactPointerEvent<SVGElement>, index: number) {
+    if (e.buttons !== 1) return;
+    const position = pointerToSvg(e);
+    if (!position) return;
+    onChangeBoundary(index, Math.min(100, Math.max(0, fromScreen(...position)[1])));
+  }
+
+  function handleBoundaryKeyDown(e: ReactKeyboardEvent<SVGElement>, index: number) {
+    const sign = e.key === "ArrowUp" ? 1 : e.key === "ArrowDown" ? -1 : 0;
+    if (sign === 0) return;
+    e.preventDefault();
+    onChangeBoundary(index, boundaries[index].value + sign * (e.shiftKey ? 10 : 1));
+  }
+
+  // 矢印キーでの微調整（左右=入力値をxSnapStep刻み、Shift併用でその10倍）。ドラッグ操作の代替手段として、
+  // キーボード操作・スクリーンリーダー利用者にも点を動かす手段を確保する。
   function handleKeyDown(e: ReactKeyboardEvent<SVGCircleElement>, index: number) {
-    const bigStep = e.shiftKey ? 10 : 1;
-    if (e.key === "ArrowRight") {
-      e.preventDefault();
-      onChangePoint(index, 0, breakpoints[index][0] + xSnapStep * bigStep);
-    } else if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      onChangePoint(index, 0, breakpoints[index][0] - xSnapStep * bigStep);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      onChangePoint(index, 1, breakpoints[index][1] + bigStep);
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      onChangePoint(index, 1, breakpoints[index][1] - bigStep);
-    }
+    const sign = ARROW_SIGNS.get(e.key);
+    if (!sign) return;
+    e.preventDefault();
+    onChangeHandle(index, breakpoints[index][0] + sign * xSnapStep * (e.shiftKey ? 10 : 1));
   }
 
   const dragging = draggingIndex != null ? breakpoints[draggingIndex] : null;
@@ -126,7 +155,7 @@ export function BreakpointCurveEditor({
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      className="h-40 w-full max-w-96 touch-none rounded-sm bg-[var(--color-surface-2)]"
+      className="h-auto w-full touch-none rounded-sm bg-[var(--color-surface-2)]"
       role="img"
       aria-label="折れ点の曲線プレビュー（背景は実データの分布。ドラッグまたは矢印キーで調整可能）"
     >
@@ -214,27 +243,79 @@ export function BreakpointCurveEditor({
         y2={height - padding}
         className="stroke-[var(--color-border-strong)] [stroke-width:1]"
       />
-      <polyline points={polyline} className="fill-none stroke-[var(--color-accent)] [stroke-width:2]" />
-      {points.map(([x, y], i) => (
-        <circle
-          key={i}
-          cx={x}
-          cy={y}
-          r={7}
-          tabIndex={0}
-          role="slider"
-          aria-label={`折れ点${i + 1}（入力値${breakpoints[i][0]}、スコア${breakpoints[i][1]}）`}
-          aria-valuenow={breakpoints[i][1]}
-          className="cursor-grab fill-[var(--color-accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
-          onPointerDown={(e) => {
-            e.currentTarget.setPointerCapture(e.pointerId);
-            setDraggingIndex(i);
-          }}
-          onPointerMove={(e) => handlePointerMove(e, i)}
-          onPointerUp={() => setDraggingIndex(null)}
-          onKeyDown={(e) => handleKeyDown(e, i)}
+      {referencePolyline && (
+        <polyline
+          points={referencePolyline}
+          aria-label="保存済みの線"
+          className="pointer-events-none fill-none stroke-[var(--color-muted)] opacity-70 [stroke-dasharray:4_3] [stroke-width:2]"
         />
-      ))}
+      )}
+      {boundaries.map((boundary, i) => {
+        const [, sy] = toScreen([xMin, boundary.value]);
+        return (
+          <g key={`boundary-${i}`}>
+            <line
+              x1={padding}
+              y1={sy}
+              x2={width - padding}
+              y2={sy}
+              stroke={boundary.color}
+              className="pointer-events-none [stroke-dasharray:6_4] [stroke-width:1.5]"
+            />
+            <rect
+              x={width - padding - 30}
+              y={sy - 8}
+              width={30}
+              height={16}
+              rx={8}
+              stroke={boundary.color}
+              tabIndex={0}
+              role="slider"
+              aria-label={`段の境界${i + 1}`}
+              aria-valuenow={boundary.value}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              className="cursor-ns-resize fill-[var(--background)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+              onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+              onPointerMove={(e) => handleBoundaryPointerMove(e, i)}
+              onKeyDown={(e) => handleBoundaryKeyDown(e, i)}
+            />
+            <text
+              x={width - padding - 15}
+              y={sy + 3}
+              className="pointer-events-none fill-[var(--foreground)] text-[9px] tabular-nums"
+              textAnchor="middle"
+            >
+              {boundary.value}
+            </text>
+          </g>
+        );
+      })}
+      <polyline points={polyline} className="fill-none stroke-[var(--color-accent)] [stroke-width:2]" />
+      {points.map(([x, y], i) =>
+        !handleLabels.has(i) ? (
+          <circle key={i} cx={x} cy={y} r={3} className="pointer-events-none fill-[var(--color-accent)]" />
+        ) : (
+          <circle
+            key={i}
+            cx={x}
+            cy={y}
+            r={7}
+            tabIndex={0}
+            role="slider"
+            aria-label={handleLabels.get(i)}
+            aria-valuenow={breakpoints[i][0]}
+            className="cursor-grab fill-[var(--color-accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
+              setDraggingIndex(i);
+            }}
+            onPointerMove={(e) => handlePointerMove(e, i)}
+            onPointerUp={() => setDraggingIndex(null)}
+            onKeyDown={(e) => handleKeyDown(e, i)}
+          />
+        ),
+      )}
       {/* 表示範囲の外にある延長。黙って切ると「分布は全部見えている」と読めてしまい、
           折れ点が実データの範囲と合っていないこと自体が画面から消える。 */}
       {offRange.below >= OFF_RANGE_NOTICE_THRESHOLD && (

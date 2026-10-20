@@ -16,6 +16,7 @@
 """
 
 import logging
+import shutil
 import sys
 import tempfile
 import time
@@ -23,7 +24,6 @@ import zipfile
 from collections import defaultdict
 from pathlib import Path
 
-import httpx
 import shapefile
 import shapely
 from shapely.geometry import shape
@@ -31,18 +31,19 @@ from shapely.geometry.base import BaseGeometry
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified  # noqa: E402
-from app.infrastructure import jma_area_boundaries  # noqa: E402
+from app.batch.common import fetch_verified
+from app.batch.fetch_cli import run_fetch_cli
+from app.infrastructure import jma_area_boundaries
 
 logger = logging.getLogger("ridecompass.fetch_jma_area_boundaries")
 
 #: 境界を簡略化する許容誤差（度。おおむね10m）。元の境界は頂点が1,400万を超え、そのまま
 #: 持つとbackendのメモリを数百MB使う。簡略化でできる隣の区域との隙間は、引く側が最寄りの
-#: 区域へ寄せる（`jma_area_boundaries.NEAREST_LIMIT_DEG`）。
+#: 区域へ寄せる（`domain/jma_area.py: NEAREST_LIMIT_DEG`）。
 SIMPLIFY_TOLERANCE_DEG = 0.0001
 
 _CODE_FIELD = "regioncode"
-_DOWNLOAD_TIMEOUT_SECONDS = 600.0
+_READ_TIMEOUT_SECONDS = 600.0
 
 
 def read_areas(archive_path: Path) -> dict[str, BaseGeometry]:
@@ -53,7 +54,8 @@ def read_areas(archive_path: Path) -> dict[str, BaseGeometry]:
         for member in archive.namelist():
             suffix = Path(member).suffix.lower()
             if suffix in (".shp", ".shx", ".dbf"):
-                stem.with_suffix(suffix).write_bytes(archive.read(member))
+                with archive.open(member) as source, stem.with_suffix(suffix).open("wb") as target:
+                    shutil.copyfileobj(source, target)
         with shapefile.Reader(str(stem), encoding="utf-8") as reader:
             parts: dict[str, list[BaseGeometry]] = defaultdict(list)
             for record in reader.iterShapeRecords():
@@ -76,22 +78,17 @@ def _remove_other_versions(keep: Path) -> None:
             logger.info("他の版を消した %s", path.name)
 
 
-def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+def fetch() -> bool:
     destination = jma_area_boundaries.BOUNDARY_PATH
     if destination.exists():
         logger.info("既にある %s", destination)
         _remove_other_versions(destination)
-        return 0
+        return True
 
     archive = destination.with_suffix(".zip")
-    try:
-        if not fetch_verified(jma_area_boundaries.SOURCE_URL, archive, zipfile.is_zipfile,
-                              timeout=_DOWNLOAD_TIMEOUT_SECONDS, logger=logger):
-            return 1
-    except (httpx.HTTPError, OSError) as exc:
-        logger.error("取得に失敗しました url=%s error=%r", jma_area_boundaries.SOURCE_URL, exc)
-        return 1
+    if not fetch_verified(jma_area_boundaries.SOURCE_URL, archive, zipfile.is_zipfile,
+                          read_timeout=_READ_TIMEOUT_SECONDS, logger=logger):
+        return False
 
     started = time.perf_counter()
     areas = read_areas(archive)
@@ -101,8 +98,15 @@ def main() -> int:
                 sum(shapely.get_num_coordinates(geometry) for geometry in areas.values()),
                 time.perf_counter() - started)
     _remove_other_versions(destination)
-    return 0
+    return True
+
+
+def main() -> int:
+    return run_fetch_cli(fetch, logger=logger)
 
 
 if __name__ == "__main__":
+    from _stdio import use_utf8_stdio
+
+    use_utf8_stdio()
     raise SystemExit(main())

@@ -1,7 +1,6 @@
-/** 地図への呼び出しを順番に記録する代役。
+/** 地図への呼び出しを順番に記録し、地図に載っているもの（レイヤー・ソース・地物の状態）を持つ代役。
  *
- * 新旧どちらの実装へも同じ筋書きを通し、出てくる呼び出し列を突き合わせるために使う。
- * 記録するのは**地図の中身を変える呼び出しと、その判断に使う問い合わせ**だけで、
+ * 受けるのは**地図の中身を変える呼び出しと、その判断に使う問い合わせ**だけで、
  * 描画そのものは行わない。`maplibre-gl` の代役（`testing/maplibre.ts`）も、地図の中身の記録にこれを使う。
  */
 interface TraceEntry {
@@ -13,42 +12,80 @@ interface FakeLayer {
   id: string;
   type: string;
   source?: string;
+  sourceLayer?: string;
   visibility: string;
   filter?: unknown;
   paint: Record<string, unknown>;
   layout: Record<string, unknown>;
 }
 
-interface RecordingMap {
+export interface RecordingMap {
   /** 出た呼び出しの列（順序を持つ）。 */
   readonly trace: readonly TraceEntry[];
   /** いま載っているレイヤーのid（背面から前面の順）。 */
   layerOrder(): string[];
   layer(id: string): FakeLayer | undefined;
   sources(): string[];
+  /** `addSource` に渡された宣言。 */
+  sourceSpec(sourceId: string): unknown;
   featureState(sourceId: string, featureId: string): Record<string, unknown> | undefined;
-  /** ソースへ最後に流し込まれた中身（`setData`・`setTiles`）。 */
+  /** 地図全体の状態（`setGlobalStateProperty` で置いたもの）。 */
+  globalState(): Record<string, unknown>;
+  /** ソースの今の中身（作ったときの宣言の `data`・`tiles` か、そのあと `setData`・`setTiles` で流し込んだもの）。 */
   sourceContent(sourceId: string): { data?: unknown; tiles?: readonly string[] } | undefined;
   /** スタイルを差し替えたときの状態（このアプリが足したものが消える）。 */
   dropEverything(): void;
-  reset(): void;
+  /** スタイルを読み込み直した状態にする。`layers` はスタイルが最初から持つレイヤー（背面から前面の順）で、undefined なら
+   * 読み込み中（MapLibre と同じく `getStyle` が undefined を返す）。 */
+  loadStyle(layers: readonly StyleLayer[] | undefined): void;
 }
 
-/** `map`として実装へ渡す値と、記録を読む側のハンドルを返す。 */
-export function createRecordingMap(options: { styleReady?: boolean } = {}) {
+/** スタイルが持つレイヤー（`getStyle` が返す形）。 */
+export interface StyleLayer {
+  readonly id: string;
+  readonly type: string;
+  readonly "source-layer"?: string;
+  readonly filter?: unknown;
+}
+
+/**
+ * `map`として実装へ渡す値と、記録を読む側のハンドルを返す。
+ * `basemapLayerIds` は、スタイルが最初から持つ下地のレイヤー（背面から前面の順）。
+ */
+export function createRecordingMap(options: { basemapLayerIds?: readonly string[] } = {}) {
   const trace: TraceEntry[] = [];
-  let layers: FakeLayer[] = [];
+  const fromStyle = (styleLayers: readonly StyleLayer[]): FakeLayer[] =>
+    styleLayers.map((layer) => ({
+      id: layer.id,
+      type: layer.type,
+      sourceLayer: layer["source-layer"],
+      ...(layer.filter === undefined ? {} : { filter: layer.filter }),
+      visibility: "visible",
+      paint: {},
+      layout: {},
+    }));
+  let layers = fromStyle((options.basemapLayerIds ?? []).map((id) => ({ id, type: "background" })));
   let sources = new Map<string, unknown>();
   // **ソースの実体は id ごとに1つに保つ。** 実装側は「同じ中身なら流し込まない」の判定に
   // ソースのインスタンスを鍵として使うため、呼ぶたびに別物を返すと毎回作り直しになる。
   let sourceHandles = new Map<string, { setData: (data: unknown) => void; setTiles: (tiles: string[]) => void }>();
   const content = new Map<string, { data?: unknown; tiles?: readonly string[] }>();
   let featureStates = new Map<string, Record<string, unknown>>();
+  let globalState: Record<string, unknown> = {};
+  let styleLoading = false;
 
   const record = (call: string, ...args: unknown[]) => {
     trace.push({ call, args });
   };
   const indexOf = (id: string) => layers.findIndex((layer) => layer.id === id);
+  // MapLibreは、ベクタのソースの地物の状態を source-layer の名指し無しでは扱わず、エラーの出来事にする。
+  const refusesFeatureState = (target: { source: string; sourceLayer?: string }) =>
+    (sources.get(target.source) as { type?: unknown } | undefined)?.type === "vector" && !target.sourceLayer;
+  // MapLibreは、塗り・配置・絞り込みに null を渡すと、その指定を外して既定へ戻す（読み返すと undefined）。
+  const assignOrDelete = (record: Record<string, unknown>, name: string, value: unknown) => {
+    if (value === null || value === undefined) delete record[name];
+    else record[name] = value;
+  };
   const insert = (layer: FakeLayer, beforeId?: string) => {
     const at = beforeId ? indexOf(beforeId) : -1;
     if (at < 0) layers.push(layer);
@@ -57,18 +94,33 @@ export function createRecordingMap(options: { styleReady?: boolean } = {}) {
 
   const map = {
     // スタイルの準備を待つ仕組み（`mapStyleOps.ts: runWhenStyleReady`）が読む印。
-    __rcStyleReady: options.styleReady ?? true,
+    __rcStyleReady: true,
 
-    getStyle: () => ({ layers: layers.map((layer) => ({ id: layer.id, type: layer.type })) }),
+    getStyle: () =>
+      styleLoading
+        ? undefined
+        : {
+            layers: layers.map(({ id, type, sourceLayer, filter }) => ({
+              id,
+              type,
+              ...(sourceLayer === undefined ? {} : { "source-layer": sourceLayer }),
+              ...(filter === undefined ? {} : { filter }),
+            })),
+          },
     getLayer: (id: string) => layers[indexOf(id)],
     getSource: (id: string) => sourceHandles.get(id),
     // 記号の絵はブラウザのcanvasが要るため、「登録済み」を返して作らせない
     // （比べたいのはレイヤーの構成で、絵の中身ではない）。
     hasImage: () => true,
+    addImage: () => {
+      throw new Error("記号の絵は登録済みとして答えるので、足されることは無い");
+    },
 
     addSource: (id: string, spec: unknown) => {
       record("addSource", id, spec);
       sources.set(id, spec);
+      const { data, tiles } = spec as { data?: unknown; tiles?: readonly string[] };
+      content.set(id, { data, tiles });
       sourceHandles.set(id, {
         setData: (data: unknown) => {
           record("setData", id, data);
@@ -93,7 +145,7 @@ export function createRecordingMap(options: { styleReady?: boolean } = {}) {
       record("addLayer", spec.id, beforeId ?? null, spec);
       // MapLibreは、前に置く相手が無いレイヤーをエラーの出来事にして載せない。
       if (beforeId !== undefined && indexOf(beforeId) < 0) return;
-      const layout = { ...((spec.layout as Record<string, unknown>) ?? {}) };
+      const { visibility, ...layout } = (spec.layout as Record<string, unknown>) ?? {};
       insert(
         {
           id: spec.id,
@@ -101,7 +153,7 @@ export function createRecordingMap(options: { styleReady?: boolean } = {}) {
           source: spec.source,
           // 作るときの宣言をそのまま持つ——既定で見えることにすると、
           // 「隠したまま作る」を実装が守っているかを見られない。
-          visibility: typeof layout.visibility === "string" ? layout.visibility : "visible",
+          visibility: typeof visibility === "string" ? visibility : "visible",
           ...(spec.filter === undefined ? {} : { filter: spec.filter }),
           paint: { ...((spec.paint as Record<string, unknown>) ?? {}) },
           layout,
@@ -124,27 +176,31 @@ export function createRecordingMap(options: { styleReady?: boolean } = {}) {
     setPaintProperty: (id: string, name: string, value: unknown) => {
       record("setPaintProperty", id, name, value);
       const layer = layers[indexOf(id)];
-      if (layer) layer.paint[name] = value;
+      if (layer) assignOrDelete(layer.paint, name, value);
     },
     setLayoutProperty: (id: string, name: string, value: unknown) => {
       record("setLayoutProperty", id, name, value);
       const layer = layers[indexOf(id)];
       if (!layer) return;
       if (name === "visibility") layer.visibility = String(value);
-      else layer.layout[name] = value;
+      else assignOrDelete(layer.layout, name, value);
     },
     setFilter: (id: string, filter: unknown) => {
       record("setFilter", id, filter);
       const layer = layers[indexOf(id)];
-      if (layer) layer.filter = filter;
+      if (!layer) return;
+      if (filter === null || filter === undefined) delete layer.filter;
+      else layer.filter = filter;
     },
     setFeatureState: (target: { source: string; sourceLayer?: string; id: string }, state: Record<string, unknown>) => {
       record("setFeatureState", target.source, target.id, state);
+      if (refusesFeatureState(target)) return;
       const key = `${target.source}:${target.id}`;
       featureStates.set(key, { ...(featureStates.get(key) ?? {}), ...state });
     },
     removeFeatureState: (target: { source: string; sourceLayer?: string; id?: string }, key?: string) => {
       record("removeFeatureState", target.source, target.id ?? null, key ?? null);
+      if (refusesFeatureState(target)) return;
       if (target.id === undefined) {
         // ソース単位のクリア（MapLibreは全キー・全地物を落とす）。
         for (const stateKey of [...featureStates.keys()]) {
@@ -155,22 +211,11 @@ export function createRecordingMap(options: { styleReady?: boolean } = {}) {
       const entry = featureStates.get(`${target.source}:${target.id}`);
       if (entry && key) delete entry[key];
     },
-
-    // 地図の生成・カメラ・購読は記録だけして何もしない。
-    addControl: (...args: unknown[]) => record("addControl", ...args),
-    on: (...args: unknown[]) => record("on", args[0]),
-    once: (event: string, handler: () => void) => {
-      record("once", event);
-      if (event === "style.load" || event === "load") handler();
+    // MapLibreは、null を置くとスタイルの宣言の既定へ戻す。このアプリのスタイルは地図全体の状態を宣言しないので null になる。
+    setGlobalStateProperty: (name: string, value: unknown) => {
+      record("setGlobalStateProperty", name, value);
+      globalState = { ...globalState, [name]: value };
     },
-    off: () => {},
-    flyTo: (...args: unknown[]) => record("flyTo", ...args),
-    fitBounds: (...args: unknown[]) => record("fitBounds", ...args),
-    getZoom: () => 14,
-    getBounds: () => ({ getWest: () => 139, getSouth: () => 35, getEast: () => 140, getNorth: () => 36 }),
-    getCanvas: () => ({ clientWidth: 390, clientHeight: 812, style: {} }),
-    isStyleLoaded: () => true,
-    queryRenderedFeatures: () => [],
   };
 
   const handle: RecordingMap = {
@@ -178,7 +223,9 @@ export function createRecordingMap(options: { styleReady?: boolean } = {}) {
     layerOrder: () => layers.map((layer) => layer.id),
     layer: (id: string) => layers[indexOf(id)],
     sources: () => [...sources.keys()],
+    sourceSpec: (sourceId) => sources.get(sourceId),
     featureState: (sourceId, featureId) => featureStates.get(`${sourceId}:${featureId}`),
+    globalState: () => ({ ...globalState }),
     sourceContent: (sourceId) => content.get(sourceId),
     dropEverything: () => {
       layers = [];
@@ -186,15 +233,11 @@ export function createRecordingMap(options: { styleReady?: boolean } = {}) {
       sourceHandles = new Map();
       content.clear();
       featureStates = new Map();
-      trace.push({ call: "__styleReplaced", args: [] });
+      globalState = {};
     },
-    reset: () => {
-      layers = [];
-      sources = new Map();
-      sourceHandles = new Map();
-      content.clear();
-      featureStates = new Map();
-      trace.length = 0;
+    loadStyle: (next) => {
+      styleLoading = next === undefined;
+      layers = fromStyle(next ?? []);
     },
   };
 

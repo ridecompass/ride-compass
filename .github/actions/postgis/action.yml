@@ -1,0 +1,44 @@
+# テスト用の DB（PostgreSQL + PostGIS）を、ランナーへ直接入れて作る。ci.yml の backend と、担当（claude-task.yml）が使う。
+# 本番と同じ配布元（PostgreSQL公式のaptリポジトリ）から同じパッケージを入れる。GEOS・PROJも
+# PGDGの版（本番もPGDGの版を使っている）。版の正本は docs/architecture/tech-stack.md「DBの版」。
+# postgis/postgisのイメージはamd64しか配っていないため、arm64ではサービスコンテナにできない。
+# 接続先はこの action だけが持ち、TEST_DATABASE_SERVER・TEST_DATABASE_URL・DATABASE_URL として後の段へ渡す。
+name: PostgreSQL + PostGIS（本番と同じ版）
+description: 本番と同じ版の PostgreSQL + PostGIS を入れ、テスト用の DB を作って接続先を環境変数で渡す
+
+inputs:
+  copies:
+    description: テスト用の DB を複製して作る DB の数（変異テストの担い手ごとの DB）
+    default: "0"
+  copy-prefix:
+    description: 複製する DB の名前の頭（<頭><0からの番号>）
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # ランナーに入っている別の版のクラスタは5432番を塞ぐため、先に落とす。
+    - shell: bash
+      env:
+        COPIES: ${{ inputs.copies }}
+        COPY_PREFIX: ${{ inputs.copy-prefix }}
+      run: |
+        role=ridecompass
+        db=ridecompass_test
+        pg_lsclusters -h | while read -r ver name _; do sudo pg_dropcluster --stop "$ver" "$name"; done
+        sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+        sudo apt-get install -y --no-install-recommends postgresql-18 postgresql-18-postgis-3
+        sudo pg_ctlcluster 18 main start
+        sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE $role LOGIN SUPERUSER PASSWORD '$role'"
+        sudo -u postgres createdb -O "$role" "$db"
+        sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$db" -c "CREATE EXTENSION postgis" -c "CREATE EXTENSION postgis_raster"
+        echo "::notice title=DB::$(sudo -u postgres psql -d "$db" -Atc "SELECT version() || ' / PostGIS ' || postgis_lib_version() || ' / GEOS ' || postgis_geos_version() || ' / PROJ ' || split_part(postgis_proj_version(), ' ', 1) || ' / ' || postgis_gdal_version()")"
+        for i in $(seq 0 $((COPIES - 1))); do
+          sudo -u postgres createdb -O "$role" -T "$db" "${COPY_PREFIX}$i"
+        done
+        server="postgresql+asyncpg://$role:$role@localhost:5432"
+        {
+          echo "TEST_DATABASE_SERVER=$server"
+          echo "TEST_DATABASE_URL=$server/$db"
+          echo "DATABASE_URL=$server/$db"
+        } >> "$GITHUB_ENV"

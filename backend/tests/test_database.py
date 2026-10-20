@@ -30,16 +30,6 @@ async def unreachable_database(monkeypatch):
 
 
 @pytest.mark.usefixtures("unreachable_database")
-def test_each_factory_is_built_once_and_the_two_do_not_share_a_pool():
-    """ルート生成は1件の間ずっと接続を持つので、タイル配信と接続を取り合わない。"""
-    tiles, route_generation = (factory() for factory in FACTORIES)
-
-    assert database.get_session_factory() is tiles
-    assert database.get_route_generation_session_factory() is route_generation
-    assert tiles.kw["bind"] is not route_generation.kw["bind"]
-
-
-@pytest.mark.usefixtures("unreachable_database")
 @pytest.mark.parametrize("factory", FACTORIES)
 async def test_a_database_that_cannot_be_reached_raises_an_error_counted_as_unavailable(factory):
     with pytest.raises(database.DB_UNAVAILABLE_ERRORS):

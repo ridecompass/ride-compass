@@ -1,38 +1,45 @@
 import asyncio
 import logging
-import math
-from dataclasses import dataclass
+from functools import partial
 from datetime import datetime
-from typing import Annotated, Literal, cast
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import Field, PrivateAttr, RootModel, field_validator, model_validator
 
-from app.domain.time_zone import JST
+from app.domain.time_zone import JST, as_jst
 from app.api.dependencies import (
     RouteGenerationSetupOpener,
     get_route_generation_setup_opener,
 )
 from app.api.rate_limit import client_id, enforce_rate_limit
 from app.config import settings
-from app.domain.hard_filters import HARD_FILTER_NAMES
+from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.route_preference import RoutePreference, check_axis_weights, published_axis_ids
 from app.domain.route_request import (
-    DEFAULT_DISTANCE_TOLERANCE_KM,
     MAX_DISTANCE_TOLERANCE_KM,
     MAX_ROUTE_DISTANCE_KM,
+    MAX_ROUTES,
     MAX_SPLICED_EDGES,
     MAX_WAYPOINTS,
-    check_point_distance,
+    MIN_ROUTES,
+    AssumedSpeedKmh,
+    DistanceTarget,
+    FixedPoints,
+    NoDistanceTarget,
+    RequestedConditions,
+    RouteTarget,
+    SplicedTarget,
+    check_points_within_reach,
     check_spliced_edge_count,
     check_waypoint_count,
+    nothing_to_generate_error,
 )
-from app.domain.geo import haversine_distance_km
-from app.domain.wind import ASSUMED_SPEED_KMH, MAX_ASSUMED_SPEED_KMH, MIN_ASSUMED_SPEED_KMH
+from app.domain.geo import Latitude, Longitude, haversine_distance_km
 from app.domain.route import Coordinates, RouteCandidate
 from app.infrastructure import job_registry
 from app.infrastructure.debug_log import record_rate_limit_rejection
-from app.services.route_generator import DEFAULT_MAX_ROUTES, MAX_ROUTES, applied_max_routes
+from app.services.route_generation_setup import generate_route_candidates
 from app.domain.strict_model import StrictModel
 
 router = APIRouter()
@@ -56,7 +63,7 @@ class RoutePreferenceWeights(RootModel[dict[str, float]]):
     軸ごとの固定フィールドではなくaxis_idキーの辞書にすることで、軸の増減でこのモデルの
     改修が不要になる。API境界では「キー省略時に既定値が黙って入る」ことを避けるため、
     公開軸のaxis_idを全部明示することを検証で強制する（上書きするなら全軸を明示する、
-    という方針）。値の不変条件（公開軸のidだけ・非負）は`check_axis_weights`。
+    という方針）。値の不変条件（公開軸のidだけ・有限かつ非負）は`check_axis_weights`。
     """
 
     @model_validator(mode="after")
@@ -67,77 +74,25 @@ class RoutePreferenceWeights(RootModel[dict[str, float]]):
         check_axis_weights(self.root)
         return self
 
-
-class HardFilterOverride(RootModel[dict[str, bool]]):
-    """0次ハードフィルタ（候補にすら入れない道路種別）の個別ON/OFF上書き。
-    キーはdomain/hard_filters.py: HARD_FILTER_NAMESと同じ。RoutePreferenceWeightsと同じ
-    「全フィールド必須」方針（上書きするなら全項目を明示する）。値がTrueのフィルタだけが
-    有効（該当道路を探索対象から除外する）。
-    """
-
-    @model_validator(mode="after")
-    def _check_filter_keys(self) -> "HardFilterOverride":
-        expected = HARD_FILTER_NAMES
-        actual = set(self.root.keys())
-        if actual != expected:
-            missing = sorted(expected - actual)
-            extra = sorted(actual - expected)
-            detail_parts = []
-            if missing:
-                detail_parts.append(f"missing={missing}")
-            if extra:
-                detail_parts.append(f"unknown={extra}")
-            raise ValueError(
-                f"hard_filters must specify exactly the {len(expected)} known filter names ({', '.join(detail_parts)})"
-            )
-        return self
-
-    def to_frozenset(self) -> frozenset[str]:
-        return frozenset(name for name, enabled in self.root.items() if enabled)
-
-    @classmethod
-    def from_frozenset(cls, active: frozenset[str]) -> "HardFilterOverride":
-        return cls({name: name in active for name in sorted(HARD_FILTER_NAMES)})
+    def to_preference(self) -> RoutePreference:
+        return RoutePreference(weights=dict(self.root))
 
 
-@dataclass(frozen=True)
-class LoopTarget:
-    """起点へ戻る周回候補を、目標距離で探す。"""
-
-    distance_km: float
-
-
-@dataclass(frozen=True)
-class WaypointsTarget:
-    """経由地・目的地を通る1本を探す。`distance_km`は置いた点から決めた探索の範囲。"""
-
-    distance_km: float
-    waypoints: list[Coordinates]
-    destination: Coordinates | None
-
-
-@dataclass(frozen=True)
-class SplicedTarget:
-    """区間を差し替えて組み立てた経路を、探索せずに評価する。目的地ルートだけが対象。"""
-
-    distance_km: float
-    destination: Coordinates
-    edge_ids: tuple[str, *tuple[str, ...]]
-
-
-# 検証を通った要求が何を生成するか。生成ジョブはこれだけを見て分岐する。
-RouteTarget = LoopTarget | WaypointsTarget | SplicedTarget
+class RoadAvoidanceOverride(RootModel[dict[str, AvoidanceLevel]]):
+    """避け方を選べる行（`<分け方>.<区分>`）→避け方（通る・なるべく避ける・通らない）。要求では行の一部や前の鍵でもよく、
+    応答には今の区分の行を全部エコーする（`domain/road_avoidance.py: resolve_road_avoidance`）。"""
 
 
 class RouteGenerateRequest(StrictModel):
-    latitude: float = Field(ge=-90, le=90)
-    longitude: float = Field(ge=-180, le=180)
-    # 周回の目標距離。経由地・目的地を置いたときは探索の範囲になり、置いた点からbackendが決める
-    # （`_resolve_target`。送られた値は使わない）ため省略できる。
+    latitude: Latitude
+    longitude: Longitude
+    # 全長の目標距離（±`distance_tolerance_km`）。経由地・目的地を置いても同じ意味で、省略すると全長の目標を置かない
+    # （置いた点へ良い道で向かう）。
     distance_km: float | None = Field(default=None, gt=0, le=MAX_ROUTE_DISTANCE_KM)
-    distance_tolerance_km: float = Field(gt=0, le=MAX_DISTANCE_TOLERANCE_KM, default=DEFAULT_DISTANCE_TOLERANCE_KM)
-    route_type: Literal["loop"] = "loop"
-    # 評価重みのリクエスト単位の上書き（研究用）。省略時はAXIS_DEFINITIONS由来の既定値
+    # 目標距離からの許容差（km）。**省略が既定**で、そのとき使う値はリクエスト処理時に較正値から読む
+    # （`domain/route_request.py: resolve_distance_tolerance_km`）。使った値はconditionsへエコーする。
+    distance_tolerance_km: float | None = Field(default=None, gt=0, le=MAX_DISTANCE_TOLERANCE_KM)
+    # 評価重みのリクエスト単位の上書き。省略時はAXIS_DEFINITIONS由来の既定値
     # （`RoutePreference()`）を使う。
     # 実際に適用された値はレスポンスのconditionsへエコーされる。
     route_preference: RoutePreferenceWeights | None = None
@@ -146,40 +101,29 @@ class RouteGenerateRequest(StrictModel):
     # 値の意味と根拠もそちら）。ここへ既定値を書くとimport時に束ねられ、DBの上書きが効かない。
     penalty_strength: float | None = Field(ge=0, default=None)
     # 0次ハードフィルタの勾配しきい値（%、絶対値。省略時は除外なし。
-    # `domain/hard_filters.py: compute_hard_filter_excluded`参照）。
+    # `domain/hard_filters.py: compute_search_exclusion`参照）。
     max_average_grade_percent: float | None = Field(ge=0, default=None)
-    # 0次ハードフィルタ名（no_bicycle/motorway/trunk）の個別ON/OFF上書き。
-    # 省略時は全フィルタ有効（DEFAULT_HARD_FILTERS）。
-    hard_filters: HardFilterOverride | None = None
-    # 返す周回候補の上限件数（フロンティア方式の折返し点候補から距離フィルタ合格・
-    # overall_difficulty昇順の上位この件数を返す）。経由地の無い目的地ルート
-    # （destination指定・waypoints未指定）はvia-node方式の代替経路にも同じ値が効く。
-    # 経由地を1つ以上伴う経由地・目的地指定ルートでは無視される（常に1件、経由地が
-    # あるとレグごとに代替案が組合せで増えるため）。上限・既定値はOpenAPI生成物
+    # 道の区分ごとの避け方。
+    road_avoidance: RoadAvoidanceOverride
+    # 返す候補の上限件数。距離があれば距離フィルタ合格・overall_difficulty昇順の上位この件数、距離が無ければ
+    # 最後の区間の代わりの道をこの件数まで返す。下限・上限と画面の既定値はOpenAPI生成物
     # （route-generate-config.json）経由でフロントへ渡す唯一の情報源にする。
-    max_routes: int = Field(ge=1, le=MAX_ROUTES, default=DEFAULT_MAX_ROUTES)
+    max_routes: int = Field(ge=MIN_ROUTES, le=MAX_ROUTES)
     # 仮定巡航速度（km/h）。各区間の通過予定時刻（探索時の風の時刻選択）・到達予想時刻の
-    # 算出に使う。範囲・既定値はOpenAPI生成物（route-generate-config.json）経由でフロントへ
+    # 算出に使う。範囲と画面の既定値はOpenAPI生成物（route-generate-config.json）経由でフロントへ
     # 渡す唯一の情報源にする。
-    assumed_speed_kmh: float = Field(ge=MIN_ASSUMED_SPEED_KMH, le=MAX_ASSUMED_SPEED_KMH, default=ASSUMED_SPEED_KMH)
-    # ユーザーが地図上で指定した経由地（起点→経由地1→...→起点の順で通過する単一経路を
-    # 生成する）。指定時は周回候補の生成を行わない。bboxが際限なく広がらないよう、
-    # 起点からdistance_km以内という緩いガードのみ課す（詳細な妥当性はルーティング自体の
+    assumed_speed_kmh: AssumedSpeedKmh
+    # ユーザーが地図上で指定した経由地（起点→経由地1→...→終点の順に通る）。bboxが際限なく広がらないよう、
+    # 起点から`MAX_ROUTE_DISTANCE_KM`以内という緩いガードのみ課す（詳細な妥当性はルーティング自体の
     # 成否に委ねる）。
     waypoints: list[Coordinates] | None = Field(default=None, max_length=MAX_WAYPOINTS)
-    # 指定時は起点に戻らず目的地で終わる片道ルートにする（経由地のみの場合は起点で
-    # 終わる周回）。
+    # 指定時は目的地で終わる（無ければ起点で終わる周回。目的地が起点と同じ道路のNodeへ寄るときも周回）。
     destination: Coordinates | None = None
-    # 地図のレンズ（色分け）が表示を要求している軸id。探索の重みが0の軸でも、レンズに
-    # 選ばれていれば区間表示のためにレグごとの風で評価する（探索コストには影響しない）。
-    # 未知のidや軸以外（総合難易度・なし）は無視される。
-    lens_axis_id: str | None = None
-    # 出発時刻（省略時はサーバーの現在時刻）。風の時間変化評価（レグごとの通過予測時刻）の
-    # 起点になる。naive値はJSTとして扱う。
-    start_time: datetime | None = None
+    # 出発時刻。風の時間変化評価（レグごとの通過予測時刻）の起点になる。naive値はJSTとして扱い、JSTの時刻にして持つ。
+    start_time: datetime
     # 区間の乗り換え: クライアントが候補の`edge_ids`から区間を差し替えて組み立てた経路。
     # 指定時は探索を行わず、この経路だけを既存候補と同じ経路で評価して1件返す
-    # （`destination`が必須。`waypoints`・`max_routes`は使わない）。
+    # （経路は`destination`、無ければ出発地で終わる。`waypoints`・`max_routes`は使わない）。
     # 生成と同じコスト曲線（`prepare`が支配的）のため、別エンドポイントにせず同じ
     # ジョブ機構へ載せる。
     spliced_edge_ids: list[str] | None = Field(default=None, min_length=1, max_length=MAX_SPLICED_EDGES)
@@ -199,55 +143,41 @@ class RouteGenerateRequest(StrictModel):
             check_spliced_edge_count(len(value))
         return value
 
+    @field_validator("start_time")
+    @classmethod
+    def _start_time_in_jst(cls, value: datetime) -> datetime:
+        return as_jst(value)
+
     _target: RouteTarget = PrivateAttr()
 
     @model_validator(mode="after")
     def _resolve_target(self) -> "RouteGenerateRequest":
-        # 経由地・目的地を置いたときの距離は探索の範囲と「点が遠すぎないか」の検査に使う値で、最も遠い点より
-        # 必ず長くする。周回では距離が目標そのものなので送られた値が要る。
-        points = [*(self.waypoints or []), *([self.destination] if self.destination else [])]
-        if not points:
-            if self.spliced_edge_ids:
-                raise ValueError("spliced_edge_ids requires destination")
-            if self.distance_km is None:
-                raise ValueError("distance_km is required without waypoints/destination")
-            self._target = LoopTarget(distance_km=self.distance_km)
-            return self
-        origin = Coordinates(latitude=self.latitude, longitude=self.longitude)
-        farthest_km = max(haversine_distance_km(origin, point) for point in points)
-        check_point_distance(farthest_km)
-        distance_km = min(MAX_ROUTE_DISTANCE_KM, math.ceil(farthest_km) + 1)
+        # 仕上げの戦略（距離あり・距離なし）を選ぶのはここだけで、距離の有無だけで選ぶ。
+        fixed = FixedPoints(waypoints=self.waypoints or [], destination=self.destination)
+        points = fixed.placed
+        if points:
+            origin = Coordinates(latitude=self.latitude, longitude=self.longitude)
+            check_points_within_reach(max(haversine_distance_km(origin, point) for point in points))
         if self.spliced_edge_ids:
-            # 合成の対象は目的地ルートだけ（周回は起点へ戻る制約があり、途中で別候補へ
-            # 乗り換えると戻れる保証が無くなる）。
-            if self.destination is None:
-                raise ValueError("spliced_edge_ids requires destination")
             first, *rest = self.spliced_edge_ids
-            self._target = SplicedTarget(
-                distance_km=distance_km, destination=self.destination, edge_ids=(first, *rest)
-            )
+            self._target = SplicedTarget(destination=self.destination, edge_ids=(first, *rest))
+            return self
+        if self.distance_km is not None:
+            self._target = DistanceTarget(distance_km=self.distance_km, points=fixed)
+        elif points:
+            self._target = NoDistanceTarget(points=fixed)
         else:
-            self._target = WaypointsTarget(
-                distance_km=distance_km, waypoints=self.waypoints or [], destination=self.destination
-            )
+            raise nothing_to_generate_error()
         return self
 
     @property
     def target(self) -> RouteTarget:
-        """検証を通った要求が何を生成するか（周回・経由地と目的地・差し替えた経路）。"""
+        """検証を通った要求が何を生成するか（距離あり・距離なし・差し替えた経路）。"""
         return self._target
 
 
-def _resolve_start_time(value: datetime | None) -> datetime:
-    if value is None:
-        return datetime.now(JST)
-    if value.tzinfo is None:
-        return value.replace(tzinfo=JST)
-    return value.astimezone(JST)
-
-
 class GenerationConditions(StrictModel):
-    """この生成に実際に適用された条件のエコー（実験の記録・再現用、研究IF改善 §10-6）。
+    """この生成に実際に適用された条件のエコー（再現用）。
 
     route_preference は「リクエストで上書きされた値」または「既定値」のうち実際に
     使われた方。レスポンスJSONを保存すれば、同じ条件をroute_preferenceとしてそのまま
@@ -256,17 +186,18 @@ class GenerationConditions(StrictModel):
 
     latitude: float
     longitude: float
-    distance_km: float
+    # 全長の目標距離（無ければNone）。
+    distance_km: float | None
+    # 使った目標距離からの許容差（要求が省略したときは較正値）。
     distance_tolerance_km: float
     route_preference: RoutePreferenceWeights
     # 主観的割増と時間の換算レート（P）。
     penalty_strength: float
     # 0次ハードフィルタの勾配しきい値（%、Noneは除外なし）。
     max_average_grade_percent: float | None
-    # 0次ハードフィルタの個別ON/OFF上書き（実際に適用された値）。
-    hard_filters: HardFilterOverride
-    # 候補数の上限（実際に適用された値）。経由地を伴う生成では、指定によらず
-    # `route_generator.ROUTES_WITH_WAYPOINTS`。
+    # 道の区分ごとの避け方（実際に適用された値）。
+    road_avoidance: RoadAvoidanceOverride
+    # 候補数の上限。
     max_routes: int
     # 実際に適用された出発時刻（JST）。
     start_time: datetime
@@ -276,11 +207,10 @@ class GenerationConditions(StrictModel):
     waypoints: list[Coordinates] | None
     # 指定された目的地（未指定はNone、経由地のみなら起点に戻る周回）。
     destination: Coordinates | None
-    # 経由地の無い目的地ルートで、`destination`がメインの道路網から孤立した
-    # Node（歩道橋・私有地内通路等）にスナップされたため、実際にはアクセス可能な最寄りNode
-    # へ補正して探索した場合の座標。補正しなかった（`destination`をそのまま使えた）場合は
-    # None。
-    corrected_destination: Coordinates | None = None
+    # `destination`の一番近いNodeから出て戻れない（メインの道路網から孤立した歩道橋・私有地内通路、
+    # 一方通行の袋等）ため、出て戻れる最寄りNodeへ寄せ直して探索した場合の座標。寄せ直さなかった
+    # （`destination`をそのまま使えた）場合はNone。
+    corrected_destination: Coordinates | None
     # ISO8601（JST）。周回の風評価は生成時刻に依存するため、厳密な再現はできない点に注意
     generated_at: str
 
@@ -292,7 +222,7 @@ class RouteGenerateResponse(StrictModel):
     # route_generator.pyのlogger.warning行と同じ情報源）。ユーザーが原因を推測できず
     # SSHでサーバーログを見る以外に切り分け手段が無い状態を避けるための情報。
     # routesが1件以上あるときは常にNone。
-    no_candidates_reason: str | None = None
+    no_candidates_reason: str | None
 
 
 class RouteGenerateJobCreatedResponse(StrictModel):
@@ -371,14 +301,13 @@ async def get_generate_job(job_id: str) -> RouteGenerateJobStatusResponse:
     if record is None:
         raise HTTPException(
             status_code=404,
-            detail="ジョブが見つかりません[完了から時間が経過して破棄された、"
-            "またはサーバーが再起動された可能性があります]",
+            detail="ルート生成の結果が見つかりません[完了から時間が経って消えたか、"
+            "アプリが再起動した可能性があります]",
         )
-    if record.status == "done":
+    if isinstance(record, job_registry.JobDone):
         return RouteGenerateJobDone(result=record.result)
-    if record.status == "failed":
-        # `job_registry.set_failed`は理由を必ず受け取る。
-        return RouteGenerateJobFailed(error=cast(str, record.error))
+    if isinstance(record, job_registry.JobFailed):
+        return RouteGenerateJobFailed(error=record.error)
     return RouteGenerateJobPending(status=record.status)
 
 
@@ -393,72 +322,51 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
     try:
         # 重みの上書き（省略時はエンジンを組む側で既定値を読む）。
         # 適用された値はconditionsへエコーする。
-        preference_override = (
-            RoutePreference(weights=dict(request.route_preference.root)) if request.route_preference else None
-        )
-        hard_filters_override = request.hard_filters.to_frozenset() if request.hard_filters else None
+        preference_override = request.route_preference.to_preference() if request.route_preference else None
 
         job_registry.set_running(job_id)
-        async with open_setup(
-            preference_override=preference_override,
-            penalty_strength=request.penalty_strength,
-            max_average_grade_percent=request.max_average_grade_percent,
-            hard_filters_override=hard_filters_override,
-            assumed_speed_kmh=request.assumed_speed_kmh,
-            lens_axis_id=request.lens_axis_id,
-        ) as setup:
-            origin = Coordinates(latitude=request.latitude, longitude=request.longitude)
-            start_time = _resolve_start_time(request.start_time)
-            max_routes = applied_max_routes(request.max_routes, has_waypoints=bool(request.waypoints))
-            target = request.target
-            if isinstance(target, SplicedTarget):
-                candidates = await setup.generator.generate_spliced_route(
-                    origin=origin,
-                    destination=target.destination,
-                    distance_km=target.distance_km,
-                    edge_ids=target.edge_ids,
-                    start_time=start_time,
-                )
-            elif isinstance(target, WaypointsTarget):
-                candidates = await setup.generator.generate_via_waypoints(
-                    origin=origin,
-                    waypoints=target.waypoints,
-                    distance_km=target.distance_km,
-                    destination=target.destination,
-                    max_routes=max_routes,
-                    start_time=start_time,
-                )
-            else:
-                candidates = await setup.generator.generate_loops(
-                    origin=origin,
-                    distance_km=target.distance_km,
-                    distance_tolerance_km=request.distance_tolerance_km,
-                    max_routes=max_routes,
-                    start_time=start_time,
-                )
-            response = RouteGenerateResponse(
-                routes=candidates,
-                no_candidates_reason=setup.generator.last_no_candidates_reason if not candidates else None,
-                conditions=GenerationConditions(
-                    latitude=request.latitude,
-                    longitude=request.longitude,
-                    distance_km=target.distance_km,
-                    distance_tolerance_km=request.distance_tolerance_km,
-                    route_preference=RoutePreferenceWeights(setup.route_preference.weights),
-                    penalty_strength=setup.penalty_strength,
-                    max_average_grade_percent=setup.max_average_grade_percent,
-                    hard_filters=HardFilterOverride.from_frozenset(setup.hard_filters),
-                    max_routes=max_routes,
-                    start_time=start_time,
-                    assumed_speed_kmh=setup.assumed_speed_kmh,
-                    waypoints=request.waypoints,
-                    destination=request.destination,
-                    corrected_destination=setup.generator.last_destination_correction,
-                    generated_at=datetime.now(JST).isoformat(),
+        target = request.target
+        generated = await generate_route_candidates(
+            partial(
+                open_setup,
+                RequestedConditions(
+                    preference_override=preference_override,
+                    penalty_strength=request.penalty_strength,
+                    max_average_grade_percent=request.max_average_grade_percent,
+                    road_avoidance=dict(request.road_avoidance.root),
+                    assumed_speed_kmh=request.assumed_speed_kmh,
                 ),
-            )
+            ),
+            origin=Coordinates(latitude=request.latitude, longitude=request.longitude),
+            target=target,
+            start_time=request.start_time,
+            max_routes=request.max_routes,
+            distance_tolerance_km=request.distance_tolerance_km,
+        )
+        applied = generated.conditions
+        response = RouteGenerateResponse(
+            routes=generated.candidates,
+            no_candidates_reason=generated.no_candidates_reason,
+            conditions=GenerationConditions(
+                latitude=request.latitude,
+                longitude=request.longitude,
+                distance_km=target.distance_km if isinstance(target, DistanceTarget) else None,
+                distance_tolerance_km=generated.distance_tolerance_km,
+                route_preference=RoutePreferenceWeights(applied.route_preference.weights),
+                penalty_strength=applied.penalty_strength,
+                max_average_grade_percent=applied.max_average_grade_percent,
+                road_avoidance=RoadAvoidanceOverride(dict(applied.road_avoidance)),
+                max_routes=generated.max_routes,
+                start_time=request.start_time,
+                assumed_speed_kmh=applied.assumed_speed_kmh,
+                waypoints=request.waypoints,
+                destination=request.destination,
+                corrected_destination=generated.corrected_destination,
+                generated_at=datetime.now(JST).isoformat(),
+            ),
+        )
         job_registry.set_done(job_id, response)
-    except Exception:  # noqa: BLE001 バックグラウンドジョブの例外はここで必ず捕捉し記録する
+    except Exception:  # バックグラウンドジョブの例外はここで必ず捕捉し記録する
         # ここは例外の種類を選ばず捕まえるため、DB接続やPostGISの例外もそのまま入る。
         # それらの`str(exc)`には接続先やSQLが混じるので、詳細はログ（logger.exception、
         # トレースバック込み）にだけ残し、クライアントへは汎用メッセージを返す。

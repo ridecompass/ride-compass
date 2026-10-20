@@ -1,5 +1,5 @@
 """Pythonオブジェクトを、呼び出し元が設計したタプルの鍵でディスクへ永続化する汎用キャッシュ
-（保持層の選び方・無効化の方針は docs/conventions/caching.md）。
+（保持層の選び方は .claude/rules/caching.md、無効化の方針は .claude/rules/caching-retention.md）。
 
 保存の実体は`diskcache`（SQLite＋ファイル）で、32KBを超える値はライブラリがファイルへ、
 以下はSQLite内へ格納する。シリアライズはpickle（`diskcache`の既定）。
@@ -14,8 +14,8 @@ from typing import Any
 import diskcache
 
 from app.config import settings
+from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.debug_log import log_throttled_warning
-from app.infrastructure.tile_cache import DATA_DIR
 
 logger = logging.getLogger("ridecompass.tile_persistent_cache")
 
@@ -23,14 +23,14 @@ CACHE_DIR = DATA_DIR / "tile_persistent_cache"
 
 _CATEGORY = "cache:tile-persistent"
 
-opened_cache: diskcache.Cache | None = None
+_opened_cache: diskcache.Cache | None = None
 
 
 def cache() -> diskcache.Cache:
     """遅延生成した共有キャッシュ。同じディレクトリを複数プロセスから開いてよい。"""
-    global opened_cache
-    if opened_cache is None:
-        opened_cache = diskcache.Cache(
+    global _opened_cache
+    if _opened_cache is None:
+        _opened_cache = diskcache.Cache(
             str(CACHE_DIR),
             size_limit=settings.tile_persistent_cache_size_limit_mb * 1024 * 1024,
             eviction_policy="least-recently-used",
@@ -38,7 +38,15 @@ def cache() -> diskcache.Cache:
             # 以前張ったタグの索引が書き込みのたびに更新され続ける。
             tag_index=False,
         )
-    return opened_cache
+    return _opened_cache
+
+
+def close() -> None:
+    """開いたキャッシュを閉じる（プロセスの終わりに`process_resources.py`が呼ぶ）。次の読み書きで開き直す。"""
+    global _opened_cache
+    if _opened_cache is not None:
+        _opened_cache.close()
+        _opened_cache = None
 
 
 def get_by_key(key: tuple) -> Any | None:
@@ -48,7 +56,7 @@ def get_by_key(key: tuple) -> Any | None:
         started = time.monotonic()
         value = cache().get(key)
         read_ms = (time.monotonic() - started) * 1000
-    except Exception as exc:  # noqa: BLE001 破損エントリ・SQLite障害はいずれも未キャッシュ扱いにする
+    except Exception as exc:  # 破損エントリ・SQLite障害はいずれも未キャッシュ扱いにする
         log_throttled_warning(
             _CATEGORY, "tile persistent cache read failed key=%r, treating as cache miss error=%r", key, exc
         )
@@ -66,6 +74,6 @@ def set_by_key(key: tuple, value: Any, *, expire: float) -> None:
     """
     try:
         cache().set(key, value, expire=expire)
-    except Exception as exc:  # noqa: BLE001 OSError（ディスクフル）・pickle化不能のいずれも吸収する
+    except Exception as exc:  # OSError（ディスクフル）・pickle化不能のいずれも吸収する
         log_throttled_warning(_CATEGORY, "tile persistent cache write failed key=%r error=%r", key, exc)
 

@@ -5,8 +5,7 @@ import type { CaptureScript } from "../context";
 
 const script: CaptureScript = async ({ page, fixtures, open, shot }) => {
   await open();
-  await fixtures.generateRoutes(page);
-  const sheet = await fixtures.openMobileSheet(page, "ルート結果");
+  const sheet = await fixtures.generateRoutes(page);
   await shot("ルート結果");
   await shot("ルート結果のシート", sheet);
 };
