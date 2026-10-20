@@ -167,11 +167,18 @@ export function useMapView({
   const speedKmh = riding?.speedKmh ?? ride.speedKmh;
   const wayConditions = useMemo(() => ({ bearingDeg, at: ride.at, speedKmh }), [bearingDeg, ride.at, speedKmh]);
   const wayMaterials = useWayMaterials(fetchAxes, viewport, wayConditions);
-  const roadClasses = useRoadClasses(
-    mapCatalog.roadLayers.some((layer) => layerVisibility[layer.id] === true),
-    viewport,
-    catalog.roadClasses.generation,
+  const shownRoadLayers = mapCatalog.roadLayers.filter((layer) => layerVisibility[layer.id] === true);
+  const roadClasses = useRoadClasses(shownRoadLayers.length > 0, viewport, catalog.roadClasses.generation);
+  // 層の値はどの道の線の層も同じ取得から読むので、取得の状態は出ている層のどれにも出す。
+  const roadClassStatus = deriveFetchLayerStatus(
+    roadClasses.loading,
+    roadClasses.error ? "fetch-failed" : null,
+    true,
+    true,
   );
+  const roadLayerStatus = roadClassStatus
+    ? Object.fromEntries(shownRoadLayers.map((layer) => [layer.id, roadClassStatus]))
+    : {};
   // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。速度が数でない間は値の無いことにする。
   const formulaConditions = useMemo(
     () => ({ bearing_deg: bearingDeg, ...(Number.isFinite(speedKmh) ? { speed_kmh: speedKmh } : {}) }),
@@ -215,7 +222,7 @@ export function useMapView({
     roadLayers: mapCatalog.roadLayers,
     visibility: layerVisibility,
     hidden,
-    dataStatus: { ...mapLayerStatus, ...weather.dynamicWeatherDataStatus },
+    dataStatus: { ...mapLayerStatus, ...roadLayerStatus, ...weather.dynamicWeatherDataStatus },
     zoomTooWideLayerIds: viewport ? tileZoomTooWideLayerIds(mapCatalog.layers, viewport.zoom) : [],
     versionMissingLayerIds: mapCatalog.tileVersions ? [] : tileVersionGatedLayerIds(mapCatalog.layers),
     catalogSettled: catalog.loaded || catalog.failed,

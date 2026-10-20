@@ -82,7 +82,7 @@ async function fetchAxis(request: AxisRequest): Promise<WayMaterialsFetch> {
     request.tiles.map((tile) => fetchWayMaterials(request.axisId, tile.z, tile.x, tile.y, request.query)),
   );
   return {
-    materials: mergeTileValues(responses.map((response) => response.materials)),
+    materials: mergeTileValues(responses.map((response) => response.values)),
     loading: false,
     error: responses.some((response) => response.error),
     hasFetched: true,
