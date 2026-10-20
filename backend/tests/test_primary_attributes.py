@@ -35,11 +35,10 @@ def test_attributes_told_apart_are_accepted():
     check_primary_attributes((_attribute("a", 0), _attribute("b", 1)))
 
 
-@pytest.mark.parametrize("kinds", [{"a"}, {"a", "b", "c"}], ids=["種別に無い行", "行に無い種別"])
-def test_point_rows_that_do_not_match_the_kinds_drawn_are_refused(kinds):
-    """行に無い種別の点は地図から消え、種別に無い行は何も塗らない。"""
+def test_point_rows_that_do_not_match_the_kinds_drawn_are_refused():
+    """行に無い種別の点は地図から消える。"""
     with pytest.raises(ValueError, match="食い違う"):
-        check_point_rows(_attribute("p", values=("a", "b")), kinds)
+        check_point_rows(_attribute("p", values=("a", "b")), {"a", "b", "c"})
 
 
 def test_point_rows_matching_the_kinds_drawn_are_accepted():

@@ -39,9 +39,14 @@ def _point_layer(rows: tuple[str, ...], glyph: str | None = "g") -> PrimaryAttri
         _axis(_rows("a", "b", glyphs=glyphs)), point_thinning=PointThinningSpec(rows=rows, ratio_property="r"))
 
 
-@pytest.mark.parametrize("rows", [("a",), ("a", "a", "b"), ("a", "b", "c")])
-def test_a_thinning_order_that_does_not_rank_every_row_once_is_refused(rows):
+@pytest.mark.parametrize(
+    ("rows", "refused"), [(("a",), True), (("a", "a", "b"), True), (("a", "b", "c"), True), (("b", "a"), False)]
+)
+def test_a_thinning_order_that_does_not_rank_every_row_once_is_refused(rows, refused):
     """順に無い行の点は地図の式で最後に回り、同じ行を2度並べると先の順位だけが効く——どちらも宣言と違う順で残る。"""
+    if not refused:
+        assert _point_layer(rows).point_thinning == PointThinningSpec(rows=rows, ratio_property="r")
+        return
     with pytest.raises(ValidationError, match="1度ずつ全部"):
         _point_layer(rows)
 
@@ -50,10 +55,6 @@ def test_thinning_round_points_is_refused():
     """地図は重なった丸い点を省けないので、宣言しても間引かれない。"""
     with pytest.raises(ValidationError, match="絵記号で描く点にだけ"):
         _point_layer(("a", "b"), glyph=None)
-
-
-def test_a_thinning_order_ranking_every_row_once_is_accepted():
-    assert _point_layer(("b", "a")).point_thinning == PointThinningSpec(rows=("b", "a"), ratio_property="r")
 
 
 @pytest.mark.parametrize(

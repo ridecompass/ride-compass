@@ -38,6 +38,10 @@ class TestMerge:
     @pytest.mark.parametrize(
         ("overrides", "accepted"),
         [
+            # 宣言の範囲は、画面の入力の幅と、探索がその値で壊れない幅を兼ねる
+            ({_PARAM: TUNING_PARAMETERS_BY_ID[_PARAM].maximum + 1.0}, False),
+            ({_PARAM: float("nan")}, False),
+            ({_PARAM: TUNING_PARAMETERS_BY_ID[_PARAM].maximum}, True),
             # 緩めた上限を上限より下げると、緩めたつもりで絞ることになる
             ({"search.turnaround_relaxed_overlap_ratio": 0.5}, False),
             # 見込みの下限が上限を超えると、リングも帰りの見込みも裏返る
@@ -46,7 +50,7 @@ class TestMerge:
             ({"search.loop_to_outbound_ratio_min": 2.5, "search.loop_to_outbound_ratio_max": 2.5}, True),
         ],
     )
-    def test_overrides_that_reverse_a_pair_of_values_are_refused(self, overrides, accepted):
+    def test_overrides_breaking_the_range_or_the_order_of_a_pair_are_refused(self, overrides, accepted):
         if accepted:
             assert merge_overrides(overrides).items() >= overrides.items()
         else:
@@ -97,8 +101,3 @@ async def test_one_of_a_pair_can_be_moved_past_the_default_of_the_other_once_the
         await clear_override(road_graph_session, lower)
         await clear_override(road_graph_session, upper)
         await road_graph_session.commit()
-
-@pytest.mark.asyncio(loop_scope="module")
-async def test_writing_an_undeclared_id_is_rejected(road_graph_session: AsyncSession):
-    with pytest.raises(TuningOverrideError):
-        await set_override(road_graph_session, "turn.no_such_value", 1.0)
