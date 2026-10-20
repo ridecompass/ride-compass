@@ -60,8 +60,9 @@ def test_term_meaning(fact_key: str, term: ConditionTerm, expected: list[str | N
 
 def test_terms_and_conditions_combine() -> None:
     """条件の中の項は全部当たる道、区分は条件のどれかに当たる道。"""
-    both = {"cat_a": _term(["a", "b"]), "bool_a": _term(["true"], negated=True, matches_absent=True)}
-    assert _classes(c=[both, {"cat_a": _term([], matches_absent=True)}]) == ["c", "c", "c"]
+    both = {"cat_a": _term(["a"]), "bool_a": _term(["true"], negated=True, matches_absent=True)}
+    # 3行目は項の片方（真偽）にだけ当たる。項を OR で結ぶと区分に入る。
+    assert _classes(c=[both, {"cat_a": _term([], matches_absent=True)}]) == ["c", "c", None]
 
 
 def test_overlapping_classes_leave_road_unclassified() -> None:
