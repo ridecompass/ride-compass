@@ -35,8 +35,6 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 #: 既定値を使う書き手が読めない形でしかない列（`<表>.<列>` → その書き手）。載せた列に、省くと読める書き手が
 #: 現れるか、列が既定値を失うと落ちる。
 UNREADABLE_WRITERS = {
-    # 定義のPydanticの型を展開して作り手へ渡すので、どの列を省いたかが読めない。
-    "road_classifications.updated_at": "app/infrastructure/road_class_repository.py: replace_road_class_rows",
 }
 
 _INSERT = re.compile(r'INSERT\s+INTO\s+("?)([^\s"(]+)\1\s*\(([^)]*)\)', re.IGNORECASE)
