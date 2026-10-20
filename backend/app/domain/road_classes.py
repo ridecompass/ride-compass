@@ -9,7 +9,8 @@
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from typing import Annotated, Protocol, cast
+from dataclasses import dataclass
+from typing import Annotated, Any, Protocol, cast
 
 import numpy as np
 from pydantic import Field
@@ -224,6 +225,38 @@ def class_material_id(classification_key: str) -> str:
     return f"{CLASS_MATERIAL_PREFIX}{classification_key}"
 
 
+def former_class_names(key: str, road_class: RoadClass) -> tuple[str, ...]:
+    """区分の前の鍵のうち分け方`key`の中を指すものの、区分の名。ほかの分け方を指す前の鍵は、`key`の区分の列の値だったことが無い。"""
+    return tuple(name for former in road_class.former_keys for owner, _, name in [former.partition(".")] if owner == key)
+
+
+def class_value_names(key: str, classification: RoadClassification) -> set[str]:
+    """分け方`key`の区分の列を引く表が名指してよい値: 今の区分の鍵と、前の鍵の区分の名（`ClassColumn`が引く）。"""
+    return {*classification.classes, *(name for c in classification.classes.values() for name in former_class_names(key, c))}
+
+
+@dataclass(frozen=True, slots=True)
+class ClassColumn(CategoricalColumn):
+    """区分の列。値は今の区分の鍵で、列を引く表（軸の対応表・0次条件・転がり抵抗の表）は、今の鍵で引けない区分を前の鍵の
+    区分の名（`former`、番号ごと）でも引く。区分を改名・分けたあとも、表を直すまで前の値で読み続ける。前の名のうち先に書いた方が勝つ。"""
+
+    former: tuple[tuple[str, ...], ...]
+
+    def take(self, rows: np.ndarray) -> "ClassColumn":
+        return ClassColumn(self.codes[rows], self.vocab, self.former)
+
+    def lookup(self, table: Mapping[Any, float]) -> np.ndarray:
+        per_code = np.array([
+            np.nan if value is None else next((table[name] for name in (value, *former) if name in table), np.nan)
+            for value, former in zip(self.vocab, self.former, strict=True)
+        ])
+        return per_code[self.codes]
+
+    def equals(self, value: object) -> np.ndarray:
+        """区間ごとに、値が`value`か、前の名に`value`を持つか（1行だけの表を`lookup`で引いたときに当たる区間）。"""
+        return CategoricalColumn.equals(self, value) | np.isin(self.codes, [code for code, former in enumerate(self.former) if value in former])
+
+
 def class_columns(
     definitions: RoadClassDefinitions, columns: Mapping[str, MaterialColumn], n: int
 ) -> dict[str, CategoricalColumn]:
@@ -237,7 +270,8 @@ def class_columns(
             hits += matched
             codes[matched] = code
         codes[hits != 1] = 0
-        result[class_material_id(key)] = CategoricalColumn(codes, (None, *classification.classes))
+        former = tuple(former_class_names(key, c) for c in classification.classes.values())
+        result[class_material_id(key)] = ClassColumn(codes, (None, *classification.classes), ((), *former))
     return result
 
 

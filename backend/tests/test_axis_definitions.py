@@ -5,6 +5,7 @@
 - 密度の軸の見分け（`averages_density`）
 - 軸の外に照らす検査（`check_axis_definition`）・軸の集合の検査（`check_axis_set`）と書き込みのガード
   （`check_publish_immutability`・`check_material_exclusivity`・`check_internal_axis_not_published`）
+- 区分を入れ替えるときに軸を照らす判定（`unknown_class_values`）
 - 軸1本の評価（`evaluate_axis_array`）と生値（`axis_raw_value_array`・`raw_values`・
   `BreakpointLinearShape.score_at`）と、点数から値の大きさへの戻し（`BreakpointLinearShape.smallest_magnitude_at`）
 
@@ -37,6 +38,8 @@ from app.domain.axis_definitions import (
     MaterialTerm,
     PriorityCondition,
 )
+from app.domain.road_classes import class_material_id
+from tests.road_class_fixture import classification, road_classes
 
 NAN = float("nan")
 DYNAMIC = next(iter(axis_definitions.REQUEST_DYNAMIC_MATERIAL_IDS))
@@ -391,6 +394,31 @@ class TestInternalAxisPublish:
             axis("inner", is_published=True, icon_id="内"),
             {**self.EXISTING, "inner": axis("inner", is_published=True)},
         )
+
+
+#: 分け方`k`は、区分`paved`（前の鍵`k.sealed`と、ほかの分け方を指す`other.gravel`を持つ）と`unpaved`。
+RENAMED = road_classes({"k": classification({"paved": [], "unpaved": []}, former_keys={"paved": ["k.sealed", "other.gravel"]})})
+
+
+@pytest.mark.parametrize(
+    ("material_id", "mapping", "equals", "unknown"),
+    [
+        (class_material_id("k"), {"paved": 1.0, "sealed": 2.0}, "unpaved", []),
+        # 前の鍵がほかの分け方を指す名は、この分け方の列の値だったことが無い。
+        (class_material_id("k"), {"gravel": 1.0}, "unpaved", [(class_material_id("k"), "gravel")]),
+        (class_material_id("k"), {"paved": 1.0}, "dirt", [(class_material_id("k"), "dirt")]),
+        # 分け方の無い材料と、区分から作らない材料は見ない。
+        (class_material_id("gone"), {"x": 1.0}, "x", []),
+        ("cat_a", {"x": 1.0}, "x", []),
+    ],
+)
+def test_class_values_named_by_neither_current_nor_former_keys(material_id, mapping, equals, unknown):
+    """値ごとの点数のキーと0次条件の値のうち、今の区分の鍵にも前の鍵の区分の名にも無いものを挙げる（区分の入れ替えが断る文になる）。"""
+    axis = AxisDefinition(
+        axis_id="axis_a", shape=CategoricalShape(material=material_id, mapping=mapping), default_weight=1.0, label="軸A",
+        priority_overrides=[PriorityCondition(material=material_id, equals=equals, value=0.0)],
+    )
+    assert axis_definitions.unknown_class_values(axis, RENAMED) == unknown
 
 
 def scores(values) -> list:

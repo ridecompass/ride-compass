@@ -102,3 +102,26 @@ async def test_replacement_naming_an_undeclared_tuning_value_is_refused(client):
     assert response.status_code == 409
     assert "speed.crr_pavd" in response.json()["detail"]
     assert (await client.get(PATH, headers=AUTH_HEADERS)).json() == EMPTY_ROAD_CLASSES.model_dump(mode="json")
+
+
+def _renamed_paved(former_keys: list[str]) -> dict:
+    """`DEFINITIONS`の区分`paved`を`sealed`へ改名した全体（前の鍵は`former_keys`）。区分を指す欄も新しい鍵へ移す。"""
+    renamed = {**DEFINITIONS, "rolling_resistance_classes": {"surface": {"sealed": BASE_CRR_ID}}}
+    classes = renamed["classifications"]["surface"]["classes"]
+    sealed = {**classes["paved"], "former_keys": former_keys}
+    renamed["classifications"] = {"surface": {**renamed["classifications"]["surface"], "classes": {"sealed": sealed, "unpaved": classes["unpaved"]}}}
+    return renamed
+
+
+async def test_renaming_a_class_an_axis_scores_needs_its_former_key(client, axis_reading_surface):
+    """軸が点数を付ける区分の改名は、前の鍵を残せば確定し（軸は前の名で引き続ける）、前の鍵が無ければ、どの道にも当たらない
+    値を軸が名指すことになるので、軸と値を名指して断り、何も変えない。"""
+    assert (await client.put(PATH, json=DEFINITIONS, headers=AUTH_HEADERS)).status_code == 200
+    refused = await client.put(PATH, json=_renamed_paved([]), headers=AUTH_HEADERS)
+    assert refused.status_code == 409
+    assert axis_reading_surface.label in refused.json()["detail"] and "「paved」" in refused.json()["detail"]
+    assert (await client.get(PATH, headers=AUTH_HEADERS)).json() == DEFINITIONS
+
+    renamed = _renamed_paved(["surface.paved"])
+    assert (await client.put(PATH, json=renamed, headers=AUTH_HEADERS)).status_code == 200
+    assert (await client.get(PATH, headers=AUTH_HEADERS)).json() == renamed
