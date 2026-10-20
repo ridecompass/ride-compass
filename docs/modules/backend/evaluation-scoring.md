@@ -229,7 +229,7 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
   軸id→配列の辞書へ展開→`evaluate_dynamic_axis_arrays`で動的軸を上書き→
   `compose_costs_from_axis_matrix`で重み合成→`compute_search_exclusion`で0次
   フィルタと避け方を適用、の順にbbox全体ぶん1回だけ実行してコスト配列を得る。並行Edge
-  （同一Node間の複数Edge）は`domain/routing.py: build_lazy_road_graph`が元の行（切り出した区間の順）の
+  （同一Node間の複数Edge）は`domain/search_graph.py: build_lazy_road_graph`が元の行（切り出した区間の順）の
   最も小さい1本を採る決定的な規則で解消する（コストはリクエストごとに変わるため見ない）。
   時刻ビンごとに合成し直すときの、風に依らない計算の使い回しは[routing-engine.md](routing-engine.md)
   「レグ別コスト配列」節。

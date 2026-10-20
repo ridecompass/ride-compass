@@ -212,7 +212,7 @@ class EvaluatedRoute(StrictModel):
     # `edge_ids`が空の候補では空のまま。
     node_ids: list[str]
     # 経路が分かれ道で曲がる所（左折・右折・Uターン）を経路の順に。分かれ道の無い点の曲がりと、浅い分岐で
-    # いちばんまっすぐに近い道へ進む所は入れない（`domain/routing.py: turns_along`）。`edge_ids`が空の候補では空のまま。
+    # いちばんまっすぐに近い道へ進む所は入れない（`domain/turn_structure.py: turns_along`）。`edge_ids`が空の候補では空のまま。
     turns: list[RouteTurn]
     # 経路の近くの点を通る順に（`domain/route_points.py: points_along_route`）。`edge_ids`が空の候補では空のまま。
     points: list[RoutePoint]

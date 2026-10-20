@@ -18,11 +18,11 @@ from app.domain.routing import (
     add_terminal_candidate,
     build_turn_expanded_tree,
     combine_forward_backward_at_nodes,
-    select_diverse_by_overlap,
     turn_expanded_path_from_state,
     turn_expanded_path_from_state_to_source,
     turn_expanded_shortest_path,
 )
+from app.domain.route_diversity import select_diverse_by_overlap
 from app.domain.wind import (
     cruise_hours,
     estimate_passage_hours,
