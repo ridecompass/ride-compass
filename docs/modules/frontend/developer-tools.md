@@ -34,7 +34,7 @@
 | `scripts/capture.mjs` | 画面を、選んだ版と応答で開き、脚本で進めた状態を撮る（[デザイン基盤](frontend-design-system.md)「7. 実機確認の方法」） |
 | `scripts/dev-prod-data.mjs` | 開発機の画面を本番のbackendのデータで開く開発サーバーを起こす（[setup.md](../../architecture/setup.md)「開発機の画面を本番のデータで開く」）。取り次ぎの向け先とAPIの宛先は`next.config.ts`が切り替えから決める |
 | `scripts/audit-test-rewrite.mjs` | 実装から起こし直したテストを外から測る（`.claude/rules/testing-rewrite.md`の手順） |
-| `scripts/structure-population.mjs` | 画面がbackendの宣言を持ち直している形の候補を構文木から列挙する（周期レビューの「構造の問い」のfrontendの母集団）。候補を出すだけで判じない |
+| `scripts/structure-population.mjs`・`scripts/structure-population/` | 画面がbackendの宣言を持ち直している形の候補を構文木から列挙する（周期レビューの「構造の問い」のfrontendの母集団）。候補を出すだけで判じない。語彙（生成物の値・現象の語・軸名）の読み取りと、字句の置かれた文脈の判定は`scripts/structure-population/`の下に分けて持つ |
 | `scripts/mutation/` | 変異テスト（Stryker）の設定と、書き換えるファイルを本に分ける・結果を比べる・報告する台本 |
 
 ## `/admin`とpage.tsx（`/`）の境界
