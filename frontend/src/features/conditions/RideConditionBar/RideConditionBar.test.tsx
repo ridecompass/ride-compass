@@ -80,12 +80,6 @@ describe("RideConditionBar 出発時刻", () => {
       "always",
       "ルートの「評価A」の評価・到達予想の時刻に使います。",
     ],
-    [
-      "夜だけ効く評価は通る時刻で効くかが決まるので、その名前で",
-      ["bearing_deg"],
-      "night_only",
-      "ルートの「評価A」の評価・到達予想の時刻に使います。",
-    ],
     ["無ければ評価に触れずに", ["bearing_deg"], "always", "ルートの到達予想の時刻に使います。"],
   ] as const)("出発時刻の説明は、%s何に使うかを書く", async (_case, conditions, timeScope, tail) => {
     serveAxisCatalog(

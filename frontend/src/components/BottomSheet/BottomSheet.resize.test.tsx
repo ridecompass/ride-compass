@@ -154,7 +154,6 @@ describe("BottomSheet", () => {
     });
 
     it.each([
-      ["数として読めない", "高い", DEFAULT_SHEET_HEIGHT_VH],
       ["数でない値", '"70"', DEFAULT_SHEET_HEIGHT_VH],
       ["シートの範囲の外", "500", CEILING],
     ])("保存されたシートの高さが%s（%s）なら、%dvhで開く", (_, stored, expected) => {

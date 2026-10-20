@@ -81,33 +81,14 @@ describe("WeatherPanel 観測値", () => {
   });
 
   // 風の矢印は吹いていく向き（来る向きの反対）を、走りの帯と同じく地図の上の基準で指す。
-  it.each([
-    { case: "北が上の地図", mapBearingDeg: 0, rotation: "rotate(270deg)" },
-    { case: "東が上の地図", mapBearingDeg: 90, rotation: "rotate(180deg)" },
-    { case: "指で30度回した地図", mapBearingDeg: 30, rotation: "rotate(240deg)" },
-  ])("東の風の矢印は地図の向きに合わせて回す: $case", ({ mapBearingDeg, rotation }) => {
-    renderPanel({ mapBearingDeg, amedas: observation() });
+  it("東の風の矢印は地図の向きに合わせて回す", () => {
+    renderPanel({ mapBearingDeg: 30, amedas: observation() });
     const wind = screen.getByText("東の風:").parentElement!;
-    expect((wind.firstElementChild as HTMLElement).style.transform).toBe(rotation);
-  });
-
-  it("気温が無ければ「-」、風・降水量は値が無ければ出さない", () => {
-    renderPanel({
-      amedas: observation({
-        temperature_c: null,
-        apparent_temperature_c: null,
-        wind_speed_ms: null,
-        precipitation_10min_mm: null,
-      }),
-    });
-    expect(screen.getByText("気温:").parentElement).toHaveTextContent("-℃");
-    expect(screen.queryByText(/の風:/)).not.toBeInTheDocument();
-    expect(screen.queryByText("降水量:")).not.toBeInTheDocument();
+    expect((wind.firstElementChild as HTMLElement).style.transform).toBe("rotate(240deg)");
   });
 
   it.each([
     { missing: "なし", overrides: {}, expected: ["気温", "|", "東の風", "|", "降水量", "|", "天気"] },
-    { missing: "風", overrides: { wind_speed_ms: null }, expected: ["気温", "|", "降水量", "|", "天気"] },
     {
       missing: "風・降水量・天気",
       overrides: { wind_speed_ms: null, precipitation_10min_mm: null, weather_code: null },

@@ -3,11 +3,11 @@
  *
  * 見ること: 走行モードの間の配置（上の帯を走りの数字に替え、パネルと「現在地に移動」を隠し、選んだ候補のプロファイルを
  * 見るだけで地図の下に出すこと・「表示」と「評価で塗る」は走っていないときと同じに出し、走行中に効かない操作は出さないこと・
- * 方位磁針で北が上と進む向きが上を切り替えること・スマホは下部タブも隠すこと）と、届いた現在地がプロファイルの印と
+ * 方位磁針で北が上と進む向きが上を切り替えること）と、届いた現在地がプロファイルの印と
  * 地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、到着予想が位置を受けた時刻と選んだ候補の計画から出ること、
  * 次に曲がる所がカードと地図の札に出ること、ルートを外れた・戻ったことが走りの帯に出ること、読み込み直しても走行モードが続くこと。
  *
- * ここで見ないもの: 休む・帯の「ルート」で出したパネル・地図を押すこと・「このルートで走る」は`app/page.rideControl.test.tsx`が見る。
+ * ここで見ないもの: 休む・帯の「ルート」で出したパネル・地図を押すこと・「このルートで走る」・スマホで走行中に下部タブを隠すこと（帯の「ルート」のシートを閉じた後に見る）は`app/page.rideControl.test.tsx`が見る。
  * 残りの距離・次に曲がる所の選び方・走りの帯の書式は`features/ride/`の各テストが見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
@@ -33,7 +33,6 @@ import {
   selectedPointMarks,
   selectedSectionOnMap,
   serveHome,
-  useMobileLayout,
 } from "@/testing/homePage";
 import { mapOnScreen } from "@/testing/maplibre";
 
@@ -198,13 +197,5 @@ describe("走行モード", () => {
     geolocation.deliver({ ...RIDDEN_MIDDLE, timestamp: fixedAt });
     const arrival = new Date(fixedAt + 2 * MINUTE_MS);
     expect(rideBar).toHaveTextContent(`到着予想: ${formatJstHourMinute(arrival)}`);
-  });
-
-  it("スマホでは、走行モードの間は下部タブも隠す", async () => {
-    useMobileLayout();
-    const { user } = renderHome();
-    expect(screen.getByRole("navigation", { name: "パネル切り替え" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "走行モード" }));
-    expect(screen.queryByRole("navigation", { name: "パネル切り替え" })).toBeNull();
   });
 });

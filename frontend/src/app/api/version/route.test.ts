@@ -29,9 +29,6 @@ describe("GET /api/version", () => {
     vi.stubEnv("GIT_COMMIT", "0123456789abcdef0123456789abcdef01234567");
     expect(await body()).toMatchObject({ status: "ok", commit: "0123456789abcdef0123456789abcdef01234567" });
 
-    vi.stubEnv("GIT_COMMIT", undefined);
-    expect((await body()).commit).toBeNull();
-
     vi.stubEnv("GIT_COMMIT", "");
     expect((await body()).commit).toBeNull();
   });

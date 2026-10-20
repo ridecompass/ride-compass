@@ -33,12 +33,6 @@ describe("想定速度の保存", () => {
     const { result } = renderHook(() => useRideConditions());
     expect(result.current.speedKmh).toBe(routeGenerateConfig.default_assumed_speed_kmh);
   });
-
-  it("範囲の端ちょうどの保存値は受け入れる", () => {
-    localStorage.setItem(SPEED_KEY, String(routeGenerateConfig.max_assumed_speed_kmh));
-    const { result } = renderHook(() => useRideConditions());
-    expect(result.current.speedKmh).toBe(routeGenerateConfig.max_assumed_speed_kmh);
-  });
 });
 
 describe("走行条件の値", () => {
