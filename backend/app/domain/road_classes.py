@@ -214,9 +214,9 @@ def layer_columns(
     区分の外で層の`no_data_fact_key`の事実も無い道は`NO_DATA_VALUE`。`columns`は事実と区分の列（`class_columns`）を持つ。"""
     result: dict[str, CategoricalColumn] = {}
     for key, layer in definitions.map_layers.items():
-        column = cast(CategoricalColumn, columns[class_material_id(key)])
         if not definitions.classifications[key].is_published:
             continue
+        column = cast(CategoricalColumn, columns[class_material_id(key)])
         if layer.no_data_fact_key is not None:
             missing = (column.codes == 0) & ~_present(columns.get(layer.no_data_fact_key), n)
             column = CategoricalColumn(

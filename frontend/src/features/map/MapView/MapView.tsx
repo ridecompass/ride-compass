@@ -50,7 +50,7 @@ import {
 import { buildMapScene, type SceneInputs } from "@/features/map/scene/buildScene";
 import { POINT_HIT_TARGET, POINT_TILE_SOURCES, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
-import { ROAD_LINE_HIT_TARGET, ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
+import { hiddenRoadLineAt, ROAD_LINE_HIT_TARGET, ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 import type { MapLook } from "@/features/map/view/mapLook";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
@@ -334,6 +334,7 @@ export default function MapView({
   const latestProps = {
     scene,
     look,
+    roadLayers: mapCatalog.roadLayers,
     layerVisibility,
     interactiveLayerIds,
     tapMode,
@@ -428,8 +429,14 @@ export default function MapView({
      * 重なった所は帯を選ぶ）。開けない対象の地物は、上に重なっていても飛ばす。 */
     function openableFeatureAt(point: MapMouseEvent["point"]) {
       const openable = OPENABLE_TARGETS[latest.current.tapMode];
+      const { roadLayers, look } = latest.current;
       for (const feature of interactiveFeaturesAt(point)) {
         const target = sceneHitTargetsOfLayer(latest.current.scene, feature.layer.id).find((t) => openable.has(t));
+        if (
+          target === ROAD_LINE_HIT_TARGET &&
+          hiddenRoadLineAt(feature.layer.id, feature.state, roadLayers, look.hiddenLegendKeys)
+        )
+          continue;
         if (target !== undefined) return { feature, target };
       }
       return null;

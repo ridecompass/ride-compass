@@ -16,7 +16,7 @@ import palette from "@/types/generated/palette.json";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 import type { FilterSpecification } from "maplibre-gl";
 
-import { sceneSourceId } from "@/features/map/scene/sceneBuilders";
+import { sceneLayerId, sceneSourceId } from "@/features/map/scene/sceneBuilders";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
 import type { RoadMapLayerView } from "@/types/route";
@@ -65,6 +65,20 @@ const stateKey = (layerId: string): string => `road:${layerId}`;
 /** 道の層の値。値の届いていない道と区分の外の道は空文字。 */
 function valueOf(layer: RoadMapLayerView): unknown {
   return ["to-string", ["feature-state", stateKey(layer.id)]];
+}
+
+/** 押した道の線（地図のレイヤーid）が、凡例で隠した行の道か。透明に描いた道も当たり判定には残るので、押す側がこれで飛ばす。 */
+export function hiddenRoadLineAt(
+  layerId: string,
+  state: Readonly<Record<string, unknown>>,
+  layers: readonly RoadMapLayerView[],
+  hiddenKeys: Readonly<Record<string, readonly string[]>>,
+): boolean {
+  const layer = layers.find((candidate) => sceneLayerId(ROAD_LINE_SOURCE_ID, candidate.id) === layerId);
+  if (layer === undefined) return false;
+  const value = state[stateKey(layer.id)];
+  const row = typeof value !== "string" ? ROAD_OTHER_KEY : value === NO_DATA_VALUE ? LEGEND_NO_DATA_KEY : value;
+  return (hiddenKeys[layer.id] ?? []).includes(row);
 }
 
 /** 区分ごとの色。凡例で隠した行は透明。データなしの道は破線の線が描くので、実線は透明にする。 */

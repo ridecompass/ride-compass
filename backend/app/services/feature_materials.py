@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments
-from app.domain.road_classes import class_columns, current_road_classes, layer_columns
+from app.domain.road_classes import RoadClassDefinitions, class_columns, current_road_classes, layer_columns
 from app.domain.region import tile_bounds_lonlat
 from app.infrastructure.cache_identity import cache_identity, is_known_tile_version
 from app.infrastructure.debug_log import log_external_call
@@ -27,26 +27,29 @@ class FeatureMaterialService:
     def __init__(self, repository: RoadGraphRepository):
         self._repository = repository
 
-    async def materials(self, z: int, x: int, y: int) -> FeatureMaterials | None:
+    async def materials(
+        self, z: int, x: int, y: int, definitions: RoadClassDefinitions | None = None
+    ) -> FeatureMaterials | None:
         """タイル内のフィーチャーごとの材料。取込範囲外・DB障害・フィーチャーの無いタイルはNone。
 
         区分の列（`domain/road_classes.py: class_columns`）は、持っておいた事実へ読むたびに当てる。持つものに区分を含めないので、
-        区分を書き換えても持ったものを作り直さずに済む。"""
+        区分を書き換えても持ったものを作り直さずに済む。区分の全体は`definitions`（省けば今の全体）。"""
         materials = await self._cached(
             "region:feature-materials", z, x, y, FeatureMaterials, FEATURE_MATERIALS_VALUE_SHAPE,
             self._repository.get_feature_materials_in_tile,
         )
         if materials is None:
             return None
-        classes = class_columns(current_road_classes(), materials.columns, len(materials))
+        classes = class_columns(definitions or current_road_classes(), materials.columns, len(materials))
         return FeatureMaterials(feature_keys=materials.feature_keys, columns={**materials.columns, **classes})
 
     async def road_layer_values(self, z: int, x: int, y: int) -> dict[str, dict[str, str]]:
         """タイル内のフィーチャーごとの、地図の線の層の値（`domain/road_classes.py: layer_columns`）。値の無い層は載せない。"""
-        materials = await self.materials(z, x, y)
+        definitions = current_road_classes()
+        materials = await self.materials(z, x, y, definitions)
         if materials is None:
             return {}
-        layers = layer_columns(current_road_classes(), materials.columns, len(materials))
+        layers = layer_columns(definitions, materials.columns, len(materials))
         out: dict[str, dict[str, str]] = {}
         for row, key in enumerate(materials.feature_keys):
             if values := {layer: value for layer, column in layers.items() if (value := column.value_at(row)) is not None}:
