@@ -51,10 +51,8 @@ def _parse_slots(time_defines: object) -> tuple[TimeSlot, ...] | None:
     """系列のコマ。1つでも読めなければ、どの段がどのコマかを決められないのでNone。"""
     if not isinstance(time_defines, list) or not time_defines:
         return None
-    slots = [_parse_slot(entry) for entry in time_defines]
-    if any(slot is None for slot in slots):
-        return None
-    return tuple(slots)
+    slots = tuple(slot for slot in map(_parse_slot, time_defines) if slot is not None)
+    return slots if len(slots) == len(time_defines) else None
 
 
 def _parse_local(kind_type: str, local: object, slots: tuple[TimeSlot, ...]) -> TimelineLevels | None:

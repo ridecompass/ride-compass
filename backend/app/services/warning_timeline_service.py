@@ -97,9 +97,9 @@ class WarningTimelineService:
         fetched = await asyncio.gather(
             *(fetch_warning_timeline(self._http_client, office, self._timeline_cache) for office in office_codes)
         )
-        if any(timeline is None for timeline in fetched):
+        timelines = {office: timeline for office, timeline in zip(office_codes, fetched, strict=True) if timeline is not None}
+        if len(timelines) != len(office_codes):
             return None
-        timelines: dict[str, WarningTimeline] = dict(zip(office_codes, fetched, strict=True))
 
         areas = []
         for route_pass in passes:
