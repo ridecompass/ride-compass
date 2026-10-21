@@ -258,7 +258,7 @@ Pythonの値、ルート選びと地図の配信は材料の型ごとの配列�
 
 - `AXIS_DEFINITIONS`はPython literalの初期値を持たない（空dictで開始）。DBが唯一の正本。
 - 差し替えはイベントループで動くので、ループの上で読む側は差し替えの途中を見ない。`asyncio.to_thread`の先で
-  軸を読む処理（静的スコア行列を組む`build_static_edge_score_matrix`）は、入口で`copy_axis_definitions`の写しを
+  軸を読む処理（静的スコア行列を組む`build_static_edge_score_matrix`・レグのコストを合成する`LegCostComposer`）は、入口で`copy_axis_definitions`の写しを
   1回取り、終わりまでその写しだけを読む——直に読むと、読む間の保存で鍵が欠ける・回している辞書の大きさが変わる・
   読むたびに軸の集合が食い違う。写しと差し替えは同じロックで排他にし、写しが差し替えの途中（空の辞書）を見ない。
 - `refresh_axis_definitions`はDB読み込み失敗・0行・値の不変条件（下の「軸の外に照らす値の不変条件」）に

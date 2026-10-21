@@ -19,6 +19,7 @@
 自転車インフラ上を通る折返し点ほど上位に選ばれる）。探索・経路計算・評価値の取得は`RoadGraphEngine`へ委譲する。
 """
 
+import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -545,7 +546,7 @@ class RouteGenerator:
             return []
 
         try:
-            traced = self._engine.build_traced_from_edge_ids(context, edge_ids, destination)
+            traced = await asyncio.to_thread(self._engine.build_traced_from_edge_ids, context, edge_ids, destination)
         except RoutingError as exc:
             # 経路の形が受け取れない（未知のEdge・つながっていない・起点や終点が違う）。
             # **利用者へ届く理由を捨てない**——ここで素通しすると、呼び出し元の汎用catchが

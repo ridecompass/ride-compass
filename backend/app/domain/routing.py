@@ -10,6 +10,9 @@ Road Graph（domain/graph.py）とEdge Cost（domain/evaluation.py）を使っ�
 持ち回る**ためで、コストが辺の静的な属性である前提のライブラリでは時刻で変わるコストを
 表せない。
 
+Pythonから呼ぶ探索のJITはGILを放してコンパイルする（`nogil=True`）。`asyncio.to_thread`で流す間も
+イベントループとほかの生成の探索が動くので、探索は渡された配列を読むだけにし、書く配列は関数の中で作る。
+
 Route Engineは、Costの中身（勾配がきつい、路面が悪い等）を一切知らない。ここで扱うのは
 Road Graphのトポロジーと、既に計算済みのEdge Costのみ。
 """
@@ -64,7 +67,7 @@ def largest_strongly_connected_nodes(csr: CsrGraphStructure, passable: np.ndarra
     return component == int(np.argmax(np.bincount(component)))
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def _strong_components(indptr: np.ndarray, indices: np.ndarray, passable: np.ndarray) -> np.ndarray:
     """Tarjanの強連結成分分解（再帰を明示のスタックへ直したもの）。戻り値はノード番号順の成分の番号。"""
     node_count = len(indptr) - 1
@@ -248,7 +251,7 @@ def time_bin_of(travelled: float, bin_seconds: float, bin_count: int) -> int:
 _time_bin_of_kernel = njit(cache=True, inline="always")(time_bin_of)
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def _turn_expanded_dijkstra(
     indptr: np.ndarray,
     target_state: np.ndarray,
@@ -604,7 +607,7 @@ def time_bin_arrays(
     return cost_bins, seconds_bins
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def _turn_expanded_astar(
     indptr: np.ndarray,
     target_state: np.ndarray,

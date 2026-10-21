@@ -19,8 +19,8 @@ import numpy as np
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import (
-    AXIS_DEFINITIONS,
     REQUEST_DYNAMIC_MATERIAL_IDS,
+    copy_axis_definitions,
     dynamic_axis_topological_order,
     time_scoped_weights,
 )
@@ -217,12 +217,14 @@ class LegCostComposer:
             zip(score_matrix.categorical_material_ids, score_matrix.categorical_material_columns, strict=True)
         )
         self._static_axis_scores = score_matrix.axis_arrays()
+        # 合成は`asyncio.to_thread`の先でも走るので、軸の集合は作った時点の写しだけを読む。
+        self._axis_definitions = copy_axis_definitions()
         # 時刻で変わる公開軸（風に依存する軸と、時間帯を持つ軸）と、それ以外。ビンごとの合成では後者の
         # 重み付き和を使い回す——合成の時間は軸数にほぼ比例するため、毎回全軸を足し直すと本数ぶん効く。
-        dynamic_axes = set(dynamic_axis_topological_order(AXIS_DEFINITIONS))
+        dynamic_axes = set(dynamic_axis_topological_order(self._axis_definitions))
         time_scoped_axes = {
             axis_id for axis_id in score_matrix.axis_ids
-            if (definition := AXIS_DEFINITIONS.get(axis_id)) is not None and definition.time_scope != "always"
+            if (definition := self._axis_definitions.get(axis_id)) is not None and definition.time_scope != "always"
         }
         self._time_varying_axis_ids = [
             a for a in score_matrix.axis_ids if a in dynamic_axes or a in time_scoped_axes
@@ -491,7 +493,7 @@ class LegCostComposer:
             self._static_axis_scores if rows is None
             else {axis_id: values[rows] for axis_id, values in self._static_axis_scores.items()}
         )
-        resolved = evaluate_dynamic_axis_arrays(static_scores, dynamic_context)
+        resolved = evaluate_dynamic_axis_arrays(static_scores, dynamic_context, self._axis_definitions)
         wind = dynamic_context.wind_components_ms
         if wind is None:
             headwind = crosswind = np.zeros(len(bearing))

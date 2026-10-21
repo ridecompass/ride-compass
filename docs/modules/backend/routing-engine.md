@@ -847,6 +847,11 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
   Pythonから呼んだものだけで、探索の中へ展開する部品をPythonから直接呼ぶと、その部品だけ各コンテナの最初の
   生成でコンパイルを払う。探索と表示で共有する`time_bin_of`は素の関数とし、探索の中ではそれをJITした
   `_time_bin_of_kernel`を展開する。
+- **探索のJITはGILを放す**: Pythonから呼ぶ探索のJITは`nogil=True`でコンパイルする。エンジンは生成の重い段（コストの合成・
+  探索用グラフの派生物・木・2点間探索）をどれも`asyncio.to_thread`の先で流すので、その間もイベントループ（地図のタイル・
+  ジョブのポーリング）と、同時に走るほかの生成の探索が止まらない。スレッドは`asyncio.to_thread`の既定のプールを
+  タイルのディスクI/Oと共有する——1回の生成は段を順に待つので、同時に使うスレッドは同時の生成の上限
+  （`config.py: Settings.generate_max_concurrent`）の数まで。
   キャッシュが効く条件（CPUの型・元のファイルの更新時刻）は[tech-stack.md](../../architecture/tech-stack.md)
   「デプロイの反映確認」節。
 - **`empty_heap`/`heap_push`/`heap_pop`/`_grown`・`_time_bin_of_kernel`**: 一対全木と2点間探索が共有する
