@@ -12,7 +12,7 @@ import asyncpg
 import pytest
 import pytest_asyncio
 
-from app.batch import derive_counts, derive_nodes, derive_topology
+from app.batch import derive_counts, derive_topology
 from app.domain.accident import (
     ACCIDENT_FATAL_WEIGHT,
     ACCIDENT_MATCH_MAX_DISTANCE_M,
@@ -20,10 +20,19 @@ from app.domain.accident import (
 )
 from app.domain.geo import KM_PER_DEGREE_LATITUDE, km_per_degree_longitude
 from app.domain.traffic import POI_COUNT_KINDS, poi_count_column
-from app.domain.tuning import TUNING_PARAMETERS_BY_ID
 from app.infrastructure.source_models import ACCIDENTS_SOURCE_SQL, PARTY_TYPE_CODES
 from tests.conftest import empty_ingested_tables
-from tests.source_ingest import WAY_ORIGIN, WAY_STEP, ingest_records, point_record, way_record, zigzag_point
+from tests.source_ingest import (
+    WAY_ORIGIN,
+    WAY_STEP,
+    accident_record,
+    derive_nodes_at_default_radius,
+    ingest_records,
+    point_record,
+    way_record,
+    zigzag_point,
+    zigzag_way_record,
+)
 
 # moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
@@ -48,10 +57,6 @@ OTHER_PARTY = "59"
 CROSSING = {"highway": "crossing"}
 
 
-def _road(way_id: int, node_ids: list[int]):
-    return way_record(way_id, [zigzag_point(n) for n in node_ids], node_ids)
-
-
 def _north_of_way(meters: float) -> tuple[float, float]:
     """道300の中ほどから北へ`meters`離れた点。"""
     lon, lat = BESIDE_WAY
@@ -59,11 +64,9 @@ def _north_of_way(meters: float) -> tuple[float, float]:
 
 
 def _accident(key: str, position: tuple[float, float], *, bicycle: bool = True, fatal: bool = False):
-    """本票の列名で当事者種別と死者数を持つ事故の1件。"""
-    return point_record(key, *position, {
-        "当事者種別（当事者A）": BICYCLE_PARTY if bicycle else OTHER_PARTY,
-        "当事者種別（当事者B）": OTHER_PARTY,
-        "死者数": "001" if fatal else "000"})
+    """当事者Aが自転車（`bicycle`が偽なら自転車ではない軽車両）で、当事者Bが自転車ではない事故の1件。"""
+    return accident_record(key, *position, party_a=BICYCLE_PARTY if bicycle else OTHER_PARTY, party_b=OTHER_PARTY,
+                           fatal=fatal)
 
 
 async def _ingest_accidents(conn: asyncpg.Connection, *accidents) -> None:
@@ -84,7 +87,7 @@ async def _derive_with_nodes(conn: asyncpg.Connection,
     """{ノードid: (位置, タグ)} のノードを取り込み、ノードの段から流し直す。"""
     await ingest_records("osm_node", [
         point_record(node_id, lon, lat, tags) for node_id, ((lon, lat), tags) in nodes.items()], conn=conn)
-    await derive_nodes.derive(conn, TUNING_PARAMETERS_BY_ID["signal.match_radius_m"].default)
+    await derive_nodes_at_default_radius(conn)
     await derive_counts.derive(conn)
 
 
@@ -100,7 +103,7 @@ async def _stop_counts(conn: asyncpg.Connection) -> dict[int, dict[str, float]]:
 async def counts_conn(derive_conn):
     """テストごとに同じ生データから作り直す。どのテストも生データと派生の表を書き換えるため。"""
     await empty_ingested_tables(derive_conn)
-    await ingest_records("osm_way", [_road(*way) for way in WAYS], conn=derive_conn)
+    await ingest_records("osm_way", [zigzag_way_record(*way) for way in WAYS], conn=derive_conn)
     await _ingest_accidents(derive_conn)
     await derive_topology.derive(derive_conn)
     await derive_counts.derive(derive_conn)
@@ -197,7 +200,7 @@ async def test_an_accident_goes_to_the_segment_nearest_on_the_ground(counts_conn
     lon, lat = _north_of_way(11.5)
     east = lon + 10.0 / (km_per_degree_longitude(lat) * 1000.0)
     south, north = _north_of_way(6.5)[1], _north_of_way(40.0)[1]
-    await ingest_records("osm_way", [*(_road(*way) for way in WAYS),
+    await ingest_records("osm_way", [*(zigzag_way_record(*way) for way in WAYS),
                                      way_record(400, [(east, south), (east, north)], [7, 8])], conn=counts_conn)
     await _ingest_accidents(counts_conn, _accident("between", (lon, lat)))
 

@@ -39,6 +39,7 @@ from app.infrastructure.source_models import PARTY_TYPE_CODES, Source
 from tests.conftest import APP_TABLES_SQL, empty_ingested_tables, postgis_database_url, raw_connection
 from tests.source_ingest import (
     abr_block_record,
+    accident_record,
     abr_city_record,
     abr_prefecture_record,
     abr_town_record,
@@ -46,10 +47,11 @@ from tests.source_ingest import (
     estat_small_area_record,
     ingest_records,
     isj_block_record,
+    overture_place_record,
     point_record,
     tile_record,
-    way_record,
     zigzag_point,
+    zigzag_way_record,
 )
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -73,9 +75,10 @@ RESHAPED_WAYS = ((100, [1, 5, 3]), (200, [3, 4]), (300, [4, 6]))
 
 
 async def _ingest_ways(conn: asyncpg.Connection, ways=WAYS, bridges: frozenset[int] = frozenset()) -> None:
-    await ingest_records("osm_way", [way_record(way_id, [_point(n) for n in nodes], nodes,
-                                                {"highway": "residential", **({"bridge": "yes"} if way_id in bridges else {})})
-                                     for way_id, nodes in ways], conn=conn)
+    await ingest_records("osm_way", [
+        zigzag_way_record(way_id, nodes, {"highway": "residential", **({"bridge": "yes"} if way_id in bridges else {})},
+                          origin=(BASE_LON, BASE_LAT), step=STEP)
+        for way_id, nodes in ways], conn=conn)
 
 
 async def _ingest_nodes(conn: asyncpg.Connection) -> None:
@@ -84,8 +87,8 @@ async def _ingest_nodes(conn: asyncpg.Connection) -> None:
 
 
 async def _ingest_accidents(conn: asyncpg.Connection) -> None:
-    await ingest_records("accident", [point_record("on-way-100", *_point(2), {
-        "当事者種別（当事者A）": PARTY_TYPE_CODES[PartyType.BICYCLE], "当事者種別（当事者B）": "59", "死者数": "000"})],
+    await ingest_records("accident", [
+        accident_record("on-way-100", *_point(2), party_a=PARTY_TYPE_CODES[PartyType.BICYCLE], party_b="59")],
         conn=conn, rows=HonhyoRows(years=[2024]))
 
 
@@ -122,9 +125,7 @@ async def _ingest_addresses(conn: asyncpg.Connection) -> None:
 
 
 async def _ingest_places(conn: asyncpg.Connection) -> None:
-    await ingest_records("overture_place", [point_record("cafe", *_point(2), {
-        "names": {"primary": "喫茶店"}, "confidence": 0.75, "brand": {"names": {"primary": None}},
-        "taxonomy": {"hierarchy": ["food_and_drink", "cafe"]}})], conn=conn)
+    await ingest_records("overture_place", [overture_place_record("cafe", *_point(2), "喫茶店")], conn=conn)
 
 
 @pytest_asyncio.fixture(loop_scope="module")

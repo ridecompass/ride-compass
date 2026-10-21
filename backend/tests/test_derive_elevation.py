@@ -38,10 +38,9 @@ import pytest_asyncio
 
 from app.batch import dem_tile_store, derive_elevation, derive_topology
 from app.batch.ingest import ingest_source
-from app.batch.source_profile import Target, load_source_profile
 from app.domain.region import tile_bounds_lonlat
 from tests.conftest import empty_ingested_tables
-from tests.source_ingest import gsi_dem_png, ingest_records, way_record
+from tests.source_ingest import gsi_dem_png, ingest_records, profile_within, way_record
 
 # moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
@@ -104,7 +103,7 @@ def _profile(without: str | None = None):
     inset = 1e-6
     bbox = (bounds.min_latitude + inset, bounds.min_longitude + inset,
             bounds.max_latitude - inset, bounds.max_longitude - inset)
-    profile = replace(load_source_profile(None), target=Target(bbox=bbox))
+    profile = profile_within(bbox)
     return replace(profile, sources=tuple(
         replace(s, grid=replace(s.grid, products={
             product: zoom for product, zoom in s.grid.products.items() if product != without}))

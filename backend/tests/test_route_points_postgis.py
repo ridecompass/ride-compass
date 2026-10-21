@@ -15,14 +15,22 @@
 import pytest
 import pytest_asyncio
 
-from app.batch import derive_nodes, derive_stop_places, derive_topology
+from app.batch import derive_stop_places, derive_topology
 from app.domain.accident import PartyType
 from app.domain.geo import KM_PER_DEGREE_LATITUDE
 from app.domain.graph import LeanEdge, edge_key
-from app.domain.tuning import TUNING_PARAMETERS_BY_ID
 from app.infrastructure.source_models import PARTY_TYPE_CODES
 from tests.conftest import empty_ingested_tables
-from tests.source_ingest import WAY_ORIGIN, WAY_STEP, ingest_records, point_record, way_record
+from tests.source_ingest import (
+    WAY_ORIGIN,
+    WAY_STEP,
+    accident_record,
+    derive_nodes_at_default_radius,
+    ingest_records,
+    overture_place_record,
+    point_record,
+    way_record,
+)
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -34,16 +42,9 @@ def _at(along: float, north_m: float) -> tuple[float, float]:
     return (LON + 2 * WAY_STEP * along, LAT + north_m / (KM_PER_DEGREE_LATITUDE * 1000.0))
 
 
-def _place(key: int, position: tuple[float, float], name: str, hierarchy: tuple[str, ...]):
-    return point_record(key, *position, {
-        "names": {"primary": name}, "confidence": 0.75,
-        "brand": {"names": {"primary": None}}, "taxonomy": {"hierarchy": list(hierarchy)}})
-
-
-def _accident(key: int, position: tuple[float, float], *, fatal: bool = False, year: str = "2021"):
-    return point_record(key, *position, {
-        "当事者種別（当事者A）": PARTY_TYPE_CODES[PartyType.BICYCLE], "当事者種別（当事者B）": "03",
-        "死者数": "001" if fatal else "000", "発生日時　　年": year})
+def _accident(key: int, position: tuple[float, float], *, fatal: bool = False):
+    """2021年の、自転車が当事者Aの事故。"""
+    return accident_record(key, *position, party_a=PARTY_TYPE_CODES[PartyType.BICYCLE], fatal=fatal, year=2021)
 
 
 @pytest_asyncio.fixture(loop_scope="module")
@@ -62,11 +63,11 @@ async def side_points_world(derive_conn):
         point_record(102, *_at(0.25, -55), {"amenity": "toilets"}),
         point_record(103, *_at(0.25, -120), {"amenity": "toilets"}),
     ], conn=conn)
-    await derive_nodes.derive(conn, TUNING_PARAMETERS_BY_ID["signal.match_radius_m"].default)
+    await derive_nodes_at_default_radius(conn)
     await ingest_records("overture_place", [
-        _place(1, _at(0.75, -50), "ローソン 渋谷店", ("shopping", "convenience_store")),
-        _place(2, _at(0.5, -80), "喫茶A", ("food_and_drink", "cafe")),
-        _place(3, _at(0.5, -150), "喫茶B", ("food_and_drink", "cafe")),
+        overture_place_record(1, *_at(0.75, -50), "ローソン 渋谷店", ("shopping", "convenience_store")),
+        overture_place_record(2, *_at(0.5, -80), "喫茶A"),
+        overture_place_record(3, *_at(0.5, -150), "喫茶B"),
     ], conn=conn)
     await derive_stop_places.derive(conn)
     await ingest_records("accident", [

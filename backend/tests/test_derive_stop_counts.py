@@ -9,9 +9,14 @@ import asyncpg
 import pytest
 import pytest_asyncio
 
-from app.batch import derive_counts, derive_nodes, derive_topology
-from app.domain.tuning import TUNING_PARAMETERS_BY_ID
-from tests.source_ingest import WAY_ORIGIN, ingest_records, point_record, way_record
+from app.batch import derive_counts, derive_topology
+from tests.source_ingest import (
+    WAY_ORIGIN,
+    derive_nodes_at_default_radius,
+    ingest_records,
+    point_record,
+    way_record,
+)
 
 # moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
@@ -71,7 +76,7 @@ async def stop_conn(derive_conn):
         point_record(node_id, *_point(node_id), tags)
         for node_id, (_, _, tags) in NODES.items()], conn=derive_conn)
     await derive_topology.derive(derive_conn)
-    await derive_nodes.derive(derive_conn, TUNING_PARAMETERS_BY_ID["signal.match_radius_m"].default)
+    await derive_nodes_at_default_radius(derive_conn)
     await derive_counts.derive(derive_conn)
     return derive_conn
 

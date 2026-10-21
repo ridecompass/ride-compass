@@ -14,7 +14,6 @@
 import csv
 import io
 import zipfile
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -23,16 +22,15 @@ from app.batch import derive_addresses
 from app.batch.ingest import ingest_source
 from app.batch.source_adapters import abr, isj_block
 from app.domain.address_area import standardize_address
-from app.batch.source_profile import Target, load_source_profile
 from app.infrastructure.source_models import Source
 from tests.conftest import empty_ingested_tables
-from tests.source_ingest import ingest_records, way_record
+from tests.source_ingest import ingest_records, profile_within, way_record
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 #: 取込の範囲（min_lat, min_lon, max_lat, max_lon）。
 BBOX = (35.40, 139.20, 35.80, 139.80)
-PROFILE = replace(load_source_profile(None), target=Target(bbox=BBOX))
+PROFILE = profile_within(BBOX)
 SNAPSHOT = PROFILE.source(Source.ABR).rows.snapshot
 ISJ_VERSION = PROFILE.source(Source.ISJ_BLOCK).rows.version
 
