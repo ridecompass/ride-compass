@@ -225,6 +225,11 @@ export async function installApiMocks(page: Page): Promise<void> {
   await page.route(`${API_BASE}/api/weather/warnings*`, (route) => route.fulfill({ json: noWarnings }));
   await page.route(`${API_BASE}/api/weather/wbgt*`, (route) => route.fulfill({ json: noWbgt }));
   await page.route(`${API_BASE}/api/weather/flood-forecast*`, (route) => route.fulfill({ json: noFlood }));
+  // ルートを通る時刻の警報級の見込みも、通る区域が無い成功応答にする（選んだ候補があると取りに行く）。
+  const noRouteTimeline: components["schemas"]["RouteWarningTimeline"] = { areas: [] };
+  await page.route(`${API_BASE}/api/weather/route-warning-timeline`, (route) =>
+    route.fulfill({ json: noRouteTimeline }),
+  );
 
   // ルート生成はジョブで動く。POST（ジョブ投稿）は
   // 即座にjob_idを返し、GET .../generate/{job_id}（ポーリング）は1回目から

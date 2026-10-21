@@ -94,6 +94,7 @@ export function serveHome() {
   onBackend("GET", "/api/weather/warnings", () => Response.json({ warnings: [] }));
   onBackend("GET", "/api/weather/wbgt", () => Response.json({ reading: null }));
   onBackend("GET", "/api/weather/flood-forecast", () => Response.json({ forecasts: [] }));
+  onBackend("POST", "/api/weather/route-warning-timeline", () => Response.json({ areas: [] }));
   onBackend("GET", "/api/place-area", () => Response.json({ area: null }));
   return jobs;
 }

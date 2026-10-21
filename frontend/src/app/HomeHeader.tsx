@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button/Button";
 import { RouteIcon } from "@/components/ui/icons/icons";
 import WarningBadgeList from "@/features/conditions/WarningBadge/WarningBadge";
 import WeatherPanel from "@/features/conditions/WeatherPanel/WeatherPanel";
-import { useWeatherConditions } from "@/features/conditions/useWeatherConditions";
+import { useWeatherConditions, type WarningRoute } from "@/features/conditions/useWeatherConditions";
 import RideBar from "@/features/ride/RideBar/RideBar";
 import type { RideRemaining } from "@/features/ride/rideRemaining";
 import { axisCatalogFetchFailure, useAxisCatalog } from "@/hooks/useAxisCatalog";
@@ -22,6 +22,8 @@ interface HomeHeaderProps {
   locationKnown: boolean;
   /** 走行モードの間に受けた現在地。走っていなければ null。 */
   ridingAt: Coordinates | null;
+  /** 選んだルート（通る時刻の雷の見込みを読む）。選んでいなければ null。 */
+  warningRoute: WarningRoute | null;
   locationFailure: FetchFailure | null;
   mapBearingDeg: number;
   onRedrawMap: () => void;
@@ -37,6 +39,7 @@ export default function HomeHeader({
   location,
   locationKnown,
   ridingAt,
+  warningRoute,
   locationFailure,
   mapBearingDeg,
   onRedrawMap,
@@ -56,7 +59,7 @@ export default function HomeHeader({
     gridPointTodayError,
     warningBadgeItems,
     warningFetchFailures,
-  } = useWeatherConditions(location, locationKnown, ridingAt);
+  } = useWeatherConditions(location, locationKnown, ridingAt, warningRoute);
   const axisCatalogFailure = axisCatalogFetchFailure(useAxisCatalog());
   const headerFetchFailures = useMemo(
     () => [

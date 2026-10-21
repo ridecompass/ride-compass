@@ -1,11 +1,11 @@
-"""`api/routers/weather.py`——警報・暑さ指数・洪水予報・アメダス・今日の最寄りの格子点の値・MSMの格子点の経路。
+"""`api/routers/weather.py`——警報・ルートの警報級の時系列・暑さ指数・洪水予報・アメダス・今日の最寄りの格子点の値・MSMの格子点の経路。
 
 経路ごとに受け渡し（サービスの答えが応答に出ること・回数制限）を1本ずつ通し、ルーターが持つ判断（取れなかったら502・表示範囲が不正か広すぎたら400）を
 この経路から見る。サービスは依存の差し替えで与える。
 
 ここで見ないもの:
-- 警報・暑さ指数・洪水予報・アメダスを取って組み立てること → 各サービスのテスト（`test_warning_service.py`・
-  `test_wbgt_service.py`・`test_flood_service.py`・`test_jma_amedas_service.py`）
+- 警報・ルートの警報級の時系列・暑さ指数・洪水予報・アメダスを取って組み立てること → 各サービスのテスト（`test_warning_service.py`・
+  `test_warning_timeline_service.py`・`test_wbgt_service.py`・`test_flood_service.py`・`test_jma_amedas_service.py`）
 - MSMの格子点を選んで読むこと → `test_msm.py`（間引き・最寄り）・`test_msm_client.py`（読み出し）
 - 最寄りの格子点の時系列から今日の値を組み立てること → `test_weather_domain.py`
 - 回数制限の窓 → `test_rate_limiter.py`
@@ -22,6 +22,7 @@ from app.api.dependencies import (
     get_amedas_service,
     get_flood_service,
     get_warning_service,
+    get_warning_timeline_service,
     get_wbgt_service,
     get_weather_service,
 )
@@ -37,6 +38,12 @@ from app.infrastructure import rate_limiter
 from app.main import app
 from app.services.flood_service import FloodForecasts
 from app.services.warning_service import WeatherWarnings
+from app.services.warning_timeline_service import (
+    RouteAreaTimeline,
+    RouteWarningTimeline,
+    TimelineKindLevels,
+    TimelineSlotLevel,
+)
 from app.services.wbgt_service import WbgtReading, WbgtStatus
 
 client = TestClient(app)
@@ -97,6 +104,30 @@ GRID_POINT_TODAY = GridPointToday(
     highest_hourly_precipitation_mm=None,
     highest_hourly_wind_speed_ms=3.1,
 )
+ROUTE_TIMELINE = RouteWarningTimeline(
+    areas=[
+        RouteAreaTimeline(
+            area_code="1310100",
+            area_name="千代田区",
+            start_index=0,
+            end_index=1,
+            kinds={
+                "thunder": TimelineKindLevels(
+                    slots=[
+                        TimelineSlotLevel(
+                            start=datetime(2026, 10, 21, 18, 0, tzinfo=JST),
+                            end=datetime(2026, 10, 21, 21, 0, tzinfo=JST),
+                            code="20",
+                            advisory=True,
+                        )
+                    ],
+                    additions=["突風"],
+                )
+            },
+        )
+    ]
+)
+ROUTE_POINTS = {"points": [POINT, {"latitude": 35.69, "longitude": 139.70}]}
 #: 東京駅の周りの、ズーム8の地図ほどの範囲。
 TOKYO_BBOX = {"min_lon": 139.0, "min_lat": 35.3, "max_lon": 140.4, "max_lat": 36.0}
 
@@ -132,6 +163,9 @@ class FakeService:
         return self._answer
 
     async def get_msm_grid(self, bbox):
+        return self._answer
+
+    async def get_route_timeline(self, points):
         return self._answer
 
 
@@ -232,3 +266,32 @@ def test_each_route_is_rate_limited_per_client(override_dependency, path, params
 
     assert client.get(path, params=params).status_code == 200
     assert client.get(path, params=params).status_code == 429
+
+
+def test_the_route_warning_timeline_route_returns_what_its_source_answered(override_dependency):
+    override_dependency(get_warning_timeline_service, lambda: FakeService(ROUTE_TIMELINE))
+
+    response = client.post("/api/weather/route-warning-timeline", json=ROUTE_POINTS)
+
+    assert response.status_code == 200
+    assert RouteWarningTimeline.model_validate(response.json()) == ROUTE_TIMELINE
+
+
+def test_route_warning_timeline_that_could_not_be_obtained_is_a_failure_not_an_empty_answer(override_dependency):
+    """空の通過は「ルートがどの区域にも入らない」を表す。取れなかったことを同じ空で返すと、画面は注意報級の時間帯が無いと見せる。"""
+    override_dependency(get_warning_timeline_service, lambda: FakeService(None))
+
+    response = client.post("/api/weather/route-warning-timeline", json=ROUTE_POINTS)
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "取得できませんでした。"}
+
+
+def test_the_route_warning_timeline_route_is_rate_limited_per_client(override_dependency):
+    override_dependency(get_warning_timeline_service, lambda: FakeService(ROUTE_TIMELINE))
+    limit = settings.weather_warning_timeline_rate_limit_per_minute
+    for _ in range(limit - 1):
+        rate_limiter.check_rate_limit("weather-warning-timeline:testclient", limit)
+
+    assert client.post("/api/weather/route-warning-timeline", json=ROUTE_POINTS).status_code == 200
+    assert client.post("/api/weather/route-warning-timeline", json=ROUTE_POINTS).status_code == 429
