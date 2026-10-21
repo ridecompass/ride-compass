@@ -305,6 +305,16 @@ def _rows_to_directed_edges(rows, wanted: dict[tuple[int, int], list[bool]]) -> 
     return edges
 
 
+def _add_route_side_points(rows, result: dict[tuple[int, int], list[RoutePointHit]]) -> None:
+    """近くの点の行を、区間（`(osm_way_id, segment_index)`）ごとの`RoutePointHit`として`result`へ足す。"""
+    for row in rows:
+        result.setdefault((row["osm_way_id"], row["segment_index"]), []).append(RoutePointHit(
+            layer=row["layer"], point_key=row["point_key"], merge_group=row["merge_group"],
+            properties={name: row[name] for name in SIDE_POINT_PROPERTIES if row[name] is not None},
+            fraction=row["fraction"], distance_m=row["distance_m"],
+        ))
+
+
 def _scanned_relations(plan: object) -> set[str]:
     """`EXPLAIN (FORMAT JSON)`の計画の中で走査される表の名前。"""
     if isinstance(plan, list):
@@ -441,12 +451,7 @@ class RoadGraphRepository:
                 "way_ids": [k[0] for k in chunk],
                 "segment_indexes": [k[1] for k in chunk],
             })).mappings().all()
-            for row in rows:
-                result.setdefault((row["osm_way_id"], row["segment_index"]), []).append(RoutePointHit(
-                    layer=row["layer"], point_key=row["point_key"], merge_group=row["merge_group"],
-                    properties={name: row[name] for name in SIDE_POINT_PROPERTIES if row[name] is not None},
-                    fraction=row["fraction"], distance_m=row["distance_m"],
-                ))
+            await asyncio.to_thread(_add_route_side_points, rows, result)
         return result
 
     # --- 材料 ----------------------------------------------------------------
