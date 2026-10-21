@@ -36,7 +36,7 @@ from app.domain.evaluation import (
 from app.domain.hard_filters import compute_routable_nodes, compute_search_exclusion
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
 from app.domain.route_preference import RoutePreference
-from app.domain.road_avoidance import AvoidanceLevel
+from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks
 from app.domain.geo import (
     bearing_between,
     bearing_between_array,
@@ -75,6 +75,7 @@ from app.domain.turn_structure import (
     edge_bearings,
 )
 from app.domain.routing import (
+    TurnExpandedTree,
     build_turn_expanded_tree,
     tree_cost_bound,
     largest_strongly_connected_nodes,
@@ -235,25 +236,28 @@ class RoadGraphEngine:
         # 通過予定時刻の基準（出発時刻）。
         start = as_series_time(now)
 
-        # --- bbox全体ぶんのコスト配列の合成（レグごと。まず起点から離れる往路レグ） ---
-        cost_started = start_timer()
-        search_masks = compute_search_exclusion(score_matrix, self._road_avoidance)
-
         graph_started = start_timer()
         lazy_graph = await asyncio.to_thread(build_lazy_road_graph, road.edge_from, road.edge_to, road.node_count)
         graph_ms = elapsed_ms(graph_started)
 
+        # --- bbox全体ぶんのコスト配列の合成（レグごと。まず起点から離れる往路レグ） ---
+        cost_started = start_timer()
         # 迂回率は同じ探索範囲で前回の往路木から学習した値があればそれを使う（無ければ既定値）。
         learned_detour_ratio = detour_ratio_cache.get_detour_ratio(tile_set)
-        composer = LegCostComposer(
-            score_matrix, self._route_preference.weights, self._penalty_strength, search_masks,
-            self._avoid_cost_multiplier, departure_wind,
-            wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
-            detour_ratio=detour_ratio_or_default(learned_detour_ratio),
-            twilight_origin=origin,
-        )
-        outbound = composer.compose("outbound", origin, 0.0, +1)
-        cost_ms = elapsed_ms(cost_started) - graph_ms
+
+        def compose_outbound() -> tuple[RoadAvoidanceMasks, LegCostComposer, LegCostArrays]:
+            search_masks = compute_search_exclusion(score_matrix, self._road_avoidance)
+            composer = LegCostComposer(
+                score_matrix, self._route_preference.weights, self._penalty_strength, search_masks,
+                self._avoid_cost_multiplier, departure_wind,
+                wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
+                detour_ratio=detour_ratio_or_default(learned_detour_ratio),
+                twilight_origin=origin,
+            )
+            return search_masks, composer, composer.compose("outbound", origin, 0.0, +1)
+
+        search_masks, composer, outbound = await asyncio.to_thread(compose_outbound)
+        cost_ms = elapsed_ms(cost_started)
         # 重み付き軸がすべてNaNのEdge比率（探索コストはbbox内平均difficultyで補完される。
         # 実際の発生頻度を把握するためのサマリ）。
         missing_axis_mask = np.isnan(outbound.difficulty_array)
@@ -298,9 +302,11 @@ class RoadGraphEngine:
         """
         started = start_timer()
         road = search.road
-        routable = compute_routable_nodes(road.edge_from, road.edge_to, search.excluded, road.node_count)
+        routable = await asyncio.to_thread(
+            compute_routable_nodes, road.edge_from, road.edge_to, search.excluded, road.node_count,
+        )
         node_index = await asyncio.to_thread(build_node_spatial_index, search.node_lat, search.node_lon, routable)
-        statics = build_search_graph_statics(search.lazy_graph, search.composer.distance_m)
+        statics = await asyncio.to_thread(build_search_graph_statics, search.lazy_graph, search.composer.distance_m)
         accessible = await asyncio.to_thread(
             largest_strongly_connected_nodes, statics.csr, ~search.excluded[search.lazy_graph.edge_rows],
         )
@@ -465,7 +471,8 @@ class RoadGraphEngine:
         end_node, end_point = fixed.end_node, fixed.end_point
         # 往路レグを、見込み所要時間（残りの距離の半分÷巡航速度）ぶんの時刻ビンで組み直す。
         # 木は出発からの経過時間を持ち回れるため、風を推定ではなく実際の経過時間で引ける。
-        outbound = context.composer.compose(
+        outbound = await asyncio.to_thread(
+            context.composer.compose,
             leg_name(leg_index), leg_anchor(context, leg_index, start_node),
             cruise_hours(fixed_m / 1000, context.composer.speed_kmh), +1,
             duration_hours=leg_duration_hours(remaining_km, context.composer.speed_kmh),
@@ -481,29 +488,33 @@ class RoadGraphEngine:
             band_km = (ring_lower_m / 1000, outbound_upper_m / 1000)
         else:
             # 帰りレグ: 終点へ向かうレグとして、全長の目標ぶんの所要時間を終点への到着予定時刻に置く。
-            inbound = self._compose_inbound(context, end_point, distance_km, remaining_km)
+            inbound = await self._compose_inbound(context, end_point, distance_km, remaining_km)
             context.legs = [*context.legs[:leg_index + 1], inbound]
             backward_tree = await asyncio.to_thread(
-                build_turn_expanded_tree,
-                context.turn_structure, avoiding_traveled(inbound.cost_lazy, traveled), statics.edge_length_m,
-                destination_states(context.turn_structure, end_node), statics.csr.node_count,
-                reverse=True, edge_seconds=inbound.travel_seconds_lazy,
+                lambda: build_turn_expanded_tree(
+                    context.turn_structure, avoiding_traveled(inbound.cost_lazy, traveled), statics.edge_length_m,
+                    destination_states(context.turn_structure, end_node), statics.csr.node_count,
+                    reverse=True, edge_seconds=inbound.travel_seconds_lazy,
+                )
             )
             outbound_upper_m = LengthBand.from_km(distance_km, distance_tolerance_km).upper_m - fixed_m
             band_km = ((distance_km - distance_tolerance_km), (distance_km + distance_tolerance_km))
         if outbound_upper_m <= 0:
             logger.info("select_turnarounds fixed_km=%.1f exceeds the target", fixed_m / 1000)
             return []
-        outbound_costs = avoiding_traveled(outbound.cost_bins_lazy, traveled)
         tree_started = start_timer()
-        cost_limit = tree_cost_bound(context.turn_structure, outbound_costs, statics.edge_length_m, outbound_upper_m)
-        tree = await asyncio.to_thread(
-            build_turn_expanded_tree,
-            context.turn_structure, outbound_costs, statics.edge_length_m,
-            origin_states(statics, start_node), statics.csr.node_count,
-            cost_limit=cost_limit, edge_seconds=outbound.travel_bins_lazy,
-            bin_seconds=outbound.bin_seconds,
-        )
+
+        def outbound_tree() -> TurnExpandedTree:
+            outbound_costs = avoiding_traveled(outbound.cost_bins_lazy, traveled)
+            cost_limit = tree_cost_bound(context.turn_structure, outbound_costs, statics.edge_length_m, outbound_upper_m)
+            return build_turn_expanded_tree(
+                context.turn_structure, outbound_costs, statics.edge_length_m,
+                origin_states(statics, start_node), statics.csr.node_count,
+                cost_limit=cost_limit, edge_seconds=outbound.travel_bins_lazy,
+                bin_seconds=outbound.bin_seconds,
+            )
+
+        tree = await asyncio.to_thread(outbound_tree)
         tree_ms = elapsed_ms(tree_started)
 
         length = tree.node_length_m
@@ -532,7 +543,7 @@ class RoadGraphEngine:
         if backward_tree is None:
             # 帰りレグ: 出発地へ向かうレグとして、周回の総所要時間（目標距離÷仮定速度）を出発地への
             # 到着予定時刻に置いて合成する（距離フィルタが目標±許容を強制するため定数扱いできる）。
-            inbound = self._compose_inbound(context, end_point, distance_km, remaining_km)
+            inbound = await self._compose_inbound(context, end_point, distance_km, remaining_km)
             context.legs = [*context.legs[:leg_index + 1], inbound]
         closeness_key = closeness_m[ring]
         ranking = rank_by_pareto_layers(
@@ -599,12 +610,13 @@ class RoadGraphEngine:
         )
         return turnarounds
 
-    def _compose_inbound(
+    async def _compose_inbound(
         self, context: RoadGraphContext, end_point: Coordinates, distance_km: float, remaining_km: float,
     ) -> LegCostArrays:
         """距離ありの帰りレグ: 終点を基準点に、全長の目標ぶんの所要時間（目標距離÷仮定速度）を終点への到着予定時刻に置く
         （距離フィルタが目標±許容を強制するため定数扱いできる）。"""
-        return context.composer.compose(
+        return await asyncio.to_thread(
+            context.composer.compose,
             "inbound", end_point, cruise_hours(distance_km, context.composer.speed_kmh), -1,
             duration_hours=leg_duration_hours(remaining_km, context.composer.speed_kmh),
         )

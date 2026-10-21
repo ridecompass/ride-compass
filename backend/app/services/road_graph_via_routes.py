@@ -88,7 +88,8 @@ async def select_via_nodes(
 
     tree_started = start_timer()
     # 往路レグを、最後の固定点→終点の見込み所要時間ぶんの時刻ビンで組み直す。
-    outbound = context.composer.compose(
+    outbound = await asyncio.to_thread(
+        context.composer.compose,
         leg_name(leg_index), start_point, fixed_hours, +1,
         duration_hours=straight_line_hours(
             start_point, destination, context.composer.speed_kmh, context.composer.detour_ratio,
@@ -96,10 +97,11 @@ async def select_via_nodes(
     )
     context.legs = [*context.legs[:leg_index], outbound]
     forward_tree = await asyncio.to_thread(
-        build_turn_expanded_tree,
-        context.turn_structure, avoiding_traveled(outbound.cost_bins_lazy, traveled), context.statics.edge_length_m,
-        origin_states(context.statics, start_node), context.statics.csr.node_count,
-        edge_seconds=outbound.travel_bins_lazy, bin_seconds=outbound.bin_seconds,
+        lambda: build_turn_expanded_tree(
+            context.turn_structure, avoiding_traveled(outbound.cost_bins_lazy, traveled), context.statics.edge_length_m,
+            origin_states(context.statics, start_node), context.statics.csr.node_count,
+            edge_seconds=outbound.travel_bins_lazy, bin_seconds=outbound.bin_seconds,
+        )
     )
 
     # 迂回率は前向き木（走り出す点から`DETOUR_RATIO_MIN_ROAD_M`以上先の到達Node）の実測中央値を使い、学習値として保存する。
@@ -124,23 +126,26 @@ async def select_via_nodes(
         destination, arrival_hours, -1, context.composer.speed_kmh,
         detour_ratio=inbound_detour_ratio,
     )
-    inbound = context.composer.compose(
+    inbound = await asyncio.to_thread(
+        context.composer.compose,
         "inbound", destination, arrival_hours, -1,
         passage_hours=reached_or_estimated_hours(forward_hours, fallback_hours),
     )
     context.legs = [*context.legs[:leg_index + 1], inbound]
     backward_tree = await asyncio.to_thread(
-        build_turn_expanded_tree,
-        context.turn_structure, avoiding_traveled(inbound.cost_lazy, traveled), context.statics.edge_length_m,
-        destination_states(context.turn_structure, destination_index),
-        context.statics.csr.node_count, reverse=True, edge_seconds=inbound.travel_seconds_lazy,
+        lambda: build_turn_expanded_tree(
+            context.turn_structure, avoiding_traveled(inbound.cost_lazy, traveled), context.statics.edge_length_m,
+            destination_states(context.turn_structure, destination_index),
+            context.statics.csr.node_count, reverse=True, edge_seconds=inbound.travel_seconds_lazy,
+        )
     )
     tree_ms = elapsed_ms(tree_started)
 
     # Nodeで単に前向き＋後ろ向きを足すと、そのNodeで曲がる費用が抜ける。
     junction_started = start_timer()
-    junction = combine_forward_backward_at_nodes(
-        context.turn_structure, forward_tree, backward_tree, context.statics.csr.node_count
+    junction = await asyncio.to_thread(
+        combine_forward_backward_at_nodes,
+        context.turn_structure, forward_tree, backward_tree, context.statics.csr.node_count,
     )
     junction_ms = elapsed_ms(junction_started)
     # 終点そのものを経由Nodeとする経路（＝経由せず直行する経路）も候補に含める。

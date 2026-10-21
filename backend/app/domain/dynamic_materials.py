@@ -13,8 +13,8 @@ from typing import Callable, Mapping
 import numpy as np
 
 from app.domain.axis_definitions import (
-    AXIS_DEFINITIONS,
     REQUEST_DYNAMIC_MATERIAL_IDS,
+    AxisDefinition,
     dynamic_axis_topological_order,
     evaluate_axis_array,
 )
@@ -101,6 +101,7 @@ def evaluate_dynamic_material_arrays(context: DynamicAxisRequestContext) -> dict
 
 def evaluate_dynamic_axis_arrays(
     static_axis_scores: Mapping[str, np.ndarray], context: DynamicAxisRequestContext,
+    definitions: dict[str, AxisDefinition],
 ) -> dict[str, np.ndarray]:
     """探索範囲の材料から求めた`StaticEdgeScoreMatrix.axis_scores`（NaN列を含む）から、
     動的軸（`dynamic_axis_topological_order`が返す軸）だけをリクエスト時点の値で上書き
@@ -109,10 +110,10 @@ def evaluate_dynamic_axis_arrays(
 
     `evaluate_dynamic_material_arrays`で動的材料を求め、そこから
     `dynamic_axis_topological_order`の順で`evaluate_axis_array`を適用する。動的軸の軸名は
-    ここにも現れない。
+    ここにも現れない。軸は`definitions`（呼び出し側が取った`domain/axis_definitions.py: copy_axis_definitions`の写し）だけを読む。
     """
     materials_with_axes: dict[str, np.ndarray] = dict(static_axis_scores)
     materials_with_axes.update(evaluate_dynamic_material_arrays(context))
-    for axis_id in dynamic_axis_topological_order(AXIS_DEFINITIONS):
-        materials_with_axes[axis_id] = evaluate_axis_array(AXIS_DEFINITIONS[axis_id], materials_with_axes)
+    for axis_id in dynamic_axis_topological_order(definitions):
+        materials_with_axes[axis_id] = evaluate_axis_array(definitions[axis_id], materials_with_axes)
     return materials_with_axes
