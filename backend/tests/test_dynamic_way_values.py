@@ -44,6 +44,7 @@ from app.domain.evaluation import build_static_edge_score_matrix
 from app.domain.gradient import ROAD_BEARING_LEAF, gradient_by_direction
 from app.domain.map_paint import SignedMaterialMapValue
 from app.domain.route import DensityScoreInput, RouteSegmentDetail, merge_axis_difficulties
+from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.tuning import TUNING_VALUES
 from app.domain.way_value_formula import WayValueFormula, feature, way_values_from_formula
 from app.domain.wind import WIND_DIRECTION_LEAF, WIND_DRAG_RATIO_WAY_FORMULA, WIND_SPEED_LEAF
@@ -125,7 +126,9 @@ def test_the_map_paints_the_same_value_the_search_scores(axis_id, as_difficulty)
     else:
         expected = matrix.axis_scores[:, matrix.axis_ids.index(axis_id)]
     assert np.isfinite(expected).any()
-    np.testing.assert_array_equal([painted.get(key, np.nan) for key in KEYS], expected)
+    # 探索は得点を`EDGE_VALUE_DTYPE`の桁で持つので、その刻みで比べる。
+    np.testing.assert_allclose([painted.get(key, np.nan) for key in KEYS], expected,
+                               rtol=np.finfo(EDGE_VALUE_DTYPE).eps, atol=0)
 
 
 #: 道1本の値を区間から畳む軸と、畳まない軸（密度の軸）。
