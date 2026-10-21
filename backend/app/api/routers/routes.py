@@ -38,6 +38,7 @@ from app.domain.geo import Latitude, Longitude, haversine_distance_km
 from app.domain.route import Coordinates, RouteCandidate
 from app.infrastructure import job_registry
 from app.infrastructure.debug_log import record_rate_limit_rejection
+from app.infrastructure.heap_release import release_freed_heap
 from app.services.route_generation_setup import generate_route_candidates
 from app.domain.strict_model import StrictModel
 
@@ -358,3 +359,6 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
         job_registry.set_failed(job_id, "ルート生成に失敗しました。時間をおいて再度お試しください。")
     finally:
         _generate_semaphore.release()
+        # 生成が作って捨てた配列の領域を返す。返さないと、それまでで一番大きい生成の分が anon に残り、
+        # 読み込む量の上限（`services/graph_service.py: _max_search_edges`）が前提にする取り置きを食う。
+        await asyncio.to_thread(release_freed_heap)
