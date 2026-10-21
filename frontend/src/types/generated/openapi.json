@@ -199,6 +199,43 @@
         }
       }
     },
+    "/api/weather/route-warning-timeline": {
+      "post": {
+        "operationId": "get_route_warning_timeline_api_weather_route_warning_timeline_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteTimelineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteWarningTimeline"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/weather/wbgt": {
       "get": {
         "operationId": "get_wbgt_api_weather_wbgt_get",
@@ -6231,6 +6268,46 @@
         ],
         "title": "Round"
       },
+      "RouteAreaTimeline": {
+        "properties": {
+          "area_code": {
+            "type": "string",
+            "title": "Area Code"
+          },
+          "area_name": {
+            "type": "string",
+            "title": "Area Name"
+          },
+          "start_index": {
+            "type": "integer",
+            "title": "Start Index"
+          },
+          "end_index": {
+            "type": "integer",
+            "title": "End Index"
+          },
+          "kinds": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TimelineKindLevels"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/TimelineKind"
+            },
+            "type": "object",
+            "title": "Kinds"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "area_code",
+          "area_name",
+          "start_index",
+          "end_index",
+          "kinds"
+        ],
+        "title": "RouteAreaTimeline"
+      },
       "RouteCandidate": {
         "properties": {
           "direction_label": {
@@ -6857,6 +6934,25 @@
         ],
         "title": "RouteSegmentDetail"
       },
+      "RouteTimelineRequest": {
+        "properties": {
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/Coordinates"
+            },
+            "type": "array",
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Points"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "points"
+        ],
+        "title": "RouteTimelineRequest"
+      },
       "RouteTurn": {
         "properties": {
           "distance_km": {
@@ -6890,6 +6986,23 @@
           "longitude"
         ],
         "title": "RouteTurn"
+      },
+      "RouteWarningTimeline": {
+        "properties": {
+          "areas": {
+            "items": {
+              "$ref": "#/components/schemas/RouteAreaTimeline"
+            },
+            "type": "array",
+            "title": "Areas"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "areas"
+        ],
+        "title": "RouteWarningTimeline"
       },
       "ScoresPreviewRequest": {
         "properties": {
@@ -7035,6 +7148,69 @@
           "finished_at"
         ],
         "title": "SucceededRunCounts"
+      },
+      "TimelineKind": {
+        "type": "string",
+        "enum": [
+          "thunder"
+        ],
+        "title": "TimelineKind"
+      },
+      "TimelineKindLevels": {
+        "properties": {
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineSlotLevel"
+            },
+            "type": "array",
+            "title": "Slots"
+          },
+          "additions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Additions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "slots",
+          "additions"
+        ],
+        "title": "TimelineKindLevels"
+      },
+      "TimelineSlotLevel": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "advisory": {
+            "type": "boolean",
+            "title": "Advisory"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "code",
+          "advisory"
+        ],
+        "title": "TimelineSlotLevel"
       },
       "TuningParameterView": {
         "properties": {

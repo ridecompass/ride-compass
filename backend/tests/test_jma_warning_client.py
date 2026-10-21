@@ -31,7 +31,7 @@ def _warning_url(office_code: str) -> str:
 # --- 地域マスタ ---
 
 
-async def test_area_master_keeps_the_parent_of_each_level():
+async def test_area_master_keeps_the_parent_and_name_of_each_level():
     payload = {
         "centers": {"010300": {"name": "気象庁"}},
         "offices": {"130000": {"name": "東京都"}},
@@ -43,15 +43,15 @@ async def test_area_master_keeps_the_parent_of_each_level():
     master = await jma_warning_client.fetch_area_data(answering(json=payload), new_area_data_cache())
 
     assert master == AreaMaster(
-        class20s={"1310100": AreaEntry(parent="130011")},
-        class15s={"130011": AreaEntry(parent="130010")},
-        class10s={"130010": AreaEntry(parent="130000")},
+        class20s={"1310100": AreaEntry(parent="130011", name="千代田区")},
+        class15s={"130011": AreaEntry(parent="130010", name="２３区西部")},
+        class10s={"130010": AreaEntry(parent="130000", name="東京地方")},
     )
 
 
 async def test_area_master_tolerates_missing_or_malformed_sections(caplog):
     """無い階層・辞書でない階層は空、辞書でない区域は載せず、載せなかった数を出す。親の無い区域と、
-    文字列でない親はNoneで持つ。"""
+    文字列でない親・名前はNoneで持つ。"""
     payload = {
         "class20s": {"1310100": {"name": "千代田区"}, "1310200": {"parent": ["130011"], "name": 1}, "9999999": "壊れた行"},
         "class15s": ["辞書でない"],
@@ -61,7 +61,7 @@ async def test_area_master_tolerates_missing_or_malformed_sections(caplog):
         master = await jma_warning_client.fetch_area_data(answering(json=payload), new_area_data_cache())
 
     assert master == AreaMaster(
-        class20s={"1310100": AreaEntry(parent=None), "1310200": AreaEntry(parent=None)},
+        class20s={"1310100": AreaEntry(parent=None, name="千代田区"), "1310200": AreaEntry(parent=None)},
         class15s={},
         class10s={},
     )

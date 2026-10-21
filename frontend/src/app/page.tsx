@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import GenerationNotice from "@/features/route/GenerationNotice/GenerationNotice";
 import type { SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import RouteSettingsForm from "@/features/route/RouteForm/RouteSettingsForm";
@@ -15,6 +15,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useLocation } from "@/hooks/useLocation";
 import { useRideConditions } from "@/features/conditions/useRideConditions";
 import { useProfileLayers } from "@/features/route/RouteProfile/useProfileLayers";
+import { rideClock } from "@/features/ride/rideRemaining";
 import { useRideMode } from "@/features/ride/useRideMode";
 import { useRideWayConditions } from "@/features/ride/useRideWayConditions";
 import { useMapView } from "@/features/map/view/useMapView";
@@ -138,6 +139,17 @@ export default function Home() {
         },
   };
 
+  const plan = results.selectedCandidate;
+  const progressKm = navigating ? guidance.progress.km : null;
+  const warningRoute = useMemo(() => {
+    if (plan === null) return null;
+    // 走行中は、最後に位置を受けた所からこの先を、受けた時刻から計画の時間で読む。
+    const at =
+      progressKm !== null && riding.fixedAtMs !== null ? { km: progressKm, fixedAtMs: riding.fixedAtMs } : null;
+    const clock = rideClock(plan, at);
+    return clock === null ? null : { segments: plan.segments, clock, fromKm: at?.km ?? 0 };
+  }, [plan, progressKm, riding.fixedAtMs]);
+
   return (
     <div className="flex h-dvh flex-col">
       <HomeHeader
@@ -149,6 +161,7 @@ export default function Home() {
         location={location}
         locationKnown={locationKnown}
         ridingAt={navigating ? ridePosition : null}
+        warningRoute={warningRoute}
         locationFailure={place.locationFailure}
         mapBearingDeg={mapView.bearing}
         onRedrawMap={mapView.redrawMap}

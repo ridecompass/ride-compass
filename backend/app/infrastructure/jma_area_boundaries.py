@@ -50,14 +50,25 @@ class AreaBoundaries:
 
     def find(self, lat: float, lon: float) -> str | None:
         """地点を含む区域のコード。含む区域が無ければ`NEAREST_LIMIT_DEG`以内で最も近い区域。"""
-        point = shapely.Point(lon, lat)
-        # 含む判定は境界を準備済みの形で引けるため、距離の計算より2桁速い。距離は含まれないときだけ測る。
-        indices = self._tree.query(point, predicate="intersects")
-        if len(indices) == 0:
-            indices = self._tree.query_nearest(point, max_distance=NEAREST_LIMIT_DEG)
-        if len(indices) == 0:
-            return None
-        return self._codes[int(indices[0])]
+        return self.find_many([(lat, lon)])[0]
+
+    def find_many(self, points: list[tuple[float, float]]) -> list[str | None]:
+        """地点（緯度, 経度）ごとの`find`。木を地点ごとに引かず、まとめて引く。"""
+        # 含む判定は境界を準備済みの形で引けるため、距離の計算より2桁速い。距離は含まれない地点だけ測る。
+        geometries = shapely.points([(lon, lat) for lat, lon in points])
+        found: list[str | None] = [None] * len(points)
+        point_indices, area_indices = self._tree.query(geometries, predicate="intersects")
+        for point_index, area_index in zip(point_indices.tolist(), area_indices.tolist(), strict=True):
+            if found[point_index] is None:
+                found[point_index] = self._codes[area_index]
+        missing = [index for index, code in enumerate(found) if code is None]
+        if missing:
+            point_indices, area_indices = self._tree.query_nearest(geometries[missing], max_distance=NEAREST_LIMIT_DEG)
+            for point_index, area_index in zip(point_indices.tolist(), area_indices.tolist(), strict=True):
+                original = missing[point_index]
+                if found[original] is None:
+                    found[original] = self._codes[area_index]
+        return found
 
 
 def write_boundaries(path: Path, areas: dict[str, BaseGeometry]) -> None:
@@ -91,8 +102,13 @@ async def find_class20_code(lat: float, lon: float) -> str | None:
     境界を読めなければ`AreaBoundariesUnavailableError`を送出する。初回だけ境界の読み込み（数秒かかる）が
     走るため、イベントループの外で読む。
     """
+    boundaries = await _load_boundaries_or_raise()
+    return boundaries.find(lat, lon)
+
+
+async def _load_boundaries_or_raise() -> AreaBoundaries:
     try:
-        boundaries = await asyncio.to_thread(load_boundaries, BOUNDARY_PATH)
+        return await asyncio.to_thread(load_boundaries, BOUNDARY_PATH)
     except (OSError, ValueError, shapely.errors.GEOSException) as exc:
         log_throttled_warning(
             "weather:jma-area-boundaries",
@@ -101,7 +117,12 @@ async def find_class20_code(lat: float, lon: float) -> str | None:
             BOUNDARY_PATH, exc,
         )
         raise AreaBoundariesUnavailableError from exc
-    return boundaries.find(lat, lon)
+
+
+async def find_class20_codes(points: list[tuple[float, float]]) -> list[str | None]:
+    """地点（緯度, 経度）ごとの`find_class20_code`。境界を読めなければ`AreaBoundariesUnavailableError`を送出する。"""
+    boundaries = await _load_boundaries_or_raise()
+    return await asyncio.to_thread(boundaries.find_many, points)
 
 
 async def area_shape(class20_code: str) -> BaseGeometry | None:

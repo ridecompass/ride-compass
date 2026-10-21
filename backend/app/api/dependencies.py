@@ -31,6 +31,7 @@ from app.infrastructure.http_client import JMA_JSON_TIMEOUT, SLOW_JSON_TIMEOUT, 
 from app.infrastructure.jma_amedas_client import new_latest_time_cache, new_station_table_cache
 from app.infrastructure.jma_tile_client import JmaTileClient, JmaTileSharedState
 from app.infrastructure.jma_warning_client import new_area_data_cache, new_warning_cache
+from app.infrastructure.jma_warning_timeline_client import new_timeline_cache
 from app.infrastructure.material_coverage import MaterialCoverageQuery
 from app.infrastructure.place_area_query import PlaceAreaQuery
 from app.infrastructure.region_tile_cache import TileResponse
@@ -64,6 +65,7 @@ from app.services.route_generation_setup import (
 from app.services.road_class_service import RoadClassAdminService
 from app.services.tuning_service import TuningService
 from app.services.warning_service import WarningService
+from app.services.warning_timeline_service import WarningTimelineService
 from app.services.wbgt_service import WbgtService
 from app.services.weather_service import WeatherService
 
@@ -77,6 +79,7 @@ LongSessions = Annotated[async_sessionmaker[AsyncSession], Depends(get_route_gen
 #: 地域マスタは警報と洪水予報で共有する。
 _area_data_cache = new_area_data_cache()
 _warning_cache = new_warning_cache()
+_timeline_cache = new_timeline_cache()
 _flood_cache = new_flood_cache()
 _station_table_cache = new_station_table_cache()
 _latest_time_cache = new_latest_time_cache()
@@ -95,6 +98,12 @@ def get_weather_service():
 
 def get_warning_service():
     return WarningService(get_http_client(JMA_JSON_TIMEOUT), area_data_cache=_area_data_cache, warning_cache=_warning_cache)
+
+
+def get_warning_timeline_service():
+    return WarningTimelineService(
+        get_http_client(JMA_JSON_TIMEOUT), area_data_cache=_area_data_cache, timeline_cache=_timeline_cache
+    )
 
 
 def get_amedas_service():

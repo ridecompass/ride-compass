@@ -3,7 +3,7 @@
 入口は`find_class20_code`と、引いた区域を地域マスタで警報のエリアまで辿る`resolve_point_area`で、境界は`write_boundaries`で置き場（`tests/conftest.py: boundary_path`）に書いたものを
 本物の読み込みで読む。区域は架空のコードと矩形で作る。見るのは、境界を読めないとき（区域なしとは別の例外と
 WARNING）と、置いたあとは再起動せずに引けること。地点から区域を引く規則（含む区域・寄せる距離の内側の最寄りの区域・
-どこにも入らない地点のNone）は、境界を直接与えた`AreaBoundaries.find`の性質で見る。`resolve_point_area`は、区域の外と
+どこにも入らない地点のNone）は、境界を直接与えた`AreaBoundaries.find_many`（1地点の`find`はこれへ委ねる）の性質で見る。`resolve_point_area`は、区域の外と
 区域が分からない（境界を読めない・地域マスタを取れない・辿れない）を分けることと、辿れない区域の名前を出すことを見る。
 
 ここで見ないもの:
@@ -16,7 +16,7 @@ import logging
 
 import pytest
 import shapely
-from hypothesis import assume, given
+from hypothesis import assume, example, given
 from hypothesis import strategies as st
 from shapely.geometry import box
 
@@ -46,25 +46,30 @@ _SMALL_AREAS = {
 }
 
 
-@given(
-    lat=st.floats(min_value=35.0 - 2 * LIMIT, max_value=35.0 + 3 * LIMIT),
-    lon=st.floats(min_value=139.0 - 2 * LIMIT, max_value=139.0 + 7 * LIMIT),
-)
-def test_point_gets_the_nearest_area_within_the_limit(lat, lon):
-    """含む区域があればそれ、無ければ寄せる距離の内側で最も近い区域、どれも遠ければNone。
+_LATITUDES = st.floats(min_value=35.0 - 2 * LIMIT, max_value=35.0 + 3 * LIMIT)
+_LONGITUDES = st.floats(min_value=139.0 - 2 * LIMIT, max_value=139.0 + 7 * LIMIT)
+
+
+@given(points=st.lists(st.tuples(_LATITUDES, _LONGITUDES), min_size=1, max_size=6))
+# 区域の中の地点のあとに、区域の間の隙間の地点が続く並び（測り直した答えを並びへ戻す所を取り違えると、後の地点がNoneになる）。
+@example(points=[(35.0 + LIMIT / 2, 139.0 + LIMIT), (35.0 + LIMIT / 2, 139.0 + 2.5 * LIMIT)])
+def test_each_point_gets_the_nearest_area_within_the_limit(points):
+    """地点ごとに、含む区域があればそれ、無ければ寄せる距離の内側で最も近い区域、どれも遠ければNone。まとめて引いても
+    答えは地点の並びのまま（含まれない地点だけを測り直すので、並びを取り違えると隣の地点の答えになる）。
     全区域との距離を測った答えと比べる。"""
-    point = shapely.Point(lon, lat)
-    distances = {code: geometry.distance(point) for code, geometry in _SMALL_AREAS.items()}
-    nearest = min(distances.values())
-    assume(abs(nearest - LIMIT) > 1e-12)
+    found = jma_area_boundaries.AreaBoundaries(list(_SMALL_AREAS), list(_SMALL_AREAS.values())).find_many(points)
 
-    found = jma_area_boundaries.AreaBoundaries(list(_SMALL_AREAS), list(_SMALL_AREAS.values())).find(lat, lon)
-
-    if nearest > LIMIT:
-        assert found is None
-    else:
-        assert found is not None
-        assert distances[found] <= nearest + 1e-12
+    assert len(found) == len(points)
+    for (lat, lon), code in zip(points, found, strict=True):
+        point = shapely.Point(lon, lat)
+        distances = {area: geometry.distance(point) for area, geometry in _SMALL_AREAS.items()}
+        nearest = min(distances.values())
+        assume(abs(nearest - LIMIT) > 1e-12)
+        if nearest > LIMIT:
+            assert code is None
+        else:
+            assert code is not None
+            assert distances[code] <= nearest + 1e-12
 
 
 async def test_missing_boundaries_raise_and_warn_until_they_are_written(boundary_path, caplog):

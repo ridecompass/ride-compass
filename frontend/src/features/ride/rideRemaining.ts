@@ -37,6 +37,21 @@ function plannedClock(plan: RidePlan, stretches: readonly { startKm: number; end
 }
 
 /**
+ * ルート`plan`の上の距離を通る見込みの時刻（ms）を返す関数。走る前（`at`がnull）は計画の時刻のまま、走行中は`at.km`を
+ * `at.fixedAtMs`（最後に位置を受けた時刻）に通ったとして、その先へ計画の時間を足す。ルートが無い・計画の時刻が欠けていればnull。
+ */
+export function rideClock(
+  plan: RidePlan,
+  at: { km: number; fixedAtMs: number } | null,
+): ((km: number) => number) | null {
+  if (plan.segments.length === 0) return null;
+  const clock = plannedClock(plan, routeStretches(plan.segments));
+  if (clock === null || at === null) return clock;
+  const shift = at.fixedAtMs - clock(at.km);
+  return (km) => clock(km) + shift;
+}
+
+/**
  * ルート`plan`の上の距離`progressKm`から終わりまでの残りと、その到着予想（`fixedAtMs`は最後に位置を受けた時刻）。
  * ルートが無ければnull。位置をまだ受けていない・計画の時刻が欠けているときは、到着予想だけ出さない。
  */
@@ -50,10 +65,6 @@ export function rideRemaining(
   const stretches = routeStretches(plan.segments);
   const routeKm = stretches[stretches.length - 1].endKm;
   const remainingKm = Math.max(0, routeKm - progressKm);
-  const clock = plannedClock(plan, stretches);
-  const arrivalAt =
-    fixedAtMs === null || clock === null
-      ? null
-      : new Date(fixedAtMs + clock(routeKm) - clock(Math.min(routeKm, progressKm)));
-  return { remainingKm, arrivalAt };
+  const clock = fixedAtMs === null ? null : rideClock(plan, { km: Math.min(routeKm, progressKm), fixedAtMs });
+  return { remainingKm, arrivalAt: clock === null ? null : new Date(clock(routeKm)) };
 }

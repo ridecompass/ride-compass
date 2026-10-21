@@ -84,6 +84,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/weather/route-warning-timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["get_route_warning_timeline_api_weather_route_warning_timeline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/weather/wbgt": {
         parameters: {
             query?: never;
@@ -1899,6 +1915,21 @@ export interface components {
             /** Decimals */
             decimals: number;
         };
+        /** RouteAreaTimeline */
+        RouteAreaTimeline: {
+            /** Area Code */
+            area_code: string;
+            /** Area Name */
+            area_name: string;
+            /** Start Index */
+            start_index: number;
+            /** End Index */
+            end_index: number;
+            /** Kinds */
+            kinds: {
+                [key: string]: components["schemas"]["TimelineKindLevels"];
+            };
+        };
         /** RouteCandidate */
         RouteCandidate: {
             /** Direction Label */
@@ -2090,6 +2121,11 @@ export interface components {
                 [key: string]: components["schemas"]["RoadClassStretch"][];
             };
         };
+        /** RouteTimelineRequest */
+        RouteTimelineRequest: {
+            /** Points */
+            points: components["schemas"]["Coordinates"][];
+        };
         /** RouteTurn */
         RouteTurn: {
             /** Distance Km */
@@ -2103,6 +2139,11 @@ export interface components {
             latitude: number;
             /** Longitude */
             longitude: number;
+        };
+        /** RouteWarningTimeline */
+        RouteWarningTimeline: {
+            /** Areas */
+            areas: components["schemas"]["RouteAreaTimeline"][];
         };
         /** ScoresPreviewRequest */
         ScoresPreviewRequest: {
@@ -2154,6 +2195,35 @@ export interface components {
              * Format: date-time
              */
             finished_at: string;
+        };
+        /**
+         * TimelineKind
+         * @enum {string}
+         */
+        TimelineKind: "thunder";
+        /** TimelineKindLevels */
+        TimelineKindLevels: {
+            /** Slots */
+            slots: components["schemas"]["TimelineSlotLevel"][];
+            /** Additions */
+            additions: string[];
+        };
+        /** TimelineSlotLevel */
+        TimelineSlotLevel: {
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Code */
+            code: string;
+            /** Advisory */
+            advisory: boolean;
         };
         /** TuningParameterView */
         TuningParameterView: {
@@ -2458,6 +2528,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WeatherWarnings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_route_warning_timeline_api_weather_route_warning_timeline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteTimelineRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteWarningTimeline"];
                 };
             };
             /** @description Validation Error */

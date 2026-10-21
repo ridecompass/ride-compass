@@ -106,7 +106,7 @@ def _parse_area_entries(section: object) -> dict[str, AreaEntry]:
     if not isinstance(section, dict):
         return {}
     return {
-        code: AreaEntry(parent=_str_or_none(entry.get("parent")))
+        code: AreaEntry(parent=_str_or_none(entry.get("parent")), name=_str_or_none(entry.get("name")))
         for code, entry in section.items()
         if isinstance(entry, dict)
     }

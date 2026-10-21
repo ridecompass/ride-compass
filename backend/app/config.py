@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     weather_wbgt_rate_limit_per_minute: int = 30
     weather_flood_forecast_rate_limit_per_minute: int = 30
     weather_amedas_rate_limit_per_minute: int = 30
+    # ルートの警報級の時系列は、ルートが変わったときと一定の間ごとに呼ばれる。
+    weather_warning_timeline_rate_limit_per_minute: int = 30
     # 今日の最寄りの格子点の値も同じ地点の変化を起点に呼ばれ、ローカルのMSMファイルから読む。
     weather_rate_limit_per_minute: int = 30
     # 地点の検索は打つのが止まるたびに呼ばれる。止まってから引くまでの間で決まる1分あたりの最大に当たらない値。
