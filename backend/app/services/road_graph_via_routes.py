@@ -22,7 +22,7 @@ from app.domain.routing import (
     turn_expanded_path_from_state_to_source,
     turn_expanded_shortest_path,
 )
-from app.domain.route_diversity import select_diverse_by_overlap
+from app.domain.route_diversity import EdgeSetOverlap, select_diverse_by_overlap
 from app.domain.wind import (
     cruise_hours,
     estimate_passage_hours,
@@ -214,7 +214,7 @@ async def select_via_nodes(
         return None if found is None else found[0] + found[1]
 
     selected = select_diverse_by_overlap(
-        ranked, full_edges, context.statics.edge_length_m,
+        ranked, EdgeSetOverlap(full_edges, context.statics.edge_length_m, max_routes),
         corridor_overlap_ratios(), max_routes,
     )
 

@@ -75,6 +75,7 @@ from app.domain.turn_structure import (
     edge_bearings,
 )
 from app.domain.routing import (
+    TreePathOverlap,
     TurnExpandedTree,
     build_turn_expanded_tree,
     tree_cost_bound,
@@ -568,13 +569,6 @@ class RoadGraphEngine:
         def prefer(remaining: Sequence[int], selected: list[int]) -> list[int]:
             return order_by_bearing_spread(remaining, selected, bearing_by_node, closeness_by_node)
 
-        outbound_cache: dict[int, list[int] | None] = {}
-
-        def outbound_edges(node_index: int) -> list[int] | None:
-            if node_index not in outbound_cache:
-                outbound_cache[node_index] = turn_expanded_path_edge_indices(tree, node_index)
-            return outbound_cache[node_index]
-
         far_enough = turnaround_separation(
             ranked_list, context.node_lat[ranked], context.node_lon[ranked],
             float(context.node_lat[context.origin_node]),
@@ -582,14 +576,14 @@ class RoadGraphEngine:
 
         # 閾値を昇順に渡すと、埋まらなかったときの緩和までを1回の呼び出しで行う。
         selected = select_diverse_by_overlap(
-            [], outbound_edges, statics.edge_length_m,
+            [], TreePathOverlap(tree),
             corridor_overlap_ratios(), pool_size, far_enough,
             tie_groups=tie_groups, prefer=prefer,
         )
 
         turnarounds: list[LoopTurnaround] = []
         for node_index in selected:
-            edges = outbound_edges(node_index)
+            edges = turn_expanded_path_edge_indices(tree, node_index)
             if not edges:
                 continue
             bearing = compass_degrees(bearing_between(origin_node, node_coordinates(context, node_index)))

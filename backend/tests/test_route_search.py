@@ -84,7 +84,7 @@ def turn_tree(state_count, *, node_cost, node_length_m, node_seconds, node_best_
         state_length_m=np.full(state_count, np.nan), state_seconds=np.full(state_count, np.nan),
         node_cost=np.asarray(node_cost, dtype=float), node_best_state=np.asarray(node_best_state, dtype=np.int64),
         node_length_m=np.asarray(node_length_m, dtype=float), node_seconds=np.asarray(node_seconds, dtype=float),
-        predecessor_list=[-1] * state_count,
+        predecessor=np.full(state_count, -1, dtype=np.int64), predecessor_list=[-1] * state_count,
     )
 
 

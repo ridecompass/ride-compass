@@ -337,9 +337,10 @@ class TurnExpandedTree:
     # `node_best_state`に対応する実距離（m）・所要時間（秒）。到達不能はNaN。
     node_length_m: np.ndarray
     node_seconds: np.ndarray
-    # 木の親となる状態。始点の区間・到達不能は-1。Pythonのlistで持つ（numpy配列への添字アクセスより、
-    # 経路復元のループが速い）。既定値を持たせない——省略できると、渡し忘れた木が黙って
+    # 木の親となる状態。始点の区間・到達不能は-1。JITが読む配列と、Pythonのlist（numpy配列への添字アクセスより、
+    # Pythonの経路復元のループが速い）の両方で持つ。既定値を持たせない——省略できると、渡し忘れた木が黙って
     # 「どの状態からも経路が1本も辿れない」ふるまいになる。
+    predecessor: np.ndarray = field(repr=False, compare=False)
     predecessor_list: list[int] = field(repr=False, compare=False)
 
 
@@ -418,7 +419,7 @@ def build_turn_expanded_tree(
         state_cost=state_cost, state_length_m=state_length_m,
         state_seconds=state_seconds, node_cost=node_cost, node_best_state=node_best_state,
         node_length_m=node_length_m, node_seconds=node_seconds,
-        predecessor_list=predecessor.tolist(),
+        predecessor=predecessor, predecessor_list=predecessor.tolist(),
     )
 
 
@@ -487,6 +488,48 @@ def turn_expanded_path_edge_indices(tree: TurnExpandedTree, target_node_index: i
     if state < 0:
         return None
     return turn_expanded_path_from_state(tree, state)
+
+
+class TreePathOverlap:
+    """前向き木の始点からNodeまでの経路どうしの重複率（`domain/route_diversity.py: OverlapMeasure`）。
+    itemはNode index で、経路は`turn_expanded_path_edge_indices`が返すもの。
+
+    同じ木の経路どうしが共有する区間は、分かれる点までの頭の部分だけ（木ではどの状態への経路も1本に決まる）。
+    候補から親を辿って最初に当たる採用済みの経路の状態は、どの採用済みと分かれる点よりも深い（そこまでは
+    採用済みのどれかと共有し、その先はどれとも共有しない）ので、最大の重複率はその状態と候補の木の積算の
+    実距離の比になる。候補の経路を取り出さず、採用済みの経路の状態に印を付けるだけで測れる。
+    """
+
+    def __init__(self, tree: TurnExpandedTree):
+        self._tree = tree
+        self._accepted = np.zeros(len(tree.predecessor), dtype=np.bool_)
+        self._accepted_any = False
+
+    def max_ratio(self, node_index: int) -> float | None:
+        state = int(self._tree.node_best_state[node_index])
+        if state < 0:
+            return None
+        if not self._accepted_any:
+            return 0.0
+        return _tree_shared_ratio(self._tree.predecessor, self._tree.state_length_m, self._accepted, state)
+
+    def accept(self, node_index: int) -> None:
+        self._accepted[turn_expanded_path_edge_indices(self._tree, node_index)] = True
+        self._accepted_any = True
+
+
+@njit(cache=True, nogil=True)
+def _tree_shared_ratio(
+    predecessor: np.ndarray, state_length_m: np.ndarray, accepted: np.ndarray, state: int,
+) -> float:
+    """`state`までの経路のうち、印の付いた最初の祖先（自身を含む）までの実距離の割合。印が無ければ0。"""
+    total = state_length_m[state]
+    current = state
+    while current >= 0 and not accepted[current]:
+        current = predecessor[current]
+    if current < 0 or not total > 0.0:
+        return 0.0
+    return state_length_m[current] / total
 
 
 @dataclass
@@ -715,7 +758,7 @@ def turn_expanded_shortest_path(
 
 
 def compile_search_kernels() -> None:
-    """探索のJIT（出て戻れるNodeの集まり・一対全木・2点間探索）を、最小の道路網で1回ずつ呼んでコンパイルする。
+    """探索のJIT（出て戻れるNodeの集まり・一対全木・木の経路どうしの重複率・2点間探索）を、最小の道路網で1回ずつ呼んでコンパイルする。
 
     `@njit(cache=True)`の結果はこのファイルの隣の`__pycache__`に残り、別のプロセスはそこから読む。
     イメージの組み立て（`backend/Dockerfile`）で呼び、入れ替えたコンテナの最初のルート生成が
@@ -732,7 +775,10 @@ def compile_search_kernels() -> None:
     )
     cost = np.ones((1, 2))
     origin_states = np.array([0])
-    build_turn_expanded_tree(
+    tree = build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, origin_states, lazy_graph.node_count, edge_seconds=cost
     )
+    overlap = TreePathOverlap(tree)
+    overlap.accept(1)
+    overlap.max_ratio(0)
     turn_expanded_shortest_path(structure, cost, np.zeros(2), origin_states, 0, edge_seconds=cost)
