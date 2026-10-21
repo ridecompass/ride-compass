@@ -45,7 +45,7 @@ from tests.source_ingest import (
     estat_small_area_record,
     ingest_records,
     isj_block_record,
-    point_record,
+    overture_place_record,
 )
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -63,8 +63,7 @@ OUTSIDE_LON, OUTSIDE_LAT = 135.50, 34.68
 @pytest_asyncio.fixture(loop_scope="module")
 async def area(road_graph_session, app_on_test_database):
     """道路の取込が対象範囲を宣言した状態。入れた行は、抜けるときに`road_graph_session`の片付けが消す。"""
-    await ingest_records("osm_way", [], bbox=(
-        AREA.min_latitude, AREA.min_longitude, AREA.max_latitude, AREA.max_longitude))
+    await ingest_records("osm_way", [], bbox=AREA)
 
 
 async def _search(query: str, near_longitude: float = LON, near_latitude: float = LAT) -> httpx.Response:
@@ -72,13 +71,6 @@ async def _search(query: str, near_longitude: float = LON, near_latitude: float 
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         return await client.get(
             "/api/place-search", params={"q": query, "latitude": near_latitude, "longitude": near_longitude})
-
-
-def _facility_record(key: int, name: str, longitude: float, latitude: float) -> object:
-    """Overture の地点の1件（群「食べる・飲む」に入る分類）。"""
-    return point_record(key, longitude, latitude, {
-        "names": {"primary": name}, "confidence": 0.75,
-        "brand": {"names": {"primary": None}}, "taxonomy": {"hierarchy": ["food_and_drink", "cafe"]}})
 
 
 async def _ingest_facilities(records: list[object]) -> None:
@@ -292,10 +284,10 @@ def _facility(name: str, longitude: float, latitude: float = LAT, area: str | No
 @pytest.mark.usefixtures("area")
 async def test_facilities_are_found_by_a_part_of_the_name_within_the_area(query):
     await _ingest_facilities([
-        _facility_record(1, "らーめん一蘭 新宿店", LON, LAT),
-        _facility_record(2, "イチラン・カフェ", LON + 0.01, LAT),
-        _facility_record(3, "一蘭 道頓堀店", OUTSIDE_LON, OUTSIDE_LAT),
-        _facility_record(4, "ラーメン一風堂", LON + 0.02, LAT),
+        overture_place_record(1, LON, LAT, "らーめん一蘭 新宿店"),
+        overture_place_record(2, LON + 0.01, LAT, "イチラン・カフェ"),
+        overture_place_record(3, OUTSIDE_LON, OUTSIDE_LAT, "一蘭 道頓堀店"),
+        overture_place_record(4, LON + 0.02, LAT, "ラーメン一風堂"),
     ])
 
     response = await _search(query)
@@ -314,10 +306,10 @@ async def test_facilities_are_ordered_by_how_the_name_matches_then_by_the_distan
     """名前が入力と同じ → 入力で始まる → 入力を含む。同じ中では、画面が見ている所の真ん中に近い順（名前の長さに依らない）。
     近さは測地の距離: 東へ経度0.01度（約0.90km）の店が、北へ緯度0.009度（約1.00km）の店より先（度のままなら逆になる）。"""
     await _ingest_facilities([
-        _facility_record(1, "珈琲小杉", LON, LAT),
-        _facility_record(2, "小杉コーヒー店", LON + 0.01, LAT),
-        _facility_record(3, "小杉亭", LON, LAT + 0.009),
-        _facility_record(4, "小杉", LON + 0.03, LAT),
+        overture_place_record(1, LON, LAT, "珈琲小杉"),
+        overture_place_record(2, LON + 0.01, LAT, "小杉コーヒー店"),
+        overture_place_record(3, LON, LAT + 0.009, "小杉亭"),
+        overture_place_record(4, LON + 0.03, LAT, "小杉"),
     ])
 
     response = await _search("小杉", near_longitude=LON)
@@ -337,8 +329,8 @@ async def test_a_facility_nearer_on_the_ground_comes_first_even_when_degrees_sca
     余弦を掛けたものより地球の扁平の分だけ長いので、北の店は、東の上限の件数の店より度では遠く、地面では近い。"""
     north = LAT + 0.01 * math.cos(math.radians(LAT)) * 1.002
     await _ingest_facilities(
-        [_facility_record(i, "喫茶ことり", LON + 0.01 - i / 1e6, LAT) for i in range(PLACE_PREDICTION_LIMIT)]
-        + [_facility_record(PLACE_PREDICTION_LIMIT, "喫茶ことり", LON, north)])
+        [overture_place_record(i, LON + 0.01 - i / 1e6, LAT, "喫茶ことり") for i in range(PLACE_PREDICTION_LIMIT)]
+        + [overture_place_record(PLACE_PREDICTION_LIMIT, LON, north, "喫茶ことり")])
 
     response = await _search("喫茶ことり")
 
@@ -348,22 +340,19 @@ async def test_a_facility_nearer_on_the_ground_comes_first_even_when_degrees_sca
     ]
 
 
-def _convenience_record(key: int, name: str, longitude: float, latitude: float = LAT) -> object:
-    """Overture の地点の1件（群「コンビニ」に入る分類。群はチェーンの名前の店だけを入れる）。"""
-    return point_record(key, longitude, latitude, {
-        "names": {"primary": name}, "confidence": 0.75,
-        "brand": {"names": {"primary": None}}, "taxonomy": {"hierarchy": ["shopping", "convenience_store"]}})
+#: 群「コンビニ」に入る Overture の分類（群はチェーンの名前の店だけを入れる）。
+CONVENIENCE_STORE = ("shopping", "convenience_store")
 
 
 @pytest.mark.usefixtures("area")
 async def test_a_name_of_a_group_finds_the_nearest_stores_of_the_group_before_the_names_it_matches():
     """「コンビニ」と打つと、名前に「コンビニ」を含まない近くのコンビニの店が、名前が入力と同じ店（より近くても）より先に近い順に出る。"""
     await _ingest_facilities([
-        _facility_record(1, "コンビニ", LON, LAT),
-        _convenience_record(2, "セブン-イレブン 西新宿店", LON + 0.02),
-        _convenience_record(3, "ファミリーマート 新宿店", LON + 0.01),
-        _convenience_record(4, "ローソン 道頓堀店", OUTSIDE_LON, OUTSIDE_LAT),
-        _facility_record(5, "ラーメン一風堂", LON + 0.005, LAT),
+        overture_place_record(1, LON, LAT, "コンビニ"),
+        overture_place_record(2, LON + 0.02, LAT, "セブン-イレブン 西新宿店", CONVENIENCE_STORE),
+        overture_place_record(3, LON + 0.01, LAT, "ファミリーマート 新宿店", CONVENIENCE_STORE),
+        overture_place_record(4, OUTSIDE_LON, OUTSIDE_LAT, "ローソン 道頓堀店", CONVENIENCE_STORE),
+        overture_place_record(5, LON + 0.005, LAT, "ラーメン一風堂"),
     ])
 
     response = await _search("コンビニ")
@@ -379,7 +368,7 @@ async def test_a_name_of_a_group_finds_the_nearest_stores_of_the_group_before_th
 @pytest.mark.usefixtures("area")
 async def test_an_input_without_letters_finds_no_facility():
     """表記の揺れを除くと空になる入力（中点・ハイフンだけ）は、どの名前にも含まれるとみなさない。"""
-    await _ingest_facilities([_facility_record(1, "小杉湯", LON, LAT)])
+    await _ingest_facilities([overture_place_record(1, LON, LAT, "小杉湯")])
 
     response = await _search("・-")
 
@@ -391,7 +380,7 @@ async def test_an_input_without_letters_finds_no_facility():
 async def test_addresses_come_before_facilities():
     """施設は、検索の中心に住所より近くても住所の後に並ぶ。"""
     await _ingest_addresses(ADDRESSES)
-    await _ingest_facilities([_facility_record(1, "小杉湯", LON, LAT)])
+    await _ingest_facilities([overture_place_record(1, LON, LAT, "小杉湯")])
 
     response = await _search("小杉")
 
@@ -422,8 +411,8 @@ async def test_facilities_of_the_same_name_show_the_area_each_one_is_in():
     見分ける。"""
     await _ingest_boundaries()
     await _ingest_facilities([
-        _facility_record(1, "ファミリーマート", LON, LAT),
-        _facility_record(2, "ファミリーマート", 139.70, 35.95),
+        overture_place_record(1, LON, LAT, "ファミリーマート"),
+        overture_place_record(2, 139.70, 35.95, "ファミリーマート"),
     ])
 
     response = await _search("ファミリーマート")

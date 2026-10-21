@@ -19,15 +19,20 @@ import functools
 import numpy as np
 import pytest
 
-from app.batch import derive_counts, derive_elevation, derive_nodes, derive_topology
+from app.batch import derive_counts, derive_elevation, derive_topology
 from app.batch.dem_tile_store import PRODUCT_PRIORITY
 from app.batch.ingest import SourceRecord
 from app.domain.attributes import CategoricalColumn
 from app.domain.material_catalog import segment_material_ids
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, BoundingBox
-from app.domain.tuning import TUNING_PARAMETERS_BY_ID
 from tests.conftest import raw_connection
-from tests.source_ingest import dem_tile_records, ingest_records, point_record, way_record
+from tests.source_ingest import (
+    dem_tile_records,
+    derive_nodes_at_default_radius,
+    ingest_records,
+    point_record,
+    way_record,
+)
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -50,13 +55,13 @@ async def _derive_world() -> None:
         way_record(1, [(139.700, 35.680), (139.705, 35.6805), (139.6995, 35.681)], [1, 2, 3],
                    {"highway": "secondary", "surface": "asphalt", "lit": "yes", "maxspeed": "40"}),
         way_record(2, [(139.705, 35.6805), (139.706, 35.6795)], [2, 9], {"highway": "track", "tracktype": "grade3"}),
-    ], bbox=(AREA.min_latitude, AREA.min_longitude, AREA.max_latitude, AREA.max_longitude))
+    ], bbox=AREA)
     await ingest_records("osm_node", [point_record(3, 139.6995, 35.681, {"highway": "crossing"})])
     await ingest_records("dem", _dem_records())
     async with raw_connection() as conn:
         await derive_topology.derive(conn)
         await derive_elevation.derive(conn, previous=None)
-        await derive_nodes.derive(conn, TUNING_PARAMETERS_BY_ID["signal.match_radius_m"].default)
+        await derive_nodes_at_default_radius(conn)
         await derive_counts.derive(conn)
 
 

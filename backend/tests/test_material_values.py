@@ -38,7 +38,7 @@ from app.domain.material_catalog import (
 )
 from app.domain.region import BoundingBox
 from app.infrastructure.source_models import WAYS_SOURCE_SQL
-from tests.source_ingest import ingest_records, way_record
+from tests.source_ingest import ingest_records, parallel_way_record
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -46,8 +46,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 async def _ingest_ways(tags_by_way: dict[int, dict[str, str]]) -> None:
     """道ごとのタグで道を取り込む。"""
     await ingest_records("osm_way", [
-        way_record(way_id, [(139.70, 35.68 + 0.001 * way_id), (139.701, 35.68 + 0.001 * way_id)],
-                   [way_id * 10, way_id * 10 + 1], tags)
+        parallel_way_record(way_id, tags)
         for way_id, tags in tags_by_way.items()])
 
 

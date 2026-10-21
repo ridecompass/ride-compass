@@ -1,6 +1,6 @@
 """標高タイルの取得（scripts/fetch_dem_tiles.py）。
 
-入口は`fetch`。配信元は`httpx.MockTransport`の代役に、置き場は一時ディレクトリに差し替える。取る母集団は
+入口は`fetch`。配信元はrespxの経路の代役に、置き場は一時ディレクトリに差し替える。取る母集団は
 本物のプロファイルの宣言（製品とズーム）から導き、範囲だけをz15のタイル2×2枚ぶんへ絞る。
 見るのは、宣言した製品をそれぞれのズームでPNG形式のURLから取り、返ったものを配信元の最終更新（`Last-Modified`）とともに
 タイルごとに置いて404は区域外の印にすることと、次の実行がどちらも叩かないこと。最終更新を返さなかったタイルは置かない——置くと、
@@ -14,17 +14,18 @@
 """
 
 import re
-from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
 
 import httpx
 import pytest
+import respx
 
 from app.batch import dem_tile_store
-from app.batch.source_profile import Target, load_source_profile
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tiles_covering_bbox
 from scripts import fetch_dem_tiles
+from tests.fake_http import client_for
+from tests.source_ingest import profile_within
 
 #: 範囲の左上に使うz15のタイル（東京）。範囲はここから右と下へ1枚ずつ広げる。
 ZOOM, X, Y = 15, 29100, 12902
@@ -35,7 +36,7 @@ SERVED = {"dem5a", "dem"}
 UNSERVED_TILE = (X + 1, Y + 1)
 
 #: 配信元のPNG形式のURLの道（https://maps.gsi.go.jp/development/ichiran.html）。製品名に`_png`が付く。
-PNG_PATH = re.compile(r"/xyz/(?P<product>\w+)_png/(?P<z>\d+)/(?P<x>\d+)/(?P<y>\d+)\.png")
+PNG_PATH = re.compile(r"^/xyz/(?P<product>\w+)_png/(?P<z>\d+)/(?P<x>\d+)/(?P<y>\d+)\.png$")
 
 
 
@@ -64,26 +65,17 @@ def _declared_requests(profile) -> set[tuple[str, int, int, int]]:
             for x, y in tiles_covering_bbox(bbox, zoom)}
 
 
-class Origin:
-    """配信元の代役。受けた要求を (製品, ズーム, x, y) で覚える。PNG形式のURLでなければ400を返す。"""
+def _origin(stamps: bool = True) -> respx.Router:
+    """配信元の代役。PNG形式のURLにだけ答える（ほかのURLはrespxが落とす）。`stamps`が偽なら最終更新を返さない。"""
+    def respond(request: httpx.Request, product: str, z: str, x: str, y: str) -> httpx.Response:
+        if not _served(product, int(z), int(x), int(y)):
+            return httpx.Response(404)
+        headers = {"Last-Modified": format_datetime(_modified(product, int(x), int(y)), usegmt=True)} if stamps else {}
+        return httpx.Response(200, content=_body(product, int(x), int(y)), headers=headers)
 
-    def __init__(self, stamps: bool = True):
-        self.requests: list[tuple[str, int, int, int]] = []
-        self.stamps = stamps
-
-    def handle(self, request: httpx.Request) -> httpx.Response:
-        match = PNG_PATH.fullmatch(request.url.path)
-        if match is None:
-            return httpx.Response(400)
-        product, z, x, y = match["product"], int(match["z"]), int(match["x"]), int(match["y"])
-        self.requests.append((product, z, x, y))
-        if _served(product, z, x, y):
-            headers = {"Last-Modified": format_datetime(_modified(product, x, y), usegmt=True)} if self.stamps else {}
-            return httpx.Response(200, content=_body(product, x, y), headers=headers)
-        return httpx.Response(404)
-
-    def client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(transport=httpx.MockTransport(self.handle))
+    router = respx.Router()
+    router.get(path__regex=PNG_PATH).mock(side_effect=respond)
+    return router
 
 
 @pytest.fixture
@@ -91,15 +83,13 @@ def profile():
     top_left = tile_bounds_lonlat(ZOOM, X, Y)
     bottom_right = tile_bounds_lonlat(ZOOM, X + 1, Y + 1)
     inset = 1e-6
-    bbox = (bottom_right.min_latitude + inset, top_left.min_longitude + inset,
-            top_left.max_latitude - inset, bottom_right.max_longitude - inset)
-    return replace(load_source_profile(None), target=Target(bbox=bbox))
+    return profile_within((bottom_right.min_latitude + inset, top_left.min_longitude + inset,
+                           top_left.max_latitude - inset, bottom_right.max_longitude - inset))
 
 
 async def test_served_tiles_are_stored_and_the_rest_marked_absent_per_product(tmp_path, profile):
     """1つの製品が返しても他の製品を取りやめず、各製品を宣言したズームで取る。"""
-    origin = Origin()
-    async with origin.client() as client:
+    async with client_for(_origin()) as client:
         await fetch_dem_tiles.fetch(client, tmp_path, profile, attempts=1)
 
     declared = _declared_requests(profile)
@@ -116,8 +106,7 @@ async def test_served_tiles_are_stored_and_the_rest_marked_absent_per_product(tm
 
 async def test_a_tile_without_last_modified_is_not_stored(tmp_path, profile):
     """置かないので、次の実行がまた取りに行く。"""
-    origin = Origin(stamps=False)
-    async with origin.client() as client:
+    async with client_for(_origin(stamps=False)) as client:
         await fetch_dem_tiles.fetch(client, tmp_path, profile, attempts=1)
 
     for product, zoom, x, y in _declared_requests(profile):
@@ -126,12 +115,11 @@ async def test_a_tile_without_last_modified_is_not_stored(tmp_path, profile):
 
 async def test_a_second_run_does_not_ask_the_origin_again(tmp_path, profile):
     """取れたものも、区域外と分かったものも、次からは叩かない。"""
-    first = Origin()
-    async with first.client() as client:
+    async with client_for(_origin()) as client:
         await fetch_dem_tiles.fetch(client, tmp_path, profile, attempts=1)
 
-    second = Origin()
-    async with second.client() as client:
+    second = _origin()
+    async with client_for(second) as client:
         await fetch_dem_tiles.fetch(client, tmp_path, profile, attempts=1)
 
-    assert second.requests == []
+    assert second.calls.call_count == 0

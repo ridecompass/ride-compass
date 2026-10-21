@@ -12,7 +12,6 @@ Overture の地点を取り込んで段を流し、表に入った辺りを見�
 import csv
 import io
 import zipfile
-from dataclasses import replace
 
 import pytest
 import shapefile
@@ -20,15 +19,14 @@ import shapefile
 from app.batch import derive_stop_places
 from app.batch.ingest import ingest_source
 from app.batch.source_adapters import abr, estat_small_area
-from app.batch.source_profile import Target, load_source_profile
 from app.infrastructure.source_models import Source
-from tests.source_ingest import ingest_records, point_record
+from tests.source_ingest import ingest_records, overture_place_record, profile_within
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 #: 取込の範囲（min_lat, min_lon, max_lat, max_lon）。
 BBOX = (35.40, 139.20, 36.10, 140.00)
-PROFILE = replace(load_source_profile(None), target=Target(bbox=BBOX))
+PROFILE = profile_within(BBOX)
 
 #: 取り込む都道府県を決める ABR の市区町村の代表点: (コード, 経度, 緯度)。
 CITY_POSITIONS = [("131041", 139.70, 35.69), ("111104", 139.69, 35.95)]
@@ -101,9 +99,7 @@ async def _areas(conn, places: dict[str, tuple[float, float]]) -> dict[str, str 
     """境界と地点（鍵 → (経度, 緯度)）を取り込み、立ち寄り先の段を流して、地点ごとの辺りを返す。"""
     await ingest_source(conn, PROFILE, Source.ESTAT_SMALL_AREA)
     await ingest_records("overture_place", [
-        point_record(key, lon, lat, {"names": {"primary": f"喫茶{key}"}, "confidence": 0.75,
-                                     "brand": {"names": {"primary": None}},
-                                     "taxonomy": {"hierarchy": ["food_and_drink", "cafe"]}})
+        overture_place_record(key, lon, lat, f"喫茶{key}")
         for key, (lon, lat) in places.items()], conn=conn)
     await derive_stop_places.derive(conn)
     return {row["source_key"]: row["area"] for row in await conn.fetch("SELECT source_key, area FROM stop_places")}

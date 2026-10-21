@@ -16,9 +16,11 @@ import json
 
 import httpx
 import pytest
+import respx
 
 from app.domain.axis_definitions import AxisDefinition, is_update_allowed_while_published
 from scripts import axis_apply
+from tests.fake_http import sync_client_for
 
 ADMIN = "/api/admin/axis-definitions"
 
@@ -60,6 +62,12 @@ class AdminApi:
             body = failure["body"]
             return httpx.Response(failure["status"], **({"text": body} if isinstance(body, str) else {"json": body}))
         return self._serve(method, path, request)
+
+    def router(self) -> respx.Router:
+        """この代役へ、宛先（`http://backend`）への要求を全部渡す経路。"""
+        router = respx.Router()
+        router.route(host="backend").mock(side_effect=self.handle)
+        return router
 
     def _serve(self, method: str, path: str, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content) if request.content else None
@@ -107,7 +115,7 @@ def run(tmp_path, capsys):
             path = tmp_path / "axis.json"
             path.write_text(json.dumps(desired, ensure_ascii=False), encoding="utf-8")
             args.insert(0, str(path))
-        with httpx.Client(transport=httpx.MockTransport(api.handle), base_url="http://backend") as client:
+        with sync_client_for(api.router(), base_url="http://backend") as client:
             code = axis_apply.run(axis_apply.parse_args(args), client)
         out, err = capsys.readouterr()
         return code, out, err

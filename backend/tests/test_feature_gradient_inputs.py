@@ -49,7 +49,7 @@ async def _ingest_switchback(session) -> dict[int, tuple[float, float]]:
     await ingest_records("osm_way", [
         way_record(SWITCHBACK_WAY_ID, SWITCHBACK, [1, 2, 3]),
         way_record(2, [SWITCHBACK[1], (139.706, 35.6795)], [2, 9]),
-    ], bbox=(AREA.min_latitude, AREA.min_longitude, AREA.max_latitude, AREA.max_longitude))
+    ], bbox=AREA)
     await ingest_records("dem", _dem_records())
     async with raw_connection() as conn:
         await derive_topology.derive(conn)

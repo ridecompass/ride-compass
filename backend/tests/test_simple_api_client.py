@@ -17,6 +17,7 @@ from cachetools import TTLCache
 
 from app.infrastructure import simple_api_client
 from tests.fake_external_log import record_external_calls
+from tests.fake_http import client_for
 
 
 def _counting_fetch(value):
@@ -133,7 +134,7 @@ async def test_get_json_waits_as_long_as_the_client_it_is_given():
     # 上流ごとの待ち時間は、注入するクライアントが持つ。呼び出しで上書きすると、選んだ待ち時間が効かない。
     router = respx.Router()
     route = router.get("https://example.test/a.json").respond(json={})
-    client = httpx.AsyncClient(timeout=httpx.Timeout(1.0, read=7.0), transport=httpx.MockTransport(router.handler))
+    client = client_for(router, timeout=httpx.Timeout(1.0, read=7.0))
 
     assert await simple_api_client.get_json(client, "https://example.test/a.json", dict, "a is") == {}
     assert route.calls.last.request.extensions["timeout"] == client.timeout.as_dict()

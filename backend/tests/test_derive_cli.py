@@ -22,7 +22,15 @@ from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.source_models import PARTY_TYPE_CODES
 from tests.conftest import empty_ingested_tables, postgis_database_url, raw_connection
-from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record, zigzag_point
+from tests.source_ingest import (
+    abr_prefecture_record,
+    accident_record,
+    ingest_records,
+    interrupted,
+    point_record,
+    zigzag_point,
+    zigzag_way_record,
+)
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -52,8 +60,7 @@ ORDER BY 1, 2, 3
 async def _ingest_ways(conn: asyncpg.Connection, way_100_tags: dict[str, str] | None = None) -> int:
     """`WAYS`を取り込み、`run_id`を返す。`way_100_tags`は道100のタグに足す。"""
     return await ingest_records("osm_way", [
-        way_record(way_id, [zigzag_point(n) for n in node_ids], node_ids,
-                   {**tags, **(way_100_tags or {})} if way_id == 100 else tags)
+        zigzag_way_record(way_id, node_ids, {**tags, **(way_100_tags or {})} if way_id == 100 else tags)
         for way_id, node_ids, tags in WAYS], conn=conn)
 
 
@@ -212,8 +219,8 @@ async def test_the_accident_density_is_divided_by_the_years_of_the_import_that_w
         return float(network.numeric_values[network.edge_way_id == 100, column].max())
 
     # 道100の途中のノード2の上で、自転車の関わった事故が1件。
-    accident = point_record("on-way-100", *zigzag_point(2), {
-        "当事者種別（当事者A）": PARTY_TYPE_CODES[PartyType.BICYCLE], "当事者種別（当事者B）": "59", "死者数": "000"})
+    accident = accident_record("on-way-100", *zigzag_point(2), party_a=PARTY_TYPE_CODES[PartyType.BICYCLE],
+                               party_b="59")
     await ingest_records("accident", [accident], conn=derived_before, rows=HonhyoRows(years=[2024]))
     assert await derive_cli.run(postgis_database_url()) == 0
     one_year = density_on_way_100()
@@ -242,12 +249,8 @@ async def test_a_rebuild_records_the_latest_succeeded_import_of_every_source(der
     node_run = await ingest_records("osm_node", NODES, conn=derived_before)
     address_run = await _ingest_addresses(derived_before)
 
-    def breaks():
-        yield point_record(1, *zigzag_point(1))
-        raise OSError("配信元が途中で切れた")
-
     with pytest.raises(OSError):
-        await ingest_records("osm_node", breaks(), conn=derived_before)
+        await ingest_records("osm_node", interrupted(point_record(1, *zigzag_point(1))), conn=derived_before)
 
     assert await derive_cli.run(postgis_database_url()) == 0
 
