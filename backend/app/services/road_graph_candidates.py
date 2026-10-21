@@ -77,22 +77,24 @@ async def evaluate_routes(
     edges_by_candidate: list[list[LeanEdge]] = [
         [hydrated[topology[index].edge_id] for index in t.data] for t in traced
     ]
-    return list(
-        await asyncio.gather(
-            *(
-                _build_best_candidate(context, t, edges_in_path, side_points, start_time)
-                for t, edges_in_path in zip(traced, edges_by_candidate)
-            )
-        )
+    # 表示する材料は共有の軸定義（`domain/axis_definitions.py: AXIS_DEFINITIONS`）から決まるので、
+    # 軸の差し替えと同じイベントループの上で1回だけ決め、スレッドの先では読ませない。
+    active_material_ids = displayed_material_ids(context.composer.weights)
+    return await asyncio.to_thread(
+        lambda: [
+            _build_best_candidate(context, t, edges_in_path, side_points, start_time, active_material_ids)
+            for t, edges_in_path in zip(traced, edges_by_candidate)
+        ]
     )
 
 
-async def _build_best_candidate(
+def _build_best_candidate(
     context: RoadGraphContext,
     traced: TracedLoop,
     edges_in_path: list[LeanEdge],
     side_points: Mapping[tuple[int, int], Sequence[RoutePointHit]],
     start_time: datetime,
+    active_material_ids: set[str],
 ) -> EvaluatedRoute:
     """1候補ぶんの周回を組み立てる。
 
@@ -107,7 +109,7 @@ async def _build_best_candidate(
     leg_of_edge = traced.leg_of_edge
     forward_candidate = _build_candidate(
         context, traced, edges_in_path, path, elevation_by_edge, side_points, start_time, leg_of_edge,
-        traced.waypoint_offsets,
+        traced.waypoint_offsets, active_material_ids,
     )
 
     if not traced.reversible:
@@ -123,6 +125,7 @@ async def _build_best_candidate(
         reverse_leg_assignment(leg_of_edge),
         # 逆に回ると、経由地より前の区間は経由地より後の区間になる。
         [len(path) - offset for offset in traced.waypoint_offsets],
+        active_material_ids,
     )
     return pick_better_candidate(forward_candidate, reverse_candidate)
 
@@ -151,6 +154,7 @@ def _build_candidate(
     start_time: datetime,
     leg_of_edge: list[int],
     waypoint_offsets: list[int],
+    active_material_ids: set[str],
 ) -> EvaluatedRoute:
     # 区間と標高属性を引数で受けるのは、逆回り候補も同じ組み立てを通すため。
     # distance_km・bearingは同じ物理経路なので順方向の`traced`のものをそのまま使う。
@@ -163,7 +167,8 @@ def _build_candidate(
     )
     along_km = along_route_km(edge.distance_m / 1000 for edge in edges_in_path)
     segments, segment_categories, segment_raw_values = _build_segment_details(
-        edges_in_path, along_km, rows, passages, elevation_by_edge, context, start_time, leg_of_edge
+        edges_in_path, along_km, rows, passages, elevation_by_edge, context, start_time, leg_of_edge,
+        active_material_ids,
     )
     # categorical材料の延長割合は**集約より前に**Edge単位の値から畳む。集約後に
     # 計算すると、ビンの代表値を1つ選ぶ形になり割合がビンの粒度へ量子化される。
@@ -212,6 +217,7 @@ def _build_segment_details(
     context: RoadGraphContext,
     start_time: datetime,
     leg_of_edge: list[int],
+    active_material_ids: set[str],
 ) -> tuple[list[RouteSegmentDetail], list[dict[str, str]], list[dict[str, float]]]:
     """区間ごとの表示値と、区間ごとのcategorical材料の値（材料id→値）・軸の生値（axis_id→値）を組み立てる。
     categorical材料の値は平均できず区間の器（ビンへ畳まれる）に載せられないため、軸の生値は画面が
@@ -225,7 +231,6 @@ def _build_segment_details(
     segments = []
     segment_categories: list[dict[str, str]] = []
     segment_raw_values: list[dict[str, float]] = []
-    active_material_ids = displayed_material_ids(context.composer.weights)
     road_classes = SegmentClassReader.of(context.road)
     timed = _values_at_passages(context, rows, leg_of_edge, passages)
     winds = context.composer.winds_at(
