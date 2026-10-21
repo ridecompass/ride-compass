@@ -28,6 +28,7 @@ from app.domain.leg_costs import LegCostComposer
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates
+from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.wind import DepartureWind, WindForecastSeries
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 
@@ -248,7 +249,8 @@ def test_a_density_axis_costs_the_same_along_a_route_however_its_road_is_cut(win
     whole_leg = _snapshot(whole, **kwargs)
     cut_leg = _snapshot(cut, **kwargs)
 
-    assert cut_leg.cost_lazy.sum() == pytest.approx(whole_leg.cost_lazy.sum(), rel=1e-9)
+    # 区間ごとの費用は`EDGE_VALUE_DTYPE`の桁で持つので、和はその刻みで比べる。
+    assert cut_leg.cost_lazy.sum() == pytest.approx(whole_leg.cost_lazy.sum(), rel=np.finfo(EDGE_VALUE_DTYPE).eps)
     assert whole_leg.cost_lazy.sum() > whole_leg.travel_seconds_lazy.sum()
 
 

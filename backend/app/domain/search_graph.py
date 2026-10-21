@@ -43,9 +43,12 @@ def run_starts(sorted_values: np.ndarray) -> np.ndarray:
     return first
 
 
-# CSRのindptr/indices/entry_edge_indexに使うdtype。Node数・Edge数はint32の値域に対して
+# 探索の構造（CSR・ターン構造）の番号の列のdtype。Node数・Edge数・遷移の数はint32の値域に対して
 # 桁違いに小さく、生成1回ぶんの一時的なメモリを半減できる。
-_CSR_INDEX_DTYPE = np.int32
+SEARCH_INDEX_DTYPE = np.int32
+# 区間・遷移ごとに持つ値の列（費用・所要時間・ターンの待ち・点数・材料の値）のdtype。足し合わせはfloat64で行う
+# ——float32の桁で足すと、長い経路ほど誤差が積もる。
+EDGE_VALUE_DTYPE = np.float32
 
 
 @dataclass
@@ -68,13 +71,13 @@ class CsrGraphStructure:
 def _build_csr_structure(lazy_graph: LazyRoadGraph) -> CsrGraphStructure:
     """`LazyRoadGraph`（区間は`(始点, 終点)`の昇順）からCSR構造を組む。"""
     node_count = lazy_graph.node_count
-    indptr = np.zeros(node_count + 1, dtype=_CSR_INDEX_DTYPE)
+    indptr = np.zeros(node_count + 1, dtype=SEARCH_INDEX_DTYPE)
     np.cumsum(np.bincount(lazy_graph.edge_from, minlength=node_count), out=indptr[1:])
     return CsrGraphStructure(
         node_count=node_count,
         indptr=indptr,
-        indices=lazy_graph.edge_to.astype(_CSR_INDEX_DTYPE),
-        entry_edge_index=np.arange(len(lazy_graph.edge_to), dtype=_CSR_INDEX_DTYPE),
+        indices=lazy_graph.edge_to.astype(SEARCH_INDEX_DTYPE),
+        entry_edge_index=np.arange(len(lazy_graph.edge_to), dtype=SEARCH_INDEX_DTYPE),
     )
 
 

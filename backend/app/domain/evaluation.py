@@ -61,6 +61,7 @@ from app.domain.material_catalog import (
 from app.domain.cycling_speed import travel_model_material_ids
 from app.domain.hard_filters import hard_filtered
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX
+from app.domain.search_graph import EDGE_VALUE_DTYPE
 
 
 def has_route_facing_raw_value(definition: AxisDefinition) -> bool:
@@ -423,7 +424,9 @@ class StaticEdgeScoreMatrix:
 def _stack_columns(columns: dict[str, np.ndarray], rows: int) -> tuple[list[str], np.ndarray]:
     """id→列の辞書を、idの並びと`(行, id)`の行列へ束ねる。"""
     ids = list(columns)
-    matrix = np.stack([columns[i] for i in ids], axis=1) if ids else np.empty((rows, 0), dtype=np.float64)
+    matrix = np.empty((rows, len(ids)), dtype=EDGE_VALUE_DTYPE)
+    for i, column_id in enumerate(ids):
+        matrix[:, i] = columns[column_id]
     return ids, matrix
 
 
