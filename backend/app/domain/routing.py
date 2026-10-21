@@ -25,6 +25,8 @@ import numpy as np
 from numba import njit
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.search_graph import (
+    EDGE_VALUE_DTYPE,
+    SEARCH_INDEX_DTYPE,
     CsrGraphStructure,
     build_lazy_road_graph,
     build_search_graph_statics,
@@ -385,9 +387,9 @@ def build_turn_expanded_tree(
         )
     started = start_timer()
     state_cost, predecessor, state_length_m, state_seconds = _turn_expanded_dijkstra(
-        _kernel_array(indptr, np.int64), _kernel_array(target_state, np.int64),
-        _kernel_array(transition_seconds, np.float64),
-        _kernel_array(cost_bins, np.float64), _kernel_array(seconds_bins, np.float64),
+        _kernel_array(indptr, SEARCH_INDEX_DTYPE), _kernel_array(target_state, SEARCH_INDEX_DTYPE),
+        _kernel_array(transition_seconds, EDGE_VALUE_DTYPE),
+        _kernel_array(cost_bins, EDGE_VALUE_DTYPE), _kernel_array(seconds_bins, EDGE_VALUE_DTYPE),
         _kernel_array(edge_length_m, np.float64), float(bin_seconds),
         _kernel_array(entry_state_indices, np.int64), float(cost_limit),
         len(entry_state_indices) + HEAP_INITIAL_SLACK,
@@ -574,7 +576,7 @@ def _as_time_bins(caller: str, values: np.ndarray) -> np.ndarray:
     3次元以上は送出する。黙って`(1, n)`へ潰すと、後段のビン数の食い違いの検査もすり抜け、
     JITした探索が範囲外を読む。
     """
-    array = np.asarray(values, dtype=np.float64)
+    array = np.asarray(values, dtype=EDGE_VALUE_DTYPE)
     if array.ndim > 2:
         raise ValueError(f"{caller}: expected a 1-D or 2-D array, got {array.shape}")
     return array if array.ndim == 2 else array.reshape(1, -1)
@@ -703,9 +705,9 @@ def turn_expanded_shortest_path(
     )
     capacity = len(origin_states) + HEAP_INITIAL_SLACK
     predecessor, goal_state = _turn_expanded_astar(
-        _kernel_array(structure.indptr, np.int64), _kernel_array(structure.target_state, np.int64),
-        _kernel_array(structure.turn_seconds, np.float64), _kernel_array(structure.edge_to, np.int64),
-        _kernel_array(cost_bins, np.float64), _kernel_array(seconds_bins, np.float64), float(bin_seconds),
+        _kernel_array(structure.indptr, SEARCH_INDEX_DTYPE), _kernel_array(structure.target_state, SEARCH_INDEX_DTYPE),
+        _kernel_array(structure.turn_seconds, EDGE_VALUE_DTYPE), _kernel_array(structure.edge_to, np.int64),
+        _kernel_array(cost_bins, EDGE_VALUE_DTYPE), _kernel_array(seconds_bins, EDGE_VALUE_DTYPE), float(bin_seconds),
         _kernel_array(node_heuristic, np.float64),
         _kernel_array(origin_states, np.int64), int(goal_node_index), capacity,
     )

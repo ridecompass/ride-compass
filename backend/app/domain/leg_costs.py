@@ -43,6 +43,7 @@ from app.domain.evaluation import (
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates, SegmentWind
+from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.time_zone import jst_local_text
 from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_seconds
 from app.domain.twilight import night_mask
@@ -287,7 +288,8 @@ class LegCostComposer:
             return self._travel_inputs_cache
         take = _row_taker(rows)
         distance_m = take(self._score_matrix.distance_m)
-        grade = np.nan_to_num(take(self._static_material_arrays[GRADIENT_PERCENT])) / 100.0
+        # 材料の列はfloat32で持つ。走行モデルの計算はfloat64で行う。
+        grade = np.nan_to_num(take(self._static_material_arrays[GRADIENT_PERCENT]).astype(np.float64)) / 100.0
         rolling = rolling_resistance_material_id()
         surface = self._categorical_material_arrays.get(rolling) if rolling is not None else None
         if surface is None:  # 転がり抵抗の表が分け方を指していない: どの区間も基準の転がり抵抗
@@ -615,7 +617,8 @@ class LegCostComposer:
         """指定した通過時刻（`None`は出発時点のスナップショット）で1本ぶん合成する。"""
         evaluated = self._evaluate(passage)
         composed, travel = evaluated.composed, evaluated.travel
-        cost_array = np.where(self._excluded, np.inf, self._cost_scale * composed.cost(travel))
+        cost_array = np.where(self._excluded, np.inf, self._cost_scale * composed.cost(travel)).astype(EDGE_VALUE_DTYPE)
+        travel = travel.astype(EDGE_VALUE_DTYPE)
         lazy_cost = cost_array[self._lazy_row_index]
         lazy_travel = travel[self._lazy_row_index]
         return LegCostArrays(

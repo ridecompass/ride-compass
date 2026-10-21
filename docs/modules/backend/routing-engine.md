@@ -797,10 +797,14 @@ segments構築はEdge単位の軽量な計算のため並行化してよい。�
   二分探索して、両端のノードから区間の番号を引く）。`SearchGraphStatics`は
   この構造とEdge実距離配列（m）を束ねる。**どちらも転置は返さない**——逆向きが要るのは
   Nodeではなく辺基準の遷移で、そちらは`TurnExpandedStructure.reverse_transitions()`が
-  最初に必要になった時点で1度だけ作って保持する。`indptr`/`indices`/
-  `entry_edge_index`はint32（実データ規模のNode/Edge数はint32の値域に
-  対して桁違いに小さい）。辺基準グラフの遷移は`build_turn_expanded_structure`が
-  この3配列から導くため、Node対からCSRエントリ位置を引き直す整列キーは持たない。
+  最初に必要になった時点で1度だけ作って保持する。辺基準グラフの遷移は`build_turn_expanded_structure`が
+  CSRの3配列から導くため、Node対からCSRエントリ位置を引き直す整列キーは持たない。
+- **列の型（`domain/search_graph.py: SEARCH_INDEX_DTYPE`・`domain/search_graph.py: EDGE_VALUE_DTYPE`）**: 生成1本が持つ配列は
+  区間の数に比例し、1回の生成が切り出してよい区間の上限はその大きさから決まる（`services/graph_service.py: _BYTES_PER_EDGE`）ため、区間・遷移ごとの列を狭い型で持つ。CSRとターン構造の番号の列は
+  `SEARCH_INDEX_DTYPE`（実データ規模のNode・Edge・遷移の数はその値域に対して桁違いに小さい）、区間・遷移ごとの値（静的スコア行列の
+  点数・生値・材料の値、レグの費用と所要時間、ターンの待ち）は`EDGE_VALUE_DTYPE`で持つ。**足し合わせはfloat64で行う**——探索の
+  ラベル・経路に沿った積算・軸の重み付き和は、1本ずつの値を読んでfloat64へ足す。値の列を狭い型のまま掛け合わせると結果も狭い型に
+  なるため、合成と走行モデルは読んだ値をfloat64へ広げてから計算する。
 
 ### `domain/turn_structure.py`
 
