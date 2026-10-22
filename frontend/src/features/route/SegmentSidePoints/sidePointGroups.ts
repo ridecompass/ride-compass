@@ -4,7 +4,7 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import type { RoutePoint } from "@/types/route";
 
-export type SidePoint = {
+type SidePoint = {
   /** ルートの上の道のり（km）。 */
   readonly km: number;
   /** 道からの距離（m）。 */
