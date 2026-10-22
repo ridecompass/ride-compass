@@ -63,7 +63,7 @@ sources:
   - name: overture_place
     adapter: overture_places
     rows:
-      release: "2026-09-23.1"
+      release: "2026-10-21.0"
       # 確からしさは地点が実在する見込み（0〜1）。閉じた地点は0になる。
       min_confidence: 0.5
 
