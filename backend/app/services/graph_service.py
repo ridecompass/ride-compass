@@ -4,13 +4,14 @@ import logging
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.config import settings
 from app.domain.errors import SearchAreaTooLargeError
-from app.domain.graph import LeanEdge
+from app.domain.graph import LeanEdge, parse_edge_key
 from app.domain.region import BoundingBox, tiles_covering_bbox
 from app.domain.attributes import CategoricalColumn
 from app.domain.road_classes import RoadClassDefinitions, current_road_classes
-from app.domain.road_network import RoadNetwork, RoadSlice, road_class_columns, slice_network
+from app.domain.road_network import RoadNetwork, RoadSlice, edge_row_of, road_class_columns, slice_network
 from app.domain.route_search import DETOUR_RATIO_SHARING_ZOOM
-from app.domain.route_points import RoutePointHit
+from app.domain.route import RoutePoint, along_route_km
+from app.domain.route_points import DirectedSegment, points_along_route
 from app.infrastructure import container_memory, road_network_store
 from app.infrastructure.detour_ratio_cache import TileSet
 from app.infrastructure.road_graph_repository import RoadGraphRepository
@@ -54,6 +55,15 @@ def _network_classes(network: RoadNetwork) -> tuple[dict[str, CategoricalColumn]
                 network.edge_count, len(definitions.classifications), elapsed_ms(started))
     _classes = (network, definitions, columns)
     return columns
+
+
+def _lengths_km_current(segments: list[DirectedSegment]) -> list[float] | None:
+    """区間それぞれの長さ（km。生成が積むのと同じ道路網の値）。今の道路網に無い区間があればNone。"""
+    network = road_network_store.current()
+    rows = [edge_row_of(network, *segment) for segment in segments]
+    if any(row is None for row in rows):
+        return None
+    return [float(network.distance_m[row]) / 1000 for row in rows]
 
 
 def _slice_current(bbox: BoundingBox) -> RoadSlice:
@@ -109,6 +119,19 @@ class GraphService:
         """探索用グラフは形を持たない。確定した経路の区間へ実体を後付けする。"""
         return await self._repository.get_edges_with_geometry(edges)
 
-    async def get_route_side_points(self, edges: list[LeanEdge]) -> dict[tuple[int, int], list[RoutePointHit]]:
-        """確定した経路の区間ごとの、近くの点（停止要因・補給・立ち寄り先・事故）。"""
-        return await self._repository.get_route_side_points(edges)
+    async def get_route_side_points(self, edge_ids: list[str], start_km: float) -> list[RoutePoint] | None:
+        """経路の一続きの区間（`domain/graph.py: edge_key`の並び）の近くの点（停止要因・補給・立ち寄り先・事故）を、
+        通る道のりの順に。
+
+        道のりは`start_km`（一続きの始まりの道のり）から区間の長さを積んだもので、候補の区間の道のりと同じ物差し。
+        鍵の形が違う区間か、今の道路網に無い区間があればNone。
+        """
+        parsed = [parse_edge_key(key) for key in edge_ids]
+        segments = [segment for segment in parsed if segment is not None]
+        if len(segments) < len(parsed):
+            return None
+        lengths_km = await asyncio.to_thread(_lengths_km_current, segments)
+        if lengths_km is None:
+            return None
+        hits = await self._repository.get_route_side_points((way, segment) for way, segment, _ in segments)
+        return points_along_route(segments, along_route_km(lengths_km, start_km), hits)

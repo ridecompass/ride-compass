@@ -98,7 +98,7 @@ export default function HomeMapPane({
         onRouteSegmentSelect={results.selectSegment}
         segmentDetail={
           tapMode === "look" && results.selectedRouteSegment !== null ? (
-            <SegmentDetail selection={results.selectedRouteSegment} />
+            <SegmentDetail selection={results.selectedRouteSegment} sidePoints={results.segmentSidePoints} />
           ) : null
         }
         onRouteSelect={results.selectTab}
@@ -217,7 +217,7 @@ export default function HomeMapPane({
             profile !== null ? (
               <RouteProfile
                 segments={profile.segments}
-                points={profile.points}
+                sidePoints={results.segmentSidePoints}
                 overallDifficulty={profile.overall_difficulty?.average ?? null}
                 axes={axisCatalog.axes}
                 axisColors={axisCatalog.axisColors}

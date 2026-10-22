@@ -195,7 +195,7 @@ def _route_values(segments: FeatureSegments, grade: np.ndarray) -> dict[str, dic
         distance_km = float(segments.distance_m[row]) / 1000
         details.setdefault(owner, []).append(RouteSegmentDetail(
             start_latitude=0.0, start_longitude=0.0, end_latitude=0.0, end_longitude=0.0,
-            cumulative_distance_km=0.0, distance_km=distance_km, elevations=[],
+            cumulative_distance_km=0.0, distance_km=distance_km, edge_start=0, edge_end=1, elevations=[],
             road_classes={}, axis_difficulties={axis_id: float(score) for axis_id, score
                                in zip(matrix.axis_ids, matrix.axis_scores[row]) if not np.isnan(score)},
         ).with_density_inputs({

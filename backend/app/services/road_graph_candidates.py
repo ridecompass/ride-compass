@@ -6,7 +6,6 @@
 
 import asyncio
 import math
-from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime, timedelta
 
@@ -24,7 +23,6 @@ from app.domain.geo import (
 )
 from app.domain.graph import LeanEdge
 from app.domain.road_network import elevation_attribute
-from app.domain.route_points import RoutePointHit, points_along_route
 from app.domain.route_road_classes import SegmentClassReader
 from app.domain.route import (
     DensityScoreInput,
@@ -72,8 +70,6 @@ async def evaluate_routes(
         for index in dict.fromkeys(index for t in traced for index in t.data)
     }
     hydrated = await graph_service.get_edges_with_geometry(list(topology.values()))
-    # 1つのセッションは並行に問い合わせられないので、形を引いてから順に引く。
-    side_points = await graph_service.get_route_side_points(list(topology.values()))
     edges_by_candidate: list[list[LeanEdge]] = [
         [hydrated[topology[index].edge_id] for index in t.data] for t in traced
     ]
@@ -82,7 +78,7 @@ async def evaluate_routes(
     active_material_ids = displayed_material_ids(context.composer.weights)
     return await asyncio.to_thread(
         lambda: [
-            _build_best_candidate(context, t, edges_in_path, side_points, start_time, active_material_ids)
+            _build_best_candidate(context, t, edges_in_path, start_time, active_material_ids)
             for t, edges_in_path in zip(traced, edges_by_candidate)
         ]
     )
@@ -92,7 +88,6 @@ def _build_best_candidate(
     context: RoadGraphContext,
     traced: TracedLoop,
     edges_in_path: list[LeanEdge],
-    side_points: Mapping[tuple[int, int], Sequence[RoutePointHit]],
     start_time: datetime,
     active_material_ids: set[str],
 ) -> EvaluatedRoute:
@@ -108,7 +103,7 @@ def _build_best_candidate(
     elevation_by_edge = _elevation_by_edge(context, edges_in_path, path)
     leg_of_edge = traced.leg_of_edge
     forward_candidate = _build_candidate(
-        context, traced, edges_in_path, path, elevation_by_edge, side_points, start_time, leg_of_edge,
+        context, traced, edges_in_path, path, elevation_by_edge, start_time, leg_of_edge,
         traced.waypoint_offsets, active_material_ids,
     )
 
@@ -121,7 +116,7 @@ def _build_best_candidate(
     reverse_edges, reverse_path = reversed_path
     reverse_elevation = reverse_elevation_by_edge(edges_in_path, reverse_edges, elevation_by_edge)
     reverse_candidate = _build_candidate(
-        context, traced, reverse_edges, reverse_path, reverse_elevation, side_points, start_time,
+        context, traced, reverse_edges, reverse_path, reverse_elevation, start_time,
         reverse_leg_assignment(leg_of_edge),
         # 逆に回ると、経由地より前の区間は経由地より後の区間になる。
         [len(path) - offset for offset in traced.waypoint_offsets],
@@ -150,7 +145,6 @@ def _build_candidate(
     edges_in_path: list[LeanEdge],
     path: list[int],
     elevation_by_edge: dict[str, ElevationAttribute],
-    side_points: Mapping[tuple[int, int], Sequence[RoutePointHit]],
     start_time: datetime,
     leg_of_edge: list[int],
     waypoint_offsets: list[int],
@@ -194,7 +188,6 @@ def _build_candidate(
             if edges_in_path else []
         ),
         turns=turns,
-        points=points_along_route(edges_in_path, along_km, side_points),
         waypoint_distances_km=[along_km[offset] for offset in waypoint_offsets],
         segments=segments,
         material_category_shares=material_category_shares,
@@ -319,6 +312,8 @@ def _build_segment_details(
                 end_longitude=end_lon,
                 cumulative_distance_km=along_km[index],
                 distance_km=rounded_km,
+                edge_start=index,
+                edge_end=index + 1,
                 # 標高の表は単精度で持つので、表に入れた桁へ丸め直す。
                 elevations=[
                     ElevationStretch(

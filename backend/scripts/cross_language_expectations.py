@@ -403,6 +403,8 @@ def _segment(distance_km: float, contributions: dict[str, float] | None) -> Rout
         end_longitude=139.0,
         cumulative_distance_km=0.0,
         distance_km=distance_km,
+        edge_start=0,
+        edge_end=1,
         elevations=[],
         road_classes={},
         axis_contributions=contributions or {},

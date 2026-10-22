@@ -87,6 +87,7 @@ function resultsOf(
     hasDetail: (selectedCandidate?.segments.length ?? 0) > 0,
     selectedRouteSegment: state.selectedRouteSegment ?? null,
     selectSegment: vi.fn(),
+    segmentSidePoints: null,
     usedWeights: null,
     replaceWithGenerated: vi.fn(),
     addEdit: vi.fn(),

@@ -91,7 +91,7 @@ def turn_tree(state_count, *, node_cost, node_length_m, node_seconds, node_best_
 def segment_detail(difficulty):
     return RouteSegmentDetail(
         start_latitude=35.0, start_longitude=139.0, end_latitude=35.0, end_longitude=139.0,
-        cumulative_distance_km=0.0, distance_km=1.0, elevations=[],
+        cumulative_distance_km=0.0, distance_km=1.0, edge_start=0, edge_end=1, elevations=[],
         road_classes={}, difficulty=difficulty,
     )
 
@@ -101,7 +101,7 @@ def route_candidate(name, segments=()):
     return EvaluatedRoute(
         direction_label=name, distance_km=1.0, geometry={}, elevation_gain_m=None, segments=list(segments),
         estimated_duration_seconds=None, wind_unavailable=False, missing_travel_data_share=None, axis_raw_values={},
-        material_category_shares={}, edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[], points=[],
+        material_category_shares={}, edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[],
         waypoint_distances_km=[],
     )
 
