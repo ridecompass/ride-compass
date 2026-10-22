@@ -2,7 +2,7 @@
 
 確かめるのは、HTTPから見える振る舞いだけ: 要求の検証（422）、ジョブの投稿と取得（202・404）、生成の種類
 （周回・目的地・経由地・区間の乗り換え。距離と置いた点の組み合わせ）の振り分け、実際に使った条件のエコー、候補0件の理由、失敗の伝え方、
-同時実行とレート制限（429）。
+同時実行とレート制限（429）。区間の近くの点の口（`/api/routes/side-points`）が、生成した候補の区間の鍵と道のりで点を引けること。
 
 裏の生成は本物の`RouteGenerator`とエンジンを、小さな格子の道路網（`tests/route_world.py`）の上で通す。
 差し替えるのはプロセス境界だけ——DBのセッションと天気の予報ファイル（生成の開き方の注入の口`get_route_generation_setup_opener`）・
@@ -10,6 +10,7 @@
 
 ここで見ないもの:
 - 経路の中身（周回が閉じる・一方通行・重みの効き等） → `test_route_generation_behavior.py`
+- 近くの点の並べ方（通るたびに1つ・続く区間で重なる点・まとめる行） → `test_route_points.py`、点を引くSQL → `test_route_points_postgis.py`
 - 候補の並べ方・理由の文面 → `test_route_generator.py`
 - レート制限の数え方そのもの → `test_rate_limiter.py`
 - 重みの値の検査（公開軸のidだけ・非負） → `test_route_preference.py`。ここでは寄せていることを1行で見る
@@ -27,8 +28,9 @@ import pytest
 
 from app.api import dependencies
 from app.config import settings
-from app.domain.graph import node_key
+from app.domain.graph import node_key, parse_edge_key
 from app.domain.road_classes import AvoidanceClassification, AvoidanceSection
+from app.domain.route_points import RoutePointHit
 from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
 from app.domain.tuning import TUNING_VALUES
 from app.infrastructure import rate_limiter
@@ -74,12 +76,13 @@ def _point(osm_node_id):
 
 
 class World:
-    """道路網の置き場と天気の代役。`network`を差し替えると次の生成から効く。"""
+    """道路網の置き場と天気の代役。`network`を差し替えると次の生成から効く。`side_points`は区間の鍵→近くの点。"""
 
     def __init__(self):
         self.network = grid_network()
         self.unavailable = False
         self.weather = Weather()
+        self.side_points: dict[tuple[int, int], list[RoutePointHit]] = {}
 
     def current(self):
         if self.unavailable:
@@ -110,6 +113,8 @@ def world(override_dependency, monkeypatch):
 
     serve_road_network(monkeypatch, world.current)
     override_dependency(dependencies.get_route_generation_setup_opener, lambda: open_setup)
+    override_dependency(
+        dependencies.get_graph_service, lambda: GraphService(NetworkRepository(world.network, world.side_points)))
     with avoid_axis_declared():
         yield world
 
@@ -362,3 +367,47 @@ async def test_too_many_requests_from_one_client_are_refused(client):
 
     assert (await _generate(client))["status"] == "done"
     assert (await _post(client)).status_code == 429
+
+
+# --- 区間の近くの点 ---
+
+
+def _hit(point_key, fraction, distance_m):
+    return RoutePointHit(
+        layer="poi_a", point_key=point_key, merge_group=None, properties={"name": point_key},
+        fraction=fraction, distance_m=distance_m,
+    )
+
+
+async def test_the_points_near_a_segment_are_placed_where_the_route_passes_them(client, world):
+    """候補の区間の鍵と始まりの道のりを送ると、送った区間の点だけが、ルートの始点からの道のりに置かれて返る。"""
+    route = (await _generate(
+        client, **_point(SOUTH_WEST), destination=_point(NORTH_EAST), distance_km=None, max_routes=1,
+    ))["result"]["routes"][0]
+    sent = [segment for segment in route["segments"][1:] if segment["edge_end"] - segment["edge_start"] == 1][:2]
+    assert len(sent) == 2
+    keys = [route["edge_ids"][segment["edge_start"]] for segment in sent]
+    for index, (way, segment_index, _) in enumerate(map(parse_edge_key, keys)):
+        world.side_points[(way, segment_index)] = [_hit(f"p{index}", fraction=0.25, distance_m=12.4)]
+    world.side_points[(999, 0)] = [_hit("unsent", fraction=0.5, distance_m=1.0)]
+
+    response = await client.post("/api/routes/side-points", json={
+        "edge_ids": keys, "start_distance_km": sent[0]["cumulative_distance_km"],
+    })
+
+    assert response.status_code == 200, response.text
+    points = response.json()["points"]
+    assert [(p["layer"], p["properties"], p["offset_m"]) for p in points] == [
+        ("poi_a", {"name": f"p{index}"}, 12) for index in range(len(sent))]
+    assert [p["distance_km"] for p in points] == [
+        pytest.approx(segment["cumulative_distance_km"] + 0.25 * segment["distance_km"], abs=0.01) for segment in sent]
+
+
+async def test_segments_not_in_the_current_road_network_are_404(client):
+    """道路網を作り直すと前の候補の区間は無くなる。点を引かずに、作り直しを促す。"""
+    response = await client.post(
+        "/api/routes/side-points", json={"edge_ids": ["way-999999-seg0-fwd"], "start_distance_km": 0.0})
+
+    assert response.status_code == 404
+    assert JAPANESE.search(response.json()["detail"])
+

@@ -2,21 +2,19 @@
 
 ここで見ないもの:
 - どの点がどの区間の近くにあるか（区間の形の上の位置・道からの距離） → `test_route_points_postgis.py`
-- 応答の候補へ点が載ること → `test_route_generation_behavior.py`
+- 区間の長さを道路網から引くこと・口の応答へ点が載ること → `test_routes_generate.py`
 
 区間は1本1km（向きは`forward`）で、点の当たりは区間の形の向き（順向き）で測った位置で書く。
 """
 import pytest
 
-from app.domain.graph import LeanEdge, edge_key
 from app.domain.route import along_route_km
-from app.domain.route_points import RoutePointHit, points_along_route
+from app.domain.route_points import DirectedSegment, RoutePointHit, points_along_route
 from app.domain.traffic import POI_CLUSTER_EPS_M
 
 
-def _edge(way: int, forward: bool = True) -> LeanEdge:
-    return LeanEdge(edge_id=edge_key(way, 0, forward), from_node_id="", to_node_id="", geometry=[],
-                    distance_m=1000.0, osm_way_id=way, segment_index=0, forward=forward)
+def _edge(way: int, forward: bool = True) -> DirectedSegment:
+    return way, 0, forward
 
 
 def _hit(key: str, fraction: float, distance_m: float = 0.0, merge_group: str | None = None) -> RoutePointHit:
@@ -24,8 +22,8 @@ def _hit(key: str, fraction: float, distance_m: float = 0.0, merge_group: str | 
                          properties={"kind": key}, fraction=fraction, distance_m=distance_m)
 
 
-def _passed(path: list[LeanEdge], hits: dict[int, list[RoutePointHit]]) -> list[tuple[float, str]]:
-    points = points_along_route(path, along_route_km(edge.distance_m / 1000 for edge in path),
+def _passed(path: list[DirectedSegment], hits: dict[int, list[RoutePointHit]]) -> list[tuple[float, str]]:
+    points = points_along_route(path, along_route_km(1.0 for _ in path),
                                 {(way, 0): found for way, found in hits.items()})
     return [(point.distance_km, point.properties["kind"]) for point in points]
 

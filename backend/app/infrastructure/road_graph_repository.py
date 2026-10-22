@@ -16,7 +16,7 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Iterable, Sequence
 from itertools import batched
 
 import numpy as np
@@ -442,9 +442,11 @@ class RoadGraphRepository:
             result.update(await asyncio.to_thread(_rows_to_directed_edges, rows, wanted))
         return result
 
-    async def get_route_side_points(self, edges: Sequence[LeanEdge]) -> dict[tuple[int, int], list[RoutePointHit]]:
+    async def get_route_side_points(
+        self, segments: Iterable[tuple[int, int]]
+    ) -> dict[tuple[int, int], list[RoutePointHit]]:
         """区間（`(osm_way_id, segment_index)`）ごとの、近くの点。向きは問わず、位置は区間の形の向きで測る。"""
-        keys = sorted({(edge.osm_way_id, edge.segment_index) for edge in edges})
+        keys = sorted(set(segments))
         result: dict[tuple[int, int], list[RoutePointHit]] = {}
         for chunk in batched(keys, ID_CHUNK_SIZE):
             rows = (await self._session.execute(ROUTE_SIDE_POINTS_SQL, {

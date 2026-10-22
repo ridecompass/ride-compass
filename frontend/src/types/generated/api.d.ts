@@ -68,6 +68,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/routes/side-points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["route_side_points_api_routes_side_points_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/weather/warnings": {
         parameters: {
             query?: never;
@@ -1970,8 +1986,6 @@ export interface components {
             node_ids: string[];
             /** Turns */
             turns: components["schemas"]["RouteTurn"][];
-            /** Points */
-            points: components["schemas"]["RoutePoint"][];
             /** Waypoint Distances Km */
             waypoint_distances_km: number[];
             overall_difficulty: components["schemas"]["OverallDifficulty"] | null;
@@ -2066,6 +2080,8 @@ export interface components {
         RoutePoint: {
             /** Distance Km */
             distance_km: number;
+            /** Offset M */
+            offset_m: number;
             /** Layer */
             layer: string;
             /** Properties */
@@ -2097,6 +2113,10 @@ export interface components {
             cumulative_distance_km: number;
             /** Distance Km */
             distance_km: number;
+            /** Edge Start */
+            edge_start: number;
+            /** Edge End */
+            edge_end: number;
             /** Elevations */
             elevations: components["schemas"]["ElevationStretch"][];
             /** Estimated Arrival Time */
@@ -2120,6 +2140,18 @@ export interface components {
             road_classes: {
                 [key: string]: components["schemas"]["RoadClassStretch"][];
             };
+        };
+        /** RouteSidePointsRequest */
+        RouteSidePointsRequest: {
+            /** Edge Ids */
+            edge_ids: string[];
+            /** Start Distance Km */
+            start_distance_km: number;
+        };
+        /** RouteSidePointsResponse */
+        RouteSidePointsResponse: {
+            /** Points */
+            points: components["schemas"]["RoutePoint"][];
         };
         /** RouteTimelineRequest */
         RouteTimelineRequest: {
@@ -2496,6 +2528,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RouteGenerateJobPending"] | components["schemas"]["RouteGenerateJobDone"] | components["schemas"]["RouteGenerateJobFailed"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    route_side_points_api_routes_side_points_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteSidePointsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteSidePointsResponse"];
                 };
             };
             /** @description Validation Error */

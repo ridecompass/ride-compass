@@ -46,7 +46,7 @@ RETRY = "距離や除外する道路の設定を変えてお試しください�
 def _segment(difficulty: float | None, **fields) -> RouteSegmentDetail:
     return RouteSegmentDetail(
         start_latitude=0.0, start_longitude=0.0, end_latitude=0.0, end_longitude=0.0,
-        cumulative_distance_km=0.0, distance_km=1.0, elevations=[],
+        cumulative_distance_km=0.0, distance_km=1.0, edge_start=0, edge_end=1, elevations=[],
         road_classes={}, difficulty=difficulty, **fields,
     )
 
@@ -57,7 +57,7 @@ def _candidate(key: str, difficulty: float | None = 10.0, **fields) -> Evaluated
         "direction_label": f"方位-{key}", "distance_km": 1.0, "geometry": {"type": "LineString", "coordinates": []},
         "elevation_gain_m": None, "segments": [_segment(difficulty)], "estimated_duration_seconds": None,
         "wind_unavailable": False, "missing_travel_data_share": None, "axis_raw_values": {},
-        "material_category_shares": {}, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [], "points": [],
+        "material_category_shares": {}, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [],
         "waypoint_distances_km": [], **fields,
     })
 

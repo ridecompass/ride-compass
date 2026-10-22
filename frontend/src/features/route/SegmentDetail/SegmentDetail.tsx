@@ -3,7 +3,9 @@
 import AxisContributionBar, { hasAnyContribution } from "@/components/AxisContributionBar/AxisContributionBar";
 import AxisDetail from "@/components/AxisContributionBar/AxisDetail";
 import { textVariants } from "@/components/ui/Text/Text";
+import SegmentSidePoints from "@/features/route/SegmentSidePoints/SegmentSidePoints";
 import SegmentWind from "@/features/route/SegmentWind/SegmentWind";
+import type { SegmentSidePoints as SegmentSidePointsState } from "@/features/route/useSegmentSidePoints";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import { cn } from "@/lib/cn";
@@ -39,8 +41,16 @@ export function SegmentDifficulty({ segment, axes }: { segment: RouteSegmentDeta
   );
 }
 
-/** 押した区間の地点・到達予想・風・総合難易度と軸ごとの内訳。パネルを閉じているときの地図の小窓が出す（閉じる操作は小窓が持つ）。 */
-export default function SegmentDetail({ selection }: { selection: SelectedRouteSegment }) {
+/** 押した区間の地点・到達予想・風・総合難易度と軸ごとの内訳と近くの施設。パネルを閉じているときの地図の小窓が出す（閉じる操作は
+ * 小窓が持つ）。 */
+export default function SegmentDetail({
+  selection,
+  sidePoints,
+}: {
+  selection: SelectedRouteSegment;
+  /** 区間の近くの点。候補に無い区間ならnullで、行を出さない。 */
+  sidePoints: SegmentSidePointsState | null;
+}) {
   const axisCatalog = useAxisCatalog();
   const { segment } = selection;
   return (
@@ -59,6 +69,7 @@ export default function SegmentDetail({ selection }: { selection: SelectedRouteS
         axisColors={axisCatalog.axisColors}
         renderDetail={(axis) => <AxisDetail axis={axis} difficulty={segment.axis_difficulties[axis.axisId]} />}
       />
+      {sidePoints !== null && <SegmentSidePoints sidePoints={sidePoints} />}
     </div>
   );
 }
