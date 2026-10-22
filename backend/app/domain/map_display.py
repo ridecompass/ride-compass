@@ -159,7 +159,7 @@ ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     # Foursquare の行は Apache 2.0 で、ライセンスの写し・変えた旨・NOTICE の全文を渡す（frontend/public/licenses/）。
     '立ち寄り先: <a href="https://overturemaps.org/" target="_blank" rel="noreferrer">Overture Maps Foundation</a>'
     "の地点を、種類を選び近くの同じ店をまとめて加工。"
-    "Data from Meta, Microsoft, PinMeTo, DAC "
+    "Data from Meta, Microsoft, PinMeTo, DAC, Uberall, OpenTravel "
     '(<a href="https://cdla.dev/permissive-2-0/" target="_blank" rel="noreferrer">CDLA Permissive 2.0</a>), '
     "AllThePlaces "
     '(<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noreferrer">CC0 1.0</a>), '
