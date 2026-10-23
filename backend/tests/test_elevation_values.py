@@ -106,6 +106,19 @@ async def test_gaps_only_between_known_vertices_give_no_climb_but_still_an_avera
     assert row["average_grade"] == pytest.approx(3.0, abs=0.005)
 
 
+async def test_the_average_grade_across_a_gap_runs_along_the_road_not_straight_across(road_graph_session):
+    """標高の欠けた頂点で折り返す道は、3歩ぶん走って1歩ぶんしか進まない。勾配は走る長さで割る（直線で割ると3倍に出る）。"""
+    relation = (
+        f"SELECT * FROM (VALUES (1, 0, 0, 0.0::float8, 0.0::float8, 100.0::float8, false),"
+        f" (1, 0, 1, {2 * STEP_DEG}::float8, 0.0::float8, NULL::float8, false),"
+        f" (1, 0, 2, {STEP_DEG}::float8, 0.0::float8, {100.0 + rise(3, 3)}::float8, false))"
+        " AS v(osm_way_id, segment_index, ord, lon, lat, elev, on_structure)"
+    )
+    [row] = (await road_graph_session.execute(text(elevation_values_sql(relation)))).mappings().all()
+
+    assert float(row["average_grade"]) == pytest.approx(3.0, abs=0.005)
+
+
 @pytest.mark.parametrize(
     ("elevations", "gain", "loss"),
     [

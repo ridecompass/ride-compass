@@ -33,11 +33,15 @@ def normalized_tag_sql(tag: str) -> str:
 
 def positive_integer_tag_sql(tag: str) -> str:
     """数値タグ（maxspeed/lanes等）を、数値としてパースでき0より大きい場合のみ
-    値を持つ式として参照する（0以下・非数値はNULL＝未取得と同じ扱い）。"""
+    値を持つ式として参照する（0以下・非数値・整数の列に入らない桁はNULL＝未取得と同じ扱い）。
+
+    `integer`へ入らない値を変換すると文全体が落ち、誤ったタグの道1本が範囲の読み出しを止めるので、範囲を先に見る。
+    `AND`は評価の順を約束しないため、数値への変換は形を見た`CASE`の内側でだけ行う。"""
     raw = f"btrim(w.tags->>'{tag}')"
+    truncated = f"trunc({raw}::numeric)"
     return (
-        f"CASE WHEN {raw} ~ '^[0-9]+(\\.[0-9]+)?$' AND trunc({raw}::numeric) > 0 "
-        f"THEN trunc({raw}::numeric)::integer END"
+        f"CASE WHEN {raw} ~ '^[0-9]+(\\.[0-9]+)?$' THEN "
+        f"CASE WHEN {truncated} BETWEEN 1 AND 2147483647 THEN {truncated}::integer END END"
     )
 
 

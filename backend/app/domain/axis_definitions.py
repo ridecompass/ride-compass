@@ -964,9 +964,11 @@ def weight_share_when_published(definition: AxisDefinition, definitions: Mapping
 
 
 def time_scoped_weights(
-    weights: Mapping[str, float], active_scopes: Mapping[str, np.ndarray]
+    weights: Mapping[str, float],
+    active_scopes: Mapping[str, np.ndarray],
+    definitions: Mapping[str, AxisDefinition],
 ) -> dict[str, float | np.ndarray]:
-    """`weights`のうち、`time_scope`が"always"以外（AXIS_DEFINITIONS参照）の軸の重みを、
+    """`weights`のうち、`definitions`で`time_scope`が"always"以外の軸の重みを、
     その時間帯に当たる区間（`active_scopes`の真偽の配列。区間の並び）でだけ残し、ほかの区間では
     0.0にした配列へ置き換えた新しい辞書を返す（`weights`自体は変更しない）。`active_scopes`に無い
     時間帯は、どの区間も当たらないとして扱う。
@@ -977,7 +979,7 @@ def time_scoped_weights(
     `weights`に無いaxis_id（内部軸・非公開化された軸等）は重みを持たないため、キーを足さずに
     無視する。"""
     scoped: dict[str, float | np.ndarray] = dict(weights)
-    for axis_id, definition in AXIS_DEFINITIONS.items():
+    for axis_id, definition in definitions.items():
         if axis_id in weights and definition.time_scope != "always":
             active = active_scopes.get(definition.time_scope)
             scoped[axis_id] = 0.0 if active is None else np.where(active, weights[axis_id], 0.0)
