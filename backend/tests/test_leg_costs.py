@@ -428,7 +428,7 @@ def test_the_night_axis_keeps_weighing_by_the_hour_after_the_axes_are_saved_duri
     composer = _night_composer()
 
     with replaced_axis_definitions({}):
-        leg = composer.compose("leg", None, 7.5, +1, duration_hours=3.0)
+        leg = composer.compose("leg", 7.5, +1, duration_hours=3.0)
 
     ratio = leg.cost_bins_lazy[:, 0] / leg.travel_bins_lazy[:, 0]
     assert ratio.tolist() == pytest.approx([1.0, 1.0, 1.25])
