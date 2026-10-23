@@ -1,7 +1,7 @@
 /**
  * `components/BottomSheet/BottomSheet.tsx`の高さを変える帯と、利用者が決めた高さを覚える`useChosenSheetHeight`。
  *
- * 見るもの: 帯（いまの高さの表示・ドラッグ・矢印キー）で変わる高さと確定として上げる高さ、決めた高さを覚えて次に開いたときに
+ * 見るもの: 帯（いまの高さの表示・ドラッグ・矢印キー）で変わる高さと確定として上げる高さ（押しただけ・取り上げられたときは上げない）、決めた高さを覚えて次に開いたときに
  * 使うこと（保存値の読み方・動かしている途中は覚えないこと・動かす間に持ち主を描き直さないこと）。
  *
  * ここで見ないもの: 帯が出す変えられる範囲——寄せる範囲と同じ定数を出すだけ。範囲の両側へ寄せること——`clampSheetHeightVh`の
@@ -94,12 +94,43 @@ describe("BottomSheet", () => {
       fireEvent.pointerUp(handle(), { pointerId: 1, clientY: 300 });
       expect(onHeightChoose).not.toHaveBeenCalled();
       fireEvent.pointerDown(handle(), { pointerId: 1, clientY: 500 });
-      fireEvent.pointerUp(handle(), { pointerId: 1, clientY: 500 });
+      fireEvent.pointerUp(handle(), { pointerId: 1, clientY: 400 });
       onHeightChoose.mockClear();
       fireEvent.pointerMove(handle(), { pointerId: 1, clientY: 300 });
 
-      expect(handle()).toHaveAttribute("aria-valuenow", "50");
       expect(onHeightChoose).not.toHaveBeenCalled();
+    });
+
+    it("離した位置から高さを決める（最後の動きのあとに指が進んでいても）", () => {
+      const { onHeightChoose } = renderSheet({ chosenHeightVh: 50 });
+      const moved = window.innerHeight / 4;
+
+      fireEvent.pointerDown(handle(), { pointerId: 1, clientY: 500 });
+      fireEvent.pointerMove(handle(), { pointerId: 1, clientY: 500 - moved / 2 });
+      fireEvent.pointerUp(handle(), { pointerId: 1, clientY: 500 - moved });
+
+      expect(onHeightChoose.mock.calls).toEqual([[75]]);
+    });
+
+    it.each([
+      [
+        "動かさずに離した（押しただけ）",
+        (pointerId: number) => fireEvent.pointerUp(handle(), { pointerId, clientY: 503 }),
+      ],
+      ["動かしている途中で端末が取り上げた", (pointerId: number) => fireEvent.pointerCancel(handle(), { pointerId })],
+    ])("つまみを%sときは高さを決めず、つまむ前の中身に合わせた高さへ戻す", (_, end) => {
+      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+        return new DOMRect(0, 0, 300, this.style.height === "auto" ? window.innerHeight * 0.333 : 300);
+      });
+      vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(300);
+      const { onHeightChoose } = renderSheet({ chosenHeightVh: null });
+
+      fireEvent.pointerDown(handle(), { pointerId: 1, clientY: 500 });
+      fireEvent.pointerMove(handle(), { pointerId: 1, clientY: 400 });
+      end(1);
+
+      expect(onHeightChoose).not.toHaveBeenCalled();
+      expect(handle()).toHaveAttribute("aria-valuenow", "34");
     });
 
     /** 帯にフォーカスしてキーを押し、確定として上がった高さを返す。 */
