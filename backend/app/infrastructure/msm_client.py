@@ -242,8 +242,9 @@ async def _fetch_meta(client: httpx.AsyncClient) -> dict:
         return meta
 
 
-async def _download_chunk(client: httpx.AsyncClient, variable: str, chunk_number: int, etags: dict) -> bool:
-    """1チャンクを取得する。配信元の内容が前回と同じなら（304）何もせずFalseを返す。"""
+async def _download_chunk(client: httpx.AsyncClient, variable: str, chunk_number: int, etags: dict) -> Path | None:
+    """1チャンクを取得し、置き場のチャンクの隣の一時ファイルへ書いてそのパスを返す。配信元の内容が前回と同じなら（304）
+    何もせずNoneを返す。置き場のチャンクを置き換えるのは呼び出し側（`refresh`）。"""
     path = _chunk_path(variable, chunk_number)
     key = f"{variable}/{chunk_number}"
     headers = {}
@@ -258,7 +259,7 @@ async def _download_chunk(client: httpx.AsyncClient, variable: str, chunk_number
             fields["result"] = "ok"
             fields["status"] = 304
             fields["cache"] = "hit"
-            return False
+            return None
         response.raise_for_status()
         content = response.content
         fields["result"] = "ok"
@@ -266,16 +267,23 @@ async def _download_chunk(client: httpx.AsyncClient, variable: str, chunk_number
         fields["cache"] = "miss"
         fields["bytes"] = len(content)
 
+    temporary = path.with_suffix(".om.tmp")
+
     def write() -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(".om.tmp")
         temporary.write_bytes(content)
-        temporary.replace(path)
 
     await asyncio.to_thread(write)
     if response.headers.get("ETag"):
         etags[key] = response.headers["ETag"]
-    return True
+    return temporary
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    """読み出しのスレッドに書きかけを読ませないよう、隣の一時ファイルへ書いてから置き換える。"""
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(payload), encoding="utf-8")
+    temporary.replace(path)
 
 
 def _prune(keep: set[Path]) -> None:
@@ -305,22 +313,37 @@ async def refresh(client: httpx.AsyncClient) -> int:
     chunk_numbers = sorted({_chunk_number(now, chunk_hours), _chunk_number(now + horizon * 3600, chunk_hours)})
 
     etags = _load_json(MSM_DIR / _ETAGS_FILE_NAME)
-    downloaded = 0
     keep: set[Path] = set()
     valid: set[str] = set()
-    for variable in FORECAST_VARIABLES:
-        for chunk_number in chunk_numbers:
-            keep.add(_chunk_path(variable, chunk_number))
-            valid.add(f"{variable}/{chunk_number}")
-            if await _download_chunk(client, variable, chunk_number, etags):
-                downloaded += 1
+    # 取れたチャンクは全部が揃うまで置き場へ入れない——途中の1つで失敗したときに入れておくと、次に同期が済むまで
+    # 変数ごとに別のrunを読み（風の東西と南北の成分が別のrunになる等）、実在しない値になる。
+    staged: list[tuple[Path, Path]] = []
+    try:
+        for variable in FORECAST_VARIABLES:
+            for chunk_number in chunk_numbers:
+                path = _chunk_path(variable, chunk_number)
+                keep.add(path)
+                valid.add(f"{variable}/{chunk_number}")
+                temporary = await _download_chunk(client, variable, chunk_number, etags)
+                if temporary is not None:
+                    staged.append((temporary, path))
+    except BaseException:
+        for temporary, _ in staged:
+            temporary.unlink(missing_ok=True)
+        raise
 
-    MSM_DIR.mkdir(parents=True, exist_ok=True)
-    (MSM_DIR / _META_FILE_NAME).write_text(json.dumps(meta), encoding="utf-8")
-    # 消したチャンクのETagが残ると、次に同じ番号を引いたとき「変更なし」と誤判定して
-    # 存在しないファイルを読みに行くため、保持するチャンクぶんだけを残す。
-    (MSM_DIR / _ETAGS_FILE_NAME).write_text(json.dumps({k: v for k, v in etags.items() if k in valid}), encoding="utf-8")
-    await asyncio.to_thread(_prune, keep)
+    def install() -> None:
+        for temporary, path in staged:
+            temporary.replace(path)
+        MSM_DIR.mkdir(parents=True, exist_ok=True)
+        _write_json(MSM_DIR / _META_FILE_NAME, meta)
+        # 消したチャンクのETagが残ると、次に同じ番号を引いたとき「変更なし」と誤判定して
+        # 存在しないファイルを読みに行くため、保持するチャンクぶんだけを残す。
+        _write_json(MSM_DIR / _ETAGS_FILE_NAME, {k: v for k, v in etags.items() if k in valid})
+        _prune(keep)
+
+    await asyncio.to_thread(install)
+    downloaded = len(staged)
 
     current = freshness_from_meta(meta, now=datetime.fromtimestamp(now, JST))
     if current is not None:
@@ -383,7 +406,9 @@ def _read_sync[S: _Selection](
     if not meta:
         raise MsmUnavailableError("MSMのメタ情報が未同期です")
     chunk_hours = int(meta["chunk_time_length"])
-    data_end = int(meta["data_end_time"])
+    # 値は正時ごとなので、予報の終端も正時へ切り下げる。正時でない終端のまま読むと、最後のチャンクで読む時刻の幅が0になり
+    # 読む位置が進まない。
+    data_end = (int(meta["data_end_time"]) // 3600) * 3600
 
     start = (now // 3600) * 3600
     end = min(start + hours * 3600, data_end)
