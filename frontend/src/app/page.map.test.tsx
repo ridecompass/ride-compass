@@ -4,13 +4,14 @@
  * 見ること: 地図を押したときの意味は効いているパネルで決まり（「ルート設定」の条件タブは選んでいる地点を置く、
  * 「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
  * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、区間を選んでいる間は地図にその区間の範囲の縁取りと
- * 選んだ地点の印が出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。
+ * 選んだ地点の印が出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。区間を押すと、その区間の近くの施設を
+ * 引いて種類ごとに出すこと。道の小窓を別の道へ押し替えると、前の道で押した評価を新しい道へ持ち越さないこと。
  *
  * ここで見ないもの: 地図に置く地点（ピン・名前のある点・目的地・保存した地点）は`app/page.places.test.tsx`が見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -33,9 +34,13 @@ import {
   selectedPointMarks,
   selectedSectionOnMap,
   serveHome,
+  showRoadSurface,
 } from "@/testing/homePage";
+import { heldReplies, onBackend } from "@/testing/backendServer";
 import { mapOnScreen } from "@/testing/maplibre";
-import { makeGenerationConditions, makeRouteSegment } from "@/testing/routeFixtures";
+import { inspectorResult } from "@/testing/roadInspector";
+import { makeGenerationConditions, makeRouteSegment, routeThrough } from "@/testing/routeFixtures";
+import { settle } from "@/testing/settle";
 import palette from "@/types/generated/palette.json";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
@@ -187,5 +192,98 @@ describe("地図で扱えること", () => {
     clickSegment(drawnSegment, HERE);
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     expect(screen.getByText(/km地点/)).toBeInTheDocument();
+  });
+});
+
+describe("道の小窓", () => {
+  it("評価を開いた道から別の道へ押し替えると、その道の評価は押すまで取りに行かない", async () => {
+    const asked: unknown[] = [];
+    onBackend("POST", "/api/region/axis-inspector", ({ body }) => {
+      asked.push(body);
+      return Response.json(inspectorResult());
+    });
+    const { user } = renderHome();
+    await showRoadSurface(user);
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
+    clickMap(HERE, [{ layer: "road-tiles-surface", properties: { osm_way_id: 1, feature_key: "1" } }]);
+    await user.click(screen.getByRole("button", { name: "この道の評価を見る" }));
+    expect(await screen.findByText(/この道全体で見た難易度/)).toBeInTheDocument();
+
+    clickMap(ELSEWHERE, [{ layer: "road-tiles-surface", properties: { osm_way_id: 2, feature_key: "2" } }]);
+    expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
+    await settle();
+    expect(asked).toEqual([expect.objectContaining({ osm_way_id: 1 })]);
+  });
+});
+
+describe("区間の近くの施設", () => {
+  // 東へ1kmずつ進む区間2つのルート。
+  const NEAR = route("near", {
+    ...routeThrough({ a: [139.7, 35.7], b: [139.71, 35.7], c: [139.72, 35.7] }, ["a", "b", "c"], [1, 1]),
+    distance_km: 2,
+  });
+
+  async function pressSecondSegment(user: Parameters<typeof generate>[0]) {
+    jobs.respond([NEAR], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    const [, second] = mapOnScreen().sourceFeatures("route-segments");
+    clickSegment(second, HERE);
+    return screen.getByRole("group", { name: "近くの施設" });
+  }
+
+  it("区間を押すとその区間の近くの施設を引き、引いている間は読み込み中と出し、届くと種類ごとの件数のチップを出して、押すとその種類を名前（無ければ種別）・道からの距離・何km地点で道のりの順に開く", async () => {
+    const { user } = renderHome();
+    const held = heldReplies();
+    onBackend("POST", "/api/routes/side-points", held.reply);
+
+    const nearby = await pressSecondSegment(user);
+    expect(within(nearby).getByText("読み込み中")).toBeInTheDocument();
+
+    await held.answer(
+      0,
+      Response.json({
+        points: [
+          {
+            distance_km: 1.3,
+            offset_m: 12,
+            layer: "supply_poi",
+            properties: { kind: "convenience", name: "ローソン 渋谷店" },
+          },
+          {
+            distance_km: 1.6,
+            offset_m: 30,
+            layer: "accident_point",
+            properties: { involves_bicycle: true, fatal: true },
+          },
+          { distance_km: 1.8, offset_m: 5, layer: "supply_poi", properties: { kind: "toilets" } },
+        ],
+      }),
+    );
+    const supply = await within(nearby).findByRole("button", { name: "補給・休憩ポイント 2" });
+    expect(within(nearby).queryByText("読み込み中")).toBeNull();
+
+    await user.click(supply);
+    expect(supply).toHaveAttribute("aria-expanded", "true");
+    expect(
+      within(within(nearby).getByRole("list", { name: "補給・休憩ポイント" }))
+        .getAllByRole("listitem")
+        .map((row) => row.textContent),
+    ).toEqual(["ローソン 渋谷店道から12m1.3km地点", "トイレ道から5m1.8km地点"]);
+
+    await user.click(within(nearby).getByRole("button", { name: "事故[警察庁統計] 1" }));
+    expect(within(nearby).getByRole("list", { name: "事故[警察庁統計]" })).toHaveTextContent(
+      "自転車関連 ・ 死亡事故道から30m1.6km地点",
+    );
+  });
+
+  it("引けなかったら、区間の評価はそのまま出し、近くの施設を読めなかったと出す", async () => {
+    const { user } = renderHome();
+    onBackend("POST", "/api/routes/side-points", () => Response.json({ detail: "失敗" }, { status: 500 }));
+
+    const nearby = await pressSecondSegment(user);
+
+    expect(await within(nearby).findByText("近くの施設を読めませんでした")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "選んだ地点の詳しく" })).toHaveTextContent("総合難易度");
   });
 });

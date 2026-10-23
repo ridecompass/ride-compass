@@ -16,6 +16,7 @@ import argparse
 import logging
 import sys
 import zipfile
+import zlib
 from pathlib import Path
 
 import shapefile
@@ -42,7 +43,7 @@ def _readable(path: Path) -> bool:
     try:
         with zipfile.ZipFile(path) as archive:
             return len(open_shapefile(archive)) > 0
-    except (OSError, KeyError, zipfile.BadZipFile, shapefile.ShapefileException):
+    except (OSError, KeyError, zipfile.BadZipFile, zlib.error, shapefile.ShapefileException):
         return False
 
 

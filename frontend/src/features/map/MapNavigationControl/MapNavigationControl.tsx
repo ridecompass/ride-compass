@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
@@ -167,6 +167,9 @@ interface HeadingDialProps {
 /** 地図と一緒に回る方位の輪。輪をなぞると地図が回り、真ん中の針を押すと北が上に戻る。 */
 function HeadingDial({ bearing, heading, onBearingChange, onResetNorth }: HeadingDialProps) {
   const dialRef = useRef<HTMLDivElement>(null);
+  // なぞっている間にwindowへ付けた受け手を外す。なぞる途中でダイヤルを閉じても（Escape等）外す。
+  const endDragRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => endDragRef.current?.(), []);
   // 向きで値の変わる評価の名前は軸カタログから引く。無ければ評価に触れる文を出さない。
   const bearingAxes = axisNamesUsing(useAxisCatalog().axes, "bearing_deg");
 
@@ -190,7 +193,10 @@ function HeadingDial({ bearing, heading, onBearingChange, onResetNorth }: Headin
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
+      endDragRef.current = null;
     };
+    endDragRef.current?.();
+    endDragRef.current = onUp;
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);

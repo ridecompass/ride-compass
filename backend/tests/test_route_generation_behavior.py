@@ -31,7 +31,6 @@ from app.domain.road_classes import TRUE_FACT_VALUE
 from app.domain.rain import rain_window_material_id
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
-from app.domain.route_points import RoutePointHit
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.wind import WindForecastSeries
 from app.domain.time_zone import JST
@@ -42,6 +41,7 @@ from tests.axis_system_fixture import replaced_axis_definitions
 from app.domain.road_classes import AvoidanceClassification, AvoidanceSection
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 from app.domain.route_request import FixedPoints
+from app.domain.route_search import MAX_SNAP_CORRECTION_KM
 from tests.route_world import (
     AVOID_AXIS,
     BAD_MATERIAL,
@@ -92,8 +92,8 @@ def engine_over(monkeypatch, avoid_axis):
     """道路網から、本物のエンジンの上に戦略層（`RouteGenerator`）を組む。軸は`avoid_axis`の1本。"""
 
     def build(network: RoadNetwork, *, avoid_weight: float = 0.0, wind: WindForecastSeries | None = None,
-              side_points=None, **conditions):
-        return generator_for(monkeypatch, network, avoid_weight, wind, side_points, **conditions)
+              **conditions):
+        return generator_for(monkeypatch, network, avoid_weight, wind, **conditions)
 
     return build
 
@@ -215,6 +215,19 @@ async def test_a_spliced_route_the_road_network_cannot_trace_is_refused(
 
     levels = [r.levelno for r in caplog.records if re.search(r"osm-node-|way-\d", r.getMessage())]
     assert levels and set(levels) == {logging.DEBUG}
+
+
+async def test_a_spliced_route_is_refused_when_the_destination_cannot_be_snapped(engine_over):
+    """終点を寄せられない目的地で照合を飛ばすと、目的地へ着かない経路がそのまま評価されて候補に並ぶ。"""
+    generator = engine_over(grid_network())
+    (candidate, *_) = await generator.generate_via_waypoints(
+        at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=1, start_time=DEPARTURE)
+    corner = at(NORTH_EAST)
+    # 寄せてよい距離（`domain/route_search.py: MAX_SNAP_CORRECTION_KM`）より北の、道の無い地点。
+    nowhere = Coordinates(latitude=corner.latitude + 2 * MAX_SNAP_CORRECTION_KM / KM_PER_DEGREE_LATITUDE, longitude=corner.longitude)
+
+    assert await generator.generate_spliced_route(
+        at(SOUTH_WEST), nowhere, candidate.edge_ids, start_time=DEPARTURE) == []
 
 
 # --- 候補の選び方 ---
@@ -776,25 +789,6 @@ async def test_the_distance_along_the_route_is_the_length_of_the_roads_behind(en
     beyond = next(s for s in candidate.segments if (s.start_latitude, s.start_longitude) == pytest.approx(far))
     road_km = haversine_distance_km(Coordinates(latitude=start[0], longitude=start[1]), Coordinates(latitude=far[0], longitude=far[1]))
     assert beyond.cumulative_distance_km == pytest.approx(road_km, abs=0.005)
-
-
-async def test_a_point_near_the_route_is_listed_at_the_distance_where_the_route_passes_it(engine_over):
-    """近くの点は、通る区間の始まりの道のりに区間の上の位置を足した距離に、種類と値つきで載る——道のりのグラフの印が
-    地図の上の点と同じ所に出る。"""
-    start, far, east = (BASE_LAT, BASE_LON), (BASE_LAT + 2 * LAT_STEP, BASE_LON), (BASE_LAT + 2 * LAT_STEP, BASE_LON + LON_STEP)
-    toilets = RoutePointHit(layer="supply_poi", point_key="n1", merge_group=None, properties={"kind": "toilets"},
-                            fraction=0.5, distance_m=10.0)
-    generator = engine_over(road_network({1: (1, 2), 2: (2, 3)}, {1: start, 2: far, 3: east}),
-                            side_points={(2, 0): [toilets]})
-
-    (candidate, *_) = await generator.generate_via_waypoints(
-        Coordinates(latitude=start[0], longitude=start[1]), [],
-        destination=Coordinates(latitude=east[0], longitude=east[1]), max_routes=1, start_time=DEPARTURE)
-
-    beyond = next(s for s in candidate.segments if (s.start_latitude, s.start_longitude) == pytest.approx(far))
-    assert [(point.layer, point.properties) for point in candidate.points] == [("supply_poi", {"kind": "toilets"})]
-    # 応答の道のりはどれも0.01km単位に丸めて出るので、丸めの幅で比べる。
-    assert candidate.points[0].distance_km == pytest.approx(beyond.cumulative_distance_km + beyond.distance_km / 2, abs=0.01)
 
 
 async def test_each_segment_starts_and_ends_at_the_elevation_of_its_road_in_the_direction_ridden(engine_over):

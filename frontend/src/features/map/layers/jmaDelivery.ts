@@ -183,17 +183,30 @@ function byValidtime(a: JmaFrame, b: JmaFrame): number {
   return a.validtime.localeCompare(b.validtime);
 }
 
-/** 実況＋予測。その要素の行を時刻順に並べ、最新の実況（validtime===basetime）より前を捨てる
+/** 実況＋予測。その要素の行をvalidtimeごとに1コマへ絞って時刻順に並べ、最新の実況（validtime===basetime）より前を捨てる
  * ——過去を振り返る用途は無く、左端が「今」になる。実況が1つも無ければ何も捨てない（最も未来の
- * 1コマだけを残すと、実況が欠けた回に要素が実質空になる）。 */
+ * 1コマだけを残すと、実況が欠けた回に要素が実質空になる）。実況と予測は別々に取るファイルに載り、取った時点が
+ * ずれると前のbasetimeの予測と新しい実況が同じvalidtimeを持つので、実況を予測より、新しいbasetimeを古いものより先に採る。 */
 function readNowcast(rows: readonly RawTargetTime[]): JmaFrame[] {
-  const frames = rows.map(toFrame).sort(byValidtime);
+  const byTime = new Map<string, JmaFrame>();
+  for (const frame of rows.map(toFrame)) {
+    const taken = byTime.get(frame.validtime);
+    if (taken === undefined || precedesInNowcast(frame, taken)) byTime.set(frame.validtime, frame);
+  }
+  const frames = [...byTime.values()].sort(byValidtime);
   return frames.slice(
     Math.max(
       frames.findLastIndex((frame) => frame.validtime === frame.basetime),
       0,
     ),
   );
+}
+
+function precedesInNowcast(frame: JmaFrame, taken: JmaFrame): boolean {
+  const observed = frame.validtime === frame.basetime;
+  const takenObserved = taken.validtime === taken.basetime;
+  if (observed !== takenObserved) return observed;
+  return frame.basetime > taken.basetime;
 }
 
 /** 数値予報のラン。系列（`member`）ごとに、有効時刻を複数持つ最新のラン（完全な予報）だけを使う

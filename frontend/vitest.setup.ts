@@ -66,6 +66,9 @@ afterEach(async () => {
   let turn = 0;
   do await new Promise((resolve) => setTimeout(resolve, 0));
   while (reachedServer < sentToFetch && ++turn < 50);
+  // 届かなかった要求の差を次のテストへ持ち越すと、以後のテストが毎回上限まで待つか、差が逆に開いて待たなくなる。
+  sentToFetch = 0;
+  reachedServer = 0;
   closeHeldReplies();
   backendServer.resetHandlers();
 });

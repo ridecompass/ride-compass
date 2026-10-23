@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button/Button";
 import { RouteIcon } from "@/components/ui/icons/icons";
 import WarningBadgeList from "@/features/conditions/WarningBadge/WarningBadge";
 import WeatherPanel from "@/features/conditions/WeatherPanel/WeatherPanel";
+import { observedWind } from "@/features/conditions/observedWind";
 import { useWeatherConditions, type WarningRoute } from "@/features/conditions/useWeatherConditions";
 import RideBar from "@/features/ride/RideBar/RideBar";
 import type { RideRemaining } from "@/features/ride/rideRemaining";
@@ -51,15 +52,8 @@ export default function HomeHeader({
   const [debugConsoleOpen, setDebugConsoleOpen] = useState(false);
 
   // 最寄りの実測・警報の類（位置が分かってから、位置が変わるたびに取る。仮の地点では取らない）。
-  const {
-    amedas,
-    amedasLoading,
-    amedasError,
-    gridPointToday,
-    gridPointTodayError,
-    warningBadgeItems,
-    warningFetchFailures,
-  } = useWeatherConditions(location, locationKnown, ridingAt, warningRoute);
+  const { amedas, amedasError, gridPointToday, gridPointTodayError, warningBadgeItems, warningFetchFailures } =
+    useWeatherConditions(location, locationKnown, ridingAt, warningRoute);
   const axisCatalogFailure = axisCatalogFetchFailure(useAxisCatalog());
   const headerFetchFailures = useMemo(
     () => [
@@ -80,15 +74,7 @@ export default function HomeHeader({
               offRoute={ride.offRoute}
               mapBearingDeg={mapBearingDeg}
               speedKmh={ride.speedKmh}
-              wind={
-                amedas?.wind_speed_ms != null && amedas.wind_direction !== null
-                  ? {
-                      directionDeg: amedas.wind_direction.deg,
-                      directionLabel: amedas.wind_direction.label,
-                      speedMs: amedas.wind_speed_ms,
-                    }
-                  : null
-              }
+              wind={observedWind(amedas)}
             />
             <div className="ml-auto flex flex-shrink-0 items-center gap-2">
               <WarningBadgeList items={warningBadgeItems} failures={headerFetchFailures} />
@@ -109,7 +95,6 @@ export default function HomeHeader({
             <div className="left-0 flex flex-shrink-0 items-center gap-2 sticky z-1 bg-[var(--color-surface)]">
               <WeatherPanel
                 amedas={amedas}
-                loading={amedasLoading}
                 error={amedasError}
                 today={gridPointToday}
                 todayError={gridPointTodayError}

@@ -4,8 +4,8 @@
  *
  * 見るもの: 部品を押したときに部品が動かず説明が出ること、説明に出す名前（読み上げ名の引き方）と
  * 使い方の文（自分か囲む要素の印・無いときの文言）、ラベルを押したときに説明する入力、押せないボタンでも出ること、
- * 動かした（なぞった・取り消された）押し方では出さないこと、キー操作で説明を出すこと（Enter・Space）と値を動かすキーを止めること、
- * 説明している部品を囲む枠と測り直し、マウスの操作は既定の動きまで止め、タッチは既定の動き（スクロール）を残すこと、終えたら部品が動くこと。
+ * 動かした（なぞった・取り消された）押し方と、部品の外で押し始めた押し方では出さないこと、キー操作で説明を出すこと（Enter・Space）と値を動かすキーを止めること、
+ * 説明している部品を囲む枠と測り直し（替えた部品の枠を前の部品の位置に描かないこと）、マウスの操作は既定の動きまで止め、タッチは既定の動き（スクロール）を残すこと、終えたら部品が動くこと。
  *
  * ここで見ないもの:
  * - 終えることと説明を閉じること → `UsageGuide.close.test.tsx`
@@ -127,6 +127,19 @@ describe("UsageGuide", () => {
     expect(explanation()).not.toBeInTheDocument();
   });
 
+  it("部品の外で押して案内の上で離したら、押し始めは捨て、のちに案内で押して部品の上で離しても説明を出さない", () => {
+    renderScreen();
+    const part = screen.getByRole("button", { name: "地図の色分け" });
+    const guide = screen.getByRole("button", { name: "やめる" });
+
+    fireEvent.pointerDown(screen.getByText("本文の文字"), { clientX: 100, clientY: 100 });
+    fireEvent.pointerUp(guide, { clientX: 100, clientY: 100 });
+    fireEvent.pointerDown(guide, { clientX: 100, clientY: 100 });
+    fireEvent.pointerUp(part, { clientX: 100, clientY: 100 });
+
+    expect(explanation()).not.toBeInTheDocument();
+  });
+
   describe("キー操作", () => {
     it.each(["{Enter}", " "])("フォーカスのある部品で「%s」を押すと、部品は動かず説明を出す", async (key) => {
       const { onGenerate } = renderScreen();
@@ -167,6 +180,36 @@ describe("UsageGuide", () => {
     rect.mockReturnValue(new DOMRect(50, 5, 30, 40));
     fireEvent(window, new Event("resize"));
     expect(frame()?.style.left).toBe("50px");
+  });
+
+  it("説明する部品を替えると、前の部品の位置には一度も枠を描かない", async () => {
+    renderScreen();
+    const first = screen.getByRole("button", { name: "地図の色分け" });
+    const second = screen.getByRole("button", { name: "生成" });
+    vi.spyOn(first, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 30, 40));
+    vi.spyOn(second, "getBoundingClientRect").mockReturnValue(new DOMRect(200, 20, 30, 40));
+    await userEvent.click(first);
+    await userEvent.click(screen.getByRole("button", { name: "説明を閉じる" }));
+    const drawn: string[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === "attributes" && record.oldValue) drawn.push(record.oldValue);
+        for (const node of record.addedNodes) if (node instanceof HTMLElement) drawn.push(node.style.cssText);
+      }
+    });
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["style"],
+      attributeOldValue: true,
+    });
+
+    await userEvent.click(second);
+    observer.disconnect();
+
+    expect(drawn.filter((style) => style.includes("left: 10px"))).toEqual([]);
+    expect(document.querySelector<HTMLElement>('[aria-hidden="true"][style]')?.style.left).toBe("200px");
   });
 
   it("部品の上のマウスの操作は既定の動きまで止め、タッチは部品へ届けずにスクロールを残す", () => {

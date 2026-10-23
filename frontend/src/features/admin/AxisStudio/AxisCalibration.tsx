@@ -146,10 +146,7 @@ function NumericCalibrationBody({
 
   const lineValid = densityLine ? generator.hundredValue > 0 : generator.zeroValue !== generator.hundredValue;
   const draftBreakpoints: Breakpoints = densityLine
-    ? [
-        [0, 0],
-        [generator.hundredValue, 100],
-      ]
+    ? densityBreakpoints(generator.hundredValue)
     : generateBreakpoints(generator.zeroValue, generator.hundredValue, generator.shape);
   const draftPayload: AxisDefinitionPayload = {
     ...payloadOf(saved),
@@ -163,12 +160,12 @@ function NumericCalibrationBody({
   );
 
   // 3つの入力から作り直せない線（折れ点を手で動かした線）は、保存すると作り直した線に置き換わる。
-  const savedReproducible =
-    densityLine ||
-    JSON.stringify(
-      generateBreakpoints(initialGenerator.zeroValue, initialGenerator.hundredValue, initialGenerator.shape),
-    ) === JSON.stringify([...savedBreakpoints].sort((a, b) => a[0] - b[0])) ||
-    isStraightLine(savedBreakpoints, initialGenerator);
+  const sortedSaved = JSON.stringify([...savedBreakpoints].sort((a, b) => a[0] - b[0]));
+  const savedReproducible = densityLine
+    ? JSON.stringify(densityBreakpoints(initialGenerator.hundredValue)) === sortedSaved
+    : JSON.stringify(
+        generateBreakpoints(initialGenerator.zeroValue, initialGenerator.hundredValue, initialGenerator.shape),
+      ) === sortedSaved || isStraightLine(savedBreakpoints, initialGenerator);
   const generatorChanged = JSON.stringify(generator) !== JSON.stringify(initialGenerator);
   const lineChanged = !savedReproducible || generatorChanged;
   const changed = lineChanged || boundary.changed;
@@ -191,13 +188,11 @@ function NumericCalibrationBody({
       ? shownThresholds.map((value, i) => ({ value, color: boundaryColors[i + 1] }))
       : [];
 
-  const handles: CurveHandle[] = draftBreakpoints.flatMap(([, score], index) => {
-    if (score === 0 && !densityLine) {
-      return [{ index, label: "0点の端" }];
-    }
-    if (score === 100) return [{ index, label: "100点の端" }];
-    return [];
-  });
+  // 端は点数で引く（xの順は0点と100点の値を入れ替えると逆になる）。
+  const handles: CurveHandle[] = [
+    ...(densityLine ? [] : [{ index: draftBreakpoints.findIndex(([, score]) => score === 0), label: "0点の端" }]),
+    { index: draftBreakpoints.findIndex(([, score]) => score === 100), label: "100点の端" },
+  ];
 
   function updateGenerator(patch: Partial<GeneratorSettings>) {
     setGenerator((current) => ({ ...current, ...patch }));
@@ -212,6 +207,7 @@ function NumericCalibrationBody({
     // 境界は昇順で重ならない（backendの検証）ので、隣の境界の内側に収める。
     const lower = index === 0 ? 0 : shownThresholds[index - 1] + 1;
     const upper = index === shownThresholds.length - 1 ? 100 : shownThresholds[index + 1] - 1;
+    if (lower > upper) return;
     boundary.setList(shownThresholds.map((v, i) => (i === index ? Math.min(upper, Math.max(lower, value)) : v)));
   }
 
@@ -315,6 +311,14 @@ function calibrationMapPaint(
     legend: { boundaries: thresholds, unit: declared.kind === "difficulty" ? null : declared.legend.unit },
     bandLabels,
   };
+}
+
+/** 密度で平均する軸の線（0から伸びる直線。100点の値だけを決める）。 */
+function densityBreakpoints(hundredValue: number): Breakpoints {
+  return [
+    [0, 0],
+    [hundredValue, 100],
+  ];
 }
 
 /** 保存済みの線が、効き方「一定」の2点の直線か（3つの入力の作る6点の直線と同じ線になる）。 */

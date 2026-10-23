@@ -10,7 +10,7 @@ from enum import IntEnum
 import numpy as np
 
 from app.domain.geo import LatLonPoint, bearing_between
-from app.domain.search_graph import CsrGraphStructure, LazyRoadGraph
+from app.domain.search_graph import EDGE_VALUE_DTYPE, SEARCH_INDEX_DTYPE, CsrGraphStructure, LazyRoadGraph
 from app.domain.traffic import MAJOR_CROSSING_MIN_RANK
 from app.domain.tuning import tuning_value
 
@@ -101,11 +101,11 @@ class TurnExpandedStructure:
         """
         if self._reverse is None:
             source = np.repeat(
-                np.arange(self.state_count, dtype=np.int64), np.diff(self.indptr)
+                np.arange(self.state_count, dtype=SEARCH_INDEX_DTYPE), np.diff(self.indptr)
             )
             order = np.argsort(self.target_state, kind="stable")
             counts = np.bincount(self.target_state, minlength=self.state_count)
-            indptr = np.zeros(self.state_count + 1, dtype=np.int64)
+            indptr = np.zeros(self.state_count + 1, dtype=SEARCH_INDEX_DTYPE)
             np.cumsum(counts, out=indptr[1:])
             self._reverse = (indptr, source[order], self.turn_seconds[order])
         return self._reverse
@@ -225,8 +225,10 @@ def build_turn_expanded_structure(
     )
 
     return TurnExpandedStructure(
-        state_count=state_count, indptr=new_indptr, target_state=target_state,
-        turn_seconds=turn_seconds, turn_kind=_guided_turn_kinds(wait_kind, delta, is_uturn, branch, source, state_count),
+        state_count=state_count, indptr=new_indptr.astype(SEARCH_INDEX_DTYPE),
+        target_state=target_state.astype(SEARCH_INDEX_DTYPE),
+        turn_seconds=turn_seconds.astype(EDGE_VALUE_DTYPE),
+        turn_kind=_guided_turn_kinds(wait_kind, delta, is_uturn, branch, source, state_count),
         edge_from=edge_from, edge_to=edge_to,
     )
 

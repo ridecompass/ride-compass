@@ -18,7 +18,6 @@ import pytest_asyncio
 from app.batch import derive_stop_places, derive_topology
 from app.domain.accident import PartyType
 from app.domain.geo import KM_PER_DEGREE_LATITUDE
-from app.domain.graph import LeanEdge, edge_key
 from app.infrastructure.source_models import PARTY_TYPE_CODES
 from tests.conftest import empty_ingested_tables
 from tests.source_ingest import (
@@ -78,15 +77,10 @@ async def side_points_world(derive_conn):
     ], conn=conn)
 
 
-def _edge(way: int) -> LeanEdge:
-    return LeanEdge(edge_id=edge_key(way, 0, True), from_node_id="", to_node_id="", geometry=[],
-                    distance_m=0.0, osm_way_id=way, segment_index=0, forward=True)
-
-
 async def test_points_near_each_segment_follow_the_rule_of_their_kind(side_points_world, road_graph_repository):
     """道の上の停止要因・道から100m以内の補給と立ち寄り先・最も近い区間が30m以内の事故だけを、その区間の点にする。
     外れると、グラフに通らない所の点が並ぶか、通る所の点が抜ける。"""
-    found = await road_graph_repository.get_route_side_points([_edge(10), _edge(20)])
+    found = await road_graph_repository.get_route_side_points([(10, 0), (20, 0)])
 
     summary = {
         key: sorted((hit.layer, hit.merge_group, tuple(sorted(hit.properties.items())), round(hit.fraction, 2))
@@ -111,8 +105,8 @@ async def test_points_near_each_segment_follow_the_rule_of_their_kind(side_point
 
 
 async def test_a_side_point_carries_its_distance_from_the_road(side_points_world, road_graph_repository):
-    """続けて走る区間のどちらにも近い点は、道から近い方に置く（`test_route_points.py`）ので、道からの距離は地上のmで要る。"""
-    found = await road_graph_repository.get_route_side_points([_edge(10)])
+    """続けて走る区間のどちらにも近い点は道から近い方に置き（`test_route_points.py`）、画面は道からの距離を出すので、地上のmで要る。"""
+    found = await road_graph_repository.get_route_side_points([(10, 0)])
 
     [toilets] = [hit for hit in found[(10, 0)] if hit.properties.get("kind") == "toilets"]
     assert toilets.distance_m == pytest.approx(55.0, abs=1.0)

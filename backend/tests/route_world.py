@@ -28,7 +28,7 @@ from app.domain.route_request import FixedPoints, RequestedConditions
 from app.domain.tuning import TUNING_VALUES
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
-from app.services.graph_service import GraphService
+from app.services.graph_service import GraphService, SearchMemory
 from app.services.weather_service import WeatherService
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 
@@ -195,8 +195,8 @@ class NetworkRepository:
             for edge in edges
         }
 
-    async def get_route_side_points(self, edges):
-        keys = {(edge.osm_way_id, edge.segment_index) for edge in edges}
+    async def get_route_side_points(self, segments):
+        keys = set(segments)
         return {key: hits for key, hits in self._side_points.items() if key in keys}
 
 
@@ -225,7 +225,6 @@ def serve_road_network(monkeypatch, current: Callable[[], RoadNetwork]) -> None:
 
 def generator_for(
     monkeypatch, network: RoadNetwork, avoid_weight: float, wind: WindForecastSeries | None,
-    side_points: dict[tuple[int, int], list[RoutePointHit]] | None = None,
     *, assumed_speed_kmh: float = 20.0, road_avoidance: dict[str, AvoidanceLevel] | None = None,
 ):
     """道路網を全体の配列として読ませ、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。
@@ -233,7 +232,7 @@ def generator_for(
     serve_road_network(monkeypatch, lambda: network)
     monkeypatch.setitem(TUNING_VALUES, "evaluation.penalty_strength", 1.0)
     return assemble_route_generation_setup(
-        GraphService(NetworkRepository(network, side_points)), Weather(wind),
+        GraphService(NetworkRepository(network), SearchMemory()), Weather(wind),
         RequestedConditions(
             preference_override=RoutePreference(weights={AVOID_AXIS: avoid_weight}),
             road_avoidance=road_avoidance or {}, assumed_speed_kmh=assumed_speed_kmh,

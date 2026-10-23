@@ -220,7 +220,7 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
                 <div {...{ [SHEET_FIT_END_ATTRIBUTE]: "" }}>
                   <RouteProfile
                     segments={route.segments}
-                    points={route.points}
+                    sidePoints={results.segmentSidePoints}
                     overallDifficulty={route.overall_difficulty?.average ?? null}
                     axes={axisCatalog.axes}
                     axisColors={axisCatalog.axisColors}

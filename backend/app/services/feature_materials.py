@@ -7,7 +7,7 @@ from typing import TypeVar
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments
 from app.domain.road_classes import RoadClassDefinitions, class_columns, current_road_classes, layer_columns
 from app.domain.region import tile_bounds_lonlat
-from app.infrastructure.cache_identity import cache_identity, is_known_tile_version
+from app.infrastructure.cache_identity import cache_identity
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.feature_material_cache import get_tile_materials, set_tile_materials
 from app.infrastructure.road_graph_repository import RoadGraphRepository
@@ -91,7 +91,7 @@ class FeatureMaterialService:
                 return await read(z, x, y, tile_bounds_lonlat(z, x, y), accident_years)
 
             materials = await tile_features(read_tile(), fields)
-            if materials is not None and is_known_tile_version(surface_tile_version):
+            if materials is not None:
                 await set_tile_materials(
                     z, x, y, materials, surface_tile_version=surface_tile_version, value_shape=value_shape
                 )

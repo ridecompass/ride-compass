@@ -164,6 +164,27 @@ def test_a_network_built_from_the_same_inputs_is_placed_again_under_the_new_revi
     assert [path.name for path in store.iterdir()] == [road_network_store.directory_name(4)]
 
 
+def _disk_full(*args, **kwargs):
+    raise OSError(28, "No space left on device")
+
+
+@pytest.mark.parametrize("place", [
+    lambda: road_network_store.write_pending(_network(revision=4)),
+    lambda: road_network_store.reuse_pending("a", 4),
+], ids=["書く", "出し直す"])
+def test_a_network_that_fails_while_being_placed_leaves_nothing_behind(store, monkeypatch, place):
+    """置く途中で落ちると、呼び手は書きかけのディレクトリを受け取れず消せない。書きかけは名前の形に合わず、
+    片付け（`prune`・`prune_other_shapes`）にも拾われないので、残せば道路網1つぶんのディスクを持ち続ける。"""
+    road_network_store.publish(road_network_store.write_pending(_network(revision=3), "a"))
+    monkeypatch.setattr(np, "save", _disk_full)
+    monkeypatch.setattr(road_network_store.os, "link", _disk_full)
+
+    with pytest.raises(OSError):
+        place()
+
+    assert [path.name for path in store.iterdir()] == [road_network_store.directory_name(3)]
+
+
 def test_the_newest_revision_of_the_current_shape_is_read(store):
     """付け替えたあと古い世代を消す前に落ちた置き場が残っていても、最も新しい世代を読む。
     世代が読めなかったDBで作ったもの（None）は、世代のあるものより古い。"""
@@ -186,6 +207,20 @@ def test_a_newer_revision_placed_by_the_batch_is_read_on_the_next_call():
 
     assert road_network_store.current().revision == 3
 
+
+def test_a_network_replaced_between_choosing_and_opening_is_chosen_again(monkeypatch):
+    """選んだ置き場を開く前に、派生の作り直しが新しい世代へ入れ替えて古い置き場を消しても、ルート生成は新しい世代で続く。"""
+    road_network_store.save(_network(revision=2))
+    opened = road_network_store.load
+
+    def replaced_before_opening(directory):
+        if directory.name == road_network_store.directory_name(2):
+            road_network_store.publish(road_network_store.write_pending(_network(revision=3)))
+        return opened(directory)
+
+    monkeypatch.setattr(road_network_store, "load", replaced_before_opening)
+
+    assert road_network_store.current().revision == 3
 
 def test_cleaning_up_after_start_removes_only_networks_of_other_shapes(store):
     road_network_store.save(_network(revision=2))

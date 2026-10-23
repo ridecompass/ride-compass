@@ -30,6 +30,7 @@ from app.domain.evaluation import empty_material_arrays
 from app.domain.gradient import travel_direction_formula
 from app.domain.map_paint import SignedMaterialMapValue, map_paint
 from app.domain.material_catalog import segment_material_ids
+from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.way_value_formula import (
     FALSE,
     FormulaNode,
@@ -190,6 +191,14 @@ def _feature_columns(
     return columns, undetermined
 
 
+def _searched_scores(scores: np.ndarray) -> np.ndarray:
+    """区間の得点を、探索の静的スコア行列が持つ桁（`EDGE_VALUE_DTYPE`）へ丸めて float64 で返す。区間から畳む値は
+    ルートの値と同じく0.1刻みへ丸めるので、float64 のまま畳むと、丸めの境で地図の色とその道を走ったルートの値が1段
+    ずれる。道1本の材料で評価する得点（`paint_feature_values`）は丸めない——地図へ配る木（`axis_way_value_formula`）は
+    float64 で評価され、そちらと合わせる。"""
+    return np.asarray(scores, dtype=EDGE_VALUE_DTYPE).astype(float)
+
+
 def paint_feature_values(
     axis_id: str,
     definitions: Mapping[str, AxisDefinition],
@@ -278,7 +287,7 @@ def paint_folded_feature_values(
     segment_columns.update({material_id: _take(column, np.flatnonzero(kept))
                             for material_id, column in {**segments.columns, **served_segments}.items()})
     dependencies = axis_with_dependencies(axis_id, definitions)
-    scores = evaluate_axes_array(segment_columns, dependencies)[axis_id]
+    scores = _searched_scores(evaluate_axes_array(segment_columns, dependencies)[axis_id])
 
     by_feature: dict[int, list[int]] = {}
     for index, row in enumerate(owner.tolist()):

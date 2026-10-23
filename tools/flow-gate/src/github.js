@@ -1,8 +1,17 @@
 // GitHub の REST と GraphQL を、App（env.APP_ID と PKCS#8 の env.APP_KEY）のインストールの名義で打つ。失敗には、やり直せば直りうるか
-// （5xx・つながらない・GraphQL の上限）を transient で付ける（やり直すのは src/inbox.js: Inbox）。
+// （5xx・つながらない・REST と GraphQL の上限）を transient で付け、上限なら打ち直してよい時刻を retryAt に載せる（やり直すのは src/inbox.js: Inbox）。
 const API = "https://api.github.com";
 const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-const fail = (message, transient) => Object.assign(new Error(message), { transient });
+const fail = (message, transient, retryAt) => Object.assign(new Error(message), { transient, retryAt });
+// 上限の応答（GitHub の公式の文書「Rate limits for the REST API」の「Exceeding the rate limit」）なら打ち直してよい時刻、そうでなければ null。上限は 403 か 429 で、
+// retry-after（秒）か x-ratelimit-remaining が 0（x-ratelimit-reset の時刻まで待つ）か、二次の上限の文で示す。どちらの時刻も無い二次の上限は、少なくとも1分待つ。
+function limitedUntil(status, headers, text, now = Date.now()) {
+  if (status !== 403 && status !== 429) return null;
+  const after = headers.get("retry-after");
+  if (after !== null) return now + Number(after) * 1000;
+  if (headers.get("x-ratelimit-remaining") === "0") return Number(headers.get("x-ratelimit-reset")) * 1000 || now + 60e3;
+  return status === 429 || /secondary rate limit/i.test(text) ? now + 60e3 : null;
+}
 // インストールの鍵は GitHub が返す失効の時刻まで変わらないので、失効の5分前まで使い回す（作るのも GitHub への要求1回）。鍵だけを持ち、issue の情報は持たない。
 const held = new Map();
 
@@ -29,7 +38,11 @@ export class GitHub {
       headers: { authorization: `Bearer ${this.token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "ridecompass-flow" },
       body: body === undefined ? body : JSON.stringify(body),
     }).catch((e) => { throw fail(e.message, true); });
-    if (!res.ok) throw fail(`GitHub ${method} ${path}: ${res.status} ${(await res.text()).slice(0, 200)}`, res.status >= 500);
+    if (!res.ok) {
+      const text = await res.text();
+      const until = limitedUntil(res.status, res.headers, text);
+      throw fail(`GitHub ${method} ${path}: ${res.status} ${text.slice(0, 200)}`, res.status >= 500 || until !== null, until ?? undefined);
+    }
     // 本文の無い応答は null、JSON でない応答（Markdown の描画の HTML 等）は文字列。
     return res.status === 204 ? null : res.headers.get("content-type")?.includes("json") ? res.json() : res.text();
   }

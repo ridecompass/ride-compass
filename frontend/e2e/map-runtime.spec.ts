@@ -316,15 +316,13 @@ test("ルートを収めるとき、地図の上の操作部品が覆う所へ�
 test.describe("タッチ端末", () => {
   test.use({ viewport: MOBILE_VIEWPORT, isMobile: true, hasTouch: true });
 
-  // 地図のズームはデバッグログの"zoomend"で読む。
   test("地図の上で始めたピンチは、ページではなく地図を拡大する", async ({ page, browserName }) => {
     test.skip(browserName !== "chromium", "2本指のタッチはCDP（Chromiumだけの口）でしか送れない");
-    const zoomEnds: string[] = [];
-    page.on("console", (message) => {
-      if (message.text().includes("[map:viewport] zoomend")) zoomEnds.push(message.text());
-    });
-    await openMobileApp(page, { storedState: { "ridecompass:debug-enabled": "1" } });
+    await page.addInitScript(installMapFinder);
+    await openMobileApp(page);
     await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
+    const zoom = () => page.evaluate(() => window.__liveMap().getZoom());
+    const zoomBefore = await zoom();
 
     const point = await page.evaluate(() => {
       const canvas = document.querySelector("canvas.maplibregl-canvas");
@@ -343,7 +341,7 @@ test.describe("タッチ端末", () => {
 
     const client = await page.context().newCDPSession(page);
     await pinchOpen(client, point!.x, point!.y);
-    await expect.poll(() => zoomEnds.length, { timeout: 5000 }).toBeGreaterThan(0);
+    await expect.poll(zoom, { timeout: 5000 }).toBeGreaterThan(zoomBefore);
     expect(await page.evaluate(() => window.visualViewport?.scale ?? 1)).toBe(1);
   });
 });

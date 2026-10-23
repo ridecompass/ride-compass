@@ -176,6 +176,29 @@ async def test_a_failed_rebuild_changes_nothing_readers_see(derived_before, sche
     assert await _schemas(derived_before) == schemas_at_start
 
 
+async def test_rerunning_after_a_crash_between_the_swap_and_the_publish_places_the_network_of_the_db_revision(
+        derived_before, monkeypatch):
+    """表を入れ替えたあと道路網を付け替える前に落ちると、どの段も入力が前回と同じのまま世代だけが進む。流し直せば
+    その世代の道路網が置かれ、配信が入れ替えた表と食い違った前の世代の配列を読み続けない。"""
+    await _ingest_ways(derived_before, ONEWAY)
+
+    def crash(pending):
+        raise OSError("付け替えの前に落ちた")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(road_network_store, "publish", crash)
+        with pytest.raises(OSError, match="付け替えの前に落ちた"):
+            await derive_cli.run(postgis_database_url())
+    assert road_network_store.current().revision == 1
+
+    assert await derive_cli.run(postgis_database_url()) == 0
+
+    assert await _revision(derived_before) == 2
+    network = road_network_store.current()
+    assert network.revision == 2
+    assert (100, False) not in set(zip(network.edge_way_id.tolist(), network.edge_forward.tolist(), strict=True))
+
+
 async def _nodes_with_signal(conn: asyncpg.Connection) -> set[int]:
     return {r["osm_node_id"] for r in await conn.fetch(
         "SELECT osm_node_id FROM node_turns WHERE has_traffic_signals"

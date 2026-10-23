@@ -20,7 +20,11 @@ test("画面を撮る", async ({ page }) => {
   await page.setViewportSize(options.viewport);
   if (options.theme) await page.emulateMedia({ colorScheme: options.theme });
   if (options.worktreeBackend) await routeToWorktreeBackend(page, options.worktreeBackend);
-  const context = captureContext(page, { out: options.out, mocked: options.mocked });
+  const context = captureContext(page, {
+    out: options.out,
+    mocked: options.mocked,
+    worktreeBackend: options.worktreeBackend,
+  });
   if (!options.script) {
     await context.open();
     await context.shot("画面");

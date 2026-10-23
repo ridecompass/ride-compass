@@ -5,6 +5,7 @@
 
 - 表示値の部品（ジオメトリの連結・標高の集約と逆回りの付け替え・候補の難易度の比較）
 - 探索の部品（繋ぎ目の候補・同点グループの試行順・中継点の帯）
+- 経路の区間ごとの時刻（`route_passages`）を、探索の木が同じ経路へ付けた所要時間と突き合わせる
 
 ここでは見ないもの:
 
@@ -25,6 +26,8 @@
 何も切り離せず、本物が変わったときに黙ってずれるだけになる。
 """
 
+
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -48,10 +51,13 @@ from app.domain.route_search import (
     distance_tolerance_km,
     loop_to_outbound_ratios,
     reverse_leg_assignment,
+    route_passages,
     turnaround_ring_m,
 )
-from app.domain.routing import NodeJunction, TurnExpandedTree, add_terminal_candidate
+from app.domain.leg_costs import LegCostArrays
+from app.domain.routing import NodeJunction, TurnExpandedTree, add_terminal_candidate, build_turn_expanded_tree
 from app.domain.tuning import TUNING_VALUES
+from tests.search_graph_world import LINE_EDGES, LINE_NODES, build_all, make_graph, state_index
 
 
 # --------------------------------------------------------------------------------------
@@ -91,7 +97,7 @@ def turn_tree(state_count, *, node_cost, node_length_m, node_seconds, node_best_
 def segment_detail(difficulty):
     return RouteSegmentDetail(
         start_latitude=35.0, start_longitude=139.0, end_latitude=35.0, end_longitude=139.0,
-        cumulative_distance_km=0.0, distance_km=1.0, elevations=[],
+        cumulative_distance_km=0.0, distance_km=1.0, edge_start=0, edge_end=1, elevations=[],
         road_classes={}, difficulty=difficulty,
     )
 
@@ -101,7 +107,7 @@ def route_candidate(name, segments=()):
     return EvaluatedRoute(
         direction_label=name, distance_km=1.0, geometry={}, elevation_gain_m=None, segments=list(segments),
         estimated_duration_seconds=None, wind_unavailable=False, missing_travel_data_share=None, axis_raw_values={},
-        material_category_shares={}, edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[], points=[],
+        material_category_shares={}, edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[],
         waypoint_distances_km=[],
     )
 
@@ -200,6 +206,43 @@ def test_pick_better_candidate_takes_the_lower_difficulty(forward_difficulty, re
     reverse = candidate("reverse", reverse_difficulty)
 
     assert pick_better_candidate(forward, reverse).direction_label == picked
+
+
+# --------------------------------------------------------------------------------------
+# 経路の区間ごとの時刻
+# --------------------------------------------------------------------------------------
+
+
+def time_binned_leg(travel_bins, bin_seconds):
+    """`route_passages`が読む秒の列とビンの幅だけを持つレグ。ほかの列は区間の表示が読むもので、ここでは空。"""
+    travel_bins = np.asarray(travel_bins, dtype=float)
+    return LegCostArrays(
+        cost_lazy=travel_bins[0], difficulty_array=np.zeros(0), axis_arrays={}, weight_sums=np.zeros(0),
+        weights={}, axis_raw_arrays={}, density_axes={}, material_arrays={}, categorical_material_arrays={},
+        travel_seconds_full=travel_bins[0], travel_seconds_lazy=travel_bins[0],
+        cost_bins_lazy=travel_bins, travel_bins_lazy=travel_bins, bin_seconds=bin_seconds,
+    )
+
+
+def test_route_passages_reads_each_edge_in_the_time_bin_the_search_used():
+    """曲がる待ちで次のビンへ押し出された時刻で区間の秒を引くと、表示の所要時間と風が、探索がその経路を
+    選んだ根拠とずれる。"""
+    lazy, statics, structure = build_all(make_graph(LINE_NODES, LINE_EDGES))
+    structure = replace(structure, turn_seconds=np.full_like(structure.turn_seconds, 20.0))
+    states = state_index(lazy)
+    travel_bins = np.full((4, structure.state_count), 10.0)
+    # 1つ目の区間を抜けるのは10秒（ビン0）で、曲がる待ちを足すと30秒（ビン2）になる。
+    travel_bins[:, states["BC"]] = [10.0, 40.0, 70.0, 100.0]
+    leg = time_binned_leg(travel_bins, bin_seconds=15.0)
+    path = [states["AB"], states["BC"]]
+    tree = build_turn_expanded_tree(
+        structure, travel_bins, statics.edge_length_m, np.array([states["AB"]], dtype=np.int64),
+        lazy.node_count, edge_seconds=travel_bins, bin_seconds=leg.bin_seconds,
+    )
+
+    passages = route_passages([leg], structure, path, [100.0, 100.0], [0, 0], speed_kmh=20.0)
+
+    assert passages[-1].elapsed_seconds + passages[-1].seconds == pytest.approx(tree.state_seconds[states["BC"]])
 
 
 # --------------------------------------------------------------------------------------

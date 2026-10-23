@@ -141,6 +141,19 @@ _READER_SCENES: list[tuple[str, TargetTimesReader, str, list[dict]]] = [
             _row(_t("0005"), _t("0005"), ["hrpns"]),
         ],
     ),
+    (
+        "実況と予測のファイルのbasetimeがずれる",
+        "nowcast",
+        "hrpns",
+        [
+            _row(_t("0005"), _t("0005"), ["hrpns"]),
+            _row(_t("0010"), _t("0010"), ["hrpns"]),
+            _row(_t("0005"), _t("0010"), ["hrpns"]),
+            _row(_t("0005"), _t("0015"), ["hrpns"]),
+            _row(_t("0010"), _t("0015"), ["hrpns"]),
+            _row(_t("0010"), _t("0020"), ["hrpns"]),
+        ],
+    ),
     ("その要素の行が0件", "nowcast", "thns", [_row(_t("0015"), _t("0015"), ["liden"])]),
     (
         "中間ランの単発の行",
@@ -403,6 +416,8 @@ def _segment(distance_km: float, contributions: dict[str, float] | None) -> Rout
         end_longitude=139.0,
         cumulative_distance_km=0.0,
         distance_km=distance_km,
+        edge_start=0,
+        edge_end=1,
         elevations=[],
         road_classes={},
         axis_contributions=contributions or {},

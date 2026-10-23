@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { handle } from "../src/flow.js";
+import { GitHub } from "../src/github.js";
 import { nextAlarm } from "../src/inbox.js";
 import { answerBody, latestQuestion, withButton } from "../src/questions.js"; // 本物のボタンと、ゲートの問いの形を入力に使う
 import { config, T, END, world, ev, head, QUESTION, REPLY, ANSWER, CONFIRM, ASKED, said } from "./world.js";
@@ -289,4 +290,41 @@ test("tasks#1079 マージのコミットの master の実行が後の push で�
       [status, status === "回答" ? "## 問い（確かめ）" : null, runs], name);
     if (status === "検査") assert.equal(w.at(1).run, "in_progress", `${name}: 欄「実行の status」は、代わりに検査を持つ実行の status`);
   }
+});
+
+test("tasks#1149 受け箱: GitHub が上限の 403・429 を返した出来事は、示された時刻より前には打ち直さずにやり直す。上限でない 403 は1回で諦める", async () => {
+  const fetched = globalThis.fetch;
+  // 本物の GitHub.rest が、差し替えた応答から作る失敗。
+  const refused = async (status, headers, text = "{}") => {
+    globalThis.fetch = async () => new Response(text, { status, headers });
+    try {
+      return await new GitHub("t").rest("GET", "/x").then(() => null, (e) => e);
+    } finally {
+      globalThis.fetch = fetched;
+    }
+  };
+  const now = Date.now();
+  const reset = Math.ceil(now / 1000) + 7200;
+  for (const [name, status, headers, text, at] of [["二次の上限（retry-after）", 403, { "retry-after": "7200" }, "{}", now + 7200e3],
+    ["主の上限（x-ratelimit-reset）", 429, { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(reset) }, "{}", reset * 1000],
+    ["時刻の無い二次の上限", 403, {}, '{"message":"You have exceeded a secondary rate limit."}', now + 60e3]]) {
+    const w = world([{ n: 1, status: "実装", body: "- [x] 作る\n" }]);
+    w.fail = await refused(status, headers, text);
+    assert.ok((await w.send(ev.comment(1))) >= at, `${name}: 示された時刻に起こす`);
+    w.fail = null;
+    await w.inbox.drain(config.retries, at - 1);
+    assert.equal(w.at(1).status, "実装", `${name}: 時刻より前には打ち直さない`);
+    assert.equal(await w.inbox.drain(config.retries, at + 1000), null);
+    assert.equal(w.at(1).status, "完了", `${name}: 時刻のあとにやり直す`);
+  }
+  const w = world([{ n: 1, status: "実装", body: "- [x] 作る\n" }]);
+  w.fail = await refused(403, { "x-ratelimit-remaining": "4999" }, '{"message":"Resource not accessible by integration"}');
+  assert.equal(await w.send(ev.comment(1)), null, "上限でない 403 は1回で諦める");
+  assert.deepEqual(await w.inbox.pending("issue_comment"), []);
+});
+
+test("tasks#1149 番号のあとに名前の付いた作業ブランチの出来事は、どの issue も決め直さず、例外を投げない", async () => {
+  const w = world([{ n: 1, status: "検査", pr: { draft: true, checks: "FAILURE" } }]);
+  for (const [name, payload] of [ev.pr("1-layers", "synchronize"), ev.ci(`${config.branchPrefix}1-layers`)]) await handle(w.gh, { inbox: w.inbox }, config, name, payload);
+  assert.deepEqual([w.at(1).status, w.writes, w.titles()], ["検査", [], []]);
 });

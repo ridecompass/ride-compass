@@ -103,7 +103,6 @@ from app.services.road_graph_context import (
     snap_point,
     resolve_end,
     leg_name,
-    leg_anchor,
     path_km,
     lazy_index_of,
     origin_states,
@@ -255,7 +254,7 @@ class RoadGraphEngine:
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
                 twilight_origin=origin,
             )
-            return search_masks, composer, composer.compose("outbound", origin, 0.0, +1)
+            return search_masks, composer, composer.compose("outbound", 0.0, +1)
 
         search_masks, composer, outbound = await asyncio.to_thread(compose_outbound)
         cost_ms = elapsed_ms(cost_started)
@@ -392,7 +391,7 @@ class RoadGraphEngine:
             leg = context.legs[0]
         else:
             leg = context.composer.compose(
-                leg_name(leg_index), leg_anchor(context, leg_index, from_node),
+                leg_name(leg_index),
                 cruise_hours(cumulative_m / 1000, context.composer.speed_kmh), +1,
             )
             context.legs.append(leg)
@@ -469,27 +468,34 @@ class RoadGraphEngine:
         start_node = fixed.last_node
         fixed_m = fixed.length_m
         remaining_km = distance_km - fixed_m / 1000
-        end_node, end_point = fixed.end_node, fixed.end_point
+        end_node = fixed.end_node
         # 往路レグを、見込み所要時間（残りの距離の半分÷巡航速度）ぶんの時刻ビンで組み直す。
         # 木は出発からの経過時間を持ち回れるため、風を推定ではなく実際の経過時間で引ける。
         outbound = await asyncio.to_thread(
             context.composer.compose,
-            leg_name(leg_index), leg_anchor(context, leg_index, start_node),
+            leg_name(leg_index),
             cruise_hours(fixed_m / 1000, context.composer.speed_kmh), +1,
             duration_hours=leg_duration_hours(remaining_km, context.composer.speed_kmh),
         )
         context.legs = [*context.legs[:leg_index], outbound]
         traveled = traveled_columns(context, fixed.edges)
 
-        backward_tree = None
-        if fixed.closes and leg_index == 0:
-            # 経由地の無い周回は、出発地からの往路と出発地への帰りの最短が同じ2点を結ぶので、帰りの最短を往路の長さで
-            # 代えられる（リング）。逆向きの木を求めない。
+        # 経由地の無い周回は、出発地からの往路と出発地への帰りの最短が同じ2点を結ぶので、帰りの最短を往路の長さで
+        # 代えられる（リング）。逆向きの木を求めない。
+        uses_ring = fixed.closes and leg_index == 0
+        if uses_ring:
             ring_lower_m, outbound_upper_m, _ = turnaround_ring_m(distance_km, distance_tolerance_km)
             band_km = (ring_lower_m / 1000, outbound_upper_m / 1000)
         else:
+            outbound_upper_m = LengthBand.from_km(distance_km, distance_tolerance_km).upper_m - fixed_m
+            band_km = ((distance_km - distance_tolerance_km), (distance_km + distance_tolerance_km))
+        if outbound_upper_m <= 0:
+            logger.info("select_turnarounds fixed_km=%.1f exceeds the target", fixed_m / 1000)
+            return []
+        backward_tree = None
+        if not uses_ring:
             # 帰りレグ: 終点へ向かうレグとして、全長の目標ぶんの所要時間を終点への到着予定時刻に置く。
-            inbound = await self._compose_inbound(context, end_point, distance_km, remaining_km)
+            inbound = await self._compose_inbound(context, distance_km, remaining_km)
             context.legs = [*context.legs[:leg_index + 1], inbound]
             backward_tree = await asyncio.to_thread(
                 lambda: build_turn_expanded_tree(
@@ -498,11 +504,6 @@ class RoadGraphEngine:
                     reverse=True, edge_seconds=inbound.travel_seconds_lazy,
                 )
             )
-            outbound_upper_m = LengthBand.from_km(distance_km, distance_tolerance_km).upper_m - fixed_m
-            band_km = ((distance_km - distance_tolerance_km), (distance_km + distance_tolerance_km))
-        if outbound_upper_m <= 0:
-            logger.info("select_turnarounds fixed_km=%.1f exceeds the target", fixed_m / 1000)
-            return []
         tree_started = start_timer()
 
         def outbound_tree() -> TurnExpandedTree:
@@ -544,7 +545,7 @@ class RoadGraphEngine:
         if backward_tree is None:
             # 帰りレグ: 出発地へ向かうレグとして、周回の総所要時間（目標距離÷仮定速度）を出発地への
             # 到着予定時刻に置いて合成する（距離フィルタが目標±許容を強制するため定数扱いできる）。
-            inbound = await self._compose_inbound(context, end_point, distance_km, remaining_km)
+            inbound = await self._compose_inbound(context, distance_km, remaining_km)
             context.legs = [*context.legs[:leg_index + 1], inbound]
         closeness_key = closeness_m[ring]
         ranking = rank_by_pareto_layers(
@@ -605,13 +606,13 @@ class RoadGraphEngine:
         return turnarounds
 
     async def _compose_inbound(
-        self, context: RoadGraphContext, end_point: Coordinates, distance_km: float, remaining_km: float,
+        self, context: RoadGraphContext, distance_km: float, remaining_km: float,
     ) -> LegCostArrays:
         """距離ありの帰りレグ: 終点を基準点に、全長の目標ぶんの所要時間（目標距離÷仮定速度）を終点への到着予定時刻に置く
         （距離フィルタが目標±許容を強制するため定数扱いできる）。"""
         return await asyncio.to_thread(
             context.composer.compose,
-            "inbound", end_point, cruise_hours(distance_km, context.composer.speed_kmh), -1,
+            "inbound", cruise_hours(distance_km, context.composer.speed_kmh), -1,
             duration_hours=leg_duration_hours(remaining_km, context.composer.speed_kmh),
         )
 
@@ -651,7 +652,7 @@ class RoadGraphEngine:
         heuristic = heuristic_to(context, fixed.end_node)
 
         def search_avoiding_traveled() -> list[int] | None:
-            original = cost_bins[:, penalized_columns].copy()
+            original = cost_bins[:, penalized_columns]
             try:
                 cost_bins[:, penalized_columns] = retrace_penalized(original)
                 return turn_expanded_shortest_path(
@@ -721,7 +722,9 @@ class RoadGraphEngine:
                     context, f"経路がつながっていません index={index}", to_node=head, next_from_node=following_tail,
                 )
         snapped = (context.origin_node, False) if destination is None else snap_point(context, destination)
-        if snapped is not None and heads[-1] != snapped[0]:
+        if snapped is None:
+            raise RoutingError("終点を道路網へ寄せられません")
+        if heads[-1] != snapped[0]:
             refuse_at_nodes(context, "経路が終点に着いていません", expected=snapped[0], actual=heads[-1])
 
         lengths = context.statics.edge_length_m[path].tolist()
@@ -732,7 +735,7 @@ class RoadGraphEngine:
             context.legs = [
                 context.legs[0],
                 context.composer.compose(
-                    "inbound", context.origin, total_hours, -1,
+                    "inbound", total_hours, -1,
                     duration_hours=leg_duration_hours(total_m / 1000, context.composer.speed_kmh),
                 ),
             ]

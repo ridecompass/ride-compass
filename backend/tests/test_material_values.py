@@ -79,6 +79,8 @@ async def _edge_value(session, expression: str, *, distance_m: float, accident_y
     ("40.7", 40),  # 小数は切り捨てる
     ("0.5", None),  # 切り捨てると0
     ("50 mph", None),
+    ("2147483647", 2147483647),
+    ("2147483648", None),  # 整数の列に入らない誤ったタグは、ほかの道の読み出しを落とさず値を持たない
 ])
 async def test_a_number_tag_has_a_value_only_when_it_is_a_positive_number(road_graph_session, tag, expected):
     values = await _way_values(road_graph_session, material_sql.positive_integer_tag_sql("tag_a"),

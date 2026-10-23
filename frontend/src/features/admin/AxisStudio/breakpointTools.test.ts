@@ -56,11 +56,21 @@ describe("generateBreakpoints", () => {
     for (const [x, y] of secondHalf) expect(y).toBeGreaterThan(x);
   });
 
-  it("xは小数2桁、点数は整数へ丸める", () => {
-    for (const [x, y] of generateBreakpoints(0, 1 / 3, "back_loaded")) {
-      expect(Math.round(x * 100) / 100).toBe(x);
-      expect(Number.isInteger(y)).toBe(true);
-    }
+  it("両端は入れた値のまま、途中のxは小数2桁、点数は整数へ丸める", () => {
+    const points = generateBreakpoints(0.125, 1 / 3, "back_loaded");
+
+    expect(points[0][0]).toBe(0.125);
+    expect(points.at(-1)?.[0]).toBe(1 / 3);
+    for (const [x] of points.slice(1, -1)) expect(Math.round(x * 100) / 100).toBe(x);
+    for (const [, y] of points) expect(Number.isInteger(y)).toBe(true);
+  });
+
+  it("0点と100点の値が小数2桁の刻みより近くても、途中のxは重ならずに昇順へ並ぶ", () => {
+    const points = generateBreakpoints(0, 0.004, "flat");
+
+    expect(points[0]).toEqual([0, 0]);
+    expect(points.at(-1)).toEqual([0.004, 100]);
+    for (let i = 1; i < points.length; i++) expect(points[i][0]).toBeGreaterThan(points[i - 1][0]);
   });
 });
 

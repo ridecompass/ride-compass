@@ -231,7 +231,8 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   await expectDrawnAt(page, pausedAt, anchor);
   await expect(backToHere).toBeHidden();
 
-  // 東へ進んでから進む向きを上にしたまま止めると、地図を北が上へ戻し、点が消え、次の位置が届いても地図は動かない。
+  // 東へ進んでから進む向きを上にしたまま止めると、地図を北が上へ戻し、点は最後に走った位置に残り（出発地はそこに無い）、次の位置が届いても
+  // 地図も点も動かない。
   const lastRidden = moved(pausedAt, 0, 200);
   await deliverPosition(page, context, lastRidden);
   await page.getByRole("button", { name: /^進む向きを上にする/ }).click();
@@ -240,7 +241,7 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   await page.getByRole("button", { name: "案内を終える" }).click();
   await expect(rideButton).toHaveAttribute("aria-pressed", "false");
   await expect.poll(() => mapBearing(page), { timeout: 10_000 }).toBeCloseTo(0, 0);
-  await expect(dot).toBeHidden();
+  await expect.poll(() => dotOffsetFrom(page, lastRidden), { timeout: 10_000 }).toBeLessThan(2);
   const afterStop = moved(lastRidden, 0, 200);
   // 止めると左のパネルが戻って地図の幅が変わるので、落ち着いた位置を基準にする。
   const before = await settledScreenPoint(page, lastRidden);
@@ -248,6 +249,7 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   const after = await screenPointOf(page, lastRidden);
   expect(after).not.toBeNull();
   expect(Math.hypot(after!.x - before.x, after!.y - before.y)).toBeLessThan(1);
+  expect(await dotOffsetFrom(page, lastRidden)).toBeLessThan(2);
 });
 
 // 2本指でつまむ・広げる操作は、MapLibre が先に指の重心のずれを移動として受け、倍率が変わるのはそのあとになり、指がひねれば

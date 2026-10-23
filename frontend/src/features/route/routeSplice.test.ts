@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * `features/route/routeSplice.ts`——候補どうしが別の道を通る区間を求め、選んだ道へ乗り換えた経路を組む。
- * - `pairedStretches`: 2本のEdge id列が別の道を通る区間を、両側で起点に近い順に対応づける。本数が食い違えば対応づけない
+ * - `pairedStretches`: 2本のEdge id列が別の道を通る区間を、両側で起点に近い順に対応づける。本数が食い違えば対応づけない（null）
  * - `stretchAlternativeGroups`: 元の経路の区間ごとに、全候補から乗り換え先の道を集める。2本が同じ地点を通る所では、
  *   どちらの断片も下限の長さ以上のときだけ区間を割る。一度通った地点へ戻る道は出さず、同じ区間を同じ道へ替える
  *   ものは1つにまとめ、元の範囲が重なるものを同じ組にする
@@ -75,8 +75,8 @@ describe("pairedStretches", () => {
     ]);
   });
 
-  it("両側の区間の本数が食い違えば、対応づけない", () => {
-    expect(pairedStretches(["a", "b", "c", "d", "e"], ["a", "c", "x", "e"])).toEqual([]);
+  it("両側の区間の本数が食い違えば、対応づけずにnull", () => {
+    expect(pairedStretches(["a", "b", "c", "d", "e"], ["a", "c", "x", "e"])).toBeNull();
   });
 });
 

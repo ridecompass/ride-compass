@@ -22,7 +22,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.domain.errors import RoutingError, SearchAreaTooLargeError
+from app.domain.errors import GENERATION_BUSY_MESSAGE, RoutingError, SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.loop_routing import LoopTurnaround, TracedLoop
 from app.domain.route import Coordinates, EvaluatedRoute, RouteCandidate, RouteSegmentDetail
 from app.domain.route_request import DEFAULT_MAX_ROUTES, MAX_ROUTES, FixedPoints
@@ -46,7 +46,7 @@ RETRY = "距離や除外する道路の設定を変えてお試しください�
 def _segment(difficulty: float | None, **fields) -> RouteSegmentDetail:
     return RouteSegmentDetail(
         start_latitude=0.0, start_longitude=0.0, end_latitude=0.0, end_longitude=0.0,
-        cumulative_distance_km=0.0, distance_km=1.0, elevations=[],
+        cumulative_distance_km=0.0, distance_km=1.0, edge_start=0, edge_end=1, elevations=[],
         road_classes={}, difficulty=difficulty, **fields,
     )
 
@@ -57,7 +57,7 @@ def _candidate(key: str, difficulty: float | None = 10.0, **fields) -> Evaluated
         "direction_label": f"方位-{key}", "distance_km": 1.0, "geometry": {"type": "LineString", "coordinates": []},
         "elevation_gain_m": None, "segments": [_segment(difficulty)], "estimated_duration_seconds": None,
         "wind_unavailable": False, "missing_travel_data_share": None, "axis_raw_values": {},
-        "material_category_shares": {}, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [], "points": [],
+        "material_category_shares": {}, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [],
         "waypoint_distances_km": [], **fields,
     })
 
@@ -208,6 +208,7 @@ async def test_no_road_data_gives_no_candidates_and_says_why(entrance, phrase, c
     ("error", "reason", "logged"),
     [
         (SearchAreaTooLargeError(edges=1_300_000, limit=1_200_000), "探索範囲の道路が多すぎるため", "edges=1300000"),
+        (SearchMemoryBusyError(edges=1_300_000, available=900_000), GENERATION_BUSY_MESSAGE, "available=900000"),
         (RoutingError("no accessible node near origin"), "起点から走り出せる道が見つかりませんでした。", "no accessible node"),
     ],
 )
