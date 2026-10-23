@@ -26,6 +26,7 @@ from tests.fake_http import client_for
 
 UPSTREAM = "https://cyberjapandata.gsi.go.jp"
 RELIEF = "xyz/relief/10/909/403.png"
+CATEGORY = "gsi:relief-tile"
 
 
 def client(router: respx.Router, not_found: LRUCache | None = None) -> gsi_tile_client.GsiTileClient:
@@ -49,8 +50,8 @@ async def test_a_tile_is_relayed_and_served_from_disk_after_a_restart():
     router = respx.Router()
     router.get(f"{UPSTREAM}/{RELIEF}").respond(content=b"\x89PNG", headers={"content-type": "image/png"})
 
-    first = await client(router).get(RELIEF)
-    later = await client(unreachable()).get(RELIEF)
+    first = await client(router).get(RELIEF, category=CATEGORY)
+    later = await client(unreachable()).get(RELIEF, category=CATEGORY)
 
     assert first == later == (b"\x89PNG", "image/png")
 
@@ -61,9 +62,9 @@ async def test_outside_coverage_is_remembered_for_the_process_but_not_across_a_r
     router.get(f"{UPSTREAM}/{RELIEF}").side_effect = [httpx.Response(404), httpx.Response(200, content=b"\x89PNG")]
     not_found = LRUCache(maxsize=16)
 
-    first = await client(router, not_found).get(RELIEF)
-    same_process = await client(unreachable(), not_found).get(RELIEF)
-    after_restart = await client(router).get(RELIEF)
+    first = await client(router, not_found).get(RELIEF, category=CATEGORY)
+    same_process = await client(unreachable(), not_found).get(RELIEF, category=CATEGORY)
+    after_restart = await client(router).get(RELIEF, category=CATEGORY)
 
     assert first is same_process is UPSTREAM_NOT_FOUND
     assert after_restart == (b"\x89PNG", "image/png")
@@ -76,6 +77,6 @@ async def test_an_upstream_failure_gives_nothing_is_logged_and_is_not_remembered
     route.side_effect = [httpx.Response(503), httpx.Response(200, content=b"\x89PNG")]
     not_found = LRUCache(maxsize=16)
 
-    assert await client(router, not_found).get(RELIEF) is None
-    assert [r for r in warnings() if "gsi:relief-tile" in r.getMessage()]
-    assert await client(router, not_found).get(RELIEF) == (b"\x89PNG", "image/png")
+    assert await client(router, not_found).get(RELIEF, category=CATEGORY) is None
+    assert [r for r in warnings() if CATEGORY in r.getMessage()]
+    assert await client(router, not_found).get(RELIEF, category=CATEGORY) == (b"\x89PNG", "image/png")

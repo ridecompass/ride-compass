@@ -28,7 +28,7 @@ async def gsi_relief_tile_proxy(
 ) -> Response:
     # 認証なしで叩けるプロキシへの簡易な歯止め（basemap_proxy/jma_tile_proxyと同じ方針）。
     enforce_rate_limit(request, "gsi-relief-tile", settings.gsi_tile_rate_limit_per_minute)
-    content, content_type = GSI_TILE_REPLIES.found(await gsi_tile_client.get(path))
+    content, content_type = GSI_TILE_REPLIES.found(await gsi_tile_client.get(path, category="gsi:relief-tile"))
     return Response(content=content, media_type=content_type)
 
 

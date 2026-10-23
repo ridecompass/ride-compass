@@ -83,6 +83,19 @@ async def test_a_deploy_that_changes_how_the_materials_are_read_reads_the_tile_a
     assert await _num_a(service) == 2.0
 
 
+async def test_tiles_read_while_the_revision_is_unknown_are_not_kept():
+    """DBの世代を読めない間に読んだ材料は、どの世代の道の鍵か分からない。残すと、後で世代を読めない間に同じ印の鍵で
+    別の世代の材料を返す。"""
+    repository = FakeFeatureMaterialsRepository(_materials(1.0))
+    repository.revision = None
+    service = FeatureMaterialService(repository)
+    await _num_a(service)
+
+    repository.materials = _materials(2.0)
+
+    assert await _num_a(service) == 2.0
+
+
 async def test_road_layer_values_are_served_per_feature_without_roads_outside_every_class():
     """地図は道ごとの層の値で道の線を塗る。区分の外の道の層を載せると、地図はその道を区分の色で塗れない値として受け取る。"""
     tile = FeatureMaterials(feature_keys=("1-0", "2-0"), columns={"cat_a": CategoricalColumn.encode(["a", "b"])})
