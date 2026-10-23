@@ -84,15 +84,15 @@ describe("editDifference", () => {
     const origin = route("ABCDEF", {}, [1, 2, 3, 4, 5]);
     const edited = route("APCDRF", {}, [1.5, 2.5, 3, 4.2, 5.1]);
     const ruler = routeStretches(origin.segments);
-    const difference = editDifference(origin, edited);
-    expect(difference.stretches).toHaveLength(2);
+    const stretches = editDifference(origin, edited).stretches ?? [];
+    expect(stretches).toHaveLength(2);
     [
       { startKm: ruler[0].startKm, endKm: ruler[1].endKm, lengthDiffKm: 1 },
       { startKm: ruler[3].startKm, endKm: ruler[4].endKm, lengthDiffKm: 0.3 },
     ].forEach((expected, index) => {
-      expect(difference.stretches[index].startKm).toBeCloseTo(expected.startKm, 10);
-      expect(difference.stretches[index].endKm).toBeCloseTo(expected.endKm, 10);
-      expect(difference.stretches[index].lengthDiffKm).toBeCloseTo(expected.lengthDiffKm, 10);
+      expect(stretches[index].startKm).toBeCloseTo(expected.startKm, 10);
+      expect(stretches[index].endKm).toBeCloseTo(expected.endKm, 10);
+      expect(stretches[index].lengthDiffKm).toBeCloseTo(expected.lengthDiffKm, 10);
     });
   });
 });

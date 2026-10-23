@@ -1,7 +1,7 @@
 /**
  * `features/route/EditDifference/EditDifference.tsx`——編集で作ったルートの中身の先頭に出す「元との違い」。
  *
- * 見るもの: 元の名前と距離・変えた区間の数、指標ごとの差の書き方（桁・単位・値の無い側があれば「—」）と増減の印
+ * 見るもの: 元の名前と距離・変えた区間の数（元と編集後で対応づけられなければ数と区間の並びを出さずにそう言う）、指標ごとの差の書き方（桁・単位・値の無い側があれば「—」）と増減の印
  * （表示する桁で丸めた値で決める）、変えた区間ごとの元の位置と長さの差、「元を見る」で元へ切り替える操作が上がること。
  *
  * ここで見ないもの: 差の求め方（Edge id列の差・区間からの距離） → `features/route/routeEditDiff.ts`。
@@ -91,6 +91,15 @@ describe("EditDifference", () => {
     const item = screen.getByRole("listitem");
     expect(item).toHaveTextContent("1.1〜2.2km");
     expect(item).toHaveTextContent("+2.2km");
+  });
+
+  it("変えた区間を元と編集後で対応づけられなければ、数（「0区間」）と区間の並びを出さずに対応づけられないと言う", () => {
+    // 寄り道（B→P→B）を足しただけの編集は、編集後にだけ別の道を通る区間があり、元の側には無い。
+    renderDifference({ edited: edited(routeThrough(PLACES, [..."ABPBCD"])) });
+    expect(screen.getByText("から変えた区間を対応づけられない")).toBeInTheDocument();
+    expect(screen.queryByText(/区間$/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
+    expect(metric("距離")).toHaveTextContent("+2.3km");
   });
 
   it("「元を見る」で元のルートへ切り替える操作を上げる", async () => {
