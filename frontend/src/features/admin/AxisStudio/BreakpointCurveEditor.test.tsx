@@ -94,10 +94,46 @@ describe("BreakpointCurveEditor", () => {
     expect(onChangeHandle).toHaveBeenCalledTimes(1);
   });
 
+  it("ドラッグがブラウザに取り消されたら（スクロールへの切り替え等）、動かしている間の値を消す", () => {
+    const { svg } = renderEditor();
+    const handle = screen.getByRole("slider");
+    handle.setPointerCapture = vi.fn();
+
+    fireEvent.pointerDown(handle, { pointerId: 1 });
+    fireEvent.pointerCancel(handle, { pointerId: 1 });
+    expect(svg).not.toHaveTextContent("10 → 100");
+  });
+
   it("横軸を、折れ点ではなく渡した範囲（前後1割の余白つき）で決める", () => {
     const labels = tickLabels(renderEditor({ xRange: { min: 100, max: 200 } }).svg).map(Number);
     expect(labels).toContain(200);
     expect(labels.every((label) => label >= 90 && label <= 210)).toBe(true);
+  });
+
+  it("横軸の範囲が小数3桁より狭くても、目盛りは重ならずに並ぶ", () => {
+    const labels = tickLabels(
+      renderEditor({
+        breakpoints: [
+          [0, 0],
+          [0.004, 100],
+        ],
+        xRange: { min: 0, max: 0.004 },
+      }).svg,
+    );
+    expect(labels.length).toBeGreaterThan(1);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it("下限の同じ階級（幅0の階級と、そこから始まる階級）も、それぞれ棒にする", () => {
+    const { svg } = renderEditor({
+      distribution: distribution({
+        bins: [
+          [2, 2, 0.5],
+          [2, 8, 0.5],
+        ],
+      }),
+    });
+    expect(svg.querySelectorAll("rect")).toHaveLength(2);
   });
 
   it("表示範囲の外にある延長は、しきい値以上なら左右に割合で出し、しきい値未満なら出さない", () => {
