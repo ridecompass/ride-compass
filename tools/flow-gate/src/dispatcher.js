@@ -8,9 +8,11 @@ import { Inbox, nextAlarm } from "./inbox.js";
 export class Dispatcher extends DurableObject {
   inbox = new Inbox(this.ctx.storage, async (name, payload) => handle(await GitHub.app(this.env, config.installation), this, config, name, payload));
 
+  // 前の出来事のやり直しで先の時刻のアラームが置かれていても、新しい出来事はそれを待たずにすぐ処理する。
   async enqueue(name, payload) {
     await this.inbox.push(name, payload);
-    if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now());
+    const at = nextAlarm(Date.now(), await this.ctx.storage.getAlarm());
+    if (at !== null) await this.ctx.storage.setAlarm(at);
   }
 
   // 出来事は1回の起こしで1件ずつ処理する（無料のプランの、1回の起こしで外へ出せる要求の上限 50 に、1件の決め直しと振り出しを収める）。

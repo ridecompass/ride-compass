@@ -108,22 +108,20 @@ def git(*args: str, check: bool = True) -> str:
 
 def tracked_files() -> list[str]:
     """追跡下の全ファイル。HEAD から測る計測の母集団で、実在の母集団（`repo_population.py: repository_files`）とは別。"""
-    return [line for line in git("ls-files").splitlines() if line]
+    return [f for f in git("ls-files", "-z").split("\0") if f]
 
 
 def review_tags() -> list[tuple[str, str, dt.date | None]]:
     """周期レビューのタグを新しい順に (タグ名, コミット, 実施日)。"""
     out = git("for-each-ref", "--sort=-refname",
               "--format=%(refname:short)\t%(creatordate:short)",
-              f"refs/tags/{REVIEW_TAG_PREFIX}*", check=False)
+              f"refs/tags/{REVIEW_TAG_PREFIX}*")
     rows = []
     for line in out.splitlines():
         parts = line.split("\t")
         if len(parts) != 2 or not parts[0]:
             continue
-        sha = git("rev-list", "-n", "1", parts[0], check=False).strip()
-        if not sha:
-            continue
+        sha = git("rev-list", "-n", "1", parts[0]).strip()
         try:
             day = dt.date.fromisoformat(parts[1])
         except ValueError:
@@ -335,7 +333,7 @@ def cmd_size(args: argparse.Namespace) -> int:
 
 def code_churn(sha: str) -> int:
     """`sha` から HEAD までの backend・frontend の追加と削除の行数の和。"""
-    stat = git("diff", "--shortstat", f"{sha}..HEAD", "--", "backend", "frontend", check=False)
+    stat = git("diff", "--shortstat", f"{sha}..HEAD", "--", "backend", "frontend")
     return sum(int(x) for x in re.findall(r"(\d+) (?:insertion|deletion)", stat))
 
 
@@ -520,7 +518,7 @@ def cmd_change(args: argparse.Namespace) -> int:
         if plus != "-":
             rows.append((path, int(plus), int(minus)))
     if not args.head:
-        for path in git("ls-files", "--others", "--exclude-standard").splitlines():
+        for path in filter(None, git("ls-files", "-z", "--others", "--exclude-standard").split("\0")):
             rows.append((path, len(read_text(REPO_ROOT / path).splitlines()), 0))
     totals = {kind: [0, 0] for kind in ("実装", "テスト", "文書", "設定", "生成物")}
     for path, added, deleted in rows:
