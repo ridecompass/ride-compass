@@ -487,6 +487,7 @@ class LegCostComposer:
             weights = time_scoped_weights(
                 self._weights,
                 {"night_only": night_mask(self._twilight_origin, self.start, hours)},
+                self._axis_definitions,
             )
         dynamic_context = DynamicAxisRequestContext(
             bearing_deg=bearing, departure_wind=self._departure_wind,
