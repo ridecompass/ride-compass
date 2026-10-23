@@ -22,7 +22,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.domain.errors import RoutingError, SearchAreaTooLargeError
+from app.domain.errors import GENERATION_BUSY_MESSAGE, RoutingError, SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.loop_routing import LoopTurnaround, TracedLoop
 from app.domain.route import Coordinates, EvaluatedRoute, RouteCandidate, RouteSegmentDetail
 from app.domain.route_request import DEFAULT_MAX_ROUTES, MAX_ROUTES, FixedPoints
@@ -208,6 +208,7 @@ async def test_no_road_data_gives_no_candidates_and_says_why(entrance, phrase, c
     ("error", "reason", "logged"),
     [
         (SearchAreaTooLargeError(edges=1_300_000, limit=1_200_000), "探索範囲の道路が多すぎるため", "edges=1300000"),
+        (SearchMemoryBusyError(edges=1_300_000, available=900_000), GENERATION_BUSY_MESSAGE, "available=900000"),
         (RoutingError("no accessible node near origin"), "起点から走り出せる道が見つかりませんでした。", "no accessible node"),
     ],
 )

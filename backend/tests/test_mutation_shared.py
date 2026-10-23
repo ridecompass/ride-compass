@@ -35,15 +35,32 @@ def test_only_tests_that_did_not_fail_in_the_baseline_are_credited():
     assert shared.judge({"status": "killed"}, {"t1", "t2"}, {"t1"})[2] == {"t2"}
 
 
-def test_baseline_failures_spread_file_records_and_include_a_function_with_only_one_finished_run():
+def _kills(directory, *records):
+    """runner.py が kills/ に書く形（変異・テスト・落ちた段）の記録を置き、読み直す。"""
+    (directory / "kills").mkdir()
+    (directory / "kills" / "1.tsv").write_text("".join(f"{m}\t{t}\t{when}\n" for m, t, when in records), encoding="utf-8")
+    return shared.read_kills(directory)
+
+
+def test_baseline_failures_spread_file_records_and_include_a_function_with_only_one_finished_run(tmp_path):
     other = "app.domain.x.x_g"
     results = {name: {} for name in shared.baselines([_FN]) + shared.baselines([other])[:1]}
-    kills = {shared.baselines([_FN])[1]: {"tests/test_a.py"}, shared.baselines([other])[0]: {"tests/test_c.py::t"}}
+    kills = _kills(tmp_path, (shared.baselines([_FN])[1], "tests/test_a.py", "collect"),
+                   (shared.baselines([other])[0], "tests/test_c.py::t", "call"))
 
     assert shared.baseline_failures(results, kills, _TBF) == {
         _FN: {"tests/test_a.py::test_1", "tests/test_a.py::test_2"},
         other: {"tests/test_c.py::t"},
     }
+
+
+def test_a_class_that_failed_to_collect_is_spread_to_its_tests(tmp_path):
+    """クラスの中のパラメータの組を変異が壊すと、集める時点の失敗はクラスの名前で記録される。テストの名前へ
+    そろえないと、表のテストの一覧に無い名前が残り、表を書けない。"""
+    tbf = {_FN: ["tests/test_a.py::TestX::test_1", "tests/test_a.py::test_2", "tests/test_b.py::test_3"]}
+    kills = _kills(tmp_path, ("m", "tests/test_a.py::TestX", "collect"), ("m", "tests/test_b.py::test_3", "call"))
+
+    assert shared.expand(kills["m"], _FN, tbf) == {"tests/test_a.py::TestX::test_1", "tests/test_b.py::test_3"}
 
 
 @pytest.mark.parametrize(
