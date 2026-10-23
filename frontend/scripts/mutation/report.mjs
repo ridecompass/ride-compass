@@ -110,7 +110,7 @@ for (const { name, file, location } of JSON.parse(readFileSync(listed, "utf-8"))
   if (!location) continue;
   const rel = path.relative(process.cwd(), file).replaceAll(path.sep, "/");
   if (!patterns.has(rel)) patterns.set(rel, []);
-  patterns.get(rel).push({ pattern: namePattern(name), location });
+  patterns.get(rel).push({ name, pattern: namePattern(name), location });
 }
 let located = 0;
 const testFiles = {};
@@ -120,7 +120,12 @@ for (const [file, defs] of tests) {
     : undefined;
   testFiles[file] = {
     tests: defs.map((def) => {
-      const hit = source && patterns.get(file)?.find(({ pattern }) => pattern.test(def.name));
+      // it.each の雛形は何にでも合う形を含み、ほかのテストの名前にも合いうるので、名前がそのまま同じものを先に取る。
+      const listedInFile = patterns.get(file) ?? [];
+      const hit =
+        source &&
+        (listedInFile.find(({ name }) => name === def.name) ??
+          listedInFile.find(({ pattern }) => pattern.test(def.name)));
       const location = hit && spanAt(source, hit.location.line, hit.location.column);
       if (!location) return def;
       located += 1;
