@@ -27,7 +27,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from app.domain.stopwatch import elapsed_ms, start_timer
-from app.domain.errors import RoutingError, SearchAreaTooLargeError
+from app.domain.errors import GENERATION_BUSY_MESSAGE, RoutingError, SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.geo import haversine_distance_km
 from app.domain.loop_routing import TracedLoop
 from app.domain.route_request import NOTHING_TO_GENERATE, FixedPoints
@@ -417,6 +417,14 @@ class RouteGenerator:
             self.last_no_candidates_reason = (
                 "探索範囲の道路が多すぎるため、ルートを生成できませんでした。"
                 "距離を短くするか、経由地・目的地を起点に近づけてお試しください。")
+            return None
+        except SearchMemoryBusyError as exc:
+            logger.warning(
+                "%s origin=%s %s -> search memory busy edges=%d available=%d prepare_ms=%d",
+                log_label, origin_label, log_detail, exc.edges, exc.available,
+                elapsed_ms(started),
+            )
+            self.last_no_candidates_reason = GENERATION_BUSY_MESSAGE
             return None
         except RoutingError as exc:
             logger.warning(

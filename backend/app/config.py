@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     place_area_rate_limit_per_minute: int = 60
     # ルート生成は最も高コストなエンドポイント（1件で数秒〜数十秒CPUを使い、探索範囲に比例して
     # メモリを使う）のため、per-IPレート制限に加えプロセス全体の同時実行数も絞る。
-    # 1回の生成が扱える探索範囲の上限（`graph_service`）は、メモリ上限をこの件数で割って決まる。
+    # 同時に動く生成は、この件数の枠とは別に、探索範囲の大きさに比例するメモリを分け合う（`services/graph_service.py: SearchMemory`）。
     generate_rate_limit_per_minute: int = 10
     generate_max_concurrent: int = 2
     # タイル処理の律速はDB側の同時クエリ負荷とSQLAlchemyの接続プール

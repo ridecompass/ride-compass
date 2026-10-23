@@ -36,7 +36,7 @@ from app.domain.tuning import TUNING_VALUES
 from app.infrastructure import rate_limiter
 from app.infrastructure.road_network_store import RoadNetworkUnavailableError
 from app.main import app
-from app.services.graph_service import GraphService
+from app.services.graph_service import GraphService, SearchMemory
 from app.services.route_generation_setup import assemble_route_generation_setup
 from tests.road_class_fixture import classification, fact_is, replaced_road_classes, road_classes
 from tests.route_world import (
@@ -109,12 +109,12 @@ def world(override_dependency, monkeypatch):
 
     @asynccontextmanager
     async def open_setup(requested):
-        yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network)), world.weather, requested)
+        yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network), SearchMemory()), world.weather, requested)
 
     serve_road_network(monkeypatch, world.current)
     override_dependency(dependencies.get_route_generation_setup_opener, lambda: open_setup)
     override_dependency(
-        dependencies.get_graph_service, lambda: GraphService(NetworkRepository(world.network, world.side_points)))
+        dependencies.get_graph_service, lambda: GraphService(NetworkRepository(world.network, world.side_points), SearchMemory()))
     with avoid_axis_declared():
         yield world
 
