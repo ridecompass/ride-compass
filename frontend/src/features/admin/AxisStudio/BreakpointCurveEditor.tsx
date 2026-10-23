@@ -25,9 +25,11 @@ import type { ValueDistribution } from "./scoreDistribution";
 function niceTicks(min: number, max: number): number[] {
   const step = niceStep(max - min || 1);
   const start = Math.ceil(min / step) * step;
+  // 刻みの桁で丸める（足し算の誤差だけを落とし、隣の目盛りと同じ値にしない）。
+  const digits = Math.max(0, Math.ceil(-Math.log10(step)));
   const ticks: number[] = [];
   for (let v = start; v <= max + step * 1e-6; v += step) {
-    ticks.push(roundToDigits(v, 3));
+    ticks.push(roundToDigits(v, digits));
   }
   return ticks;
 }
@@ -35,7 +37,8 @@ function niceTicks(min: number, max: number): number[] {
 /** 描く枠の大きさ（viewBoxの単位）。 */
 const FRAME = { width: 720, height: 320, padding: 36 } as const;
 
-/** 横にだけ動かせる点。`index`は`breakpoints`の位置。 */
+/** 横にだけ動かせる点。`index`は`breakpoints`の位置。`label`で取っ手を見分けるので、点を動かして`index`が入れ替わっても
+ * 同じ取っ手（つかんだ指・フォーカス）のまま動き続ける。 */
 export interface CurveHandle {
   index: number;
   label: string;
@@ -76,7 +79,7 @@ export function BreakpointCurveEditor({
   boundaries: readonly CurveBoundary[];
   onChangeBoundary: (index: number, value: number) => void;
 }) {
-  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [draggingLabel, setDraggingLabel] = useState<string | null>(null);
   const { width, height, padding } = FRAME;
   const ys = breakpoints.map((bp) => bp[1]);
   const xMargin = (xRange.max - xRange.min) * 0.1;
@@ -108,7 +111,7 @@ export function BreakpointCurveEditor({
   const points = breakpoints.map(toScreen);
   const polyline = points.map(([x, y]) => `${x},${y}`).join(" ");
   const referencePolyline = referenceLine?.map((bp) => toScreen([bp[0], bp[1]]).join(",")).join(" ");
-  const handleLabels = new Map(handles.map((handle) => [handle.index, handle.label]));
+  const handleIndexes = new Set(handles.map((handle) => handle.index));
 
   function pointerToSvg(e: ReactPointerEvent<SVGElement>): [number, number] | null {
     const svg = e.currentTarget.ownerSVGElement;
@@ -149,6 +152,7 @@ export function BreakpointCurveEditor({
     onChangeHandle(index, breakpoints[index][0] + sign * xSnapStep * (e.shiftKey ? 10 : 1));
   }
 
+  const draggingIndex = handles.find((handle) => handle.label === draggingLabel)?.index;
   const dragging = draggingIndex != null ? breakpoints[draggingIndex] : null;
   const draggingScreen = draggingIndex != null ? points[draggingIndex] : null;
 
@@ -162,13 +166,13 @@ export function BreakpointCurveEditor({
       {/* 実データの分布。棒は曲線・格子線より先に描いて最背面へ置く（前面に出ると
           折れ点のドラッグ対象が見えにくくなる）。高さは最大の階級を基準に正規化した
           相対値で、縦軸（得点）とは無関係。 */}
-      {bars.map((bar) => {
+      {bars.map((bar, i) => {
         const [x0] = toScreen([bar.from, 0]);
         const [x1] = toScreen([bar.to, 0]);
         const h = (bar.share / barScale) * (height - padding * 2);
         return (
           <rect
-            key={`bar-${bar.from}`}
+            key={i}
             x={x0}
             y={height - padding - h}
             width={Math.max(x1 - x0, 0.5)}
@@ -293,29 +297,31 @@ export function BreakpointCurveEditor({
       })}
       <polyline points={polyline} className="fill-none stroke-[var(--color-accent)] [stroke-width:2]" />
       {points.map(([x, y], i) =>
-        !handleLabels.has(i) ? (
+        handleIndexes.has(i) ? null : (
           <circle key={i} cx={x} cy={y} r={3} className="pointer-events-none fill-[var(--color-accent)]" />
-        ) : (
-          <circle
-            key={i}
-            cx={x}
-            cy={y}
-            r={7}
-            tabIndex={0}
-            role="slider"
-            aria-label={handleLabels.get(i)}
-            aria-valuenow={breakpoints[i][0]}
-            className="cursor-grab fill-[var(--color-accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
-            onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
-              setDraggingIndex(i);
-            }}
-            onPointerMove={(e) => handlePointerMove(e, i)}
-            onPointerUp={() => setDraggingIndex(null)}
-            onKeyDown={(e) => handleKeyDown(e, i)}
-          />
         ),
       )}
+      {handles.map(({ index, label }) => (
+        <circle
+          key={label}
+          cx={points[index][0]}
+          cy={points[index][1]}
+          r={7}
+          tabIndex={0}
+          role="slider"
+          aria-label={label}
+          aria-valuenow={breakpoints[index][0]}
+          className="cursor-grab fill-[var(--color-accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            setDraggingLabel(label);
+          }}
+          onPointerMove={(e) => handlePointerMove(e, index)}
+          onPointerUp={() => setDraggingLabel(null)}
+          onPointerCancel={() => setDraggingLabel(null)}
+          onKeyDown={(e) => handleKeyDown(e, index)}
+        />
+      ))}
       {/* 表示範囲の外にある延長。黙って切ると「分布は全部見えている」と読めてしまい、
           折れ点が実データの範囲と合っていないこと自体が画面から消える。 */}
       {offRange.below >= OFF_RANGE_NOTICE_THRESHOLD && (
