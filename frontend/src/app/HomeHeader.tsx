@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button/Button";
 import { RouteIcon } from "@/components/ui/icons/icons";
 import WarningBadgeList from "@/features/conditions/WarningBadge/WarningBadge";
 import WeatherPanel from "@/features/conditions/WeatherPanel/WeatherPanel";
+import { observedWind } from "@/features/conditions/observedWind";
 import { useWeatherConditions, type WarningRoute } from "@/features/conditions/useWeatherConditions";
 import RideBar from "@/features/ride/RideBar/RideBar";
 import type { RideRemaining } from "@/features/ride/rideRemaining";
@@ -80,15 +81,7 @@ export default function HomeHeader({
               offRoute={ride.offRoute}
               mapBearingDeg={mapBearingDeg}
               speedKmh={ride.speedKmh}
-              wind={
-                amedas?.wind_speed_ms != null && amedas.wind_direction !== null
-                  ? {
-                      directionDeg: amedas.wind_direction.deg,
-                      directionLabel: amedas.wind_direction.label,
-                      speedMs: amedas.wind_speed_ms,
-                    }
-                  : null
-              }
+              wind={observedWind(amedas)}
             />
             <div className="ml-auto flex flex-shrink-0 items-center gap-2">
               <WarningBadgeList items={warningBadgeItems} failures={headerFetchFailures} />

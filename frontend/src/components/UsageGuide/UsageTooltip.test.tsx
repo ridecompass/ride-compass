@@ -2,7 +2,7 @@
  * `components/UsageGuide/UsageTooltip.tsx`——アイコンだけの部品を長押し（マウスは重ねる）すると、名前と使い方を吹き出しで出す。
  * どの部品をアイコンだけと数えるかを引く`usageTarget.ts`は、この部品の中の手順として通す。
  *
- * 見るもの: タッチの長押しで出ることと、そのあとの押し操作が部品へ届かないこと、短く押す・動かすと出さず押した扱いのままなこと、
+ * 見るもの: タッチの長押しで出ることと、そのあとの押し操作が部品へ届かないこと（キーで押したものは届くこと）、短く押す・動かすと出さず押した扱いのままなこと、
  * 文字を出す部品・つまみは出さないこと（件数の札のように読み上げから隠した文字はアイコンだけに数える）、使い方の文が無ければ名前だけ、
  * タッチで出したものはほかを押すまで残ること、マウスを重ねると出て外す・押すと消えること。
  *
@@ -93,6 +93,18 @@ describe("UsageTooltip", () => {
     expect(tooltip()).toBeNull();
     touchDown(button("ルート生成"));
     release(button("ルート生成"));
+    expect(onGenerate).toHaveBeenCalledTimes(1);
+  });
+
+  it("長押しで出したあと、次に押す前でもキーで押した（ポインタを伴わない）clickは部品へ届く", () => {
+    const { onGenerate } = renderScreen();
+    touchDown(button("ルート生成"));
+    wait(LONG_PRESS_MS);
+    release(button("ルート生成"));
+
+    fireEvent.keyDown(button("ルート生成"), { key: "Enter" });
+    fireEvent.click(button("ルート生成"));
+
     expect(onGenerate).toHaveBeenCalledTimes(1);
   });
 

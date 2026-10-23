@@ -31,7 +31,7 @@
 | `features/map/scene/applyToMap.ts`（`features/map/scene/applyToMap.ts: weatherStateFrom`） | `features/map/scene/applyToMap.ts: dynamicWeather`（チップid→名前付きソース→表示・中身）を宣言の入力へ移す |
 | `features/map/layers/jmaDeliveryQueries.ts` | 表示中のソースが読む配信要素と時刻一覧のファイルの組（同じファイルを読む要素は1つの取得を共有し、取り直す間隔は最も速い系統に合わせる）・取得の結果の畳み方（一部のファイルだけ取れなくても残りで時系列を作る）・選んだコマの地物を取る鍵。取得そのものは`useDynamicWeatherLayers.ts`が持つ |
 | `features/map/useDynamicWeatherLayers.ts`・`useWeatherGrid.ts`・`features/conditions/useWeatherConditions.ts` | 状態管理・フェッチ。動的気象は要素を名指さず、表示中の名前付きソースをループして段の種類（配信元のタイル・配信元の地物・MSMの格子点）ごとに1つずつの実装で描画内容を作る。取得の骨格（重複排除・定期の取り直し・読み込み中と失敗の状態）はTanStack Queryが持ち（[ページ全体構成](page-composition.md)「データ取得の骨格」）、配信元の時刻一覧・在否インデックス・MSMの格子点は`features/conditions/useWeatherConditions.ts: refetchInterval`で、現在地に追随する取得は`features/conditions/useWeatherConditions.ts: useWeatherConditions`内の`features/conditions/useWeatherConditions.ts: useLocationFetch`（キーに位置を持つ）で取り直す。取り直す間隔（アメダス・在否インデックス・MSMの格子点）はbackendの宣言が生成物`refresh-intervals.json`で配る（新しい値が出る間隔そのもの。配信元の時刻一覧の間隔は`jmaElements[].refreshIntervalMs`）。降水・風速の色の段と「降っていない」「無風」の境も生成物`weather-scales.json`から読み、画面は持たない |
-| `features/conditions/WeatherPanel/WeatherPanel.tsx`・`amedasWeatherIcon.ts`・`features/conditions/WarningBadge/WarningBadge.tsx` | UI（警報バッジの出所ごとの段階の呼び名と色は、backendの宣言`domain/warning_display.py`が生成物`vocabulary.ts`で配る） |
+| `features/conditions/WeatherPanel/WeatherPanel.tsx`・`amedasWeatherIcon.ts`・`features/conditions/WarningBadge/WarningBadge.tsx`・`features/conditions/observedWind.ts` | UI（観測の風を帯に出す形へ導くのは`features/conditions/observedWind.ts: observedWind`で、天気の帯と走りの帯の両方がこれを読む。警報バッジの出所ごとの段階の呼び名と色は、backendの宣言`domain/warning_display.py`が生成物`vocabulary.ts`で配る） |
 | `features/conditions/routeThunder.ts` | ルートを通る時刻に当たる雷の注意報級の時間帯を、backendが返す区域の通過と段から選ぶ（`features/conditions/routeThunder.ts: routeThunderItems`）。段は気象庁の3時間のコマのまま出し、コマの境を通る時刻で切り詰めない。続くコマは1つの時間帯につなぐ |
 | `services/weatherApi.ts`・`types/weather.ts` | API呼び出し・型定義 |
 
@@ -230,7 +230,7 @@ disasterSourceLegendAxis`が作り、隠したソースは他の凡例絞り込�
 どのテンプレートにも当たらないURLは読めないものとして扱い、取りに行く側へ倒す。
 時刻一覧（`targetTimes*.json`）の中から自分の行を選ぶ`elements`の照合も同じ要素idを使う。
 行をコマにする読み方（`reader`）も源泉が配信要素ごとに宣言する——同じ系統・同じファイルでも、
-実況＋予測（その要素の行を時刻順に並べ、最新の実況より前を捨てる）・数値予報のラン（系列ごとに
+実況＋予測（その要素の行を`validtime`ごとに1コマへ絞って時刻順に並べ、最新の実況より前を捨てる。実況と予測のファイルを取った時点がずれて同じ`validtime`が2つ載ったら、実況を、次に新しい`basetime`を採る）・数値予報のラン（系列ごとに
 有効時刻を複数持つ最新のランだけ）・「現在」の単一値（最新の1行）で並び方が違う。
 
 **1つの名前付きソースが、選んだ時刻によって別の配信要素から届くことがある**——降水の`main`ラスタは

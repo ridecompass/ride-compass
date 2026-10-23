@@ -3,15 +3,15 @@
  *
  * 見るもの: デバッグモードでないときは何も出さないこと、見出しの件数（出している数/全数）、記録が無いとき・
  * 絞って0件のときの案内、レベルの下限での絞り込み、1行の中身、コピーで渡る文字（出している行だけ）と
- * コピーの結果・失敗の表示、クリア（記録が変わると描き直すこと）。
+ * コピーの結果・失敗の表示、クリア（記録が変わると描き直すこと）、開き直したときに一番下まで送ること。
  *
  * ここで見ないもの:
  * - 記録の上限・記録の時刻の書式・デバッグモードの保存 → `lib/debugLog.ts`
  * - コピー済みの表示が戻るまでの時間・失敗の文言の組み立て → `hooks/useCopyToClipboard.ts`
  * - パネルの開閉・置き方と閉じるボタン → `components/FloatingPanel/FloatingPanel.tsx`（本物を描き、開閉と閉じる操作は
  *   そのまま渡す）
- * - 新しい行が来たら一番下まで送ること——送り先の高さはテスト環境に無いレイアウトの実寸で、常に0になる
  *
+ * 一番下まで送る先の高さ（`scrollHeight`）はテスト環境に無いレイアウトの実寸なので、使うテストだけテストが決める。
  * 記録は本物の`lib/debugLog.ts`へ書く。状態はモジュールが持つので、テストごとに空にしてデバッグモードを戻す。
  * 記録の時刻を決めるため、時計（`Date`）だけを止める。クリップボードはテスト環境のものを使う。
  */
@@ -147,5 +147,17 @@ describe("DebugConsole", () => {
 
     expect(heading()).toBe("デバッグログ[0/0件]");
     expect(screen.getByText("イベント待機中...[地図を操作するかAPIを呼び出してください]")).toBeInTheDocument();
+  });
+
+  it("閉じて開き直すと、新しい記録を待たずに一番下（最新の行）まで送る", () => {
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(480);
+    logThree();
+    const view = render(<DebugConsole open onClose={vi.fn()} />);
+    view.rerender(<DebugConsole open={false} onClose={vi.fn()} />);
+
+    view.rerender(<DebugConsole open onClose={vi.fn()} />);
+
+    const list = screen.getByText("生成に失敗").closest<HTMLElement>(".overflow-y-auto");
+    expect(list?.scrollTop).toBe(480);
   });
 });

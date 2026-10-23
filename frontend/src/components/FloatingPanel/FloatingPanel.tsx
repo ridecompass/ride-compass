@@ -54,6 +54,17 @@ export default function FloatingPanel({
     const rootFontSizePx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
     const width = el.getBoundingClientRect().width;
     rnd.updatePosition({ x: Math.max(0, (window.innerWidth - width) / 2), y: topRem * rootFontSizePx });
+    // `bounds`はドラッグの間しか効かないので、画面の大きさが変わったら（端末の回転等）画面の中へ寄せ直す。
+    const keepInside = () => {
+      const { x, y } = rnd.getDraggablePosition();
+      const box = el.getBoundingClientRect();
+      rnd.updatePosition({
+        x: Math.max(0, Math.min(x, window.innerWidth - box.width)),
+        y: Math.max(0, Math.min(y, window.innerHeight - box.height)),
+      });
+    };
+    window.addEventListener("resize", keepInside);
+    return () => window.removeEventListener("resize", keepInside);
   }, [open, topRem]);
 
   if (!open) return null;

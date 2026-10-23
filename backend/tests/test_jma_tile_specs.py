@@ -149,8 +149,21 @@ _FORECASTS = (_frame("0100", "0110"), _frame("0100", "0105"))
             [_LATEST_OBSERVATION, _FORECASTS[1], _FORECASTS[0]],
         ),
         (_rows(*_FORECASTS), [_FORECASTS[1], _FORECASTS[0]]),
+        (
+            _rows(
+                _frame("0105", "0105"),
+                _frame("0105", "0110"),
+                _frame("0100", "0105"),
+                _frame("0100", "0110"),
+            ),
+            [_frame("0105", "0105"), _frame("0105", "0110")],
+        ),
     ],
-    ids=["starts_at_the_latest_observation", "without_any_observation_keeps_every_frame"],
+    ids=[
+        "starts_at_the_latest_observation",
+        "without_any_observation_keeps_every_frame",
+        "one_frame_per_valid_time_preferring_the_observation_then_the_newer_run",
+    ],
 )
 def test_a_nowcast_runs_in_valid_time_order_from_its_latest_observation(rows, expected):
     assert specs.read_target_times("nowcast", rows, "el") == expected

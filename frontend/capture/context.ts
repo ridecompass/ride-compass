@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, type APIResponse, type Locator, type Page, type Route } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { mapDisplay } from "@/types/generated/mapDisplay";
@@ -6,6 +6,7 @@ import * as catalogAxes from "@/testing/catalogAxes";
 import * as fixtures from "../e2e/fixtures";
 import * as states from "../e2e/states";
 import { LIVE_POINT, chooseLens, settleMap } from "../e2e-live/live";
+import { fileName } from "./fileName.mjs";
 
 // 脚本（scripts/capture.mjs の --script）が受け取る口。脚本はこの口だけを使い、何も読み込まない（型の読み込みは実行時に
 // 消えるのでよい）。そのため作業ツリーの外に置いても、読み込みの解決に頼らずに動く。e2e の段取りと応答の雛形はモジュールごと
@@ -135,27 +136,38 @@ async function composeKeyboard(
 /** 「表示」のボタンと、押すと開く一覧の名前（`MapOverlayControls`）。 */
 const OVERLAY_LIST_NAME = "地図に出す情報";
 
-/**
- * ブラウザが --api の backend へ選んだパスの頭で取りに行くものを、作業ツリーの backend から取って返す。page.route の
- * route.fetch は向け先のプロトコルを変えられない（本番の https から手元の http へ替えられない）ので、page.request で取る。
- * 脚本の routes・patch より先に登録する（後から登録したルートが先に当たる）。
- */
-export async function routeToWorktreeBackend(page: Page, { origin, api, paths }: WorktreeBackend): Promise<void> {
-  const apiOrigin = new URL(api).origin;
-  await page.route(
-    (url) => url.origin === apiOrigin && paths.some((head) => url.pathname.startsWith(head)),
-    async (route) => {
-      const url = new URL(route.request().url());
-      const response = await page.request.get(`${origin}${url.pathname}${url.search}`, {
-        timeout: WORKTREE_BACKEND_TIMEOUT_MS,
-      });
-      await route.fulfill({ response });
-    },
-  );
+function forWorktreeBackend(url: URL, { api, paths }: WorktreeBackend): boolean {
+  return url.origin === new URL(api).origin && paths.some((head) => url.pathname.startsWith(head));
 }
 
-function fileName(name: string): string {
-  return name.replace(/[\\/:*?"<>|\s]+/g, "_");
+/**
+ * 要求を、選んだパスの頭に当たれば作業ツリーの backend へ、ほかは向け先のまま送った応答。page.route の route.fetch は
+ * 向け先のプロトコルを変えられない（本番の https から手元の http へ替えられない）ので、作業ツリーの backend へは page.request で
+ * 同じメソッド・ヘッダー・本文を送る。
+ */
+async function upstream(page: Page, route: Route, worktreeBackend: WorktreeBackend | null): Promise<APIResponse> {
+  const request = route.request();
+  const url = new URL(request.url());
+  if (!worktreeBackend || !forWorktreeBackend(url, worktreeBackend)) return route.fetch();
+  return page.request.fetch(`${worktreeBackend.origin}${url.pathname}${url.search}`, {
+    method: request.method(),
+    headers: request.headers(),
+    data: request.postDataBuffer() ?? undefined,
+    timeout: WORKTREE_BACKEND_TIMEOUT_MS,
+  });
+}
+
+/**
+ * ブラウザが --api の backend へ選んだパスの頭で取りに行くものを、作業ツリーの backend から取って返す。
+ * 脚本の routes・patch より先に登録する（後から登録したルートが先に当たる）。
+ */
+export async function routeToWorktreeBackend(page: Page, worktreeBackend: WorktreeBackend): Promise<void> {
+  await page.route(
+    (url) => forWorktreeBackend(url, worktreeBackend),
+    async (route) => {
+      await route.fulfill({ response: await upstream(page, route, worktreeBackend) });
+    },
+  );
 }
 
 /** 選び損ねた直後に呼ぶので、選択肢が閉じていれば開く。 */
@@ -173,7 +185,10 @@ async function ariaLabels(scope: Page | Locator, suffix: string): Promise<string
   return labels.filter((label) => label.endsWith(suffix)).map((label) => label.slice(0, -suffix.length));
 }
 
-export function captureContext(page: Page, { out, mocked }: { out: string; mocked: boolean }): CaptureContext {
+export function captureContext(
+  page: Page,
+  { out, mocked, worktreeBackend }: { out: string; mocked: boolean; worktreeBackend: WorktreeBackend | null },
+): CaptureContext {
   let count = 0;
   const nextFile = (name: string) => {
     count += 1;
@@ -248,9 +263,9 @@ export function captureContext(page: Page, { out, mocked }: { out: string; mocke
       try {
         await chooseLens(page, label);
       } catch (error) {
-        throw new Error(`レンズ「${label}」を選べない。選べるレンズ: ${(await lensLabels(page)).join(" / ")}`, {
-          cause: error,
-        });
+        // 一覧も開けなければ、選べなかった元の失敗を出す。
+        const labels = await lensLabels(page).catch(() => ["（一覧を開けない）"]);
+        throw new Error(`レンズ「${label}」を選べない。選べるレンズ: ${labels.join(" / ")}`, { cause: error });
       }
       await settle();
     },
@@ -290,7 +305,8 @@ export function captureContext(page: Page, { out, mocked }: { out: string; mocke
     },
     async patch(glob, transform) {
       await page.route(glob, async (route) => {
-        const response = await route.fetch();
+        // 後から登録したこのルートが先に当たるので、作業ツリーの backend へ向けるパスも、ここで向けて取る。
+        const response = await upstream(page, route, worktreeBackend);
         if (response.ok()) {
           await route.fulfill({ response, json: await transform(await response.json()) });
           return;

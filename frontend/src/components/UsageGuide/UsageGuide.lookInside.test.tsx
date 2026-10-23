@@ -1,7 +1,7 @@
 /**
  * `components/UsageGuide/UsageGuide.tsx`の「中を見る」。
  *
- * 見るもの: 閉じた展開する部品・選ばれていないタブの説明の「中を見る」（出す部品と出さない部品）、それで開いた浮きパネルの
+ * 見るもの: 閉じた展開する部品・選ばれていないタブの説明の「中を見る」（出す部品と、押せない部品等の出さない部品）、それで開いた浮きパネルの
  * 中の部品も説明し、説明の✕と終える操作では閉じないこと。
  */
 import { render, screen } from "@testing-library/react";
@@ -147,6 +147,8 @@ describe("UsageGuide", () => {
       ["開いている部品", { "aria-expanded": true }],
       ["選ばれているタブ", { role: "tab", "aria-selected": true }],
       ["別の面を開く部品（確かめのダイアログ等）", { "aria-expanded": false, "aria-haspopup": "dialog" as const }],
+      ["押せない閉じた部品", { "aria-expanded": false, disabled: true }],
+      ["押せない選ばれていないタブ", { role: "tab", "aria-selected": false, disabled: true }],
     ])("%sには出さない", async (_, attributes) => {
       render(
         <>
