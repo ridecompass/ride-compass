@@ -23,12 +23,17 @@ class FakeSentinel extends EventTarget {
 let sentinels: FakeSentinel[] = [];
 let visibility: DocumentVisibilityState = "visible";
 
-/** 頼みを受ける口を置く。`refuse`なら頼みを断る（省電力の設定等）。 */
-function installWakeLock({ refuse = false }: { refuse?: boolean } = {}) {
+let answerHeld: (() => void) | null = null;
+
+/** 頼みを受ける口を置く。`refuse`なら頼みを断る（省電力の設定等）。`hold`なら`answerHeld()`を呼ぶまで返事を待たせる。 */
+function installWakeLock({ refuse = false, hold = false }: { refuse?: boolean; hold?: boolean } = {}) {
   sentinels = [];
+  const waiting: (() => void)[] = [];
+  answerHeld = () => waiting.splice(0).forEach((answer) => answer());
   const wakeLock = {
     async request() {
       if (refuse) throw new DOMException("refused", "NotAllowedError");
+      if (hold) await new Promise<void>((resolve) => waiting.push(resolve));
       const sentinel = new FakeSentinel();
       sentinels.push(sentinel);
       return sentinel;
@@ -77,6 +82,21 @@ describe("useScreenWakeLock", () => {
     rerender({ active: false });
     await waitFor(() => expect(held()).toBe(0));
     expect(result.current).toBe("off");
+  });
+
+  it("返事を待つ間に画面の表示が戻っても頼みは1本だけで、止めるとその1本が外れる", async () => {
+    installWakeLock({ hold: true });
+    const { result, rerender } = renderHook(({ active }) => useScreenWakeLock(active), {
+      initialProps: { active: true },
+    });
+    await setVisibility("visible");
+    await act(async () => answerHeld?.());
+    await waitFor(() => expect(result.current).toBe("held"));
+    expect(sentinels).toHaveLength(1);
+    expect(held()).toBe(1);
+
+    rerender({ active: false });
+    await waitFor(() => expect(held()).toBe(0));
   });
 
   it.each([

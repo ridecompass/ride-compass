@@ -66,7 +66,8 @@ const REPO = { issues: "tasks", issue_comment: "tasks", pull_request: "code", wo
 const OWN = ["workflow_run"]; // ゲート自身の出来事でも受けるもの（起こした担当の実行）
 export const ignored = (config, name, p) => !ACTIONS[name]?.includes(p.action) || (REPO[name] && p.repository.full_name !== config[REPO[name]])
   || (p.sender.login === config.gateBot && !OWN.includes(name));
-const branch = (config, ref) => (ref?.startsWith(config.branchPrefix) ? [Number(ref.slice(config.branchPrefix.length))] : []);
+// 作業ブランチは接頭辞のあとが番号だけの枝（開発機の作業ツリーが使う、番号のあとに名前の付いた枝は、どの issue の出来事でもない）。
+const branch = (config, ref) => (ref?.startsWith(config.branchPrefix) && /^\d+$/.test(ref.slice(config.branchPrefix.length)) ? [Number(ref.slice(config.branchPrefix.length))] : []);
 
 // 出来事が指す issue。around は、閉じた・開き直したので矢印1本でつながる開いた issue（後・親・子）も決め直すとき。
 const ROUTES = {
