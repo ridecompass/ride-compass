@@ -421,6 +421,17 @@ def test_the_night_axis_weighs_only_in_the_bins_ridden_in_the_dark(night_axis):
     assert ratio.tolist() == pytest.approx([1.0, 1.0, 1.25])
 
 
+def test_the_night_axis_keeps_weighing_by_the_hour_after_the_axes_are_saved_during_composition(night_axis):
+    """合成の途中で軸の保存が軸の集合を差し替えても、作った時点の軸の集合で昼夜を決める（合成は別スレッドでも走る）。"""
+    composer = _night_composer()
+
+    with replaced_axis_definitions({}):
+        leg = composer.compose("leg", None, 7.5, +1, duration_hours=3.0)
+
+    ratio = leg.cost_bins_lazy[:, 0] / leg.travel_bins_lazy[:, 0]
+    assert ratio.tolist() == pytest.approx([1.0, 1.0, 1.25])
+
+
 def test_the_display_of_a_segment_weighs_the_night_axis_at_the_hour_it_is_ridden(night_axis):
     """17時30分に通る区間には夜の軸が効かず、18時30分に通る区間には効く。"""
     values = _night_composer().values_at_rows(np.array([0, 0]), np.array([8.5, 9.5]))

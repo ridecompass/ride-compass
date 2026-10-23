@@ -144,8 +144,8 @@ def elevation_values_sql(vertices: str) -> str:
     `vertices`は`(osm_way_id, segment_index, ord, lon, lat, elev, on_structure)`を返す関係。
     `elev`がNULLの頂点は評価から外す。**外した後に隣り合う2点でも、元の点列では間に欠損を
     挟んでいることがある**——そのまま隣接扱いすると、欠損区間の起伏が均された差として
-    混入する。距離（両端の座標は常に既知）と、獲得/消失（欠損を挟むと信頼できない）を
-    分け、元の点列でも真に隣接していたペアだけを後者へ寄与させる。
+    混入する。平均勾配の距離（座標は欠損の頂点も持つ）は元の点列に沿って測り、獲得/消失（欠損を挟むと信頼できない）は
+    元の点列でも真に隣接していたペアだけから出す。
 
     `on_structure`（橋・高架・トンネル）は**両端だけ**を使う。配信元のDEMは地表面の値で
     構造物の高さを反映しないため（https://maps.gsi.go.jp/development/hyokochi.html に明記）、
@@ -159,35 +159,40 @@ WITH v AS ({vertices}),
 known AS (SELECT * FROM v WHERE elev IS NOT NULL),
 ends AS (
     SELECT osm_way_id, segment_index, bool_or(on_structure) AS on_structure,
-           count(*) AS n,
+           count(*) AS n, min(ord) AS first_ord, max(ord) AS last_ord,
            (array_agg(elev ORDER BY ord))[1] AS start_e,
            (array_agg(elev ORDER BY ord DESC))[1] AS end_e
     FROM known GROUP BY osm_way_id, segment_index),
 stepped AS (
     SELECT osm_way_id, segment_index, ord, elev,
            lag(ord)  OVER w AS prev_ord,
-           lag(elev) OVER w AS prev_elev,
-           lag(lon)  OVER w AS prev_lon,
-           lag(lat)  OVER w AS prev_lat,
-           lon, lat
+           lag(elev) OVER w AS prev_elev
     FROM known WINDOW w AS (PARTITION BY osm_way_id, segment_index ORDER BY ord)),
 pairs AS (
     SELECT osm_way_id, segment_index, elev - prev_elev AS diff,
-           ord - prev_ord = 1 AS adjacent,
-           ST_Distance(ST_MakePoint(prev_lon, prev_lat)::geography,
-                       ST_MakePoint(lon, lat)::geography) AS d
+           ord - prev_ord = 1 AS adjacent
     FROM stepped WHERE prev_ord IS NOT NULL),
 agg AS (
-    SELECT osm_way_id, segment_index, sum(d) AS total_d,
+    SELECT osm_way_id, segment_index,
            coalesce(sum(greatest(diff, 0))  FILTER (WHERE adjacent), 0) AS gain,
            coalesce(sum(greatest(-diff, 0)) FILTER (WHERE adjacent), 0) AS loss
     FROM pairs GROUP BY osm_way_id, segment_index),
+walked AS (
+    SELECT osm_way_id, segment_index, ord,
+           ST_Distance(ST_MakePoint(lag(lon) OVER w, lag(lat) OVER w)::geography,
+                       ST_MakePoint(lon, lat)::geography) AS d
+    FROM v WINDOW w AS (PARTITION BY osm_way_id, segment_index ORDER BY ord)),
+span AS (
+    SELECT e.osm_way_id, e.segment_index, sum(k.d) AS total_d
+    FROM ends e JOIN walked k USING (osm_way_id, segment_index)
+    WHERE k.ord > e.first_ord AND k.ord <= e.last_ord
+    GROUP BY e.osm_way_id, e.segment_index),
 raw AS (
     SELECT e.osm_way_id, e.segment_index, e.on_structure, e.start_e, e.end_e,
            a.gain, a.loss,
            CASE WHEN abs(s.g) <= {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT} THEN s.g END AS avg_g
-    FROM ends e JOIN agg a USING (osm_way_id, segment_index),
-         LATERAL (SELECT CASE WHEN a.total_d > 0 THEN (e.end_e - e.start_e) / a.total_d * 100 END AS g) s
+    FROM ends e JOIN agg a USING (osm_way_id, segment_index) JOIN span d USING (osm_way_id, segment_index),
+         LATERAL (SELECT CASE WHEN d.total_d > 0 THEN (e.end_e - e.start_e) / d.total_d * 100 END AS g) s
     WHERE e.n >= 2)
 SELECT osm_way_id, segment_index,
        round(start_e::numeric, 1) AS start_elevation_m,

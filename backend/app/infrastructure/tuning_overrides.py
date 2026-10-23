@@ -108,7 +108,7 @@ class TuningOverrideStore:
         if parameter is None:
             raise TuningOverrideError(f"較正値の宣言に無いid: {param_id}")
         _check_in_range(parameter, value)
-        if value == TUNING_PARAMETERS_BY_ID[param_id].default:
+        if value == parameter.default:
             await self.clear_override(param_id)
             return
         await self._session.execute(
