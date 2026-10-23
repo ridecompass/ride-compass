@@ -44,10 +44,11 @@ export default function DebugConsole({ open, onClose }: DebugConsoleProps) {
     [entries, minLevel],
   );
 
+  // 開き直したときも送る（一覧は閉じている間は描かないので、開くと先頭から描かれる）。
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [visibleEntries]);
+  }, [visibleEntries, enabled, open]);
 
   // 閉じている間は行を組まない（記録のたびに全行の詳細を文字にし直すことになる）。
   if (!enabled || !open) return null;
