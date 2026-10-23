@@ -13,7 +13,7 @@ from app.infrastructure.http_client import UpstreamNotFound
 
 
 async def get_terrain_rgb_tile(client: GsiTileClient, z: int, x: int, y: int) -> bytes | UpstreamNotFound | None:
-    result = await client.get(gsi_dem_png_path(z, x, y))
+    result = await client.get(gsi_dem_png_path(z, x, y), category="gsi:dem-tile")
     if isinstance(result, UpstreamNotFound) or result is None:
         return result
     content, _ = result

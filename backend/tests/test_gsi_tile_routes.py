@@ -9,7 +9,10 @@
 - 回数制限の数え方そのもの → `test_rate_limiter.py`
 """
 
+import logging
+
 import pytest
+from cachetools import LRUCache
 from fastapi.testclient import TestClient
 
 from app.api.cache_policy import GSI_TILE_NOT_FOUND
@@ -17,8 +20,10 @@ from app.api.dependencies import get_gsi_tile_client
 from app.config import settings
 from app.infrastructure import rate_limiter
 from app.infrastructure.gsi_dem_png import gsi_dem_png_to_terrain_rgb
+from app.infrastructure.gsi_tile_client import GsiTileClient
 from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from app.main import app
+from tests.fake_http import answering
 from tests.source_ingest import gsi_dem_png
 
 client = TestClient(app)
@@ -31,7 +36,7 @@ class FakeGsiTileClient:
     def __init__(self, result):
         self._result = result
 
-    async def get(self, path):
+    async def get(self, path, *, category):
         return self._result
 
 
@@ -66,6 +71,22 @@ def test_an_upstream_failure_is_502(override_dependency, path):
 
     assert response.status_code == 502
     assert response.json() == {"detail": "地理院タイルの取得に失敗しました"}
+
+
+@pytest.mark.parametrize(
+    ("path", "category"), [(RELIEF_TILE, "gsi:relief-tile"), (TERRAIN_TILE, "gsi:dem-tile")], ids=["relief", "terrain"]
+)
+def test_an_upstream_failure_is_counted_under_its_own_product(override_dependency, caplog, path, category):
+    """運用の統計とWARNINGは、色別標高図と標高タイルを別の名前で数える。同じ名前だと、標高タイルだけが止まった
+    （地形の陰影だけが消えた）ことを色別標高図の失敗と見分けられない。"""
+    override_dependency(get_gsi_tile_client, lambda: GsiTileClient(answering(503), LRUCache(maxsize=16)))
+    caplog.set_level(logging.WARNING)
+
+    client.get(path)
+
+    named = {word for record in caplog.records if record.levelno >= logging.WARNING
+             for word in record.getMessage().split() if word.startswith("[gsi:")}
+    assert named == {f"[{category}]"}
 
 
 @pytest.mark.parametrize("path", [RELIEF_TILE, TERRAIN_TILE])
