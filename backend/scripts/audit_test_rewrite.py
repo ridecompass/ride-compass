@@ -410,8 +410,12 @@ def main() -> int:
     except RuntimeError as e:
         print(f"\n① 実装の変更: **測れない**（origin/master との合流点が取れない: {e}）")
     else:
-        status = run("diff", "--stat", base, "--", args.implementation, cwd=backend).stdout.strip()
-        print(f"\n① 実装の変更（origin/master との合流点から）: {'**あり** → ' + status if status else 'なし'}")
+        diff = run("diff", "--stat", base, "--", args.implementation, cwd=backend)
+        status = diff.stdout.strip()
+        if diff.returncode != 0:
+            print(f"\n① 実装の変更: **測れない**（git diff が失敗した: {diff.stderr.strip()}）")
+        else:
+            print(f"\n① 実装の変更（origin/master との合流点から）: {'**あり** → ' + status if status else 'なし'}")
 
     defined, imported = module_symbols(source, impl_path)
     for test in tests:

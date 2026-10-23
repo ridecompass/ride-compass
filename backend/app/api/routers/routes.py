@@ -36,6 +36,7 @@ from app.domain.route_request import (
     nothing_to_generate_error,
 )
 from app.domain.geo import Latitude, Longitude, haversine_distance_km
+from app.domain.errors import GENERATION_BUSY_MESSAGE
 from app.domain.graph import parse_edge_key
 from app.domain.route import Coordinates, RouteCandidate, RoutePoint
 from app.domain.route_points import ROUTE_SIDE_POINTS_MAX_EDGES
@@ -271,7 +272,7 @@ async def generate_routes(
         record_rate_limit_rejection(
             "generate-concurrency", client_id(http_request), f"concurrent={settings.generate_max_concurrent}"
         )
-        raise HTTPException(status_code=429, detail="ルート生成が混み合っています。しばらく待ってから再試行してください。")
+        raise HTTPException(status_code=429, detail=GENERATION_BUSY_MESSAGE)
     await _generate_semaphore.acquire()
 
     job_id = job_registry.create_job()
@@ -365,7 +366,7 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
     finally:
         _generate_semaphore.release()
         # 生成が作って捨てた配列の領域を返す。返さないと、それまでで一番大きい生成の分が anon に残り、
-        # 読み込む量の上限（`services/graph_service.py: _max_search_edges`）が前提にする取り置きを食う。
+        # 生成どうしが分け合うメモリ（`services/graph_service.py: SearchMemory`）が前提にする取り置きを食う。
         await asyncio.to_thread(release_freed_heap)
 
 

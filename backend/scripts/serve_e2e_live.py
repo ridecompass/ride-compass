@@ -34,6 +34,8 @@ from repo_git import main_checkout  # noqa: E402
 
 #: E2Eのオリジン。基礎地図をここのrewrites越しに取らせる（`frontend/playwright.live.config.ts: LIVE_ORIGIN`）。
 LIVE_ORIGIN = "http://localhost:3200"
+#: backendが待ち受け、E2Eが向ける宛先。空きを確かめる宛先と同じにする（`localhost`は別の宛先へ解決されうる）。
+HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 HEALTH_TIMEOUT_SECONDS = 300
 #: 起点の候補にする区間の数。取込範囲の真ん中あたりの区間から順に、路面タイルに道が出るものを探す。
@@ -63,7 +65,7 @@ def free_port(wanted: int | None) -> int:
     for port in ([wanted] if wanted else [DEFAULT_PORT, 0]):
         with socket.socket() as s:
             try:
-                s.bind(("127.0.0.1", port))
+                s.bind((HOST, port))
             except OSError:
                 if wanted:
                     raise SystemExit(f"{port}番は使われている（--port を外すと空いているポートを選ぶ）") from None
@@ -138,7 +140,10 @@ def choose_point(api: str, env: dict[str, str], given: str | None) -> str:
         if not roads_in_tile(lat, lon):
             raise SystemExit(f"起点 {given} の路面タイルに道が無い（開発DBの取込範囲の外）。--point を外すとDBから選ぶ")
         return given
-    for lat, lon in asyncio.run(candidate_points(env["DATABASE_URL"])):
+    from app.config import settings
+
+    # `.env`に無ければ、backendは設定の既定の接続先で動く。
+    for lat, lon in asyncio.run(candidate_points(env.get("DATABASE_URL") or settings.database_url)):
         if roads_in_tile(lat, lon):
             return f"{lat:.5f},{lon:.5f}"
     raise SystemExit("開発DBの区間から、路面タイルに道が出る起点を選べなかった（--point で与える）")
@@ -156,11 +161,11 @@ def main() -> int:
     sys.path.insert(0, str(BACKEND))
 
     port = free_port(args.port)
-    api = f"http://localhost:{port}"
+    api = f"http://{HOST}:{port}"
     env = backend_env(main, port)
     log = Path(tempfile.gettempdir()) / f"serve_e2e_live-{port}.log"
     with open(log, "wb") as out:
-        proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1",
+        proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--host", HOST,
                                  "--port", str(port)], cwd=BACKEND, env=env, stdout=out, stderr=subprocess.STDOUT)
     try:
         wait_health(api, proc, log)

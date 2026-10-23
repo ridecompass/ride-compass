@@ -202,9 +202,14 @@ export function useMapLifecycle(
     styleReloadPendingRef.current = true;
 
     // クエリでスタイルURLを変えることで、ブラウザのHTTPキャッシュではなく取り直しにする。
-    reloadStyle(map, `${mapStyleUrl()}?t=${Date.now()}`, () => {
-      styleReloadPendingRef.current = false;
-      redraw(map);
+    reloadStyle(map, `${mapStyleUrl()}?t=${Date.now()}`, {
+      onLoaded: () => {
+        styleReloadPendingRef.current = false;
+        redraw(map);
+      },
+      onFailed: () => {
+        styleReloadPendingRef.current = false;
+      },
     });
   }, [mapRef, refreshToken, redraw]);
 

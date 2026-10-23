@@ -90,7 +90,7 @@ const DISTANCE_FRAMES: RulerFrame[] = Array.from({ length: Math.floor(MAX_DISTAN
 const MIN_ROUTES = routeGenerateConfig.min_routes;
 const MAX_ROUTES = routeGenerateConfig.max_routes;
 
-// forceMount+data-stateでの表示切替（ルート結果のタブと同じ方式）。
+// forceMount+data-stateでの表示切替。
 // 候補数等は`features/route/useGenerationConditions.ts`の制御stateのため非表示中も値は失われないが、
 // 重みタブ（RouteSettingsPanel）はドラッグ中の帯グラフ・チェックOFF前の
 // 重み記憶をローカルstateで持つため、タブ切替のたびにアンマウントすると失われる。

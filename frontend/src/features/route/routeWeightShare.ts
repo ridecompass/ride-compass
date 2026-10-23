@@ -41,6 +41,8 @@ export function clampBoundaryDrag(
   const step = weightStep(total);
   const minSteps = Math.ceil((step - weightA) / step - STEP_EPSILON);
   const maxSteps = Math.floor((weightB - step) / step + STEP_EPSILON);
+  // 片方でも下限を割っていると、どちらも下限以上に収まる刻みの数が無いことがある（そのまま寄せると片方が0以下になる）。
+  if (minSteps > maxSteps) return { weightA, weightB };
   const steps = clamp(Math.round(rawDelta / step), minSteps, maxSteps);
   const steppedDelta = steps * step;
   return {

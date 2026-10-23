@@ -81,6 +81,11 @@ describe("画面の枠", () => {
     await user.click(screen.getByRole("button", { name: "メニュー" }));
     await user.click(screen.getByRole("button", { name: "地図の表示を再描画" }));
     expect(mapOnScreen().styles).toHaveLength(before + 1);
+    // スタイルが取れなかった（MapLibreは取り直しの要求の失敗を出来事で知らせ、"style.load"は来ない）後も、もう一度押せば取り直す。
+    act(() => mapOnScreen().emit("error", { error: { url: mapOnScreen().styles.at(-1) } }));
+    await user.click(screen.getByRole("button", { name: "メニュー" }));
+    await user.click(screen.getByRole("button", { name: "地図の表示を再描画" }));
+    expect(mapOnScreen().styles).toHaveLength(before + 2);
   });
 
   it("右上の方位磁針は地図の北を指し、押すと開くダイヤルの輪をなぞる・矢印のキーで地図が回り、真ん中の針で北が上に戻る。ダイヤルの文は方位と度だけ。＋・－で拡大・縮小し、長押しで1本指の拡大・縮小の案内が出る", async () => {
