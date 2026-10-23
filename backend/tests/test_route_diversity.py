@@ -101,21 +101,21 @@ def test_pareto_cuts_a_distance_step_at_max_items_counting_tie_groups_not_candid
 DIVERSE_LENGTHS = np.array([10.0, 10.0, 10.0, 10.0, 10.0])
 
 
-def test_select_diverse_rejects_max_count_beyond_the_bitmask_width():
+def test_edge_set_overlap_rejects_max_count_beyond_the_bitmask_width():
     """採用済みの集合はuint64のビットで持つため、65件以上は表せない。黙って取りこぼさず送出する。"""
     with pytest.raises(ValueError):
-        route_diversity.select_diverse_by_overlap([], lambda item: [], DIVERSE_LENGTHS, [1.0], 65)
+        route_diversity.EdgeSetOverlap(lambda item: [], DIVERSE_LENGTHS, 65)
 
 
 def test_select_diverse_skips_candidates_over_the_overlap_threshold():
     """重複率が閾値を「超えた」ものだけ飛ばす（ちょうど閾値なら採用する）。"""
     edges = {"a": [0, 1], "b": [1, 2], "c": [3, 4]}
     strict = route_diversity.select_diverse_by_overlap(
-        ["a", "b", "c"], edges.__getitem__, DIVERSE_LENGTHS, [0.4], 3
+        ["a", "b", "c"], route_diversity.EdgeSetOverlap(edges.__getitem__, DIVERSE_LENGTHS, 3), [0.4], 3
     )
     assert strict == ["a", "c"]
     at_threshold = route_diversity.select_diverse_by_overlap(
-        ["a", "b", "c"], edges.__getitem__, DIVERSE_LENGTHS, [0.5], 3
+        ["a", "b", "c"], route_diversity.EdgeSetOverlap(edges.__getitem__, DIVERSE_LENGTHS, 3), [0.5], 3
     )
     assert at_threshold == ["a", "b", "c"]
 
@@ -128,8 +128,7 @@ def test_select_diverse_retries_overlap_rejects_but_not_incompatible_ones():
     edges = {"a": [0, 1], "b": [0, 1], "c": [2], "d": [3], "e": None}
     selected = route_diversity.select_diverse_by_overlap(
         ["a", "b", "c", "d", "e"],
-        edges.__getitem__,
-        DIVERSE_LENGTHS,
+        route_diversity.EdgeSetOverlap(edges.__getitem__, DIVERSE_LENGTHS, 4),
         [0.5, 1.0],
         max_count=4,
         is_compatible=lambda item, chosen: item != "d",
@@ -145,7 +144,7 @@ def test_select_diverse_compares_against_each_accepted_route_separately():
     lengths = np.array([10.0, 10.0, 10.0, 10.0])
     edges = {"a": [0, 1], "b": [2, 3], "c": [0, 2]}
     selected = route_diversity.select_diverse_by_overlap(
-        ["a", "b", "c"], edges.__getitem__, lengths, [0.6], max_count=3
+        ["a", "b", "c"], route_diversity.EdgeSetOverlap(edges.__getitem__, lengths, 3), [0.6], max_count=3
     )
     assert selected == ["a", "b", "c"]
 
@@ -153,7 +152,7 @@ def test_select_diverse_compares_against_each_accepted_route_separately():
 def test_select_diverse_stops_at_max_count_without_trying_looser_thresholds():
     edges = {"a": [0, 1], "b": [0, 1]}
     selected = route_diversity.select_diverse_by_overlap(
-        ["a", "b"], edges.__getitem__, DIVERSE_LENGTHS, [0.5, 1.0], max_count=1
+        ["a", "b"], route_diversity.EdgeSetOverlap(edges.__getitem__, DIVERSE_LENGTHS, 1), [0.5, 1.0], max_count=1
     )
     assert selected == ["a"]
 
@@ -166,7 +165,7 @@ def test_select_diverse_reruns_prefer_after_every_acceptance():
     """
     edges = {"a": [0], "b": [1], "c": [2]}
     selected = route_diversity.select_diverse_by_overlap(
-        [], edges.__getitem__, DIVERSE_LENGTHS, [1.0], max_count=3,
+        [], route_diversity.EdgeSetOverlap(edges.__getitem__, DIVERSE_LENGTHS, 3), [1.0], max_count=3,
         tie_groups=[["a", "b", "c"]], prefer=lambda remaining, chosen: list(reversed(remaining)),
     )
     # 1度だけ決めるなら c, b, a。
@@ -177,7 +176,7 @@ def test_select_diverse_drops_candidates_passed_over_before_an_acceptance():
     """採用した候補より前で飛ばしたものは、そのグループの残り候補から外れる。"""
     edges = {"a": [0], "b": [1], "c": [2]}
     selected = route_diversity.select_diverse_by_overlap(
-        [], edges.__getitem__, DIVERSE_LENGTHS, [1.0], max_count=3,
+        [], route_diversity.EdgeSetOverlap(edges.__getitem__, DIVERSE_LENGTHS, 3), [1.0], max_count=3,
         is_compatible=lambda item, chosen: item != "c",
         tie_groups=[["a", "b", "c"]],
         prefer=lambda remaining, chosen: ["c", *[x for x in remaining if x != "c"]],

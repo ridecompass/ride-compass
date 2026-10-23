@@ -20,7 +20,7 @@ from hypothesis import strategies as st
 from numba.core import event
 from numba.core.registry import CPUDispatcher
 
-from app.domain import routing, search_graph
+from app.domain import route_diversity, routing, search_graph
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.wind import WindForecastSeries
 from tests.route_world import (
@@ -342,6 +342,29 @@ def test_backward_path_is_already_in_travel_order():
     assert routing.turn_expanded_path_from_state_to_source(tree, states["AB"]) == [
         states["AB"], states["BC"],
     ]
+
+
+# --- 木の経路どうしの重複率 ---
+
+
+@given(st.lists(st.floats(0.5, 5.0), min_size=60, max_size=60), st.lists(st.integers(0, 15), min_size=1, max_size=4))
+def test_tree_path_overlap_measures_what_the_edge_sets_of_the_paths_share(costs, accepted_nodes):
+    """木の経路どうしの重複率は、経路の区間の集合で測った割合（`overlap_ratio`）と同じ。ずれると、周回の折返し点の
+    間引きが同じ道筋の往路を通したり、別の道筋の往路を弾いたりする。費用を揺らして木の枝分かれを変える。"""
+    lazy, statics, structure = build_all(make_grid(4))
+    cost = np.resize(np.asarray(costs), structure.state_count)
+    tree = routing.build_turn_expanded_tree(
+        structure, cost, cost * 100.0, out_states(lazy, "n1_1"), lazy.node_count, edge_seconds=cost,
+    )
+    overlap = routing.TreePathOverlap(tree)
+    accepted_paths = []
+    for node in accepted_nodes:
+        overlap.accept(node)
+        accepted_paths.append(np.asarray(routing.turn_expanded_path_edge_indices(tree, node)))
+        for candidate in range(lazy.node_count):
+            path = np.asarray(routing.turn_expanded_path_edge_indices(tree, candidate))
+            expected = max(route_diversity.overlap_ratio(path, other, cost * 100.0) for other in accepted_paths)
+            assert overlap.max_ratio(candidate) == pytest.approx(expected)
 
 
 # --- combine_forward_backward_at_nodes ---

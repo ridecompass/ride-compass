@@ -96,7 +96,7 @@ class SearchGraphStatics:
 
     csr: CsrGraphStructure
     # 区間の番号順の実距離（m）。一対全木に沿った実距離の積算
-    # （`TurnExpandedTree.state_length_m`）と重複率（`select_diverse_by_overlap`）に使う。
+    # （`TurnExpandedTree.state_length_m`）と重複率（`route_diversity.py: EdgeSetOverlap`）に使う。
     edge_length_m: np.ndarray
 
 

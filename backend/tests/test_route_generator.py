@@ -226,10 +226,10 @@ async def test_a_search_area_that_cannot_be_used_gives_no_candidates_and_says_wh
 # ---- 距離あり（周回） ----
 
 
-def test_turnaround_pool_covers_the_requested_routes_within_what_the_diverse_selection_can_take():
-    """多様な選定（`domain/route_diversity.py: select_diverse_by_overlap`）は採用済みを64bitのマスクで持つため、64件まで。"""
+def test_turnaround_pool_covers_the_requested_routes():
+    """折返し点のプールが求める候補数より少ないと、全部の折返し点が合格しても候補数に届かない。"""
     for max_routes in range(1, MAX_ROUTES + 1):
-        assert max_routes <= route_generator.turnaround_pool_size(max_routes) <= 64
+        assert max_routes <= route_generator.turnaround_pool_size(max_routes)
 
 
 async def test_loops_without_turnarounds_say_how_far_out_was_searched(caplog):
