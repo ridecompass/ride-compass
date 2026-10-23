@@ -21,7 +21,7 @@ from app.domain.time_zone import JST, as_series_time
 from app.domain.wind import WIND_DIRECTION_LEAF, WIND_DRAG_RATIO_WAY_FORMULA, WIND_SPEED_LEAF
 from app.infrastructure.debug_log import log_external_call, log_throttled_warning
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.services.feature_midpoints import feature_midpoint_arrays
+from app.services.feature_midpoints import TileMidpoints
 from app.services.weather_service import WeatherService
 
 _CATEGORY = "region:wind-way-penalty"
@@ -37,8 +37,8 @@ class WindConditions:
 
 
 class WindWayService:
-    def __init__(self, repository: RoadGraphRepository, weather_service: WeatherService):
-        self._repository = repository
+    def __init__(self, midpoints: TileMidpoints, weather_service: WeatherService):
+        self._midpoints = midpoints
         self._weather_service = weather_service
 
     #: 返す生値の材料id。この材料を参照する軸の配信を担当する。
@@ -47,9 +47,11 @@ class WindWayService:
     conditions_type = WindConditions
 
     @classmethod
-    def build(cls, repository: RoadGraphRepository, weather_service: WeatherService, material_id: str) -> "WindWayService":
+    def build(
+        cls, repository: RoadGraphRepository, weather_service: WeatherService, midpoints: TileMidpoints, material_id: str,
+    ) -> "WindWayService":
         """登録テーブルから呼ぶための統一シグネチャ。依存の要否はサービスごとに違い、風の材料は1つだけ。"""
-        return cls(repository=repository, weather_service=weather_service)
+        return cls(midpoints=midpoints, weather_service=weather_service)
 
     @classmethod
     def material_formula(cls, material_id: str) -> ServedMaterialFormula:
@@ -66,7 +68,7 @@ class WindWayService:
         bbox = tile_bounds_lonlat(z, x, y)
 
         with log_external_call(_CATEGORY, z=z, x=x, y=y) as fields:
-            features = await feature_midpoint_arrays(self._repository, z, x, y, bbox, fields)
+            features = await self._midpoints.arrays(z, x, y, fields)
             if features is None:
                 return {}
             keys, latitudes, longitudes = features
