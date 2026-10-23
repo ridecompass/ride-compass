@@ -184,13 +184,22 @@ def current() -> RoadNetwork:
     """
     global _loaded
     latest = _latest_directory()
+    if _loaded is None or _loaded[0] != latest:
+        try:
+            _loaded = _open_latest()
+        except FileNotFoundError:
+            # 選んでから開くまでに、派生の作り直し（`publish`）が新しい世代へ付け替えて古い置き場を消した。
+            _loaded = _open_latest()
+        logger.info("道路網を読みました %s 有向の区間=%d", _loaded[0].name, _loaded[1].edge_count)
+    return _loaded[1]
+
+
+def _open_latest() -> tuple[Path, RoadNetwork]:
+    latest = _latest_directory()
     if latest is None:
         raise RoadNetworkUnavailableError(
             f"道路網の置き場がありません（{ROOT}、形の署名 {NETWORK_SHAPE}）。scripts/build_road_network.py で作る")
-    if _loaded is None or _loaded[0] != latest:
-        _loaded = (latest, load(latest))
-        logger.info("道路網を読みました %s 有向の区間=%d", latest.name, _loaded[1].edge_count)
-    return _loaded[1]
+    return latest, load(latest)
 
 
 def _as_tuples(value: object) -> object:
