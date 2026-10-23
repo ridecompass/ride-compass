@@ -62,17 +62,17 @@ function layerDataStatusEqual(a: LayerDataStatusByLayer, b: LayerDataStatusByLay
 // erroredSourceIdsは「次の取得サイクル開始（sourcedataloading）まで保持」する設計だが、
 // 失敗した地点から一度も再取得が発生しない別の地点（既にタイルがキャッシュ済みの地点）へ
 // 移動した場合、sourcedataloading自体が発火しないためエラー状態が解除される機会が永久に
-// 来ず「取得失敗」が誤って残り続けてしまう。パン/ズームが収束した時点（moveend/zoomend）
+// 来ず「取得失敗」が誤って残り続けてしまう。パン/ズームが収束した時点（moveend/resize）
 // でも、保留中の取得が無い（isSourceLoaded=true）sourceは「このビューポートでは問題が
 // 無い」とみなしてエラーを解除する。
 //
-// 重要: 呼び出し元はmoveend/zoomend（ビューポートが実際に変わった時点）に限定し、"idle"から
+// 重要: 呼び出し元はmoveend/resize（ビューポートが実際に変わった時点）に限定し、"idle"から
 // 呼んではいけない。MapLibreのisSourceLoaded()は、タイルが'errored'（取得失敗のまま再試行
 // されていない）状態でも「保留中の要求が無い」という理由でtrueを返す（'errored'を'loaded'と
 // 同列に「settled」とみなすため）。ビューポートが変わっていない"idle"でこれを解除条件に使うと、
 // 今まさに進行中の障害（例: バックエンド停止で該当タイルがずっとerrored状態のまま）を
 // 「もう問題ない」と誤って解除してしまい、"取得失敗"表示が"データなし"に化けてしまう。
-// moveend/zoomendは定義上ビューポートが実際に変わった時にしか発火しないため、そこでのisSourceLoaded()=trueは
+// moveend/resizeは定義上ビューポートが実際に変わった時にしか発火しないため、そこでのisSourceLoaded()=trueは
 // 「新しいビューポートのタイルは問題なく決着した」という意味を持てるが、同じ判定を"idle"だけに
 // 基づいて行うことはできない。
 function clearStaleTrackedSourceErrors(map: DataStatusMapLike, erroredSourceIds: Set<string>): boolean {
@@ -141,7 +141,7 @@ export function useLayerDataStatus({ mapRef, layerDataSources, getVisibility, on
     [trackedSourceIds, recompute],
   );
 
-  // moveend/zoomend用。"idle"からは呼ばない（進行中の障害の"取得失敗"を解いてしまう）。
+  // moveend/resize用。"idle"からは呼ばない（進行中の障害の"取得失敗"を解いてしまう）。
   const settleViewport = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;

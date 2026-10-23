@@ -153,13 +153,16 @@ export function labelLayerAnchor(map: MapLibreMap): string | undefined {
 /** スタイルを`url`から取り直し、新しいスタイルが読み込まれたら（`style.load`）、次の`prepareBasemap`が新しいスタイルに
  * 対して改めて走るようにしてから`onLoaded`を呼ぶ。準備を解くのは読み込まれたあと——MapLibreの`setStyle`は既定で今の
  * スタイルとの差分を当て、差分が届くまで`getStyle()`は今の（このアプリの層を足し、店・施設を隠した）スタイルを返すので、
- * その間に準備し直すと、隠した後の絞りを配信元の絞りとして記録する。 */
-export function reloadStyle(map: MapLibreMap, url: string, onLoaded: () => void): void {
-  map.once("style.load", () => {
+ * その間に準備し直すと、隠した後の絞りを配信元の絞りとして記録する。取り直しが取れなかったときは`style.load`が来ないので、
+ * 返した関数で待ちを外す。 */
+export function reloadStyle(map: MapLibreMap, url: string, onLoaded: () => void): () => void {
+  const handleLoad = () => {
     tagOf(map).__rcBasemapPrepared = false;
     onLoaded();
-  });
+  };
+  map.once("style.load", handleLoad);
   map.setStyle(url);
+  return () => map.off("style.load", handleLoad);
 }
 
 /** スタイルが一度でも読み込まれたか（`runWhenStyleReady`が記録する印）。 */
