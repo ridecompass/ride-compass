@@ -113,12 +113,13 @@ describe("useWeatherConditions 取得の時機", () => {
     await vi.waitFor(() => expect(observations).toHaveLength(2));
   });
 
-  it("取り終えたら読み込み中を下ろし、位置を変えて取り直す間は前の位置の値のまま読み込み中にする", async () => {
+  it("位置を変えて取り直す間は、前の位置の値のまま", async () => {
     const { result, rerender } = render();
-    await vi.waitFor(() => expect(result.current.amedasLoading).toBe(false));
-    onBackend("GET", AMEDAS, heldReplies().reply);
+    await fetched();
+    const held = heldReplies();
+    onBackend("GET", AMEDAS, held.reply);
     rerender({ location: YOKOHAMA, ready: true });
-    await vi.waitFor(() => expect(result.current.amedasLoading).toBe(true));
+    await vi.waitFor(() => expect(held.arrived()).toBe(1));
     expect(result.current.amedas).toEqual({ temperature_c: 21 });
   });
 });
@@ -361,14 +362,17 @@ describe("useWeatherConditions ルートの雷", () => {
     );
   });
 
-  it("取れなければ、失敗として渡す", async () => {
+  it("取れなければ、失敗として渡し、間隔ごとに取り直している間も渡したままにする（回復したように見せない）", async () => {
     onBackend("POST", ROUTE_TIMELINE, failure("取得できませんでした。"));
     const { result } = renderWithRoute();
+    const thunderFailure = [{ id: "route-thunder", label: "ルートの雷の見込み", detail: "取得できませんでした。" }];
 
-    await vi.waitFor(() =>
-      expect(result.current.warningFetchFailures).toMatchObject([
-        { id: "route-thunder", label: "ルートの雷の見込み", detail: "取得できませんでした。" },
-      ]),
-    );
+    await vi.waitFor(() => expect(result.current.warningFetchFailures).toMatchObject(thunderFailure));
+    await fetched();
+    const held = heldReplies();
+    onBackend("POST", ROUTE_TIMELINE, held.reply);
+    act(() => vi.advanceTimersByTime(10 * 60 * 1000));
+    await vi.waitFor(() => expect(held.arrived()).toBe(1));
+    expect(result.current.warningFetchFailures).toMatchObject(thunderFailure);
   });
 });

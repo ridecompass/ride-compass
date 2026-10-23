@@ -25,10 +25,9 @@ function plannedClock(plan: RidePlan, stretches: readonly { startKm: number; end
   if (entries.some((at) => Number.isNaN(at)) || plan.estimated_duration_seconds === null) return null;
   const finishedAt = entries[0] + plan.estimated_duration_seconds * 1000;
   return (km: number) => {
-    const index = Math.max(
-      0,
-      stretches.findIndex(({ endKm }) => km <= endKm),
-    );
+    // 終わりを越えた距離は、最後の区間で読む。
+    const found = stretches.findIndex(({ endKm }) => km <= endKm);
+    const index = found === -1 ? stretches.length - 1 : found;
     const { startKm, endKm } = stretches[index];
     const leftAt = entries[index + 1] ?? finishedAt;
     const fraction = endKm > startKm ? Math.min(1, Math.max(0, (km - startKm) / (endKm - startKm))) : 1;

@@ -139,6 +139,19 @@ describe("DebugConsole", () => {
     expect(await screen.findByText(/書き込みを拒否/)).toBeInTheDocument();
   });
 
+  it("コピーしてすぐに次のコピーが失敗したら、コピーしたことを名前から消す", async () => {
+    debugLog("map", "タイルを読んだ");
+    renderConsole();
+    await userEvent.click(screen.getByRole("button", { name: "表示中のログをコピー" }));
+    await screen.findByRole("button", { name: "表示中のログをコピーしました" });
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(new Error("書き込みを拒否"));
+
+    await userEvent.click(screen.getByRole("button", { name: "表示中のログをコピーしました" }));
+
+    expect(await screen.findByText(/書き込みを拒否/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "表示中のログをコピー" })).toBeInTheDocument();
+  });
+
   it("クリアを押すと記録が空になり、待っている旨に戻る", async () => {
     logThree();
     renderConsole();

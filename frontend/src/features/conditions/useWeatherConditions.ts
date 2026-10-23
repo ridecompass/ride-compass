@@ -1,6 +1,6 @@
 "use client";
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { getQueryClient } from "@/lib/queryClient";
 import { leftTheArea } from "@/lib/validArea";
@@ -24,7 +24,6 @@ import type { FetchFailure } from "@/types/fetchFailure";
 interface UseWeatherConditionsResult {
   /** 最寄りのアメダスの実測（常設のヘッダー）。 */
   amedas: AmedasObservation | null;
-  amedasLoading: boolean;
   amedasError: string | null;
   /** 最寄りの格子点の今日の値（常設のヘッダーから開くパネル）。取り直しに失敗しても前の値を残す。 */
   gridPointToday: GridPointToday | null;
@@ -37,7 +36,6 @@ interface UseWeatherConditionsResult {
 
 interface LocationFetchState<T> {
   data: T | null;
-  loading: boolean;
   error: string | null;
 }
 
@@ -54,6 +52,15 @@ export interface WarningRoute {
   segments: readonly RouteSegmentShape[];
   clock: (km: number) => number;
   fromKm: number;
+}
+
+/** 取得の失敗の文。値の無いまま取り直すと、取得の仕組みは失敗を消して「読み込み中」へ戻すので、取り直しが決着するまで
+ * 直前の失敗を持つ（消すと、間隔ごとに失敗の印が消えて回復したように見える）。 */
+function useHeldFailure({ error, status, fetchStatus }: Pick<UseQueryResult, "error" | "status" | "fetchStatus">) {
+  const failure = error?.message ?? null;
+  const [held, setHeld] = useState<string | null>(null);
+  if (fetchStatus === "idle" && held !== failure) setHeld(failure);
+  return status === "pending" ? held : failure;
 }
 
 /** 位置が決まるまで待ち、位置が変わるたびに取り直す。位置を変えて取り直している間と、取り直しに失敗した後は前の値を
@@ -75,7 +82,7 @@ function useLocationFetch<T>(
   const [anchor, setAnchor] = useState<Coordinates | null>(null);
   const riding = following !== null;
   const point = riding ? (anchor ?? following) : location;
-  const { data, error, isFetching, isPlaceholderData } = useQuery(
+  const { data, error, status, fetchStatus, isPlaceholderData } = useQuery(
     {
       // 走行中は鍵の地点と取る地点（間隔ごとの今の位置）が違うので、ふだんの取得と鍵を分ける。
       queryKey: ["location-weather", key, riding ? "following" : "fixed", point.latitude, point.longitude],
@@ -97,7 +104,7 @@ function useLocationFetch<T>(
   } else if (anchor === null || (data && area && leftTheArea(area, data.at, following))) {
     setAnchor(following);
   }
-  return { data: data?.value ?? null, loading: isFetching, error: error?.message ?? null };
+  return { data: data?.value ?? null, error: useHeldFailure({ error, status, fetchStatus }) };
 }
 
 /** ルートを通る時刻に当たる雷の注意報級の時間帯。ルートの形が変わるたびと、間隔ごとに取り直す。 */
@@ -108,7 +115,7 @@ function useRouteThunder(route: WarningRoute | null): { items: WarningBadgeItem[
     () => sampled.map(({ point }) => `${point.latitude},${point.longitude}`).join(";"),
     [sampled],
   );
-  const { data, error } = useQuery(
+  const query = useQuery(
     {
       queryKey: ["route-warning-timeline", pointsKey],
       queryFn: () => getRouteWarningTimeline(sampled.map(({ point }) => point)),
@@ -117,6 +124,8 @@ function useRouteThunder(route: WarningRoute | null): { items: WarningBadgeItem[
     },
     getQueryClient(),
   );
+  const { data } = query;
+  const error = useHeldFailure(query);
   const items = useMemo(() => {
     if (route === null || !data || error) return [];
     return routeThunderItems(
@@ -126,7 +135,7 @@ function useRouteThunder(route: WarningRoute | null): { items: WarningBadgeItem[
       route.fromKm,
     );
   }, [route, data, error, sampled]);
-  return { items, error: route === null ? null : (error?.message ?? null) };
+  return { items, error: route === null ? null : error };
 }
 
 /** 天気・観測・警報等を取る。ふだんは`location`（出発地）で取り、走行中は今の位置`following`で取る。選んだルート`route`が
@@ -199,7 +208,6 @@ export function useWeatherConditions(
 
   return {
     amedas: amedas.data,
-    amedasLoading: amedas.loading,
     amedasError: amedas.error,
     gridPointToday: gridPointToday.data,
     gridPointTodayError: gridPointToday.error,

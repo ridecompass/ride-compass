@@ -19,7 +19,6 @@ import { textVariants } from "@/components/ui/Text/Text";
 
 interface WeatherPanelProps {
   amedas: AmedasObservation | null;
-  loading: boolean;
   error: string | null;
   /** 最寄りの格子点の今日の値と、その取得の失敗。押すと開くパネルの中にだけ出す。 */
   today: GridPointTodayValues | null;
@@ -79,14 +78,15 @@ function Divider() {
   return <span className="w-px flex-shrink-0 self-stretch bg-[var(--color-border)]" aria-hidden="true" />;
 }
 
-export default function WeatherPanel({ amedas, loading, error, today, todayError, mapBearingDeg }: WeatherPanelProps) {
+export default function WeatherPanel({ amedas, error, today, todayError, mapBearingDeg }: WeatherPanelProps) {
   // 手元に観測値があるなら、直近の取り直しが失敗していてもそちらを出す（失敗の文言で
   // 値を置き換えない）。取得は一定間隔で続くため、回復すれば表示も戻る。
   if (!amedas) {
-    // 読み込み中は、何も出さずに値を待つ（上部の帯には値とアイコンだけを置く）。
+    // 値も失敗もまだ無い間（最初の読み込み中）は、何も出さずに値を待つ（上部の帯には値とアイコンだけを置く）。
+    // 失敗のあとの取り直しの間は失敗の印を出したままにする（取り直しのたびに消すと、回復したように見えて点滅する）。
     // backendは観測所の解決失敗・欠測・上流の取得失敗を区別せず502にするため、「無い」と
     // 断定せず取得できなかったことだけを印で出す。原因の詳細（混雑・HTTPステータス等）は使い方の文へ回す。
-    if (!loading && error)
+    if (error)
       return (
         <span
           role="img"

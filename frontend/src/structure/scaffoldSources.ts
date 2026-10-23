@@ -18,8 +18,9 @@ export function readSources(root: string): Source[] {
   const paths = ["src", "e2e"].flatMap((top) =>
     existsSync(join(root, top))
       ? walkTree(join(root, top))
-          .filter(({ path, isDirectory }) => !isDirectory && /\.tsx?$/.test(path) && !path.startsWith("structure/"))
+          .filter(({ path, isDirectory }) => !isDirectory && /\.tsx?$/.test(path))
           .map(({ path }) => `${top}/${path}`)
+          .filter((path) => !path.startsWith("src/structure/"))
       : [],
   );
   return paths.map((path) => ({

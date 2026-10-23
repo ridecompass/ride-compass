@@ -51,15 +51,8 @@ export default function HomeHeader({
   const [debugConsoleOpen, setDebugConsoleOpen] = useState(false);
 
   // 最寄りの実測・警報の類（位置が分かってから、位置が変わるたびに取る。仮の地点では取らない）。
-  const {
-    amedas,
-    amedasLoading,
-    amedasError,
-    gridPointToday,
-    gridPointTodayError,
-    warningBadgeItems,
-    warningFetchFailures,
-  } = useWeatherConditions(location, locationKnown, ridingAt, warningRoute);
+  const { amedas, amedasError, gridPointToday, gridPointTodayError, warningBadgeItems, warningFetchFailures } =
+    useWeatherConditions(location, locationKnown, ridingAt, warningRoute);
   const axisCatalogFailure = axisCatalogFetchFailure(useAxisCatalog());
   const headerFetchFailures = useMemo(
     () => [
@@ -109,7 +102,6 @@ export default function HomeHeader({
             <div className="left-0 flex flex-shrink-0 items-center gap-2 sticky z-1 bg-[var(--color-surface)]">
               <WeatherPanel
                 amedas={amedas}
-                loading={amedasLoading}
                 error={amedasError}
                 today={gridPointToday}
                 todayError={gridPointTodayError}
