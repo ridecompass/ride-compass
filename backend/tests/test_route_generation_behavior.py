@@ -41,6 +41,7 @@ from tests.axis_system_fixture import replaced_axis_definitions
 from app.domain.road_classes import AvoidanceClassification, AvoidanceSection
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 from app.domain.route_request import FixedPoints
+from app.domain.route_search import MAX_SNAP_CORRECTION_KM
 from tests.route_world import (
     AVOID_AXIS,
     BAD_MATERIAL,
@@ -214,6 +215,19 @@ async def test_a_spliced_route_the_road_network_cannot_trace_is_refused(
 
     levels = [r.levelno for r in caplog.records if re.search(r"osm-node-|way-\d", r.getMessage())]
     assert levels and set(levels) == {logging.DEBUG}
+
+
+async def test_a_spliced_route_is_refused_when_the_destination_cannot_be_snapped(engine_over):
+    """終点を寄せられない目的地で照合を飛ばすと、目的地へ着かない経路がそのまま評価されて候補に並ぶ。"""
+    generator = engine_over(grid_network())
+    (candidate, *_) = await generator.generate_via_waypoints(
+        at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=1, start_time=DEPARTURE)
+    corner = at(NORTH_EAST)
+    # 寄せてよい距離（`domain/route_search.py: MAX_SNAP_CORRECTION_KM`）より北の、道の無い地点。
+    nowhere = Coordinates(latitude=corner.latitude + 2 * MAX_SNAP_CORRECTION_KM / KM_PER_DEGREE_LATITUDE, longitude=corner.longitude)
+
+    assert await generator.generate_spliced_route(
+        at(SOUTH_WEST), nowhere, candidate.edge_ids, start_time=DEPARTURE) == []
 
 
 # --- 候補の選び方 ---

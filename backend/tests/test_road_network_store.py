@@ -187,6 +187,20 @@ def test_a_newer_revision_placed_by_the_batch_is_read_on_the_next_call():
     assert road_network_store.current().revision == 3
 
 
+def test_a_network_replaced_between_choosing_and_opening_is_chosen_again(monkeypatch):
+    """選んだ置き場を開く前に、派生の作り直しが新しい世代へ入れ替えて古い置き場を消しても、ルート生成は新しい世代で続く。"""
+    road_network_store.save(_network(revision=2))
+    opened = road_network_store.load
+
+    def replaced_before_opening(directory):
+        if directory.name == road_network_store.directory_name(2):
+            road_network_store.publish(road_network_store.write_pending(_network(revision=3)))
+        return opened(directory)
+
+    monkeypatch.setattr(road_network_store, "load", replaced_before_opening)
+
+    assert road_network_store.current().revision == 3
+
 def test_cleaning_up_after_start_removes_only_networks_of_other_shapes(store):
     road_network_store.save(_network(revision=2))
     _place(store, _other_shape(1), size=10)

@@ -156,7 +156,7 @@ def _build_candidate(
     rows = [slice_row_of(context, index) for index in path]
     # 経路を探索と同じ規則でたどった区間ごとの時刻。区間の到達予想と候補の所要時間が同じ時計を使う。
     passages = route_passages(
-        context.legs, context.turn_structure, path, rows,
+        context.legs, context.turn_structure, path,
         [edge.distance_m for edge in edges_in_path], leg_of_edge, context.composer.speed_kmh,
     )
     along_km = along_route_km(edge.distance_m / 1000 for edge in edges_in_path)
