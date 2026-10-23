@@ -19,6 +19,7 @@ from typing import TypeVar
 
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments
 from app.infrastructure import tile_persistent_cache
+from app.infrastructure.cache_identity import is_known_tile_version
 
 _KEY_PREFIX = "featmat"
 
@@ -45,6 +46,9 @@ async def get_tile_materials(
 async def set_tile_materials(
     z: int, x: int, y: int, materials: FeatureMaterials | FeatureSegments, *, surface_tile_version: str, value_shape: str
 ) -> None:
-    """新しく読んだタイルの材料をディスクへ書き戻す。"""
+    """新しく読んだタイルの材料をディスクへ書き戻す。路面タイルの世代を読めていない（`cache_identity.py: is_known_tile_version`が偽）
+    ときは書かない——どの世代の鍵の材料か分からないまま残すと、後で同じ印の鍵で別の世代の材料を返す。"""
+    if not is_known_tile_version(surface_tile_version):
+        return
     key = _key(z, x, y, surface_tile_version, value_shape)
     await asyncio.to_thread(tile_persistent_cache.set_by_key, key, materials, expire=_TTL_SECONDS)

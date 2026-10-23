@@ -103,6 +103,19 @@ async def test_a_new_derived_data_revision_recomputes_without_the_catalog(monoto
     assert await service.get_way_materials(Z, X, Y, None) != first
 
 
+async def test_tiles_read_while_the_revision_is_unknown_are_not_kept():
+    """DBの世代を読めない間に読んだ材料は、どの世代の道の鍵か分からない。残すと、後で世代を読めない間に同じ印の鍵で
+    別の世代の材料を返し、道の鍵がどの地物にも一致しないまま勾配の色が消える。"""
+    repository = FakeGradientInputsRepository(inputs={1: (5.0, 30.0)})
+    repository.revision = None
+    service = GradientWayService(repository=repository)
+    first = await service.get_way_materials(Z, X, Y, None)
+
+    repository.inputs = CHANGED_INPUTS
+
+    assert await service.get_way_materials(Z, X, Y, None) != first
+
+
 @pytest.mark.parametrize(
     ("error", "outcome"),
     [

@@ -6,6 +6,7 @@
 import csv
 import io
 import zipfile
+import zlib
 from collections.abc import Generator
 from pathlib import Path
 
@@ -25,5 +26,5 @@ def zip_csv_readable(path: Path, encoding: str, column: str) -> bool:
         first = next(rows, None)
         rows.close()
         return first is not None and column in first
-    except (OSError, ValueError, zipfile.BadZipFile, UnicodeDecodeError):
+    except (OSError, ValueError, zipfile.BadZipFile, zlib.error, UnicodeDecodeError, csv.Error):
         return False

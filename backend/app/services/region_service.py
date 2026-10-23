@@ -90,7 +90,6 @@ class RegionService:
         kind: TileKind,
         empty_tile: bytes,
         external_call_name: str,
-        label: str,
         z: int,
         x: int,
         y: int,
@@ -106,15 +105,11 @@ class RegionService:
                 # いる（DBの往復1回分を節約。repository側のdocstring参照）。
                 tile_bytes = await read_tile(z, x, y, tile_bounds_lonlat(z, x, y))
             except DB_UNAVAILABLE_ERRORS as exc:
-                # 「取込範囲外」のWARNINGは出さない——その表記はDB障害に当てはまらず、失敗は記録の口が抜けるときに出る。
                 mark_failed(fields, exc)
                 return None
             if tile_bytes is None:
+                # 取込範囲外は取得できないのが正常な場合で、WARNINGにしない（地図を範囲の外へ動かすたびに出る）。
                 fields["postgis"] = "uncovered"
-                log_throttled_warning(
-                    f"{external_call_name}-uncovered", "[%s] %sタイルがPostGIS取込範囲外 z=%d x=%d y=%d",
-                    external_call_name, label, z, x, y,
-                )
                 return None
             fields["postgis"] = "hit"
             return tile_bytes
@@ -138,7 +133,6 @@ class RegionService:
             kind="road_surface",
             empty_tile=encode_empty_tile(ROAD_SURFACE_LAYER_NAME),
             external_call_name="region:road-surface-tile",
-            label="路面",
             z=z,
             x=x,
             y=y,
@@ -151,7 +145,6 @@ class RegionService:
             kind=layer.name,
             empty_tile=encode_empty_tile(layer.source_layer),
             external_call_name=f"region:{layer.name}-tile",
-            label=layer.name,
             z=z,
             x=x,
             y=y,

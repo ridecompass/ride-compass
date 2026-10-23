@@ -20,7 +20,7 @@ logger = logging.getLogger("ridecompass.graph")
 #: 生成以外（地図タイルの配信・プロセスの常駐分と、生成のあとに返しきれずに残る領域）のために取り置くメモリ。
 RESERVED_BYTES = 2 * 1024**3
 #: 1件の生成が、切り出した有向の区間1本あたりに使うメモリ（探索用グラフ・コスト配列・ターン構造・候補の評価の合計）。
-BYTES_PER_EDGE = 1050
+BYTES_PER_EDGE = 1100
 
 
 class SearchMemory:
