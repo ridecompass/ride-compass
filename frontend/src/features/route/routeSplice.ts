@@ -63,13 +63,13 @@ interface PairedStretch {
  *
  * 表示中の候補が共有ノードXで分かれてYで戻るなら、相手もXからYまでを別の道で進む——
  * その間の相手のEdgeは定義上どれも表示中の候補に無いため、区間は同じ本数・同じ順で
- * 現れる。本数が食い違ったら対応づけを諦める（片側だけ描くと、地図上の帯と実際に
- * 差し替わる道がずれる）。
+ * 現れる。本数が食い違ったら対応づけを諦めてnullを返す（片側だけ描くと、地図上の帯と実際に
+ * 差し替わる道がずれる）。空の並びは「別の道を通る区間が無い」で、諦めたのとは別。
  */
-export function pairedStretches(displayed: readonly string[], target: readonly string[]): PairedStretch[] {
+export function pairedStretches(displayed: readonly string[], target: readonly string[]): PairedStretch[] | null {
   const onDisplayed = differingStretches(displayed, target);
   const onTarget = differingStretches(target, displayed);
-  if (onDisplayed.length !== onTarget.length) return [];
+  if (onDisplayed.length !== onTarget.length) return null;
   return onDisplayed.map((stretch, index) => ({ displayed: stretch, target: onTarget[index] }));
 }
 
@@ -208,7 +208,7 @@ export function stretchAlternativeGroups(
   // 折り返しの判定に使う元ルートのNode集合。候補ごとに作り直さない。
   const baseNodeSet = new Set(baseShape.nodeIds);
   for (const candidate of candidates) {
-    const pairs = pairedStretches(baseShape.edgeIds, candidate.shape.edgeIds).flatMap((pair) =>
+    const pairs = (pairedStretches(baseShape.edgeIds, candidate.shape.edgeIds) ?? []).flatMap((pair) =>
       splitPairedStretch(baseShape, candidate.shape, pair, minSplitLengthKm),
     );
     for (const pair of pairs) {
