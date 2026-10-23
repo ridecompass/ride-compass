@@ -183,10 +183,22 @@ def read_target_times(reader: TargetTimesReader, rows: Sequence[TargetTimesRow],
 
 
 def _read_nowcast(frames: list[JmaFrame]) -> list[JmaFrame]:
-    """最新の実況（`validtime`==`basetime`）より前を捨てる。実況が1つも無ければ何も捨てない。"""
-    ordered = sorted(frames, key=lambda frame: frame.validtime)
+    """`validtime`ごとに1コマへ絞り、最新の実況（`validtime`==`basetime`）より前を捨てる。実況が1つも無ければ何も捨てない。
+
+    実況と予測は別のファイルに載り、別々に取るので、取った時点がずれると前の`basetime`の予測と新しい実況が
+    同じ`validtime`を持つ。同じ`validtime`では実況を予測より、新しい`basetime`を古いものより先に採る。"""
+    by_validtime: dict[str, JmaFrame] = {}
+    for frame in frames:
+        taken = by_validtime.get(frame.validtime)
+        if taken is None or _nowcast_precedence(frame) > _nowcast_precedence(taken):
+            by_validtime[frame.validtime] = frame
+    ordered = sorted(by_validtime.values(), key=lambda frame: frame.validtime)
     observed = [index for index, frame in enumerate(ordered) if frame.validtime == frame.basetime]
     return ordered[observed[-1] :] if observed else ordered
+
+
+def _nowcast_precedence(frame: JmaFrame) -> tuple[bool, str]:
+    return (frame.validtime == frame.basetime, frame.basetime)
 
 
 def _read_latest_full_run(frames: list[JmaFrame]) -> list[JmaFrame]:

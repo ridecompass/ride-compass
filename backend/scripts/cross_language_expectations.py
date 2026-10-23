@@ -141,6 +141,19 @@ _READER_SCENES: list[tuple[str, TargetTimesReader, str, list[dict]]] = [
             _row(_t("0005"), _t("0005"), ["hrpns"]),
         ],
     ),
+    (
+        "実況と予測のファイルのbasetimeがずれる",
+        "nowcast",
+        "hrpns",
+        [
+            _row(_t("0005"), _t("0005"), ["hrpns"]),
+            _row(_t("0010"), _t("0010"), ["hrpns"]),
+            _row(_t("0005"), _t("0010"), ["hrpns"]),
+            _row(_t("0005"), _t("0015"), ["hrpns"]),
+            _row(_t("0010"), _t("0015"), ["hrpns"]),
+            _row(_t("0010"), _t("0020"), ["hrpns"]),
+        ],
+    ),
     ("その要素の行が0件", "nowcast", "thns", [_row(_t("0015"), _t("0015"), ["liden"])]),
     (
         "中間ランの単発の行",
