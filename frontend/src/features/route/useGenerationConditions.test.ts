@@ -126,6 +126,18 @@ describe("地点", () => {
     expect(result.current.waypoints).toEqual([...Array(max).keys()].map(point));
   });
 
+  it("生成が受け付ける数に達したら、検索で選んだ地点も経由地に足さない（開いた候補の一覧から、達した後にも選べる）", () => {
+    const max = routeGenerateConfig.max_waypoints;
+    const { result } = renderConditions();
+    act(() => result.current.selectPoint({ role: "waypoint", index: null }));
+    for (let i = 0; i < max; i++) act(() => result.current.placeAtSelected(point(i), null));
+
+    act(() => result.current.placeFound("waypoint", candidateAt(A, "寄る店"), null));
+
+    expect(result.current.waypoints).toEqual([...Array(max).keys()].map(point));
+    expect(result.current.foundAt(A)).toBeNull();
+  });
+
   it("番号を指した経由地を選ぶと、その経由地を置き直す", () => {
     const { result } = renderConditions();
     act(() => result.current.selectPoint({ role: "waypoint", index: null }));
@@ -151,16 +163,35 @@ describe("地点", () => {
     expect(result.current.foundAt(result.current.destination)).toBeNull();
   });
 
-  it("選んだ経由地が消えたら、出発地を選んでいることに戻る", () => {
+  it.each([
+    // 番号を詰めた後ろの経由地を選んだままにすると、地図のタップが選んでいない経由地を動かす。
+    {
+      label: "選んだ経由地が消えたら、出発地を選んでいることに戻る",
+      selected: 1,
+      removed: 1,
+      after: { role: "origin" },
+    },
+    {
+      label: "前の経由地が消えたら、選んだ経由地の番号を詰める",
+      selected: 2,
+      removed: 0,
+      after: { role: "waypoint", index: 1 },
+    },
+    {
+      label: "後ろの経由地が消えても、選んだ経由地は変わらない",
+      selected: 0,
+      removed: 1,
+      after: { role: "waypoint", index: 0 },
+    },
+  ])("$label", ({ selected, removed, after }) => {
     const { result } = renderConditions();
     act(() => result.current.selectPoint({ role: "waypoint", index: null }));
-    act(() => result.current.placeAtSelected(A, null));
-    act(() => result.current.placeAtSelected(B, null));
-    act(() => result.current.selectPoint({ role: "waypoint", index: 1 }));
+    for (const at of [A, B, C]) act(() => result.current.placeAtSelected(at, null));
+    act(() => result.current.selectPoint({ role: "waypoint", index: selected }));
 
-    act(() => result.current.removeWaypoint(1));
+    act(() => result.current.removeWaypoint(removed));
 
-    expect(result.current.selectedPoint).toEqual({ role: "origin" });
+    expect(result.current.selectedPoint).toEqual(after);
   });
 
   it("経由地は位置を指して動かす・消せ、目的地も消せる", () => {

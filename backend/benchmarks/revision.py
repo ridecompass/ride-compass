@@ -20,7 +20,8 @@ from repo_git import run
 @dataclass(frozen=True)
 class RevisionState:
     head: str | None
-    dirty: bool
+    #: Noneは、gitが状態を返さず確かめられないこと。
+    dirty: bool | None
 
 
 def read_revision_state() -> RevisionState:
@@ -28,14 +29,16 @@ def read_revision_state() -> RevisionState:
     head = run("rev-parse", "HEAD", cwd=REPO_ROOT)
     status = run("status", "--porcelain", cwd=REPO_ROOT)
     return RevisionState(head=head.stdout.strip() if head.returncode == 0 else None,
-                         dirty=bool(status.stdout.strip()))
+                         dirty=bool(status.stdout.strip()) if status.returncode == 0 else None)
 
 
 def describe(state: RevisionState) -> str:
     """結果へ添える1行。どのコードを測ったかを数字と同じ出力に残す。"""
     head = state.head[:12] if state.head else "不明"
     parts = [f"計測した作業コピー: {head}"]
-    if state.dirty:
+    if state.dirty is None:
+        parts.append("未コミットの変更があるかを確かめられない")
+    elif state.dirty:
         parts.append("未コミットの変更あり")
     return "（" + "／".join(parts) + "）"
 

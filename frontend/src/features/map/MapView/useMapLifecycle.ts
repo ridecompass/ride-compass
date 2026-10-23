@@ -50,11 +50,8 @@ export function useMapLifecycle(
   const [mapBearing, setMapBearing] = useState(0);
   // スタイルが取れないとMapLibreは"load"ではなく"error"だけを出し、地図は白紙のまま止まる。そのとき案内を出す。
   const [styleLoadFailed, setStyleLoadFailed] = useState(false);
-  // スタイルを取り直している間（"style.load"待ち）。最初の"load"は地図の生涯で1度しか来ないため、取り直しの
-  // 失敗はこの印で見分ける。
+  // スタイルを取り直している間（"style.load"か取り直しの失敗の待ち）。
   const styleReloadPendingRef = useRef(false);
-  // 取り直しの"style.load"の待ちを外す。取り直しが取れなかったあとに押し直したとき、前の待ちを外す。
-  const cancelStyleReloadRef = useRef<(() => void) | null>(null);
   // 最初のタイルが揃うまでの白紙を覆う。
   const [initialTilesLoading, setInitialTilesLoading] = useState(true);
   const layerDataSources = useMemo(() => buildLayerDataSources(layers), [layers]);
@@ -103,13 +100,9 @@ export function useMapLifecycle(
     }
     function handleMapError(e: MapLibreErrorEvent) {
       const sourceId = (e as unknown as { sourceId?: string }).sourceId;
-      // 取り直しのスタイルが取れない（取得・検証の失敗）と、ソースを持たない"error"だけが来て"style.load"は来ない。
-      // 押し直せるよう待ちの印を下ろす。
-      const reloadFailed = styleReloadPendingRef.current && sourceId === undefined;
-      if (reloadFailed) styleReloadPendingRef.current = false;
       // 有効なスタイルが無いときの失敗は致命的（地図が白紙のまま）。それ以外の大半はタイル1枚の一過性の
-      // 失敗で、次の取得で直るため警告にとどめる。
-      const isFatal = !isStyleReady(map) || reloadFailed;
+      // 失敗で、次の取得で直るため警告にとどめる。取り直しの失敗は、取り直しの側（reloadStyleのonFailed）が出す。
+      const isFatal = !isStyleReady(map);
       debugLog("map:error", e.error?.message ?? "unknown error", { sourceId }, isFatal ? "error" : "warn");
       if (isFatal) {
         setStyleLoadFailed(true);
@@ -209,14 +202,18 @@ export function useMapLifecycle(
     // 連打で取り直しを重ねない（新しい取り直しが前の読み込みを打ち切ると、当て直しが一度も走らない）。
     if (styleReloadPendingRef.current) return;
     styleReloadPendingRef.current = true;
-    cancelStyleReloadRef.current?.();
 
     // クエリでスタイルURLを変えることで、ブラウザのHTTPキャッシュではなく取り直しにする。
-    cancelStyleReloadRef.current = reloadStyle(map, `${mapStyleUrl()}?t=${Date.now()}`, () => {
-      styleReloadPendingRef.current = false;
-      cancelStyleReloadRef.current = null;
-      setStyleLoadFailed(false);
-      redraw(map);
+    reloadStyle(map, `${mapStyleUrl()}?t=${Date.now()}`, {
+      onLoaded: () => {
+        styleReloadPendingRef.current = false;
+        setStyleLoadFailed(false);
+        redraw(map);
+      },
+      onFailed: () => {
+        styleReloadPendingRef.current = false;
+        setStyleLoadFailed(true);
+      },
     });
   }, [mapRef, refreshToken, redraw]);
 

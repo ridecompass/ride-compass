@@ -1,4 +1,4 @@
-"""レグ（基準点・時刻・向き）ごとのコスト配列の合成。
+"""レグ（時刻・向き）ごとのコスト配列の合成。
 
 探索範囲の静的スコア行列・重み・0次フィルタ・風の予報・昼夜から、区間ごとの体感の所要時間（探索のコスト）と、
 区間の表示が読む難易度・軸・材料・所要時間を、時刻ビンごとに合成する。外部とはやり取りせず、配列だけを受け取って配列を返す。
@@ -7,6 +7,7 @@
 「レグ別コスト配列」「レグ内の時刻ビン」節が持つ。
 """
 
+import hashlib
 import logging
 import math
 from collections.abc import Callable, Mapping
@@ -154,6 +155,11 @@ def _representative_bin(bin_count: int, duration_hours: float | None) -> int:
     return min(bin_count - 1, int((duration_hours / 2) / TIME_BIN_HOURS))
 
 
+def _array_digest(values: np.ndarray) -> str:
+    """配列の中身全体で決まる使い回しの鍵（和のような要約は、並びの違う配列どうしで一致しうる）。"""
+    return hashlib.blake2b(np.ascontiguousarray(values, dtype=float).tobytes(), digest_size=16).hexdigest()
+
+
 def _timed_leg_key(leg_start_hours: float, bin_count: int, duration_hours: float | None) -> tuple:
     """時刻で引き直すレグの使い回しの鍵。代表ビンも入れる——同じ開始時刻・同じビン数でも、
     見込み所要時間が違えば代表（表示が読むビン）は変わりうる。"""
@@ -179,7 +185,7 @@ class _Evaluated:
 
 
 class LegCostComposer:
-    """bbox全体ぶんのコスト配列を、レグ（基準点・時刻オフセット・向き）ごとに合成する。
+    """bbox全体ぶんのコスト配列を、レグ（時刻オフセット・向き）ごとに合成する。
     静的スコア行列・重み・0次フィルタ・lazy_graph行順の対応表はリクエスト内で共通のため
     1回だけ用意する。時刻に依らない計算（走行モデルの出力と一定の抵抗・停止の待ち、時刻で変わる軸に
     重みが無ければ合成の難易度と割増の倍率も）はリクエストに1回だけ求め、時刻ビンごとには
@@ -323,7 +329,6 @@ class LegCostComposer:
     def compose(
         self,
         label: str,
-        anchor: Coordinates | None,
         offset_hours: float,
         direction: int,
         duration_hours: float | None = None,
@@ -332,8 +337,6 @@ class LegCostComposer:
         """`direction=+1`なら起点から離れていく・`-1`なら向かっていくレグとして、
         そのレグを走る時刻の風でコスト配列を合成する。
 
-        `anchor`は座標の値も在るかどうかも使わない（ログへ出すだけ）——風の予報は起点
-        1地点ぶんを`WeatherService`が既に引いており、ここでは方位だけがEdgeごとに効く。
         時刻で変えるかどうかは`time_varying`（風の時別系列があるか・時間帯を持つ軸に重みがあるか）だけで決まる。
 
         `duration_hours`（このレグに何時間かかる見込みか）を渡すと、レグの中を
@@ -352,7 +355,7 @@ class LegCostComposer:
         if not self.time_varying:
             key: tuple = ("snapshot",)
         elif passage_hours is not None:
-            key = ("passage", round(offset_hours, 3), direction, float(np.nansum(passage_hours)))
+            key = ("passage", round(offset_hours, 3), direction, _array_digest(passage_hours))
         else:
             key = _timed_leg_key(leg_start, bin_count, duration_hours)
         cached = self._cache.get(key)
@@ -410,7 +413,7 @@ class LegCostComposer:
         self._cache[key] = leg
         logger.info(
             "compose_leg_costs leg=%s mode=%s bins=%d reused_bins=%d compose_ms=%d",
-            label, "time_varying" if self.time_varying and anchor is not None else "snapshot",
+            label, "time_varying" if self.time_varying else "snapshot",
             len(bins), reused_bins, elapsed_ms(started),
         )
         return leg
@@ -484,6 +487,7 @@ class LegCostComposer:
             weights = time_scoped_weights(
                 self._weights,
                 {"night_only": night_mask(self._twilight_origin, self.start, hours)},
+                self._axis_definitions,
             )
         dynamic_context = DynamicAxisRequestContext(
             bearing_deg=bearing, departure_wind=self._departure_wind,

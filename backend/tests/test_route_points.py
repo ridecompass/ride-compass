@@ -52,6 +52,15 @@ def test_a_point_passed_twice_is_listed_at_each_pass(path, expected):
     assert _passed(path, {2: [_hit("p", 0.5)]}) == expected
 
 
+def test_a_point_near_a_short_loop_is_listed_on_the_way_out_and_back():
+    """区間2・3の両方の近くにある点は、2から小さな輪3を回って2へ戻ると、続けて走る区間だけでも行きと帰りの2回通る。"""
+    path = [_edge(2), _edge(3), _edge(2, forward=False)]
+
+    assert _passed(path, {2: [_hit("p", 0.9, distance_m=10.0)], 3: [_hit("p", 0.1, distance_m=30.0)]}) == [
+        (0.9, "p"), (2.1, "p"),
+    ]
+
+
 @pytest.mark.parametrize("second_fraction, second_group, expected", [
     # 同じ行の点が、まとめる距離の内にある → 1つにする
     (0.5 + POI_CLUSTER_EPS_M / 1000 * 0.9, "signal", [(0.5, "a")]),

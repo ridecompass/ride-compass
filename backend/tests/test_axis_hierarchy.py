@@ -171,9 +171,8 @@ class TestWeights:
         definitions = axes(axis("always"), axis("night", time_scope="night_only"))
         weights = {"always": 1.0, "night": 3.0}
 
-        with replaced_axis_definitions(definitions):
-            scoped = axis_definitions.time_scoped_weights(weights, {"night_only": np.array([False, True])})
-            outside_every_scope = axis_definitions.time_scoped_weights(weights, {})
+        scoped = axis_definitions.time_scoped_weights(weights, {"night_only": np.array([False, True])}, definitions)
+        outside_every_scope = axis_definitions.time_scoped_weights(weights, {}, definitions)
 
         assert scoped["always"] == 1.0 and scoped["night"].tolist() == [0.0, 3.0]
         assert outside_every_scope == {"always": 1.0, "night": 0.0}

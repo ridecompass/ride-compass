@@ -168,7 +168,8 @@ describe("画面の枠", () => {
     await redraw();
     act(() => mapOnScreen().emit("error", { error: new Error("タイル1枚の失敗"), sourceId: "road-tiles" }));
     expect(failure()).toBeNull();
-    act(() => mapOnScreen().emit("error", { error: new Error("スタイルの取得の失敗") }));
+    // MapLibreは取り直しの要求の失敗を、取りに行ったURLを持つ出来事で知らせ、"style.load"は出さない。
+    act(() => mapOnScreen().emit("error", { error: { url: mapOnScreen().styles.at(-1) } }));
     expect(failure()).toBeInTheDocument();
 
     await redraw();

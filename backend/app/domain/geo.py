@@ -121,8 +121,8 @@ def bearing_sector(bearing_deg: float, count: int) -> int:
 
 
 def compass_degrees(bearing_deg: float) -> int:
-    """方位（度）を応答に載せる桁（0〜359の整数の度）へ丸める。"""
-    return int(round(bearing_deg)) % 360
+    """方位（度）を応答に載せる桁（0〜359の整数の度）へ丸める。境目は`bearing_sector`と同じく上へ倒す。"""
+    return math.floor(bearing_deg + 0.5) % 360
 
 
 def bearing_between(origin: LatLon, destination: LatLon) -> float:

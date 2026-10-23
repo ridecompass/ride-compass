@@ -115,7 +115,7 @@ def _stage_lines(stages: dict[str, dict[str, float | str]]) -> list[str]:
         times = " ".join(
             f"{k[:-3]}={float(v) / 1000:.2f}秒" for k, v in fields.items()
             if k.endswith("_ms") and _is_number(v))
-        others = " ".join(f"{k}={v}" for k, v in fields.items() if not k.endswith("_ms"))
+        others = " ".join(f"{k}={v}" for k, v in fields.items() if not (k.endswith("_ms") and _is_number(v)))
         lines.append(f"    {name:<42} {times}" + (f"  [{others}]" if others else ""))
     return lines
 
@@ -124,7 +124,10 @@ def _stage_lines(stages: dict[str, dict[str, float | str]]) -> list[str]:
 
 
 async def main() -> int:
-    logging.basicConfig(level=logging.WARNING, format="%(message)s")
+    # 段のロガーをINFOへ下げると、その記録は根の出力へも伝わる。出力の表を埋もれさせないよう、根の出力はWARNING以上だけにする。
+    stderr = logging.StreamHandler()
+    stderr.setLevel(logging.WARNING)
+    logging.basicConfig(level=logging.WARNING, format="%(message)s", handlers=[stderr])
     capture = _StageCapture()
     for name in STAGE_LOGGERS:
         logger = logging.getLogger(name)
