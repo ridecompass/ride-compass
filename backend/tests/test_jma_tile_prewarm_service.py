@@ -146,12 +146,11 @@ async def test_tiles_are_fetched_at_the_zooms_the_source_has_data_for(fake_redis
 
 
 async def test_the_index_lists_the_tiles_that_have_something_to_draw(fake_redis):
-    """中身のあるタイルだけを載せる。空タイル・取れなかったタイルは載せない。"""
+    """中身のあるタイルだけを載せる。空タイルは載せない。"""
     source = Source(tiles={
         "/surf/rain_mesh/4/": (OPAQUE, "image/png"),
         "/surf/rain_mesh/6/": UPSTREAM_NOT_FOUND,
         "/surf/flood/4/": UPSTREAM_NOT_FOUND,
-        "/surf/land/4/": None,
     })
 
     await _run(source)
@@ -163,7 +162,17 @@ async def test_the_index_lists_the_tiles_that_have_something_to_draw(fake_redis)
     assert sorted(rain_mesh["zooms"]["4"]) == z4
     assert "6" not in rain_mesh["zooms"]
     assert payload["elements"]["flood"]["zooms"] == {}
-    assert payload["elements"]["land"]["zooms"] == {}
+
+
+async def test_tiles_that_could_not_be_fetched_are_listed_as_having_something(fake_redis):
+    """載らないタイルを画面は取りに来ないので、取れなかったタイルを載せずにおくと、そこに降る雨が地図から消える。"""
+    source = Source(tiles={"/surf/land/4/": None})
+
+    await _run(source)
+
+    land = (await _stored())["elements"]["land"]
+    parts = [_tile_parts(p) for p in source.tile_requests("land")]
+    assert sorted(land["zooms"]["4"]) == sorted([part["x"], part["y"]] for part in parts if part["z"] == 4)
 
 
 async def test_a_zoom_filled_from_its_parent_is_listed_wherever_the_parent_has_something(fake_redis):
