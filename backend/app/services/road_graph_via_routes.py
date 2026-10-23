@@ -90,7 +90,7 @@ async def select_via_nodes(
     # 往路レグを、最後の固定点→終点の見込み所要時間ぶんの時刻ビンで組み直す。
     outbound = await asyncio.to_thread(
         context.composer.compose,
-        leg_name(leg_index), start_point, fixed_hours, +1,
+        leg_name(leg_index), fixed_hours, +1,
         duration_hours=straight_line_hours(
             start_point, destination, context.composer.speed_kmh, context.composer.detour_ratio,
         ),
