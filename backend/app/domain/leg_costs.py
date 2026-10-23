@@ -7,6 +7,7 @@
 「レグ別コスト配列」「レグ内の時刻ビン」節が持つ。
 """
 
+import hashlib
 import logging
 import math
 from collections.abc import Callable, Mapping
@@ -152,6 +153,11 @@ def _representative_bin(bin_count: int, duration_hours: float | None) -> int:
     if duration_hours is None:
         raise ValueError(f"見込み時間が無いのにビンが{bin_count}本ある")
     return min(bin_count - 1, int((duration_hours / 2) / TIME_BIN_HOURS))
+
+
+def _array_digest(values: np.ndarray) -> str:
+    """配列の中身全体で決まる使い回しの鍵（和のような要約は、並びの違う配列どうしで一致しうる）。"""
+    return hashlib.blake2b(np.ascontiguousarray(values, dtype=float).tobytes(), digest_size=16).hexdigest()
 
 
 def _timed_leg_key(leg_start_hours: float, bin_count: int, duration_hours: float | None) -> tuple:
@@ -323,7 +329,6 @@ class LegCostComposer:
     def compose(
         self,
         label: str,
-        anchor: Coordinates | None,
         offset_hours: float,
         direction: int,
         duration_hours: float | None = None,
@@ -332,8 +337,6 @@ class LegCostComposer:
         """`direction=+1`なら起点から離れていく・`-1`なら向かっていくレグとして、
         そのレグを走る時刻の風でコスト配列を合成する。
 
-        `anchor`は座標の値も在るかどうかも使わない（ログへ出すだけ）——風の予報は起点
-        1地点ぶんを`WeatherService`が既に引いており、ここでは方位だけがEdgeごとに効く。
         時刻で変えるかどうかは`time_varying`（風の時別系列があるか・時間帯を持つ軸に重みがあるか）だけで決まる。
 
         `duration_hours`（このレグに何時間かかる見込みか）を渡すと、レグの中を
@@ -352,7 +355,7 @@ class LegCostComposer:
         if not self.time_varying:
             key: tuple = ("snapshot",)
         elif passage_hours is not None:
-            key = ("passage", round(offset_hours, 3), direction, float(np.nansum(passage_hours)))
+            key = ("passage", round(offset_hours, 3), direction, _array_digest(passage_hours))
         else:
             key = _timed_leg_key(leg_start, bin_count, duration_hours)
         cached = self._cache.get(key)
@@ -410,7 +413,7 @@ class LegCostComposer:
         self._cache[key] = leg
         logger.info(
             "compose_leg_costs leg=%s mode=%s bins=%d reused_bins=%d compose_ms=%d",
-            label, "time_varying" if self.time_varying and anchor is not None else "snapshot",
+            label, "time_varying" if self.time_varying else "snapshot",
             len(bins), reused_bins, elapsed_ms(started),
         )
         return leg

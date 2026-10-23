@@ -128,7 +128,7 @@ async def select_via_nodes(
     )
     inbound = await asyncio.to_thread(
         context.composer.compose,
-        "inbound", destination, arrival_hours, -1,
+        "inbound", arrival_hours, -1,
         passage_hours=reached_or_estimated_hours(forward_hours, fallback_hours),
     )
     context.legs = [*context.legs[:leg_index + 1], inbound]

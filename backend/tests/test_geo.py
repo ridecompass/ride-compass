@@ -1,6 +1,6 @@
 """`domain/geo.py`——方位とその呼び名と、多数の地点それぞれの最寄りの点。
 
-入口は`compass_label`・`bearing_between_array`・`nearest_point_indices`・`nearest_point_index`。方位が別の道で求めた向きと合うこと・
+入口は`compass_label`・`compass_degrees`・`bearing_between_array`・`nearest_point_indices`・`nearest_point_index`。方位が別の道で求めた向きと合うこと・
 最寄りが本当に最も近いことはhypothesisで任意の地点について確かめ、方位の呼び名は区分の表で確かめる。
 
 ここで見ないもの:
@@ -43,6 +43,13 @@ points = st.builds(Point, latitude=latitudes, longitude=longitudes)
 )
 def test_compass_label_names_the_eight_point_sector(bearing, label):
     assert geo.compass_label(bearing) == label
+
+
+
+@pytest.mark.parametrize(("bearing", "degrees"), [(0.5, 1), (2.5, 3)])
+def test_compass_degrees_rounds_a_half_degree_up_like_the_sector(bearing, degrees):
+    """ちょうど半端の度は、区分（`compass_label`）と同じく上へ倒す。偶数丸めだと、応答の度が値の偶奇で前後に倒れる。"""
+    assert geo.compass_degrees(bearing) == degrees
 
 
 # --- bearing_between ---

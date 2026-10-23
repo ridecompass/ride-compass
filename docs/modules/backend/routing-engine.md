@@ -94,7 +94,7 @@ Edgeコストは「探索範囲の静的Edge×公開軸スコア行列＋リク�
 探索アルゴリズムは時刻を知らない（配列への`list.__getitem__`しか行わない）ため、
 「いつ通過するか」は探索前に配列を合成する側で決める。`_build_search_graph`は静的スコア
 行列・重み・0次フィルタ・`lazy_graph`行順の対応表をリクエストにつき1回だけ用意した
-`LegCostComposer`を作り、`compose(label, anchor, offset_hours, direction)`がレグごとに合成する
+`LegCostComposer`を作り、`compose(label, offset_hours, direction)`がレグごとに合成する
 （`direction=+1`は基準点から離れるレグ、`-1`は基準点へ向かうレグで`offset_hours`が到着予定時刻）。
 ビンを刻むレグは各ビンの開始時刻を全区間の通過時刻として合成し、時刻ラベルを持てない目的地から遡る木だけは
 区間ごとの通過時刻（`passage_hours`。前向き木の実際の到達時間、届かない区間だけ

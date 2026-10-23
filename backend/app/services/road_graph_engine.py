@@ -102,7 +102,6 @@ from app.services.road_graph_context import (
     snap_point,
     resolve_end,
     leg_name,
-    leg_anchor,
     path_km,
     lazy_index_of,
     origin_states,
@@ -254,7 +253,7 @@ class RoadGraphEngine:
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
                 twilight_origin=origin,
             )
-            return search_masks, composer, composer.compose("outbound", origin, 0.0, +1)
+            return search_masks, composer, composer.compose("outbound", 0.0, +1)
 
         search_masks, composer, outbound = await asyncio.to_thread(compose_outbound)
         cost_ms = elapsed_ms(cost_started)
@@ -391,7 +390,7 @@ class RoadGraphEngine:
             leg = context.legs[0]
         else:
             leg = context.composer.compose(
-                leg_name(leg_index), leg_anchor(context, leg_index, from_node),
+                leg_name(leg_index),
                 cruise_hours(cumulative_m / 1000, context.composer.speed_kmh), +1,
             )
             context.legs.append(leg)
@@ -473,7 +472,7 @@ class RoadGraphEngine:
         # 木は出発からの経過時間を持ち回れるため、風を推定ではなく実際の経過時間で引ける。
         outbound = await asyncio.to_thread(
             context.composer.compose,
-            leg_name(leg_index), leg_anchor(context, leg_index, start_node),
+            leg_name(leg_index),
             cruise_hours(fixed_m / 1000, context.composer.speed_kmh), +1,
             duration_hours=leg_duration_hours(remaining_km, context.composer.speed_kmh),
         )
@@ -738,7 +737,7 @@ class RoadGraphEngine:
             context.legs = [
                 context.legs[0],
                 context.composer.compose(
-                    "inbound", context.origin, total_hours, -1,
+                    "inbound", total_hours, -1,
                     duration_hours=leg_duration_hours(total_m / 1000, context.composer.speed_kmh),
                 ),
             ]
