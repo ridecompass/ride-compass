@@ -123,11 +123,16 @@ class Settings(BaseSettings):
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:
-        return self.cors_allowed_origins.split(",")
+        return _comma_separated(self.cors_allowed_origins)
 
     @property
     def lulc_raster_paths_list(self) -> list[str]:
-        return [p for p in self.lulc_raster_paths.split(",") if p]
+        return _comma_separated(self.lulc_raster_paths)
+
+
+def _comma_separated(value: str) -> list[str]:
+    """カンマ区切りの設定値を、前後の空白と空の要素を落として分ける（手で書いた`.env`の「a, b」や末尾のカンマ）。"""
+    return [item for item in (part.strip() for part in value.split(",")) if item]
 
 
 settings = Settings()

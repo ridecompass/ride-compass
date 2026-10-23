@@ -55,11 +55,14 @@ ORDER BY pg_total_relation_size(s.relid) DESC
 """
 
 # 自分自身（この問い合わせ）を数えると、実行中のクエリが常に1件ある状態に見える。
+# 接続の総数は`max_connections`（サーバー全体の枠）と比べるので、ほかのDBへの接続も数える。
+# 失敗した文のあと戻されていないトランザクション（`idle in transaction (aborted)`）も、止まったトランザクションに数える。
 _CONNECTION_SQL = """
-SELECT count(*) AS total,
-       count(*) FILTER (WHERE state = 'idle in transaction') AS idle_in_transaction,
+SELECT (SELECT count(*) FROM pg_stat_activity
+        WHERE backend_type = 'client backend' AND pid <> pg_backend_pid()) AS total,
+       count(*) FILTER (WHERE state LIKE 'idle in transaction%') AS idle_in_transaction,
        coalesce(max(EXTRACT(EPOCH FROM (now() - xact_start)))
-                FILTER (WHERE state = 'idle in transaction'), 0)::float AS longest_idle_transaction_seconds,
+                FILTER (WHERE state LIKE 'idle in transaction%'), 0)::float AS longest_idle_transaction_seconds,
        coalesce(max(EXTRACT(EPOCH FROM (now() - query_start)))
                 FILTER (WHERE state = 'active'), 0)::float AS longest_query_seconds,
        current_setting('max_connections')::int AS max_connections,
