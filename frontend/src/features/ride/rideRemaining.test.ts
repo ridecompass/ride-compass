@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { MINUTE_MS } from "@/lib/duration";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 
-import { rideRemaining } from "./rideRemaining";
+import { rideClock, rideRemaining } from "./rideRemaining";
 
 const DEPARTED_AT = Date.parse("2026-10-13T03:00:00Z");
 
@@ -65,5 +65,12 @@ describe("rideRemaining: ルートの残りと到着予想", () => {
 
   it("位置をまだ受けていなければ、到着予想は出さない", () => {
     expect(rideRemaining(ROUTE, 1, null)?.arrivalAt).toBeNull();
+  });
+});
+
+describe("rideClock: ルートの上の距離を通る見込みの時刻", () => {
+  // 位置を当てた距離は、区間の長さの足し算の誤差で終わりをわずかに越えうる。
+  it("終わりを越えた距離は、終わりを通る時刻で読む", () => {
+    expect(rideClock(ROUTE, null)?.(5 + 1e-9)).toBe(DEPARTED_AT + 15 * MINUTE_MS);
   });
 });

@@ -14,7 +14,9 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setDebugEnabled } from "@/lib/debugLog";
-import { onBackend } from "@/testing/backendServer";
+import { SECOND_MS } from "@/lib/duration";
+import refreshIntervals from "@/types/generated/refresh-intervals.json";
+import { heldReplies, onBackend } from "@/testing/backendServer";
 import { installGeolocation } from "@/testing/geolocation";
 import {
   ELSEWHERE,
@@ -164,6 +166,24 @@ describe("画面の枠", () => {
     clickMap(HERE);
     await waitFor(() => expect(missing()).toHaveAccessibleName(/警報/));
     expect(missing()).not.toHaveAccessibleName(/現在地/);
+  });
+
+  it("ヘッダーの観測値の失敗の印は、間隔ごとに取り直している間も出したままにする", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      onBackend("GET", "/api/weather/amedas", () => Response.json({ detail: "失敗" }, { status: 502 }));
+      renderHome();
+      const mark = () => screen.queryByRole("img", { name: "観測値を取得できません" });
+      await waitFor(() => expect(mark()).not.toBeNull());
+
+      const held = heldReplies();
+      onBackend("GET", "/api/weather/amedas", held.reply);
+      act(() => vi.advanceTimersByTime(refreshIntervals.amedas_seconds * SECOND_MS));
+      await waitFor(() => expect(held.arrived()).toBe(1));
+      expect(mark()).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("「現在地に移動」は現在地を取り直して地図を寄せ、出発地は変えずに現在地に点を出す", async () => {

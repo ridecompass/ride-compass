@@ -116,6 +116,24 @@ describe("検査が効いていること", () => {
     });
   });
 
+  it("母集団から除くのはこの検査のディレクトリ`src/structure`だけで、`e2e`の同じ名前のディレクトリは読む", () => {
+    const helper = `const jst = (text: string) => new Date(\`\${text}+09:00\`);\n`;
+    expect(
+      within({
+        "src/a.test.ts": helper,
+        "src/b.test.ts": helper,
+        "e2e/structure/c.ts": helper,
+        "src/structure/d.ts": helper,
+      }),
+    ).toMatchObject({
+      copies: [
+        "e2e/structure/c.ts:1: jst（3ファイル）",
+        "src/a.test.ts:1: jst（3ファイル）",
+        "src/b.test.ts:1: jst（3ファイル）",
+      ],
+    });
+  });
+
   it("組み立て関数の項目を全部持つリテラルを落とし、一部だけのリテラル・上書きを受けない関数・`src/testing`の中は落とさない", () => {
     const builder = `export function makeSegment(o = {}) {\n  return { start: 0, end: 0, ...o };\n}\n`;
     const part = `export function shape() {\n  return { start: 0, end: 0 };\n}\n`;
@@ -132,7 +150,9 @@ describe("検査が効いていること", () => {
     expect(
       within({
         "src/testing/lib.ts": `class StandIn {}\nexport { StandIn as Map };\nexport function addProtocol() {}\n`,
-        "src/a.test.ts": `vi.mock("maplibre-gl", () => import("@/testing/lib"));\n`,
+        "src/testing/view/index.tsx": `export function View() {}\n`,
+        "src/a.test.ts": `vi.mock("maplibre-gl", () => import("@/testing/lib"));\nvi.mock("view-lib", () => import("@/testing/view"));\n`,
+        "src/c.test.ts": `vi.mock("view-lib", () => ({ View: 1 }));\n`,
         "src/b.test.ts": [
           `import type { Map as LibreMap, FilterSpecification } from "maplibre-gl";`,
           `vi.mock("maplibre-gl", () => ({ addProtocol }));`,
@@ -140,7 +160,13 @@ describe("検査が効いていること", () => {
           `const filter = [] as FilterSpecification;`,
         ].join("\n"),
       }),
-    ).toMatchObject({ standIns: ['src/b.test.ts:2: vi.mock("maplibre-gl")', "src/b.test.ts:3: as LibreMap"] });
+    ).toMatchObject({
+      standIns: [
+        'src/b.test.ts:2: vi.mock("maplibre-gl")',
+        "src/b.test.ts:3: as LibreMap",
+        'src/c.test.ts:1: vi.mock("view-lib")',
+      ],
+    });
   });
 
   it("自前のモジュールの差し替えを@/と相対のパスで落とし、環境変数の読み取り口・ファイルを落とす関数・子の部品・パッケージは落とさない", () => {
