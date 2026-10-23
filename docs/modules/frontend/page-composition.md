@@ -688,7 +688,8 @@ composite_difficulty`と同じ考え方で軸の重みを反映した寄与度�
 地図初期化用の`useEffect`（`features/map/MapView/useMapLifecycle.ts`）は空配列依存でマウント時に1度だけ実行され、そこで登録した
 ハンドラは最新の値を`MapView`の1つのref（`latest`。いまのprops・宣言を描画のたびに
 書き写す）経由で読む——`useEffect`の依存配列に載せると再マウントのたびにMapLibre
-インスタンスが作り直されてしまうため。
+インスタンスが作り直されてしまうため。レイヤーごとの取得状態を数える関数も、レイヤーカタログ（軸カタログが届くと道の層が増える）
+とともに作り直されるので、同じフックの中のrefを描画のたびに書き写して読む。
 
 地図キャンバスはモバイルの下部タブバー・ボトムシートや、地図の上に重ねた操作部品（左上の「表示」と色分け・右の操作列等）の
 下にも描画される。ルート生成直後のフィット（`features/map/MapView/mapCamera.ts: fitBoundsToRoutes`）と置いた地点へ寄せるとき（`features/map/MapView/mapCamera.ts: flyToVisible`）に覆われた領域へ

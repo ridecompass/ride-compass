@@ -2,7 +2,8 @@
  * `app/page.tsx`——トップページの画面の枠（地図の上の操作・ヘッダー・メニュー）。
  *
  * 見ること: 地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）、右上の方位磁針（地図の北を指し、
- * 開いたダイヤルで地図を回して北へ戻す）と拡大・縮小、地図を読み込み中の覆いが上限の時間で外れること、区分の開閉の保存、
+ * 開いたダイヤルで地図を回して北へ戻す。なぞる途中で閉じたら回さない）と拡大・縮小、地図を読み込み中の覆いが上限の時間で外れること、層の取得状態の数え直しと
+ * 再描画の失敗の案内、区分の開閉の保存、
  * ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、「現在地に移動」が出発地を変えずに地図を寄せて現在地に点を
  * 出すこと、メニューから入る使い方の説明とデバッグログ。
  *
@@ -28,6 +29,7 @@ import {
   serveHome,
   showRoadSurface,
 } from "@/testing/homePage";
+import { LAYER_DATA_STATUS_LABELS } from "@/features/map/layers/mapLayers";
 import { mapOnScreen } from "@/testing/maplibre";
 
 import Home from "./page";
@@ -83,11 +85,6 @@ describe("画面の枠", () => {
     await user.click(screen.getByRole("button", { name: "メニュー" }));
     await user.click(screen.getByRole("button", { name: "地図の表示を再描画" }));
     expect(mapOnScreen().styles).toHaveLength(before + 1);
-    // スタイルが取れなかった（MapLibreは取り直しの要求の失敗を出来事で知らせ、"style.load"は来ない）後も、もう一度押せば取り直す。
-    act(() => mapOnScreen().emit("error", { error: { url: mapOnScreen().styles.at(-1) } }));
-    await user.click(screen.getByRole("button", { name: "メニュー" }));
-    await user.click(screen.getByRole("button", { name: "地図の表示を再描画" }));
-    expect(mapOnScreen().styles).toHaveLength(before + 2);
   });
 
   it("右上の方位磁針は地図の北を指し、押すと開くダイヤルの輪をなぞる・矢印のキーで地図が回り、真ん中の針で北が上に戻る。ダイヤルの文は方位と度だけ。＋・－で拡大・縮小し、長押しで1本指の拡大・縮小の案内が出る", async () => {
@@ -129,6 +126,18 @@ describe("画面の枠", () => {
     );
   });
 
+  it("輪をなぞっている途中でダイヤルを閉じても、その後の指の動きで地図は回らない", async () => {
+    const { user } = renderHome();
+    await user.click(screen.getByRole("button", { name: "地図の向き" }));
+    const dial = await screen.findByRole("slider", { name: "地図の向き" });
+    const center = dial.getBoundingClientRect();
+    fireEvent.pointerDown(dial, { clientX: center.left, clientY: center.top - 50 });
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("slider", { name: "地図の向き" })).toBeNull();
+    fireEvent.pointerMove(window, { clientX: center.left + 50, clientY: center.top });
+    expect(mapOnScreen().bearing()).toBe(0);
+  });
+
   it("基礎地図が描けず（`load`が来ず）ても、地図を読み込み中の覆いは上限の時間で外れる", () => {
     vi.useFakeTimers();
     try {
@@ -139,6 +148,36 @@ describe("画面の枠", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("地図の出来事のたびに数え直す層の取得状態は、軸カタログが届いてから足された道の層も数える", async () => {
+    const { user } = renderHome();
+    await showRoadSurface(user);
+    act(() => mapOnScreen().emit("idle"));
+    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
+    const row = screen.getByRole("checkbox", { name: "路面の種類" }).closest("label");
+    expect(row?.getAttribute("title")).toContain(LAYER_DATA_STATUS_LABELS.loading);
+  });
+
+  it("再描画でスタイルが取れなかったら読み込みの失敗を出し、もう一度押すと取り直し、取れたら消す。取り直しの間のタイル1枚の失敗では出さない", async () => {
+    const { user } = renderHome();
+    const failure = () => screen.queryByText(/地図の読み込みに失敗しました/);
+    const redraw = async () => {
+      await user.click(screen.getByRole("button", { name: "メニュー" }));
+      await user.click(screen.getByRole("button", { name: "地図の表示を再描画" }));
+    };
+    const before = mapOnScreen().styles.length;
+    await redraw();
+    act(() => mapOnScreen().emit("error", { error: new Error("タイル1枚の失敗"), sourceId: "road-tiles" }));
+    expect(failure()).toBeNull();
+    // MapLibreは取り直しの要求の失敗を、取りに行ったURLを持つ出来事で知らせ、"style.load"は出さない。
+    act(() => mapOnScreen().emit("error", { error: { url: mapOnScreen().styles.at(-1) } }));
+    expect(failure()).toBeInTheDocument();
+
+    await redraw();
+    expect(mapOnScreen().styles).toHaveLength(before + 2);
+    act(() => mapOnScreen().emit("style.load"));
+    expect(failure()).toBeNull();
   });
 
   it("区分の開閉は、次に開いたときも同じになる", async () => {

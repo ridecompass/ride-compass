@@ -81,6 +81,12 @@ interface MapPopupMountsOptions {
   routePreference: RoutePreferenceWeights | null;
 }
 
+/** 小窓の器と、それを作ったときに開いていた物。 */
+interface PopupMount<Shown> {
+  shown: Shown;
+  container: HTMLDivElement;
+}
+
 /** 道の詳細と区間の中身の小窓を地図へ載せ、中身をportalで描く。返した要素を地図の部品の中に置く。 */
 export function useMapPopupMounts(
   mapRef: RefObject<MapLibreMap | null>,
@@ -95,8 +101,10 @@ export function useMapPopupMounts(
   }: MapPopupMountsOptions,
 ): ReactNode {
   const catalog = useAxisCatalog();
-  const [roadPopupContainer, setRoadPopupContainer] = useState<HTMLDivElement | null>(null);
-  const [segmentPopupContainer, setSegmentPopupContainer] = useState<HTMLDivElement | null>(null);
+  // 器は、作ったときに開いていた物と組で持つ。開く物が変わった直後の描画は、まだ前の物の器が残っているので、組が合わない
+  // 器へは描かない（前の物の部品の状態を、新しい物へ持ち越さない）。
+  const [roadPopupMount, setRoadPopupMount] = useState<PopupMount<RoadPopup> | null>(null);
+  const [segmentPopupMount, setSegmentPopupMount] = useState<PopupMount<SelectedRouteSegment> | null>(null);
 
   // 見るだけの間に押した区間の中身を、押した区間の印の上の小窓に出す。閉じると区間の選択を外す。
   const segmentPopupAt = segmentDetail !== null ? selectedRouteSegment : null;
@@ -108,12 +116,12 @@ export function useMapPopupMounts(
       .setLngLat([segmentPopupAt.longitude, segmentPopupAt.latitude])
       .setDOMContent(container)
       .addTo(map);
-    setSegmentPopupContainer(container);
+    setSegmentPopupMount({ shown: segmentPopupAt, container });
     popup.on("close", onSegmentPopupClose);
     return () => {
       popup.off("close", onSegmentPopupClose);
       popup.remove();
-      setSegmentPopupContainer(null);
+      setSegmentPopupMount(null);
     };
   }, [mapRef, segmentPopupAt, onSegmentPopupClose]);
 
@@ -126,7 +134,7 @@ export function useMapPopupMounts(
       .setLngLat(roadPopup.lngLat)
       .setDOMContent(container)
       .addTo(map);
-    setRoadPopupContainer(container);
+    setRoadPopupMount({ shown: roadPopup, container });
     // 中身が伸び縮みしたら（評価を取る・畳みを開く）、置く向きを決め直す。MapLibreは地図が動いたときにしか
     // 決め直さないので、開いた後に伸びた中身が画面の外へはみ出す。
     const resize =
@@ -138,14 +146,14 @@ export function useMapPopupMounts(
       resize?.disconnect();
       popup.off("close", close);
       popup.remove();
-      setRoadPopupContainer(null);
+      setRoadPopupMount(null);
     };
   }, [mapRef, roadPopup, closeRoadPopup]);
 
   return (
     <>
       {roadPopup !== null &&
-        roadPopupContainer !== null &&
+        roadPopupMount?.shown === roadPopup &&
         createPortal(
           <RoadInspectorPopup
             properties={roadPopup.properties}
@@ -159,9 +167,12 @@ export function useMapPopupMounts(
             }}
             routePreference={routePreference}
           />,
-          roadPopupContainer,
+          roadPopupMount.container,
         )}
-      {segmentDetail !== null && segmentPopupContainer !== null && createPortal(segmentDetail, segmentPopupContainer)}
+      {segmentDetail !== null &&
+        segmentPopupAt !== null &&
+        segmentPopupMount?.shown === segmentPopupAt &&
+        createPortal(segmentDetail, segmentPopupMount.container)}
     </>
   );
 }

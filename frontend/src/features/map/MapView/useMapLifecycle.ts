@@ -50,8 +50,7 @@ export function useMapLifecycle(
   const [mapBearing, setMapBearing] = useState(0);
   // スタイルが取れないとMapLibreは"load"ではなく"error"だけを出し、地図は白紙のまま止まる。そのとき案内を出す。
   const [styleLoadFailed, setStyleLoadFailed] = useState(false);
-  // スタイルを取り直している間（"style.load"待ち）。最初の"load"は地図の生涯で1度しか来ないため、取り直しの
-  // 失敗はこの印で見分ける。
+  // スタイルを取り直している間（"style.load"か取り直しの失敗の待ち）。
   const styleReloadPendingRef = useRef(false);
   // 最初のタイルが揃うまでの白紙を覆う。
   const [initialTilesLoading, setInitialTilesLoading] = useState(true);
@@ -62,6 +61,12 @@ export function useMapLifecycle(
     [getLook],
   );
   const layerDataStatus = useLayerDataStatus({ mapRef, layerDataSources, getVisibility, onChange });
+  // 地図の出来事は初期化のeffectで一度だけ結ぶので、いまのレイヤーカタログで数える関数をここから読む（カタログは軸カタログが
+  // 届くと道の層が増える）。
+  const layerDataStatusRef = useRef(layerDataStatus);
+  useEffect(() => {
+    layerDataStatusRef.current = layerDataStatus;
+  });
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -84,7 +89,6 @@ export function useMapLifecycle(
     });
     resizeObserver.observe(containerRef.current);
     const unbindInteractions = bindInteractions(map);
-    const { recompute, markSourceErrored, clearSourceLoading, notifySourceData, settleViewport } = layerDataStatus;
 
     // "load"は載っているすべてのタイルが揃った最初の描画で来る。アプリのソースは"load"の後に足す
     // （runWhenStyleReady）ので、この時点で描けているのは基礎地図だけ——覆いはここで外す。"idle"は
@@ -96,27 +100,27 @@ export function useMapLifecycle(
     }
     function handleMapError(e: MapLibreErrorEvent) {
       const sourceId = (e as unknown as { sourceId?: string }).sourceId;
-      // 有効なスタイルがまだ無いときの失敗は致命的（地図が白紙のまま）。それ以外の大半はタイル1枚の一過性の
-      // 失敗で、次の取得で直るため警告にとどめる。
-      const isFatal = !isStyleReady(map) || styleReloadPendingRef.current;
+      // 有効なスタイルが無いときの失敗は致命的（地図が白紙のまま）。それ以外の大半はタイル1枚の一過性の
+      // 失敗で、次の取得で直るため警告にとどめる。取り直しの失敗は、取り直しの側（reloadStyleのonFailed）が出す。
+      const isFatal = !isStyleReady(map);
       debugLog("map:error", e.error?.message ?? "unknown error", { sourceId }, isFatal ? "error" : "warn");
       if (isFatal) {
         setStyleLoadFailed(true);
         setInitialTilesLoading(false);
       }
-      if (sourceId) markSourceErrored(sourceId);
+      if (sourceId) layerDataStatusRef.current.markSourceErrored(sourceId);
     }
     function handleFirstIdle() {
       if (cancelled) return;
-      recompute();
+      layerDataStatusRef.current.recompute();
       // 一度も動かさなくても、初期位置の範囲を取りに行けるよう伝える。
       reportViewport();
     }
     function handleTrackedSourceDataLoading(e: maplibregl.MapSourceDataEvent) {
-      clearSourceLoading(e.sourceId);
+      layerDataStatusRef.current.clearSourceLoading(e.sourceId);
     }
     function handleTrackedSourceData(e: maplibregl.MapSourceDataEvent) {
-      notifySourceData(e.sourceId);
+      layerDataStatusRef.current.notifySourceData(e.sourceId);
     }
     // 見えている範囲だけを取りに行くレイヤーへ、今の範囲を渡す（間引きは受け取る側）。
     function reportViewport() {
@@ -139,21 +143,21 @@ export function useMapLifecycle(
           ? [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()].map((n) => roundToDigits(n, 4))
           : null,
       });
-      settleViewport();
+      layerDataStatusRef.current.settleViewport();
       reportViewport();
     }
-    // zoomendとresizeで受ける。動いている最中のresizeはmoveendを出さず"resize"だけを出す。範囲を渡さないと、
-    // 広がった所が塗られない。
-    function handleZoomEndOrResize(e: { type: string }) {
-      debugLog("map:viewport", e.type, { zoom: roundToDigits(map.getZoom(), 2) });
-      settleViewport();
+    // ズームの終わりは後に"moveend"が続くのでそちらで受ける。動いている最中のresizeはmoveendを出さず"resize"だけを
+    // 出すので、ここで受ける。範囲を渡さないと、広がった所が塗られない。
+    function handleResize() {
+      debugLog("map:viewport", "resize", { zoom: roundToDigits(map.getZoom(), 2) });
+      layerDataStatusRef.current.settleViewport();
       reportViewport();
     }
     // 読み込み済みになった直後の一瞬は地物がまだ引けず、そこで数えると「空」に確定しうるため、"idle"でも数え直す。
     // "idle"では取得失敗を解除しない（settleViewportを呼ばない）——範囲が変わらなくても来るうえ、失敗したタイルも
     // 「読み込み済み」に数えられるため、続いている障害を「データなし」に化けさせる。
     function handleIdleRecompute() {
-      recompute();
+      layerDataStatusRef.current.recompute();
     }
     function handleRotate() {
       setMapBearing(map.getBearing());
@@ -162,8 +166,7 @@ export function useMapLifecycle(
     map.on("load", handleLoad);
     map.on("error", handleMapError);
     map.on("moveend", handleMoveEnd);
-    map.on("zoomend", handleZoomEndOrResize);
-    map.on("resize", handleZoomEndOrResize);
+    map.on("resize", handleResize);
     map.on("sourcedataloading", handleTrackedSourceDataLoading);
     map.on("sourcedata", handleTrackedSourceData);
     map.on("idle", handleIdleRecompute);
@@ -181,8 +184,7 @@ export function useMapLifecycle(
       map.off("load", handleLoad);
       map.off("error", handleMapError);
       map.off("moveend", handleMoveEnd);
-      map.off("zoomend", handleZoomEndOrResize);
-      map.off("resize", handleZoomEndOrResize);
+      map.off("resize", handleResize);
       map.off("sourcedataloading", handleTrackedSourceDataLoading);
       map.off("sourcedata", handleTrackedSourceData);
       map.off("idle", handleIdleRecompute);
@@ -205,10 +207,12 @@ export function useMapLifecycle(
     reloadStyle(map, `${mapStyleUrl()}?t=${Date.now()}`, {
       onLoaded: () => {
         styleReloadPendingRef.current = false;
+        setStyleLoadFailed(false);
         redraw(map);
       },
       onFailed: () => {
         styleReloadPendingRef.current = false;
+        setStyleLoadFailed(true);
       },
     });
   }, [mapRef, refreshToken, redraw]);
