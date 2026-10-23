@@ -123,7 +123,7 @@ def _composer(matrix: StaticEdgeScoreMatrix, *, weights=None, penalty=0.0, exclu
 
 
 def _snapshot(matrix, **kwargs):
-    return _composer(matrix, **kwargs).compose("leg", None, 0.0, +1)
+    return _composer(matrix, **kwargs).compose("leg", 0.0, +1)
 
 
 # --- 所要時間 -------------------------------------------------------------
@@ -223,6 +223,7 @@ def test_a_segment_without_data_on_the_weighted_axes_is_raised_by_the_mean_diffi
     assert leg.cost_lazy[1] == pytest.approx(leg.travel_seconds_lazy[1] * (1 + 0.5 * leg.difficulty_array[0] / 100))
 
 
+
 def test_a_density_axis_adds_seconds_in_proportion_to_the_count_and_its_share_of_the_weights():
     """1kmに信号2回の区間。停止密度の軸（傾き 100/11 点/(回/km)）と軸a（30点）に同じ重みを置くと、費用は
     所要時間 × (1 + P × 軸aの分15点/100) に、P × 重みの割合1/2 × 傾き/100 × 2回 × 想定速度で1km走る秒 を足したもの。
@@ -294,7 +295,7 @@ def test_the_search_order_holds_only_the_segments_on_the_search_graph():
     """同じ2点を結ぶ区間が2本あると、探索のグラフには1本しか載らない（載らない区間は-1・NaN）。"""
     composer = _composer(_matrix(3, distance=[1000.0, 2000.0, 3000.0]), lazy=[2, 0])
 
-    leg = composer.compose("leg", None, 0.0, +1)
+    leg = composer.compose("leg", 0.0, +1)
 
     assert leg.travel_seconds_lazy.tolist() == leg.travel_seconds_full[[2, 0]].tolist()
     assert [composer.lazy_row(row) for row in range(3)] == [1, -1, 0]
@@ -309,8 +310,8 @@ def test_the_search_order_holds_only_the_segments_on_the_search_graph():
 def test_without_an_hourly_forecast_every_leg_shares_one_composition():
     composer = _composer(_matrix(1), departure_wind=_departure_wind(3.0))
 
-    outbound = composer.compose("outbound", None, 0.0, +1, duration_hours=3.0)
-    inbound = composer.compose("inbound", None, 2.0, -1, duration_hours=3.0)
+    outbound = composer.compose("outbound", 0.0, +1, duration_hours=3.0)
+    inbound = composer.compose("inbound", 2.0, -1, duration_hours=3.0)
 
     assert inbound is outbound
     assert (len(outbound.cost_bins_lazy), outbound.bin_seconds, outbound.bin_start_hours) == (1, np.inf, ())
@@ -326,7 +327,7 @@ def test_without_an_hourly_forecast_every_leg_shares_one_composition():
     ],
 )
 def test_a_leg_is_cut_into_hourly_bins_over_its_expected_duration(duration_hours, bin_starts):
-    leg = _composer(_matrix(1), series=_series([0.0] * 12)).compose("leg", None, 1.0, +1, duration_hours=duration_hours)
+    leg = _composer(_matrix(1), series=_series([0.0] * 12)).compose("leg", 1.0, +1, duration_hours=duration_hours)
 
     assert leg.bin_start_hours == bin_starts
     assert len(leg.cost_bins_lazy) == len(leg.travel_bins_lazy) == len(bin_starts)
@@ -334,7 +335,7 @@ def test_a_leg_is_cut_into_hourly_bins_over_its_expected_duration(duration_hours
 
 
 def test_a_leg_toward_the_anchor_ends_at_its_offset():
-    leg = _composer(_matrix(1), series=_series([0.0] * 12)).compose("leg", None, 5.0, -1, duration_hours=2.0)
+    leg = _composer(_matrix(1), series=_series([0.0] * 12)).compose("leg", 5.0, -1, duration_hours=2.0)
 
     assert leg.bin_start_hours == (3.0, 4.0)
 
@@ -343,8 +344,8 @@ def test_legs_with_the_same_bins_but_a_different_middle_are_not_mixed_up():
     """同じ開始時刻・同じ本数でも、見込み時間が違えば代表のビンは変わる。"""
     composer = _composer(_matrix(1), series=_series([float(h) for h in range(12)]))
 
-    shorter = composer.compose("a", None, 0.0, +1, duration_hours=4.0)
-    longer = composer.compose("b", None, 0.0, +1, duration_hours=7.0)
+    shorter = composer.compose("a", 0.0, +1, duration_hours=4.0)
+    longer = composer.compose("b", 0.0, +1, duration_hours=7.0)
 
     assert shorter.cost_lazy.tolist() == shorter.cost_bins_lazy[2].tolist()
     assert longer.cost_lazy.tolist() == longer.cost_bins_lazy[3].tolist()
@@ -355,7 +356,7 @@ def test_a_tree_without_a_clock_reads_the_wind_at_each_segment_s_own_passage():
     composer = _composer(_matrix(2), series=_series([0.0, 8.0]))
     passage = np.array([0.0, 1.0])
 
-    leg = composer.compose("inbound", None, 3.0, -1, passage_hours=passage)
+    leg = composer.compose("inbound", 3.0, -1, passage_hours=passage)
 
     assert leg.travel_seconds_full[1] > leg.travel_seconds_full[0]
     assert (len(leg.cost_bins_lazy), leg.bin_start_hours) == (1, ())
@@ -363,13 +364,14 @@ def test_a_tree_without_a_clock_reads_the_wind_at_each_segment_s_own_passage():
 
 
 def test_trees_without_a_clock_that_pass_at_different_hours_are_not_mixed_up():
-    """同じ時刻・向きのレグでも、通過時刻が違えば前の合成を使い回さない（使い回すと別の時刻の風で探す）。"""
-    composer = _composer(_matrix(1), series=_series([0.0, 8.0]))
+    """同じ時刻・向きのレグでも、区間ごとの通過時刻が違えば前の合成を使い回さない（使い回すと別の時刻の風で探す）。
+    通過時刻の和が同じで並びだけ違う2本でも同じ。"""
+    composer = _composer(_matrix(2), series=_series([0.0, 8.0]))
 
-    calm = composer.compose("inbound", None, 3.0, -1, passage_hours=np.array([0.0]))
-    windy = composer.compose("inbound", None, 3.0, -1, passage_hours=np.array([1.0]))
+    first = composer.compose("inbound", 3.0, -1, passage_hours=np.array([0.0, 1.0]))
+    second = composer.compose("inbound", 3.0, -1, passage_hours=np.array([1.0, 0.0]))
 
-    assert windy.travel_seconds_full[0] > calm.travel_seconds_full[0]
+    assert second.travel_seconds_full[0] > first.travel_seconds_full[0]
 
 
 @pytest.mark.parametrize("wind_weight", [0.0, 1.0])
@@ -381,7 +383,7 @@ def test_values_recomposed_for_the_rows_on_the_route_match_the_composition_used_
     )
     weights = {"axis_a": 1.0, WIND_AXIS: wind_weight}
     composer = _composer(matrix, weights=weights, penalty=0.5, series=_series([0.0, 6.0]))
-    leg = composer.compose("leg", None, 0.0, +1, passage_hours=np.full(3, 1.0))
+    leg = composer.compose("leg", 0.0, +1, passage_hours=np.full(3, 1.0))
 
     values = composer.values_at_rows(np.array([2, 0]), np.array([1.0, 1.0]))
 
@@ -415,7 +417,7 @@ def _night_composer(n: int = 1) -> LegCostComposer:
 
 def test_the_night_axis_weighs_only_in_the_bins_ridden_in_the_dark(night_axis):
     """16時30分・17時30分・18時30分に始まるビンのうち、日没の後の最後だけに効く。"""
-    leg = _night_composer().compose("leg", None, 7.5, +1, duration_hours=3.0)
+    leg = _night_composer().compose("leg", 7.5, +1, duration_hours=3.0)
 
     ratio = leg.cost_bins_lazy[:, 0] / leg.travel_bins_lazy[:, 0]
     assert ratio.tolist() == pytest.approx([1.0, 1.0, 1.25])
@@ -426,7 +428,7 @@ def test_the_night_axis_keeps_weighing_by_the_hour_after_the_axes_are_saved_duri
     composer = _night_composer()
 
     with replaced_axis_definitions({}):
-        leg = composer.compose("leg", None, 7.5, +1, duration_hours=3.0)
+        leg = composer.compose("leg", 7.5, +1, duration_hours=3.0)
 
     ratio = leg.cost_bins_lazy[:, 0] / leg.travel_bins_lazy[:, 0]
     assert ratio.tolist() == pytest.approx([1.0, 1.0, 1.25])

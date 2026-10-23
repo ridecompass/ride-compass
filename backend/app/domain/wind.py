@@ -171,9 +171,10 @@ class WindForecastSeries:
             raise ValueError(f"WindForecastSeries: expected hourly steps, got {step_hours}h")
 
     def _sample_index(self, start: datetime, passage_hours: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """`start`から`passage_hours`時間後に最も近い時刻の添字と、系列の範囲の外で端へ寄せたか。"""
+        """`start`から`passage_hours`時間後に最も近い時刻の添字と、系列の範囲の外で端へ寄せたか。
+        ちょうど2つの時刻の中間は後の時刻へ倒す（`np.rint`の偶数丸めだと、中間が前後どちらへ倒れるかが時刻の偶奇で変わる）。"""
         start_offset_hours = (start - self.times[0]).total_seconds() / 3600
-        raw = np.rint(start_offset_hours + np.asarray(passage_hours, dtype=float)).astype(np.int64)
+        raw = np.floor(start_offset_hours + np.asarray(passage_hours, dtype=float) + 0.5).astype(np.int64)
         index = np.clip(raw, 0, len(self.times) - 1)
         return index, index != raw
 
