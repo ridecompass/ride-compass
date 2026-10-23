@@ -15,12 +15,11 @@ import numpy as np
 
 from app.domain.dynamic_way_values import ServedMaterialFormula
 from app.domain.rain import RAIN_MATERIAL_DECIMALS, RAIN_MATERIAL_IDS, rain_material_columns
-from app.domain.region import tile_bounds_lonlat
 from app.domain.time_zone import JST
 from app.domain.way_value_formula import FALSE, WayValueFormula, feature
 from app.infrastructure.debug_log import log_external_call, log_throttled_warning
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.services.feature_midpoints import feature_midpoint_arrays
+from app.services.feature_midpoints import TileMidpoints
 from app.services.weather_service import WeatherService
 
 _CATEGORY = "region:rain-way-values"
@@ -36,15 +35,17 @@ class RainWayService:
     material_ids = RAIN_MATERIAL_IDS
     conditions_type = RainConditions
 
-    def __init__(self, repository: RoadGraphRepository, weather_service: WeatherService, material_id: str):
-        self._repository = repository
+    def __init__(self, midpoints: TileMidpoints, weather_service: WeatherService, material_id: str):
+        self._midpoints = midpoints
         self._weather_service = weather_service
         self.material_id = material_id
 
     @classmethod
-    def build(cls, repository: RoadGraphRepository, weather_service: WeatherService, material_id: str) -> "RainWayService":
+    def build(
+        cls, repository: RoadGraphRepository, weather_service: WeatherService, midpoints: TileMidpoints, material_id: str,
+    ) -> "RainWayService":
         """登録テーブルから呼ぶための統一シグネチャ。依存の要否はサービスごとに違う。"""
-        return cls(repository=repository, weather_service=weather_service, material_id=material_id)
+        return cls(midpoints=midpoints, weather_service=weather_service, material_id=material_id)
 
     @classmethod
     def material_formula(cls, material_id: str) -> ServedMaterialFormula:
@@ -55,14 +56,13 @@ class RainWayService:
 
         履歴が無い・古い、取込範囲外、観測所の値が欠測の道は結果から除く（地図上は「データなし」）。
         """
-        bbox = tile_bounds_lonlat(z, x, y)
         with log_external_call(_CATEGORY, z=z, x=x, y=y, material=self.material_id) as fields:
             stations = await self._weather_service.get_station_rain_materials(datetime.now(JST))
             if stations is None:
                 fields["rain_history"] = "unavailable"
                 log_throttled_warning(_CATEGORY, "雨の材料配信の観測履歴が無いか古い z=%d x=%d y=%d", z, x, y)
                 return {}
-            features = await feature_midpoint_arrays(self._repository, z, x, y, bbox, fields)
+            features = await self._midpoints.arrays(z, x, y, fields)
             if features is None:
                 return {}
             keys, latitudes, longitudes = features
