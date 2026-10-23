@@ -83,9 +83,10 @@ function markDeliveryFailed(ref: JmaTileRef | null): void {
 }
 
 /** 配信元が応答した（中身の有無は問わない）。疎な格子状タイルの404もここに当たる——
- * 空であることを配信元が答えているため、その要素の配信は生きている。 */
+ * 空であることを配信元が答えているため、その要素の配信は生きている。消すのは同じコマの失敗だけ——コマを送った後にも
+ * 前のコマの要求が返ってくるので、別のコマの応答で消すと、いま描くコマの失敗が知らされない。 */
 function markDeliveryHealthy(ref: JmaTileRef | null): void {
-  if (!ref || !tileFailures.has(ref.delivery.id)) return;
+  if (!ref || tileFailures.get(ref.delivery.id) !== ref.frameUrl) return;
   const next = new Map(tileFailures);
   next.delete(ref.delivery.id);
   publishFailures(next);
