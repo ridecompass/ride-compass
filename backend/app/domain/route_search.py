@@ -363,14 +363,13 @@ def route_passages(
     legs: Sequence[LegCostArrays],
     structure: TurnExpandedStructure,
     path: Sequence[int],
-    rows: Sequence[int],
     distances_m: Sequence[float],
     leg_of_edge: Sequence[int],
     speed_kmh: float,
 ) -> list[EdgePassage]:
     """経路を探索と同じ規則でたどり、区間ごとに時刻ビンと出発からの秒を決める。
 
-    `path`は区間の番号（探索の行）、`rows`は同じ区間の切り出した区間の行、`distances_m`は区間の長さ。
+    `path`は区間の番号（探索の行）、`distances_m`は区間の長さ。
     探索（`domain/routing.py`の前向きDijkstra・A*）はレグの中の経過時間でビンを選ぶ: レグの最初の区間は
     ビン0、次の区間は前の区間を抜けた時点（曲がる待ちを足す前）の経過時間のビン。区間ごとの秒は、探索の
     コストの下地になっている配列（`LegCostArrays.travel_bins_lazy`、走行モデル＋停止の待ち）を
@@ -385,24 +384,27 @@ def route_passages(
     passages: list[EdgePassage] = []
     elapsed = 0.0
     leg_elapsed = 0.0
+    # この区間へ入るときの曲がる待ち。ビンを選んだあとでレグの経過時間へ足す。
+    entry_wait = 0.0
     previous_leg: int | None = None
-    for i, (index, row, distance_m, leg_index) in enumerate(zip(path, rows, distances_m, leg_of_edge)):
+    for i, (index, distance_m, leg_index) in enumerate(zip(path, distances_m, leg_of_edge)):
         leg = legs[leg_index]
         if leg_index != previous_leg:
             leg_elapsed = 0.0
+            entry_wait = 0.0
             previous_leg = leg_index
         bin_count = leg.travel_bins_lazy.shape[0]
         time_bin = time_bin_of(leg_elapsed, leg.bin_seconds, bin_count)
-        seconds = float(leg.travel_seconds_full[row] if bin_count == 1 else leg.travel_bins_lazy[time_bin, index])
+        seconds = float(leg.travel_bins_lazy[time_bin, index])
         if not np.isfinite(seconds):
             seconds = distance_m / fallback_ms
         passages.append(EdgePassage(
             time_bin=time_bin, elapsed_seconds=elapsed, seconds=seconds,
             beyond_bins=bin_count > 1 and leg_elapsed >= bin_count * leg.bin_seconds,
         ))
-        wait = waits[i] if i < len(waits) else 0.0
-        leg_elapsed += seconds + (wait if i + 1 < len(path) and leg_of_edge[i + 1] == leg_index else 0.0)
-        elapsed += seconds + wait
+        leg_elapsed += entry_wait + seconds
+        entry_wait = waits[i] if i < len(waits) else 0.0
+        elapsed += seconds + entry_wait
     return passages
 
 

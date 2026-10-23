@@ -480,13 +480,20 @@ class RoadGraphEngine:
         context.legs = [*context.legs[:leg_index], outbound]
         traveled = traveled_columns(context, fixed.edges)
 
-        backward_tree = None
-        if fixed.closes and leg_index == 0:
-            # 経由地の無い周回は、出発地からの往路と出発地への帰りの最短が同じ2点を結ぶので、帰りの最短を往路の長さで
-            # 代えられる（リング）。逆向きの木を求めない。
+        # 経由地の無い周回は、出発地からの往路と出発地への帰りの最短が同じ2点を結ぶので、帰りの最短を往路の長さで
+        # 代えられる（リング）。逆向きの木を求めない。
+        uses_ring = fixed.closes and leg_index == 0
+        if uses_ring:
             ring_lower_m, outbound_upper_m, _ = turnaround_ring_m(distance_km, distance_tolerance_km)
             band_km = (ring_lower_m / 1000, outbound_upper_m / 1000)
         else:
+            outbound_upper_m = LengthBand.from_km(distance_km, distance_tolerance_km).upper_m - fixed_m
+            band_km = ((distance_km - distance_tolerance_km), (distance_km + distance_tolerance_km))
+        if outbound_upper_m <= 0:
+            logger.info("select_turnarounds fixed_km=%.1f exceeds the target", fixed_m / 1000)
+            return []
+        backward_tree = None
+        if not uses_ring:
             # 帰りレグ: 終点へ向かうレグとして、全長の目標ぶんの所要時間を終点への到着予定時刻に置く。
             inbound = await self._compose_inbound(context, end_point, distance_km, remaining_km)
             context.legs = [*context.legs[:leg_index + 1], inbound]
@@ -497,11 +504,6 @@ class RoadGraphEngine:
                     reverse=True, edge_seconds=inbound.travel_seconds_lazy,
                 )
             )
-            outbound_upper_m = LengthBand.from_km(distance_km, distance_tolerance_km).upper_m - fixed_m
-            band_km = ((distance_km - distance_tolerance_km), (distance_km + distance_tolerance_km))
-        if outbound_upper_m <= 0:
-            logger.info("select_turnarounds fixed_km=%.1f exceeds the target", fixed_m / 1000)
-            return []
         tree_started = start_timer()
 
         def outbound_tree() -> TurnExpandedTree:
@@ -657,7 +659,7 @@ class RoadGraphEngine:
         heuristic = heuristic_to(context, fixed.end_node)
 
         def search_avoiding_traveled() -> list[int] | None:
-            original = cost_bins[:, penalized_columns].copy()
+            original = cost_bins[:, penalized_columns]
             try:
                 cost_bins[:, penalized_columns] = retrace_penalized(original)
                 return turn_expanded_shortest_path(
@@ -727,7 +729,9 @@ class RoadGraphEngine:
                     context, f"経路がつながっていません index={index}", to_node=head, next_from_node=following_tail,
                 )
         snapped = (context.origin_node, False) if destination is None else snap_point(context, destination)
-        if snapped is not None and heads[-1] != snapped[0]:
+        if snapped is None:
+            raise RoutingError("終点を道路網へ寄せられません")
+        if heads[-1] != snapped[0]:
             refuse_at_nodes(context, "経路が終点に着いていません", expected=snapped[0], actual=heads[-1])
 
         lengths = context.statics.edge_length_m[path].tolist()
