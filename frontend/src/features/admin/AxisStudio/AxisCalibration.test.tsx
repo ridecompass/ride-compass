@@ -200,6 +200,24 @@ describe("線を決めて保存する", () => {
     });
   });
 
+  it("0点の端を100点の端の向こうへ動かしても、つかんだ取っ手は0点の端のまま動き続ける", async () => {
+    await openAxis(SLOPE);
+    const zeroEnd = screen.getByRole("slider", { name: "0点の端" });
+    const zeroInput = screen.getByRole("spinbutton", { name: "0点にする値" });
+    const hundredInput = screen.getByRole("spinbutton", { name: "100点にする値" });
+
+    // 保存済みの線は0〜8で、Shiftつきの1回は8より小さく、2回で8を越える。
+    fireEvent.keyDown(zeroEnd, { key: "ArrowRight", shiftKey: true });
+    fireEvent.keyDown(zeroEnd, { key: "ArrowRight", shiftKey: true });
+    const crossed = Number((zeroInput as HTMLInputElement).value);
+    expect(crossed).toBeGreaterThan(8);
+    expect(zeroEnd).toHaveAccessibleName("0点の端");
+
+    fireEvent.keyDown(zeroEnd, { key: "ArrowRight" });
+    expect(Number((zeroInput as HTMLInputElement).value)).toBeGreaterThan(crossed);
+    expect(hundredInput).toHaveValue(8);
+  });
+
   it("0点と100点を同じ値にすると、そう言って保存させない", async () => {
     const { user } = await openAxis(SLOPE);
     const hundred = screen.getByRole("spinbutton", { name: "100点にする値" });
@@ -237,6 +255,13 @@ describe("線を決めて保存する", () => {
     expect(saveButton()).toBeEnabled();
   });
 
+  it("密度の軸でも、保存済みの線が0から伸びる直線でなければ、置き換わることを言う", async () => {
+    const edited = axis(DENSITY.axis_id, DENSITY.label, HAND_EDITED_LINE);
+    await openAxis(edited, [edited]);
+    expect(await screen.findByText(/保存すると、上の値で作った線に置き換わります/)).toBeInTheDocument();
+    expect(screen.getByLabelText("保存済みの線")).toBeInTheDocument();
+  });
+
   it("保存に失敗したら、backendの理由をそのまま出す", async () => {
     onSameOrigin("PUT", "/admin/api/axis-definitions/:axisId", () =>
       Response.json({ detail: "折れ点が昇順ではありません" }, { status: 422 }),
@@ -263,6 +288,15 @@ describe("地図の段の境界", () => {
 
     await user.click(saveButton());
     expect((await savedPayload()).display_thresholds_override).toEqual([high - 1, high]);
+  });
+
+  it("隣の境界との間が狭く、動かすと隣と重なるときは動かさない", async () => {
+    const narrow = axis(SLOPE.axis_id, SLOPE.label, SLOPE_LINE, { display_thresholds_override: [10, 10.5, 11] });
+    await openAxis(narrow, [narrow]);
+    const middle = await screen.findByRole("slider", { name: "段の境界2" });
+    fireEvent.keyDown(middle, { key: "ArrowUp" });
+    fireEvent.keyDown(screen.getByRole("slider", { name: "段の境界2" }), { key: "ArrowDown" });
+    expect(screen.getByRole("textbox", { name: "段の境界" })).toHaveValue("10, 10.5, 11");
   });
 
   it("数の入力でも境界を決めて保存でき、「自動に戻す」で上書きを外す", async () => {

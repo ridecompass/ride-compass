@@ -182,6 +182,19 @@ describe("PointSearch 打つ欄", () => {
     expect(within(list).getByRole("button")).toHaveTextContent(`${FACILITY.name}${FACILITY.area}0.2km`);
   });
 
+  it("同じ文字・同じ地図の真ん中で押し直すと引き直す（地図が動いて真ん中を作り直しても、位置が同じなら同じ真ん中）", async () => {
+    const sent = onBackend("GET", "/api/place-search", () => Response.json({ candidates: [FACILITY] }));
+    const { moveMap } = renderSearch();
+    await searchFor("浅草寺");
+    await screen.findByRole("list", { name: "地点の候補" });
+
+    moveMap({ ...TOKYO_STATION });
+    await userEvent.type(searchBox(), "{Enter}");
+
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    expect(sent[1].query).toEqual({ q: "浅草寺", ...sentCenter(TOKYO_STATION) });
+  });
+
   it("当たらなければそう出し、検索が使えなければ口の文を出す", async () => {
     onBackend("GET", "/api/place-search", () => Response.json({ candidates: [] }));
     renderSearch();

@@ -21,7 +21,8 @@ import time
 
 from _shared import ORIGINAL, RECHECK_LIST, baseline_of, fn_of, read_lines, read_results, read_stats
 
-OUT = os.environ["MUT_OUT"]
+# 元の版の基準は子を別の作業ディレクトリで起こすので、子へ渡す置き場は絶対パスにする。
+OUT = os.path.abspath(os.environ["MUT_OUT"])
 DB_PREFIX = os.environ["MUT_DB_PREFIX"]
 DB_SERVER = os.environ["TEST_DATABASE_SERVER"]
 STOP_AFTER = float(os.environ.get("MUT_STOP_AFTER") or "inf")

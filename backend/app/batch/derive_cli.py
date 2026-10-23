@@ -11,7 +11,8 @@
 （`stage_fingerprints`）派生の記録（`derived_stages`）と比べ、同じ段の表は作業用のスキーマに作らず、`public`の前回の表を
 そのまま読み、入れ替えでも残す。前の段の指紋も入力に入れるので、流した段を読む後ろの段は必ず流れる——外部キーで
 表を指す段も、指す表を書く段を前の段に挙げるので、指される表を作り直せば一緒に作り直す。全部の段が同じなら、
-作業用のスキーマも道路網の配列も入れ替えも作らずに終える。段は単独の入口を持たない。
+作業用のスキーマも入れ替えも作らずに終え、道路網の配列は今の世代の置き場が無いときだけ`public`の表から作って置く。
+段は単独の入口を持たない。
 
 **道路網の配列も、入力が前回と同じなら作らない。** 配列の入力は、配列の読み出しが読む表を書く段の指紋・直に読むソースの取込・
 事故の収録年数・配列を組むコードで（`network_inputs`）、前回の置き場の入力と同じなら、その配列を新しい世代の名前で出し直す。
@@ -249,12 +250,12 @@ async def _create_work_tables(conn: asyncpg.Connection, tables: list[str]) -> No
     logger.info("作業用のスキーマ %s に表を作った: %s", _WORK_SCHEMA, ", ".join(tables))
 
 
-async def _build_road_network(database_url: str, revision: int, fingerprints: Mapping[str, str],
-                              runs: Mapping[str, int]) -> Path:
-    """作業用のスキーマの表から道路網の配列を作り、読み手がまだ拾わない名前で置く。入力が前回の置き場と同じなら作らずに、
-    その配列を出し直す。"""
+async def _build_road_network(database_url: str, schema: str | None, revision: int,
+                              fingerprints: Mapping[str, str], runs: Mapping[str, int]) -> Path:
+    """`schema`（Noneなら`public`）の表から道路網の配列を作り、読み手がまだ拾わない名前で置く。入力が前回の置き場と同じなら
+    作らずに、その配列を出し直す。"""
     started = time.perf_counter()
-    async with batch_session_factory(database_url, schema=_WORK_SCHEMA) as session_factory:
+    async with batch_session_factory(database_url, schema=schema) as session_factory:
         async with session_factory() as session:
             repository = RoadGraphRepository(session)
             stages, sources = network_inputs(await repository.network_relations())
@@ -322,7 +323,17 @@ async def run(database_url: str) -> int:
         recorded = await derived_data_meta.read_stage_fingerprints(conn)
         changed = [stage for stage in STAGES if recorded.get(stage.name) != fingerprints[stage.name]]
         if not changed:
-            logger.info("どの段も入力が前回と同じなので、作り直さずに終える（派生の表・世代・道路網の配列は前のまま）")
+            revision = await conn.fetchval("SELECT revision FROM derived_data_meta")
+            if road_network_store.placed(revision) is not None:
+                logger.info("どの段も入力が前回と同じなので、作り直さずに終える（派生の表・世代・道路網の配列は前のまま）")
+                return 0
+            # 前の作り直しが表を入れ替えて世代を進めたあと、配列を付け替える前に落ちた。段の指紋は入れ替えた表と一緒に
+            # 記録されているので、ここで作らないと、流し直しても配列が世代に追いつかない。
+            logger.warning("どの段も入力が前回と同じだが、派生データの世代 %d の道路網の置き場が無いので、配列だけを作る",
+                           revision)
+            pending = await _build_road_network(database_url, None, revision, fingerprints, runs)
+            road_network_store.publish(pending)
+            pending = None
             return 0
         # 作った取込・列・段の指紋の記録も作業用のスキーマで書く——事故密度の分母が取込の記録から読まれ、作業用のスキーマから
         # 作る道路網の配列も数と同じ取込の年で割るため。どの記録も派生の表と一緒に入れ替わる。
@@ -344,7 +355,7 @@ async def run(database_url: str) -> int:
             logger.info("段 %s 完了 / %s", stage.name,
                         format_duration(time.perf_counter() - stage_started))
         revision = (await conn.fetchval("SELECT revision FROM derived_data_meta") or 0) + 1
-        pending = await _build_road_network(database_url, revision, fingerprints, runs)
+        pending = await _build_road_network(database_url, _WORK_SCHEMA, revision, fingerprints, runs)
         await _swap(conn, tables, revision)
         road_network_store.publish(pending)
         pending = None

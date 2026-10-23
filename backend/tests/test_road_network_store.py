@@ -164,6 +164,27 @@ def test_a_network_built_from_the_same_inputs_is_placed_again_under_the_new_revi
     assert [path.name for path in store.iterdir()] == [road_network_store.directory_name(4)]
 
 
+def _disk_full(*args, **kwargs):
+    raise OSError(28, "No space left on device")
+
+
+@pytest.mark.parametrize("place", [
+    lambda: road_network_store.write_pending(_network(revision=4)),
+    lambda: road_network_store.reuse_pending("a", 4),
+], ids=["書く", "出し直す"])
+def test_a_network_that_fails_while_being_placed_leaves_nothing_behind(store, monkeypatch, place):
+    """置く途中で落ちると、呼び手は書きかけのディレクトリを受け取れず消せない。書きかけは名前の形に合わず、
+    片付け（`prune`・`prune_other_shapes`）にも拾われないので、残せば道路網1つぶんのディスクを持ち続ける。"""
+    road_network_store.publish(road_network_store.write_pending(_network(revision=3), "a"))
+    monkeypatch.setattr(np, "save", _disk_full)
+    monkeypatch.setattr(road_network_store.os, "link", _disk_full)
+
+    with pytest.raises(OSError):
+        place()
+
+    assert [path.name for path in store.iterdir()] == [road_network_store.directory_name(3)]
+
+
 def test_the_newest_revision_of_the_current_shape_is_read(store):
     """付け替えたあと古い世代を消す前に落ちた置き場が残っていても、最も新しい世代を読む。
     世代が読めなかったDBで作ったもの（None）は、世代のあるものより古い。"""

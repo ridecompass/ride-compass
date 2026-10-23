@@ -21,7 +21,7 @@ interface EditDifferenceProps {
 
 /**
  * 編集で作ったルートの中身の先頭に出す「元との違い」: 元の名前と距離・変えた区間の数、ルート結果と同じ指標の差、
- * 変えた区間（元の何km〜何km）ごとの長さの差。差の色は編集面（`RouteSplicePanel`）と同じく、減ったら楽になった側の色。
+ * 変えた区間（元の何km〜何km）ごとの長さの差。差の色は、減ったら楽になった側の色。
  */
 export default function EditDifference({ originName, origin, edited, onShowOrigin }: EditDifferenceProps) {
   // 2本の累積距離（数千点）とEdge id列の差を求めるので、ルートが変わったときだけ作り直す（グラフをなぞる間も描き直される）。

@@ -38,6 +38,7 @@ from app.domain.region import EDGE_UNIT_MIN_ZOOM
 from app.domain.way_value_formula import FALSE, WayValueFormula, condition_names, feature_names
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services.axis_registry_service import check_loadable_after_write
+from app.services.feature_midpoints import TileMidpoints
 from app.services.gradient_way_service import GradientWayService
 from app.services.rain_way_service import RainWayService
 from app.services.weather_service import WeatherService
@@ -79,7 +80,7 @@ class DedicatedWayValueServiceType(Protocol):
     def material_formula(self, material_id: str) -> ServedMaterialFormula: ...
 
     def build(
-        self, repository: RoadGraphRepository, weather_service: WeatherService, material_id: str
+        self, repository: RoadGraphRepository, weather_service: WeatherService, midpoints: TileMidpoints, material_id: str,
     ) -> DedicatedWayValueService: ...
 
 
@@ -152,19 +153,15 @@ def _condition_names(kinds: Iterable[type]) -> list[WayValueConditionName]:
     return list(dict.fromkeys(names))
 
 
-def _build_service(
-    material: str, repository: RoadGraphRepository, weather_service: WeatherService
-) -> DedicatedWayValueService:
-    return _SERVICES_BY_MATERIAL[material].build(repository, weather_service, material)
-
-
 #: 材料id→その材料の配信サービス。
 MaterialServiceBuilder = Callable[[str], DedicatedWayValueService]
 
 
 def material_service_builder(repository: RoadGraphRepository, weather_service: WeatherService) -> MaterialServiceBuilder:
-    """材料ごとの配信サービスを、同じリポジトリ・気象サービスで組み立てる。"""
-    return lambda material: _build_service(material, repository, weather_service)
+    """材料ごとの配信サービスを、同じリポジトリ・気象サービス・道の中ほどの点の置き場で組み立てる。組み立てたサービスは
+    中ほどの点をタイルごとに1回だけ読んで分け合うので、組み立ては`repository`のセッションと同じ1つの要求の中で使う。"""
+    midpoints = TileMidpoints(repository)
+    return lambda material: _SERVICES_BY_MATERIAL[material].build(repository, weather_service, midpoints, material)
 
 
 class FeatureMaterialSource(Protocol):

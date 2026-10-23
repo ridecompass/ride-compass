@@ -46,8 +46,10 @@ class GradientWayService:
         self._repository = repository
 
     @classmethod
-    def build(cls, repository: RoadGraphRepository, weather_service: object, material_id: str) -> "GradientWayService":
-        """登録テーブルから呼ぶための統一シグネチャ。勾配は天候を要らず、材料は1つだけ。"""
+    def build(
+        cls, repository: RoadGraphRepository, weather_service: object, midpoints: object, material_id: str,
+    ) -> "GradientWayService":
+        """登録テーブルから呼ぶための統一シグネチャ。勾配は天候も道の中ほどの点も要らず、材料は1つだけ。"""
         return cls(repository=repository)
 
     @classmethod

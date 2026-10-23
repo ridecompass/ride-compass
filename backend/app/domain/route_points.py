@@ -48,8 +48,8 @@ def points_along_route(
     `POI_CLUSTER_EPS_M`以内に連なれば、最初の1つにする。
     """
     passes: list[tuple[float, RoutePointHit]] = []
-    # 点の鍵→(最後に当たった区間の位置, その通過の`passes`での位置)
-    last_seen: dict[str, tuple[int, int]] = {}
+    # 点の鍵→(最後に当たった区間の位置, その通過の`passes`での位置, その通過で当たった区間)
+    last_seen: dict[str, tuple[int, int, set[tuple[int, int]]]] = {}
     for index, (osm_way_id, segment_index, forward) in enumerate(edges):
         key = (osm_way_id, segment_index)
         length_km = along_km[index + 1] - along_km[index]
@@ -58,14 +58,16 @@ def points_along_route(
             fraction = hit.fraction if forward else 1.0 - hit.fraction
             km = along_km[index] + fraction * length_km
             seen = last_seen.get(hit.point_key)
-            if continues and seen is not None and seen[0] == index - 1:
-                position = seen[1]
+            # 1回の通過が同じ区間に2度当たることはない（別の区間を挟んで同じ区間へ戻れば、2回目の通過）。
+            if continues and seen is not None and seen[0] == index - 1 and key not in seen[2]:
+                position, segments = seen[1], seen[2]
                 if hit.distance_m < passes[position][1].distance_m:
                     passes[position] = (km, hit)
             else:
-                position = len(passes)
+                position, segments = len(passes), set()
                 passes.append((km, hit))
-            last_seen[hit.point_key] = (index, position)
+            segments.add(key)
+            last_seen[hit.point_key] = (index, position, segments)
 
     passes.sort(key=lambda entry: entry[0])
     previous_in_group: dict[tuple[str, str], float] = {}

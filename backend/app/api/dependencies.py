@@ -51,7 +51,7 @@ from app.services.dedicated_way_values import (
 from app.services.derived_data_freshness_service import DerivedDataFreshnessService
 from app.services.feature_materials import FeatureMaterialService
 from app.services.flood_service import FloodService
-from app.services.graph_service import GraphService
+from app.services.graph_service import GraphService, SearchMemory
 from app.services.jma_amedas_service import JmaAmedasService
 from app.services.landcover_tile_service import get_landcover_tile
 from app.services.material_coverage_service import MaterialCoverageService
@@ -129,21 +129,27 @@ def get_flood_service():
     return FloodService(get_http_client(SLOW_JSON_TIMEOUT), area_data_cache=_area_data_cache, flood_cache=_flood_cache)
 
 
+#: 同時に動く生成どうしが分け合うメモリ。生成ごとのサービスはリクエストごとに作られるため、プロセスの側で持つ。
+_search_memory = SearchMemory()
+
+
 @asynccontextmanager
 async def _open_route_generation_setup(
     long_sessions: async_sessionmaker[AsyncSession], requested: RequestedConditions
 ) -> AsyncIterator[RouteGenerationSetup]:
     """ルート生成ジョブが使う`RouteGenerationSetup`を組み立てる非同期コンテキストマネージャ。"""
     async with long_sessions() as session:
-        yield assemble_route_generation_setup(
-            GraphService(repository=RoadGraphRepository(session)), get_weather_service(), requested,
-        )
+        graph_service = GraphService(RoadGraphRepository(session), _search_memory)
+        try:
+            yield assemble_route_generation_setup(graph_service, get_weather_service(), requested)
+        finally:
+            graph_service.release_search_memory()
 
 
 async def get_graph_service(tile_sessions: TileSessions):
     """区間を押すたびの単発の読み出し（区間の近くの点）。タイルと同じく短い問い合わせなので、タイル用のセッション工場を使う。"""
     async with tile_sessions() as session:
-        yield GraphService(RoadGraphRepository(session))
+        yield GraphService(RoadGraphRepository(session), _search_memory)
 
 
 RouteGenerationSetupOpener = Callable[[RequestedConditions], AbstractAsyncContextManager[RouteGenerationSetup]]

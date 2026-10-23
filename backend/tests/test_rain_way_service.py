@@ -11,6 +11,7 @@
 from app.domain.rain import HOURS_SINCE_RAIN, RAIN_HISTORY_HOURS, rain_window_material_id
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services.rain_way_service import RainWayService
+from app.services.feature_midpoints import TileMidpoints
 from app.services.weather_service import WeatherService
 from tests import rain_history_fake
 from tests.bound_fake import bound
@@ -43,7 +44,7 @@ async def _observe(rain_mm: dict[str, float | None]):
 
 def _service(repository, material_id: str) -> RainWayService:
     """観測所ごとの材料の値の保持は`WeatherService`の実体が持つので、組み立てるたびに空から始まる。"""
-    return RainWayService(repository, WeatherService(), material_id)
+    return RainWayService(TileMidpoints(repository), WeatherService(), material_id)
 
 
 async def test_each_road_takes_the_value_of_its_nearest_rain_gauge(fake_redis):
