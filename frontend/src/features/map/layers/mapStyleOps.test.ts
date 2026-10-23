@@ -62,7 +62,7 @@ describe("面レイヤーの差し込み位置", () => {
       { id: "water", type: "fill", "source-layer": "water" },
       { id: "highway", type: "line", "source-layer": "transportation" },
     ];
-    reloadStyle(map, "replaced", () => prepareBasemap(map));
+    reloadStyle(map, "replaced", { onLoaded: () => prepareBasemap(map), onFailed: () => {} });
     screen.loadStyle(replaced);
     prepareBasemap(map);
     expect(areaLayerAnchor(map)).toBeUndefined();
@@ -174,7 +174,7 @@ describe("基礎地図の店・施設", () => {
     apply(HIDE);
     const hidden = map.getStyle().layers;
 
-    reloadStyle(map, "basemap", () => apply(HIDE));
+    reloadStyle(map, "basemap", { onLoaded: () => apply(HIDE), onFailed: () => {} });
     apply(HIDE);
     screen.loadStyle(LIBERTY_POI_LAYERS);
     screen.emit("style.load");
