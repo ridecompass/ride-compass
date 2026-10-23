@@ -47,7 +47,7 @@ def test_two_services_for_one_material_fail_at_registration():
         material_ids = ("gradient_percent",)
 
         @classmethod
-        def build(cls, repository, weather_service, material_id):
+        def build(cls, repository, weather_service, midpoints, material_id):
             return cls()
 
     class Second(First):
