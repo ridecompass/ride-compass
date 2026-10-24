@@ -222,7 +222,7 @@ class EvaluatedRoute(StrictModel):
     # いちばんまっすぐに近い道へ進む所は入れない（`domain/turn_structure.py: turns_along`）。`edge_ids`が空の候補では空のまま。
     turns: list[RouteTurn]
     # 置いた経由地を通る所の始点からの道のり（km）を、置いた順に。区間の始まりの道のりと同じ物差し（`along_route_km`）。
-    # 置いた経由地を知らない経路（区間の乗り換えで組んだもの）では空のまま。
+    # 区間の乗り換えで組んだ経路が置いた経由地を1つでも通らなければ空のまま（何番目が何番目の経由地かを崩さないため、一部だけ抜かない）。
     waypoint_distances_km: list[float]
 
 
