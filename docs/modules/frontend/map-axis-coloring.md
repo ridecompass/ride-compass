@@ -17,7 +17,7 @@
 | `lib/mapDisplay/valueScale.ts` | 地図表示値の種類（`lib/mapDisplay/valueScale.ts: MapValueKind`: 難易度／符号付き材料）ごとの既定しきい値・配色（HSL補間）と、地図が値を塗る宣言（`lib/mapDisplay/valueScale.ts: MapPaintDeclaration`）・段の並び（`lib/mapDisplay/valueScale.ts: valueBands`）・値が段に入るかの式（`lib/mapDisplay/valueScale.ts: bandCondition`・`lib/mapDisplay/valueScale.ts: bandStep`）。ルート前の道の線・ルート後の色分け・凡例・管理画面のプレビューが共有する（下記「valueScale.ts」）。画面に出す難易度と負荷の数字の桁（`lib/mapDisplay/valueScale.ts: DIFFICULTY_DECIMALS`・`lib/mapDisplay/valueScale.ts: formatDifficulty`と、目盛りの上端「/100」を添える`lib/mapDisplay/valueScale.ts: DIFFICULTY_SCALE_SUFFIX`・`lib/mapDisplay/valueScale.ts: formatDifficultyOutOfScale`。桁はbackendの`lib/mapDisplay/valueScale.ts: DIFFICULTY_DECIMALS`を生成物`mapDisplay.ts: mapDisplay.valueScale.difficultyDecimals`で読む。負荷は`lib/mapDisplay/valueScale.ts: LOAD_DECIMALS`・`lib/mapDisplay/valueScale.ts: formatLoad`で整数）も持ち、難易度の数字を出す画面はどれもここを通す（[ルート設定・結果パネル](route-settings-and-results.md)「難易度の数字の桁」） |
 | `features/map/scene/groups/axisLines.ts` | ルート確定前に評価軸の値で道を塗る線の宣言。道ごとの材料のfeature-stateと走る条件のglobal-state、段の色、値が無い道・取得中の道の色と濃さ、値が無い道の破線、凡例で隠した段の落とし方（下記「評価軸の線」） |
 | `features/map/scene/wayValueFormula.ts` | 式の木をMapLibreの式へ置き換える唯一の所（下記「評価軸の線」）。木の中身は持たず、節の種類ごとの置き換え方だけを持つ |
-| `features/map/layers/dynamicWayValues.ts` | 材料を引く道路タイルの選び方（地図のズームをタイルのある範囲へ丸め、画面を覆うタイルを並べる）・複数タイル応答の統合（材料非依存の共通部分） |
+| `features/map/layers/dynamicWayValues.ts` | 材料を引く道路タイルの選び方（地図のズームをタイルのある範囲へ丸め、画面を覆うタイルを並べる。1回の数の上限を超える傾けた・回した大きな画面では、画面の中心に近いタイルから上限まで取り、端を落としたことを返す）・複数タイル応答の統合（材料非依存の共通部分） |
 | `features/map/layers/webMercatorTile.ts` | Web MercatorのXYZタイルと緯度経度の行き来（点のタイル座標・点を含むタイル（世界の端はタイルの番号の範囲へ寄せる）・タイルが覆う範囲）。backendと同じ式で、一致は表の組`region`で照らす。道路タイルの値を引くタイルと、気象庁のタイルの在否の判定（`jmaTileIndex.ts`）が同じ式を通る |
 | `lib/mapDisplay/mapColorLegend.ts` | 地図上の色分け凡例（`lib/mapDisplay/mapColorLegend.ts: MapColorLegendBand`型・`lib/mapDisplay/mapColorLegend.ts: buildRangeLegendBands`・`lib/mapDisplay/mapColorLegend.ts: rangeStepLabel`）の共通ロジックと、値が無い行（`lib/mapDisplay/mapColorLegend.ts: NO_DATA_LEGEND_BAND`）。凡例を作る関数（`features/map/view/lens.ts`）・道の属性の凡例（`features/map/scene/legends.ts`）と管理画面が使う |
 | `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「評価で塗る」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上のピルが、道のりのグラフの「評価で塗る」の切り替えと同じ筆の絵（`lucideIcons.tsx: EvaluationPaintIcon`）と、選んでいる評価軸の名前と凡例の色の帯（段の数に依らない固定の幅）を示し、タップで縦の一覧（評価に使用中の軸を先、未使用の軸を後。各行に軸のアイコン・値が変わる走る条件のアイコン・「未使用」・(i) の説明）を開く。一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——選んでも閉じず、選んでいる行をもう一度押すと外れ、選んでいる行の ▶ で凡例と色の前提（`view/lens.ts: lensPremises`）を開き、下に「ルート後も周囲の道路を薄く塗る」と「選択を外す」「絞り込みをすべて解除」（この一覧の凡例だけを戻す）を置く（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`app/HomeMapPane.tsx`はそのまま渡す）。走行中も同じ大きさで出す |
@@ -336,6 +336,9 @@ viewportと走る条件（時刻・向き・想定速度）をそれぞれデバ
   畳むため区別しない（[ページ全体構成](page-composition.md)「失敗・空・待ちの伝え方」）。判定には`hasFetched`（一度でも取得を試みて完了したか）も
   渡す——`"empty"`（「この範囲に表示できるデータがありません」）は「読込済みだが値なし」
   だけを指し、まだ取りに行っていない状態はどの`LayerDataStatus`にも当てはめない。
+- `truncated: boolean`（上限で画面の端のタイルを取らなかったか）——上記の判定で、失敗・待ちの次に強い
+  `"partial"`（「画面の端の道は、拡大すると色が付きます」）にする。取らなかった所に値があるかは分からないので、
+  `"empty"`にしない。
 - `hasFetched: boolean`（上記の判定に使う）。取りに行く軸から外れた軸は結果から落ちるので、
   読み手からは未取得に見える——取得済みのまま残すと、レイヤーを消しただけの状態が
   「取りに行った結果、値が無かった」として扱われる。

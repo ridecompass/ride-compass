@@ -174,6 +174,7 @@ export function useMapView({
     roadClasses.error ? "fetch-failed" : null,
     true,
     true,
+    roadClasses.truncated,
   );
   const roadLayerStatus = roadClassStatus
     ? Object.fromEntries(shownRoadLayers.map((layer) => [layer.id, roadClassStatus]))
@@ -255,6 +256,7 @@ export function useMapView({
             lensFetch.error ? "fetch-failed" : null,
             lensFetch.materials.size > 0,
             lensFetch.hasFetched,
+            lensFetch.truncated,
           )
         : undefined,
     },

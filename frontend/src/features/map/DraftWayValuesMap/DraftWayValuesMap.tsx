@@ -12,8 +12,13 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { createBaseMap } from "@/features/map/baseMap";
-import { mergeTileValues, tilesCoveringViewport, type TileXY } from "@/features/map/layers/dynamicWayValues";
-import type { MapLayerVisibility } from "@/features/map/layers/mapLayers";
+import {
+  mergeTileValues,
+  NO_VIEWPORT_TILES,
+  tilesCoveringViewport,
+  type TileXY,
+} from "@/features/map/layers/dynamicWayValues";
+import { LAYER_DATA_STATUS_LABELS, type MapLayerVisibility } from "@/features/map/layers/mapLayers";
 import type { RoadMapLayerView } from "@/types/route";
 import type { MapViewport } from "@/features/map/view/mapLook";
 import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckboxList";
@@ -102,8 +107,8 @@ function useDraftWayValues<Draft>(
     bearing_deg: 0,
     speed_kmh: routeGenerateConfig.default_assumed_speed_kmh,
   }));
-  const tiles = useMemo(
-    () => (viewport ? tilesCoveringViewport(viewport, ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM) : []),
+  const { tiles, truncated } = useMemo(
+    () => (viewport ? tilesCoveringViewport(viewport, ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM) : NO_VIEWPORT_TILES),
     [viewport],
   );
   // 求められない間（null）は、前の下書きのまま塗る。
@@ -129,7 +134,7 @@ function useDraftWayValues<Draft>(
     },
     getQueryClient(),
   );
-  return { materials, loading: fetching || key !== debouncedKey, error };
+  return { materials, loading: fetching || key !== debouncedKey, error, truncated };
 }
 
 /** 軸カタログに無い軸（公開していない下書き）を塗るための行。塗りに要らない欄は空にする。 */
@@ -172,7 +177,7 @@ export default function DraftWayValuesMap<Draft>({
   const [viewport, setViewport] = useState<MapViewport | null>(null);
   const [hiddenLegendKeys, setHiddenLegendKeys] = useState<HiddenLegendKeys>({});
   const mapCatalog = useMapAxisCatalog();
-  const { materials, loading, error } = useDraftWayValues(axisId, draft, fetchTile, viewport);
+  const { materials, loading, error, truncated } = useDraftWayValues(axisId, draft, fetchTile, viewport);
 
   const published = mapCatalog.dedicatedAxes.find((axis) => axis.axisId === axisId);
   const axis = useMemo(
@@ -261,6 +266,7 @@ export default function DraftWayValuesMap<Draft>({
           swatchClassName={LEGEND_SWATCH_CLASS}
         />
       </div>
+      {truncated && <p className={textVariants({ variant: "hint" })}>{LAYER_DATA_STATUS_LABELS.partial}</p>}
       {error && <p className={textVariants({ variant: "error" })}>{error}</p>}
     </section>
   );

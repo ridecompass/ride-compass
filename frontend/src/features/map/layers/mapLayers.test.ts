@@ -132,12 +132,15 @@ describe("出せない理由の案内", () => {
 });
 
 describe("deriveFetchLayerStatus（自前で取るレイヤーの取得状態）", () => {
-  it("失敗 > 読み込み中 > 取り終えて値なし の順に1つ決め、まだ取りに行っていない間と値がある間は何も出さない", () => {
+  it("失敗 > 読み込み中 > 一部だけ取った > 取り終えて値なし の順に1つ決め、まだ取りに行っていない間と値がある間は何も出さない", () => {
     expect(deriveFetchLayerStatus(true, "失敗", false, true)).toBe("error");
     expect(deriveFetchLayerStatus(true, null, false, false)).toBe("loading");
     expect(deriveFetchLayerStatus(false, null, false, true)).toBe("empty");
     expect(deriveFetchLayerStatus(false, null, false, false)).toBeUndefined();
     expect(deriveFetchLayerStatus(false, null, true, true)).toBeUndefined();
+    expect(deriveFetchLayerStatus(true, null, true, true, true)).toBe("loading");
+    expect(deriveFetchLayerStatus(false, null, false, true, true)).toBe("partial");
+    expect(deriveFetchLayerStatus(false, null, true, true, true)).toBe("partial");
   });
 });
 
@@ -146,6 +149,7 @@ describe("layerDataStatusNotice（取得状態を開いた先で読ませる文�
     [undefined, null],
     ["loading", null],
     ["error", LAYER_DATA_STATUS_LABELS.error],
+    ["partial", LAYER_DATA_STATUS_LABELS.partial],
   ] as const)("状態が%sなら%sを出す（読み込み中は絞り込みのたびに揺れるので出さない）", (status, notice) => {
     expect(layerDataStatusNotice(status)).toBe(notice);
   });
