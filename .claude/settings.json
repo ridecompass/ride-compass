@@ -14,6 +14,11 @@
             "type": "command",
             "command": "[ \"$GITHUB_ACTIONS\" = true ] || [ \"$CLAUDE_CODE_REMOTE\" = true ] || python \"$CLAUDE_PROJECT_DIR/scripts/review_checks.py\" trigger --only-fired 2>&1; exit 0",
             "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "[ \"$GITHUB_ACTIONS\" = true ] || [ \"$CLAUDE_CODE_REMOTE\" = true ] || python \"$CLAUDE_PROJECT_DIR/scripts/review_checks.py\" turns 2>&1; exit 0",
+            "timeout": 60
           }
         ]
       }
