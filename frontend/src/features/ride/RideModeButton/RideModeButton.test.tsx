@@ -2,7 +2,7 @@
  * 走行モードのボタン（`features/ride/RideModeButton/RideModeButton.tsx`）——入切を示し、走行モードの間に
  * 押すと案内を終えるか、休む（休んでいれば続きから走る）かを選ばせ、始められなかった理由と、画面を点けたままにできない端末であることを横に出す。
  *
- * ここで見ないもの: 押したあとの走行モードの移り変わり → `useRideMode.test.ts`
+ * ここで見ないもの: 押したあとの走行モードの移り変わり → `useRideMode.test.ts`、スマホの向きを読む許しを求め直す札 → `page.ride.test.tsx`
  */
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -20,6 +20,7 @@ describe("RideModeButton", () => {
         status="off"
         error={null}
         screenWakeLock="off"
+        onRequestHeading={null}
         onPress={onPress}
         onRest={() => {}}
         onResume={() => {}}
@@ -43,7 +44,9 @@ describe("RideModeButton", () => {
     "$status: 押すと「$choice」か案内を終えるかを選ばせ、選んだ方だけを知らせて閉じる",
     async ({ status, choice, chosen }) => {
       const handlers = { onPress: vi.fn(), onRest: vi.fn(), onResume: vi.fn() };
-      render(<RideModeButton status={status} error={null} screenWakeLock="off" {...handlers} />);
+      render(
+        <RideModeButton status={status} error={null} screenWakeLock="off" onRequestHeading={null} {...handlers} />,
+      );
       const button = screen.getByRole("button", { name: "走行モード" });
       expect(button).toHaveAttribute("aria-pressed", "true");
       expect(button).toHaveAttribute("data-ride", status);
@@ -71,6 +74,7 @@ describe("RideModeButton", () => {
         status="following"
         error={null}
         screenWakeLock="held"
+        onRequestHeading={null}
         onPress={() => {}}
         onRest={() => {}}
         onResume={() => {}}
@@ -85,6 +89,7 @@ describe("RideModeButton", () => {
         status="following"
         error={null}
         screenWakeLock="unavailable"
+        onRequestHeading={null}
         onPress={() => {}}
         onRest={() => {}}
         onResume={() => {}}
@@ -101,6 +106,7 @@ describe("RideModeButton", () => {
         status="off"
         error={null}
         screenWakeLock="off"
+        onRequestHeading={null}
         onPress={() => {}}
         onRest={() => {}}
         onResume={() => {}}
@@ -111,6 +117,7 @@ describe("RideModeButton", () => {
         status="following"
         error={null}
         screenWakeLock="unavailable"
+        onRequestHeading={null}
         onPress={() => {}}
         onRest={() => {}}
         onResume={() => {}}
@@ -125,6 +132,7 @@ describe("RideModeButton", () => {
         status="off"
         error="位置情報の利用が許可されていない"
         screenWakeLock="off"
+        onRequestHeading={null}
         onPress={() => {}}
         onRest={() => {}}
         onResume={() => {}}

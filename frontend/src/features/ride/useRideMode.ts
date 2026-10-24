@@ -52,6 +52,8 @@ interface UseRideModeResult {
   accuracyM: number | null;
   /** 位置を受けている間、画面が自動で消えないよう頼めているか（画面が消えると位置も届かなくなる）。 */
   screenWakeLock: ScreenWakeLockStatus;
+  /** スマホの向きを読む許しを、利用者の操作の中で求め直す口。操作の外（読み込み直しの始め直し）で求めて聞けなかった間だけ値がある。 */
+  requestHeadingAgain: (() => void) | null;
   /** 止まっていれば始め、走行モードの間（休んでいても）は止める。 */
   press: () => void;
   /** 走行モードのまま休む: 位置を受けるのと画面を点けたままにする頼みをやめ、受けた位置を捨てる。止まっていても休める（読み込み直す前に休んでいた走行を戻す）。 */
@@ -283,6 +285,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     fixedAtMs: fix?.fixedAtMs ?? null,
     accuracyM: fix?.accuracyM ?? null,
     screenWakeLock,
+    requestHeadingAgain: device.requestAgain,
     press,
     rest,
     resume,
