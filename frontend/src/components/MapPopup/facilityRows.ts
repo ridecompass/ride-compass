@@ -2,6 +2,7 @@
 // 同じ行を読む。区分の名前・色・絵記号は地図の点と同じ宣言から引く。
 import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
 import { pointCategoryOf, pointPlaceName, type PointAxis } from "@/lib/mapDisplay/pointLayers";
+import { formatAlongDistance } from "@/lib/geoDistance";
 import palette from "@/types/generated/palette.json";
 
 type FacilityLayer = {
@@ -25,16 +26,18 @@ export type Facility = {
   readonly mapUrl: string | null;
   /** 宣言が点に添える事実（「<名前> <値>」）。値の無い事実は持たない。 */
   readonly facts: readonly string[];
-  /** ルートの上の位置（候補の始点からの道のりkm）と、道からの距離（m）。区間の近くの点だけが持つ。 */
+  /** ルートの上の位置（候補の始点からの道のりkm。画面には`FacilityOrigin`から見た前後で出す）と、道からの距離（m）。
+   * 区間の近くの点だけが持つ。 */
   readonly km: number | null;
   readonly offsetM: number | null;
 };
 
-/** 名前と位置で地点を探す外の地図（Google マップの検索。公式の文書「Maps URLs」の`search`）。位置を添えるのは、
- * 名前だけでは見ている人の今いる所の近くで探すため。閉店にデータが追いついていないことがあるので、営業を外で確かめられるようにする。 */
+/** 施設の点を開く外の地図（Google マップ）。閉店にデータが追いついていないことがあるので、営業を外で確かめられるようにする。
+ * 公式の「Maps URLs」の`search`には名前の検索を場所で絞る欄が無く、座標だけを渡すとピンだけで店の情報が出ず、名前だけ（や名前と座標を
+ * 1つの検索語）にすると同じ名前の別の店舗へ飛びうる。施設は店の ID も住所も持たないので、公式の文書に無い`/maps/search/<名前>/@<緯度>,<経度>,<倍率>z`
+ * の形で、名前の検索をその点を中心にした地図の中で行う（Google が形を変えると効かなくなりうる）。 */
 function externalMapSearchUrl(name: string, lngLat: readonly [number, number]): string {
-  const query = `${name} ${lngLat[1].toFixed(6)},${lngLat[0].toFixed(6)}`;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  return `https://www.google.com/maps/search/${encodeURIComponent(name)}/@${lngLat[1].toFixed(6)},${lngLat[0].toFixed(6)},18z`;
 }
 
 /** 1つの点の行。区分の名前は凡例と同じ宣言から引く（値は分類器が付ける内部名で、そのまま画面へ出さない）。 */
@@ -70,4 +73,17 @@ export function distinctFacilities(facilities: readonly Facility[]): Facility[] 
   const byKey = new Map<string, Facility>();
   for (const facility of facilities) if (!byKey.has(facility.key)) byKey.set(facility.key, facility);
   return [...byKey.values()].sort((a, b) => (a.km ?? 0) - (b.km ?? 0) || (a.offsetM ?? 0) - (b.offsetM ?? 0));
+}
+
+/** 施設の位置を、ルートの上のどこから見て言うか。走行中は現在地（`riding`）、ほかは区間の小窓を開いた地点。`km`は候補の始点からの
+ * 道のり（施設の`km`と同じ物差し）。 */
+export type FacilityOrigin = { readonly km: number; readonly riding: boolean };
+
+/** 施設の位置を、基準の地点から見たルートの前後で言う（「300m先」「100m手前」。走行中の先は「あと1.2km」）。始点からの道のりの
+ * kmは、利用者には何の値か分からないので出さない。 */
+export function facilityPosition(km: number, origin: FacilityOrigin): string {
+  const aheadKm = km - origin.km;
+  const distance = formatAlongDistance(Math.abs(aheadKm) * 1000);
+  if (aheadKm < 0) return `${distance}手前`;
+  return origin.riding ? `あと${distance}` : `${distance}先`;
 }

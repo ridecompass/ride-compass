@@ -123,6 +123,21 @@ export class StandInMap extends Evented {
     };
   }
 
+  /** 描画面の上の位置を経度・緯度へ（`project`の逆）。範囲を置いていない地図は、どの点も真ん中に映るので、真ん中はどの経度・緯度でも
+   * よく（0, 0）を返し、ほかの位置には映る点が無いので投げる。 */
+  unproject([x, y]: [number, number]) {
+    const { clientWidth: width, clientHeight: height } = this.canvas;
+    const bounds = this.bounds;
+    if (bounds === null) {
+      if (x === width / 2 && y === height / 2) return { lng: 0, lat: 0 };
+      throw new Error("範囲を置いていない地図では、真ん中のほかの描画面の位置に映る経度・緯度は無い");
+    }
+    return {
+      lng: bounds.west + (x / width) * (bounds.east - bounds.west),
+      lat: bounds.north - (y / height) * (bounds.north - bounds.south),
+    };
+  }
+
   /** 範囲と倍率を置き、動き終わった（"moveend"）ことを出す。 */
   moveTo(bounds: ViewBounds, zoom: number) {
     this.bounds = bounds;

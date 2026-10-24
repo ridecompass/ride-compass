@@ -1,8 +1,8 @@
 /**
  * `app/page.tsx`——トップページのうち、地図に置く地点。
  *
- * 見ること: ピンを押しても消えずルート設定ではその地点を選ぶこと、目的地の行で探して置いた地点と、名前のある点を押して置いた
- * 地点が地図に立ち、行にその名前が出ること、周回の間は置いた目的地を地図にも行にも出さず地図を押しても目的地にしないで、
+ * 見ること: ピンを押しても消えずルート設定ではその地点を選ぶこと、閉じている間は地点の名前のあるピンだけが小窓を開き押せる見た目を
+ * 持つこと、目的地の行で探して置いた地点と、名前のある点を押して置いた地点が地図に立ち、行にその名前が出ること、周回の間は置いた目的地を地図にも行にも出さず地図を押しても目的地にしないで、
  * 外すと戻すこと、名前を付けて保存した地点を打つ欄から選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置くこと。
  *
  * ここで見ないもの: 地図を押したときの意味をどのパネルが決めるか・区間を押したときは`app/page.map.test.tsx`が見る。
@@ -34,7 +34,7 @@ beforeEach(() => {
 });
 
 describe("地図に置く地点", () => {
-  it("ピンを押しただけでは消えず、ルート設定ではその地点を選んで詳しくを出し、閉じている間は呼び名と名前を小窓に出す", async () => {
+  it("ピンを押しただけでは消えず、ルート設定ではその地点を選んで詳しくを出し、閉じている間は呼び名しか無いピンは小窓を開かず押せる見た目にもしない", async () => {
     const { user } = renderHome();
     await selectDestination(user);
     clickMap(DESTINATION);
@@ -48,7 +48,8 @@ describe("地図に置く地点", () => {
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     await user.click(destinationPin.element);
     expect(marksAt(DESTINATION)).toHaveLength(1);
-    expect(screen.getByText("目的地: 地図で選んだ地点")).toBeInTheDocument();
+    expect(screen.queryByText(/目的地:/)).toBeNull();
+    expect(destinationPin.element.style.cursor).toBe("default");
   });
 
   it("名前のある点を押すと、選んでいる地点をその点へその名前で置き、地図と地点の並びに出す。閉じている間は置かない", async () => {
@@ -88,6 +89,11 @@ describe("地図に置く地点", () => {
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     clickMap(ELSEWHERE, pointed);
     expect(marksAt(shop)).toHaveLength(2);
+
+    // 閉じている間、地点の名前のあるピンは押すと呼び名と名前を小窓に出す。
+    expect(destinationMark.style.cursor).toBe("pointer");
+    await user.click(destinationMark);
+    expect(screen.getByText("目的地: 角の店")).toBeInTheDocument();
   });
 
   it("目的地を探して選んだ地点は地図に目的地として立ち、地点の並びにその名前が出る", async () => {

@@ -184,3 +184,10 @@ export function projectOnTrack(track: readonly RouteTrackEdge[], position: Coord
     return { km: fromKm + (toKm - fromKm) * fraction, offsetM };
   });
 }
+
+/** 地点`position`を区間`segment`の道なりの形に当てた点の、区間の始まりからの距離（km）。 */
+export function kmAlongSegment(segment: RouteSegmentShape, position: Coordinates): number {
+  const projections = projectOnTrack(routeTrack([segment]), position);
+  const nearest = projections.reduce((best, p) => (p.offsetM < best.offsetM ? p : best), projections[0]);
+  return nearest?.km ?? 0;
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { BackToSegmentButton, FacilityRows, KindSwatch, PopupHeader } from "@/components/MapPopup/MapPopupParts";
-import { distinctFacilities, facilityOf } from "@/components/MapPopup/facilityRows";
+import { distinctFacilities, facilityOf, type FacilityOrigin } from "@/components/MapPopup/facilityRows";
 import { Button } from "@/components/ui/Button/Button";
 import { HiddenOnMapIcon, ShownOnMapIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
@@ -102,12 +102,15 @@ export function SidePointKindList({
   group,
   kind,
   shown,
+  origin,
   onToggle,
   onBack,
 }: {
   group: SidePointGroup;
   kind: SidePointKind;
   shown: boolean;
+  /** 施設の位置を前後で言う基準の地点。 */
+  origin: FacilityOrigin | null;
   onToggle: () => void;
   onBack: () => void;
 }) {
@@ -125,14 +128,10 @@ export function SidePointKindList({
     <div className="flex flex-col gap-1">
       <PopupHeader label="区分の一覧の上の帯">
         <BackToSegmentButton onBack={onBack} />
-        <KindSwatch color={kind.color} glyph={kind.glyph} label={kind.label} />
-        <span className="min-w-0 font-medium [overflow-wrap:anywhere]">
-          {kind.label} {kind.points.length}か所
-        </span>
         <Button
           variant="ghost"
           size="icon"
-          className="-my-1 flex-none"
+          className="-my-1 ml-auto flex-none"
           aria-label={shown ? "地図から消す" : "地図に出す"}
           usage={`この区間の近くの${kind.label}を、地図に出す・消すを切り替えます。`}
           onClick={onToggle}
@@ -140,7 +139,12 @@ export function SidePointKindList({
           {shown ? <ShownOnMapIcon size={18} /> : <HiddenOnMapIcon size={18} />}
         </Button>
       </PopupHeader>
-      <FacilityRows facilities={facilities} swatch={false} />
+      {/* 小窓の幅の上限（地図の幅の2/3）は、戻る・目・×と同じ帯に区分の名前と件数を並べるには狭いので、帯の下の1行に出して折らない。 */}
+      <div className="flex items-center gap-1.5 font-medium whitespace-nowrap tabular-nums">
+        <KindSwatch color={kind.color} glyph={kind.glyph} label={kind.label} />
+        {kind.label} {kind.points.length}か所
+      </div>
+      <FacilityRows facilities={facilities} origin={origin} swatch={false} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -14,6 +14,7 @@ import type {
   RoutePreferenceWeights,
   SelectedRouteSegment,
 } from "@/types/route";
+import type { FacilityOrigin } from "@/components/MapPopup/facilityRows";
 import type { RideConditions } from "@/features/map/regionApi";
 import { applyScene, type SpliceStretchInput } from "@/features/map/scene/applyToMap";
 import type { MapLook } from "@/features/map/view/mapLook";
@@ -33,6 +34,7 @@ import { useMapScene } from "@/features/map/MapView/useMapScene";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
 import { useSectionFocus } from "@/features/map/MapView/useSectionFocus";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
+import { findSameSegment, segmentPath } from "@/lib/routeDistance";
 
 interface MapViewProps {
   routes: RouteCandidate[];
@@ -63,6 +65,8 @@ interface MapViewProps {
   onSegmentOutsideChange: (outside: boolean) => void;
   /** 選んだ区間の近くの点のうち、地図に出すもの。 */
   sidePoints: readonly RoutePoint[];
+  /** 近くの施設の位置を前後で言う基準の地点。 */
+  facilityOrigin: FacilityOrigin | null;
   /** ルートの区間を押したとき・印を押して選択を外したとき・区間の小窓を閉じたか別の中身へ入れ替えたとき（null）。 */
   onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => void;
   /** 経由地（通る順）。 */
@@ -118,6 +122,7 @@ export default function MapView({
   segmentFocus,
   onSegmentOutsideChange,
   sidePoints,
+  facilityOrigin,
   onRouteSegmentSelect,
   waypoints,
   destination,
@@ -220,26 +225,37 @@ export default function MapView({
     onOriginMove,
     onWaypointMove,
     onDestinationMove,
-    // 地点の意味の間はその地点を選び、走る間は何も出さず、ほかの間は呼び名と名前を小窓に出すだけ（押しただけでは消さない）。
-    onPointPress: (target, at) => {
-      if (tapMode === "ride") return;
-      if (tapMode === "points") {
-        onPointSelect(target);
-        return;
-      }
-      popups.openPin([at.longitude, at.latitude], pinPopupText(target, pinNames));
+    // 地点の意味の間はその地点を選び、走る間は何も出さず、ほかの間は地点の名前があれば呼び名と並べて小窓に出すだけ（押しただけでは
+    // 消さない）。呼び名しか無い地点は何も開かない。
+    pointPress: (target) => {
+      if (tapMode === "ride") return null;
+      if (tapMode === "points") return () => onPointSelect(target);
+      const text = pinPopupText(target, pinNames);
+      return text === null ? null : (at) => popups.openPin([at.longitude, at.latitude], text);
     },
     onRouteSegmentSelect: selectSegmentOnMap,
   });
 
   const onNextRideZoom = useRideFollow(mapRef, ride, here, mapVisibleCenterOffset);
   const turnMarkContent = useTurnMark(mapRef, turnPoint);
-  const popupContent = useMapPopupMount(mapRef, {
+  // 出している小窓と、区間の小窓の区間の形（候補の同じ区間から引く。地図で押した区間は形を持たない写し）。小窓は区間にかぶらない
+  // 所に置き、区間へ寄せるときは小窓の高さを空ける。
+  const selectedSegments = routes.find((route) => route.id === selectedRouteId)?.segments;
+  const selectedSectionPath = useMemo(() => {
+    const section =
+      selectedRouteSegment === null || selectedSegments === undefined
+        ? undefined
+        : findSameSegment(selectedSegments, selectedRouteSegment.segment, (segment) => segment);
+    return section === undefined ? null : segmentPath(section);
+  }, [selectedSegments, selectedRouteSegment]);
+  const { content: popupContent, reservedTopPx } = useMapPopupMount(mapRef, {
     shown: popup,
     controls: popups,
     segmentDetail,
     rideConditions,
     routePreference,
+    facilityOrigin,
+    segmentPath: selectedSectionPath,
   });
 
   // 住所の検索で置いた地点・取り直した現在地へ寄せる。出発地を置いたときは印のフックの位置の更新も寄せるが、このeffectが
@@ -261,11 +277,11 @@ export default function MapView({
   }, [scene, recomputeLayerDataStatus]);
 
   useSectionFocus(mapRef, {
-    segments: routes.find((route) => route.id === selectedRouteId)?.segments,
-    selectedRouteSegment,
+    sectionPath: selectedSectionPath,
     request: segmentFocus,
     onOutsideChange: onSegmentOutsideChange,
     ride,
+    reservedTopPx,
   });
 
   // 選んでいる1本へ収める。生成し直すと同じidの候補が来るので、idでなく候補そのものが変わったときに収める。地図の線を

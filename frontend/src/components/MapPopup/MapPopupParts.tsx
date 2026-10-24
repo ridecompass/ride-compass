@@ -17,7 +17,7 @@ import { cn } from "@/lib/cn";
 import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
 import { DIFFICULTY_SCALE_SUFFIX, formatDifficulty } from "@/lib/mapDisplay/valueScale";
 
-import type { Facility } from "./facilityRows";
+import { facilityPosition, type Facility, type FacilityOrigin } from "./facilityRows";
 
 const hintClass = cn(textVariants({ variant: "hint" }), "m-0");
 
@@ -71,15 +71,25 @@ function IconValue({ icon, label, value }: { icon: ReactNode; label: string; val
   );
 }
 
-/** 施設を1つ1行で並べる。左から地図の印の見本・名前（名前のある施設は外の地図で探すリンク）・ルートの何km地点・道からの距離。
- * 長い名前は名前の列の中で折り返す（値の位置は動かない）。見本は、区分の一覧のように帯が見本を持つ所では出さない。 */
-export function FacilityRows({ facilities, swatch = true }: { facilities: readonly Facility[]; swatch?: boolean }) {
+/** 施設を1つ1行で並べる。左から地図の印の見本・名前（名前のある施設は外の地図で探すリンク）・基準の地点から見たルートの前後・
+ * 道からの距離。長い名前は名前の列の中で折り返す（値の位置は動かない）。見本は、区分の一覧のように帯が見本を持つ所では出さない。
+ * 基準の地点（`origin`）が無ければ前後を出さない。 */
+export function FacilityRows({
+  facilities,
+  origin,
+  swatch = true,
+}: {
+  facilities: readonly Facility[];
+  origin: FacilityOrigin | null;
+  swatch?: boolean;
+}) {
   return (
     <ul className="m-0 flex list-none flex-col divide-y divide-[var(--color-border)] p-0 tabular-nums">
       {facilities.map((facility) => (
         <li key={facility.key} className="flex items-center gap-1.5 py-1 first:pt-0 last:pb-0">
           {swatch && <KindSwatch color={facility.color} glyph={facility.glyph} label={facility.kindLabel} />}
-          <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+          {/* 名前は空白（「吉野家 ボートレース戸田店」の間）で折り、語の途中では1語が行に収まらないときだけ折る。 */}
+          <span className="min-w-0 flex-1 break-keep [overflow-wrap:anywhere]">
             {facility.mapUrl !== null ? (
               <a
                 href={facility.mapUrl}
@@ -98,11 +108,11 @@ export function FacilityRows({ facilities, swatch = true }: { facilities: readon
               </span>
             ))}
           </span>
-          {facility.km !== null && (
+          {facility.km !== null && origin !== null && (
             <IconValue
               icon={<SelectedSpotIcon size={13} />}
-              label="ルートの何km地点"
-              value={`${facility.km.toFixed(1)}km`}
+              label={origin.riding ? "現在地から" : "押した地点から"}
+              value={facilityPosition(facility.km, origin)}
             />
           )}
           {facility.offsetM !== null && (

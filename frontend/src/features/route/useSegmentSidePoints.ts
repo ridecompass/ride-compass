@@ -6,7 +6,7 @@ import { useCallback, useMemo, useState } from "react";
 import { sidePointGroups, type SidePointGroup } from "@/features/route/SegmentSidePoints/sidePointGroups";
 import { getRouteSidePoints } from "@/features/route/routeApi";
 import { getQueryClient } from "@/lib/queryClient";
-import { findSameSegment } from "@/lib/routeDistance";
+import { findSameSegment, kmAlongSegment } from "@/lib/routeDistance";
 import type { RouteCandidate, RoutePoint, SelectedRouteSegment } from "@/types/route";
 
 /** 選んだ区間の近くの点の引き具合。まだ探していなければ探す口を持ち、引けたら、地図に描ける点を種類・区分ごとに持ち、利用者が
@@ -23,6 +23,8 @@ export type SegmentSidePoints =
       onToggle: (kindId: string) => void;
       /** 地図に出す点（消した区分を除いたもの）。 */
       shown: readonly RoutePoint[];
+      /** 押した地点を区間の道なりに当てた道のり（km。近くの点の`distance_km`と同じ、候補の始点からの道のり）。 */
+      pickedKm: number;
     };
 
 const NOTHING_HIDDEN: ReadonlySet<string> = new Set();
@@ -77,9 +79,9 @@ export function useSegmentSidePoints(
         .flatMap((kind) => kind.points),
     [groups, hidden],
   );
-  if (edgeIds.length === 0) return null;
+  if (segment === undefined || selection === null || edgeIds.length === 0) return null;
   if (!searched) return { status: "idle", onSearch };
   if (query.isError) return { status: "failed" };
   if (query.data === undefined) return { status: "loading" };
-  return { status: "done", groups, hidden, onToggle, shown };
+  return { status: "done", groups, hidden, onToggle, shown, pickedKm: startKm + kmAlongSegment(segment, selection) };
 }

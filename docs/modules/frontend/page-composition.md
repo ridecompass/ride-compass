@@ -20,7 +20,7 @@
 | hooks | `useStoredState.ts`・`useIsMobile.ts`・`useVisualViewport.ts`・`useLocation.ts`・`useDebouncedValue.ts`・`useIsomorphicLayoutEffect.ts` |
 | features/map/view | `useMapView.ts`（地図の見え方の状態と、地図・操作部品へ渡す値）・`mapLook.ts`（地図へ渡す見え方の値の型）・`lens.ts`（レンズから塗る軸・凡例・選択肢を導く）・`overlayChips.ts`（地図上チップの状態とレイヤー表示の保存形式）・`legendFilters.ts`（凡例で隠した行の保存先の読み書き） |
 | features/map/MapView | `useLayerDataStatus.ts`（MapLibreのソースイベントからレイヤーごとの取得状態を算出して渡す）・`useMapLifecycle.ts`（地図を作り、読み込み・失敗・動かした範囲・向き・ソースの取得のイベントを状態と知らせ先へつなぐ。「地図の表示を再描画」のスタイルの取り直しも持つ）・`MapLoadStatus.tsx`（読み込みの間の覆いと、地図が白紙のまま止まったときの案内）・`mapCamera.ts`（ルート・選んだ区間を収める・地点へ寄せるときに、地図の上に重ねた部品を避ける。線が見えている所に入るかも同じ避け方で測る）・`useSectionFocus.ts`（頼まれたときだけ選んだ区間へ寄せ、区間が見えている所の外にあるかを知らせる） |
-| lib | `apiBaseUrl.ts`・`apiClient.ts`（backendのAPIを呼ぶ口と、全呼び出しが共有する骨格。下記）・`apiPath.ts`（アプリ自身が呼ばないURL［地図ライブラリへ渡すタイル・スタイル］のパスをOpenAPIの宣言と型で照合して作る）・`apiError.ts`・`backendInternalUrl.ts`・`queryClient.ts`（画面のデータ取得が共有するTanStack Queryのキャッシュ。下記「データ取得の骨格」）・`apiTimeouts.ts`（APIリクエストのタイムアウト。呼び出しの性質ごとの名前付き定数）・`safeStorage.ts`（localStorageの読み書きで例外を外へ出さない薄いラッパ）・`paletteCssVariables.ts`（地図に塗る色と同じ色をUIにも出す箇所へ、配信された値をCSS変数として流す。`layout.tsx`がサーバー側で`:root`へ入れる。CSSが値を持つのはライト/ダークで2値を持つものだけ）・`duration.ts`（時間の長さの単位［秒・分・時のミリ秒］と、所要時間・待ち時間を「N分」で書く書き方。1時間を超えても分で書き、候補の一覧・候補の中身・差し替えの比較で同じ単位で見比べる）・`numberFormat.ts`（桁での丸めと、差の前に置く符号）・`urlTemplate.ts`（パスのテンプレートの`{名前}`を埋める。`apiPath.ts`と気象庁の配信のパスが使う）・`geoDistance.ts`（2点間の大円距離。地球の半径はbackendの値を生成物`geo-config.json`で読み、2点の距離がbackendと合うことは、`cardinalLabel`と同じ表をテストが通して確かめる）・`localPlane.ts`（狭い範囲の緯度経度を、経度方向をcos(緯度)で縮めた平面として扱う近似と、緯度1度の長さ・辺の上で地点に最も近い点。地図の上で最も近い点を求める所はどれもこれを通す）・`routeDistance.ts`（ルートの区間を始点からの距離で読む: 候補の中の同じ区間・区間の道なりの形・形の上で距離の割合ぶん進んだ点とそこで分けた前後・ある点に最も近いルートの上の点・Edgeの境界ごとの距離。区間の`routeDistance.ts: distance_km`を始点から積んだ値を物差しにし、道のりのグラフと地図と走行モードと編集の差が同じ距離で読む）・`storedList.ts`（この端末に保存した一覧の読み方と入れ方。下記「状態の永続化」）・`adminApiPrefix.ts`（管理APIの転送の口と、backendの管理APIのパスの接頭辞）・`mapOverlayEdges.ts`（地図の上に重ねる部品へ付ける「どの辺を覆うか」の印と、印の付いた部品が覆う幅の実測。印を付ける部品は地図の機能の外にもあるので共有の層に置く。下記「`MapView`との境界」）・`routeFit.ts`（ルート・区間の形を地図へ収める範囲と、地図の上に重ねた部品を避けて収める・寄せるときの余白とずれ。`MapView`が地図を動かす瞬間に呼ぶ）・`validArea.ts`（backend が添える値の範囲が地点を含むか・走行中に取る地点を動かすか）・`assumedSpeed.ts`（想定速度の範囲と丸め。走行条件の入力と、走行中に地図の道の値へ載せる速さが使う）・`magneticDeclination.ts`（日本付近の偏角と、磁北を基準にした方角を真北の基準へ直すこと）・`tapSlop.ts`（押したか動かしたかを分ける遊びの幅。使い方の説明・長押しのツールチップ・下部シートのつまみが使う） |
+| lib | `apiBaseUrl.ts`・`apiClient.ts`（backendのAPIを呼ぶ口と、全呼び出しが共有する骨格。下記）・`apiPath.ts`（アプリ自身が呼ばないURL［地図ライブラリへ渡すタイル・スタイル］のパスをOpenAPIの宣言と型で照合して作る）・`apiError.ts`・`backendInternalUrl.ts`・`queryClient.ts`（画面のデータ取得が共有するTanStack Queryのキャッシュ。下記「データ取得の骨格」）・`apiTimeouts.ts`（APIリクエストのタイムアウト。呼び出しの性質ごとの名前付き定数）・`safeStorage.ts`（localStorageの読み書きで例外を外へ出さない薄いラッパ）・`paletteCssVariables.ts`（地図に塗る色と同じ色をUIにも出す箇所へ、配信された値をCSS変数として流す。`layout.tsx`がサーバー側で`:root`へ入れる。CSSが値を持つのはライト/ダークで2値を持つものだけ）・`duration.ts`（時間の長さの単位［秒・分・時のミリ秒］と、所要時間・待ち時間を「N分」で書く書き方。1時間を超えても分で書き、候補の一覧・候補の中身・差し替えの比較で同じ単位で見比べる）・`numberFormat.ts`（桁での丸めと、差の前に置く符号）・`urlTemplate.ts`（パスのテンプレートの`{名前}`を埋める。`apiPath.ts`と気象庁の配信のパスが使う）・`geoDistance.ts`（2点間の大円距離と、ルートに沿った道のりの書き方〔1km未満は10m単位、以上は0.1km単位。走行中の曲がる所のカードと近くの施設の位置が同じ桁で出す〕。地球の半径はbackendの値を生成物`geo-config.json`で読み、2点の距離がbackendと合うことは、`cardinalLabel`と同じ表をテストが通して確かめる）・`localPlane.ts`（狭い範囲の緯度経度を、経度方向をcos(緯度)で縮めた平面として扱う近似と、緯度1度の長さ・辺の上で地点に最も近い点。地図の上で最も近い点を求める所はどれもこれを通す）・`routeDistance.ts`（ルートの区間を始点からの距離で読む: 候補の中の同じ区間・区間の道なりの形・形の上で距離の割合ぶん進んだ点とそこで分けた前後・ある点に最も近いルートの上の点・Edgeの境界ごとの距離。区間の`routeDistance.ts: distance_km`を始点から積んだ値を物差しにし、道のりのグラフと地図と走行モードと編集の差が同じ距離で読む）・`storedList.ts`（この端末に保存した一覧の読み方と入れ方。下記「状態の永続化」）・`adminApiPrefix.ts`（管理APIの転送の口と、backendの管理APIのパスの接頭辞）・`mapOverlayEdges.ts`（地図の上に重ねる部品へ付ける「どの辺を覆うか」の印と、印の付いた部品が覆う幅の実測。印を付ける部品は地図の機能の外にもあるので共有の層に置く。下記「`MapView`との境界」）・`routeFit.ts`（ルート・区間の形を地図へ収める範囲と、地図の上に重ねた部品を避けて収める・寄せるときの余白とずれ。`MapView`が地図を動かす瞬間に呼ぶ）・`validArea.ts`（backend が添える値の範囲が地点を含むか・走行中に取る地点を動かすか）・`assumedSpeed.ts`（想定速度の範囲と丸め。走行条件の入力と、走行中に地図の道の値へ載せる速さが使う）・`magneticDeclination.ts`（日本付近の偏角と、磁北を基準にした方角を真北の基準へ直すこと）・`tapSlop.ts`（押したか動かしたかを分ける遊びの幅。使い方の説明・長押しのツールチップ・下部シートのつまみが使う） |
 | features/route | `routeApi.ts`（ルート生成API。ジョブを投げ、終わるまで問い合わせる）・`generationRequest.ts`（生成リクエストのpayloadと`conditionsDirty`の比較キーを同じ入力から導出する純関数）・`routeSplice.ts`（候補どうしが別々の道を通る区間を`edge_ids`の集合演算で求め、表示中の側と相手側を対応づけ、選んだ区間を差し替えた経路を組み立てる純関数。差し替えた経路の評価はbackendが行うため計算式は持たない）・`stretchAlternatives.ts`（元の経路の区間ごとに、全候補から乗り換えられる道を集める純関数。区間を割る下限は持たず呼び出し側から受け取る［backendの較正値で、管理画面から変えられる］） |
 | features/conditions | `useRideConditions.ts`（走行条件: 出発時刻・想定速度。想定速度だけを保存し、保存値は画面の範囲内の整数だけを受け入れる）・`useDepartureTime.ts`（出発時刻。選ぶまでは5分刻みの「今」へ追従し、選んだ時刻は動かさない）・`rideConditions.ts`（走行条件の出発時刻ラベルと出発時刻の刻み。想定速度の範囲と丸めは`lib/assumedSpeed.ts`） |
 | types | `types/route.ts`（`types/route.ts: RouteCandidate`等の生成APIレスポンス型）・`types/fetchFailure.ts`（常設ヘッダーの「未取得」の印に並ぶ項目の型。下記「失敗・空・待ちの伝え方」） |
@@ -301,11 +301,13 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 地図を押したときの意味は、地図で効いているパネル（いつも1つ）が決める（`app/usePagePanels.ts: mapTapModeOf`）。
 「ルート設定」の「条件」タブは地点（選んでいる地点を置く・ピンを押すとその地点を選ぶ・つかんで動かす）、「ルート結果」はルートと区間
 （候補の線を押すとそのルートを選び、選んだルートの区間を押すとその区間を選んで、押した区間の小窓に近くの施設を探す所を出す）、編集中は乗り換える区間、効いているパネルが無い
-（閉じている・ほかのタブ）間は見るだけ（道・点・区間・ピンを押すと中身を地図の小窓に出し、地点もルートも変えない）。走行モードの間は、
+（閉じている・ほかのタブ）間は見るだけ（道・名前のある点・区間・地点の名前のあるピンを押すと中身を地図の小窓に出し、地点もルートも変えない）。
+名前の無い点と、呼び名しか無いピン（地図で選んだ地点・現在地）は、どのパネルでも小窓を開かず、押せる見た目（ポインタの形）も付けない。走行モードの間は、
 走りの帯の「ルート」でパネルを出していなければ何も開かず（地図は現在地を追うことに専念する）、出したパネルの中は走っていないときと同じに
 決める。今やっている作業と
 押した結果が一致し、役割を選ぶ操作が要らない。どの地物を開けるかは地図の側（`features/map/MapView/mapTaps.ts: MapTapMode`）が
-意味ごとに持ち、開けない地物が上に重なっていても飛ばす。
+意味ごとに持ち、開けない地物が上に重なっていても飛ばす。ただし一番上の開ける地物が名前の無い点なら、押しを受け止めて何もしない
+（下の物を開いたり小窓を閉じたりすると、区間の小窓とその近くの点の印まで消える）。
 
 効いているパネルは、モバイルは開いているシート、デスクトップはパネル（サイドバー）を出していて畳んでおらず開いている区分で、
 2つとも開いていれば最後に触った区分（中を押す・中へ移る。結果が届いたら「ルート結果」）。効いている区分は上の線と題を強調色にし、題の
@@ -696,7 +698,7 @@ composite_difficulty`と同じ考え方で軸の重みを反映した寄与度�
 地図キャンバスはモバイルの下部タブバー・ボトムシートや、地図の上に重ねた操作部品（左上の「表示」と色分け・右の操作列等）の
 下にも描画される。選んでいるルートへのフィット（`features/map/MapView/mapCamera.ts: fitBoundsToRoute`。生成直後の先頭の1本と、
 タブ等で選び直した1本へ収める。地図の線を押して選んだときは利用者がもうその範囲を見ているので、走行モードで追っている間は追う側が
-地図を動かすので、収め直さない）と選んだ区間へ寄せるとき（`features/map/MapView/mapCamera.ts: fitBoundsToSection`）と置いた地点へ寄せるとき（`features/map/MapView/mapCamera.ts: flyToVisible`）に覆われた領域へ
+地図を動かすので、収め直さない）と選んだ区間へ寄せるとき（`features/map/MapView/mapCamera.ts: fitBoundsToSection`。出している地図の小窓の高さを上に足して空ける）と置いた地点へ寄せるとき（`features/map/MapView/mapCamera.ts: flyToVisible`）に覆われた領域へ
 収めてしまわないよう、覆う部品の側に「どの辺を覆うか」の印（`mapOverlayEdge`）を付け、`MapView`がその瞬間に印の付いた
 部品の実寸を辺ごとに測る（`lib/mapOverlayEdges.ts: measureMapOverlayEdges`）——`MapView`はシート・タブバーの存在を知らない
 ままでいられ、画面の寸法を状態として持ち続けなくてよく、部品を足す人は印を1つ付ければよい。測った幅は基本余白へ足し、

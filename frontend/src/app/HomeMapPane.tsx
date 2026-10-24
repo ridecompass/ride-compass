@@ -21,7 +21,7 @@ import RideBottom from "@/features/ride/RideBottom/RideBottom";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
 import TurnCard from "@/features/ride/TurnCard/TurnCard";
 import type { useRideMode } from "@/features/ride/useRideMode";
-import { pointNames } from "@/features/route/pointNames";
+import { placeNames } from "@/features/route/pointNames";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
 import SegmentDetail from "@/features/route/SegmentDetail/SegmentDetail";
@@ -85,7 +85,14 @@ export default function HomeMapPane({
   const { results, splice } = route;
   const { progress, upcomingTurn } = guidance;
   const navigating = riding.status !== "off";
-  const originManual = place.locationSource === "manual";
+  // 近くの施設の位置を前後で言う基準。走行中は現在地、見るだけの間は区間で押した地点。
+  const sidePoints = results.segmentSidePoints;
+  const facilityOrigin =
+    navigating && progress.km !== null
+      ? { km: progress.km, riding: true }
+      : sidePoints?.status === "done"
+        ? { km: sidePoints.pickedKm, riding: false }
+        : null;
   // 走行中の道のりのグラフ（候補が無ければ出さない。結果の図と同じくなぞると地点を選び、地図に印を出して図の下にその地点の
   // 詳しくを出す）。
   const selected = results.selectedCandidate;
@@ -111,33 +118,33 @@ export default function HomeMapPane({
         compassLinked={mapView.lensConditions.includes("bearing_deg")}
         routePreference={conditions.routePreferenceToSend}
         selectedRouteSegment={results.selectedRouteSegment}
-        sidePoints={results.segmentSidePoints?.status === "done" ? results.segmentSidePoints.shown : NO_SIDE_POINTS}
+        sidePoints={sidePoints?.status === "done" ? sidePoints.shown : NO_SIDE_POINTS}
+        facilityOrigin={facilityOrigin}
         onRouteSegmentSelect={results.selectSegment}
         segmentFocus={results.segmentFocus}
         onSegmentOutsideChange={results.setSegmentOutsideMap}
         // 地図で押した区間の小窓。見るだけの間は区間の中身を全部出し、「ルート結果」が効いている間は中身をグラフの下が
         // 出すので、近くの施設を探す所だけを出す。
         segmentDetail={
-          results.selectedRouteSegment === null ? null : tapMode === "look" ? (
-            <SegmentDetail selection={results.selectedRouteSegment} sidePoints={results.segmentSidePoints} />
-          ) : tapMode === "routes" && results.segmentSidePoints !== null ? (
+          results.selectedRouteSegment !== null &&
+          (tapMode === "look" || (tapMode === "routes" && sidePoints !== null)) ? (
             <SegmentDetail
               selection={results.selectedRouteSegment}
-              sidePoints={results.segmentSidePoints}
-              facilitiesOnly
+              sidePoints={sidePoints}
+              facilityOrigin={facilityOrigin}
+              facilitiesOnly={tapMode === "routes"}
+              onMap={results.segmentOnMap}
             />
           ) : null
         }
         onRouteSelect={results.selectTab}
         waypoints={conditions.waypoints}
         destination={conditions.destination}
-        pinNames={pointNames({
+        pinNames={placeNames({
           waypoints: conditions.waypoints,
           destination: conditions.destination,
           foundAt: conditions.foundAt,
           originFound,
-          originManual,
-          originLocated: place.locationKnown,
         })}
         tapMode={tapMode}
         selectionOwner={selectionOwner}

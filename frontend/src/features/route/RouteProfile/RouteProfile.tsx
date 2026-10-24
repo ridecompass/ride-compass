@@ -19,7 +19,9 @@ import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 import LayerProfile, { type ShownLayers } from "./LayerProfile";
 import { layerBand, layerLine, profileLayers, type BandLayer, type LineLayer } from "./profileLayers";
 import ProfileLayerPicker from "./ProfileLayerPicker";
-import ProfilePointDetail, { type SectionOnMap } from "./ProfilePointDetail";
+import type { SectionOnMap } from "@/features/route/SegmentDetail/SegmentDetail";
+
+import ProfilePointDetail from "./ProfilePointDetail";
 import type { ProfileLayerSelection } from "./useProfileLayers";
 
 interface RouteProfileProps {

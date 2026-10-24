@@ -4,8 +4,10 @@ import { useState } from "react";
 import { hasAnyContribution } from "@/components/AxisContributionBar/AxisContributionBar";
 import AxisDetail from "@/components/AxisContributionBar/AxisDetail";
 import { DifficultyBlock, PopupHeader } from "@/components/MapPopup/MapPopupParts";
+import type { FacilityOrigin } from "@/components/MapPopup/facilityRows";
 import { legendChipBodyClass, legendChipClass } from "@/components/ui/AxisLegend/axisLegend";
-import { SelectedSpotIcon } from "@/components/ui/icons/lucideIcons";
+import { Button } from "@/components/ui/Button/Button";
+import { SelectedSpotIcon, ShowSectionOnMapIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import SegmentSidePoints, { openedKind, SidePointKindList } from "@/features/route/SegmentSidePoints/SegmentSidePoints";
 import { SegmentWindChip } from "@/features/route/SegmentWind/SegmentWind";
@@ -45,18 +47,48 @@ export function SegmentDifficulty({ segment, axes }: { segment: RouteSegmentDeta
   );
 }
 
+/** 「区間を地図で見る」。区間を選んでも地図は動かないので、地図を区間へ寄せるのはこのボタン（道のりのグラフの地点の詳しくと、
+ * 区間の小窓の上の帯）だけ。 */
+export interface SectionOnMap {
+  /** 選んだ区間が地図の見えている所の外にあるか。外ならボタンを色で目立たせる（地図に線と印が見えない理由の代わりに、次に押すものを見せる）。 */
+  readonly outside: boolean;
+  readonly onShow: () => void;
+}
+
+export function SectionOnMapButton({ onMap }: { onMap: SectionOnMap }) {
+  return (
+    <Button
+      variant={onMap.outside ? "primary" : "ghost"}
+      size="icon"
+      className="-my-1.5"
+      aria-label="区間を地図で見る"
+      aria-description={onMap.outside ? "区間は地図の外です" : undefined}
+      usage="地図を、選んでいる区間へ寄せます。区間を選んだだけでは地図は動きません。"
+      onClick={onMap.onShow}
+    >
+      <ShowSectionOnMapIcon size={18} />
+    </Button>
+  );
+}
+
 /** 押した区間の小窓。上の帯に地点（道のりのkm）と到達予想、見るだけの間はその下に難易度の塊（軸ごとの内訳と風）を置き、
  * 近くの施設を続ける。`facilitiesOnly`の間（「ルート結果」が効いていて、区間の中身はグラフの下が出す）は、上の帯をkmだけにし、
  * 近くの施設だけを出す。区分のチップを押すと、同じ小窓をその区分の一覧に替える（閉じる操作は小窓が持つ）。 */
 export default function SegmentDetail({
   selection,
   sidePoints,
+  facilityOrigin,
   facilitiesOnly = false,
+  onMap,
 }: {
   selection: SelectedRouteSegment;
   /** 区間の近くの点。候補に無い区間ならnullで、行を出さない。 */
   sidePoints: SegmentSidePointsState | null;
+  /** 近くの施設の位置を前後で言う基準の地点。 */
+  facilityOrigin: FacilityOrigin | null;
   facilitiesOnly?: boolean;
+  /** 上の帯の右の「区間を地図で見る」（`facilitiesOnly`の間は出さない）。 */
+  onMap: SectionOnMap;
 }) {
   const axisCatalog = useAxisCatalog();
   const [openedKindId, setOpenedKindId] = useState<string | null>(null);
@@ -68,6 +100,7 @@ export default function SegmentDetail({
       <SidePointKindList
         {...opened}
         shown={!sidePoints.hidden.has(opened.kind.id)}
+        origin={facilityOrigin}
         onToggle={() => sidePoints.onToggle(opened.kind.id)}
         onBack={() => setOpenedKindId(null)}
       />
@@ -86,6 +119,12 @@ export default function SegmentDetail({
           <span className={cn(textVariants({ variant: "hint" }), "whitespace-nowrap")}>
             <span className="sr-only">到達予想 </span>
             {arrival}着
+          </span>
+        )}
+        {/* 「ルート結果」が効いている間は、グラフの下の地点の詳しくが同じボタンを持つ。 */}
+        {!facilitiesOnly && (
+          <span className="ml-auto">
+            <SectionOnMapButton onMap={onMap} />
           </span>
         )}
       </PopupHeader>

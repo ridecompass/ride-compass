@@ -1,7 +1,8 @@
 /**
  * `app/page.tsx`——トップページのうち、地図の小窓。
  *
- * 見ること: 区間・ピン・道・地図の点のどれを押しても小窓は1つだけで、最後に押した物の中身を出すこと。区間の中身から、その区間に
+ * 見ること: 区間・ピン・道・地図の点のどれを押しても小窓は1つだけで、最後に押した物の中身を出し、名前の無い点は押しても
+ * 何も変えないこと。区間の中身から、その区間に
  * 属さない物（ピン・道・点）へ入れ替えると区間の選びを外し、開ける物の無い所を押すと閉じること。道の小窓を別の道へ押し替えると、
  * 前の道で押した評価を新しい道へ持ち越さないこと。見るだけの間の区間の小窓が、上の帯と難易度の塊の形で出ること。
  *
@@ -47,11 +48,23 @@ beforeEach(() => {
 
 const ROAD: PointedFeature = { layer: "road-tiles-surface", properties: { osm_way_id: 1, feature_key: "1" } };
 
+const CAFE = { latitude: 35.705, longitude: 139.705 };
+
 describe("地図の小窓", () => {
-  it("区間・ピン・道・点のどれを押しても小窓は1つだけで最後に押した物の中身を出し、区間の中身をほかの物へ入れ替えると区間の選びを外し、何も無い所を押すと閉じる", async () => {
+  it("区間・ピン・道・点のどれを押しても小窓は1つだけで最後に押した物の中身を出し、区間の中身をほかの物へ入れ替えると区間の選びを外し、名前の無い点は何も変えず、何も無い所を押すと閉じる", async () => {
     const shop: PointedFeature = {
       layer: sceneLayerId(POINT_TILE_SOURCES.poi.sourceId, "supply_poi"),
       properties: { name: "角の店", kind: "convenience" },
+      geometry: { type: "Point", coordinates: [ELSEWHERE.longitude, ELSEWHERE.latitude] },
+    };
+    const cafe: PointedFeature = {
+      layer: sceneLayerId(POINT_TILE_SOURCES.poi.sourceId, "supply_poi"),
+      properties: { name: "峠の茶屋", kind: "cafe" },
+      geometry: { type: "Point", coordinates: [CAFE.longitude, CAFE.latitude] },
+    };
+    const toilet: PointedFeature = {
+      layer: sceneLayerId(POINT_TILE_SOURCES.poi.sourceId, "supply_poi"),
+      properties: { kind: "toilets" },
       geometry: { type: "Point", coordinates: [ELSEWHERE.longitude, ELSEWHERE.latitude] },
     };
     const { user } = renderHome();
@@ -59,24 +72,26 @@ describe("地図の小窓", () => {
     await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
     await user.click(screen.getByRole("checkbox", { name: "補給・休憩ポイント" }));
     await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "経由地を足す" }));
+    clickMap(CAFE, [cafe]);
     jobs.respond([FIRST], LOOP_CONDITIONS);
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
-    const [originPin] = marksAt(HERE);
+    const [waypointPin] = marksAt(CAFE);
 
     clickSegment(drawnSegment, HERE);
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
 
-    await user.click(originPin.element);
-    expect(screen.getByText("出発地: 現在地")).toBeInTheDocument();
+    await user.click(waypointPin.element);
+    expect(screen.getByText("経由地 1: 峠の茶屋")).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "区間の小窓の上の帯" })).toBeNull();
     expect(selectedPointMarks()).toEqual([]);
 
     clickSegment(drawnSegment, HERE);
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
-    expect(screen.queryByText("出発地: 現在地")).toBeNull();
+    expect(screen.queryByText("経由地 1: 峠の茶屋")).toBeNull();
 
     clickMap(ELSEWHERE, [ROAD]);
     expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
@@ -86,6 +101,10 @@ describe("地図の小窓", () => {
     clickMap(ELSEWHERE, [shop]);
     expect(screen.getByText(/角の店/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "この道の評価を見る" })).toBeNull();
+
+    // 名前の無い点は押しても何も開かず、開いている小窓もそのまま残す。
+    clickMap(ELSEWHERE, [toilet]);
+    expect(screen.getByText(/角の店/)).toBeInTheDocument();
 
     clickMap(ELSEWHERE, []);
     expect(screen.queryByText(/角の店/)).toBeNull();
@@ -104,6 +123,7 @@ describe("地図の小窓", () => {
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
 
+    const fitsBefore = mapOnScreen().fits().length;
     clickSegment(mapOnScreen().sourceFeatures("route-segments")[0], HERE);
 
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toHaveTextContent(
@@ -114,6 +134,15 @@ describe("地図の小窓", () => {
     expect(
       block.getByRole("button", { name: /^区間の風（最寄りの格子点の値 .* 3\.3m\/s）の説明を表示$/ }),
     ).toBeInTheDocument();
+
+    // 区間を押しただけでは地図は動かず、上の帯の「区間を地図で見る」で区間へ寄せる。
+    expect(mapOnScreen().fits()).toHaveLength(fitsBefore);
+    await user.click(
+      within(screen.getByRole("group", { name: "区間の小窓の上の帯" })).getByRole("button", {
+        name: "区間を地図で見る",
+      }),
+    );
+    await waitFor(() => expect(mapOnScreen().fits()).toHaveLength(fitsBefore + 1));
   });
 
   it("評価を開いた道から別の道へ押し替えると、その道の評価は押すまで取りに行かない", async () => {

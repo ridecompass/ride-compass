@@ -19,6 +19,7 @@ import { POINT_HIT_TARGET, pointLayerOfSceneLayer } from "@/features/map/scene/g
 import {
   SIDE_POINT_HIT_TARGET,
   SIDE_POINT_KM_PROPERTY,
+  SIDE_POINT_NAMED_PROPERTY,
   SIDE_POINT_OFFSET_PROPERTY,
   sidePointRowOfSceneLayer,
 } from "@/features/map/scene/groups/sidePoints";
@@ -34,7 +35,7 @@ import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
  * 選び、選んだルートの区間を押すとその区間を選ぶ。乗り換え: 乗り換える区間を選ぶ。見る: 押した物（道・点・区間・ピン）の
  * 中身を小窓に出すだけで、地点もルートも変えない。走る: 選んだ区間の近くの点のほかは開かず、地図は現在地を追うことに
  * 専念する（走行中にパネルを開いていない間）。選んだ区間の近くの点は、区間を選べる意味（ルート・見る・走る）の間は押すと
- * 中身を小窓に出す。
+ * 中身を小窓に出す。点（地図の点・近くの点）は、名前のある施設だけが開く（位置と凡例で足りる点は、押せる物に数えない）。
  */
 export type MapTapMode = "points" | "routes" | "splice" | "look" | "ride";
 
@@ -86,6 +87,15 @@ function namedSpotOf(feature: MapGeoJSONFeature): PlaceCandidate | null {
   return { kind: "facility", level: "point", name, area: null, latitude, longitude };
 }
 
+/** 点の地物が名前のある施設か（近くの点は、地物を組むときに載せた印で読む。束ねた印なら、名前のある施設を含むか）。点でない対象は
+ * 常に開く。ポインタを動かすたびに呼ぶので、名前だけを見て、点の形には触らない。 */
+function opensPopup(feature: MapGeoJSONFeature, target: string): boolean {
+  if (target === SIDE_POINT_HIT_TARGET) return Number(feature.properties[SIDE_POINT_NAMED_PROPERTY]) > 0;
+  if (target !== POINT_HIT_TARGET) return true;
+  const point = pointLayerOfSceneLayer(feature.layer.id);
+  return point !== undefined && pointPlaceName(point, feature.properties) !== null;
+}
+
 /** 地図を押す・なぞる操作を結ぶ。状態は押した瞬間に`current`から読む。外すときは返した関数を呼ぶ。 */
 export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTapState }, popups: MapPopupControls) {
   /** その位置にある、押せるレイヤー（いま地図に載っているもの）の地物。 */
@@ -95,7 +105,8 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   }
 
   /** 意味ごとに押して開ける対象で、押した所に重なった地物のうち一番上に描かれたもの（乗り換えの帯は区間の上に描くので、
-   * 重なった所は帯を選ぶ）。開けない対象の地物は、上に重なっていても飛ばす。 */
+   * 重なった所は帯を選ぶ）。開けない対象の地物は、上に重なっていても飛ばす。一番上の開ける対象が名前の無い点なら、押しを
+   * 受け止めて何もしない（`"inert"`。下の物を開いたり小窓を閉じたりすると、区間の小窓とその近くの点の印まで消える）。 */
   function openableFeatureAt(point: MapMouseEvent["point"]) {
     const openable = OPENABLE_TARGETS[latest.current.tapMode];
     const { roadLayers, look } = latest.current;
@@ -106,7 +117,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
         hiddenRoadLineAt(feature.layer.id, feature.state, roadLayers, look.hiddenLegendKeys)
       )
         continue;
-      if (target !== undefined) return { feature, target };
+      if (target !== undefined) return opensPopup(feature, target) ? { feature, target } : "inert";
     }
     return null;
   }
@@ -128,6 +139,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
       return;
     }
     const hit = openableFeatureAt(e.point);
+    if (hit === "inert") return;
     if (hit === null) {
       popups.close();
       return;
@@ -171,12 +183,14 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
       popups.openSidePoint(
         at,
         distinctFacilities(
-          leaves.map((leaf) =>
-            facilityAt(
-              leaf.properties ?? {},
-              leaf.geometry.type === "Point" ? [leaf.geometry.coordinates[0], leaf.geometry.coordinates[1]] : at,
-            ),
-          ),
+          leaves
+            .map((leaf) =>
+              facilityAt(
+                leaf.properties ?? {},
+                leaf.geometry.type === "Point" ? [leaf.geometry.coordinates[0], leaf.geometry.coordinates[1]] : at,
+              ),
+            )
+            .filter((facility) => facility.name !== null),
         ),
       );
     });
@@ -226,8 +240,12 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   ]);
 
   function handleMouseMove(e: MapMouseEvent) {
-    map.getCanvas().style.cursor =
-      latest.current.tapMode === "points" ? "crosshair" : openableFeatureAt(e.point) !== null ? "pointer" : "";
+    if (latest.current.tapMode === "points") {
+      map.getCanvas().style.cursor = "crosshair";
+      return;
+    }
+    const hit = openableFeatureAt(e.point);
+    map.getCanvas().style.cursor = hit !== null && hit !== "inert" ? "pointer" : "";
   }
 
   map.on("click", handleClick);
