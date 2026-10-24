@@ -142,8 +142,9 @@ function status(f, config) {
 const held = (f, t) => (DISPATCH.includes(t.status) && waiting(f) ? { ...t, status: "待機" } : t);
 
 // 検査は、走っている間は検査、合格していなければ（不合格か、検査の実行が1本も無い）実装（検査が始まる形で push するのも、直すのも実装担当）。
-// マージのコミットの検査。自分の実行が取り消されたら、その変更を判定に入れる後の master の実行（src/facts.js: readFacts の covering）で読む。
-const mergeChecks = (f) => (f.mergeChecks.cancelled && need(f, "covering")) || f.mergeChecks;
+// マージのコミットの検査。自分の実行が合格せずに終わったら（落ちた・取り消された）、その変更を判定に入れる後の master の実行（src/facts.js: readFacts の
+// covering）で読む。後の実行がまだ無ければ自分の実行で読む。
+const mergeChecks = (f) => (f.mergeChecks.missed && need(f, "covering")) || f.mergeChecks;
 const unchecked = (c) => ({ status: c.stage && c.stage !== "COMPLETED" ? "検査" : "実装" });
 
 // 1階: 成果物の事実と関係性から、次に結果を出す者の行為を決める（上から最初に当たる行）。次に結果を出すのが、いま手放した担当と

@@ -53,11 +53,13 @@ test("R3・決め1・決め7・#760: 担当の実行が終わったら、表の�
     ["決め1 検証担当がマージし、本番に出たあとに残りがある → 実装担当", verify, { pr: { ...merged, mergeChecks: "SUCCESS" } }, "実装", 2, null],
     ["マージのコミットの検査がまだ（本番に出る前に確かめを問わない）", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "PENDING" } }, "検査", 1, null],
     ["マージのコミットの検査が1つも無い（合格していない）→ 実装担当", verify, { pr: merged }, "実装", 2, null],
-    ["マージのコミットの検査が落ちた → 打ち直すか直す実装担当", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, "実装", 2, null],
+    ["マージのコミットの検査が落ち、後の master の実行がまだ無い → 直すか待つ相手を張る実装担当", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, "実装", 2, null],
     ["マージのコミットの検査が取り消され、後の master の実行も無い（合格でない）→ 実装担当", verify, { body: CONFIRM, pr: { ...merged, mergeChecks: "CANCELLED" } }, "実装", 2, null],
     ["マージのコミットの上で担当の実行が取り消されても、担当の実行は検査に数えない → 確かめの問い", verify,
       { body: CONFIRM, pr: { ...merged, mergeChecks: "SUCCESS", mergeTasks: ["CANCELLED", "SUCCESS"] } }, "回答", 1, "## 問い（確かめ）"],
-    ["実装担当が、落ちたマージのコミットの検査を打ち直しも直しもせずに手放した → イレギュラー", { body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, { pr: { ...merged, mergeChecks: "FAILURE" } }, "回答", 1, "## 問い（イレギュラー）"],
+    ["実装担当が、落ちたマージのコミットの検査を直しも待つ相手を張りもせずに手放した → イレギュラー", { body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, { pr: { ...merged, mergeChecks: "FAILURE" } }, "回答", 1, "## 問い（イレギュラー）"],
+    ["実装担当が、関係ない理由で落ちたマージのコミットの検査の原因を持つ issue を前提に張って手放した → 待機（振り出さず、問わない）", { body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } },
+      { pr: { ...merged, mergeChecks: "FAILURE" }, blockedBy: [9] }, "待機", 1, null],
     ["必須でない検査（検査のワークフローの外）が落ちても走っていても、検査のワークフローが通れば合格 → 確かめの問い", verify,
       { body: CONFIRM, pr: { ...merged, mergeChecks: "SUCCESS", mergeOthers: ["FAILURE", "PENDING"] } }, "回答", 1, "## 問い（確かめ）"],
   ];
@@ -85,7 +87,7 @@ test("出来事1つで決め直す（R2・R4〜R9・R16・K2・K5・決め5・�
     // [要求, タスク, 担当が付いた後に変わる事実（無ければ担当なし）, 出来事, 期待]
     ["R4 PR の検査が落ちた → 同じ枝で直す実装担当", { status: "検査", pr: { draft: true, checks: "FAILURE" } }, null, ev.ci(`${config.branchPrefix}1`), { status: "実装", runs: ["#1 実装"] }],
     ["R4 PR の検査が通った → PR をレビュー可能にして検証担当", { status: "検査", pr: { draft: true, checks: "SUCCESS" } }, null, ev.ci(`${config.branchPrefix}1`), { status: "検証", draft: false, runs: ["#1 検証"] }],
-    ["原則の点検の1 マージのコミットの検査が落ちた → 本番に出ていないので確かめを問わず、打ち直すか直す実装担当", { status: "検査", body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, null,
+    ["原則の点検の1 マージのコミットの検査が落ちた → 本番に出ていないので確かめを問わず、直すか待つ相手を張る実装担当", { status: "検査", body: CONFIRM, pr: { ...merged, mergeChecks: "FAILURE" } }, null,
       ev.merge(1), { status: "実装", comment: null, runs: ["#1 実装"] }],
     ["親が保留の子のマージのコミットの検査が落ちた → 待機（振り出さない）", { status: "検査", parent: 4, body: "- [ ] 部品\n", pr: { ...merged, mergeChecks: "FAILURE" } }, null, ev.merge(1), { status: "待機", runs: [] }],
     ["K2・R12 確かめの答えが完了にせず文だけ → 閉じず、Claude の番（実装担当が読む）", { status: "回答", body: CONFIRM, comments: [ASKED("確かめ"), REPLY(ASKED("確かめ"), "続ける", "見た目が崩れる")] }, null, ev.comment(1),
@@ -272,19 +274,20 @@ test("tasks#938 振り出す前に、今の事実で決め直す（保存した�
   assert.deepEqual([w.at(1).status, w.at(2).status, w.titles()], ["実装", "回答", ["#1 実装"]], "ぶつかった PR に検証担当を、答えを待つ問いに実装担当を起こさない");
 });
 
-test("tasks#1079 マージのコミットの master の実行が後の push で取り消されたら、その変更を判定に入れる後の master の実行（first-parent の子の側で一番近い、取り消されていないもの）の結論で決める", async () => {
+test("tasks#1079・tasks#1182 マージのコミットの master の実行が合格せずに終わったら（後の push で取り消された・落ちた）、その変更を判定に入れる後の master の実行（first-parent の子の側で一番近い、取り消されていないもの）の結論で決める", async () => {
   const merged = (sha, parent, mergeChecks) => ({ state: "MERGED", merged: true, sha, parent, mergeChecks });
   const rows = [
     // [要求, 後のマージのコミットの検査（古い順。m2 は m1 の子、m3 は m2 の子）, #1 のステータス, 振り出した担当]
     ["後の実行が走っている間は検査（打ち直す担当を振り出さない）", ["PENDING"], "検査", []],
     ["後の実行が通った → 本番に出たので確かめを問う", ["SUCCESS"], "回答", []],
     ["後の実行も取り消され、さらに後の実行が通った → 確かめを問う", ["CANCELLED", "SUCCESS"], "回答", []],
-    ["後の実行が落ちた → 取り消された変更も検査が通っていないので、直す実装担当", ["FAILURE"], "実装", ["#1 実装"]],
+    ["後の実行が落ちた → #1 の変更も検査が通っていないので、直すか待つ相手を張る実装担当", ["FAILURE"], "実装", ["#1 実装"]],
   ];
-  for (const [name, later, status, runs] of rows) {
-    const w = world([{ n: 1, status: "検査", body: CONFIRM, pr: merged("m1", "m0", "CANCELLED") },
+  for (const [rowName, later, status, runs] of rows) for (const own of ["CANCELLED", "FAILURE"]) {
+    const name = `#1 の実行が ${own}、${rowName}`;
+    const w = world([{ n: 1, status: "検査", body: CONFIRM, pr: merged("m1", "m0", own) },
       ...later.map((checks, k) => ({ n: k + 2, status: "検査", body: "- [ ] 作る\n", pr: merged(`m${k + 2}`, `m${k + 1}`, checks) }))]);
-    await w.send(ev.merge(1)); // #1 の実行が取り消された知らせ
+    await w.send(ev.merge(1)); // #1 の実行が合格せずに終わった知らせ
     await w.send(ev.merge(later.length + 1)); // 一番後の実行の知らせ（#1 の番号は名前に無い）
     assert.deepEqual([w.at(1).status, said(w.at(1)), w.titles().filter((t) => t.startsWith("#1 "))],
       [status, status === "回答" ? "## 問い（確かめ）" : null, runs], name);
