@@ -11,6 +11,8 @@ export const dotVariants = cva("inline-block size-2 shrink-0 rounded-full", {
       /** 取得したが空（中空）。 */
       empty: "border border-current opacity-70",
       error: "bg-[var(--color-danger)]",
+      /** 画面の一部だけ取った。 */
+      partial: "bg-[var(--color-warning-strong)]",
       accent: "bg-[var(--color-accent)]",
       warning: "bg-[var(--color-warning-strong)]",
       neutral: "bg-[var(--color-border)]",

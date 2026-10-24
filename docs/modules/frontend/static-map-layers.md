@@ -426,12 +426,12 @@ ON/OFFから行う（画面の側は下敷きの有無を知らない）。
 
 ## レイヤーのデータ取得状態（地図上チップの状態ドット）
 
-`MapOverlayControls`の一覧の行は、`LayerDataStatus`（`mapLayers.ts`、"loading"/"empty"/"error"）を受け取り、
+`MapOverlayControls`の一覧の行は、`mapLayers.ts: LayerDataStatus`を受け取り、
 「表示ON かつ dataStatus が設定されている」間だけ行の名前の右へ小さな状態ドット（`ui/Dot`。`tone`が
 `LayerDataStatus`の値そのもの）を描画する（`on`/`active`がfalseの間は出さない）。
 
-ドットの意味（`mapLayers.ts: LAYER_DATA_STATUS_LABELS`）は、失敗・空の間▶パネルの
-凡例の上へ文として出す。凡例を持たないチップも、失敗・空の間は▶を出す——`title`だけでは
+ドットの意味（`mapLayers.ts: LAYER_DATA_STATUS_LABELS`）は、待ち以外の間▶パネルの
+凡例の上へ文として出す。凡例を持たないチップも、待ち以外の間は▶を出す——`title`だけでは
 スマホで読めない（規約は[ページ全体構成](page-composition.md)「失敗・空・待ちの伝え方」）。
 待ち（loading）は文にしない（`layerDataStatusNotice`）——凡例の絞り込みやON/OFFのたびに
 タイルが取り直され、開いたパネルの先頭に文が一瞬出ては消えて凡例が上下に揺れるため。

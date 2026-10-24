@@ -4,6 +4,14 @@ import { describe, expect, it } from "vitest";
 import regionExpectations from "@/types/generated/region-expectations.json";
 
 import { mergeTileValues, tileContainingLonLat, tilesCoveringViewport } from "./dynamicWayValues";
+import { tileBoundsLonLat } from "./webMercatorTile";
+
+/** ズーム12のタイルの座標（小数）で北西の角から幅・高さを取った範囲。地図のズームは12.0（色が付く一番引いた所）。 */
+function viewportOfTiles(x: number, y: number, width: number, height: number) {
+  const nw = tileBoundsLonLat(12, x, y);
+  const se = tileBoundsLonLat(12, x + width, y + height);
+  return { west: nw.west, north: nw.north, east: se.west, south: se.north, zoom: 12 };
+}
 
 describe("tileContainingLonLat（1点を含む道路タイル）", () => {
   it("地図のズームを切り捨て、タイルがあるズームの範囲へ収めてから引く", () => {
@@ -28,7 +36,7 @@ describe("tilesCoveringViewport（画面を覆う道路タイル）", () => {
         south: row.bbox.min_latitude,
         zoom: row.z,
       };
-      const tiles = tilesCoveringViewport(viewport, row.z, row.z);
+      const { tiles } = tilesCoveringViewport(viewport, row.z, row.z);
       const [xFirst, xLast] = row.x_range;
       const [yFirst, yLast] = row.y_range;
       expect(tiles, JSON.stringify(row)).toHaveLength((xLast - xFirst + 1) * (yLast - yFirst + 1));
@@ -39,7 +47,7 @@ describe("tilesCoveringViewport（画面を覆う道路タイル）", () => {
 
   it("北西の角から南東の角までの矩形のタイルを、1点を引くときと同じズームで並べる", () => {
     const viewport = { west: 139.75, north: 35.69, east: 139.78, south: 35.67, zoom: 14.2 };
-    const tiles = tilesCoveringViewport(viewport, 12, 16);
+    const { tiles } = tilesCoveringViewport(viewport, 12, 16);
     const nw = tileContainingLonLat(viewport.west, viewport.north, viewport.zoom, 12, 16);
     const se = tileContainingLonLat(viewport.east, viewport.south, viewport.zoom, 12, 16);
     expect(tiles).toHaveLength((se.x - nw.x + 1) * (se.y - nw.y + 1));
@@ -47,18 +55,32 @@ describe("tilesCoveringViewport（画面を覆う道路タイル）", () => {
     expect(tiles.at(-1)).toEqual(se);
   });
 
-  // 道路タイルの最小ズーム未満では地図が道を描かないので、引いても塗る先が無く、1回に64枚引いて上限（1分あたり）を使い切る。
+  // 道路タイルの最小ズーム未満では地図が道を描かないので、引いても塗る先が無く、1回に上限まで引いて1分あたりの受け付けを使い切る。
   it.each([
     [11.9, 0],
     [12, 1],
   ])("地図のズーム%sでは、最小ズーム12のタイルを%s枚並べる", (zoom, count) => {
     const viewport = { west: 139.766, north: 35.682, east: 139.767, south: 35.681, zoom };
-    expect(tilesCoveringViewport(viewport, 12, 16)).toHaveLength(count);
+    expect(tilesCoveringViewport(viewport, 12, 16).tiles).toHaveLength(count);
   });
 
-  it("極端に広い画面でも1回に引くタイルは64枚まで", () => {
-    const tiles = tilesCoveringViewport({ west: 120, north: 46, east: 150, south: 24, zoom: 12 }, 12, 16);
-    expect(tiles).toHaveLength(64);
+  // MapLibreはズーム12.0の地図でズーム12のタイル1枚を512 CSS pxに描く。2560×1440の画面をどう回しても、範囲の幅と高さは
+  // 対角線の2937px（5.74枚）を超えない。端がタイルの境目を少しずつ越える置き方で、列と行が一番多くなる。
+  it("2560×1440の画面は、どう回しても色が付く一番引いた所で、範囲の全部のタイルを取る", () => {
+    const side = Math.hypot(2560, 1440) / 512;
+    const result = tilesCoveringViewport(viewportOfTiles(3637.9, 1612.9, side, side), 12, 16);
+    expect(result.truncated).toBe(false);
+    expect(result.tiles).toHaveLength(7 * 7);
+  });
+
+  // 傾けた画面は奥の範囲が広がり、上限を超えうる。
+  it("上限を超える範囲では、範囲の中心に近いタイルから96枚を取り、端を落としたことを返す", () => {
+    const result = tilesCoveringViewport(viewportOfTiles(3630, 1610, 14, 10), 12, 16);
+    expect(result.truncated).toBe(true);
+    expect(result.tiles).toHaveLength(96);
+    const keys = new Set(result.tiles.map((tile) => `${tile.x}/${tile.y}`));
+    expect(keys.has("3637/1615")).toBe(true);
+    for (const corner of ["3630/1610", "3643/1610", "3630/1619", "3643/1619"]) expect(keys.has(corner)).toBe(false);
   });
 });
 
