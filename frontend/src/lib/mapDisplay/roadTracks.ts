@@ -18,16 +18,9 @@ export type RoadTrackRow = {
   readonly isFallback?: boolean;
 };
 
-/** 区分の外の道に「データなし」の行が分かれて現れうるか（層が、無ければデータなしとするプロパティを持つ）。 */
-export function roadTrackHasMissing(layer: RoadMapLayerView): boolean {
-  return layer.no_data_property !== null;
-}
-
 /** 区分に入らない道の行。データなしを分けない層では、区分の外の道は全部「該当しない」ことそのものなので呼び方を変える。 */
 function otherRow(layer: RoadMapLayerView): RoadTrackRow {
-  const row = roadTrackHasMissing(layer)
-    ? mapDisplay.legendSharedRows.other
-    : mapDisplay.legendSharedRows.notApplicable;
+  const row = layer.has_no_data ? mapDisplay.legendSharedRows.other : mapDisplay.legendSharedRows.notApplicable;
   return { key: ROAD_OTHER_KEY, ...row, color: palette.semantic.no_data };
 }
 
@@ -38,21 +31,11 @@ export function isUnclassifiedRow(row: RoadTrackRow): boolean {
 
 /** 凡例の行の並び。区分、その他（該当なし）、データなしを分ける層ではデータなし。 */
 export function roadTrackRows(layer: RoadMapLayerView): readonly RoadTrackRow[] {
-  return [
-    ...layer.classes.map((roadClass) => ({
-      key: roadClass.key,
-      label: roadClass.label,
-      description: roadClass.description,
-      color: roadClass.color,
-    })),
-    otherRow(layer),
-    ...(roadTrackHasMissing(layer) ? [NO_DATA_LEGEND_BAND] : []),
-  ];
+  return [...layer.classes, otherRow(layer), ...(layer.has_no_data ? [NO_DATA_LEGEND_BAND] : [])];
 }
 
-/** 区分の鍵`classKey`が入る凡例の行。nullと知らない鍵は、区分の外の道の行（その他・該当なし）。 */
+/** 層の値`classKey`（区分の鍵か「データなし」）が入る凡例の行。nullと知らない鍵は、区分の外の道の行（その他・該当なし）。 */
 export function roadTrackRowOf(layer: RoadMapLayerView, classKey: string | null): RoadTrackRow {
-  const roadClass = layer.classes.find((candidate) => candidate.key === classKey);
-  if (roadClass === undefined) return otherRow(layer);
-  return { key: roadClass.key, label: roadClass.label, description: roadClass.description, color: roadClass.color };
+  if (classKey === mapDisplay.road.noDataValue) return NO_DATA_LEGEND_BAND;
+  return layer.classes.find((candidate) => candidate.key === classKey) ?? otherRow(layer);
 }

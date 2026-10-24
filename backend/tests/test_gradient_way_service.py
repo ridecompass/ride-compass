@@ -10,7 +10,7 @@
 - 路面タイルの世代がDBの世代と形の署名を持つこと → `test_cache_identity.py`
 """
 
-import inspect
+import functools
 from contextlib import nullcontext
 
 import numpy as np
@@ -24,6 +24,7 @@ from app.infrastructure import debug_log
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services.gradient_way_service import GradientWayService
+from tests.bound_fake import bound
 
 Z, X, Y = 14, 14551, 6447
 #: キャッシュの検査で、1回目の後にDBの中身を替える先。`{1: (5.0, 30.0)}`と材料が違う。
@@ -45,8 +46,8 @@ class FakeGradientInputsRepository:
     async def get_data_revisions(self):
         return DataRevisions(derived=self.revision, imported=1)
 
+    @functools.partial(bound, RoadGraphRepository.get_feature_gradient_inputs_in_tile)
     async def get_feature_gradient_inputs_in_tile(self, *args, **kwargs):
-        inspect.signature(RoadGraphRepository.get_feature_gradient_inputs_in_tile).bind(self, *args, **kwargs)
         if self._error is not None:
             raise self._error
         return self.inputs
@@ -88,16 +89,29 @@ async def test_second_call_is_served_from_cache():
     assert (after.cache_misses - counted_before[0], after.cache_hits - counted_before[1]) == (1, 1)
 
 
-async def test_a_new_derived_data_revision_recomputes_without_the_catalog(monkeypatch):
+async def test_a_new_derived_data_revision_recomputes_without_the_catalog(monotonic_clock):
     """勾配の鍵は路面タイルの世代を持つ。世代はこの経路が自分で読み直すため、バッチが世代を進めれば、
     カタログを誰も取らなくてもTTLの後から作り直す（前の世代の値は路面タイルの鍵と一致しない）。"""
-    monkeypatch.setattr(settings, "derived_data_revision_check_interval_seconds", 0.0)
     repository = FakeGradientInputsRepository(inputs={1: (5.0, 30.0)})
     service = GradientWayService(repository=repository)
     first = await service.get_way_materials(Z, X, Y, None)
 
     repository.inputs = CHANGED_INPUTS
     repository.revision = 2
+    monotonic_clock.advance(settings.derived_data_revision_check_interval_seconds)
+
+    assert await service.get_way_materials(Z, X, Y, None) != first
+
+
+async def test_tiles_read_while_the_revision_is_unknown_are_not_kept():
+    """DBの世代を読めない間に読んだ材料は、どの世代の道の鍵か分からない。残すと、後で世代を読めない間に同じ印の鍵で
+    別の世代の材料を返し、道の鍵がどの地物にも一致しないまま勾配の色が消える。"""
+    repository = FakeGradientInputsRepository(inputs={1: (5.0, 30.0)})
+    repository.revision = None
+    service = GradientWayService(repository=repository)
+    first = await service.get_way_materials(Z, X, Y, None)
+
+    repository.inputs = CHANGED_INPUTS
 
     assert await service.get_way_materials(Z, X, Y, None) != first
 

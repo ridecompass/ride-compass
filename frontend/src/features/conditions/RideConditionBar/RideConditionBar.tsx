@@ -5,7 +5,7 @@ import { LENS_LINK_CLASS, LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { useState, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import { departureLabelParts } from "@/features/conditions/rideConditions";
+import { departureLabelParts, floorToDepartureStep } from "@/features/conditions/rideConditions";
 import { clampSpeedKmh, MAX_SPEED_KMH, MIN_SPEED_KMH } from "@/lib/assumedSpeed";
 
 import DynamicLayerTimeSlider from "@/features/conditions/DynamicLayerTimeSlider/DynamicLayerTimeSlider";
@@ -92,7 +92,10 @@ function DepartureRuler({
   const [{ timeline, frames, nowIndex }] = useState(() => {
     const anchor = new Date();
     const timeline = buildDepartureTimeline(anchor);
-    return { timeline, frames: buildDepartureFrames(timeline), nowIndex: nearestTimeIndex(timeline, anchor) };
+    // 「今」に追従する出発時刻は刻みへ切り下げてあるので、「今」の目盛りも切り下げた時刻で選ぶ（今に最も近い目盛りで選ぶと、
+    // 刻みの後半では1つ先の目盛りになり、そこへ送る操作が「今」への追従へ化ける）。
+    const now = new Date(floorToDepartureStep(anchor.getTime()));
+    return { timeline, frames: buildDepartureFrames(timeline), nowIndex: nearestTimeIndex(timeline, now) };
   });
   return (
     <DynamicLayerTimeSlider
@@ -111,7 +114,7 @@ function DepartureRuler({
 // 地図右上の走行条件アイコン列。走行条件（出発時刻・想定速度）は時刻・速さで値の変わる評価と
 // 気象レイヤーの表示時刻の両方が参照する共有stateのため、ルート設定フォームでは
 // なく地図上に常時置き、アイコンをタップしてその場で変えられるようにする。地図の右上の
-// 拡大・縮小と方位磁針と同じ列の幅のアイコンボタンに揃える（page.tsxがその列の直下へ積む）。
+// 拡大・縮小と方位磁針と同じ列の幅のアイコンボタンに揃える（`app/HomeMapPane.tsx`がその列の直下へ積む）。
 export default function RideConditionBar({
   departureTime,
   onDepartureTimeChange,

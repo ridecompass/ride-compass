@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { Badge } from "@/components/ui/Badge/Badge";
 import { Button } from "@/components/ui/Button/Button";
@@ -9,18 +9,17 @@ import { DialogContent, DialogRoot } from "@/components/ui/Dialog/Dialog";
 import { SavedPlaceIcon, SavePlaceIcon } from "@/components/ui/icons/lucideIcons";
 import { Input } from "@/components/ui/Input/Input";
 import { textVariants } from "@/components/ui/Text/Text";
-import PlaceCandidates, { isRepresentative } from "@/features/route/PlaceSearch/PlaceCandidates";
-import { PREDICTION_MIN_LENGTH, usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
+import { isRepresentative } from "@/features/route/PlaceSearch/PlaceCandidates";
 import { areaAt } from "@/features/route/placeSearchApi";
-import { savedPlaceAt, savedPlacesMatching } from "@/features/route/savedPlaces";
+import { savedPlaceAt } from "@/features/route/savedPlaces";
 import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
-import { useIsMobile } from "@/hooks/useIsMobile";
-import { useVisualViewport } from "@/hooks/useVisualViewport";
 import { cn } from "@/lib/cn";
 import { getQueryClient } from "@/lib/queryClient";
 import type { Coordinates, PinRole, PlaceCandidate } from "@/types/route";
 
 import PointMark from "@/components/PinMark/PointMark";
+
+import PointSearch from "./PointSearch";
 
 interface PointDetailProps {
   role: PinRole;
@@ -59,25 +58,10 @@ interface PointDetailProps {
   savedPlaces: SavedPlacesState;
 }
 
-/** 上側へせり上がる動きの長さ。 */
-const RISE_MS = 200;
-
-/** 打つ欄を、いちばん近い縦にスクロールする祖先の上端（欄の`scroll-margin-top`を空ける）へ送る。`scrollIntoView`は祖先を
- * 全部送るので、ページまで送って地図の上側を切る。 */
-function scrollToScrollerTop(element: HTMLElement) {
-  for (let scroller = element.parentElement; scroller !== null; scroller = scroller.parentElement) {
-    if (!/auto|scroll/.test(getComputedStyle(scroller).overflowY)) continue;
-    const margin = parseFloat(getComputedStyle(element).scrollMarginTop) || 0;
-    scroller.scrollTop += element.getBoundingClientRect().top - scroller.getBoundingClientRect().top - margin;
-    return;
-  }
-}
-
 /**
  * 押した地点の詳しく: どの地点か・どうやって置いたか・名前・辺り（探した施設は候補の辺り、地図で選んだ地点・現在地・辺りの
- * 無い施設は位置から引いた辺り。探した住所は名前が住所なので出さない）と、住所・施設の名前を打って置き直す欄（候補は欄のすぐ下。
- * 欄を押すと、保存した地点のうち打った文字を名前に含むものを住所・施設の候補の上に出す。狭い画面では、欄を押してから選ぶ・閉じる
- * までは、欄のあった位置からせり上がって、欄と候補を見えている範囲の上側に出す）と、消す・現在地に戻す・置いた地点の保存（保存した地点なら保存をやめる）。
+ * 無い施設は位置から引いた辺り。探した住所は名前が住所なので出さない）と、住所・施設の名前を打って置き直す欄と、消す・現在地に
+ * 戻す・置いた地点の保存（保存した地点なら保存をやめる）。
  */
 export default function PointDetail({
   role,
@@ -98,44 +82,6 @@ export default function PointDetail({
   onChoose,
   savedPlaces,
 }: PointDetailProps) {
-  const lookup = usePlaceLookup(mapCenter);
-  const inputId = useId();
-  const formRef = useRef<HTMLFormElement>(null);
-  const listing = lookup.query !== "";
-  // 打つ欄を押してから、選ぶ・閉じるまでの間は、保存した地点を候補に出す。
-  const [browsing, setBrowsing] = useState(false);
-  const inputProps = lookup.inputProps();
-  const savedMatches = browsing ? savedPlacesMatching(savedPlaces.places, inputProps.value) : [];
-  const listOpen = listing || savedMatches.length > 0;
-  // 狭い画面では、欄を押してから選ぶ・閉じるまでは、欄と候補を見えている範囲（キーボードの上まで）の上側に重ねて出し、候補は
-  // その中で送る。シートの中では、欄の下の候補がシートの下端とキーボードの裏に入る。出す物の有無で上げ下げすると、打つ途中で
-  // 欄が上側とシートを行き来してちらつく。欄は同じ要素のまま動かす（作り直すとキーボードが閉じる）。
-  const isMobile = useIsMobile();
-  const raised = isMobile && browsing;
-  const visible = useVisualViewport(raised);
-  // 上側へは、欄のあった位置からせり上がって開く。欄を押したときの欄の上端を覚えておき、上側に出した枠を、欄がその位置に
-  // 来るずれから動かし始める。
-  const frameRef = useRef<HTMLDivElement>(null);
-  const riseFrom = useRef<number | null>(null);
-  useLayoutEffect(() => {
-    const from = riseFrom.current;
-    riseFrom.current = null;
-    if (!raised || from === null || frameRef.current === null || formRef.current === null) return;
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    const offset = from - formRef.current.getBoundingClientRect().top;
-    frameRef.current.animate?.([{ transform: `translateY(${offset}px)` }, { transform: "none" }], {
-      duration: RISE_MS,
-      easing: "ease-out",
-    });
-  }, [raised]);
-  // 広い画面では、候補が出たら打つ欄をパネルの上端へ送り、下の候補をパネルの高さいっぱいに見せる。一覧は自分では高さを限らず、
-  // パネルのスクロールだけで読む（二重のスクロールにしない）。候補が届いて一覧が伸びたときにも送り直す（引いている間の短い一覧
-  // では、パネルの下端まで送り切れない）。
-  const candidates = lookup.search.data;
-  useEffect(() => {
-    if (listOpen && !isMobile && formRef.current !== null) scrollToScrollerTop(formRef.current);
-  }, [listOpen, isMobile, candidates]);
-
   // 探した住所は名前が辺りを含み、代表の位置なら行きたい所そのものでもないので、辺りは引かない。
   const representative = found !== null && isRepresentative(found);
   const areaPoint = found?.kind !== "address" && found?.area == null ? at : null;
@@ -149,30 +95,6 @@ export default function PointDetail({
   );
   // 引けない間・引けなかったときは辺りを出さない（名前と出どころは出ている）。
   const area = found?.area ?? (areaPoint !== null ? (placedArea.data ?? null) : null);
-
-  function closeList() {
-    lookup.close({ clearText: true });
-    setBrowsing(false);
-  }
-
-  // 上側に出している間は見出しの行の右、シートの中では候補の一覧の右上に置く。
-  const closeButton = (
-    <Button
-      variant="ghost"
-      size="icon"
-      onClick={closeList}
-      aria-label={`${title}の候補を閉じる`}
-      className="size-6 flex-none text-[var(--foreground)]"
-      usage="候補の一覧を閉じて、打った文字を消します。"
-    >
-      ✕
-    </Button>
-  );
-
-  function choose(candidate: PlaceCandidate) {
-    onChoose(candidate);
-    closeList();
-  }
 
   // 置いた地点の保存。名前の欄には、探して置いた候補の名前か辺り（地図で選んだ地点・現在地は辺りのほうが見分けやすい）を入れておく。
   const savedHere = at !== null ? savedPlaceAt(savedPlaces.places, at) : null;
@@ -231,55 +153,11 @@ export default function PointDetail({
         </div>
       </div>
 
-      <div
-        ref={frameRef}
-        className={cn(
-          "flex flex-col gap-1",
-          raised && "fixed inset-x-0 top-0 bottom-0 z-10 bg-[var(--background)] p-2 shadow-[0_2px_8px_rgba(0,0,0,0.2)]",
-        )}
-        style={raised && visible !== null ? { top: visible.top, bottom: "auto", height: visible.height } : undefined}
-      >
-        {raised && (
-          <div className="flex items-center justify-between gap-2">
-            <p className={textVariants({ variant: "heading" })}>{title}を探す</p>
-            {closeButton}
-          </div>
-        )}
-        {/* 打つ欄と消す等を1行に並べ、入らなければ操作を次の行へ送る。上側に出している間は欄だけにする。 */}
-        <div className="flex flex-wrap items-center gap-1">
-          <form
-            ref={formRef}
-            role="search"
-            className="min-w-[9rem] flex-1 scroll-mt-1"
-            onSubmit={(event) => {
-              event.preventDefault();
-              lookup.submit();
-            }}
-          >
-            <input
-              id={inputId}
-              type="search"
-              aria-label={`${title}を住所・施設で探す`}
-              // 上側に出している間は地図が隠れていて、地図で置く案内のとおりに操作できない。
-              placeholder={placing && !raised ? placingHint : placed ? "住所・施設で置き直す" : "住所・施設で探す"}
-              disabled={full}
-              enterKeyHint="search"
-              className={cn(
-                "w-full rounded-sm border border-[var(--color-border)] bg-transparent px-1.5 py-1 text-[length:var(--font-size-sm)] text-[var(--foreground)] placeholder:text-[var(--color-muted)]",
-                "focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]",
-              )}
-              {...inputProps}
-              onFocus={() => {
-                if (isMobile && !browsing) riseFrom.current = formRef.current?.getBoundingClientRect().top ?? null;
-                setBrowsing(true);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") closeList();
-              }}
-              data-usage={`住所か施設の名前を入れて探します。${PREDICTION_MIN_LENGTH}文字から、打つのを止めると候補が出ます。候補を選ぶと${chooseResult}。`}
-            />
-          </form>
-          <div className={raised ? "hidden" : "contents"}>
+      <PointSearch
+        title={title}
+        placed={placed}
+        actions={
+          <>
             {extra}
             {savedHere !== null ? (
               <Button
@@ -308,61 +186,16 @@ export default function PointDetail({
                 <SavePlaceIcon />
               </Button>
             )}
-          </div>
-        </div>
-
-        {listOpen && (
-          <div
-            className={cn(
-              "relative flex rounded-sm border border-[var(--color-border)] p-1",
-              raised ? "min-h-0 flex-auto" : "pr-8",
-            )}
-          >
-            {!raised && <div className="absolute top-1 right-1">{closeButton}</div>}
-            <div className={cn("flex min-w-0 flex-auto flex-col gap-1", raised && "overflow-y-auto")}>
-              {savedMatches.length > 0 && (
-                <ul aria-label="保存した地点" className="flex flex-col gap-0.5">
-                  {savedMatches.map((place) => (
-                    <li key={place.name}>
-                      <Button
-                        variant="menu"
-                        size="sm"
-                        className="w-full whitespace-normal"
-                        onClick={() => choose(place)}
-                        usage={`保存した地点です。選ぶと${chooseResult}。`}
-                      >
-                        <SavedPlaceIcon size={14} />
-                        <span className="min-w-0 flex-auto [overflow-wrap:anywhere]">
-                          {place.name}
-                          {place.area !== null && (
-                            <span className={cn("ml-1.5", textVariants({ variant: "note" }))}>{place.area}</span>
-                          )}
-                        </span>
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {listing && (
-                <PlaceCandidates
-                  lookup={lookup}
-                  renderCandidate={(candidate, candidateLabel) => (
-                    <Button
-                      variant="menu"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => choose(candidate)}
-                      usage={`この候補を選ぶと${chooseResult}。`}
-                    >
-                      {candidateLabel}
-                    </Button>
-                  )}
-                />
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+          </>
+        }
+        placingHint={placingHint}
+        chooseResult={chooseResult}
+        full={full}
+        placing={placing}
+        mapCenter={mapCenter}
+        onChoose={onChoose}
+        savedPlaces={savedPlaces}
+      />
       <DialogRoot open={naming} onOpenChange={setNaming}>
         <DialogContent title="地点を保存">
           <form

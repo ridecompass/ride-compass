@@ -8,6 +8,7 @@
 ここで見ないもの:
 - HTTPの状態コードへの読み替え（404・502）・ズームの上限・レート制限 → `test_gsi_tile_routes.py`
 - 標高タイルの書式の変換 → `test_gsi_dem_png.py`
+- 上流の失敗の種類（404・失敗の応答・通信の失敗）の見分け → `test_http_client.py`
 - ディスクの読み書きの失敗 → `test_tile_cache.py`（このクライアントには未キャッシュとして届く）
 - 読み書きをイベントループの外で行うこと → 結果に現れない順序の約束で、理由は実装の隣のコメントが持つ
 """
@@ -25,6 +26,7 @@ from tests.fake_http import client_for
 
 UPSTREAM = "https://cyberjapandata.gsi.go.jp"
 RELIEF = "xyz/relief/10/909/403.png"
+CATEGORY = "gsi:relief-tile"
 
 
 def client(router: respx.Router, not_found: LRUCache | None = None) -> gsi_tile_client.GsiTileClient:
@@ -48,8 +50,8 @@ async def test_a_tile_is_relayed_and_served_from_disk_after_a_restart():
     router = respx.Router()
     router.get(f"{UPSTREAM}/{RELIEF}").respond(content=b"\x89PNG", headers={"content-type": "image/png"})
 
-    first = await client(router).get(RELIEF)
-    later = await client(unreachable()).get(RELIEF)
+    first = await client(router).get(RELIEF, category=CATEGORY)
+    later = await client(unreachable()).get(RELIEF, category=CATEGORY)
 
     assert first == later == (b"\x89PNG", "image/png")
 
@@ -60,26 +62,21 @@ async def test_outside_coverage_is_remembered_for_the_process_but_not_across_a_r
     router.get(f"{UPSTREAM}/{RELIEF}").side_effect = [httpx.Response(404), httpx.Response(200, content=b"\x89PNG")]
     not_found = LRUCache(maxsize=16)
 
-    first = await client(router, not_found).get(RELIEF)
-    same_process = await client(unreachable(), not_found).get(RELIEF)
-    after_restart = await client(router).get(RELIEF)
+    first = await client(router, not_found).get(RELIEF, category=CATEGORY)
+    same_process = await client(unreachable(), not_found).get(RELIEF, category=CATEGORY)
+    after_restart = await client(router).get(RELIEF, category=CATEGORY)
 
     assert first is same_process is UPSTREAM_NOT_FOUND
     assert after_restart == (b"\x89PNG", "image/png")
     assert warnings() == []
 
 
-@pytest.mark.parametrize(
-    "answer",
-    [httpx.Response(503), httpx.ConnectTimeout("timed out")],
-    ids=["server-error", "transport-error"],
-)
-async def test_an_upstream_failure_gives_nothing_is_logged_and_is_not_remembered(answer, warnings):
+async def test_an_upstream_failure_gives_nothing_is_logged_and_is_not_remembered(warnings):
     router = respx.Router()
     route = router.get(f"{UPSTREAM}/{RELIEF}")
-    route.side_effect = [answer, httpx.Response(200, content=b"\x89PNG")]
+    route.side_effect = [httpx.Response(503), httpx.Response(200, content=b"\x89PNG")]
     not_found = LRUCache(maxsize=16)
 
-    assert await client(router, not_found).get(RELIEF) is None
-    assert [r for r in warnings() if "gsi:relief-tile" in r.getMessage()]
-    assert await client(router, not_found).get(RELIEF) == (b"\x89PNG", "image/png")
+    assert await client(router, not_found).get(RELIEF, category=CATEGORY) is None
+    assert [r for r in warnings() if CATEGORY in r.getMessage()]
+    assert await client(router, not_found).get(RELIEF, category=CATEGORY) == (b"\x89PNG", "image/png")

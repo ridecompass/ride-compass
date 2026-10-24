@@ -15,15 +15,23 @@
 import pytest
 import pytest_asyncio
 
-from app.batch import derive_nodes, derive_stop_places, derive_topology
+from app.batch import derive_stop_places, derive_topology
 from app.domain.accident import PartyType
 from app.domain.geo import KM_PER_DEGREE_LATITUDE
-from app.domain.graph import LeanEdge, edge_key
-from app.domain.tuning import ACCIDENT_MATCH_DISTANCE_ID, STOP_CLUSTER_DISTANCE_ID, TUNING_PARAMETERS_BY_ID
+from app.domain.tuning import ACCIDENT_MATCH_DISTANCE_ID, STOP_CLUSTER_DISTANCE_ID
 from app.infrastructure import derived_data_meta
 from app.infrastructure.source_models import PARTY_TYPE_CODES
 from tests.conftest import empty_ingested_tables
-from tests.source_ingest import WAY_ORIGIN, WAY_STEP, ingest_records, point_record, way_record
+from tests.source_ingest import (
+    WAY_ORIGIN,
+    WAY_STEP,
+    accident_record,
+    derive_nodes_at_default_radius,
+    ingest_records,
+    overture_place_record,
+    point_record,
+    way_record,
+)
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -35,16 +43,9 @@ def _at(along: float, north_m: float) -> tuple[float, float]:
     return (LON + 2 * WAY_STEP * along, LAT + north_m / (KM_PER_DEGREE_LATITUDE * 1000.0))
 
 
-def _place(key: int, position: tuple[float, float], name: str, hierarchy: tuple[str, ...]):
-    return point_record(key, *position, {
-        "names": {"primary": name}, "confidence": 0.75,
-        "brand": {"names": {"primary": None}}, "taxonomy": {"hierarchy": list(hierarchy)}})
-
-
-def _accident(key: int, position: tuple[float, float], *, fatal: bool = False, year: str = "2021"):
-    return point_record(key, *position, {
-        "当事者種別（当事者A）": PARTY_TYPE_CODES[PartyType.BICYCLE], "当事者種別（当事者B）": "03",
-        "死者数": "001" if fatal else "000", "発生日時　　年": year})
+def _accident(key: int, position: tuple[float, float], *, fatal: bool = False):
+    """2021年の、自転車が当事者Aの事故。"""
+    return accident_record(key, *position, party_a=PARTY_TYPE_CODES[PartyType.BICYCLE], fatal=fatal, year=2021)
 
 
 @pytest_asyncio.fixture(loop_scope="module")
@@ -63,11 +64,11 @@ async def side_points_world(derive_conn):
         point_record(102, *_at(0.25, -55), {"amenity": "toilets"}),
         point_record(103, *_at(0.25, -120), {"amenity": "toilets"}),
     ], conn=conn)
-    await derive_nodes.derive(conn, TUNING_PARAMETERS_BY_ID["signal.match_radius_m"].default)
+    await derive_nodes_at_default_radius(conn)
     await ingest_records("overture_place", [
-        _place(1, _at(0.75, -50), "ローソン 渋谷店", ("shopping", "convenience_store")),
-        _place(2, _at(0.5, -80), "喫茶A", ("food_and_drink", "cafe")),
-        _place(3, _at(0.5, -150), "喫茶B", ("food_and_drink", "cafe")),
+        overture_place_record(1, *_at(0.75, -50), "ローソン 渋谷店", ("shopping", "convenience_store")),
+        overture_place_record(2, *_at(0.5, -80), "喫茶A"),
+        overture_place_record(3, *_at(0.5, -150), "喫茶B"),
     ], conn=conn)
     await derive_stop_places.derive(conn)
     await ingest_records("accident", [
@@ -78,15 +79,10 @@ async def side_points_world(derive_conn):
     ], conn=conn)
 
 
-def _edge(way: int) -> LeanEdge:
-    return LeanEdge(edge_id=edge_key(way, 0, True), from_node_id="", to_node_id="", geometry=[],
-                    distance_m=0.0, osm_way_id=way, segment_index=0, forward=True)
-
-
 async def test_points_near_each_segment_follow_the_rule_of_their_kind(side_points_world, road_graph_repository):
     """道の上の停止要因・道から100m以内の補給と立ち寄り先・最も近い区間が30m以内の事故だけを、その区間の点にする。
     外れると、グラフに通らない所の点が並ぶか、通る所の点が抜ける。"""
-    found = await road_graph_repository.get_route_side_points([_edge(10), _edge(20)])
+    found = await road_graph_repository.get_route_side_points([(10, 0), (20, 0)])
 
     summary = {
         key: sorted((hit.layer, hit.merge_group, tuple(sorted(hit.properties.items())), round(hit.fraction, 2))
@@ -111,8 +107,8 @@ async def test_points_near_each_segment_follow_the_rule_of_their_kind(side_point
 
 
 async def test_a_side_point_carries_its_distance_from_the_road(side_points_world, road_graph_repository):
-    """続けて走る区間のどちらにも近い点は、道から近い方に置く（`test_route_points.py`）ので、道からの距離は地上のmで要る。"""
-    found = await road_graph_repository.get_route_side_points([_edge(10)])
+    """続けて走る区間のどちらにも近い点は道から近い方に置き（`test_route_points.py`）、画面は道からの距離を出すので、地上のmで要る。"""
+    found = await road_graph_repository.get_route_side_points([(10, 0)])
 
     [toilets] = [hit for hit in found[(10, 0)] if hit.properties.get("kind") == "toilets"]
     assert toilets.distance_m == pytest.approx(55.0, abs=1.0)
@@ -125,7 +121,7 @@ async def test_side_points_use_the_values_the_derived_tables_were_built_with(sid
     40mなら道10の点になる。"""
     await derived_data_meta.replace_tuning(derive_conn, {ACCIDENT_MATCH_DISTANCE_ID: 40.0, STOP_CLUSTER_DISTANCE_ID: 15.0})
     try:
-        found = await road_graph_repository.get_route_side_points([_edge(10)])
+        found = await road_graph_repository.get_route_side_points([(10, 0)])
     finally:
         await derived_data_meta.replace_tuning(derive_conn, {})
 

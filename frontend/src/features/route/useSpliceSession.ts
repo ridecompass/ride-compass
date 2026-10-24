@@ -183,12 +183,17 @@ export function useSpliceSession({
     .map((item, index) => `${index}:${item.candidateId}:${item.stretch.start}-${item.stretch.end}`)
     .join("|");
   const splicePreview = splice?.previews[spliceChoiceKey] ?? null;
-  // 地図の帯をタップしたら、その道へ乗り換える。
+  // 地図の帯をタップしたら、その道へ乗り換える。作成中は乗り換えない（作るのは押した時点の組み合わせで、作ると編集を閉じるため、
+  // 待つ間の乗り換えは黙って消える）。
   const handleSpliceStretchSelect = useCallback(
     (index: number) => {
       const option = spliceOptions[index];
       if (!option) return;
-      setSplice((current) => current && withApplied(current, [...current.applied, option]));
+      setSplice(
+        (current) =>
+          current &&
+          (current.task.status === "applying" ? current : withApplied(current, [...current.applied, option])),
+      );
     },
     [spliceOptions],
   );

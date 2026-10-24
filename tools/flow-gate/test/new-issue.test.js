@@ -60,6 +60,7 @@ test("起票する（new-issue.mjs）: 作れない理由があれば、作る�
     ["親が子", { parent: "5" }, CHILD, { parent: { ...OPEN_PARENT, parent: { number: 3 } } }, /#3 の子です/],
     ["親が閉じている", { parent: "5" }, CHILD, { parent: { ...OPEN_PARENT, state: "CLOSED" } }, /閉じている/],
     ["親に種類が無い", { parent: "5" }, CHILD, { parent: { ...OPEN_PARENT, issueType: null } }, /種類が無い/],
+    ["分割元が番号でない（読む前に断る）", { type: "要望", size: "S", priority: "中", origin: "#5" }, BODY, {}, /分割元は番号で書く/],
     ["置き場に無い種類", { type: "要旨", size: "S", priority: "中" }, BODY, {}, /種類「要旨」は置き場に無い/],
     ["置き場を読めない（5xx）", { type: "要望", size: "S", priority: "中" }, BODY, { throw: { stderr: "HTTP 502" } }, /置き場を読めなかった（HTTP 502）/],
   ];

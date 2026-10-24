@@ -16,7 +16,7 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
 from itertools import batched
 
 import numpy as np
@@ -236,9 +236,9 @@ def _network_edges_sql(bearing_distance_m: float) -> TextClause:
     折れ線の向き（始点→終点）に進むときと逆に進むときの両方を持ち、端から`bearing_distance_m`の道のりの点までで測る
     （区間がそれより短ければ端から端を見る）。
     """
-    near_start = f"ST_LineInterpolatePoint(re.geom, LEAST(1.0, {bearing_distance_m!r} / NULLIF(re.distance_m, 0)))"
+    near_start = f"ST_LineInterpolatePoint(re.geom, LEAST(1.0, {bearing_distance_m!r} / re.distance_m))"
     near_end = (
-        f"ST_LineInterpolatePoint(re.geom, GREATEST(0.0, 1.0 - {bearing_distance_m!r} / NULLIF(re.distance_m, 0)))")
+        f"ST_LineInterpolatePoint(re.geom, GREATEST(0.0, 1.0 - {bearing_distance_m!r} / re.distance_m))")
     return text(f"""
 SELECT re.osm_way_id, re.segment_index, re.from_node_id, re.to_node_id,
        w.highway, wm.direction,
@@ -311,6 +311,17 @@ def _rows_to_directed_edges(rows, wanted: dict[tuple[int, int], list[bool]]) -> 
                 segment_index=row.segment_index, forward=forward,
             )
     return edges
+
+
+def _add_route_side_points(rows, result: dict[tuple[int, int], list[RoutePointHit]]) -> None:
+    """近くの点の行を、区間（`(osm_way_id, segment_index)`）ごとの`RoutePointHit`として`result`へ足す。"""
+    for row in rows:
+        result.setdefault((row["osm_way_id"], row["segment_index"]), []).append(RoutePointHit(
+            layer=row["layer"], point_key=row["point_key"], merge_group=row["merge_group"],
+            merge_within_m=row["merge_within_m"],
+            properties={name: row[name] for name in SIDE_POINT_PROPERTIES if row[name] is not None},
+            fraction=row["fraction"], distance_m=row["distance_m"],
+        ))
 
 
 def _scanned_relations(plan: object) -> set[str]:
@@ -447,22 +458,18 @@ class RoadGraphRepository:
             result.update(await asyncio.to_thread(_rows_to_directed_edges, rows, wanted))
         return result
 
-    async def get_route_side_points(self, edges: Sequence[LeanEdge]) -> dict[tuple[int, int], list[RoutePointHit]]:
+    async def get_route_side_points(
+        self, segments: Iterable[tuple[int, int]]
+    ) -> dict[tuple[int, int], list[RoutePointHit]]:
         """区間（`(osm_way_id, segment_index)`）ごとの、近くの点。向きは問わず、位置は区間の形の向きで測る。"""
-        keys = sorted({(edge.osm_way_id, edge.segment_index) for edge in edges})
+        keys = sorted(set(segments))
         result: dict[tuple[int, int], list[RoutePointHit]] = {}
         for chunk in batched(keys, ID_CHUNK_SIZE):
             rows = (await self._session.execute(ROUTE_SIDE_POINTS_SQL, {
                 "way_ids": [k[0] for k in chunk],
                 "segment_indexes": [k[1] for k in chunk],
             })).mappings().all()
-            for row in rows:
-                result.setdefault((row["osm_way_id"], row["segment_index"]), []).append(RoutePointHit(
-                    layer=row["layer"], point_key=row["point_key"], merge_group=row["merge_group"],
-                    merge_within_m=row["merge_within_m"],
-                    properties={name: row[name] for name in SIDE_POINT_PROPERTIES if row[name] is not None},
-                    fraction=row["fraction"], distance_m=row["distance_m"],
-                ))
+            await asyncio.to_thread(_add_route_side_points, rows, result)
         return result
 
     # --- 材料 ----------------------------------------------------------------
@@ -572,7 +579,7 @@ class RoadGraphRepository:
             "osm_way_id": osm_way_id,
             "segment_index": segment[1] if segment is not None and segment[0] == osm_way_id else None,
         })).one()
-        # 割合は有効画素のある行だけが全部持つ（表の制約`landcover_shares_follow_valid_pixels`）。
+        # 土地被覆の行が無いときは外部結合で全列がNULLになる。行があれば割合は全部ある（列はNOT NULL）。
         if row.lc_valid_pixels is None:
             return None
         return LandcoverPercentages(**{field: getattr(row, f"lc_{landcover_key(field)}")

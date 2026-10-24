@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, NamedTuple
 import numpy as np
 
 from app.domain.attributes import MaterialColumn
-from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks, road_avoidance_masks
 from app.domain.road_classes import Condition, ConditionTerm, conditions_match
 
@@ -63,7 +62,7 @@ def compute_routable_nodes(
 ) -> np.ndarray:
     """0次ハードフィルタで除外されなかった区間が1本以上あるノード（ノード番号順の真偽）。
 
-    探索用グラフ（`domain/routing.py: LazyRoadGraph`）はHard Constraintをグラフ構造では
+    探索用グラフ（`domain/search_graph.py: LazyRoadGraph`）はHard Constraintをグラフ構造では
     なくコスト（`math.inf`）で表現するため、「実際に経路探索可能なNode」はここで別途
     求める必要がある。
 
@@ -80,15 +79,8 @@ def compute_routable_nodes(
 def compute_search_exclusion(
     score_matrix: "StaticEdgeScoreMatrix",
     road_avoidance: Mapping[str, AvoidanceLevel],
-    max_average_grade_percent: float | None,
 ) -> RoadAvoidanceMasks:
-    """静的スコア行列が持つ0次ハードフィルタ・区分・勾配の列から、リクエスト時点の`road_avoidance`/
-    `max_average_grade_percent`を反映した、探索から除く区間と割り増す区間を求める。"""
+    """静的スコア行列が持つ0次ハードフィルタ・区分の列から、リクエスト時点の`road_avoidance`を反映した、
+    探索から除く区間と割り増す区間を求める。"""
     rows = road_avoidance_masks(score_matrix.road_classes, road_avoidance, len(score_matrix.distance_m))
-    excluded = rows.excluded | score_matrix.hard_filtered
-    # 勾配の〇次ハードフィルタ（NaNとの比較は常にFalseになるため、勾配不明のEdgeへは
-    # 適用されない）。
-    if max_average_grade_percent is not None:
-        with np.errstate(invalid="ignore"):
-            excluded |= np.abs(score_matrix.material_column(GRADIENT_PERCENT)) > max_average_grade_percent
-    return RoadAvoidanceMasks(excluded=excluded, avoided=rows.avoided)
+    return RoadAvoidanceMasks(excluded=rows.excluded | score_matrix.hard_filtered, avoided=rows.avoided)

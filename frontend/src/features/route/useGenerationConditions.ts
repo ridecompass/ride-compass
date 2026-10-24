@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useStoredBooleanState, useStoredJsonState, useStoredState } from "@/hooks/useStoredState";
-import { readRoadAvoidance } from "@/features/route/roadAvoidance";
+import { readRoadAvoidance, withCurrentRoadKeys } from "@/features/route/roadAvoidance";
 import { alignRoutePreference, routePreferenceToSend } from "@/features/route/routePreferenceSync";
 import {
   acceptedDistanceInput,
@@ -57,9 +57,6 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
 
   // 経由地（通る順）。
   const [waypoints, setWaypoints] = useState<Coordinates[]>([]);
-  const removeWaypoint = useCallback((index: number) => {
-    setWaypoints((prev) => prev.filter((_, i) => i !== index));
-  }, []);
   const moveWaypoint = useCallback((index: number, point: Coordinates) => {
     setWaypoints((prev) => prev.map((current, i) => (i === index ? point : current)));
   }, []);
@@ -75,20 +72,24 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
   const clearDestination = useCallback(() => setDestination(null), []);
   const destination = destinationInUse({ loop, destination: placedDestination });
 
-  // 選んでいる地点（地図のタップが置く地点）。何も選んでいない・選んだ経由地が消えた・周回で目的地を使わない間は出発地——
+  // 選んでいる地点（地図のタップが置く地点）。何も選んでいない・周回で目的地を使わない間は出発地——
   // 周回を作る人が地図を触っても目的地が置かれず、詳しくに出ている地点と置かれる地点がいつも同じになる。
+  // 経由地を減らす操作は、選んでいる経由地も同じ操作の中で直す。
   const [chosenPoint, setChosenPoint] = useState<PointTarget | null>(null);
   const selectedPoint = useMemo<PointTarget>(
-    () =>
-      chosenPoint === null ||
-      (chosenPoint.role === "destination" && loop) ||
-      (chosenPoint.role === "waypoint" && chosenPoint.index !== null && chosenPoint.index >= waypoints.length)
-        ? { role: "origin" }
-        : chosenPoint,
-    [chosenPoint, loop, waypoints.length],
+    () => (chosenPoint === null || (chosenPoint.role === "destination" && loop) ? { role: "origin" } : chosenPoint),
+    [chosenPoint, loop],
   );
 
   const selectPoint = useCallback((target: PointTarget) => setChosenPoint(target), []);
+  // 経由地を消すと後ろの番号を詰めるので、選んでいる経由地も同じに詰める（番号のまま残すと、次の経由地を選んだことになる）。
+  const removeWaypoint = useCallback((index: number) => {
+    setWaypoints((prev) => prev.filter((_, i) => i !== index));
+    setChosenPoint((current) => {
+      if (current?.role !== "waypoint" || current.index === null || current.index < index) return current;
+      return current.index === index ? null : { role: "waypoint", index: current.index - 1 };
+    });
+  }, []);
 
   // 検索・名前のある点で置いた地点の候補。名前を出すのは、その地点がまだ候補の位置にある間だけ（ピンを動かす・地図で置き直すと、
   // 名前の所ではなくなる）。
@@ -109,20 +110,20 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     [selectedPoint, onOriginPlace, moveWaypoint, addWaypoint, waypoints],
   );
   // 探して選んだ地点を置く（経由地は`waypointIndex`番目を置き直し、無ければ足して、足した経由地を選ぶ——どこに置いたかを
-  // 詳しくで確かめられる）。
+  // 詳しくで確かめられる）。足すのは生成が受け付ける数まで（開いた候補の一覧からは、数に達した後にも選べる）。
   const placeFound = useCallback(
     (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => {
       const point = { latitude: candidate.latitude, longitude: candidate.longitude };
       if (role === "origin") onOriginPlace(point);
       else if (role === "destination") setDestination(point);
       else if (waypointIndex !== null) moveWaypoint(waypointIndex, point);
-      else {
+      else if (!waypointsFull(waypoints)) {
         addWaypoint(point);
         setChosenPoint({ role: "waypoint", index: waypoints.length });
-      }
+      } else return;
       setFound((prev) => [...prev, candidate]);
     },
-    [onOriginPlace, moveWaypoint, addWaypoint, waypoints.length],
+    [onOriginPlace, moveWaypoint, addWaypoint, waypoints],
   );
   /** 地点`at`が検索で置いたときの位置のままなら、その候補。 */
   const foundAt = useCallback(
@@ -185,6 +186,13 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
       deserialize: (raw) => readRoadAvoidance(JSON.parse(raw)),
     },
   );
+  // 軸カタログが届いたら、前の鍵に選んだ段を今の鍵へ書き直して保存へ書き戻す。
+  const avoidanceView = axisCatalog.roadClasses.avoidance;
+  useEffect(() => {
+    if (axisCatalog.loaded && withCurrentRoadKeys(roadAvoidance, avoidanceView) !== roadAvoidance) {
+      setRoadAvoidance((prev) => withCurrentRoadKeys(prev, avoidanceView));
+    }
+  }, [axisCatalog.loaded, avoidanceView, roadAvoidance, setRoadAvoidance]);
 
   // いまの条件を、保存・呼び出しと同じ形1つで返す（保存・生成の入力・保存の説明はこれを読む）。
   const snapshot: GenerationConditionsSnapshot = useMemo(

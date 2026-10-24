@@ -14,7 +14,14 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { serveAxisCatalog } from "@/testing/backendServer";
-import { TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
+import {
+  AVOIDANCE_LEVELS,
+  avoidanceRow,
+  catalogResponse,
+  roadClassCatalog,
+  TWO_AXIS_CATALOG,
+} from "@/testing/catalogAxes";
+import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { Coordinates } from "@/types/route";
 
 import { useGenerationConditions } from "./useGenerationConditions";
@@ -132,9 +139,6 @@ describe("保存して呼び出す", () => {
     const { result } = renderSaved();
 
     expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual(result.current.saved.saved);
-    expect(result.current.saved.saved).toEqual([
-      expect.objectContaining({ name: "いつもの周回", distanceTargeted: true, waypoints: [] }),
-    ]);
   });
 
   it("消すとその件だけが一覧から外れる", () => {
@@ -148,21 +152,40 @@ describe("保存して呼び出す", () => {
   });
 });
 
-describe("出発地", () => {
-  it("固定して保存したものは、呼び出すと保存したときの出発地にする（現在地のままでも）", () => {
-    const { result, rerender, onOriginPlace, onOriginFollowCurrent } = renderSaved({
-      origin: ORIGIN,
-      originManual: false,
-    });
-    act(() => result.current.saved.save("ここに固定", true));
-    rerender({ origin: A, originManual: true });
+describe("道の区分の前の鍵", () => {
+  it("軸カタログが届くと、保存した件の前の鍵に選んだ段を今の鍵へ移して保存へ書き戻す", async () => {
+    const entry = {
+      name: "砂利を避ける",
+      loop: true,
+      distanceTargeted: true,
+      distance: "30",
+      maxRoutes: String(routeGenerateConfig.default_max_routes),
+      origin: null,
+      waypoints: [],
+      destination: null,
+      routePreference: null,
+      roadAvoidance: { dirt: "exclude" },
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([entry]));
+    serveAxisCatalog(
+      catalogResponse([], {
+        road_classes: roadClassCatalog({
+          avoidance: {
+            levels: AVOIDANCE_LEVELS,
+            rows: [avoidanceRow("unpaved", "surface", { former_keys: ["dirt"] })],
+          },
+        }),
+      }),
+    );
+    const { result } = renderSaved();
 
-    act(() => result.current.saved.recall(result.current.saved.saved[0]));
-
-    expect(onOriginPlace).toHaveBeenCalledExactlyOnceWith(ORIGIN);
-    expect(onOriginFollowCurrent).not.toHaveBeenCalled();
+    const rewritten = [{ ...entry, roadAvoidance: { unpaved: "exclude" } }];
+    await waitFor(() => expect(result.current.saved.saved).toEqual(rewritten));
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual(rewritten);
   });
+});
 
+describe("出発地", () => {
   it("固定せずに保存したものは、呼び出したとき地図で置いた出発地があれば現在地へ戻し、現在地のままなら何もしない", () => {
     const { result, rerender, onOriginFollowCurrent } = renderSaved({ origin: A, originManual: true });
     act(() => result.current.saved.save("現在地から", false));

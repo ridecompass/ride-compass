@@ -2,7 +2,7 @@
 /**
  * `features/ride/nextTurn.ts`——ルートの曲がる所の並びから、現在地より先でいちばん近い曲がる所と、そこまでの距離を選ぶ。
  *
- * ここで見ないもの: 走行中のページで、ルートの上の現在地から選んだものが地図の上のカードと印に出ること → `app/page.test.tsx`
+ * ここで見ないもの: 走行中のページで、ルートの上の現在地から選んだものが地図の上のカードと印に出ること → `app/page.ride.test.tsx`
  */
 import { describe, expect, it } from "vitest";
 

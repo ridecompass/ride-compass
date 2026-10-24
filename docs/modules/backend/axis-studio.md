@@ -17,7 +17,7 @@
 | services | `axis_registry_service.py`・`axis_preview_service.py`・`road_class_service.py` |
 | infrastructure | `axis_definition_models.py`・`axis_definition_repository.py`・`road_class_models.py`・`road_class_repository.py` |
 | api | `axis_admin.py`・`axis_catalog.py`・`road_class_admin.py` |
-| scripts | `measure_axis_saturation.py`・`axis_apply.py`・`road_classes_apply.py`・`_admin_apply.py`（本番の管理APIへ差を見てから書く道具の共有部品。指紋・差の行・宛先と認証情報） |
+| scripts | `measure_axis_saturation.py`・`axis_apply.py` |
 
 ## 分布プレビュー・材料の値ごとの割合（`services/axis_preview_service.py`・`domain/value_distribution.py`）
 
@@ -101,22 +101,32 @@ JSONはリポジトリの外に置き、コミットしない（定義は較正�
 - 宛先はリポジトリの`production-origins.json`（`_production_origins.py`）、認証情報は`backend/.env.oracle.local`の
   `ADMIN_BASIC_AUTH_USERNAME`・`ADMIN_BASIC_AUTH_PASSWORD`（`_prod_env.py`）から読む。引数に取らず、出力にも出さない。
 
-## 道の区分（`domain/road_classes.py`・`scripts/road_classes_apply.py`）
+## 道の区分（`domain/road_classes.py`）
 
 道の分け方と区分（条件）・地図の線の層・転がり抵抗の較正値の割り当て・除外タブの見出しと既定は、管理DBの表
 （`infrastructure/road_class_models.py`）が正本で、コードは写しも既定も持たない。表が空なら区分は0件で、地図・除外タブには何も出ない。
 
 - **形の良し悪しは表の制約だけが決める**（構造仕様15）。鍵の綴り・参照先の実在・並びの重なり等は制約が守り、appは読む前・書く前に
   確かめ直さない。外部キーは取引の終わりまで遅らせるので、全体を消して入れ直す書き込みは入れ替えた後の形で確かめられる。
-  制約で表せない良し悪し（条件が重なる・値の綴りが事実の語彙に無い）は判定せず、振り分けの式が1つの答えを出す:
+  制約で表せない良し悪し（条件が重なる・条件の値の綴りが事実の語彙に無い）は判定せず、振り分けの式が1つの答えを出す:
   2つ以上の区分に当たる道は区分なし、知らない事実はどの道にも無い事実として扱う。
-- **管理APIは全体の読みと全体の入れ替えだけ**。入れ替えはadvisory lockで直列にした1つの取引で、表の制約に通らなければ
-  何も変えずに409でDBの断りの文を返す。確定してからプロセス内の全体を差し替え、起動時も表から読む（単一プロセスが前提）。
+- **コードの宣言と軸を名指す値は、入れ替えるときだけ確かめる**（構造仕様15）。事実・まとめ先・色の段・較正値の名が宣言に無い
+  （`domain/road_classes.py: undeclared_references`）か、軸が材料に読む分け方が消える（`domain/axis_definitions.py: missing_class_materials`）か、
+  軸の値ごとの点数・0次条件が名指す区分の値が今の鍵にも前の鍵にも無くなる（`domain/axis_definitions.py: unknown_class_values`）
+  入れ替えは断る。軸の書き込みと同じ鍵で直列にするので、確かめてから確定するまでの間に分け方を読む軸は増えない。
+  起動時の読み込みは名を確かめず、宣言から消えた名を指す行は知らない値として倒す。
+- **管理APIは全体の読みと全体の入れ替えだけ**。入れ替えはadvisory lockで直列にした1つの取引で、表の制約・上の確かめに通らなければ
+  何も変えずに409で断りの文を返す。確定してからプロセス内の全体を差し替え、起動時も表から読む（単一プロセスが前提）。
 - **軸カタログは解決した形で配る**（`road_classes`の欄）。公開した分け方だけを出し、色・タグの注・層の説明のうち区分から
-  組む部分と、条件の項のタイルのプロパティ（タイルに載らない事実はnull）をbackendが決める。指紋（`generation`）は全体の中身から作る。
-- **本番へ入れるのは`scripts/road_classes_apply.py`**。全体のJSON（全体の読みと同じ形）と本番の今の全体の差を出し、差を出したときの
-  指紋を`--apply`に渡したときだけ入れ替える。書いた後は、全体の読みと、軸カタログの区分の指紋の両方で反映を確かめる。
-  JSONはリポジトリの外に置き、コミットしない。
+  組む部分をbackendが決める。指紋（`generation`）は全体の中身から作る。
+- **地図の線の層の値もbackendが決める**（`domain/road_classes.py: layer_columns`）。値は区分の鍵か「データなし」で、地図の線
+  （`/api/region/road-classes`）とルートの区間の帯が同じ値を読む。地図は条件を当てない。
+- **本番へは管理APIで全体を入れる**（`PUT /api/admin/road-classes`）。全体のJSONは本番の今の全体（`GET`）から作り、リポジトリの外に置く。
+- **前の鍵は3か月で外す**: 区分の鍵を改める・分ける・合わせるときは、今の区分に前の鍵（`domain/road_classes.py: RoadClass.former_keys`）を
+  足し、前の鍵で選んだ段を今の行へ引き継ぐ（`domain/road_avoidance.py: resolve_road_avoidance`）。区分の列を引く表（軸の値ごとの点数・
+  0次条件・転がり抵抗）も、今の鍵で引けない区分を前の鍵の区分の名で引く（`domain/road_classes.py: ClassColumn`）ので、区分を先に改め、
+  軸はあとで直せる。前の鍵は、その全体を本番へ入れてから3か月で外す。入れるときに、外す日を着手可能日時にした対話作業の issue を
+  起こす。外したあと、前の鍵だけを送る要求はその行を既定の段で読み、軸がまだ前の名を指していれば外す入れ替えは断られる。
 
 ## データモデル（`domain/axis_definitions.py`）
 
@@ -185,7 +195,7 @@ JSONはリポジトリの外に置き、コミットしない（定義は較正�
 `material`の値が`equals`と一致する場合、shape評価をスキップし`value`をそのまま返す
 （探索除外のハードフィルタ`domain/hard_filters.py: HARD_FILTERS`とは別の仕組み）。
 
-**一致の判定は1本**（`_priority_override_mask`）で、Pythonの値で持つ入口（区間の内訳）も
+**一致の判定は1本**（`domain/axis_definitions.py: priority_override_mask`）で、Pythonの値で持つ入口（区間の内訳）も
 材料の値を配列にして同じ関数を通す。材料の値は入口ごとに別の形で届く——区間の内訳は
 Pythonの値、ルート選びと地図の配信は材料の型ごとの配列で、分類の材料は語彙への番号の列、「不明」を持つ真偽の材料
 は1.0/0.0/NaNの数値の配列になる。判定を2本持つと、この形の違いで区間の内訳とルート選びが同じ道に違う答えを出す。
@@ -235,7 +245,8 @@ Pythonの値、ルート選びと地図の配信は材料の型ごとの配列�
         │ 読み込み
         ▼
   refresh_axis_definitions()（axis_registry_service.py）
-    起動タイミング: (1) main.py起動時（lifespan）に1回
+    起動タイミング: (1) 起動時（lifespan）と、起動を通らない道具（ベンチ・scripts/）の読み込みに1回。
+                        どちらも services/definitions_loading.py: refresh_definitions から、区分を読んだあとに呼ぶ
                     (2) axis_admin.py書き込み成功直後に1回
         │ replace_axis_definitions()（同じdictのまま .clear() + .update()）
         ▼
@@ -247,7 +258,7 @@ Pythonの値、ルート選びと地図の配信は材料の型ごとの配列�
 
 - `AXIS_DEFINITIONS`はPython literalの初期値を持たない（空dictで開始）。DBが唯一の正本。
 - 差し替えはイベントループで動くので、ループの上で読む側は差し替えの途中を見ない。`asyncio.to_thread`の先で
-  軸を読む処理（静的スコア行列を組む`build_static_edge_score_matrix`）は、入口で`copy_axis_definitions`の写しを
+  軸を読む処理（静的スコア行列を組む`build_static_edge_score_matrix`・レグのコストを合成する`LegCostComposer`）は、入口で`copy_axis_definitions`の写しを
   1回取り、終わりまでその写しだけを読む——直に読むと、読む間の保存で鍵が欠ける・回している辞書の大きさが変わる・
   読むたびに軸の集合が食い違う。写しと差し替えは同じロックで排他にし、写しが差し替えの途中（空の辞書）を見ない。
 - `refresh_axis_definitions`はDB読み込み失敗・0行・値の不変条件（下の「軸の外に照らす値の不変条件」）に
@@ -400,7 +411,7 @@ idの文字列ではなく宣言そのもので指す。材料が指す要素に
 | `POST /api/admin/axis-definitions/preview-calibration` | Basic認証必須 | 送られた定義（保存前の下書きでよい）で地図が塗る段（`map_paint`。境界の上書きが無ければ形から導いたもの）と、密度の軸か（`averages_density`。真なら折れ点は0から伸びる2点の直線に限る）を返す。定義の検証は保存と同じで、通らなければ保存と同じ誤りの文を返す（DBを読まない） |
 | `POST /api/admin/axis-definitions/preview-way-values` | Basic認証必須 | 編集中の折れ点（`shape`）で、タイル（z・x・y）のフィーチャーごとに地図が塗る値（較正の地図）。鍵と値の意味は、地図が道ごとの材料（`/api/region/way-materials`）を軸の木（`way_value_formula`）で評価した値と同じで、同じ材料・同じ評価から、軸の集合の写しの中で`shape`だけを差し替えて求める（`services/dedicated_way_values.py: draft_axis_way_value_lens`）——保存されている折れ点を渡せば地図が塗る値と同じになり、`AXIS_DEFINITIONS`と配信の材料は変わらない。公開していない軸も求める。条件で変わる材料を読む軸は、条件の欄（走行方位・時刻・想定速度）を受け、要る欄が欠ければ422。無い軸は404、保存の判定（`services/axis_registry_service.py: check_loadable_after_write`）が断る下書きはその文で422。レート制限の上限とDB接続プールのsemaphoreは配信と同じもの（`api/routers/_tile_http.py: region_tile_semaphore`）を使う |
 | `GET /api/admin/road-classes` | Basic認証必須 | 道の区分の全体の読み（上の「道の区分」） |
-| `PUT /api/admin/road-classes` | Basic認証必須 | 道の区分の全体の入れ替え。表の制約に通らなければ409 |
+| `PUT /api/admin/road-classes` | Basic認証必須 | 道の区分の全体の入れ替え。表の制約・コードの宣言・軸が読む分け方に通らなければ409 |
 | `GET /api/axis-catalog` | 不要（公開） | `is_published=True`の軸のみ返す。画面が読む項目（名前・説明・重みの既定・チップ・地図が塗るもの・生値の単位と内訳等）だけを返し、`shape`・しきい値の上書きの生の値は返さない（地図の段は`map_paint`が配る） |
 
 管理API（`/api/admin/axis-definitions`）のBasic認証はルーターの`dependencies`で1か所に宣言し、

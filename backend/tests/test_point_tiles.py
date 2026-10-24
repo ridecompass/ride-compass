@@ -19,14 +19,20 @@ from collections import Counter
 import mapbox_vector_tile
 import pytest
 
-from app.batch import derive_nodes, derive_stop_places
+from app.batch import derive_stop_places
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tiles_covering_bbox
-from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID, TUNING_PARAMETERS_BY_ID
+from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
 from app.infrastructure import derived_data_meta
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from tests.conftest import raw_connection
-from tests.source_ingest import ingest_records, point_record
+from tests.source_ingest import (
+    accident_record,
+    derive_nodes_at_default_radius,
+    ingest_records,
+    overture_place_record,
+    point_record,
+)
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -58,7 +64,7 @@ async def _ingest_pois(nodes: list[tuple[float, float, dict[str, str]]], road_ar
     await ingest_records("osm_way", [], bbox=road_area)
     await ingest_records("osm_node", [point_record(i, lon, lat, tags) for i, (lon, lat, tags) in enumerate(nodes, 1)])
     async with raw_connection() as conn:
-        await derive_nodes.derive(conn, TUNING_PARAMETERS_BY_ID["signal.match_radius_m"].default)
+        await derive_nodes_at_default_radius(conn)
 
 
 async def _tile(repository: RoadGraphRepository, name: str, x: int = X) -> bytes | None:
@@ -71,13 +77,6 @@ def _features(tile: bytes | None, name: str) -> list[dict]:
     decoded = mapbox_vector_tile.decode(tile)
     assert list(decoded) == [POINT_TILE_LAYERS[name].source_layer]
     return decoded[POINT_TILE_LAYERS[name].source_layer]["features"]
-
-
-def _overture_place(key: int, lon: float, name: str, hierarchy: tuple[str, ...] = ("food_and_drink", "cafe"),
-                    lat: float = LAT) -> object:
-    return point_record(key, lon, lat, {
-        "names": {"primary": name}, "confidence": 0.75,
-        "brand": {"names": {"primary": None}}, "taxonomy": {"hierarchy": list(hierarchy)}})
 
 
 async def _ingest_stop_places(places: list[object]) -> None:
@@ -166,8 +165,8 @@ async def test_convenience_stores_come_from_the_stop_places_and_not_from_openstr
     ほかの群の立ち寄り先は補給の点に出ない。"""
     await _ingest_pois([(LON, LAT, {"shop": "convenience"}), (LON + FAR, LAT, TOILETS)])
     await _ingest_stop_places([
-        _overture_place(1, LON - FAR, "ローソン 渋谷店", ("shopping", "convenience_store")),
-        _overture_place(2, LON, "店2", lat=LAT + FAR),
+        overture_place_record(1, LON - FAR, LAT, "ローソン 渋谷店", ("shopping", "convenience_store")),
+        overture_place_record(2, LON, LAT + FAR, "店2"),
     ])
 
     assert _kinds(await _tile(road_graph_repository, "poi")) == Counter({"convenience": 1, "toilets": 1})
@@ -176,7 +175,7 @@ async def test_convenience_stores_come_from_the_stop_places_and_not_from_openstr
 async def test_only_a_convenience_store_carries_its_name(road_graph_repository):
     """コンビニは押すと店の名前で外の地図を開けるように名前を持つ。OpenStreetMap の点は名前を焼かない。"""
     await _ingest_pois([(LON + FAR, LAT, {**TOILETS, "name": "公園のトイレ"})])
-    await _ingest_stop_places([_overture_place(1, LON - FAR, "ローソン 渋谷店", ("shopping", "convenience_store"))])
+    await _ingest_stop_places([overture_place_record(1, LON - FAR, LAT, "ローソン 渋谷店", ("shopping", "convenience_store"))])
 
     names = {f["properties"]["kind"]: f["properties"].get("name") for f in _features(
         await _tile(road_graph_repository, "poi"), "poi")}
@@ -202,17 +201,9 @@ async def test_a_merged_point_on_a_tile_edge_is_drawn_once(road_graph_repository
 # --- 事故 --------------------------------------------------------------------
 
 
-def _accident(key: int, lon: float, lat: float, *, party_a: str = "03", party_b: str = "03",
-              deaths: str = "00", year: str = "2023") -> object:
-    return point_record(key, lon, lat, {
-        "当事者種別（当事者A）": party_a, "当事者種別（当事者B）": party_b,
-        "死者数": deaths, "発生日時　　年": year,
-    })
-
-
 async def test_accident_tiles_do_not_depend_on_the_imported_roads(road_graph_repository):
     """事故は対象範囲を一括で取り込むので、道を取り込んでいない所でも範囲の外にしない。タイルの外の事故は出ない。"""
-    await ingest_records("accident", [_accident(1, LON, LAT), _accident(2, LON + 10 * FAR, LAT)])
+    await ingest_records("accident", [accident_record(1, LON, LAT), accident_record(2, LON + 10 * FAR, LAT)])
 
     assert len(_features(await _tile(road_graph_repository, "accident"), "accident")) == 1
 
@@ -222,12 +213,12 @@ async def test_accident_tiles_do_not_depend_on_the_imported_roads(road_graph_rep
     [
         (dict(party_a="51"), dict(involves_bicycle=True, fatal=False)),
         (dict(party_b="52"), dict(involves_bicycle=True, fatal=False)),
-        (dict(deaths="01"), dict(involves_bicycle=False, fatal=True)),
+        (dict(fatal=True), dict(involves_bicycle=False, fatal=True)),
     ],
     ids=["bicycle_as_party_a", "e_bike_as_party_b", "fatal"],
 )
 async def test_an_accident_point_carries_bicycle_fatal_and_year(road_graph_repository, record, expected):
-    await ingest_records("accident", [_accident(1, LON, LAT, year="2021", **record)])
+    await ingest_records("accident", [accident_record(1, LON, LAT, year=2021, **record)])
 
     [feature] = _features(await _tile(road_graph_repository, "accident"), "accident")
 
@@ -241,9 +232,9 @@ async def test_a_stop_place_point_carries_its_group_confidence_and_name(road_gra
     """立ち寄り先は事故と同じく対象範囲を一括で取り込むので、道を取り込んでいない所でも出す。タイルの外の地点と、
     補給の点に出す群「コンビニ」は出ない。"""
     await _ingest_stop_places([
-        _overture_place(1, LON, "店1"),
-        _overture_place(2, LON + 10 * FAR, "店2"),
-        _overture_place(3, LON + FAR, "ローソン 渋谷店", ("shopping", "convenience_store")),
+        overture_place_record(1, LON, LAT, "店1"),
+        overture_place_record(2, LON + 10 * FAR, LAT, "店2"),
+        overture_place_record(3, LON + FAR, LAT, "ローソン 渋谷店", ("shopping", "convenience_store")),
     ])
 
     [feature] = _features(await _tile(road_graph_repository, "stop_place"), "stop_place")

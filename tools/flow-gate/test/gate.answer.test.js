@@ -26,13 +26,15 @@ test("答えは、そのあとにユーザーがステータスを変えたか�
 
 test("tasks#307・K3・G4・G7: 本文の印の間・形に合わない問い・ボードの移動・着手可能日時の形", async () => {
   const w = world([{ n: 1, status: "実装", body: "<!-- flow-gate -->\nメモ\n<!-- /flow-gate -->\n\n- [ ] 作る\n" },
-    { n: 2, status: "回答", comments: ["## 問い（判断）\n形に合わない"] }, { n: 3, status: "実装", start: "来週" }]);
+    { n: 2, status: "回答", comments: ["## 問い（判断）\n形に合わない"] }, { n: 3, status: "実装", start: "来週" }, { n: 4, status: "実装", start: "2099-01-01 25:00" }]);
   await w.send(ev.issue(1, "edited"));
   assert.deepEqual([w.at(1).body.startsWith("メモ\n"), w.at(1).comments.length], [true, 1], "G3 印の間の見知らぬ行は、消さずに印の外の先頭へ出してコメントで知らせる");
   await w.send(ev.comment(2, config.claude));
   assert.match(head(w.at(2)), /形が外れているので.*判断は「### 案」を1行1つ以上書く/, "K3 形の外れた問いは、読めない理由を知らせる");
   await w.send(ev.issue(3, "edited"));
   assert.deepEqual([/着手可能日時「来週」/.test(head(w.at(3))), w.titles().includes("#3 実装")], [true, false], "G7 形の合わない着手可能日時は知らせ、まだ先と読んで振り出さない");
+  await w.send(ev.issue(4, "edited"));
+  assert.deepEqual([/着手可能日時「2099-01-01 25:00」/.test(head(w.at(4))), w.titles().includes("#4 実装")], [true, false], "tasks#1167 形は合っても暦に無い日時は、形の合わない値と同じに扱う");
   w.at(1).status = "完了";
   await w.send(ev.move(1));
   const told = w.at(1).comments.at(-1);
@@ -234,4 +236,41 @@ test("答えの無い問いがある間だけ、ゲートがラベル「問い: 
   assert.equal(w.at(5).status, "保留", "読めない問いへの答えも、ゲートが次遷移で決める");
   await w.send(ev.comment(6, config.claude));
   assert.deepEqual([w.at(6).labels, /確かめの問いはゲートだけが出す/.test(w.at(6).comments.at(-1))], [["問い: 確かめ"], true], "ゲートのラベルの問いを Claude が書いたら、読めない理由を知らせる");
+});
+
+test("tasks#1149・tasks#1167 回答フォームの送信・開くのが失敗したとき（GitHub への書き込み・読み込みの失敗・番号の無い URL）、ページに失敗の文が出て、ボタンを押し直せる", async () => {
+  const w = world([{ n: 1, status: "回答", comments: [QUESTION] }]);
+  connect(w);
+  const html = await (await open(1)).text();
+  // GitHub が答えの書き込み（ユーザーの名義）を 502 で断ったら、失敗を JSON で返して書かない。打ち直せば届く。
+  const connected = globalThis.fetch;
+  globalThis.fetch = async (u, init = {}) => (init.headers?.authorization === `Bearer ${env.FORM_TOKEN}` ? new Response("Bad Gateway", { status: 502 }) : connected(u, init));
+  const silent = test.mock.method(console, "error", () => {});
+  const failed = await answer(1, { next: "続ける" });
+  globalThis.fetch = async () => new Response("Bad Gateway", { status: 502 });
+  const unread = await open(1);
+  silent.mock.restore();
+  globalThis.fetch = connected;
+  assert.deepEqual([unread.status, /少しおいて、開き直して/.test(await unread.text())], [502, true], "tasks#1167 GitHub から読めなければ、開き直すよう案内するページを返す");
+  assert.deepEqual([Boolean(failed.error), w.at(1).comments.length], [true, 1], "失敗を返し、答えは書かない");
+  assert.ok((await answer(1, { next: "続ける" })).url, "打ち直せば届く");
+  const bare = await answerForm(new Request(`${config.urls.form}/answer`, { method: "POST", body: new FormData() }), env, config);
+  assert.deepEqual([bare.status, Boolean((await bare.json()).error)], [400, true], "番号の無い URL への送信は断る");
+  assert.equal((await answerForm(new Request(`${config.urls.form}/answer?issue=x`), env, config)).status, 400, "番号の無い URL は開かずに断る");
+  // ページのスクリプトを、送信の応答だけを差し替えた最小の DOM で動かす（応答が JSON でない・つながらない・JSON の失敗）。
+  const script = /<script>([\s\S]*)<\/script>/.exec(html)[1];
+  for (const [name, reply] of [["JSON でない 500", async () => new Response("Internal Server Error", { status: 500 })],
+    ["つながらない", async () => { throw new TypeError("Failed to fetch"); }], ["JSON の失敗", async () => Response.json({ error: "書けませんでした" }, { status: 502 })]]) {
+    const node = (more = {}) => ({ disabled: false, textContent: "", on: {}, addEventListener(type, h) { this.on[type] = h; }, ...more });
+    const classes = new Set();
+    const buttons = [node(), node()];
+    const f = node({ classList: { add: (c) => classes.add(c), remove: (c) => classes.delete(c), contains: (c) => classes.has(c) },
+      querySelectorAll: (s) => (s === "button" ? buttons : []) });
+    const err = node();
+    const document = { querySelector: () => f, getElementById: (id) => (id === "err" ? err : null) };
+    new Function("document", "location", "fetch", "FormData", script)(document, { href: url(1) }, reply, class {});
+    classes.add("lock");
+    await f.on.submit({ preventDefault() {} });
+    assert.deepEqual([err.textContent !== "", buttons.map((b) => b.disabled), classes.has("lock")], [true, [false, false], false], `${name}: 失敗の文を出し、ボタンを戻す`);
+  }
 });

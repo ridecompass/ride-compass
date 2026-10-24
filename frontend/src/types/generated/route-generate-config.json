@@ -1,10 +1,10 @@
 {
   "max_distance_km": 100,
+  "busy_safe_distance_km": 60,
   "min_routes": 1,
   "max_routes": 15,
   "default_max_routes": 8,
   "default_assumed_speed_kmh": 20.0,
-  "default_distance_tolerance_km": 5.0,
   "max_waypoints": 8,
   "place_prediction_min_length": 1,
   "place_prediction_delay_seconds": 0.4,
@@ -12,7 +12,7 @@
   "min_assumed_speed_kmh": 5.0,
   "max_assumed_speed_kmh": 60.0,
   "job_result_ttl_seconds": 600.0,
-  "route_candidate_shape": "3790e3b89eee99d0",
+  "route_candidate_shape": "9455545ef292fb42",
   "wind_forecast_hours_per_leg": 4.0,
   "wind_time_bin_hours": 1.0,
   "segment_speed_conditions": [
@@ -31,6 +31,8 @@
     "speed.mass_kg": 80.0,
     "speed.max_descent_kmh": 45.0,
     "speed.walking_kmh": 4.5,
+    "search.distance_tolerance_ratio": 0.15,
+    "gradient.perpendicular_band_deg": 15.0,
     "splice.min_stretch_km": 0.2
   },
   "hard_filters": [

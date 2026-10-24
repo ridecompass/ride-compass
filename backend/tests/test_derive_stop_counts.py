@@ -9,15 +9,21 @@ import asyncpg
 import pytest
 import pytest_asyncio
 
-from app.batch import derive_counts, derive_nodes, derive_topology
-from app.domain.tuning import ACCIDENT_MATCH_DISTANCE_ID, STOP_CLUSTER_DISTANCE_ID, TUNING_PARAMETERS_BY_ID
-from tests.source_ingest import ingest_records, point_record, way_record
+from app.batch import derive_topology
+from tests.source_ingest import (
+    WAY_ORIGIN,
+    derive_counts_at_default_tuning,
+    derive_nodes_at_default_radius,
+    ingest_records,
+    point_record,
+    way_record,
+)
 
-# road_graph_session（conftest.py）と同じDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
+# moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
-BASE_LON, BASE_LAT = 139.70, 35.68
+BASE_LON, BASE_LAT = WAY_ORIGIN
 SIGNAL = {"highway": "traffic_signals"}
 LEVEL_CROSSING = {"railway": "level_crossing"}
 
@@ -64,19 +70,16 @@ def _point(node_id: int) -> tuple[float, float]:
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def stop_conn(derive_conn):
     """道とノードを取り込み、区間・ノードの材料・数え上げまで作った状態。"""
-    conn = derive_conn
     await ingest_records("osm_way", [
         way_record(way_id, [_point(n) for n in node_ids], node_ids)
-        for way_id, node_ids in WAYS.items()], conn=conn)
+        for way_id, node_ids in WAYS.items()], conn=derive_conn)
     await ingest_records("osm_node", [
         point_record(node_id, *_point(node_id), tags)
-        for node_id, (_, _, tags) in NODES.items()], conn=conn)
-    await derive_topology.derive(conn)
-    await derive_nodes.derive(conn, TUNING_PARAMETERS_BY_ID["signal.match_radius_m"].default)
-    await derive_counts.derive(conn, cluster_distance_m=TUNING_PARAMETERS_BY_ID[STOP_CLUSTER_DISTANCE_ID].default,
-                               accident_fatal_weight=TUNING_PARAMETERS_BY_ID["accident.fatal_weight"].default,
-                               accident_match_distance_m=TUNING_PARAMETERS_BY_ID[ACCIDENT_MATCH_DISTANCE_ID].default)
-    return conn
+        for node_id, (_, _, tags) in NODES.items()], conn=derive_conn)
+    await derive_topology.derive(derive_conn)
+    await derive_nodes_at_default_radius(derive_conn)
+    await derive_counts_at_default_tuning(derive_conn)
+    return derive_conn
 
 
 async def _along(conn: asyncpg.Connection, column: str) -> dict[str, float]:

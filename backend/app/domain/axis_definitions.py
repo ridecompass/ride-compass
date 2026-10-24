@@ -50,7 +50,13 @@ from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.axis_templates import evaluate_breakpoint_linear, evaluate_categorical
 from app.domain.difficulty import round_difficulty_array, weight_share
 from app.domain import material_catalog
-from app.domain.road_classes import RoadClassDefinitions, classification_materials
+from app.domain.road_classes import (
+    CLASS_MATERIAL_PREFIX,
+    RoadClassDefinitions,
+    class_material_id,
+    class_value_names,
+    classification_materials,
+)
 from app.domain.strict_model import StrictModel
 
 
@@ -259,7 +265,7 @@ def named_references(refs: Iterable[str], axes: Mapping[str, "AxisDefinition"]) 
     """
 
     def name(ref: str) -> str:
-        spec = material_catalog.MATERIAL_CATALOG.get(ref)
+        spec = material_catalog.material_spec(ref)
         if spec is not None:
             return spec.label
         axis = axes.get(ref)
@@ -587,21 +593,45 @@ def primary_attribute_ids_for(definition: AxisDefinition) -> list[str]:
         dict.fromkeys(
             spec.primary_attribute.attr_id
             for material_id in _leaf_materials(definition)
-            if (spec := material_catalog.MATERIAL_CATALOG.get(material_id)) is not None
+            if (spec := material_catalog.material_spec(material_id)) is not None
             and spec.primary_attribute is not None
         )
     )
 
 
+def missing_class_materials(definition: AxisDefinition, road_classes: RoadClassDefinitions) -> list[str]:
+    """軸が直に指す区分から作る材料（`class:<分け方>`）のうち、`road_classes`に分け方が無いもの。
+
+    区分を入れ替えて破れうる起動時の読み込みの判定（`check_axis_definition`）は、この材料の実在だけ——区分から作る材料の型は
+    いつも分類で、判定はその分け方の区分を見ない。
+    """
+    present = {class_material_id(key) for key in road_classes.classifications}
+    return [m for m in dict.fromkeys(definition.materials) if m.startswith(CLASS_MATERIAL_PREFIX) and m not in present]
+
+
+def unknown_class_values(definition: AxisDefinition, road_classes: RoadClassDefinitions) -> list[tuple[str, str]]:
+    """軸が区分から作る材料（`class:<分け方>`）の値として名指す名（値ごとの点数のキー・0次条件の値）のうち、その分け方の今の鍵にも
+    前の鍵の区分の名にも無いもの（材料id・名の組）。そうした名はどの道にも当たらず、点数が黙って抜ける。分け方の無い材料は
+    `missing_class_materials`が拾うので、ここでは見ない。"""
+    names = {class_material_id(key): class_value_names(key, c) for key, c in road_classes.classifications.items()}
+    shape = definition.shape
+    refs = [(shape.material, mapping_key_of(key)) for key in shape.mapping] if isinstance(shape, CategoricalShape) else []
+    refs += [(cond.material, cond.equals) for cond in definition.priority_overrides]
+    return [(material, name) for material, name in dict.fromkeys(refs) if material in names and name not in names[material]]
+
+
 def road_layer_ids_for(definition: AxisDefinition, road_classes: RoadClassDefinitions) -> list[str]:
-    """軸が最終的に見ている材料を区分の決め手に読む、地図の道の線の層（公開した分け方の鍵）。"""
+    """軸が最終的に見ている材料を区分の決め手に読む、地図の道の線の層（公開した分け方の鍵）。区分の列（`class:<分け方>`）を
+    読む軸は、その分け方が区分を決めるのに読む事実も見ている。"""
     leaves = set(_leaf_materials(definition))
+    for key, classification in road_classes.classifications.items():
+        if class_material_id(key) in leaves:
+            leaves |= classification_materials(key, classification)
     return [
         key
         for key in road_classes.map_layers
-        if (classification := road_classes.classifications.get(key)) is not None
-        and classification.is_published
-        and leaves & classification_materials(road_classes, key)
+        if (classification := road_classes.classifications[key]).is_published
+        and leaves & classification_materials(key, classification)
     ]
 
 
@@ -675,7 +705,7 @@ def averages_density(definition: AxisDefinition) -> bool:
         return False
     terms = [term for term in shape.terms if term.weight != 0]
     return bool(terms) and all(
-        (spec := material_catalog.MATERIAL_CATALOG.get(term.material)) is not None and spec.additive for term in terms
+        (spec := material_catalog.material_spec(term.material)) is not None and spec.additive for term in terms
     )
 
 
@@ -758,7 +788,7 @@ def _check_references(definition: AxisDefinition, axes: Mapping[str, AxisDefinit
             f"材料{named_references(mismatched, axes)}は、この点数の決め方には使えません（使えるのは{kinds}の材料）。"
         )
     if isinstance(shape, CategoricalShape) and material_catalog.is_known_material(shape.material):
-        dtype = material_catalog.MATERIAL_CATALOG[shape.material].dtype
+        dtype = material_catalog.known_material_spec(shape.material).dtype
         key_types = {type(key) for key in shape.mapping}
         expected_key_type = bool if dtype == "boolean" else str
         if key_types and key_types != {expected_key_type}:
@@ -934,9 +964,11 @@ def weight_share_when_published(definition: AxisDefinition, definitions: Mapping
 
 
 def time_scoped_weights(
-    weights: Mapping[str, float], active_scopes: Mapping[str, np.ndarray]
+    weights: Mapping[str, float],
+    active_scopes: Mapping[str, np.ndarray],
+    definitions: Mapping[str, AxisDefinition],
 ) -> dict[str, float | np.ndarray]:
-    """`weights`のうち、`time_scope`が"always"以外（AXIS_DEFINITIONS参照）の軸の重みを、
+    """`weights`のうち、`definitions`で`time_scope`が"always"以外の軸の重みを、
     その時間帯に当たる区間（`active_scopes`の真偽の配列。区間の並び）でだけ残し、ほかの区間では
     0.0にした配列へ置き換えた新しい辞書を返す（`weights`自体は変更しない）。`active_scopes`に無い
     時間帯は、どの区間も当たらないとして扱う。
@@ -947,7 +979,7 @@ def time_scoped_weights(
     `weights`に無いaxis_id（内部軸・非公開化された軸等）は重みを持たないため、キーを足さずに
     無視する。"""
     scoped: dict[str, float | np.ndarray] = dict(weights)
-    for axis_id, definition in AXIS_DEFINITIONS.items():
+    for axis_id, definition in definitions.items():
         if axis_id in weights and definition.time_scope != "always":
             active = active_scopes.get(definition.time_scope)
             scoped[axis_id] = 0.0 if active is None else np.where(active, weights[axis_id], 0.0)

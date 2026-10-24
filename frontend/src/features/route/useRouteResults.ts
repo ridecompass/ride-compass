@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 
+import { useSegmentSidePoints } from "@/features/route/useSegmentSidePoints";
 import type { RouteCandidate, RoutePreferenceWeights, SelectedRouteSegment } from "@/types/route";
 
 const NO_SELECTION = { routeId: null, reused: false };
@@ -83,6 +84,7 @@ export function useRouteResults() {
     const edit = edits.find((item) => item.route.id === selectedRouteId);
     return edit ? { ...edit, origin: routes.find((route) => route.id === edit.originId) ?? null } : null;
   }, [edits, routes, selectedRouteId]);
+  const segmentSidePoints = useSegmentSidePoints(selectedCandidate, selectedRouteSegment);
 
   return {
     /** 生成した候補と編集で作ったルートの全部（どちらも選べ、乗り換えの相手にもなる）。 */
@@ -99,6 +101,8 @@ export function useRouteResults() {
     hasDetail: (selectedCandidate?.segments.length ?? 0) > 0,
     selectedRouteSegment,
     selectSegment: setSelectedRouteSegment,
+    /** 押した区間の近くの点（押した区間が無ければnull）。 */
+    segmentSidePoints,
     usedWeights,
     replaceWithGenerated,
     addEdit,

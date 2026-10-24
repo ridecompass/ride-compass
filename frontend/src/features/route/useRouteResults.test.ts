@@ -64,17 +64,6 @@ describe("生成の結果", () => {
     expect(result.current.selectedRouteSegment).toBeNull();
     expect(result.current.usedWeights).toEqual({ axis_a: 1 });
   });
-
-  it("候補0件なら何も選ばない", () => {
-    const rendered = renderResults();
-    generated(rendered);
-
-    generated(rendered, []);
-
-    expect(rendered.result.current.selectedRouteId).toBeNull();
-    expect(rendered.result.current.selectedCandidate).toBeNull();
-    expect(rendered.result.current.hasDetail).toBe(false);
-  });
 });
 
 describe("選ぶ", () => {
@@ -180,6 +169,8 @@ describe("消す", () => {
     const { result } = rendered;
     expect(result.current.routes).toEqual([]);
     expect(result.current.selectedRouteId).toBeNull();
+    expect(result.current.selectedCandidate).toBeNull();
+    expect(result.current.hasDetail).toBe(false);
     expect(result.current.selectedRouteSegment).toBeNull();
     expect(result.current.usedWeights).toBeNull();
   });

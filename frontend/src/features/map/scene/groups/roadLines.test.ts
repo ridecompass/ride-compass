@@ -1,126 +1,82 @@
 // @vitest-environment node
-/** 道の線の層が、区分の条件から1本の道をどの区分に入れて描くか（色・濃淡・データなしの破線）。
- * 式はMapLibreと同じ評価器で評価し、1本の道がどう描かれるかを見る。区分と層はテストが組む（本番の区分は管理DBが持つ）。
- * 凡例で隠したときに残るかは`legends.test.ts`の「凡例の行ごとの絞り込み」が見る。 */
+/** 道の線の層が、backendの配る層の値（feature-state）から1本の道をどう描くか（色・濃淡・データなしの破線・凡例で隠した行）。
+ * 式はMapLibreと同じ評価器で評価する。値の決め方（区分の条件）は backend の `test_road_classes.py` が見る。 */
 import { describe, expect, it } from "vitest";
 
+import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
+import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
 import { evaluateExpression as evaluate } from "@/testing/mapExpressions";
 import { roadClass, roadMapLayer } from "@/testing/catalogAxes";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
-import type { RoadClassTermView, RoadMapLayerView } from "@/types/route";
 
-import { roadLineGroup } from "./roadLines";
+import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
 
-const SOLID = [1, 0];
+import { hiddenRoadLineAt, ROAD_LINE_SOURCE_ID, roadLineGroup } from "./roadLines";
 
-function term(property: string | null, values: string[], options: Partial<RoadClassTermView> = {}): RoadClassTermView {
-  return { property, values, negated: false, matches_absent: false, ...options };
-}
+const LAYER = roadMapLayer("surface", { has_no_data: true, classes: [roadClass("paved", { color: "#123456" })] });
 
-function paintOf(layer: RoadMapLayerView) {
+function linesOf(hidden: readonly string[] = [], loading = false) {
   const built = roadLineGroup.build({
-    layers: [layer],
+    layers: [LAYER],
     tiles: { urls: ["https://example.test/{z}/{x}/{y}"], sourceLayer: "road", minZoom: 10, maxZoom: 14 },
-    visible: { [layer.id]: true },
-    hiddenKeys: {},
+    visible: { surface: true },
+    hiddenKeys: { surface: hidden },
+    classes: new Map(),
+    loading,
     inspectedWayId: null,
   }).layers;
-  const line = built.find((candidate) => candidate.role === layer.id);
-  if (line === undefined) throw new Error(`${layer.id} の線が無い`);
-  return line.paint ?? {};
+  const paint = (role: string) => built.find((layer) => layer.role === role)?.paint ?? {};
+  return { solid: paint("surface"), dashed: paint("surface-no-data") };
 }
 
-const CLASS_COLOR = "#123456";
+/** 層の値ごとの、その道の feature-state（値の無い道は state を持たない）。 */
+const ROADS = [
+  { row: "paved", state: { "road:surface": "paved" } },
+  { row: ROAD_OTHER_KEY, state: {} },
+  { row: LEGEND_NO_DATA_KEY, state: { "road:surface": mapDisplay.road.noDataValue } },
+];
 
-/** 条件1つの区分を1つだけ持つ層で、道がその区分に入るか（入る道は区分の色で濃く、入らない道は値の無い色で薄く描く）。 */
-function classified(conditions: RoadClassTermView[][], road: Record<string, unknown>): boolean {
-  const paint = paintOf(roadMapLayer("layer", { classes: [roadClass("hit", { color: CLASS_COLOR, conditions })] }));
-  const hit = evaluate(paint["line-color"], road) === CLASS_COLOR;
-  if (!hit) expect(evaluate(paint["line-color"], road)).toBe(palette.semantic.no_data);
-  expect(evaluate(paint["line-opacity"], road)).toBe(
-    hit ? mapDisplay.road.knownOpacity : mapDisplay.road.unknownOpacity,
-  );
-  return hit;
+/** 道がどの線で何色・どの濃さに描かれるか。透明・濃さ0は描かれないものとして読む。 */
+function drawn(lines: ReturnType<typeof linesOf>, state: Record<string, unknown>) {
+  const color = evaluate(lines.solid["line-color"], {}, state);
+  return {
+    solid:
+      color === palette.semantic.hidden ? null : { color, opacity: evaluate(lines.solid["line-opacity"], {}, state) },
+    dashed: evaluate(lines.dashed["line-opacity"], {}, state) !== 0,
+  };
 }
 
-// 当たる ⇔ (事実あり ∧ (値が並びにある) ≠ 否定) ∨ (事実なし ∧ 無いとき当たる)。
-describe("区分の条件の項の当て方", () => {
+describe("層の値から描く線", () => {
   it.each([
-    { name: "並びにある値", term: term("surface", ["asphalt", "concrete"]), road: { surface: "concrete" }, hit: true },
-    { name: "並びに無い値", term: term("surface", ["asphalt"]), road: { surface: "gravel" }, hit: false },
+    { row: "paved", solid: { color: "#123456", opacity: mapDisplay.road.knownOpacity }, dashed: false },
     {
-      name: "否定で並びに無い値",
-      term: term("access", ["private"], { negated: true }),
-      road: { access: "yes" },
-      hit: true,
+      row: ROAD_OTHER_KEY,
+      solid: { color: palette.semantic.no_data, opacity: mapDisplay.road.unknownOpacity },
+      dashed: false,
     },
-    {
-      name: "否定で並びにある値",
-      term: term("access", ["private"], { negated: true }),
-      road: { access: "private" },
-      hit: false,
-    },
-    {
-      name: "事実が無く、無いとき当たる",
-      term: term("access", ["private"], { negated: true, matches_absent: true }),
-      road: {},
-      hit: true,
-    },
-    {
-      name: "事実が無く、無いとき当たらない",
-      term: term("surface", ["asphalt"], { negated: true }),
-      road: {},
-      hit: false,
-    },
-    // 真偽の事実は真のときだけタイルに載り、値は文字列で比べる。
-    { name: "真偽の事実が真", term: term("tunnel", ["true"]), road: { tunnel: true }, hit: true },
-    {
-      name: "タイルに載らない事実で、無いとき当たる",
-      term: term(null, ["x"], { matches_absent: true }),
-      road: { x: "x" },
-      hit: true,
-    },
-    { name: "タイルに載らない事実で、無いとき当たらない", term: term(null, ["x"]), road: { x: "x" }, hit: false },
-  ])("$name", ({ term: only, road, hit }) => {
-    expect(classified([[only]], road)).toBe(hit);
-  });
-
-  it("条件の中の項は全部当たったときだけ、条件どうしはどれかが当たれば区分に入る", () => {
-    const conditions = [[term("highway", ["path"]), term("bicycle", ["designated"])], [term("highway", ["cycleway"])]];
-    expect(classified(conditions, { highway: "path", bicycle: "designated" })).toBe(true);
-    expect(classified(conditions, { highway: "path" })).toBe(false);
-    expect(classified(conditions, { highway: "cycleway" })).toBe(true);
+    { row: LEGEND_NO_DATA_KEY, solid: null, dashed: true },
+  ])("$row の道", ({ row, solid, dashed }) => {
+    const road = ROADS.find((candidate) => candidate.row === row);
+    expect(drawn(linesOf(), road?.state ?? {})).toEqual({ solid, dashed });
   });
 });
 
-describe("区分の重なり", () => {
-  const layer = roadMapLayer("layer", {
-    classes: [
-      roadClass("cycleway", { color: "#111111", conditions: [[term("highway", ["cycleway"])]] }),
-      roadClass("designated", { color: "#222222", conditions: [[term("bicycle", ["designated"])]] }),
-    ],
-  });
-
-  it("1つの区分にだけ当たる道はその区分の色で、2つ以上に当たる道は区分なしで描く", () => {
-    const color = paintOf(layer)["line-color"];
-    expect(evaluate(color, { highway: "cycleway" })).toBe("#111111");
-    expect(evaluate(color, { bicycle: "designated" })).toBe("#222222");
-    expect(evaluate(color, { highway: "cycleway", bicycle: "designated" })).toBe(palette.semantic.no_data);
-  });
+it("値を取っている間は、値の届いていない道を取得中の色で描き、届いて区分の外だった道（取り終えたあとの値の無い道）と分ける", () => {
+  expect(drawn(linesOf([], true), {}).solid?.color).toBe(palette.semantic.loading);
 });
 
-describe("データなしの破線", () => {
-  const classes = [roadClass("paved", { conditions: [[term("surface", ["asphalt"])]] })];
-
-  it("無ければデータなしとするプロパティの無い道だけを破線にし、区分の外の値の道は実線で描く", () => {
-    const dash = paintOf(roadMapLayer("surface", { classes, no_data_property: "surface" }))["line-dasharray"];
-    expect(evaluate(dash, {})).toEqual([...mapDisplay.noDataDash]);
-    expect(evaluate(dash, { surface: "gravel" })).toEqual(SOLID);
-    expect(evaluate(dash, { surface: "asphalt" })).toEqual(SOLID);
-  });
-
-  it("データなしを分けない層は破線を持たない", () => {
-    expect(paintOf(roadMapLayer("surface", { classes }))["line-dasharray"]).toBeUndefined();
+// 凡例に出す行はどれも、チェックを外すとその行の道だけが地図から消える。
+describe("凡例で隠した行", () => {
+  // 透明に描いた道も当たり判定には残るので、押しても開かないことも同じ行で見る。
+  it.each(ROADS.map(({ row }) => row))("「%s」を隠すと、その行の道だけが消え、押しても開かない", (hiddenRow) => {
+    const lines = linesOf([hiddenRow]);
+    const dashedLayerShown = hiddenRow !== LEGEND_NO_DATA_KEY;
+    const layerId = sceneLayerId(ROAD_LINE_SOURCE_ID, LAYER.id);
+    for (const { row, state } of ROADS) {
+      const { solid, dashed } = drawn(lines, state);
+      expect(solid !== null || (dashed && dashedLayerShown), row).toBe(row !== hiddenRow);
+      expect(hiddenRoadLineAt(layerId, state, [LAYER], { surface: [hiddenRow] }), row).toBe(row === hiddenRow);
+    }
   });
 });

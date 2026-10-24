@@ -148,6 +148,43 @@
         }
       }
     },
+    "/api/routes/side-points": {
+      "post": {
+        "operationId": "route_side_points_api_routes_side_points_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteSidePointsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteSidePointsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/weather/warnings": {
       "get": {
         "operationId": "get_weather_warnings_api_weather_warnings_get",
@@ -182,6 +219,43 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WeatherWarnings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/weather/route-warning-timeline": {
+      "post": {
+        "operationId": "get_route_warning_timeline_api_weather_route_warning_timeline_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteTimelineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteWarningTimeline"
                 }
               }
             }
@@ -884,6 +958,73 @@
                     }
                   },
                   "title": "Response Region Way Materials Api Region Way Materials  Axis Id   Z   X   Y  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/region/road-classes/{z}/{x}/{y}": {
+      "get": {
+        "operationId": "region_road_classes_api_region_road_classes__z___x___y__get",
+        "parameters": [
+          {
+            "name": "z",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 15,
+              "minimum": 12,
+              "title": "Z"
+            }
+          },
+          {
+            "name": "x",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "title": "X"
+            }
+          },
+          {
+            "name": "y",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "title": "Y"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "title": "Response Region Road Classes Api Region Road Classes  Z   X   Y  Get"
                 }
               }
             }
@@ -2341,14 +2482,6 @@
             "type": "string",
             "title": "Section"
           },
-          "layer": {
-            "type": "string",
-            "title": "Layer"
-          },
-          "layer_label": {
-            "type": "string",
-            "title": "Layer Label"
-          },
           "label": {
             "type": "string",
             "title": "Label"
@@ -2379,8 +2512,6 @@
         "required": [
           "key",
           "section",
-          "layer",
-          "layer_label",
           "label",
           "description",
           "default",
@@ -4278,17 +4409,6 @@
             "title": "Distance Km"
           },
           "distance_tolerance_km": {
-            "type": "number",
-            "title": "Distance Tolerance Km"
-          },
-          "route_preference": {
-            "$ref": "#/components/schemas/RoutePreferenceWeights"
-          },
-          "penalty_strength": {
-            "type": "number",
-            "title": "Penalty Strength"
-          },
-          "max_average_grade_percent": {
             "anyOf": [
               {
                 "type": "number"
@@ -4297,7 +4417,14 @@
                 "type": "null"
               }
             ],
-            "title": "Max Average Grade Percent"
+            "title": "Distance Tolerance Km"
+          },
+          "route_preference": {
+            "$ref": "#/components/schemas/RoutePreferenceWeights"
+          },
+          "penalty_strength": {
+            "type": "number",
+            "title": "Penalty Strength"
           },
           "road_avoidance": {
             "$ref": "#/components/schemas/RoadAvoidanceOverride"
@@ -4363,7 +4490,6 @@
           "distance_tolerance_km",
           "route_preference",
           "penalty_strength",
-          "max_average_grade_percent",
           "road_avoidance",
           "max_routes",
           "start_time",
@@ -5883,45 +6009,6 @@
         ],
         "title": "RoadClassStretch"
       },
-      "RoadClassTermView": {
-        "properties": {
-          "property": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Property"
-          },
-          "values": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Values"
-          },
-          "negated": {
-            "type": "boolean",
-            "title": "Negated"
-          },
-          "matches_absent": {
-            "type": "boolean",
-            "title": "Matches Absent"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "property",
-          "values",
-          "negated",
-          "matches_absent"
-        ],
-        "title": "RoadClassTermView"
-      },
       "RoadClassView": {
         "properties": {
           "key": {
@@ -5939,23 +6026,6 @@
           "color": {
             "type": "string",
             "title": "Color"
-          },
-          "former_keys": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Former Keys"
-          },
-          "conditions": {
-            "items": {
-              "items": {
-                "$ref": "#/components/schemas/RoadClassTermView"
-              },
-              "type": "array"
-            },
-            "type": "array",
-            "title": "Conditions"
           }
         },
         "additionalProperties": false,
@@ -5964,9 +6034,7 @@
           "key",
           "label",
           "description",
-          "color",
-          "former_keys",
-          "conditions"
+          "color"
         ],
         "title": "RoadClassView"
       },
@@ -6125,16 +6193,9 @@
             "type": "boolean",
             "title": "Hide Missing Rows"
           },
-          "no_data_property": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "No Data Property"
+          "has_no_data": {
+            "type": "boolean",
+            "title": "Has No Data"
           },
           "classes": {
             "items": {
@@ -6154,7 +6215,7 @@
           "description",
           "panel_hint",
           "hide_missing_rows",
-          "no_data_property",
+          "has_no_data",
           "classes"
         ],
         "title": "RoadMapLayerView"
@@ -6243,6 +6304,46 @@
           "decimals"
         ],
         "title": "Round"
+      },
+      "RouteAreaTimeline": {
+        "properties": {
+          "area_code": {
+            "type": "string",
+            "title": "Area Code"
+          },
+          "area_name": {
+            "type": "string",
+            "title": "Area Name"
+          },
+          "start_index": {
+            "type": "integer",
+            "title": "Start Index"
+          },
+          "end_index": {
+            "type": "integer",
+            "title": "End Index"
+          },
+          "kinds": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TimelineKindLevels"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/TimelineKind"
+            },
+            "type": "object",
+            "title": "Kinds"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "area_code",
+          "area_name",
+          "start_index",
+          "end_index",
+          "kinds"
+        ],
+        "title": "RouteAreaTimeline"
       },
       "RouteCandidate": {
         "properties": {
@@ -6366,13 +6467,6 @@
             "type": "array",
             "title": "Turns"
           },
-          "points": {
-            "items": {
-              "$ref": "#/components/schemas/RoutePoint"
-            },
-            "type": "array",
-            "title": "Points"
-          },
           "waypoint_distances_km": {
             "items": {
               "type": "number"
@@ -6446,7 +6540,6 @@
           "edge_point_offsets",
           "node_ids",
           "turns",
-          "points",
           "waypoint_distances_km",
           "overall_difficulty",
           "axis_difficulties",
@@ -6558,12 +6651,6 @@
             ],
             "title": "Distance Km"
           },
-          "distance_tolerance_km": {
-            "type": "number",
-            "maximum": 50.0,
-            "exclusiveMinimum": 0.0,
-            "title": "Distance Tolerance Km"
-          },
           "route_preference": {
             "anyOf": [
               {
@@ -6573,30 +6660,6 @@
                 "type": "null"
               }
             ]
-          },
-          "penalty_strength": {
-            "anyOf": [
-              {
-                "type": "number",
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Penalty Strength"
-          },
-          "max_average_grade_percent": {
-            "anyOf": [
-              {
-                "type": "number",
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Average Grade Percent"
           },
           "road_avoidance": {
             "$ref": "#/components/schemas/RoadAvoidanceOverride"
@@ -6665,7 +6728,6 @@
         "required": [
           "latitude",
           "longitude",
-          "distance_tolerance_km",
           "road_avoidance",
           "max_routes",
           "assumed_speed_kmh",
@@ -6712,6 +6774,10 @@
             "type": "number",
             "title": "Distance Km"
           },
+          "offset_m": {
+            "type": "integer",
+            "title": "Offset M"
+          },
           "layer": {
             "type": "string",
             "title": "Layer"
@@ -6741,6 +6807,7 @@
         "type": "object",
         "required": [
           "distance_km",
+          "offset_m",
           "layer",
           "properties"
         ],
@@ -6808,6 +6875,14 @@
           "distance_km": {
             "type": "number",
             "title": "Distance Km"
+          },
+          "edge_start": {
+            "type": "integer",
+            "title": "Edge Start"
+          },
+          "edge_end": {
+            "type": "integer",
+            "title": "Edge End"
           },
           "elevations": {
             "items": {
@@ -6890,6 +6965,8 @@
           "end_longitude",
           "cumulative_distance_km",
           "distance_km",
+          "edge_start",
+          "edge_end",
           "elevations",
           "estimated_arrival_time",
           "axis_difficulties",
@@ -6900,6 +6977,67 @@
           "road_classes"
         ],
         "title": "RouteSegmentDetail"
+      },
+      "RouteSidePointsRequest": {
+        "properties": {
+          "edge_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 2000,
+            "minItems": 1,
+            "title": "Edge Ids"
+          },
+          "start_distance_km": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Start Distance Km"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "edge_ids",
+          "start_distance_km"
+        ],
+        "title": "RouteSidePointsRequest"
+      },
+      "RouteSidePointsResponse": {
+        "properties": {
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/RoutePoint"
+            },
+            "type": "array",
+            "title": "Points"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "points"
+        ],
+        "title": "RouteSidePointsResponse"
+      },
+      "RouteTimelineRequest": {
+        "properties": {
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/Coordinates"
+            },
+            "type": "array",
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Points"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "points"
+        ],
+        "title": "RouteTimelineRequest"
       },
       "RouteTurn": {
         "properties": {
@@ -6934,6 +7072,23 @@
           "longitude"
         ],
         "title": "RouteTurn"
+      },
+      "RouteWarningTimeline": {
+        "properties": {
+          "areas": {
+            "items": {
+              "$ref": "#/components/schemas/RouteAreaTimeline"
+            },
+            "type": "array",
+            "title": "Areas"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "areas"
+        ],
+        "title": "RouteWarningTimeline"
       },
       "ScoresPreviewRequest": {
         "properties": {
@@ -7079,6 +7234,69 @@
           "finished_at"
         ],
         "title": "SucceededRunCounts"
+      },
+      "TimelineKind": {
+        "type": "string",
+        "enum": [
+          "thunder"
+        ],
+        "title": "TimelineKind"
+      },
+      "TimelineKindLevels": {
+        "properties": {
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineSlotLevel"
+            },
+            "type": "array",
+            "title": "Slots"
+          },
+          "additions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Additions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "slots",
+          "additions"
+        ],
+        "title": "TimelineKindLevels"
+      },
+      "TimelineSlotLevel": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "advisory": {
+            "type": "boolean",
+            "title": "Advisory"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "code",
+          "advisory"
+        ],
+        "title": "TimelineSlotLevel"
       },
       "TuningParameterView": {
         "properties": {

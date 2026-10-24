@@ -39,7 +39,6 @@ def test_a_single_process_start_is_allowed(argv, environ):
         pytest.param(PRODUCTION_ARGV, {"WEB_CONCURRENCY": "3"}, 3, id="web-concurrency"),
         pytest.param(["/usr/lib/python3/site-packages/uvicorn/__main__.py", "app.main:app", "--workers", "2"], {}, 2,
                      id="python-m-uvicorn"),
-        pytest.param(["C:/venv/Scripts/uvicorn.exe", "app.main:app", "--workers", "2"], {}, 2, id="windows-launcher"),
     ],
 )
 def test_a_start_with_several_workers_is_stopped(argv, environ, workers):

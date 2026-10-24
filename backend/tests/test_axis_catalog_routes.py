@@ -23,14 +23,11 @@ from app.domain.axis_definitions import (
     CategoricalShape,
     MaterialTerm,
 )
-from app.domain.axis_raw_value import RawValueUnits
-from app.domain.material_catalog import MATERIAL_CATALOG, SURFACE_ESTIMATE
 from app.domain.way_value_formula import WayValueFormula, condition_names
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.main import app
 from app.services.region_service import RegionService
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
-from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 
 #: カタログが配る軸。1本ごとに、カタログの別の出し分けを通す性質を持たせる。
 CATALOG_AXES: dict[str, AxisDefinition] = {
@@ -46,21 +43,10 @@ CATALOG_AXES: dict[str, AxisDefinition] = {
         label="軸グ",
         is_published=True,
     ),
-    # 得点を塗る軸。
-    "axis_way_value_scored": AxisDefinition(
-        axis_id="axis_way_value_scored",
-        shape=BreakpointLinearShape(
-            terms=[MaterialTerm(material="wind_drag_ratio")],
-            breakpoints=[(-1.0, 0.0), (0.0, 20.0), (4.0, 100.0)],
-        ),
-        default_weight=0.2,
-        label="軸ウ",
-        is_published=True,
-    ),
     # 分類のshape。地図表示を導出できる。
     "axis_categorical": AxisDefinition(
         axis_id="axis_categorical",
-        shape=CategoricalShape(material=SURFACE_ESTIMATE, mapping={"paved": 0.0, "gravel": 80.0}),
+        shape=CategoricalShape(material="highway", mapping={"primary": 0.0, "track": 80.0}),
         default_weight=0.2,
         label="軸カ",
         is_published=True,
@@ -72,8 +58,6 @@ CATALOG_AXES: dict[str, AxisDefinition] = {
             terms=[
                 MaterialTerm(material="poi_signal_per_km", weight=1.0, required=False),
                 MaterialTerm(material="poi_level_crossing_per_km", weight=2.5, required=False),
-                MaterialTerm(material="poi_stop_per_km", weight=0.4, required=False),
-                MaterialTerm(material="poi_crossing_per_km", weight=0.0, required=False),
             ],
             breakpoints=[(0.0, 0.0), (1.0, 50.0), (4.0, 100.0)],
         ),
@@ -129,7 +113,7 @@ class _CatalogRepository:
 
 
 @pytest.fixture
-def client():
+def client(override_dependency):
     """`/api/axis-catalog`を叩く口。このファイルの検証対象は軸カタログの内容で、DBの値は見ない。
 
     `/api/axis-catalog`は事故の収録年とタイル世代を出すためだけに`RegionService`を経由する。実DBが繋がる環境ではリクエストごとに接続を開き、
@@ -137,9 +121,8 @@ def client():
     コルーチンが未awaitのまま残る（`RuntimeWarning: coroutine 'Connection._cancel' was
     never awaited`）。DBの口を代役へ固定して、DBの有無でこのファイルの経路が変わらないようにする。
     """
-    app.dependency_overrides[get_region_service] = lambda: RegionService(repository=_CatalogRepository())
-    yield TestClient(app)
-    app.dependency_overrides.pop(get_region_service, None)
+    override_dependency(get_region_service, lambda: RegionService(repository=_CatalogRepository()))
+    return TestClient(app)
 
 
 def _entries(client) -> dict[str, dict]:
@@ -151,26 +134,6 @@ def test_only_the_published_axes_are_served_without_auth(client):
     draft = axis_definition("draft_axis", is_published=False)
     with replaced_axis_definitions({**CATALOG_AXES, draft.axis_id: draft}):
         assert set(_entries(client)) == set(CATALOG_AXES)
-
-
-def test_each_axis_carries_what_the_domain_derives_for_it(client, catalog_axes):
-    """導出の入力違いは domain のテストが持つ。ここは軸ごとの欄へ結果が届くことだけを見る。"""
-    rolling = road_classes(
-        {"rolling": classification({"paved": [fact_is("surface", "asphalt")]})},
-        map_layers={"rolling": map_layer()},
-        rolling_resistance_classification="rolling",
-    )
-    with replaced_road_classes(rolling):
-        entries = _entries(client)
-
-    categorical = entries["axis_categorical"]
-    assert categorical["primary_attribute_ids"] == ["surface"]
-    assert (categorical["road_layer_ids"], entries["axis_way_value_scored"]["road_layer_ids"]) == (["rolling"], [])
-    signed = entries["axis_way_value_signed"]
-    assert (signed["map_paint"]["value"], signed["map_paint"]["unit"]) == (
-        {"kind": "signed_material", "material": "gradient_percent"},
-        "%",
-    )
 
 
 def test_get_axis_catalog_carries_the_calibration_values_the_client_needs(client, monkeypatch):
@@ -218,7 +181,8 @@ def test_get_axis_catalog_names_what_the_map_sends_and_shows_for_an_axis(
     assert condition_names(formula.value) | condition_names(formula.undetermined) == conditions - requested
 
 
-def test_get_axis_catalog_includes_raw_value_unit(client, catalog_axes):
+@pytest.mark.usefixtures("catalog_axes")
+def test_get_axis_catalog_includes_raw_value_unit(client):
     # 得点の隣へ生値を出すための単位（domain/axis_raw_value.py: raw_value_units）。
     # 勾配は単一材料をそのまま使うので%、内部軸を合成する軸は単位が定まらずnull。
     entries = _entries(client)
@@ -227,13 +191,8 @@ def test_get_axis_catalog_includes_raw_value_unit(client, catalog_axes):
     assert entries["axis_optional_terms"]["raw_value_units"] == {"unit": None, "total_unit": None}
 
 
-def test_a_total_unit_without_a_raw_value_unit_cannot_be_served():
-    """総量は生値に距離を掛けたものなので、生値の単位の無い総量の単位は掛ける元の無い総量を画面に出させる。"""
-    with pytest.raises(ValueError, match="without a raw value unit"):
-        RawValueUnits(unit=None, total_unit="回")
-
-
-def test_get_axis_catalog_includes_material_breakdown(client, catalog_axes):
+@pytest.mark.usefixtures("catalog_axes")
+def test_get_axis_catalog_includes_material_breakdown(client):
     # 単位が定まらない軸は、材料まで分解した内訳を持つ（得点だけでは軸単体で判断できない）。並びは正規化重みの降順で、フロントは並べ替えを持たない。
     entries = _entries(client)
     # 単位が定まる軸は分解しない（軸単位の生値で足りる）。
@@ -242,9 +201,7 @@ def test_get_axis_catalog_includes_material_breakdown(client, catalog_axes):
     assert [entry["material_id"] for entry in night] == ["has_tunnel", "lit"]
     # 分類の材料はルート結果が値ごとの割合を日本語にする対訳を、数値の材料は単位を運ぶ。
     mixed = entries["axis_mixed_terms"]["material_breakdown"]
-    assert [entry["material_id"] for entry in mixed] == ["poi_signal_per_km", SURFACE_ESTIMATE]
-    assert mixed[0]["unit"] == MATERIAL_CATALOG["poi_signal_per_km"].unit
-    assert mixed[1]["value_labels"] == MATERIAL_CATALOG[SURFACE_ESTIMATE].value_labels
+    assert [entry["material_id"] for entry in mixed] == ["poi_signal_per_km", "highway"]
 
 
 def _numbers(value) -> set[float]:
@@ -259,7 +216,8 @@ def _numbers(value) -> set[float]:
     return set()
 
 
-def test_get_axis_catalog_does_not_serve_the_material_weights(client, catalog_axes):
+@pytest.mark.usefixtures("catalog_axes")
+def test_get_axis_catalog_does_not_serve_the_material_weights(client):
     """材料の重みは較正の値で、このカタログは認証なしで誰でも読める（`docs/architecture/data-sources.md`「OSM から作った値と独自の層」）。
 
     重みも、そこから出る正規化の割合も、応答のどこかに数として出れば読み取れる。

@@ -3,8 +3,8 @@
 確かめるのは公開の入口（`refresh`・`read_series`・`read_grid_points`・`read_grid_block`・`read_weather_grid`・
 `freshness`/`freshness_from_meta`/`warn_if_stale`）から
 見える振る舞いだけ。差し替えるのはプロセス境界だけで、網は本物の`httpx.AsyncClient`へ配信元の代役
-（`MockTransport`）を付け、ディスクは一時ディレクトリ、時計は固定する。何時間先まで同期し・読むかは
-設定（`settings.msm_forecast_hours`）をテストごとに与える。
+（respxの経路）を付け、ディスクは一時ディレクトリ、時計は固定する。何時間先まで同期し・読むかは
+定数（`domain/weather_elements.py: MSM_FORECAST_HOURS`）をテストごとに差し替える。
 `.om`ファイルは本物のライブラリ（omfiles）で書く。
 
 ここで見ないもの:
@@ -22,11 +22,12 @@ from types import SimpleNamespace
 import httpx
 import numpy as np
 import pytest
+import respx
 from omfiles import OmFileWriter
 
-from app.config import settings
 from app.domain.time_zone import JST
 from app.infrastructure import msm_client
+from tests.fake_http import client_for
 
 CHUNK_HOURS = 6
 #: 2026-09-22 05:30 JST。6時間のチャンクは03:00 JSTに始まるので、先頭から2時間30分に当たる。
@@ -53,15 +54,15 @@ def _meta(**overrides):
     return meta
 
 
-def _chunk_values(chunk_number: int) -> np.ndarray:
+def _chunk_values(chunk_number: int, run: int) -> np.ndarray:
     i, j, t = np.meshgrid(np.arange(3), np.arange(3), np.arange(CHUNK_HOURS), indexing="ij")
-    return (100 * i + 10 * j + t + 1000 * (chunk_number - NOW_CHUNK)).astype(np.float32)
+    return (100 * i + 10 * j + t + 1000 * (chunk_number - NOW_CHUNK) + 10000 * run).astype(np.float32)
 
 
-def _om_bytes(tmp_path, chunk_number: int) -> bytes:
-    path = tmp_path / f"source_{chunk_number}.om"
+def _om_bytes(tmp_path, chunk_number: int, run: int) -> bytes:
+    path = tmp_path / f"source_{chunk_number}_{run}.om"
     writer = OmFileWriter.at_path(str(path))
-    writer.close(writer.write_array(_chunk_values(chunk_number), chunks=[3, 3, CHUNK_HOURS]))
+    writer.close(writer.write_array(_chunk_values(chunk_number, run), chunks=[3, 3, CHUNK_HOURS]))
     return path.read_bytes()
 
 
@@ -73,40 +74,40 @@ def msm_dir(tmp_path, monkeypatch, clock):
     clock.move_to(datetime.fromtimestamp(NOW, UTC))
 
     def forecast_hours(hours: int) -> None:
-        monkeypatch.setattr(settings, "msm_forecast_hours", hours)
+        monkeypatch.setattr(msm_client, "MSM_FORECAST_HOURS", hours)
 
     return SimpleNamespace(path=directory, clock=clock, forecast_hours=forecast_hours)
 
 
 class Source:
-    """配信元の代役。チャンクはETagを付けて返し、`If-None-Match`が一致すれば304を返す。"""
+    """配信元の代役。チャンクはETagを付けて返し、`If-None-Match`が一致すれば304を返す。
 
-    def __init__(self, tmp_path, meta=None):
+    `run`は配信しているrunの番号で、値に10000ずつ足して出す。`failing`に挙げた変数のチャンクは500を返す。
+    """
+
+    def __init__(self, tmp_path, meta=None, *, run=0, failing=()):
         self.tmp_path = tmp_path
-        self.meta = meta if meta is not None else _meta()
-        self.requests: list[httpx.Request] = []
-        self.fail: set[str] = set()
+        self.run = run
+        self.failing = failing
+        self.router = respx.Router()
+        self.router.get(path__regex=r"/static/meta\.json$").respond(json=_meta() if meta is None else meta)
+        self.chunks = self.router.get(path__regex=r"/(?P<variable>[^/]+)/chunk_(?P<number>\d+)\.om$").mock(
+            side_effect=self._chunk
+        )
 
-    def handle(self, request: httpx.Request) -> httpx.Response:
-        self.requests.append(request)
-        name = request.url.path.rsplit("/", 2)
-        if "meta" in self.fail and name[-1] == "meta.json":
+    def _chunk(self, request: httpx.Request, variable: str, number: str) -> httpx.Response:
+        if variable in self.failing:
             return httpx.Response(500)
-        if name[-1] == "meta.json":
-            return httpx.Response(200, json=self.meta) if isinstance(self.meta, dict) else httpx.Response(200, content=self.meta)
-        chunk_number = int(name[-1].removeprefix("chunk_").removesuffix(".om"))
-        if "chunk" in self.fail:
-            return httpx.Response(500)
-        etag = f'"{name[-2]}-{chunk_number}"'
+        etag = f'"{variable}-{number}-{self.run}"'
         if request.headers.get("If-None-Match") == etag:
             return httpx.Response(304)
-        return httpx.Response(200, content=_om_bytes(self.tmp_path, chunk_number), headers={"ETag": etag})
+        return httpx.Response(200, content=_om_bytes(self.tmp_path, int(number), self.run), headers={"ETag": etag})
 
     def client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(transport=httpx.MockTransport(self.handle))
+        return client_for(self.router)
 
     def chunk_requests(self):
-        return [r for r in self.requests if r.url.path.endswith(".om")]
+        return [call.request for call in self.chunks.calls]
 
 
 async def _synced(tmp_path, msm_dir, meta=None, horizon_hours=CHUNK_HOURS):
@@ -175,6 +176,18 @@ class TestSyncing:
             names = {p.name for p in (msm_dir.path / variable).glob("chunk_*.om")}
             assert names == {f"chunk_{NOW_CHUNK + 1}.om"}
 
+    async def test_a_sync_that_fails_partway_keeps_every_variable_from_the_previous_run(self, tmp_path, msm_dir):
+        """東西の成分だけ新しいrunへ入れ替わると、風が東西と南北で別のrunから組まれ、実在しない風になる。"""
+        await _synced(tmp_path, msm_dir, horizon_hours=3)
+        newer = Source(tmp_path, run=1, failing=("wind_v_component_10m",))
+        async with newer.client() as client:
+            with pytest.raises(httpx.HTTPStatusError):
+                await msm_client.refresh(client)
+
+        series = await _read(msm_dir, _points(SOUTH_WEST), 1)
+
+        assert (series.wind_u_ms.tolist(), series.wind_v_ms.tolist()) == ([[2.0]], [[2.0]])
+
     async def test_after_syncing_the_schedule_of_the_source_is_readable(self, tmp_path, msm_dir):
         assert msm_client.freshness() is None
 
@@ -212,6 +225,13 @@ class TestReading:
 
         assert series.times[3:] == [datetime(2026, 9, 22, 8, 0), datetime(2026, 9, 22, 9, 0), datetime(2026, 9, 22, 10, 0)]
         assert series.wind_u_ms[0].tolist() == [2.0, 3.0, 4.0, 5.0, 1000.0, 1001.0]
+
+    async def test_a_forecast_ending_between_hours_is_read_up_to_its_last_hour(self, tmp_path, msm_dir):
+        await _synced(tmp_path, msm_dir, _meta(data_end_time=CHUNK_START + 3 * 3600 + 1800))
+
+        series = await _read(msm_dir, _points(SOUTH_WEST), 6)
+
+        assert series.times == [datetime(2026, 9, 22, 5, 0)]
 
     async def test_each_point_reads_its_nearest_grid_point_unchanged(self, tmp_path, msm_dir):
         """中間を少し越えた地点は、補間せずに近い方の格子点の値そのもの（i=1で100）を読む。"""

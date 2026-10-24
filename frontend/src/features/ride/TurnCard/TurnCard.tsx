@@ -3,7 +3,9 @@ import type { RouteTurn } from "@/types/route";
 
 /** 曲がる所までの道のりの書き方。1km未満は10m単位、1km以上は0.1km単位（走りながら読む桁に丸める）。 */
 function formatDistance(distanceM: number): string {
-  return distanceM < 1000 ? `${Math.round(distanceM / 10) * 10}m` : `${(distanceM / 1000).toFixed(1)}km`;
+  // 単位は丸めたあとの値で選ぶ（丸める前の値で選ぶと、995m以上が「1000m」になる）。
+  const roundedM = Math.round(distanceM / 10) * 10;
+  return roundedM < 1000 ? `${roundedM}m` : `${(distanceM / 1000).toFixed(1)}km`;
 }
 
 interface TurnCardProps {

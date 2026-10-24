@@ -9,6 +9,7 @@
  */
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { NumberInput } from "./NumberInput";
@@ -96,5 +97,30 @@ describe("NumberInput", () => {
     view.unmount();
 
     expect(onValueChange).not.toHaveBeenCalled();
+  });
+
+  it("離れたときに渡す欄でEnterを押し、同じ操作で欄ごと消えても、値は1回だけ渡す", async () => {
+    const onValueChange = vi.fn();
+    function ClosesOnEnter() {
+      const [shown, setShown] = useState(true);
+      if (!shown) return null;
+      return (
+        <NumberInput
+          value={25}
+          onValueChange={onValueChange}
+          commitOn="commit"
+          aria-label="速度"
+          onKeyDown={(event) => {
+            if (event.key === "Enter") setShown(false);
+          }}
+        />
+      );
+    }
+    render(<ClosesOnEnter />);
+
+    await userEvent.click(screen.getByRole("spinbutton", { name: "速度" }));
+    await userEvent.keyboard("31{Enter}");
+
+    expect(onValueChange.mock.calls).toEqual([[31]]);
   });
 });

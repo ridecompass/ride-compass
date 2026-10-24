@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import logging
 import os
 import sys
@@ -20,7 +21,7 @@ from app.config import settings
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.infrastructure.database import get_session_factory
 from app.infrastructure.debug_control import install_ring_buffer_handler
-from app.infrastructure.http_client import JSON_API_TIMEOUT, TILE_PROXY_TIMEOUT, get_http_client
+from app.infrastructure.http_client import JMA_JSON_TIMEOUT, SLOW_JSON_TIMEOUT, TILE_PROXY_TIMEOUT, get_http_client
 from app.infrastructure import road_network_store
 from app.infrastructure.region_tile_cache import PRUNE_INTERVAL_HOURS
 from app.infrastructure.msm_client import refresh as refresh_msm
@@ -33,9 +34,7 @@ from app.infrastructure.request_log import (
 from app.infrastructure.response_compression import ContentTypeGZipMiddleware
 from app.infrastructure.single_process import require_single_worker
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
-from app.services.axis_registry_service import refresh_axis_definitions
-from app.services.road_class_service import refresh_road_classes
-from app.services.tuning_service import refresh_tuning_values
+from app.services.definitions_loading import refresh_definitions
 from app.services.jma_tile_prewarm_service import prewarm_jma_tiles
 
 logging.basicConfig(level=logging.DEBUG if settings.debug_mode else logging.INFO)
@@ -82,7 +81,7 @@ async def _refresh_amedas_job() -> None:
 
 async def _prewarm_jma_tile_job() -> None:
     """対象範囲が読めなければ温めない（原因は`RegionService.get_ingested_area`がWARNINGで残す）。"""
-    async with open_region_service() as region_service:
+    async with open_region_service(get_session_factory()) as region_service:
         area = await region_service.get_ingested_area()
     if area is not None:
         await prewarm_jma_tiles(get_jma_tile_client(), area)
@@ -112,7 +111,7 @@ async def _prune_stale_disk_generations_job() -> None:
 
 async def _prune_stale_region_tiles_job() -> None:
     """いま配っていない世代の地域タイル（路面・点・土地被覆）をディスクから消す。"""
-    async with open_region_service() as region_service:
+    async with open_region_service(get_session_factory()) as region_service:
         removed = await region_service.prune_other_tile_generations()
     if removed:
         logging.getLogger("ridecompass.disk_generation_prune").info(
@@ -127,15 +126,17 @@ async def lifespan(app: FastAPI):
     # httpx.AsyncClientの生成はSSLコンテキスト構築を伴い、環境によっては数百ms〜1秒かかる。
     # 遅延生成のままだとデプロイ直後の最初のリクエストがこのコストを負い、接続タイムアウトが
     # タイトな外部呼び出しではConnectTimeoutを誘発する。実際に使うtimeout値を先に構築しておく。
-    get_http_client(JSON_API_TIMEOUT)
-    get_http_client(TILE_PROXY_TIMEOUT)
+    for timeout in (JMA_JSON_TIMEOUT, SLOW_JSON_TIMEOUT, TILE_PROXY_TIMEOUT):
+        get_http_client(timeout)
 
     async with get_session_factory()() as session:
         # 例外をここで捕捉しないため、軸定義を読めない状態では起動自体が失敗する（fail-fast）。
-        await refresh_axis_definitions(AxisDefinitionRepository(session))
-        # 較正値は行が1つも無ければ宣言どおりの既定値のまま動く（壊れた値の行だけが起動を止める）。
-        await refresh_tuning_values(session)
-        await refresh_road_classes(session)
+        await refresh_definitions(session, AxisDefinitionRepository(session))
+
+    # 世代2のGCはGCが追う全オブジェクトを走査し、その間イベントループが止まる。起動で読み込んだ長生きの
+    # オブジェクト（モジュール・定義）を走査の外へ移し、1回を短くする。先に集めるのは、ゴミまで凍らせると二度と集められないため。
+    gc.collect()
+    gc.freeze()
 
     # 定期ジョブはアプリの寿命の間だけ動くので、スケジューラもこの寿命の中で作る。
     scheduler = AsyncIOScheduler()
@@ -184,6 +185,8 @@ async def lifespan(app: FastAPI):
     # 先に定期ジョブを止める。逆にすると、閉じたあとに走り出したジョブが閉じたクライアントで外部を呼ぶ。
     scheduler.shutdown(wait=False)
     await close_process_resources()
+    # lifespanは1プロセスで何度も通りうる（テスト等）。凍らせたものを戻し、通るたびに循環のゴミが溜まらないようにする。
+    gc.unfreeze()
 
 
 app = FastAPI(title="RideCompass API", lifespan=lifespan, dependencies=[Depends(reject_non_finite_json_body)])

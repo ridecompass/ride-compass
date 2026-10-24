@@ -18,7 +18,7 @@
 // 作業ツリーの外に置いてよい（.ts も読める）。省略すると開いて1枚撮る。例は capture/examples/。
 // 撮る前に、宛先（本番の frontend・本物の backend）が応答するまで待ち、Playwright の Chromium と、Linux なら起こすのに要る依存と
 // 日本語のフォント（無いと文字が豆腐になる）を入れる。画像は <出力>/<版>/<幅>x<高さ>[-<テーマ>]/<番号>-<名前>.png
-// （幅・テーマだけを変えて同じ --out へ撮り直しても、前の画像を上書きしない）。
+// （幅・テーマだけを変えて同じ --out へ撮り直しても、前の画像を上書きしない。版・幅・テーマが同じなら、前の画像を消してから撮る）。
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -28,15 +28,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import { fileName } from "../capture/fileName.mjs";
 import { imageEnv, productionOrigins } from "./image.mjs";
 
 const frontendRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const playwright = path.join(frontendRoot, "node_modules", "@playwright", "test", "cli.js");
 /** e2e/fixtures.ts: installApiMocks が待ち受ける向け先。ビルドの環境変数に別の向け先があっても、モックへ向ける。 */
 const MOCKED_API = "http://localhost:8000";
-/** frontend/e2e（3100）・e2e-live（3200）・devサーバー（3000）と取り合わないポート。 */
+/** frontend/e2e・e2e-live・devサーバーと取り合わないポート。 */
 const LOCAL_PORT = "3300";
-/** --backend の作業ツリーの backend のポート。backend の開発（8000）・e2e-live（serve_e2e_live.py）と取り合わない。 */
+/** --backend の作業ツリーの backend のポート。backend の開発・e2e-live（serve_e2e_live.py）と取り合わない。 */
 const WORKTREE_BACKEND_PORT = "8300";
 /** Render の無料のインスタンスは休止から起きるのに約1分かかる（https://render.com/docs/free）。その3倍まで待つ。 */
 const WAKE_LIMIT_MS = 3 * 60_000;
@@ -113,9 +114,11 @@ if (values.theme && !["light", "dark"].includes(values.theme)) fail(`--theme は
 const label = { production: "本番", worktree: "作業ツリー" }[values.app] ?? values.app;
 const out = path.join(
   path.resolve(values.out),
-  label.replace(/[\\/:*?"<>|\s]+/g, "_"),
+  fileName(label),
   `${width}x${height}${values.theme ? `-${values.theme}` : ""}`,
 );
+// 番号は撮るたびに1から振るので、前の実行の画像を残すと、段の少ない脚本で撮り直した後に前の段の画像が混ざる。
+rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
 /** Chromium を入れて起こせるかを試し、Linux なら起こすのに要る依存と日本語のフォントを入れる。 */
@@ -281,6 +284,9 @@ if (values.backend.length > 0) {
     stdio: ["ignore", logFd, logFd],
   });
   process.on("exit", () => server.kill());
+  server.on("error", (error) => fail(`作業ツリーの backend を起こせない: ${error.message}`));
+  // 応答を待つ間に止まれば、待ちの上限まで待たずに止める（起動の失敗はログにある）。
+  server.on("exit", (code) => fail(`作業ツリーの backend が止まった（終了コード ${code}。ログ: ${log}）`));
   worktreeBackend = { origin, api, paths: values.backend };
   await waitReady("作業ツリーの backend", `${worktreeBackend.origin}/health`);
 }

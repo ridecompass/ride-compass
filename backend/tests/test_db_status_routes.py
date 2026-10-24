@@ -67,16 +67,9 @@ def _counts() -> DbStatusCounts:
     )
 
 
-def _override(service: _StubService) -> None:
-    app.dependency_overrides[get_db_status_service] = lambda: service
-
-
-def teardown_function() -> None:
-    app.dependency_overrides.clear()
-
-
-def test_returns_the_report(admin_credentials):
-    _override(_StubService(_counts()))
+def test_returns_the_report(override_dependency, admin_credentials):
+    service = _StubService(_counts())
+    override_dependency(get_db_status_service, lambda: service)
 
     body = client.get(STATUS_URL, headers=AUTH_HEADERS).json()
 

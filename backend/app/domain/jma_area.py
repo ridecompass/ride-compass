@@ -27,9 +27,10 @@ class ResolvedArea:
 
 @dataclass(frozen=True)
 class AreaEntry:
-    """地域マスタの1区域。親の無い区域もある（外部のデータのため）。"""
+    """地域マスタの1区域。親・名前の無い区域もある（外部のデータのため）。"""
 
     parent: str | None
+    name: str | None = None
 
 
 @dataclass(frozen=True)

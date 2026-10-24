@@ -85,6 +85,8 @@ class JmaElement:
     forecast_minutes: int | None = None
 
     def __post_init__(self) -> None:
+        if not self.time_files:
+            raise ValueError("時刻一覧のファイルが無いと、その要素のコマを取りに行けない")
         # ずらし方は画面の読み方だけが持ち、プリウォーム（タイルだけを温める）の読み方`read_target_times`は持たない。
         if self.tile is not None and self.data_delay_minutes:
             raise ValueError("タイルで配る要素に配信の遅れを宣言するなら、プリウォームの読み方にも同じずらしが要る")
@@ -181,10 +183,22 @@ def read_target_times(reader: TargetTimesReader, rows: Sequence[TargetTimesRow],
 
 
 def _read_nowcast(frames: list[JmaFrame]) -> list[JmaFrame]:
-    """最新の実況（`validtime`==`basetime`）より前を捨てる。実況が1つも無ければ何も捨てない。"""
-    ordered = sorted(frames, key=lambda frame: frame.validtime)
+    """`validtime`ごとに1コマへ絞り、最新の実況（`validtime`==`basetime`）より前を捨てる。実況が1つも無ければ何も捨てない。
+
+    実況と予測は別のファイルに載り、別々に取るので、取った時点がずれると前の`basetime`の予測と新しい実況が
+    同じ`validtime`を持つ。同じ`validtime`では実況を予測より、新しい`basetime`を古いものより先に採る。"""
+    by_validtime: dict[str, JmaFrame] = {}
+    for frame in frames:
+        taken = by_validtime.get(frame.validtime)
+        if taken is None or _nowcast_precedence(frame) > _nowcast_precedence(taken):
+            by_validtime[frame.validtime] = frame
+    ordered = sorted(by_validtime.values(), key=lambda frame: frame.validtime)
     observed = [index for index, frame in enumerate(ordered) if frame.validtime == frame.basetime]
     return ordered[observed[-1] :] if observed else ordered
+
+
+def _nowcast_precedence(frame: JmaFrame) -> tuple[bool, str]:
+    return (frame.validtime == frame.basetime, frame.basetime)
 
 
 def _read_latest_full_run(frames: list[JmaFrame]) -> list[JmaFrame]:
@@ -206,11 +220,12 @@ def _read_latest_full_run(frames: list[JmaFrame]) -> list[JmaFrame]:
     return sorted(by_validtime.values(), key=lambda frame: frame.validtime)
 
 
-_DATA_ROOT = "bosai/jmatile/data"
+#: 配信元のタイルと時刻一覧の根。地図に重ねない要素（推計気象分布）も同じ根の下にある。
+JMA_DATA_ROOT = "bosai/jmatile/data"
 #: 時刻一覧の置き場。
-_TARGET_TIMES_PATH = _DATA_ROOT + "/{group}/{file}"
+_TARGET_TIMES_PATH = JMA_DATA_ROOT + "/{group}/{file}"
 #: 配信要素の1コマの置き場。この下にタイル（地図の`{z}/{x}/{y}`）か、タイルで配らない要素の地物（GeoJSON）がある。
-_FRAME_PATH = _DATA_ROOT + "/{group}/{basetime}/{member}/{validtime}/surf/{element}"
+_FRAME_PATH = JMA_DATA_ROOT + "/{group}/{basetime}/{member}/{validtime}/surf/{element}"
 _TILE_FILE = "{z}/{x}/{y}.{extension}"
 _FEATURES_FILE = "data.geojson?id={element}"
 #: テンプレートの埋める所（`{名前}`）。画面も同じ書き方で埋める。

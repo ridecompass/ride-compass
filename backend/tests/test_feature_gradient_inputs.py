@@ -11,11 +11,14 @@
 - 取込範囲の外・結果の形 → `test_road_graph_repository_contracts.py`
 """
 
+import functools
+
 import pytest
 from sqlalchemy import text
 
 from app.batch import derive_elevation, derive_topology
 from app.batch.dem_tile_store import PRODUCT_PRIORITY
+from app.batch.ingest import SourceRecord
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, BoundingBox
 from tests.conftest import raw_connection
 from tests.source_ingest import dem_tile_records, ingest_records, way_record
@@ -35,13 +38,19 @@ def _climbing_north(lon: float, lat: float) -> float:
     return 100.0 + (lat - AREA.min_latitude) * 111_000 * 0.4
 
 
+@functools.cache
+def _dem_records() -> list[SourceRecord]:
+    """`AREA`を覆う`_climbing_north`の標高のタイル。画素ごとに標高を求めるので、テストごとに作り直さない。"""
+    return dem_tile_records(PRODUCT_PRIORITY[0], 15, AREA, _climbing_north)
+
+
 async def _ingest_switchback(session) -> dict[int, tuple[float, float]]:
     """つづら折りの道と標高を取り込み、区間に切って標高と勾配を出す。区間ごとの (長さ（m）, 勾配（%）) を返す。"""
     await ingest_records("osm_way", [
         way_record(SWITCHBACK_WAY_ID, SWITCHBACK, [1, 2, 3]),
         way_record(2, [SWITCHBACK[1], (139.706, 35.6795)], [2, 9]),
-    ], bbox=(AREA.min_latitude, AREA.min_longitude, AREA.max_latitude, AREA.max_longitude))
-    await ingest_records("dem", dem_tile_records(PRODUCT_PRIORITY[0], 15, AREA, _climbing_north))
+    ], bbox=AREA)
+    await ingest_records("dem", _dem_records())
     async with raw_connection() as conn:
         await derive_topology.derive(conn)
         await derive_elevation.derive(conn, previous=None)

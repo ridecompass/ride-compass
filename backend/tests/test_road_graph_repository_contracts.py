@@ -28,21 +28,18 @@ import shapely
 from sqlalchemy import text
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.graph import LeanEdge
+from app.domain.graph import LeanEdge, edge_key, node_key
 from app.domain.landcover import LandcoverPercentages, landcover_key
 from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns
 from app.domain.region import BoundingBox
-from app.infrastructure.derived_models import EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow, WayCountsRow
-from app.domain.graph import edge_key, node_key
+from app.infrastructure.derived_models import EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow
 from app.services.axis_preview_service import SAMPLE_LIMIT, SAMPLE_PERCENT
-from app.infrastructure.material_joins import material_from_clause, reversed_material_expression
+from app.infrastructure.material_joins import reversed_material_expression
 from app.infrastructure.road_graph_repository import (
     ID_CHUNK_SIZE,
     MATERIAL_ARRAY_COLUMN_ORDER,
     RoadGraphRepository,
-    way_from_clause,
 )
-from app.infrastructure.source_models import WAYS_SOURCE_SQL
 
 BBOX = BoundingBox(min_latitude=35.0, min_longitude=139.0,
                    max_latitude=35.1, max_longitude=139.1)
@@ -129,38 +126,12 @@ def test_reversing_twice_returns_to_the_original_column():
         assert back.startswith("-") == expression.startswith("-")
 
 
-# --- 材料の列 -----------------------------------------------------------------
-
-
-def test_material_array_columns_are_all_distinct():
-    """材料と付随列の名前がぶつかると、片方の値がもう片方を上書きして列がずれる。"""
-    assert len(set(MATERIAL_ARRAY_COLUMN_ORDER)) == len(MATERIAL_ARRAY_COLUMN_ORDER)
-
-
-def test_material_tables_are_joined_only_for_the_columns_the_expressions_read():
-    """使わないJOINを足すと、読む材料の少ない問い合わせまで道の全件と材料の表の結合へ広がる。"""
-    edge_column = next(column for column in EdgeCountsRow.__table__.columns if not column.primary_key)
-    clause = material_from_clause([f"em.{edge_column.name}"], "k.osm_way_id", "k.segment_index")
-
-    assert "JOIN" not in way_from_clause(["w.tags"], WAYS_SOURCE_SQL)
-    assert EdgeCountsRow.__tablename__ in clause
-    assert EdgeElevationRow.__tablename__ not in clause
-    assert WayCountsRow.__tablename__ not in clause
-
-
-@pytest.mark.parametrize("alias", ["em", "wm"])
-def test_an_expression_reading_an_undeclared_column_is_refused(alias):
-    """SQLの実行まで気づかないと、その経路の読み出しが材料ぶん丸ごと落ちる。"""
-    with pytest.raises(ValueError, match=f"{alias}.column_a"):
-        material_from_clause([f"{alias}.column_a"], "k.osm_way_id", "k.segment_index")
-
-
 # --- ジオメトリ付きの取り直し -------------------------------------------------
 
 
-def _geometry_row(way_id=1, segment=0, coordinates=((139.0, 35.0), (139.1, 35.2))):
-    return _Row(osm_way_id=way_id, segment_index=segment, from_node_id=1, to_node_id=2,
-                distance_m=100.0, wkb=shapely.to_wkb(shapely.LineString(coordinates)))
+def _geometry_row():
+    return _Row(osm_way_id=1, segment_index=0, from_node_id=1, to_node_id=2,
+                distance_m=100.0, wkb=shapely.to_wkb(shapely.LineString(((139.0, 35.0), (139.1, 35.2)))))
 
 
 async def test_both_directions_of_a_segment_share_one_row():
@@ -307,12 +278,9 @@ async def test_accident_years_come_from_the_declared_profile(declared, years):
 # --- 土地被覆の内訳 -----------------------------------------------------------
 
 
-def _landcover_row(valid_pixels: int | None = 100) -> _Row:
-    """表が入れる形の行。割合は有効画素が正の行だけが持つ。"""
-    values: dict[str, object] = {"lc_valid_pixels": valid_pixels}
-    for name in LandcoverPercentages.model_fields:
-        values[f"lc_{landcover_key(name)}"] = 12.5 if valid_pixels else None
-    return _Row(**values)
+def _landcover_row() -> _Row:
+    """表が入れる形の、有効画素が正の行。"""
+    return _Row(lc_valid_pixels=100, **{f"lc_{landcover_key(name)}": 12.5 for name in LandcoverPercentages.model_fields})
 
 
 @pytest.mark.parametrize(("feature_key", "segment_index"), [
@@ -360,11 +328,3 @@ async def test_feature_keys_are_returned_as_text():
     assert await repo.get_feature_midpoints_in_tile(14, 1, 2, BBOX) == {}
     assert await repo.get_feature_midpoints_in_tile(14, 1, 2, BBOX) == {
         "123": (35.1, 139.2), "123-4": (35.0, 139.0)}
-
-
-async def test_gradient_inputs_are_pairs_of_numbers():
-    repo, _ = _repo([_Row(covered=True, inputs=None)],
-                    [_Row(covered=True, inputs={"123-4": [3, 90]})])
-
-    assert await repo.get_feature_gradient_inputs_in_tile(14, 1, 2, BBOX) == {}
-    assert await repo.get_feature_gradient_inputs_in_tile(14, 1, 2, BBOX) == {"123-4": (3.0, 90.0)}

@@ -14,7 +14,7 @@
 import pytest
 
 from app.infrastructure import region_tile_cache, tile_cache
-from app.infrastructure.cache_identity import UNKNOWN_REVISION, region_tile_key
+from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION, UNKNOWN_REVISION, region_tile_key
 from app.infrastructure.debug_log import mark_failed
 from tests.bound_fake import bound
 from tests.fake_external_log import record_external_calls
@@ -41,15 +41,12 @@ def records(monkeypatch):
 
 
 def _fetch(result, failure=None):
-    calls: list[dict] = []
-
     async def fetch(fields):
-        calls.append(fields)
         if failure is not None:
             mark_failed(fields, failure)
         return result
 
-    return fetch, calls
+    return fetch
 
 
 async def _serve(fetch, **overrides):
@@ -67,17 +64,16 @@ async def _serve(fetch, **overrides):
 
 async def test_a_cached_tile_is_returned_without_making_it_again(cache, records):
     cache.entries[KEY] = (b"cached", "image/png")
-    fetch, fetched = _fetch(b"new")
+    fetch = _fetch(b"new")
 
     response = await _serve(fetch)
 
     assert response == region_tile_cache.TileResponse(b"cached")
-    assert fetched == []
     assert records[0].fields["cache"] == "hit"
 
 
 async def test_a_missing_tile_is_made_stored_and_returned(cache, records):
-    fetch, _ = _fetch(b"new")
+    fetch = _fetch(b"new")
 
     response = await _serve(fetch)
 
@@ -98,7 +94,7 @@ async def test_a_missing_tile_is_made_stored_and_returned(cache, records):
     ],
 )
 async def test_a_tile_that_cannot_be_made_is_the_empty_tile_and_is_not_stored(cache, records, failure, cacheable):
-    fetch, _ = _fetch(None, failure)
+    fetch = _fetch(None, failure)
 
     response = await _serve(fetch)
 
@@ -158,6 +154,11 @@ def test_only_the_generations_being_served_stay_on_disk(opened_rasters):
         "基礎地図（地域タイルでない）",
     }
     assert removed == len(keys) - len(kept)
+
+
+def test_the_landcover_generation_carries_the_tile_version(opened_rasters):
+    """配色を変えて版を上げたら、前の版の絵をディスクから返さない。"""
+    assert region_tile_cache.landcover_generation().startswith(f"{LANDCOVER_TILE_VERSION}/")
 
 
 def test_landcover_tiles_stay_while_no_raster_can_be_opened(opened_rasters):

@@ -25,6 +25,7 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useWayMaterials } from "@/features/map/useWayMaterials";
+import { useRoadClasses } from "@/features/map/useRoadClasses";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
 import { useStoredBooleanState, useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates } from "@/types/route";
@@ -33,6 +34,7 @@ import { snapDeg } from "@/lib/cardinalLabel";
 import type { WayValueCondition } from "@/lib/catalogAxis";
 import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
+import { WAY_BEARING_STEP_DEG } from "@/features/map/mapHeading";
 
 import {
   deserializeHiddenLegendKeys,
@@ -58,8 +60,6 @@ import { deserializeLayerVisibility, overlayChips } from "./overlayChips";
 export const LEGEND_FILTER_DEBOUNCE_MS = 400;
 
 const ROUTE_LAYER_ID = "route";
-// 道の値を求める走る向きの刻み。細かくするほど、向きで材料を取り直す軸の取り直しが増える。
-const WAY_BEARING_STEP_DEG = 10;
 const NO_STORED_VALUES = {};
 
 interface MapViewInputs {
@@ -166,6 +166,18 @@ export function useMapView({
   const speedKmh = riding?.speedKmh ?? ride.speedKmh;
   const wayConditions = useMemo(() => ({ bearingDeg, at: ride.at, speedKmh }), [bearingDeg, ride.at, speedKmh]);
   const wayMaterials = useWayMaterials(fetchAxes, viewport, wayConditions);
+  const shownRoadLayers = mapCatalog.roadLayers.filter((layer) => layerVisibility[layer.id] === true);
+  const roadClasses = useRoadClasses(shownRoadLayers.length > 0, viewport, catalog.roadClasses.generation);
+  // 層の値はどの道の線の層も同じ取得から読むので、取得の状態は出ている層のどれにも出す。
+  const roadClassStatus = deriveFetchLayerStatus(
+    roadClasses.loading,
+    roadClasses.error ? "fetch-failed" : null,
+    true,
+    true,
+  );
+  const roadLayerStatus = roadClassStatus
+    ? Object.fromEntries(shownRoadLayers.map((layer) => [layer.id, roadClassStatus]))
+    : {};
   // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。速度が数でない間は値の無いことにする。
   const formulaConditions = useMemo(
     () => ({ bearing_deg: bearingDeg, ...(Number.isFinite(speedKmh) ? { speed_kmh: speedKmh } : {}) }),
@@ -180,6 +192,7 @@ export function useMapView({
       dynamicWeather: weather.dynamicWeather,
       lens,
       paintedAxisId: painted,
+      roadClasses,
       wayMaterials,
       wayConditions: formulaConditions,
       hiddenLegendKeys: debouncedHidden,
@@ -192,6 +205,7 @@ export function useMapView({
       weather.dynamicWeather,
       lens,
       painted,
+      roadClasses,
       wayMaterials,
       formulaConditions,
       debouncedHidden,
@@ -207,7 +221,7 @@ export function useMapView({
     roadLayers: mapCatalog.roadLayers,
     visibility: layerVisibility,
     hidden,
-    dataStatus: { ...mapLayerStatus, ...weather.dynamicWeatherDataStatus },
+    dataStatus: { ...mapLayerStatus, ...roadLayerStatus, ...weather.dynamicWeatherDataStatus },
     zoomTooWideLayerIds: viewport ? tileZoomTooWideLayerIds(mapCatalog.layers, viewport.zoom) : [],
     versionMissingLayerIds: mapCatalog.tileVersions ? [] : tileVersionGatedLayerIds(mapCatalog.layers),
     catalogSettled: catalog.loaded || catalog.failed,

@@ -12,7 +12,7 @@
 
 from dataclasses import dataclass, fields
 from datetime import datetime
-from typing import Callable, Iterable, Mapping, Protocol, Sequence, cast
+from typing import Callable, Iterable, Mapping, Protocol, Sequence, cast, get_args
 
 import numpy as np
 
@@ -38,6 +38,7 @@ from app.domain.region import EDGE_UNIT_MIN_ZOOM
 from app.domain.way_value_formula import FALSE, WayValueFormula, condition_names, feature_names
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services.axis_registry_service import check_loadable_after_write
+from app.services.feature_midpoints import TileMidpoints
 from app.services.gradient_way_service import GradientWayService
 from app.services.rain_way_service import RainWayService
 from app.services.weather_service import WeatherService
@@ -79,7 +80,7 @@ class DedicatedWayValueServiceType(Protocol):
     def material_formula(self, material_id: str) -> ServedMaterialFormula: ...
 
     def build(
-        self, repository: RoadGraphRepository, weather_service: WeatherService, material_id: str
+        self, repository: RoadGraphRepository, weather_service: WeatherService, midpoints: TileMidpoints, material_id: str,
     ) -> DedicatedWayValueService: ...
 
 
@@ -104,6 +105,9 @@ def services_by_material(
     by_material: dict[str, DedicatedWayValueServiceType] = {}
     for service in services:
         for material_id in service.material_ids:
+            # 材料カタログに無いid（軸idの取り違え等）は軸の葉の材料と結ばれず、それを読む軸が全道路「データなし」になる。
+            if material_id not in MATERIAL_CATALOG:
+                raise RuntimeError(f"material '{material_id}' is not in the material catalog")
             if material_id in by_material:
                 raise RuntimeError(
                     f"material '{material_id}' is served by more than one dedicated way value service"
@@ -120,6 +124,12 @@ def services_by_material(
         for name in _leaf_names(service.material_formula(material_id)):
             if (name in MATERIAL_CATALOG and name != material_id) or owner.setdefault(name, material_id) != material_id:
                 raise RuntimeError(f"way material '{name}' of '{material_id}' collides with another material")
+    # 条件の欄は要求（`WayValueQuery`）の同じ名前の欄から組み立て、欄の名前は`WayValueConditionName`として地図へ配る。
+    # どちらかに無い名前の欄を持つと、その材料の配信は毎回組み立てで落ちるか、地図がその条件を載せない。
+    carried = set(get_args(WayValueConditionName)) & {field.name for field in fields(WayValueQuery)}
+    for service in set(by_material.values()):
+        if uncarried := {field.name for field in fields(service.conditions_type)} - carried:
+            raise RuntimeError(f"conditions {sorted(uncarried)} of {service} are not carried by the request")
     return by_material
 
 
@@ -143,19 +153,15 @@ def _condition_names(kinds: Iterable[type]) -> list[WayValueConditionName]:
     return list(dict.fromkeys(names))
 
 
-def _build_service(
-    material: str, repository: RoadGraphRepository, weather_service: WeatherService
-) -> DedicatedWayValueService:
-    return _SERVICES_BY_MATERIAL[material].build(repository, weather_service, material)
-
-
 #: 材料id→その材料の配信サービス。
 MaterialServiceBuilder = Callable[[str], DedicatedWayValueService]
 
 
 def material_service_builder(repository: RoadGraphRepository, weather_service: WeatherService) -> MaterialServiceBuilder:
-    """材料ごとの配信サービスを、同じリポジトリ・気象サービスで組み立てる。"""
-    return lambda material: _build_service(material, repository, weather_service)
+    """材料ごとの配信サービスを、同じリポジトリ・気象サービス・道の中ほどの点の置き場で組み立てる。組み立てたサービスは
+    中ほどの点をタイルごとに1回だけ読んで分け合うので、組み立ては`repository`のセッションと同じ1つの要求の中で使う。"""
+    midpoints = TileMidpoints(repository)
+    return lambda material: _SERVICES_BY_MATERIAL[material].build(repository, weather_service, midpoints, material)
 
 
 class FeatureMaterialSource(Protocol):

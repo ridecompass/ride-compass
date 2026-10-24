@@ -77,12 +77,19 @@ describe("RideConditionBar 出発時刻", () => {
     [
       "出発時刻で値の変わる評価があれば、その名前で",
       ["at", "bearing_deg"],
+      "always",
       "ルートの「評価A」の評価・到達予想の時刻に使います。",
     ],
-    ["無ければ評価に触れずに", ["bearing_deg"], "ルートの到達予想の時刻に使います。"],
-  ] as const)("出発時刻の説明は、%s何に使うかを書く", async (_case, conditions, tail) => {
+    ["無ければ評価に触れずに", ["bearing_deg"], "always", "ルートの到達予想の時刻に使います。"],
+  ] as const)("出発時刻の説明は、%s何に使うかを書く", async (_case, conditions, timeScope, tail) => {
     serveAxisCatalog(
-      catalogResponse([dedicatedEntry("a", [1], { label: "評価A", dynamic_way_value_conditions: [...conditions] })]),
+      catalogResponse([
+        dedicatedEntry("a", [1], {
+          label: "評価A",
+          dynamic_way_value_conditions: [...conditions],
+          time_scope: timeScope,
+        }),
+      ]),
     );
     renderBar();
     await waitFor(() => expect(getQueryClient().isFetching()).toBe(0));
@@ -124,6 +131,16 @@ describe("RideConditionBar 出発時刻", () => {
     await userEvent.click(await screen.findByRole("button", { name: "出発時刻を1つ前へ" }));
     expect(props.onDepartureNow).toHaveBeenCalled();
     expect(props.onDepartureTimeChange).not.toHaveBeenCalled();
+  });
+
+  it("刻みの後半に開いても、「今」の目盛りは今を刻みへ切り下げた時刻で、1つ次へ送れる", async () => {
+    // 9:08は9:05より9:10に近いが、「今」に追従する出発時刻は9:05へ切り下げてある。
+    vi.setSystemTime(jst("2026-09-24T09:08"));
+    const props = renderBar({ departureTime: jst("2026-09-24T09:05") });
+    await userEvent.click(screen.getByRole("button", { name: /^出発時刻:/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "出発時刻を1つ次へ" }));
+    expect(props.onDepartureTimeChange).toHaveBeenCalledWith(jst("2026-09-24T09:10"));
+    expect(props.onDepartureNow).not.toHaveBeenCalled();
   });
 
   it("目盛りで選んだコマの時刻を出発時刻にする", async () => {

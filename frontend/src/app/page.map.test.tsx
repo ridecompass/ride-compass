@@ -3,20 +3,17 @@
  *
  * 見ること: 地図を押したときの意味は効いているパネルで決まり（「ルート設定」の条件タブは選んでいる地点を置く、
  * 「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
- * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、ピンを押しても消えずルート設定ではその地点を選ぶこと、
- * 目的地の行で探して置いた地点と、名前のある点を押して置いた地点が地図に立ち、行にその名前が出ること、周回の間は置いた目的地を
- * 地図にも行にも出さず地図を押しても目的地にしないで、外すと戻すこと、
- * 名前を付けて保存した地点を打つ欄から選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置くこと、区間を選んでいる間は
- * 地図にその区間の範囲の縁取りと選んだ地点の印が出ること。
+ * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、区間を選んでいる間は地図にその区間の範囲の縁取りと
+ * 選んだ地点の印が出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。区間を押すと、その区間の近くの施設を
+ * 引いて種類ごとに出すこと。道の小窓を別の道へ押し替えると、前の道で押した評価を新しい道へ持ち越さないこと。
+ *
+ * ここで見ないもの: 地図に置く地点（ピン・名前のある点・目的地・保存した地点）は`app/page.places.test.tsx`が見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
 import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
-import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
-import { onBackend } from "@/testing/backendServer";
 import {
   DESTINATION,
   ELSEWHERE,
@@ -37,11 +34,14 @@ import {
   selectedPointMarks,
   selectedSectionOnMap,
   serveHome,
+  showRoadSurface,
 } from "@/testing/homePage";
-import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
-import { makeGenerationConditions, makeRouteSegment } from "@/testing/routeFixtures";
+import { heldReplies, onBackend } from "@/testing/backendServer";
+import { mapOnScreen } from "@/testing/maplibre";
+import { inspectorResult } from "@/testing/roadInspector";
+import { makeGenerationConditions, makeRouteSegment, routeThrough } from "@/testing/routeFixtures";
+import { settle } from "@/testing/settle";
 import palette from "@/types/generated/palette.json";
-import type { Coordinates } from "@/types/route";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
 
@@ -106,130 +106,6 @@ describe("地図で扱えること", () => {
     expect(section("ルート設定")).toHaveAccessibleDescription("地図で操作中");
     clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toHaveLength(1);
-  });
-
-  it("ピンを押しただけでは消えず、ルート設定ではその地点を選んで詳しくを出し、閉じている間は呼び名と名前を小窓に出す", async () => {
-    const { user } = renderHome();
-    await selectDestination(user);
-    clickMap(DESTINATION);
-    await user.click(screen.getByRole("button", { name: "出発地: 現在地" }));
-
-    const [destinationPin] = marksAt(DESTINATION);
-    await user.click(destinationPin.element);
-    expect(marksAt(DESTINATION)).toHaveLength(1);
-    expect(screen.getByRole("region", { name: "目的地" })).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
-    await user.click(destinationPin.element);
-    expect(marksAt(DESTINATION)).toHaveLength(1);
-    expect(screen.getByText("目的地: 地図で選んだ地点")).toBeInTheDocument();
-  });
-
-  it("名前のある点を押すと、選んでいる地点をその点へその名前で置き、地図と地点の並びに出す。閉じている間は置かない", async () => {
-    const shop: Coordinates = { latitude: 35.71, longitude: 139.71 };
-    const pointed = [
-      {
-        layer: sceneLayerId(POINT_TILE_SOURCES.poi.sourceId, "supply_poi"),
-        properties: { name: "角の店", kind: "convenience" },
-        geometry: { type: "Point", coordinates: [shop.longitude, shop.latitude] },
-      } satisfies PointedFeature,
-    ];
-    const { user } = renderHome();
-    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
-    await user.click(screen.getByRole("checkbox", { name: "補給・休憩ポイント" }));
-    await user.keyboard("{Escape}");
-
-    await user.click(screen.getByRole("button", { name: "経由地を足す" }));
-    // 押した所は絵の端でも、点そのものの位置へ置く。
-    clickMap(ELSEWHERE, pointed);
-    expect(marksAt(shop)).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "経由地1: 角の店" })).toBeInTheDocument();
-
-    await selectDestination(user);
-    clickMap(shop, pointed);
-    expect(marksAt(shop)).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "目的地: 角の店" })).toBeInTheDocument();
-    // 地図の印は役割の名前で見分けられ、地点の並びの印と同じ記号を描く。
-    const [waypointMark, destinationMark] = marksAt(shop).map(({ element }) => element);
-    expect(waypointMark).toHaveAccessibleName("経由地 1");
-    expect(destinationMark).toHaveAccessibleName("目的地");
-    expect(screen.getByRole("img", { name: "出発地" })).toBeInTheDocument();
-    const listedDestination = screen.getByRole("button", { name: "目的地: 角の店" }).querySelector("svg");
-    // 大きさは置き場ごとに違うので、記号の中身で比べる。
-    expect(listedDestination?.innerHTML).toBeTruthy();
-    expect(destinationMark.querySelector("svg")?.innerHTML).toBe(listedDestination?.innerHTML);
-
-    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
-    clickMap(ELSEWHERE, pointed);
-    expect(marksAt(shop)).toHaveLength(2);
-  });
-
-  it("目的地を探して選んだ地点は地図に目的地として立ち、地点の並びにその名前が出る", async () => {
-    const candidate = {
-      kind: "facility",
-      level: "point",
-      name: "浅草寺",
-      area: "台東区浅草二丁目",
-      latitude: 35.7148,
-      longitude: 139.7967,
-    } as const;
-    onBackend("GET", "/api/place-search", () => Response.json({ candidates: [candidate] }));
-    const { user } = renderHome();
-    await selectDestination(user);
-    const searchBox = screen.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
-
-    await user.type(searchBox, "浅草寺{Enter}");
-    await user.click(await screen.findByRole("button", { name: new RegExp(candidate.name) }));
-
-    expect(marksAt(candidate)).toHaveLength(1);
-    expect(screen.getByRole("button", { name: `目的地: ${candidate.name}` })).toBeInTheDocument();
-  });
-
-  it("周回にすると置いた目的地を地図にも地点の並びにも出さず、地図を押しても目的地にせず、周回を外すとその目的地が戻る", async () => {
-    const { user } = renderHome();
-    await selectDestination(user);
-    clickMap(DESTINATION);
-
-    await user.click(screen.getByRole("button", { name: "周回", pressed: false }));
-    expect(marksAt(DESTINATION)).toEqual([]);
-    expect(screen.getByText("終点: 現在地[周回]")).toBeInTheDocument();
-    clickMap(ELSEWHERE);
-    expect(screen.getByText("終点: 地図で選んだ地点[周回]")).toBeInTheDocument();
-    expect(marksAt(DESTINATION)).toEqual([]);
-
-    await user.click(screen.getByRole("button", { name: "周回", pressed: true }));
-    expect(marksAt(DESTINATION)).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "目的地: 地図で選んだ地点" })).toBeInTheDocument();
-  });
-
-  it("名前を付けて保存した地点は、目的地を消したあとも打つ欄を押して選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置く", async () => {
-    const { user } = renderHome();
-    await selectDestination(user);
-    clickMap(DESTINATION);
-    await user.click(screen.getByRole("button", { name: "地点を保存" }));
-    const dialog = screen.getByRole("dialog", { name: "地点を保存" });
-    const nameInput = within(dialog).getByRole("textbox", { name: "保存する地点の名前" });
-    await user.clear(nameInput);
-    await user.type(nameInput, "いつものカフェ");
-    await user.click(within(dialog).getByRole("button", { name: "保存" }));
-    await user.click(screen.getByRole("button", { name: "目的地を消す" }));
-    expect(marksAt(DESTINATION)).toEqual([]);
-
-    await user.click(screen.getByRole("searchbox", { name: "目的地を住所・施設で探す" }));
-    const saved = screen.getByRole("list", { name: "保存した地点" });
-    await user.click(within(saved).getByRole("button", { name: /いつものカフェ/ }));
-
-    expect(marksAt(DESTINATION)).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "目的地: いつものカフェ" })).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "保存済み" }));
-    await user.click(screen.getByRole("tab", { name: "地点" }));
-    await user.click(screen.getByRole("button", { name: "「いつものカフェ」を呼び出す" }));
-    const menu = screen.getByRole("dialog", { name: "「いつものカフェ」をどこに置くか" });
-    await user.click(within(menu).getByRole("button", { name: "経由地に足す" }));
-
-    expect(screen.getByRole("tab", { name: "条件" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("region", { name: "経由地1" })).toHaveTextContent("いつものカフェ");
-    expect(marksAt(DESTINATION)).toHaveLength(2);
   });
 
   it("区間を押すと、「ルート結果」が効いている間はその中に、閉じている間は地図の小窓に中身を出し、「ルート設定」が効いている間は出さない", async () => {
@@ -316,5 +192,98 @@ describe("地図で扱えること", () => {
     clickSegment(drawnSegment, HERE);
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     expect(screen.getByText(/km地点/)).toBeInTheDocument();
+  });
+});
+
+describe("道の小窓", () => {
+  it("評価を開いた道から別の道へ押し替えると、その道の評価は押すまで取りに行かない", async () => {
+    const asked: unknown[] = [];
+    onBackend("POST", "/api/region/axis-inspector", ({ body }) => {
+      asked.push(body);
+      return Response.json(inspectorResult());
+    });
+    const { user } = renderHome();
+    await showRoadSurface(user);
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
+    clickMap(HERE, [{ layer: "road-tiles-surface", properties: { osm_way_id: 1, feature_key: "1" } }]);
+    await user.click(screen.getByRole("button", { name: "この道の評価を見る" }));
+    expect(await screen.findByText(/この道全体で見た難易度/)).toBeInTheDocument();
+
+    clickMap(ELSEWHERE, [{ layer: "road-tiles-surface", properties: { osm_way_id: 2, feature_key: "2" } }]);
+    expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
+    await settle();
+    expect(asked).toEqual([expect.objectContaining({ osm_way_id: 1 })]);
+  });
+});
+
+describe("区間の近くの施設", () => {
+  // 東へ1kmずつ進む区間2つのルート。
+  const NEAR = route("near", {
+    ...routeThrough({ a: [139.7, 35.7], b: [139.71, 35.7], c: [139.72, 35.7] }, ["a", "b", "c"], [1, 1]),
+    distance_km: 2,
+  });
+
+  async function pressSecondSegment(user: Parameters<typeof generate>[0]) {
+    jobs.respond([NEAR], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    const [, second] = mapOnScreen().sourceFeatures("route-segments");
+    clickSegment(second, HERE);
+    return screen.getByRole("group", { name: "近くの施設" });
+  }
+
+  it("区間を押すとその区間の近くの施設を引き、引いている間は読み込み中と出し、届くと種類ごとの件数のチップを出して、押すとその種類を名前（無ければ種別）・道からの距離・何km地点で道のりの順に開く", async () => {
+    const { user } = renderHome();
+    const held = heldReplies();
+    onBackend("POST", "/api/routes/side-points", held.reply);
+
+    const nearby = await pressSecondSegment(user);
+    expect(within(nearby).getByText("読み込み中")).toBeInTheDocument();
+
+    await held.answer(
+      0,
+      Response.json({
+        points: [
+          {
+            distance_km: 1.3,
+            offset_m: 12,
+            layer: "supply_poi",
+            properties: { kind: "convenience", name: "ローソン 渋谷店" },
+          },
+          {
+            distance_km: 1.6,
+            offset_m: 30,
+            layer: "accident_point",
+            properties: { involves_bicycle: true, fatal: true },
+          },
+          { distance_km: 1.8, offset_m: 5, layer: "supply_poi", properties: { kind: "toilets" } },
+        ],
+      }),
+    );
+    const supply = await within(nearby).findByRole("button", { name: "補給・休憩ポイント 2" });
+    expect(within(nearby).queryByText("読み込み中")).toBeNull();
+
+    await user.click(supply);
+    expect(supply).toHaveAttribute("aria-expanded", "true");
+    expect(
+      within(within(nearby).getByRole("list", { name: "補給・休憩ポイント" }))
+        .getAllByRole("listitem")
+        .map((row) => row.textContent),
+    ).toEqual(["ローソン 渋谷店道から12m1.3km地点", "トイレ道から5m1.8km地点"]);
+
+    await user.click(within(nearby).getByRole("button", { name: "事故[警察庁統計] 1" }));
+    expect(within(nearby).getByRole("list", { name: "事故[警察庁統計]" })).toHaveTextContent(
+      "自転車関連 ・ 死亡事故道から30m1.6km地点",
+    );
+  });
+
+  it("引けなかったら、区間の評価はそのまま出し、近くの施設を読めなかったと出す", async () => {
+    const { user } = renderHome();
+    onBackend("POST", "/api/routes/side-points", () => Response.json({ detail: "失敗" }, { status: 500 }));
+
+    const nearby = await pressSecondSegment(user);
+
+    expect(await within(nearby).findByText("近くの施設を読めませんでした")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "選んだ地点の詳しく" })).toHaveTextContent("総合難易度");
   });
 });

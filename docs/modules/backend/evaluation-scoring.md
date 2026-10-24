@@ -49,8 +49,8 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 
 ## 0次ハードフィルタと道の行ごとの避け方（`domain/hard_filters.py`・`domain/road_avoidance.py`）
 
-`compute_search_exclusion`が、静的スコア行列（`StaticEdgeScoreMatrix`）の旗の名前→該当フラグの配列と、
-リクエストが指定した行ごとの避け方の段・勾配の上限から、Edgeごとに「探索から除く」と「割り増す」を求める。
+`domain/hard_filters.py: compute_search_exclusion`が、静的スコア行列の0次フィルタに当たる区間（`domain/evaluation.py: StaticEdgeScoreMatrix.hard_filtered`）と区分の列（`domain/evaluation.py: StaticEdgeScoreMatrix.road_classes`）と、
+リクエストが指定した行ごとの避け方の段から、Edgeごとに「探索から除く」と「割り増す」を求める。
 0次フィルタは宣言されたものがいつも全部効き、リクエストでは切れない（要求の欄も持たない）。
 
 要求の行の鍵は断らない（`api/routers/routes.py: RoadAvoidanceOverride`）。区分は管理DBが持ち、デプロイを待たずに直せるので、
@@ -74,9 +74,6 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   要求に無い行は、区分が持つ前の鍵の段のうち強い方を、それも無ければ管理DBが持つ既定の段を取る——区分を分けたあとも、
   分ける前に選んだ段を分けてできたどの行へも引き継ぎ、分けた区分のどちらかで「通らない」を選んでいた人を通る側へ倒さない。
   倍率は本番で前後の幹線の割合・距離を比べて決める。
-- `max_average_grade_percent`（省略時None＝除外なし）が指定され、かつ
-  勾配の材料（`GRADIENT_PERCENT`）の列に値がある場合、その絶対値（登り・下りどちらの
-  急勾配も対象）がしきい値を超えるEdgeを除外する。
 - `motor_vehicle=no`（自転車可の車両通行禁止）はここでは扱わない。自転車は法的に通行
   可能なため0次のハード除外対象にはせず、軸の側（材料`motor_vehicle_no`）で扱う。
 
@@ -135,19 +132,20 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
 得点とルート選びが使う得点が同じ道で食い違う。
 
 - 評価できなかった軸は合成から除外され、残りの重みで再正規化される。
-- `penalty_strength`（P）は**主観的割増と時間の換算レート**。リクエストが省略したときの値は
-  較正値`evaluation.penalty_strength`（`domain/tuning.py`）だけが持ち、`resolve_penalty_strength`が
-  リクエスト処理時に読む（`compose_costs_from_axis_matrix`は既定を持たない）。探索のコストは
+- `penalty_strength`（P）は**主観的割増と時間の換算レート**。値は較正値`evaluation.penalty_strength`
+  （`domain/tuning.py`）だけが持ち、要求では変えられず、エンジンを組むたびに読む
+  （`services/route_generation_setup.py: assemble_route_generation_setup`。`compose_costs_from_axis_matrix`は既定を持たない）。
+  走行モデルへ入っている現象を写した軸の既定重みは0なので、difficultyは主観的な軸だけの加重平均になり、物理の軸で
+  薄まらないぶん大きく出る。Pの既定はその物差しに合わせた値で、実走から較正した値ではない。探索のコストは
   `所要時間 × (1 + P × difficulty/100)`＝体感の所要時間（密度の軸の分は下の「密度の軸」のとおり足す）で、P=1は
   「難易度100の道は体感で2倍の時間」を意味する。P=0で`cost=所要時間`（好みを一切考慮しない＝時間最短、
   `select_fastest_route`が返す基準線と同じ物差し）、Pを上げるほど悪路が強く避けられる。
   `cost >= 所要時間`という不変条件はP>=0の間常に成り立つ。
 - **`build_static_edge_score_matrix`**: `AXIS_DEFINITIONS`を軸ごとに適用して
   difficulty配列を求める（`StaticEdgeScoreMatrix`: 公開軸別配列に加え、0次フィルタ判定用の
-  生フラグ`route_flags`も持つ——避け方と勾配の上限はリクエストごとに
-  変わりうるため、除外判定そのものはここでは確定させない）。所要時間が読む材料（勾配・路面・停止の密度。
-  `domain/cycling_speed.py: travel_model_material_ids`）は軸の構成と無関係にいつも材料の列として持ち、0次フィルタの
-  勾配しきい値も同じ勾配の列を読む。その列が欠けた行列は組み立てで断る（`ValueError`）——欠けたまま通すと、
+  0次ハードフィルタに当たる区間と区分の列も持つ——リクエストごとに変わる絞り込みと割り増しは
+  `domain/hard_filters.py: compute_search_exclusion`が決めるため、ここでは確定させない）。所要時間が読む材料（勾配・路面・停止の密度。
+  `domain/cycling_speed.py: travel_model_material_ids`）は軸の構成と無関係にいつも材料の列として持つ。その列が欠けた行列は組み立てで断る（`ValueError`）——欠けたまま通すと、
   欠けた材料の待ち・坂が全区間で黙って0秒になる。区間ごとの値の欠け（NaN）は平地・待ち無しとして
   扱い、`missing_travel_data_share`で数える。動的材料
   （出どころが要求の材料、`REQUEST_DYNAMIC_MATERIAL_IDS`、風）の列はNaNのままで、それに依存する軸の列も自然に
@@ -164,7 +162,7 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
   足した秒を所要時間で割った値として入る——回数 ÷ (所要時間 × 想定速度)の点数で、所要時間が想定速度で走る時間に
   近いほど、範囲の平均の密度に傾きを掛けた点数（頭打ちの無い直線）に近い。停止の待ちや上り坂で所要時間が延びた
   範囲ほど、平均の密度の点数より小さく入る。0次フィルタによる除外
-  （`compute_search_exclusion`が0次フィルタ・`road_avoidance`・`max_average_grade_percent`を反映して
+  （`compute_search_exclusion`が0次フィルタ・`road_avoidance`を反映して
   別途判定）はここには含まれない。重み付き軸がすべて欠損のEdgeはcost算出だけbbox内平均
   difficultyを代入する（表示用の戻り値には影響しない、詳細は後述「探索コストの既定経路」節）。
 
@@ -231,7 +229,7 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
   軸id→配列の辞書へ展開→`evaluate_dynamic_axis_arrays`で動的軸を上書き→
   `compose_costs_from_axis_matrix`で重み合成→`compute_search_exclusion`で0次
   フィルタと避け方を適用、の順にbbox全体ぶん1回だけ実行してコスト配列を得る。並行Edge
-  （同一Node間の複数Edge）は`domain/routing.py: build_lazy_road_graph`が元の行（切り出した区間の順）の
+  （同一Node間の複数Edge）は`domain/search_graph.py: build_lazy_road_graph`が元の行（切り出した区間の順）の
   最も小さい1本を採る決定的な規則で解消する（コストはリクエストごとに変わるため見ない）。
   時刻ビンごとに合成し直すときの、風に依らない計算の使い回しは[routing-engine.md](routing-engine.md)
   「レグ別コスト配列」節。
@@ -291,7 +289,7 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
 
 同じ集約を軸の**生値**（折れ点を通す前の値、`StaticEdgeScoreMatrix.axis_raw_values`）にも
 掛ける。区間の応答は生値を持たず、エンジンがEdge単位の生値を区間と同じ切り方でビンへ畳んでから
-候補全体へ畳む（`road_graph_engine.py: _build_candidate`→`route.py: route_axis_raw_values`→
+候補全体へ畳む（`road_graph_candidates.py: _build_candidate`→`route.py: route_axis_raw_values`→
 `RouteCandidate.axis_raw_values`）。得点0-100は目盛りの引き方に依存する相対評価のため、
 軸単体で経路を判断するには絶対値が要る。生値を持つのは単位が定まる軸
 （[軸スタジオ](axis-studio.md)「生値の単位」節）だけで、かつリクエストごとに変わる
@@ -318,7 +316,7 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
 categorical材料は数値列に載せられないため、対になる別の列で運ぶ:
 `StaticEdgeScoreMatrix.categorical_material_ids`/`categorical_material_columns`
 （語彙への番号の列、列を決める述語は`route_facing_categorical_material_ids`）→
-区間ごとの値（`road_graph_engine.py: _build_segment_details`が区間の並びと対で返す。
+区間ごとの値（`road_graph_candidates.py: _build_segment_details`が区間の並びと対で返す。
 区間の器`RouteSegmentDetail`は約500mのビンへ畳まれ、分類値はビンの代表値1つにすると
 割合がビンの粒度へ量子化されるため、器には載せない）→
 `merge_material_category_shares`（距離加重で「値ごとの延長割合」へ畳む。分母はその材料の値を
@@ -347,7 +345,7 @@ MaterialSpec]`が単一ソース。
 | フィールド | 意味 |
 |---|---|
 | `dtype` | `"numeric"`/`"boolean"`/`"categorical"` |
-| `unit` | 値の単位（凡例・数値表示用、無次元・真偽値・カテゴリ値は空文字）。生成物`material-catalog.json`がfrontendへ届け、frontendは単位を持たない（唯一の正）。**`label`へ単位を書かない**——ラベルと単位を別々に組み立てる画面で「制限速度(km/h) 35km/h」のように二重になる |
+| `unit` | 値の単位（凡例・数値表示用、無次元・真偽値・カテゴリ値は空文字）。生成物`material-catalog.json`がfrontendへ届け、frontendは単位を持たない（唯一の正）。**`material-catalog.json: label`へ単位を書かない**——ラベルと単位を別々に組み立てる画面で「制限速度(km/h) 35km/h」のように二重になる |
 | `additive` | 同じ単位の他の材料と**足し合わせて意味を持つ量**か（示量／示強の区別）。個数と、それを同じ距離で割った密度はTrue。%・km/h・倍率のような割合・率はFalse。`raw_value_unit`が2項以上の和を見せてよいかの判定に使う |
 | `total_unit` | 生値へ走行距離を掛けた**総量**を出すときの単位（出す意味が無ければ`None`）。`additive`とは別の問い——事故密度（件/[km・年]）は足せるが、総量に比べる尺度が無い。|
 | `tile_property` | MVTタイルへ既に焼き込み済みのプロパティ名。`None`はタイルに載らない材料。列は`value_sql`から組む（上の「タイルへ焼く列」） |

@@ -8,6 +8,7 @@ from app.api.dependencies import (
     get_amedas_service,
     get_flood_service,
     get_warning_service,
+    get_warning_timeline_service,
     get_wbgt_service,
     get_weather_service,
 )
@@ -22,6 +23,11 @@ from app.domain.time_zone import JST
 from app.domain.weather import GridPointToday
 from app.services.flood_service import FloodForecasts, FloodService
 from app.services.warning_service import WarningService, WeatherWarnings
+from app.services.warning_timeline_service import (
+    RouteTimelineRequest,
+    RouteWarningTimeline,
+    WarningTimelineService,
+)
 from app.services.wbgt_service import WbgtService, WbgtStatus
 from app.services.jma_amedas_service import JmaAmedasService
 from app.services.weather_service import WeatherService
@@ -55,6 +61,19 @@ async def get_weather_warnings(
         await warning_service.get_warnings(Coordinates(latitude=latitude, longitude=longitude)),
         _BADGE_SOURCE_UNAVAILABLE,
     )
+
+
+@router.post("/api/weather/route-warning-timeline", response_model=RouteWarningTimeline)
+async def get_route_warning_timeline(
+    http_request: Request,
+    request: RouteTimelineRequest,
+    timeline_service: WarningTimelineService = Depends(get_warning_timeline_service),
+) -> RouteWarningTimeline:
+    """ルートが通る区域ごとに、気象庁の警報級の時系列の段をコマのまま返す。区域か段を引けなければ502。"""
+    enforce_rate_limit(
+        http_request, "weather-warning-timeline", settings.weather_warning_timeline_rate_limit_per_minute
+    )
+    return _or_502(await timeline_service.get_route_timeline(request.points), _BADGE_SOURCE_UNAVAILABLE)
 
 
 @router.get("/api/weather/wbgt", response_model=WbgtStatus)

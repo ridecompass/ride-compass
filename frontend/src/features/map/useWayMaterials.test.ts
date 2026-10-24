@@ -2,7 +2,7 @@
  * `useWayMaterials.ts`——地図が塗る軸の道ごとの材料を、画面のタイルと走る条件で取り、軸ごとにまとめること。
  *
  * ここで見ないもの:
- * - 画面か対象の軸が無い間は取りに行かないこと → 読むだけの要求なので送ったかを見ない（testing.md「確かめる高さ」）。
+ * - 画面か対象の軸が無い間は取りに行かないこと → 送ったかを見ない。
  *   要求はタイルと軸の組から作るので、どちらかが無ければ1件も作られない。画面が無くなれば空へ戻すことは下のテストが見る
  * - 走る向きを段に丸めること → `view/useMapView.test.ts`
  */
@@ -27,6 +27,10 @@ const { dedicatedAxes } = mapCatalogOf([
 const [, STATIC] = dedicatedAxes;
 // z14で横2枚×縦1枚のタイルにまたがる範囲
 const VIEWPORT: MapViewport = { west: 139.76, south: 35.68, east: 139.77, north: 35.685, zoom: 14, bearing: 0 };
+/** `VIEWPORT`から東へタイル1枚分（z14の幅）動かした範囲。 */
+const NEXT_TILE_VIEWPORT = { ...VIEWPORT, west: VIEWPORT.west + 360 / 2 ** 14, east: VIEWPORT.east + 360 / 2 ** 14 };
+/** `VIEWPORT`とタイルの重ならない範囲。 */
+const ELSEWHERE_VIEWPORT = { ...VIEWPORT, west: VIEWPORT.west + 1, east: VIEWPORT.east + 1 };
 const AT = new Date("2026-09-24T00:00:00Z");
 const LATER = new Date("2026-09-24T01:00:00Z");
 const CONDITIONS = { at: AT, bearingDeg: 0, speedKmh: 20 };
@@ -39,7 +43,7 @@ const WAY_MATERIALS = "/api/region/way-materials/:axisId/:z/:x/:y";
  * `failsAt`が真を返すタイルは失敗で答える。
  */
 function serveWayMaterials(failsAt: (x: number) => boolean = () => false) {
-  onBackend("GET", WAY_MATERIALS, ({ path, query }) => {
+  return onBackend("GET", WAY_MATERIALS, ({ path, query }) => {
     const [axisId, , x] = path.split("/").slice(-4);
     if (failsAt(Number(x))) return new Response(null, { status: 500 });
     return Response.json({ [`${axisId}@${x}@${query.at ?? "-"}@${query.bearing_deg ?? "-"}`]: { x: Number(x) } });
@@ -103,13 +107,14 @@ describe("useWayMaterials（道ごとの材料）", () => {
     await fetched(result);
     const staticBefore = result.current.get("static");
     const held = heldReplies();
-    onBackend("GET", WAY_MATERIALS, held.reply);
+    const sent = onBackend("GET", WAY_MATERIALS, held.reply);
 
     rerender({ axes: dedicatedAxes, viewport: VIEWPORT, conditions: changed });
     await vi.waitFor(() => expect(held.arrived()).toBeGreaterThan(0));
     expect(result.current.get("timed")).toMatchObject({ loading: true, hasFetched: true });
     expect(result.current.get("timed")?.materials.size).toBeGreaterThan(0);
-    expect(result.current.get("static")).toBe(staticBefore);
+    expect(result.current.get("static")).toEqual(staticBefore);
+    expect(sent.every(({ path }) => path.includes("/timed/"))).toBe(true);
 
     for (let index = 0; index < held.arrived(); index += 1) await held.answer(index, Response.json({ next: { x: 1 } }));
     await vi.waitFor(() => expect(result.current.get("timed")?.loading).toBe(false));
@@ -124,13 +129,37 @@ describe("useWayMaterials（道ごとの材料）", () => {
     expect(result.current).toBe(before);
   });
 
-  it("取得に失敗した軸は、入力が同じでも次に取り直すときに一緒に取り直す", async () => {
+  // 材料の要求はタイルごとに backend の回数の制限に数えられるので、送った数を見る。
+  it("地図を動かしても、前に取ったタイルは取り直さず、新しく入ったタイルだけを取る", async () => {
+    const sent = serveWayMaterials();
+    const { result, rerender } = render({ axes: [STATIC], viewport: VIEWPORT, conditions: CONDITIONS });
+    await fetched(result);
+    expect(sent).toHaveLength(2);
+
+    rerender({ axes: [STATIC], viewport: NEXT_TILE_VIEWPORT, conditions: CONDITIONS });
+    await debounced();
+    await fetched(result);
+    rerender({ axes: [STATIC], viewport: VIEWPORT, conditions: CONDITIONS });
+    await debounced();
+    await fetched(result);
+
+    const paths = sent.map(({ path }) => path);
+    expect(paths).toHaveLength(3);
+    expect(new Set(paths).size).toBe(3);
+    expect(result.current.get("static")?.materials.size).toBe(2);
+  });
+
+  it("取得に失敗したタイルは取っておかず、次に見えたときに取り直す", async () => {
     serveWayMaterials(() => true);
-    const { result, rerender } = render({ axes: dedicatedAxes, viewport: VIEWPORT, conditions: CONDITIONS });
+    const { result, rerender } = render({ axes: [STATIC], viewport: VIEWPORT, conditions: CONDITIONS });
     await fetched(result);
     expect(result.current.get("static")?.error).toBe(true);
     serveWayMaterials();
-    rerender({ axes: dedicatedAxes, viewport: VIEWPORT, conditions: { ...CONDITIONS, at: LATER } });
+    rerender({ axes: [STATIC], viewport: ELSEWHERE_VIEWPORT, conditions: CONDITIONS });
+    await debounced();
+    await fetched(result);
+    rerender({ axes: [STATIC], viewport: VIEWPORT, conditions: CONDITIONS });
+    await debounced();
     await vi.waitFor(() => expect(result.current.get("static")?.error).toBe(false));
     expect(result.current.get("static")?.materials.size).toBeGreaterThan(0);
   });

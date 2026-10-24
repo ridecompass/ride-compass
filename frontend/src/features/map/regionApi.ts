@@ -121,50 +121,73 @@ export async function fetchAxisInspector(
   });
 }
 
-// 軸の、タイルの中の道ごとの材料。パスは軸idで決まり、軸ごとの関数を持たない。世代のクエリを持たない
-// （ブラウザのキャッシュに載せない軽いJSONで、新しさはbackendが持つ）。
-
-interface WayMaterialsResult {
-  /** feature_key→材料の名前→値（値の無い材料は鍵ごと無い）。 */
-  materials: Record<string, Record<string, number>>;
+/** 1枚のタイルの中の道ごとの値。 */
+interface TileWayValues<Value> {
+  /** feature_key→値。 */
+  values: Record<string, Value>;
   /** 通信失敗（HTTPエラー・ネットワークエラー・タイムアウト）ならtrue。backendが正常応答で
    * 空オブジェクトを返した場合（対象範囲に本当に道が無い）はfalseのまま——呼び出し側が
    * 「取得失敗」と「本当に空」を区別できるようにする。 */
   error: boolean;
 }
 
+/** 道ごとの値の取得。失敗しても例外にせず`error: true`を返す（道の塗りは補助の機能なので、道路や他のレイヤーを
+ * 巻き込んで止めない。失敗したことは利用者へ示せるよう返す）。 */
+async function tileWayValues<Value>(request: () => Promise<Record<string, Value>>): Promise<TileWayValues<Value>> {
+  try {
+    return { values: await request(), error: false };
+  } catch {
+    // 失敗の内訳は`requestApi`が記録済み。
+    return { values: {}, error: true };
+  }
+}
+
+// 軸の、タイルの中の道ごとの材料。パスは軸idで決まり、軸ごとの関数を持たない。世代のクエリを持たない
+// （ブラウザのキャッシュに載せない軽いJSONで、新しさはbackendが持つ）。
+
 /** 道ごとの材料の要求へ載せる走る条件（軸カタログの`dynamic_way_value_material_conditions`の名前だけ）。 */
 export type WayMaterialsQuery = NonNullable<
   paths["/api/region/way-materials/{axis_id}/{z}/{x}/{y}"]["get"]["parameters"]["query"]
 >;
 
-/** 路面タイルと同じz/x/yの中の道ごとの材料。失敗しても例外にせず`error: true`を返す（色分けは補助の機能なので、
- * 道路や他のレイヤーを巻き込んで止めない。失敗したことは利用者へ示せるよう返す）。`query`は、軸が要求へ載せると
- * 宣言した条件だけを呼ぶ側が渡す。 */
+/** 路面タイルと同じz/x/yの中の道ごとの材料（材料の名前→値。値の無い材料は鍵ごと無い）。`query`は、軸が要求へ
+ * 載せると宣言した条件だけを呼ぶ側が渡す。 */
 export async function fetchWayMaterials(
   axisId: string,
   z: number,
   x: number,
   y: number,
   query: WayMaterialsQuery,
-): Promise<WayMaterialsResult> {
+): Promise<TileWayValues<Record<string, number>>> {
   const params = { path: { axis_id: axisId, z, x, y }, query };
-  try {
-    const materials = await requestApi(
-      (init) => backendApi.GET("/api/region/way-materials/{axis_id}/{z}/{x}/{y}", { params, ...init }),
+  return tileWayValues(() =>
+    requestApi((init) => backendApi.GET("/api/region/way-materials/{axis_id}/{z}/{x}/{y}", { params, ...init }), {
+      timeoutMs: API_TIMEOUT_MS.default,
+      category: `api:${axisId}-way-materials`,
+      messages: {
+        failure: "道路の塗りの材料の取得に失敗しました",
+        parseFailure: "道路の塗りの材料の解析に失敗しました",
+      },
+      successMeta: (data) => ({ wayCount: Object.keys(data).length }),
+    }),
+  );
+}
+
+/** 路面タイルと同じz/x/yの中の道ごとの、道の線の層の値（層のid→区分の鍵か「データなし」。区分の外の道の層は無い）。 */
+export async function fetchRoadClasses(
+  z: number,
+  x: number,
+  y: number,
+): Promise<TileWayValues<Record<string, string>>> {
+  return tileWayValues(() =>
+    requestApi(
+      (init) => backendApi.GET("/api/region/road-classes/{z}/{x}/{y}", { params: { path: { z, x, y } }, ...init }),
       {
         timeoutMs: API_TIMEOUT_MS.default,
-        category: `api:${axisId}-way-materials`,
-        messages: {
-          failure: "道路の塗りの材料の取得に失敗しました",
-          parseFailure: "道路の塗りの材料の解析に失敗しました",
-        },
+        category: "api:road-classes",
+        messages: { failure: "道の区分の取得に失敗しました", parseFailure: "道の区分の解析に失敗しました" },
         successMeta: (data) => ({ wayCount: Object.keys(data).length }),
       },
-    );
-    return { materials, error: false };
-  } catch {
-    // 失敗の内訳は`requestApi`が記録済み。
-    return { materials: {}, error: true };
-  }
+    ),
+  );
 }

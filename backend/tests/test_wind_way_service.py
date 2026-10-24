@@ -13,45 +13,38 @@
 - 格子点の値の読み出し → `test_msm_client.py`
 """
 
-import inspect
 from datetime import datetime, timedelta
 
 import numpy as np
 
-from app.domain.msm import MsmGrid, wind_speed_and_direction
+from app.domain.msm import wind_speed_and_direction
 from app.domain.time_zone import JST
 from app.domain.wind import WIND_DIRECTION_LEAF, WIND_SPEED_LEAF
 from app.infrastructure import msm_client
 from app.infrastructure.msm_client import MsmGridPointSeries, MsmUnavailableError
 from app.infrastructure.road_graph_repository import RoadGraphRepository
+from app.services.feature_midpoints import TileMidpoints
 from app.services.weather_service import WeatherService
 from app.services.wind_way_service import WindWayService
 from tests.bound_fake import bound
+from tests.msm_grid import MSM_GRID
 
 # 東京駅付近のz14タイル（緯度35.67〜35.69・経度139.71〜139.74あたり）
 Z, X, Y = 14, 14551, 6447
 AT = datetime(2026, 8, 30, 9, 0)
 TIMES = ["2026-08-30T08:00", "2026-08-30T09:00", "2026-08-30T10:00"]
-#: MSMの公表の範囲と形状から作った格子。
-MSM_GRID = MsmGrid.from_bbox_and_shape((22.4, 120.0, 47.6, 150.0), 505, 481)
 
 
 class FakeMidpointsRepository:
-    """RoadGraphRepositoryのうちget_feature_midpoints_in_tileだけを実装したフェイク。
+    """RoadGraphRepositoryのうちget_feature_midpoints_in_tileだけを実装したフェイク。引数は本物の定義へ当てて照合する。"""
 
-    引数は本物の定義へ当てて照合する。フェイクが自前の引数を持つと、本物の引数が変わっても
-    呼び出し側の食い違いを通してしまう。
-    """
-
-    def __init__(self, midpoints: dict[str, tuple[float, float]] | None, error: Exception | None = None):
+    def __init__(self, midpoints: dict[str, tuple[float, float]]):
         self.midpoints = midpoints
-        self._error = error
 
     async def get_feature_midpoints_in_tile(self, *args, **kwargs):
-        inspect.signature(RoadGraphRepository.get_feature_midpoints_in_tile).bind(self, *args, **kwargs)
-        if self._error is not None:
-            raise self._error
         return self.midpoints
+
+    get_feature_midpoints_in_tile = bound(RoadGraphRepository.get_feature_midpoints_in_tile, get_feature_midpoints_in_tile)
 
 
 def _wind_uv(latitudes, longitudes, hour_index):
@@ -90,7 +83,7 @@ def _materials(winds: dict[str, tuple[float, float]]) -> dict[str, dict[str, flo
 
 
 def _service(repository) -> WindWayService:
-    return WindWayService(repository=repository, weather_service=WeatherService())
+    return WindWayService(midpoints=TileMidpoints(repository), weather_service=WeatherService())
 
 
 async def test_each_way_takes_the_wind_of_the_grid_point_nearest_its_middle(monkeypatch):
@@ -120,7 +113,7 @@ async def test_a_time_outside_the_forecast_is_not_painted(monkeypatch):
     assert await _service(repository).get_way_materials(Z, X, Y, datetime(2026, 8, 30, 10, 40)) == {}
 
 
-async def test_at_none_defaults_to_now(monkeypatch):
+async def test_at_none_defaults_to_now(monkeypatch, clock):
     now_hour = datetime.now(JST).replace(tzinfo=None, minute=0, second=0, microsecond=0)
     times = [(now_hour + timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M") for h in range(-1, 3)]
     _patch_msm(monkeypatch, times)
@@ -135,7 +128,7 @@ async def test_forecast_unavailable_returns_empty_dict(monkeypatch):
     async def unavailable(south, west, north, east):
         raise MsmUnavailableError("未同期")
 
-    monkeypatch.setattr(msm_client, "read_grid_block", unavailable)
+    monkeypatch.setattr(msm_client, "read_grid_block", bound(msm_client.read_grid_block, unavailable))
     repository = FakeMidpointsRepository({"1": (35.674, 139.713)})
 
     assert await _service(repository).get_way_materials(Z, X, Y, AT) == {}

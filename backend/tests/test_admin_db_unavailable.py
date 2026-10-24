@@ -1,6 +1,6 @@
 """`api/admin_db_errors.py`——管理API（`/api/admin/`配下）のDB障害を、どの口でも503で返すこと。
 
-DBに繋がらない状態は、本物のアプリのセッション工場を接続を断るDBへ向けて作る（本番のDB停止と同じく、
+DBに繋がらない状態は、アプリのセッション工場の依存を、接続を断るDBへ向けた工場で上書きして作る（本番のDB停止と同じく、
 最初の問い合わせで`ConnectionRefusedError`が出る）。口ごとの依存・サービスは本物を通す。
 
 ここで見ないもの:
@@ -11,7 +11,6 @@ DBに繋がらない状態は、本物のアプリのセッション工場を接
 
 import pytest
 from fastapi import FastAPI
-from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -19,30 +18,19 @@ from sqlalchemy.pool import NullPool
 
 from app.api import dependencies
 from app.api.admin_db_errors import ADMIN_PATH_PREFIX, install_admin_db_unavailable_handler
-from app.domain.axis_definitions import REQUEST_DYNAMIC_MATERIAL_IDS
-from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.region import EDGE_UNIT_MIN_ZOOM
 from app.domain.tuning import TUNING_PARAMETERS
 from app.domain.road_classes import EMPTY_ROAD_CLASSES
+from app.infrastructure import database
 from app.main import app
 from app.services.axis_preview_service import new_sample_cache
-from tests.admin_auth import AUTH_HEADERS
+from tests.admin_auth import AUTH_HEADERS, admin_routes
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
+from tests.conftest import UNREACHABLE_DATABASE_URL
+from tests.material_fixture import stored_materials
 
-UNREACHABLE_DATABASE_URL = "postgresql+asyncpg://ridecompass:ridecompass@127.0.0.1:1/ridecompass"
-
-
-def _stored_material(dtype: str) -> str:
-    """DBに値を持つ材料（値の式があり、要求ごとに決まる材料でない）。"""
-    return next(
-        m
-        for m, spec in MATERIAL_CATALOG.items()
-        if spec.dtype == dtype and spec.value_sql is not None and m not in REQUEST_DYNAMIC_MATERIAL_IDS
-    )
-
-
-NUMERIC = _stored_material("numeric")
-CATEGORICAL = _stored_material("categorical")
+NUMERIC = stored_materials("numeric")[0]
+CATEGORICAL = stored_materials("categorical")[0]
 AXIS = "/api/admin/axis-definitions"
 SHAPE = {"kind": "breakpoint_linear", "terms": [{"material": NUMERIC}], "breakpoints": [[0, 0], [10, 100]]}
 AXIS_BODY = {"axis_id": "a", "label": "軸A", "default_weight": 1.0, "shape": SHAPE}
@@ -82,21 +70,16 @@ ROUTE_CASES = {
     ("POST", "/api/admin/debug/mode"): ("/api/admin/debug/mode", {"enabled": False}, 200),
     ("GET", "/api/admin/debug/logs"): ("/api/admin/debug/logs", None, 200),
 }
-ROUTES = [
-    (method, route.path)
-    for route in app.routes
-    if isinstance(route, APIRoute) and route.path.startswith(ADMIN_PATH_PREFIX)
-    for method in sorted(route.methods)
-]
+ROUTES = [(method, route.path) for route in admin_routes(app) for method in sorted(route.methods)]
 
 
 @pytest.fixture
-def database_down(monkeypatch):
+def database_down(override_dependency, monkeypatch):
     engine = create_async_engine(UNREACHABLE_DATABASE_URL, poolclass=NullPool)
-    for name in ("get_session_factory", "get_route_generation_session_factory"):
-        monkeypatch.setattr(dependencies, name, lambda: async_sessionmaker(engine))
+    for factory in (database.get_session_factory, database.get_route_generation_session_factory):
+        monkeypatch.setitem(app.dependency_overrides, factory, lambda: async_sessionmaker(engine))
     # 分布の標本は一度読むとプロセスに持つため、読んでいない状態から始める。
-    monkeypatch.setitem(app.dependency_overrides, dependencies.get_axis_preview_sample_cache, new_sample_cache)
+    override_dependency(dependencies.get_axis_preview_sample_cache, new_sample_cache)
     # 軸の集合は起動時にDBから読んでプロセスに持つので、DBが落ちても軸`a`は引ける。
     with replaced_axis_definitions({"a": axis_definition("a", material=NUMERIC)}):
         yield

@@ -22,13 +22,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.domain.errors import RoutingError, SearchAreaTooLargeError
+from app.domain.errors import GENERATION_BUSY_MESSAGE, RoutingError, SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.loop_routing import LoopTurnaround, TracedLoop
 from app.domain.route import Coordinates, EvaluatedRoute, RouteCandidate, RouteSegmentDetail
 from app.domain.route_request import DEFAULT_MAX_ROUTES, MAX_ROUTES, FixedPoints
 from app.domain.time_zone import JST
 from app.services import route_generator
-from app.services.road_graph_engine import FixedLegs, RoadGraphEngine
+from app.services.road_graph_context import FixedLegs
+from app.services.road_graph_engine import RoadGraphEngine
 from app.services.route_generator import RouteGenerator
 from tests.bound_fake import bound
 from tests.route_world import NO_POINTS
@@ -45,7 +46,7 @@ RETRY = "距離や除外する道路の設定を変えてお試しください�
 def _segment(difficulty: float | None, **fields) -> RouteSegmentDetail:
     return RouteSegmentDetail(
         start_latitude=0.0, start_longitude=0.0, end_latitude=0.0, end_longitude=0.0,
-        cumulative_distance_km=0.0, distance_km=1.0, elevations=[],
+        cumulative_distance_km=0.0, distance_km=1.0, edge_start=0, edge_end=1, elevations=[],
         road_classes={}, difficulty=difficulty, **fields,
     )
 
@@ -56,7 +57,7 @@ def _candidate(key: str, difficulty: float | None = 10.0, **fields) -> Evaluated
         "direction_label": f"方位-{key}", "distance_km": 1.0, "geometry": {"type": "LineString", "coordinates": []},
         "elevation_gain_m": None, "segments": [_segment(difficulty)], "estimated_duration_seconds": None,
         "wind_unavailable": False, "missing_travel_data_share": None, "axis_raw_values": {},
-        "material_category_shares": {}, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [], "points": [],
+        "material_category_shares": {}, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [],
         "waypoint_distances_km": [], **fields,
     })
 
@@ -207,6 +208,7 @@ async def test_no_road_data_gives_no_candidates_and_says_why(entrance, phrase, c
     ("error", "reason", "logged"),
     [
         (SearchAreaTooLargeError(edges=1_300_000, limit=1_200_000), "探索範囲の道路が多すぎるため", "edges=1300000"),
+        (SearchMemoryBusyError(edges=1_300_000, available=900_000), GENERATION_BUSY_MESSAGE, "available=900000"),
         (RoutingError("no accessible node near origin"), "起点から走り出せる道が見つかりませんでした。", "no accessible node"),
     ],
 )
@@ -224,10 +226,10 @@ async def test_a_search_area_that_cannot_be_used_gives_no_candidates_and_says_wh
 # ---- 距離あり（周回） ----
 
 
-def test_turnaround_pool_covers_the_requested_routes_within_what_the_diverse_selection_can_take():
-    """多様な選定（`domain/routing.py: select_diverse_by_overlap`）は採用済みを64bitのマスクで持つため、64件まで。"""
+def test_turnaround_pool_covers_the_requested_routes():
+    """折返し点のプールが求める候補数より少ないと、全部の折返し点が合格しても候補数に届かない。"""
     for max_routes in range(1, MAX_ROUTES + 1):
-        assert max_routes <= route_generator.turnaround_pool_size(max_routes) <= 64
+        assert max_routes <= route_generator.turnaround_pool_size(max_routes)
 
 
 async def test_loops_without_turnarounds_say_how_far_out_was_searched(caplog):
@@ -235,9 +237,9 @@ async def test_loops_without_turnarounds_say_how_far_out_was_searched(caplog):
 
     with caplog.at_level(logging.WARNING, logger=route_generator.logger.name):
         # 片道が数十kmになる距離にする（数kmでは、小数1桁へ丸めると m から km への換算の誤りが消える）。
-        assert await generator.generate_loops(ORIGIN, 200.0, 20.0, DEFAULT_MAX_ROUTES, START, NO_POINTS) == []
+        assert await generator.generate_loops(ORIGIN, 200.0, 30.0, DEFAULT_MAX_ROUTES, START, NO_POINTS) == []
 
-    assert generator.last_no_candidates_reason == f"起点から片道90.0〜95.7kmで到達できる折返し地点が見つかりませんでした。{RETRY}"
+    assert generator.last_no_candidates_reason == f"起点から片道94.4〜104.5kmで到達できる折返し地点が見つかりませんでした。{RETRY}"
     assert _warned(caplog)
 
 
@@ -246,6 +248,20 @@ async def test_loops_stop_once_enough_routes_are_accepted():
     engine = FakeEngine(turnarounds=[_turnaround(_route(k)) for k in keys], routes={k: _candidate(k) for k in keys})
 
     assert len(await _loops(engine, max_routes=2)) == 2
+
+
+@pytest.mark.parametrize(("missing", "unfilled"), [(0, False), (1, True)], ids=["filled", "one_short"])
+async def test_the_generation_log_says_when_the_turnaround_pool_was_not_filled(missing, unfilled, caplog):
+    """折返し点がプールの数に届かなかった生成は、ログの行だけで分かる。分からないと、頼んだ数より候補が少ない原因を
+    選ぶ段の数を見比べて探すことになる。"""
+    pool = route_generator.turnaround_pool_size(DEFAULT_MAX_ROUTES)
+    keys = [str(i) for i in range(pool - missing)]
+    engine = FakeEngine(turnarounds=[_turnaround(_route(k)) for k in keys], routes={k: _candidate(k) for k in keys})
+
+    with caplog.at_level(logging.INFO, logger=route_generator.logger.name):
+        await _loops(engine)
+
+    assert any(f"pool_unfilled={missing}" in r.getMessage() for r in caplog.records) is unfilled
 
 
 async def test_loops_pass_over_turnarounds_whose_return_trip_fails(caplog):

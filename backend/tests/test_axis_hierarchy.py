@@ -19,17 +19,15 @@
 import numpy as np
 import pytest
 
-from app.domain import axis_definitions, material_catalog
+from app.domain import axis_definitions
 from app.domain.axis_definitions import (
     AxisDefinition,
-    BreakpointLinearShape,
     CategoricalShape,
-    MaterialTerm,
     PriorityCondition,
 )
-from app.domain.material_catalog import SURFACE_ESTIMATE
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
-from tests.axis_system_fixture import replaced_axis_definitions
+from tests.axis_system_fixture import linear, replaced_axis_definitions
+from tests.material_fixture import material, replace_material_catalog
 from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
 
 ATTR_X, ATTR_Y = PRIMARY_ATTRIBUTES[:2]
@@ -38,39 +36,21 @@ DYNAMIC = next(iter(axis_definitions.REQUEST_DYNAMIC_MATERIAL_IDS))
 pytestmark = pytest.mark.usefixtures("catalog")
 
 
-def material(material_id: str, dtype="numeric", primary_attribute=None, source="db") -> material_catalog.MaterialSpec:
-    return material_catalog.MaterialSpec(
-        material_id=material_id,
-        label=material_id,
-        description=material_id,
-        dtype=dtype,
-        tile_property=None,
-        source=source,
-        value_sql=f"w.{material_id}" if source == "db" else None,
-        coverage=material_catalog.CoverageExcluded(reason="テスト用", missing_semantics="unknown"),
-        primary_attribute=primary_attribute,
-    )
-
-
 @pytest.fixture
 def catalog(monkeypatch):
-    specs = {
-        "num_a": material("num_a", primary_attribute=ATTR_X),
-        "num_b": material("num_b", primary_attribute=ATTR_Y),
-        "num_c": material("num_c", primary_attribute=ATTR_X),
-        "num_plain": material("num_plain"),
-        "cat": material("cat", dtype="categorical"),
-        DYNAMIC: material(DYNAMIC, source="request"),
-    }
-    monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", specs)
-    return specs
+    return replace_material_catalog(monkeypatch, [
+        material("num_a", primary_attribute=ATTR_X),
+        material("num_b", primary_attribute=ATTR_Y),
+        material("num_c", primary_attribute=ATTR_X),
+        material("num_plain"),
+        material("cat", "categorical"),
+        material(DYNAMIC, source="request"),
+    ])
 
 
 def axis(axis_id: str, *refs: str, published: bool = False, **fields) -> AxisDefinition:
     """`refs`を重み1で足し、0〜10を0〜100へ写す軸。"""
-    shape = BreakpointLinearShape(
-        terms=[MaterialTerm(material=ref) for ref in refs or ("num_a",)], breakpoints=[(0.0, 0.0), (10.0, 100.0)]
-    )
+    shape = linear(*(refs or ("num_a",)))
     return AxisDefinition(
         axis_id=axis_id, shape=shape, is_published=published, **{"default_weight": 1.0, "label": axis_id, **fields}
     )
@@ -161,23 +141,29 @@ class TestPrimaryAttributes:
 
 class TestRoadLayers:
     def test_the_layers_drawn_from_a_published_classification_that_decides_by_a_leaf_material_are_listed(self):
-        """軸のレンズで地図に出す道の層を選ぶ。読む材料と無関係な層を出すと、軸と関係の無い線が重なる。"""
-        definitions = axes(axis("outer", "inner", SURFACE_ESTIMATE), axis("inner", "num_a"))
+        """軸のレンズで地図に出す道の層を選ぶ。読む材料と無関係な層を出すと、軸と関係の無い線が重なる。区分の列を読む軸は、
+        その分け方が読む事実を区分の決め手にする層も見ている（路面の見込みを読む軸は、路面の層を見ている）。"""
+        definitions = axes(axis("outer", "inner", "class:by_its_classes"), axis("inner", "num_a"))
         draft = classification({"x": [fact_is("num_a", "v")]}).model_copy(update={"is_published": False})
+        layers = ["draft", "by_unread", "by_inner_leaf", "by_its_classes", "by_class_facts"]
         classes = road_classes(
             {
                 "by_inner_leaf": classification({"x": [fact_is("num_b", "v")], "y": [fact_is("num_a", "v")]}),
-                "by_unread": classification({"x": [fact_is("num_b", "v")]}),
+                "by_unread": classification({"x": [fact_is("num_d", "v")]}),
+                "by_its_classes": classification({"x": [fact_is("num_e", "v")]}),
+                "by_class_facts": classification({"x": [fact_is("num_e", "v")]}),
                 "draft": draft,
                 "not_drawn": classification({"x": [fact_is("num_a", "v")]}),
-                "rolling": classification({"x": [fact_is("num_b", "v")]}),
             },
-            map_layers={key: map_layer(n) for n, key in enumerate(["rolling", "draft", "by_unread", "by_inner_leaf"])},
-            rolling_resistance_classification="rolling",
+            map_layers={key: map_layer(n) for n, key in enumerate(layers)},
         )
 
         with replaced_axis_definitions(definitions):
-            assert axis_definitions.road_layer_ids_for(definitions["outer"], classes) == ["rolling", "by_inner_leaf"]
+            assert axis_definitions.road_layer_ids_for(definitions["outer"], classes) == [
+                "by_inner_leaf",
+                "by_its_classes",
+                "by_class_facts",
+            ]
 
 
 class TestWeights:
@@ -185,9 +171,8 @@ class TestWeights:
         definitions = axes(axis("always"), axis("night", time_scope="night_only"))
         weights = {"always": 1.0, "night": 3.0}
 
-        with replaced_axis_definitions(definitions):
-            scoped = axis_definitions.time_scoped_weights(weights, {"night_only": np.array([False, True])})
-            outside_every_scope = axis_definitions.time_scoped_weights(weights, {})
+        scoped = axis_definitions.time_scoped_weights(weights, {"night_only": np.array([False, True])}, definitions)
+        outside_every_scope = axis_definitions.time_scoped_weights(weights, {}, definitions)
 
         assert scoped["always"] == 1.0 and scoped["night"].tolist() == [0.0, 3.0]
         assert outside_every_scope == {"always": 1.0, "night": 0.0}

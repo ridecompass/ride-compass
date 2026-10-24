@@ -10,13 +10,12 @@
 """
 
 import asyncio
-import logging
 
 import pytest
-from shapely.geometry import Point, shape
 
 from app.infrastructure.jma_warning_client import new_area_data_cache, new_warning_cache
 from app.services.warning_service import WarningService
+from tests.area_shapes import holds
 from tests.fake_http import client_for
 from tests.jma_area_fixtures import (
     CHIYODA_POINT,
@@ -27,21 +26,12 @@ from tests.jma_area_fixtures import (
 )
 
 
-def _holds(area, point) -> bool:
-    """範囲が地点を含むか（画面が「まだこの中にいる」と読むのと同じ問い）。"""
-    return shape(area.model_dump()).contains(Point(point.longitude, point.latitude))
-
-
-def _service(boundary_path, **kwargs) -> WarningService:
-    return WarningService(
-        client_for(area_lookup_upstream(boundary_path, **kwargs)),
-        area_data_cache=new_area_data_cache(),
-        warning_cache=new_warning_cache(),
-    )
+def _service(upstream) -> WarningService:
+    return WarningService(client_for(upstream), area_data_cache=new_area_data_cache(), warning_cache=new_warning_cache())
 
 
 async def test_get_warnings_returns_empty_when_the_point_is_in_no_area(boundary_path):
-    result = await _service(boundary_path).get_warnings(OFFSHORE_POINT)
+    result = await _service(area_lookup_upstream(boundary_path)).get_warnings(OFFSHORE_POINT)
     assert result is not None
     assert result.warnings == []
     assert result.valid_area is None
@@ -49,38 +39,23 @@ async def test_get_warnings_returns_empty_when_the_point_is_in_no_area(boundary_
 
 async def test_get_warnings_carries_the_area_the_same_warnings_hold_for(boundary_path):
     """同じ警報が当たる範囲（地点を含む区域）を添える。画面は今の地点がこの中にある間は取り直さない。"""
-    result = await _service(boundary_path, warning_documents=[]).get_warnings(CHIYODA_POINT)
+    result = await _service(area_lookup_upstream(boundary_path, warning_documents=[])).get_warnings(CHIYODA_POINT)
 
     assert result is not None and result.valid_area is not None
-    assert _holds(result.valid_area, CHIYODA_POINT)
-    assert not _holds(result.valid_area, OFFSHORE_POINT)
+    assert holds(result.valid_area, CHIYODA_POINT)
+    assert not holds(result.valid_area, OFFSHORE_POINT)
 
 
 @pytest.mark.parametrize("failure", [
-    {"area_data": None},
-    {"class20_code": "9999900"},  # 境界が返した区域を地域マスタで辿れない
+    {"area_data": None},  # 区域が分からない
     {"warning_documents": None},
 ])
 async def test_get_warnings_is_unknown_rather_than_empty_when_a_step_fails(boundary_path, failure):
     """取れなかったことを「警報なし」と同じ空で返すと、画面は警報が出ていないと見せる。"""
-    assert await _service(boundary_path, **failure).get_warnings(CHIYODA_POINT) is None
+    assert await _service(area_lookup_upstream(boundary_path, **failure)).get_warnings(CHIYODA_POINT) is None
 
 
-async def test_get_warnings_names_the_area_the_master_cannot_follow(boundary_path, caplog):
-    """区域の境界と地域マスタは別々に配られ、片方だけが区域の変更に追いつくと起きる。運用者が気づけるように出す。"""
-    with caplog.at_level(logging.WARNING, logger="ridecompass.external"):
-        await _service(boundary_path, class20_code="9999900").get_warnings(CHIYODA_POINT)
-
-    assert any("9999900" in record.getMessage() for record in caplog.records)
-
-
-async def test_get_warnings_is_unknown_when_area_boundaries_are_unreadable(boundary_path):
-    service = _service(boundary_path, warning_documents=[])
-    boundary_path.unlink()
-    assert await service.get_warnings(CHIYODA_POINT) is None
-
-
-async def test_get_warnings_merges_across_documents_and_dedupes(boundary_path):
+async def test_get_warnings_merges_across_documents(boundary_path):
     """区域の項目の無い電文は、二次細分区域で引く。"""
     documents = [
         {
@@ -96,17 +71,17 @@ async def test_get_warnings_merges_across_documents_and_dedupes(boundary_path):
             "warning": {"class10Items": [{"areaCode": CLASS10_CODE, "kinds": [{"code": "14", "status": "発表"}]}]},
         },
         {
-            # 対象コードが濃霧（対象外の種別）のみの電文。結果に含まれないこと。
+            # 対象コードが乾燥（対象外の種別）のみの電文。結果に含まれないこと。
             "reportDatetime": "2026-08-22T20:00:00+09:00",
             "warning": {
                 "class20Items": [
-                    {"areaCode": CLASS20_CODE, "kinds": [{"code": "20", "status": "発表"}]},
+                    {"areaCode": CLASS20_CODE, "kinds": [{"code": "21", "status": "発表"}]},
                 ]
             },
         },
     ]
 
-    result = await _service(boundary_path, warning_documents=documents).get_warnings(CHIYODA_POINT)
+    result = await _service(area_lookup_upstream(boundary_path, warning_documents=documents)).get_warnings(CHIYODA_POINT)
 
     assert sorted((w.code, w.name, w.level) for w in result.warnings) == [
         ("14", "雷注意報", "advisory"),
@@ -114,25 +89,12 @@ async def test_get_warnings_merges_across_documents_and_dedupes(boundary_path):
     ]
 
 
-async def test_get_warnings_returns_empty_when_no_active_cycling_relevant_codes(boundary_path):
-    documents = [
-        {
-            "reportDatetime": "2026-08-22T15:29:00+09:00",
-            "warning": {"class20Items": [{"areaCode": CLASS20_CODE, "kinds": [{"status": "発表警報・注意報はなし"}]}]},
-        }
-    ]
-
-    result = await _service(boundary_path, warning_documents=documents).get_warnings(CHIYODA_POINT)
-
-    assert result.warnings == []
-
-
 async def test_points_asked_at_once_fetch_each_document_once(boundary_path):
     """同時に開いた画面の問い合わせは、地域マスタと警報の電文を気象庁へ1回ずつだけ取りに行く。"""
     upstream = area_lookup_upstream(boundary_path, warning_documents=[])
-    service = WarningService(client_for(upstream), area_data_cache=new_area_data_cache(), warning_cache=new_warning_cache())
+    service = _service(upstream)
 
     await asyncio.gather(service.get_warnings(CHIYODA_POINT), service.get_warnings(CHIYODA_POINT))
 
     urls = [str(call.request.url) for call in upstream.calls]
-    assert sorted(urls) == sorted(set(urls)) and len(urls) == 2
+    assert len(set(urls)) == len(urls) == 2

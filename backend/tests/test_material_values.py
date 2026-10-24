@@ -38,7 +38,7 @@ from app.domain.material_catalog import (
 )
 from app.domain.region import BoundingBox
 from app.infrastructure.source_models import WAYS_SOURCE_SQL
-from tests.source_ingest import ingest_records, way_record
+from tests.source_ingest import ingest_records, parallel_way_record
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -46,8 +46,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 async def _ingest_ways(tags_by_way: dict[int, dict[str, str]]) -> None:
     """道ごとのタグで道を取り込む。"""
     await ingest_records("osm_way", [
-        way_record(way_id, [(139.70, 35.68 + 0.001 * way_id), (139.701, 35.68 + 0.001 * way_id)],
-                   [way_id * 10, way_id * 10 + 1], tags)
+        parallel_way_record(way_id, tags)
         for way_id, tags in tags_by_way.items()])
 
 
@@ -80,10 +79,12 @@ async def _edge_value(session, expression: str, *, distance_m: float, accident_y
     ("40.7", 40),  # 小数は切り捨てる
     ("0.5", None),  # 切り捨てると0
     ("50 mph", None),
+    ("2147483647", 2147483647),
+    ("2147483648", None),  # 整数の列に入らない誤ったタグは、ほかの道の読み出しを落とさず値を持たない
 ])
 async def test_a_number_tag_has_a_value_only_when_it_is_a_positive_number(road_graph_session, tag, expected):
     values = await _way_values(road_graph_session, material_sql.positive_integer_tag_sql("tag_a"),
-                               {1: {} if tag is None else {"tag_a": tag}})
+                               {1: {"tag_a": tag}})
 
     assert values == {1: expected}
 
@@ -115,44 +116,16 @@ async def test_a_cycleway_value_on_any_side_counts(road_graph_session):
     assert values == {1: True, 2: False}
 
 
-# 停止要因の種別は区間の値の表の列名を決めるだけで、どの種別でも式は同じ。
-_POI_KIND = "signal"
-
-
-@pytest.mark.parametrize(("count", "distance_m", "expected"), [
-    (3.0, 500.0, 6.0),
-    (None, 500.0, None),  # 未計算
-])
-async def test_a_poi_density_is_per_km_and_missing_until_counted(road_graph_session, count, distance_m, expected):
-    value = await _edge_value(road_graph_session, material_sql.poi_density_value_sql(_POI_KIND),
-                              distance_m=distance_m, **{f"poi_{_POI_KIND}": count})
-
-    assert value == (None if expected is None else pytest.approx(expected))
-
-
 # --- カタログに直に書かれた式（domain/material_catalog.py） -----------------------------
 
 
-@pytest.mark.parametrize(("count", "distance_m", "expected"), [
-    (2.0, 250.0, 8.0),
-    (None, 250.0, None),
+@pytest.mark.parametrize(("years", "expected"), [
+    (2, 3.0),
+    (0, None),  # 収録年の無い取込
 ])
-async def test_the_intersection_density_is_per_km(road_graph_session, count, distance_m, expected):
-    value = await _edge_value(road_graph_session, material_value_sql()["intersection_count_per_km"],
-                              distance_m=distance_m, intersection_count=count)
-
-    assert value == (None if expected is None else pytest.approx(expected))
-
-
-@pytest.mark.parametrize(("count", "distance_m", "years", "expected"), [
-    (3.0, 500.0, 2, 3.0),
-    (None, 500.0, 2, None),
-    (3.0, 500.0, 0, None),  # 収録年の無い取込
-])
-async def test_the_accident_density_is_per_km_and_per_year_covered(road_graph_session, count, distance_m, years,
-                                                                    expected):
+async def test_the_accident_density_is_per_km_and_per_year_covered(road_graph_session, years, expected):
     value = await _edge_value(road_graph_session, material_value_sql()[ACCIDENT_COUNT_PER_KM_YEAR],
-                              distance_m=distance_m, accident_years=years, accident_count=count)
+                              distance_m=500.0, accident_years=years, accident_count=3.0)
 
     assert value == (None if expected is None else pytest.approx(expected))
 

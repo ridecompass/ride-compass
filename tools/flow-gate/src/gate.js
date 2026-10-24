@@ -3,7 +3,7 @@
 // （と、取り消す実行ごとに1回。Actions の取り消しは1回にまとめる口が無い）。
 import { Need, decide } from "./decide.js";
 import { batch } from "./github.js";
-import { readFacts, subjectTask } from "./facts.js";
+import { coveredTasks, readFacts, subjectTask } from "./facts.js";
 import { NO_GRANDCHILD, makesGrandchild } from "./family.js";
 import { askText, confirmConditions, droppedQuestion, isQuestionLabel, norm } from "./questions.js";
 
@@ -66,7 +66,8 @@ const REPO = { issues: "tasks", issue_comment: "tasks", pull_request: "code", wo
 const OWN = ["workflow_run"]; // ゲート自身の出来事でも受けるもの（起こした担当の実行）
 export const ignored = (config, name, p) => !ACTIONS[name]?.includes(p.action) || (REPO[name] && p.repository.full_name !== config[REPO[name]])
   || (p.sender.login === config.gateBot && !OWN.includes(name));
-const branch = (config, ref) => (ref?.startsWith(config.branchPrefix) ? [Number(ref.slice(config.branchPrefix.length))] : []);
+// 作業ブランチは接頭辞のあとが番号だけの枝（開発機の作業ツリーが使う、番号のあとに名前の付いた枝は、どの issue の出来事でもない）。
+const branch = (config, ref) => (ref?.startsWith(config.branchPrefix) && /^\d+$/.test(ref.slice(config.branchPrefix.length)) ? [Number(ref.slice(config.branchPrefix.length))] : []);
 
 // 出来事が指す issue。around は、閉じた・開き直したので矢印1本でつながる開いた issue（後・親・子）も決め直すとき。
 const ROUTES = {
@@ -93,10 +94,13 @@ const ROUTES = {
   issue_comment: (gh, config, p) => ({ numbers: [p.issue.number] }),
   pull_request: (gh, config, p) => ({ numbers: branch(config, p.pull_request.head.ref) }),
   // 検査の実行の出来事（申し込み・始まり・終わり）。作業ブランチの実行はブランチの名前から、master の実行（マージのコミットの検査）は
-  // 実行の名前（コミットの件名。src/facts.js: subjectTask）から、issue の番号を読む。
-  workflow_run(gh, config, p) {
+  // 実行の名前（コミットの件名。src/facts.js: subjectTask）から、issue の番号を読む。master の検査の実行は、取り消された祖先のマージのコミットの
+  // 検査も代わりに持つので、その issue も決め直す（src/facts.js: coveredTasks）。
+  async workflow_run(gh, config, p) {
     const w = p.workflow_run;
-    return { numbers: w.head_branch === config.base ? [subjectTask(w.display_title)].filter(Boolean) : branch(config, w.head_branch) };
+    if (w.head_branch !== config.base) return { numbers: branch(config, w.head_branch) };
+    const covered = w.path.endsWith(`/${config.checks.workflow}`) ? await coveredTasks(gh, config, w.head_sha) : [];
+    return { numbers: [...new Set([subjectTask(w.display_title), ...covered])].filter(Boolean) };
   },
 };
 export const route = (gh, config, name, p) => ROUTES[name](gh, config, p);

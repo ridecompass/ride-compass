@@ -17,8 +17,8 @@ import {
   type LensId,
   type RouteStyleMode,
 } from "@/lib/mapDisplay/routeStyleModes";
-import type { LensOption } from "@/features/map/LensControl/LensControl";
-import type { CatalogAxis } from "@/lib/catalogAxis";
+import type { LensOption } from "@/features/map/LensControl/LensRow";
+import { evaluationConditions, type CatalogAxis } from "@/lib/catalogAxis";
 
 /** 全道路を塗っている軸。ルート確定後は、周囲も塗り続ける設定の間だけ塗る。 */
 export function paintedAxisId(lens: LensId, hasDetail: boolean, keepAfterRoute: boolean): LensId | null {
@@ -77,11 +77,7 @@ export function lensOptions(
     unused: (weights[axis.axisId] ?? 0) <= 0,
     description: axis.description,
     iconId: axis.iconId,
-    // 夜だけ効く軸は、出発時刻（通る時刻）で値が変わる軸として示す。
-    conditions:
-      axis.timeScope === "night_only" && !axis.wayValueConditions.includes("at")
-        ? [...axis.wayValueConditions, "at"]
-        : axis.wayValueConditions,
+    conditions: evaluationConditions(axis),
     paintsSurroundingRoads: axis.paintsSurroundingRoads,
   }));
 }

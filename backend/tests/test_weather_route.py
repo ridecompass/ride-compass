@@ -1,11 +1,11 @@
-"""`api/routers/weather.py`——警報・暑さ指数・洪水予報・アメダス・今日の最寄りの格子点の値・MSMの格子点の経路。
+"""`api/routers/weather.py`——警報・ルートの警報級の時系列・暑さ指数・洪水予報・アメダス・今日の最寄りの格子点の値・MSMの格子点の経路。
 
 経路ごとに受け渡し（サービスの答えが応答に出ること・回数制限）を1本ずつ通し、ルーターが持つ判断（取れなかったら502・表示範囲が不正か広すぎたら400）を
 この経路から見る。サービスは依存の差し替えで与える。
 
 ここで見ないもの:
-- 警報・暑さ指数・洪水予報・アメダスを取って組み立てること → 各サービスのテスト（`test_warning_service.py`・
-  `test_wbgt_service.py`・`test_flood_service.py`・`test_jma_amedas_service.py`）
+- 警報・ルートの警報級の時系列・暑さ指数・洪水予報・アメダスを取って組み立てること → 各サービスのテスト（`test_warning_service.py`・
+  `test_warning_timeline_service.py`・`test_wbgt_service.py`・`test_flood_service.py`・`test_jma_amedas_service.py`）
 - MSMの格子点を選んで読むこと → `test_msm.py`（間引き・最寄り）・`test_msm_client.py`（読み出し）
 - 最寄りの格子点の時系列から今日の値を組み立てること → `test_weather_domain.py`
 - 回数制限の窓 → `test_rate_limiter.py`
@@ -22,6 +22,7 @@ from app.api.dependencies import (
     get_amedas_service,
     get_flood_service,
     get_warning_service,
+    get_warning_timeline_service,
     get_wbgt_service,
     get_weather_service,
 )
@@ -37,6 +38,12 @@ from app.infrastructure import rate_limiter
 from app.main import app
 from app.services.flood_service import FloodForecasts
 from app.services.warning_service import WeatherWarnings
+from app.services.warning_timeline_service import (
+    RouteAreaTimeline,
+    RouteWarningTimeline,
+    TimelineKindLevels,
+    TimelineSlotLevel,
+)
 from app.services.wbgt_service import WbgtReading, WbgtStatus
 
 client = TestClient(app)
@@ -97,6 +104,30 @@ GRID_POINT_TODAY = GridPointToday(
     highest_hourly_precipitation_mm=None,
     highest_hourly_wind_speed_ms=3.1,
 )
+ROUTE_TIMELINE = RouteWarningTimeline(
+    areas=[
+        RouteAreaTimeline(
+            area_code="1310100",
+            area_name="千代田区",
+            start_index=0,
+            end_index=1,
+            kinds={
+                "thunder": TimelineKindLevels(
+                    slots=[
+                        TimelineSlotLevel(
+                            start=datetime(2026, 10, 21, 18, 0, tzinfo=JST),
+                            end=datetime(2026, 10, 21, 21, 0, tzinfo=JST),
+                            code="20",
+                            advisory=True,
+                        )
+                    ],
+                    additions=["突風"],
+                )
+            },
+        )
+    ]
+)
+ROUTE_POINTS = {"points": [POINT, {"latitude": 35.69, "longitude": 139.70}]}
 #: 東京駅の周りの、ズーム8の地図ほどの範囲。
 TOKYO_BBOX = {"min_lon": 139.0, "min_lat": 35.3, "max_lon": 140.4, "max_lat": 36.0}
 
@@ -134,17 +165,13 @@ class FakeService:
     async def get_msm_grid(self, bbox):
         return self._answer
 
-
-@pytest.fixture(autouse=True)
-def _clear_dependency_overrides():
-    """テストが足した依存の差し替えを、抜けるときに片付ける。"""
-    yield
-    app.dependency_overrides.clear()
+    async def get_route_timeline(self, points):
+        return self._answer
 
 
 @pytest.mark.parametrize(("path", "dependency", "answer"), POINT_ROUTES)
-def test_a_point_route_returns_what_its_source_answered(path, dependency, answer):
-    app.dependency_overrides[dependency] = lambda: FakeService(answer)
+def test_a_point_route_returns_what_its_source_answered(override_dependency, path, dependency, answer):
+    override_dependency(dependency, lambda: FakeService(answer))
 
     response = client.get(path, params=POINT)
 
@@ -152,8 +179,8 @@ def test_a_point_route_returns_what_its_source_answered(path, dependency, answer
     assert response.json() == answer.model_dump(mode="json")
 
 
-def test_the_msm_grid_route_returns_the_grid_points_with_local_times():
-    app.dependency_overrides[get_weather_service] = lambda: FakeService(MSM_GRID)
+def test_the_msm_grid_route_returns_the_grid_points_with_local_times(override_dependency):
+    override_dependency(get_weather_service, lambda: FakeService(MSM_GRID))
 
     response = client.get("/api/weather/msm-grid", params=TOKYO_BBOX)
 
@@ -185,9 +212,9 @@ _TOO_WIDE_SIDE = MSM_GRID_MAX_AREA_SQ_DEG**0.5 + 0.01
         "表示範囲が広すぎます。ズームインしてください。",
     ),
 ], ids=["inverted", "too-wide"])
-def test_an_msm_grid_range_that_is_inverted_or_too_wide_is_refused(bbox, detail):
+def test_an_msm_grid_range_that_is_inverted_or_too_wide_is_refused(override_dependency, bbox, detail):
     """広すぎる範囲は、間引く前に格子点を丸ごと読む（読む量は範囲の格子点の数に比例する）。"""
-    app.dependency_overrides[get_weather_service] = lambda: FakeService(MSM_GRID)
+    override_dependency(get_weather_service, lambda: FakeService(MSM_GRID))
 
     response = client.get("/api/weather/msm-grid", params=bbox)
 
@@ -203,9 +230,11 @@ def test_an_msm_grid_range_that_is_inverted_or_too_wide_is_refused(bbox, detail)
     ("/api/weather", POINT, get_weather_service, "気象データの取得に失敗しました"),
     ("/api/weather/msm-grid", TOKYO_BBOX, get_weather_service, "気象データの取得に失敗しました"),
 ])
-def test_a_source_that_could_not_be_obtained_is_a_failure_not_an_empty_answer(path, params, dependency, detail):
+def test_a_source_that_could_not_be_obtained_is_a_failure_not_an_empty_answer(
+    override_dependency, path, params, dependency, detail
+):
     """空の応答は「出ていない」を表す。取れなかったことを同じ空で返すと、画面は出ていないと見せる。"""
-    app.dependency_overrides[dependency] = lambda: FakeService(None)
+    override_dependency(dependency, lambda: FakeService(None))
 
     response = client.get(path, params=params)
 
@@ -230,10 +259,39 @@ def test_a_source_that_could_not_be_obtained_is_a_failure_not_an_empty_answer(pa
         "msm-grid", settings.msm_grid_rate_limit_per_minute,
     ),
 ])
-def test_each_route_is_rate_limited_per_client(path, params, dependency, answer, key, limit):
-    app.dependency_overrides[dependency] = lambda: FakeService(answer)
+def test_each_route_is_rate_limited_per_client(override_dependency, path, params, dependency, answer, key, limit):
+    override_dependency(dependency, lambda: FakeService(answer))
     for _ in range(limit - 1):
         rate_limiter.check_rate_limit(f"{key}:testclient", limit)
 
     assert client.get(path, params=params).status_code == 200
     assert client.get(path, params=params).status_code == 429
+
+
+def test_the_route_warning_timeline_route_returns_what_its_source_answered(override_dependency):
+    override_dependency(get_warning_timeline_service, lambda: FakeService(ROUTE_TIMELINE))
+
+    response = client.post("/api/weather/route-warning-timeline", json=ROUTE_POINTS)
+
+    assert response.status_code == 200
+    assert RouteWarningTimeline.model_validate(response.json()) == ROUTE_TIMELINE
+
+
+def test_route_warning_timeline_that_could_not_be_obtained_is_a_failure_not_an_empty_answer(override_dependency):
+    """空の通過は「ルートがどの区域にも入らない」を表す。取れなかったことを同じ空で返すと、画面は注意報級の時間帯が無いと見せる。"""
+    override_dependency(get_warning_timeline_service, lambda: FakeService(None))
+
+    response = client.post("/api/weather/route-warning-timeline", json=ROUTE_POINTS)
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "取得できませんでした。"}
+
+
+def test_the_route_warning_timeline_route_is_rate_limited_per_client(override_dependency):
+    override_dependency(get_warning_timeline_service, lambda: FakeService(ROUTE_TIMELINE))
+    limit = settings.weather_warning_timeline_rate_limit_per_minute
+    for _ in range(limit - 1):
+        rate_limiter.check_rate_limit("weather-warning-timeline:testclient", limit)
+
+    assert client.post("/api/weather/route-warning-timeline", json=ROUTE_POINTS).status_code == 200
+    assert client.post("/api/weather/route-warning-timeline", json=ROUTE_POINTS).status_code == 429

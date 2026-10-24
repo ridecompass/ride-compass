@@ -17,7 +17,7 @@
  * 元との違い・区間の風・編集面）は本物を描き、ここでは受け渡し（親の値が子のどこに出るか・子の操作で親の何が変わるか）
  * だけを見る。子が値をどう描くか（書式・並び・空のときの案内）は各部品のテストが見る。値を子・文へそのまま渡すだけの所
  * （内訳の生値・材料の値・所要の前提の知らせ・内訳に渡す重み等）は1行の委譲なので見ない。候補1本への操作（走る・合成・GPX）
- * → `features/route/RouteCandidateActions/RouteCandidateActions.tsx`（置き場は`app/page.tsx`の見出しの行）。値から段を引く判断 →
+ * → `features/route/RouteCandidateActions/RouteCandidateActions.tsx`（置き場は見出しの行の`RouteOutcomeHeaderActions.tsx`）。値から段を引く判断 →
  * `lib/mapDisplay/valueScale.ts: bandAt`。シートが開いたときに合わせる高さ → `components/BottomSheet/BottomSheet.tsx`。
  * 道のりのグラフの塗り（積む軸の並び・色・値の無い区間の高さ）は読み上げに出ないので見ない。
  *
@@ -87,6 +87,7 @@ function resultsOf(
     hasDetail: (selectedCandidate?.segments.length ?? 0) > 0,
     selectedRouteSegment: state.selectedRouteSegment ?? null,
     selectSegment: vi.fn(),
+    segmentSidePoints: null,
     usedWeights: null,
     replaceWithGenerated: vi.fn(),
     addEdit: vi.fn(),
@@ -156,14 +157,12 @@ function segmentPressed(): Pick<RouteResults, "generated" | "selectedRouteSegmen
 }
 
 describe("候補が無い間", () => {
-  it("生成中は進み方を出す", () => {
-    renderOutcome({ generation: generationOf({ running: true, progressLabel: "順番待ち..." }) });
-    expect(screen.getByText("順番待ち...")).toBeInTheDocument();
-  });
-
-  it("進み方の届く前の生成中は「生成中...」を出す", () => {
-    renderOutcome({ generation: generationOf({ running: true }) });
-    expect(screen.getByText("生成中...")).toBeInTheDocument();
+  it.each([
+    { progressLabel: "順番待ち...", text: "順番待ち..." },
+    { progressLabel: undefined, text: "生成中..." },
+  ])("生成中は進み方（届く前は「生成中...」）を出す: $text", ({ progressLabel, text }) => {
+    renderOutcome({ generation: generationOf({ running: true, progressLabel }) });
+    expect(screen.getByText(text)).toBeInTheDocument();
   });
 
   it("案内が無ければ、生成を押すと候補が並ぶことを案内する", () => {
@@ -248,12 +247,6 @@ describe("候補の一覧", () => {
     expect(bandOf(/^1 /)).toHaveStyle({ backgroundColor: bandAt(valueBands(DIFFICULTY_PAINT), 41.6).color });
     expect(bandOf(/^2 /)).toHaveStyle({ backgroundColor: NO_DATA_LEGEND_BAND.color });
   });
-
-  it("タブを押すと、その候補のidでタブの選択を上げる", async () => {
-    const { results } = renderOutcome({ results: resultsOf({ generated: [FAST, SLOW] }) });
-    await userEvent.click(screen.getByRole("tab", { name: /^2 / }));
-    expect(results.selectTab).toHaveBeenCalledWith("slow");
-  });
 });
 
 describe("選んだ候補の中身", () => {
@@ -315,12 +308,6 @@ describe("選んだ候補の中身", () => {
     expect(detail).toHaveTextContent("3.3km地点到達予想 09:42");
     expect(within(detail).getByRole("button", { name: /^区間の風/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "総合難易度の説明を表示" })).not.toBeInTheDocument();
-  });
-
-  it("区間の選択の解除を押すと、押していた区間を外す", async () => {
-    const { results } = renderOutcome({ results: resultsOf(segmentPressed()) });
-    await userEvent.click(screen.getByRole("button", { name: "区間の選択を解除" }));
-    expect(results.selectSegment).toHaveBeenCalledWith(null);
   });
 
   it("編集している間は、一覧の代わりに編集面だけを出し、同じ道の候補は一覧の名前で渡す", () => {

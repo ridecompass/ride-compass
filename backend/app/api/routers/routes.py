@@ -10,6 +10,7 @@ from pydantic import Field, PrivateAttr, RootModel, field_validator, model_valid
 from app.domain.time_zone import JST, as_jst
 from app.api.dependencies import (
     RouteGenerationSetupOpener,
+    get_graph_service,
     get_route_generation_setup_opener,
 )
 from app.api.rate_limit import client_id, enforce_rate_limit
@@ -17,7 +18,6 @@ from app.config import settings
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.route_preference import RoutePreference, check_axis_weights, published_axis_ids
 from app.domain.route_request import (
-    MAX_DISTANCE_TOLERANCE_KM,
     MAX_ROUTE_DISTANCE_KM,
     MAX_ROUTES,
     MAX_SPLICED_EDGES,
@@ -36,14 +36,20 @@ from app.domain.route_request import (
     nothing_to_generate_error,
 )
 from app.domain.geo import Latitude, Longitude, haversine_distance_km
-from app.domain.route import Coordinates, RouteCandidate
+from app.domain.errors import GENERATION_BUSY_MESSAGE
+from app.domain.graph import parse_edge_key
+from app.domain.route import Coordinates, RouteCandidate, RoutePoint
+from app.domain.route_points import ROUTE_SIDE_POINTS_MAX_EDGES
 from app.infrastructure import job_registry
 from app.infrastructure.debug_log import record_rate_limit_rejection
+from app.infrastructure.heap_release import release_freed_heap
+from app.services.graph_service import GraphService
 from app.services.route_generation_setup import generate_route_candidates
 from app.domain.strict_model import StrictModel
 
 router = APIRouter()
 logger = logging.getLogger("ridecompass.generate")
+side_logger = logging.getLogger("ridecompass.side_points")
 
 # ルート生成の同時実行上限（settings.generate_max_concurrent、config.pyのコメント参照）。
 # 上限を超えた分は待たせず429で即座に返し、ブラウザのリトライや連打で外部サービスへの
@@ -86,21 +92,13 @@ class RoadAvoidanceOverride(RootModel[dict[str, AvoidanceLevel]]):
 class RouteGenerateRequest(StrictModel):
     latitude: Latitude
     longitude: Longitude
-    # 全長の目標距離（±`distance_tolerance_km`）。経由地・目的地を置いても同じ意味で、省略すると全長の目標を置かない
+    # 全長の目標距離（±目標に較正値`search.distance_tolerance_ratio`を掛けた長さ）。経由地・目的地を置いても同じ意味で、省略すると全長の目標を置かない
     # （置いた点へ良い道で向かう）。
     distance_km: float | None = Field(default=None, gt=0, le=MAX_ROUTE_DISTANCE_KM)
-    distance_tolerance_km: float = Field(gt=0, le=MAX_DISTANCE_TOLERANCE_KM)
     # 評価重みのリクエスト単位の上書き。省略時はAXIS_DEFINITIONS由来の既定値
     # （`RoutePreference()`）を使う。
     # 実際に適用された値はレスポンスのconditionsへエコーされる。
     route_preference: RoutePreferenceWeights | None = None
-    # 主観的割増と時間の換算レート（P）。**省略が既定**で、そのとき使う値は
-    # リクエスト処理時に較正値から読む（`domain/evaluation.py: resolve_penalty_strength`、
-    # 値の意味と根拠もそちら）。ここへ既定値を書くとimport時に束ねられ、DBの上書きが効かない。
-    penalty_strength: float | None = Field(ge=0, default=None)
-    # 0次ハードフィルタの勾配しきい値（%、絶対値。省略時は除外なし。
-    # `domain/hard_filters.py: compute_search_exclusion`参照）。
-    max_average_grade_percent: float | None = Field(ge=0, default=None)
     # 道の区分ごとの避け方。
     road_avoidance: RoadAvoidanceOverride
     # 返す候補の上限件数。距離があれば距離フィルタ合格・overall_difficulty昇順の上位この件数、距離が無ければ
@@ -186,12 +184,11 @@ class GenerationConditions(StrictModel):
     longitude: float
     # 全長の目標距離（無ければNone）。
     distance_km: float | None
-    distance_tolerance_km: float
+    # 使った目標距離からの許容差（km。目標に対する割合の較正値から決めた長さ）。全長の目標が無ければNone。
+    distance_tolerance_km: float | None
     route_preference: RoutePreferenceWeights
-    # 主観的割増と時間の換算レート（P）。
+    # 主観的割増と時間の換算レート（P、較正値）。
     penalty_strength: float
-    # 0次ハードフィルタの勾配しきい値（%、Noneは除外なし）。
-    max_average_grade_percent: float | None
     # 道の区分ごとの避け方（実際に適用された値）。
     road_avoidance: RoadAvoidanceOverride
     # 候補数の上限。
@@ -275,7 +272,7 @@ async def generate_routes(
         record_rate_limit_rejection(
             "generate-concurrency", client_id(http_request), f"concurrent={settings.generate_max_concurrent}"
         )
-        raise HTTPException(status_code=429, detail="ルート生成が混み合っています。しばらく待ってから再試行してください。")
+        raise HTTPException(status_code=429, detail=GENERATION_BUSY_MESSAGE)
     await _generate_semaphore.acquire()
 
     job_id = job_registry.create_job()
@@ -328,8 +325,6 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
                 open_setup,
                 RequestedConditions(
                     preference_override=preference_override,
-                    penalty_strength=request.penalty_strength,
-                    max_average_grade_percent=request.max_average_grade_percent,
                     road_avoidance=dict(request.road_avoidance.root),
                     assumed_speed_kmh=request.assumed_speed_kmh,
                 ),
@@ -338,7 +333,6 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
             target=target,
             start_time=request.start_time,
             max_routes=request.max_routes,
-            distance_tolerance_km=request.distance_tolerance_km,
         )
         applied = generated.conditions
         response = RouteGenerateResponse(
@@ -348,10 +342,9 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
                 latitude=request.latitude,
                 longitude=request.longitude,
                 distance_km=target.distance_km if isinstance(target, DistanceTarget) else None,
-                distance_tolerance_km=request.distance_tolerance_km,
+                distance_tolerance_km=generated.distance_tolerance_km,
                 route_preference=RoutePreferenceWeights(applied.route_preference.weights),
                 penalty_strength=applied.penalty_strength,
-                max_average_grade_percent=applied.max_average_grade_percent,
                 road_avoidance=RoadAvoidanceOverride(dict(applied.road_avoidance)),
                 max_routes=generated.max_routes,
                 start_time=request.start_time,
@@ -372,3 +365,42 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
         job_registry.set_failed(job_id, "ルート生成に失敗しました。時間をおいて再度お試しください。")
     finally:
         _generate_semaphore.release()
+        # 生成が作って捨てた配列の領域を返す。返さないと、それまでで一番大きい生成の分が anon に残り、
+        # 生成どうしが分け合うメモリ（`services/graph_service.py: SearchMemory`）が前提にする取り置きを食う。
+        await asyncio.to_thread(release_freed_heap)
+
+
+class RouteSidePointsRequest(StrictModel):
+    """候補の一続きの区間（区間の詳しく1つ分）。"""
+
+    # 候補の`edge_ids`の部分列（向きつきの区間の鍵）を、通る順に。
+    edge_ids: list[str] = Field(min_length=1, max_length=ROUTE_SIDE_POINTS_MAX_EDGES)
+    # 一続きの始まりの、候補の始点からの道のり（km。区間の`cumulative_distance_km`）。
+    start_distance_km: float = Field(ge=0)
+
+    @field_validator("edge_ids")
+    @classmethod
+    def _check_edge_keys(cls, value: list[str]) -> list[str]:
+        if any(parse_edge_key(key) is None for key in value):
+            raise ValueError("edge_ids must be directed edge keys")
+        return value
+
+
+class RouteSidePointsResponse(StrictModel):
+    # 近くの点を、通る道のりの順に。
+    points: list[RoutePoint]
+
+
+@router.post("/api/routes/side-points")
+async def route_side_points(
+    body: RouteSidePointsRequest,
+    http_request: Request,
+    graph_service: GraphService = Depends(get_graph_service),
+) -> RouteSidePointsResponse:
+    """候補の一続きの区間の近くの点（停止要因・補給・立ち寄り先・事故）と、それぞれを通る道のり・道からの距離。"""
+    enforce_rate_limit(http_request, "route-side-points", settings.route_side_points_rate_limit_per_minute)
+    points = await graph_service.get_route_side_points(body.edge_ids, body.start_distance_km)
+    if points is None:
+        raise HTTPException(status_code=404, detail="ルートの区間が今の道路網にありません。ルートを作り直してください。")
+    side_logger.debug("side_points edges=%d points=%d", len(body.edge_ids), len(points))
+    return RouteSidePointsResponse(points=points)

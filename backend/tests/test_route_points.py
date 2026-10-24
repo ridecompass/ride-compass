@@ -2,24 +2,22 @@
 
 ここで見ないもの:
 - どの点がどの区間の近くにあるか（区間の形の上の位置・道からの距離） → `test_route_points_postgis.py`
-- 応答の候補へ点が載ること → `test_route_generation_behavior.py`
+- 区間の長さを道路網から引くこと・口の応答へ点が載ること → `test_routes_generate.py`
 
 区間は1本1km（向きは`forward`）で、点の当たりは区間の形の向き（順向き）で測った位置で書く。
 """
 import pytest
 
-from app.domain.graph import LeanEdge, edge_key
 from app.domain.route import along_route_km
-from app.domain.route_points import RoutePointHit, points_along_route
+from app.domain.route_points import DirectedSegment, RoutePointHit, points_along_route
 
 
 #: 当たりに添える、同じ行の点をまとめる道のり（m）。
 _MERGE_WITHIN_M = 40.0
 
 
-def _edge(way: int, forward: bool = True) -> LeanEdge:
-    return LeanEdge(edge_id=edge_key(way, 0, forward), from_node_id="", to_node_id="", geometry=[],
-                    distance_m=1000.0, osm_way_id=way, segment_index=0, forward=forward)
+def _edge(way: int, forward: bool = True) -> DirectedSegment:
+    return way, 0, forward
 
 
 def _hit(key: str, fraction: float, distance_m: float = 0.0, merge_group: str | None = None) -> RoutePointHit:
@@ -27,8 +25,8 @@ def _hit(key: str, fraction: float, distance_m: float = 0.0, merge_group: str | 
                          properties={"kind": key}, fraction=fraction, distance_m=distance_m)
 
 
-def _passed(path: list[LeanEdge], hits: dict[int, list[RoutePointHit]]) -> list[tuple[float, str]]:
-    points = points_along_route(path, along_route_km(edge.distance_m / 1000 for edge in path),
+def _passed(path: list[DirectedSegment], hits: dict[int, list[RoutePointHit]]) -> list[tuple[float, str]]:
+    points = points_along_route(path, along_route_km(1.0 for _ in path),
                                 {(way, 0): found for way, found in hits.items()})
     return [(point.distance_km, point.properties["kind"]) for point in points]
 
@@ -55,6 +53,15 @@ def test_a_point_near_consecutive_segments_is_passed_once_where_it_is_nearest():
 def test_a_point_passed_twice_is_listed_at_each_pass(path, expected):
     """同じ点を2回通るなら、通るたびに印を出す（帰りにも同じ補給所に寄れる）。"""
     assert _passed(path, {2: [_hit("p", 0.5)]}) == expected
+
+
+def test_a_point_near_a_short_loop_is_listed_on_the_way_out_and_back():
+    """区間2・3の両方の近くにある点は、2から小さな輪3を回って2へ戻ると、続けて走る区間だけでも行きと帰りの2回通る。"""
+    path = [_edge(2), _edge(3), _edge(2, forward=False)]
+
+    assert _passed(path, {2: [_hit("p", 0.9, distance_m=10.0)], 3: [_hit("p", 0.1, distance_m=30.0)]}) == [
+        (0.9, "p"), (2.1, "p"),
+    ]
 
 
 @pytest.mark.parametrize("second_fraction, second_group, expected", [

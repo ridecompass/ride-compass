@@ -1,6 +1,6 @@
 """道の区分の管理API。区分・地図の線の層・転がり抵抗・除外の設定の全体を1回で読み、1回で書く。
 
-書く全体の形の良し悪しは表の制約だけが決め、通らなければ409でDBの断りの文を返す（`services/road_class_service.py`）。
+書く全体を断ったら（表の制約・コードの宣言に無い名・次の起動で読み込めない軸）、409で断りの文を返す（`services/road_class_service.py`）。
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -28,4 +28,4 @@ async def replace_road_classes(
     try:
         return await service.replace(definitions)
     except RoadClassRejectedError as error:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=f"表の制約に通りません: {error}") from error
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(error)) from error

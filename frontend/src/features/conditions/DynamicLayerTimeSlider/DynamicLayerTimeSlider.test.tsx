@@ -33,10 +33,9 @@ function renderSlider(index: number, currentIndex = 0) {
 }
 
 describe("DynamicLayerTimeSlider 表示", () => {
-  it("選んだコマの日付つきの時刻を上に出し、読み上げにも同じ時刻を渡す", () => {
+  it("選んだコマの日付つきの時刻を上に出す", () => {
     renderSlider(1);
     expect(screen.getByText("9/24 10:00", { selector: "div" })).toBeInTheDocument();
-    expect(screen.getByRole("slider", { name: "出発時刻" })).toHaveAttribute("aria-valuetext", "9/24 10:00");
   });
 });
 

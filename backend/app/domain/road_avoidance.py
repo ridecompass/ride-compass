@@ -11,14 +11,7 @@ from typing import Literal, NamedTuple, cast, get_args
 import numpy as np
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.road_classes import (
-    AvoidanceClassification,
-    AvoidanceOverride,
-    RoadClass,
-    RoadClassDefinitions,
-    RoadClassification,
-    class_material_id,
-)
+from app.domain.road_classes import AvoidanceOverride, RoadClass, RoadClassDefinitions, by_sort_order, class_material_id
 
 #: 避け方の段。並びは弱い順で、1つの区間が複数の行に当たれば後ろ（強い）の段を取る。
 AvoidanceLevel = Literal["pass", "avoid", "exclude"]
@@ -31,10 +24,7 @@ class AvoidanceRow(NamedTuple):
 
     #: `<分け方>.<区分>`。
     key: str
-    classification_key: str
-    classification: RoadClassification
-    avoidance: AvoidanceClassification
-    class_key: str
+    section_key: str
     road_class: RoadClass
     override: AvoidanceOverride | None
 
@@ -46,14 +36,15 @@ class AvoidanceRow(NamedTuple):
 def avoidance_rows(definitions: RoadClassDefinitions) -> list[AvoidanceRow]:
     """避け方を選べる行。並びは除外の設定の分け方の順、その中は区分の順。"""
     rows = []
-    for key, avoidance in sorted(definitions.avoidance_classifications.items(), key=lambda item: item[1].sort_order):
-        classification = definitions.classifications.get(key)
-        if classification is None or not classification.is_published:
+    for key, avoidance in by_sort_order(definitions.avoidance_classifications):
+        classification = definitions.classifications[key]
+        if not classification.is_published:
             continue
-        for class_key, road_class in sorted(classification.classes.items(), key=lambda item: item[1].sort_order):
+        for class_key, road_class in by_sort_order(classification.classes):
             override = avoidance.overrides.get(class_key)
             if override is None or override.selectable:
-                rows.append(AvoidanceRow(f"{key}.{class_key}", key, classification, avoidance, class_key, road_class, override))
+                section = (override and override.section_key) or avoidance.section_key
+                rows.append(AvoidanceRow(f"{key}.{class_key}", section, road_class, override))
     return rows
 
 
@@ -64,6 +55,7 @@ def resolve_road_avoidance(
     今の行でも前の鍵でもない鍵は読まない（区分を直す前に読み込んだ画面の要求も断らない）。"""
     resolved: dict[str, AvoidanceLevel] = {}
     for row in avoidance_rows(definitions):
+        # 前の鍵は区分のデータが持ち、入れてから3か月で外す（`domain/road_classes.py: RoadClass.former_keys`）。
         keys = [row.key] if row.key in requested else [key for key in row.road_class.former_keys if key in requested]
         resolved[row.key] = max((requested[key] for key in keys), key=AVOIDANCE_LEVELS.index, default=row.default_level)
     return resolved

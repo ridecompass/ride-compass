@@ -41,9 +41,7 @@ export function world(list, { workflow = "active", last = [], steps = [] } = {})
   const f = config.fields;
   const fields = (i) => ({ nodes: [[f.status, i.status], [f.run, i.run], [f.priority, i.priority], [f.start, i.start]].filter(([, v]) => v)
     .map(([field, v]) => ({ ...(field.id && !field.options ? { value: v } : { name: v }), field: { name: field.name } })) });
-  // 前提の最後に動いた時刻は、置いたときに決めた時刻（i.updated）が無ければ今。
-  const near = (n) => ({ number: n, state: w.at(n).state, stateReason: w.at(n).reason, issueType: w.at(n).type && { name: w.at(n).type },
-    updatedAt: w.at(n).updated ?? new Date().toISOString() });
+  const near =(n) => ({ number: n, state: w.at(n).state, stateReason: w.at(n).reason });
   const blocked = (i) => ({ nodes: i.blockedBy.map(near) });
   const children = (i) => ({ nodes: [...w.issues.values()].filter((k) => k.parent === i.n).map((k) => near(k.n)) });
   // 矢印1本でつながる issue（src/facts.js: relationsOf の形）。
@@ -56,6 +54,9 @@ export function world(list, { workflow = "active", last = [], steps = [] } = {})
     mergeCommit: { oid: p.sha ?? `m${i.n}`, checkSuites: suites(p.mergeChecks, { others: p.mergeOthers, tasks: p.mergeTasks }) },
     commits: { nodes: [{ commit: { oid: `c${i.n}`, committedDate: "2026-10-11T00:00:00Z", checkSuites: suites(p.checks, { at: p.checksAt ?? p.created, before: p.checksBefore }) } }] },
     timelineItems: { nodes: p.drafted ? [{ createdAt: "2026-10-11T01:00:00Z" }] : [] } });
+  // master のコミットは、マージした PR のマージのコミット（first-parent の親は、置いたときに決めた p.parent。無ければ世界の外のコミット）。
+  const master = () => [...w.issues.values()].filter((i) => i.pr?.merged).map((i) => ({ ...pull(i, i.pr).mergeCommit, parent: i.pr.parent ?? "m0",
+    messageHeadline: `tasks#${i.n}: 直した (#99)` }));
   const issueOf = (id) => w.at(Number(id.slice(1)));
   // 置き場のラベル: 決まったもの（急ぎ・開発機で作業中・問いのラベル）と、issue に付いたもの。
   const repoLabels = () => [...new Set([config.urgentLabel, config.devLabel, "要確認", ...Object.keys(config.questionForms).map((k) => `問い: ${k}`),
@@ -115,6 +116,8 @@ export function world(list, { workflow = "active", last = [], steps = [] } = {})
       return { repository: { issue: { subIssues: { nodes: kids(i.n) }, parent: i.parent && { subIssues: { nodes: kids(i.parent) } },
         timelineItems: { nodes: [...w.issues.values()].filter((k) => k.n !== i.n && k.body.includes(`#${i.n}`)).map((k) => ({ source: node(k) })) } } } };
     }
+    if (q.includes("history(first:")) return { repository: { object: master().some((c) => c.oid === v.s) ? { history: { nodes: master().map((c) => ({ ...c, parents: { nodes: [{ oid: c.parent }] } })) } } : null } };
+    if (q.includes(":object(oid:")) return { repository: Object.fromEntries([...q.matchAll(/(c\d+):object\(oid:"(\w+)"\)/g)].map(([, k, sha]) => [k, master().find((c) => c.oid === sha) ?? null])) };
     if (q.includes("c:issue(number:$c)")) return { repository: { p: { parent: w.at(v.p).parent && { number: w.at(v.p).parent } }, c: { subIssues: children(w.at(v.c)) } } };
     if (q.includes("issues(states:OPEN")) return { repository: { issues: { pageInfo: { hasNextPage: false }, nodes: [...w.issues.values()].filter((i) => i.state === "OPEN")
       .map((i) => ({ number: i.n, state: i.state, issueType: i.type && { name: i.type }, labels: names(i.labels), assignees: { nodes: i.assignees.map((login) => ({ login })) },
@@ -147,6 +150,7 @@ export function world(list, { workflow = "active", last = [], steps = [] } = {})
     if (path.includes("/runs?per_page=100")) return { workflow_runs: [...w.runs, ...last].reverse().map((r) => ({ id: r.id, display_title: r.display_title ?? "#99 実装",
       status: r.status ?? "completed", conclusion: r.conclusion ?? null, created_at: r.created_at ?? new Date().toISOString(), updated_at: r.updated_at ?? new Date().toISOString() })) };
     if (path.endsWith("/jobs")) return { jobs: [{ steps }] };
+    if (path.includes("/compare/")) return { commits: master().map((c) => ({ sha: c.oid, parents: [{ sha: c.parent }] })) };
     if (path.endsWith("/dispatches")) { // 本物と同じく、振り出すと実行の申し込みの知らせが届く
       const r = { id: 100 + w.runs.length, display_title: `#${body.inputs.issue} ${body.inputs.kind} ${body.inputs.key}`, status: "queued" };
       w.runs.push(r);

@@ -24,7 +24,9 @@ f?.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!f.classList.contains("lock")) return;
   f.querySelectorAll("button").forEach((b) => (b.disabled = true));
-  const j = await (await fetch(location.href, { method: "POST", body: new FormData(f) })).json();
+  // 応答が届かない・JSON でない（Worker が落ちた等）ときも、失敗を出して打ち直せる状態へ戻す。
+  const j = await fetch(location.href, { method: "POST", body: new FormData(f) }).then((r) => r.json())
+    .catch(() => ({ error: "送信できませんでした。もう一度送ってください（届いていれば、答えていない問いが無いと出ます）。" }));
   if (j.error) { err.textContent = j.error; f.classList.remove("lock"); f.querySelectorAll("button").forEach((b) => (b.disabled = false)); return; }
   const p = (text, className = "") => Object.assign(document.createElement("p"), { textContent: text, className });
   // 先にタブを閉じる（移ったあとではこのページが無く、閉じる処理が動かない）。閉じられない開き方なら issue へ移る。
@@ -109,11 +111,32 @@ async function submit(gh, env, config, number, form) {
   return { url: issue.url, label: NEXT[answer.next] };
 }
 
+// 送信の失敗（GitHub の一時の失敗等）は、ページが打ち直せるように { error } で返す。答えが書けていれば、打ち直しは「答えていない問いがありません」で断られる。
+async function post(request, env, config, number) {
+  try {
+    return Response.json(await submit(await GitHub.app(env, config.installation), env, config, number, await request.formData()));
+  } catch (e) {
+    console.error(`回答フォームの送信が落ちた（#${number}）: ${e.stack ?? e.message}`);
+    return Response.json({ error: "GitHub へ書けませんでした。少しおいて、もう一度送ってください。" }, { status: 502 });
+  }
+}
+
 export async function answerForm(request, env, config) {
-  const number = Number(new URL(request.url).searchParams.get("issue"));
-  const gh = await GitHub.app(env, config.installation);
-  if (request.method === "POST") return Response.json(await submit(gh, env, config, number, await request.formData()));
-  const { issue, comments, asked, question: q, all, have } = await read(gh, config, number);
+  const raw = new URL(request.url).searchParams.get("issue") ?? "";
+  if (!/^\d+$/.test(raw)) {
+    const error = "URL に issue の番号がありません。issue の回答のボタンから開き直してください。";
+    return request.method === "POST" ? Response.json({ error }, { status: 400 }) : page(`<p>${error}</p>`, 400);
+  }
+  const number = Number(raw);
+  if (request.method === "POST") return post(request, env, config, number);
+  let found;
+  try {
+    found = await read(await GitHub.app(env, config.installation), config, number);
+  } catch (e) {
+    console.error(`回答フォームを開けなかった（#${number}）: ${e.stack ?? e.message}`);
+    return page(`<p>GitHub から #${number} を読めませんでした。少しおいて、開き直してください。</p>`, 502);
+  }
+  const { issue, comments, asked, question: q, all, have } = found;
   if (!q || q.answer) return page(`<p>#${number} に、答えていない問いはありません。</p>`, 404);
   const recent = comments.filter((c) => c !== asked).slice(-RECENT).reverse()
     .map((c) => `<p class="note"><a href="${esc(c.url)}">${esc(c.author?.login ?? "ghost")} ・ ${jstText(Date.parse(c.createdAt))}</a></p>${c.bodyHTML}`).join("");

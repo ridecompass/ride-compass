@@ -19,9 +19,8 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from app.domain.msm import MsmGrid, wind_speed_and_direction
-
-MSM_BBOX = (22.4, 120.0, 47.6, 150.0)
-GRID = MsmGrid.from_bbox_and_shape(MSM_BBOX, 505, 481)
+from tests.msm_grid import MSM_BBOX
+from tests.msm_grid import MSM_GRID as GRID
 
 _LATITUDES = GRID.lat_min + GRID.d_lat * np.arange(GRID.n_lat)
 _LONGITUDES = GRID.lon_min + GRID.d_lon * np.arange(GRID.n_lon)
@@ -33,6 +32,9 @@ def _bilinear(lat, lon):
 
 
 FIELD = _bilinear(_LATITUDES[:, None], _LONGITUDES[None, :])
+#: 格子点ごとに違う値の場。どの格子点を読んだかが値に出る。テストは読むだけなので、書き込みを禁じて共有する。
+NOISE = np.random.default_rng(0).normal(size=(GRID.n_lat, GRID.n_lon, 2))
+NOISE.flags.writeable = False
 
 
 def test_the_published_msm_spacing_follows_from_the_bbox_and_the_shape():
@@ -43,6 +45,10 @@ def test_the_published_msm_spacing_follows_from_the_bbox_and_the_shape():
 def test_a_grid_with_fewer_than_two_points_on_a_side_is_refused(n_lat, n_lon):
     with pytest.raises(ValueError):
         MsmGrid.from_bbox_and_shape(MSM_BBOX, n_lat, n_lon)
+
+
+def _grid_indices(latitudes, longitudes):
+    return np.rint((latitudes - GRID.lat_min) / GRID.d_lat).astype(int), np.rint((longitudes - GRID.lon_min) / GRID.d_lon).astype(int)
 
 
 def _interpolate(latitudes, longitudes, field=FIELD):
@@ -160,26 +166,19 @@ def test_a_place_outside_the_block_is_moved_to_its_edge_and_is_not_its_nearest_p
 def test_each_place_reads_the_value_of_its_nearest_grid_point_unchanged(points):
     """補間した値を地点の値として示すと予報業務の許可が要る。読む値は最寄りの格子点の値そのもの。"""
     latitudes, longitudes = (np.array(values) for values in zip(*points, strict=True))
-    field = np.random.default_rng(0).normal(size=(GRID.n_lat, GRID.n_lon, 2))
-
     selected = GRID.nearest_points(latitudes, longitudes)
-    rows = np.rint((latitudes - GRID.lat_min) / GRID.d_lat).astype(int)
-    cols = np.rint((longitudes - GRID.lon_min) / GRID.d_lon).astype(int)
+    rows, cols = _grid_indices(latitudes, longitudes)
 
-    np.testing.assert_array_equal(selected.values(field[selected.lat_slice, selected.lon_slice]), field[rows, cols])
+    np.testing.assert_array_equal(selected.values(NOISE[selected.lat_slice, selected.lon_slice]), NOISE[rows, cols])
     point_latitudes, point_longitudes = selected.coordinates()
     assert np.all(np.abs(point_latitudes - latitudes) <= GRID.d_lat / 2 + 1e-9)
     assert np.all(np.abs(point_longitudes - longitudes) <= GRID.d_lon / 2 + 1e-9)
 
 
-@pytest.mark.parametrize(
-    "corners",
-    [(22.39, 135.0, 35.0, 136.0), (35.0, 135.0, 47.61, 136.0), (35.0, 119.99, 36.0, 136.0), (35.0, 135.0, 36.0, 150.01)],
-    ids=["south", "north", "west", "east"],
-)
-def test_a_rectangle_reaching_outside_the_grid_is_refused(corners):
+def test_a_rectangle_reaching_outside_the_grid_is_refused():
+    """4辺の判断は`test_a_point_outside_the_grid_is_refused`が持つ。矩形もその判断へ寄せていることだけを見る。"""
     with pytest.raises(ValueError):
-        GRID.block_covering(*corners)
+        GRID.block_covering(22.39, 135.0, 35.0, 136.0)
 
 
 @given(
@@ -199,10 +198,6 @@ def test_speed_and_the_direction_the_wind_comes_from_are_recovered_from_the_comp
 
 
 # --- 地図に描く格子点（間引き） ---
-
-
-def _grid_indices(latitudes, longitudes):
-    return np.rint((latitudes - GRID.lat_min) / GRID.d_lat).astype(int), np.rint((longitudes - GRID.lon_min) / GRID.d_lon).astype(int)
 
 
 @given(

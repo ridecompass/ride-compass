@@ -18,7 +18,9 @@ from app.domain.geo import (
 )
 from app.domain.leg_costs import LegCostArrays
 from app.domain.route import EvaluatedRoute, RouteDraft, merge_difficulty
-from app.domain.routing import TurnExpandedStructure, pareto_layer_index, time_bin_of
+from app.domain.turn_structure import TurnExpandedStructure
+from app.domain.route_diversity import pareto_layer_index
+from app.domain.routing import time_bin_of
 from app.domain.tuning import tuning_value
 from app.domain.wind import cruise_hours, kmh_to_ms
 
@@ -49,16 +51,21 @@ def loop_to_outbound_ratios() -> tuple[float, float]:
     return tuning_value("search.loop_to_outbound_ratio_min"), tuning_value("search.loop_to_outbound_ratio_max")
 
 
-# 候補選定（`pareto_layer_index`）で「実質同じ」とみなす距離の粒度。往路実距離200m
-# （周回全長では約400m差、体感で選び分ける単位より細かい）。難易度の粒度は難易度の桁
-# （`DIFFICULTY_QUANTUM`）。細かすぎると互いに非劣解な候補が全件残ってフィルタとして働かず、
-# 粗すぎると候補が減りすぎる。
-PARETO_DISTANCE_QUANTUM_M = 200.0
+def distance_tolerance_km(distance_km: float) -> float:
+    """全長の目標からの許容（km）。目標の距離に対する割合の較正値から決め、長い目標ほど広くする。"""
+    return distance_km * tuning_value("search.distance_tolerance_ratio")
 
-# --- 距離なしの仕上げ（via-node方式。最後の固定点から終点まで）の代替経路選定 ---
-# via-node候補（前向き木＋後ろ向き木の合成経路）の長さが、最も合成コストの低い経路の
-# 長さの何倍までを候補にするか。
-ALTERNATIVE_MAX_STRETCH = 1.3
+
+def pareto_distance_quantum_m() -> float:
+    """候補選定（`pareto_layer_index`）で「実質同じ」とみなす往路の距離の粒度（m）。難易度の粒度は難易度の桁
+    （`DIFFICULTY_QUANTUM`）。"""
+    return tuning_value("search.pareto_distance_quantum_m")
+
+
+def alternative_max_stretch() -> float:
+    """距離なしの仕上げ（via-node方式）で、via-node候補（前向き木＋後ろ向き木の合成経路）の長さが、最も合成コストの
+    低い経路の長さの何倍までを候補にするか。"""
+    return tuning_value("search.alternative_max_stretch")
 
 #: 利用者が置いた点（出発地・経由地・目的地）を、出て戻れるNodeへ寄せてよい上限（km）。狙いは、道のすぐそばに
 #: 置いた点や、置いた先が本線から孤立した小塊・一方通行の袋だった点をすぐ近くの本線へ移すことなので、それより遠くへ
@@ -97,8 +104,9 @@ class LengthBand:
 def turnaround_ring_m(distance_km: float, tolerance_km: float) -> tuple[float, float, float]:
     """折返し点を探すリング（往路の実距離の範囲）の下限・上限と中心（m）。
 
-    周回全長が目標±許容に収まるよう`[(目標-許容)/MIN, (目標+許容)/MAX]`に置き、許容が狭く
-    範囲が反転する場合は`目標/2 ± 許容/2`へ戻す。
+    周回全長が目標±許容に収まるよう`[(目標-許容)/MIN, (目標+許容)/MAX]`に置き、許容が見込みの幅より狭く
+    範囲が反転する場合は`(目標±許容)/比の見込みの中央`へ置き直す——下限で割ると往路が見込みの中央より長くなり、
+    継いだ周回のほとんどが目標より長すぎて落ちる。
 
     中心（並べ方の「リング中心に近い順」の基準）は上下限の平均ではなく、目標を比の見込みの中央で割った値にする——
     許容が目標以上のとき下限が0で頭打ちになり、上下限の平均だと中心が0付近まで下がって極端に短い往路が上位に来る。
@@ -107,10 +115,11 @@ def turnaround_ring_m(distance_km: float, tolerance_km: float) -> tuple[float, f
     band = LengthBand.from_km(distance_km, tolerance_km)
     lower_m = max(0.0, band.lower_m / ratio_min)
     upper_m = band.upper_m / ratio_max
+    ratio_mid = (ratio_min + ratio_max) / 2.0
     if lower_m > upper_m:
-        lower_m = max(0.0, band.lower_m / 2.0)
-        upper_m = band.upper_m / 2.0
-    return lower_m, upper_m, band.target_m / ((ratio_min + ratio_max) / 2.0)
+        lower_m = max(0.0, band.lower_m / ratio_mid)
+        upper_m = band.upper_m / ratio_mid
+    return lower_m, upper_m, band.target_m / ratio_mid
 
 
 def relay_band(
@@ -121,8 +130,8 @@ def relay_band(
     中継点ごとの全長の見込み（前段`fixed_m`＋往路`outbound_m`＋帰りの最短`return_shortest_m`×帰りの比）が目標±許容に
     収まる中継点を帯に入れる。帰りは走った道を避けて探すので最短より長くなる。帰りの比は周回の比の見込み
     （`loop_to_outbound_ratios`）から1を引いたもので、周回の帰り（≈往路×(比−1)）と同じ見込みを置く（別に持つと、
-    周回と目的地で帰りの見込みが食い違う）。見込みの幅が許容の幅より広い中継点は、帰りを最短の下限倍として見る
-    （`turnaround_ring_m`が範囲の反転で往路の2倍へ戻すのと同じ）。届かない（長さが有限でない）中継点は帯に入らない。
+    周回と目的地で帰りの見込みが食い違う）。見込みの幅が許容の幅より広い中継点は、全長を見込みの中央の1点として見る
+    （`turnaround_ring_m`が範囲の反転で比の見込みの中央へ置き直すのと同じ）。届かない（長さが有限でない）中継点は帯に入らない。
     鍵は全長の見込みの中央（帰りの比の下限と上限の平均）と目標のずれ（m）で、周回のリング中心からのずれと同じく
     目標より短すぎる経路も長すぎる経路も対称に扱う。
     """
@@ -133,21 +142,29 @@ def relay_band(
     shortest_m = np.asarray(return_shortest_m, dtype=float)
     low_m = head_m + shortest_m * return_min
     high_m = head_m + shortest_m * return_max
+    center_m = head_m + shortest_m * (return_min + return_max) / 2.0
     too_wide = high_m - low_m > 2.0 * band.tolerance_m
-    high_m = np.where(too_wide, low_m, high_m)
+    low_m = np.where(too_wide, center_m, low_m)
+    high_m = np.where(too_wide, center_m, high_m)
     with np.errstate(invalid="ignore"):
         in_band = (low_m >= band.lower_m) & (high_m <= band.upper_m)
-    center_m = head_m + shortest_m * (return_min + return_max) / 2.0
     return in_band, np.abs(center_m - band.target_m)
 
 
-def ring_closeness_m(ring_length_m: np.ndarray, ring_center_m: float) -> np.ndarray:
-    """折返し点候補の往路実距離の、リング中心からのずれ（m）。候補の並べ方（`rank_by_pareto_layers`）の第1指標。
+def turnaround_band(
+    outbound_m: np.ndarray, distance_km: float, tolerance_km: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """経由地の無い周回の、折返し点の帯と並べる鍵（折返し点ごと）。
 
-    往路実距離そのものではなく中心からのずれを使うのは、周回では距離が「短いほど良い」ではなく「目標に
-    近いほど良い」ためで、目標より短すぎる往路（起点のすぐ近くで折り返す周回）も長すぎる往路も対称に扱われる。
+    往路の実距離`outbound_m`がリング（`turnaround_ring_m`）に入る点を帯に入れる。届かない（長さが有限でない）点は
+    帯に入らない。鍵は往路の実距離とリング中心のずれ（m）で、周回では距離が「短いほど良い」ではなく「目標に近いほど
+    良い」ため、目標より短すぎる往路（起点のすぐ近くで折り返す周回）も長すぎる往路も対称に扱う。
     """
-    return np.abs(ring_length_m - ring_center_m)
+    lower_m, upper_m, center_m = turnaround_ring_m(distance_km, tolerance_km)
+    length_m = np.asarray(outbound_m, dtype=float)
+    with np.errstate(invalid="ignore"):
+        in_band = (length_m >= lower_m) & (length_m <= upper_m)
+    return in_band, np.abs(length_m - center_m)
 
 
 def retrace_penalized(costs: np.ndarray) -> np.ndarray:
@@ -160,7 +177,7 @@ def retrace_penalized(costs: np.ndarray) -> np.ndarray:
 class CandidateRanking:
     """`rank_by_pareto_layers`の結果。`layer_key`・`difficulty_key`は渡した候補の位置ごと。"""
 
-    #: 渡した候補の位置を、並べた順に`max_examined`件まで。
+    #: 渡した候補の位置を、並べた順に`max_examined`件まで（Noneなら全件）。
     order: np.ndarray
     #: パレート層の番号（層に入らなかった候補は最大値で最後尾）。
     layer_key: np.ndarray
@@ -189,7 +206,7 @@ def rank_by_pareto_layers(
     penalty_strength: float,
     *,
     max_items: int,
-    max_examined: int,
+    max_examined: int | None,
     tie_by_distance: bool,
 ) -> CandidateRanking:
     """候補（折返し点・経由Node）を「距離の鍵」「難易度」の2指標で非優越ソートし、パレート層の順に並べる。
@@ -205,7 +222,7 @@ def rank_by_pareto_layers(
     difficulty_key = round_difficulty_array(difficulty)
     layer = pareto_layer_index(
         distance_key, difficulty,
-        quantum_a=PARETO_DISTANCE_QUANTUM_M, quantum_b=DIFFICULTY_QUANTUM, max_items=max_items,
+        quantum_a=pareto_distance_quantum_m(), quantum_b=DIFFICULTY_QUANTUM, max_items=max_items,
     )
     layer_key = np.where(layer >= 0, layer, np.iinfo(np.int32).max)
     keys = (ids, distance_key, difficulty_key, layer_key) if tie_by_distance else (ids, difficulty_key, layer_key)
@@ -346,14 +363,13 @@ def route_passages(
     legs: Sequence[LegCostArrays],
     structure: TurnExpandedStructure,
     path: Sequence[int],
-    rows: Sequence[int],
     distances_m: Sequence[float],
     leg_of_edge: Sequence[int],
     speed_kmh: float,
 ) -> list[EdgePassage]:
     """経路を探索と同じ規則でたどり、区間ごとに時刻ビンと出発からの秒を決める。
 
-    `path`は区間の番号（探索の行）、`rows`は同じ区間の切り出した区間の行、`distances_m`は区間の長さ。
+    `path`は区間の番号（探索の行）、`distances_m`は区間の長さ。
     探索（`domain/routing.py`の前向きDijkstra・A*）はレグの中の経過時間でビンを選ぶ: レグの最初の区間は
     ビン0、次の区間は前の区間を抜けた時点（曲がる待ちを足す前）の経過時間のビン。区間ごとの秒は、探索の
     コストの下地になっている配列（`LegCostArrays.travel_bins_lazy`、走行モデル＋停止の待ち）を
@@ -368,24 +384,27 @@ def route_passages(
     passages: list[EdgePassage] = []
     elapsed = 0.0
     leg_elapsed = 0.0
+    # この区間へ入るときの曲がる待ち。ビンを選んだあとでレグの経過時間へ足す。
+    entry_wait = 0.0
     previous_leg: int | None = None
-    for i, (index, row, distance_m, leg_index) in enumerate(zip(path, rows, distances_m, leg_of_edge)):
+    for i, (index, distance_m, leg_index) in enumerate(zip(path, distances_m, leg_of_edge)):
         leg = legs[leg_index]
         if leg_index != previous_leg:
             leg_elapsed = 0.0
+            entry_wait = 0.0
             previous_leg = leg_index
         bin_count = leg.travel_bins_lazy.shape[0]
         time_bin = time_bin_of(leg_elapsed, leg.bin_seconds, bin_count)
-        seconds = float(leg.travel_seconds_full[row] if bin_count == 1 else leg.travel_bins_lazy[time_bin, index])
+        seconds = float(leg.travel_bins_lazy[time_bin, index])
         if not np.isfinite(seconds):
             seconds = distance_m / fallback_ms
         passages.append(EdgePassage(
             time_bin=time_bin, elapsed_seconds=elapsed, seconds=seconds,
             beyond_bins=bin_count > 1 and leg_elapsed >= bin_count * leg.bin_seconds,
         ))
-        wait = waits[i] if i < len(waits) else 0.0
-        leg_elapsed += seconds + (wait if i + 1 < len(path) and leg_of_edge[i + 1] == leg_index else 0.0)
-        elapsed += seconds + wait
+        leg_elapsed += entry_wait + seconds
+        entry_wait = waits[i] if i < len(waits) else 0.0
+        elapsed += seconds + entry_wait
     return passages
 
 
@@ -450,7 +469,7 @@ def by_closeness_to_target(loops: list[TracedLoop], target_km: float) -> list[Tr
 
 def alternative_via_nodes(cost: np.ndarray, length_m: np.ndarray, reachable: np.ndarray) -> tuple[int, np.ndarray]:
     """目的地ルートの最良路の経由Node（合成コスト最小）と、代替経路の候補にする経由Node
-    （最良路の長さの`ALTERNATIVE_MAX_STRETCH`倍以内）。`reachable`が1つ以上あること。"""
+    （最良路の長さの`alternative_max_stretch`倍以内）。`reachable`が1つ以上あること。"""
     best_index = int(np.argmin(np.where(reachable, cost, np.inf)))
-    within_stretch = reachable & (length_m <= float(length_m[best_index]) * ALTERNATIVE_MAX_STRETCH)
+    within_stretch = reachable & (length_m <= float(length_m[best_index]) * alternative_max_stretch())
     return best_index, np.flatnonzero(within_stretch)

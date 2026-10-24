@@ -13,7 +13,7 @@ import time
 
 import asyncpg
 
-from app.domain.accident import BICYCLE_SQL, FATAL_SQL
+from app.domain.accident import BICYCLE_SQL, FATAL_SQL, nearest_edge_sql
 from app.domain.geo import degrees_covering_m
 from app.infrastructure.source_models import (
     ACCIDENTS_SOURCE_SQL,
@@ -127,18 +127,12 @@ FROM (
 WHERE c.osm_way_id = m.osm_way_id AND c.segment_index = m.segment_index
 """
 
-#: 自転車の関わった事故を、帰属の距離の内で最も近い区間へ1件だけ付ける。鍵の2列は同じ1回の
-#: 探索から取る——別々に探すと、等距離のタイで実在しない組を指しうる。
+#: 自転車の関わった事故を、帰属の距離の内で最も近い区間へ1件だけ付ける。
 _EDGE_ACCIDENTS = f"""
 WITH nearest AS (
     SELECT CASE WHEN {FATAL_SQL} THEN $1 ELSE 1.0 END AS weight, n.osm_way_id, n.segment_index
     FROM {ACCIDENTS_SOURCE_SQL} a
-    CROSS JOIN LATERAL (
-        SELECT e.osm_way_id, e.segment_index FROM road_edges e
-        WHERE e.geom && ST_Expand(a.geom, $2)
-          AND ST_DWithin(e.geom::geography, a.geom::geography, $3)
-        ORDER BY ST_Distance(e.geom::geography, a.geom::geography), e.osm_way_id, e.segment_index
-        LIMIT 1) n
+    CROSS JOIN LATERAL {nearest_edge_sql("$2", "$3")} n
     WHERE {BICYCLE_SQL}
 )
 UPDATE edge_counts m SET accident_count = COALESCE(s.total, 0)

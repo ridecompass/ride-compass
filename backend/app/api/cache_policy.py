@@ -113,6 +113,7 @@ TILE_ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     # 同じURLの内容が変わりうるため`immutable`は付けられない。
     ("/api/region/landcover-tiles/", BATCH_TILE),
     ("/api/region/way-materials/", SHORT),
+    ("/api/region/road-classes/", SHORT),
 )
 #: 地図タイル系の経路の接頭辞。アクセスログの高さを分ける（`infrastructure/request_log.py: access_level`）。
 TILE_PATH_PREFIXES: Final[tuple[str, ...]] = tuple(prefix for prefix, _ in TILE_ROUTE_POLICIES)
@@ -134,6 +135,8 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     ("/api/weather/wbgt", VOLATILE),
     ("/api/weather/flood-forecast", VOLATILE),
     ("/api/weather/amedas", VOLATILE),
+    # ルートの形を本文で送るPOSTで、同じURLの応答を使い回させない。
+    ("/api/weather/route-warning-timeline", NO_STORE),
     # 地点の検索（URLに入力の文字列を含むため入力ごとに別エントリになる）
     ("/api/place-search", MASTER_LOOKUP),
     # 置いた位置の辺り（URLに緯度経度を含むため位置ごとに別エントリになる）

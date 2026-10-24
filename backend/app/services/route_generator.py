@@ -13,12 +13,13 @@
 
 どちらの仕上げも、自由に選ぶ部分（最後の固定点から先）だけがそれまでに走った道を避け、置いた点どうしの区間は素直な道で
 結ぶ。周回か目的地ルートか（種類・名前・最速の基準線）は、目的地の有無ではなく、前段が決めた終点が出発地のNodeか
-（`road_graph_engine.py: FixedLegs.closes`）で分ける——目的地を出発地に置いた要求は、目的地を置かない周回と同じに扱う。
+（`road_graph_context.py: FixedLegs.closes`）で分ける——目的地を出発地に置いた要求は、目的地を置かない周回と同じに扱う。
 
 候補の形は公開軸の重み配分で決まる（例: 自転車インフラの重みを100%にすると、往路が
 自転車インフラ上を通る折返し点ほど上位に選ばれる）。探索・経路計算・評価値の取得は`RoadGraphEngine`へ委譲する。
 """
 
+import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -26,10 +27,11 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from app.domain.stopwatch import elapsed_ms, start_timer
-from app.domain.errors import RoutingError, SearchAreaTooLargeError
+from app.domain.errors import GENERATION_BUSY_MESSAGE, RoutingError, SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.geo import haversine_distance_km
 from app.domain.loop_routing import TracedLoop
 from app.domain.route_request import NOTHING_TO_GENERATE, FixedPoints
+from app.domain.tuning import tuning_value
 from app.domain.route_search import (
     by_closeness_to_target,
     difficulty_order,
@@ -39,7 +41,8 @@ from app.domain.route_search import (
 )
 
 if TYPE_CHECKING:
-    from app.services.road_graph_engine import FixedLegs, RoadGraphEngine, _RoadGraphContext
+    from app.services.road_graph_context import FixedLegs, RoadGraphContext
+    from app.services.road_graph_engine import RoadGraphEngine
 from app.domain.route import (
     BIN_DICT_FIELD_MERGERS,
     Coordinates,
@@ -50,13 +53,6 @@ from app.domain.route import (
 )
 
 logger = logging.getLogger("ridecompass.generate")
-
-# Road Graph取得bboxの半径ヒューリスティック（自由に選ぶ部分の長さに対する比率）。折返し点は往路の
-# 実距離が自由に選ぶ部分の半分付近にあり、直線距離は迂回率のぶんそれより短いため、0.5より小さく取る
-# （比を上げるとbbox面積が二乗で効き、切り出す区間の数に比例するprepareの所要とメモリに響く）。
-# 半径が足りない場合は一対全探索がbboxで自然に切れ、折返し候補が欠けるだけで壊れないため、
-# この値は経験的に調整してよい。
-TURNAROUND_RADIUS_RATIO = 0.4
 
 # 折返し点候補のプール上限: 距離フィルタや復路探索の失敗で落ちる分を見越して
 # max_routesの3倍（下限12・上限40）だけ選定し、合格が`max_routes`件に達した時点で
@@ -71,12 +67,18 @@ def turnaround_pool_size(max_routes: int) -> int:
     return min(_TURNAROUND_POOL_MAX, max(_TURNAROUND_POOL_MIN, max_routes * _TURNAROUND_POOL_FACTOR))
 
 
+def _pool_note(selected: int, pool_size: int) -> str:
+    """生成のログの行の、折返し点のプールの欄。届かなければ不足数を`pool_unfilled`で添える。"""
+    shortfall = pool_size - selected
+    return f"pool={pool_size}" + (f" pool_unfilled={shortfall}" if shortfall > 0 else "")
+
+
 #: 区間から候補単位へ集約する値（載せるフィールド → `segments`から作る関数）。
 #: **集約を1段増やすときはここへ1行足す**（design-principles.md 構造仕様8）。集約は候補の
 #: 並び順・id等を読まないため、呼び出し側がそれらを付ける前でも後でも結果は変わらない。
 #: 辞書のフィールドはビンと同じ畳み方。**categorical材料の延長割合はここで触らない**——`segments`は既に
 #: 約500m単位へ畳まれており、代表値からでは正しい割合を作れない（エンジンがビニングの
-#: 前に計算して`EvaluatedRoute`へ載せている。`road_graph_engine.py: _build_candidate`）。
+#: 前に計算して`EvaluatedRoute`へ載せている。`road_graph_candidates.py: _build_candidate`）。
 #: 軸の生値（`axis_raw_values`）も区間が持たないため、同じくエンジンが載せる。
 SEGMENT_AGGREGATES: dict[str, Callable[[list[Any]], Any]] = {
     # ルート単位の絶対基準。エンジン非依存のため、engine実装側には持たせない。
@@ -150,7 +152,7 @@ class _Finish(Protocol):
     def log_detail(self) -> str: ...
 
     async def select(
-        self, engine: "RoadGraphEngine", context: "_RoadGraphContext", fixed: "FixedLegs",
+        self, engine: "RoadGraphEngine", context: "RoadGraphContext", fixed: "FixedLegs",
     ) -> _Selection: ...
 
 
@@ -173,7 +175,8 @@ class _DistanceFinish:
         # 見積もるので、残りは実際より長く、範囲は広い側に倒れる。経由地が無ければ目標そのもの。
         stops = [origin, *self.points.waypoints]
         fixed_km = sum(haversine_distance_km(a, b) for a, b in zip(stops, stops[1:]))
-        return max(0.0, self.distance_km - fixed_km) * TURNAROUND_RADIUS_RATIO
+        # 半径が足りなければ一対全探索が範囲で切れ、折返し点の候補が欠けるだけで壊れない。
+        return max(0.0, self.distance_km - fixed_km) * tuning_value("search.turnaround_radius_ratio")
 
     @property
     def log_detail(self) -> str:
@@ -182,7 +185,7 @@ class _DistanceFinish:
             f"waypoints={len(self.points.waypoints)} destination={self.points.destination is not None}"
         )
 
-    async def select(self, engine: "RoadGraphEngine", context: "_RoadGraphContext", fixed: "FixedLegs") -> _Selection:
+    async def select(self, engine: "RoadGraphEngine", context: "RoadGraphContext", fixed: "FixedLegs") -> _Selection:
         # 中継点候補を往路の軸的な良さの順に選定する（一対全木、エンジン側）。
         pool_size = turnaround_pool_size(self.max_routes)
         select_started = start_timer()
@@ -198,7 +201,7 @@ class _DistanceFinish:
                 if not self.points.waypoints and fixed.closes
                 else f"置いた地点を通って全長{self.distance_km:.1f}km前後になる経路が見つかりませんでした。"
                 "距離や地点、除外する道路の設定を変えてお試しください。",
-                f"turnarounds=0 select_ms={select_ms}",
+                f"turnarounds=0 {_pool_note(0, pool_size)} select_ms={select_ms}",
             )
 
         # 候補はランク順に逐次処理し、距離フィルタ合格がmax_routes件に達した時点で停止する
@@ -242,7 +245,7 @@ class _DistanceFinish:
         trace_ms = elapsed_ms(trace_started)
 
         summary = (
-            f"turnarounds={len(turnarounds)} examined={examined} trace_failed={failed} "
+            f"turnarounds={len(turnarounds)} {_pool_note(len(turnarounds), pool_size)} examined={examined} trace_failed={failed} "
             f"filtered_out={filtered_out} dedup_skipped={dedup_skipped} select_ms={select_ms} trace_ms={trace_ms}"
         )
         if not traced:
@@ -302,7 +305,7 @@ class _NoDistanceFinish:
             f"max_routes={self.max_routes}"
         )
 
-    async def select(self, engine: "RoadGraphEngine", context: "_RoadGraphContext", fixed: "FixedLegs") -> _Selection:
+    async def select(self, engine: "RoadGraphEngine", context: "RoadGraphContext", fixed: "FixedLegs") -> _Selection:
         """`select_via_nodes`が確定済みの経路だけを返すため、候補ごとの再探索・失敗スキップが無く「選定→評価」の2段で済む。
 
         終点が出発地と違えば、所要時間が最短の経路を基準線として1本含め（件数を切るときも残す。ただし1本だけ返すときは比べる相手が
@@ -360,7 +363,7 @@ class RouteGenerator:
         self.last_destination_correction: Coordinates | None = None
 
     async def _evaluate_and_aggregate(
-        self, context: "_RoadGraphContext", traced: list[TracedLoop], start_time: datetime
+        self, context: "RoadGraphContext", traced: list[TracedLoop], start_time: datetime
     ) -> list[RouteDraft]:
         """エンジンの評価を通し、区間から候補単位へ集約した`RouteDraft`を返す。
 
@@ -395,7 +398,7 @@ class RouteGenerator:
         log_label: str,
         log_detail: str,
         failure_phrase: str,
-    ) -> "_RoadGraphContext | None":
+    ) -> "RoadGraphContext | None":
         """探索の土台を作る。作れなければ、ログと利用者向けの理由を残してNoneを返す。
 
         生成の入口ごとに写経すると、文言を直したときに片方だけ古くなる。**どの入口で
@@ -414,6 +417,14 @@ class RouteGenerator:
             self.last_no_candidates_reason = (
                 "探索範囲の道路が多すぎるため、ルートを生成できませんでした。"
                 "距離を短くするか、経由地・目的地を起点に近づけてお試しください。")
+            return None
+        except SearchMemoryBusyError as exc:
+            logger.warning(
+                "%s origin=%s %s -> search memory busy edges=%d available=%d prepare_ms=%d",
+                log_label, origin_label, log_detail, exc.edges, exc.available,
+                elapsed_ms(started),
+            )
+            self.last_no_candidates_reason = GENERATION_BUSY_MESSAGE
             return None
         except RoutingError as exc:
             logger.warning(
@@ -527,7 +538,7 @@ class RouteGenerator:
         無ければ出発地）で終わらなければならない。
 
         探索はやり直さない（経路は確定済み）が、`prepare`は通る——評価は
-        `_RoadGraphContext`のコスト配列から読むため（design-principles.md 構造仕様10:
+        `road_graph_context.py: RoadGraphContext`のコスト配列から読むため（design-principles.md 構造仕様10:
         Edgeコストは一度だけ計算し、探索と表示が同じ値を共有する）。前半・後半の値を
         混ぜる近似にすると、その共有が壊れる。
         """
@@ -543,7 +554,7 @@ class RouteGenerator:
             return []
 
         try:
-            traced = self._engine.build_traced_from_edge_ids(context, edge_ids, destination)
+            traced = await asyncio.to_thread(self._engine.build_traced_from_edge_ids, context, edge_ids, destination)
         except RoutingError as exc:
             # 経路の形が受け取れない（未知のEdge・つながっていない・起点や終点が違う）。
             # **利用者へ届く理由を捨てない**——ここで素通しすると、呼び出し元の汎用catchが

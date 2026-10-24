@@ -22,8 +22,16 @@ from app.infrastructure import road_network_store
 from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.source_models import PARTY_TYPE_CODES
-from tests.conftest import postgis_database_url, raw_connection
-from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record, zigzag_point
+from tests.conftest import empty_ingested_tables, postgis_database_url, raw_connection
+from tests.source_ingest import (
+    abr_prefecture_record,
+    accident_record,
+    ingest_records,
+    interrupted,
+    point_record,
+    zigzag_point,
+    zigzag_way_record,
+)
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -34,8 +42,9 @@ WAYS = (
 )
 ONEWAY = {"oneway": "yes"}
 DERIVED = tuple(table.name for table in derived_tables())
-#: 派生の表と一緒に空にする記録（段の指紋・世代）。指紋を残すと、空にした表を作り直さずに段を飛ばしうる。
-RECORDS = ("derived_stages", "derived_data_meta")
+#: 道の頂点に立つノード（タグ無し）。
+NODES = tuple(point_record(n, *zigzag_point(n)) for n in range(1, 5))
+SIGNAL_RADIUS = "signal.match_radius_m"
 
 
 _STRUCTURE_SQL = """
@@ -52,8 +61,7 @@ ORDER BY 1, 2, 3
 async def _ingest_ways(conn: asyncpg.Connection, way_100_tags: dict[str, str] | None = None) -> int:
     """`WAYS`を取り込み、`run_id`を返す。`way_100_tags`は道100のタグに足す。"""
     return await ingest_records("osm_way", [
-        way_record(way_id, [zigzag_point(n) for n in node_ids], node_ids,
-                   {**tags, **(way_100_tags or {})} if way_id == 100 else tags)
+        zigzag_way_record(way_id, node_ids, {**tags, **(way_100_tags or {})} if way_id == 100 else tags)
         for way_id, node_ids, tags in WAYS], conn=conn)
 
 
@@ -67,6 +75,12 @@ async def _schemas(conn: asyncpg.Connection) -> set[str]:
     return {row["nspname"] for row in await conn.fetch(
         "SELECT nspname FROM pg_namespace"
         " WHERE nspname NOT LIKE 'pg\\_temp\\_%' AND nspname NOT LIKE 'pg\\_toast\\_temp\\_%'")}
+
+
+async def _empty(conn: asyncpg.Connection) -> None:
+    """生データ・派生の表と一緒に、段の指紋と世代も空にする。指紋を残すと、空にした表を作り直さずに段を飛ばしうる。"""
+    await empty_ingested_tables(conn)
+    await conn.execute("TRUNCATE derived_data_meta")
 
 
 async def _revision(conn: asyncpg.Connection) -> int | None:
@@ -88,8 +102,8 @@ async def derived_before(road_graph_engine, schemas_at_start, road_network_root)
     """
     async with raw_connection() as conn:
         try:
-            await conn.execute("TRUNCATE " + ", ".join((*DERIVED, *RECORDS)) + ", source_features, source_runs CASCADE")
-            await ingest_records("osm_node", [point_record(n, *zigzag_point(n)) for n in range(1, 5)], conn=conn)
+            await _empty(conn)
+            await ingest_records("osm_node", NODES, conn=conn)
             await _ingest_ways(conn)
             await _ingest_addresses(conn)
             assert await derive_cli.run(postgis_database_url()) == 0
@@ -97,7 +111,7 @@ async def derived_before(road_graph_engine, schemas_at_start, road_network_root)
         finally:
             for left in await _schemas(conn) - schemas_at_start:
                 await conn.execute(f'DROP SCHEMA "{left}" CASCADE')
-            await conn.execute("TRUNCATE " + ", ".join((*DERIVED, *RECORDS)) + ", source_features, source_runs CASCADE")
+            await _empty(conn)
 
 
 def _observe_after(stage_name: str, monkeypatch, observe) -> None:
@@ -163,6 +177,29 @@ async def test_a_failed_rebuild_changes_nothing_readers_see(derived_before, sche
     assert await _schemas(derived_before) == schemas_at_start
 
 
+async def test_rerunning_after_a_crash_between_the_swap_and_the_publish_places_the_network_of_the_db_revision(
+        derived_before, monkeypatch):
+    """表を入れ替えたあと道路網を付け替える前に落ちると、どの段も入力が前回と同じのまま世代だけが進む。流し直せば
+    その世代の道路網が置かれ、配信が入れ替えた表と食い違った前の世代の配列を読み続けない。"""
+    await _ingest_ways(derived_before, ONEWAY)
+
+    def crash(pending):
+        raise OSError("付け替えの前に落ちた")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(road_network_store, "publish", crash)
+        with pytest.raises(OSError, match="付け替えの前に落ちた"):
+            await derive_cli.run(postgis_database_url())
+    assert road_network_store.current().revision == 1
+
+    assert await derive_cli.run(postgis_database_url()) == 0
+
+    assert await _revision(derived_before) == 2
+    network = road_network_store.current()
+    assert network.revision == 2
+    assert (100, False) not in set(zip(network.edge_way_id.tolist(), network.edge_forward.tolist(), strict=True))
+
+
 async def _nodes_with_signal(conn: asyncpg.Connection) -> set[int]:
     return {r["osm_node_id"] for r in await conn.fetch(
         "SELECT osm_node_id FROM node_turns WHERE has_traffic_signals"
@@ -182,11 +219,11 @@ async def test_the_signal_radius_set_on_the_admin_screen_decides_which_nodes_get
     assert await _nodes_with_signal(derived_before) == {2}
 
     await derived_before.execute(
-        "INSERT INTO tuning_overrides (param_id, value) VALUES ('signal.match_radius_m', 150.0)")
+        "INSERT INTO tuning_overrides (param_id, value) VALUES ($1, 150.0)", SIGNAL_RADIUS)
     try:
         assert await derive_cli.run(postgis_database_url()) == 0
     finally:
-        await derived_before.execute("DELETE FROM tuning_overrides WHERE param_id = 'signal.match_radius_m'")
+        await derived_before.execute("DELETE FROM tuning_overrides WHERE param_id = $1", SIGNAL_RADIUS)
     assert await _nodes_with_signal(derived_before) == {1, 2, 3}
 
 
@@ -213,8 +250,8 @@ async def test_the_accident_density_is_divided_by_the_years_of_the_import_that_w
         return float(network.numeric_values[network.edge_way_id == 100, column].max())
 
     # 道100の途中のノード2の上で、自転車の関わった事故が1件。
-    accident = point_record("on-way-100", *zigzag_point(2), {
-        "当事者種別（当事者A）": PARTY_TYPE_CODES[PartyType.BICYCLE], "当事者種別（当事者B）": "59", "死者数": "000"})
+    accident = accident_record("on-way-100", *zigzag_point(2), party_a=PARTY_TYPE_CODES[PartyType.BICYCLE],
+                               party_b="59")
     await ingest_records("accident", [accident], conn=derived_before, rows=HonhyoRows(years=[2024]))
     assert await derive_cli.run(postgis_database_url()) == 0
     one_year = density_on_way_100()
@@ -240,16 +277,11 @@ async def test_the_accident_density_is_divided_by_the_years_of_the_import_that_w
 async def test_a_rebuild_records_the_latest_succeeded_import_of_every_source(derived_before):
     """入れ替えた後、全ソースの成功した最新の取込が、今の表を作った取込として記録されている。後から失敗した取込は記録しない。"""
     way_run = await _ingest_ways(derived_before)
-    node_run = await ingest_records("osm_node", [point_record(n, *zigzag_point(n)) for n in range(1, 5)],
-                                    conn=derived_before)
+    node_run = await ingest_records("osm_node", NODES, conn=derived_before)
     address_run = await _ingest_addresses(derived_before)
 
-    def breaks():
-        yield point_record(1, *zigzag_point(1))
-        raise OSError("配信元が途中で切れた")
-
     with pytest.raises(OSError):
-        await ingest_records("osm_node", breaks(), conn=derived_before)
+        await ingest_records("osm_node", interrupted(point_record(1, *zigzag_point(1))), conn=derived_before)
 
     assert await derive_cli.run(postgis_database_url()) == 0
 

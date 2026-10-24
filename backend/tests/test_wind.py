@@ -10,6 +10,7 @@
 - 探索の時刻ビンと区間の風（`SegmentWind`） → `test_leg_costs.py`・`test_route_generation_behavior.py`
 """
 
+import dataclasses
 import math
 from datetime import datetime, timedelta
 
@@ -18,6 +19,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from app.domain.geo import EARTH_RADIUS_KM
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.route import Coordinates
 from app.domain.way_value_formula import way_values_from_formula
@@ -35,10 +37,6 @@ from app.domain.wind import (
 WIND_SPEEDS = st.floats(0.0, 40.0)
 TRAVEL_SPEEDS = st.floats(1.0, 17.0)
 BEARINGS = st.floats(0.0, 360.0)
-
-
-def test_kmh_to_ms():
-    assert kmh_to_ms(36.0) == pytest.approx(10.0)
 
 
 # --- 風の追加負荷 ---
@@ -70,9 +68,10 @@ def test_drag_requires_a_positive_travel_speed():
 T0 = datetime(2026, 7, 1, 9, 0)
 
 
-def _series(hours=3, lattice=None) -> WindForecastSeries:
-    """格子点2つ。風速は「点の番号×100＋時刻の番号」、風向は時刻の番号×10。"""
-    lattice = lattice or MsmBlock(
+def _series() -> WindForecastSeries:
+    """格子点2つ・3時刻。風速は「点の番号×100＋時刻の番号」、風向は時刻の番号×10。"""
+    hours = 3
+    lattice = MsmBlock(
         grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=1.0, d_lon=1.0, n_lat=2, n_lon=2), row0=0, col0=0, rows=1, cols=2,
     )
     points = lattice.size
@@ -95,15 +94,9 @@ def _series(hours=3, lattice=None) -> WindForecastSeries:
 )
 def test_a_series_refuses_values_that_do_not_line_up_with_hourly_times_and_points(broken):
     series = _series()
-    fields = {
-        "times": series.times,
-        "speed_ms": series.speed_ms,
-        "direction_deg": series.direction_deg,
-        "lattice": series.lattice,
-    }
 
     with pytest.raises(ValueError):
-        WindForecastSeries(**{**fields, **broken})
+        dataclasses.replace(series, **broken)
 
 
 def test_sample_picks_the_nearest_hour_for_each_point():
@@ -113,6 +106,15 @@ def test_sample_picks_the_nearest_hour_for_each_point():
 
     assert speed.tolist() == [1.0, 102.0, 101.0]
     assert direction.tolist() == [10.0, 20.0, 10.0]
+
+
+
+@pytest.mark.parametrize(("minutes", "hours"), [(30, 1), (90, 2)])
+def test_a_passage_halfway_between_two_hours_takes_the_later_one(minutes, hours):
+    """毎時30分の通過は、どの時刻でも後の時刻の予報を引く（偶数丸めだと、30分ずつずれた出発が同じ時刻の風になる）。"""
+    times, _ = _series().sampled_times(T0 + timedelta(minutes=minutes), np.zeros(1))
+
+    assert times == [T0 + timedelta(hours=hours)]
 
 
 def test_sample_extends_the_edge_hours_beyond_the_series():
@@ -130,8 +132,8 @@ def test_sample_extends_the_edge_hours_beyond_the_series():
 # --- 通過予定時刻 ---
 
 ANCHOR = Coordinates(latitude=35.0, longitude=139.0)
-#: 緯度1度の大円の長さ（km、地球の半径6371km）。
-KM_PER_DEGREE = 2 * math.pi * 6371.0 / 360
+#: 緯度1度の大円の長さ（km）。
+KM_PER_DEGREE = 2 * math.pi * EARTH_RADIUS_KM / 360
 
 
 @pytest.mark.parametrize(("direction", "expected"), [(1, 5.0), (-1, 1.0)], ids=["離れていく", "向かっていく"])

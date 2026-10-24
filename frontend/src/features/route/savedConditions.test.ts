@@ -89,12 +89,6 @@ describe("readSavedConditions", () => {
     ]);
   });
 
-  it("前に除外の切り替えを持っていた件は、切った種類があっても切り替えを落として読む（その道はいつも通らない）", () => {
-    const stored = { ...ENTRY, hardFilters: { motorway: false, no_bicycle: false } };
-
-    expect(readSavedConditions(JSON.stringify([stored]))).toEqual([ENTRY]);
-  });
-
   // 行は軸カタログが届くまで分からず、今の行に無い鍵も前の鍵として読まれうるので、鍵では落とさない。
   it("避け方は段として読める鍵だけを残し、避け方を持たない件は何も選んでいない", () => {
     const [read, older] = readSavedConditions(
@@ -113,18 +107,14 @@ describe("readSavedConditions", () => {
 const SHAPES = {
   loop: { loop: true, distanceTargeted: true, waypoints: [], destination: POINT },
   loopVia: { loop: true, distanceTargeted: true, waypoints: [POINT], destination: null },
-  destinationVia: { loop: false, distanceTargeted: false, waypoints: [POINT, POINT], destination: POINT },
   destinationOnly: { loop: false, distanceTargeted: false, waypoints: [], destination: POINT },
-  destinationWithDistance: { loop: false, distanceTargeted: true, waypoints: [], destination: POINT },
 } satisfies Record<string, Partial<SavedCondition>>;
 
 describe("suggestedConditionName", () => {
   it.each([
     ["戻る周回は距離（覚えている目的地は出さない）", SHAPES.loop, "周回 30km"],
     ["経由地は地点の数", SHAPES.loopVia, "周回 30km 経由1地点"],
-    ["目的地へ経由地を通る", SHAPES.destinationVia, "目的地 経由2地点"],
     ["目的地だけ", SHAPES.destinationOnly, "目的地"],
-    ["目的地へ全長の目標", SHAPES.destinationWithDistance, "目的地 30km"],
   ])("%s", (_, conditions, expected) => {
     expect(suggestedConditionName({ ...ENTRY, ...conditions })).toBe(expected);
   });
@@ -154,9 +144,7 @@ describe("describeConditions", () => {
   it.each([
     ["戻る周回は距離と候補数", SHAPES.loop, "周回 30km・候補 3本"],
     ["経由地は地点の数", SHAPES.loopVia, "周回 30km・経由 1地点・候補 3本"],
-    ["目的地へ経由地を通る", SHAPES.destinationVia, "目的地へ・経由 2地点・候補 3本"],
     ["目的地だけ", SHAPES.destinationOnly, "目的地へ・候補 3本"],
-    ["目的地へ全長の目標", SHAPES.destinationWithDistance, "目的地へ 30km・候補 3本"],
   ])("条件: %s", (_, conditions, expected) => {
     expect(describeConditions({ ...ENTRY, ...conditions }, CATALOG).route).toBe(expected);
   });

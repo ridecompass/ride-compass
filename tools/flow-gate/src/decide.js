@@ -1,7 +1,8 @@
 // タスクのあるべき姿を、事実だけから1つの決め方で決める。GitHub に触れない。facts は src/facts.js: readFacts が組む。
 // 決め方は2階: 1階（status・table・waiting）が成果物の事実と関係性からステータス（次に結果を出す者の行為）を決め、2階（owner）がその結果だけを
 // 読んで担当者（ボールの持ち主）を決める。2階は前提や日時を読み直さない。見回りも、振り出すかを1階の結果（dispatchKind）で決める。
-// ライフサイクル（docs/conventions/flow.md「issue のライフサイクル」）: issue は自分の約束（完了の条件と、作る側の完了の定義）が全部果たされたら終わる。
+// ライフサイクル（docs/conventions/flow.md「issue のライフサイクル」）: issue は自分の約束（完了の条件と、作る側の完了の定義）が全部果たされ、
+// 本文の「やること」の項目が全部行き先を名指したら終わる。
 // 担当の実行は、状態か約束のどちらかを動かして終わる。どちらも動かさずに終わったらイレギュラーとしてユーザーに渡す。
 // 返すのは、ゲートが保つ値の全部（ステータス・欄「実行の status」・開き閉じ・種類・担当者・本文・問いのラベル・PR をレビュー可能にするか・出す問い・
 // 取り消す実行）。ゲートは今の値と違う所だけを書くので、同じ事実からは何度決めても同じになる。
@@ -62,7 +63,7 @@ export function decide(f, config) {
 
 // 欄「実行の status」: ステータスが指す種類の、動いている実行の status（GitHub の値のまま。無ければ null）。検査は、最も新しい検査の実行の status。
 function runStatus(f, status) {
-  if (status === "検査") return (f.pr ? f.pr.checks : f.mergeChecks).stage.toLowerCase(); // 検査は走っている実行があるときだけ
+  if (status === "検査") return (f.pr ? f.pr.checks : mergeChecks(f)).stage.toLowerCase(); // 検査は走っている実行があるときだけ
   return f.runs.find((r) => r.kind === status)?.status ?? null;
 }
 
@@ -79,23 +80,23 @@ function alive(f, q, config) {
 }
 
 // 受け入れなかった書き込みは、黙らずに1つのコメントで知らせる（形に合わない問い・印の間の見知らぬ行・形の合わない着手可能日時・
-// 事実へ戻したユーザーのボードの移動）と、親が閉じたので閉じた子の理由と、長く動いていない前提の対話作業。最新のコメントが同じ知らせなら書かない。
+// 事実へ戻したユーザーのボードの移動）と、行き先の無い「やること」で閉じなかった理由と、親が閉じたので閉じた子の理由。最新のコメントが
+// 同じ知らせなら書かない。
 function notice(f, status, config) {
   const text = [f.badQuestion.length && `この問いは形が外れているので、回答フォームは回答内容を出さずに、書く欄と次遷移だけで答えを受けます: ${f.badQuestion.join("・")}`,
     splitBody(f.body).foreign.length && "本文の先頭の印の間に、ゲートの書かない行があったので、消さずに印の外へ出しました。",
     // 直るまで続く知らせは、最近のコメントに同じ知らせがあれば重ねない（値が変われば新しく知らせる）。
     f.badStart && !f.comments.some((c) => c.includes(`「${f.badStart}」`)) &&
-      `着手可能日時「${f.badStart}」の形が合わないので受け付けず、その間は振り出しません（\`YYYY-MM-DD HH:MM\` か \`YYYY-MM-DD\`。日本時間）。`,
+      `着手可能日時「${f.badStart}」は暦にある日時として読めないので受け付けず、その間は振り出しません（\`YYYY-MM-DD HH:MM\` か \`YYYY-MM-DD\`。日本時間）。`,
     f.moved && f.status && status !== f.status && `ステータスを「${f.status}」にしましたが、事実から「${status}」に戻しました（ユーザーが直接決められるのは、保留と、完了（完了の条件が全部済んだときの完成か、見送り）だけです）。`,
+    status === "実装" && !f.remaining.length && f.unbound.length && !f.comments.some((c) => c.includes(unboundText(f.unbound))) &&
+      `${unboundText(f.unbound)}ので、完了の条件が全部済んでも完成で閉じず、実装担当へ渡します（\`- 行き先: 完了の条件「<条件の文の頭>」\`・\`#<番号>\`・\`見送り（<理由>）\`）。`,
     f.dead && f.open && `親 #${f.parent.number} が閉じたので、見送りで閉じます。`,
-    // 担当者は Claude なので、ユーザーへ届くようにメンションする。
-    status === "待機" && f.idle.length && !f.comments.some((c) => c.includes(idleText(f.idle, config))) &&
-      `@${config.user} ${idleText(f.idle, config)}。対話作業を終えたなら閉じてください（閉じるまで、このタスクは待ったまま振り出しません）。`,
   ].filter(Boolean).join("\n\n");
   return text && text !== f.comments.at(-1) ? text : null;
 }
 
-const idleText = (idle, config) => `前提の対話作業 ${idle.map((n) => `#${n}`).join("・")} が ${config.dialogIdleHours} 時間より長く動いていません`;
+const unboundText = (names) => `本文の「やること」の ${names.join("・")} が行き先を名指していない`;
 
 // 入口で採否を問う issue: Claude が起こした要望。子と分割元のある切り出しは、採否を親か元から受け継ぐ。
 export const adoptable = (f, config) => f.author === config.claude && f.type === "要望" && !f.parent && !f.origin;
@@ -107,8 +108,9 @@ function status(f, config) {
   // 子は、親の要望が満たされた・やめたら、要らない。持っている実行も取り消す。
   if (f.dead) return { status: "完了", closeAs: "NOT_PLANNED", cancel: f.runs.map((r) => r.id) };
   // 約束が全部果たされたら、どの時点でも完了（PR・前提・子・担当の実行・マージの検査に関係なく）。ユーザーが置いた保留と、Claude がまだ読んで
-  // いないユーザーの文（答えの文・コメント）は待つ。動いている担当の実行は要らないので取り消す。
-  if (!f.remaining.length && f.status !== "保留" && !f.unread) return { status: "完了", closeAs: "COMPLETED", cancel: f.runs.map((r) => r.id) };
+  // いないユーザーの文（答えの文・コメント）は待つ。動いている担当の実行は要らないので取り消す。本文の「やること」に行き先を名指していない
+  // 項目が残る間は、手を付けずに残った項目が消えないよう閉じない（下の rows で実装担当へ渡す）。
+  if (!f.remaining.length && !f.unbound.length && f.status !== "保留" && !f.unread) return { status: "完了", closeAs: "COMPLETED", cancel: f.runs.map((r) => r.id) };
   // 持たれている間は決め直さない。ユーザーが保留へ置いたら、持っている実行を取り消す。1つのタスクを触るのは1者だけなので、同じ issue の実行が
   // 2本以上あれば（振り出した直後で一覧にまだ出ていない間に、もう一度振り出した等）、いちばん古いものを残してほかを取り消す。
   if (f.runs.length) return f.status === "保留" ? { status: "保留", cancel: f.runs.map((r) => r.id) }
@@ -136,6 +138,9 @@ function status(f, config) {
 const held = (f, t) => (DISPATCH.includes(t.status) && waiting(f) ? { ...t, status: "待機" } : t);
 
 // 検査は、走っている間は検査、合格していなければ（不合格か、検査の実行が1本も無い）実装（検査が始まる形で push するのも、直すのも実装担当）。
+// マージのコミットの検査。自分の実行が合格せずに終わったら（落ちた・取り消された）、その変更を判定に入れる後の master の実行（src/facts.js: readFacts の
+// covering）で読む。後の実行がまだ無ければ自分の実行で読む。
+const mergeChecks = (f) => (f.mergeChecks.missed && need(f, "covering")) || f.mergeChecks;
 const unchecked = (c) => ({ status: c.stage && c.stage !== "COMPLETED" ? "検査" : "実装" });
 
 // 1階: 成果物の事実と関係性から、次に結果を出す者の行為を決める（上から最初に当たる行）。次に結果を出すのが、いま手放した担当と
@@ -145,6 +150,8 @@ const table = (f) => {
   return f.ended && t.status === f.ended.kind && !need(f, "ranMoved") ? { status: "回答", ask: "イレギュラー" } : t;
 };
 function rows(f) {
+  // 約束が全部果たされても閉じなかった（「やること」に行き先の無い項目が残る）なら、行き先を書くのは実装担当。
+  if (!f.remaining.length) return { status: "実装" };
   const pr = f.pr;
   if (pr) {
     // 検証担当の差し戻しと、master とのぶつかり（取り込むのは実装担当。検証担当はマージの手前で当たって差し戻すだけになる）。
@@ -155,7 +162,7 @@ function rows(f) {
   if (f.blocked) return { status: "待機" };
   if (f.dropped.length && !need(f, "droppedAsked")) return { status: "回答", ask: { dropped: f.dropped } };
   // 作る側の完了（マージのコミットの検査が通り、本番に出た）も約束のうち。マージのあとの残りは、本番に出てから扱う（本番に出る前に確かめを問わない。原則2）。
-  if (f.merged && !f.mergeChecks.passed) return unchecked(f.mergeChecks);
+  if (f.merged && !mergeChecks(f).passed) return unchecked(mergeChecks(f));
   if (f.remaining.every((c) => c.verify === "ユーザー")) return { status: "回答", ask: "確かめ" };
   return { status: "実装" };
 }

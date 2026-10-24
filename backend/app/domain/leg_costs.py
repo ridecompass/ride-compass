@@ -1,4 +1,4 @@
-"""レグ（基準点・時刻・向き）ごとのコスト配列の合成。
+"""レグ（時刻・向き）ごとのコスト配列の合成。
 
 探索範囲の静的スコア行列・重み・0次フィルタ・風の予報・昼夜から、区間ごとの体感の所要時間（探索のコスト）と、
 区間の表示が読む難易度・軸・材料・所要時間を、時刻ビンごとに合成する。外部とはやり取りせず、配列だけを受け取って配列を返す。
@@ -7,6 +7,7 @@
 「レグ別コスト配列」「レグ内の時刻ビン」節が持つ。
 """
 
+import hashlib
 import logging
 import math
 from collections.abc import Callable, Mapping
@@ -19,16 +20,16 @@ import numpy as np
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import (
-    AXIS_DEFINITIONS,
     REQUEST_DYNAMIC_MATERIAL_IDS,
+    copy_axis_definitions,
     dynamic_axis_topological_order,
     time_scoped_weights,
 )
 from app.domain.cycling_speed import (
-    ROLLING_RESISTANCE_MATERIAL_ID,
     RiderProfile,
     SegmentSpeedModel,
     crr_for_surface,
+    rolling_resistance_material_id,
 )
 from app.domain.difficulty import axis_contributions_at_row, axis_weight_shares_at_row, axis_weighted_sums
 from app.domain.dynamic_materials import DynamicAxisRequestContext, evaluate_dynamic_axis_arrays
@@ -43,6 +44,7 @@ from app.domain.evaluation import (
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates, SegmentWind
+from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.time_zone import jst_local_text
 from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_seconds
 from app.domain.twilight import night_mask
@@ -153,6 +155,11 @@ def _representative_bin(bin_count: int, duration_hours: float | None) -> int:
     return min(bin_count - 1, int((duration_hours / 2) / TIME_BIN_HOURS))
 
 
+def _array_digest(values: np.ndarray) -> str:
+    """配列の中身全体で決まる使い回しの鍵（和のような要約は、並びの違う配列どうしで一致しうる）。"""
+    return hashlib.blake2b(np.ascontiguousarray(values, dtype=float).tobytes(), digest_size=16).hexdigest()
+
+
 def _timed_leg_key(leg_start_hours: float, bin_count: int, duration_hours: float | None) -> tuple:
     """時刻で引き直すレグの使い回しの鍵。代表ビンも入れる——同じ開始時刻・同じビン数でも、
     見込み所要時間が違えば代表（表示が読むビン）は変わりうる。"""
@@ -178,7 +185,7 @@ class _Evaluated:
 
 
 class LegCostComposer:
-    """bbox全体ぶんのコスト配列を、レグ（基準点・時刻オフセット・向き）ごとに合成する。
+    """bbox全体ぶんのコスト配列を、レグ（時刻オフセット・向き）ごとに合成する。
     静的スコア行列・重み・0次フィルタ・lazy_graph行順の対応表はリクエスト内で共通のため
     1回だけ用意する。時刻に依らない計算（走行モデルの出力と一定の抵抗・停止の待ち、時刻で変わる軸に
     重みが無ければ合成の難易度と割増の倍率も）はリクエストに1回だけ求め、時刻ビンごとには
@@ -217,12 +224,14 @@ class LegCostComposer:
             zip(score_matrix.categorical_material_ids, score_matrix.categorical_material_columns, strict=True)
         )
         self._static_axis_scores = score_matrix.axis_arrays()
+        # 合成は`asyncio.to_thread`の先でも走るので、軸の集合は作った時点の写しだけを読む。
+        self._axis_definitions = copy_axis_definitions()
         # 時刻で変わる公開軸（風に依存する軸と、時間帯を持つ軸）と、それ以外。ビンごとの合成では後者の
         # 重み付き和を使い回す——合成の時間は軸数にほぼ比例するため、毎回全軸を足し直すと本数ぶん効く。
-        dynamic_axes = set(dynamic_axis_topological_order(AXIS_DEFINITIONS))
+        dynamic_axes = set(dynamic_axis_topological_order(self._axis_definitions))
         time_scoped_axes = {
             axis_id for axis_id in score_matrix.axis_ids
-            if (definition := AXIS_DEFINITIONS.get(axis_id)) is not None and definition.time_scope != "always"
+            if (definition := self._axis_definitions.get(axis_id)) is not None and definition.time_scope != "always"
         }
         self._time_varying_axis_ids = [
             a for a in score_matrix.axis_ids if a in dynamic_axes or a in time_scoped_axes
@@ -285,8 +294,12 @@ class LegCostComposer:
             return self._travel_inputs_cache
         take = _row_taker(rows)
         distance_m = take(self._score_matrix.distance_m)
-        grade = np.nan_to_num(take(self._static_material_arrays[GRADIENT_PERCENT])) / 100.0
-        surface = self._categorical_material_arrays[ROLLING_RESISTANCE_MATERIAL_ID]
+        # 材料の列はfloat32で持つ。走行モデルの計算はfloat64で行う。
+        grade = np.nan_to_num(take(self._static_material_arrays[GRADIENT_PERCENT]).astype(np.float64)) / 100.0
+        rolling = rolling_resistance_material_id()
+        surface = self._categorical_material_arrays.get(rolling) if rolling is not None else None
+        if surface is None:  # 転がり抵抗の表が分け方を指していない: どの区間も基準の転がり抵抗
+            surface = CategoricalColumn(np.zeros(len(self._score_matrix.distance_m), dtype=np.int16), (None,))
         crr = crr_for_surface(surface if rows is None else surface.take(rows))
         model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=self.speed_kmh), grade, crr)
         stops = np.zeros(len(distance_m))
@@ -316,7 +329,6 @@ class LegCostComposer:
     def compose(
         self,
         label: str,
-        anchor: Coordinates | None,
         offset_hours: float,
         direction: int,
         duration_hours: float | None = None,
@@ -325,8 +337,6 @@ class LegCostComposer:
         """`direction=+1`なら起点から離れていく・`-1`なら向かっていくレグとして、
         そのレグを走る時刻の風でコスト配列を合成する。
 
-        `anchor`は座標の値も在るかどうかも使わない（ログへ出すだけ）——風の予報は起点
-        1地点ぶんを`WeatherService`が既に引いており、ここでは方位だけがEdgeごとに効く。
         時刻で変えるかどうかは`time_varying`（風の時別系列があるか・時間帯を持つ軸に重みがあるか）だけで決まる。
 
         `duration_hours`（このレグに何時間かかる見込みか）を渡すと、レグの中を
@@ -345,7 +355,7 @@ class LegCostComposer:
         if not self.time_varying:
             key: tuple = ("snapshot",)
         elif passage_hours is not None:
-            key = ("passage", round(offset_hours, 3), direction, float(np.nansum(passage_hours)))
+            key = ("passage", round(offset_hours, 3), direction, _array_digest(passage_hours))
         else:
             key = _timed_leg_key(leg_start, bin_count, duration_hours)
         cached = self._cache.get(key)
@@ -403,7 +413,7 @@ class LegCostComposer:
         self._cache[key] = leg
         logger.info(
             "compose_leg_costs leg=%s mode=%s bins=%d reused_bins=%d compose_ms=%d",
-            label, "time_varying" if self.time_varying and anchor is not None else "snapshot",
+            label, "time_varying" if self.time_varying else "snapshot",
             len(bins), reused_bins, elapsed_ms(started),
         )
         return leg
@@ -477,6 +487,7 @@ class LegCostComposer:
             weights = time_scoped_weights(
                 self._weights,
                 {"night_only": night_mask(self._twilight_origin, self.start, hours)},
+                self._axis_definitions,
             )
         dynamic_context = DynamicAxisRequestContext(
             bearing_deg=bearing, departure_wind=self._departure_wind,
@@ -488,7 +499,7 @@ class LegCostComposer:
             self._static_axis_scores if rows is None
             else {axis_id: values[rows] for axis_id, values in self._static_axis_scores.items()}
         )
-        resolved = evaluate_dynamic_axis_arrays(static_scores, dynamic_context)
+        resolved = evaluate_dynamic_axis_arrays(static_scores, dynamic_context, self._axis_definitions)
         wind = dynamic_context.wind_components_ms
         if wind is None:
             headwind = crosswind = np.zeros(len(bearing))
@@ -610,7 +621,8 @@ class LegCostComposer:
         """指定した通過時刻（`None`は出発時点のスナップショット）で1本ぶん合成する。"""
         evaluated = self._evaluate(passage)
         composed, travel = evaluated.composed, evaluated.travel
-        cost_array = np.where(self._excluded, np.inf, self._cost_scale * composed.cost(travel))
+        cost_array = np.where(self._excluded, np.inf, self._cost_scale * composed.cost(travel)).astype(EDGE_VALUE_DTYPE)
+        travel = travel.astype(EDGE_VALUE_DTYPE)
         lazy_cost = cost_array[self._lazy_row_index]
         lazy_travel = travel[self._lazy_row_index]
         return LegCostArrays(

@@ -20,6 +20,7 @@ import re
 import shutil
 import time
 from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import fields
 from pathlib import Path
 from typing import Any
@@ -81,10 +82,13 @@ def _latest_directory() -> Path | None:
 
 def save(network: RoadNetwork) -> Path:
     """置き場を作って書き、同じ形で世代の古い置き場を消す。同じ世代の置き場が既にあれば書かずにそれを返す。"""
-    target = ROOT / directory_name(network.revision)
-    if target.exists():
-        return target
-    return publish(write_pending(network))
+    return placed(network.revision) or publish(write_pending(network))
+
+
+def placed(revision: int | None) -> Path | None:
+    """今の形で`revision`の世代の置き場。無ければNone。"""
+    target = ROOT / directory_name(revision)
+    return target if target.exists() else None
 
 
 def write_pending(network: RoadNetwork, inputs: str | None = None) -> Path:
@@ -92,15 +96,15 @@ def write_pending(network: RoadNetwork, inputs: str | None = None) -> Path:
 
     `inputs`は配列を作った入力の指紋（作り手が決める）。次の作り直しが`reuse_pending`で同じ入力の置き場を探す。
     """
-    temporary = _new_pending(network.revision)
-    values: dict[str, object] = {_INPUTS: inputs}
-    for f in fields(network):
-        value = getattr(network, f.name)
-        if isinstance(value, np.ndarray):
-            np.save(temporary / f"{f.name}.npy", value, allow_pickle=False)
-        else:
-            values[f.name] = value
-    _write_manifest(temporary, values)
+    with _new_pending(network.revision) as temporary:
+        values: dict[str, object] = {_INPUTS: inputs}
+        for f in fields(network):
+            value = getattr(network, f.name)
+            if isinstance(value, np.ndarray):
+                np.save(temporary / f"{f.name}.npy", value, allow_pickle=False)
+            else:
+                values[f.name] = value
+        _write_manifest(temporary, values)
     return temporary
 
 
@@ -116,19 +120,26 @@ def reuse_pending(inputs: str, revision: int) -> Path | None:
     values = _read_manifest(latest)
     if values.get(_INPUTS) != inputs:
         return None
-    temporary = _new_pending(revision)
-    for path in latest.glob("*.npy"):
-        os.link(path, temporary / path.name)
-    _write_manifest(temporary, {**values, "revision": revision})
+    with _new_pending(revision) as temporary:
+        for path in latest.glob("*.npy"):
+            os.link(path, temporary / path.name)
+        _write_manifest(temporary, {**values, "revision": revision})
     return temporary
 
 
-def _new_pending(revision: int | None) -> Path:
+@contextmanager
+def _new_pending(revision: int | None) -> Iterator[Path]:
+    """読み手の拾わない名前のディレクトリを作って渡す。中で落ちたら消す——呼び手は受け取る前なので消せず、
+    片付け（`prune`・`prune_other_shapes`）も名前の形に合わないものを拾わない。"""
     ROOT.mkdir(parents=True, exist_ok=True)
     temporary = ROOT / f".{directory_name(revision)}.tmp-{os.getpid()}"
     shutil.rmtree(temporary, ignore_errors=True)
     temporary.mkdir()
-    return temporary
+    try:
+        yield temporary
+    except BaseException:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
 
 
 def _write_manifest(directory: Path, values: dict[str, object]) -> None:
@@ -184,13 +195,22 @@ def current() -> RoadNetwork:
     """
     global _loaded
     latest = _latest_directory()
+    if _loaded is None or _loaded[0] != latest:
+        try:
+            _loaded = _open_latest()
+        except FileNotFoundError:
+            # 選んでから開くまでに、派生の作り直し（`publish`）が新しい世代へ付け替えて古い置き場を消した。
+            _loaded = _open_latest()
+        logger.info("道路網を読みました %s 有向の区間=%d", _loaded[0].name, _loaded[1].edge_count)
+    return _loaded[1]
+
+
+def _open_latest() -> tuple[Path, RoadNetwork]:
+    latest = _latest_directory()
     if latest is None:
         raise RoadNetworkUnavailableError(
             f"道路網の置き場がありません（{ROOT}、形の署名 {NETWORK_SHAPE}）。scripts/build_road_network.py で作る")
-    if _loaded is None or _loaded[0] != latest:
-        _loaded = (latest, load(latest))
-        logger.info("道路網を読みました %s 有向の区間=%d", latest.name, _loaded[1].edge_count)
-    return _loaded[1]
+    return latest, load(latest)
 
 
 def _as_tuples(value: object) -> object:
@@ -235,8 +255,8 @@ async def ensure_current(session_factory: async_sessionmaker[AsyncSession]) -> P
     async with session_factory() as session:
         repository = RoadGraphRepository(session)
         revision = (await repository.get_data_revisions()).derived
-        target = ROOT / directory_name(revision)
-        if target.exists():
+        target = placed(revision)
+        if target is not None:
             logger.info("道路網の置き場は作成済みです %s", target.name)
             return target
         network = await build(repository, revision)

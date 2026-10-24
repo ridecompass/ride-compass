@@ -3,570 +3,53 @@
 Road Graph（domain/graph.py）とEdge Cost（domain/evaluation.py）を使って、2点間の
 最小コスト経路を探索する。アルゴリズムは教科書どおりのDijkstra/A*で、独自のものは作らない。
 
-探索の状態は**Nodeではなく有向Edge**にする（辺基準グラフ）。右左折の費用はNodeに閉じず
-「どの区間から入ってどの区間へ出るか」で決まるため、Nodeを状態にすると表現できない。
-状態遷移はグラフを物理展開せず既存のCSR（`CsrGraphStructure`）から導く
-（`TurnExpandedStructure`）。
+探索の状態は**Nodeではなく有向Edge**で、遷移は`domain/turn_structure.py: TurnExpandedStructure`が持つ。
 
 2点間探索も一対全の最短経路木も、numbaでJITした探索で求める（優先度キューはnumpy配列の
 バイナリヒープ）。ライブラリ（scipy等）へ委ねられないのは**到達時刻をラベルとして
 持ち回る**ためで、コストが辺の静的な属性である前提のライブラリでは時刻で変わるコストを
 表せない。
 
+Pythonから呼ぶ探索のJITはGILを放してコンパイルする（`nogil=True`）。`asyncio.to_thread`で流す間も
+イベントループとほかの生成の探索が動くので、探索は渡された配列を読むだけにし、書く配列は関数の中で作る。
+
 Route Engineは、Costの中身（勾配がきつい、路面が悪い等）を一切知らない。ここで扱うのは
 Road Graphのトポロジーと、既に計算済みのEdge Costのみ。
 """
 import logging
 import math
-from collections.abc import Callable, Container, Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from enum import IntEnum
-from typing import TypeVar
 
 import numpy as np
 from numba import njit
 from app.domain.stopwatch import elapsed_ms, start_timer
-from app.domain.geo import LatLonPoint, bearing_between, haversine_distance_km_array, km_per_degree_longitude
-from app.domain.route import Coordinates
-from app.domain.traffic import MAJOR_CROSSING_MIN_RANK
-from app.domain.tuning import tuning_value
+from app.domain.search_graph import (
+    EDGE_VALUE_DTYPE,
+    SEARCH_INDEX_DTYPE,
+    CsrGraphStructure,
+    build_lazy_road_graph,
+    build_search_graph_statics,
+    run_starts,
+)
+from app.domain.turn_structure import TurnExpandedStructure, build_turn_expanded_structure, current_turn_cost
 
 logger = logging.getLogger("ridecompass.graph")
 
 
-@dataclass
-class LazyRoadGraph:
-    """探索グラフのトポロジ表現。
-
-    Node・区間とも番号で扱う。区間の番号（`edge_rows`の添字）は探索の状態でもあり、
-    `(始点, 終点)`の昇順に並ぶ。コストは持たない——リクエストごとに変わるため、探索へは別に
-    合成した配列を渡す。同じノード対を結ぶ並行区間は、元の行（`edge_rows`の値）が最も小さい
-    1本だけを残す。
-    """
-
-    node_count: int
-    # 区間の番号→元の区間の行（探索範囲の材料・スコア行列の行）。
-    edge_rows: np.ndarray
-    edge_from: np.ndarray
-    edge_to: np.ndarray
-
-
-def build_lazy_road_graph(edge_from: np.ndarray, edge_to: np.ndarray, node_count: int) -> LazyRoadGraph:
-    """区間の始点・終点（元の行の順）から`LazyRoadGraph`を組む（Hard Constraint自体は
-    評価しない。除外は呼び出し元がcost=math.infで表現する）。
-
-    並行区間の解消はコストに依らず決める——コストはリクエストごとに変わるため、トポロジを
-    組む時点では決められない。
-    """
-    tail = np.asarray(edge_from, dtype=np.int64)
-    head = np.asarray(edge_to, dtype=np.int64)
-    keys = tail * node_count + head
-    order = np.lexsort((np.arange(len(keys)), keys))
-    kept = order[_run_starts(keys[order])]
-    return LazyRoadGraph(node_count=node_count, edge_rows=kept, edge_from=tail[kept], edge_to=head[kept])
-
-
-def _run_starts(sorted_values: np.ndarray) -> np.ndarray:
-    """並べ替えた配列で、同じ値が続く並びの先頭の位置を真にした真偽配列。"""
-    first = np.ones(len(sorted_values), dtype=bool)
-    first[1:] = sorted_values[1:] != sorted_values[:-1]
-    return first
-
-
 # --- 一対全最短経路木（フロンティア方式の周回生成の共通基盤） ---
 
-
-# CSRのindptr/indices/entry_edge_indexに使うdtype。Node数・Edge数はint32の値域に対して
-# 桁違いに小さく、生成1回ぶんの一時的なメモリを半減できる。
-_CSR_INDEX_DTYPE = np.int32
 
 # 優先度キューの初期容量（種の数＋この余裕）。満杯になれば倍へ伸びるため上限を当てる必要は
 # 無く、**当ててはいけない**——コストが時刻で変わると押し込み回数が遷移数で頭打ちにならない。
 # 小さく始めることで、伸長の経路が普通の探索で毎回通る（使われない分岐にしない）。
 HEAP_INITIAL_SLACK = 64
 
-
-@dataclass
-class CsrGraphStructure:
-    """`LazyRoadGraph`と同じNode/区間の番号を持つCSR（圧縮行格納）表現の**構造のみ**。
-
-    Edge重み（コスト）はリクエストごとに変わるため持たず、`entry_edge_index`が
-    CSRエントリ順とコスト配列の行順を結ぶ。各行の中は終点の昇順（`edge_index_between`が二分探索する）。
-    """
-
-    node_count: int
-    # 標準CSR: 行（from Node index）ごとのエントリ範囲。長さnode_count+1。
-    indptr: np.ndarray
-    # CSRエントリ順のto Node index（各行内で昇順）。
-    indices: np.ndarray
-    # CSRエントリ順→区間の番号（コスト配列の並べ替えに使う）。
-    entry_edge_index: np.ndarray
-
-
-def _build_csr_structure(lazy_graph: LazyRoadGraph) -> CsrGraphStructure:
-    """`LazyRoadGraph`（区間は`(始点, 終点)`の昇順）からCSR構造を組む。"""
-    node_count = lazy_graph.node_count
-    indptr = np.zeros(node_count + 1, dtype=_CSR_INDEX_DTYPE)
-    np.cumsum(np.bincount(lazy_graph.edge_from, minlength=node_count), out=indptr[1:])
-    return CsrGraphStructure(
-        node_count=node_count,
-        indptr=indptr,
-        indices=lazy_graph.edge_to.astype(_CSR_INDEX_DTYPE),
-        entry_edge_index=np.arange(len(lazy_graph.edge_to), dtype=_CSR_INDEX_DTYPE),
-    )
-
-
-def edge_index_between(csr: CsrGraphStructure, tail: int, head: int) -> int | None:
-    """`tail`→`head`の区間の番号。無ければNone（一方通行の逆向き等）。"""
-    start, stop = int(csr.indptr[tail]), int(csr.indptr[tail + 1])
-    position = start + int(np.searchsorted(csr.indices[start:stop], head))
-    if position < stop and csr.indices[position] == head:
-        return int(csr.entry_edge_index[position])
-    return None
-
-
-@dataclass
-class SearchGraphStatics:
-    """探索用グラフの静的な派生物一式。リクエストごとに変わる値（コスト配列）は含めない。"""
-
-    csr: CsrGraphStructure
-    # 区間の番号順の実距離（m）。一対全木に沿った実距離の積算
-    # （`TurnExpandedTree.state_length_m`）と重複率（`select_diverse_by_overlap`）に使う。
-    edge_length_m: np.ndarray
-
-
-def build_search_graph_statics(lazy_graph: LazyRoadGraph, distance_m: np.ndarray) -> SearchGraphStatics:
-    """探索用の静的な派生物一式を組む。`distance_m`は元の行の順の区間の長さ。"""
-    return SearchGraphStatics(
-        csr=_build_csr_structure(lazy_graph),
-        edge_length_m=np.asarray(distance_m, dtype=float)[lazy_graph.edge_rows],
-    )
-
-def overlap_ratio(candidate_edges: np.ndarray, accepted_edges: np.ndarray, edge_length_m: np.ndarray) -> float:
-    """`candidate_edges`（Edge index配列）のうち`accepted_edges`と共有する部分の距離加重
-    割合（0〜1）。候補1件対採用済み1件向けの定義。
-
-    `select_diverse_by_overlap`の間引き本体はこれを呼ぶ（同じ定義を2箇所に書かない
-    ——書けば、片方だけ変えても何も落ちない）。
-    """
-    if len(candidate_edges) == 0:
-        return 0.0
-    lengths = edge_length_m[candidate_edges]
-    return _shared_ratio(lengths, np.isin(candidate_edges, accepted_edges))
-
-
-def _shared_ratio(lengths: np.ndarray, shared_mask: np.ndarray) -> float:
-    """共有部分の距離加重割合。`overlap_ratio`と間引き本体が共有する唯一の定義。"""
-    return float(lengths[shared_mask].sum()) / float(lengths.sum())
-
-
-T = TypeVar("T")
-
-
-def _pareto_front_mask(
-    minimize_a: np.ndarray,
-    minimize_b: np.ndarray,
-    *,
-    quantum_a: float,
-    quantum_b: float,
-) -> np.ndarray:
-    """2つの「小さいほど良い」指標について、パレート非劣解（他のどの候補にも両方で
-    負けていない候補）を示す真偽配列を返す。
-
-    候補iが劣解になるのは「aもbもi以下で、少なくとも一方が真に小さい候補jが存在する」
-    とき。ルート候補では距離と難易度がこの2指標にあたり、劣解＝「より短くてより易しい
-    候補が他にあるので誰も選ぶ理由がない」を意味する。2指標を1つのスコアへ合成しない
-    ため、重み配分という恣意的なパラメータを持たずに済む。
-
-    `quantum_a`/`quantum_b`は「実質同じ」とみなす粒度で、比較の前に各指標をこの単位へ
-    丸める（例: 距離200m・難易度0.1）。粒度を持たせないと、1m短いだけの候補が互いに
-    非劣解として全件残りフィルタとして機能しない——逆に粗すぎると候補が減りすぎるため、
-    呼び出し側が指標の意味に応じて決める。
-
-    計算量はO(n log n)（aの昇順に走査しbの最小値を更新するだけ）。同値の扱いを含めて
-    決定的で、入力順には依存しない。
-    """
-    a = np.round(np.asarray(minimize_a, dtype=float) / quantum_a)
-    b = np.round(np.asarray(minimize_b, dtype=float) / quantum_b)
-    # aの昇順（同値内はbの昇順）に走査し、「自分より真に前にある点」の最小bと比べる。
-    # 丸めた結果aもbも完全に同値になった点同士は互いを支配しないため、同じグループとして
-    # まとめて同じ判定にする（1つだけ残す形にすると、完全に対称な候補群——例えば起点から
-    # 全方位が等距離・同難易度の地形——が層へばらけ、後段の方位分散[prefer]が働く同点
-    # グループを壊してしまう）。
-    order = np.lexsort((b, a))
-    sorted_a, sorted_b = a[order], b[order]
-    group_starts = np.flatnonzero(_run_starts(sorted_a) | _run_starts(sorted_b))
-    group_b = sorted_b[group_starts]
-    prefix_min = np.minimum.accumulate(group_b)
-    # 自分のグループより前のグループにおける最小b。先頭は比較対象が無いため+inf。
-    best_before_group = np.concatenate(([np.inf], prefix_min[:-1]))
-    group_lengths = np.diff(np.append(group_starts, len(sorted_a)))
-    best_before = np.repeat(best_before_group, group_lengths)
-    is_front_sorted = sorted_b < best_before
-    mask = np.zeros(len(a), dtype=bool)
-    mask[order[is_front_sorted]] = True
-    return mask
-
-
-def pareto_layer_index(
-    minimize_a: np.ndarray,
-    minimize_b: np.ndarray,
-    *,
-    quantum_a: float,
-    quantum_b: float,
-    max_items: int,
-) -> np.ndarray:
-    """各点が第何層のパレートフロントに属するかを返す（非優越ソート、0始まり）。
-    層に入らなかった点は-1。
-
-    第1層（`_pareto_front_mask`が返す非劣解）だけでは候補が2〜3件にしかならない
-    ——2次元のパレートフロントは点の数が増えてもほとんど大きくならないため。第1層を
-    取り除いた残りで再びフロントを求める、を繰り返して層を作ることで、必要な件数
-    （`max_items`）ぶんがすべてトレードオフ構造で並ぶ。
-
-    `max_items`件に達した層で打ち切る（それ以降の層は計算しない）。
-
-    **計算量の要点**: 全点をそのまま繰り返しフロント判定にかけると層の数×O(n log n)に
-    なり、リングが数万件規模だと無視できない時間になる。aを`quantum_a`で丸めた各段階に
-    ついて、bの小さい順に`max_items`件を超える点は層`max_items`以降にしか入りえない
-    （同じ段階でbがより小さい点がk個あればそれらがすべて自分を支配するため層番号はk以上に
-    なる）ので、先に落としてから層を作る。
-    """
-    n = len(minimize_a)
-    layer = np.full(n, -1, dtype=np.int32)
-    if n == 0 or max_items <= 0:
-        return layer
-    a = np.asarray(minimize_a, dtype=float)
-    b = np.asarray(minimize_b, dtype=float)
-    # 層max_items未満に入りえない点を先に落とす（上記「計算量の要点」参照）。落とす単位は
-    # 点ではなく「aの段階×bの丸め値」のグループ——同値の点同士は互いを支配しないため
-    # 同じ層に入る。点単位で数えると、完全に対称な候補群（全方位が等距離・同難易度の
-    # 地形）がmax_items件で切られ、残りが層に入れないまま最後尾へ回ってしまう。
-    bins = np.round(a / quantum_a).astype(np.int64)
-    b_quantized = np.round(b / quantum_b).astype(np.int64)
-    order = np.lexsort((np.arange(n), b_quantized, bins))
-    sorted_bins, sorted_bq = bins[order], b_quantized[order]
-    is_new_bin = _run_starts(sorted_bins)
-    group_index = np.cumsum(is_new_bin | _run_starts(sorted_bq)) - 1
-    bin_starts = np.flatnonzero(is_new_bin)
-    first_group_of_bin = np.repeat(group_index[bin_starts], np.diff(np.append(bin_starts, n)))
-    keep = order[group_index - first_group_of_bin < max_items]
-
-    remaining = keep
-    assigned = 0
-    for index in range(max_items):
-        if len(remaining) == 0:
-            break
-        mask = _pareto_front_mask(a[remaining], b[remaining], quantum_a=quantum_a, quantum_b=quantum_b)
-        layer[remaining[mask]] = index
-        assigned += int(mask.sum())
-        if assigned >= max_items:
-            break
-        remaining = remaining[~mask]
-    return layer
-
-
-def select_diverse_by_overlap(
-    items: Sequence[T],
-    edge_indices_of: Callable[[T], Sequence[int] | None],
-    edge_length_m: np.ndarray,
-    max_overlap_ratios: Sequence[float],
-    max_count: int,
-    is_compatible: Callable[[T, list[T]], bool] | None = None,
-    *,
-    tie_groups: Sequence[Sequence[T]] | None = None,
-    prefer: Callable[[Sequence[T], list[T]], Sequence[T]] | None = None,
-) -> list[T]:
-    """ランク順の`items`を先頭から貪欲に採用し、採用済みのいずれかと経路の重複率
-    （候補側の距離加重、`overlap_ratio`と同じ定義）が閾値を超えるもの、または
-    `is_compatible(item, 採用済みリスト)`がFalseのものを飛ばして`max_count`件まで返す
-    （多様性間引き）。`edge_indices_of`がNoneを返すitemは対象外として飛ばす。
-
-    `max_overlap_ratios`は先頭から順に試す閾値列。ある閾値のパスで重複率だけを理由に
-    飛ばした候補は、次の（より緩い）閾値のパスで再検査する——`is_compatible`がFalse・
-    経路が無い（Noneを返す）ために飛ばした候補は、閾値を緩めても結果が変わらないため
-    再検査しない。`max_count`件に達すれば以降の閾値は試さない。決定的（入力順と同じ
-    規則でしか選ばない）。
-
-    `tie_groups`を渡すと`items`の代わりに「同点グループ列」（ランク順に並んだグループの
-    列、各グループは順位の付かない同点候補の集合）を走査する。グループ内の試行順は
-    `prefer(残り候補, 採用済みリスト)`が返す順で、1件採用するたびに（採用済みが変わった
-    時点で）残り候補に対して呼び直す——「採用済み候補に対してどれだけ離れているか」の
-    ような、採用済み集合に依存する優先順を、走査した候補の数ではなく採用件数
-    （`max_count`以下）の回数だけ計算すれば済むようにするため。`prefer`が無ければ
-    グループ内は与えられた順。`tie_groups`無しの呼び出しは各itemを1件のグループとして
-    扱うため挙動は変わらない。
-
-    重複率は採用済み候補ごとの集合をEdgeごとのuint64ビットマスク1本（bit `i` が「採用済み
-    `i`件目がこのEdgeを含む」を表す）で持ち、候補のEdge index配列で行を抜き出して
-    距離加重和を1回のnumpy演算で求める。そのため`max_count`はuint64の64bitを超えられない。
-    """
-    if max_count > 64:
-        raise ValueError(f"select_diverse_by_overlap: max_count={max_count} exceeds the uint64 bitmask limit (64)")
-    selected: list[T] = []
-    edge_bits = np.zeros(len(edge_length_m), dtype=np.uint64)
-    slot_bits = np.uint64(1) << np.arange(max(max_count, 1), dtype=np.uint64)
-
-    def try_accept(item: T, edges: Sequence[int], max_overlap_ratio: float, rejected: list[T] | None) -> bool:
-        edge_array = np.asarray(edges, dtype=np.int64)
-        if len(selected):
-            lengths = edge_length_m[edge_array]
-            candidate_bits = edge_bits[edge_array]
-            shared_mask = (candidate_bits[:, None] & slot_bits[: len(selected)]) != 0
-            ratios = [
-                _shared_ratio(lengths, shared_mask[:, slot]) for slot in range(len(selected))
-            ]
-            if any(ratio > max_overlap_ratio for ratio in ratios):
-                if rejected is not None:
-                    rejected.append(item)
-                return False
-        edge_bits[edge_array] |= slot_bits[len(selected)]
-        selected.append(item)
-        return True
-
-    groups: list[list[T]] = (
-        [list(group) for group in tie_groups] if tie_groups is not None else [[item] for item in items]
-    )
-    for ratio_index, max_overlap_ratio in enumerate(max_overlap_ratios):
-        is_last_ratio = ratio_index == len(max_overlap_ratios) - 1
-        rejected_groups: list[list[T]] | None = None if is_last_ratio else []
-        for group in groups:
-            if len(selected) >= max_count:
-                break
-            rejected_in_group: list[T] | None = None if is_last_ratio else []
-            remaining: list[T] = group
-            while remaining and len(selected) < max_count:
-                ordered = list(prefer(remaining, selected)) if prefer is not None else remaining
-                accepted_at: int | None = None
-                for position, item in enumerate(ordered):
-                    if len(selected) >= max_count:
-                        break
-                    if is_compatible is not None and not is_compatible(item, selected):
-                        continue
-                    edges = edge_indices_of(item)
-                    # 空は「どれとも重複しない候補」ではなく「経路にならない」。Noneと同じ扱い。
-                    if not edges:
-                        continue
-                    if try_accept(item, edges, max_overlap_ratio, rejected_in_group):
-                        accepted_at = position
-                        break
-                if accepted_at is None:
-                    break
-                # 採用より前に飛ばした候補は、採用済みが増えても結果が変わらない（重複率は
-                # 増える一方、非互換・経路無しは不変）ため残り候補から外す。
-                remaining = ordered[accepted_at + 1:]
-            if rejected_groups is not None and rejected_in_group:
-                rejected_groups.append(rejected_in_group)
-        if len(selected) >= max_count or not rejected_groups:
-            break
-        groups = rejected_groups
-    return selected
-
-
-@dataclass
-class NodeSpatialIndex:
-    """緯度経度の総当たり線形探索を高速化するグリッドバケット索引。
-
-    `RoadGraphEngine`は1リクエストの同じRoad Graphに対し、指定地点に最も近いNodeを探す
-    呼び出しを繰り返す。ノード数が増えるとその繰り返しが線形探索×回数ぶん積み上がるため、
-    索引を1回だけ構築して使い回す。
-    """
-
-    # ノード番号順の座標（索引に載らないノードも含む）。
-    latitude: np.ndarray
-    longitude: np.ndarray
-    #: 候補のノード番号をセルの順（`cell_bounds`の範囲を緯度・経度の順に行優先で数えた番号）に並べたもの。
-    #: 同じセルの中は番号の昇順。
-    cell_nodes: np.ndarray
-    #: セルの番号`k`のノードは`cell_nodes[cell_starts[k]:cell_starts[k + 1]]`。問い合わせはセルを1つずつ
-    #: 引くため、numpyの要素を1つずつ取り出すより速いlistで持つ。
-    cell_starts: list[int]
-    #: 非空セルが占める範囲（最小・最大のセル座標）。Nodeが1つも無ければNone。
-    #: **探索の打ち切りに要る**——この外側にはどれだけ広げてもセルが1つも無い。
-    #: 既定値を持たせない: 省略できると、渡し忘れた索引が黙って「Nodeが無い」ふるまいに
-    #: なる（`build_node_spatial_index`が唯一の作り手）。
-    cell_bounds: tuple[int, int, int, int] | None
-
-
-# 1セルの一辺（度）。緯度で約1.1km四方。探索半径を広げるコストとバケット数のトレードオフを
-# 取った経験的な値で、極端に不適切でなければ結果は変わらない（速さだけが変わる）。
-_NODE_INDEX_CELL_SIZE_DEG = 0.01
-#: 索引が覆う範囲のどれだけ外側までを「隣」として許すか（セル数）。範囲の縁をわずかに
-#: 外した点まで弾くと、読み込んだ地図の端をクリックしただけでスナップできなくなる。
-_NEIGHBOR_CELL_TOLERANCE = 1
-
-
-def build_node_spatial_index(
-    latitude: np.ndarray,
-    longitude: np.ndarray,
-    candidates: np.ndarray | None,
-) -> NodeSpatialIndex:
-    """ノードの座標からグリッドバケット索引を構築する。ノードが1つも無くても空の
-    索引を返す（`find_nearest_node_indexed`がNoneを返す）。
-
-    `candidates`（ノード番号順の真偽）を渡すと、真のノードだけを索引の候補にする（Hard
-    Constraint通過後に孤立するNodeを最近傍探索から外すために使う）。
-    """
-    latitude = np.asarray(latitude, dtype=np.float64)
-    longitude = np.asarray(longitude, dtype=np.float64)
-    ids = np.arange(len(latitude)) if candidates is None else np.flatnonzero(candidates)
-    if len(ids) == 0:
-        return NodeSpatialIndex(
-            latitude=latitude, longitude=longitude,
-            cell_nodes=ids, cell_starts=[0], cell_bounds=None,
-        )
-    # セルの座標は問い合わせと同じ`floor(度 / セルの一辺)`で求める。整数値のまま浮動小数で
-    # 番号まで組み、整数へは最後に1回だけ直す（値は2**53より十分小さく、どの段も丸めない）。
-    row = latitude[ids]
-    np.floor(np.divide(row, _NODE_INDEX_CELL_SIZE_DEG, out=row), out=row)
-    column = longitude[ids]
-    np.floor(np.divide(column, _NODE_INDEX_CELL_SIZE_DEG, out=column), out=column)
-    bounds = (int(row.min()), int(column.min()), int(row.max()), int(column.max()))
-    width = bounds[3] - bounds[1] + 1
-    cell_count = (bounds[2] - bounds[0] + 1) * width
-    row -= bounds[0]
-    row *= width
-    column -= bounds[1]
-    cell = (row + column).astype(np.int64)
-    order = _stable_order_of_cells(cell, cell_count)
-    counts = np.bincount(cell, minlength=cell_count)
-    return NodeSpatialIndex(
-        latitude=latitude, longitude=longitude,
-        cell_nodes=ids[order], cell_starts=[0, *np.cumsum(counts).tolist()], cell_bounds=bounds,
-    )
-
-
-def _stable_order_of_cells(cell: np.ndarray, cell_count: int) -> np.ndarray:
-    """`0`以上`cell_count`未満のセルの番号を昇順に並べる添字（同じ番号の中は元の順を保つ）。
-
-    16ビットずつ下の桁から安定に並べ直す（LSDの基数ソート）。numpyは16ビット以下の整数を
-    安定に並べるときだけ基数ソートを使い、それより広い整数では比較ソートになる——セルの番号を
-    そのまま並べると、組む費用の大半がこの並べ替えになる。
-    """
-    order = np.argsort((cell & 0xFFFF).astype(np.uint16), kind="stable")
-    shift = 16
-    while (cell_count - 1) >> shift:
-        digit = ((cell[order] >> shift) & 0xFFFF).astype(np.uint16)
-        order = order[np.argsort(digit, kind="stable")]
-        shift += 16
-    return order
-
-
-def find_nearest_node_indexed(
-    index: NodeSpatialIndex,
-    point: Coordinates,
-    allowed: np.ndarray | None = None,
-    *,
-    max_distance_km: float,
-) -> int | None:
-    """`build_node_spatial_index`が作った索引を使い、指定地点に最も近いNodeを総当たり
-    より高速に探す。
-
-    グリッドバケットを中心セルから外側へリング状に広げながら探索し、既知の最近傍距離が
-    「まだ調べていない外側リングのどの点までの距離よりも近い」と保証できた時点で打ち切る
-    （標準的なグリッド最近傍探索の安全な停止条件）。安全マージンには経度方向（cos補正込み、
-    高緯度ほど1度あたりの物理距離が短くなる）の1度あたり距離を使う——経度方向のセルは
-    緯度方向より常に狭い（赤道上でのみ等しい）ため、緯度方向の距離をそのまま安全マージンに
-    使うと、実際にはまだ調べていない経度方向のセルの方が近い可能性があるのに打ち切って
-    しまう。
-
-    `allowed`（ノード番号順の真偽）を渡すと、偽のNodeを最近傍候補から除外する（目的地ルートで
-    一番近いNodeがメインの道路網から孤立している場合に、アクセス可能な最寄りNodeへ
-    改めて絞り込むために使う）。停止条件は「見つかった最近傍（`allowed`が真のもの
-    限定）の距離」を基準にするため、除外対象があっても安全性は変わらない。
-
-    **`allowed`が1つも真にならないとき、上の停止条件は成立しない。** そのため半径は
-    索引が占める範囲の外へ出た時点でも打ち切る——その外側にはどれだけ広げてもセルが
-    1つも無く、走査は結果を変えずに時間だけを使う。
-
-    索引が覆う範囲の外を指した点はNoneを返す（`_NEIGHBOR_CELL_TOLERANCE`セルだけ外側まで
-    は許す。範囲の縁をわずかに外した点は、すぐ隣にある道へ寄せるのが自然なため）。
-    **この判定が無いと、何十kmも離れた道へ黙って寄せた結果を返す**——呼び出し側はそれを
-    「利用者が指した地点」として扱うため、指した覚えのない場所を通るルートになる。
-
-    `max_distance_km`より遠いNodeは返さない（Noneになる）。探索するリング数もその距離ぶんで
-    打ち切るため、`allowed`が1つも真にならない場合の走査量も同時に抑えられる。
-
-    戻り値はノード番号。
-    """
-    if index.cell_bounds is None:
-        return None
-
-    cell_lat = math.floor(point.latitude / _NODE_INDEX_CELL_SIZE_DEG)
-    cell_lon = math.floor(point.longitude / _NODE_INDEX_CELL_SIZE_DEG)
-    # 経度方向1度あたりの物理距離（cos補正込み）を安全マージンに使う——2方向のうち
-    # 常に短い（＝より保守的な）方でなければ、リング内に未探索の近い点が残りうる。
-    cell_size_km_lower_bound = _NODE_INDEX_CELL_SIZE_DEG * km_per_degree_longitude(point.latitude)
-
-    nearest_node: int | None = None
-    nearest_distance: float | None = None
-    radius = 0
-    # 検索セルから、非空セルが占める範囲の一番遠い角までのリング数。ここを超えると
-    # どのリングも空になる。
-    min_cell_lat, min_cell_lon, max_cell_lat, max_cell_lon = index.cell_bounds
-    if (
-        cell_lat < min_cell_lat - _NEIGHBOR_CELL_TOLERANCE
-        or cell_lat > max_cell_lat + _NEIGHBOR_CELL_TOLERANCE
-        or cell_lon < min_cell_lon - _NEIGHBOR_CELL_TOLERANCE
-        or cell_lon > max_cell_lon + _NEIGHBOR_CELL_TOLERANCE
-    ):
-        return None
-    height, width = max_cell_lat - min_cell_lat + 1, max_cell_lon - min_cell_lon + 1
-    max_radius = max(
-        abs(cell_lat - min_cell_lat),
-        abs(cell_lat - max_cell_lat),
-        abs(cell_lon - min_cell_lon),
-        abs(cell_lon - max_cell_lon),
-    )
-    # 1セルの物理的な最小の幅で割る（切り上げ）。最小で割ることで、まだ範囲内にある
-    # Nodeをリング不足で取りこぼさない。
-    max_radius = min(max_radius, math.ceil(max_distance_km / cell_size_km_lower_bound) + 1)
-    while radius <= max_radius:
-        for dx in range(-radius, radius + 1):
-            for dy in range(-radius, radius + 1):
-                if max(abs(dx), abs(dy)) != radius:
-                    continue  # 内側のリングは前回までのループで調べ済み
-                row, column = cell_lat + dx - min_cell_lat, cell_lon + dy - min_cell_lon
-                if not (0 <= row < height and 0 <= column < width):
-                    continue
-                cell = row * width + column
-                start, stop = index.cell_starts[cell], index.cell_starts[cell + 1]
-                if start == stop:
-                    continue
-                nodes = index.cell_nodes[start:stop]
-                if allowed is not None:
-                    nodes = nodes[allowed[nodes]]
-                    if len(nodes) == 0:
-                        continue
-                distances = haversine_distance_km_array(index.latitude[nodes], index.longitude[nodes], point)
-                best = int(np.argmin(distances))
-                if nearest_distance is None or distances[best] < nearest_distance:
-                    nearest_distance = float(distances[best])
-                    nearest_node = int(nodes[best])
-        if nearest_distance is not None and radius * cell_size_km_lower_bound >= nearest_distance:
-            break
-        radius += 1
-    if nearest_distance is None or nearest_distance > max_distance_km:
-        return None
-    return nearest_node
-
-
-def snap_to_accessible_node(
-    index: NodeSpatialIndex, accessible: np.ndarray, point: Coordinates, max_snap_km: float,
-) -> tuple[int, bool] | None:
-    """利用者が置いた点を、`max_snap_km`以内で、そこから出て戻れるNode（`accessible`が真）へ寄せる。
-
-    一番近いNodeが出て戻れればそのNode、そうでなければ一番近い出て戻れるNode（2つ目の値が真）。`max_snap_km`
-    以内に無ければNone。一番近いNodeが孤立した小さな塊・一方通行の袋にあると、そこへ寄せた点からは経路が出ない
-    （出発地なら走り出せず、経由地・目的地なら着いても出られない）。
-    """
-    nearest = find_nearest_node_indexed(index, point, max_distance_km=max_snap_km)
-    if nearest is None:
-        return None
-    if accessible[nearest]:
-        return nearest, False
-    corrected = find_nearest_node_indexed(index, point, allowed=accessible, max_distance_km=max_snap_km)
-    return None if corrected is None else (corrected, True)
+# `tree_cost_bound`が最初に並べる区間の数。帯の上限の距離は、たいていこの数の区間で埋まる
+# （全区間を並べ替えるより部分の選び出しのほうが速い）。足りなければ4倍ずつ広げる。
+_TREE_BOUND_FIRST_K = 4096
+# `tree_cost_bound`の和と探索の和は足す順が違い、浮動小数の丸めの分だけずれうる。そのずれを覆う相対の余裕。
+_TREE_BOUND_ROUNDING = 1e-9
 
 
 def largest_strongly_connected_nodes(csr: CsrGraphStructure, passable: np.ndarray) -> np.ndarray:
@@ -586,7 +69,7 @@ def largest_strongly_connected_nodes(csr: CsrGraphStructure, passable: np.ndarra
     return component == int(np.argmax(np.bincount(component)))
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def _strong_components(indptr: np.ndarray, indices: np.ndarray, passable: np.ndarray) -> np.ndarray:
     """Tarjanの強連結成分分解（再帰を明示のスタックへ直したもの）。戻り値はノード番号順の成分の番号。"""
     node_count = len(indptr) - 1
@@ -647,258 +130,6 @@ def _strong_components(indptr: np.ndarray, indices: np.ndarray, passable: np.nda
                 parent = call_node[depth - 1]
                 low[parent] = min(low[parent], low[node])
     return component
-
-# --- ターン展開（状態＝有向Edge、辺＝ターン） ---
-
-
-@dataclass(frozen=True)
-class TurnCostSpec:
-    """ターン1回の時間損失（秒）と、直進とみなす方位差の上限（度）。
-
-    探索のコストも秒のため、換算せずそのまま足せる（「右折1回＝何秒余計にかかるか」として
-    走行時間と直接比べられる）。
-
-    左折・右折・Uターン・直進とみなす方位差・上位の道の横断/右左折は、いずれも走ってみて
-    決める値のため`domain/tuning.py`が宣言する。既定を組み立てるのは`current_turn_cost()`で、
-    ここにフィールドの既定値は置かない——既定が分かれると、片方だけが変わる。
-    """
-
-    left_seconds: float
-    right_seconds: float
-    uturn_seconds: float
-    straight_max_deg: float
-    # 進入した道より上位の階級の道と交わる**信号の無い**交差点で追加する秒数（横断＝直進で
-    # 渡る場合と、右左折で入る場合）。信号のある交差点の待ちは停止密度の材料が走行モデルへ
-    # 運ぶ（`domain/traffic.py: stop_seconds`）ため、そちらで数え、ここでは足さない
-    # ——両方で足すと同じ待ちを二重に数える（`docs/architecture/design-principles.md`構造仕様13）。
-    # ここが担うのは「信号が無いのに上位の道を渡る・そこへ入る」ときの、車列の切れ目を
-    # 待つ時間である。
-    major_crossing_seconds: float
-    major_turn_seconds: float
-
-
-def current_turn_cost() -> TurnCostSpec:
-    """いま効いている較正値で組み立てたターンの費用。
-
-    **呼ぶたびに組み立てる**——プロセス内に束ねると、管理画面から変えた値が効かない。
-    """
-    return TurnCostSpec(
-        left_seconds=tuning_value("turn.left_seconds"),
-        right_seconds=tuning_value("turn.right_seconds"),
-        uturn_seconds=tuning_value("turn.uturn_seconds"),
-        straight_max_deg=tuning_value("turn.straight_max_deg"),
-        major_crossing_seconds=tuning_value("turn.major_crossing_seconds"),
-        major_turn_seconds=tuning_value("turn.major_turn_seconds"),
-    )
-
-
-@dataclass
-class TurnExpandedStructure:
-    """有向Edgeを状態、ターンを辺として見た構造。
-
-    `CsrGraphStructure`と同じくEdgeの重みは持たない（リクエストごとに変わるため）。グラフを
-    物理的に作り直さず、遷移は`CsrGraphStructure`から導く——ターンの費用はノード側の性質
-    （方位差・信号の有無）だけで決まり、状態の数を増やさずに表せる。行＝遷移元の状態
-    （区間の番号）、列＝遷移先の状態で、起点には依存しない。
-    """
-
-    state_count: int
-    # 状態ごとの遷移範囲。長さ state_count + 1。
-    indptr: np.ndarray
-    # 遷移先の状態（区間の番号）。
-    target_state: np.ndarray
-    # 遷移ごとのターンの時間損失（秒）。
-    turn_seconds: np.ndarray
-    # 遷移ごとの、案内する曲がりの種類（`TurnKind`の値）。案内しない遷移は直進。
-    turn_kind: np.ndarray
-    # 状態（有向Edge）の始点・終点Node index。
-    edge_from: np.ndarray
-    edge_to: np.ndarray
-    # 逆向き（転置）の遷移。目的地から遡る木が使う。最初に要求されたときだけ組む
-    # （前向きだけの探索では要らないため）。ターンの待ちは元の進行方向のまま運ぶ。
-    _reverse: tuple[np.ndarray, np.ndarray, np.ndarray] | None = field(
-        default=None, repr=False, compare=False
-    )
-
-    def entries_along(self, path: Sequence[int]) -> list[int | None]:
-        """経路`path`（区間の番号の並び）の隣り合う区間の遷移が、遷移の列のどこにあるか（区間の数−1個）。遷移が無ければNone。"""
-        entries: list[int | None] = []
-        for previous, following in zip(path, path[1:]):
-            start = int(self.indptr[previous])
-            matches = np.flatnonzero(self.target_state[start:int(self.indptr[previous + 1])] == following)
-            entries.append(start + int(matches[0]) if len(matches) else None)
-        return entries
-
-    def reverse_transitions(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """`(indptr, source_state, turn_seconds)`を遷移の向きを反転した形で返す。
-
-        前向きの遷移「状態a→状態b、待ちw」を、後ろ向きでは「状態b→状態a、待ちw」として
-        並べ替える（待ちは元の進行方向で決まるため値は変えない）。
-        """
-        if self._reverse is None:
-            source = np.repeat(
-                np.arange(self.state_count, dtype=np.int64), np.diff(self.indptr)
-            )
-            order = np.argsort(self.target_state, kind="stable")
-            counts = np.bincount(self.target_state, minlength=self.state_count)
-            indptr = np.zeros(self.state_count + 1, dtype=np.int64)
-            np.cumsum(counts, out=indptr[1:])
-            self._reverse = (indptr, source[order], self.turn_seconds[order])
-        return self._reverse
-
-
-def edge_bearings(
-    lazy_graph: LazyRoadGraph, bearing_deg: np.ndarray, node_lat: np.ndarray, node_lon: np.ndarray
-) -> np.ndarray:
-    """区間の番号順の方位（度）。`bearing_deg`（元の行の順、折れ線から求めた実際の向き）を
-    使い、NaNの区間だけ両端のNode座標から補う。"""
-    bearings = np.asarray(bearing_deg, dtype=float)[lazy_graph.edge_rows].copy()
-    for index in np.flatnonzero(np.isnan(bearings)).tolist():
-        tail, head = int(lazy_graph.edge_from[index]), int(lazy_graph.edge_to[index])
-        bearings[index] = bearing_between(
-            LatLonPoint(float(node_lat[tail]), float(node_lon[tail])),
-            LatLonPoint(float(node_lat[head]), float(node_lon[head])),
-        )
-    return bearings
-
-
-class TurnKind(IntEnum):
-    """遷移の曲がりの種類。"""
-
-    STRAIGHT = 0
-    LEFT = 1
-    RIGHT = 2
-    UTURN = 3
-
-
-def _turn_kinds(delta: np.ndarray, is_uturn: np.ndarray, branch: np.ndarray, spec: TurnCostSpec) -> np.ndarray:
-    """遷移ごとの曲がりの種類（待ちの分け方）。分かれ道でない点を通る遷移は直進。分かれ道では、方位差`delta`が
-    直進とみなす幅の内なら直進、外なら符号で左右を分ける（負＝反時計回り＝左折）。始点へ戻る遷移はUターン。"""
-    turning = np.where(delta < 0, TurnKind.LEFT, TurnKind.RIGHT)
-    kinds = np.where(np.abs(delta) <= spec.straight_max_deg, TurnKind.STRAIGHT, turning)
-    kinds = np.where(branch, kinds, TurnKind.STRAIGHT)
-    return np.where(is_uturn, TurnKind.UTURN, kinds).astype(np.int8)
-
-
-def _turn_seconds_for(kinds: np.ndarray, spec: TurnCostSpec) -> np.ndarray:
-    """遷移ごとのターンの時間損失（秒）。"""
-    by_kind = np.array([0.0, spec.left_seconds, spec.right_seconds, spec.uturn_seconds])
-    return by_kind[kinds]
-
-
-def build_turn_expanded_structure(
-    csr: CsrGraphStructure,
-    lazy_graph: LazyRoadGraph,
-    start_bearing_deg: np.ndarray,
-    end_bearing_deg: np.ndarray,
-    edge_rank: np.ndarray,
-    spec: TurnCostSpec,
-    node_has_signal: np.ndarray,
-    node_db_rank: np.ndarray,
-) -> TurnExpandedStructure:
-    """`CsrGraphStructure`から、状態＝有向Edgeの遷移構造を組む。
-
-    状態`e`の遷移先は「`e`の終点Nodeから出る有向Edge」で、遷移の数は
-    Σ(入次数×出次数)。`e`の始点へ戻る遷移はUターンとして扱う（禁止はしない——袋小路からの
-    折り返しに必要なため、費用で抑える）。
-
-    曲がりは、入る区間の終点のそばの向き`end_bearing_deg`と出る区間の始点のそばの向き`start_bearing_deg`
-    （どちらも区間の番号順）の差で測る。区間の端から端の向きで測ると、交差点から離れた所のカーブが
-    交差点の曲がりに混ざる。曲がりの待ちと上位の道の待ちは、来た道へ戻る遷移を除いて2本以上の道へ
-    進める点（分かれ道）でだけ足す——分かれ道でない点は道のデータの継ぎ目で、道を選ばない。
-
-    ターンの費用に要る入力はすべて引数で受け取り、**`None`を受け取らない**。既定を持たせても
-    実行時に`None`を許しても、渡し忘れた呼び出しが「上位の道の横断に待ちが付かない」構造を
-    黙って作る（例外もログも出ない）。
-    """
-    state_count = len(lazy_graph.edge_rows)
-    edge_from = lazy_graph.edge_from
-    edge_to = lazy_graph.edge_to
-
-    indptr64 = csr.indptr.astype(np.int64)
-    out_start = indptr64[edge_to]
-    out_count = indptr64[edge_to + 1] - out_start
-    total = int(out_count.sum())
-    new_indptr = np.zeros(state_count + 1, dtype=np.int64)
-    np.cumsum(out_count, out=new_indptr[1:])
-
-    source = np.repeat(np.arange(state_count, dtype=np.int64), out_count)
-    entry_index = np.repeat(out_start, out_count) + (
-        np.arange(total, dtype=np.int64) - np.repeat(new_indptr[:state_count], out_count)
-    )
-    target_state = csr.entry_edge_index[entry_index].astype(np.int64)
-    is_uturn = csr.indices[entry_index].astype(np.int64) == edge_from[source]
-    delta = (start_bearing_deg[target_state] - end_bearing_deg[source] + 180.0) % 360.0 - 180.0
-    branch_of_state = np.bincount(source, weights=~is_uturn, minlength=state_count) >= 2
-    branch = branch_of_state[source]
-    wait_kind = _turn_kinds(delta, is_uturn, branch, spec)
-    straight = wait_kind == TurnKind.STRAIGHT
-    turn_seconds = _turn_seconds_for(wait_kind, spec)
-
-    # ノードの階級は、読み込んだ部分グラフに現れる道から導く。DB側の事前集計値
-    # （`node_turns.max_highway_rank`）があれば大きい方を採る——bboxの外へはみ出した
-    # 上位の道は部分グラフに現れないため、導出だけでは取りこぼす。未集計の0は導出値を
-    # 下回るので、バッチ未実行でも結果は変わらない。
-    node_rank = np.zeros(csr.node_count, dtype=np.int64)
-    np.maximum.at(node_rank, edge_to, edge_rank)
-    np.maximum.at(node_rank, edge_from, edge_rank)
-    node_rank = np.maximum(node_rank, node_db_rank)
-    # 「自分より上位」だけでなく「そもそも待ちの要る階級か」も見る
-    # （`MAJOR_CROSSING_MIN_RANK`、domain/traffic.py）。
-    via_node = edge_to[source]
-    target_node_rank = node_rank[via_node]
-    crosses_major = (
-        (target_node_rank > edge_rank[source])
-        & (target_node_rank >= MAJOR_CROSSING_MIN_RANK)
-        # 信号のある交差点では足さない（待ちは停止密度の材料が走行モデルへ運ぶ）。
-        # 未集計なら全ノードが「信号なし」で、この列の導入前と同じ結果になる。
-        & ~node_has_signal[via_node]
-    )
-    turn_seconds = turn_seconds + np.where(
-        crosses_major & ~is_uturn & branch,
-        np.where(straight, spec.major_crossing_seconds, spec.major_turn_seconds),
-        0.0,
-    )
-
-    return TurnExpandedStructure(
-        state_count=state_count, indptr=new_indptr, target_state=target_state,
-        turn_seconds=turn_seconds, turn_kind=_guided_turn_kinds(wait_kind, delta, is_uturn, branch, source, state_count),
-        edge_from=edge_from, edge_to=edge_to,
-    )
-
-
-def _guided_turn_kinds(
-    wait_kind: np.ndarray, delta: np.ndarray, is_uturn: np.ndarray, branch: np.ndarray, source: np.ndarray,
-    state_count: int,
-) -> np.ndarray:
-    """遷移ごとの、案内する曲がりの種類。待ちの分け方に加え、分かれ道で直進とみなす幅の内側でも、同じ所から
-    よりまっすぐに近い道へ進める遷移（浅いY字で道なりでない方へ入る所）は、方位差の符号で左右を出す。"""
-    straightest = np.full(state_count, np.inf)
-    np.minimum.at(straightest, source[~is_uturn], np.abs(delta[~is_uturn]))
-    off_straightest = branch & (wait_kind == TurnKind.STRAIGHT) & (np.abs(delta) > straightest[source])
-    return np.where(
-        off_straightest, np.where(delta < 0, TurnKind.LEFT, TurnKind.RIGHT), wait_kind
-    ).astype(np.int8)
-
-
-@dataclass(frozen=True)
-class PathTurn:
-    """経路の中の、案内する曲がり。`index`は曲がった先の区間の、経路の中の位置（`path[index]`へ入るところで曲がる）。"""
-
-    index: int
-    kind: TurnKind
-
-
-def turns_along(structure: TurnExpandedStructure, path: Sequence[int]) -> list[PathTurn]:
-    """経路の案内する曲がり（左折・右折・Uターン。`turn_kind`が直進でない遷移）を、経路の順に。"""
-    turns: list[PathTurn] = []
-    for index, entry in enumerate(structure.entries_along(path), start=1):
-        if entry is None:
-            continue
-        kind = TurnKind(int(structure.turn_kind[entry]))
-        if kind != TurnKind.STRAIGHT:
-            turns.append(PathTurn(index=index, kind=kind))
-    return turns
 
 
 # 探索の優先度キュー（numpy配列のバイナリヒープ）。順位のキー・状態・積んだ時点のコスト`g`の列と、
@@ -1022,7 +253,7 @@ def time_bin_of(travelled: float, bin_seconds: float, bin_count: int) -> int:
 _time_bin_of_kernel = njit(cache=True, inline="always")(time_bin_of)
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def _turn_expanded_dijkstra(
     indptr: np.ndarray,
     target_state: np.ndarray,
@@ -1108,9 +339,10 @@ class TurnExpandedTree:
     # `node_best_state`に対応する実距離（m）・所要時間（秒）。到達不能はNaN。
     node_length_m: np.ndarray
     node_seconds: np.ndarray
-    # 木の親となる状態。始点の区間・到達不能は-1。Pythonのlistで持つ（numpy配列への添字アクセスより、
-    # 経路復元のループが速い）。既定値を持たせない——省略できると、渡し忘れた木が黙って
+    # 木の親となる状態。始点の区間・到達不能は-1。JITが読む配列と、Pythonのlist（numpy配列への添字アクセスより、
+    # Pythonの経路復元のループが速い）の両方で持つ。既定値を持たせない——省略できると、渡し忘れた木が黙って
     # 「どの状態からも経路が1本も辿れない」ふるまいになる。
+    predecessor: np.ndarray = field(repr=False, compare=False)
     predecessor_list: list[int] = field(repr=False, compare=False)
 
 
@@ -1156,9 +388,9 @@ def build_turn_expanded_tree(
         )
     started = start_timer()
     state_cost, predecessor, state_length_m, state_seconds = _turn_expanded_dijkstra(
-        _kernel_array(indptr, np.int64), _kernel_array(target_state, np.int64),
-        _kernel_array(transition_seconds, np.float64),
-        _kernel_array(cost_bins, np.float64), _kernel_array(seconds_bins, np.float64),
+        _kernel_array(indptr, SEARCH_INDEX_DTYPE), _kernel_array(target_state, SEARCH_INDEX_DTYPE),
+        _kernel_array(transition_seconds, EDGE_VALUE_DTYPE),
+        _kernel_array(cost_bins, EDGE_VALUE_DTYPE), _kernel_array(seconds_bins, EDGE_VALUE_DTYPE),
         _kernel_array(edge_length_m, np.float64), float(bin_seconds),
         _kernel_array(entry_state_indices, np.int64), float(cost_limit),
         len(entry_state_indices) + HEAP_INITIAL_SLACK,
@@ -1169,7 +401,7 @@ def build_turn_expanded_tree(
     # Nodeごとに最小コストの状態を1つ選ぶ（正方向はNodeへ入る状態、逆方向は出る状態）。
     incoming = structure.edge_from if reverse else structure.edge_to
     order = np.lexsort((state_cost, incoming))
-    best_states = order[_run_starts(incoming[order])]
+    best_states = order[run_starts(incoming[order])]
     node_best_state = np.full(node_count, -1, dtype=np.int64)
     node_cost = np.full(node_count, np.inf)
     node_length_m = np.full(node_count, np.nan)
@@ -1189,8 +421,38 @@ def build_turn_expanded_tree(
         state_cost=state_cost, state_length_m=state_length_m,
         state_seconds=state_seconds, node_cost=node_cost, node_best_state=node_best_state,
         node_length_m=node_length_m, node_seconds=node_seconds,
-        predecessor_list=predecessor.tolist(),
+        predecessor=predecessor, predecessor_list=predecessor.tolist(),
     )
+
+
+def tree_cost_bound(
+    structure: TurnExpandedStructure, edge_cost: np.ndarray, edge_length_m: np.ndarray, length_m: float,
+) -> float:
+    """前向きの`build_turn_expanded_tree`へ同じ`edge_cost`を渡したとき、実距離`length_m`以内で届く状態の
+    木の費用を下回らない値（`cost_limit`に渡すと、その状態を1つも打ち切らない上界）。
+
+    木の費用は、経路の区間ごとの費用（どの時刻ビンかは到達時刻で決まる）と、区間へ入る遷移の待ちの和で、
+    経路は同じ区間を2度通らない。区間ごとに「どのビンの費用の最大＋入る遷移の待ちの最大」を重さ、実距離を
+    大きさとした分数ナップサックの貪欲で、重さ/大きさの大きい区間から実距離の合計が`length_m`に届くまで足す。
+    費用の合成（割り増し・密度・罰）・待ち・走行モデルの形に依らず成り立つ。
+    """
+    cost_bins = _as_time_bins("tree_cost_bound", edge_cost)
+    finite = np.isfinite(cost_bins)
+    reachable = finite.any(axis=0)
+    entry_wait = np.zeros(structure.state_count)
+    np.maximum.at(entry_wait, structure.target_state, structure.turn_seconds)
+    weight = (np.max(cost_bins, axis=0, initial=0.0, where=finite) + entry_wait)[reachable]
+    size = np.asarray(edge_length_m, dtype=np.float64)[reachable]
+    ratio = np.divide(weight, size, out=np.full(weight.shape, np.inf), where=size > 0)
+    k = _TREE_BOUND_FIRST_K
+    while True:
+        top = np.argpartition(-ratio, k - 1)[:k] if k < len(ratio) else np.arange(len(ratio))
+        top = top[np.argsort(-ratio[top], kind="stable")]
+        filled = np.cumsum(size[top]) >= length_m
+        if filled.any() or len(top) == len(ratio):
+            picked = top[: int(np.argmax(filled)) + 1] if filled.any() else top
+            return float(weight[picked].sum()) * (1.0 + _TREE_BOUND_ROUNDING)
+        k *= 4
 
 
 def _walk_predecessors(predecessors: Sequence[int] | np.ndarray, state_index: int) -> list[int]:
@@ -1230,6 +492,48 @@ def turn_expanded_path_edge_indices(tree: TurnExpandedTree, target_node_index: i
     return turn_expanded_path_from_state(tree, state)
 
 
+class TreePathOverlap:
+    """前向き木の始点からNodeまでの経路どうしの重複率（`domain/route_diversity.py: OverlapMeasure`）。
+    itemはNode index で、経路は`turn_expanded_path_edge_indices`が返すもの。
+
+    同じ木の経路どうしが共有する区間は、分かれる点までの頭の部分だけ（木ではどの状態への経路も1本に決まる）。
+    候補から親を辿って最初に当たる採用済みの経路の状態は、どの採用済みと分かれる点よりも深い（そこまでは
+    採用済みのどれかと共有し、その先はどれとも共有しない）ので、最大の重複率はその状態と候補の木の積算の
+    実距離の比になる。候補の経路を取り出さず、採用済みの経路の状態に印を付けるだけで測れる。
+    """
+
+    def __init__(self, tree: TurnExpandedTree):
+        self._tree = tree
+        self._accepted = np.zeros(len(tree.predecessor), dtype=np.bool_)
+        self._accepted_any = False
+
+    def max_ratio(self, node_index: int) -> float | None:
+        state = int(self._tree.node_best_state[node_index])
+        if state < 0:
+            return None
+        if not self._accepted_any:
+            return 0.0
+        return _tree_shared_ratio(self._tree.predecessor, self._tree.state_length_m, self._accepted, state)
+
+    def accept(self, node_index: int) -> None:
+        self._accepted[turn_expanded_path_edge_indices(self._tree, node_index)] = True
+        self._accepted_any = True
+
+
+@njit(cache=True, nogil=True)
+def _tree_shared_ratio(
+    predecessor: np.ndarray, state_length_m: np.ndarray, accepted: np.ndarray, state: int,
+) -> float:
+    """`state`までの経路のうち、印の付いた最初の祖先（自身を含む）までの実距離の割合。印が無ければ0。"""
+    total = state_length_m[state]
+    current = state
+    while current >= 0 and not accepted[current]:
+        current = predecessor[current]
+    if current < 0 or not total > 0.0:
+        return 0.0
+    return state_length_m[current] / total
+
+
 @dataclass
 class NodeJunction:
     """前向き木と後ろ向き木を各Nodeで繋いだ結果。配列はNode index順。"""
@@ -1266,36 +570,6 @@ def add_terminal_candidate(
     junction.backward_state[destination_index] = -1
 
 
-def lengths_by_physical_segment(
-    edge_from: np.ndarray, edge_to: np.ndarray, edge_length_m: np.ndarray, path: list[int]
-) -> dict[frozenset[int], float]:
-    """区間の番号列を、進行方向を無視した物理区間キー（両端のノード番号のfrozenset）→距離(m)の
-    辞書へ変換する。同じ物理区間を指す順・逆の区間を同一キーへ正規化することで、「同じ周回の
-    逆回り」や「行って戻る形」を比べられるようにする。
-
-    同じ物理区間を2回通る経路は1回ぶんとして数える（加算しない）。重複率の分母が実際の
-    経路長より短くなるぶん似ていると判定されやすくなるが、似た周回を並べるより棄却する
-    側へ倒す。
-    """
-    return {
-        frozenset({tail, head}): length
-        for tail, head, length in zip(
-            edge_from[path].tolist(), edge_to[path].tolist(), edge_length_m[path].tolist(), strict=True
-        )
-    }
-
-
-def physical_overlap_ratio(
-    candidate: Mapping[frozenset[int], float], accepted: Container[frozenset[int]]
-) -> float:
-    """`lengths_by_physical_segment`の辞書`candidate`のうち、`accepted`にもある物理区間の距離加重
-    割合（0〜1）。全長が0以下なら0（どの経路とも重ならないと読む）。"""
-    total = sum(candidate.values())
-    if total <= 0:
-        return 0.0
-    return sum(length for key, length in candidate.items() if key in accepted) / total
-
-
 def combine_forward_backward_at_nodes(
     structure: TurnExpandedStructure,
     forward: TurnExpandedTree,
@@ -1326,7 +600,7 @@ def combine_forward_backward_at_nodes(
     finite = np.flatnonzero(np.isfinite(total))
     if len(finite):
         order = finite[np.lexsort((total[finite], junction_node[finite]))]
-        best = order[_run_starts(junction_node[order])]
+        best = order[run_starts(junction_node[order])]
         best_nodes = junction_node[best]
         cost[best_nodes] = total[best]
         length_m[best_nodes] = length[best]
@@ -1345,7 +619,7 @@ def _as_time_bins(caller: str, values: np.ndarray) -> np.ndarray:
     3次元以上は送出する。黙って`(1, n)`へ潰すと、後段のビン数の食い違いの検査もすり抜け、
     JITした探索が範囲外を読む。
     """
-    array = np.asarray(values, dtype=np.float64)
+    array = np.asarray(values, dtype=EDGE_VALUE_DTYPE)
     if array.ndim > 2:
         raise ValueError(f"{caller}: expected a 1-D or 2-D array, got {array.shape}")
     return array if array.ndim == 2 else array.reshape(1, -1)
@@ -1378,7 +652,7 @@ def time_bin_arrays(
     return cost_bins, seconds_bins
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def _turn_expanded_astar(
     indptr: np.ndarray,
     target_state: np.ndarray,
@@ -1474,9 +748,9 @@ def turn_expanded_shortest_path(
     )
     capacity = len(origin_states) + HEAP_INITIAL_SLACK
     predecessor, goal_state = _turn_expanded_astar(
-        _kernel_array(structure.indptr, np.int64), _kernel_array(structure.target_state, np.int64),
-        _kernel_array(structure.turn_seconds, np.float64), _kernel_array(structure.edge_to, np.int64),
-        _kernel_array(cost_bins, np.float64), _kernel_array(seconds_bins, np.float64), float(bin_seconds),
+        _kernel_array(structure.indptr, SEARCH_INDEX_DTYPE), _kernel_array(structure.target_state, SEARCH_INDEX_DTYPE),
+        _kernel_array(structure.turn_seconds, EDGE_VALUE_DTYPE), _kernel_array(structure.edge_to, np.int64),
+        _kernel_array(cost_bins, EDGE_VALUE_DTYPE), _kernel_array(seconds_bins, EDGE_VALUE_DTYPE), float(bin_seconds),
         _kernel_array(node_heuristic, np.float64),
         _kernel_array(origin_states, np.int64), int(goal_node_index), capacity,
     )
@@ -1486,7 +760,7 @@ def turn_expanded_shortest_path(
 
 
 def compile_search_kernels() -> None:
-    """探索のJIT（出て戻れるNodeの集まり・一対全木・2点間探索）を、最小の道路網で1回ずつ呼んでコンパイルする。
+    """探索のJIT（出て戻れるNodeの集まり・一対全木・木の経路どうしの重複率・2点間探索）を、最小の道路網で1回ずつ呼んでコンパイルする。
 
     `@njit(cache=True)`の結果はこのファイルの隣の`__pycache__`に残り、別のプロセスはそこから読む。
     イメージの組み立て（`backend/Dockerfile`）で呼び、入れ替えたコンテナの最初のルート生成が
@@ -1503,7 +777,10 @@ def compile_search_kernels() -> None:
     )
     cost = np.ones((1, 2))
     origin_states = np.array([0])
-    build_turn_expanded_tree(
+    tree = build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, origin_states, lazy_graph.node_count, edge_seconds=cost
     )
+    overlap = TreePathOverlap(tree)
+    overlap.accept(1)
+    overlap.max_ratio(0)
     turn_expanded_shortest_path(structure, cost, np.zeros(2), origin_states, 0, edge_seconds=cost)

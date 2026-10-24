@@ -31,22 +31,34 @@ function shapeScoreAt(shape: BreakpointShape, t: number): number {
 
 const GENERATED_POINT_COUNT = 6;
 
+/** 途中の点のxを丸める桁の上限（`toFixed`が受ける桁の内で、倍精度の有効桁に収まる所）。 */
+const MAX_X_DIGITS = 15;
+
 /** 「0点にする値」「100点にする値」「形」の3入力から折れ点を生成する。0点=zeroValue・
  * 100点=hundredValueの間をGENERATED_POINT_COUNT点（5〜7点の範囲内）で均等分割し、
  * 各点のスコアをshapeの形に従って決める。zeroValue > hundredValue（値が大きいほど
  * 走りやすい軸、例: 制限速度は高いほど易しい）も入力として許容するため、生成後に必ず
- * x昇順へ並べ替える（backend: evaluate_breakpoint_linearが前提とする不変条件）。 */
+ * x昇順へ並べ替える（backend: evaluate_breakpoint_linearが前提とする不変条件）。
+ *
+ * 両端は入れた値のまま使い、途中の点のxだけを丸める。丸めの桁は小数2桁を基本に、点の間隔が
+ * それより狭ければ間隔の桁まで細かくする（backendは同じxの点を断るので、丸めで隣と重ねない）。 */
 export function generateBreakpoints(
   zeroValue: number,
   hundredValue: number,
   shape: BreakpointShape,
 ): [number, number][] {
+  const gap = Math.abs(hundredValue - zeroValue) / (GENERATED_POINT_COUNT - 1);
+  const digits = gap > 0 ? Math.min(MAX_X_DIGITS, Math.max(2, Math.ceil(-Math.log10(gap)))) : 2;
   const points: [number, number][] = [];
   for (let i = 0; i < GENERATED_POINT_COUNT; i++) {
     const t = i / (GENERATED_POINT_COUNT - 1);
-    const x = zeroValue + t * (hundredValue - zeroValue);
-    const y = shapeScoreAt(shape, t);
-    points.push([roundToDigits(x, 2), Math.round(y)]);
+    const x =
+      i === 0
+        ? zeroValue
+        : i === GENERATED_POINT_COUNT - 1
+          ? hundredValue
+          : roundToDigits(zeroValue + t * (hundredValue - zeroValue), digits);
+    points.push([x, Math.round(shapeScoreAt(shape, t))]);
   }
   return sortBreakpoints(points);
 }

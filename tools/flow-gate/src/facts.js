@@ -1,16 +1,14 @@
 // タスクの事実を読む（src/decide.js: decide が受ける形）。置き場の issue・書くのに要る ID（種類・ラベル）・コードのリポジトリの作業ブランチの PR と
 // 検査を GraphQL の1回で、担当の実行は Actions の実行の一覧から読む。ゲートは issue の情報を持たない（持ち主は GitHub）。見回りの一覧も同じ読み方を使う。
 import { originOf } from "./family.js";
-import { FIELDS, START_FORM, valuesOf } from "./fields.js";
+import { FIELDS, startTime, valuesOf } from "./fields.js";
 import { pages } from "./github.js";
-import { APPLIED, answerText, askerOf, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, questionHead, readProblems, remaining } from "./questions.js";
+import { APPLIED, answerText, askerOf, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, questionHead, readProblems, remaining, unboundSteps } from "./questions.js";
 
-// 着手可能日時の形の合わない値は受け入れず（badStart はその値。ゲートが知らせる）、待つと決めた意図を守ってまだ先と読む。
-const jst = (text) => (START_FORM.test(text) ? new Date(`${text.replace(" ", "T")}${text.includes(":") ? "" : "T00:00"}:00+09:00`) : null);
 // 対話作業か。種類は作るとき（最初に付いた種類）で決まり、あとから境目をまたいで変えても変わらない（types は今より前の種類の古い順）。
 const dialogOf = (config, types, type) => [...types, type].find(Boolean) === config.dialogType;
 // 矢印1本でつながる issue（前提・子・親）の読み方。1件を決め直すときも、振り出しの一覧も同じ（親の本文は、1件を決め直すときだけ要る）。
-export const relationsOf = (body = false) => `blockedBy(first:20){nodes{number state stateReason issueType{name} updatedAt}} subIssues(first:50){nodes{number state stateReason}}
+export const relationsOf = (body = false) => `blockedBy(first:20){nodes{number state stateReason}} subIssues(first:50){nodes{number state stateReason}}
  parent{number state stateReason ${body ? "body" : ""} labels(first:20){nodes{name}} ${FIELDS}}`;
 // 完成でなく閉じた（見送り・重複）相手は、その結果を当てにできないので、続けるかを問う側に数える。
 const dropped = (x) => x.state === "CLOSED" && ["NOT_PLANNED", "DUPLICATE"].includes(x.stateReason);
@@ -22,17 +20,15 @@ export function taskOf(config, issue, now = new Date()) {
   const parent = issue.parent;
   const from = parent ? valuesOf(parent) : own;
   const text = from[f.start.name]?.trim();
-  const start = jst(text);
+  // 着手可能日時の読めない値は受け入れず（badStart はその値。ゲートが知らせる）、待つと決めた意図を守ってまだ先と読む。
+  const start = startTime(text);
   const mine = own[f.start.name]?.trim();
   const waits = [...issue.blockedBy.nodes, ...issue.subIssues.nodes];
-  // 開発機の対話のセッションしか進めない前提は、閉じ忘れると黙って待ち続けるので、長く動いていなければユーザーに知らせる（src/decide.js: notice）。
-  const idle = issue.blockedBy.nodes.filter((b) => b.state === "OPEN" && b.issueType?.name === config.dialogType
-    && now - Date.parse(b.updatedAt) > config.dialogIdleHours * 3600e3).map((b) => b.number);
   const names = (i) => i.labels.nodes.map((l) => l.name);
   const labels = names(issue);
   return { status: own[f.status.name], run: own[f.run.name], priority: from[f.priority.name], type: issue.issueType?.name ?? null,
-    open: issue.state === "OPEN", blocked: waits.some((w) => w.state === "OPEN"), dropped: waits.filter(dropped).map((w) => w.number), idle,
-    future: Boolean(text) && (!start || start > now), badStart: mine && !jst(mine) ? mine : null,
+    open: issue.state === "OPEN", blocked: waits.some((w) => w.state === "OPEN"), dropped: waits.filter(dropped).map((w) => w.number),
+    future: Boolean(text) && (!start || start > now), badStart: mine && startTime(mine) === null ? mine : null,
     urgent: names(parent ?? issue).includes(config.urgentLabel), held: Boolean(parent) && (parent.state === "CLOSED" || from[f.status.name] === "保留"),
     labels, dev: labels.includes(config.devLabel), dialog: issue.issueType?.name === config.dialogType, // 1件を決め直すときは、作ったときの種類で読み直す
     assignees: issue.assignees.nodes.map((a) => a.login) };
@@ -64,16 +60,51 @@ const query = () => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:Strin
   comments(last:40){totalCount nodes{body createdAt author{login}}} ${FIELDS} ${relationsOf(true)} blocking(first:20){nodes{number state}}
   timelineItems(first:50,itemTypes:[ISSUE_TYPE_CHANGED_EVENT]){nodes{...on IssueTypeChangedEvent{prevIssueType{name} issueType{name}}}}}}
  c:repository(owner:$co,name:$cn){pullRequests(headRefName:$head,first:5,orderBy:{field:CREATED_AT,direction:DESC}){nodes{
-  id state isDraft mergeable merged createdAt mergedAt mergeCommit{${SUITES}} commits(last:1){nodes{commit{committedDate ${SUITES}}}}
+  id state isDraft mergeable merged createdAt mergedAt mergeCommit{oid ${SUITES}} commits(last:1){nodes{commit{committedDate ${SUITES}}}}
   timelineItems(last:1,itemTypes:[CONVERT_TO_DRAFT_EVENT]){nodes{...on ConvertToDraftEvent{createdAt}}}}}}}`;
 
 // 合格の結論（GitHub が必須の検査の合格に数えるもの: 成功・スキップ・中立）。
 const PASSED = ["SUCCESS", "SKIPPED", "NEUTRAL"];
 // コミットの検査。stage は最も新しい検査の実行の status（実行が無ければ null）、passed はその実行が終わって合格したか。実行の結論は
 // Pull Request では結論のジョブ（ci-ok）と同じで、master ではデプロイも含む（本番に出てから合格にする）。
+// cancelled は、その実行が取り消されたか（master では、後の push が待ちを置き換えた。.github/workflows/ci.yml の concurrency）。missed は、その実行が
+// 合格せずに終わったか（落ちた・取り消された）。
 function checksOf(config, commit) {
   const last = checkRuns(config, commit).reduce((a, s) => (a && a.createdAt > s.createdAt ? a : s), null);
-  return { stage: last?.status ?? null, passed: PASSED.includes(last?.conclusion) };
+  const passed = PASSED.includes(last?.conclusion);
+  return { stage: last?.status ?? null, passed, cancelled: last?.conclusion === "CANCELLED", missed: last?.status === "COMPLETED" && !passed };
+}
+// master の検査の実行が合格せずに終わった（落ちた・取り消された）コミットの変更は、後の master の実行が検査とデプロイの判定に入れる（ci.yml の
+// changes ジョブは、first-parent の祖先のうち検査が通った一番近いコミットと比べる）。その実行は、first-parent の子の側へ辿って、検査の実行が
+// 取り消されていない一番近いコミットのもの。FOLLOW はその辿る数で、取り消しが続くのは待ちが重なった間だけなので、辿り切れなければ代わりの実行は無いと読む。
+const FOLLOW = 10;
+// oid のコミットの代わりに検査を持つ後の master の実行（checksOf の形）。無ければ null。
+async function coveringChecks(gh, config, oid) {
+  const { owner, name } = config.repos.code;
+  // 比べる API は、oid に無く master にあるコミットを古い順に返す（GitHub の公式の文書「Compare two commits」）ので、子の側の近いものが先のページにある。
+  const { commits } = await gh.rest("GET", `/repos/${config.code}/compare/${oid}...${config.base}?per_page=100`);
+  const chain = [];
+  for (let at = oid; chain.length < FOLLOW;) {
+    const child = commits.find((c) => c.parents[0]?.sha === at);
+    if (!child) break;
+    chain.push(at = child.sha);
+  }
+  if (!chain.length) return null;
+  const { repository: r } = await gh.gql(`query($o:String!,$r:String!){repository(owner:$o,name:$r){${chain.map((sha, k) => `c${k}:object(oid:"${sha}"){...on Commit{${SUITES}}}`).join(" ")}}}`,
+    { o: owner, r: name });
+  const found = chain.map((_, k) => r[`c${k}`]).find((c) => checkRuns(config, c).length && !checksOf(config, c).cancelled);
+  return found ? checksOf(config, found) : null;
+}
+// sha のコミットの master の実行が代わりに検査を持つ、first-parent の祖先のマージのコミットの issue の番号（上の coveringChecks の逆向き）。
+export async function coveredTasks(gh, config, sha) {
+  const { owner, name } = config.repos.code;
+  const { repository: { object: o } } = await gh.gql(`query($o:String!,$r:String!,$s:GitObjectID!){repository(owner:$o,name:$r){object(oid:$s){...on Commit{
+    history(first:${FOLLOW * 3}){nodes{oid messageHeadline parents(first:1){nodes{oid}} ${SUITES}}}}}}}`, { o: owner, r: name, s: sha });
+  const by = new Map((o?.history.nodes ?? []).map((n) => [n.oid, n]));
+  const up = (n) => by.get(n?.parents.nodes[0]?.oid);
+  const numbers = [];
+  for (let n = up(by.get(sha)); n && checksOf(config, n).missed && numbers.length < FOLLOW; n = up(n)) numbers.push(subjectTask(n.messageHeadline));
+  return numbers.filter(Boolean);
 }
 
 // 置き場のオーナーと名前（GraphQL の $o・$r）。
@@ -181,11 +212,12 @@ export async function readFacts(gh, config, number, runs) {
   // 読むのに要求の要る事実は、決め方が使うときだけ読む（src/decide.js: Need。src/gate.js: settle が読んで決め直す）:
   // superseded は、答えのあとにユーザーがステータスを変えたか開き直したか（その答えはユーザーの次の決定で置き換わり、当て直さない）。
   // adoptAsked・droppedAsked は、採否・続行の問いを一度でも出したか（最近のコメントに無く、それより前があれば全部を読む）。
-  // ranMoved は、最後に終わった担当の実行で状態か約束が動いたか。
-  const later = { superseded: () => movedSince(gh, config, number, answer.createdAt), droppedAsked: () => ever((x) => x.includes(asking)),
+  // ranMoved は、最後に終わった担当の実行で状態か約束が動いたか。covering は、マージのコミットの検査の実行が合格せずに終わったとき、代わりに検査を持つ
+  // 後の master の実行（coveringChecks）。
+  const later = { covering: () => coveringChecks(gh, config, merged.mergeCommit.oid), superseded: () => movedSince(gh, config, number, answer.createdAt), droppedAsked: () => ever((x) => x.includes(asking)),
     adoptAsked: () => ever((x) => x.startsWith(questionHead("採否"))), ranMoved: async () => handed > Date.parse(ended.from) || movedOf(gh, config, number, ended, conds) };
   return { ...task, later, author: i.author?.login, parent: p && { number: p.number }, origin: originOf(norm(i.body)), unread, answerRead, answerApplied, number,
-    id: i.id, closedAs: i.stateReason, body: i.body, remaining: conds.filter((x) => !x.done), question, dead, types, dialog,
+    id: i.id, closedAs: i.stateReason, body: i.body, remaining: conds.filter((x) => !x.done), unbound: unboundSteps(i.body, number), question, dead, types, dialog,
     ids: { types: byName(t.issueTypes), labels: byName(t.labels) }, handed, ended: ended && { kind: ended.kind }, runs: held,
     // 閉じた・開き直したときに決め直す、矢印1本でつながる開いた issue（後・親・子）。
     near: [...i.blocking.nodes, ...(p ? [p] : []), ...i.subIssues.nodes].filter((x) => x.state === "OPEN").map((x) => x.number),

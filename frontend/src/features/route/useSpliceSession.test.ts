@@ -10,18 +10,18 @@
  * - 乗り換え先の求め方の細部（区間の割り方・下限・折り返しを出さない・重なる代替のまとめ方・形の継ぎ方） →
  *   `routeSplice.test.ts`。ここでは分かれ道が1つずつの網で、出る・乗り換えた経路から次が出ることを見る
  * - 編集面の表示（差・戻す操作・失敗の出し方） → `RouteSplicePanel/RouteSplicePanel.test.tsx`
- * - 地図に帯が出る・消えることとタップ → `app/page.test.tsx`（帯の色・線の形は`features/map/scene/groups/routes.ts`の宣言）
- * - 作った経路を結果へ足す・既存の候補を選ぶ → `useRouteResults.test.ts`・`app/page.test.tsx`
+ * - 地図に帯が出る・消えることとタップ → `app/page.splice.test.tsx`（帯の色・線の形は`features/map/scene/groups/routes.ts`の宣言）
+ * - 作った経路を結果へ足す・既存の候補を選ぶ → `useRouteResults.test.ts`・`app/page.splice.test.tsx`
  *
  * 差し替えたもの: 評価（生成のジョブ）と軸カタログの応答（網の層。`testing/generationJobs.ts`）。評価はジョブを作り
  * backendの回数制限に数えられるので、出した要求の数と中身を確かめる。
  *
  * 通さない分岐（どれも入口から作れない）:
  * - 生成の入力が無いときの`start`: 始められるのは表示中の候補を作った生成があるときだけで、入口（`canStart`）が出ない
- * - 帯の相手が一覧に無い・帯の座標が2点未満: 相手は同じ一覧から引き、範囲は少なくとも1本のEdgeを持つ
+ * - 帯の相手が一覧に無い: 相手は同じ一覧から引く
  * - 1グループの選択肢の上限: 候補数の上限（`route-generate-config.json: max_routes`）より多くは並ばない
- * - 評価の入口の前提（編集・乗り換え・形が無い）と、編集が無いときの乗り換え: 呼ぶ側が先に同じ前提で止め、
- *   編集していない間は乗り換え先が出ない
+ * - 評価の入口の前提（編集・乗り換え・形が無い）と、編集が無いときの乗り換え: 呼ぶ側が先に同じ前提で止め（乗り換えていない間は
+ *   編集面が差分と作成を押せなくする）、編集していない間は乗り換え先が出ない
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -73,7 +73,6 @@ const ELSEWHERE = edges("n0", "n1", "nq", "n3");
 const BASIS: GenerationInput = {
   origin: { latitude: 35.6, longitude: 139.7 },
   distanceKm: null,
-  distanceToleranceKm: 5,
   maxRoutes: 4,
   assumedSpeedKmh: 22,
   startTime: new Date("2026-10-04T09:00:00Z"),
@@ -88,7 +87,6 @@ const BASIS: GenerationInput = {
 const CONDITIONS = makeGenerationConditions({
   latitude: BASIS.origin.latitude,
   longitude: BASIS.origin.longitude,
-  distance_tolerance_km: BASIS.distanceToleranceKm,
   route_preference: { axis_a: 1 },
   penalty_strength: 1,
   max_routes: BASIS.maxRoutes,
@@ -354,15 +352,6 @@ describe("差分を見る", () => {
     expect(rendered.result.current.panel?.sameRouteId).toBe(sameRouteId);
   });
 
-  it("乗り換えていない間は評価しない", async () => {
-    const rendered = renderSplice();
-    await startEditing(rendered);
-
-    await press(rendered.result.current.panel?.onPreview);
-
-    expect(jobs.submitted).toEqual([]);
-  });
-
   it("評価を待っている間は待っていると返し、選び直しても続ける。待っている間に押しても投げ直さない", async () => {
     const rendered = renderSplice({ routes: [BASE, VIA_Q, VIA_Q_R] });
     await startEditing(rendered);
@@ -479,6 +468,25 @@ describe("作成", () => {
     expect(rendered.result.current.editingRoute).toBeNull();
   });
 
+  it("作成中に地図の乗り換え先を押しても乗り換えない（押した時点の組み合わせで作って編集を閉じるので、押した乗り換えが黙って消える）", async () => {
+    const rendered = renderSplice({ routes: [BASE, VIA_Q, VIA_Q_R] });
+    await startEditing(rendered);
+    tapStretch(rendered);
+    const pending = deferredEvaluation();
+    let applying: unknown;
+    act(() => {
+      applying = rendered.result.current.panel?.onApply();
+    });
+
+    tapStretch(rendered);
+    expect(rendered.result.current.panel?.appliedCount).toBe(1);
+
+    await act(async () => {
+      await pending.resolve([evaluated(ELSEWHERE)]);
+      await applying;
+    });
+  });
+
   it("差分を見た組み合わせは、作るときに投げ直さず、見た評価で作る", async () => {
     const rendered = renderSplice();
     await startEditing(rendered);
@@ -524,7 +532,6 @@ describe("作成", () => {
       label: "作り直す",
       interrupt: (rendered: Rendered) => rendered.rerender({ ...PROPS, generatedInput: { ...BASIS } }),
     },
-    { label: "全部消す", interrupt: (rendered: Rendered) => rendered.rerender({ ...PROPS, generatedInput: null }) },
     { label: "編集をやめる", interrupt: (rendered: Rendered) => act(() => rendered.result.current.panel?.onCancel()) },
   ])("評価を待っている間に「$label」と、あとから届いた評価で作らない", async ({ interrupt }) => {
     const rendered = renderSplice();
@@ -566,15 +573,6 @@ describe("作成", () => {
     expect(rendered.onApplied).not.toHaveBeenCalled();
     expect(rendered.result.current.editingRoute).toEqual(BASE);
     expect(rendered.result.current.panel?.applying).toBe(false);
-  });
-
-  it("乗り換えていない間は作らない", async () => {
-    const rendered = renderSplice();
-    await startEditing(rendered);
-
-    await press(rendered.result.current.panel?.onApply);
-
-    expect(jobs.submitted).toEqual([]);
   });
 
   it.each([

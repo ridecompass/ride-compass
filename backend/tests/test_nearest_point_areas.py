@@ -8,11 +8,11 @@
 """
 
 import pytest
-from shapely.geometry import Point, shape
 
 from app.domain.route import Coordinates
 from app.infrastructure.debug_log import get_stats
 from app.services.nearest_point_areas import CATEGORY, nearest_point_area, new_cells_cache
+from tests.area_shapes import holds
 
 # 東西に並ぶ3つの点（経度0.2度おき）。
 POINTS = [
@@ -48,4 +48,4 @@ def test_the_cells_are_rebuilt_only_when_the_table_changes(second_table, rebuilt
     after_hits, after_misses = _lookups()
     assert (after_hits - hits, after_misses - misses) == ((0, 1) if rebuilt else (1, 0))
     # 範囲は2回目の表に従う——動かした表では、最寄りの点が動いた先にある。
-    assert shape(area.model_dump()).contains(Point(second_table[1].longitude, second_table[1].latitude))
+    assert holds(area, second_table[1])

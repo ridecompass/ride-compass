@@ -15,7 +15,7 @@ import json
 import sys
 import time
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -24,7 +24,8 @@ from pydantic import TypeAdapter
 
 from app.domain.map_paint import MapValue
 from app.domain.route import RouteSegmentDetail
-from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_DISTANCE_TOLERANCE_KM, DEFAULT_MAX_ROUTES
+from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_MAX_ROUTES
+from app.domain.time_zone import JST
 
 #: 起点（緯度, 経度）。取込範囲の中の決まった地点で、毎回同じ所を作る。
 START_POINT = (35.7597, 139.7387)
@@ -34,17 +35,15 @@ GENERATION_LIMIT_SECONDS = 120
 POLL_INTERVAL_SECONDS = 1.0
 #: 1回の要求の上限（秒）。backendが応答しないまま止まったときに、待ちの上限を越えて待たない。
 REQUEST_TIMEOUT_SECONDS = 30
-JST = timezone(timedelta(hours=9))
 
 
 def generation_request(now: datetime) -> dict:
-    """画面の既定の条件（候補数・許容幅・巡航速度）の生成の要求。既定はbackendの宣言が持ち、画面へは生成物で
-    配られる。重みと道の避け方は送らず、backendの既定で作らせる。"""
+    """画面の既定の条件（候補数・巡航速度）の生成の要求。既定はbackendの宣言が持ち、画面へは生成物で
+    配られる。重み・道の避け方・許容幅は送らず、backendの既定で作らせる。"""
     return {
         "latitude": START_POINT[0],
         "longitude": START_POINT[1],
         "distance_km": DISTANCE_KM,
-        "distance_tolerance_km": DEFAULT_DISTANCE_TOLERANCE_KM,
         "road_avoidance": {},
         "max_routes": DEFAULT_MAX_ROUTES,
         "assumed_speed_kmh": ASSUMED_SPEED_KMH,

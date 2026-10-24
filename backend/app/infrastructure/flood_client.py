@@ -22,8 +22,6 @@ FLOOD_API_URL = "https://www.jma.go.jp/bosai/flood/data/r8/flood_xml.json"
 # 発表は数十分単位で更新されうるため、JMA警報（jma_warning_client.py）と同じ10分TTL。
 _FLOOD_CACHE_TTL_SECONDS = 10 * 60
 
-REQUEST_TIMEOUT = httpx.Timeout(connect=3.0, read=8.0, write=5.0, pool=5.0)
-
 # キー無しの単一値キャッシュ（全国1本の電文一覧のため、固定キーで代用）。
 _FLOOD_CACHE_KEY = "flood"
 
@@ -70,7 +68,7 @@ async def fetch_flood_documents(client: httpx.AsyncClient, cache: TTLCache) -> l
     いずれか）で、解除された河川も解除のコードのまま残り続ける。"""
 
     async def fetch() -> list[FloodBulletin]:
-        payload = await get_json(client, FLOOD_API_URL, list, "flood bulletins are", timeout=REQUEST_TIMEOUT)
+        payload = await get_json(client, FLOOD_API_URL, list, "flood bulletins are")
         return [
             _parse_bulletin(entry)
             for entry in payload

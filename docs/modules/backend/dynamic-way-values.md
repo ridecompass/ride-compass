@@ -15,9 +15,9 @@
 | レイヤー | ファイル |
 |---|---|
 | domain | `wind.py`・`gradient.py`・`rain.py`（雨の材料の宣言——窓の長さの一覧——と、1時間雨量の履歴から材料の値を求める計算・配ってよい履歴の古さ）・`dynamic_way_values.py`（要求の条件の組み立てと、フィーチャーの材料から地図が塗る値への写しと、地図へ配る軸の式の木と道ごとの材料）・`way_value_formula.py`（中立の式の木の型と、numpyでの評価） |
-| services | `wind_way_service.py`・`gradient_way_service.py`・`rain_way_service.py`・`feature_midpoints.py`（配信サービスが、タイル内のフィーチャーの値をDBから引き、DB障害・取込範囲外・空のタイルを同じ形でログの欄へ記録する口と、地点の値を引く配信サービスが中ほどを鍵と緯度・経度の配列で引く口）・`feature_materials.py`（タイルのフィーチャーごとの材料と、道1本のフィーチャーごとの区間の材料を読み、ディスクへ持つ）・`dedicated_way_values.py`（材料→配信の実装の表、軸の葉の材料から実装を選ぶこと、タイルの材料とサービスの値を1回ずつ引いて軸ごとの値を求める口——地図のレンズと区間インスペクタが使う——、地図のレンズ） |
+| services | `wind_way_service.py`・`gradient_way_service.py`・`rain_way_service.py`・`feature_midpoints.py`（配信サービスが、タイル内のフィーチャーの値をDBから引き、DB障害・取込範囲外・空のタイルを同じ形でログの欄へ記録する口と、地点の値を引く配信サービスが中ほどを鍵と緯度・経度の配列で引き、1つの要求の中でタイルごとに1回だけ読んで分け合う置き場`TileMidpoints`）・`feature_materials.py`（タイルのフィーチャーごとの材料と、道1本のフィーチャーごとの区間の材料を読み、ディスクへ持つ）・`dedicated_way_values.py`（材料→配信の実装の表、軸の葉の材料から実装を選ぶこと、タイルの材料とサービスの値を1回ずつ引いて軸ごとの値を求める口——地図のレンズと区間インスペクタが使う——、地図のレンズ） |
 | infrastructure | `dynamic_way_value_cache.py`（配信サービスの値は勾配のみ。ディスク経由）・`feature_material_cache.py`（タイルのフィーチャーごとの材料と区間の材料。ディスク経由）・`tile_persistent_cache.py`（呼び出し元が設計したタプルの鍵でPythonオブジェクトを置く汎用のディスクキャッシュ。`diskcache`の包み） |
-| api | `region.py`（`GET /api/region/way-materials/{axis_id}/...`）・`dependencies.py`（`get_dedicated_way_value_service`・`get_axis_inspector_service`） |
+| api | `region.py`（`GET /api/region/way-materials/{axis_id}/...`）・`dependencies.py`（`dependencies.py: get_dedicated_way_value_service`・`dependencies.py: get_axis_inspector_service`） |
 
 勾配材料の入力（`edge_elevation.average_grade`とフィーチャーの方位）・中ほど・フィーチャーごとの材料を
 DBから取り出す`infrastructure/road_graph_repository.py: get_feature_gradient_inputs_in_tile`・`get_feature_midpoints_in_tile`・
@@ -40,8 +40,8 @@ DBから取り出す`infrastructure/road_graph_repository.py: get_feature_gradie
 新しい軸として作り直して改良するため、軸の名前で結ぶと作り直した軸が配信されない。
 
 `tests/test_dedicated_way_values.py`が、担当する材料で組み立てたサービスの`material_id`が
-その材料であること・材料カタログの既知材料であること・1つの材料を2つのサービスが担当すると
-登録時に落ちることを検査する。
+その材料であることを検査する。材料カタログに無い材料・要求が運ばない条件を読むサービス・1つの材料を
+2つのサービスが担当することは、登録（`services/dedicated_way_values.py: services_by_material`）が断る。
 
 ## 軸登録と要求の条件（`domain/dynamic_way_values.py`・`services/dedicated_way_values.py`）
 
@@ -157,6 +157,9 @@ frontendはどのクエリパラメータをどの軸のリクエストへ載せ
   （`domain/axis_definitions.py: BreakpointLinearShape.smallest_magnitude_at`）、区間の材料の値の距離平均の符号（道全体で
   上るか下るか。0なら正）を付ける。段はルートの値と揃い、凡例は材料の目盛り（%）と上り・下りの塗り分けのまま。上って
   下る道も坂のきつさの色になり、上りと下りが釣り合う道はどちらかの色に寄る。
+- **区間の得点の桁**: 探索は区間の得点を`domain/search_graph.py: EDGE_VALUE_DTYPE`の桁で持つので、畳む前の区間の得点も
+  その桁へ丸める。float64のまま畳むと、0.1刻みの丸めの境でルートの値と1段ずれる。道1本の材料で評価する得点は丸めない
+  （地図へ配る木は float64 で評価され、そちらと合わせる）。
 - 区間の無い道（長さ0の区間しか作れない道等）は、道1本の材料で評価する。走行方位で決まらない道は`null`のまま。
   区間の材料が読めないタイル（取込範囲外・DB障害）は値なし（`{}`）。
 - 区間の材料を読むのは道1本のズームで畳む軸を要求されたときだけで、読み直しは重い（本番の実測で、
@@ -192,6 +195,8 @@ axis_id → get_dedicated_way_value_service(axis_id) が今の軸の集合の写
             要る条件のうち木が読まないものが欠けていれば MissingConditions→422
             軸と内部軸の葉の材料のうち、配るサービスのある材料ごとに
               service.get_way_materials(z, x, y, at)   … 道ごとの材料（勾配はキャッシュ対象）
+                … 雨・風のサービスは道の中ほどの点を、組み立て（material_service_builder）が要求ごとに1つ作る
+                  TileMidpoints から読む。同じ要求で雨・風の材料をいくつ読んでも、問い合わせはタイルにつき1回
             葉の材料にサービスの無い材料があれば FeatureMaterialService.materials(z, x, y)
               … タイルのフィーチャーごとの材料（キャッシュ対象。取込範囲外・DB障害は{}を返す）
             → map_way_materials(axis_id, 軸の集合, 材料の木, タイルの材料と道ごとの材料, 走行方位・想定速度)
@@ -228,7 +233,8 @@ axis_id → get_dedicated_way_value_service(axis_id) が今の軸の集合の写
   どちら向きに辿るかが決まらず符号を選べない。0%として配ると、実際には急な坂の道が凡例の
   「平坦」の段へ入り、平坦な道と同じ色で塗られる——言えるのは「勾配を示せない」であって
   「平坦だ」ではない。結果から落とすと、値の無い道（「データなし」）と見分けられない。
-  `null`にする幅（`LENS_PERPENDICULAR_BAND_DEG`）は実地を見て決め直す値。区間インスペクタでは、その材料を読む軸の
+  `null`にする幅は較正値（`gradient.perpendicular_band_deg`）で、木を組むときに読む。地図は軸カタログの木で塗るので、
+  変えた幅は画面を読み込み直すと効く（道ごとの材料のキャッシュは幅を抱えない）。区間インスペクタでは、その材料を読む軸の
   得点が無い（`null`）。
 - 各サービスは`material_id`属性で自分が返す生値の材料idを宣言し、レンズはそれを軸定義の
   どの材料として評価するかに使う。勾配は`gradient_percent`固定、風は`wind_drag_ratio`固定
@@ -340,7 +346,7 @@ TTLで失効し、書き込みのたびに`diskcache`が失効したものを消
 ```
 get_way_materials(z, x, y, at)
   ├─ 時刻をJSTのローカル時刻へ（tz付きはJSTへ変換してからtzinfoを外す）
-  ├─ get_feature_midpoints_in_tile → 鍵ごとの中ほど（カバレッジ外はNone→{}、DB障害も{}。それ以外の例外は500）
+  ├─ TileMidpoints.arrays → 鍵ごとの中ほど（カバレッジ外はNone→{}、DB障害も{}。それ以外の例外は500）
   ├─ get_wind_forecast_lattice(タイルと全フィーチャーの中ほどを覆う矩形)（読めなければ{}）
   │     … タイルをまたぐ道の中ほどはタイルの外にありうる。格子の外の点は端の格子点へ寄せられるため、覆う
   ├─ sampled_times で時刻が予報の範囲の外（端へ寄せた）なら{}
@@ -387,7 +393,7 @@ way単位のズームで区間から畳むときの区間ごとの材料（`segm
 ```
 get_way_materials(z, x, y, at)   … atは読まない
   ├─ WeatherService.get_station_rain_materials(今) → 観測所ごとの材料の値（無い・古ければ{}）
-  ├─ get_feature_midpoints_in_tile → 鍵ごとの中ほど（カバレッジ外・空は{}、DB障害も{}）
+  ├─ TileMidpoints.arrays → 鍵ごとの中ほど（カバレッジ外・空は{}、DB障害も{}）
   ├─ rain_material_columns（domain/rain.py）: 中ほどに最も近い雨量計の値
   └─ 欠測（NaN）の道は結果から除く。戻り値は {material_id: {feature_key: 値}}（材料の木は値をそのまま読む）
 ```
@@ -420,7 +426,7 @@ get_way_materials(z, x, y, at)   … atは読まない
 
 | 関数 | 意味 | 符号 |
 |---|---|---|
-| `wind_drag_ratio_formula`（`wind.py`。値で評価するのは`wind_drag_ratio_array`／`wind_drag_ratio`） | 走行方位・風向風速・走行速度から、相対風速ベクトルの二乗則で無風時に対する空気抵抗の増分（時速20km無風の抵抗を1とする倍率、`WIND_DRAG_REFERENCE_SPEED_MS`） | 正=向かい風、負=追い風、純横風は小さな正。速いほど同じ風で大きい |
+| `wind_drag_ratio_formula`（`wind.py`。値で評価するのは`wind.py: wind_drag_ratio_array`／`wind.py: wind_drag_ratio`） | 走行方位・風向風速・走行速度から、相対風速ベクトルの二乗則で無風時に対する空気抵抗の増分（時速20km無風の抵抗を1とする倍率、`wind.py: WIND_DRAG_REFERENCE_SPEED_MS`） | 正=向かい風、負=追い風、純横風は小さな正。速いほど同じ風で大きい |
 | `travel_direction_formula`・`gradient_by_direction`（`gradient.py`） | 道路自身の勾配・向きと走行方位から実効勾配 | 正=登り、負=下り（大きさは道路自身の勾配のまま。直角付近は値が決まらず、配信は`null`として配る） |
 
 風の式は走行方位との角度差を係数として物理量へ反映するが、

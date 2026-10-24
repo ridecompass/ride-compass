@@ -26,7 +26,6 @@ export function makeRouteCandidate(overrides: Partial<RouteCandidate> = {}): Rou
     edge_point_offsets: [],
     node_ids: [],
     turns: [],
-    points: [],
     waypoint_distances_km: [],
     axis_contributions: {},
     ...overrides,
@@ -73,6 +72,8 @@ export function routeThrough(
           end_longitude: lon,
           cumulative_distance_km: segments.reduce((km, segment) => km + segment.distance_km, 0),
           distance_km: distanceKm,
+          edge_start: index - 1,
+          edge_end: index,
         }),
       );
     }
@@ -96,7 +97,6 @@ export function makeGenerationConditions(overrides: Partial<GenerationConditions
     distance_tolerance_km: 0,
     route_preference: {},
     penalty_strength: 0,
-    max_average_grade_percent: null,
     road_avoidance: {},
     max_routes: 0,
     start_time: "",
@@ -119,6 +119,8 @@ export function makeRouteSegment(overrides: Partial<RouteSegmentDetail> = {}): R
     end_longitude: 0,
     cumulative_distance_km: 0,
     distance_km: 0,
+    edge_start: 0,
+    edge_end: 0,
     estimated_arrival_time: null,
     axis_difficulties: {},
     axis_contributions: {},

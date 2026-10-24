@@ -1,16 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Popover, PopoverAnchor, PopoverContent, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { textVariants } from "@/components/ui/Text/Text";
 import FloatingPanel from "@/components/FloatingPanel/FloatingPanel";
 import { cn } from "@/lib/cn";
+import { TAP_SLOP_PX } from "@/lib/tapSlop";
 import { USAGE_GUIDE_ATTRIBUTE, isInUsageGuide, isUnselectedTab, usageTargetOf, type UsageTarget } from "./usageTarget";
-
-/** 押してから離すまでにこれ以上動いたら、押したのではなく動かした（なぞった・スクロールした）とみなす。 */
-const TAP_SLOP_PX = 10;
 
 /** 値を動かすキー。説明を見る状態では、フォーカスのある部品の値を変えさせない。 */
 const VALUE_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]);
@@ -44,7 +42,8 @@ function pressThrough(element: Element, passing: RefObject<boolean>) {
  */
 export default function UsageGuide({ onEnd }: UsageGuideProps) {
   const [target, setTarget] = useState<UsageTarget | null>(null);
-  const [highlight, setHighlight] = useState<DOMRect | null>(null);
+  // 枠は測った部品と組で持ち、説明する部品が替わったら前の部品の位置には描かない。
+  const [highlight, setHighlight] = useState<{ element: Element; rect: DOMRect } | null>(null);
   const onEndRef = useRef(onEnd);
   /** 自分で押す click を止めずに届ける間か。 */
   const passing = useRef(false);
@@ -68,10 +67,11 @@ export default function UsageGuide({ onEnd }: UsageGuideProps) {
     };
     // 押せない（disabled）ボタンにはclickが届かないため、離したときに決める。
     const onPointerUp = (event: PointerEvent) => {
-      if (isInUsageGuide(event.target)) return;
-      event.stopPropagation();
+      // 部品の外で押して案内の上で離しても、押し始めは捨てる（残すと、のちの関係ない離しで部品を選ぶ）。
       const start = down;
       down = null;
+      if (isInUsageGuide(event.target)) return;
+      event.stopPropagation();
       if (start === null) return;
       if (Math.hypot((event.clientX ?? 0) - start.x, (event.clientY ?? 0) - start.y) > TAP_SLOP_PX) return;
       choose(event.target);
@@ -117,19 +117,21 @@ export default function UsageGuide({ onEnd }: UsageGuideProps) {
     return () => listening.abort();
   }, []);
 
-  // 説明している部品を枠で示す。下部シートの中をスクロールしても部品に付いていくよう、測り直す。
-  useEffect(() => {
+  // 説明している部品を枠で示す。下部シートの中をスクロールしても部品に付いていくよう、測り直す。描く前に測る。
+  useLayoutEffect(() => {
     if (target === null) return;
+    const { element } = target;
     const measure = () => {
-      const next = target.element.getBoundingClientRect();
+      const next = element.getBoundingClientRect();
       setHighlight((current) =>
         current !== null &&
-        current.left === next.left &&
-        current.top === next.top &&
-        current.width === next.width &&
-        current.height === next.height
+        current.element === element &&
+        current.rect.left === next.left &&
+        current.rect.top === next.top &&
+        current.rect.width === next.width &&
+        current.rect.height === next.height
           ? current
-          : next,
+          : { element, rect: next },
       );
     };
     measure();
@@ -157,11 +159,16 @@ export default function UsageGuide({ onEnd }: UsageGuideProps) {
           widthRem={11}
         />
       </div>
-      {target && highlight && (
+      {target && highlight?.element === target.element && (
         <div
           aria-hidden="true"
           className="pointer-events-none fixed z-[var(--z-usage-guide)] rounded-sm outline-2 outline-offset-2 outline-[var(--color-accent-strong)]"
-          style={{ left: highlight.left, top: highlight.top, width: highlight.width, height: highlight.height }}
+          style={{
+            left: highlight.rect.left,
+            top: highlight.rect.top,
+            width: highlight.rect.width,
+            height: highlight.rect.height,
+          }}
         />
       )}
       <Popover

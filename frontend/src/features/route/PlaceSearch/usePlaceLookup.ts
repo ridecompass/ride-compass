@@ -77,7 +77,9 @@ export function usePlaceLookup(mapCenter: Coordinates) {
       const trimmed = text.trim();
       if (trimmed === "") return;
       lookUp(trimmed);
-      if (trimmed === query && near === mapCenter) void search.refetch();
+      // 同じかは引く鍵と同じく位置の値で見る（地図は動くたびに真ん中を作り直すので、参照では同じ位置でも別になる）。
+      if (trimmed === query && near.latitude === mapCenter.latitude && near.longitude === mapCenter.longitude)
+        void search.refetch();
     },
     /** 引いた候補を下げる。`clearText`なら打った文字も消す。 */
     close({ clearText = false } = {}) {

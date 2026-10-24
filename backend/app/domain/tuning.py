@@ -118,10 +118,12 @@ _STOP_ID = stop_seconds_parameter_id("stop")
 _SIGNAL_ID = stop_seconds_parameter_id("signal")
 _CRR_ID = "speed.crr"
 _CRR_GRAVEL_ID = "speed.crr_gravel"
+_CRR_COBBLESTONE_ID = "speed.crr_cobblestone"
 _TURNAROUND_OVERLAP_ID = "search.turnaround_max_overlap_ratio"
 _TURNAROUND_RELAXED_OVERLAP_ID = "search.turnaround_relaxed_overlap_ratio"
 _LOOP_RATIO_MIN_ID = "search.loop_to_outbound_ratio_min"
 _LOOP_RATIO_MAX_ID = "search.loop_to_outbound_ratio_max"
+_DISTANCE_TOLERANCE_ID = "search.distance_tolerance_ratio"
 #: 派生の外（地図の点のタイル・近くの点の読み出し）も作り直しに使った値を読む較正値のid。
 STOP_CLUSTER_DISTANCE_ID = "stop.cluster_distance_m"
 ACCIDENT_MATCH_DISTANCE_ID = "accident.match_max_distance_m"
@@ -236,7 +238,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         "speed.crr_paving_stones",
         "転がり抵抗", "", 0.0065, 0.001, 0.1, TuningEffect.IMMEDIATE,
-        f"切石・レンガの敷石の計測値が見当たらないため、舗装（{_CRR_ID}）と石畳（speed.crr_cobblestone）の間に置く。",
+        f"切石・レンガの敷石の計測値が見当たらないため、舗装（{_CRR_ID}）と石畳（{_CRR_COBBLESTONE_ID}）の間に置く。",
     ),
     TuningParameter(
         "speed.crr_compacted",
@@ -254,7 +256,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "草は舗装の約3.5倍（惰行試験）。砂はさらに大きいが、区分の中では土・草が多いため未舗装の値域の上寄りに置く。",
     ),
     TuningParameter(
-        "speed.crr_cobblestone",
+        _CRR_COBBLESTONE_ID,
         "転がり抵抗", "", 0.008, 0.001, 0.1, TuningEffect.IMMEDIATE,
         "模擬石畳の試験台で空気圧を最適にしたロードバイクのタイヤが約0.0055。実際の玉石は凹凸が大きく"
         "空気圧も合わせないため、それより上で、舗装と締め固めの間に置く。",
@@ -331,21 +333,57 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     ),
     TuningParameter(
         _LOOP_RATIO_MIN_ID,
-        "周回の全長の見込みの下限", "倍", 2.0, 1.0, 5.0, TuningEffect.IMMEDIATE,
+        "周回の全長の見込みの下限", "倍", 1.8, 1.0, 5.0, TuningEffect.IMMEDIATE,
         "周回の全長が往路の何倍になるかの見込みの下限。帰りは往路を避けて探すため往路と同じかそれより長い。"
         "全長が目標±許容に入るよう、折返し点を探す往路の長さの範囲をこの見込みで決める。"
         "置いた点を通る・目的地で終わるときの帰りは、終点までの最短のこの値−1倍以上と見込む。",
     ),
     TuningParameter(
         _LOOP_RATIO_MAX_ID,
-        "周回の全長の見込みの上限", "倍", 2.3, 1.0, 5.0, TuningEffect.IMMEDIATE,
+        "周回の全長の見込みの上限", "倍", 2.2, 1.0, 5.0, TuningEffect.IMMEDIATE,
         f"{_LOOP_RATIO_MIN_ID}の上限側。{_LOOP_RATIO_MIN_ID}以上にする。",
+    ),
+    TuningParameter(
+        "search.alternative_max_stretch",
+        "目的地への代わりの道の長さの上限", "倍", 1.3, 1.0, 3.0, TuningEffect.IMMEDIATE,
+        "距離なしで目的地へ向かうとき、合成の費用が最も低い道の長さの何倍までの道を代わりの道の候補にするか。"
+        "上げるほど遠回りの候補が並ぶ。",
+    ),
+    TuningParameter(
+        "search.pareto_distance_quantum_m",
+        "候補の距離を同じとみなす粒度", "m", 200.0, 1.0, 5000.0, TuningEffect.IMMEDIATE,
+        "候補（折返し点・目的地への道の経由のNode）を並べるとき、距離の鍵がこの刻みの中で違うだけなら同じ距離とみなす。細かすぎると"
+        "互いに劣らない候補が全件残って間引けず、粗すぎると候補が減りすぎる。",
+    ),
+    TuningParameter(
+        "search.turnaround_radius_ratio",
+        "距離ありの探索範囲の半径の比", "倍", 0.4, 0.1, 1.0, TuningEffect.IMMEDIATE,
+        "距離ありで道路網を切り出す範囲の半径を、自由に選ぶ部分（目標から置いた点の間の長さを引いた残り）の"
+        "何倍にするか。折返し点の往路はその半分付近にあり、直線ではそれより短いので0.5より小さく置く。"
+        "上げると範囲の面積が二乗で増え、生成の準備の時間とメモリが増える。足りなければ折返し点の候補が欠ける。",
+    ),
+    TuningParameter(
+        _DISTANCE_TOLERANCE_ID,
+        "全長の目標の許容の割合", "", 0.15, 0.01, 1.0, TuningEffect.IMMEDIATE,
+        "距離ありで、全長が目標からその目標のこの割合の長さの中に入る候補だけを返す（0.15なら30kmで±4.5km）。"
+        "折返し点を探す往路の長さの範囲もこの幅から決める。",
+        shown_to_users=True,
     ),
     TuningParameter(
         "search.retrace_penalty_multiplier",
         "走った道を帰りで通る罰", "倍", 8.0, 1.0, 100.0, TuningEffect.IMMEDIATE,
         "帰りを探す間、それまでに走った道（逆向きを含む）の探索の費用に掛ける倍率。1は避けない。"
         "有限なので、走った道を戻るほかに道が無い所（袋小路等）は通れる。",
+    ),
+    # --- 地図の評価 ---
+    # 地図は軸カタログの`way_value_formula`の木でこの幅を読むので、カタログを取り直す（画面を読み込み直す）と効く。
+    # 道ごとの材料のキャッシュは道の勾配と向きだけを持ち、幅を抱えない（予報の値まで求めて配る軸だけは、
+    # `/api/region/way-materials`の応答のブラウザのキャッシュが切れてから効く）。
+    TuningParameter(
+        "gradient.perpendicular_band_deg",
+        "勾配を示さない直角からの幅", "度", 15.0, 0.0, 45.0, TuningEffect.CLIENT_RELOAD,
+        "走る向きに対して直角からこの角度以内の道は、どちら向きに辿るか決まらないため、その向きでの勾配を示さない"
+        "（地図では向きで決まらない道として塗る）。広げるほど勾配を示さない道が増える。",
     ),
     # --- 画面が使う値（カタログ取得でフロントへ配る） ---
     TuningParameter(
@@ -359,8 +397,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "evaluation.penalty_strength",
         "主観と時間の換算レート", "", 0.7, 0.0, 5.0,
         TuningEffect.IMMEDIATE,
-        "難易度を所要時間の割増しへ換算する強さ。"
-        "リクエストごとに上書きできるため、ここで決めるのは省略されたときの値。",
+        "難易度を所要時間の割増しへ換算する強さ。",
     ),
 )
 

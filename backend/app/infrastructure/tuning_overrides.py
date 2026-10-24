@@ -80,39 +80,43 @@ def merge_overrides(overrides: dict[str, float]) -> dict[str, float]:
     return merged
 
 
-async def read_overrides(session: AsyncSession) -> dict[str, float]:
-    """テーブルの中身（id → 値）。行が無ければ空。"""
-    rows = (await session.execute(select(TuningOverrideRow))).scalars().all()
-    return {row.param_id: float(row.value) for row in rows}
-
-
 async def load_tuning_values(session: AsyncSession) -> dict[str, float]:
     """DBの上書きを読み、宣言の範囲で検算して、いま効くべき値を作る（プロセスへは反映しない）。"""
-    return merge_overrides(await read_overrides(session))
+    return merge_overrides(await TuningOverrideStore(session).read_overrides())
 
 
-async def set_override(session: AsyncSession, param_id: str, value: float) -> None:
-    """1件を上書きする（既定値と同じなら行を消す——差分だけを持つ形を保つ）。
+class TuningOverrideStore:
+    """上書きの行の読み書き。取引の区切り（`commit`）は呼び出し元が持つ。"""
 
-    範囲の検算は`merge_overrides`と同じ規則で、書く前に行う。値どうしの順の約束はほかの行と
-    重ねないと決まらないので、ここでは見ない（書いた後に全件を`merge_overrides`へ通す側が見る）。
-    **宣言に無いidは書く側ではエラーにする**——読む側が警告で済ませるのは「宣言から消えた値の行が
-    残っている」場合だけで、これから書く値が宣言に無いのは綴り間違いである。
-    """
-    parameter = TUNING_PARAMETERS_BY_ID.get(param_id)
-    if parameter is None:
-        raise TuningOverrideError(f"較正値の宣言に無いid: {param_id}")
-    _check_in_range(parameter, value)
-    if value == TUNING_PARAMETERS_BY_ID[param_id].default:
-        await clear_override(session, param_id)
-        return
-    await session.execute(
-        pg_insert(TuningOverrideRow)
-        .values(param_id=param_id, value=value)
-        .on_conflict_do_update(index_elements=["param_id"], set_={"value": value, "updated_at": func.now()})
-    )
+    def __init__(self, session: AsyncSession):
+        self._session = session
 
+    async def read_overrides(self) -> dict[str, float]:
+        """テーブルの中身（id → 値）。行が無ければ空。"""
+        rows = (await self._session.execute(select(TuningOverrideRow))).scalars().all()
+        return {row.param_id: float(row.value) for row in rows}
 
-async def clear_override(session: AsyncSession, param_id: str) -> None:
-    """1件の上書きを外す（既定値へ戻す）。"""
-    await session.execute(delete(TuningOverrideRow).where(TuningOverrideRow.param_id == param_id))
+    async def set_override(self, param_id: str, value: float) -> None:
+        """1件を上書きする（既定値と同じなら行を消す——差分だけを持つ形を保つ）。
+
+        範囲の検算は`merge_overrides`と同じ規則で、書く前に行う。値どうしの順の約束はほかの行と
+        重ねないと決まらないので、ここでは見ない（書いた後に全件を`merge_overrides`へ通す側が見る）。
+        **宣言に無いidは書く側ではエラーにする**——読む側が警告で済ませるのは「宣言から消えた値の行が
+        残っている」場合だけで、これから書く値が宣言に無いのは綴り間違いである。
+        """
+        parameter = TUNING_PARAMETERS_BY_ID.get(param_id)
+        if parameter is None:
+            raise TuningOverrideError(f"較正値の宣言に無いid: {param_id}")
+        _check_in_range(parameter, value)
+        if value == parameter.default:
+            await self.clear_override(param_id)
+            return
+        await self._session.execute(
+            pg_insert(TuningOverrideRow)
+            .values(param_id=param_id, value=value)
+            .on_conflict_do_update(index_elements=["param_id"], set_={"value": value, "updated_at": func.now()})
+        )
+
+    async def clear_override(self, param_id: str) -> None:
+        """1件の上書きを外す（既定値へ戻す）。"""
+        await self._session.execute(delete(TuningOverrideRow).where(TuningOverrideRow.param_id == param_id))

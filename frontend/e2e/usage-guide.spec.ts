@@ -3,7 +3,7 @@ import { USAGE_PART_SELECTOR } from "@/components/UsageGuide/usageTarget";
 import { INTRO_CLOSED, installApiMocks, seedStoredState } from "./fixtures";
 import { WIDTHS, installPageHelpers, openApp, type WidthName } from "./states";
 
-// 使い方の説明の「中を見る」で開いた浮きパネルの中の部品も説明できること（パターン4 観点1）。浮きパネルは外への押し操作と
+// 使い方の説明の「中を見る」で開いた浮きパネルの中の部品も説明できること（パターン4 観点2）。浮きパネルは外への押し操作と
 // フォーカスで閉じ、その出来事の届き方は実際のブラウザでしか確かめられない。生成前の基本の画面で説明を見る状態に入り、
 // 押せる部品（押す点＝中心点のヒットテストが部品自身か子孫を返すもの）のうち浮きパネルの開くボタンを1つずつ「中を見る」で
 // 開き、中の部品を1つずつ押して、説明（使い方の文）が出て浮きパネルが開いたままかを見る。

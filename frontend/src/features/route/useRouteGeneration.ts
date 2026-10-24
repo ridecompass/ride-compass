@@ -15,7 +15,6 @@ import { generateRoutes, type GenerationProgress } from "@/features/route/routeA
 import { orderGenerated } from "@/features/route/routeTabLabel";
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import type { Coordinates, RouteCandidate, RoutePreferenceWeights } from "@/types/route";
-import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 /** 押した「生成」の直近の結果。失敗は前の候補を残したまま出すため、候補0件の理由と分けて持つ。 */
 export type GenerationNotice = { kind: "failed" | "empty"; message: string };
@@ -80,7 +79,6 @@ export function useRouteGeneration({
   const buildCurrentGenerationInput = (destinationOverride?: Coordinates): GenerationInput => ({
     origin,
     distanceKm: distanceTargeted ? Number(distance) : null,
-    distanceToleranceKm: routeGenerateConfig.default_distance_tolerance_km,
     maxRoutes: Number(maxRoutes),
     assumedSpeedKmh,
     startTime: departure.at,

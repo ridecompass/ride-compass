@@ -10,7 +10,7 @@
 from sqlalchemy import Float, Text, bindparam, text
 from sqlalchemy.dialects.postgresql import ARRAY
 
-from app.domain.accident import BICYCLE_SQL, FATAL_SQL
+from app.domain.accident import BICYCLE_SQL, FATAL_SQL, nearest_edge_sql
 from app.domain.geo import degrees_covering_m
 from app.domain.primary_attributes import ATTR_ACCIDENT_POINT, ATTR_STOP_POI, PRIMARY_ATTRIBUTES_BY_ID, stop_poi_map_group_sql
 from app.domain.route_points import ROUTE_SIDE_POINT_MAX_DISTANCE_M
@@ -88,12 +88,7 @@ SELECT {_hit(ATTR_ACCIDENT_POINT.attr_id, "'a' || md5(ST_AsBinary(a.geom))", "NU
              involves_bicycle=BICYCLE_SQL, fatal=FATAL_SQL, occurred_year="a.occurred_year")}
 FROM w
 JOIN {ACCIDENTS_SOURCE_SQL} a ON {_near("a.geom", "w.accident_deg", "w.accident_m")}
-CROSS JOIN LATERAL (
-    SELECT e.osm_way_id, e.segment_index FROM road_edges e
-    WHERE e.geom && ST_Expand(a.geom, w.accident_deg)
-      AND ST_DWithin(e.geom::geography, a.geom::geography, w.accident_m)
-    ORDER BY ST_Distance(e.geom::geography, a.geom::geography), e.osm_way_id, e.segment_index
-    LIMIT 1) n
+CROSS JOIN LATERAL {nearest_edge_sql("w.accident_deg", "w.accident_m")} n
 WHERE n.osm_way_id = w.osm_way_id AND n.segment_index = w.segment_index
 """).bindparams(
     bindparam("stop_kinds", value=sorted(STOP_POI_KINDS), type_=ARRAY(Text())),

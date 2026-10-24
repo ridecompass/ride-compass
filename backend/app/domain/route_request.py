@@ -19,10 +19,10 @@ from app.domain.route_preference import RoutePreference
 # 長時間止まりうる。30km規模までの検証実績に余裕を見た値。経由地・目的地は出発地からこの
 # 距離の中に置く。
 MAX_ROUTE_DISTANCE_KM = 100
-# 目標距離からの許容差（km）。画面はこの既定値をそのまま送る——片方だけ変えると、画面の
-# 見込みと探索の範囲がずれる。
-DEFAULT_DISTANCE_TOLERANCE_KM = 5.0
-MAX_DISTANCE_TOLERANCE_KM = 50.0
+# 都心の出発地でも、同時に動く生成の上限の本数がそろって探索範囲を読める全長の目標（km）。探索範囲の区間数は目標の
+# 2乗で増え、これを超える目標はほかの生成と重なると`services/graph_service.py: SearchMemory`の予算を超えて混み合いで
+# 断られうる。受け付けは`MAX_ROUTE_DISTANCE_KM`まで残し、画面の全長の目標の説明がこの値を出す。
+BUSY_SAFE_DISTANCE_KM = 60
 # 経由地の数の上限。経由地ごとにレグの探索が1本増える。
 MAX_WAYPOINTS = 8
 # 区間の乗り換えで受け取るEdge idの上限。1本の候補が数百Edgeで、区間を差し替えても
@@ -41,6 +41,8 @@ MAX_ASSUMED_SPEED_KMH = 60.0
 # 想定速度の値の範囲。速度を受けるどの入口（ルート生成・地図の配信・区間インスペクタ）もこの型で書く。範囲の検査は
 # NaN・無限大も断る。
 AssumedSpeedKmh = Annotated[float, Field(ge=MIN_ASSUMED_SPEED_KMH, le=MAX_ASSUMED_SPEED_KMH)]
+
+
 def request_error(message: str) -> PydanticCustomError:
     """要求の誤り。文は画面の結果欄へそのまま出るので、利用者が読める日本語で書く
     （`ValueError`は「Value error, 」の前置きが付いて返る）。"""
@@ -121,8 +123,6 @@ class RequestedConditions:
     assemble_route_generation_setup`）が決める。"""
 
     preference_override: RoutePreference | None
-    penalty_strength: float | None
-    max_average_grade_percent: float | None
     # 避け方を選べる行→段（`domain/road_avoidance.py: resolve_road_avoidance`が今の行へ揃える）。
     road_avoidance: Mapping[str, AvoidanceLevel]
     assumed_speed_kmh: float

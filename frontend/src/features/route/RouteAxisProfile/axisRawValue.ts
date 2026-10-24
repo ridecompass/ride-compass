@@ -63,8 +63,9 @@ export function formatMaterialBreakdown(
 /**
  * categorical材料の内訳1件（例:「住宅街の道 62%」）。
  *
- * 出すのは**最も延長の長い値**1つだけ。backendが割合の降順で返すので先頭を取る
- * （フロントは並べ替えを持たない）。「幹線道路が◯%」のように複数の値をまとめた形には
+ * 出すのは**最も延長の長い値**1つだけ。受け取った並びの先頭を取らない——タグ値は自由な綴りで、
+ * JSのオブジェクトは整数に見える鍵（`"3"`等）を挿入の順より前へ並べ替えるため、backendが割合の
+ * 降順で入れても先頭が最大とは限らない。「幹線道路が◯%」のように複数の値をまとめた形には
  * しない——どの値を幹線とみなすかという判断表をフロントが持つことになり、軸を1本足すと
  * 表の更新が要る状態に戻るため。ラベルはbackendが返す対訳（`valueLabels`）を引き、
  * 未登録の値はタグ生値をそのまま出す（新しいOSMタグ値が現れても壊れない）。
@@ -73,7 +74,10 @@ export function formatCategoryBreakdown(
   entry: { label: string; valueLabels?: Readonly<Record<string, string>> },
   shares: Readonly<Record<string, number>> | undefined,
 ): string | null {
-  const top = Object.entries(shares ?? {})[0];
+  const top = Object.entries(shares ?? {}).reduce<[string, number] | undefined>(
+    (best, entry) => (best === undefined || entry[1] > best[1] ? entry : best),
+    undefined,
+  );
   if (top === undefined) return null;
   const [value, share] = top;
   return `${entry.valueLabels?.[value] ?? value} ${Math.round(share * 100)}%`;

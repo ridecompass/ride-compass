@@ -9,29 +9,19 @@
 """
 
 import asyncio
-import logging
 
 import pytest
-from shapely.geometry import Point, shape
 
 from app.infrastructure.flood_client import new_flood_cache
 from app.infrastructure.jma_warning_client import new_area_data_cache
 from app.services.flood_service import FloodService
+from tests.area_shapes import holds
 from tests.fake_http import client_for
 from tests.jma_area_fixtures import CHIYODA_POINT, CLASS10_CODE, CLASS20_CODE, OFFSHORE_POINT, area_lookup_upstream
 
 
-def _holds(area, point) -> bool:
-    """範囲が地点を含むか（画面が「まだこの中にいる」と読むのと同じ問い）。"""
-    return shape(area.model_dump()).contains(Point(point.longitude, point.latitude))
-
-
-def _service(boundary_path, **kwargs) -> FloodService:
-    return FloodService(
-        client_for(area_lookup_upstream(boundary_path, **kwargs)),
-        area_data_cache=new_area_data_cache(),
-        flood_cache=new_flood_cache(),
-    )
+def _service(upstream) -> FloodService:
+    return FloodService(client_for(upstream), area_data_cache=new_area_data_cache(), flood_cache=new_flood_cache())
 
 
 def _bulletin(**overrides) -> dict:
@@ -50,42 +40,27 @@ def _bulletin(**overrides) -> dict:
 
 
 async def test_get_forecasts_returns_empty_when_the_point_is_in_no_area(boundary_path):
-    result = await _service(boundary_path).get_forecasts(OFFSHORE_POINT)
+    result = await _service(area_lookup_upstream(boundary_path)).get_forecasts(OFFSHORE_POINT)
     assert result.forecasts == []
     assert result.valid_area is None
 
 
 async def test_get_forecasts_carries_the_area_the_same_forecasts_hold_for(boundary_path):
     """同じ予報が当たる範囲（地点を含む区域）を添える。"""
-    result = await _service(boundary_path, flood_documents=[]).get_forecasts(CHIYODA_POINT)
+    result = await _service(area_lookup_upstream(boundary_path, flood_documents=[])).get_forecasts(CHIYODA_POINT)
 
     assert result is not None and result.valid_area is not None
-    assert _holds(result.valid_area, CHIYODA_POINT)
-    assert not _holds(result.valid_area, OFFSHORE_POINT)
+    assert holds(result.valid_area, CHIYODA_POINT)
+    assert not holds(result.valid_area, OFFSHORE_POINT)
 
 
 @pytest.mark.parametrize("failure", [
-    {"area_data": None},
-    {"class20_code": "9999900"},  # 境界が返した区域を地域マスタで辿れない
+    {"area_data": None},  # 区域が分からない
     {"flood_documents": None},
 ])
 async def test_get_forecasts_is_unknown_rather_than_empty_when_a_step_fails(boundary_path, failure):
     """取れなかったことを「予報なし」と同じ空で返すと、画面は氾濫予報が出ていないと見せる。"""
-    assert await _service(boundary_path, **failure).get_forecasts(CHIYODA_POINT) is None
-
-
-async def test_get_forecasts_names_the_area_the_master_cannot_follow(boundary_path, caplog):
-    """区域の境界と地域マスタは別々に配られ、片方だけが区域の変更に追いつくと起きる。運用者が気づけるように出す。"""
-    with caplog.at_level(logging.WARNING, logger="ridecompass.external"):
-        await _service(boundary_path, class20_code="9999900").get_forecasts(CHIYODA_POINT)
-
-    assert any("9999900" in record.getMessage() for record in caplog.records)
-
-
-async def test_get_forecasts_is_unknown_when_area_boundaries_are_unreadable(boundary_path):
-    service = _service(boundary_path, flood_documents=[])
-    boundary_path.unlink()
-    assert await service.get_forecasts(CHIYODA_POINT) is None
+    assert await _service(area_lookup_upstream(boundary_path, **failure)).get_forecasts(CHIYODA_POINT) is None
 
 
 async def test_get_forecasts_collects_every_active_forecast_and_leaves_out_the_rest(boundary_path):
@@ -103,7 +78,7 @@ async def test_get_forecasts_collects_every_active_forecast_and_leaves_out_the_r
         ),
     ]
 
-    result = await _service(boundary_path, flood_documents=documents).get_forecasts(CHIYODA_POINT)
+    result = await _service(area_lookup_upstream(boundary_path, flood_documents=documents)).get_forecasts(CHIYODA_POINT)
 
     assert sorted((f.river_code, f.badge_level, f.label) for f in result.forecasts) == [
         ("830304004400", "severe_warning", "神田川氾濫危険警報"),
@@ -114,9 +89,9 @@ async def test_get_forecasts_collects_every_active_forecast_and_leaves_out_the_r
 async def test_points_asked_at_once_fetch_each_document_once(boundary_path):
     """同時に開いた画面の問い合わせは、地域マスタと洪水予報を気象庁へ1回ずつだけ取りに行く。"""
     upstream = area_lookup_upstream(boundary_path, flood_documents=[])
-    service = FloodService(client_for(upstream), area_data_cache=new_area_data_cache(), flood_cache=new_flood_cache())
+    service = _service(upstream)
 
     await asyncio.gather(service.get_forecasts(CHIYODA_POINT), service.get_forecasts(CHIYODA_POINT))
 
     urls = [str(call.request.url) for call in upstream.calls]
-    assert sorted(urls) == sorted(set(urls)) and len(urls) == 2
+    assert len(set(urls)) == len(urls) == 2

@@ -9,16 +9,18 @@ docs/modules/backend/evaluation-scoring.md「材料カタログ」参照）。
 網羅的に登録する。登録済みでも対応する軸が無ければ評価には使われない（軸の定義ファイルから
 使える）。
 
-材料自体はGUIから追加・編集・削除できない（コード変更＋デプロイが前提）。frontendは本カタログを
-ビルド時の生成物（`scripts/export_openapi.py`が書き出す`material-catalog.json`）だけから知る。
+本カタログの材料はGUIから追加・編集・削除できず（コード変更＋デプロイが前提）、ビルド時の生成物
+（`scripts/export_openapi.py`が書き出す`material-catalog.json`）へ書き出す。道の区分から作る材料（`class:<分け方>`）は
+本カタログの外で、管理DBの区分から実行時に作る（`domain/road_classes.py: class_material_spec`）。
 
 `tile_property`はMVTタイル（`road_tile_sql.py: ROAD_SURFACE_TILE_MVT_SQL`）へ焼き込む
 プロパティ名（Noneなら材料がタイルに載らない）。
 """
 
+from collections import Counter
 from dataclasses import dataclass
 
-from typing import Literal, NamedTuple
+from typing import Literal, NamedTuple, get_args
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
@@ -97,8 +99,19 @@ Population = Literal["way", "edge"]
 # "definite": 欠損は確定値（タグ不在=非該当等）として扱われ、軸は通常どおり評価される。
 MissingSemantics = Literal["unknown", "definite"]
 
+
+
+def labeled_every_value[K: str, V](literal_type: object, labels: dict[K, V]) -> dict[K, V]:
+    """`Literal`の値の全部に見出しを付けた表を、そのまま返す。過不足があれば`ValueError`。
+
+    管理画面の欠損率は母集団と欠損の扱いで束ねて見出しを付けるので、見出しの無い値の材料は表から落ちる。"""
+    if set(labels) != set(get_args(literal_type)):
+        raise ValueError(f"見出しが値と食い違う: {sorted(set(labels) ^ set(get_args(literal_type)))}")
+    return labels
+
+
 #: 母集団の表示名（管理画面の欠損率）。
-POPULATION_LABELS: dict[Population, str] = {"way": "Way", "edge": "Edge"}
+POPULATION_LABELS: dict[Population, str] = labeled_every_value(Population, {"way": "Way", "edge": "Edge"})
 
 class MissingSemanticsDisplay(NamedTuple):
     title: str
@@ -109,14 +122,14 @@ class MissingSemanticsDisplay(NamedTuple):
 
 #: 欠損の扱いの見出しと説明（管理画面の欠損率）。意味が正反対のため、画面は同じ表へ並べず見出しで分ける。
 #: 並びが画面の並び順。
-MISSING_SEMANTICS_DISPLAY: dict[MissingSemantics, MissingSemanticsDisplay] = {
+MISSING_SEMANTICS_DISPLAY: dict[MissingSemantics, MissingSemanticsDisplay] = labeled_every_value(MissingSemantics, {
     "unknown": MissingSemanticsDisplay(
         "評価に影響する欠損", "元データが無い区間では、この材料を使う軸が評価対象外になる。", True
     ),
     "definite": MissingSemanticsDisplay(
         "タグ不在を確定値として評価する材料（参考）", "欠損は「該当なし」を意味し、評価に穴は開かない。", False
     ),
-}
+})
 
 
 @dataclass(frozen=True)
@@ -353,8 +366,7 @@ _RAIN_COVERAGE = CoverageExcluded(
 
 # 材料の値（OSMタグ生値）ごとの日本語ラベル対訳表。
 # MaterialSpec.value_labelsのdocstring参照——「地図表示と評価は別」という方針に基づき、
-# 地図の表示分類（一次属性`highway`の`display_axes`が持つ`DisplayCategorySpec`、
-# 意図的に多対一）とは独立した1値1ラベルの専用対訳表。各値の日本語ラベルはOSM wiki
+# 地図の表示分類（管理DBの道の区分。意図的に多対一）とは独立した1値1ラベルの専用対訳表。各値の日本語ラベルはOSM wiki
 # （Key:highway/Key:surface）の一般的なタグ定義に基づく。MaterialSpecの呼び出し直下へ
 # インラインで書くと材料定義ブロックの見通しが悪くなるためここへ分けているだけで、
 # 値は`value_labels=`で各MaterialSpecへそのまま渡す。材料をまたぐ別辞書ではない。
@@ -505,7 +517,6 @@ def _landcover_description(cls: LandcoverClass) -> str:
 #: ずれたときに読む側が材料を見つけられず、黙って欠損として扱う。
 GRADIENT_PERCENT = "gradient_percent"
 WIND_DRAG_RATIO = "wind_drag_ratio"
-SURFACE_ESTIMATE = "surface_estimate"
 ACCIDENT_COUNT_PER_KM_YEAR = "accident_count_per_km_year"
 
 
@@ -759,22 +770,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
                 missing_semantics="unknown",
             ),
     ),
-    SURFACE_ESTIMATE: MaterialSpec(
-        material_id=SURFACE_ESTIMATE,
-        label="路面の見込み",
-        description=(
-            "道の区分のうち、走行モデルの転がり抵抗が読む分け方の区分（路面のタグ・農道林道の等級等から振り分けたもの）。"
-            "どの区分にも入らない道は値を持ちません。"
-        ),
-        dtype="categorical",
-        tile_property=None,
-        primary_attribute=ATTR_SURFACE,
-        source="road_class",
-        coverage=CoverageExcluded(
-            reason="道の区分から都度作る値で、DBに静的な値を持たない",
-            missing_semantics="unknown",
-        ),
-    ),
     # 自転車インフラの分類を、評価軸ではなく材料の側で正規化したフラグ群。軸はこれらを
     # 重み付き線形結合するだけで、タグの読み方を知らない。それぞれ専用のtile_propertyを
     # 持ち、MVTタイルへ焼き込む。
@@ -926,15 +921,57 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
 }
 
 
+def check_material_catalog(catalog: dict[str, MaterialSpec]) -> None:
+    """カタログが材料を1つの名前・1つのタイルの列で配ることを確かめ、外れれば`ValueError`。
+
+    読む側は鍵で引き、引いた材料の`material_id`を書き出すので、食い違うと別の名前で配られる。同じタイルの列に
+    2つの材料が焼かれると、地図はどちらか一方の値で塗る。"""
+    misfiled = sorted(key for key, material in catalog.items() if key != material.material_id)
+    if misfiled:
+        raise ValueError(f"鍵と材料のidが食い違う: {misfiled}")
+    properties = Counter(material.tile_property for material in catalog.values() if material.tile_property)
+    shared = sorted(prop for prop, n in properties.items() if n > 1)
+    if shared:
+        raise ValueError(f"2つ以上の材料が同じタイルの列に焼かれる: {shared}")
+
+
+check_material_catalog(MATERIAL_CATALOG)
+
+
+
+def material_spec(material_id: str) -> MaterialSpec | None:
+    """材料idの宣言。`MATERIAL_CATALOG`の材料と、道の区分から作る材料（`class:<分け方>`、今の区分の分け方ごとに1つ）を引く。
+    無い材料idにはNoneを返す。"""
+    spec = MATERIAL_CATALOG.get(material_id)
+    if spec is not None:
+        return spec
+    from app.domain.road_classes import class_material_spec  # 区分は材料の宣言を読むので、引くときにだけ読む
+
+    return class_material_spec(material_id)
+
+
+def known_material_spec(material_id: str) -> MaterialSpec:
+    """在ると分かっている材料idの宣言（`material_spec`）。無ければKeyError。"""
+    spec = material_spec(material_id)
+    if spec is None:
+        raise KeyError(material_id)
+    return spec
+
+
+def all_material_specs() -> list[MaterialSpec]:
+    """`MATERIAL_CATALOG`の材料と、今の区分から作る材料の全部。"""
+    from app.domain.road_classes import class_material_specs
+
+    return [*MATERIAL_CATALOG.values(), *class_material_specs()]
+
 
 def is_known_material(material_id: str) -> bool:
-    return material_id in MATERIAL_CATALOG
+    return material_spec(material_id) is not None
 
 
 def material_dtype(material_id: str) -> MaterialDType | None:
-    """材料idのdtype（`MaterialDType`）。未知の材料idにはNoneを返す
-    （呼び出し側は`is_known_material`で存在確認済みの前提だが、念のため例外にはしない）。"""
-    spec = MATERIAL_CATALOG.get(material_id)
+    """材料idのdtype（`MaterialDType`）。無い材料idにはNoneを返す。"""
+    spec = material_spec(material_id)
     return spec.dtype if spec is not None else None
 
 

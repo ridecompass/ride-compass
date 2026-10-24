@@ -27,13 +27,13 @@ from app.services.material_coverage_service import (
     build_material_coverage_report,
 )
 from tests.conftest import raw_connection
-from tests.source_ingest import dem_tile_records, ingest_records, way_record
+from tests.source_ingest import dem_tile_records, ingest_records, parallel_way_record
 
 COMPUTED_AT = datetime(2026, 9, 4, tzinfo=timezone.utc)
 
 
 def _counts(way_total: int = 10, edge_total: int = 4, **missing_overrides: int) -> MaterialCoverageCounts:
-    missing = {material_id: 0 for material_id in MATERIAL_COVERAGE_SPECS}
+    missing = dict.fromkeys(MATERIAL_COVERAGE_SPECS, 0)
     missing.update(missing_overrides)
     return MaterialCoverageCounts(way_total=way_total, edge_total=edge_total, missing_by_material=missing)
 
@@ -75,8 +75,7 @@ def test_build_report_returns_none_ratio_when_population_is_empty():
 async def test_the_report_counts_missing_values_per_population_on_the_database(road_graph_session):
     # 道3本（路面のタグは1本だけ）を取り込んで区間へ切る。標高は道1の周りにだけ置き、その区間だけが勾配を持つ。
     await ingest_records("osm_way", [
-        way_record(way_id, [(139.70, 35.68 + 0.001 * way_id), (139.701, 35.68 + 0.001 * way_id)],
-                   [way_id * 10, way_id * 10 + 1], tags)
+        parallel_way_record(way_id, tags)
         for way_id, tags in {1: {"surface": "asphalt"}, 2: {}, 3: {}}.items()])
     area = BoundingBox(min_latitude=35.6805, min_longitude=139.6995, max_latitude=35.6835, max_longitude=139.7015)
     await ingest_records("dem", dem_tile_records(

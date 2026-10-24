@@ -5,8 +5,8 @@
 - 道の通行方向を決めるSQL → `test_resolve_direction.py`
 - 停止の待ちが区間の所要時間へ足されること → `test_leg_costs.py`
 - 待ちの秒が管理画面から変えた値を読むこと → `test_tuning_overrides.py`
-- 階級を比べて交差点の待ちを足すこと → `test_routing.py`
-- 停止要因の種別を地図の凡例の行へ写すこと → `test_material_catalog.py`
+- 階級を比べて交差点の待ちを足すこと → `test_turn_structure.py`
+- 停止要因の種別を地図の凡例の行へ写すこと → `test_primary_attributes.py`
 """
 
 import pytest

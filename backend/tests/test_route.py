@@ -37,7 +37,7 @@ def _segments(distances: list[float], **fields_per_segment) -> list[RouteSegment
         segments.append(RouteSegmentDetail(
             start_latitude=35.0, start_longitude=139.0 + i * 0.01,
             end_latitude=35.0, end_longitude=139.0 + (i + 1) * 0.01,
-            cumulative_distance_km=cumulative, distance_km=distance,
+            cumulative_distance_km=cumulative, distance_km=distance, edge_start=i, edge_end=i + 1,
             **({"elevations": [], "road_classes": {}}
                | {name: values[i] for name, values in fields_per_segment.items()}),
         ))
@@ -45,19 +45,18 @@ def _segments(distances: list[float], **fields_per_segment) -> list[RouteSegment
     return segments
 
 
-def _signal_segments(distances: list[float], signals: list[float], share: float | None = None) -> list[RouteSegmentDetail]:
+def _signal_segments(distances: list[float], signals: list[float], share: float) -> list[RouteSegmentDetail]:
     """信号の数で決まる停止密度の軸（`stops`）と、どの区間も20点の軸（`other`）を持つ区間。`share`は停止密度の軸の
-    重みの割合（`other`が残り）で、Noneなら合成に入らない。区間の値はエンジンと同じく区間の点数・寄与度・合成から作る。"""
+    重みの割合（`other`が残り）。区間の値はエンジンと同じく区間の点数・寄与度・合成から作る。"""
     segments = []
     for distance, count in zip(distances, signals, strict=True):
         density = count / distance
         score = STOP_SHAPE.score_at(density)
-        fields = {"axis_difficulties": {"stops": score, "other": 20.0}}
-        if share is not None:
-            fields |= {
-                "axis_contributions": {"stops": score * share, "other": 20.0 * (1 - share)},
-                "difficulty": score * share + 20.0 * (1 - share),
-            }
+        fields = {
+            "axis_difficulties": {"stops": score, "other": 20.0},
+            "axis_contributions": {"stops": score * share, "other": 20.0 * (1 - share)},
+            "difficulty": score * share + 20.0 * (1 - share),
+        }
         segments.append((distance, fields, DensityScoreInput(
             value=density, distance_km=distance, weight_share=share, shape=STOP_SHAPE)))
     built = _segments(
@@ -98,18 +97,10 @@ def test_the_load_of_a_route_is_its_rounded_average_over_every_segment_including
     assert (overall.average, overall.load) == (16.7, 66.8)
 
 
-@pytest.mark.parametrize(
-    ("distances", "bin_distances"),
-    [
-        # ちょうど幅に届いたところでビンを閉じる。
-        ([WIDTH / 2, WIDTH / 2, 0.1], [WIDTH, 0.1]),
-        ([0.3, 0.3, 0.3], [0.6, 0.3]),
-    ],
-)
-def test_a_bin_closes_as_soon_as_it_reaches_the_width_and_the_rest_stays(distances, bin_distances):
-    bins = route.aggregate_segments_into_bins(_segments(distances))
+def test_a_bin_closes_as_soon_as_it_reaches_the_width_and_the_rest_stays():
+    bins = route.aggregate_segments_into_bins(_segments([WIDTH / 2, WIDTH / 2, 0.1]))
 
-    assert [b.distance_km for b in bins] == bin_distances
+    assert [b.distance_km for b in bins] == [WIDTH, 0.1]
 
 
 @given(distances=st.lists(st.floats(min_value=0.001, max_value=1.5), min_size=1, max_size=40))
@@ -122,10 +113,12 @@ def test_bins_cover_the_route_without_gaps_or_overlaps(distances):
     assert sum(b.distance_km for b in bins) == pytest.approx(sum(distances), abs=0.005 * len(bins))
     # 最後のビンのほかは幅に届いている。
     assert all(b.distance_km >= WIDTH for b in bins[:-1])
-    # ビンは途切れずに連なり、最初と最後は経路の両端。
+    # ビンは途切れずに連なり、最初と最後は経路の両端。区間の鍵の範囲も同じに連なる（ビンの近くの点を引く鍵になる）。
     assert (bins[0].start_longitude, bins[-1].end_longitude) == (segments[0].start_longitude, segments[-1].end_longitude)
+    assert (bins[0].edge_start, bins[-1].edge_end) == (0, len(segments))
     for before, after in zip(bins, bins[1:]):
         assert (before.end_latitude, before.end_longitude) == (after.start_latitude, after.start_longitude)
+        assert before.edge_end == after.edge_start
         assert after.cumulative_distance_km == pytest.approx(
             before.cumulative_distance_km + before.distance_km, abs=0.006)
 

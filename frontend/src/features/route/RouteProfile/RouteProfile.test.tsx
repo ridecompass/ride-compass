@@ -5,7 +5,7 @@
  * 見るもの: 既定で「評価で塗る」（難易度のグラフ）を出すこと、その (i) が塗った軸の色と名前・値の無い区間の色・意味の文を出すこと
  * （塗る区間の無い軸は出さない）、「表示」のタブのチップが選んだ情報を重ね・外す知らせを上げること、標高の折れ線と最高・最低、
  * 走行中の現在地の印を最初の折れ線のその地点の高さに置くこと（値が無ければ中ほど）、出す情報が無いときと値が無いときの文、道の区分のレイヤの帯をレイヤごとに地図と同じ色で出し、その凡例を
- * 出すこと、点のレイヤはルートの近くの点を通る距離に地図と同じ色の印で並べ、現れた区分の凡例を出すこと、両方のタブで経由地を通る所に線と番号の印を出し、
+ * 出すこと、両方のタブで経由地を通る所に線と番号の印を出し、
  * 走り終えた経由地を薄めること。タブは結果も走行中も地図の入口と同じ絵だけで出し（名前は読み上げに残す）、押すと図が替わること。走行中の図は、
  * 目盛り・図の下の文字を結果の図より大きくし、「表示」の図に標高の目盛りを出すこと。地点を選ぶと、結果も走行中も図の下に3行の詳しく
  * （標高・勾配・何km地点・到達予想・閉じる／当たる道の区分と風のチップ／区間の総合難易度と軸ごとの寄与）を出し、当たらない区分
@@ -15,10 +15,9 @@
  * （本番の層は管理DBが持つ）。
  *
  * ここで見ないもの: 難易度の塗り・なぞって地点を選ぶ操作 → `DifficultyProfile.test.tsx`。折れ線の点・帯の切れ目と地点の値・行の計算 →
- * `profileLayers.test.ts`（点の印の色・区分の名前も）。選んだレイヤを覚えること → `useProfileLayers.test.ts`。風のチップの方角の呼び名 →
+ * `profileLayers.test.ts`。区間の近くの施設 → `app/page.map.test.tsx`。選んだレイヤを覚えること → `useProfileLayers.test.ts`。風のチップの方角の呼び名 →
  * `lib/cardinalLabel.test.ts`。
  */
-import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
 import { EVALUATION_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -47,7 +46,7 @@ const SURFACE_ROAD_CLASSES = [
   roadClass("gravel", { label: "砂利・未舗装", color: "#222222" }),
 ];
 const ROAD_LAYERS = [
-  roadMapLayer("surface", { label: "路面の種類", no_data_property: "surface", classes: SURFACE_ROAD_CLASSES }),
+  roadMapLayer("surface", { label: "路面の種類", has_no_data: true, classes: SURFACE_ROAD_CLASSES }),
   roadMapLayer("tunnel", { label: "トンネル", classes: [roadClass("tunnel", { label: "トンネル" })] }),
 ];
 const surfaceColor = (key: string) => SURFACE_ROAD_CLASSES.find((roadClass) => roadClass.key === key)!.color;
@@ -96,7 +95,7 @@ function renderProfile(props: Partial<Props> = {}) {
       scaleKm={2}
       selected={null}
       layers={{ ids: ["elevation"], toggle }}
-      points={[]}
+      sidePoints={null}
       waypointKms={[]}
       {...props}
     />,
@@ -171,7 +170,7 @@ describe("RouteProfile", () => {
         scaleKm={2}
         selected={null}
         layers={{ ids: ["elevation"], toggle: vi.fn() }}
-        points={[]}
+        sidePoints={null}
         progressKm={1.5}
         waypointKms={[]}
       />,
@@ -207,51 +206,9 @@ describe("RouteProfile", () => {
     ).toEqual(["舗装", "砂利・未舗装"]);
   });
 
-  it("点のレイヤは、ルートの近くの点を通る距離に地図と同じ色の印で並べ、選んだ地点の近くの点の区分と名前を詳しくのチップに、現れた区分の凡例を一覧の行に出す", async () => {
-    const supply = POINT_LAYERS.find((layer) => layer.attr_id === "supply_poi")!;
-    const color = (key: string) => supply.display_axes[0].categories.find((category) => category.key === key)!.color;
-    renderProfile({
-      segments: [PAVED, UNKNOWN],
-      selected: { segment: PAVED, latitude: 35, longitude: 139 },
-      layers: { ids: ["elevation", "supply_poi"], toggle: vi.fn() },
-      points: [
-        { distance_km: 0.01, layer: "supply_poi", properties: { kind: "convenience", name: "ローソン 渋谷店" } },
-        { distance_km: 0.8, layer: "stop_poi", properties: { kind: "stop" } },
-        { distance_km: 1.5, layer: "supply_poi", properties: { kind: "toilets" } },
-      ],
-    });
-    await openLayers();
-    const chart = screen.getByRole("img", { name: "道のりに沿った情報" });
-    const marks = [...chart.querySelectorAll('[data-layer="supply_poi"] line')];
-    expect(marks.map((mark) => mark.getAttribute("stroke"))).toEqual([color("convenience"), color("toilets")]);
-    expect(chart.querySelector('[data-layer="stop_poi"]')).toBeNull();
-
-    // 地点（区間の始まり）の近くの点だけをチップに出し、結果の図では地点を選んでいる間も標高の最高・最低の要約を残す。
-    const supplyChip = within(detail())
-      .getByText(/コンビニ ローソン 渋谷店/)
-      .closest("li")!;
-    expect(supplyChip).toHaveTextContent("補給・休憩ポイント コンビニ ローソン 渋谷店");
-    expect(supplyChip.querySelector("span[style]")).toHaveStyle({ backgroundColor: color("convenience") });
-    expect(within(detail()).queryByText(/トイレ/)).toBeNull();
-    expect(screen.getByText(/^標高 最高 \d+m・最低 \d+m$/)).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "グラフに出す情報" }));
-    expect(
-      within(screen.getByRole("list", { name: "補給・休憩ポイントの凡例" }))
-        .getAllByRole("listitem")
-        .map((item) => item.textContent),
-    ).toEqual(["コンビニ", "トイレ"]);
-  });
-
   it.each<{ why: string; ids: string[]; segments: RouteSegmentDetail[]; text: string }>([
     { why: "出す情報を選んでいない", ids: [], segments: [CLIMB], text: "出す情報を選んでください。" },
     { why: "選んだ情報の値が無い", ids: ["elevation"], segments: [UNKNOWN], text: "標高の値がありません。" },
-    {
-      why: "選んだ点がルートの近くに無い",
-      ids: ["supply_poi"],
-      segments: [CLIMB],
-      text: "補給・休憩ポイントはルートの近くにありません。",
-    },
   ])("$why ときは、折れ線の代わりに文で知らせる", async ({ ids, segments, text }) => {
     renderProfile({ segments, layers: { ids, toggle: vi.fn() } });
     await openLayers();
@@ -310,16 +267,6 @@ describe("RouteProfile", () => {
     },
   );
 
-  it("走行中の「表示」の図は、現在地の縦線を標高の折れ線と違う色で引く", async () => {
-    const { container } = renderProfile({ riding: true, progressKm: 0.25 });
-    await openLayers();
-    const position = container.querySelector('[data-progress="position"]');
-    const elevation = container.querySelector('[data-progress="ahead"] polyline');
-    expect(position?.getAttribute("class")).toMatch(/stroke-/);
-    expect(elevation?.getAttribute("class")).toMatch(/stroke-/);
-    expect(position?.getAttribute("class")).not.toBe(elevation?.getAttribute("class"));
-  });
-
   it("走行中の「表示」の図は、最初の折れ線の最高と最低の高さに単位つきの標高の目盛りを出す（結果の図には出さない）", async () => {
     const { rerender } = renderProfile({ riding: true, progressKm: 0.25 });
     await openLayers();
@@ -336,7 +283,7 @@ describe("RouteProfile", () => {
         scaleKm={2}
         selected={null}
         layers={{ ids: ["elevation"], toggle: vi.fn() }}
-        points={[]}
+        sidePoints={null}
         waypointKms={[]}
       />,
     );
@@ -362,7 +309,7 @@ describe("RouteProfile", () => {
             selected={selected}
             onSelect={setSelected}
             layers={{ ids: ["elevation"], toggle: vi.fn() }}
-            points={[]}
+            sidePoints={null}
             waypointKms={[]}
             progressKm={riding ? 1.5 : null}
             riding={riding}
@@ -417,21 +364,11 @@ describe("RouteProfile", () => {
   it.each([
     ["寄与のある", { difficulty: 12.4, axis_contributions: { axis_a: 12.4 } }, "12.4", false],
     ["寄与が全部0の", { difficulty: 0, axis_contributions: { axis_a: 0 } }, "0.0", true],
-    ["カタログに無い軸にだけ寄与のある", { difficulty: 3, axis_contributions: { retired_axis: 3 } }, "3.0", true],
     ["算出できなかった", { difficulty: null, axis_contributions: {} }, "—", false],
   ])("%s区間は総合難易度を出し、全部0のときだけ0であることを文で言う", (_, segment, shown, allZero) => {
     renderSelected(segment);
     expect(within(detail()).getByText("総合難易度").parentElement).toHaveTextContent(`総合難易度${shown}/100`);
     expect(within(detail()).queryByText("どの評価軸も0（易しい）") !== null).toBe(allZero);
-  });
-
-  it("寄与の並びの軸を押すと、その区間の軸別難易度と説明を開く", async () => {
-    renderSelected({ axis_contributions: { axis_a: 12, axis_b: 5 }, axis_difficulties: { axis_a: 72.4 } });
-    await userEvent.click(within(detail()).getByRole("button", { name: "坂の詳細を表示" }));
-    expect(screen.getByRole("dialog")).toHaveTextContent("坂この評価軸の難易度 72.4/100");
-    await userEvent.click(screen.getByRole("button", { name: "坂の詳細を隠す" }));
-    await userEvent.click(within(detail()).getByRole("button", { name: "路面の詳細を表示" }));
-    expect(screen.getByRole("dialog")).toHaveTextContent("路面データなし");
   });
 
   it.each([

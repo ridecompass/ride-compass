@@ -114,6 +114,9 @@ class RouteSegmentDetail(StrictModel):
     end_longitude: float
     cumulative_distance_km: float
     distance_km: float
+    # 区間が候補の`edge_ids`のどこにあたるか（`edge_ids[edge_start:edge_end]`が区間の道）。区間の近くの点を引く口へ渡す鍵の範囲。
+    edge_start: int
+    edge_end: int
     # 区間の中の道ごとの両端の標高を、通る順に。道の距離の和は区間の距離と丸めの分だけずれうる。
     elevations: list[ElevationStretch]
     estimated_arrival_time: str | None = None
@@ -160,13 +163,15 @@ class RouteTurn(StrictModel):
 
 
 class RoutePoint(StrictModel):
-    """経路の近くの点（停止要因・補給・立ち寄り先・事故）を、経路が通る所に置いたもの。画面が道のりのグラフに印を出す。
+    """経路の近くの点（停止要因・補給・立ち寄り先・事故）を、経路が通る所に置いたもの。
 
     `distance_km`は始点から通る所までの道のりで、区間の`distance_km`を始点から足した値と同じ物差し（`along_route_km`）。
+    `offset_m`は通る所の道から点までの地上の距離。
     `layer`は点の一次属性のid、`properties`はその点の表示軸・名前・事実の値（地図の点の地物と同じ鍵。値の無いものは持たない）。
     """
 
     distance_km: float
+    offset_m: int
     layer: str
     properties: dict[str, str | int | float | bool]
 
@@ -212,10 +217,8 @@ class EvaluatedRoute(StrictModel):
     # `edge_ids`が空の候補では空のまま。
     node_ids: list[str]
     # 経路が分かれ道で曲がる所（左折・右折・Uターン）を経路の順に。分かれ道の無い点の曲がりと、浅い分岐で
-    # いちばんまっすぐに近い道へ進む所は入れない（`domain/routing.py: turns_along`）。`edge_ids`が空の候補では空のまま。
+    # いちばんまっすぐに近い道へ進む所は入れない（`domain/turn_structure.py: turns_along`）。`edge_ids`が空の候補では空のまま。
     turns: list[RouteTurn]
-    # 経路の近くの点を通る順に（`domain/route_points.py: points_along_route`）。`edge_ids`が空の候補では空のまま。
-    points: list[RoutePoint]
     # 置いた経由地を通る所の始点からの道のり（km）を、置いた順に。区間の始まりの道のりと同じ物差し（`along_route_km`）。
     # 置いた経由地を知らない経路（区間の乗り換えで組んだもの）では空のまま。
     waypoint_distances_km: list[float]
@@ -253,10 +256,11 @@ class RouteCandidate(RouteDraft):
     is_fastest: bool
 
 
-def along_route_km(distances_km: Iterable[float]) -> list[float]:
+def along_route_km(distances_km: Iterable[float], start_km: float = 0.0) -> list[float]:
     """始点から、並んだ区間それぞれの始まりまでの道のり（km）と、末尾に終わりまでの道のり。区間の距離を応答の桁へ丸めてから
-    積むので、区間の`distance_km`を始点から足した値と同じ物差しになる（区間の始まりの道のりと曲がる所の道のりがこれを読む）。"""
-    along = [0.0]
+    積むので、区間の`distance_km`を始点から足した値と同じ物差しになる（区間の始まりの道のりと曲がる所の道のりがこれを読む）。
+    経路の途中から積むときは、その所の道のりを`start_km`に渡す。"""
+    along = [start_km]
     for distance_km in distances_km:
         along.append(round(along[-1] + round(distance_km, DISTANCE_KM_DECIMALS), DISTANCE_KM_DECIMALS))
     return along
@@ -533,6 +537,8 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "end_longitude": lambda segments: segments[-1].end_longitude,
     "cumulative_distance_km": lambda segments: segments[0].cumulative_distance_km,
     "distance_km": lambda segments: _summed_km(s.distance_km for s in segments),
+    "edge_start": lambda segments: segments[0].edge_start,
+    "edge_end": lambda segments: segments[-1].edge_end,
     "elevations": lambda segments: [stretch for segment in segments for stretch in segment.elevations],
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
     # 到達予想と同じく、ビンに入った先頭の区間の値（ビンの中で予報の時刻が変わっても、入るときの風を出す）。

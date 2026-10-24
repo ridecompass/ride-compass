@@ -26,7 +26,7 @@ from app.domain.attributes import (
     MaterialColumn,
 )
 from app.domain.material_catalog import GRADIENT_PERCENT
-from app.domain.road_classes import RoadClassDefinitions, class_columns
+from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
 
 
 @dataclass(frozen=True, eq=False)
@@ -116,8 +116,9 @@ class RoadSlice:
     """
 
     network: RoadNetwork
-    #: 取込範囲全体の区分の列（`road_class_columns`）。切り出した区間の材料へ`rows`で引いて足す。
+    #: 取込範囲全体の区分の列と地図の線の層ごとの値（`road_class_columns`）。区分の列は、切り出した区間の材料へ`rows`で引いて足す。
     classes: Mapping[str, CategoricalColumn]
+    layers: Mapping[str, CategoricalColumn]
     rows: np.ndarray  # int64, 全体の区間の行
     nodes: np.ndarray  # int64, 全体のノードの行
     edge_from: np.ndarray  # int64, 切り出しの中のノード番号
@@ -140,8 +141,10 @@ class RoadSlice:
         return np.asarray(self.network.node_lon[self.nodes], dtype=np.float64)
 
 
-def road_class_columns(network: RoadNetwork, definitions: RoadClassDefinitions) -> dict[str, CategoricalColumn]:
-    """取込範囲全体の区間ごとの区分の列（`domain/road_classes.py: class_columns`）。"""
+def road_class_columns(
+    network: RoadNetwork, definitions: RoadClassDefinitions
+) -> tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]:
+    """取込範囲全体の区間ごとの区分の列と、地図の線の層ごとの値（`domain/road_classes.py: class_columns`・`layer_columns`）。"""
     facts: dict[str, MaterialColumn] = {
         **{material_id: network.numeric_values[:, i] for i, material_id in enumerate(network.numeric_ids)},
         **{
@@ -149,12 +152,13 @@ def road_class_columns(network: RoadNetwork, definitions: RoadClassDefinitions) 
             for i, (material_id, vocab) in enumerate(zip(network.categorical_ids, network.categorical_vocab, strict=True))
         },
     }
-    return class_columns(definitions, facts, network.edge_count)
+    classes = class_columns(definitions, facts, network.edge_count)
+    return classes, layer_columns(definitions, {**facts, **classes}, network.edge_count)
 
 
 def slice_network(
     network: RoadNetwork,
-    classes: Mapping[str, CategoricalColumn],
+    classes: tuple[Mapping[str, CategoricalColumn], Mapping[str, CategoricalColumn]],
     min_lon: float, min_lat: float, max_lon: float, max_lat: float,
 ) -> RoadSlice:
     """区間の形の外接矩形が範囲に重なる区間を取り出す。範囲の外へはみ出す区間も、端点ごと含む。"""
@@ -167,7 +171,7 @@ def slice_network(
     head = np.asarray(network.edge_to[rows], dtype=np.int64)
     nodes, inverse = np.unique(np.concatenate([tail, head]), return_inverse=True)
     return RoadSlice(
-        network=network, classes=classes, rows=rows, nodes=nodes,
+        network=network, classes=classes[0], layers=classes[1], rows=rows, nodes=nodes,
         edge_from=inverse[: len(rows)].astype(np.int64, copy=False),
         edge_to=inverse[len(rows):].astype(np.int64, copy=False),
     )

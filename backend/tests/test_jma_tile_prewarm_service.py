@@ -5,31 +5,31 @@
 （動的気象の要素・配信元仕様）をそのまま通す。範囲は呼び出し元が渡す入力なので、テストが渡す。
 
 差し替えるのは、注入される配信元のクライアント（`JmaTileClient.get`の1メソッド。本物の署名に当てる）と、
-インデックスの書き込み先（Redis）だけ。
+インデックスの書き込み先（Redis。fakeredis）だけ。
 
 ここで見ないもの:
 - タイルの取得・キャッシュ・空タイルの扱い・読めない時刻一覧の形 → `test_jma_tile_client.py`・`test_jma_tile_redis_cache.py`
-- 空かどうかの判定 → `test_jma_tile_content.py`
+- 空かどうかの判定（取得の結果が空なら`UPSTREAM_NOT_FOUND`になる） → `test_jma_tile_content.py`・`test_jma_tile_client.py`
 - 配信元仕様（ズームの偶奇・時刻一覧のファイル）・時刻一覧の読み方（別の要素の行・最新の実況・最新の行・
   メンバーごとの最新の完全なラン）・タイルのパスと拡張子 → `test_jma_tile_specs.py`
-- 段をつないだときの各段の最初のコマ（前の段の後ろに続く・前の段に覆われた段は描かない） → `test_weather_elements.py`
+- 段をつないだときの各段の最初のコマ（前の段の後ろに続く・前の段に覆われた段は描かない・前の段が空なら最初から描く） → `test_weather_elements.py`
 
 配信元の仕様の事実として、要素はどれも偶数ズーム（4・6・8・10、雷と竜巻は8まで）だけが実データを持ち、
 奇数ズームは親から補う。
 """
 
-import io
 import json
 import logging
 
-import pytest
 from PIL import Image
 
 from app.domain.region import BoundingBox
 from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from app.infrastructure.jma_tile_client import JmaTileClient
+from app.infrastructure.jma_tile_index import get_index
 from app.services import jma_tile_prewarm_service as prewarm
 from tests.bound_fake import bound
+from tests.tile_images import encode
 
 N1 = "bosai/jmatile/data/nowc/targetTimes_N1.json"
 N2 = "bosai/jmatile/data/nowc/targetTimes_N2.json"
@@ -80,13 +80,7 @@ def _target_times():
     }
 
 
-def _png(alpha: int) -> bytes:
-    buffer = io.BytesIO()
-    Image.new("RGBA", (2, 2), (255, 0, 0, alpha)).save(buffer, format="PNG")
-    return buffer.getvalue()
-
-
-OPAQUE, TRANSPARENT = _png(255), _png(0)
+OPAQUE = encode(Image.new("RGBA", (2, 2), (255, 0, 0, 255)))
 
 
 class Source:
@@ -123,16 +117,11 @@ def _tile_parts(path):
             "element": element, "z": int(z), "x": int(x), "y": int(y), "ext": ext}
 
 
-@pytest.fixture
-def stored(monkeypatch):
-    """インデックスの書き込み先（Redis）。書かれたインデックスを、保存される形（JSON）で並べる。"""
-    payloads: list[dict] = []
-
-    async def set_index(index):
-        payloads.append(index.model_dump())
-
-    monkeypatch.setattr(prewarm, "set_index", set_index)
-    return payloads
+async def _stored() -> dict:
+    """Redisへ書かれたインデックスを、保存された形（JSON）から読み戻す。"""
+    index = await get_index()
+    assert index is not None
+    return index.model_dump()
 
 
 AREA = BoundingBox(min_latitude=35.5, min_longitude=139.5, max_latitude=36.0, max_longitude=140.0)
@@ -145,56 +134,64 @@ async def _run(source):
 # --- 取りに行くもの ---
 
 
-async def test_tiles_are_fetched_at_the_zooms_the_source_has_data_for(stored):
+async def test_tiles_are_fetched_at_the_zooms_the_source_has_data_for(fake_redis):
     source = Source()
 
     await _run(source)
 
     assert {_tile_parts(p)["z"] for p in source.tile_requests("rain_mesh")} == {4, 6, 8, 10}
-    assert {_tile_parts(p)["z"] for p in source.tile_requests("thns")} == {4, 6, 8}
 
 
 # --- 在否インデックス ---
 
 
-async def test_the_index_lists_the_tiles_that_have_something_to_draw(stored):
-    """中身のあるタイルだけを載せる。空タイル・透明な画像・0バイトのベクタ・取れなかったタイルは載せない。"""
+async def test_the_index_lists_the_tiles_that_have_something_to_draw(fake_redis):
+    """中身のあるタイルだけを載せる。空タイルは載せない。"""
     source = Source(tiles={
         "/surf/rain_mesh/4/": (OPAQUE, "image/png"),
-        "/surf/rain_mesh/6/": (TRANSPARENT, "image/png"),
-        "/surf/flood/4/": (b"", "application/x-protobuf"),
-        "/surf/land/4/": None,
+        "/surf/rain_mesh/6/": UPSTREAM_NOT_FOUND,
+        "/surf/flood/4/": UPSTREAM_NOT_FOUND,
     })
 
     await _run(source)
 
-    (payload,) = stored
+    payload = await _stored()
     rain_mesh = payload["elements"]["rain_mesh"]
-    z4 = sorted([_tile_parts(p)["x"], _tile_parts(p)["y"]] for p in source.tile_requests("rain_mesh")
-                if _tile_parts(p)["z"] == 4)
+    parts = [_tile_parts(p) for p in source.tile_requests("rain_mesh")]
+    z4 = sorted([part["x"], part["y"]] for part in parts if part["z"] == 4)
     assert sorted(rain_mesh["zooms"]["4"]) == z4
     assert "6" not in rain_mesh["zooms"]
     assert payload["elements"]["flood"]["zooms"] == {}
-    assert payload["elements"]["land"]["zooms"] == {}
 
 
-async def test_a_zoom_filled_from_its_parent_is_listed_wherever_the_parent_has_something(stored):
+async def test_tiles_that_could_not_be_fetched_are_listed_as_having_something(fake_redis):
+    """載らないタイルを画面は取りに来ないので、取れなかったタイルを載せずにおくと、そこに降る雨が地図から消える。"""
+    source = Source(tiles={"/surf/land/4/": None})
+
+    await _run(source)
+
+    land = (await _stored())["elements"]["land"]
+    parts = [_tile_parts(p) for p in source.tile_requests("land")]
+    assert sorted(land["zooms"]["4"]) == sorted([part["x"], part["y"]] for part in parts if part["z"] == 4)
+
+
+async def test_a_zoom_filled_from_its_parent_is_listed_wherever_the_parent_has_something(fake_redis):
     """補間で埋めるズームを載せないと、クライアントはそこを空と見なして取りに来ず、補間が一度も動かない。"""
     source = Source(tiles={"/surf/rain_mesh/4/": (OPAQUE, "image/png")})
 
     await _run(source)
 
-    zooms = stored[0]["elements"]["rain_mesh"]["zooms"]
+    zooms = (await _stored())["elements"]["rain_mesh"]["zooms"]
     assert zooms["4"] == [[14, 6]]
     assert sorted(zooms["5"]) == [[28, 12], [28, 13], [29, 12], [29, 13]]
     assert "7" not in zooms  # 親の6に中身が無い
 
 
-async def test_the_index_says_which_frame_and_which_area_it_describes(stored):
+async def test_the_index_says_which_frame_and_which_area_it_describes(fake_redis):
     """クライアントは自分が描くフレームと一致する要素だけを信用し、範囲の外は従来どおり取りに行く。"""
     await _run(Source())
 
-    (payload,) = stored
+    payload = await _stored()
     assert payload["elements"]["rasrf"] | {"zooms": None} == {
         "basetime": "20260922000000", "validtime": "20260922020000", "member": "m1", "zooms": None,
     }
@@ -204,7 +201,7 @@ async def test_the_index_says_which_frame_and_which_area_it_describes(stored):
 # --- 時刻一覧が取れないとき ---
 
 
-async def test_elements_whose_time_list_cannot_be_read_are_skipped_with_a_warning(stored, caplog):
+async def test_elements_whose_time_list_cannot_be_read_are_skipped_with_a_warning(fake_redis, caplog):
     target_times = _target_times()
     target_times[RISK] = None
     source = Source(target_times=target_times)
@@ -213,21 +210,7 @@ async def test_elements_whose_time_list_cannot_be_read_are_skipped_with_a_warnin
         await _run(source)
 
     assert not any(source.tile_requests(element) for element in RISK_ELEMENTS)
-    assert set(stored[0]["elements"]).isdisjoint(RISK_ELEMENTS)
+    assert set((await _stored())["elements"]).isdisjoint(RISK_ELEMENTS)
     assert source.tile_requests("thns")
     warning = next(r.getMessage() for r in caplog.records if r.levelno == logging.WARNING)
     assert all(element in warning for element in RISK_ELEMENTS)
-
-
-async def test_a_later_stage_starts_the_timeline_when_the_earlier_stage_has_no_frames(stored):
-    """1段目が取れなければ、画面は2段目を最初から描く。温めるのもその最初のフレーム。"""
-    target_times = _target_times()
-    target_times[N1] = target_times[N2] = None
-
-    source = Source(target_times=target_times)
-    await _run(source)
-
-    assert not source.tile_requests("hrpns")
-    frames = {(_tile_parts(p)["basetime"], _tile_parts(p)["validtime"], _tile_parts(p)["member"])
-              for p in source.tile_requests("rasrf")}
-    assert frames == {("20260922000000", "20260922003000", "m1")}

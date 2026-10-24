@@ -1,6 +1,6 @@
 """`api/routers/tuning_admin.py`——較正値の一覧と上書きの管理API。
 
-ここで見るもの: 一覧の並び（効き方ごと）・いま効いている値と上書き済みかの印・名前に添える、値を使う側の
+ここで見るもの: いま効いている値と上書き済みかの印・名前に添える、値を使う側の
 宣言（転がり抵抗の分け方の区分・停止要因の種別）の名前・上書きを保存して読み直した結果・宣言に無いidと保存側が断った値の状態コード。
 
 ここで見ないもの:
@@ -62,17 +62,23 @@ class Store:
         return set(self.overridden)
 
 
+def _declare(monkeypatch, *params) -> None:
+    """較正値の宣言を`params`だけにする。idで引く表は中身を入れ替え、どの読み手も同じ宣言を見る。"""
+    monkeypatch.setattr(tuning, "TUNING_PARAMETERS", params)
+    for param_id in list(tuning.TUNING_PARAMETERS_BY_ID):
+        monkeypatch.delitem(tuning.TUNING_PARAMETERS_BY_ID, param_id)
+    for param in params:
+        monkeypatch.setitem(tuning.TUNING_PARAMETERS_BY_ID, param.id, param)
+
+
 @pytest.fixture
 def declarations(monkeypatch):
-    """宣言順は a（画面の再読み込み）・b（即時）・c（画面の再読み込み）。"""
     params = (
         _declared("a", tuning.TuningEffect.CLIENT_RELOAD),
         _declared("b", tuning.TuningEffect.IMMEDIATE),
-        _declared("c", tuning.TuningEffect.CLIENT_RELOAD),
     )
-    monkeypatch.setattr(tuning, "TUNING_PARAMETERS", params)
-    monkeypatch.setattr(tuning_admin, "TUNING_PARAMETERS_BY_ID", {p.id: p for p in params})
-    for param_id, value in {"a": 11.0, "b": 12.0, "c": 13.0}.items():
+    _declare(monkeypatch, *params)
+    for param_id, value in {"a": 11.0, "b": 12.0}.items():
         monkeypatch.setitem(TUNING_VALUES, param_id, value)
     return params
 
@@ -108,8 +114,7 @@ def test_list_shows_the_current_value_and_whether_it_is_overridden(client, decla
 
 def test_list_names_the_surfaces_and_stop_kinds_that_use_a_value(client, declarations, monkeypatch):
     stop = _declared(tuning.stop_seconds_parameter_id("k"), tuning.TuningEffect.IMMEDIATE)
-    monkeypatch.setattr(tuning, "TUNING_PARAMETERS", (*declarations, stop))
-    monkeypatch.setitem(tuning_admin.TUNING_PARAMETERS_BY_ID, stop.id, stop)
+    _declare(monkeypatch, *declarations, stop)
     monkeypatch.setitem(TUNING_VALUES, stop.id, 1.0)
     monkeypatch.setattr(traffic, "POI_COUNT_KINDS", {"k": "種別K"})
     definitions = road_classes(
@@ -124,7 +129,6 @@ def test_list_names_the_surfaces_and_stop_kinds_that_use_a_value(client, declara
     assert labels == {
         "a": "表示名-a（区分x／区分y）",
         "b": "表示名-b",
-        "c": "表示名-c",
         stop.id: f"表示名-{stop.id}（種別K）",
     }
 

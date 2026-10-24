@@ -12,17 +12,15 @@
 
 import httpx
 import pytest
-import pytest_asyncio
 from sqlalchemy import event
 
 from app.batch import derive_topology
-from app.config import settings
 from app.domain.axis_definitions import AxisDefinition, BreakpointLinearShape, MaterialTerm
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, tile_bounds_lonlat
 from app.infrastructure import database
 from app.main import app
 from tests.axis_system_fixture import replaced_axis_definitions
-from tests.conftest import postgis_database_url, raw_connection
+from tests.conftest import raw_connection
 from tests.source_ingest import ingest_records, way_record
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -51,15 +49,6 @@ WIND_AXIS = AxisDefinition(
 
 #: 押すタイル。押す道はこのタイルの中に置く。
 TILE = (EDGE_UNIT_MIN_ZOOM, 14551, 6447)
-
-
-@pytest_asyncio.fixture(loop_scope="module")
-async def app_on_test_database(road_graph_engine, monkeypatch):
-    """アプリのセッション工場を、表を作ったテストDBへ向ける。工場はプロセスに1つなので、作り直してから始め、閉じて終える。"""
-    monkeypatch.setattr(settings, "database_url", postgis_database_url())
-    await database.dispose_engines()
-    yield
-    await database.dispose_engines()
 
 
 @pytest.mark.usefixtures("app_on_test_database")

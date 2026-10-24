@@ -33,7 +33,7 @@ def _segment(**values: dict[str, float]) -> dict:
     """応答の区間（JSON）。値の欄は渡したものだけを持つ。"""
     segment = RouteSegmentDetail(
         start_latitude=35.0, start_longitude=139.0, end_latitude=35.0, end_longitude=139.001,
-        cumulative_distance_km=0.1, distance_km=0.1, elevations=[], road_classes={},
+        cumulative_distance_km=0.1, distance_km=0.1, edge_start=0, edge_end=1, elevations=[], road_classes={},
         **values,
     )
     return segment.model_dump(mode="json")

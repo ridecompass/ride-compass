@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 
 from app.domain.stopwatch import elapsed_ms, start_timer
-from app.domain.db_status import connection_attention, table_attention
+from app.domain.db_status import connection_attention, import_attention, table_attention
 from app.domain.strict_model import StrictModel
 from app.infrastructure.db_status import (
     ConnectionCounts,
@@ -54,15 +54,11 @@ class DbStatusReport(StrictModel):
 
 def _import_entry(counts: ImportRunCounts) -> ImportRunEntry:
     status = counts.latest.status
-    failed = status != SourceRunStatus.SUCCEEDED
-    note = ""
-    if failed:
-        note = f"最後の取込が「{SOURCE_RUN_STATUS_LABELS.get(status, status)}」。"
-        if counts.latest_succeeded is not None:
-            note += f"派生データの基準は成功した#{counts.latest_succeeded.id}のままで、それ以降の取り込みは反映されていない"
-        else:
-            note += "成功した取込が1件も無い"
-    return ImportRunEntry(**dict(counts), needs_attention=failed, note=note)
+    reasons = import_attention(
+        succeeded=status == SourceRunStatus.SUCCEEDED, status_label=SOURCE_RUN_STATUS_LABELS.get(status, status),
+        latest_succeeded_id=None if counts.latest_succeeded is None else counts.latest_succeeded.id,
+    )
+    return ImportRunEntry(**dict(counts), needs_attention=bool(reasons), note="／".join(reasons))
 
 
 def _table_entry(counts: TableCounts) -> TableEntry:

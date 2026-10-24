@@ -14,9 +14,11 @@ import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import Ruler, { type RulerFrame } from "@/components/ui/Ruler/Ruler";
 import { textVariants } from "@/components/ui/Text/Text";
 import { panelIconToggleClass, Toggle } from "@/components/ui/Toggle/Toggle";
+import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
 import { cn } from "@/lib/cn";
 
-/** 「ルート設定」区分のタブ。タブ列と選択状態はpage.tsxが持ち（見出し行に置くため）、
+/** 「ルート設定」区分のタブ。タブ列（`SettingsTabsList.tsx`）と選択状態は外が持ち（見出し行に置くため）、
  * ここは各タブの中身だけを描く。 */
 export type SettingsTab = "generate" | "weights" | "exclusions" | "saved";
 
@@ -68,7 +70,7 @@ interface RouteFormProps {
   onPointsShow: () => void;
   /** 地図をタップすると選んでいる地点を置くか（ルート設定が地図で効いている間）。 */
   placing: boolean;
-  /** 「重み」タブの中身。タブの列と「ルート生成」ボタンは見出しの行（page.tsx）、検証は`useRouteFormSubmit`が持つ。 */
+  /** 「重み」タブの中身。タブの列と「ルート生成」ボタンは見出しの行、検証は`useRouteFormSubmit`が持つ。 */
   weightsPanel: React.ReactNode;
   /** 「除外」タブの中身。 */
   exclusionsPanel: React.ReactNode;
@@ -79,7 +81,6 @@ interface RouteFormProps {
 }
 
 const MAX_DISTANCE_KM = routeGenerateConfig.max_distance_km;
-const DISTANCE_TOLERANCE_KM = routeGenerateConfig.default_distance_tolerance_km;
 /** 全長の目標のルーラーのコマ。止まる刻みごとに1コマで（下限は1刻み分）、10kmごとに太い目盛りと数を付ける。 */
 const DISTANCE_FRAMES: RulerFrame[] = Array.from({ length: Math.floor(MAX_DISTANCE_KM / DISTANCE_STEP_KM) }, (_, i) => {
   const km = (i + 1) * DISTANCE_STEP_KM;
@@ -89,7 +90,7 @@ const DISTANCE_FRAMES: RulerFrame[] = Array.from({ length: Math.floor(MAX_DISTAN
 const MIN_ROUTES = routeGenerateConfig.min_routes;
 const MAX_ROUTES = routeGenerateConfig.max_routes;
 
-// forceMount+data-stateでの表示切替（ルート結果のタブと同じ方式）。
+// forceMount+data-stateでの表示切替。
 // 候補数等は`features/route/useGenerationConditions.ts`の制御stateのため非表示中も値は失われないが、
 // 重みタブ（RouteSettingsPanel）はドラッグ中の帯グラフ・チェックOFF前の
 // 重み記憶をローカルstateで持つため、タブ切替のたびにアンマウントすると失われる。
@@ -99,6 +100,13 @@ function KeptTabContent({ value, children }: { value: string; children: React.Re
       {children}
     </TabsContent>
   );
+}
+
+// 割合も長さも小数1桁へ丸める（0.15×100は15.000000000000002になる）。
+function toleranceSentence(ratio: number, distanceInput: string): string {
+  const percent = Math.round(ratio * 1000) / 10;
+  const km = Math.round(Number(distanceInput) * ratio * 10) / 10;
+  return `作る候補は、この長さの±${percent}%（${distanceInput}kmなら±${km}km）に入るものだけです。`;
 }
 
 export default function RouteForm({
@@ -122,6 +130,8 @@ export default function RouteForm({
   const { distanceTargeted, setDistanceTargeted, distanceInput, setDistanceInput, maxRoutesInput, setMaxRoutesInput } =
     conditions;
   const distanceToggleName = distanceTargeted ? "全長の目標をやめる" : "全長の目標を決める";
+  // 許容差は管理画面の較正値（目標の距離に対する割合）。引けない間は幅の文を出さない（較正したのとは別の数を出さない）。
+  const distanceToleranceRatio = clientTuningValue(useAxisCatalog(), CLIENT_TUNING_IDS.distanceToleranceRatio);
 
   // 保存した地点を呼び出したら「条件」タブへ移り、置いた地点を選んで詳しくを出す（足した経由地は`onPlaceFound`が選ぶ）。
   function recallSavedPlace(role: PinRole, place: PlaceCandidate) {
@@ -164,7 +174,7 @@ export default function RouteForm({
             />
             <span
               className={cn(
-                // 文字の大きさは地点の並びの札の名前とそろえる（`RoutePoints.tsx: chipName`）。
+                // 文字の大きさは地点の並びの札の名前とそろえる（`PointStrip.tsx: chipName`）。
                 "min-w-[3.25em] flex-shrink-0 text-right text-[length:var(--font-size-md)] tabular-nums",
                 !distanceTargeted && "opacity-40",
               )}
@@ -172,7 +182,12 @@ export default function RouteForm({
               {distanceInput}km
             </span>
             <InfoPopover triggerAriaLabel="全長の目標の説明" triggerClassName="flex-none">
-              {`ルート全体の長さの目標です。作る候補は、この長さの±${DISTANCE_TOLERANCE_KM}kmに入るものだけです。外すと長さを決めず、目的地（周回なら経由地を回って出発地）へ良い道で向かいます。`}
+              {[
+                "ルート全体の長さの目標です。",
+                distanceToleranceRatio === undefined ? "" : toleranceSentence(distanceToleranceRatio, distanceInput),
+                "外すと長さを決めず、目的地（周回なら経由地を回って出発地）へ良い道で向かいます。",
+                `${routeGenerateConfig.busy_safe_distance_km}kmより長い目標は、混み合っているときに作れないことがあります。`,
+              ].join("")}
             </InfoPopover>
           </div>
           <div className="flex flex-none items-center gap-1">
