@@ -18,9 +18,8 @@ docs/modules/backend/evaluation-scoring.md「材料カタログ」参照）。
 """
 
 from collections import Counter
-from dataclasses import dataclass
 
-from typing import Literal, NamedTuple, get_args
+from typing import Literal
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
@@ -93,88 +92,23 @@ from app.domain.rain import HOURS_SINCE_RAIN, RAIN_HISTORY_HOURS, RAIN_WINDOW_HO
 from app.domain.weather import PRECIPITATION_MIN_MM
 from app.domain.wind import WIND_DRAG_REFERENCE_SPEED_KMH, WIND_DRAG_REFERENCE_SPEED_MS, wind_drag_ratio
 from app.domain.strict_model import StrictModel
-
-Population = Literal["way", "edge"]
-# "unknown": 欠損は不明値（NaN/None）として扱われ、その材料を使う軸は評価対象外になる。
-# "definite": 欠損は確定値（タグ不在=非該当等）として扱われ、軸は通常どおり評価される。
-MissingSemantics = Literal["unknown", "definite"]
-
-
-
-def labeled_every_value[K: str, V](literal_type: object, labels: dict[K, V]) -> dict[K, V]:
-    """`Literal`の値の全部に見出しを付けた表を、そのまま返す。過不足があれば`ValueError`。
-
-    管理画面の欠損率は母集団と欠損の扱いで束ねて見出しを付けるので、見出しの無い値の材料は表から落ちる。"""
-    if set(labels) != set(get_args(literal_type)):
-        raise ValueError(f"見出しが値と食い違う: {sorted(set(labels) ^ set(get_args(literal_type)))}")
-    return labels
-
-
-#: 母集団の表示名（管理画面の欠損率）。
-POPULATION_LABELS: dict[Population, str] = labeled_every_value(Population, {"way": "Way", "edge": "Edge"})
-
-class MissingSemanticsDisplay(NamedTuple):
-    title: str
-    hint: str
-    #: 欠損が評価に穴を開けるか。開けない扱いの欠損率は参考として、画面は薄く出す。
-    affects_evaluation: bool
-
-
-#: 欠損の扱いの見出しと説明（管理画面の欠損率）。意味が正反対のため、画面は同じ表へ並べず見出しで分ける。
-#: 並びが画面の並び順。
-MISSING_SEMANTICS_DISPLAY: dict[MissingSemantics, MissingSemanticsDisplay] = labeled_every_value(MissingSemantics, {
-    "unknown": MissingSemanticsDisplay(
-        "評価に影響する欠損", "元データが無い区間では、この材料を使う軸が評価対象外になる。", True
-    ),
-    "definite": MissingSemanticsDisplay(
-        "タグ不在を確定値として評価する材料（参考）", "欠損は「該当なし」を意味し、評価に穴は開かない。", False
-    ),
-})
-
-
-@dataclass(frozen=True)
-class WayMaterialCoverageSpec:
-    """道の生データ全行（別名`w`）を母集団とする材料。`missing_condition`はその列・
-    JSONB参照のみで構成したSQL真偽式（trueなら欠損）で、外部入力を連結しない。
-
-    欠損は生データの全行について数える。値を埋めるバッチが一部の行しか処理しない材料では、
-    **対象外の行まで欠損に数えられ、欠損率が構造的に0へ到達しない**——運用者は「もう一度流せば
-    0になるはず」と読むが決してならず、未実行なのか対象外なのかを画面から区別できない。"""
-
-    missing_condition: str
-    source: str
-    missing_semantics: MissingSemantics
-    population: Population = "way"
-
-
-@dataclass(frozen=True)
-class EdgeMaterialCoverageSpec:
-    """`road_edges`全行を母集団とする材料。
-
-    `present_condition`は区間の値（別名`em`）が「値を持つ」ときに真になるSQL条件式。
-    区間の値は区間1本につき1行に結ばれるため、way母集団と同じく全材料を1回の走査で数えられる。"""
-
-    present_condition: str
-    source: str
-    missing_semantics: MissingSemantics
-    population: Population = "edge"
-
-
-@dataclass(frozen=True)
-class CoverageExcluded:
-    """欠損率を測らない材料と、その理由。`MaterialSpec.coverage`が
-    `WayMaterialCoverageSpec`/`EdgeMaterialCoverageSpec`とこの型のいずれかを必ず持つため、
-    「どちらの一覧にも載っていない材料」は型として作れない。
-
-    測らない材料も`missing_semantics`は持つ。**欠損率を測るかと、値が無いときにどう
-    扱うかは別の問い**で、後者は地図の表示（`display_axis_missing_semantics`）が全材料について読む
-    ——3つの型のうち1つだけがこの宣言を欠くと、そこだけ答えを作り出すことになる。"""
-
-    reason: str
-    missing_semantics: MissingSemantics
-
-
-MaterialCoverage = WayMaterialCoverageSpec | EdgeMaterialCoverageSpec | CoverageExcluded
+from app.domain.material_coverage_spec import (
+    CoverageExcluded,
+    EdgeMaterialCoverageSpec,
+    MaterialCoverage,
+    MissingSemantics,
+    WayMaterialCoverageSpec,
+)
+from app.domain.material_value_labels import (
+    ACCESS_VALUE_LABELS,
+    CYCLEWAY_VALUE_LABELS,
+    HIGHWAY_VALUE_LABELS,
+    MOTORROAD_VALUE_LABELS,
+    SEGREGATED_VALUE_LABELS,
+    SMOOTHNESS_VALUE_LABELS,
+    SURFACE_VALUE_LABELS,
+    TRACKTYPE_VALUE_LABELS,
+)
 
 
 def _landcover_coverage(key: str) -> EdgeMaterialCoverageSpec:
@@ -364,107 +298,6 @@ _RAIN_COVERAGE = CoverageExcluded(
 )
 
 
-# 材料の値（OSMタグ生値）ごとの日本語ラベル対訳表。
-# MaterialSpec.value_labelsのdocstring参照——「地図表示と評価は別」という方針に基づき、
-# 地図の表示分類（管理DBの道の区分。意図的に多対一）とは独立した1値1ラベルの専用対訳表。各値の日本語ラベルはOSM wiki
-# （Key:highway/Key:surface）の一般的なタグ定義に基づく。MaterialSpecの呼び出し直下へ
-# インラインで書くと材料定義ブロックの見通しが悪くなるためここへ分けているだけで、
-# 値は`value_labels=`で各MaterialSpecへそのまま渡す。材料をまたぐ別辞書ではない。
-_HIGHWAY_VALUE_LABELS: dict[str, str] = {
-    "motorway": "高速道路",
-    "motorway_link": "高速道路の連絡路",
-    "trunk": "国道",
-    "trunk_link": "国道の連絡路",
-    "primary": "主要地方道",
-    "primary_link": "主要地方道の連絡路",
-    "secondary": "一般県道",
-    "secondary_link": "一般県道の連絡路",
-    "tertiary": "2車線の道",
-    "tertiary_link": "2車線の道の連絡路",
-    "unclassified": "未区分の道路",
-    "residential": "住宅街の道路",
-    "living_street": "住宅街の道[歩車共存]",
-    "service": "施設内通路",
-    "road": "種別不明の道路",
-    "cycleway": "自転車専用道",
-    "path": "小道・遊歩道",
-    "footway": "歩道",
-    "pedestrian": "歩行者専用道路",
-    "bridleway": "乗馬道",
-    "steps": "階段",
-    "track": "農道・林道",
-}
-
-_SURFACE_VALUE_LABELS: dict[str, str] = {
-    "asphalt": "アスファルト",
-    "paved": "舗装[種別不明]",
-    "chipseal": "チップシール舗装",
-    "concrete": "コンクリート",
-    "concrete:plates": "コンクリート版",
-    "concrete:lanes": "コンクリート帯[轍部のみ舗装]",
-    "paving_stones": "石畳[切石]",
-    "bricks": "レンガ舗装",
-    "compacted": "締固め砂利",
-    "fine_gravel": "細砂利",
-    "gravel": "砂利",
-    "pebblestone": "小石敷き",
-    "rock": "岩盤",
-    "unpaved": "未舗装[種別不明]",
-    "dirt": "土",
-    "ground": "地面[土・砂利混合]",
-    "earth": "土[地表面]",
-    "mud": "泥",
-    "sand": "砂",
-    "grass": "芝・草地",
-    "woodchips": "ウッドチップ",
-    "sett": "石畳[玉石]",
-    "cobblestone": "玉石舗装",
-    "unhewn_cobblestone": "玉石舗装[未加工]",
-}
-
-#: 呼び名はOSMの定義（Key:tracktype）の路面の中身から付ける。並びは固い路面から柔らかい路面への順。
-_TRACKTYPE_VALUE_LABELS: dict[str, str] = {
-    "grade1": "1 舗装・固く締まる",
-    "grade2": "2 砂利[未舗装]",
-    "grade3": "3 砂利と土が半々",
-    "grade4": "4 土・草が主",
-    "grade5": "5 土・草・砂",
-}
-
-_SMOOTHNESS_VALUE_LABELS: dict[str, str] = {
-    "excellent": "非常に良好[ロードバイク推奨]",
-    "good": "良好",
-    "intermediate": "普通",
-    "bad": "悪い",
-    "very_bad": "かなり悪い",
-    "horrible": "劣悪",
-    "very_horrible": "極めて劣悪",
-    "impassable": "通行不能",
-}
-
-# 道の区分を決める事実（タグの値を束ねずに持つ材料）の対訳。値の意味はOSM wikiのKey:access・Key:cycleway・
-# Key:segregated・Key:motorroadの定義による。
-_ACCESS_VALUE_LABELS: dict[str, str] = {
-    "yes": "通ってよい",
-    "no": "通行禁止",
-    "designated": "通行を指定",
-    "permissive": "所有者の許しで通ってよい",
-    "dismount": "降りて押して通る",
-    "use_sidepath": "並ぶ専用の道を使う",
-    "destination": "目的地へ行くときだけ通ってよい",
-    "private": "関係者だけ",
-}
-_CYCLEWAY_VALUE_LABELS: dict[str, str] = {
-    "track": "自転車道[車道と分離]",
-    "lane": "自転車レーン",
-    "shared_lane": "車と共用の帯",
-    "share_busway": "バスと共用の帯",
-    "opposite_lane": "逆向きの自転車レーン",
-    "opposite": "自転車だけ逆向きに通れる",
-    "separate": "別の道として描いた自転車道",
-    "shoulder": "路肩",
-    "no": "なし",
-}
 #: cyclewayの各タグが道のどちら側を指すか（材料の説明に添える）。タグを足して書き漏らすとimport時に落ちる。
 _CYCLEWAY_SIDE_NOTES: dict[str, str] = {
     "cycleway": "",
@@ -472,8 +305,6 @@ _CYCLEWAY_SIDE_NOTES: dict[str, str] = {
     "cycleway:right": "のうち、道の形の向きの右側のもの",
     "cycleway:both": "のうち、両側のもの",
 }
-_SEGREGATED_VALUE_LABELS: dict[str, str] = {"yes": "歩行者と分けて通る", "no": "歩行者と混ざって通る"}
-_MOTORROAD_VALUE_LABELS: dict[str, str] = {"yes": "自動車専用道路", "no": "自動車専用でない"}
 
 
 def _tag_fact_material(
@@ -755,7 +586,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         # 正準の閉じた値集合はこのプロジェクトで管理していない（OSMタグの生値のため）。
         tile_property="highway",
         primary_attribute=ATTR_HIGHWAY,
-        value_labels=_HIGHWAY_VALUE_LABELS,
+        value_labels=HIGHWAY_VALUE_LABELS,
         value_sql=HIGHWAY_SQL,
         coverage=CoverageExcluded(reason=_HIGHWAY_ALWAYS_PRESENT, missing_semantics="unknown"),
     ),
@@ -767,7 +598,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         # タグの値そのもの（正規化: lower/btrim）。
         tile_property="surface",
         primary_attribute=ATTR_SURFACE,
-        value_labels=_SURFACE_VALUE_LABELS,
+        value_labels=SURFACE_VALUE_LABELS,
         value_sql=SURFACE_NORMALIZED_SQL,
         coverage=WayMaterialCoverageSpec(
                 missing_condition=f"{SURFACE_NORMALIZED_SQL} IS NULL",
@@ -843,25 +674,25 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     # --- 道の区分を決める事実（タグの値を束ねずに持つ）。道の区分の条件はこれらを読む ---
     "bicycle": _tag_fact_material(
         "bicycle", "bicycle", "自転車の通行", "自転車が通ってよいか（禁止・指定・許可等）。",
-        _ACCESS_VALUE_LABELS, ATTR_CYCLEWAY, "unknown",
+        ACCESS_VALUE_LABELS, ATTR_CYCLEWAY, "unknown",
     ),
     "foot": _tag_fact_material(
         "foot", "foot", "歩行者の通行", "歩行者が通ってよいか（禁止・指定・許可等）。",
-        _ACCESS_VALUE_LABELS, ATTR_CYCLEWAY, "unknown",
+        ACCESS_VALUE_LABELS, ATTR_CYCLEWAY, "unknown",
     ),
     "segregated": _tag_fact_material(
         "segregated", "segregated", "歩行者との分離", "自転車と歩行者が通る道で、通る所が分けられているか。",
-        _SEGREGATED_VALUE_LABELS, ATTR_CYCLEWAY, "unknown",
+        SEGREGATED_VALUE_LABELS, ATTR_CYCLEWAY, "unknown",
     ),
     "motorroad": _tag_fact_material(
         "motorroad", "motorroad", "自動車専用道路", "高速道路でない道が、自動車専用の標識を持つか。",
-        _MOTORROAD_VALUE_LABELS, ATTR_HIGHWAY, "definite",
+        MOTORROAD_VALUE_LABELS, ATTR_HIGHWAY, "definite",
     ),
     **{
         tag.replace(":", "_"): _tag_fact_material(
             tag.replace(":", "_"), tag, f"自転車の通り道[{tag}]",
             f"道に沿う自転車の通り道（レーン・分離した自転車道・共用の帯等）{_CYCLEWAY_SIDE_NOTES[tag]}。",
-            _CYCLEWAY_VALUE_LABELS, ATTR_CYCLEWAY, "definite",
+            CYCLEWAY_VALUE_LABELS, ATTR_CYCLEWAY, "definite",
         )
         for tag in CYCLEWAY_TAG_NAMES
     },
@@ -869,14 +700,14 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         material_id="smoothness",
         label="路面の状態",
         description=(
-            f"OSMの路面状態タグ(smoothness)の生値（{next(iter(_SMOOTHNESS_VALUE_LABELS))}〜"
-            f"{next(reversed(_SMOOTHNESS_VALUE_LABELS))}）。同じ路面種別(surface)でも実際の荒れ具合を区別したい場合に使います。"
+            f"OSMの路面状態タグ(smoothness)の生値（{next(iter(SMOOTHNESS_VALUE_LABELS))}〜"
+            f"{next(reversed(SMOOTHNESS_VALUE_LABELS))}）。同じ路面種別(surface)でも実際の荒れ具合を区別したい場合に使います。"
         ),
         dtype="categorical",
         # 値の表は良い順に並べる（説明の範囲が表の最初と最後から組まれる）。surfaceが路面「種別」なのに
         # 対し、smoothnessは実際の走行感（同じasphaltでも荒れ具合が違う等）。
         tile_property="smoothness",
-        value_labels=_SMOOTHNESS_VALUE_LABELS,
+        value_labels=SMOOTHNESS_VALUE_LABELS,
         value_sql=SMOOTHNESS_NORMALIZED_SQL,
         coverage=WayMaterialCoverageSpec(
                 missing_condition=f"{SMOOTHNESS_NORMALIZED_SQL} IS NULL",
@@ -889,14 +720,14 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         label="農道・林道の等級",
         description=(
             "OSMの農道・林道の路面等級タグ(tracktype)の値"
-            f"（{next(iter(_TRACKTYPE_VALUE_LABELS))}={next(iter(_TRACKTYPE_VALUE_LABELS.values()))}〜"
-            f"{next(reversed(_TRACKTYPE_VALUE_LABELS))}={next(reversed(_TRACKTYPE_VALUE_LABELS.values()))}）。"
+            f"（{next(iter(TRACKTYPE_VALUE_LABELS))}={next(iter(TRACKTYPE_VALUE_LABELS.values()))}〜"
+            f"{next(reversed(TRACKTYPE_VALUE_LABELS))}={next(reversed(TRACKTYPE_VALUE_LABELS.values()))}）。"
             "路面種別(surface)とは別のタグです。"
         ),
         dtype="categorical",
         tile_property="tracktype",
         primary_attribute=ATTR_TRACKTYPE,
-        value_labels=_TRACKTYPE_VALUE_LABELS,
+        value_labels=TRACKTYPE_VALUE_LABELS,
         value_sql=TRACKTYPE_NORMALIZED_SQL,
         coverage=WayMaterialCoverageSpec(
                 missing_condition=f"{TRACKTYPE_NORMALIZED_SQL} IS NULL",

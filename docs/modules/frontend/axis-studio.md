@@ -35,7 +35,7 @@ APIを呼ぶ）・「データ保守」タブ（派生データ鮮度台帳の�
 | `features/admin/useAxisValueDistribution.ts` | 下書きのshapeの生値分布を取得。取得キーに折れ点を含めないため、折れ点のドラッグ中は通信しない。取り直している間は前の分布を出したまま読み込み中にする |
 | `features/admin/useMaterialValueShares.ts` | 種類・はい/いいえの材料1件の、値ごとの道の延長の割合を取得（較正の画面）。画面を開いている間に取りに行くのは1回で、失敗したことも返す |
 | `features/admin/AxisStudio/breakpointTools.ts` | 3つの入力から折れ点を作ること・いまの折れ点から3つの入力を戻すこと・ドラッグの刻み幅（DOM非依存の純粋関数、較正の画面が使う） |
-| `features/admin/AxisStudio/MaterialCoveragePanel.tsx` | 「材料」タブ本体。材料ごとの欠損割合を「欠損時の扱い」でグループに分けた表（各グループ内は欠損割合降順）と集計対象外材料の理由一覧。グループの見出し・説明と母集団の名前はbackendの宣言（`domain/material_catalog.py: MISSING_SEMANTICS_DISPLAY`・`domain/material_catalog.py: POPULATION_LABELS`）が生成物`vocabulary.ts`で配る |
+| `features/admin/AxisStudio/MaterialCoveragePanel.tsx` | 「材料」タブ本体。材料ごとの欠損割合を「欠損時の扱い」でグループに分けた表（各グループ内は欠損割合降順）と集計対象外材料の理由一覧。グループの見出し・説明と母集団の名前はbackendの宣言（`domain/material_coverage_spec.py: MISSING_SEMANTICS_DISPLAY`・`domain/material_coverage_spec.py: POPULATION_LABELS`）が生成物`vocabulary.ts`で配る |
 | `features/admin/AxisStudio/DerivedDataFreshnessPanel.tsx` | 「データ保守」タブ本体。ソースごとの鮮度（成功した最新の取込と作り直しに使った取込）と、派生テーブルごとの列の比較（作ったときの列と今の宣言の列。値の列ごとの値なしの件数は参考）を、それぞれ1行へまとめて表示。対象の表・列はbackendが宣言から導く（表の印を持つ表が派生データ）。作り直しが要るかもbackendが決め（`features/admin/AxisStudio/DerivedDataFreshnessPanel.tsx: needs_rebuild`）、画面は理由を問わずそれで数える |
 | `features/admin/AxisStudio/DbStatusPanel.tsx` | 「データ保守」タブ・本番DBの状態。取込runの最終実行・テーブルの実数と容量・統計とVACUUMの鮮度・接続を1件1行で出す |
 | `features/admin/AxisStudio/StatusRowList.tsx` | 上記2パネルが共有する点検の行の一覧（状態の丸・名前・規模、開くと項目と値）と、結果の一言（手当てが要れば目立たせる） |
@@ -152,7 +152,7 @@ backend `GET /api/admin/material-catalog/coverage`の
 レスポンス（`MaterialCoverageResponse`、生成型）をそのまま表にする。
 
 - 「欠損時の扱い」（`missing_semantics`）でグループに分けて表示する。見出し・説明・並びは
-  backendの宣言（`domain/material_catalog.py: MISSING_SEMANTICS_DISPLAY`、生成物`vocabulary.ts`）。例:
+  backendの宣言（`domain/material_coverage_spec.py: MISSING_SEMANTICS_DISPLAY`、生成物`vocabulary.ts`）。例:
   「評価に影響する欠損」（欠損区間ではその材料を使う軸が評価対象外）と「タグ不在を確定値として
   評価する材料（参考）」（欠損は「該当なし」を意味し評価に穴は開かない）。欠損割合の数字が同じでも
   意味が正反対のため同じ表へ並べない。各グループは`<section aria-label>`で、見出し＋1行の説明＋表。

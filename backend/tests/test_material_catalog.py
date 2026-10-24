@@ -5,31 +5,26 @@
 - カタログから導く一覧: `material_dtype`・`material_array_columns`（`material_value_sql`を通る）・
   `material_coverage_specs`・`material_coverage_exclusions`
 - `display_axis_missing_semantics`: 地図の表示の軸の値が欠けたときの意味
-- `check_material_catalog`・`labeled_every_value`: 材料を2通りに配るカタログ・見出しの欠けた表を断る
+- `check_material_catalog`: 材料を2通りに配るカタログを断る
 
 カタログの中身は架空の材料（`num_a` 等）へ差し替えて与える。本番のカタログは、読み込みの時点で`check_material_catalog`を通る。
 
 ここで見ないもの:
 - 材料の値を求めるSQLが返す値 → `test_material_values.py`
 - 欠損率をDBで数えること → `test_material_coverage.py`
+- 欠損率の見出しの表の過不足 → `test_material_coverage_spec.py`
 - 一次属性の行に配る色 → `test_display_palette.py`
 - 一次属性の表示の宣言の検証 → `test_registry.py`・`test_primary_attributes.py`
 - 停止要因の点を地図でまとめるSQL（`stop_poi_map_group_sql`）→ タイルを焼くテスト（`test_road_graph_repository_contracts.py`）
 - カタログを配るAPI → `test_material_catalog_routes.py`・`test_axis_catalog_routes.py`
 """
 
-from typing import Literal
-
 import pytest
 from pydantic import ValidationError
 
 from app.domain import material_catalog
-from app.domain.material_catalog import (
-    CoverageExcluded,
-    EdgeMaterialCoverageSpec,
-    MaterialSpec,
-    WayMaterialCoverageSpec,
-)
+from app.domain.material_catalog import MaterialSpec
+from app.domain.material_coverage_spec import CoverageExcluded, EdgeMaterialCoverageSpec, WayMaterialCoverageSpec
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from tests.material_fixture import material, replace_material_catalog
 
@@ -155,16 +150,3 @@ def test_a_catalog_handing_out_each_material_one_way_is_accepted():
     material_catalog.check_material_catalog(
         {"num_a": spec("num_a", tile_property="t"), "num_b": spec("num_b", tile_property="u")})
 
-
-Kind = Literal["a", "b"]
-
-
-@pytest.mark.parametrize("labels", [{"a": "あ"}, {"a": "あ", "b": "い", "c": "う"}], ids=["見出しの無い値", "値に無い見出し"])
-def test_headings_that_do_not_match_the_values_are_refused(labels):
-    """管理画面の欠損率は母集団と欠損の扱いで束ねて見出しを付ける。見出しの無い値の材料は表から落ちる。"""
-    with pytest.raises(ValueError, match="食い違う"):
-        material_catalog.labeled_every_value(Kind, labels)
-
-
-def test_headings_for_every_value_are_kept_as_given():
-    assert material_catalog.labeled_every_value(Kind, {"b": "い", "a": "あ"}) == {"b": "い", "a": "あ"}
