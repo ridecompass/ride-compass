@@ -180,6 +180,21 @@ class _TurnaroundData:
     outbound_length_m: float
 
 
+def _waypoint_offsets_along(context: RoadGraphContext, nodes: list[int], waypoints: list[Coordinates]) -> list[int]:
+    """置いた経由地を、組んだ経路（通るノードの列`nodes`）が置いた順に通る所（`TracedLoop.waypoint_offsets`）。
+    1つでも通らなければ（乗り換えで経由地を飛ばした・寄せられない）空にする——並びの何番目が何番目の経由地かを
+    崩さないため、通らない経由地だけを抜かない。"""
+    offsets: list[int] = []
+    start = 0
+    for point in waypoints:
+        snapped = snap_point(context, point)
+        if snapped is None or snapped[0] not in nodes[start:]:
+            return []
+        # 同じNodeへ寄った経由地が続けば同じ所を通る（生成の前段の、長さ0の区間と同じ）。
+        start = nodes.index(snapped[0], start)
+        offsets.append(start)
+    return offsets
+
 
 class RoadGraphEngine:
     """評価条件は解決済みの値だけを受け取る（既定を持たない）。組み立ては
@@ -713,7 +728,7 @@ class RoadGraphEngine:
         )
 
     def build_traced_from_edge_ids(
-        self, context: RoadGraphContext, edge_ids: tuple[str, *tuple[str, ...]], destination: Coordinates | None,
+        self, context: RoadGraphContext, edge_ids: tuple[str, *tuple[str, ...]], points: FixedPoints,
     ) -> TracedLoop:
         """クライアントが組み立てたEdge id列を、評価できる経路として検証して`TracedLoop`にする。
 
@@ -721,6 +736,8 @@ class RoadGraphEngine:
         「Aの前半＋Bの後半」を作って送り返すため、**このグラフに実在し・順につながり・
         起点から始まり・終点（目的地、無ければ出発地）へ着く**ことをここで確かめる（送られた列をそのまま信じると、
         評価は成功するのに経路として成立しないルートが候補一覧へ並ぶ。周回どうしを乗り換えた経路が出発地へ戻ることもここで決まる）。
+
+        置いた経由地は生成と同じNodeへ寄せ、組んだ経路の中で置いた順に通る所を探す（`_waypoint_offsets_along`）。
 
         終点は生成と同じく出て戻れるNodeへ寄せて解くため、比べる相手は元の候補が
         実際に終わったNodeになる——目的地を寄せ直した場合も、
@@ -748,6 +765,7 @@ class RoadGraphEngine:
                 refuse_at_nodes(
                     context, f"経路がつながっていません index={index}", to_node=head, next_from_node=following_tail,
                 )
+        destination = points.destination
         snapped = (context.origin_node, False) if destination is None else snap_point(context, destination)
         if snapped is None:
             raise RoutingError("終点を道路網へ寄せられません")
@@ -768,8 +786,7 @@ class RoadGraphEngine:
             ]
         return TracedLoop(
             bearing=None, distance_km=round(total_m / 1000, DISTANCE_KM_DECIMALS), data=path, leg_of_edge=leg_of_edge,
-            # 乗り換えで組んだ経路は、置いた経由地を知らない。
-            waypoint_offsets=[], reversible=False,
+            waypoint_offsets=_waypoint_offsets_along(context, [tails[0], *heads], points.waypoints), reversible=False,
         )
 
     def is_loop_too_similar(

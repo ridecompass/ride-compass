@@ -108,7 +108,7 @@ async def generate_route_candidates(
             case SplicedTarget():
                 candidates = await generator.generate_spliced_route(
                     origin=origin,
-                    destination=target.destination,
+                    points=target.points,
                     edge_ids=target.edge_ids,
                     start_time=start_time,
                 )

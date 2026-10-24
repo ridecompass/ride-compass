@@ -530,12 +530,12 @@ class RouteGenerator:
     async def generate_spliced_route(
         self,
         origin: Coordinates,
-        destination: Coordinates | None,
+        points: FixedPoints,
         edge_ids: tuple[str, *tuple[str, ...]],
         start_time: datetime,
     ) -> list[RouteCandidate]:
-        """クライアントが区間を差し替えて組み立てた経路を、既存候補と同じ経路で評価し直す。経路は終点（`destination`、
-        無ければ出発地）で終わらなければならない。
+        """クライアントが区間を差し替えて組み立てた経路を、既存候補と同じ経路で評価し直す。経路は終点（`points`の目的地、
+        無ければ出発地）で終わらなければならない。置いた経由地は、組んだ経路の中で通る所を求めるためだけに使う。
 
         探索はやり直さない（経路は確定済み）が、`prepare`は通る——評価は
         `road_graph_context.py: RoadGraphContext`のコスト配列から読むため（design-principles.md 構造仕様10:
@@ -546,7 +546,7 @@ class RouteGenerator:
         origin_label = _origin_label(origin)
 
         context = await self._prepare(
-            origin, [] if destination is None else [destination], 0.0, start_time,
+            origin, points.placed, 0.0, start_time,
             log_label="generate(spliced)", log_detail=f"edges={len(edge_ids)}",
             failure_phrase="ルートを組み立てられませんでした。")
         prepare_ms = elapsed_ms(started)
@@ -554,7 +554,7 @@ class RouteGenerator:
             return []
 
         try:
-            traced = await asyncio.to_thread(self._engine.build_traced_from_edge_ids, context, edge_ids, destination)
+            traced = await asyncio.to_thread(self._engine.build_traced_from_edge_ids, context, edge_ids, points)
         except RoutingError as exc:
             # 経路の形が受け取れない（未知のEdge・つながっていない・起点や終点が違う）。
             # **利用者へ届く理由を捨てない**——ここで素通しすると、呼び出し元の汎用catchが

@@ -119,7 +119,7 @@ class RouteGenerateRequest(StrictModel):
     start_time: datetime
     # 区間の乗り換え: クライアントが候補の`edge_ids`から区間を差し替えて組み立てた経路。
     # 指定時は探索を行わず、この経路だけを既存候補と同じ経路で評価して1件返す
-    # （経路は`destination`、無ければ出発地で終わる。`waypoints`・`max_routes`は使わない）。
+    # （経路は`destination`、無ければ出発地で終わる。`waypoints`は経路が通る所を求めるためだけに使い、`max_routes`は使わない）。
     # 生成と同じコスト曲線（`prepare`が支配的）のため、別エンドポイントにせず同じ
     # ジョブ機構へ載せる。
     spliced_edge_ids: list[str] | None = Field(default=None, min_length=1, max_length=MAX_SPLICED_EDGES)
@@ -156,7 +156,7 @@ class RouteGenerateRequest(StrictModel):
             check_points_within_reach(max(haversine_distance_km(origin, point) for point in points))
         if self.spliced_edge_ids:
             first, *rest = self.spliced_edge_ids
-            self._target = SplicedTarget(destination=self.destination, edge_ids=(first, *rest))
+            self._target = SplicedTarget(points=fixed, edge_ids=(first, *rest))
             return self
         if self.distance_km is not None:
             self._target = DistanceTarget(distance_km=self.distance_km, points=fixed)

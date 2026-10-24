@@ -145,7 +145,7 @@ class FakeEngine:
         return self.fastest
 
     @_as_engine
-    def build_traced_from_edge_ids(self, context, edge_ids, destination):
+    def build_traced_from_edge_ids(self, context, edge_ids, points):
         if self.build_error is not None:
             raise self.build_error
         return TracedLoop(
@@ -178,7 +178,7 @@ ENTRANCES = {
     "loops": lambda generator: generator.generate_loops(ORIGIN, 10.0, 1.0, DEFAULT_MAX_ROUTES, START, NO_POINTS),
     "waypoints": lambda generator: generator.generate_via_waypoints(ORIGIN, [WAYPOINT], None, 1, START),
     "destination": lambda generator: generator.generate_via_waypoints(ORIGIN, [], DESTINATION, 1, START),
-    "spliced": lambda generator: generator.generate_spliced_route(ORIGIN, DESTINATION, ("e1",), START),
+    "spliced": lambda generator: generator.generate_spliced_route(ORIGIN, FixedPoints(waypoints=[], destination=DESTINATION), ("e1",), START),
 }
 
 
@@ -469,7 +469,7 @@ async def test_spliced_route_that_does_not_connect_says_so_without_internal_ids(
     generator = RouteGenerator(FakeEngine(build_error=RoutingError("edge_id=osm-123 がつながっていない")))
 
     with caplog.at_level(logging.WARNING, logger=route_generator.logger.name):
-        assert await generator.generate_spliced_route(ORIGIN, DESTINATION, ("osm-123",), START) == []
+        assert await generator.generate_spliced_route(ORIGIN, FixedPoints(waypoints=[], destination=DESTINATION), ("osm-123",), START) == []
 
     assert generator.last_no_candidates_reason == (
         "組み合わせた経路がつながっていないため評価できませんでした。区間の選び直しか、ルートの再生成をお試しください。")
