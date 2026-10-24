@@ -21,14 +21,15 @@ import pytest
 
 from app.domain import display_palette
 from app.domain.display_palette import SEMANTIC_COLORS, nominal_colors, ordered_colors, resolved_display_axes
-from app.domain.map_display import ROAD_UNKNOWN_OPACITY
+from app.domain.map_display import AREA_OPACITY, ROAD_UNKNOWN_OPACITY
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from app.domain.registry import DisplayAxisSpec, DisplayCategorySpec, PrimaryAttributeSpec
+from app.domain.weather_display import PRECIPITATION_COLOR_STOPS
 
 GROUND = SEMANTIC_COLORS["basemap_ground"]
 #: 分類色が地色から浮くコントラスト比（これを割ると「薄い＝対象外」と見分けられない）。
 CLASS_COLOR_CONTRAST = 3.0
-#: 値が無い道の線が、地色に対して見えるコントラスト比。
+#: 線が地に対して見えるコントラスト比（値が無い道の線・基礎地図の細い道の縁取り）。
 NO_DATA_LINE_CONTRAST = 1.5
 #: 軸の中の色の離れ具合。列挙はどの2行も、順序は隣どうし。
 NOMINAL_DELTA_E = 20.0
@@ -206,3 +207,12 @@ def test_a_road_without_a_value_is_still_visible_on_the_ground():
     line = over_ground(SEMANTIC_COLORS["no_data"], ROAD_UNKNOWN_OPACITY)
 
     assert contrast(line, GROUND) >= NO_DATA_LINE_CONTRAST
+
+
+def test_minor_road_casings_stay_visible_under_every_rain_band():
+    """細い道の縁取りは面の上に描かれず、面を重ねた地に載る。割ると、雨を出した所で細い道の並びが消える。"""
+    casing = SEMANTIC_COLORS["basemap_minor_road_casing"]
+    grounds = [GROUND, *(over_ground(stop.color, AREA_OPACITY) for stop in PRECIPITATION_COLOR_STOPS)]
+
+    for ground in grounds:
+        assert contrast(casing, ground) >= NO_DATA_LINE_CONTRAST, ground

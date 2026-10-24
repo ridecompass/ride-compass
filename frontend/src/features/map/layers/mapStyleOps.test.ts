@@ -5,6 +5,7 @@ import { mapOnScreen } from "@/testing/maplibre";
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
 import { matchesFilter } from "@/testing/mapExpressions";
 import type { StyleLayer } from "@/testing/mapTrace/recordingMap";
+import palette from "@/types/generated/palette.json";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
 
@@ -91,6 +92,32 @@ describe("面レイヤーの差し込み位置", () => {
     prepareBasemap(map);
     screen.loadStyle([{ id: "background", type: "background" }]);
     expect(areaLayerAnchor(map)).toBeUndefined();
+  });
+});
+
+describe("基礎地図の細い道の縁取り", () => {
+  it("細い道の縁取りだけを源泉の濃い灰で描き、太い道の縁取りと細い道の白い線は配信元の色のまま残す", () => {
+    // libertyの道路網の層の一部。細い道は地上・橋・トンネルでそれぞれ別の縁取りの層を持つ。
+    const minorCasings = [
+      "road_minor_casing",
+      "road_service_track_casing",
+      "bridge_street_casing",
+      "bridge_path_pedestrian_casing",
+      "tunnel_street_casing",
+    ];
+    const { map, screen } = drawMap([
+      ...minorCasings.map((id) => ({ id, type: "line", "source-layer": "transportation" })),
+      { id: "road_secondary_tertiary_casing", type: "line", "source-layer": "transportation" },
+      { id: "road_minor", type: "line", "source-layer": "transportation" },
+    ]);
+
+    prepareBasemap(map);
+
+    for (const id of minorCasings) {
+      expect(screen.layerPaint(id)?.["line-color"]).toBe(palette.semantic.basemap_minor_road_casing);
+    }
+    expect(screen.layerPaint("road_secondary_tertiary_casing")?.["line-color"]).toBeUndefined();
+    expect(screen.layerPaint("road_minor")?.["line-color"]).toBeUndefined();
   });
 });
 

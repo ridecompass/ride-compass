@@ -7,6 +7,7 @@ import type {
   StyleSpecification,
 } from "maplibre-gl";
 import { debugLog } from "@/lib/debugLog";
+import palette from "@/types/generated/palette.json";
 
 /** 「面で塗る」レイヤー種。地図の一区画を色で覆い、下にあるものを隠す描き方をまとめて指す
  * （残りのline/symbol/circle/heatmapは線・記号として、面の上に乗って読まれる側）。 */
@@ -49,6 +50,11 @@ function basemapAreaLayersAfter(layers: readonly { id: string; type: string }[],
     .filter((layer) => AREA_LAYER_TYPES.has(layer.type))
     .map((layer) => layer.id);
 }
+
+/** 基礎地図（liberty）の細い道の縁取りの層のid。libertyは引いた縮尺の細い道を縁取りの線だけで描き、その薄い灰は
+ * 雨・標高の面を重ねた地と同じ明るさになって道の並びが消えるので、`prepareBasemap`が源泉の濃い灰へ描き替える。
+ * 配信元のスタイルの層のidで、スキーマの語彙ではない（スタイルが層を改名すると黙って当たらなくなる）。 */
+const MINOR_ROAD_CASING_LAYER_ID = /^(road|bridge|tunnel)_(minor|street|service_track|path_pedestrian)_casing$/;
 
 /** 基礎地図のベクタタイルが店・施設の点を収めているレイヤー名（OpenMapTilesスキーマ）。 */
 const POI_SOURCE_LAYER = "poi";
@@ -103,6 +109,7 @@ function tagOf(map: MapLibreMap): StyleReadyTag {
  * - 店・施設を描くレイヤーの配信元の絞りを記録する（隠すのは`hideBasemapPois`）
  * - 面レイヤーの差し込み位置を求めて記録し、基礎地図が道路より後ろに置いている面をその手前へ動かす
  * - 文字に場所を譲る点の差し込み位置を求めて記録する
+ * - 細い道の縁取りを源泉の濃い灰へ描き替える
  *
  * 建物を道路より前へ動かすと、基礎地図そのものの見た目も「建物の上に道路」へ変わる。
  * この地図はpitchを持たない（建物は平面の足元だけが描かれる）ため影響は小さく、面レイヤーが
@@ -126,6 +133,11 @@ export function prepareBasemap(map: MapLibreMap): void {
       "source-layer" in layer && layer["source-layer"] === POI_SOURCE_LAYER ? [[layer.id, layer.filter] as const] : [],
     ),
   );
+  const recolored = layers.filter((layer) => MINOR_ROAD_CASING_LAYER_ID.test(layer.id)).map((layer) => layer.id);
+  for (const layerId of recolored) {
+    map.setPaintProperty(layerId, "line-color", palette.semantic.basemap_minor_road_casing);
+  }
+  debugLog("map:lifecycle", "基礎地図の細い道の縁取りを描き替えた層", { layers: recolored });
   tagged.__rcLabelLayerAnchorId = layers[labelLayerAnchorIndex(layers)]?.id;
   debugLog("map:lifecycle", "文字に場所を譲る点の差し込み位置", { anchorId: tagged.__rcLabelLayerAnchorId ?? null });
   const anchorIndex = areaLayerAnchorIndex(layers);
