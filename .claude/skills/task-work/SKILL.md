@@ -43,12 +43,12 @@ description: "タスクを実装担当・検証担当として進める手順（
      狭まるなら書き換えず、`docs/conventions/flow.md`「担当」の「開発機でしかできない作業」のとおり返す。
    - 1つの Pull Request に収まらないと分かったら、.claude/skills/file-issue/SKILL.md「分ける」のとおり約束の行を移管して終える（約束が動いたので、
      ゲートは絞った残りを次の実装担当へ渡す。docs/conventions/flow.md「issue のライフサイクル」の実行の終わり）。
-   - マージのコミットの master の CI が落ちて戻ってきたら、落ちたジョブ（`gh run list -R ridecompass/ride-compass --commit <マージのコミット>`）を
-     読む。マージのコミットの実行が待ちのまま取り消されていたら、それは打ち直さない（打ち直すと、待っている後の実行が取り消される）。ゲートはその変更を、
-     master の first-parent の子の側で一番近い、取り消されていないコミットの実行（`tools/flow-gate/src/facts.js: coveringChecks`）で読んでいるので、
-     その実行の落ちたジョブを読む。ジョブが取り消された・一時の失敗なら `gh run rerun <実行> -R ridecompass/ride-compass --failed` で打ち直し、コードの誤りなら直す
-     Pull Request を出す。どちらもせずに手放すと、ゲートがイレギュラーを問う。打ち直しても通らない（その版の設定が今の環境では通らない等）なら
-     理由を経緯に書いて手放す（マージのコミットの検査が合格していないので、ゲートがイレギュラーとしてユーザーに渡す）。
+   - マージのコミットの master の CI が落ちて戻ってきたら、マージのコミットとそれより後の master の実行の落ちたジョブ（`gh run list -R ridecompass/ride-compass --branch master`）を
+     読む。打ち直さない: ゲートは、マージのコミットの実行が合格せずに終わったら、その変更を含む後の master の実行（`tools/flow-gate/src/facts.js: coveringChecks`）で
+     読むので、一時の失敗は後の実行が通れば覆い、打ち直すと待っている後の実行が取り消されうる。この変更の誤りで落ちたなら、直す Pull Request を出す。
+     この変更の誤りでない理由で落ち続ける（後の実行も同じ理由で落ちる）なら、原因を持つ issue（無ければ .claude/skills/file-issue/SKILL.md「起票する」のとおり起こす）を
+     前提に張り（`GH_TOKEN=$FLOW_BOT_TOKEN gh issue edit <番号> -R ridecompass/ride-compass-tasks --add-blocked-by <原因の番号>`）、落ちたジョブと張った理由を経緯に書いて
+     手放す（ゲートは前提が開いている間は待機にし、閉じたらまた決め直す）。どれもせずに手放すと、ゲートがイレギュラーを問う。
    - マージのあとの残りは、済ませて完了の条件にチェックを付ける。時間を待つものだけが残るなら、欄「着手可能日時」に済ませられる
      日本時間を入れ（.claude/skills/file-issue/SKILL.md「ラベルと種類と欄」）、何をその日に済ませるかをコメントに書いて終える。その日に
      振り出されたら、済ませて欄を消す。確かめの行だけが残るなら何もしない（ゲートが本番に出てから確かめを問う）。
