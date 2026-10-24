@@ -42,15 +42,17 @@
 | `features/map/MapView/MapView.tsx`（静的レイヤーの箇所のみ） | 画面の状態をsceneの入力へ渡し、組んだ宣言を地図へ当てる配線。レイヤーの描画コードは持たない |
 | `features/map/MapView/useMapScene.ts` | 地図に載るもの全部の入力から scene を組む唯一の口と、そこから押せるレイヤーを引く |
 | `features/map/MapView/mapTaps.ts` | 地図を押す・なぞる操作。押した所で一番上の地物を、そのレイヤーが宣言した当たり判定の対象（`hitTargets`）のうち、地図を押したときの意味（`features/map/MapView/mapTaps.ts: MapTapMode`）が開ける対象で開く手続きへ振り分ける |
-| `features/map/MapView/useMapPopups.tsx` | 地図の小窓（点・ピン・道の詳細・区間の中身）の状態と開閉。**小窓はいつも1つ**で、最後に押した物の中身へ入れ替える。MapLibreのPopupを1つ器にしてportalで描き、選択の持ち主が変わると閉じる。地図を押して閉じるのは押した手続き（`mapTaps.ts`）が決め、開ける物の無い所を押すか×で閉じると、区間の選びも外す。区間の中身を出している間に区間の近くの点を押すと、点の中身へ入れ替えて点の位置を指し（枠を付けた印を覆わない高さだけずらす）、区間の選びを残して先頭に「← 区間へ戻る」を置く。ほかの物（道・ピン・地図の点）へ入れ替えると区間の選びを外す。小窓の幅は中身によらず同じ上限（入れ替えるたびに幅が跳ねない）で、地図の幅の2/3（横のずれを引く）で頭打ちにする——MapLibreは押した所が端から小窓の幅の半分以内のときだけ横向きに開くので、幅の狭い画面で広い小窓を縦の中ほどの端に寄った所で開くと、横に開いて画面の外へはみ出す |
+| `features/map/MapView/useMapPopups.tsx` | 地図の小窓（点・ピン・道の詳細・区間の中身）の状態と開閉。**小窓はいつも1つ**で、最後に押した物の中身へ入れ替える。MapLibreのPopupを1つ器にしてportalで描き、選択の持ち主が変わると閉じる。地図を押して閉じるのは押した手続き（`mapTaps.ts`）が決め、開ける物の無い所を押すか×で閉じると、区間の選びも外す。区間の中身を出している間に区間の近くの点を押すと、点の中身へ入れ替えて点の位置を指し（枠を付けた印を覆わない高さだけずらす）、区間の選びを残して上の帯の左に「‹ 区間」を置く。ほかの物（道・ピン・地図の点）へ入れ替えると区間の選びを外す。小窓の幅は中身によらず同じ上限（入れ替えるたびに幅が跳ねない）で、地図の幅の2/3（横のずれを引く）で頭打ちにする——MapLibreは押した所が端から小窓の幅の半分以内のときだけ横向きに開くので、幅の狭い画面で広い小窓を縦の中ほどの端に寄った所で開くと、横に開いて画面の外へはみ出す |
 | `features/map/MapView/layerDataSources.ts` | レイヤーのデータ取得状態の算出元（`features/map/MapView/layerDataSources.ts: buildLayerDataSources`）。レイヤーカタログの情報源の名前を、取得を見るMapLibreのソースへ引く |
 | `features/map/baseMap.ts` | 基礎地図のスタイル・出典の表記・MapLibreの部品の日本語の文言で地図を作る（`features/map/baseMap.ts: createBaseMap`）。一般の地図（`MapView.tsx`）と下書きの点数の地図が使い、載せるものはどちらも場面で当てる。俯瞰図（`features/map/MapOverview/MapOverview.tsx`）は`inset`で、操作を受けず出典の表記を持たない地図として作る（出典は同じ画面の本体の地図が出す） |
 | `features/map/DraftWayValuesMap/DraftWayValuesMap.tsx` | 下書きの点数の地図（管理画面の較正の画面が置く。[軸スタジオ](axis-studio.md)「較正の画面」）。下書きで求めた道の点数を、一般の地図と同じ場面の組み立て・道の線の塗り・凡例で塗る。点数は backend が走る条件を入れて求め終えた値なので、道ごとの材料1つとして載せ、それをそのまま道の値にする木（`scene/wayValueFormula.ts: featureValueFormula`）で塗る。下書きの中身と点数の求め方は知らず、置く側が渡す |
 | `features/map/layers/mapStyleOps.ts` | 地図インスタンスへの低水準操作（スタイル読み込み後の実行・面レイヤーと文字に場所を譲る点の差し込み位置・ズーム依存のicon-size式）。このアプリのどのレイヤーかを知らないものだけを置く |
 | `features/map/layers/routeArrowIcon.ts`・`components/ui/icons/icons.tsx`・`components/ui/icons/layerIcons.tsx`・`components/ui/icons/lucideIcons.tsx`・`components/ui/icons/mapLayerIcons.ts` | ルート矢印・アイコン集（下記「本モジュールとの関係」参照）。`icons.tsx`はアイコンの土台（大きさの受け口・線の様式）と、操作・地点の自前の形、`layerIcons.tsx`は地図のレイヤーと評価軸の自前の形、`lucideIcons.tsx`はlucideの形の包み、`mapLayerIcons.ts`は源泉が宣言するレイヤーごとのアイコンの表（地図の「表示」の一覧と、道のりのグラフの地点の詳しくのチップが同じ表を引く。レイヤーを足すと型が書き忘れを止める） |
 | `features/map/layers/sdfIcon.ts` | 地図の記号に使う単色シルエット（例: ルート矢印・落雷の記号）の描画の土台。白で塗った絵を`sdf: true`で登録し、色はicon-colorで付ける。canvasの2D描画が使えなければ投げる——空の絵を黙って返すと記号が地図から消えるだけで誰も気づけない。**単体テストは持たない**（テスト環境のcanvasは2D描画を実装しない。絵の中身は座標の宣言そのもので、写してもなにも守らない） |
-| `features/map/MapView/pointPopup.ts` | 点データ（事故・POI・立ち寄り先）をクリックしたときのポップアップ本文。「点の名前: 区分の名前」を、凡例と同じ点の宣言（`POINT_LAYERS`の`features/map/MapView/pointPopup.ts: display_axes`）から組み、続けて宣言（`features/map/MapView/pointPopup.ts: point_facts`）が点に添える事実（事故の発生年等）を値のあるものだけ並べる。宣言（`features/map/MapView/pointPopup.ts: point_name_property`）が名前のプロパティを持ち、その点に名前があれば（立ち寄り先と補給のコンビニ）、先頭に名前を出し、末尾に名前と位置で外の地図（Google マップの検索）を別の画面で開く導線を置く——閉店にデータが追いついていないことがあるので、営業を外で確かめられるようにする。地点のピンを押したときの「ピンの呼び名: 名前」の本文（`features/map/MapView/pointPopup.ts: buildPinPopupContent`）もここで組む。名前は`lib/mapDisplay/pointLayers.ts: pointPlaceName`が引き、地点を置く意味の間に名前のある点を押して地点を置くとき（`features/map/MapView/mapTaps.ts`）も同じ名前を使う。値をテキストノードで入れたDOMを組み、`Popup.setDOMContent()`へ渡す（下記「ポップアップへOSMタグの生値を出すときはHTMLとして解釈させない」） |
-| `features/map/MapView/RoadInspectorPopup.tsx` | 道をクリックしたときの詳細（**Reactで描き、MapLibreのPopupへportalで差し込む**）。開いたときに見せるのは名前と評価だけで、属性（タイルの事実と、評価を取ったときに届くタグ。**同じ項目は1度だけ**）と周囲の土地被覆は畳む——地図の上の小さな枠に収めるため。中身の高さには上限を付けて中でスクロールさせ、中身が伸び縮みしたら置く向きを決め直す（MapLibreのPopupは地図が動いたときにしか決め直さず、開いた後に伸びた中身が画面の外へはみ出す）。評価は押したときだけ取りに行き（backend `POST /api/region/axis-inspector`、[静的道路属性・タイル配信](../backend/static-road-attributes.md)参照。押した地物の鍵と押した点を送る）、応答の押した区間と道1本の値を、「押した区間」「この道全体」の見出しの下にそれぞれの軸ごとの効き方・合成・周囲の土地被覆として並べ（区間の値は寄せた地図の色、道1本の値は引いた地図の色と同じ値で、どちらの値かを取り違えると地図の色と窓の値が食い違って見える）、**利用者がいま設定している重み**（ルート生成へ送るのと同じ`routePreferenceToSend`の値）で計算させる——既定の重みで見せると、重みを0にした軸まで効いて見える。重みを変えたら、前の重みの評価を見せずに取り直しへ戻す。走行の条件は押したときのものに留める——出発時刻は「今」へ
+| `features/map/MapView/pointPopup.ts` | 地点のピンを押したときの小窓の本文「ピンの呼び名: 名前」（`features/map/MapView/pointPopup.ts: pinPopupText`） |
+| `components/MapPopup/MapPopupParts.tsx` | 地図の小窓（点・道・区間）を組む部品。どの小窓も「上の帯」（`components/MapPopup/MapPopupParts.tsx: PopupHeader`）と塊——難易度の塊（`components/MapPopup/MapPopupParts.tsx: DifficultyBlock`。難易度・寄与の帯・軸のチップに、同じ塊で読むチップ（風・土地被覆）を並べる）と施設の行（`components/MapPopup/MapPopupParts.tsx: FacilityRows`）——だけで組む。小窓ごとに別の組み方をすると、同じ値が小窓によって違う形に見える。上の帯は右端を×の幅だけ空ける——×はMapLibreが本文の器の右上に置き、どの中身でも44px四方の押す所を持つ（`app/globals.css`） |
+| `components/MapPopup/facilityRows.ts` | 点データ（事故・POI・立ち寄り先）を1施設1行で見せる行の中身（`components/MapPopup/facilityRows.ts: facilityOf`）。区分の名前を凡例と同じ点の宣言（`POINT_LAYERS`の`display_axes`）から引き、宣言（`point_facts`）が点に添える事実（事故の発生年等）を値のあるものだけ並べる。宣言（`point_name_property`）が名前のプロパティを持ち、その点に名前があれば（立ち寄り先と補給のコンビニ）、名前と位置で外の地図（Google マップの検索）を別の画面で開くリンクにする——閉店にデータが追いついていないことがあるので、営業を外で確かめられるようにする。名前は`lib/mapDisplay/pointLayers.ts: pointPlaceName`が引き、地点を置く意味の間に名前のある点を押して地点を置くとき（`features/map/MapView/mapTaps.ts`）も同じ名前を使う。同じ場所に重なった同じ施設は1行にし、道のりの順（同じ位置なら道に近い順）に並べる（`components/MapPopup/facilityRows.ts: distinctFacilities`） |
+| `features/map/MapView/RoadInspectorPopup.tsx` | 道をクリックしたときの詳細（**Reactで描き、MapLibreのPopupへportalで差し込む**）。上の帯に地図の道の線と同じ見本・名前（名前の無い道は道の色の凡例の名前）・事実の要約（路面等）を出し、属性（タイルの事実と、評価を取ったときに届くタグ。**同じ項目は1度だけ**で、日本語の値だけを出し、英語の生の値と登録外のタグはその中の「その他のタグ」にさらに畳む）は畳む——地図の上の小さな枠に収めるため。中身の高さには上限を付けて中でスクロールさせ、中身が伸び縮みしたら置く向きを決め直す（MapLibreのPopupは地図が動いたときにしか決め直さず、開いた後に伸びた中身が画面の外へはみ出す）。評価は押したときだけ取りに行き（backend `POST /api/region/axis-inspector`、[静的道路属性・タイル配信](../backend/static-road-attributes.md)参照。押した地物の鍵と押した点を送る）、応答の押した区間と道1本の値を、「区間」「道全体」の札を付けた難易度の塊（周囲の土地被覆は最も多いクラスのチップにし、押すと内訳を開く）として並べ（2つの値が同じなら札の無い塊を1つだけ出す）（区間の値は寄せた地図の色、道1本の値は引いた地図の色と同じ値で、どちらの値かを取り違えると地図の色と窓の値が食い違って見える）、**利用者がいま設定している重み**（ルート生成へ送るのと同じ`routePreferenceToSend`の値）で計算させる——既定の重みで見せると、重みを0にした軸まで効いて見える。重みを変えたら、前の重みの評価を見せずに取り直しへ戻す。走行の条件は押したときのものに留める——出発時刻は「今」へ
 5分刻みで進むので、今の条件で引き直すと開いている間に評価が消える。評価は道・条件・重みをキーにキャッシュへ残り、
 同じ道を同じ条件・重みで開き直したときは押さずに前の評価を出す。軸ごとの効き方は**ルート結果と同じ`AxisContributionBar`**で、チップから開く軸の詳細も同じ`AxisDetail`で出す——同じものを別の見た目で見せると読み方を2つ覚えることになる。寄与度はbackendが返す値をそのまま使い、フロントで重みを掛け直さない。**デバッグログONのときだけ`osm_way_id`を出す**——値がおかしい道を見つけたとき、地図で押した1本をそのままbackendの調査へ渡せるようにする。一般の利用者には読めない値のため常時は出さない |
 | `features/map/MapView/roadFacts.ts` | クリックした道の「事実」（例: 道路名・路面の種類・農道・林道の等級・トンネル）をタイルのプロパティから組み立てる純関数。項目名と値の呼び名、タイルのどの属性を読むか（`features/map/MapView/roadFacts.ts: tile_property`）は材料カタログ（生成物`material-catalog.json`）から引く。材料の外の列（識別子・道路名）の名前は生成物`region-tile-config.json`の`region-tile-config.json: road_surface.properties`から引き、押した道のway_id・フィーチャーの鍵もここの関数（`roadWayId`・`roadFeatureKey`）で読む。該当しない項目は行ごと出さない（「なし」が並ぶと該当する項目が埋もれる）。路面の種類（材料`surface`。区分ではなくタグの値の呼び名）だけは値が無くても「不明」として出す——どの道でも最初に見たい項目で、行ごと消すと「舗装されていない」と読める |
@@ -387,9 +389,9 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 区間を選んでいる間だけ、その区間の近くの点を、点の層と同じ見た目（行の色の丸か、行の色に絵記号を載せた絵）で描く。点の層の行
 （先頭の軸の行）に当たらない値の点は描かない。**同じ行の点どうしだけを束ねる**: 画面の上で絵が重なる近さ（絵の大きさ）の点を、
 件数を添えた1つの印にまとめ、拡大すると分かれる（MapLibre の GeoJSON のソースの`cluster`）。束ねるのはソースの中だけなので、
-行ごとにソースを分け、いま点のある行だけを宣言する。同じ位置の点は地図をいちばん寄せても束ねたままにする。点を押すと、名前・区分と
-道からの距離を地図の小窓に出し、束ねた印を押すと中の点の名前（無ければ区分の名前）と道からの距離を道に近い順に並べる
-（`features/map/MapView/pointPopup.ts`）。小窓に出している点の印には、選んだ地点の印と同じ色の枠を付ける（ソース`side-point-chosen`。
+行ごとにソースを分け、いま点のある行だけを宣言する。同じ位置の点は地図をいちばん寄せても束ねたままにする。点を押すと、見本・名前（無ければ区分の名前）・
+ルートの何km地点・道からの距離の1施設1行を地図の小窓に出し、束ねた印を押すと中の点を同じ行で道のりの順に並べる
+（`components/MapPopup/facilityRows.ts`）。小窓に出している点の印には、選んだ地点の印と同じ色の枠を付ける（ソース`side-point-chosen`。
 押せない）——束ねた印が並ぶ所で、どの印の中身かを見分ける。
 
 ## 重なりの段（`scene/mapScene.ts: MAP_SCENE_TIERS`）
@@ -852,9 +854,7 @@ E2Eの`e2e/map-runtime.spec.ts`「宣言された地図レイヤーを全部ON�
 対訳表に載らない値は生のまま出る（`roadFacts.ts: valueLabel`の`?? value`）。停止要因/補給POIの
 `kind`はOSMの生値ではなくbackendの分類器が付ける内部名なので、対訳が無ければ生値ではなく
 「不明」を出す（[design-principles.md](../../architecture/design-principles.md)UI仕様「内部名を画面に出さない」）。
-行き先は2通りあり、**どちらも値をテキストノードとして入れる**。道路の詳細はReactで描く
-（`RoadInspectorPopup.tsx`）。点データ（事故・POI）は`pointPopup.ts`がDOMを組み、
-`Popup.setDOMContent()`へ渡す。
+小窓の中身はどれもReactで描き（`useMapPopups.tsx`がPopupの器へportalで差し込む）、**値をテキストとして入れる**。
 
 **`Popup.setHTML()`は使わない**。MapLibreの`setHTML()`は受け取った文字列をサニタイズせず
 そのまま`innerHTML`へ入れる（APIの文書に「信頼できる内容にだけ使うこと」と明記され、

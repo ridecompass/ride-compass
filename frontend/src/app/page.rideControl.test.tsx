@@ -190,7 +190,7 @@ describe("走行モードの操作", () => {
     clickSecondLine();
     expect(linesOn("route-selected")).toEqual([FIRST.geometry.coordinates]);
     clickSegment(drawnSegment, HERE);
-    expect(screen.queryByText(/km地点/)).toBeNull();
+    expect(screen.queryByRole("group", { name: "区間の小窓の上の帯" })).toBeNull();
     const [originPin] = marksAt(HERE);
     expect(originPin.draggable).toBe(false);
     await user.click(originPin.element);

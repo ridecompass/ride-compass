@@ -2,11 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import { cn } from "@/lib/cn";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
 
 import type { RoutePreferenceWeights, SelectedRouteSegment } from "@/types/route";
-import { Button } from "@/components/ui/Button/Button";
+import { BackToSegmentButton, FacilityRows, PopupHeader } from "@/components/MapPopup/MapPopupParts";
+import type { Facility } from "@/components/MapPopup/facilityRows";
+import type { RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import type { RideConditions } from "@/features/map/regionApi";
 import type { TileXY } from "@/features/map/layers/dynamicWayValues";
 import { CHOSEN_SIDE_POINT_OUTER_RADIUS_PX } from "@/features/map/scene/groups/sidePoints";
@@ -35,14 +38,18 @@ function popupMaxWidth(offsetPx: number): string {
  * 小窓を閉じる・その区間に属さない中身へ入れ替えると区間の選びを外す。区間の選びが別の所（パネル・印）で変わったら出さない。
  */
 export type MapPopup =
-  /** 点・ピン（数行の事実なので、組んだDOMをそのまま載せる）。区間の近くの施設なら`segment`はその区間で、区間の中身へ戻れる。 */
-  | { kind: "point"; lngLat: [number, number]; content: HTMLElement; segment: SelectedRouteSegment | null }
-  /** 押した道。`tile`は押した瞬間のタイル（開いたままズームしても、押した道のタイルを指す）。 */
+  /** 地点のピン（呼び名と名前の1行）。 */
+  | { kind: "pin"; lngLat: [number, number]; text: string; segment: null }
+  /** 点（束ねた印なら中の施設を全部）。区間の近くの施設なら`segment`はその区間で、区間の中身へ戻れる。 */
+  | { kind: "point"; lngLat: [number, number]; facilities: readonly Facility[]; segment: SelectedRouteSegment | null }
+  /** 押した道。`tile`は押した瞬間のタイル（開いたままズームしても、押した道のタイルを指す）。`track`は押した道の線が入る
+   * 凡例の行（地図の道の色と道の種類の名前）。 */
   | {
       kind: "road";
       lngLat: [number, number];
       properties: RoadSurfacePopupProperties;
       tile: TileXY;
+      track: RoadTrackRow | null;
       segment: null;
     }
   /** 地図で押した区間（中身はページが描く）。 */
@@ -50,10 +57,11 @@ export type MapPopup =
 
 /** 地図を押した手続き（`mapTaps.ts`）が小窓を開く・閉じる口。地図を作るときに一度だけ結ぶので、どれも同じ関数のまま変わらない。 */
 export interface MapPopupControls {
-  openPoint: (lngLat: [number, number], content: HTMLElement) => void;
+  openPin: (lngLat: [number, number], text: string) => void;
+  openPoint: (lngLat: [number, number], facilities: readonly Facility[]) => void;
   /** 区間の近くの施設。区間の中身を出している間に開くと、区間の選びを残して戻れるようにする。 */
-  openSidePoint: (lngLat: [number, number], content: HTMLElement) => void;
-  openRoad: (road: Pick<Extract<MapPopup, { kind: "road" }>, "lngLat" | "properties" | "tile">) => void;
+  openSidePoint: (lngLat: [number, number], facilities: readonly Facility[]) => void;
+  openRoad: (road: Pick<Extract<MapPopup, { kind: "road" }>, "lngLat" | "properties" | "tile" | "track">) => void;
   showSegment: (segment: SelectedRouteSegment) => void;
   close: () => void;
 }
@@ -91,9 +99,10 @@ export function useMapPopups(
 
   const controls = useMemo<MapPopupControls>(
     () => ({
-      openPoint: (lngLat, content) => replace({ kind: "point", lngLat, content, segment: null }),
-      openSidePoint: (lngLat, content) =>
-        replace({ kind: "point", lngLat, content, segment: latest.current.shown?.segment ?? null }),
+      openPin: (lngLat, text) => replace({ kind: "pin", lngLat, text, segment: null }),
+      openPoint: (lngLat, facilities) => replace({ kind: "point", lngLat, facilities, segment: null }),
+      openSidePoint: (lngLat, facilities) =>
+        replace({ kind: "point", lngLat, facilities, segment: latest.current.shown?.segment ?? null }),
       openRoad: (road) => replace({ kind: "road", ...road, segment: null }),
       showSegment: (segment) => replace({ kind: "segment", segment }),
       close: () => replace(null),
@@ -120,15 +129,6 @@ function anchorOf(popup: MapPopup): { lngLat: [number, number]; offsetPx: number
   }
   // 区間の近くの施設は施設の位置を指すので、枠を付けた印を覆わない。
   return { lngLat: popup.lngLat, offsetPx: popup.segment !== null ? CHOSEN_SIDE_POINT_OUTER_RADIUS_PX : 0 };
-}
-
-/** 組んだDOMを、Reactで描く小窓の中へ置く。 */
-function MountedContent({ node }: { node: HTMLElement }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    ref.current?.replaceChildren(node);
-  }, [node]);
-  return <div ref={ref} />;
 }
 
 /** 小窓を地図へ載せ、中身をportalで描く。返した要素を地図の部品の中に置く。 */
@@ -174,29 +174,35 @@ export function useMapPopupMount(
 
   if (onMap === null || mount?.shown !== onMap) return null;
   return createPortal(
-    onMap.kind === "road" ? (
-      <RoadInspectorPopup
-        properties={onMap.properties}
-        axes={catalog.axes}
-        axisColors={catalog.axisColors}
-        conditions={{
-          ...rideConditions,
-          ...onMap.tile,
-          longitude: onMap.lngLat[0],
-          latitude: onMap.lngLat[1],
-        }}
-        routePreference={routePreference}
-      />
-    ) : onMap.kind === "segment" ? (
-      segmentDetail
-    ) : (
-      <PointContent popup={onMap} onBack={controls.showSegment} />
-    ),
+    // 高さに上限を付け、あふれたら中でスクロールする——地図の上の枠は、中身が伸びても画面の外へ出てはいけない。
+    <div className="max-h-[min(24rem,50vh)] overflow-y-auto text-[length:var(--font-size-md)] leading-[1.4]">
+      {onMap.kind === "road" ? (
+        <RoadInspectorPopup
+          properties={onMap.properties}
+          track={onMap.track}
+          axes={catalog.axes}
+          axisColors={catalog.axisColors}
+          conditions={{
+            ...rideConditions,
+            ...onMap.tile,
+            longitude: onMap.lngLat[0],
+            latitude: onMap.lngLat[1],
+          }}
+          routePreference={routePreference}
+        />
+      ) : onMap.kind === "segment" ? (
+        segmentDetail
+      ) : onMap.kind === "pin" ? (
+        <p className="m-0 pr-9">{onMap.text}</p>
+      ) : (
+        <PointContent popup={onMap} onBack={controls.showSegment} />
+      )}
+    </div>,
     mount.container,
   );
 }
 
-/** 点の中身。区間の近くの施設なら、先頭に区間の中身へ戻る操作を置く。 */
+/** 点の中身: 施設の行。区間の近くの施設なら、上の帯に区間の中身へ戻る操作を置く。上の帯が無ければ、先頭の行が×を避ける。 */
 function PointContent({
   popup,
   onBack,
@@ -206,18 +212,13 @@ function PointContent({
 }) {
   const { segment } = popup;
   return (
-    <div className="flex flex-col items-start gap-1">
+    <div className={cn("flex flex-col gap-1", segment === null && "[&_li:first-child]:pr-9")}>
       {segment !== null && (
-        <Button
-          variant="ghost"
-          size="xs"
-          onClick={() => onBack(segment)}
-          usage="押した区間の中身（近くの施設の件数）へ戻ります。"
-        >
-          ← 区間へ戻る
-        </Button>
+        <PopupHeader label="施設の小窓の上の帯">
+          <BackToSegmentButton onBack={() => onBack(segment)} />
+        </PopupHeader>
       )}
-      <MountedContent node={popup.content} />
+      <FacilityRows facilities={popup.facilities} />
     </div>
   );
 }

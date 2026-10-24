@@ -18,12 +18,13 @@ import {
 import { POINT_HIT_TARGET, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
 import {
   SIDE_POINT_HIT_TARGET,
+  SIDE_POINT_KM_PROPERTY,
   SIDE_POINT_OFFSET_PROPERTY,
   sidePointRowOfSceneLayer,
 } from "@/features/map/scene/groups/sidePoints";
-import { hiddenRoadLineAt, ROAD_LINE_HIT_TARGET } from "@/features/map/scene/groups/roadLines";
+import { hiddenRoadLineAt, ROAD_LINE_HIT_TARGET, roadLineRowAt } from "@/features/map/scene/groups/roadLines";
 import type { MapLook } from "@/features/map/view/mapLook";
-import { buildPointClusterPopupContent, buildPointPopupContent } from "@/features/map/MapView/pointPopup";
+import { distinctFacilities, facilityOf } from "@/components/MapPopup/facilityRows";
 import type { MapPopupControls } from "@/features/map/MapView/useMapPopups";
 import { pointPlaceName } from "@/lib/mapDisplay/pointLayers";
 import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
@@ -136,15 +137,13 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     open(hit.feature, e);
   }
 
-  // 道はルート結果と同じ「軸ごとの効き方」を見せるためReactの部品で描く。点（事故・POI）は数行の事実だけなので
-  // MapLibreのPopupへ直接載せる。
   function openPoint(feature: MapGeoJSONFeature, e: MapMouseEvent) {
     const point = pointLayerOfSceneLayer(feature.layer.id);
     if (point === undefined) throw new Error(`点の対象を名乗るレイヤー ${feature.layer.id} に点の宣言が無い`);
     // 外の地図で探す位置は点そのものの位置（押した所は絵の端のことがある）。点の層のタイルは点1つずつを焼く。
     if (feature.geometry.type !== "Point") throw new Error(`点の層 ${point.attr_id} の地物が点でない`);
     const [lng, lat] = feature.geometry.coordinates;
-    popups.openPoint([e.lngLat.lng, e.lngLat.lat], buildPointPopupContent(point, feature.properties, { lng, lat }));
+    popups.openPoint([e.lngLat.lng, e.lngLat.lat], [facilityOf(point, feature.properties, [lng, lat])]);
   }
 
   // 区間の近くの点。小窓は押した所でなく印の位置を指す（束ねた印は束の位置）。束ねた印は、中の点を地図のソースから引いて
@@ -156,11 +155,13 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     const [lng, lat] = feature.geometry.coordinates;
     const at: [number, number] = [lng, lat];
     const { properties } = feature;
+    const facilityAt = (leafProperties: Record<string, unknown>, position: readonly [number, number]) =>
+      facilityOf(row.layer, leafProperties, position, {
+        km: Number(leafProperties[SIDE_POINT_KM_PROPERTY]),
+        offsetM: Number(leafProperties[SIDE_POINT_OFFSET_PROPERTY]),
+      });
     if (properties.cluster !== true) {
-      popups.openSidePoint(
-        at,
-        buildPointPopupContent(row.layer, properties, { lng, lat }, Number(properties[SIDE_POINT_OFFSET_PROPERTY])),
-      );
+      popups.openSidePoint(at, [facilityAt(properties, at)]);
       return;
     }
     const source = map.getSource(row.source) as GeoJSONSource | undefined;
@@ -169,13 +170,13 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     void source.getClusterLeaves(Number(properties.cluster_id), count, 0).then((leaves) => {
       popups.openSidePoint(
         at,
-        buildPointClusterPopupContent(
-          row.layer,
-          row.category.label,
-          leaves.map((leaf) => {
-            const leafProperties = leaf.properties ?? {};
-            return { properties: leafProperties, offsetM: Number(leafProperties[SIDE_POINT_OFFSET_PROPERTY]) };
-          }),
+        distinctFacilities(
+          leaves.map((leaf) =>
+            facilityAt(
+              leaf.properties ?? {},
+              leaf.geometry.type === "Point" ? [leaf.geometry.coordinates[0], leaf.geometry.coordinates[1]] : at,
+            ),
+          ),
         ),
       );
     });
@@ -183,6 +184,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
 
   function openRoad(feature: MapGeoJSONFeature, e: MapMouseEvent) {
     popups.openRoad({
+      track: roadLineRowAt(feature.layer.id, feature.state, latest.current.roadLayers)?.row ?? null,
       lngLat: [e.lngLat.lng, e.lngLat.lat],
       properties: feature.properties,
       tile: tileContainingLonLat(e.lngLat.lng, e.lngLat.lat, map.getZoom(), ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM),

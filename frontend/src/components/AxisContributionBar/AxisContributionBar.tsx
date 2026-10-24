@@ -31,6 +31,9 @@ interface AxisContributionBarProps {
   renderDetail: (axis: CatalogAxis) => ReactNode | null;
   /** `stacked`（既定）は帯の下に凡例のチップを折り返して並べ、`inline`は帯の右に軸のアイコンと数字だけの小さいチップを並べて1行に収める。 */
   layout?: "stacked" | "inline";
+  /** 軸のチップの後ろに並べるチップ（`li`。風・土地被覆等、同じ塊で読む値）。寄与が無いと帯ごと描かないので、そのときは
+   * 呼ぶ側が出す。 */
+  extraChips?: ReactNode;
 }
 
 const FALLBACK_COLOR = palette.semantic.neutral;
@@ -56,6 +59,7 @@ export default function AxisContributionBar({
   legendAxes,
   renderDetail,
   layout = "stacked",
+  extraChips,
 }: AxisContributionBarProps) {
   if (!hasAnyContribution(axes, contributions)) return null;
   const rows = axes.filter((axis) => hasContribution(contributions, axis.axisId));
@@ -116,6 +120,7 @@ export default function AxisContributionBar({
               </li>
             );
           })}
+        {extraChips}
       </ul>
     </div>
   );

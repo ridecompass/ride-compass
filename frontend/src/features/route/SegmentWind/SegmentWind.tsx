@@ -1,8 +1,6 @@
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { WindDirectionArrowIcon } from "@/components/ui/icons/lucideIcons";
-import { textVariants } from "@/components/ui/Text/Text";
 import { cardinalLabel, downwindDeg } from "@/lib/cardinalLabel";
-import { cn } from "@/lib/cn";
 import { formatJstHourMinute, parseJstLocalValue } from "@/lib/time";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
@@ -30,22 +28,6 @@ function WindExplanation() {
       {HOURS_PER_BIN}時間刻み]で評価しています。 {mapDisplay.modelValueDisclaimer}往路・復路それぞれ、走り始めてから
       {HOURS_PER_LEG}
       時間先までの区間に出します。
-    </p>
-  );
-}
-
-/** 区間の評価に使った風を、使った時刻・風向風速と(i)の説明で1行に出す。 */
-export default function SegmentWind({ wind }: { wind: RouteSegmentDetail["wind"] }) {
-  // backendより先にこの画面が出ると、応答に`wind`が無い（undefined）。
-  if (wind == null) return null;
-  return (
-    <p className={cn(textVariants({ variant: "hint" }), "m-0 inline-flex flex-wrap items-baseline gap-x-1")}>
-      <span>
-        {windTimeLabel(wind)}: {windValueLabel(wind)}
-      </span>
-      <InfoPopover triggerAriaLabel="区間の風の説明">
-        <WindExplanation />
-      </InfoPopover>
     </p>
   );
 }

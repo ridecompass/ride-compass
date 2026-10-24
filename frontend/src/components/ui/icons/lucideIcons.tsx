@@ -12,6 +12,9 @@ import {
   Download,
   Droplet,
   EllipsisVertical,
+  Eye,
+  EyeOff,
+  Footprints,
   Gauge,
   GitCommitHorizontal,
   History,
@@ -135,3 +138,9 @@ export const TurnLeftIcon = fromLucide(CornerUpLeft);
 export const TurnRightIcon = fromLucide(CornerUpRight);
 /** 畳んだ俯瞰図を開く。 */
 export const OverviewMapIcon = fromLucide(MapShape);
+/** 施設の道からの距離（道を外れて歩く距離）。 */
+export const OffRoadDistanceIcon = fromLucide(Footprints);
+/** 地図に出している（押すと消す）。 */
+export const ShownOnMapIcon = fromLucide(Eye);
+/** 地図から消している（押すと出す）。 */
+export const HiddenOnMapIcon = fromLucide(EyeOff);
