@@ -46,7 +46,7 @@
 | `features/map/MapView/layerDataSources.ts` | レイヤーのデータ取得状態の算出元（`features/map/MapView/layerDataSources.ts: buildLayerDataSources`）。レイヤーカタログの情報源の名前を、取得を見るMapLibreのソースへ引く |
 | `features/map/baseMap.ts` | 基礎地図のスタイル・出典の表記・MapLibreの部品の日本語の文言で地図を作る（`features/map/baseMap.ts: createBaseMap`）。一般の地図（`MapView.tsx`）と下書きの点数の地図が使い、載せるものはどちらも場面で当てる。俯瞰図（`features/map/MapOverview/MapOverview.tsx`）は`inset`で、操作を受けず出典の表記を持たない地図として作る（出典は同じ画面の本体の地図が出す） |
 | `features/map/DraftWayValuesMap/DraftWayValuesMap.tsx` | 下書きの点数の地図（管理画面の較正の画面が置く。[軸スタジオ](axis-studio.md)「較正の画面」）。下書きで求めた道の点数を、一般の地図と同じ場面の組み立て・道の線の塗り・凡例で塗る。点数は backend が走る条件を入れて求め終えた値なので、道ごとの材料1つとして載せ、それをそのまま道の値にする木（`scene/wayValueFormula.ts: featureValueFormula`）で塗る。下書きの中身と点数の求め方は知らず、置く側が渡す |
-| `features/map/layers/mapStyleOps.ts` | 地図インスタンスへの低水準操作（スタイル読み込み後の実行・面レイヤーと文字に場所を譲る点の差し込み位置・ズーム依存のicon-size式）。このアプリのどのレイヤーかを知らないものだけを置く |
+| `features/map/layers/mapStyleOps.ts` | 地図インスタンスへの低水準操作（スタイル読み込み後の実行・面レイヤーと文字に場所を譲る点の差し込み位置・基礎地図の細い道の縁取りの描き替え・ズーム依存のicon-size式）。このアプリのどのレイヤーかを知らないものだけを置く |
 | `features/map/layers/routeArrowIcon.ts`・`components/ui/icons/icons.tsx`・`components/ui/icons/layerIcons.tsx`・`components/ui/icons/lucideIcons.tsx`・`components/ui/icons/mapLayerIcons.ts` | ルート矢印・アイコン集（下記「本モジュールとの関係」参照）。`icons.tsx`はアイコンの土台（大きさの受け口・線の様式）と、操作・地点の自前の形、`layerIcons.tsx`は地図のレイヤーと評価軸の自前の形、`lucideIcons.tsx`はlucideの形の包み、`mapLayerIcons.ts`は源泉が宣言するレイヤーごとのアイコンの表（地図の「表示」の一覧と、道のりのグラフの地点の詳しくのチップが同じ表を引く。レイヤーを足すと型が書き忘れを止める） |
 | `features/map/layers/sdfIcon.ts` | 地図の記号に使う単色シルエット（例: ルート矢印・落雷の記号）の描画の土台。白で塗った絵を`sdf: true`で登録し、色はicon-colorで付ける。canvasの2D描画が使えなければ投げる——空の絵を黙って返すと記号が地図から消えるだけで誰も気づけない。**単体テストは持たない**（テスト環境のcanvasは2D描画を実装しない。絵の中身は座標の宣言そのもので、写してもなにも守らない） |
 | `features/map/MapView/pointPopup.ts` | 地点のピンを押したときの小窓の本文「ピンの呼び名: 名前」（`features/map/MapView/pointPopup.ts: pinPopupText`） |
@@ -241,6 +241,14 @@ DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの�
 `prepareBasemap`が1度だけ決める。道路網の位置と違って、このアプリのレイヤーが載る前（スタイルを読んだ直後）に求めることを
 前提にする（このアプリの線が最前面にあると、並びの頭が求まらない）。`prepareBasemap`は`applyScene`がsceneを当てる直前に呼ばれ、
 `map.setStyle()`はこのアプリのレイヤーごと差し替えるので、どちらの時機でも載っていない。
+
+**基礎地図の細い道の縁取りは、面の有無に関わらずいつも濃い灰で描く**（`palette.json: semantic.basemap_minor_road_casing`。
+`prepareBasemap`がスタイルごとに1度、`mapStyleOps.ts: MINOR_ROAD_CASING_LAYER_ID`に当たる層の`line-color`を描き替える）。libertyは
+引いた縮尺（z13.5より手前）の細い道を白い線を描かずに縁取りの線だけで描き、配信元の縁取りの薄い灰は、雨・色別標高図の面を
+重ねた地とほぼ同じ明るさになる（面は道路網の下に入るので、縁取りは面を重ねた地に載る）。描き替えた色は、面なしの地と雨の各段を
+重ねた地に対して線が見えるコントラスト比を割らないことを`tests/test_display_palette.py`が測る。色別標高図はタイルの画素ごとに
+色が違うので、そこでは測らない。層はidで名指す——縁取りかどうかはスキーマの語彙（`class`）では分からず、配信元のスタイルの
+層の並びにしか無い。スタイルが層を改名すると黙って当たらなくなる。
 
 同じ`prepareBasemap`が、基礎地図の店・施設（`source-layer`が`poi`のレイヤー全部。libertyでは`poi_r1`・`poi_r7`・
 `poi_r20`・`poi_transit`）の配信元の絞りを記録する。**このアプリの点の層の行が出ている間だけ、同じ種類の基礎地図の印を隠す**

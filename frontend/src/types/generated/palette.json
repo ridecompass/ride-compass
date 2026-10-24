@@ -20,6 +20,7 @@
     "mark_glyph": "#ffffff",
     "lightning": "#facc15",
     "basemap_ground": "#f8f4f0",
+    "basemap_minor_road_casing": "#7a7874",
     "legend_size_only": "#6b7280",
     "hit": "#000000",
     "inspected": "#f59e0b",
