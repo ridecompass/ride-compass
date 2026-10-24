@@ -80,6 +80,7 @@ from app.domain.routing import (
     build_turn_expanded_tree,
     tree_cost_bound,
     largest_strongly_connected_nodes,
+    nodes_reached_without_retracing,
     turn_expanded_path_edge_indices,
     turn_expanded_shortest_path,
 )
@@ -302,8 +303,8 @@ class RoadGraphEngine:
 
     async def _build_search_structures(
         self, search: _SearchGraph
-    ) -> tuple[NodeSpatialIndex, np.ndarray, SearchGraphStatics, TurnExpandedStructure]:
-        """最寄りNodeの索引・置いた点を寄せてよいNode・CSR・ターン構造を組む。
+    ) -> tuple[NodeSpatialIndex, np.ndarray, np.ndarray, SearchGraphStatics, TurnExpandedStructure]:
+        """最寄りNodeの索引・置いた点を寄せてよいNode・通れる区間（区間の番号順）・CSR・ターン構造を組む。
 
         索引の候補は実際に経路探索可能な（Hard Constraint通過後も区間が1本以上残る）Nodeに
         絞る。絞らないと、幹線道路（highway=trunk等）にしか接続していない地理的最近傍Node
@@ -319,9 +320,8 @@ class RoadGraphEngine:
         )
         node_index = await asyncio.to_thread(build_node_spatial_index, search.node_lat, search.node_lon, routable)
         statics = await asyncio.to_thread(build_search_graph_statics, search.lazy_graph, search.composer.distance_m)
-        accessible = await asyncio.to_thread(
-            largest_strongly_connected_nodes, statics.csr, ~search.excluded[search.lazy_graph.edge_rows],
-        )
+        passable = ~search.excluded[search.lazy_graph.edge_rows]
+        accessible = await asyncio.to_thread(largest_strongly_connected_nodes, statics.csr, passable)
         index_ms = elapsed_ms(started)
         turn_started = start_timer()
         turn_structure = await asyncio.to_thread(self._build_turn_structure, search, statics)
@@ -330,7 +330,7 @@ class RoadGraphEngine:
             road.edge_count, turn_structure.state_count, len(turn_structure.target_state),
             index_ms, elapsed_ms(turn_started),
         )
-        return node_index, accessible, statics, turn_structure
+        return node_index, accessible, passable, statics, turn_structure
 
     def _build_turn_structure(self, search: _SearchGraph, statics: SearchGraphStatics) -> TurnExpandedStructure:
         """状態＝有向区間の遷移構造。信号の有無・集まる道の最大階級はノードの事前集計列、
@@ -367,7 +367,7 @@ class RoadGraphEngine:
         search = await self._build_search_graph(bbox, origin, now)
         if search is None:
             return None
-        node_index, accessible, statics, turn_structure = await self._build_search_structures(search)
+        node_index, accessible, passable, statics, turn_structure = await self._build_search_structures(search)
         snapped = snap_to_accessible_node(node_index, accessible, origin, MAX_SNAP_CORRECTION_KM)
         if snapped is None:
             raise RoutingError("no accessible node near origin")
@@ -383,6 +383,7 @@ class RoadGraphEngine:
             origin_node=origin_node,
             node_index=node_index,
             accessible=accessible,
+            passable=passable,
             lazy_graph=search.lazy_graph,
             composer=search.composer,
             legs=[search.outbound],
@@ -467,6 +468,8 @@ class RoadGraphEngine:
            代え、木に沿った往路の**実距離**が周回のリングに入るNodeにする（`domain/route_search.py: turnaround_band`）。
            どちらも最短実距離ではなく軸コスト最適経路の実距離で定義する——重みを極端に振った設定ほど往路が遠回りする
            ため、最短実距離基準だと往路だけで目標の半分を超え距離フィルタで全滅する。
+           行き来に来た道を戻るしかないNode（袋小路の奥。`domain/routing.py: nodes_reached_without_retracing`の外）は
+           帯に入れない——帰りの罰は袋小路を通れるよう有限なので、そこで折り返す周回は来た道を戻る。
         3. 帯の中心からのずれ・往路の難易度のパレート層の順に並べる（`rank_by_pareto_layers`）。
         4. 上位から順に、既採用候補と往路の重複率が重なりの上限（`domain/route_search.py: corridor_overlap_ratios`）を
            超えるもの・最小の間隔（`domain/route_search.py: turnaround_separation`）より近いものを飛ばして`pool_size`件
@@ -541,6 +544,9 @@ class RoadGraphEngine:
                 )
                 in_ring[end_node] = False
             in_ring[start_node] = False
+            in_ring &= nodes_reached_without_retracing(
+                statics.csr, context.passable, context.accessible, [start_node, end_node],
+            )
             ring = np.flatnonzero(in_ring)
             if len(ring) == 0:
                 return _TurnaroundSelection(0, 0, float("nan"), [], int(np.isfinite(tree.node_cost).sum()))
