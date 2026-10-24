@@ -92,7 +92,10 @@ export function useRouteResults() {
     const edit = edits.find((item) => item.route.id === selectedRouteId);
     return edit ? { ...edit, origin: routes.find((route) => route.id === edit.originId) ?? null } : null;
   }, [edits, routes, selectedRouteId]);
-  const segmentSidePoints = useSegmentSidePoints(selectedCandidate, selectedRouteSegment);
+  const { sidePoints: segmentSidePoints, onSidePointsChange } = useSegmentSidePoints(
+    selectedCandidate,
+    selectedRouteSegment,
+  );
 
   return {
     /** 生成した候補と編集で作ったルートの全部（どちらも選べ、乗り換えの相手にもなる）。 */
@@ -117,6 +120,8 @@ export function useRouteResults() {
     segmentOnMap,
     /** 押した区間の近くの点（押した区間が無ければnull）。 */
     segmentSidePoints,
+    /** 地図が、押した区間の近くで読んだ施設を知らせる口。 */
+    onSidePointsChange,
     usedWeights,
     replaceWithGenerated,
     addEdit,

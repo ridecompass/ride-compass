@@ -1,4 +1,4 @@
-import type { GeoJSONSource, Map as MapLibreMap, MapGeoJSONFeature, MapMouseEvent } from "maplibre-gl";
+import type { Map as MapLibreMap, MapGeoJSONFeature, MapMouseEvent } from "maplibre-gl";
 
 import type {
   Coordinates,
@@ -16,16 +16,10 @@ import {
   ROUTE_HIT_TARGET_SPLICE_BAND,
 } from "@/features/map/scene/groups/routes";
 import { POINT_HIT_TARGET, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
-import {
-  SIDE_POINT_HIT_TARGET,
-  SIDE_POINT_KM_PROPERTY,
-  SIDE_POINT_NAMED_PROPERTY,
-  SIDE_POINT_OFFSET_PROPERTY,
-  sidePointRowOfSceneLayer,
-} from "@/features/map/scene/groups/sidePoints";
+import { SIDE_POINT_HIT_TARGET, sidePointLayerOfSceneLayer } from "@/features/map/scene/groups/sidePoints";
 import { hiddenRoadLineAt, ROAD_LINE_HIT_TARGET, roadLineRowAt } from "@/features/map/scene/groups/roadLines";
 import type { MapLook } from "@/features/map/view/mapLook";
-import { distinctFacilities, facilityOf } from "@/components/MapPopup/facilityRows";
+import { facilityOf } from "@/components/MapPopup/facilityRows";
 import type { MapPopupControls } from "@/features/map/MapView/useMapPopups";
 import { pointPlaceName } from "@/lib/mapDisplay/pointLayers";
 import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
@@ -57,6 +51,8 @@ export interface MapTapState {
   tapMode: MapTapMode;
   onPointPlace: (coordinates: Coordinates, spot: PlaceCandidate | null) => void;
   onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => void;
+  /** 区間の近くの点の位置を、選んでいる区間に当てたルートの上の位置。区間の形が無ければnull。 */
+  sidePointAlong: (lngLat: readonly [number, number]) => { km: number; offsetM: number } | null;
   onSpliceStretchSelect: (index: number) => void;
   onRouteSelect: (routeId: string) => void;
 }
@@ -87,12 +83,15 @@ function namedSpotOf(feature: MapGeoJSONFeature): PlaceCandidate | null {
   return { kind: "facility", level: "point", name, area: null, latitude, longitude };
 }
 
-/** 点の地物が名前のある施設か（近くの点は、地物を組むときに載せた印で読む。束ねた印なら、名前のある施設を含むか）。点でない対象は
- * 常に開く。ポインタを動かすたびに呼ぶので、名前だけを見て、点の形には触らない。 */
+/** 点の地物が名前のある施設か。点でない対象は常に開く。ポインタを動かすたびに呼ぶので、名前だけを見て、点の形には触らない。 */
 function opensPopup(feature: MapGeoJSONFeature, target: string): boolean {
-  if (target === SIDE_POINT_HIT_TARGET) return Number(feature.properties[SIDE_POINT_NAMED_PROPERTY]) > 0;
-  if (target !== POINT_HIT_TARGET) return true;
-  const point = pointLayerOfSceneLayer(feature.layer.id);
+  const point =
+    target === SIDE_POINT_HIT_TARGET
+      ? sidePointLayerOfSceneLayer(feature.layer.id)
+      : target === POINT_HIT_TARGET
+        ? pointLayerOfSceneLayer(feature.layer.id)
+        : null;
+  if (point === null) return true;
   return point !== undefined && pointPlaceName(point, feature.properties) !== null;
 }
 
@@ -155,45 +154,17 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     // 外の地図で探す位置は点そのものの位置（押した所は絵の端のことがある）。点の層のタイルは点1つずつを焼く。
     if (feature.geometry.type !== "Point") throw new Error(`点の層 ${point.attr_id} の地物が点でない`);
     const [lng, lat] = feature.geometry.coordinates;
-    popups.openPoint([e.lngLat.lng, e.lngLat.lat], [facilityOf(point, feature.properties, [lng, lat])]);
+    popups.openPoint([e.lngLat.lng, e.lngLat.lat], facilityOf(point, feature.properties, [lng, lat]));
   }
 
-  // 区間の近くの点。小窓は押した所でなく印の位置を指す（束ねた印は束の位置）。束ねた印は、中の点を地図のソースから引いて
-  // 並べる（MapLibre の`getClusterLeaves`）。
+  // 区間の近くの点。小窓は押した所でなく印の位置を指す。
   function openSidePoint(feature: MapGeoJSONFeature) {
-    const row = sidePointRowOfSceneLayer(feature.layer.id);
-    if (row === undefined) throw new Error(`近くの点の対象を名乗るレイヤー ${feature.layer.id} に行が無い`);
-    if (feature.geometry.type !== "Point") throw new Error(`近くの点の層 ${row.layer.attr_id} の地物が点でない`);
+    const layer = sidePointLayerOfSceneLayer(feature.layer.id);
+    if (layer === undefined) throw new Error(`近くの点の対象を名乗るレイヤー ${feature.layer.id} に点の宣言が無い`);
+    if (feature.geometry.type !== "Point") throw new Error(`近くの点の層 ${layer.attr_id} の地物が点でない`);
     const [lng, lat] = feature.geometry.coordinates;
     const at: [number, number] = [lng, lat];
-    const { properties } = feature;
-    const facilityAt = (leafProperties: Record<string, unknown>, position: readonly [number, number]) =>
-      facilityOf(row.layer, leafProperties, position, {
-        km: Number(leafProperties[SIDE_POINT_KM_PROPERTY]),
-        offsetM: Number(leafProperties[SIDE_POINT_OFFSET_PROPERTY]),
-      });
-    if (properties.cluster !== true) {
-      popups.openSidePoint(at, [facilityAt(properties, at)]);
-      return;
-    }
-    const source = map.getSource(row.source) as GeoJSONSource | undefined;
-    if (source === undefined) throw new Error(`近くの点の行 ${row.source} のソースが無い`);
-    const count = Number(properties.point_count);
-    void source.getClusterLeaves(Number(properties.cluster_id), count, 0).then((leaves) => {
-      popups.openSidePoint(
-        at,
-        distinctFacilities(
-          leaves
-            .map((leaf) =>
-              facilityAt(
-                leaf.properties ?? {},
-                leaf.geometry.type === "Point" ? [leaf.geometry.coordinates[0], leaf.geometry.coordinates[1]] : at,
-              ),
-            )
-            .filter((facility) => facility.name !== null),
-        ),
-      );
-    });
+    popups.openSidePoint(at, facilityOf(layer, feature.properties, at, latest.current.sidePointAlong(at)));
   }
 
   function openRoad(feature: MapGeoJSONFeature, e: MapMouseEvent) {

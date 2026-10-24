@@ -27,3 +27,27 @@ export function matchesFilter(filter: unknown, properties: Record<string, unknow
     properties,
   } as never);
 }
+
+// 形を読む絞り（`distance`等）は、地物の形をタイルの中の座標で読む。この倍率のタイルに当てる。
+const TILE_ZOOM = 14;
+const TILE_EXTENT = 8192;
+
+/** 絞り（レイヤーの`filter`）が、`lngLat`にある点の地物に当てはまるか。`distance`のように形を読む絞りも、点を含むタイルの座標へ
+ * 落として MapLibre と同じ評価器で当てる。 */
+export function matchesFilterAtPoint(
+  filter: unknown,
+  properties: Record<string, unknown>,
+  [lng, lat]: readonly [number, number],
+): boolean {
+  const n = 2 ** TILE_ZOOM;
+  const x = ((lng + 180) / 360) * n;
+  const radians = (lat * Math.PI) / 180;
+  const y = ((1 - Math.log(Math.tan(radians) + 1 / Math.cos(radians)) / Math.PI) / 2) * n;
+  const canonical = { z: TILE_ZOOM, x: Math.floor(x), y: Math.floor(y) };
+  const point = { x: Math.round((x - canonical.x) * TILE_EXTENT), y: Math.round((y - canonical.y) * TILE_EXTENT) };
+  return featureFilter(filter as FilterSpecification, "filter").filter(
+    GLOBALS,
+    { type: 1, properties, geometry: [[point]] } as never,
+    canonical as never,
+  );
+}

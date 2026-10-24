@@ -101,6 +101,7 @@ from app.domain.map_display import (
     POINT_RADIUS_PX,
     POINT_ICON_SIZE_PX,
     POINT_STROKE_WIDTH_PX,
+    SEGMENT_NEARBY_POINT_MAX_DISTANCE_M,
     ROAD_INSPECTED_WIDTH_PX,
     ROAD_KNOWN_OPACITY,
     ROAD_LINE_WIDTH_PX,
@@ -395,6 +396,7 @@ def main() -> None:
                 "strokeWidthPx": POINT_STROKE_WIDTH_PX,
                 "iconSizePx": POINT_ICON_SIZE_PX,
                 "opacityByLayer": POINT_OPACITY_BY_ATTR,
+                "segmentNearbyMaxDistanceM": SEGMENT_NEARBY_POINT_MAX_DISTANCE_M,
             },
             "area": {
                 "opacity": AREA_OPACITY,

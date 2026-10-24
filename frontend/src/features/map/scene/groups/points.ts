@@ -68,7 +68,7 @@ export function pointLayerOfSceneLayer(sceneLayerIdOfFeature: string): PointLaye
 
 /** 常に効く絞り込み。同じタイル・同じsource-layerを2つ以上のレイヤーが分け合うときは、
  * 自分の行に属する値だけを通す（持たないと互いの点が混ざる）。 */
-function baseFilter(layer: PointLayer): FilterSpecification | undefined {
+export function baseFilter(layer: PointLayer): FilterSpecification | undefined {
   if (POINT_LAYERS.filter((other) => other.tile_kind === layer.tile_kind).length < 2) return undefined;
   const axis = layer.display_axes[0];
   const values = axis.categories.flatMap((category) => [...category.values]);
@@ -172,13 +172,13 @@ function layerFilter(layer: PointLayer, hiddenKeys: PointState["hiddenKeys"]): F
 type GlyphCategory = Extract<PointAxis["categories"][number], { glyph: string; color: string }>;
 
 /** 絵記号で描くレイヤーの行。源泉は先頭の軸の行の全部に付けるか、どれにも付けない。 */
-export function glyphCategories(layer: PointLayer): readonly GlyphCategory[] {
+function glyphCategories(layer: PointLayer): readonly GlyphCategory[] {
   const categories: readonly PointAxis["categories"][number][] = layer.display_axes[0].categories;
   return categories.filter((category): category is GlyphCategory => "glyph" in category && "color" in category);
 }
 
 /** 地図へ登録する絵の名前。**登録側と参照側が同じ1つを使う**（綴りがずれると点が出ない）。 */
-export function pointIconId(layer: PointLayer, category: GlyphCategory): string {
+function pointIconId(layer: PointLayer, category: GlyphCategory): string {
   return `point-icon:${layer.attr_id}:${category.key}`;
 }
 
@@ -218,11 +218,48 @@ function iconImageExpression(layer: PointLayer, categories: readonly GlyphCatego
   return ["case", ...cases, ""];
 }
 
-export function radiusExpression(layer: PointLayer): unknown {
+function radiusExpression(layer: PointLayer): unknown {
   const axis = sizeAxis(layer);
   if (axis === undefined) return POINT.radiusPx;
   const cases = axis.categories.flatMap((category) => [categoryMatch(axis, category), pointCategoryRadiusPx(category)]);
   return ["case", ...cases, POINT.radiusPx];
+}
+
+/** 点の層の印。`thinning`が無ければ、重なっても全部描く。 */
+export function pointLook(
+  layer: PointLayer,
+  thinning: PointLayer["point_thinning"],
+): Pick<SceneLayerEntry, "type" | "paint" | "layout"> {
+  const glyphs = glyphCategories(layer);
+  const opacity = POINT.opacityByLayer[layer.attr_id];
+  if (glyphs.length === 0) {
+    return {
+      type: "circle",
+      paint: {
+        "circle-color": colorExpression(layer),
+        "circle-radius": radiusExpression(layer),
+        "circle-stroke-width": POINT.strokeWidthPx,
+        "circle-stroke-color": palette.semantic.mark_stroke,
+        "circle-opacity": opacity,
+      },
+    };
+  }
+  return {
+    type: "symbol",
+    paint: { "icon-opacity": opacity },
+    layout: {
+      "icon-image": iconImageExpression(layer, glyphs),
+      ...(thinning === null
+        ? // 間引かない。丸い点と同じく、重なっても全部描く。
+          { "icon-allow-overlap": true, "icon-ignore-placement": true }
+        : // 重なった絵を省く。自分どうしで省き合うには、置いた絵がほかの絵を退ける（ignore-placementを付けない）。
+          {
+            "icon-allow-overlap": false,
+            "icon-ignore-placement": false,
+            "symbol-sort-key": thinningSortKey(layer, thinning),
+          }),
+    },
+  };
 }
 
 export const pointGroup = declareGroup<PointState>((state) => {
@@ -237,8 +274,6 @@ export const pointGroup = declareGroup<PointState>((state) => {
   }));
 
   const layers: readonly SceneLayerEntry[] = POINT_LAYERS.map((layer) => {
-    const glyphs = glyphCategories(layer);
-    const opacity = POINT.opacityByLayer[layer.attr_id];
     const filter = layerFilter(layer, state.hiddenKeys);
     const hidesBasemapPois = basemapPoisHiddenBy(layer, state.hiddenKeys);
     return {
@@ -247,33 +282,7 @@ export const pointGroup = declareGroup<PointState>((state) => {
       tier: layer.point_thinning === null ? "point" : "pointUnderLabels",
       source: POINT_TILE_SOURCES[layer.tile_kind].sourceId,
       sourceLayer: POINT_TILE_SOURCES[layer.tile_kind].sourceLayer,
-      ...(glyphs.length === 0
-        ? {
-            type: "circle" as const,
-            paint: {
-              "circle-color": colorExpression(layer),
-              "circle-radius": radiusExpression(layer),
-              "circle-stroke-width": POINT.strokeWidthPx,
-              "circle-stroke-color": palette.semantic.mark_stroke,
-              "circle-opacity": opacity,
-            },
-          }
-        : {
-            type: "symbol" as const,
-            paint: { "icon-opacity": opacity },
-            layout: {
-              "icon-image": iconImageExpression(layer, glyphs),
-              ...(layer.point_thinning === null
-                ? // 間引かない。丸い点と同じく、重なっても全部描く。
-                  { "icon-allow-overlap": true, "icon-ignore-placement": true }
-                : // 重なった絵を省く。自分どうしで省き合うには、置いた絵がほかの絵を退ける（ignore-placementを付けない）。
-                  {
-                    "icon-allow-overlap": false,
-                    "icon-ignore-placement": false,
-                    "symbol-sort-key": thinningSortKey(layer, layer.point_thinning),
-                  }),
-            },
-          }),
+      ...pointLook(layer, layer.point_thinning),
       visible: state.visible[layer.attr_id] === true,
       hitTargets: [POINT_HIT_TARGET],
       filter,

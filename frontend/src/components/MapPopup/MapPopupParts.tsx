@@ -116,7 +116,11 @@ export function FacilityRows({
             />
           )}
           {facility.offsetM !== null && (
-            <IconValue icon={<OffRoadDistanceIcon size={13} />} label="道からの距離" value={`${facility.offsetM}m`} />
+            <IconValue
+              icon={<OffRoadDistanceIcon size={13} />}
+              label="道からの距離"
+              value={`${Math.round(facility.offsetM)}m`}
+            />
           )}
         </li>
       ))}

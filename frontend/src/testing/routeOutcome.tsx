@@ -56,6 +56,7 @@ export function resultsOf(
     setSegmentOutsideMap: vi.fn(),
     segmentOnMap: { outside: false, onShow: vi.fn() },
     segmentSidePoints: null,
+    onSidePointsChange: vi.fn(),
     usedWeights: null,
     replaceWithGenerated: vi.fn(),
     addEdit: vi.fn(),

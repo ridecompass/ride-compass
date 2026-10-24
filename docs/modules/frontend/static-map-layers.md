@@ -20,7 +20,8 @@
 | `features/map/useRoadClasses.ts` | 道路の線を塗る道ごとの層の値を、表示中のタイルを1枚ずつ問い合わせて取り（[評価軸の色分け](map-axis-coloring.md)の`features/map/tileQueries.ts`）、取得中・失敗とともに返す（道の線の層が1つも出ていない間は取らない） |
 | `lib/mapDisplay/pointLayers.ts` | 点で描く属性（`lib/mapDisplay/pointLayers.ts: POINT_LAYERS`）と、点の値が入る行（`lib/mapDisplay/pointLayers.ts: pointCategoryOf`）・大きさの軸と行の半径・点の名前（`lib/mapDisplay/pointLayers.ts: pointPlaceName`）。地図の点・地図の凡例・点のポップアップ・道のりのグラフの印が同じ宣言を読むので、同じ点が地図とグラフで同じ色・呼び名になる |
 | `features/map/scene/groups/points.ts` | 停止要因POI・補給休憩POI・事故・立ち寄り先の分類・配色・点の形（丸い点か絵記号か）・重なった絵を間引く順と、同じタイルを分け合う条件 |
-| `features/map/scene/groups/sidePoints.ts` | 選んだ区間の近くの点（`POST /api/routes/side-points`の応答）を、点の層と同じ色・絵記号で描く印と、束ねた印に添える件数（下記「選んだ区間の近くの点」） |
+| `features/map/scene/groups/sidePoints.ts` | 選んだ区間の近くの点を、点の層のタイルから点の層と同じ色・絵記号で描く印と、近いかの絞り込み（下記「選んだ区間の近くの点」） |
+| `lib/mapDisplay/sidePoints.ts` | 近くの点の距離の上限（backendの`domain/map_display.py: SEGMENT_NEARBY_POINT_MAX_DISTANCE_M`を生成物から読む）・区間の小窓に並べる点の層（補給・立ち寄り先）・地図に出す・消すの区分の鍵と、点の位置を区間に当てた道のりと道からの距離 |
 | `features/map/layers/pointIcon.ts` | 絵記号で描く点の、地図へ登録する画素。形は見本（`components/PointIconSwatch/PointIconSwatch.tsx`）の宣言を読む。**単体テストは持たない**（`sdfIcon.ts`と同じく、テスト環境のcanvasは2D描画を実装せず、形は座標の宣言そのもの） |
 | `components/PointIconSwatch/PointIconSwatch.tsx` | 地図の点の見本。絵記号で描く点の絵の形（行の色の角丸四角と白い絵記号）の宣言を持ち、地図へ登録する画素（`pointIcon.ts`）と見本（`PointIconSwatch`）が同じ宣言を読む。絵記号を持たない点の見本（`PointDotSwatch`。地図の丸い点と同じ色・直径）も持つ。地図の凡例と区間の近くの施設のチップ（ルートの機能）が出すので共有の層に置く。絵記号の名前は源泉の行が持ち、描き方の無い名前は型検査が落とす |
 | `features/map/scene/groups/areaRasters.ts` | 面（色別標高図・土地被覆・起伏の陰影） |
@@ -41,6 +42,7 @@
 | `features/map/scene/applyMapScene.ts` | 宣言を地図へ当てる唯一の実装（`features/map/scene/applyMapScene.ts: addImage`/`features/map/scene/applyMapScene.ts: addSource`/`features/map/scene/applyMapScene.ts: addLayer`/`features/map/scene/applyMapScene.ts: setPaintProperty`/`features/map/scene/applyMapScene.ts: setFilter`/`features/map/scene/applyMapScene.ts: setFeatureState`）。前回の宣言との差分だけを当て、段の順に差し込む |
 | `features/map/MapView/MapView.tsx`（静的レイヤーの箇所のみ） | 画面の状態をsceneの入力へ渡し、組んだ宣言を地図へ当てる配線。レイヤーの描画コードは持たない |
 | `features/map/MapView/useMapScene.ts` | 地図に載るもの全部の入力から scene を組む唯一の口と、そこから押せるレイヤーを引く |
+| `features/map/MapView/useSidePointsOnMap.ts` | 選んだ区間の近くの施設を、地図が読み込んだ点のタイルから読んで知らせる。区間の線が変わったときと地図が描き終えたとき（`idle`）に読み直し、中身が変わったときだけ知らせる。点のタイルを読まないズームではnullを知らせる |
 | `features/map/MapView/mapTaps.ts` | 地図を押す・なぞる操作。押した所で一番上の地物を、そのレイヤーが宣言した当たり判定の対象（`hitTargets`）のうち、地図を押したときの意味（`features/map/MapView/mapTaps.ts: MapTapMode`）が開ける対象で開く手続きへ振り分ける |
 | `features/map/MapView/useMapPopups.tsx` | 地図の小窓（点・ピン・道の詳細・区間の中身）の状態と開閉。**小窓はいつも1つ**で、最後に押した物の中身へ入れ替える。MapLibreのPopupを1つ器にしてportalで描き、選択の持ち主が変わると閉じる。地図を押して閉じるのは押した手続き（`mapTaps.ts`）が決め、開ける物の無い所を押すか×で閉じると、区間の選びも外す。区間の中身を出している間に区間の近くの点を押すと、点の中身へ入れ替えて点の位置を指し（枠を付けた印を覆わない高さだけずらす）、区間の選びを残して上の帯の左に「‹ 区間」を置く。ほかの物（道・ピン・地図の点）へ入れ替えると区間の選びを外す。区間の小窓は、区間を囲む枠の上・下・右・左のうち、見えている所に収まる側に置き（押した地点に置くと区間の続きにかぶる。選び方は`features/map/MapView/popupPlacement.ts: popupPlacementAround`）、地図が動き終えるたび・中身が伸び縮みするたびに選び直す。どの側にも収まらなければ押した地点に置く。小窓の幅は中身によらず同じ上限（入れ替えるたびに幅が跳ねない）で、地図の幅の2/3（横のずれを引く）で頭打ちにする——MapLibreは押した所が端から小窓の幅の半分以内のときだけ横向きに開くので、幅の狭い画面で広い小窓を縦の中ほどの端に寄った所で開くと、横に開いて画面の外へはみ出す |
 | `features/map/MapView/popupPlacement.ts` | 線を囲む枠にかぶらない小窓の置き場（画面のpxで、上・下・右・左の順に、見えている所に収まる最初の側と、その側の向き（MapLibreの`anchor`））。見えている所が無い地図（描く前・隠れている間）では選ばない |
@@ -395,14 +397,7 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 
 ## 選んだ区間の近くの点（`groups/sidePoints.ts`）
 
-区間を選んでいる間だけ、その区間の近くの点を、点の層と同じ見た目（行の色の丸か、行の色に絵記号を載せた絵）で描く。点の層の行
-（先頭の軸の行）に当たらない値の点は描かない。**同じ行の点どうしだけを束ねる**: 画面の上で絵が重なる近さ（絵の大きさ）の点を、
-件数を添えた1つの印にまとめ、拡大すると分かれる（MapLibre の GeoJSON のソースの`cluster`）。束ねるのはソースの中だけなので、
-行ごとにソースを分け、いま点のある行だけを宣言する。同じ位置の点は地図をいちばん寄せても束ねたままにする。名前のある点を押すと、見本・名前・
-基準の地点から見た前後・道からの距離の1施設1行を地図の小窓に出し、束ねた印を押すと中の名前のある点を同じ行で道のりの順に並べる
-（`components/MapPopup/facilityRows.ts`）。名前の無い点と、名前のある点を含まない束ねた印は押しても開かない（前後と道からの距離は
-区分の一覧の行で見る）。束ねた印が名前のある点を含むかは、ソースの集計の欄（`clusterProperties`）が持つ。小窓に出している点の印には、選んだ地点の印と同じ色の枠を付ける（ソース`side-point-chosen`。
-押せない）——束ねた印が並ぶ所で、どの印の中身かを見分ける。
+地図で区間を押して選んでいる間だけ、点の層のタイル（停止要因・補給・立ち寄り先・事故）のうち区間の線から`lib/mapDisplay/sidePoints.ts: SIDE_POINT_MAX_DISTANCE_M`以内の点を、点の層と同じ見た目（行の色の丸か、行の色に絵記号を載せた絵）で、「表示」で点の層を出しているかに関わらず描く。近いかは MapLibre の`distance`式で決め（backendへは問い合わせない）、区間の小窓に並べる施設も同じ絞り込み（`groups/sidePoints.ts: sidePointFilter`）で地図から読む（`features/map/MapView/useSidePointsOnMap.ts`）。点の層の行（先頭の軸の行）に当たらない値の点は描かず、重なっても間引かない。地図から消した区分は描かない。点のタイルは路面のタイルと同じズーム（`features/map/regionApi.ts: ROAD_TILE_MIN_ZOOM`）から読むので、それより引いた地図では近くの点も施設も出さない。名前のある点を押すと、見本・名前・基準の地点から見た前後・道からの距離の1施設1行を地図の小窓に出す（`components/MapPopup/facilityRows.ts`。前後と道からの距離は画面で点の位置を区間の線に当てて出す）。名前の無い点は押しても開かない（前後と道からの距離は区分の一覧の行で見る）。小窓に出している点の印には、選んだ地点の印と同じ色の枠を付ける（ソース`side-point-chosen`。押せない）——点が並ぶ所で、どの印の中身かを見分ける。
 
 ## 重なりの段（`scene/mapScene.ts: MAP_SCENE_TIERS`）
 

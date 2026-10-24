@@ -4,7 +4,7 @@ import { useId, useState, type KeyboardEvent, type PointerEvent, type ReactNode 
 
 import { columnAtKm } from "@/features/route/DifficultyProfile/profileGeometry";
 import { roundToDigits } from "@/lib/numberFormat";
-import { findSameSegment, kmAlongSegment, pointAlongSegment, type RouteStretch } from "@/lib/routeDistance";
+import { alongSegment, findSameSegment, pointAlongSegment, type RouteStretch } from "@/lib/routeDistance";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
@@ -43,7 +43,7 @@ interface ProfileChartProps {
 
 /** 地図で押した所を区間`column`の道なりの形に当てた、ルートの上の距離。 */
 function kmOfPickedPoint(column: RouteStretch<RouteSegmentDetail>, picked: SelectedRouteSegment): number {
-  return Math.min(column.endKm, column.startKm + kmAlongSegment(column.segment, picked));
+  return Math.min(column.endKm, column.startKm + alongSegment(column.segment, picked).km);
 }
 
 /** 道のりに沿った図の枠。横が距離で、選んだ区間の帯・走行中の現在地・動かした地点の線を中身の上に引き、下に距離の目盛りを

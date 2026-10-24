@@ -31,11 +31,11 @@ import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import type { useLocation } from "@/hooks/useLocation";
 import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
-import type { Coordinates, PlaceCandidate, RoutePoint } from "@/types/route";
+import type { Coordinates, PlaceCandidate } from "@/types/route";
 import type { useRideGuidance } from "./useRideGuidance";
 
-// 近くの点が無い間も同じ参照を渡し、地図の描き直しを起こさない。
-const NO_SIDE_POINTS: readonly RoutePoint[] = [];
+// 区間を選んでいない間も同じ参照を渡し、地図の描き直しを起こさない。
+const NOTHING_HIDDEN: ReadonlySet<string> = new Set();
 
 interface HomeMapPaneProps {
   route: ReturnType<typeof useRoutePlanner>;
@@ -90,7 +90,7 @@ export default function HomeMapPane({
   const facilityOrigin =
     navigating && progress.km !== null
       ? { km: progress.km, riding: true }
-      : sidePoints?.status === "done"
+      : sidePoints !== null
         ? { km: sidePoints.pickedKm, riding: false }
         : null;
   // 走行中の道のりのグラフ（候補が無ければ出さない。結果の図と同じくなぞると地点を選び、地図に印を出して図の下にその地点の
@@ -118,16 +118,17 @@ export default function HomeMapPane({
         compassLinked={mapView.lensConditions.includes("bearing_deg")}
         routePreference={conditions.routePreferenceToSend}
         selectedRouteSegment={results.selectedRouteSegment}
-        sidePoints={sidePoints?.status === "done" ? sidePoints.shown : NO_SIDE_POINTS}
+        sidePointsHidden={sidePoints?.hidden ?? NOTHING_HIDDEN}
+        onSidePointsChange={results.onSidePointsChange}
         facilityOrigin={facilityOrigin}
         onRouteSegmentSelect={results.selectSegment}
         segmentFocus={results.segmentFocus}
         onSegmentOutsideChange={results.setSegmentOutsideMap}
         // 地図で押した区間の小窓。見るだけの間は区間の中身を全部出し、「ルート結果」が効いている間は中身をグラフの下が
-        // 出すので、近くの施設を探す所だけを出す。
+        // 出すので、近くの施設だけを出す（地図が近くの点を読まないズームでは出さない）。
         segmentDetail={
           results.selectedRouteSegment !== null &&
-          (tapMode === "look" || (tapMode === "routes" && sidePoints !== null)) ? (
+          (tapMode === "look" || (tapMode === "routes" && sidePoints?.groups != null)) ? (
             <SegmentDetail
               selection={results.selectedRouteSegment}
               sidePoints={sidePoints}

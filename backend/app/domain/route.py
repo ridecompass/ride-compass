@@ -162,22 +162,6 @@ class RouteTurn(StrictModel):
     longitude: float
 
 
-class RoutePoint(StrictModel):
-    """経路の近くの点（停止要因・補給・立ち寄り先・事故）を、経路が通る所に置いたもの。
-
-    `distance_km`は始点から通る所までの道のりで、区間の`distance_km`を始点から足した値と同じ物差し（`along_route_km`）。
-    `offset_m`は通る所の道から点までの地上の距離。`latitude`・`longitude`は点そのものの位置（画面が地図に印を出す）。
-    `layer`は点の一次属性のid、`properties`はその点の表示軸・名前・事実の値（地図の点の地物と同じ鍵。値の無いものは持たない）。
-    """
-
-    distance_km: float
-    offset_m: int
-    layer: str
-    properties: dict[str, str | int | float | bool]
-    latitude: float
-    longitude: float
-
-
 class EvaluatedRoute(StrictModel):
     """エンジンが評価した1本の経路。区間から候補単位への集約の前で、集約を足すと`RouteDraft`になる。"""
 
@@ -258,11 +242,10 @@ class RouteCandidate(RouteDraft):
     is_fastest: bool
 
 
-def along_route_km(distances_km: Iterable[float], start_km: float = 0.0) -> list[float]:
+def along_route_km(distances_km: Iterable[float]) -> list[float]:
     """始点から、並んだ区間それぞれの始まりまでの道のり（km）と、末尾に終わりまでの道のり。区間の距離を応答の桁へ丸めてから
-    積むので、区間の`distance_km`を始点から足した値と同じ物差しになる（区間の始まりの道のりと曲がる所の道のりがこれを読む）。
-    経路の途中から積むときは、その所の道のりを`start_km`に渡す。"""
-    along = [start_km]
+    積むので、区間の`distance_km`を始点から足した値と同じ物差しになる（区間の始まりの道のりと曲がる所の道のりがこれを読む）。"""
+    along = [0.0]
     for distance_km in distances_km:
         along.append(round(along[-1] + round(distance_km, DISTANCE_KM_DECIMALS), DISTANCE_KM_DECIMALS))
     return along
