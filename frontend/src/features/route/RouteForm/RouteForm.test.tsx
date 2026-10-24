@@ -92,6 +92,19 @@ describe("RouteForm 全長の目標", () => {
     expect(await screen.findByText(new RegExp(`^${text}`))).toBeInTheDocument();
   });
 
+  it("(i)の奥の終わりに、混み合っているときに作れないことがある長さを書く", async () => {
+    renderForm({ distanceInput: "80" });
+    await userEvent.click(button("全長の目標の説明を表示"));
+
+    expect(
+      await screen.findByText(
+        new RegExp(
+          `${routeGenerateConfig.busy_safe_distance_km}kmより長い目標は、混み合っているときに作れないことがあります。$`,
+        ),
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("ルーラーは5kmから上限まで5km刻みのコマを持ち、今の値のコマを選んでいる", () => {
     renderForm({ distanceInput: "30" });
 
