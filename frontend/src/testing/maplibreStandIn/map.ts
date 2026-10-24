@@ -205,18 +205,7 @@ export class StandInMap extends Evented {
     }
     this.pointed = features;
     try {
-      let defaultPrevented = false;
-      const event = {
-        lngLat: { lng: lngLat.longitude, lat: lngLat.latitude },
-        point: { x: 0, y: 0 },
-        preventDefault: () => {
-          defaultPrevented = true;
-        },
-        get defaultPrevented() {
-          return defaultPrevented;
-        },
-      };
-      this.fire("click", event, features);
+      this.fire("click", { lngLat: { lng: lngLat.longitude, lat: lngLat.latitude }, point: { x: 0, y: 0 } }, features);
     } finally {
       this.pointed = [];
     }

@@ -209,6 +209,7 @@ export default function DraftWayValuesMap<Draft>({
           travelledKm: null,
           selectedRouteSegment: null,
           sidePoints: [],
+          chosenSidePoint: null,
         }),
       ),
     [axisId, axis, materials, loading, hiddenLegendKeys, mapCatalog.routeStyleModes, mapCatalog.tileVersions],

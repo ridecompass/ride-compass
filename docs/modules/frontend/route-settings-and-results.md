@@ -17,7 +17,7 @@
 | `features/route/RouteForm/PointStrip.tsx` | 地点の並び（出発地 › 経由地の番号の丸・足す › 終点［周回の間は出発地、外せば目的地］）と、押した地点の選び。並びに名前が入りきるかを測って両端の札の名前を出し分ける（下記「地点の指定」） |
 | `features/route/RouteForm/PointDetail.tsx` | 押した地点の詳しく: 呼び名・名前・出どころ・辺りと、住所や施設の名前を打つ欄（`PointSearch.tsx`）・消す／現在地に戻す・置いた地点の保存（どれもアイコンだけの形。下記「地点の指定」「保存した地点」） |
 | `features/route/RouteForm/PointSearch.tsx` | 住所や施設の名前を打つ欄（候補は欄の下。狭い画面では欄を押してから選ぶ・閉じるまで、欄と候補を画面の上側に出す。欄を押すと保存した地点も出す）と、地図で置く間の欄の案内（下記「住所・施設で探す」「保存した地点」） |
-| `components/PinMark/PointMark.tsx` | 並びの札・詳しく・地図の点の小窓の置く操作に出す、地図のピンと同じ図形の丸（`components/PinMark/PinMark.tsx`の中身に背景色を付けたもの。ルートの機能と地図の機能の両方が描くので共有の層に置く） |
+| `components/PinMark/PointMark.tsx` | 並びの札・詳しく・道のりのグラフの経由地の印に出す、地図のピンと同じ図形の丸（`components/PinMark/PinMark.tsx`の中身に背景色を付けたもの。ルートの機能と地図の機能の両方が描くので共有の層に置く） |
 | `features/route/RouteForm/useRouteFormSubmit.ts` | 上記の検証（`{error, check}`。`features/route/RouteForm/useRouteFormSubmit.ts: check`は通ったかを返す）。「ルート生成」ボタン自体は`RouteForm`の外（`GenerateRouteActions.tsx`。見出し行）にあるため分離している（下記参照） |
 | `features/route/RouteSettingsPanel/RouteSettingsPanel.tsx` | 一般向け軸重み設定（「重み」タブの中身。地図の色分けはここになく`LensControl`のみが持つ、下記参照） |
 | `features/route/RouteSettingsPanel/HardFilterPanel.tsx` | 「除外」タブの中身。地図の道のレイヤの凡例の行ごとの避け方を1つの並びに出し、自転車が通れない道の行は「通らない」に固定して鍵を付ける（下記「除外」）。選べる行の鍵・名前・既定の段と行をまとめる節は軸カタログの`road_classes.avoidance`が、固定の行の名前と説明は生成物`route-generate-config.json`の`route-generate-config.json: hard_filters`が正で、名前をフロントに持たない——キーと名前を別々に持つと、足した行に名前が無く内部名が出る。軸カタログが届くまでは選べる行を出さない |
@@ -337,7 +337,7 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
 ——チップは名前を文字で出さないため、押して開けないとマウスを重ねられないスマホでは軸の名前が分からない。
 生値・材料の値は区間の詳細には出さない（設計原則「数値は3層で見せる」の、区間の詳細は得点まで）。
 
-**近くの施設**（停止要因・補給・立ち寄り先・事故）は、生成の応答に載せず、区間を押しただけでも引かず、地図で押した区間の小窓の「探す」を押したときだけその区間の分を1回引く（`features/route/useSegmentSidePoints.ts`。backendの規則は[ルーティングエンジン](../backend/routing-engine.md)「区間の近くの点」）。点は地図に、点の層と同じ色・絵記号の印で描き（[静的地図レイヤー](static-map-layers.md)「選んだ区間の近くの点」）、区間の小窓の末尾（`SegmentSidePoints.tsx`）に種類ごとの件数のチップを出す。区間の小窓は地図で押した区間にだけ出し（グラフで選んだ地点へは出さない。なぞるたびに付いて回らない）、見るだけの間は区間の中身を全部、「ルート結果」が効いている間（走行中に出したパネルの中を含む）は中身をグラフの下が出すので近くの施設の行だけを出す。道のりのグラフの地点の詳しくには出さない。チップは押すとその種類を地図に出す・消す切り替えで、区間を押した直後と選び直したときは全部出す。区間を選ぶと地図をその区間へ寄せ（`features/map/MapView/mapCamera.ts: fitBoundsToSection`。同じ区間の中で地点を選び直しても寄せ直さない）、走行中は追うのを休んで寄せ、選びを外すと追い直す。結果の画面では、外しても地図を動かさない。引いている間は「読み込み中」、失敗したら「近くの施設を読めませんでした」と出し、ほかの中身は残す。
+**近くの施設**（停止要因・補給・立ち寄り先・事故）は、生成の応答に載せず、区間を押しただけでも引かず、地図で押した区間の小窓の「探す」を押したときだけその区間の分を1回引く（`features/route/useSegmentSidePoints.ts`。backendの規則は[ルーティングエンジン](../backend/routing-engine.md)「区間の近くの点」）。点は地図に、点の層と同じ色・絵記号の印で描き（[静的地図レイヤー](static-map-layers.md)「選んだ区間の近くの点」）、区間の小窓の末尾（`SegmentSidePoints.tsx`）に種類ごとの件数のチップを出す。地図で施設の印を押すと、小窓を施設の中身へ入れ替え、区間の選びは残して「← 区間へ戻る」で区間の中身へ戻れる（[静的地図レイヤー](static-map-layers.md)の`useMapPopups.tsx`の行）。区間の小窓は地図で押した区間にだけ出し（グラフで選んだ地点へは出さない。なぞるたびに付いて回らない）、見るだけの間は区間の中身を全部、「ルート結果」が効いている間（走行中に出したパネルの中を含む）は中身をグラフの下が出すので近くの施設の行だけを出す。道のりのグラフの地点の詳しくには出さない。チップは押すとその種類を地図に出す・消す切り替えで、区間を押した直後と選び直したときは全部出す。区間を選ぶと地図をその区間へ寄せ（`features/map/MapView/mapCamera.ts: fitBoundsToSection`。同じ区間の中で地点を選び直しても寄せ直さない）、走行中は追うのを休んで寄せ、選びを外すと追い直す。結果の画面では、外しても地図を動かさない。引いている間は「読み込み中」、失敗したら「近くの施設を読めませんでした」と出し、ほかの中身は残す。
 
 ## 保存した条件（SavedConditionsPanel.tsx・useSavedConditions.ts）
 

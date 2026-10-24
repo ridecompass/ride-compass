@@ -24,7 +24,7 @@ import {
 import { hiddenRoadLineAt, ROAD_LINE_HIT_TARGET } from "@/features/map/scene/groups/roadLines";
 import type { MapLook } from "@/features/map/view/mapLook";
 import { buildPointClusterPopupContent, buildPointPopupContent } from "@/features/map/MapView/pointPopup";
-import type { RoadPopup } from "@/features/map/MapView/useMapPopups";
+import type { MapPopupControls } from "@/features/map/MapView/useMapPopups";
 import { pointPlaceName } from "@/lib/mapDisplay/pointLayers";
 import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
 
@@ -59,13 +59,6 @@ export interface MapTapState {
   onRouteSelect: (routeId: string) => void;
 }
 
-/** 押した物の中身を出す小窓（`useMapPopups`）。 */
-export interface MapTapPopups {
-  openPointPopup: (lngLat: [number, number], content: HTMLElement) => void;
-  openRoadPopup: (popup: RoadPopup) => void;
-  closePointPopup: () => void;
-}
-
 // 区間の当たり判定は見た目の線より広いため、押した地点の印を区間の線上の最寄りの点へ寄せる。区間の距離なら
 // 押した地点の緯度で平面へ落とした近似で足りる。
 function nearestPointOnLineString(
@@ -93,7 +86,7 @@ function namedSpotOf(feature: MapGeoJSONFeature): PlaceCandidate | null {
 }
 
 /** 地図を押す・なぞる操作を結ぶ。状態は押した瞬間に`current`から読む。外すときは返した関数を呼ぶ。 */
-export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTapState }, popups: MapTapPopups) {
+export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTapState }, popups: MapPopupControls) {
   /** その位置にある、押せるレイヤー（いま地図に載っているもの）の地物。 */
   function interactiveFeaturesAt(point: MapMouseEvent["point"]) {
     const layers = latest.current.interactiveLayerIds.filter((id) => map.getLayer(id));
@@ -118,7 +111,8 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   }
 
   // 地点の意味の間は、地物を開かずに、押した所へ選んでいる地点を置く（道の上を目的地にしたいこともある）。名前のある
-  // 点（店など）の上なら、その点の位置へ、その点の候補として置く。ほかの意味の間は、その意味が開ける地物だけを開く。
+  // 点（店など）の上なら、その点の位置へ、その点の候補として置く。ほかの意味の間は、その意味が開ける地物だけを開き、
+  // 開ける物の無い所を押すと小窓を閉じる。
   function handleClick(e: MapMouseEvent) {
     if (latest.current.tapMode === "points") {
       const spot = interactiveFeaturesAt(e.point)
@@ -133,7 +127,10 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
       return;
     }
     const hit = openableFeatureAt(e.point);
-    if (hit === null) return;
+    if (hit === null) {
+      popups.close();
+      return;
+    }
     const open = OPEN_BY_HIT_TARGET.get(hit.target);
     if (open === undefined) throw new Error(`押せる対象 ${hit.target} を開く手続きが無い`);
     open(hit.feature, e);
@@ -147,24 +144,20 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     // 外の地図で探す位置は点そのものの位置（押した所は絵の端のことがある）。点の層のタイルは点1つずつを焼く。
     if (feature.geometry.type !== "Point") throw new Error(`点の層 ${point.attr_id} の地物が点でない`);
     const [lng, lat] = feature.geometry.coordinates;
-    popups.openPointPopup(
-      [e.lngLat.lng, e.lngLat.lat],
-      buildPointPopupContent(point, feature.properties, { lng, lat }),
-    );
+    popups.openPoint([e.lngLat.lng, e.lngLat.lat], buildPointPopupContent(point, feature.properties, { lng, lat }));
   }
 
-  // 区間の近くの点。束ねた印は、中の点を地図のソースから引いて並べる（MapLibre の`getClusterLeaves`）。押しを使った印を付け、
-  // 区間の小窓（`useMapPopups.tsx: useMapPopupMounts`）を閉じさせない——閉じると区間の選びが外れ、押した点ごと消える。
-  function openSidePoint(feature: MapGeoJSONFeature, e: MapMouseEvent) {
-    e.preventDefault();
+  // 区間の近くの点。小窓は押した所でなく印の位置を指す（束ねた印は束の位置）。束ねた印は、中の点を地図のソースから引いて
+  // 並べる（MapLibre の`getClusterLeaves`）。
+  function openSidePoint(feature: MapGeoJSONFeature) {
     const row = sidePointRowOfSceneLayer(feature.layer.id);
     if (row === undefined) throw new Error(`近くの点の対象を名乗るレイヤー ${feature.layer.id} に行が無い`);
     if (feature.geometry.type !== "Point") throw new Error(`近くの点の層 ${row.layer.attr_id} の地物が点でない`);
-    const at: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+    const [lng, lat] = feature.geometry.coordinates;
+    const at: [number, number] = [lng, lat];
     const { properties } = feature;
     if (properties.cluster !== true) {
-      const [lng, lat] = feature.geometry.coordinates;
-      popups.openPointPopup(
+      popups.openSidePoint(
         at,
         buildPointPopupContent(row.layer, properties, { lng, lat }, Number(properties[SIDE_POINT_OFFSET_PROPERTY])),
       );
@@ -174,7 +167,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     if (source === undefined) throw new Error(`近くの点の行 ${row.source} のソースが無い`);
     const count = Number(properties.point_count);
     void source.getClusterLeaves(Number(properties.cluster_id), count, 0).then((leaves) => {
-      popups.openPointPopup(
+      popups.openSidePoint(
         at,
         buildPointClusterPopupContent(
           row.layer,
@@ -189,7 +182,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   }
 
   function openRoad(feature: MapGeoJSONFeature, e: MapMouseEvent) {
-    popups.openRoadPopup({
+    popups.openRoad({
       lngLat: [e.lngLat.lng, e.lngLat.lat],
       properties: feature.properties,
       tile: tileContainingLonLat(e.lngLat.lng, e.lngLat.lat, map.getZoom(), ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM),
@@ -200,15 +193,11 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   function openSpliceStretch(feature: MapGeoJSONFeature) {
     const index = feature.properties.index;
     if (typeof index !== "number") return;
-    popups.closePointPopup();
+    popups.close();
     latest.current.onSpliceStretchSelect(index);
   }
 
   function openRouteSegment(feature: MapGeoJSONFeature, e: MapMouseEvent) {
-    // 前に開いた点の詳細が残らないよう閉じる。押しを使った印を付け、区間の小窓が開いていても閉じさせない——閉じると、
-    // いま選び直した区間の選びが外れる。
-    e.preventDefault();
-    popups.closePointPopup();
     const properties = feature.properties as unknown as Omit<RouteSegmentDetail, "geometry">;
     const segment: RouteSegmentDetail = { ...properties, geometry: null };
     const geometry = feature.geometry as GeoJSON.Geometry | undefined;
@@ -220,7 +209,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   function openRouteCandidate(feature: MapGeoJSONFeature) {
     const routeId = feature.properties.routeId;
     if (typeof routeId !== "string") return;
-    popups.closePointPopup();
+    popups.close();
     latest.current.onRouteSelect(routeId);
   }
 
