@@ -9,21 +9,21 @@
 import pytest
 
 from app.domain.road_avoidance import resolve_road_avoidance
-from app.domain.road_classes import AvoidanceClassification, AvoidanceOverride, AvoidanceSection
-from tests.road_class_fixture import classification, road_classes
+from app.domain.road_classes import AvoidanceClassification, AvoidanceOverride
+from tests.road_class_fixture import classification, map_layer, road_classes
 
 DEFINITIONS = road_classes(
     {
         "kind": classification({"a": [], "b": [], "fixed": []}, former_keys={"a": ["old.x", "old.y"]}),
         "draft": classification({"a": []}).model_copy(update={"is_published": False}),
     },
-    avoidance_sections={"s": AvoidanceSection(label="見出し", description="", sort_order=0)},
+    map_layers={"kind": map_layer(0), "draft": map_layer(1)},
     avoidance_classifications={
-        "kind": AvoidanceClassification(section_key="s", sort_order=0, overrides={
-            "b": AvoidanceOverride(section_key=None, default_level="avoid", selectable=True),
-            "fixed": AvoidanceOverride(section_key=None, default_level=None, selectable=False),
+        "kind": AvoidanceClassification(overrides={
+            "b": AvoidanceOverride(default_level="avoid", selectable=True),
+            "fixed": AvoidanceOverride(default_level=None, selectable=False),
         }),
-        "draft": AvoidanceClassification(section_key="s", sort_order=1, overrides={}),
+        "draft": AvoidanceClassification(overrides={}),
     },
 )
 

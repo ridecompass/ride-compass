@@ -28,9 +28,9 @@ from app.domain.road_classes import (
     EMPTY_ROAD_CLASSES,
     AvoidanceClassification,
     AvoidanceOverride,
-    AvoidanceSection,
     RoadClass,
     RoadClassification,
+    RoadMapLayer,
 )
 from app.domain.route import RouteSegmentDetail, merge_overall_difficulty
 from app.domain.time_zone import jst_local_text
@@ -552,6 +552,13 @@ def _road_class(sort_order: int, former_keys: list[str]) -> RoadClass:
     return RoadClass(label="", description="", sort_order=sort_order, former_keys=former_keys, conditions=[])
 
 
+# 除外タブに出す分け方は地図の線の層でもある。層の見せ方は表に出ない。
+_MAP_LAYER = RoadMapLayer(
+    group_key="", sort_order=0, icon_key="", summary="", panel_hint="", palette="ordered",
+    hue_slot=None, tone=None, no_data_fact_key=None, hides_unclassified=False,
+)
+
+
 # 前の鍵の付き方が分かれる区分: 分けた区分（1つの前の鍵を2つの行が持ち、片方は既定が「なるべく避ける」）・合わせた区分
 # （前の鍵を2つ持つ）・前の鍵を持たない区分。
 _AVOIDANCE_DEFINITIONS = EMPTY_ROAD_CLASSES.model_copy(
@@ -569,12 +576,10 @@ _AVOIDANCE_DEFINITIONS = EMPTY_ROAD_CLASSES.model_copy(
                 },
             )
         },
-        "avoidance_sections": {"s": AvoidanceSection(label="", description="", sort_order=0)},
+        "map_layers": {"kind": _MAP_LAYER},
         "avoidance_classifications": {
             "kind": AvoidanceClassification(
-                section_key="s",
-                sort_order=0,
-                overrides={"split_b": AvoidanceOverride(section_key=None, default_level="avoid", selectable=True)},
+                overrides={"split_b": AvoidanceOverride(default_level="avoid", selectable=True)},
             )
         },
     }

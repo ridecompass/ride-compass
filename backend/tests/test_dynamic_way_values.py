@@ -8,7 +8,7 @@
 
 ここで見ないもの:
 - 塗る値の種類・段の境界・凡例の目盛り（`map_paint`） → `test_map_paint.py`
-- 折れ線の得点・対応表・0次条件の評価そのもの（`domain/axis_definitions.py: evaluate_axis_array`） → `test_axis_definitions.py`
+- 折れ線の得点・対応表・0次条件の評価そのもの（`domain/axis_evaluation.py: evaluate_axis_array`） → `test_axis_definitions.py`
 - 軸から配るサービスを選ぶこと・要求の条件の組み立て・配信のAPI → `test_region_routes.py`
 - 木の演算そのもの → `test_way_value_formula.py`、風の材料の木 → `test_wind.py`
 - 区間の材料を読むこと → `test_feature_materials_in_tile.py`、勾配の区間ごとの向き → `test_gradient_way_service.py`

@@ -16,7 +16,6 @@ from app.domain.road_classes import RoadClassDefinitions
 from app.infrastructure.road_class_models import (
     RoadAvoidanceClassificationRow,
     RoadAvoidanceOverrideRow,
-    RoadAvoidanceSectionRow,
     RoadClassConditionRow,
     RoadClassConditionTermRow,
     RoadClassificationRow,
@@ -50,7 +49,6 @@ async def read_road_classes(session: AsyncSession) -> RoadClassDefinitions:
             "map_layers": await _keyed(session, RoadMapLayerRow, "classification_key"),
             "rolling_resistance_classification": next(iter(rolling), None),
             "rolling_resistance_classes": rolling_classes,
-            "avoidance_sections": await _keyed(session, RoadAvoidanceSectionRow, "section_key"),
             "avoidance_classifications": await _keyed(session, RoadAvoidanceClassificationRow, "classification_key"),
         },
         from_attributes=True,
@@ -67,7 +65,7 @@ async def replace_road_class_rows(session: AsyncSession, definitions: RoadClassD
     await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _WRITE_LOCK_KEY})
     for row_type in (
         RoadClassConditionTermRow, RoadClassConditionRow, RoadRollingResistanceClassRow, RoadRollingResistanceRow,
-        RoadAvoidanceOverrideRow, RoadAvoidanceClassificationRow, RoadAvoidanceSectionRow, RoadMapLayerRow,
+        RoadAvoidanceOverrideRow, RoadAvoidanceClassificationRow, RoadMapLayerRow,
         RoadClassRow, RoadClassificationRow,
     ):
         await session.execute(delete(row_type))
@@ -90,7 +88,6 @@ async def replace_road_class_rows(session: AsyncSession, definitions: RoadClassD
         RoadRollingResistanceClassRow(classification_key=key, class_key=class_key, tuning_id=tuning_id)
         for key, by_class in definitions.rolling_resistance_classes.items() for class_key, tuning_id in by_class.items()
     )
-    session.add_all(_row(RoadAvoidanceSectionRow, s, section_key=key) for key, s in definitions.avoidance_sections.items())
     session.add_all(
         _row(RoadAvoidanceClassificationRow, a, classification_key=key, overrides={
             class_key: _row(RoadAvoidanceOverrideRow, o, class_key=class_key) for class_key, o in a.overrides.items()

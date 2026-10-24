@@ -18,11 +18,10 @@ from app.domain.axis_definitions import (
     AxisMaterialConflictError,
     check_axis_definition,
     check_axis_set,
-    check_internal_axis_not_published,
-    check_publish_immutability,
     named_references,
     replace_axis_definitions,
 )
+from app.domain.axis_publication import check_internal_axis_not_published, check_publish_immutability
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 
 logger = logging.getLogger("ridecompass.axis_registry")

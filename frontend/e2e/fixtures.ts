@@ -175,7 +175,7 @@ const E2E_ROAD_CLASSES = roadClassCatalog({
   map_layers: E2E_ROAD_LAYERS,
   avoidance: {
     levels: AVOIDANCE_LEVELS,
-    sections: [{ key: "surface", label: "路面", description: "" }],
+    sections: [{ key: "surface", label: "路面" }],
     rows: [avoidanceRow("unpaved", "surface", { label: "未舗装", default: "avoid" })],
   },
 });
