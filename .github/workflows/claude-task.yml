@@ -66,7 +66,7 @@ jobs:
           echo "repo=$tasks" >> "$GITHUB_OUTPUT"
           mkdir -p "$RUNNER_TEMP/flow" && cp -r .github/claude-task tools/flow-gate/src tools/flow-gate/package.json "$RUNNER_TEMP/flow/"
           echo "FLOW_SRC=$RUNNER_TEMP/flow/src" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: frontend/package.json
           cache: npm
