@@ -9,7 +9,13 @@
  */
 import type { Feature, FeatureCollection, Point } from "geojson";
 
-import { pointCategoryOf, POINT_LAYERS, type PointAxis, type PointLayer } from "@/lib/mapDisplay/pointLayers";
+import {
+  pointCategoryOf,
+  POINT_LAYERS,
+  pointPlaceName,
+  type PointAxis,
+  type PointLayer,
+} from "@/lib/mapDisplay/pointLayers";
 import palette from "@/types/generated/palette.json";
 import type { RoutePoint } from "@/types/route";
 
@@ -30,6 +36,8 @@ export const SIDE_POINT_HIT_TARGET = "sidePoint";
 /** 点の地物に載せる、道からの距離（m）とルートの上の位置（候補の始点からの道のりkm）。点の値の名前と重ならない名前にする。 */
 export const SIDE_POINT_OFFSET_PROPERTY = "side_offset_m";
 export const SIDE_POINT_KM_PROPERTY = "side_distance_km";
+/** 名前のある施設なら1、無ければ0。束ねた印は中の点の最大を持つ（名前のある施設を1つでも含めば1）。 */
+export const SIDE_POINT_NAMED_PROPERTY = "side_named";
 
 // 絵の大きさの近さで束ねる（`clusterRadius`は画面の px で数える）。
 const CLUSTER_RADIUS_PX = POINT.iconSizePx;
@@ -69,7 +77,7 @@ export type SidePointState = {
   readonly chosen: readonly [number, number] | null;
 };
 
-function feature(point: RoutePoint): Feature<Point> {
+function feature(layer: PointLayer, point: RoutePoint): Feature<Point> {
   return {
     type: "Feature",
     geometry: { type: "Point", coordinates: [point.longitude, point.latitude] },
@@ -77,6 +85,7 @@ function feature(point: RoutePoint): Feature<Point> {
       ...point.properties,
       [SIDE_POINT_OFFSET_PROPERTY]: point.offset_m,
       [SIDE_POINT_KM_PROPERTY]: point.distance_km,
+      [SIDE_POINT_NAMED_PROPERTY]: pointPlaceName(layer, point.properties) === null ? 0 : 1,
     },
   };
 }
@@ -120,7 +129,7 @@ export const sidePointGroup = declareGroup<SidePointState>((state) => {
   for (const point of state.points) {
     const row = rowOf(point);
     if (row === undefined) continue;
-    byRow.set(row, [...(byRow.get(row) ?? []), feature(point)]);
+    byRow.set(row, [...(byRow.get(row) ?? []), feature(row.layer, point)]);
   }
   const rows = ROWS.filter((row) => byRow.has(row));
 
@@ -132,6 +141,7 @@ export const sidePointGroup = declareGroup<SidePointState>((state) => {
       cluster: true,
       clusterRadius: CLUSTER_RADIUS_PX,
       clusterMaxZoom: CLUSTER_MAX_ZOOM,
+      clusterProperties: { [SIDE_POINT_NAMED_PROPERTY]: ["max", ["get", SIDE_POINT_NAMED_PROPERTY]] },
     },
     data: { type: "FeatureCollection", features: byRow.get(row)! } satisfies FeatureCollection<Point>,
   }));

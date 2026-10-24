@@ -51,7 +51,7 @@ function createPinElement(role: PinRole, label?: string): HTMLDivElement {
   el.style.cssText =
     `width:32px; height:32px; border-radius:50%; background:${PIN_MARK_BACKGROUND}; display:flex; ` +
     "align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,0.4); " +
-    "touch-action:none; cursor:grab;";
+    "touch-action:none;";
   return el;
 }
 
@@ -105,6 +105,8 @@ interface MapMarkersInputs {
   onDestinationMove: (coordinates: Coordinates) => void;
   /** 地点の印を押したとき（押した地点とその位置）。 */
   onPointPress: (target: PointTarget, at: Coordinates) => void;
+  /** 動かせない間に、押すと何かが起きる印か。起きる印にだけ押せる見た目（ポインタの形）を付ける。 */
+  pointPressable: (target: PointTarget) => boolean;
   onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => void;
 }
 
@@ -219,6 +221,27 @@ export function useMapMarkers(
     waypointMarkersRef.current.forEach((marker) => marker.setDraggable(pointsEditable));
     destinationMarkerRef.current?.setDraggable(pointsEditable);
   }, [pointsEditable]);
+
+  // 印の見た目: 動かせる間はつかめる形、動かせない間は押すと何かが起きる印だけをポインタの形にする。押せるかは地点の名前で
+  // 変わるので、描くたびに当て直す。
+  useEffect(() => {
+    const pins: [Marker | null, PointTarget][] = [
+      [markerRef.current, { role: "origin" }],
+      ...waypointMarkersRef.current.map((marker, index): [Marker, PointTarget] => [
+        marker,
+        { role: "waypoint", index },
+      ]),
+      [destinationMarkerRef.current, { role: "destination" }],
+    ];
+    for (const [marker, target] of pins) {
+      if (marker === null) continue;
+      marker.getElement().style.cursor = pointsEditable
+        ? "grab"
+        : latest.current.pointPressable(target)
+          ? "pointer"
+          : "default";
+    }
+  });
 
   // 目的地の印。
   useEffect(() => {

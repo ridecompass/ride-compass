@@ -224,15 +224,18 @@ export default function MapView({
     onOriginMove,
     onWaypointMove,
     onDestinationMove,
-    // 地点の意味の間はその地点を選び、走る間は何も出さず、ほかの間は呼び名と名前を小窓に出すだけ（押しただけでは消さない）。
+    // 地点の意味の間はその地点を選び、走る間は何も出さず、ほかの間は地点の名前があれば呼び名と並べて小窓に出すだけ（押しただけでは
+    // 消さない）。呼び名しか無い地点は何も開かない。
     onPointPress: (target, at) => {
       if (tapMode === "ride") return;
       if (tapMode === "points") {
         onPointSelect(target);
         return;
       }
-      popups.openPin([at.longitude, at.latitude], pinPopupText(target, pinNames));
+      const text = pinPopupText(target, pinNames);
+      if (text !== null) popups.openPin([at.longitude, at.latitude], text);
     },
+    pointPressable: (target) => tapMode !== "ride" && pinPopupText(target, pinNames) !== null,
     onRouteSegmentSelect: selectSegmentOnMap,
   });
 

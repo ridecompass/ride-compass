@@ -19,6 +19,8 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
+import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
 import {
   DESTINATION,
   ELSEWHERE,
@@ -168,8 +170,17 @@ describe("地図で扱えること", () => {
 
   it("効いているパネルが別のパネルへ移ると、前のパネルで地図に出した選択（選んだ区間・小窓）を外し、閉じるだけなら外さない", async () => {
     const { user } = renderHome();
+    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
+    await user.click(screen.getByRole("checkbox", { name: "補給・休憩ポイント" }));
+    await user.keyboard("{Escape}");
     await selectDestination(user);
-    clickMap(DESTINATION);
+    clickMap(DESTINATION, [
+      {
+        layer: sceneLayerId(POINT_TILE_SOURCES.poi.sourceId, "supply_poi"),
+        properties: { name: "角の店", kind: "convenience" },
+        geometry: { type: "Point", coordinates: [DESTINATION.longitude, DESTINATION.latitude] },
+      },
+    ]);
     jobs.respond(
       [FIRST],
       makeGenerationConditions({ latitude: HERE.latitude, longitude: HERE.longitude, destination: DESTINATION }),
@@ -188,9 +199,9 @@ describe("地図で扱えること", () => {
     // 見るだけのタブで開いた地点の小窓は、「ルート結果」へ移ると消える。
     await user.click(screen.getByRole("tab", { name: "重み" }));
     await user.click(marksAt(DESTINATION)[0].element);
-    expect(screen.getByText("目的地: 地図で選んだ地点")).toBeInTheDocument();
+    expect(screen.getByText("目的地: 角の店")).toBeInTheDocument();
     await user.click(candidateTabs()[0]);
-    expect(screen.queryByText("目的地: 地図で選んだ地点")).toBeNull();
+    expect(screen.queryByText("目的地: 角の店")).toBeNull();
 
     // 閉じるだけなら、「ルート結果」で選んだ区間を地図の小窓で読める。
     clickSegment(drawnSegment, HERE);
@@ -412,7 +423,7 @@ describe("区間の近くの施設", () => {
     expect(sidePointsOnMap()).toEqual({});
   });
 
-  it("近くの施設の点を押すと小窓を施設の中身へ入れ替えて印に枠を付け、区間へ戻れ、重なって束ねた印を押すと中の点を道に近い順に並べる。施設を開いても区間の選びは残り、何も無い所を押すと外す", async () => {
+  it("近くの施設の名前のある点を押すと小窓を施設の中身へ入れ替えて印に枠を付け、区間へ戻れ、重なって束ねた印を押すと中の点を道に近い順に並べる。名前の無い点は押しても何も変えない。施設を開いても区間の選びは残り、何も無い所を押すと外す", async () => {
     const { user } = renderHome();
     onBackend("POST", "/api/routes/side-points", () => Response.json({ points: NEARBY_POINTS }));
     const nearby = await pressSecondSegment(user);
@@ -422,18 +433,33 @@ describe("区間の近くの施設", () => {
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
     const [toilet] = mapOnScreen().sourceFeatures("side-point-supply_poi-toilets");
+    const familyMart = mapOnScreen()
+      .sourceFeatures("side-point-supply_poi-convenience")
+      .find((feature) => feature.properties?.name === "ファミリーマート")!;
 
+    // 名前の無い施設は、位置を区分の一覧の行で見る。押しても区間の小窓とその近くの点はそのまま。
     clickMap(ELSEWHERE, [
       { layer: "side-point-supply_poi-toilets-mark", properties: toilet.properties ?? {}, geometry: toilet.geometry },
     ]);
-    // 施設の小窓は1施設1行で、区分の名前は見本の読み上げが持つ。名前の無い施設は区分の名前で呼ぶ。
-    const toiletRow = screen.getByRole("img", { name: "トイレ" }).closest("li")!;
-    expect(toiletRow.textContent).toBe("トイレ押した地点から 300m先道からの距離 5m");
+    expect(screen.getByRole("group", { name: "近くの施設" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "施設の小窓の上の帯" })).toBeNull();
+    expect(sidePointsOnMap()).not.toHaveProperty("side-point-chosen");
+
+    clickMap(ELSEWHERE, [
+      {
+        layer: "side-point-supply_poi-convenience-mark",
+        properties: familyMart.properties ?? {},
+        geometry: familyMart.geometry,
+      },
+    ]);
+    // 施設の小窓は1施設1行。
+    const familyMartRow = screen.getByRole("link", { name: "ファミリーマート" }).closest("li")!;
+    expect(familyMartRow.textContent).toBe("ファミリーマート押した地点から 200m手前道からの距離 8m");
     expect(screen.queryByRole("group", { name: "近くの施設" })).toBeNull();
     expect(sidePointsOnMap()).toEqual(
       expect.objectContaining({
         "side-point-supply_poi-toilets": [[139.718, 35.7]],
-        "side-point-chosen": [[139.718, 35.7]],
+        "side-point-chosen": [[139.713, 35.7]],
       }),
     );
 
@@ -447,7 +473,7 @@ describe("区間の近くの施設", () => {
     clickMap(ELSEWHERE, [
       {
         layer: "side-point-supply_poi-convenience-mark",
-        properties: { cluster: true, cluster_id: 1, point_count: 2, point_count_abbreviated: "2" },
+        properties: { cluster: true, cluster_id: 1, point_count: 2, point_count_abbreviated: "2", side_named: 1 },
         geometry: { type: "Point", coordinates: [139.713, 35.7] },
       },
     ]);

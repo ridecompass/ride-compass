@@ -21,7 +21,7 @@ import RideBottom from "@/features/ride/RideBottom/RideBottom";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
 import TurnCard from "@/features/ride/TurnCard/TurnCard";
 import type { useRideMode } from "@/features/ride/useRideMode";
-import { pointNames } from "@/features/route/pointNames";
+import { placeNames } from "@/features/route/pointNames";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
 import SegmentDetail from "@/features/route/SegmentDetail/SegmentDetail";
@@ -93,7 +93,6 @@ export default function HomeMapPane({
       : sidePoints?.status === "done"
         ? { km: sidePoints.pickedKm, riding: false }
         : null;
-  const originManual = place.locationSource === "manual";
   // 走行中の道のりのグラフ（候補が無ければ出さない。結果の図と同じくなぞると地点を選び、地図に印を出して図の下にその地点の
   // 詳しくを出す）。
   const selected = results.selectedCandidate;
@@ -145,13 +144,11 @@ export default function HomeMapPane({
         onRouteSelect={results.selectTab}
         waypoints={conditions.waypoints}
         destination={conditions.destination}
-        pinNames={pointNames({
+        pinNames={placeNames({
           waypoints: conditions.waypoints,
           destination: conditions.destination,
           foundAt: conditions.foundAt,
           originFound,
-          originManual,
-          originLocated: place.locationKnown,
         })}
         tapMode={tapMode}
         selectionOwner={selectionOwner}

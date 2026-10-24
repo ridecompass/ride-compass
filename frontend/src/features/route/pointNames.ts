@@ -16,22 +16,34 @@ interface PointNamesInputs {
   originLocated: boolean;
 }
 
-/**
- * 地点の名前。探して置いた地点は候補の名前、地図で置いた地点は「地図で選んだ地点」、手で置いていない出発地は「現在地」
- * （取れていなければそう言う——「現在地」と出ている出発地は、本当に取れた位置である）、目的地が無ければ「未設定」。
- * 地点の並びと、地図のピンを押したときの小窓が同じ名前を出す。
- */
-export function pointNames({
+/** 地点の名前のうち、探して・名前のある点で置いた地点の名前（無ければnull。地図で置いた地点・現在地は名前を持たない）。 */
+export function placeNames({
   waypoints,
   destination,
   foundAt,
   originFound,
-  originManual,
-  originLocated,
-}: PointNamesInputs): { origin: string; waypoints: string[]; destination: string } {
+}: Pick<PointNamesInputs, "waypoints" | "destination" | "foundAt" | "originFound">): {
+  origin: string | null;
+  waypoints: (string | null)[];
+  destination: string | null;
+} {
   return {
-    origin: originFound?.name ?? (originManual ? MAP_PLACED : originLocated ? "現在地" : "現在地を取得できていません"),
-    waypoints: waypoints.map((point) => foundAt(point)?.name ?? MAP_PLACED),
-    destination: destination === null ? "未設定" : (foundAt(destination)?.name ?? MAP_PLACED),
+    origin: originFound?.name ?? null,
+    waypoints: waypoints.map((point) => foundAt(point)?.name ?? null),
+    destination: destination === null ? null : (foundAt(destination)?.name ?? null),
+  };
+}
+
+/**
+ * 地点の名前。探して置いた地点は候補の名前、地図で置いた地点は「地図で選んだ地点」、手で置いていない出発地は「現在地」
+ * （取れていなければそう言う——「現在地」と出ている出発地は、本当に取れた位置である）、目的地が無ければ「未設定」。
+ */
+export function pointNames(inputs: PointNamesInputs): { origin: string; waypoints: string[]; destination: string } {
+  const { originManual, originLocated, destination } = inputs;
+  const found = placeNames(inputs);
+  return {
+    origin: found.origin ?? (originManual ? MAP_PLACED : originLocated ? "現在地" : "現在地を取得できていません"),
+    waypoints: found.waypoints.map((name) => name ?? MAP_PLACED),
+    destination: destination === null ? "未設定" : (found.destination ?? MAP_PLACED),
   };
 }
