@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.domain.route_request import (
     ASSUMED_SPEED_KMH,
+    BUSY_SAFE_DISTANCE_KM,
     DEFAULT_MAX_ROUTES,
     MAX_ASSUMED_SPEED_KMH,
     MAX_ROUTE_DISTANCE_KM,
@@ -566,6 +567,8 @@ def main() -> None:
         ROUTE_GENERATE_CONFIG_PATH,
         {
             "max_distance_km": MAX_ROUTE_DISTANCE_KM,
+            # これより長い全長の目標は、混み合っているときに作れないことがある。全長の目標の説明が差し込む。
+            "busy_safe_distance_km": BUSY_SAFE_DISTANCE_KM,
             "min_routes": MIN_ROUTES,
             "max_routes": MAX_ROUTES,
             "default_max_routes": DEFAULT_MAX_ROUTES,

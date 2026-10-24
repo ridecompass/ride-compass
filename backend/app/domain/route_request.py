@@ -19,6 +19,10 @@ from app.domain.route_preference import RoutePreference
 # 長時間止まりうる。30km規模までの検証実績に余裕を見た値。経由地・目的地は出発地からこの
 # 距離の中に置く。
 MAX_ROUTE_DISTANCE_KM = 100
+# 都心の出発地でも、同時に動く生成の上限の本数がそろって探索範囲を読める全長の目標（km）。探索範囲の区間数は目標の
+# 2乗で増え、これを超える目標はほかの生成と重なると`services/graph_service.py: SearchMemory`の予算を超えて混み合いで
+# 断られうる。受け付けは`MAX_ROUTE_DISTANCE_KM`まで残し、画面の全長の目標の説明がこの値を出す。
+BUSY_SAFE_DISTANCE_KM = 60
 # 経由地の数の上限。経由地ごとにレグの探索が1本増える。
 MAX_WAYPOINTS = 8
 # 区間の乗り換えで受け取るEdge idの上限。1本の候補が数百Edgeで、区間を差し替えても
