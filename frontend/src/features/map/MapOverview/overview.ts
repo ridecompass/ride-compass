@@ -6,7 +6,7 @@ import { viewportCenter, type MapViewport } from "@/features/map/view/mapLook";
 import { METERS_PER_DEGREE, longitudeScale } from "@/lib/localPlane";
 
 /** 俯瞰図が映す範囲の1辺（m）。 */
-export const OVERVIEW_SPAN_M = 60_000;
+const OVERVIEW_SPAN_M = 60_000;
 /** 俯瞰図の1辺（CSSのpx）。 */
 export const OVERVIEW_SIZE_PX = 130;
 /** 本体の地図がこのズーム以上の間だけ俯瞰図を出す（これより引くと、本体の地図が俯瞰図と同じほど広く映す）。 */
