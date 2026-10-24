@@ -158,6 +158,18 @@ class _SearchGraph:
 
 
 @dataclass(frozen=True)
+class _TurnaroundSelection:
+    """`RoadGraphEngine.select_loop_turnarounds`が木のあとの処理をスレッドの先で流した結果。帯が空なら`ring_nodes`は0で、
+    `reached_nodes`に木が届いた点の数を持つ。"""
+
+    ring_nodes: int
+    examined: int
+    detour_ratio_median: float
+    turnarounds: list[LoopTurnaround]
+    reached_nodes: int
+
+
+@dataclass(frozen=True)
 class _TurnaroundData:
     """`LoopTurnaround.data`（本エンジン固有）: 中継点（折返し点）のノード番号と、最後の固定点からの一対全木上の
     往路（区間の番号列）。`trace_loop_from_turnaround`が帰りの探索に使う。"""
@@ -519,88 +531,97 @@ class RoadGraphEngine:
         tree = await asyncio.to_thread(outbound_tree)
         tree_ms = elapsed_ms(tree_started)
 
-        length = tree.node_length_m
-        if backward_tree is None:
-            in_ring, closeness_m = turnaround_band(length, distance_km, distance_tolerance_km)
-        else:
-            in_ring, closeness_m = relay_band(
-                fixed_m, length, backward_tree.node_length_m, distance_km, distance_tolerance_km,
+        def select_from_tree() -> _TurnaroundSelection:
+            length = tree.node_length_m
+            if backward_tree is None:
+                in_ring, closeness_m = turnaround_band(length, distance_km, distance_tolerance_km)
+            else:
+                in_ring, closeness_m = relay_band(
+                    fixed_m, length, backward_tree.node_length_m, distance_km, distance_tolerance_km,
+                )
+                in_ring[end_node] = False
+            in_ring[start_node] = False
+            ring = np.flatnonzero(in_ring)
+            if len(ring) == 0:
+                return _TurnaroundSelection(0, 0, float("nan"), [], int(np.isfinite(tree.node_cost).sum()))
+
+            ring_length = length[ring]
+            detour_ratio_median = measured_detour_ratio(context, start_node, ring, ring_length)
+            closeness_key = closeness_m[ring]
+            ranking = rank_by_pareto_layers(
+                ring, closeness_key, tree.node_cost[ring], tree.node_seconds[ring], self._penalty_strength,
+                max_items=pool_size, max_examined=None, tie_by_distance=True,
             )
-            in_ring[end_node] = False
-        in_ring[start_node] = False
-        ring = np.flatnonzero(in_ring)
-        if len(ring) == 0:
+            order = ranking.order
+            ranked = ring[order]
+            ranked_list = ranked.tolist()
+            # 同点（層と丸めた難易度が等しい）候補はグループとして渡し、グループ内の試行順は
+            # 「採用済み候補との方位角距離の最小値が最大」（最遠点貪欲法、方位は生成機構ではなく
+            # 同点タイブレーク専用）で採用のたびに決め直す。グループ自体の順序（主キー）・
+            # 同点でない候補間の順序は変えない。
+            origin_node = node_coordinates(context, context.origin_node)
+            bearing_by_node = dict(zip(
+                ranked_list,
+                bearing_between_array(origin_node, context.node_lat[ranked], context.node_lon[ranked]).tolist(),
+            ))
+            closeness_by_node = dict(zip(ranked_list, closeness_key[order].tolist()))
+            tie_groups = ranking.tie_groups(ring)
+
+            def prefer(remaining: Sequence[int], selected: list[int]) -> list[int]:
+                return order_by_bearing_spread(remaining, selected, bearing_by_node, closeness_by_node)
+
+            far_enough = turnaround_separation(
+                ranked_list, context.node_lat[ranked], context.node_lon[ranked],
+                float(context.node_lat[context.origin_node]),
+            )
+
+            # 閾値を昇順に渡すと、埋まらなかったときの緩和までを1回の呼び出しで行う。
+            selected = select_diverse_by_overlap(
+                [], TreePathOverlap(tree),
+                corridor_overlap_ratios(), pool_size, far_enough,
+                tie_groups=tie_groups, prefer=prefer,
+            )
+
+            turnarounds: list[LoopTurnaround] = []
+            for node_index in selected:
+                edges = turn_expanded_path_edge_indices(tree, node_index)
+                if not edges:
+                    continue
+                bearing = compass_degrees(bearing_between(origin_node, node_coordinates(context, node_index)))
+                turnarounds.append(
+                    LoopTurnaround(
+                        bearing=bearing,
+                        data=_TurnaroundData(
+                            node=node_index, outbound_edge_indices=edges, outbound_length_m=float(length[node_index]),
+                        ),
+                    )
+                )
+            return _TurnaroundSelection(len(ring), len(ranked_list), detour_ratio_median, turnarounds, 0)
+
+        # 木のあとの処理（帯・順位付け・方位の表・間引き・往路の取り出し）は帯の点の数だけ重いので、スレッドの先で流す。
+        # 共有の状態へ書く迂回率の学習と帰りレグの差し替えは、ループの上に残す。
+        selection = await asyncio.to_thread(select_from_tree)
+        if selection.ring_nodes == 0:
             logger.info(
                 "select_turnarounds ring_nodes=0 reached=%d ring_km=[%.1f,%.1f] fixed_km=%.1f tree_ms=%d",
-                int(np.isfinite(tree.node_cost).sum()), band_km[0], band_km[1], fixed_m / 1000, tree_ms,
+                selection.reached_nodes, band_km[0], band_km[1], fixed_m / 1000, tree_ms,
             )
             return []
-
-        ring_length = length[ring]
         # 迂回率（道なり距離÷直線距離）の実測中央値を学習値として保存する。周回の合成自体は
         # 使わない（レグはビンの開始時刻で評価する）が、直線距離を走行時間へ直す係数として
         # 目的地ルートの到着予定時刻が読む。
-        detour_ratio_median = measured_detour_ratio(context, start_node, ring, ring_length)
-        learn_detour_ratio(context, detour_ratio_median)
+        learn_detour_ratio(context, selection.detour_ratio_median)
         if backward_tree is None:
             # 帰りレグ: 出発地へ向かうレグとして、周回の総所要時間（目標距離÷仮定速度）を出発地への
             # 到着予定時刻に置いて合成する（距離フィルタが目標±許容を強制するため定数扱いできる）。
             inbound = await self._compose_inbound(context, distance_km, remaining_km)
             context.legs = [*context.legs[:leg_index + 1], inbound]
-        closeness_key = closeness_m[ring]
-        ranking = rank_by_pareto_layers(
-            ring, closeness_key, tree.node_cost[ring], tree.node_seconds[ring], self._penalty_strength,
-            max_items=pool_size, max_examined=None, tie_by_distance=True,
-        )
-        order = ranking.order
-        ranked = ring[order]
-        ranked_list = ranked.tolist()
-        # 同点（層と丸めた難易度が等しい）候補はグループとして渡し、グループ内の試行順は
-        # 「採用済み候補との方位角距離の最小値が最大」（最遠点貪欲法、方位は生成機構ではなく
-        # 同点タイブレーク専用）で採用のたびに決め直す。グループ自体の順序（主キー）・
-        # 同点でない候補間の順序は変えない。
-        origin_node = node_coordinates(context, context.origin_node)
-        bearing_by_node = dict(zip(
-            ranked_list,
-            bearing_between_array(origin_node, context.node_lat[ranked], context.node_lon[ranked]).tolist(),
-        ))
-        closeness_by_node = dict(zip(ranked_list, closeness_key[order].tolist()))
-        tie_groups = ranking.tie_groups(ring)
-
-        def prefer(remaining: Sequence[int], selected: list[int]) -> list[int]:
-            return order_by_bearing_spread(remaining, selected, bearing_by_node, closeness_by_node)
-
-        far_enough = turnaround_separation(
-            ranked_list, context.node_lat[ranked], context.node_lon[ranked],
-            float(context.node_lat[context.origin_node]),
-        )
-
-        # 閾値を昇順に渡すと、埋まらなかったときの緩和までを1回の呼び出しで行う。
-        selected = select_diverse_by_overlap(
-            [], TreePathOverlap(tree),
-            corridor_overlap_ratios(), pool_size, far_enough,
-            tie_groups=tie_groups, prefer=prefer,
-        )
-
-        turnarounds: list[LoopTurnaround] = []
-        for node_index in selected:
-            edges = turn_expanded_path_edge_indices(tree, node_index)
-            if not edges:
-                continue
-            bearing = compass_degrees(bearing_between(origin_node, node_coordinates(context, node_index)))
-            turnarounds.append(
-                LoopTurnaround(
-                    bearing=bearing,
-                    data=_TurnaroundData(
-                        node=node_index, outbound_edge_indices=edges, outbound_length_m=float(length[node_index]),
-                    ),
-                )
-            )
+        turnarounds = selection.turnarounds
         logger.info(
             "select_turnarounds ring_nodes=%d examined=%d selected=%d pool=%d "
             "ring_km=[%.1f,%.1f] fixed_km=%.1f detour_ratio_median=%.2f tree_ms=%d total_ms=%d",
-            len(ring), len(ranked_list), len(turnarounds), pool_size,
-            band_km[0], band_km[1], fixed_m / 1000, detour_ratio_median, tree_ms,
+            selection.ring_nodes, selection.examined, len(turnarounds), pool_size,
+            band_km[0], band_km[1], fixed_m / 1000, selection.detour_ratio_median, tree_ms,
             elapsed_ms(tree_started),
         )
         return turnarounds
