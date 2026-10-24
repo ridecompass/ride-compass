@@ -1,5 +1,11 @@
 /** MapLibreの地図インスタンスに対する、どのレイヤーからも使う低水準の操作。 */
-import type { ExpressionSpecification, FilterSpecification, Map as MapLibreMap, StyleSpecification } from "maplibre-gl";
+import type {
+  ErrorEvent as MapLibreErrorEvent,
+  ExpressionSpecification,
+  FilterSpecification,
+  Map as MapLibreMap,
+  StyleSpecification,
+} from "maplibre-gl";
 import { debugLog } from "@/lib/debugLog";
 
 /** 「面で塗る」レイヤー種。地図の一区画を色で覆い、下にあるものを隠す描き方をまとめて指す
@@ -153,12 +159,28 @@ export function labelLayerAnchor(map: MapLibreMap): string | undefined {
 /** スタイルを`url`から取り直し、新しいスタイルが読み込まれたら（`style.load`）、次の`prepareBasemap`が新しいスタイルに
  * 対して改めて走るようにしてから`onLoaded`を呼ぶ。準備を解くのは読み込まれたあと——MapLibreの`setStyle`は既定で今の
  * スタイルとの差分を当て、差分が届くまで`getStyle()`は今の（このアプリの層を足し、店・施設を隠した）スタイルを返すので、
- * その間に準備し直すと、隠した後の絞りを配信元の絞りとして記録する。 */
-export function reloadStyle(map: MapLibreMap, url: string, onLoaded: () => void): void {
-  map.once("style.load", () => {
+ * その間に準備し直すと、隠した後の絞りを配信元の絞りとして記録する。
+ *
+ * `url`を取れなかったら`style.load`は来ず、今のスタイルがそのまま残るので、代わりに`onFailed`を呼ぶ。MapLibreは
+ * その失敗を、取りに行ったURLを持つ`error`の出来事でだけ知らせる。 */
+export function reloadStyle(
+  map: MapLibreMap,
+  url: string,
+  handlers: { readonly onLoaded: () => void; readonly onFailed: () => void },
+): void {
+  function handleLoad() {
+    map.off("error", handleError);
     tagOf(map).__rcBasemapPrepared = false;
-    onLoaded();
-  });
+    handlers.onLoaded();
+  }
+  function handleError(event: MapLibreErrorEvent) {
+    if ((event.error as { url?: unknown } | undefined)?.url !== url) return;
+    map.off("style.load", handleLoad);
+    map.off("error", handleError);
+    handlers.onFailed();
+  }
+  map.once("style.load", handleLoad);
+  map.on("error", handleError);
   map.setStyle(url);
 }
 

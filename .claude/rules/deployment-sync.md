@@ -50,7 +50,9 @@ paths:
   経由して段階的に移行する。
 - **コードが新しく読む表・列を足す`backend/**`の変更も、本番DBに空の表（列）を作ってからmasterへ入れる（マージする）**。
   本番に無い表を読むコードが出ると、その表を読む口がデプロイのあと失敗し、派生の作り直しも本番の今の表を写して作業用のスキーマを作るので動かない。
-  読まずに宣言だけ足す表は、出したあとに作ってよい。空の表のDDLは手で書かず、ORMの宣言（`app/infrastructure/orm_base.py: declared_metadata`）から
+  読まずに宣言だけ足す表は、出したあとに作ってよい（作るまでは本番に足りない差として、デプロイのスキーマの差の段が落ちる）。
+  古いコードが読む列・既定値を宣言から消したら、出したあとに本番で消す（消すまでは本番が多く持つ差で、段は出すだけで落とさない）。
+  消す本番の作業は、対話作業の issue の約束として持つ。空の表のDDLは手で書かず、ORMの宣言（`app/infrastructure/orm_base.py: declared_metadata`）から
   `sqlalchemy.schema`の`CreateTable`・`CreateIndex`をPostgreSQLの方言でcompileして出す。マージの前の本番への書き込みの進め方は
   docs/conventions/flow.md「担当」の「自動で進めないもの」。
 

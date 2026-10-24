@@ -5,7 +5,7 @@
  * 「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
  * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、区間を選んでいる間は地図にその区間の範囲の縁取りと
  * 選んだ地点の印が出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。区間を押すと、その区間の近くの施設を
- * 引いて種類ごとに出すこと。
+ * 引いて種類ごとに出すこと。道の小窓を別の道へ押し替えると、前の道で押した評価を新しい道へ持ち越さないこと。
  *
  * ここで見ないもの: 地図に置く地点（ピン・名前のある点・目的地・保存した地点）は`app/page.places.test.tsx`が見る。
  *
@@ -34,10 +34,13 @@ import {
   selectedPointMarks,
   selectedSectionOnMap,
   serveHome,
+  showRoadSurface,
 } from "@/testing/homePage";
 import { heldReplies, onBackend } from "@/testing/backendServer";
 import { mapOnScreen } from "@/testing/maplibre";
+import { inspectorResult } from "@/testing/roadInspector";
 import { makeGenerationConditions, makeRouteSegment, routeThrough } from "@/testing/routeFixtures";
+import { settle } from "@/testing/settle";
 import palette from "@/types/generated/palette.json";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
@@ -189,6 +192,27 @@ describe("地図で扱えること", () => {
     clickSegment(drawnSegment, HERE);
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     expect(screen.getByText(/km地点/)).toBeInTheDocument();
+  });
+});
+
+describe("道の小窓", () => {
+  it("評価を開いた道から別の道へ押し替えると、その道の評価は押すまで取りに行かない", async () => {
+    const asked: unknown[] = [];
+    onBackend("POST", "/api/region/axis-inspector", ({ body }) => {
+      asked.push(body);
+      return Response.json(inspectorResult());
+    });
+    const { user } = renderHome();
+    await showRoadSurface(user);
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
+    clickMap(HERE, [{ layer: "road-tiles-surface", properties: { osm_way_id: 1, feature_key: "1" } }]);
+    await user.click(screen.getByRole("button", { name: "この道の評価を見る" }));
+    expect(await screen.findByText(/この道全体で見た難易度/)).toBeInTheDocument();
+
+    clickMap(ELSEWHERE, [{ layer: "road-tiles-surface", properties: { osm_way_id: 2, feature_key: "2" } }]);
+    expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
+    await settle();
+    expect(asked).toEqual([expect.objectContaining({ osm_way_id: 1 })]);
   });
 });
 

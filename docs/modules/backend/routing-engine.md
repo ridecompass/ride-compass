@@ -13,7 +13,7 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `road_network.py`（取込範囲全体の道路網を、有向の区間とノードの番号で引ける列の配列として持つ型。行の並び・分類の材料を語彙への番号で持つことはそのdocstringが持つ）・`routing.py`（numbaでJITする探索。一対全の木・2点間探索・経路の復元・木の繋ぎ目・出て戻れるノードの集まり）・`search_graph.py`（探索用グラフと、同じ番号を持つCSRの構造）・`turn_structure.py`（状態＝有向区間・辺＝ターンの遷移構造と、経路の曲がる所）・`route_diversity.py`（候補の経路どうしの重なりの測り方と、重なり・パレートの層で候補を間引く手順）・`node_spatial_index.py`（置いた点に一番近いノードの索引と、寄せてよいノードへの寄せ方）・`graph.py`・`route.py`・`route_points.py`（区間の近くの点を、経路の区間の並びと向きから始点からの道のりへ置き直す`route_points.py: points_along_route`。下記「区間の近くの点」）・`route_road_classes.py`（区間に載せる道の区分の値を道路網の行から読む`route_road_classes.py: SegmentClassReader`。値は地図がそのレイヤを塗るのと同じ値で、「緑と水」は割合が最も多いクラス）・`geo.py`・`errors.py`・`region.py`（矩形（`domain/region.py: BoundingBox`）と地点を覆う矩形の組み立て、XYZタイルとの相互変換（緯度経度・Web Mercatorのメートル・同じ式のSQL）。タイル座標の型（路面のズーム`domain/region.py: RoadTileZoom`・列と行`domain/region.py: TileIndex`。ほかのレイヤーのズームの型はそのレイヤーの宣言の隣）と、列・行がズームの範囲にあるかの検査`domain/region.py: check_tile_index`も持ち、タイルを受ける入口（path・本文）はどれもこれで書く。タイル配信・取込・派生バッチ・推計気象分布の画素（`infrastructure/jma_suikei_client.py`）もこの変換を共有する）・`cycling_speed.py`（自転車の走行モデル。平地・無風の巡航速度からホイール出力を逆算し、勾配・向かい風・転がり抵抗から区間ごとの速度を走行方程式で解く。速度の逆算は`v`の3次方程式になるため二分法で、numpyでベクトル化してある。候補の所要時間と基準線の探索コストがここから出る）・`tuning.py`（ルーティング評価が読む固定値の宣言。走ってみて決める値［較正値］は既定ごとここが持ち、エンジンが読む値・管理画面が並べる項目・変更が効くために何をやり直す必要があるかをそこから導く。較正値ではない固定値は載せない）・`tuning_labels.py`（較正値の管理画面での名前。値を使う側の宣言が持つ対象を添える）・`route_search.py`（探索が候補を選ぶ判断の値と手順。折返し点・復路・代替経路の間引きのしきい値、往路と周回全長の比の範囲と折返し点を探すリング、候補を同じとみなす距離の粒度、目的地を寄せてよい距離、候補の並べ方（パレート層と難易度）・同点の組・離れているかの判定・逆回りとの比べ方・A*の下界・迂回率の測り方と共有の粒度、応答の候補の並び）・`loop_routing.py`（周回・目的地ルートの探索結果を運ぶ型。探索の実装と候補を並べる戦略のどちらにも属さない）・`route_request.py`（ルート生成の要求が受け付ける値の範囲（返す候補数の既定と上限・想定速度の既定と範囲の型`route_request.py: AssumedSpeedKmh`を含む。想定速度は地図の配信・区間インスペクタの入口も同じ型で受ける）と、その外れを知らせる文。経由地・目的地が出発地から届く範囲にあるかの検査`route_request.py: check_points_within_reach`。要求の検証と、画面が操作を止める上限の生成物が同じ宣言を読む。検証を通った要求が何を生成するか（距離あり・距離なし・差し替えた経路）の型も持ち、仕上げの戦略を選ぶのはこの型だけ）・`leg_costs.py`（レグごとのコスト配列の合成。静的スコア行列・重み・0次フィルタ・風の予報から、探索のコストと区間の表示が読む配列を時刻ビンごとに作る。外部とやり取りせず配列だけを受け取るので、エンジンの途中状態を組まずに確かめられる。下記「レグ別コスト配列」） |
+| domain | `road_network.py`（取込範囲全体の道路網を、有向の区間とノードの番号で引ける列の配列として持つ型。行の並び・分類の材料を語彙への番号で持つことはそのdocstringが持つ）・`routing.py`（numbaでJITする探索。一対全の木・2点間探索・経路の復元・木の経路どうしの重複率・木の繋ぎ目・出て戻れるノードの集まり）・`search_graph.py`（探索用グラフと、同じ番号を持つCSRの構造）・`turn_structure.py`（状態＝有向区間・辺＝ターンの遷移構造と、経路の曲がる所）・`route_diversity.py`（候補の経路どうしの重なりの測り方と、重なり・パレートの層で候補を間引く手順）・`node_spatial_index.py`（置いた点に一番近いノードの索引と、寄せてよいノードへの寄せ方）・`graph.py`・`route.py`・`route_points.py`（区間の近くの点を、経路の区間の並びと向きから始点からの道のりへ置き直す`route_points.py: points_along_route`。下記「区間の近くの点」）・`route_road_classes.py`（区間に載せる道の区分の値を道路網の行から読む`route_road_classes.py: SegmentClassReader`。値は地図がそのレイヤを塗るのと同じ値で、「緑と水」は割合が最も多いクラス）・`geo.py`・`errors.py`・`region.py`（矩形（`domain/region.py: BoundingBox`）と地点を覆う矩形の組み立て、XYZタイルとの相互変換（緯度経度・Web Mercatorのメートル・同じ式のSQL）。タイル座標の型（路面のズーム`domain/region.py: RoadTileZoom`・列と行`domain/region.py: TileIndex`。ほかのレイヤーのズームの型はそのレイヤーの宣言の隣）と、列・行がズームの範囲にあるかの検査`domain/region.py: check_tile_index`も持ち、タイルを受ける入口（path・本文）はどれもこれで書く。タイル配信・取込・派生バッチ・推計気象分布の画素（`infrastructure/jma_suikei_client.py`）もこの変換を共有する）・`cycling_speed.py`（自転車の走行モデル。平地・無風の巡航速度からホイール出力を逆算し、勾配・向かい風・転がり抵抗から区間ごとの速度を走行方程式で解く。速度の逆算は`v`の3次方程式になるため二分法で、numpyでベクトル化してある。候補の所要時間と基準線の探索コストがここから出る）・`tuning.py`（ルーティング評価が読む固定値の宣言。走ってみて決める値［較正値］は既定ごとここが持ち、エンジンが読む値・管理画面が並べる項目・変更が効くために何をやり直す必要があるかをそこから導く。較正値ではない固定値は載せない）・`tuning_labels.py`（較正値の管理画面での名前。値を使う側の宣言が持つ対象を添える）・`route_search.py`（探索が候補を選ぶ判断の値と手順。折返し点・復路・代替経路の間引きのしきい値、往路と周回全長の比の範囲と折返し点を探すリング、候補を同じとみなす距離の粒度、目的地を寄せてよい距離、候補の並べ方（パレート層と難易度）・同点の組・離れているかの判定・逆回りとの比べ方・A*の下界・迂回率の測り方と共有の粒度、応答の候補の並び）・`loop_routing.py`（周回・目的地ルートの探索結果を運ぶ型。探索の実装と候補を並べる戦略のどちらにも属さない）・`route_request.py`（ルート生成の要求が受け付ける値の範囲（返す候補数の既定と上限・想定速度の既定と範囲の型`route_request.py: AssumedSpeedKmh`を含む。想定速度は地図の配信・区間インスペクタの入口も同じ型で受ける）と、その外れを知らせる文。経由地・目的地が出発地から届く範囲にあるかの検査`route_request.py: check_points_within_reach`。要求の検証と、画面が操作を止める上限の生成物が同じ宣言を読む。検証を通った要求が何を生成するか（距離あり・距離なし・差し替えた経路）の型も持ち、仕上げの戦略を選ぶのはこの型だけ）・`leg_costs.py`（レグごとのコスト配列の合成。静的スコア行列・重み・0次フィルタ・風の予報から、探索のコストと区間の表示が読む配列を時刻ビンごとに作る。外部とやり取りせず配列だけを受け取るので、エンジンの途中状態を組まずに確かめられる。下記「レグ別コスト配列」） |
 | services | `route_generator.py`（戦略層。生成の骨組みと、距離の有無で分かれる仕上げの戦略）・`road_graph_engine.py`（探索範囲の準備・前段・距離ありの仕上げ）・`road_graph_context.py`（1回の生成の間、エンジン・仕上げ・候補の組み立てが共有する状態`road_graph_context.py: RoadGraphContext`と前段の結果`road_graph_context.py: FixedLegs`、そこから区間・ノードを引く部品）・`road_graph_via_routes.py`（距離なしの仕上げ。via-nodeの代わりの道と基準線）・`road_graph_candidates.py`（選んだ経路を応答の候補へ組み立てる`road_graph_candidates.py: evaluate_routes`）・`graph_service.py`・`route_generation_setup.py`（エンジンの組み立てと評価条件の既定の解決。組んだエンジンで要求の対象の候補を作る段取り`route_generation_setup.py: generate_route_candidates`） |
 | infrastructure | `road_graph_repository.py`（道路網・材料の読み出し専用）・`route_side_points.py`（区間ごとに、近くの点を区間の形の上の位置つきで引くSQL）・`material_joins.py`（材料の式が読む別名`material_joins.py: em`・`material_joins.py: wm`を与える表の結び方）・`road_tile_sql.py`（地図のタイルと、タイルと同じフィーチャーごとに値を配る読み出しのSQL）・`road_network_store.py`（道路網全体の配列をDBから作り、ディスクへ置き、読む）・`detour_ratio_cache.py`（探索範囲ごとに学習した迂回率）・`cache_identity.py`（キャッシュ鍵の組み立て方の正本。手で書くリビジョンと、焼き込みSQL・列構成から導く署名を合成する。道路網の置き場の形の署名とタイル配信側の世代も同じ関数を使う）・`container_memory.py`（このプロセスのコンテナのメモリ上限。読み込む量の上限を導く）・`heap_release.py`（解放した割り当ての領域を OS へ返す。生成のジョブの終わりに呼ぶ）・`derived_data_meta.py`（派生データの世代と、今の派生の表を作った全ソースの取込。世代はバッチが中身を書き直すたびに進む単調カウンタで、デプロイを伴わない変化を表せる唯一の経路。配信するタイルのために生データの世代も一緒に読む） |
 | api | `routes.py` |
@@ -629,6 +629,9 @@ Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を
 地図の上で数か所に固まり、上位の決まった数で切ると大半が近さで捨てられてプールが埋まらない（関東の網では上位4,000点のうち
 9割以上が近さで捨てられた）。埋まらなかった生成は、生成のログの行に`pool_unfilled`（不足数）が出る。しきい値は較正値で、
 `domain/route_search.py: corridor_overlap_ratios`・`domain/route_search.py: turnaround_separation`が呼ばれた時点で読む。
+往路どうしの重複率は`domain/routing.py: TreePathOverlap`が木の積算の実距離で測り、候補ごとに往路を取り出さない——上位の候補が
+重なりで弾かれる網では帯の点のほとんどを試すので、候補ごとに往路を辿り直して区間の集合で比べると、所要が「試した候補×往路の区間数」に
+伸びる（幹線を約2.7kmおきに置いた合成の格子・60km・帯の点50,830件で、3万件余りを試して木のあとの処理が約4.7秒。木で測ると約0.34秒）。
 
 ### `trace_loop_from_turnaround`（帰りの探索）
 
@@ -851,13 +854,13 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
   繋ぎ目の区間の対ごとにターンの費用を足して最小を採る。
 - **`turn_expanded_shortest_path`/`_turn_expanded_astar`**: 2点間探索。numbaでJITし、
   優先度キューをnumpy配列のバイナリヒープとして自前で持つ（numbaの`heapq`より速いため。下の部品の項）。
-- **JITのコンパイル（`compile_search_kernels`・`_kernel_array`）**: 一対全木と2点間探索のJITは`cache=True`で、
+- **JITのコンパイル（`compile_search_kernels`・`_kernel_array`）**: 一対全木・木の経路どうしの重複率・2点間探索のJITは`cache=True`で、
   コンパイル結果を`routing.py`の隣の`__pycache__`に置き、別のプロセスはそこから読む。イメージの組み立て
-  （`backend/Dockerfile`）が`compile_search_kernels`（最小の道路網で両方を1回ずつ呼ぶ）で焼き、入れ替えた
+  （`backend/Dockerfile`）が`compile_search_kernels`（最小の道路網でどれも1回ずつ呼ぶ）で焼き、入れ替えた
   コンテナの最初のルート生成はコンパイルを待たない。numbaは引数の型（dtype・並び・読み取り専用か）ごとに
   別々にコンパイルするため、探索の入口（`build_turn_expanded_tree`・`turn_expanded_shortest_path`）はJITへ渡す
   配列を`_kernel_array`で1つの型へ揃える——揃えないと、焼いたものと型の違う呼び出しが本番で初めてコンパイルを払う。
-  **生成の経路がPythonから呼ぶJITは、`compile_search_kernels`が呼ぶ探索の2本だけにする**——焼くのはそこで
+  **生成の経路がPythonから呼ぶJITは、`compile_search_kernels`が呼ぶものだけにする**——焼くのはそこで
   Pythonから呼んだものだけで、探索の中へ展開する部品をPythonから直接呼ぶと、その部品だけ各コンテナの最初の
   生成でコンパイルを払う。探索と表示で共有する`time_bin_of`は素の関数とし、探索の中ではそれをJITした
   `_time_bin_of_kernel`を展開する。
@@ -893,13 +896,15 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
 - **`overlap_ratio`/`select_diverse_by_overlap`**: 2つのEdge index集合の
   距離加重重複率、およびランク順の候補列から重複率・近接度（`is_compatible`）で貪欲に
   多様な集合を選ぶ汎用関数（周回の折返し点選定・目的地ルートのvia-node選定の両方に使う）。
+  重複率は呼び出し元が渡す`domain/route_diversity.py: OverlapMeasure`が測る（周回の往路は同じ木の経路なので
+  `domain/routing.py: TreePathOverlap`、目的地ルートは前向きと後ろ向きの木を継いだ経路なので`domain/route_diversity.py: EdgeSetOverlap`）。
   候補列の代わりに同点グループ列（`tie_groups`）と、グループ内の試行順を採用済みリストに
   応じて返す`prefer`を渡せる（1件採用するたびに残り候補へ呼び直す。周回の折返し点選定が
   方位タイブレークに使う）。
+- **`EdgeSetOverlap`**: 経路をEdge index列で取り出して測る。
   採用済み集合はEdgeごとのuint64ビットマスク1本（bit `i`＝「採用済み`i`件目がこのEdgeを
   含む」、常駐メモリはEdge数×8B）で持つ——`max_count`（実際の呼び出し元の上限は
-  `route_generator.py: _TURNAROUND_POOL_MAX`=40・`route_request.py: MAX_ROUTES`=15）は64を超えられず、超える呼び出しは
-  `ValueError`になる。
+  `route_request.py: MAX_ROUTES`=15）は64を超えられず、超えると`ValueError`になる。
 - `RoadGraphEngine.is_loop_too_similar`（重複率は`domain/route_diversity.py: lengths_by_physical_segment`・
   `physical_overlap_ratio`）: 距離フィルタ合格後の候補が、既に採用済みの候補と前段のあとの道
   （`TracedLoop.data`から前段の区間を除いた往路＋帰り。前段は全候補で同じ）で重なりの上限（較正値、

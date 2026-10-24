@@ -2,24 +2,19 @@
 
 import { Fragment, type ReactNode } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
-import {
-  NotFetchedIcon,
-  RaindropIcon,
-  ThermometerIcon,
-  WindDirectionArrowIcon,
-} from "@/components/ui/icons/lucideIcons";
+import { HeaderStat, StatValue, WindValue } from "@/components/HeaderStat/HeaderStat";
+import { NotFetchedIcon, RaindropIcon, ThermometerIcon } from "@/components/ui/icons/lucideIcons";
 import { Button } from "@/components/ui/Button/Button";
 import { formatJstHourMinute } from "@/lib/time";
-import { downwindOnMapDeg } from "@/lib/cardinalLabel";
 import { cn } from "@/lib/cn";
 import type { AmedasObservation, GridPointToday as GridPointTodayValues } from "@/types/weather";
+import { observedWind } from "../observedWind";
 import { getAmedasWeatherDisplay } from "./amedasWeatherIcon";
 import GridPointToday from "./GridPointToday";
 import { textVariants } from "@/components/ui/Text/Text";
 
 interface WeatherPanelProps {
   amedas: AmedasObservation | null;
-  loading: boolean;
   error: string | null;
   /** 最寄りの格子点の今日の値と、その取得の失敗。押すと開くパネルの中にだけ出す。 */
   today: GridPointTodayValues | null;
@@ -55,38 +50,19 @@ function isCurrentlyDay(twilight: AmedasObservation["twilight"]): boolean {
   return now >= new Date(twilight.sunrise).getTime() && now < new Date(twilight.sunset).getTime();
 }
 
-/** ヘッダーの統計チップ1つ（アイコン+数値）。 */
-function Stat({ children }: { children: ReactNode }) {
-  return (
-    <span className="inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap text-[length:var(--font-size-md)] font-semibold">
-      {children}
-    </span>
-  );
-}
-
-/** 数値と単位。1つのspanにまとめてチップのgapが間に入らないようにする（flexboxのgapは直接の子要素すべての間に
- * 均等に効くため、別々の子要素のままにすると、アイコン↔数値と同じ間隔が数値↔単位にも入る）。 */
-function Value({ unit, children }: { unit: string; children: ReactNode }) {
-  return (
-    <span>
-      {children}
-      <span className="text-[0.8em] font-normal text-[var(--color-muted)]">{unit}</span>
-    </span>
-  );
-}
-
 function Divider() {
   return <span className="w-px flex-shrink-0 self-stretch bg-[var(--color-border)]" aria-hidden="true" />;
 }
 
-export default function WeatherPanel({ amedas, loading, error, today, todayError, mapBearingDeg }: WeatherPanelProps) {
+export default function WeatherPanel({ amedas, error, today, todayError, mapBearingDeg }: WeatherPanelProps) {
   // 手元に観測値があるなら、直近の取り直しが失敗していてもそちらを出す（失敗の文言で
   // 値を置き換えない）。取得は一定間隔で続くため、回復すれば表示も戻る。
   if (!amedas) {
-    // 読み込み中は、何も出さずに値を待つ（上部の帯には値とアイコンだけを置く）。
+    // 値も失敗もまだ無い間（最初の読み込み中）は、何も出さずに値を待つ（上部の帯には値とアイコンだけを置く）。
+    // 失敗のあとの取り直しの間は失敗の印を出したままにする（取り直しのたびに消すと、回復したように見えて点滅する）。
     // backendは観測所の解決失敗・欠測・上流の取得失敗を区別せず502にするため、「無い」と
     // 断定せず取得できなかったことだけを印で出す。原因の詳細（混雑・HTTPステータス等）は使い方の文へ回す。
-    if (!loading && error)
+    if (error)
       return (
         <span
           role="img"
@@ -101,10 +77,7 @@ export default function WeatherPanel({ amedas, loading, error, today, todayError
   }
 
   const temperature = amedas.temperature_c != null ? amedas.temperature_c.toFixed(1) : "-";
-  const wind =
-    amedas.wind_speed_ms != null && amedas.wind_direction !== null
-      ? { speedMs: amedas.wind_speed_ms, direction: amedas.wind_direction }
-      : null;
+  const wind = observedWind(amedas);
 
   const weatherDisplay = getAmedasWeatherDisplay(amedas.weather_code, isCurrentlyDay(amedas.twilight));
 
@@ -118,7 +91,7 @@ export default function WeatherPanel({ amedas, loading, error, today, todayError
         <>
           <ThermometerIcon size={16} />
           <span className="sr-only">気温: </span>
-          <Value unit="℃">{temperature}</Value>
+          <StatValue unit="℃">{temperature}</StatValue>
         </>
       ),
     },
@@ -126,19 +99,8 @@ export default function WeatherPanel({ amedas, loading, error, today, todayError
       ? [
           {
             term: "風",
-            value: `${wind.direction.label}の風 ${wind.speedMs.toFixed(1)}m/s`,
-            stat: (
-              <>
-                <span
-                  className="inline-flex transition-transform duration-200"
-                  style={{ transform: `rotate(${downwindOnMapDeg(wind.direction.deg, mapBearingDeg)}deg)` }}
-                >
-                  <WindDirectionArrowIcon size={16} />
-                </span>
-                <span className="sr-only">{wind.direction.label}の風: </span>
-                <Value unit="m/s">{wind.speedMs.toFixed(1)}</Value>
-              </>
-            ),
+            value: `${wind.directionLabel}の風 ${wind.speedMs.toFixed(1)}m/s`,
+            stat: <WindValue wind={wind} mapBearingDeg={mapBearingDeg} />,
           },
         ]
       : []),
@@ -151,7 +113,7 @@ export default function WeatherPanel({ amedas, loading, error, today, todayError
               <>
                 <RaindropIcon size={16} />
                 <span className="sr-only">降水量: </span>
-                <Value unit="mm">{amedas.precipitation_10min_mm.toFixed(1)}</Value>
+                <StatValue unit="mm">{amedas.precipitation_10min_mm.toFixed(1)}</StatValue>
               </>
             ),
           },
@@ -188,7 +150,7 @@ export default function WeatherPanel({ amedas, loading, error, today, todayError
             {items.map(({ term, stat }, index) => (
               <Fragment key={term}>
                 {index > 0 && <Divider />}
-                <Stat>{stat}</Stat>
+                <HeaderStat>{stat}</HeaderStat>
               </Fragment>
             ))}
           </span>

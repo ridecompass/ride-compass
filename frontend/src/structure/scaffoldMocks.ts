@@ -40,7 +40,7 @@ function replacesOnlyComponents(factory: ts.Expression | undefined): boolean {
   return names.length > 0 && names.every((name) => /^[A-Z]/.test(name) && name !== name.toUpperCase());
 }
 
-/** `() => import("@/testing/…")`の形の差し替えなら、読む足場のパス（`src/testing/…`）。 */
+/** `() => import("@/testing/…")`の形の差し替えなら、読む足場の指定（`@/testing/…`）。 */
 function scaffoldImported(factory: ts.Expression | undefined): string | undefined {
   if (!factory || !ts.isArrowFunction(factory) || !ts.isExpression(factory.body)) return undefined;
   const body = unwrap(factory.body);
@@ -48,7 +48,7 @@ function scaffoldImported(factory: ts.Expression | undefined): string | undefine
     body.expression.kind === ts.SyntaxKind.ImportKeyword &&
     ts.isStringLiteral(body.arguments[0]) &&
     body.arguments[0].text.startsWith("@/testing/")
-    ? `src/${body.arguments[0].text.slice(2)}`
+    ? body.arguments[0].text
     : undefined;
 }
 
@@ -70,11 +70,13 @@ function exportedNames(file: ts.SourceFile): string[] {
 
 export function bypassedStandIns(sources: Source[]): Finding[] {
   const byPath = new Map(sources.map((source) => [source.path, source.file]));
+  const paths = new Set(byPath.keys());
   const standIns = new Map<string, Set<string>>();
-  for (const { file } of sources) {
+  for (const { path, file } of sources) {
     for (const { specifier, factory } of viMocks(file)) {
-      const scaffold = byPath.get(`${scaffoldImported(factory)}.ts`);
-      if (scaffold) standIns.set(specifier, new Set(exportedNames(scaffold)));
+      const imported = scaffoldImported(factory);
+      const scaffold = imported && resolveOwn(path, imported, paths);
+      if (scaffold) standIns.set(specifier, new Set(exportedNames(byPath.get(scaffold)!)));
     }
   }
   const findings: Finding[] = [];

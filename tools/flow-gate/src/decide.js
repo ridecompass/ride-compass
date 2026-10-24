@@ -80,8 +80,8 @@ function alive(f, q, config) {
 }
 
 // 受け入れなかった書き込みは、黙らずに1つのコメントで知らせる（形に合わない問い・印の間の見知らぬ行・形の合わない着手可能日時・
-// 事実へ戻したユーザーのボードの移動）と、行き先の無い「やること」で閉じなかった理由と、親が閉じたので閉じた子の理由と、長く動いていない
-// 前提の対話作業。最新のコメントが同じ知らせなら書かない。
+// 事実へ戻したユーザーのボードの移動）と、行き先の無い「やること」で閉じなかった理由と、親が閉じたので閉じた子の理由。最新のコメントが
+// 同じ知らせなら書かない。
 function notice(f, status, config) {
   const text = [f.badQuestion.length && `この問いは形が外れているので、回答フォームは回答内容を出さずに、書く欄と次遷移だけで答えを受けます: ${f.badQuestion.join("・")}`,
     splitBody(f.body).foreign.length && "本文の先頭の印の間に、ゲートの書かない行があったので、消さずに印の外へ出しました。",
@@ -92,15 +92,11 @@ function notice(f, status, config) {
     status === "実装" && !f.remaining.length && f.unbound.length && !f.comments.some((c) => c.includes(unboundText(f.unbound))) &&
       `${unboundText(f.unbound)}ので、完了の条件が全部済んでも完成で閉じず、実装担当へ渡します（\`- 行き先: 完了の条件「<条件の文の頭>」\`・\`#<番号>\`・\`見送り（<理由>）\`）。`,
     f.dead && f.open && `親 #${f.parent.number} が閉じたので、見送りで閉じます。`,
-    // 担当者は Claude なので、ユーザーへ届くようにメンションする。
-    status === "待機" && f.idle.length && !f.comments.some((c) => c.includes(idleText(f.idle, config))) &&
-      `@${config.user} ${idleText(f.idle, config)}。対話作業を終えたなら閉じてください（閉じるまで、このタスクは待ったまま振り出しません）。`,
   ].filter(Boolean).join("\n\n");
   return text && text !== f.comments.at(-1) ? text : null;
 }
 
 const unboundText = (names) => `本文の「やること」の ${names.join("・")} が行き先を名指していない`;
-const idleText = (idle, config) => `前提の対話作業 ${idle.map((n) => `#${n}`).join("・")} が ${config.dialogIdleHours} 時間より長く動いていません`;
 
 // 入口で採否を問う issue: Claude が起こした要望。子と分割元のある切り出しは、採否を親か元から受け継ぐ。
 export const adoptable = (f, config) => f.author === config.claude && f.type === "要望" && !f.parent && !f.origin;
@@ -142,8 +138,9 @@ function status(f, config) {
 const held = (f, t) => (DISPATCH.includes(t.status) && waiting(f) ? { ...t, status: "待機" } : t);
 
 // 検査は、走っている間は検査、合格していなければ（不合格か、検査の実行が1本も無い）実装（検査が始まる形で push するのも、直すのも実装担当）。
-// マージのコミットの検査。自分の実行が取り消されたら、その変更を判定に入れる後の master の実行（src/facts.js: readFacts の covering）で読む。
-const mergeChecks = (f) => (f.mergeChecks.cancelled && need(f, "covering")) || f.mergeChecks;
+// マージのコミットの検査。自分の実行が合格せずに終わったら（落ちた・取り消された）、その変更を判定に入れる後の master の実行（src/facts.js: readFacts の
+// covering）で読む。後の実行がまだ無ければ自分の実行で読む。
+const mergeChecks = (f) => (f.mergeChecks.missed && need(f, "covering")) || f.mergeChecks;
 const unchecked = (c) => ({ status: c.stage && c.stage !== "COMPLETED" ? "検査" : "実装" });
 
 // 1階: 成果物の事実と関係性から、次に結果を出す者の行為を決める（上から最初に当たる行）。次に結果を出すのが、いま手放した担当と

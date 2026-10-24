@@ -46,6 +46,8 @@ export const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(functi
   );
   const commit = (text: string | null) => {
     setDraft(null);
+    // 同じ操作で欄が消えると描き直しが来ないので、消えたときの片付けが読む文字もここで手放す。
+    pendingRef.current.draft = null;
     if (text === null || commitOn !== "commit") return;
     const parsed = parse(text);
     if (parsed !== null) onValueChange(parsed);

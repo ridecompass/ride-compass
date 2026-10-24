@@ -82,10 +82,13 @@ def _latest_directory() -> Path | None:
 
 def save(network: RoadNetwork) -> Path:
     """置き場を作って書き、同じ形で世代の古い置き場を消す。同じ世代の置き場が既にあれば書かずにそれを返す。"""
-    target = ROOT / directory_name(network.revision)
-    if target.exists():
-        return target
-    return publish(write_pending(network))
+    return placed(network.revision) or publish(write_pending(network))
+
+
+def placed(revision: int | None) -> Path | None:
+    """今の形で`revision`の世代の置き場。無ければNone。"""
+    target = ROOT / directory_name(revision)
+    return target if target.exists() else None
 
 
 def write_pending(network: RoadNetwork, inputs: str | None = None) -> Path:
@@ -252,8 +255,8 @@ async def ensure_current(session_factory: async_sessionmaker[AsyncSession]) -> P
     async with session_factory() as session:
         repository = RoadGraphRepository(session)
         revision = (await repository.get_data_revisions()).derived
-        target = ROOT / directory_name(revision)
-        if target.exists():
+        target = placed(revision)
+        if target is not None:
             logger.info("道路網の置き場は作成済みです %s", target.name)
             return target
         network = await build(repository, revision)

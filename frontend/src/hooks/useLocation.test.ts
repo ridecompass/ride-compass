@@ -191,6 +191,16 @@ describe("出発地を現在地に戻す", () => {
     expect(result.current.locationSource).toBe("geolocation");
     expect(result.current.originAtHere).toBe(true);
   });
+  it("走行モードを抜けたら、走行モードが最後に受けた位置を現在地のまま残す", () => {
+    const { result, rerender } = renderHook(({ ridingAt }) => useLocation(ridingAt), {
+      initialProps: { ridingAt: null as Coordinates | null },
+    });
+    requests[0].succeed(HERE);
+    rerender({ ridingAt: THERE });
+    rerender({ ridingAt: null });
+    expect(result.current.here).toEqual(THERE);
+    expect(result.current.originAtHere).toBe(false);
+  });
 });
 
 describe("手で出発地を決める", () => {

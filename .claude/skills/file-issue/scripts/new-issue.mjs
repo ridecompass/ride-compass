@@ -122,6 +122,7 @@ export function file(gh, opts, body, now = new Date()) {
   // 子の種類は親から決まるので、親を読むまでは種類に依らない照らしだけを当てる。
   const early = [all.some((n) => !isNumber(n)) && "前後の issue は番号で書く（--blocked-by 5,6）",
     opts.parent && !isNumber(opts.parent) && "親は番号で書く（--parent 5）",
+    opts.origin && !isNumber(opts.origin) && "分割元は番号で書く（--origin 5）",
     !opts.parent && !opts.type && "種類が無い（--type）",
     ...issueProblems(body, { type: opts.parent ? undefined : opts.type, child: Boolean(opts.parent), size: opts.size, priority: opts.priority, start: opts.start })].filter(Boolean);
   if (early.length) return { out: [], err: `作らない: ${early.join("・")}` };

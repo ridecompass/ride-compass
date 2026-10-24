@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import logging
 import os
 import sys
@@ -132,6 +133,11 @@ async def lifespan(app: FastAPI):
         # 例外をここで捕捉しないため、軸定義を読めない状態では起動自体が失敗する（fail-fast）。
         await refresh_definitions(session, AxisDefinitionRepository(session))
 
+    # 世代2のGCはGCが追う全オブジェクトを走査し、その間イベントループが止まる。起動で読み込んだ長生きの
+    # オブジェクト（モジュール・定義）を走査の外へ移し、1回を短くする。先に集めるのは、ゴミまで凍らせると二度と集められないため。
+    gc.collect()
+    gc.freeze()
+
     # 定期ジョブはアプリの寿命の間だけ動くので、スケジューラもこの寿命の中で作る。
     scheduler = AsyncIOScheduler()
     scheduler.add_listener(_log_job_failure, EVENT_JOB_ERROR)
@@ -179,6 +185,8 @@ async def lifespan(app: FastAPI):
     # 先に定期ジョブを止める。逆にすると、閉じたあとに走り出したジョブが閉じたクライアントで外部を呼ぶ。
     scheduler.shutdown(wait=False)
     await close_process_resources()
+    # lifespanは1プロセスで何度も通りうる（テスト等）。凍らせたものを戻し、通るたびに循環のゴミが溜まらないようにする。
+    gc.unfreeze()
 
 
 app = FastAPI(title="RideCompass API", lifespan=lifespan, dependencies=[Depends(reject_non_finite_json_body)])

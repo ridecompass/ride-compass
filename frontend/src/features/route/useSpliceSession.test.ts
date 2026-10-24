@@ -468,6 +468,25 @@ describe("作成", () => {
     expect(rendered.result.current.editingRoute).toBeNull();
   });
 
+  it("作成中に地図の乗り換え先を押しても乗り換えない（押した時点の組み合わせで作って編集を閉じるので、押した乗り換えが黙って消える）", async () => {
+    const rendered = renderSplice({ routes: [BASE, VIA_Q, VIA_Q_R] });
+    await startEditing(rendered);
+    tapStretch(rendered);
+    const pending = deferredEvaluation();
+    let applying: unknown;
+    act(() => {
+      applying = rendered.result.current.panel?.onApply();
+    });
+
+    tapStretch(rendered);
+    expect(rendered.result.current.panel?.appliedCount).toBe(1);
+
+    await act(async () => {
+      await pending.resolve([evaluated(ELSEWHERE)]);
+      await applying;
+    });
+  });
+
   it("差分を見た組み合わせは、作るときに投げ直さず、見た評価で作る", async () => {
     const rendered = renderSplice();
     await startEditing(rendered);

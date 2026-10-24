@@ -27,15 +27,7 @@ const observation = (overrides: Partial<AmedasObservation> = {}) =>
 
 function renderPanel(props: Partial<ComponentProps<typeof WeatherPanel>> = {}) {
   return render(
-    <WeatherPanel
-      mapBearingDeg={0}
-      amedas={null}
-      loading={false}
-      error={null}
-      today={null}
-      todayError={null}
-      {...props}
-    />,
+    <WeatherPanel mapBearingDeg={0} amedas={null} error={null} today={null} todayError={null} {...props} />,
   );
 }
 
@@ -49,11 +41,6 @@ afterEach(() => {
 });
 
 describe("WeatherPanel 取得の状態", () => {
-  it("観測値が無く取得中なら、何も出さない", () => {
-    const { container } = renderPanel({ loading: true, error: "混雑しています" });
-    expect(container).toBeEmptyDOMElement();
-  });
-
   it("観測値が無く失敗したら、取得できないことを文字の無い印で出し、理由は使い方の文に回す", () => {
     renderPanel({ error: "混雑しています" });
     const mark = screen.getByRole("img", { name: "観測値を取得できません" });
@@ -61,8 +48,8 @@ describe("WeatherPanel 取得の状態", () => {
     expect(mark).toHaveAttribute("data-usage", expect.stringContaining("混雑しています"));
   });
 
-  it("観測値があれば、取り直し中・直近の失敗でも観測値を出す", () => {
-    renderPanel({ amedas: observation(), loading: true, error: "混雑しています" });
+  it("観測値があれば、直近の失敗でも観測値を出す", () => {
+    renderPanel({ amedas: observation(), error: "混雑しています" });
     expect(screen.getByText("気温:").parentElement).toHaveTextContent("21.4℃");
   });
 

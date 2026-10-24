@@ -2,7 +2,7 @@
  * `components/FloatingPanel/FloatingPanel.tsx`——開発者向けパネルと使い方の説明の案内の、画面に浮かぶ殻。
  *
  * 見るもの: 閉じている間は何も出さないこと、閉じるボタン（名前は見出しから作る。文字を渡せばその文字）で閉じる操作が上がること、
- * 開いたときに横は画面の中央・縦は指定の高さへ置くこと。
+ * 開いたときに横は画面の中央・縦は指定の高さへ置くこと、画面の大きさが変わったら画面の中へ寄せ直すこと。
  *
  * ここで見ないもの: 見出し・見出しの操作・中身・本文の高さの上限・重なり順——受け取ったものをそのまま置くだけ。
  * つまみでのドラッグと、画面の外へ出ないこと——react-rndの振る舞い。幅（`widthRem`と画面幅の小さいほう）
@@ -10,7 +10,7 @@
  *
  * 描いた幅はテスト環境に無いレイアウトの実寸なので、`getBoundingClientRect`の幅をテストが決める。
  */
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -99,5 +99,18 @@ describe("FloatingPanel", () => {
     view.rerender(panel({ onClose }));
 
     expect(panelPosition()).toEqual({ x: (window.innerWidth - 400) / 2, y: centered.y });
+  });
+
+  it("画面が狭くなって（端末の回転等）はみ出したら、画面の中へ寄せ直す", () => {
+    stubPanelWidth(200);
+    renderPanel({ topRem: 30 });
+    const placed = panelPosition();
+    expect(placed.x + 200).toBeLessThanOrEqual(window.innerWidth);
+
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(placed.x + 100);
+    vi.spyOn(window, "innerHeight", "get").mockReturnValue(placed.y + 50);
+    fireEvent(window, new Event("resize"));
+
+    expect(panelPosition()).toEqual({ x: placed.x - 100, y: placed.y - 50 });
   });
 });

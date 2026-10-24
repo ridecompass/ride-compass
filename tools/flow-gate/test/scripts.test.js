@@ -38,6 +38,10 @@ test("印を付ける（task-work の check.mjs）: 1つに決まる残りの条
   const same = run([body, body]);
   assert.equal(same.edits.length, 1);
   assert.deepEqual(conditions(same.edits[0]).filter((c) => c.done).map((c) => c.text), ["道を押すと値が出る", "済んだ"]);
+  // gh の -q は本文の後ろに改行を足して出す。足された改行を書き戻さない（印を付けるたびに本文の末尾へ積もる）。
+  assert.equal(run([`${body}
+`, `${body}
+`]).edits[0], same.edits[0]);
   const moved = run([body, body.replace("- [ ] 見た目", "- [x] 見た目")]);
   assert.deepEqual(moved.edits, [], "変わっていたら書かない");
   assert.match(moved.error, /読んだあとに変わった/);
@@ -137,7 +141,7 @@ test("起票する（file-issue の new-issue.mjs）: 欄を issue へ1回で入
 const AFTER = fileURLToPath(new URL("../../../.github/claude-task/after.js", import.meta.url));
 const execution = (messages) => {
   const file = join(mkdtempSync(join(tmpdir(), "after-")), "execution.json");
-  writeFileSync(file, JSON.stringify(messages));
+  writeFileSync(file, typeof messages === "string" ? messages : JSON.stringify(messages));
   return file;
 };
 const copied = () => {
@@ -166,7 +170,9 @@ test("担当の終わりのコメント（after.js）: 写した流れの道具�
 
 test("担当の後始末（after.js --quota）: 流れの道具を読めない所でも、利用の上限で止まったときだけ 1 で終わる", () => {
   const script = join(copied(), "claude-task", "after.js"); // FLOW_SRC を渡さない
-  for (const [messages, code] of [[[], 0], [[{ type: "assistant", error: "rate_limit" }], 1]]) {
+  // 担当が書きかけで止められた実行のファイルは JSON として読めない。上限で止まったとは読まない（1 で終わると振り出しが止まる）。
+  const cut = JSON.stringify([{ type: "assistant", error: "rate_limit" }]).slice(0, -3);
+  for (const [messages, code] of [[[], 0], [[{ type: "assistant", error: "rate_limit" }], 1], [cut, 0]]) {
     const r = spawnSync(process.execPath, [script, "--quota", execution(messages)], { encoding: "utf8" });
     assert.equal(r.status, code, `${JSON.stringify(messages)}: ${r.stderr}`);
   }

@@ -23,6 +23,7 @@ from app.domain.wind import WIND_DIRECTION_LEAF, WIND_SPEED_LEAF
 from app.infrastructure import msm_client
 from app.infrastructure.msm_client import MsmGridPointSeries, MsmUnavailableError
 from app.infrastructure.road_graph_repository import RoadGraphRepository
+from app.services.feature_midpoints import TileMidpoints
 from app.services.weather_service import WeatherService
 from app.services.wind_way_service import WindWayService
 from tests.bound_fake import bound
@@ -82,7 +83,7 @@ def _materials(winds: dict[str, tuple[float, float]]) -> dict[str, dict[str, flo
 
 
 def _service(repository) -> WindWayService:
-    return WindWayService(repository=repository, weather_service=WeatherService())
+    return WindWayService(midpoints=TileMidpoints(repository), weather_service=WeatherService())
 
 
 async def test_each_way_takes_the_wind_of_the_grid_point_nearest_its_middle(monkeypatch):

@@ -5,7 +5,7 @@ import { LENS_LINK_CLASS, LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { useState, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import { departureLabelParts } from "@/features/conditions/rideConditions";
+import { departureLabelParts, floorToDepartureStep } from "@/features/conditions/rideConditions";
 import { clampSpeedKmh, MAX_SPEED_KMH, MIN_SPEED_KMH } from "@/lib/assumedSpeed";
 
 import DynamicLayerTimeSlider from "@/features/conditions/DynamicLayerTimeSlider/DynamicLayerTimeSlider";
@@ -92,7 +92,10 @@ function DepartureRuler({
   const [{ timeline, frames, nowIndex }] = useState(() => {
     const anchor = new Date();
     const timeline = buildDepartureTimeline(anchor);
-    return { timeline, frames: buildDepartureFrames(timeline), nowIndex: nearestTimeIndex(timeline, anchor) };
+    // 「今」に追従する出発時刻は刻みへ切り下げてあるので、「今」の目盛りも切り下げた時刻で選ぶ（今に最も近い目盛りで選ぶと、
+    // 刻みの後半では1つ先の目盛りになり、そこへ送る操作が「今」への追従へ化ける）。
+    const now = new Date(floorToDepartureStep(anchor.getTime()));
+    return { timeline, frames: buildDepartureFrames(timeline), nowIndex: nearestTimeIndex(timeline, now) };
   });
   return (
     <DynamicLayerTimeSlider

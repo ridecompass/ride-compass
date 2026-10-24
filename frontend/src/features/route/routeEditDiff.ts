@@ -62,8 +62,8 @@ export interface MetricDifference {
 /** 元との差。 */
 export interface EditDifference {
   metrics: MetricDifference[];
-  /** 起点に近い順。 */
-  stretches: ChangedStretch[];
+  /** 起点に近い順。元と編集後で変えた区間を対応づけられなければ（`pairedStretches`）null。 */
+  stretches: ChangedStretch[] | null;
 }
 
 /** 指標ごとの元・編集後と差。編集後がまだ無ければ（評価する前）元の値だけを持つ。 */
@@ -84,13 +84,16 @@ export function editDifference(origin: RouteCandidate, edited: RouteCandidate): 
   const pairs = pairedStretches(origin.edge_ids, edited.edge_ids);
   const originKm = routeEdgeKms(origin.segments, origin.edge_point_offsets);
   const editedKm = routeEdgeKms(edited.segments, edited.edge_point_offsets);
-  const stretches = pairs.map((pair) => {
-    const startKm = originKm[pair.displayed.start];
-    const endKm = originKm[pair.displayed.end];
-    const editedStartKm = editedKm[pair.target.start];
-    const editedEndKm = editedKm[pair.target.end];
-    return { startKm, endKm, lengthDiffKm: editedEndKm - editedStartKm - (endKm - startKm) };
-  });
+  const stretches =
+    pairs === null
+      ? null
+      : pairs.map((pair) => {
+          const startKm = originKm[pair.displayed.start];
+          const endKm = originKm[pair.displayed.end];
+          const editedStartKm = editedKm[pair.target.start];
+          const editedEndKm = editedKm[pair.target.end];
+          return { startKm, endKm, lengthDiffKm: editedEndKm - editedStartKm - (endKm - startKm) };
+        });
   return { metrics: metricDifferences(origin, edited), stretches };
 }
 

@@ -140,7 +140,7 @@ export default function Home() {
   };
 
   const plan = results.selectedCandidate;
-  const progressKm = navigating ? guidance.progress.km : null;
+  const progressKm = guidance.progress.km;
   const warningRoute = useMemo(() => {
     if (plan === null) return null;
     // 走行中は、最後に位置を受けた所からこの先を、受けた時刻から計画の時間で読む。

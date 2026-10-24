@@ -20,8 +20,8 @@ interface EditDifferenceProps {
 }
 
 /**
- * 編集で作ったルートの中身の先頭に出す「元との違い」: 元の名前と距離・変えた区間の数、ルート結果と同じ指標の差、
- * 変えた区間（元の何km〜何km）ごとの長さの差。差の色は編集面（`RouteSplicePanel`）と同じく、減ったら楽になった側の色。
+ * 編集で作ったルートの中身の先頭に出す「元との違い」: 元の名前と距離・変えた区間の数（対応づけられなければそう言う）、
+ * ルート結果と同じ指標の差、変えた区間（元の何km〜何km）ごとの長さの差。差の色は、減ったら楽になった側の色。
  */
 export default function EditDifference({ originName, origin, edited, onShowOrigin }: EditDifferenceProps) {
   // 2本の累積距離（数千点）とEdge id列の差を求めるので、ルートが変わったときだけ作り直す（グラフをなぞる間も描き直される）。
@@ -43,7 +43,12 @@ export default function EditDifference({ originName, origin, edited, onShowOrigi
         <span className="whitespace-nowrap">
           元: {originName} {origin.distance_km.toFixed(1)}km
         </span>{" "}
-        <span className="whitespace-nowrap">から{difference.stretches.length}区間</span>
+        <span className="whitespace-nowrap">
+          {/* 対応づけられないときに数を出すと、変えたのに「0区間」と読める。 */}
+          {difference.stretches === null
+            ? "から変えた区間を対応づけられない"
+            : `から${difference.stretches.length}区間`}
+        </span>
       </p>
       <dl className="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-0.5">
         {difference.metrics.map((metric) => (
@@ -55,7 +60,7 @@ export default function EditDifference({ originName, origin, edited, onShowOrigi
           </Fragment>
         ))}
       </dl>
-      {difference.stretches.length > 0 && (
+      {difference.stretches !== null && difference.stretches.length > 0 && (
         <ul className={cn(textVariants({ variant: "hint" }), "m-0 flex list-none flex-col gap-0.5 p-0")}>
           {difference.stretches.map((stretch) => (
             <li className="flex justify-between gap-2 whitespace-nowrap tabular-nums" key={stretch.startKm}>

@@ -1,6 +1,6 @@
 """候補の経路どうしの重なりの測り方と、重なり・パレートの層で候補を間引く手順。"""
 from collections.abc import Callable, Container, Mapping, Sequence
-from typing import TypeVar
+from typing import Generic, Protocol, TypeVar
 
 import numpy as np
 
@@ -11,7 +11,7 @@ def overlap_ratio(candidate_edges: np.ndarray, accepted_edges: np.ndarray, edge_
     """`candidate_edges`（Edge index配列）のうち`accepted_edges`と共有する部分の距離加重
     割合（0〜1）。候補1件対採用済み1件向けの定義。
 
-    `select_diverse_by_overlap`の間引き本体はこれを呼ぶ（同じ定義を2箇所に書かない
+    `EdgeSetOverlap`も同じ割合の式（`_shared_ratio`）を呼ぶ（同じ定義を2箇所に書かない
     ——書けば、片方だけ変えても何も落ちない）。
     """
     if len(candidate_edges) == 0:
@@ -21,11 +21,12 @@ def overlap_ratio(candidate_edges: np.ndarray, accepted_edges: np.ndarray, edge_
 
 
 def _shared_ratio(lengths: np.ndarray, shared_mask: np.ndarray) -> float:
-    """共有部分の距離加重割合。`overlap_ratio`と間引き本体が共有する唯一の定義。"""
+    """共有部分の距離加重割合。`overlap_ratio`と`EdgeSetOverlap`が共有する唯一の定義。"""
     return float(lengths[shared_mask].sum()) / float(lengths.sum())
 
 
 T = TypeVar("T")
+T_contra = TypeVar("T_contra", contravariant=True)
 
 
 def _pareto_front_mask(
@@ -131,10 +132,62 @@ def pareto_layer_index(
     return layer
 
 
+class OverlapMeasure(Protocol[T_contra]):
+    """`select_diverse_by_overlap`が候補の重複率を測る相手。採用済みの集合を持ち、採用のたびに足す。"""
+
+    def max_ratio(self, item: T_contra) -> float | None:
+        """`item`の経路が採用済みのそれぞれと共有する部分の距離加重割合（候補側の距離で割る）の最大。
+        採用済みが無ければ0。経路にならない`item`はNone。"""
+
+    def accept(self, item: T_contra) -> None:
+        """`item`を採用済みに足す（`max_ratio`がNoneでなかった`item`だけを渡す）。"""
+
+
+class EdgeSetOverlap(Generic[T]):
+    """経路をEdge index列で取り出して、`overlap_ratio`の割合で測る`OverlapMeasure`（どんな経路どうしにも使える）。
+
+    採用済み候補ごとの集合をEdgeごとのuint64ビットマスク1本（bit `i` が「採用済み`i`件目がこのEdgeを含む」を表す）で
+    持ち、候補のEdge index配列で行を抜き出して距離加重和を1回のnumpy演算で求める。そのため`max_count`はuint64の
+    64bitを超えられない。
+    """
+
+    def __init__(
+        self, edge_indices_of: Callable[[T], Sequence[int] | None], edge_length_m: np.ndarray, max_count: int,
+    ):
+        if max_count > 64:
+            raise ValueError(f"EdgeSetOverlap: max_count={max_count} exceeds the uint64 bitmask limit (64)")
+        self._edge_indices_of = edge_indices_of
+        self._edge_length_m = edge_length_m
+        self._edge_bits = np.zeros(len(edge_length_m), dtype=np.uint64)
+        self._slot_bits = np.uint64(1) << np.arange(max(max_count, 1), dtype=np.uint64)
+        self._accepted_count = 0
+
+    def _edges(self, item: T) -> np.ndarray | None:
+        edges = self._edge_indices_of(item)
+        # 空は「どれとも重複しない候補」ではなく「経路にならない」。Noneと同じ扱い。
+        return np.asarray(edges, dtype=np.int64) if edges else None
+
+    def max_ratio(self, item: T) -> float | None:
+        edge_array = self._edges(item)
+        if edge_array is None:
+            return None
+        if not self._accepted_count:
+            return 0.0
+        lengths = self._edge_length_m[edge_array]
+        candidate_bits = self._edge_bits[edge_array]
+        shared_mask = (candidate_bits[:, None] & self._slot_bits[: self._accepted_count]) != 0
+        return max(_shared_ratio(lengths, shared_mask[:, slot]) for slot in range(self._accepted_count))
+
+    def accept(self, item: T) -> None:
+        edge_array = self._edges(item)
+        assert edge_array is not None
+        self._edge_bits[edge_array] |= self._slot_bits[self._accepted_count]
+        self._accepted_count += 1
+
+
 def select_diverse_by_overlap(
     items: Sequence[T],
-    edge_indices_of: Callable[[T], Sequence[int] | None],
-    edge_length_m: np.ndarray,
+    overlap: OverlapMeasure[T],
     max_overlap_ratios: Sequence[float],
     max_count: int,
     is_compatible: Callable[[T, list[T]], bool] | None = None,
@@ -142,14 +195,13 @@ def select_diverse_by_overlap(
     tie_groups: Sequence[Sequence[T]] | None = None,
     prefer: Callable[[Sequence[T], list[T]], Sequence[T]] | None = None,
 ) -> list[T]:
-    """ランク順の`items`を先頭から貪欲に採用し、採用済みのいずれかと経路の重複率
-    （候補側の距離加重、`overlap_ratio`と同じ定義）が閾値を超えるもの、または
-    `is_compatible(item, 採用済みリスト)`がFalseのものを飛ばして`max_count`件まで返す
-    （多様性間引き）。`edge_indices_of`がNoneを返すitemは対象外として飛ばす。
+    """ランク順の`items`を先頭から貪欲に採用し、採用済みのいずれかとの経路の重複率
+    （`overlap`が測る）が閾値を超えるもの、または`is_compatible(item, 採用済みリスト)`がFalseのものを
+    飛ばして`max_count`件まで返す（多様性間引き）。`overlap`が経路にならないとしたitemは対象外として飛ばす。
 
     `max_overlap_ratios`は先頭から順に試す閾値列。ある閾値のパスで重複率だけを理由に
     飛ばした候補は、次の（より緩い）閾値のパスで再検査する——`is_compatible`がFalse・
-    経路が無い（Noneを返す）ために飛ばした候補は、閾値を緩めても結果が変わらないため
+    経路が無いために飛ばした候補は、閾値を緩めても結果が変わらないため
     再検査しない。`max_count`件に達すれば以降の閾値は試さない。決定的（入力順と同じ
     規則でしか選ばない）。
 
@@ -161,31 +213,18 @@ def select_diverse_by_overlap(
     （`max_count`以下）の回数だけ計算すれば済むようにするため。`prefer`が無ければ
     グループ内は与えられた順。`tie_groups`無しの呼び出しは各itemを1件のグループとして
     扱うため挙動は変わらない。
-
-    重複率は採用済み候補ごとの集合をEdgeごとのuint64ビットマスク1本（bit `i` が「採用済み
-    `i`件目がこのEdgeを含む」を表す）で持ち、候補のEdge index配列で行を抜き出して
-    距離加重和を1回のnumpy演算で求める。そのため`max_count`はuint64の64bitを超えられない。
     """
-    if max_count > 64:
-        raise ValueError(f"select_diverse_by_overlap: max_count={max_count} exceeds the uint64 bitmask limit (64)")
     selected: list[T] = []
-    edge_bits = np.zeros(len(edge_length_m), dtype=np.uint64)
-    slot_bits = np.uint64(1) << np.arange(max(max_count, 1), dtype=np.uint64)
 
-    def try_accept(item: T, edges: Sequence[int], max_overlap_ratio: float, rejected: list[T] | None) -> bool:
-        edge_array = np.asarray(edges, dtype=np.int64)
-        if len(selected):
-            lengths = edge_length_m[edge_array]
-            candidate_bits = edge_bits[edge_array]
-            shared_mask = (candidate_bits[:, None] & slot_bits[: len(selected)]) != 0
-            ratios = [
-                _shared_ratio(lengths, shared_mask[:, slot]) for slot in range(len(selected))
-            ]
-            if any(ratio > max_overlap_ratio for ratio in ratios):
-                if rejected is not None:
-                    rejected.append(item)
-                return False
-        edge_bits[edge_array] |= slot_bits[len(selected)]
+    def try_accept(item: T, max_overlap_ratio: float, rejected: list[T] | None) -> bool | None:
+        ratio = overlap.max_ratio(item)
+        if ratio is None:
+            return None
+        if ratio > max_overlap_ratio:
+            if rejected is not None:
+                rejected.append(item)
+            return False
+        overlap.accept(item)
         selected.append(item)
         return True
 
@@ -208,11 +247,7 @@ def select_diverse_by_overlap(
                         break
                     if is_compatible is not None and not is_compatible(item, selected):
                         continue
-                    edges = edge_indices_of(item)
-                    # 空は「どれとも重複しない候補」ではなく「経路にならない」。Noneと同じ扱い。
-                    if not edges:
-                        continue
-                    if try_accept(item, edges, max_overlap_ratio, rejected_in_group):
+                    if try_accept(item, max_overlap_ratio, rejected_in_group):
                         accepted_at = position
                         break
                 if accepted_at is None:

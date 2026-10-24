@@ -215,20 +215,6 @@ test("tasks#878 確かめの問いの確かめることに、ユーザーが確�
   assert.deepEqual([w.at(1).state, w.at(1).reason], ["CLOSED", "COMPLETED"]);
 });
 
-test("tasks#938 前提の対話作業が config.dialogIdleHours より長く動いていなければ、待っているタスクにユーザーへの知らせを一度だけ出す", async () => {
-  const old = new Date(Date.now() - (config.dialogIdleHours * 3600e3 + 60e3)).toISOString();
-  const fresh = new Date(Date.now() - (config.dialogIdleHours * 3600e3 - 60e3)).toISOString();
-  const notices = (i) => i.comments.filter((c) => c.includes(`@${config.user}`));
-  for (const [name, blocker, count] of [["動いていない対話作業", { type: config.dialogType, updated: old }, 1], ["まだ動いている対話作業", { type: config.dialogType, updated: fresh }, 0],
-    ["対話作業でない前提", { type: "保守", updated: old }, 0]]) {
-    const w = world([{ n: 1, status: "実装", blockedBy: [9] }, { n: 9, status: "実装", ...blocker }]);
-    await w.send(ev.schedule());
-    await w.send(ev.schedule());
-    assert.deepEqual([w.at(1).status, notices(w.at(1)).length], ["待機", count], name);
-    if (count) assert.match(notices(w.at(1))[0], /#9/, `${name}: どの前提かを書く`);
-  }
-});
-
 test("tasks#1078 完了の条件が全部済んでも、本文の「やること」に行き先を名指していない項目が残る間は完成で閉じず、実装担当へ渡して一度だけ知らせる", async () => {
   // 項目1の行き先を変え、項目2は見送りで結んでおく。完了の条件は全部済んでいる。
   const body = (...to) => ["<details><summary>やること</summary>", "", "1. 作る", ...to.map((t) => `   - 行き先: ${t}`), "2. 消す", "   - 行き先: 見送り（要らないと分かった）",
