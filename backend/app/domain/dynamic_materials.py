@@ -12,12 +12,8 @@ from typing import Callable, Mapping
 
 import numpy as np
 
-from app.domain.axis_definitions import (
-    REQUEST_DYNAMIC_MATERIAL_IDS,
-    AxisDefinition,
-    dynamic_axis_topological_order,
-    evaluate_axis_array,
-)
+from app.domain.axis_definitions import REQUEST_DYNAMIC_MATERIAL_IDS, AxisDefinition, dynamic_axis_topological_order
+from app.domain.axis_evaluation import evaluate_axis_array
 from app.domain.material_catalog import WIND_DRAG_RATIO
 from app.domain.wind import DepartureWind, WindForecastSeries, wind_components, wind_drag_ratio_from_components
 

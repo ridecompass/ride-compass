@@ -18,7 +18,8 @@ import httpx
 import pytest
 import respx
 
-from app.domain.axis_definitions import AxisDefinition, is_update_allowed_while_published
+from app.domain.axis_definitions import AxisDefinition
+from app.domain.axis_publication import is_update_allowed_while_published
 from scripts import axis_apply
 from tests.fake_http import sync_client_for
 

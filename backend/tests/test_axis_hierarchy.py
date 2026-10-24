@@ -1,11 +1,12 @@
-"""`domain/axis_definitions.py`——軸が軸を読む階層と、軸の集合（`AXIS_DEFINITIONS`）を相手にする入口。
+"""`domain/axis_definitions.py`・`domain/axis_evaluation.py`——軸が軸を読む階層と、軸の集合（`AXIS_DEFINITIONS`）を相手にする入口。
 
 入口: 依存の解決（`axis_dependencies`・`topological_axis_order`・`dynamic_axis_topological_order`）・全軸の評価
 （`evaluate_axes_array`・`evaluate_axes_values`・`evaluate_axes_inputs`）・葉の材料の一次属性（`primary_attribute_ids_for`）・
 葉の材料で区分の決まる道の線の層（`road_layer_ids_for`）・時間帯で効く重み（`time_scoped_weights`）。
 
 ここで見ないもの:
-- 軸1本の宣言の検証・評価（折れ点・欠損・対応表・0次条件）と書き込みのガード → `test_axis_definitions.py`
+- 軸1本の宣言の検証 → `test_axis_definitions.py`、軸1本の評価（折れ点・欠損・対応表・0次条件） → `test_axis_evaluation.py`、
+  書き込みのガード → `test_axis_publication.py`
 - 循環を管理APIが拒むこと・書いた後の全軸を読み込みと同じ判定へ通すこと → `test_axis_registry_service.py`
 - 軸カタログが配る一次属性と気象のチップ → `test_axis_catalog_routes.py`
 - 既定の重み（`default_axis_weights`） → 重みを読む側（`test_route_preference.py`）
@@ -19,7 +20,7 @@
 import numpy as np
 import pytest
 
-from app.domain import axis_definitions
+from app.domain import axis_definitions, axis_evaluation
 from app.domain.axis_definitions import (
     AxisDefinition,
     CategoricalShape,
@@ -106,7 +107,7 @@ class TestEvaluateAllAxes:
         )
 
         with replaced_axis_definitions(definitions):
-            result = axis_definitions.evaluate_axes_values({"num_a": [0.5, None], "num_b": [1.0, 1.0]}, 2)
+            result = axis_evaluation.evaluate_axes_values({"num_a": [0.5, None], "num_b": [1.0, 1.0]}, 2)
 
         assert result == {"outer": [50.0, None], "plain": [10.0, 10.0]}
 
@@ -124,7 +125,7 @@ class TestEvaluateAllAxes:
         )
 
         with replaced_axis_definitions(definitions):
-            inputs = axis_definitions.evaluate_axes_inputs(
+            inputs = axis_evaluation.evaluate_axes_inputs(
                 {"num_a": [0.5, None], "num_b": [1.0, 2.0], "cat": ["y", None]}, 2
             )
 

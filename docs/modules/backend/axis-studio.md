@@ -13,7 +13,7 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `axis_definitions.py`・`map_paint.py`（地図が軸について塗るもの）・`axis_raw_value.py`・`axis_templates.py`・`registry.py`・`primary_attributes.py`（一次属性の語彙の宣言）・`value_distribution.py`（延長で重み付けた分位点とヒストグラム。分布の口の応答の型）・`road_classes.py`（道の区分の全体の型と、区分に道を振り分ける式）・`road_class_catalog.py`（道の区分を軸カタログで配る形） |
+| domain | `axis_definitions.py`（軸の宣言の型と、軸の集合の検査・並べ方）・`axis_evaluation.py`（軸の定義を材料の値へ通す評価）・`axis_publication.py`（公開中の軸の書き換え・公開への切り替えの決まり）・`map_paint.py`（地図が軸について塗るもの）・`axis_raw_value.py`・`axis_templates.py`・`registry.py`・`primary_attributes.py`（一次属性の語彙の宣言）・`value_distribution.py`（延長で重み付けた分位点とヒストグラム。分布の口の応答の型）・`road_classes.py`（道の区分の全体の型と、区分に道を振り分ける式）・`road_class_catalog.py`（道の区分を軸カタログで配る形） |
 | services | `axis_registry_service.py`・`axis_preview_service.py`・`road_class_service.py` |
 | infrastructure | `axis_definition_models.py`・`axis_definition_repository.py`・`road_class_models.py`・`road_class_repository.py` |
 | api | `axis_admin.py`・`axis_catalog.py`・`road_class_admin.py` |
@@ -63,14 +63,14 @@
 生値の分布だけでは判断できない）。
 
 **張り付いた軸は原因で2つに分けて出す。** 張り付いた側（上端・下端）の延長を、得点へ写す前の値
-（折れ点の軸は生値、対応表の軸は引く材料の値。`domain/axis_definitions.py: evaluate_axes_inputs`）ごとにまとめ、
+（折れ点の軸は生値、対応表の軸は引く材料の値。`domain/axis_evaluation.py: evaluate_axes_inputs`）ごとにまとめ、
 最も長い1つの値だけで張り付きの基準を超えるなら「1つの値に集まっている」として、「折れ点が分布と合っていない
 可能性」と別に出す。同じ値の道はどの折れ点でも同じ難易度になるので、折れ点を動かしても塊の位置が変わるだけで
 散らない（例: 自転車インフラの無い道がすべて同じ生値0を持つ軸）。
 全延長のうち最多の1つの値が占める割合も軸ごとに出す。上端・下端の基準は端に寄った塊しか拾わないので、
 中ほどの1つの値に大半が集まった軸（どの道も同じ難易度で重みが効かない）はこの列で見る。
 
-軸の難易度は`domain/axis_definitions.py: evaluate_axes_values`で標本の全wayぶんをまとめて得る。軸を1本ずつ
+軸の難易度は`domain/axis_evaluation.py: evaluate_axes_values`で標本の全wayぶんをまとめて得る。軸を1本ずつ
 評価すると、他の軸を材料にする合成軸が「材料が欠損」として現れてしまう。
 
 **分布は地域で大きく変わる**。全域の抽選標本では市街地の偏りが平均に埋もれるため、
@@ -198,7 +198,7 @@ JSONはリポジトリの外に置き、コミットしない（定義は較正�
 `material`の値が`equals`と一致する場合、shape評価をスキップし`value`をそのまま返す
 （探索除外のハードフィルタ`domain/hard_filters.py: HARD_FILTERS`とは別の仕組み）。
 
-**一致の判定は1本**（`domain/axis_definitions.py: priority_override_mask`）で、Pythonの値で持つ入口（区間の内訳）も
+**一致の判定は1本**（`domain/axis_evaluation.py: priority_override_mask`）で、Pythonの値で持つ入口（区間の内訳）も
 材料の値を配列にして同じ関数を通す。材料の値は入口ごとに別の形で届く——区間の内訳は
 Pythonの値、ルート選びと地図の配信は材料の型ごとの配列で、分類の材料は語彙への番号の列、「不明」を持つ真偽の材料
 は1.0/0.0/NaNの数値の配列になる。判定を2本持つと、この形の違いで区間の内訳とルート選びが同じ道に違う答えを出す。
@@ -215,7 +215,7 @@ Pythonの値、ルート選びと地図の配信は材料の型ごとの配列�
 指せる。評価済みの軸のdifficultyが材料と同じ扱いで混ぜ込まれるため、非公開の内部軸
 （`is_published=False`）を合成した公開軸を作れる。
 
-## 評価パイプライン
+## 評価パイプライン（`domain/axis_evaluation.py`）
 
 | 関数 | 用途 |
 |---|---|
@@ -500,7 +500,7 @@ idのまま出す。書き込み時のガード・削除の断り（下の「書
 組み合わせに使われる軸を公開しないこと（`check_internal_axis_not_published`）は含めず、書き込みだけが見る——時刻で
 変わる軸が公開軸を組み合わせる形（上の動的材料と静的材料を混在させない条件が案内する形）を拒むことになるため。
 
-### 書き込み時のガード（`AxisRegistryAdminService`）
+### 書き込み時のガード（`AxisRegistryAdminService`・`domain/axis_publication.py`）
 
 | 操作 | ガード |
 |---|---|
