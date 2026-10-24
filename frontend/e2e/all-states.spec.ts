@@ -1,12 +1,13 @@
 import { expect, test } from "@playwright/test";
-import { MAIN_MAP, installApiMocks, installMapFinder } from "./fixtures";
-import { scanLayout, scanOverflowingContent, scanPinch, scanSpacingUtilities, scanTruncatedText } from "./scans";
+import { installApiMocks, installMapFinder } from "./fixtures";
+import { scanPinch, scanSpacingUtilities } from "./componentScans";
+import { installPageHelpers } from "./pageHelpers";
+import { scanLayout, scanOverflowingContent, scanTruncatedText } from "./scans";
 import {
   PHASES,
   WIDTHS,
   assertWidthsStraddleBreakpoint,
   generate,
-  installPageHelpers,
   installScanMocks,
   openApp,
   resetPhase,
@@ -30,7 +31,7 @@ for (const width of Object.keys(WIDTHS) as WidthName[]) {
       const context = await browser.newContext({ viewport: WIDTHS[width], isMobile: touch, hasTouch: touch });
       const page = await context.newPage();
       await page.addInitScript(installPageHelpers);
-      await page.addInitScript(installMapFinder, MAIN_MAP);
+      await page.addInitScript(installMapFinder);
       await installApiMocks(page);
       await installScanMocks(page);
       const client = await context.newCDPSession(page);

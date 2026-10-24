@@ -149,7 +149,7 @@ backend の探し方は [run-checks/SKILL.md](../skills/run-checks/SKILL.md)「�
 e2e は、実画面でしか出ず機械で判定できるものを見る（[testing-e2e.md](testing-e2e.md)「パターン4」）。その壊れは実装の書き換えでは
 入らないので、変異テストを使わず、`frontend/e2e/` のテストを1本ずつ読んで3問を当てる。e2e の効きを確かめる道具は作らない。
 
-1. **1問目**: 全状態の走査（`frontend/e2e/all-states.spec.ts` が当てる `frontend/e2e/scans.ts` の検査）が、同じ観点を同じ画面の
+1. **1問目**: 全状態の走査（`frontend/e2e/all-states.spec.ts` が当てる `frontend/e2e/scans.ts`・`frontend/e2e/componentScans.ts` の検査）が、同じ観点を同じ画面の
    状態で既に見ていないか。見ていれば消す候補。
 2. **2問目**: 冒頭のコメントで、パターン4のどの観点を見ているか言えるか。DOM の状態・ロジックだけを見ているなら vitest へ移す
    候補、何も言えなければ消す候補。観点は言えるのにコメントが無い・食い違うなら、コメントを直す候補。

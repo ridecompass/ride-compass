@@ -1,24 +1,19 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import type { components } from "@/types/generated/api";
-import type { RouteCandidate, RouteGenerateJobStatusResponse } from "@/types/route";
 import {
-  AVOIDANCE_LEVELS,
-  avoidanceRow,
-  catalogEntry,
-  catalogResponse,
-  roadClass,
-  roadClassCatalog,
-  roadMapLayer,
-} from "@/testing/catalogAxes";
-import {
-  makeGenerationConditions,
-  makeRouteCandidate as makeCandidate,
-  makeRouteSegment,
-} from "@/testing/routeFixtures";
-import type { AmedasObservation } from "@/types/weather";
-import regionTileConfig from "@/types/generated/region-tile-config.json";
+  amedasObservationFixture,
+  defaultAxisCatalogFixture,
+  doneJobFixture,
+  E2E_ROAD_LAYERS,
+  gridPointTodayFixture,
+} from "./mockResponses";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import nextConfig from "../next.config";
+
+// 応答の雛形と地図を押す段取りは別のファイルが持ち、ここから出し直す（撮影の口 `capture/context.ts` の `fixtures` は
+// このモジュールごと載せるので、脚本はどれもここから呼べる）。
+export * from "./mockResponses";
+export * from "./liveMap";
 
 // CIのE2Eスモークテストは「実バックエンド＋実外部API（
 // OpenFreeMap）」には依存しない。APIコントラクトの正しさはCIのapi-contractジョブ
@@ -29,173 +24,6 @@ import nextConfig from "../next.config";
 /** モックを当てるbackendの宛先。試すアプリがビルドに焼き込んだ宛先（`NEXT_PUBLIC_API_URL`）と同じでないと、モックが当たらない。
  * CIは本番の宛先を焼き込んだ像の中身を試すので、その宛先を`E2E_API_BASE`で渡す。 */
 export const API_BASE = process.env.E2E_API_BASE ?? "http://localhost:8000";
-
-// backend/app/domain/route.py RouteCandidate相当の最小フィクスチャ（1候補）。
-// 区間へ入る時刻（到達予想）は本物の生成が必ず付ける（無いと走行モードの到着予想が出ない）。区間は所要時間を等分する。
-const DEPARTED_AT = Date.parse("2026-10-13T00:00:00Z");
-function makeSegment(index: number, coordinates: [number, number][], secondsEach: number) {
-  return makeRouteSegment({
-    geometry: { type: "LineString", coordinates },
-    start_latitude: coordinates[0][1],
-    start_longitude: coordinates[0][0],
-    end_latitude: coordinates[coordinates.length - 1][1],
-    end_longitude: coordinates[coordinates.length - 1][0],
-    cumulative_distance_km: index * 10,
-    distance_km: 10,
-    difficulty: 20 + index * 30,
-    estimated_arrival_time: new Date(DEPARTED_AT + index * secondsEach * 1000).toISOString(),
-  });
-}
-
-// geometryは往復可能な閉じたループの体裁のみ整える（実座標としての精度は問わない）。
-// 所要時間は本物の生成が必ず付ける（無いと候補の行の所要時間が描かれず、走査がその配置を見ない）。
-function makeRouteCandidate(
-  id: string,
-  directionLabel: string,
-  distanceKm: number,
-  durationSeconds: number,
-): RouteCandidate {
-  return makeCandidate({
-    id,
-    direction_label: directionLabel,
-    distance_km: distanceKm,
-    estimated_duration_seconds: durationSeconds,
-    geometry: {
-      type: "LineString",
-      coordinates: [
-        [139.7387, 35.7597],
-        [139.75, 35.765],
-        [139.7387, 35.7597],
-      ],
-    },
-    elevation_gain_m: 120,
-    // 選択中候補の区間色分け線は区間が無いと描かれない。
-    // 地図の描画に関わる検証（縁取り等）が成り立つよう、最小限の2区間を持たせる。
-    segments: [
-      makeSegment(
-        0,
-        [
-          [139.7387, 35.7597],
-          [139.75, 35.765],
-        ],
-        durationSeconds / 2,
-      ),
-      makeSegment(
-        1,
-        [
-          [139.75, 35.765],
-          [139.7387, 35.7597],
-        ],
-        durationSeconds / 2,
-      ),
-    ],
-    overall_difficulty: { average: 35, load: 700 },
-  });
-}
-
-type DoneJob = Extract<RouteGenerateJobStatusResponse, { status: "done" }>;
-
-/** 生成のジョブの完了の応答（ポーリングの1回目から完了を返す）。 */
-export function doneJobFixture(result: DoneJob["result"] = routeGenerateResponseFixture()): DoneJob {
-  return { status: "done", result };
-}
-
-// 戻り値に画面が受け取る生成結果の型を付け、backendの必須フィールド（GenerationConditions等）が
-// 増えたときに、このモックの欠落を型検査が知らせるようにする。
-export function routeGenerateResponseFixture(): DoneJob["result"] {
-  return {
-    routes: [makeRouteCandidate("route-1", "北", 20.3, 66 * 60), makeRouteCandidate("route-2", "南", 19.8, 60 * 60)],
-    no_candidates_reason: null,
-    conditions: makeGenerationConditions({
-      latitude: 35.7597,
-      longitude: 139.7387,
-      distance_km: 20,
-      distance_tolerance_km: 5,
-      penalty_strength: 1.0,
-      max_routes: 8,
-      assumed_speed_kmh: 20,
-      start_time: "2026-09-05T09:30:00+09:00",
-      generated_at: new Date().toISOString(),
-    }),
-  };
-}
-
-// 最寄りアメダス観測所の実測値フィクスチャ。
-function amedasObservationFixture(): AmedasObservation {
-  return {
-    station_name: "観測所",
-    observed_at: "2026-01-01T12:00:00+09:00",
-    temperature_c: 18.5,
-    apparent_temperature_c: null,
-    wind_speed_ms: 2.1,
-    wind_direction: { deg: 90, label: "東" },
-    precipitation_10min_mm: null,
-    weather_code: null,
-    twilight: null,
-    valid_area: null,
-  };
-}
-
-// 最寄りの格子点の今日の値のフィクスチャ。天気のパネルの表が横に並ぶ幅を出すため、0時から23時までの24時間を持つ。
-function gridPointTodayFixture(): components["schemas"]["GridPointToday"] {
-  const hours = Array.from({ length: 24 }, (_, hour) => hour);
-  return {
-    latitude: 35.75,
-    longitude: 139.75,
-    distance_km: 1.1,
-    bearing_deg: 45,
-    times: hours.map((hour) => `2026-01-01T${String(hour).padStart(2, "0")}:00`),
-    temperature_c: hours.map((hour) => 12 + Math.round(6 * Math.sin((Math.PI * (hour - 8)) / 12) * 10) / 10),
-    precipitation_mm: hours.map((hour) => (hour >= 15 && hour <= 17 ? 1.5 : 0)),
-    wind_speed_ms: hours.map((hour) => 2 + (hour % 5)),
-    wind_direction_deg: hours.map((hour) => (hour * 15) % 360),
-    highest_hourly_temperature_c: 18,
-    lowest_hourly_temperature_c: 6,
-    highest_hourly_precipitation_mm: 1.5,
-    highest_hourly_wind_speed_ms: 6,
-  };
-}
-
-/** モックの軸カタログが配る道の線の層。区分は管理DBが持つ任意の値なので、ここで組む。 */
-export const E2E_ROAD_LAYERS = [
-  roadMapLayer("surface", {
-    label: "路面",
-    category: "roadCondition",
-    icon: "surface",
-    has_no_data: true,
-    classes: [
-      roadClass("paved", { label: "舗装", color: "#4a7bd0" }),
-      roadClass("unpaved", { label: "未舗装", color: "#b8742a" }),
-    ],
-  }),
-];
-
-/** モックの軸カタログの道の区分（線の層と、避け方を選べる行）。 */
-const E2E_ROAD_CLASSES = roadClassCatalog({
-  map_layers: E2E_ROAD_LAYERS,
-  avoidance: {
-    levels: AVOIDANCE_LEVELS,
-    sections: [{ key: "surface", label: "路面" }],
-    rows: [avoidanceRow("unpaved", "surface", { label: "未舗装", default: "avoid" })],
-  },
-});
-
-/** `GET /api/axis-catalog`の応答。世代は本物のbackendと同じく全種類を返し（無いと凡例が配信情報を取得できない表示になる）、
- * 軸と世代以外（尺度・調整値・事故の収録年）は空で返す。型は契約のもので、項目を欠いた応答を作れない（欠けると、
- * 本物のbackendなら必ず来る値が画面で`undefined`になる）。 */
-export function axisCatalogFixture(
-  axes: ReturnType<typeof catalogEntry>[],
-): components["schemas"]["AxisCatalogResponse"] {
-  const tile_versions = Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "e2e"]));
-  return catalogResponse(axes, { tile_versions, road_classes: E2E_ROAD_CLASSES });
-}
-
-/** 既定の軸カタログ。アプリが軸一覧を引ける最小の1軸だけを持つ。 */
-export function defaultAxisCatalogFixture(): components["schemas"]["AxisCatalogResponse"] {
-  return axisCatalogFixture([
-    { ...catalogEntry({ axis_id: "axis_a", map_paint: { thresholds: [50] } }), default_weight: 0 },
-  ]);
-}
 
 /**
  * バックエンド・外部APIへの依存を断ち切るネットワークモックを登録する。
@@ -281,11 +109,6 @@ async function rewriteRules(): Promise<{ source: string }[]> {
 
 /** スマホ縦持ち相当。useIsMobile（CSSの`--breakpoint-mobile`以下で立つ`--is-mobile`の旗）のモバイル分岐に入る幅。 */
 export const MOBILE_VIEWPORT = { width: 390, height: 812 };
-
-/** 本体の地図の要素。左下の俯瞰図（MapOverview.tsx）も MapLibre の地図で、DOM では本体より前に並ぶので、その中のものを除く。 */
-export const MAIN_MAP = '.maplibregl-map:not([aria-label="俯瞰図"] *)';
-/** 本体の地図の描画面。 */
-export const MAIN_MAP_CANVAS = `${MAIN_MAP} canvas.maplibregl-canvas`;
 
 /** モバイルの下部タブバーが持つシート。値はタブのラベル兼シートのアクセシブル名。 */
 export type MobileSheetName = "ルート設定" | "ルート結果";
@@ -400,118 +223,4 @@ export async function runGeneration(
 ): Promise<void> {
   await scope.getByRole("button", { name: "ルート生成" }).click();
   await expect(scope.getByRole("button", { name: "ルート生成" })).toBeEnabled({ timeout });
-}
-
-declare global {
-  interface Window {
-    __liveMap(): import("maplibre-gl").Map;
-    __liveScene(): import("@/features/map/scene/mapScene").MapScene;
-  }
-}
-
-/**
- * 地図のインスタンスと、地図に載っているべきものの宣言（scene）を、描画しているReactの部品の参照（useRef）から探す関数を
- * ページへ入れる。アプリは地図を外へ公開していないので、テストのために入口を足さず、Reactが要素へ付ける内部の印
- * （`__reactFiber$`）から祖先の部品のフックを辿る。Reactの内部の形が変わると見つからず、そのときは例外で止まる（黙って空を返さない）。
- * `page.addInitScript(installMapFinder, MAIN_MAP)`で入れる（ページへは関数の文だけが渡るので、本体の地図の選び方は引数で渡す）。
- */
-export function installMapFinder(mainMap: string): void {
-  const findRef = (what: string, holds: (current: Record<string, unknown>) => boolean) => {
-    const container = document.querySelector(mainMap);
-    const key = container && Object.keys(container).find((k) => k.startsWith("__reactFiber$"));
-    type Hook = { memoizedState: unknown; next: Hook | null };
-    type Fiber = { memoizedState: unknown; return: Fiber | null };
-    let fiber = key ? ((container as unknown as Record<string, Fiber>)[key] ?? null) : null;
-    for (; fiber; fiber = fiber.return) {
-      let hook = fiber.memoizedState as Hook | null;
-      while (hook && typeof hook === "object" && "next" in hook) {
-        const state = hook.memoizedState as { current?: Record<string, unknown> } | null;
-        if (state && typeof state === "object" && state.current && holds(state.current)) return state.current;
-        hook = hook.next;
-      }
-    }
-    throw new Error(`${what}が見つからない（Reactの内部の形が変わった可能性）`);
-  };
-  window.__liveMap = () =>
-    findRef("地図のインスタンス", (current) => typeof current.queryRenderedFeatures === "function") as never;
-  // 地図の部品は、いまのpropsの参照（MapView.tsx: latest）に scene を持つ。
-  window.__liveScene = () =>
-    findRef("地図の scene", (current) => Array.isArray((current.scene as { layers?: unknown })?.layers)).scene as never;
-}
-
-/**
- * 地図に描かれた、押すと詳細や選択が開くもの（scene が当たり判定の対象 `target` を宣言したレイヤーの地物）を1つ押す
- * （`installMapFinder`を入れたページで）。押す点は、地図そのものが押され（上に部品が重ならない）、そこで一番上に来る
- * 押せる地物が `target` のものである点に限る——アプリはその地物を開く（ルートの線は道・点より上の段にある）。
- * 対象の名前は scene の宣言から読むので、当たり判定を足せばここを変えずに押せる。押せなければ理由を出して止める。
- */
-export async function clickFeature(page: Page, target: string): Promise<void> {
-  const found = await page.evaluate((wanted) => {
-    const map = window.__liveMap();
-    const layers = window.__liveScene().layers;
-    const targets = [...new Set(layers.flatMap((layer) => layer.hitTargets))];
-    if (!targets.includes(wanted)) return { error: `いまの地図に無い。押せる対象: ${targets.join(" / ")}` };
-    const carrying = layers.filter((layer) => layer.hitTargets.includes(wanted));
-    const shown = carrying.filter((layer) => layer.visible && map.getLayer(layer.spec.id));
-    if (shown.length === 0) {
-      const hidden = carrying.map((layer) => layer.spec.id).join(" / ");
-      return { error: `持つレイヤーが全部非表示（${hidden}。レイヤーの表示を ON にする）` };
-    }
-    const own = new Set(shown.map((layer) => layer.spec.id));
-    const interactive = layers
-      .filter((layer) => layer.hitTargets.length > 0 && map.getLayer(layer.spec.id))
-      .map((layer) => layer.spec.id);
-    const canvas = map.getCanvas();
-    const box = canvas.getBoundingClientRect();
-    const features = map.queryRenderedFeatures({ layers: [...own] });
-    for (const feature of features) {
-      const geometry = feature.geometry;
-      const vertices: number[][] =
-        geometry.type === "Point"
-          ? [geometry.coordinates]
-          : geometry.type === "LineString"
-            ? geometry.coordinates
-            : geometry.type === "MultiLineString"
-              ? geometry.coordinates.flat()
-              : [];
-      // 線の端は別の道と接するので、真ん中の頂点から外へ向かって試す。
-      const middle = Math.floor(vertices.length / 2);
-      const order = vertices.map((_, i) => middle + (i % 2 === 0 ? i / 2 : -(i + 1) / 2));
-      for (const index of order) {
-        const vertex = vertices[index];
-        if (!vertex) continue;
-        const { x, y } = map.project([vertex[0], vertex[1]]);
-        const client = { x: box.left + x, y: box.top + y };
-        if (client.x < 0 || client.y < 0 || client.x >= window.innerWidth || client.y >= window.innerHeight) continue;
-        if (document.elementFromPoint(client.x, client.y) !== canvas) continue;
-        const top = map.queryRenderedFeatures([x, y], { layers: interactive })[0];
-        if (top && own.has(top.layer.id)) return { point: client };
-      }
-    }
-    return {
-      error:
-        features.length === 0
-          ? "画面に描かれていない（位置・倍率を変える）"
-          : `描かれた ${features.length} 件のどれも、地図の見えている所で一番上に来ない（位置・倍率を変える）`,
-    };
-  }, target);
-  if ("error" in found) throw new Error(`地図の「${target}」を押せない: ${found.error}`);
-  await page.mouse.click(found.point.x, found.point.y);
-}
-
-/** 地図の上の経度・緯度の点を押す（`installMapFinder`を入れたページで）。その点が画面の外か、地図の上に別の部品が重なっていれば止める。 */
-export async function clickMap(page: Page, lngLat: [number, number]): Promise<void> {
-  const point = await page.evaluate((at) => {
-    const map = window.__liveMap();
-    const projected = map.project(at);
-    const box = map.getCanvas().getBoundingClientRect();
-    const x = box.left + projected.x;
-    const y = box.top + projected.y;
-    const inside = x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight;
-    return { x, y, onMap: inside && document.elementFromPoint(x, y) === map.getCanvas() };
-  }, lngLat);
-  if (!point.onMap) {
-    throw new Error(`地図の点 ${lngLat.join(",")}（画面の ${Math.round(point.x)},${Math.round(point.y)}）は押せない`);
-  }
-  await page.mouse.click(point.x, point.y);
 }

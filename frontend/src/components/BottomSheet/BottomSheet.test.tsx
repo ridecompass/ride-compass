@@ -6,7 +6,7 @@
  *
  * ここで見ないもの: 高さを変える帯と決めた高さを覚えること → `BottomSheet.resize.test.tsx`。開いたときに中身へ高さを合わせること →
  * `BottomSheet.fit.test.tsx`。2枚のシートで高さを分け合うこと → `app/page.tsx`。シートの中身・見出しの脇の差し込み——受け取ったものを
- * そのまま置くだけ。ルートを地図へ収めるときにシートを避けること——実寸が要るので`e2e/mobile.spec.ts`。
+ * そのまま置くだけ。ルートを地図へ収めるときにシートを避けること——実寸が要るので`e2e/mobile-route-result.spec.ts`。
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

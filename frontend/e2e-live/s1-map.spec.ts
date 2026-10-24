@@ -1,17 +1,6 @@
 import { expect, test } from "@playwright/test";
-import {
-  branch,
-  chooseLens,
-  currentLensLabel,
-  expectNoOwnFailures,
-  externalErrors,
-  fetchCatalog,
-  openLive,
-  renderedRoads,
-  reportExternal,
-  roadSourceId,
-  settleMap,
-} from "./live";
+import { branch, expectNoOwnFailures, externalErrors, fetchCatalog, openLive, reportExternal } from "./live";
+import { chooseLens, currentLensLabel, renderedRoads, roadSourceId, settleMap } from "./mapReads";
 import { allLayersOn, clickFeature } from "../e2e/fixtures";
 import materialCatalog from "@/types/generated/material-catalog.json";
 

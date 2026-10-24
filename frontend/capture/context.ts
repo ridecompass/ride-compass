@@ -1,12 +1,16 @@
-import { expect, type APIResponse, type Locator, type Page, type Route } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import * as catalogAxes from "@/testing/catalogAxes";
 import * as fixtures from "../e2e/fixtures";
 import * as states from "../e2e/states";
-import { LIVE_POINT, chooseLens, settleMap } from "../e2e-live/live";
+import { installPageHelpers } from "../e2e/pageHelpers";
+import { LIVE_POINT } from "../e2e-live/live";
+import { chooseLens, settleMap } from "../e2e-live/mapReads";
 import { fileName } from "./fileName.mjs";
+import { composeKeyboard } from "./keyboard";
+import { upstream, type WorktreeBackend } from "./worktreeBackend";
 
 // 脚本（scripts/capture.mjs の --script）が受け取る口。脚本はこの口だけを使い、何も読み込まない（型の読み込みは実行時に
 // 消えるのでよい）。そのため作業ツリーの外に置いても、読み込みの解決に頼らずに動く。e2e の段取りと応答の雛形はモジュールごと
@@ -91,84 +95,8 @@ export interface CaptureContext {
 
 export type CaptureScript = (context: CaptureContext) => Promise<void>;
 
-export interface WorktreeBackend {
-  /** 作業ツリーの backend（backend/scripts/serve_capture.py）のオリジン。 */
-  origin: string;
-  /** --api の backend のオリジン。 */
-  api: string;
-  /** 作業ツリーの backend に返させるパスの頭（scripts/capture.mjs の --backend）。 */
-  paths: string[];
-}
-
-/**
- * 作業ツリーの backend の応答を待つ上限。気象庁のタイルの中継は気象庁への秒間上限を守って待つ（backend/app/config.py:
- * jma_tile_upstream_max_requests_per_second）ので、地図が一度に取るタイルの数だけ待ちが積もる。
- */
-const WORKTREE_BACKEND_TIMEOUT_MS = 5 * 60_000;
-
-/**
- * 撮った画像（PNG）の上を `shift` だけ切り落とし、下から `keyboard` の高さを板で覆った画像を、同じ寸法で組み直す。iOS の
- * Safari はキーボードが出てもレイアウトの寸法を変えず、見える範囲を欄が見えるだけずらすので、画面の中身は動かない。
- */
-async function composeKeyboard(
-  page: Page,
-  image: Buffer,
-  { width, height }: { width: number; height: number },
-  { shift, keyboard }: { shift: number; keyboard: number },
-): Promise<Buffer> {
-  const sheet = await page.context().newPage();
-  try {
-    await sheet.setViewportSize({ width, height });
-    await sheet.setContent(`<!doctype html>
-<body style="margin:0;width:${width}px;height:${height}px;overflow:hidden;position:relative">
-  <img src="data:image/png;base64,${image.toString("base64")}"
-    style="position:absolute;left:0;top:${-shift}px;width:${width}px;height:${height}px">
-  <div style="position:absolute;left:0;right:0;bottom:0;height:${keyboard}px;background:#9ca3af;color:#fff;
-    display:flex;align-items:center;justify-content:center;font:20px sans-serif">キーボード（見立て）</div>
-</body>`);
-    await sheet.locator("img").evaluate((img: HTMLImageElement) => img.decode());
-    return await sheet.screenshot();
-  } finally {
-    await sheet.close();
-  }
-}
-
 /** 「表示」のボタンと、押すと開く一覧の名前（`MapOverlayControls`）。 */
 const OVERLAY_LIST_NAME = "地図に出す情報";
-
-function forWorktreeBackend(url: URL, { api, paths }: WorktreeBackend): boolean {
-  return url.origin === new URL(api).origin && paths.some((head) => url.pathname.startsWith(head));
-}
-
-/**
- * 要求を、選んだパスの頭に当たれば作業ツリーの backend へ、ほかは向け先のまま送った応答。page.route の route.fetch は
- * 向け先のプロトコルを変えられない（本番の https から手元の http へ替えられない）ので、作業ツリーの backend へは page.request で
- * 同じメソッド・ヘッダー・本文を送る。
- */
-async function upstream(page: Page, route: Route, worktreeBackend: WorktreeBackend | null): Promise<APIResponse> {
-  const request = route.request();
-  const url = new URL(request.url());
-  if (!worktreeBackend || !forWorktreeBackend(url, worktreeBackend)) return route.fetch();
-  return page.request.fetch(`${worktreeBackend.origin}${url.pathname}${url.search}`, {
-    method: request.method(),
-    headers: request.headers(),
-    data: request.postDataBuffer() ?? undefined,
-    timeout: WORKTREE_BACKEND_TIMEOUT_MS,
-  });
-}
-
-/**
- * ブラウザが --api の backend へ選んだパスの頭で取りに行くものを、作業ツリーの backend から取って返す。
- * 脚本の routes・patch より先に登録する（後から登録したルートが先に当たる）。
- */
-export async function routeToWorktreeBackend(page: Page, worktreeBackend: WorktreeBackend): Promise<void> {
-  await page.route(
-    (url) => forWorktreeBackend(url, worktreeBackend),
-    async (route) => {
-      await route.fulfill({ response: await upstream(page, route, worktreeBackend) });
-    },
-  );
-}
 
 /** 選び損ねた直後に呼ぶので、選択肢が閉じていれば開く。 */
 async function lensLabels(page: Page): Promise<string[]> {
@@ -215,8 +143,8 @@ export function captureContext(
         await page.context().setGeolocation(point ?? LIVE_POINT);
       }
       if (routes) await routes(page);
-      await page.addInitScript(states.installPageHelpers);
-      await page.addInitScript(fixtures.installMapFinder, fixtures.MAIN_MAP);
+      await page.addInitScript(installPageHelpers);
+      await page.addInitScript(fixtures.installMapFinder);
       await fixtures.seedStoredState(page, {
         ...fixtures.INTRO_CLOSED,
         ...(layers.length > 0

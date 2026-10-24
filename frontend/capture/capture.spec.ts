@@ -1,6 +1,7 @@
 import { test } from "@playwright/test";
 import { pathToFileURL } from "node:url";
-import { captureContext, routeToWorktreeBackend, type CaptureScript, type WorktreeBackend } from "./context";
+import { captureContext, type CaptureScript } from "./context";
+import { routeToWorktreeBackend, type WorktreeBackend } from "./worktreeBackend";
 
 // 脚本で進めた画面を撮る段。入口は scripts/capture.mjs で、引数はそこが CAPTURE_OPTIONS に詰めて渡す。
 
