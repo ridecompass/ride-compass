@@ -1,4 +1,5 @@
-import type { RouteCandidate } from "@/types/route";
+import type { Position } from "geojson";
+
 import { measureMapOverlayEdges, type RouteFitObscuredPx } from "@/lib/mapOverlayEdges";
 
 // ルート全体を収めるときの基本余白（全辺）。
@@ -6,14 +7,16 @@ const ROUTE_FIT_BASE_PADDING_PX = 40;
 // フィット後に必ず残す可視領域の幅・高さ。覆うUIが大きいと、余白同士が地図を食い尽くしてズームが破綻する。
 const ROUTE_FIT_MIN_VISIBLE_PX = 80;
 
-/** 候補の線を全部含む範囲（`[[西, 南], [東, 北]]`）。候補が無ければnull。 */
-export function computeRouteBounds(routes: readonly RouteCandidate[]): [[number, number], [number, number]] | null {
+/** 線（[経度, 緯度] の並び）を全部含む範囲（`[[西, 南], [東, 北]]`）。点が無ければnull。 */
+export function computePathBounds(
+  paths: readonly (readonly Position[])[],
+): [[number, number], [number, number]] | null {
   let west = Infinity;
   let south = Infinity;
   let east = -Infinity;
   let north = -Infinity;
-  for (const route of routes) {
-    for (const [lng, lat] of route.geometry.coordinates) {
+  for (const path of paths) {
+    for (const [lng, lat] of path) {
       west = Math.min(west, lng);
       south = Math.min(south, lat);
       east = Math.max(east, lng);

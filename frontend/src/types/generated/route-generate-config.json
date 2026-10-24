@@ -27,6 +27,7 @@
   },
   "missing_travel_data_wording": "坂の無い平地で、止まる所も無い道として所要時間を出しています",
   "client_tuning": {
+    "landcover.ring_outer_m": 100.0,
     "speed.cda_m2": 0.32,
     "speed.mass_kg": 80.0,
     "speed.max_descent_kmh": 45.0,

@@ -2088,6 +2088,10 @@ export interface components {
             properties: {
                 [key: string]: string | number | boolean;
             };
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
         };
         /** RoutePreferenceWeights */
         RoutePreferenceWeights: {

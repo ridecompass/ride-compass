@@ -6801,6 +6801,14 @@
             },
             "type": "object",
             "title": "Properties"
+          },
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
           }
         },
         "additionalProperties": false,
@@ -6809,7 +6817,9 @@
           "distance_km",
           "offset_m",
           "layer",
-          "properties"
+          "properties",
+          "latitude",
+          "longitude"
         ],
         "title": "RoutePoint"
       },

@@ -23,6 +23,8 @@ export interface MapAxisCatalog {
   /** 事故データの収録年（backendの取込の宣言そのもの）。地図の説明文が範囲を書くのに使う。
    * フェッチ完了まで・エラー時は空で、その間は説明文が年に触れない。 */
   accidentYears: readonly number[];
+  /** フロントが使う較正値（応答の`client_tuning`）。地図の説明文が数を差し込む。取得できるまでは空。 */
+  clientTuning: Readonly<Record<string, number>>;
   /** 道の線の層（公開した分け方1つが層1つ）。地図の線・チップ・凡例・帯がこの並びから作る。取得できるまでは空。 */
   roadLayers: readonly RoadMapLayerView[];
   /** タイルの世代。全系統が揃うまで`null`で、その間は地図がタイルのソースを作らない。 */
@@ -44,6 +46,7 @@ export function mapAxisCatalogFromResponse(response: AxisCatalogResponse): MapAx
     axes: response.axes.map(catalogAxisFromEntry),
     dedicatedAxes: dedicatedWayValueAxesFromCatalogAxes(response.axes),
     accidentYears: response.accident_years,
+    clientTuning: response.client_tuning,
     roadLayers: response.road_classes.map_layers,
   };
   return {

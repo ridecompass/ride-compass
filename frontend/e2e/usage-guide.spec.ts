@@ -3,10 +3,10 @@ import { USAGE_PART_SELECTOR } from "@/components/UsageGuide/usageTarget";
 import { INTRO_CLOSED, installApiMocks, seedStoredState } from "./fixtures";
 import { WIDTHS, installPageHelpers, openApp, type WidthName } from "./states";
 
-// 使い方の説明の「中を見る」で開いた浮きパネルの中の部品も説明できること（パターン4 観点2）。浮きパネルは外への押し操作と
-// フォーカスで閉じ、その出来事の届き方は実際のブラウザでしか確かめられない。生成前の基本の画面で説明を見る状態に入り、
+// 使い方の説明の「中を見る」で開いた浮きパネルの中の部品を押しても、浮きパネルが閉じないこと（パターン4 観点2）。浮きパネルは
+// 外への押し操作とフォーカスで閉じ、その出来事の届き方は実際のブラウザでしか確かめられない。生成前の基本の画面で説明を見る状態に入り、
 // 押せる部品（押す点＝中心点のヒットテストが部品自身か子孫を返すもの）のうち浮きパネルの開くボタンを1つずつ「中を見る」で
-// 開き、中の部品を1つずつ押して、説明（使い方の文）が出て浮きパネルが開いたままかを見る。
+// 開き、中の部品を1つずつ押して、説明が出て浮きパネルが開いたままかを見る。中の部品が使い方の文を持つことは`app/page.layout.test.tsx`が見る。
 // 折りたたみ・下部シートのタブ・選ばれていないタブ等の「中を見る」は開くだけで、開いた先は今の画面の部品と同じ扱いなので、ここでは開かない
 // （出す部品の見分けと開くことは単体テスト）。
 
@@ -55,7 +55,9 @@ async function press(page: Page, part: Part) {
 }
 
 for (const width of Object.keys(WIDTHS) as WidthName[]) {
-  test(`使い方の説明: ${width} で、「中を見る」で開いた浮きパネルの中の部品も説明する`, async ({ browser }) => {
+  test(`使い方の説明: ${width} で、「中を見る」で開いた浮きパネルの中の部品を押しても浮きパネルが閉じない`, async ({
+    browser,
+  }) => {
     test.setTimeout(240_000);
     const touch = width === "mobile";
     const context = await browser.newContext({ viewport: WIDTHS[width], isMobile: touch, hasTouch: touch });
@@ -80,7 +82,6 @@ for (const width of Object.keys(WIDTHS) as WidthName[]) {
     // 次の開くボタンを覆うことがあるので、開くボタンごとに「やめる」で終えて Esc で閉じ、入り直す。
     const panel = page.getByRole("dialog", { name: "使い方の説明" });
     const opened = page.locator('[data-usage-opens][aria-expanded="true"]');
-    const problems: string[] = [];
     let inside = 0;
     for (const opener of openers) {
       await press(page, opener);
@@ -93,8 +94,6 @@ for (const width of Object.keys(WIDTHS) as WidthName[]) {
         await press(page, part);
         await expect(panel).toBeVisible();
         await expect(opened, `${opener.label} の中の ${part.label} を押すと浮きパネルが閉じる`).toHaveCount(1);
-        if (await panel.getByText("この部品の説明はまだありません。").isVisible())
-          problems.push(`${opener.label} の中の ${part.label} に使い方の文が無い`);
         await panel.getByRole("button", { name: "説明を閉じる" }).click();
         await expect(panel).toBeHidden();
       }
@@ -106,10 +105,7 @@ for (const width of Object.keys(WIDTHS) as WidthName[]) {
     }
     expect(inside, "浮きパネルの中で押せる部品が見つからない").toBeGreaterThan(3);
 
-    console.log(
-      `使い方の説明 ${width}: 開くボタン ${openers.length}件・その中の部品 ${inside}件、問題 ${problems.length}件`,
-    );
-    expect(problems).toEqual([]);
+    console.log(`使い方の説明 ${width}: 開くボタン ${openers.length}件・その中の部品 ${inside}件`);
     await context.close();
   });
 }

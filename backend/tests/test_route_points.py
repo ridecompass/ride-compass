@@ -22,7 +22,8 @@ def _edge(way: int, forward: bool = True) -> DirectedSegment:
 
 def _hit(key: str, fraction: float, distance_m: float = 0.0, merge_group: str | None = None) -> RoutePointHit:
     return RoutePointHit(layer="supply_poi", point_key=key, merge_group=merge_group, merge_within_m=_MERGE_WITHIN_M,
-                         properties={"kind": key}, fraction=fraction, distance_m=distance_m)
+                         properties={"kind": key}, latitude=35.0, longitude=139.0, fraction=fraction,
+                         distance_m=distance_m)
 
 
 def _passed(path: list[DirectedSegment], hits: dict[int, list[RoutePointHit]]) -> list[tuple[float, str]]:

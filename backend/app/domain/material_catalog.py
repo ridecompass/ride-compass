@@ -26,12 +26,12 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from app.domain.landcover import (
     LANDCOVER_CLASSES,
-    LANDCOVER_RING_OUTER_M,
     LandcoverClass,
     landcover_key,
 )
 from app.domain.divided_carriageway import DIVIDED_ROAD_NOTE, oneway_material_sql
 from app.domain.registry import PrimaryAttributeSpec
+from app.domain.tuning import LANDCOVER_RING_INNER_ID, LANDCOVER_RING_OUTER_ID, TUNING_PARAMETERS_BY_ID
 from app.domain.primary_attributes import (
     PRIMARY_ATTRIBUTES,
     ATTR_ACCIDENT_POINT,
@@ -505,11 +505,16 @@ def _tag_fact_material(
     )
 
 
+#: 帯の幅は作り直しで変わるので、説明は値ではなく較正値の名前で帯を指す。
+_RING_OUTER_LABEL = TUNING_PARAMETERS_BY_ID[LANDCOVER_RING_OUTER_ID].label
+_RING_INNER_LABEL = TUNING_PARAMETERS_BY_ID[LANDCOVER_RING_INNER_ID].label
+
+
 def _landcover_description(cls: LandcoverClass) -> str:
     """表示名だけでは何を含むか読み取れないので、地図の凡例と同じ分類の説明を添える。"""
     return (
-        "衛星画像の土地被覆データ（Esri×Impact Observatory）から算出した、"
-        f"道路周囲{LANDCOVER_RING_OUTER_M:g}mリング内の{cls.label}の割合(%)。{cls.label}は、{cls.description}"
+        "衛星画像の土地被覆データ（Esri×Impact Observatory）から算出した、道路の周りの帯（幅は較正値の"
+        f"「{_RING_OUTER_LABEL}」「{_RING_INNER_LABEL}」）の中の{cls.label}の割合(%)。{cls.label}は、{cls.description}"
     )
 
 

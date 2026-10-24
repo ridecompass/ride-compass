@@ -7,8 +7,8 @@
 - 地図の塗り（値の種類・単位・段・凡例・ラベル） → `test_map_paint.py`、一次属性 → `test_axis_hierarchy.py`
 - タイルの世代 → `test_derived_data_revision_service.py`・`test_derived_data_meta.py`
 - 軸の項目を応答へそのまま写すこと（表示名・重み・チップの欄等）——書き写しで、判断が無い
-- 画面へ配る較正値の顔ぶれ（`tuning.py: client_tuning_values`）——同じ関数がビルド時生成物の`client_tuning`も書き、
-  CI がその差分を落とす。画面が読む id は`frontend/src/lib/axisCatalog.ts: CLIENT_TUNING_IDS`が生成物の id に型で縛るので、
+- 画面へ配る較正値の顔ぶれ——どれを配るかは`tuning.py: _sent_to_client`の1つの判定から導き、同じ判定でビルド時生成物の
+  `client_tuning`（`tuning.py: client_tuning_defaults`）も書いて、CI がその差分を落とす。画面が読む id は`frontend/src/lib/axisCatalog.ts: CLIENT_TUNING_IDS`が生成物の id に型で縛るので、
   配る集合から抜けると型検査で落ちる（余分に配っても画面は壊れない）
 """
 
@@ -23,6 +23,7 @@ from app.domain.axis_definitions import (
     CategoricalShape,
     MaterialTerm,
 )
+from app.domain.tuning import LANDCOVER_RING_OUTER_ID
 from app.domain.way_value_formula import WayValueFormula, condition_names
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.main import app
@@ -102,6 +103,10 @@ def catalog_axes():
         yield
 
 
+#: 作り直しに使った較正値の記録の代役。管理画面の今の値（`TUNING_VALUES`）とも宣言の既定とも違う値にする。
+RECORDED_TUNING = {LANDCOVER_RING_OUTER_ID: 60.0}
+
+
 class _CatalogRepository:
     """`/api/axis-catalog`が`RegionService`越しに読むDBの口（データの世代・事故の収録年）の代役。"""
 
@@ -110,6 +115,9 @@ class _CatalogRepository:
 
     async def get_accident_years(self):
         return []
+
+    async def get_recorded_tuning(self, param_ids):
+        return {param_id: RECORDED_TUNING[param_id] for param_id in param_ids}
 
 
 @pytest.fixture
@@ -142,10 +150,20 @@ def test_get_axis_catalog_carries_the_calibration_values_the_client_needs(client
     ビルド時生成物（route-generate-config.json）だけで配ると、管理画面から変えても
     次のデプロイまで画面に届かない。
     """
-    param_id = sorted(client.get("/api/axis-catalog").json()["client_tuning"])[0]
+    param_id = sorted(tuning.client_tuning_values())[0]
     monkeypatch.setitem(tuning.TUNING_VALUES, param_id, 9.5)
 
     assert client.get("/api/axis-catalog").json()["client_tuning"][param_id] == 9.5
+
+
+def test_get_axis_catalog_carries_the_value_the_rebuild_used_for_values_that_wait_for_a_rebuild(client, monkeypatch):
+    """作り直しで効く較正値は、管理画面の今の値ではなく**作り直しに使った値**で運ぶ。
+
+    今の値で配ると、作り直すまでの間、地図の説明の数（帯の幅等）が地図に出ている派生の値と食い違う。
+    """
+    monkeypatch.setitem(tuning.TUNING_VALUES, LANDCOVER_RING_OUTER_ID, 9.5)
+
+    assert client.get("/api/axis-catalog").json()["client_tuning"][LANDCOVER_RING_OUTER_ID] == RECORDED_TUNING[LANDCOVER_RING_OUTER_ID]
 
 
 def _axis_reading(material: str):

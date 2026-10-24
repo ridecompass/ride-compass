@@ -9,6 +9,7 @@ import type { MapIconComponent } from "@/components/ui/icons/icons";
 import { MAP_LAYER_ICONS, roadLayerIcon, type StaticMapLayerId } from "@/components/ui/icons/mapLayerIcons";
 import { TILE_VERSION_GATED_SOURCES } from "@/lib/mapDisplay/tileVersionGated";
 import type { MapAxisCatalog } from "@/features/map/mapAxisCatalog";
+import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
 import { axisNamesInText, type CatalogAxis } from "@/lib/catalogAxis";
 import { primaryAttributeIdsToLayerIds } from "@/features/map/layers/primaryAttributes";
 import { DIFFICULTY_LENS_LABEL } from "@/lib/mapDisplay/routeStyleModes";
@@ -119,9 +120,15 @@ function declaredLayer(spec: {
 }
 
 /** レイヤーの一覧を組むのに要る軸カタログの項目。 */
-type LayerCatalog = Pick<MapAxisCatalog, "axes" | "dedicatedAxes" | "accidentYears" | "roadLayers">;
+type LayerCatalog = Pick<MapAxisCatalog, "axes" | "dedicatedAxes" | "accidentYears" | "clientTuning" | "roadLayers">;
 
-export const NO_AXES: LayerCatalog = { axes: [], dedicatedAxes: [], accidentYears: [], roadLayers: [] };
+export const NO_AXES: LayerCatalog = {
+  axes: [],
+  dedicatedAxes: [],
+  accidentYears: [],
+  clientTuning: {},
+  roadLayers: [],
+};
 
 /** 軸が材料として読む元データを見せるレイヤー（一次属性の層と、区分を決める材料を読む道の線の層）。 */
 export function axisMapLayerIds(axis: CatalogAxis): readonly MapLayerId[] {
@@ -144,14 +151,22 @@ export function buildMapLayers({
   axes,
   dedicatedAxes,
   accidentYears,
+  clientTuning,
   roadLayers,
 }: LayerCatalog): readonly MapLayerDescriptor[] {
   // 取れていないときは年に触れない（既定の年を出すと、それが正しいように見える）。
   const accidentCoverage = coverageYearsLabel(accidentYears);
   // 並びはレンズの選択肢と同じ（公開中の評価と総合難易度）。
   const routeLenses = [...axes.map((axis) => axis.label), DIFFICULTY_LENS_LABEL].join("・");
+  // 取れていないときは帯の幅に触れない（既定の幅を出すと、作り直しに使った幅と食い違いうる）。
+  const landcoverRingOuterM = String(clientTuningValue({ clientTuning }, CLIENT_TUNING_IDS.landcoverRingOuterM) ?? "");
   const staticLayers = mapDisplay.layers.map((layer): ChipLayerDescriptor => {
-    const slots = { axes: axisNamesReading(axes, layer.id), accidentYears: accidentCoverage, routeLenses };
+    const slots = {
+      axes: axisNamesReading(axes, layer.id),
+      accidentYears: accidentCoverage,
+      routeLenses,
+      landcoverRingOuterM,
+    };
     return {
       id: layer.id,
       label: layer.label,
@@ -163,7 +178,12 @@ export function buildMapLayers({
     };
   });
   const roadLayerChips = roadLayers.map((layer): ChipLayerDescriptor => {
-    const slots = { axes: axisNamesReading(axes, layer.id), accidentYears: "", routeLenses: "" };
+    const slots = {
+      axes: axisNamesReading(axes, layer.id),
+      accidentYears: "",
+      routeLenses: "",
+      landcoverRingOuterM: "",
+    };
     return {
       id: layer.id,
       label: layer.label,

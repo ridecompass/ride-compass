@@ -29,6 +29,7 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
     inspectedWayId: null,
     travelledKm: null,
     selectedRouteSegment: null,
+    sidePoints: [],
     ...rest,
     look: {
       dynamicWeather: {},

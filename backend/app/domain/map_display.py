@@ -9,7 +9,7 @@ from collections.abc import Iterable
 from typing import Literal, NamedTuple, get_args
 
 from app.domain.gsi_tiles import TERRAIN_MIN_ZOOM
-from app.domain.landcover import LANDCOVER_CLASSES, LANDCOVER_RING_OUTER_M, LANDCOVER_TILE_MIN_ZOOM
+from app.domain.landcover import LANDCOVER_CLASSES, LANDCOVER_TILE_MIN_ZOOM
 from app.domain.msm_grid import MSM_GRID_MIN_ZOOM
 from app.domain.place_search import ADDRESS_AREA_ATTRIBUTIONS
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, PRIMARY_ATTRIBUTES_BY_ID
@@ -185,8 +185,9 @@ _MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS, 
 
 #: 説明の文の差し込み口の名前。どれも軸カタログ（実行時の応答）から来る値で、画面が埋める。
 #: `axes`はそのレイヤーの元データを材料に持つ公開中の評価の名前、`accidentYears`は事故の収録年、
-#: `routeLenses`はルートの線を塗れるもの（公開中の評価と総合難易度）。
-LayerTextSlotName = Literal["axes", "accidentYears", "routeLenses"]
+#: `routeLenses`はルートの線を塗れるもの（公開中の評価と総合難易度）、`landcoverRingOuterM`は土地被覆の割合を数えた帯の
+#: 外の幅（m。作り直しに使った値）。
+LayerTextSlotName = Literal["axes", "accidentYears", "routeLenses", "landcoverRingOuterM"]
 
 
 class LayerTextSlot(NamedTuple):
@@ -368,7 +369,9 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         description=(f"周囲の緑・水辺・農地を面で重ねる{f'[{_UNPAINTED_LANDCOVER}は塗らない]' if _UNPAINTED_LANDCOVER else ''}",),
         panel_hint=(
             "衛星画像から分類した10m四方ごとの土地の使われ方です。1区画に1種類だけが入るため、"
-            f"評価軸が使う「道路の周囲{LANDCOVER_RING_OUTER_M:g}mの割合」とは違い、混ざらずそのまま見えます。"
+            "評価軸が使う「道路の周囲",
+            LayerTextSlot("landcoverRingOuterM", after="m"),
+            "の割合」とは違い、混ざらずそのまま見えます。"
             + (
                 f"{_UNPAINTED_LANDCOVER}は塗りません——広い範囲を単色で覆い、基礎地図を隠すだけになるためです。"
                 f"地図の道を押して開く内訳には{_UNPAINTED_LANDCOVER}も出ます。"

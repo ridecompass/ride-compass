@@ -3,7 +3,7 @@
  * （.claude/rules/testing-frontend.md「確かめる高さ（frontend）」の境界の表の「テスト環境に無いブラウザの機能」）。
  *
  * 代役は MapLibre の振る舞いを真似ず、受けたものを記録して返すだけにする:
- * - ソース・レイヤー・地物の状態は `mapTrace/recordingMap.ts` へ記録し、`MapOnScreen` から読む。
+ * - ソース・レイヤー・地物の状態は `mapTrace/recordingMap.ts` へ記録し、`MapOnScreen` から読む。点は束ねない。
  * - 印（`Marker`）とポップアップ（`Popup`）は、渡された要素を地図の器へ置く（画面の問い合わせで引ける）。
  * - カメラの操作（`fitBounds`）とスタイルの取り直し（`setStyle`）は、引数を残す。向き（`setBearing`・`easeTo` の `bearing`）と
  *   倍率（`zoomIn`・`zoomOut`）は、受けた値をそのまま今の値にする（動きの途中は無い）。向きが変わったら "rotate" だけを出す。
@@ -17,7 +17,7 @@ import type { Coordinates } from "@/types/route";
 
 import type { StyleLayer } from "./mapTrace/recordingMap";
 import type { PointedFeature } from "./maplibreStandIn/evented";
-import { lastDrawnMap, type ViewBounds } from "./maplibreStandIn/map";
+import { lastDrawnMap, type FittedBounds, type ViewBounds } from "./maplibreStandIn/map";
 
 export type { PointedFeature } from "./maplibreStandIn/evented";
 export { StandInMap as Map, type ViewBounds } from "./maplibreStandIn/map";
@@ -46,10 +46,14 @@ export interface MapOnScreen {
   click(lngLat: Coordinates, features?: readonly PointedFeature[]): void;
   /** いま表示しているレイヤーの id。 */
   visibleLayerIds(): string[];
+  /** いま地図に載っているソースの id。 */
+  sourceIds(): string[];
   /** GeoJSON のソースへ最後に渡された地物。ソースが無ければ空。 */
   sourceFeatures(sourceId: string): GeoJSON.Feature[];
   /** 地図に置いた印。 */
   markers(): { coordinates: Coordinates; draggable: boolean; element: HTMLElement }[];
+  /** 地図を範囲へ寄せた（`fitBounds`）ときの範囲と倍率の上限を、寄せた順に。 */
+  fits(): readonly FittedBounds[];
   /** 求めたスタイル（最初の1つと、取り直しの分）。 */
   readonly styles: readonly string[];
   /** いまの倍率。 */
@@ -74,6 +78,7 @@ export function mapOnScreen(): MapOnScreen {
     loadStyle: (layers) => map.content.loadStyle(layers),
     click: (lngLat, features = []) => map.click(lngLat, features),
     visibleLayerIds: () => map.content.layerOrder().filter((id) => map.content.layer(id)?.visibility !== "none"),
+    sourceIds: () => map.content.sources(),
     sourceFeatures: (sourceId) =>
       (map.content.sourceContent(sourceId)?.data as GeoJSON.FeatureCollection | undefined)?.features ?? [],
     markers: () =>
@@ -82,6 +87,7 @@ export function mapOnScreen(): MapOnScreen {
         draggable: marker.draggable,
         element: marker.element,
       })),
+    fits: () => map.fits,
     styles: map.styles,
     zoom: () => map.getZoom(),
     bearing: () => map.getBearing(),
