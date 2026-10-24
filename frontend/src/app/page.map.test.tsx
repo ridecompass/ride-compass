@@ -313,7 +313,7 @@ describe("区間の近くの施設", () => {
     return nearby;
   }
 
-  it("区間を押した小窓の「探す」で近くの施設を引き、届くと地図の点と同じ行ごとに描いて種類ごとの件数のチップを出し、チップでその種類を消せ、選びを外すと消す", async () => {
+  it("区間を押した小窓の「探す」で近くの施設を引き、届くと地図の点と同じ行ごとに描いて、種類ごとの行に区分ごとの見本と件数のチップを出し、チップでその区分を消せ、選びを外すと消す", async () => {
     const { user } = renderHome();
     const held = heldReplies();
     onBackend("POST", "/api/routes/side-points", held.reply);
@@ -330,13 +330,33 @@ describe("区間の近くの施設", () => {
     expect(within(nearby).getByText("読み込み中")).toBeInTheDocument();
 
     await held.answer(0, Response.json({ points: NEARBY_POINTS }));
-    const supply = await within(nearby).findByRole("button", { name: "補給・休憩ポイント 3" });
+    const convenience = await within(nearby).findByRole("button", { name: "コンビニ 2" });
+    // 種類の行は地図の「表示」の並び、区分は宣言の行の並びで、点のある区分だけ。
     expect(
       within(nearby)
+        .getAllByRole("group")
+        .map((row) => [
+          row.getAttribute("aria-label"),
+          within(row)
+            .getAllByRole("button")
+            .map((chip) => chip.textContent),
+        ]),
+    ).toEqual([
+      ["補給・休憩ポイント", ["2", "1"]],
+      ["事故[警察庁統計]", ["1"]],
+    ]);
+    expect(
+      within(within(nearby).getByRole("group", { name: "補給・休憩ポイント" }))
         .getAllByRole("button")
-        .map((chip) => chip.textContent),
-    ).toEqual(["補給・休憩ポイント 3", "事故[警察庁統計] 1"]);
-    expect(supply).toHaveAttribute("aria-pressed", "true");
+        .map((chip) => chip.getAttribute("aria-label")),
+    ).toEqual(["コンビニ 2", "トイレ 1"]);
+    // 絵記号を持たない区分の見本は、地図の丸い点と同じ色。
+    const bicycle = within(nearby).getByRole("button", { name: "自転車関連 1" });
+    expect((bicycle.querySelector("span") as HTMLElement).style.background).toBe(
+      mapOnScreen().layerPaint("side-point-accident_point-bicycle-mark")?.["circle-color"],
+    );
+    expect(convenience.querySelector("svg")).not.toBeNull();
+    expect(convenience).toHaveAttribute("aria-pressed", "true");
     expect(sidePointsOnMap()).toEqual({
       "side-point-accident_point-bicycle": [[139.715, 35.7]],
       "side-point-supply_poi-convenience": [
@@ -346,16 +366,19 @@ describe("区間の近くの施設", () => {
       "side-point-supply_poi-toilets": [[139.718, 35.7]],
     });
 
-    await user.click(supply);
-    expect(supply).toHaveAttribute("aria-pressed", "false");
-    expect(sidePointsOnMap()).toEqual({ "side-point-accident_point-bicycle": [[139.715, 35.7]] });
+    await user.click(convenience);
+    expect(convenience).toHaveAttribute("aria-pressed", "false");
+    expect(sidePointsOnMap()).toEqual({
+      "side-point-accident_point-bicycle": [[139.715, 35.7]],
+      "side-point-supply_poi-toilets": [[139.718, 35.7]],
+    });
 
-    // 区間を選び直すと、消した種類も出し直す。
+    // 区間を選び直すと、消した区分も出し直す。
     const [, second] = mapOnScreen().sourceFeatures("route-segments");
     clickSegment(second, HERE);
     expect(
       await within(screen.getByRole("group", { name: "近くの施設" })).findByRole("button", {
-        name: "補給・休憩ポイント 3",
+        name: "コンビニ 2",
         pressed: true,
       }),
     ).toBeInTheDocument();
@@ -373,7 +396,7 @@ describe("区間の近くの施設", () => {
     onBackend("POST", "/api/routes/side-points", () => Response.json({ points: NEARBY_POINTS }));
     const nearby = await pressSecondSegment(user);
     await user.click(within(nearby).getByRole("button", { name: "探す" }));
-    await within(nearby).findByRole("button", { name: "補給・休憩ポイント 3" });
+    await within(nearby).findByRole("button", { name: "コンビニ 2" });
     // パネルを閉じると、区間の中身は地図の小窓に出る。
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();

@@ -9,8 +9,8 @@ import { getQueryClient } from "@/lib/queryClient";
 import { findSameSegment } from "@/lib/routeDistance";
 import type { RouteCandidate, RoutePoint, SelectedRouteSegment } from "@/types/route";
 
-/** 選んだ区間の近くの点の引き具合。まだ探していなければ探す口を持ち、引けたら、地図に描ける点を種類ごとに持ち、利用者が
- * 地図から消した種類を持つ。 */
+/** 選んだ区間の近くの点の引き具合。まだ探していなければ探す口を持ち、引けたら、地図に描ける点を種類・区分ごとに持ち、利用者が
+ * 地図から消した区分を持つ。 */
 export type SegmentSidePoints =
   | { status: "idle"; onSearch: () => void }
   | { status: "loading" }
@@ -18,10 +18,10 @@ export type SegmentSidePoints =
   | {
       status: "done";
       groups: readonly SidePointGroup[];
-      /** 地図から消した種類のid。 */
+      /** 地図から消した区分のid（`SidePointKind`の`id`）。 */
       hidden: ReadonlySet<string>;
-      onToggle: (groupId: string) => void;
-      /** 地図に出す点（消した種類を除いたもの）。 */
+      onToggle: (kindId: string) => void;
+      /** 地図に出す点（消した区分を除いたもの）。 */
       shown: readonly RoutePoint[];
     };
 
@@ -29,7 +29,7 @@ const NOTHING_HIDDEN: ReadonlySet<string> = new Set();
 
 /** 選んだ区間の近くの点を、探す口（`onSearch`）を呼んだときだけ引く（要らないときは地図に印も出さず、要求も送らない）。
  * 最後に探した区間を覚え、同じ区間の中で地点を選び直しても引いた点を出し続ける。区間は候補の区間から引き直す（地図で
- * 押した区間は鍵の範囲を持たない写し）。区間を選んでいない・候補に無い区間ならnull。区間を選び直すたびに、消した種類を
+ * 押した区間は鍵の範囲を持たない写し）。区間を選んでいない・候補に無い区間ならnull。区間を選び直すたびに、消した区分を
  * 全部出し直す。 */
 export function useSegmentSidePoints(
   candidate: RouteCandidate | null,
@@ -60,17 +60,21 @@ export function useSegmentSidePoints(
   const [hiding, setHiding] = useState({ selection, hidden: NOTHING_HIDDEN });
   const hidden = hiding.selection === selection ? hiding.hidden : NOTHING_HIDDEN;
   const onToggle = useCallback(
-    (groupId: string) =>
+    (kindId: string) =>
       setHiding((current) => {
         const next = new Set(current.selection === selection ? current.hidden : NOTHING_HIDDEN);
-        if (!next.delete(groupId)) next.add(groupId);
+        if (!next.delete(kindId)) next.add(kindId);
         return { selection, hidden: next };
       }),
     [selection],
   );
   const groups = useMemo(() => (query.data === undefined ? [] : sidePointGroups(query.data)), [query.data]);
   const shown = useMemo(
-    () => groups.filter((group) => !hidden.has(group.id)).flatMap((group) => group.points),
+    () =>
+      groups
+        .flatMap((group) => group.kinds)
+        .filter((kind) => !hidden.has(kind.id))
+        .flatMap((kind) => kind.points),
     [groups, hidden],
   );
   if (edgeIds.length === 0) return null;
