@@ -9,6 +9,7 @@
     python scripts/review_checks.py metrics   # 定量メトリクスと総量の前回比
     python scripts/review_checks.py trigger   # 周期レビューの発火判定
     python scripts/review_checks.py friction  # 前のレビューより後の流れの摩擦の行（gh で置き場を読む）
+    python scripts/review_checks.py turns     # ユーザーの番と開発機が持っている issue の一覧（gh で置き場を読む）
     python scripts/review_checks.py change    # 変更の増減と規模の札（master との差分から）
 
 終了コード: `docs`は違反があれば1、`friction`は前回レビューのタグが無ければ1。どれも、測れずに止まれば（下の HEAD の遅れ等）0でない。
@@ -19,7 +20,8 @@
 
 `size`・`metrics`・`trigger`はプロジェクトの今の姿を HEAD から測るので、HEAD が origin/master より
 遅れていれば止まる（`scripts/checkout_freshness.py`）。`docs`は手元の作業ツリーそのものを検査し、
-`change`は origin/master との差分を報告するので、遅れに左右されない。`friction`はタグの時刻と置き場の issue だけを読む。
+`change`は origin/master との差分を報告するので、遅れに左右されない。`friction`はタグの時刻と置き場の issue だけを、`turns`は置き場の
+issue だけを読む。
 """
 
 from __future__ import annotations
@@ -53,7 +55,9 @@ SIZE_THRESHOLDS = REPO_ROOT / "scripts" / "size_thresholds.json"
 REVIEW_TAG_PREFIX = "periodic-review/"
 TRIGGER_DAYS = 14
 #: タスクの issue の置き場（名前はゲートの設定が持つ）。`friction`が gh で読む（gh のトークンが置き場を読めること）。
-TASKS_REPO = json.loads((REPO_ROOT / "tools" / "flow-gate" / "flow.config.json").read_text(encoding="utf-8"))["tasks"]
+#: ゲートの設定。置き場の名前と、ゲートが issue に書く欄・種類・ラベル・名義の名前の正本。
+FLOW_CONFIG = json.loads((REPO_ROOT / "tools" / "flow-gate" / "flow.config.json").read_text(encoding="utf-8"))
+TASKS_REPO = FLOW_CONFIG["tasks"]
 #: 流れの摩擦の行。担当の終え方の要約は、後始末が終わりのコメントへ `> ` で引用して写すので、引用と箇条書きの頭も拾う。
 FRICTION_RE = re.compile(r"^(> )?(- )?流れの摩擦:")
 TRIGGER_IMPL_LINES = 20_000
@@ -485,6 +489,71 @@ def cmd_friction(args: argparse.Namespace) -> int:
         after = found["pageInfo"]["endCursor"]
 
 
+# --- 番の一覧（開発機のセッションの始まりのフックが打つ） ------------------------
+
+#: 欄で絞る検索は新しい検索（ISSUE_ADVANCED）だけが受ける（ISSUE は `field.` を本文の語として探す）。
+TURNS_SEARCH = ("query($q:String!,$after:String){search(type:ISSUE_ADVANCED,query:$q,first:50,after:$after){"
+                "pageInfo{hasNextPage endCursor} nodes{...on Issue{number title issueType{name} labels(first:20){nodes{name}} "
+                "issueFieldValues(first:20){nodes{...on IssueFieldSingleSelectValue{name field{...on IssueFieldSingleSelect{name}}}}} "
+                "comments(last:1){nodes{body author{login}}}}}}}")
+QUESTION_LABEL = "問い: "
+
+
+def turn_lines(user_turn: list[dict], dev_held: list[dict]) -> list[str]:
+    """ユーザーの番（ゲートが担当者をユーザーにした issue）と、開発機が持っている issue（ラベル「開発機で作業中」）の一覧の行。
+
+    誰の番かはゲートが決めた担当者とラベルで読み、決め直さない。ユーザーの番は、ゲートが書いたステータスと種類で分けて並べる
+    （答えるもの（回答・保留）と、開発機で進める対話作業が分かれる）。行には、答えを待つ問いのラベルと、最後のコメントがゲートの
+    知らせ（問いでないもの。行き先が無くて閉じない等）ならその1行目を添える。どちらも空なら何も出さない。
+    """
+    status_field = FLOW_CONFIG["fields"]["status"]["name"]
+    gate = FLOW_CONFIG["gateBot"].removesuffix("[bot]")
+
+    def row(issue: dict) -> str:
+        asked = [label["name"] for label in issue["labels"]["nodes"] if label["name"].startswith(QUESTION_LABEL)]
+        last = issue["comments"]["nodes"][-1] if issue["comments"]["nodes"] else None
+        told = (last["body"].strip().split("\n")[0] if last and (last["author"] or {}).get("login") == gate
+                and not last["body"].startswith("## 問い") else None)
+        return "    " + " ".join([f"#{issue['number']}", issue["title"], *(f"[{a}]" for a in asked), *([f"— {told}"] if told else [])])
+
+    def group(issue: dict) -> str:
+        values = {v["field"]["name"]: v["name"] for v in issue["issueFieldValues"]["nodes"] if v.get("field")}
+        return "・".join(filter(None, [values.get(status_field, "ステータスなし"), (issue["issueType"] or {}).get("name")]))
+
+    lines = []
+    if user_turn:
+        lines.append(f"ユーザーの番（担当者 {FLOW_CONFIG['user']}）: {len(user_turn)}件")
+        groups: dict[str, list[dict]] = defaultdict(list)
+        for issue in user_turn:
+            groups[group(issue)].append(issue)
+        for name in sorted(groups):
+            lines.append(f"  {name}")
+            lines.extend(row(issue) for issue in sorted(groups[name], key=lambda i: i["number"]))
+    if dev_held:
+        lines.append(f"開発機が持っている（ラベル「{FLOW_CONFIG['devLabel']}」）: {len(dev_held)}件")
+        lines.extend(row(issue) for issue in sorted(dev_held, key=lambda i: i["number"]))
+    return lines
+
+
+def _search_all(query: str) -> list[dict]:
+    found, after = [], None
+    while True:
+        page = gh_graphql(TURNS_SEARCH, q=query, after=after)["search"]
+        found += page["nodes"]
+        if not page["pageInfo"]["hasNextPage"]:
+            return found
+        after = page["pageInfo"]["endCursor"]
+
+
+def cmd_turns(args: argparse.Namespace) -> int:
+    base = f"repo:{TASKS_REPO} is:issue is:open"
+    lines = turn_lines(_search_all(f"{base} assignee:{FLOW_CONFIG['user']}"),
+                       _search_all(f'{base} label:"{FLOW_CONFIG["devLabel"]}"'))
+    for line in lines:
+        print(line)
+    return 0
+
+
 # --- 差分の報告（作業者が自分の差分に対して打つ。検査ではない） -----------------
 
 #: .claude/skills/file-issue/SKILL.md「規模の札」の閾値（実装＋テストの変更行の上限）。
@@ -546,6 +615,7 @@ def main() -> int:
         ("docs", "文書の整合（常に全件）", cmd_docs, False),
         ("metrics", "定量メトリクスと総量の前回比", cmd_metrics, True),
         ("friction", "前のレビューより後の流れの摩擦の行", cmd_friction, False),
+        ("turns", "ユーザーの番と開発機が持っている issue の一覧", cmd_turns, False),
     ):
         p = sub.add_parser(name, help=help_text)
         p.set_defaults(func=func, measures_head=measures_head)

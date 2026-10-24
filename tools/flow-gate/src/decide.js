@@ -80,8 +80,8 @@ function alive(f, q, config) {
 }
 
 // 受け入れなかった書き込みは、黙らずに1つのコメントで知らせる（形に合わない問い・印の間の見知らぬ行・形の合わない着手可能日時・
-// 事実へ戻したユーザーのボードの移動）と、行き先の無い「やること」で閉じなかった理由と、親が閉じたので閉じた子の理由と、長く動いていない
-// 前提の対話作業。最新のコメントが同じ知らせなら書かない。
+// 事実へ戻したユーザーのボードの移動）と、行き先の無い「やること」で閉じなかった理由と、親が閉じたので閉じた子の理由。最新のコメントが
+// 同じ知らせなら書かない。
 function notice(f, status, config) {
   const text = [f.badQuestion.length && `この問いは形が外れているので、回答フォームは回答内容を出さずに、書く欄と次遷移だけで答えを受けます: ${f.badQuestion.join("・")}`,
     splitBody(f.body).foreign.length && "本文の先頭の印の間に、ゲートの書かない行があったので、消さずに印の外へ出しました。",
@@ -92,15 +92,11 @@ function notice(f, status, config) {
     status === "実装" && !f.remaining.length && f.unbound.length && !f.comments.some((c) => c.includes(unboundText(f.unbound))) &&
       `${unboundText(f.unbound)}ので、完了の条件が全部済んでも完成で閉じず、実装担当へ渡します（\`- 行き先: 完了の条件「<条件の文の頭>」\`・\`#<番号>\`・\`見送り（<理由>）\`）。`,
     f.dead && f.open && `親 #${f.parent.number} が閉じたので、見送りで閉じます。`,
-    // 担当者は Claude なので、ユーザーへ届くようにメンションする。
-    status === "待機" && f.idle.length && !f.comments.some((c) => c.includes(idleText(f.idle, config))) &&
-      `@${config.user} ${idleText(f.idle, config)}。対話作業を終えたなら閉じてください（閉じるまで、このタスクは待ったまま振り出しません）。`,
   ].filter(Boolean).join("\n\n");
   return text && text !== f.comments.at(-1) ? text : null;
 }
 
 const unboundText = (names) => `本文の「やること」の ${names.join("・")} が行き先を名指していない`;
-const idleText = (idle, config) => `前提の対話作業 ${idle.map((n) => `#${n}`).join("・")} が ${config.dialogIdleHours} 時間より長く動いていません`;
 
 // 入口で採否を問う issue: Claude が起こした要望。子と分割元のある切り出しは、採否を親か元から受け継ぐ。
 export const adoptable = (f, config) => f.author === config.claude && f.type === "要望" && !f.parent && !f.origin;

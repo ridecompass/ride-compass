@@ -41,9 +41,7 @@ export function world(list, { workflow = "active", last = [], steps = [] } = {})
   const f = config.fields;
   const fields = (i) => ({ nodes: [[f.status, i.status], [f.run, i.run], [f.priority, i.priority], [f.start, i.start]].filter(([, v]) => v)
     .map(([field, v]) => ({ ...(field.id && !field.options ? { value: v } : { name: v }), field: { name: field.name } })) });
-  // 前提の最後に動いた時刻は、置いたときに決めた時刻（i.updated）が無ければ今。
-  const near = (n) => ({ number: n, state: w.at(n).state, stateReason: w.at(n).reason, issueType: w.at(n).type && { name: w.at(n).type },
-    updatedAt: w.at(n).updated ?? new Date().toISOString() });
+  const near =(n) => ({ number: n, state: w.at(n).state, stateReason: w.at(n).reason });
   const blocked = (i) => ({ nodes: i.blockedBy.map(near) });
   const children = (i) => ({ nodes: [...w.issues.values()].filter((k) => k.parent === i.n).map((k) => near(k.n)) });
   // 矢印1本でつながる issue（src/facts.js: relationsOf の形）。

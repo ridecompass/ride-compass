@@ -1,4 +1,4 @@
-"""`scripts/review_checks.py`の差分の報告（`change`）と総量（`metrics`）と流れの摩擦の拾い方（`friction`）と、文書の整合（`docs`）の実在の母集団のテスト。
+"""`scripts/review_checks.py`の差分の報告（`change`）と総量（`metrics`）と流れの摩擦の拾い方（`friction`）と番の一覧の組み方（`turns`）と、文書の整合（`docs`）の実在の母集団のテスト。
 
 履歴は一時的なgitリポジトリで作る。
 
@@ -6,8 +6,8 @@
 ファイルを実在に数えることだけを通す（名指しの検査と食い違うと、同じファイルを片方だけが無いと言う）。`trigger`の中身と、`size`の表・発火は
 周期レビューで人が読む出力で、ここでは通さない。`trigger`が発火したときだけ出す形は、誰も読まないセッションの始まりの
 フックが使うので通す。`size`の「閾値の見直し」と、種類ごとの上限に当たるファイルへ置いた
-ファイルごとの閾値を無視することは、緩んだ閾値に誰も気づかなくなるので通す。`friction`の gh で置き場を読む部分は
-本物の置き場でしか通らないので、ここではコメントから行を拾う判断と、前のコメントを読みに行くかの判断だけを通す。
+ファイルごとの閾値を無視することは、緩んだ閾値に誰も気づかなくなるので通す。`friction`・`turns`の gh で置き場を読む部分は
+本物の置き場でしか通らないので、ここではコメントから行を拾う判断と、前のコメントを読みに行くかの判断と、読んだ issue から一覧の行を組む判断だけを通す。
 """
 
 import argparse
@@ -251,3 +251,36 @@ def test_friction_reads_earlier_comments_only_while_they_can_be_after_the_review
 
     assert [c["createdAt"] for c in rc.comments_since(first, since, read_earlier)] == want
     assert len(asked) == reads
+
+
+def _issue(number: int, status: str, kind: str, labels: tuple[str, ...] = (), last: tuple[str, str] | None = None) -> dict:
+    """検索（`TURNS_SEARCH`）が返す issue の形。last は最後のコメントの（書いた名義, 本文）。"""
+    field = rc.FLOW_CONFIG["fields"]["status"]["name"]
+    return {"number": number, "title": f"題{number}", "issueType": {"name": kind}, "labels": {"nodes": [{"name": n} for n in labels]},
+            "issueFieldValues": {"nodes": [{"name": status, "field": {"name": field}}, {}]},
+            "comments": {"nodes": [{"author": {"login": last[0]}, "body": last[1]}] if last else []}}
+
+
+def test_turns_groups_the_users_turn_by_status_and_type_and_shows_questions_and_the_gates_last_notice():
+    """開発機のセッションの始まりに、聞かなくても誰の番で何を待っているかが分かる一覧。答えるもの（回答・保留）と開発機で進める対話作業が
+    混ざると、止まった対話作業が判断の問いの中に埋もれる。"""
+    gate = rc.FLOW_CONFIG["gateBot"].removesuffix("[bot]")
+    dialog = rc.FLOW_CONFIG["dialogType"]
+    lines = rc.turn_lines(
+        [_issue(12, "回答", "要望", ("問い: 確かめ",), (gate, "## 問い（確かめ）\n本文")),
+         _issue(3, "実装", dialog, last=(gate, "本文の「やること」の 1 が行き先を名指していないので、完成で閉じず\n続き")),
+         _issue(5, "実装", dialog, last=(rc.FLOW_CONFIG["claude"], "計測した")),
+         _issue(4, "回答", "要望", ("問い: 判断",))],
+        [_issue(9, "実装", "不具合")])
+    assert lines == [
+        f"ユーザーの番（担当者 {rc.FLOW_CONFIG['user']}）: 4件",
+        "  回答・要望",
+        "    #4 題4 [問い: 判断]",
+        "    #12 題12 [問い: 確かめ]",
+        f"  実装・{dialog}",
+        "    #3 題3 — 本文の「やること」の 1 が行き先を名指していないので、完成で閉じず",
+        "    #5 題5",
+        f"開発機が持っている（ラベル「{rc.FLOW_CONFIG['devLabel']}」）: 1件",
+        "    #9 題9",
+    ]
+    assert rc.turn_lines([], []) == [], "誰の番の issue も無ければ、セッションの始まりに何も出さない"
