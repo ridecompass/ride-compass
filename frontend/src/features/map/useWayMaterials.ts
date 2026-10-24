@@ -10,7 +10,7 @@
 
 import { useQueries, type QueryObserverResult } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
-import { mergeTileValues, tilesCoveringViewport } from "@/features/map/layers/dynamicWayValues";
+import { mergeTileValues, NO_VIEWPORT_TILES, tilesCoveringViewport } from "@/features/map/layers/dynamicWayValues";
 import type { WayMaterials } from "@/features/map/scene/groups/axisLines";
 import { tileQueryOptions } from "@/features/map/tileQueries";
 import type { DedicatedWayValueAxis } from "@/lib/mapDisplay/axisLayers";
@@ -39,6 +39,8 @@ interface WayMaterialsFetch {
    * 「まだ取りに行っていない」と「取得したが値が無かった」を呼び出し側が区別するために使う
    * （`mapLayers.ts: deriveFetchLayerStatus`）。 */
   hasFetched: boolean;
+  /** 上限で画面の端のタイルを取らなかったか。 */
+  truncated: boolean;
 }
 
 const EMPTY_RESULTS: ReadonlyMap<string, WayMaterialsFetch> = new Map();
@@ -56,12 +58,13 @@ function axisQuery(axis: DedicatedWayValueAxis, conditions: RideConditions): Way
 }
 
 /** 1軸の、表示中のタイルごとの結果をまとめる。 */
-function axisFetch(results: readonly TileResult[]): WayMaterialsFetch {
+function axisFetch(results: readonly TileResult[], truncated: boolean): WayMaterialsFetch {
   return {
     materials: mergeTileValues(results.flatMap((result) => (result.data ? [result.data.values] : []))),
     loading: results.some((result) => result.isFetching),
     error: results.some((result) => result.data?.error === true),
     hasFetched: results.some((result) => result.isFetched || result.isPlaceholderData),
+    truncated,
   };
 }
 
@@ -78,8 +81,11 @@ export function useWayMaterials(
   const debouncedViewport = useDebouncedValue(mapViewport, MAP_FETCH_DEBOUNCE_MS);
   const debouncedConditions = useDebouncedValue(conditions, MAP_FETCH_DEBOUNCE_MS);
 
-  const tiles = useMemo(
-    () => (debouncedViewport ? tilesCoveringViewport(debouncedViewport, ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM) : []),
+  const { tiles, truncated } = useMemo(
+    () =>
+      debouncedViewport
+        ? tilesCoveringViewport(debouncedViewport, ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM)
+        : NO_VIEWPORT_TILES,
     [debouncedViewport],
   );
   // 問い合わせは軸の順に、軸ごとにタイルの数ずつ並ぶ。結果が変わらない限り同じ参照を返すよう、まとめ方は並びが
@@ -91,10 +97,10 @@ export function useWayMaterials(
         : new Map(
             axes.map((axis, index) => [
               axis.axisId,
-              axisFetch(results.slice(index * tiles.length, (index + 1) * tiles.length)),
+              axisFetch(results.slice(index * tiles.length, (index + 1) * tiles.length), truncated),
             ]),
           ),
-    [axes, tiles.length],
+    [axes, tiles.length, truncated],
   );
   return useQueries(
     {

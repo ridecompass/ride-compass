@@ -19,7 +19,7 @@ import functools
 import numpy as np
 import pytest
 
-from app.batch import derive_counts, derive_elevation, derive_topology
+from app.batch import derive_elevation, derive_topology
 from app.batch.dem_tile_store import PRODUCT_PRIORITY
 from app.batch.ingest import SourceRecord
 from app.domain.attributes import CategoricalColumn
@@ -28,6 +28,7 @@ from app.domain.region import EDGE_UNIT_MIN_ZOOM, BoundingBox
 from tests.conftest import raw_connection
 from tests.source_ingest import (
     dem_tile_records,
+    derive_counts_at_default_tuning,
     derive_nodes_at_default_radius,
     ingest_records,
     point_record,
@@ -62,7 +63,7 @@ async def _derive_world() -> None:
         await derive_topology.derive(conn)
         await derive_elevation.derive(conn, previous=None)
         await derive_nodes_at_default_radius(conn)
-        await derive_counts.derive(conn)
+        await derive_counts_at_default_tuning(conn)
 
 
 async def test_a_segment_on_the_map_has_the_materials_the_search_reads_for_it(road_graph_repository):

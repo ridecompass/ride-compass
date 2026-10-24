@@ -23,8 +23,10 @@ from app.domain.geo import degrees_covering_m
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, stop_poi_map_group_sql
 from app.domain.registry import PrimaryAttributeSpec, TileKind
 from app.domain.stop_place import StopPlaceGroup
-from app.domain.traffic import POI_CLUSTER_EPS_M, STOP_POI_KINDS, stop_kind_sql
+from app.domain.traffic import STOP_POI_KINDS, stop_kind_sql
+from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
 from app.infrastructure.cache_identity import shape_digest
+from app.infrastructure.derived_data_meta import recorded_tuning_sql
 from app.infrastructure.source_models import COVERAGE_SQL
 from app.infrastructure.source_models import NODES_SOURCE_SQL, accidents_within_sql
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, TILE_BUFFER
@@ -51,15 +53,16 @@ _CONVENIENCE_GROUP = bindparam("convenience_group", value=StopPlaceGroup.CONVENI
 _POI_KIND_EXPR = stop_kind_sql("nm")
 _POI_GROUP_EXPR = stop_poi_map_group_sql("nm")
 
-#: クラスタ化のためにタイルの外側も読む幅（度）。タイル境界で塊が切れると、同じ交差点が
-#: 隣り合うタイルで別々の点になる。境目の外へ`POI_CLUSTER_EPS_M`ずつ2つ先まで連なる点を読む
-#: （塊の間隔はWeb Mercatorのmで測り、その1mは地面では1m以下なので、地面のmで覆えば足りる）。
-_POI_CLUSTER_PAD_DEG = degrees_covering_m(2 * POI_CLUSTER_EPS_M)
+#: 地面の1mを覆う度。クラスタ化のためにタイルの外側も読む幅は、まとめる距離からSQLの中で作る。
+_DEGREES_PER_M = degrees_covering_m(1.0)
 
-# 停止要因POI・補給POIを1タイルへ焼き込む。
+# 停止要因POI・補給POIを1タイルへ焼き込む。停止要因は数える側（`batch/derive_counts.py`）と同じく、派生を作り直したときの
+# まとめる距離でまとめる。タイル境界で塊が切れると、同じ交差点が隣り合うタイルで別々の点になるので、境目の外へまとめる距離
+# ずつ2つ先まで連なる点を読む（塊の間隔はWeb Mercatorのmで測り、その1mは地面では1m以下なので、地面のmで覆えば足りる）。
 _POI_TILE_MVT_SQL = text(
     f"""
-    WITH coverage AS ({COVERAGE_SQL})
+    WITH coverage AS ({COVERAGE_SQL}),
+    cluster AS (SELECT {recorded_tuning_sql(STOP_CLUSTER_DISTANCE_ID)} AS eps_m)
     SELECT
         coverage.covered,
         CASE WHEN coverage.covered THEN (
@@ -85,7 +88,7 @@ _POI_TILE_MVT_SQL = text(
                                CASE WHEN nm.kind = ANY(:stop_kinds) THEN
                                    'c' || ST_ClusterDBSCAN(
                                        ST_Transform(p.geom, 3857),
-                                       eps := :cluster_eps_m, minpoints := 1
+                                       eps := (SELECT eps_m FROM cluster), minpoints := 1
                                    ) OVER (PARTITION BY {_POI_GROUP_EXPR})
                                ELSE 'n' || p.osm_node_id END AS cluster_key,
                                NULL::text AS name
@@ -95,7 +98,7 @@ _POI_TILE_MVT_SQL = text(
                               p.geom,
                               ST_Expand(
                                   ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326),
-                                  :cluster_pad_deg))
+                                  (SELECT 2 * eps_m * :degrees_per_m FROM cluster)))
                         UNION ALL
                         -- 補給POIのコンビニは立ち寄り先の群「コンビニ」の行から出す。群の値が種別の値。
                         SELECT s.place_group, s.place_group, s.geom,
@@ -115,8 +118,7 @@ _POI_TILE_MVT_SQL = text(
     """
 ).bindparams(
     bindparam("stop_kinds", value=sorted(STOP_POI_KINDS), type_=ARRAY(Text())),
-    bindparam("cluster_eps_m", value=POI_CLUSTER_EPS_M, type_=Float()),
-    bindparam("cluster_pad_deg", value=_POI_CLUSTER_PAD_DEG, type_=Float()),
+    bindparam("degrees_per_m", value=_DEGREES_PER_M, type_=Float()),
     _CONVENIENCE_GROUP,
 )
 

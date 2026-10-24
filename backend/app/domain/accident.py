@@ -8,17 +8,6 @@ from enum import StrEnum
 
 from app.domain.material_sql import sql_literals
 
-# 事故地点を道路へスナップする際の探索半径。事故点はOSMの要素ではないため、信号・交差点の
-# ように「wayの構成ノードか」で帰属を決められず、距離で最も近い道路を選ぶしかない。
-# 緯度経度は本票の度分秒表記からの変換値でOSM nodeよりジオコーディング精度が粗いため、
-# 半径は大きめに採る。
-ACCIDENT_MATCH_MAX_DISTANCE_M = 30.0
-
-# 死亡事故の重み。件数を単純にCOUNTすると軽傷の物損に近い事故と死亡事故が同じ1件として
-# 扱われ、最も避けたい重大事故のリスクが薄まるため、死亡事故はこの件数分として積算する
-# （「死亡事故は軽傷事故の3件分のリスク」という意味づけの値で、実測から導いたものではない）。
-ACCIDENT_FATAL_WEIGHT = 3.0
-
 
 class PartyType(StrEnum):
     """当事者種別のうち、判定が名指すもの。"""
@@ -46,3 +35,15 @@ FATAL_SQL = "coalesce(a.deaths, 0) > 0"
 _BICYCLE_PARTY_LIST = sql_literals(sorted(BICYCLE_PARTY_TYPES))
 #: 当事者のどちらかが自転車なら自転車関連事故とみなす式。
 BICYCLE_SQL = f"(a.party_type_a IN ({_BICYCLE_PARTY_LIST}) OR a.party_type_b IN ({_BICYCLE_PARTY_LIST}))"
+
+
+def nearest_edge_sql(match_deg: str, match_m: str) -> str:
+    """事故を付ける区間（`osm_way_id`・`segment_index`の1行）を引く`LATERAL`の副問い合わせ。事故から`match_m`（地上のm）以内で
+    最も近い区間で、等距離なら鍵の小さい方。`match_deg`は`match_m`を覆う度（前置フィルタの箱）。鍵の2列は同じ1回の探索から
+    取る——別々に探すと、等距離のタイで実在しない組を指しうる。"""
+    return f"""(
+    SELECT e.osm_way_id, e.segment_index FROM road_edges e
+    WHERE e.geom && ST_Expand(a.geom, {match_deg})
+      AND ST_DWithin(e.geom::geography, a.geom::geography, {match_m})
+    ORDER BY ST_Distance(e.geom::geography, a.geom::geography), e.osm_way_id, e.segment_index
+    LIMIT 1)"""

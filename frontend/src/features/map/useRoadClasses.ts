@@ -5,7 +5,7 @@
 
 import { useQueries, type QueryObserverResult } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { mergeTileValues, tilesCoveringViewport } from "@/features/map/layers/dynamicWayValues";
+import { mergeTileValues, NO_VIEWPORT_TILES, tilesCoveringViewport } from "@/features/map/layers/dynamicWayValues";
 import { fetchRoadClasses, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM } from "@/features/map/regionApi";
 import type { RoadClassValues } from "@/features/map/scene/groups/roadLines";
 import { tileQueryOptions } from "@/features/map/tileQueries";
@@ -20,13 +20,15 @@ export interface RoadClassesFetch {
   loading: boolean;
   /** 表示中のタイルのどれかの取得が通信失敗したか。 */
   error: boolean;
+  /** 上限で画面の端のタイルを取らなかったか。 */
+  truncated: boolean;
 }
 
 type TileResult = QueryObserverResult<Awaited<ReturnType<typeof fetchRoadClasses>>>;
 
 // 結果が変わらない限り同じ参照を返すよう、まとめ方はモジュールに1つだけ置く（`useQueries`は関数の参照が同じなら
 // まとめ直さない）。
-function combine(results: TileResult[]): RoadClassesFetch {
+function combine(results: TileResult[]): Omit<RoadClassesFetch, "truncated"> {
   return {
     values: mergeTileValues(results.flatMap((result) => (result.data ? [result.data.values] : []))),
     loading: results.some((result) => result.isFetching),
@@ -41,11 +43,12 @@ export function useRoadClasses(
   generation: string,
 ): RoadClassesFetch {
   const viewport = useDebouncedValue(mapViewport, MAP_FETCH_DEBOUNCE_MS);
-  const tiles = useMemo(
-    () => (enabled && viewport ? tilesCoveringViewport(viewport, ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM) : []),
+  const { tiles, truncated } = useMemo(
+    () =>
+      enabled && viewport ? tilesCoveringViewport(viewport, ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM) : NO_VIEWPORT_TILES,
     [enabled, viewport],
   );
-  return useQueries(
+  const fetched = useQueries(
     {
       queries: tiles.map((tile) =>
         tileQueryOptions(
@@ -60,4 +63,5 @@ export function useRoadClasses(
     },
     getQueryClient(),
   );
+  return useMemo(() => ({ ...fetched, truncated }), [fetched, truncated]);
 }
