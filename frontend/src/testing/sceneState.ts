@@ -30,6 +30,7 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
     travelledKm: null,
     selectedRouteSegment: null,
     sidePoints: [],
+    chosenSidePoint: null,
     ...rest,
     look: {
       dynamicWeather: {},

@@ -47,6 +47,13 @@ const ROWS: readonly SidePointRow[] = POINT_LAYERS.flatMap((layer) =>
 
 const MARK_ROLE = "mark";
 
+// 選んだ施設の印を囲む枠。印（絵の大きさの丸）の外に、間を空けて描く。
+const CHOSEN_RING_RADIUS_PX = POINT.iconSizePx / 2 + 3;
+const CHOSEN_RING_WIDTH_PX = 2.5;
+/** 選んだ施設の枠の外の縁までの半径。小窓をこれだけずらして、枠を覆わない。 */
+export const CHOSEN_SIDE_POINT_OUTER_RADIUS_PX = CHOSEN_RING_RADIUS_PX + CHOSEN_RING_WIDTH_PX;
+const CHOSEN_SOURCE = sceneSourceId("side-point-chosen");
+
 const ROW_BY_MARK_LAYER = new Map(ROWS.map((row) => [sceneLayerId(row.source, MARK_ROLE), row]));
 
 /** 押された地物のレイヤーidが近くの点の印なら、その行。 */
@@ -57,6 +64,8 @@ export function sidePointRowOfSceneLayer(sceneLayerIdOfFeature: string): SidePoi
 export type SidePointState = {
   /** 描く点（利用者が出すのをやめた種類は除いたもの）。 */
   readonly points: readonly RoutePoint[];
+  /** 小窓に中身を出している施設の印の位置（束ねた印なら束の位置）。無ければnull。 */
+  readonly chosen: readonly [number, number] | null;
 };
 
 function feature(point: RoutePoint): Feature<Point> {
@@ -110,7 +119,7 @@ export const sidePointGroup = declareGroup<SidePointState>((state) => {
   }
   const rows = ROWS.filter((row) => byRow.has(row));
 
-  const sources: readonly SceneSourceEntry[] = rows.map((row) => ({
+  const markSources: readonly SceneSourceEntry[] = rows.map((row) => ({
     id: row.source,
     spec: {
       type: "geojson",
@@ -122,7 +131,7 @@ export const sidePointGroup = declareGroup<SidePointState>((state) => {
     data: { type: "FeatureCollection", features: byRow.get(row)! } satisfies FeatureCollection<Point>,
   }));
 
-  const layers: readonly SceneLayerEntry[] = rows.flatMap((row): SceneLayerEntry[] => [
+  const markLayers: readonly SceneLayerEntry[] = rows.flatMap((row): SceneLayerEntry[] => [
     {
       role: MARK_ROLE,
       tier: "sidePoint",
@@ -156,5 +165,43 @@ export const sidePointGroup = declareGroup<SidePointState>((state) => {
     },
   ]);
 
-  return { sources, layers, images: POINT_IMAGES };
+  const { chosen } = state;
+  const chosenSources: readonly SceneSourceEntry[] =
+    chosen === null
+      ? []
+      : [
+          {
+            id: CHOSEN_SOURCE,
+            spec: { type: "geojson" },
+            data: {
+              type: "FeatureCollection",
+              features: [{ type: "Feature", geometry: { type: "Point", coordinates: [...chosen] }, properties: {} }],
+            } satisfies FeatureCollection<Point>,
+          },
+        ];
+  const chosenLayers: readonly SceneLayerEntry[] =
+    chosen === null
+      ? []
+      : [
+          {
+            role: "ring",
+            tier: "sidePoint",
+            source: CHOSEN_SOURCE,
+            type: "circle",
+            paint: {
+              "circle-radius": CHOSEN_RING_RADIUS_PX,
+              "circle-opacity": 0,
+              "circle-stroke-width": CHOSEN_RING_WIDTH_PX,
+              "circle-stroke-color": palette.semantic.selected_point,
+            },
+            visible: true,
+            hitTargets: [],
+          },
+        ];
+
+  return {
+    sources: [...markSources, ...chosenSources],
+    layers: [...markLayers, ...chosenLayers],
+    images: POINT_IMAGES,
+  };
 });
