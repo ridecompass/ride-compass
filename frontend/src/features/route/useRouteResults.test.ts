@@ -5,8 +5,8 @@
  * タブを選び替える・入れ替える・消すと、押した区間を外す。
  *
  * ここで見ないもの:
- * - 候補の並び（所要時間の短い順）・一覧の見出しと名前 → `useRouteGeneration.test.ts`・`routeTabLabel.test.ts`
- * - 状態の描き方（タブ・区間の詳細・元との違い） → `RouteOutcome/RouteOutcome.test.tsx`・`EditDifference/EditDifference.test.tsx`
+ * - 候補の並び（所要時間の短い順）・一覧の見出しと名前 → `useRouteGeneration.result.test.ts`・`routeTabLabel.test.ts`
+ * - 状態の描き方（タブ・区間の詳細・元との違い） → `RouteOutcome/RouteOutcome.test.tsx`・`RouteOutcome/RouteOutcome.selected.test.tsx`・`EditDifference/EditDifference.test.tsx`
  * - 生成・乗り換えの結果を入れる受け渡しと、地図に描くルート → `app/page.test.tsx`
  *
  * 編集の元が一覧に無いとき（`selectedEdit.origin`がnull）は通さない: 編集は一覧にあるルートからしか作れず、一覧を
