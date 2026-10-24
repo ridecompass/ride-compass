@@ -5,7 +5,7 @@
  * 出発地の印と名前で押せない）、押した地点を選んで上げること、経由地を足す操作の上限、並びに出ている地点を全部消す操作。
  *
  * ここで見ないもの: 選んでいる地点をどう決めるか（何も選んでいない・選んだ経由地が消えた・探して足した経由地を選ぶ）
- * → `features/route/useGenerationConditions.test.ts`。押した地点の詳しくの中身 → `RouteForm/RouteForm.pointDetail.test.tsx`。
+ * → `features/route/useGenerationConditions.points.test.ts`。押した地点の詳しくの中身 → `RouteForm/RouteForm.pointDetail.test.tsx`。
  * 並びに入りきらないときに両端の札を印だけにすること（テスト環境はレイアウトの実寸を持たない）→ `e2e/all-states.spec.ts`の
  * 省略の検査（名前を途中で切っていないこと）。印の役割ごとの背景色（書いた定数をそのまま渡す）。
  *
