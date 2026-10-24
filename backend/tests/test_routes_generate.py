@@ -42,6 +42,7 @@ from tests.road_class_fixture import classification, fact_is, map_layer, replace
 from tests.route_world import (
     AVOID_AXIS,
     CENTER,
+    COORDINATES,
     HIGHWAY,
     NORTH_EAST,
     SOUTH_WEST,
@@ -198,6 +199,38 @@ async def test_a_spliced_route_is_evaluated_as_sent(client, body):
     spliced = (await _generate(client, **body, spliced_edge_ids=route["edge_ids"]))["result"]
 
     assert [r["edge_ids"] for r in spliced["routes"]] == [route["edge_ids"]]
+
+
+#: 格子のノードの鍵→その地点（応答の`node_ids`から経由地を置き直す）。
+POINT_OF_NODE = {node_key(osm): _point(osm) for osm in COORDINATES}
+
+
+async def test_a_spliced_route_lists_the_placed_waypoints_where_it_passes_them(client):
+    """乗り換えて組んだ経路も、置いた経由地を通る所の道のりを置いた順に返す——空だと道のりのグラフに経由地の印が出ない。"""
+    body = {**_point(SOUTH_WEST), "destination": _point(NORTH_EAST), "distance_km": None}
+    (route, *_) = (await _generate(client, **body, max_routes=1))["result"]["routes"]
+    first, *_, last = route["node_ids"][1:-1]
+    waypoints = [POINT_OF_NODE[first], POINT_OF_NODE[last]]
+    (via, *_) = (await _generate(client, **body, waypoints=waypoints, max_routes=1))["result"]["routes"]
+
+    (spliced,) = (await _generate(client, **body, waypoints=waypoints, spliced_edge_ids=via["edge_ids"]))["result"]["routes"]
+
+    assert len(spliced["waypoint_distances_km"]) == len(waypoints)
+    assert spliced["waypoint_distances_km"] == via["waypoint_distances_km"]
+
+
+async def test_a_spliced_route_that_skips_a_placed_waypoint_lists_none_of_them(client):
+    """置いた順に通らない経由地が1つでもあれば、どれも返さない——通った分だけを並べると、何番目の経由地かがずれる。"""
+    body = {**_point(SOUTH_WEST), "destination": _point(NORTH_EAST), "distance_km": None}
+    (route, *_) = (await _generate(client, **body, max_routes=1))["result"]["routes"]
+    first, *_, last = route["node_ids"][1:-1]
+
+    # 経路は`last`を`first`より後に通るので、`last`→`first`の順には通らない。
+    (spliced,) = (await _generate(
+        client, **body, waypoints=[POINT_OF_NODE[last], POINT_OF_NODE[first]], spliced_edge_ids=route["edge_ids"],
+    ))["result"]["routes"]
+
+    assert spliced["waypoint_distances_km"] == []
 
 
 async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(client, world, monkeypatch):

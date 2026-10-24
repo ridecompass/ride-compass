@@ -106,9 +106,10 @@ class NoDistanceTarget:
 @dataclass(frozen=True)
 class SplicedTarget:
     """区間を差し替えて組み立てた経路を、探索せずに評価する。経路は出発地から始まり、終点（目的地、無ければ出発地）で
-    終わらなければならない（周回の候補どうしを乗り換えた経路も、出発地へ戻ることを評価の前に確かめる）。"""
+    終わらなければならない（周回の候補どうしを乗り換えた経路も、出発地へ戻ることを評価の前に確かめる）。置いた経由地は
+    探索に使わず、組んだ経路の中で通る所を求めるためだけに持つ。"""
 
-    destination: Coordinates | None
+    points: FixedPoints
     edge_ids: tuple[str, *tuple[str, ...]]
 
 

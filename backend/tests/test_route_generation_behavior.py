@@ -186,7 +186,8 @@ async def test_spliced_route_is_evaluated_as_sent(engine_over):
     (candidate, *_) = await generator.generate_via_waypoints(
         at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=1, start_time=DEPARTURE)
 
-    spliced = await generator.generate_spliced_route(at(SOUTH_WEST), at(NORTH_EAST), candidate.edge_ids, start_time=DEPARTURE)
+    spliced = await generator.generate_spliced_route(
+        at(SOUTH_WEST), FixedPoints(waypoints=[], destination=at(NORTH_EAST)), candidate.edge_ids, start_time=DEPARTURE)
 
     assert [c.edge_ids for c in spliced] == [candidate.edge_ids]
 
@@ -210,7 +211,8 @@ async def test_a_spliced_route_the_road_network_cannot_trace_is_refused(
 
     with caplog.at_level(logging.DEBUG):
         assert await generator.generate_spliced_route(
-            at(origin), None if destination is None else at(destination), edges(candidate.edge_ids),
+            at(origin), FixedPoints(waypoints=[], destination=None if destination is None else at(destination)),
+            edges(candidate.edge_ids),
             start_time=DEPARTURE) == []
 
     levels = [r.levelno for r in caplog.records if re.search(r"osm-node-|way-\d", r.getMessage())]
@@ -227,7 +229,7 @@ async def test_a_spliced_route_is_refused_when_the_destination_cannot_be_snapped
     nowhere = Coordinates(latitude=corner.latitude + 2 * MAX_SNAP_CORRECTION_KM / KM_PER_DEGREE_LATITUDE, longitude=corner.longitude)
 
     assert await generator.generate_spliced_route(
-        at(SOUTH_WEST), nowhere, candidate.edge_ids, start_time=DEPARTURE) == []
+        at(SOUTH_WEST), FixedPoints(waypoints=[], destination=nowhere), candidate.edge_ids, start_time=DEPARTURE) == []
 
 
 # --- 候補の選び方 ---
@@ -659,7 +661,7 @@ async def test_loops_spliced_together_are_evaluated_as_one_route_back_to_the_ori
         at(CENTER), 4.0, 1.5, max_routes=5, start_time=DEPARTURE, points=NO_POINTS)
     edges = _spliced_at_a_shared_node(candidates)
 
-    (spliced,) = await generator.generate_spliced_route(at(CENTER), None, tuple(edges), start_time=DEPARTURE)
+    (spliced,) = await generator.generate_spliced_route(at(CENTER), NO_POINTS, tuple(edges), start_time=DEPARTURE)
 
     assert spliced.edge_ids == edges
     assert_connected(spliced, CENTER, CENTER)
