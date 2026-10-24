@@ -87,13 +87,13 @@ function namedSpotOf(feature: MapGeoJSONFeature): PlaceCandidate | null {
   return { kind: "facility", level: "point", name, area: null, latitude, longitude };
 }
 
-/** 点の地物が名前のある施設か（束ねた印なら、名前のある施設を含むか）。点でない対象は常に開く。 */
+/** 点の地物が名前のある施設か（近くの点は、地物を組むときに載せた印で読む。束ねた印なら、名前のある施設を含むか）。点でない対象は
+ * 常に開く。ポインタを動かすたびに呼ぶので、名前だけを見て、点の形には触らない。 */
 function opensPopup(feature: MapGeoJSONFeature, target: string): boolean {
-  if (target === POINT_HIT_TARGET) return namedSpotOf(feature) !== null;
-  if (target !== SIDE_POINT_HIT_TARGET) return true;
-  if (feature.properties.cluster === true) return Number(feature.properties[SIDE_POINT_NAMED_PROPERTY]) > 0;
-  const row = sidePointRowOfSceneLayer(feature.layer.id);
-  return row !== undefined && pointPlaceName(row.layer, feature.properties) !== null;
+  if (target === SIDE_POINT_HIT_TARGET) return Number(feature.properties[SIDE_POINT_NAMED_PROPERTY]) > 0;
+  if (target !== POINT_HIT_TARGET) return true;
+  const point = pointLayerOfSceneLayer(feature.layer.id);
+  return point !== undefined && pointPlaceName(point, feature.properties) !== null;
 }
 
 /** 地図を押す・なぞる操作を結ぶ。状態は押した瞬間に`current`から読む。外すときは返した関数を呼ぶ。 */

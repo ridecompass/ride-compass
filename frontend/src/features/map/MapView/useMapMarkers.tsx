@@ -103,10 +103,9 @@ interface MapMarkersInputs {
   onOriginMove: (coordinates: Coordinates) => void;
   onWaypointMove: (index: number, coordinates: Coordinates) => void;
   onDestinationMove: (coordinates: Coordinates) => void;
-  /** 地点の印を押したとき（押した地点とその位置）。 */
-  onPointPress: (target: PointTarget, at: Coordinates) => void;
-  /** 動かせない間に、押すと何かが起きる印か。起きる印にだけ押せる見た目（ポインタの形）を付ける。 */
-  pointPressable: (target: PointTarget) => boolean;
+  /** 地点の印を押したときにすること（押した地点の位置を受ける）。何も起きない印ならnullで、動かせない間はその印に押せる見た目
+   * （ポインタの形）を付けない。 */
+  pointPress: (target: PointTarget) => ((at: Coordinates) => void) | null;
   onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => void;
 }
 
@@ -184,7 +183,7 @@ export function useMapMarkers(
             skipNextFlyToRef.current = true;
             latest.current.onOriginMove(coordinates);
           },
-          onClick: () => latest.current.onPointPress({ role: "origin" }, latest.current.location),
+          onClick: () => latest.current.pointPress({ role: "origin" })?.(latest.current.location),
         });
         appliedMarkerSourceRef.current = locationSource;
       }
@@ -205,7 +204,7 @@ export function useMapMarkers(
         addPointMarker(map, point, elements[index], latest.current.pointsEditable, {
           onMove: (coordinates) => latest.current.onWaypointMove(index, coordinates),
           onClick: () =>
-            latest.current.onPointPress({ role: "waypoint", index }, latest.current.waypoints[index] ?? point),
+            latest.current.pointPress({ role: "waypoint", index })?.(latest.current.waypoints[index] ?? point),
         }),
       );
       setWaypointMarks(elements);
@@ -222,27 +221,6 @@ export function useMapMarkers(
     destinationMarkerRef.current?.setDraggable(pointsEditable);
   }, [pointsEditable]);
 
-  // 印の見た目: 動かせる間はつかめる形、動かせない間は押すと何かが起きる印だけをポインタの形にする。押せるかは地点の名前で
-  // 変わるので、描くたびに当て直す。
-  useEffect(() => {
-    const pins: [Marker | null, PointTarget][] = [
-      [markerRef.current, { role: "origin" }],
-      ...waypointMarkersRef.current.map((marker, index): [Marker, PointTarget] => [
-        marker,
-        { role: "waypoint", index },
-      ]),
-      [destinationMarkerRef.current, { role: "destination" }],
-    ];
-    for (const [marker, target] of pins) {
-      if (marker === null) continue;
-      marker.getElement().style.cursor = pointsEditable
-        ? "grab"
-        : latest.current.pointPressable(target)
-          ? "pointer"
-          : "default";
-    }
-  });
-
   // 目的地の印。
   useEffect(() => {
     const map = mapRef.current;
@@ -258,12 +236,33 @@ export function useMapMarkers(
 
       destinationMarkerRef.current = addPointMarker(map, destination, element, latest.current.pointsEditable, {
         onMove: (coordinates) => latest.current.onDestinationMove(coordinates),
-        onClick: () => latest.current.onPointPress({ role: "destination" }, latest.current.destination ?? destination),
+        onClick: () => latest.current.pointPress({ role: "destination" })?.(latest.current.destination ?? destination),
       });
     };
 
     runWhenStyleReady(map, applyDestinationMarker);
   }, [mapRef, destination]);
+
+  // 印の見た目: 動かせる間はつかめる形、動かせない間は押すと何かが起きる印だけをポインタの形にする。押せるかは地点の名前で
+  // 変わるので、描くたびに当て直す。印を作るeffect（上）の後に置き、同じ描画で作った印にも当てる。
+  useEffect(() => {
+    const pins: [Marker | null, PointTarget][] = [
+      [markerRef.current, { role: "origin" }],
+      ...waypointMarkersRef.current.map((marker, index): [Marker, PointTarget] => [
+        marker,
+        { role: "waypoint", index },
+      ]),
+      [destinationMarkerRef.current, { role: "destination" }],
+    ];
+    for (const [marker, target] of pins) {
+      if (marker === null) continue;
+      marker.getElement().style.cursor = pointsEditable
+        ? "grab"
+        : handlers.pointPress(target) !== null
+          ? "pointer"
+          : "default";
+    }
+  });
 
   // 選んでいる区間の印。選択が外れれば（どこで外しても）消える。
   useEffect(() => {

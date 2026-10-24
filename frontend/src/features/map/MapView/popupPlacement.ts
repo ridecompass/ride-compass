@@ -28,34 +28,17 @@ export function popupPlacementAround(
   if (visible.right <= visible.left || visible.bottom <= visible.top) return null;
   const cx = (around.left + around.right) / 2;
   const cy = (around.top + around.bottom) / 2;
-  const fitsAcross = (x: number) => x - popup.width / 2 >= visible.left && x + popup.width / 2 <= visible.right;
-  const fitsAlong = (y: number) => y - popup.height / 2 >= visible.top && y + popup.height / 2 <= visible.bottom;
-  const candidates: (PopupPlacement & { fits: boolean })[] = [
-    {
-      anchor: "bottom",
-      x: cx,
-      y: around.top,
-      fits: around.top - gapPx - popup.height >= visible.top && fitsAcross(cx),
-    },
-    {
-      anchor: "top",
-      x: cx,
-      y: around.bottom,
-      fits: around.bottom + gapPx + popup.height <= visible.bottom && fitsAcross(cx),
-    },
-    {
-      anchor: "left",
-      x: around.right,
-      y: cy,
-      fits: around.right + gapPx + popup.width <= visible.right && fitsAlong(cy),
-    },
-    {
-      anchor: "right",
-      x: around.left,
-      y: cy,
-      fits: around.left - gapPx - popup.width >= visible.left && fitsAlong(cy),
-    },
+  const { width, height } = popup;
+  // 側ごとの、置く地点と向き、そのときの小窓の左上。小窓の全体が見えている所に入る側だけを選ぶ。
+  const candidates: (PopupPlacement & { left: number; top: number })[] = [
+    { anchor: "bottom", x: cx, y: around.top, left: cx - width / 2, top: around.top - gapPx - height },
+    { anchor: "top", x: cx, y: around.bottom, left: cx - width / 2, top: around.bottom + gapPx },
+    { anchor: "left", x: around.right, y: cy, left: around.right + gapPx, top: cy - height / 2 },
+    { anchor: "right", x: around.left, y: cy, left: around.left - gapPx - width, top: cy - height / 2 },
   ];
-  const chosen = candidates.find((candidate) => candidate.fits);
+  const chosen = candidates.find(
+    ({ left, top }) =>
+      left >= visible.left && top >= visible.top && left + width <= visible.right && top + height <= visible.bottom,
+  );
   return chosen === undefined ? null : { anchor: chosen.anchor, x: chosen.x, y: chosen.y };
 }

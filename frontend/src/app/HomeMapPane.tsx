@@ -126,19 +126,13 @@ export default function HomeMapPane({
         // 地図で押した区間の小窓。見るだけの間は区間の中身を全部出し、「ルート結果」が効いている間は中身をグラフの下が
         // 出すので、近くの施設を探す所だけを出す。
         segmentDetail={
-          results.selectedRouteSegment === null ? null : tapMode === "look" ? (
+          results.selectedRouteSegment !== null &&
+          (tapMode === "look" || (tapMode === "routes" && sidePoints !== null)) ? (
             <SegmentDetail
               selection={results.selectedRouteSegment}
-              sidePoints={results.segmentSidePoints}
+              sidePoints={sidePoints}
               facilityOrigin={facilityOrigin}
-              onMap={results.segmentOnMap}
-            />
-          ) : tapMode === "routes" && results.segmentSidePoints !== null ? (
-            <SegmentDetail
-              selection={results.selectedRouteSegment}
-              sidePoints={results.segmentSidePoints}
-              facilityOrigin={facilityOrigin}
-              facilitiesOnly
+              facilitiesOnly={tapMode === "routes"}
               onMap={results.segmentOnMap}
             />
           ) : null

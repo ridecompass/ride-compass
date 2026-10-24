@@ -79,10 +79,9 @@ export function useSegmentSidePoints(
         .flatMap((kind) => kind.points),
     [groups, hidden],
   );
-  if (edgeIds.length === 0) return null;
+  if (segment === undefined || selection === null || edgeIds.length === 0) return null;
   if (!searched) return { status: "idle", onSearch };
   if (query.isError) return { status: "failed" };
   if (query.data === undefined) return { status: "loading" };
-  const pickedKm = segment === undefined || selection === null ? startKm : startKm + kmAlongSegment(segment, selection);
-  return { status: "done", groups, hidden, onToggle, shown, pickedKm };
+  return { status: "done", groups, hidden, onToggle, shown, pickedKm: startKm + kmAlongSegment(segment, selection) };
 }

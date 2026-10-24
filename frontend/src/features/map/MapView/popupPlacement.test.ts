@@ -20,6 +20,8 @@ describe("popupPlacementAround", () => {
     expect(at({ left: 210, top: 100, right: 390, bottom: 500 })).toEqual({ anchor: "right", x: 210, y: 300 });
     // どこにも収まらない（見えている所いっぱいの区間）。
     expect(at({ left: 0, top: 0, right: 400, bottom: 600 })).toBeNull();
+    // 区間が見えている所の上の外にあり、下に置くと小窓の上の端が見えている所の外に出る。右・左も見えている所の外。
+    expect(at({ left: 150, top: -300, right: 250, bottom: -50 })).toBeNull();
     // 見えている所が無い地図では、小さな小窓でも選ばない。
     const empty = { left: 0, top: 0, right: 0, bottom: 0 };
     expect(popupPlacementAround(empty, { width: 0, height: 0 }, { ...empty, top: -100 }, 0)).toBeNull();

@@ -45,10 +45,15 @@ export function fitBoundsToSection(map: MapLibreMap, path: readonly Position[], 
 
 /** 線を囲む枠（画面のpx）。 */
 export function pathScreenBox(map: MapLibreMap, path: readonly Position[]): ScreenBox {
-  const points = path.map(([lng, lat]) => map.project([lng, lat]));
-  const xs = points.map((point) => point.x);
-  const ys = points.map((point) => point.y);
-  return { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) };
+  const box = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity };
+  for (const [lng, lat] of path) {
+    const { x, y } = map.project([lng, lat]);
+    box.left = Math.min(box.left, x);
+    box.top = Math.min(box.top, y);
+    box.right = Math.max(box.right, x);
+    box.bottom = Math.max(box.bottom, y);
+  }
+  return box;
 }
 
 /** 地図の上に重ねた部品を避けた、見えている所（画面のpx）。 */

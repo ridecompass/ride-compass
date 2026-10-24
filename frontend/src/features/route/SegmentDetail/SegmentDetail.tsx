@@ -87,7 +87,7 @@ export default function SegmentDetail({
   /** 近くの施設の位置を前後で言う基準の地点。 */
   facilityOrigin: FacilityOrigin | null;
   facilitiesOnly?: boolean;
-  /** 上の帯の右の「区間を地図で見る」。 */
+  /** 上の帯の右の「区間を地図で見る」（`facilitiesOnly`の間は出さない）。 */
   onMap: SectionOnMap;
 }) {
   const axisCatalog = useAxisCatalog();
@@ -121,9 +121,12 @@ export default function SegmentDetail({
             {arrival}着
           </span>
         )}
-        <span className="ml-auto">
-          <SectionOnMapButton onMap={onMap} />
-        </span>
+        {/* 「ルート結果」が効いている間は、グラフの下の地点の詳しくが同じボタンを持つ。 */}
+        {!facilitiesOnly && (
+          <span className="ml-auto">
+            <SectionOnMapButton onMap={onMap} />
+          </span>
+        )}
       </PopupHeader>
       {!facilitiesOnly && (
         <DifficultyBlock

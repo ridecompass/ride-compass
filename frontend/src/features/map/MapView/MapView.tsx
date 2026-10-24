@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
-import type { Map as MapLibreMap, Popup } from "maplibre-gl";
+import type { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import type {
@@ -227,16 +227,12 @@ export default function MapView({
     onDestinationMove,
     // 地点の意味の間はその地点を選び、走る間は何も出さず、ほかの間は地点の名前があれば呼び名と並べて小窓に出すだけ（押しただけでは
     // 消さない）。呼び名しか無い地点は何も開かない。
-    onPointPress: (target, at) => {
-      if (tapMode === "ride") return;
-      if (tapMode === "points") {
-        onPointSelect(target);
-        return;
-      }
+    pointPress: (target) => {
+      if (tapMode === "ride") return null;
+      if (tapMode === "points") return () => onPointSelect(target);
       const text = pinPopupText(target, pinNames);
-      if (text !== null) popups.openPin([at.longitude, at.latitude], text);
+      return text === null ? null : (at) => popups.openPin([at.longitude, at.latitude], text);
     },
-    pointPressable: (target) => tapMode !== "ride" && pinPopupText(target, pinNames) !== null,
     onRouteSegmentSelect: selectSegmentOnMap,
   });
 
@@ -244,22 +240,22 @@ export default function MapView({
   const turnMarkContent = useTurnMark(mapRef, turnPoint);
   // 出している小窓と、区間の小窓の区間の形（候補の同じ区間から引く。地図で押した区間は形を持たない写し）。小窓は区間にかぶらない
   // 所に置き、区間へ寄せるときは小窓の高さを空ける。
-  const openPopupRef = useRef<Popup | null>(null);
   const selectedSegments = routes.find((route) => route.id === selectedRouteId)?.segments;
-  const popupSegmentPath = useMemo(() => {
-    if (popup?.kind !== "segment" || selectedSegments === undefined) return null;
-    const section = findSameSegment(selectedSegments, popup.segment.segment, (segment) => segment);
+  const selectedSectionPath = useMemo(() => {
+    const section =
+      selectedRouteSegment === null || selectedSegments === undefined
+        ? undefined
+        : findSameSegment(selectedSegments, selectedRouteSegment.segment, (segment) => segment);
     return section === undefined ? null : segmentPath(section);
-  }, [popup, selectedSegments]);
-  const popupContent = useMapPopupMount(mapRef, {
+  }, [selectedSegments, selectedRouteSegment]);
+  const { content: popupContent, reservedTopPx } = useMapPopupMount(mapRef, {
     shown: popup,
     controls: popups,
     segmentDetail,
     rideConditions,
     routePreference,
     facilityOrigin,
-    segmentPath: popupSegmentPath,
-    openPopupRef,
+    segmentPath: selectedSectionPath,
   });
 
   // 住所の検索で置いた地点・取り直した現在地へ寄せる。出発地を置いたときは印のフックの位置の更新も寄せるが、このeffectが
@@ -281,12 +277,11 @@ export default function MapView({
   }, [scene, recomputeLayerDataStatus]);
 
   useSectionFocus(mapRef, {
-    segments: selectedSegments,
-    selectedRouteSegment,
+    sectionPath: selectedSectionPath,
     request: segmentFocus,
     onOutsideChange: onSegmentOutsideChange,
     ride,
-    reservedTopPx: () => openPopupRef.current?.getElement()?.offsetHeight ?? 0,
+    reservedTopPx,
   });
 
   // 選んでいる1本へ収める。生成し直すと同じidの候補が来るので、idでなく候補そのものが変わったときに収める。地図の線を

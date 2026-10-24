@@ -128,8 +128,6 @@ interface MapPopupMountOptions {
   facilityOrigin: FacilityOrigin | null;
   /** 区間の小窓の区間の形。小窓を区間にかぶらない所へ置く。形が引けなければnullで、押した地点に置く。 */
   segmentPath: readonly Position[] | null;
-  /** 出している小窓（区間へ寄せるとき、小窓の高さを空ける）。 */
-  openPopupRef: RefObject<maplibregl.Popup | null>;
 }
 
 /** 小窓を指す地点と、指す物からのずれ。 */
@@ -141,7 +139,8 @@ function anchorOf(popup: MapPopup): { lngLat: [number, number]; offsetPx: number
   return { lngLat: popup.lngLat, offsetPx: popup.segment !== null ? CHOSEN_SIDE_POINT_OUTER_RADIUS_PX : 0 };
 }
 
-/** 小窓を地図へ載せ、中身をportalで描く。返した要素を地図の部品の中に置く。 */
+/** 小窓を地図へ載せ、中身をportalで描く。返した`content`を地図の部品の中に置く。`reservedTopPx`は、区間へ寄せるときに見えている所の
+ * 上に空ける高さ（出している区間の小窓と、区間との間のすき間。区間の小窓が無ければ0）。 */
 export function useMapPopupMount(
   mapRef: RefObject<MapLibreMap | null>,
   {
@@ -152,9 +151,8 @@ export function useMapPopupMount(
     routePreference,
     facilityOrigin,
     segmentPath,
-    openPopupRef,
   }: MapPopupMountOptions,
-): ReactNode {
+): { content: ReactNode; reservedTopPx: () => number } {
   const catalog = useAxisCatalog();
   const onMap = shown !== null && (shown.kind !== "segment" || segmentDetail !== null) ? shown : null;
   // 器は、作ったときに出していた中身と組で持つ。中身が変わった直後の描画は、まだ前の中身の器が残っているので、組が合わない
@@ -163,6 +161,11 @@ export function useMapPopupMount(
   // 区間の形は候補が描き直されるたびに別の値で来るので、小窓を作り直さず、置き直すときに読む。
   const segmentPathRef = useRef(segmentPath);
   const placeRef = useRef<(() => void) | null>(null);
+  const segmentPopupRef = useRef<maplibregl.Popup | null>(null);
+  const reservedTopPx = useCallback(() => {
+    const element = segmentPopupRef.current?.getElement();
+    return element === undefined ? 0 : element.offsetHeight + SEGMENT_POPUP_OFFSET_PX;
+  }, []);
   useEffect(() => {
     segmentPathRef.current = segmentPath;
     placeRef.current?.();
@@ -183,10 +186,10 @@ export function useMapPopupMount(
       .setLngLat(lngLat)
       .setDOMContent(container)
       .addTo(map);
-    openPopupRef.current = popup;
     setMount({ shown: onMap, container });
     const shownMap = map;
     const segmentShown = onMap.kind === "segment";
+    if (segmentShown) segmentPopupRef.current = popup;
     // 区間の小窓は、区間を囲む枠の上・下・右・左のうち、見えている所に収まる側に置く（押した地点に置くと、区間の続きにかぶる）。
     // どの側にも収まらなければ押した地点に置き、向きはMapLibreに任せる。ほかの小窓は指す地点のまま、置く向きだけ決め直す。
     function place() {
@@ -203,7 +206,7 @@ export function useMapPopupMount(
             );
       popup.options.anchor = placement?.anchor;
       if (placement === null) {
-        popup.setLngLat(segmentShown ? lngLat : popup.getLngLat());
+        popup.setLngLat(lngLat);
         return;
       }
       popup.setLngLat(shownMap.unproject([placement.x, placement.y]));
@@ -222,39 +225,43 @@ export function useMapPopupMount(
       popup.off("close", controls.close);
       popup.remove();
       placeRef.current = null;
-      openPopupRef.current = null;
+      if (segmentPopupRef.current === popup) segmentPopupRef.current = null;
       setMount(null);
     };
-  }, [mapRef, onMap, controls, openPopupRef]);
+  }, [mapRef, onMap, controls]);
 
-  if (onMap === null || mount?.shown !== onMap) return null;
-  return createPortal(
-    // 高さに上限を付け、あふれたら中でスクロールする——地図の上の枠は、中身が伸びても画面の外へ出てはいけない。
-    <div className="max-h-[min(24rem,50vh)] overflow-y-auto text-[length:var(--font-size-md)] leading-[1.4]">
-      {onMap.kind === "road" ? (
-        <RoadInspectorPopup
-          properties={onMap.properties}
-          track={onMap.track}
-          axes={catalog.axes}
-          axisColors={catalog.axisColors}
-          conditions={{
-            ...rideConditions,
-            ...onMap.tile,
-            longitude: onMap.lngLat[0],
-            latitude: onMap.lngLat[1],
-          }}
-          routePreference={routePreference}
-        />
-      ) : onMap.kind === "segment" ? (
-        segmentDetail
-      ) : onMap.kind === "pin" ? (
-        <p className="m-0 pr-9">{onMap.text}</p>
-      ) : (
-        <PointContent popup={onMap} origin={facilityOrigin} onBack={controls.showSegment} />
-      )}
-    </div>,
-    mount.container,
-  );
+  return { content: renderContent(), reservedTopPx };
+
+  function renderContent(): ReactNode {
+    if (onMap === null || mount?.shown !== onMap) return null;
+    return createPortal(
+      // 高さに上限を付け、あふれたら中でスクロールする——地図の上の枠は、中身が伸びても画面の外へ出てはいけない。
+      <div className="max-h-[min(24rem,50vh)] overflow-y-auto text-[length:var(--font-size-md)] leading-[1.4]">
+        {onMap.kind === "road" ? (
+          <RoadInspectorPopup
+            properties={onMap.properties}
+            track={onMap.track}
+            axes={catalog.axes}
+            axisColors={catalog.axisColors}
+            conditions={{
+              ...rideConditions,
+              ...onMap.tile,
+              longitude: onMap.lngLat[0],
+              latitude: onMap.lngLat[1],
+            }}
+            routePreference={routePreference}
+          />
+        ) : onMap.kind === "segment" ? (
+          segmentDetail
+        ) : onMap.kind === "pin" ? (
+          <p className="m-0 pr-9">{onMap.text}</p>
+        ) : (
+          <PointContent popup={onMap} origin={facilityOrigin} onBack={controls.showSegment} />
+        )}
+      </div>,
+      mount.container,
+    );
+  }
 }
 
 /** 点の中身: 施設の行。区間の近くの施設なら、上の帯に区間の中身へ戻る操作を置く。上の帯が無ければ、先頭の行が×を避ける。 */
