@@ -16,6 +16,15 @@ import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 // 区間の小窓を、押した区間の印（下端を地点に置いた絵）の上へ出すずれ。
 const SEGMENT_POPUP_OFFSET_PX = SELECTED_POINT_PIN_HEIGHT_PX + 2;
 
+/**
+ * 小窓の幅の上限（CSSの`max-width`。`%`は小窓を置く地図の幅）。MapLibreは押した所が地図の左右の端から小窓の幅の半分以内のときだけ
+ * 横向きに開くので、小窓の幅が地図の幅から横のずれを引いた2/3以下なら、どの向きでも地図の中に収まる。幅の狭い画面で
+ * これより広いと、縦の中ほどで端に寄った所を押したとき、押した所の横に開いて画面の外へはみ出す。
+ */
+function popupMaxWidth(widest: string, offsetPx = 0): string {
+  return `min(${widest}, calc((100% - ${offsetPx}px) * 2 / 3))`;
+}
+
 /** 押した道。詳細はReactで描き、MapLibreのPopupへportalで差し込む。 */
 export interface RoadPopup {
   lngLat: [number, number];
@@ -39,7 +48,8 @@ export function useMapPopups(mapRef: RefObject<MapLibreMap | null>, selectionOwn
       if (!map) return;
       popupRef.current?.remove();
       setRoadPopup(null);
-      popupRef.current = new maplibregl.Popup({ closeButton: true })
+      // 幅の上限はMapLibreの既定（240px）のまま、地図の幅で頭打ちにする。
+      popupRef.current = new maplibregl.Popup({ closeButton: true, maxWidth: popupMaxWidth("240px") })
         .setLngLat(lngLat)
         .setDOMContent(content)
         .addTo(map);
@@ -112,7 +122,11 @@ export function useMapPopupMounts(
     const map = mapRef.current;
     if (!map || segmentPopupAt === null) return;
     const container = document.createElement("div");
-    const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "20rem", offset: SEGMENT_POPUP_OFFSET_PX })
+    const popup = new maplibregl.Popup({
+      closeButton: true,
+      maxWidth: popupMaxWidth("20rem", SEGMENT_POPUP_OFFSET_PX),
+      offset: SEGMENT_POPUP_OFFSET_PX,
+    })
       .setLngLat([segmentPopupAt.longitude, segmentPopupAt.latitude])
       .setDOMContent(container)
       .addTo(map);
@@ -130,7 +144,7 @@ export function useMapPopupMounts(
     const map = mapRef.current;
     if (!map || roadPopup === null) return;
     const container = document.createElement("div");
-    const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "20rem" })
+    const popup = new maplibregl.Popup({ closeButton: true, maxWidth: popupMaxWidth("20rem") })
       .setLngLat(roadPopup.lngLat)
       .setDOMContent(container)
       .addTo(map);
