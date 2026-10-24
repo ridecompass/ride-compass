@@ -1,12 +1,10 @@
 // タスクの事実を読む（src/decide.js: decide が受ける形）。置き場の issue・書くのに要る ID（種類・ラベル）・コードのリポジトリの作業ブランチの PR と
 // 検査を GraphQL の1回で、担当の実行は Actions の実行の一覧から読む。ゲートは issue の情報を持たない（持ち主は GitHub）。見回りの一覧も同じ読み方を使う。
 import { originOf } from "./family.js";
-import { FIELDS, START_FORM, valuesOf } from "./fields.js";
+import { FIELDS, startTime, valuesOf } from "./fields.js";
 import { pages } from "./github.js";
 import { APPLIED, answerText, askerOf, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, questionHead, readProblems, remaining, unboundSteps } from "./questions.js";
 
-// 着手可能日時の形の合わない値は受け入れず（badStart はその値。ゲートが知らせる）、待つと決めた意図を守ってまだ先と読む。
-const jst = (text) => (START_FORM.test(text) ? new Date(`${text.replace(" ", "T")}${text.includes(":") ? "" : "T00:00"}:00+09:00`) : null);
 // 対話作業か。種類は作るとき（最初に付いた種類）で決まり、あとから境目をまたいで変えても変わらない（types は今より前の種類の古い順）。
 const dialogOf = (config, types, type) => [...types, type].find(Boolean) === config.dialogType;
 // 矢印1本でつながる issue（前提・子・親）の読み方。1件を決め直すときも、振り出しの一覧も同じ（親の本文は、1件を決め直すときだけ要る）。
@@ -22,14 +20,15 @@ export function taskOf(config, issue, now = new Date()) {
   const parent = issue.parent;
   const from = parent ? valuesOf(parent) : own;
   const text = from[f.start.name]?.trim();
-  const start = jst(text);
+  // 着手可能日時の読めない値は受け入れず（badStart はその値。ゲートが知らせる）、待つと決めた意図を守ってまだ先と読む。
+  const start = startTime(text);
   const mine = own[f.start.name]?.trim();
   const waits = [...issue.blockedBy.nodes, ...issue.subIssues.nodes];
   const names = (i) => i.labels.nodes.map((l) => l.name);
   const labels = names(issue);
   return { status: own[f.status.name], run: own[f.run.name], priority: from[f.priority.name], type: issue.issueType?.name ?? null,
     open: issue.state === "OPEN", blocked: waits.some((w) => w.state === "OPEN"), dropped: waits.filter(dropped).map((w) => w.number),
-    future: Boolean(text) && (!start || start > now), badStart: mine && !jst(mine) ? mine : null,
+    future: Boolean(text) && (!start || start > now), badStart: mine && startTime(mine) === null ? mine : null,
     urgent: names(parent ?? issue).includes(config.urgentLabel), held: Boolean(parent) && (parent.state === "CLOSED" || from[f.status.name] === "保留"),
     labels, dev: labels.includes(config.devLabel), dialog: issue.issueType?.name === config.dialogType, // 1件を決め直すときは、作ったときの種類で読み直す
     assignees: issue.assignees.nodes.map((a) => a.login) };

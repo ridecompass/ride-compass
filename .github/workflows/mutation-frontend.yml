@@ -216,7 +216,9 @@ jobs:
         run: |
           npx stryker run scripts/mutation/stryker.config.mjs --mutate "$FILE" --testRunner command --coverageAnalysis off --concurrency 1
           cp reports/mutation/mutation.json /tmp/compare/command.json
+      # shell を名指すと pipefail が付き、比べる台本が落ちたら tee の成功で隠さずに段を落とす。
       - name: 突き合わせる
+        shell: bash
         run: node scripts/mutation/compare.mjs /tmp/compare/vitest.json /tmp/compare/command.json | tee -a "$GITHUB_STEP_SUMMARY"
       - if: always()
         uses: actions/upload-artifact@v7

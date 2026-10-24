@@ -129,8 +129,14 @@ export async function answerForm(request, env, config) {
   }
   const number = Number(raw);
   if (request.method === "POST") return post(request, env, config, number);
-  const gh = await GitHub.app(env, config.installation);
-  const { issue, comments, asked, question: q, all, have } = await read(gh, config, number);
+  let found;
+  try {
+    found = await read(await GitHub.app(env, config.installation), config, number);
+  } catch (e) {
+    console.error(`回答フォームを開けなかった（#${number}）: ${e.stack ?? e.message}`);
+    return page(`<p>GitHub から #${number} を読めませんでした。少しおいて、開き直してください。</p>`, 502);
+  }
+  const { issue, comments, asked, question: q, all, have } = found;
   if (!q || q.answer) return page(`<p>#${number} に、答えていない問いはありません。</p>`, 404);
   const recent = comments.filter((c) => c !== asked).slice(-RECENT).reverse()
     .map((c) => `<p class="note"><a href="${esc(c.url)}">${esc(c.author?.login ?? "ghost")} ・ ${jstText(Date.parse(c.createdAt))}</a></p>${c.bodyHTML}`).join("");

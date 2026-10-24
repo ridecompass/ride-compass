@@ -100,6 +100,7 @@ test("起票する（file-issue の new-issue.mjs）: 本文の形・子の決�
     [ok, { type: "要望", child: true, priority: "高" }, /子は優先度・着手可能日時を持ちません/],
     [ok, { type: "要望", size: "XL", priority: "中" }, /規模「XL」/],
     [ok, { type: "要望", size: "S", priority: "中", start: "来週" }, /着手可能日時「来週」/],
+    [ok, { type: "要望", size: "S", priority: "中", start: "2099-02-30" }, /着手可能日時「2099-02-30」/],
     [ok.replace("<details><summary>やること", "<details>\n<summary>メモ"), { type: "要望", size: "S", priority: "中" }, /知らない節「メモ」/],
     [`${ok}\n## 補足\n\nメモ\n`, { type: "要望", size: "S", priority: "中" }, /見出し（#）は使わない/],
   ];

@@ -398,6 +398,7 @@ jobs:
           node frontend/scripts/image.mjs "$IMAGE:$GITHUB_SHA" "$GITHUB_SHA"
       # 起こす前のコンテナから取る（起こしたサーバーが書いたものを混ぜない）。
       - name: 像の中のアプリを取り出す
+        shell: bash  # pipefail を付け、取り出しが落ちたら空の圧縮を成果物にせず段を落とす
         run: |
           docker create --name frontend-app "$IMAGE:$GITHUB_SHA"
           docker cp frontend-app:/app - | gzip -1 > frontend-app.tar.gz
