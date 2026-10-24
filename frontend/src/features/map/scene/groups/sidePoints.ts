@@ -27,8 +27,9 @@ type SidePointRow = {
 /** 押したときに拾う対象。束ねた印も1つの点も同じ対象を名乗り、開く側が地物の`cluster`で分ける。 */
 export const SIDE_POINT_HIT_TARGET = "sidePoint";
 
-/** 点の地物に載せる、道からの距離（m）。点の値の名前と重ならない名前にする。 */
+/** 点の地物に載せる、道からの距離（m）とルートの上の位置（候補の始点からの道のりkm）。点の値の名前と重ならない名前にする。 */
 export const SIDE_POINT_OFFSET_PROPERTY = "side_offset_m";
+export const SIDE_POINT_KM_PROPERTY = "side_distance_km";
 
 // 絵の大きさの近さで束ねる（`clusterRadius`は画面の px で数える）。
 const CLUSTER_RADIUS_PX = POINT.iconSizePx;
@@ -72,7 +73,11 @@ function feature(point: RoutePoint): Feature<Point> {
   return {
     type: "Feature",
     geometry: { type: "Point", coordinates: [point.longitude, point.latitude] },
-    properties: { ...point.properties, [SIDE_POINT_OFFSET_PROPERTY]: point.offset_m },
+    properties: {
+      ...point.properties,
+      [SIDE_POINT_OFFSET_PROPERTY]: point.offset_m,
+      [SIDE_POINT_KM_PROPERTY]: point.distance_km,
+    },
   };
 }
 

@@ -23,7 +23,7 @@ import MapNavigationControl from "@/features/map/MapNavigationControl/MapNavigat
 import MapLoadStatus from "@/features/map/MapView/MapLoadStatus";
 import { fitBoundsToRoute, flyToVisible, mapVisibleCenterOffset } from "@/features/map/MapView/mapCamera";
 import { bindMapTaps, type MapTapMode } from "@/features/map/MapView/mapTaps";
-import { buildPinPopupContent, type PinNames } from "@/features/map/MapView/pointPopup";
+import { pinPopupText, type PinNames } from "@/features/map/MapView/pointPopup";
 import { roadWayId } from "@/features/map/MapView/roadFacts";
 import { rideZoomBase } from "@/features/map/MapView/rideZoom";
 import { useMapLifecycle } from "@/features/map/MapView/useMapLifecycle";
@@ -227,7 +227,7 @@ export default function MapView({
         onPointSelect(target);
         return;
       }
-      popups.openPoint([at.longitude, at.latitude], buildPinPopupContent(target, pinNames));
+      popups.openPin([at.longitude, at.latitude], pinPopupText(target, pinNames));
     },
     onRouteSegmentSelect: selectSegmentOnMap,
   });

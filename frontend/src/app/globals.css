@@ -281,12 +281,15 @@
   z-index: var(--z-map-popup);
 }
 
-/* 地図ポップアップの×を、本文の余白に釣り合う大きさにする（セレクタの詳細度の理由は上と同じ）。 */
-.maplibregl-popup > .maplibregl-popup-close-button {
+/* 地図ポップアップの×に、44px四方の押す所を持たせる（セレクタの詳細度の理由は上と同じ）。MapLibreは×を本文の器
+   （.maplibregl-popup-content）の中の右上に置くので、本文の上の帯は×の幅だけ右を空ける。 */
+.maplibregl-popup-content > .maplibregl-popup-close-button {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
   color: var(--foreground);
-  font-size: var(--font-size-md);
+  font-size: 1.375rem;
   line-height: 1;
-  padding: var(--space-1) var(--space-2);
 }
 
 /* tip（吹き出しの三角形）はborder-colorで塗る単色の図形でbackdrop-filterが効かないため

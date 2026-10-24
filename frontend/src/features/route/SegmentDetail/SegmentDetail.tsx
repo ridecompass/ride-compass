@@ -1,10 +1,14 @@
 "use client";
 
-import AxisContributionBar, { hasAnyContribution } from "@/components/AxisContributionBar/AxisContributionBar";
+import { useState } from "react";
+import { hasAnyContribution } from "@/components/AxisContributionBar/AxisContributionBar";
 import AxisDetail from "@/components/AxisContributionBar/AxisDetail";
+import { DifficultyBlock, PopupHeader } from "@/components/MapPopup/MapPopupParts";
+import { legendChipBodyClass, legendChipClass } from "@/components/ui/AxisLegend/axisLegend";
+import { SelectedSpotIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
-import SegmentSidePoints from "@/features/route/SegmentSidePoints/SegmentSidePoints";
-import SegmentWind from "@/features/route/SegmentWind/SegmentWind";
+import SegmentSidePoints, { openedKind, SidePointKindList } from "@/features/route/SegmentSidePoints/SegmentSidePoints";
+import { SegmentWindChip } from "@/features/route/SegmentWind/SegmentWind";
 import type { SegmentSidePoints as SegmentSidePointsState } from "@/features/route/useSegmentSidePoints";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import type { CatalogAxis } from "@/lib/catalogAxis";
@@ -41,35 +45,67 @@ export function SegmentDifficulty({ segment, axes }: { segment: RouteSegmentDeta
   );
 }
 
-/** 押した区間の地点・到達予想・風・総合難易度と軸ごとの内訳と近くの施設。パネルを閉じているときの地図の小窓が出す（閉じる操作は
- * 小窓が持つ）。 */
+/** 押した区間の小窓。上の帯に地点（道のりのkm）と到達予想、見るだけの間はその下に難易度の塊（軸ごとの内訳と風）を置き、
+ * 近くの施設を続ける。`facilitiesOnly`の間（「ルート結果」が効いていて、区間の中身はグラフの下が出す）は、上の帯をkmだけにし、
+ * 近くの施設だけを出す。区分のチップを押すと、同じ小窓をその区分の一覧に替える（閉じる操作は小窓が持つ）。 */
 export default function SegmentDetail({
   selection,
   sidePoints,
+  facilitiesOnly = false,
 }: {
   selection: SelectedRouteSegment;
   /** 区間の近くの点。候補に無い区間ならnullで、行を出さない。 */
   sidePoints: SegmentSidePointsState | null;
+  facilitiesOnly?: boolean;
 }) {
   const axisCatalog = useAxisCatalog();
+  const [openedKindId, setOpenedKindId] = useState<string | null>(null);
   const { segment } = selection;
+  const opened =
+    openedKindId !== null && sidePoints?.status === "done" ? openedKind(sidePoints.groups, openedKindId) : undefined;
+  if (opened !== undefined && sidePoints?.status === "done") {
+    return (
+      <SidePointKindList
+        {...opened}
+        shown={!sidePoints.hidden.has(opened.kind.id)}
+        onToggle={() => sidePoints.onToggle(opened.kind.id)}
+        onBack={() => setOpenedKindId(null)}
+      />
+    );
+  }
+  const arrival = formatSegmentArrivalTime(segment.estimated_arrival_time);
   return (
     <div className="flex flex-col gap-2">
-      <span className="inline-flex items-baseline gap-2 text-[length:var(--font-size-md)] font-medium">
-        <span className="whitespace-nowrap">{segment.cumulative_distance_km.toFixed(1)} km地点</span>
-        <span className={cn(textVariants({ variant: "hint" }), "break-keep")}>
-          到達予想 {formatSegmentArrivalTime(segment.estimated_arrival_time)}
+      <PopupHeader label="区間の小窓の上の帯">
+        <span className="inline-flex items-center gap-0.5 font-medium whitespace-nowrap">
+          <SelectedSpotIcon size={14} />
+          <span className="sr-only">ルートの何km地点 </span>
+          {segment.cumulative_distance_km.toFixed(1)}km
         </span>
-      </span>
-      <SegmentWind wind={segment.wind} />
-      <SegmentDifficulty segment={segment} axes={axisCatalog.axes} />
-      <AxisContributionBar
-        axes={axisCatalog.axes}
-        contributions={segment.axis_contributions}
-        axisColors={axisCatalog.axisColors}
-        renderDetail={(axis) => <AxisDetail axis={axis} difficulty={segment.axis_difficulties[axis.axisId]} />}
-      />
-      {sidePoints !== null && <SegmentSidePoints sidePoints={sidePoints} />}
+        {!facilitiesOnly && arrival !== "不明" && (
+          <span className={cn(textVariants({ variant: "hint" }), "whitespace-nowrap")}>
+            <span className="sr-only">到達予想 </span>
+            {arrival}着
+          </span>
+        )}
+      </PopupHeader>
+      {!facilitiesOnly && (
+        <DifficultyBlock
+          difficulty={segment.difficulty}
+          axes={axisCatalog.axes}
+          contributions={segment.axis_contributions}
+          axisColors={axisCatalog.axisColors}
+          renderDetail={(axis) => <AxisDetail axis={axis} difficulty={segment.axis_difficulties[axis.axisId]} />}
+          extraChips={
+            segment.wind == null ? undefined : (
+              <li className={legendChipClass}>
+                <SegmentWindChip wind={segment.wind} className={cn(legendChipBodyClass, "cursor-pointer")} />
+              </li>
+            )
+          }
+        />
+      )}
+      {sidePoints !== null && <SegmentSidePoints sidePoints={sidePoints} onOpen={setOpenedKindId} />}
     </div>
   );
 }

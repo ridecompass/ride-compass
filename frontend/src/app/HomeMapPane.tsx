@@ -25,7 +25,6 @@ import { pointNames } from "@/features/route/pointNames";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
 import SegmentDetail from "@/features/route/SegmentDetail/SegmentDetail";
-import SegmentSidePoints from "@/features/route/SegmentSidePoints/SegmentSidePoints";
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import type { useRoutePlanner } from "@/features/route/useRoutePlanner";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
@@ -122,7 +121,11 @@ export default function HomeMapPane({
           results.selectedRouteSegment === null ? null : tapMode === "look" ? (
             <SegmentDetail selection={results.selectedRouteSegment} sidePoints={results.segmentSidePoints} />
           ) : tapMode === "routes" && results.segmentSidePoints !== null ? (
-            <SegmentSidePoints sidePoints={results.segmentSidePoints} />
+            <SegmentDetail
+              selection={results.selectedRouteSegment}
+              sidePoints={results.segmentSidePoints}
+              facilitiesOnly
+            />
           ) : null
         }
         onRouteSelect={results.selectTab}
