@@ -304,7 +304,7 @@ test.describe("タッチ端末", () => {
     };
 
     // 指の間を240pxから80pxへ縮めながら、指の並びを45度ひねる（MapLibre が回し始める、指の間の弧で25pxを超える）。
-    // 先に重心だけを横へ動かし、移動として始まらせる（2本の指を揃えて縦に動かすと、地図を傾ける操作になる）。
+    // 先に重心だけを横へ動かし、移動として始まらせる。
     const [fromGap, toGap, turnDeg, steps] = [240, 80, 45, 10];
     const gapAt = (step: number) => fromGap + ((toGap - fromGap) * step) / steps;
     const turnAt = (step: number) => (turnDeg * step) / steps;

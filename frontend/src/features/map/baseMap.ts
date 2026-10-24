@@ -30,6 +30,10 @@ export function createBaseMap({
     style: mapStyleUrl(),
     center,
     zoom,
+    // 地図は傾けない（奥へ倒れると道とルートが読みにくい）。回すのは使うので、回す操作は残す。
+    maxPitch: 0,
+    touchPitch: false,
+    pitchWithRotate: false,
     // 常に使うデータの出典は、どのレイヤーを出しているかと関係なく出す（宣言はbackend）。
     attributionControl: { compact: true, customAttribution: [...mapDisplay.alwaysShownAttributions] },
     // デバッグモードの間、MapLibreが出す要求を種別ごとにログする（無効の間debugLogは何もしない）。
