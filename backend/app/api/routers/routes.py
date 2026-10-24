@@ -10,7 +10,6 @@ from pydantic import Field, PrivateAttr, RootModel, field_validator, model_valid
 from app.domain.time_zone import JST, as_jst
 from app.api.dependencies import (
     RouteGenerationSetupOpener,
-    get_graph_service,
     get_route_generation_setup_opener,
 )
 from app.api.rate_limit import client_id, enforce_rate_limit
@@ -37,19 +36,15 @@ from app.domain.route_request import (
 )
 from app.domain.geo import Latitude, Longitude, haversine_distance_km
 from app.domain.errors import GENERATION_BUSY_MESSAGE
-from app.domain.graph import parse_edge_key
-from app.domain.route import Coordinates, RouteCandidate, RoutePoint
-from app.domain.route_points import ROUTE_SIDE_POINTS_MAX_EDGES
+from app.domain.route import Coordinates, RouteCandidate
 from app.infrastructure import job_registry
 from app.infrastructure.debug_log import record_rate_limit_rejection
 from app.infrastructure.heap_release import release_freed_heap
-from app.services.graph_service import GraphService
 from app.services.route_generation_setup import generate_route_candidates
 from app.domain.strict_model import StrictModel
 
 router = APIRouter()
 logger = logging.getLogger("ridecompass.generate")
-side_logger = logging.getLogger("ridecompass.side_points")
 
 # ルート生成の同時実行上限（settings.generate_max_concurrent、config.pyのコメント参照）。
 # 上限を超えた分は待たせず429で即座に返し、ブラウザのリトライや連打で外部サービスへの
@@ -368,39 +363,3 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
         # 生成が作って捨てた配列の領域を返す。返さないと、それまでで一番大きい生成の分が anon に残り、
         # 生成どうしが分け合うメモリ（`services/graph_service.py: SearchMemory`）が前提にする取り置きを食う。
         await asyncio.to_thread(release_freed_heap)
-
-
-class RouteSidePointsRequest(StrictModel):
-    """候補の一続きの区間（区間の詳しく1つ分）。"""
-
-    # 候補の`edge_ids`の部分列（向きつきの区間の鍵）を、通る順に。
-    edge_ids: list[str] = Field(min_length=1, max_length=ROUTE_SIDE_POINTS_MAX_EDGES)
-    # 一続きの始まりの、候補の始点からの道のり（km。区間の`cumulative_distance_km`）。
-    start_distance_km: float = Field(ge=0)
-
-    @field_validator("edge_ids")
-    @classmethod
-    def _check_edge_keys(cls, value: list[str]) -> list[str]:
-        if any(parse_edge_key(key) is None for key in value):
-            raise ValueError("edge_ids must be directed edge keys")
-        return value
-
-
-class RouteSidePointsResponse(StrictModel):
-    # 近くの点を、通る道のりの順に。
-    points: list[RoutePoint]
-
-
-@router.post("/api/routes/side-points")
-async def route_side_points(
-    body: RouteSidePointsRequest,
-    http_request: Request,
-    graph_service: GraphService = Depends(get_graph_service),
-) -> RouteSidePointsResponse:
-    """候補の一続きの区間の近くの点（停止要因・補給・立ち寄り先・事故）と、それぞれを通る道のり・道からの距離。"""
-    enforce_rate_limit(http_request, "route-side-points", settings.route_side_points_rate_limit_per_minute)
-    points = await graph_service.get_route_side_points(body.edge_ids, body.start_distance_km)
-    if points is None:
-        raise HTTPException(status_code=404, detail="ルートの区間が今の道路網にありません。ルートを作り直してください。")
-    side_logger.debug("side_points edges=%d points=%d", len(body.edge_ids), len(points))
-    return RouteSidePointsResponse(points=points)

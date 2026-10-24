@@ -94,14 +94,14 @@ export default function SegmentDetail({
   const [openedKindId, setOpenedKindId] = useState<string | null>(null);
   const { segment } = selection;
   const opened =
-    openedKindId !== null && sidePoints?.status === "done" ? openedKind(sidePoints.groups, openedKindId) : undefined;
-  if (opened !== undefined && sidePoints?.status === "done") {
+    openedKindId !== null && sidePoints?.groups != null ? openedKind(sidePoints.groups, openedKindId) : undefined;
+  if (opened !== undefined && sidePoints !== null) {
     return (
       <SidePointKindList
-        {...opened}
-        shown={!sidePoints.hidden.has(opened.kind.id)}
+        kind={opened}
+        shown={!sidePoints.hidden.has(opened.id)}
         origin={facilityOrigin}
-        onToggle={() => sidePoints.onToggle(opened.kind.id)}
+        onToggle={() => sidePoints.onToggle(opened.id)}
         onBack={() => setOpenedKindId(null)}
       />
     );

@@ -29,7 +29,8 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
     inspectedWayId: null,
     travelledKm: null,
     selectedRouteSegment: null,
-    sidePoints: [],
+    sidePointPath: null,
+    sidePointsHidden: new Set(),
     chosenSidePoint: null,
     ...rest,
     look: {

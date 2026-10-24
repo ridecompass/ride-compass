@@ -10,7 +10,6 @@ import type {
   PlaceCandidate,
   PointTarget,
   RouteCandidate,
-  RoutePoint,
   RoutePreferenceWeights,
   SelectedRouteSegment,
 } from "@/types/route";
@@ -33,7 +32,9 @@ import { useMapPopupMount, useMapPopups } from "@/features/map/MapView/useMapPop
 import { useMapScene } from "@/features/map/MapView/useMapScene";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
 import { useSectionFocus } from "@/features/map/MapView/useSectionFocus";
+import { useSidePointsOnMap } from "@/features/map/MapView/useSidePointsOnMap";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
+import { sidePointAlong, type SidePointOnMap } from "@/lib/mapDisplay/sidePoints";
 import { findSameSegment, segmentPath } from "@/lib/routeDistance";
 
 interface MapViewProps {
@@ -63,8 +64,10 @@ interface MapViewProps {
   segmentFocus: object | null;
   /** 選んでいる区間が見えている所の外にあるかが変わりうるとき（区間を選び直した・地図が動き終えた）に呼ばれる。 */
   onSegmentOutsideChange: (outside: boolean) => void;
-  /** 選んだ区間の近くの点のうち、地図に出すもの。 */
-  sidePoints: readonly RoutePoint[];
+  /** 区間を地図で押している間、その近くの点のうち地図から消した区分（`lib/mapDisplay/sidePoints.ts: sidePointKindId`）。 */
+  sidePointsHidden: ReadonlySet<string>;
+  /** 区間を地図で押している間、地図が読み込んだタイルにあるその近くの施設が変わったとき（押していない・点のタイルを読まないズームならnull）。 */
+  onSidePointsChange: (points: readonly SidePointOnMap[] | null) => void;
   /** 近くの施設の位置を前後で言う基準の地点。 */
   facilityOrigin: FacilityOrigin | null;
   /** ルートの区間を押したとき・印を押して選択を外したとき・区間の小窓を閉じたか別の中身へ入れ替えたとき（null）。 */
@@ -121,7 +124,8 @@ export default function MapView({
   selectedRouteSegment,
   segmentFocus,
   onSegmentOutsideChange,
-  sidePoints,
+  sidePointsHidden,
+  onSidePointsChange,
   facilityOrigin,
   onRouteSegmentSelect,
   waypoints,
@@ -150,6 +154,22 @@ export default function MapView({
   // 詳細を見ている道と、中身を見ている区間の近くの施設。強調も scene の一部として当てる。
   const inspectedWayId = popup?.kind === "road" ? roadWayId(popup.properties) : null;
   const chosenSidePoint = popup?.kind === "point" && popup.segment !== null ? popup.lngLat : null;
+  // 選んでいる区間（候補の同じ区間から引く。地図で押した区間は形を持たない写し）と、その形。
+  const selectedSegments = routes.find((route) => route.id === selectedRouteId)?.segments;
+  const selectedSection = useMemo(
+    () =>
+      selectedRouteSegment === null || selectedSegments === undefined
+        ? null
+        : (findSameSegment(selectedSegments, selectedRouteSegment.segment, (segment) => segment) ?? null),
+    [selectedSegments, selectedRouteSegment],
+  );
+  const selectedSectionPath = useMemo(
+    () => (selectedSection === null ? null : segmentPath(selectedSection)),
+    [selectedSection],
+  );
+  // 近くの点は、区間を地図で押している間だけ描いて読む（グラフで選んだ地点では出さない）。
+  const sidePointPath = popup?.segment != null ? selectedSectionPath : null;
+  useSidePointsOnMap(mapRef, sidePointPath, onSidePointsChange);
   const { scene, interactiveLayerIds } = useMapScene({
     look,
     catalog: mapCatalog,
@@ -160,7 +180,8 @@ export default function MapView({
     inspectedWayId,
     travelledKm,
     selectedRouteSegment,
-    sidePoints,
+    sidePointPath,
+    sidePointsHidden,
     chosenSidePoint,
   });
   // 地図の線を押して選んだ候補のid。その候補へは収め直さない（利用者はもうその範囲を見ている）。
@@ -179,6 +200,8 @@ export default function MapView({
     tapMode,
     onPointPlace,
     onRouteSegmentSelect: selectSegmentOnMap,
+    sidePointAlong: (lngLat: readonly [number, number]) =>
+      selectedSection === null ? null : sidePointAlong(selectedSection, lngLat),
     onSpliceStretchSelect,
     onRouteSelect: (routeId: string) => {
       routePickedOnMap.current = routeId;
@@ -238,16 +261,7 @@ export default function MapView({
 
   const onNextRideZoom = useRideFollow(mapRef, ride, here, mapVisibleCenterOffset);
   const turnMarkContent = useTurnMark(mapRef, turnPoint);
-  // 出している小窓と、区間の小窓の区間の形（候補の同じ区間から引く。地図で押した区間は形を持たない写し）。小窓は区間にかぶらない
-  // 所に置き、区間へ寄せるときは小窓の高さを空ける。
-  const selectedSegments = routes.find((route) => route.id === selectedRouteId)?.segments;
-  const selectedSectionPath = useMemo(() => {
-    const section =
-      selectedRouteSegment === null || selectedSegments === undefined
-        ? undefined
-        : findSameSegment(selectedSegments, selectedRouteSegment.segment, (segment) => segment);
-    return section === undefined ? null : segmentPath(section);
-  }, [selectedSegments, selectedRouteSegment]);
+  // 出している小窓と、区間の小窓の区間の形。小窓は区間にかぶらない所に置き、区間へ寄せるときは小窓の高さを空ける。
   const { content: popupContent, reservedTopPx } = useMapPopupMount(mapRef, {
     shown: popup,
     controls: popups,

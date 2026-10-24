@@ -44,8 +44,8 @@ function popupMaxWidth(offsetPx: number): string {
 export type MapPopup =
   /** 地点のピン（呼び名と名前の1行）。 */
   | { kind: "pin"; lngLat: [number, number]; text: string; segment: null }
-  /** 点（束ねた印なら中の施設を全部）。区間の近くの施設なら`segment`はその区間で、区間の中身へ戻れる。 */
-  | { kind: "point"; lngLat: [number, number]; facilities: readonly Facility[]; segment: SelectedRouteSegment | null }
+  /** 点。区間の近くの施設なら`segment`はその区間で、区間の中身へ戻れる。 */
+  | { kind: "point"; lngLat: [number, number]; facility: Facility; segment: SelectedRouteSegment | null }
   /** 押した道。`tile`は押した瞬間のタイル（開いたままズームしても、押した道のタイルを指す）。`track`は押した道の線が入る
    * 凡例の行（地図の道の色と道の種類の名前）。 */
   | {
@@ -62,9 +62,9 @@ export type MapPopup =
 /** 地図を押した手続き（`mapTaps.ts`）が小窓を開く・閉じる口。地図を作るときに一度だけ結ぶので、どれも同じ関数のまま変わらない。 */
 export interface MapPopupControls {
   openPin: (lngLat: [number, number], text: string) => void;
-  openPoint: (lngLat: [number, number], facilities: readonly Facility[]) => void;
+  openPoint: (lngLat: [number, number], facility: Facility) => void;
   /** 区間の近くの施設。区間の中身を出している間に開くと、区間の選びを残して戻れるようにする。 */
-  openSidePoint: (lngLat: [number, number], facilities: readonly Facility[]) => void;
+  openSidePoint: (lngLat: [number, number], facility: Facility) => void;
   openRoad: (road: Pick<Extract<MapPopup, { kind: "road" }>, "lngLat" | "properties" | "tile" | "track">) => void;
   showSegment: (segment: SelectedRouteSegment) => void;
   close: () => void;
@@ -104,9 +104,9 @@ export function useMapPopups(
   const controls = useMemo<MapPopupControls>(
     () => ({
       openPin: (lngLat, text) => replace({ kind: "pin", lngLat, text, segment: null }),
-      openPoint: (lngLat, facilities) => replace({ kind: "point", lngLat, facilities, segment: null }),
-      openSidePoint: (lngLat, facilities) =>
-        replace({ kind: "point", lngLat, facilities, segment: latest.current.shown?.segment ?? null }),
+      openPoint: (lngLat, facility) => replace({ kind: "point", lngLat, facility, segment: null }),
+      openSidePoint: (lngLat, facility) =>
+        replace({ kind: "point", lngLat, facility, segment: latest.current.shown?.segment ?? null }),
       openRoad: (road) => replace({ kind: "road", ...road, segment: null }),
       showSegment: (segment) => replace({ kind: "segment", segment }),
       close: () => replace(null),
@@ -293,7 +293,7 @@ function PointContent({
           <BackToSegmentButton onBack={() => onBack(segment)} />
         </PopupHeader>
       )}
-      <FacilityRows facilities={popup.facilities} origin={origin} />
+      <FacilityRows facilities={[popup.facility]} origin={origin} />
     </div>
   );
 }

@@ -146,12 +146,6 @@ async def _open_route_generation_setup(
             graph_service.release_search_memory()
 
 
-async def get_graph_service(tile_sessions: TileSessions):
-    """区間を押すたびの単発の読み出し（区間の近くの点）。タイルと同じく短い問い合わせなので、タイル用のセッション工場を使う。"""
-    async with tile_sessions() as session:
-        yield GraphService(RoadGraphRepository(session), _search_memory)
-
-
 RouteGenerationSetupOpener = Callable[[RequestedConditions], AbstractAsyncContextManager[RouteGenerationSetup]]
 
 

@@ -1,6 +1,7 @@
 /** 地図（`Map`）の代役。中身は `../mapTrace/recordingMap.ts` へ記録し、描いた地図を `lastDrawnMap` で引ける。 */
 import type { Coordinates } from "@/types/route";
 
+import { matchesFilterAtPoint } from "../mapExpressions";
 import { createRecordingMap, type RecordingMap } from "../mapTrace/recordingMap";
 import { asRendered, Evented, type PointedFeature } from "./evented";
 import type { Marker } from "./overlays";
@@ -52,6 +53,7 @@ export class StandInMap extends Evented {
   private bearing = 0;
   private bounds: ViewBounds | null = null;
   private pointed: readonly PointedFeature[] = [];
+  private readonly placedTileFeatures = new Map<string, readonly GeoJSON.Feature<GeoJSON.Point>[]>();
   // 手ぶりの入切は、代役では指の操作が無いので受けるだけにする。
   readonly touchZoomRotate = { disableRotation() {}, enableRotation() {} };
 
@@ -204,8 +206,29 @@ export class StandInMap extends Evented {
     return false;
   }
 
-  querySourceFeatures() {
-    return [];
+  /** テストが`placeTileFeatures`で置いた、そのソースの点の地物のうち、絞り込みに当たるもの。 */
+  querySourceFeatures(sourceId: string, options: { filter?: unknown } = {}) {
+    return this.tileFeatures(sourceId).filter((feature) => this.passes(options.filter, feature));
+  }
+
+  placeTileFeatures(sourceId: string, features: readonly GeoJSON.Feature<GeoJSON.Point>[]) {
+    this.placedTileFeatures.set(sourceId, features);
+  }
+
+  /** 載っているレイヤー`layerId`が描く、置いたタイルの点の地物（隠したレイヤーは何も描かない）。 */
+  drawnTileFeatures(layerId: string): GeoJSON.Feature<GeoJSON.Point>[] {
+    const layer = this.content.layer(layerId);
+    if (layer === undefined || layer.visibility === "none") return [];
+    return this.tileFeatures(layer.source).filter((feature) => this.passes(layer.filter, feature));
+  }
+
+  private tileFeatures(sourceId: string | undefined): readonly GeoJSON.Feature<GeoJSON.Point>[] {
+    return (sourceId === undefined ? undefined : this.placedTileFeatures.get(sourceId)) ?? [];
+  }
+
+  private passes(filter: unknown, feature: GeoJSON.Feature<GeoJSON.Point>): boolean {
+    const [lng, lat] = feature.geometry.coordinates;
+    return filter === undefined || matchesFilterAtPoint(filter, feature.properties ?? {}, [lng, lat]);
   }
 
   queryRenderedFeatures(_point: unknown, options: { layers?: readonly string[] } = {}) {

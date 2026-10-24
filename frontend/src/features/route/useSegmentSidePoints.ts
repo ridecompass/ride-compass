@@ -1,63 +1,41 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
 import { sidePointGroups, type SidePointGroup } from "@/features/route/SegmentSidePoints/sidePointGroups";
-import { getRouteSidePoints } from "@/features/route/routeApi";
-import { getQueryClient } from "@/lib/queryClient";
-import { findSameSegment, kmAlongSegment } from "@/lib/routeDistance";
-import type { RouteCandidate, RoutePoint, SelectedRouteSegment } from "@/types/route";
+import { sidePointAlong, type SidePointOnMap } from "@/lib/mapDisplay/sidePoints";
+import { findSameSegment } from "@/lib/routeDistance";
+import type { RouteCandidate, SelectedRouteSegment } from "@/types/route";
 
-/** 選んだ区間の近くの点の引き具合。まだ探していなければ探す口を持ち、引けたら、地図に描ける点を種類・区分ごとに持ち、利用者が
- * 地図から消した区分を持つ。 */
-export type SegmentSidePoints =
-  | { status: "idle"; onSearch: () => void }
-  | { status: "loading" }
-  | { status: "failed" }
-  | {
-      status: "done";
-      groups: readonly SidePointGroup[];
-      /** 地図から消した区分のid（`SidePointKind`の`id`）。 */
-      hidden: ReadonlySet<string>;
-      onToggle: (kindId: string) => void;
-      /** 地図に出す点（消した区分を除いたもの）。 */
-      shown: readonly RoutePoint[];
-      /** 押した地点を区間の道なりに当てた道のり（km。近くの点の`distance_km`と同じ、候補の始点からの道のり）。 */
-      pickedKm: number;
-    };
+/** 選んだ区間の近くの施設。地図が読み込んだ点のタイルから組み、種類・区分ごとに持ち、利用者が地図から消した区分を持つ。 */
+export type SegmentSidePoints = {
+  /** 点のタイルを読まないズームのとき・地図がまだ読んでいないときはnull。 */
+  groups: readonly SidePointGroup[] | null;
+  /** 地図から消した区分のid（`SidePointKind`の`id`）。 */
+  hidden: ReadonlySet<string>;
+  onToggle: (kindId: string) => void;
+  /** 押した地点を区間の道なりに当てた道のり（km。施設の`km`と同じ、候補の始点からの道のり）。 */
+  pickedKm: number;
+};
 
 const NOTHING_HIDDEN: ReadonlySet<string> = new Set();
 
-/** 選んだ区間の近くの点を、探す口（`onSearch`）を呼んだときだけ引く（要らないときは地図に印も出さず、要求も送らない）。
- * 最後に探した区間を覚え、同じ区間の中で地点を選び直しても引いた点を出し続ける。区間は候補の区間から引き直す（地図で
- * 押した区間は鍵の範囲を持たない写し）。区間を選んでいない・候補に無い区間ならnull。区間を選び直すたびに、消した区分を
- * 全部出し直す。 */
-export function useSegmentSidePoints(
-  candidate: RouteCandidate | null,
-  selection: SelectedRouteSegment | null,
-): SegmentSidePoints | null {
-  const segment =
+/** 選んだ区間の近くの施設と、地図が読んだ点を受ける口（`onSidePointsChange`）。区間は候補の区間から引き直す（地図で押した区間は
+ * 形を持たない写し）。区間を選んでいない・候補に無い区間なら`sidePoints`はnull。区間を選び直すたびに、消した区分を全部出し直す。 */
+export function useSegmentSidePoints(candidate: RouteCandidate | null, selection: SelectedRouteSegment | null) {
+  const section =
     candidate === null || selection === null
       ? undefined
       : findSameSegment(candidate.segments, selection.segment, (item) => item);
-  const edgeIds =
-    candidate === null || segment === undefined ? [] : candidate.edge_ids.slice(segment.edge_start, segment.edge_end);
-  const startKm = segment?.cumulative_distance_km ?? 0;
-  const segmentKey = `${edgeIds.join(",")}@${startKm}`;
-  const [searchedKey, setSearchedKey] = useState<string | null>(null);
-  const searched = edgeIds.length > 0 && searchedKey === segmentKey;
-  const onSearch = useCallback(() => setSearchedKey(segmentKey), [segmentKey]);
-  const query = useQuery(
-    {
-      queryKey: ["route-side-points", edgeIds.join(","), startKm],
-      queryFn: () => getRouteSidePoints(edgeIds, startKm),
-      enabled: searched,
-      // 同じ区間の点は画面を開いている間は変わらないので、選び直しても引き直さない。
-      staleTime: Infinity,
-      gcTime: Infinity,
-    },
-    getQueryClient(),
+  // 地図が読んだ点は、読んだときの区間と組で持つ（別の区間を選んだ直後に前の区間の点を出さない）。地図は区間の線が変わったときだけ
+  // 読み直すので、同じ区間を押し直したときは前に読んだ点を使う。
+  const [onMap, setOnMap] = useState<{ section: typeof section; points: readonly SidePointOnMap[] | null }>({
+    section: undefined,
+    points: null,
+  });
+  const onSidePointsChange = useCallback(
+    (points: readonly SidePointOnMap[] | null) => setOnMap({ section, points }),
+    [section],
   );
   const [hiding, setHiding] = useState({ selection, hidden: NOTHING_HIDDEN });
   const hidden = hiding.selection === selection ? hiding.hidden : NOTHING_HIDDEN;
@@ -70,18 +48,19 @@ export function useSegmentSidePoints(
       }),
     [selection],
   );
-  const groups = useMemo(() => (query.data === undefined ? [] : sidePointGroups(query.data)), [query.data]);
-  const shown = useMemo(
-    () =>
-      groups
-        .flatMap((group) => group.kinds)
-        .filter((kind) => !hidden.has(kind.id))
-        .flatMap((kind) => kind.points),
-    [groups, hidden],
+  const points = onMap.section === section ? onMap.points : null;
+  const groups = useMemo(
+    () => (points === null || section === undefined ? null : sidePointGroups(points, section)),
+    [points, section],
   );
-  if (segment === undefined || selection === null || edgeIds.length === 0) return null;
-  if (!searched) return { status: "idle", onSearch };
-  if (query.isError) return { status: "failed" };
-  if (query.data === undefined) return { status: "loading" };
-  return { status: "done", groups, hidden, onToggle, shown, pickedKm: startKm + kmAlongSegment(segment, selection) };
+  const sidePoints: SegmentSidePoints | null =
+    section === undefined || selection === null
+      ? null
+      : {
+          groups,
+          hidden,
+          onToggle,
+          pickedKm: sidePointAlong(section, [selection.longitude, selection.latitude]).km,
+        };
+  return { sidePoints, onSidePointsChange };
 }

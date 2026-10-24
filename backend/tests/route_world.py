@@ -22,7 +22,6 @@ from app.domain.traffic import stop_count_material_ids
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
-from app.domain.route_points import RoutePointHit
 from app.domain.route_preference import RoutePreference
 from app.domain.route_request import FixedPoints, RequestedConditions
 from app.domain.tuning import TUNING_VALUES
@@ -175,16 +174,13 @@ def road_network(
 
 
 class NetworkRepository:
-    """DBの代役。道路網はどこでも取込範囲の中で、区間の形は両端のノードを結ぶ直線。近くの点は`side_points`
-    （区間の(way, segment)ごとの当たり。無ければどの区間にも無い）。"""
+    """DBの代役。道路網はどこでも取込範囲の中で、区間の形は両端のノードを結ぶ直線。"""
 
-    def __init__(self, network: RoadNetwork,
-                 side_points: dict[tuple[int, int], list[RoutePointHit]] | None = None):
+    def __init__(self, network: RoadNetwork):
         self._coordinates = {
             node_key(int(osm)): [float(lat), float(lon)]
             for osm, lat, lon in zip(network.node_osm_id, network.node_lat, network.node_lon, strict=True)
         }
-        self._side_points = side_points or {}
 
     async def is_covered(self, bbox):
         return True
@@ -194,10 +190,6 @@ class NetworkRepository:
             edge.edge_id: replace(edge, geometry=[self._coordinates[edge.from_node_id], self._coordinates[edge.to_node_id]])
             for edge in edges
         }
-
-    async def get_route_side_points(self, segments):
-        keys = set(segments)
-        return {key: hits for key, hits in self._side_points.items() if key in keys}
 
 
 class Weather:

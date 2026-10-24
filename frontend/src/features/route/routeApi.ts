@@ -3,7 +3,6 @@ import type {
   RouteCandidate,
   RouteGenerateJobStatusResponse,
   RouteGenerateRequest,
-  RoutePoint,
 } from "@/types/route";
 import { backendApi, getOptions, requestApi } from "@/lib/apiClient";
 import { errorMessage } from "@/lib/apiError";
@@ -138,17 +137,4 @@ export async function generateRoutes(
     }
     onProgress?.({ status: status.status, elapsedMs });
   }
-}
-
-/** 経路の一続きの区間（候補の`edge_ids`の連なり）の近くの点を、通る道のりの順に引く。道のりは`startKm`から積む。 */
-export async function getRouteSidePoints(edgeIds: readonly string[], startKm: number): Promise<RoutePoint[]> {
-  const { points } = await requestApi(
-    (init) =>
-      backendApi.POST("/api/routes/side-points", {
-        body: { edge_ids: [...edgeIds], start_distance_km: startKm },
-        ...init,
-      }),
-    getOptions({ timeoutMs: API_TIMEOUT_MS.default, category: "api:route", errorLabel: "近くの施設" }),
-  );
-  return points;
 }

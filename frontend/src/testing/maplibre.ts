@@ -10,6 +10,8 @@
  * - 位置の換算（`project`）は、テストが置いた範囲（`moveTo`）を描画面へ線形に当てる。
  * - 操作を受けない地図（`interactive: false`。本体の地図に添える小さな地図）は、本体の地図と分けて `insetMapOnScreen` で引く。向きが変わったら "rotate" だけを出す。
  * - `addProtocol` で登録された受け手は、`protocolHandler` で引ける（テストが要求を渡して呼ぶ）。
+ * - タイルのソースの点の地物は、テストが`placeTileFeatures`で置く。問い合わせ（`querySourceFeatures`）とレイヤーが描くもの（`drawnTileFeatures`）は、
+ *   その地物に絞り込みを MapLibre と同じ評価器（`mapExpressions.ts: matchesFilterAtPoint`）で当てて返す。
  * - 出来事（"load"・"click" 等）は、上の "rotate" のほかは自分では起こさず、テストが `MapOnScreen` で起こす。押した所に描かれている地物も、
  *   テストが渡したものを返す。
  *
@@ -46,6 +48,10 @@ export interface MapOnScreen {
   loadStyle(layers: readonly StyleLayer[] | undefined): void;
   /** `lngLat` を押す。`features` はそこに描かれている地物。 */
   click(lngLat: Coordinates, features?: readonly PointedFeature[]): void;
+  /** タイルのソース`sourceId`に、地図が読み込んだ点の地物を置く。 */
+  placeTileFeatures(sourceId: string, features: readonly GeoJSON.Feature<GeoJSON.Point>[]): void;
+  /** レイヤー`layerId`が描く、置いたタイルの点の地物。 */
+  drawnTileFeatures(layerId: string): GeoJSON.Feature<GeoJSON.Point>[];
   /** いま表示しているレイヤーの id。 */
   visibleLayerIds(): string[];
   /** いま地図に載っているソースの id。 */
@@ -90,6 +96,8 @@ function onScreen(map: StandInMap): MapOnScreen {
     emit: (type, event) => map.emit(type, event),
     loadStyle: (layers) => map.content.loadStyle(layers),
     click: (lngLat, features = []) => map.click(lngLat, features),
+    placeTileFeatures: (sourceId, features) => map.placeTileFeatures(sourceId, features),
+    drawnTileFeatures: (layerId) => map.drawnTileFeatures(layerId),
     visibleLayerIds: () => map.content.layerOrder().filter((id) => map.content.layer(id)?.visibility !== "none"),
     sourceIds: () => map.content.sources(),
     sourceFeatures: (sourceId) =>

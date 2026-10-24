@@ -16,7 +16,7 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from itertools import batched
 
 import numpy as np
@@ -35,7 +35,6 @@ from app.domain.material_catalog import (
     segment_material_ids,
 )
 from app.domain.region import BoundingBox
-from app.domain.route_points import RoutePointHit
 from app.domain.tuning import TUNING_PARAMETERS_BY_ID, TURN_BEARING_DISTANCE_ID
 from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
@@ -47,7 +46,6 @@ from app.infrastructure.road_tile_sql import (
     FEATURE_SEGMENTS_IN_TILE_SQL,
     ROAD_SURFACE_TILE_MVT_SQL,
 )
-from app.infrastructure.route_side_points import ROUTE_SIDE_POINTS_SQL, SIDE_POINT_PROPERTIES
 from app.infrastructure.source_models import (
     COVERAGE_SQL,
     INGESTED_BBOX_SQL,
@@ -313,17 +311,6 @@ def _rows_to_directed_edges(rows, wanted: dict[tuple[int, int], list[bool]]) -> 
     return edges
 
 
-def _add_route_side_points(rows, result: dict[tuple[int, int], list[RoutePointHit]]) -> None:
-    """近くの点の行を、区間（`(osm_way_id, segment_index)`）ごとの`RoutePointHit`として`result`へ足す。"""
-    for row in rows:
-        result.setdefault((row["osm_way_id"], row["segment_index"]), []).append(RoutePointHit(
-            layer=row["layer"], point_key=row["point_key"], merge_group=row["merge_group"],
-            merge_within_m=row["merge_within_m"],
-            properties={name: row[name] for name in SIDE_POINT_PROPERTIES if row[name] is not None},
-            latitude=row["latitude"], longitude=row["longitude"], fraction=row["fraction"], distance_m=row["distance_m"],
-        ))
-
-
 def _scanned_relations(plan: object) -> set[str]:
     """`EXPLAIN (FORMAT JSON)`の計画の中で走査される表の名前。"""
     if isinstance(plan, list):
@@ -460,20 +447,6 @@ class RoadGraphRepository:
                 "segment_indexes": [k[1] for k in chunk],
             })).all()
             result.update(await asyncio.to_thread(_rows_to_directed_edges, rows, wanted))
-        return result
-
-    async def get_route_side_points(
-        self, segments: Iterable[tuple[int, int]]
-    ) -> dict[tuple[int, int], list[RoutePointHit]]:
-        """区間（`(osm_way_id, segment_index)`）ごとの、近くの点。向きは問わず、位置は区間の形の向きで測る。"""
-        keys = sorted(set(segments))
-        result: dict[tuple[int, int], list[RoutePointHit]] = {}
-        for chunk in batched(keys, ID_CHUNK_SIZE):
-            rows = (await self._session.execute(ROUTE_SIDE_POINTS_SQL, {
-                "way_ids": [k[0] for k in chunk],
-                "segment_indexes": [k[1] for k in chunk],
-            })).mappings().all()
-            await asyncio.to_thread(_add_route_side_points, rows, result)
         return result
 
     # --- 材料 ----------------------------------------------------------------

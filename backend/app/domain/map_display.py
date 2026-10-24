@@ -688,6 +688,8 @@ POINT_STROKE_WIDTH_PX = 1
 #: 絵記号で描く点（行が`glyph`を持つ軸）の一辺。丸い点より大きくし、中の絵を読める大きさにする。
 POINT_ICON_SIZE_PX = 20
 POINT_OPACITY = 0.9
+#: 区間を選んでいる間、地図の点のうち区間の近くに数える、区間の線からの地上の距離（m）。
+SEGMENT_NEARBY_POINT_MAX_DISTANCE_M = 100.0
 
 
 def _point_opacities() -> dict[str, float]:

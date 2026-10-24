@@ -31,7 +31,7 @@ import {
 } from "@/features/map/layers/mapStyleOps";
 import { axisMapLayerIds } from "@/features/map/layers/mapLayers";
 import type { LensId, RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
-import type { RoadMapLayerView, RouteCandidate, RoutePoint, SelectedRouteSegment } from "@/types/route";
+import type { RoadMapLayerView, RouteCandidate, SelectedRouteSegment } from "@/types/route";
 import { valueBands } from "@/lib/mapDisplay/valueScale";
 import { findSameSegment, routeStretches, segmentPath, splitSegmentAt } from "@/lib/routeDistance";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
@@ -110,8 +110,10 @@ type SceneWiringProps = {
   readonly travelledKm: number | null;
   /** 道のりのグラフか地図で選んだ地点と、その地点を含む区間。選んでいなければnull。 */
   readonly selectedRouteSegment: SelectedRouteSegment | null;
-  /** 選んだ区間の近くの点のうち、地図に出すもの。区間を選んでいなければ空。 */
-  readonly sidePoints: readonly RoutePoint[];
+  /** 地図で押して選んでいる区間の線（近くの点を描く）。押していなければnull。 */
+  readonly sidePointPath: readonly (readonly [number, number])[] | null;
+  /** 区間の近くの点のうち、地図から消した区分。 */
+  readonly sidePointsHidden: ReadonlySet<string>;
   /** 小窓に中身を出している、区間の近くの施設の印の位置。無ければnull。 */
   readonly chosenSidePoint: readonly [number, number] | null;
 };
@@ -262,7 +264,12 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
     },
     weather: weatherStateFrom(props.look.dynamicWeather),
     route: routeStateFrom(props),
-    sidePoint: { points: props.sidePoints, chosen: props.chosenSidePoint },
+    sidePoint: {
+      path: props.sidePointPath,
+      hidden: props.sidePointsHidden,
+      tilesReady: versions !== null,
+      chosen: props.chosenSidePoint,
+    },
   };
 }
 

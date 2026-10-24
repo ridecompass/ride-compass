@@ -148,43 +148,6 @@
         }
       }
     },
-    "/api/routes/side-points": {
-      "post": {
-        "operationId": "route_side_points_api_routes_side_points_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RouteSidePointsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouteSidePointsResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/weather/warnings": {
       "get": {
         "operationId": "get_weather_warnings_api_weather_warnings_get",
@@ -6709,61 +6672,6 @@
         ],
         "title": "RouteGenerateResponse"
       },
-      "RoutePoint": {
-        "properties": {
-          "distance_km": {
-            "type": "number",
-            "title": "Distance Km"
-          },
-          "offset_m": {
-            "type": "integer",
-            "title": "Offset M"
-          },
-          "layer": {
-            "type": "string",
-            "title": "Layer"
-          },
-          "properties": {
-            "additionalProperties": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "boolean"
-                }
-              ]
-            },
-            "type": "object",
-            "title": "Properties"
-          },
-          "latitude": {
-            "type": "number",
-            "title": "Latitude"
-          },
-          "longitude": {
-            "type": "number",
-            "title": "Longitude"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "distance_km",
-          "offset_m",
-          "layer",
-          "properties",
-          "latitude",
-          "longitude"
-        ],
-        "title": "RoutePoint"
-      },
       "RoutePreferenceWeights": {
         "additionalProperties": {
           "type": "number"
@@ -6928,48 +6836,6 @@
           "road_classes"
         ],
         "title": "RouteSegmentDetail"
-      },
-      "RouteSidePointsRequest": {
-        "properties": {
-          "edge_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 2000,
-            "minItems": 1,
-            "title": "Edge Ids"
-          },
-          "start_distance_km": {
-            "type": "number",
-            "minimum": 0.0,
-            "title": "Start Distance Km"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "edge_ids",
-          "start_distance_km"
-        ],
-        "title": "RouteSidePointsRequest"
-      },
-      "RouteSidePointsResponse": {
-        "properties": {
-          "points": {
-            "items": {
-              "$ref": "#/components/schemas/RoutePoint"
-            },
-            "type": "array",
-            "title": "Points"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "points"
-        ],
-        "title": "RouteSidePointsResponse"
       },
       "RouteTimelineRequest": {
         "properties": {
