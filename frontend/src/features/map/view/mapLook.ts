@@ -16,6 +16,11 @@ export interface MapViewport {
   bearing: number;
 }
 
+/** 地図の真ん中（範囲の中点）。 */
+export function viewportCenter(viewport: MapViewport): { latitude: number; longitude: number } {
+  return { latitude: (viewport.south + viewport.north) / 2, longitude: (viewport.west + viewport.east) / 2 };
+}
+
 export interface MapLook extends SceneLook {
   /** 増えるたびに地図を描き直す。 */
   readonly refreshToken: number;

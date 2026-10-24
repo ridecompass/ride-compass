@@ -18,7 +18,7 @@ import {
   type MapLayerVisibility,
 } from "@/features/map/layers/mapLayers";
 import { LENS_DIFFICULTY_ID, type LensId } from "@/lib/mapDisplay/routeStyleModes";
-import type { MapViewport } from "@/features/map/view/mapLook";
+import { viewportCenter, type MapViewport } from "@/features/map/view/mapLook";
 import type MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayControls";
 import { isLegendFiltered } from "@/features/map/MapOverlayControls/OverlayLayerRow";
 import { mapDisplay } from "@/types/generated/mapDisplay";
@@ -87,6 +87,8 @@ interface MapViewState {
   redrawMap: () => void;
   /** 地図の見えている範囲の真ん中。地図がまだ範囲を知らせていなければnull。 */
   center: Coordinates | null;
+  /** 地図が今映している範囲。地図がまだ範囲を知らせていなければnull。 */
+  viewport: MapViewport | null;
   /** 地図が今当てている向き（北から時計回りの度）。地図がまだ範囲を知らせていなければ0（北が上）。 */
   bearing: number;
   /** 地図の道の値を取る走る条件。道を押したときの内訳にも同じ値を使う。 */
@@ -132,14 +134,7 @@ export function useMapView({
   const [viewport, setViewport] = useState<MapViewport | null>(null);
   const [mapLayerStatus, setMapLayerStatus] = useState<LayerDataStatusByLayer>({});
   const [refreshToken, setRefreshToken] = useState(0);
-  const center = useMemo<Coordinates | null>(
-    () =>
-      viewport && {
-        latitude: (viewport.south + viewport.north) / 2,
-        longitude: (viewport.west + viewport.east) / 2,
-      },
-    [viewport],
-  );
+  const center = useMemo<Coordinates | null>(() => viewport && viewportCenter(viewport), [viewport]);
 
   // チップ配下の名前付きソースの表示切替は、チップidを凡例の保存先の鍵にする（`scene/legends.ts`）。
   const hiddenWeatherSources = useMemo(
@@ -286,6 +281,7 @@ export function useMapView({
     lensConditions: catalog.axes.find((axis) => axis.axisId === painted)?.wayValueConditions ?? [],
     redrawMap: () => setRefreshToken((token) => token + 1),
     center,
+    viewport,
     bearing: viewport?.bearing ?? 0,
     wayConditions,
   };

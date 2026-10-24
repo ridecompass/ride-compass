@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import FirstVisitIntro from "@/components/FirstVisitIntro/FirstVisitIntro";
 import { Button } from "@/components/ui/Button/Button";
 import { cardVariants } from "@/components/ui/Card/Card";
@@ -11,6 +12,8 @@ import RideConditionBar from "@/features/conditions/RideConditionBar/RideConditi
 import type { useRideConditions } from "@/features/conditions/useRideConditions";
 import LensControl from "@/features/map/LensControl/LensControl";
 import MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayControls";
+import MapOverview from "@/features/map/MapOverview/MapOverview";
+import { anyWeatherShown, overviewShown } from "@/features/map/MapOverview/overview";
 import MapView from "@/features/map/MapView/MapView";
 import type { MapTapMode } from "@/features/map/MapView/mapTaps";
 import type { useMapView } from "@/features/map/view/useMapView";
@@ -53,6 +56,8 @@ interface HomeMapPaneProps {
   focusPoint: Coordinates | null;
   onFocusPoint: (point: Coordinates) => void;
   isMobile: boolean;
+  /** スマホで下のシートを開いているか。 */
+  sheetOpen: boolean;
   usageGuideActive: boolean;
   onUsageGuideEnd: () => void;
 }
@@ -73,6 +78,7 @@ export default function HomeMapPane({
   focusPoint,
   onFocusPoint,
   isMobile,
+  sheetOpen,
   usageGuideActive,
   onUsageGuideEnd,
 }: HomeMapPaneProps) {
@@ -85,9 +91,16 @@ export default function HomeMapPane({
   // 詳しくを出す）。
   const selected = results.selectedCandidate;
   const profile = selected !== null && selected.segments.length > 0 ? selected : null;
+  const paneRef = useRef<HTMLDivElement>(null);
+  const { viewport } = mapView;
+  const overview =
+    viewport !== null &&
+    overviewShown({ weatherShown: anyWeatherShown(mapView.look.dynamicWeather), zoom: viewport.zoom, sheetOpen }) ? (
+      <MapOverview viewport={viewport} dynamicWeather={mapView.look.dynamicWeather} paneRef={paneRef} />
+    ) : null;
 
   return (
-    <div className="app-map-pane @container/map relative min-h-0 flex-1">
+    <div ref={paneRef} className="app-map-pane @container/map relative min-h-0 flex-1">
       <MapView
         routes={route.mapRoutes}
         {...splice.map}
@@ -157,6 +170,18 @@ export default function HomeMapPane({
       >
         <LensControl {...mapView.lensControl} />
       </div>
+      {/* 俯瞰図は左下に置く。スマホでは下のタブの上へ上げる。走行中は、下の道のりのグラフ等の上へ積む。 */}
+      {!navigating && overview !== null && (
+        <div
+          {...mapOverlayEdge("bottom")}
+          className={cn(
+            "pointer-events-none absolute left-3 z-[var(--z-map-control)]",
+            isMobile ? "bottom-[calc(var(--mobile-tabbar-height)_+_0.75rem)]" : "bottom-3",
+          )}
+        >
+          {overview}
+        </div>
+      )}
       {!navigating && <FirstVisitIntro isMobile={isMobile} locationUnknown={place.locationFailure !== null} />}
 
       {usageGuideActive ? <UsageGuide onEnd={onUsageGuideEnd} /> : <UsageTooltip />}
@@ -223,6 +248,7 @@ export default function HomeMapPane({
           status={riding.status}
           offRoute={progress.offRoute}
           onResume={riding.resume}
+          overview={overview}
           profile={
             profile !== null ? (
               <RouteProfile

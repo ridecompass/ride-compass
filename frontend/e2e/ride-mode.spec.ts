@@ -3,7 +3,7 @@ import { trueHeadingDeg } from "@/lib/magneticDeclination";
 import { moved } from "@/testing/movedPoint";
 import { RIDE_ZOOM_MAX_OUT, RIDE_ZOOM_STEPS } from "@/features/map/MapView/rideZoom";
 
-import { INTRO_CLOSED, installApiMocks, installMapFinder, seedStoredState } from "./fixtures";
+import { INTRO_CLOSED, MAIN_MAP_CANVAS, installApiMocks, installMapFinder, seedStoredState } from "./fixtures";
 import {
   START,
   buttonLook,
@@ -86,7 +86,7 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   await expect.poll(() => mapBearing(page), { timeout: 10_000 }).toBeCloseTo(0, 0);
 
   // 指で地図を動かすと追うのを休み、次の位置が届いても地図は動かない（点だけが動く）。
-  const canvas = (await page.locator(".maplibregl-canvas").boundingBox())!;
+  const canvas = (await page.locator(MAIN_MAP_CANVAS).boundingBox())!;
   const from = { x: canvas.x + canvas.width / 3, y: canvas.y + canvas.height / 2 };
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();

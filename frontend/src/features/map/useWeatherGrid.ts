@@ -1,6 +1,7 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { OVERVIEW_MIN_ZOOM, overviewBounds } from "@/features/map/MapOverview/overview";
 import type { MapViewport } from "@/features/map/view/mapLook";
 import type { MsmGridForecast } from "@/types/weather";
 import { getMsmGrid, type Bbox } from "@/services/weatherApi";
@@ -19,7 +20,7 @@ const MSM_GRID_MIN_ZOOM = mapDisplay.layerDataSources.find((source) => source.ke
 const MSM_GRID_KEY = "msm-grid";
 
 interface UseWeatherGridResult {
-  /** 表示範囲の中のMSMの格子点の予報。まだ取れていない・取らない間はnull。取ってから時間が経つと先頭の時刻が過去に
+  /** 表示範囲（俯瞰図を出すズームでは俯瞰図の範囲も）の中のMSMの格子点の予報。まだ取れていない・取らない間はnull。取ってから時間が経つと先頭の時刻が過去に
    * なる（落とすのは時系列を作る側）。 */
   grid: MsmGridForecast | null;
   /** まだ一度も取り終えていない間の取得中。 */
@@ -32,8 +33,17 @@ interface UseWeatherGridResult {
 
 const DISABLED: UseWeatherGridResult = { grid: null, loading: false, error: null, hasFetched: false };
 
-function viewportBbox(viewport: MapViewport): Bbox {
-  return { minLon: viewport.west, minLat: viewport.south, maxLon: viewport.east, maxLat: viewport.north };
+// 俯瞰図を出すズームでは、俯瞰図が映す範囲も覆うように取る（俯瞰図は本体の地図と同じ格子点を描く）。
+function gridBbox(viewport: MapViewport): Bbox {
+  const box = { minLon: viewport.west, minLat: viewport.south, maxLon: viewport.east, maxLat: viewport.north };
+  if (viewport.zoom < OVERVIEW_MIN_ZOOM) return box;
+  const overview = overviewBounds(viewport);
+  return {
+    minLon: Math.min(box.minLon, overview.west),
+    minLat: Math.min(box.minLat, overview.south),
+    maxLon: Math.max(box.maxLon, overview.east),
+    maxLat: Math.max(box.maxLat, overview.north),
+  };
 }
 
 /** 風の矢印と降水の塗りが共有する、表示範囲の中のMSMの格子点（1回の取得に風と降水が載る）。`enabled`の間、源泉が
@@ -41,7 +51,7 @@ function viewportBbox(viewport: MapViewport): Bbox {
 export function useWeatherGrid(enabled: boolean, mapViewport: MapViewport | null): UseWeatherGridResult {
   const debouncedMapViewport = useDebouncedValue(mapViewport, MAP_FETCH_DEBOUNCE_MS);
   const fetching = enabled && debouncedMapViewport !== null && debouncedMapViewport.zoom >= MSM_GRID_MIN_ZOOM;
-  const bbox = fetching ? viewportBbox(debouncedMapViewport) : null;
+  const bbox = fetching ? gridBbox(debouncedMapViewport) : null;
   const query = useQuery(
     {
       queryKey: [MSM_GRID_KEY, bbox],
