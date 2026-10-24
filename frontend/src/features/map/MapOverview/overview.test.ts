@@ -21,10 +21,17 @@ import {
 } from "./overview";
 
 describe("overviewZoom", () => {
-  it.each([[35.68], [43.06]])("緯度%sで、俯瞰図の1辺に約60kmが収まる", (latitude) => {
-    // MapLibreのズームzの1pxの長さは、赤道の長さ×cos(緯度)÷(512×2^z)。
-    const metersPerPx = (METERS_PER_DEGREE * 360 * longitudeScale(latitude)) / (512 * 2 ** overviewZoom(latitude));
-    expect(metersPerPx * OVERVIEW_SIZE_PX).toBeCloseTo(60_000, -2);
+  // MapLibreのズームzの1pxの長さは、赤道の長さ×cos(緯度)÷(512×2^z)。
+  const spanM = (latitude: number, zoom: number) =>
+    ((METERS_PER_DEGREE * 360 * longitudeScale(latitude)) / (512 * 2 ** zoom)) * OVERVIEW_SIZE_PX;
+
+  it("本体の地図より4段引く（今の画面の16倍の幅を映す）", () => {
+    expect(overviewZoom(35.68, 11)).toBe(7);
+    expect(overviewZoom(35.68, 12.5)).toBe(8.5);
+  });
+
+  it.each([[35.68], [43.06]])("緯度%sで、寄せても俯瞰図の1辺は約20kmより狭くならない", (latitude) => {
+    expect(spanM(latitude, overviewZoom(latitude, 16))).toBeCloseTo(20_000, -2);
   });
 });
 
@@ -73,14 +80,15 @@ describe("overviewFrameSize", () => {
 });
 
 describe("overviewBounds", () => {
-  const viewport = { west: 139.6, south: 35.6, east: 139.8, north: 35.8, zoom: 12 };
+  // 寄せた本体の地図では、俯瞰図の1辺は下限の約20km。
+  const viewport = { west: 139.69, south: 35.69, east: 139.71, north: 35.71, zoom: 16 };
   const widthM = (bounds: { west: number; east: number }) =>
     (bounds.east - bounds.west) * METERS_PER_DEGREE * longitudeScale(35.7);
 
   it.each([
-    { bearing: 0, widthM: 60_000 },
+    { bearing: 0, widthM: 20_000 },
     // 45°回した正方形を覆う箱は、1辺の√2倍。
-    { bearing: 45, widthM: 60_000 * Math.SQRT2 },
+    { bearing: 45, widthM: 20_000 * Math.SQRT2 },
   ])("向き$bearing°では、本体の地図の真ん中を中心に幅$widthM mを覆う", ({ bearing, widthM: expected }) => {
     const bounds = overviewBounds({ ...viewport, bearing });
     expect(widthM(bounds)).toBeCloseTo(expected, -1);
@@ -90,23 +98,28 @@ describe("overviewBounds", () => {
 });
 
 describe("overviewBasemapEdits", () => {
-  it("道路・建物・店とその文字を消し、森・水は残し、地名は大きな町と都道府県だけに絞る", () => {
+  it("高速道路の本線のほかの道路・建物・店とその文字を消し、森・水は残し、地名は市・区・町と都道府県だけに絞る", () => {
     const townFilter = ["==", ["get", "class"], "town"];
     const layers = [
       { id: "background", type: "background" },
       { id: "landcover_wood", type: "fill", source: "openmaptiles", "source-layer": "landcover" },
       { id: "water", type: "fill", source: "openmaptiles", "source-layer": "water" },
       { id: "road_minor", type: "line", source: "openmaptiles", "source-layer": "transportation" },
+      { id: "road_motorway_casing", type: "line", source: "openmaptiles", "source-layer": "transportation" },
+      { id: "road_motorway_link", type: "line", source: "openmaptiles", "source-layer": "transportation" },
+      { id: "road_motorway", type: "line", source: "openmaptiles", "source-layer": "transportation" },
+      { id: "bridge_motorway", type: "line", source: "openmaptiles", "source-layer": "transportation" },
       { id: "road_label", type: "symbol", source: "openmaptiles", "source-layer": "transportation_name" },
       { id: "building", type: "fill", source: "openmaptiles", "source-layer": "building" },
       { id: "poi_r1", type: "symbol", source: "openmaptiles", "source-layer": "poi" },
       { id: "label_town", type: "symbol", source: "openmaptiles", "source-layer": "place", filter: townFilter },
     ] as LayerSpecification[];
-    const shownPlace = ["in", ["get", "class"], ["literal", ["city", "state"]]];
+    const shownPlace = ["in", ["get", "class"], ["literal", ["city", "town", "suburb", "state"]]];
 
     expect(overviewBasemapEdits(layers)).toEqual({
-      hidden: ["road_minor", "road_label", "building", "poi_r1"],
-      filters: [["label_town", ["all", townFilter, shownPlace]]],
+      hidden: ["road_minor", "road_motorway_casing", "road_motorway_link", "road_label", "building", "poi_r1"],
+      places: [["label_town", ["all", townFilter, shownPlace]]],
+      motorways: ["road_motorway", "bridge_motorway"],
     });
   });
 });

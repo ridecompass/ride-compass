@@ -19,6 +19,8 @@ import { viewportCenter, type MapViewport } from "@/features/map/view/mapLook";
 import { useStoredBooleanState } from "@/hooks/useStoredState";
 
 const COLLAPSED_STORAGE_KEY = "ridecompass:map-overview-collapsed";
+/** 俯瞰図に残す高速道路の線の幅（px）。気象の色を覆わない細さにする。 */
+const MOTORWAY_WIDTH_PX = 1;
 
 interface MapOverviewProps {
   viewport: MapViewport;
@@ -27,7 +29,7 @@ interface MapOverviewProps {
   paneRef: RefObject<HTMLElement | null>;
 }
 
-/** 本体の地図の左下に添える、約60km四方の俯瞰図。本体の地図で出している気象の層を同じ色で描き、今の画面の範囲を枠で
+/** 本体の地図の左下に添える、今の画面より広い範囲の俯瞰図。本体の地図で出している気象の層を同じ色で描き、今の画面の範囲を枠で
  * 示す。「×」で丸いボタンに畳み、畳んだことは端末に覚える。出すかどうかは呼ぶ側が`overview.ts: overviewShown`で決める。 */
 export default function MapOverview(props: MapOverviewProps) {
   const [collapsed, setCollapsed] = useStoredBooleanState(COLLAPSED_STORAGE_KEY, false);
@@ -38,7 +40,7 @@ export default function MapOverview(props: MapOverviewProps) {
         size="iconRound"
         className="size-9"
         aria-label="俯瞰図を開く"
-        usage="今の画面のまわり約60km四方の気象を、小さな地図で見ます。"
+        usage="今の画面のまわりの気象を、広く映した小さな地図で見ます。"
         onClick={() => setCollapsed(false)}
       >
         <OverviewMapIcon />
@@ -52,7 +54,7 @@ function OverviewMap({ viewport, dynamicWeather, paneRef, onCollapse }: MapOverv
   const mapRef = useRef<MapLibreMap | null>(null);
   const [paneSize, setPaneSize] = useState<{ width: number; height: number } | null>(null);
   const center = viewportCenter(viewport);
-  const zoom = overviewZoom(center.latitude);
+  const zoom = overviewZoom(center.latitude, viewport.zoom);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -64,9 +66,14 @@ function OverviewMap({ viewport, dynamicWeather, paneRef, onCollapse }: MapOverv
     });
     map.setBearing(viewport.bearing);
     runWhenStyleReady(map, () => {
-      const { hidden, filters } = overviewBasemapEdits(map.getStyle().layers);
+      const { hidden, places, motorways } = overviewBasemapEdits(map.getStyle().layers);
       for (const layerId of hidden) map.setLayoutProperty(layerId, "visibility", "none");
-      for (const [layerId, filter] of filters) map.setFilter(layerId, filter);
+      for (const [layerId, filter] of places) {
+        map.setFilter(layerId, filter);
+        // 風の矢印の記号が先に場所を取るので、重ねてよいとしないと地名が衝突で全部押し出される。
+        map.setLayoutProperty(layerId, "text-allow-overlap", true);
+      }
+      for (const layerId of motorways) map.setPaintProperty(layerId, "line-width", MOTORWAY_WIDTH_PX);
     });
     mapRef.current = map;
     return () => {
