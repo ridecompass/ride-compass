@@ -15,7 +15,7 @@
  * （本番の層は管理DBが持つ）。
  *
  * ここで見ないもの: 難易度の塗り・なぞって地点を選ぶ操作 → `DifficultyProfile.test.tsx`。折れ線の点・帯の切れ目と地点の値・行の計算 →
- * `profileLayers.test.ts`。区間の近くの施設 → `app/page.map.test.tsx`。選んだレイヤを覚えること → `useProfileLayers.test.ts`。風のチップの方角の呼び名 →
+ * `profileLayers.test.ts`。選んだレイヤを覚えること → `useProfileLayers.test.ts`。風のチップの方角の呼び名 →
  * `lib/cardinalLabel.test.ts`。
  */
 import { EVALUATION_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
@@ -95,7 +95,6 @@ function renderProfile(props: Partial<Props> = {}) {
       scaleKm={2}
       selected={null}
       layers={{ ids: ["elevation"], toggle }}
-      sidePoints={null}
       waypointKms={[]}
       {...props}
     />,
@@ -170,7 +169,6 @@ describe("RouteProfile", () => {
         scaleKm={2}
         selected={null}
         layers={{ ids: ["elevation"], toggle: vi.fn() }}
-        sidePoints={null}
         progressKm={1.5}
         waypointKms={[]}
       />,
@@ -283,7 +281,6 @@ describe("RouteProfile", () => {
         scaleKm={2}
         selected={null}
         layers={{ ids: ["elevation"], toggle: vi.fn() }}
-        sidePoints={null}
         waypointKms={[]}
       />,
     );
@@ -309,7 +306,6 @@ describe("RouteProfile", () => {
             selected={selected}
             onSelect={setSelected}
             layers={{ ids: ["elevation"], toggle: vi.fn() }}
-            sidePoints={null}
             waypointKms={[]}
             progressKm={riding ? 1.5 : null}
             riding={riding}

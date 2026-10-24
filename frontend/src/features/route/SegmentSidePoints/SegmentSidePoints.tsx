@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/Button/Button";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
@@ -7,12 +8,23 @@ import type { SegmentSidePoints as SegmentSidePointsState } from "@/features/rou
 
 const hintClass = cn(textVariants({ variant: "hint" }), "m-0");
 
-/** 選んだ区間の近くの施設。点は地図に描き、ここは種類ごとの件数のチップで、押すとその種類を地図に出す・消す。 */
+/** 選んだ区間の近くの施設。「探す」を押すと引いて、点は地図に描き、ここは種類ごとの件数のチップで、押すとその種類を地図に
+ * 出す・消す。 */
 export default function SegmentSidePoints({ sidePoints }: { sidePoints: SegmentSidePointsState }) {
   return (
     <div role="group" aria-label="近くの施設" className="flex flex-col gap-1 tabular-nums">
       <div className="flex flex-wrap items-center gap-1">
         <span className={textVariants({ variant: "hint" })}>近くの施設</span>
+        {sidePoints.status === "idle" && (
+          <Button
+            size="sm"
+            className="min-h-6"
+            onClick={sidePoints.onSearch}
+            usage="この区間の近くにある施設（停止要因・補給・立ち寄り先・事故）を探して、地図に印で出します。"
+          >
+            探す
+          </Button>
+        )}
         {sidePoints.status === "done" &&
           sidePoints.groups.map((group) => (
             <Toggle

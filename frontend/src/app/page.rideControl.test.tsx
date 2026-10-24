@@ -33,7 +33,6 @@ import {
   serveHome,
   useMobileLayout,
 } from "@/testing/homePage";
-import { onBackend } from "@/testing/backendServer";
 import { mapOnScreen } from "@/testing/maplibre";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 
@@ -204,7 +203,6 @@ describe("走行モードの操作", () => {
 
   it("走行中に帯の「ルート」で開いたパネルの中で区間を選ぶと、追うのを休んで地図をその区間へ寄せ、選びを外すと追い直す", async () => {
     const geolocation = installGeolocation(HERE);
-    onBackend("POST", "/api/routes/side-points", () => Response.json({ points: [] }));
     const { user } = renderHome();
     jobs.respond([RIDDEN], LOOP_CONDITIONS);
     await generate(user);

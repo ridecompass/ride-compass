@@ -205,7 +205,9 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   }
 
   function openRouteSegment(feature: MapGeoJSONFeature, e: MapMouseEvent) {
-    // 前に開いた点の詳細が残らないよう閉じる。
+    // 前に開いた点の詳細が残らないよう閉じる。押しを使った印を付け、区間の小窓が開いていても閉じさせない——閉じると、
+    // いま選び直した区間の選びが外れる。
+    e.preventDefault();
     popups.closePointPopup();
     const properties = feature.properties as unknown as Omit<RouteSegmentDetail, "geometry">;
     const segment: RouteSegmentDetail = { ...properties, geometry: null };
