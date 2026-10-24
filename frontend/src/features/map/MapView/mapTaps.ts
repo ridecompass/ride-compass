@@ -153,8 +153,10 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     );
   }
 
-  // 区間の近くの点。束ねた印は、中の点を地図のソースから引いて並べる（MapLibre の`getClusterLeaves`）。
+  // 区間の近くの点。束ねた印は、中の点を地図のソースから引いて並べる（MapLibre の`getClusterLeaves`）。押しを使った印を付け、
+  // 区間の小窓（`useMapPopups.tsx: useMapPopupMounts`）を閉じさせない——閉じると区間の選びが外れ、押した点ごと消える。
   function openSidePoint(feature: MapGeoJSONFeature, e: MapMouseEvent) {
+    e.preventDefault();
     const row = sidePointRowOfSceneLayer(feature.layer.id);
     if (row === undefined) throw new Error(`近くの点の対象を名乗るレイヤー ${feature.layer.id} に行が無い`);
     if (feature.geometry.type !== "Point") throw new Error(`近くの点の層 ${row.layer.attr_id} の地物が点でない`);

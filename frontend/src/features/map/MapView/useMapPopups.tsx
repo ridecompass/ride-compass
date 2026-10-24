@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import * as maplibregl from "maplibre-gl";
-import type { Map as MapLibreMap } from "maplibre-gl";
+import type { Map as MapLibreMap, MapMouseEvent } from "maplibre-gl";
 
 import type { RoutePreferenceWeights, SelectedRouteSegment } from "@/types/route";
 import type { RideConditions } from "@/features/map/regionApi";
@@ -112,13 +112,25 @@ export function useMapPopupMounts(
     const map = mapRef.current;
     if (!map || segmentPopupAt === null) return;
     const container = document.createElement("div");
-    const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "20rem", offset: SEGMENT_POPUP_OFFSET_PX })
+    const popup = new maplibregl.Popup({
+      closeButton: true,
+      closeOnClick: false,
+      maxWidth: "20rem",
+      offset: SEGMENT_POPUP_OFFSET_PX,
+    })
       .setLngLat([segmentPopupAt.longitude, segmentPopupAt.latitude])
       .setDOMContent(container)
       .addTo(map);
     setSegmentPopupMount({ shown: segmentPopupAt, container });
     popup.on("close", onSegmentPopupClose);
+    // 地図を押すと閉じるが、押した物を開く手続きが押しを使った（`preventDefault`）ときは閉じない。その手続きは地図を作るときに
+    // 結ぶので、ここより先に呼ばれる。
+    const closeOnMapClick = (e: MapMouseEvent) => {
+      if (!e.defaultPrevented) popup.remove();
+    };
+    map.on("click", closeOnMapClick);
     return () => {
+      map.off("click", closeOnMapClick);
       popup.off("close", onSegmentPopupClose);
       popup.remove();
       setSegmentPopupMount(null);

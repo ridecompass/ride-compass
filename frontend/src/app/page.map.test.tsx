@@ -343,17 +343,22 @@ describe("区間の近くの施設", () => {
     expect(sidePointsOnMap()).toEqual({});
   });
 
-  it("近くの施設の点を押すと名前と道からの距離を出し、重なって束ねた印を押すと中の点を道に近い順に並べる", async () => {
+  it("近くの施設の点を押すと名前と道からの距離を出し、重なって束ねた印を押すと中の点を道に近い順に並べる。区間の中身が地図の小窓にあっても、点を押しただけでは区間の選びを外さず、何も無い所を押すと外す", async () => {
     const { user } = renderHome();
     onBackend("POST", "/api/routes/side-points", () => Response.json({ points: NEARBY_POINTS }));
     const nearby = await pressSecondSegment(user);
     await within(nearby).findByRole("button", { name: "補給・休憩ポイント 3" });
+    // パネルを閉じると、区間の中身は地図の小窓に出る。
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
+    expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
     const [toilet] = mapOnScreen().sourceFeatures("side-point-supply_poi-toilets");
 
     clickMap(ELSEWHERE, [
       { layer: "side-point-supply_poi-toilets-mark", properties: toilet.properties ?? {}, geometry: toilet.geometry },
     ]);
     expect(screen.getByText(/補給・休憩ポイント: トイレ/).textContent).toBe("補給・休憩ポイント: トイレ道から5m");
+    expect(screen.getByRole("group", { name: "近くの施設" })).toBeInTheDocument();
+    expect(Object.keys(sidePointsOnMap())).toHaveLength(3);
 
     clickMap(ELSEWHERE, [
       {
@@ -365,6 +370,10 @@ describe("区間の近くの施設", () => {
     expect((await screen.findByText(/コンビニ 2件/)).textContent).toBe(
       "補給・休憩ポイント: コンビニ 2件ファミリーマート 道から8mローソン 渋谷店 道から12m",
     );
+
+    clickMap(ELSEWHERE, []);
+    await waitFor(() => expect(sidePointsOnMap()).toEqual({}));
+    expect(screen.queryByRole("group", { name: "近くの施設" })).toBeNull();
   });
 
   it("引けなかったら、区間の評価はそのまま出し、近くの施設を読めなかったと出す", async () => {

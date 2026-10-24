@@ -65,6 +65,7 @@ export class Marker extends Evented {
 export class Popup extends Evented {
   private lngLat: LngLat = { lng: 0, lat: 0 };
   private content: Node | null = null;
+  private onMap = false;
 
   setLngLat(lngLat: readonly [number, number] | LngLat) {
     this.lngLat = toLngLat(lngLat);
@@ -82,11 +83,17 @@ export class Popup extends Evented {
 
   addTo(map: StandInMap) {
     if (this.content !== null) map.getContainer().append(this.content);
+    this.onMap = true;
     return this;
   }
 
+  /** MapLibre と同じく、地図に載っていたときだけ "close" を出す。 */
   remove() {
     if (this.content !== null) this.content.parentNode?.removeChild(this.content);
+    if (this.onMap) {
+      this.onMap = false;
+      this.fire("close");
+    }
     return this;
   }
 }
