@@ -203,6 +203,7 @@ export default function HomeMapPane({
           status={riding.status}
           error={riding.error}
           screenWakeLock={riding.screenWakeLock}
+          onRequestHeading={riding.requestHeadingAgain}
           onPress={riding.press}
           onRest={riding.rest}
           onResume={riding.resume}

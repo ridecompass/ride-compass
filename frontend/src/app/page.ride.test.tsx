@@ -5,15 +5,17 @@
  * 見るだけで地図の下に出すこと・「表示」と「評価で塗る」は走っていないときと同じに出し、走行中に効かない操作は出さないこと・
  * 方位磁針で北が上と進む向きが上を切り替えること）と、届いた現在地がプロファイルの印と
  * 地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、到着予想が位置を受けた時刻と選んだ候補の計画から出ること、
- * 次に曲がる所がカードと地図の札に出ること、ルートを外れた・戻ったことが走りの帯に出ること、読み込み直しても走行モードが続くこと。
+ * 次に曲がる所がカードと地図の札に出ること、ルートを外れた・戻ったことが走りの帯に出ること、読み込み直しても走行モードが続くこと、
+ * 読み込み直しで iPhone がスマホの向きを読む許しを聞けなかったら、ボタンの横から求め直して現在地の印に向きを出せること。
  *
  * ここで見ないもの: 休む・帯の「ルート」で出したパネル・地図を押すこと・「このルートで走る」・スマホで走行中に下部タブを隠すこと（帯の「ルート」のシートを閉じた後に見る）は`app/page.rideControl.test.tsx`が見る。
  * 残りの距離・次に曲がる所の選び方・走りの帯の書式は`features/ride/`の各テストが見る。
  *
- * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
+ * 差し替えたもの: backend の応答（網の層）、位置情報の取得、iPhone の向きを読む許しを求める口（`DeviceOrientationEvent.requestPermission`）と
+ * 向きの出来事、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
 import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MINUTE_MS } from "@/lib/duration";
@@ -197,5 +199,52 @@ describe("走行モード", () => {
     geolocation.deliver({ ...RIDDEN_MIDDLE, timestamp: fixedAt });
     const arrival = new Date(fixedAt + 2 * MINUTE_MS);
     expect(rideBar).toHaveTextContent(`到着予想: ${formatJstHourMinute(arrival)}`);
+  });
+
+  it("iPhone で読み込み直して向きを読む許しを聞けなかったら、ボタンの横に許しが要ることを出し、「向きを出す」で許すと現在地の印に向きを出して札を消す", async () => {
+    const geolocation = installGeolocation(HERE);
+    const first = renderHome();
+    jobs.respond([RIDDEN], LOOP_CONDITIONS);
+    await generate(first.user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    await first.user.click(screen.getByRole("button", { name: "走行モード" }));
+    first.unmount();
+
+    // iPhone の Safari は、まだ聞いていない許しを操作の外で求められると断り、利用者が許したあとは許しを返す。
+    let answer: "granted" | null = null;
+    const holder = globalThis as unknown as { DeviceOrientationEvent?: { requestPermission?: () => Promise<string> } };
+    holder.DeviceOrientationEvent = {
+      requestPermission: async () => {
+        if (answer === null)
+          throw new DOMException(
+            "Requesting device orientation access requires a user gesture to prompt",
+            "NotAllowedError",
+          );
+        return answer;
+      },
+    };
+    const facingCone = () => document.querySelector("[data-facing-cone]");
+    const turnPhone = () =>
+      act(() => {
+        const event = new Event("deviceorientation");
+        Object.assign(event, { webkitCompassHeading: 90, alpha: 0 });
+        window.dispatchEvent(event);
+      });
+    try {
+      const { user } = renderHome();
+      const HEADING_NOTICE = /向きを読む許しが要ります/;
+      await screen.findByText(HEADING_NOTICE);
+      geolocation.deliver(RIDDEN_MIDDLE);
+      turnPhone();
+      expect(facingCone()).toHaveAttribute("visibility", "hidden");
+
+      answer = "granted";
+      await user.click(screen.getByRole("button", { name: "向きを出す" }));
+      await waitFor(() => expect(screen.queryByText(HEADING_NOTICE)).toBeNull());
+      turnPhone();
+      expect(facingCone()).toHaveAttribute("visibility", "visible");
+    } finally {
+      holder.DeviceOrientationEvent = undefined;
+    }
   });
 });

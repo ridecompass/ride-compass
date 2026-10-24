@@ -1,6 +1,7 @@
 /**
  * スマホが向いている方角（`features/ride/useDeviceHeading.ts`）——端末のコンパスの読みを画面の上が向いている方角へ直し、
- * 走行モードの間だけ読む。iPhone では始める操作の中で許しを求め、断られたら方角を出さない。
+ * 走行モードの間だけ読む。iPhone では始める操作の中で許しを求め、断られたら方角を出さない。操作の外で求めて聞けなかったら、
+ * 求め直す口を出す。
  *
  * 差し替えたもの: 端末の向きの出来事（`deviceorientationabsolute`・`deviceorientation`）と、iPhone の許しを求める口
  * （`DeviceOrientationEvent.requestPermission`）。どちらもテスト環境に無いブラウザの機能。
@@ -36,9 +37,23 @@ function orient(type: string, fields: Record<string, number | null>) {
   });
 }
 
-function setRequestPermission(answer: "granted" | "denied" | undefined) {
+// 操作の外で、まだ聞いていない許しを求めたときの iPhone の Safari の断り方。
+const UNASKED = new DOMException(
+  "Requesting device orientation access requires a user gesture to prompt",
+  "NotAllowedError",
+);
+
+function setRequestPermission(answer: "granted" | "denied" | typeof UNASKED | undefined) {
   const holder = globalThis as unknown as { DeviceOrientationEvent?: { requestPermission?: () => Promise<string> } };
-  holder.DeviceOrientationEvent = answer === undefined ? undefined : { requestPermission: async () => answer };
+  holder.DeviceOrientationEvent =
+    answer === undefined
+      ? undefined
+      : {
+          requestPermission: async () => {
+            if (answer instanceof DOMException) throw answer;
+            return answer;
+          },
+        };
 }
 
 afterEach(() => {
@@ -69,5 +84,28 @@ describe("useDeviceHeading", () => {
     await act(async () => result.current.request());
     orient("deviceorientation", { webkitCompassHeading: 90, alpha: 0 });
     expect(result.current.heading).toBeNull();
+    // 利用者が断った答えは、求め直しても変わらないので、求め直す口を出さない。
+    expect(result.current.requestAgain).toBeNull();
+  });
+
+  it("iPhone で操作の外で求めて聞けなかったら、求め直す口を出し、それで許されたら方角を出して口を消す", async () => {
+    setRequestPermission(UNASKED);
+    const { result, rerender } = renderHook(({ active }) => useDeviceHeading(active), {
+      initialProps: { active: true },
+    });
+    await act(async () => result.current.request());
+    orient("deviceorientation", { webkitCompassHeading: 90, alpha: 0 });
+    expect(result.current.heading).toBeNull();
+    // 位置を受けていない間は、求め直しても読まないので出さない。
+    rerender({ active: false });
+    expect(result.current.requestAgain).toBeNull();
+    rerender({ active: true });
+    expect(result.current.requestAgain).not.toBeNull();
+
+    setRequestPermission("granted");
+    await act(async () => result.current.requestAgain?.());
+    expect(result.current.requestAgain).toBeNull();
+    orient("deviceorientation", { webkitCompassHeading: 90, alpha: 0 });
+    expect(result.current.heading).toBeCloseTo(90, 6);
   });
 });

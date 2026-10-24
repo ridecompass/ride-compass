@@ -90,7 +90,8 @@ Dependabotは、masterが同じ版になってもPull Requestを閉じないこ�
   （[W3C Screen Wake Lock](https://www.w3.org/TR/screen-wake-lock/)「Handling document loss of visibility」）。
 - **向きを読む許しは、利用者の操作の中でしか求められない**: `DeviceOrientationEvent.requestPermission()`は、許しがまだ決まって
   いない間は利用者の操作の中で呼ばないと断られる（[W3C Device Orientation](https://www.w3.org/TR/orientation-event/)
-  「requestPermission()」）。この口を持つのはiPhoneのSafariで、ほかのブラウザは許しを求めずに向きを届ける。
+  「requestPermission()」）。この口を持つのはiPhoneのSafariで、ほかのブラウザは許しを求めずに向きを届ける。Safariは、既に許した・断った
+  答えは操作の外でもそのまま返し、まだ聞いていないときだけ`NotAllowedError`で断る（[WebKitの`DeviceOrientationEvent::requestPermission`](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/dom/DeviceOrientationEvent.cpp)）。
 - **裏に回したタブは捨てられることがある**: スマホのブラウザはメモリが足りないと、裏のタブを捨て、戻ったときに読み込み直す
   （Chromeは[Page Lifecycle API](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)の`discarded`）。画面の中の
   状態だけに持った値は消えるので、走行中のルートは端末へ一時保存する。
@@ -248,6 +249,10 @@ backendが先に配信すると、そのプロパティの有無を見ている�
   約4秒で、上限は再起動の直後の約3倍。デプロイのあとの確かめはいつも再起動の直後の形になる。
 - **利用者への影響**: 本番は生成を同時に決まった本数までしか受けないので、確かめの生成が走っている間（約4秒、再起動の直後は
   約40秒）に利用者の生成が重なると、上限を超えた分が混み合いとして断られる。
+- **受け付ける全長の上限（`domain/route_request.py: MAX_ROUTE_DISTANCE_KM`）の距離は試さない。** 上限の距離の探索範囲は、
+  1本で`services/graph_service.py: SearchMemory`の予算の大半を取り、走っている間は利用者の生成をほぼすべて混み合いとして
+  断らせる。上限の距離は混んでいれば作れないことを画面が断っている（`domain/route_request.py: BUSY_SAFE_DISTANCE_KM`）ので、
+  確かめが通らなくても利用者への約束が破れたとは読めず、確かめの持ち時間の中で上限の距離を作れる所要も未計測である。
 
 ## CIの実行枠（リポジトリがpublicである間の前提）
 

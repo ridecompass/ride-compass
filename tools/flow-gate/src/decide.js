@@ -87,7 +87,7 @@ function notice(f, status, config) {
     splitBody(f.body).foreign.length && "本文の先頭の印の間に、ゲートの書かない行があったので、消さずに印の外へ出しました。",
     // 直るまで続く知らせは、最近のコメントに同じ知らせがあれば重ねない（値が変われば新しく知らせる）。
     f.badStart && !f.comments.some((c) => c.includes(`「${f.badStart}」`)) &&
-      `着手可能日時「${f.badStart}」の形が合わないので受け付けず、その間は振り出しません（\`YYYY-MM-DD HH:MM\` か \`YYYY-MM-DD\`。日本時間）。`,
+      `着手可能日時「${f.badStart}」は暦にある日時として読めないので受け付けず、その間は振り出しません（\`YYYY-MM-DD HH:MM\` か \`YYYY-MM-DD\`。日本時間）。`,
     f.moved && f.status && status !== f.status && `ステータスを「${f.status}」にしましたが、事実から「${status}」に戻しました（ユーザーが直接決められるのは、保留と、完了（完了の条件が全部済んだときの完成か、見送り）だけです）。`,
     status === "実装" && !f.remaining.length && f.unbound.length && !f.comments.some((c) => c.includes(unboundText(f.unbound))) &&
       `${unboundText(f.unbound)}ので、完了の条件が全部済んでも完成で閉じず、実装担当へ渡します（\`- 行き先: 完了の条件「<条件の文の頭>」\`・\`#<番号>\`・\`見送り（<理由>）\`）。`,

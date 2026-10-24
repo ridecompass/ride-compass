@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { routeTrack } from "@/lib/routeDistance";
+import { projectOnTrack, routeTrack } from "@/lib/routeDistance";
 import { moved } from "@/testing/movedPoint";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 
@@ -50,15 +50,15 @@ describe("locateOnRoute", () => {
     ["行きを走っていたなら、行き", 0.4, 0.5],
     ["帰りを走っていたなら、帰り", 3.6, 3.5],
   ])("%s", (_label, previousKm, expected) => {
-    expect(locateOnRoute(OUT_AND_BACK, QUARTER_WAY, previousKm)).toBeCloseTo(expected);
+    expect(locateOnRoute(projectOnTrack(OUT_AND_BACK, QUARTER_WAY), previousKm)).toBeCloseTo(expected);
   });
 
   it("折り返しから戻り始めたら、前の位置から同じだけ離れた行きと帰りのうち、前へ進んだ帰り", () => {
-    expect(locateOnRoute(OUT_AND_BACK, { latitude: 35, longitude: 139.019 }, 2)).toBeCloseTo(2.1);
+    expect(locateOnRoute(projectOnTrack(OUT_AND_BACK, { latitude: 35, longitude: 139.019 }), 2)).toBeCloseTo(2.1);
   });
 
   it("ルートから離れていても、最も近い点", () => {
-    expect(locateOnRoute(OUT_AND_BACK, { latitude: 35.01, longitude: 139.03 }, null)).toBeCloseTo(2);
+    expect(locateOnRoute(projectOnTrack(OUT_AND_BACK, { latitude: 35.01, longitude: 139.03 }), null)).toBeCloseTo(2);
   });
 
   it("続く側が最も近い点より余裕以上に遠ければ、最も近い点へ移る", () => {
@@ -98,12 +98,14 @@ describe("locateOnRoute", () => {
     ]);
     const backQuarterKm = 2 + (2 * ROUTE_MATCH_SLACK_M) / 1000 + 1.5;
     // 帰りの道の上（行きより余裕だけ遠い所より北）なら帰りへ移り、行きと帰りへの隔たりの差が余裕より小さい所なら行きに留まる。
-    expect(locateOnRoute(apart, moved(QUARTER_WAY, 2 * ROUTE_MATCH_SLACK_M), 0.4)).toBeCloseTo(backQuarterKm);
-    expect(locateOnRoute(apart, moved(QUARTER_WAY, ROUTE_MATCH_SLACK_M * 1.25), 0.4)).toBeCloseTo(0.5);
+    expect(locateOnRoute(projectOnTrack(apart, moved(QUARTER_WAY, 2 * ROUTE_MATCH_SLACK_M)), 0.4)).toBeCloseTo(
+      backQuarterKm,
+    );
+    expect(locateOnRoute(projectOnTrack(apart, moved(QUARTER_WAY, ROUTE_MATCH_SLACK_M * 1.25)), 0.4)).toBeCloseTo(0.5);
   });
 
   it("ルートの形が無ければnull", () => {
-    expect(locateOnRoute([], QUARTER_WAY, null)).toBeNull();
+    expect(locateOnRoute([], null)).toBeNull();
   });
 });
 
@@ -113,6 +115,6 @@ describe("offRoute", () => {
     { case: "ルートからの隔たりが位置の誤差を超える", meters: 25, accuracyM: 20, expected: true },
     { case: "位置の誤差が分からない", meters: 500, accuracyM: null, expected: false },
   ])("$case", ({ meters, accuracyM, expected }) => {
-    expect(offRoute(OUT_AND_BACK, moved(QUARTER_WAY, meters), accuracyM)).toBe(expected);
+    expect(offRoute(projectOnTrack(OUT_AND_BACK, moved(QUARTER_WAY, meters)), accuracyM)).toBe(expected);
   });
 });

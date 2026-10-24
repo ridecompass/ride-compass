@@ -75,7 +75,7 @@ def test_change_splits_lines_by_kind_and_labels_the_size(repo, monkeypatch, caps
 def test_change_counts_the_working_tree_with_untracked_files(repo, monkeypatch, capsys, lines, label):
     base = _commit(repo, {"README.md": "x\n"})
     git(repo, "checkout", "-q", "-b", "work")
-    (repo / "app.py").write_text("a\n" * lines, encoding="utf-8")
+    (repo / "経路.py").write_text("a\n" * lines, encoding="utf-8")  # git が既定で引用符と8進で包む名前でも数える
 
     out = _run(monkeypatch, capsys, "change", "--base", base)
 
@@ -84,7 +84,7 @@ def test_change_counts_the_working_tree_with_untracked_files(repo, monkeypatch, 
 
 
 def test_metrics_counts_everything_outside_the_product_places_as_tooling(repo, capsys):
-    _commit(repo, {"backend/app/a.py": "a\n", "frontend/src/b.ts": "b\n"})
+    _commit(repo, {"backend/app/経路.py": "a\n", "frontend/src/b.ts": "b\n"})  # git が既定で引用符と8進で包む名前でも数える
     git(repo, "tag", "-a", "periodic-review/001", "-m", "r")
     (repo / "stop-dev.bat").write_bytes("rem 止める\r\n".encode("cp932") * 2)
     git(repo, "add", "stop-dev.bat")
@@ -183,6 +183,14 @@ def test_size_holds_code_to_the_kind_limit_beyond_the_external_maximum(repo, mon
     assert "| app/over.ts | 301 | - | 新規 | 300 | 100% | 閾値300超過 |" in out
     assert "| frontend/src/types/generated/api.d.ts | 400 | - | 新規 | 500 | 80% |  |" in out
     assert "種類ごとの上限に当たるファイルごとの閾値（無視した。上限は instruction_limits・code_limits だけ） 1件: app/over.ts" in out
+
+
+def test_code_churn_stops_when_the_change_since_the_review_cannot_be_measured(repo):
+    # 測れない差分（タグの版が手元の履歴に無い等）を0行と読むと、周期レビューの変更行数の発火を黙って逃す。
+    _commit(repo, {"backend/a.py": "a\n"})
+
+    with pytest.raises(RuntimeError):
+        rc.code_churn("0" * 40)
 
 
 @pytest.mark.parametrize("changed_lines, fired", [(rc.TRIGGER_IMPL_LINES - 1, False), (rc.TRIGGER_IMPL_LINES, True)])
