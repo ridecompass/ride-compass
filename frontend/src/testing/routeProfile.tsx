@@ -78,7 +78,6 @@ export function profileElement(props: Partial<Props> = {}) {
       scaleKm={2}
       selected={null}
       layers={{ ids: ["elevation"], toggle: vi.fn() }}
-      sidePoints={null}
       waypointKms={[]}
       {...props}
     />

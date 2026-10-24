@@ -14,7 +14,7 @@
  *
  * ここで見ないもの: 「表示」の図の折れ線・帯・現在地の印・値の目盛りと、出す情報の一覧 → `RouteProfile.layers.test.tsx`。
  * 難易度の塗り・なぞって地点を選ぶ操作 → `DifficultyProfile.test.tsx`。地点の値・行の計算 → `profileLayers.test.ts`。
- * 区間の近くの施設 → `app/page.map.test.tsx`。風のチップの方角の呼び名 → `lib/cardinalLabel.test.ts`。
+ * 風のチップの方角の呼び名 → `lib/cardinalLabel.test.ts`。
  */
 import { EVALUATION_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";

@@ -22,6 +22,7 @@ import { pointNames } from "@/features/route/pointNames";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
 import SegmentDetail from "@/features/route/SegmentDetail/SegmentDetail";
+import SegmentSidePoints from "@/features/route/SegmentSidePoints/SegmentSidePoints";
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import type { useRoutePlanner } from "@/features/route/useRoutePlanner";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
@@ -100,9 +101,13 @@ export default function HomeMapPane({
         selectedRouteSegment={results.selectedRouteSegment}
         sidePoints={results.segmentSidePoints?.status === "done" ? results.segmentSidePoints.shown : NO_SIDE_POINTS}
         onRouteSegmentSelect={results.selectSegment}
+        // 地図で押した区間の小窓。見るだけの間は区間の中身を全部出し、「ルート結果」が効いている間は中身をグラフの下が
+        // 出すので、近くの施設を探す所だけを出す。
         segmentDetail={
-          tapMode === "look" && results.selectedRouteSegment !== null ? (
+          results.selectedRouteSegment === null ? null : tapMode === "look" ? (
             <SegmentDetail selection={results.selectedRouteSegment} sidePoints={results.segmentSidePoints} />
+          ) : tapMode === "routes" && results.segmentSidePoints !== null ? (
+            <SegmentSidePoints sidePoints={results.segmentSidePoints} />
           ) : null
         }
         onRouteSelect={results.selectTab}
@@ -222,7 +227,6 @@ export default function HomeMapPane({
             profile !== null ? (
               <RouteProfile
                 segments={profile.segments}
-                sidePoints={results.segmentSidePoints}
                 overallDifficulty={profile.overall_difficulty?.average ?? null}
                 axes={axisCatalog.axes}
                 axisColors={axisCatalog.axisColors}

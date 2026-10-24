@@ -82,7 +82,7 @@ export function useMapPopups(mapRef: RefObject<MapLibreMap | null>, selectionOwn
 interface MapPopupMountsOptions {
   roadPopup: RoadPopup | null;
   closeRoadPopup: (popup: null) => void;
-  /** 見るだけの間に押した区間の中身（ページが描く）。区間を選んでいなければnull。 */
+  /** 地図で押した区間の小窓の中身（ページが描く）。小窓を出さなければnull。 */
   segmentDetail: ReactNode | null;
   selectedRouteSegment: SelectedRouteSegment | null;
   /** 区間の小窓を閉じたとき（区間の選択を外す）。変わると小窓を開き直すので、同じ関数を渡し続ける。 */
@@ -116,7 +116,7 @@ export function useMapPopupMounts(
   const [roadPopupMount, setRoadPopupMount] = useState<PopupMount<RoadPopup> | null>(null);
   const [segmentPopupMount, setSegmentPopupMount] = useState<PopupMount<SelectedRouteSegment> | null>(null);
 
-  // 見るだけの間に押した区間の中身を、押した区間の印の上の小窓に出す。閉じると区間の選択を外す。
+  // 地図で押した区間の中身を、押した区間の印の上の小窓に出す。閉じると区間の選択を外す。
   const segmentPopupAt = segmentDetail !== null ? selectedRouteSegment : null;
   useEffect(() => {
     const map = mapRef.current;

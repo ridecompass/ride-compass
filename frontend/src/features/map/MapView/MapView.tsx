@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -89,7 +89,7 @@ interface MapViewProps {
   onDestinationMove: (coordinates: Coordinates) => void;
   /** ルートの意味の間に、選んでいない候補の線を押したとき。 */
   onRouteSelect: (routeId: string) => void;
-  /** 見るだけの間に押した区間の中身（ページが描く）。区間を選んでいなければnull。押した区間の印の上の小窓に出す。 */
+  /** 押した区間の小窓の中身（ページが描く）。出さなければnull。地図で押した区間の印の上にだけ出す（グラフで選んだ地点へは出さない）。 */
   segmentDetail: ReactNode | null;
   /** 地図を寄せる地点（住所の検索で置いた地点・取り直した現在地）。新しい値を渡すたびに寄せる。 */
   focusPoint: Coordinates | null;
@@ -158,6 +158,12 @@ export default function MapView({
   });
   // 地図の線を押して選んだ候補のid。その候補へは収め直さない（利用者はもうその範囲を見ている）。
   const routePickedOnMap = useRef<string | null>(null);
+  // 地図で押した区間。区間の小窓はこの区間にだけ出す（グラフで選んだ地点へは出さない。なぞるたびに小窓が付いて回る）。
+  const [segmentPickedOnMap, setSegmentPickedOnMap] = useState<SelectedRouteSegment | null>(null);
+  const selectSegmentOnMap = (selection: SelectedRouteSegment | null) => {
+    setSegmentPickedOnMap(selection);
+    onRouteSegmentSelect(selection);
+  };
   // 地図のイベント（初期化のeffectで一度だけ登録する）が、いまのpropsを読むための参照。
   const latestProps = {
     scene,
@@ -166,7 +172,7 @@ export default function MapView({
     interactiveLayerIds,
     tapMode,
     onPointPlace,
-    onRouteSegmentSelect,
+    onRouteSegmentSelect: selectSegmentOnMap,
     onSpliceStretchSelect,
     onRouteSelect: (routeId: string) => {
       routePickedOnMap.current = routeId;
@@ -222,7 +228,7 @@ export default function MapView({
       }
       popups.openPointPopup([at.longitude, at.latitude], buildPinPopupContent(target, pinNames));
     },
-    onRouteSegmentSelect,
+    onRouteSegmentSelect: selectSegmentOnMap,
   });
 
   const onNextRideZoom = useRideFollow(mapRef, ride, here, mapVisibleCenterOffset);
@@ -231,7 +237,7 @@ export default function MapView({
   const popupContents = useMapPopupMounts(mapRef, {
     roadPopup: popups.roadPopup,
     closeRoadPopup: popups.closeRoadPopup,
-    segmentDetail,
+    segmentDetail: selectedRouteSegment !== null && selectedRouteSegment === segmentPickedOnMap ? segmentDetail : null,
     selectedRouteSegment,
     onSegmentPopupClose: closeSegmentPopup,
     rideConditions,

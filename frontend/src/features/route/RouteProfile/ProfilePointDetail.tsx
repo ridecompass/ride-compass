@@ -10,9 +10,7 @@ import { GradientAxisIcon } from "@/components/ui/icons/layerIcons";
 import { ClockIcon, SelectedSpotIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { formatSegmentArrivalTime, SegmentDifficulty } from "@/features/route/SegmentDetail/SegmentDetail";
-import SegmentSidePoints from "@/features/route/SegmentSidePoints/SegmentSidePoints";
 import { SegmentWindChip } from "@/features/route/SegmentWind/SegmentWind";
-import type { SegmentSidePoints as SegmentSidePointsState } from "@/features/route/useSegmentSidePoints";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import { cn } from "@/lib/cn";
 import { isUnclassifiedRow } from "@/lib/mapDisplay/roadTracks";
@@ -43,8 +41,6 @@ interface ProfilePointDetailProps {
     readonly columns: readonly RouteStretch<RouteSegmentDetail>[];
     readonly km: number;
   } | null;
-  /** 選んだ区間の近くの点。候補に無い区間ならnullで、行を出さない。 */
-  sidePoints: SegmentSidePointsState | null;
   /** グラフに重ねられるレイヤの全部。 */
   layers: readonly ProfileLayer[];
   axes: readonly CatalogAxis[];
@@ -59,7 +55,6 @@ interface ProfilePointDetailProps {
 export default function ProfilePointDetail({
   selection,
   point,
-  sidePoints,
   layers,
   axes,
   axisColors,
@@ -156,7 +151,6 @@ export default function ProfilePointDetail({
           renderDetail={(axis) => <AxisDetail axis={axis} difficulty={segment.axis_difficulties[axis.axisId]} />}
         />
       </div>
-      {sidePoints !== null && <SegmentSidePoints sidePoints={sidePoints} />}
     </div>
   );
 }

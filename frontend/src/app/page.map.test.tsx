@@ -5,7 +5,8 @@
  * 「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
  * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、区間を選んでいる間は地図にその区間の範囲の縁取りと
  * 選んだ地点の印が出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。区間を押すと地図をその区間へ寄せ、
- * その区間の近くの施設を引いて地図に描き、種類ごとに出す・消せ、点を押すと名前と道からの距離を出すこと。道の小窓を別の道へ
+ * 押した区間の小窓の「探す」でその区間の近くの施設を引いて地図に描き、種類ごとに出す・消せ、点を押すと名前と道からの距離を出すこと
+ * （区間を押しただけでは引かず、グラフの下の地点の詳しくには出さず、グラフで地点を選んだときは小窓を出さない）。道の小窓を別の道へ
  * 押し替えると、前の道で押した評価を新しい道へ持ち越さないこと。地図は選んでいるルート1本へ収め（生成直後は先頭、タブで
  * 選び直すとその1本）、地図の候補の線を押して選んだときは収め直さないこと。
  *
@@ -13,7 +14,7 @@
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -328,7 +329,10 @@ describe("区間の近くの施設", () => {
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
     const [, second] = mapOnScreen().sourceFeatures("route-segments");
     clickSegment(second, HERE);
-    return screen.getByRole("group", { name: "近くの施設" });
+    // 「ルート結果」が効いている間も、押した区間の小窓に近くの施設を探す所だけを出す（中身はグラフの下が出す）。
+    const nearby = await screen.findByRole("group", { name: "近くの施設" });
+    expect(screen.queryByText(/km地点/)).toBeNull();
+    return nearby;
   }
 
   it("区間を押すと地図をその区間へ寄せて近くの施設を引き、届くと地図の点と同じ行ごとに描いて種類ごとの件数のチップを出し、チップでその種類を消せ、選びを外すと消す", async () => {
@@ -344,6 +348,14 @@ describe("区間の近くの施設", () => {
       ],
       maxZoom: 16,
     });
+    // 区間を押しただけでは引かず、押した区間の小窓に「探す」を出す。グラフの下の地点の詳しくには出さない。
+    await settle();
+    expect(held.arrived()).toBe(0);
+    expect(sidePointsOnMap()).toEqual({});
+    expect(
+      within(screen.getByRole("group", { name: "選んだ地点の詳しく" })).queryByRole("group", { name: "近くの施設" }),
+    ).toBeNull();
+    await user.click(within(nearby).getByRole("button", { name: "探す" }));
     expect(within(nearby).getByText("読み込み中")).toBeInTheDocument();
 
     await held.answer(0, Response.json({ points: NEARBY_POINTS }));
@@ -377,6 +389,10 @@ describe("区間の近くの施設", () => {
       }),
     ).toBeInTheDocument();
 
+    // グラフで地点を選んだときは、小窓を出さない（なぞるたびに付いて回らない）。
+    fireEvent.keyDown(screen.getByRole("slider", { name: /^道のりに沿った難易度/ }), { key: "Home" });
+    expect(screen.queryByRole("group", { name: "近くの施設" })).toBeNull();
+
     await user.click(screen.getByRole("button", { name: "区間の選択を解除" }));
     expect(sidePointsOnMap()).toEqual({});
   });
@@ -385,6 +401,7 @@ describe("区間の近くの施設", () => {
     const { user } = renderHome();
     onBackend("POST", "/api/routes/side-points", () => Response.json({ points: NEARBY_POINTS }));
     const nearby = await pressSecondSegment(user);
+    await user.click(within(nearby).getByRole("button", { name: "探す" }));
     await within(nearby).findByRole("button", { name: "補給・休憩ポイント 3" });
     // パネルを閉じると、区間の中身は地図の小窓に出る。
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
@@ -419,6 +436,7 @@ describe("区間の近くの施設", () => {
     onBackend("POST", "/api/routes/side-points", () => Response.json({ detail: "失敗" }, { status: 500 }));
 
     const nearby = await pressSecondSegment(user);
+    await user.click(within(nearby).getByRole("button", { name: "探す" }));
 
     expect(await within(nearby).findByText("近くの施設を読めませんでした")).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "選んだ地点の詳しく" })).toHaveTextContent("総合難易度");

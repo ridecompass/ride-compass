@@ -14,7 +14,6 @@ import { useProfileScale } from "@/features/route/ProfileChart/profileScale";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import palette from "@/types/generated/palette.json";
-import type { SegmentSidePoints } from "@/features/route/useSegmentSidePoints";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 
 import LayerProfile, { type ShownLayers } from "./LayerProfile";
@@ -25,8 +24,6 @@ import type { ProfileLayerSelection } from "./useProfileLayers";
 
 interface RouteProfileProps {
   segments: readonly RouteSegmentDetail[];
-  /** 選んだ区間の近くの点（区間を選んでいない・候補に無い区間ならnull）。 */
-  sidePoints: SegmentSidePoints | null;
   /** ルートの総合難易度。値の無い区間をこの高さで描く。 */
   overallDifficulty: number | null;
   /** 難易度を下から積む軸の並び（カタログの順）と色。 */
@@ -51,7 +48,6 @@ interface RouteProfileProps {
  * 同じ横軸で出す。地点を選んでいる間は、その地点の詳しくを図の下に出す。 */
 export default function RouteProfile({
   segments,
-  sidePoints,
   overallDifficulty,
   axes,
   axisColors,
@@ -92,7 +88,6 @@ export default function RouteProfile({
       <ProfilePointDetail
         selection={selected}
         point={pointKm === null ? null : { columns: scale.columns, km: pointKm }}
-        sidePoints={sidePoints}
         layers={available}
         axes={axes}
         axisColors={axisColors}
