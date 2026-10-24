@@ -412,14 +412,17 @@ basetime・validtimeを含む）で持つため、フレームが進んで取得
   スマホで下のシートを開いていない間（`features/map/MapOverview/overview.ts: overviewShown`）。走行中も同じ条件で、走行中の地図の下端（`features/ride/RideBottom/RideBottom.tsx`）の上に積む。
   「×」で丸いボタンに畳み、畳んだことは端末に覚える。
 - **描くもの**: 下地は同じ基礎地図から、高速道路の本線のほかの道路・建物・店とその文字の層を消し、高速道路は細い線にし、地名を市・区・町と都道府県に絞る
-  （`features/map/MapOverview/overview.ts: overviewBasemapEdits`。森・水・土地の塗りは残す）。地名は重ねてよいとする——上に描く風の矢印の
-  記号が先に場所を取り、そのままでは地名が衝突で全部押し出される。その上に、本体の地図と同じ
+  （`features/map/MapOverview/overview.ts: overviewBasemapEdits`。森・水・土地の塗りは残す）。地名は日本語だけの小さな字にする（`features/map/MapOverview/overview.ts: OVERVIEW_PLACE_LABEL`）。その上に、本体の地図と同じ
   `dynamicWeather`から気象の家族だけの scene（`features/map/scene/buildScene.ts: buildOverviewScene`）を描くので、色・時刻・中身は本体の地図と揃う。
+  気象の記号は地名の場所を取らない（`features/map/MapOverview/overview.ts: overviewScene`）——上に描く風の矢印の記号が先に場所を取ると、地名が衝突で全部押し出される。
+- **倍で描いて縮める**: 俯瞰図の地図は`features/map/MapOverview/overview.ts: OVERVIEW_RENDER_SCALE`倍の大きさの地図として描いてCSSで縮める。
+  約20km四方を映す粗い段の基礎地図のタイルには区の名前が無く、1段細かい段から載るため。pxで決まる見た目（地名の字・気象の記号の大きさ等）は
+  その倍にして見た目の大きさを保つ。基礎地図と配信元のタイルは1段細かい段のものを取る。
 - **範囲**: 中心と向きは本体の地図に合わせ、ズームは本体の地図より4段引いた値（今の画面の16倍の幅）で、1辺が約20kmより狭くならないようにする
   （`features/map/MapOverview/overview.ts: overviewZoom`）。ズーム13あたりまでは今の画面の枠がいつも同じ大きさで、それより寄せると下限に当たり枠が小さくなる。
   下限は、約5kmおきのMSMの格子点の風の矢印が俯瞰図に数本は入る広さ。今の画面の範囲は真ん中の枠で示す。俯瞰図は操作を受けない（`features/map/baseMap.ts: createBaseMap`の`inset`）。
 - **格子点**: MSMの格子点は本体の地図と1回の取得を共有し、俯瞰図を出すズームでは俯瞰図の範囲まで広げて取る
-  （`features/map/MapOverview/overview.ts: overviewBounds`）。配信元のタイルは俯瞰図のズームのタイルを地図が取る。
+  （`features/map/MapOverview/overview.ts: overviewBounds`）。配信元のタイルは俯瞰図の地図を描くズームのタイルを地図が取る。
 
 ## 常設ヘッダーの天候表示（`WeatherPanel`）
 
