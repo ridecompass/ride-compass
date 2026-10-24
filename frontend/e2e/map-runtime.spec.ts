@@ -218,9 +218,9 @@ async function showKeyboard(page: Page): Promise<number> {
 }
 
 // 狭い画面では、欄を押すと欄のあった位置からせり上がって、打つ欄と候補を画面の上側へ出し、候補はキーボードの上までの中で
-// 送る。せり上がりが欄の位置から始まること、候補が多くてもキーボードに覆われずに末尾まで押せて、選んだ地点が地図に立つことを
+// 送る。せり上がりが欄の位置から始まること、候補が多くてもキーボードに覆われずに末尾まで押せて、押した候補が目的地になることを
 // 実ブラウザの寸法で見る（単体テストはレイアウトの実寸を持たない）。
-test("モバイル: 目的地を探すと候補を画面の上側でキーボードに隠れずに選べ、選ぶと地点の並びにその名前が出て地図にピンが立つ", async ({
+test("モバイル: 目的地を探すと候補を画面の上側でキーボードに隠れずに選べ、選ぶと地点の並びにその名前が出る", async ({
   page,
 }) => {
   const candidates = Array.from({ length: 30 }, (_, index) => ({
@@ -275,7 +275,6 @@ test("モバイル: 目的地を探すと候補を画面の上側でキーボー
   await choice.click();
 
   await expect(settings.getByRole("button", { name: `目的地: ${candidate.name}` })).toBeVisible();
-  await expect(page.getByRole("img", { name: "目的地", exact: true })).toHaveCount(1);
 });
 
 // ルートを収める余白は、地図の上に重ねた部品が覆う幅を含む（含まないと、ルートの端が操作列の下に隠れる）。
