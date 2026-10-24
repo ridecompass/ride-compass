@@ -1,5 +1,5 @@
-"""`app/main.py`のlifespan（起動・終了）: 軸定義を読めなければ起動しない・定期ジョブが起動直後にも走る・
-失敗した定期ジョブがプロジェクトの接頭辞のロガーに残る。
+"""`app/main.py`のlifespan（起動・終了）: 軸定義を読めなければ起動しない・起動で読み込んだものをGCの走査から外す・
+定期ジョブが起動直後にも走る・失敗した定期ジョブがプロジェクトの接頭辞のロガーに残る。
 
 ここで見ないもの: 定期ジョブそれぞれの中身（呼ぶ先のテスト）、CORSの結線（`test_main.py`）
 
@@ -10,6 +10,7 @@ DBを触る呼び出しはすべてスタブへ差し替え、実接続を残さ
 イベントループが閉じた後に接続の後始末が走り「Event loop is closed」になる）。
 """
 
+import gc
 import inspect
 import logging
 import threading
@@ -98,6 +99,24 @@ def test_lifespan_fails_fast_when_axis_definitions_cannot_be_loaded(monkeypatch)
 
     with pytest.raises(AxisDefinitionSyncError), TestClient(app):
         pass
+
+
+def test_objects_loaded_at_startup_are_left_out_of_gc_collections(monkeypatch):
+    """起動で読み込んだものが走査に残ると、生成の間の世代2のGCが長くなり、その間タイルとポーリングに応えられない。
+
+    `gc.get_objects()`は凍らせたもの（恒久の世代）を返さないので、その中に無いことで走査の外を確かめる。
+    """
+    loaded: list[object] = []
+
+    async def _load(*args, **kwargs) -> None:
+        loaded.append({"axis": []})
+
+    monkeypatch.setattr(main_module, "refresh_definitions", bound(main_module.refresh_definitions, _load))
+
+    with TestClient(app):
+        [definitions] = loaded
+        assert not any(obj is definitions for obj in gc.get_objects())
+    assert any(obj is definitions for obj in gc.get_objects())
 
 
 def test_every_interval_job_also_runs_immediately_at_startup(lifespan_schedulers):

@@ -108,6 +108,9 @@ FastAPI(lifespan=lifespan)
         │       AxisDefinitionSyncErrorがここで捕捉されず起動自体が失敗する。較正値は行が無い・テーブルが
         │       無い場合は宣言の既定値のまま進み、値が壊れている行だけが起動を止める。
         │       起動を通らずに生成・評価を回す道具（ベンチ・scripts/）も同じ関数で読む
+        ├─ (2') 全体のGCを1回回してから`gc.freeze()`で、ここまでに読み込んだオブジェクト（モジュール・定義）を
+        │       恒久の世代へ移す。世代2のGCは追う全オブジェクトを走査してその間イベントループを止めるので、
+        │       長生きのものを外して1回を短くする。先に集めるのは、凍らせたゴミは二度と集められないため
         ├─ (2'') スケジューラをここで作り（アプリの寿命の間だけ動くので、モジュールの大域に持たない）、
         │       失敗の受け口（EVENT_JOB_ERROR）を付ける（下記「定期ジョブの失敗」）
         ├─ (3) APSchedulerでJMAアメダス定期更新ジョブを登録（interval分ごと＋
@@ -140,6 +143,7 @@ FastAPI(lifespan=lifespan)
   シャットダウン: (1) APSchedulerを停止（`wait=False`）→
                  (2) プロセスで持ち回る接続と資源を閉じる（`process_resources.py: close_process_resources`。
                      httpxクライアント・Redisクライアント・DBの2系統のエンジン・土地被覆ラスタ・ディスクのキャッシュ）
+                 (3) `gc.unfreeze()`。lifespanは1プロセスで何度も通りうる（テスト等）ので、通るたびに凍らせた循環のゴミを溜めない
 ```
 
 - ログレベルは`debug_mode`の値でINFO/DEBUGを切り替える（`main.py`のlogging.basicConfig）。
