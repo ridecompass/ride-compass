@@ -78,7 +78,7 @@ class TuningParameter:
     #: 何を決める値か。管理画面のⓘへ出す。
     description: str
     #: 利用者の画面の説明文に値を出すか。出すものは効き方によらずカタログ取得でフロントへ配る
-    #: （`client_tuning_values`）——文に数を直書きすると、管理画面で変えたときに文が嘘になる。
+    #: （`_sent_to_client`）——文に数を直書きすると、管理画面で変えたときに文が嘘になる。
     shown_to_users: bool = False
 
     def __post_init__(self) -> None:
@@ -129,6 +129,9 @@ STOP_CLUSTER_DISTANCE_ID = "stop.cluster_distance_m"
 ACCIDENT_MATCH_DISTANCE_ID = "accident.match_max_distance_m"
 #: 道路網の配列を作る読み出しが、作り直しに使った値を読む較正値のid。
 TURN_BEARING_DISTANCE_ID = "turn.bearing_distance_m"
+#: 土地被覆を数える帯の外・内の幅のid。外の幅は地図の説明の文にも出る。
+LANDCOVER_RING_OUTER_ID = "landcover.ring_outer_m"
+LANDCOVER_RING_INNER_ID = "landcover.ring_inner_m"
 
 
 TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
@@ -221,6 +224,21 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         TuningEffect.DERIVE_REBUILD,
         "死亡事故1件を何件分の事故として数えるか。単純に数えると死亡事故が軽い事故と同じ1件になり、最も避けたい重大な事故の"
         "危険が薄まる。実測から導いた値ではない。",
+    ),
+    # --- 土地被覆 ---
+    TuningParameter(
+        LANDCOVER_RING_OUTER_ID,
+        "土地被覆を数える帯の外の幅", "m", 100.0, 10.0, 500.0,
+        TuningEffect.DERIVE_REBUILD,
+        "道の中心線からこの距離までの帯に重なる土地被覆の画素を数え、道の周りの土地被覆の割合にする。広げるほど道から"
+        "離れた土地が混ざり、狭めるほど帯1本の画素が減って割合が粗くなる。実測から導いた値ではない。",
+        shown_to_users=True,
+    ),
+    TuningParameter(
+        LANDCOVER_RING_INNER_ID,
+        "土地被覆を数える帯の内の幅", "m", 10.0, 0.0, 100.0,
+        TuningEffect.DERIVE_REBUILD,
+        "道の中心線からこの距離までは、路面そのものとして土地被覆の帯から除く。外の幅以下でなければならない。",
     ),
     # --- 走行モデル ---
     TuningParameter(
@@ -416,6 +434,7 @@ if _DUPLICATE_IDS:
 TUNING_ORDERINGS: tuple[tuple[str, str], ...] = (
     (_TURNAROUND_OVERLAP_ID, _TURNAROUND_RELAXED_OVERLAP_ID),
     (_LOOP_RATIO_MIN_ID, _LOOP_RATIO_MAX_ID),
+    (LANDCOVER_RING_INNER_ID, LANDCOVER_RING_OUTER_ID),
 )
 
 
@@ -449,15 +468,28 @@ def tuning_parameters_by_effect() -> list[TuningParameter]:
     return sorted(TUNING_PARAMETERS, key=lambda parameter: effects.index(parameter.effect))
 
 
-def client_tuning_values() -> dict[str, float]:
-    """フロントへ配る較正値（id → いま効いている値）。
+def _sent_to_client(parameter: TuningParameter) -> bool:
+    """フロントへ配る較正値か（効き方が`CLIENT_RELOAD`のものと、画面の説明文に値を出すもの）。
+    配る対象を宣言から導く——配信側とフロント側で別々に並べると、1つ足したときに片方だけが古くなる。"""
+    return parameter.effect is TuningEffect.CLIENT_RELOAD or parameter.shown_to_users
 
-    **配る対象は宣言から導く**（効き方が`CLIENT_RELOAD`のものと、画面の説明文に値を出すもの）。
-    配信側とフロント側で別々に並べると、1つ足したときに片方だけが古くなる。
-    """
+
+#: フロントへ配る較正値のうち、効き方が`DERIVE_REBUILD`のもの。画面の文が語る派生の値はまだ前の作り直しの値で
+#: 作られているので、配る側はプロセスの上書きではなく作り直しに使った値（派生の記録）を読んで配る。
+REBUILT_CLIENT_TUNING_IDS: tuple[str, ...] = tuple(
+    p.id for p in TUNING_PARAMETERS if _sent_to_client(p) and p.effect is TuningEffect.DERIVE_REBUILD
+)
+
+
+def client_tuning_values() -> dict[str, float]:
+    """フロントへ配る較正値のうち、`REBUILT_CLIENT_TUNING_IDS`を除くもの（id → いま効いている値）。"""
     return {
         p.id: tuning_value(p.id)
         for p in TUNING_PARAMETERS
-        if p.effect is TuningEffect.CLIENT_RELOAD or p.shown_to_users
+        if _sent_to_client(p) and p.id not in REBUILT_CLIENT_TUNING_IDS
     }
 
+
+def client_tuning_defaults() -> dict[str, float]:
+    """フロントへ配る較正値の全部の既定（id → 宣言の既定）。"""
+    return {p.id: p.default for p in TUNING_PARAMETERS if _sent_to_client(p)}

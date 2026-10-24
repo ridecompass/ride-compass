@@ -641,7 +641,7 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 
 ### 土地被覆ラスタタイル（`landcover_raster.py`・`landcover_tile_service.py`）
 
-道の周囲100mリングをクラス別の割合へ畳んだ値（`way_landcover.lc_*`）とは別に、**元の
+道の周りの帯をクラス別の割合へ畳んだ値（`way_landcover.lc_*`）とは別に、**元の
 ラスタをそのまま面として配る**。割合の混合をどう塗るかという問題が起きない代わりに、
 道路との対応は利用者が目で取る。
 
@@ -777,5 +777,6 @@ PBF取込時にしか変わらないため、再訪時の同一タイル再取�
 - **土地被覆は、中心線の周りの帯に落ちる有効画素が足りない区間では値を持たない**
   （`lc_valid_pixels`も割合もNULL）。ラスタが覆っていない場所でもっともらしい
   数値を書かない。覆うラスタを足して派生を流し直せば値が付く。帯は中心線から
-  `domain/landcover.py: LANDCOVER_RING_OUTER_M`までで、`LANDCOVER_RING_INNER_M`より内側
-  （路面そのもの）の画素は数えない——道の周りの景色を表す値で、道の舗装の画素を混ぜない。
+  外の幅（`domain/tuning.py: LANDCOVER_RING_OUTER_ID`）までで、内の幅（`domain/tuning.py: LANDCOVER_RING_INNER_ID`）より内側
+  （路面そのもの）の画素は数えない——道の周りの景色を表す値で、道の舗装の画素を混ぜない。幅は派生の作り直しで効く較正値で、
+  地図の土地被覆の説明が出す幅は、`/api/axis-catalog`の`client_tuning`が配る作り直しに使った値で埋まる。

@@ -52,11 +52,13 @@ export const CLIENT_TUNING_IDS = {
   walkingKmh: "speed.walking_kmh",
   /** 全長の目標からの許容差（目標の距離に対する割合）。全長の目標の説明文に出す（`features/route/RouteForm`）。 */
   distanceToleranceRatio: "search.distance_tolerance_ratio",
+  /** 土地被覆を数える帯の外の幅（m）。作り直しに使った値が届く。土地被覆の層の説明文に出す（`features/map/layers/mapLayers.ts`）。 */
+  landcoverRingOuterM: "landcover.ring_outer_m",
 } as const satisfies Record<string, ClientTuningId>;
 
 /** 較正値を1つ引く。**引けなければ`undefined`**——ここで既定を作らない。既定を作ると、
  * 宣言から消えた値を「0」等として使い続け、較正したのとは別の挙動で黙って動く。 */
-export function clientTuningValue(catalog: AxisCatalog, id: string): number | undefined {
+export function clientTuningValue(catalog: Pick<AxisCatalog, "clientTuning">, id: string): number | undefined {
   return Object.hasOwn(catalog.clientTuning, id) ? catalog.clientTuning[id] : undefined;
 }
 

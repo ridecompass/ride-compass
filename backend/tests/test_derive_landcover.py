@@ -15,11 +15,10 @@ import pytest_asyncio
 from app.batch import derive_landcover, derive_topology
 from app.batch.source_adapters.raster_wkb import tile_raster_wkb
 from app.domain.landcover import (
-    LANDCOVER_RING_INNER_M,
-    LANDCOVER_RING_OUTER_M,
     PERCENT_CLASSES,
     landcover_key,
 )
+from app.domain.tuning import LANDCOVER_RING_INNER_ID, LANDCOVER_RING_OUTER_ID, TUNING_PARAMETERS_BY_ID
 from app.domain.region import WEB_MERCATOR_HALF_M, tile_bounds_3857, tile_bounds_lonlat
 from tests.source_ingest import ingest_records, tile_record, way_record
 
@@ -57,12 +56,15 @@ def _road() -> tuple[tuple[float, float], tuple[float, float]]:
 ROAD = _road()
 
 #: 帯の境目からこれより近い画素は欠測にする。距離を平面で近似した誤差と、画素が帯に入るかを
+#: 段へ渡す帯の幅（較正値の宣言の既定）。
+_DEFAULT_RING = {"ring_inner_m": TUNING_PARAMETERS_BY_ID[LANDCOVER_RING_INNER_ID].default,
+                 "ring_outer_m": TUNING_PARAMETERS_BY_ID[LANDCOVER_RING_OUTER_ID].default}
 #: 中心で決めるか触れるかの違い（画素の対角の半分、約5.5m）を吸収する。
 BOUNDARY_MARGIN_M = 6.0
 
 
-def _ring_raster(inside: int, ring: int, outside: int) -> bytes:
-    """中心線からの距離で3つに塗り分けたタイル。帯より内側（路面）・帯・帯より外側。"""
+def _ring_raster(inside: int, ring: int, outside: int, inner_m: float, outer_m: float) -> bytes:
+    """中心線からの距離で3つに塗り分けたタイル。帯（`inner_m`〜`outer_m`）より内側（路面）・帯・帯より外側。"""
     west, _south, east, north = tile_bounds_3857(ZOOM, X, Y)
     pixel = (east - west) / SIZE
     radius = WEB_MERCATOR_HALF_M / math.pi
@@ -76,12 +78,11 @@ def _ring_raster(inside: int, ring: int, outside: int) -> bytes:
         for c in range(SIZE):
             px = west + (c + 0.5) * pixel
             d = math.hypot(max(x0 - px, 0.0, px - x1), py - y0) * meters_per_unit
-            if min(abs(d - LANDCOVER_RING_INNER_M),
-                   abs(d - LANDCOVER_RING_OUTER_M)) < BOUNDARY_MARGIN_M:
+            if min(abs(d - inner_m), abs(d - outer_m)) < BOUNDARY_MARGIN_M:
                 values.append(NODATA)
-            elif d < LANDCOVER_RING_INNER_M:
+            elif d < inner_m:
                 values.append(inside)
-            elif d < LANDCOVER_RING_OUTER_M:
+            elif d < outer_m:
                 values.append(ring)
             else:
                 values.append(outside)
@@ -115,10 +116,10 @@ async def test_rerun_on_pixels_left_out_keeps_no_share_on_segments_or_ways(landc
             f"SELECT lc_valid_pixels, lc_{first} FROM road_edges LEFT JOIN edge_landcover USING (osm_way_id, segment_index)"
             f" UNION ALL SELECT lc_valid_pixels, lc_{first} FROM road_ways LEFT JOIN way_landcover USING (osm_way_id)")]
 
-    await derive_landcover.derive(landcover_conn, previous=None)
+    await derive_landcover.derive(landcover_conn, previous=None, **_DEFAULT_RING)
     before = await shares()
     await _ingest_tile(landcover_conn, _raster(NODATA))
-    await derive_landcover.derive(landcover_conn, previous=None)
+    await derive_landcover.derive(landcover_conn, previous=None, **_DEFAULT_RING)
 
     # 前提: 1回目は区間にも道にも値が付いている。
     assert len(before) == 2
@@ -126,14 +127,20 @@ async def test_rerun_on_pixels_left_out_keeps_no_share_on_segments_or_ways(landc
     assert await shares() == [(None, None), (None, None)]
 
 
-async def test_only_pixels_in_the_band_around_the_road_are_counted(landcover_conn):
-    """数えるのは中心線から帯の内径〜外径の画素だけ。路面そのもの（内径より内側）と、
+#: 既定の帯と、外・内の幅を両方変えた帯。変えた帯は既定の帯の内径・外径をまたぐ。
+_RINGS = [_DEFAULT_RING, {"ring_inner_m": 30.0, "ring_outer_m": 60.0}]
+
+
+@pytest.mark.parametrize("band", _RINGS, ids=["既定の帯", "幅を変えた帯"])
+async def test_only_pixels_in_the_band_around_the_road_are_counted(landcover_conn, band):
+    """数えるのは中心線から渡した帯の内径〜外径の画素だけ。路面そのもの（内径より内側）と、
     外径より外側の画素は、区間の割合にも道の割合にも入らない。"""
     classes = PERCENT_CLASSES[:3]
-    await _ingest_tile(landcover_conn, _ring_raster(*(value for _, value in classes)))
+    await _ingest_tile(landcover_conn, _ring_raster(*(value for _, value in classes),
+                                                    inner_m=band["ring_inner_m"], outer_m=band["ring_outer_m"]))
     inside, ring, outside = (landcover_key(name) for name, _ in classes)
 
-    await derive_landcover.derive(landcover_conn, previous=None)
+    await derive_landcover.derive(landcover_conn, previous=None, **band)
 
     rows = await landcover_conn.fetch(
         f"SELECT lc_{inside} AS inside, lc_{ring} AS ring, lc_{outside} AS outside"

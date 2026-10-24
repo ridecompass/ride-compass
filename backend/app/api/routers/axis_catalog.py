@@ -103,7 +103,7 @@ class AxisCatalogEntry(StrictModel):
 
 class AxisCatalogResponse(StrictModel):
     axes: list[AxisCatalogEntry]
-    # フロントが使う較正値（id → いま効いている値、`domain/tuning.py`が宣言）。管理画面から
+    # フロントが使う較正値（id → いま効いている値、`domain/tuning.py`が宣言。作り直しで効く値は作り直しに使った値）。管理画面から
     # 変えた値を**再デプロイなしに**画面へ届けるため、起動時に1回取るこのカタログへ相乗り
     # させる（ビルド時生成物のroute-generate-config.jsonが持つ既定値は、画面がidの型にだけ使い、値は読まない）。
     client_tuning: dict[str, float]
@@ -125,14 +125,15 @@ async def get_axis_catalog(region_service: RegionService = Depends(get_region_se
     # services/axis_registry_service.py参照）のため、DBへは触れずプロセス内の値を
     # そのまま返す（評価ホットパスと同じ同期アクセス方式）。map_paint()・
     # primary_attribute_ids_for()も同様にプロセス内メモリだけを見る純粋関数のため、
-    # リクエスト毎に呼んでもコストは無視できる。事故の収録年とタイルの世代だけがDBを見る。
+    # リクエスト毎に呼んでもコストは無視できる。事故の収録年・作り直しで効く較正値・タイルの世代だけがDBを見る。
     accident_years = await region_service.get_accident_years()
+    rebuilt_tuning = await region_service.get_rebuilt_client_tuning()
     tile_versions = await region_service.tile_versions()
     way_value_layers = dedicated_way_value_layers()
     road_classes = current_road_classes()
 
     return AxisCatalogResponse(
-        client_tuning=client_tuning_values(),
+        client_tuning={**client_tuning_values(), **rebuilt_tuning},
         accident_years=accident_years,
         tile_versions=tile_versions,
         road_classes=road_class_catalog(road_classes),

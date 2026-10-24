@@ -404,10 +404,14 @@ class RoadGraphRepository:
 
     async def get_network_tuning(self) -> dict[str, float]:
         """道路網全体の配列を作る読み出しが読む較正値（`NETWORK_TUNING`）の、作り直しに使った値。"""
+        return await self.get_recorded_tuning(NETWORK_TUNING)
+
+    async def get_recorded_tuning(self, param_ids: Sequence[str]) -> dict[str, float]:
+        """`param_ids`の較正値の、作り直しに使った値（id → 値）。"""
         row = (await self._session.execute(text(
-            "SELECT " + ", ".join(f'{derived_data_meta.recorded_tuning_sql(param_id)} AS "{param_id}"' for param_id in NETWORK_TUNING)
+            "SELECT " + ", ".join(f'{derived_data_meta.recorded_tuning_sql(param_id)} AS "{param_id}"' for param_id in param_ids)
         ))).mappings().one()
-        return {param_id: row[param_id] for param_id in NETWORK_TUNING}
+        return {param_id: row[param_id] for param_id in param_ids}
 
     def stream_network_edges(self, chunk_size: int, tuning: Mapping[str, float]) -> AsyncIterator[Sequence[Row]]:
         """取込範囲全体の区間を`chunk_size`行ずつ流す（`_network_edges_sql`の並び）。`tuning`は`get_network_tuning`の値。"""
