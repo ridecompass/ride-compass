@@ -7,7 +7,8 @@ import { checkByText } from "../../../../tools/flow-gate/src/questions.js";
 
 // 印を付けて、書いたことか書かなかった理由を返す。
 export function check(gh, number, heads) {
-  const read = () => gh(["issue", "view", number, "-R", config.tasks, "--json", "body", "-q", ".body"]);
+  // gh の -q は本文の後ろに改行を足して出すので、落としてから書き戻す（落とさないと印を付けるたびに末尾へ改行が積もる）。
+  const read = () => gh(["issue", "view", number, "-R", config.tasks, "--json", "body", "-q", ".body"]).replace(/\n+$/, "");
   const before = read();
   const result = checkByText(before, heads);
   if (result.problems) return { error: `印を付けない: ${result.problems.join("・")}` };
