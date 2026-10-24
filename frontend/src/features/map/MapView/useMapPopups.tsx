@@ -8,7 +8,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 
 import type { RoutePreferenceWeights, SelectedRouteSegment } from "@/types/route";
 import { BackToSegmentButton, FacilityRows, PopupHeader } from "@/components/MapPopup/MapPopupParts";
-import type { Facility } from "@/components/MapPopup/facilityRows";
+import type { Facility, FacilityOrigin } from "@/components/MapPopup/facilityRows";
 import type { RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import type { RideConditions } from "@/features/map/regionApi";
 import type { TileXY } from "@/features/map/layers/dynamicWayValues";
@@ -120,6 +120,8 @@ interface MapPopupMountOptions {
   segmentDetail: ReactNode | null;
   rideConditions: RideConditions;
   routePreference: RoutePreferenceWeights | null;
+  /** 施設の位置を前後で言う基準の地点。 */
+  facilityOrigin: FacilityOrigin | null;
 }
 
 /** 小窓を指す地点と、指す物からのずれ。 */
@@ -134,7 +136,7 @@ function anchorOf(popup: MapPopup): { lngLat: [number, number]; offsetPx: number
 /** 小窓を地図へ載せ、中身をportalで描く。返した要素を地図の部品の中に置く。 */
 export function useMapPopupMount(
   mapRef: RefObject<MapLibreMap | null>,
-  { shown, controls, segmentDetail, rideConditions, routePreference }: MapPopupMountOptions,
+  { shown, controls, segmentDetail, rideConditions, routePreference, facilityOrigin }: MapPopupMountOptions,
 ): ReactNode {
   const catalog = useAxisCatalog();
   const onMap = shown !== null && (shown.kind !== "segment" || segmentDetail !== null) ? shown : null;
@@ -195,7 +197,7 @@ export function useMapPopupMount(
       ) : onMap.kind === "pin" ? (
         <p className="m-0 pr-9">{onMap.text}</p>
       ) : (
-        <PointContent popup={onMap} onBack={controls.showSegment} />
+        <PointContent popup={onMap} origin={facilityOrigin} onBack={controls.showSegment} />
       )}
     </div>,
     mount.container,
@@ -205,9 +207,11 @@ export function useMapPopupMount(
 /** 点の中身: 施設の行。区間の近くの施設なら、上の帯に区間の中身へ戻る操作を置く。上の帯が無ければ、先頭の行が×を避ける。 */
 function PointContent({
   popup,
+  origin,
   onBack,
 }: {
   popup: Extract<MapPopup, { kind: "point" }>;
+  origin: FacilityOrigin | null;
   onBack: (segment: SelectedRouteSegment) => void;
 }) {
   const { segment } = popup;
@@ -218,7 +222,7 @@ function PointContent({
           <BackToSegmentButton onBack={() => onBack(segment)} />
         </PopupHeader>
       )}
-      <FacilityRows facilities={popup.facilities} />
+      <FacilityRows facilities={popup.facilities} origin={origin} />
     </div>
   );
 }

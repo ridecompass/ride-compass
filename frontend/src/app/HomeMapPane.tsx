@@ -85,6 +85,14 @@ export default function HomeMapPane({
   const { results, splice } = route;
   const { progress, upcomingTurn } = guidance;
   const navigating = riding.status !== "off";
+  // 近くの施設の位置を前後で言う基準。走行中は現在地、見るだけの間は区間で押した地点。
+  const sidePoints = results.segmentSidePoints;
+  const facilityOrigin =
+    navigating && progress.km !== null
+      ? { km: progress.km, riding: true }
+      : sidePoints?.status === "done"
+        ? { km: sidePoints.pickedKm, riding: false }
+        : null;
   const originManual = place.locationSource === "manual";
   // 走行中の道のりのグラフ（候補が無ければ出さない。結果の図と同じくなぞると地点を選び、地図に印を出して図の下にその地点の
   // 詳しくを出す）。
@@ -111,7 +119,8 @@ export default function HomeMapPane({
         compassLinked={mapView.lensConditions.includes("bearing_deg")}
         routePreference={conditions.routePreferenceToSend}
         selectedRouteSegment={results.selectedRouteSegment}
-        sidePoints={results.segmentSidePoints?.status === "done" ? results.segmentSidePoints.shown : NO_SIDE_POINTS}
+        sidePoints={sidePoints?.status === "done" ? sidePoints.shown : NO_SIDE_POINTS}
+        facilityOrigin={facilityOrigin}
         onRouteSegmentSelect={results.selectSegment}
         segmentFocus={results.segmentFocus}
         onSegmentOutsideChange={results.setSegmentOutsideMap}
@@ -119,11 +128,16 @@ export default function HomeMapPane({
         // 出すので、近くの施設を探す所だけを出す。
         segmentDetail={
           results.selectedRouteSegment === null ? null : tapMode === "look" ? (
-            <SegmentDetail selection={results.selectedRouteSegment} sidePoints={results.segmentSidePoints} />
+            <SegmentDetail
+              selection={results.selectedRouteSegment}
+              sidePoints={results.segmentSidePoints}
+              facilityOrigin={facilityOrigin}
+            />
           ) : tapMode === "routes" && results.segmentSidePoints !== null ? (
             <SegmentDetail
               selection={results.selectedRouteSegment}
               sidePoints={results.segmentSidePoints}
+              facilityOrigin={facilityOrigin}
               facilitiesOnly
             />
           ) : null

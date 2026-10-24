@@ -14,6 +14,7 @@ import type {
   RoutePreferenceWeights,
   SelectedRouteSegment,
 } from "@/types/route";
+import type { FacilityOrigin } from "@/components/MapPopup/facilityRows";
 import type { RideConditions } from "@/features/map/regionApi";
 import { applyScene, type SpliceStretchInput } from "@/features/map/scene/applyToMap";
 import type { MapLook } from "@/features/map/view/mapLook";
@@ -63,6 +64,8 @@ interface MapViewProps {
   onSegmentOutsideChange: (outside: boolean) => void;
   /** 選んだ区間の近くの点のうち、地図に出すもの。 */
   sidePoints: readonly RoutePoint[];
+  /** 近くの施設の位置を前後で言う基準の地点。 */
+  facilityOrigin: FacilityOrigin | null;
   /** ルートの区間を押したとき・印を押して選択を外したとき・区間の小窓を閉じたか別の中身へ入れ替えたとき（null）。 */
   onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => void;
   /** 経由地（通る順）。 */
@@ -118,6 +121,7 @@ export default function MapView({
   segmentFocus,
   onSegmentOutsideChange,
   sidePoints,
+  facilityOrigin,
   onRouteSegmentSelect,
   waypoints,
   destination,
@@ -240,6 +244,7 @@ export default function MapView({
     segmentDetail,
     rideConditions,
     routePreference,
+    facilityOrigin,
   });
 
   // 住所の検索で置いた地点・取り直した現在地へ寄せる。出発地を置いたときは印のフックの位置の更新も寄せるが、このeffectが

@@ -5,8 +5,9 @@
  * 「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
  * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、区間を選んでいる間は地図にその区間の範囲の縁取りと
  * 選んだ地点の印が出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。区間を押すと
- * 押した区間の小窓の「探す」でその区間の近くの施設を引いて地図に描き、区分のチップでその区分の一覧（道のりの順）を開いて地図に出す・消せ、点を押すと1施設1行で名前・何km地点・道からの距離を出すこと
- * （区間を押しただけでは引かず、グラフの下の地点の詳しくには出さず、グラフで地点を選んだときは小窓を出さない）。施設の印を押すと
+ * 押した区間の小窓の「探す」でその区間の近くの施設を引いて地図に描き、区分のチップでその区分の一覧（道のりの順）を開いて地図に出す・消せ、点を押すと1施設1行で名前・押した地点から見た前後・道からの距離を出すこと
+ * （区間を押しただけでは引かず、グラフの下の地点の詳しくには出さず、グラフで地点を選んだときは小窓を出さない）。走行中は施設の位置を
+ * 現在地からの残りで出すこと。施設の印を押すと
  * 小窓を施設の中身へ入れ替えて印に枠を付け、区間へ戻れること。地図は選んでいるルート1本へ収め（生成直後は先頭、タブで
  * 選び直すとその1本）、地図の候補の線を押して選んだときは収め直さないこと。
  *
@@ -40,6 +41,7 @@ import {
   serveHome,
 } from "@/testing/homePage";
 import { heldReplies, onBackend } from "@/testing/backendServer";
+import { installGeolocation } from "@/testing/geolocation";
 import { mapOnScreen } from "@/testing/maplibre";
 import { makeGenerationConditions, makeRouteSegment, routeThrough } from "@/testing/routeFixtures";
 import { settle } from "@/testing/settle";
@@ -306,7 +308,8 @@ describe("区間の近くの施設", () => {
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
     const [, second] = mapOnScreen().sourceFeatures("route-segments");
-    clickSegment(second, HERE);
+    // 区間の中ほど（1.5km）を押す。施設の位置は、ここから見た前後で出る。
+    clickSegment(second, { latitude: 35.7, longitude: 139.715 });
     // 「ルート結果」が効いている間も、押した区間の小窓に近くの施設を探す所だけを出す（中身はグラフの下が出す）。
     // 上の帯はkmだけで、到達予想と難易度の塊は出さない。
     const nearby = await screen.findByRole("group", { name: "近くの施設" });
@@ -376,8 +379,8 @@ describe("区間の近くの施設", () => {
     expect(screen.queryByRole("group", { name: "近くの施設" })).toBeNull();
     const rows = screen.getByRole("link", { name: "ファミリーマート" }).closest("ul")!;
     expect(Array.from(rows.children).map((row) => row.textContent)).toEqual([
-      "ファミリーマートルートの何km地点 1.3km道からの距離 8m",
-      "ローソン 渋谷店ルートの何km地点 1.3km道からの距離 12m",
+      "ファミリーマート押した地点から 200m手前道からの距離 8m",
+      "ローソン 渋谷店押した地点から 200m手前道からの距離 12m",
     ]);
 
     // 目で地図から消し、区間へ戻ると、消した区分のチップは薄い。
@@ -425,7 +428,7 @@ describe("区間の近くの施設", () => {
     ]);
     // 施設の小窓は1施設1行で、区分の名前は見本の読み上げが持つ。名前の無い施設は区分の名前で呼ぶ。
     const toiletRow = screen.getByRole("img", { name: "トイレ" }).closest("li")!;
-    expect(toiletRow.textContent).toBe("トイレルートの何km地点 1.8km道からの距離 5m");
+    expect(toiletRow.textContent).toBe("トイレ押した地点から 300m先道からの距離 5m");
     expect(screen.queryByRole("group", { name: "近くの施設" })).toBeNull();
     expect(sidePointsOnMap()).toEqual(
       expect.objectContaining({
@@ -450,8 +453,8 @@ describe("区間の近くの施設", () => {
     ]);
     const clustered = (await screen.findByRole("link", { name: "ファミリーマート" })).closest("ul")!;
     expect(Array.from(clustered.children).map((row) => row.textContent)).toEqual([
-      "ファミリーマートルートの何km地点 1.3km道からの距離 8m",
-      "ローソン 渋谷店ルートの何km地点 1.3km道からの距離 12m",
+      "ファミリーマート押した地点から 200m手前道からの距離 8m",
+      "ローソン 渋谷店押した地点から 200m手前道からの距離 12m",
     ]);
 
     clickMap(ELSEWHERE, []);
@@ -468,5 +471,30 @@ describe("区間の近くの施設", () => {
 
     expect(await within(nearby).findByText("近くの施設を読めませんでした")).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "選んだ地点の詳しく" })).toHaveTextContent("総合難易度");
+  });
+
+  it("走行中に帯の「ルート」で開いたパネルで区間を押して探すと、施設の位置を押した地点でなく現在地からの残りで出す", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    onBackend("POST", "/api/routes/side-points", () => Response.json({ points: NEARBY_POINTS }));
+    jobs.respond([NEAR], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    // 現在地は0.4kmの所。
+    geolocation.deliver({ latitude: 35.7, longitude: 139.704, accuracy: 20 });
+    await user.click(screen.getByRole("button", { name: "ルート" }));
+
+    const [, second] = mapOnScreen().sourceFeatures("route-segments");
+    clickSegment(second, { latitude: 35.7, longitude: 139.715 });
+    const nearby = await screen.findByRole("group", { name: "近くの施設" });
+    await user.click(within(nearby).getByRole("button", { name: "探す" }));
+    await user.click(await within(nearby).findByRole("button", { name: "コンビニ 2か所" }));
+
+    const rows = screen.getByRole("link", { name: "ファミリーマート" }).closest("ul")!;
+    expect(Array.from(rows.children).map((row) => row.textContent)).toEqual([
+      "ファミリーマート現在地から あと900m道からの距離 8m",
+      "ローソン 渋谷店現在地から あと900m道からの距離 12m",
+    ]);
   });
 });

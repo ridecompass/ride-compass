@@ -12,3 +12,10 @@ export function haversineKm(a: Coordinates, b: Coordinates): number {
     Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLon / 2) ** 2;
   return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h));
 }
+
+/** ルートに沿った道のり（m）の書き方。1km未満は10m単位、1km以上は0.1km単位（走りながら読む桁に丸める）。 */
+export function formatAlongDistance(distanceM: number): string {
+  // 単位は丸めたあとの値で選ぶ（丸める前の値で選ぶと、995m以上が「1000m」になる）。
+  const roundedM = Math.round(distanceM / 10) * 10;
+  return roundedM < 1000 ? `${roundedM}m` : `${(distanceM / 1000).toFixed(1)}km`;
+}

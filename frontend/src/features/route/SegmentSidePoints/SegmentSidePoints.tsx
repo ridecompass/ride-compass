@@ -1,7 +1,7 @@
 "use client";
 
 import { BackToSegmentButton, FacilityRows, KindSwatch, PopupHeader } from "@/components/MapPopup/MapPopupParts";
-import { distinctFacilities, facilityOf } from "@/components/MapPopup/facilityRows";
+import { distinctFacilities, facilityOf, type FacilityOrigin } from "@/components/MapPopup/facilityRows";
 import { Button } from "@/components/ui/Button/Button";
 import { HiddenOnMapIcon, ShownOnMapIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
@@ -102,12 +102,15 @@ export function SidePointKindList({
   group,
   kind,
   shown,
+  origin,
   onToggle,
   onBack,
 }: {
   group: SidePointGroup;
   kind: SidePointKind;
   shown: boolean;
+  /** 施設の位置を前後で言う基準の地点。 */
+  origin: FacilityOrigin | null;
   onToggle: () => void;
   onBack: () => void;
 }) {
@@ -126,7 +129,8 @@ export function SidePointKindList({
       <PopupHeader label="区分の一覧の上の帯">
         <BackToSegmentButton onBack={onBack} />
         <KindSwatch color={kind.color} glyph={kind.glyph} label={kind.label} />
-        <span className="min-w-0 font-medium [overflow-wrap:anywhere]">
+        {/* 小窓の幅は中の行で決まり、行が短いと細くなるので、語の途中（「1か」と「所」の間）で折れないよう空白でだけ折る。 */}
+        <span className="min-w-0 font-medium break-keep">
           {kind.label} {kind.points.length}か所
         </span>
         <Button
@@ -140,7 +144,7 @@ export function SidePointKindList({
           {shown ? <ShownOnMapIcon size={18} /> : <HiddenOnMapIcon size={18} />}
         </Button>
       </PopupHeader>
-      <FacilityRows facilities={facilities} swatch={false} />
+      <FacilityRows facilities={facilities} origin={origin} swatch={false} />
     </div>
   );
 }

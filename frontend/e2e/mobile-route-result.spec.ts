@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  API_BASE,
   MOBILE_VIEWPORT,
   clickFeature,
   doneJobFixture,
@@ -168,4 +169,75 @@ test("モバイル: 地図で押した区間の小窓の×は、44px四方の押
   const popup = page.locator(".maplibregl-popup", { has: page.getByRole("group", { name: "区間の小窓の上の帯" }) });
   const close = (await popup.locator(".maplibregl-popup-close-button").boundingBox())!;
   expect([close.width, close.height]).toEqual([44, 44]);
+});
+
+// 観点1（収まる）: 区分の一覧の上の帯の見出し（「トイレ 1か所」）は、語の切れ目（空白）でだけ折り返し、「1」と「か所」の
+// ように語の途中で折れない。小窓の幅は中の行で決まり、行が短いと細くなって見出しが折れる。折れ方は実ブラウザでしか決まらない。
+test("モバイル: 区分の一覧の上の帯の見出しは、語の途中で折れない", async ({ page }) => {
+  // 近くの施設は区間の道のidで引くので、区間ごとに道を1本持たせる。
+  const generated = routeGenerateResponseFixture();
+  const routes = generated.routes.map((route) => ({
+    ...route,
+    edge_ids: route.segments.map((_, index) => `edge-${index}`),
+    segments: route.segments.map((segment, index) => ({ ...segment, edge_start: index, edge_end: index + 1 })),
+  }));
+  await page.addInitScript(installMapFinder);
+  await openMobileApp(page, {
+    routes: (page) =>
+      page.route("**/api/routes/generate/*", (route) =>
+        route.fulfill({ json: doneJobFixture({ ...generated, routes }) }),
+      ),
+  });
+  await generateRoutes(page);
+  await page.getByRole("button", { name: "ルート結果", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "ルート結果" })).toBeHidden();
+  await expect
+    .poll(() => page.evaluate(() => !window.__liveMap().isMoving() && window.__liveMap().loaded()), { timeout: 15_000 })
+    .toBe(true);
+  // 既定のモック（openMobileApp）より後に登録する。Playwrightは後から登録したルートを先に当てる。
+  await page.route(`${API_BASE}/api/routes/side-points`, (route) =>
+    route.fulfill({
+      json: {
+        points: [
+          {
+            distance_km: 0.5,
+            offset_m: 8,
+            layer: "supply_poi",
+            properties: { kind: "toilets" },
+            latitude: 35.7597,
+            longitude: 139.7387,
+          },
+        ],
+      },
+    }),
+  );
+  await clickFeature(page, "routeSegment");
+  const nearby = page.getByRole("group", { name: "近くの施設" });
+  await nearby.getByRole("button", { name: "探す" }).click();
+  await nearby.getByRole("button", { name: "トイレ 1か所" }).click();
+
+  const heading = page.getByRole("group", { name: "区分の一覧の上の帯" }).getByText("トイレ 1か所");
+  // 語ごとに、その文字が載る行の位置（上端）。同じ語の文字が別の行に載れば、語の途中で折れている。
+  const wordLines = await heading.evaluate((element) => {
+    const chars: { char: string; top: number }[] = [];
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      for (let index = 0; index < node.textContent!.length; index++) {
+        const range = document.createRange();
+        range.setStart(node, index);
+        range.setEnd(node, index + 1);
+        chars.push({ char: node.textContent![index], top: Math.round(range.getBoundingClientRect().top) });
+      }
+    }
+    const words: { word: string; tops: number[] }[] = [{ word: "", tops: [] }];
+    for (const { char, top } of chars) {
+      if (char === " ") words.push({ word: "", tops: [] });
+      else Object.assign(words.at(-1)!, { word: words.at(-1)!.word + char, tops: [...words.at(-1)!.tops, top] });
+    }
+    return words.map(({ word, tops }) => ({ word, lines: new Set(tops).size }));
+  });
+  expect(wordLines).toEqual([
+    { word: "トイレ", lines: 1 },
+    { word: "1か所", lines: 1 },
+  ]);
 });

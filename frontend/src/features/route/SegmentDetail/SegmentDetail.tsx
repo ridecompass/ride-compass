@@ -4,6 +4,7 @@ import { useState } from "react";
 import { hasAnyContribution } from "@/components/AxisContributionBar/AxisContributionBar";
 import AxisDetail from "@/components/AxisContributionBar/AxisDetail";
 import { DifficultyBlock, PopupHeader } from "@/components/MapPopup/MapPopupParts";
+import type { FacilityOrigin } from "@/components/MapPopup/facilityRows";
 import { legendChipBodyClass, legendChipClass } from "@/components/ui/AxisLegend/axisLegend";
 import { SelectedSpotIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
@@ -51,11 +52,14 @@ export function SegmentDifficulty({ segment, axes }: { segment: RouteSegmentDeta
 export default function SegmentDetail({
   selection,
   sidePoints,
+  facilityOrigin,
   facilitiesOnly = false,
 }: {
   selection: SelectedRouteSegment;
   /** 区間の近くの点。候補に無い区間ならnullで、行を出さない。 */
   sidePoints: SegmentSidePointsState | null;
+  /** 近くの施設の位置を前後で言う基準の地点。 */
+  facilityOrigin: FacilityOrigin | null;
   facilitiesOnly?: boolean;
 }) {
   const axisCatalog = useAxisCatalog();
@@ -68,6 +72,7 @@ export default function SegmentDetail({
       <SidePointKindList
         {...opened}
         shown={!sidePoints.hidden.has(opened.kind.id)}
+        origin={facilityOrigin}
         onToggle={() => sidePoints.onToggle(opened.kind.id)}
         onBack={() => setOpenedKindId(null)}
       />
