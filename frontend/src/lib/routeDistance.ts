@@ -170,11 +170,14 @@ export function routePointsEvery(
   return points;
 }
 
-/** 辺ごとの、`position`に最も近い点のルートの上の距離（km）と、`position`からの隔たり（m）。並びは`track`の順。 */
-export function projectOnTrack(
-  track: readonly RouteTrackEdge[],
-  position: Coordinates,
-): { km: number; offsetM: number }[] {
+/** 1つの辺の上の、地点に最も近い点のルートの上の距離（km）と、地点からの隔たり（m）。 */
+export interface TrackProjection {
+  km: number;
+  offsetM: number;
+}
+
+/** 辺ごとの、`position`に最も近い点（`TrackProjection`）。並びは`track`の順。 */
+export function projectOnTrack(track: readonly RouteTrackEdge[], position: Coordinates): TrackProjection[] {
   const at: LngLat = [position.longitude, position.latitude];
   return track.map(({ from, to, fromKm, toKm }) => {
     const { fraction, offsetM } = projectOnEdge(at, from, to);
