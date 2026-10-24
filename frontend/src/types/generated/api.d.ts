@@ -749,10 +749,6 @@ export interface components {
         };
         /** AvoidanceClassification */
         AvoidanceClassification: {
-            /** Section Key */
-            section_key: string;
-            /** Sort Order */
-            sort_order: number;
             /** Overrides */
             overrides: {
                 [key: string]: components["schemas"]["AvoidanceOverride"];
@@ -770,8 +766,6 @@ export interface components {
         };
         /** AvoidanceOverride */
         AvoidanceOverride: {
-            /** Section Key */
-            section_key: string | null;
             /** Default Level */
             default_level: string | null;
             /** Selectable */
@@ -795,23 +789,12 @@ export interface components {
             /** Former Keys */
             former_keys: string[];
         };
-        /** AvoidanceSection */
-        AvoidanceSection: {
-            /** Label */
-            label: string;
-            /** Description */
-            description: string;
-            /** Sort Order */
-            sort_order: number;
-        };
         /** AvoidanceSectionView */
         AvoidanceSectionView: {
             /** Key */
             key: string;
             /** Label */
             label: string;
-            /** Description */
-            description: string;
         };
         /** AxisCatalogEntry */
         AxisCatalogEntry: {
@@ -1834,10 +1817,6 @@ export interface components {
                 [key: string]: {
                     [key: string]: string;
                 };
-            };
-            /** Avoidance Sections */
-            avoidance_sections: {
-                [key: string]: components["schemas"]["AvoidanceSection"];
             };
             /** Avoidance Classifications */
             avoidance_classifications: {

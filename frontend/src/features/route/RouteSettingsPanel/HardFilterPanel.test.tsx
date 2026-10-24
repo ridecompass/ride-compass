@@ -24,9 +24,9 @@ import HardFilterPanel from "./HardFilterPanel";
 const AVOIDANCE: RoadAvoidanceView = {
   levels: AVOIDANCE_LEVELS,
   sections: [
-    { key: "surface", label: "路面", description: "路面の区分ごとに選びます。" },
-    { key: "empty", label: "行の無い節", description: "" },
-    { key: "access", label: "通行", description: "" },
+    { key: "surface", label: "路面" },
+    { key: "empty", label: "行の無い節" },
+    { key: "access", label: "通行" },
   ],
   rows: [
     avoidanceRow("gravel", "surface", { label: "砂利" }),
@@ -70,7 +70,6 @@ describe("HardFilterPanel", () => {
     expect(screen.queryByRole("button", { name: /^行の無い節/ })).toBeNull();
 
     await userEvent.click(sectionTrigger("路面"));
-    expect(screen.getByText("路面の区分ごとに選びます。")).toBeVisible();
     expect(checkedLevel("砂利")).toHaveTextContent("通る");
     await userEvent.click(
       within(screen.getByRole("radiogroup", { name: "砂利の避け方" })).getByRole("radio", { name: "通らない" }),

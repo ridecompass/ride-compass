@@ -21,7 +21,6 @@ from app.domain.road_classes import (
     EMPTY_ROAD_CLASSES,
     AvoidanceClassification,
     AvoidanceOverride,
-    AvoidanceSection,
     class_material_id,
 )
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
@@ -41,12 +40,9 @@ DEFINITIONS = road_classes(
     map_layers={"surface": map_layer().model_copy(update={"group_key": MAP_LAYER_CATEGORIES[0].key})},
     rolling_resistance_classification="surface",
     rolling_resistance_classes={"surface": {"paved": BASE_CRR_ID}},
-    avoidance_sections={"main": AvoidanceSection(label="主", description="", sort_order=0)},
     avoidance_classifications={
         "surface": AvoidanceClassification(
-            section_key="main",
-            sort_order=0,
-            overrides={"unpaved": AvoidanceOverride(section_key=None, default_level="avoid", selectable=True)},
+            overrides={"unpaved": AvoidanceOverride(default_level="avoid", selectable=True)},
         ),
     },
 ).model_dump(mode="json")
@@ -66,6 +62,31 @@ async def test_written_definitions_are_read_back_and_served(client):
     assert (await client.get(PATH, headers=AUTH_HEADERS)).json() == DEFINITIONS
     served = (await client.get("/api/axis-catalog")).json()["road_classes"]
     assert [(layer["id"], [c["key"] for c in layer["classes"]]) for layer in served["map_layers"]] == [("surface", ["paved", "unpaved"])]
+
+
+def _two_avoidance_layers(labels: tuple[str, str], sort_orders: tuple[int, int]) -> dict:
+    """除外タブに出す分け方を2つ持つ全体。分け方の名前と層の並びは引数で決める。"""
+    group = MAP_LAYER_CATEGORIES[0].key
+    return road_classes(
+        {key: classification({"c": []}).model_copy(update={"label": label}) for key, label in zip(("a", "b"), labels, strict=True)},
+        map_layers={
+            key: map_layer(order).model_copy(update={"group_key": group})
+            for key, order in zip(("a", "b"), sort_orders, strict=True)
+        },
+        avoidance_classifications={key: AvoidanceClassification(overrides={}) for key in ("a", "b")},
+    ).model_dump(mode="json")
+
+
+async def test_avoidance_sections_follow_classification_labels_and_layer_order(client):
+    """除外タブの見出しは、管理APIで直した分け方の名前と層の並びに、次の読み込みから従う（凡例と食い違わない）。"""
+    async def served_sections() -> list[tuple[str, str]]:
+        avoidance = (await client.get("/api/axis-catalog")).json()["road_classes"]["avoidance"]
+        return [(section["key"], section["label"]) for section in avoidance["sections"]]
+
+    assert (await client.put(PATH, json=_two_avoidance_layers(("A", "B"), (0, 1)), headers=AUTH_HEADERS)).status_code == 200
+    assert await served_sections() == [("a", "A"), ("b", "B")]
+    assert (await client.put(PATH, json=_two_avoidance_layers(("A2", "B"), (1, 0)), headers=AUTH_HEADERS)).status_code == 200
+    assert await served_sections() == [("b", "B"), ("a", "A2")]
 
 
 @pytest_asyncio.fixture(loop_scope="module")

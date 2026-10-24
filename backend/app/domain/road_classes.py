@@ -75,25 +75,16 @@ class RoadMapLayer(StrictModel):
     hides_unclassified: bool
 
 
-class AvoidanceSection(StrictModel):
-    label: str
-    description: str
-    sort_order: int
-
-
 class AvoidanceOverride(StrictModel):
-    """既定（分け方の見出しに「通る」）と違う区分1つ。`default_level`のNoneは「通る」。"""
+    """既定（「通る」で選べる）と違う区分1つ。`default_level`のNoneは「通る」。"""
 
-    section_key: str | None
     default_level: str | None
     selectable: bool
 
 
 class AvoidanceClassification(StrictModel):
-    """除外タブに出す分け方1つ。鍵は分け方。"""
+    """除外タブに出す分け方1つ。鍵は分け方で、地図の線の層でもある（凡例と除外タブの見出しを揃える）。"""
 
-    section_key: str
-    sort_order: int
     overrides: dict[str, AvoidanceOverride]
 
 
@@ -106,7 +97,6 @@ class RoadClassDefinitions(StrictModel):
     rolling_resistance_classification: str | None
     #: 分け方 → 区分 → 転がり抵抗の較正値のid。空の分け方は表の行にならず読み戻せないので、型が断る。
     rolling_resistance_classes: dict[str, Annotated[dict[str, str], Field(min_length=1)]]
-    avoidance_sections: dict[str, AvoidanceSection]
     avoidance_classifications: dict[str, AvoidanceClassification]
 
 
@@ -115,7 +105,6 @@ EMPTY_ROAD_CLASSES = RoadClassDefinitions(
     map_layers={},
     rolling_resistance_classification=None,
     rolling_resistance_classes={},
-    avoidance_sections={},
     avoidance_classifications={},
 )
 
@@ -169,6 +158,19 @@ class _Sorted(Protocol):
 def by_sort_order[T: _Sorted](items: Mapping[str, T]) -> list[tuple[str, T]]:
     """鍵と値を`sort_order`の順に。"""
     return sorted(items.items(), key=lambda item: item[1].sort_order)
+
+
+def published_map_layers(definitions: RoadClassDefinitions) -> list[tuple[str, RoadMapLayer]]:
+    """公開した分け方の地図の線の層を、画面が出す並び（群は`domain/map_display.py: MAP_LAYER_CATEGORIES`の順、その中は層の
+    `sort_order`の順）で。凡例と除外タブの見出しが同じ並びに従う。知らない群の層は最後に置く。"""
+    groups = [category.key for category in MAP_LAYER_CATEGORIES]
+
+    def position(item: tuple[str, RoadMapLayer]) -> tuple[int, int]:
+        group = item[1].group_key
+        return (groups.index(group) if group in groups else len(groups), item[1].sort_order)
+
+    published = (item for item in definitions.map_layers.items() if definitions.classifications[item[0]].is_published)
+    return sorted(published, key=position)
 
 
 def road_class_generation(definitions: RoadClassDefinitions) -> str:
