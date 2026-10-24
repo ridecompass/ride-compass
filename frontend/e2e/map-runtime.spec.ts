@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { allLayersOn, installApiMocks, runGeneration, seedStoredState } from "./fixtures";
+import { MAIN_MAP_CANVAS, allLayersOn, installApiMocks, runGeneration, seedStoredState } from "./fixtures";
 
 // 地図（MapLibre）が実ブラウザでしか見せない挙動（パターン4 観点2）。単体テストの代役地図は
 // Worker・描画・スタイル検証・`idle`・canvasへの実クリックを持たないため、ここでしか確かめられない。
@@ -13,7 +13,7 @@ const PROBE_FILL = { r: 255, g: 0, b: 255 };
  * ページの2D canvasで画素へ戻して数える。
  */
 async function probeFillRatio(page: Page): Promise<number> {
-  const canvas = page.locator("canvas.maplibregl-canvas");
+  const canvas = page.locator(MAIN_MAP_CANVAS);
   const png = (await canvas.screenshot()).toString("base64");
   return page.evaluate(
     async ({ png, fill }) => {
@@ -137,7 +137,7 @@ test("ルートを収めるとき、地図の上の操作部品が覆う所へ�
   await runGeneration(page);
   await expect.poll(() => fit.padding, { timeout: 10_000 }).toBeDefined();
 
-  const canvas = (await page.locator("canvas.maplibregl-canvas").boundingBox())!;
+  const canvas = (await page.locator(MAIN_MAP_CANVAS).boundingBox())!;
   const covers = async (name: string | RegExp) => {
     const boxes = await Promise.all((await page.getByRole("button", { name }).all()).map((b) => b.boundingBox()));
     return boxes.filter((box) => box !== null);

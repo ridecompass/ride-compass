@@ -5,8 +5,9 @@
  * 代役は MapLibre の振る舞いを真似ず、受けたものを記録して返すだけにする:
  * - ソース・レイヤー・地物の状態は `mapTrace/recordingMap.ts` へ記録し、`MapOnScreen` から読む。点は束ねない。
  * - 印（`Marker`）とポップアップ（`Popup`）は、渡された要素を地図の器へ置く（画面の問い合わせで引ける）。
- * - カメラの操作（`fitBounds`）とスタイルの取り直し（`setStyle`）は、引数を残す。向き（`setBearing`・`easeTo` の `bearing`）と
- *   倍率（`zoomIn`・`zoomOut`）は、受けた値をそのまま今の値にする（動きの途中は無い）。向きが変わったら "rotate" だけを出す。
+ * - カメラの操作（`fitBounds`）とスタイルの取り直し（`setStyle`）は、引数を残す。向き（`setBearing`・`easeTo`・`jumpTo` の `bearing`）と
+ *   倍率（`zoomIn`・`zoomOut`・`jumpTo` の `zoom`）は、受けた値をそのまま今の値にする（動きの途中は無い）。
+ * - 操作を受けない地図（`interactive: false`。本体の地図に添える小さな地図）は、本体の地図と分けて `insetMapOnScreen` で引く。向きが変わったら "rotate" だけを出す。
  * - `addProtocol` で登録された受け手は、`protocolHandler` で引ける（テストが要求を渡して呼ぶ）。
  * - 出来事（"load"・"click" 等）は、上の "rotate" のほかは自分では起こさず、テストが `MapOnScreen` で起こす。押した所に描かれている地物も、
  *   テストが渡したものを返す。
@@ -17,7 +18,7 @@ import type { Coordinates } from "@/types/route";
 
 import type { StyleLayer } from "./mapTrace/recordingMap";
 import type { PointedFeature } from "./maplibreStandIn/evented";
-import { lastDrawnMap, type FittedBounds, type ViewBounds } from "./maplibreStandIn/map";
+import { lastDrawnMap, type FittedBounds, type StandInMap, type ViewBounds } from "./maplibreStandIn/map";
 
 export type { PointedFeature } from "./maplibreStandIn/evented";
 export { StandInMap as Map, type ViewBounds } from "./maplibreStandIn/map";
@@ -70,9 +71,20 @@ export interface MapOnScreen {
   layerPaint(layerId: string): Record<string, unknown> | undefined;
 }
 
+/** いま描かれている本体の地図。 */
 export function mapOnScreen(): MapOnScreen {
   const map = lastDrawnMap();
   if (map === undefined) throw new Error("地図が描かれていない");
+  return onScreen(map);
+}
+
+/** いま描かれている、本体の地図に添える小さな地図（操作を受けない地図）。無ければ null。 */
+export function insetMapOnScreen(): MapOnScreen | null {
+  const map = lastDrawnMap(true);
+  return map === undefined ? null : onScreen(map);
+}
+
+function onScreen(map: StandInMap): MapOnScreen {
   return {
     emit: (type, event) => map.emit(type, event),
     loadStyle: (layers) => map.content.loadStyle(layers),

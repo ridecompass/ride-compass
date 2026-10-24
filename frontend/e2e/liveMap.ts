@@ -7,14 +7,19 @@ declare global {
   }
 }
 
+/** 本体の地図の要素。左下の俯瞰図（MapOverview.tsx）も MapLibre の地図で、DOM では本体より前に並ぶので、その中のものを除く。 */
+export const MAIN_MAP = '.maplibregl-map:not([aria-label="俯瞰図"] *)';
+/** 本体の地図の描画面。 */
+export const MAIN_MAP_CANVAS = `${MAIN_MAP} canvas.maplibregl-canvas`;
+
 /**
  * 地図のインスタンスと、地図に載っているべきものの宣言（scene）を、描画しているReactの部品の参照（useRef）から探す関数を
  * ページへ入れる。アプリは地図を外へ公開していないので、テストのために入口を足さず、Reactが要素へ付ける内部の印
  * （`__reactFiber$`）から祖先の部品のフックを辿る。Reactの内部の形が変わると見つからず、そのときは例外で止まる（黙って空を返さない）。
  */
-export function installMapFinder(): void {
+function defineMapFinder(mainMap: string): void {
   const findRef = (what: string, holds: (current: Record<string, unknown>) => boolean) => {
-    const container = document.querySelector(".maplibregl-map");
+    const container = document.querySelector(mainMap);
     const key = container && Object.keys(container).find((k) => k.startsWith("__reactFiber$"));
     type Hook = { memoizedState: unknown; next: Hook | null };
     type Fiber = { memoizedState: unknown; return: Fiber | null };
@@ -35,6 +40,9 @@ export function installMapFinder(): void {
   window.__liveScene = () =>
     findRef("地図の scene", (current) => Array.isArray((current.scene as { layers?: unknown })?.layers)).scene as never;
 }
+
+/** `page.addInitScript(installMapFinder)`で入れる。ページへは関数の文だけが渡るので、本体の地図の選び方を文に埋めて渡す。 */
+export const installMapFinder = { content: `(${defineMapFinder.toString()})(${JSON.stringify(MAIN_MAP)});` };
 
 /**
  * 地図に描かれた、押すと詳細や選択が開くもの（scene が当たり判定の対象 `target` を宣言したレイヤーの地物）を1つ押す

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { MOBILE_VIEWPORT, installMapFinder, openMobileApp } from "./fixtures";
+import { MAIN_MAP_CANVAS, MOBILE_VIEWPORT, installMapFinder, openMobileApp } from "./fixtures";
 import { pinchOpen } from "./componentScans";
 
 // 地図の上で始めたピンチは、ページではなく地図を拡大する（パターン4 観点2）。地図のcanvas以外の部品から
@@ -90,18 +90,21 @@ async function freeCanvasPoint(
   page: Page,
   reach: readonly (readonly [number, number])[],
 ): Promise<{ x: number; y: number }> {
-  const point = await page.evaluate((reach) => {
-    const canvas = document.querySelector("canvas.maplibregl-canvas");
-    const box = canvas?.getBoundingClientRect();
-    if (!canvas || !box) return null;
-    for (let dy = 0; dy < box.height / 2; dy += 8) {
-      for (const y of [box.top + box.height / 2 + dy, box.top + box.height / 2 - dy]) {
-        const x = box.left + box.width / 2;
-        if (reach.every(([rx, ry]) => document.elementFromPoint(x + rx, y + ry) === canvas)) return { x, y };
+  const point = await page.evaluate(
+    ({ reach, selector }) => {
+      const canvas = document.querySelector(selector);
+      const box = canvas?.getBoundingClientRect();
+      if (!canvas || !box) return null;
+      for (let dy = 0; dy < box.height / 2; dy += 8) {
+        for (const y of [box.top + box.height / 2 + dy, box.top + box.height / 2 - dy]) {
+          const x = box.left + box.width / 2;
+          if (reach.every(([rx, ry]) => document.elementFromPoint(x + rx, y + ry) === canvas)) return { x, y };
+        }
       }
-    }
-    return null;
-  }, reach);
+      return null;
+    },
+    { reach, selector: MAIN_MAP_CANVAS },
+  );
   expect(point, "指を置ける地図の点が無い").not.toBeNull();
   return point!;
 }

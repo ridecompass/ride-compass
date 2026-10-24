@@ -55,8 +55,12 @@ export class StandInMap extends Evented {
   // 手ぶりの入切は、代役では指の操作が無いので受けるだけにする。
   readonly touchZoomRotate = { disableRotation() {}, enableRotation() {} };
 
-  constructor(options: { container: HTMLElement; style: string; zoom: number }) {
+  /** 本体の地図に添える小さな地図（操作を受けない地図）か。 */
+  readonly inset: boolean;
+
+  constructor(options: { container: HTMLElement; style: string; zoom: number; interactive?: boolean }) {
     super();
+    this.inset = options.interactive === false;
     const { map, handle } = createRecordingMap();
     Object.assign(this, Object.fromEntries(STYLE_OPERATIONS.map((name) => [name, map[name]])));
     this.content = handle;
@@ -123,6 +127,13 @@ export class StandInMap extends Evented {
   }
 
   flyTo() {
+    return this;
+  }
+
+  /** 倍率と向きを、受けた値をそのまま今の値にする。 */
+  jumpTo(options: { zoom?: number; bearing?: number } = {}) {
+    if (options.zoom !== undefined) this.zoom = options.zoom;
+    if (options.bearing !== undefined) this.turn(options.bearing, {});
     return this;
   }
 
@@ -212,7 +223,7 @@ export class StandInMap extends Evented {
   }
 }
 
-/** いちばん後に描いた、まだ外していない地図。 */
-export function lastDrawnMap(): StandInMap | undefined {
-  return drawn.at(-1);
+/** いちばん後に描いた、まだ外していない地図。`inset`なら本体の地図に添える小さな地図の、そうでなければ本体の地図の。 */
+export function lastDrawnMap(inset = false): StandInMap | undefined {
+  return drawn.findLast((map) => map.inset === inset);
 }

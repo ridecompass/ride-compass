@@ -44,3 +44,8 @@ const GROUPS: readonly SceneGroup<SceneInputs>[] = [
 export function buildMapScene(inputs: SceneInputs): MapScene {
   return composeScene(GROUPS, inputs);
 }
+
+/** 俯瞰図（`MapOverview/MapOverview.tsx`）に載せる、気象の家族だけの scene。 */
+export function buildOverviewScene(weather: WeatherState): MapScene {
+  return composeScene([weatherGroup], weather);
+}

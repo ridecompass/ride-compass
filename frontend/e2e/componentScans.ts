@@ -1,4 +1,5 @@
 import type { CDPSession, Page } from "@playwright/test";
+import { MAIN_MAP_CANVAS } from "./liveMap";
 
 // 部品の検査（パターン4 観点2・3）: 要素と祖先の計算後のスタイルで決まるので、段階ごとに各部品1回だけ当てる
 // （window.__e2e.firstInPhase）。違反を文字列の配列で返す（空なら違反なし）。どの状態に当てるかは states.ts が決める。
@@ -87,15 +88,15 @@ export async function pinchOpen(client: CDPSession, x: number, y: number): Promi
 }
 
 /**
- * 観点2（部品の検査）: 地図のcanvas以外の部品から始めたピンチが、ページ全体の拡大にならないか（地図の上の
+ * 観点2（部品の検査）: 本体の地図のcanvas以外の部品から始めたピンチが、ページ全体の拡大にならないか（地図の上の
  * ピンチが地図を拡大することは map-touch.spec.ts が見る）。対象は、見えている要素の中心点で最前面になる要素
  * （指が実際に触れる要素）。指は1回の移動で画面の左右の端まで開く——ブラウザがピンチとして扱うかが見えれば足り、
  * 移動を分けても検知は変わらない。指はつまみ・スライダーを動かしうるので、ピンチの間は画面の状態を止める
  * （`window.__e2e.isolate`）。拡大したら倍率を戻す（戻らなければ座標がずれるので、残りは未検査として打ち切る）。
  */
 export async function scanPinch(page: Page, client: CDPSession): Promise<{ checked: number; problems: string[] }> {
-  const { width, targets } = await page.evaluate(() => {
-    const canvas = document.querySelector("canvas.maplibregl-canvas");
+  const { width, targets } = await page.evaluate((selector) => {
+    const canvas = document.querySelector(selector);
     const found: { x: number; y: number; label: string }[] = [];
     for (const el of document.querySelectorAll("body *")) {
       const box = el.getBoundingClientRect();
@@ -109,7 +110,7 @@ export async function scanPinch(page: Page, client: CDPSession): Promise<{ check
       found.push({ x, y, label: `${hit.tagName.toLowerCase()} "${name}"` });
     }
     return { width: window.innerWidth, targets: found };
-  });
+  }, MAIN_MAP_CANVAS);
   const problems: string[] = [];
   for (const [index, target] of targets.entries()) {
     await page.evaluate(({ x, y }) => window.__e2e.isolate(x, y), target);

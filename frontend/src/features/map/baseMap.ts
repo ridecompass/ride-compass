@@ -13,15 +13,18 @@ const MAP_UI_LOCALE: Record<string, string> = {
   "Popup.Close": "閉じる",
 };
 
-/** 基礎地図のスタイルで地図を作る。載せるもの（ソース・レイヤー）は呼ぶ側が場面（`scene/applyToMap.ts: applyScene`）で当てる。 */
+/** 基礎地図のスタイルで地図を作る。載せるもの（ソース・レイヤー）は呼ぶ側が場面（`scene/applyToMap.ts: applyScene`）で当てる。
+ * `inset`は本体の地図に添える小さな地図で、操作を受けず、出典は本体の地図が出すので出さない。 */
 export function createBaseMap({
   container,
   center,
   zoom,
+  inset = false,
 }: {
   container: HTMLElement;
   center: [number, number];
   zoom: number;
+  inset?: boolean;
 }): MapLibreMap {
   // Mapの生成がWorkerを起こすため、作る前に要る。
   configureMaplibreWorker();
@@ -35,7 +38,8 @@ export function createBaseMap({
     touchPitch: false,
     pitchWithRotate: false,
     // 常に使うデータの出典は、どのレイヤーを出しているかと関係なく出す（宣言はbackend）。
-    attributionControl: { compact: true, customAttribution: [...mapDisplay.alwaysShownAttributions] },
+    interactive: !inset,
+    attributionControl: inset ? false : { compact: true, customAttribution: [...mapDisplay.alwaysShownAttributions] },
     // デバッグモードの間、MapLibreが出す要求を種別ごとにログする（無効の間debugLogは何もしない）。
     transformRequest: (url, resourceType) => {
       debugLog("map:request", `${resourceType ?? "unknown"} ${url}`);

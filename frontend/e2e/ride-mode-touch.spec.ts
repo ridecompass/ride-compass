@@ -1,7 +1,14 @@
 import { expect, test } from "@playwright/test";
 import { moved } from "@/testing/movedPoint";
 
-import { INTRO_CLOSED, MOBILE_VIEWPORT, installApiMocks, installMapFinder, seedStoredState } from "./fixtures";
+import {
+  INTRO_CLOSED,
+  MAIN_MAP_CANVAS,
+  MOBILE_VIEWPORT,
+  installApiMocks,
+  installMapFinder,
+  seedStoredState,
+} from "./fixtures";
 import { START, deliverPosition, expectDrawnAt, settledScreenPoint, settledZoom } from "./rideMap";
 
 // 2本指でつまむ・広げる操作は、MapLibre が先に指の重心のずれを移動として受け、倍率が変わるのはそのあとになり、指がひねれば
@@ -45,7 +52,7 @@ test.describe("タッチ端末", () => {
     const client = await context.newCDPSession(page);
     const touch = (type: "touchStart" | "touchMove", points: { x: number; y: number }[]) =>
       client.send("Input.dispatchTouchEvent", { type, touchPoints: points.map((p, id) => ({ ...p, id })) });
-    const canvas = (await page.locator(".maplibregl-canvas").boundingBox())!;
+    const canvas = (await page.locator(MAIN_MAP_CANVAS).boundingBox())!;
     const center = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 };
     const fingers = (gap: number, dx: number, turnDeg: number) => {
       const [x, y] = [Math.cos((turnDeg * Math.PI) / 180) * (gap / 2), Math.sin((turnDeg * Math.PI) / 180) * (gap / 2)];

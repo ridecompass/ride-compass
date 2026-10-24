@@ -6,7 +6,8 @@
  * 方位磁針で北が上と進む向きが上を切り替えること）と、届いた現在地がプロファイルの印と
  * 地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、到着予想が位置を受けた時刻と選んだ候補の計画から出ること、
  * 次に曲がる所がカードと地図の札に出ること、ルートを外れた・戻ったことが走りの帯に出ること、読み込み直しても走行モードが続くこと、
- * 読み込み直しで iPhone がスマホの向きを読む許しを聞けなかったら、ボタンの横から求め直して現在地の印に向きを出せること。
+ * 読み込み直しで iPhone がスマホの向きを読む許しを聞けなかったら、ボタンの横から求め直して現在地の印に向きを出せること、
+ * 走行中も左下に俯瞰図を出すこと。
  *
  * ここで見ないもの: 休む・帯の「ルート」で出したパネル・地図を押すこと・「このルートで走る」・スマホで走行中に下部タブを隠すこと（帯の「ルート」のシートを閉じた後に見る）は`app/page.rideControl.test.tsx`が見る。
  * 残りの距離・次に曲がる所の選び方・走りの帯の書式は`features/ride/`の各テストが見る。
@@ -20,6 +21,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MINUTE_MS } from "@/lib/duration";
 import { formatJstHourMinute } from "@/lib/time";
+import { onBackend } from "@/testing/backendServer";
 import { installGeolocation } from "@/testing/geolocation";
 import {
   FIRST,
@@ -112,6 +114,24 @@ describe("走行モード", () => {
     ]).toEqual([null, null]);
     geolocation.deliver(RIDDEN_MIDDLE);
     expect(screen.queryByRole("button", { name: "現在地へ戻る" })).toBeNull();
+  });
+
+  it("走行中も、気象の層を出して寄せていれば左下に俯瞰図を出す", async () => {
+    onBackend("GET", "/api/weather/msm-grid", () =>
+      Response.json({ times: [], latitude_step_deg: 0.05, longitude_step_deg: 0.0625, points: [] }),
+    );
+    installGeolocation(HERE);
+    const { user } = renderHome();
+    jobs.respond([FIRST], LOOP_CONDITIONS);
+    await generate(user);
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+
+    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
+    await user.click(screen.getByRole("checkbox", { name: "風[矢印]" }));
+    await user.keyboard("{Escape}");
+    act(() => mapOnScreen().moveTo({ west: 139.68, south: 35.69, east: 139.72, north: 35.71 }, 12));
+
+    expect(await screen.findByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
   });
 
   it("走行モードで届いた現在地を選んだ候補の上の距離へ当て、プロファイルに印を出し、地図のルート線のそこまでを薄め、走りの帯に残りと到着予想を出す", async () => {

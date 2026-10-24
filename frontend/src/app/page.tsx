@@ -188,6 +188,7 @@ export default function Home() {
             focusPoint={focusPoint}
             onFocusPoint={setFocusPoint}
             isMobile={isMobile}
+            sheetOpen={isMobile && panels.mobileSheet !== null}
             usageGuideActive={usageGuideActive}
             onUsageGuideEnd={() => setUsageGuideActive(false)}
           />
