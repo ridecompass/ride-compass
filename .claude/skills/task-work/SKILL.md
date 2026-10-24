@@ -11,7 +11,8 @@ description: "タスクを実装担当・検証担当として進める手順（
   マージした・下書きへ戻した等）と、作ったもの・書いたもの（Pull Request・コミット・問い・issue）を番号かコミットの ID で名指す。
   手順の中で当たった流れの摩擦は .claude/skills/file-issue/SKILL.md「流れの摩擦を記録する」のとおり書く。
 - **範囲の外の気づき**（今のタスクの外の製品の誤りや残骸と、範囲の外として入れなかった案。`/simplify` 等が見送った設計の手直しも）: 今の差分で直せるものは直す。ほかは1件ずつ、直す場所が同じ開いた issue へ
-  コメントで寄せるか（探し方は .claude/skills/file-issue/SKILL.md「前後関係と組」）、無ければ起票するか、直さない理由を書き、どれをしたかを
+  コメントで寄せるか（探し方は .claude/skills/file-issue/SKILL.md「前後関係と組」）、無ければ起票するか（保守は起こさずに「保守の候補:」の行を書く。
+  .claude/skills/file-issue/SKILL.md「起票する」）、直さない理由を書き、どれをしたかを
   Pull Request の本文の「課題」（無ければ報告）に書く。「周期レビューの材料」「要るなら別に起こす」は行き先に数えない。
   寄せたあと、寄せ先がまだ開いているかを `--json state` で見て、閉じていれば起票する（探してから書くまでに閉じると、コメントは誰にも読まれない）。
 - **作業ブランチ**: `git fetch origin`。作業ブランチ `orch/tasks-<番号>` が GitHub にあれば `git checkout -B orch/tasks-<番号> origin/orch/tasks-<番号>` のあと

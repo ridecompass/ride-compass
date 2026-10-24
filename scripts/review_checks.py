@@ -8,7 +8,7 @@
     python scripts/review_checks.py size      # 規模と前回比
     python scripts/review_checks.py metrics   # 定量メトリクスと総量の前回比
     python scripts/review_checks.py trigger   # 周期レビューの発火判定
-    python scripts/review_checks.py friction  # 前のレビューより後の流れの摩擦の行（gh で置き場を読む）
+    python scripts/review_checks.py friction  # 前のレビューより後の流れの摩擦と保守の候補の行（gh で置き場を読む）
     python scripts/review_checks.py turns     # ユーザーの番と開発機が持っている issue の一覧（gh で置き場を読む）
     python scripts/review_checks.py change    # 変更の増減と規模の札（master との差分から）
 
@@ -58,8 +58,9 @@ TRIGGER_DAYS = 14
 #: ゲートの設定。置き場の名前と、ゲートが issue に書く欄・種類・ラベル・名義の名前の正本。
 FLOW_CONFIG = json.loads((REPO_ROOT / "tools" / "flow-gate" / "flow.config.json").read_text(encoding="utf-8"))
 TASKS_REPO = FLOW_CONFIG["tasks"]
-#: 流れの摩擦の行。担当の終え方の要約は、後始末が終わりのコメントへ `> ` で引用して写すので、引用と箇条書きの頭も拾う。
-FRICTION_RE = re.compile(r"^(> )?(- )?流れの摩擦:")
+#: 周期レビューが集める報告の行（流れの摩擦と保守の候補）。担当の終え方の要約は、後始末が終わりのコメントへ `> ` で引用して
+#: 写すので、引用と箇条書きの頭も拾う。
+REPORTED_RE = re.compile(r"^(> )?(- )?(流れの摩擦|保守の候補):")
 TRIGGER_IMPL_LINES = 20_000
 
 MARKDOWN_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s#]+)(?:#[^)]*)?\)")
@@ -412,14 +413,14 @@ def cmd_trigger(args: argparse.Namespace) -> int:
     return 0
 
 
-def friction_lines(number: int, comments: list[dict], since: dt.datetime) -> list[str]:
-    """1件の issue のコメントのうち、`since`以後に書かれたものの流れの摩擦の行（頭に `#番号`）。"""
+def reported_lines(number: int, comments: list[dict], since: dt.datetime) -> list[str]:
+    """1件の issue のコメントのうち、`since`以後に書かれたものの流れの摩擦と保守の候補の行（頭に `#番号`）。"""
     return [
         f"#{number} {line}"
         for comment in comments
         if _stamp(comment) >= since
         for line in comment["body"].split("\n")
-        if FRICTION_RE.match(line)
+        if REPORTED_RE.match(line)
     ]
 
 
@@ -482,7 +483,7 @@ def cmd_friction(args: argparse.Namespace) -> int:
                   file=sys.stderr)
         for issue in found["nodes"]:
             comments = comments_since(issue["comments"], since, functools.partial(_earlier_comments, issue["number"]))
-            for line in friction_lines(issue["number"], comments, since):
+            for line in reported_lines(issue["number"], comments, since):
                 print(line)
         if not found["pageInfo"]["hasNextPage"]:
             return 0
@@ -614,7 +615,7 @@ def main() -> int:
     for name, help_text, func, measures_head in (
         ("docs", "文書の整合（常に全件）", cmd_docs, False),
         ("metrics", "定量メトリクスと総量の前回比", cmd_metrics, True),
-        ("friction", "前のレビューより後の流れの摩擦の行", cmd_friction, False),
+        ("friction", "前のレビューより後の流れの摩擦と保守の候補の行", cmd_friction, False),
         ("turns", "ユーザーの番と開発機が持っている issue の一覧", cmd_turns, False),
     ):
         p = sub.add_parser(name, help=help_text)
