@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { routeTrack, type RouteSegmentShape, type RouteTrackEdge } from "@/lib/routeDistance";
+import { projectOnTrack, routeTrack, type RouteSegmentShape, type RouteTrackEdge } from "@/lib/routeDistance";
 import type { Coordinates } from "@/types/route";
 
 import { locateOnRoute, offRoute } from "./routeProgress";
@@ -30,10 +30,15 @@ export function useRouteProgress(
   // 覚えた位置は、それを当てたルートの形と組で持ち、ルートが替われば捨てる。
   const [last, setLast] = useState<{ track: readonly RouteTrackEdge[]; km: number } | null>(null);
   const previousKm = last !== null && last.track === track ? last.km : startKm;
-  const away = track !== null && position !== null && offRoute(track, position, accuracyM);
+  // 全部の辺への射影は、外れの判定と当て方で1つを使い、位置が届いたときだけ組む（描き直すたびには組まない）。
+  const projected = useMemo(
+    () => (track === null || position === null ? null : projectOnTrack(track, position)),
+    [track, position],
+  );
+  const away = useMemo(() => projected !== null && offRoute(projected, accuracyM), [projected, accuracyM]);
   const km = useMemo(
-    () => (track === null || position === null || away ? null : locateOnRoute(track, position, previousKm)),
-    [track, position, away, previousKm],
+    () => (projected === null || away ? null : locateOnRoute(projected, previousKm)),
+    [projected, away, previousKm],
   );
   if (track !== null && km !== null && km !== previousKm) setLast({ track, km });
   if (track === null) return { km: null, offRoute: false };
