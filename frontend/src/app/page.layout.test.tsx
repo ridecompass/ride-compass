@@ -30,7 +30,12 @@ import {
   showRoadSurface,
   useMobileLayout,
 } from "@/testing/homePage";
-import { USAGE_OPENS_ATTRIBUTE, USAGE_PART_SELECTOR, isInUsageGuide } from "@/components/UsageGuide/usageTarget";
+import {
+  USAGE_OPENS_ATTRIBUTE,
+  USAGE_PART_SELECTOR,
+  isInUsageGuide,
+  usageTargetOf,
+} from "@/components/UsageGuide/usageTarget";
 import { LAYER_DATA_STATUS_LABELS } from "@/features/map/layers/mapLayers";
 import { mapOnScreen } from "@/testing/maplibre";
 
@@ -263,7 +268,6 @@ describe("画面の枠", () => {
   ])("%s の生成前の画面で、「中を見る」で開いた浮きパネルの中の部品はどれも使い方の文を出す", async (_, layout) => {
     layout();
     const { user } = renderHome();
-    const panel = () => screen.queryByRole("dialog", { name: "使い方の説明" });
     const enter = async () => {
       await user.click(screen.getByRole("button", { name: "メニュー" }));
       await user.click(screen.getByRole("button", { name: "使い方を見る" }));
@@ -283,11 +287,11 @@ describe("画面の枠", () => {
       expect(opened).not.toBeNull();
       const parts = [...opened!.querySelectorAll(USAGE_PART_SELECTOR)].filter(outsideGuide);
       inside += parts.length;
+      // 部品を1つずつ押すと時間の上限を超えるので、説明の面が押された部品から文を引くのと同じ`usageTargetOf`で引く
+      // （文が無いときの「説明はまだありません」は`components/UsageGuide/UsageGuide.test.tsx`が見る）。
       for (const part of parts) {
-        await user.click(part);
-        if (panel()?.textContent?.includes("説明はまだありません"))
+        if (!usageTargetOf(part)?.usage)
           missing.push(`${opener.getAttribute("aria-label") || opener.textContent} の中の ${part.textContent}`);
-        await user.click(screen.getByRole("button", { name: "説明を閉じる" }));
       }
       await user.click(screen.getByRole("button", { name: "やめる" }));
       await user.keyboard("{Escape}");
