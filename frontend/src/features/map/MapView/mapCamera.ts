@@ -23,12 +23,9 @@ function fitPaths(map: MapLibreMap, paths: readonly (readonly Position[])[], wha
   });
 }
 
-export function fitBoundsToRoutes(map: MapLibreMap, routes: RouteCandidate[]) {
-  fitPaths(
-    map,
-    routes.map((route) => route.geometry.coordinates),
-    "ルート",
-  );
+/** ルート1本の形を、見えている所に収める。 */
+export function fitBoundsToRoute(map: MapLibreMap, route: RouteCandidate) {
+  fitPaths(map, [route.geometry.coordinates], "ルート");
 }
 
 /** 選んだ区間の形を、見えている所に収める。 */

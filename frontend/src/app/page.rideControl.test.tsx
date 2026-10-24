@@ -2,7 +2,7 @@
  * `app/page.tsx`——トップページの走行モードのうち、走っている間の操作。
  *
  * 見ること: スマホで走行中は下部タブを隠すこと・休んでいる間は位置を受けずにルートと進み具合を残し、「続きから走る」で続けること・地図を指で動かした間だけ
- * 「現在地へ戻る」を出すこと、走行中に帯の「ルート」で開いたパネルで選び直す・作り直すと走行モードが新しい候補を追い、
+ * 「現在地へ戻る」を出すこと、走行中に帯の「ルート」で開いたパネルで選び直す・作り直すと走行モードが新しい候補を追い（地図をその候補へ収め直さない）、
  * パネルを出していない間は地図で何も変えも開きもしないこと、「このルートで走る」でその候補で走り始めてシートを閉じ、
  * 止めると走る前のシートへ戻ること。パネルの中で区間を選ぶと追うのを休んでその区間へ寄せ、外すと追い直すこと。
  *
@@ -97,7 +97,7 @@ describe("走行モードの操作", () => {
     expect(geolocation.watching()).toBe(0);
   });
 
-  it("走行モードのまま帯の「ルート」で左のパネルを出し、候補を選び直す・作り直すと、走行モードはその候補を追い続ける", async () => {
+  it("走行モードのまま帯の「ルート」で左のパネルを出し、候補を選び直す・作り直すと、走行モードはその候補を追い続け、地図をその候補へ収め直さない", async () => {
     const geolocation = installGeolocation(HERE);
     const { user } = renderHome();
     // 東へ2km進む区間1つのルート。現在地（東経139.705度）はその4分の1の所。
@@ -112,6 +112,14 @@ describe("走行モードの操作", () => {
         }),
       ],
       distance_km: 2,
+      // 選び直したときに収める範囲を持つよう、線の形も持たせる。
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [139.7, 35.7],
+          [139.72, 35.7],
+        ],
+      },
     });
     jobs.respond([RIDDEN, longer], LOOP_CONDITIONS);
     await generate(user);
@@ -125,6 +133,8 @@ describe("走行モードの操作", () => {
     const routePanel = screen.getByRole("button", { name: "ルート" });
     await user.click(routePanel);
     expect(routePanel).toHaveAttribute("aria-expanded", "true");
+    // 追っている間は追う側が地図を動かすので、選び直しても作り直しても収め直さない。
+    const fitted = mapOnScreen().fits().length;
     await user.click(candidateTabs()[1]);
     geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
     expect(rideBar).toHaveTextContent("残り: 1.5km");
@@ -134,6 +144,7 @@ describe("走行モードの操作", () => {
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
     geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
     expect(screen.getByRole("group", { name: "走りの数字" })).toHaveTextContent("残り: 0.5km");
+    expect(mapOnScreen().fits()).toHaveLength(fitted);
 
     await user.click(routePanel);
     expect(screen.queryByRole("button", { name: "ルート結果" })).toBeNull();
