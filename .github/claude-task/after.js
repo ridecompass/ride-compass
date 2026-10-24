@@ -10,8 +10,16 @@ import { existsSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const read = (file) => (file && existsSync(file) ? readFileSync(file, "utf8") : "");
+// 担当が書きかけで止められると、実行のファイルは JSON として読めない。読めなければ無いものとして扱う（後始末を落とさない）。
+const parsed = (text) => {
+  try {
+    return text ? JSON.parse(text) : [];
+  } catch {
+    return [];
+  }
+};
 const [kind, file, log, url, startFile] = process.argv.slice(2);
-const messages = read(file) ? JSON.parse(read(file)) : [];
+const messages = parsed(read(file));
 const QUOTA = ["rate_limit", "billing_error", "authentication_failed", "oauth_org_not_allowed", "account_on_hold"];
 if (kind === "--quota") process.exit(messages.some((m) => m?.type === "assistant" && QUOTA.includes(m.error)) ? 1 : 0);
 const { endHead, readFromLine, startBlock } = await import(pathToFileURL(`${process.env.FLOW_SRC}/facts.js`).href);
