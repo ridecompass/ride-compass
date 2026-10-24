@@ -178,7 +178,7 @@ function scaledProperties(properties: object | undefined, keys: readonly string[
 }
 
 /** 気象の家族の scene を、俯瞰図の地図（`OVERVIEW_RENDER_SCALE`倍で描いて縮める）に載せる形にする。pxで決まる見た目を倍にし、
- * 記号は地名の場所を取らないようにする（取ると地名が衝突で押し出される）。 */
+ * 記号は地名の場所を取らないようにする（取ると地名が衝突で押し出される）。場所を取らない記号は記号どうしでも間引かれず、格子点の全部に出る。 */
 export function overviewScene(scene: MapScene): MapScene {
   return {
     ...scene,

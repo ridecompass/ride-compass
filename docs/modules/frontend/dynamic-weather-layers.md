@@ -414,7 +414,7 @@ basetime・validtimeを含む）で持つため、フレームが進んで取得
 - **描くもの**: 下地は同じ基礎地図から、高速道路の本線のほかの道路・建物・店とその文字の層を消し、高速道路は細い線にし、地名を市・区・町と都道府県に絞る
   （`features/map/MapOverview/overview.ts: overviewBasemapEdits`。森・水・土地の塗りは残す）。地名は日本語だけの小さな字にする（`features/map/MapOverview/overview.ts: OVERVIEW_PLACE_LABEL`）。その上に、本体の地図と同じ
   `dynamicWeather`から気象の家族だけの scene（`features/map/scene/buildScene.ts: buildOverviewScene`）を描くので、色・時刻・中身は本体の地図と揃う。
-  気象の記号は地名の場所を取らない（`features/map/MapOverview/overview.ts: overviewScene`）——上に描く風の矢印の記号が先に場所を取ると、地名が衝突で全部押し出される。
+  気象の記号は地名の場所を取らない（`features/map/MapOverview/overview.ts: overviewScene`）——上に描く風の矢印の記号が先に場所を取ると、地名が衝突で全部押し出される。場所を取らない記号は記号どうしでも間引かれないので、俯瞰図では格子点の全部に矢印が出る。
 - **倍で描いて縮める**: 俯瞰図の地図は`features/map/MapOverview/overview.ts: OVERVIEW_RENDER_SCALE`倍の大きさの地図として描いてCSSで縮める。
   約20km四方を映す粗い段の基礎地図のタイルには区の名前が無く、1段細かい段から載るため。pxで決まる見た目（地名の字・気象の記号の大きさ等）は
   その倍にして見た目の大きさを保つ。基礎地図と配信元のタイルは1段細かい段のものを取る。
