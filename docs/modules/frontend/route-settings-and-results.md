@@ -63,7 +63,7 @@
 | `features/route/WarningText/WarningText.tsx` | 表示中の結果について注意を促す1行（条件のずれ・目的地の補正・所要時間の前提の崩れ）。ルート結果と候補の中身が使う |
 | `features/route/GenerationNotice/GenerationNotice.tsx` | 押した「生成」が候補を出せなかった理由（入力の誤りか失敗・候補0件の理由）を知らせる窓。`app/page.tsx`がデスクトップとモバイルの両方に1つ置き、閉じると案内を消す |
 | `features/route/routePreferenceSync.ts` | 重みのキー集合を軸カタログの公開軸へ揃える関数（`useGenerationConditions.ts`が読むときに1回だけ通す）と、生成リクエストへ重みを載せるかの判定 |
-| `features/route/SegmentDetail/SegmentDetail.tsx` | 押した区間の地図の小窓の中身。上の帯に地点（何km地点）と到達予想、その下に難易度の塊（総合難易度・軸ごとの内訳・風のチップ。`components/MapPopup/MapPopupParts.tsx: DifficultyBlock`）と近くの施設を出す（閉じる操作は小窓が持つ）。「ルート結果」が効いている間は、上の帯を地点だけにし、難易度の塊を出さない。近くの施設の区分のチップを押すと、同じ小窓をその区分の一覧へ替える。総合難易度の出し方（`features/route/SegmentDetail/SegmentDetail.tsx: SegmentDifficulty`。全部0のときの文を含む）と到達予想の書き方（`features/route/SegmentDetail/SegmentDetail.tsx: formatSegmentArrivalTime`）は、道のりのグラフの地点の詳しくも使う（下記「区間クリック詳細」） |
+| `features/route/SegmentDetail/SegmentDetail.tsx` | 押した区間の地図の小窓の中身。上の帯に地点（何km地点）と到達予想と「区間を地図で見る」、その下に難易度の塊（総合難易度・軸ごとの内訳・風のチップ。`components/MapPopup/MapPopupParts.tsx: DifficultyBlock`）と近くの施設を出す（閉じる操作は小窓が持つ）。「ルート結果」が効いている間は、上の帯を地点だけにし、難易度の塊を出さない。近くの施設の区分のチップを押すと、同じ小窓をその区分の一覧へ替える。総合難易度の出し方（`features/route/SegmentDetail/SegmentDetail.tsx: SegmentDifficulty`。全部0のときの文を含む）と到達予想の書き方（`features/route/SegmentDetail/SegmentDetail.tsx: formatSegmentArrivalTime`）は、道のりのグラフの地点の詳しくも使う（下記「区間クリック詳細」） |
 | `features/route/pointNames.ts` | 地点の名前（探して置いた候補の名前・「地図で選んだ地点」・「現在地」・「未設定」）。探して・名前のある点を押して置いた地点の名前だけ（`features/route/pointNames.ts: placeNames`）を地図のピンを押したときの小窓が読み、地点の並びはそれに呼び名を補って出す（下記「地点の指定」） |
 | `features/route/SegmentSidePoints/SegmentSidePoints.tsx`・`sidePointGroups.ts` | 選んだ区間の近くの施設（下記「区間クリック詳細」の「近くの施設」）。まだ探していなければ「探す」を出し、引いたら点は地図に描き、ここは種類（点のレイヤ）ごとに1行で、行の頭に種類名、その後ろに区分（先頭の軸の行）ごとのチップを並べる。チップは地図の印と同じ見本（`components/PointIconSwatch/PointIconSwatch.tsx`。絵記号を持たない区分は丸い点）と件数で、区分の名前は読み上げ名と使い方の文が持つ。押すと、その区分の施設を1施設1行で道のりの順に並べた一覧（`features/route/SegmentSidePoints/SegmentSidePoints.tsx: SidePointKindList`）を開き、一覧の上の帯の目でその区分を地図に出す・消す。一覧の見出し（見本と「コンビニ 1か所」）は、戻る・目と同じ上の帯に並べず帯の下の1行に出して折り返さない（小窓の幅の上限では、帯に並べると収まらない）。地図から消した区分のチップは薄くする。種類の並び・呼び名は地図の「表示」の点のレイヤの順と宣言（`lib/mapDisplay/pointLayers.ts: POINT_LAYERS`）から、区分の並び・名前・色・絵記号は先頭の軸の行から引き、点の無い区分は出さず、地図に描けない点（先頭の軸の区分に当たらない値）は数えない（`sidePointGroups.ts`） |
 | `features/route/SegmentWind/SegmentWind.tsx` | 区間の評価に使った風。地図の小窓にも道のりのグラフの地点の詳しくにも、風が吹いていく向きの矢印と風向風速のチップ（`features/route/SegmentWind/SegmentWind.tsx: SegmentWindChip`。押すと使った時刻・延長の印・説明を開く）を出す（下記「区間クリック詳細」） |
@@ -332,7 +332,7 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
 `AxisContributionBar`（区間の`axis_contributions`）。道のりのグラフの下では、これに選んだ地点の標高・勾配と、その地点で当たる道の区分の
 チップを足して3行にまとめる（各行の中身は上の表の`ProfilePointDetail.tsx`の行）。
 区間を選んでも（地図で押してもグラフで選んでも）地図は動かさない——グラフをなぞるたびに地図が跳ぶと、見ていた所を見失う。
-1行目の「区間を地図で見る」（虫めがね）を押したときだけ、地図をその区間へ寄せる（`features/map/MapView/useSectionFocus.ts: useSectionFocus`）。
+1行目の「区間を地図で見る」（虫めがね。区間の小窓の上の帯にも同じボタン（`features/route/SegmentDetail/SegmentDetail.tsx: SectionOnMapButton`）を置く）を押したときだけ、地図をその区間へ寄せる（`features/map/MapView/useSectionFocus.ts: useSectionFocus`）。地図の小窓を出していれば、その高さを見えている所の上に空けて寄せる。
 区間が地図の見えている所（地図の上に重ねた部品の陰を除く）の外にある間は、そのボタンを強調の色にして、読み上げにも外にあることを添える。
 走行中は区間を選んでも現在地を追い続け、虫めがねを押したときだけ追うのを休んで寄せる。休ませた後に選びを外すと追い直す。
 ×ボタン（地図の小窓では小窓を閉じる）で`selectedRouteSegment`をnullへ戻すとルート全体表示に復帰する。`AxisContributionBar`は寄与が1つも

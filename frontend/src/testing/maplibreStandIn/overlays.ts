@@ -63,9 +63,21 @@ export class Marker extends Evented {
 }
 
 export class Popup extends Evented {
+  /** MapLibre と同じく、置き直すたびに読む設定（向き`anchor`等）。 */
+  readonly options: { anchor?: string; offset?: number };
   private lngLat: LngLat = { lng: 0, lat: 0 };
   private content: Node | null = null;
   private onMap = false;
+
+  constructor(options: { anchor?: string; offset?: number } = {}) {
+    super();
+    this.options = { ...options };
+  }
+
+  /** 地図に載っている間の、中身を収めた要素。 */
+  getElement(): HTMLElement | undefined {
+    return this.onMap && this.content instanceof HTMLElement ? this.content : undefined;
+  }
 
   setLngLat(lngLat: readonly [number, number] | LngLat) {
     this.lngLat = toLngLat(lngLat);

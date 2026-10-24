@@ -7,9 +7,14 @@ import AxisDetail from "@/components/AxisContributionBar/AxisDetail";
 import { Button } from "@/components/ui/Button/Button";
 import { Dot } from "@/components/ui/Dot/Dot";
 import { GradientAxisIcon } from "@/components/ui/icons/layerIcons";
-import { ClockIcon, SelectedSpotIcon, ShowSectionOnMapIcon } from "@/components/ui/icons/lucideIcons";
+import { ClockIcon, SelectedSpotIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
-import { formatSegmentArrivalTime, SegmentDifficulty } from "@/features/route/SegmentDetail/SegmentDetail";
+import {
+  formatSegmentArrivalTime,
+  SectionOnMapButton,
+  SegmentDifficulty,
+  type SectionOnMap,
+} from "@/features/route/SegmentDetail/SegmentDetail";
 import { SegmentWindChip } from "@/features/route/SegmentWind/SegmentWind";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import { cn } from "@/lib/cn";
@@ -32,13 +37,6 @@ const CHIP_CLASS =
   "inline-flex min-h-6 items-center gap-1 rounded-full bg-[var(--color-surface-2)] px-1.5 text-[length:var(--font-size-sm)] text-[var(--foreground)] whitespace-nowrap";
 
 const hintRowClass = cn(textVariants({ variant: "hint" }), "inline-flex items-center gap-0.5");
-
-/** 「区間を地図で見る」。区間を選んでも地図は動かないので、地図を区間へ寄せるのはこのボタンだけ。 */
-export interface SectionOnMap {
-  /** 選んだ区間が地図の見えている所の外にあるか。外ならボタンを色で目立たせる（地図に線と印が見えない理由の代わりに、次に押すものを見せる）。 */
-  readonly outside: boolean;
-  readonly onShow: () => void;
-}
 
 interface ProfilePointDetailProps {
   selection: SelectedRouteSegment;
@@ -118,19 +116,7 @@ export default function ProfilePointDetail({
           <span className="sr-only">到達予想 </span>
           {formatSegmentArrivalTime(segment.estimated_arrival_time)}
         </span>
-        {onMap !== undefined && (
-          <Button
-            variant={onMap.outside ? "primary" : "ghost"}
-            size="icon"
-            className="-my-1.5"
-            aria-label="区間を地図で見る"
-            aria-description={onMap.outside ? "区間は地図の外です" : undefined}
-            usage="地図を、選んでいる区間へ寄せます。区間を選んだだけでは地図は動きません。"
-            onClick={onMap.onShow}
-          >
-            <ShowSectionOnMapIcon size={18} />
-          </Button>
-        )}
+        {onMap !== undefined && <SectionOnMapButton onMap={onMap} />}
         {onClear !== undefined && (
           <Button
             variant="ghost"

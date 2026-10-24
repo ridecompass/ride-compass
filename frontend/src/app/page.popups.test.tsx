@@ -123,6 +123,7 @@ describe("地図の小窓", () => {
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
 
+    const fitsBefore = mapOnScreen().fits().length;
     clickSegment(mapOnScreen().sourceFeatures("route-segments")[0], HERE);
 
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toHaveTextContent(
@@ -133,6 +134,15 @@ describe("地図の小窓", () => {
     expect(
       block.getByRole("button", { name: /^区間の風（最寄りの格子点の値 .* 3\.3m\/s）の説明を表示$/ }),
     ).toBeInTheDocument();
+
+    // 区間を押しただけでは地図は動かず、上の帯の「区間を地図で見る」で区間へ寄せる。
+    expect(mapOnScreen().fits()).toHaveLength(fitsBefore);
+    await user.click(
+      within(screen.getByRole("group", { name: "区間の小窓の上の帯" })).getByRole("button", {
+        name: "区間を地図で見る",
+      }),
+    );
+    await waitFor(() => expect(mapOnScreen().fits()).toHaveLength(fitsBefore + 1));
   });
 
   it("評価を開いた道から別の道へ押し替えると、その道の評価は押すまで取りに行かない", async () => {

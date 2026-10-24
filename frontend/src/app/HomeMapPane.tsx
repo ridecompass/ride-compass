@@ -131,6 +131,7 @@ export default function HomeMapPane({
               selection={results.selectedRouteSegment}
               sidePoints={results.segmentSidePoints}
               facilityOrigin={facilityOrigin}
+              onMap={results.segmentOnMap}
             />
           ) : tapMode === "routes" && results.segmentSidePoints !== null ? (
             <SegmentDetail
@@ -138,6 +139,7 @@ export default function HomeMapPane({
               sidePoints={results.segmentSidePoints}
               facilityOrigin={facilityOrigin}
               facilitiesOnly
+              onMap={results.segmentOnMap}
             />
           ) : null
         }

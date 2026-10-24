@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
-import type { Map as MapLibreMap } from "maplibre-gl";
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import type { Map as MapLibreMap, Popup } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import type {
@@ -34,6 +34,7 @@ import { useMapScene } from "@/features/map/MapView/useMapScene";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
 import { useSectionFocus } from "@/features/map/MapView/useSectionFocus";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
+import { findSameSegment, segmentPath } from "@/lib/routeDistance";
 
 interface MapViewProps {
   routes: RouteCandidate[];
@@ -241,6 +242,15 @@ export default function MapView({
 
   const onNextRideZoom = useRideFollow(mapRef, ride, here, mapVisibleCenterOffset);
   const turnMarkContent = useTurnMark(mapRef, turnPoint);
+  // 出している小窓と、区間の小窓の区間の形（候補の同じ区間から引く。地図で押した区間は形を持たない写し）。小窓は区間にかぶらない
+  // 所に置き、区間へ寄せるときは小窓の高さを空ける。
+  const openPopupRef = useRef<Popup | null>(null);
+  const selectedSegments = routes.find((route) => route.id === selectedRouteId)?.segments;
+  const popupSegmentPath = useMemo(() => {
+    if (popup?.kind !== "segment" || selectedSegments === undefined) return null;
+    const section = findSameSegment(selectedSegments, popup.segment.segment, (segment) => segment);
+    return section === undefined ? null : segmentPath(section);
+  }, [popup, selectedSegments]);
   const popupContent = useMapPopupMount(mapRef, {
     shown: popup,
     controls: popups,
@@ -248,6 +258,8 @@ export default function MapView({
     rideConditions,
     routePreference,
     facilityOrigin,
+    segmentPath: popupSegmentPath,
+    openPopupRef,
   });
 
   // 住所の検索で置いた地点・取り直した現在地へ寄せる。出発地を置いたときは印のフックの位置の更新も寄せるが、このeffectが
@@ -269,11 +281,12 @@ export default function MapView({
   }, [scene, recomputeLayerDataStatus]);
 
   useSectionFocus(mapRef, {
-    segments: routes.find((route) => route.id === selectedRouteId)?.segments,
+    segments: selectedSegments,
     selectedRouteSegment,
     request: segmentFocus,
     onOutsideChange: onSegmentOutsideChange,
     ride,
+    reservedTopPx: () => openPopupRef.current?.getElement()?.offsetHeight ?? 0,
   });
 
   // 選んでいる1本へ収める。生成し直すと同じidの候補が来るので、idでなく候補そのものが変わったときに収める。地図の線を
