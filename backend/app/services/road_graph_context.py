@@ -56,6 +56,8 @@ class RoadGraphContext:
     # 置いた点を寄せてよいNode（ノード番号順の真偽。`domain/routing.py: largest_strongly_connected_nodes`）。
     # 起点・経由地・目的地をどれもこの中へ寄せるので、置いた点どうしは互いに行き来できる。
     accessible: np.ndarray
+    # 探索で通れる区間（区間の番号順の真偽。探索から除く区間でないもの）。
+    passable: np.ndarray
     # 探索用グラフ（区間は番号、domain/search_graph.py: LazyRoadGraph参照）。
     lazy_graph: LazyRoadGraph
     # レグごとのコスト配列を合成する部品と、合成済みのレグ配列（前段の区間ごとのレグのあとに、仕上げの往路[最後の

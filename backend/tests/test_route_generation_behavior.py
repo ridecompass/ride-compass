@@ -336,8 +336,9 @@ def _clustered_ring_network() -> tuple[RoadNetwork, Coordinates]:
     """易しい折返し点が1か所に数千点固まる道路網（関東の網で、易しい往路の先の住宅地の細かい網が上位を占める形）と出発地。
 
     出発地から16方向へ1km刻みの道を6kmまで延ばし、東の1本だけを易しい道にして、その先（4.6km）を中心に
-    1.1km四方の細かい格子（81×81点）を置く。ほかの15本は避けたい道。周回12km±3kmの帯（往路4.5〜6.5km）には、
-    格子の全点と、15本の道の5・6km目の点が入る。"""
+    1.1km四方の細かい格子（81×81点）を置く。ほかの15本は避けたい道で、6km目どうしを避けたい道の環でつなぐ（つながないと
+    行き止まりになり、折返し点に選ばれない）。周回12km±3kmの帯（往路4.5〜6.5km）には、格子の全点と、15本の道の
+    5・6km目の点が入る。"""
     origin = (BASE_LAT, BASE_LON)
     km_lon = km_per_degree_longitude(BASE_LAT)
 
@@ -359,6 +360,10 @@ def _clustered_ring_network() -> tuple[RoadNetwork, Coordinates]:
             if spoke != easy_bearing:
                 bad_ways.append(len(ways))
             previous = node
+    rim = [100 + spoke * 10 + 5 for spoke in range(16) if spoke != easy_bearing]
+    for tail, head in zip(rim, rim[1:] + rim[:1]):
+        ways[len(ways) + 1] = (tail, head)
+        bad_ways.append(len(ways))
     side, spacing_km = 81, 1.1 / 80
 
     def patch_node(row: int, col: int) -> int:
@@ -400,6 +405,60 @@ async def test_loop_never_drives_against_a_one_way_road(engine_over):
     for candidate in candidates:
         assert_connected(candidate, CENTER, CENTER)
         assert not [way for way, _, forward in edges_of(candidate) if way in oneway and not forward]
+
+
+#: `_dead_end_network`の袋小路のノード。東の1本道（途中の2点と行き止まり）・北の先に小さな輪のある1本道・西の1本道。
+EAST_SPUR = (3001, 3002, 3003)
+NORTH_POCKET = (3101, 3102, 3103)
+WEST_SPUR = (3201, 3202)
+
+
+def _dead_end_network() -> RoadNetwork:
+    """5×5の格子（1辺約1km、どの道も避けたい道）に、易しい道の袋小路を3つ付けた道路網。東は南東の角から東へ3kmの
+    行き止まり、北は北西の角から北へ1kmの道の先に1辺約1kmの三角の輪、西は中ほどの西の端から西へ2kmの行き止まり。"""
+    size = 5
+    ways = lattice_ways(size)
+    bad_ways = list(ways)
+    coordinates = {lattice_node(row, col): (BASE_LAT + row * LAT_STEP, BASE_LON + col * LON_STEP)
+                   for row in range(size) for col in range(size)}
+
+    def spur(start: int, nodes: tuple[int, ...], steps: list[tuple[float, float]]) -> None:
+        lat, lon = coordinates[start]
+        previous = start
+        for node, (north, east) in zip(nodes, steps):
+            coordinates[node] = (lat + north * LAT_STEP, lon + east * LON_STEP)
+            ways[len(ways) + 1] = (previous, node)
+            previous = node
+
+    spur(lattice_node(0, size - 1), EAST_SPUR, [(0, 1), (0, 2), (0, 3)])
+    spur(lattice_node(size - 1, 0), NORTH_POCKET, [(1, 0), (1.9, 0.5), (1.9, -0.5)])
+    ways[len(ways) + 1] = (NORTH_POCKET[2], NORTH_POCKET[0])
+    spur(lattice_node(2, 0), WEST_SPUR, [(0, -1), (0, -2)])
+    return road_network(ways, coordinates, bad_ways=bad_ways)
+
+
+@pytest.mark.parametrize(
+    ("origin", "distance_km", "own_spur"),
+    [
+        pytest.param(lattice_node(0, 0), 12.0, (), id="格子の角から"),
+        pytest.param(WEST_SPUR[-1], 16.0, WEST_SPUR, id="袋小路の奥から"),
+    ],
+)
+async def test_loops_never_turn_back_in_a_dead_end(engine_over, origin, distance_km, own_spur):
+    """袋小路（行き止まり・その手前の1本道・先に輪のある1本道）がどれほど易しくても、周回はそこへ入らない。入ると
+    来た道を数km戻る周回が候補に混ざる。起点が袋小路の奥にあれば、起点から出る道を戻るのは避けられないので、
+    それでも周回は出る。"""
+    network = _dead_end_network()
+    generator = engine_over(network, avoid_weight=1.0)
+
+    candidates = await generator.generate_loops(
+        node_point(network, origin), distance_km, 3.0, max_routes=5, start_time=DEPARTURE, points=NO_POINTS)
+
+    assert candidates
+    dead_ends = set(EAST_SPUR + NORTH_POCKET + WEST_SPUR) - set(own_spur)
+    for candidate in candidates:
+        assert candidate.node_ids[0] == candidate.node_ids[-1] == node_key(origin)
+        assert not dead_ends & set(nodes_of(candidate))
 
 
 # --- 経由地・目的地の扱い ---
