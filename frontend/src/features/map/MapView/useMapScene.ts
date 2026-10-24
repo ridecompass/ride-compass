@@ -22,6 +22,7 @@ export function useMapScene({
   inspectedWayId,
   travelledKm,
   selectedRouteSegment,
+  sidePoints,
 }: MapSceneSources) {
   const sceneInputs = useMemo<SceneInputs>(
     () =>
@@ -36,6 +37,7 @@ export function useMapScene({
         inspectedWayId,
         travelledKm,
         selectedRouteSegment,
+        sidePoints,
       }),
     [
       look,
@@ -47,6 +49,7 @@ export function useMapScene({
       inspectedWayId,
       travelledKm,
       selectedRouteSegment,
+      sidePoints,
     ],
   );
   const scene = useMemo(() => buildMapScene(sceneInputs), [sceneInputs]);

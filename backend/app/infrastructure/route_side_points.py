@@ -1,4 +1,4 @@
-"""区間ごとに、近くの点（停止要因・補給・立ち寄り先・事故）を区間の形の上の位置つきで引く読み出し。
+"""区間ごとに、近くの点（停止要因・補給・立ち寄り先・事故）を、点の位置と区間の形の上の位置つきで引く読み出し。
 
 近さの規則は点の種類ごとに違う: 停止要因は道の上にあるもの（`batch/derive_counts.py`が数えるのと同じく区間と交わる点）、
 補給と立ち寄り先は道から`ROUTE_SIDE_POINT_MAX_DISTANCE_M`以内、事故は事故を道に付ける距離以内で
@@ -38,7 +38,7 @@ def _hit(layer: str, point_key: str, merge_group: str, geom: str, **values: str)
     columns = ", ".join(f'{values.get(column, _NULLS[column])} AS "{column}"' for column in SIDE_POINT_PROPERTIES)
     return (f"w.osm_way_id, w.segment_index, '{layer}' AS layer, {point_key} AS point_key, {merge_group} AS merge_group,"
             " w.merge_within_m,"
-            f" {columns}, ST_LineLocatePoint(w.geom, {geom}) AS fraction,"
+            f" {columns}, ST_Y({geom}) AS latitude, ST_X({geom}) AS longitude, ST_LineLocatePoint(w.geom, {geom}) AS fraction,"
             f" ST_Distance(w.geom::geography, {geom}::geography) AS distance_m")
 
 

@@ -320,7 +320,7 @@ def _add_route_side_points(rows, result: dict[tuple[int, int], list[RoutePointHi
             layer=row["layer"], point_key=row["point_key"], merge_group=row["merge_group"],
             merge_within_m=row["merge_within_m"],
             properties={name: row[name] for name in SIDE_POINT_PROPERTIES if row[name] is not None},
-            fraction=row["fraction"], distance_m=row["distance_m"],
+            latitude=row["latitude"], longitude=row["longitude"], fraction=row["fraction"], distance_m=row["distance_m"],
         ))
 
 

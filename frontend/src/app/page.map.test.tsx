@@ -4,8 +4,9 @@
  * 見ること: 地図を押したときの意味は効いているパネルで決まり（「ルート設定」の条件タブは選んでいる地点を置く、
  * 「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
  * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、区間を選んでいる間は地図にその区間の範囲の縁取りと
- * 選んだ地点の印が出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。区間を押すと、その区間の近くの施設を
- * 引いて種類ごとに出すこと。道の小窓を別の道へ押し替えると、前の道で押した評価を新しい道へ持ち越さないこと。
+ * 選んだ地点の印が出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。区間を押すと地図をその区間へ寄せ、
+ * その区間の近くの施設を引いて地図に描き、種類ごとに出す・消せ、点を押すと名前と道からの距離を出すこと。道の小窓を別の道へ
+ * 押し替えると、前の道で押した評価を新しい道へ持ち越さないこと。
  *
  * ここで見ないもの: 地図に置く地点（ピン・名前のある点・目的地・保存した地点）は`app/page.places.test.tsx`が見る。
  *
@@ -223,6 +224,66 @@ describe("区間の近くの施設", () => {
     distance_km: 2,
   });
 
+  // 2つ目の区間の近くの点: 事故・同じ所のコンビニ2つ・トイレと、地図の点の層の行に当たらない値の点。種類は地図の「表示」の
+  // 並びと違う順で返す。
+  const NEARBY_POINTS = [
+    {
+      distance_km: 1.5,
+      offset_m: 30,
+      layer: "accident_point",
+      properties: { involves_bicycle: true, fatal: true },
+      latitude: 35.7,
+      longitude: 139.715,
+    },
+    {
+      distance_km: 1.3,
+      offset_m: 12,
+      layer: "supply_poi",
+      properties: { kind: "convenience", name: "ローソン 渋谷店" },
+      latitude: 35.7,
+      longitude: 139.713,
+    },
+    {
+      distance_km: 1.3,
+      offset_m: 8,
+      layer: "supply_poi",
+      properties: { kind: "convenience", name: "ファミリーマート" },
+      latitude: 35.7,
+      longitude: 139.713,
+    },
+    {
+      distance_km: 1.8,
+      offset_m: 5,
+      layer: "supply_poi",
+      properties: { kind: "toilets" },
+      latitude: 35.7,
+      longitude: 139.718,
+    },
+    {
+      distance_km: 1.9,
+      offset_m: 4,
+      layer: "supply_poi",
+      properties: { kind: "vanished" },
+      latitude: 35.7,
+      longitude: 139.719,
+    },
+  ];
+
+  /** 地図に描いた近くの点の、ソースごとの位置。 */
+  function sidePointsOnMap() {
+    return Object.fromEntries(
+      mapOnScreen()
+        .sourceIds()
+        .filter((id) => id.startsWith("side-point-"))
+        .map((id) => [
+          id,
+          mapOnScreen()
+            .sourceFeatures(id)
+            .map((feature) => (feature.geometry as GeoJSON.Point).coordinates),
+        ]),
+    );
+  }
+
   async function pressSecondSegment(user: Parameters<typeof generate>[0]) {
     jobs.respond([NEAR], LOOP_CONDITIONS);
     await generate(user);
@@ -232,49 +293,87 @@ describe("区間の近くの施設", () => {
     return screen.getByRole("group", { name: "近くの施設" });
   }
 
-  it("区間を押すとその区間の近くの施設を引き、引いている間は読み込み中と出し、届くと種類ごとの件数のチップを出して、押すとその種類を名前（無ければ種別）・道からの距離・何km地点で道のりの順に開く", async () => {
+  it("区間を押すと地図をその区間へ寄せて近くの施設を引き、届くと地図の点と同じ行ごとに描いて種類ごとの件数のチップを出し、チップでその種類を消せ、選びを外すと消す", async () => {
     const { user } = renderHome();
     const held = heldReplies();
     onBackend("POST", "/api/routes/side-points", held.reply);
 
     const nearby = await pressSecondSegment(user);
+    expect(mapOnScreen().fits().at(-1)).toEqual({
+      bounds: [
+        [139.71, 35.7],
+        [139.72, 35.7],
+      ],
+      maxZoom: 16,
+    });
     expect(within(nearby).getByText("読み込み中")).toBeInTheDocument();
 
-    await held.answer(
-      0,
-      Response.json({
-        points: [
-          {
-            distance_km: 1.3,
-            offset_m: 12,
-            layer: "supply_poi",
-            properties: { kind: "convenience", name: "ローソン 渋谷店" },
-          },
-          {
-            distance_km: 1.6,
-            offset_m: 30,
-            layer: "accident_point",
-            properties: { involves_bicycle: true, fatal: true },
-          },
-          { distance_km: 1.8, offset_m: 5, layer: "supply_poi", properties: { kind: "toilets" } },
-        ],
-      }),
-    );
-    const supply = await within(nearby).findByRole("button", { name: "補給・休憩ポイント 2" });
-    expect(within(nearby).queryByText("読み込み中")).toBeNull();
+    await held.answer(0, Response.json({ points: NEARBY_POINTS }));
+    const supply = await within(nearby).findByRole("button", { name: "補給・休憩ポイント 3" });
+    expect(
+      within(nearby)
+        .getAllByRole("button")
+        .map((chip) => chip.textContent),
+    ).toEqual(["補給・休憩ポイント 3", "事故[警察庁統計] 1"]);
+    expect(supply).toHaveAttribute("aria-pressed", "true");
+    expect(sidePointsOnMap()).toEqual({
+      "side-point-accident_point-bicycle": [[139.715, 35.7]],
+      "side-point-supply_poi-convenience": [
+        [139.713, 35.7],
+        [139.713, 35.7],
+      ],
+      "side-point-supply_poi-toilets": [[139.718, 35.7]],
+    });
 
     await user.click(supply);
-    expect(supply).toHaveAttribute("aria-expanded", "true");
-    expect(
-      within(within(nearby).getByRole("list", { name: "補給・休憩ポイント" }))
-        .getAllByRole("listitem")
-        .map((row) => row.textContent),
-    ).toEqual(["ローソン 渋谷店道から12m1.3km地点", "トイレ道から5m1.8km地点"]);
+    expect(supply).toHaveAttribute("aria-pressed", "false");
+    expect(sidePointsOnMap()).toEqual({ "side-point-accident_point-bicycle": [[139.715, 35.7]] });
 
-    await user.click(within(nearby).getByRole("button", { name: "事故[警察庁統計] 1" }));
-    expect(within(nearby).getByRole("list", { name: "事故[警察庁統計]" })).toHaveTextContent(
-      "自転車関連 ・ 死亡事故道から30m1.6km地点",
+    // 区間を選び直すと、消した種類も出し直す。
+    const [, second] = mapOnScreen().sourceFeatures("route-segments");
+    clickSegment(second, HERE);
+    expect(
+      await within(screen.getByRole("group", { name: "近くの施設" })).findByRole("button", {
+        name: "補給・休憩ポイント 3",
+        pressed: true,
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "区間の選択を解除" }));
+    expect(sidePointsOnMap()).toEqual({});
+  });
+
+  it("近くの施設の点を押すと名前と道からの距離を出し、重なって束ねた印を押すと中の点を道に近い順に並べる。区間の中身が地図の小窓にあっても、点を押しただけでは区間の選びを外さず、何も無い所を押すと外す", async () => {
+    const { user } = renderHome();
+    onBackend("POST", "/api/routes/side-points", () => Response.json({ points: NEARBY_POINTS }));
+    const nearby = await pressSecondSegment(user);
+    await within(nearby).findByRole("button", { name: "補給・休憩ポイント 3" });
+    // パネルを閉じると、区間の中身は地図の小窓に出る。
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
+    expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
+    const [toilet] = mapOnScreen().sourceFeatures("side-point-supply_poi-toilets");
+
+    clickMap(ELSEWHERE, [
+      { layer: "side-point-supply_poi-toilets-mark", properties: toilet.properties ?? {}, geometry: toilet.geometry },
+    ]);
+    expect(screen.getByText(/補給・休憩ポイント: トイレ/).textContent).toBe("補給・休憩ポイント: トイレ道から5m");
+    expect(screen.getByRole("group", { name: "近くの施設" })).toBeInTheDocument();
+    expect(Object.keys(sidePointsOnMap())).toHaveLength(3);
+
+    clickMap(ELSEWHERE, [
+      {
+        layer: "side-point-supply_poi-convenience-mark",
+        properties: { cluster: true, cluster_id: 1, point_count: 2, point_count_abbreviated: "2" },
+        geometry: { type: "Point", coordinates: [139.713, 35.7] },
+      },
+    ]);
+    expect((await screen.findByText(/コンビニ 2件/)).textContent).toBe(
+      "補給・休憩ポイント: コンビニ 2件ファミリーマート 道から8mローソン 渋谷店 道から12m",
     );
+
+    clickMap(ELSEWHERE, []);
+    await waitFor(() => expect(sidePointsOnMap()).toEqual({}));
+    expect(screen.queryByRole("group", { name: "近くの施設" })).toBeNull();
   });
 
   it("引けなかったら、区間の評価はそのまま出し、近くの施設を読めなかったと出す", async () => {

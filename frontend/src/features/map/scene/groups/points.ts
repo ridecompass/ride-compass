@@ -40,7 +40,7 @@ import { drawPointIcon } from "@/features/map/layers/pointIcon";
 import type { MapSceneImage } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 
-const POINT = mapDisplay.point;
+export const POINT = mapDisplay.point;
 
 /** 配信される点のタイルの名前 → source-layer。 */
 const POINT_TILE_SOURCE_LAYERS: Readonly<Record<PointTileLayer, string>> = regionTileConfig.point_layers;
@@ -172,13 +172,13 @@ function layerFilter(layer: PointLayer, hiddenKeys: PointState["hiddenKeys"]): F
 type GlyphCategory = Extract<PointAxis["categories"][number], { glyph: string; color: string }>;
 
 /** 絵記号で描くレイヤーの行。源泉は先頭の軸の行の全部に付けるか、どれにも付けない。 */
-function glyphCategories(layer: PointLayer): readonly GlyphCategory[] {
+export function glyphCategories(layer: PointLayer): readonly GlyphCategory[] {
   const categories: readonly PointAxis["categories"][number][] = layer.display_axes[0].categories;
   return categories.filter((category): category is GlyphCategory => "glyph" in category && "color" in category);
 }
 
 /** 地図へ登録する絵の名前。**登録側と参照側が同じ1つを使う**（綴りがずれると点が出ない）。 */
-function pointIconId(layer: PointLayer, category: GlyphCategory): string {
+export function pointIconId(layer: PointLayer, category: GlyphCategory): string {
   return `point-icon:${layer.attr_id}:${category.key}`;
 }
 
@@ -192,7 +192,7 @@ export const POINT_ICONS: readonly { id: string; color: string; glyph: PointGlyp
 );
 
 /** 色を焼き込んだ絵なので、記号のレイヤーは色を付けない。 */
-const POINT_IMAGES: readonly MapSceneImage[] = POINT_ICONS.map((icon) => ({
+export const POINT_IMAGES: readonly MapSceneImage[] = POINT_ICONS.map((icon) => ({
   id: icon.id,
   draw: () => {
     const { data, pixelRatio } = drawPointIcon(icon.color, icon.glyph);
@@ -218,7 +218,7 @@ function iconImageExpression(layer: PointLayer, categories: readonly GlyphCatego
   return ["case", ...cases, ""];
 }
 
-function radiusExpression(layer: PointLayer): unknown {
+export function radiusExpression(layer: PointLayer): unknown {
   const axis = sizeAxis(layer);
   if (axis === undefined) return POINT.radiusPx;
   const cases = axis.categories.flatMap((category) => [categoryMatch(axis, category), pointCategoryRadiusPx(category)]);

@@ -68,7 +68,14 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
   let sources = new Map<string, unknown>();
   // **ソースの実体は id ごとに1つに保つ。** 実装側は「同じ中身なら流し込まない」の判定に
   // ソースのインスタンスを鍵として使うため、呼ぶたびに別物を返すと毎回作り直しになる。
-  let sourceHandles = new Map<string, { setData: (data: unknown) => void; setTiles: (tiles: string[]) => void }>();
+  let sourceHandles = new Map<
+    string,
+    {
+      setData: (data: unknown) => void;
+      setTiles: (tiles: string[]) => void;
+      getClusterLeaves: (clusterId: number, limit: number, offset: number) => Promise<unknown[]>;
+    }
+  >();
   const content = new Map<string, { data?: unknown; tiles?: readonly string[] }>();
   let featureStates = new Map<string, Record<string, unknown>>();
   let globalState: Record<string, unknown> = {};
@@ -130,6 +137,12 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
           record("setTiles", id, tiles);
           content.set(id, { ...content.get(id), tiles });
         },
+        // 代役は点を束ねないので、どの束もソースの点を全部持つとして答える。
+        getClusterLeaves: async (_clusterId: number, limit: number, offset: number) =>
+          ((content.get(id)?.data as { features?: unknown[] } | undefined)?.features ?? []).slice(
+            offset,
+            offset + limit,
+          ),
       });
     },
     removeSource: (id: string) => {

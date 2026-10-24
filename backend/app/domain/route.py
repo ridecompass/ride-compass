@@ -166,7 +166,7 @@ class RoutePoint(StrictModel):
     """経路の近くの点（停止要因・補給・立ち寄り先・事故）を、経路が通る所に置いたもの。
 
     `distance_km`は始点から通る所までの道のりで、区間の`distance_km`を始点から足した値と同じ物差し（`along_route_km`）。
-    `offset_m`は通る所の道から点までの地上の距離。
+    `offset_m`は通る所の道から点までの地上の距離。`latitude`・`longitude`は点そのものの位置（画面が地図に印を出す）。
     `layer`は点の一次属性のid、`properties`はその点の表示軸・名前・事実の値（地図の点の地物と同じ鍵。値の無いものは持たない）。
     """
 
@@ -174,6 +174,8 @@ class RoutePoint(StrictModel):
     offset_m: int
     layer: str
     properties: dict[str, str | int | float | bool]
+    latitude: float
+    longitude: float
 
 
 class EvaluatedRoute(StrictModel):

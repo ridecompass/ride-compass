@@ -372,15 +372,16 @@ async def test_too_many_requests_from_one_client_are_refused(client):
 # --- 区間の近くの点 ---
 
 
-def _hit(point_key, fraction, distance_m):
+def _hit(point_key, fraction, distance_m, latitude=35.0, longitude=139.0):
     return RoutePointHit(
         layer="poi_a", point_key=point_key, merge_group=None, merge_within_m=0.0, properties={"name": point_key},
-        fraction=fraction, distance_m=distance_m,
+        latitude=latitude, longitude=longitude, fraction=fraction, distance_m=distance_m,
     )
 
 
 async def test_the_points_near_a_segment_are_placed_where_the_route_passes_them(client, world):
-    """候補の区間の鍵と始まりの道のりを送ると、送った区間の点だけが、ルートの始点からの道のりに置かれて返る。"""
+    """候補の区間の鍵と始まりの道のりを送ると、送った区間の点だけが、ルートの始点からの道のりに置かれ、画面が地図に
+    印を出す点の位置つきで返る。"""
     route = (await _generate(
         client, **_point(SOUTH_WEST), destination=_point(NORTH_EAST), distance_km=None, max_routes=1,
     ))["result"]["routes"][0]
@@ -388,7 +389,8 @@ async def test_the_points_near_a_segment_are_placed_where_the_route_passes_them(
     assert len(sent) == 2
     keys = [route["edge_ids"][segment["edge_start"]] for segment in sent]
     for index, (way, segment_index, _) in enumerate(map(parse_edge_key, keys)):
-        world.side_points[(way, segment_index)] = [_hit(f"p{index}", fraction=0.25, distance_m=12.4)]
+        world.side_points[(way, segment_index)] = [
+            _hit(f"p{index}", fraction=0.25, distance_m=12.4, latitude=35.0 + index, longitude=139.0 + index)]
     world.side_points[(999, 0)] = [_hit("unsent", fraction=0.5, distance_m=1.0)]
 
     response = await client.post("/api/routes/side-points", json={
@@ -397,8 +399,8 @@ async def test_the_points_near_a_segment_are_placed_where_the_route_passes_them(
 
     assert response.status_code == 200, response.text
     points = response.json()["points"]
-    assert [(p["layer"], p["properties"], p["offset_m"]) for p in points] == [
-        ("poi_a", {"name": f"p{index}"}, 12) for index in range(len(sent))]
+    assert [(p["layer"], p["properties"], p["offset_m"], p["latitude"], p["longitude"]) for p in points] == [
+        ("poi_a", {"name": f"p{index}"}, 12, 35.0 + index, 139.0 + index) for index in range(len(sent))]
     assert [p["distance_km"] for p in points] == [
         pytest.approx(segment["cumulative_distance_km"] + 0.25 * segment["distance_km"], abs=0.01) for segment in sent]
 
