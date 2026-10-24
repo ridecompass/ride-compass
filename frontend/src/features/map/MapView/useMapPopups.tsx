@@ -203,6 +203,7 @@ export function useMapPopupMount(
               { width: element.offsetWidth, height: element.offsetHeight },
               visibleScreenBox(shownMap),
               offsetPx,
+              popup.options.anchor,
             );
       popup.options.anchor = placement?.anchor;
       if (placement === null) {
@@ -215,7 +216,17 @@ export function useMapPopupMount(
     place();
     // 中身が伸び縮みしたら（評価を取る・畳みを開く・施設を引く）、置く向きを決め直す。MapLibreは地図が動いたときにしか
     // 決め直さないので、開いた後に伸びた中身が画面の外へはみ出す。区間の小窓は、地図が動き終えたら置く側も決め直す。
-    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
+    // 置き直すのは中身の大きさが変わったときだけ（置き直しで向きが変わると枠の組み方が動き、同じ大きさの通知が来る）。
+    let observed = "";
+    const resize =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(([entry]) => {
+            const size = `${Math.round(entry.contentRect.width)}x${Math.round(entry.contentRect.height)}`;
+            if (size === observed) return;
+            observed = size;
+            place();
+          });
     resize?.observe(container);
     if (segmentShown) map.on("moveend", place);
     popup.on("close", controls.close);

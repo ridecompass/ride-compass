@@ -17,13 +17,16 @@ export interface PopupPlacement {
 
 /**
  * 線を囲む枠`around`にかぶらない、小窓の置き場。上・下・右・左の順に、`gapPx`を空けた小窓が見えている所`visible`に収まる
- * 側を選ぶ。どの側にも収まらない・見えている所が無い（描く前・隠れている地図）ならnull（呼ぶ側は押した地点に置く）。
+ * 側を選ぶ。今の向き`current`の側が収まるなら、その側を続けて使う——向きを変えると小窓の組み方（矢印の位置）が変わって大きさが
+ * 変わるので、変わった大きさで選び直すたびに側が入れ替わり、小窓が止まらなくなる。どの側にも収まらない・見えている所が無い
+ * （描く前・隠れている地図）ならnull（呼ぶ側は押した地点に置く）。
  */
 export function popupPlacementAround(
   around: ScreenBox,
   popup: { width: number; height: number },
   visible: ScreenBox,
   gapPx: number,
+  current?: PositionAnchor,
 ): PopupPlacement | null {
   if (visible.right <= visible.left || visible.bottom <= visible.top) return null;
   const cx = (around.left + around.right) / 2;
@@ -36,6 +39,7 @@ export function popupPlacementAround(
     { anchor: "left", x: around.right, y: cy, left: around.right + gapPx, top: cy - height / 2 },
     { anchor: "right", x: around.left, y: cy, left: around.left - gapPx - width, top: cy - height / 2 },
   ];
+  candidates.sort((a, b) => Number(b.anchor === current) - Number(a.anchor === current));
   const chosen = candidates.find(
     ({ left, top }) =>
       left >= visible.left && top >= visible.top && left + width <= visible.right && top + height <= visible.bottom,

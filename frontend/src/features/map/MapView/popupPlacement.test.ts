@@ -18,6 +18,12 @@ describe("popupPlacementAround", () => {
     expect(at({ left: 10, top: 100, right: 190, bottom: 500 })).toEqual({ anchor: "left", x: 190, y: 300 });
     // 上下右が足りず、左に収まる。
     expect(at({ left: 210, top: 100, right: 390, bottom: 500 })).toEqual({ anchor: "right", x: 210, y: 300 });
+    // 今の向きの側が収まるなら、先の順の側が収まっても入れ替えない。
+    expect(popupPlacementAround({ left: 150, top: 160, right: 250, bottom: 200 }, POPUP, VISIBLE, GAP, "top")).toEqual({
+      anchor: "top",
+      x: 200,
+      y: 200,
+    });
     // どこにも収まらない（見えている所いっぱいの区間）。
     expect(at({ left: 0, top: 0, right: 400, bottom: 600 })).toBeNull();
     // 区間が見えている所の上の外にあり、下に置くと小窓の上の端が見えている所の外に出る。右・左も見えている所の外。
