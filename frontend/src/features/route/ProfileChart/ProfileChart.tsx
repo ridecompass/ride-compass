@@ -1,68 +1,20 @@
 "use client";
 
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type PointerEvent,
-  type ReactNode,
-} from "react";
+import { useId, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 
-import { pinMarkName } from "@/components/PinMark/PinMark";
-import PointMark from "@/components/PinMark/PointMark";
 import { columnAtKm } from "@/features/route/DifficultyProfile/profileGeometry";
-import { cn } from "@/lib/cn";
 import { roundToDigits } from "@/lib/numberFormat";
-import {
-  findSameSegment,
-  pointAlongSegment,
-  projectOnTrack,
-  routeStretches,
-  routeTrack,
-  type RouteStretch,
-} from "@/lib/routeDistance";
+import { findSameSegment, pointAlongSegment, projectOnTrack, routeTrack, type RouteStretch } from "@/lib/routeDistance";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 
-/** 描画の座標。横は距離を`PROFILE_VIEW_WIDTH`へ、縦は`PROFILE_VIEW_HEIGHT`の中へ描き、枠いっぱいへ伸ばす。 */
-const PROFILE_VIEW_WIDTH = 1000;
-export const PROFILE_VIEW_HEIGHT = 100;
+import ProfileMarks, { type ValueTick } from "./ProfileMarks";
+import { PROFILE_VIEW_HEIGHT, PROFILE_VIEW_WIDTH, type ProfileScale } from "./profileScale";
+import { useProfileGesture } from "./useProfileGesture";
+
 /** 矢印キー1回で動く距離（全長に対する割合）。 */
 const KEY_STEP_RATIO = 0.01;
-/** 図の目盛りと図の下の文字の大きさ。走行中は走りながら読めるよう、結果の図より大きくする。 */
-export function profileTextClass(riding: boolean): string {
-  return riding ? "text-base" : "text-[length:var(--font-size-xs)]";
-}
-
-export type ProfileScale = {
-  readonly columns: readonly RouteStretch<RouteSegmentDetail>[];
-  /** ルートの長さ。 */
-  readonly routeKm: number;
-  /** 横軸の右端の距離。 */
-  readonly widthKm: number;
-  /** 距離を描画の横座標へ。 */
-  readonly xOf: (km: number) => number;
-};
-
-/** 区間の並びと横軸。横軸の右端は`scaleKm`とルートの長さの長い方。 */
-export function useProfileScale(segments: readonly RouteSegmentDetail[], scaleKm: number): ProfileScale {
-  const columns = useMemo(() => routeStretches(segments), [segments]);
-  const routeKm = columns.length === 0 ? 0 : columns[columns.length - 1].endKm;
-  const widthKm = Math.max(scaleKm, routeKm);
-  return useMemo(
-    () => ({
-      columns,
-      routeKm,
-      widthKm,
-      xOf: (km: number) => (widthKm > 0 ? roundToDigits((km / widthKm) * PROFILE_VIEW_WIDTH, 2) : 0),
-    }),
-    [columns, routeKm, widthKm],
-  );
-}
 
 interface ProfileChartProps {
   scale: ProfileScale;
@@ -84,7 +36,7 @@ interface ProfileChartProps {
   /** 図の下の1行。区間を選んでいれば、その地点の距離を受け取る。 */
   caption?: (pointKm: number | null) => ReactNode;
   /** 縦の値の目盛り（0〜`PROFILE_VIEW_HEIGHT`の縦の位置と文字）。図の左の端に重ねる。 */
-  valueTicks?: readonly { readonly y: number; readonly label: string }[];
+  valueTicks?: readonly ValueTick[];
   /** 走行中の地図の下の図。目盛りの文字を大きくする。 */
   riding?: boolean;
 }
@@ -97,10 +49,8 @@ function kmOfPickedPoint(column: RouteStretch<RouteSegmentDetail>, picked: Selec
 }
 
 /** 道のりに沿った図の枠。横が距離で、選んだ区間の帯・走行中の現在地・動かした地点の線を中身の上に引き、下に距離の目盛りを
- * 出す。1本の指（マウス）で横になぞるか押して離すと、その距離の地点を選ぶ（地図に印が出て、下にその区間の詳細が出る）。
- * **押しただけでは選ばず、途中で2本目の指が触れた操作は選択にしない**——図の上で始めたピンチ（拡大しようとした操作）で
- * 区間が選ばれ、表示が区間の詳細へ切り替わらないようにする。**縦に動き出した操作も選択にしない**——縦のなぞりは、図を
- * 載せたシート・パネルのスクロールとしてブラウザに渡す（図の上に指を置いても下へ送れる）。高さは置き場が CSS の変数
+ * 出す。1本の指（マウス）で横になぞるか押して離すと、その距離の地点を選ぶ（地図に印が出て、下にその区間の詳細が出る。
+ * 選ばない操作は`features/route/ProfileChart/useProfileGesture.ts: useProfileGesture`が決める）。高さは置き場が CSS の変数
  * `--profile-chart-height` で決める（無ければ走行中の地図の下に出す図の高さ）。 */
 export default function ProfileChart({
   scale,
@@ -118,33 +68,7 @@ export default function ProfileChart({
 }: ProfileChartProps) {
   const [scrubKm, setScrubKm] = useState<number | null>(null);
   const clipId = `profile${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
-  // 図に触れている指（ポインター）と、いまの操作に2本目が加わったか、操作の始まりの点と、動き出した向き（横は地点を選び、
-  // 縦はスクロールに渡す。まだ動いていなければnull）。
-  const gesture = useRef<{
-    pointers: Set<number>;
-    multi: boolean;
-    start: { x: number; y: number };
-    axis: "x" | "y" | null;
-  }>({ pointers: new Set(), multi: false, start: { x: 0, y: 0 }, axis: null });
-  // 画面のどこかに触れている指。2本目は図の外に触れることがあり、図のポインターだけでは数えられない
-  // （タッチイベントの指の数は、図のpointermoveより後に届くので間に合わない）。
-  const screenPointers = useRef<Set<number>>(new Set());
-  useEffect(() => {
-    const pointers = screenPointers.current;
-    const down = (event: globalThis.PointerEvent) => {
-      pointers.add(event.pointerId);
-      if (pointers.size > 1 && gesture.current.pointers.size > 0) gesture.current.multi = true;
-    };
-    const up = (event: globalThis.PointerEvent) => pointers.delete(event.pointerId);
-    window.addEventListener("pointerdown", down, true);
-    window.addEventListener("pointerup", up, true);
-    window.addEventListener("pointercancel", up, true);
-    return () => {
-      window.removeEventListener("pointerdown", down, true);
-      window.removeEventListener("pointerup", up, true);
-      window.removeEventListener("pointercancel", up, true);
-    };
-  }, []);
+  const pointerHandlers = useProfileGesture();
   const { columns, routeKm, widthKm, xOf } = scale;
   if (routeKm <= 0) return null;
 
@@ -195,25 +119,6 @@ export default function ProfileChart({
     selectAt(next);
   }
 
-  function releasePointer(pointerId: number) {
-    gesture.current.pointers.delete(pointerId);
-    if (gesture.current.pointers.size === 0) {
-      gesture.current.multi = false;
-      gesture.current.axis = null;
-    }
-  }
-
-  // 動き出した向きを、始まりの点から横と縦のどちらへ多く動いたかで1度だけ決める（同じだけなら、まだ決めない）。
-  // 縦に決まった操作は、ブラウザがスクロールに取って取り消す（pointercancel）。
-  function axisOf(event: PointerEvent<SVGSVGElement>): "x" | "y" | null {
-    if (gesture.current.axis === null) {
-      const dx = Math.abs(event.clientX - gesture.current.start.x);
-      const dy = Math.abs(event.clientY - gesture.current.start.y);
-      if (dx !== dy) gesture.current.axis = dx > dy ? "x" : "y";
-    }
-    return gesture.current.axis;
-  }
-
   return (
     <div className="flex flex-col gap-0.5">
       {/* 距離の目盛りは図の中の下の角に重ね、図の下に段を取らない（スマホのシートの低い高さで図を大きく見せる）。 */}
@@ -236,29 +141,7 @@ export default function ProfileChart({
                 "aria-valuemax": roundToDigits(routeKm, 1),
                 "aria-valuenow": roundToDigits(positionKm, 1),
                 "aria-valuetext": `${positionKm.toFixed(1)} km地点`,
-                onPointerDown: (event: PointerEvent<SVGSVGElement>) => {
-                  event.currentTarget.setPointerCapture?.(event.pointerId);
-                  if (gesture.current.pointers.size === 0)
-                    gesture.current.start = { x: event.clientX, y: event.clientY };
-                  gesture.current.pointers.add(event.pointerId);
-                  // 画面全体の指は窓の捕捉の段で先に数えてあるので、図の上の指もそこに含まれる。
-                  if (screenPointers.current.size > 1) gesture.current.multi = true;
-                },
-                onPointerMove: (event: PointerEvent<SVGSVGElement>) => {
-                  if (event.buttons === 0 || gesture.current.multi || !gesture.current.pointers.has(event.pointerId))
-                    return;
-                  if (axisOf(event) === "x") selectAt(kmAtPointer(event));
-                },
-                onPointerUp: (event: PointerEvent<SVGSVGElement>) => {
-                  if (
-                    !gesture.current.multi &&
-                    gesture.current.pointers.has(event.pointerId) &&
-                    gesture.current.axis !== "y"
-                  )
-                    selectAt(kmAtPointer(event));
-                  releasePointer(event.pointerId);
-                },
-                onPointerCancel: (event: PointerEvent<SVGSVGElement>) => releasePointer(event.pointerId),
+                ...pointerHandlers((event) => selectAt(kmAtPointer(event))),
                 onKeyDown: handleKeyDown,
               })}
         >
@@ -341,48 +224,15 @@ export default function ProfileChart({
             />
           )}
         </svg>
-        {waypointKms.map((km, index) => (
-          <span
-            key={index}
-            role="img"
-            aria-label={`${pinMarkName("waypoint", String(index + 1))}（${km.toFixed(1)}km地点）`}
-            className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
-            style={{
-              left: `${(xOf(km) / PROFILE_VIEW_WIDTH) * 100}%`,
-              opacity: travelledKm !== null && km <= travelledKm ? mapDisplay.route.opacities.travelled : undefined,
-            }}
-          >
-            <PointMark role="waypoint" label={String(index + 1)} originLocated={false} />
-          </span>
-        ))}
-        {travelledKm !== null && (
-          <span
-            role="img"
-            aria-label="現在地"
-            data-progress="mark"
-            className="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white bg-[var(--color-accent)] shadow"
-            style={{
-              left: `${(xOf(travelledKm) / PROFILE_VIEW_WIDTH) * 100}%`,
-              top: `${((progressMarkY ?? PROFILE_VIEW_HEIGHT / 2) / PROFILE_VIEW_HEIGHT) * 100}%`,
-            }}
-          />
-        )}
-        {valueTicks.map((tick) => (
-          <span
-            key={tick.label}
-            className={cn(
-              "pointer-events-none absolute left-1 -translate-y-1/2 rounded-sm bg-[color-mix(in_srgb,var(--color-surface-2)_75%,transparent)] px-0.5 text-[var(--foreground)] tabular-nums",
-              profileTextClass(riding),
-            )}
-            style={{ top: `${(tick.y / PROFILE_VIEW_HEIGHT) * 100}%` }}
-          >
-            {tick.label}
-          </span>
-        ))}
-        <div className="pointer-events-none absolute inset-x-1 bottom-0 flex justify-between text-[var(--color-muted)] tabular-nums">
-          <span className={profileTextClass(riding)}>0</span>
-          <span className={profileTextClass(riding)}>{widthKm.toFixed(1)}km</span>
-        </div>
+        <ProfileMarks
+          xOf={xOf}
+          widthKm={widthKm}
+          waypointKms={waypointKms}
+          travelledKm={travelledKm}
+          progressMarkY={progressMarkY}
+          valueTicks={valueTicks}
+          riding={riding}
+        />
       </div>
       {caption?.(selectedColumn === undefined ? null : positionKm)}
     </div>
