@@ -23,7 +23,7 @@ import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
 import MapNavigationControl from "@/features/map/MapNavigationControl/MapNavigationControl";
 import MapLoadStatus from "@/features/map/MapView/MapLoadStatus";
 import {
-  fitBoundsToRoutes,
+  fitBoundsToRoute,
   fitBoundsToSection,
   flyToVisible,
   mapVisibleCenterOffset,
@@ -156,6 +156,8 @@ export default function MapView({
     selectedRouteSegment,
     sidePoints,
   });
+  // 地図の線を押して選んだ候補のid。その候補へは収め直さない（利用者はもうその範囲を見ている）。
+  const routePickedOnMap = useRef<string | null>(null);
   // 地図のイベント（初期化のeffectで一度だけ登録する）が、いまのpropsを読むための参照。
   const latestProps = {
     scene,
@@ -166,7 +168,10 @@ export default function MapView({
     onPointPlace,
     onRouteSegmentSelect,
     onSpliceStretchSelect,
-    onRouteSelect,
+    onRouteSelect: (routeId: string) => {
+      routePickedOnMap.current = routeId;
+      onRouteSelect(routeId);
+    },
     ride,
   };
   const latest = useRef(latestProps);
@@ -275,13 +280,16 @@ export default function MapView({
     fitBoundsToSection(map, segmentPath(selectedSection));
   }, [selectedSection]);
 
-  // ルートを収めるのは候補の一覧が変わったときだけ（選び直すたびに収めると、利用者が動かした地図を打ち消す）。
+  // 選んでいる1本へ収める。生成し直すと同じidの候補が来るので、idでなく候補そのものが変わったときに収める。地図の線を
+  // 押して選んだときと、追っている間（追う側が地図を動かす）は収め直さない。
+  const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? null;
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-
-    fitBoundsToRoutes(map, routes);
-  }, [routes]);
+    const pickedOnMap = selectedRoute !== null && routePickedOnMap.current === selectedRoute.id;
+    routePickedOnMap.current = null;
+    if (!map || selectedRoute === null || pickedOnMap || latest.current.ride?.following) return;
+    fitBoundsToRoute(map, selectedRoute);
+  }, [selectedRoute]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>

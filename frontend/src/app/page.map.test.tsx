@@ -6,7 +6,8 @@
  * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、区間を選んでいる間は地図にその区間の範囲の縁取りと
  * 選んだ地点の印が出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。区間を押すと地図をその区間へ寄せ、
  * その区間の近くの施設を引いて地図に描き、種類ごとに出す・消せ、点を押すと名前と道からの距離を出すこと。道の小窓を別の道へ
- * 押し替えると、前の道で押した評価を新しい道へ持ち越さないこと。
+ * 押し替えると、前の道で押した評価を新しい道へ持ち越さないこと。地図は選んでいるルート1本へ収め（生成直後は先頭、タブで
+ * 選び直すとその1本）、地図の候補の線を押して選んだときは収め直さないこと。
  *
  * ここで見ないもの: 地図に置く地点（ピン・名前のある点・目的地・保存した地点）は`app/page.places.test.tsx`が見る。
  *
@@ -193,6 +194,43 @@ describe("地図で扱えること", () => {
     clickSegment(drawnSegment, HERE);
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     expect(screen.getByText(/km地点/)).toBeInTheDocument();
+  });
+});
+
+describe("ルートを収める", () => {
+  it("生成すると選んでいる先頭の1本へ収め、候補のタブで選び直すとその1本へ収め直し、地図の候補の線を押して選んだときは収め直さない", async () => {
+    const { user } = renderHome();
+    jobs.respond([FIRST, SECOND], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(2));
+    // 先頭の1本は東へ、2本目は北へ伸びるので、全部の候補を収めると両方を含む四角になる。
+    await waitFor(() =>
+      expect(mapOnScreen().fits().at(-1)?.bounds).toEqual([
+        [139.7, 35.7],
+        [139.71, 35.7],
+      ]),
+    );
+
+    await user.click(candidateTabs()[1]);
+    expect(mapOnScreen().fits().at(-1)?.bounds).toEqual([
+      [139.7, 35.7],
+      [139.7, 35.71],
+    ]);
+
+    await user.click(candidateTabs()[0]);
+    const fitted = mapOnScreen().fits().length;
+    const [secondLine] = mapOnScreen()
+      .sourceFeatures("route-candidates")
+      .filter((line) => line.properties?.routeId === SECOND.id);
+    clickMap(ELSEWHERE, [
+      {
+        layer: "route-candidates-candidateHit",
+        properties: secondLine.properties ?? {},
+        geometry: secondLine.geometry,
+      },
+    ]);
+    expect(linesOn("route-selected")).toEqual([SECOND.geometry.coordinates]);
+    expect(mapOnScreen().fits()).toHaveLength(fitted);
   });
 });
 

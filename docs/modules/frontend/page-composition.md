@@ -694,7 +694,9 @@ composite_difficulty`と同じ考え方で軸の重みを反映した寄与度�
 とともに作り直されるので、同じフックの中のrefを描画のたびに書き写して読む。
 
 地図キャンバスはモバイルの下部タブバー・ボトムシートや、地図の上に重ねた操作部品（左上の「表示」と色分け・右の操作列等）の
-下にも描画される。ルート生成直後のフィット（`features/map/MapView/mapCamera.ts: fitBoundsToRoutes`）と選んだ区間へ寄せるとき（`features/map/MapView/mapCamera.ts: fitBoundsToSection`）と置いた地点へ寄せるとき（`features/map/MapView/mapCamera.ts: flyToVisible`）に覆われた領域へ
+下にも描画される。選んでいるルートへのフィット（`features/map/MapView/mapCamera.ts: fitBoundsToRoute`。生成直後の先頭の1本と、
+タブ等で選び直した1本へ収める。地図の線を押して選んだときは利用者がもうその範囲を見ているので、走行モードで追っている間は追う側が
+地図を動かすので、収め直さない）と選んだ区間へ寄せるとき（`features/map/MapView/mapCamera.ts: fitBoundsToSection`）と置いた地点へ寄せるとき（`features/map/MapView/mapCamera.ts: flyToVisible`）に覆われた領域へ
 収めてしまわないよう、覆う部品の側に「どの辺を覆うか」の印（`mapOverlayEdge`）を付け、`MapView`がその瞬間に印の付いた
 部品の実寸を辺ごとに測る（`lib/mapOverlayEdges.ts: measureMapOverlayEdges`）——`MapView`はシート・タブバーの存在を知らない
 ままでいられ、画面の寸法を状態として持ち続けなくてよく、部品を足す人は印を1つ付ければよい。測った幅は基本余白へ足し、
