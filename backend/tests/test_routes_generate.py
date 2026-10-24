@@ -29,7 +29,7 @@ import pytest
 from app.api import dependencies
 from app.config import settings
 from app.domain.graph import node_key, parse_edge_key
-from app.domain.road_classes import AvoidanceClassification, AvoidanceSection
+from app.domain.road_classes import AvoidanceClassification
 from app.domain.route_points import RoutePointHit
 from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
 from app.domain.tuning import TUNING_VALUES
@@ -38,7 +38,7 @@ from app.infrastructure.road_network_store import RoadNetworkUnavailableError
 from app.main import app
 from app.services.graph_service import GraphService, SearchMemory
 from app.services.route_generation_setup import assemble_route_generation_setup
-from tests.road_class_fixture import classification, fact_is, replaced_road_classes, road_classes
+from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 from tests.route_world import (
     AVOID_AXIS,
     CENTER,
@@ -248,8 +248,8 @@ async def test_the_overrides_that_were_sent_are_echoed(client):
     今の行の鍵で返る。"""
     definitions = road_classes(
         {"kind": classification({"local": [fact_is(HIGHWAY, "residential")]}, former_keys={"local": ["old.local"]})},
-        avoidance_sections={"s": AvoidanceSection(label="見出し", description="", sort_order=0)},
-        avoidance_classifications={"kind": AvoidanceClassification(section_key="s", sort_order=0, overrides={})},
+        map_layers={"kind": map_layer()},
+        avoidance_classifications={"kind": AvoidanceClassification(overrides={})},
     )
     with replaced_road_classes(definitions):
         conditions = (await _generate(

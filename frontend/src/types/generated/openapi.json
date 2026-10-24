@@ -2385,14 +2385,6 @@
       },
       "AvoidanceClassification": {
         "properties": {
-          "section_key": {
-            "type": "string",
-            "title": "Section Key"
-          },
-          "sort_order": {
-            "type": "integer",
-            "title": "Sort Order"
-          },
           "overrides": {
             "additionalProperties": {
               "$ref": "#/components/schemas/AvoidanceOverride"
@@ -2404,8 +2396,6 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "section_key",
-          "sort_order",
           "overrides"
         ],
         "title": "AvoidanceClassification"
@@ -2436,17 +2426,6 @@
       },
       "AvoidanceOverride": {
         "properties": {
-          "section_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Section Key"
-          },
           "default_level": {
             "anyOf": [
               {
@@ -2466,7 +2445,6 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "section_key",
           "default_level",
           "selectable"
         ],
@@ -2519,30 +2497,6 @@
         ],
         "title": "AvoidanceRowView"
       },
-      "AvoidanceSection": {
-        "properties": {
-          "label": {
-            "type": "string",
-            "title": "Label"
-          },
-          "description": {
-            "type": "string",
-            "title": "Description"
-          },
-          "sort_order": {
-            "type": "integer",
-            "title": "Sort Order"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "label",
-          "description",
-          "sort_order"
-        ],
-        "title": "AvoidanceSection"
-      },
       "AvoidanceSectionView": {
         "properties": {
           "key": {
@@ -2552,18 +2506,13 @@
           "label": {
             "type": "string",
             "title": "Label"
-          },
-          "description": {
-            "type": "string",
-            "title": "Description"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "key",
-          "label",
-          "description"
+          "label"
         ],
         "title": "AvoidanceSectionView"
       },
@@ -5956,13 +5905,6 @@
             "type": "object",
             "title": "Rolling Resistance Classes"
           },
-          "avoidance_sections": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/AvoidanceSection"
-            },
-            "type": "object",
-            "title": "Avoidance Sections"
-          },
           "avoidance_classifications": {
             "additionalProperties": {
               "$ref": "#/components/schemas/AvoidanceClassification"
@@ -5978,7 +5920,6 @@
           "map_layers",
           "rolling_resistance_classification",
           "rolling_resistance_classes",
-          "avoidance_sections",
           "avoidance_classifications"
         ],
         "title": "RoadClassDefinitions"

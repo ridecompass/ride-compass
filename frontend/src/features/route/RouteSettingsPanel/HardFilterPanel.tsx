@@ -4,7 +4,6 @@ import Disclosure from "@/components/Disclosure/Disclosure";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Badge } from "@/components/ui/Badge/Badge";
 import { LockedIcon } from "@/components/ui/icons/lucideIcons";
-import { textVariants } from "@/components/ui/Text/Text";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { avoidanceLevelOf, type AvoidanceLevel, type AvoidanceRow } from "@/features/route/roadAvoidance";
 import { cn } from "@/lib/cn";
@@ -18,7 +17,7 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 const FIXED_ROWS: readonly { key: string; label: string; description: string }[] = routeGenerateConfig.hard_filters;
 
 interface HardFilterPanelProps {
-  /** 選べる行・段と、行をまとめる節（軸カタログが配る。届くまでは行も段も無い）。 */
+  /** 選べる行・段と、行をまとめる節（道の分け方ごと。軸カタログが配る。届くまでは行も段も無い）。 */
   avoidance: RoadAvoidanceView;
   /** 選んだ段（選んでいない行は無い）。 */
   roadAvoidance: RoadAvoidanceOverride;
@@ -58,7 +57,7 @@ export default function HardFilterPanel({ avoidance, roadAvoidance, onRoadAvoida
           </span>
         </div>
       ))}
-      {sections.map(({ key, label, description, rows }) => {
+      {sections.map(({ key, label, rows }) => {
         const changed = rows.filter((row) => levelOf(row) !== row.default).length;
         return (
           <Disclosure
@@ -81,7 +80,6 @@ export default function HardFilterPanel({ avoidance, roadAvoidance, onRoadAvoida
               </>
             }
           >
-            {description !== "" && <p className={textVariants({ variant: "hint" })}>{description}</p>}
             {rows.map((row) => (
               <AvoidanceLevelRow
                 key={row.key}

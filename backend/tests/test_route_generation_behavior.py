@@ -38,7 +38,7 @@ from app.domain.traffic import stop_count_material_ids
 from app.domain.tuning import TUNING_VALUES
 from tests import rain_history_fake
 from tests.axis_system_fixture import replaced_axis_definitions
-from app.domain.road_classes import AvoidanceClassification, AvoidanceSection
+from app.domain.road_classes import AvoidanceClassification
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 from app.domain.route_request import FixedPoints
 from app.domain.route_search import MAX_SNAP_CORRECTION_KM
@@ -318,8 +318,8 @@ async def test_a_slow_cruise_on_roads_to_avoid_still_turns_at_the_far_side_of_th
     周回が出る。探索の打ち切りが割り増しを見込まないと、帯の遠い側の点が木から落ち、長さの合う周回が出ない。"""
     definitions = road_classes(
         {"kind": classification({"local": [fact_is(HIGHWAY, "residential")]})},
-        avoidance_sections={"s": AvoidanceSection(label="見出し", description="", sort_order=0)},
-        avoidance_classifications={"kind": AvoidanceClassification(section_key="s", sort_order=0, overrides={})},
+        map_layers={"kind": map_layer()},
+        avoidance_classifications={"kind": AvoidanceClassification(overrides={})},
     )
     network = lattice_network(6, bad_ways=lattice_ways(6))
     with replaced_road_classes(definitions):

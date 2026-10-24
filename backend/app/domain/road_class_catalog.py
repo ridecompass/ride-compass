@@ -9,7 +9,14 @@ from typing import Literal
 from app.domain.display_palette import nominal_colors, ordered_colors, ordered_ends_phrase
 from app.domain.material_catalog import material_spec
 from app.domain.road_avoidance import AVOIDANCE_LEVEL_LABELS, AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows
-from app.domain.road_classes import Condition, RoadClass, RoadClassDefinitions, by_sort_order, road_class_generation
+from app.domain.road_classes import (
+    Condition,
+    RoadClass,
+    RoadClassDefinitions,
+    by_sort_order,
+    published_map_layers,
+    road_class_generation,
+)
 from app.domain.strict_model import StrictModel
 
 
@@ -50,13 +57,14 @@ class AvoidanceLevelView(StrictModel):
 
 
 class AvoidanceSectionView(StrictModel):
+    """除外タブの見出し1つ。鍵・名前は分け方の鍵・名前で、地図の線の層（`RoadMapLayerView`）と揃う。"""
+
     key: str
     label: str
-    description: str
 
 
 class AvoidanceRowView(StrictModel):
-    """除外タブの1行。`key`は`<分け方>.<区分>`。"""
+    """除外タブの1行。`key`は`<分け方>.<区分>`、`section`は見出し（分け方）の鍵。"""
 
     key: str
     section: str
@@ -68,6 +76,7 @@ class AvoidanceRowView(StrictModel):
 
 class RoadAvoidanceView(StrictModel):
     levels: list[AvoidanceLevelView]
+    #: 並びは行の並び（地図の線の層の並び）。行の無い見出しは出さない。
     sections: list[AvoidanceSectionView]
     rows: list[AvoidanceRowView]
 
@@ -108,12 +117,9 @@ def _described(road_class: RoadClass) -> str:
 
 
 def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
-    published = {key: c for key, c in definitions.classifications.items() if c.is_published}
     layers = []
-    for key, layer in sorted(definitions.map_layers.items(), key=lambda item: (item[1].group_key, item[1].sort_order)):
-        classification = published.get(key)
-        if classification is None:
-            continue
+    for key, layer in published_map_layers(definitions):
+        classification = definitions.classifications[key]
         classes = by_sort_order(classification.classes)
         labels = [road_class.label for _, road_class in classes]
         if layer.palette == "ordered":
@@ -143,16 +149,17 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
                 ],
             )
         )
+    avoidance = avoidance_rows(definitions)
     rows = [
         AvoidanceRowView(
             key=row.key,
-            section=row.section_key,
+            section=row.classification_key,
             label=row.road_class.label,
             description=_described(row.road_class),
             default=row.default_level,
             former_keys=row.road_class.former_keys,
         )
-        for row in avoidance_rows(definitions)
+        for row in avoidance
     ]
     return RoadClassCatalog(
         generation=road_class_generation(definitions),
@@ -160,8 +167,8 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
         avoidance=RoadAvoidanceView(
             levels=[AvoidanceLevelView(key=level, label=AVOIDANCE_LEVEL_LABELS[level]) for level in AVOIDANCE_LEVELS],
             sections=[
-                AvoidanceSectionView(key=key, label=section.label, description=section.description)
-                for key, section in by_sort_order(definitions.avoidance_sections)
+                AvoidanceSectionView(key=key, label=definitions.classifications[key].label)
+                for key in dict.fromkeys(row.classification_key for row in avoidance)
             ],
             rows=rows,
         ),

@@ -1,7 +1,7 @@
 """道の区分ごとの避け方（通る・なるべく避ける・通らない）。
 
 選べる行は、除外の設定（`domain/road_classes.py: RoadClassDefinitions.avoidance_classifications`）が指す公開した分け方の区分で、
-選べないとした区分を除く。鍵は`<分け方>.<区分>`。区間が行に当たるかは、その分け方の区分の列から決める。
+選べないとした区分を除く。鍵は`<分け方>.<区分>`で、行は分け方ごとの見出しにまとまる。区間が行に当たるかは、その分け方の区分の列から決める。
 """
 
 from collections.abc import Mapping
@@ -11,7 +11,14 @@ from typing import Literal, NamedTuple, cast, get_args
 import numpy as np
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.road_classes import AvoidanceOverride, RoadClass, RoadClassDefinitions, by_sort_order, class_material_id
+from app.domain.road_classes import (
+    AvoidanceOverride,
+    RoadClass,
+    RoadClassDefinitions,
+    by_sort_order,
+    class_material_id,
+    published_map_layers,
+)
 
 #: 避け方の段。並びは弱い順で、1つの区間が複数の行に当たれば後ろ（強い）の段を取る。
 AvoidanceLevel = Literal["pass", "avoid", "exclude"]
@@ -24,7 +31,8 @@ class AvoidanceRow(NamedTuple):
 
     #: `<分け方>.<区分>`。
     key: str
-    section_key: str
+    #: 見出しにする分け方。
+    classification_key: str
     road_class: RoadClass
     override: AvoidanceOverride | None
 
@@ -34,17 +42,16 @@ class AvoidanceRow(NamedTuple):
 
 
 def avoidance_rows(definitions: RoadClassDefinitions) -> list[AvoidanceRow]:
-    """避け方を選べる行。並びは除外の設定の分け方の順、その中は区分の順。"""
+    """避け方を選べる行。並びは分け方の地図の線の層の並び（`domain/road_classes.py: published_map_layers`）、その中は区分の順。"""
     rows = []
-    for key, avoidance in by_sort_order(definitions.avoidance_classifications):
-        classification = definitions.classifications[key]
-        if not classification.is_published:
+    for key, _ in published_map_layers(definitions):
+        avoidance = definitions.avoidance_classifications.get(key)
+        if avoidance is None:
             continue
-        for class_key, road_class in by_sort_order(classification.classes):
+        for class_key, road_class in by_sort_order(definitions.classifications[key].classes):
             override = avoidance.overrides.get(class_key)
             if override is None or override.selectable:
-                section = (override and override.section_key) or avoidance.section_key
-                rows.append(AvoidanceRow(f"{key}.{class_key}", section, road_class, override))
+                rows.append(AvoidanceRow(f"{key}.{class_key}", key, road_class, override))
     return rows
 
 
