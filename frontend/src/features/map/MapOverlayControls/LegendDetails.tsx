@@ -3,11 +3,11 @@
 import { LEGEND_SWATCH_RING_CLASS, legendSwatchBackground, type LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckboxList";
 import LegendRow from "@/features/map/LegendCheckboxList/LegendRow";
-import { PointIconSwatch } from "@/features/map/layers/pointIcon";
 import { hiddenAfterToggleAll } from "@/features/map/view/legendFilters";
 import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { cn } from "@/lib/cn";
 import { badgeVariants } from "@/components/ui/Badge/Badge";
+import { PointIconSwatch } from "@/components/PointIconSwatch/PointIconSwatch";
 
 /** 色見本の点の直径と、線の見本の長さと太さ（px）。点は色が読める大きさにする。 */
 const SWATCH_DOT_PX = 12;
@@ -32,11 +32,7 @@ function renderSwatch(entry: LegendEntry) {
   if (entry.glyph !== undefined) {
     return (
       <span aria-hidden="true" className="inline-flex w-6 flex-shrink-0 items-center justify-center">
-        <PointIconSwatch
-          color={entry.color}
-          glyph={entry.glyph}
-          className={cn("rounded-[4px]", LEGEND_SWATCH_RING_CLASS)}
-        />
+        <PointIconSwatch color={entry.color} glyph={entry.glyph} />
       </span>
     );
   }
