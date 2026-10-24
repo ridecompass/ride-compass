@@ -76,7 +76,8 @@ function checksOf(config, commit) {
 }
 // master の検査の実行が合格せずに終わった（落ちた・取り消された）コミットの変更は、後の master の実行が検査とデプロイの判定に入れる（ci.yml の
 // changes ジョブは、first-parent の祖先のうち検査が通った一番近いコミットと比べる）。その実行は、first-parent の子の側へ辿って、検査の実行が
-// 取り消されていない一番近いコミットのもの。FOLLOW はその辿る数で、取り消しが続くのは待ちが重なった間だけなので、辿り切れなければ代わりの実行は無いと読む。
+// 取り消されていない一番近いコミットのもの。それも落ちていれば、さらに後の実行も同じ変更を判定に入れるので、合格したか走っている実行まで辿る
+// （どれも落ちていれば一番後の落ちた実行）。FOLLOW はその辿る数で、辿り切れなければ、辿れた所までで読む。
 const FOLLOW = 10;
 // oid のコミットの代わりに検査を持つ後の master の実行（checksOf の形）。無ければ null。
 async function coveringChecks(gh, config, oid) {
@@ -92,8 +93,8 @@ async function coveringChecks(gh, config, oid) {
   if (!chain.length) return null;
   const { repository: r } = await gh.gql(`query($o:String!,$r:String!){repository(owner:$o,name:$r){${chain.map((sha, k) => `c${k}:object(oid:"${sha}"){...on Commit{${SUITES}}}`).join(" ")}}}`,
     { o: owner, r: name });
-  const found = chain.map((_, k) => r[`c${k}`]).find((c) => checkRuns(config, c).length && !checksOf(config, c).cancelled);
-  return found ? checksOf(config, found) : null;
+  const runs = chain.map((_, k) => r[`c${k}`]).filter((c) => checkRuns(config, c).length && !checksOf(config, c).cancelled).map((c) => checksOf(config, c));
+  return runs.find((c) => !c.missed) ?? runs.at(-1) ?? null;
 }
 // sha のコミットの master の実行が代わりに検査を持つ、first-parent の祖先のマージのコミットの issue の番号（上の coveringChecks の逆向き）。
 export async function coveredTasks(gh, config, sha) {
