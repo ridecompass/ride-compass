@@ -111,6 +111,18 @@ export class StandInMap extends Evented {
     };
   }
 
+  /** 経度・緯度を描画面の上の位置へ。範囲を置いていなければ、どの点も描画面の真ん中に映るとする（範囲の無い地図は、何でも見えている扱い）。
+   * 範囲は向きを北のままとして、描画面へ線形に当てる。 */
+  project([lng, lat]: [number, number]) {
+    const { clientWidth: width, clientHeight: height } = this.canvas;
+    const bounds = this.bounds;
+    if (bounds === null) return { x: width / 2, y: height / 2 };
+    return {
+      x: ((lng - bounds.west) / (bounds.east - bounds.west)) * width,
+      y: ((bounds.north - lat) / (bounds.north - bounds.south)) * height,
+    };
+  }
+
   /** 範囲と倍率を置き、動き終わった（"moveend"）ことを出す。 */
   moveTo(bounds: ViewBounds, zoom: number) {
     this.bounds = bounds;

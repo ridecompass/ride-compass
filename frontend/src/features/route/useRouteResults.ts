@@ -35,6 +35,14 @@ export function useRouteResults() {
   // 地図で押した区間。ある間、「ルート結果」はルート全体の代わりにこの区間の内訳を出す。候補を切り替える・
   // 作り直す・消すと外す（別の候補の区間を指したまま残らない）。
   const [selectedRouteSegment, setSelectedRouteSegment] = useState<SelectedRouteSegment | null>(null);
+  // 押した区間へ地図を寄せる頼み（押すたびに新しい値）と、押した区間が地図の見えている所の外にあるか（地図が知らせる）。
+  // 区間を選んでも地図は動かさず、寄せるのは頼まれたときだけ。
+  const [segmentFocus, setSegmentFocus] = useState<object | null>(null);
+  const [segmentOutsideMap, setSegmentOutsideMap] = useState(false);
+  const segmentOnMap = useMemo(
+    () => ({ outside: segmentOutsideMap, onShow: () => setSegmentFocus({}) }),
+    [segmentOutsideMap],
+  );
   // 生成に使われた重み（利用者の重みは生成後も変わりうる）。
   const [usedWeights, setUsedWeights] = useState<RoutePreferenceWeights | null>(null);
 
@@ -101,6 +109,12 @@ export function useRouteResults() {
     hasDetail: (selectedCandidate?.segments.length ?? 0) > 0,
     selectedRouteSegment,
     selectSegment: setSelectedRouteSegment,
+    /** 地図へ渡す、押した区間へ寄せる頼み。新しい値になるたびに寄せる。 */
+    segmentFocus,
+    /** 地図が、押した区間が見えている所の外にあるかを知らせる口。 */
+    setSegmentOutsideMap,
+    /** 区間の詳しくの「区間を地図で見る」へ渡す値。 */
+    segmentOnMap,
     /** 押した区間の近くの点（押した区間が無ければnull）。 */
     segmentSidePoints,
     usedWeights,

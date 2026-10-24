@@ -1,7 +1,7 @@
 /**
  * `app/page.tsx`——トップページ。機能（地図・ルートの設定と結果・走行条件・天候）を1つの画面に束ね、機能の間の値を受け渡す。
  * ページの結合テストは場面ごとにファイルを分け、ここはルートを作る流れを見る。地図を押したときに起きることは
- * `app/page.map.test.tsx`、地図に置く地点は`app/page.places.test.tsx`、区間の乗り換えの編集は`app/page.splice.test.tsx`、
+ * `app/page.map.test.tsx`、選んだ区間を地図で見ることは`app/page.sectionOnMap.test.tsx`、地図に置く地点は`app/page.places.test.tsx`、区間の乗り換えの編集は`app/page.splice.test.tsx`、
  * 走行モードは`app/page.ride.test.tsx`（見えるもの）と`app/page.rideControl.test.tsx`（操作）、画面の枠
  * （地図の上の操作・ヘッダー・メニュー）は`app/page.layout.test.tsx`、スマホのシートは`app/page.mobile.test.tsx`が見る。
  *

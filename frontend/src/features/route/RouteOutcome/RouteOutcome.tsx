@@ -227,6 +227,7 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
                     waypointKms={route.waypoint_distances_km}
                     selected={selectedRouteSegment}
                     onSelect={results.selectSegment}
+                    segmentOnMap={results.segmentOnMap}
                     layers={profileLayers}
                   />
                 </div>

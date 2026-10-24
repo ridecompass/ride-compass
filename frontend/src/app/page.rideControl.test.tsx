@@ -4,7 +4,7 @@
  * 見ること: スマホで走行中は下部タブを隠すこと・休んでいる間は位置を受けずにルートと進み具合を残し、「続きから走る」で続けること・地図を指で動かした間だけ
  * 「現在地へ戻る」を出すこと、走行中に帯の「ルート」で開いたパネルで選び直す・作り直すと走行モードが新しい候補を追い（地図をその候補へ収め直さない）、
  * パネルを出していない間は地図で何も変えも開きもしないこと、「このルートで走る」でその候補で走り始めてシートを閉じ、
- * 止めると走る前のシートへ戻ること。パネルの中で区間を選ぶと追うのを休んでその区間へ寄せ、外すと追い直すこと。
+ * 止めると走る前のシートへ戻ること。パネルの中で区間を選んでも追い続けて地図を動かさず、「区間を地図で見る」で追うのを休んでその区間へ寄せ、選びを外すと追い直すこと。
  *
  * ここで見ないもの: 走っている間に見えるもの（帯・プロファイル・進み具合・次に曲がる所）は`app/page.ride.test.tsx`が見る。
  *
@@ -201,7 +201,7 @@ describe("走行モードの操作", () => {
     expect(linesOn("route-selected")).toEqual([SECOND.geometry.coordinates]);
   });
 
-  it("走行中に帯の「ルート」で開いたパネルの中で区間を選ぶと、追うのを休んで地図をその区間へ寄せ、選びを外すと追い直す", async () => {
+  it("走行中に帯の「ルート」で開いたパネルの中で区間を選んでも追い続け、「区間を地図で見る」を押すと追うのを休んでその区間へ寄せ、選びを外すと追い直す", async () => {
     const geolocation = installGeolocation(HERE);
     const { user } = renderHome();
     jobs.respond([RIDDEN], LOOP_CONDITIONS);
@@ -214,7 +214,12 @@ describe("走行モードの操作", () => {
     await user.click(screen.getByRole("button", { name: "ルート" }));
 
     const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
+    const fitsBefore = mapOnScreen().fits().length;
     clickSegment(drawnSegment, HERE);
+    expect(rideButton()).toHaveAttribute("data-ride", "following");
+    expect(mapOnScreen().fits()).toHaveLength(fitsBefore);
+
+    await user.click(screen.getAllByRole("button", { name: "区間を地図で見る" })[0]);
     expect(rideButton()).toHaveAttribute("data-ride", "paused");
     expect(mapOnScreen().fits().at(-1)?.bounds).toEqual([
       [139.7, 35.7],

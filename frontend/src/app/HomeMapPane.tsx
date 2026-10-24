@@ -114,6 +114,8 @@ export default function HomeMapPane({
         selectedRouteSegment={results.selectedRouteSegment}
         sidePoints={results.segmentSidePoints?.status === "done" ? results.segmentSidePoints.shown : NO_SIDE_POINTS}
         onRouteSegmentSelect={results.selectSegment}
+        segmentFocus={results.segmentFocus}
+        onSegmentOutsideChange={results.setSegmentOutsideMap}
         // 地図で押した区間の小窓。見るだけの間は区間の中身を全部出し、「ルート結果」が効いている間は中身をグラフの下が
         // 出すので、近くの施設を探す所だけを出す。
         segmentDetail={
@@ -261,6 +263,7 @@ export default function HomeMapPane({
                 waypointKms={profile.waypoint_distances_km}
                 selected={results.selectedRouteSegment}
                 onSelect={results.selectSegment}
+                segmentOnMap={results.segmentOnMap}
                 layers={profileLayers}
                 riding
               />
