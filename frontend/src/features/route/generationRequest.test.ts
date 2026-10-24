@@ -7,7 +7,7 @@
  *
  * ここで見ないもの:
  * - 画面の状態から入力を組み立てること・キーの違いを印にすること → `useRouteGeneration.test.ts`
- * - 乗り換えの評価に生成の入力を使い回すこと → `useSpliceSession.test.ts`
+ * - 乗り換えの評価に生成の入力を使い回すこと → `useSpliceSession.preview.test.ts`
  */
 import { describe, expect, it } from "vitest";
 

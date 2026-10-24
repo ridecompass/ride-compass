@@ -42,7 +42,7 @@
 ## 地図・探索・ルートで値が違ってよいもの
 
 ルートを出す前の地図の色、探索の費用、ルートの区間の値は、同じ区間・同じ条件なら同じ評価
-（`domain/axis_definitions.py: evaluate_axes_array`）から出る。引いた地図の道1本の値も、その道をルートとして走ったときの
+（`domain/axis_evaluation.py: evaluate_axes_array`）から出る。引いた地図の道1本の値も、その道をルートとして走ったときの
 ルートの値と同じ決まりで出す（`domain/dynamic_way_values.py: paint_folded_feature_values`）。**違ってよいのは、ルートを
 生成するまで決まらない入力に依る値だけ**——地図を出す時点では物理的に決まらず、タイルにも前もって焼けないもの:
 

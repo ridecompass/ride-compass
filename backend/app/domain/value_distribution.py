@@ -6,7 +6,8 @@
 
 import numpy as np
 
-from app.domain.axis_definitions import AxisShape, mapping_key_of, raw_values, referenced_materials
+from app.domain.axis_definitions import AxisShape, mapping_key_of, referenced_materials
+from app.domain.axis_evaluation import raw_values
 from app.domain.strict_model import StrictModel
 
 # 生値のヒストグラムの階級数。フロントが折れ点を当てはめる粒度で、細かすぎても

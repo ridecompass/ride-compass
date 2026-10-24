@@ -15,7 +15,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { makeRouteSegment } from "@/testing/routeFixtures";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
-import ProfileChart, { useProfileScale } from "./ProfileChart";
+import ProfileChart from "./ProfileChart";
+import { useProfileScale } from "./profileScale";
 
 // 北緯35度の上を東へ1kmずつ進む2区間（道なりの形は持たず、始点と終点を結ぶ直線の上で地点を引く）。
 const FIRST = makeRouteSegment({

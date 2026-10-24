@@ -2,7 +2,8 @@
 
 import { useMemo, type ReactNode } from "react";
 
-import ProfileChart, { PROFILE_VIEW_HEIGHT, useProfileScale } from "@/features/route/ProfileChart/ProfileChart";
+import ProfileChart from "@/features/route/ProfileChart/ProfileChart";
+import { PROFILE_VIEW_HEIGHT, useProfileScale } from "@/features/route/ProfileChart/profileScale";
 import palette from "@/types/generated/palette.json";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 

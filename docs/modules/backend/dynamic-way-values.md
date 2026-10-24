@@ -50,7 +50,7 @@ DBから取り出す`infrastructure/road_graph_repository.py: get_feature_gradie
 次の要求から効く。公開していない軸（内部軸・下書き）と未知の`axis_id`は404を返す（500にするとフロントの
 「データなし」フォールバックが効かない）。
 
-値は、軸とそれが読む内部軸だけを探索と同じ評価（`domain/axis_definitions.py: evaluate_axes_array`）へ通して求める
+値は、軸とそれが読む内部軸だけを探索と同じ評価（`domain/axis_evaluation.py: evaluate_axes_array`）へ通して求める
 （`domain/dynamic_way_values.py: paint_feature_values`）。評価へ渡す材料の列は2つの出どころを合わせる:
 
 - 軸の葉の材料のうち、`services/dedicated_way_values.py: DEDICATED_WAY_VALUE_SERVICES`に配るサービスのある材料

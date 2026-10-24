@@ -9,7 +9,7 @@
  *
  * ここで見ないもの:
  * - 一覧・タブへの描き方（群の印・区切りの線） → `RouteOutcome/RouteOutcome.test.tsx`
- * - 生成した候補をこの並びで結果へ渡すこと → `useRouteGeneration.test.ts`
+ * - 生成した候補をこの並びで結果へ渡すこと → `useRouteGeneration.result.test.ts`
  */
 import { describe, expect, it } from "vitest";
 
