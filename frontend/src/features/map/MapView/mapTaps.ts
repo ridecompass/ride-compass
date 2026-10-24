@@ -1,4 +1,4 @@
-import type { Map as MapLibreMap, MapGeoJSONFeature, MapMouseEvent } from "maplibre-gl";
+import type { GeoJSONSource, Map as MapLibreMap, MapGeoJSONFeature, MapMouseEvent } from "maplibre-gl";
 
 import type {
   Coordinates,
@@ -16,9 +16,14 @@ import {
   ROUTE_HIT_TARGET_SPLICE_BAND,
 } from "@/features/map/scene/groups/routes";
 import { POINT_HIT_TARGET, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
+import {
+  SIDE_POINT_HIT_TARGET,
+  SIDE_POINT_OFFSET_PROPERTY,
+  sidePointRowOfSceneLayer,
+} from "@/features/map/scene/groups/sidePoints";
 import { hiddenRoadLineAt, ROAD_LINE_HIT_TARGET } from "@/features/map/scene/groups/roadLines";
 import type { MapLook } from "@/features/map/view/mapLook";
-import { buildPointPopupContent } from "@/features/map/MapView/pointPopup";
+import { buildPointClusterPopupContent, buildPointPopupContent } from "@/features/map/MapView/pointPopup";
 import type { RoadPopup } from "@/features/map/MapView/useMapPopups";
 import { pointPlaceName } from "@/lib/mapDisplay/pointLayers";
 import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
@@ -26,18 +31,19 @@ import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
 /**
  * 地図を押したときの意味。地点: 選んでいる地点を置く・ピンを押すとその地点を選ぶ。ルート: 候補の線を押すとそのルートを
  * 選び、選んだルートの区間を押すとその区間を選ぶ。乗り換え: 乗り換える区間を選ぶ。見る: 押した物（道・点・区間・ピン）の
- * 中身を小窓に出すだけで、地点もルートも変えない。走る: 何も開かず、地図は現在地を追うことに専念する（走行中にパネルを
- * 開いていない間）。
+ * 中身を小窓に出すだけで、地点もルートも変えない。走る: 選んだ区間の近くの点のほかは開かず、地図は現在地を追うことに
+ * 専念する（走行中にパネルを開いていない間）。選んだ区間の近くの点は、区間を選べる意味（ルート・見る・走る）の間は押すと
+ * 中身を小窓に出す。
  */
 export type MapTapMode = "points" | "routes" | "splice" | "look" | "ride";
 
 /** 意味ごとに、押して開ける当たり判定の対象（地点の意味は地物を開かない）。 */
 const OPENABLE_TARGETS: Record<MapTapMode, ReadonlySet<string>> = {
   points: new Set(),
-  routes: new Set([ROUTE_HIT_TARGET_CANDIDATE, ROUTE_HIT_TARGET_SEGMENT]),
+  routes: new Set([SIDE_POINT_HIT_TARGET, ROUTE_HIT_TARGET_CANDIDATE, ROUTE_HIT_TARGET_SEGMENT]),
   splice: new Set([ROUTE_HIT_TARGET_SPLICE_BAND]),
-  look: new Set([ROUTE_HIT_TARGET_SEGMENT, POINT_HIT_TARGET, ROAD_LINE_HIT_TARGET]),
-  ride: new Set(),
+  look: new Set([SIDE_POINT_HIT_TARGET, ROUTE_HIT_TARGET_SEGMENT, POINT_HIT_TARGET, ROAD_LINE_HIT_TARGET]),
+  ride: new Set([SIDE_POINT_HIT_TARGET]),
 };
 
 /** 押した瞬間に読む、いまの画面の状態と知らせ先。 */
@@ -147,6 +153,39 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     );
   }
 
+  // 区間の近くの点。束ねた印は、中の点を地図のソースから引いて並べる（MapLibre の`getClusterLeaves`）。
+  function openSidePoint(feature: MapGeoJSONFeature, e: MapMouseEvent) {
+    const row = sidePointRowOfSceneLayer(feature.layer.id);
+    if (row === undefined) throw new Error(`近くの点の対象を名乗るレイヤー ${feature.layer.id} に行が無い`);
+    if (feature.geometry.type !== "Point") throw new Error(`近くの点の層 ${row.layer.attr_id} の地物が点でない`);
+    const at: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+    const { properties } = feature;
+    if (properties.cluster !== true) {
+      const [lng, lat] = feature.geometry.coordinates;
+      popups.openPointPopup(
+        at,
+        buildPointPopupContent(row.layer, properties, { lng, lat }, Number(properties[SIDE_POINT_OFFSET_PROPERTY])),
+      );
+      return;
+    }
+    const source = map.getSource(row.source) as GeoJSONSource | undefined;
+    if (source === undefined) throw new Error(`近くの点の行 ${row.source} のソースが無い`);
+    const count = Number(properties.point_count);
+    void source.getClusterLeaves(Number(properties.cluster_id), count, 0).then((leaves) => {
+      popups.openPointPopup(
+        at,
+        buildPointClusterPopupContent(
+          row.layer,
+          row.category.label,
+          leaves.map((leaf) => {
+            const leafProperties = leaf.properties ?? {};
+            return { properties: leafProperties, offsetM: Number(leafProperties[SIDE_POINT_OFFSET_PROPERTY]) };
+          }),
+        ),
+      );
+    });
+  }
+
   function openRoad(feature: MapGeoJSONFeature, e: MapMouseEvent) {
     popups.openRoadPopup({
       lngLat: [e.lngLat.lng, e.lngLat.lat],
@@ -187,6 +226,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     [ROUTE_HIT_TARGET_SEGMENT, openRouteSegment],
     [ROUTE_HIT_TARGET_CANDIDATE, openRouteCandidate],
     [POINT_HIT_TARGET, openPoint],
+    [SIDE_POINT_HIT_TARGET, openSidePoint],
     [ROAD_LINE_HIT_TARGET, openRoad],
   ]);
 

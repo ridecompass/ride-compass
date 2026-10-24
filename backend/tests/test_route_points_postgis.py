@@ -104,9 +104,11 @@ async def test_points_near_each_segment_follow_the_rule_of_their_kind(side_point
     }
 
 
-async def test_a_side_point_carries_its_distance_from_the_road(side_points_world, road_graph_repository):
-    """続けて走る区間のどちらにも近い点は道から近い方に置き（`test_route_points.py`）、画面は道からの距離を出すので、地上のmで要る。"""
+async def test_a_side_point_carries_its_distance_from_the_road_and_its_position(side_points_world, road_graph_repository):
+    """続けて走る区間のどちらにも近い点は道から近い方に置き（`test_route_points.py`）、画面は道からの距離を出すので、地上のmで要る。
+    画面は点そのものの位置に地図の印を出すので、位置は道の上でなく点の所。"""
     found = await road_graph_repository.get_route_side_points([(10, 0)])
 
     [toilets] = [hit for hit in found[(10, 0)] if hit.properties.get("kind") == "toilets"]
     assert toilets.distance_m == pytest.approx(55.0, abs=1.0)
+    assert (toilets.longitude, toilets.latitude) == pytest.approx(_at(0.25, -55))

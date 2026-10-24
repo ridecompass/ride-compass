@@ -28,8 +28,11 @@ import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import type { useLocation } from "@/hooks/useLocation";
 import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
-import type { Coordinates, PlaceCandidate } from "@/types/route";
+import type { Coordinates, PlaceCandidate, RoutePoint } from "@/types/route";
 import type { useRideGuidance } from "./useRideGuidance";
+
+// 近くの点が無い間も同じ参照を渡し、地図の描き直しを起こさない。
+const NO_SIDE_POINTS: readonly RoutePoint[] = [];
 
 interface HomeMapPaneProps {
   route: ReturnType<typeof useRoutePlanner>;
@@ -95,6 +98,7 @@ export default function HomeMapPane({
         compassLinked={mapView.lensConditions.includes("bearing_deg")}
         routePreference={conditions.routePreferenceToSend}
         selectedRouteSegment={results.selectedRouteSegment}
+        sidePoints={results.segmentSidePoints?.status === "done" ? results.segmentSidePoints.shown : NO_SIDE_POINTS}
         onRouteSegmentSelect={results.selectSegment}
         segmentDetail={
           tapMode === "look" && results.selectedRouteSegment !== null ? (

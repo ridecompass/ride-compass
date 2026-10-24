@@ -30,8 +30,10 @@ interface RideOnMap {
   speedKmh: number | null;
   /** 進む向きを上にするか（偽なら北が上）。 */
   headingUp: boolean;
-  /** 利用者が地図を動かした（追うのを休む）。 */
+  /** 利用者が地図を動かした・区間を選んだ（追うのを休む）。 */
   onPause: () => void;
+  /** 区間の選びを外した（地図を動かして休んでいれば追い直す）。 */
+  onResume: () => void;
   /** 北が上と進む向きが上を切り替える。 */
   onToggleHeadingUp: () => void;
   /** 追っている間の基準の倍率（速さで引く前）。この走行でまだ選んでいなければnull（地図が最初の段を使う）。 */
@@ -239,10 +241,11 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     leave("resting");
     debugLog("ride:mode", "休んだ");
   }, [leave]);
+  const followAgain = useCallback(() => setStatus((current) => (current === "paused" ? "following" : current)), []);
   const resume = useCallback(() => {
     if (status === "resting") start();
-    else setStatus((current) => (current === "paused" ? "following" : current));
-  }, [status, start]);
+    else followAgain();
+  }, [status, start, followAgain]);
 
   // 画面を離れたら受け取りをやめる。
   useEffect(() => stopWatching, [stopWatching]);
@@ -269,11 +272,12 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
             speedKmh,
             headingUp,
             onPause: pause,
+            onResume: followAgain,
             onToggleHeadingUp: toggleHeadingUp,
             zoomBase,
             onZoomBaseChange: setZoomBase,
           },
-    [status, position, travel, device.heading, speedKmh, headingUp, pause, toggleHeadingUp, zoomBase],
+    [status, position, travel, device.heading, speedKmh, headingUp, pause, followAgain, toggleHeadingUp, zoomBase],
   );
 
   const screenWakeLock = useScreenWakeLock(receiving);

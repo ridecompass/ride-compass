@@ -35,8 +35,15 @@ const STYLE_OPERATIONS = [
 
 const drawn: StandInMap[] = [];
 
+/** `fitBounds` に渡された範囲（[[西, 南], [東, 北]]）と、寄せる倍率の上限。 */
+export interface FittedBounds {
+  readonly bounds: [[number, number], [number, number]];
+  readonly maxZoom?: number;
+}
+
 export class StandInMap extends Evented {
   readonly markers = new Set<Marker>();
+  readonly fits: FittedBounds[] = [];
   readonly styles: string[];
   readonly content: RecordingMap;
   private readonly container: HTMLElement;
@@ -145,7 +152,8 @@ export class StandInMap extends Evented {
     return false;
   }
 
-  fitBounds() {
+  fitBounds(bounds: FittedBounds["bounds"], options: { maxZoom?: number } = {}) {
+    this.fits.push({ bounds, ...(options.maxZoom === undefined ? {} : { maxZoom: options.maxZoom }) });
     return this;
   }
 

@@ -203,6 +203,7 @@ export default function DraftWayValuesMap<Draft>({
           inspectedWayId: null,
           travelledKm: null,
           selectedRouteSegment: null,
+          sidePoints: [],
         }),
       ),
     [axisId, axis, materials, loading, hiddenLegendKeys, mapCatalog.routeStyleModes, mapCatalog.tileVersions],

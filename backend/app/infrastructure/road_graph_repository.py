@@ -311,7 +311,7 @@ def _add_route_side_points(rows, result: dict[tuple[int, int], list[RoutePointHi
         result.setdefault((row["osm_way_id"], row["segment_index"]), []).append(RoutePointHit(
             layer=row["layer"], point_key=row["point_key"], merge_group=row["merge_group"],
             properties={name: row[name] for name in SIDE_POINT_PROPERTIES if row[name] is not None},
-            fraction=row["fraction"], distance_m=row["distance_m"],
+            latitude=row["latitude"], longitude=row["longitude"], fraction=row["fraction"], distance_m=row["distance_m"],
         ))
 
 

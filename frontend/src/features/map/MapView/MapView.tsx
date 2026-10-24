@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -10,9 +10,11 @@ import type {
   PlaceCandidate,
   PointTarget,
   RouteCandidate,
+  RoutePoint,
   RoutePreferenceWeights,
   SelectedRouteSegment,
 } from "@/types/route";
+import { findSameSegment, segmentPath } from "@/lib/routeDistance";
 import type { RideConditions } from "@/features/map/regionApi";
 import { applyScene, type SpliceStretchInput } from "@/features/map/scene/applyToMap";
 import type { MapLook } from "@/features/map/view/mapLook";
@@ -20,7 +22,12 @@ import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
 import MapNavigationControl from "@/features/map/MapNavigationControl/MapNavigationControl";
 import MapLoadStatus from "@/features/map/MapView/MapLoadStatus";
-import { fitBoundsToRoutes, flyToVisible, mapVisibleCenterOffset } from "@/features/map/MapView/mapCamera";
+import {
+  fitBoundsToRoutes,
+  fitBoundsToSection,
+  flyToVisible,
+  mapVisibleCenterOffset,
+} from "@/features/map/MapView/mapCamera";
 import { bindMapTaps, type MapTapMode } from "@/features/map/MapView/mapTaps";
 import { buildPinPopupContent, type PinNames } from "@/features/map/MapView/pointPopup";
 import { roadWayId } from "@/features/map/MapView/roadFacts";
@@ -53,9 +60,11 @@ interface MapViewProps {
   rideConditions: RideConditions;
   /** 利用者がいま設定している重み（ルート生成へ送るのと同じもの）。道の詳細の評価に使う。nullなら既定の重み。 */
   routePreference: RoutePreferenceWeights | null;
-  /** 押して選んでいる区間。地図は押した地点に印を立て、その区間の範囲を縁取るだけで、内訳は下部のシートが出す（地図上の
-   * ポップアップはモバイルでシートに隠れる）。 */
+  /** 押して選んでいる区間。地図は区間を選ぶたびにその区間へ寄せ、押した地点に印を立て、その区間の範囲を縁取るだけで、
+   * 内訳は下部のシートが出す（地図上のポップアップはモバイルでシートに隠れる）。走行中は、選ぶと追うのを休み、外すと追い直す。 */
   selectedRouteSegment: SelectedRouteSegment | null;
+  /** 選んだ区間の近くの点のうち、地図に出すもの。 */
+  sidePoints: readonly RoutePoint[];
   /** ルートの区間を押したとき・印を押して選択を外したとき。 */
   onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => void;
   /** 経由地（通る順）。 */
@@ -108,6 +117,7 @@ export default function MapView({
   rideConditions,
   routePreference,
   selectedRouteSegment,
+  sidePoints,
   onRouteSegmentSelect,
   waypoints,
   destination,
@@ -144,6 +154,7 @@ export default function MapView({
     inspectedWayId,
     travelledKm,
     selectedRouteSegment,
+    sidePoints,
   });
   // 地図のイベント（初期化のeffectで一度だけ登録する）が、いまのpropsを読むための参照。
   const latestProps = {
@@ -156,6 +167,7 @@ export default function MapView({
     onRouteSegmentSelect,
     onSpliceStretchSelect,
     onRouteSelect,
+    ride,
   };
   const latest = useRef(latestProps);
   useEffect(() => {
@@ -238,6 +250,30 @@ export default function MapView({
     // 表示をONにしたレイヤーの状態をすぐ出す（タイルがキャッシュ済みだとsourcedataが来ない）。
     recomputeLayerDataStatus();
   }, [scene, recomputeLayerDataStatus]);
+
+  // 選んだ区間へ寄せるのは、別の区間を選んだときだけ（同じ区間の中で地点を選び直しても動かさない）。区間は選んでいる候補の
+  // 同じ区間から引く（地図で押した区間は形を持たない写し）。
+  const selectedSegments = routes.find((route) => route.id === selectedRouteId)?.segments;
+  const selectedSection = useMemo(
+    () =>
+      selectedRouteSegment === null || selectedSegments === undefined
+        ? null
+        : (findSameSegment(selectedSegments, selectedRouteSegment.segment, (segment) => segment) ?? null),
+    [selectedSegments, selectedRouteSegment],
+  );
+  const sectionShown = useRef(false);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (selectedSection === null) {
+      if (sectionShown.current) latest.current.ride?.onResume();
+      sectionShown.current = false;
+      return;
+    }
+    sectionShown.current = true;
+    latest.current.ride?.onPause();
+    fitBoundsToSection(map, segmentPath(selectedSection));
+  }, [selectedSection]);
 
   // ルートを収めるのは候補の一覧が変わったときだけ（選び直すたびに収めると、利用者が動かした地図を打ち消す）。
   useEffect(() => {

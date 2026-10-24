@@ -24,7 +24,7 @@ DirectedSegment = tuple[int, int, bool]
 class RoutePointHit:
     """1つの区間の近くにある1つの点。
 
-    `fraction`は区間の形の向き（順向き）で測った、点に最も近い位置の割合（0〜1）。`distance_m`は道から点までの地上の距離。
+    `latitude`・`longitude`は点の位置。`fraction`は区間の形の向き（順向き）で測った、点に最も近い位置の割合（0〜1）。`distance_m`は道から点までの地上の距離。
     `merge_group`は地図と同じく近い点を1つにまとめる行の鍵で、まとめない点はNone。`properties`は点に添えて画面へ出す値。
     """
 
@@ -32,6 +32,8 @@ class RoutePointHit:
     point_key: str
     merge_group: str | None
     properties: dict[str, Any]
+    latitude: float
+    longitude: float
     fraction: float
     distance_m: float
 
@@ -81,6 +83,6 @@ def points_along_route(
                 continue
         points.append(RoutePoint(
             distance_km=round(km, DISTANCE_KM_DECIMALS), offset_m=round(hit.distance_m), layer=hit.layer,
-            properties=hit.properties,
+            properties=hit.properties, latitude=hit.latitude, longitude=hit.longitude,
         ))
     return points

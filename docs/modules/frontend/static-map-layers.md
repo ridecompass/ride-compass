@@ -20,6 +20,7 @@
 | `features/map/useRoadClasses.ts` | 道路の線を塗る道ごとの層の値を、表示中のタイルを1枚ずつ問い合わせて取り（[評価軸の色分け](map-axis-coloring.md)の`features/map/tileQueries.ts`）、取得中・失敗とともに返す（道の線の層が1つも出ていない間は取らない） |
 | `lib/mapDisplay/pointLayers.ts` | 点で描く属性（`lib/mapDisplay/pointLayers.ts: POINT_LAYERS`）と、点の値が入る行（`lib/mapDisplay/pointLayers.ts: pointCategoryOf`）・大きさの軸と行の半径・点の名前（`lib/mapDisplay/pointLayers.ts: pointPlaceName`）。地図の点・地図の凡例・点のポップアップ・道のりのグラフの印が同じ宣言を読むので、同じ点が地図とグラフで同じ色・呼び名になる |
 | `features/map/scene/groups/points.ts` | 停止要因POI・補給休憩POI・事故・立ち寄り先の分類・配色・点の形（丸い点か絵記号か）・重なった絵を間引く順と、同じタイルを分け合う条件 |
+| `features/map/scene/groups/sidePoints.ts` | 選んだ区間の近くの点（`POST /api/routes/side-points`の応答）を、点の層と同じ色・絵記号で描く印と、束ねた印に添える件数（下記「選んだ区間の近くの点」） |
 | `features/map/layers/pointIcon.tsx` | 絵記号で描く点の絵の形（行の色の角丸四角と白い絵記号）。地図へ登録する画素と凡例の見本が同じ形の宣言を読む。絵記号の名前は源泉の行が持ち、描き方の無い名前は型検査が落とす。**単体テストは持たない**（`sdfIcon.ts`と同じく、テスト環境のcanvasは2D描画を実装せず、形は座標の宣言そのもの） |
 | `features/map/scene/groups/areaRasters.ts` | 面（色別標高図・土地被覆・起伏の陰影） |
 | `features/map/scene/legends.ts` | 上の宣言から凡例の行を作る（色と分類の正本はグループにしかない）。災害チップの要素ごとの表示切替の行も、源泉の要素の宣言（backend `domain/weather_elements.py: WEATHER_ELEMENTS`の`features/map/scene/legends.ts: label`、色見本は塗る段`level_scale`）から作る |
@@ -380,11 +381,21 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 **綴りを手で書かない。** 家族の外でidが要るとき（押されたレイヤーの判定・テスト）は、
 その家族が出すソース名と役割を`sceneLayerId`へ渡して作る。
 
+## 選んだ区間の近くの点（`groups/sidePoints.ts`）
+
+区間を選んでいる間だけ、その区間の近くの点を、点の層と同じ見た目（行の色の丸か、行の色に絵記号を載せた絵）で描く。点の層の行
+（先頭の軸の行）に当たらない値の点は描かない。**同じ行の点どうしだけを束ねる**: 画面の上で絵が重なる近さ（絵の大きさ）の点を、
+件数を添えた1つの印にまとめ、拡大すると分かれる（MapLibre の GeoJSON のソースの`cluster`）。束ねるのはソースの中だけなので、
+行ごとにソースを分け、いま点のある行だけを宣言する。同じ位置の点は地図をいちばん寄せても束ねたままにする。点を押すと、名前・区分と
+道からの距離を吹き出しに出し、束ねた印を押すと中の点の名前（無ければ区分の名前）と道からの距離を道に近い順に並べる
+（`features/map/MapView/pointPopup.ts`）。
+
 ## 重なりの段（`scene/mapScene.ts: MAP_SCENE_TIERS`）
 
 **レイヤーは前後を個別に指定せず、段を選ぶ。** 隣り合う2枚の前後を宣言で決める形にすると、
 3枚目を足したときに既存の2枚の関係だけでは位置が決まらない。並びの正本は
-`MAP_SCENE_TIERS`で、面 → 文字に場所を譲る点 → 観測した事実の線 → レンズの線 → 点 → ルートの順。
+`MAP_SCENE_TIERS`で、面 → 文字に場所を譲る点 → 観測した事実の線 → レンズの線 → 点 → ルート → 選んだ区間の近くの点の順。
+選んだ区間の近くの点は、その区間の縁取りと点の層の上に描く（区間の近くの何を見ているかを隠さない）。
 
 **面は基礎地図の道路網より下へ、文字に場所を譲る点は基礎地図の文字より下へ入る**（`under`）。面を道路の上に置くと、
 どの道の話なのかが読めなくなる。重なった絵を省く点を文字より上に置くと、絵が文字を退けて地名が読めなくなる（上記）。

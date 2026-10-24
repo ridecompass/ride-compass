@@ -20,8 +20,10 @@ export interface RideFollow {
   speedKmh: number | null;
   /** 進む向きを上にするか（偽なら北が上）。 */
   headingUp: boolean;
-  /** 利用者が地図を指で動かした・回した。 */
+  /** 利用者が地図を指で動かした・回した・区間を選んだ（追うのを休む）。 */
   onPause: () => void;
+  /** 区間の選びを外した（休んでいれば追い直す）。 */
+  onResume: () => void;
   /** 走行モードの間に方位磁針を押した。 */
   onToggleHeadingUp: () => void;
   /** 追っている間の基準の倍率（速さで引く前）。この走行でまだ選んでいなければnull。 */
