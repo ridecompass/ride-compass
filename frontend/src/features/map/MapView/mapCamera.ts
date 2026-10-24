@@ -33,6 +33,18 @@ export function fitBoundsToSection(map: MapLibreMap, path: readonly Position[]) 
   fitPaths(map, [path], "区間", FOCUS_ZOOM);
 }
 
+/** 線の点の1つでも、地図の上に重ねた部品を避けた見えている所にあるか。 */
+export function pathInView(map: MapLibreMap, path: readonly Position[]): boolean {
+  const canvas = map.getCanvas();
+  const padding = visiblePadding(canvas);
+  const right = canvas.clientWidth - padding.right;
+  const bottom = canvas.clientHeight - padding.bottom;
+  return path.some(([lng, lat]) => {
+    const { x, y } = map.project([lng, lat]);
+    return x >= padding.left && x <= right && y >= padding.top && y <= bottom;
+  });
+}
+
 /** 地点を、見えている所の中ほどへ寄せる。`flyTo`の`padding`は寄せたあとも地図に残るので、残らない`offset`でずらす。 */
 export function flyToVisible(map: MapLibreMap, point: Coordinates) {
   runWhenStyleReady(map, () => {

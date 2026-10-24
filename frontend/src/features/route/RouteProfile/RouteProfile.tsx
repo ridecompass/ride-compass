@@ -19,7 +19,7 @@ import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 import LayerProfile, { type ShownLayers } from "./LayerProfile";
 import { layerBand, layerLine, profileLayers, type BandLayer, type LineLayer } from "./profileLayers";
 import ProfileLayerPicker from "./ProfileLayerPicker";
-import ProfilePointDetail from "./ProfilePointDetail";
+import ProfilePointDetail, { type SectionOnMap } from "./ProfilePointDetail";
 import type { ProfileLayerSelection } from "./useProfileLayers";
 
 interface RouteProfileProps {
@@ -34,6 +34,8 @@ interface RouteProfileProps {
   selected: SelectedRouteSegment | null;
   /** なぞる・押して離すと、その地点の区間を選ぶ。地点の詳しくを閉じると null で外す。無ければ見るだけの図にする。 */
   onSelect?: (selection: SelectedRouteSegment | null) => void;
+  /** 地点の詳しくの「区間を地図で見る」。無ければ出さない。 */
+  segmentOnMap?: SectionOnMap;
   /** 走行中の現在地のルートの上の距離。 */
   progressKm?: number | null;
   /** 置いた経由地を通る所のルートの上の距離（置いた順）。 */
@@ -54,6 +56,7 @@ export default function RouteProfile({
   scaleKm,
   selected,
   onSelect,
+  segmentOnMap,
   progressKm = null,
   waypointKms,
   layers,
@@ -92,6 +95,7 @@ export default function RouteProfile({
         axes={axes}
         axisColors={axisColors}
         onClear={onSelect === undefined ? undefined : () => onSelect(null)}
+        onMap={segmentOnMap}
       />
     );
     return riding ? <div className="max-h-[40dvh] overflow-y-auto">{detail}</div> : detail;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -14,7 +14,6 @@ import type {
   RoutePreferenceWeights,
   SelectedRouteSegment,
 } from "@/types/route";
-import { findSameSegment, segmentPath } from "@/lib/routeDistance";
 import type { RideConditions } from "@/features/map/regionApi";
 import { applyScene, type SpliceStretchInput } from "@/features/map/scene/applyToMap";
 import type { MapLook } from "@/features/map/view/mapLook";
@@ -22,12 +21,7 @@ import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
 import MapNavigationControl from "@/features/map/MapNavigationControl/MapNavigationControl";
 import MapLoadStatus from "@/features/map/MapView/MapLoadStatus";
-import {
-  fitBoundsToRoute,
-  fitBoundsToSection,
-  flyToVisible,
-  mapVisibleCenterOffset,
-} from "@/features/map/MapView/mapCamera";
+import { fitBoundsToRoute, flyToVisible, mapVisibleCenterOffset } from "@/features/map/MapView/mapCamera";
 import { bindMapTaps, type MapTapMode } from "@/features/map/MapView/mapTaps";
 import { buildPinPopupContent, type PinNames } from "@/features/map/MapView/pointPopup";
 import { roadWayId } from "@/features/map/MapView/roadFacts";
@@ -37,6 +31,7 @@ import { useMapMarkers } from "@/features/map/MapView/useMapMarkers";
 import { useMapPopupMount, useMapPopups } from "@/features/map/MapView/useMapPopups";
 import { useMapScene } from "@/features/map/MapView/useMapScene";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
+import { useSectionFocus } from "@/features/map/MapView/useSectionFocus";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
 
 interface MapViewProps {
@@ -60,9 +55,12 @@ interface MapViewProps {
   rideConditions: RideConditions;
   /** 利用者がいま設定している重み（ルート生成へ送るのと同じもの）。道の詳細の評価に使う。nullなら既定の重み。 */
   routePreference: RoutePreferenceWeights | null;
-  /** 押して選んでいる区間。地図は区間を選ぶたびにその区間へ寄せ、押した地点に印を立て、その区間の範囲を縁取る。
-   * 走行中は、選ぶと追うのを休み、外すと追い直す。 */
+  /** 押して選んでいる区間。地図は押した地点に印を立て、その区間の範囲を縁取る（選んでも地図は動かさない）。 */
   selectedRouteSegment: SelectedRouteSegment | null;
+  /** 選んでいる区間へ寄せる頼み。新しい値を渡すたびに寄せる。走行中は追うのを休んで寄せ、区間の選びを外すと追い直す。 */
+  segmentFocus: object | null;
+  /** 選んでいる区間が見えている所の外にあるかが変わりうるとき（区間を選び直した・地図が動き終えた）に呼ばれる。 */
+  onSegmentOutsideChange: (outside: boolean) => void;
   /** 選んだ区間の近くの点のうち、地図に出すもの。 */
   sidePoints: readonly RoutePoint[];
   /** ルートの区間を押したとき・印を押して選択を外したとき・区間の小窓を閉じたか別の中身へ入れ替えたとき（null）。 */
@@ -117,6 +115,8 @@ export default function MapView({
   rideConditions,
   routePreference,
   selectedRouteSegment,
+  segmentFocus,
+  onSegmentOutsideChange,
   sidePoints,
   onRouteSegmentSelect,
   waypoints,
@@ -260,29 +260,13 @@ export default function MapView({
     recomputeLayerDataStatus();
   }, [scene, recomputeLayerDataStatus]);
 
-  // 選んだ区間へ寄せるのは、別の区間を選んだときだけ（同じ区間の中で地点を選び直しても動かさない）。区間は選んでいる候補の
-  // 同じ区間から引く（地図で押した区間は形を持たない写し）。
-  const selectedSegments = routes.find((route) => route.id === selectedRouteId)?.segments;
-  const selectedSection = useMemo(
-    () =>
-      selectedRouteSegment === null || selectedSegments === undefined
-        ? null
-        : (findSameSegment(selectedSegments, selectedRouteSegment.segment, (segment) => segment) ?? null),
-    [selectedSegments, selectedRouteSegment],
-  );
-  const sectionShown = useRef(false);
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    if (selectedSection === null) {
-      if (sectionShown.current) latest.current.ride?.onResume();
-      sectionShown.current = false;
-      return;
-    }
-    sectionShown.current = true;
-    latest.current.ride?.onPause();
-    fitBoundsToSection(map, segmentPath(selectedSection));
-  }, [selectedSection]);
+  useSectionFocus(mapRef, {
+    segments: routes.find((route) => route.id === selectedRouteId)?.segments,
+    selectedRouteSegment,
+    request: segmentFocus,
+    onOutsideChange: onSegmentOutsideChange,
+    ride,
+  });
 
   // 選んでいる1本へ収める。生成し直すと同じidの候補が来るので、idでなく候補そのものが変わったときに収める。地図の線を
   // 押して選んだときと、追っている間（追う側が地図を動かす）は収め直さない。

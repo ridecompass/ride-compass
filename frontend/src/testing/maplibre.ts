@@ -7,6 +7,7 @@
  * - 印（`Marker`）とポップアップ（`Popup`）は、渡された要素を地図の器へ置く（画面の問い合わせで引ける）。
  * - カメラの操作（`fitBounds`）とスタイルの取り直し（`setStyle`）は、引数を残す。向き（`setBearing`・`easeTo`・`jumpTo` の `bearing`）と
  *   倍率（`zoomIn`・`zoomOut`・`jumpTo` の `zoom`）は、受けた値をそのまま今の値にする（動きの途中は無い）。
+ * - 位置の換算（`project`）は、テストが置いた範囲（`moveTo`）を描画面へ線形に当てる。
  * - 操作を受けない地図（`interactive: false`。本体の地図に添える小さな地図）は、本体の地図と分けて `insetMapOnScreen` で引く。向きが変わったら "rotate" だけを出す。
  * - `addProtocol` で登録された受け手は、`protocolHandler` で引ける（テストが要求を渡して呼ぶ）。
  * - 出来事（"load"・"click" 等）は、上の "rotate" のほかは自分では起こさず、テストが `MapOnScreen` で起こす。押した所に描かれている地物も、
