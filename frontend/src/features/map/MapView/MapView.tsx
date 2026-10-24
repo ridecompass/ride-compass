@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -34,7 +34,7 @@ import { roadWayId } from "@/features/map/MapView/roadFacts";
 import { rideZoomBase } from "@/features/map/MapView/rideZoom";
 import { useMapLifecycle } from "@/features/map/MapView/useMapLifecycle";
 import { useMapMarkers } from "@/features/map/MapView/useMapMarkers";
-import { useMapPopupMounts, useMapPopups } from "@/features/map/MapView/useMapPopups";
+import { useMapPopupMount, useMapPopups } from "@/features/map/MapView/useMapPopups";
 import { useMapScene } from "@/features/map/MapView/useMapScene";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
@@ -60,12 +60,12 @@ interface MapViewProps {
   rideConditions: RideConditions;
   /** 利用者がいま設定している重み（ルート生成へ送るのと同じもの）。道の詳細の評価に使う。nullなら既定の重み。 */
   routePreference: RoutePreferenceWeights | null;
-  /** 押して選んでいる区間。地図は区間を選ぶたびにその区間へ寄せ、押した地点に印を立て、その区間の範囲を縁取るだけで、
-   * 内訳は下部のシートが出す（地図上のポップアップはモバイルでシートに隠れる）。走行中は、選ぶと追うのを休み、外すと追い直す。 */
+  /** 押して選んでいる区間。地図は区間を選ぶたびにその区間へ寄せ、押した地点に印を立て、その区間の範囲を縁取る。
+   * 走行中は、選ぶと追うのを休み、外すと追い直す。 */
   selectedRouteSegment: SelectedRouteSegment | null;
   /** 選んだ区間の近くの点のうち、地図に出すもの。 */
   sidePoints: readonly RoutePoint[];
-  /** ルートの区間を押したとき・印を押して選択を外したとき。 */
+  /** ルートの区間を押したとき・印を押して選択を外したとき・区間の小窓を閉じたか別の中身へ入れ替えたとき（null）。 */
   onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => void;
   /** 経由地（通る順）。 */
   waypoints: Coordinates[];
@@ -75,7 +75,7 @@ interface MapViewProps {
   pinNames: PinNames;
   /** 地図を押したときの意味（効いているパネルが決める）。 */
   tapMode: MapTapMode;
-  /** 地図に出した一時の選択の持ち主。変わると、開いている地点・道の小窓を閉じる。 */
+  /** 地図に出した一時の選択の持ち主。変わると、開いている小窓を閉じる。 */
   selectionOwner: string | null;
   /** 地点の意味の間に押した所（名前のある点の上なら、その点の位置と候補）を、選んでいる地点として置く。 */
   onPointPlace: (coordinates: Coordinates, spot: PlaceCandidate | null) => void;
@@ -140,10 +140,11 @@ export default function MapView({
 }: MapViewProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
-  const popups = useMapPopups(mapRef, selectionOwner);
+  const { shown: popup, controls: popups } = useMapPopups(selectionOwner, selectedRouteSegment, onRouteSegmentSelect);
   const mapCatalog = useMapAxisCatalog();
-  // 詳細を見ている道。強調も scene の一部として当てる。
-  const inspectedWayId = popups.roadPopup ? roadWayId(popups.roadPopup.properties) : null;
+  // 詳細を見ている道と、中身を見ている区間の近くの施設。強調も scene の一部として当てる。
+  const inspectedWayId = popup?.kind === "road" ? roadWayId(popup.properties) : null;
+  const chosenSidePoint = popup?.kind === "point" && popup.segment !== null ? popup.lngLat : null;
   const { scene, interactiveLayerIds } = useMapScene({
     look,
     catalog: mapCatalog,
@@ -155,13 +156,13 @@ export default function MapView({
     travelledKm,
     selectedRouteSegment,
     sidePoints,
+    chosenSidePoint,
   });
   // 地図の線を押して選んだ候補のid。その候補へは収め直さない（利用者はもうその範囲を見ている）。
   const routePickedOnMap = useRef<string | null>(null);
-  // 地図で押した区間。区間の小窓はこの区間にだけ出す（グラフで選んだ地点へは出さない。なぞるたびに小窓が付いて回る）。
-  const [segmentPickedOnMap, setSegmentPickedOnMap] = useState<SelectedRouteSegment | null>(null);
+  // 区間の小窓は地図で押した区間にだけ出す（グラフで選んだ地点へは出さない。なぞるたびに小窓が付いて回る）。
   const selectSegmentOnMap = (selection: SelectedRouteSegment | null) => {
-    setSegmentPickedOnMap(selection);
+    if (selection !== null) popups.showSegment(selection);
     onRouteSegmentSelect(selection);
   };
   // 地図のイベント（初期化のeffectで一度だけ登録する）が、いまのpropsを読むための参照。
@@ -226,20 +227,17 @@ export default function MapView({
         onPointSelect(target);
         return;
       }
-      popups.openPointPopup([at.longitude, at.latitude], buildPinPopupContent(target, pinNames));
+      popups.openPoint([at.longitude, at.latitude], buildPinPopupContent(target, pinNames));
     },
     onRouteSegmentSelect: selectSegmentOnMap,
   });
 
   const onNextRideZoom = useRideFollow(mapRef, ride, here, mapVisibleCenterOffset);
   const turnMarkContent = useTurnMark(mapRef, turnPoint);
-  const closeSegmentPopup = useCallback(() => latest.current.onRouteSegmentSelect(null), []);
-  const popupContents = useMapPopupMounts(mapRef, {
-    roadPopup: popups.roadPopup,
-    closeRoadPopup: popups.closeRoadPopup,
-    segmentDetail: selectedRouteSegment !== null && selectedRouteSegment === segmentPickedOnMap ? segmentDetail : null,
-    selectedRouteSegment,
-    onSegmentPopupClose: closeSegmentPopup,
+  const popupContent = useMapPopupMount(mapRef, {
+    shown: popup,
+    controls: popups,
+    segmentDetail,
     rideConditions,
     routePreference,
   });
@@ -317,7 +315,7 @@ export default function MapView({
         }
       />
       <MapLoadStatus loading={initialTilesLoading} failed={styleLoadFailed} />
-      {popupContents}
+      {popupContent}
       {markerContents}
       {turnMarkContent}
     </div>

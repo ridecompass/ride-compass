@@ -112,6 +112,8 @@ type SceneWiringProps = {
   readonly selectedRouteSegment: SelectedRouteSegment | null;
   /** 選んだ区間の近くの点のうち、地図に出すもの。区間を選んでいなければ空。 */
   readonly sidePoints: readonly RoutePoint[];
+  /** 小窓に中身を出している、区間の近くの施設の印の位置。無ければnull。 */
+  readonly chosenSidePoint: readonly [number, number] | null;
 };
 
 const NO_KEYS: readonly string[] = [];
@@ -260,7 +262,7 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
     },
     weather: weatherStateFrom(props),
     route: routeStateFrom(props),
-    sidePoint: { points: props.sidePoints },
+    sidePoint: { points: props.sidePoints, chosen: props.chosenSidePoint },
   };
 }
 
