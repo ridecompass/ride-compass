@@ -88,7 +88,8 @@ export function FacilityRows({
       {facilities.map((facility) => (
         <li key={facility.key} className="flex items-center gap-1.5 py-1 first:pt-0 last:pb-0">
           {swatch && <KindSwatch color={facility.color} glyph={facility.glyph} label={facility.kindLabel} />}
-          <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+          {/* 名前は空白（「吉野家 ボートレース戸田店」の間）で折り、語の途中では1語が行に収まらないときだけ折る。 */}
+          <span className="min-w-0 flex-1 break-keep [overflow-wrap:anywhere]">
             {facility.mapUrl !== null ? (
               <a
                 href={facility.mapUrl}

@@ -32,12 +32,12 @@ export type Facility = {
   readonly offsetM: number | null;
 };
 
-/** 施設の点を開く外の地図（Google マップの検索。公式の文書「Maps URLs」の`search`）。検索語は点の座標だけにする——`query`が
- * 受ける形は名前・住所・座標のどれかで、名前を含めると同じ名前の別の場所（チェーン店の別の店舗等）へ飛びうる。閉店にデータが
- * 追いついていないことがあるので、営業を外で確かめられるようにする。 */
-function externalMapSearchUrl(lngLat: readonly [number, number]): string {
-  const query = `${lngLat[1].toFixed(6)},${lngLat[0].toFixed(6)}`;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+/** 施設の点を開く外の地図（Google マップ）。閉店にデータが追いついていないことがあるので、営業を外で確かめられるようにする。
+ * 公式の「Maps URLs」の`search`には名前の検索を場所で絞る欄が無く、座標だけを渡すとピンだけで店の情報が出ず、名前だけ（や名前と座標を
+ * 1つの検索語）にすると同じ名前の別の店舗へ飛びうる。施設は店の ID も住所も持たないので、公式の文書に無い`/maps/search/<名前>/@<緯度>,<経度>,<倍率>z`
+ * の形で、名前の検索をその点を中心にした地図の中で行う（Google が形を変えると効かなくなりうる）。 */
+function externalMapSearchUrl(name: string, lngLat: readonly [number, number]): string {
+  return `https://www.google.com/maps/search/${encodeURIComponent(name)}/@${lngLat[1].toFixed(6)},${lngLat[0].toFixed(6)},18z`;
 }
 
 /** 1つの点の行。区分の名前は凡例と同じ宣言から引く（値は分類器が付ける内部名で、そのまま画面へ出さない）。 */
@@ -60,7 +60,7 @@ export function facilityOf(
     ...(first !== undefined && "glyph" in first && "color" in first ? { glyph: first.glyph } : {}),
     kindLabel,
     name,
-    mapUrl: name === null ? null : externalMapSearchUrl(lngLat),
+    mapUrl: name === null ? null : externalMapSearchUrl(name, lngLat),
     facts,
     km: along?.km ?? null,
     offsetM: along?.offsetM ?? null,

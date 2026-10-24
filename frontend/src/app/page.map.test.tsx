@@ -386,7 +386,7 @@ describe("区間の近くの施設", () => {
     // チップを押すと、同じ小窓をその区分の一覧に替える。行は道のりの順（同じ位置なら道に近い順）で、名前は外の地図へのリンク。
     await user.click(convenience);
     const listHeader = screen.getByRole("group", { name: "区分の一覧の上の帯" });
-    expect(listHeader).toHaveTextContent("コンビニ 2か所");
+    expect(screen.getByText("コンビニ 2か所")).toHaveClass("whitespace-nowrap");
     expect(screen.queryByRole("group", { name: "近くの施設" })).toBeNull();
     const rows = screen.getByRole("link", { name: "ファミリーマート" }).closest("ul")!;
     expect(Array.from(rows.children).map((row) => row.textContent)).toEqual([

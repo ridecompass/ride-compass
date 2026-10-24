@@ -52,13 +52,10 @@ describe("facilityOf", () => {
     expect(facility.facts).toEqual(["年 2023"]);
   });
 
-  it("名前のある点は、位置だけ（名前を含めない）で外の地図を探す先を持ち、名前が空の点は持たない", () => {
-    const named = facilityOf(LAYER, { kind: "a1", name: "店 1&2" }, AT);
-    const url = new URL(named.mapUrl!);
-    expect(named.name).toBe("店 1&2");
-    expect(`${url.origin}${url.pathname}`).toBe("https://www.google.com/maps/search/");
-    expect(url.searchParams.get("api")).toBe("1");
-    expect(url.searchParams.get("query")).toBe("35.705300,139.649700");
+  it("名前のある点は、名前をその点を中心にした地図の中で探す先を持ち、名前が空の点は持たない", () => {
+    const named = facilityOf(LAYER, { kind: "a1", name: "店 1&2/3" }, AT);
+    expect(named.name).toBe("店 1&2/3");
+    expect(named.mapUrl).toBe("https://www.google.com/maps/search/%E5%BA%97%201%262%2F3/@35.705300,139.649700,18z");
 
     const unnamed = facilityOf(LAYER, { kind: "a1", name: "" }, AT);
     expect([unnamed.name, unnamed.mapUrl]).toEqual([null, null]);
