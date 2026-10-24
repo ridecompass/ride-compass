@@ -536,7 +536,8 @@ async def road_graph_engine():
     # ORMの宣言を一時に壊して回した）のまま走ってしまう。宣言と差があれば、表を消して今の宣言から作り直す。
     async with engine.connect() as conn:
         gaps = await conn.run_sync(collect_gaps)
-    if gaps:
+    # テストDBは宣言どおりであるべきなので、本番なら落とさない差（本番が多く持つだけの差）でも作り直す。
+    if gaps.breaking or gaps.surplus:
         await _clear_app_tables(postgis_database_url())
         await create_tables(engine)
     # 前の実行が片付けの前に殺されると（時間切れ・中断）、その行がDBに残る。残った行は
