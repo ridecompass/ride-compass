@@ -3,20 +3,18 @@
  * 選んだ地点の詳しく（`features/route/RouteProfile/ProfilePointDetail.tsx`）。
  *
  * 見るもの: 既定で「評価で塗る」（難易度のグラフ）を出すこと、その (i) が塗った軸の色と名前・値の無い区間の色・意味の文を出すこと
- * （塗る区間の無い軸は出さない）、「表示」のタブのチップが選んだ情報を重ね・外す知らせを上げること、標高の折れ線と最高・最低、
- * 走行中の現在地の印を最初の折れ線のその地点の高さに置くこと（値が無ければ中ほど）、出す情報が無いときと値が無いときの文、道の区分のレイヤの帯をレイヤごとに地図と同じ色で出し、その凡例を
- * 出すこと、両方のタブで経由地を通る所に線と番号の印を出し、
- * 走り終えた経由地を薄めること。タブは結果も走行中も地図の入口と同じ絵だけで出し（名前は読み上げに残す）、押すと図が替わること。走行中の図は、
- * 目盛り・図の下の文字を結果の図より大きくし、「表示」の図に標高の目盛りを出すこと。地点を選ぶと、結果も走行中も図の下に3行の詳しく
- * （標高・勾配・何km地点・到達予想・閉じる／当たる道の区分と風のチップ／区間の総合難易度と軸ごとの寄与）を出し、当たらない区分
- * （該当なし・データなし）はチップにせず、閉じると選択を外すこと。地図で押した区間（地物から組み直した写し）も、図がその区間と押した所の地点を探して詳しくを出すこと。
+ * （塗る区間の無い軸は出さない）、両方のタブで経由地を通る所に線と番号の印を出し、走り終えた経由地を薄めること。タブは結果も
+ * 走行中も地図の入口と同じ絵だけで出し（名前は読み上げに残す）、押すと図が替わること。走行中の図は、目盛り・図の下の文字を
+ * 結果の図より大きくすること。地点を選ぶと、結果も走行中も図の下に3行の詳しく（標高・勾配・何km地点・到達予想・閉じる／
+ * 当たる道の区分と風のチップ／区間の総合難易度と軸ごとの寄与）を出し、当たらない区分（該当なし・データなし）はチップにせず、
+ * 閉じると選択を外すこと。地図で押した区間（地物から組み直した写し）も、図がその区間と押した所の地点を探して詳しくを出すこと。
  *
  * 差し替えたもの: グラフの実寸（`getBoundingClientRect`。テスト環境は実寸を返さない）。道の区分の層は軸カタログの応答としてテストが組む
  * （本番の層は管理DBが持つ）。
  *
- * ここで見ないもの: 難易度の塗り・なぞって地点を選ぶ操作 → `DifficultyProfile.test.tsx`。折れ線の点・帯の切れ目と地点の値・行の計算 →
- * `profileLayers.test.ts`。選んだレイヤを覚えること → `useProfileLayers.test.ts`。風のチップの方角の呼び名 →
- * `lib/cardinalLabel.test.ts`。
+ * ここで見ないもの: 「表示」の図の折れ線・帯・現在地の印・値の目盛りと、出す情報の一覧 → `RouteProfile.layers.test.tsx`。
+ * 難易度の塗り・なぞって地点を選ぶ操作 → `DifficultyProfile.test.tsx`。地点の値・行の計算 → `profileLayers.test.ts`。
+ * 風のチップの方角の呼び名 → `lib/cardinalLabel.test.ts`。
  */
 import { EVALUATION_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -24,83 +22,20 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { serveAxisCatalog } from "@/testing/backendServer";
 import {
-  catalogEntry,
-  catalogOf,
-  catalogResponse,
-  roadClass,
-  roadClassCatalog,
-  roadMapLayer,
-} from "@/testing/catalogAxes";
-import { makeRouteSegment } from "@/testing/routeFixtures";
+  CATALOG,
+  PAVED,
+  UNKNOWN,
+  openLayers,
+  profileElement,
+  renderProfile,
+  serveProfileCatalog,
+  surfaceColor,
+} from "@/testing/routeProfile";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 
-import RouteProfile from "./RouteProfile";
-
-const ENTRIES = [catalogEntry({ axis_id: "axis_a", label: "坂" }), catalogEntry({ axis_id: "axis_b", label: "路面" })];
-const CATALOG = catalogOf(ENTRIES);
-const SURFACE_ROAD_CLASSES = [
-  roadClass("paved", { label: "舗装", color: "#111111" }),
-  roadClass("gravel", { label: "砂利・未舗装", color: "#222222" }),
-];
-const ROAD_LAYERS = [
-  roadMapLayer("surface", { label: "路面の種類", has_no_data: true, classes: SURFACE_ROAD_CLASSES }),
-  roadMapLayer("tunnel", { label: "トンネル", classes: [roadClass("tunnel", { label: "トンネル" })] }),
-];
-const surfaceColor = (key: string) => SURFACE_ROAD_CLASSES.find((roadClass) => roadClass.key === key)!.color;
-
-beforeEach(() => {
-  serveAxisCatalog(catalogResponse(ENTRIES, { road_classes: roadClassCatalog({ map_layers: ROAD_LAYERS }) }));
-});
-// 北緯35度の上を東へ1kmずつ進む2区間。前は坂だけが効き、標高を持つ。後ろは難易度も標高も無い。
-const CLIMB = makeRouteSegment({
-  distance_km: 1,
-  difficulty: 40,
-  axis_contributions: { axis_a: 40 },
-  elevations: [{ distance_km: 1, start_elevation_m: 12, end_elevation_m: 31.6 }],
-  start_latitude: 35,
-  start_longitude: 139,
-  end_latitude: 35,
-  end_longitude: 139.01,
-});
-const UNKNOWN = makeRouteSegment({
-  distance_km: 1,
-  difficulty: null,
-  start_latitude: 35,
-  start_longitude: 139.01,
-  end_latitude: 35,
-  end_longitude: 139.02,
-});
-// 地点の詳しくを見る区間。舗装の道でトンネルではない（「該当なし」）。
-const PAVED: RouteSegmentDetail = {
-  ...CLIMB,
-  estimated_arrival_time: "2026-10-04T00:42:00Z",
-  axis_difficulties: { axis_a: 72.4 },
-  wind: { speed_ms: 3, direction_deg: 180, forecast_at: "2026-10-04T09:00" },
-  road_classes: { surface: [{ distance_km: 1, value: "paved" }], tunnel: [{ distance_km: 1, value: null }] },
-};
-
-type Props = React.ComponentProps<typeof RouteProfile>;
-
-function renderProfile(props: Partial<Props> = {}) {
-  const toggle = vi.fn();
-  const view = render(
-    <RouteProfile
-      segments={[CLIMB, UNKNOWN]}
-      overallDifficulty={20}
-      axes={CATALOG.axes}
-      axisColors={CATALOG.axisColors}
-      scaleKm={2}
-      selected={null}
-      layers={{ ids: ["elevation"], toggle }}
-      waypointKms={[]}
-      {...props}
-    />,
-  );
-  return { ...view, toggle };
-}
+beforeEach(serveProfileCatalog);
 
 /** 図に載っている区間`segment`を選んだ図（図の上の地点は区間の始まり）。 */
 function renderSelected(overrides: Partial<RouteSegmentDetail> = {}) {
@@ -115,10 +50,6 @@ const chipTexts = () =>
   within(screen.getByRole("list", { name: "この地点の道と風" }))
     .getAllByRole("listitem")
     .map((item) => item.textContent);
-
-async function openLayers() {
-  await userEvent.click(screen.getByRole("tab", { name: FACT_DISPLAY_NAME }));
-}
 
 describe("RouteProfile", () => {
   it("はじめは「評価で塗る」で難易度を出し、(i) で塗った軸の色と名前・値の無い区間・グラフの意味を開く", async () => {
@@ -136,82 +67,6 @@ describe("RouteProfile", () => {
     expect(note).toHaveTextContent(
       "高さは区間の難易度、塗った面積はルートの負荷にほぼ一致し、横の右端は一覧の中で最も長い候補の距離",
     );
-  });
-
-  it("「表示」のタブは選んだ情報の折れ線と最高・最低を出し、「グラフに出す情報」の一覧で重ねる・外す", async () => {
-    const { toggle } = renderProfile();
-    await openLayers();
-    const chart = screen.getByRole("img", { name: "道のりに沿った情報" });
-    expect(chart.querySelectorAll("polyline")).toHaveLength(1);
-    expect(screen.getByText("標高 最高 32m・最低 12m")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "難易度のグラフの見方を表示" })).toBeNull();
-
-    await userEvent.click(screen.getByRole("button", { name: "グラフに出す情報" }));
-    const elevation = within(screen.getByRole("dialog")).getByRole("checkbox", { name: "標高" });
-    expect(elevation).toBeChecked();
-    await userEvent.click(elevation);
-    expect(toggle).toHaveBeenCalledWith("elevation");
-  });
-
-  it("「表示」のタブの現在地の印は、最初の折れ線のその地点の値の高さに置き、その地点に値が無ければ図の中ほどに置く", async () => {
-    const { rerender } = renderProfile({ scaleKm: 2, progressKm: 0.25 });
-    await openLayers();
-    const mark = () => screen.getByRole("img", { name: "現在地" });
-    // 標高12〜31.6mの1/4の高さ（上下の余白8を除いた84の1/4だけ下端から上がる）。
-    expect(mark().style).toMatchObject({ left: "12.5%", top: "71%" });
-
-    rerender(
-      <RouteProfile
-        segments={[CLIMB, UNKNOWN]}
-        overallDifficulty={20}
-        axes={CATALOG.axes}
-        axisColors={CATALOG.axisColors}
-        scaleKm={2}
-        selected={null}
-        layers={{ ids: ["elevation"], toggle: vi.fn() }}
-        progressKm={1.5}
-        waypointKms={[]}
-      />,
-    );
-    expect(mark().style).toMatchObject({ left: "75%", top: "50%" });
-  });
-
-  it("道の区分のレイヤは、レイヤごとに地図と同じ色の帯を出し、帯に現れた区分の凡例を「グラフに出す情報」の一覧の行に出す", async () => {
-    const paved = {
-      ...CLIMB,
-      road_classes: { surface: [{ distance_km: 1, value: "paved" }], tunnel: [{ distance_km: 1, value: "tunnel" }] },
-    };
-    const gravel = {
-      ...UNKNOWN,
-      road_classes: { surface: [{ distance_km: 1, value: "gravel" }], tunnel: [{ distance_km: 1, value: null }] },
-    };
-    renderProfile({ segments: [paved, gravel], layers: { ids: ["surface", "tunnel"], toggle: vi.fn() } });
-    await openLayers();
-    const chart = screen.getByRole("img", { name: "道のりに沿った情報" });
-    // 道の層は軸カタログが届いてから出る。
-    const surfaceBand = await waitFor(() => chart.querySelector('[data-layer="surface"]')!);
-    expect([...surfaceBand.querySelectorAll("rect")].map((rect) => rect.getAttribute("fill"))).toEqual([
-      surfaceColor("paved"),
-      surfaceColor("gravel"),
-    ]);
-    expect(chart.querySelectorAll('[data-layer="tunnel"] rect')).toHaveLength(2);
-
-    await userEvent.click(screen.getByRole("button", { name: "グラフに出す情報" }));
-    expect(
-      within(screen.getByRole("list", { name: "路面の種類の凡例" }))
-        .getAllByRole("listitem")
-        .map((item) => item.textContent),
-    ).toEqual(["舗装", "砂利・未舗装"]);
-  });
-
-  it.each<{ why: string; ids: string[]; segments: RouteSegmentDetail[]; text: string }>([
-    { why: "出す情報を選んでいない", ids: [], segments: [CLIMB], text: "出す情報を選んでください。" },
-    { why: "選んだ情報の値が無い", ids: ["elevation"], segments: [UNKNOWN], text: "標高の値がありません。" },
-  ])("$why ときは、折れ線の代わりに文で知らせる", async ({ ids, segments, text }) => {
-    renderProfile({ segments, layers: { ids, toggle: vi.fn() } });
-    await openLayers();
-    expect(screen.getByText(text)).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "道のりに沿った情報" }).querySelector("polyline")).toBeNull();
   });
 
   it("両方のタブで、経由地を通る所に縦の線と地図のピンと同じ番号の印を出し、走行中は走り終えた経由地を薄める", async () => {
@@ -265,28 +120,6 @@ describe("RouteProfile", () => {
     },
   );
 
-  it("走行中の「表示」の図は、最初の折れ線の最高と最低の高さに単位つきの標高の目盛りを出す（結果の図には出さない）", async () => {
-    const { rerender } = renderProfile({ riding: true, progressKm: 0.25 });
-    await openLayers();
-    // 帯の無い図の上下の余白8の位置。
-    expect(screen.getByText("標高 32m").style.top).toBe("8%");
-    expect(screen.getByText("12m").style.top).toBe("92%");
-
-    rerender(
-      <RouteProfile
-        segments={[CLIMB, UNKNOWN]}
-        overallDifficulty={20}
-        axes={CATALOG.axes}
-        axisColors={CATALOG.axisColors}
-        scaleKm={2}
-        selected={null}
-        layers={{ ids: ["elevation"], toggle: vi.fn() }}
-        waypointKms={[]}
-      />,
-    );
-    expect(screen.queryByText("標高 32m")).toBeNull();
-  });
-
   it.each([
     { riding: true, tab: EVALUATION_PAINT_NAME },
     { riding: false, tab: FACT_DISPLAY_NAME },
@@ -296,21 +129,13 @@ describe("RouteProfile", () => {
       // 選択はページが持つので、選んだ地点を図へ戻す。
       function Profile() {
         const [selected, setSelected] = useState<SelectedRouteSegment | null>(null);
-        return (
-          <RouteProfile
-            segments={[PAVED, UNKNOWN]}
-            overallDifficulty={20}
-            axes={CATALOG.axes}
-            axisColors={CATALOG.axisColors}
-            scaleKm={2}
-            selected={selected}
-            onSelect={setSelected}
-            layers={{ ids: ["elevation"], toggle: vi.fn() }}
-            waypointKms={[]}
-            progressKm={riding ? 1.5 : null}
-            riding={riding}
-          />
-        );
+        return profileElement({
+          segments: [PAVED, UNKNOWN],
+          selected,
+          onSelect: setSelected,
+          progressKm: riding ? 1.5 : null,
+          riding,
+        });
       }
       render(<Profile />);
       await userEvent.click(screen.getByRole("tab", { name: tab }));

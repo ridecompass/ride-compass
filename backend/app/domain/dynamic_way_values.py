@@ -17,14 +17,8 @@ from typing import TYPE_CHECKING, Literal, TypeVar, cast
 import numpy as np
 
 from app.domain.attributes import CategoricalColumn, MaterialColumn
-from app.domain.axis_definitions import (
-    AxisDefinition,
-    BreakpointLinearShape,
-    averages_density,
-    axis_dependencies,
-    evaluate_axes_array,
-    priority_override_mask,
-)
+from app.domain.axis_definitions import AxisDefinition, BreakpointLinearShape, averages_density, axis_dependencies
+from app.domain.axis_evaluation import evaluate_axes_array, priority_override_mask
 from app.domain.difficulty import round_difficulty, weighted_mean_by_distance
 from app.domain.evaluation import empty_material_arrays
 from app.domain.gradient import travel_direction_formula
@@ -385,7 +379,7 @@ def axis_way_value_formula(
     - 条件で変わる材料を読まない軸は、値そのものが材料になる。
     - 条件で変わる材料がどれも道を辿る向きだけで決まる（`ServedMaterialFormula.by_direction`）軸は、順向き・逆向きに
       辿ったときの値が材料になり、木が向きで選ぶ。区間から畳む軸も、畳んだ値をこの形で配れる。
-    - ほかは、軸の評価（`domain/axis_definitions.py: evaluate_axis_array`）のうち条件で変わる材料に届く項を木へ開く。
+    - ほかは、軸の評価（`domain/axis_evaluation.py: evaluate_axis_array`）のうち条件で変わる材料に届く項を木へ開く。
       条件で変わらない材料・軸の得点と、0次条件の当たりは材料になる。
 
     木にできない軸はNone——区間から畳む軸（畳みは区間ごとの木が要る）と、条件で変わる材料に届く分類の形・0次条件の軸。

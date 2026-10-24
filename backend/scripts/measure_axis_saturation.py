@@ -34,11 +34,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from _probe_env import probe_database_url
 from app.batch.common import batch_session_factory
-from app.domain.axis_definitions import (
-    AXIS_DEFINITIONS,
-    evaluate_axes_inputs,
-    evaluate_axes_values,
-)
+from app.domain.axis_definitions import AXIS_DEFINITIONS
+from app.domain.axis_evaluation import evaluate_axes_inputs, evaluate_axes_values
 from app.domain.region import BoundingBox, parse_bbox
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.domain.value_distribution import weighted_quantiles

@@ -29,13 +29,8 @@ import pytest
 from sqlalchemy import text
 
 from app.domain import material_sql
-from app.domain.material_catalog import (
-    ACCIDENT_COUNT_PER_KM_YEAR,
-    CoverageExcluded,
-    MaterialSpec,
-    material_value_sql,
-    tile_column_sql,
-)
+from app.domain.material_catalog import ACCIDENT_COUNT_PER_KM_YEAR, MaterialSpec, material_value_sql, tile_column_sql
+from app.domain.material_coverage_spec import CoverageExcluded
 from app.domain.region import BoundingBox
 from app.infrastructure.source_models import WAYS_SOURCE_SQL
 from tests.source_ingest import ingest_records, parallel_way_record

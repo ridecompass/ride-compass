@@ -6,7 +6,7 @@
  *
  * ここで見ないもの: 打ちかけで引く間・変換中に引かないこと・候補の行の中身（辺り・距離・札）・引けない／当たらないときの文
  * → `RouteForm/PointSearch.test.tsx`。探して置いた地点の辺りと代表の位置 → `RouteForm/PointDetail.test.tsx`。
- * 検索で置いた地点が、ピンを動かすまでその候補のままか → `features/route/useGenerationConditions.test.ts`。
+ * 検索で置いた地点が、ピンを動かすまでその候補のままか → `features/route/useGenerationConditions.points.test.ts`。
  * 地点の並びと押した地点の選び → `RouteForm/RouteForm.points.test.tsx`。
  * 受け取った値をそのまま渡すもの（出発地が現在地にある間に戻す操作を押せなくすること、経由地が上限の間に探す欄を押せなくすること）。
  *

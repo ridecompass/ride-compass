@@ -11,7 +11,8 @@ import pytest
 
 from app.domain import material_catalog
 from app.domain.axis_definitions import REQUEST_DYNAMIC_MATERIAL_IDS
-from app.domain.material_catalog import MATERIAL_CATALOG, CoverageExcluded, MaterialDType, MaterialSpec
+from app.domain.material_catalog import MATERIAL_CATALOG, MaterialDType, MaterialSpec
+from app.domain.material_coverage_spec import CoverageExcluded
 
 
 def material(material_id: str, dtype: MaterialDType = "numeric", **fields) -> MaterialSpec:

@@ -140,12 +140,8 @@ from app.domain.landcover import (
 )
 from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION
 from app.domain.jma_tile_specs import JMA_ELEMENTS, JMA_TILE_MIN_ZOOM, effective_max_zoom
-from app.domain.material_catalog import (
-    MATERIAL_CATALOG,
-    MISSING_SEMANTICS_DISPLAY,
-    POPULATION_LABELS,
-    display_axis_missing_semantics,
-)
+from app.domain.material_catalog import MATERIAL_CATALOG, display_axis_missing_semantics
+from app.domain.material_coverage_spec import MISSING_SEMANTICS_DISPLAY, POPULATION_LABELS
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from app.domain.region import MAX_MERCATOR_LATITUDE, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
 from app.domain.leg_costs import MAX_TIME_BINS, MISSING_TRAVEL_DATA_WORDING, TIME_BIN_HOURS

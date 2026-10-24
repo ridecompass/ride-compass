@@ -11,7 +11,7 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `evaluation.py`（Edge Costの算出。探索範囲の静的スコア行列と、コストの合成・逆算）・`hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`route_preference.py`（重み指定）・`dynamic_materials.py`（風などリクエスト時に決まる材料）・`axis_inspector.py`（区間インスペクタ）・`difficulty.py`（軸の得点の合成と、区間からルートへの集約）・`material_catalog.py`・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`） |
+| domain | `evaluation.py`（Edge Costの算出。探索範囲の静的スコア行列と、コストの合成・逆算）・`hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`route_preference.py`（重み指定）・`dynamic_materials.py`（風などリクエスト時に決まる材料）・`axis_inspector.py`（区間インスペクタ）・`difficulty.py`（軸の得点の合成と、区間からルートへの集約）・`material_catalog.py`・`material_coverage_spec.py`（材料の欠損率の測り方の型と、欠損率の見出し）・`material_value_labels.py`（材料のタグの値ごとの日本語の対訳表）・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`） |
 | services | `material_coverage_service.py` |
 | infrastructure | `material_coverage.py`（材料ごとの欠損割合の集計クエリ） |
 | api | `material_catalog.py`（材料カタログ・材料値一覧・欠損割合のエンドポイント） |
@@ -116,7 +116,7 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
         │  bearing配列・天候・走行速度から求める
         ▼
   二次: 軸id → difficulty(0-100) の辞書
-        │  domain/axis_definitions.py: evaluate_axes_array が AXIS_DEFINITIONS を評価
+        │  domain/axis_evaluation.py: evaluate_axes_array が AXIS_DEFINITIONS を評価
         │  （軸が他の軸のdifficultyをmaterialとして参照する階層構造も含む）
         ▼
   三次: compose_costs_from_axis_matrix(distance_m, axis_arrays, weights, penalty_strength, density=…)
@@ -471,14 +471,14 @@ way粒度で引くときは、同じ式のまま`w`の行から同じ名前の�
   欠損し得ない材料を集計対象へ置かない——欠損の判定が常に0件を数える式になり、DBが持つ前提を式の側でもう一度持つことになる。
   管理画面はこの理由をそのまま表示する。
 - **どちらか一方を必ず持つことは型が保証する**: `MaterialSpec.coverage`は必須で、
-  way単位・Edge単位・対象外の3択（`MaterialCoverage`）のいずれかしか取れない。
+  way単位・Edge単位・対象外の3択（`domain/material_coverage_spec.py: MaterialCoverage`）のいずれかしか取れない。
   「どちらの一覧にも載っていない材料」を作れないため、網羅性を確かめるテストは要らない。
 - `MaterialCoverageService.get_material_coverage`はDB例外を握りつぶさず伝播させ、管理API共通の例外の扱い
   （`api/admin_db_errors.py`）が503で返す（診断用APIのため空レポートへ倒して「欠損0件」に見せない）。
   `api/dependencies.py: get_material_coverage_service`はルート生成用の長い
   `command_timeout`（180秒）を持つセッションを渡す（全表走査がタイル配信用の20秒を
   超えうるため）。
-- 欠損の扱いと母集団の画面の名前（管理画面の欠損率の見出し・説明）は、同じファイルの`MISSING_SEMANTICS_DISPLAY`・`POPULATION_LABELS`が持ち、生成物`vocabulary.ts`で画面へ届く。
+- 欠損の扱いと母集団の画面の名前（管理画面の欠損率の見出し・説明）は、`domain/material_coverage_spec.py: MISSING_SEMANTICS_DISPLAY`・`domain/material_coverage_spec.py: POPULATION_LABELS`が持ち、生成物`vocabulary.ts`で画面へ届く。
 
 ## 区間インスペクタ（`axis_inspector.py: inspector_values`）
 
