@@ -1,4 +1,4 @@
-"""`scripts/review_checks.py`の差分の報告（`change`）と総量（`metrics`）と流れの摩擦の拾い方（`friction`）と番の一覧の組み方（`turns`）と、文書の整合（`docs`）の実在の母集団のテスト。
+"""`scripts/review_checks.py`の差分の報告（`change`）と総量（`metrics`）と流れの摩擦と保守の候補の拾い方（`friction`）と番の一覧の組み方（`turns`）と、文書の整合（`docs`）の実在の母集団のテスト。
 
 履歴は一時的なgitリポジトリで作る。
 
@@ -198,7 +198,7 @@ def test_trigger_for_the_session_start_says_nothing_until_it_fires(repo, capsys,
     assert ("判定: **該当（変更行数）**" in out) if fired else out == ""
 
 
-def test_friction_picks_the_lines_written_after_the_review_including_quoted_and_listed_ones():
+def test_friction_picks_the_friction_and_maintenance_lines_written_after_the_review_including_quoted_and_listed_ones():
     since = rc.dt.datetime(2026, 10, 7, 3, 39, 2, tzinfo=rc.dt.timezone.utc)
     comments = [
         {"createdAt": "2026-10-07T03:39:01Z", "body": "流れの摩擦: 前のレビューより前"},
@@ -207,15 +207,19 @@ def test_friction_picks_the_lines_written_after_the_review_including_quoted_and_
             "> 流れの摩擦: 引用\n"
             "> - 流れの摩擦: 引用の箇条書き\n"
             "- 流れの摩擦: 箇条書き\n"
+            "保守の候補: 地の文\n"
+            "> - 保守の候補: 引用の箇条書き\n"
             "本文の中の 流れの摩擦: は拾わない\n"
             "  - 流れの摩擦: 字下げは拾わない"
         )},
     ]
-    assert rc.friction_lines(805, comments, since) == [
+    assert rc.reported_lines(805, comments, since) == [
         "#805 流れの摩擦: 地の文",
         "#805 > 流れの摩擦: 引用",
         "#805 > - 流れの摩擦: 引用の箇条書き",
         "#805 - 流れの摩擦: 箇条書き",
+        "#805 保守の候補: 地の文",
+        "#805 > - 保守の候補: 引用の箇条書き",
     ]
 
 
