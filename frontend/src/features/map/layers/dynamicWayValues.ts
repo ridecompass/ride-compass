@@ -35,7 +35,7 @@ export function tileContainingLonLat(lon: number, lat: number, zoom: number, min
 
 /** 表示範囲を覆う道路タイル。地図のズームから、道路タイルが実際に読まれるズームを求めて使う。
  * 最小ズーム未満では地図が道路タイルを読まず道を描かないので、1枚も並べない（引いても塗る先が無い）。
- * 上限を超える（傾けた・回した大きな画面）ときは、画面の中心に近いタイルから上限まで取り、落としたことを返す。 */
+ * 上限を超える（回した大きな画面）ときは、画面の中心に近いタイルから上限まで取り、落としたことを返す。 */
 export function tilesCoveringViewport(
   viewport: { west: number; north: number; east: number; south: number; zoom: number },
   minZoom: number,

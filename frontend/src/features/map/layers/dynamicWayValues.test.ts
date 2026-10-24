@@ -73,7 +73,7 @@ describe("tilesCoveringViewport（画面を覆う道路タイル）", () => {
     expect(result.tiles).toHaveLength(7 * 7);
   });
 
-  // 傾けた画面は奥の範囲が広がり、上限を超えうる。
+  // 4Kほどの大きな画面を回すと範囲が広がり、上限を超えうる。
   it("上限を超える範囲では、範囲の中心に近いタイルから96枚を取り、端を落としたことを返す", () => {
     const result = tilesCoveringViewport(viewportOfTiles(3630, 1610, 14, 10), 12, 16);
     expect(result.truncated).toBe(true);

@@ -127,17 +127,14 @@ export function useRideFollow(
     };
   }, [mapRef]);
 
-  // 追っている間は、2本指で回す・傾ける操作を止める（指がわずかにひねれば回り始め、2本指で縦に動かせば傾くので、
-  // 拡大・縮小のつもりの操作で地図が回る）。
+  // 追っている間は、2本指で回す操作を止める（指がわずかにひねれば回り始めるので、拡大・縮小のつもりの操作で地図が回る）。
   const following = ride?.following ?? false;
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !following) return;
     map.touchZoomRotate.disableRotation();
-    map.touchPitch.disable();
     return () => {
       map.touchZoomRotate.enableRotation();
-      map.touchPitch.enable();
     };
   }, [mapRef, following]);
 
