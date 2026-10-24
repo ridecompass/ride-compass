@@ -1,7 +1,7 @@
 """`infrastructure/derived_data_meta.py`——派生データと生データの世代。
 
 確かめるのは、派生の世代が行の無いDBで最初に進めたときに生まれて進むことと、成功した取込だけが生データの世代を
-進めること。後者は本物の取込を通して、配信するタイルの世代（`GET /api/axis-catalog`の`tile_versions`と同じ口）で見る。
+進めることと、作り直しに使った較正値を記録の無いDBでは既定として読むこと。後者は本物の取込を通して、配信するタイルの世代（`GET /api/axis-catalog`の`tile_versions`と同じ口）で見る。
 
 ここで見ないもの:
 - 世代の変化を読み手がどう使うか（キャッシュの追随・配列の作り直し） → それぞれの読み手のテスト
@@ -11,6 +11,7 @@
 import pytest
 
 from app.config import settings
+from app.domain.tuning import ACCIDENT_MATCH_DISTANCE_ID, TUNING_PARAMETERS_BY_ID, TURN_BEARING_DISTANCE_ID
 from app.infrastructure import derived_data_meta
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services.region_service import RegionService
@@ -34,6 +35,22 @@ async def test_first_bump_creates_the_revision_and_later_bumps_advance_it(road_g
 
     assert (first, second) == (1, 2)
     assert (await derived_data_meta.get_revisions(road_graph_session)).derived == 2
+
+
+async def test_the_tuning_a_rebuild_used_reads_as_the_default_until_one_is_recorded(road_graph_session):
+    """記録より前に作った派生の表（記録の無いDB）は、宣言の既定で作ったとみなして読む——新しいコードを出してから作り直すまでの
+    間も、地図の点・ルートの印・道路網の配列が、出す前と同じ値で読む。記録した値は、記録の無い較正値を既定のまま残す。"""
+    ids = (ACCIDENT_MATCH_DISTANCE_ID, TURN_BEARING_DISTANCE_ID)
+    async with raw_connection() as conn:
+        before = await derived_data_meta.read_tuning(conn, ids)
+        await derived_data_meta.replace_tuning(conn, {TURN_BEARING_DISTANCE_ID: 5.0})
+        try:
+            after = await derived_data_meta.read_tuning(conn, ids)
+        finally:
+            await derived_data_meta.replace_tuning(conn, {})
+
+    defaults = {param: TUNING_PARAMETERS_BY_ID[param].default for param in ids}
+    assert (before, after) == (defaults, {**defaults, TURN_BEARING_DISTANCE_ID: 5.0})
 
 
 async def _tile_versions(session) -> dict[str, str]:

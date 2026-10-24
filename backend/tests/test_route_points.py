@@ -10,7 +10,10 @@ import pytest
 
 from app.domain.route import along_route_km
 from app.domain.route_points import DirectedSegment, RoutePointHit, points_along_route
-from app.domain.traffic import POI_CLUSTER_EPS_M
+
+
+#: 当たりに添える、同じ行の点をまとめる道のり（m）。
+_MERGE_WITHIN_M = 40.0
 
 
 def _edge(way: int, forward: bool = True) -> DirectedSegment:
@@ -18,7 +21,7 @@ def _edge(way: int, forward: bool = True) -> DirectedSegment:
 
 
 def _hit(key: str, fraction: float, distance_m: float = 0.0, merge_group: str | None = None) -> RoutePointHit:
-    return RoutePointHit(layer="supply_poi", point_key=key, merge_group=merge_group,
+    return RoutePointHit(layer="supply_poi", point_key=key, merge_group=merge_group, merge_within_m=_MERGE_WITHIN_M,
                          properties={"kind": key}, fraction=fraction, distance_m=distance_m)
 
 
@@ -63,11 +66,11 @@ def test_a_point_near_a_short_loop_is_listed_on_the_way_out_and_back():
 
 @pytest.mark.parametrize("second_fraction, second_group, expected", [
     # 同じ行の点が、まとめる距離の内にある → 1つにする
-    (0.5 + POI_CLUSTER_EPS_M / 1000 * 0.9, "signal", [(0.5, "a")]),
+    (0.5 + _MERGE_WITHIN_M / 1000 * 0.9, "signal", [(0.5, "a")]),
     # まとめる距離の外 → 別々
-    (0.5 + POI_CLUSTER_EPS_M / 1000 * 1.1, "signal", [(0.5, "a"), (0.54, "b")]),
+    (0.5 + _MERGE_WITHIN_M / 1000 * 1.1, "signal", [(0.5, "a"), (0.54, "b")]),
     # 近くても別の行 → 別々
-    (0.5 + POI_CLUSTER_EPS_M / 1000 * 0.9, "crossing", [(0.5, "a"), (0.54, "b")]),
+    (0.5 + _MERGE_WITHIN_M / 1000 * 0.9, "crossing", [(0.5, "a"), (0.54, "b")]),
 ])
 def test_points_of_the_same_group_close_along_the_route_are_one_mark(second_fraction, second_group, expected):
     """まとめる行を持つ点（停止要因）は、地図と同じく、同じ行の近い点を1つにする。1つの信号交差点が流入路ごとの

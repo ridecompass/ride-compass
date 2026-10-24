@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.domain.route import DISTANCE_KM_DECIMALS, RoutePoint
-from app.domain.traffic import POI_CLUSTER_EPS_M
 
 #: 補給・休憩ポイントと立ち寄り先を、ルートの近くの点に数える道からの距離（m）。
 ROUTE_SIDE_POINT_MAX_DISTANCE_M = 100.0
@@ -25,12 +24,14 @@ class RoutePointHit:
     """1つの区間の近くにある1つの点。
 
     `fraction`は区間の形の向き（順向き）で測った、点に最も近い位置の割合（0〜1）。`distance_m`は道から点までの地上の距離。
-    `merge_group`は地図と同じく近い点を1つにまとめる行の鍵で、まとめない点はNone。`properties`は点に添えて画面へ出す値。
+    `merge_group`は地図と同じく近い点を1つにまとめる行の鍵で、まとめない点はNone。`merge_within_m`は同じ行の点を
+    まとめる道のりで、地図の点がまとまるのと同じ距離（派生を作り直したときの値）。`properties`は点に添えて画面へ出す値。
     """
 
     layer: str
     point_key: str
     merge_group: str | None
+    merge_within_m: float
     properties: dict[str, Any]
     fraction: float
     distance_m: float
@@ -45,7 +46,7 @@ def points_along_route(
 
     続けて走る別々の区間のどちらにも近い点は1回通るだけなので、道から最も近い所の1つにする。同じ区間を続けて走る
     （行き止まりで折り返す）なら、行きと帰りで2回通る。まとめる行を持つ点は、同じ行の点どうしが道のりで
-    `POI_CLUSTER_EPS_M`以内に連なれば、最初の1つにする。
+    `merge_within_m`以内に連なれば、最初の1つにする。
     """
     passes: list[tuple[float, RoutePointHit]] = []
     # 点の鍵→(最後に当たった区間の位置, その通過の`passes`での位置, その通過で当たった区間)
@@ -77,7 +78,7 @@ def points_along_route(
             group = (hit.layer, hit.merge_group)
             previous = previous_in_group.get(group)
             previous_in_group[group] = km
-            if previous is not None and (km - previous) * 1000 <= POI_CLUSTER_EPS_M:
+            if previous is not None and (km - previous) * 1000 <= hit.merge_within_m:
                 continue
         points.append(RoutePoint(
             distance_km=round(km, DISTANCE_KM_DECIMALS), offset_m=round(hit.distance_m), layer=hit.layer,

@@ -21,6 +21,8 @@ import pytest
 
 from app.batch import derive_stop_places
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tiles_covering_bbox
+from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
+from app.infrastructure import derived_data_meta
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from tests.conftest import raw_connection
@@ -135,6 +137,20 @@ async def test_stop_pois_farther_apart_than_the_merging_distance_stay_separate(r
     await _ingest_pois([(LON, LAT, BOLLARD), (LON + FAR, LAT, BOLLARD)])
 
     assert _kinds(await _tile(road_graph_repository, "poi")) == Counter({"barrier": 2})
+
+
+async def test_stop_pois_merge_within_the_distance_the_counts_were_built_with(road_graph_repository):
+    """停止の点は、管理画面の今の上書きではなく、派生を作り直したときのまとめる距離でまとめる。地図の点の数が、停止回数として
+    数えた数と食い違わない。"""
+    await _ingest_pois([(LON, LAT, BOLLARD), (LON + NEAR, LAT, BOLLARD)])
+    async with raw_connection() as conn:
+        await derived_data_meta.replace_tuning(conn, {STOP_CLUSTER_DISTANCE_ID: 5.0})
+        try:
+            tile = await _tile(road_graph_repository, "poi")
+        finally:
+            await derived_data_meta.replace_tuning(conn, {})
+
+    assert _kinds(tile) == Counter({"barrier": 2})
 
 
 async def test_supply_pois_are_never_merged(road_graph_repository):

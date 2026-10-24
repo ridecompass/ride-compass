@@ -50,9 +50,10 @@ class TuningEffect(Enum):
     IMMEDIATE = ("immediate", "次のルート生成から効く")
     #: 探索木のプロセス内キャッシュが値で鍵を持つため、作り直しは自動で起きる。
     TURN_STRUCTURE = ("turn_structure", "次のルート生成から効く（1回だけ遅い）")
-    #: 派生の作り直し（`batch/derive_cli.py`）をやり直さないと効かない。較正値は段の入力なので、読む段（`nodes`）から後ろが流れる。
-    #: 派生バッチは作り直しを始めるときに上書きを読み、段の関数へ値で渡す。
-    NODE_ATTRIBUTE_BATCH = ("node_attribute_batch", "交差点の事前計算をやり直すまで効かない")
+    #: 派生の作り直し（`batch/derive_cli.py`）をやり直さないと効かない。派生バッチは作り直しを始めるときに上書きを読み、
+    #: 段の較正値は段の入力なので読む段から後ろが流れ、道路網の配列の較正値は配列を作り直させる。派生の外で同じ値を読む所は、
+    #: 作り直しに使った値（`infrastructure/derived_data_meta.py: DerivedTuningRow`）を読む。
+    DERIVE_REBUILD = ("derive_rebuild", "派生データを作り直すまで効かない")
     #: 画面を読み込み直すと効く（フロントが起動時のカタログ取得で受け取る値）。
     CLIENT_RELOAD = ("client_reload", "画面を読み込み直すと効く")
 
@@ -123,6 +124,11 @@ _TURNAROUND_RELAXED_OVERLAP_ID = "search.turnaround_relaxed_overlap_ratio"
 _LOOP_RATIO_MIN_ID = "search.loop_to_outbound_ratio_min"
 _LOOP_RATIO_MAX_ID = "search.loop_to_outbound_ratio_max"
 _DISTANCE_TOLERANCE_ID = "search.distance_tolerance_ratio"
+#: 派生の外（地図の点のタイル・近くの点の読み出し）も作り直しに使った値を読む較正値のid。
+STOP_CLUSTER_DISTANCE_ID = "stop.cluster_distance_m"
+ACCIDENT_MATCH_DISTANCE_ID = "accident.match_max_distance_m"
+#: 道路網の配列を作る読み出しが、作り直しに使った値を読む較正値のid。
+TURN_BEARING_DISTANCE_ID = "turn.bearing_distance_m"
 
 
 TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
@@ -178,13 +184,43 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
                     "足す。"),
     _stop_parameter("level_crossing", 25.0, "遮断機の待ちを含む見積もり。"),
     _stop_parameter("barrier", 8.0, "ボラード等で減速するぶん。"),
-    # --- 交差点の信号判定 ---
+    # --- 交差点と停止の点 ---
     TuningParameter(
         "signal.match_radius_m",
         "信号とみなす半径", "m", 25.0, 1.0, 200.0,
-        TuningEffect.NODE_ATTRIBUTE_BATCH,
+        TuningEffect.DERIVE_REBUILD,
         "交差点から何m以内の信号を、その交差点のものとみなすか。"
         "広げるほど横断の費用が付く交差点が減る（頭打ちが無い）。",
+    ),
+    TuningParameter(
+        STOP_CLUSTER_DISTANCE_ID,
+        "停止の点をまとめる距離", "m", 40.0, 0.0, 200.0,
+        TuningEffect.DERIVE_REBUILD,
+        "同じ場所にある同種の停止要因の点を、1回の停止としてまとめる距離。日本のOSMは1つの信号交差点を流入路ごとの"
+        "信号と横断歩道の位置の複数の点で描くため、点を素直に数えると停止回数を上回る。停止回数・地図の停止の点・"
+        "ルートの印が同じ値でまとめる。",
+    ),
+    TuningParameter(
+        TURN_BEARING_DISTANCE_ID,
+        "曲がりの向きを測る長さ", "m", 20.0, 1.0, 200.0,
+        TuningEffect.DERIVE_REBUILD,
+        "交差点での曲がり（直進・左・右）を、区間の端からこの道のりの点までの向きで測る。区間がこれより短ければ端から端を見る。"
+        "道路網の配列に効く。",
+    ),
+    # --- 事故 ---
+    TuningParameter(
+        ACCIDENT_MATCH_DISTANCE_ID,
+        "事故を道に付ける距離", "m", 30.0, 1.0, 200.0,
+        TuningEffect.DERIVE_REBUILD,
+        "事故の点を、この距離以内で最も近い道に付ける。事故の点はOSMの要素ではないうえ、緯度経度は本票の度分秒の表記からの"
+        "変換で粗いため、大きめに採る。事故の数とルートの印が同じ値で付ける。",
+    ),
+    TuningParameter(
+        "accident.fatal_weight",
+        "死亡事故の重み", "件", 3.0, 1.0, 20.0,
+        TuningEffect.DERIVE_REBUILD,
+        "死亡事故1件を何件分の事故として数えるか。単純に数えると死亡事故が軽い事故と同じ1件になり、最も避けたい重大な事故の"
+        "危険が薄まる。実測から導いた値ではない。",
     ),
     # --- 走行モデル ---
     TuningParameter(

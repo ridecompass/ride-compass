@@ -374,7 +374,7 @@ async def test_too_many_requests_from_one_client_are_refused(client):
 
 def _hit(point_key, fraction, distance_m):
     return RoutePointHit(
-        layer="poi_a", point_key=point_key, merge_group=None, properties={"name": point_key},
+        layer="poi_a", point_key=point_key, merge_group=None, merge_within_m=0.0, properties={"name": point_key},
         fraction=fraction, distance_m=distance_m,
     )
 

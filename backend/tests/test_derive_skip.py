@@ -32,9 +32,10 @@ from app.batch.source_adapters.raster_wkb import tile_raster_wkb
 from app.domain.accident import PartyType
 from app.domain.landcover import PERCENT_CLASSES
 from app.domain.region import BoundingBox
+from app.domain.tuning import ACCIDENT_MATCH_DISTANCE_ID, TURN_BEARING_DISTANCE_ID
 from app.infrastructure import derived_data_meta, road_network_store
 from app.infrastructure.derived_data_freshness import declared_columns, derived_tables
-from app.infrastructure.road_graph_repository import RoadGraphRepository
+from app.infrastructure.road_graph_repository import NETWORK_TUNING, RoadGraphRepository
 from app.infrastructure.source_models import PARTY_TYPE_CODES, Source
 from tests.conftest import APP_TABLES_SQL, empty_ingested_tables, postgis_database_url, raw_connection
 from tests.source_ingest import (
@@ -63,6 +64,8 @@ LULC_ZOOM, LULC_X, LULC_Y, LULC_SIZE = 14, 14549, 6451, 256
 WAYS = ((100, [1, 2, 3]), (200, [3, 4]))
 SHINJUKU = ("東京都", "新宿区", "")
 SIGNAL_RADIUS = "signal.match_radius_m"
+#: テストが上書きする較正値。`world`の片付けで上書きを消す。
+OVERRIDDEN = (SIGNAL_RADIUS, ACCIDENT_MATCH_DISTANCE_ID, TURN_BEARING_DISTANCE_ID)
 STAGE_NAMES = [stage.name for stage in derive_cli.STAGES]
 
 
@@ -153,7 +156,7 @@ async def world(road_graph_engine, road_network_root):
             assert await derive_cli.run(postgis_database_url()) == 0
             yield conn
         finally:
-            await conn.execute("DELETE FROM tuning_overrides WHERE param_id = $1", SIGNAL_RADIUS)
+            await conn.execute("DELETE FROM tuning_overrides WHERE param_id = ANY($1)", list(OVERRIDDEN))
             await empty_ingested_tables(conn)
             await conn.execute("TRUNCATE derived_data_meta")
 
@@ -214,8 +217,10 @@ async def test_rebuilding_with_the_same_inputs_runs_no_stage_and_changes_nothing
     assert "どの段も入力が前回と同じ" in caplog.text
 
 
-async def _set_signal_radius(conn: asyncpg.Connection, monkeypatch, tmp_path: Path) -> None:
-    await conn.execute("INSERT INTO tuning_overrides (param_id, value) VALUES ($1, 150.0)", SIGNAL_RADIUS)
+def _override(param: str, value: float):
+    async def change(conn: asyncpg.Connection, monkeypatch, tmp_path: Path) -> None:
+        await conn.execute("INSERT INTO tuning_overrides (param_id, value) VALUES ($1, $2)", param, value)
+    return change
 
 
 def _add_column(table: str):
@@ -271,7 +276,8 @@ CHANGES = [
     Change("道を取り直した", _reingest(_ingest_ways), (*ROAD_STAGES, "addresses"), True),
     Change("住所を取り直した", _reingest(_ingest_addresses), ("addresses",), False),
     Change("地点を取り直した", _reingest(_ingest_places), ("stop_places",), False),
-    Change("信号とみなす半径を変えた", _set_signal_radius, ("nodes", "counts"), True),
+    Change("信号とみなす半径を変えた", _override(SIGNAL_RADIUS, 150.0), ("nodes", "counts"), True),
+    Change("事故を道に付ける距離を変えた", _override(ACCIDENT_MATCH_DISTANCE_ID, 50.0), ("counts",), True),
     # 表を書く段は1つなので、列を足した表を書く段とその後ろの段だけが流れる。区間を切る段の後ろには道路の段が全部並ぶ。
     Change("区間の表に列を足した", _add_column("road_edges"), ROAD_STAGES, True),
     Change("ノードの種別の表に列を足した", _add_column("node_kinds"), ("nodes", "counts"), True),
@@ -289,7 +295,7 @@ CHANGES = [
 
 #: 派生の表と一緒に作業用のスキーマで書き、入れ替える記録の表。
 RECORDS = {derived_data_meta.DerivedSourceRunRow.__tablename__, derived_data_meta.DerivedColumnRow.__tablename__,
-           derived_data_meta.DerivedStageRow.__tablename__}
+           derived_data_meta.DerivedStageRow.__tablename__, derived_data_meta.DerivedTuningRow.__tablename__}
 
 
 def _network_arrays() -> dict[str, bytes]:
@@ -326,6 +332,27 @@ async def test_only_the_stages_whose_inputs_changed_run_and_the_values_match_a_f
     assert await derive_cli.run(postgis_database_url()) == 0
     assert ran.stages == STAGE_NAMES
     assert await _values(world) == values
+
+
+async def test_changing_a_value_only_the_network_reads_rebuilds_the_network_with_it_and_no_stage(world, ran, caplog):
+    """道路網の配列だけが読む較正値（曲がりの向きを測る長さ）を変えて作り直すと、どの段も流さずに、配列をその値で作り直して
+    世代を進め、作り直しに使った値を記録に残す。配列は、同じ値で全部の段を流して作った配列と同じ。"""
+    caplog.set_level(logging.INFO, logger="ridecompass.derive_cli")
+    arrays, revision = _network_arrays(), await _revision(world)
+    await world.execute("INSERT INTO tuning_overrides (param_id, value) VALUES ($1, 100.0)", TURN_BEARING_DISTANCE_ID)
+
+    assert await derive_cli.run(postgis_database_url()) == 0
+    rebuilt = _network_arrays()
+
+    assert ran.stages == []
+    assert any(record.msg.startswith("道路網の配列を作った") for record in caplog.records)
+    assert await _revision(world) == road_network_store.current().revision > revision
+    assert await derived_data_meta.read_tuning(world, NETWORK_TUNING) == {TURN_BEARING_DISTANCE_ID: 100.0}
+    assert rebuilt != arrays
+
+    await world.execute("DELETE FROM derived_stages")
+    assert await derive_cli.run(postgis_database_url()) == 0
+    assert _network_arrays() == rebuilt
 
 
 @dataclass
@@ -449,18 +476,19 @@ def _read_between(before: dict[str, int], after: dict[str, int]) -> set[str]:
 
 
 async def test_the_network_reads_no_table_beyond_those_its_inputs_are_derived_from(world, road_graph_engine):
-    """配列を組むときに実際に読んだ表は、配列の入力を導く表（読み出しの文の計画が読む表）と、値で入力に入れる事故の収録年数を
-    読む表だけ。計画から導いた表が漏れていれば、漏れた表が変わっても配列を使い回してしまう。"""
+    """配列を組むときに実際に読んだ表は、配列の入力を導く表（読み出しの文の計画が読む表）と、値で入力に入れる事故の収録年数と
+    較正値を読む表だけ。計画から導いた表が漏れていれば、漏れた表が変わっても配列を使い回してしまう。"""
     async with AsyncSession(road_graph_engine) as session:
         repository = RoadGraphRepository(session)
         relations = await repository.network_relations()
         start = await _scans(session)
         await repository.get_accident_years_covered()
-        after_years = await _scans(session)
+        await repository.get_network_tuning()
+        after_values = await _scans(session)
         await road_network_store.build(repository, None)
         end = await _scans(session)
 
-    read = _read_between(after_years, end) - _read_between(start, after_years)
+    read = _read_between(after_values, end) - _read_between(start, after_values)
     # 前提: 配列を組むと区間の表を読む（何も読まずに素通りしていない）。
     assert "road_edges" in read
     assert read <= relations

@@ -9,9 +9,10 @@ import asyncpg
 import pytest
 import pytest_asyncio
 
-from app.batch import derive_counts, derive_topology
+from app.batch import derive_topology
 from tests.source_ingest import (
     WAY_ORIGIN,
+    derive_counts_at_default_tuning,
     derive_nodes_at_default_radius,
     ingest_records,
     point_record,
@@ -77,7 +78,7 @@ async def stop_conn(derive_conn):
         for node_id, (_, _, tags) in NODES.items()], conn=derive_conn)
     await derive_topology.derive(derive_conn)
     await derive_nodes_at_default_radius(derive_conn)
-    await derive_counts.derive(derive_conn)
+    await derive_counts_at_default_tuning(derive_conn)
     return derive_conn
 
 
