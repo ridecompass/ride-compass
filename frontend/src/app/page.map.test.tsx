@@ -6,11 +6,12 @@
  * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、区間を選んでいる間は地図にその区間の範囲の縁取りと
  * 選んだ地点の印が出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。区間を押すと地図をその区間へ寄せ、
  * 押した区間の小窓の「探す」でその区間の近くの施設を引いて地図に描き、種類ごとに出す・消せ、点を押すと名前と道からの距離を出すこと
- * （区間を押しただけでは引かず、グラフの下の地点の詳しくには出さず、グラフで地点を選んだときは小窓を出さない）。道の小窓を別の道へ
- * 押し替えると、前の道で押した評価を新しい道へ持ち越さないこと。地図は選んでいるルート1本へ収め（生成直後は先頭、タブで
+ * （区間を押しただけでは引かず、グラフの下の地点の詳しくには出さず、グラフで地点を選んだときは小窓を出さない）。施設の印を押すと
+ * 小窓を施設の中身へ入れ替えて印に枠を付け、区間へ戻れること。地図は選んでいるルート1本へ収め（生成直後は先頭、タブで
  * 選び直すとその1本）、地図の候補の線を押して選んだときは収め直さないこと。
  *
- * ここで見ないもの: 地図に置く地点（ピン・名前のある点・目的地・保存した地点）は`app/page.places.test.tsx`が見る。
+ * ここで見ないもの: 地図に置く地点（ピン・名前のある点・目的地・保存した地点）は`app/page.places.test.tsx`が、小窓がいつも1つで
+ * 最後に押した物の中身を出すことと道の小窓は`app/page.popups.test.tsx`が見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
@@ -37,11 +38,9 @@ import {
   selectedPointMarks,
   selectedSectionOnMap,
   serveHome,
-  showRoadSurface,
 } from "@/testing/homePage";
 import { heldReplies, onBackend } from "@/testing/backendServer";
 import { mapOnScreen } from "@/testing/maplibre";
-import { inspectorResult } from "@/testing/roadInspector";
 import { makeGenerationConditions, makeRouteSegment, routeThrough } from "@/testing/routeFixtures";
 import { settle } from "@/testing/settle";
 import palette from "@/types/generated/palette.json";
@@ -235,27 +234,6 @@ describe("ルートを収める", () => {
   });
 });
 
-describe("道の小窓", () => {
-  it("評価を開いた道から別の道へ押し替えると、その道の評価は押すまで取りに行かない", async () => {
-    const asked: unknown[] = [];
-    onBackend("POST", "/api/region/axis-inspector", ({ body }) => {
-      asked.push(body);
-      return Response.json(inspectorResult());
-    });
-    const { user } = renderHome();
-    await showRoadSurface(user);
-    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
-    clickMap(HERE, [{ layer: "road-tiles-surface", properties: { osm_way_id: 1, feature_key: "1" } }]);
-    await user.click(screen.getByRole("button", { name: "この道の評価を見る" }));
-    expect(await screen.findByText(/この道全体で見た難易度/)).toBeInTheDocument();
-
-    clickMap(ELSEWHERE, [{ layer: "road-tiles-surface", properties: { osm_way_id: 2, feature_key: "2" } }]);
-    expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
-    await settle();
-    expect(asked).toEqual([expect.objectContaining({ osm_way_id: 1 })]);
-  });
-});
-
 describe("区間の近くの施設", () => {
   // 東へ1kmずつ進む区間2つのルート。
   const NEAR = route("near", {
@@ -397,7 +375,7 @@ describe("区間の近くの施設", () => {
     expect(sidePointsOnMap()).toEqual({});
   });
 
-  it("近くの施設の点を押すと名前と道からの距離を出し、重なって束ねた印を押すと中の点を道に近い順に並べる。区間の中身が地図の小窓にあっても、点を押しただけでは区間の選びを外さず、何も無い所を押すと外す", async () => {
+  it("近くの施設の点を押すと小窓を施設の中身へ入れ替えて印に枠を付け、区間へ戻れ、重なって束ねた印を押すと中の点を道に近い順に並べる。施設を開いても区間の選びは残り、何も無い所を押すと外す", async () => {
     const { user } = renderHome();
     onBackend("POST", "/api/routes/side-points", () => Response.json({ points: NEARBY_POINTS }));
     const nearby = await pressSecondSegment(user);
@@ -412,8 +390,18 @@ describe("区間の近くの施設", () => {
       { layer: "side-point-supply_poi-toilets-mark", properties: toilet.properties ?? {}, geometry: toilet.geometry },
     ]);
     expect(screen.getByText(/補給・休憩ポイント: トイレ/).textContent).toBe("補給・休憩ポイント: トイレ道から5m");
+    expect(screen.queryByRole("group", { name: "近くの施設" })).toBeNull();
+    expect(sidePointsOnMap()).toEqual(
+      expect.objectContaining({
+        "side-point-supply_poi-toilets": [[139.718, 35.7]],
+        "side-point-chosen": [[139.718, 35.7]],
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "← 区間へ戻る" }));
     expect(screen.getByRole("group", { name: "近くの施設" })).toBeInTheDocument();
-    expect(Object.keys(sidePointsOnMap())).toHaveLength(3);
+    expect(screen.queryByText(/補給・休憩ポイント: トイレ/)).toBeNull();
+    expect(sidePointsOnMap()).not.toHaveProperty("side-point-chosen");
 
     clickMap(ELSEWHERE, [
       {
@@ -428,7 +416,7 @@ describe("区間の近くの施設", () => {
 
     clickMap(ELSEWHERE, []);
     await waitFor(() => expect(sidePointsOnMap()).toEqual({}));
-    expect(screen.queryByRole("group", { name: "近くの施設" })).toBeNull();
+    expect(screen.queryByText(/コンビニ 2件/)).toBeNull();
   });
 
   it("引けなかったら、区間の評価はそのまま出し、近くの施設を読めなかったと出す", async () => {
