@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import { USAGE_PART_SELECTOR } from "@/components/UsageGuide/usageTarget";
 import { INTRO_CLOSED, installApiMocks, seedStoredState } from "./fixtures";
-import { WIDTHS, installPageHelpers, openApp, type WidthName } from "./states";
+import { installPageHelpers } from "./pageHelpers";
+import { WIDTHS, openApp, type WidthName } from "./states";
 
 // 使い方の説明の「中を見る」で開いた浮きパネルの中の部品を押しても、浮きパネルが閉じないこと（パターン4 観点2）。浮きパネルは
 // 外への押し操作とフォーカスで閉じ、その出来事の届き方は実際のブラウザでしか確かめられない。生成前の基本の画面で説明を見る状態に入り、

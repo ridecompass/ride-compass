@@ -6,7 +6,7 @@
  * ここで見ないもの:
  * - 住所・施設で探す欄とその候補・保存した地点の候補・狭い画面で欄を上側に出すこと → `RouteForm/PointSearch.test.tsx`
  * - 地点ごとの呼び名・出どころ・名前・地図で置く操作・消す・「現在地に戻す」・上限 → `RouteForm/RouteForm.pointDetail.test.tsx`
- * - 置いた地点へ地図を寄せること・地図の上でピンを動かすこと → `e2e/map-runtime.spec.ts`
+ * - 置いた地点へ地図を寄せること・地図の上でピンを動かすこと → `e2e/destination.spec.ts`
  * - 位置の辺りの決め方 → backend の `tests/test_place_search_route.py`
  * - 出発地・経由地・目的地のどの位置を渡すか（現在地を取れていない出発地は渡さない） → `RouteForm/RouteForm.pointDetail.test.tsx`
  * - 保存した地点の一覧の読み方・同じ名前と位置の置き換え → `features/route/savedPlaces.test.ts`
