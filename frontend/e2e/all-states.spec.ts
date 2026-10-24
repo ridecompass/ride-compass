@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { installApiMocks, installMapFinder } from "./fixtures";
+import { MAIN_MAP, installApiMocks, installMapFinder } from "./fixtures";
 import { scanLayout, scanOverflowingContent, scanPinch, scanSpacingUtilities, scanTruncatedText } from "./scans";
 import {
   PHASES,
@@ -30,7 +30,7 @@ for (const width of Object.keys(WIDTHS) as WidthName[]) {
       const context = await browser.newContext({ viewport: WIDTHS[width], isMobile: touch, hasTouch: touch });
       const page = await context.newPage();
       await page.addInitScript(installPageHelpers);
-      await page.addInitScript(installMapFinder);
+      await page.addInitScript(installMapFinder, MAIN_MAP);
       await installApiMocks(page);
       await installScanMocks(page);
       const client = await context.newCDPSession(page);

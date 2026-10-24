@@ -3,7 +3,15 @@ import { trueHeadingDeg } from "@/lib/magneticDeclination";
 import { moved } from "@/testing/movedPoint";
 import { RIDE_ZOOM_MAX_OUT, RIDE_ZOOM_STEPS } from "@/features/map/MapView/rideZoom";
 
-import { INTRO_CLOSED, MOBILE_VIEWPORT, installApiMocks, installMapFinder, seedStoredState } from "./fixtures";
+import {
+  INTRO_CLOSED,
+  MAIN_MAP,
+  MAIN_MAP_CANVAS,
+  MOBILE_VIEWPORT,
+  installApiMocks,
+  installMapFinder,
+  seedStoredState,
+} from "./fixtures";
 
 // 走行モードで、ブラウザが届ける位置の変化が実際の地図の動き（中心・向き）まで届くこと（パターン4 観点2）。単体テストの地図は
 // 代役で、カメラを動かさない。走行モードの移り変わり（休む・戻す・止める）の判断は useRideMode.test.ts が持ち、ここでは
@@ -151,7 +159,7 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   await installApiMocks(page);
   await context.setGeolocation(START);
   await seedStoredState(page, INTRO_CLOSED);
-  await page.addInitScript(installMapFinder);
+  await page.addInitScript(installMapFinder, MAIN_MAP);
   await page.goto("/");
   await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
 
@@ -208,7 +216,7 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   await expect.poll(() => mapBearing(page), { timeout: 10_000 }).toBeCloseTo(0, 0);
 
   // 指で地図を動かすと追うのを休み、次の位置が届いても地図は動かない（点だけが動く）。
-  const canvas = (await page.locator(".maplibregl-canvas").boundingBox())!;
+  const canvas = (await page.locator(MAIN_MAP_CANVAS).boundingBox())!;
   const from = { x: canvas.x + canvas.width / 3, y: canvas.y + canvas.height / 2 };
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
@@ -269,7 +277,7 @@ test.describe("タッチ端末", () => {
     await installApiMocks(page);
     await context.setGeolocation(at(START));
     await seedStoredState(page, INTRO_CLOSED);
-    await page.addInitScript(installMapFinder);
+    await page.addInitScript(installMapFinder, MAIN_MAP);
     await page.goto("/");
     await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
     await page.getByRole("button", { name: "走行モード" }).click();
@@ -293,7 +301,7 @@ test.describe("タッチ端末", () => {
     const client = await context.newCDPSession(page);
     const touch = (type: "touchStart" | "touchMove", points: { x: number; y: number }[]) =>
       client.send("Input.dispatchTouchEvent", { type, touchPoints: points.map((p, id) => ({ ...p, id })) });
-    const canvas = (await page.locator(".maplibregl-canvas").boundingBox())!;
+    const canvas = (await page.locator(MAIN_MAP_CANVAS).boundingBox())!;
     const center = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 };
     const fingers = (gap: number, dx: number, turnDeg: number) => {
       const [x, y] = [Math.cos((turnDeg * Math.PI) / 180) * (gap / 2), Math.sin((turnDeg * Math.PI) / 180) * (gap / 2)];

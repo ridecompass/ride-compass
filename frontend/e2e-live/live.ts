@@ -6,7 +6,7 @@ import type { AxisCatalogResponse } from "@/types/route";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { lonLatToTileIndex } from "@/features/map/layers/webMercatorTile";
 import { ROUTE_HIT_TARGET_SEGMENT } from "@/features/map/scene/groups/routes";
-import { INTRO_CLOSED, MOBILE_VIEWPORT, installMapFinder, seedStoredState } from "../e2e/fixtures";
+import { INTRO_CLOSED, MAIN_MAP, MOBILE_VIEWPORT, installMapFinder, seedStoredState } from "../e2e/fixtures";
 import { installPageHelpers } from "../e2e/states";
 
 // 実backendへ向けて回すe2eの共通の段取りと観測（.claude/skills/run-checks/SKILL.md「E2E・画面の撮影の走らせ方」）。
@@ -122,7 +122,7 @@ export async function openLive(
   await page.context().setGeolocation(LIVE_POINT);
   await page.setViewportSize(viewport);
   await page.addInitScript(installPageHelpers);
-  await page.addInitScript(installMapFinder);
+  await page.addInitScript(installMapFinder, MAIN_MAP);
   await seedStoredState(page, { ...INTRO_CLOSED, ...storedState });
 
   await page.goto("/");

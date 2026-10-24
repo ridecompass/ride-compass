@@ -216,7 +216,7 @@ export function captureContext(
       }
       if (routes) await routes(page);
       await page.addInitScript(states.installPageHelpers);
-      await page.addInitScript(fixtures.installMapFinder);
+      await page.addInitScript(fixtures.installMapFinder, fixtures.MAIN_MAP);
       await fixtures.seedStoredState(page, {
         ...fixtures.INTRO_CLOSED,
         ...(layers.length > 0
@@ -225,7 +225,7 @@ export function captureContext(
         ...storedState,
       });
       await page.goto("/");
-      await expect(page.locator(".maplibregl-map")).toBeVisible({ timeout: 60_000 });
+      await expect(page.locator(fixtures.MAIN_MAP)).toBeVisible({ timeout: 60_000 });
       await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 60_000 });
       await settle();
       if (zoom !== undefined) {

@@ -282,6 +282,11 @@ async function rewriteRules(): Promise<{ source: string }[]> {
 /** スマホ縦持ち相当。useIsMobile（CSSの`--breakpoint-mobile`以下で立つ`--is-mobile`の旗）のモバイル分岐に入る幅。 */
 export const MOBILE_VIEWPORT = { width: 390, height: 812 };
 
+/** 本体の地図の要素。左下の俯瞰図（MapOverview.tsx）も MapLibre の地図で、DOM では本体より前に並ぶので、その中のものを除く。 */
+export const MAIN_MAP = '.maplibregl-map:not([aria-label="俯瞰図"] *)';
+/** 本体の地図の描画面。 */
+export const MAIN_MAP_CANVAS = `${MAIN_MAP} canvas.maplibregl-canvas`;
+
 /** モバイルの下部タブバーが持つシート。値はタブのラベル兼シートのアクセシブル名。 */
 export type MobileSheetName = "ルート設定" | "ルート結果";
 
@@ -408,10 +413,11 @@ declare global {
  * 地図のインスタンスと、地図に載っているべきものの宣言（scene）を、描画しているReactの部品の参照（useRef）から探す関数を
  * ページへ入れる。アプリは地図を外へ公開していないので、テストのために入口を足さず、Reactが要素へ付ける内部の印
  * （`__reactFiber$`）から祖先の部品のフックを辿る。Reactの内部の形が変わると見つからず、そのときは例外で止まる（黙って空を返さない）。
+ * `page.addInitScript(installMapFinder, MAIN_MAP)`で入れる（ページへは関数の文だけが渡るので、本体の地図の選び方は引数で渡す）。
  */
-export function installMapFinder(): void {
+export function installMapFinder(mainMap: string): void {
   const findRef = (what: string, holds: (current: Record<string, unknown>) => boolean) => {
-    const container = document.querySelector(".maplibregl-map");
+    const container = document.querySelector(mainMap);
     const key = container && Object.keys(container).find((k) => k.startsWith("__reactFiber$"));
     type Hook = { memoizedState: unknown; next: Hook | null };
     type Fiber = { memoizedState: unknown; return: Fiber | null };

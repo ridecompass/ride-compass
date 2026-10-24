@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { MATERIAL_VALUE_FORMULA, catalogEntry } from "@/testing/catalogAxes";
 import {
+  MAIN_MAP,
   MOBILE_VIEWPORT,
   axisCatalogFixture,
   doneJobFixture,
@@ -188,7 +189,7 @@ test("モバイル: 生成したルートを地図へ収めると、開いた「
     ...route,
     geometry: { type: "LineString" as const, coordinates: NORTH_SOUTH_ROUTE },
   }));
-  await page.addInitScript(installMapFinder);
+  await page.addInitScript(installMapFinder, MAIN_MAP);
   await openMobileApp(page, {
     routes: (page) =>
       page.route("**/api/routes/generate/*", (route) =>

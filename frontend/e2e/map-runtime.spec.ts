@@ -5,6 +5,8 @@ import {
   MOBILE_VIEWPORT,
   allLayersOn,
   installApiMocks,
+  MAIN_MAP,
+  MAIN_MAP_CANVAS,
   installMapFinder,
   openMobileApp,
   openMobileSheet,
@@ -25,7 +27,7 @@ const PROBE_FILL = { r: 255, g: 0, b: 255 };
  * ページの2D canvasで画素へ戻して数える。
  */
 async function probeFillRatio(page: Page): Promise<number> {
-  const canvas = page.locator("canvas.maplibregl-canvas");
+  const canvas = page.locator(MAIN_MAP_CANVAS);
   const png = (await canvas.screenshot()).toString("base64");
   return page.evaluate(
     async ({ png, fill }) => {
@@ -118,7 +120,7 @@ test("目的地を探して置いた地点は地図のその位置にピンが�
   await installApiMocks(page);
   await page.route("**/api/place-search*", (route) => route.fulfill({ json: { candidates: [candidate] } }));
   await seedStoredState(page, INTRO_CLOSED);
-  await page.addInitScript(installMapFinder);
+  await page.addInitScript(installMapFinder, MAIN_MAP);
   await page.goto("/");
   await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
 
@@ -293,7 +295,7 @@ test("ルートを収めるとき、地図の上の操作部品が覆う所へ�
   await runGeneration(page);
   await expect.poll(() => fit.padding, { timeout: 10_000 }).toBeDefined();
 
-  const canvas = (await page.locator("canvas.maplibregl-canvas").boundingBox())!;
+  const canvas = (await page.locator(MAIN_MAP_CANVAS).boundingBox())!;
   const covers = async (name: string | RegExp) => {
     const boxes = await Promise.all((await page.getByRole("button", { name }).all()).map((b) => b.boundingBox()));
     return boxes.filter((box) => box !== null);
@@ -317,7 +319,7 @@ test.describe("タッチ端末", () => {
 
   test("地図の上で始めたピンチは、ページではなく地図を拡大する", async ({ page, browserName }) => {
     test.skip(browserName !== "chromium", "2本指のタッチはCDP（Chromiumだけの口）でしか送れない");
-    await page.addInitScript(installMapFinder);
+    await page.addInitScript(installMapFinder, MAIN_MAP);
     await openMobileApp(page);
     await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
     const zoom = () => page.evaluate(() => window.__liveMap().getZoom());
@@ -342,7 +344,7 @@ test.describe("タッチ端末", () => {
     browserName,
   }) => {
     test.skip(browserName !== "chromium", "2本指のタッチはCDP（Chromiumだけの口）でしか送れない");
-    await page.addInitScript(installMapFinder);
+    await page.addInitScript(installMapFinder, MAIN_MAP);
     await openMobileApp(page);
     await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
     const pitch = () => page.evaluate(() => window.__liveMap().getPitch());
@@ -396,18 +398,21 @@ async function freeCanvasPoint(
   page: Page,
   reach: readonly (readonly [number, number])[],
 ): Promise<{ x: number; y: number }> {
-  const point = await page.evaluate((reach) => {
-    const canvas = document.querySelector("canvas.maplibregl-canvas");
-    const box = canvas?.getBoundingClientRect();
-    if (!canvas || !box) return null;
-    for (let dy = 0; dy < box.height / 2; dy += 8) {
-      for (const y of [box.top + box.height / 2 + dy, box.top + box.height / 2 - dy]) {
-        const x = box.left + box.width / 2;
-        if (reach.every(([rx, ry]) => document.elementFromPoint(x + rx, y + ry) === canvas)) return { x, y };
+  const point = await page.evaluate(
+    ({ reach, selector }) => {
+      const canvas = document.querySelector(selector);
+      const box = canvas?.getBoundingClientRect();
+      if (!canvas || !box) return null;
+      for (let dy = 0; dy < box.height / 2; dy += 8) {
+        for (const y of [box.top + box.height / 2 + dy, box.top + box.height / 2 - dy]) {
+          const x = box.left + box.width / 2;
+          if (reach.every(([rx, ry]) => document.elementFromPoint(x + rx, y + ry) === canvas)) return { x, y };
+        }
       }
-    }
-    return null;
-  }, reach);
+      return null;
+    },
+    { reach, selector: MAIN_MAP_CANVAS },
+  );
   expect(point, "指を置ける地図の点が無い").not.toBeNull();
   return point!;
 }
