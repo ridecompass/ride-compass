@@ -50,6 +50,21 @@ describe("useMapView のチップの取得の状態", () => {
     await waitFor(() => expect(chip(result, "surface")?.dataStatus).toBe("error"), { timeout: 3000 });
   });
 
+  it("傾けた大きな画面のように、道の線の層の値を取るタイルが上限を超える範囲では、その層のチップに「一部だけ取った」を出す", async () => {
+    serve();
+    onBackend("GET", ROAD_CLASSES, () => Response.json({ way_1: { surface: "paved" } }));
+    const { result } = renderMapView();
+    await waitFor(() => expect(chip(result, "surface")).toBeDefined());
+    act(() => result.current.overlayControls.onToggle("surface", true));
+
+    // z14で東西に約15枚・南北に約11枚の範囲。
+    act(() =>
+      result.current.look.onViewportChange({ ...VIEWPORT, west: 139.5, east: 139.83, south: 35.6, north: 35.8 }),
+    );
+
+    await waitFor(() => expect(chip(result, "surface")?.dataStatus).toBe("partial"), { timeout: 3000 });
+  });
+
   // 層の値の要求はタイルごとに backend の回数の制限に数えられ、1枚ごとに秒単位でかかるので、送った数を見る。
   it("道の線の層の値は、地図を動かしても前に取ったタイルを取り直さず、新しく入ったタイルだけを取る", async () => {
     serve();
