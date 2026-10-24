@@ -185,7 +185,7 @@ function FactList({ rows }: { rows: readonly { label: string; value: string }[] 
   );
 }
 
-/** 道路の周囲100mリングの土地被覆。走行中に読むものではないため畳んでおき、閉じている
+/** 道路の周りの帯の土地被覆。走行中に読むものではないため畳んでおき、閉じている
  * 間は最も多いクラスだけを見せる。クラスの割合は合計100%になるため、開いたときは割合の
  * 大きい順に並べ、0%のクラスは出さない。 */
 function RoadLandcoverRows({ landcover }: { landcover: InspectorValues["landcover"] }) {

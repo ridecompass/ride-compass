@@ -79,7 +79,12 @@ from app.batch.common import (
 from app.infrastructure.tuning_overrides import load_tuning_values
 from app.infrastructure import derived_data_meta, road_network_store
 from app.infrastructure.derived_data_freshness import declared_columns
-from app.domain.tuning import ACCIDENT_MATCH_DISTANCE_ID, STOP_CLUSTER_DISTANCE_ID
+from app.domain.tuning import (
+    ACCIDENT_MATCH_DISTANCE_ID,
+    LANDCOVER_RING_INNER_ID,
+    LANDCOVER_RING_OUTER_ID,
+    STOP_CLUSTER_DISTANCE_ID,
+)
 from app.infrastructure.road_graph_repository import NETWORK_TUNING, RoadGraphRepository
 from app.infrastructure.source_models import LATEST_SUCCEEDED_RUNS_SQL, Source
 
@@ -134,7 +139,7 @@ STAGES: tuple[DeriveStage, ...] = (
     DeriveStage("elevation", derive_elevation, frozenset({Source.OSM_WAY, Source.DEM}), ("topology",), ("edge_elevation",),
                 per_edge=True, compared=frozenset({Source.OSM_WAY})),
     DeriveStage("landcover", derive_landcover, frozenset({Source.LULC}), ("topology",), ("edge_landcover", "way_landcover"),
-                per_edge=True),
+                {"ring_outer_m": LANDCOVER_RING_OUTER_ID, "ring_inner_m": LANDCOVER_RING_INNER_ID}, per_edge=True),
     DeriveStage("directions", derive_way_directions, frozenset({Source.OSM_WAY}), ("topology",), ("way_directions",)),
     # 住所の区画は、道路（`osm_way`）のパーティションを読まず、取込の記録から範囲だけを読む（読んだ数の見張りに出ないので、
     # 手で挙げる）。

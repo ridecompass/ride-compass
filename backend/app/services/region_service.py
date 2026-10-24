@@ -16,6 +16,7 @@ from app.domain.region import (
     way_unit_tile,
 )
 from app.domain.registry import TileKind
+from app.domain.tuning import REBUILT_CLIENT_TUNING_IDS
 from app.infrastructure.database import DB_UNAVAILABLE_ERRORS
 from app.infrastructure.debug_log import log_external_call, log_throttled_warning, mark_failed
 from app.infrastructure.point_tile_layers import PointTileLayer
@@ -205,6 +206,18 @@ class RegionService:
                 return []
             fields["years_covered"] = len(years)
             return years
+
+    async def get_rebuilt_client_tuning(self) -> dict[str, float]:
+        """フロントへ配る較正値のうち作り直しで効くもの（`REBUILT_CLIENT_TUNING_IDS`）の、作り直しに使った値。
+
+        DB例外は空へ倒す（画面は引けない値を文に出さない）。管理画面の今の値や既定で埋めると、派生の値と食い違う数を出す。
+        """
+        with log_external_call("region:rebuilt-client-tuning") as fields:
+            try:
+                return await self._repository.get_recorded_tuning(REBUILT_CLIENT_TUNING_IDS)
+            except DB_UNAVAILABLE_ERRORS as exc:
+                mark_failed(fields, exc)
+                return {}
 
     async def get_ingested_area(self) -> BoundingBox | None:
         """サービスの対象範囲（取り込んだ道路の範囲）。気象庁タイルのプリウォームが、ここから

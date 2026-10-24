@@ -54,6 +54,14 @@ describe("buildMapLayers（レイヤーの一覧）", () => {
     expect(layer(withoutAxes, "accident_point").description).not.toContain("[");
   });
 
+  it("土地被覆の説明は、配られた帯の幅を言う（届くまでは幅に触れない）", () => {
+    const withRing = buildMapLayers(
+      mapAxisCatalogFromResponse(catalogResponse([], { client_tuning: { "landcover.ring_outer_m": 60 } })),
+    );
+    expect(layer(withRing, "landcover").panelHint).toContain("道路の周囲60mの割合");
+    expect(layer(withoutAxes, "landcover").panelHint).toContain("道路の周囲の割合");
+  });
+
   it("説明は、そのレイヤーの元データを材料に持つ公開中の評価軸を名前で挙げ、無ければ評価軸に触れない", () => {
     const tunnel = roadMapLayer("tunnel", {
       panel_hint: ["道の区分。", { name: "axes", before: "評価軸", after: "の材料。" }],

@@ -32,7 +32,7 @@ from app.batch.source_adapters.raster_wkb import tile_raster_wkb
 from app.domain.accident import PartyType
 from app.domain.landcover import PERCENT_CLASSES
 from app.domain.region import BoundingBox
-from app.domain.tuning import ACCIDENT_MATCH_DISTANCE_ID, TURN_BEARING_DISTANCE_ID
+from app.domain.tuning import ACCIDENT_MATCH_DISTANCE_ID, LANDCOVER_RING_OUTER_ID, TURN_BEARING_DISTANCE_ID
 from app.infrastructure import derived_data_meta, road_network_store
 from app.infrastructure.derived_data_freshness import declared_columns, derived_tables
 from app.infrastructure.road_graph_repository import NETWORK_TUNING, RoadGraphRepository
@@ -65,7 +65,7 @@ WAYS = ((100, [1, 2, 3]), (200, [3, 4]))
 SHINJUKU = ("東京都", "新宿区", "")
 SIGNAL_RADIUS = "signal.match_radius_m"
 #: テストが上書きする較正値。`world`の片付けで上書きを消す。
-OVERRIDDEN = (SIGNAL_RADIUS, ACCIDENT_MATCH_DISTANCE_ID, TURN_BEARING_DISTANCE_ID)
+OVERRIDDEN = (SIGNAL_RADIUS, ACCIDENT_MATCH_DISTANCE_ID, TURN_BEARING_DISTANCE_ID, LANDCOVER_RING_OUTER_ID)
 STAGE_NAMES = [stage.name for stage in derive_cli.STAGES]
 
 
@@ -278,6 +278,7 @@ CHANGES = [
     Change("地点を取り直した", _reingest(_ingest_places), ("stop_places",), False),
     Change("信号とみなす半径を変えた", _override(SIGNAL_RADIUS, 150.0), ("nodes", "counts"), True),
     Change("事故を道に付ける距離を変えた", _override(ACCIDENT_MATCH_DISTANCE_ID, 50.0), ("counts",), True),
+    Change("土地被覆を数える帯の外の幅を変えた", _override(LANDCOVER_RING_OUTER_ID, 50.0), ("landcover",), True),
     # 表を書く段は1つなので、列を足した表を書く段とその後ろの段だけが流れる。区間を切る段の後ろには道路の段が全部並ぶ。
     Change("区間の表に列を足した", _add_column("road_edges"), ROAD_STAGES, True),
     Change("ノードの種別の表に列を足した", _add_column("node_kinds"), ("nodes", "counts"), True),
@@ -522,6 +523,8 @@ EDGE_CHANGES = [
     EdgeChange("道と標高を取り直し、土地被覆の段のコードを変えた",
                _together(_reingest(_ingest_ways), _reingest(_ingest_elevations), _edit_code("batch/derive_landcover.py")),
                {"landcover": (0, 2), "elevation": (0, 2)}),
+    # 帯の幅は区間の形の外の入力なので、形の同じ区間も数え直す。
+    EdgeChange("土地被覆を数える帯の外の幅を変えた", _override(LANDCOVER_RING_OUTER_ID, 50.0), {"landcover": (0, 2)}),
 ]
 
 
