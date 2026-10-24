@@ -274,7 +274,7 @@ test("tasks#938 振り出す前に、今の事実で決め直す（保存した�
   assert.deepEqual([w.at(1).status, w.at(2).status, w.titles()], ["実装", "回答", ["#1 実装"]], "ぶつかった PR に検証担当を、答えを待つ問いに実装担当を起こさない");
 });
 
-test("tasks#1079・tasks#1182 マージのコミットの master の実行が合格せずに終わったら（後の push で取り消された・落ちた）、その変更を判定に入れる後の master の実行（first-parent の子の側で一番近い、取り消されていないもの）の結論で決める", async () => {
+test("tasks#1079・tasks#1182 マージのコミットの master の実行が合格せずに終わったら（後の push で取り消された・落ちた）、その変更を判定に入れる後の master の実行（first-parent の子の側で一番近い、取り消されていないもの）の結論で決める。それも落ちていれば、さらに後の実行まで辿る", async () => {
   const merged = (sha, parent, mergeChecks) => ({ state: "MERGED", merged: true, sha, parent, mergeChecks });
   const rows = [
     // [要求, 後のマージのコミットの検査（古い順。m2 は m1 の子、m3 は m2 の子）, #1 のステータス, 振り出した担当]
@@ -282,6 +282,7 @@ test("tasks#1079・tasks#1182 マージのコミットの master の実行が合
     ["後の実行が通った → 本番に出たので確かめを問う", ["SUCCESS"], "回答", []],
     ["後の実行も取り消され、さらに後の実行が通った → 確かめを問う", ["CANCELLED", "SUCCESS"], "回答", []],
     ["後の実行が落ちた → #1 の変更も検査が通っていないので、直すか待つ相手を張る実装担当", ["FAILURE"], "実装", ["#1 実装"]],
+    ["後の実行が落ち、さらに後の実行が通った → #1 の変更も含めて通ったので確かめを問う", ["FAILURE", "SUCCESS"], "回答", []],
   ];
   for (const [rowName, later, status, runs] of rows) for (const own of ["CANCELLED", "FAILURE"]) {
     const name = `#1 の実行が ${own}、${rowName}`;
