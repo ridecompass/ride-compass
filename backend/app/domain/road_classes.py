@@ -18,7 +18,8 @@ from pydantic import Field
 from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.display_palette import NOMINAL_TONES
 from app.domain.map_display import MAP_LAYER_CATEGORIES
-from app.domain.material_catalog import MATERIAL_CATALOG, CoverageExcluded, MaterialSpec
+from app.domain.material_catalog import MATERIAL_CATALOG, MaterialSpec
+from app.domain.material_coverage_spec import CoverageExcluded
 from app.domain.strict_model import StrictModel
 from app.domain.tuning import TUNING_PARAMETERS_BY_ID
 

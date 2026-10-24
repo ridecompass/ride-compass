@@ -10,12 +10,8 @@
 import pytest
 import pytest_asyncio
 
-from app.domain.axis_definitions import (
-    AXIS_DEFINITIONS,
-    AxisDependencyCycleError,
-    AxisInternalAxisPublishError,
-    AxisPublishedImmutableError,
-)
+from app.domain.axis_definitions import AXIS_DEFINITIONS, AxisDependencyCycleError
+from app.domain.axis_publication import AxisInternalAxisPublishError, AxisPublishedImmutableError
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.services.axis_registry_service import (
@@ -110,7 +106,7 @@ async def test_refresh_raises_when_the_axes_together_break_an_invariant(reposito
 async def test_create_rejects_axis_id_colliding_with_known_material(service):
     # MATERIAL_CATALOGに実在する材料id（例: "highway"）と同名のaxis_idは
     # 作成できない。放置すると評価時に生の材料値がdifficulty値で上書きされ、それ以降に
-    # 評価される軸が黙って壊れる（axis_definitions.py: evaluate_axes_array参照）。
+    # 評価される軸が黙って壊れる（`domain/axis_evaluation.py: evaluate_axes_array`）。
 
     with pytest.raises(ValueError, match="highway"):
         await service.create(axis_definition("highway", material="wind_drag_ratio"))

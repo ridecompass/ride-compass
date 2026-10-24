@@ -10,7 +10,8 @@ from typing import Annotated, Literal
 from pydantic import Field
 
 from app.domain.stopwatch import elapsed_ms, start_timer
-from app.domain.material_catalog import MATERIAL_CATALOG, MaterialDType, MissingSemantics, Population
+from app.domain.material_catalog import MATERIAL_CATALOG, MaterialDType
+from app.domain.material_coverage_spec import MissingSemantics, Population
 from app.domain.strict_model import StrictModel
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.material_coverage import (

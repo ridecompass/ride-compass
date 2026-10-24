@@ -37,13 +37,12 @@ from app.domain.axis_definitions import (
     AxisDefinition,
     BreakpointLinearShape,
     averages_density,
-    axis_raw_value_array,
     copy_axis_definitions,
     density_slope,
-    evaluate_axes_array,
     published_axis_definitions,
     published_axis_order,
 )
+from app.domain.axis_evaluation import axis_raw_value_array, evaluate_axes_array
 from app.domain.axis_raw_value import axis_material_shares, raw_value_unit
 from app.domain.difficulty import (
     axis_weighted_sums,
