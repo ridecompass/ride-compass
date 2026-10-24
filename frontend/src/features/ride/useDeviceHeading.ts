@@ -32,6 +32,9 @@ export function headingFromOrientation(
 
 type PermissionRequest = () => Promise<string>;
 
+/** 向きを読む許しの様子。`needsGesture`は、まだ許しを聞いておらず、利用者の操作の中で求め直せば聞ける間。 */
+type Permission = "granted" | "denied" | "needsGesture";
+
 /** iPhone の Safari は、端末の向きを読む前に利用者の操作の中で許しを求める口を持つ。ほかのブラウザは持たない。 */
 function permissionRequest(): PermissionRequest | null {
   const holder = globalThis as unknown as { DeviceOrientationEvent?: { requestPermission?: PermissionRequest } };
@@ -40,29 +43,36 @@ function permissionRequest(): PermissionRequest | null {
 }
 
 /** スマホが向いている方角（画面の上の向き）。`active`の間だけ読む。iPhone では`request`を利用者の操作（走行モードを始める
- * ボタン）の中で呼んで許しを求め、断られたら方角を出さない。 */
-export function useDeviceHeading(active: boolean): { heading: number | null; request: () => void } {
-  const [allowed, setAllowed] = useState<boolean | null>(null);
+ * ボタン）の中で呼んで許しを求め、断られたら方角を出さない。操作の外（読み込み直しの始め直し）で求めて聞けなかった間は、
+ * `requestAgain`に利用者の操作の中で求め直す口を返す。 */
+export function useDeviceHeading(active: boolean): {
+  heading: number | null;
+  request: () => void;
+  requestAgain: (() => void) | null;
+} {
+  const [permission, setPermission] = useState<Permission | null>(null);
   const [heading, setHeading] = useState<number | null>(null);
 
   const request = useCallback(() => {
     const ask = permissionRequest();
     if (ask === null) {
-      setAllowed(true);
+      setPermission("granted");
       return;
     }
     // 操作の中で呼ぶ必要があるので、待たずに呼んでから答えを受ける。
     ask().then(
-      (answer) => setAllowed(answer === "granted"),
+      (answer) => setPermission(answer === "granted" ? "granted" : "denied"),
       (error: unknown) => {
         debugLog("ride:heading", "端末の向きを読む許しを得られなかった", { error: String(error) }, "warn");
-        setAllowed(false);
+        // Safari は、既に許した・断った答えは操作の外でもそのまま返し、まだ聞いていないときだけ`NotAllowedError`で断る。
+        const unasked = error instanceof DOMException && error.name === "NotAllowedError";
+        setPermission(unasked ? "needsGesture" : "denied");
       },
     );
   }, []);
 
   useEffect(() => {
-    if (!active || allowed !== true) return;
+    if (!active || permission !== "granted") return;
     // Android の Chrome は北を基準にした向きを別の出来事で、iPhone の Safari はふつうの出来事にコンパスの読みを添えて出す。
     // 両方を受け、方角が分かる読みだけを使う。
     function onOrientation(event: Event) {
@@ -83,7 +93,11 @@ export function useDeviceHeading(active: boolean): { heading: number | null; req
       window.removeEventListener("deviceorientation", onOrientation);
       setHeading(null);
     };
-  }, [active, allowed]);
+  }, [active, permission]);
 
-  return { heading: active ? heading : null, request };
+  return {
+    heading: active ? heading : null,
+    request,
+    requestAgain: active && permission === "needsGesture" ? request : null,
+  };
 }

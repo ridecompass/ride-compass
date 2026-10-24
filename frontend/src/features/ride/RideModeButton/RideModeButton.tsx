@@ -16,12 +16,16 @@ import type { ScreenWakeLockStatus } from "../useScreenWakeLock";
 const WAKE_LOCK_UNAVAILABLE =
   "この端末では画面を点けたままにできません。画面が消えると現在地も届かなくなるので、自動ロックの設定を確かめてください。";
 
+const HEADING_NEEDS_GESTURE = "現在地の印にスマホの向きを出すには、向きを読む許しが要ります。";
+
 const NOTICE_CARD = "absolute top-0 right-full mr-2 w-max max-w-55 border-0 px-2.5 py-1.5";
 
 interface RideModeButtonProps {
   status: RideStatus;
   error: string | null;
   screenWakeLock: ScreenWakeLockStatus;
+  /** スマホの向きを読む許しを求め直す。求め直しが要る間だけ値がある。 */
+  onRequestHeading: (() => void) | null;
   /** 止まっていれば始め、走行モードの間は案内を終える。 */
   onPress: () => void;
   /** 休む（位置を受けるのをやめ、ルートと進み具合は残す）。 */
@@ -31,12 +35,13 @@ interface RideModeButtonProps {
 }
 
 /** 地図の右の列の走行モードのボタン。走行モードの間に押すと、案内を終えるか、休む（休んでいれば続きから走る）かを選ばせる。始められなかった理由と、
- * 画面を点けたままにできない端末であることを、ボタンの横に出す。後者は走っている間ずっと地図を覆わないよう閉じられ、
+ * スマホの向きを読む許しを求め直すボタンと、画面を点けたままにできない端末であることを、ボタンの横に出す。最後のものは走っている間ずっと地図を覆わないよう閉じられ、
  * 閉じたあとはボタンの角の印と読み上げの説明に残す。 */
 export default function RideModeButton({
   status,
   error,
   screenWakeLock,
+  onRequestHeading,
   onPress,
   onRest,
   onResume,
@@ -127,6 +132,24 @@ export default function RideModeButton({
         >
           {error}
         </p>
+      ) : onRequestHeading !== null ? (
+        <div
+          className={cn(
+            cardVariants({ variant: "float" }),
+            "pointer-events-auto flex flex-col items-start gap-1.5",
+            NOTICE_CARD,
+          )}
+        >
+          <p className={textVariants({ variant: "hint" })}>{HEADING_NEEDS_GESTURE}</p>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={onRequestHeading}
+            usage="スマホの向きを読む許しを求めます。許すと、現在地の印にスマホが向いている方角が出ます。"
+          >
+            向きを出す
+          </Button>
+        </div>
       ) : (
         wakeLockUnavailable &&
         !wakeNoticeClosed && (
