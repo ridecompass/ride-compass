@@ -34,6 +34,7 @@
 | `features/conditions/WeatherPanel/WeatherPanel.tsx`・`amedasWeatherIcon.ts`・`features/conditions/WarningBadge/WarningBadge.tsx`・`features/conditions/observedWind.ts` | UI（観測の風を帯に出す形へ導くのは`features/conditions/observedWind.ts: observedWind`で、天気の帯と走りの帯の両方がこれを読む。警報バッジの出所ごとの段階の呼び名と色は、backendの宣言`domain/warning_display.py`が生成物`vocabulary.ts`で配る） |
 | `features/conditions/routeThunder.ts` | ルートを通る時刻に当たる雷の注意報級の時間帯を、backendが返す区域の通過と段から選ぶ（`features/conditions/routeThunder.ts: routeThunderItems`）。段は気象庁の3時間のコマのまま出し、コマの境を通る時刻で切り詰めない。続くコマは1つの時間帯につなぐ |
 | `services/weatherApi.ts`・`types/weather.ts` | API呼び出し・型定義 |
+| `features/map/MapOverview/MapOverview.tsx`・`overview.ts` | 地図の左下の俯瞰図（下の「俯瞰図」）。`overview.ts`は範囲・出す条件・下地の出し分けの純関数 |
 
 ## 共通契約
 
@@ -73,8 +74,8 @@
    ペイロードの`kind`しか見ない。タイルかGeoJSONかは`dynamicWeather.ts: isTilePayload`の1か所で見分ける。
 4. **MSMの格子点は、backendが返した格子点の位置と値だけから描く**: 風の矢印と降水の升目は1回の取得
    （`useWeatherGrid.ts`、backendの`GET /api/weather/msm-grid`）を共有する。取るのは表示中のチップがこの段を読み、地図の
-   ズームが源泉の情報源の宣言（生成物`mapDisplay.layerDataSources`の`msmGrid`の`minZoom`）以上の間だけで、表示範囲は
-   地図を動かし終えてから取る（`hooks/useDebouncedValue.ts: MAP_FETCH_DEBOUNCE_MS`）。取り直す間は前の範囲の格子点を
+   ズームが源泉の情報源の宣言（生成物`mapDisplay.layerDataSources`の`msmGrid`の`minZoom`）以上の間だけで、表示範囲
+   （俯瞰図を出すズームでは俯瞰図が映す範囲との和）は地図を動かし終えてから取る（`hooks/useDebouncedValue.ts: MAP_FETCH_DEBOUNCE_MS`）。取り直す間は前の範囲の格子点を
    出したままにする。矢印は格子点の位置に置き、升目は格子点を中心に応答の格子点どうしの間隔（`latitude_step_deg`・
    `longitude_step_deg`）の半分ずつ広げる——どちらも値を補間・平均せず、格子点の間の地点の値を作らない（上の「責務」）。
    どの格子点を残すか（間引き）はbackendが決め、画面は選び直さない。コマの時刻は応答の`times`で、選んだ時刻の値は
@@ -401,6 +402,22 @@ basetime・validtimeを含む）で持つため、フレームが進んで取得
 固定すると、放置するうちに選んだ時刻が過去になり、先の時刻を描くレイヤー（「今」より前のコマを
 落とす）の範囲から外れて表示が消える。時刻を選んでいない間の出発時刻は、5分刻みの「今」へ
 追従する（`features/conditions/useDepartureTime.ts`）——画面を開いたまま放置しても置いていかれない。
+
+## 俯瞰図
+
+本体の地図の左下に、今の画面のまわり約60km四方（`features/map/MapOverview/overview.ts: OVERVIEW_SPAN_M`）を映す小さな地図を添える。
+今の画面より広い範囲の雨雲・風を見るためのもの。
+
+- **出す条件**: 気象の層を1つでも出していて、本体の地図のズームが`features/map/MapOverview/overview.ts: OVERVIEW_MIN_ZOOM`以上で、
+  スマホで下のシートを開いていない間（`features/map/MapOverview/overview.ts: overviewShown`）。走行中も同じ条件で、走行中の地図の下端（`features/ride/RideBottom/RideBottom.tsx`）の上に積む。
+  「×」で丸いボタンに畳み、畳んだことは端末に覚える。
+- **描くもの**: 下地は同じ基礎地図から、道路・建物・店とその文字の層を消し、地名を大きな町と都道府県に絞る
+  （`features/map/MapOverview/overview.ts: overviewBasemapEdits`。森・水・土地の塗りは残す）。その上に、本体の地図と同じ
+  `dynamicWeather`から気象の家族だけの scene（`features/map/scene/buildScene.ts: buildOverviewScene`）を描くので、色・時刻・中身は本体の地図と揃う。
+- **範囲**: 中心と向きは本体の地図に合わせ、ズームは緯度から1辺が約60kmになる値（`features/map/MapOverview/overview.ts: overviewZoom`）。
+  今の画面の範囲は真ん中の枠で示す。俯瞰図は操作を受けない（`features/map/baseMap.ts: createBaseMap`の`inset`）。
+- **格子点**: MSMの格子点は本体の地図と1回の取得を共有し、俯瞰図を出すズームでは俯瞰図の範囲まで広げて取る
+  （`features/map/MapOverview/overview.ts: overviewBounds`）。配信元のタイルは俯瞰図のズームのタイルを地図が取る。
 
 ## 常設ヘッダーの天候表示（`WeatherPanel`）
 

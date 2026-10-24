@@ -18,22 +18,25 @@ interface RideBottomProps {
   onResume: () => void;
   /** 選んだ候補の道のりのグラフ。候補が無ければ null。 */
   profile: ReactNode;
+  /** 左下に添える俯瞰図。出さない間は null。 */
+  overview: ReactNode;
 }
 
 /**
  * 走行モードの間、地図の下に選んだ候補の道のりのグラフを出し、そのすぐ上に続きから走るための操作を1か所で出す: 休んでいる間は
  * 「続きから走る」、地図を指で動かして追うのを休んでいる間は「現在地へ戻る」、追っている間にルートを外れたら、
- * 戻れば続きから案内すること。
+ * 戻れば続きから案内すること。俯瞰図は、それらの上の左に積む。
  */
-export default function RideBottom({ status, offRoute, onResume, profile }: RideBottomProps) {
+export default function RideBottom({ status, offRoute, onResume, profile, overview }: RideBottomProps) {
   const awayNotice = status === "following" && offRoute;
   const resumable = status === "paused" || status === "resting";
-  if (profile === null && !resumable && !awayNotice) return null;
+  if (profile === null && overview === null && !resumable && !awayNotice) return null;
   return (
     <div
       {...mapOverlayEdge("bottom")}
       className="pointer-events-none absolute inset-x-2 bottom-2 z-[var(--z-map-control)] flex flex-col items-center gap-2"
     >
+      {overview !== null && <div className="self-start">{overview}</div>}
       {status === "resting" && (
         <Button
           variant="primary"

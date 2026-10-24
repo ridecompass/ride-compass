@@ -3,7 +3,7 @@
  *
  * 見ること: シートを1枚ずつ開くこと・地点を扱える間・結果の合図・候補が届いた時点で「ルート設定」を開いていれば
  * 「ルート結果」へ移ってそこから全消去でき、ほかのときは移らず合図を出すこと・候補を出せなかった理由の1行・
- * 決めた高さを2枚のシートで分け合うこと。
+ * 決めた高さを2枚のシートで分け合うこと・シートを開いている間は地図の左下の俯瞰図を出さないこと。
  *
  * ここで見ないもの: シートの高さの決め方・覚え方は`components/BottomSheet/BottomSheet.resize.test.tsx`と
  * `components/BottomSheet/BottomSheet.fit.test.tsx`、ルートを収めるときにシートを避けることは実寸が要るので`e2e/mobile.spec.ts`が見る。走行中のスマホのシートは`app/page.rideControl.test.tsx`が見る。
@@ -13,7 +13,7 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { heldReplies } from "@/testing/backendServer";
+import { heldReplies, onBackend } from "@/testing/backendServer";
 import { installGeolocation } from "@/testing/geolocation";
 import {
   ELSEWHERE,
@@ -141,5 +141,23 @@ describe("スマホのシート", () => {
     renderHome();
     await user.click(screen.getByRole("button", { name: "ルート結果" }));
     expect(screen.getByRole("separator", { name: "パネルの高さを変更" })).toHaveAttribute("aria-valuenow", "55");
+  });
+
+  it("スマホでシートを開いている間は、地図の左下の俯瞰図を出さず、閉じると戻す", async () => {
+    onBackend("GET", "/api/weather/msm-grid", () =>
+      Response.json({ times: [], latitude_step_deg: 0.05, longitude_step_deg: 0.0625, points: [] }),
+    );
+    useMobileLayout();
+    const { user } = renderHome();
+    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
+    await user.click(screen.getByRole("checkbox", { name: "風[矢印]" }));
+    await user.keyboard("{Escape}");
+    act(() => mapOnScreen().moveTo({ west: 139.68, south: 35.69, east: 139.72, north: 35.71 }, 12));
+    expect(await screen.findByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "ルート設定" }));
+    expect(screen.queryByRole("region", { name: "俯瞰図" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "ルート設定" }));
+    expect(await screen.findByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
   });
 });

@@ -206,9 +206,9 @@ function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): Axi
 }
 
 /** 届いている中身を、要素の鍵（`groups/weather.ts: weatherElementKey`）で引ける形へ移す。 */
-function weatherStateFrom(props: SceneWiringProps): WeatherState {
+export function weatherStateFrom(dynamicWeather: SceneLook["dynamicWeather"]): WeatherState {
   const shown = new Map<string, { visible: boolean; payload?: DynamicWeatherRenderPayload }>();
-  for (const [groupId, group] of Object.entries(props.look.dynamicWeather)) {
+  for (const [groupId, group] of Object.entries(dynamicWeather)) {
     if (group === undefined) continue;
     for (const [sourceId, source] of Object.entries(group)) {
       if (source === undefined) continue;
@@ -258,7 +258,7 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
       visible: props.look.layerVisibility,
       hiddenKeys,
     },
-    weather: weatherStateFrom(props),
+    weather: weatherStateFrom(props.look.dynamicWeather),
     route: routeStateFrom(props),
     sidePoint: { points: props.sidePoints },
   };

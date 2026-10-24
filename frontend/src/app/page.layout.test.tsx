@@ -3,7 +3,7 @@
  *
  * 見ること: 地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）、右上の方位磁針（地図の北を指し、
  * 開いたダイヤルで地図を回して北へ戻す。なぞる途中で閉じたら回さない）と拡大・縮小、地図を読み込み中の覆いが上限の時間で外れること、層の取得状態の数え直しと
- * 再描画の失敗の案内、区分の開閉の保存、
+ * 再描画の失敗の案内、区分の開閉の保存、左下の俯瞰図（気象の層を出して寄せると出て、道路を消した下地に同じ気象の層を描き、引くと消え、畳んだことを覚える）、
  * ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、「現在地に移動」が出発地を変えずに地図を寄せて現在地に点を
  * 出すこと、メニューから入る使い方の説明（生成前の画面の「中を見る」で開いた浮きパネルの中の部品がどれも使い方の文を持つこと）とデバッグログ。
  *
@@ -15,7 +15,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setDebugEnabled } from "@/lib/debugLog";
-import { SECOND_MS } from "@/lib/duration";
+import { HOUR_MS, SECOND_MS } from "@/lib/duration";
 import refreshIntervals from "@/types/generated/refresh-intervals.json";
 import { heldReplies, onBackend } from "@/testing/backendServer";
 import { installGeolocation } from "@/testing/geolocation";
@@ -37,7 +37,8 @@ import {
   usageTargetOf,
 } from "@/components/UsageGuide/usageTarget";
 import { LAYER_DATA_STATUS_LABELS } from "@/features/map/layers/mapLayers";
-import { mapOnScreen } from "@/testing/maplibre";
+import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
+import { insetMapOnScreen, mapOnScreen } from "@/testing/maplibre";
 
 import Home from "./page";
 
@@ -195,6 +196,59 @@ describe("画面の枠", () => {
     renderHome();
     expect(section("ルート設定")).toHaveAttribute("aria-expanded", "false");
     expect(section("ルート結果")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("気象の層を出して寄せると、左下に道路を消した俯瞰図が出て同じ気象の層を描き、引くと消える。「×」で丸いボタンに畳み、次に開いたときも畳んだまま", async () => {
+    // 時刻は日本時間の壁時計で、今の時刻を含む1時間から2日分。
+    const times = Array.from(
+      { length: 48 },
+      (_, hour) => new Date(Date.now() + (9 + hour) * HOUR_MS).toISOString().slice(0, 13) + ":00",
+    );
+    onBackend("GET", "/api/weather/msm-grid", () =>
+      Response.json({
+        times,
+        latitude_step_deg: 0.05,
+        longitude_step_deg: 0.0625,
+        points: [
+          {
+            latitude: 35.7,
+            longitude: 139.7,
+            wind_speed_ms: times.map(() => 6),
+            wind_direction_deg: times.map(() => 90),
+            precipitation_mm: times.map(() => 0),
+          },
+        ],
+      }),
+    );
+    const { user, unmount } = renderHome();
+    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
+    await user.click(screen.getByRole("checkbox", { name: "風[矢印]" }));
+    await user.keyboard("{Escape}");
+    const near = { west: 139.68, south: 35.69, east: 139.72, north: 35.71 };
+    act(() => mapOnScreen().moveTo(near, 12));
+    expect(await screen.findByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
+    const inset = insetMapOnScreen()!;
+    act(() => inset.loadStyle(LIBERTY_POI_LAYERS));
+    act(() => inset.emit("load"));
+    const weatherOnMain = () =>
+      mapOnScreen()
+        .visibleLayerIds()
+        .filter((id) => inset.visibleLayerIds().includes(id));
+    await waitFor(() => expect(weatherOnMain()).not.toEqual([]));
+    // 俯瞰図に描くのは基礎地図の道路・店を除いたものと、本体の地図と同じ気象の層だけ。
+    expect(inset.visibleLayerIds()).toEqual(weatherOnMain());
+
+    act(() => mapOnScreen().moveTo(near, 10));
+    expect(screen.queryByRole("region", { name: "俯瞰図" })).toBeNull();
+    act(() => mapOnScreen().moveTo(near, 12));
+    await user.click(await screen.findByRole("button", { name: "俯瞰図を畳む" }));
+    expect(screen.queryByRole("region", { name: "俯瞰図" })).toBeNull();
+    unmount();
+
+    const again = renderHome();
+    act(() => mapOnScreen().moveTo(near, 12));
+    await again.user.click(await screen.findByRole("button", { name: "俯瞰図を開く" }));
+    expect(screen.getByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
   });
 
   it("ヘッダーの「未取得」に、現在地・軸の一覧・警報の取れないものが並ぶ。「現在地に移動」が取れなければ地図の上に理由を出す", async () => {

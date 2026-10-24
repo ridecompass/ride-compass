@@ -20,6 +20,7 @@ import {
   Layers,
   ListChecks,
   Lock,
+  Map as MapShape,
   MapPin,
   MapPinX,
   Minus,
@@ -129,3 +130,5 @@ export const ShowOriginIcon = fromLucide(CornerUpLeft);
 export const TurnLeftIcon = fromLucide(CornerUpLeft);
 /** 走行中の曲がる所の案内: 右折。 */
 export const TurnRightIcon = fromLucide(CornerUpRight);
+/** 畳んだ俯瞰図を開く。 */
+export const OverviewMapIcon = fromLucide(MapShape);
