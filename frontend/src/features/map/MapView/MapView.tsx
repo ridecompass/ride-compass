@@ -21,11 +21,7 @@ import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
 import MapNavigationControl from "@/features/map/MapNavigationControl/MapNavigationControl";
 import MapLoadStatus from "@/features/map/MapView/MapLoadStatus";
-import {
-  fitBoundsToRoute,
-  flyToVisible,
-  mapVisibleCenterOffset,
-} from "@/features/map/MapView/mapCamera";
+import { fitBoundsToRoute, flyToVisible, mapVisibleCenterOffset } from "@/features/map/MapView/mapCamera";
 import { bindMapTaps, type MapTapMode } from "@/features/map/MapView/mapTaps";
 import { buildPinPopupContent, type PinNames } from "@/features/map/MapView/pointPopup";
 import { roadWayId } from "@/features/map/MapView/roadFacts";
