@@ -50,7 +50,7 @@ E2Eは、**実ブラウザ・本番ビルドでしか出ず、かつ機械で判
 ### 走査する画面の状態は、画面から辿る
 
 観点1〜3は、要素を性質で集めるだけでなく、**当てる画面の状態も手で選ばない**。
-`e2e/all-states.spec.ts`が、`e2e/states.ts`の辿る画面の状態へ`e2e/scans.ts`の走査を当てる。
+`e2e/all-states.spec.ts`が、`e2e/states.ts`の辿る画面の状態へ`e2e/scans.ts`・`e2e/componentScans.ts`の走査を当てる。
 
 **土台**は幅 × 段階で、人が決める:
 

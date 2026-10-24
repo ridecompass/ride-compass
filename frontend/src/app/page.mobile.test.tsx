@@ -6,7 +6,7 @@
  * 決めた高さを2枚のシートで分け合うこと。
  *
  * ここで見ないもの: シートの高さの決め方・覚え方は`components/BottomSheet/BottomSheet.resize.test.tsx`と
- * `components/BottomSheet/BottomSheet.fit.test.tsx`、ルートを収めるときにシートを避けることは実寸が要るので`e2e/mobile.spec.ts`が見る。走行中のスマホのシートは`app/page.rideControl.test.tsx`が見る。
+ * `components/BottomSheet/BottomSheet.fit.test.tsx`、ルートを収めるときにシートを避けることは実寸が要るので`e2e/mobile-route-result.spec.ts`が見る。走行中のスマホのシートは`app/page.rideControl.test.tsx`が見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */

@@ -271,7 +271,7 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
   - **見るもの**: モック（`e2e/fixtures.ts: installApiMocks`）が本物の代わりに返しているもの——
     基礎地図・タイル・軸カタログ・ルート生成・気象——に本物が来たときにだけ起きる壊れ方（描かれない・
     値が来ない・押すと例外で開かない）。1シナリオ＝1枚のページ＝1本の幹で、重い段取り（開く・生成）を
-    1回だけ払い、その先の枝をまとめて見る。枝は見終えたら戻し、戻ったかは`e2e/states.ts`の指紋で
+    1回だけ払い、その先の枝をまとめて見る。枝は見終えたら戻し、戻ったかは`e2e/pageHelpers.ts`の指紋で
     確かめる。枝の失敗は他の枝を止めない。当てる相手（公開軸・レイヤー）はカタログと宣言から取り、
     手で名指ししない。期待値は値ではなく性質（1件以上ある・2つの出どころが食い違わない・エラー0件）で書く。
     実世界で無いのが正当なもの（踏切の無い範囲・雨の無い日）は判定せず「該当なし（理由）」をログへ出す。
@@ -309,10 +309,10 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
   `frontend/e2e/fixtures.ts: installApiMocks`・本物の backend。`--backend` で選んだパスの頭だけを作業ツリーの backend が返す）×「脚本」
   （`frontend/capture/context.ts: CaptureScript`）に分かれ、手元で起動する版には本番と同じ組の環境変数を渡す（渡していなければ撮る前に止まる）。
   見せたい状態（位置・レイヤー・レンズ・凡例・応答の差し替え等）は引数でなく脚本で書く。脚本は受け取る口だけを使い何も読み込まない（だから作業ツリーの外に置ける）。
-  地図を開く・レンズを選ぶ・読み終わりを待つ段取りは`e2e-live/live.ts`、画面を進める段取りは
+  地図を開く・レンズを選ぶ・読み終わりを待つ段取りは`e2e-live/mapReads.ts`、画面を進める段取りは
   `e2e/fixtures.ts`・`e2e/states.ts`を使い、書き直さない。地図に描かれた、押すと開くもの（道・点・ルートの区間・乗り換えの帯等）は、
-  経度・緯度を渡さずに`e2e/fixtures.ts: clickFeature`で押す。撮れる対象・呼べる段取りを増やすときは口を変えず、地図の当たり判定の
-  宣言（scene の`hitTargets`）か、e2e の段取りと応答の雛形（`e2e/fixtures.ts`・`e2e/states.ts`・`src/testing/catalogAxes.ts`）へ足す。
+  経度・緯度を渡さずに`e2e/liveMap.ts: clickFeature`で押す。撮れる対象・呼べる段取りを増やすときは口を変えず、地図の当たり判定の
+  宣言（scene の`hitTargets`）か、e2e の段取りと応答の雛形（`e2e/fixtures.ts`・`e2e/mockResponses.ts`・`e2e/states.ts`・`src/testing/catalogAxes.ts`）へ足す。
 
 ## 付録
 

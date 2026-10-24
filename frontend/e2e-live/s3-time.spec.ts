@@ -2,16 +2,15 @@ import { expect, test, type Page } from "@playwright/test";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import {
   branch,
-  chooseLens,
   expectNoOwnFailures,
   externalErrors,
   fetchCatalog,
   notApplicable,
   openLive,
   reportExternal,
-  settleMap,
   type Watch,
 } from "./live";
+import { chooseLens, settleMap } from "./mapReads";
 import { allLayersOn } from "../e2e/fixtures";
 
 // S3 時刻で変わる入力。実行した時刻に任せず、欠陥の境界から代表点を選ぶ: 日本時間とUTCで日付が異なる時間帯
