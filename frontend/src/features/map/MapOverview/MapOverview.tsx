@@ -101,7 +101,7 @@ function OverviewMap({ viewport, dynamicWeather, paneRef, onCollapse }: MapOverv
       className="pointer-events-auto relative overflow-hidden rounded-md border border-[var(--color-border-strong)] shadow-float"
       style={{ width: OVERVIEW_SIZE_PX, height: OVERVIEW_SIZE_PX }}
     >
-      <div ref={containerRef} className="absolute inset-0" />
+      <div ref={containerRef} className="size-full" />
       {frame !== null && (
         <div
           aria-hidden="true"
