@@ -24,8 +24,10 @@ import HomeMapPane from "./HomeMapPane";
 import { DesktopRoutePanels, MobileRoutePanels } from "./RoutePanels";
 import { mapTapModeOf, usePagePanels } from "./usePagePanels";
 import { useRideGuidance } from "./useRideGuidance";
+import { countRideMetric } from "@/lib/rideMetrics";
 
 export default function Home() {
+  countRideMetric("pageRenders");
   const axisCatalog = useAxisCatalog();
   // 走行モード（現在地を追い続けて地図を動かす）。走りとしてありえる速さの上限は、走行モデルの下りの最高速度。
   const riding = useRideMode(clientTuningValue(axisCatalog, CLIENT_TUNING_IDS.maxDescentKmh));

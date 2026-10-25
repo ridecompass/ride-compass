@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { debugLog } from "@/lib/debugLog";
+import { countRideMetric } from "@/lib/rideMetrics";
 
 // 端末の向きの出来事は1秒に何十回も届く。これより小さい変わり目では描き直さない（印の向きとして見分けられない）。
 const MIN_HEADING_STEP_DEG = 3;
@@ -52,6 +53,9 @@ export function useDeviceHeading(active: boolean): {
 } {
   const [permission, setPermission] = useState<Permission | null>(null);
   const [heading, setHeading] = useState<number | null>(null);
+  useEffect(() => {
+    if (heading !== null) countRideMetric("headingUpdates");
+  }, [heading]);
 
   const request = useCallback(() => {
     const ask = permissionRequest();
@@ -76,6 +80,7 @@ export function useDeviceHeading(active: boolean): {
     // Android の Chrome は北を基準にした向きを別の出来事で、iPhone の Safari はふつうの出来事にコンパスの読みを添えて出す。
     // 両方を受け、方角が分かる読みだけを使う。
     function onOrientation(event: Event) {
+      countRideMetric("orientationEvents");
       const reading = event as unknown as OrientationReading & { absolute?: boolean };
       const absolute = event.type === "deviceorientationabsolute" || reading.absolute === true;
       const next = headingFromOrientation(reading, absolute, screen.orientation?.angle ?? 0);
