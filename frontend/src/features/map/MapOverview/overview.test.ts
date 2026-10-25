@@ -5,9 +5,12 @@
  * ここで見ないもの: 俯瞰図を画面に出し・畳み・地図に気象を描くことは、ページのテスト（`app/page.layout.test.tsx`等）が見る。
  */
 import type { LayerSpecification } from "maplibre-gl";
+
+import type { MapScene, MapSceneLayer } from "@/features/map/scene/mapScene";
 import { describe, expect, it } from "vitest";
 
 import { METERS_PER_DEGREE, longitudeScale } from "@/lib/localPlane";
+import { lineLayer, scene } from "@/testing/mapSceneDeclarations";
 
 import {
   OVERVIEW_MIN_ZOOM,
@@ -16,6 +19,7 @@ import {
   overviewBasemapEdits,
   overviewBounds,
   overviewFrameSize,
+  overviewScene,
   overviewShown,
   overviewZoom,
 } from "./overview";
@@ -121,5 +125,56 @@ describe("overviewBasemapEdits", () => {
       places: [["label_town", ["all", townFilter, shownPlace]]],
       motorways: ["road_motorway", "bridge_motorway"],
     });
+  });
+});
+
+describe("overviewScene", () => {
+  // 俯瞰図の地図は2倍の大きさで1段細かいズームとして描いて縮めるので、描く地図のズームz+1で2倍の値なら、見た目は本体と同じ。
+  const sceneOf = (...specs: object[]): MapScene =>
+    scene(
+      specs.map((spec) => lineLayer("", "point", { spec: spec as MapSceneLayer["spec"] })),
+      [],
+    );
+  const specsOf = (drawn: MapScene) => drawn.layers.map((layer) => layer.spec);
+
+  it("記号の大きさ・縁取り・線の幅を、描く地図のズームで2倍にし、記号に地名の場所を取らせない", () => {
+    const byZoom = ["interpolate", ["linear"], ["zoom"], 10, ["*", ["get", "s"], 0.5], 14, 1];
+    const input = sceneOf(
+      {
+        id: "mark",
+        type: "symbol",
+        source: "s",
+        layout: { "icon-size": byZoom, "icon-rotate": 30, "icon-ignore-placement": false },
+        paint: { "icon-halo-width": 1.5, "icon-opacity": 1 },
+      },
+      {
+        id: "line",
+        type: "line",
+        source: "s",
+        paint: { "line-width": ["step", ["zoom"], 1, 12, 3], "line-color": "#000" },
+      },
+      { id: "fill", type: "fill", source: "s", paint: { "fill-opacity": 0.5 } },
+    );
+
+    expect(specsOf(overviewScene(input))).toEqual([
+      {
+        id: "mark",
+        type: "symbol",
+        source: "s",
+        layout: {
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 11, ["*", ["*", ["get", "s"], 0.5], 2], 15, 2],
+          "icon-rotate": 30,
+          "icon-ignore-placement": true,
+        },
+        paint: { "icon-halo-width": 3, "icon-opacity": 1 },
+      },
+      {
+        id: "line",
+        type: "line",
+        source: "s",
+        paint: { "line-width": ["step", ["zoom"], 2, 13, 6], "line-color": "#000" },
+      },
+      { id: "fill", type: "fill", source: "s", paint: { "fill-opacity": 0.5 } },
+    ]);
   });
 });

@@ -8,9 +8,13 @@ import { OverviewMapIcon } from "@/components/ui/icons/lucideIcons";
 import { createBaseMap } from "@/features/map/baseMap";
 import { runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
 import {
+  OVERVIEW_PLACE_LABEL,
+  OVERVIEW_RENDER_SCALE,
   OVERVIEW_SIZE_PX,
   overviewBasemapEdits,
   overviewFrameSize,
+  overviewRenderZoom,
+  overviewScene,
   overviewZoom,
 } from "@/features/map/MapOverview/overview";
 import { applyScene, weatherStateFrom, type SceneLook } from "@/features/map/scene/applyToMap";
@@ -55,13 +59,14 @@ function OverviewMap({ viewport, dynamicWeather, paneRef, onCollapse }: MapOverv
   const [paneSize, setPaneSize] = useState<{ width: number; height: number } | null>(null);
   const center = viewportCenter(viewport);
   const zoom = overviewZoom(center.latitude, viewport.zoom);
+  const renderZoom = overviewRenderZoom(zoom);
 
   useEffect(() => {
     if (!containerRef.current) return;
     const map = createBaseMap({
       container: containerRef.current,
       center: [center.longitude, center.latitude],
-      zoom,
+      zoom: renderZoom,
       inset: true,
     });
     map.setBearing(viewport.bearing);
@@ -70,10 +75,13 @@ function OverviewMap({ viewport, dynamicWeather, paneRef, onCollapse }: MapOverv
       for (const layerId of hidden) map.setLayoutProperty(layerId, "visibility", "none");
       for (const [layerId, filter] of places) {
         map.setFilter(layerId, filter);
-        // 風の矢印の記号が先に場所を取るので、重ねてよいとしないと地名が衝突で全部押し出される。
-        map.setLayoutProperty(layerId, "text-allow-overlap", true);
+        for (const [key, value] of Object.entries(OVERVIEW_PLACE_LABEL.layout))
+          map.setLayoutProperty(layerId, key as keyof typeof OVERVIEW_PLACE_LABEL.layout, value);
+        for (const [key, value] of Object.entries(OVERVIEW_PLACE_LABEL.paint))
+          map.setPaintProperty(layerId, key as keyof typeof OVERVIEW_PLACE_LABEL.paint, value);
       }
-      for (const layerId of motorways) map.setPaintProperty(layerId, "line-width", MOTORWAY_WIDTH_PX);
+      for (const layerId of motorways)
+        map.setPaintProperty(layerId, "line-width", MOTORWAY_WIDTH_PX * OVERVIEW_RENDER_SCALE);
     });
     mapRef.current = map;
     return () => {
@@ -85,10 +93,14 @@ function OverviewMap({ viewport, dynamicWeather, paneRef, onCollapse }: MapOverv
   }, []);
 
   useEffect(() => {
-    mapRef.current?.jumpTo({ center: [center.longitude, center.latitude], zoom, bearing: viewport.bearing });
-  }, [center.longitude, center.latitude, zoom, viewport.bearing]);
+    mapRef.current?.jumpTo({
+      center: [center.longitude, center.latitude],
+      zoom: renderZoom,
+      bearing: viewport.bearing,
+    });
+  }, [center.longitude, center.latitude, renderZoom, viewport.bearing]);
 
-  const scene = useMemo(() => buildOverviewScene(weatherStateFrom(dynamicWeather)), [dynamicWeather]);
+  const scene = useMemo(() => overviewScene(buildOverviewScene(weatherStateFrom(dynamicWeather))), [dynamicWeather]);
   useEffect(() => {
     if (mapRef.current) applyScene(mapRef.current, scene);
   }, [scene]);
@@ -108,7 +120,16 @@ function OverviewMap({ viewport, dynamicWeather, paneRef, onCollapse }: MapOverv
       className="pointer-events-auto relative overflow-hidden rounded-md border border-[var(--color-border-strong)] shadow-float"
       style={{ width: OVERVIEW_SIZE_PX, height: OVERVIEW_SIZE_PX }}
     >
-      <div ref={containerRef} className="size-full" />
+      {/* 地図は倍の大きさで描いて縮める（`overview.ts: OVERVIEW_RENDER_SCALE`）。 */}
+      <div
+        ref={containerRef}
+        className="origin-top-left"
+        style={{
+          width: OVERVIEW_SIZE_PX * OVERVIEW_RENDER_SCALE,
+          height: OVERVIEW_SIZE_PX * OVERVIEW_RENDER_SCALE,
+          transform: `scale(${1 / OVERVIEW_RENDER_SCALE})`,
+        }}
+      />
       {frame !== null && (
         <div
           aria-hidden="true"
