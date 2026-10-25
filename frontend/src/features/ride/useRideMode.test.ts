@@ -103,18 +103,14 @@ describe("useRideMode", () => {
     expect(result.current.map).toBeNull();
   });
 
-  it("北が上と進む向きが上を切り替え、進む向きは届いた位置から出す。止めて始め直すと北が上から始まる", () => {
+  it("進む向きは届いた位置から出す。進む向きを上にしても、止めて始め直すと北が上から始まる", () => {
     const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
     act(() => result.current.press());
     geolocation.deliver({ latitude: 35.68, longitude: 139.76, heading: 120 });
     expect(result.current.map).toMatchObject({ headingUp: false, bearing: 120 });
 
-    act(() => result.current.map?.onToggleHeadingUp());
+    act(() => result.current.map?.onHeadingUpChange(true));
     expect(result.current.map?.headingUp).toBe(true);
-    act(() => result.current.map?.onToggleHeadingUp());
-    expect(result.current.map?.headingUp).toBe(false);
-
-    act(() => result.current.map?.onToggleHeadingUp());
     act(() => result.current.press());
     act(() => result.current.press());
     expect(result.current.map?.headingUp).toBe(false);

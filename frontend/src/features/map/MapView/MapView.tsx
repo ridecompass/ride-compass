@@ -245,7 +245,7 @@ export default function MapView({
     onRouteSegmentSelect,
   });
 
-  const onNextRideZoom = useRideFollow(mapRef, ride, here, mapVisibleCenterOffset);
+  const rideControls = useRideFollow(mapRef, ride, here, mapVisibleCenterOffset);
   const turnMarkContent = useTurnMark(mapRef, turnPoint);
   const focus = useSectionFocus(mapRef, {
     sectionPath: selectedSectionPath,
@@ -305,9 +305,10 @@ export default function MapView({
         ride={
           ride && {
             headingUp: ride.headingUp,
-            onToggleHeadingUp: ride.onToggleHeadingUp,
+            following: ride.following,
+            onCompass: rideControls.onCompass,
             zoomBase: rideZoomBase(ride.zoomBase),
-            onNextZoom: onNextRideZoom,
+            onNextZoom: rideControls.onNextZoom,
           }
         }
       />

@@ -24,8 +24,8 @@ export interface RideFollow {
   onPause: () => void;
   /** 区間の選びを外した（休んでいれば追い直す）。 */
   onResume: () => void;
-  /** 走行モードの間に方位磁針を押した。 */
-  onToggleHeadingUp: () => void;
+  /** 進む向きを上にするかを選んだ。 */
+  onHeadingUpChange: (headingUp: boolean) => void;
   /** 追っている間の基準の倍率（速さで引く前）。この走行でまだ選んでいなければnull。 */
   zoomBase: number | null;
   /** 利用者が基準の倍率を選んだ（倍率のボタン・追っている間につまむ）。 */
@@ -72,13 +72,13 @@ function isTwoFingerTouch(input: unknown): boolean {
 /** 走行モードの間、現在地の点を出し、追っている間は地図の中心（と向き）を現在地へ動かし続ける。追っている間の2本指の
  * 操作は拡大・縮小だけにし、利用者が地図を指で動かすと追うのを休むよう知らせる。止めたら地図の向きを走る前に戻す。走っていない間は、`here`（取り直した現在地）に同じ点を出す。
  * `visibleOffset`は、地図に重なる部品を避けて見えている所の中ほどへ寄せるための、中心からのずれ（px）。
- * 返すのは倍率のボタンを押したときの処理。 */
+ * 返すのは倍率のボタンと方位磁針を押したときの処理。 */
 export function useRideFollow(
   mapRef: RefObject<MapLibreMap | null>,
   ride: RideFollow | null,
   here: Coordinates | null,
   visibleOffset: (map: MapLibreMap) => [number, number],
-): () => void {
+): { onNextZoom: () => void; onCompass: () => void } {
   const latest = useRef(ride);
   // 追っている間の倍率の基準（速さで引く前）と、なめらかにした速さ、いま当てている引きの段の数。基準は、つまみ終えて
   // 寄せ直すときに新しい値が描き直しより先に要るので、受けた値とは別に手元に持つ。
@@ -226,11 +226,25 @@ export function useRideFollow(
   }, [mapRef, following, position, bearing, headingUp, speedKmh, zoomBase]);
 
   // 追っている間は基準が変わって寄せ直す。休んでいる間は追い直すまで中心を動かさず、倍率だけをその段へ寄せる。
-  return useCallback(() => {
+  const onNextZoom = useCallback(() => {
     const current = latest.current;
     if (!current) return;
     const next = nextRideZoom(rideZoomBase(current.zoomBase));
     current.onZoomBaseChange(next);
     if (!current.following) mapRef.current?.easeTo({ zoom: next });
   }, [mapRef]);
+
+  // 追っている間は北が上と進む向きが上を切り替える。追っていない間は、見ている所を動かさずに北が上へその場で戻す。
+  const onCompass = useCallback(() => {
+    const current = latest.current;
+    if (!current) return;
+    if (current.following) {
+      current.onHeadingUpChange(!current.headingUp);
+      return;
+    }
+    current.onHeadingUpChange(false);
+    mapRef.current?.jumpTo({ bearing: 0 });
+  }, [mapRef]);
+
+  return { onNextZoom, onCompass };
 }
